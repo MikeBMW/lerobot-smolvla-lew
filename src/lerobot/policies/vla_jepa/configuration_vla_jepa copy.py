@@ -39,8 +39,13 @@ class VLAJEPAConfig(PreTrainedConfig):
 
     qwen_model_name: str = "Qwen/Qwen3-VL-2B-Instruct"
     jepa_encoder_name: str = "facebook/vjepa2-vitl-fpc64-256"
-    freeze_qwen: bool = True
-    enable_world_model: bool = False
+    freeze_qwen: bool = False
+    enable_world_model: bool = True
+    # Enables cross-embodiment transfer: when fine-tuning a pretrained model on a robot with a
+    # different action or state dimensionality, the input/output projection layers must be
+    # re-initialised from scratch while the rest of the network keeps its pretrained weights.
+    # List the key prefixes that are allowed to have shape mismatches; anything else raises an error.
+    # e.g. ["model.action_model.action_encoder", "model.action_model.state_encoder"]
     reinit_modules: list[str] | None = None
 
     tokenizer_padding_side: str = "left"
@@ -48,17 +53,18 @@ class VLAJEPAConfig(PreTrainedConfig):
     special_action_token: str = "<|action_{}|>"
     embodied_action_token: str = "<|embodied_action|>"
 
-    action_dim: int = 2
-    state_dim: int = 2
+    action_dim: int = 7
+    state_dim: int = 8
 
-    num_action_tokens_per_timestep: int = 4
-    num_embodied_action_tokens_per_instruction: int = 8
+    num_action_tokens_per_timestep: int = 8
+    num_embodied_action_tokens_per_instruction: int = 32
     num_inference_timesteps: int = 4
 
+    # action_hidden_size: int = 1024
     action_hidden_size: int = 512
-    # 修复：只支持DiT-B，删除不存在的DiT-T
     action_model_type: str = "DiT-B"
-    action_num_layers: int = 2
+    # action_num_layers: int = 16
+    action_num_layers: int = 8
     action_num_heads: int | None = None
     action_attention_head_dim: int | None = None
     action_dropout: float = 0.2
@@ -66,27 +72,29 @@ class VLAJEPAConfig(PreTrainedConfig):
     action_noise_beta_alpha: float = 1.5
     action_noise_beta_beta: float = 1.0
     action_noise_s: float = 0.999
-    num_target_vision_tokens: int = 16
-    action_max_seq_len: int = 1024
+    num_target_vision_tokens: int = 32
+    # action_max_seq_len: int = 1024
+    action_max_seq_len: int = 256
 
-    num_video_frames: int = 8
+    # total video frames loaded per sample
+    # num_video_frames: int = 8
+    num_video_frames: int = 2
     predictor_depth: int = 12
     predictor_num_heads: int = 8
     predictor_mlp_ratio: float = 4.0
     predictor_dropout: float = 0.0
     world_model_loss_weight: float = 0.1
-    jepa_tubelet_size: int = 2
-    repeated_diffusion_steps: int = 4
+    jepa_tubelet_size: int = 2  # must match the encoder (e.g. 2 for vjepa2-vitl-fpc64-256)
+    repeated_diffusion_steps: int = 8  # independent noise draws per batch item (CogACT-style)
 
-    resize_images_to: tuple[int, int] | None = (64, 64)
+    resize_images_to: tuple[int, int] | None = None
+    # resize_images_to: [112, 112]
     binarize_gripper_action: bool = True
     pre_snap_gripper_action: bool = True
     clip_normalized_actions: bool = True
     gripper_dim: int = 6
     gripper_threshold: float = 0.5
-    torch_dtype: str = "float16"
-
-    gradient_checkpointing: bool = True
+    torch_dtype: str = "bfloat16"
 
     optimizer_lr: float = 1e-4
     optimizer_betas: tuple[float, float] = (0.9, 0.95)
@@ -97,11 +105,10 @@ class VLAJEPAConfig(PreTrainedConfig):
     scheduler_decay_steps: int = 30_000
     scheduler_decay_lr: float = 2.5e-6
 
-    steps: int = 2
-
     def __post_init__(self) -> None:
         super().__post_init__()
         if self.freeze_qwen and self.enable_world_model:
+            # freezing qwen backbone makes world model training irrelevant since no grad flows
             self.enable_world_model = False
         if self.n_action_steps > self.chunk_size:
             raise ValueError("`n_action_steps` must be <= `chunk_size`.")
@@ -139,6 +146,8 @@ class VLAJEPAConfig(PreTrainedConfig):
 
     @property
     def observation_delta_indices(self) -> list[int]:
+        # load video_horizon frames starting from current timestep: [t, t+1, ..., t+video_horizon-1]
+        # matches original repo's observation_indices=list(range(video_horizon))
         return list(range(self.num_video_frames))
 
     @property

@@ -64,6 +64,7 @@ class VLAJEPAModel(nn.Module):
     """
 
     def __init__(self, config: VLAJEPAConfig) -> None:
+        breakpoint() 
         super().__init__()
         require_package("transformers", extra="vla_jepa")
         self.config = config
