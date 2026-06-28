@@ -36,34 +36,22 @@ if TYPE_CHECKING or _transformers_available:
 else:
     AutoModel = None
 
-# ====== 改动点1：导入替换，删除简易SmolVLMInterface，改用专家版SmolVLMWithExpertModel ======
+# ====== 改动点1：导入替换，使用专家版SmolVLM ======
 from .action_head import SmolVLALewActionHead
 from .configuration_smolvla_lew import SmolVLALewConfig
-# 替换：原生lerobot/policies/smolvla/smolvlm_with_expert.py 专家VLM
 from lerobot.policies.smolvla.smolvlm_with_expert import SmolVLMWithExpertModel
-# 内置轻量LeWorldModel
-from lerobot.world_models.le_world_model import LeWorldModel
 
 # ============================================================================
-# Native SmolVLALew Model - SmolVLM(SigLIP Expert) + LeWorldModel + DiT Action Head
-# 参考原starVLA输入格式，替换全部Qwen/V-JEPA为轻量专家模块
+# Native SmolVLALew Model - SmolVLM(SigLIP Expert) + DiT Action Head
 # ============================================================================
 
 
 class SmolVLALewModel(nn.Module):
     """
-    SmolVLA Expert + LeWorldModel 组合模型
+    SmolVLA Expert 模型
     Components:
-      - SmolVLMWithExpertModel(SigLIP): 专家版轻量视觉语言主干，图文融合嵌入
-      - DiT-B: flow-matching action head 预测未来动作
-      - LeWorldModel: 轻量单步时序世界模型（可选）
-
-    Input: List[dict] starVLA兼容原生格式
-      - "image": List[PIL.Image] (multi-view static observation)
-      - "video": np.ndarray [V, T, H, W, 3] 时序画面
-      - "lang": str task instruction 自然语言指令
-      - "action": np.ndarray [T, action_dim] 真值动作（仅训练）
-      - "state": np.ndarray [1, state_dim] 机器人本体状态（可选）
+      - SmolVLMWithExpertModel(SigLIP): 轻量视觉语言主干
+      - DiT-B: flow-matching action head 预测动作
     """
 
     def __init__(self, config: SmolVLALewConfig) -> None:
@@ -71,8 +59,7 @@ class SmolVLALewModel(nn.Module):
         require_package("transformers", extra="smolvla_lew")
         self.config = config
 
-        # ====== 改动点2：初始化替换为专家版SmolVLMWithExpertModel，传入全套配置参数 ======
-        # 1. 替换简易SmolVLMInterface为专家版SmolVLMWithExpertModel
+        # 初始化专家版SmolVLM
         self.smolvlm = SmolVLMWithExpertModel(
             model_id=config.smolvlm_name,
             load_vlm_weights=True,
@@ -85,88 +72,87 @@ class SmolVLALewModel(nn.Module):
             expert_width_multiplier=getattr(config, "expert_width_multiplier", 0.5),
             device="auto"
         )
-        # SmolVLM无需自定义action特殊token，删除原expand_tokenizer逻辑
         self.action_tokens = None
         self.action_token_ids = None
         self.embodied_action_token_id = None
 
-        # 2. 初始化DiT动作头，修复config层级错误：self.smolvlm.vlm.config
+        # 初始化DiT动作头
         self.action_model = SmolVLALewActionHead(
             config, cross_attention_dim=self.smolvlm.vlm.config.text_config.hidden_size
         )
 
-        # 3. 替换V-JEPA整套为LeWorldModel轻量世界模型
-        if config.enable_lew_world_model:
-            self.le_world_model = LeWorldModel(
-                img_size=config.siglip_image_size,
-                hidden_dim=config.lew_hidden_dim,
-                num_layers=config.lew_num_layers,
-                pred_horizon=config.num_video_frames - 1
-            )
-        else:
-            self.le_world_model = None
+        # 关闭WorldModel
+        self.le_world_model = None
 
-        # 冻结轻量VLM主干（专家版内部已处理train_expert_only，此处保留兼容）
+        # 冻结VLM主干
         if config.freeze_smolvlm:
             self.smolvlm.requires_grad_(False)
 
-        # SmolVLM原生Prompt无需action占位字符串，删除replace_prompt相关逻辑
         self.replace_prompt = ""
         self.embodied_replace_prompt = ""
 
-    # 新增：张量转PIL图像工具函数，修复tensor_to_pil不存在报错
     def tensor_to_pil(self, img_tensor: torch.Tensor) -> Image.Image:
-        """
-        将单张图像张量 [C, H, W] 转为 PIL.Image
-        支持 float(0~1) / uint8 两种格式
-        """
+        """[C, H, W] tensor 转 PIL Image"""
         if img_tensor.dtype == torch.float32:
             img_tensor = (img_tensor * 255).clamp(0, 255).to(torch.uint8)
         arr = img_tensor.permute(1, 2, 0).detach().cpu().numpy()
         return Image.fromarray(arr)
 
-    # ====== 改动点3：重写图文融合编码函数，适配SmolVLMWithExpertModel处理流程 ======
     def _get_multimodal_embeds(self, images: list[list[Image.Image]], instructions: list[str]) -> torch.Tensor:
-        """调用专家SmolVLM，预处理图像+文本，返回全局多模态条件特征"""
         processor = self.smolvlm.processor
         batch_size = len(images)
+        
         all_pixel_values = []
-        all_text_input_ids = []
-
-        # 批量预处理多视角图像+指令
-        for sample_imgs, text in zip(images, instructions):
-            proc_out = processor(images=sample_imgs, text=text, return_tensors="pt")
+        all_input_ids = []
+        
+        for sample_idx in range(batch_size):
+            sample_imgs = images[sample_idx]
+            text = instructions[sample_idx] if sample_idx < len(instructions) and instructions[sample_idx] else "push red block to target"
+            
+            if not sample_imgs:
+                raise ValueError(f"Sample {sample_idx} has no images!")
+            
+            num_images = len(sample_imgs)
+            image_tokens = "<image>" * num_images
+            full_text = f"{image_tokens}{text}"
+            
+            proc_out = processor(
+                images=sample_imgs,
+                text=full_text,
+                return_tensors="pt"
+            )
+            
             all_pixel_values.append(proc_out["pixel_values"])
-            all_text_input_ids.append(proc_out["input_ids"])
-
-        # 拼接批量张量送入VLM
-        pixel_values = torch.cat(all_pixel_values, dim=0).to(next(self.smolvlm.parameters()).device)
-        input_ids = torch.cat(all_text_input_ids, dim=0).to(next(self.smolvlm.parameters()).device)
-
-        # 前向获取完整多模态输出，取文本最后一层隐藏作为条件特征
+            all_input_ids.append(proc_out["input_ids"])
+        
+        device = next(self.smolvlm.parameters()).device
+        pixel_values = torch.cat(all_pixel_values, dim=0).to(device)
+        input_ids = torch.cat(all_input_ids, dim=0).to(device)
+        
+        # 直接调用 vlm 模型
         vlm_out = self.smolvlm.vlm(
             pixel_values=pixel_values,
             input_ids=input_ids,
             output_hidden_states=True,
             return_dict=True
         )
-        # 取文本编码器最后一层隐藏特征作为DiT交叉注意力输入
-        multimodal_embeds = vlm_out.text_model_output.hidden_states[-1]
+        
+        # SmolVLM 输出的是 CausalLMOutputWithPast
+        # hidden_states 是 tuple，取最后一层
+        if hasattr(vlm_out, 'hidden_states') and vlm_out.hidden_states is not None:
+            # hidden_states 是 tuple of [batch, seq_len, hidden_dim]
+            multimodal_embeds = vlm_out.hidden_states[-1]
+        else:
+            # 备选方案：使用模型的内部表示
+            # 对于 SmolVLM，可以通过 model 的 forward 获取
+            raise ValueError("No hidden_states in vlm output")
+        
         return multimodal_embeds
 
-    # ---- 训练前向传播 ----
     def forward(self, examples: list[dict]) -> dict[str, Tensor]:
-        """
-        训练前向，兼容starVLA List[dict]输入格式
-        Args:
-            examples: List[dict] 样本列表
-        Returns:
-            {"action_loss": 动作扩散损失, "lew_loss": 轻量世界模型时序预测损失}
-        """
-        # 解包starVLA原生输入
-        batch_images = [ex["image"] for ex in examples]  # List[List[PIL.Image]]
-        batch_videos = [ex["video"] for ex in examples]  # List[np.ndarray]
-        instructions = [ex["lang"] for ex in examples]    # List[str]
+        batch_images = [ex["image"] for ex in examples]
+        batch_videos = [ex["video"] for ex in examples]
+        instructions = [ex["lang"] for ex in examples]
         has_action = "action" in examples[0] and examples[0]["action"] is not None
         actions = [ex["action"] for ex in examples] if has_action else None
         has_state = "state" in examples[0] and examples[0]["state"] is not None
@@ -177,39 +163,18 @@ class SmolVLALewModel(nn.Module):
             else None
         )
 
-        # 堆叠视频 [B, V, T, H, W, 3] -> [B, V, T, 3, H, W]
         batch_videos = np.stack(batch_videos)
         batch_videos = batch_videos.transpose(0, 1, 2, 5, 3, 4)
+        lew_loss = torch.tensor(0.0, device=next(self.parameters()).device)
 
-        # LeWorldModel仅取第一视角，无需多视图补齐逻辑，简化处理
-        batch_videos = batch_videos[:, :1, :, :, :, :]
-
-        # Step1: SmolVLM图文融合编码，获取全局条件特征
         device_type = next(self.parameters()).device.type
         with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
             multimodal_embeds = self._get_multimodal_embeds(batch_images, instructions)
             b, seq_len, hidden_dim = multimodal_embeds.shape
 
-        # Step2: LeWorldModel时序潜特征预测损失（替代原V-JEPA wm_loss）
-        device_lew = multimodal_embeds.device
-        if not self.config.enable_lew_world_model:
-            lew_loss = torch.tensor(0.0, device=device_lew)
-        else:
-            # 取视频t帧作为输入，t+1帧作为真值
-            b, v, t_frames, c, h_img, w_img = batch_videos.shape
-            frame_t = torch.from_numpy(batch_videos[:, 0, 0]).permute(0, 3, 1, 2).to(device_lew, dtype=torch.float32) / 255.0
-            frame_t1 = torch.from_numpy(batch_videos[:, 0, 1]).permute(0, 3, 1, 2).to(device_lew, dtype=torch.float32) / 255.0
-
-            # LeWorldModel编码当前帧、预测下一帧潜表征
-            latent_t = self.le_world_model.encode_frame(frame_t)
-            latent_t1_gt = self.le_world_model.encode_frame(frame_t1)
-            latent_t1_pred = self.le_world_model(latent_t)
-            lew_loss = F.l1_loss(latent_t1_pred, latent_t1_gt)
-
         if not has_action:
-            return {"lew_loss": lew_loss}
+            return {"action_loss": torch.tensor(0.0, device=multimodal_embeds.device), "lew_loss": lew_loss}
 
-        # Step3: DiT动作头前向计算action_loss
         with torch.autocast(device_type=device_type, dtype=torch.float32):
             actions_tensor = torch.tensor(
                 np.array(actions), device=multimodal_embeds.device, dtype=torch.float32
@@ -249,10 +214,8 @@ class SmolVLALewModel(nn.Module):
                 action_is_pad=action_is_pad_rep
             )
 
-        # 总损失：动作损失 + 世界模型损失加权
-        return {"action_loss": action_loss, "lew_loss": lew_loss * self.config.lew_loss_weight}
+        return {"action_loss": action_loss, "lew_loss": lew_loss}
 
-    # ---- 推理动作生成 ----
     @torch.no_grad()
     def predict_action(
         self,
@@ -260,7 +223,6 @@ class SmolVLALewModel(nn.Module):
         instructions: list[str],
         state: np.ndarray | None = None,
     ) -> np.ndarray:
-        """推理，输入图像+指令，输出未来多步归一化动作"""
         if self.config.resize_images_to is not None:
             height, width = self.config.resize_images_to
             resampling = getattr(Image, "Resampling", Image).BOX
@@ -269,7 +231,6 @@ class SmolVLALewModel(nn.Module):
                 for sample_images in batch_images
             ]
 
-        # SmolVLM获取图文融合特征
         device_type = next(self.parameters()).device.type
         with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
             multimodal_embeds = self._get_multimodal_embeds(batch_images, instructions)
@@ -288,15 +249,9 @@ class SmolVLALewModel(nn.Module):
 
 
 # ============================================================================
-# LeRobot Policy 适配层：LeRobot标准batch ↔ starVLA List[dict]原生格式
+# LeRobot Policy 顶层封装
 # ============================================================================
-
-
 class SmolVLALewPolicy(PreTrainedPolicy):
-    """
-    LeRobot顶层策略封装，适配lerobot-train训练脚本
-    组合：SmolVLM(SigLIP Expert) + LeWorldModel轻量世界模型 + DiT流匹配动作头
-    """
     config_class = SmolVLALewConfig
     name = "smolvla_lew"
 
@@ -316,7 +271,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
     def reset(self) -> None:
         self._queues = {ACTION: deque(maxlen=self.config.n_action_steps)}
 
-    # LeRobot标准张量batch → starVLA List[dict]原生输入
     def _prepare_model_inputs(self, batch: dict[str, Tensor]) -> list[dict]:
         image_keys = list(self.config.image_features.keys())
         if not image_keys:
@@ -325,7 +279,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         first_tensor = batch[first_key]
         batch_size = first_tensor.shape[0]
 
-        # 1. 组装多视角PIL静态图像，调用内部tensor_to_pil
         images_per_sample: list[list[Image.Image]] = [[] for _ in range(batch_size)]
         for key in image_keys:
             tensor = batch[key]
@@ -334,7 +287,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
             for b in range(batch_size):
                 images_per_sample[b].append(self.model.tensor_to_pil(tensor[b]))
 
-        # 2. 组装时序视频数组 [V, T, H, W, 3]
         video_source = None
         for k in image_keys:
             if k in batch:
@@ -350,23 +302,25 @@ class SmolVLALewPolicy(PreTrainedPolicy):
                 t = batch[k][b]
                 if t.ndim == 3:
                     t = t.unsqueeze(0)
-                t_np = t.permute(0, 2, 3, 1).detach().cpu().float().numpy()
+                t_np = t.permute(0, 3, 1, 2).detach().cpu().float().numpy()
                 if t_np.max() <= 1.0:
                     t_np = t_np * 255.0
                 t_np = np.rint(t_np.clip(0, 255)).astype(np.uint8)
                 sample_views.append(t_np)
             videos_per_sample.append(np.stack(sample_views, axis=0))
 
-        # 3. 任务自然语言指令
+        # 兜底清洗空指令
         tasks = batch.get("task")
         if tasks is None:
-            instructions = ["Push target block."] * batch_size
+            instructions = ["push red block to target"] * batch_size
         elif isinstance(tasks, str):
             instructions = [tasks] * batch_size
         else:
             instructions = list(tasks)
+        for idx in range(len(instructions)):
+            if not instructions[idx] or len(instructions[idx].strip()) == 0:
+                instructions[idx] = "push red block to target"
 
-        # 4. 真值动作、padding掩码
         actions_list = None
         action_is_pad_list = None
         actions_tensor = batch.get(ACTION)
@@ -378,7 +332,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
             if action_is_pad_tensor is not None:
                 action_is_pad_list = [action_is_pad_tensor[b].detach().cpu() for b in range(batch_size)]
 
-        # 5. 机器人状态
         state_list = None
         state_tensor = batch.get(OBS_STATE)
         if state_tensor is not None:
@@ -388,7 +341,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
                 state_tensor = state_tensor.unsqueeze(1)
             state_list = [state_tensor[b].detach().cpu().float().numpy() for b in range(batch_size)]
 
-        # 组装starVLA标准样本字典列表
         examples = []
         for b in range(batch_size):
             example = {
@@ -405,7 +357,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
             examples.append(example)
         return examples
 
-    # 训练正向：返回总损失+日志
     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict]:
         examples = self._prepare_model_inputs(batch)
         native_output = self.model.forward(examples)
@@ -420,7 +371,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
     def get_optim_params(self) -> dict:
         return self.model.parameters()
 
-    # 批量推理生成多步动作
     @torch.no_grad()
     def predict_action_chunk(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
         self.eval()
@@ -437,7 +387,6 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         actions_np = self.model.predict_action(batch_images, instructions, state_np)
         return torch.from_numpy(actions_np).to(device=self.config.device, dtype=torch.float32)
 
-    # 单步动作输出（带队列缓存滚动输出chunk）
     @torch.no_grad()
     def select_action(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
         self.eval()
