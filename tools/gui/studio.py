@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LeRobot Studio — 集成化开发界面
+XSpace Studio — 集成化开发界面
 Z-MAX 多模态动作专家 · System 0 / Sys-11 / Sys-12 / System 2
 
 基于 Z-MAX 三层解耦架构设计:
@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl  # 新增 QUrl，用于打开外部链接
 from PyQt5.QtGui import (
     QFont, QColor, QPainter, QLinearGradient, QBrush,
-    QPainterPath, QPen, QDesktopServices  # 新增 QDesktopServices，用于打开浏览器
+    QPainterPath, QPen, QDesktopServices, QPixmap  # 新增 QDesktopServices, QPixmap
 )
 
 
@@ -158,11 +158,13 @@ class SystemSidebar(QFrame):
 
         # 标题
         logo_row = QHBoxLayout()
-        icon = QLabel("🤖")
-        icon.setFont(QFont("Segoe UI Emoji", 18))
+        icon = QLabel()
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        pixmap = QPixmap(icon_path)
+        icon.setPixmap(pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         icon.setStyleSheet("background:transparent; border:none; margin:0;")
         logo_row.addWidget(icon)
-        title = QLabel("LeRobot Studio")
+        title = QLabel("XSpace Studio")  # 改名：LeRobot Studio → XSpace Studio
         title.setFont(QFont("Arial", 14, QFont.Bold))
         title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
         logo_row.addWidget(title)
@@ -180,7 +182,7 @@ class SystemSidebar(QFrame):
 
         layout.addSpacing(8)
 
-        sep_label = QLabel("Z-MAX 系统架构")
+        sep_label = QLabel("模块库")  # 改名：Z-MAX 系统架构 → 模块库，后续支持拖拽到主窗口
         sep_label.setFont(QFont("Arial", 10, QFont.Bold))
         sep_label.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(sep_label)
@@ -503,6 +505,13 @@ class HomeWidget(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
 
         row = QHBoxLayout()
+        # 首页大logo，跟标题"Z-MAX"20pt字号匹配  # 新增：首页hero区域logo
+        hero_icon = QLabel()  # 新增：首页hero区域logo
+        hero_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")  # 新增：首页hero区域logo
+        hero_pixmap = QPixmap(hero_icon_path)  # 新增：首页hero区域logo
+        hero_icon.setPixmap(hero_pixmap.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))  # 新增：48x48匹配20pt字号
+        hero_icon.setStyleSheet("background:transparent; border:none; margin:0; padding:4px 0;")  # 新增：首页hero区域logo
+        row.addWidget(hero_icon)  # 新增：首页hero区域logo
         t = QLabel("Z-MAX 多模态动作专家")
         t.setFont(QFont("Arial", 20, QFont.Bold))
         t.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
@@ -957,7 +966,7 @@ class MonitorModule(SubModuleWidget):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LeRobot Studio — Z-MAX 多模态动作专家")
+        self.setWindowTitle("XSpace Studio — Z-MAX 多模态动作专家")  # 改名：LeRobot Studio → XSpace Studio
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()

@@ -41,6 +41,9 @@ from .action_head import SmolVLALewActionHead
 from .configuration_smolvla_lew import SmolVLALewConfig
 from lerobot.policies.smolvla.smolvlm_with_expert import SmolVLMWithExpertModel
 
+# ====== 新增：导入LeWorldModel世界模型 ======
+from .world_model_le import LeWorldModel
+
 # ============================================================================
 # Native SmolVLALew Model - SmolVLM(SigLIP Expert) + DiT Action Head
 # ============================================================================
@@ -83,6 +86,28 @@ class SmolVLALewModel(nn.Module):
 
         # 关闭WorldModel
         self.le_world_model = None
+        
+        # ====== 新增：条件性初始化LeWorldModel世界模型 ======
+        if config.enable_lew_world_model:
+            # 获取SigLIP视觉编码器
+            vision_encoder = self.smolvlm.vlm.model.vision_model
+            # 获取视觉编码器输出维度
+            vision_hidden_size = vision_encoder.config.vision_config.hidden_size
+            
+            # 初始化LeWorldModel
+            self.le_world_model = LeWorldModel(
+                vision_encoder=vision_encoder,
+                action_dim=config.action_dim,
+                obs_embed_dim=config.lew_hidden_dim,
+                hidden_dim=config.lew_hidden_dim,
+                num_layers=config.lew_num_layers,
+                num_heads=8,
+                dim_head=64,
+                mlp_dim=config.lew_hidden_dim * 4,
+                num_frames=config.num_video_frames,
+                dropout=0.1,
+            )
+            print(f"✓ LeWorldModel initialized: hidden_dim={config.lew_hidden_dim}, layers={config.lew_num_layers}")
 
         # 冻结VLM主干
         if config.freeze_smolvlm:
@@ -167,6 +192,19 @@ class SmolVLALewModel(nn.Module):
         batch_videos = np.stack(batch_videos)
         batch_videos = batch_videos.transpose(0, 1, 2, 5, 3, 4)
         lew_loss = torch.tensor(0.0, device=next(self.parameters()).device)
+        
+        # ====== 新增：LeWorldModel世界模型损失计算 ======
+        if self.le_world_model is not None and has_action:
+            # 将视频数据转换为tensor
+            videos_tensor = torch.from_numpy(batch_videos).float().to(next(self.parameters()).device)
+            
+            # 准备动作数据 [B, T, action_dim]
+            actions_np = np.array(actions)  # [B, T_chunk, action_dim]
+            actions_tensor_wm = torch.from_numpy(actions_np).float().to(videos_tensor.device)
+            
+            # 计算LeWorldModel损失
+            lew_loss = self.le_world_model(videos_tensor, actions_tensor_wm)
+            lew_loss = lew_loss * self.config.lew_loss_weight
 
         device_type = next(self.parameters()).device.type
         with torch.autocast(device_type=device_type, dtype=torch.bfloat16):

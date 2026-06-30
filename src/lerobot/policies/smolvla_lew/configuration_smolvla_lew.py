@@ -55,6 +55,11 @@ class SmolVLALewConfig(PreTrainedConfig):
     lew_loss_weight: float = 0.1
     lew_hidden_dim: int = 192
     lew_num_layers: int = 6
+    # ====== 新增：LeWorldModel额外超参数 ======
+    lew_attention_heads: int = 8       # ARPredictor注意力头数
+    lew_dim_head: int = 24             # 每个注意力头的维度
+    lew_mlp_dim: int = 768             # FFN隐藏层维度
+    lew_dropout: float = 0.1           # dropout率
     num_video_frames: int = 2  # LeWM仅需最少2帧 t/t+1
 
     # 移除Qwen专属token/prompt配置，SmolVLM原生不需要自定义action占位token
