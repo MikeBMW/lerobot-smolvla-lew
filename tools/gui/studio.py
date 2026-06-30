@@ -11,13 +11,15 @@ Z-MAX 多模态动作专家 · System 0 / Sys-11 / Sys-12 / System 2
 """
 
 import sys
+import subprocess  # 新增：用于执行git命令同步代码到GitHub
+import os  # 新增：用于获取工作目录和HOME路径
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
     QGraphicsDropShadowEffect, QScrollArea, QStackedWidget,
     QSplitter, QTextEdit, QGroupBox, QFormLayout, QLineEdit,
     QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QProgressBar,
-    QTabWidget, QAction, QMenu
+    QTabWidget, QAction, QMenu, QInputDialog, QMessageBox  # 新增 QInputDialog, QMessageBox
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl  # 新增 QUrl，用于打开外部链接
 from PyQt5.QtGui import (
@@ -512,6 +514,14 @@ class HomeWidget(QWidget):
         b.setCursor(Qt.PointingHandCursor)
         b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew.git")))  # 打开GitHub链接
         row.addWidget(b)
+
+        # 同步按钮：将本地GUI代码推送到GitHub  # 新增同步按钮
+        sync_btn = QPushButton("🔄 同步到GitHub")  # 新增同步按钮
+        sync_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        sync_btn.setCursor(Qt.PointingHandCursor)
+        sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
+        row.addWidget(sync_btn)  # 新增同步按钮
         layout.addLayout(row)
 
         desc = QLabel("高速光模块精细操作具身机器人 · L4级全自主 · 1ms实时控制 · 三层解耦架构")
@@ -585,6 +595,72 @@ class HomeWidget(QWidget):
         layout.addStretch()
         f.setLayout(layout)
         return f
+
+    def _sync_to_github(self):  # 新增：同步GUI代码到GitHub的方法
+        """将本地 tools/gui/ 目录的代码推送到 GitHub 仓库"""
+        repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 定位到仓库根目录（gui→tools→repo_root）
+
+        try:
+            # 第一步：git add
+            r = subprocess.run(["git", "add", "tools/gui/"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            if r.returncode != 0:
+                QMessageBox.warning(self, "同步失败", f"git add 出错:\n{r.stderr}")
+                return
+
+            # 第二步：检查是否有变更需要提交
+            r = subprocess.run(["git", "status", "--porcelain", "tools/gui/"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            if not r.stdout.strip():
+                QMessageBox.information(self, "无需同步", "本地 GUI 代码无变更，不需要推送。")
+                return
+
+            # 第三步：git commit
+            r = subprocess.run(["git", "commit", "-m", "sync: 同步GUI界面代码更新"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            if r.returncode != 0:
+                QMessageBox.warning(self, "同步失败", f"git commit 出错:\n{r.stderr}")
+                return
+
+            # 第四步：git push（尝试直接推送）
+            r = subprocess.run(["git", "push", "origin", "main"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=60)
+
+            if r.returncode != 0:
+                # 推送失败（通常是认证问题），弹出token输入框
+                token, ok = QInputDialog.getText(
+                    self, "GitHub Token",
+                    "需要 GitHub Personal Access Token 才能推送。\n"
+                    "请访问 https://github.com/settings/tokens 生成 token\n\n"
+                    "输入 token（会自动保存供下次使用）:",
+                    QLineEdit.Password
+                )
+                if ok and token.strip():
+                    # 保存 token 到 ~/.git-credentials
+                    cred_file = os.path.expanduser("~/.git-credentials")
+                    with open(cred_file, "w") as f:
+                        f.write(f"https://MikeBMW:{token.strip()}@github.com\n")
+                    # 配置 credential helper
+                    subprocess.run(["git", "config", "credential.helper", "store"],
+                                   capture_output=True, cwd=repo_dir, timeout=10)
+                    # 重试推送
+                    r = subprocess.run(["git", "push", "origin", "main"],
+                                       capture_output=True, text=True, cwd=repo_dir, timeout=60)
+                    if r.returncode != 0:
+                        QMessageBox.warning(self, "推送失败", f"推送仍然失败:\n{r.stderr}")
+                        return
+
+                else:
+                    return  # 用户取消了
+
+            QMessageBox.information(self, "同步成功",
+                                    "✅ GUI 代码已成功推送到 GitHub!\n\n"
+                                    "https://github.com/MikeBMW/lerobot-smolvla-lew")
+
+        except subprocess.TimeoutExpired:
+            QMessageBox.warning(self, "同步超时", "Git 操作超时，请检查网络连接。")
+        except Exception as e:
+            QMessageBox.warning(self, "同步异常", f"发生异常:\n{str(e)}")
 
 
 # ============================================================
