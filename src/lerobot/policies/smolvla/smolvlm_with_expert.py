@@ -145,6 +145,7 @@ class SmolVLMWithExpertModel(nn.Module):
         self.set_requires_grad()
 
     def get_vlm_model(self):
+        breakpoint()
         return self.vlm.model
 
     def set_requires_grad(self):

@@ -150,6 +150,7 @@ class SmolVLALewModel(nn.Module):
         return multimodal_embeds
 
     def forward(self, examples: list[dict]) -> dict[str, Tensor]:
+        # breakpoint()
         batch_images = [ex["image"] for ex in examples]
         batch_videos = [ex["video"] for ex in examples]
         instructions = [ex["lang"] for ex in examples]
@@ -207,6 +208,7 @@ class SmolVLALewModel(nn.Module):
                 pad_tensor = pad_tensor[:, -action_horizon:]
                 action_is_pad_rep = pad_tensor.repeat(repeated_diffusion_steps, 1)
 
+            breakpoint()
             action_loss = self.action_model(
                 conditioning_tokens=multimodal_embeds_rep,
                 actions=actions_target,
