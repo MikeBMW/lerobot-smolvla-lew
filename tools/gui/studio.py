@@ -577,7 +577,7 @@ class HomeWidget(QWidget):
         doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         doc_btn.setCursor(Qt.PointingHandCursor)
         doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
-        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(__file__), "Z-MAX管理层汇报.pptx")))
+        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'Z-MAX管理层汇报.pptx')))
         row.addWidget(doc_btn)
 
         layout.addLayout(row)
