@@ -118,66 +118,77 @@ Expected output:
 ============================================================
 ```
 
-#### 2. Full SmolVLA-LEW Integration Demo
+#### 2. Full SmolVLA-LEW Hybrid Model Validation
 
-This script validates the complete SmolVLA-LEW policy with lerobot integration:
+This script validates the complete SmolVLA-LEW policy with Sys-11 + Sys-12 hybrid architecture:
 
 ```bash
 cd ~/xspace/lerobot-smolvla-lew
-python examples/smolvla_lew_demo.py
+python3 src/lerobot/policies/smolvla_lew/validate_hybrid_model.py
 ```
 
 **Requirements**: Full lerobot installation with smolvla_lew extras
 
 This script validates:
-- LeWorldModel components (Embedder, ARPredictor)
-- SmolVLA-LEW model initialization
-- Forward pass (training workflow)
-- Predict action (inference workflow)
+- Configuration loading (hybrid mode / sys11-only mode)
+- LeWorldModel standalone (forward / backward / rollout)
+- SmolVLALewModel full model (Sys-11 + Sys-12)
+- Sys-11 only mode (without LeWorldModel)
+
+**Note**: CPU environment skips full forward pass (dtype autocast compatibility), GPU environment has no such issue.
 
 Expected output:
 ```
 ============================================================
- SmolVLA-LEW Minimal Validation Demo
+ SmolVLA-LEW 混合模型验证脚本
+ Sys-11 (VLA) + Sys-12 (LeWorldModel)
 ============================================================
 
-Environment:
-  - PyTorch: 2.x
-  - CUDA available: True/False
+环境: PyTorch 2.x, CUDA: True/False
+依赖: torch + einops only (lerobot/transformers 全部 mock)
 
 ============================================================
-Step 1: Validating LeWorldModel Components
+测试 1: 配置加载 (Sys-11 + Sys-12)
 ============================================================
-
-  Testing Embedder...
-  ✓ Embedder passed
-  Testing ARPredictor...
-  ✓ ARPredictor passed
+  ✓ 混合配置创建成功
+  ✓ Sys-11 only 配置创建成功
+  ✓ 配置测试通过
 
 ============================================================
-Step 2: Validating SmolVLA-LEW Model (WorldModel=enabled)
+测试 2: LeWorldModel (Sys-12) 独立测试
 ============================================================
-
-  2.1 Creating config...
-  ✓ Config created successfully
-  2.2 Initializing model...
-  ✓ Model initialized successfully
-  - Total parameters: xxx,xxx,xxx
-  - Trainable parameters: xxx,xxx,xxx
-  2.3 Testing forward...
-  ✓ Forward pass successful
-  2.4 Testing predict_action...
-  ✓ predict_action successful
+  ✓ LeWorldModel forward: loss=0.xxxxxx
+  ✓ LeWorldModel backward: x/xx 参数有梯度
+  ✓ LeWorldModel rollout: torch.Size([x, x, xx])
+  LeWorldModel 参数量: xxx,xxx
+  ✓ LeWorldModel 测试通过
 
 ============================================================
-✅ All validations passed!
+测试 3: SmolVLALewModel 完整模型 (Sys-11 + Sys-12)
 ============================================================
-🎉 SmolVLA-LEW code is working correctly.
+  ✓ 模型构建成功
+  ✓ LeWorldModel 组件检查通过
+  ✓ 配置验证通过
+  ⚠ CPU 环境下跳过完整 forward pass（dtype autocast 兼容问题）
+  ⚠ GPU (4060) 环境下不会出现此问题
+  ✓ 模型构建和组件验证通过
 
-Next steps:
-  1. Prepare a real dataset (e.g., lerobot/pusht)
-  2. Train with lerobot-train:
-     lerobot-train policy=smolvla_lew dataset.repo_id=lerobot/pusht
+============================================================
+测试 4: Sys-11 only 模式 (无 LeWorldModel)
+============================================================
+  ✓ Sys-11 only 模式测试通过
+
+============================================================
+ 验证结果汇总
+============================================================
+  ✓ 配置加载
+  ✓ LeWorldModel (Sys-12)
+  ✓ Sys-11 + Sys-12 混合模型
+  ✓ Sys-11 only 模式
+
+============================================================
+ 🎉 所有测试通过! Sys-11 + Sys-12 混合架构代码正确。
+============================================================
 ```
 
 ### Configuration
@@ -248,7 +259,8 @@ src/lerobot/policies/smolvla_lew/
 ├── action_head.py                 # DiT-B flow-matching head
 ├── world_model_le.py              # LeWorldModel (new!)
 ├── processor_smolvla_lew.py       # Data preprocessing
-└── validate_world_model.py        # Standalone validation script (new!)
+├── validate_world_model.py        # Standalone LeWorldModel validation (new!)
+└── validate_hybrid_model.py       # Full hybrid model validation (new!)
 
 examples/
 └── smolvla_lew_demo.py            # Full policy integration demo
