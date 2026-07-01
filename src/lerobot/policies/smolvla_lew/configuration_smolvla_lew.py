@@ -26,9 +26,20 @@ from lerobot.optim.schedulers import CosineDecayWithWarmupSchedulerConfig
 @PreTrainedConfig.register_subclass("smolvla_lew")
 @dataclass
 class SmolVLALewConfig(PreTrainedConfig):
-    n_obs_steps: int = 1
-    chunk_size: int = 7
-    n_action_steps: int = 7
+    """
+    SmolVLA-LEW 策略配置
+    
+    两种架构模式（由 GUI 配置中心控制）:
+    - Sys-11 纯动作系统 (smolvla): 仅使用 DiT-B action head
+    - Sys-11+Sys-12 混合架构 (smolvla_lew): VLA + LeWorldModel 世界模型
+    
+    用户可修改参数均已标记 [可配置]
+    """
+    
+    # ========== 基础配置 (Sys-11 + Sys-12 共用) ==========
+    n_obs_steps: int = 1                                    # [可配置] 观测帧数
+    chunk_size: int = 7                                     # [可配置] 动作预测序列长度
+    n_action_steps: int = 7                                 # [可配置] 实际执行动作步数
 
     normalization_mapping: dict[str, NormalizationMode] = field(
         default_factory=lambda: {
@@ -38,79 +49,73 @@ class SmolVLALewConfig(PreTrainedConfig):
         }
     )
 
-    # ========== 移除全部Qwen、V-JEPA参数，替换为SmolVLM + LeWorldModel ==========
-    # SmolVLM 轻量视觉语言主干配置（专家版新增参数）
-    smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
-    freeze_smolvlm: bool = True
-    siglip_image_size: int = 64
-    num_vision_tokens: int = 64
-    # ===== 新增专家SmolVLMWithExpertModel配套参数 =====
-    num_expert_layers: int = -1
-    num_vlm_layers: int = -1
-    self_attn_every_n_layers: int = -1
-    expert_width_multiplier: float = 0.5
+    # ========== Sys-11 共性参数: SmolVLM 骨干网络 ==========
+    # 所有模式共用 (Sys-11 纯动作 / Sys-11+Sys-12 混合)
+    smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"  # [可配置] HuggingFace 模型ID
+    freeze_smolvlm: bool = True                             # [可配置] 是否冻结 VLM 主干（Sys-11 纯动作必须 True；Sys-11+Sys-12 混合必须 False）
+    siglip_image_size: int = 64                             # [可配置] SigLIP 输入图像尺寸
+    num_vision_tokens: int = 64                             # [可配置] 视觉 token 数量
+    
+    # ===== SmolVLMWithExpertModel 专家配置 =====
+    num_expert_layers: int = -1                             # [可配置] 专家层数 (-1 = 自动)
+    num_vlm_layers: int = -1                                # [可配置] VLM 层数 (-1 = 自动)
+    self_attn_every_n_layers: int = -1                      # [可配置] 自注意力频率 (-1 = 自动)
+    expert_width_multiplier: float = 0.5                    # [可配置] 专家宽度倍率 (0.3-0.8)
 
-    # LeWorldModel 轻量世界模型开关与超参（替换原V-JEPA全套）
+    # ========== Sys-11 参数: DiT-B Flow-Matching Action Head ==========
+    # 所有模式共用
+    action_model_type: str = "DiT-B"                        # [可配置] 动作模型类型: "DiT-B" / "DiT-L" / "DiT-test"
+    action_hidden_size: int = 512                           # [可配置] DiT 隐藏层维度
+    action_num_layers: int = 2                              # [可配置] DiT 层数
+    action_num_heads: int | None = None                     # [可配置] 注意力头数 (None = 自动)
+    action_attention_head_dim: int | None = None            # [可配置] 每头维度 (None = 自动)
+    action_dropout: float = 0.2                             # [可配置] Action head dropout (0.0-0.5)
+    action_num_timestep_buckets: int = 1000                 # [可配置] 时间步分段数
+    action_noise_beta_alpha: float = 1.5                    # [可配置] Beta分布 α 参数
+    action_noise_beta_beta: float = 1.0                     # [可配置] Beta分布 β 参数
+    action_noise_s: float = 0.999                           # [可配置] 噪声衰减参数
+    num_target_vision_tokens: int = 16                      # [可配置] 目标视觉 token 数
+    action_max_seq_len: int = 1024                          # [可配置] 最大序列长度
+    num_inference_timesteps: int = 4                        # [可配置] Inference 时的去噪步数
+    repeated_diffusion_steps: int = 4                       # [可配置] 训练时 diffusion 重复数
+    num_action_tokens_per_timestep: int = 4                 # [可配置] 每个时间步的 action token 数
+    num_embodied_action_tokens_per_instruction: int = 8     # [可配置] 每条指令的 embodied token 数
+
+    # ========== Sys-12 参数: LeWorldModel 世界模型 ==========
+    # [可配置] 当架构模式 = Sys-11+Sys-12 混合时生效；Sys-11 纯动作模式下强制为 False
     enable_lew_world_model: bool = False
-    lew_loss_weight: float = 0.1
-    lew_hidden_dim: int = 192
-    lew_num_layers: int = 6
-    # ====== 新增：LeWorldModel额外超参数 ======
-    lew_attention_heads: int = 8       # ARPredictor注意力头数
-    lew_dim_head: int = 24             # 每个注意力头的维度
-    lew_mlp_dim: int = 768             # FFN隐藏层维度
-    lew_dropout: float = 0.1           # dropout率
-    num_video_frames: int = 2  # LeWM仅需最少2帧 t/t+1
+    lew_loss_weight: float = 0.1                            # [可配置] 世界模型 loss 权重 (0.01-1.0)
+    lew_hidden_dim: int = 192                               # [可配置] ARPredictor 隐藏层维度 (64-512)
+    lew_num_layers: int = 6                                 # [可配置] ARPredictor Transformer 层数 (1-12)
+    lew_attention_heads: int = 8                            # [可配置] 注意力头数 (4/8/16)
+    lew_dim_head: int = 24                                  # [可配置] 每注意力头维度
+    lew_mlp_dim: int = 768                                  # [可配置] FFN 隐藏层维度
+    lew_dropout: float = 0.1                                # [可配置] dropout 率 (0.0-0.3)
+    num_video_frames: int = 2                               # [可配置] 视频帧数 (必须 ≥ 2，Sys-12 模式下需要 t/t+1)
 
-    # 移除Qwen专属token/prompt配置，SmolVLM原生不需要自定义action占位token
-    # tokenizer_padding_side、prompt_template、special_action_token、embodied_action_token 全部删除
+    # ========== 预处理与后处理参数 (Sys-11 + Sys-12 共用) ==========
+    resize_images_to: tuple[int, int] | None = (64, 64)     # [可配置] 图像 resize 尺寸 (None = 不 resize)
+    binarize_gripper_action: bool = True                    # [可配置] 夹爪动作是否二值化
+    pre_snap_gripper_action: bool = True                    # [可配置] 夹爪预截断
+    clip_normalized_actions: bool = True                    # [可配置] 是否裁剪归一化后的动作
+    gripper_dim: int = 6                                    # [可配置] 夹爪维度
+    gripper_threshold: float = 0.5                          # [可配置] 夹爪二值化阈值
+    torch_dtype: str = "float16"                            # [可配置] 训练 dtype: "float16" / "float32" / "bfloat16"
 
-    # 任务维度（适配pusht自动覆盖）
-    action_dim: int = 2
-    state_dim: int = 2
+    # ========== 优化器与调度器 (Sys-11 + Sys-12 共用) ==========
+    gradient_checkpointing: bool = True                     # [可配置] 梯度 checkpointing (省显存)
+    optimizer_lr: float = 1e-4                              # [可配置] 学习率
+    optimizer_betas: tuple[float, float] = (0.9, 0.95)      # [可配置] AdamW β1, β2
+    optimizer_eps: float = 1e-8                             # [可配置] AdamW ε
+    optimizer_weight_decay: float = 1e-10                   # [可配置] weight decay
+    optimizer_grad_clip_norm: float = 10.0                  # [可配置] 梯度裁剪范数
+    scheduler_warmup_steps: int = 1_000                     # [可配置] warmup 步数
+    scheduler_decay_steps: int = 30_000                     # [可配置] 衰减步数
+    scheduler_decay_lr: float = 2.5e-6                      # [可配置] 最终学习率
 
-    # DiT动作头参数 完全保留不变（复用action_head.py）
-    num_action_tokens_per_timestep: int = 4
-    num_embodied_action_tokens_per_instruction: int = 8
-    num_inference_timesteps: int = 4
-
-    action_hidden_size: int = 512
-    action_model_type: str = "DiT-B"
-    action_num_layers: int = 2
-    action_num_heads: int | None = None
-    action_attention_head_dim: int | None = None
-    action_dropout: float = 0.2
-    action_num_timestep_buckets: int = 1000
-    action_noise_beta_alpha: float = 1.5
-    action_noise_beta_beta: float = 1.0
-    action_noise_s: float = 0.999
-    num_target_vision_tokens: int = 16
-    action_max_seq_len: int = 1024
-
-    # 原V-JEPA专属参数全部删除：jepa_encoder_name、jepa_tubelet_size、predictor_depth等
-
-    repeated_diffusion_steps: int = 4
-
-    # 图像、夹爪后处理配置（和vla_jepa通用，保留）
-    resize_images_to: tuple[int, int] | None = (64, 64)
-    binarize_gripper_action: bool = True
-    pre_snap_gripper_action: bool = True
-    clip_normalized_actions: bool = True
-    gripper_dim: int = 6
-    gripper_threshold: float = 0.5
-    torch_dtype: str = "float16"
-
-    gradient_checkpointing: bool = True
-
-    # 优化器、学习率调度器完全复用
-    optimizer_lr: float = 1e-4
-    optimizer_betas: tuple[float, float] = (0.9, 0.95)
-    optimizer_eps: float = 1e-8
-    optimizer_weight_decay: float = 1e-10
-    optimizer_grad_clip_norm: float = 10.0
-    scheduler_warmup_steps: int = 1_000
-    scheduler_decay_steps: int = 30_000
-    scheduler_decay_lr: float = 2.5e-6
+    # ========== 任务维度 ==========
+    action_dim: int = 2                                     # [由数据集自动覆盖]
+    state_dim: int = 2                                      # [由数据集自动覆盖]
 
     steps: int = 2
 

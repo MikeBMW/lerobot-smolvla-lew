@@ -19,9 +19,10 @@ from PyQt5.QtWidgets import (
     QGraphicsDropShadowEffect, QScrollArea, QStackedWidget,
     QSplitter, QTextEdit, QGroupBox, QFormLayout, QLineEdit,
     QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QProgressBar,
-    QTabWidget, QAction, QMenu, QInputDialog, QMessageBox  # 新增 QInputDialog, QMessageBox
+    QTabWidget, QAction, QMenu, QInputDialog, QMessageBox,  # 新增 QInputDialog, QMessageBox
+    QRadioButton, QButtonGroup  # 新增：配置中心架构模式选择
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl  # 新增 QUrl，用于打开外部链接
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl, QDateTime  # 新增 QDateTime 用于时间戳
 from PyQt5.QtGui import (
     QFont, QColor, QPainter, QLinearGradient, QBrush,
     QPainterPath, QPen, QDesktopServices, QPixmap  # 新增 QDesktopServices, QPixmap
@@ -697,11 +698,12 @@ class SubModuleWidget(QWidget):
         head.addWidget(t)
         head.addStretch()
 
-        # 系统层级标签
+        # 系统层级标签（仅展示标识，不可点击）
         for lbl, clr in self._sys_layers:
             tag = QLabel(f"● {lbl}")
             tag.setFont(QFont("Arial", 10, QFont.Bold))
             tag.setStyleSheet(f"color:{clr}; background:{clr}22; border:1px solid {clr}44; border-radius:4px; padding:4px 10px; margin:0;")
+            tag.setToolTip(f"所属系统层级: {lbl}")
             head.addWidget(tag)
 
         layout.addLayout(head)
@@ -856,60 +858,536 @@ class HardwareModule(SubModuleWidget):
 
 
 class ConfigModule(SubModuleWidget):
+    """配置中心: 支持 Sys-11纯动作 和 Sys-11+Sys-12混合 两种模式"""
+    
     def __init__(self):
         super().__init__("配置中心", [("Sys-11", SYS11_COLOR), ("Sys-12", SYS12_COLOR)])
+        
+        # ========== 所有控件的深色主题全局样式 ==========
+        dark_theme_style = f"""
+            QGroupBox {{
+                color: {C_WHITE};
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 8px;
+                padding: 12px;
+                margin-top: 8px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 4px;
+            }}
+            QLabel {{
+                color: {C_WHITE};
+            }}
+            QSpinBox, QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px;
+                min-width: 100px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QLineEdit {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QCheckBox {{
+                color: {C_WHITE};
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 2px solid {C_GRAY};
+                background-color: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                border: 2px solid {C_GREEN};
+                background-color: {C_GREEN};
+            }}
+        """
+        self.setStyleSheet(dark_theme_style)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea{border:none;}")
+        
         body = QWidget()
-        bl = QVBoxLayout(); bl.setSpacing(12)
-
-        # 策略选择
-        sel = QGroupBox("策略选择"); sel.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        sl = QFormLayout()
-        pcb = QComboBox()
-        pcb.addItems(["smolvla_lew", "vla_jepa", "smolvla", "act", "diffusion", "pi0"])
-        sl.addRow("策略:", pcb)
-        sel.setLayout(sl)
-        bl.addWidget(sel)
-
-        # Sys-11 参数
-        s11 = QGroupBox("Sys-11 参数 (SmolVLA 500M)"); s11.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        s11l = QFormLayout()
-        vcb = QComboBox(); vcb.addItems(["SmolVLM2-500M-Video-Instruct", "自定义..."])
-        s11l.addRow("VLM模型:", vcb)
-        freeze = QCheckBox("冻结VLM主干"); freeze.setChecked(True)
-        s11l.addRow("", freeze)
-        cs = QSpinBox(); cs.setRange(1, 100); cs.setValue(7)
-        s11l.addRow("Chunk Size:", cs)
-        amc = QComboBox(); amc.addItems(["DiT-B", "DiT-L", "DiT-test"])
-        s11l.addRow("Action Model:", amc)
-        bg = QCheckBox("二值化Gripper"); bg.setChecked(True)
-        s11l.addRow("", bg)
-        s11.setLayout(s11l)
-        bl.addWidget(s11)
-
-        # Sys-12 参数
-        s12 = QGroupBox("Sys-12 参数 (LeWorldModel 15M)"); s12.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        s12l = QFormLayout()
-        en = QCheckBox("启用LeWorldModel (L4阶段)")
-        s12l.addRow("", en)
-        lw = QDoubleSpinBox(); lw.setRange(0.01, 1.0); lw.setValue(0.1); lw.setDecimals(2)
-        s12l.addRow("LeW Loss权重:", lw)
-        hd = QSpinBox(); hd.setRange(32, 512); hd.setValue(192)
-        s12l.addRow("LeW Hidden Dim:", hd)
-        nl = QSpinBox(); nl.setRange(1, 24); nl.setValue(6)
-        s12l.addRow("LeW Num Layers:", nl)
-        s12.setLayout(s12l)
-        bl.addWidget(s12)
-
-        btn_row = QHBoxLayout()
-        for txt in ["加载", "保存", "验证"]:
-            b = QPushButton(txt)
-            b.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px 22px; margin:0;}}
-            QPushButton:hover{{border-color:{SYS11_COLOR};}}""")
-            btn_row.addWidget(b)
-        bl.addLayout(btn_row)
-
+        bl = QVBoxLayout()
+        bl.setSpacing(16)
+        bl.setContentsMargins(8, 8, 8, 8)
+        
+        # ===== 架构模式选择 =====
+        mode_group = QGroupBox("架构模式")
+        mode_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        mode_layout = QVBoxLayout()
+        
+        self.mode_btn_group = QButtonGroup()
+        
+        # RadioButton 样式：深色背景下使用浅色文字，自定义指示器为圆形单选按钮
+        radio_style = f"""
+            QRadioButton {{
+                color: {C_WHITE};
+                spacing: 8px;
+                font-size: 14px;
+            }}
+            QRadioButton::indicator {{
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border: 2px solid {C_GRAY};
+                background-color: {C_BG};
+            }}
+            QRadioButton::indicator:checked {{
+                border: 2px solid {SYS11_COLOR};
+                background-color: {SYS11_COLOR};
+            }}
+            QRadioButton:hover {{
+                color: {SYS11_COLOR};
+            }}
+        """
+        
+        self.radio_sys11 = QRadioButton("Sys-11 纯动作系统 (smolvla)")
+        self.radio_sys11.setToolTip("仅使用 DiT-B action head，轻量快速，显存 ~4-6GB")
+        self.radio_sys11.setStyleSheet(radio_style)
+        self.radio_sys11.toggled.connect(self._on_mode_changed)
+        self.mode_btn_group.addButton(self.radio_sys11, 0)
+        mode_layout.addWidget(self.radio_sys11)
+        
+        self.radio_mixed = QRadioButton("Sys-11+Sys-12 混合架构 (smolvla_lew)")
+        self.radio_mixed.setToolTip("VLA + LeWorldModel 世界模型，更强泛化能力，显存 ~8-12GB")
+        self.radio_mixed.setStyleSheet(radio_style)
+        self.radio_mixed.toggled.connect(self._on_mode_changed)
+        self.mode_btn_group.addButton(self.radio_mixed, 1)
+        mode_layout.addWidget(self.radio_mixed)
+        
+        self.mode_desc = QLabel()
+        self.mode_desc.setWordWrap(True)
+        self.mode_desc.setStyleSheet(f"color:{C_GRAY}; padding:8px; background:{C_BG}; border-radius:4px;")
+        mode_layout.addWidget(self.mode_desc)
+        
+        mode_group.setLayout(mode_layout)
+        bl.addWidget(mode_group)
+        
+        # ===== 基础配置 =====
+        base_group = QGroupBox("基础配置 (两种模式共用)")
+        base_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        base_layout = QFormLayout()
+        
+        self.cfg_chunk_size = QSpinBox()
+        self.cfg_chunk_size.setRange(1, 50)
+        self.cfg_chunk_size.setValue(7)
+        base_layout.addRow("Chunk Size:", self.cfg_chunk_size)
+        
+        self.cfg_n_action_steps = QSpinBox()
+        self.cfg_n_action_steps.setRange(1, 50)
+        self.cfg_n_action_steps.setValue(7)
+        base_layout.addRow("Action Steps:", self.cfg_n_action_steps)
+        
+        self.cfg_n_obs_steps = QSpinBox()
+        self.cfg_n_obs_steps.setRange(1, 10)
+        self.cfg_n_obs_steps.setValue(1)
+        base_layout.addRow("Obs Steps:", self.cfg_n_obs_steps)
+        
+        base_group.setLayout(base_layout)
+        bl.addWidget(base_group)
+        
+        # ===== VLM 骨干网络 =====
+        vlm_group = QGroupBox("VLM 骨干网络 (Sys-11 共性参数)")
+        vlm_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        vlm_layout = QFormLayout()
+        
+        self.cfg_smolvlm_name = QComboBox()
+        self.cfg_smolvlm_name.setEditable(True)
+        self.cfg_smolvlm_name.addItems([
+            "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+            "HuggingFaceTB/SmolVLM2-2.2B-Video-Instruct"
+        ])
+        vlm_layout.addRow("VLM 模型:", self.cfg_smolvlm_name)
+        
+        self.cfg_freeze_vlm = QCheckBox("冻结 VLM 主干 (节省显存)")
+        self.cfg_freeze_vlm.setChecked(True)
+        self.cfg_freeze_vlm.setToolTip("Sys-11 模式必须 True; Sys-11+Sys-12 混合模式必须 False")
+        vlm_layout.addRow("", self.cfg_freeze_vlm)
+        
+        self.cfg_siglip_size = QSpinBox()
+        self.cfg_siglip_size.setRange(32, 224)
+        self.cfg_siglip_size.setValue(64)
+        self.cfg_siglip_size.setSuffix(" px")
+        vlm_layout.addRow("SigLIP 输入:", self.cfg_siglip_size)
+        
+        self.cfg_num_vision_tokens = QSpinBox()
+        self.cfg_num_vision_tokens.setRange(16, 128)
+        self.cfg_num_vision_tokens.setValue(64)
+        vlm_layout.addRow("视觉 Tokens:", self.cfg_num_vision_tokens)
+        
+        self.cfg_expert_width = QDoubleSpinBox()
+        self.cfg_expert_width.setRange(0.3, 0.8)
+        self.cfg_expert_width.setValue(0.5)
+        self.cfg_expert_width.setSingleStep(0.05)
+        self.cfg_expert_width.setDecimals(2)
+        vlm_layout.addRow("Expert 宽度:", self.cfg_expert_width)
+        
+        vlm_group.setLayout(vlm_layout)
+        bl.addWidget(vlm_group)
+        
+        # ===== Sys-11 Action Head =====
+        action_group = QGroupBox("Action Head (Sys-11 DiT-B)")
+        action_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        action_layout = QFormLayout()
+        
+        self.cfg_action_model = QComboBox()
+        self.cfg_action_model.addItems(["DiT-B", "DiT-L", "DiT-test"])
+        action_layout.addRow("模型类型:", self.cfg_action_model)
+        
+        self.cfg_action_hidden = QSpinBox()
+        self.cfg_action_hidden.setRange(128, 1024)
+        self.cfg_action_hidden.setValue(512)
+        action_layout.addRow("隐藏维度:", self.cfg_action_hidden)
+        
+        self.cfg_action_layers = QSpinBox()
+        self.cfg_action_layers.setRange(1, 12)
+        self.cfg_action_layers.setValue(2)
+        action_layout.addRow("层数:", self.cfg_action_layers)
+        
+        self.cfg_action_dropout = QDoubleSpinBox()
+        self.cfg_action_dropout.setRange(0.0, 0.5)
+        self.cfg_action_dropout.setValue(0.2)
+        self.cfg_action_dropout.setSingleStep(0.05)
+        self.cfg_action_dropout.setDecimals(2)
+        action_layout.addRow("Dropout:", self.cfg_action_dropout)
+        
+        self.cfg_inference_steps = QSpinBox()
+        self.cfg_inference_steps.setRange(1, 20)
+        self.cfg_inference_steps.setValue(4)
+        action_layout.addRow("推理步数:", self.cfg_inference_steps)
+        
+        self.cfg_diffusion_steps = QSpinBox()
+        self.cfg_diffusion_steps.setRange(1, 20)
+        self.cfg_diffusion_steps.setValue(4)
+        action_layout.addRow("训练重复:", self.cfg_diffusion_steps)
+        
+        action_group.setLayout(action_layout)
+        bl.addWidget(action_group)
+        
+        # ===== Sys-12 LeWorldModel =====
+        self.wm_group = QGroupBox("世界模型 (Sys-12 LeWorldModel)")
+        self.wm_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS12_COLOR, 8, 12)}}}")
+        wm_layout = QFormLayout()
+        
+        self.cfg_lew_loss_weight = QDoubleSpinBox()
+        self.cfg_lew_loss_weight.setRange(0.01, 1.0)
+        self.cfg_lew_loss_weight.setValue(0.1)
+        self.cfg_lew_loss_weight.setSingleStep(0.01)
+        self.cfg_lew_loss_weight.setDecimals(2)
+        wm_layout.addRow("Loss 权重:", self.cfg_lew_loss_weight)
+        
+        self.cfg_lew_hidden_dim = QSpinBox()
+        self.cfg_lew_hidden_dim.setRange(64, 512)
+        self.cfg_lew_hidden_dim.setValue(192)
+        wm_layout.addRow("Hidden Dim:", self.cfg_lew_hidden_dim)
+        
+        self.cfg_lew_num_layers = QSpinBox()
+        self.cfg_lew_num_layers.setRange(1, 12)
+        self.cfg_lew_num_layers.setValue(6)
+        wm_layout.addRow("层数:", self.cfg_lew_num_layers)
+        
+        self.cfg_lew_heads = QComboBox()
+        self.cfg_lew_heads.addItems(["4", "8", "16"])
+        self.cfg_lew_heads.setCurrentIndex(1)
+        wm_layout.addRow("注意力头:", self.cfg_lew_heads)
+        
+        self.cfg_lew_dim_head = QSpinBox()
+        self.cfg_lew_dim_head.setRange(16, 64)
+        self.cfg_lew_dim_head.setValue(24)
+        wm_layout.addRow("头维度:", self.cfg_lew_dim_head)
+        
+        self.cfg_lew_mlp_dim = QSpinBox()
+        self.cfg_lew_mlp_dim.setRange(256, 2048)
+        self.cfg_lew_mlp_dim.setValue(768)
+        wm_layout.addRow("MLP Dim:", self.cfg_lew_mlp_dim)
+        
+        self.cfg_lew_dropout = QDoubleSpinBox()
+        self.cfg_lew_dropout.setRange(0.0, 0.3)
+        self.cfg_lew_dropout.setValue(0.1)
+        self.cfg_lew_dropout.setSingleStep(0.05)
+        self.cfg_lew_dropout.setDecimals(2)
+        wm_layout.addRow("Dropout:", self.cfg_lew_dropout)
+        
+        self.cfg_num_video_frames = QSpinBox()
+        self.cfg_num_video_frames.setRange(2, 16)
+        self.cfg_num_video_frames.setValue(2)
+        wm_layout.addRow("视频帧数:", self.cfg_num_video_frames)
+        
+        self.wm_group.setLayout(wm_layout)
+        bl.addWidget(self.wm_group)
+        
+        # ===== 预处理/后处理 =====
+        proc_group = QGroupBox("预处理 / 后处理")
+        proc_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        proc_layout = QFormLayout()
+        
+        self.cfg_resize = QComboBox()
+        self.cfg_resize.addItems(["64x64", "128x128", "None (原始)"])
+        proc_layout.addRow("Resize:", self.cfg_resize)
+        
+        self.cfg_bin_gripper = QCheckBox("二值化 Gripper")
+        self.cfg_bin_gripper.setChecked(True)
+        proc_layout.addRow("", self.cfg_bin_gripper)
+        
+        self.cfg_dtype = QComboBox()
+        self.cfg_dtype.addItems(["float16", "bfloat16", "float32"])
+        proc_layout.addRow("Dtype:", self.cfg_dtype)
+        
+        proc_group.setLayout(proc_layout)
+        bl.addWidget(proc_group)
+        
+        # ===== 优化器 =====
+        opt_group = QGroupBox("优化器 & 调度器")
+        opt_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        opt_layout = QFormLayout()
+        
+        self.cfg_lr = QLineEdit("1e-4")
+        opt_layout.addRow("学习率:", self.cfg_lr)
+        
+        self.cfg_grad_clip = QDoubleSpinBox()
+        self.cfg_grad_clip.setRange(0.1, 100.0)
+        self.cfg_grad_clip.setValue(10.0)
+        self.cfg_grad_clip.setDecimals(1)
+        opt_layout.addRow("梯度裁剪:", self.cfg_grad_clip)
+        
+        self.cfg_warmup = QSpinBox()
+        self.cfg_warmup.setRange(0, 100000)
+        self.cfg_warmup.setValue(1000)
+        opt_layout.addRow("Warmup:", self.cfg_warmup)
+        
+        self.cfg_decay_steps = QSpinBox()
+        self.cfg_decay_steps.setRange(1000, 1000000)
+        self.cfg_decay_steps.setValue(30000)
+        opt_layout.addRow("Decay Steps:", self.cfg_decay_steps)
+        
+        self.cfg_checkpointing = QCheckBox("Gradient Checkpointing (省显存)")
+        self.cfg_checkpointing.setChecked(True)
+        opt_layout.addRow("", self.cfg_checkpointing)
+        
+        opt_group.setLayout(opt_layout)
+        bl.addWidget(opt_group)
+        
+        # ===== 配置预览 =====
+        preview_group = QGroupBox("配置预览")
+        preview_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        preview_layout = QVBoxLayout()
+        
+        self.config_preview = QTextEdit()
+        self.config_preview.setReadOnly(True)
+        self.config_preview.setFont(QFont("Consolas", 10))
+        self.config_preview.setStyleSheet(f"background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.config_preview.setMaximumHeight(180)
+        preview_layout.addWidget(self.config_preview)
+        
+        preview_group.setLayout(preview_layout)
+        bl.addWidget(preview_group)
+        
+        # ===== 按钮 =====
+        btn_layout = QHBoxLayout()
+        
+        save_btn = QPushButton("保存")
+        save_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{C_GREEN}; color:{C_BG}; border-radius:4px; font-weight:bold;}}")
+        save_btn.clicked.connect(self._save_config)
+        btn_layout.addWidget(save_btn)
+        
+        load_btn = QPushButton("加载")
+        load_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{SYS11_COLOR}; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
+        load_btn.clicked.connect(self._load_config)
+        btn_layout.addWidget(load_btn)
+        
+        export_btn = QPushButton("导出 YAML")
+        export_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{SYS12_COLOR}; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
+        export_btn.clicked.connect(self._export_yaml)
+        btn_layout.addWidget(export_btn)
+        
+        apply_btn = QPushButton("应用")
+        apply_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{C_ORANGE}; color:{C_BG}; border-radius:4px; font-weight:bold;}}")
+        apply_btn.clicked.connect(self._apply_config)
+        btn_layout.addWidget(apply_btn)
+        
+        bl.addLayout(btn_layout)
+        bl.addStretch()
+        
+        # 初始化
+        self.radio_sys11.setChecked(True)
+        self._connect_signals()
+        self._update_preview()
+        
         body.setLayout(bl)
-        self._build_shell(body)
+        scroll.setWidget(body)
+        
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+        
+        container = QWidget()
+        container.setLayout(outer)
+        self._build_shell(container)
+    
+    def _on_mode_changed(self, checked):
+        if not checked:
+            return
+        
+        is_mixed = self.radio_mixed.isChecked()
+        
+        if is_mixed:
+            self.mode_desc.setText(
+                "<b>Sys-11+Sys-12 混合架构</b><br>"
+                "VLA + DiT-B + LeWorldModel | 世界模型预测未来视觉 | 显存 ~8-12GB"
+            )
+            self.cfg_freeze_vlm.setChecked(False)
+            self.cfg_freeze_vlm.setEnabled(False)
+            self.wm_group.setVisible(True)
+        else:
+            self.mode_desc.setText(
+                "<b>Sys-11 纯动作系统</b><br>"
+                "仅 DiT-B Action Head | 轻量快速 | 显存 ~4-6GB"
+            )
+            self.cfg_freeze_vlm.setChecked(True)
+            self.cfg_freeze_vlm.setEnabled(True)
+            self.wm_group.setVisible(False)
+        
+        self._update_preview()
+    
+    def _connect_signals(self):
+        widgets = [
+            self.cfg_chunk_size, self.cfg_n_action_steps, self.cfg_n_obs_steps,
+            self.cfg_smolvlm_name, self.cfg_freeze_vlm, self.cfg_siglip_size,
+            self.cfg_num_vision_tokens, self.cfg_expert_width,
+            self.cfg_action_model, self.cfg_action_hidden, self.cfg_action_layers,
+            self.cfg_action_dropout, self.cfg_inference_steps, self.cfg_diffusion_steps,
+            self.cfg_lew_loss_weight, self.cfg_lew_hidden_dim, self.cfg_lew_num_layers,
+            self.cfg_lew_heads, self.cfg_lew_dim_head, self.cfg_lew_mlp_dim,
+            self.cfg_lew_dropout, self.cfg_num_video_frames,
+            self.cfg_resize, self.cfg_bin_gripper, self.cfg_dtype,
+            self.cfg_lr, self.cfg_grad_clip, self.cfg_warmup, self.cfg_decay_steps,
+            self.cfg_checkpointing
+        ]
+        for w in widgets:
+            if hasattr(w, 'valueChanged'):
+                w.valueChanged.connect(self._update_preview)
+            elif hasattr(w, 'currentTextChanged'):
+                w.currentTextChanged.connect(self._update_preview)
+            elif hasattr(w, 'toggled'):
+                w.toggled.connect(self._update_preview)
+            elif hasattr(w, 'textChanged'):
+                w.textChanged.connect(self._update_preview)
+    
+    def _get_config_dict(self):
+        is_mixed = self.radio_mixed.isChecked()
+        d = {
+            'type': 'smolvla_lew',
+            'mode': 'Sys-11+Sys-12 Mixed' if is_mixed else 'Sys-11 Pure',
+            'chunk_size': self.cfg_chunk_size.value(),
+            'n_action_steps': self.cfg_n_action_steps.value(),
+            'n_obs_steps': self.cfg_n_obs_steps.value(),
+            'smolvlm_name': self.cfg_smolvlm_name.currentText(),
+            'freeze_smolvlm': self.cfg_freeze_vlm.isChecked(),
+            'siglip_image_size': self.cfg_siglip_size.value(),
+            'num_vision_tokens': self.cfg_num_vision_tokens.value(),
+            'expert_width_multiplier': self.cfg_expert_width.value(),
+            'action_model_type': self.cfg_action_model.currentText(),
+            'action_hidden_size': self.cfg_action_hidden.value(),
+            'action_num_layers': self.cfg_action_layers.value(),
+            'action_dropout': self.cfg_action_dropout.value(),
+            'num_inference_timesteps': self.cfg_inference_steps.value(),
+            'repeated_diffusion_steps': self.cfg_diffusion_steps.value(),
+            'enable_lew_world_model': is_mixed,
+            'optimizer_lr': self.cfg_lr.text(),
+            'optimizer_grad_clip_norm': self.cfg_grad_clip.value(),
+            'scheduler_warmup_steps': self.cfg_warmup.value(),
+            'scheduler_decay_steps': self.cfg_decay_steps.value(),
+            'torch_dtype': self.cfg_dtype.currentText(),
+            'gradient_checkpointing': self.cfg_checkpointing.isChecked(),
+        }
+        if is_mixed:
+            d.update({
+                'lew_loss_weight': self.cfg_lew_loss_weight.value(),
+                'lew_hidden_dim': self.cfg_lew_hidden_dim.value(),
+                'lew_num_layers': self.cfg_lew_num_layers.value(),
+                'lew_attention_heads': int(self.cfg_lew_heads.currentText()),
+                'lew_dim_head': self.cfg_lew_dim_head.value(),
+                'lew_mlp_dim': self.cfg_lew_mlp_dim.value(),
+                'lew_dropout': self.cfg_lew_dropout.value(),
+                'num_video_frames': self.cfg_num_video_frames.value(),
+            })
+        return d
+    
+    def _update_preview(self):
+        d = self._get_config_dict()
+        lines = [f"# smolvla_lew config - {QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm')}"]
+        for k, v in d.items():
+            lines.append(f"  {k}: {v}")
+        self.config_preview.setText("\n".join(lines))
+    
+    def _save_config(self):
+        config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
+        os.makedirs(config_dir, exist_ok=True)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = os.path.join(config_dir, f"config_{ts}.txt")
+        with open(fp, 'w') as f:
+            f.write(self.config_preview.toPlainText())
+        QMessageBox.information(self, "保存成功", f"配置已保存到:\n{fp}")
+    
+    def _load_config(self):
+        config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
+        if not os.path.exists(config_dir):
+            QMessageBox.warning(self, "无配置", "配置目录不存在")
+            return
+        files = sorted([f for f in os.listdir(config_dir) if f.endswith('.txt')], reverse=True)
+        if not files:
+            QMessageBox.warning(self, "无配置", "没有找到配置文件")
+            return
+        QMessageBox.information(self, "加载", f"最新配置: {files[0]}\n目录: {config_dir}")
+    
+    def _export_yaml(self):
+        config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
+        os.makedirs(config_dir, exist_ok=True)
+        fp = os.path.join(config_dir, "smolvla_lew_config.yaml")
+        d = self._get_config_dict()
+        with open(fp, 'w') as f:
+            f.write("policy:\n")
+            for k, v in d.items():
+                f.write(f"  {k}: {v}\n")
+        QMessageBox.information(self, "导出成功", f"YAML 配置已导出到:\n{fp}\n\n可用于 lerobot-train 训练")
+    
+    def _apply_config(self):
+        d = self._get_config_dict()
+        mode_str = d['mode']
+        msg = f"配置已应用!\n\n"
+        msg += f"模式: {mode_str}\n"
+        msg += f"VLM: {d['smolvlm_name']}\n"
+        msg += f"冻结 VLM: {d['freeze_smolvlm']}\n"
+        msg += f"Chunk: {d['chunk_size']} / Steps: {d['n_action_steps']}\n"
+        if d['enable_lew_world_model']:
+            msg += f"LeWorldModel: 启用 (layers={d['lew_num_layers']}, hidden={d['lew_hidden_dim']})"
+        else:
+            msg += "LeWorldModel: 禁用"
+        QMessageBox.information(self, "应用成功", msg)
 
 
 class MonitorModule(SubModuleWidget):
