@@ -33,7 +33,61 @@ async function createPresentation() {
     slide1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 6.8, w: 10, h: 0.7, fill: { color: colors.bg_card } });
     slide1.addText("智蜂创元 | 具身机器人产品解决方案", { x: 0.8, y: 6.95, w: 8.4, h: 0.4, fontSize: 14, fontFace: "Arial", color: colors.text_gray, align: "left", margin: 0 });
 
-    // ====== Slide 2: 智能化分级体系 ======
+    // ====== Slide 2: 品牌介绍 ======
+    const slideBrand = pres.addSlide();
+    slideBrand.background = { color: colors.bg_dark };
+    slideBrand.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 10, h: 0.15, fill: { color: colors.accent } });
+    slideBrand.addText("核心产品形态", { x: 0.8, y: 0.5, w: 8.4, h: 0.7, fontSize: 36, fontFace: "Arial Black", color: colors.text_white, bold: true, align: "left", margin: 0 });
+    slideBrand.addShape(pres.shapes.LINE, { x: 0.8, y: 1.3, w: 2, h: 0, line: { color: colors.accent, width: 2 } });
+    slideBrand.addText([
+        { text: "Z-MAX ", options: { fontSize: 28, color: colors.primary, bold: true } },
+        { text: "智蜂 - 多模态动作专家", options: { fontSize: 28, color: colors.text_white, bold: true } }
+    ], { x: 0.8, y: 1.5, w: 8.4, h: 0.6, fontFace: "Arial", align: "left", margin: 0 });
+
+    // 命名逻辑区域
+    slideBrand.addText("命名逻辑", { x: 0.8, y: 2.2, w: 8.4, h: 0.4, fontSize: 16, fontFace: "Arial", color: colors.text_gray, italic: true, align: "left", margin: 0 });
+
+    // 智蜂 Z-Bee 卡片
+    slideBrand.addShape(pres.shapes.RECTANGLE, { x: 0.8, y: 2.7, w: 8.4, h: 1.0, fill: { color: colors.bg_card }, line: { color: colors.border, width: 1 } });
+    slideBrand.addShape(pres.shapes.RECTANGLE, { x: 0.8, y: 2.7, w: 0.08, h: 1.0, fill: { color: colors.accent } });
+    slideBrand.addText([
+        { text: "智蜂 Z-Bee", options: { fontSize: 18, color: colors.accent, bold: true } },
+        { text: "  ·  精密、高效、协同的工业级品牌IP", options: { fontSize: 16, color: colors.text_white } }
+    ], { x: 1.1, y: 2.9, w: 7.9, h: 0.4, fontFace: "Arial", align: "left", margin: 0 });
+
+    // Z-MAX 四维含义
+    slideBrand.addText("Z-MAX 四维含义", { x: 0.8, y: 3.9, w: 8.4, h: 0.4, fontSize: 16, fontFace: "Arial", color: colors.text_gray, italic: true, align: "left", margin: 0 });
+
+    const dimensions = [
+        { letter: "Z", full: "潜在特征空间", capability: "L4级全域感知与认知底座", color: colors.primary },
+        { letter: "M", full: "模态", capability: "L4级感官融合与自适应泛化", color: colors.secondary },
+        { letter: "A", full: "Action / 动作", capability: "L4级精细力控与动态执行", color: colors.success },
+        { letter: "X", full: "eXpert / 专家", capability: "L4级自主决策与全自主闭环", color: colors.accent }
+    ];
+
+    dimensions.forEach((dim, idx) => {
+        const cardY = 4.4 + idx * 0.65;
+        slideBrand.addShape(pres.shapes.RECTANGLE, { x: 0.8, y: cardY, w: 0.65, h: 0.55, fill: { color: dim.color } });
+        slideBrand.addText(dim.letter, { x: 0.8, y: cardY + 0.08, w: 0.65, h: 0.35, fontSize: 22, fontFace: "Arial Black", color: colors.text_white, bold: true, align: "center", margin: 0 });
+        slideBrand.addText([
+            { text: dim.full, options: { fontSize: 14, color: colors.text_white, bold: true } },
+            { text: "  →  ", options: { fontSize: 14, color: colors.text_gray } },
+            { text: dim.capability, options: { fontSize: 13, color: colors.text_gray } }
+        ], { x: 1.6, y: cardY + 0.08, w: 7.6, h: 0.35, fontFace: "Arial", align: "left", margin: 0 });
+    });
+
+    // 品牌注册备选
+    slideBrand.addShape(pres.shapes.RECTANGLE, { x: 0.8, y: 7.0, w: 8.4, h: 0.7, fill: { color: colors.bg_card }, line: { color: colors.border, width: 1 } });
+    slideBrand.addText([
+        { text: "品牌注册备选  |  ", options: { fontSize: 12, color: colors.text_gray, breakLine: false } },
+        { text: "R-MAX", options: { fontSize: 13, color: colors.primary, bold: true, breakLine: false } },
+        { text: "  ·  ", options: { fontSize: 13, color: colors.text_gray, breakLine: false } },
+        { text: "RB-MAX", options: { fontSize: 13, color: colors.secondary, bold: true, breakLine: false } },
+        { text: "  ·  ", options: { fontSize: 13, color: colors.text_gray, breakLine: false } },
+        { text: "Z-BOT", options: { fontSize: 13, color: colors.success, bold: true } }
+    ], { x: 1.0, y: 7.15, w: 8.0, h: 0.4, fontFace: "Arial", align: "center", margin: 0 });
+
+    // ====== Slide 3: 智能化分级体系 ======
     const slide2 = pres.addSlide();
     slide2.background = { color: colors.bg_dark };
     slide2.addText("智能化分级体系 (L1-L5)", { x: 0.8, y: 0.5, w: 8.4, h: 0.7, fontSize: 36, fontFace: "Arial Black", color: colors.text_white, bold: true, align: "left", margin: 0 });
