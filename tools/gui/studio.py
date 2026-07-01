@@ -30,6 +30,35 @@ from PyQt5.QtGui import (
 
 
 # ============================================================
+# 通用工具函数
+# ============================================================
+def open_ppt_with_libreoffice(ppt_path):
+    """
+    使用LibreOffice打开PPT文件，绕过用户配置目录权限问题
+    通过创建临时用户安装目录解决 LibreOffice 权限错误
+    """
+    import os
+    import subprocess
+    
+    # 检查文件是否存在
+    if not os.path.exists(ppt_path):
+        print(f"[ERROR] PPT文件不存在: {ppt_path}")
+        return
+    
+    # 创建临时LibreOffice用户配置目录
+    lo_user_dir = "/tmp/lo_user_ppt"
+    os.makedirs(lo_user_dir, exist_ok=True)
+    
+    try:
+        # 使用临时配置目录启动LibreOffice
+        cmd = ["soffice", f"-env:UserInstallation=file://{lo_user_dir}", "--norestore", ppt_path]
+        subprocess.Popen(cmd, start_new_session=True)
+        print(f"[OK] LibreOffice已启动，打开文件: {ppt_path}")
+    except Exception as e:
+        print(f"[ERROR] 启动LibreOffice失败: {e}")
+
+
+# ============================================================
 # 全局颜色
 # ============================================================
 C_BG        = "#0d1117"
@@ -532,6 +561,25 @@ class HomeWidget(QWidget):
         sync_btn.setCursor(Qt.PointingHandCursor)
         sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
         row.addWidget(sync_btn)  # 新增同步按钮
+
+        # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
+        doc_btn = QPushButton("📋 解决方案v2.0")
+        doc_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        doc_btn.setCursor(Qt.PointingHandCursor)
+        doc_btn.setToolTip("打开产品解决方案文档 (Markdown)")
+        doc_btn.clicked.connect(self._open_spec_doc)
+        row.addWidget(doc_btn)
+
+        # ====== 新增：PPT汇报按钮 ======
+        doc_btn = QPushButton("📊 PPT汇报")
+        doc_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        doc_btn.setCursor(Qt.PointingHandCursor)
+        doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
+        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(__file__), "Z-MAX管理层汇报.pptx")))
+        row.addWidget(doc_btn)
+
         layout.addLayout(row)
 
         desc = QLabel("高速光模块精细操作具身机器人 · L4级全自主 · 1ms实时控制 · 三层解耦架构")
@@ -671,6 +719,18 @@ class HomeWidget(QWidget):
             QMessageBox.warning(self, "同步超时", "Git 操作超时，请检查网络连接。")
         except Exception as e:
             QMessageBox.warning(self, "同步异常", f"发生异常:\n{str(e)}")
+
+    def _open_spec_doc(self):
+        """打开解决方案文档 v2.0"""
+        try:
+            # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
+            doc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', '具身机器人产品解决方案-工厂精细操作v2.0.md')
+            subprocess.run([
+                'xdg-open',
+                doc_path
+            ], check=True)
+        except Exception as e:
+            QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
 
 
 # ============================================================
