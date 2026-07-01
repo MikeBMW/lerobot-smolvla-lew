@@ -25,6 +25,9 @@ import torch.nn.functional as F  # noqa: N812
 from PIL import Image
 from torch import Tensor, nn
 
+# 初始化logger
+logger = logging.getLogger(__name__)
+
 from lerobot.policies.pretrained import PreTrainedPolicy, T
 from lerobot.policies.utils import populate_queues
 from lerobot.utils.constants import ACTION, OBS_STATE
@@ -176,6 +179,14 @@ class SmolVLALewModel(nn.Module):
 
     def forward(self, examples: list[dict]) -> dict[str, Tensor]:
         # breakpoint()
+        batch_size = len(examples)
+        logger.info(
+            f"[SmolVLALew] Forward pass: batch_size={batch_size}, "
+            f"has_action={'action' in examples[0] and examples[0]['action'] is not None}, "
+            f"le_world_model={'enabled' if self.le_world_model is not None else 'disabled'}, "
+            f"enable_lew_world_model={self.config.enable_lew_world_model if hasattr(self, 'config') else 'N/A'}"
+        )
+        
         batch_images = [ex["image"] for ex in examples]
         batch_videos = [ex["video"] for ex in examples]
         instructions = [ex["lang"] for ex in examples]
@@ -246,7 +257,6 @@ class SmolVLALewModel(nn.Module):
                 pad_tensor = pad_tensor[:, -action_horizon:]
                 action_is_pad_rep = pad_tensor.repeat(repeated_diffusion_steps, 1)
 
-            breakpoint()
             action_loss = self.action_model(
                 conditioning_tokens=multimodal_embeds_rep,
                 actions=actions_target,
