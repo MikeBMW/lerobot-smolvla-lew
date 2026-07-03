@@ -536,7 +536,7 @@ class ProductRoadmapWidget(QFrame):
             },
             {
                 "phase": "Phase 4",
-                "title": "System 2 · 全域大脑",
+                "title": "全系统 · 全域大脑",
                 "time": "2027+",
                 "dims": "Z·M·A·X 全域",
                 "desc": "多产线规模化复制\nL4全自主闭环",
