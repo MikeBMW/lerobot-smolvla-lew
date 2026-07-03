@@ -470,14 +470,117 @@ class ArchFlowBar(QFrame):
 
 
 # ============================================================
-# 产品迭代路线图 (Product Roadmap)
+# 产品迭代路线图 (Product Roadmap) — 可点击查看配置
 # ============================================================
+class PhaseCardButton(QFrame):
+    """可点击的迭代阶段卡片"""
+    clicked = pyqtSignal(dict)
+
+    def __init__(self, phase_data, parent=None):
+        super().__init__(parent)
+        self.phase_data = phase_data
+        self.color = phase_data["color"]
+        self.setCursor(Qt.PointingHandCursor)
+        self._build(phase_data)
+
+    def _build(self, p):
+        self.setStyleSheet(f"""
+            PhaseCardButton {{
+                background:{C_CARD};
+                border:2px solid {self.color}66;
+                border-radius:8px;
+            }}
+            PhaseCardButton:hover {{
+                background:{C_HOVER};
+                border:2px solid {self.color};
+            }}
+        """)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(6)
+        layout.setContentsMargins(12, 10, 12, 10)
+
+        # Phase 标识 + 时间
+        header = QHBoxLayout()
+        phase_lbl = QLabel(p["phase"])
+        phase_lbl.setFont(QFont("Consolas", 8, QFont.Bold))
+        phase_lbl.setStyleSheet(f"color:{self.color}; background:{self.color}22; border:1px solid {self.color}44; border-radius:3px; padding:2px 6px;")
+        header.addWidget(phase_lbl)
+        header.addStretch()
+        time_lbl = QLabel(p["time"])
+        time_lbl.setFont(QFont("Consolas", 8))
+        time_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+        header.addWidget(time_lbl)
+        layout.addLayout(header)
+
+        # 标题
+        title = QLabel(p["title"])
+        title.setFont(QFont("Arial", 11, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        # 维度标签
+        dim_lbl = QLabel(p["dims"])
+        dim_lbl.setFont(QFont("Arial", 9))
+        dim_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        layout.addWidget(dim_lbl)
+
+        # 描述
+        desc_lbl = QLabel(p["desc"])
+        desc_lbl.setFont(QFont("Arial", 9))
+        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+
+        # KPI
+        kpi_lbl = QLabel(p["kpi"])
+        kpi_lbl.setFont(QFont("Consolas", 13, QFont.Bold))
+        kpi_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:4px 0;")
+        kpi_lbl.setAlignment(Qt.AlignRight)
+        layout.addWidget(kpi_lbl)
+
+        # 文件夹路径提示
+        path_lbl = QLabel(f"📁 {p['folder']}")
+        path_lbl.setFont(QFont("Consolas", 7))
+        path_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:2px 0;")
+        layout.addWidget(path_lbl)
+
+        self.setLayout(layout)
+
+    def enterEvent(self, e):
+        self.setStyleSheet(f"""
+            PhaseCardButton {{
+                background:{C_HOVER};
+                border:2px solid {self.color};
+                border-radius:8px;
+            }}
+        """)
+
+    def leaveEvent(self, e):
+        self.setStyleSheet(f"""
+            PhaseCardButton {{
+                background:{C_CARD};
+                border:2px solid {self.color}66;
+                border-radius:8px;
+            }}
+        """)
+
+    def mousePressEvent(self, e):
+        self.clicked.emit(self.phase_data)
+
+
 class ProductRoadmapWidget(QFrame):
     """Z-MAX 产品迭代路线图：System1 → Sys-11 → Sys-12 → System2"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet("background:transparent;")
+        # 获取 policies 目录相对路径
+        self._policies_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "src", "lerobot", "policies"
+        )
         self._build()
 
     def _build(self):
@@ -502,7 +605,7 @@ class ProductRoadmapWidget(QFrame):
         dim_bar.addStretch()
         layout.addLayout(dim_bar)
 
-        # 四个迭代阶段 - 横向卡片
+        # 四个迭代阶段 - 横向可点击卡片
         phases_row = QHBoxLayout()
         phases_row.setSpacing(6)
 
@@ -515,6 +618,8 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "VTLA视触觉语言动作\n端到端精细插拔执行",
                 "color": C_CYAN,
                 "kpi": "±0.02mm",
+                "folder": "zmax_sys1",
+                "config_file": "configuration_zmax_sys1.py",
             },
             {
                 "phase": "Phase 2",
@@ -524,6 +629,8 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
                 "color": SYS11_COLOR,
                 "kpi": "<10ms",
+                "folder": "zmax_sys11",
+                "config_file": "configuration_zmax_sys11.py",
             },
             {
                 "phase": "Phase 3",
@@ -533,6 +640,8 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "场景引导模型\n全域认知闭环",
                 "color": SYS12_COLOR,
                 "kpi": "99.2%",
+                "folder": "zmax_sys12",
+                "config_file": "configuration_zmax_sys12.py",
             },
             {
                 "phase": "Phase 4",
@@ -542,14 +651,16 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "多产线规模化复制\nL4全自主闭环",
                 "color": SYS2_COLOR,
                 "kpi": "7×24h",
+                "folder": "zmax_system2",
+                "config_file": "configuration_zmax_system2.py",
             },
         ]
 
         for i, p in enumerate(phases):
-            card = self._make_phase_card(p)
-            phases_row.addWidget(card, 1)  # 等宽分配
+            card = PhaseCardButton(p)
+            card.clicked.connect(self._on_phase_clicked)
+            phases_row.addWidget(card, 1)
 
-            # 箭头（最后一个不加）
             if i < len(phases) - 1:
                 arrow = QLabel("→")
                 arrow.setFont(QFont("Arial", 16, QFont.Bold))
@@ -559,67 +670,65 @@ class ProductRoadmapWidget(QFrame):
                 phases_row.addWidget(arrow)
 
         layout.addLayout(phases_row)
-
         self.setLayout(layout)
 
-    def _make_phase_card(self, p):
-        """创建单个迭代阶段卡片"""
-        frame = QFrame()
-        frame.setStyleSheet(f"""
-            QFrame {{
-                background:{C_CARD};
-                border:1px solid {p['color']}66;
-                border-radius:8px;
-                padding:0px;
-            }}
-        """)
+    def _on_phase_clicked(self, phase_data):
+        """点击阶段卡片 → 弹出配置文件内容"""
+        folder = phase_data["folder"]
+        config_file = phase_data["config_file"]
+        config_path = os.path.join(self._policies_dir, folder, config_file)
 
-        layout = QVBoxLayout()
-        layout.setSpacing(6)
-        layout.setContentsMargins(12, 10, 12, 10)
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                content = f"读取失败: {e}"
+        else:
+            # 尝试绝对路径（当GUI通过远程桌面打开时）
+            alt_path = os.path.expanduser(f"~/xspace/lerobot-smolvla-lew/src/lerobot/policies/{folder}/{config_file}")
+            if os.path.exists(alt_path):
+                try:
+                    with open(alt_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except Exception as e:
+                    content = f"读取失败: {e}"
+            else:
+                content = f"配置文件未找到:\n{config_path}\n{alt_path}"
 
-        # Phase 标识 + 时间
-        header = QHBoxLayout()
-        phase_lbl = QLabel(p["phase"])
-        phase_lbl.setFont(QFont("Consolas", 8, QFont.Bold))
-        phase_lbl.setStyleSheet(f"color:{p['color']}; background:{p['color']}22; border:1px solid {p['color']}44; border-radius:3px; padding:2px 6px;")
-        header.addWidget(phase_lbl)
-        header.addStretch()
-        time_lbl = QLabel(p["time"])
-        time_lbl.setFont(QFont("Consolas", 8))
-        time_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
-        header.addWidget(time_lbl)
-        layout.addLayout(header)
+        # 列出文件夹内所有文件
+        folder_path = os.path.join(self._policies_dir, folder)
+        if not os.path.isdir(folder_path):
+            folder_path = os.path.expanduser(f"~/xspace/lerobot-smolvla-lew/src/lerobot/policies/{folder}")
+        file_list = ""
+        if os.path.isdir(folder_path):
+            files = sorted(os.listdir(folder_path))
+            files = [f for f in files if not f.startswith('__pycache') and not f.startswith('.')]
+            file_list = "\n".join([f"  📄 {f}" for f in files])
 
-        # 标题
-        title = QLabel(p["title"])
-        title.setFont(QFont("Arial", 11, QFont.Bold))
-        title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
-        title.setWordWrap(True)
-        layout.addWidget(title)
+        # 弹出对话框
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(f"{phase_data['phase']} — {phase_data['title']}")
+        dialog.setIcon(QMessageBox.Information)
 
-        # 维度标签
-        dim_lbl = QLabel(p["dims"])
-        dim_lbl.setFont(QFont("Arial", 9))
-        dim_lbl.setStyleSheet(f"color:{p['color']}; background:transparent; border:none; margin:0; padding:0;")
-        layout.addWidget(dim_lbl)
-
-        # 描述
-        desc_lbl = QLabel(p["desc"])
-        desc_lbl.setFont(QFont("Arial", 9))
-        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
-        desc_lbl.setWordWrap(True)
-        layout.addWidget(desc_lbl)
-
-        # KPI
-        kpi_lbl = QLabel(p["kpi"])
-        kpi_lbl.setFont(QFont("Consolas", 13, QFont.Bold))
-        kpi_lbl.setStyleSheet(f"color:{p['color']}; background:transparent; border:none; margin:0; padding:4px 0;")
-        kpi_lbl.setAlignment(Qt.AlignRight)
-        layout.addWidget(kpi_lbl)
-
-        frame.setLayout(layout)
-        return frame
+        display_text = (
+            f"📁 文件夹: {folder}/\n"
+            f"{'─' * 50}\n"
+            f"文件列表:\n{file_list}\n\n"
+            f"{'─' * 50}\n"
+            f"📋 配置文件: {config_file}\n"
+            f"{'─' * 50}\n\n"
+            f"{content}"
+        )
+        dialog.setDetailedText(display_text)
+        dialog.setText(
+            f"{phase_data['phase']}: {phase_data['title']}\n\n"
+            f"维度: {phase_data['dims']}\n"
+            f"KPI: {phase_data['kpi']}\n"
+            f"策略文件夹: {folder}/\n\n"
+            f"点击「Show Details」查看配置文件内容"
+        )
+        dialog.exec_()
 
 
 # ============================================================
