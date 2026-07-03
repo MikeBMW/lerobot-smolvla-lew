@@ -470,6 +470,159 @@ class ArchFlowBar(QFrame):
 
 
 # ============================================================
+# 产品迭代路线图 (Product Roadmap)
+# ============================================================
+class ProductRoadmapWidget(QFrame):
+    """Z-MAX 产品迭代路线图：System1 → Sys-11 → Sys-12 → System2"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background:transparent;")
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # 维度说明
+        dim_bar = QHBoxLayout()
+        dim_bar.setSpacing(16)
+        dims = [
+            ("Z", "潜空间", SYS12_COLOR),
+            ("M", "多模态", C_CYAN),
+            ("A", "Action", SYS11_COLOR),
+            ("X", "eXpert", SYS2_COLOR),
+        ]
+        for letter, meaning, color in dims:
+            tag = QLabel(f"{letter} = {meaning}")
+            tag.setFont(QFont("Arial", 9, QFont.Bold))
+            tag.setStyleSheet(f"color:{color}; background:{color}18; border:1px solid {color}55; border-radius:4px; padding:3px 10px;")
+            dim_bar.addWidget(tag)
+        dim_bar.addStretch()
+        layout.addLayout(dim_bar)
+
+        # 四个迭代阶段 - 横向卡片
+        phases_row = QHBoxLayout()
+        phases_row.setSpacing(6)
+
+        phases = [
+            {
+                "phase": "Phase 1",
+                "title": "系统1 · 基础功能",
+                "time": "2026 Q3",
+                "dims": "M + A",
+                "desc": "VTLA视触觉语言动作\n端到端精细插拔执行",
+                "color": C_CYAN,
+                "kpi": "±0.02mm",
+            },
+            {
+                "phase": "Phase 2",
+                "title": "Sys-11 · 泛化调优",
+                "time": "2026 Q4",
+                "dims": "Z 潜空间",
+                "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
+                "color": SYS11_COLOR,
+                "kpi": "<10ms",
+            },
+            {
+                "phase": "Phase 3",
+                "title": "Sys-12 · 空间感知",
+                "time": "2027 Q1-Q2",
+                "dims": "X + Z 扩展",
+                "desc": "场景引导模型\n全域认知闭环",
+                "color": SYS12_COLOR,
+                "kpi": "99.2%",
+            },
+            {
+                "phase": "Phase 4",
+                "title": "System 2 · 全域大脑",
+                "time": "2027+",
+                "dims": "Z·M·A·X 全域",
+                "desc": "多产线规模化复制\nL4全自主闭环",
+                "color": SYS2_COLOR,
+                "kpi": "7×24h",
+            },
+        ]
+
+        for i, p in enumerate(phases):
+            card = self._make_phase_card(p)
+            phases_row.addWidget(card, 1)  # 等宽分配
+
+            # 箭头（最后一个不加）
+            if i < len(phases) - 1:
+                arrow = QLabel("→")
+                arrow.setFont(QFont("Arial", 16, QFont.Bold))
+                arrow.setFixedWidth(20)
+                arrow.setAlignment(Qt.AlignCenter)
+                arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+                phases_row.addWidget(arrow)
+
+        layout.addLayout(phases_row)
+
+        self.setLayout(layout)
+
+    def _make_phase_card(self, p):
+        """创建单个迭代阶段卡片"""
+        frame = QFrame()
+        frame.setStyleSheet(f"""
+            QFrame {{
+                background:{C_CARD};
+                border:1px solid {p['color']}66;
+                border-radius:8px;
+                padding:0px;
+            }}
+        """)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(6)
+        layout.setContentsMargins(12, 10, 12, 10)
+
+        # Phase 标识 + 时间
+        header = QHBoxLayout()
+        phase_lbl = QLabel(p["phase"])
+        phase_lbl.setFont(QFont("Consolas", 8, QFont.Bold))
+        phase_lbl.setStyleSheet(f"color:{p['color']}; background:{p['color']}22; border:1px solid {p['color']}44; border-radius:3px; padding:2px 6px;")
+        header.addWidget(phase_lbl)
+        header.addStretch()
+        time_lbl = QLabel(p["time"])
+        time_lbl.setFont(QFont("Consolas", 8))
+        time_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+        header.addWidget(time_lbl)
+        layout.addLayout(header)
+
+        # 标题
+        title = QLabel(p["title"])
+        title.setFont(QFont("Arial", 11, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        # 维度标签
+        dim_lbl = QLabel(p["dims"])
+        dim_lbl.setFont(QFont("Arial", 9))
+        dim_lbl.setStyleSheet(f"color:{p['color']}; background:transparent; border:none; margin:0; padding:0;")
+        layout.addWidget(dim_lbl)
+
+        # 描述
+        desc_lbl = QLabel(p["desc"])
+        desc_lbl.setFont(QFont("Arial", 9))
+        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+
+        # KPI
+        kpi_lbl = QLabel(p["kpi"])
+        kpi_lbl.setFont(QFont("Consolas", 13, QFont.Bold))
+        kpi_lbl.setStyleSheet(f"color:{p['color']}; background:transparent; border:none; margin:0; padding:4px 0;")
+        kpi_lbl.setAlignment(Qt.AlignRight)
+        layout.addWidget(kpi_lbl)
+
+        frame.setLayout(layout)
+        return frame
+
+
+# ============================================================
 # 首页页面
 # ============================================================
 class HomeWidget(QWidget):
@@ -503,6 +656,13 @@ class HomeWidget(QWidget):
         lbl1.setStyleSheet(f"color:{C_GRAY};")
         layout.addWidget(lbl1)
         layout.addWidget(ArchFlowBar())
+
+        # --- 产品迭代路线图 ---
+        lbl_roadmap = QLabel("产品迭代  Roadmap")
+        lbl_roadmap.setFont(QFont("Arial", 11, QFont.Bold))
+        lbl_roadmap.setStyleSheet(f"color:{C_GRAY};")
+        layout.addWidget(lbl_roadmap)
+        layout.addWidget(ProductRoadmapWidget())
 
         # --- 模块卡片 ---
         lbl2 = QLabel("功能模块  Modules")
@@ -577,7 +737,7 @@ class HomeWidget(QWidget):
         doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         doc_btn.setCursor(Qt.PointingHandCursor)
         doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
-        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'Z-MAX管理层汇报.pptx')))
+        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'Z-MAX产品注册汇报.pptx')))
         row.addWidget(doc_btn)
 
         layout.addLayout(row)
