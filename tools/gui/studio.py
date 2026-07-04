@@ -2238,6 +2238,9 @@ class StudioMainWindow(QMainWindow):
         central.setStyleSheet(f"background:{C_BG};")
         self.setCentralWidget(central)
 
+        # ====== 菜单栏 (专业开发环境) ======
+        self._build_menubar()
+
         root = QHBoxLayout()
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -2309,6 +2312,214 @@ class StudioMainWindow(QMainWindow):
         # 更新状态栏
         names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步"]
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
+
+    def _build_menubar(self):
+        """构建专业开发环境菜单栏"""
+        self.repo_path = os.path.dirname(os.path.dirname(__file__))
+        self.docs_path = os.path.join(self.repo_path, "docs")
+
+        mb = self.menuBar()
+        mb.setStyleSheet(f"""
+            QMenuBar {{
+                background: {C_BG2};
+                color: {C_WHITE};
+                border-bottom: 1px solid {C_BORDER};
+                padding: 2px 0;
+            }}
+            QMenuBar::item {{
+                background: transparent;
+                padding: 6px 12px;
+                margin: 0;
+            }}
+            QMenuBar::item:selected {{
+                background: {C_CARD};
+                color: {C_BLUE};
+            }}
+            QMenu {{
+                background: {C_CARD};
+                color: {C_WHITE};
+                border: 1px solid {C_BORDER};
+                padding: 4px 0;
+            }}
+            QMenu::item {{
+                padding: 6px 30px 6px 15px;
+            }}
+            QMenu::item:selected {{
+                background: {C_BLUE}33;
+                color: {C_BLUE};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background: {C_BORDER};
+                margin: 4px 12px;
+            }}
+        """)
+
+        # ====== 文件菜单 ======
+        m_file = mb.addMenu("文件(&F)")
+
+        act_open_repo = QAction("打开项目根目录", self)
+        act_open_repo.setShortcut("Ctrl+O")
+        act_open_repo.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.repo_path)))
+        m_file.addAction(act_open_repo)
+
+        m_file.addSeparator()
+
+        act_github = QAction("浏览 GitHub 仓库", self)
+        act_github.setShortcut("Ctrl+G")
+        act_github.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew")))
+        m_file.addAction(act_github)
+
+        act_push = QAction("同步代码到 GitHub", self)
+        act_push.setShortcut("Ctrl+Shift+U")
+        act_push.triggered.connect(self._menu_sync_to_github)
+        m_file.addAction(act_push)
+
+        m_file.addSeparator()
+
+        act_exit = QAction("退出(&Q)", self)
+        act_exit.setShortcut("Ctrl+Q")
+        act_exit.triggered.connect(self.close)
+        m_file.addAction(act_exit)
+
+        # ====== 视图菜单 ======
+        m_view = mb.addMenu("视图(&V)")
+
+        view_targets = [
+            ("返回首页", "home"),
+            ("数据集管理", "dataset"),
+            ("训练控制台", "training"),
+            ("评估分析", "evaluation"),
+            ("硬件工具箱", "hardware"),
+            ("配置中心", "config"),
+            ("实时监控", "monitor"),
+            ("插拔场景", "plugging"),
+            ("版本同步", "version"),
+        ]
+        for label, target in view_targets:
+            act = QAction(label, self)
+            act.triggered.connect(self._mk_nav_func(target))
+            m_view.addAction(act)
+
+        # ====== 文档菜单（帮助文档） ======
+        m_doc = mb.addMenu("帮助文档(&H)")
+
+        # L1 - 战略层
+        m_l1 = m_doc.addMenu("L1 · 战略层文档")
+        m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品介绍 PPT (v1.0.0)",
+            (["L1-Z-MAX产品介绍-v1.0.0.pptx"], "libreoffice")))
+        m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v2.1)",
+            (["L1-ZMAX-产品介绍-v2.1.pptx", "Z-MAX产品介绍v2.1.pptx"], "libreoffice")))
+        m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v2)",
+            (["L1-ZMAX-产品介绍-v2.pptx", "Z-MAX产品介绍v2.pptx"], "libreoffice")))
+        m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v1)",
+            (["L1-ZMAX-产品介绍-v1.pptx", "Z-MAX产品介绍v1.pptx"], "libreoffice")))
+
+        # L2 - 方案层
+        m_doc.addSeparator()
+        m_l2 = m_doc.addMenu("L2 · 方案层文档")
+        m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.1)",
+            (["L2-Z-MAX解决方案-v1.0.1.md"], "xdg-open")))
+        m_l2.addAction(self._mk_doc_action("   解决方案 MD (v1.0.0)",
+            (["L2-Z-MAX解决方案-v1.0.0.md", "具身机器人产品解决方案-工厂精细操作v1.0.0.md"], "xdg-open")))
+
+        # L3 - 技术层
+        m_l3 = m_doc.addMenu("L3 · 技术层文档")
+        m_l3.addAction(self._mk_doc_action("🔧 技术路线与代码开发指南 (v1.0.0)",
+            (["L3-技术路线与代码开发指南-v1.0.0.md", "Z-MAX 产品迭代技术路线与代码开发指南.md"], "xdg-open")))
+
+        # 品牌 & 竞品
+        m_doc.addSeparator()
+        m_brand = m_doc.addMenu("品牌 · 竞品参考")
+        m_brand.addAction(self._mk_doc_action("🏷  品牌注册材料 PPT",
+            (["BRAND-品牌注册材料.pptx", "Z-MAX产品注册汇报.pptx"], "libreoffice")))
+        m_brand.addAction(self._mk_doc_action("📄 竞品参考 - 轮式双臂机器人项目 (PDF)",
+            (["轮式双臂机器人光模块自主插拔项目-20260702.pdf"], "xdg-open")))
+
+        # 版本管理
+        m_doc.addSeparator()
+        m_admin = m_doc.addMenu("版本管理文档")
+        m_admin.addAction(self._mk_doc_action("📦 版本管理规范 VERSION.md",
+            (["VERSION.md"], "xdg-open")))
+        m_admin.addAction(self._mk_doc_action("🔄 上游同步指南",
+            (["Z-MAX-UPSTREAM-SYNC.md"], "xdg-open")))
+        m_admin.addAction(self._mk_doc_action("📚 文档索引 README",
+            (["README.md"], "xdg-open")))
+
+        # ====== 帮助菜单 ======
+        m_help = mb.addMenu("关于(&A)")
+        act_about = QAction("关于 Z-MAX", self)
+        act_about.triggered.connect(self._show_about)
+        m_help.addAction(act_about)
+
+        act_lerobot = QAction("LeRobot 官方文档", self)
+        act_lerobot.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/docs/lerobot")))
+        m_help.addAction(act_lerobot)
+
+    def _mk_nav_func(self, target):
+        """创建导航闭包函数"""
+        def nav():
+            self._on_nav(target)
+        return nav
+
+    def _mk_doc_action(self, label, paths_and_opener):
+        """创建文档打开动作（支持多路径回退）"""
+        paths, opener = paths_and_opener
+        if not isinstance(paths, list):
+            paths = [paths]
+
+        def open_doc():
+            for rel_path in paths:
+                full_path = os.path.join(self.docs_path, rel_path)
+                if os.path.exists(full_path):
+                    try:
+                        if opener == "libreoffice":
+                            open_ppt_with_libreoffice(full_path)
+                        else:
+                            subprocess.Popen(["xdg-open", full_path])
+                        self.statusBar().showMessage(f"已打开: {rel_path}")
+                        return
+                    except Exception as e:
+                        QMessageBox.warning(self, "打开失败", f"无法打开文档:\n{e}")
+                        return
+            QMessageBox.information(self, "文档未找到",
+                f"以下文档均不存在:\n" +
+                "\n".join([os.path.join(self.docs_path, p) for p in paths]))
+
+        act = QAction(label, self)
+        act.triggered.connect(open_doc)
+        return act
+
+    def _menu_sync_to_github(self):
+        """菜单调用的 GitHub 同步（委托给 HomeWidget）"""
+        if hasattr(self, 'home'):
+            self.home._sync_to_github()
+
+    def _show_about(self):
+        """显示关于对话框"""
+        QMessageBox.about(self, "关于 Z-MAX",
+            f"""
+<b>Z-MAX v1.0.1</b> · 多模态动作专家<br>
+<b>Z700 轮式双臂精细操作机器人</b><br>
+<br>
+<b>核心能力</b><br>
+• VTLA 多模态模型 (视觉 + 触觉 + 语言 + 动作)<br>
+• 插拔精度: ±0.02mm<br>
+• 关键工序良率: 99%+<br>
+• 力控带宽: &gt;10kHz<br>
+• 双臂协同: 左取料-右插拔<br>
+• ROI 回收期: 14~22 个月<br>
+<br>
+<b>技术路线</b><br>
+Phase 0 (L2) → Phase 1 (L3) → Phase 2 (L3+) → Phase 3 (L4) → Phase 4 (L4+)<br>
+VLM 规划 + VLA 执行 + HIL 强化学习<br>
+<br>
+<b>版本</b><br>
+LeRobot: v0.5.2 · Z-MAX: zmax-1.0.1<br>
+<br>
+<b>智蜂创元 · 具身智能</b><br>
+github.com/MikeBMW/lerobot-smolvla-lew
+""")
 
 
 # ============================================================
