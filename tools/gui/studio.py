@@ -1961,19 +1961,19 @@ class TrainingModule(QWidget):
                 padding: 12px 0px;
                 min-height: 36px;
             }}
-            QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
+            QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {{
                 min-height: 36px;
                 padding: 10px;
                 color: {C_WHITE};
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-            }
-            QCheckBox {
+            }}
+            QCheckBox {{
                 min-height: 36px;
                 padding: 10px 0px;
                 color: {C_WHITE};
-            }
+            }}
         """)
         
         param_layout = QFormLayout()
