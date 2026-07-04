@@ -2052,8 +2052,18 @@ class TrainingModule(QWidget):
         layout.addWidget(param_group)
         
         # ===== Control Button Area =====
+        # Wrap buttons in a container widget with explicit background to prevent color bleeding
+        btn_container = QWidget()
+        btn_container.setStyleSheet(f"""
+            QWidget {{
+                background: transparent;
+                border: none;
+                padding: 0px;
+            }}
+        """)
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(12)
+        btn_layout.setSpacing(16)  # 增加间距
+        btn_layout.setContentsMargins(0, 8, 0, 8)  # 增加上下边距防止紫色渗透
         
         # Start button
         self.start_btn = QPushButton("▶ Start Training")
@@ -2135,7 +2145,8 @@ class TrainingModule(QWidget):
         self.stop_btn.clicked.connect(self._stop_training)
         btn_layout.addWidget(self.stop_btn)
         
-        layout.addLayout(btn_layout)
+        btn_container.setLayout(btn_layout)
+        layout.addWidget(btn_container)
         
         # ===== Progress Bar =====
         self.progress_bar = QProgressBar()

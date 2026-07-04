@@ -239,3 +239,7 @@ class TrainingBackend(QObject):
             return False
         
         return self.process.poll() is None
+
+
+# Global instance
+training_backend = TrainingBackend()
