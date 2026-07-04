@@ -4,6 +4,7 @@ Z-MAX 训练后端模块
 """
 
 import os
+import re
 import subprocess
 import signal
 from datetime import datetime
@@ -11,20 +12,29 @@ from PyQt5.QtCore import QObject, pyqtSignal, QThread
 
 
 class TrainingOutputReader(QThread):
-    """在独立线程中读取训练进程的输出"""
+    """在独立线程中读取训练进程的输出，并解析进度"""
     line_received = pyqtSignal(str)
+    progress_received = pyqtSignal(int)  # 新增：进度信号 (0-100)
     process_finished = pyqtSignal(int)
 
     def __init__(self, process):
         super().__init__()
         self.process = process
+        self._re_progress = re.compile(r'Training:\s+(\d+)%')  # 匹配 "Training:  42%"
 
     def run(self):
         try:
-            for line in self.process.stdout:  # 读取 stdout（stderr 已合并到这里）
+            for line in self.process.stdout:
                 text = line.rstrip()
                 if text:
                     self.line_received.emit(text)
+                    # 解析进度
+                    m = self._re_progress.search(text)
+                    if m:
+                        try:
+                            self.progress_received.emit(int(m.group(1)))
+                        except ValueError:
+                            pass
             self.process.wait()
             self.process_finished.emit(self.process.returncode)
         except Exception as e:
@@ -144,6 +154,9 @@ class TrainingBackend(QObject):
             self.reader_thread = TrainingOutputReader(self.process)
             self.reader_thread.line_received.connect(
                 lambda line: log_callback(f"[{now()}] {line}") if log_callback else None
+            )
+            self.reader_thread.progress_received.connect(
+                lambda progress: progress_callback(progress) if progress_callback else None
             )
             self.reader_thread.process_finished.connect(
                 lambda code: self._on_process_finished(code, log_callback, progress_callback)

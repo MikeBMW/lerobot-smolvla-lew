@@ -1961,14 +1961,19 @@ class TrainingModule(QWidget):
                 padding: 12px 0px;
                 min-height: 36px;
             }}
-            QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {{
+            QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
                 min-height: 36px;
                 padding: 10px;
-            }}
-            QCheckBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+            }
+            QCheckBox {
                 min-height: 36px;
                 padding: 10px 0px;
-            }}
+                color: {C_WHITE};
+            }
         """)
         
         param_layout = QFormLayout()
@@ -2326,7 +2331,36 @@ class TrainingModule(QWidget):
         param_layout.addRow("Output Directory:", self.output_dir_edit)
         
         param_group.setLayout(param_layout)
-        layout.addWidget(param_group)
+        
+        # Wrap param_group in QScrollArea so all parameters are scrollable
+        param_scroll = QScrollArea()
+        param_scroll.setWidget(param_group)
+        param_scroll.setWidgetResizable(True)
+        param_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        param_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background: transparent;
+            }}
+            QScrollBar:vertical {{
+                background: {C_BG};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BORDER};
+                border-radius: 6px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {C_CYAN};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+        layout.addWidget(param_scroll)
         
         # ===== Control Button Area =====
         # Wrap buttons in a container widget with explicit background to prevent color bleeding
@@ -2510,6 +2544,7 @@ class TrainingModule(QWidget):
         
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
+        self.log_text.setMinimumHeight(600)  # 确保 log 区域足够大
         self.log_text.setStyleSheet(f"""
             QTextEdit {{
                 background: {C_BG};
@@ -2520,11 +2555,27 @@ class TrainingModule(QWidget):
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 11px;
             }}
+            QScrollBar:vertical {{
+                background: {C_BG};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BORDER};
+                border-radius: 6px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {C_CYAN};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
         """)
         log_layout.addWidget(self.log_text)
         
         log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
+        layout.addWidget(log_group, 1)  # stretch=1 让 log 占据大部分空间
         
         # Main layout
         self.setLayout(layout)
