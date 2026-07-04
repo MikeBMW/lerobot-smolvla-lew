@@ -1946,7 +1946,8 @@ class TrainingModule(QWidget):
                 border: 1px solid {C_BORDER};
                 border-radius: 8px;
                 padding: 16px;
-                margin-top: 8px;
+                padding-top: 24px;
+                margin-top: 16px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
@@ -1954,10 +1955,73 @@ class TrainingModule(QWidget):
                 padding: 0 8px;
                 font-weight: bold;
             }}
+            QLabel {{
+                color: {C_WHITE};
+                background: transparent;
+            }}
         """)
         
         param_layout = QFormLayout()
         param_layout.setSpacing(12)
+        param_layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        
+        # ===== Policy Settings =====
+        policy_label = QLabel("Policy Settings")
+        policy_label.setFont(QFont("Arial", 11, QFont.Bold))
+        policy_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 8px;")
+        param_layout.addRow(policy_label)
+        
+        # Policy Type
+        self.policy_combo = QComboBox()
+        self.policy_combo.addItems([
+            "smolvla_lew",
+            "smolvla",
+            "diffusion",
+            "act",
+            "tdmpc"
+        ])
+        self.policy_combo.setStyleSheet(f"""
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+                min-width: 200px;
+            }}
+        """)
+        self.policy_combo.setToolTip("Policy type (--policy.type)")
+        param_layout.addRow("Policy Type:", self.policy_combo)
+        
+        # Freeze SmolVLM
+        self.freeze_checkbox = QCheckBox("Enabled")
+        self.freeze_checkbox.setChecked(True)
+        self.freeze_checkbox.setStyleSheet(f"QCheckBox {{ color: {C_WHITE}; }}")
+        self.freeze_checkbox.setToolTip("Freeze SmolVLM backbone (--policy.freeze_smolvlm)")
+        param_layout.addRow("Freeze SmolVLM:", self.freeze_checkbox)
+        
+        # Enable World Model
+        self.world_model_checkbox = QCheckBox("Enabled")
+        self.world_model_checkbox.setChecked(False)
+        self.world_model_checkbox.setStyleSheet(f"QCheckBox {{ color: {C_WHITE}; }}")
+        self.world_model_checkbox.setToolTip("Enable LeWorld Model (--policy.enable_lew_world_model)")
+        param_layout.addRow("World Model:", self.world_model_checkbox)
+        
+        # Repeated Diffusion Steps
+        self.diffusion_spin = QSpinBox()
+        self.diffusion_spin.setRange(1, 100)
+        self.diffusion_spin.setValue(5)
+        self.diffusion_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.diffusion_spin.setToolTip("Repeated diffusion steps (--policy.repeated_diffusion_steps)")
+        param_layout.addRow("Diffusion Steps:", self.diffusion_spin)
         
         # Dataset selection
         self.dataset_combo = QComboBox()
@@ -2013,24 +2077,6 @@ class TrainingModule(QWidget):
         self.steps_spin.setToolTip("Total number of training steps")
         param_layout.addRow("Training Steps:", self.steps_spin)
         
-        # Learning rate
-        self.lr_spin = QDoubleSpinBox()
-        self.lr_spin.setRange(0.000001, 0.1)
-        self.lr_spin.setValue(0.0001)
-        self.lr_spin.setSingleStep(0.00001)
-        self.lr_spin.setDecimals(6)
-        self.lr_spin.setStyleSheet(f"""
-            QDoubleSpinBox {{
-                color: {C_WHITE};
-                background: {C_BG};
-                border: 1px solid {C_BORDER};
-                border-radius: 4px;
-                padding: 6px;
-            }}
-        """)
-        self.lr_spin.setToolTip("Optimizer learning rate")
-        param_layout.addRow("Learning Rate:", self.lr_spin)
-        
         # Checkpoint interval
         self.ckpt_spin = QSpinBox()
         self.ckpt_spin.setRange(10, 10000)
@@ -2047,6 +2093,226 @@ class TrainingModule(QWidget):
         """)
         self.ckpt_spin.setToolTip("Number of steps to save checkpoint")
         param_layout.addRow("Checkpoint Interval:", self.ckpt_spin)
+        
+        # ===== Dataset Settings =====
+        dataset_label = QLabel("Dataset Settings")
+        dataset_label.setFont(QFont("Arial", 11, QFont.Bold))
+        dataset_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(dataset_label)
+        
+        # Dataset Repo ID
+        self.dataset_repo_edit = QLineEdit("lerobot/pusht")
+        self.dataset_repo_edit.setStyleSheet(f"""
+            QLineEdit {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.dataset_repo_edit.setToolTip("HuggingFace dataset repo ID (--dataset.repo_id)")
+        param_layout.addRow("Dataset Repo ID:", self.dataset_repo_edit)
+        
+        # ===== Optimizer Settings =====
+        opt_label = QLabel("Optimizer Settings")
+        opt_label.setFont(QFont("Arial", 11, QFont.Bold))
+        opt_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(opt_label)
+        
+        # Learning Rate
+        self.lr_spin = QDoubleSpinBox()
+        self.lr_spin.setRange(0.000001, 0.1)
+        self.lr_spin.setValue(0.0001)
+        self.lr_spin.setSingleStep(0.00001)
+        self.lr_spin.setDecimals(6)
+        self.lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.lr_spin.setToolTip("Optimizer learning rate (--optimizer.lr)")
+        param_layout.addRow("Learning Rate:", self.lr_spin)
+        
+        # Weight Decay
+        self.weight_decay_spin = QDoubleSpinBox()
+        self.weight_decay_spin.setRange(0.0000001, 0.01)
+        self.weight_decay_spin.setValue(0.000001)
+        self.weight_decay_spin.setSingleStep(0.000001)
+        self.weight_decay_spin.setDecimals(7)
+        self.weight_decay_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.weight_decay_spin.setToolTip("Weight decay (--optimizer.weight_decay)")
+        param_layout.addRow("Weight Decay:", self.weight_decay_spin)
+        
+        # Gradient Clipping
+        self.grad_clip_spin = QDoubleSpinBox()
+        self.grad_clip_spin.setRange(0.1, 100.0)
+        self.grad_clip_spin.setValue(10.0)
+        self.grad_clip_spin.setSingleStep(0.5)
+        self.grad_clip_spin.setDecimals(1)
+        self.grad_clip_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.grad_clip_spin.setToolTip("Gradient clipping norm (--optimizer.grad_clip_norm)")
+        param_layout.addRow("Grad Clip Norm:", self.grad_clip_spin)
+        
+        # ===== Scheduler Settings =====
+        sched_label = QLabel("Scheduler Settings")
+        sched_label.setFont(QFont("Arial", 11, QFont.Bold))
+        sched_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(sched_label)
+        
+        # Scheduler Type
+        self.scheduler_combo = QComboBox()
+        self.scheduler_combo.addItems([
+            "cosine_decay_with_warmup",
+            "constant",
+            "linear_decay"
+        ])
+        self.scheduler_combo.setStyleSheet(f"""
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+                min-width: 200px;
+            }}
+        """)
+        self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
+        param_layout.addRow("Scheduler Type:", self.scheduler_combo)
+        
+        # Warmup Steps
+        self.warmup_spin = QSpinBox()
+        self.warmup_spin.setRange(0, 100000)
+        self.warmup_spin.setValue(500)
+        self.warmup_spin.setSingleStep(100)
+        self.warmup_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.warmup_spin.setToolTip("Number of warmup steps (--scheduler.num_warmup_steps)")
+        param_layout.addRow("Warmup Steps:", self.warmup_spin)
+        
+        # Decay Steps
+        self.decay_spin = QSpinBox()
+        self.decay_spin.setRange(100, 1000000)
+        self.decay_spin.setValue(500)
+        self.decay_spin.setSingleStep(100)
+        self.decay_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.decay_spin.setToolTip("Number of decay steps (--scheduler.num_decay_steps)")
+        param_layout.addRow("Decay Steps:", self.decay_spin)
+        
+        # Peak LR
+        self.peak_lr_spin = QDoubleSpinBox()
+        self.peak_lr_spin.setRange(0.000001, 0.1)
+        self.peak_lr_spin.setValue(0.0001)
+        self.peak_lr_spin.setSingleStep(0.00001)
+        self.peak_lr_spin.setDecimals(6)
+        self.peak_lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.peak_lr_spin.setToolTip("Peak learning rate (--scheduler.peak_lr)")
+        param_layout.addRow("Peak LR:", self.peak_lr_spin)
+        
+        # Decay LR
+        self.decay_lr_spin = QDoubleSpinBox()
+        self.decay_lr_spin.setRange(0.0000001, 0.01)
+        self.decay_lr_spin.setValue(0.000001)
+        self.decay_lr_spin.setSingleStep(0.000001)
+        self.decay_lr_spin.setDecimals(7)
+        self.decay_lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.decay_lr_spin.setToolTip("Final learning rate after decay (--scheduler.decay_lr)")
+        param_layout.addRow("Decay LR:", self.decay_lr_spin)
+        
+        # ===== Experiment Settings =====
+        exp_label = QLabel("Experiment Settings")
+        exp_label.setFont(QFont("Arial", 11, QFont.Bold))
+        exp_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(exp_label)
+        
+        # Eval Frequency
+        self.eval_freq_spin = QSpinBox()
+        self.eval_freq_spin.setRange(0, 100000)
+        self.eval_freq_spin.setValue(500)
+        self.eval_freq_spin.setSingleStep(100)
+        self.eval_freq_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.eval_freq_spin.setToolTip("Evaluation frequency in steps, 0 to disable (--eval.frequency)")
+        param_layout.addRow("Eval Frequency:", self.eval_freq_spin)
+        
+        # Push to Hub
+        self.push_hub_checkbox = QCheckBox("Enabled")
+        self.push_hub_checkbox.setChecked(False)
+        self.push_hub_checkbox.setStyleSheet(f"QCheckBox {{ color: {C_WHITE}; }}")
+        self.push_hub_checkbox.setToolTip("Push checkpoint to HuggingFace Hub (--policy.push_to_hub)")
+        param_layout.addRow("Push to Hub:", self.push_hub_checkbox)
+        
+        # Output Directory
+        self.output_dir_edit = QLineEdit("outputs/smolvla_pusht")
+        self.output_dir_edit.setStyleSheet(f"""
+            QLineEdit {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.output_dir_edit.setToolTip("Output directory for checkpoints and logs")
+        param_layout.addRow("Output Directory:", self.output_dir_edit)
         
         param_group.setLayout(param_layout)
         layout.addWidget(param_group)
@@ -2157,6 +2423,32 @@ class TrainingModule(QWidget):
         self.stop_btn.clicked.connect(self._stop_training)
         btn_layout.addWidget(self.stop_btn)
         
+        # Preview command button
+        self.preview_btn = QPushButton("👁 Preview CLI Command")
+        self.preview_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C_PURPLE};
+                color: white;
+                border: 2px solid {C_PURPLE};
+                border-radius: 6px;
+                padding: 12px 32px;
+                margin: 0px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {C_PURPLE};
+                border: 2px solid {C_BLUE};
+            }}
+            QPushButton:pressed {{
+                background-color: {C_PURPLE}bb;
+                border: 2px solid {C_BLUE};
+            }}
+        """)
+        self.preview_btn.clicked.connect(self._preview_command)
+        self.preview_btn.setToolTip("Preview the full lerobot-train CLI command without running it")
+        btn_layout.addWidget(self.preview_btn)
+        
         btn_container.setLayout(btn_layout)
         layout.addWidget(btn_container)
         
@@ -2260,34 +2552,82 @@ class TrainingModule(QWidget):
     
     def _start_training(self):
         """Start training"""
-        dataset = self.dataset_combo.currentText()
+        # 读取所有 UI 参数
+        # Policy settings
+        policy_type = self.policy_combo.currentText()
+        freeze_smolvlm = self.freeze_checkbox.isChecked()
+        enable_lew_world_model = self.world_model_checkbox.isChecked()
+        repeated_diffusion_steps = self.diffusion_spin.value()
+        
+        # Dataset settings
+        dataset_repo_id = self.dataset_repo_edit.text()
+        
+        # Training settings
         batch_size = self.batch_spin.value()
-        steps = self.steps_spin.value()
-        lr = self.lr_spin.value()
-        ckpt_interval = self.ckpt_spin.value()
+        total_steps = self.steps_spin.value()
+        checkpoint_interval = self.ckpt_spin.value()
+        
+        # Optimizer settings
+        learning_rate = self.lr_spin.value()
+        weight_decay = self.weight_decay_spin.value()
+        grad_clip_norm = self.grad_clip_spin.value()
+        
+        # Scheduler settings
+        scheduler_type = self.scheduler_combo.currentText()
+        num_warmup_steps = self.warmup_spin.value()
+        num_decay_steps = self.decay_spin.value()
+        peak_lr = self.peak_lr_spin.value()
+        decay_lr = self.decay_lr_spin.value()
+        
+        # Experiment settings
+        output_dir = self.output_dir_edit.text()
+        eval_freq = self.eval_freq_spin.value()
+        push_to_hub = self.push_hub_checkbox.isChecked()
         
         self._log(f"🚀 Starting training...")
-        self._log(f"   Dataset: {dataset}")
+        self._log(f"   Policy: {policy_type}")
+        self._log(f"   Dataset: {dataset_repo_id}")
         self._log(f"   Batch size: {batch_size}")
-        self._log(f"   Steps: {steps}")
-        self._log(f"   Learning rate: {lr}")
-        self._log(f"   Checkpoint interval: {ckpt_interval}")
+        self._log(f"   Steps: {total_steps}")
+        self._log(f"   Learning rate: {learning_rate}")
+        self._log(f"   Scheduler: {scheduler_type}")
         
         # Get repository root path
         import os
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         # Determine output directory
-        output_dir = os.path.join(repo_root, "outputs", "smolvla_pusht")
+        output_dir = os.path.join(repo_root, output_dir)
         
-        # Start training
+        # Start training with all parameters
         success = self.train_backend.start_smolvla_training(
             repo_root=repo_root,
-            dataset_repo_id=dataset,
+            # Policy settings
+            policy_type=policy_type,
+            freeze_smolvlm=freeze_smolvlm,
+            enable_lew_world_model=enable_lew_world_model,
+            repeated_diffusion_steps=repeated_diffusion_steps,
+            # Dataset settings
+            dataset_repo_id=dataset_repo_id,
+            # Training settings
             batch_size=batch_size,
-            total_steps=steps,
-            learning_rate=lr,
+            total_steps=total_steps,
+            checkpoint_interval=checkpoint_interval,
+            # Optimizer settings
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            grad_clip_norm=grad_clip_norm,
+            # Scheduler settings
+            scheduler_type=scheduler_type,
+            num_warmup_steps=num_warmup_steps,
+            num_decay_steps=num_decay_steps,
+            peak_lr=peak_lr,
+            decay_lr=decay_lr,
+            # Experiment settings
             output_dir=output_dir,
+            eval_freq=eval_freq,
+            push_to_hub=push_to_hub,
+            # Callbacks
             log_callback=self._log,
             progress_callback=self._update_progress
         )
@@ -2359,6 +2699,69 @@ class TrainingModule(QWidget):
             """)
             
             self._log("⏹ Training stopped")
+    
+    def _preview_command(self):
+        """Preview the full lerobot-train CLI command without running it"""
+        # 读取所有 UI 参数
+        policy_type = self.policy_combo.currentText()
+        freeze_smolvlm = self.freeze_checkbox.isChecked()
+        enable_lew_world_model = self.world_model_checkbox.isChecked()
+        repeated_diffusion_steps = self.diffusion_spin.value()
+        
+        dataset_repo_id = self.dataset_repo_edit.text()
+        
+        batch_size = self.batch_spin.value()
+        total_steps = self.steps_spin.value()
+        checkpoint_interval = self.ckpt_spin.value()
+        
+        learning_rate = self.lr_spin.value()
+        weight_decay = self.weight_decay_spin.value()
+        grad_clip_norm = self.grad_clip_spin.value()
+        
+        scheduler_type = self.scheduler_combo.currentText()
+        num_warmup_steps = self.warmup_spin.value()
+        num_decay_steps = self.decay_spin.value()
+        peak_lr = self.peak_lr_spin.value()
+        decay_lr = self.decay_lr_spin.value()
+        
+        output_dir = self.output_dir_edit.text()
+        eval_freq = self.eval_freq_spin.value()
+        push_to_hub = self.push_hub_checkbox.isChecked()
+        
+        # 构建完整的 CLI 命令
+        cmd_parts = [
+            "lerobot-train",
+            f"--policy.type {policy_type}",
+            f"--policy.freeze_smolvlm {str(freeze_smolvlm).lower()}",
+            f"--policy.enable_lew_world_model {str(enable_lew_world_model).lower()}",
+            f"--policy.repeated_diffusion_steps {repeated_diffusion_steps}",
+            f"--policy.push_to_hub {str(push_to_hub).lower()}",
+            f"--dataset.repo_id {dataset_repo_id}",
+            f"--steps {total_steps}",
+            f"--batch_size {batch_size}",
+            f"--eval_freq {eval_freq}",
+            f"--save_freq {checkpoint_interval}",
+            f"--optimizer.lr {learning_rate}",
+            f"--optimizer.weight_decay {weight_decay}",
+            f"--optimizer.grad_clip_norm {grad_clip_norm}",
+            f"--scheduler.type {scheduler_type}",
+            f"--scheduler.num_warmup_steps {num_warmup_steps}",
+            f"--scheduler.num_decay_steps {num_decay_steps}",
+            f"--scheduler.peak_lr {peak_lr}",
+            f"--scheduler.decay_lr {decay_lr}",
+            "--wandb.enable false"
+        ]
+        
+        full_cmd = " \\\n  ".join(cmd_parts)
+        
+        self._log("=" * 70)
+        self._log("📋 CLI COMMAND PREVIEW")
+        self._log("=" * 70)
+        self._log(full_cmd)
+        self._log("=" * 70)
+        self._log(f"Output directory: {output_dir}")
+        self._log(f"To run this command, click 'Start Training'")
+        self._log("=" * 70)
     
     def _update_progress(self, value):
         """Update progress bar"""

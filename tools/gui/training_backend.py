@@ -48,8 +48,35 @@ class TrainingBackend(QObject):
         repo_root = os.path.dirname(tools_dir)                  # repo_root
         return repo_root
 
-    def start_smolvla_training(self, repo_root, dataset_repo_id, batch_size, total_steps,
-                                learning_rate, output_dir, log_callback=None, progress_callback=None):
+    def start_smolvla_training(self, repo_root, 
+                                 # Policy settings
+                                 policy_type="smolvla_lew",
+                                 freeze_smolvlm=True,
+                                 enable_lew_world_model=False,
+                                 repeated_diffusion_steps=5,
+                                 # Dataset settings
+                                 dataset_repo_id="lerobot/pusht",
+                                 # Training settings
+                                 batch_size=8, 
+                                 total_steps=500,
+                                 checkpoint_interval=1000,
+                                 # Optimizer settings
+                                 learning_rate=0.0001,
+                                 weight_decay=0.000001,
+                                 grad_clip_norm=10.0,
+                                 # Scheduler settings
+                                 scheduler_type="cosine_decay_with_warmup",
+                                 num_warmup_steps=500,
+                                 num_decay_steps=500,
+                                 peak_lr=0.0001,
+                                 decay_lr=0.000001,
+                                 # Experiment settings
+                                 output_dir="outputs/smolvla_pusht",
+                                 eval_freq=500,
+                                 push_to_hub=False,
+                                 # Callbacks
+                                 log_callback=None, 
+                                 progress_callback=None):
         """
         启动 SmolVLA 训练
         使用 lerobot-train CLI，参数格式与用户命令行一致
@@ -70,23 +97,24 @@ class TrainingBackend(QObject):
         # 构建命令（与用户实际使用的命令格式一致）
         cmd = [
             lerobot_train,
-            "--policy.type", "smolvla_lew",
-            "--policy.freeze_smolvlm", "true",
-            "--policy.enable_lew_world_model", "false",
-            "--policy.repeated_diffusion_steps", "5",
-            "--policy.push_to_hub", "false",
+            "--policy.type", policy_type,
+            "--policy.freeze_smolvlm", str(freeze_smolvlm).lower(),
+            "--policy.enable_lew_world_model", str(enable_lew_world_model).lower(),
+            "--policy.repeated_diffusion_steps", str(repeated_diffusion_steps),
+            "--policy.push_to_hub", str(push_to_hub).lower(),
             "--dataset.repo_id", dataset_repo_id,
             "--steps", str(total_steps),
             "--batch_size", str(batch_size),
-            "--eval_freq", "500",
-            "--save_freq", "1000",
+            "--eval_freq", str(eval_freq),
+            "--save_freq", str(checkpoint_interval),
             "--optimizer.lr", str(learning_rate),
-            "--optimizer.weight_decay", "1e-6",
-            "--scheduler.type", "cosine_decay_with_warmup",
-            "--scheduler.num_warmup_steps", "500",
-            "--scheduler.num_decay_steps", str(total_steps),
-            "--scheduler.peak_lr", str(learning_rate),
-            "--scheduler.decay_lr", "1e-6",
+            "--optimizer.weight_decay", str(weight_decay),
+            "--optimizer.grad_clip_norm", str(grad_clip_norm),
+            "--scheduler.type", scheduler_type,
+            "--scheduler.num_warmup_steps", str(num_warmup_steps),
+            "--scheduler.num_decay_steps", str(num_decay_steps),
+            "--scheduler.peak_lr", str(peak_lr),
+            "--scheduler.decay_lr", str(decay_lr),
             "--wandb.enable", "false",
         ]
 
