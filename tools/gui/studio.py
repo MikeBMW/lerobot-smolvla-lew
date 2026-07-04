@@ -28,6 +28,9 @@ from PyQt5.QtGui import (
     QPainterPath, QPen, QDesktopServices, QPixmap  # 新增 QDesktopServices, QPixmap
 )
 
+# Z-MAX 版本同步模块
+from version_sync import VersionSyncWidget
+
 
 # ============================================================
 # 通用工具函数
@@ -252,7 +255,7 @@ class SystemSidebar(QFrame):
         layout.addStretch()
 
         # 底部信息
-        info = QLabel("v1.4 · smolvla_lew\nlerobot 0.5.2")
+        info = QLabel("0.5.2-zmax.1.5.0\nLeRobot · Z-MAX")
         info.setFont(QFont("Consolas", 8))
         info.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
         info.setAlignment(Qt.AlignCenter)
@@ -1000,6 +1003,15 @@ class HomeWidget(QWidget):
         sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
         row.addWidget(sync_btn)  # 新增同步按钮
 
+        # ====== 版本同步按钮（快速跳转到版本管理页面） ======
+        ver_btn = QPushButton("📦 版本同步")
+        ver_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        ver_btn.setCursor(Qt.PointingHandCursor)
+        ver_btn.setToolTip("检查 LeRobot 上游更新 · 安全同步 · 版本管理")
+        ver_btn.clicked.connect(lambda: self.module_clicked.emit("version"))
+        row.addWidget(ver_btn)
+
         # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
         doc_btn = QPushButton("📋 解决方案v2.0")
         doc_btn.setFont(QFont("Arial", 9, QFont.Bold))
@@ -1062,6 +1074,7 @@ class HomeWidget(QWidget):
             ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
             ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
+            ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
         ]
         for i, (mid, icon, title, syslbl, desc, color) in enumerate(modules):
             card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color)
@@ -2253,6 +2266,7 @@ class StudioMainWindow(QMainWindow):
             "config":     5,
             "monitor":    6,
             "plugging":   7,
+            "version":    8,
         }
 
         self.stack.addWidget(DatasetModule())
@@ -2262,6 +2276,10 @@ class StudioMainWindow(QMainWindow):
         self.stack.addWidget(ConfigModule())
         self.stack.addWidget(MonitorModule())
         self.stack.addWidget(PluggingSceneModule())
+
+        # Version Sync Module (需要 repo path)
+        repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.stack.addWidget(VersionSyncWidget(repo_path))
 
         root.addWidget(self.stack, 1)
         central.setLayout(root)
@@ -2289,7 +2307,7 @@ class StudioMainWindow(QMainWindow):
         self.stack.setCurrentIndex(idx)
 
         # 更新状态栏
-        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景"]
+        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步"]
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
 
 
