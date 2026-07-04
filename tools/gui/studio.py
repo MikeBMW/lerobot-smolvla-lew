@@ -1987,26 +1987,26 @@ class TrainingModule(QWidget):
             QLabel {{
                 color: {C_WHITE};
                 background: transparent;
-                padding: 12px 0px;
-                min-height: 36px;
+                padding: 2px 0px;
+                min-height: 24px;
             }}
             QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {{
-                min-height: 36px;
-                padding: 10px;
+                min-height: 24px;
+                padding: 4px 8px;
                 color: {C_WHITE};
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
             }}
             QCheckBox {{
-                min-height: 36px;
-                padding: 10px 0px;
+                min-height: 24px;
+                padding: 2px 0px;
                 color: {C_WHITE};
             }}
         """)
         
         param_layout = QFormLayout()
-        param_layout.setSpacing(20)  # increased from 12 to 20
+        param_layout.setSpacing(12)
         param_layout.setHorizontalSpacing(20)
         param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         
@@ -2031,7 +2031,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
                 min-width: 200px;
             }}
             QComboBox:hover {{
@@ -2039,34 +2039,14 @@ class TrainingModule(QWidget):
             }}
             QComboBox::drop-down {{
                 border: none;
-                width: 24px;
+                width: 20px;
             }}
             QComboBox::down-arrow {{
                 image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid {C_WHITE};
-                margin-right: 8px;
-            }}
-            QComboBox QAbstractItemView {{
-                background: {C_CARD};
-                color: {C_WHITE};
-                border: 1px solid {C_BORDER};
-                outline: 0;
-                selection-background-color: {C_BLUE};
-                selection-color: #ffffff;
-            }}
-            QComboBox QAbstractItemView::item {{
-                padding: 6px 12px;
-                min-width: 180px;
-            }}
-            QComboBox QAbstractItemView::item:hover {{
-                background: {C_HOVER};
-                color: {C_WHITE};
-            }}
-            QComboBox QAbstractItemView::item:selected {{
-                background: {C_BLUE};
-                color: #ffffff;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid {C_WHITE};
+                margin-right: 6px;
             }}
         """)
         self.policy_combo.setToolTip("Policy type (--policy.type)")
@@ -2130,7 +2110,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.diffusion_spin.setToolTip("Repeated diffusion steps (--policy.repeated_diffusion_steps)")
@@ -2151,7 +2131,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
                 min-width: 200px;
             }}
             QComboBox:hover {{
@@ -2159,34 +2139,14 @@ class TrainingModule(QWidget):
             }}
             QComboBox::drop-down {{
                 border: none;
-                width: 24px;
+                width: 20px;
             }}
             QComboBox::down-arrow {{
                 image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid {C_WHITE};
-                margin-right: 8px;
-            }}
-            QComboBox QAbstractItemView {{
-                background: {C_CARD};
-                color: {C_WHITE};
-                border: 1px solid {C_BORDER};
-                outline: 0;
-                selection-background-color: {C_BLUE};
-                selection-color: #ffffff;
-            }}
-            QComboBox QAbstractItemView::item {{
-                padding: 6px 12px;
-                min-width: 180px;
-            }}
-            QComboBox QAbstractItemView::item:hover {{
-                background: {C_HOVER};
-                color: {C_WHITE};
-            }}
-            QComboBox QAbstractItemView::item:selected {{
-                background: {C_BLUE};
-                color: #ffffff;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid {C_WHITE};
+                margin-right: 6px;
             }}
         """)
         param_layout.addRow("Dataset:", self.dataset_combo)
@@ -2201,7 +2161,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.batch_spin.setToolTip("Number of samples processed per training step")
@@ -2218,7 +2178,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.steps_spin.setToolTip("Total number of training steps")
@@ -2235,7 +2195,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.ckpt_spin.setToolTip("Number of steps to save checkpoint")
@@ -2255,7 +2215,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.dataset_repo_edit.setToolTip("HuggingFace dataset repo ID (--dataset.repo_id)")
@@ -2279,7 +2239,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.lr_spin.setToolTip("Optimizer learning rate (--optimizer.lr)")
@@ -2297,7 +2257,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.weight_decay_spin.setToolTip("Weight decay (--optimizer.weight_decay)")
@@ -2315,7 +2275,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.grad_clip_spin.setToolTip("Gradient clipping norm (--optimizer.grad_clip_norm)")
@@ -2340,7 +2300,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
                 min-width: 200px;
             }}
             QComboBox:hover {{
@@ -2348,34 +2308,14 @@ class TrainingModule(QWidget):
             }}
             QComboBox::drop-down {{
                 border: none;
-                width: 24px;
+                width: 20px;
             }}
             QComboBox::down-arrow {{
                 image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid {C_WHITE};
-                margin-right: 8px;
-            }}
-            QComboBox QAbstractItemView {{
-                background: {C_CARD};
-                color: {C_WHITE};
-                border: 1px solid {C_BORDER};
-                outline: 0;
-                selection-background-color: {C_BLUE};
-                selection-color: #ffffff;
-            }}
-            QComboBox QAbstractItemView::item {{
-                padding: 6px 12px;
-                min-width: 180px;
-            }}
-            QComboBox QAbstractItemView::item:hover {{
-                background: {C_HOVER};
-                color: {C_WHITE};
-            }}
-            QComboBox QAbstractItemView::item:selected {{
-                background: {C_BLUE};
-                color: #ffffff;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid {C_WHITE};
+                margin-right: 6px;
             }}
         """)
         self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
@@ -2392,7 +2332,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.warmup_spin.setToolTip("Number of warmup steps (--scheduler.num_warmup_steps)")
@@ -2409,7 +2349,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.decay_spin.setToolTip("Number of decay steps (--scheduler.num_decay_steps)")
@@ -2427,7 +2367,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.peak_lr_spin.setToolTip("Peak learning rate (--scheduler.peak_lr)")
@@ -2445,7 +2385,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.decay_lr_spin.setToolTip("Final learning rate after decay (--scheduler.decay_lr)")
@@ -2468,7 +2408,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.eval_freq_spin.setToolTip("Evaluation frequency in steps, 0 to disable (--eval.frequency)")
@@ -2506,7 +2446,7 @@ class TrainingModule(QWidget):
                 background: {C_BG};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px 8px;
             }}
         """)
         self.output_dir_edit.setToolTip("Output directory for checkpoints and logs")
