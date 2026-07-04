@@ -1913,7 +1913,7 @@ class TrainingModule(QWidget):
         top_bar.addStretch()
         
         # SmolVLA button
-        self.smolvla_btn = QPushButton("🧠 SmolVLA Native Training")
+        self.smolvla_btn = QPushButton("🧠  Native Training")
         self.smolvla_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {C_BLUE};
@@ -3927,6 +3927,33 @@ class StudioMainWindow(QMainWindow):
         # ====== 文档菜单（帮助文档） ======
         m_doc = mb.addMenu("帮助文档(&H)")
 
+        # === Git 操作指南 + README（置顶） ===
+        m_git = m_doc.addMenu("🔄 Git 推送与拉取指南")
+        m_git.addAction(self._mk_doc_action("📖 完整操作指南 (README.md) — 含 git push/pull/clone",
+            (["README.md"], "xdg-open")))
+        m_git.addSeparator()
+        # 在子菜单里添加常用 Git 命令的快捷说明
+        act_clone = QAction("📥 克隆项目: git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git", self)
+        act_clone.triggered.connect(lambda: self._copy_git_cmd("git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git"))
+        m_git.addAction(act_clone)
+        act_pull = QAction("📥 拉取更新: git pull origin main", self)
+        act_pull.triggered.connect(lambda: self._copy_git_cmd("git pull origin main"))
+        m_git.addAction(act_pull)
+        act_push = QAction("📤 推送代码: git add -A && git commit -m 'msg' && git push origin main", self)
+        act_push.triggered.connect(lambda: self._copy_git_cmd("git add -A && git commit -m 'msg' && git push origin main"))
+        m_git.addAction(act_push)
+        act_status = QAction("🔍 查看状态: git status", self)
+        act_status.triggered.connect(lambda: self._copy_git_cmd("git status"))
+        m_git.addAction(act_status)
+        act_log = QAction("📜 查看历史: git log --oneline -10", self)
+        act_log.triggered.connect(lambda: self._copy_git_cmd("git log --oneline -10"))
+        m_git.addAction(act_log)
+        act_diff = QAction("🔀 查看差异: git diff --cached", self)
+        act_diff.triggered.connect(lambda: self._copy_git_cmd("git diff --cached"))
+        m_git.addAction(act_diff)
+
+        m_doc.addSeparator()
+
         # L1 - 战略层
         m_l1 = m_doc.addMenu("L1 · 战略层文档")
         m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品介绍 PPT (v1.0.0)",
@@ -3966,8 +3993,6 @@ class StudioMainWindow(QMainWindow):
             (["VERSION.md"], "xdg-open")))
         m_admin.addAction(self._mk_doc_action("🔄 上游同步指南",
             (["Z-MAX-UPSTREAM-SYNC.md"], "xdg-open")))
-        m_admin.addAction(self._mk_doc_action("📚 文档索引 README",
-            (["README.md"], "xdg-open")))
 
         # ====== 帮助菜单 ======
         m_help = mb.addMenu("关于(&A)")
@@ -4012,6 +4037,19 @@ class StudioMainWindow(QMainWindow):
         act = QAction(label, self)
         act.triggered.connect(open_doc)
         return act
+
+    def _copy_git_cmd(self, cmd):
+        """将 Git 命令复制到剪贴板并提示用户"""
+        try:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(cmd)
+            QMessageBox.information(self, "Git 命令已复制",
+                f"以下命令已复制到剪贴板：\n\n"
+                f"<code>{cmd}</code>\n\n"
+                f"粘贴到终端即可执行。\n\n"
+                f"完整文档请打开：\n  帮助文档 → Git 推送与拉取指南 → 📖 完整操作指南 (README.md)")
+        except Exception as e:
+            QMessageBox.warning(self, "复制失败", f"无法复制命令: {e}\n\n{cmd}")
 
     def _menu_sync_to_github(self):
         """菜单调用的 GitHub 同步（委托给 HomeWidget）"""

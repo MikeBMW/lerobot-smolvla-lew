@@ -1,164 +1,197 @@
-<!---
-Copyright 2020 The HuggingFace Team. All rights reserved.
+# Z-MAX 具身智能开发文档
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+> **当前产品版本：v1.0.1** | **LeRobot 基线：v0.5.2** | **GitHub**: https://github.com/MikeBMW/lerobot-smolvla-lew
 
-    http://www.apache.org/licenses/LICENSE-2.0
+---
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
--->
+## 🔄 Git 操作快速参考
 
-# Z-MAX 文档索引
+### 首次安装（从 GitHub 克隆项目）
 
-> **当前产品版本：v1.0.1**
+```bash
+# 1. 克隆仓库到本地
+git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git
 
-## 快速入口
+# 如果需要特定目录：
+cd ~/  # 或任何你喜欢的位置
+git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git
+
+# 2. 进入项目目录
+cd lerobot-smolvla-lew
+
+# 3. 安装 Python 依赖
+pip install -e .
+
+# 4. 运行 GUI
+bash tools/gui/run_studio.sh
+```
+
+### 日常拉取更新（从 GitHub 下载最新代码）
+
+```bash
+# 进入项目目录
+cd ~/lerobot-smolvla-lew   # 或你的项目路径
+
+# 拉取远程所有更新
+git pull origin main
+
+# 如果有本地未提交的修改，可以先 stash 再 pull：
+git stash
+git pull origin main
+git stash pop
+```
+
+### 推送代码到 GitHub（上传本地修改）
+
+```bash
+# 1. 查看修改了哪些文件
+git status
+
+# 2. 添加所有修改到暂存区（或用 git add 指定文件）
+git add -A
+
+# 3. 提交修改（写一条有描述的 commit message）
+git commit -m "feat: 你的修改描述"
+
+# 4. 推送到 GitHub
+git push origin main
+```
+
+### 查看历史和差异
+
+```bash
+# 查看最近 5 条提交历史
+git log --oneline -5
+
+# 查看当前工作区和暂存区的差异
+git diff --cached
+
+# 查看当前工作区（未暂存）的差异
+git diff
+
+# 查看某个文件的提交历史
+git log --oneline tools/gui/studio.py
+```
+
+### 同步上游 LeRobot 官方更新（仅限维护者）
+
+```bash
+# 添加上游仓库（只需执行一次）
+git remote add upstream https://github.com/lerobot/lerobot.git
+
+# 拉取上游最新代码
+git fetch upstream
+
+# 合并上游 main 到本地 main
+git merge upstream/main
+
+# 解决可能的冲突后，推送到自己的 GitHub
+git push origin main
+```
+
+### 常用 Git 命令速查表
+
+| 命令 | 说明 | 示例 |
+|------|------|------|
+| `git clone <url>` | 从 GitHub 下载整个项目 | `git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git` |
+| `git pull` | 下载+合并远程更新 | `git pull origin main` |
+| `git status` | 查看当前修改状态 | `git status` |
+| `git add -A` | 将所有修改添加到暂存区 | `git add -A` |
+| `git commit -m "..."` | 提交修改 | `git commit -m "fix: 修复bug"` |
+| `git push` | 推送提交到远程仓库 | `git push origin main` |
+| `git log --oneline` | 查看提交历史（简洁模式） | `git log --oneline -10` |
+| `git diff` | 查看文件差异 | `git diff tools/gui/studio.py` |
+| `git stash` | 临时保存未提交修改 | `git stash` / `git stash pop` |
+| `git branch` | 查看/创建/切换分支 | `git branch feature-new` |
+
+---
+
+## 📦 产品版本管理
+
+> **当前版本：v1.0.1** (2026年7月4日)
+> 详细版本历史和发布流程见 [VERSION.md](./VERSION.md)
+
+### 快速入口
 
 - [📦 产品版本管理](./VERSION.md) - 版本号规范与发布流程
 - [🔄 上游同步指南](./Z-MAX-UPSTREAM-SYNC.md) - LeRobot上游同步工作流
 
-## 主文档（v1.0.0）
+---
 
-| 层级 | 文档 | 用途 |
-|------|------|------|
-| **L1 战略层** | [L1-Z-MAX产品发布-v1.0.0.pptx](./L1-Z-MAX产品发布-v1.0.0.pptx) | 管理层汇报、投资人路演 |
-| **L2 方案层** | [L2-Z-MAX解决方案-v1.0.1.md](./L2-Z-MAX解决方案-v1.0.1.md) | 客户解决方案详述 |
-| **L3 实施层** | [L3-技术路线与开发指南-v1.0.0.md](./L3-技术路线与开发指南-v1.0.0.md) | 研发指导、代码实现 |
-| **品牌注册** | [BRAND-品牌注册材料.pptx](./BRAND-品牌注册材料.pptx) | 商标注册、品牌审批 |
+## 📋 主文档（v1.0.0 / v1.0.1）
 
-## 参考资料
+| 层级 | 文档 | 用途 | 读者 |
+|------|------|------|------|
+| **L1 战略层** | [L1-Z-MAX产品发布-v1.0.0.pptx](./L1-Z-MAX产品发布-v1.0.0.pptx) | 管理层汇报、投资人路演 | CEO / CTO / 投资人 |
+| **L2 方案层** | [L2-Z-MAX解决方案-v1.0.1.md](./L2-Z-MAX解决方案-v1.0.1.md) | 客户解决方案详述、技术选型 | 客户CTO / 技术负责人 |
+| **L3 实施层** | [L3-技术路线与开发指南-v1.0.0.md](./L3-技术路线与开发指南-v1.0.0.md) | 研发指导、代码实现 | 研发工程师 |
+| **品牌注册** | [BRAND-品牌注册材料.pptx](./BRAND-品牌注册材料.pptx) | 商标注册、品牌审批 | 法务 / 品牌部 |
 
-- [竞品方案](./轮式双臂机器人光模块自主插拔项目-20260702.pdf) - 外部参考
+### 核心指标 (v1.0.1)
+
+| 指标 | 目标值 |
+|------|--------|
+| 插拔精度 | ±0.02 mm |
+| 成功率 | >99% |
+| 节拍 | <5s / 个 |
+| 关键工序良率 | 99%+ |
+| 力控带宽 | >10kHz |
+| 双臂协同 | 左取料 + 右插拔 |
+| ROI回收期 | 14~22月 |
+
+---
+
+## 🤖 技术资料
+
+### 策略实现
+- [SmolVLA-LEW 策略设计](../src/lerobot/policies/smolvla_lew/README.md)
+- [Z-MAX 策略体系](../src/lerobot/policies/) - sys1 / sys11 / sys12 / sys2 四阶段演进
+
+### GUI 工具
+- [XSpace Studio GUI](../tools/gui/studio.py) - 暗色主题，9大功能模块
+- [数据集查看器](../tools/gui/dataset_viewer.py) - 浏览下载的数据集（图片/视频/state）
+- [训练后端](../tools/gui/training_backend.py) - 调用 lerobot-train CLI 管理训练进程
+
+### 脚本
+- [数据集浏览器](../scripts/view_lerobot_data.py) - 独立运行，查看开源数据集元信息
+- [上游同步脚本](../scripts/sync-upstream.sh) - 一键同步 LeRobot 官方更新
+
+### 参考资料
+- [竞品方案 PDF](./轮式双臂机器人光模块自主插拔项目-20260702.pdf) - 外部参考
 - [历史版本归档](./archive/) - 已废弃的内部草稿
 
 ---
 
-# LeRobot 原文档
+## 🛠️ 开发环境配置
 
-To generate the documentation, you first have to build it. Several packages are necessary to build the doc,
-you can install them with the following command, at the root of the code repository:
+### Python 环境要求
+- Python 3.12（推荐，conda 环境名 `lerobot`）
+- PyTorch 2.x + CUDA 支持
+- PyQt5（GUI 使用）
+- transformers >= 4.52（SmolVLM 模型）
+- huggingface_hub, peft, datasets
+
+### 快速启动
+```bash
+# 创建 conda 环境
+conda create -n lerobot python=3.12 -y
+conda activate lerobot
+
+# 安装项目
+cd ~/lerobot-smolvla-lew
+pip install -e .
+
+# 启动 GUI
+bash tools/gui/run_studio.sh
+```
+
+---
+
+## 📐 LeRobot 原生文档生成
+
+以下是 LeRobot 官方文档的构建说明，如需本地生成文档可参考：
 
 ```bash
 pip install -e . -r docs-requirements.txt
+make doc BUILD=1
 ```
-
-You will also need `nodejs`. Please refer to their [installation page](https://nodejs.org/en/download)
-
----
-
-**NOTE**
-
-You only need to generate the documentation to inspect it locally (if you're planning changes and want to
-check how they look before committing for instance). You don't have to `git commit` the built documentation.
-
----
-
-## Building the documentation
-
-Once you have setup the `doc-builder` and additional packages, you can generate the documentation by
-typing the following command:
-
-```bash
-doc-builder build lerobot docs/source/ --build_dir ~/tmp/test-build
-```
-
-You can adapt the `--build_dir` to set any temporary folder that you prefer. This command will create it and generate
-the MDX files that will be rendered as the documentation on the main website. You can inspect them in your favorite
-Markdown editor.
-
-## Previewing the documentation
-
-To preview the docs, first install the `watchdog` module with:
-
-```bash
-pip install watchdog
-```
-
-Then run the following command:
-
-```bash
-doc-builder preview lerobot docs/source/
-```
-
-The docs will be viewable at [http://localhost:3000](http://localhost:3000). You can also preview the docs once you have opened a PR. You will see a bot add a comment to a link where the documentation with your changes lives.
-
----
-
-**NOTE**
-
-The `preview` command only works with existing doc files. When you add a completely new file, you need to update `_toctree.yml` & restart `preview` command (`ctrl-c` to stop it & call `doc-builder preview ...` again).
-
----
-
-## Adding a new element to the navigation bar
-
-Accepted files are Markdown (.md).
-
-Create a file with its extension and put it in the source directory. You can then link it to the toc-tree by putting
-the filename without the extension in the [`_toctree.yml`](https://github.com/huggingface/lerobot/blob/main/docs/source/_toctree.yml) file.
-
-## Renaming section headers and moving sections
-
-It helps to keep the old links working when renaming the section header and/or moving sections from one document to another. This is because the old links are likely to be used in Issues, Forums, and Social media and it'd make for a much more superior user experience if users reading those months later could still easily navigate to the originally intended information.
-
-Therefore, we simply keep a little map of moved sections at the end of the document where the original section was. The key is to preserve the original anchor.
-
-So if you renamed a section from: "Section A" to "Section B", then you can add at the end of the file:
-
-```
-Sections that were moved:
-
-[ <a href="#section-b">Section A</a><a id="section-a"></a> ]
-```
-
-and of course, if you moved it to another file, then:
-
-```
-Sections that were moved:
-
-[ <a href="../new-file#section-b">Section A</a><a id="section-a"></a> ]
-```
-
-Use the relative style to link to the new file so that the versioned docs continue to work.
-
-For an example of a rich moved sections set please see the very end of [the transformers Trainer doc](https://github.com/huggingface/transformers/blob/main/docs/source/en/main_classes/trainer.md).
-
-### Adding a new tutorial
-
-Adding a new tutorial or section is done in two steps:
-
-- Add a new file under `./source`. This file can either be ReStructuredText (.rst) or Markdown (.md).
-- Link that file in `./source/_toctree.yml` on the correct toc-tree.
-
-Make sure to put your new file under the proper section. If you have a doubt, feel free to ask in a Github Issue or PR.
-
-### Writing source documentation
-
-Values that should be put in `code` should either be surrounded by backticks: \`like so\`. Note that argument names
-and objects like True, None or any strings should usually be put in `code`.
-
-#### Writing a multi-line code block
-
-Multi-line code blocks can be useful for displaying examples. They are done between two lines of three backticks as usual in Markdown:
-
-````
-```
-# first line of code
-# second line
-# etc
-```
-````
-
-#### Adding an image
-
-Due to the rapidly growing repository, it is important to make sure that no files that would significantly weigh down the repository are added. This includes images, videos, and other non-text files. We prefer to leverage a hf.co hosted `dataset` like
-the ones hosted on [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) in which to place these files and reference
-them by URL. We recommend putting them in the following dataset: [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images).
-If an external contribution, feel free to add the images to your PR and ask a Hugging Face member to migrate your images
-to this dataset.
