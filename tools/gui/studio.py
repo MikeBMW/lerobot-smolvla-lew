@@ -255,7 +255,7 @@ class SystemSidebar(QFrame):
         layout.addStretch()
 
         # 底部信息
-        info = QLabel("0.5.2-zmax.1.0.0\nLeRobot · Z-MAX")
+        info = QLabel("0.5.2-zmax.1.0.1\nLeRobot · Z-MAX")
         info.setFont(QFont("Consolas", 8))
         info.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
         info.setAlignment(Qt.AlignCenter)
@@ -1013,7 +1013,7 @@ class HomeWidget(QWidget):
         row.addWidget(ver_btn)
 
         # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
-        doc_btn = QPushButton("📋 解决方案v1.0.0")
+        doc_btn = QPushButton("📋 解决方案v1.0.1")
         doc_btn.setFont(QFont("Arial", 9, QFont.Bold))
         doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         doc_btn.setCursor(Qt.PointingHandCursor)
@@ -1173,10 +1173,10 @@ class HomeWidget(QWidget):
             QMessageBox.warning(self, "同步异常", f"发生异常:\n{str(e)}")
 
     def _open_spec_doc(self):
-        """打开解决方案文档 v1.0.0"""
+        """打开解决方案文档 v1.0.1"""
         try:
             # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
-            doc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'L2-Z-MAX解决方案-v1.0.0.md')
+            doc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'L2-Z-MAX解决方案-v1.0.1.md')
             subprocess.run([
                 'xdg-open',
                 doc_path
