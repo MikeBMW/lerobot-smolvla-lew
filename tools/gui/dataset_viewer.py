@@ -11,7 +11,7 @@ import os
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QListWidget, QTabWidget, QFrame, QScrollArea,
-    QListWidgetItem, QGroupBox, QMessageBox
+    QListWidgetItem, QGroupBox, QMessageBox, QWidget
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPixmap, QImage
