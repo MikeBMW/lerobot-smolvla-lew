@@ -1764,65 +1764,43 @@ Default Branch: {branch}
             def run(self):
                 try:
                     try:
-                        from huggingface_hub import snapshot_download, hf_hub_download
-                        from huggingface_hub import HfApi
-                        api = HfApi()
-                        files = api.list_repo_files(self.repo_id, repo_type="dataset")
-
-                        # 下载 info.json 先获取 episode 数量
-                        meta_path = hf_hub_download(
+                        from huggingface_hub import snapshot_download
+                        self.progress.emit(f"⬇️ 开始下载 {self.repo_id}...")
+                        
+                        # LeRobot v2 使用分块parquet格式，直接下载整个数据集
+                        # 但限制只下载 data/ 和 meta/ 目录
+                        cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+                        
+                        local_path = snapshot_download(
                             repo_id=self.repo_id,
-                            filename="meta/info.json",
-                            repo_type="dataset"
+                            repo_type="dataset",
+                            cache_dir=cache_dir,
+                            allow_patterns=[
+                                "meta/*",           # 元数据
+                                "data/*",           # 数据文件 (parquet)
+                                "videos/*",         # 视频文件 (如果有)
+                            ],
+                            ignore_patterns=[
+                                "*.md",             # 文档
+                                "LICENSE*",         # 许可证
+                            ],
                         )
-                        self.progress.emit(f"✅ 已下载 meta/info.json")
-
-                        # 获取总 episode 数
-                        import json
-                        with open(meta_path, 'r') as f:
-                            meta = json.load(f)
-                        total_eps = meta.get("total_episodes", 0)
-                        download_n = min(self.n, total_eps)
-                        self.progress.emit(f"总 episode: {total_eps}, 将下载前 {download_n} 个")
-
-                        # 下载 parquet 数据文件
-                        parquet_files = [f for f in files if f.startswith("data/") and f.endswith(".parquet")]
-                        self.progress.emit(f"找到 {len(parquet_files)} 个 parquet 文件")
-
-                        # 下载前 N 个 episode 对应的 parquet
-                        downloaded = 0
-                        for i, pf in enumerate(parquet_files):
-                            # 解析 episode 编号
-                            ep_str = pf.split("episode_")[-1].replace(".parquet", "")
-                            try:
-                                ep_num = int(ep_str)
-                            except ValueError:
-                                continue
-
-                            if ep_num >= download_n:
-                                break
-
-                            hf_hub_download(
-                                repo_id=self.repo_id,
-                                filename=pf,
-                                repo_type="dataset"
-                            )
-                            downloaded += 1
-                            self.progress.emit(f"  ⬇️ [{downloaded}] {pf}")
-
-                        # 下载 videos (如果有且数量少)
-                        video_files = [f for f in files if f.startswith("videos/")]
-                        n_videos = len(video_files)
-                        if n_videos > 0 and n_videos <= download_n * 2:
-                            for vf in video_files[:download_n]:
-                                try:
-                                    hf_hub_download(repo_id=self.repo_id, filename=vf, repo_type="dataset")
-                                    self.progress.emit(f"  🎥 {vf}")
-                                except:
-                                    pass
-
-                        self.progress.emit(f"\n✅ 下载完成！已下载 {downloaded} 个 episode 的数据")
-                        self.finished.emit(True, f"成功下载 {downloaded} / {download_n} episodes")
+                        
+                        self.progress.emit(f"✅ 数据集已下载到:\n{local_path}")
+                        self.progress.emit(f"\n📦 包含的文件:")
+                        
+                        # 列出下载的文件
+                        if os.path.exists(local_path):
+                            meta_files = glob.glob(os.path.join(local_path, "meta/*"))
+                            data_files = glob.glob(os.path.join(local_path, "data/**/*.parquet", recursive=True))
+                            video_files = glob.glob(os.path.join(local_path, "videos/**/*.mp4", recursive=True))
+                            
+                            self.progress.emit(f"  📋 meta/: {len(meta_files)} 个文件")
+                            self.progress.emit(f"  📊 data/: {len(data_files)} 个 parquet 文件")
+                            if video_files:
+                                self.progress.emit(f"  🎥 videos/: {len(video_files)} 个视频文件")
+                        
+                        self.finished.emit(True, f"成功下载数据集到 {local_path}")
 
                     except ImportError:
                         self.finished.emit(False, "缺少 huggingface_hub 库，无法下载")
