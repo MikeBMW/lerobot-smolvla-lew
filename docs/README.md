@@ -14,7 +14,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Generating the documentation
+# Z-MAX 文档索引
+
+> **当前产品版本：v1.0.0**
+
+## 快速入口
+
+- [📦 产品版本管理](./VERSION.md) - 版本号规范与发布流程
+- [🔄 上游同步指南](./Z-MAX-UPSTREAM-SYNC.md) - LeRobot上游同步工作流
+
+## 主文档（v1.0.0）
+
+| 层级 | 文档 | 用途 |
+|------|------|------|
+| **L1 战略层** | [L1-Z-MAX产品发布-v1.0.0.pptx](./L1-Z-MAX产品发布-v1.0.0.pptx) | 管理层汇报、投资人路演 |
+| **L2 方案层** | [L2-Z-MAX解决方案-v1.0.0.md](./L2-Z-MAX解决方案-v1.0.0.md) | 客户解决方案详述、技术选型 |
+| **L3 实施层** | [L3-技术路线与开发指南-v1.0.0.md](./L3-技术路线与开发指南-v1.0.0.md) | 研发指导、代码实现 |
+| **品牌注册** | [BRAND-品牌注册材料.pptx](./BRAND-品牌注册材料.pptx) | 商标注册、品牌审批 |
+
+## 参考资料
+
+- [竞品方案](./轮式双臂机器人光模块自主插拔项目-20260702.pdf) - 外部参考
+- [历史版本归档](./archive/) - 已废弃的内部草稿
+
+---
+
+# LeRobot 原文档
 
 To generate the documentation, you first have to build it. Several packages are necessary to build the doc,
 you can install them with the following command, at the root of the code repository:
