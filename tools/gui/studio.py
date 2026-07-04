@@ -2034,6 +2034,24 @@ class TrainingModule(QWidget):
                 padding: 6px;
                 min-width: 200px;
             }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid {C_WHITE};
+                margin-right: 8px;
+            }}
+            QComboBox QAbstractItemView {{
+                background: {C_CARD};
+                color: {C_WHITE};
+                border: 1px solid {C_BORDER};
+                selection-background-color: {C_BLUE}66;
+                selection-color: {C_WHITE};
+            }}
         """)
         self.policy_combo.setToolTip("Policy type (--policy.type)")
         param_layout.addRow("Policy Type:", self.policy_combo)
@@ -2041,14 +2059,48 @@ class TrainingModule(QWidget):
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
         self.freeze_checkbox.setChecked(True)
-        self.freeze_checkbox.setStyleSheet(f"QCheckBox {{ color: {C_WHITE}; }}")
+        self.freeze_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
         self.freeze_checkbox.setToolTip("Freeze SmolVLM backbone (--policy.freeze_smolvlm)")
         param_layout.addRow("Freeze SmolVLM:", self.freeze_checkbox)
         
         # Enable World Model
         self.world_model_checkbox = QCheckBox("Enabled")
         self.world_model_checkbox.setChecked(False)
-        self.world_model_checkbox.setStyleSheet(f"QCheckBox {{ color: {C_WHITE}; }}")
+        self.world_model_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
         self.world_model_checkbox.setToolTip("Enable LeWorld Model (--policy.enable_lew_world_model)")
         param_layout.addRow("World Model:", self.world_model_checkbox)
         
@@ -2085,6 +2137,24 @@ class TrainingModule(QWidget):
                 border-radius: 4px;
                 padding: 6px;
                 min-width: 200px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid {C_WHITE};
+                margin-right: 8px;
+            }}
+            QComboBox QAbstractItemView {{
+                background: {C_CARD};
+                color: {C_WHITE};
+                border: 1px solid {C_BORDER};
+                selection-background-color: {C_BLUE}66;
+                selection-color: {C_WHITE};
             }}
         """)
         param_layout.addRow("Dataset:", self.dataset_combo)
@@ -2241,6 +2311,24 @@ class TrainingModule(QWidget):
                 padding: 6px;
                 min-width: 200px;
             }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid {C_WHITE};
+                margin-right: 8px;
+            }}
+            QComboBox QAbstractItemView {{
+                background: {C_CARD};
+                color: {C_WHITE};
+                border: 1px solid {C_BORDER};
+                selection-background-color: {C_BLUE}66;
+                selection-color: {C_WHITE};
+            }}
         """)
         self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
         param_layout.addRow("Scheduler Type:", self.scheduler_combo)
@@ -2341,7 +2429,24 @@ class TrainingModule(QWidget):
         # Push to Hub
         self.push_hub_checkbox = QCheckBox("Enabled")
         self.push_hub_checkbox.setChecked(False)
-        self.push_hub_checkbox.setStyleSheet(f"QCheckBox {{ color: {C_WHITE}; }}")
+        self.push_hub_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
         self.push_hub_checkbox.setToolTip("Push checkpoint to HuggingFace Hub (--policy.push_to_hub)")
         param_layout.addRow("Push to Hub:", self.push_hub_checkbox)
         
@@ -2373,12 +2478,12 @@ class TrainingModule(QWidget):
                 background: transparent;
             }}
             QScrollBar:vertical {{
-                background: {C_BG};
+                background: {C_BORDER};
                 width: 12px;
                 margin: 0;
             }}
             QScrollBar::handle:vertical {{
-                background: {C_BORDER};
+                background: {C_BLUE};
                 border-radius: 6px;
                 min-height: 30px;
             }}
@@ -3881,7 +3986,7 @@ class StudioMainWindow(QMainWindow):
 
     def _build_menubar(self):
         """构建专业开发环境菜单栏"""
-        self.repo_path = os.path.dirname(os.path.dirname(__file__))
+        self.repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.docs_path = os.path.join(self.repo_path, "docs")
 
         mb = self.menuBar()
