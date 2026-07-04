@@ -4262,6 +4262,14 @@ def main():
             background: {C_BORDER};
             margin: 4px 8px;
         }}
+
+        /* QComboBox下拉列表样式 - 简单干净 */
+        QComboBox QAbstractItemView {{
+            background: {C_BG};
+            color: {C_WHITE};
+            border: 1px solid {C_BORDER};
+            outline: none;
+        }}
     """)
 
     win = StudioMainWindow()
