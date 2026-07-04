@@ -1464,21 +1464,66 @@ class DatasetModule(SubModuleWidget):
             info_btn = QPushButton("信息")
             info_btn.setFixedHeight(36)
             info_btn.setToolTip("查看数据集元信息 (episodes/frames/features)")
-            info_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{SYS2_COLOR}; border:1px solid {SYS2_COLOR}88; border-radius:4px; padding:6px 18px; font-size:12px; font-weight:bold;}} QPushButton:hover{{background:{SYS2_COLOR}33;}}")
+            info_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {SYS2_COLOR};
+                    border: 1px solid {SYS2_COLOR}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {SYS2_COLOR}33;
+                }}
+            """)
             info_btn.clicked.connect(self._mk_info_func(ds))
             btn_layout.addWidget(info_btn)
 
             dl_btn = QPushButton("下载")
             dl_btn.setFixedHeight(36)
             dl_btn.setToolTip("下载前N个episodes (用户指定数量)")
-            dl_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_GREEN}; border:1px solid {C_GREEN}88; border-radius:4px; padding:6px 18px; font-size:12px; font-weight:bold;}} QPushButton:hover{{background:{C_GREEN}33;}}")
+            dl_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_GREEN};
+                    border: 1px solid {C_GREEN}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {C_GREEN}33;
+                }}
+            """)
             dl_btn.clicked.connect(self._mk_download_func(ds))
             btn_layout.addWidget(dl_btn)
 
             del_btn = QPushButton("删除")
             del_btn.setFixedHeight(36)
             del_btn.setToolTip("删除本地缓存 (释放磁盘空间)")
-            del_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_RED}; border:1px solid {C_RED}88; border-radius:4px; padding:6px 18px; font-size:12px; font-weight:bold;}} QPushButton:hover{{background:{C_RED}33; color:{C_RED};}}")
+            del_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_RED};
+                    border: 1px solid {C_RED}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {C_RED}33;
+                }}
+            """)
             del_btn.clicked.connect(self._mk_delete_func(ds))
             btn_layout.addWidget(del_btn)
 
