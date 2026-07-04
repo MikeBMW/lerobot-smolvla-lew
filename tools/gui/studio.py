@@ -1387,9 +1387,9 @@ class DatasetModule(SubModuleWidget):
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
-        self._table.horizontalHeader().resizeSection(6, 320)  # 操作列(三个文字按钮)
+        self._table.horizontalHeader().resizeSection(6, 380)  # 操作列(三个文字按钮，间距16px)
         self._table.verticalHeader().setVisible(False)
-        self._table.verticalHeader().setDefaultSectionSize(50)  # 行高给按钮足够空间
+        self._table.verticalHeader().setDefaultSectionSize(56)  # 行高给按钮足够空间
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setStyleSheet(f"""
             QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}
@@ -1459,7 +1459,7 @@ class DatasetModule(SubModuleWidget):
             btn_container = QWidget()
             btn_layout = QHBoxLayout()
             btn_layout.setContentsMargins(8, 8, 8, 8)
-            btn_layout.setSpacing(8)
+            btn_layout.setSpacing(16)  # 增大按钮间距
 
             info_btn = QPushButton("信息")
             info_btn.setFixedHeight(36)
