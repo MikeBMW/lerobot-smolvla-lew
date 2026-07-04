@@ -2034,6 +2034,9 @@ class TrainingModule(QWidget):
                 padding: 6px;
                 min-width: 200px;
             }}
+            QComboBox:hover {{
+                border-color: {C_BLUE};
+            }}
             QComboBox::drop-down {{
                 border: none;
                 width: 24px;
@@ -2049,8 +2052,21 @@ class TrainingModule(QWidget):
                 background: {C_CARD};
                 color: {C_WHITE};
                 border: 1px solid {C_BORDER};
-                selection-background-color: {C_BLUE}66;
-                selection-color: {C_WHITE};
+                outline: 0;
+                selection-background-color: {C_BLUE};
+                selection-color: #ffffff;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding: 6px 12px;
+                min-width: 180px;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background: {C_HOVER};
+                color: {C_WHITE};
+            }}
+            QComboBox QAbstractItemView::item:selected {{
+                background: {C_BLUE};
+                color: #ffffff;
             }}
         """)
         self.policy_combo.setToolTip("Policy type (--policy.type)")
@@ -2138,6 +2154,9 @@ class TrainingModule(QWidget):
                 padding: 6px;
                 min-width: 200px;
             }}
+            QComboBox:hover {{
+                border-color: {C_BLUE};
+            }}
             QComboBox::drop-down {{
                 border: none;
                 width: 24px;
@@ -2153,8 +2172,21 @@ class TrainingModule(QWidget):
                 background: {C_CARD};
                 color: {C_WHITE};
                 border: 1px solid {C_BORDER};
-                selection-background-color: {C_BLUE}66;
-                selection-color: {C_WHITE};
+                outline: 0;
+                selection-background-color: {C_BLUE};
+                selection-color: #ffffff;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding: 6px 12px;
+                min-width: 180px;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background: {C_HOVER};
+                color: {C_WHITE};
+            }}
+            QComboBox QAbstractItemView::item:selected {{
+                background: {C_BLUE};
+                color: #ffffff;
             }}
         """)
         param_layout.addRow("Dataset:", self.dataset_combo)
@@ -2311,6 +2343,9 @@ class TrainingModule(QWidget):
                 padding: 6px;
                 min-width: 200px;
             }}
+            QComboBox:hover {{
+                border-color: {C_BLUE};
+            }}
             QComboBox::drop-down {{
                 border: none;
                 width: 24px;
@@ -2326,8 +2361,21 @@ class TrainingModule(QWidget):
                 background: {C_CARD};
                 color: {C_WHITE};
                 border: 1px solid {C_BORDER};
-                selection-background-color: {C_BLUE}66;
-                selection-color: {C_WHITE};
+                outline: 0;
+                selection-background-color: {C_BLUE};
+                selection-color: #ffffff;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding: 6px 12px;
+                min-width: 180px;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background: {C_HOVER};
+                color: {C_WHITE};
+            }}
+            QComboBox QAbstractItemView::item:selected {{
+                background: {C_BLUE};
+                color: #ffffff;
             }}
         """)
         self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
