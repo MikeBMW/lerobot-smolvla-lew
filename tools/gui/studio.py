@@ -1898,7 +1898,36 @@ class TrainingModule(QWidget):
         self._init_ui()
     
     def _init_ui(self):
-        """Initialize UI"""
+        """Initialize UI with global scroll area"""
+        # 创建主布局
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 创建滚动区域包裹整个内容
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background: transparent;
+            }}
+            QScrollBar:vertical {{
+                background: {C_BG};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BORDER};
+                border-radius: 6px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {C_CYAN};
+            }}
+        """)
+        
+        # 创建内容容器
+        content_widget = QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(16)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -2333,12 +2362,12 @@ class TrainingModule(QWidget):
         param_group.setLayout(param_layout)
         
         # Wrap param_group in QScrollArea so all parameters are scrollable
-        param_scroll = QScrollArea()
-        param_scroll.setWidget(param_group)
-        param_scroll.setWidgetResizable(True)
-        param_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        param_scroll.setStyleSheet(f"""
+        self.param_scroll = QScrollArea()
+        self.param_scroll.setWidget(param_group)
+        self.param_scroll.setWidgetResizable(True)
+        self.param_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.param_scroll.setStyleSheet(f"""
             QScrollArea {{
                 border: none;
                 background: transparent;
@@ -2360,7 +2389,7 @@ class TrainingModule(QWidget):
                 height: 0px;
             }}
         """)
-        layout.addWidget(param_scroll)
+        layout.addWidget(self.param_scroll)
         
         # ===== Control Button Area =====
         # Wrap buttons in a container widget with explicit background to prevent color bleeding
@@ -2577,12 +2606,26 @@ class TrainingModule(QWidget):
         log_group.setLayout(log_layout)
         layout.addWidget(log_group, 1)  # stretch=1 让 log 占据大部分空间
         
+        # Set content widget in scroll area and add to main layout
+        content_widget.setLayout(layout)
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
+        
         # Main layout
-        self.setLayout(layout)
+        self.setLayout(main_layout)
         
         # Initialize log
         self._log("🎮 Training console initialized")
         self._log("Ready to start training...")
+    
+    def showEvent(self, event):
+        """Override showEvent to set minimum height based on screen size"""
+        super().showEvent(event)
+        # Dynamically set param_scroll minimum height to 1/3 of screen height
+        if hasattr(self, 'param_scroll'):
+            screen = QApplication.primaryScreen().geometry()
+            min_height = screen.height() // 3
+            self.param_scroll.setMinimumHeight(min_height)
     
     def _log(self, message):
         """Add log message"""
