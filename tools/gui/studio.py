@@ -1945,9 +1945,9 @@ class TrainingModule(QWidget):
                 background: {C_CARD};
                 border: 1px solid {C_BORDER};
                 border-radius: 8px;
-                padding: 16px;
-                padding-top: 24px;
-                margin-top: 16px;
+                padding: 24px;
+                padding-top: 48px;
+                margin-top: 24px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
@@ -1958,12 +1958,23 @@ class TrainingModule(QWidget):
             QLabel {{
                 color: {C_WHITE};
                 background: transparent;
+                padding: 12px 0px;
+                min-height: 36px;
+            }}
+            QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {{
+                min-height: 36px;
+                padding: 10px;
+            }}
+            QCheckBox {{
+                min-height: 36px;
+                padding: 10px 0px;
             }}
         """)
         
         param_layout = QFormLayout()
-        param_layout.setSpacing(12)
-        param_layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        param_layout.setSpacing(20)  # increased from 12 to 20
+        param_layout.setHorizontalSpacing(20)
+        param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         
         # ===== Policy Settings =====
         policy_label = QLabel("Policy Settings")
