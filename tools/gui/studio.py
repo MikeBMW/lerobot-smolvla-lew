@@ -2009,11 +2009,12 @@ class TrainingModule(QWidget):
         param_layout.setSpacing(12)
         param_layout.setHorizontalSpacing(20)
         param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        param_layout.setContentsMargins(0, 4, 0, 0)
         
         # ===== Policy Settings =====
         policy_label = QLabel("Policy Settings")
         policy_label.setFont(QFont("Arial", 11, QFont.Bold))
-        policy_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 8px;")
+        policy_label.setStyleSheet(f"color: {C_CYAN};")
         param_layout.addRow(policy_label)
         
         # Policy Type
