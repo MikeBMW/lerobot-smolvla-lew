@@ -56,9 +56,15 @@ class DatasetViewer(QDialog):
         repo_slug = repo_id.replace("/", "--")
         candidate = os.path.join(cache_dir, f"datasets--{repo_slug}")
         if os.path.exists(candidate):
+            # 查找 snapshots 目录
             snapshots = glob.glob(os.path.join(candidate, "snapshots", "*"))
             if snapshots:
+                # 返回最新的 snapshot (通常是第一个)
                 return snapshots[0]
+            # 如果没有 snapshots，检查 blob 目录下的直接文件
+            blobs = glob.glob(os.path.join(candidate, "blobs", "*"))
+            if blobs:
+                return os.path.join(candidate, "blobs")
         return candidate
 
     def _build_ui(self):
