@@ -13,7 +13,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, QThread
 class TrainingOutputReader(QThread):
     """在独立线程中读取训练进程的输出"""
     line_received = pyqtSignal(str)
-    process_finished = pyqtSignal(int)  # exit code
+    process_finished = pyqtSignal(int)
 
     def __init__(self, process):
         super().__init__()
@@ -21,8 +21,7 @@ class TrainingOutputReader(QThread):
 
     def run(self):
         try:
-            # 合并读取 stdout 和 stderr
-            for line in self.process.stderr:
+            for line in self.process.stdout:  # 读取 stdout（stderr 已合并到这里）
                 text = line.rstrip()
                 if text:
                     self.line_received.emit(text)
@@ -92,8 +91,9 @@ class TrainingBackend(QObject):
         ]
 
         if log_callback:
-            log_callback(f"[{now()}] 启动训练进程...")
-            log_callback(f"[{now()}] 命令: {' '.join(cmd[:6])} ...")
+            full_cmd = ' '.join(cmd)
+            log_callback(f"[{now()}] 🚀 启动训练进程")
+            log_callback(f"[{now()}] 完整命令:\n  {full_cmd}")
             log_callback(f"[{now()}] 工作目录: {repo_root}")
 
         # 启动子进程
@@ -104,12 +104,12 @@ class TrainingBackend(QObject):
             self.process = subprocess.Popen(
                 cmd,
                 cwd=repo_root,
-                stdout=subprocess.STDOUT,
-                stderr=subprocess.PIPE,
-                text=True,          # Unicode 文本模式
-                bufsize=1,          # 行缓冲
+                stdout=subprocess.PIPE,    # 正确：stdout 写入 pipe
+                stderr=subprocess.STDOUT, # 正确：stderr 合并到 stdout
+                text=True,
+                bufsize=1,               # 行缓冲
                 env=env,
-                preexec_fn=os.setsid if os.name != 'nt' else None,  # 新进程组，方便终止
+                start_new_session=True,   # 替代 preexec_fn=os.setsid，更安全
             )
 
             # 启动输出读取线程
