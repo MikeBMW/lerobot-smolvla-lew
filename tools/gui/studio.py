@@ -1792,8 +1792,8 @@ Default Branch: {branch}
                         # 列出下载的文件
                         if os.path.exists(local_path):
                             meta_files = glob.glob(os.path.join(local_path, "meta/*"))
-                            data_files = glob.glob(os.path.join(local_path, "data/**/*.parquet", recursive=True))
-                            video_files = glob.glob(os.path.join(local_path, "videos/**/*.mp4", recursive=True))
+                            data_files = glob.glob(os.path.join(local_path, "data/**/*.parquet"), recursive=True)
+                            video_files = glob.glob(os.path.join(local_path, "videos/**/*.mp4"), recursive=True)
                             
                             self.progress.emit(f"  📋 meta/: {len(meta_files)} 个文件")
                             self.progress.emit(f"  📊 data/: {len(data_files)} 个 parquet 文件")
@@ -3203,6 +3203,27 @@ def main():
         }}
         QMessageBox QPushButton:pressed, QDialog QPushButton:pressed {{ 
             background: {C_BLUE}55; 
+        }}
+
+        /* 右键菜单 (QMenu) 统一暗色主题 */
+        QMenu {{ 
+            background: {C_BG}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER};
+        }}
+        QMenu::item {{ 
+            color: {C_WHITE};
+            background: transparent;
+            padding: 4px 12px;
+        }}
+        QMenu::item:selected {{ 
+            background: {C_BLUE}44; 
+            color: {C_WHITE};
+        }}
+        QMenu::separator {{ 
+            height: 1px;
+            background: {C_BORDER};
+            margin: 4px 8px;
         }}
     """)
 
