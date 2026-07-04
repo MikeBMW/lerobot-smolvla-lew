@@ -1881,49 +1881,465 @@ Default Branch: {branch}
             QMessageBox.warning(self, "删除失败", f"部分文件可能被占用:\n{e}")
 
 
-class TrainingModule(SubModuleWidget):
-    def __init__(self):
-        super().__init__("训练控制台", [("Sys-11", SYS11_COLOR), ("Sys-12", SYS12_COLOR)])
-        body = QWidget()
-        bl = QVBoxLayout(); bl.setSpacing(12)
-
-        # 参数区
-        param = QGroupBox("训练参数"); param.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        pl = QFormLayout()
-        bs = QSpinBox(); bs.setRange(1, 256); bs.setValue(8)
-        pl.addRow("Batch Size:", bs)
-        st = QSpinBox(); st.setRange(100, 1000000); st.setValue(100000); st.setSingleStep(1000)
-        pl.addRow("Steps:", st)
-        lr = QDoubleSpinBox(); lr.setRange(0.000001, 0.1); lr.setValue(0.0001); lr.setDecimals(6)
-        pl.addRow("Learning Rate:", lr)
-        res = QCheckBox("Resume from checkpoint")
-        pl.addRow("", res)
-        param.setLayout(pl)
-        bl.addWidget(param)
-
-        # 控制按钮
-        ctrl = QHBoxLayout()
-        start = QPushButton("▶ 开始训练")
-        start.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:6px; padding:10px 24px; font-weight:bold; margin:0;")
-        ctrl.addWidget(start)
-        for txt in ["⏸ 暂停", "⏹ 停止"]:
-            b = QPushButton(txt)
-            b.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px; margin:0;")
-            ctrl.addWidget(b)
-        bl.addLayout(ctrl)
-
-        # 进度
-        prog = QProgressBar(); prog.setRange(0, 100); prog.setValue(0)
-        prog.setStyleSheet(f"QProgressBar{{background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:4px; text-align:center; color:{C_WHITE}; padding:4px;}} QProgressBar::chunk{{background:{SYS11_COLOR}; border-radius:4px;}}")
-        bl.addWidget(prog)
-
-        self.log = QTextEdit(); self.log.setReadOnly(True)
-        self.log.setFont(QFont("Consolas", 10))
-        self.log.setStyleSheet(f"background:{C_CARD}; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; padding:8px;")
-        bl.addWidget(self.log)
-
-        body.setLayout(bl)
-        self._build_shell(body)
+class TrainingModule(QWidget):
+    """Training Console - Support for SmolVLA and custom policy training"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # Import training backend
+        from training_backend import training_backend
+        self.train_backend = training_backend
+        
+        # Status tracking
+        self.is_training = False
+        self.is_paused = False
+        
+        self._init_ui()
+    
+    def _init_ui(self):
+        """Initialize UI"""
+        layout = QVBoxLayout()
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # ===== Top Bar: Title + SmolVLA Button =====
+        top_bar = QHBoxLayout()
+        
+        title = QLabel("🚀 Training Console")
+        title.setStyleSheet(f"color: {C_WHITE}; font-size: 20px; font-weight: bold;")
+        top_bar.addWidget(title)
+        
+        top_bar.addStretch()
+        
+        # SmolVLA button
+        self.smolvla_btn = QPushButton("🧠 SmolVLA Native Training")
+        self.smolvla_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_BLUE};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {C_BLUE}dd;
+            }}
+            QPushButton:pressed {{
+                background: {C_BLUE}bb;
+            }}
+        """)
+        self.smolvla_btn.clicked.connect(self._switch_to_smolvla)
+        self.smolvla_btn.setToolTip("Switch to the native SmolVLA training mode (using the lerobot/policies/smolvla policy)")
+        top_bar.addWidget(self.smolvla_btn)
+        
+        layout.addLayout(top_bar)
+        
+        # ===== Training Parameter Area =====
+        param_group = QGroupBox(" Training Parameters ")
+        param_group.setStyleSheet(f"""
+            QGroupBox {{
+                color: {C_WHITE};
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 8px;
+                padding: 16px;
+                margin-top: 8px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 16px;
+                padding: 0 8px;
+                font-weight: bold;
+            }}
+        """)
+        
+        param_layout = QFormLayout()
+        param_layout.setSpacing(12)
+        
+        # Dataset selection
+        self.dataset_combo = QComboBox()
+        self.dataset_combo.addItems([
+            "lerobot/pusht",
+            "lerobot/xarm_lift_medium",
+            "lerobot/aloha_sim_transfer_cube_human",
+            "lerobot/koch_bimanual_folding",
+            "lerobot/so100_pick_place"
+        ])
+        self.dataset_combo.setStyleSheet(f"""
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+                min-width: 200px;
+            }}
+        """)
+        param_layout.addRow("Dataset:", self.dataset_combo)
+        
+        # Batch size
+        self.batch_spin = QSpinBox()
+        self.batch_spin.setRange(1, 256)
+        self.batch_spin.setValue(8)
+        self.batch_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.batch_spin.setToolTip("Number of samples processed per training step")
+        param_layout.addRow("Batch Size:", self.batch_spin)
+        
+        # Training steps
+        self.steps_spin = QSpinBox()
+        self.steps_spin.setRange(100, 1000000)
+        self.steps_spin.setValue(500)
+        self.steps_spin.setSingleStep(100)
+        self.steps_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.steps_spin.setToolTip("Total number of training steps")
+        param_layout.addRow("Training Steps:", self.steps_spin)
+        
+        # Learning rate
+        self.lr_spin = QDoubleSpinBox()
+        self.lr_spin.setRange(0.000001, 0.1)
+        self.lr_spin.setValue(0.0001)
+        self.lr_spin.setSingleStep(0.00001)
+        self.lr_spin.setDecimals(6)
+        self.lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.lr_spin.setToolTip("Optimizer learning rate")
+        param_layout.addRow("Learning Rate:", self.lr_spin)
+        
+        # Checkpoint interval
+        self.ckpt_spin = QSpinBox()
+        self.ckpt_spin.setRange(10, 10000)
+        self.ckpt_spin.setValue(100)
+        self.ckpt_spin.setSingleStep(10)
+        self.ckpt_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 6px;
+            }}
+        """)
+        self.ckpt_spin.setToolTip("Number of steps to save checkpoint")
+        param_layout.addRow("Checkpoint Interval:", self.ckpt_spin)
+        
+        param_group.setLayout(param_layout)
+        layout.addWidget(param_group)
+        
+        # ===== Control Button Area =====
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
+        
+        # Start button
+        self.start_btn = QPushButton("▶ Start Training")
+        self.start_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_GREEN};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 12px 32px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {C_GREEN}dd;
+            }}
+            QPushButton:pressed {{
+                background: {C_GREEN}bb;
+            }}
+            QPushButton:disabled {{
+                background: {C_GRAY}44;
+                color: {C_GRAY};
+            }}
+        """)
+        self.start_btn.clicked.connect(self._start_training)
+        btn_layout.addWidget(self.start_btn)
+        
+        # Pause/Resume button
+        self.pause_btn = QPushButton("⏸ Pause")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_ORANGE};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 12px 32px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {C_ORANGE}dd;
+            }}
+            QPushButton:pressed {{
+                background: {C_ORANGE}bb;
+            }}
+            QPushButton:disabled {{
+                background: {C_GRAY}44;
+                color: {C_GRAY};
+            }}
+        """)
+        self.pause_btn.clicked.connect(self._pause_training)
+        btn_layout.addWidget(self.pause_btn)
+        
+        # Stop button
+        self.stop_btn = QPushButton("⏹ Stop Training")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_RED};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 12px 32px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {C_RED}dd;
+            }}
+            QPushButton:pressed {{
+                background: {C_RED}bb;
+            }}
+            QPushButton:disabled {{
+                background: {C_GRAY}44;
+                color: {C_GRAY};
+            }}
+        """)
+        self.stop_btn.clicked.connect(self._stop_training)
+        btn_layout.addWidget(self.stop_btn)
+        
+        layout.addLayout(btn_layout)
+        
+        # ===== Progress Bar =====
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("Progress: %p%")
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 6px;
+                text-align: center;
+                color: {C_WHITE};
+                font-weight: bold;
+                height: 30px;
+            }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                           stop:0 {C_GREEN}, stop:1 {C_BLUE});
+                border-radius: 5px;
+            }}
+        """)
+        layout.addWidget(self.progress_bar)
+        
+        # ===== Log Output Terminal =====
+        log_group = QGroupBox(" Training Log ")
+        log_group.setStyleSheet(f"""
+            QGroupBox {{
+                color: {C_WHITE};
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 8px;
+                padding: 12px;
+                margin-top: 8px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 16px;
+                padding: 0 8px;
+                font-weight: bold;
+            }}
+        """)
+        
+        log_layout = QVBoxLayout()
+        
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet(f"""
+            QTextEdit {{
+                background: {C_BG};
+                color: {C_WHITE};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 11px;
+            }}
+        """)
+        log_layout.addWidget(self.log_text)
+        
+        log_group.setLayout(log_layout)
+        layout.addWidget(log_group)
+        
+        # Main layout
+        self.setLayout(layout)
+        
+        # Initialize log
+        self._log("🎮 Training console initialized")
+        self._log("Ready to start training...")
+    
+    def _log(self, message):
+        """Add log message"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.append(f"[{timestamp}] {message}")
+        # Auto scroll to bottom
+        scrollbar = self.log_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+    
+    def _switch_to_smolvla(self):
+        """Switch to SmolVLA native training mode"""
+        self._log("🔄 Switching to SmolVLA native training mode...")
+        self._log("   Using policy: lerobot/policies/smolvla")
+        self.smolvla_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_GREEN};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+        """)
+        self.smolvla_btn.setText("✅ SmolVLA Mode Active")
+        self.smolvla_btn.setEnabled(False)
+        self._log("✅ Switch completed")
+    
+    def _start_training(self):
+        """Start training"""
+        dataset = self.dataset_combo.currentText()
+        batch_size = self.batch_spin.value()
+        steps = self.steps_spin.value()
+        lr = self.lr_spin.value()
+        ckpt_interval = self.ckpt_spin.value()
+        
+        self._log(f"🚀 Starting training...")
+        self._log(f"   Dataset: {dataset}")
+        self._log(f"   Batch size: {batch_size}")
+        self._log(f"   Steps: {steps}")
+        self._log(f"   Learning rate: {lr}")
+        self._log(f"   Checkpoint interval: {ckpt_interval}")
+        
+        # Get repository root path
+        import os
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        # Determine output directory
+        output_dir = os.path.join(repo_root, "outputs", "smolvla_pusht")
+        
+        # Start training
+        success = self.train_backend.start_smolvla_training(
+            repo_root=repo_root,
+            dataset_repo_id=dataset,
+            batch_size=batch_size,
+            total_steps=steps,
+            learning_rate=lr,
+            output_dir=output_dir,
+            log_callback=self._log,
+            progress_callback=self._update_progress
+        )
+        
+        if success:
+            self.is_training = True
+            self.is_paused = False
+            
+            # Update button states
+            self.start_btn.setEnabled(False)
+            self.pause_btn.setEnabled(True)
+            self.stop_btn.setEnabled(True)
+            self.smolvla_btn.setEnabled(False)
+            
+            self._log("✅ Training started successfully")
+        else:
+            self._log("❌ Failed to start training")
+    
+    def _pause_training(self):
+        """Pause/Resume training"""
+        if self.is_paused:
+            # Resume
+            success = self.train_backend.resume_training(log_callback=self._log)
+            if success:
+                self.is_paused = False
+                self.pause_btn.setText("⏸ Pause")
+                self._log("▶ Training resumed")
+        else:
+            # Pause
+            success = self.train_backend.pause_training(log_callback=self._log)
+            if success:
+                self.is_paused = True
+                self.pause_btn.setText("▶ Resume")
+                self._log("⏸ Training paused")
+    
+    def _stop_training(self):
+        """Stop training"""
+        success = self.train_backend.stop_training(log_callback=self._log)
+        
+        if success:
+            self.is_training = False
+            self.is_paused = False
+            
+            # Reset button states
+            self.start_btn.setEnabled(True)
+            self.pause_btn.setEnabled(False)
+            self.pause_btn.setText("⏸ Pause")
+            self.stop_btn.setEnabled(False)
+            
+            # Reset SmolVLA button
+            self.smolvla_btn.setEnabled(True)
+            self.smolvla_btn.setText("🧠 SmolVLA Native Training")
+            self.smolvla_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_BLUE};
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 20px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background: {C_BLUE}dd;
+                }}
+                QPushButton:pressed {{
+                    background: {C_BLUE}bb;
+                }}
+            """)
+            
+            self._log("⏹ Training stopped")
+    
+    def _update_progress(self, value):
+        """Update progress bar"""
+        self.progress_bar.setValue(value)
 
 
 class EvalModule(SubModuleWidget):
