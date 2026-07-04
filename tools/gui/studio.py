@@ -13,6 +13,8 @@ Z-MAX 多模态动作专家 · System 0 / Sys-11 / Sys-12 / System 2
 import sys
 import subprocess  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
+import json
+import glob
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
@@ -21,7 +23,8 @@ from PyQt5.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QProgressBar,
     QTabWidget, QAction, QMenu, QInputDialog, QMessageBox,
     QRadioButton, QButtonGroup,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView  # DatasetModule
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QSlider, QListWidget, QDialog  # DatasetModule viewer
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl, QDateTime  # 新增 QDateTime 用于时间戳
 from PyQt5.QtGui import (
@@ -1389,7 +1392,7 @@ class DatasetModule(SubModuleWidget):
         self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
         self._table.horizontalHeader().resizeSection(6, 380)  # 操作列(三个文字按钮，间距16px)
         self._table.verticalHeader().setVisible(False)
-        self._table.verticalHeader().setDefaultSectionSize(56)  # 行高给按钮足够空间
+        self._table.verticalHeader().setDefaultSectionSize(60)  # 行高给按钮足够空间
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setStyleSheet(f"""
             QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}
@@ -1526,6 +1529,28 @@ class DatasetModule(SubModuleWidget):
             """)
             del_btn.clicked.connect(self._mk_delete_func(ds))
             btn_layout.addWidget(del_btn)
+
+            view_btn = QPushButton("查看")
+            view_btn.setFixedHeight(36)
+            view_btn.setToolTip("浏览数据集内容 (图片/视频/state曲线)")
+            view_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_ORANGE};
+                    border: 1px solid {C_ORANGE}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {C_ORANGE}33;
+                }}
+            """)
+            view_btn.clicked.connect(lambda checked=False, ds=ds: self._on_view_dataset(ds))
+            btn_layout.addWidget(view_btn)
 
             btn_container.setLayout(btn_layout)
             self._table.setCellWidget(i, 6, btn_container)
@@ -1845,6 +1870,14 @@ Default Branch: {branch}
         # 保存引用防止回收
         self._download_worker = worker
         self._download_dialog = progress_dialog
+
+    def _on_view_dataset(self, ds):
+        """打开数据集内容查看器"""
+        from dataset_viewer import DatasetViewer
+        repo_id = ds["repo_id"]
+        cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+        viewer = DatasetViewer(repo_id, cache_dir, self)
+        viewer.exec_()
 
     def _delete_dataset(self, ds):
         """删除数据集本地缓存"""
