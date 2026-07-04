@@ -2035,20 +2035,6 @@ class TrainingModule(QWidget):
                 padding: 4px 8px;
                 min-width: 200px;
             }}
-            QComboBox:hover {{
-                border-color: {C_BLUE};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid {C_WHITE};
-                margin-right: 6px;
-            }}
         """)
         self.policy_combo.setToolTip("Policy type (--policy.type)")
         param_layout.addRow("Policy Type:", self.policy_combo)
@@ -2134,20 +2120,6 @@ class TrainingModule(QWidget):
                 border-radius: 4px;
                 padding: 4px 8px;
                 min-width: 200px;
-            }}
-            QComboBox:hover {{
-                border-color: {C_BLUE};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid {C_WHITE};
-                margin-right: 6px;
             }}
         """)
         param_layout.addRow("Dataset:", self.dataset_combo)
@@ -2303,20 +2275,6 @@ class TrainingModule(QWidget):
                 border-radius: 4px;
                 padding: 4px 8px;
                 min-width: 200px;
-            }}
-            QComboBox:hover {{
-                border-color: {C_BLUE};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid {C_WHITE};
-                margin-right: 6px;
             }}
         """)
         self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
