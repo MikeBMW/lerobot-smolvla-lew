@@ -3093,14 +3093,61 @@ def main():
     app.setStyle("Fusion")
     app.setFont(QFont("Arial", 10))
 
-    # 全局滚动条样式 + ToolTip样式
+    # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
     app.setStyleSheet(f"""
         QScrollBar:vertical {{ background: transparent; width: 8px; margin: 0; }}
         QScrollBar::handle:vertical {{ background: #484f58; border-radius: 4px; min-height: 20px; }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
         QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}
         QToolTip {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER}; padding: 4px 8px; }}
-        QToolTip:hover {{ background: {C_BG2}; }} /* 防止 tooltip 在 hover 时变色 */
+        QToolTip:hover {{ background: {C_BG2}; }}
+
+        /* 所有对话框统一暗色主题 */
+        QMessageBox, QDialog, QInputDialog {{ 
+            background: {C_BG}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+        }}
+        QMessageBox QLabel, QDialog QLabel, QInputDialog QLabel {{ 
+            color: {C_WHITE}; 
+            background: transparent;
+        }}
+        QMessageBox QTextEdit {{ 
+            background: {C_BG2}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 8px;
+        }}
+        QInputDialog QLineEdit {{ 
+            background: {C_BG2}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 4px 8px;
+        }}
+        QInputDialog QSpinBox, QInputDialog QDoubleSpinBox, QInputDialog QComboBox {{ 
+            background: {C_BG2}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 4px 8px;
+        }}
+        QMessageBox QPushButton, QDialog QPushButton {{ 
+            background: {C_CARD}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 6px 16px;
+            min-width: 60px;
+        }}
+        QMessageBox QPushButton:hover, QDialog QPushButton:hover {{ 
+            background: {C_BLUE}33; 
+            border-color: {C_BLUE};
+        }}
+        QMessageBox QPushButton:pressed, QDialog QPushButton:pressed {{ 
+            background: {C_BLUE}55; 
+        }}
     """)
 
     win = StudioMainWindow()
