@@ -2069,23 +2069,27 @@ class TrainingModule(QWidget):
         self.start_btn = QPushButton("▶ Start Training")
         self.start_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {C_GREEN};
+                background-color: {C_GREEN};
                 color: white;
-                border: none;
+                border: 2px solid {C_GREEN};
                 border-radius: 6px;
                 padding: 12px 32px;
+                margin: 0px;
                 font-size: 14px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {C_GREEN}dd;
+                background-color: {C_GREEN};
+                border: 2px solid {C_BLUE};
             }}
             QPushButton:pressed {{
-                background: {C_GREEN}bb;
+                background-color: {C_GREEN}bb;
+                border: 2px solid {C_BLUE};
             }}
             QPushButton:disabled {{
-                background: {C_GRAY}44;
+                background-color: {C_GRAY}44;
                 color: {C_GRAY};
+                border: 2px solid {C_GRAY}44;
             }}
         """)
         self.start_btn.clicked.connect(self._start_training)
@@ -2096,23 +2100,27 @@ class TrainingModule(QWidget):
         self.pause_btn.setEnabled(False)
         self.pause_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {C_ORANGE};
+                background-color: {C_ORANGE};
                 color: white;
-                border: none;
+                border: 2px solid {C_ORANGE};
                 border-radius: 6px;
                 padding: 12px 32px;
+                margin: 0px;
                 font-size: 14px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {C_ORANGE}dd;
+                background-color: {C_ORANGE};
+                border: 2px solid {C_BLUE};
             }}
             QPushButton:pressed {{
-                background: {C_ORANGE}bb;
+                background-color: {C_ORANGE}bb;
+                border: 2px solid {C_BLUE};
             }}
             QPushButton:disabled {{
-                background: {C_GRAY}44;
+                background-color: {C_GRAY}44;
                 color: {C_GRAY};
+                border: 2px solid {C_GRAY}44;
             }}
         """)
         self.pause_btn.clicked.connect(self._pause_training)
@@ -2123,23 +2131,27 @@ class TrainingModule(QWidget):
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {C_RED};
+                background-color: {C_RED};
                 color: white;
-                border: none;
+                border: 2px solid {C_RED};
                 border-radius: 6px;
                 padding: 12px 32px;
+                margin: 0px;
                 font-size: 14px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {C_RED}dd;
+                background-color: {C_RED};
+                border: 2px solid {C_BLUE};
             }}
             QPushButton:pressed {{
-                background: {C_RED}bb;
+                background-color: {C_RED}bb;
+                border: 2px solid {C_BLUE};
             }}
             QPushButton:disabled {{
-                background: {C_GRAY}44;
+                background-color: {C_GRAY}44;
                 color: {C_GRAY};
+                border: 2px solid {C_GRAY}44;
             }}
         """)
         self.stop_btn.clicked.connect(self._stop_training)
