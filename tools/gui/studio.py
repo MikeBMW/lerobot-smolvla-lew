@@ -1387,7 +1387,7 @@ class DatasetModule(SubModuleWidget):
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
-        self._table.horizontalHeader().resizeSection(6, 200)
+        self._table.horizontalHeader().resizeSection(6, 260)  # 操作列(三个文字按钮)
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setStyleSheet(f"""
@@ -1458,23 +1458,23 @@ class DatasetModule(SubModuleWidget):
             btn_container = QWidget()
             btn_layout = QHBoxLayout()
             btn_layout.setContentsMargins(4, 2, 4, 2)
-            btn_layout.setSpacing(4)
+            btn_layout.setSpacing(6)
 
-            info_btn = QPushButton("ℹ️")
-            info_btn.setToolTip("查看信息")
-            info_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{SYS2_COLOR}; border:1px solid {SYS2_COLOR}66; border-radius:3px; padding:3px 8px; font-size:13px;}} QPushButton:hover{{background:{SYS2_COLOR}33;}}")
+            info_btn = QPushButton("信息")
+            info_btn.setToolTip("查看数据集元信息 (episodes/frames/features)")
+            info_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{SYS2_COLOR}; border:1px solid {SYS2_COLOR}66; border-radius:3px; padding:3px 8px; font-size:10px;}} QPushButton:hover{{background:{SYS2_COLOR}33;}}")
             info_btn.clicked.connect(self._mk_info_func(ds))
             btn_layout.addWidget(info_btn)
 
-            dl_btn = QPushButton("⬇️")
-            dl_btn.setToolTip("下载 (前10 episodes)")
-            dl_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_GREEN}; border:1px solid {C_GREEN}66; border-radius:3px; padding:3px 8px; font-size:13px;}} QPushButton:hover{{background:{C_GREEN}33;}}")
+            dl_btn = QPushButton("下载")
+            dl_btn.setToolTip("下载前N个episodes (用户指定数量)")
+            dl_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_GREEN}; border:1px solid {C_GREEN}66; border-radius:3px; padding:3px 8px; font-size:10px;}} QPushButton:hover{{background:{C_GREEN}33;}}")
             dl_btn.clicked.connect(self._mk_download_func(ds))
             btn_layout.addWidget(dl_btn)
 
-            del_btn = QPushButton("🗑")
-            del_btn.setToolTip("删除本地缓存")
-            del_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_DIM}; border:1px solid {C_BORDER}; border-radius:3px; padding:3px 8px; font-size:13px;}} QPushButton:hover{{background:{C_RED}33; color:{C_RED};}}")
+            del_btn = QPushButton("删除")
+            del_btn.setToolTip("删除本地缓存 (释放磁盘空间)")
+            del_btn.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_RED}; border:1px solid {C_RED}66; border-radius:3px; padding:3px 8px; font-size:10px;}} QPushButton:hover{{background:{C_RED}33; color:{C_RED};}}")
             del_btn.clicked.connect(self._mk_delete_func(ds))
             btn_layout.addWidget(del_btn)
 
@@ -3089,12 +3089,14 @@ def main():
     app.setStyle("Fusion")
     app.setFont(QFont("Arial", 10))
 
-    # 全局滚动条样式
-    app.setStyleSheet("""
-        QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
-        QScrollBar::handle:vertical { background: #484f58; border-radius: 4px; min-height: 20px; }
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-        QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }
+    # 全局滚动条样式 + ToolTip样式
+    app.setStyleSheet(f"""
+        QScrollBar:vertical {{ background: transparent; width: 8px; margin: 0; }}
+        QScrollBar::handle:vertical {{ background: #484f58; border-radius: 4px; min-height: 20px; }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}
+        QToolTip {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER}; padding: 4px 8px; }}
+        QToolTip:hover {{ background: {C_BG2}; }} /* 防止 tooltip 在 hover 时变色 */
     """)
 
     win = StudioMainWindow()
