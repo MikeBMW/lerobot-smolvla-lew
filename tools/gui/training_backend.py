@@ -1,298 +1,241 @@
-#!/usr/bin/env python3
 """
-Z-MAX 训练后端模块
-负责调用实际的 lerobot 训练脚本并管理训练进程
-
-功能：
-- 支持 SmolVLA / smolvla_lew policy 训练
-- 使用下载的 HuggingFace 数据集（如 PushT）
-- 进程管理（启动、暂停、停止）
-- 实时捕获训练日志
+Z-MAX Training Backend Module
+Handles subprocess management for LeRobot training scripts
 """
 
 import os
+import sys
 import subprocess
-import signal
 import threading
-from typing import Optional, Callable, Dict
+from PyQt5.QtCore import QObject, pyqtSignal
+from pathlib import Path
 
 
-class TrainingBackend:
-    """训练进程后端管理器"""
+class TrainingBackend(QObject):
+    """Backend process manager for training operations"""
     
-    def __init__(self):
-        self.process: Optional[subprocess.Popen] = None
+    log_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(int)
+    finished_signal = pyqtSignal(bool, str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.process = None
         self.is_running = False
         self.is_paused = False
-        self.log_callback: Optional[Callable[[str], None]] = None
-        self.progress_callback: Optional[Callable[[int], None]] = None
-        
-    def start_smolvla_training(
-        self,
-        repo_root: str,
-        dataset_repo_id: str = "lerobot/pusht",
-        batch_size: int = 16,
-        total_steps: int = 5000,
-        learning_rate: float = 1e-4,
-        output_dir: str = "outputs/smolvla_pusht",
-        checkpoint_interval: int = 1000,
-        eval_freq: int = 500,
-        freeze_smolvlm: bool = True,
-        log_callback: Optional[Callable[[str], None]] = None,
-        progress_callback: Optional[Callable[[int], None]] = None,
-    ) -> bool:
+        self.monitor_thread = None
+    
+    def start_training(self, repo_root: str, dataset_repo_id: str, policy_name: str,
+                       batch_size: int, total_steps: int, learning_rate: float,
+                       checkpoint_interval: int, output_dir: str = "outputs"):
         """
-        启动 SmolVLA 训练
-        
-        使用 lerobot-train CLI，与用户实际使用的命令一致：
-        lerobot-train --policy.type smolvla_lew --dataset.repo_id lerobot/pusht ...
+        启动训练进程
         
         Args:
-            repo_root: lerobot 仓库根目录路径
-            dataset_repo_id: HuggingFace 数据集 ID
-            batch_size: 训练批次大小
+            repo_root: XSpace Studio仓库根目录
+            dataset_repo_id: 数据集仓库ID (如 lerobot/pusht)
+            policy_name: 策略名称 (smolvla 或 smolvla_lew)
+            batch_size: 批次大小
             total_steps: 总训练步数
             learning_rate: 学习率
+            checkpoint_interval: 检查点间隔
             output_dir: 输出目录
-            checkpoint_interval: checkpoint 保存间隔
-            eval_freq: 评估频率
-            freeze_smolvlm: 是否冻结 SmolVLM
-            log_callback: 日志输出回调函数
-            progress_callback: 进度更新回调函数 (0-100)
-            
-        Returns:
-            是否成功启动
         """
         if self.is_running:
-            if log_callback:
-                log_callback("⚠️ 训练已在运行中")
+            self.log_signal.emit("⚠️ 训练已在运行中")
             return False
         
-        self.log_callback = log_callback
-        self.progress_callback = progress_callback
+        # 构建训练命令
+        # 使用 lerobot-train CLI 命令（用户实际在用的）
+        training_script = Path(repo_root) / "src" / "lerobot" / "scripts" / "lerobot_train.py"
         
-        # 构建训练命令 - 使用 lerobot-train CLI
+        if not training_script.exists():
+            self.log_signal.emit(f"❌ 训练脚本不存在: {training_script}")
+            return False
+        
+        # 构建命令参数
         cmd = [
-            "lerobot-train",
-            "--policy.type", "smolvla_lew",
-            f"--policy.freeze_smolvlm", str(freeze_smolvlm).lower(),
-            "--policy.enable_lew_world_model", "false",
-            "--policy.repeated_diffusion_steps", "5",
-            "--policy.push_to_hub", "false",
-            f"--dataset.repo_id", dataset_repo_id,
-            f"--steps", str(total_steps),
-            f"--batch_size", str(batch_size),
-            f"--eval_freq", str(eval_freq),
-            f"--save_freq", str(checkpoint_interval),
-            f"--optimizer.lr", str(learning_rate),
-            "--optimizer.weight_decay", "1e-6",
-            "--scheduler.type", "cosine_decay_with_warmup",
-            "--scheduler.num_warmup_steps", "500",
-            f"--scheduler.num_decay_steps", str(total_steps),
-            f"--scheduler.peak_lr", str(learning_rate),
-            "--scheduler.decay_lr", "1e-6",
-            "--wandb.enable", "false",
+            sys.executable, str(training_script),
+            "--config.dataset_repo_id", dataset_repo_id,
+            "--config.policy", policy_name,
+            "--config.batch_size", str(batch_size),
+            "--config.total_steps", str(total_steps),
+            "--config.learning_rate", str(learning_rate),
+            "--config.checkpoint_interval", str(checkpoint_interval),
+            "--config.output_dir", str(output_dir),
         ]
         
-        if log_callback:
-            log_callback(f"🚀 启动 SmolVLA 训练...")
-            log_callback(f"  命令: {' '.join(cmd[:6])} ...")
-            log_callback(f"  数据集: {dataset_repo_id}")
-            log_callback(f"  批次大小: {batch_size}")
-            log_callback(f"  总步数: {total_steps}")
-            log_callback(f"  学习率: {learning_rate}")
-            log_callback(f"  输出目录: {output_dir}")
-            log_callback("")
+        self.log_signal.emit("=" * 60)
+        self.log_signal.emit(f"🚀 启动训练进程")
+        self.log_signal.emit(f"   Python: {sys.executable}")
+        self.log_signal.emit(f"   Script: {training_script}")
+        self.log_signal.emit(f"   Dataset: {dataset_repo_id}")
+        self.log_signal.emit(f"   Policy: {policy_name}")
+        self.log_signal.emit(f"   Batch Size: {batch_size}")
+        self.log_signal.emit(f"   Total Steps: {total_steps}")
+        self.log_signal.emit(f"   Learning Rate: {learning_rate}")
+        self.log_signal.emit(f"   Output Dir: {output_dir}")
+        self.log_signal.emit("=" * 60)
+        self.log_signal.emit(f"命令: {' '.join(cmd)}")
+        self.log_signal.emit("")
         
         try:
-            # 启动训练进程
+            # 设置环境变量，确保Python能找到所需模块
+            env = os.environ.copy()
+            env['PYTHONPATH'] = f"{repo_root}/src:{env.get('PYTHONPATH', '')}"
+            env['CUDA_VISIBLE_DEVICES'] = '0'  # 使用第一个GPU
+            
+            # 启动子进程
             self.process = subprocess.Popen(
                 cmd,
                 cwd=repo_root,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.STDOUT,  # 合并stderr到stdout
                 text=True,
                 bufsize=1,
-                preexec_fn=os.setsid if os.name != 'nt' else None,
+                universal_newlines=True,
+                env=env,
             )
             
             self.is_running = True
             self.is_paused = False
             
-            if log_callback:
-                log_callback(f"✅ 训练进程已启动 (PID: {self.process.pid})")
+            self.log_signal.emit(f"✅ 进程已启动 (PID: {self.process.pid})")
             
-            # 启动日志捕获线程
-            self._start_log_capture(total_steps)
+            # 启动监控线程
+            self.monitor_thread = threading.Thread(
+                target=self._monitor_output,
+                daemon=True
+            )
+            self.monitor_thread.start()
             
             return True
             
         except Exception as e:
-            if log_callback:
-                log_callback(f"❌ 启动训练失败: {e}")
+            self.log_signal.emit(f"❌ 启动失败: {e}")
             return False
     
-    def pause_training(self, log_callback: Optional[Callable[[str], None]] = None) -> bool:
+    def pause_training(self):
         """暂停训练进程"""
-        if not self.is_running or self.process is None:
-            if log_callback:
-                log_callback("⚠️ 没有正在运行的训练")
+        if not self.is_running or not self.process:
             return False
         
         if self.is_paused:
-            if log_callback:
-                log_callback("⚠️ 训练已经暂停")
+            self.log_signal.emit("⚠️ 训练已经暂停")
             return False
         
         try:
-            if os.name != 'nt':
-                os.killpg(os.getpgid(self.process.pid), signal.SIGSTOP)
-            else:
-                self.process.send_signal(signal.CTRL_BREAK_EVENT)
+            import signal
+            os.kill(self.process.pid, signal.SIGSTOP)
             self.is_paused = True
-            if log_callback:
-                log_callback("⏸ 训练已暂停")
+            self.log_signal.emit("⏸️ 训练已暂停")
             return True
         except Exception as e:
-            if log_callback:
-                log_callback(f"❌ 暂停失败: {e}")
+            self.log_signal.emit(f"❌ 暂停失败: {e}")
             return False
     
-    def resume_training(self, log_callback: Optional[Callable[[str], None]] = None) -> bool:
+    def resume_training(self):
         """恢复训练进程"""
-        if not self.is_running or self.process is None:
-            if log_callback:
-                log_callback("⚠️ 没有正在运行的训练")
+        if not self.is_running or not self.process:
             return False
         
         if not self.is_paused:
-            if log_callback:
-                log_callback("⚠️ 训练未暂停")
+            self.log_signal.emit("⚠️ 训练未暂停")
             return False
         
         try:
-            if os.name != 'nt':
-                os.killpg(os.getpgid(self.process.pid), signal.SIGCONT)
-            else:
-                self.process.send_signal(signal.CTRL_C_EVENT)
+            import signal
+            os.kill(self.process.pid, signal.SIGCONT)
             self.is_paused = False
-            if log_callback:
-                log_callback("▶ 训练已恢复")
+            self.log_signal.emit("▶️ 训练已恢复")
             return True
         except Exception as e:
-            if log_callback:
-                log_callback(f"❌ 恢复失败: {e}")
+            self.log_signal.emit(f"❌ 恢复失败: {e}")
             return False
     
-    def stop_training(self, log_callback: Optional[Callable[[str], None]] = None) -> bool:
+    def stop_training(self):
         """停止训练进程"""
-        if not self.is_running or self.process is None:
-            if log_callback:
-                log_callback("⚠️ 没有正在运行的训练")
+        if not self.is_running or not self.process:
             return False
         
         try:
-            if log_callback:
-                log_callback(f"⏹ 停止训练 (PID: {self.process.pid})...")
+            self.log_signal.emit("🛑 停止训练...")
             
-            # 如果已暂停，先恢复
-            if self.is_paused:
-                if os.name != 'nt':
-                    os.killpg(os.getpgid(self.process.pid), signal.SIGCONT)
-                else:
-                    self.process.send_signal(signal.CTRL_C_EVENT)
-                self.is_paused = False
+            # 先尝试优雅终止
+            self.process.terminate()
             
-            # 发送终止信号
-            if os.name != 'nt':
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-            else:
-                self.process.terminate()
-            
-            # 等待进程结束
             try:
                 self.process.wait(timeout=5)
+                self.log_signal.emit("✅ 训练已停止")
             except subprocess.TimeoutExpired:
-                if log_callback:
-                    log_callback("⚠️ 进程未响应，强制终止...")
-                if os.name != 'nt':
-                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-                else:
-                    self.process.kill()
+                # 强制杀死
+                self.log_signal.emit("⚠️ 进程未响应，强制终止")
+                self.process.kill()
                 self.process.wait()
+                self.log_signal.emit("✅ 训练已强制停止")
             
             self.is_running = False
             self.is_paused = False
             self.process = None
             
-            if log_callback:
-                log_callback("✅ 训练已停止")
             return True
             
         except Exception as e:
-            if log_callback:
-                log_callback(f"❌ 停止失败: {e}")
+            self.log_signal.emit(f"❌ 停止失败: {e}")
             return False
     
-    def _start_log_capture(self, total_steps: int):
-        """启动日志捕获线程"""
-        def capture_logs():
-            try:
-                while self.is_running and self.process and self.process.stdout:
-                    line = self.process.stdout.readline()
-                    if not line:
-                        if self.process.poll() is not None:
-                            break
-                        continue
+    def _monitor_output(self):
+        """监控训练进程输出"""
+        try:
+            while self.is_running and self.process and self.process.poll() is None:
+                line = self.process.stdout.readline()
+                if line:
+                    output = line.strip()
                     
-                    line = line.rstrip()
-                    if not line:
-                        continue
+                    # 发送日志信号
+                    self.log_signal.emit(output)
                     
-                    # 发送给日志回调
-                    if self.log_callback:
-                        self.log_callback(line)
-                    
-                    # 解析进度信息
-                    # 格式: "Training:   0%|          | 0/5000 [00:00<00:00, 0.00step/s]"
-                    if "Training:" in line and "/" in line and "[" in line:
+                    # 尝试解析进度信息
+                    # 格式: Training: X/Y [time]
+                    if "Training:" in output:
                         try:
-                            # 提取进度数字
                             import re
-                            match = re.search(r'(\d+)/(\d+)', line)
+                            match = re.search(r'Training:\s*(\d+)/(\d+)', output)
                             if match:
                                 current = int(match.group(1))
                                 total = int(match.group(2))
                                 progress = int((current / total) * 100)
-                                if self.progress_callback:
-                                    self.progress_callback(progress)
+                                self.progress_signal.emit(progress)
                         except Exception:
                             pass
-                    
-                    # 检测训练完成
-                    if "Training complete" in line or "训练完成" in line:
-                        if self.progress_callback:
-                            self.progress_callback(100)
+            
+            # 进程结束，检查退出码
+            if self.process:
+                exit_code = self.process.wait()
                 
-                # 进程结束
-                self.is_running = False
-                if self.process:
-                    exit_code = self.process.poll()
-                    if self.log_callback:
-                        if exit_code == 0:
-                            self.log_callback("✅ 训练完成")
-                        elif exit_code == -signal.SIGTERM:
-                            self.log_callback("⏹ 训练被用户停止")
-                        else:
-                            self.log_callback(f"⚠️ 训练进程退出 (exit code: {exit_code})")
-            except Exception as e:
-                if self.log_callback:
-                    self.log_callback(f"❌ 日志捕获错误: {e}")
-                self.is_running = False
+                if exit_code == 0:
+                    self.log_signal.emit("")
+                    self.log_signal.emit("✅ 训练完成")
+                    self.finished_signal.emit(True, "训练成功完成")
+                elif exit_code == -9:  # SIGKILL
+                    self.log_signal.emit("")
+                    self.log_signal.emit("⚠️ 训练被强制终止")
+                    self.finished_signal.emit(False, "训练被强制终止")
+                else:
+                    self.log_signal.emit("")
+                    self.log_signal.emit(f"❌ 训练失败 (退出码: {exit_code})")
+                    self.finished_signal.emit(False, f"训练失败 (退出码: {exit_code})")
+            
+            self.is_running = False
+            
+        except Exception as e:
+            self.log_signal.emit(f"❌ 监控线程错误: {e}")
+            self.finished_signal.emit(False, f"监控错误: {e}")
+            self.is_running = False
+    
+    def is_process_alive(self):
+        """检查进程是否仍在运行"""
+        if self.process is None:
+            return False
         
-        thread = threading.Thread(target=capture_logs, daemon=True)
-        thread.start()
-
-
-# 全局单例
-training_backend = TrainingBackend()
+        return self.process.poll() is None
