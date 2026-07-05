@@ -46,6 +46,10 @@ else
     echo "🐍 Python: $PYTHON ($($PYTHON --version 2>&1))"
 fi
 
+# WSLg: DISPLAY 可能被设为 TCP 地址（如 172.x.x.x:0），但 X 服务器
+# 只监听 Unix socket。强制设为 :0 走 Unix socket 避免连接失败。
+export DISPLAY=:0
+
 echo "🚀 启动 XSpace Studio..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 $PYTHON studio.py
