@@ -15,6 +15,7 @@ import subprocess  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
 import json
 import glob
+import time  # 硬件工具箱日志时间戳
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
@@ -24,7 +25,8 @@ from PyQt5.QtWidgets import (
     QTabWidget, QAction, QMenu, QInputDialog, QMessageBox,
     QRadioButton, QButtonGroup,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QSlider, QListWidget, QDialog  # DatasetModule viewer
+    QSlider, QListWidget, QDialog,  # DatasetModule viewer
+    QTreeWidget, QTreeWidgetItem,  # 硬件工具箱设备树
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl, QDateTime  # 新增 QDateTime 用于时间戳
 from PyQt5.QtGui import (
@@ -2957,34 +2959,500 @@ class EvalModule(SubModuleWidget):
 
 
 class HardwareModule(SubModuleWidget):
+    """硬件工具箱 — System 0 基石层: 仿真 + 真实硬件统一接口
+    
+    架构: 仿真引擎(hardware_simulator.py) ↔ GUI ↔ ROS2/gRPC(真机)
+    模式: sim(虚拟设备) | local(本地ROS2) | real(Orin真机TCP桥)
+    """
+    
     def __init__(self):
         super().__init__("硬件工具箱", [("System 0", SYS0_COLOR)])
-        body = QWidget()
-        bl = QVBoxLayout(); bl.setSpacing(10)
+        from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
+        
+        self.sim = get_simulator("sim")
+        self._selected_device = "overview"
+        self._timer = QTimer()
+        self._timer.timeout.connect(self._refresh)
+        
+        # ── 顶部工具栏 ──
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+        
+        mode_label = QLabel("模式:")
+        mode_label.setStyleSheet(f"color:{C_WHITE}; font-weight:bold;")
+        toolbar.addWidget(mode_label)
+        
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["🖥️ 仿真模拟 (Sim)", "🔌 本地连接 (Local)", "🤖 Orin真机 (Real)"])
+        self.mode_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        toolbar.addWidget(self.mode_combo)
+        
+        toolbar.addSpacing(20)
+        
+        self.btn_start = QPushButton("▶ 启动仿真")
+        self.btn_start.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.btn_start.clicked.connect(self._toggle_sim)
+        toolbar.addWidget(self.btn_start)
+        
+        self.btn_reset = QPushButton("↺ 重置")
+        self.btn_reset.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.btn_reset.clicked.connect(self._reset)
+        toolbar.addWidget(self.btn_reset)
+        
+        self.status_label = QLabel("● 待机")
+        self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+        toolbar.addWidget(self.status_label)
+        
+        toolbar.addStretch()
+        
+        # ── 系统架构概览 ──
+        arch_group = QGroupBox("系统架构 · Z700 设备拓扑")
+        arch_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS0_COLOR, 8, 12)}}}")
+        arch_layout = QVBoxLayout()
+        
+        self.arch_text = QLabel(
+            "┌─────────────────────────────────────────────────────────────────┐\n"
+            "│                    Z700 轮式双臂机器人                              │\n"
+            "│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │\n"
+            "│  │  左臂 7-DOF  │  │  右臂 7-DOF  │  │  头部 Gemini 335L    │  │\n"
+            "│  │  取料+扫码    │  │  插拔+AOI    │  │  3D深度+RGB @30fps  │  │\n"
+            "│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │\n"
+            "│         │                 │                      │              │\n"
+            "│  ┌──────┴─────────────────┴──────────────────────┴───────────┐  │\n"
+            "│  │              AGX Orin · 边缘AI算力                          │  │\n"
+            "│  │  1ms控制周期 · >10kHz力控 · VLA推理<10ms · TCP Bridge    │  │\n"
+            "│  └──────────────────────┬────────────────────────────────────┘  │\n"
+            "│                         │                                       │\n"
+            "│  ┌──────────┐ ┌────────┴──────┐ ┌──────────┐ ┌─────────────┐ │\n"
+            "│  │ 六维力传感器│ │ 夹爪(左+右)  │ │ 4×鱼眼   │ │ 激光雷达×2  │ │\n"
+            "│  │ Fx/Fy/Fz  │ │ 力控+位置    │ │ 360°环绕 │ │ TOF传感器×4 │ │\n"
+            "│  └──────────┘ └───────────────┘ └──────────┘ └─────────────┘ │\n"
+            "│                                                                 │\n"
+            "│  安全: 急停按钮 · 力控柔顺 · 光栅 · 塔灯                          │\n"
+            "└─────────────────────────────────────────────────────────────────┘"
+        )
+        self.arch_text.setFont(QFont("Consolas", 7))
+        self.arch_text.setStyleSheet(f"color:{SYS0_COLOR}; background:{C_BG}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px;")
+        arch_layout.addWidget(self.arch_text)
+        
+        # 拓扑信息表
+        self.topo_table = QTableWidget(2, 7)
+        self.topo_table.setHorizontalHeaderLabels(["模式", "关节", "相机", "力传感器", "IO设备", "控制频率", "运行时间"])
+        self.topo_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.topo_table.verticalHeader().setVisible(False)
+        self.topo_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.topo_table.setMaximumHeight(50)
+        self.topo_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:2px 6px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
+        """)
+        arch_layout.addWidget(self.topo_table)
+        
+        arch_group.setLayout(arch_layout)
+        
+        # ── 主内容区: 设备树 + 详情 ──
+        splitter = QSplitter(Qt.Horizontal)
+        
+        # 左侧: 设备树
+        tree_panel = QWidget()
+        tree_panel.setStyleSheet(f"background:{C_BG2}; border-radius:6px;")
+        tree_layout = QVBoxLayout()
+        tree_layout.setContentsMargins(8, 8, 8, 8)
+        
+        tree_title = QLabel("设备树")
+        tree_title.setFont(QFont("Arial", 12, QFont.Bold))
+        tree_title.setStyleSheet(f"color:{SYS0_COLOR};")
+        tree_layout.addWidget(tree_title)
+        
+        self.device_tree = QTreeWidget()
+        self.device_tree.setHeaderLabels(["设备", "状态"])
+        self.device_tree.setColumnWidth(0, 180)
+        self.device_tree.setStyleSheet(f"""
+            QTreeWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px;}}
+            QTreeWidget::item{{padding:4px;}}
+            QTreeWidget::item:selected{{background:{SYS0_COLOR}33; color:{SYS0_COLOR};}}
+            QHeaderView::section{{background:{C_BG2}; color:{C_GRAY}; border:none; padding:4px; font-size:10px;}}
+        """)
+        self.device_tree.itemClicked.connect(self._on_device_selected)
+        self._build_device_tree()
+        tree_layout.addWidget(self.device_tree)
+        tree_panel.setLayout(tree_layout)
+        splitter.addWidget(tree_panel)
+        
+        # 右侧: 设备详情
+        self.detail_stack = QStackedWidget()
+        self.detail_stack.setStyleSheet(f"background:{C_BG}; border-radius:6px;")
+        self.detail_stack.addWidget(self._build_overview_detail())
+        self.detail_stack.addWidget(self._build_joint_detail())
+        self.detail_stack.addWidget(self._build_camera_detail())
+        self.detail_stack.addWidget(self._build_force_detail())
+        self.detail_stack.addWidget(self._build_io_detail())
+        splitter.addWidget(self.detail_stack)
+        splitter.setSizes([280, 680])
+        
+        # ── 底部: ROS2 节点 + Topic 列表 ──
+        ros_group = QGroupBox("ROS2 节点与 Topic (仿真模式)")
+        ros_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        ros_layout = QHBoxLayout()
+        
+        # 节点列表
+        node_panel = QVBoxLayout()
+        node_panel.addWidget(QLabel("活跃节点:"))
+        self.node_list = QTableWidget()
+        self.node_list.setColumnCount(2)
+        self.node_list.setHorizontalHeaderLabels(["节点名称", "功能"])
+        self.node_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.node_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.node_list.verticalHeader().setVisible(False)
+        self.node_list.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.node_list.setMaximumHeight(200)
+        self.node_list.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:2px 6px; font-size:10px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
+        """)
+        self._populate_nodes(Z700_ROS2_NODES["sim"])
+        node_panel.addWidget(self.node_list)
+        ros_layout.addLayout(node_panel)
+        
+        ros_group.setLayout(ros_layout)
+        
+        # ── 底部日志 ──
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setFixedHeight(80)
+        self.log.setFont(QFont("Consolas", 9))
+        self.log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
+        self.log.setText("  System 0 硬件工具箱就绪 · 仿真模式 · 等待启动 ...\n")
+        
+        # ── 组装 ──
+        body = QVBoxLayout()
+        body.setSpacing(8)
+        body.addLayout(toolbar)
+        body.addWidget(arch_group)
+        body.addWidget(splitter, 1)
+        body.addWidget(ros_group)
+        body.addWidget(self.log)
+        
+        container = QWidget()
+        container.setLayout(body)
+        self._build_shell(container)
 
-        sections = [
-            ("校准", ["校准机器人", "查找关节限位"]),
-            ("相机", ["发现相机", "相机预览"]),
-            ("电机", ["配置电机", "查找端口"]),
-            ("数据采集", ["实时遥操作", "录制数据集"]),
-        ]
-        for title, btns in sections:
-            g = QGroupBox(title); g.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-            gl = QHBoxLayout()
-            for btxt in btns:
-                b = QPushButton(btxt)
-                b.setStyleSheet(f"""QPushButton{{background:{SYS0_COLOR}22; color:{SYS0_COLOR}; border:1px solid {SYS0_COLOR}44; border-radius:6px; padding:10px 16px; margin:0;}}
-                QPushButton:hover{{background:{SYS0_COLOR}44;}}""")
-                gl.addWidget(b)
-            g.setLayout(gl)
-            bl.addWidget(g)
+    # ═══ 设备树 ═══
+    
+    def _build_device_tree(self):
+        self.device_tree.clear()
+        
+        overview = QTreeWidgetItem(["📋 系统概览", ""])
+        self.device_tree.addTopLevelItem(overview)
+        
+        robot = QTreeWidgetItem(["🤖 Z700 机器人", f"{len(Z700_JOINTS)} DOF"])
+        for jname, jdesc in Z700_JOINTS.items():
+            arm = "🟠左" if "left" in jname else "🔵右"
+            QTreeWidgetItem(robot, [f"  {jname}", f"{arm} {jdesc}"])
+        self.device_tree.addTopLevelItem(robot)
+        
+        cam = QTreeWidgetItem(["📷 相机阵列", f"{len(Z700_CAMERAS)} 路"])
+        for cname, cfg in Z700_CAMERAS.items():
+            QTreeWidgetItem(cam, [f"  {cname}", f"{cfg['w']}×{cfg['h']} @{cfg['fps']}fps"])
+        self.device_tree.addTopLevelItem(cam)
+        
+        force = QTreeWidgetItem(["⚡ 力传感器", "6-axis"])
+        self.device_tree.addTopLevelItem(force)
+        
+        io_dev = QTreeWidgetItem(["🔌 数字IO", "5 设备"])
+        QTreeWidgetItem(io_dev, ["  急停按钮", "NC常闭"])
+        QTreeWidgetItem(io_dev, ["  塔灯", "3色"])
+        QTreeWidgetItem(io_dev, ["  光栅", "安全光幕"])
+        QTreeWidgetItem(io_dev, ["  扫码枪", "Honeywell"])
+        QTreeWidgetItem(io_dev, ["  夹爪×2", "力控+位置"])
+        self.device_tree.addTopLevelItem(io_dev)
+        
+        safety = QTreeWidgetItem(["🛡️ 安全系统", "监控中"])
+        self.device_tree.addTopLevelItem(safety)
+        
+        self.device_tree.expandAll()
+    
+    # ═══ 详情面板 ═══
+    
+    def _detail_section(self, title: str, color: str = SYS0_COLOR) -> QVBoxLayout:
+        """创建详情段的标题+容器"""
+        layout = QVBoxLayout()
+        label = QLabel(title)
+        label.setFont(QFont("Arial", 14, QFont.Bold))
+        label.setStyleSheet(f"color:{color}; padding:8px 0;")
+        layout.addWidget(label)
+        sep = QFrame(); sep.setFixedHeight(1); sep.setStyleSheet(f"background:{C_BORDER};"); layout.addWidget(sep)
+        return layout
+    
+    def _build_overview_detail(self):
+        w = QWidget()
+        l = self._detail_section("系统概览", C_CYAN)
+        
+        info_text = QLabel(
+            "<b>Z-MAX 多模态动作专家 · System 0 硬件抽象层</b><br><br>"
+            "<b>硬件平台:</b> Z700 轮式双臂机器人<br>"
+            "<b>算力平台:</b> NVIDIA AGX Orin<br>"
+            "<b>控制周期:</b> 1ms (1000Hz)<br>"
+            "<b>力控带宽:</b> >10kHz 关节力矩闭环<br>"
+            "<b>推理延迟:</b> VLA <10ms<br>"
+            "<b>通讯:</b> EtherCAT (电机) / TCP Bridge (Orin↔PC) / gRPC (控制)<br>"
+            "<b>安全:</b> 急停 · 力控柔顺 · 光栅 · 塔灯<br><br>"
+            "<b>当前模式:</b> 🖥️ 仿真模拟 — 所有设备为虚拟仿真<br>"
+            "<b>操作提示:</b> 点击左侧设备树查看详情 · 点击<i>启动仿真</i>开始"
+        )
+        info_text.setWordWrap(True)
+        info_text.setStyleSheet(f"color:{C_WHITE}; font-size:12px; padding:12px; background:{C_BG2}; border-radius:6px;")
+        l.addWidget(info_text)
+        l.addStretch()
+        w.setLayout(l)
+        return w
+    
+    def _build_joint_detail(self):
+        w = QWidget()
+        l = self._detail_section("🤖 关节状态", SYS0_COLOR)
+        
+        self.joint_table = QTableWidget()
+        self.joint_table.setColumnCount(7)
+        self.joint_table.setHorizontalHeaderLabels(["关节", "位置 rad", "速度 rad/s", "力矩 Nm", "温度 °C", "电流 A", "状态"])
+        self.joint_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.joint_table.verticalHeader().setVisible(False)
+        self.joint_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.joint_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:4px 8px; font-size:10px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
+        """)
+        l.addWidget(self.joint_table)
+        
+        # 关节控制
+        ctrl_row = QHBoxLayout()
+        target_label = QLabel("目标位置:")
+        target_label.setStyleSheet(f"color:{C_GRAY};")
+        ctrl_row.addWidget(target_label)
+        self.joint_target = QDoubleSpinBox()
+        self.joint_target.setRange(-3.14, 3.14)
+        self.joint_target.setValue(0.0)
+        self.joint_target.setSingleStep(0.01)
+        self.joint_target.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px;")
+        ctrl_row.addWidget(self.joint_target)
+        apply_joint = QPushButton("应用")
+        apply_joint.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:4px 12px; font-weight:bold;")
+        apply_joint.clicked.connect(self._apply_joint_target)
+        ctrl_row.addWidget(apply_joint)
+        ctrl_row.addStretch()
+        l.addLayout(ctrl_row)
+        w.setLayout(l)
+        return w
+    
+    def _build_camera_detail(self):
+        w = QWidget()
+        l = self._detail_section("📷 相机状态", SYS0_COLOR)
+        
+        self.cam_table = QTableWidget()
+        self.cam_table.setColumnCount(5)
+        self.cam_table.setHorizontalHeaderLabels(["相机", "分辨率", "帧率", "编码", "时间戳"])
+        self.cam_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.cam_table.verticalHeader().setVisible(False)
+        self.cam_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.cam_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:4px 8px; font-size:10px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
+        """)
+        l.addWidget(self.cam_table)
+        w.setLayout(l)
+        return w
+    
+    def _build_force_detail(self):
+        w = QWidget()
+        l = self._detail_section("⚡ 六维力传感器", SYS0_COLOR)
+        
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        self.force_labels = {}
+        for i, (k, label) in enumerate([
+            ("fx", "Fx (N)"), ("fy", "Fy (N)"), ("fz", "Fz (N)"),
+            ("tx", "Tx (Nm)"), ("ty", "Ty (Nm)"), ("tz", "Tz (Nm)"),
+        ]):
+            val = QLabel("0.000")
+            val.setFont(QFont("Consolas", 18, QFont.Bold))
+            val.setStyleSheet(f"color:{C_GREEN}; padding:8px; background:{C_BG2}; border-radius:6px;")
+            val.setAlignment(Qt.AlignCenter)
+            self.force_labels[k] = val
+            grid.addWidget(QLabel(label), i//3*2, i%3)
+            grid.addWidget(val, i//3*2+1, i%3)
+        l.addLayout(grid)
+        
+        info = QLabel("力控带宽: >10kHz | 精度: <2N | 量程: ±500N / ±20Nm")
+        info.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        l.addWidget(info)
+        l.addStretch()
+        w.setLayout(l)
+        return w
+    
+    def _build_io_detail(self):
+        w = QWidget()
+        l = self._detail_section("🔌 数字 IO 状态", SYS0_COLOR)
+        
+        self.io_table = QTableWidget()
+        self.io_table.setColumnCount(2)
+        self.io_table.setHorizontalHeaderLabels(["设备", "状态"])
+        self.io_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.io_table.verticalHeader().setVisible(False)
+        self.io_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.io_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:6px 10px; font-size:11px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
+        """)
+        l.addWidget(self.io_table)
+        
+        # IO控制按钮
+        io_ctrl = QHBoxLayout()
+        for label, cmd in [("🔴 触发急停", "estop"), ("🟢 释放急停", "release_estop")]:
+            btn = QPushButton(label)
+            btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+            btn.clicked.connect(lambda _, c=cmd: self._io_command(c))
+            io_ctrl.addWidget(btn)
+        io_ctrl.addStretch()
+        l.addLayout(io_ctrl)
+        w.setLayout(l)
+        return w
+    
+    # ═══ 操作 ═══
+    
+    def _on_mode_changed(self, idx):
+        modes = ["sim", "local", "real"]
+        self.sim.mode = modes[idx]
+        self._log(f"模式切换: {modes[idx]}")
+        self._refresh_topo()
+    
+    def _toggle_sim(self):
+        if self.sim.running:
+            self.sim.stop()
+            self._timer.stop()
+            self.btn_start.setText("▶ 启动仿真")
+            self.btn_start.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+            self.status_label.setText("● 已停止")
+            self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            self._log("仿真已停止")
+        else:
+            self.sim.start()
+            self._timer.start(100)  # 100ms刷新
+            self.btn_start.setText("⏸ 停止仿真")
+            self.btn_start.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+            self.status_label.setText("● 运行中")
+            self.status_label.setStyleSheet(f"color:{C_GREEN}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            self._log("仿真已启动 · 1ms控制周期 · 14-DOF · 7路相机 · 力传感器 · IO")
+    
+    def _reset(self):
+        was_running = self.sim.running
+        if was_running:
+            self.sim.stop()
+            self._timer.stop()
+        self.sim.reset()
+        if was_running:
+            self.sim.start()
+            self._timer.start(100)
+        self._refresh()
+        self._log("设备已重置")
+    
+    def _apply_joint_target(self):
+        target = self.joint_target.value()
+        for j in self.sim.joints.values():
+            j.target = target
+        self._log(f"关节目标 → {target:.2f} rad")
+    
+    def _io_command(self, cmd):
+        if cmd == "estop":
+            self.sim.io.estop = True
+            self._log("⚠️ 急停触发！所有电机断电")
+        elif cmd == "release_estop":
+            self.sim.io.estop = False
+            self._log("急停已释放")
+    
+    def _on_device_selected(self, item, col):
+        text = item.text(0).strip()
+        if "概览" in text: self.detail_stack.setCurrentIndex(0)
+        elif any(k in text for k in ["joint", "gripper"]): self.detail_stack.setCurrentIndex(1)
+        elif "camera" in text.lower() or "相机" in text: self.detail_stack.setCurrentIndex(2)
+        elif "力" in text: self.detail_stack.setCurrentIndex(3)
+        elif "IO" in text or "io" in text: self.detail_stack.setCurrentIndex(4)
+        else: self.detail_stack.setCurrentIndex(0)
+    
+    # ═══ 刷新 ═══
+    
+    def _refresh(self):
+        self._refresh_topo()
+        self._refresh_joints()
+        self._refresh_cameras()
+        self._refresh_force()
+        self._refresh_io()
+    
+    def _refresh_topo(self):
+        topo = self.sim.get_topology()
+        vals = [topo["mode"], topo["joints"], topo["cameras"], topo["force_sensor"], topo["io_devices"], f"{topo['control_hz']}Hz", topo["uptime"]]
+        self.topo_table.setRowCount(1)
+        for i, v in enumerate(vals):
+            item = QTableWidgetItem(v)
+            item.setFont(QFont("Consolas", 9))
+            self.topo_table.setItem(0, i, item)
+    
+    def _refresh_joints(self):
+        if not hasattr(self, 'joint_table'):
+            return
+        snap = self.sim.get_joint_snapshot()
+        self.joint_table.setRowCount(len(snap))
+        for i, (jname, s) in enumerate(snap.items()):
+            for j, key in enumerate(["pos", "vel", "torque", "temp", "current"]):
+                self.joint_table.setItem(i, j, QTableWidgetItem(str(s[key])))
+            status = "✅" if s["enabled"] else "❌"
+            self.joint_table.setItem(i, 5, QTableWidgetItem(f"{s['current']:.2f}"))
+            self.joint_table.setItem(i, 6, QTableWidgetItem(status))
+    
+    def _refresh_cameras(self):
+        if not hasattr(self, 'cam_table'):
+            return
+        snap = self.sim.get_camera_snapshot()
+        self.cam_table.setRowCount(len(snap))
+        for i, (cname, s) in enumerate(snap.items()):
+            self.cam_table.setItem(i, 0, QTableWidgetItem(cname))
+            self.cam_table.setItem(i, 1, QTableWidgetItem(s["size"]))
+            self.cam_table.setItem(i, 2, QTableWidgetItem(str(s["fps"])))
+            self.cam_table.setItem(i, 3, QTableWidgetItem(s["enc"]))
+            self.cam_table.setItem(i, 4, QTableWidgetItem(str(s["ts"])))
+    
+    def _refresh_force(self):
+        if not hasattr(self, 'force_labels'):
+            return
+        f = self.sim.force
+        for k, lbl in self.force_labels.items():
+            val = getattr(f, k, 0.0)
+            lbl.setText(f"{val:+.3f}")
+    
+    def _refresh_io(self):
+        if not hasattr(self, 'io_table'):
+            return
+        snap = self.sim.get_io_snapshot()
+        self.io_table.setRowCount(len(snap))
+        for i, (dev, state) in enumerate(snap.items()):
+            self.io_table.setItem(i, 0, QTableWidgetItem(dev))
+            self.io_table.setItem(i, 1, QTableWidgetItem(state))
+    
+    def _populate_nodes(self, nodes):
+        self.node_list.setRowCount(len(nodes))
+        for i, (name, desc) in enumerate(nodes):
+            self.node_list.setItem(i, 0, QTableWidgetItem(name))
+            self.node_list.setItem(i, 1, QTableWidgetItem(desc))
+    
+    def _log(self, msg):
+        ts = time.strftime("%H:%M:%S")
+        self.log.append(f"  [{ts}] {msg}")
 
-        self.log = QTextEdit(); self.log.setReadOnly(True); self.log.setFixedHeight(120)
-        self.log.setFont(QFont("Consolas", 10))
-        self.log.setStyleSheet(f"background:{C_CARD}; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; padding:8px;")
-        bl.addWidget(self.log)
-        body.setLayout(bl)
-        self._build_shell(body)
+
 
 
 class ConfigModule(SubModuleWidget):
