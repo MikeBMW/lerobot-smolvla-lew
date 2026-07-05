@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Z-MAX Studio
+Name[zh_CN]=Z-MAX Studio 开发环境
+Comment=Multi-modal Embodied AI Development Studio for Optical Module Factory
+Comment[zh_CN]=光模块工厂精细操作具身智能开发环境
+Exec=bash -c 'cd "$(dirname "$0")" && exec bash start.sh' %k
+Icon=zmax-logo.png
+Path=
+Terminal=true
+Categories=Development;Robotics;AI;
+Keywords=robot;AI;embodied;manufacturing;Z-MAX;
+StartupNotify=true
