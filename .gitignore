@@ -88,8 +88,12 @@ celerybeat-schedule
 celerybeat.pid
 
 ### IDE & Editor Config ###
-# VS Code
-.vscode/
+# VS Code — hide cache/artifacts but keep settings.json
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 .devcontainer/
 
 # JetBrains / PyCharm
