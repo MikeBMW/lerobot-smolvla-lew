@@ -178,3 +178,15 @@ outputs/
 *.part
 *.bak.*
 *.bak
+
+### ROS2 Workspace Build Artifacts ###
+ros_pc_ws/build/
+ros_pc_ws/install/
+ros_pc_ws/log/
+ros_orin_ws/build/
+ros_orin_ws/install/
+ros_orin_ws/log/
+
+# ROS2 package manifests must NOT be ignored
+!ros_pc_ws/src/*/package.xml
+!ros_orin_ws/src/*/package.xml

@@ -11,23 +11,31 @@ cd "$SCRIPT_DIR" || { echo "❌ 无法进入 $SCRIPT_DIR"; exit 1; }
 
 echo "📂 工作目录: $SCRIPT_DIR"
 
-# 自动检测可用 Python 版本（确保有 PyQt5）
-find_python() {
-    local py
-    for py in python3 python3.10 python3.12 python3.11; do
-        # 检查是否已安装
-        if command -v "$py" >/dev/null 2>&1; then
-            # 验证 PyQt5 可导入
-            if "$py" -c "from PyQt5.QtWidgets import QApplication" 2>/dev/null; then
-                echo "$py"
-                return 0
-            fi
-        fi
-    done
-    return 1
-}
+# ── 优先使用 conda lerobot 环境 ──
+CONDA_LEROBOT_PYTHON="$HOME/miniconda3/envs/lerobot/bin/python"
+if [ -x "$CONDA_LEROBOT_PYTHON" ]; then
+    if "$CONDA_LEROBOT_PYTHON" -c "from PyQt5.QtWidgets import QApplication" 2>/dev/null; then
+        PYTHON="$CONDA_LEROBOT_PYTHON"
+        echo "🐍 Python: conda lerobot ($($PYTHON --version 2>&1))"
+    fi
+fi
 
-PYTHON=$(find_python)
+# 如果 conda 环境不可用，自动检测其他 Python 版本
+if [ -z "$PYTHON" ]; then
+    find_python() {
+        local py
+        for py in python3 python3.10 python3.12 python3.11; do
+            if command -v "$py" >/dev/null 2>&1; then
+                if "$py" -c "from PyQt5.QtWidgets import QApplication" 2>/dev/null; then
+                    echo "$py"
+                    return 0
+                fi
+            fi
+        done
+        return 1
+    }
+    PYTHON=$(find_python)
+fi
 if [ -z "$PYTHON" ]; then
     echo "⚠️  未找到带 PyQt5 的 Python，尝试安装 PyQt5..."
     if command -v python3 >/dev/null 2>&1; then

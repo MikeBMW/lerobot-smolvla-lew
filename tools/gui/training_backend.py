@@ -246,17 +246,25 @@ class TrainingBackend(QObject):
             return False
 
     def _find_lerobot_train(self, repo_root):
-        """查找 lerobot-train 可执行命令"""
-        # 1. 检查 conda 环境中的 lerobot-train
+        """查找 lerobot-train 可执行命令，优先 conda lerobot 环境"""
+        # 1. 优先检查 conda lerobot 环境
+        conda_bin = os.path.expanduser("~/miniconda3/envs/lerobot/bin")
+        for name in ['lerobot-train', 'lerobot_train']:
+            path = os.path.join(conda_bin, name)
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+
+        # 2. 检查 PATH 中的 lerobot-train
         for name in ['lerobot-train', 'lerobot_train']:
             path = self._which(name)
             if path:
                 return path
 
-        # 2. 检查仓库内的 scripts
+        # 3. 使用当前 Python 解释器运行仓库脚本
         script_path = os.path.join(repo_root, "src", "lerobot", "scripts", "lerobot_train.py")
         if os.path.exists(script_path):
-            return f"python {script_path}"
+            import sys
+            return f"{sys.executable} {script_path}"
 
         return None
 
