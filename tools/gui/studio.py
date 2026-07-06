@@ -4085,10 +4085,7 @@ class HardwareModule(SubModuleWidget):
             self.io_table.setItem(i, 1, QTableWidgetItem(state))
     
     def _populate_nodes(self, nodes):
-        self.node_list.setRowCount(len(nodes))
-        for i, (name, desc) in enumerate(nodes):
-            self.node_list.setItem(i, 0, QTableWidgetItem(name))
-            self.node_list.setItem(i, 1, QTableWidgetItem(desc))
+        pass  # 已迁移到实时监控模块
     
     def _log(self, msg):
         ts = time.strftime("%H:%M:%S")
