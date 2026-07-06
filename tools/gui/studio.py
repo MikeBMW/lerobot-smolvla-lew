@@ -1042,6 +1042,15 @@ class HomeWidget(QWidget):
         doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'BRAND-品牌注册材料.pptx')))
         row.addWidget(doc_btn)
 
+        # ====== 分享按钮 ======
+        share_btn = QPushButton("📱 分享")
+        share_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        share_btn.setCursor(Qt.PointingHandCursor)
+        share_btn.setToolTip("生成二维码 · 扫码查看Z-MAX项目")
+        share_btn.clicked.connect(self._show_share_qr)
+        row.addWidget(share_btn)
+
         layout.addLayout(row)
 
         desc = QLabel("高速光模块精细操作具身机器人 · L4级全自主 · 1ms实时控制 · 三层解耦架构")
@@ -1195,6 +1204,60 @@ class HomeWidget(QWidget):
             ], check=True)
         except Exception as e:
             QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
+
+    def _show_share_qr(self):
+        """生成二维码弹窗 — 扫码查看Z-MAX项目"""
+        import qrcode, io, os
+        from PyQt5.QtGui import QPixmap
+        
+        # 二维码内容
+        qr_url = "https://github.com/MikeBMW/lerobot-smolvla-lew"
+        qr_text = f"Z-MAX 多模态动作专家\nZ700 轮式双臂机器人\n精度±0.02mm | 成功率>99%\n{qr_url}"
+        
+        try:
+            qr = qrcode.QRCode(box_size=8, border=2)
+            qr.add_data(qr_url)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            
+            pixmap = QPixmap()
+            pixmap.loadFromData(buf.getvalue())
+            
+            dlg = QDialog(self)
+            dlg.setWindowTitle("📱 Z-MAX 项目分享")
+            dlg.setStyleSheet(f"background:{C_BG};")
+            dl = QVBoxLayout()
+            
+            title = QLabel("扫码查看 Z-MAX 项目")
+            title.setFont(QFont("Arial", 14, QFont.Bold))
+            title.setStyleSheet(f"color:{C_WHITE};")
+            title.setAlignment(Qt.AlignCenter)
+            dl.addWidget(title)
+            
+            qr_label = QLabel()
+            qr_label.setPixmap(pixmap.scaled(240, 240, Qt.KeepAspectRatio))
+            qr_label.setAlignment(Qt.AlignCenter)
+            dl.addWidget(qr_label)
+            
+            info = QLabel(f"<b>GitHub:</b> {qr_url}<br><b>{qr_text.split(chr(10))[0]}</b>")
+            info.setWordWrap(True)
+            info.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding:8px;")
+            info.setAlignment(Qt.AlignCenter)
+            dl.addWidget(info)
+            
+            close_btn = QPushButton("关闭")
+            close_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:8px 24px;")
+            close_btn.clicked.connect(dlg.accept)
+            dl.addWidget(close_btn)
+            
+            dlg.setLayout(dl)
+            dlg.exec_()
+        except ImportError:
+            QMessageBox.information(self, "分享", 
+                f"📱 Z-MAX 项目\n\n{qr_text}\n\n(二维码生成中，请稍后重试)")
 
 
 # ============================================================
