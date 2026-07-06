@@ -3386,7 +3386,7 @@ class HardwareModule(SubModuleWidget):
             ("📷 RealSense D435","RGB-D相机", None,                    ["/color/image_raw", "/depth/rect", "/points"]),
             ("🚨 双路急停",    "安全",       None,                    "待接入"),
             ("📱 扫码枪",      "Honeywell",  None,                    "待接入"),
-            ("🖐️ 触觉传感器", "触觉阵列",   None,                    "待接入"),
+            ("🖐️ 触觉传感器", "TS-F-L",    None,                    ["/tactile_sensor(TactileSensor)"]),
             ("👁️ FoundationPose","视觉",    None,                    "待接入"),
             ("📡 障碍物检测",  "安全",       None,                    "待接入"),
             ("🎛️ 状态机",      "控制器",     None,                    "待接入"),
@@ -3456,6 +3456,11 @@ class HardwareModule(SubModuleWidget):
                 check_btn.setToolTip("检测相机")
                 check_btn.clicked.connect(self._check_camera)
                 btn_layout.addWidget(check_btn)
+            elif name == "🖐️ 触觉传感器":
+                read_btn = self._make_hw_btn("📡", C_ORANGE)
+                read_btn.setToolTip("读取触觉")
+                read_btn.clicked.connect(self._read_tactile)
+                btn_layout.addWidget(read_btn)
             else:
                 ph = QLabel("待接入")
                 ph.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
@@ -3576,6 +3581,33 @@ class HardwareModule(SubModuleWidget):
             self.hw_table.item(4, 3).setText(f"错误")
             self._log(f"   ❌ {e}")
     
+    def _read_tactile(self):
+        """读取触觉传感器"""
+        import subprocess
+        self._log("🖐️ 读取触觉...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /tactile_sensor 2>/dev/null"
+            ], capture_output=True, text=True, timeout=8)
+            out = r.stdout
+            if "sensor_name" in out:
+                import re
+                name = re.search(r'sensor_name: (.+)', out)
+                model = re.search(r'sensor_model: (.+)', out)
+                nf = re.search(r'nf:\n(.+)', out)
+                nf_val = nf.group(1).strip()[:60] if nf else "?"
+                info = f"{name.group(1) if name else '?'} | nf={nf_val}"
+                self.hw_table.item(7, 2).setText("🟢")
+                self.hw_table.item(7, 3).setText(info[:80])
+                self._log(f"   ✅ {info[:80]}")
+            else:
+                self.hw_table.item(7, 2).setText("⏸")
+                self.hw_table.item(7, 3).setText("无数据")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+
     def _read_robot_joints(self):
         """读取机械臂当前关节状态"""
         import subprocess, re
