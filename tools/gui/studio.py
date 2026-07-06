@@ -4688,12 +4688,9 @@ class MonitorModule(SubModuleWidget):
                 try:
                     r = subprocess.run([
                         "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
-                        "bash -c 'export ROS_DOMAIN_ID=23; "
-                        "source /opt/ros/humble/setup.bash; "
-                        "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null; "
-                        "ros2 topic echo --once /gripper_pos 2>/dev/null; "
-                        "ros2 topic echo --once /robot/joint_states 2>/dev/null | grep position -A1; "
-                        "ros2 topic echo --once /robot/force_torque 2>/dev/null | grep -E \"x:|y:|z:\"'"],
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null | grep position -A1; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null | grep -E 'x:|y:|z:'"],
                         capture_output=True, text=True, timeout=5)
                     out = r.stdout.strip()
                     if out:
