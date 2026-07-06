@@ -6178,20 +6178,21 @@ class StudioMainWindow(QMainWindow):
         sl.setSpacing(4)
         
         self._status_lights = {}
-        for color_on, color_off, label, tooltip in [
-            ("#3fb950", "#21262d", "●",  "Hermes Agent 在线 · 守护进程运行中"),
-            ("#d29922", "#21262d", "●",  "需要紧急处理"),
-            ("#f85149", "#21262d", "●",  "Agent 不在线或异常"),
+        for color_on, name, tooltip in [
+            ("#3fb950", "green",  "Hermes Agent 在线 · 守护进程运行中"),
+            ("#d29922", "yellow", "需要紧急处理"),
+            ("#f85149", "red",    "Agent 不在线或异常"),
         ]:
-            dot = QLabel("●")
-            dot.setStyleSheet(f"color:{color_on}; font-size:16px;")
+            dot = QLabel()
+            dot.setFixedSize(14, 14)
             dot.setToolTip(tooltip)
-            dot.setFixedWidth(16)
-            # 默认只亮绿灯
-            if color_on != "#3fb950":
-                dot.setStyleSheet(f"color:{color_off}; font-size:16px;")
+            # 默认: 绿灯实心, 其他空心带边线
+            if name == "green":
+                dot.setStyleSheet(f"background:{color_on}; border:2px solid {color_on}; border-radius:7px;")
+            else:
+                dot.setStyleSheet(f"background:transparent; border:2px solid {color_on}; border-radius:7px;")
             sl.addWidget(dot)
-            self._status_lights[color_on] = dot
+            self._status_lights[name] = dot
         
         status_widget.setLayout(sl)
         mb.setCornerWidget(status_widget, Qt.TopRightCorner)
