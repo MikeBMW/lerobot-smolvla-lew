@@ -1209,7 +1209,7 @@ class HomeWidget(QWidget):
             r = subprocess.run(["wslpath", "-w", doc_path], capture_output=True, text=True, timeout=3)
             win_path = r.stdout.strip()
             if win_path:
-                subprocess.run(["cmd.exe", "/c", "start", "", win_path], check=True, timeout=5)
+                subprocess.run(["explorer.exe", win_path], check=True, timeout=5)
         except Exception as e:
             QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
 
@@ -6120,14 +6120,14 @@ class StudioMainWindow(QMainWindow):
                             r = _sp.run(["wslpath", "-w", full_path], capture_output=True, text=True, timeout=3)
                             win_path = r.stdout.strip()
                             if win_path:
-                                _sp.Popen(["cmd.exe", "/c", "start", "", win_path])
+                                _sp.Popen(["explorer.exe", win_path])
                         elif opener == "xdg-open":
                             # WSL: 用 wslpath -w 转 Windows 路径后打开
                             import subprocess as sp
                             r = sp.run(["wslpath", "-w", full_path], capture_output=True, text=True, timeout=3)
                             win_path = r.stdout.strip()
                             if win_path:
-                                sp.Popen(["cmd.exe", "/c", "start", "", win_path])
+                                sp.Popen(["explorer.exe", win_path])
                         else:
                             subprocess.Popen([opener, full_path])
                         self.statusBar().showMessage(f"已打开: {rel_path}")
