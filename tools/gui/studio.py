@@ -3063,92 +3063,6 @@ class EvalModule(SubModuleWidget):
         self._build_shell(body)
 
 
-from PyQt5.QtGui import QPainter, QPen, QBrush, QPainterPath
-from PyQt5.QtCore import QRectF, QPointF
-
-class _RosGraphCanvas(QWidget):
-    """rqt_graph 风格 ROS2 节点拓扑图"""
-    
-    def __init__(self):
-        super().__init__()
-        self.setMinimumSize(600, 400)
-        self.setMinimumSize(700, 1700)
-        self.setStyleSheet(f"background:white;")
-        self.nodes = {}
-        self.edges = []
-        self._build_graph()
-    
-    def _build_graph(self):
-        y1 = 60; y2 = 500; y3 = 1000; y4 = 1500
-        self.nodes["realsense"] = (20, y1, 100, 36, "#79c0ff", "realsense\nRGB-D")
-        self.nodes["vision_tag"] = (160, y1, 85, 36, "#79c0ff", "vision_tag\nFoundPose")
-        self.nodes["vision_pc"] = (290, y1+55, 85, 36, "#79c0ff", "vision\npointcloud")
-        self.nodes["vision"] = (420, y1, 85, 36, "#79c0ff", "vision\n视觉管道")
-        self.nodes["scanner"] = (550, y1, 85, 36, "#79c0ff", "honeywell\n扫码枪")
-        
-        self.nodes["robot_driver"] = (20, y2, 100, 36, "#d2a8ff", "robot_driver\n珞石")
-        self.nodes["gripper"] = (160, y2, 85, 36, "#d2a8ff", "gripper\ndriver")
-        self.nodes["tactile"] = (290, y2, 90, 36, "#d2a8ff", "tactile_force\n力+触觉")
-        
-        self.nodes["motion"] = (100, y3, 120, 36, "#ffa657", "motion\n状态机")
-        
-        self.nodes["tower"] = (20, y4, 90, 36, "#a5d6ff", "tower_light\n三色塔灯")
-        self.nodes["hmi"] = (160, y4, 110, 36, "#a5d6ff", "hmi_bridge\n人机界面")
-        self.nodes["ext_comm"] = (320, y4, 110, 36, "#a5d6ff", "external_comm\n外部通信")
-        
-        self.edges = [
-            ("realsense", "vision_tag", "color", "#000"),
-            ("realsense", "vision_pc", "points", "#000"),
-            ("vision_tag", "vision", "pose", "#000"),
-            ("vision_pc", "vision", "marker", "#000"),
-            ("scanner", "hmi", "barcode", "#000"),
-            ("tactile", "motion", "F/T/tactile", "#000"),
-            ("robot_driver", "motion", "joint/status", "#000"),
-            ("gripper", "motion", "gripper", "#000"),
-            ("motion", "hmi", "events", "#000"),
-            ("motion", "tower", "motion", "#000"),
-            ("robot_driver", "hmi", "joints", "#000"),
-            ("gripper", "hmi", "pos", "#000"),
-            ("ext_comm", "motion", "ext", "#000"),
-        ]
-    
-    def paintEvent(self, ev):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.fillRect(self.rect(), QColor("white"))
-        
-        for fn, tn, label, color in self.edges:
-            if fn not in self.nodes or tn not in self.nodes: continue
-            fx, fy, fw, fh = self.nodes[fn][:4]
-            tx, ty, tw, th = self.nodes[tn][:4]
-            x1, y1 = fx + fw, fy + fh//2
-            x2, y2 = tx, ty + th//2
-            
-            p.setPen(QPen(QColor(color), 1))
-            # 直角折线: 水平出→竖线→水平入
-            mid_x = x1 + (x2 - x1) * 0.6
-            mid_y1 = y1; mid_y2 = y2
-            path = QPainterPath(); path.moveTo(x1, y1)
-            path.lineTo(mid_x, y1)
-            path.lineTo(mid_x, y2)
-            path.lineTo(x2, y2)
-            p.drawPath(path)
-            
-            p.setBrush(QColor(color)); p.save()
-            p.translate(x2, y2)
-            p.drawPolygon(QPointF(0,0), QPointF(-8,-4), QPointF(-8,4))
-            p.restore()
-            
-            p.setPen(QPen(QColor("#8b949e"))); p.setFont(QFont("Consolas", 7))
-            p.drawText(QRectF(mid_x-30, (y1+y2)//2-8, 60, 12), 0x84, label)
-        
-        for name, (x, y, w, h, color, label) in self.nodes.items():
-            p.setPen(QPen(QColor(color), 1)); p.setBrush(QColor(C_BG2))
-            p.drawRoundedRect(QRectF(x, y, w, h), 8, 8)
-            p.setPen(QPen(QColor(color))); p.setFont(QFont("Consolas", 7))
-            p.drawText(QRectF(x+2, y, w-4, h), 0x84, label)
-
-
 class HardwareModule(SubModuleWidget):
     """硬件工具箱 — System 0 基石层: 仿真 + 真实硬件统一接口
     
@@ -3214,22 +3128,6 @@ class HardwareModule(SubModuleWidget):
         
         toolbar.addStretch()
         
-        # ── ROS2 拓扑图 (rqt_graph风格) ──
-        topo_group = QGroupBox("🔗 ROS2 Node 拓扑 · rqt_graph 风格")
-        topo_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:12px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
-        topo_layout = QVBoxLayout()
-        
-        # 滚动区域包裹
-        topo_scroll = QScrollArea()
-        topo_scroll.setWidgetResizable(True)
-        topo_scroll.setMinimumHeight(500)
-        topo_scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px; background:#161b22;} QScrollBar::handle:vertical{background:#30363d; border-radius:5px;}")
-        
-        self.topo_canvas = _RosGraphCanvas()
-        topo_scroll.setWidget(self.topo_canvas)
-        topo_layout.addWidget(topo_scroll)
-        topo_group.setLayout(topo_layout)
-        
         # ── 主内容区: 设备树 + 详情 ──
         splitter = QSplitter(Qt.Horizontal)
         
@@ -3282,8 +3180,7 @@ class HardwareModule(SubModuleWidget):
         body = QVBoxLayout()
         body.setSpacing(8)
         body.addLayout(toolbar)
-        body.addWidget(topo_group, 1)
-        body.addWidget(splitter, 2)
+        body.addWidget(splitter, 1)
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
