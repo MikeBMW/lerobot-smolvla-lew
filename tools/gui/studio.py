@@ -4374,12 +4374,13 @@ class MonitorModule(SubModuleWidget):
         ctrl_row.addWidget(self.mon_status)
         bl.addLayout(ctrl_row)
         
-        # ═══ 状态信息 (宽) ═══
-        self.mon_data_preview = QLabel(
-            "选择信号源 → 选可视化引擎 → 点 ▶ 启动"
-        )
-        self.mon_data_preview.setWordWrap(True)
-        self.mon_data_preview.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding:6px 12px; background:{C_BG}; border-radius:4px;")
+        # ═══ 实时追踪面板 ═══
+        self.mon_data_preview = QTextEdit()
+        self.mon_data_preview.setReadOnly(True)
+        self.mon_data_preview.setFont(QFont("Consolas", 10))
+        self.mon_data_preview.setStyleSheet(f"color:{C_GREEN}; padding:8px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.mon_data_preview.setMinimumHeight(180)
+        self.mon_data_preview.setHtml("<i>选择「实时数据」查看 Orin 信号追踪</i>")
         bl.addWidget(self.mon_data_preview)
         
         # ═══ 日志 ═══
@@ -4453,7 +4454,7 @@ class MonitorModule(SubModuleWidget):
             return
         if self.replay.load_session(session):
             self._mlog(f"✅ 加载 {session} · {self.replay.total_frames}帧 · {self.replay.duration:.1f}s")
-            self.mon_data_preview.setText(
+            self.mon_data_preview.setHtml(
                 f"<b>✅ 已加载: {session}</b><br>"
                 f"帧数: {self.replay.total_frames} | 时长: {self.replay.duration:.2f}s<br>"
                 f"关节数据: {'✅' if self.replay.get_frame(0) and self.replay.get_frame(0).get('joints') else '❌'}<br>"
@@ -4467,7 +4468,7 @@ class MonitorModule(SubModuleWidget):
         from hardware_simulator import get_simulator
         self._sim_src = get_simulator("sim")
         self._mlog("🖥️ 数据源: 仿真引擎 (14-DOF 正弦波)")
-        self.mon_data_preview.setText(
+        self.mon_data_preview.setHtml(
             "<b>🖥️ 仿真数据源</b><br>"
             "Z700 14-DOF 正弦波 · 7路相机测试图案 · 六维力传感器<br>"
             "点击「启动可视化」查看实时仿真数据"
@@ -4680,7 +4681,7 @@ class MonitorModule(SubModuleWidget):
         import subprocess
         
         self._mlog("🔍 实时监控: 连接 Orin...")
-        self._live_data = {"joints": [], "gripper": 0, "force": {}, "tcp": {}}
+        self._live_data = {"status": "连接中...", "topics": {}}
         
         import threading
         def _poll():
@@ -4689,26 +4690,42 @@ class MonitorModule(SubModuleWidget):
                     r = subprocess.run([
                         "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                         "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null | grep position -A1; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null | grep -E 'x:|y:|z:'"],
-                        capture_output=True, text=True, timeout=5)
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot_status 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /emergency_stop 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /tower_light/status 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/tcp_pose 2>/dev/null"],
+                        capture_output=True, text=True, timeout=8)
                     out = r.stdout.strip()
                     if out:
-                        lines = out.split('\n')
-                        for i, line in enumerate(lines):
-                            if 'data:' in line:
-                                self._live_data["gripper"] = line.split(':')[1].strip()
-                            if 'position:' in line and i+1 < len(lines):
-                                pos_line = lines[i+1].strip().replace('- ','')
-                                self._live_data["joints"] = [v.strip() for v in pos_line.split(',')]
-                            if 'x:' in line:
-                                self._live_data["force"]["fx"] = line.split(':')[1].strip()
+                        topics = {}
+                        sections = out.split('---')
+                        topic_names = ["gripper_pos", "joint_states", "force_torque", 
+                                      "robot_status", "emergency_stop", "tower_light", "tcp_pose"]
+                        for i, sec in enumerate(sections):
+                            sec = sec.strip()
+                            if sec and i < len(topic_names):
+                                # 提取关键数据行
+                                key_lines = []
+                                for line in sec.split('\n')[:6]:
+                                    line = line.strip()
+                                    if line and not line.startswith('---'):
+                                        key_lines.append(line)
+                                topics[topic_names[i]] = " | ".join(key_lines[:3]) if key_lines else "无数据"
+                        self._live_data["topics"] = topics
                         self._live_data["status"] = "🟢 在线"
                     else:
-                        self._live_data["status"] = "⚠️ 无数据"
+                        self._live_data["status"] = "⚠️ 机器人idle"
                 except:
                     self._live_data["status"] = "🔴 断开"
-                time.sleep(1.0)
+                time.sleep(1.5)
         
         self._live_running = True
         t = threading.Thread(target=_poll, daemon=True)
@@ -4720,25 +4737,21 @@ class MonitorModule(SubModuleWidget):
         self._mlog("   ✅ 实时监控已启动")
     
     def _update_live_display(self):
+        """实时信号追踪面板 — 每个 topic 一行"""
         d = getattr(self, '_live_data', {})
-        status = d.get("status", "等待...")
-        joints = d.get("joints", [])
-        gripper = d.get("gripper", "?")
-        force = d.get("force", {})
         
-        if joints and len(joints) >= 6:
-            try:
-                j_str = " ".join([f"J{i+1}:{float(joints[i]):+.4f}" for i in range(6)])
-            except:
-                j_str = str(joints)[:80]
+        lines = ["<pre style='color:#3fb950; font-size:11px; margin:0;'>"]
+        lines.append("<b>═══ Orin 实时信号追踪 ═══</b>\n")
+        lines.append(f"状态: {d.get('status','等待...')}\n\n")
+        
+        topics_data = d.get("topics", {})
+        if topics_data:
+            for topic, value in topics_data.items():
+                lines.append(f"<b>{topic:22s}</b> {value}\n")
         else:
-            j_str = "等待关节数据..."
-        
-        self.mon_data_preview.setText(
-            f"<b>{status}</b> | 夹爪: {gripper}<br>"
-            f"<b>关节:</b> {j_str}<br>"
-            f"<b>力:</b> Fx={force.get('fx','?')} Fy={force.get('fy','?')} Fz={force.get('fz','?')}"
-        )
+            lines.append("<i>等待机器人数据... (idle时无数据发布)</i>")
+        lines.append("</pre>")
+        self.mon_data_preview.setHtml("".join(lines))
     
     def _gen_live_rrd(self):
         """实时采集 5 秒数据 → .rrd"""
