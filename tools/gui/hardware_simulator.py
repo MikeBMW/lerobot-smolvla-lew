@@ -536,3 +536,170 @@ def discover_hardware_blocking() -> dict:
     
     results["success"] = True
     return results
+
+
+# ═══════════════════════════════════════════════
+# 数据回放引擎 (Offline Replay)
+# ═══════════════════════════════════════════════
+
+import os
+import glob
+import csv
+
+
+class ReplayEngine:
+    """离线数据回放引擎 — 加载CSV会话数据，按时间戳逐帧回放"""
+    
+    DATA_DIR = os.path.expanduser("~/yspace/replay_data")
+    
+    def __init__(self):
+        self.session: str = ""
+        self.session_path: str = ""
+        self.frames: list[dict] = []   # [{"ts": float, "joints": [...], "gripper": float, ...}, ...]
+        self.current_frame: int = 0
+        self.total_frames: int = 0
+        self.playing: bool = False
+        self.loop: bool = True
+        self.speed: float = 1.0
+        
+    def list_sessions(self) -> list[str]:
+        """列出所有可用回放会话"""
+        if not os.path.isdir(self.DATA_DIR):
+            return []
+        sessions = []
+        for d in sorted(os.listdir(self.DATA_DIR)):
+            full = os.path.join(self.DATA_DIR, d)
+            if os.path.isdir(full) and os.path.exists(os.path.join(full, "metadata.json")):
+                sessions.append(d)
+        return sessions
+    
+    def load_session(self, session_name: str) -> bool:
+        """加载指定会话的所有数据"""
+        path = os.path.join(self.DATA_DIR, session_name)
+        if not os.path.isdir(path):
+            return False
+        
+        self.session = session_name
+        self.session_path = path
+        self.frames = []
+        self.current_frame = 0
+        
+        # 加载 real_joint_states (最主要的数据源，频率最高)
+        joint_file = os.path.join(path, "_real_joint_states.csv")
+        if os.path.exists(joint_file):
+            with open(joint_file) as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) < 8:
+                        continue
+                    try:
+                        sec = int(row[0])
+                        nsec = int(row[1])
+                        ts = sec + nsec / 1e9
+                        # row[2]=frame_id, row[3:9]=joint names, row[9:15]=positions
+                        positions = [float(v) for v in row[9:15]]
+                        self.frames.append({
+                            "ts": ts,
+                            "joints": positions,
+                            "source": "real_joint_states",
+                        })
+                    except (ValueError, IndexError):
+                        continue
+        
+        # 加载 gripper_pos
+        gripper_file = os.path.join(path, "_gripper_pos.csv")
+        gripper_data = {}
+        if os.path.exists(gripper_file):
+            with open(gripper_file) as f:
+                for row in csv.reader(f):
+                    if len(row) >= 3:
+                        try:
+                            sec, nsec = int(row[0]), int(row[1])
+                            ts = sec + nsec / 1e9
+                            gripper_data[ts] = float(row[2])
+                        except (ValueError, IndexError):
+                            pass
+        
+        # 合并 gripper 数据到最近的帧
+        if gripper_data:
+            gripper_ts = sorted(gripper_data.keys())
+            for frame in self.frames:
+                # 找最接近的 gripper 时间戳
+                closest = min(gripper_ts, key=lambda t: abs(t - frame["ts"]))
+                if abs(closest - frame["ts"]) < 0.5:
+                    frame["gripper"] = gripper_data[closest]
+        
+        self.total_frames = len(self.frames)
+        return self.total_frames > 0
+    
+    def get_frame(self, index: int = None) -> dict | None:
+        """获取指定帧，默认当前帧"""
+        if index is None:
+            index = self.current_frame
+        if 0 <= index < self.total_frames:
+            return self.frames[index]
+        return None
+    
+    def advance(self) -> bool:
+        """前进一帧，返回是否到达末尾"""
+        self.current_frame += 1
+        if self.current_frame >= self.total_frames:
+            if self.loop:
+                self.current_frame = 0
+                return True
+            self.current_frame = self.total_frames - 1
+            self.playing = False
+            return False
+        return True
+    
+    @property
+    def progress(self) -> float:
+        """回放进度 0.0 ~ 1.0"""
+        if self.total_frames == 0:
+            return 0.0
+        return self.current_frame / self.total_frames
+    
+    @property
+    def duration(self) -> float:
+        """回放总时长(秒)"""
+        if self.total_frames < 2:
+            return 0.0
+        return self.frames[-1]["ts"] - self.frames[0]["ts"]
+    
+    @property
+    def current_time(self) -> float:
+        """当前帧时间(相对)"""
+        if self.total_frames == 0:
+            return 0.0
+        return self.frames[self.current_frame]["ts"] - self.frames[0]["ts"]
+
+
+class ReplayThread(QThread):
+    """后台回放线程 — 按帧率驱动回放"""
+    frame_ready = pyqtSignal(int)   # 当前帧索引
+    finished = pyqtSignal()          # 回放结束
+    
+    def __init__(self, engine: ReplayEngine, fps: int = 30):
+        super().__init__()
+        self.engine = engine
+        self.fps = fps
+        self._paused = False
+    
+    def run(self):
+        import time
+        interval = 1.0 / self.fps / self.engine.speed
+        while self.engine.playing:
+            if self._paused:
+                time.sleep(0.05)
+                continue
+            self.frame_ready.emit(self.engine.current_frame)
+            if not self.engine.advance():
+                break
+            time.sleep(interval)
+        self.finished.emit()
+    
+    def pause(self):
+        self._paused = True
+    
+    def resume(self):
+        self._paused = False

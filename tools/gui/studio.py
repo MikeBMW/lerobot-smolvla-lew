@@ -40,6 +40,7 @@ from version_sync import VersionSyncWidget
 # 硬件仿真引擎 (System 0 硬件工具箱)
 from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
 from hardware_simulator import HardwareDiscoveryThread
+from hardware_simulator import ReplayEngine, ReplayThread
 
 
 # ============================================================
@@ -2977,6 +2978,10 @@ class HardwareModule(SubModuleWidget):
         self._timer = QTimer()
         self._timer.timeout.connect(self._refresh)
         
+        # 回放引擎
+        self.replay = ReplayEngine()
+        self._replay_thread = None
+        
         # ── 顶部工具栏 ──
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
@@ -3129,6 +3134,77 @@ class HardwareModule(SubModuleWidget):
         
         ros_group.setLayout(ros_layout)
         
+        # ── 📼 数据回放面板 ──
+        replay_group = QGroupBox("📼 数据回放")
+        replay_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
+        replay_layout = QVBoxLayout()
+        replay_layout.setSpacing(6)
+        
+        # 会话选择行
+        sel_row = QHBoxLayout()
+        sel_row.addWidget(QLabel("会话:"))
+        self.replay_combo = QComboBox()
+        self.replay_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:150px;")
+        self.replay_combo.addItem("— 选择回放会话 —")
+        self._refresh_replay_sessions()
+        sel_row.addWidget(self.replay_combo, 1)
+        
+        self.replay_load_btn = QPushButton("加载")
+        self.replay_load_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:4px 12px; font-weight:bold;")
+        self.replay_load_btn.clicked.connect(self._replay_load)
+        sel_row.addWidget(self.replay_load_btn)
+        replay_layout.addLayout(sel_row)
+        
+        # 播放控制行
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(6)
+        
+        self.replay_play_btn = QPushButton("▶ 播放")
+        self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+        self.replay_play_btn.clicked.connect(self._replay_toggle)
+        self.replay_play_btn.setEnabled(False)
+        ctrl_row.addWidget(self.replay_play_btn)
+        
+        self.replay_stop_btn = QPushButton("⏹ 停止")
+        self.replay_stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.replay_stop_btn.clicked.connect(self._replay_stop)
+        self.replay_stop_btn.setEnabled(False)
+        ctrl_row.addWidget(self.replay_stop_btn)
+        
+        loop_label = QLabel("循环:")
+        loop_label.setStyleSheet(f"color:{C_GRAY};")
+        ctrl_row.addWidget(loop_label)
+        self.replay_loop_cb = QCheckBox()
+        self.replay_loop_cb.setChecked(True)
+        self.replay_loop_cb.toggled.connect(lambda v: setattr(self.replay, 'loop', v))
+        ctrl_row.addWidget(self.replay_loop_cb)
+        
+        ctrl_row.addStretch()
+        
+        self.replay_info = QLabel("0/0 帧 | 0.0s")
+        self.replay_info.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        ctrl_row.addWidget(self.replay_info)
+        replay_layout.addLayout(ctrl_row)
+        
+        # 进度条 + 关节显示
+        self.replay_progress = QProgressBar()
+        self.replay_progress.setRange(0, 1000)
+        self.replay_progress.setValue(0)
+        self.replay_progress.setFixedHeight(8)
+        self.replay_progress.setStyleSheet(f"""
+            QProgressBar{{background:{C_BG}; border:1px solid {C_BORDER}; border-radius:4px;}}
+            QProgressBar::chunk{{background:{C_PURPLE}; border-radius:3px;}}
+        """)
+        replay_layout.addWidget(self.replay_progress)
+        
+        self.replay_joint_display = QLabel("等待加载数据...")
+        self.replay_joint_display.setFont(QFont("Consolas", 9))
+        self.replay_joint_display.setStyleSheet(f"color:{C_GREEN}; padding:6px; background:#0a0e14; border-radius:4px;")
+        self.replay_joint_display.setMaximumHeight(60)
+        replay_layout.addWidget(self.replay_joint_display)
+        
+        replay_group.setLayout(replay_layout)
+        
         # ── 底部日志 ──
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -3144,6 +3220,7 @@ class HardwareModule(SubModuleWidget):
         body.addWidget(arch_group)
         body.addWidget(splitter, 1)
         body.addWidget(ros_group)
+        body.addWidget(replay_group)
         body.addWidget(self.log)
         
         container = QWidget()
@@ -3469,6 +3546,105 @@ class HardwareModule(SubModuleWidget):
         
         self.status_label.setText(f"🟢 在线 · {len(nodes)}节点")
         self.status_label.setStyleSheet(f"color:{C_GREEN}; padding:4px 12px; background:{C_BG2}; border-radius:4px; border:1px solid {C_GREEN}44;")
+    
+    # ═══ 📼 数据回放 ═══
+    
+    def _refresh_replay_sessions(self):
+        """刷新回放会话列表"""
+        self.replay_combo.clear()
+        self.replay_combo.addItem("— 选择回放会话 —")
+        for s in self.replay.list_sessions():
+            self.replay_combo.addItem(s)
+    
+    def _replay_load(self):
+        """加载回放会话"""
+        session = self.replay_combo.currentText()
+        if not session or session.startswith("—"):
+            return
+        ok = self.replay.load_session(session)
+        if ok:
+            self._log(f"📼 加载回放: {session} · {self.replay.total_frames} 帧 · {self.replay.duration:.1f}s")
+            self.replay_info.setText(f"{self.replay.total_frames} 帧 | {self.replay.duration:.1f}s")
+            self.replay_play_btn.setEnabled(True)
+            self.replay_stop_btn.setEnabled(True)
+            self._replay_show_frame()
+        else:
+            self._log(f"❌ 加载失败: {session}")
+    
+    def _replay_toggle(self):
+        """播放/暂停切换"""
+        if not self.replay.total_frames:
+            return
+        
+        if self.replay.playing:
+            # 暂停
+            self.replay.playing = False
+            if self._replay_thread:
+                self._replay_thread.pause()
+            self.replay_play_btn.setText("▶ 播放")
+            self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+            self._log("⏸ 回放暂停")
+        else:
+            # 播放
+            self.replay.playing = True
+            if self._replay_thread and self._replay_thread.isRunning():
+                self._replay_thread.resume()
+            else:
+                self._replay_thread = ReplayThread(self.replay, fps=10)
+                self._replay_thread.frame_ready.connect(self._on_replay_frame)
+                self._replay_thread.finished.connect(self._on_replay_finished)
+                self._replay_thread.start()
+            self.replay_play_btn.setText("⏸ 暂停")
+            self.replay_play_btn.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+            self._log("▶ 回放开始")
+    
+    def _replay_stop(self):
+        """停止回放"""
+        self.replay.playing = False
+        if self._replay_thread and self._replay_thread.isRunning():
+            self._replay_thread.quit()
+            self._replay_thread.wait(500)
+        self.replay.current_frame = 0
+        self.replay_play_btn.setText("▶ 播放")
+        self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+        self.replay_progress.setValue(0)
+        self.replay_info.setText(f"0/{self.replay.total_frames} 帧 | 0.0s")
+        self.replay_joint_display.setText("回放已停止")
+        self._log("⏹ 回放停止")
+    
+    def _on_replay_frame(self, frame_idx: int):
+        """回放帧更新"""
+        frame = self.replay.get_frame(frame_idx)
+        if not frame:
+            return
+        self._replay_show_frame()
+    
+    def _replay_show_frame(self):
+        """显示当前帧数据"""
+        frame = self.replay.get_frame()
+        if not frame:
+            return
+        joints = frame.get("joints", [])
+        gripper = frame.get("gripper", None)
+        ts = frame.get("ts", 0) - (self.replay.frames[0]["ts"] if self.replay.frames else 0)
+        
+        # 更新进度
+        self.replay_progress.setValue(int(self.replay.progress * 1000))
+        self.replay_info.setText(f"{self.replay.current_frame}/{self.replay.total_frames} 帧 | {ts:.2f}s")
+        
+        # 关节显示
+        if joints:
+            j_str = " ".join([f"J{i+1}:{v:+.4f}" for i, v in enumerate(joints[:6])])
+            gripper_str = f"  夹爪:{gripper:.1f}" if gripper is not None else ""
+            self.replay_joint_display.setText(f"[{ts:.2f}s] {j_str}{gripper_str}")
+    
+    def _on_replay_finished(self):
+        """回放结束"""
+        if self.replay.loop:
+            self._log("🔄 循环回放")
+        else:
+            self._replay_stop()
+            self._log("✅ 回放完成")
     
     def _on_device_selected(self, item, col):
         text = item.text(0).strip()
