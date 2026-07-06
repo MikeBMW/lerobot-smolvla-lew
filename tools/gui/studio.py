@@ -3374,7 +3374,7 @@ class HardwareModule(SubModuleWidget):
             # (名称, 类型, 状态获取方法, 控制接口列表)
             ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
             ("🤖 珞石机械臂",  "6-DOF臂",   None,                    "待接入"),
-            ("🖐️ 电动夹爪",   "末端执行器", None,                   "待接入"),
+            ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
             ("⚡ 力/力矩传感器","传感器",    None,                    "待接入"),
             ("📷 RealSense D435","相机",     None,                    "待接入"),
             ("🚨 双路急停",    "安全",       None,                    "待接入"),
@@ -3426,6 +3426,11 @@ class HardwareModule(SubModuleWidget):
                     btn = self._make_hw_btn(label, style_color)
                     btn.clicked.connect(lambda checked, c=color: self._tower_cmd(c))
                     btn_layout.addWidget(btn)
+            elif name == "🖐️ 电动夹爪":
+                for label, pos, clr in [("🖐️开", 200.0, C_GREEN), ("✊关", 0.0, C_RED)]:
+                    btn = self._make_hw_btn(label, clr)
+                    btn.clicked.connect(lambda checked, p=pos: self._gripper_cmd(p))
+                    btn_layout.addWidget(btn)
             else:
                 ph = QLabel("待接入")
                 ph.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
@@ -3461,6 +3466,24 @@ class HardwareModule(SubModuleWidget):
             self.hw_table.item(0, 3).setText(color)
         except Exception as e:
             self._log(f"   ❌ 塔灯控制失败: {e}")
+    
+    def _gripper_cmd(self, pos):
+        """控制电动夹爪开/关"""
+        import subprocess
+        action = "张开" if pos > 0 else "夹紧"
+        self._log(f"🖐️ 夹爪 → {action} (pos={pos})")
+        try:
+            subprocess.run([
+                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                f"ROS_DOMAIN_ID=23 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
+                f"'{{target_pos: {pos}, target_speed: 50.0, target_force: -1.0, "
+                f"target_acc: -1.0, target_push_length: -1.0, target_push_speed: -1.0}}'"
+            ], timeout=8, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.hw_table.item(2, 2).setText("🟢 已控制")
+            self.hw_table.item(2, 3).setText(action)
+        except Exception as e:
+            self._log(f"   ❌ 夹爪控制失败: {e}")
     
     def _get_tower_status(self):
         return "待实现"
