@@ -4467,23 +4467,17 @@ class MonitorModule(SubModuleWidget):
         """根据信号源启动可视化"""
         mode = "rerun" if self.mon_rerun_btn.isChecked() else "rviz"
         
-        # 确定信号源
-        if self.src_demo.isChecked():
-            if mode == "rerun":
-                self._open_rerun_local()
-            else:
-                self._mlog("⚠️ 演示模式仅支持 Rerun")
-                return
+        if mode == "rviz":
+            self._launch_rviz()
+            return
+        
+        # Rerun 模式：统一生成 .rrd → 本地 Web Viewer
+        if self.src_replay.isChecked():
+            self._gen_replay_rrd()
         elif self.src_sim.isChecked():
-            if mode == "rerun":
-                self._launch_rerun()
-            else:
-                self._launch_rviz()
-        elif self.src_replay.isChecked():
-            if mode == "rerun":
-                self._launch_rerun()
-            else:
-                self._launch_rviz()
+            self._gen_sim_rrd()
+        
+        self._open_rerun_local()
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
@@ -4607,12 +4601,80 @@ class MonitorModule(SubModuleWidget):
         self._mlog(f"✅ {out} ({size_kb:.0f}KB)")
         self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
     
+    def _gen_replay_rrd(self):
+        """回放数据 → .rrd"""
+        if self.replay.total_frames <= 0:
+            self._mlog("⚠️ 请先加载回放会话")
+            return
+        import rerun as rr
+        self._mlog(f"📊 生成回放 .rrd ({self.replay.total_frames}帧)...")
+        rr.init("replay", spawn=False)
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+        
+        self.replay.current_frame = 0
+        for seq in range(self.replay.total_frames):
+            frame = self.replay.get_frame()
+            if not frame: break
+            rr.set_time("frame", sequence=seq)
+            joints = frame.get("joints", [])
+            if len(joints) >= 6:
+                pts = [[i*0.2, joints[i]*0.8, 0] for i in range(6)]
+                rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
+                    colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
+                for i in range(5):
+                    rr.log(f"robot/link_{i}", rr.Arrows3D(origins=[pts[i]],
+                        vectors=[[pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1],0]], radii=[0.01]))
+            self.replay.advance()
+        
+        out = os.path.expanduser("~/yspace/replay_data/replay.rrd")
+        rr.save(out)
+        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+    
+    def _gen_sim_rrd(self):
+        """仿真数据 → .rrd"""
+        from hardware_simulator import get_simulator
+        import rerun as rr, math
+        sim = get_simulator("sim")
+        self._mlog("📊 生成仿真 .rrd (60帧)...")
+        rr.init("sim", spawn=False)
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+        
+        sim.start()
+        for seq in range(60):
+            snap = sim.get_joint_snapshot()
+            positions = [s["pos"] for s in list(snap.values())[:6]]
+            rr.set_time("frame", sequence=seq)
+            pts = [[i*0.2, positions[i]*0.8, 0] for i in range(min(6,len(positions)))]
+            rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
+                colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
+            import time; time.sleep(0.01)
+        sim.stop()
+        
+        out = os.path.expanduser("~/yspace/replay_data/sim.rrd")
+        rr.save(out)
+        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+    
     def _open_rerun_local(self):
-        """后台 subprocess 启动 rerun --web-viewer (零阻塞)"""
+        """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
         import subprocess, os
-        rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+        
+        # 根据信号源选文件
+        if self.src_replay.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/replay.rrd")
+        elif self.src_sim.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/sim.rrd")
+        else:
+            rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+        
         if not os.path.exists(rrd):
-            self._gen_rrd_demo()
+            self._mlog(f"⚠️ .rrd 不存在: {rrd}")
+            return
         
         # 杀掉旧的 rerun 进程，释放端口
         subprocess.run(["pkill", "-f", "rerun.*web-viewer"], 
