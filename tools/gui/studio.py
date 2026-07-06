@@ -4374,12 +4374,51 @@ class MonitorModule(SubModuleWidget):
         ctrl_row.addWidget(self.mon_status)
         bl.addLayout(ctrl_row)
         
-        # ═══ 实时追踪面板 ═══
+        # ═══ Topic/Node 面板 (水平分割) ═══
+        tn_split = QHBoxLayout()
+        tn_split.setSpacing(8)
+        
+        # Topic 列表
+        topic_box = QVBoxLayout()
+        topic_header = QHBoxLayout()
+        topic_header.addWidget(QLabel("Topics"))
+        self.tn_refresh_btn = QPushButton("刷新")
+        self.tn_refresh_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:10px;")
+        self.tn_refresh_btn.clicked.connect(self._refresh_topic_node_list)
+        topic_header.addWidget(self.tn_refresh_btn)
+        topic_header.addStretch()
+        topic_box.addLayout(topic_header)
+        
+        self.topic_list_view = QTextEdit()
+        self.topic_list_view.setReadOnly(True)
+        self.topic_list_view.setFont(QFont("Consolas", 9))
+        self.topic_list_view.setStyleSheet(f"color:{C_CYAN}; padding:4px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.topic_list_view.setMaximumHeight(150)
+        self.topic_list_view.setHtml("<i>等待数据...</i>")
+        topic_box.addWidget(self.topic_list_view)
+        tn_split.addLayout(topic_box, 1)
+        
+        # Node 列表
+        node_box = QVBoxLayout()
+        node_box.addWidget(QLabel("Nodes"))
+        
+        self.node_list_view = QTextEdit()
+        self.node_list_view.setReadOnly(True)
+        self.node_list_view.setFont(QFont("Consolas", 9))
+        self.node_list_view.setStyleSheet(f"color:{C_PURPLE}; padding:4px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.node_list_view.setMaximumHeight(150)
+        self.node_list_view.setHtml("<i>等待数据...</i>")
+        node_box.addWidget(self.node_list_view)
+        tn_split.addLayout(node_box, 1)
+        
+        bl.addLayout(tn_split)
+        
+        # ═══ 实时信号追踪面板 ═══
         self.mon_data_preview = QTextEdit()
         self.mon_data_preview.setReadOnly(True)
         self.mon_data_preview.setFont(QFont("Consolas", 10))
         self.mon_data_preview.setStyleSheet(f"color:{C_GREEN}; padding:8px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
-        self.mon_data_preview.setMinimumHeight(180)
+        self.mon_data_preview.setMinimumHeight(120)
         self.mon_data_preview.setHtml("<i>选择「实时数据」查看 Orin 信号追踪</i>")
         bl.addWidget(self.mon_data_preview)
         
@@ -4683,25 +4722,9 @@ class MonitorModule(SubModuleWidget):
         self._mlog("🔍 实时监控: 连接 Orin...")
         self._live_data = {"status": "连接中...", "topics": {}, "topic_list": [], "node_list": []}
         
-        # 先获取 topic/node 列表
-        try:
-            r = subprocess.run(
-                ["ssh", "-o", "ConnectTimeout=5", "nvidia@192.168.23.10",
-                 "source /opt/ros/humble/setup.bash && "
-                 "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
-                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list --no-daemon 2>/dev/null"],
-                capture_output=True, text=True, timeout=10)
-            out = r.stdout
-            if '===TOPICS===' in out:
-                parts = out.split('===TOPICS===')
-                if len(parts) > 1:
-                    node_part = parts[1].split('===NODES===')
-                    self._live_data["topic_list"] = [t.strip() for t in node_part[0].split('\n') if t.strip()]
-                    if len(node_part) > 1:
-                        self._live_data["node_list"] = [n.strip() for n in node_part[1].split('\n') if n.strip()]
-            self._mlog(f"   ✅ {len(self._live_data['topic_list'])} topics, {len(self._live_data['node_list'])} nodes")
-        except Exception as e:
-            self._mlog(f"   ⚠️ 列表获取: {e}")
+        # 获取 topic/node 列表
+        self._fetch_topic_node_list()
+        self._show_topic_node_lists()
         
         import threading
         def _poll():
@@ -4756,40 +4779,70 @@ class MonitorModule(SubModuleWidget):
         self._live_timer.start(500)
         self._mlog("   ✅ 实时监控已启动")
     
+    def _refresh_topic_node_list(self):
+        """手动刷新 Topic/Node 列表"""
+        self._mlog("🔄 刷新 Topic/Node 列表...")
+        self._fetch_topic_node_list()
+        self._show_topic_node_lists()
+    
+    def _fetch_topic_node_list(self):
+        """SSH 获取 topic/node 列表"""
+        import subprocess
+        try:
+            r = subprocess.run(
+                ["ssh", "-o", "ConnectTimeout=5", "nvidia@192.168.23.10",
+                 "source /opt/ros/humble/setup.bash && "
+                 "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
+                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list --no-daemon 2>/dev/null"],
+                capture_output=True, text=True, timeout=10)
+            out = r.stdout
+            if '===TOPICS===' in out:
+                parts = out.split('===TOPICS===')
+                if len(parts) > 1:
+                    node_part = parts[1].split('===NODES===')
+                    self._live_data["topic_list"] = [t.strip() for t in node_part[0].split('\n') if t.strip()]
+                    if len(node_part) > 1:
+                        self._live_data["node_list"] = [n.strip() for n in node_part[1].split('\n') if n.strip()]
+            self._mlog(f"   ✅ {len(self._live_data.get('topic_list',[]))} topics, {len(self._live_data.get('node_list',[]))} nodes")
+        except Exception as e:
+            self._mlog(f"   ⚠️ {e}")
+    
+    def _show_topic_node_lists(self):
+        """显示 Topic/Node 列表到独立面板"""
+        tl = self._live_data.get("topic_list", [])
+        nl = self._live_data.get("node_list", [])
+        
+        t_html = "<pre style='color:#39d2c0; font-size:10px; margin:0;'>"
+        t_html += f"<b>Topics ({len(tl)})</b>\n"
+        for t in tl[:20]:
+            t_html += f"  {t}\n"
+        if len(tl) > 20:
+            t_html += f"  ... 共 {len(tl)} 个\n"
+        t_html += "</pre>"
+        self.topic_list_view.setHtml(t_html)
+        
+        n_html = "<pre style='color:#bc8cff; font-size:10px; margin:0;'>"
+        n_html += f"<b>Nodes ({len(nl)})</b>\n"
+        for n in nl[:15]:
+            n_html += f"  {n}\n"
+        if len(nl) > 15:
+            n_html += f"  ... 共 {len(nl)} 个\n"
+        n_html += "</pre>"
+        self.node_list_view.setHtml(n_html)
+    
     def _update_live_display(self):
-        """实时面板: topic/node列表 + 信号追踪"""
+        """实时面板: 信号追踪"""
         d = getattr(self, '_live_data', {})
         
         lines = ["<pre style='color:#3fb950; font-size:10px; margin:0;'>"]
-        lines.append("<b>═══ Orin 实时监控 ═══</b>\n")
-        lines.append(f"状态: {d.get('status','等待...')} | "
-                    f"Topics: {len(d.get('topic_list',[]))} | "
-                    f"Nodes: {len(d.get('node_list',[]))}\n\n")
+        lines.append("<b>── 实时信号追踪 ──</b>\n")
         
-        # Topic 列表 (前12个)
-        tl = d.get("topic_list", [])
-        if tl:
-            lines.append("<b>── Topics ──</b>\n")
-            for t in tl[:12]:
-                lines.append(f"  {t}\n")
-            if len(tl) > 12:
-                lines.append(f"  ... 共 {len(tl)} 个\n")
-        
-        # Node 列表 (前8个)
-        nl = d.get("node_list", [])
-        if nl:
-            lines.append("\n<b>── Nodes ──</b>\n")
-            for n in nl[:8]:
-                lines.append(f"  {n}\n")
-            if len(nl) > 8:
-                lines.append(f"  ... 共 {len(nl)} 个\n")
-        
-        # 实时信号数据
         topics_data = d.get("topics", {})
         if topics_data:
-            lines.append("\n<b>── 实时信号 ──</b>\n")
             for topic, value in topics_data.items():
                 lines.append(f"  <b>{topic:24s}</b> {value}\n")
+        else:
+            lines.append("  等待机器人数据...\n")
         
         lines.append("</pre>")
         self.mon_data_preview.setHtml("".join(lines))
