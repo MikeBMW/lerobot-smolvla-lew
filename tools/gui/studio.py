@@ -5133,23 +5133,21 @@ class MonitorModule(SubModuleWidget):
         total_frames = 0
         for ep_idx in range(len(ds)):
             ep = ds[ep_idx]
-            states = np.array(ep["observation.state"])
-            n = min(100, len(states))
-            for f in range(n):
-                s = states[f]
-                rr.set_time("episode", sequence=ep_idx)
-                rr.set_time("frame", sequence=f)
-                rr.log("agent/pos", rr.Points3D([[float(s[0]), float(s[1]), 0]], 
-                    radii=[0.025], colors=[[30,144,255]]))
-                rr.log("agent/dir", rr.Arrows3D(
-                    origins=[[float(s[0]), float(s[1]), 0]],
-                    vectors=[[float(s[2])*0.08, float(s[3])*0.08, 0]],
-                    colors=[[30,144,255]]))
-                if len(s) >= 6:
-                    rr.log("block/pos", rr.Points3D([[float(s[4]), float(s[5]), 0]], 
-                        radii=[0.03], colors=[[255,140,0]]))
-            total_frames += n
-            self._mlog(f"  Episode {ep_idx}: {n} frames")
+            # PushT: observation.state = [agent_x, agent_y], action = [dx, dy]
+            state = ep["observation.state"]
+            action = ep.get("action", [0, 0])
+            rr.set_time("episode", sequence=ep_idx)
+            rr.set_time("frame", sequence=total_frames)
+            # Agent: 蓝色圆点
+            rr.log("agent/pos", rr.Points3D([[float(state[0]), float(state[1]), 0]], 
+                radii=[0.025], colors=[[30,144,255]]))
+            # Action direction
+            if len(action) >= 2:
+                rr.log("agent/action", rr.Arrows3D(
+                    origins=[[float(state[0]), float(state[1]), 0]],
+                    vectors=[[float(action[0])*0.05, float(action[1])*0.05, 0]],
+                    colors=[[100,200,255]]))
+            total_frames += 1
         
         out = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
         rr.save(out)
