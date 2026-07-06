@@ -3434,23 +3434,14 @@ class HardwareModule(SubModuleWidget):
                     btn.clicked.connect(lambda checked, c=color: self._tower_cmd(c))
                     btn_layout.addWidget(btn)
             elif name == "🖐️ 电动夹爪":
-                # 增减按钮 + 当前值
-                self.gripper_pos = 100
-                
-                dec_btn = self._make_hw_btn("◀", C_RED)
-                dec_btn.setToolTip("减小 1cm")
-                dec_btn.clicked.connect(lambda: self._gripper_step(-50))
-                btn_layout.addWidget(dec_btn)
-                
-                self.gripper_val = QLabel("100")
-                self.gripper_val.setStyleSheet(f"color:{C_ORANGE}; font-weight:bold; font-size:11px; min-width:35px;")
-                self.gripper_val.setAlignment(Qt.AlignCenter)
-                btn_layout.addWidget(self.gripper_val)
-                
-                inc_btn = self._make_hw_btn("▶", C_GREEN)
-                inc_btn.setToolTip("增大 1cm")
-                inc_btn.clicked.connect(lambda: self._gripper_step(50))
-                btn_layout.addWidget(inc_btn)
+                open_btn = self._make_hw_btn("🖐️开", C_GREEN)
+                open_btn.setToolTip("张开到最大")
+                open_btn.clicked.connect(lambda: self._gripper_cmd(200.0))
+                btn_layout.addWidget(open_btn)
+                close_btn = self._make_hw_btn("✊关", C_RED)
+                close_btn.setToolTip("闭合到最小")
+                close_btn.clicked.connect(lambda: self._gripper_cmd(0.0))
+                btn_layout.addWidget(close_btn)
             elif name == "🤖 珞石机械臂":
                 read_btn = self._make_hw_btn("📡", C_BLUE)
                 read_btn.setToolTip("读取关节状态")
@@ -3496,14 +3487,11 @@ class HardwareModule(SubModuleWidget):
         except Exception as e:
             self._log(f"   ❌ 塔灯控制失败: {e}")
     
-    def _gripper_step(self, delta):
-        """夹爪步进 ±50 raw (约±1cm)"""
+    def _gripper_cmd(self, pos):
+        """夹爪开/关"""
         import subprocess
-        self.gripper_pos = max(0, min(200, self.gripper_pos + delta))
-        pos = self.gripper_pos
-        mm_est = pos * 0.2  # 200raw ≈ 40mm
-        self.gripper_val.setText(f"{mm_est:.0f}mm")
-        self._log(f"🖐️ 夹爪 → {mm_est:.0f}mm (raw={pos})")
+        action = "张开" if pos > 0 else "闭合"
+        self._log(f"🖐️ 夹爪 → {action}")
         try:
             r = subprocess.run([
                 "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
@@ -3513,13 +3501,12 @@ class HardwareModule(SubModuleWidget):
                 f"'{{target_pos: {pos}, target_speed: 50.0, target_force: -1.0, "
                 f"target_acc: -1.0, target_push_length: -1.0, target_push_speed: -1.0}}'"
             ], capture_output=True, text=True, timeout=8)
-            curr = f"{mm_est:.0f}mm"
+            curr = ""
             if "curr_pos" in r.stdout:
-                import re
-                m = re.search(r'curr_pos=([\d.]+)', r.stdout)
-                if m: curr = f"{float(m.group(1))*0.2:.0f}mm"
+                import re; m = re.search(r'curr_pos=([\d.]+)', r.stdout)
+                if m: curr = f" → {float(m.group(1)):.0f} raw"
             self.hw_table.item(2, 2).setText("🟢")
-            self.hw_table.item(2, 3).setText(curr)
+            self.hw_table.item(2, 3).setText(f"{action}{curr}")
         except Exception as e:
             self._log(f"   ❌ {e}")
     
