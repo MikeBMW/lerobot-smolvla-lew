@@ -3138,7 +3138,7 @@ class HardwareModule(SubModuleWidget):
         self.topo_text.setFont(QFont("Consolas", 11))
         self.topo_text.setStyleSheet(f"color:{C_CYAN}; background:#0a0e14; border:none; padding:6px;")
         self.topo_text.setMinimumHeight(500)
-        self.topo_text.setHtml(f"""<pre style='color:#e6edf3; font-size:22px; margin:0; line-height:1.4;'>
+        self.topo_text.setHtml(f"""<pre style='color:#e6edf3; font-size:15px; margin:0; line-height:1.4;'>
 <b style='color:#58a6ff'>╔══════════════════════ ROS2 Node 拓扑 · 数据流关系 ══════════════════════╗</b>
 
   <b style='color:#f0883e'>┌─感知层────────────────────────────────────────────────────────────────┐</b>
