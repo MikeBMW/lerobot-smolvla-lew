@@ -6115,7 +6115,12 @@ class StudioMainWindow(QMainWindow):
                 if os.path.exists(full_path):
                     try:
                         if opener == "libreoffice":
-                            open_ppt_with_libreoffice(full_path)
+                            # WSL 没有 LibreOffice，用 Windows 默认应用打开
+                            import subprocess as _sp
+                            r = _sp.run(["wslpath", "-w", full_path], capture_output=True, text=True, timeout=3)
+                            win_path = r.stdout.strip()
+                            if win_path:
+                                _sp.Popen(["cmd.exe", "/c", "start", "", win_path])
                         elif opener == "xdg-open":
                             # WSL: 用 wslpath -w 转 Windows 路径后打开
                             import subprocess as sp
