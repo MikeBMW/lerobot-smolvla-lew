@@ -3476,6 +3476,7 @@ class HardwareModule(SubModuleWidget):
             subprocess.run([
                 "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 f"ROS_DOMAIN_ID=23 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
                 f"'{{target_pos: {pos}, target_speed: 50.0, target_force: -1.0, "
                 f"target_acc: -1.0, target_push_length: -1.0, target_push_speed: -1.0}}'"
