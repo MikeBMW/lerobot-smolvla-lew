@@ -3214,33 +3214,6 @@ class HardwareModule(SubModuleWidget):
         splitter.addWidget(self.detail_stack)
         splitter.setSizes([280, 680])
         
-        # ── 底部: ROS2 节点 + Topic 列表 ──
-        ros_group = QGroupBox("ROS2 节点与 Topic (仿真模式)")
-        ros_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        ros_layout = QHBoxLayout()
-        
-        # 节点列表
-        node_panel = QVBoxLayout()
-        node_panel.addWidget(QLabel("活跃节点:"))
-        self.node_list = QTableWidget()
-        self.node_list.setColumnCount(2)
-        self.node_list.setHorizontalHeaderLabels(["节点名称", "功能"])
-        self.node_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.node_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.node_list.verticalHeader().setVisible(False)
-        self.node_list.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.node_list.setMaximumHeight(200)
-        self.node_list.setStyleSheet(f"""
-            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
-            QTableWidget::item{{padding:2px 6px; font-size:10px;}}
-            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
-        """)
-        self._populate_nodes(Z700_ROS2_NODES["sim"])
-        node_panel.addWidget(self.node_list)
-        ros_layout.addLayout(node_panel)
-        
-        ros_group.setLayout(ros_layout)
-        
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -3255,7 +3228,6 @@ class HardwareModule(SubModuleWidget):
         body.addLayout(toolbar)
         body.addWidget(arch_group)
         body.addWidget(splitter, 1)
-        body.addWidget(ros_group)
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
