@@ -4614,14 +4614,17 @@ class MonitorModule(SubModuleWidget):
         if not os.path.exists(rrd):
             self._gen_rrd_demo()
         
-        self._mlog("🚀 后台启动 Rerun Web Viewer...")
+        # 杀掉旧的 rerun 进程，释放端口
+        subprocess.run(["pkill", "-f", "rerun.*web-viewer"], 
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        self._mlog("🚀 启动 Rerun Web Viewer...")
         try:
             subprocess.Popen(
                 ["rerun", rrd, "--web-viewer"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True)
-            self._mlog("   🌐 浏览器打开 http://127.0.0.1:9090")
-            self._mlog("   (如未自动打开，请手动输入地址)")
+            self._mlog("   🌐 http://127.0.0.1:9090")
         except Exception as e:
             self._mlog(f"   ❌ {e}")
 
