@@ -3325,7 +3325,14 @@ class HardwareModule(SubModuleWidget):
         
         container = QWidget()
         container.setLayout(body)
-        self._build_shell(container)
+        
+        # 滚动区域包裹
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar{width:8px;}")
+        scroll.setWidget(container)
+        self._build_shell(scroll)
 
     # ═══ 设备树 ═══
     
