@@ -6170,25 +6170,28 @@ class StudioMainWindow(QMainWindow):
         act_lerobot.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/docs/lerobot")))
         m_help.addAction(act_lerobot)
         
-        # ── 右上角状态灯 ──
+        # ── 右上角状态灯 (单灯指示) ──
         status_widget = QWidget()
         status_widget.setStyleSheet("background:transparent;")
         sl = QHBoxLayout()
         sl.setContentsMargins(4, 2, 8, 2)
-        sl.setSpacing(8)
+        sl.setSpacing(4)
         
-        # 三个状态灯
-        for color, label, tooltip in [
-            ("#3fb950", "🟢 在线",     "Hermes Agent 在线 · 守护进程运行中"),
-            ("#d29922", "🟡 待处理",   "需要紧急处理"),
-            ("#f85149", "🔴 离线",     "Agent 不在线或异常"),
+        self._status_lights = {}
+        for color_on, color_off, label, tooltip in [
+            ("#3fb950", "#21262d", "●",  "Hermes Agent 在线 · 守护进程运行中"),
+            ("#d29922", "#21262d", "●",  "需要紧急处理"),
+            ("#f85149", "#21262d", "●",  "Agent 不在线或异常"),
         ]:
             dot = QLabel("●")
-            dot.setStyleSheet(f"color:{color}; font-size:18px; font-weight:bold;")
+            dot.setStyleSheet(f"color:{color_on}; font-size:16px;")
             dot.setToolTip(tooltip)
-            txt = QLabel(f"<span style='color:{color}; font-size:9px;'>{label}</span>")
+            dot.setFixedWidth(16)
+            # 默认只亮绿灯
+            if color_on != "#3fb950":
+                dot.setStyleSheet(f"color:{color_off}; font-size:16px;")
             sl.addWidget(dot)
-            sl.addWidget(txt)
+            self._status_lights[color_on] = dot
         
         status_widget.setLayout(sl)
         mb.setCornerWidget(status_widget, Qt.TopRightCorner)
