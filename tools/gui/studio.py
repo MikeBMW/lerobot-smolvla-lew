@@ -39,6 +39,7 @@ from version_sync import VersionSyncWidget
 
 # 硬件仿真引擎 (System 0 硬件工具箱)
 from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
+from hardware_simulator import HardwareDiscoveryThread
 
 
 # ============================================================
@@ -3002,6 +3003,13 @@ class HardwareModule(SubModuleWidget):
         self.btn_reset.clicked.connect(self._reset)
         toolbar.addWidget(self.btn_reset)
         
+        self.btn_discover = QPushButton("🔍 发现硬件")
+        self.btn_discover.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.btn_discover.setToolTip("SSH连接Orin · 发现ROS2节点和Topic · 系统资源 · TCP Bridge状态")
+        self.btn_discover.clicked.connect(self._discover_hardware)
+        self.btn_discover.setVisible(False)  # 仅Real模式显示
+        toolbar.addWidget(self.btn_discover)
+        
         self.status_label = QLabel("● 待机")
         self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
         toolbar.addWidget(self.status_label)
@@ -3329,7 +3337,28 @@ class HardwareModule(SubModuleWidget):
     def _on_mode_changed(self, idx):
         modes = ["sim", "local", "real"]
         self.sim.mode = modes[idx]
-        self._log(f"模式切换: {modes[idx]}")
+        is_real = (modes[idx] == "real")
+        
+        # Real模式 vs 仿真模式 UI切换
+        self.btn_start.setVisible(not is_real)
+        self.btn_reset.setVisible(not is_real)
+        self.btn_discover.setVisible(is_real)
+        
+        if is_real:
+            self.status_label.setText("🔴 真机模式")
+            self.status_label.setStyleSheet(f"color:{C_RED}; padding:4px 12px; background:{C_BG2}; border-radius:4px; border:1px solid {C_RED}44;")
+            if self.sim.running:
+                self.sim.stop()
+                self._timer.stop()
+            self._log(f"⚠️ 切换到真机模式 — 请点击「发现硬件」连接 Orin")
+            # 显示真机节点列表
+            self._populate_nodes(Z700_ROS2_NODES["real"])
+        else:
+            self.status_label.setText("● 待机")
+            self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            self._populate_nodes(Z700_ROS2_NODES[modes[idx]])
+            self._log(f"模式切换: {modes[idx]}")
+        
         self._refresh_topo()
     
     def _toggle_sim(self):
@@ -3375,6 +3404,71 @@ class HardwareModule(SubModuleWidget):
         elif cmd == "release_estop":
             self.sim.io.estop = False
             self._log("急停已释放")
+    
+    def _discover_hardware(self):
+        """SSH到Orin发现真实硬件"""
+        self.btn_discover.setEnabled(False)
+        self.btn_discover.setText("⏳ 发现中...")
+        self._log("🔍 开始发现硬件 · 连接 Orin (192.168.23.10)...")
+        
+        self._discovery_thread = HardwareDiscoveryThread()
+        self._discovery_thread.progress.connect(lambda msg: self._log(msg))
+        self._discovery_thread.result_ready.connect(self._on_discovery_result)
+        self._discovery_thread.start()
+    
+    def _on_discovery_result(self, result: dict):
+        self.btn_discover.setEnabled(True)
+        self.btn_discover.setText("🔍 再次发现")
+        
+        if not result.get("success"):
+            error = result.get("error", "未知错误")
+            self._log(f"❌ 发现失败: {error}")
+            QMessageBox.warning(self, "硬件发现失败", 
+                f"无法连接到 Orin 或发现硬件:\n\n{error}\n\n"
+                "请确认:\n"
+                "1. Orin 已开机且网络连通\n"
+                "2. ROS2 系统已启动\n"
+                "3. SSH 免密已配置")
+            return
+        
+        nodes = result.get("nodes", [])
+        topics = result.get("topics", [])
+        system = result.get("system", {})
+        tcp = result.get("tcp_bridge", {})
+        
+        self._log(f"✅ 发现完成！{len(nodes)} 节点 · {len(topics)} Topic")
+        
+        # 更新 ROS2 节点列表
+        if nodes:
+            node_data = [(n, result.get("topic_details", {}).get(n, "")) for n in nodes]
+            self._populate_nodes(node_data if node_data[0][1] else 
+                [(n, Z700_ROS2_NODES.get("real", {}).get(n, "")) for n in nodes])
+        
+        # 更新拓扑表
+        self.topo_table.setRowCount(2)
+        items = [
+            ("🟢 已连接", f"{len(nodes)} 节点", f"{len(topics)} Topic",
+             "✅ 6-axis" if any("force" in t for t in topics) else "⚠️ 未发现",
+             "estop+tower+curtain" if any("tower_light" in t for t in topics) else "未知",
+             f"{system.get('CPU','?')} CPU", result["host"]),
+            ("🌉 TCP Bridge", "运行中" if tcp.get("running") else "❌ 未启动",
+             f"端口 {tcp.get('port',8765)}", "", "", 
+             f"GPU:{system.get('GPU','?')}  MEM:{system.get('MEM','?')}", 
+             f"DISK:{system.get('DISK','?')}  {system.get('UPTIME','')}"),
+        ]
+        for row_idx, row_data in enumerate(items):
+            for col_idx, val in enumerate(row_data):
+                item = QTableWidgetItem(val)
+                item.setFont(QFont("Consolas", 9))
+                self.topo_table.setItem(row_idx, col_idx, item)
+        
+        # 更新设备树状态
+        self.device_tree.topLevelItem(0).setText(1, "🔴 真机在线")
+        self.device_tree.topLevelItem(1).setText(1, f"{len(nodes)} 节点 ✅")
+        self.device_tree.topLevelItem(4).setText(1, "🔴 真实IO")
+        
+        self.status_label.setText(f"🟢 在线 · {len(nodes)}节点")
+        self.status_label.setStyleSheet(f"color:{C_GREEN}; padding:4px 12px; background:{C_BG2}; border-radius:4px; border:1px solid {C_GREEN}44;")
     
     def _on_device_selected(self, item, col):
         text = item.text(0).strip()

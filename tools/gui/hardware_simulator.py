@@ -358,3 +358,181 @@ def get_simulator(mode: str = "sim") -> HardwareSimulator:
     if _simulator is None:
         _simulator = HardwareSimulator(mode=mode)
     return _simulator
+
+
+# ═══════════════════════════════════════════════
+# 真机硬件发现 (Real mode)
+# ═══════════════════════════════════════════════
+
+from PyQt5.QtCore import QThread, pyqtSignal
+
+
+class HardwareDiscoveryThread(QThread):
+    """
+    后台线程: SSH 到 Orin 发现真实硬件
+    
+    发现内容:
+      - ROS2 节点列表 (ros2 node list)
+      - ROS2 Topic 列表 (ros2 topic list)
+      - Topic 详情 (ros2 topic info)
+      - TCP Bridge 连接状态
+      - 系统资源 (CPU/GPU/内存)
+    """
+    result_ready = pyqtSignal(dict)
+    progress = pyqtSignal(str)
+    
+    ORIN_HOST = "192.168.23.10"
+    ORIN_USER = "nvidia"
+    
+    def __init__(self):
+        super().__init__()
+        self._ssh_opts = [
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+        ]
+    
+    def _ssh(self, cmd: str, timeout: int = 10) -> tuple[str, int]:
+        """执行 SSH 远程命令"""
+        import subprocess
+        full_cmd = ["ssh"] + self._ssh_opts + [f"{self.ORIN_USER}@{self.ORIN_HOST}", cmd]
+        try:
+            r = subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
+            return r.stdout.strip(), r.returncode
+        except subprocess.TimeoutExpired:
+            return "TIMEOUT", -1
+        except Exception as e:
+            return str(e), -1
+    
+    def run(self):
+        results = {
+            "success": False,
+            "host": self.ORIN_HOST,
+            "nodes": [],
+            "topics": [],
+            "topic_details": {},
+            "node_count": 0,
+            "topic_count": 0,
+            "system": {},
+            "tcp_bridge": {"running": False, "port": 8765, "topics_forwarded": 0},
+            "domain_id": None,
+        }
+        
+        # 1. 连接检查
+        self.progress.emit("🔗 正在连接 Orin...")
+        out, rc = self._ssh("echo OK", timeout=5)
+        if rc != 0:
+            results["error"] = f"无法连接 Orin ({self.ORIN_HOST}): {out}"
+            self.result_ready.emit(results)
+            return
+        
+        self.progress.emit("✅ 已连接 Orin")
+        
+        # 2. ROS2 节点发现
+        self.progress.emit("🔍 发现 ROS2 节点...")
+        out, rc = self._ssh(
+            "source /opt/ros/humble/setup.bash 2>/dev/null; "
+            "ros2 node list 2>/dev/null || echo 'NO_ROS2'",
+            timeout=8
+        )
+        
+        if out == "NO_ROS2" or rc != 0:
+            results["error"] = "Orin 上 ROS2 未运行。请先启动机器人系统。"
+            self.result_ready.emit(results)
+            return
+        
+        nodes = [n.strip() for n in out.split('\n') if n.strip()]
+        results["nodes"] = nodes
+        results["node_count"] = len(nodes)
+        self.progress.emit(f"   发现 {len(nodes)} 个节点")
+        
+        # 3. ROS2 Topic 发现
+        self.progress.emit("🔍 发现 ROS2 Topic...")
+        out, rc = self._ssh(
+            "source /opt/ros/humble/setup.bash 2>/dev/null; "
+            "ros2 topic list 2>/dev/null",
+            timeout=8
+        )
+        topics = [t.strip() for t in out.split('\n') if t.strip()] if rc == 0 else []
+        results["topics"] = topics
+        results["topic_count"] = len(topics)
+        self.progress.emit(f"   发现 {len(topics)} 个 Topic")
+        
+        # 4. 关键 Topic 详情
+        self.progress.emit("📋 获取 Topic 详情...")
+        key_topics = [t for t in topics if any(k in t for k in [
+            "joint", "camera", "force", "gripper", "robot_status",
+            "tower_light", "emergency", "barcode", "scan"
+        ])]
+        for topic in key_topics[:10]:  # 最多10个
+            out, rc = self._ssh(
+                f"source /opt/ros/humble/setup.bash 2>/dev/null; "
+                f"ros2 topic info {topic} 2>/dev/null | head -3",
+                timeout=5
+            )
+            if rc == 0 and out:
+                results["topic_details"][topic] = out
+        
+        # 5. 系统资源
+        self.progress.emit("💻 获取系统资源...")
+        out, rc = self._ssh(
+            "echo CPU:$(top -bn1 | grep 'Cpu' | awk '{print $2}') "
+            "MEM:$(free -m | grep Mem | awk '{print $3\"/\"$2\"MB\"}') "
+            "GPU:$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader 2>/dev/null || echo 'N/A') "
+            "DISK:$(df -h / | tail -1 | awk '{print $3\"/\"$2}') "
+            "UPTIME:$(uptime -p)",
+            timeout=8
+        )
+        if rc == 0:
+            for part in out.split():
+                if ':' in part:
+                    k, v = part.split(':', 1)
+                    results["system"][k] = v
+        
+        # 6. TCP Bridge 状态
+        self.progress.emit("🌉 检查 TCP Bridge...")
+        out, rc = self._ssh(
+            "pgrep -f 'orin_forwarder' >/dev/null 2>&1 && echo 'RUNNING' || echo 'STOPPED'",
+            timeout=5
+        )
+        results["tcp_bridge"]["running"] = (out == "RUNNING")
+        
+        if results["tcp_bridge"]["running"]:
+            out, rc = self._ssh(
+                "ss -tlnp | grep 8765 >/dev/null 2>&1 && echo 'LISTENING' || echo 'NOT_LISTENING'",
+                timeout=5
+            )
+            results["tcp_bridge"]["listening"] = (out == "LISTENING" if rc == 0 else False)
+        
+        results["success"] = True
+        self.progress.emit("✅ 硬件发现完成！")
+        self.result_ready.emit(results)
+
+
+def discover_hardware_blocking() -> dict:
+    """同步版：直接发现硬件（用于终端测试）"""
+    import subprocess
+    results = {"success": False, "host": "192.168.23.10", "nodes": [], "topics": [], "error": ""}
+    
+    ssh_opts = ["-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5"]
+    
+    def ssh(cmd, timeout=10):
+        r = subprocess.run(["ssh"] + ssh_opts + ["nvidia@192.168.23.10", cmd],
+                          capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip(), r.returncode
+    
+    # 连接检查
+    out, rc = ssh("echo OK")
+    if rc != 0:
+        results["error"] = f"无法连接: {out}"
+        return results
+    
+    # 节点
+    out, rc = ssh("source /opt/ros/humble/setup.bash 2>/dev/null; ros2 node list 2>/dev/null")
+    results["nodes"] = [n for n in out.split('\n') if n.strip()] if rc == 0 else []
+    
+    # Topic
+    out, rc = ssh("source /opt/ros/humble/setup.bash 2>/dev/null; ros2 topic list 2>/dev/null")
+    results["topics"] = [t for t in out.split('\n') if t.strip()] if rc == 0 else []
+    
+    results["success"] = True
+    return results
