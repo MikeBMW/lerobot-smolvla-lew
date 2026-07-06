@@ -3073,6 +3073,13 @@ class HardwareModule(SubModuleWidget):
     def __init__(self):
         super().__init__("硬件工具箱", [("System 0", SYS0_COLOR)])
         
+        # SSH 连接复用 — 加速所有硬件控制命令
+        import subprocess
+        subprocess.run(
+            ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
+             "-o", "ControlPersist=120", "-fN", "nvidia@192.168.23.10"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+        
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
         self._timer = QTimer()
@@ -3478,7 +3485,7 @@ class HardwareModule(SubModuleWidget):
         self._log(f"🚦 塔灯 → {color}")
         try:
             subprocess.run([
-                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
                 f"ROS_DOMAIN_ID=23 ros2 topic pub --once /tower_light/command "
                 f"std_msgs/msg/String '{{\"data\":\"{color}\"}}'"
@@ -3499,7 +3506,7 @@ class HardwareModule(SubModuleWidget):
         self._log(f"🖐️ 夹爪 → {mm_est:.0f}mm (raw={pos})")
         try:
             r = subprocess.run([
-                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 f"ROS_DOMAIN_ID=23 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
@@ -3528,7 +3535,7 @@ class HardwareModule(SubModuleWidget):
         self._log("🤖 读取关节状态...")
         try:
             r = subprocess.run([
-                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /robot/joint_states 2>/dev/null"
@@ -3564,7 +3571,7 @@ class HardwareModule(SubModuleWidget):
         self._log("🛑 机械臂急停!")
         try:
             subprocess.run([
-                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 "ROS_DOMAIN_ID=23 ros2 service call /robot_stop std_srvs/srv/Trigger '{}'"
