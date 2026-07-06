@@ -4633,7 +4633,14 @@ class MonitorModule(SubModuleWidget):
         
         # Rerun 模式：统一生成 .rrd → 本地 Web Viewer
         if self.src_replay.isChecked():
-            self._gen_replay_rrd()
+            # 检查是否有 rosbag .rrd 文件
+            import os
+            bag_rrd = os.path.expanduser("~/yspace/replay_data/zmax_bag_001.rrd")
+            if os.path.exists(bag_rrd):
+                self._mlog("📼 使用 rosbag 回放 (328秒真机数据)")
+                self.src_status.setText(f"回放: rosbag 328s · 53K msg")
+            else:
+                self._gen_replay_rrd()
         elif self.src_sim.isChecked():
             self._gen_sim_rrd()
         elif self.src_live.isChecked():
@@ -5038,7 +5045,11 @@ class MonitorModule(SubModuleWidget):
         
         # 根据信号源选文件
         if self.src_replay.isChecked():
-            rrd = os.path.expanduser("~/yspace/replay_data/replay.rrd")
+            bag_rrd = os.path.expanduser("~/yspace/replay_data/zmax_bag_001.rrd")
+            if os.path.exists(bag_rrd):
+                rrd = bag_rrd
+            else:
+                rrd = os.path.expanduser("~/yspace/replay_data/replay.rrd")
         elif self.src_sim.isChecked():
             rrd = os.path.expanduser("~/yspace/replay_data/sim.rrd")
         elif self.src_live.isChecked():
