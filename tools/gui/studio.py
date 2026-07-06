@@ -3128,51 +3128,35 @@ class HardwareModule(SubModuleWidget):
         
         toolbar.addStretch()
         
-        # ── 系统架构概览 ──
-        arch_group = QGroupBox("系统架构 · Z700 设备拓扑")
-        arch_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS0_COLOR, 8, 12)}}}")
-        arch_layout = QVBoxLayout()
+        # ── 功能拓扑 · ROS2 数据流 ──
+        topo_group = QGroupBox("🔗 功能拓扑 · ROS2 数据流 (基于真实pub/sub)")
+        topo_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:12px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
+        topo_layout = QVBoxLayout()
         
-        self.arch_text = QLabel(
-            "┌─────────────────────────────────────────────────────────────────┐\n"
-            "│                    Z700 轮式双臂机器人                              │\n"
-            "│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │\n"
-            "│  │  左臂 7-DOF  │  │  右臂 7-DOF  │  │  头部 Gemini 335L    │  │\n"
-            "│  │  取料+扫码    │  │  插拔+AOI    │  │  3D深度+RGB @30fps  │  │\n"
-            "│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │\n"
-            "│         │                 │                      │              │\n"
-            "│  ┌──────┴─────────────────┴──────────────────────┴───────────┐  │\n"
-            "│  │              AGX Orin · 边缘AI算力                          │  │\n"
-            "│  │  1ms控制周期 · >10kHz力控 · VLA推理<10ms · TCP Bridge    │  │\n"
-            "│  └──────────────────────┬────────────────────────────────────┘  │\n"
-            "│                         │                                       │\n"
-            "│  ┌──────────┐ ┌────────┴──────┐ ┌──────────┐ ┌─────────────┐ │\n"
-            "│  │ 六维力传感器│ │ 夹爪(左+右)  │ │ 4×鱼眼   │ │ 激光雷达×2  │ │\n"
-            "│  │ Fx/Fy/Fz  │ │ 力控+位置    │ │ 360°环绕 │ │ TOF传感器×4 │ │\n"
-            "│  └──────────┘ └───────────────┘ └──────────┘ └─────────────┘ │\n"
-            "│                                                                 │\n"
-            "│  安全: 急停按钮 · 力控柔顺 · 光栅 · 塔灯                          │\n"
-            "└─────────────────────────────────────────────────────────────────┘"
-        )
-        self.arch_text.setFont(QFont("Consolas", 7))
-        self.arch_text.setStyleSheet(f"color:{SYS0_COLOR}; background:{C_BG}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px;")
-        arch_layout.addWidget(self.arch_text)
-        
-        # 拓扑信息表
-        self.topo_table = QTableWidget(2, 7)
-        self.topo_table.setHorizontalHeaderLabels(["模式", "关节", "相机", "力传感器", "IO设备", "控制频率", "运行时间"])
-        self.topo_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.topo_table.verticalHeader().setVisible(False)
-        self.topo_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.topo_table.setMaximumHeight(50)
-        self.topo_table.setStyleSheet(f"""
-            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
-            QTableWidget::item{{padding:2px 6px;}}
-            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
-        """)
-        arch_layout.addWidget(self.topo_table)
-        
-        arch_group.setLayout(arch_layout)
+        self.topo_text = QTextEdit()
+        self.topo_text.setReadOnly(True)
+        self.topo_text.setFont(QFont("Consolas", 8))
+        self.topo_text.setStyleSheet(f"color:{C_CYAN}; background:#0a0e14; border:none; padding:6px;")
+        self.topo_text.setMaximumHeight(160)
+        self.topo_text.setHtml(f"""<pre style='color:#39d2c0; font-size:8px; margin:0;'>
+<b>🖥️ 控制层</b>
+  🎛️ motion ← gripper_pos, force_torque, joint_states, tactile → hmi/events, motion/*
+  🖥️ hmi_v1_tashan_bridge ← real_joint_states, gripper, hmi/events ↔ hmi/command
+
+<b>🤖 执行层</b>
+  robot_driver → joint_states, robot_status, real_joint_states 🔧 move_joint/line/pose, robot_stop
+  gripper_driver → gripper_pos 🔧 GripperSrv
+
+<b>⚡ 感知层</b>
+  tactile_force → force_torque, joint_states(FK), tcp_pose, tactile_sensor
+  realsense → color/depth/points → vision_tag(FoundationPose), vision, vision_pointcloud
+  honeywell_scanner → barcode_scanner/status
+
+<b>🚦 IO/安全层</b>
+  tower_light ← emergency_stop, motion/*, physical_estop, usb_estop → tower_light/status 🔧 green/red/yellow
+</pre>""")
+        topo_layout.addWidget(self.topo_text)
+        topo_group.setLayout(topo_layout)
         
         # ── 主内容区: 设备树 + 详情 ──
         splitter = QSplitter(Qt.Horizontal)
@@ -3226,7 +3210,7 @@ class HardwareModule(SubModuleWidget):
         body = QVBoxLayout()
         body.setSpacing(8)
         body.addLayout(toolbar)
-        body.addWidget(arch_group)
+        body.addWidget(topo_group)
         body.addWidget(splitter, 1)
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
@@ -4035,13 +4019,7 @@ class HardwareModule(SubModuleWidget):
         self._refresh_io()
     
     def _refresh_topo(self):
-        topo = self.sim.get_topology()
-        vals = [topo["mode"], topo["joints"], topo["cameras"], topo["force_sensor"], topo["io_devices"], f"{topo['control_hz']}Hz", topo["uptime"]]
-        self.topo_table.setRowCount(1)
-        for i, v in enumerate(vals):
-            item = QTableWidgetItem(v)
-            item.setFont(QFont("Consolas", 9))
-            self.topo_table.setItem(0, i, item)
+        pass  # 功能拓扑为静态显示
     
     def _refresh_joints(self):
         if not hasattr(self, 'joint_table'):
