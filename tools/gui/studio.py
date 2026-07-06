@@ -3072,7 +3072,7 @@ class _RosGraphCanvas(QWidget):
     def __init__(self):
         super().__init__()
         self.setMinimumSize(600, 400)
-        self.setFixedSize(750, 1800)
+        self.setMinimumSize(700, 1700)
         self.setStyleSheet(f"background:{C_BG};")
         self.nodes = {}
         self.edges = []
@@ -3221,12 +3221,11 @@ class HardwareModule(SubModuleWidget):
         
         # 滚动区域包裹
         topo_scroll = QScrollArea()
-        topo_scroll.setWidgetResizable(False)
+        topo_scroll.setWidgetResizable(True)
         topo_scroll.setMinimumHeight(500)
-        topo_scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar{width:8px;}")
+        topo_scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px; background:#161b22;} QScrollBar::handle:vertical{background:#30363d; border-radius:5px;}")
         
         self.topo_canvas = _RosGraphCanvas()
-        self.topo_canvas.setFixedSize(750, 500)
         topo_scroll.setWidget(self.topo_canvas)
         topo_layout.addWidget(topo_scroll)
         topo_group.setLayout(topo_layout)
