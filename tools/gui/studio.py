@@ -5841,8 +5841,8 @@ class StudioMainWindow(QMainWindow):
 
         # L1 - 战略层
         m_l1 = m_doc.addMenu("L1 · 战略层文档")
-        m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品介绍 PPT (v1.0.0)",
-            (["L1-Z-MAX产品介绍-v1.0.0.pptx"], "libreoffice")))
+        m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品发布 PPT (v1.0.0)",
+            (["L1-Z-MAX产品发布-v1.0.0.pptx"], "libreoffice")))
         m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v2.1)",
             (["L1-ZMAX-产品介绍-v2.1.pptx", "Z-MAX产品介绍v2.1.pptx"], "libreoffice")))
         m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v2)",
