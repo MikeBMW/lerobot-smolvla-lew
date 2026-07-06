@@ -3427,10 +3427,20 @@ class HardwareModule(SubModuleWidget):
                     btn.clicked.connect(lambda checked, c=color: self._tower_cmd(c))
                     btn_layout.addWidget(btn)
             elif name == "🖐️ 电动夹爪":
-                for label, pos, clr in [("🖐️开", 200.0, C_GREEN), ("✊关", 0.0, C_RED)]:
-                    btn = self._make_hw_btn(label, clr)
-                    btn.clicked.connect(lambda checked, p=pos: self._gripper_cmd(p))
-                    btn_layout.addWidget(btn)
+                # 滑块 + 当前值显示
+                slider = QSlider(Qt.Horizontal)
+                slider.setRange(0, 200)
+                slider.setValue(100)
+                slider.setFixedWidth(100)
+                slider.setStyleSheet(f"QSlider::groove:horizontal{{height:6px; background:{C_BG2}; border-radius:3px;}} QSlider::handle:horizontal{{width:14px; height:14px; background:{C_ORANGE}; border-radius:7px; margin:-4px 0;}}")
+                slider.valueChanged.connect(lambda v: self._gripper_cmd(float(v)))
+                btn_layout.addWidget(slider)
+                
+                self.gripper_val = QLabel("100")
+                self.gripper_val.setStyleSheet(f"color:{C_ORANGE}; font-weight:bold; font-size:10px; min-width:35px;")
+                self.gripper_val.setAlignment(Qt.AlignCenter)
+                btn_layout.addWidget(self.gripper_val)
+                slider.valueChanged.connect(lambda v: self.gripper_val.setText(str(v)))
             else:
                 ph = QLabel("待接入")
                 ph.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
@@ -3468,23 +3478,28 @@ class HardwareModule(SubModuleWidget):
             self._log(f"   ❌ 塔灯控制失败: {e}")
     
     def _gripper_cmd(self, pos):
-        """控制电动夹爪开/关"""
+        """控制电动夹爪开度"""
         import subprocess
-        action = "张开" if pos > 0 else "夹紧"
-        self._log(f"🖐️ 夹爪 → {action} (pos={pos})")
+        self._log(f"🖐️ 夹爪 → {pos:.0f}")
         try:
-            subprocess.run([
+            r = subprocess.run([
                 "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 f"ROS_DOMAIN_ID=23 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
                 f"'{{target_pos: {pos}, target_speed: 50.0, target_force: -1.0, "
                 f"target_acc: -1.0, target_push_length: -1.0, target_push_speed: -1.0}}'"
-            ], timeout=8, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.hw_table.item(2, 2).setText("🟢 已控制")
-            self.hw_table.item(2, 3).setText(action)
+            ], capture_output=True, text=True, timeout=8)
+            # 解析返回值
+            curr = f"{pos:.0f}"
+            if "curr_pos" in r.stdout:
+                import re
+                m = re.search(r'curr_pos=([\d.]+)', r.stdout)
+                if m: curr = f"{float(m.group(1)):.0f}"
+            self.hw_table.item(2, 2).setText("🟢")
+            self.hw_table.item(2, 3).setText(f"开度 {curr}")
         except Exception as e:
-            self._log(f"   ❌ 夹爪控制失败: {e}")
+            self._log(f"   ❌ 夹爪: {e}")
     
     def _get_tower_status(self):
         return "待实现"
