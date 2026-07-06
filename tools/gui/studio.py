@@ -4793,7 +4793,7 @@ class MonitorModule(SubModuleWidget):
                 ["ssh", "-o", "ConnectTimeout=5", "nvidia@192.168.23.10",
                  "source /opt/ros/humble/setup.bash && "
                  "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
-                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list --no-daemon 2>/dev/null"],
+                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list 2>/dev/null"],
                 capture_output=True, text=True, timeout=10)
             out = r.stdout
             if '===TOPICS===' in out:
