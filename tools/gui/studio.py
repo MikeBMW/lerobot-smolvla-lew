@@ -3072,14 +3072,14 @@ class _RosGraphCanvas(QWidget):
     def __init__(self):
         super().__init__()
         self.setMinimumSize(600, 400)
-        self.setFixedSize(750, 600)
+        self.setFixedSize(750, 1800)
         self.setStyleSheet(f"background:{C_BG};")
         self.nodes = {}
         self.edges = []
         self._build_graph()
     
     def _build_graph(self):
-        y1 = 60; y2 = 180; y3 = 320; y4 = 460
+        y1 = 60; y2 = 500; y3 = 1000; y4 = 1500
         self.nodes["realsense"] = (20, y1, 100, 36, "#79c0ff", "realsense\nRGB-D")
         self.nodes["vision_tag"] = (160, y1, 85, 36, "#79c0ff", "vision_tag\nFoundPose")
         self.nodes["vision_pc"] = (290, y1+55, 85, 36, "#79c0ff", "vision\npointcloud")
