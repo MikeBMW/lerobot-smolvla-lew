@@ -37,6 +37,9 @@ from PyQt5.QtGui import (
 # Z-MAX 版本同步模块
 from version_sync import VersionSyncWidget
 
+# 硬件仿真引擎 (System 0 硬件工具箱)
+from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
+
 
 # ============================================================
 # 通用工具函数
@@ -2967,7 +2970,6 @@ class HardwareModule(SubModuleWidget):
     
     def __init__(self):
         super().__init__("硬件工具箱", [("System 0", SYS0_COLOR)])
-        from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
         
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
