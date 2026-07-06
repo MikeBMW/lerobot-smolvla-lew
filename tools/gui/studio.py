@@ -4281,27 +4281,28 @@ class MonitorModule(SubModuleWidget):
         bl.setSpacing(10)
         bl.setContentsMargins(8, 8, 8, 8)
         
-        # ═══ 1. 数据源 — RadioButton 三选一 ═══
+        # ═══ 左右分栏: 信号源 | 引擎 ═══
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+        
+        # 左侧: 信号源 (竖排)
         src_group = QGroupBox("信号源")
         src_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_CYAN, 8, 12)}}}")
-        src_layout = QHBoxLayout()
-        src_layout.setSpacing(16)
+        src_layout = QVBoxLayout()
+        src_layout.setSpacing(8)
         
         self._src_group = QButtonGroup()
-        radio_style = f"QRadioButton{{color:{C_WHITE}; spacing:4px; font-size:12px;}} QRadioButton::indicator{{width:14px;height:14px;border-radius:7px;border:2px solid {C_GRAY};background:{C_BG};}} QRadioButton::indicator:checked{{border-color:{C_CYAN};background:{C_CYAN};}}"
+        radio_style = f"QRadioButton{{color:{C_WHITE}; spacing:6px; font-size:12px; padding:2px 0;}} QRadioButton::indicator{{width:14px;height:14px;border-radius:7px;border:2px solid {C_GRAY};background:{C_BG};}} QRadioButton::indicator:checked{{border-color:{C_CYAN};background:{C_CYAN};}}"
         
         self.src_replay = QRadioButton("回放数据")
-        self.src_replay.setStyleSheet(radio_style)
-        self.src_replay.setChecked(True)
+        self.src_replay.setStyleSheet(radio_style); self.src_replay.setChecked(True)
         self._src_group.addButton(self.src_replay, 0)
         src_layout.addWidget(self.src_replay)
         
         self.mon_session_combo = QComboBox()
-        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:140px;")
+        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:3px 6px; font-size:10px;")
         self._refresh_monitor_sessions()
         src_layout.addWidget(self.mon_session_combo)
-        
-        src_layout.addWidget(QLabel("  "))
         
         self.src_sim = QRadioButton("仿真数据")
         self.src_sim.setStyleSheet(radio_style)
@@ -4313,81 +4314,81 @@ class MonitorModule(SubModuleWidget):
         self._src_group.addButton(self.src_demo, 2)
         src_layout.addWidget(self.src_demo)
         
-        src_layout.addStretch()
         self.src_status = QLabel("回放: 未加载")
-        self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding-top:4px;")
         src_layout.addWidget(self.src_status)
-        
         src_group.setLayout(src_layout)
-        bl.addWidget(src_group)
+        top_row.addWidget(src_group)
         
-        # ═══ 2. 可视化引擎 ═══
+        # 右侧: 可视化引擎 (竖排)
         eng_group = QGroupBox("可视化引擎")
         eng_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
-        eng_layout = QHBoxLayout()
-        eng_layout.setSpacing(12)
+        eng_layout = QVBoxLayout()
+        eng_layout.setSpacing(8)
         
-        self.mon_rerun_btn = QPushButton("📊 Rerun")
+        self.mon_rerun_btn = QPushButton("📊 Rerun (Web)")
         self.mon_rerun_btn.setCheckable(True); self.mon_rerun_btn.setChecked(True)
         self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
         self.mon_rerun_btn.clicked.connect(lambda: self._switch_mode("rerun"))
         eng_layout.addWidget(self.mon_rerun_btn)
         
-        self.mon_rviz_btn = QPushButton("🤖 RViz")
+        self.mon_rviz_btn = QPushButton("🤖 RViz (ROS2)")
         self.mon_rviz_btn.setCheckable(True)
         self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
         self.mon_rviz_btn.clicked.connect(lambda: self._switch_mode("rviz"))
         eng_layout.addWidget(self.mon_rviz_btn)
         
-        eng_layout.addSpacing(12)
-        self.mon_mode_label = QLabel("本地 Web Viewer · port 9877")
-        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        self.mon_mode_label = QLabel("端口: 9877")
+        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding:2px 0;")
         eng_layout.addWidget(self.mon_mode_label)
-        
         eng_layout.addStretch()
+        eng_group.setLayout(eng_layout)
+        top_row.addWidget(eng_group)
         
-        # 启动+停止合并到这里
+        bl.addLayout(top_row)
+        
+        # ═══ 操作栏: 启动+停止+状态 ═══
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(10)
+        
+        btn_base = "border:none; border-radius:6px; padding:10px 32px; font-weight:bold; font-size:15px;"
         self.mon_launch_btn = QPushButton("▶ 启动")
-        self.mon_launch_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:6px; padding:8px 24px; font-weight:bold; font-size:14px;")
+        self.mon_launch_btn.setStyleSheet(f"QPushButton{{background:{C_GREEN}; color:#0d1117; {btn_base}}} QPushButton:hover{{background:#4ade80;}} QPushButton:pressed{{background:#22c55e;}} QPushButton:disabled{{background:{C_DIM}; color:{C_GRAY};}}")
         self.mon_launch_btn.clicked.connect(self._mon_launch)
-        eng_layout.addWidget(self.mon_launch_btn)
+        ctrl_row.addWidget(self.mon_launch_btn)
         
-        self.mon_stop_btn = QPushButton("⏹")
-        self.mon_stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:8px 16px; font-weight:bold;")
+        self.mon_stop_btn = QPushButton("⏹ 停止")
+        self.mon_stop_btn.setStyleSheet(f"QPushButton{{background:{C_RED}; color:white; {btn_base}}} QPushButton:hover{{background:#f87171;}} QPushButton:pressed{{background:#ef4444;}} QPushButton:disabled{{background:{C_DIM}; color:{C_GRAY};}}")
         self.mon_stop_btn.clicked.connect(self._mon_stop)
         self.mon_stop_btn.setEnabled(False)
-        eng_layout.addWidget(self.mon_stop_btn)
+        ctrl_row.addWidget(self.mon_stop_btn)
         
+        ctrl_row.addStretch()
         self.mon_status = QLabel("● 就绪")
-        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:4px 10px; background:{C_BG2}; border-radius:4px; font-size:11px;")
-        eng_layout.addWidget(self.mon_status)
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 16px; background:{C_BG2}; border-radius:4px; font-size:12px;")
+        ctrl_row.addWidget(self.mon_status)
+        bl.addLayout(ctrl_row)
         
-        eng_group.setLayout(eng_layout)
-        bl.addWidget(eng_group)
-        
-        # ═══ 3. 状态信息 (精简) ═══
+        # ═══ 状态信息 (宽) ═══
         self.mon_data_preview = QLabel(
-            "<b>数据源</b>: 选择信号源 → 点 ▶ 启动<br>"
-            "<b>Rerun</b>: 本地 Web Viewer (端口9877) · 自动打开浏览器<br>"
-            "<b>RViz</b>: ROS2 原生3D可视化 · 需 source ROS2 环境"
+            "选择信号源 → 选可视化引擎 → 点 ▶ 启动"
         )
         self.mon_data_preview.setWordWrap(True)
-        self.mon_data_preview.setStyleSheet(f"color:{C_WHITE}; font-size:10px; padding:8px 12px; background:{C_BG}; border-radius:4px;")
+        self.mon_data_preview.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding:6px 12px; background:{C_BG}; border-radius:4px;")
         bl.addWidget(self.mon_data_preview)
         
-        # ═══ 4. 日志 ═══
+        # ═══ 日志 ═══
         self.mon_log = QTextEdit()
         self.mon_log.setReadOnly(True)
-        self.mon_log.setFixedHeight(90)
         self.mon_log.setFont(QFont("Consolas", 9))
         self.mon_log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
-        self.mon_log.setText("  就绪 · 选择信号源 → 点 ▶ 启动\n")
+        self.mon_log.setText("  就绪\n")
         bl.addWidget(self.mon_log)
         
         body.setLayout(bl)
         self._build_shell(body)
         
-        # 信号源切换联动
+        # 信号源切换
         self.src_replay.toggled.connect(lambda v: v and self._on_source_changed("replay"))
         self.src_sim.toggled.connect(lambda v: v and self._on_source_changed("sim"))
         self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
@@ -4607,28 +4608,58 @@ class MonitorModule(SubModuleWidget):
         self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
     
     def _open_rerun_local(self):
-        """用 rerun --web-viewer 本地托管 .rrd 并打开浏览器"""
-        import subprocess, os
+        """Python API 启动 Rerun Web Viewer"""
+        import rerun as rr, threading
+        
         rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
         if not os.path.exists(rrd):
-            self._mlog("⚠️ 先点「生成演示.rrd」")
+            self._mlog("⚠️ 先选「演示动画」自动生成 .rrd")
             return
         
-        self._mlog("🚀 rerun --web-viewer 启动中...")
-        try:
-            subprocess.Popen(
-                ["rerun", rrd, "--web-viewer", "--port", "9877"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self._mlog("   ✅ 本地 Web Viewer 已启动")
-            self._mlog("   🌐 http://127.0.0.1:9877")
-            import time; time.sleep(1)
+        self._mlog("📊 启动 Rerun Web Viewer...")
+        rr.init("Z-MAX Monitor")
+        grpc_url = rr.serve_grpc()
+        self._mlog(f"   gRPC: {grpc_url}")
+        
+        def _web():
             try:
-                subprocess.Popen(["xdg-open", "http://127.0.0.1:9877"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except:
-                pass
+                rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
+            except Exception as e:
+                self._mlog(f"Web error: {e}")
+        threading.Thread(target=_web, daemon=True).start()
+        
+        # 加载 .rrd 文件的数据到当前 recording
+        import time; time.sleep(1.5)
+        
+        # 推送已有 .rrd 的演示帧
+        try:
+            rr.log('world/xyz', rr.Arrows3D(
+                origins=[[0,0,0],[0,0,0],[0,0,0]],
+                vectors=[[0.5,0,0],[0,0.5,0],[0,0,0.5]],
+                colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+            import math
+            for frame in range(60):
+                t = frame * 0.1
+                rr.set_time('frame', sequence=frame)
+                pts = []; x = y = z = 0.0
+                for j in range(6):
+                    phase = j * 0.8; amp = 0.3/(j+1)
+                    x += math.cos(t*2+phase)*amp*0.5
+                    y += math.sin(t*2+phase)*amp*0.6
+                    z += math.cos(t*1.5+phase)*amp*0.3
+                    pts.append([x,y,z])
+                colors = [[255-i*30,100+i*20,i*40] for i in range(6)]
+                rr.log('robot/joints', rr.Points3D(pts, radii=[0.05]*6, colors=colors))
         except Exception as e:
-            self._mlog(f"   ❌ 失败: {e}")
+            self._mlog(f"   ⚠️ 推送数据: {e}")
+        
+        self._mlog("   🌐 http://127.0.0.1:9090")
+        import time; time.sleep(1)
+        try:
+            import subprocess
+            subprocess.Popen(["xdg-open", "http://127.0.0.1:9090"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except: pass
 
 
 # ═══════════════════════════════════════════════
