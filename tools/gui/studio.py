@@ -6108,8 +6108,15 @@ class StudioMainWindow(QMainWindow):
                     try:
                         if opener == "libreoffice":
                             open_ppt_with_libreoffice(full_path)
+                        elif opener == "xdg-open":
+                            # WSL 没有 xdg-open，用 wslview 或 cmd.exe 打开
+                            import shutil
+                            if shutil.which("wslview"):
+                                subprocess.Popen(["wslview", full_path])
+                            else:
+                                subprocess.Popen(["cmd.exe", "/c", "start", full_path])
                         else:
-                            subprocess.Popen(["xdg-open", full_path])
+                            subprocess.Popen([opener, full_path])
                         self.statusBar().showMessage(f"已打开: {rel_path}")
                         return
                     except Exception as e:
