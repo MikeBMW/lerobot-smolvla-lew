@@ -4472,13 +4472,15 @@ class MonitorModule(SubModuleWidget):
         # 初始化 Rerun
         rr.init("Z-MAX Monitor", spawn=True)
         
+        from rerun import components as rrc
+        
         # 确定数据源
         if self.replay.total_frames > 0:
             self._mlog(f"   数据源: 回放 ({self.replay.total_frames}帧)")
-            self._stream_replay_to_rerun(rr)
+            self._stream_replay_to_rerun(rr, rrc)
         elif hasattr(self, '_sim_src'):
             self._mlog("   数据源: 仿真引擎")
-            self._stream_sim_to_rerun(rr)
+            self._stream_sim_to_rerun(rr, rrc)
         else:
             self._mlog("⚠️ 请先选择数据源（加载回放或仿真数据）")
             return
@@ -4488,7 +4490,7 @@ class MonitorModule(SubModuleWidget):
         self.mon_status.setText("🟢 运行中")
         self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
     
-    def _stream_replay_to_rerun(self, rr):
+    def _stream_replay_to_rerun(self, rr, rrc):
         """回放数据 → Rerun"""
         import numpy as np
         from PyQt5.QtCore import QTimer
@@ -4500,7 +4502,7 @@ class MonitorModule(SubModuleWidget):
                 return
             
             t = frame["ts"] - self.replay.frames[0]["ts"]
-            rr.set_time_seconds("stable_time", t)
+            rr.set_time("stable_time", sequence=int(t * 1000))
             
             # 关节状态 → 3D 变换
             joints = frame.get("joints", [])
@@ -4512,12 +4514,12 @@ class MonitorModule(SubModuleWidget):
                 ))
                 # 关节值作为标量
                 for i, v in enumerate(joints[:6]):
-                    rr.log(f"joints/joint_{i+1}", rr.Scalar(v))
+                    rr.log(f"joints/joint_{i+1}", rrc.Scalar(v))
             
             # 夹爪
             gripper = frame.get("gripper")
             if gripper is not None:
-                rr.log("gripper/position", rr.Scalar(gripper))
+                rr.log("gripper/position", rrc.Scalar(gripper))
             
             self.replay.advance()
         
@@ -4528,7 +4530,7 @@ class MonitorModule(SubModuleWidget):
         self._rerun_timer.start(100)  # 10fps
         self._mlog("▶ 回放数据推送中...")
     
-    def _stream_sim_to_rerun(self, rr):
+    def _stream_sim_to_rerun(self, rr, rrc):
         """仿真数据 → Rerun"""
         import numpy as np
         from PyQt5.QtCore import QTimer
@@ -4551,12 +4553,12 @@ class MonitorModule(SubModuleWidget):
             ))
             for i, (name, s) in enumerate(snap.items()):
                 if i >= 14: break
-                rr.log(f"sim/{name}/position", rr.Scalar(s["pos"]))
-                rr.log(f"sim/{name}/torque", rr.Scalar(s["torque"]))
+                rr.log(f"sim/{name}/position", rrc.Scalar(s["pos"]))
+                rr.log(f"sim/{name}/torque", rrc.Scalar(s["torque"]))
             
             # 力传感器
-            rr.log("force/fx", rr.Scalar(sim.force.fx))
-            rr.log("force/fz", rr.Scalar(sim.force.fz))
+            rr.log("force/fx", rrc.Scalar(sim.force.fx))
+            rr.log("force/fz", rrc.Scalar(sim.force.fz))
         
         self._rerun_timer = QTimer()
         self._rerun_timer.timeout.connect(push_sim)
