@@ -5114,44 +5114,51 @@ class MonitorModule(SubModuleWidget):
         self._mlog("   ✅ 终端显示已启动")
     
     def _gen_pusht_rrd(self):
-        """PushT数据集 → .rrd (LeRobot标准可视化)"""
-        import rerun as rr, numpy as np
+        """PushT数据集 → .rrd — 1个完整episode轨迹"""
+        import rerun as rr
         
         self._mlog("📊 加载 PushT 数据集...")
         try:
             from datasets import load_dataset
-            ds = load_dataset("lerobot/pusht", split="train[:3]")
+            ds = load_dataset("lerobot/pusht", split="train[:100]")
         except:
             self._mlog("❌ 无法加载 PushT")
             return
         
-        rr.init("PushT", spawn=False)
+        rr.init("PushT LeRobot", spawn=False)
+        # 固定坐标系和背景
         rr.log("world/xy", rr.Arrows3D(
             origins=[[0,0,0],[0,0,0]], vectors=[[0.6,0,0],[0,0.6,0]],
-            colors=[[255,0,0],[0,255,0]]), static=True)
+            colors=[[255,0,0],[0,255,0]], labels=["X","Y"]), static=True)
         
-        total_frames = 0
-        for ep_idx in range(len(ds)):
-            ep = ds[ep_idx]
-            # PushT: observation.state = [agent_x, agent_y], action = [dx, dy]
-            state = ep["observation.state"]
-            action = ep.get("action", [0, 0])
-            rr.set_time("episode", sequence=ep_idx)
-            rr.set_time("frame", sequence=total_frames)
-            # Agent: 蓝色圆点
-            rr.log("agent/pos", rr.Points3D([[float(state[0]), float(state[1]), 0]], 
-                radii=[0.025], colors=[[30,144,255]]))
-            # Action direction
-            if len(action) >= 2:
-                rr.log("agent/action", rr.Arrows3D(
-                    origins=[[float(state[0]), float(state[1]), 0]],
-                    vectors=[[float(action[0])*0.05, float(action[1])*0.05, 0]],
-                    colors=[[100,200,255]]))
-            total_frames += 1
+        prev_pos = None
+        total = len(ds)
+        for f_idx, row in enumerate(ds):
+            state = row["observation.state"]
+            action = row["action"]
+            x, y = float(state[0]), float(state[1])
+            
+            rr.set_time("frame", sequence=f_idx)
+            
+            # Agent 当前位置 (蓝色圆点)
+            rr.log("agent/current", rr.Points3D([[x, y, 0]], 
+                radii=[0.02], colors=[[30,144,255]]))
+            
+            # Action 方向 (浅蓝箭头)
+            rr.log("agent/action", rr.Arrows3D(
+                origins=[[x, y, 0]],
+                vectors=[[float(action[0])*0.03, float(action[1])*0.03, 0]],
+                colors=[[100,200,255]]))
+            
+            # 轨迹连线
+            if prev_pos is not None:
+                rr.log("agent/trail", rr.LineStrips3D(
+                    [[prev_pos, [x, y, 0]]], colors=[[60,160,255,120]]))
+            prev_pos = [x, y, 0]
         
         out = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
         rr.save(out)
-        self._mlog(f"✅ {out} ({os.path.getsize(out)/1024:.0f}KB, {total_frames} frames)")
+        self._mlog(f"✅ {out} ({os.path.getsize(out)/1024:.0f}KB, {total} frames)")
 
     def _open_rerun_local(self):
         """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
