@@ -4608,58 +4608,22 @@ class MonitorModule(SubModuleWidget):
         self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
     
     def _open_rerun_local(self):
-        """Python API 启动 Rerun Web Viewer"""
-        import rerun as rr, threading
-        
+        """后台 subprocess 启动 rerun --web-viewer (零阻塞)"""
+        import subprocess, os
         rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
         if not os.path.exists(rrd):
-            self._mlog("⚠️ 先选「演示动画」自动生成 .rrd")
-            return
+            self._gen_rrd_demo()
         
-        self._mlog("📊 启动 Rerun Web Viewer...")
-        rr.init("Z-MAX Monitor")
-        grpc_url = rr.serve_grpc()
-        self._mlog(f"   gRPC: {grpc_url}")
-        
-        def _web():
-            try:
-                rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
-            except Exception as e:
-                self._mlog(f"Web error: {e}")
-        threading.Thread(target=_web, daemon=True).start()
-        
-        # 加载 .rrd 文件的数据到当前 recording
-        import time; time.sleep(1.5)
-        
-        # 推送已有 .rrd 的演示帧
+        self._mlog("🚀 后台启动 Rerun Web Viewer...")
         try:
-            rr.log('world/xyz', rr.Arrows3D(
-                origins=[[0,0,0],[0,0,0],[0,0,0]],
-                vectors=[[0.5,0,0],[0,0.5,0],[0,0,0.5]],
-                colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
-            import math
-            for frame in range(60):
-                t = frame * 0.1
-                rr.set_time('frame', sequence=frame)
-                pts = []; x = y = z = 0.0
-                for j in range(6):
-                    phase = j * 0.8; amp = 0.3/(j+1)
-                    x += math.cos(t*2+phase)*amp*0.5
-                    y += math.sin(t*2+phase)*amp*0.6
-                    z += math.cos(t*1.5+phase)*amp*0.3
-                    pts.append([x,y,z])
-                colors = [[255-i*30,100+i*20,i*40] for i in range(6)]
-                rr.log('robot/joints', rr.Points3D(pts, radii=[0.05]*6, colors=colors))
+            subprocess.Popen(
+                ["rerun", rrd, "--web-viewer"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True)
+            self._mlog("   🌐 浏览器打开 http://127.0.0.1:9090")
+            self._mlog("   (如未自动打开，请手动输入地址)")
         except Exception as e:
-            self._mlog(f"   ⚠️ 推送数据: {e}")
-        
-        self._mlog("   🌐 http://127.0.0.1:9090")
-        import time; time.sleep(1)
-        try:
-            import subprocess
-            subprocess.Popen(["xdg-open", "http://127.0.0.1:9090"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except: pass
+            self._mlog(f"   ❌ {e}")
 
 
 # ═══════════════════════════════════════════════
