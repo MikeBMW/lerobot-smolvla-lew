@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
     QSlider, QListWidget, QDialog,  # DatasetModule viewer
     QTreeWidget, QTreeWidgetItem,  # 硬件工具箱设备树
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl, QDateTime  # 新增 QDateTime 用于时间戳
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl, QDateTime, QThread  # QThread 用于 Rerun 后台线程
 from PyQt5.QtGui import (
     QFont, QColor, QCursor, QPainter, QLinearGradient, QBrush,
     QPainterPath, QPen, QDesktopServices, QPixmap  # 新增 QCursor, QDesktopServices, QPixmap
