@@ -3283,8 +3283,8 @@ class HardwareModule(SubModuleWidget):
         body = QVBoxLayout()
         body.setSpacing(8)
         body.addLayout(toolbar)
-        body.addWidget(topo_group)
-        body.addWidget(splitter, 1)
+        body.addWidget(topo_group, 1)
+        body.addWidget(splitter, 2)
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
