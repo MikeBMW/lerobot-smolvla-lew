@@ -3049,7 +3049,41 @@ class EvalModule(SubModuleWidget):
         super().__init__("评估分析", [("Sys-12", SYS12_COLOR)])
         body = QWidget()
         bl = QVBoxLayout(); bl.setSpacing(12)
-
+        
+        # ── 训练历史 ──
+        train_group = QGroupBox("📈 训练历史")
+        train_group.setStyleSheet(f"QGroupBox{{color:{SYS12_COLOR}; font-weight:bold; {card_style(C_CARD, SYS12_COLOR, 8, 12)}}}")
+        tl = QVBoxLayout()
+        
+        # 检测训练结果
+        import os, json
+        train_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+                                  "outputs", "smolvla_pusht_train")
+        
+        if os.path.exists(os.path.join(train_dir, "losses.json")):
+            meta = json.load(open(os.path.join(train_dir, "training_meta.json")))
+            info = QLabel(f"<b>SmolVLA DiffusionPolicy</b> · PushT · {meta['steps']}步 · {meta['reduction_pct']}% loss↓<br>"
+                         f"<span style='color:#8b949e'>262M参数 | RTX 4060 | 初始loss={meta['initial_loss']:.3f} → 最终={meta['final_loss']:.3f}</span>")
+            info.setStyleSheet(f"color:{C_WHITE}; font-size:11px; padding:4px;")
+            tl.addWidget(info)
+            
+            # 损失曲线 SVG
+            svg_path = os.path.join(train_dir, "loss_curve.svg")
+            if os.path.exists(svg_path):
+                svg_label = QLabel()
+                svg_label.setPixmap(QPixmap(svg_path).scaled(600, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                svg_label.setAlignment(Qt.AlignCenter)
+                tl.addWidget(svg_label)
+        else:
+            hint = QLabel("<span style='color:#8b949e'>暂无训练记录。运行训练后自动显示损失曲线。</span>")
+            hint.setFont(QFont("Arial", 11))
+            hint.setStyleSheet(f"color:{C_GRAY}; padding:20px;")
+            tl.addWidget(hint)
+        
+        train_group.setLayout(tl)
+        bl.addWidget(train_group)
+        
+        # ── 检查点 ──
         ckpt = QGroupBox("检查点"); ckpt.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
         cl = QFormLayout()
         cb = QComboBox(); cb.addItems(["latest", "best", "checkpoint_10000", "自定义..."])
@@ -3058,15 +3092,16 @@ class EvalModule(SubModuleWidget):
         cl.addRow("Episode数:", ep)
         ckpt.setLayout(cl)
         bl.addWidget(ckpt)
-
+        
+        # ── 操作 ──
         btn_row = QHBoxLayout()
         for txt in ["运行评估", "动作回放", "Rollout"]:
             b = QPushButton(txt)
-            b.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px 18px; margin:0;}}
+            b.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px 18px;}} 
             QPushButton:hover{{border-color:{SYS12_COLOR};}}""")
             btn_row.addWidget(b)
         bl.addLayout(btn_row)
-
+        
         self.log = QTextEdit(); self.log.setReadOnly(True)
         self.log.setFont(QFont("Consolas", 10))
         self.log.setStyleSheet(f"background:{C_CARD}; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; padding:8px;")
