@@ -3522,33 +3522,30 @@ class HardwareModule(SubModuleWidget):
         return ["/tower_light/command (std_msgs/String)"]
     
     def _check_camera(self):
-        """检测并拍摄 RealSense 照片"""
+        """拍摄 RealSense 照片并弹窗显示"""
         import subprocess, os
         self._log("📷 拍摄中...")
         try:
             # 上传拍照脚本
-            cap_script = os.path.expanduser("~/lerobot-smolvla-lew/tools/gui/capture_cam.py")
-            # 直接运行远程脚本
+            cap_script = os.path.join(os.path.dirname(__file__), "capture_cam.py")
+            
+            # 1. 上传脚本到Orin
+            subprocess.run(["scp", "-o", "ControlPath=/tmp/orin-ssh.sock",
+                cap_script, "nvidia@192.168.23.10:/tmp/cam_cap.py"],
+                timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # 2. 运行拍照
             r = subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
-                "source /opt/ros/humble/setup.bash && "
-                "python3 -c \"import os;os.environ['ROS_DOMAIN_ID']='23';import rclpy;rclpy.init(args=[]);"
-                "from sensor_msgs.msg import Image;from cv_bridge import CvBridge;import cv2,time;"
-                "bridge=CvBridge();node=rclpy.create_node('c');got=[];"
-                "def cb(m):img=bridge.imgmsg_to_cv2(m,'bgr8');cv2.imwrite('/tmp/cam.jpg',img,[cv2.IMWRITE_JPEG_QUALITY,85]);got.append(1);"
-                "node.create_subscription(Image,'/realsense/color/image_raw',cb,1);t0=time.time();"
-                "while not got and time.time()-t0<10:rclpy.spin_once(node,timeout_sec=0.5);"
-                "print('OK '+str(os.path.getsize('/tmp/cam.jpg')) if got else 'NO');"
-                "node.destroy_node();rclpy.shutdown()\""
-            ], capture_output=True, text=True, timeout=15)
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && python3 /tmp/cam_cap.py"
+            ], capture_output=True, text=True, timeout=12)
             
             if "OK" in r.stdout:
-                # 拉回图片
+                # 3. 拉回图片
                 subprocess.run(["scp", "-o", "ControlPath=/tmp/orin-ssh.sock",
                     "nvidia@192.168.23.10:/tmp/cam.jpg", "/tmp/orin_cam.jpg"],
                     timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-                # 弹窗显示
                 from PyQt5.QtGui import QPixmap
                 pix = QPixmap("/tmp/orin_cam.jpg")
                 if not pix.isNull():
@@ -3561,20 +3558,22 @@ class HardwareModule(SubModuleWidget):
                     img_label.setAlignment(Qt.AlignCenter)
                     dl.addWidget(img_label)
                     btn = QPushButton("关闭")
+                    btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:6px 20px;")
                     btn.clicked.connect(dlg.accept)
                     dl.addWidget(btn)
                     dlg.setLayout(dl)
                     dlg.exec_()
                     self.hw_table.item(4, 2).setText("🟢")
-                    self.hw_table.item(4, 3).setText(f"OK {pix.width()}x{pix.height()}")
+                    self.hw_table.item(4, 3).setText(f"{pix.width()}x{pix.height()}")
                     self._log(f"   ✅ {pix.width()}x{pix.height()}")
                 else:
-                    self.hw_table.item(4, 3).setText("图片加载失败")
+                    self.hw_table.item(4, 3).setText("加载失败")
             else:
                 self.hw_table.item(4, 2).setText("⏸")
                 self.hw_table.item(4, 3).setText("无帧")
                 self._log("   ⏸ 无帧")
         except Exception as e:
+            self.hw_table.item(4, 3).setText(f"错误")
             self._log(f"   ❌ {e}")
     
     def _read_robot_joints(self):
