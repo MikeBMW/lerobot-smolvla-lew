@@ -4261,51 +4261,353 @@ class ConfigModule(SubModuleWidget):
 
 
 class MonitorModule(SubModuleWidget):
+    """实时监控 — Rerun/RViz 双模式 3D 可视化
+    
+    Rerun: 现代化机器人数据可视化 (rerun.io)
+    RViz:  ROS2 原生 3D 可视化工具
+    数据源: 回放会话 | 实时仿真 | Orin真机
+    """
+    
     def __init__(self):
         super().__init__("实时监控", [("Sys-11", SYS11_COLOR), ("Sys-12", SYS12_COLOR)])
+        from hardware_simulator import ReplayEngine
+        
+        self.replay = ReplayEngine()
+        self._rerun_process = None
+        self._rviz_process = None
+        
         body = QWidget()
-        bl = QVBoxLayout(); bl.setSpacing(12)
-
-        # GPU
-        gpu = QGroupBox("GPU状态"); gpu.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        gl = QVBoxLayout()
-        gi = QLabel("NVIDIA RTX 4060 · 8GB"); gi.setFont(QFont("Consolas", 11))
-        gi.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none; margin:0; padding:4px 0;")
-        gl.addWidget(gi)
-        prog = QProgressBar(); prog.setRange(0, 8192); prog.setValue(3200)
-        prog.setFormat("%v / 8192 MB")
-        prog.setStyleSheet(f"QProgressBar{{background:{C_BG}; border:1px solid {C_BORDER}; border-radius:4px; color:{C_WHITE}; padding:4px;}} QProgressBar::chunk{{background:{SYS11_COLOR}; border-radius:4px;}}")
-        mem_label = QLabel("显存:")
-        mem_label.setFont(QFont("Arial", 10))
-        mem_label.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:4px 0;")
-        gl.addWidget(mem_label)
-        gl.addWidget(prog)
-        gpu.setLayout(gl)
-        bl.addWidget(gpu)
-
-        # 曲线占位
-        curve = QGroupBox("训练曲线 (待实现)"); curve.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        ccl = QVBoxLayout()
-        pl = QLabel("📊  Action Loss · LeW Loss · Learning Rate · Grad Norm")
-        pl.setAlignment(Qt.AlignCenter)
-        pl.setFont(QFont("Arial", 12))
-        pl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; padding:24px; margin:0;")
-        ccl.addWidget(pl)
-        curve.setLayout(ccl)
-        bl.addWidget(curve)
-
-        # 终端
-        term = QTextEdit(); term.setReadOnly(True)
-        term.setFont(QFont("Consolas", 10))
-        term.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:6px; padding:8px;")
-        bl.addWidget(term)
-
-        refresh = QPushButton("刷新状态")
-        refresh.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px 20px; margin:0;")
-        bl.addWidget(refresh)
-
+        bl = QVBoxLayout()
+        bl.setSpacing(12)
+        bl.setContentsMargins(8, 8, 8, 8)
+        
+        # ═══ 模式选择 ═══
+        mode_group = QGroupBox("可视化引擎")
+        mode_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
+        mode_layout = QHBoxLayout()
+        mode_layout.setSpacing(12)
+        
+        self.mon_rerun_btn = QPushButton("📊 Rerun")
+        self.mon_rerun_btn.setCheckable(True)
+        self.mon_rerun_btn.setChecked(True)
+        self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
+        self.mon_rerun_btn.clicked.connect(lambda: self._switch_mode("rerun"))
+        mode_layout.addWidget(self.mon_rerun_btn)
+        
+        self.mon_rviz_btn = QPushButton("🤖 RViz")
+        self.mon_rviz_btn.setCheckable(True)
+        self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
+        self.mon_rviz_btn.clicked.connect(lambda: self._switch_mode("rviz"))
+        mode_layout.addWidget(self.mon_rviz_btn)
+        
+        mode_layout.addStretch()
+        self.mon_mode_label = QLabel("📊 Rerun 模式 — 现代3D可视化")
+        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:11px;")
+        mode_layout.addWidget(self.mon_mode_label)
+        mode_group.setLayout(mode_layout)
+        bl.addWidget(mode_group)
+        
+        # ═══ 数据源 ═══
+        data_group = QGroupBox("数据源")
+        data_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        data_layout = QHBoxLayout()
+        data_layout.setSpacing(8)
+        
+        data_layout.addWidget(QLabel("回放会话:"))
+        self.mon_session_combo = QComboBox()
+        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:150px;")
+        self._refresh_monitor_sessions()
+        data_layout.addWidget(self.mon_session_combo, 1)
+        
+        self.mon_load_btn = QPushButton("加载")
+        self.mon_load_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
+        self.mon_load_btn.clicked.connect(self._mon_load_session)
+        data_layout.addWidget(self.mon_load_btn)
+        
+        data_layout.addWidget(QLabel("或"))
+        
+        self.mon_sim_btn = QPushButton("🖥️ 仿真数据")
+        self.mon_sim_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
+        self.mon_sim_btn.clicked.connect(self._mon_use_sim)
+        data_layout.addWidget(self.mon_sim_btn)
+        
+        data_group.setLayout(data_layout)
+        bl.addWidget(data_group)
+        
+        # ═══ 控制区 ═══
+        ctrl_group = QGroupBox("可视化控制")
+        ctrl_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        ctrl_layout = QHBoxLayout()
+        ctrl_layout.setSpacing(10)
+        
+        self.mon_launch_btn = QPushButton("🚀 启动可视化")
+        self.mon_launch_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border:none; border-radius:6px; padding:10px 24px; font-weight:bold; font-size:14px;")
+        self.mon_launch_btn.clicked.connect(self._mon_launch)
+        ctrl_layout.addWidget(self.mon_launch_btn)
+        
+        self.mon_stop_btn = QPushButton("⏹ 停止")
+        self.mon_stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:10px 20px; font-weight:bold;")
+        self.mon_stop_btn.clicked.connect(self._mon_stop)
+        self.mon_stop_btn.setEnabled(False)
+        ctrl_layout.addWidget(self.mon_stop_btn)
+        
+        ctrl_layout.addStretch()
+        
+        self.mon_status = QLabel("● 就绪")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
+        ctrl_layout.addWidget(self.mon_status)
+        
+        ctrl_group.setLayout(ctrl_layout)
+        bl.addWidget(ctrl_group)
+        
+        # ═══ 信息面板 ═══
+        info_group = QGroupBox("数据预览")
+        info_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        info_layout = QVBoxLayout()
+        
+        self.mon_data_preview = QLabel(
+            "<b>Rerun</b> — 现代化开源可视化引擎<br>"
+            "  空间原语: 点云 · 3D框 · 变换树 · 图像 · 标量时序<br>"
+            "  内置 Viewer: 实时 Web/原生界面，支持时间轴<br><br>"
+            "<b>RViz</b> — ROS2 原生3D可视化<br>"
+            "  订阅标准 ROS2 topic (JointState/TF/Marker)<br>"
+            "  机器人模型 · 力矢量 · 轨迹显示<br><br>"
+            "选择数据源 → 点击「启动可视化」→ 在独立窗口中查看"
+        )
+        self.mon_data_preview.setWordWrap(True)
+        self.mon_data_preview.setStyleSheet(f"color:{C_WHITE}; font-size:11px; padding:12px; background:{C_BG}; border-radius:6px;")
+        info_layout.addWidget(self.mon_data_preview)
+        info_group.setLayout(info_layout)
+        bl.addWidget(info_group)
+        
+        # ═══ 日志 ═══
+        self.mon_log = QTextEdit()
+        self.mon_log.setReadOnly(True)
+        self.mon_log.setFixedHeight(100)
+        self.mon_log.setFont(QFont("Consolas", 9))
+        self.mon_log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
+        self.mon_log.setText("  实时监控就绪 · 等待数据源 ...\n")
+        bl.addWidget(self.mon_log)
+        
         body.setLayout(bl)
         self._build_shell(body)
+    
+    def _mode_btn_style(self, color, active):
+        if active:
+            return f"background:{color}; color:white; border:none; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:14px;"
+        return f"background:{color}33; color:{color}; border:1px solid {color}44; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:14px;"
+    
+    # ═══ 操作 ═══
+    
+    def _refresh_monitor_sessions(self):
+        self.mon_session_combo.clear()
+        self.mon_session_combo.addItem("— 选择回放会话 —")
+        for s in self.replay.list_sessions():
+            self.mon_session_combo.addItem(s)
+    
+    def _switch_mode(self, mode):
+        if mode == "rerun":
+            self.mon_rerun_btn.setChecked(True)
+            self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
+            self.mon_rviz_btn.setChecked(False)
+            self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
+            self.mon_mode_label.setText("📊 Rerun 模式 — 现代3D可视化")
+        else:
+            self.mon_rviz_btn.setChecked(True)
+            self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
+            self.mon_rerun_btn.setChecked(False)
+            self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
+            self.mon_mode_label.setText("🤖 RViz 模式 — ROS2 原生3D可视化")
+    
+    def _mon_load_session(self):
+        session = self.mon_session_combo.currentText()
+        if not session or session.startswith("—"):
+            return
+        if self.replay.load_session(session):
+            self._mlog(f"✅ 加载 {session} · {self.replay.total_frames}帧 · {self.replay.duration:.1f}s")
+            self.mon_data_preview.setText(
+                f"<b>✅ 已加载: {session}</b><br>"
+                f"帧数: {self.replay.total_frames} | 时长: {self.replay.duration:.2f}s<br>"
+                f"关节数据: {'✅' if self.replay.get_frame(0) and self.replay.get_frame(0).get('joints') else '❌'}<br>"
+                f"<br>点击「启动可视化」开始"
+            )
+        else:
+            self._mlog(f"❌ 加载失败: {session}")
+    
+    def _mon_use_sim(self):
+        """使用仿真数据"""
+        from hardware_simulator import get_simulator
+        self._sim_src = get_simulator("sim")
+        self._mlog("🖥️ 数据源: 仿真引擎 (14-DOF 正弦波)")
+        self.mon_data_preview.setText(
+            "<b>🖥️ 仿真数据源</b><br>"
+            "Z700 14-DOF 正弦波 · 7路相机测试图案 · 六维力传感器<br>"
+            "点击「启动可视化」查看实时仿真数据"
+        )
+    
+    def _mon_launch(self):
+        mode = "rerun" if self.mon_rerun_btn.isChecked() else "rviz"
+        
+        if mode == "rerun":
+            self._launch_rerun()
+        else:
+            self._launch_rviz()
+    
+    def _launch_rerun(self):
+        """启动 Rerun Viewer 并推送数据"""
+        try:
+            import rerun as rr
+            import numpy as np
+        except ImportError:
+            self._mlog("❌ rerun-sdk 未安装，正在后台安装...")
+            import subprocess, os
+            subprocess.Popen(
+                [os.path.expanduser("~/miniconda3/envs/lerobot/bin/pip"), "install", "rerun-sdk", "-q"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            return
+        
+        self._mlog("📊 启动 Rerun Viewer...")
+        
+        # 初始化 Rerun
+        rr.init("Z-MAX Monitor", spawn=True)
+        
+        # 确定数据源
+        if self.replay.total_frames > 0:
+            self._mlog(f"   数据源: 回放 ({self.replay.total_frames}帧)")
+            self._stream_replay_to_rerun(rr)
+        elif hasattr(self, '_sim_src'):
+            self._mlog("   数据源: 仿真引擎")
+            self._stream_sim_to_rerun(rr)
+        else:
+            self._mlog("⚠️ 请先选择数据源（加载回放或仿真数据）")
+            return
+        
+        self.mon_launch_btn.setEnabled(False)
+        self.mon_stop_btn.setEnabled(True)
+        self.mon_status.setText("🟢 运行中")
+        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
+    
+    def _stream_replay_to_rerun(self, rr):
+        """回放数据 → Rerun"""
+        import numpy as np
+        from PyQt5.QtCore import QTimer
+        
+        def push_frame():
+            frame = self.replay.get_frame()
+            if not frame or not self.replay.playing:
+                self._rerun_timer.stop()
+                return
+            
+            t = frame["ts"] - self.replay.frames[0]["ts"]
+            rr.set_time_seconds("stable_time", t)
+            
+            # 关节状态 → 3D 变换
+            joints = frame.get("joints", [])
+            if len(joints) >= 6:
+                # 简化的6-DOF可视化：用点表示关节位置
+                rr.log("joints/positions", rr.Points3D(
+                    [[i*0.1, joints[i]*0.5, 0] for i in range(min(6, len(joints)))],
+                    radii=[0.02]*min(6, len(joints))
+                ))
+                # 关节值作为标量
+                for i, v in enumerate(joints[:6]):
+                    rr.log(f"joints/joint_{i+1}", rr.Scalar(v))
+            
+            # 夹爪
+            gripper = frame.get("gripper")
+            if gripper is not None:
+                rr.log("gripper/position", rr.Scalar(gripper))
+            
+            self.replay.advance()
+        
+        self.replay.current_frame = 0
+        self.replay.playing = True
+        self._rerun_timer = QTimer()
+        self._rerun_timer.timeout.connect(push_frame)
+        self._rerun_timer.start(100)  # 10fps
+        self._mlog("▶ 回放数据推送中...")
+    
+    def _stream_sim_to_rerun(self, rr):
+        """仿真数据 → Rerun"""
+        import numpy as np
+        from PyQt5.QtCore import QTimer
+        
+        sim = self._sim_src
+        if not sim.running:
+            sim.start()
+        
+        def push_sim():
+            if not sim.running:
+                self._rerun_timer.stop()
+                return
+            
+            snap = sim.get_joint_snapshot()
+            positions = [s["pos"] for s in snap.values()]
+            
+            rr.log("joints/positions", rr.Points3D(
+                [[i*0.1, positions[i]*0.5, 0] for i in range(min(6, len(positions)))],
+                radii=[0.02]*min(6, len(positions))
+            ))
+            for i, (name, s) in enumerate(snap.items()):
+                if i >= 14: break
+                rr.log(f"sim/{name}/position", rr.Scalar(s["pos"]))
+                rr.log(f"sim/{name}/torque", rr.Scalar(s["torque"]))
+            
+            # 力传感器
+            rr.log("force/fx", rr.Scalar(sim.force.fx))
+            rr.log("force/fz", rr.Scalar(sim.force.fz))
+        
+        self._rerun_timer = QTimer()
+        self._rerun_timer.timeout.connect(push_sim)
+        self._rerun_timer.start(100)
+        self._mlog("▶ 仿真数据推送中...")
+    
+    def _launch_rviz(self):
+        """启动 RViz"""
+        import subprocess
+        
+        rviz_config = os.path.expanduser("~/lerobot-smolvla-lew/launch/zmax_monitor.rviz")
+        
+        cmd = ["rviz2"]
+        if os.path.exists(rviz_config):
+            cmd += ["-d", rviz_config]
+        
+        self._mlog(f"🤖 启动 RViz: {' '.join(cmd)}")
+        
+        try:
+            self._rviz_process = subprocess.Popen(cmd, 
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._mlog("   RViz 已启动（独立窗口）")
+            self._mlog("   注意: 需要 ROS2 环境 source 后 RViz 才能连接")
+        except FileNotFoundError:
+            self._mlog("❌ rviz2 未找到，请确保 ROS2 已安装并 source")
+            return
+        
+        self.mon_launch_btn.setEnabled(False)
+        self.mon_stop_btn.setEnabled(True)
+        self.mon_status.setText("🟢 运行中")
+        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
+    
+    def _mon_stop(self):
+        """停止可视化"""
+        if hasattr(self, '_rerun_timer'):
+            self._rerun_timer.stop()
+        self.replay.playing = False
+        
+        if self._rviz_process and self._rviz_process.poll() is None:
+            self._rviz_process.terminate()
+            self._mlog("⏹ RViz 已停止")
+        
+        self.mon_launch_btn.setEnabled(True)
+        self.mon_stop_btn.setEnabled(False)
+        self.mon_status.setText("● 已停止")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
+        self._mlog("⏹ 可视化已停止")
+    
+    def _mlog(self, msg):
+        ts = time.strftime("%H:%M:%S")
+        self.mon_log.append(f"  [{ts}] {msg}")
 
 
 # ============================================================
