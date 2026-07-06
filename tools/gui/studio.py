@@ -5723,7 +5723,7 @@ class StudioMainWindow(QMainWindow):
 
     def _build_menubar(self):
         """构建专业开发环境菜单栏"""
-        self.repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.docs_path = os.path.join(self.repo_path, "docs")
 
         mb = self.menuBar()
