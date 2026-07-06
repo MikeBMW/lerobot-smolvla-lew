@@ -3136,9 +3136,9 @@ class EvalModule(SubModuleWidget):
             return
         m = records[idx]
         self.eval_info.setText(
-            f"<b>{m['model']}</b> · {m['dataset']} · <b>{m['steps']}步</b> · "
-            f"loss {m['initial_loss']:.4f}→{m['final_loss']:.4f} ({m['reduction_pct']}%↓)<br>"
-            f"<span style='color:#8b949e'>{m['params']//1e6:.0f}M参数 | {m['device']} | {m['timestamp']}</span>"
+            f"<b>{m.get('model','?')}</b> · {m.get('dataset','?')} · <b>{m.get('steps','?')}步</b> · "
+            f"loss {m.get('initial_loss',0):.4f}→{m.get('final_loss',0):.4f} ({m.get('reduction_pct',0)}%↓)<br>"
+            f"<span style='color:#8b949e'>{m.get('params',0)//1e6:.0f}M参数 | {m.get('device','?')} | {m.get('timestamp','?')}</span>"
         )
         proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         svg_path = os.path.join(proj_root, "outputs", m["_dir"], "loss_curve.svg")
