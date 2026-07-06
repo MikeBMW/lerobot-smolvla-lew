@@ -4314,6 +4314,11 @@ class MonitorModule(SubModuleWidget):
         self._src_group.addButton(self.src_demo, 2)
         src_layout.addWidget(self.src_demo)
         
+        self.src_live = QRadioButton("实时数据")
+        self.src_live.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_live, 3)
+        src_layout.addWidget(self.src_live)
+        
         self.src_status = QLabel("回放: 未加载")
         self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding-top:4px;")
         src_layout.addWidget(self.src_status)
@@ -4392,6 +4397,7 @@ class MonitorModule(SubModuleWidget):
         self.src_replay.toggled.connect(lambda v: v and self._on_source_changed("replay"))
         self.src_sim.toggled.connect(lambda v: v and self._on_source_changed("sim"))
         self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
+        self.src_live.toggled.connect(lambda v: v and self._on_source_changed("live"))
     
     def _mode_btn_style(self, color, active):
         if active:
@@ -4436,6 +4442,10 @@ class MonitorModule(SubModuleWidget):
             self.mon_session_combo.setEnabled(False)
             self._gen_rrd_demo()
             self.src_status.setText("演示: 生成 .rrd 动画")
+        elif src == "live":
+            self.mon_session_combo.setEnabled(False)
+            self._start_live_monitor()
+            self.src_status.setText("实时: 连接 Orin...")
     
     def _mon_load_session(self):
         session = self.mon_session_combo.currentText()
@@ -4476,6 +4486,8 @@ class MonitorModule(SubModuleWidget):
             self._gen_replay_rrd()
         elif self.src_sim.isChecked():
             self._gen_sim_rrd()
+        elif self.src_live.isChecked():
+            self._gen_live_rrd()
         
         self._open_rerun_local()
     
@@ -4542,6 +4554,9 @@ class MonitorModule(SubModuleWidget):
     
     def _mon_stop(self):
         """停止可视化"""
+        self._live_running = False
+        if hasattr(self, '_live_timer'):
+            self._live_timer.stop()
         if hasattr(self, '_rerun_worker') and self._rerun_worker:
             self._rerun_worker.stop()
             self._rerun_worker = None
@@ -4660,6 +4675,101 @@ class MonitorModule(SubModuleWidget):
         rr.save(out)
         self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
     
+    def _start_live_monitor(self):
+        """SSH 到 Orin 拉取实时 ROS2 topic 数据"""
+        import subprocess
+        
+        self._mlog("🔍 实时监控: 连接 Orin...")
+        self._live_data = {"joints": [], "gripper": 0, "force": {}, "tcp": {}}
+        
+        import threading
+        def _poll():
+            while getattr(self, '_live_running', True):
+                try:
+                    r = subprocess.run([
+                        "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                        "bash -c 'export ROS_DOMAIN_ID=23; "
+                        "source /opt/ros/humble/setup.bash; "
+                        "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null; "
+                        "ros2 topic echo --once /gripper_pos 2>/dev/null; "
+                        "ros2 topic echo --once /robot/joint_states 2>/dev/null | grep position -A1; "
+                        "ros2 topic echo --once /robot/force_torque 2>/dev/null | grep -E \"x:|y:|z:\"'"],
+                        capture_output=True, text=True, timeout=5)
+                    out = r.stdout.strip()
+                    if out:
+                        lines = out.split('\n')
+                        for i, line in enumerate(lines):
+                            if 'data:' in line:
+                                self._live_data["gripper"] = line.split(':')[1].strip()
+                            if 'position:' in line and i+1 < len(lines):
+                                pos_line = lines[i+1].strip().replace('- ','')
+                                self._live_data["joints"] = [v.strip() for v in pos_line.split(',')]
+                            if 'x:' in line:
+                                self._live_data["force"]["fx"] = line.split(':')[1].strip()
+                        self._live_data["status"] = "🟢 在线"
+                    else:
+                        self._live_data["status"] = "⚠️ 无数据"
+                except:
+                    self._live_data["status"] = "🔴 断开"
+                time.sleep(1.0)
+        
+        self._live_running = True
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
+        
+        self._live_timer = QTimer()
+        self._live_timer.timeout.connect(self._update_live_display)
+        self._live_timer.start(500)
+        self._mlog("   ✅ 实时监控已启动")
+    
+    def _update_live_display(self):
+        d = getattr(self, '_live_data', {})
+        status = d.get("status", "等待...")
+        joints = d.get("joints", [])
+        gripper = d.get("gripper", "?")
+        force = d.get("force", {})
+        
+        if joints and len(joints) >= 6:
+            try:
+                j_str = " ".join([f"J{i+1}:{float(joints[i]):+.4f}" for i in range(6)])
+            except:
+                j_str = str(joints)[:80]
+        else:
+            j_str = "等待关节数据..."
+        
+        self.mon_data_preview.setText(
+            f"<b>{status}</b> | 夹爪: {gripper}<br>"
+            f"<b>关节:</b> {j_str}<br>"
+            f"<b>力:</b> Fx={force.get('fx','?')} Fy={force.get('fy','?')} Fz={force.get('fz','?')}"
+        )
+    
+    def _gen_live_rrd(self):
+        """实时采集 5 秒数据 → .rrd"""
+        import rerun as rr, os
+        self._mlog("📊 采集 5 秒实时数据...")
+        
+        rr.init("live", spawn=False)
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+        
+        for seq in range(50):
+            d = getattr(self, '_live_data', {})
+            joints = d.get("joints", [])
+            try:
+                positions = [float(v) for v in joints[:6]]
+                rr.set_time("frame", sequence=seq)
+                pts = [[i*0.2, positions[i]*0.8, 0] for i in range(min(6,len(positions)))]
+                rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
+                    colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
+            except: pass
+            import time; time.sleep(0.1)
+        
+        out = os.path.expanduser("~/yspace/replay_data/live.rrd")
+        rr.save(out)
+        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+
     def _open_rerun_local(self):
         """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
         import subprocess, os
@@ -4669,6 +4779,8 @@ class MonitorModule(SubModuleWidget):
             rrd = os.path.expanduser("~/yspace/replay_data/replay.rrd")
         elif self.src_sim.isChecked():
             rrd = os.path.expanduser("~/yspace/replay_data/sim.rrd")
+        elif self.src_live.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/live.rrd")
         else:
             rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
         
