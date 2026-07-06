@@ -1430,7 +1430,7 @@ class DatasetModule(SubModuleWidget):
             "tags": ["research", "rotation"],
         },
         {
-            "repo_id": "lerobot/meta_wool_mt50",
+            "repo_id": "lerobot/metaworld_mt50",
             "name": "MetaWorld MT50",
             "robot": "Sawyer (sim)",
             "tasks": 50,
