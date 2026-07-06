@@ -3073,7 +3073,7 @@ class _RosGraphCanvas(QWidget):
         super().__init__()
         self.setMinimumSize(600, 400)
         self.setMinimumSize(700, 1700)
-        self.setStyleSheet(f"background:{C_BG};")
+        self.setStyleSheet(f"background:white;")
         self.nodes = {}
         self.edges = []
         self._build_graph()
@@ -3097,25 +3097,25 @@ class _RosGraphCanvas(QWidget):
         self.nodes["ext_comm"] = (320, y4, 110, 36, "#a5d6ff", "external_comm\n外部通信")
         
         self.edges = [
-            ("realsense", "vision_tag", "color", "#39d2c0"),
-            ("realsense", "vision_pc", "points", "#39d2c0"),
-            ("vision_tag", "vision", "pose", "#39d2c0"),
-            ("vision_pc", "vision", "marker", "#39d2c0"),
-            ("scanner", "hmi", "barcode", "#39d2c0"),
-            ("tactile", "motion", "F/T/tactile", "#ff7b72"),
-            ("robot_driver", "motion", "joint/status", "#3fb950"),
-            ("gripper", "motion", "gripper", "#3fb950"),
-            ("motion", "hmi", "events", "#3fb950"),
-            ("motion", "tower", "motion", "#3fb950"),
-            ("robot_driver", "hmi", "joints", "#3fb950"),
-            ("gripper", "hmi", "pos", "#3fb950"),
-            ("ext_comm", "motion", "ext", "#a5d6ff"),
+            ("realsense", "vision_tag", "color", "#000"),
+            ("realsense", "vision_pc", "points", "#000"),
+            ("vision_tag", "vision", "pose", "#000"),
+            ("vision_pc", "vision", "marker", "#000"),
+            ("scanner", "hmi", "barcode", "#000"),
+            ("tactile", "motion", "F/T/tactile", "#000"),
+            ("robot_driver", "motion", "joint/status", "#000"),
+            ("gripper", "motion", "gripper", "#000"),
+            ("motion", "hmi", "events", "#000"),
+            ("motion", "tower", "motion", "#000"),
+            ("robot_driver", "hmi", "joints", "#000"),
+            ("gripper", "hmi", "pos", "#000"),
+            ("ext_comm", "motion", "ext", "#000"),
         ]
     
     def paintEvent(self, ev):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        p.fillRect(self.rect(), QColor(C_BG))
+        p.fillRect(self.rect(), QColor("white"))
         
         for fn, tn, label, color in self.edges:
             if fn not in self.nodes or tn not in self.nodes: continue
