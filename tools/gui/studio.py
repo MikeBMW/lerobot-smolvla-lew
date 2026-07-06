@@ -3137,23 +3137,57 @@ class HardwareModule(SubModuleWidget):
         self.topo_text.setReadOnly(True)
         self.topo_text.setFont(QFont("Consolas", 8))
         self.topo_text.setStyleSheet(f"color:{C_CYAN}; background:#0a0e14; border:none; padding:6px;")
-        self.topo_text.setMaximumHeight(160)
-        self.topo_text.setHtml(f"""<pre style='color:#39d2c0; font-size:8px; margin:0;'>
-<b>🖥️ 控制层</b>
-  🎛️ motion ← gripper_pos, force_torque, joint_states, tactile → hmi/events, motion/*
-  🖥️ hmi_v1_tashan_bridge ← real_joint_states, gripper, hmi/events ↔ hmi/command
+        self.topo_text.setMaximumHeight(260)
+        self.topo_text.setHtml(f"""<pre style='color:#e6edf3; font-size:8px; margin:0; line-height:1.3;'>
+<b style='color:#58a6ff'>╔══════════════════════ ROS2 Node 拓扑 · 数据流关系 ══════════════════════╗</b>
 
-<b>🤖 执行层</b>
-  robot_driver → joint_states, robot_status, real_joint_states 🔧 move_joint/line/pose, robot_stop
-  gripper_driver → gripper_pos 🔧 GripperSrv
+  <b style='color:#f0883e'>┌─感知层────────────────────────────────────────────────────────────────┐</b>
+  │                                                                      │
+  │  <b style='color:#79c0ff'>realsense_source</b>────color/image──→<b style='color:#79c0ff'>vision_tag</b>────pose──→<b style='color:#79c0ff'>vision</b>          │
+  │  (RGB-D相机)        depth/points  (FoundationPose)  marker_array  (视觉管道)  │
+  │       │                                  │             │   ↕ service: joint_and_pose   │
+  │       └────points──→<b style='color:#79c0ff'>vision_pointcloud</b>───┘   ↕ ─────────────────→ <b style='color:#79c0ff'>robot_driver</b>  │
+  │                      (点云处理)                                         │
+  │  <b style='color:#79c0ff'>honeywell_scanner</b>──barcode/status                                   │
+  │  (扫码枪)                                                              │
+  └──────────────────────────────────────────────────────────────────────┘
+                                         │
+  <b style='color:#3fb950'>┌─传感+执行层────────────────────────────────────────────────────────────┐</b>
+  │                                                                      │
+  │  <b style='color:#d2a8ff'>robot_driver</b>──→ joint_states, robot_status, real_joint_states ─┐      │
+  │  (珞石机械臂)  ←── move_joint/line/pose/sequence ─────────────────┐│      │
+  │                                                                  ││      │
+  │  <b style='color:#d2a8ff'>gripper_driver</b>──→ gripper_pos ─────────────────────────────┼┼──────│
+  │  (电动夹爪)     ←── GripperSrv (开/关)                              ││      │
+  │                                                                    ││      │
+  │  <b style='color:#d2a8ff'>tactile_force_node</b>──→ force_torque, joint_states, tcp_pose ──┘│     │
+  │  (力+触觉传感器)  ──→ tactile_sensor                                 │      │
+  └────────────────────────────────────────────────────────────────────┼──────┘
+                                                                       │
+  <b style='color:#ff7b72'>┌─控制层────────────────────────────────────────────────────────────────┐</b>
+  │                                                                      │
+  │  ┌──── gripper_pos ────────┐                                         │
+  │  ├──── force_torque ───────┤    <b style='color:#ffa657'>motion (状态机)</b>                    │
+  │  ├──── joint_states ───────┼←── 订阅5路传感器                          │
+  │  ├──── robot_status ───────┤    → hmi/events, motion/active_states    │
+  │  └──── tactile_sensor ─────┘    → sim_joint_trajectory                │
+  │                     ↕ hmi/command, hmi/snapshot (services)            │
+  └─────────────────────────────┬────────────────────────────────────────┘
+                                │
+  <b style='color:#a5d6ff'>┌─HMI+IO层────────────────────────────────────────────────────────────┐</b>
+  │                                                                      │
+  │  <b style='color:#a5d6ff'>hmi_v1_tashan_bridge</b> ←── gripper_pos, real_joint_states, hmi/events  │
+  │  (人机界面桥接)        ↕ hmi/command, hmi/snapshot                    │
+  │                                                                      │
+  │  <b style='color:#a5d6ff'>tower_light</b> ←── emergency_stop, motion/*, physical_estop, usb_estop │
+  │  (三色塔灯)      ←── /tower_light/command (🟢🟡🔴⚫)                   │
+  │                  → tower_light/status                                 │
+  │                                                                      │
+  │  <b style='color:#a5d6ff'>external_comm</b> ↔ execute_external_task, start_with_external_cmd       │
+  │  (外部通信)                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
 
-<b>⚡ 感知层</b>
-  tactile_force → force_torque, joint_states(FK), tcp_pose, tactile_sensor
-  realsense → color/depth/points → vision_tag(FoundationPose), vision, vision_pointcloud
-  honeywell_scanner → barcode_scanner/status
-
-<b>🚦 IO/安全层</b>
-  tower_light ← emergency_stop, motion/*, physical_estop, usb_estop → tower_light/status 🔧 green/red/yellow
+<b style='color:#8b949e'>  图例: ──→ topic发布   ←── topic订阅   ↕ service   node方块   ←输入  →输出</b>
 </pre>""")
         topo_layout.addWidget(self.topo_text)
         topo_group.setLayout(topo_layout)
