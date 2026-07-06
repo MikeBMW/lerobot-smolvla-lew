@@ -3222,6 +3222,7 @@ class HardwareModule(SubModuleWidget):
         # 滚动区域包裹
         topo_scroll = QScrollArea()
         topo_scroll.setWidgetResizable(False)
+        topo_scroll.setMinimumHeight(500)
         topo_scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar{width:8px;}")
         
         self.topo_canvas = _RosGraphCanvas()
