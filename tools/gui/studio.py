@@ -3123,7 +3123,7 @@ class _RosGraphCanvas(QWidget):
             x1, y1 = fx + fw, fy + fh//2
             x2, y2 = tx, ty + th//2
             
-            p.setPen(QPen(QColor(color), 2))
+            p.setPen(QPen(QColor(color), 1))
             mid_x = (x1 + x2) / 2
             path = QPainterPath(); path.moveTo(x1, y1)
             path.cubicTo(mid_x, y1, mid_x, y2, x2, y2)
@@ -3138,7 +3138,7 @@ class _RosGraphCanvas(QWidget):
             p.drawText(QRectF(mid_x-30, (y1+y2)//2-8, 60, 12), 0x84, label)
         
         for name, (x, y, w, h, color, label) in self.nodes.items():
-            p.setPen(QPen(QColor(color), 2)); p.setBrush(QColor(C_BG2))
+            p.setPen(QPen(QColor(color), 1)); p.setBrush(QColor(C_BG2))
             p.drawRoundedRect(QRectF(x, y, w, h), 8, 8)
             p.setPen(QPen(QColor(color))); p.setFont(QFont("Consolas", 7))
             p.drawText(QRectF(x+2, y, w-4, h), 0x84, label)
@@ -3214,9 +3214,15 @@ class HardwareModule(SubModuleWidget):
         topo_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:12px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
         topo_layout = QVBoxLayout()
         
+        # 滚动区域包裹
+        topo_scroll = QScrollArea()
+        topo_scroll.setWidgetResizable(False)
+        topo_scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar{width:8px;}")
+        
         self.topo_canvas = _RosGraphCanvas()
-        self.topo_canvas.setMinimumHeight(400)
-        topo_layout.addWidget(self.topo_canvas)
+        self.topo_canvas.setFixedSize(750, 500)
+        topo_scroll.setWidget(self.topo_canvas)
+        topo_layout.addWidget(topo_scroll)
         topo_group.setLayout(topo_layout)
         
         # ── 主内容区: 设备树 + 详情 ──
