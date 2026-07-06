@@ -1206,58 +1206,94 @@ class HomeWidget(QWidget):
             QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
 
     def _show_share_qr(self):
-        """生成二维码弹窗 — 扫码查看Z-MAX项目"""
-        import qrcode, io, os
+        """分享 — 飞书/微信远程对话配置入口"""
         from PyQt5.QtGui import QPixmap
+        import qrcode, io, os
         
-        # 二维码内容
-        qr_url = "https://github.com/MikeBMW/lerobot-smolvla-lew"
-        qr_text = f"Z-MAX 多模态动作专家\nZ700 轮式双臂机器人\n精度±0.02mm | 成功率>99%\n{qr_url}"
-        
+        # 检查 gateway 状态
+        import subprocess
+        gw_status = "未配置"
         try:
-            qr = qrcode.QRCode(box_size=8, border=2)
-            qr.add_data(qr_url)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            
-            pixmap = QPixmap()
-            pixmap.loadFromData(buf.getvalue())
-            
-            dlg = QDialog(self)
-            dlg.setWindowTitle("📱 Z-MAX 项目分享")
-            dlg.setStyleSheet(f"background:{C_BG};")
-            dl = QVBoxLayout()
-            
-            title = QLabel("扫码查看 Z-MAX 项目")
-            title.setFont(QFont("Arial", 14, QFont.Bold))
-            title.setStyleSheet(f"color:{C_WHITE};")
-            title.setAlignment(Qt.AlignCenter)
-            dl.addWidget(title)
-            
-            qr_label = QLabel()
-            qr_label.setPixmap(pixmap.scaled(240, 240, Qt.KeepAspectRatio))
-            qr_label.setAlignment(Qt.AlignCenter)
-            dl.addWidget(qr_label)
-            
-            info = QLabel(f"<b>GitHub:</b> {qr_url}<br><b>{qr_text.split(chr(10))[0]}</b>")
-            info.setWordWrap(True)
-            info.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding:8px;")
-            info.setAlignment(Qt.AlignCenter)
-            dl.addWidget(info)
-            
-            close_btn = QPushButton("关闭")
-            close_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:8px 24px;")
-            close_btn.clicked.connect(dlg.accept)
-            dl.addWidget(close_btn)
-            
-            dlg.setLayout(dl)
-            dlg.exec_()
-        except ImportError:
-            QMessageBox.information(self, "分享", 
-                f"📱 Z-MAX 项目\n\n{qr_text}\n\n(二维码生成中，请稍后重试)")
+            r = subprocess.run(["hermes", "gateway", "status"], 
+                capture_output=True, text=True, timeout=3)
+            if "running" in r.stdout.lower():
+                gw_status = "🟢 运行中"
+            elif "installed" in r.stdout.lower():
+                gw_status = "⏸ 已安装"
+        except:
+            pass
+        
+        # 二维码: 指向帮助页面
+        qr_url = "https://hermes-agent.nousresearch.com/docs/user-guide/messaging/"
+        
+        qr = qrcode.QRCode(box_size=6, border=2)
+        qr.add_data(qr_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        pixmap = QPixmap()
+        pixmap.loadFromData(buf.getvalue())
+        
+        dlg = QDialog(self)
+        dlg.setWindowTitle("📱 远程对话 · 飞书 / 微信")
+        dlg.setMinimumWidth(420)
+        dlg.setStyleSheet(f"background:{C_BG};")
+        dl = QVBoxLayout()
+        dl.setSpacing(10)
+        
+        title = QLabel("📱 Z-MAX 远程对话")
+        title.setFont(QFont("Arial", 15, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE};")
+        title.setAlignment(Qt.AlignCenter)
+        dl.addWidget(title)
+        
+        status = QLabel(f"Gateway: {gw_status}")
+        status.setStyleSheet(f"color:{C_GREEN if '运行' in gw_status else C_GRAY}; font-size:11px;")
+        status.setAlignment(Qt.AlignCenter)
+        dl.addWidget(status)
+        
+        # 说明
+        guide = QLabel(
+            "<b>让管理员通过飞书/微信远程与你对话</b><br><br>"
+            "<b>步骤:</b><br>"
+            "1. 终端运行: <code>hermes gateway setup</code><br>"
+            "2. 选择 飞书(Feishu) 或 微信(Weixin)<br>"
+            "3. 按提示填入 App ID / Secret<br>"
+            "4. 运行: <code>hermes gateway run</code><br>"
+            "5. 扫码下方二维码查看详细文档"
+        )
+        guide.setWordWrap(True)
+        guide.setStyleSheet(f"color:{C_WHITE}; font-size:10px; padding:8px; background:{C_BG2}; border-radius:4px;")
+        dl.addWidget(guide)
+        
+        # 二维码
+        qr_label = QLabel()
+        qr_label.setPixmap(pixmap.scaled(180, 180, Qt.KeepAspectRatio))
+        qr_label.setAlignment(Qt.AlignCenter)
+        dl.addWidget(qr_label)
+        
+        qr_hint = QLabel("扫码查看 Hermes Gateway 配置文档")
+        qr_hint.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
+        qr_hint.setAlignment(Qt.AlignCenter)
+        dl.addWidget(qr_hint)
+        
+        # 按钮行
+        btn_row = QHBoxLayout()
+        
+        setup_btn = QPushButton("⚙ 终端配置")
+        setup_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:8px 16px; font-weight:bold;")
+        setup_btn.clicked.connect(lambda: [dlg.accept(), os.system("x-terminal-emulator -e 'hermes gateway setup' 2>/dev/null &")])
+        btn_row.addWidget(setup_btn)
+        
+        close_btn = QPushButton("关闭")
+        close_btn.setStyleSheet(f"background:{C_DIM}; color:{C_GRAY}; border:none; border-radius:4px; padding:8px 16px;")
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        dl.addLayout(btn_row)
+        
+        dlg.setLayout(dl)
+        dlg.exec_()
 
 
 # ============================================================
