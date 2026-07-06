@@ -3339,6 +3339,7 @@ class HardwareModule(SubModuleWidget):
         self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self.hw_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.hw_table.verticalHeader().setVisible(False)
+        self.hw_table.verticalHeader().setDefaultSectionSize(42)  # 行高
         self.hw_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.hw_table.setMinimumHeight(320)
         self.hw_table.setStyleSheet(f"""
@@ -3435,7 +3436,7 @@ class HardwareModule(SubModuleWidget):
     
     def _make_hw_btn(self, text, color):
         btn = QPushButton(text)
-        btn.setFixedSize(36, 28)
+        btn.setFixedSize(38, 30)
         btn.setStyleSheet(f"""
             QPushButton{{background:{C_BG2}; color:{color}; border:1px solid {color}; border-radius:4px; font-size:12px;}}
             QPushButton:hover{{background:{color}; color:#0d1117;}}
