@@ -1,6 +1,6 @@
 # Z-MAX 具身智能开发文档
 
-> **当前产品版本：v1.0.2** | **LeRobot 基线：v0.5.2** | **GitHub**: https://github.com/MikeBMW/lerobot-smolvla-lew
+> **当前产品版本：v1.0.3** | **LeRobot 基线：v0.5.2** | **GitHub**: https://github.com/MikeBMW/lerobot-smolvla-lew
 
 ---
 
@@ -108,7 +108,7 @@ git push origin main
 
 ## 📦 产品版本管理
 
-> **当前版本：v1.0.2** (2026年7月6日)
+> **当前版本：v1.0.3** (2026年7月6日)
 > 详细版本历史和发布流程见 [VERSION.md](./VERSION.md)
 
 ### 快速入口
