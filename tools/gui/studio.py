@@ -4454,132 +4454,39 @@ class MonitorModule(SubModuleWidget):
             self._launch_rviz()
     
     def _launch_rerun(self):
-        """启动 Rerun Viewer 并推送数据"""
+        """启动 Rerun — 全部在后台 QThread 中运行"""
         try:
             import rerun as rr
-            import numpy as np
         except ImportError:
-            self._mlog("❌ rerun-sdk 未安装，正在后台安装...")
-            import subprocess, os
-            subprocess.Popen(
-                [os.path.expanduser("~/miniconda3/envs/lerobot/bin/pip"), "install", "rerun-sdk", "-q"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            self._mlog("❌ rerun-sdk 未安装")
             return
         
-        self._mlog("📊 启动 Rerun Viewer (Web 模式)...")
-        
-        # 初始化 Rerun
-        rr.init("Z-MAX Monitor")
-        from rerun import components as rrc
-        
-        # gRPC 数据服务 + Web 前端
-        import threading
-        grpc_url = rr.serve_grpc()
-        self._mlog(f"   gRPC: {grpc_url}")
-        
-        def _serve_web():
-            try:
-                rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
-            except Exception as e:
-                self._mlog(f"Web error: {e}")
-        t = threading.Thread(target=_serve_web, daemon=True)
-        t.start()
-        import time; time.sleep(1)
-        
-        self._mlog("   🌐 http://127.0.0.1:9090  ← 浏览器打开")
-        self._mlog("   先加载数据源 → 点击启动 → 浏览器刷新")
-        
-        # 确定数据源
-        if self.replay.total_frames > 0:
-            self._mlog(f"   数据源: 回放 ({self.replay.total_frames}帧)")
-            self._stream_replay_to_rerun(rr, rrc)
-        elif hasattr(self, '_sim_src'):
-            self._mlog("   数据源: 仿真引擎")
-            self._stream_sim_to_rerun(rr, rrc)
-        else:
-            self._mlog("⚠️ 请先选择数据源（加载回放或仿真数据）")
+        if self.replay.total_frames <= 0 and not hasattr(self, '_sim_src'):
+            self._mlog("⚠️ 请先选择数据源")
             return
+        
+        self._mlog("📊 启动 Rerun (后台线程)...")
+        
+        # 创建后台工作线程
+        self._rerun_worker = _RerunStreamWorker(
+            replay=self.replay,
+            sim=getattr(self, '_sim_src', None),
+        )
+        self._rerun_worker.log_msg.connect(self._mlog)
+        self._rerun_worker.finished.connect(self._on_rerun_done)
+        self._rerun_worker.start()
         
         self.mon_launch_btn.setEnabled(False)
         self.mon_stop_btn.setEnabled(True)
         self.mon_status.setText("🟢 运行中")
         self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
     
-    def _stream_replay_to_rerun(self, rr, rrc):
-        """回放数据 → Rerun"""
-        import numpy as np
-        from PyQt5.QtCore import QTimer
-        
-        def push_frame():
-            frame = self.replay.get_frame()
-            if not frame or not self.replay.playing:
-                self._rerun_timer.stop()
-                return
-            
-            t = frame["ts"] - self.replay.frames[0]["ts"]
-            rr.set_time("stable_time", sequence=int(t * 1000))
-            
-            # 关节状态 → 3D 变换
-            joints = frame.get("joints", [])
-            if len(joints) >= 6:
-                # 简化的6-DOF可视化：用点表示关节位置
-                rr.log("joints/positions", rr.Points3D(
-                    [[i*0.1, joints[i]*0.5, 0] for i in range(min(6, len(joints)))],
-                    radii=[0.02]*min(6, len(joints))
-                ))
-                # 关节值作为标量
-                for i, v in enumerate(joints[:6]):
-                    rr.log(f"joints/joint_{i+1}", rrc.Scalar(v))
-            
-            # 夹爪
-            gripper = frame.get("gripper")
-            if gripper is not None:
-                rr.log("gripper/position", rrc.Scalar(gripper))
-            
-            self.replay.advance()
-        
-        self.replay.current_frame = 0
-        self.replay.playing = True
-        self._rerun_timer = QTimer()
-        self._rerun_timer.timeout.connect(push_frame)
-        self._rerun_timer.start(100)  # 10fps
-        self._mlog("▶ 回放数据推送中...")
-    
-    def _stream_sim_to_rerun(self, rr, rrc):
-        """仿真数据 → Rerun"""
-        import numpy as np
-        from PyQt5.QtCore import QTimer
-        
-        sim = self._sim_src
-        if not sim.running:
-            sim.start()
-        
-        def push_sim():
-            if not sim.running:
-                self._rerun_timer.stop()
-                return
-            
-            snap = sim.get_joint_snapshot()
-            positions = [s["pos"] for s in snap.values()]
-            
-            rr.log("joints/positions", rr.Points3D(
-                [[i*0.1, positions[i]*0.5, 0] for i in range(min(6, len(positions)))],
-                radii=[0.02]*min(6, len(positions))
-            ))
-            for i, (name, s) in enumerate(snap.items()):
-                if i >= 14: break
-                rr.log(f"sim/{name}/position", rrc.Scalar(s["pos"]))
-                rr.log(f"sim/{name}/torque", rrc.Scalar(s["torque"]))
-            
-            # 力传感器
-            rr.log("force/fx", rrc.Scalar(sim.force.fx))
-            rr.log("force/fz", rrc.Scalar(sim.force.fz))
-        
-        self._rerun_timer = QTimer()
-        self._rerun_timer.timeout.connect(push_sim)
-        self._rerun_timer.start(100)
-        self._mlog("▶ 仿真数据推送中...")
+    def _on_rerun_done(self):
+        self.mon_launch_btn.setEnabled(True)
+        self.mon_stop_btn.setEnabled(False)
+        self.mon_status.setText("● 已停止")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
+        self._mlog("⏹ Rerun 已停止")
     
     def _launch_rviz(self):
         """启动 RViz"""
@@ -4609,8 +4516,9 @@ class MonitorModule(SubModuleWidget):
     
     def _mon_stop(self):
         """停止可视化"""
-        if hasattr(self, '_rerun_timer'):
-            self._rerun_timer.stop()
+        if hasattr(self, '_rerun_worker') and self._rerun_worker:
+            self._rerun_worker.stop()
+            self._rerun_worker = None
         self.replay.playing = False
         
         if self._rviz_process and self._rviz_process.poll() is None:
@@ -4628,7 +4536,108 @@ class MonitorModule(SubModuleWidget):
         self.mon_log.append(f"  [{ts}] {msg}")
 
 
-# ============================================================
+# ═══════════════════════════════════════════════
+# Rerun 后台流线程 — 完全隔离，不阻塞 GUI
+# ═══════════════════════════════════════════════
+
+class _RerunStreamWorker(QThread):
+    """后台线程：初始化 Rerun + Web Viewer + 数据流推送"""
+    log_msg = pyqtSignal(str)
+    
+    def __init__(self, replay=None, sim=None):
+        super().__init__()
+        self._replay = replay
+        self._sim = sim
+        self._running = True
+    
+    def stop(self):
+        self._running = False
+    
+    def run(self):
+        import rerun as rr
+        from rerun import components as rrc
+        import time
+        
+        try:
+            self.log_msg.emit("📊 Rerun: 初始化...")
+            rr.init("Z-MAX Monitor")
+            
+            # gRPC 服务
+            grpc_url = rr.serve_grpc()
+            self.log_msg.emit(f"   gRPC: {grpc_url}")
+            
+            # Web Viewer
+            rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
+            self.log_msg.emit("   🌐 http://127.0.0.1:9090  ← 浏览器打开")
+            time.sleep(0.5)
+            
+            # 开始推送数据
+            if self._replay and self._replay.total_frames > 0:
+                self._stream_replay(rr, rrc)
+            elif self._sim:
+                self._stream_sim(rr, rrc)
+                
+        except Exception as e:
+            self.log_msg.emit(f"❌ Rerun 错误: {e}")
+    
+    def _stream_replay(self, rr, rrc):
+        frames = self._replay.total_frames
+        self.log_msg.emit(f"   ▶ 推送回放数据: {frames} 帧")
+        self._replay.current_frame = 0
+        
+        seq = 0
+        while self._running and self._replay.current_frame < frames:
+            frame = self._replay.get_frame()
+            if not frame:
+                break
+            
+            rr.set_time("stable_time", sequence=seq)
+            
+            joints = frame.get("joints", [])
+            if len(joints) >= 6:
+                rr.log("joints/3d", rr.Points3D(
+                    [[i*0.15, joints[i]*0.3, 0] for i in range(6)],
+                    radii=[0.03]*6
+                ))
+                for i, v in enumerate(joints[:6]):
+                    rr.log(f"joint/J{i+1}", rrc.Scalar(v))
+            
+            gripper = frame.get("gripper")
+            if gripper is not None:
+                rr.log("gripper", rrc.Scalar(gripper))
+            
+            self._replay.advance()
+            seq += 1
+            time.sleep(0.1)  # 10fps
+        
+        self.log_msg.emit("   ✅ 回放完成")
+    
+    def _stream_sim(self, rr, rrc):
+        sim = self._sim
+        if not sim.running:
+            sim.start()
+        self.log_msg.emit("   ▶ 推送仿真数据")
+        
+        seq = 0
+        while self._running and sim.running:
+            snap = sim.get_joint_snapshot()
+            positions = [s["pos"] for s in snap.values()]
+            
+            rr.set_time("stable_time", sequence=seq)
+            rr.log("joints/3d", rr.Points3D(
+                [[i*0.15, positions[i]*0.3, 0] for i in range(min(6, len(positions)))],
+                radii=[0.03]*min(6, len(positions))
+            ))
+            
+            rr.log("force/fx", rrc.Scalar(sim.force.fx))
+            rr.log("force/fz", rrc.Scalar(sim.force.fz))
+            seq += 1
+            time.sleep(0.1)
+        
+        sim.stop()
+
+
+# ═══════════════════════════════════════════════
 # 插拔场景模块: Z700轮式双臂机器人 + ROI计算器
 # ============================================================
 ROI_ACCENT = C_CYAN  # ROI模块专用颜色
