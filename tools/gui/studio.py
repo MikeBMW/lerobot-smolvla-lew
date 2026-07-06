@@ -3321,18 +3321,151 @@ class HardwareModule(SubModuleWidget):
         body.addWidget(splitter, 1)
         body.addWidget(ros_group)
         body.addWidget(replay_group)
+        
+        # ── 🎛️ 硬件总线 (CANoe风格) ──
+        hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
+        hw_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:11px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
+        hw_layout = QVBoxLayout()
+        hw_layout.setSpacing(4)
+        
+        # 硬件列表表头
+        self.hw_table = QTableWidget()
+        self.hw_table.setColumnCount(6)
+        self.hw_table.setHorizontalHeaderLabels(["硬件", "类型", "状态", "当前值", "控制接口", "操作"])
+        self.hw_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.hw_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.hw_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.hw_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.hw_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.hw_table.verticalHeader().setVisible(False)
+        self.hw_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.hw_table.setMinimumHeight(320)
+        self.hw_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:6px 8px; font-size:10px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:9px; font-weight:bold;}}
+        """)
+        hw_layout.addWidget(self.hw_table)
+        hw_group.setLayout(hw_layout)
+        body.addWidget(hw_group)
+        
+        # ── 填充硬件列表 ──
+        self._build_hardware_bus()
+        
         body.addWidget(self.log)
         
         container = QWidget()
         container.setLayout(body)
         
-        # 滚动区域包裹
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar{width:8px;}")
         scroll.setWidget(container)
         self._build_shell(scroll)
+
+    # ═══ 硬件总线 · CANoe风格 ═══
+    
+    def _build_hardware_bus(self):
+        """构建Orin真实硬件控制面板 — 每个硬件一行"""
+        devices = [
+            # (名称, 类型, 状态获取方法, 控制接口列表)
+            ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
+            ("🤖 珞石机械臂",  "6-DOF臂",   None,                    "待接入"),
+            ("🖐️ 电动夹爪",   "末端执行器", None,                   "待接入"),
+            ("⚡ 力/力矩传感器","传感器",    None,                    "待接入"),
+            ("📷 RealSense D435","相机",     None,                    "待接入"),
+            ("🚨 双路急停",    "安全",       None,                    "待接入"),
+            ("📱 扫码枪",      "Honeywell",  None,                    "待接入"),
+            ("🖐️ 触觉传感器", "触觉阵列",   None,                    "待接入"),
+            ("👁️ FoundationPose","视觉",    None,                    "待接入"),
+            ("📡 障碍物检测",  "安全",       None,                    "待接入"),
+            ("🎛️ 状态机",      "控制器",     None,                    "待接入"),
+            ("🖥️ HMI 人机界面","HMI",       None,                    "待接入"),
+        ]
+        
+        self.hw_table.setRowCount(len(devices))
+        for row, (name, hw_type, status_fn, controls) in enumerate(devices):
+            # 名称
+            name_item = QTableWidgetItem(name)
+            name_item.setForeground(QColor(C_WHITE))
+            self.hw_table.setItem(row, 0, name_item)
+            # 类型
+            self.hw_table.setItem(row, 1, QTableWidgetItem(hw_type))
+            # 状态
+            status_item = QTableWidgetItem("⏸ 待查询" if status_fn else "⏸ 待接入")
+            status_item.setForeground(QColor(C_GRAY))
+            self.hw_table.setItem(row, 2, status_item)
+            # 当前值
+            val_item = QTableWidgetItem("-" if status_fn else "-")
+            val_item.setForeground(QColor(C_GRAY))
+            self.hw_table.setItem(row, 3, val_item)
+            # 控制接口
+            if isinstance(controls, list):
+                ctrl_text = ", ".join(controls)
+            else:
+                ctrl_text = str(controls)
+            ctrl_item = QTableWidgetItem(ctrl_text)
+            ctrl_item.setForeground(QColor(C_CYAN))
+            self.hw_table.setItem(row, 4, ctrl_item)
+            # 操作按钮
+            btn_widget = QWidget()
+            btn_layout = QHBoxLayout()
+            btn_layout.setContentsMargins(0, 0, 0, 0)
+            btn_layout.setSpacing(3)
+            
+            if name == "🚦 三色塔灯":
+                for color, label, style_color in [
+                    ("green",  "🟢", C_GREEN),
+                    ("yellow", "🟡", C_YELLOW),
+                    ("red",    "🔴", C_RED),
+                    ("off",    "⚫", C_GRAY),
+                ]:
+                    btn = self._make_hw_btn(label, style_color)
+                    btn.clicked.connect(lambda checked, c=color: self._tower_cmd(c))
+                    btn_layout.addWidget(btn)
+            else:
+                ph = QLabel("待接入")
+                ph.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
+                btn_layout.addWidget(ph)
+            
+            btn_widget.setLayout(btn_layout)
+            self.hw_table.setCellWidget(row, 5, btn_widget)
+    
+    def _make_hw_btn(self, text, color):
+        btn = QPushButton(text)
+        btn.setFixedSize(36, 28)
+        btn.setStyleSheet(f"""
+            QPushButton{{background:{C_BG2}; color:{color}; border:1px solid {color}; border-radius:4px; font-size:12px;}}
+            QPushButton:hover{{background:{color}; color:#0d1117;}}
+            QPushButton:pressed{{background:{C_DIM};}}
+        """)
+        btn.setToolTip(f"塔灯 {text}")
+        return btn
+    
+    def _tower_cmd(self, color):
+        """发送塔灯控制命令"""
+        import subprocess
+        self._log(f"🚦 塔灯 → {color}")
+        try:
+            subprocess.run([
+                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                f"ROS_DOMAIN_ID=23 ros2 topic pub --once /tower_light/command "
+                f"std_msgs/msg/String '{{\"data\":\"{color}\"}}'"
+            ], timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # 更新状态
+            self.hw_table.item(0, 2).setText("🟢 已控制")
+            self.hw_table.item(0, 3).setText(color)
+        except Exception as e:
+            self._log(f"   ❌ 塔灯控制失败: {e}")
+    
+    def _get_tower_status(self):
+        return "待实现"
+    
+    def _get_tower_controls(self):
+        return ["/tower_light/command (std_msgs/String)"]
 
     # ═══ 设备树 ═══
     
