@@ -3079,10 +3079,13 @@ class HardwareModule(SubModuleWidget):
         
         # SSH 连接复用 — 加速所有硬件控制命令
         import subprocess
-        subprocess.run(
-            ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
-             "-o", "ControlPersist=120", "-fN", "nvidia@192.168.23.10"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+        try:
+            subprocess.run(
+                ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
+                 "-o", "ControlPersist=120", "-fN", "nvidia@192.168.23.10"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        except:
+            pass  # Orin 不在线也不崩溃
         
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
