@@ -3427,20 +3427,23 @@ class HardwareModule(SubModuleWidget):
                     btn.clicked.connect(lambda checked, c=color: self._tower_cmd(c))
                     btn_layout.addWidget(btn)
             elif name == "🖐️ 电动夹爪":
-                # 滑块 + 当前值显示
-                slider = QSlider(Qt.Horizontal)
-                slider.setRange(0, 200)
-                slider.setValue(100)
-                slider.setFixedWidth(100)
-                slider.setStyleSheet(f"QSlider::groove:horizontal{{height:6px; background:{C_BG2}; border-radius:3px;}} QSlider::handle:horizontal{{width:14px; height:14px; background:{C_ORANGE}; border-radius:7px; margin:-4px 0;}}")
-                slider.valueChanged.connect(lambda v: self._gripper_cmd(float(v)))
-                btn_layout.addWidget(slider)
+                # 增减按钮 + 当前值
+                self.gripper_pos = 100
+                
+                dec_btn = self._make_hw_btn("◀", C_RED)
+                dec_btn.setToolTip("减小 1cm")
+                dec_btn.clicked.connect(lambda: self._gripper_step(-50))
+                btn_layout.addWidget(dec_btn)
                 
                 self.gripper_val = QLabel("100")
-                self.gripper_val.setStyleSheet(f"color:{C_ORANGE}; font-weight:bold; font-size:10px; min-width:35px;")
+                self.gripper_val.setStyleSheet(f"color:{C_ORANGE}; font-weight:bold; font-size:11px; min-width:35px;")
                 self.gripper_val.setAlignment(Qt.AlignCenter)
                 btn_layout.addWidget(self.gripper_val)
-                slider.valueChanged.connect(lambda v: self.gripper_val.setText(str(v)))
+                
+                inc_btn = self._make_hw_btn("▶", C_GREEN)
+                inc_btn.setToolTip("增大 1cm")
+                inc_btn.clicked.connect(lambda: self._gripper_step(50))
+                btn_layout.addWidget(inc_btn)
             elif name == "🤖 珞石机械臂":
                 read_btn = self._make_hw_btn("📡", C_BLUE)
                 read_btn.setToolTip("读取关节状态")
@@ -3486,10 +3489,14 @@ class HardwareModule(SubModuleWidget):
         except Exception as e:
             self._log(f"   ❌ 塔灯控制失败: {e}")
     
-    def _gripper_cmd(self, pos):
-        """控制电动夹爪开度"""
+    def _gripper_step(self, delta):
+        """夹爪步进 ±50 raw (约±1cm)"""
         import subprocess
-        self._log(f"🖐️ 夹爪 → {pos:.0f}")
+        self.gripper_pos = max(0, min(200, self.gripper_pos + delta))
+        pos = self.gripper_pos
+        mm_est = pos * 0.2  # 200raw ≈ 40mm
+        self.gripper_val.setText(f"{mm_est:.0f}mm")
+        self._log(f"🖐️ 夹爪 → {mm_est:.0f}mm (raw={pos})")
         try:
             r = subprocess.run([
                 "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
@@ -3499,16 +3506,15 @@ class HardwareModule(SubModuleWidget):
                 f"'{{target_pos: {pos}, target_speed: 50.0, target_force: -1.0, "
                 f"target_acc: -1.0, target_push_length: -1.0, target_push_speed: -1.0}}'"
             ], capture_output=True, text=True, timeout=8)
-            # 解析返回值
-            curr = f"{pos:.0f}"
+            curr = f"{mm_est:.0f}mm"
             if "curr_pos" in r.stdout:
                 import re
                 m = re.search(r'curr_pos=([\d.]+)', r.stdout)
-                if m: curr = f"{float(m.group(1)):.0f}"
+                if m: curr = f"{float(m.group(1))*0.2:.0f}mm"
             self.hw_table.item(2, 2).setText("🟢")
-            self.hw_table.item(2, 3).setText(f"开度 {curr}")
+            self.hw_table.item(2, 3).setText(curr)
         except Exception as e:
-            self._log(f"   ❌ 夹爪: {e}")
+            self._log(f"   ❌ {e}")
     
     def _get_tower_status(self):
         return "待实现"
