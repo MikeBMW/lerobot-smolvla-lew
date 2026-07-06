@@ -1198,9 +1198,11 @@ class HomeWidget(QWidget):
         try:
             # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
             doc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docs', 'L2-Z-MAX解决方案-v1.0.1.md')
-            # WSL 用 cmd.exe start
-            win_path = "\\\\wsl$\\Ubuntu" + doc_path.replace("/", "\\")
-            subprocess.run(["cmd.exe", "/c", "start", "", win_path], check=True, timeout=5)
+            # WSL 用 wslpath 转 Windows 路径
+            r = subprocess.run(["wslpath", "-w", doc_path], capture_output=True, text=True, timeout=3)
+            win_path = r.stdout.strip()
+            if win_path:
+                subprocess.run(["cmd.exe", "/c", "start", "", win_path], check=True, timeout=5)
         except Exception as e:
             QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
 
@@ -6108,10 +6110,12 @@ class StudioMainWindow(QMainWindow):
                         if opener == "libreoffice":
                             open_ppt_with_libreoffice(full_path)
                         elif opener == "xdg-open":
-                            # WSL: 转 Windows 路径用 cmd.exe start 打开
-                            # /home/xspace/docs/foo.md → \\wsl$\Ubuntu\home\xspace\docs\foo.md
-                            win_path = r"\\wsl$\Ubuntu" + full_path.replace("/", "\\")
-                            subprocess.Popen(["cmd.exe", "/c", "start", "", win_path])
+                            # WSL: 用 wslpath -w 转 Windows 路径后打开
+                            import subprocess as sp
+                            r = sp.run(["wslpath", "-w", full_path], capture_output=True, text=True, timeout=3)
+                            win_path = r.stdout.strip()
+                            if win_path:
+                                sp.Popen(["cmd.exe", "/c", "start", "", win_path])
                         else:
                             subprocess.Popen([opener, full_path])
                         self.statusBar().showMessage(f"已打开: {rel_path}")
