@@ -3382,14 +3382,14 @@ class HardwareModule(SubModuleWidget):
             ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
             ("🤖 珞石机械臂",  "6-DOF臂",   None,                    ["/move_joint(TargetPose)", "/robot_stop(Trigger)"]),
             ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
-            ("⚡ 力/力矩传感器","传感器",    None,                    "待接入"),
+            ("⚡ 力/力矩传感器","六维力",    None,                    ["/robot/force_torque(Wrench)"]),
             ("📷 RealSense D435","RGB-D相机", None,                    ["/color/image_raw", "/depth/rect", "/points"]),
-            ("🚨 双路急停",    "安全",       None,                    "待接入"),
-            ("📱 扫码枪",      "Honeywell",  None,                    "待接入"),
+            ("🚨 双路急停",    "安全IO",     None,                    ["/physical_estop", "/usb_estop"]),
+            ("📱 扫码枪",      "Honeywell",  None,                    ["/barcode_scanner/status"]),
             ("🖐️ 触觉传感器", "TS-F-L",    None,                    ["/tactile_sensor(TactileSensor)"]),
-            ("👁️ FoundationPose","视觉",    None,                    "待接入"),
+            ("👁️ FoundationPose","视觉定位",  None,                    "待接入"),
             ("📡 障碍物检测",  "安全",       None,                    "待接入"),
-            ("🎛️ 状态机",      "控制器",     None,                    "待接入"),
+            ("🎛️ 状态机",      "控制器",     None,                    ["state_machine/*"]),
             ("🖥️ HMI 人机界面","HMI",       None,                    "待接入"),
         ]
         
@@ -3460,6 +3460,11 @@ class HardwareModule(SubModuleWidget):
                 read_btn = self._make_hw_btn("📡", C_ORANGE)
                 read_btn.setToolTip("读取触觉")
                 read_btn.clicked.connect(self._read_tactile)
+                btn_layout.addWidget(read_btn)
+            elif name in ["⚡ 力/力矩传感器", "🚨 双路急停", "📱 扫码枪"]:
+                read_btn = self._make_hw_btn("📡", C_BLUE)
+                read_btn.setToolTip("读取状态")
+                read_btn.clicked.connect(lambda checked, r=row: self._read_sensor(r))
                 btn_layout.addWidget(read_btn)
             else:
                 ph = QLabel("待接入")
@@ -3605,6 +3610,38 @@ class HardwareModule(SubModuleWidget):
             else:
                 self.hw_table.item(7, 2).setText("⏸")
                 self.hw_table.item(7, 3).setText("空闲(无接触)")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+
+    def _read_sensor(self, row):
+        """通用传感器读取 — 力/急停/扫码"""
+        import subprocess
+        topics = {
+            3: ("/robot/force_torque", "⚡ 力传感器"),
+            5: ("/emergency_stop", "🚨 急停"),
+            6: ("/barcode_scanner/status", "📱 扫码枪"),
+        }
+        if row not in topics: return
+        topic, label = topics[row]
+        self._log(f"{label} 读取中...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                f"ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once {topic} 2>/dev/null"
+            ], capture_output=True, text=True, timeout=8)
+            out = r.stdout.strip()
+            if out:
+                # 提取关键信息
+                lines = out.split('\n')[:4]
+                info = " | ".join([l.strip()[:30] for l in lines if l.strip() and not l.startswith('---')])
+                self.hw_table.item(row, 2).setText("🟢")
+                self.hw_table.item(row, 3).setText(info[:80])
+                self._log(f"   ✅ {info[:60]}")
+            else:
+                self.hw_table.item(row, 2).setText("⏸")
+                self.hw_table.item(row, 3).setText("idle")
+                self._log(f"   ⏸ idle")
         except Exception as e:
             self._log(f"   ❌ {e}")
 
