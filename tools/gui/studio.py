@@ -65,7 +65,14 @@ def open_ppt_with_libreoffice(ppt_path):
     os.makedirs(lo_user_dir, exist_ok=True)
     
     try:
-        # 使用临时配置目录启动LibreOffice
+        # WSL: 将 Linux 路径转为 Windows 路径
+        try:
+            r = subprocess.run(["wslpath", "-w", ppt_path], capture_output=True, text=True, timeout=2)
+            if r.stdout.strip():
+                ppt_path = r.stdout.strip()
+        except:
+            pass
+        
         cmd = ["soffice", f"-env:UserInstallation=file://{lo_user_dir}", "--norestore", ppt_path]
         subprocess.Popen(cmd, start_new_session=True)
         print(f"[OK] LibreOffice已启动，打开文件: {ppt_path}")
