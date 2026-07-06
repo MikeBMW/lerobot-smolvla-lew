@@ -3604,7 +3604,7 @@ class HardwareModule(SubModuleWidget):
                 self._log(f"   ✅ {info[:80]}")
             else:
                 self.hw_table.item(7, 2).setText("⏸")
-                self.hw_table.item(7, 3).setText("无数据")
+                self.hw_table.item(7, 3).setText("空闲(无接触)")
         except Exception as e:
             self._log(f"   ❌ {e}")
 
