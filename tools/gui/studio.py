@@ -4886,6 +4886,7 @@ class MonitorModule(SubModuleWidget):
                                         key_lines.append(line)
                                 topics[topic_names[i]] = " | ".join(key_lines[:3]) if key_lines else "无数据"
                         self._live_data["topics"] = topics
+                        self._live_data["_ts"] = {t: time.time() for t in topics}
                         self._live_data["status"] = "🟢 在线"
                     else:
                         self._live_data["status"] = "⚠️ 机器人idle"
@@ -4939,6 +4940,7 @@ class MonitorModule(SubModuleWidget):
                 topics["tower_light"] = f"{['灭','红','黄','绿'][sim.io.tower_light]}"
                 topics["tcp_pose"] = f"x:{math.sin(time.time())*0.1:.4f} y:0.0 z:0.27"
                 self._live_data["topics"] = topics
+                self._live_data["_ts"] = {t: time.time() for t in topics}
                 time.sleep(0.5)
         
         self._live_running = True
@@ -5002,8 +5004,9 @@ class MonitorModule(SubModuleWidget):
         self.node_list_view.setHtml(n_html)
     
     def _update_live_display(self):
-        """实时面板: 信号追踪"""
+        """实时面板: 信号追踪 + 余晖效果"""
         d = getattr(self, '_live_data', {})
+        now = time.time()
         
         lines = ["<pre style='color:#3fb950; font-size:10px; margin:0;'>"]
         lines.append("<b>── 实时信号追踪 ──</b>\n")
@@ -5011,9 +5014,26 @@ class MonitorModule(SubModuleWidget):
         topics_data = d.get("topics", {})
         if topics_data:
             for topic, value in topics_data.items():
-                lines.append(f"  <b>{topic:24s}</b> {value}\n")
+                # 计算新鲜度 → 颜色渐变
+                last_ts = d.get("_ts", {}).get(topic, 0)
+                age = now - last_ts
+                if age < 0.5:
+                    color = "#3fb950"  # 鲜绿
+                    bright = "<b>"
+                    endb = "</b>"
+                elif age < 2.0:
+                    r = int(0x3f + (0x48-0x3f) * (age-0.5)/1.5)
+                    g = int(0xb9 - (0xb9-0x4f) * (age-0.5)/1.5)
+                    b = int(0x50 - (0x50-0x58) * (age-0.5)/1.5)
+                    color = f"#{r:02x}{g:02x}{b:02x}"
+                    bright = ""; endb = ""
+                else:
+                    color = "#484f58"  # 暗灰
+                    bright = ""; endb = ""
+                
+                lines.append(f"  <span style='color:{color}'>{bright}{topic:24s}{endb}</span> {value}\n")
         else:
-            lines.append("  等待机器人数据...\n")
+            lines.append("  等待数据...\n")
         
         lines.append("</pre>")
         self.mon_data_preview.setHtml("".join(lines))
@@ -5071,7 +5091,7 @@ class MonitorModule(SubModuleWidget):
             topics["frame"] = f"{self.replay.current_frame}/{self.replay.total_frames}"
             topics["time"] = f"{frame.get('ts',0)-self.replay.frames[0]['ts']:.2f}s" if self.replay.frames else "?"
             
-            self._live_data = {"status": "📼 回放中", "topics": topics}
+            self._live_data = {"status": "📼 回放中", "topics": topics, "_ts": {t: time.time() for t in topics}}
             self._update_live_display()
             self.replay.advance()
         
