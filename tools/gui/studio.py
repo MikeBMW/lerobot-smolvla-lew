@@ -4278,133 +4278,119 @@ class MonitorModule(SubModuleWidget):
         
         body = QWidget()
         bl = QVBoxLayout()
-        bl.setSpacing(12)
+        bl.setSpacing(10)
         bl.setContentsMargins(8, 8, 8, 8)
         
-        # ═══ 模式选择 ═══
-        mode_group = QGroupBox("可视化引擎")
-        mode_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
-        mode_layout = QHBoxLayout()
-        mode_layout.setSpacing(12)
+        # ═══ 1. 数据源 — RadioButton 三选一 ═══
+        src_group = QGroupBox("信号源")
+        src_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_CYAN, 8, 12)}}}")
+        src_layout = QHBoxLayout()
+        src_layout.setSpacing(16)
+        
+        self._src_group = QButtonGroup()
+        radio_style = f"QRadioButton{{color:{C_WHITE}; spacing:4px; font-size:12px;}} QRadioButton::indicator{{width:14px;height:14px;border-radius:7px;border:2px solid {C_GRAY};background:{C_BG};}} QRadioButton::indicator:checked{{border-color:{C_CYAN};background:{C_CYAN};}}"
+        
+        self.src_replay = QRadioButton("回放数据")
+        self.src_replay.setStyleSheet(radio_style)
+        self.src_replay.setChecked(True)
+        self._src_group.addButton(self.src_replay, 0)
+        src_layout.addWidget(self.src_replay)
+        
+        self.mon_session_combo = QComboBox()
+        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:140px;")
+        self._refresh_monitor_sessions()
+        src_layout.addWidget(self.mon_session_combo)
+        
+        src_layout.addWidget(QLabel("  "))
+        
+        self.src_sim = QRadioButton("仿真数据")
+        self.src_sim.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_sim, 1)
+        src_layout.addWidget(self.src_sim)
+        
+        self.src_demo = QRadioButton("演示动画")
+        self.src_demo.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_demo, 2)
+        src_layout.addWidget(self.src_demo)
+        
+        src_layout.addStretch()
+        self.src_status = QLabel("回放: 未加载")
+        self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        src_layout.addWidget(self.src_status)
+        
+        src_group.setLayout(src_layout)
+        bl.addWidget(src_group)
+        
+        # ═══ 2. 可视化引擎 ═══
+        eng_group = QGroupBox("可视化引擎")
+        eng_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
+        eng_layout = QHBoxLayout()
+        eng_layout.setSpacing(12)
         
         self.mon_rerun_btn = QPushButton("📊 Rerun")
-        self.mon_rerun_btn.setCheckable(True)
-        self.mon_rerun_btn.setChecked(True)
+        self.mon_rerun_btn.setCheckable(True); self.mon_rerun_btn.setChecked(True)
         self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
         self.mon_rerun_btn.clicked.connect(lambda: self._switch_mode("rerun"))
-        mode_layout.addWidget(self.mon_rerun_btn)
+        eng_layout.addWidget(self.mon_rerun_btn)
         
         self.mon_rviz_btn = QPushButton("🤖 RViz")
         self.mon_rviz_btn.setCheckable(True)
         self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
         self.mon_rviz_btn.clicked.connect(lambda: self._switch_mode("rviz"))
-        mode_layout.addWidget(self.mon_rviz_btn)
+        eng_layout.addWidget(self.mon_rviz_btn)
         
-        mode_layout.addStretch()
-        self.mon_mode_label = QLabel("📊 Rerun 模式 — 现代3D可视化")
-        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:11px;")
-        mode_layout.addWidget(self.mon_mode_label)
-        mode_group.setLayout(mode_layout)
-        bl.addWidget(mode_group)
+        eng_layout.addSpacing(12)
+        self.mon_mode_label = QLabel("本地 Web Viewer · port 9877")
+        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        eng_layout.addWidget(self.mon_mode_label)
         
-        # ═══ 数据源 ═══
-        data_group = QGroupBox("数据源")
-        data_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        data_layout = QHBoxLayout()
-        data_layout.setSpacing(8)
+        eng_layout.addStretch()
         
-        data_layout.addWidget(QLabel("回放会话:"))
-        self.mon_session_combo = QComboBox()
-        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:150px;")
-        self._refresh_monitor_sessions()
-        data_layout.addWidget(self.mon_session_combo, 1)
-        
-        self.mon_load_btn = QPushButton("加载")
-        self.mon_load_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
-        self.mon_load_btn.clicked.connect(self._mon_load_session)
-        data_layout.addWidget(self.mon_load_btn)
-        
-        data_layout.addWidget(QLabel("或"))
-        
-        self.mon_sim_btn = QPushButton("🖥️ 仿真数据")
-        self.mon_sim_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
-        self.mon_sim_btn.clicked.connect(self._mon_use_sim)
-        data_layout.addWidget(self.mon_sim_btn)
-        
-        data_layout.addWidget(QLabel("或"))
-        
-        self.mon_rrd_btn = QPushButton("📊 生成演示.rrd")
-        self.mon_rrd_btn.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
-        self.mon_rrd_btn.setToolTip("生成6-DOF机器人动画 .rrd 文件，用 Rerun Viewer 打开")
-        self.mon_rrd_btn.clicked.connect(self._gen_rrd_demo)
-        data_layout.addWidget(self.mon_rrd_btn)
-        
-        self.mon_open_rerun_btn = QPushButton("🌐 打开Rerun")
-        self.mon_open_rerun_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
-        self.mon_open_rerun_btn.setToolTip("用本地 rerun 打开 .rrd 文件")
-        self.mon_open_rerun_btn.clicked.connect(self._open_rerun_local)
-        data_layout.addWidget(self.mon_open_rerun_btn)
-        
-        data_group.setLayout(data_layout)
-        bl.addWidget(data_group)
-        
-        # ═══ 控制区 ═══
-        ctrl_group = QGroupBox("可视化控制")
-        ctrl_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        ctrl_layout = QHBoxLayout()
-        ctrl_layout.setSpacing(10)
-        
-        self.mon_launch_btn = QPushButton("🚀 启动可视化")
-        self.mon_launch_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border:none; border-radius:6px; padding:10px 24px; font-weight:bold; font-size:14px;")
+        # 启动+停止合并到这里
+        self.mon_launch_btn = QPushButton("▶ 启动")
+        self.mon_launch_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:6px; padding:8px 24px; font-weight:bold; font-size:14px;")
         self.mon_launch_btn.clicked.connect(self._mon_launch)
-        ctrl_layout.addWidget(self.mon_launch_btn)
+        eng_layout.addWidget(self.mon_launch_btn)
         
-        self.mon_stop_btn = QPushButton("⏹ 停止")
-        self.mon_stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:10px 20px; font-weight:bold;")
+        self.mon_stop_btn = QPushButton("⏹")
+        self.mon_stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:8px 16px; font-weight:bold;")
         self.mon_stop_btn.clicked.connect(self._mon_stop)
         self.mon_stop_btn.setEnabled(False)
-        ctrl_layout.addWidget(self.mon_stop_btn)
-        
-        ctrl_layout.addStretch()
+        eng_layout.addWidget(self.mon_stop_btn)
         
         self.mon_status = QLabel("● 就绪")
-        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:11px;")
-        ctrl_layout.addWidget(self.mon_status)
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:4px 10px; background:{C_BG2}; border-radius:4px; font-size:11px;")
+        eng_layout.addWidget(self.mon_status)
         
-        ctrl_group.setLayout(ctrl_layout)
-        bl.addWidget(ctrl_group)
+        eng_group.setLayout(eng_layout)
+        bl.addWidget(eng_group)
         
-        # ═══ 信息面板 ═══
-        info_group = QGroupBox("数据预览")
-        info_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        info_layout = QVBoxLayout()
-        
+        # ═══ 3. 状态信息 (精简) ═══
         self.mon_data_preview = QLabel(
-            "<b>Rerun</b> — 现代化开源可视化引擎<br>"
-            "  空间原语: 点云 · 3D框 · 变换树 · 图像 · 标量时序<br>"
-            "  内置 Viewer: 实时 Web/原生界面，支持时间轴<br><br>"
-            "<b>RViz</b> — ROS2 原生3D可视化<br>"
-            "  订阅标准 ROS2 topic (JointState/TF/Marker)<br>"
-            "  机器人模型 · 力矢量 · 轨迹显示<br><br>"
-            "选择数据源 → 点击「启动可视化」→ 在独立窗口中查看"
+            "<b>数据源</b>: 选择信号源 → 点 ▶ 启动<br>"
+            "<b>Rerun</b>: 本地 Web Viewer (端口9877) · 自动打开浏览器<br>"
+            "<b>RViz</b>: ROS2 原生3D可视化 · 需 source ROS2 环境"
         )
         self.mon_data_preview.setWordWrap(True)
-        self.mon_data_preview.setStyleSheet(f"color:{C_WHITE}; font-size:11px; padding:12px; background:{C_BG}; border-radius:6px;")
-        info_layout.addWidget(self.mon_data_preview)
-        info_group.setLayout(info_layout)
-        bl.addWidget(info_group)
+        self.mon_data_preview.setStyleSheet(f"color:{C_WHITE}; font-size:10px; padding:8px 12px; background:{C_BG}; border-radius:4px;")
+        bl.addWidget(self.mon_data_preview)
         
-        # ═══ 日志 ═══
+        # ═══ 4. 日志 ═══
         self.mon_log = QTextEdit()
         self.mon_log.setReadOnly(True)
-        self.mon_log.setFixedHeight(100)
+        self.mon_log.setFixedHeight(90)
         self.mon_log.setFont(QFont("Consolas", 9))
         self.mon_log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
-        self.mon_log.setText("  实时监控就绪 · 等待数据源 ...\n")
+        self.mon_log.setText("  就绪 · 选择信号源 → 点 ▶ 启动\n")
         bl.addWidget(self.mon_log)
         
         body.setLayout(bl)
         self._build_shell(body)
+        
+        # 信号源切换联动
+        self.src_replay.toggled.connect(lambda v: v and self._on_source_changed("replay"))
+        self.src_sim.toggled.connect(lambda v: v and self._on_source_changed("sim"))
+        self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
     
     def _mode_btn_style(self, color, active):
         if active:
@@ -4425,13 +4411,30 @@ class MonitorModule(SubModuleWidget):
             self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
             self.mon_rviz_btn.setChecked(False)
             self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
-            self.mon_mode_label.setText("📊 Rerun 模式 — 现代3D可视化")
+            self.mon_mode_label.setText("本地 Web Viewer · port 9877")
         else:
             self.mon_rviz_btn.setChecked(True)
             self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
             self.mon_rerun_btn.setChecked(False)
             self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
-            self.mon_mode_label.setText("🤖 RViz 模式 — ROS2 原生3D可视化")
+            self.mon_mode_label.setText("ROS2 RViz · 需 source 环境")
+    
+    def _on_source_changed(self, src):
+        """信号源切换"""
+        if src == "replay":
+            self.mon_session_combo.setEnabled(True)
+            session = self.mon_session_combo.currentText()
+            if session and not session.startswith("—"):
+                self._mon_load_session()
+            self.src_status.setText("回放: 选择会话")
+        elif src == "sim":
+            self.mon_session_combo.setEnabled(False)
+            self._mon_use_sim()
+            self.src_status.setText("仿真: Z700 14-DOF")
+        elif src == "demo":
+            self.mon_session_combo.setEnabled(False)
+            self._gen_rrd_demo()
+            self.src_status.setText("演示: 生成 .rrd 动画")
     
     def _mon_load_session(self):
         session = self.mon_session_combo.currentText()
@@ -4460,12 +4463,26 @@ class MonitorModule(SubModuleWidget):
         )
     
     def _mon_launch(self):
+        """根据信号源启动可视化"""
         mode = "rerun" if self.mon_rerun_btn.isChecked() else "rviz"
         
-        if mode == "rerun":
-            self._launch_rerun()
-        else:
-            self._launch_rviz()
+        # 确定信号源
+        if self.src_demo.isChecked():
+            if mode == "rerun":
+                self._open_rerun_local()
+            else:
+                self._mlog("⚠️ 演示模式仅支持 Rerun")
+                return
+        elif self.src_sim.isChecked():
+            if mode == "rerun":
+                self._launch_rerun()
+            else:
+                self._launch_rviz()
+        elif self.src_replay.isChecked():
+            if mode == "rerun":
+                self._launch_rerun()
+            else:
+                self._launch_rviz()
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
