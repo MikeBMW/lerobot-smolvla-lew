@@ -4633,14 +4633,15 @@ class MonitorModule(SubModuleWidget):
         
         # Rerun 模式：统一生成 .rrd → 本地 Web Viewer
         if self.src_replay.isChecked():
-            # 检查是否有 rosbag .rrd 文件
             import os
             bag_rrd = os.path.expanduser("~/yspace/replay_data/zmax_bag_001.rrd")
             if os.path.exists(bag_rrd):
                 self._mlog("📼 使用 rosbag 回放 (328秒真机数据)")
-                self.src_status.setText(f"回放: rosbag 328s · 53K msg")
+                self.src_status.setText("回放: rosbag 328s · 53K msg")
+                self._start_replay_display()
             else:
                 self._gen_replay_rrd()
+                self._start_replay_display()
         elif self.src_sim.isChecked():
             self._gen_sim_rrd()
         elif self.src_live.isChecked():
@@ -4712,8 +4713,11 @@ class MonitorModule(SubModuleWidget):
     def _mon_stop(self):
         """停止可视化"""
         self._live_running = False
+        self._replay_display_running = False
         if hasattr(self, '_live_timer'):
             self._live_timer.stop()
+        if hasattr(self, '_replay_timer'):
+            self._replay_timer.stop()
         if hasattr(self, '_rerun_worker') and self._rerun_worker:
             self._rerun_worker.stop()
             self._rerun_worker = None
@@ -5038,6 +5042,42 @@ class MonitorModule(SubModuleWidget):
         out = os.path.expanduser("~/yspace/replay_data/live.rrd")
         rr.save(out)
         self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+    
+    def _start_replay_display(self):
+        """回放数据终端显示 — 定时刷新信号追踪面板"""
+        if self.replay.total_frames <= 0:
+            return
+        
+        self._mlog(f"📺 终端回放显示: {self.replay.total_frames} 帧")
+        self.replay.current_frame = 0
+        
+        def _show_frame():
+            if not getattr(self, '_replay_display_running', True):
+                self._replay_timer.stop()
+                return
+            
+            frame = self.replay.get_frame()
+            if not frame:
+                self._replay_timer.stop()
+                return
+            
+            joints = frame.get("joints", [])
+            topics = {}
+            if len(joints) >= 6:
+                topics["joint_states"] = " | ".join([f"J{i+1}:{joints[i]:+.4f}" for i in range(6)])
+            topics["gripper_pos"] = f"data: {frame.get('gripper', '?')}"
+            topics["frame"] = f"{self.replay.current_frame}/{self.replay.total_frames}"
+            topics["time"] = f"{frame.get('ts',0)-self.replay.frames[0]['ts']:.2f}s" if self.replay.frames else "?"
+            
+            self._live_data = {"status": "📼 回放中", "topics": topics}
+            self._update_live_display()
+            self.replay.advance()
+        
+        self._replay_display_running = True
+        self._replay_timer = QTimer()
+        self._replay_timer.timeout.connect(_show_frame)
+        self._replay_timer.start(200)
+        self._mlog("   ✅ 终端显示已启动")
 
     def _open_rerun_local(self):
         """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
