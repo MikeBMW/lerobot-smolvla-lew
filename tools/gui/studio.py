@@ -3843,24 +3843,6 @@ class HardwareModule(SubModuleWidget):
             self._populate_nodes(node_data if node_data[0][1] else 
                 [(n, Z700_ROS2_NODES.get("real", {}).get(n, "")) for n in nodes])
         
-        # 更新拓扑表
-        self.topo_table.setRowCount(2)
-        items = [
-            ("🟢 已连接", f"{len(nodes)} 节点", f"{len(topics)} Topic",
-             "✅ 6-axis" if any("force" in t for t in topics) else "⚠️ 未发现",
-             "estop+tower+curtain" if any("tower_light" in t for t in topics) else "未知",
-             f"{system.get('CPU','?')} CPU", result["host"]),
-            ("🌉 TCP Bridge", "运行中" if tcp.get("running") else "❌ 未启动",
-             f"端口 {tcp.get('port',8765)}", "", "", 
-             f"GPU:{system.get('GPU','?')}  MEM:{system.get('MEM','?')}", 
-             f"DISK:{system.get('DISK','?')}  {system.get('UPTIME','')}"),
-        ]
-        for row_idx, row_data in enumerate(items):
-            for col_idx, val in enumerate(row_data):
-                item = QTableWidgetItem(val)
-                item.setFont(QFont("Consolas", 9))
-                self.topo_table.setItem(row_idx, col_idx, item)
-        
         # 更新设备树状态
         self.device_tree.topLevelItem(0).setText(1, "🔴 真机在线")
         self.device_tree.topLevelItem(1).setText(1, f"{len(nodes)} 节点 ✅")
