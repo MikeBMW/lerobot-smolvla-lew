@@ -4341,8 +4341,8 @@ class MonitorModule(SubModuleWidget):
         
         self.mon_open_rerun_btn = QPushButton("🌐 打开Rerun")
         self.mon_open_rerun_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border:none; border-radius:4px; padding:6px 14px; font-weight:bold;")
-        self.mon_open_rerun_btn.setToolTip("浏览器打开 Rerun Web Viewer (https://rerun.io/viewer)")
-        self.mon_open_rerun_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://rerun.io/viewer")))
+        self.mon_open_rerun_btn.setToolTip("用本地 rerun 打开 .rrd 文件")
+        self.mon_open_rerun_btn.clicked.connect(self._open_rerun_local)
         data_layout.addWidget(self.mon_open_rerun_btn)
         
         data_group.setLayout(data_layout)
@@ -4588,6 +4588,30 @@ class MonitorModule(SubModuleWidget):
         size_kb = os.path.getsize(out)/1024
         self._mlog(f"✅ {out} ({size_kb:.0f}KB)")
         self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
+    
+    def _open_rerun_local(self):
+        """用 rerun --web-viewer 本地托管 .rrd 并打开浏览器"""
+        import subprocess, os
+        rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+        if not os.path.exists(rrd):
+            self._mlog("⚠️ 先点「生成演示.rrd」")
+            return
+        
+        self._mlog("🚀 rerun --web-viewer 启动中...")
+        try:
+            subprocess.Popen(
+                ["rerun", rrd, "--web-viewer", "--port", "9877"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._mlog("   ✅ 本地 Web Viewer 已启动")
+            self._mlog("   🌐 http://127.0.0.1:9877")
+            import time; time.sleep(1)
+            try:
+                subprocess.Popen(["xdg-open", "http://127.0.0.1:9877"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except:
+                pass
+        except Exception as e:
+            self._mlog(f"   ❌ 失败: {e}")
 
 
 # ═══════════════════════════════════════════════
