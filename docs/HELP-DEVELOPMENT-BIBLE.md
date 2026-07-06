@@ -145,7 +145,18 @@ bash start.sh
 
 ## 三、硬件工具箱
 
-### 3.1 仿真模式 (System 0)
+### 3.1 硬件总线面板 (CANoe 风格)
+12 路真实硬件一行一个，支持状态读取和控制操作。
+
+| 硬件 | 控制方式 | 经验 |
+|------|---------|------|
+| 🚦 三色塔灯 | `/tower_light/command` pub "green"/"yellow"/"red"/"off" | ✅ 实测三色全通，0.3秒响应 |
+| 🖐️ 电动夹爪 | `/gripper_driver` GripperSrv (target_pos 0-200) | ✅ 开/关两个按钮最实用 |
+| 🤖 珞石机械臂 | 📡读取关节 + 🛑急停 | idle时不发关节数据 |
+| 📷 RealSense D405 | 📸拍照弹窗显示 | ✅ 实测39KB JPEG |
+| 🖐️ 触觉传感器 | TS-F-L, BEST_EFFORT模式 | 有接触才发数据 |
+
+### 3.2 仿真模式 (System 0)
 - **启动仿真**: 14-DOF 正弦波 + 7路相机测试图案 + 六维力传感器
 - **设备树**: 左侧层级设备列表，点击联动右侧详情
 - **详情面板**: 关节状态表 / 相机状态 / 六维力 / IO状态
@@ -285,7 +296,190 @@ Z700 轮式双臂机器人
 
 ---
 
-## 八、常见问题
+## 八、实战经验与 Know-How
+
+> ⚠️ 本章是 2026-07-06 全天实战的结晶。每一个条目背后都是踩过的坑。
+
+### 8.1 SSH 连接 Orin — 核心加速技巧
+
+**问题**: 每次 hardware bus 点击按钮要等 3 秒以上，因为每次新建 SSH 连接。
+
+**解决**: SSH ControlMaster 连接复用
+```bash
+# 建立持久连接 (在GUI自动执行)
+ssh -o ControlMaster=auto -o ControlPath=/tmp/orin-ssh.sock \
+    -o ControlPersist=120 -fN nvidia@192.168.23.10
+
+# 后续命令加这个参数，3秒 → 0.3秒
+ssh -o ControlPath=/tmp/orin-ssh.sock nvidia@192.168.23.10 "..."
+```
+
+**教训**: 高频远程命令必须复用连接。Z-MAX 在 HardwareModule 初始化时自动建立复用。
+
+### 8.2 ROS2 daemon 故障 — 头号坑
+
+**症状**: `ros2 topic list` 报 `!rclpy.ok()` 错误
+
+**原因**: 有两个 daemon 在跑——Domain 0（默认）和 Domain 23（机器人）。`ros2` 命令没有 `ROS_DOMAIN_ID=23` 前缀时自动创建 Domain 0 daemon，它看不到机器人的 topic。
+
+**解决**:
+```bash
+# 彻底清理
+pkill -9 -f ros2-daemon
+
+# 重启正确的 daemon
+ROS_DOMAIN_ID=23 ros2 daemon start
+
+# 验证
+ROS_DOMAIN_ID=23 ros2 topic list  # 应该显示 51 个 topic
+```
+
+**教训**: 
+- 所有 ros2 命令必须加 `ROS_DOMAIN_ID=23`
+- GUI 的 SSH 轮询命令用了 `source /opt/ros/humble/setup.bash` 未加 domain 也会触发此问题
+- 不要让 Domain 0 daemon 存在
+
+### 8.3 Rerun 可视化 — WSL 里的血泪史
+
+**迭代过程**:
+1. `rr.init("app", spawn=True)` — WSL GPU 不支持，失败
+2. `rr.serve_web_viewer()` — API 变更，阻塞 GUI
+3. Python API `rr.serve_grpc()` + `rr.serve_web_viewer()` — 复杂且卡顿
+4. **最终方案**: `subprocess.Popen(["rerun", file, "--web-viewer"])` — 最简单、最可靠
+
+**教训**:
+- WSL 不能用原生 GPU 渲染，必须用 `--web-viewer`
+- **不要在 GUI 主线程里执行 Rerun API** — 全部用 subprocess 后台启动
+- Rerun 0.33.1 API 频繁变更: `rr.Scalar(v)` → `rrc.Scalar(v)`, `set_time_seconds` → `set_time`
+- 端口冲突: 每次启动前 `pkill -f "rerun.*web-viewer"`
+
+### 8.4 触觉传感器 — "为什么没数据？"
+
+**现象**: 第一次读到数据（通用小拇指 TS-F-L），之后一直无数据
+
+**原因**: 
+- QoS: BEST_EFFORT + VOLATILE — 消息不保证送达
+- **事件驱动**: 只在真正有物理接触时发布
+- robot idle 状态时完全不发
+
+**教训**: 传感器分"持续发布"和"事件驱动"两类。不能因为无数据就认为坏了。
+
+### 8.5 夹爪控制 — 设计迭代
+
+**三个版本**:
+1. 滑块拖动 (QSlider) — 手感差，难以精确定位
+2. ◀▶ 步进按钮 (-1cm/+1cm) — 操作反馈慢，不知道当前状态
+3. **最终版**: 🖐️开(200) / ✊关(0) 两个按钮 — 简单粗暴，最实用
+
+**教训**: **简单就是最好的设计**。不要过度设计控制精度，实际使用中只需要全开/全关。
+
+### 8.6 相机拍照 — 避坑指南
+
+**问题**: `ros2 topic echo --once` 返回图像数据很大（4MB），终端无法处理
+
+**解决**: 用 Python 脚本在 Orin 端用 cv_bridge 直接转 JPEG
+```python
+# Orin 端脚本 capture_cam.py
+os.environ["ROS_DOMAIN_ID"] = "23"  # 必须在 init 前设置!
+rclpy.init(args=[])
+bridge = CvBridge()
+# 订阅 /realsense/color/image_raw
+# cv2.imwrite("/tmp/cam.jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+```
+
+**教训**:
+- `ROS_DOMAIN_ID` 必须在 `rclpy.init()` 之前设置
+- 相机在 idle 状态不推流，需要拍摄时先确认机器人状态
+- 图像数据必须压缩后传输（4MB raw → 39KB JPEG）
+
+### 8.7 网络问题 — GitHub / HuggingFace
+
+**常见故障**:
+- GitHub push 超时: 通常 DNS 解析失败或国际出口拥堵
+- HuggingFace `Connection reset by peer`: 直连被墙
+- `hf-mirror.com` 镜像: 有模型不分发数据集
+
+**应对**:
+- GitHub: 重试或等待网络恢复，代码已本地提交
+- HuggingFace: 优先用 `hf-mirror.com` 下载模型，数据集尽量一次下载缓存
+- 数据集名不能拼错: `metaworld_mt50` 不是 `meta_wool_mt50`
+
+### 8.8 信号源选择 — 什么时候用什么
+
+| 场景 | 推荐信号源 | 原因 |
+|------|-----------|------|
+| 离线开发/调试 | 离线仿真 | 零依赖，本地14-DOF正弦波 |
+| 演示/培训 | 演示动画 | 漂亮的3D动画，无需数据 |
+| 查看历史数据 | 回放数据 | 328秒真机rosbag回放 |
+| 连Orin调试 | 实时数据 | 看topic/node列表+信号 |
+| 对比算法 | 仿真数据 | 可控的14-DOF参数仿真 |
+
+### 8.9 实时数据轮询 — 性能权衡
+
+**问题**: 1.5 秒轮询 7 个 topic 太慢，降低间隔会加重 SSH 负担
+
+**经验**:
+- 配合 SSH ControlMaster，0.3 秒响应已经够快
+- 不要轮询 `ros2 topic echo --once`（等消息到达），改用 `timeout 3` 限制等待
+- 机器人 idle 时所有 topic 都无数据，这是正常的
+- 信号追踪面板的"余晖效果"就是为了区分"有数据"和"无数据"
+
+### 8.10 文档路径 — 经典 Bug
+
+**问题**: 所有帮助文档打不开，路径多了一层 `tools/`
+
+**原因**: `studio.py` 在 `tools/gui/` 下，`os.path.dirname` 需要 3 层才到项目根目录，不是 2 层。
+
+```python
+# ❌ 错误: 2层 → /home/.../tools/
+self.repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ✅ 正确: 3层 → /home/.../lerobot-smolvla-lew/
+self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+```
+
+### 8.11 ROS2 topic 数据采集 — 最佳实践
+
+**录制 rosbag** (推荐用于回放):
+```bash
+ssh nvidia@192.168.23.10 "source /opt/ros/humble/setup.bash && \
+  ROS_DOMAIN_ID=23 ros2 bag record \
+  /robot/joint_states /gripper_pos /robot/force_torque \
+  /robot/tcp_pose /robot_status /emergency_stop /tower_light/status \
+  -o session_name"
+```
+
+**rosbag → Rerun**:
+```python
+# 用 rosbag2_py 读取 .db3 → rr.log() → rr.save(".rrd")
+# 338MB rosbag → 3.3MB .rrd
+```
+
+**rosbag → 终端回放**:
+- WSL 不能 `ros2 bag play`（DDS 不通）
+- 用 `_start_replay_display` QTimer 逐帧读取 → 信号面板显示
+
+### 8.12 PyQt5 暗坑
+
+1. **`QThread` 必须 import**: `from PyQt5.QtCore import QThread`
+2. **`QScrollBar` 样式**: `QScrollArea` 内的 `<pre>` 字体不会自动继承 QFont
+3. **`QTableWidget.setCellWidget`**: 删除行后 widget 不会自动析构
+4. **SSH subprocess 不要用 `shell=True`**: 引号转义地狱
+5. **`QTextEdit.setHtml`** 不支持 CSS `{{}}` 双花括号（f-string 冲突）
+
+### 8.13 数据源设计哲学
+
+经过一天的实战，信号源设计遵循以下原则：
+
+1. **一个信号源 = 一种数据来源**，不混淆
+2. **离线优先**: 4/5 信号源离线可用
+3. **自动检测**: rosbag .rrd 存在时自动使用，不需要用户选择
+4. **统一输出**: 所有源最终生成 .rrd → Rerun
+5. **终端辅助**: 回放数据同步显示在信号面板
+
+---
+
+## 九、常见问题
 
 **Q: 启动报错 qt.qpa.xcb?**
 A: WSL里需要 X Server。运行 `export DISPLAY=:0` 或使用 `start.sh` 启动。
