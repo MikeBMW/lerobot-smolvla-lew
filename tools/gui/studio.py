@@ -4568,14 +4568,18 @@ class _RerunStreamWorker(QThread):
             
             # Web Viewer
             rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
-            self.log_msg.emit("   🌐 http://127.0.0.1:9090  ← 浏览器打开")
-            time.sleep(0.5)
+            self.log_msg.emit("   🌐 http://127.0.0.1:9090")
+            self.log_msg.emit("   ⏳ 等待浏览器连接 (3秒)...")
+            time.sleep(3)  # 等浏览器连上
             
             # 开始推送数据
             if self._replay and self._replay.total_frames > 0:
                 self._stream_replay(rr, rrc)
             elif self._sim:
                 self._stream_sim(rr, rrc)
+            else:
+                # 无数据源，推一些演示数据
+                self._stream_demo(rr, rrc)
                 
         except Exception as e:
             self.log_msg.emit(f"❌ Rerun 错误: {e}")
@@ -4584,6 +4588,14 @@ class _RerunStreamWorker(QThread):
         frames = self._replay.total_frames
         self.log_msg.emit(f"   ▶ 推送回放数据: {frames} 帧")
         self._replay.current_frame = 0
+        
+        # 先画3D坐标系参考
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]
+        ))
+        rr.log("world/origin", rr.Points3D([[0,0,0]], radii=[0.02]))
         
         seq = 0
         while self._running and self._replay.current_frame < frames:
@@ -4595,10 +4607,16 @@ class _RerunStreamWorker(QThread):
             
             joints = frame.get("joints", [])
             if len(joints) >= 6:
-                rr.log("joints/3d", rr.Points3D(
-                    [[i*0.15, joints[i]*0.3, 0] for i in range(6)],
-                    radii=[0.03]*6
-                ))
+                # 6个关节做成明显的3D点 + 连线
+                pts = [[i*0.2, joints[i]*0.8, 0] for i in range(6)]
+                colors = [[255-i*30, 100+i*20, i*40] for i in range(6)]
+                rr.log("robot/joints", rr.Points3D(pts, radii=[0.06]*6, colors=colors))
+                # 连线
+                for i in range(5):
+                    rr.log(f"robot/link_{i}", rr.Arrows3D(
+                        origins=[pts[i]], vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], 0]],
+                        radii=[0.01]
+                    ))
                 for i, v in enumerate(joints[:6]):
                     rr.log(f"joint/J{i+1}", rrc.Scalar(v))
             
@@ -4608,7 +4626,7 @@ class _RerunStreamWorker(QThread):
             
             self._replay.advance()
             seq += 1
-            time.sleep(0.1)  # 10fps
+            time.sleep(0.15)  # ~7fps, 让浏览器有时间渲染
         
         self.log_msg.emit("   ✅ 回放完成")
     
@@ -4635,6 +4653,46 @@ class _RerunStreamWorker(QThread):
             time.sleep(0.1)
         
         sim.stop()
+    
+    def _stream_demo(self, rr, rrc):
+        """演示数据 — 持续30秒的正弦波动画"""
+        import math
+        self.log_msg.emit("   ▶ 推送演示数据 (30秒正弦波)")
+        
+        # 坐标系
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]
+        ))
+        rr.log("world/origin", rr.Points3D([[0,0,0]], radii=[0.02]))
+        
+        seq = 0
+        start = time.time()
+        while self._running and (time.time() - start) < 30:
+            t = time.time() - start
+            rr.set_time("stable_time", sequence=seq)
+            
+            # 6个正弦波关节
+            pts = [[i*0.2, math.sin(t*2 + i)*0.5, math.cos(t*1.5 + i)*0.2] for i in range(6)]
+            colors = [[255-i*30, 100+i*20, i*40] for i in range(6)]
+            rr.log("robot/joints", rr.Points3D(pts, radii=[0.06]*6, colors=colors))
+            
+            # 连线
+            for i in range(5):
+                rr.log(f"robot/link_{i}", rr.Arrows3D(
+                    origins=[pts[i]], 
+                    vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]],
+                    radii=[0.01]
+                ))
+            
+            for i in range(6):
+                rr.log(f"joint/J{i+1}", rrc.Scalar(pts[i][1]))
+            
+            seq += 1
+            time.sleep(0.1)
+        
+        self.log_msg.emit("   ✅ 演示完成")
 
 
 # ═══════════════════════════════════════════════
