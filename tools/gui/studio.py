@@ -3055,25 +3055,45 @@ class EvalModule(SubModuleWidget):
         train_group.setStyleSheet(f"QGroupBox{{color:{SYS12_COLOR}; font-weight:bold; {card_style(C_CARD, SYS12_COLOR, 8, 12)}}}")
         tl = QVBoxLayout()
         
-        # 检测训练结果
-        import os, json
-        train_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
-                                  "outputs", "smolvla_pusht_train")
+        import os, json, glob
         
-        if os.path.exists(os.path.join(train_dir, "losses.json")):
-            meta = json.load(open(os.path.join(train_dir, "training_meta.json")))
-            info = QLabel(f"<b>SmolVLA DiffusionPolicy</b> · PushT · {meta['steps']}步 · {meta['reduction_pct']}% loss↓<br>"
-                         f"<span style='color:#8b949e'>262M参数 | RTX 4060 | 初始loss={meta['initial_loss']:.3f} → 最终={meta['final_loss']:.3f}</span>")
-            info.setStyleSheet(f"color:{C_WHITE}; font-size:11px; padding:4px;")
-            tl.addWidget(info)
+        # 扫描所有训练记录
+        proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        train_records = []
+        for d in sorted(glob.glob(os.path.join(proj_root, "outputs", "*"))):
+            meta_path = os.path.join(d, "training_meta.json")
+            if os.path.exists(meta_path):
+                try:
+                    m = json.load(open(meta_path))
+                    m["_dir"] = os.path.basename(d)
+                    train_records.append(m)
+                except:
+                    pass
+        
+        if train_records:
+            # 记录选择器
+            sel_row = QHBoxLayout()
+            sel_row.addWidget(QLabel("训练记录:"))
+            self.eval_record_combo = QComboBox()
+            self.eval_record_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:250px;")
+            for i, m in enumerate(train_records):
+                label = f"[{m['_dir'][:16]}] {m['model']} | {m['dataset']} | {m['steps']}步 | loss {m['final_loss']:.4f}"
+                self.eval_record_combo.addItem(label, i)
+            self.eval_record_combo.currentIndexChanged.connect(lambda idx: self._show_training_record(train_records))
+            sel_row.addWidget(self.eval_record_combo, 1)
+            tl.addLayout(sel_row)
             
-            # 损失曲线 SVG
-            svg_path = os.path.join(train_dir, "loss_curve.svg")
-            if os.path.exists(svg_path):
-                svg_label = QLabel()
-                svg_label.setPixmap(QPixmap(svg_path).scaled(600, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                svg_label.setAlignment(Qt.AlignCenter)
-                tl.addWidget(svg_label)
+            # 详情 + 曲线
+            self.eval_info = QLabel()
+            self.eval_info.setStyleSheet(f"color:{C_WHITE}; font-size:11px; padding:4px;")
+            tl.addWidget(self.eval_info)
+            
+            self.eval_svg = QLabel()
+            self.eval_svg.setAlignment(Qt.AlignCenter)
+            tl.addWidget(self.eval_svg)
+            
+            # 默认选第一条
+            self._show_training_record(train_records)
         else:
             hint = QLabel("<span style='color:#8b949e'>暂无训练记录。运行训练后自动显示损失曲线。</span>")
             hint.setFont(QFont("Arial", 11))
@@ -3108,6 +3128,24 @@ class EvalModule(SubModuleWidget):
         bl.addWidget(self.log)
         body.setLayout(bl)
         self._build_shell(body)
+    
+    def _show_training_record(self, records):
+        """显示选中的训练记录"""
+        idx = self.eval_record_combo.currentIndex()
+        if idx < 0 or idx >= len(records):
+            return
+        m = records[idx]
+        self.eval_info.setText(
+            f"<b>{m['model']}</b> · {m['dataset']} · <b>{m['steps']}步</b> · "
+            f"loss {m['initial_loss']:.4f}→{m['final_loss']:.4f} ({m['reduction_pct']}%↓)<br>"
+            f"<span style='color:#8b949e'>{m['params']//1e6:.0f}M参数 | {m['device']} | {m['timestamp']}</span>"
+        )
+        proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        svg_path = os.path.join(proj_root, "outputs", m["_dir"], "loss_curve.svg")
+        if os.path.exists(svg_path):
+            self.eval_svg.setPixmap(QPixmap(svg_path).scaled(580, 280, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.eval_svg.setText("<span style='color:#8b949e'>无损失曲线</span>")
 
 
 class HardwareModule(SubModuleWidget):
