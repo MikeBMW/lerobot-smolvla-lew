@@ -4424,6 +4424,11 @@ class MonitorModule(SubModuleWidget):
         self._src_group.addButton(self.src_dummy, 4)
         src_layout.addWidget(self.src_dummy)
         
+        self.src_pusht = QRadioButton("PushT数据")
+        self.src_pusht.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_pusht, 5)
+        src_layout.addWidget(self.src_pusht)
+        
         self.src_status = QLabel("回放: 未加载")
         self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding-top:4px;")
         src_layout.addWidget(self.src_status)
@@ -4544,6 +4549,7 @@ class MonitorModule(SubModuleWidget):
         self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
         self.src_live.toggled.connect(lambda v: v and self._on_source_changed("live"))
         self.src_dummy.toggled.connect(lambda v: v and self._on_source_changed("dummy"))
+        self.src_pusht.toggled.connect(lambda v: v and self._on_source_changed("pusht"))
     
     def _mode_btn_style(self, color, active):
         if active:
@@ -4596,6 +4602,10 @@ class MonitorModule(SubModuleWidget):
             self.mon_session_combo.setEnabled(False)
             self._start_dummy_monitor()
             self.src_status.setText("离线: 本地仿真")
+        elif src == "pusht":
+            self.mon_session_combo.setEnabled(False)
+            self._gen_pusht_rrd()
+            self.src_status.setText("PushT: 已生成 .rrd")
     
     def _mon_load_session(self):
         session = self.mon_session_combo.currentText()
@@ -4648,6 +4658,8 @@ class MonitorModule(SubModuleWidget):
             self._gen_sim_rrd()
         elif self.src_live.isChecked():
             self._gen_live_rrd()
+        elif self.src_pusht.isChecked():
+            pass  # 已在上一步生成
         
         self._open_rerun_local()
     
@@ -5100,6 +5112,48 @@ class MonitorModule(SubModuleWidget):
         self._replay_timer.timeout.connect(_show_frame)
         self._replay_timer.start(200)
         self._mlog("   ✅ 终端显示已启动")
+    
+    def _gen_pusht_rrd(self):
+        """PushT数据集 → .rrd (LeRobot标准可视化)"""
+        import rerun as rr, numpy as np
+        
+        self._mlog("📊 加载 PushT 数据集...")
+        try:
+            from datasets import load_dataset
+            ds = load_dataset("lerobot/pusht", split="train[:3]")
+        except:
+            self._mlog("❌ 无法加载 PushT")
+            return
+        
+        rr.init("PushT", spawn=False)
+        rr.log("world/xy", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0]], vectors=[[0.6,0,0],[0,0.6,0]],
+            colors=[[255,0,0],[0,255,0]]), static=True)
+        
+        total_frames = 0
+        for ep_idx in range(len(ds)):
+            ep = ds[ep_idx]
+            states = np.array(ep["observation.state"])
+            n = min(100, len(states))
+            for f in range(n):
+                s = states[f]
+                rr.set_time("episode", sequence=ep_idx)
+                rr.set_time("frame", sequence=f)
+                rr.log("agent/pos", rr.Points3D([[float(s[0]), float(s[1]), 0]], 
+                    radii=[0.025], colors=[[30,144,255]]))
+                rr.log("agent/dir", rr.Arrows3D(
+                    origins=[[float(s[0]), float(s[1]), 0]],
+                    vectors=[[float(s[2])*0.08, float(s[3])*0.08, 0]],
+                    colors=[[30,144,255]]))
+                if len(s) >= 6:
+                    rr.log("block/pos", rr.Points3D([[float(s[4]), float(s[5]), 0]], 
+                        radii=[0.03], colors=[[255,140,0]]))
+            total_frames += n
+            self._mlog(f"  Episode {ep_idx}: {n} frames")
+        
+        out = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
+        rr.save(out)
+        self._mlog(f"✅ {out} ({os.path.getsize(out)/1024:.0f}KB, {total_frames} frames)")
 
     def _open_rerun_local(self):
         """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
@@ -5116,6 +5170,8 @@ class MonitorModule(SubModuleWidget):
             rrd = os.path.expanduser("~/yspace/replay_data/sim.rrd")
         elif self.src_live.isChecked():
             rrd = os.path.expanduser("~/yspace/replay_data/live.rrd")
+        elif self.src_pusht.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
         else:
             rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
         
