@@ -3241,78 +3241,7 @@ class HardwareModule(SubModuleWidget):
         
         ros_group.setLayout(ros_layout)
         
-        # ── 📼 数据回放面板 ──
-        replay_group = QGroupBox("📼 数据回放")
-        replay_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
-        replay_layout = QVBoxLayout()
-        replay_layout.setSpacing(6)
-        
-        # 会话选择行
-        sel_row = QHBoxLayout()
-        sel_row.addWidget(QLabel("会话:"))
-        self.replay_combo = QComboBox()
-        self.replay_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:150px;")
-        self.replay_combo.addItem("— 选择回放会话 —")
-        self._refresh_replay_sessions()
-        sel_row.addWidget(self.replay_combo, 1)
-        
-        self.replay_load_btn = QPushButton("加载")
-        self.replay_load_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:4px 12px; font-weight:bold;")
-        self.replay_load_btn.clicked.connect(self._replay_load)
-        sel_row.addWidget(self.replay_load_btn)
-        replay_layout.addLayout(sel_row)
-        
-        # 播放控制行
-        ctrl_row = QHBoxLayout()
-        ctrl_row.setSpacing(6)
-        
-        self.replay_play_btn = QPushButton("▶ 播放")
-        self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
-        self.replay_play_btn.clicked.connect(self._replay_toggle)
-        self.replay_play_btn.setEnabled(False)
-        ctrl_row.addWidget(self.replay_play_btn)
-        
-        self.replay_stop_btn = QPushButton("⏹ 停止")
-        self.replay_stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
-        self.replay_stop_btn.clicked.connect(self._replay_stop)
-        self.replay_stop_btn.setEnabled(False)
-        ctrl_row.addWidget(self.replay_stop_btn)
-        
-        loop_label = QLabel("循环:")
-        loop_label.setStyleSheet(f"color:{C_GRAY};")
-        ctrl_row.addWidget(loop_label)
-        self.replay_loop_cb = QCheckBox()
-        self.replay_loop_cb.setChecked(True)
-        self.replay_loop_cb.toggled.connect(lambda v: setattr(self.replay, 'loop', v))
-        ctrl_row.addWidget(self.replay_loop_cb)
-        
-        ctrl_row.addStretch()
-        
-        self.replay_info = QLabel("0/0 帧 | 0.0s")
-        self.replay_info.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
-        ctrl_row.addWidget(self.replay_info)
-        replay_layout.addLayout(ctrl_row)
-        
-        # 进度条 + 关节显示
-        self.replay_progress = QProgressBar()
-        self.replay_progress.setRange(0, 1000)
-        self.replay_progress.setValue(0)
-        self.replay_progress.setFixedHeight(8)
-        self.replay_progress.setStyleSheet(f"""
-            QProgressBar{{background:{C_BG}; border:1px solid {C_BORDER}; border-radius:4px;}}
-            QProgressBar::chunk{{background:{C_PURPLE}; border-radius:3px;}}
-        """)
-        replay_layout.addWidget(self.replay_progress)
-        
-        self.replay_joint_display = QLabel("等待加载数据...")
-        self.replay_joint_display.setFont(QFont("Consolas", 9))
-        self.replay_joint_display.setStyleSheet(f"color:{C_GREEN}; padding:6px; background:#0a0e14; border-radius:4px;")
-        self.replay_joint_display.setMaximumHeight(60)
-        replay_layout.addWidget(self.replay_joint_display)
-        
-        replay_group.setLayout(replay_layout)
-        
-        # ── 底部日志 ──
+        # ── 🎛️ 硬件总线 (CANoe风格) ──
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setFixedHeight(80)
@@ -3327,7 +3256,6 @@ class HardwareModule(SubModuleWidget):
         body.addWidget(arch_group)
         body.addWidget(splitter, 1)
         body.addWidget(ros_group)
-        body.addWidget(replay_group)
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
