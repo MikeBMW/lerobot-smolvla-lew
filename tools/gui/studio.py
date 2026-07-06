@@ -3373,7 +3373,7 @@ class HardwareModule(SubModuleWidget):
         devices = [
             # (名称, 类型, 状态获取方法, 控制接口列表)
             ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
-            ("🤖 珞石机械臂",  "6-DOF臂",   None,                    "待接入"),
+            ("🤖 珞石机械臂",  "6-DOF臂",   None,                    ["/move_joint(TargetPose)", "/robot_stop(Trigger)"]),
             ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
             ("⚡ 力/力矩传感器","传感器",    None,                    "待接入"),
             ("📷 RealSense D435","相机",     None,                    "待接入"),
@@ -3441,6 +3441,15 @@ class HardwareModule(SubModuleWidget):
                 self.gripper_val.setAlignment(Qt.AlignCenter)
                 btn_layout.addWidget(self.gripper_val)
                 slider.valueChanged.connect(lambda v: self.gripper_val.setText(str(v)))
+            elif name == "🤖 珞石机械臂":
+                read_btn = self._make_hw_btn("📡", C_BLUE)
+                read_btn.setToolTip("读取关节状态")
+                read_btn.clicked.connect(self._read_robot_joints)
+                btn_layout.addWidget(read_btn)
+                stop_btn = self._make_hw_btn("🛑", C_RED)
+                stop_btn.setToolTip("急停")
+                stop_btn.clicked.connect(self._robot_stop)
+                btn_layout.addWidget(stop_btn)
             else:
                 ph = QLabel("待接入")
                 ph.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
@@ -3506,6 +3515,58 @@ class HardwareModule(SubModuleWidget):
     
     def _get_tower_controls(self):
         return ["/tower_light/command (std_msgs/String)"]
+    
+    def _read_robot_joints(self):
+        """读取机械臂当前关节状态"""
+        import subprocess, re
+        self._log("🤖 读取关节状态...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
+                "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /robot/joint_states 2>/dev/null"
+            ], capture_output=True, text=True, timeout=8)
+            out = r.stdout
+            # 解析 position 值
+            positions = []
+            in_pos = False
+            for line in out.split('\n'):
+                line = line.strip()
+                if 'position:' in line:
+                    in_pos = True; continue
+                if in_pos and line.startswith('-'):
+                    try: positions.append(float(line.strip()))
+                    except: break
+                elif in_pos and not line.startswith('-'):
+                    break
+            
+            if positions:
+                j_str = " ".join([f"J{i+1}:{p:+.3f}" for i, p in enumerate(positions[:6])])
+                self.hw_table.item(1, 2).setText("🟢")
+                self.hw_table.item(1, 3).setText(j_str)
+                self._log(f"   关节: {j_str}")
+            else:
+                self.hw_table.item(1, 2).setText("⚠️")
+                self.hw_table.item(1, 3).setText("无数据(idle)")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+    
+    def _robot_stop(self):
+        """机械臂急停"""
+        import subprocess
+        self._log("🛑 机械臂急停!")
+        try:
+            subprocess.run([
+                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
+                "ROS_DOMAIN_ID=23 ros2 service call /robot_stop std_srvs/srv/Trigger '{}'"
+            ], timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.hw_table.item(1, 2).setText("🛑")
+            self.hw_table.item(1, 3).setText("已急停")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
 
     # ═══ 设备树 ═══
     
