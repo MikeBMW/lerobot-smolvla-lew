@@ -1197,7 +1197,7 @@ class HomeWidget(QWidget):
         """打开解决方案文档 v1.0.3"""
         try:
             # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
-            doc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'L2-Z-MAX解决方案-v1.0.1.md')
+            doc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docs', 'L2-Z-MAX解决方案-v1.0.1.md')
             subprocess.run([
                 'xdg-open',
                 doc_path
@@ -6046,20 +6046,12 @@ class StudioMainWindow(QMainWindow):
         m_l1 = m_doc.addMenu("L1 · 战略层文档")
         m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品发布 PPT (v1.0.0)",
             (["L1-Z-MAX产品发布-v1.0.0.pptx"], "libreoffice")))
-        m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v2.1)",
-            (["L1-ZMAX-产品介绍-v2.1.pptx", "Z-MAX产品介绍v2.1.pptx"], "libreoffice")))
-        m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v2)",
-            (["L1-ZMAX-产品介绍-v2.pptx", "Z-MAX产品介绍v2.pptx"], "libreoffice")))
-        m_l1.addAction(self._mk_doc_action("   产品介绍 PPT (v1)",
-            (["L1-ZMAX-产品介绍-v1.pptx", "Z-MAX产品介绍v1.pptx"], "libreoffice")))
 
         # L2 - 方案层
         m_doc.addSeparator()
         m_l2 = m_doc.addMenu("L2 · 方案层文档")
         m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.1)",
             (["L2-Z-MAX解决方案-v1.0.1.md"], "xdg-open")))
-        m_l2.addAction(self._mk_doc_action("   解决方案 MD (v1.0.0)",
-            (["L2-Z-MAX解决方案-v1.0.0.md", "具身机器人产品解决方案-工厂精细操作v1.0.0.md"], "xdg-open")))
 
         # L3 - 技术层
         m_l3 = m_doc.addMenu("L3 · 技术层文档")
