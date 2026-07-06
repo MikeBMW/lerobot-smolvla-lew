@@ -1870,6 +1870,10 @@ Default Branch: {branch}
 
             def run(self):
                 try:
+                    # 使用国内镜像加速
+                    import os
+                    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+                    
                     try:
                         from huggingface_hub import snapshot_download
                         self.progress.emit(f"⬇️ 开始下载 {self.repo_id}...")
