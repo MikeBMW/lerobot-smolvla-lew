@@ -4467,12 +4467,28 @@ class MonitorModule(SubModuleWidget):
             )
             return
         
-        self._mlog("📊 启动 Rerun Viewer...")
+        self._mlog("📊 启动 Rerun Viewer (Web 模式)...")
         
         # 初始化 Rerun
-        rr.init("Z-MAX Monitor", spawn=True)
-        
+        rr.init("Z-MAX Monitor")
         from rerun import components as rrc
+        
+        # gRPC 数据服务 + Web 前端
+        import threading
+        grpc_url = rr.serve_grpc()
+        self._mlog(f"   gRPC: {grpc_url}")
+        
+        def _serve_web():
+            try:
+                rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
+            except Exception as e:
+                self._mlog(f"Web error: {e}")
+        t = threading.Thread(target=_serve_web, daemon=True)
+        t.start()
+        import time; time.sleep(1)
+        
+        self._mlog("   🌐 http://127.0.0.1:9090  ← 浏览器打开")
+        self._mlog("   先加载数据源 → 点击启动 → 浏览器刷新")
         
         # 确定数据源
         if self.replay.total_frames > 0:
