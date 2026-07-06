@@ -3072,28 +3072,29 @@ class _RosGraphCanvas(QWidget):
     def __init__(self):
         super().__init__()
         self.setMinimumSize(600, 400)
+        self.setFixedSize(750, 600)
         self.setStyleSheet(f"background:{C_BG};")
         self.nodes = {}
         self.edges = []
         self._build_graph()
     
     def _build_graph(self):
-        y1 = 50; y2 = 160; y3 = 280; y4 = 400
+        y1 = 60; y2 = 180; y3 = 320; y4 = 460
         self.nodes["realsense"] = (20, y1, 100, 36, "#79c0ff", "realsense\nRGB-D")
         self.nodes["vision_tag"] = (160, y1, 85, 36, "#79c0ff", "vision_tag\nFoundPose")
-        self.nodes["vision_pc"] = (280, y1+50, 85, 36, "#79c0ff", "vision\npointcloud")
-        self.nodes["vision"] = (410, y1, 85, 36, "#79c0ff", "vision\n视觉管道")
-        self.nodes["scanner"] = (540, y1, 85, 36, "#79c0ff", "honeywell\n扫码枪")
+        self.nodes["vision_pc"] = (290, y1+55, 85, 36, "#79c0ff", "vision\npointcloud")
+        self.nodes["vision"] = (420, y1, 85, 36, "#79c0ff", "vision\n视觉管道")
+        self.nodes["scanner"] = (550, y1, 85, 36, "#79c0ff", "honeywell\n扫码枪")
         
-        self.nodes["robot_driver"] = (20, y2, 100, 36, "#d2a8ff", "robot_driver\n珞石机械臂")
+        self.nodes["robot_driver"] = (20, y2, 100, 36, "#d2a8ff", "robot_driver\n珞石")
         self.nodes["gripper"] = (160, y2, 85, 36, "#d2a8ff", "gripper\ndriver")
-        self.nodes["tactile"] = (280, y2, 90, 36, "#d2a8ff", "tactile_force\n力+触觉")
+        self.nodes["tactile"] = (290, y2, 90, 36, "#d2a8ff", "tactile_force\n力+触觉")
         
         self.nodes["motion"] = (100, y3, 120, 36, "#ffa657", "motion\n状态机")
         
         self.nodes["tower"] = (20, y4, 90, 36, "#a5d6ff", "tower_light\n三色塔灯")
         self.nodes["hmi"] = (160, y4, 110, 36, "#a5d6ff", "hmi_bridge\n人机界面")
-        self.nodes["ext_comm"] = (310, y4, 110, 36, "#a5d6ff", "external_comm\n外部通信")
+        self.nodes["ext_comm"] = (320, y4, 110, 36, "#a5d6ff", "external_comm\n外部通信")
         
         self.edges = [
             ("realsense", "vision_tag", "color", "#39d2c0"),
@@ -3124,9 +3125,13 @@ class _RosGraphCanvas(QWidget):
             x2, y2 = tx, ty + th//2
             
             p.setPen(QPen(QColor(color), 1))
-            mid_x = (x1 + x2) / 2
+            # 直角折线: 水平出→竖线→水平入
+            mid_x = x1 + (x2 - x1) * 0.6
+            mid_y1 = y1; mid_y2 = y2
             path = QPainterPath(); path.moveTo(x1, y1)
-            path.cubicTo(mid_x, y1, mid_x, y2, x2, y2)
+            path.lineTo(mid_x, y1)
+            path.lineTo(mid_x, y2)
+            path.lineTo(x2, y2)
             p.drawPath(path)
             
             p.setBrush(QColor(color)); p.save()
