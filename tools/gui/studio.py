@@ -16,6 +16,7 @@ import os  # 新增：用于获取工作目录和HOME路径
 import json
 import glob
 import time  # 硬件工具箱日志时间戳
+import math  # 离线仿真正弦波
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
@@ -4319,6 +4320,11 @@ class MonitorModule(SubModuleWidget):
         self._src_group.addButton(self.src_live, 3)
         src_layout.addWidget(self.src_live)
         
+        self.src_dummy = QRadioButton("离线仿真")
+        self.src_dummy.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_dummy, 4)
+        src_layout.addWidget(self.src_dummy)
+        
         self.src_status = QLabel("回放: 未加载")
         self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px; padding-top:4px;")
         src_layout.addWidget(self.src_status)
@@ -4438,6 +4444,7 @@ class MonitorModule(SubModuleWidget):
         self.src_sim.toggled.connect(lambda v: v and self._on_source_changed("sim"))
         self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
         self.src_live.toggled.connect(lambda v: v and self._on_source_changed("live"))
+        self.src_dummy.toggled.connect(lambda v: v and self._on_source_changed("dummy"))
     
     def _mode_btn_style(self, color, active):
         if active:
@@ -4486,6 +4493,10 @@ class MonitorModule(SubModuleWidget):
             self.mon_session_combo.setEnabled(False)
             self._start_live_monitor()
             self.src_status.setText("实时: 连接 Orin...")
+        elif src == "dummy":
+            self.mon_session_combo.setEnabled(False)
+            self._start_dummy_monitor()
+            self.src_status.setText("离线: 本地仿真")
     
     def _mon_load_session(self):
         session = self.mon_session_combo.currentText()
@@ -4778,6 +4789,54 @@ class MonitorModule(SubModuleWidget):
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
         self._mlog("   ✅ 实时监控已启动")
+    
+    def _start_dummy_monitor(self):
+        """离线仿真 — 本地生成假数据替代 Orin"""
+        from hardware_simulator import get_simulator
+        
+        self._mlog("🖥️ 离线仿真: 本地假数据...")
+        sim = get_simulator("sim")
+        sim.start()
+        
+        self._live_data = {"status": "🖥️ 离线仿真", "topics": {}, "topic_list": [], "node_list": []}
+        
+        # 假 topic/node 列表
+        self._live_data["topic_list"] = [
+            "/robot/joint_states", "/gripper_pos", "/robot/force_torque",
+            "/robot/tcp_pose", "/robot_status", "/emergency_stop",
+            "/tower_light/status", "/real_joint_states", "/joint_states",
+            "/tf", "/tf_static", "/parameter_events", "/rosout",
+        ]
+        self._live_data["node_list"] = [
+            "/robot_driver", "/gripper_driver", "/motion", "/vision",
+            "/vision_tag", "/robot_state_publisher", "/rviz2",
+        ]
+        self._show_topic_node_lists()
+        
+        import threading
+        def _poll():
+            while getattr(self, '_live_running', True):
+                snap = sim.get_joint_snapshot()
+                topics = {}
+                positions = list(snap.values())[:6]
+                topics["joint_states"] = " | ".join([f"J{i+1}:{s['pos']:+.4f}" for i, s in enumerate(positions)])
+                topics["gripper_pos"] = f"data: {sim.io.gripper_left:.1f}"
+                topics["force_torque"] = f"Fx:{sim.force.fx:+.3f} Fy:{sim.force.fy:+.3f} Fz:{sim.force.fz:+.3f}"
+                topics["robot_status"] = '{"success":true,"mode":"sim"}'
+                topics["emergency_stop"] = f"data: {str(sim.io.estop).lower()}"
+                topics["tower_light"] = f"{['灭','红','黄','绿'][sim.io.tower_light]}"
+                topics["tcp_pose"] = f"x:{math.sin(time.time())*0.1:.4f} y:0.0 z:0.27"
+                self._live_data["topics"] = topics
+                time.sleep(0.5)
+        
+        self._live_running = True
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
+        
+        self._live_timer = QTimer()
+        self._live_timer.timeout.connect(self._update_live_display)
+        self._live_timer.start(500)
+        self._mlog("   ✅ 离线仿真已启动")
     
     def _refresh_topic_node_list(self):
         """手动刷新 Topic/Node 列表"""
