@@ -3063,6 +3063,87 @@ class EvalModule(SubModuleWidget):
         self._build_shell(body)
 
 
+from PyQt5.QtGui import QPainter, QPen, QBrush, QPainterPath
+from PyQt5.QtCore import QRectF, QPointF
+
+class _RosGraphCanvas(QWidget):
+    """rqt_graph 风格 ROS2 节点拓扑图"""
+    
+    def __init__(self):
+        super().__init__()
+        self.setMinimumSize(600, 400)
+        self.setStyleSheet(f"background:{C_BG};")
+        self.nodes = {}
+        self.edges = []
+        self._build_graph()
+    
+    def _build_graph(self):
+        y1 = 50; y2 = 160; y3 = 280; y4 = 400
+        self.nodes["realsense"] = (20, y1, 100, 36, "#79c0ff", "realsense\nRGB-D")
+        self.nodes["vision_tag"] = (160, y1, 85, 36, "#79c0ff", "vision_tag\nFoundPose")
+        self.nodes["vision_pc"] = (280, y1+50, 85, 36, "#79c0ff", "vision\npointcloud")
+        self.nodes["vision"] = (410, y1, 85, 36, "#79c0ff", "vision\n视觉管道")
+        self.nodes["scanner"] = (540, y1, 85, 36, "#79c0ff", "honeywell\n扫码枪")
+        
+        self.nodes["robot_driver"] = (20, y2, 100, 36, "#d2a8ff", "robot_driver\n珞石机械臂")
+        self.nodes["gripper"] = (160, y2, 85, 36, "#d2a8ff", "gripper\ndriver")
+        self.nodes["tactile"] = (280, y2, 90, 36, "#d2a8ff", "tactile_force\n力+触觉")
+        
+        self.nodes["motion"] = (100, y3, 120, 36, "#ffa657", "motion\n状态机")
+        
+        self.nodes["tower"] = (20, y4, 90, 36, "#a5d6ff", "tower_light\n三色塔灯")
+        self.nodes["hmi"] = (160, y4, 110, 36, "#a5d6ff", "hmi_bridge\n人机界面")
+        self.nodes["ext_comm"] = (310, y4, 110, 36, "#a5d6ff", "external_comm\n外部通信")
+        
+        self.edges = [
+            ("realsense", "vision_tag", "color", "#39d2c0"),
+            ("realsense", "vision_pc", "points", "#39d2c0"),
+            ("vision_tag", "vision", "pose", "#39d2c0"),
+            ("vision_pc", "vision", "marker", "#39d2c0"),
+            ("scanner", "hmi", "barcode", "#39d2c0"),
+            ("tactile", "motion", "F/T/tactile", "#ff7b72"),
+            ("robot_driver", "motion", "joint/status", "#3fb950"),
+            ("gripper", "motion", "gripper", "#3fb950"),
+            ("motion", "hmi", "events", "#3fb950"),
+            ("motion", "tower", "motion", "#3fb950"),
+            ("robot_driver", "hmi", "joints", "#3fb950"),
+            ("gripper", "hmi", "pos", "#3fb950"),
+            ("ext_comm", "motion", "ext", "#a5d6ff"),
+        ]
+    
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(C_BG))
+        
+        for fn, tn, label, color in self.edges:
+            if fn not in self.nodes or tn not in self.nodes: continue
+            fx, fy, fw, fh = self.nodes[fn][:4]
+            tx, ty, tw, th = self.nodes[tn][:4]
+            x1, y1 = fx + fw, fy + fh//2
+            x2, y2 = tx, ty + th//2
+            
+            p.setPen(QPen(QColor(color), 2))
+            mid_x = (x1 + x2) / 2
+            path = QPainterPath(); path.moveTo(x1, y1)
+            path.cubicTo(mid_x, y1, mid_x, y2, x2, y2)
+            p.drawPath(path)
+            
+            p.setBrush(QColor(color)); p.save()
+            p.translate(x2, y2)
+            p.drawPolygon(QPointF(0,0), QPointF(-8,-4), QPointF(-8,4))
+            p.restore()
+            
+            p.setPen(QPen(QColor("#8b949e"))); p.setFont(QFont("Consolas", 7))
+            p.drawText(QRectF(mid_x-30, (y1+y2)//2-8, 60, 12), 0x84, label)
+        
+        for name, (x, y, w, h, color, label) in self.nodes.items():
+            p.setPen(QPen(QColor(color), 2)); p.setBrush(QColor(C_BG2))
+            p.drawRoundedRect(QRectF(x, y, w, h), 8, 8)
+            p.setPen(QPen(QColor(color))); p.setFont(QFont("Consolas", 7))
+            p.drawText(QRectF(x+2, y, w-4, h), 0x84, label)
+
+
 class HardwareModule(SubModuleWidget):
     """硬件工具箱 — System 0 基石层: 仿真 + 真实硬件统一接口
     
@@ -3128,68 +3209,14 @@ class HardwareModule(SubModuleWidget):
         
         toolbar.addStretch()
         
-        # ── 功能拓扑 · ROS2 数据流 ──
-        topo_group = QGroupBox("🔗 功能拓扑 · ROS2 数据流 (基于真实pub/sub)")
+        # ── ROS2 拓扑图 (rqt_graph风格) ──
+        topo_group = QGroupBox("🔗 ROS2 Node 拓扑 · rqt_graph 风格")
         topo_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:12px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
         topo_layout = QVBoxLayout()
         
-        self.topo_text = QTextEdit()
-        self.topo_text.setReadOnly(True)
-        self.topo_text.setFont(QFont("Consolas", 11))
-        self.topo_text.setStyleSheet(f"color:{C_CYAN}; background:#0a0e14; border:none; padding:6px;")
-        self.topo_text.setMinimumHeight(500)
-        self.topo_text.setHtml(f"""<pre style='color:#e6edf3; font-size:15px; margin:0; line-height:1.4;'>
-<b style='color:#58a6ff'>╔══════════════════════ ROS2 Node 拓扑 · 数据流关系 ══════════════════════╗</b>
-
-  <b style='color:#f0883e'>┌─感知层────────────────────────────────────────────────────────────────┐</b>
-  │                                                                      │
-  │  <b style='color:#79c0ff'>realsense_source</b>────color/image──→<b style='color:#79c0ff'>vision_tag</b>────pose──→<b style='color:#79c0ff'>vision</b>          │
-  │  (RGB-D相机)        depth/points  (FoundationPose)  marker_array  (视觉管道)  │
-  │       │                                  │             │   ↕ service: joint_and_pose   │
-  │       └────points──→<b style='color:#79c0ff'>vision_pointcloud</b>───┘   ↕ ─────────────────→ <b style='color:#79c0ff'>robot_driver</b>  │
-  │                      (点云处理)                                         │
-  │  <b style='color:#79c0ff'>honeywell_scanner</b>──barcode/status                                   │
-  │  (扫码枪)                                                              │
-  └──────────────────────────────────────────────────────────────────────┘
-                                         │
-  <b style='color:#3fb950'>┌─传感+执行层────────────────────────────────────────────────────────────┐</b>
-  │                                                                      │
-  │  <b style='color:#d2a8ff'>robot_driver</b>──→ joint_states, robot_status, real_joint_states ─┐      │
-  │  (珞石机械臂)  ←── move_joint/line/pose/sequence ─────────────────┐│      │
-  │                                                                  ││      │
-  │  <b style='color:#d2a8ff'>gripper_driver</b>──→ gripper_pos ─────────────────────────────┼┼──────│
-  │  (电动夹爪)     ←── GripperSrv (开/关)                              ││      │
-  │                                                                    ││      │
-  │  <b style='color:#d2a8ff'>tactile_force_node</b>──→ force_torque, joint_states, tcp_pose ──┘│     │
-  │  (力+触觉传感器)  ──→ tactile_sensor                                 │      │
-  └────────────────────────────────────────────────────────────────────┼──────┘
-                                                                       │
-  <b style='color:#ff7b72'>┌─控制层────────────────────────────────────────────────────────────────┐</b>
-  │                                                                      │
-  │  ┌──── gripper_pos ────────┐                                         │
-  │  ├──── force_torque ───────┤    <b style='color:#ffa657'>motion (状态机)</b>                    │
-  │  ├──── joint_states ───────┼←── 订阅5路传感器                          │
-  │  ├──── robot_status ───────┤    → hmi/events, motion/active_states    │
-  │  └──── tactile_sensor ─────┘    → sim_joint_trajectory                │
-  │                     ↕ hmi/command, hmi/snapshot (services)            │
-  └─────────────────────────────┬────────────────────────────────────────┘
-                                │
-  <b style='color:#a5d6ff'>┌─HMI+IO层────────────────────────────────────────────────────────────┐</b>
-  │                                                                      │
-  │  <b style='color:#a5d6ff'>hmi_v1_tashan_bridge</b> ←── gripper_pos, real_joint_states, hmi/events  │
-  │  (人机界面桥接)        ↕ hmi/command, hmi/snapshot                    │
-  │                                                                      │
-  │  <b style='color:#a5d6ff'>tower_light</b> ←── emergency_stop, motion/*, physical_estop, usb_estop │
-  │  (三色塔灯)      ←── /tower_light/command (🟢🟡🔴⚫)                   │
-  │                  → tower_light/status                                 │
-  │                                                                      │
-  │  <b style='color:#a5d6ff'>external_comm</b> ↔ execute_external_task, start_with_external_cmd       │
-  │  (外部通信)                                                           │
-  └──────────────────────────────────────────────────────────────────────┘
-
-<b style='color:#8b949e'>  图例: ──→ topic发布   ←── topic订阅   ↕ service   node方块   ←输入  →输出</b>
-</pre>""")
-        topo_layout.addWidget(self.topo_text)
+        self.topo_canvas = _RosGraphCanvas()
+        self.topo_canvas.setMinimumHeight(400)
+        topo_layout.addWidget(self.topo_canvas)
         topo_group.setLayout(topo_layout)
         
         # ── 主内容区: 设备树 + 详情 ──
@@ -3801,7 +3828,6 @@ class HardwareModule(SubModuleWidget):
     
     def _on_mode_changed(self, idx):
         modes = ["sim", "local", "real"]
-        self.sim.mode = modes[idx]
         is_real = (modes[idx] == "real")
         
         # Real模式 vs 仿真模式 UI切换
