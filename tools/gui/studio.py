@@ -3383,7 +3383,7 @@ class HardwareModule(SubModuleWidget):
             ("🤖 珞石机械臂",  "6-DOF臂",   None,                    ["/move_joint(TargetPose)", "/robot_stop(Trigger)"]),
             ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
             ("⚡ 力/力矩传感器","传感器",    None,                    "待接入"),
-            ("📷 RealSense D435","相机",     None,                    "待接入"),
+            ("📷 RealSense D435","RGB-D相机", None,                    ["/color/image_raw", "/depth/rect", "/points"]),
             ("🚨 双路急停",    "安全",       None,                    "待接入"),
             ("📱 扫码枪",      "Honeywell",  None,                    "待接入"),
             ("🖐️ 触觉传感器", "触觉阵列",   None,                    "待接入"),
@@ -3451,6 +3451,11 @@ class HardwareModule(SubModuleWidget):
                 stop_btn.setToolTip("急停")
                 stop_btn.clicked.connect(self._robot_stop)
                 btn_layout.addWidget(stop_btn)
+            elif name == "📷 RealSense D435":
+                check_btn = self._make_hw_btn("📸", C_CYAN)
+                check_btn.setToolTip("检测相机")
+                check_btn.clicked.connect(self._check_camera)
+                btn_layout.addWidget(check_btn)
             else:
                 ph = QLabel("待接入")
                 ph.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
@@ -3515,6 +3520,29 @@ class HardwareModule(SubModuleWidget):
     
     def _get_tower_controls(self):
         return ["/tower_light/command (std_msgs/String)"]
+    
+    def _check_camera(self):
+        """检测 RealSense 相机状态"""
+        import subprocess
+        self._log("📷 检测 RealSense...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                "ROS_DOMAIN_ID=23 timeout 2 ros2 topic hz /realsense/color/image_raw 2>/dev/null"
+            ], capture_output=True, text=True, timeout=5)
+            if "average rate" in r.stdout:
+                import re; m = re.search(r'average rate: ([\d.]+)', r.stdout)
+                hz = f"{float(m.group(1)):.1f}Hz" if m else "有数据"
+                self.hw_table.item(4, 2).setText("🟢")
+                self.hw_table.item(4, 3).setText(hz)
+                self._log(f"   ✅ {hz}")
+            else:
+                self.hw_table.item(4, 2).setText("⏸")
+                self.hw_table.item(4, 3).setText("idle 未推流")
+                self._log("   ⏸ idle 未推流")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
     
     def _read_robot_joints(self):
         """读取机械臂当前关节状态"""
