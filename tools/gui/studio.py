@@ -4677,11 +4677,31 @@ class MonitorModule(SubModuleWidget):
         self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
     
     def _start_live_monitor(self):
-        """SSH 到 Orin 拉取实时 ROS2 topic 数据"""
+        """SSH 到 Orin 拉取实时 ROS2 topic/node 列表 + 数据"""
         import subprocess
         
         self._mlog("🔍 实时监控: 连接 Orin...")
-        self._live_data = {"status": "连接中...", "topics": {}}
+        self._live_data = {"status": "连接中...", "topics": {}, "topic_list": [], "node_list": []}
+        
+        # 先获取 topic/node 列表
+        try:
+            r = subprocess.run(
+                ["ssh", "-o", "ConnectTimeout=5", "nvidia@192.168.23.10",
+                 "source /opt/ros/humble/setup.bash && "
+                 "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
+                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list --no-daemon 2>/dev/null"],
+                capture_output=True, text=True, timeout=10)
+            out = r.stdout
+            if '===TOPICS===' in out:
+                parts = out.split('===TOPICS===')
+                if len(parts) > 1:
+                    node_part = parts[1].split('===NODES===')
+                    self._live_data["topic_list"] = [t.strip() for t in node_part[0].split('\n') if t.strip()]
+                    if len(node_part) > 1:
+                        self._live_data["node_list"] = [n.strip() for n in node_part[1].split('\n') if n.strip()]
+            self._mlog(f"   ✅ {len(self._live_data['topic_list'])} topics, {len(self._live_data['node_list'])} nodes")
+        except Exception as e:
+            self._mlog(f"   ⚠️ 列表获取: {e}")
         
         import threading
         def _poll():
@@ -4737,19 +4757,40 @@ class MonitorModule(SubModuleWidget):
         self._mlog("   ✅ 实时监控已启动")
     
     def _update_live_display(self):
-        """实时信号追踪面板 — 每个 topic 一行"""
+        """实时面板: topic/node列表 + 信号追踪"""
         d = getattr(self, '_live_data', {})
         
-        lines = ["<pre style='color:#3fb950; font-size:11px; margin:0;'>"]
-        lines.append("<b>═══ Orin 实时信号追踪 ═══</b>\n")
-        lines.append(f"状态: {d.get('status','等待...')}\n\n")
+        lines = ["<pre style='color:#3fb950; font-size:10px; margin:0;'>"]
+        lines.append("<b>═══ Orin 实时监控 ═══</b>\n")
+        lines.append(f"状态: {d.get('status','等待...')} | "
+                    f"Topics: {len(d.get('topic_list',[]))} | "
+                    f"Nodes: {len(d.get('node_list',[]))}\n\n")
         
+        # Topic 列表 (前12个)
+        tl = d.get("topic_list", [])
+        if tl:
+            lines.append("<b>── Topics ──</b>\n")
+            for t in tl[:12]:
+                lines.append(f"  {t}\n")
+            if len(tl) > 12:
+                lines.append(f"  ... 共 {len(tl)} 个\n")
+        
+        # Node 列表 (前8个)
+        nl = d.get("node_list", [])
+        if nl:
+            lines.append("\n<b>── Nodes ──</b>\n")
+            for n in nl[:8]:
+                lines.append(f"  {n}\n")
+            if len(nl) > 8:
+                lines.append(f"  ... 共 {len(nl)} 个\n")
+        
+        # 实时信号数据
         topics_data = d.get("topics", {})
         if topics_data:
+            lines.append("\n<b>── 实时信号 ──</b>\n")
             for topic, value in topics_data.items():
-                lines.append(f"<b>{topic:22s}</b> {value}\n")
-        else:
-            lines.append("<i>等待机器人数据... (idle时无数据发布)</i>")
+                lines.append(f"  <b>{topic:24s}</b> {value}\n")
+        
         lines.append("</pre>")
         self.mon_data_preview.setHtml("".join(lines))
     
