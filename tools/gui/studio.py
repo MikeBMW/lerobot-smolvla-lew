@@ -5689,10 +5689,13 @@ class PluggingSceneModule(SubModuleWidget):
         w = QWidget()
         l = QVBoxLayout(); l.setSpacing(10)
         
-        # 产品迭代策略标题
+        # 产品迭代策略标题 — 加滚动条
         hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
         hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
         hw.setMinimumHeight(280)
+        
+        # 内层widget + 滚动区
+        hw_inner = QWidget()
         hl = QVBoxLayout()
         hw_info = QLabel(
             "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
@@ -5702,7 +5705,17 @@ class PluggingSceneModule(SubModuleWidget):
         hw_info.setFont(QFont("Arial", 10)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:8px;")
         hw_info.setWordWrap(True)
         hl.addWidget(hw_info)
-        hw.setLayout(hl); l.addWidget(hw)
+        hw_inner.setLayout(hl)
+        
+        hw_scroll = QScrollArea()
+        hw_scroll.setWidgetResizable(True)
+        hw_scroll.setWidget(hw_inner)
+        hw_scroll.setStyleSheet("QScrollArea{border:none; background:transparent;}")
+        
+        hw_layout = QVBoxLayout()
+        hw_layout.addWidget(hw_scroll)
+        hw.setLayout(hw_layout)
+        l.addWidget(hw)
         
         # L2工作流程 — 6步对应产品发布PPT
         flow = QGroupBox("📋 L2 基线版 · 人工编制流程 — 6步分段式精细插拔")
