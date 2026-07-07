@@ -5752,8 +5752,8 @@ class PluggingSceneModule(SubModuleWidget):
         l = QVBoxLayout(); l.setSpacing(10)
         
         hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
-        hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
-        hl = QVBoxLayout(); hl.setContentsMargins(6,0,6,6)
+        hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; padding-top:28px; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        hl = QVBoxLayout(); hl.setContentsMargins(8,0,8,8)
         info = QLabel(
             "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
             "◈ <b>多模块自主识别</b>: 视觉识别400G/100G/不同封装 · 自动切换夹爪工装<br>"
@@ -5762,7 +5762,7 @@ class PluggingSceneModule(SubModuleWidget):
             "◈ <b>异常自恢复</b>: 卡料/偏移/测试失败 → 自动诊断+重试+分类<br>"
             "◈ <b>全工序良率 ≥99.5%</b>"
         )
-        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:4px 12px 12px 12px;"); info.setWordWrap(True)
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:0 12px 12px 12px;"); info.setWordWrap(True)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
         scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
         hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
