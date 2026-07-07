@@ -2940,8 +2940,10 @@ class TrainingModule(QWidget):
         if cached:
             import glob
             try:
+                # 支持 .parquet 和 .arrow 两种格式
                 parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
-                valid = [p for p in parquets if os.path.isfile(p)]
+                arrows = glob.glob(os.path.join(path, "**", "*.arrow"), recursive=True)
+                valid = [p for p in parquets + arrows if os.path.isfile(p)]
                 size = sum(os.path.getsize(p) for p in valid) if valid else 0
                 for unit in ['B','KB','MB','GB']:
                     if size < 1024: break
