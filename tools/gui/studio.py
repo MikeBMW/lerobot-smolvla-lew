@@ -2317,6 +2317,8 @@ class TrainingModule(QWidget):
             }}
         """)
         param_layout.addRow("Dataset:", self.dataset_combo)
+        # 同步 combo 到老的 edit 字段
+        self.dataset_combo.currentTextChanged.connect(lambda t: self.dataset_repo_edit.setText(t))
         
         # 本地缓存路径显示
         self.dataset_path_label = QLabel()
@@ -3034,12 +3036,8 @@ class TrainingModule(QWidget):
         push_to_hub = self.push_hub_checkbox.isChecked()
         
         self._log(f"🚀 Starting training...")
-        self._log(f"   Policy: {policy_type}")
-        self._log(f"   Dataset: {dataset_repo_id}")
-        self._log(f"   Batch size: {batch_size}")
-        self._log(f"   Steps: {total_steps}")
-        self._log(f"   Learning rate: {learning_rate}")
-        self._log(f"   Scheduler: {scheduler_type}")
+        self._log(f"   Policy: {policy_type} | Dataset: {dataset_repo_id}")
+        self._log(f"   Batch: {batch_size} | Steps: {total_steps} | LR: {learning_rate}")
         
         # Get repository root path
         import os
