@@ -5653,269 +5653,195 @@ ROI_ACCENT = C_CYAN  # ROI模块专用颜色
 
 
 class PluggingSceneModule(SubModuleWidget):
-    """Z700轮式双臂插拔场景 + 双臂工作流程 + ROI投资回报"""
+    """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
 
     def __init__(self):
         super().__init__("插拔场景 · Z700", [("Z700", ROI_ACCENT), ("System 0", SYS0_COLOR)])
         body = QWidget()
-        bl = QVBoxLayout(); bl.setSpacing(14)
-
-        # ===== Z700 硬件概览 =====
-        hw_box = QGroupBox("Z700 轮式双臂机器人")
-        hw_box.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        hw_l = QVBoxLayout()
-
-        spec_text = QLabel(
-            "底盘: 全向轮式 | 双臂: 关节力控>10kHz | 力矩精度<0.1Nm | 动态力控<2N\n"
-            "左臂: 吸盘取料+扫码+中转 | 右臂: 力控插拔+AOI+分类 | 力控闭环>10kHz\n"
-            "头部: Gemini 335L 3D视觉 + 4鱼眼 | 底盘: 双激光雷达+4 TOF | 算力: AGX Orin\n"
-            "续航: 4h基础/快充15min/换电5min | 通讯: WiFi+以太网 | 精度: ±0.02mm"
-        )
-        spec_text.setFont(QFont("Consolas", 9))
-        spec_text.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-        spec_text.setWordWrap(True)
-        hw_l.addWidget(spec_text)
-        hw_box.setLayout(hw_l)
-        bl.addWidget(hw_box)
-
-        # ===== 双臂工作流程 =====
-        flow_box = QGroupBox("双臂协同插拔流程")
-        flow_box.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        flow_l = QVBoxLayout()
-
-        # 流程步骤卡片行
-        steps = [
-            ("1", "左臂取料", "吸盘吸取\n无序来料", ROI_ACCENT),
-            ("2", "左臂扫码", "调整姿态\n移至扫码器", C_GRAY),
-            ("3", "左臂中转", "标准姿态\n放入中转区", C_GRAY),
-            ("4", "右臂抓取", "中转区\n夹爪抓取", SYS11_COLOR),
-            ("5", "右臂插入", "力控对准\nEVB测试座", SYS11_COLOR),
-            ("6", "等待测试", "并行抓取\n双工位并行", C_ORANGE),
-            ("7", "右臂拔出", "引导拔出\n送入AOI", SYS12_COLOR),
-            ("8", "分类入盒", "依据结果\nP/F分类", SYS2_COLOR),
-        ]
-
-        flow_row = QHBoxLayout()
-        flow_row.setSpacing(4)
-        for i, (num, title, desc, color) in enumerate(steps):
-            card = QFrame()
-            card.setStyleSheet(f"background:{C_BG2}; border:1px solid {color}88; border-radius:6px; padding:0px;")
-            cl = QVBoxLayout()
-            cl.setSpacing(2)
-            cl.setContentsMargins(6, 4, 6, 4)
-
-            num_lbl = QLabel(num)
-            num_lbl.setFont(QFont("Consolas", 10, QFont.Bold))
-            num_lbl.setStyleSheet(f"color:{color}; background:{color}22; border-radius:3px; padding:1px 4px;")
-            num_lbl.setAlignment(Qt.AlignCenter)
-            cl.addWidget(num_lbl)
-
-            title_lbl = QLabel(title)
-            title_lbl.setFont(QFont("Arial", 8, QFont.Bold))
-            title_lbl.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-            title_lbl.setAlignment(Qt.AlignCenter)
-            cl.addWidget(title_lbl)
-
-            desc_lbl = QLabel(desc)
-            desc_lbl.setFont(QFont("Arial", 7))
-            desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
-            desc_lbl.setAlignment(Qt.AlignCenter)
-            desc_lbl.setWordWrap(True)
-            cl.addWidget(desc_lbl)
-
-            card.setLayout(cl)
-            flow_row.addWidget(card, 1)
-
-            if i < len(steps) - 1:
-                arr = QLabel("→")
-                arr.setFont(QFont("Arial", 10, QFont.Bold))
-                arr.setFixedWidth(12)
-                arr.setAlignment(Qt.AlignCenter)
-                arr.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
-                flow_row.addWidget(arr)
-
-        flow_l.addLayout(flow_row)
-
-        # 双臂分工说明
-        arms_row = QHBoxLayout()
-        for arm, tasks, color in [
-            ("左臂 (取料)", "视觉识别→吸取→扫码→中转", ROI_ACCENT),
-            ("右臂 (插拔)", "抓取→对准→力控插入→拔出→AOI→分类", SYS11_COLOR),
-        ]:
-            arm_frame = QFrame()
-            arm_frame.setStyleSheet(f"background:{C_BG}; border:1px solid {color}44; border-radius:4px;")
-            al = QHBoxLayout()
-            al.setContentsMargins(8, 4, 8, 4)
-            arm_title = QLabel(arm)
-            arm_title.setFont(QFont("Arial", 9, QFont.Bold))
-            arm_title.setStyleSheet(f"color:{color}; background:transparent; border:none;")
-            al.addWidget(arm_title)
-            arm_desc = QLabel(tasks)
-            arm_desc.setFont(QFont("Consolas", 8))
-            arm_desc.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
-            al.addWidget(arm_desc)
-            al.addStretch()
-            arm_frame.setLayout(al)
-            arms_row.addWidget(arm_frame, 1)
-        flow_l.addLayout(arms_row)
-
-        flow_box.setLayout(flow_l)
-        bl.addWidget(flow_box)
-
-        # ===== 技术架构 =====
-        tech_box = QGroupBox("Z-MAX 技术栈")
-        tech_box.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        tech_l = QVBoxLayout()
-        tech_text = QLabel(
-            "VLM规划层: SAM分割+位姿估计 → 长程任务动态拆解 → 处理遮挡/顺序/恢复\n"
-            "VLA执行层: 视觉+腕部相机 → 实时输出抓取/放置/插入动作 → 力控闭环\n"
-            "强化学习: 专攻插入等高失败率环节 → 在线试错+奖励信号 → 0.5~2h达90%+成功率\n"
-            "力控优势: 关节力控<2N | 带宽>10kHz | 分辨率<0.1Nm (竞品外置力控>10N | <5Hz)"
-        )
-        tech_text.setFont(QFont("Consolas", 9))
-        tech_text.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
-        tech_text.setWordWrap(True)
-        tech_l.addWidget(tech_text)
-        tech_box.setLayout(tech_l)
-        bl.addWidget(tech_box)
-
-        # ===== ROI 投资回报计算器 =====
-        roi_box = QGroupBox("ROI 投资回报计算器 (可量化)")
-        roi_box.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 12)}}}")
-        roi_l = QVBoxLayout()
-
-        # 输入参数行
-        input_row = QHBoxLayout()
-        input_row.setSpacing(16)
-
-        self.roi_workers = QSpinBox()
-        self.roi_workers.setRange(1, 10)
-        self.roi_workers.setValue(3)
-        self.roi_workers.setSuffix(" 人")
-        self.roi_workers.setStyleSheet(self._spin_style())
-        input_row.addWidget(self._make_input_group("替代工人数", self.roi_workers))
-
-        self.roi_worker_cost = QSpinBox()
-        self.roi_worker_cost.setRange(5, 30)
-        self.roi_worker_cost.setValue(12)
-        self.roi_worker_cost.setSuffix(" 万/年")
-        self.roi_worker_cost.setStyleSheet(self._spin_style())
-        input_row.addWidget(self._make_input_group("单人年成本", self.roi_worker_cost))
-
-        self.roi_yield_improve = QSpinBox()
-        self.roi_yield_improve.setRange(1, 10)
-        self.roi_yield_improve.setValue(4)
-        self.roi_yield_improve.setSuffix(" %")
-        self.roi_yield_improve.setStyleSheet(self._spin_style())
-        input_row.addWidget(self._make_input_group("良率提升", self.roi_yield_improve))
-
-        self.roi_annual_value = QSpinBox()
-        self.roi_annual_value.setRange(500, 20000)
-        self.roi_annual_value.setValue(2000)
-        self.roi_annual_value.setSuffix(" 万/年")
-        self.roi_annual_value.setSingleStep(100)
-        self.roi_annual_value.setStyleSheet(self._spin_style())
-        input_row.addWidget(self._make_input_group("产线年产值", self.roi_annual_value))
-
-        roi_l.addLayout(input_row)
-
-        # 收益明细表
-        self.roi_summary = QLabel()
-        self.roi_summary.setFont(QFont("Consolas", 10))
-        self.roi_summary.setStyleSheet(f"color:{C_WHITE}; background:{C_BG}; border:1px solid {C_BORDER}; border-radius:6px; padding:12px;")
-        self.roi_summary.setWordWrap(True)
-        roi_l.addWidget(self.roi_summary)
-
-        # 按钮
-        calc_btn = QPushButton("⚡ 计算ROI")
-        calc_btn.setFont(QFont("Arial", 11, QFont.Bold))
-        calc_btn.setStyleSheet(f"""
-            QPushButton {{ background:{C_GREEN}; color:#0d1117; border:none; border-radius:6px; padding:10px 24px; }}
-            QPushButton:hover {{ background:#4ade80; }}
+        bl = QVBoxLayout(); bl.setSpacing(12)
+        
+        # ── 等级选择Tab ──
+        self.scene_tabs = QTabWidget()
+        self.scene_tabs.setStyleSheet(f"""
+            QTabWidget::pane{{background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px;}}
+            QTabBar::tab{{background:{C_BG2}; color:{C_GRAY}; padding:8px 20px; font-size:12px; font-weight:bold; border:1px solid {C_BORDER}; border-bottom:none;}}
+            QTabBar::tab:selected{{background:{C_CARD}; color:{C_WHITE}; border-bottom:2px solid {ROI_ACCENT};}}
         """)
-        calc_btn.clicked.connect(self._calc_roi)
-        roi_l.addWidget(calc_btn)
-
-        roi_box.setLayout(roi_l)
-        bl.addWidget(roi_box)
-
-        # 初始计算
-        self.roi_workers.valueChanged.connect(self._calc_roi)
-        self.roi_worker_cost.valueChanged.connect(self._calc_roi)
-        self.roi_yield_improve.valueChanged.connect(self._calc_roi)
-        self.roi_annual_value.valueChanged.connect(self._calc_roi)
-        self._calc_roi()
-        bl.addStretch()
+        
+        self.scene_tabs.addTab(self._build_l2_tab(), "🔧 L2 基线版 · 单工序插拔")
+        self.scene_tabs.addTab(self._build_l3_tab(), "🤖 L3 增强版 · 多模块自主")
+        self.scene_tabs.addTab(self._build_l4_tab(), "🛡️ L4 旗舰版 · 安全全自主")
+        
+        bl.addWidget(self.scene_tabs)
         body.setLayout(bl)
         self._build_shell(body)
 
-    def _spin_style(self):
-        return f"""
-            QSpinBox {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-family:Consolas; font-size:11px; }}
-            QSpinBox::up-button, QSpinBox::down-button {{ width:16px; background:{C_CARD}; border:1px solid {C_BORDER}; }}
-        """
-
-    def _make_input_group(self, label_text, widget):
-        frame = QFrame()
-        l = QVBoxLayout()
-        l.setSpacing(2)
-        l.setContentsMargins(0, 0, 0, 0)
-        lbl = QLabel(label_text)
-        lbl.setFont(QFont("Arial", 8))
-        lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0;")
-        l.addWidget(lbl)
-        l.addWidget(widget)
-        frame.setLayout(l)
-        return frame
-
-    def _calc_roi(self):
-        workers = self.roi_workers.value()
-        worker_cost = self.roi_worker_cost.value()
-        yield_improve = self.roi_yield_improve.value()
-        annual_value = self.roi_annual_value.value()
-
-        # 成本项
-        robot_cost = 45
-        end_effector = 8
-        software = 12
-        integration = 5
-        deploy = 5
-        total_invest = robot_cost + end_effector + software + integration + deploy  # 75万
-
-        # 收益项
-        labor_save = workers * worker_cost
-        yield_save = int(annual_value * yield_improve / 100)
-        changeover_save = 20  # 标准化
-        capacity_save = 16    # 标准化
-        annual_revenue = labor_save + yield_save + changeover_save + capacity_save
-
-        # 成本
-        maintenance = 8
-        depreciation = round(total_invest / 3)
-        net_income = annual_revenue - maintenance - depreciation
-
-        # ROI
-        if net_income > 0:
-            payback_months = round(total_invest / net_income * 12)
-        else:
-            payback_months = 999
-
-        text = (
-            f"┌─ 投资成本 ──────────────────────────────────────────────┐\n"
-            f"│ Z700本体: {robot_cost}万 | 末端执行器: {end_effector}万 | 软件: {software}万 | 集成+部署: {integration+deploy}万 │\n"
-            f"│ 总投资: {total_invest}万                                           │\n"
-            f"├─ 年度收益 ──────────────────────────────────────────────┤\n"
-            f"│ 人工节约: {workers}人×{worker_cost}万 = {labor_save}万                              │\n"
-            f"│ 良率提升: {annual_value}万×{yield_improve}% = {yield_save}万                            │\n"
-            f"│ 换型效率: {changeover_save}万 | 连续产能: {capacity_save}万                       │\n"
-            f"│ 年度总收益: {annual_revenue}万                                    │\n"
-            f"├─ 净收益 ─────────────────────────────────────────────────┤\n"
-            f"│ 运维: -{maintenance}万 | 折旧: -{depreciation}万 | 年度净收益: {net_income}万              │\n"
-            f"├─ ROI回收 ─────────────────────────────────────────────────┤\n"
-            f"│ ⚡ 回收周期: {payback_months}个月 ({payback_months/12:.1f}年)                              │\n"
-            f"└───────────────────────────────────────────────────────────┘"
+    # ═══════ L2 基线版 · 单工序插拔 ═══════
+    def _build_l2_tab(self):
+        w = QWidget()
+        l = QVBoxLayout(); l.setSpacing(10)
+        
+        # 硬件基础
+        hw = QGroupBox("🖥️ 硬件平台 · SR5-C + AGX Orin")
+        hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
+        hl = QVBoxLayout()
+        hw_info = QLabel(
+            "珞石 SR5-C 6轴协作机械臂 · 负载5kg · 臂展911mm<br>"
+            "Jetson Orin NX 16G 智算中枢 · 1ms控制周期<br>"
+            "梅卡曼德 Mech-Eye + RealSense D405 双3D相机<br>"
+            "DH PEGA-50-26 电动夹爪 · TS-T-15 触觉传感器<br>"
+            "双路急停 · 安全光栅 · 三色塔灯"
         )
-        self.roi_summary.setText(text)
+        hw_info.setFont(QFont("Arial", 10)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:8px;")
+        hw_info.setWordWrap(True)
+        hl.addWidget(hw_info)
+        hw.setLayout(hl); l.addWidget(hw)
+        
+        # L2工作流程 — 简化为4步
+        flow = QGroupBox("📋 L2 基线版 · 单工序操作流程")
+        flow.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 12)}}}")
+        fl = QHBoxLayout(); fl.setSpacing(6)
+        for num, title, desc, color in [
+            ("1", "模块上料", "人工放入\n料盘定位", ROI_ACCENT),
+            ("2", "机器人取料", "夹爪抓取\n到位检测", C_GREEN),
+            ("3", "插入工序", "力控对准\n单步插入", SYS11_COLOR),
+            ("4", "模块下料", "夹爪取出\n放入成品盘", SYS12_COLOR),
+        ]:
+            card = self._make_step_card(num, title, desc, color)
+            fl.addWidget(card, 1)
+            if num != "4":
+                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:14px;"); arr.setFixedWidth(16)
+                fl.addWidget(arr)
+        flow.setLayout(fl); l.addWidget(flow)
+        
+        # 特性
+        feat = QGroupBox("✅ L2 已实现特性")
+        feat.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        fe = QVBoxLayout()
+        ft = QLabel(
+            "◈ 单工序固定流程 · 人工上下料<br>"
+            "◈ 夹爪力控抓取 · 到位检测确认<br>"
+            "◈ 点到点精确运动 (±0.05mm) · 力控插入<br>"
+            "◈ XSpace Studio 一键操作 · 全中文界面<br>"
+            "◈ 关键工序良率 ≥99.2% · 数据自动记录<br>"
+            "◈ 双路急停+光栅+塔灯 · 多层安全防护"
+        )
+        ft.setFont(QFont("Arial", 10)); ft.setStyleSheet(f"color:{C_WHITE}; padding:6px;"); ft.setWordWrap(True)
+        fe.addWidget(ft); feat.setLayout(fe); l.addWidget(feat)
+        
+        w.setLayout(l); return w
+    
+    # ═══════ L3 增强版 · 多模块自主 ═══════
+    def _build_l3_tab(self):
+        w = QWidget()
+        l = QVBoxLayout(); l.setSpacing(10)
+        
+        hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
+        hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        hl = QVBoxLayout()
+        info = QLabel(
+            "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
+            "◈ <b>多模块自主识别</b>: 视觉识别400G/100G/不同封装 · 自动切换夹爪工装<br>"
+            "◈ <b>自主闭环工作</b>: 全程无人干预 · 自动上下料+取放+插拔+测试+分类<br>"
+            "◈ <b>换线自主换配方</b>: 扫码识别模块SN → 自动加载对应工序配方<br>"
+            "◈ <b>异常自恢复</b>: 卡料/偏移/测试失败 → 自动诊断+重试+分类<br>"
+            "◈ <b>全工序良率 ≥99.5%</b>"
+        )
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:10px;"); info.setWordWrap(True)
+        hl.addWidget(info); hw.setLayout(hl); l.addWidget(hw)
+        
+        # L3 流程 8步
+        flow = QGroupBox("L3 增强版 · 8步全自动流程")
+        flow.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        fl = QHBoxLayout(); fl.setSpacing(4)
+        for num, title, desc, color in [
+            ("1", "视觉取料", "3D定位\n无序抓取", ROI_ACCENT),
+            ("2", "自动扫码", "模块SN\n配方匹配", C_GRAY),
+            ("3", "中转定位", "标准姿态\n二次校准", C_GRAY),
+            ("4", "力控插拔", "对准插入\n力控闭环", SYS11_COLOR),
+            ("5", "并行测试", "双工位\n并行执行", C_ORANGE),
+            ("6", "AOI检测", "拔出\n视觉检查", SYS12_COLOR),
+            ("7", "P/F分类", "根据结果\n自动分类", SYS2_COLOR),
+            ("8", "连续循环", "自动上料\n无人值守", C_GREEN),
+        ]:
+            card = self._make_step_card(num, title, desc, color)
+            fl.addWidget(card, 1)
+            if num != "8":
+                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:12px;"); arr.setFixedWidth(12)
+                fl.addWidget(arr)
+        flow.setLayout(fl); l.addWidget(flow)
+        
+        w.setLayout(l); return w
+    
+    # ═══════ L4 旗舰版 · 安全全自主 ═══════
+    def _build_l4_tab(self):
+        w = QWidget()
+        l = QVBoxLayout(); l.setSpacing(10)
+        
+        hw = QGroupBox("🛡️ L4 旗舰版 · AI全自主 + 安全主动保护")
+        hw.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
+        hl = QVBoxLayout()
+        info = QLabel(
+            "<b>在 L3 基础上，增加 VLA 智能决策 + 主动安全:</b><br><br>"
+            "◈ <b>VLA 视觉语言动作模型</b>: 新模块从未见过 → AI自动适配 · 零编程<br>"
+            "◈ <b>主动安全保护</b>: 力传感器超阈值预判 · 碰撞前0.05s自动停机<br>"
+            "◈ <b>触觉闭环</b>: TS-T-15实时接触力反馈 · 插入力超2N自动松夹<br>"
+            "◈ <b>光幕联动</b>: 人员靠近→自动降速 · 进入危险区→立即停止<br>"
+            "◈ <b>自诊断系统</b>: 预测性维护 · 部件寿命预估 · 故障前预警<br>"
+            "◈ <b>7×24 无人值守</b> · 零人工干预 · <b>良率 ≥99.9%</b>"
+        )
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:10px;"); info.setWordWrap(True)
+        hl.addWidget(info); hw.setLayout(hl); l.addWidget(hw)
+        
+        # 安全层级
+        safe = QGroupBox("🛡️ 安全架构 · 五层主动保护")
+        safe.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
+        sl = QVBoxLayout()
+        for level, name, desc, color in [
+            ("L1", "力控预判",      "力传感器>10kHz采样 → 接触力超阈值0.05s内停机", SYS11_COLOR),
+            ("L2", "触觉闭环",      "TS-T-15实时反馈 → 夹持力>2N自动释放", C_GREEN),
+            ("L3", "光幕联动",      "安全光栅检测人员 → 自动降速/分区停机", C_ORANGE),
+            ("L4", "自诊断预警",    "电机温度/电流/振动异常 → 提前48h通知维护", ROI_ACCENT),
+            ("L5", "AI行为预测",    "LeWorldModel预测未来0.2s状态 → 主动避让", SYS12_COLOR),
+        ]:
+            row = QHBoxLayout()
+            badge = QLabel(level); badge.setFixedSize(30,30)
+            badge.setStyleSheet(f"background:{color}; color:white; border-radius:15px; font-weight:bold; font-size:10px;")
+            badge.setAlignment(Qt.AlignCenter)
+            row.addWidget(badge)
+            nl = QLabel(f"<b>{name}</b>")
+            nl.setStyleSheet(f"color:{color}; font-size:11px;"); nl.setFixedWidth(100)
+            row.addWidget(nl)
+            nd = QLabel(desc); nd.setStyleSheet(f"color:{C_GRAY}; font-size:10px;"); nd.setWordWrap(True)
+            row.addWidget(nd, 1)
+            sl.addLayout(row)
+        safe.setLayout(sl); l.addWidget(safe)
+        
+        w.setLayout(l); return w
+    
+    def _make_step_card(self, num, title, desc, color):
+        card = QFrame()
+        card.setStyleSheet(f"background:{C_BG2}; border:1px solid {color}88; border-radius:6px;")
+        cl = QVBoxLayout(); cl.setSpacing(2); cl.setContentsMargins(6, 4, 6, 4)
+        num_lbl = QLabel(num); num_lbl.setFont(QFont("Consolas", 10, QFont.Bold))
+        num_lbl.setStyleSheet(f"color:{color}; background:{color}22; border-radius:3px; padding:1px 4px;")
+        num_lbl.setAlignment(Qt.AlignCenter); cl.addWidget(num_lbl)
+        title_lbl = QLabel(title); title_lbl.setFont(QFont("Arial", 8, QFont.Bold))
+        title_lbl.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
+        title_lbl.setAlignment(Qt.AlignCenter); cl.addWidget(title_lbl)
+        desc_lbl = QLabel(desc); desc_lbl.setFont(QFont("Arial", 7))
+        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+        desc_lbl.setAlignment(Qt.AlignCenter); desc_lbl.setWordWrap(True); cl.addWidget(desc_lbl)
+        card.setLayout(cl); return card
+
+    def _spin_style(self):
+        return ""  # 已移除ROI计算器
+    
+    def _make_input_group(self, label_text, widget):
+        return QLabel(label_text)  # 已移除ROI
+    
+    def _calc_roi(self):
+        pass  # 已移除ROI计算器
 
 
 # ============================================================
