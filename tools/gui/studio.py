@@ -5673,6 +5673,11 @@ class PluggingSceneModule(SubModuleWidget):
         self.scene_tabs.addTab(self._build_l4_tab(), "🛡️ L4 旗舰版 · 安全全自主")
         
         bl.addWidget(self.scene_tabs)
+        
+        # ── 🧱 功能积木 · 阶梯进化图 ──
+        bricks = self._build_brick_panel()
+        bl.addWidget(bricks)
+        
         body.setLayout(bl)
         self._build_shell(body)
 
@@ -5833,6 +5838,87 @@ class PluggingSceneModule(SubModuleWidget):
         desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
         desc_lbl.setAlignment(Qt.AlignCenter); desc_lbl.setWordWrap(True); cl.addWidget(desc_lbl)
         card.setLayout(cl); return card
+    
+    # ═══════ 🧱 功能积木 · 阶梯进化 ═══════
+    def _build_brick_panel(self):
+        """乐高积木风格: L2基础 → L3增强 → L4旗舰 功能阶梯"""
+        panel = QGroupBox("🧱 功能积木 · 阶梯进化")
+        panel.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
+        outer = QHBoxLayout(); outer.setSpacing(12)
+        
+        # 定义三层功能积木
+        # (名称, 颜色, L2状态, L3状态, L4状态)
+        # 状态: 'base'=基础(实色) 'add'=新增(高亮) 'keep'=保留(暗色) 'replace'=替换(不同色) 'none'=无
+        modules = [
+            ("人工编排", ROI_ACCENT,  'base',  'keep',  'keep'),
+            ("原子功能库", C_GREEN,  'base',  'keep',  'keep'),
+            ("动作执行", SYS11_COLOR,  'base',  'keep',  'keep'),
+            ("力控反馈", SYS12_COLOR,  'base',  'keep',  'keep'),
+            ("AOI验证", C_ORANGE,  'base',  'keep',  'keep'),
+            ("成品下料", SYS2_COLOR,  'base',  'keep',  'keep'),
+            
+            ("多模块识别", C_GREEN,  'none',  'add',   'keep'),
+            ("自主闭环", SYS11_COLOR,  'none',  'add',   'keep'),
+            ("换线换配方", C_ORANGE,  'none',  'add',   'keep'),
+            ("异常自恢复", SYS12_COLOR,  'none',  'add',   'keep'),
+            
+            ("力控预判", SYS11_COLOR,  'none',  'none',  'add'),
+            ("触觉闭环", C_GREEN,  'none',  'none',  'add'),
+            ("光幕联动", C_ORANGE,  'none',  'none',  'add'),
+            ("自诊断预警", ROI_ACCENT,  'none',  'none',  'add'),
+            ("AI行为预测", SYS12_COLOR,  'none',  'none',  'add'),
+        ]
+        
+        levels = [
+            ("🔧 L2\n基线版", "≥99.2%", 0),
+            ("🤖 L3\n增强版", "≥99.5%", 1),
+            ("🛡️ L4\n旗舰版", "≥99.9%", 2),
+        ]
+        
+        for lvl_name, lvl_yield, lvl_idx in levels:
+            col = QVBoxLayout(); col.setSpacing(4)
+            # 等级标题
+            hdr = QLabel(f"{lvl_name}\n{lvl_yield}")
+            hdr.setFont(QFont("Arial", 9, QFont.Bold))
+            if lvl_idx == 0: c = ROI_ACCENT
+            elif lvl_idx == 1: c = C_GREEN
+            else: c = C_RED
+            hdr.setStyleSheet(f"color:{c}; background:{c}18; border:2px solid {c}; border-radius:8px; padding:6px;")
+            hdr.setAlignment(Qt.AlignCenter); hdr.setFixedHeight(50)
+            col.addWidget(hdr)
+            
+            # 积木块
+            for name, color, l2, l3, l4 in modules:
+                status = [l2, l3, l4][lvl_idx]
+                if status == 'none':
+                    continue
+                
+                brick = QFrame()
+                brick.setFixedHeight(28)
+                
+                if status == 'base':
+                    brick.setStyleSheet(f"background:{color}; border:2px solid {color}; border-radius:5px;")
+                    txt = QLabel(f"⬛ {name}")
+                    txt.setStyleSheet(f"color:white; font-size:9px; font-weight:bold;")
+                elif status == 'add':
+                    brick.setStyleSheet(f"background:{color}44; border:2px dashed {color}; border-radius:5px;")
+                    txt = QLabel(f"✨ {name}")
+                    txt.setStyleSheet(f"color:{color}; font-size:9px; font-weight:bold;")
+                else:  # keep
+                    brick.setStyleSheet(f"background:{color}22; border:1px solid {color}66; border-radius:5px;")
+                    txt = QLabel(f"  {name}")
+                    txt.setStyleSheet(f"color:{color}88; font-size:8px;")
+                
+                txt.setAlignment(Qt.AlignCenter)
+                bl_inner = QVBoxLayout(); bl_inner.setContentsMargins(4,2,4,2); bl_inner.addWidget(txt)
+                brick.setLayout(bl_inner)
+                col.addWidget(brick)
+            
+            col.addStretch()
+            outer.addLayout(col, 1)
+        
+        panel.setLayout(outer)
+        return panel
 
     def _spin_style(self):
         return ""  # 已移除ROI计算器
