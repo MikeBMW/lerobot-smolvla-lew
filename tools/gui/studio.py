@@ -5928,10 +5928,10 @@ class PluggingSceneModule(SubModuleWidget):
                     txt = QLabel(f"✦ {name}")
                     txt.setStyleSheet(f"color:{mod_color}; font-size:11px; font-weight:bold;")
                     state = 'new'
-                else:  # keep
-                    brick.setStyleSheet(f"background:{C_BG}; border:1px solid {mod_color}44; border-radius:6px; margin:2px 0;")
+                else:  # keep — 仅边框占位，不填充
+                    brick.setStyleSheet(f"background:transparent; border:2px solid {mod_color}66; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{mod_color}aa; font-size:10px;")
+                    txt.setStyleSheet(f"color:{mod_color}99; font-size:10px;")
                     state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
@@ -5964,13 +5964,13 @@ class PluggingSceneModule(SubModuleWidget):
             return
         for col_idx, row_idx, brick, state, mod_color in self._brick_rows:
             if col_idx == tab_idx and state == 'keep':
-                brick.setStyleSheet(f"background:{mod_color}44; border:1px solid {mod_color}99; border-radius:5px;")
+                brick.setStyleSheet(f"background:{mod_color}22; border:2px solid {mod_color}aa; border-radius:5px;")
                 txt = brick.findChild(QLabel)
                 if txt: txt.setStyleSheet(f"color:{mod_color}; font-size:10px; font-weight:bold;")
             elif state == 'keep':
-                brick.setStyleSheet(f"background:{C_BG}; border:1px solid {mod_color}33; border-radius:5px;")
+                brick.setStyleSheet(f"background:transparent; border:2px solid {mod_color}55; border-radius:5px;")
                 txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{mod_color}88; font-size:9px;")
+                if txt: txt.setStyleSheet(f"color:{mod_color}77; font-size:9px;")
 
     def _spin_style(self):
         return ""  # 已移除ROI计算器
