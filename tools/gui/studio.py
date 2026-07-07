@@ -5692,8 +5692,8 @@ class PluggingSceneModule(SubModuleWidget):
         # L2 产品迭代策略 — 增高+滚动
         hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
         hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        hw.setMinimumHeight(350)
-        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
+        hw.setMinimumHeight(200)
+        hl = QVBoxLayout()
         hw_info = QLabel(
             "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
             "固定式精密操作具身机器人 · 精密制造智能技工<br><br>"
@@ -5702,9 +5702,7 @@ class PluggingSceneModule(SubModuleWidget):
         )
         hw_info.setFont(QFont("Arial", 12)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:12px;")
         hw_info.setWordWrap(True)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(hw_info)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        hl.addWidget(scroll)
+        hl.addWidget(hw_info)
         hw.setLayout(hl); l.addWidget(hw)
         
         # L2工作流程 — 6步对应产品发布PPT
@@ -5741,7 +5739,12 @@ class PluggingSceneModule(SubModuleWidget):
         ft.setFont(QFont("Arial", 10)); ft.setStyleSheet(f"color:{C_WHITE}; padding:6px;"); ft.setWordWrap(True)
         fe.addWidget(ft); feat.setLayout(fe); l.addWidget(feat)
         
-        w.setLayout(l); return w
+        w.setLayout(l)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
+        return outer
     
     # ═══════ L3 增强版 · 多模块自主 ═══════
     def _build_l3_tab(self):
