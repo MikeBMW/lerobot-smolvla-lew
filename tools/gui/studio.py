@@ -6032,9 +6032,11 @@ class StudioMainWindow(QMainWindow):
             (["README.md"], "xdg-open")))
         m_git.addSeparator()
         
-        # 培训文档 (唯一)
-        m_doc.addAction(self._mk_doc_action("📖 Z700 F · L2 产品培训手册 (唯一)",
+        # 培训文档 (唯一 MD + PPTX)
+        m_doc.addAction(self._mk_doc_action("📖 Z700 F · L2 产品培训手册 (MD)",
             (["Z700F-L2产品培训手册.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("📊 Z700 F · L2 产品培训 (PPTX·PowerPoint)",
+            (["Z700F-L2产品培训手册.pptx"], "libreoffice")))
         m_doc.addSeparator()
         # 在子菜单里添加常用 Git 命令的快捷说明
         act_clone = QAction("📥 克隆项目: git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git", self)
