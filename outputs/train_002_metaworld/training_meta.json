@@ -1,0 +1,15 @@
+{
+  "model": "MLP-512",
+  "dataset": "metaworld_mt50",
+  "params": 287236,
+  "steps": 500,
+  "episodes": 10,
+  "frames": 879,
+  "device": "cuda",
+  "initial_loss": 0.3460495173931122,
+  "final_loss": 0.08250558376312256,
+  "min_loss": 0.0196792371571064,
+  "reduction_pct": 76.2,
+  "timestamp": "2026-07-07 16:26",
+  "_dir": "train_002_metaworld"
+}
