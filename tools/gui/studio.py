@@ -2230,6 +2230,7 @@ class TrainingModule(QWidget):
         """)
         self.policy_combo.setToolTip("Policy type (--policy.type)")
         param_layout.addRow("Policy Type:", self.policy_combo)
+        self.policy_combo.currentTextChanged.connect(self._on_policy_changed)
         
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
@@ -2957,20 +2958,38 @@ class TrainingModule(QWidget):
             self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
             self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
 
+    def _on_policy_changed(self, policy):
+        """选择策略时自动切换默认参数"""
+        if policy in ("smolvla", "smolvla_lew"):
+            self.freeze_checkbox.setChecked(True)
+            self.world_model_checkbox.setChecked(policy == "smolvla_lew")
+            self.diffusion_spin.setValue(5)
+            self.batch_spin.setValue(4)
+            self.lr_spin.setValue(0.0001)
+            self.grad_clip_spin.setValue(10.0)
+            self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
+            self._log(f"🔄 已切换 SmolVLA (Flow Matching) 默认参数")
+        elif policy == "diffusion":
+            self.freeze_checkbox.setChecked(False)
+            self.world_model_checkbox.setChecked(False)
+            self.diffusion_spin.setValue(1)
+            self.batch_spin.setValue(8)
+            self.lr_spin.setValue(0.0001)
+            self._log(f"🔄 已切换 Diffusion Policy 默认参数")
+        elif policy == "act":
+            self.batch_spin.setValue(8)
+            self.lr_spin.setValue(0.00005)
+            self._log(f"🔄 已切换 ACT 默认参数")
+        self._update_dataset_path(self.dataset_combo.currentText())
+    
     def _reset_defaults(self):
         """恢复 SmolVLA 训练默认参数"""
+        self.policy_combo.setCurrentText("smolvla")
+        self._on_policy_changed("smolvla")
         self.dataset_combo.setCurrentText("lerobot/pusht")
-        self.policy_combo.setCurrentText("smolvla_lew")
-        self.freeze_checkbox.setChecked(True)
-        self.world_model_checkbox.setChecked(False)
-        self.diffusion_spin.setValue(5)
-        self.batch_spin.setValue(8)
         self.steps_spin.setValue(500)
         self.ckpt_spin.setValue(100)
-        self.lr_spin.setValue(0.0001)
         self.weight_decay_spin.setValue(0.000001)
-        self.grad_clip_spin.setValue(10.0)
-        self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
         self.warmup_spin.setValue(500)
         self.decay_spin.setValue(500)
         self.peak_lr_spin.setValue(0.0001)
