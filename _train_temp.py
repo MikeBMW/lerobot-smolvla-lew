@@ -13,15 +13,26 @@ episodes = list(range(8))
 ds = LeRobotDataset("lerobot/metaworld_mt50", episodes=episodes)
 sample = ds[0]
 
-# 自动检测 state/action 维度
+# 自动检测 state/action 维度 (含图像)
 state_keys = [k for k in sample.keys() if 'state' in k and 'image' not in k]
 state_dim = sum(sample[k].shape[0] for k in state_keys)
-action_dim = sample['action'].shape[0]
-print(f"Dataset: {len(ds)} frames, State: {state_dim}d, Action: {action_dim}d")
+has_image = 'observation.image' in sample
+if has_image:
+    # 把图像resize到小尺寸后flatten
+    import torch.nn.functional as F
+    img = sample['observation.image']
+    img_dim = 64 * 64 * 3  # resize 到 64×64
+    print(f"Dataset: {len(ds)} frames, State: {state_dim}d, +Image: {list(img.shape)} -> {img_dim}d, Action: {action_dim}d")
+else:
+    img_dim = 0
+    print(f"Dataset: {len(ds)} frames, State: {state_dim}d, Action: {action_dim}d")
 
-# MLP-1024 (轻量·不OOM)
+total_dim = state_dim + img_dim
+action_dim = sample['action'].shape[0]
+
+# MLP (含图像支持)
 model = torch.nn.Sequential(
-    torch.nn.Linear(state_dim, 1024), torch.nn.ReLU(),
+    torch.nn.Linear(total_dim, 1024), torch.nn.ReLU(),
     torch.nn.Linear(1024, 1024), torch.nn.ReLU(),  
     torch.nn.Linear(1024, 1024), torch.nn.ReLU(),
     torch.nn.Linear(1024, action_dim),
@@ -41,7 +52,13 @@ for step in range(500):
     try: batch = next(iter(loader))
     except: loader = DataLoader(ds, batch_size=4, shuffle=True); batch = next(iter(loader))
     
-    obs = torch.cat([batch[k].float() for k in state_keys], dim=1).to(device)
+    obs_parts = [batch[k].float() for k in state_keys]
+    if has_image:
+        imgs = batch['observation.image'].float()
+        B = imgs.shape[0]
+        imgs_small = F.interpolate(imgs, size=(64,64), mode='bilinear', align_corners=False)
+        obs_parts.append(imgs_small.reshape(B, -1))
+    obs = torch.cat(obs_parts, dim=1).to(device)
     act = batch['action'].float().to(device)
     loss = criterion(model(obs), act)
     optimizer.zero_grad(); loss.backward(); optimizer.step()
