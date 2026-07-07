@@ -5847,7 +5847,7 @@ class PluggingSceneModule(SubModuleWidget):
         """乐高积木风格: L2基础 → L3增强 → L4旗舰 功能阶梯"""
         panel = QGroupBox("🧱 功能积木 · 阶梯进化")
         panel.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        outer = QHBoxLayout(); outer.setSpacing(48)
+        outer = QHBoxLayout(); outer.setSpacing(32)
         
         # 功能模块定义: (名称, L2状态, L3状态, L4状态)
         # 状态: 'active'=实色 'new'=新增虚线 'keep'=保留暗色
@@ -5880,7 +5880,7 @@ class PluggingSceneModule(SubModuleWidget):
         brick_rows = []  # [(col, row_idx, brick_widget, state)]
         
         for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
-            col = QVBoxLayout(); col.setSpacing(24)
+            col = QVBoxLayout(); col.setSpacing(16)
             
             # 列标题
             hdr = QFrame()
@@ -5912,22 +5912,22 @@ class PluggingSceneModule(SubModuleWidget):
                     continue
                 
                 brick = QFrame()
-                brick.setFixedHeight(88)
+                brick.setFixedHeight(54)
                 
                 if status == 'active':
                     brick.setStyleSheet(f"background:{lvl_color}; border:2px solid {lvl_color}; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"● {name}")
-                    txt.setStyleSheet("color:white; font-size:22px; font-weight:bold;")
+                    txt.setStyleSheet("color:white; font-size:11px; font-weight:bold;")
                     state = 'active'
                 elif status == 'new':
-                    brick.setStyleSheet(f"background:{lvl_color}33; border:3px dashed {lvl_color}; border-radius:8px; margin:4px 0;")
+                    brick.setStyleSheet(f"background:{lvl_color}33; border:2px dashed {lvl_color}; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"✦ {name}")
-                    txt.setStyleSheet(f"color:{lvl_color}; font-size:20px; font-weight:bold;")
+                    txt.setStyleSheet(f"color:{lvl_color}; font-size:11px; font-weight:bold;")
                     state = 'new'
                 else:  # keep
-                    brick.setStyleSheet(f"background:{C_BG}; border:2px solid {lvl_color}44; border-radius:8px; margin:4px 0;")
+                    brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}44; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{C_GRAY}; font-size:18px;")
+                    txt.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
                     state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
