@@ -3148,67 +3148,26 @@ class TrainingModule(QWidget):
             self._log("⏹ Training stopped")
     
     def _preview_command(self):
-        """Preview the full lerobot-train CLI command without running it"""
-        # 读取所有 UI 参数
+        """Preview training configuration"""
         policy_type = self.policy_combo.currentText()
-        freeze_smolvlm = self.freeze_checkbox.isChecked()
-        enable_lew_world_model = self.world_model_checkbox.isChecked()
-        repeated_diffusion_steps = self.diffusion_spin.value()
-        
-        dataset_repo_id = self.dataset_repo_edit.text()
-        
+        dataset_repo_id = self.dataset_combo.currentText()
         batch_size = self.batch_spin.value()
         total_steps = self.steps_spin.value()
-        checkpoint_interval = self.ckpt_spin.value()
-        
         learning_rate = self.lr_spin.value()
-        weight_decay = self.weight_decay_spin.value()
-        grad_clip_norm = self.grad_clip_spin.value()
         
-        scheduler_type = self.scheduler_combo.currentText()
-        num_warmup_steps = self.warmup_spin.value()
-        num_decay_steps = self.decay_spin.value()
-        peak_lr = self.peak_lr_spin.value()
-        decay_lr = self.decay_lr_spin.value()
+        # 自动生成 output_dir
+        ds_name = dataset_repo_id.split("/")[-1]
+        output_dir = f"outputs/smolvla_{ds_name}"
+        self.output_dir_edit.setText(output_dir)
         
-        output_dir = self.output_dir_edit.text()
-        eval_freq = self.eval_freq_spin.value()
-        push_to_hub = self.push_hub_checkbox.isChecked()
-        
-        # 构建完整的 CLI 命令
-        cmd_parts = [
-            "lerobot-train",
-            f"--policy.type {policy_type}",
-            f"--policy.freeze_smolvlm {str(freeze_smolvlm).lower()}",
-            f"--policy.enable_lew_world_model {str(enable_lew_world_model).lower()}",
-            f"--policy.repeated_diffusion_steps {repeated_diffusion_steps}",
-            f"--policy.push_to_hub {str(push_to_hub).lower()}",
-            f"--dataset.repo_id {dataset_repo_id}",
-            f"--steps {total_steps}",
-            f"--batch_size {batch_size}",
-            f"--eval_freq {eval_freq}",
-            f"--save_freq {checkpoint_interval}",
-            f"--optimizer.lr {learning_rate}",
-            f"--optimizer.weight_decay {weight_decay}",
-            f"--optimizer.grad_clip_norm {grad_clip_norm}",
-            f"--scheduler.type {scheduler_type}",
-            f"--scheduler.num_warmup_steps {num_warmup_steps}",
-            f"--scheduler.num_decay_steps {num_decay_steps}",
-            f"--scheduler.peak_lr {peak_lr}",
-            f"--scheduler.decay_lr {decay_lr}",
-            "--wandb.enable false"
-        ]
-        
-        full_cmd = " \\\n  ".join(cmd_parts)
-        
-        self._log("=" * 70)
-        self._log("📋 CLI COMMAND PREVIEW")
-        self._log("=" * 70)
-        self._log(full_cmd)
-        self._log("=" * 70)
-        self._log(f"Output directory: {output_dir}")
-        self._log(f"To run this command, click 'Start Training'")
-        self._log("=" * 70)
+        self._log("=" * 60)
+        self._log(f"🚀 SmolVLA Training Preview")
+        self._log(f"   Model:    {policy_type} (Flow Matching)")
+        self._log(f"   Dataset:  {dataset_repo_id}  ✅")
+        self._log(f"   Steps:    {total_steps}  |  Batch: {batch_size}  |  LR: {learning_rate}")
+        self._log(f"   Output:   {output_dir}")
+        self._log("=" * 60)
+        self._log(f"点击 Start Training 开始训练")
     
     def _update_progress(self, value):
         """Update progress bar"""
