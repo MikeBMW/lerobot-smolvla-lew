@@ -5789,7 +5789,12 @@ class PluggingSceneModule(SubModuleWidget):
                 fl.addWidget(arr)
         flow.setLayout(fl); l.addWidget(flow)
         
-        w.setLayout(l); return w
+        w.setLayout(l)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
+        return outer
     
     # ═══════ L4 旗舰版 · 安全全自主 ═══════
     def _build_l4_tab(self):
