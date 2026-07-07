@@ -5880,7 +5880,7 @@ class PluggingSceneModule(SubModuleWidget):
         brick_rows = []  # [(col, row_idx, brick_widget, state)]
         
         for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
-            col = QVBoxLayout(); col.setSpacing(16)
+            col = QVBoxLayout(); col.setSpacing(28)
             
             # 列标题
             hdr = QFrame()
@@ -5912,7 +5912,7 @@ class PluggingSceneModule(SubModuleWidget):
                     continue
                 
                 brick = QFrame()
-                brick.setFixedHeight(54)
+                brick.setFixedHeight(64)
                 
                 if status == 'active':
                     brick.setStyleSheet(f"background:{lvl_color}; border:2px solid {lvl_color}; border-radius:6px; margin:2px 0;")
