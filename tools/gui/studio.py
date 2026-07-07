@@ -6198,6 +6198,9 @@ class StudioMainWindow(QMainWindow):
         m_doc.addAction(self._mk_doc_action("📊 Z700 F · L2 产品培训 (PPTX·PowerPoint)",
             (["Z700F-L2产品培训手册.pptx"], "libreoffice")))
         m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("🎯 产品等级定义 · L1~L5 自动化标准",
+            (["Z-MAX产品等级定义-L1-L5标准.md"], "xdg-open")))
+        m_doc.addSeparator()
         m_doc.addAction(self._mk_doc_action("💾 数据日志方案 · MCAP vs Rosbag 分析",
             (["Z-MAX数据日志方案-MCAP分析.md"], "xdg-open")))
         m_doc.addSeparator()
