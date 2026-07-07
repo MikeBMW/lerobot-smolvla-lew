@@ -5894,7 +5894,7 @@ class PluggingSceneModule(SubModuleWidget):
             t1 = QLabel(lvl_name); t1.setFont(QFont("Arial", 10, QFont.Bold))
             t1.setStyleSheet(f"color:{lvl_color};"); t1.setAlignment(Qt.AlignCenter)
             t2 = QLabel(lvl_yield); t2.setFont(QFont("Arial", 8))
-            t2.setStyleSheet(f"color:{lvl_color}99;"); t2.setAlignment(Qt.AlignCenter)
+            t2.setStyleSheet(f"color:white;"); t2.setAlignment(Qt.AlignCenter)
             hl.addWidget(t1); hl.addWidget(t2)
             hdr.setLayout(hl); col.addWidget(hdr)
             
