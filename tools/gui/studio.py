@@ -5689,21 +5689,22 @@ class PluggingSceneModule(SubModuleWidget):
         w = QWidget()
         l = QVBoxLayout(); l.setSpacing(10)
         
-        # 产品迭代策略标题
+        # L2 产品迭代策略 — 增高+滚动
         hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
         hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        hw.setMinimumHeight(280)
-        hl = QVBoxLayout()
+        hw.setMinimumHeight(350)
+        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
         hw_info = QLabel(
             "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
-            "固定式精密操作具身机器人 · 精密制造智能技工<br>"
-            "基于 Phase 0 交付物: SR5-C 6轴机械臂 · AGX Orin NX · 双3D相机 · DH夹爪 · TS-T-15触觉"
+            "固定式精密操作具身机器人 · 精密制造智能技工<br><br>"
+            "基于 Phase 0 交付物: SR5-C 6轴机械臂 · AGX Orin NX · 双3D相机 · DH夹爪 · TS-T-15触觉<br>"
+            "双路急停 · 安全光栅 · 三色塔灯 · 力控闭环 >10kHz"
         )
-        hw_info.setFont(QFont("Arial", 12)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:8px;")
+        hw_info.setFont(QFont("Arial", 12)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:12px;")
         hw_info.setWordWrap(True)
-        hw_info.setMinimumHeight(80)
-        hl.addWidget(hw_info)
-        hl.addStretch()
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(hw_info)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        hl.addWidget(scroll)
         hw.setLayout(hl); l.addWidget(hw)
         
         # L2工作流程 — 6步对应产品发布PPT
@@ -5749,8 +5750,8 @@ class PluggingSceneModule(SubModuleWidget):
         
         hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
         hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
-        hw.setMinimumHeight(280)
-        hl = QVBoxLayout()
+        hw.setMinimumHeight(350)
+        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
         info = QLabel(
             "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
             "◈ <b>多模块自主识别</b>: 视觉识别400G/100G/不同封装 · 自动切换夹爪工装<br>"
@@ -5759,8 +5760,10 @@ class PluggingSceneModule(SubModuleWidget):
             "◈ <b>异常自恢复</b>: 卡料/偏移/测试失败 → 自动诊断+重试+分类<br>"
             "◈ <b>全工序良率 ≥99.5%</b>"
         )
-        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:10px;"); info.setWordWrap(True)
-        hl.addWidget(info); hw.setLayout(hl); l.addWidget(hw)
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:12px;"); info.setWordWrap(True)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
         
         # L3 流程 8步
         flow = QGroupBox("L3 增强版 · 8步全自动流程")
@@ -5792,8 +5795,8 @@ class PluggingSceneModule(SubModuleWidget):
         
         hw = QGroupBox("🛡️ L4 旗舰版 · AI全自主 + 安全主动保护")
         hw.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
-        hw.setMinimumHeight(280)
-        hl = QVBoxLayout()
+        hw.setMinimumHeight(350)
+        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
         info = QLabel(
             "<b>在 L3 基础上，增加 VLA 智能决策 + 主动安全:</b><br><br>"
             "◈ <b>VLA 视觉语言动作模型</b>: 新模块从未见过 → AI自动适配 · 零编程<br>"
@@ -5803,8 +5806,10 @@ class PluggingSceneModule(SubModuleWidget):
             "◈ <b>自诊断系统</b>: 预测性维护 · 部件寿命预估 · 故障前预警<br>"
             "◈ <b>7×24 无人值守</b> · 零人工干预 · <b>良率 ≥99.9%</b>"
         )
-        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:10px;"); info.setWordWrap(True)
-        hl.addWidget(info); hw.setLayout(hl); l.addWidget(hw)
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:12px;"); info.setWordWrap(True)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
         
         # 安全层级
         safe = QGroupBox("🛡️ 安全架构 · 五层主动保护")
