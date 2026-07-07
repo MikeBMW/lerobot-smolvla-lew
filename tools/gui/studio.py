@@ -2319,6 +2319,7 @@ class TrainingModule(QWidget):
         param_layout.addRow("Dataset:", self.dataset_combo)
         # 同步 combo 到老的 edit 字段
         self.dataset_combo.currentTextChanged.connect(lambda t: self.dataset_repo_edit.setText(t))
+        self.dataset_combo.currentTextChanged.connect(lambda t: self._auto_output_dir())
         
         # 本地缓存路径显示
         self.dataset_path_label = QLabel()
@@ -2960,6 +2961,13 @@ class TrainingModule(QWidget):
             self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
             self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
 
+    def _auto_output_dir(self):
+        """根据当前数据集自动更新输出目录"""
+        ds = self.dataset_combo.currentText()
+        if ds:
+            name = ds.split("/")[-1]
+            self.output_dir_edit.setText(f"outputs/smolvla_{name}")
+    
     def _on_policy_changed(self, policy):
         """选择策略时自动切换默认参数"""
         if policy in ("smolvla", "smolvla_lew"):
@@ -2983,6 +2991,7 @@ class TrainingModule(QWidget):
             self.lr_spin.setValue(0.00005)
             self._log(f"🔄 已切换 ACT 默认参数")
         self._update_dataset_path(self.dataset_combo.currentText())
+        self._auto_output_dir()
     
     def _reset_defaults(self):
         """恢复 SmolVLA 训练默认参数"""
