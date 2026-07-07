@@ -5847,7 +5847,7 @@ class PluggingSceneModule(SubModuleWidget):
         """乐高积木风格: L2基础 → L3增强 → L4旗舰 功能阶梯"""
         panel = QGroupBox("🧱 功能积木 · 阶梯进化")
         panel.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        outer = QHBoxLayout(); outer.setSpacing(32)
+        outer = QHBoxLayout(); outer.setSpacing(48)
         
         # 功能模块定义: (名称, L2状态, L3状态, L4状态)
         # 状态: 'active'=实色 'new'=新增虚线 'keep'=保留暗色
@@ -5880,12 +5880,12 @@ class PluggingSceneModule(SubModuleWidget):
         brick_rows = []  # [(col, row_idx, brick_widget, state)]
         
         for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
-            col = QVBoxLayout(); col.setSpacing(28)
+            col = QVBoxLayout(); col.setSpacing(36)
             
             # 列标题
             hdr = QFrame()
             hdr.setStyleSheet(f"background:{lvl_color}22; border:2px solid {lvl_color}; border-radius:8px;")
-            hdr.setFixedHeight(52)
+            hdr.setFixedHeight(60)
             hl = QVBoxLayout(); hl.setContentsMargins(4,2,4,2); hl.setSpacing(0)
             t1 = QLabel(lvl_name); t1.setFont(QFont("Arial", 10, QFont.Bold))
             t1.setStyleSheet(f"color:{lvl_color};"); t1.setAlignment(Qt.AlignCenter)
@@ -5912,10 +5912,10 @@ class PluggingSceneModule(SubModuleWidget):
                     continue
                 
                 brick = QFrame()
-                brick.setFixedHeight(64)
+                brick.setFixedHeight(72)
                 
                 if status == 'active':
-                    brick.setStyleSheet(f"background:{lvl_color}; border:2px solid {lvl_color}; border-radius:6px; margin:2px 0;")
+                    brick.setStyleSheet(f"background:{lvl_color}; border:3px solid {lvl_color}; border-radius:6px; margin:3px 0;")
                     txt = QLabel(f"● {name}")
                     txt.setStyleSheet("color:white; font-size:11px; font-weight:bold;")
                     state = 'active'
