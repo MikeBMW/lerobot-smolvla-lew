@@ -459,6 +459,38 @@ ssh nvidia@192.168.23.10 "source /opt/ros/humble/setup.bash && \
 - WSL 不能 `ros2 bag play`（DDS 不通）
 - 用 `_start_replay_display` QTimer 逐帧读取 → 信号面板显示
 
+#### 8.11b. MCAP 数据日志方案（推荐）
+
+Z-MAX 数据量大（433GB/h），推荐使用 **MCAP** 格式替代传统的 SQLite rosbag。
+
+| 特性 | Rosbag (.db3) | MCAP (.mcap) |
+|------|---------------|-------------|
+| 底层 | SQLite3 数据库 | 扁平化二进制 buffer |
+| 传输 | 需要完整文件 | 支持流式边录边传 |
+| 容错 | 数据库损坏难恢复 | chunk 级自恢复 |
+| 压缩 | Zstd | Zstd（高20-30%） |
+| 上位机读取 | 需 ROS2 环境 | `pip install mcap` 即可 |
+
+**录制命令**:
+```bash
+# Orin 端 MCAP 录制
+ros2 bag record -s mcap -o session_name \
+  /realsense/color/image_raw /realsense/depth/image_rect_raw \
+  /robot/force_torque /robot/joint_states /gripper_pos \
+  /tactile_sensor /robot_status \
+  --compression-mode file --compression-format zstd
+```
+
+**Windows 上位机读取**（无需 ROS2）:
+```python
+from mcap.reader import make_reader
+with open("session.mcap", "rb") as f:
+    for schema, channel, message in make_reader(f).iter_messages():
+        pass  # 直接解析 message.data
+```
+
+**决策**: Z-MAX 选 MCAP。详细分析见 `docs/Z-MAX数据日志方案-MCAP分析.md`。
+
 ### 8.12 PyQt5 暗坑
 
 1. **`QThread` 必须 import**: `from PyQt5.QtCore import QThread`
