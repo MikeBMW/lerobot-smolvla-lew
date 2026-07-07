@@ -2293,8 +2293,8 @@ class TrainingModule(QWidget):
                 padding: 4px 8px;
             }}
         """)
-        self.diffusion_spin.setToolTip("Repeated diffusion steps (--policy.repeated_diffusion_steps)")
-        param_layout.addRow("Diffusion Steps:", self.diffusion_spin)
+        self.diffusion_spin.setToolTip("Action prediction steps (repeated diffusion/flow matching steps)")
+        param_layout.addRow("Action Steps:", self.diffusion_spin)
         
         # Dataset selection
         self.dataset_combo = QComboBox()
