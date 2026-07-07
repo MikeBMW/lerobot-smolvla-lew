@@ -5704,7 +5704,7 @@ class PluggingSceneModule(SubModuleWidget):
             ("2", "标准原子功能", "取料·扫码\n·定位·插入", C_GREEN),
             ("3", "动作执行", "标准接口\n精准到位", SYS11_COLOR),
             ("4", "力控反馈", "六维力传感器\n力控闭环", SYS12_COLOR),
-            ("5", "分段式验证", "逐步确认\n异常停机", C_ORANGE),
+            ("5", "AOI验证", "逐步确认\n异常停机", C_ORANGE),
             ("6", "成品下料", "取出完成品\n数据记录", SYS2_COLOR),
         ]:
             card = self._make_step_card(num, title, desc, color)
