@@ -5753,8 +5753,7 @@ class PluggingSceneModule(SubModuleWidget):
         
         hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
         hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
-        hw.setMinimumHeight(350)
-        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
+        hl = QVBoxLayout(); hl.setContentsMargins(6,6,6,6)
         info = QLabel(
             "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
             "◈ <b>多模块自主识别</b>: 视觉识别400G/100G/不同封装 · 自动切换夹爪工装<br>"
