@@ -1627,6 +1627,29 @@ class DatasetModule(SubModuleWidget):
             dl_btn.clicked.connect(self._mk_download_func(ds))
             btn_layout.addWidget(dl_btn)
 
+            # 手动下载按钮
+            manual_btn = QPushButton("📥 手动")
+            manual_btn.setFixedHeight(36)
+            manual_btn.setToolTip("网络不通时：复制链接到浏览器下载，放到指定目录")
+            manual_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_ORANGE};
+                    border: 1px solid {C_ORANGE}88;
+                    border-radius: 6px;
+                    padding: 0px 14px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 56px;
+                }}
+                QPushButton:hover {{
+                    background: {C_ORANGE}33;
+                }}
+            """)
+            manual_btn.clicked.connect(self._mk_manual_dl_func(ds))
+            btn_layout.addWidget(manual_btn)
+
             del_btn = QPushButton("删除")
             del_btn.setFixedHeight(36)
             del_btn.setToolTip("删除本地缓存 (释放磁盘空间)")
@@ -1675,14 +1698,20 @@ class DatasetModule(SubModuleWidget):
             self._table.setCellWidget(i, 6, btn_container)
 
     def _get_cache_dir_for_repo(self, repo_id):
-        """获取数据集本地缓存路径"""
-        repo_slug = repo_id.replace("/", "--")
-        return os.path.join(self._cache_dir, f"datasets--{repo_slug}")
+        """获取数据集本地缓存路径 (LeRobot/HuggingFace datasets 格式)"""
+        repo_slug = repo_id.replace("/", "___")
+        # LeRobot datasets 缓存在 ~/.cache/huggingface/datasets/
+        return os.path.expanduser(f"~/.cache/huggingface/datasets/{repo_slug}")
 
     def _is_cached(self, repo_id):
         """检查数据集是否已缓存"""
         path = self._get_cache_dir_for_repo(repo_id)
-        return os.path.isdir(path) and os.path.getsize(path) > 0 if os.path.exists(path) else False
+        if not os.path.exists(path):
+            return False
+        # 检查是否有实际数据文件
+        import glob
+        parquet_files = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
+        return len(parquet_files) > 0
 
     def _get_cache_size(self):
         """获取全部缓存目录大小"""
@@ -1739,6 +1768,12 @@ class DatasetModule(SubModuleWidget):
         def download():
             self._download_dataset(ds)
         return download
+
+    def _mk_manual_dl_func(self, ds):
+        """创建手动下载的闭包"""
+        def manual_dl():
+            self._manual_download_guide(ds)
+        return manual_dl
 
     def _mk_delete_func(self, ds):
         """创建删除的闭包"""
@@ -1855,6 +1890,40 @@ Default Branch: {branch}
         dialog.setLayout(dlg_layout)
         dialog.exec_()
 
+    def _manual_download_guide(self, ds):
+        """显示手动下载指引"""
+        repo_id = ds["repo_id"]
+        cache_path = self._get_cache_dir_for_repo(repo_id)
+        hf_url = f"https://huggingface.co/datasets/{repo_id}"
+        hf_dl = f"https://huggingface.co/datasets/{repo_id}/resolve/main"
+        
+        msg = f"""📥 手动下载 · {ds['name']}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📎 下载链接（浏览器打开）:
+   {hf_url}
+
+⬇️ 直接下载按钮在页面右上角 ⋮ → Download
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 下载后放到这个目录:
+   {cache_path}
+
+   在 WSL 终端里执行:
+   mkdir -p "{cache_path}"
+   然后把下载的文件放到这个目录
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 提示:
+   1. 浏览器访问上面的链接
+   2. 点 Download 下载 ZIP
+   3. 解压到上面📁目录
+   4. 回数据集管理点「刷新」
+"""
+        QMessageBox.information(self, f"📥 手动下载 - {ds['name']}", msg)
+        # 复制下载链接到剪贴板
+        QApplication.clipboard().setText(hf_url)
+    
     def _download_dataset(self, ds):
         """下载数据集（仅下载前 N episodes）"""
         from PyQt5.QtWidgets import QInputDialog
