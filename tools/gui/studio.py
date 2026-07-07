@@ -2690,6 +2690,27 @@ class TrainingModule(QWidget):
         self.start_btn.clicked.connect(self._start_training)
         btn_layout.addWidget(self.start_btn)
         
+        # 恢复默认参数
+        self.defaults_btn = QPushButton("🔄 恢复默认")
+        self.defaults_btn.setToolTip("一键恢复 SmolVLA 原始默认训练参数")
+        self.defaults_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C_CARD};
+                color: {C_GRAY};
+                border: 1px solid {C_BORDER};
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {C_BORDER};
+                color: {C_WHITE};
+            }}
+        """)
+        self.defaults_btn.clicked.connect(self._reset_defaults)
+        btn_layout.addWidget(self.defaults_btn)
+        
         # Pause/Resume button
         self.pause_btn = QPushButton("⏸ Pause")
         self.pause_btn.setEnabled(False)
@@ -2933,6 +2954,29 @@ class TrainingModule(QWidget):
         else:
             self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
             self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
+
+    def _reset_defaults(self):
+        """恢复 SmolVLA 训练默认参数"""
+        self.dataset_combo.setCurrentText("lerobot/pusht")
+        self.policy_combo.setCurrentText("smolvla_lew")
+        self.freeze_checkbox.setChecked(True)
+        self.world_model_checkbox.setChecked(False)
+        self.diffusion_spin.setValue(5)
+        self.batch_spin.setValue(8)
+        self.steps_spin.setValue(500)
+        self.ckpt_spin.setValue(100)
+        self.lr_spin.setValue(0.0001)
+        self.weight_decay_spin.setValue(0.000001)
+        self.grad_clip_spin.setValue(10.0)
+        self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
+        self.warmup_spin.setValue(500)
+        self.decay_spin.setValue(500)
+        self.peak_lr_spin.setValue(0.0001)
+        self.decay_lr_spin.setValue(0.000001)
+        self.output_dir_edit.setText("outputs/smolvla_pusht")
+        self.eval_freq_spin.setValue(500)
+        self.push_hub_checkbox.setChecked(False)
+        self._log("🔄 已恢复 SmolVLA 默认训练参数")
 
     def _start_training(self):
         """Start training"""
