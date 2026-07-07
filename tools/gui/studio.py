@@ -5672,11 +5672,14 @@ class PluggingSceneModule(SubModuleWidget):
         self.scene_tabs.addTab(self._build_l3_tab(), "🤖 L3 增强版 · 多模块自主")
         self.scene_tabs.addTab(self._build_l4_tab(), "🛡️ L4 旗舰版 · 安全全自主")
         
+        # Tab切换时更新积木面板高亮
+        self.scene_tabs.currentChanged.connect(self._update_brick_highlight)
+        
         bl.addWidget(self.scene_tabs)
         
         # ── 🧱 功能积木 · 阶梯进化图 ──
-        bricks = self._build_brick_panel()
-        bl.addWidget(bricks)
+        self.brick_panel, self._brick_rows = self._build_brick_panel()
+        bl.addWidget(self.brick_panel)
         
         body.setLayout(bl)
         self._build_shell(body)
@@ -5844,81 +5847,117 @@ class PluggingSceneModule(SubModuleWidget):
         """乐高积木风格: L2基础 → L3增强 → L4旗舰 功能阶梯"""
         panel = QGroupBox("🧱 功能积木 · 阶梯进化")
         panel.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        outer = QHBoxLayout(); outer.setSpacing(12)
+        outer = QHBoxLayout(); outer.setSpacing(16)
         
-        # 定义三层功能积木
-        # (名称, 颜色, L2状态, L3状态, L4状态)
-        # 状态: 'base'=基础(实色) 'add'=新增(高亮) 'keep'=保留(暗色) 'replace'=替换(不同色) 'none'=无
+        # 功能模块定义: (名称, L2状态, L3状态, L4状态)
+        # 状态: 'active'=实色 'new'=新增虚线 'keep'=保留暗色
         modules = [
-            ("人工编排", ROI_ACCENT,  'base',  'keep',  'keep'),
-            ("原子功能库", C_GREEN,  'base',  'keep',  'keep'),
-            ("动作执行", SYS11_COLOR,  'base',  'keep',  'keep'),
-            ("力控反馈", SYS12_COLOR,  'base',  'keep',  'keep'),
-            ("AOI验证", C_ORANGE,  'base',  'keep',  'keep'),
-            ("成品下料", SYS2_COLOR,  'base',  'keep',  'keep'),
-            
-            ("多模块识别", C_GREEN,  'none',  'add',   'keep'),
-            ("自主闭环", SYS11_COLOR,  'none',  'add',   'keep'),
-            ("换线换配方", C_ORANGE,  'none',  'add',   'keep'),
-            ("异常自恢复", SYS12_COLOR,  'none',  'add',   'keep'),
-            
-            ("力控预判", SYS11_COLOR,  'none',  'none',  'add'),
-            ("触觉闭环", C_GREEN,  'none',  'none',  'add'),
-            ("光幕联动", C_ORANGE,  'none',  'none',  'add'),
-            ("自诊断预警", ROI_ACCENT,  'none',  'none',  'add'),
-            ("AI行为预测", SYS12_COLOR,  'none',  'none',  'add'),
+            ("人工流程编排",  'active','keep','keep'),
+            ("标准原子功能库", 'active','keep','keep'),
+            ("动作执行(ROS2)", 'active','keep','keep'),
+            ("力控反馈闭环",   'active','keep','keep'),
+            ("AOI验证检测",    'active','keep','keep'),
+            ("成品下料分类",   'active','keep','keep'),
+            (None, None, None, None),  # 分隔
+            ("多模块自主识别",  None,  'new',  'keep'),
+            ("自主闭环工作",    None,  'new',  'keep'),
+            ("换线自主换配方",  None,  'new',  'keep'),
+            ("异常诊断自恢复",  None,  'new',  'keep'),
+            (None, None, None, None),  # 分隔
+            ("力控预判保护",    None,  None,   'new'),
+            ("触觉闭环反馈",    None,  None,   'new'),
+            ("光幕联动安全",    None,  None,   'new'),
+            ("自诊断预警维护",  None,  None,   'new'),
+            ("AI行为预测避让",  None,  None,   'new'),
         ]
         
         levels = [
-            ("🔧 L2\n基线版", "≥99.2%", 0),
-            ("🤖 L3\n增强版", "≥99.5%", 1),
-            ("🛡️ L4\n旗舰版", "≥99.9%", 2),
+            ("🔧 L2 基线版", "≥99.2%", C_GREEN),
+            ("🤖 L3 增强版", "≥99.5%", SYS11_COLOR),
+            ("🛡️ L4 旗舰版", "≥99.9%", C_RED),
         ]
         
-        for lvl_name, lvl_yield, lvl_idx in levels:
-            col = QVBoxLayout(); col.setSpacing(4)
-            # 等级标题
-            hdr = QLabel(f"{lvl_name}\n{lvl_yield}")
-            hdr.setFont(QFont("Arial", 9, QFont.Bold))
-            if lvl_idx == 0: c = ROI_ACCENT
-            elif lvl_idx == 1: c = C_GREEN
-            else: c = C_RED
-            hdr.setStyleSheet(f"color:{c}; background:{c}18; border:2px solid {c}; border-radius:8px; padding:6px;")
-            hdr.setAlignment(Qt.AlignCenter); hdr.setFixedHeight(50)
-            col.addWidget(hdr)
+        brick_rows = []  # [(col, row_idx, brick_widget, state)]
+        
+        for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
+            col = QVBoxLayout(); col.setSpacing(3)
             
-            # 积木块
-            for name, color, l2, l3, l4 in modules:
-                status = [l2, l3, l4][lvl_idx]
-                if status == 'none':
+            # 列标题
+            hdr = QFrame()
+            hdr.setStyleSheet(f"background:{lvl_color}22; border:2px solid {lvl_color}; border-radius:8px;")
+            hdr.setFixedHeight(48)
+            hl = QVBoxLayout(); hl.setContentsMargins(4,2,4,2); hl.setSpacing(0)
+            t1 = QLabel(lvl_name); t1.setFont(QFont("Arial", 10, QFont.Bold))
+            t1.setStyleSheet(f"color:{lvl_color};"); t1.setAlignment(Qt.AlignCenter)
+            t2 = QLabel(lvl_yield); t2.setFont(QFont("Arial", 8))
+            t2.setStyleSheet(f"color:{lvl_color}99;"); t2.setAlignment(Qt.AlignCenter)
+            hl.addWidget(t1); hl.addWidget(t2)
+            hdr.setLayout(hl); col.addWidget(hdr)
+            
+            row_idx = 0
+            for name, l2, l3, l4 in modules:
+                if name is None:  # 分隔线
+                    sep = QFrame()
+                    sep.setFrameShape(QFrame.HLine)
+                    sep.setStyleSheet(f"color:{C_BORDER};")
+                    sep.setFixedHeight(6)
+                    col.addWidget(sep)
+                    row_idx += 1
+                    continue
+                
+                status = [l2, l3, l4][col_idx]
+                if status is None:
+                    col.addSpacing(24)  # 占位
+                    row_idx += 1
                     continue
                 
                 brick = QFrame()
-                brick.setFixedHeight(28)
+                brick.setFixedHeight(26)
                 
-                if status == 'base':
-                    brick.setStyleSheet(f"background:{color}; border:2px solid {color}; border-radius:5px;")
-                    txt = QLabel(f"⬛ {name}")
-                    txt.setStyleSheet(f"color:white; font-size:9px; font-weight:bold;")
-                elif status == 'add':
-                    brick.setStyleSheet(f"background:{color}44; border:2px dashed {color}; border-radius:5px;")
-                    txt = QLabel(f"✨ {name}")
-                    txt.setStyleSheet(f"color:{color}; font-size:9px; font-weight:bold;")
+                if status == 'active':
+                    brick.setStyleSheet(f"background:{lvl_color}; border:2px solid {lvl_color}; border-radius:5px;")
+                    txt = QLabel(f"● {name}")
+                    txt.setStyleSheet("color:white; font-size:8px; font-weight:bold;")
+                    state = 'active'
+                elif status == 'new':
+                    brick.setStyleSheet(f"background:{lvl_color}33; border:2px dashed {lvl_color}; border-radius:5px;")
+                    txt = QLabel(f"✦ {name}")
+                    txt.setStyleSheet(f"color:{lvl_color}; font-size:8px; font-weight:bold;")
+                    state = 'new'
                 else:  # keep
-                    brick.setStyleSheet(f"background:{color}22; border:1px solid {color}66; border-radius:5px;")
+                    brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}44; border-radius:5px;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{color}88; font-size:8px;")
+                    txt.setStyleSheet(f"color:{C_GRAY}; font-size:7px;")
+                    state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
-                bl_inner = QVBoxLayout(); bl_inner.setContentsMargins(4,2,4,2); bl_inner.addWidget(txt)
-                brick.setLayout(bl_inner)
+                bl = QVBoxLayout(); bl.setContentsMargins(3,1,3,1); bl.addWidget(txt)
+                brick.setLayout(bl)
                 col.addWidget(brick)
+                brick_rows.append((col_idx, row_idx, brick, state, lvl_color))
+                row_idx += 1
             
             col.addStretch()
             outer.addLayout(col, 1)
         
         panel.setLayout(outer)
-        return panel
+        return panel, brick_rows
+    
+    def _update_brick_highlight(self, tab_idx):
+        """Tab切换时高亮对应列"""
+        if not hasattr(self, '_brick_rows'):
+            return
+        for col_idx, row_idx, brick, state, lvl_color in self._brick_rows:
+            if col_idx == tab_idx and state == 'keep':
+                # 当前Tab: 保留的积木变亮一些
+                brick.setStyleSheet(f"background:{lvl_color}44; border:1px solid {lvl_color}99; border-radius:5px;")
+                txt = brick.findChild(QLabel)
+                if txt: txt.setStyleSheet(f"color:{lvl_color}cc; font-size:8px;")
+            elif state == 'keep':
+                # 非当前Tab: 保持暗色
+                brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}33; border-radius:5px;")
+                txt = brick.findChild(QLabel)
+                if txt: txt.setStyleSheet(f"color:{C_GRAY}; font-size:7px;")
 
     def _spin_style(self):
         return ""  # 已移除ROI计算器
