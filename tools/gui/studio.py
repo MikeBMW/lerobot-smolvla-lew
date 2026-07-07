@@ -2299,6 +2299,7 @@ class TrainingModule(QWidget):
         self.dataset_combo = QComboBox()
         self.dataset_combo.addItems([
             "lerobot/pusht",
+            "lerobot/metaworld_mt50",
             "lerobot/xarm_lift_medium",
             "lerobot/aloha_sim_transfer_cube_human",
             "lerobot/koch_bimanual_folding",
@@ -2316,6 +2317,16 @@ class TrainingModule(QWidget):
         """)
         param_layout.addRow("Dataset:", self.dataset_combo)
         
+        # 本地缓存路径显示
+        self.dataset_path_label = QLabel()
+        self.dataset_path_label.setFont(QFont("Consolas", 8))
+        self.dataset_path_label.setStyleSheet(f"color:{C_GRAY}; padding-left:4px;")
+        self.dataset_path_label.setWordWrap(True)
+        param_layout.addRow("本地路径:", self.dataset_path_label)
+        self.dataset_combo.currentTextChanged.connect(self._update_dataset_path)
+        # 初始化显示
+        self._update_dataset_path(self.dataset_combo.currentText())
+
         # Batch size
         self.batch_spin = QSpinBox()
         self.batch_spin.setRange(1, 256)
@@ -2899,6 +2910,23 @@ class TrainingModule(QWidget):
         self.smolvla_btn.setEnabled(False)
         self._log("✅ Switch completed")
     
+    def _update_dataset_path(self, repo_id):
+        """更新数据集本地缓存路径显示"""
+        if not repo_id: return
+        slug = repo_id.replace("/", "___")
+        path = os.path.expanduser(f"~/.cache/huggingface/datasets/{slug}")
+        cached = os.path.isdir(path)
+        if cached:
+            import glob
+            parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
+            size = sum(os.path.getsize(p) for p in parquets) if parquets else 0
+            for unit in ['B','KB','MB','GB']:
+                if size < 1024: break
+                size /= 1024
+            self.dataset_path_label.setText(f"✅ {path}  ({len(parquets)} files, {size:.1f}{unit})")
+        else:
+            self.dataset_path_label.setText(f"❌ 未缓存 · {path}")
+
     def _start_training(self):
         """Start training"""
         # 读取所有 UI 参数
@@ -2909,7 +2937,7 @@ class TrainingModule(QWidget):
         repeated_diffusion_steps = self.diffusion_spin.value()
         
         # Dataset settings
-        dataset_repo_id = self.dataset_repo_edit.text()
+        dataset_repo_id = self.dataset_combo.currentText()  # 用下拉框选择
         
         # Training settings
         batch_size = self.batch_spin.value()
