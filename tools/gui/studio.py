@@ -5843,7 +5843,12 @@ class PluggingSceneModule(SubModuleWidget):
             sl.addLayout(row)
         safe.setLayout(sl); l.addWidget(safe)
         
-        w.setLayout(l); return w
+        w.setLayout(l)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
+        return outer
     
     def _make_step_card(self, num, title, desc, color):
         card = QFrame()
