@@ -74,78 +74,53 @@ class TrainingBackend(QObject):
                                  output_dir="outputs/smolvla_pusht",
                                  eval_freq=500, push_to_hub=False,
                                  log_callback=None, progress_callback=None):
-        """启动训练 —— 直接用 Python 脚本避免 CLI 兼容问题"""
         if self.process and self.process.poll() is None:
             if log_callback: log_callback("[警告] 训练已在运行中")
             return False
 
-        import time as _time, tempfile
+        import time as _time
         
-        train_script = f'''
+        train_script = f"""
 import json, torch, time, os
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {{device}}")
 
+from lerobot.policies.smolvla import SmolVLAPolicy
 from lerobot.datasets import LeRobotDataset
 from torch.utils.data import DataLoader
 
-# 加载数据 - 自动检测维度
-episodes = list(range(8))
+print("Loading SmolVLA base (Flow Matching)...")
+policy = SmolVLAPolicy.from_pretrained("lerobot/smolvla_base")
+policy.to(device)
+
+for name, param in policy.named_parameters():
+    if "smolvlm" in name or "vlm" in name.lower():
+        param.requires_grad = False
+
+trainable = sum(p.numel() for p in policy.parameters() if p.requires_grad)
+total = sum(p.numel() for p in policy.parameters())
+print(f"SmolVLA: {{total/1e6:.0f}}M total, {{trainable/1e6:.0f}}M trainable (VLM frozen)")
+
+episodes = list(range(3))
 ds = LeRobotDataset("{dataset_repo_id}", episodes=episodes)
-sample = ds[0]
+print(f"Dataset: {{len(ds)}} frames, {{ds.num_episodes}} episodes")
 
-# 自动检测 state/action 维度 (含图像)
-state_keys = [k for k in sample.keys() if 'state' in k and 'image' not in k]
-state_dim = sum(sample[k].shape[0] for k in state_keys)
-action_dim = sample['action'].shape[0]
-has_image = 'observation.image' in sample
-if has_image:
-    import torch.nn.functional as F
-    img = sample['observation.image']
-    img_dim = 64 * 64 * 3
-    print(f"Dataset: {{len(ds)}} frames, State: {{state_dim}}d, +Image: {{list(img.shape)}} -> {{img_dim}}d, Action: {{action_dim}}d")
-else:
-    img_dim = 0
-    print(f"Dataset: {{len(ds)}} frames, State: {{state_dim}}d, Action: {{action_dim}}d")
-
-total_dim = state_dim + img_dim
-model = torch.nn.Sequential(
-    torch.nn.Linear(total_dim, 1024), torch.nn.ReLU(),
-    torch.nn.Linear(1024, 1024), torch.nn.ReLU(),  
-    torch.nn.Linear(1024, 1024), torch.nn.ReLU(),
-    torch.nn.Linear(1024, action_dim),
-).to(device)
-n_params = sum(p.numel() for p in model.parameters())
-print(f"Model: {{n_params/1e6:.1f}}M params")
-print(f"Network:")
-print(model)
-print(f"---")
-
-loader = DataLoader(ds, batch_size={batch_size}, shuffle=True, num_workers=0)
-optimizer = torch.optim.AdamW(model.parameters(), lr={learning_rate})
-criterion = torch.nn.MSELoss()
+loader = DataLoader(ds, batch_size=1, shuffle=True, num_workers=0)
+optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, policy.parameters()), lr={learning_rate})
 losses = []
 output = "{output_dir}"
 os.makedirs(output, exist_ok=True)
 
-print("Training...")
+print("Training (SmolVLA Flow Matching, batch=1)...")
+policy.train()
 for step in range({total_steps}):
     try: batch = next(iter(loader))
-    except: loader = DataLoader(ds, batch_size={batch_size}, shuffle=True); batch = next(iter(loader))
-    
-    obs_parts = [batch[k].float() for k in state_keys]
-    if has_image:
-        imgs = batch['observation.image'].float()
-        B = imgs.shape[0]
-        imgs_small = F.interpolate(imgs, size=(64,64), mode='bilinear', align_corners=False)
-        obs_parts.append(imgs_small.reshape(B, -1))
-    obs = torch.cat(obs_parts, dim=1).to(device)
-    act = batch['action'].float().to(device)
-    loss = criterion(model(obs), act)
+    except: loader = DataLoader(ds, batch_size=1, shuffle=True); batch = next(iter(loader))
+    batch = {{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}}
+    loss = policy.forward(batch)
     optimizer.zero_grad(); loss.backward(); optimizer.step()
-    
     lv = loss.item(); losses.append(lv)
     if step % max(1, {total_steps}//10) == 0:
         print(f"Step {{step:4d}}: loss={{lv:.6f}}")
@@ -153,12 +128,12 @@ for step in range({total_steps}):
 pct = round((losses[0]-losses[-1])/losses[0]*100, 1)
 print(f"Final: {{losses[0]:.6f}} -> {{losses[-1]:.6f}} ({{pct}}% down)")
 
-torch.save(model.state_dict(), f"{{output}}/policy.pt")
+torch.save(policy.state_dict(), f"{{output}}/policy.pt")
 with open(f"{{output}}/losses.json", "w") as f: json.dump(losses, f)
-meta = {{"model":"SmolVLA-MLP","dataset":"{dataset_repo_id}","params":n_params,"steps":{total_steps},"episodes":len(episodes),"frames":len(ds),"device":str(device),"initial_loss":losses[0],"final_loss":losses[-1],"min_loss":min(losses),"reduction_pct":pct,"timestamp":time.strftime("%Y-%m-%d %H:%M"),"_dir":"{output_dir.split('/')[-1]}"}}
+meta = {{"model":"SmolVLA-FlowMatching","dataset":"{dataset_repo_id}","params":int(trainable),"total_params":int(total),"steps":{total_steps},"episodes":len(episodes),"frames":len(ds),"device":str(device),"initial_loss":losses[0],"final_loss":losses[-1],"min_loss":min(losses),"reduction_pct":pct,"timestamp":time.strftime("%Y-%m-%d %H:%M"),"_dir":"{output_dir.split('/')[-1]}"}}
 with open(f"{{output}}/training_meta.json", "w") as f: json.dump(meta, f, indent=2)
-print(f"DONE: {{pct}}% loss reduction")
-'''
+print(f"DONE: {{pct}}% loss (SmolVLA原生Flow Matching)")
+"""
         script_path = os.path.join(repo_root, "_train_temp.py")
         with open(script_path, 'w') as f: f.write(train_script)
         

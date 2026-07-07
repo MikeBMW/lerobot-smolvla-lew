@@ -36,6 +36,9 @@ model = torch.nn.Sequential(
 ).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 print(f"Model: {n_params/1e6:.1f}M params")
+print(f"Network:")
+print(model)
+print(f"---")
 
 loader = DataLoader(ds, batch_size=4, shuffle=True, num_workers=0)
 optimizer = torch.optim.AdamW(model.parameters(), lr=0.0001)
