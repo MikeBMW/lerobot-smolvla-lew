@@ -6219,16 +6219,19 @@ class StudioMainWindow(QMainWindow):
                 if os.path.exists(full_path):
                     try:
                         if opener == "libreoffice":
-                            # WSL: 复制到 Windows 临时目录再用 explorer.exe 打开
-                            import shutil, tempfile
-                            ext = os.path.splitext(full_path)[1]
+                            # WSL: 复制到 Windows 临时目录 → PowerPoint 打开
+                            import shutil
                             tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
                             tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
                             os.makedirs(tmp_dir, exist_ok=True)
                             tmp_path = os.path.join(tmp_dir, tmp_name)
                             shutil.copy2(full_path, tmp_path)
                             win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
-                            subprocess.Popen(["explorer.exe", win_path])
+                            # .pptx 用 PowerPoint，其他用默认程序
+                            if full_path.endswith(".pptx"):
+                                subprocess.Popen(["cmd.exe", "/c", "start", "powerpnt", win_path])
+                            else:
+                                subprocess.Popen(["explorer.exe", win_path])
                         elif opener == "xdg-open":
                             # WSL: 复制到 Windows 临时目录再打开
                             import shutil
