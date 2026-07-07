@@ -3004,14 +3004,20 @@ class TrainingModule(QWidget):
     def _start_training(self):
         """Start training"""
         # 读取所有 UI 参数
-        # Policy settings
         policy_type = self.policy_combo.currentText()
+        
+        # Dataset settings
+        dataset_repo_id = self.dataset_combo.currentText()
+        
+        # 自动更新输出目录
+        ds_name = dataset_repo_id.split("/")[-1]
+        output_dir = f"outputs/smolvla_{ds_name}"
+        self.output_dir_edit.setText(output_dir)
+        
+        # Policy settings
         freeze_smolvlm = self.freeze_checkbox.isChecked()
         enable_lew_world_model = self.world_model_checkbox.isChecked()
         repeated_diffusion_steps = self.diffusion_spin.value()
-        
-        # Dataset settings
-        dataset_repo_id = self.dataset_combo.currentText()  # 用下拉框选择
         
         # Training settings
         batch_size = self.batch_spin.value()
@@ -3031,7 +3037,6 @@ class TrainingModule(QWidget):
         decay_lr = self.decay_lr_spin.value()
         
         # Experiment settings
-        output_dir = self.output_dir_edit.text()
         eval_freq = self.eval_freq_spin.value()
         push_to_hub = self.push_hub_checkbox.isChecked()
         
@@ -3039,11 +3044,8 @@ class TrainingModule(QWidget):
         self._log(f"   Policy: {policy_type} | Dataset: {dataset_repo_id}")
         self._log(f"   Batch: {batch_size} | Steps: {total_steps} | LR: {learning_rate}")
         
-        # Get repository root path
         import os
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        # Determine output directory
         output_dir = os.path.join(repo_root, output_dir)
         
         # Start training with all parameters
