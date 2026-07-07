@@ -16,21 +16,18 @@ sample = ds[0]
 # 自动检测 state/action 维度 (含图像)
 state_keys = [k for k in sample.keys() if 'state' in k and 'image' not in k]
 state_dim = sum(sample[k].shape[0] for k in state_keys)
+action_dim = sample['action'].shape[0]
 has_image = 'observation.image' in sample
 if has_image:
-    # 把图像resize到小尺寸后flatten
     import torch.nn.functional as F
     img = sample['observation.image']
-    img_dim = 64 * 64 * 3  # resize 到 64×64
+    img_dim = 64 * 64 * 3
     print(f"Dataset: {len(ds)} frames, State: {state_dim}d, +Image: {list(img.shape)} -> {img_dim}d, Action: {action_dim}d")
 else:
     img_dim = 0
     print(f"Dataset: {len(ds)} frames, State: {state_dim}d, Action: {action_dim}d")
 
 total_dim = state_dim + img_dim
-action_dim = sample['action'].shape[0]
-
-# MLP (含图像支持)
 model = torch.nn.Sequential(
     torch.nn.Linear(total_dim, 1024), torch.nn.ReLU(),
     torch.nn.Linear(1024, 1024), torch.nn.ReLU(),  
