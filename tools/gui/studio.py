@@ -1208,7 +1208,7 @@ class HomeWidget(QWidget):
             # WSL: 复制到 Windows 临时目录再打开
             import shutil
             tmp_name = f"zmax_spec_{os.path.basename(doc_path)}"
-            tmp_dir = "/mnt/c/Users/xspace/AppData/Local/Temp"
+            tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
             os.makedirs(tmp_dir, exist_ok=True)
             tmp_path = os.path.join(tmp_dir, tmp_name)
             shutil.copy2(doc_path, tmp_path)
@@ -6223,7 +6223,7 @@ class StudioMainWindow(QMainWindow):
                             import shutil, tempfile
                             ext = os.path.splitext(full_path)[1]
                             tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
-                            tmp_dir = "/mnt/c/Users/xspace/AppData/Local/Temp"
+                            tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
                             os.makedirs(tmp_dir, exist_ok=True)
                             tmp_path = os.path.join(tmp_dir, tmp_name)
                             shutil.copy2(full_path, tmp_path)
@@ -6234,7 +6234,7 @@ class StudioMainWindow(QMainWindow):
                             import shutil
                             ext = os.path.splitext(full_path)[1]
                             tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
-                            tmp_dir = "/mnt/c/Users/xspace/AppData/Local/Temp"
+                            tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
                             os.makedirs(tmp_dir, exist_ok=True)
                             tmp_path = os.path.join(tmp_dir, tmp_name)
                             shutil.copy2(full_path, tmp_path)
