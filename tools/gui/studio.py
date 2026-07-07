@@ -2925,7 +2925,7 @@ class TrainingModule(QWidget):
                 for unit in ['B','KB','MB','GB']:
                     if size < 1024: break
                     size /= 1024
-                self.dataset_path_label.setText(f"✅✅ 已缓存 · {len(valid)}文件 · {size:.1f}{unit}")
+                self.dataset_path_label.setText(f"✅ 已缓存 · {len(valid)}文件 · {size:.1f}{unit}")
                 self.dataset_path_label.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_GREEN}22; border:1px solid {C_GREEN}66; border-radius:4px;")
             except Exception as e:
                 self.dataset_path_label.setText(f"⚠️ {e}")
