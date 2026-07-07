@@ -5692,6 +5692,7 @@ class PluggingSceneModule(SubModuleWidget):
         # 产品迭代策略标题
         hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
         hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
+        hw.setMinimumHeight(280)
         hl = QVBoxLayout()
         hw_info = QLabel(
             "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
@@ -5746,6 +5747,7 @@ class PluggingSceneModule(SubModuleWidget):
         
         hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
         hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        hw.setMinimumHeight(280)
         hl = QVBoxLayout()
         info = QLabel(
             "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
@@ -5788,6 +5790,7 @@ class PluggingSceneModule(SubModuleWidget):
         
         hw = QGroupBox("🛡️ L4 旗舰版 · AI全自主 + 安全主动保护")
         hw.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
+        hw.setMinimumHeight(280)
         hl = QVBoxLayout()
         info = QLabel(
             "<b>在 L3 基础上，增加 VLA 智能决策 + 主动安全:</b><br><br>"
