@@ -59,24 +59,31 @@ class TrainingBackend(QObject):
         return repo_root
 
     def start_smolvla_training(self, repo_root, 
-                                 policy_type="smolvla_lew",
-                                 freeze_smolvlm=True,
-                                 enable_lew_world_model=False,
-                                 repeated_diffusion_steps=5,
                                  dataset_repo_id="lerobot/pusht",
-                                 batch_size=8, total_steps=500,
-                                 checkpoint_interval=1000,
-                                 learning_rate=0.0001, weight_decay=0.000001,
-                                 grad_clip_norm=10.0,
-                                 scheduler_type="cosine_decay_with_warmup",
-                                 num_warmup_steps=500, num_decay_steps=500,
-                                 peak_lr=0.0001, decay_lr=0.000001,
                                  output_dir="outputs/smolvla_pusht",
-                                 eval_freq=500, push_to_hub=False,
-                                 log_callback=None, progress_callback=None):
+                                 **params):
+        """Start SmolVLA training with all configuration parameters from GUI"""
+        # Extract callbacks first
+        log_callback = params.pop("log_callback", None)
+        progress_callback = params.pop("progress_callback", None)
+
         if self.process and self.process.poll() is None:
             if log_callback: log_callback("[警告] 训练已在运行中")
             return False
+
+        # Extract params with defaults matching SmolVLAConfig
+        freeze_smolvlm = params.get("freeze_smolvlm", True)
+        n_obs_steps = params.get("n_obs_steps", 1)
+        chunk_size = params.get("chunk_size", 50)
+        max_state_dim = params.get("max_state_dim", 32)
+        max_action_dim = params.get("max_action_dim", 32)
+        batch_size = params.get("batch_size", 1)
+        total_steps = params.get("total_steps", 500)
+        learning_rate = params.get("learning_rate", 0.0001)
+        weight_decay = params.get("weight_decay", 1e-10)
+        grad_clip_norm = params.get("grad_clip_norm", 10.0)
+        repeated_diffusion_steps = params.get("repeated_diffusion_steps", 5)
+        num_vlm_layers = params.get("num_vlm_layers", 16)
 
         import time as _time
         

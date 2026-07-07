@@ -2127,17 +2127,17 @@ class TrainingModule(QWidget):
         # ===== Top Bar: Title + SmolVLA Button =====
         top_bar = QHBoxLayout()
         
-        title = QLabel("🚀 Training Console")
+        title = QLabel("🧠 SmolVLA Training Console")
         title.setStyleSheet(f"color: {C_WHITE}; font-size: 20px; font-weight: bold;")
         top_bar.addWidget(title)
         
         top_bar.addStretch()
         
-        # SmolVLA button
-        self.smolvla_btn = QPushButton("🧠  Native Training")
+        # SmolVLA info badge
+        self.smolvla_btn = QPushButton("✅ SmolVLA")
         self.smolvla_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {C_BLUE};
+                background: {C_GREEN};
                 color: white;
                 border: none;
                 border-radius: 6px;
@@ -2145,21 +2145,14 @@ class TrainingModule(QWidget):
                 font-size: 12px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{
-                background: {C_BLUE}dd;
-            }}
-            QPushButton:pressed {{
-                background: {C_BLUE}bb;
-            }}
         """)
-        self.smolvla_btn.clicked.connect(self._switch_to_smolvla)
-        self.smolvla_btn.setToolTip("Switch to the native SmolVLA training mode (using the lerobot/policies/smolvla policy)")
+        self.smolvla_btn.setEnabled(False)
         top_bar.addWidget(self.smolvla_btn)
         
         layout.addLayout(top_bar)
         
         # ===== Training Parameter Area =====
-        param_group = QGroupBox(" Training Parameters ")
+        param_group = QGroupBox(" SmolVLA Parameters ")
         param_group.setStyleSheet(f"""
             QGroupBox {{
                 color: {C_WHITE};
@@ -2203,34 +2196,17 @@ class TrainingModule(QWidget):
         param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         param_layout.setContentsMargins(0, 4, 0, 0)
         
-        # ===== Policy Settings =====
-        policy_label = QLabel("Policy Settings")
-        policy_label.setFont(QFont("Arial", 11, QFont.Bold))
-        policy_label.setStyleSheet(f"color: {C_CYAN};")
+        # ===== SmolVLA Model Info =====
+        policy_label = QLabel("🧠 SmolVLA Model")
+        policy_label.setFont(QFont("Arial", 12, QFont.Bold))
+        policy_label.setStyleSheet(f"color: {C_BLUE}; padding-bottom: 4px;")
         param_layout.addRow(policy_label)
         
-        # Policy Type
-        self.policy_combo = QComboBox()
-        self.policy_combo.addItems([
-            "smolvla_lew",
-            "smolvla",
-            "diffusion",
-            "act",
-            "tdmpc"
-        ])
-        self.policy_combo.setStyleSheet(f"""
-            QComboBox {{
-                color: {C_WHITE};
-                background: {C_BG};
-                border: 1px solid {C_BORDER};
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-width: 200px;
-            }}
-        """)
-        self.policy_combo.setToolTip("Policy type (--policy.type)")
-        param_layout.addRow("Policy Type:", self.policy_combo)
-        self.policy_combo.currentTextChanged.connect(self._on_policy_changed)
+        # SmolVLA version info (read-only display)
+        self.vlm_info = QLabel("SmolVLM2-500M-Video-Instruct · 450M params · Cross-Attention")
+        self.vlm_info.setStyleSheet(f"color: {C_GRAY}; font-size: 10px; padding: 4px 8px; background: {C_BG}; border-radius: 4px;")
+        self.vlm_info.setWordWrap(True)
+        param_layout.addRow("VLM Backbone:", self.vlm_info)
         
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
@@ -2295,6 +2271,76 @@ class TrainingModule(QWidget):
         """)
         self.diffusion_spin.setToolTip("Action prediction steps (repeated diffusion/flow matching steps)")
         param_layout.addRow("Action Steps:", self.diffusion_spin)
+
+        # ===== Architecture =====
+        arch_label = QLabel("Architecture")
+        arch_label.setFont(QFont("Arial", 11, QFont.Bold))
+        arch_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(arch_label)
+
+        # VLM layers
+        self.vlm_layers_spin = QSpinBox()
+        self.vlm_layers_spin.setRange(4, 32)
+        self.vlm_layers_spin.setValue(16)
+        self.vlm_layers_spin.setToolTip("Number of VLM layers used (num_vlm_layers)")
+        param_layout.addRow("VLM Layers:", self.vlm_layers_spin)
+
+        # Expert layers
+        self.expert_layers_spin = QSpinBox()
+        self.expert_layers_spin.setRange(-1, 32)
+        self.expert_layers_spin.setValue(-1)
+        self.expert_layers_spin.setToolTip("Expert layers (-1 = same as VLM)")
+        param_layout.addRow("Expert Layers:", self.expert_layers_spin)
+
+        # Expert width
+        self.expert_width_spin = QDoubleSpinBox()
+        self.expert_width_spin.setRange(0.25, 2.0)
+        self.expert_width_spin.setValue(0.75)
+        self.expert_width_spin.setSingleStep(0.25)
+        self.expert_width_spin.setToolTip("Expert hidden size relative to VLM")
+        param_layout.addRow("Expert Width:", self.expert_width_spin)
+
+        # Self-attention interval
+        self.self_attn_spin = QSpinBox()
+        self.self_attn_spin.setRange(1, 8)
+        self.self_attn_spin.setValue(2)
+        self.self_attn_spin.setToolTip("Self-attention every N layers")
+        param_layout.addRow("Self-Attn Every:", self.self_attn_spin)
+
+        # ===== I/O Dimensions =====
+        io_label = QLabel("Input / Output")
+        io_label.setFont(QFont("Arial", 11, QFont.Bold))
+        io_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(io_label)
+
+        # Observation steps
+        self.obs_steps_spin = QSpinBox()
+        self.obs_steps_spin.setRange(1, 10)
+        self.obs_steps_spin.setValue(1)
+        self.obs_steps_spin.setToolTip("Number of observation steps (n_obs_steps)")
+        param_layout.addRow("Obs Steps:", self.obs_steps_spin)
+
+        # Chunk size  
+        self.chunk_spin = QSpinBox()
+        self.chunk_spin.setRange(10, 200)
+        self.chunk_spin.setValue(50)
+        self.chunk_spin.setSingleStep(10)
+        self.chunk_spin.setToolTip("Action chunk size")
+        param_layout.addRow("Chunk Size:", self.chunk_spin)
+
+        # State dim
+        self.state_dim_spin = QSpinBox()
+        self.state_dim_spin.setRange(1, 128)
+        self.state_dim_spin.setValue(32)
+        self.state_dim_spin.setToolTip("Max state dimension (padded)")
+        param_layout.addRow("Max State Dim:", self.state_dim_spin)
+
+        # Action dim
+        self.action_dim_spin = QSpinBox()
+        self.action_dim_spin.setRange(1, 128)
+        self.action_dim_spin.setValue(32)
+        self.action_dim_spin.setToolTip("Max action dimension (padded)")
+        param_layout.addRow("Max Action Dim:", self.action_dim_spin)
         
         # Dataset selection
         self.dataset_combo = QComboBox()
@@ -2319,7 +2365,8 @@ class TrainingModule(QWidget):
         param_layout.addRow("Dataset:", self.dataset_combo)
         # 同步 combo 到老的 edit 字段
         self.dataset_combo.currentTextChanged.connect(lambda t: self.dataset_repo_edit.setText(t))
-        self.dataset_combo.currentTextChanged.connect(lambda t: self._auto_output_dir())
+        self.dataset_combo.currentTextChanged.connect(self._auto_output_dir)
+        self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
         
         # 本地缓存路径显示
         self.dataset_path_label = QLabel()
@@ -2363,6 +2410,51 @@ class TrainingModule(QWidget):
         """)
         self.steps_spin.setToolTip("Total number of training steps")
         param_layout.addRow("Training Steps:", self.steps_spin)
+        
+        # ===== Image Preprocessing =====
+        img_label = QLabel("Image Preprocessing")
+        img_label.setFont(QFont("Arial", 11, QFont.Bold))
+        img_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        param_layout.addRow(img_label)
+
+        # Resize width
+        self.resize_w_spin = QSpinBox()
+        self.resize_w_spin.setRange(64, 1024)
+        self.resize_w_spin.setValue(512)
+        self.resize_w_spin.setSingleStep(64)
+        self.resize_w_spin.setToolTip("Image resize width")
+        param_layout.addRow("Resize Width:", self.resize_w_spin)
+
+        # Resize height
+        self.resize_h_spin = QSpinBox()
+        self.resize_h_spin.setRange(64, 1024)
+        self.resize_h_spin.setValue(512)
+        self.resize_h_spin.setSingleStep(64)
+        self.resize_h_spin.setToolTip("Image resize height")
+        param_layout.addRow("Resize Height:", self.resize_h_spin)
+
+        # Empty cameras
+        self.empty_cameras_spin = QSpinBox()
+        self.empty_cameras_spin.setRange(0, 4)
+        self.empty_cameras_spin.setValue(0)
+        self.empty_cameras_spin.setToolTip("Number of empty camera channels")
+        param_layout.addRow("Extra Cameras:", self.empty_cameras_spin)
+
+        # Position encoding
+        self.min_period_spin = QDoubleSpinBox()
+        self.min_period_spin.setRange(0.001, 0.1)
+        self.min_period_spin.setValue(0.004)
+        self.min_period_spin.setDecimals(4)
+        self.min_period_spin.setSingleStep(0.001)
+        self.min_period_spin.setToolTip("Min period for sine-cosine positional encoding")
+        param_layout.addRow("Min Period:", self.min_period_spin)
+
+        self.max_period_spin = QDoubleSpinBox()
+        self.max_period_spin.setRange(1.0, 16.0)
+        self.max_period_spin.setValue(4.0)
+        self.max_period_spin.setSingleStep(1.0)
+        self.max_period_spin.setToolTip("Max period for sine-cosine positional encoding")
+        param_layout.addRow("Max Period:", self.max_period_spin)
         
         # Checkpoint interval
         self.ckpt_spin = QSpinBox()
@@ -2603,6 +2695,29 @@ class TrainingModule(QWidget):
         """)
         self.push_hub_checkbox.setToolTip("Push checkpoint to HuggingFace Hub (--policy.push_to_hub)")
         param_layout.addRow("Push to Hub:", self.push_hub_checkbox)
+
+        # Compile model
+        self.compile_checkbox = QCheckBox("Use torch.compile (faster, higher first-run)")
+        self.compile_checkbox.setChecked(False)
+        self.compile_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
+        param_layout.addRow("Compile:", self.compile_checkbox)
         
         # Output Directory
         self.output_dir_edit = QLineEdit("outputs/smolvla_pusht")
@@ -2917,23 +3032,10 @@ class TrainingModule(QWidget):
         scrollbar.setValue(scrollbar.maximum())
     
     def _switch_to_smolvla(self):
-        """Switch to SmolVLA native training mode"""
-        self._log("🔄 Switching to SmolVLA native training mode...")
-        self._log("   Using policy: lerobot/policies/smolvla")
-        self.smolvla_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {C_GREEN};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 20px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-        """)
-        self.smolvla_btn.setText("✅ SmolVLA Mode Active")
+        """SmolVLA is the only model — refresh params"""
+        self._log("🧠 SmolVLA mode — 参数已按默认配置")
+        self.smolvla_btn.setText("✅ SmolVLA Active")
         self.smolvla_btn.setEnabled(False)
-        self._log("✅ Switch completed")
     
     def _update_dataset_path(self, repo_id):
         """更新数据集本地缓存路径显示"""
@@ -2968,124 +3070,123 @@ class TrainingModule(QWidget):
             name = ds.split("/")[-1]
             self.output_dir_edit.setText(f"outputs/smolvla_{name}")
     
-    def _on_policy_changed(self, policy):
-        """选择策略时自动切换默认参数"""
-        if policy in ("smolvla", "smolvla_lew"):
-            self.freeze_checkbox.setChecked(True)
-            self.world_model_checkbox.setChecked(policy == "smolvla_lew")
-            self.diffusion_spin.setValue(5)
-            self.batch_spin.setValue(4)
-            self.lr_spin.setValue(0.0001)
-            self.grad_clip_spin.setValue(10.0)
-            self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
-            self._log(f"🔄 已切换 SmolVLA-MLP 默认参数")
-        elif policy == "diffusion":
-            self.freeze_checkbox.setChecked(False)
-            self.world_model_checkbox.setChecked(False)
-            self.diffusion_spin.setValue(1)
-            self.batch_spin.setValue(8)
-            self.lr_spin.setValue(0.0001)
-            self._log(f"🔄 已切换 Diffusion Policy 默认参数")
-        elif policy == "act":
-            self.batch_spin.setValue(8)
-            self.lr_spin.setValue(0.00005)
-            self._log(f"🔄 已切换 ACT 默认参数")
-        self._update_dataset_path(self.dataset_combo.currentText())
+    def _on_dataset_changed(self, ds):
+        """数据集切换时自动更新输出目录和缓存状态"""
+        self._update_dataset_path(ds)
         self._auto_output_dir()
     
     def _reset_defaults(self):
-        """恢复 SmolVLA 训练默认参数"""
-        self.policy_combo.setCurrentText("smolvla")
-        self._on_policy_changed("smolvla")
+        """恢复 SmolVLA 原始默认训练参数（来自 configuration_smolvla.py）"""
+        # Architecture
+        self.vlm_layers_spin.setValue(16)
+        self.expert_layers_spin.setValue(-1)
+        self.expert_width_spin.setValue(0.75)
+        self.self_attn_spin.setValue(2)
+        # I/O
+        self.obs_steps_spin.setValue(1)
+        self.chunk_spin.setValue(50)
+        self.state_dim_spin.setValue(32)
+        self.action_dim_spin.setValue(32)
+        # Image
+        self.resize_w_spin.setValue(512)
+        self.resize_h_spin.setValue(512)
+        self.empty_cameras_spin.setValue(0)
+        self.min_period_spin.setValue(0.004)
+        self.max_period_spin.setValue(4.0)
+        # Policy
+        self.freeze_checkbox.setChecked(True)
+        self.world_model_checkbox.setChecked(False)
+        self.diffusion_spin.setValue(5)
+        # Dataset + Training
         self.dataset_combo.setCurrentText("lerobot/pusht")
+        self.batch_spin.setValue(1)
         self.steps_spin.setValue(500)
         self.ckpt_spin.setValue(100)
-        self.weight_decay_spin.setValue(0.000001)
-        self.warmup_spin.setValue(500)
-        self.decay_spin.setValue(500)
+        # Optimizer
+        self.lr_spin.setValue(0.0001)
+        self.weight_decay_spin.setValue(0.000000001)
+        self.grad_clip_spin.setValue(10.0)
+        # Scheduler
+        self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
+        self.warmup_spin.setValue(1000)
+        self.decay_spin.setValue(30000)
         self.peak_lr_spin.setValue(0.0001)
-        self.decay_lr_spin.setValue(0.000001)
+        self.decay_lr_spin.setValue(0.0000025)
+        # Experiment
         self.output_dir_edit.setText("outputs/smolvla_pusht")
         self.eval_freq_spin.setValue(500)
         self.push_hub_checkbox.setChecked(False)
-        self._log("🔄 已恢复 SmolVLA 默认训练参数")
+        self.compile_checkbox.setChecked(False)
+        self._update_dataset_path("lerobot/pusht")
+        self._log("🔄 已恢复 SmolVLA 原始默认训练参数")
 
     def _start_training(self):
-        """Start training"""
-        # 读取所有 UI 参数
-        policy_type = self.policy_combo.currentText()
-        
-        # Dataset settings
+        """Start SmolVLA training"""
+        # Dataset
         dataset_repo_id = self.dataset_combo.currentText()
-        
-        # 自动更新输出目录
         ds_name = dataset_repo_id.split("/")[-1]
         output_dir = f"outputs/smolvla_{ds_name}"
         self.output_dir_edit.setText(output_dir)
-        
-        # Policy settings
-        freeze_smolvlm = self.freeze_checkbox.isChecked()
-        enable_lew_world_model = self.world_model_checkbox.isChecked()
-        repeated_diffusion_steps = self.diffusion_spin.value()
-        
-        # Training settings
-        batch_size = self.batch_spin.value()
-        total_steps = self.steps_spin.value()
-        checkpoint_interval = self.ckpt_spin.value()
-        
-        # Optimizer settings
-        learning_rate = self.lr_spin.value()
-        weight_decay = self.weight_decay_spin.value()
-        grad_clip_norm = self.grad_clip_spin.value()
-        
-        # Scheduler settings
-        scheduler_type = self.scheduler_combo.currentText()
-        num_warmup_steps = self.warmup_spin.value()
-        num_decay_steps = self.decay_spin.value()
-        peak_lr = self.peak_lr_spin.value()
-        decay_lr = self.decay_lr_spin.value()
-        
-        # Experiment settings
-        eval_freq = self.eval_freq_spin.value()
-        push_to_hub = self.push_hub_checkbox.isChecked()
-        
-        self._log(f"🚀 Starting training...")
-        self._log(f"   Policy: {policy_type} | Dataset: {dataset_repo_id}")
-        self._log(f"   Batch: {batch_size} | Steps: {total_steps} | LR: {learning_rate}")
-        
+
+        # Gather all params
+        params = {
+            "dataset_repo_id": dataset_repo_id,
+            "output_dir": output_dir,
+            # Architecture
+            "n_obs_steps": self.obs_steps_spin.value(),
+            "chunk_size": self.chunk_spin.value(),
+            "n_action_steps": self.chunk_spin.value(),
+            "max_state_dim": self.state_dim_spin.value(),
+            "max_action_dim": self.action_dim_spin.value(),
+            # Image
+            "resize_w": self.resize_w_spin.value(),
+            "resize_h": self.resize_h_spin.value(),
+            "empty_cameras": self.empty_cameras_spin.value(),
+            "min_period": self.min_period_spin.value(),
+            "max_period": self.max_period_spin.value(),
+            # Policy
+            "freeze_smolvlm": self.freeze_checkbox.isChecked(),
+            "enable_lew_world_model": self.world_model_checkbox.isChecked(),
+            "repeated_diffusion_steps": self.diffusion_spin.value(),
+            "num_vlm_layers": self.vlm_layers_spin.value(),
+            "num_expert_layers": self.expert_layers_spin.value(),
+            "expert_width": self.expert_width_spin.value(),
+            "self_attn_every": self.self_attn_spin.value(),
+            "compile_model": self.compile_checkbox.isChecked(),
+            # Training
+            "batch_size": self.batch_spin.value(),
+            "total_steps": self.steps_spin.value(),
+            "checkpoint_interval": self.ckpt_spin.value(),
+            # Optimizer
+            "learning_rate": self.lr_spin.value(),
+            "weight_decay": self.weight_decay_spin.value(),
+            "grad_clip_norm": self.grad_clip_spin.value(),
+            # Scheduler
+            "scheduler_type": self.scheduler_combo.currentText(),
+            "num_warmup_steps": self.warmup_spin.value(),
+            "num_decay_steps": self.decay_spin.value(),
+            "peak_lr": self.peak_lr_spin.value(),
+            "decay_lr": self.decay_lr_spin.value(),
+            # Experiment
+            "eval_freq": self.eval_freq_spin.value(),
+            "push_to_hub": self.push_hub_checkbox.isChecked(),
+        }
+
+        self._log(f"🚀 Starting SmolVLA training...")
+        self._log(f"   Dataset: {dataset_repo_id} | Output: {output_dir}")
+        self._log(f"   Architecture: VLM={params['num_vlm_layers']}L Expert={params['num_expert_layers']}L W={params['expert_width']}")
+        self._log(f"   I/O: obs={params['n_obs_steps']} chunk={params['chunk_size']} s={params['max_state_dim']} a={params['max_action_dim']}")
+        self._log(f"   Training: batch={params['batch_size']} steps={params['total_steps']} lr={params['learning_rate']}")
+
         import os
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        output_dir = os.path.join(repo_root, output_dir)
-        
-        # Start training with all parameters
+        output_dir_abs = os.path.join(repo_root, output_dir)
+
         success = self.train_backend.start_smolvla_training(
             repo_root=repo_root,
-            # Policy settings
-            policy_type=policy_type,
-            freeze_smolvlm=freeze_smolvlm,
-            enable_lew_world_model=enable_lew_world_model,
-            repeated_diffusion_steps=repeated_diffusion_steps,
-            # Dataset settings
             dataset_repo_id=dataset_repo_id,
-            # Training settings
-            batch_size=batch_size,
-            total_steps=total_steps,
-            checkpoint_interval=checkpoint_interval,
-            # Optimizer settings
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            grad_clip_norm=grad_clip_norm,
-            # Scheduler settings
-            scheduler_type=scheduler_type,
-            num_warmup_steps=num_warmup_steps,
-            num_decay_steps=num_decay_steps,
-            peak_lr=peak_lr,
-            decay_lr=decay_lr,
-            # Experiment settings
-            output_dir=output_dir,
-            eval_freq=eval_freq,
-            push_to_hub=push_to_hub,
-            # Callbacks
+            output_dir=output_dir_abs,
+            **params,
             log_callback=self._log,
             progress_callback=self._update_progress
         )
@@ -3137,10 +3238,10 @@ class TrainingModule(QWidget):
             
             # Reset SmolVLA button
             self.smolvla_btn.setEnabled(True)
-            self.smolvla_btn.setText("🧠 SmolVLA Native Training")
+            self.smolvla_btn.setText("✅ SmolVLA")
             self.smolvla_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: {C_BLUE};
+                    background: {C_GREEN};
                     color: white;
                     border: none;
                     border-radius: 6px;
@@ -3148,35 +3249,28 @@ class TrainingModule(QWidget):
                     font-size: 12px;
                     font-weight: bold;
                 }}
-                QPushButton:hover {{
-                    background: {C_BLUE}dd;
-                }}
-                QPushButton:pressed {{
-                    background: {C_BLUE}bb;
-                }}
             """)
             
             self._log("⏹ Training stopped")
     
     def _preview_command(self):
-        """Preview training configuration"""
-        policy_type = self.policy_combo.currentText()
+        """Preview SmolVLA training configuration"""
         dataset_repo_id = self.dataset_combo.currentText()
-        batch_size = self.batch_spin.value()
-        total_steps = self.steps_spin.value()
-        learning_rate = self.lr_spin.value()
-        
-        # 自动生成 output_dir
         ds_name = dataset_repo_id.split("/")[-1]
         output_dir = f"outputs/smolvla_{ds_name}"
         self.output_dir_edit.setText(output_dir)
-        
+
         self._log("=" * 60)
-        self._log(f"🚀 SmolVLA Training Preview")
-        self._log(f"   Model:    MLP-1024 (auto-fit)")
-        self._log(f"   Dataset:  {dataset_repo_id}  ✅")
-        self._log(f"   Steps:    {total_steps}  |  Batch: {batch_size}  |  LR: {learning_rate}")
+        self._log(f"🧠 SmolVLA Training Preview")
+        self._log(f"   VLM:      SmolVLM2-500M · 450M params · Cross-Attn")
+        self._log(f"   Expert:   {self.vlm_layers_spin.value()}VLM/{self.expert_layers_spin.value()}exp L · W={self.expert_width_spin.value()}")
+        self._log(f"   Dataset:  {dataset_repo_id}")
+        self._log(f"   I/O:      obs={self.obs_steps_spin.value()} · chunk={self.chunk_spin.value()} · s={self.state_dim_spin.value()}/a={self.action_dim_spin.value()}")
+        self._log(f"   Image:    {self.resize_w_spin.value()}×{self.resize_h_spin.value()} · {self.empty_cameras_spin.value()} extra cameras")
+        self._log(f"   Training: batch={self.batch_spin.value()} · steps={self.steps_spin.value()} · lr={self.lr_spin.value():.0e}")
+        self._log(f"   Scheduler: {self.scheduler_combo.currentText()} · warmup={self.warmup_spin.value()} · decay={self.decay_spin.value()}")
         self._log(f"   Output:   {output_dir}")
+        self._log(f"   Freeze VLM: {self.freeze_checkbox.isChecked()} · Compile: {self.compile_checkbox.isChecked()}")
         self._log("=" * 60)
         self._log(f"点击 Start Training 开始训练")
     
