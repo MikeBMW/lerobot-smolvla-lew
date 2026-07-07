@@ -2911,29 +2911,28 @@ class TrainingModule(QWidget):
         self._log("✅ Switch completed")
     
     def _update_dataset_path(self, repo_id):
-        def _update_dataset_path(self, repo_id):
-            """更新数据集本地缓存路径显示"""
-            if not repo_id: return
-            slug = repo_id.replace("/", "___")
-            path = os.path.expanduser(f"~/.cache/huggingface/datasets/{slug}")
-            cached = os.path.isdir(path)
-            if cached:
-                import glob
-                try:
-                    parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
-                    valid = [p for p in parquets if os.path.isfile(p)]
-                    size = sum(os.path.getsize(p) for p in valid) if valid else 0
-                    for unit in ['B','KB','MB','GB']:
-                        if size < 1024: break
-                        size /= 1024
-                    self.dataset_path_label.setText(f"✅✅ 已缓存 · {len(valid)}文件 · {size:.1f}{unit}")
-                    self.dataset_path_label.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_GREEN}22; border:1px solid {C_GREEN}66; border-radius:4px;")
-                except Exception as e:
-                    self.dataset_path_label.setText(f"⚠️ {e}")
-                    self.dataset_path_label.setStyleSheet(f"color:{C_ORANGE}; font-size:9px;")
-            else:
-                self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
-                self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
+        """更新数据集本地缓存路径显示"""
+        if not repo_id: return
+        slug = repo_id.replace("/", "___")
+        path = os.path.expanduser(f"~/.cache/huggingface/datasets/{slug}")
+        cached = os.path.isdir(path)
+        if cached:
+            import glob
+            try:
+                parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
+                valid = [p for p in parquets if os.path.isfile(p)]
+                size = sum(os.path.getsize(p) for p in valid) if valid else 0
+                for unit in ['B','KB','MB','GB']:
+                    if size < 1024: break
+                    size /= 1024
+                self.dataset_path_label.setText(f"✅✅ 已缓存 · {len(valid)}文件 · {size:.1f}{unit}")
+                self.dataset_path_label.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_GREEN}22; border:1px solid {C_GREEN}66; border-radius:4px;")
+            except Exception as e:
+                self.dataset_path_label.setText(f"⚠️ {e}")
+                self.dataset_path_label.setStyleSheet(f"color:{C_ORANGE}; font-size:9px;")
+        else:
+            self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
+            self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:10px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
 
     def _start_training(self):
         """Start training"""
