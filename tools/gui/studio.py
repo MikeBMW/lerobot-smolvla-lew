@@ -1205,11 +1205,15 @@ class HomeWidget(QWidget):
         try:
             # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
             doc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docs', 'L2-Z-MAX解决方案-v1.0.1.md')
-            # WSL 用 wslpath 转 Windows 路径
-            r = subprocess.run(["wslpath", "-w", doc_path], capture_output=True, text=True, timeout=3)
-            win_path = r.stdout.strip()
-            if win_path:
-                subprocess.run(["explorer.exe", win_path], check=True, timeout=5)
+            # WSL: 复制到 Windows 临时目录再打开
+            import shutil
+            tmp_name = f"zmax_spec_{os.path.basename(doc_path)}"
+            tmp_dir = "/mnt/c/Users/xspace/AppData/Local/Temp"
+            os.makedirs(tmp_dir, exist_ok=True)
+            tmp_path = os.path.join(tmp_dir, tmp_name)
+            shutil.copy2(doc_path, tmp_path)
+            win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
+            subprocess.run(["explorer.exe", win_path], check=True, timeout=5)
         except Exception as e:
             QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
 
@@ -6215,19 +6219,27 @@ class StudioMainWindow(QMainWindow):
                 if os.path.exists(full_path):
                     try:
                         if opener == "libreoffice":
-                            # WSL 没有 LibreOffice，用 Windows 默认应用打开
-                            import subprocess as _sp
-                            r = _sp.run(["wslpath", "-w", full_path], capture_output=True, text=True, timeout=3)
-                            win_path = r.stdout.strip()
-                            if win_path:
-                                _sp.Popen(["explorer.exe", win_path])
+                            # WSL: 复制到 Windows 临时目录再用 explorer.exe 打开
+                            import shutil, tempfile
+                            ext = os.path.splitext(full_path)[1]
+                            tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
+                            tmp_dir = "/mnt/c/Users/xspace/AppData/Local/Temp"
+                            os.makedirs(tmp_dir, exist_ok=True)
+                            tmp_path = os.path.join(tmp_dir, tmp_name)
+                            shutil.copy2(full_path, tmp_path)
+                            win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
+                            subprocess.Popen(["explorer.exe", win_path])
                         elif opener == "xdg-open":
-                            # WSL: 用 wslpath -w 转 Windows 路径后打开
-                            import subprocess as sp
-                            r = sp.run(["wslpath", "-w", full_path], capture_output=True, text=True, timeout=3)
-                            win_path = r.stdout.strip()
-                            if win_path:
-                                sp.Popen(["explorer.exe", win_path])
+                            # WSL: 复制到 Windows 临时目录再打开
+                            import shutil
+                            ext = os.path.splitext(full_path)[1]
+                            tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
+                            tmp_dir = "/mnt/c/Users/xspace/AppData/Local/Temp"
+                            os.makedirs(tmp_dir, exist_ok=True)
+                            tmp_path = os.path.join(tmp_dir, tmp_name)
+                            shutil.copy2(full_path, tmp_path)
+                            win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
+                            subprocess.Popen(["explorer.exe", win_path])
                         else:
                             subprocess.Popen([opener, full_path])
                         self.statusBar().showMessage(f"已打开: {rel_path}")
