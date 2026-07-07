@@ -5930,7 +5930,7 @@ class PluggingSceneModule(SubModuleWidget):
                 else:  # keep
                     brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}44; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+                    txt.setStyleSheet(f"color:{lvl_color}aa; font-size:10px;")
                     state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
@@ -5963,15 +5963,14 @@ class PluggingSceneModule(SubModuleWidget):
             return
         for col_idx, row_idx, brick, state, lvl_color in self._brick_rows:
             if col_idx == tab_idx and state == 'keep':
-                # 当前Tab: 保留的积木变亮一些
+                # 当前Tab: 保留的积木变亮
                 brick.setStyleSheet(f"background:{lvl_color}44; border:1px solid {lvl_color}99; border-radius:5px;")
                 txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{lvl_color}cc; font-size:8px;")
+                if txt: txt.setStyleSheet(f"color:{lvl_color}; font-size:10px; font-weight:bold;")
             elif state == 'keep':
-                # 非当前Tab: 保持暗色
                 brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}33; border-radius:5px;")
                 txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{C_GRAY}; font-size:7px;")
+                if txt: txt.setStyleSheet(f"color:{lvl_color}88; font-size:9px;")
 
     def _spin_style(self):
         return ""  # 已移除ROI计算器
