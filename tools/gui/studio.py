@@ -2918,12 +2918,17 @@ class TrainingModule(QWidget):
         cached = os.path.isdir(path)
         if cached:
             import glob
-            parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
-            size = sum(os.path.getsize(p) for p in parquets) if parquets else 0
-            for unit in ['B','KB','MB','GB']:
-                if size < 1024: break
-                size /= 1024
-            self.dataset_path_label.setText(f"✅ {path}  ({len(parquets)} files, {size:.1f}{unit})")
+            try:
+                parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
+                # 过滤掉无效的symlink
+                valid = [p for p in parquets if os.path.isfile(p)]
+                size = sum(os.path.getsize(p) for p in valid) if valid else 0
+                for unit in ['B','KB','MB','GB']:
+                    if size < 1024: break
+                    size /= 1024
+                self.dataset_path_label.setText(f"✅ {path}  ({len(valid)} files, {size:.1f}{unit})")
+            except Exception as e:
+                self.dataset_path_label.setText(f"⚠️ {path} (error: {e})")
         else:
             self.dataset_path_label.setText(f"❌ 未缓存 · {path}")
 
