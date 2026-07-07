@@ -5681,50 +5681,50 @@ class PluggingSceneModule(SubModuleWidget):
         w = QWidget()
         l = QVBoxLayout(); l.setSpacing(10)
         
-        # 硬件基础
-        hw = QGroupBox("🖥️ 硬件平台 · SR5-C + AGX Orin")
+        # 产品迭代策略标题
+        hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
         hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
         hl = QVBoxLayout()
         hw_info = QLabel(
-            "珞石 SR5-C 6轴协作机械臂 · 负载5kg · 臂展911mm<br>"
-            "Jetson Orin NX 16G 智算中枢 · 1ms控制周期<br>"
-            "梅卡曼德 Mech-Eye + RealSense D405 双3D相机<br>"
-            "DH PEGA-50-26 电动夹爪 · TS-T-15 触觉传感器<br>"
-            "双路急停 · 安全光栅 · 三色塔灯"
+            "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
+            "固定式精密操作具身机器人 · 精密制造智能技工<br>"
+            "基于 Phase 0 交付物: SR5-C 6轴机械臂 · AGX Orin NX · 双3D相机 · DH夹爪 · TS-T-15触觉"
         )
         hw_info.setFont(QFont("Arial", 10)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:8px;")
         hw_info.setWordWrap(True)
         hl.addWidget(hw_info)
         hw.setLayout(hl); l.addWidget(hw)
         
-        # L2工作流程 — 简化为4步
-        flow = QGroupBox("📋 L2 基线版 · 单工序操作流程")
+        # L2工作流程 — 6步对应产品发布PPT
+        flow = QGroupBox("📋 L2 基线版 · 人工编制流程 — 6步分段式精细插拔")
         flow.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 12)}}}")
-        fl = QHBoxLayout(); fl.setSpacing(6)
+        fl = QHBoxLayout(); fl.setSpacing(4)
         for num, title, desc, color in [
-            ("1", "模块上料", "人工放入\n料盘定位", ROI_ACCENT),
-            ("2", "机器人取料", "夹爪抓取\n到位检测", C_GREEN),
-            ("3", "插入工序", "力控对准\n单步插入", SYS11_COLOR),
-            ("4", "模块下料", "夹爪取出\n放入成品盘", SYS12_COLOR),
+            ("1", "人工流程编排", "人工设定\n工序参数", ROI_ACCENT),
+            ("2", "标准原子功能", "取料·扫码\n·定位·插入", C_GREEN),
+            ("3", "动作执行", "标准接口\n精准到位", SYS11_COLOR),
+            ("4", "力控反馈", "六维力传感器\n力控闭环", SYS12_COLOR),
+            ("5", "分段式验证", "逐步确认\n异常停机", C_ORANGE),
+            ("6", "成品下料", "取出完成品\n数据记录", SYS2_COLOR),
         ]:
             card = self._make_step_card(num, title, desc, color)
             fl.addWidget(card, 1)
-            if num != "4":
-                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:14px;"); arr.setFixedWidth(16)
+            if num != "6":
+                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:12px;"); arr.setFixedWidth(12)
                 fl.addWidget(arr)
         flow.setLayout(fl); l.addWidget(flow)
         
         # 特性
-        feat = QGroupBox("✅ L2 已实现特性")
+        feat = QGroupBox("✅ L2 基线版 · 已实现特性")
         feat.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
         fe = QVBoxLayout()
         ft = QLabel(
-            "◈ 单工序固定流程 · 人工上下料<br>"
-            "◈ 夹爪力控抓取 · 到位检测确认<br>"
-            "◈ 点到点精确运动 (±0.05mm) · 力控插入<br>"
-            "◈ XSpace Studio 一键操作 · 全中文界面<br>"
-            "◈ 关键工序良率 ≥99.2% · 数据自动记录<br>"
-            "◈ 双路急停+光栅+塔灯 · 多层安全防护"
+            "◈ <b>人工流程编排</b>: 操作员在 XSpace Studio 中设定工序参数，选择标准原子功能<br>"
+            "◈ <b>标准原子功能库</b>: 取料、扫码、定位、对准、插入、拔出、检测、分类<br>"
+            "◈ <b>动作执行 (标准接口)</b>: 基于 ROS2 Service 接口，点到点精确运动 ±0.05mm<br>"
+            "◈ <b>力控反馈</b>: 六维力传感器 >10kHz 采样，夹持力自适应<br>"
+            "◈ <b>分段式验证</b>: 每个步骤完成确认后才进入下一步 · 异常自动停机<br>"
+            "◈ <b>真实环境运行</b>: 苏州实验室 Phase 0 验收通过 · 关键工序良率 ≥99.2%"
         )
         ft.setFont(QFont("Arial", 10)); ft.setStyleSheet(f"color:{C_WHITE}; padding:6px;"); ft.setWordWrap(True)
         fe.addWidget(ft); feat.setLayout(fe); l.addWidget(feat)
