@@ -5852,26 +5852,27 @@ class PluggingSceneModule(SubModuleWidget):
         inner = QWidget()
         outer = QHBoxLayout(); outer.setSpacing(60)
         
-        # 功能模块定义: (名称, L2状态, L3状态, L4状态)
+        # 功能模块定义: (名称, L2状态, L3状态, L4状态, 固定颜色)
         # 状态: 'active'=实色 'new'=新增虚线 'keep'=保留暗色
+        # 同一功能在三列中用相同颜色
         modules = [
-            ("人工流程编排",  'active','keep','keep'),
-            ("标准原子功能库", 'active','keep','keep'),
-            ("动作执行(ROS2)", 'active','keep','keep'),
-            ("力控反馈闭环",   'active','keep','keep'),
-            ("AOI验证检测",    'active','keep','keep'),
-            ("成品下料分类",   'active','keep','keep'),
-            (None, None, None, None),  # 分隔
-            ("多模块自主识别",  None,  'new',  'keep'),
-            ("自主闭环工作",    None,  'new',  'keep'),
-            ("换线自主换配方",  None,  'new',  'keep'),
-            ("异常诊断自恢复",  None,  'new',  'keep'),
-            (None, None, None, None),  # 分隔
-            ("力控预判保护",    None,  None,   'new'),
-            ("触觉闭环反馈",    None,  None,   'new'),
-            ("光幕联动安全",    None,  None,   'new'),
-            ("自诊断预警维护",  None,  None,   'new'),
-            ("AI行为预测避让",  None,  None,   'new'),
+            ("人工流程编排",  'active','keep','keep', ROI_ACCENT),
+            ("标准原子功能库", 'active','keep','keep', C_GREEN),
+            ("动作执行(ROS2)", 'active','keep','keep', SYS11_COLOR),
+            ("力控反馈闭环",   'active','keep','keep', SYS12_COLOR),
+            ("AOI验证检测",    'active','keep','keep', C_ORANGE),
+            ("成品下料分类",   'active','keep','keep', SYS2_COLOR),
+            (None, None, None, None, None),  # 分隔
+            ("多模块自主识别",  None,  'new',  'keep', C_GREEN),
+            ("自主闭环工作",    None,  'new',  'keep', SYS11_COLOR),
+            ("换线自主换配方",  None,  'new',  'keep', C_ORANGE),
+            ("异常诊断自恢复",  None,  'new',  'keep', SYS12_COLOR),
+            (None, None, None, None, None),  # 分隔
+            ("力控预判保护",    None,  None,   'new', C_RED),
+            ("触觉闭环反馈",    None,  None,   'new', C_RED),
+            ("光幕联动安全",    None,  None,   'new', C_RED),
+            ("自诊断预警维护",  None,  None,   'new', C_RED),
+            ("AI行为预测避让",  None,  None,   'new', C_RED),
         ]
         
         levels = [
@@ -5898,7 +5899,7 @@ class PluggingSceneModule(SubModuleWidget):
             hdr.setLayout(hl); col.addWidget(hdr)
             
             row_idx = 0
-            for name, l2, l3, l4 in modules:
+            for name, l2, l3, l4, mod_color in modules:
                 if name is None:  # 分隔线
                     sep = QFrame()
                     sep.setFrameShape(QFrame.HLine)
@@ -5918,26 +5919,26 @@ class PluggingSceneModule(SubModuleWidget):
                 brick.setFixedHeight(48)
                 
                 if status == 'active':
-                    brick.setStyleSheet(f"background:{lvl_color}; border:3px solid {lvl_color}; border-radius:6px; margin:3px 0;")
+                    brick.setStyleSheet(f"background:{mod_color}; border:3px solid {mod_color}; border-radius:6px; margin:3px 0;")
                     txt = QLabel(f"● {name}")
                     txt.setStyleSheet("color:white; font-size:11px; font-weight:bold;")
                     state = 'active'
                 elif status == 'new':
-                    brick.setStyleSheet(f"background:{lvl_color}33; border:2px dashed {lvl_color}; border-radius:6px; margin:2px 0;")
+                    brick.setStyleSheet(f"background:{mod_color}33; border:2px dashed {mod_color}; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"✦ {name}")
-                    txt.setStyleSheet(f"color:{lvl_color}; font-size:11px; font-weight:bold;")
+                    txt.setStyleSheet(f"color:{mod_color}; font-size:11px; font-weight:bold;")
                     state = 'new'
                 else:  # keep
-                    brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}44; border-radius:6px; margin:2px 0;")
+                    brick.setStyleSheet(f"background:{C_BG}; border:1px solid {mod_color}44; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{lvl_color}aa; font-size:10px;")
+                    txt.setStyleSheet(f"color:{mod_color}aa; font-size:10px;")
                     state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
                 bl = QVBoxLayout(); bl.setContentsMargins(3,1,3,1); bl.addWidget(txt)
                 brick.setLayout(bl)
                 col.addWidget(brick)
-                brick_rows.append((col_idx, row_idx, brick, state, lvl_color))
+                brick_rows.append((col_idx, row_idx, brick, state, mod_color))
                 row_idx += 1
             
             col.addStretch()
@@ -5961,16 +5962,15 @@ class PluggingSceneModule(SubModuleWidget):
         """Tab切换时高亮对应列"""
         if not hasattr(self, '_brick_rows'):
             return
-        for col_idx, row_idx, brick, state, lvl_color in self._brick_rows:
+        for col_idx, row_idx, brick, state, mod_color in self._brick_rows:
             if col_idx == tab_idx and state == 'keep':
-                # 当前Tab: 保留的积木变亮
-                brick.setStyleSheet(f"background:{lvl_color}44; border:1px solid {lvl_color}99; border-radius:5px;")
+                brick.setStyleSheet(f"background:{mod_color}44; border:1px solid {mod_color}99; border-radius:5px;")
                 txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{lvl_color}; font-size:10px; font-weight:bold;")
+                if txt: txt.setStyleSheet(f"color:{mod_color}; font-size:10px; font-weight:bold;")
             elif state == 'keep':
-                brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}33; border-radius:5px;")
+                brick.setStyleSheet(f"background:{C_BG}; border:1px solid {mod_color}33; border-radius:5px;")
                 txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{lvl_color}88; font-size:9px;")
+                if txt: txt.setStyleSheet(f"color:{mod_color}88; font-size:9px;")
 
     def _spin_style(self):
         return ""  # 已移除ROI计算器
