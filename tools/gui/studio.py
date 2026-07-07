@@ -6111,6 +6111,8 @@ class StudioMainWindow(QMainWindow):
             (["TRAINING-Z-MAX产品培训-L2基线版.md"], "xdg-open")))
         m_doc.addAction(self._mk_doc_action("📊 Z-MAX 产品培训 · PPT (PowerPoint打开)",
             (["Z-MAX产品培训-L2基线版.pptx"], "libreoffice")))
+        m_doc.addAction(self._mk_doc_action("🔧 Z-MAX 基线版 · 硬件配置 PPT",
+            (["Z-MAX基线版硬件配置培训.pptx"], "libreoffice")))
         m_doc.addSeparator()
         # 在子菜单里添加常用 Git 命令的快捷说明
         act_clone = QAction("📥 克隆项目: git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git", self)
