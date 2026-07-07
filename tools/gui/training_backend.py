@@ -152,7 +152,7 @@ print(f"DONE: {{pct}}% loss reduction")
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             self.process = subprocess.Popen(
-                ["python3", script_path],
+                ["/home/xspace/miniconda3/envs/lerobot/bin/python3", script_path],
                 cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, bufsize=1, env=env, start_new_session=True
             )
