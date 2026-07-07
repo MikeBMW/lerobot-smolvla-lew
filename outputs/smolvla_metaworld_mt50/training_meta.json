@@ -1,0 +1,15 @@
+{
+  "model": "SmolVLA-MLP",
+  "dataset": "metaworld_mt50",
+  "params": 2148356,
+  "steps": 500,
+  "episodes": 8,
+  "frames": 704,
+  "device": "cuda",
+  "initial_loss": 0.49596428871154785,
+  "final_loss": 0.07400745153427124,
+  "min_loss": 0.006788433529436588,
+  "reduction_pct": 85.1,
+  "timestamp": "2026-07-07 17:52",
+  "_dir": "smolvla_metaworld_mt50"
+}
