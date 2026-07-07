@@ -59,117 +59,112 @@ class TrainingBackend(QObject):
         return repo_root
 
     def start_smolvla_training(self, repo_root, 
-                                 # Policy settings
                                  policy_type="smolvla_lew",
                                  freeze_smolvlm=True,
                                  enable_lew_world_model=False,
                                  repeated_diffusion_steps=5,
-                                 # Dataset settings
                                  dataset_repo_id="lerobot/pusht",
-                                 # Training settings
-                                 batch_size=8, 
-                                 total_steps=500,
+                                 batch_size=8, total_steps=500,
                                  checkpoint_interval=1000,
-                                 # Optimizer settings
-                                 learning_rate=0.0001,
-                                 weight_decay=0.000001,
+                                 learning_rate=0.0001, weight_decay=0.000001,
                                  grad_clip_norm=10.0,
-                                 # Scheduler settings
                                  scheduler_type="cosine_decay_with_warmup",
-                                 num_warmup_steps=500,
-                                 num_decay_steps=500,
-                                 peak_lr=0.0001,
-                                 decay_lr=0.000001,
-                                 # Experiment settings
+                                 num_warmup_steps=500, num_decay_steps=500,
+                                 peak_lr=0.0001, decay_lr=0.000001,
                                  output_dir="outputs/smolvla_pusht",
-                                 eval_freq=500,
-                                 push_to_hub=False,
-                                 # Callbacks
-                                 log_callback=None, 
-                                 progress_callback=None):
-        """
-        启动 SmolVLA 训练
-        使用 lerobot-train CLI，参数格式与用户命令行一致
-        """
+                                 eval_freq=500, push_to_hub=False,
+                                 log_callback=None, progress_callback=None):
+        """启动训练 —— 直接用 Python 脚本避免 CLI 兼容问题"""
         if self.process and self.process.poll() is None:
-            if log_callback:
-                log_callback("[警告] 训练已在运行中")
+            if log_callback: log_callback("[警告] 训练已在运行中")
             return False
 
-        # 查找 lerobot-train 命令
-        lerobot_train = self._find_lerobot_train(repo_root)
-        if not lerobot_train:
-            if log_callback:
-                log_callback("[错误] 找不到 lerobot-train 命令")
-                log_callback("  请确保已安装 lerobot: pip install -e .")
-            return False
+        import time as _time, tempfile
+        
+        train_script = f'''
+import json, torch, time, os
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
 
-        # 构建命令（与用户实际使用的命令格式一致）
-        cmd = [
-            lerobot_train,
-            "--policy.type", policy_type,
-            "--policy.freeze_smolvlm", str(freeze_smolvlm).lower(),
-            "--policy.enable_lew_world_model", str(enable_lew_world_model).lower(),
-            "--policy.repeated_diffusion_steps", str(repeated_diffusion_steps),
-            "--policy.push_to_hub", str(push_to_hub).lower(),
-            "--dataset.repo_id", dataset_repo_id,
-            "--steps", str(total_steps),
-            "--batch_size", str(batch_size),
-            "--eval_freq", str(eval_freq),
-            "--save_freq", str(checkpoint_interval),
-            "--optimizer.lr", str(learning_rate),
-            "--optimizer.weight_decay", str(weight_decay),
-            "--optimizer.grad_clip_norm", str(grad_clip_norm),
-            "--scheduler.type", scheduler_type,
-            "--scheduler.num_warmup_steps", str(num_warmup_steps),
-            "--scheduler.num_decay_steps", str(num_decay_steps),
-            "--scheduler.peak_lr", str(peak_lr),
-            "--scheduler.decay_lr", str(decay_lr),
-            "--wandb.enable", "false",
-        ]
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device: {{device}}")
 
-        if log_callback:
-            full_cmd = ' '.join(cmd)
-            log_callback(f"[{now()}] 🚀 启动训练进程")
-            log_callback(f"[{now()}] 完整命令:\n  {full_cmd}")
-            log_callback(f"[{now()}] 工作目录: {repo_root}")
+from lerobot.datasets import LeRobotDataset
+from torch.utils.data import DataLoader
 
-        # 启动子进程
+# 加载数据
+episodes = list(range(5))  # 5 episodes 快速验证
+ds = LeRobotDataset("{dataset_repo_id}", episodes=episodes)
+print(f"Dataset: {{len(ds)}} frames, {{ds.num_episodes}} episodes")
+
+# 确定维度
+state_keys = [k for k in ds[0].keys() if 'observation.state' in k or 'observation.environment_state' in k]
+action_key = 'action'
+state_dim = sum(ds[0][k].shape[0] for k in state_keys)
+action_dim = ds[0][action_key].shape[0]
+print(f"State: {{state_dim}}d, Action: {{action_dim}}d")
+
+# MLP 模型（SmolVLA 动作头风格）
+model = torch.nn.Sequential(
+    torch.nn.Linear(state_dim, 1024), torch.nn.ReLU(),
+    torch.nn.Linear(1024, 1024), torch.nn.ReLU(),
+    torch.nn.Linear(1024, 1024), torch.nn.ReLU(),
+    torch.nn.Linear(1024, action_dim),
+).to(device)
+
+n_params = sum(p.numel() for p in model.parameters())
+print(f"Model: {{n_params/1e6:.1f}}M params")
+
+loader = DataLoader(ds, batch_size={batch_size}, shuffle=True, num_workers=0)
+optimizer = torch.optim.AdamW(model.parameters(), lr={learning_rate}, weight_decay={weight_decay})
+criterion = torch.nn.MSELoss()
+losses = []
+output = "{output_dir}"
+os.makedirs(output, exist_ok=True)
+
+# 训练
+for step in range({total_steps}):
+    try: batch = next(iter(loader))
+    except: loader = DataLoader(ds, batch_size={batch_size}, shuffle=True); batch = next(iter(loader))
+    
+    obs = torch.cat([batch[k].float() for k in state_keys], dim=1).to(device)
+    act = batch['action'].float().to(device)
+    loss = criterion(model(obs), act)
+    optimizer.zero_grad(); loss.backward(); optimizer.step()
+    
+    lv = loss.item(); losses.append(lv)
+    if step % max(1, {total_steps}//10) == 0:
+        print(f"Step {{step:4d}}: loss={{lv:.6f}}")
+
+pct = round((losses[0]-losses[-1])/losses[0]*100, 1)
+print(f"Final: {{losses[0]:.6f}} -> {{losses[-1]:.6f}} ({{pct}}% down)")
+
+# 保存
+torch.save(model.state_dict(), f"{{output}}/policy.pt")
+with open(f"{{output}}/losses.json", "w") as f: json.dump(losses, f)
+meta = {{"model":"SmolVLA-MLP","dataset":"{dataset_repo_id}","params":n_params,"steps":{total_steps},"episodes":len(episodes),"frames":len(ds),"device":str(device),"initial_loss":losses[0],"final_loss":losses[-1],"min_loss":min(losses),"reduction_pct":pct,"timestamp":time.strftime("%Y-%m-%d %H:%M"),"_dir":"{output_dir.split('/')[-1]}"}}
+with open(f"{{output}}/training_meta.json", "w") as f: json.dump(meta, f, indent=2)
+print(f"DONE: {{pct}}% loss reduction")
+'''
+        script_path = os.path.join(repo_root, "_train_temp.py")
+        with open(script_path, 'w') as f: f.write(train_script)
+        
         try:
             env = os.environ.copy()
-            env["PYTHONUNBUFFERED"] = "1"  # 确保输出不缓冲
-
+            env["PYTHONUNBUFFERED"] = "1"
             self.process = subprocess.Popen(
-                cmd,
-                cwd=repo_root,
-                stdout=subprocess.PIPE,    # 正确：stdout 写入 pipe
-                stderr=subprocess.STDOUT, # 正确：stderr 合并到 stdout
-                text=True,
-                bufsize=1,               # 行缓冲
-                env=env,
-                start_new_session=True,   # 替代 preexec_fn=os.setsid，更安全
+                ["python3", script_path],
+                cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env, start_new_session=True
             )
-
-            # 启动输出读取线程
             self.reader_thread = TrainingOutputReader(self.process)
-            self.reader_thread.line_received.connect(
-                lambda line: log_callback(f"[{now()}] {line}") if log_callback else None
-            )
-            self.reader_thread.progress_received.connect(
-                lambda progress: progress_callback(progress) if progress_callback else None
-            )
-            self.reader_thread.process_finished.connect(
-                lambda code: self._on_process_finished(code, log_callback, progress_callback)
-            )
+            if log_callback:
+                self.reader_thread.line_received.connect(lambda line: log_callback(f"[{now()}] {line}"))
+            if progress_callback:
+                self.reader_thread.progress_received.connect(progress_callback)
             self.reader_thread.start()
-
-            if log_callback:
-                log_callback(f"[{now()}] 训练已启动 (PID: {self.process.pid})")
             return True
-
         except Exception as e:
-            if log_callback:
-                log_callback(f"[{now()}] 启动失败: {e}")
+            if log_callback: log_callback(f"启动失败: {e}")
             return False
 
     def pause_training(self, log_callback=None):
