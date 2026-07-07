@@ -30,7 +30,7 @@ print(f"Dataset: {len(ds)} frames")
 loader = DataLoader(ds, batch_size=4, shuffle=True, num_workers=0)
 optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, policy.parameters()), lr=0.0001)
 losses = []
-output = "/home/xspace/lerobot-smolvla-lew/outputs/smolvla_pusht"
+output = "/home/xspace/lerobot-smolvla-lew/outputs/smolvla_metaworld_mt50"
 os.makedirs(output, exist_ok=True)
 
 print("Training (Flow Matching)...")
@@ -52,6 +52,6 @@ print(f"Final: {losses[0]:.6f} -> {losses[-1]:.6f} ({pct}% down)")
 
 torch.save(policy.state_dict(), f"{output}/policy.pt")
 with open(f"{output}/losses.json", "w") as f: json.dump(losses, f)
-meta = {"model":"SmolVLA-FlowMatching","dataset":"lerobot/metaworld_mt50","params":int(trainable),"total_params":int(total),"steps":500,"episodes":len(episodes),"frames":len(ds),"device":str(device),"initial_loss":losses[0],"final_loss":losses[-1],"min_loss":min(losses),"reduction_pct":pct,"timestamp":time.strftime("%Y-%m-%d %H:%M"),"_dir":"smolvla_pusht"}
+meta = {"model":"SmolVLA-FlowMatching","dataset":"lerobot/metaworld_mt50","params":int(trainable),"total_params":int(total),"steps":500,"episodes":len(episodes),"frames":len(ds),"device":str(device),"initial_loss":losses[0],"final_loss":losses[-1],"min_loss":min(losses),"reduction_pct":pct,"timestamp":time.strftime("%Y-%m-%d %H:%M"),"_dir":"smolvla_metaworld_mt50"}
 with open(f"{output}/training_meta.json", "w") as f: json.dump(meta, f, indent=2)
 print(f"DONE: {pct}% loss (SmolVLA Flow Matching)")

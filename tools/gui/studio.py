@@ -2970,7 +2970,7 @@ class TrainingModule(QWidget):
             self.lr_spin.setValue(0.0001)
             self.grad_clip_spin.setValue(10.0)
             self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
-            self._log(f"🔄 已切换 SmolVLA (Flow Matching) 默认参数")
+            self._log(f"🔄 已切换 SmolVLA-MLP 默认参数")
         elif policy == "diffusion":
             self.freeze_checkbox.setChecked(False)
             self.world_model_checkbox.setChecked(False)
@@ -3162,7 +3162,7 @@ class TrainingModule(QWidget):
         
         self._log("=" * 60)
         self._log(f"🚀 SmolVLA Training Preview")
-        self._log(f"   Model:    {policy_type} (Flow Matching)")
+        self._log(f"   Model:    MLP-1024 (auto-fit)")
         self._log(f"   Dataset:  {dataset_repo_id}  ✅")
         self._log(f"   Steps:    {total_steps}  |  Batch: {batch_size}  |  LR: {learning_rate}")
         self._log(f"   Output:   {output_dir}")
