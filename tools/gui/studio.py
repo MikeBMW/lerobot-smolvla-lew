@@ -5880,7 +5880,7 @@ class PluggingSceneModule(SubModuleWidget):
         brick_rows = []  # [(col, row_idx, brick_widget, state)]
         
         for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
-            col = QVBoxLayout(); col.setSpacing(3)
+            col = QVBoxLayout(); col.setSpacing(6)
             
             # 列标题
             hdr = QFrame()
@@ -5912,22 +5912,22 @@ class PluggingSceneModule(SubModuleWidget):
                     continue
                 
                 brick = QFrame()
-                brick.setFixedHeight(26)
+                brick.setFixedHeight(32)
                 
                 if status == 'active':
                     brick.setStyleSheet(f"background:{lvl_color}; border:2px solid {lvl_color}; border-radius:5px;")
                     txt = QLabel(f"● {name}")
-                    txt.setStyleSheet("color:white; font-size:8px; font-weight:bold;")
+                    txt.setStyleSheet("color:white; font-size:10px; font-weight:bold;")
                     state = 'active'
                 elif status == 'new':
                     brick.setStyleSheet(f"background:{lvl_color}33; border:2px dashed {lvl_color}; border-radius:5px;")
                     txt = QLabel(f"✦ {name}")
-                    txt.setStyleSheet(f"color:{lvl_color}; font-size:8px; font-weight:bold;")
+                    txt.setStyleSheet(f"color:{lvl_color}; font-size:10px; font-weight:bold;")
                     state = 'new'
                 else:  # keep
                     brick.setStyleSheet(f"background:{C_BG}; border:1px solid {lvl_color}44; border-radius:5px;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{C_GRAY}; font-size:7px;")
+                    txt.setStyleSheet(f"color:{C_GRAY}; font-size:9px;")
                     state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
