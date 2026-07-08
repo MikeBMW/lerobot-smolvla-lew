@@ -225,17 +225,20 @@ def run_api_server(gateway: HermesGatewayPure, host: str = "0.0.0.0", port: int 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hermes Gateway (Pure)")
-    parser.add_argument("--orin-host", default="192.168.23.10", help="Orin IP")
+    parser.add_argument("--orin-host", default=None, help="Orin IP (可选,暂不连接)")
     parser.add_argument("--orin-user", default="nvidia", help="Orin SSH user")
     parser.add_argument("--port", type=int, default=8080, help="API port")
     args = parser.parse_args()
 
     print(f"🟢 Hermes Gateway (Pure Python)")
-    print(f"   Orin: {args.orin_user}@{args.orin_host}")
-    print(f"   API:  :{args.port}")
+    gw = HermesGatewayPure(orin_host=args.orin_host or "none", orin_user=args.orin_user)
 
-    gw = HermesGatewayPure(orin_host=args.orin_host, orin_user=args.orin_user)
-    gw.start()
+    if args.orin_host:
+        print(f"   Orin: {args.orin_user}@{args.orin_host}")
+        gw.start()
+    else:
+        print(f"   Orin: 暂不连接 (加 --orin-host 192.168.23.10 连接)")
+        print(f"   API 服务正常启动，Orin接入后自动获取数据")
 
     try:
         run_api_server(gw, port=args.port)
