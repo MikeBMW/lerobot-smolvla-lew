@@ -5883,7 +5883,274 @@ class _RerunStreamWorker(QThread):
 ROI_ACCENT = C_CYAN  # ROI模块专用颜色
 
 
-class PluggingSceneModule(SubModuleWidget):
+class InferencePanel(QWidget):
+    """Z-MAX 推理服务面板 — Server/Client 控制 + 旁路验证预留"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from inference_server import ZmaxInferenceServer
+        from inference_client import ZmaxInferenceClient, DataSource
+        
+        self.server = ZmaxInferenceServer(log_callback=self._log_server)
+        self.client = ZmaxInferenceClient(log_callback=self._log_client)
+        
+        self._init_ui()
+    
+    def _init_ui(self):
+        main = QVBoxLayout()
+        main.setSpacing(12)
+        main.setContentsMargins(20, 16, 20, 16)
+        
+        # ── 标题 ──
+        title = QLabel("🌐 推理服务")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE};")
+        main.addWidget(title)
+        
+        hint = QLabel("本地Server + 本地Client  |  旁路验证预留(Client在Orin远端)")
+        hint.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        main.addWidget(hint)
+        
+        # ── Server + Client 双栏 ──
+        panels = QHBoxLayout()
+        panels.setSpacing(16)
+        panels.addWidget(self._build_server_panel(), 1)
+        panels.addWidget(self._build_client_panel(), 1)
+        main.addLayout(panels)
+        
+        # ── 控制栏 ──
+        ctrl = QHBoxLayout()
+        ctrl.setSpacing(12)
+        
+        self.start_btn = QPushButton("▶ 完整启动")
+        self.start_btn.clicked.connect(self._full_start)
+        self.start_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:13px; font-weight:bold;")
+        ctrl.addWidget(self.start_btn)
+        
+        self.stop_btn = QPushButton("⏹ 全部停止")
+        self.stop_btn.clicked.connect(self._full_stop)
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:13px; font-weight:bold;")
+        ctrl.addWidget(self.stop_btn)
+        
+        ctrl.addStretch()
+        main.addLayout(ctrl)
+        
+        # ── 日志 ──
+        log_g = QGroupBox("推理日志")
+        log_g.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:12px; padding-top:32px; margin-top:16px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        ll = QVBoxLayout()
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMinimumHeight(250)
+        self.log_text.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:8px; font-family:Consolas; font-size:10px;")
+        ll.addWidget(self.log_text)
+        log_g.setLayout(ll)
+        main.addWidget(log_g, 1)
+        
+        self.setLayout(main)
+    
+    def _build_server_panel(self):
+        g = QGroupBox("🖥️ 推理服务端")
+        g.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:12px; padding-top:32px; margin-top:16px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        l = QFormLayout()
+        l.setSpacing(8)
+        
+        # 模型路径
+        row = QHBoxLayout()
+        self.ckpt_edit = QLineEdit("outputs/smolvla_metaworld/checkpoints/000300/pretrained_model")
+        self.ckpt_edit.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        browse_btn = QPushButton("📂")
+        browse_btn.setFixedWidth(36)
+        browse_btn.clicked.connect(self._browse_checkpoint)
+        browse_btn.setStyleSheet(f"background:{C_BORDER}; color:{C_WHITE}; border:none; border-radius:4px;")
+        row.addWidget(self.ckpt_edit)
+        row.addWidget(browse_btn)
+        l.addRow("模型:", row)
+        
+        # 端口
+        port_row = QHBoxLayout()
+        self.host_edit = QLineEdit("0.0.0.0")
+        self.host_edit.setFixedWidth(100)
+        self.host_edit.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.port_spin = QSpinBox()
+        self.port_spin.setRange(1024, 65535)
+        self.port_spin.setValue(50051)
+        self.port_spin.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        port_row.addWidget(QLabel("Host:"))
+        port_row.addWidget(self.host_edit)
+        port_row.addWidget(QLabel("Port:"))
+        port_row.addWidget(self.port_spin)
+        port_row.addStretch()
+        l.addRow("地址:", port_row)
+        
+        # 状态
+        self.server_status = QLabel("⚪ 未启动")
+        self.server_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        l.addRow("状态:", self.server_status)
+        
+        # 独立启停
+        btns = QHBoxLayout()
+        self.srv_start = QPushButton("启动")
+        self.srv_start.clicked.connect(self._server_start)
+        self.srv_start.setStyleSheet(f"background:{C_GREEN}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        self.srv_stop = QPushButton("停止")
+        self.srv_stop.clicked.connect(self._server_stop)
+        self.srv_stop.setEnabled(False)
+        self.srv_stop.setStyleSheet(f"background:{C_RED}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        btns.addWidget(self.srv_start)
+        btns.addWidget(self.srv_stop)
+        btns.addStretch()
+        l.addRow("操作:", btns)
+        
+        g.setLayout(l)
+        return g
+    
+    def _build_client_panel(self):
+        g = QGroupBox("📱 推理客户端")
+        g.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:12px; padding-top:32px; margin-top:16px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        l = QFormLayout()
+        l.setSpacing(8)
+        
+        # 服务器地址
+        self.srv_addr_edit = QLineEdit("127.0.0.1:50051")
+        self.srv_addr_edit.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        l.addRow("服务器:", self.srv_addr_edit)
+        
+        # 数据源
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["Dummy随机数据", "PushT回放", "MetaWorld回放", "远端Orin(预留)"])
+        self.source_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        l.addRow("数据源:", self.source_combo)
+        
+        # 状态
+        self.client_status = QLabel("⚪ 未连接")
+        self.client_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        l.addRow("状态:", self.client_status)
+        
+        # 统计
+        self.stats_label = QLabel("帧:0 动作:0")
+        self.stats_label.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
+        l.addRow("统计:", self.stats_label)
+        
+        # 独立操作
+        btns = QHBoxLayout()
+        self.cli_connect = QPushButton("连接")
+        self.cli_connect.clicked.connect(self._client_connect)
+        self.cli_connect.setStyleSheet(f"background:{C_BLUE}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        self.cli_stream = QPushButton("开始推流")
+        self.cli_stream.clicked.connect(self._client_stream)
+        self.cli_stream.setEnabled(False)
+        self.cli_stream.setStyleSheet(f"background:{C_GREEN}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        self.cli_stop = QPushButton("停止")
+        self.cli_stop.clicked.connect(self._client_stop)
+        self.cli_stop.setEnabled(False)
+        self.cli_stop.setStyleSheet(f"background:{C_RED}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        btns.addWidget(self.cli_connect)
+        btns.addWidget(self.cli_stream)
+        btns.addWidget(self.cli_stop)
+        btns.addStretch()
+        l.addRow("操作:", btns)
+        
+        g.setLayout(l)
+        return g
+    
+    # ── 日志 ──
+    def _log(self, prefix, msg):
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.log_text.append(f"[{ts}] {prefix} {msg}")
+        sb = self.log_text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+    
+    def _log_server(self, msg): self._log("🖥️", msg)
+    def _log_client(self, msg): self._log("📱", msg)
+    
+    # ── 操作 ──
+    def _browse_checkpoint(self):
+        from PyQt5.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, "选择模型checkpoint", "outputs/")
+        if path:
+            self.ckpt_edit.setText(path)
+    
+    def _server_start(self):
+        ckpt = self.ckpt_edit.text().strip()
+        host = self.host_edit.text().strip()
+        port = self.port_spin.value()
+        if self.server.start_server(ckpt, host, port):
+            self.server_status.setText("🟢 运行中")
+            self.server_status.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; padding:4px 8px; background:{C_GREEN}22; border-radius:4px;")
+            self.srv_start.setEnabled(False)
+            self.srv_stop.setEnabled(True)
+            self.stop_btn.setEnabled(True)
+    
+    def _server_stop(self):
+        self.server.stop_server()
+        self.server_status.setText("⚪ 未启动")
+        self.server_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        self.srv_start.setEnabled(True)
+        self.srv_stop.setEnabled(False)
+    
+    def _client_connect(self):
+        addr = self.srv_addr_edit.text().strip()
+        if self.client.connect(addr):
+            self.client_status.setText("🟢 已连接")
+            self.client_status.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; padding:4px 8px; background:{C_GREEN}22; border-radius:4px;")
+            self.cli_connect.setEnabled(False)
+            self.cli_stream.setEnabled(True)
+            self.cli_stop.setEnabled(True)
+            # 自动发送策略
+            ckpt = self.ckpt_edit.text().strip()
+            self.client.send_policy(ckpt)
+            self._log_client(f"策略已发送")
+    
+    def _client_stream(self):
+        src = self.source_combo.currentText()
+        if "Dummy" in src:
+            self.client.start_dummy_stream(fps=5, duration_sec=10)
+        elif "PushT" in src:
+            self.client.start_dataset_stream("lerobot/pusht", fps=5, n_frames=30)
+        elif "MetaWorld" in src:
+            self.client.start_dataset_stream("lerobot/metaworld_mt50", fps=5, n_frames=30)
+        else:
+            self._log_client("远端Orin模式预留")
+            return
+        
+        self.cli_stream.setEnabled(False)
+        # 定时更新统计
+        from PyQt5.QtCore import QTimer
+        self._stats_timer = QTimer()
+        self._stats_timer.timeout.connect(self._update_stats)
+        self._stats_timer.start(1000)
+    
+    def _client_stop(self):
+        self.client.stop_stream()
+        self.cli_stream.setEnabled(True)
+        if hasattr(self, '_stats_timer'):
+            self._stats_timer.stop()
+    
+    def _update_stats(self):
+        s = self.client.get_status()
+        self.stats_label.setText(f"帧:{s['frames_sent']} 动作:{s['actions']}")
+    
+    def _full_start(self):
+        self._server_start()
+        # 等待服务端就绪后自动连接
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(2000, self._client_connect)
+        QTimer.singleShot(5000, self._client_stream)
+    
+    def _full_stop(self):
+        self._client_stop()
+        self.client.disconnect()
+        self._server_stop()
+        self.client_status.setText("⚪ 未连接")
+        self.client_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        self.cli_connect.setEnabled(True)
+        self.cli_stream.setEnabled(False)
+        self.cli_stop.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+        self.start_btn.setEnabled(True)
     """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
 
     def __init__(self):
@@ -6283,6 +6550,7 @@ class StudioMainWindow(QMainWindow):
             "monitor":    6,
             "plugging":   7,
             "version":    8,
+            "inference":  9,
         }
 
         self.stack.addWidget(DatasetModule())
@@ -6296,6 +6564,9 @@ class StudioMainWindow(QMainWindow):
         # Version Sync Module (需要 repo path)
         repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.stack.addWidget(VersionSyncWidget(repo_path))
+
+        # 推理服务面板
+        self.stack.addWidget(InferencePanel())
 
         root.addWidget(self.stack, 1)
         central.setLayout(root)
@@ -6323,7 +6594,7 @@ class StudioMainWindow(QMainWindow):
         self.stack.setCurrentIndex(idx)
 
         # 更新状态栏
-        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步"]
+        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步", "推理服务"]
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
 
     def _build_menubar(self):
