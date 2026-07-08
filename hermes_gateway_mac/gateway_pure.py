@@ -13,7 +13,6 @@ import time
 import threading
 import subprocess
 import argparse
-import os
 from typing import Optional
 
 
@@ -40,24 +39,15 @@ class HermesGatewayPure:
         }
 
     def _ssh(self, cmd: str, timeout: int = 5) -> str:
-        """执行SSH命令（通过expect wrapper处理密码）"""
-        wrapper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ssh_wrapper.exp")
-        full_cmd = [wrapper, self.orin_host, cmd]
+        """执行SSH命令（免密Key认证）"""
+        full_cmd = [
+            "ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no",
+            f"{self.orin_user}@{self.orin_host}",
+            f"source /opt/ros/humble/setup.bash && ROS_DOMAIN_ID=23 {cmd}"
+        ]
         try:
             r = subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
-            # Parse expect output: remove spawn line and password prompt, keep actual result
-            out = r.stdout.strip()
-            # Remove spawn line and password prompt lines
-            lines = []
-            skip = True
-            for line in out.split("\n"):
-                if skip and ("password:" in line):
-                    skip = False
-                    continue
-                if skip:
-                    continue
-                lines.append(line)
-            return "\n".join(lines).strip()
+            return r.stdout.strip()
         except Exception as e:
             return ""
 
@@ -67,14 +57,14 @@ class HermesGatewayPure:
             try:
                 # 关节状态
                 joint_raw = self._ssh(
-                    "ros2 topic echo --once /real_joint_states 2>/dev/null", timeout=10
+                    "ros2 topic echo --once /real_joint_states 2>/dev/null", timeout=5
                 )
                 if joint_raw:
                     self._parse_joint_states(joint_raw)
 
                 # 夹爪
                 grip_raw = self._ssh(
-                    "ros2 topic echo --once /gripper_pos 2>/dev/null", timeout=8
+                    "ros2 topic echo --once /gripper_pos 2>/dev/null", timeout=3
                 )
                 if grip_raw:
                     try:
