@@ -101,7 +101,48 @@ asyncio.run(monitor())
 
 | 文件 | 说明 |
 |------|------|
-| `gateway_node.py` | ROS2节点：订阅Orin话题，发布指令 |
-| `api_server.py` | FastAPI HTTP接口 + WebSocket |
+| `gateway_pure.py` | 纯Python版（推荐，零ROS2依赖） |
+| `gateway_node.py` | ROS2版（需ROS2 Humble） |
+| `api_server.py` | FastAPI HTTP接口 (配合ROS2版) |
+| `hermes_gateway_sdk.py` | WSL端SDK |
+| `mac_autostart.sh` | Mac开机自启动安装脚本 |
 | `requirements.txt` | Python依赖 |
-| `launch.sh` | 一键启动脚本 |
+| `launch.sh` | 一键启动 (ROS2版) |
+
+## 场景: 无显示器去现场
+
+### 前置准备 (在家做好)
+
+```bash
+# 1. Mac设置自动登录 (必须！)
+# System Settings → Users & Groups → Login Options → Automatic login: ON
+
+# 2. 安装开机自启动
+bash mac_autostart.sh install
+
+# 3. 配置SSH免密连接Orin (到现场第一次连)
+ssh-keygen -t rsa -f ~/.ssh/id_rsa -N ""
+ssh-copy-id nvidia@192.168.23.10
+```
+
+### 到现场后
+
+```bash
+# 1. 通电 → Mac自动启动 → Gateway自动运行
+
+# 2. 从手机/其他设备检查Mac IP
+# (Mac会在终端显示IP，或看路由器DHCP列表)
+
+# 3. 飞书告诉Hermes Mac的IP
+# 静静，Mac在 192.168.x.x，连上Orin
+
+# 4. Hermes通过飞书下发指令
+```
+
+### 通电后自动启动清单
+
+| 进程 | 说明 |
+|------|------|
+| `caffeinate` | 防休眠 |
+| `gateway_pure.py` | HTTP API :8080 |
+| `launchd KeepAlive` | 崩溃自动重启 |
