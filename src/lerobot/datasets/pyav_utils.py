@@ -41,12 +41,20 @@ def get_codec(vcodec: str) -> av.codec.Codec | None:
 
 
 @functools.cache
-def _get_codec_options_by_name(vcodec: str) -> dict[str, av.option.Option]:
-    """Private-option name → PyAV ``Option`` for *vcodec* (empty if unavailable)."""
+def _get_codec_options_by_name(vcodec: str) -> dict:
+    """Private-option name → PyAV Option dict (empty if unavailable)."""
     codec = get_codec(vcodec)
     if codec is None:
         return {}
-    return {opt.name: opt for opt in codec.descriptor.options}
+    try:
+        # PyAV >= 12
+        return {opt.name: opt for opt in codec.descriptor.options}
+    except AttributeError:
+        try:
+            # PyAV >= 18: options are plain objects
+            return {str(opt): opt for opt in (codec.options or [])}
+        except Exception:
+            return {}
 
 
 @functools.cache
@@ -76,7 +84,7 @@ def detect_available_encoders_pyav(encoders: list[str] | str) -> list[str]:
     return available
 
 
-def _check_option_value(vcodec: str, label: str, value: Any, opt: av.option.Option) -> None:
+def _check_option_value(vcodec: str, label: str, value: Any, opt: Any) -> None:
     """Range-check numeric *value* and choice-check string *value* against *opt*."""
     type_name = opt.type.name
     if type_name in FFMPEG_NUMERIC_OPTION_TYPES:
