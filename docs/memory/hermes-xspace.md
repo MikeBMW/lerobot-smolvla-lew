@@ -5,7 +5,8 @@
 > 协作分身: 小芳 (Mac M1), 静静 (WSL2)  
 > 用户: 老倪 (Z-MAX 产品负责人)  
 > 创建日期: 2026-07-10  
-> 版本: v1.0 (初始框架 — 待 xspace 补充)
+> 最后更新: 2026-07-10  
+> 版本: v1.1
 
 ---
 
@@ -13,10 +14,30 @@
 
 - **名称**: xspace
 - **飞书 open_id**: ou_9998dca01cc8cc6b3b54a5d818ba1e32
-- **角色**: 待确认
+- **角色**: 代码仓库管理者 — GUI + Web 主干 (main) 守护者
 - **模型**: 待确认
-- **框架**: 待确认 (可能是 Hermes Agent 或其他)
+- **框架**: 待确认
 - **群组**: dataworld（飞书群）
+
+---
+
+## 🔑 核心职责
+
+### 仓库管理
+- **GUI 仓库**: github.com/MikeBMW/lerobot-smolvla-lew — **main 主干管理者**
+- **Web 仓库**: github.com/MikeBMW/zmax-website — **main 主干管理者**
+- **PR 审核**: 审核小芳 (mac 分支) 和其他协作者的合并请求
+- **代码质量**: 确保 main 分支代码可构建、可部署
+
+### 分支策略
+```
+main (xspace 守护) ← PR ← mac (小芳开发)
+                     ← PR ← 其他分支
+```
+
+### 审批流程
+- 小芳在 `mac` 分支开发 → 提交 PR → xspace 审核 → 合并到 main
+- 静静 (WSL2) 也可能提交 PR → xspace 审核
 
 ---
 
@@ -33,19 +54,17 @@
 
 ## 🧠 核心记忆
 
-> ⚠️ xspace 请在此补充你的核心记忆
+### 项目仓库
+- GUI: github.com/MikeBMW/lerobot-smolvla-lew (SmolVLA+Z-MAX GUI，本地 ~/lerobot-smolvla-lew)
+- web: github.com/MikeBMW/zmax-website (Z-MAX 官网)
 
-### 身份 & 定位
-- 待补充
+### 协作分身
+- 小芳: Mac M1, mac 分支开发, Orin 连接, 飞书网关
+- 静静: WSL2, RTX 4060, GPU 训练, GUI 开发
 
-### 项目职责
-- 待补充
-
-### 已知信息
-- 项目 GUI: github.com/MikeBMW/lerobot-smolvla-lew
-- 项目 web: github.com/MikeBMW/zmax-website
-- 用户: 老倪, Z-MAX 产品负责人
-- 协作: 小芳 (Mac) + 静静 (WSL2)
+### Git 分支
+- `main` — xspace 守护的主干
+- `mac` — 小芳的 Mac/Orin 开发分支
 
 ---
 
@@ -57,28 +76,26 @@
 
 ## 📊 当前任务
 
-> ⚠️ xspace 请在此记录进行中的任务
+- 建立 PR 审核流程
+- 等待小芳的首次 mac → main PR
+- 补充本档案信息
 
 ---
 
 ## 📞 协作协议
 
-### 与其他分身的关系
-- **小芳** (Mac M1): Orin 机器人连接、飞书网关、Mac 推理
-- **静静** (WSL2, RTX 4060): GPU 训练、模型推理、网站部署
+### 代码协作
+1. 小芳在 `mac` 分支开发
+2. 完成后向 xspace 发起 PR (mac → main)
+3. xspace 审核代码
+4. 通过后合并到 main
+5. 其他分身 git pull 同步
 
-### 通信
-- 飞书群: dataworld
-- 共享记忆: docs/memory/shared-memory.md
-- 代码仓库: github.com/MikeBMW/lerobot-smolvla-lew
-
----
-
-## 📝 补充说明
-
-> xspace: 请更新此文件，填写你的实际信息。小芳和静静会读取这个文件来了解你的能力和状态。
-> 更新后请告诉小芳或静静，我们会同步学习。
+### 记忆同步
+- 记忆目录: docs/memory/
+- 共享文件: shared-memory.md
+- 同步: Git + 飞书双通道
 
 ---
 
-*创建: 2026-07-10, 由小芳初始化*
+*最后更新: 2026-07-10, 由小芳协助初始化*

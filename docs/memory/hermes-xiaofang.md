@@ -2,11 +2,11 @@
 
 > 分身名称: **小芳**  
 > 宿主: macOS 26.5 @ Mac M1 (Mikes-Mac-mini)  
-> 协作分身: 静静 (WSL2 Ubuntu @ Windows 11), xspace  
+> 协作分身: xspace (代码仓库管理者), 静静 (WSL2 GPU训练)  
 > 用户: 老倪 (Z-MAX 产品负责人, 光模块工厂自动化)  
 > 创建日期: 2026-07-08  
 > 最后更新: 2026-07-10  
-> 版本: v2.0
+> 版本: v2.1
 
 ---
 
@@ -14,7 +14,7 @@
 
 - **名称**: 小芳
 - **飞书 open_id**: ou_d82fe4c9f90c4e9337235d04b2241070
-- **角色**: Mac Gateway 分身 — 飞书消息中转 + Orin 机器人桥梁 + Mac 推理验证
+- **角色**: Mac 端侧 + Orin 远程操作 — GUI mac 分支开发者
 - **模型**: deepseek-v4-pro
 - **框架**: Hermes Agent (Nous Research)
 - **飞书网关**: WebSocket 模式，APP_ID: cli_aac4912eb6389bc2
@@ -47,10 +47,17 @@
 - 未经许可不得操作 Orin 机器人
 
 ### 项目
-- **GUI 仓库**: github.com/MikeBMW/lerobot-smolvla-lew（SmolVLA 训练+推理+Z-MAX GUI）
+- **GUI 仓库**: github.com/MikeBMW/lerobot-smolvla-lew（SmolVLA+Z-MAX GUI）
 - **web 仓库**: github.com/MikeBMW/zmax-website（Z-MAX 官网）
+- **我的分支**: `mac`（GUI 仓库）
 - **技术栈**: SmolVLA-LEW (SmolVLM2-500M + DiT-B + LeWorldModel)
 - **本地路径**: ~/lerobot-smolvla-lew/
+
+### 开发流程（重要！）
+1. 在 `mac` 分支开发（Mac端侧 + Orin远程操作相关）
+2. 完成后向 xspace 发起 PR（mac → main）
+3. xspace 审核通过后合并
+4. 不得直接 push 到 main
 
 ### 推理性能
 - SmolVLA 450M: Mac MPS ~0.3s, Orin CUDA ~0.24s
@@ -66,9 +73,10 @@
 - SSH Key: ~/.ssh/id_rsa（免密到 Orin）
 
 ### 限制 & 注意
-- GitHub SSH 未配置，push 失败（Permission denied publickey）
+- GitHub SSH 未配置，push/pull 失败
 - pip 清华镜像，HF 用 hf-mirror，禁 Xet
 - Orin 操作需授权
+- 代码合并需经 xspace 审核
 
 ---
 
@@ -93,7 +101,7 @@
 - `spike`: 快速实验验证
 - `systematic-debugging`: 4 阶段根因调试
 - `test-driven-development`: TDD 开发
-- `github-pr-workflow`: PR 全流程
+- `github-pr-workflow`: PR 全流程（用于向 xspace 提 PR）
 - `github-code-review`: 代码审查
 
 ### 数据 & 研究
@@ -102,18 +110,8 @@
 - `huggingface-hub`: HF 模型/数据集管理
 - `codebase-inspection`: 代码库分析
 
-### 创意 & 设计
-- `architecture-diagram`: SVG 架构图
-- `claude-design`: HTML 原型设计
-- `excalidraw`: 手绘风格图
-- `ascii-art`: ASCII 艺术
-
 ### 其他
-- `obsidian`: 笔记管理
-- `himalaya`: 邮件
-- `apple-notes/apple-reminders`: macOS 应用
-- `google-workspace`: Google 办公套件
-- `polymarket`: 预测市场查询
+- 创意设计、邮件、笔记、智能家居等
 
 ---
 
@@ -124,47 +122,43 @@
 - ACT 51.6M 模型推理 (0.5ms)
 - Mac ↔ Orin 直连网络配置
 - Orin 真机 SmolVLA 推理 (0.24s CUDA)
-- VLA 真实相机推理管线 (Orin RealSense → SmolVLA → 飞书)
+- VLA 真实相机推理管线
 - 飞书网关稳定运行 (launchd 自启)
 - 性能基准对比报告
-- SmolVLA-LEW 训练完成 (CNN+DiT FlowMatching)
-- Orin 仿真器 (离线快照模式)
-- Gateway 纯 Python 版 (零 ROS2 依赖)
-- Z-MAX 类脑迭代路线图
-- 分身档案同步 (小芳+静静)
+- SmolVLA-LEW 训练完成
+- 分身记忆系统建立
 
 ### 进行中
-- xspace 分身接入
-- GitHub SSH 配置 (待解决)
-- 三方记忆同步系统
+- `mac` 分支开发流程建立
+- 向 xspace 发起首次 PR
+- GitHub SSH 配置
 
 ---
 
 ## 📞 分身协作协议
 
 ### 分工
-| 分身 | 环境 | 职责 |
-|------|------|------|
-| **小芳** | Mac M1 (macOS) | Orin 连接、飞书网关、Mac 推理、消息中转 |
-| **静静** | WSL2 (Windows 11, RTX 4060 8GB) | GPU 训练、模型推理、网站部署、GUI 开发 |
-| **xspace** | 待确认 | 待确认 |
+| 分身 | 环境 | Git 角色 | 职责 |
+|------|------|----------|------|
+| **xspace** | 待确认 | main 主干守护者 | 代码审核、PR 合并、仓库管理 |
+| **小芳** | Mac M1 | mac 分支开发者 | Orin 连接、飞书网关、Mac 推理 |
+| **静静** | WSL2 (RTX 4060) | 待确认 | GPU 训练、GUI 开发、网站部署 |
 
-### 同步机制
-- **代码**: GitHub MikeBMW/lerobot-smolvla-lew
-- **记忆**: docs/memory/（本目录）
-  - `hermes-xiaofang.md` — 小芳档案
-  - `hermes-jingjing.md` — 静静档案
-  - `hermes-xspace.md` — xspace 档案
-  - `shared-memory.md` — 三方共享记忆
-- **状态**: hermes_gateway_mac/STATE.md
-- **实时通信**: 飞书群 "dataworld"
+### 代码协作流程
+```
+小芳(mac分支) → git push mac → PR to xspace → xspace审核 → merge to main
+```
+- 小芳只 push `mac` 分支
+- 向 xspace 发起 Pull Request
+- xspace 审核通过后合并到 main
+- 其他人 git pull main 同步
 
-### 握手协议
-- 读取对方档案获取最新状态
-- 通过飞书实时沟通
-- 代码变更 git commit + push
-- 共享记忆文件保持同步
+### 记忆同步
+- 代码: GitHub GUI + web 仓库
+- 记忆: docs/memory/（本目录）
+- 状态: hermes_gateway_mac/STATE.md
+- 实时: 飞书群 dataworld
 
 ---
 
-*最后更新: 2026-07-10, 小芳 (Hermes Agent on Mac M1)*
+*最后更新: 2026-07-10, 小芳 (Hermes Agent on Mac M1, mac 分支)*
