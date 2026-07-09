@@ -3370,10 +3370,27 @@ class EvalModule(SubModuleWidget):
         if idx < 0 or idx >= len(records):
             return
         m = records[idx]
+        initial_loss = m.get('initial_loss')
+        final_loss = m.get('final_loss')
+        reduction_pct = m.get('reduction_pct')
+        n_params = m.get('params') or m.get('total_params') or 0
+        # 构建loss行，null字段显示为N/A
+        loss_parts = []
+        if initial_loss is not None:
+            loss_parts.append(f"{initial_loss:.4f}")
+        else:
+            loss_parts.append("N/A")
+        if final_loss is not None:
+            loss_parts.append(f"{final_loss:.4f}")
+        else:
+            loss_parts.append("N/A")
+        loss_line = f"loss {loss_parts[0]}→{loss_parts[1]}"
+        if reduction_pct is not None:
+            loss_line += f" ({reduction_pct}%↓)"
         self.eval_info.setText(
             f"<b>{m.get('model','?')}</b> · {m.get('dataset','?')} · <b>{m.get('steps','?')}步</b> · "
-            f"loss {m.get('initial_loss',0):.4f}→{m.get('final_loss',0):.4f} ({m.get('reduction_pct',0)}%↓)<br>"
-            f"<span style='color:#8b949e'>{m.get('params',0)//1e6:.0f}M参数 | {m.get('device','?')} | {m.get('timestamp','?')}</span>"
+            f"{loss_line}<br>"
+            f"<span style='color:#8b949e'>{n_params//1e6:.0f}M参数 | {m.get('device','?')} | {m.get('timestamp','?')}</span>"
         )
         proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         svg_path = os.path.join(proj_root, "outputs", m["_dir"], "loss_curve.svg")
@@ -6151,6 +6168,12 @@ class InferencePanel(QWidget):
         self.cli_stop.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.start_btn.setEnabled(True)
+
+
+# ============================================================
+# 插拔场景模块: Z700 L2基线/L3增强/L4旗舰
+# ============================================================
+class PluggingSceneModule(SubModuleWidget):
     """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
 
     def __init__(self):
@@ -6751,6 +6774,12 @@ class StudioMainWindow(QMainWindow):
         m_doc.addSeparator()
         m_doc.addAction(self._mk_doc_action("📖 开发宝典 — 全维度参考手册 (v1.0.2)",
             (["HELP-DEVELOPMENT-BIBLE.md"], "xdg-open")))
+
+        # === 运维文档 ===
+        m_doc.addSeparator()
+        m_ops = m_doc.addMenu("🔧 运维手册")
+        m_ops.addAction(self._mk_doc_action("🖥  Orin SSH 运维手册 — 连接/三层永固/故障排除",
+            (["Orin运维手册.md"], "xdg-open")))
 
         # 品牌 & 竞品
         m_doc.addSeparator()
