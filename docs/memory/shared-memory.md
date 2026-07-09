@@ -1,6 +1,6 @@
 # 共享记忆 · Shared Memory
 
-> 三方分身 (小芳 / 静静 / xspace) 的公共知识库  
+> 分身 (小芳 / xspace/静静) 的公共知识库  
 > 任何分身更新此文件后，需通知其他分身同步  
 > 最后更新: 2026-07-10
 
@@ -34,56 +34,55 @@
 
 ## 🤖 AI 分身清单
 
-| 分身 | open_id | 环境 | Git 角色 | 职责 |
-|------|---------|------|----------|------|
-| **xspace** | ou_9998dca01cc8cc6b3b54a5d818ba1e32 | 待确认 | **main 主干守护者** | 代码审核、PR合并、GUI+Web仓库管理 |
-| **小芳** | ou_d82fe4c9f90c4e9337235d04b2241070 | Mac M1 (macOS 26.5) | mac 分支开发者 | Orin 连接、飞书网关、Mac 端侧推理 |
-| **静静** | 待确认 | WSL2 Ubuntu @ Windows 11 | 待确认 | GPU 训练 (RTX 4060)、GUI 开发、网站部署 |
+| 分身 | 别名 | open_id | 环境 | Git 角色 | 职责 |
+|------|------|---------|------|----------|------|
+| **xspace** | 静静 | ou_9998dca01cc8cc6b3b54a5d818ba1e32 | WSL2 Ubuntu @ Win11 (RTX 4060, 32GB) | **main 主干守护者** | 代码审核、PR合并、GUI+Web仓库管理、GPU训练、GUI开发、网站部署 |
+| **小芳** | — | ou_d82fe4c9f90c4e9337235d04b2241070 | Mac M1 (macOS 26.5, 8GB) | mac 分支开发者 | Orin 连接、飞书网关、Mac 端侧推理 |
 
 ---
 
 ## 🌿 Git 分支策略
 
 ```
-main (xspace 守护)
+main (xspace/静静 守护)
   ↑ PR 审核
-  ├── mac (小芳: Mac端侧 + Orin远程操作)
-  ├── ... (其他开发分支)
+  └── mac (小芳: Mac端侧 + Orin远程操作)
 ```
 
 ### 开发流程
-1. 开发者在自己分支工作（如小芳在 `mac`）
-2. 完成后 push 分支到 GitHub
-3. 向 xspace 发起 Pull Request（目标: main）
-4. xspace 审核代码
+1. 小芳在 `mac` 分支开发
+2. 完成后 `git push origin mac`
+3. 向 xspace/静静 发起 Pull Request（mac → main）
+4. xspace/静静 审核代码
 5. 通过后 merge 到 main
-6. 所有分身 git pull main 同步
+6. 所有分身 `git pull origin main` 同步
 
 ### 重要规则
 - ❌ 不得直接 push 到 main
-- ✅ 所有代码变更必须通过 PR + xspace 审核
-- ✅ xspace 全权负责 main 分支健康
+- ✅ 所有代码变更必须通过 PR + xspace/静静 审核
+- ✅ xspace/静静 全权负责 main 分支健康
 
 ---
 
 ## 🖥 硬件清单
 
-### Mac M1 (Mikes-Mac-mini)
-- M1 8 核, 8GB 统一内存, macOS 26.5
+### Mac M1 (小芳)
+- Apple M1 8核, 8GB 统一内存, macOS 26.5
 - Python 3.12, 包管理 uv
 - SmolVLA 450M MPS 推理 ~0.3s
 - ACT 51.6M 推理 ~0.5ms
 
-### NVIDIA Jetson AGX Orin
+### WSL2 (xspace/静静)
+- Windows 11, WSL2 Ubuntu
+- NVIDIA RTX 4060 8GB, 32GB RAM
+- GPU 训练 + 模型推理 + GUI 开发 + 网站部署
+
+### NVIDIA Jetson AGX Orin (机器人)
 - 6 核 ARM Cortex-A78AE, Orin nvgpu
 - 7.4GB LPDDR5, CUDA 12.6
 - Ubuntu 22.04 aarch64, ROS2 Humble
 - SmolVLA 推理 ~0.24s
-
-### WSL2 (静静)
-- Windows 11, WSL2 Ubuntu
-- RTX 4060 8GB, 32GB RAM
-- 主要做 GPU 训练和推理
+- XMS5-R800 6轴机械臂 + Intel RealSense D435
 
 ---
 
@@ -114,45 +113,45 @@ WSL2 ←→ GitHub (git push/pull)
 
 ## 🔧 已知限制 & 待解决
 
-1. **GitHub SSH**: 未配置，git push/pull 失败
+1. **GitHub SSH**: Mac 未配置，git push/pull 失败
    - 公钥待添加到 https://github.com/settings/keys
-   - 影响：20+ commits 本地堆积，mac 分支无法推送
+   - 影响：mac 分支无法推送，PR 无法发起
 2. **Orin 内存**: 运行机器人后仅剩 ~1.7GB
 3. **Orin 操作**: 需用户明确授权
 4. **ROS2 Humble**: Mac ARM64 不支持，用 SSH 文件桥
 5. **pip 镜像**: 清华镜像，HF 用 hf-mirror，禁 Xet
-6. **xspace 信息**: 运行环境和能力待补充
+6. **xspace/静静 信息**: 部分技能和配置待补充
 
 ---
 
 ## 📞 分身通信规则
 
-1. **代码协作**: mac 分支 → PR → xspace 审核 → merge main
+1. **代码协作**: mac 分支 → PR → xspace/静静 审核 → merge main
 2. **记忆同步**: 更新 docs/memory/ → git commit → PR 或 push
 3. **状态同步**: 重大状态变更 → 更新 STATE.md
 4. **实时沟通**: 飞书群 dataworld 中 @ 对方
-5. **互相学习**: 定期阅读其他分身的档案文件
+5. **互相学习**: 定期阅读对方档案文件
 
 ---
 
 ## 🗂 决策记录
 
-### 2026-07-10: 分支策略 & 角色分工 (最新)
-- **决策**: xspace 守护 main 主干，小芳在 mac 分支开发
-- **流程**: mac → PR → xspace 审核 → merge main
+### 2026-07-10: 分支策略 & 角色分工
+- **决策**: xspace/静静 守护 main 主干，小芳在 mac 分支开发
+- **流程**: mac → PR → xspace/静静 审核 → merge main
 - **理由**: 保证 main 代码质量，防止直接推送冲突
 
+### 2026-07-10: xspace = 静静
+- **决策**: 确认 xspace 和静静是同一分身
+- **环境**: WSL2 Ubuntu, RTX 4060, 32GB RAM
+
 ### 2026-07-08: 飞书网关选型
-- **决策**: WebSocket 模式（非 Webhook）
+- **决策**: WebSocket 模式
 - **原因**: 内网环境无公网回调地址
 
 ### 2026-07-08: Mac 推理而非 Orin
 - **决策**: Mac 做 SmolVLA 推理，Orin 做数据采集
-- **原因**: Orin 内存不足，Mac MPS 性能可接受
-
-### 2026-07-10: 分身记忆系统
-- **决策**: docs/memory/ 多文件架构（各分身档案 + 共享记忆）
-- **同步**: Git PR 审核 + 飞书双通道
+- **原因**: Orin 内存不足
 
 ---
 

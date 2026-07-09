@@ -2,11 +2,11 @@
 
 > 分身名称: **小芳**  
 > 宿主: macOS 26.5 @ Mac M1 (Mikes-Mac-mini)  
-> 协作分身: xspace (代码仓库管理者), 静静 (WSL2 GPU训练)  
+> 协作者: xspace/静静 (WSL2, RTX 4060, main 主干守护者)  
 > 用户: 老倪 (Z-MAX 产品负责人, 光模块工厂自动化)  
 > 创建日期: 2026-07-08  
 > 最后更新: 2026-07-10  
-> 版本: v2.1
+> 版本: v2.2
 
 ---
 
@@ -54,10 +54,10 @@
 - **本地路径**: ~/lerobot-smolvla-lew/
 
 ### 开发流程（重要！）
-1. 在 `mac` 分支开发（Mac端侧 + Orin远程操作相关）
-2. 完成后向 xspace 发起 PR（mac → main）
-3. xspace 审核通过后合并
-4. 不得直接 push 到 main
+1. 在 `mac` 分支开发
+2. 完成后向 xspace/静静 发起 PR（mac → main）
+3. xspace/静静 审核通过后合并
+4. 绝不直接 push 到 main
 
 ### 推理性能
 - SmolVLA 450M: Mac MPS ~0.3s, Orin CUDA ~0.24s
@@ -72,93 +72,71 @@
 - 数据桥: SSH 文件桥（ROS2 Humble ARM64 不支持）
 - SSH Key: ~/.ssh/id_rsa（免密到 Orin）
 
-### 限制 & 注意
+### 限制
 - GitHub SSH 未配置，push/pull 失败
 - pip 清华镜像，HF 用 hf-mirror，禁 Xet
 - Orin 操作需授权
-- 代码合并需经 xspace 审核
+- 代码合并需经 xspace/静静 审核
 
 ---
 
-## 🛠️ 核心技能（82个可用）
+## 🛠️ 核心技能（82个）
 
-### 机器人相关
-- `hermes-gateway-robot`: SSH 连接 Orin 机器人
-- `smolvla-inference`: SmolVLA 模型推理
-- `smolvla-training`: SmolVLA 训练流程
-- `smolvla-workflow`: 完整训练+推理工作流
-- `vla-realtime-inference`: 实时 VLA 推理管线
-- `zmax-studio`: Z-MAX GUI 启动和调试
-- `robotics-model-training`: Mac M1 上训练机器人模型
+### 机器人
+`hermes-gateway-robot`, `smolvla-inference`, `smolvla-training`, `smolvla-workflow`, `vla-realtime-inference`, `zmax-studio`, `robotics-model-training`
 
 ### 基础设施
-- `hermes-agent`: Hermes Gateway 配置、飞书连接
-- `hermes-feishu-troubleshooting`: 飞书连接问题诊断
-- `zmax-avatar-sync`: 分身间记忆同步
+`hermes-agent`, `hermes-feishu-troubleshooting`, `zmax-avatar-sync`
 
 ### 开发
-- `plan`: 写执行计划
-- `spike`: 快速实验验证
-- `systematic-debugging`: 4 阶段根因调试
-- `test-driven-development`: TDD 开发
-- `github-pr-workflow`: PR 全流程（用于向 xspace 提 PR）
-- `github-code-review`: 代码审查
+`plan`, `spike`, `systematic-debugging`, `test-driven-development`, `github-pr-workflow`, `github-code-review`
 
 ### 数据 & 研究
-- `jupyter-live-kernel`: 交互式 Python
-- `arxiv`: 论文搜索
-- `huggingface-hub`: HF 模型/数据集管理
-- `codebase-inspection`: 代码库分析
+`jupyter-live-kernel`, `arxiv`, `huggingface-hub`, `codebase-inspection`
 
 ### 其他
-- 创意设计、邮件、笔记、智能家居等
+创意设计、邮件、笔记、智能家居等
 
 ---
 
 ## 📊 项目进度
 
 ### 已完成
-- SmolVLA 450M MPS 推理验证 (~0.3s)
-- ACT 51.6M 模型推理 (0.5ms)
+- SmolVLA 450M MPS 推理验证
+- ACT 51.6M 模型推理
 - Mac ↔ Orin 直连网络配置
-- Orin 真机 SmolVLA 推理 (0.24s CUDA)
+- Orin 真机 SmolVLA 推理
 - VLA 真实相机推理管线
-- 飞书网关稳定运行 (launchd 自启)
+- 飞书网关稳定运行
 - 性能基准对比报告
 - SmolVLA-LEW 训练完成
-- 分身记忆系统建立
+- 三方记忆系统建立
+- mac 分支创建
 
 ### 进行中
-- `mac` 分支开发流程建立
-- 向 xspace 发起首次 PR
+- 向 xspace/静静 发起首次 PR（需 SSH）
 - GitHub SSH 配置
 
 ---
 
-## 📞 分身协作协议
+## 📞 协作协议
 
 ### 分工
-| 分身 | 环境 | Git 角色 | 职责 |
-|------|------|----------|------|
-| **xspace** | 待确认 | main 主干守护者 | 代码审核、PR 合并、仓库管理 |
-| **小芳** | Mac M1 | mac 分支开发者 | Orin 连接、飞书网关、Mac 推理 |
-| **静静** | WSL2 (RTX 4060) | 待确认 | GPU 训练、GUI 开发、网站部署 |
+| 分身 | 环境 | Git | 职责 |
+|------|------|-----|------|
+| **xspace/静静** | WSL2 (RTX 4060, 32GB) | main 守护者 | 代码审核、PR合并、GPU训练、GUI、网站 |
+| **小芳** | Mac M1 (8GB) | mac 分支 | Orin连接、飞书网关、Mac推理 |
 
-### 代码协作流程
+### 代码流程
 ```
-小芳(mac分支) → git push mac → PR to xspace → xspace审核 → merge to main
+小芳(mac) → PR → xspace/静静审核 → merge main
 ```
-- 小芳只 push `mac` 分支
-- 向 xspace 发起 Pull Request
-- xspace 审核通过后合并到 main
-- 其他人 git pull main 同步
 
 ### 记忆同步
-- 代码: GitHub GUI + web 仓库
-- 记忆: docs/memory/（本目录）
+- 记忆: docs/memory/
 - 状态: hermes_gateway_mac/STATE.md
 - 实时: 飞书群 dataworld
 
 ---
 
-*最后更新: 2026-07-10, 小芳 (Hermes Agent on Mac M1, mac 分支)*
+*最后更新: 2026-07-10, 小芳*
