@@ -590,6 +590,81 @@ A: 连上 Orin 后，终端执行: `ros2 bag record /robot/joint_states /gripper
 
 ---
 
+## 十三、AI 分身系统 & 协作状态
+
+> 最后更新: 2026-07-10
+
+Z-MAX 项目由多个 AI 分身协同开发，各分身分工明确、互相学习。
+
+### 13.1 分身清单
+
+| 分身 | 别名 | 飞书群 | 运行环境 | Git 角色 | 核心职责 |
+|------|------|--------|----------|----------|----------|
+| **小芳** | Hermes小芳 | dataworld | Mac M1 (8GB, macOS 26.5) | mac 分支开发者 | Orin 机器人连接、飞书网关（WebSocket, launchd 自启）、Mac MPS 推理、记忆档案管理 |
+| **xspace** | 静静 | dataworld | WSL2 Ubuntu (RTX 4060 8GB, 32GB RAM) | **main 主干守护者** | GPU 训练（SmolVLA）、代码审核+PR合并、GUI开发（Z-MAX Studio）、网站部署、专利文档评审 |
+
+### 13.2 开发协作流程
+
+```
+小芳(mac分支) ──PR──→ xspace/静静 审核 ──merge──→ main 主干
+```
+
+- 小芳在 `mac` 分支开发 Mac 端侧和 Orin 远程操作相关功能
+- 完成后向 xspace 发起 Pull Request
+- xspace 审核代码后合并到 main
+- 不得直接 push main 分支
+
+### 13.3 记忆同步
+
+所有分身档案和共享记忆存放在 `docs/memory/`：
+
+- `hermes-xiaofang.md` — 小芳完整档案
+- `hermes-xspace.md` — xspace/静静完整档案
+- `shared-memory.md` — 三方共享记忆（用户信息、硬件清单、网络拓扑、决策记录）
+- `hermes-jingjing.md.archived` — 旧档案（已归档）
+
+同步方式：Git push/pull + 飞书群实时沟通
+
+### 13.4 在线状态检查
+
+在飞书群 dataworld 中 @ 对应分身即可实时沟通：
+
+- @Hermes小芳 → 唤醒小芳（Mac M1 推理 + Orin 连接）
+- @xspace → 唤醒静静（WSL2 训练 + 代码审核）
+
+---
+
+## 十四、专利文档 & 知识产权
+
+### 14.1 专利交底书
+
+| 文件 | 格式 | 路径 | 说明 |
+|------|------|------|------|
+| Z-MAX 专利交底书（实用新型） | .docx | `docs/patents/Z-MAX-专利交底书-实用新型.docx` | 光模块自主插拔机器人系统 |
+
+**专利核心创新点：**
+- SmolVLA 类脑双通路架构（VLM冻结 + Expert可训练）
+- 三层解耦（感知层/认知层/执行层）+ OTA 软件升级
+- >10kHz 力控自适应插拔 + 三级异常自恢复
+
+### 14.2 产品技术文档索引
+
+| 文档 | 路径 | 说明 |
+|------|------|------|
+| 产品等级定义 L1-L5 | `docs/Z-MAX产品等级定义-L1-L5标准.md` | Q/ZFCY 001.1-2026 标准 |
+| 类脑计算方案 | `docs/Z-MAX-类脑计算方案.md` | 5大方案脑科学映射 |
+| 类脑迭代路线图 | `docs/Z-MAX-类脑迭代路线图.md` | 4阶段脑科学映射开发计划 |
+| L2 解决方案 | `docs/L2-Z-MAX解决方案-v1.0.1.md` | Z700 F 基线版产品方案 |
+| L3 技术路线 | `docs/L3-技术路线与开发指南-v1.0.0.md` | Phase 0-4 完整迭代路线 |
+| SmolVLA 训练方案 | `docs/Z-MAX-SmolVLA训练方案.md` | 训练决策文档 |
+| 产品培训手册 | `docs/Z700F-L2产品培训手册.md` | Z700 F L2 操作培训 |
+| 数据日志方案 | `docs/Z-MAX数据日志方案-MCAP分析.md` | MCAP 数据采集分析 |
+| Orin 运维手册 | `docs/Orin运维手册.md` | Jetson AGX Orin 运维指南 |
+
+---
+
 > **📌 本文档与 Z-MAX 产品版本同步更新。离线开发、在线调试，一册通晓。**
 > 
 > GitHub: https://github.com/MikeBMW/lerobot-smolvla-lew
+> 飞书群: dataworld
+> 分身: @Hermes小芳 (Mac) | @xspace (WSL2)
