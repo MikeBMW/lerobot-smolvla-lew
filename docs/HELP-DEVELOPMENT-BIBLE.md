@@ -590,6 +590,66 @@ A: 连上 Orin 后，终端执行: `ros2 bag record /robot/joint_states /gripper
 
 ---
 
+## 十一、AI分身协同 · 静静 & 小芳
+
+Z-MAX 配备双 AI 助手协同工作，可在 **docs/memory/** 查看最新状态。
+
+### 11.1 分身一览
+
+| 分身 | 主机 | 角色 | 状态 |
+|:--|:--|:--|:--:|
+| **静静 (xspace)** | WSL2 + RTX 4060 | GPU训练 · 推理 · GUI · 网站 | 🟢 在线 |
+| **小芳 (Mac)** | Mac Mini M1 | Orin连接 · ROS2转发 · 网关 | 🟢 在线 |
+
+### 11.2 记忆同步区
+
+三个记忆文件，GitHub实时同步：
+
+| 文件 | 内容 | 更新者 |
+|:--|:--|:--|
+| `docs/memory/xspace.md` | 静静完整记忆 (身份/硬件/技能/进度) | 静静 |
+| `docs/memory/xiaofang.md` | 小芳完整记忆 (待小芳填充) | 小芳 |
+| `docs/memory/sync.md` | 共享知识 (产品/拓扑/规范/分支策略) | 双方 |
+
+### 11.3 Git 分支协作
+
+| 仓库 | 分支 | 负责人 |
+|:--|:--|:--|
+| GUI (`lerobot-smolvla-lew`) | `main` | 静静 (主干) |
+| GUI | `mac` | 小芳 (Mac/Orin操作) → PR合并 |
+| web (`zmax-website`) | `main` | 静静 |
+
+### 11.4 查看最新状态
+
+- 文件位置: `docs/memory/xspace.md` / `xiaofang.md` / `sync.md`
+- GitHub: https://github.com/MikeBMW/lerobot-smolvla-lew/tree/main/docs/memory
+
+> 📌 双方通过飞书群 dataworld 实时沟通，@mention 即可召唤。
+
+---
+
+## 十二、专利与知识产权
+
+### 12.1 专利交底书
+
+| 文件 | 格式 | 说明 |
+|:--|:--|:--|
+| [Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx](patents/Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx) | .docx | 完整专利交底书（实用新型） |
+
+### 12.2 交底书章节
+- 一、技术领域
+- 二、背景技术（现有问题+方案不足）
+- 三、发明内容（系统架构+VLA模型+双臂协同+力控闭环+软件定义自动化等级）
+- 四、附图说明（6张图待补充）
+- 五、具体实施方式（EVB测试插拔+产线换型自适应）
+- 六、技术效果（6项有益效果）
+- 七、权利要求书（6项权利要求）
+- 八、摘要
+
+> 📌 文件位置: `docs/patents/`
+
+---
+
 > **📌 本文档与 Z-MAX 产品版本同步更新。离线开发、在线调试，一册通晓。**
 > 
 > GitHub: https://github.com/MikeBMW/lerobot-smolvla-lew

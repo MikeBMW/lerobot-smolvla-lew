@@ -116,6 +116,8 @@ git push origin main
 - [📖 开发宝典](./HELP-DEVELOPMENT-BIBLE.md) - 全维度参考手册（场景需求/设计/架构/训练/硬件/数据/GUI）
 - [📦 产品版本管理](./VERSION.md) - 版本号规范与发布流程
 - [🔄 上游同步指南](./Z-MAX-UPSTREAM-SYNC.md) - LeRobot上游同步工作流
+- [📜 专利交底书](./patents/Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx) - Z-MAX 实用新型专利（.docx）
+- [🤖 AI分身状态](./memory/xspace.md) - 静静 & 小芳 协同工作台
 
 ---
 
