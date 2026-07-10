@@ -194,3 +194,4 @@ ros_orin_ws/log/
 # ROS2 package manifests must NOT be ignored
 !ros_pc_ws/src/*/package.xml
 !ros_orin_ws/src/*/package.xml
+Zone.Identifier
