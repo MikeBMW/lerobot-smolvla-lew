@@ -1032,7 +1032,7 @@ class HomeWidget(QWidget):
         row.addWidget(ver_btn)
 
         # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
-        doc_btn = QPushButton("📋 解决方案v1.0.3")
+        doc_btn = QPushButton("📋 解决方案v1.0.4")
         doc_btn.setFont(QFont("Arial", 9, QFont.Bold))
         doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         doc_btn.setCursor(Qt.PointingHandCursor)
@@ -1201,10 +1201,10 @@ class HomeWidget(QWidget):
             QMessageBox.warning(self, "同步异常", f"发生异常:\n{str(e)}")
 
     def _open_spec_doc(self):
-        """打开解决方案文档 v1.0.3"""
+        """打开解决方案文档 v1.0.4"""
         try:
             # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
-            doc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docs', 'L2-Z-MAX解决方案-v1.0.1.md')
+            doc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docs', 'L2-Z-MAX解决方案-v1.0.4.md')
             # WSL: 复制到 Windows 临时目录再打开
             import shutil
             tmp_name = f"zmax_spec_{os.path.basename(doc_path)}"
@@ -6729,6 +6729,9 @@ class StudioMainWindow(QMainWindow):
         m_doc.addAction(self._mk_doc_action("🧠 SmolVLA 训练方案 · 数据+方法+路线",
             (["Z-MAX-SmolVLA训练方案.md"], "xdg-open")))
         m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("📋 用户需求调研问卷 (Word·docx)",
+            (["survey/Z-MAX-用户需求调研问卷-v1.0.4.docx"], "libreoffice")))
+        m_doc.addSeparator()
         m_doc.addAction(self._mk_doc_action("💾 数据日志方案 · MCAP vs Rosbag 分析",
             (["Z-MAX数据日志方案-MCAP分析.md"], "xdg-open")))
         m_doc.addSeparator()
@@ -6756,23 +6759,23 @@ class StudioMainWindow(QMainWindow):
 
         # L1 - 战略层
         m_l1 = m_doc.addMenu("L1 · 战略层文档")
-        m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品发布 PPT (v1.0.0)",
+        m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品发布 PPT (v1.0.4)",
             (["L1-Z-MAX产品发布-v1.0.0.pptx"], "libreoffice")))
 
         # L2 - 方案层
         m_doc.addSeparator()
         m_l2 = m_doc.addMenu("L2 · 方案层文档")
-        m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.1)",
-            (["L2-Z-MAX解决方案-v1.0.1.md"], "xdg-open")))
+        m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.4)",
+            (["L2-Z-MAX解决方案-v1.0.4.md"], "xdg-open")))
 
         # L3 - 技术层
         m_l3 = m_doc.addMenu("L3 · 技术层文档")
-        m_l3.addAction(self._mk_doc_action("🔧 技术路线与代码开发指南 (v1.0.0)",
-            (["L3-技术路线与开发指南-v1.0.0.md", "Z-MAX 产品迭代技术路线与代码开发指南.md"], "xdg-open")))
+        m_l3.addAction(self._mk_doc_action("🔧 技术路线与代码开发指南 (v1.0.4)",
+            (["L3-技术路线与开发指南-v1.0.4.md", "Z-MAX 产品迭代技术路线与代码开发指南.md"], "xdg-open")))
 
         # === 开发宝典（置顶核心文档） ===
         m_doc.addSeparator()
-        m_doc.addAction(self._mk_doc_action("📖 开发宝典 — 全维度参考手册 (v1.0.2)",
+        m_doc.addAction(self._mk_doc_action("📖 开发宝典 — 全维度参考手册 (v1.0.4)",
             (["HELP-DEVELOPMENT-BIBLE.md"], "xdg-open")))
 
         # === 运维文档 ===
