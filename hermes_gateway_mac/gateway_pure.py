@@ -39,7 +39,7 @@ class HermesGatewayPure:
         }
 
     def _ssh(self, cmd: str, timeout: int = 5) -> str:
-        """执行SSH命令"""
+        """执行SSH命令（免密Key认证）"""
         full_cmd = [
             "ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no",
             f"{self.orin_user}@{self.orin_host}",
@@ -55,23 +55,20 @@ class HermesGatewayPure:
         """轮询Orin数据"""
         while self._running:
             try:
-                # 关节状态
-                joint_raw = self._ssh(
-                    "ros2 topic echo --once /real_joint_states 2>/dev/null", timeout=3
-                )
+                # 关节状态 — 读取Orin后台stream_joints.py输出的JSON文件
+                joint_raw = self._ssh("cat /tmp/joints.json 2>/dev/null", timeout=5)
                 if joint_raw:
                     self._parse_joint_states(joint_raw)
 
                 # 夹爪
-                grip_raw = self._ssh(
-                    "ros2 topic echo --once /gripper_pos 2>/dev/null", timeout=2
-                )
+                grip_raw = self._ssh("cat /tmp/gripper.json 2>/dev/null", timeout=5)
                 if grip_raw:
                     try:
+                        data = json.loads(grip_raw)
                         with self._lock:
-                            self.state["gripper_pos"] = float(grip_raw.split()[-1])
+                            self.state["gripper_pos"] = data.get("pos")
                             self.state["last_update"] = time.time()
-                    except ValueError:
+                    except (json.JSONDecodeError, KeyError):
                         pass
 
             except Exception as e:
@@ -81,29 +78,19 @@ class HermesGatewayPure:
             time.sleep(self.poll_interval)
 
     def _parse_joint_states(self, raw: str):
-        """解析ros2 topic echo输出的joint_states"""
-        names = []
-        positions = []
-        in_position = False
-
-        for line in raw.split("\n"):
-            line = line.strip()
-            if "name:" in line:
-                val = line.split("'")[1] if "'" in line else line.split('"')[1] if '"' in line else line.split(":")[-1].strip()
-                names.append(val.strip("[]', "))
-            elif "position:" in line:
-                in_position = True
-            elif in_position and line.startswith("-"):
-                try:
-                    positions.append(float(line.strip()))
-                except ValueError:
-                    pass
-
-        if names and positions and len(names) == len(positions):
-            with self._lock:
-                self.state["joint_names"] = names
-                self.state["joint_positions"] = positions
-                self.state["last_update"] = time.time()
+        """解析Python rclpy JSON格式joint_states"""
+        import json
+        try:
+            data = json.loads(raw)
+            names = data.get("names", [])
+            positions = data.get("positions", [])
+            if names and positions and len(names) == len(positions):
+                with self._lock:
+                    self.state["joint_names"] = names
+                    self.state["joint_positions"] = positions
+                    self.state["last_update"] = time.time()
+        except (json.JSONDecodeError, KeyError):
+            pass
 
     def start(self):
         """启动后台轮询"""

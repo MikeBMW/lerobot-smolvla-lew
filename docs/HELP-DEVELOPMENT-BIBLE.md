@@ -590,117 +590,140 @@ A: 连上 Orin 后，终端执行: `ros2 bag record /robot/joint_states /gripper
 
 ---
 
-## 十一、AI分身协同 · 静静 & 小芳
+## 十三、AI 分身系统 & 协作状态
 
-Z-MAX 配备双 AI 助手协同工作，可在 **docs/memory/** 查看最新状态。
+> 最后更新: 2026-07-10
 
-### 11.1 分身一览
+Z-MAX 项目由多个 AI 分身协同开发，各分身分工明确、互相学习。
 
-| 分身 | 主机 | 角色 | 状态 |
-|:--|:--|:--|:--:|
-| **静静 (xspace)** | WSL2 + RTX 4060 | GPU训练 · 推理 · GUI · 网站 | 🟢 在线 |
-| **小芳 (Mac)** | Mac Mini M1 | Orin连接 · ROS2转发 · 网关 | 🟢 在线 |
+### 13.1 分身清单
 
-### 11.2 记忆同步区
+| 分身 | 别名 | 飞书群 | 运行环境 | Git 角色 | 核心职责 |
+|------|------|--------|----------|----------|----------|
+| **小芳** | Hermes小芳 | dataworld | Mac M1 (8GB, macOS 26.5) | mac 分支开发者 | Orin 机器人连接、飞书网关（WebSocket, launchd 自启）、Mac MPS 推理、记忆档案管理 |
+| **xspace** | 静静 | dataworld | WSL2 Ubuntu (RTX 4060 8GB, 32GB RAM) | **main 主干守护者** | GPU 训练（SmolVLA）、代码审核+PR合并、GUI开发（Z-MAX Studio）、网站部署、专利文档评审 |
 
-三个记忆文件，GitHub实时同步：
-
-| 文件 | 内容 | 更新者 |
-|:--|:--|:--|
-| `docs/memory/xspace.md` | 静静完整记忆 (身份/硬件/技能/进度) | 静静 |
-| `docs/memory/xiaofang.md` | 小芳完整记忆 (待小芳填充) | 小芳 |
-| `docs/memory/sync.md` | 共享知识 (产品/拓扑/规范/分支策略) | 双方 |
-
-### 11.3 Git 分支协作
-
-| 仓库 | 分支 | 负责人 |
-|:--|:--|:--|
-| GUI (`lerobot-smolvla-lew`) | `main` | 静静 (主干) |
-| GUI | `mac` | 小芳 (Mac/Orin操作) → PR合并 |
-| web (`zmax-website`) | `main` | 静静 |
-
-### 11.4 查看最新状态
-
-- 文件位置: `docs/memory/xspace.md` / `xiaofang.md` / `sync.md`
-- GitHub: https://github.com/MikeBMW/lerobot-smolvla-lew/tree/main/docs/memory
-
-> 📌 双方通过飞书群 dataworld 实时沟通，@mention 即可召唤。
-
----
-
-## 十二、专利与知识产权
-
-### 12.1 专利交底书
-
-| 文件 | 格式 | 说明 |
-|:--|:--|:--|
-| [Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx](patents/Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx) | .docx | 完整专利交底书（实用新型） |
-
----
-
-## 十三、用户需求调研
-
-### 13.1 调研问卷
-
-| 文件 | 格式 | 说明 |
-|:--|:--|:--|
-| [Z-MAX-用户需求调研问卷-v1.0.4.docx](survey/Z-MAX-用户需求调研问卷-v1.0.4.docx) | .docx | 可下载的Word版问卷 |
-| [在线调研页面](http://datadrive.world/?page_id=505) | Web | 在线填写提交 |
-
-### 13.2 问卷章节
-- 一、客户基本信息
-- 二、产线现状
-- 三、光模块产品规格
-- 四、技术要求（精度/节拍/良率/力控/AOI/ESD）
-- 五、场地条件
-- 六、投资预算
-- 七、其他需求与期望
-
-> 📌 文件位置: `docs/survey/` · 在线访问: http://datadrive.world/?page_id=505
-
----
-
-## 十四、仿真联调 · Client/Server 架构
-
-### 14.1 架构总览
+### 13.2 开发协作流程
 
 ```
-小芳 (Mac M1 · ROS2 Client)         静静 (WSL RTX4060 · gRPC Server)
-┌──────────────────────┐            ┌──────────────────────────┐
-│ 📷 /camera/rgb       │──gRPC──→  │ 🧠 SmolVLA 450M (215ms)  │
-│ 💪 /force_torque     │──gRPC──→  │ 🧠 ACT 52M (8.4ms)      │
-│ ✋ /tactile           │──gRPC──→  │ 🧠 MLP-1024 (<5ms)      │
-│ ← /robot/action      │←──gRPC──  │ 📊 性能监控·数据记录      │
-└──────────────────────┘            └──────────────────────────┘
+小芳(mac分支) ──PR──→ xspace/静静 审核 ──merge──→ main 主干
 ```
 
-### 14.2 性能数据
+- 小芳在 `mac` 分支开发 Mac 端侧和 Orin 远程操作相关功能
+- 完成后向 xspace 发起 Pull Request
+- xspace 审核代码后合并到 main
+- 不得直接 push main 分支
 
-| 模型 | 延迟 | FPS | 显存 | 适用场景 |
-|:--|--:|--:|--:|:--|
-| SmolVLA 450M | 214.7ms | 4.7 | 0.93GB | 多任务/力控/变种 |
-| ACT 52M | 8.4ms | 119.2 | 0.22GB | 固定重复操作 |
-| SmolVLA-MLP 14.7M | <5ms | 200+ | 极低 | 快速原型 |
+### 13.3 记忆同步
 
-### 14.3 详细报告
+所有分身档案和共享记忆存放在 `docs/memory/`：
 
-📊 [Z-MAX 模型性能报告](benchmark-simulation-report.md) — 完整基准数据+仿真架构+场景矩阵
-🌐 [在线仿真面板](http://datadrive.world/?page_id=506)
+- `hermes-xiaofang.md` — 小芳完整档案
+- `hermes-xspace.md` — xspace/静静完整档案
+- `shared-memory.md` — 三方共享记忆（用户信息、硬件清单、网络拓扑、决策记录）
+- `hermes-jingjing.md.archived` — 旧档案（已归档）
 
-### 14.2 交底书章节
-- 一、技术领域
-- 二、背景技术（现有问题+方案不足）
-- 三、发明内容（系统架构+VLA模型+双臂协同+力控闭环+软件定义自动化等级）
-- 四、附图说明（6张图待补充）
-- 五、具体实施方式（EVB测试插拔+产线换型自适应）
-- 六、技术效果（6项有益效果）
-- 七、权利要求书（6项权利要求）
-- 八、摘要
+同步方式：Git push/pull + 飞书群实时沟通
 
-> 📌 文件位置: `docs/patents/`
+### 13.4 在线状态检查
+
+在飞书群 dataworld 中 @ 对应分身即可实时沟通：
+
+- @Hermes小芳 → 唤醒小芳（Mac M1 推理 + Orin 连接）
+- @xspace → 唤醒静静（WSL2 训练 + 代码审核）
+
+---
+
+## 十四、专利文档 & 知识产权
+
+### 14.1 专利交底书
+
+| 文件 | 格式 | 路径 | 说明 |
+|------|------|------|------|
+| Z-MAX 专利交底书（实用新型） | .docx | `docs/patents/Z-MAX-专利交底书-实用新型.docx` | 光模块自主插拔机器人系统 |
+
+**专利核心创新点：**
+- SmolVLA 类脑双通路架构（VLM冻结 + Expert可训练）
+- 三层解耦（感知层/认知层/执行层）+ OTA 软件升级
+- >10kHz 力控自适应插拔 + 三级异常自恢复
+
+### 14.2 产品技术文档索引
+
+| 文档 | 路径 | 说明 |
+|------|------|------|
+| 产品等级定义 L1-L5 | `docs/Z-MAX产品等级定义-L1-L5标准.md` | Q/ZFCY 001.1-2026 标准 |
+| 类脑计算方案 | `docs/Z-MAX-类脑计算方案.md` | 5大方案脑科学映射 |
+| 类脑迭代路线图 | `docs/Z-MAX-类脑迭代路线图.md` | 4阶段脑科学映射开发计划 |
+| L2 解决方案 | `docs/L2-Z-MAX解决方案-v1.0.1.md` | Z700 F 基线版产品方案 |
+| L3 技术路线 | `docs/L3-技术路线与开发指南-v1.0.0.md` | Phase 0-4 完整迭代路线 |
+| SmolVLA 训练方案 | `docs/Z-MAX-SmolVLA训练方案.md` | 训练决策文档 |
+| 产品培训手册 | `docs/Z700F-L2产品培训手册.md` | Z700 F L2 操作培训 |
+| 数据日志方案 | `docs/Z-MAX数据日志方案-MCAP分析.md` | MCAP 数据采集分析 |
+| Orin 运维手册 | `docs/Orin运维手册.md` | Jetson AGX Orin 运维指南 |
+| **供应链-控制器** | `docs/supply-chain-joyson-controller.md` | 🆕 均胜电子域控制器 & 硬件方案 |
+| **仿真性能报告** | `docs/simulation-benchmark-report.md` | 仿真联调 & 模型基准 |
+| **仿真集成测试** | `hermes_gateway_mac/test_simulation_integration.py` | 🆕 5项自动化测试 |
+
+---
+
+## 十五、仿真联调系统 🆕
+
+> 离线开发 & 模型验证的完整仿真环境
+
+### 15.1 架构
+
+```
+Mac (小芳 — Client)                    WSL2 (xspace — Server)
+┌──────────────────────────┐          ┌──────────────────────────┐
+│  simulation_client        │  WS JSON│  simulation_server        │
+│  • JointSimulator ×6     │◄───────►│  • SmolVLA 450M          │
+│  • ForceTorqueSim ×6     │ sensor   │  • ACT 51.6M             │
+│  • CameraSim 640×480     │  data    │  • Inference Engine      │
+│  • GripperSim            │────────►│                          │
+│  • TactileSim 4×4        │ action   │  • Action Prediction    │
+└──────────────────────────┘◄────────│                          │
+ 30Hz / 0.25Mbps                      └──────────────────────────┘
+```
+
+### 15.2 启动方式
+
+```bash
+# Mac端 — 独立仿真 (无Server)
+python3 hermes_gateway_mac/simulation_client.py --standalone
+
+# Mac端 — 联机仿真 (需WSL2 Server)
+python3 hermes_gateway_mac/simulation_client.py --host <WSL2-IP> --port 8765
+
+# WSL2端 — 启动Server (xspace执行)
+python3 hermes_gateway_mac/simulation_server.py --policy lerobot/smolvla_base
+
+# 集成测试
+python3 hermes_gateway_mac/test_simulation_integration.py --local-only
+```
+
+### 15.3 仿真文件清单
+
+| 文件 | 说明 |
+|------|------|
+| `simulation_protocol.py` | 共享消息协议 (11话题/5传感器类型) |
+| `simulation_client.py` | Mac端客户端 (传感器仿真+动作接收) |
+| `simulation_server.py` | WSL2端服务器 (推理引擎+动作预测) |
+| `test_simulation_integration.py` | 5项自动化集成测试 |
+
+### 15.4 模型性能速查
+
+| 模型 | 参数 | RTX4060延迟 | Mac M1延迟 | 帧率(WSL2) |
+|------|------|------------|-----------|-----------|
+| SmolVLA | 450M | 214.7ms | ~300ms | 4.7 FPS |
+| ACT | 51.6M | 8.4ms | ~0.5ms | 119.2 FPS |
+| SmolVLA-LEW Mini | 263K | — | ~0.5ms | 2,000+ FPS |
+
+> 完整报告见: `docs/simulation-benchmark-report.md`
 
 ---
 
 > **📌 本文档与 Z-MAX 产品版本同步更新。离线开发、在线调试，一册通晓。**
 > 
 > GitHub: https://github.com/MikeBMW/lerobot-smolvla-lew
+> 飞书群: dataworld
+> 分身: @Hermes小芳 (Mac) | @xspace (WSL2)
