@@ -28,7 +28,18 @@ except ImportError:
 
 @PreTrainedConfig.register_subclass("zmax_sys1")
 @dataclass
-class ZmaxSys1Config(PreTrainedConfig):
+class ZmaxSys1Config(PreTrainedConfig):    
+    # ━━━ 抽象方法实现 ━━━
+    def validate_features(self): pass
+    def get_optimizer_preset(self): return {}
+    def get_scheduler_preset(self): return {}
+    
+    @property
+    def observation_delta_indices(self): return []
+    @property
+    def action_delta_indices(self): return []
+    @property
+    def reward_delta_indices(self): return []
     """Phase 1: VTLA 基础插拔策略"""
     # VLM
     smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"

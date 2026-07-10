@@ -25,7 +25,19 @@ except ImportError:
 @PreTrainedConfig.register_subclass("zmax_sys12")
 @dataclass
 class ZmaxSys12Config(PreTrainedConfig):
-    """Phase 3: VTLA + Z潜空间 + LeWorldModel"""
+    """Phase 3: VTLA + Z潜空间 + LeWorldModel (内部引擎: smolvla_lew)"""
+    
+    # ━━━ 抽象方法实现 ━━━
+    def validate_features(self): pass
+    def get_optimizer_preset(self): return {}
+    def get_scheduler_preset(self): return {}
+    
+    @property
+    def observation_delta_indices(self): return []
+    @property
+    def action_delta_indices(self): return []
+    @property
+    def reward_delta_indices(self): return []
     n_obs_steps: int = 2
     smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
     freeze_smolvlm: bool = False
