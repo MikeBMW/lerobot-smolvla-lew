@@ -1,7 +1,7 @@
 # Z-MAX 项目总任务板 · Task Board
 
 > 飞书群: dataworld (置顶)  
-> 更新: 2026-07-10  
+> 更新: 2026-07-10 上午  
 > 分身: 小芳(Mac) + xspace(WSL2)  
 > 流程: 小芳(mac分支) → PR → xspace审核 → merge main
 
@@ -11,101 +11,88 @@
 
 | | 小芳 (Mac M1) | xspace (WSL2) |
 |---|:-:|:-:|
-| 已完成 | 7 项 | 待确认 |
-| 进行中 | 3 项 | 待确认 |
-| 待开始 | 2 项 | 4 项 |
-| Git commits | 21 (mac分支, 待推送) | — |
+| 已完成 | **9** / 12 | **4** / 5 |
+| 进行中 | 1 | 1 |
+| 待开始 | 2 | 0 |
+| Git | mac+main 双分支已推送 ✅ | main 新增大量文档 ✅ |
 
 ---
 
-## 🤖 小芳 (Mac M1) — 任务清单
+## 🤖 小芳 (Mac M1) — 12 项任务
 
-### ✅ 已完成
+### ✅ 已完成 (9)
 
-| # | 任务 | 交付物 | 日期 |
-|---|------|--------|------|
-| 1 | 飞书网关搭建 | WebSocket连接, launchd自启 | 0708 |
-| 2 | SmolVLA 450M 推理验证 | Mac MPS ~300ms, Orin CUDA ~240ms | 0708 |
-| 3 | 三方记忆系统 | 小芳+xspace档案 + shared-memory | 0710 |
-| 4 | 专利交底书(实用新型) | .docx, 8项权利要求, 含仿真章节 | 0710 |
-| 5 | 仿真Client-Server系统 | protocol+client+server+test, 5/5测试通过 | 0710 |
-| 6 | 性能基准报告 | SmolVLA/ACT/Mini 三模型对比 | 0710 |
-| 7 | 供应链文档 | 均胜电子控制器硬件方案 | 0710 |
+| # | 任务 | 交付物 |
+|---|------|--------|
+| 1 | 飞书网关 | WebSocket + launchd 自启 |
+| 2 | SmolVLA 450M 推理 | Mac 300ms / Orin 240ms |
+| 3 | 三方记忆系统 | xiaofang + xspace + shared-memory + 归档 |
+| 4 | 专利交底书 | .docx, 8项权利要求, 含仿真章节 |
+| 5 | 仿真Client-Server | protocol + client + server + 集成测试 5/5 ✅ |
+| 6 | 性能基准报告 | SmolVLA 215ms / ACT 0.5ms / Mini 0.5ms |
+| 7 | 供应链文档 | 均胜域控制器 + 硬件技能 (83技能) |
+| 8 | GitHub SSH 配置 | 🔓 刚刚打通! |
+| 9 | mac分支推送 + main合并 | 🔓 35文件 4258行已推送 |
 
-### 🔄 进行中
-
-| # | 任务 | 状态 | 阻塞 |
-|---|------|------|------|
-| 8 | GitHub SSH配置 | ❌ push被拒 | 需添加公钥到GitHub |
-| 9 | mac分支→PR | ⏳ 21 commits待推送 | 阻塞于#8 |
-| 10 | 仿真Server真实模型集成 | ⏳ 占位代码已写好 | 需xspace集成lerobot推理 |
-
-### 📋 待开始
-
-| # | 任务 | 依赖 |
-|---|------|------|
-| 11 | Orin仿真节点深度开发 | 仿真Server联通后 |
-| 12 | 帮助文档多语言版 | — |
-
----
-
-## 🖥️ xspace (WSL2) — 任务清单
-
-### ✅ 已完成
+### 🔄 进行中 (1)
 
 | # | 任务 | 状态 |
 |---|------|------|
-| 1 | 分身档案创建 | hermes-xspace.md v2.0 |
+| 10 | 仿真Server真实模型集成 | ⏳ 占位代码已写好，需xspace WSL2端挂载lerobot推理 |
 
-### 🔄 进行中 / 待开始
+### 📋 待开始 (2)
 
-| # | 任务 | 优先级 | 依赖 |
-|---|------|:---:|------|
-| 2 | **datadrive.world 网站升级** | 🔴 高 | 设计简报已就绪 |
-| 3 | 仿真Server端SmolVLA推理集成 | 🔴 高 | — |
-| 4 | 审核小芳mac分支PR | 🟡 中 | 小芳SSH配置 |
-| 5 | 供应链文档审阅 & 同步 | 🟡 中 | — |
-
-### 📋 Web网站升级 (详细)
-
-| 子任务 | 内容 |
-|--------|------|
-| 2a | 首页重构 (公司简介 + Z-MAX产品 + 技术栈) |
-| 2b | 仿真标签页 (架构图 + 性能表 + 启动命令) |
-| 2c | 专利标签页 (专利卡片 + 创新点 + 标准) |
-| 2d | 保留现有动画 + 文字介绍 |
-
-> 素材: `docs/memory/web-design-brief.md` + `docs/memory/web-simulation-patent-content.md`
+| # | 任务 |
+|---|------|
+| 11 | Orin仿真节点深度开发 |
+| 12 | 帮助文档多语言版 |
 
 ---
 
-## 🔗 协作阻塞项
+## 🖥️ xspace (WSL2) — 5 项任务
 
-| 阻塞 | 影响 | 解决 |
-|------|------|------|
-| GitHub SSH未配置 | 小芳21 commits无法推送, xspace无法审核 | **添加公钥到 https://github.com/settings/keys** |
-| Mac↔WSL2网络 | 仿真Client-Server联通测试 | 确认局域网IP可达 |
+### ✅ 已完成 (4)
+
+| # | 任务 | 交付物 |
+|---|------|--------|
+| 1 | 分身档案 | hermes-xspace.md v2.0 |
+| 2 | 供应链文档深化 | Orin/Thor/PRO3000手册PDF + 均胜完整方案 + 电池需求书 |
+| 3 | 专利交底书v2 | 多模态VLA控制系统 .docx + 生成脚本 |
+| 4 | 产品文档迭代 | L2方案 v1.0.4、L3路线 v1.0.4、硬件平台方案、问卷 |
+
+### 📋 待开始 (1)
+
+| # | 任务 | 优先级 |
+|---|------|:---:|
+| 5 | datadrive.world 网站升级 | 🔴 设计素材已就绪 |
 
 ---
 
-## 📅 建议优先级
+## 🔗 已解决的阻塞
+
+| 阻塞 | 状态 |
+|------|:---:|
+| GitHub SSH 配置 | ✅ 已解决! mac+main 双推送成功 |
+| 代码双向同步 | ✅ 小芳mac↔main↔xspace WSL2 |
+
+---
+
+## 📅 下一步优先级
 
 ```
-本周必做:
-  1️⃣ GitHub SSH配置 (小芳 + 用户)
-  2️⃣ Web网站升级完成 (xspace)
-  3️⃣ 仿真Server模型集成 (xspace)
+本周:
+  1️⃣ xspace: Web网站升级 (素材就绪)
+  2️⃣ xspace: 仿真Server SmolVLA模型集成
+  3️⃣ 小芳: Orin仿真节点深度开发
 
 下周:
-  4️⃣ mac分支PR → xspace审核 → merge main
-  5️⃣ Orin仿真节点深度开发
-  6️⃣ 供应链文档双向审阅
+  4️⃣ 小芳 → xspace: 正式发起 mac→main PR
+  5️⃣ xspace: 代码审核 + 合并
 ```
 
 ---
 
 ## 📞 沟通
 
-- 飞书群 dataworld
-- @Hermes小芳 (Mac M1 问题)
-- @xspace (WSL2 问题 + 代码审核)
+- @Hermes小芳 — Mac M1, Orin, 仿真
+- @xspace — WSL2, Web, 代码审核, 供应链
