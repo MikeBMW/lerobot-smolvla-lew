@@ -6732,6 +6732,9 @@ class StudioMainWindow(QMainWindow):
         m_doc.addAction(self._mk_doc_action("📋 用户需求调研问卷 (Word·docx)",
             (["survey/Z-MAX-用户需求调研问卷-v1.0.4.docx"], "libreoffice")))
         m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("📜 专利交底书 (Word·docx)",
+            (["patents/Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx"], "libreoffice")))
+        m_doc.addSeparator()
         m_doc.addAction(self._mk_doc_action("💾 数据日志方案 · MCAP vs Rosbag 分析",
             (["Z-MAX数据日志方案-MCAP分析.md"], "xdg-open")))
         m_doc.addSeparator()

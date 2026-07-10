@@ -200,6 +200,61 @@ for title, desc in effects:
     run_d = p.add_run(desc)
     run_d.font.size = Pt(12)
 
+# ===== 六（续）、硬件三档方案 =====
+add_heading_styled(doc, "六（续）、硬件三档方案与仿真联调", level=1)
+
+add_heading_styled(doc, "1. L2/L3/L4 三档算力平台", level=3)
+add_para(doc, "所述系统支持三级硬件平台，通过更换AI域控模块实现算力升级：")
+
+# 硬件表格
+t_hw = doc.add_table(rows=4, cols=5, style='Table Grid')
+for i, hdr in enumerate(["等级", "AI域控", "算力", "内存", "适用场景"]):
+    c = t_hw.cell(0, i); c.text = hdr
+    set_cell_shading(c, '00d4aa')
+    for pp in c.paragraphs:
+        for r in pp.runs: r.bold = True; r.font.color.rgb = RGBColor(0x06,0x08,0x0d); r.font.size = Pt(9)
+hw_data = [
+    ["L2 基线版", "Jetson Orin Nano 8GB", "40 TOPS INT8", "8GB LPDDR5", "单工位重复插拔"],
+    ["L3 增强版", "Jetson Orin AGX 32GB", "275 TOPS INT8", "32GB LPDDR5", "多工位+SmolVLA端到端"],
+    ["L4 旗舰版", "Orin AGX+RK3588", "275+6 TOPS", "32GB+8GB", "7×24全自主·多模型并行"],
+]
+for ri, row in enumerate(hw_data):
+    for ci, val in enumerate(row):
+        c = t_hw.cell(ri+1, ci); c.text = val
+        if ri % 2 == 0: set_cell_shading(c, '0d1117')
+        else: set_cell_shading(c, '080c14')
+        for pp in c.paragraphs:
+            for r in pp.runs: r.font.size = Pt(9); r.font.color.rgb = RGBColor(0xc8,0xd1,0xd9)
+doc.add_paragraph()
+
+add_heading_styled(doc, "2. Client/Server 仿真联调架构", level=3)
+add_para(doc, "所述系统采用Client/Server分离架构进行仿真联调：")
+add_para(doc, "（a）Client端（ROS2节点）：部署于Mac/Linux主机，负责摄像头图像采集、力/触觉传感器信号模拟、接收并执行动作指令；")
+add_para(doc, "（b）Server端（gRPC推理服务）：部署于WSL/GPU服务器，运行SmolVLA/ACT/MLP模型，接收传感器数据进行推理并下发动作序列；")
+add_para(doc, "（c）通信协议：gRPC（protobuf），图像3×512×512 JPEG压缩，力/触觉float32数组，动作50步×6D，总延迟≤220ms/帧。")
+
+add_heading_styled(doc, "3. 安全功能分层部署", level=3)
+t_sf = doc.add_table(rows=5, cols=4, style='Table Grid')
+for i, hdr in enumerate(["功能", "L2基线", "L3增强", "L4旗舰"]):
+    c = t_sf.cell(0, i); c.text = hdr
+    set_cell_shading(c, '00d4aa')
+    for pp in c.paragraphs:
+        for r in pp.runs: r.bold = True; r.font.color.rgb = RGBColor(0x06,0x08,0x0d); r.font.size = Pt(9)
+sf_data = [
+    ["光幕联动安全（靠近→降速→停机）", "✅", "✅", "✅"],
+    ["触觉闭环反馈（夹持力>2N释放）", "—", "✅", "✅"],
+    ["异常诊断自恢复（卡料/偏移/失败）", "—", "—", "✅"],
+    ["五层主动保护", "—", "—", "✅"],
+]
+for ri, row in enumerate(sf_data):
+    for ci, val in enumerate(row):
+        c = t_sf.cell(ri+1, ci); c.text = val
+        if ri % 2 == 0: set_cell_shading(c, '0d1117')
+        else: set_cell_shading(c, '080c14')
+        for pp in c.paragraphs:
+            for r in pp.runs: r.font.size = Pt(9); r.font.color.rgb = RGBColor(0xc8,0xd1,0xd9)
+doc.add_paragraph()
+
 # ===== 七、权利要求 =====
 add_heading_styled(doc, "七、权利要求书", level=1)
 add_para(doc, "1. 一种基于多模态视觉-语言-动作模型的具身机器人精细操作控制系统，其特征在于，包括：", bold=True)
