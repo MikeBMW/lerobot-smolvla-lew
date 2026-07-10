@@ -1,10 +1,10 @@
-# Z-MAX SmolVLA 训练方案
+# Z-MAX VTLA 训练方案
 
 > 决策文档 · 2026-07-08 · 智蜂创元(ZFCY)
 
 ---
 
-## 一、SmolVLA 原始论文方法
+## 一、VTLA 原始论文方法
 
 ### 架构
 - **视觉编码器**: SmolVLM-2 (500M) — 处理 VLM 视觉+语言输入
@@ -47,9 +47,9 @@ Fine-tune模式:
 | LeRobot | v0.5.2 (conda lerobot) |
 
 **约束分析**:
-- SmolVLA 完整训练 (450M) 需约 16GB VRAM → **8GB不够**
+- VTLA 完整训练 (450M) 需约 16GB VRAM → **8GB不够**
 - DiffusionPolicy 训练 (262M) 需约 4GB VRAM → **可以**
-- 微调 SmolVLA (freeze VLM) 可能剪枝后可行
+- 微调 VTLA (freeze VLM) 可能剪枝后可行
 
 ---
 
@@ -101,12 +101,12 @@ python lerobot/scripts/train.py \
   --policy.device=cuda
 ```
 
-### Phase 4: SmolVLA 完整训练 (需硬件升级或云GPU)
+### Phase 4: VTLA 完整训练 (需硬件升级或云GPU)
 
 如果未来获得更大显存（RTX 4090 24GB 或云GPU）:
 
 ```bash
-# 加载 SmolVLA 预训练基础模型 + Orin 数据微调
+# 加载 VTLA 预训练基础模型 + Orin 数据微调
 python lerobot/scripts/train.py \
   --policy.path=lerobot/smolvla_base \
   --dataset.repo_id=zfc7/orin_insertion \
@@ -148,7 +148,7 @@ Orin 真实数据 ──→ 微调动作头 ──→ Z-MAX 部署模型
 | Phase 1 | PushT | DiffusionPolicy | 100 | 0.078 | ✅ 完成 |
 | Phase 2 | Metaworld MT50 | DiffusionPolicy | 500 | <0.15 | ⏳ 计划中 |
 | Phase 3 | Orin 真实数据 | DiffusionPolicy微调 | 200 | <0.10 | ⏳ 等待Orin |
-| Phase 4 | Orin + 多源 | SmolVLA(freeze VLM) | 5000 | <0.05 | 🔮 需GPU升级 |
+| Phase 4 | Orin + 多源 | VTLA(freeze VLM) | 5000 | <0.05 | 🔮 需GPU升级 |
 
 ---
 
@@ -158,6 +158,6 @@ Orin 真实数据 ──→ 微调动作头 ──→ Z-MAX 部署模型
 
 1. **立刻可做**: Metaworld MT50 训练（Phase 2）— 验证多任务泛化
 2. **Orin上线后**: 采集 50-100 个真实插拔 episode，微调动作头（Phase 3）
-3. **GPU升级后**: SmolVLA 完整训练
+3. **GPU升级后**: VTLA 完整训练
 
 **一句话**: 先用 DiffusionPolicy 在 Metaworld 上验证多任务能力，等 Orin 数据到位后微调，保持轻量可部署。
