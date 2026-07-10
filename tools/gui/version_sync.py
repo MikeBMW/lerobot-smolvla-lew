@@ -278,7 +278,7 @@ class VersionSyncWidget(QWidget):
         # 版本说明
         note = QLabel(
             "💡 版本号格式: LeRobot版本-zmax.自定义版本\n"
-            "   例: 0.5.2-zmax.1.0.1 = LeRobot 0.5.2 + Z-MAX v1.0.1\n\n"
+            "   例: 0.5.2-zmax.1.0.4 = LeRobot 0.5.2 + Z-MAX v1.0.4\n\n"
             "⚠️ 同步前确保所有本地更改已提交。同步使用 git merge，不会破坏自定义代码。"
         )
         note.setFont(QFont("Arial", 9))
@@ -317,7 +317,7 @@ class VersionSyncWidget(QWidget):
                             break
 
             # Z-MAX 自定义版本 (从侧边栏版本号)
-            zmax_ver = "1.0.3"
+            zmax_ver = "1.0.4"
 
             # 当前 commit
             commit, _ = _run_git(['rev-parse', '--short', 'HEAD'], self.repo_path)

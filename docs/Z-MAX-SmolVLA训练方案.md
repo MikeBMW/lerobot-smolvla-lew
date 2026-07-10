@@ -44,7 +44,7 @@ Fine-tune模式:
 | RAM | 10GB |
 | 磁盘 | 711GB 可用 |
 | CUDA | 12.7 |
-| LeRobot | v0.4.4 (conda lerobot) |
+| LeRobot | v0.5.2 (conda lerobot) |
 
 **约束分析**:
 - SmolVLA 完整训练 (450M) 需约 16GB VRAM → **8GB不够**
