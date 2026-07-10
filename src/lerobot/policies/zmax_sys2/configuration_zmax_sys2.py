@@ -26,9 +26,9 @@ class SubSystemMode(str, Enum):
     SYS1 = "sys1"; SYS11 = "sys11"; SYS12 = "sys12"
 
 
-@PreTrainedConfig.register_subclass("zmax_system2")
+@PreTrainedConfig.register_subclass("zmax_sys2")
 @dataclass
-class ZmaxSystem2Config(PreTrainedConfig):    
+class ZmaxSys2Config(PreTrainedConfig):    
     # ━━━ 抽象方法实现 ━━━
     def validate_features(self): pass
     def get_optimizer_preset(self): return {}

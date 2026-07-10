@@ -11,6 +11,9 @@ import numpy as np
 from typing import Optional, Callable
 from dataclasses import dataclass, field
 
+from lerobot.policies.pretrained import PreTrainedPolicy
+from .configuration_zmax_sys2 import ZmaxSys2Config
+
 
 @dataclass
 class SimFeedback:
@@ -31,23 +34,19 @@ class SimFeedback:
         }
 
 
-class Sys2Agent:
+class ZmaxSys2Policy(PreTrainedPolicy):
     """
-    Z-MAX Sys-2 · 云端大模型调度
+    Z-MAX Sys-2 · 云端 Agent 框架
     
-    架构:
-      Hermes Agent (skills调度)
-      ├── skill:zmax-vtla    → 完整VTLA推理 (VLM+FlowMatching)
-      ├── skill:zmax-groot   → GROOT大模型推理
-      ├── skill:zmax-act     → ACT轻量推理 (fallback)
-      └── skill:zmax-plan    → 任务规划 (LLM)
-    
-    仿真交互:
-      接收 SimFeedback → 选择模型 → 返回动作/规划
+    Hermes Agent 封装，调度大参数模型(VTLA/GROOT/...)
+    接收仿真数据反馈，通过 skills 动态加载推理引擎
     """
     
-    def __init__(self, device='cuda'):
-        self.device = device
+    config_class = ZmaxSys2Config
+    name = "zmax_sys2"
+    
+    def __init__(self, config: ZmaxSys2Config, dataset_stats=None, dataset_info=None):
+        super().__init__(config)
         self._skills: dict[str, Callable] = {}
         self._models: dict[str, object] = {}
         self._feedback_buffer: list[SimFeedback] = []

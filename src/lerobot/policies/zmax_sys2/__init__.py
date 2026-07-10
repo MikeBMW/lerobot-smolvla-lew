@@ -8,7 +8,7 @@ Z·M·A·X 全域: 云端智能体 + 多产线调度 + 任务拆解
 依赖: zmax_sys1, zmax_sys11, zmax_sys12
 """
 
-from .configuration_zmax_system2 import ZmaxSystem2Config
-from .modeling_zmax_system2 import ZmaxSystem2Policy
+from .configuration_zmax_sys2 import ZmaxSys2Config
+from .modeling_zmax_sys2 import ZmaxSystem2Policy
 
-__all__ = ["ZmaxSystem2Config", "ZmaxSystem2Policy"]
+__all__ = ["ZmaxSys2Config", "ZmaxSystem2Policy"]
