@@ -126,11 +126,14 @@ WSL2 ←→ GitHub (git push/pull)
 
 ## 📞 分身通信规则
 
-1. **代码协作**: mac 分支 → PR → xspace/静静 审核 → merge main
-2. **记忆同步**: 更新 docs/memory/ → git commit → PR 或 push
-3. **状态同步**: 重大状态变更 → 更新 STATE.md
-4. **实时沟通**: 飞书群 dataworld 中 @ 对方
-5. **互相学习**: 定期阅读对方档案文件
+### 自动同步规则 (重要！)
+1. **默认远程+本地双写**: 任何分身更新知识/文档后，必须同时更新本地文件 + Git push 到远程
+2. **自动互相学习**: 读取对方档案时，自动更新本地知识库
+3. **代码协作**: mac 分支 → PR → xspace/静静 审核 → merge main
+4. **记忆同步**: 更新 docs/memory/ → git commit → PR 或 push → 通知对方 git pull
+5. **状态同步**: 重大状态变更 → 更新 STATE.md
+6. **实时沟通**: 飞书群 dataworld 中 @ 对方
+7. **互相学习**: 定期阅读对方档案文件，发现新知识自动吸收
 
 ---
 
