@@ -1,7 +1,7 @@
 # Hermes Gateway — 运行状态 & 离线恢复指南
 
-> 最后更新: 2026-07-10 06:00 CST
-> 此文件供 Hermes Agent (静静) 离线恢复时自动读取
+> 最后更新: 2026-07-10 08:35 CST (关机断点)
+> 此文件供 Hermes Agent (小芳) 恢复时自动读取
 
 ---
 
@@ -168,9 +168,26 @@ Mac公钥已写入Orin `/etc/ssh/global_authorized_keys`，设置**immutable(+i)
 ## Git
 
 - 仓库: MikeBMW/lerobot-smolvla-lew
-- 分支: main (领先origin 10+ commits, 待推送)
-- 本地路径: ~/lerobot-smolvla-lew
-- SSH key已生成但未授权GitHub
+- 当前分支: mac (HEAD: 1df62bab)
+- main 分支: c9c3ecab (领先 origin 14 commits)
+- SSH key 已生成但未授权 GitHub（push 失败）
+- 待推送: mac 分支所有 commits
+
+## 关机断点 (2026-07-10 08:35 CST)
+
+- 飞书网关: 正常运行 (launchd PID 821, WebSocket 已连接)
+- Git 状态: 干净，无未提交改动
+- 后台进程: 无
+- Hermes 技能: 82个（完整）
+- 恢复后: 进入项目目录，查看 STATE.md，继续推进 GitHub SSH 配置和 push
+
+## Git 恢复命令
+```bash
+cd ~/lerobot-smolvla-lew
+git log --oneline -5          # 查看最近 commits
+git status                     # 确认分支状态
+# 推送需先配置 GitHub SSH: https://github.com/settings/keys
+```
 
 ## Z-MAX Studio
 

@@ -2,7 +2,7 @@
 
 > 分身 (小芳 / xspace/静静) 的公共知识库  
 > 任何分身更新此文件后，需通知其他分身同步  
-> 最后更新: 2026-07-10
+> 最后更新: 2026-07-10 08:35 (关机断点)
 
 ---
 
@@ -113,7 +113,7 @@ WSL2 ←→ GitHub (git push/pull)
 
 ## 🔧 已知限制 & 待解决
 
-1. **GitHub SSH**: Mac 未配置，git push/pull 失败
+- **GitHub SSH**: ✅ 已配置，push/pull 正常
    - 公钥待添加到 https://github.com/settings/keys
    - 影响：mac 分支无法推送，PR 无法发起
 2. **Orin 内存**: 运行机器人后仅剩 ~1.7GB
