@@ -1,0 +1,84 @@
+{
+  "model": "smolvla_lew",
+  "steps": 10,
+  "total_params_m": 628.2,
+  "trainable_params_m": 22.4,
+  "load_time_s": 13.1,
+  "peak_memory_gb": 1.828,
+  "loss_start": 29742.12890625,
+  "loss_end": 49939.76953125,
+  "avg_step_ms": 498.0,
+  "throughput_steps_s": 2.0,
+  "details": [
+    {
+      "step": 1,
+      "loss": 29742.12890625,
+      "time_ms": 742.2,
+      "mem_gb": 1.507,
+      "peak_gb": 1.651
+    },
+    {
+      "step": 2,
+      "loss": 29607.1171875,
+      "time_ms": 506.0,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 3,
+      "loss": 29509.357421875,
+      "time_ms": 463.9,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 4,
+      "loss": 29517.15234375,
+      "time_ms": 476.4,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 5,
+      "loss": 31875.923828125,
+      "time_ms": 452.6,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 6,
+      "loss": 35066.60546875,
+      "time_ms": 453.3,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 7,
+      "loss": 38806.27734375,
+      "time_ms": 457.8,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 8,
+      "loss": 41901.671875,
+      "time_ms": 487.2,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 9,
+      "loss": 45272.26171875,
+      "time_ms": 463.8,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    },
+    {
+      "step": 10,
+      "loss": 49939.76953125,
+      "time_ms": 475.7,
+      "mem_gb": 1.508,
+      "peak_gb": 1.828
+    }
+  ]
+}
