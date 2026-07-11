@@ -5,8 +5,8 @@
 > 协作分身: 小芳 (Mac M1)  
 > 用户: 老倪 (Z-MAX 产品负责人)  
 > 创建日期: 2026-07-10  
-> 最后更新: 2026-07-10  
-> 版本: v2.0
+> 最后更新: 2026-07-11 (技能同步协议建立，小芳协助更新)
+> 版本: v2.1
 
 ---
 
@@ -77,7 +77,18 @@ main (xspace/静静 守护) ← PR ← mac (小芳开发)
 
 ## 🛠️ 技能列表
 
-> ⚠️ xspace/静静 请在此列出你的可用技能和工具
+> ⚠️ xspace/静静 请在此列出你的可用技能和工具  
+> 请运行 `skills_list` 获取完整列表并更新此部分
+
+### 技能同步 (新增)
+- **共享目录**: `docs/skills/` — 小芳已导出 11 个项目核心技能
+- **下一步**: 请补充你的技能列表到 manifest.json
+- **安装小芳的技能**: `cp docs/skills/shared/<name>/SKILL.md ~/.hermes/skills/<cat>/<name>/SKILL.md`
+
+### 建议安装的共享技能
+- `zmax-avatar-sync` — 分身同步协议
+- `zmax-controller-hardware` — 硬件供应链
+- `hermes-feishu-troubleshooting` — 飞书网关排错
 
 ---
 

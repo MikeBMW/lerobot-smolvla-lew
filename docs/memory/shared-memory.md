@@ -134,10 +134,53 @@ WSL2 ←→ GitHub (git push/pull)
 5. **状态同步**: 重大状态变更 → 更新 STATE.md
 6. **实时沟通**: 飞书群 dataworld 中 @ 对方
 7. **互相学习**: 定期阅读对方档案文件，发现新知识自动吸收
+8. **技能同步** (新增 v3): 
+   - 共享目录: `docs/skills/`（manifest.json + shared/ + 小芳/ + xspace/）
+   - 同步流程: 各自导出技能列表 → 更新 manifest.json → 识别差异 → 安装缺失技能
+   - 关键共享技能: zmax-avatar-sync, zmax-controller-hardware, hermes-feishu-troubleshooting
+   - 触发: 任何分身更新技能后，同步到此目录并通知对方
+
+### 🛠️ 技能同步协议 (v1.0)
+
+**目的**: 确保小芳和 xspace/静静 两个分身的 Hermes 技能集保持一致，互相学习对方的工作流。
+
+**同步目录**: `docs/skills/`
+```
+docs/skills/
+├── README.md           # 说明文档
+├── manifest.json       # 双方技能清单（JSON，可对比）
+├── shared/             # 双方都需要的核心技能（zmax-avatar-sync等）
+├── 小芳/               # 小芳的项目专属技能（11个）
+└── xspace/             # xspace的项目专属技能（待填充）
+```
+
+**同步步骤**:
+1. 各自运行 `skills_list` 获取技能列表
+2. 对比 manifest.json 识别差异
+3. 将缺失的 SKILL.md 复制到 shared/ 或对方目录
+4. 飞书通知对方 → 对方 `git pull` + 安装
+5. 更新 manifest.json 中的 last_sync 时间戳
+
+**安装方式**:
+```bash
+# 从本地仓库安装
+cp docs/skills/shared/<name>/SKILL.md ~/.hermes/skills/<category>/<name>/SKILL.md
+```
+
+**当前状态 (2026-07-11)**:
+- 小芳: 83 个技能, 11 个项目核心技能已导出
+- xspace: 待确认技能数量
+- 共享技能: 3 个 (zmax-avatar-sync, zmax-controller-hardware, hermes-feishu-troubleshooting)
 
 ---
 
 ## 🗂 决策记录
+
+### 2026-07-11: 技能同步协议建立
+- **决策**: 通过 Git 仓库 `docs/skills/` 目录同步分身技能
+- **流程**: 各自导出 → manifest.json 对比 → 复制 SKILL.md → PR 合并
+- **理由**: 确保两分身技能集一致，互相学习工作流
+- **初始状态**: 小芳 83 技能已导出 11 个项目核心技能；等待 xspace 提供技能列表
 
 ### 2026-07-10: 分支策略 & 角色分工
 - **决策**: xspace/静静 守护 main 主干，小芳在 mac 分支开发

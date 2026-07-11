@@ -5,8 +5,8 @@
 > 协作者: xspace/静静 (WSL2, RTX 4060, main 主干守护者)  
 > 用户: 老倪 (Z-MAX 产品负责人, 光模块工厂自动化)  
 > 创建日期: 2026-07-08  
-> 最后更新: 2026-07-10 08:35 (关机断点)
-> 版本: v2.3
+> 最后更新: 2026-07-11 09:10 (技能同步协议建立)
+> 版本: v2.4
 
 ---
 
@@ -80,13 +80,16 @@
 
 ---
 
-## 🛠️ 核心技能（82个）
+## 🛠️ 核心技能（83个）
 
 ### 机器人
-`hermes-gateway-robot`, `smolvla-inference`, `smolvla-training`, `smolvla-workflow`, `vla-realtime-inference`, `zmax-studio`, `robotics-model-training`
+`hermes-gateway-robot`, `smolvla-inference`, `smolvla-training`, `smolvla-workflow`, `vla-realtime-inference`, `zmax-studio`, `robotics-model-training`, `smolvla-development`
 
 ### 基础设施
 `hermes-agent`, `hermes-feishu-troubleshooting`, `zmax-avatar-sync`
+
+### 硬件与供应链
+`zmax-controller-hardware`
 
 ### 开发
 `plan`, `spike`, `systematic-debugging`, `test-driven-development`, `github-pr-workflow`, `github-code-review`
@@ -95,7 +98,7 @@
 `jupyter-live-kernel`, `arxiv`, `huggingface-hub`, `codebase-inspection`
 
 ### 其他
-创意设计、邮件、笔记、智能家居等
+创意设计、邮件、笔记、智能家居、媒体、生产力等 19 大类
 
 ---
 
