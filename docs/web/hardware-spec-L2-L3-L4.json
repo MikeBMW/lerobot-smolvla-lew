@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "product": "Z-MAX 多模态动作专家",
+    "version": "2026-07-11",
+    "source": "Orin真机验证 + leRobot抽象",
+    "last_update": "2026-07-12 07:12:25",
+    "author": "小芳(Mac) + xspace(WSL2)"
+  },
+  "robot": {
+    "L2_baseline": {
+      "name": "Z700F 固定式",
+      "automation": "分段式自动化",
+      "compute": "Jetson Orin Nano 8GB (40 TOPS)",
+      "arm": "珞石 SR5-C 6-DOF 单臂",
+      "gripper": "DH PEGA-50-26 电动夹爪",
+      "force_sensor": "外置六维力传感器 (500N/700N)",
+      "camera": "Gemini 335L ×2 (全局+腕部)",
+      "safety": "双路急停 + 安全光栅 + 三色塔灯",
+      "precision": "±0.05mm",
+      "yield": "≥99.2%",
+      "cycle_time": "<8s",
+      "status": "✅ 已交付 (Phase 0)"
+    },
+    "L3_enhanced": {
+      "name": "Z700 轮式双臂",
+      "automation": "条件自动化",
+      "compute": "Jetson Orin AGX 32GB (275 TOPS) + TC397 MCU",
+      "arm": "双臂力控 6-DOF×2 (关节力控>1kHz)",
+      "gripper": "电动夹爪 + 吸盘 (左/右)",
+      "force_sensor": "六维力 ×2 + 关节力矩",
+      "camera": "Gemini 335L ×2 + 8路 GMSL2",
+      "safety": "ASIL-D + 双路急停 + 光栅 + 塔灯",
+      "precision": "±0.02mm",
+      "yield": "≥99.5%",
+      "features": [
+        "自动视觉识别400G/100G",
+        "自动切换工装",
+        "力控自适应",
+        "异常自恢复",
+        "扫码自动换配方"
+      ],
+      "status": "🔧 开发中 (2026 Q4)"
+    },
+    "L4_flagship": {
+      "name": "Z700 轮式双臂旗舰",
+      "automation": "高度自动化",
+      "compute": "Orin AGX 32GB + RK3588 + RK1860",
+      "arm": "双臂力控 (关节>10kHz) + 六维力",
+      "gripper": "电动夹爪 + 吸盘 (AI决策)",
+      "force_sensor": "六维力 ×2 + 触觉 ×2",
+      "camera": "16路 GMSL2 + 360°鱼眼",
+      "safety": "ASIL-D + 五层主动保护",
+      "precision": "±0.02mm",
+      "yield": "≥99.9%",
+      "features": [
+        "VLA视觉语言动作",
+        "精细感知±0.02mm",
+        "AI主动安全",
+        "7×24无人值守",
+        "AI自动适配未知型号"
+      ],
+      "status": "📋 规划中 (2027 Q2)"
+    }
+  },
+  "evolution": {
+    "hardware": "一步到位(Z700), 仅OTA软件升级",
+    "software": [
+      "L2:Sys-0人工编排",
+      "L3:Sys-1 SmolVLA端到端",
+      "L4:Sys-11潜空间+精细感知"
+    ],
+    "upgrade": "OTA在线升级, 无需更换硬件",
+    "model_path": [
+      "L2:标准接口",
+      "L3:SmolVLA 450M",
+      "L4:SmolVLA-LEW"
+    ]
+  },
+  "current_state": {
+    "j6_position_rad": -0.8225,
+    "j6_position_deg": -47.1,
+    "estop": true,
+    "mode": "manual",
+    "memory_available_gb": 0.85,
+    "latest_successful_move": "J6 CCW 7.1° (2026-07-11)"
+  }
+}
