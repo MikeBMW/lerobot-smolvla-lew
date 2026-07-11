@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Z-MAX 实时状态监控 | XMS5-R800</title>
+<style>
+:root{--bg:#0A0E17;--card:#141B2D;--gold:#F5A623;--green:#10B981;--red:#EF4444;--yellow:#F59E0B;--text:#E2E8F0;--dim:#94A3B8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter','PingFang SC',sans-serif;padding:20px}
+h1{font-size:24px;margin-bottom:4px}.sub{color:var(--dim);font-size:14px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.06)}
+.card h3{font-size:14px;color:var(--dim);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
+.stat-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:14px}
+.stat-label{color:var(--dim)}.stat-value{font-weight:600;font-variant-numeric:tabular-nums}
+.alert-critical{color:var(--red)}.alert-warning{color:var(--yellow)}.alert-info{color:var(--green)}
+.joint-bar{height:6px;background:rgba(255,255,255,0.1);border-radius:3px;margin:4px 0;overflow:hidden}
+.joint-fill{height:100%;border-radius:3px;transition:width .5s}
+.joint-fill.gold{background:var(--gold)}.joint-fill.green{background:var(--green)}.joint-fill.red{background:var(--red)}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-red{background:rgba(239,68,68,0.2);color:var(--red)}.badge-green{background:rgba(16,185,129,0.2);color:var(--green)}
+.footer{text-align:center;color:var(--dim);font-size:11px;margin-top:24px}
+</style>
+</head>
+<body>
+<h1>🤖 Z-MAX 实时状态监控</h1>
+<p class="sub">XMS5-R800-W4G3B4C · Orin AGX · 数据源: <span id="source">---</span> · 更新: <span id="ts">---</span></p>
+
+<div class="grid">
+  <!-- 关节 -->
+  <div class="card"><h3>🦾 6轴关节位置</h3><div id="joints"></div></div>
+
+  <!-- 系统状态 -->
+  <div class="card"><h3>⚙️ 系统状态</h3><div id="system"></div></div>
+
+  <!-- 传感器 -->
+  <div class="card"><h3>📡 传感器</h3><div id="sensors"></div></div>
+
+  <!-- 安全 -->
+  <div class="card"><h3>🛡️ Sys-0 安全</h3><div id="safety"></div></div>
+
+  <!-- 力/扭矩 -->
+  <div class="card"><h3>💪 六维力传感器</h3><div id="force"></div></div>
+
+  <!-- 性能 -->
+  <div class="card"><h3>⚡ 推理性能</h3><div id="perf"></div></div>
+</div>
+<p class="footer">Z-MAX · 智蜂创元 · 数据由 Hermes小芳(Mac M1) 采集 · xspace/静静 渲染</p>
+
+<script>
+const LIMITS = {j1:[-3,3],j2:[-3,3],j3:[-3,3],j4:[-3,3],j5:[-3,3],j6:[-3,3]};
+const JOINT_NAMES = ['J1 基座','J2 肩部','J3 肘部','J4 腕1','J5 腕2','J6 腕3'];
+
+function pct(v,lo,hi){return Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100))}
+
+function render(data){
+  if(!data) return;
+  document.getElementById('source').textContent = data.source || '---';
+  document.getElementById('ts').textContent = data.timestamp || '---';
+
+  // Joints
+  let jh = '';
+  const j = data.joints || {};
+  (j.positions_rad||[]).forEach((p,i)=>{
+    const [lo,hi]=LIMITS['j'+(i+1)]||[-3,3];
+    const pp=pct(p,lo,hi);
+    const col=Math.abs(p)>(hi*0.85)?'red':'gold';
+    jh+=`<div style="font-size:12px;margin-top:4px">${JOINT_NAMES[i]} <span style="float:right">${p.toFixed(4)} rad</span></div>
+    <div class="joint-bar"><div class="joint-fill ${col}" style="width:${pp}%"></div></div>`;
+  });
+  document.getElementById('joints').innerHTML = jh;
+
+  // System
+  const s = data.system || {};
+  document.getElementById('system').innerHTML =
+    `<div class="stat-row"><span class="stat-label">ROS2节点</span><span class="stat-value">${s.ros2_nodes||0}</span></div>
+    <div class="stat-row"><span class="stat-label">内存</span><span class="stat-value">${(s.memory_used_gb||0).toFixed(1)}/${(s.memory_total_gb||0).toFixed(1)} GB</span></div>
+    <div class="stat-row"><span class="stat-label">GPU</span><span class="stat-value">${s.gpu||'---'}</span></div>
+    <div class="stat-row"><span class="stat-label">CUDA</span><span class="stat-value">${s.cuda||'---'}</span></div>`;
+
+  // Sensors
+  const sn = data.sensors || {};
+  document.getElementById('sensors').innerHTML =
+    `<div class="stat-row"><span class="stat-label">相机</span><span class="stat-value">${sn.camera?.model||'---'} <span class="badge badge-green">${sn.camera?.status||''}</span></span></div>
+    <div class="stat-row"><span class="stat-label">力传感器</span><span class="stat-value">${sn.force_sensor?.rate_hz||0}Hz</span></div>
+    <div class="stat-row"><span class="stat-label">触觉</span><span class="stat-value">${sn.tactile?.channels||0}通道</span></div>
+    <div class="stat-row"><span class="stat-label">扫码枪</span><span class="stat-value">${sn.barcode_scanner?.status||''}</span></div>`;
+
+  // Safety
+  const sf = data.safety || {};
+  document.getElementById('safety').innerHTML =
+    `<div class="stat-row"><span class="stat-label">急停</span><span class="stat-value alert-critical">${sf.estop_active?'🔴 激活':'🟢 正常'}</span></div>
+    <div class="stat-row"><span class="stat-label">力阈值</span><span class="stat-value">${sf.force_limit_n||5}N</span></div>
+    <div class="stat-row"><span class="stat-label">光幕</span><span class="stat-value">${sf.light_curtain?'⚠️':'🟢'}</span></div>
+    <div class="stat-row"><span class="stat-label">自动重试</span><span class="stat-value">${sf.retry_count||0}次</span></div>`;
+
+  // Force
+  const ft = data.force_torque || {};
+  document.getElementById('force').innerHTML =
+    `<div class="stat-row"><span class="stat-label">Fx</span><span class="stat-value">${(ft.fx_n||0).toFixed(2)} N</span></div>
+    <div class="stat-row"><span class="stat-label">Fy</span><span class="stat-value">${(ft.fy_n||0).toFixed(2)} N</span></div>
+    <div class="stat-row"><span class="stat-label">Fz</span><span class="stat-value">${(ft.fz_n||0).toFixed(2)} N</span></div>
+    <div class="stat-row"><span class="stat-label">Tz</span><span class="stat-value">${(ft.tz_nm||0).toFixed(2)} Nm</span></div>`;
+
+  // Performance
+  const p = data.performance || {};
+  document.getElementById('perf').innerHTML =
+    `<div class="stat-row"><span class="stat-label">仿真桥</span><span class="stat-value">${(p.sim_bridge_hz||0).toLocaleString()} Hz</span></div>
+    <div class="stat-row"><span class="stat-label">ACT推理</span><span class="stat-value">${p.act_inference_ms||0} ms</span></div>
+    <div class="stat-row"><span class="stat-label">SmolVLA</span><span class="stat-value">${p.smolvla_inference_ms||0} ms</span></div>
+    <div class="stat-row"><span class="stat-label">带宽</span><span class="stat-value">${p.bandwidth_mbps||0} Mbps</span></div>`;
+}
+
+// Auto-refresh from JSON
+async function refresh(){
+  try{
+    const r = await fetch('https://raw.githubusercontent.com/MikeBMW/lerobot-smolvla-lew/mac/docs/web/robot-status.json?t='+Date.now());
+    const d = await r.json();
+    render(d);
+  }catch(e){
+    console.log('Fetch failed, using cached');
+  }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
