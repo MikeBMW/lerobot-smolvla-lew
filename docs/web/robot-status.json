@@ -1,146 +1,145 @@
 {
-  "timestamp": "2026-07-12 00:18:18",
-  "timestamp_unix": 1783786698.758691,
-  "robot": {
-    "model": "XMS5-R800-W4G3B4C",
+  "metadata": {
+    "timestamp": "2026-07-12 00:32:27",
+    "timestamp_unix": 1783787547.1612318,
+    "robot_model": "XMS5-R800-W4G3B4C",
     "controller_ip": "192.168.23.160",
-    "mode": "manual",
-    "estop": true,
-    "motor_enabled": false
+    "collector": "小芳 (Mac M1)",
+    "next_L0_s": 5,
+    "next_L1_s": 300,
+    "next_L2_s": 1800,
+    "manual_refresh": true
   },
-  "joints": {
-    "names": [
-      "XMS5-R800-W4G3B4C_joint_1",
-      "XMS5-R800-W4G3B4C_joint_2",
-      "XMS5-R800-W4G3B4C_joint_3",
-      "XMS5-R800-W4G3B4C_joint_4",
-      "XMS5-R800-W4G3B4C_joint_5",
-      "XMS5-R800-W4G3B4C_joint_6"
-    ],
-    "positions_rad": [
-      0.1602,
-      -0.0615,
-      -2.5455,
-      1.4469,
-      0.435,
-      -0.8225
-    ],
-    "positions_deg": [
-      9.2,
-      -3.5,
-      -145.9,
-      82.9,
-      24.9,
-      -47.1
-    ],
-    "velocities": [
-      0,
-      0,
-      0,
-      0,
-      0,
-      0
-    ],
-    "efforts": [
-      0,
-      0,
-      0,
-      0,
-      0,
-      0
+  "L0": {
+    "joints": {
+      "names": [
+        "XMS5-R800-W4G3B4C_joint_1",
+        "XMS5-R800-W4G3B4C_joint_2",
+        "XMS5-R800-W4G3B4C_joint_3",
+        "XMS5-R800-W4G3B4C_joint_4",
+        "XMS5-R800-W4G3B4C_joint_5",
+        "XMS5-R800-W4G3B4C_joint_6"
+      ],
+      "positions_rad": [
+        0.1602,
+        -0.0615,
+        -2.5455,
+        1.4469,
+        0.435,
+        -0.8225
+      ],
+      "positions_deg": [
+        9.2,
+        -3.5,
+        -145.9,
+        82.9,
+        24.9,
+        -47.1
+      ],
+      "velocities_rad_s": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "source": "cached"
+    },
+    "force_torque": {
+      "fx": 2.48,
+      "fy": -1.73,
+      "fz": 0.17,
+      "tx": 2.48,
+      "ty": 1.73,
+      "tz": 0.17
+    },
+    "alerts": [
+      {
+        "level": "info",
+        "msg": "离线模式 - Orin未连接",
+        "code": "OFFLINE"
+      }
     ]
   },
-  "gripper": {
-    "position": 1000,
-    "unit": "raw_encoder",
-    "holding": false
+  "L1": {
+    "topics": {
+      "count": 51,
+      "source": "cached",
+      "items": [
+        {
+          "name": "/real_joint_states",
+          "category": "joint",
+          "active": true
+        },
+        {
+          "name": "/gripper_pos",
+          "category": "gripper",
+          "active": true
+        },
+        {
+          "name": "/robot/force_torque",
+          "category": "sensor",
+          "active": true
+        },
+        {
+          "name": "/emergency_stop",
+          "category": "safety",
+          "active": true
+        },
+        {
+          "name": "/realsense/color/image_raw",
+          "category": "camera",
+          "active": true
+        },
+        {
+          "name": "/motion/execution_result",
+          "category": "motion",
+          "active": true
+        },
+        {
+          "name": "/tactile_sensor",
+          "category": "sensor",
+          "active": true
+        }
+      ]
+    },
+    "nodes": {
+      "count": 15,
+      "items": [
+        "robot_driver",
+        "motion",
+        "gripper_driver",
+        "tactile_force_node",
+        "realsense_source",
+        "honeywell_scanner",
+        "tower_light_node",
+        "vision",
+        "vision_pointcloud",
+        "vision_tag",
+        "external_comm",
+        "pointcloud_receiver",
+        "robot_state_publisher",
+        "sim_joint_state_publisher",
+        "obstacle_marker"
+      ]
+    },
+    "resources": {
+      "memory": "6.3G/7.4G"
+    }
   },
-  "force_torque": {
-    "fx_n": 2.48,
-    "fy_n": -1.73,
-    "fz_n": 0.17,
-    "tx_nm": 2.48,
-    "ty_nm": 1.73,
-    "tz_nm": 0.17
-  },
-  "tcp_pose": {
-    "x_m": 0.655,
-    "y_m": -0.017,
-    "z_m": 0.285,
-    "rx": 0.743,
-    "ry": 0.095,
-    "rz": 0.0,
-    "rw": 0.0
-  },
-  "system": {
-    "memory_total_gb": 7.4,
-    "memory_used_gb": 6.3,
-    "memory_available_gb": 0.85,
-    "disk_total_gb": 233,
-    "disk_used_gb": 92,
-    "gpu": "Orin nvgpu",
-    "cuda": "12.6",
-    "ros2_nodes": 15,
-    "ros2_topics": 51,
-    "domain_id": 23
-  },
-  "sensors": {
+  "L2": {
     "camera": {
-      "model": "RealSense D405",
-      "status": "online",
-      "resolution": "640x480"
+      "source": "realsense_d405",
+      "format": "jpeg_base64",
+      "resolution": "320x240",
+      "status": "offline",
+      "note": "Orin离线, 使用上次缓存"
     },
-    "tactile": {
-      "model": "TS-T-15",
-      "channels": 2,
-      "status": "connected"
-    },
-    "force_sensor": {
-      "rate_hz": 10000,
-      "status": "online"
-    },
-    "barcode_scanner": {
-      "model": "Honeywell 3310",
-      "status": "ready"
-    },
-    "tower_light": {
-      "status": "red",
-      "reason": "estop_active"
+    "models": {
+      "smolvla_450m": "available",
+      "smolvlm2_500m": "available",
+      "cache_size": "2.8G"
     }
-  },
-  "safety": {
-    "sys0_loaded": true,
-    "estop_active": true,
-    "force_limit_n": 5.0,
-    "joint_limits_rad": [
-      -3.0,
-      3.0
-    ],
-    "light_curtain": false,
-    "retry_count": 3
-  },
-  "performance": {
-    "sim_bridge_hz": 505338,
-    "act_inference_ms": 0.05,
-    "smolvla_inference_ms": 300,
-    "lew_mini_inference_ms": 0.043,
-    "bandwidth_mbps": 0.25
-  },
-  "alerts": [
-    {
-      "level": "critical",
-      "msg": "急停按钮被按下",
-      "code": "ESTOP_ACTIVE"
-    },
-    {
-      "level": "warning",
-      "msg": "电机未使能",
-      "code": "MOTOR_DISABLED"
-    },
-    {
-      "level": "info",
-      "msg": "ROS2 15节点在线",
-      "code": "ROS2_OK"
-    }
-  ]
+  }
 }
