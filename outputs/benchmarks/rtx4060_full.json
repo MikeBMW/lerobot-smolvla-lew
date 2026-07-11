@@ -1,0 +1,27 @@
+{
+  "gpu": "RTX 4060 8GB",
+  "iterations": 20,
+  "timestamp": "2026-07-11",
+  "sys1_act": {
+    "params_m": 52,
+    "load_gb": 0.193,
+    "peak_gb": 0.26,
+    "latency_ms": 19.1,
+    "fps": 52
+  },
+  "sys11_smolvla": {
+    "params_m": 450,
+    "load_gb": 1.129,
+    "peak_gb": 1.139,
+    "latency_ms": 1.1,
+    "fps": 895.0
+  },
+  "sys12_lew": {
+    "params_m": 628,
+    "trainable_m": 22,
+    "load_gb": 1.249,
+    "peak_gb": 1.652,
+    "latency_ms": 407.6,
+    "fps": 2
+  }
+}
