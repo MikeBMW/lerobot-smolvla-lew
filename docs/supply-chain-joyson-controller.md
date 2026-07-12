@@ -59,7 +59,7 @@
 | 激光雷达 | 100Base-T1 | 1路 |
 | 毫米波雷达 | CAN-FD | 4-6路 |
 | IMU | SPI | 1路 200Hz |
-| 力传感器 | EtherCAT | 6路 >10kHz |
+| 力传感器 | EtherCAT | 6路 >1kHz |
 
 ---
 
