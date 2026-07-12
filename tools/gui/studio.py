@@ -5401,19 +5401,21 @@ class MonitorModule(SubModuleWidget):
                     r = subprocess.run([
                         "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                         "source /opt/ros/humble/setup.bash && "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
+                        "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash && "
+                        "export ROS_DOMAIN_ID=23 && "
+                        "ros2 topic echo --once /gripper_pos 2>/dev/null; "
                         "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null; "
+                        "ros2 topic echo --once /real_joint_states 2>/dev/null; "
                         "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null; "
+                        "ros2 topic echo --once /robot/force_torque 2>/dev/null; "
                         "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot_status 2>/dev/null; "
+                        "ros2 topic echo --once /robot_status 2>/dev/null; "
                         "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /emergency_stop 2>/dev/null; "
+                        "ros2 topic echo --once /emergency_stop 2>/dev/null; "
                         "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /tower_light/status 2>/dev/null; "
+                        "ros2 topic echo --once /tower_light/status 2>/dev/null; "
                         "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/tcp_pose 2>/dev/null "],
+                        "ros2 topic echo --once /robot/tcp_pose 2>/dev/null "],
                         capture_output=True, text=True, timeout=8)
                     out = r.stdout.strip()
                     if out:
