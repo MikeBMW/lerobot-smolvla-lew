@@ -5132,8 +5132,8 @@ class MonitorModule(SubModuleWidget):
             self.src_status.setText("演示: 生成 .rrd 动画")
         elif src == "live":
             self.mon_session_combo.setEnabled(False)
-            self._start_live_monitor()
-            self.src_status.setText("实时: 连接 Orin...")
+            self._mlog("📡 实时模式已选择,点击启动加载数据")
+            self.src_status.setText("实时: 已选择")
         elif src == "dummy":
             self.mon_session_combo.setEnabled(False)
             self._start_dummy_monitor()
@@ -5598,31 +5598,9 @@ class MonitorModule(SubModuleWidget):
         self.mon_data_preview.setHtml("".join(lines))
     
     def _gen_live_rrd(self):
-        """实时采集 5 秒数据 → .rrd"""
-        import rerun as rr, os
-        self._mlog("📊 采集 5 秒实时数据...")
-        
-        rr.init("live", spawn=False)
-        rr.log("world/xyz", rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0],[0,0,0]],
-            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
-            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
-        
-        for seq in range(50):
-            d = getattr(self, '_live_data', {})
-            joints = d.get("joints", [])
-            try:
-                positions = [float(v) for v in joints[:6]]
-                rr.set_time("frame", sequence=seq)
-                pts = [[i*0.2, positions[i]*0.8, 0] for i in range(min(6,len(positions)))]
-                rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
-                    colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
-            except: pass
-            import time; time.sleep(0.1)
-        
-        out = os.path.expanduser("~/yspace/replay_data/live.rrd")
-        rr.save(out)
-        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+        """实时数据 - 使用内置显示,不依赖rerun"""
+        self._mlog("📊 实时模式 - 使用内置数据显示")
+        self._show_inline_data()
     
     def _start_replay_display(self):
         """回放数据终端显示 — 定时刷新信号追踪面板"""
