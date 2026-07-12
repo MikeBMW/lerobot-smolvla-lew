@@ -1,57 +1,52 @@
-# Z-MAX 三体协作 · Team Sync
+# Z-MAX 三体协作 · Team Sync v2.0
 
 > 飞书群: dataworld · 更新: 2026-07-12
 
-## 👥 团队成员
+## 👥 团队成员 (角色重定义)
 
-| 分身 | open_id | 环境 | 角色 | 核心职责 |
-|------|------|------|------|------|
-| **小芳** | ou_d82fe4c9f90c4e9337235d04b2241070 | Mac M1 (8GB, macOS) | 硬件底座 | Orin机器人连接、飞书网关、传感器数据、仿真桥 |
-| **xspace/静静** | ou_9998dca01cc8cc6b3b54a5d818ba1e32 | WSL2 (RTX4060 32GB) | 产品总工 | 代码审核、GPU训练、Web前端、文档统筹 |
-| **web** | ou_74511a0c7fa31af7958b6a0b4b68360f | 待确认 | Web前端 | datadrive.world 网站开发维护 |
+| 分身 | 环境 | 角色 | 核心职责 |
+|------|------|------|------|
+| **xspace/静静** | WSL2 (RTX4060 32GB) | 🏗️ **总工程师** | 整体架构方案、代码审核、产品统筹 |
+| **小芳** | Mac M1 (8GB) | 🔧 **端侧部署** | Orin连接、传感器采集、仿真桥、硬件数据 |
+| **web** | RTX 4090 云端 | ☁️ **云端训练 + 网站** | GPU训练、zmax-website.git 维护、Web前端 |
 
-## 🏗️ 项目架构
+## 🏗️ 信息流
 
 ```
-datadrive.world (Web 主页) ← web 负责
-    ↕ 概念驱动
-GUI工程 (lerobot-smolvla-lew) ← xspace 统筹
-    ↕ 接口实现
-Orin真机 (XMS5-R800 + AGX Orin) ← 小芳 负责
-
-信息流: 硬件数据(小芳) → GUI工程(xspace) → Web展示(web)
+xspace (总工/架构)
+  ├── 设计方案 → web (云端训练 + 网站)
+  │               ├── RTX4090 模型训练
+  │               └── zmax-website.git
+  └── 设计方案 → 小芳 (端侧部署)
+                  ├── Orin 机器人连接
+                  └── GUI工程 硬件数据
 ```
 
-## 📊 当前项目状态
+## 🔗 代码仓库
 
-### 小芳 (Mac) — 已完成
-- Orin 真机6轴验证 (手动模式, J6=-47.1°)
-- Sys-0 安全模块 (4层架构)
-- 仿真桥 (真机数据驱动, HTTP+WS)
-- leRobot 抽象 (L2/L3/L4 接口)
-- 硬件树 (传感器/执行器/安全全映射)
-- 实时监控系统 (分层JSON+HTML渲染)
-- 力控带宽统一 1kHz | 节拍统一 <25s
+| 仓库 | 负责人 | 用途 |
+|------|:---:|------|
+| `MikeBMW/lerobot-smolvla-lew` (GUI) | xspace统筹 + 小芳mac分支 | 机器人工程 |
+| `MikeBMW/zmax-website` (web) | **web** | 官网维护 |
 
-### xspace (WSL2) — 进行中
-- datadrive.world 网站升级
-- 仿真Server SmolVLA模型集成
-- 文档一致性统筹
-- Web硬件树页面
+## 📊 当前状态
 
-### web — 待认领
-- datadrive.world 前端开发
-- 硬件树页面渲染
+### xspace (总工) — 统筹
+- 整体架构方案
+- 代码审核 + PR合并
+- 文档一致性
+- Web硬件树页面设计
+
+### 小芳 (端侧) — 已完成
+- Orin真机6轴验证 ✅
+- Sys-0安全模块 ✅
+- 仿真桥 ✅
+- leRobot抽象 ✅
+- 硬件树数据 ✅
+- 实时监控 ✅
+
+### web (云端) — 新增
+- RTX4090 模型训练
+- zmax-website.git 维护
+- Web前端渲染
 - 仿真报告页面
-- 实时监控面板
-
-## 🔗 共享资源
-
-| 资源 | 路径 |
-|------|------|
-| Git仓库 | github.com/MikeBMW/lerobot-smolvla-lew |
-| Web数据 | docs/web/ (JSON + HTML) |
-| 硬件树 | docs/web/hardware-tree.json |
-| 状态监控 | docs/web/robot-status.json |
-| 文档拓扑 | docs/DOCUMENT-TOPOLOGY.md |
-| 三方记忆 | docs/memory/ |
