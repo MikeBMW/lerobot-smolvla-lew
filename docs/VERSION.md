@@ -49,7 +49,7 @@
 | AI模型 | SmolVLA-LEW (SmolVLM2-500M + DiT-B + LeWorldModel) |
 | 插拔精度 | ±0.02mm |
 | 成功率 | >99% |
-| 力控闭环频率 | >1kHz |
+| 力控带宽 | 1kHz |
 | 双臂协同 | 左取料 + 右插拔 |
 | 技术路线 | Phase 0(L2) → Phase 1(L3) → Phase 2(L3+) → Phase 3(L4) → Phase 4(L4+) |
 | 技术架构 | VLM规划 + VLA执行 + HIL强化学习 |

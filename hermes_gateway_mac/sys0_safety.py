@@ -79,7 +79,7 @@ class SafetyConfig:
     workspace_radius: float = 0.8        # m — 球面工作半径
 
     # ── 响应时间 ──
-    force_response_us: int = 100          # 力超阈值响应时间 (μs)
+    force_response_us: int = 1000          # 力超阈值响应时间 (μs) — 1kHz控制周期
     estop_response_ms: int = 1            # 急停响应 (ms)
     slowdown_distance_m: float = 0.3      # 光幕预警距离 (m)
 
@@ -232,7 +232,7 @@ class Sys0SafetyController:
     # ═══════════════════════════════════════════
 
     def _check_force_limits(self) -> bool:
-        """检查六维力传感器阈值 (TS-T-15, >10kHz)"""
+        """检查六维力传感器阈值 (TS-T-15, 1kHz)"""
         cfg = self.config
         ft = self.force_torque
 

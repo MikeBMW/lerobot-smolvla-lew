@@ -36,7 +36,7 @@ add_heading_styled('8.1 仿真架构', level=2)
 doc.add_paragraph(
     '仿真联调系统采用Client-Server架构，基于WebSocket JSON协议通信：\n'
     '（a）Client端（运行于Mac M1端侧）：模拟五种传感器——6轴关节传感器、六维力/扭矩传感器'
-    '（>10kHz仿真采样）、RealSense D435相机（640×480 RGB-D）、电动夹爪、4×4触觉阵列。'
+    '（1kHz仿真采样）、RealSense D435相机（640×480 RGB-D）、电动夹爪、4×4触觉阵列。'
     'Client以30Hz频率将传感器数据打包为JSON消息发送至Server。\n'
     '（b）Server端（运行于GPU服务器/WSL2）：加载SmolVLA或ACT模型，'
     '接收传感器数据后执行推理，将预测的6轴关节位置和夹爪开度作为动作指令返回Client。\n'

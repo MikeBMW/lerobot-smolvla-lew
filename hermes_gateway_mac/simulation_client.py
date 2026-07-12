@@ -126,7 +126,7 @@ class ForceTorqueSimulator:
             # 稳定阶段: 保持稳定力
             fx, fy, fz = 2.5, 2.0, 6.0
         
-        # 添加高频噪声 (模拟>10kHz传感器)
+        # 添加高频噪声 (模拟1kHz传感器)
         noise_scale = 0.05
         return ForceTorque(
             fx=round(fx + (math.sin(t * 500) * noise_scale), 4),
