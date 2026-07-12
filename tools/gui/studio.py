@@ -6620,6 +6620,10 @@ class StudioMainWindow(QMainWindow):
         self._engine_status = QLabel("● 本地就绪")
         self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:12px; font-weight:600; padding:0 10px;")
 
+        self._latency_label = QLabel("延迟: --")
+        self._latency_label.setStyleSheet(f"color:{C_GRAY}; font-size:11px; padding:0 8px;")
+
+        sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
         sb.showMessage("Z-MAX v1.0.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
@@ -6630,23 +6634,32 @@ class StudioMainWindow(QMainWindow):
         names = {0:"ACT 本地(1ms)", 1:"VTLA 4090(~220ms)", 2:"GR00T 4090(~500ms)", 3:"smolvla 本地(215ms)", 4:"LEW 本地(186ms)"}
         colors = {0:C_GREEN, 1:C_GREEN, 2:C_GREEN, 3:C_GREEN, 4:C_GREEN}
         engine = mapping.get(idx, "act")
+        import requests, time
 
-        # 测试gRPC连接状态 (VTLA/GR00T)
+        # 测量推理延迟
+        t0 = time.time()
         if engine in ("vtla", "groot"):
-            import requests
             try:
-                r = requests.get("http://106.75.239.80:50051/health", timeout=2)
+                r = requests.get("http://106.75.239.80:50051/health", timeout=3)
+                latency = (time.time() - t0) * 1000
                 if r.status_code == 200:
                     self._engine_status.setText("● 4090 已连接")
                     self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:12px; font-weight:600; padding:0 10px;")
+                    self._latency_label.setText(f"延迟: {latency:.0f}ms")
+                    self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:11px; padding:0 8px;")
                 else:
                     raise Exception("bad status")
             except:
                 self._engine_status.setText("● 4090 断开 → 将回退ACT")
-                self._engine_status.setStyleSheet(f"color:{C_WARN}; font-size:12px; font-weight:600; padding:0 10px;")
+                self._engine_status.setStyleSheet(f"color:#d29922; font-size:12px; font-weight:600; padding:0 10px;")
+                self._latency_label.setText("延迟: N/A")
+                self._latency_label.setStyleSheet(f"color:#d29922; font-size:11px; padding:0 8px;")
         else:
+            latency = (time.time() - t0) * 1000
             self._engine_status.setText("● 本地就绪")
             self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:12px; font-weight:600; padding:0 10px;")
+            self._latency_label.setText(f"延迟: {latency:.1f}ms")
+            self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:11px; padding:0 8px;")
 
         self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
 
