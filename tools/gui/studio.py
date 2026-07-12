@@ -672,7 +672,7 @@ class ProductRoadmapWidget(QFrame):
                 "dims": "X + Z 扩展",
                 "desc": "场景引导模型\n全域认知闭环",
                 "color": SYS12_COLOR,
-                "kpi": "99.2%",
+                "kpi": ">99%",
                 "folder": "zmax_sys12",
                 "config_file": "configuration_zmax_sys12.py",
             },
@@ -1070,7 +1070,7 @@ class HomeWidget(QWidget):
         kpi.setSpacing(36)
         for val, lbl, clr in [
             ("±0.02mm", "定位精度·Sys-11", SYS11_COLOR),
-            ("99.2%", "连续成功率", C_GREEN),
+            (">99%", "连续成功率", C_GREEN),
             ("<10ms", "推理延迟·Sys-11", SYS11_COLOR),
             ("15M", "LeWorldModel·Sys-12", SYS12_COLOR),
             ("1ms", "控制周期·Sys-0", SYS0_COLOR),
@@ -6255,7 +6255,7 @@ class PluggingSceneModule(SubModuleWidget):
             "◈ <b>动作执行 (标准接口)</b>: 基于 ROS2 Service 接口，点到点精确运动 ±0.05mm<br>"
             "◈ <b>力控反馈</b>: 六维力传感器 1kHz 采样，夹持力自适应<br>"
             "◈ <b>分段式验证</b>: 每个步骤完成确认后才进入下一步 · 异常自动停机<br>"
-            "◈ <b>真实环境运行</b>: 苏州实验室 Phase 0 验收通过 · 关键工序良率 ≥99.2%"
+            "◈ <b>真实环境运行</b>: 苏州实验室 Phase 0 验收通过 · 关键工序良率 >99%"
         )
         ft.setFont(QFont("Arial", 10)); ft.setStyleSheet(f"color:{C_WHITE}; padding:6px;"); ft.setWordWrap(True)
         fe.addWidget(ft); feat.setLayout(fe); l.addWidget(feat)
@@ -6419,7 +6419,7 @@ class PluggingSceneModule(SubModuleWidget):
         ]
         
         levels = [
-            ("🔧 L2 基线版", "≥99.2%", C_GREEN),
+            ("🔧 L2 基线版", ">99%", C_GREEN),
             ("🤖 L3 增强版", "≥99.5%", SYS11_COLOR),
             ("🛡️ L4 旗舰版", "≥99.9%", C_RED),
         ]
