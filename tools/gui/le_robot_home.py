@@ -405,7 +405,7 @@ class HomePage(QMainWindow):
 
         metrics = [
             ("±0.02mm", "定位精度", ACCENT_BLUE),
-            ("99.2%", "连续成功率", ACCENT_GREEN),
+            (">99%", "连续成功率", ACCENT_GREEN),
             ("<10ms", "推理延迟", ACCENT_CYAN),
             ("500M", "模型参数", ACCENT_PURPLE),
         ]
