@@ -5180,12 +5180,11 @@ class MonitorModule(SubModuleWidget):
         )
     
     def _mon_launch(self):
-        """信号源启动 - 安全简化版"""
+        """信号源启动 - 连Orin拉数据"""
         self.mon_launch_btn.setEnabled(False)
         self.mon_stop_btn.setEnabled(True)
         self.mon_status.setText("● 运行中")
-        self._mlog("📡 实时监控已启动")
-        self._show_inline_data()
+        self._start_live_monitor()
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
