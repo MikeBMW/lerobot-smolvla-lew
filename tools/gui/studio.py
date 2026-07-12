@@ -6614,7 +6614,7 @@ class StudioMainWindow(QMainWindow):
             QComboBox {{ background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER};
             border-radius:4px; padding:4px 10px; font-size:13px; min-width:200px; }}
             QComboBox::drop-down {{ border:none; width:20px; }}
-            QComboBox QAbstractItemView {{ background:{C_BG2}; color:{C_TEXT}; selection-background-color:{C_GREEN}22; }}
+            QComboBox QAbstractItemView {{ background:{C_BG2}; color:{C_WHITE}; selection-background-color:{C_GREEN}22; }}
         """)
         self._engine_combo.currentIndexChanged.connect(self._on_engine_change)
 
