@@ -282,7 +282,9 @@ class HardwareSimulator:
 
     # ── 故障注入 (调试用) ──
 
-    def inject_fault(self, device: str, fault_type: str, params: dict | None = None):
+    def inject_fault(self, device: str, fault_type: str, params: dict = None):
+        if params is None:
+            params = {}
         """注入硬件故障"""
         self.fault_injection[device] = {
             "type": fault_type,
