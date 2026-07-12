@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 XSpace Studio — 集成化开发界面
-Z-MAX 多模态动作专家 · System 0 / Sys-11 / Sys-12 / System 2
+Z-MAX 多模态动作专家 · Sys-0 / Sys-11 / Sys-12 / System 2
 
 基于 Z-MAX 三层解耦架构设计:
-  System 0 (L2基石)  → 硬件工具箱
+  Sys-0 (L2基石)  → 硬件工具箱
   Sys-11 (动作系统)  → 训练控制台 + 配置中心
   Sys-12 (引导系统)  → 评估分析 + 实时监控
   System 2 (L4大脑)  → 数据集管理
@@ -38,7 +38,7 @@ from PyQt5.QtGui import (
 # Z-MAX 版本同步模块
 from version_sync import VersionSyncWidget
 
-# 硬件仿真引擎 (System 0 硬件工具箱)
+# 硬件仿真引擎 (Sys-0 硬件工具箱)
 from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
 from hardware_simulator import HardwareDiscoveryThread
 from hardware_simulator import ReplayEngine, ReplayThread
@@ -264,9 +264,9 @@ class SystemSidebar(QFrame):
         self.sys11.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys11)
 
-        # System 0
+        # Sys-0
         self.sys0 = SystemLayerCard(
-            "sys0", "System 0", "L2基石 · EtherCAT",
+            "sys0", "Sys-0", "L2基石 · EtherCAT",
             SYS0_COLOR, "安全层 · HAL驱动层\n运动学正逆解 · 急停"
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
@@ -411,8 +411,8 @@ class ArchFlowBar(QFrame):
         # ---- 箭头 ↓ 到底层 ----
         self._add_arrow(root, "↕")
 
-        # ---- Layer 1: System 0 (底层) ----
-        self._add_layer_box(root, "⚙️", "System 0", "L2基石 · EtherCAT · 安全层 · HAL驱动", SYS0_COLOR)
+        # ---- Layer 1: Sys-0 (底层) ----
+        self._add_layer_box(root, "⚙️", "Sys-0", "L2基石 · EtherCAT · 安全层 · HAL驱动", SYS0_COLOR)
 
         self.setLayout(root)
 
@@ -594,7 +594,7 @@ class PhaseCardButton(QFrame):
 
 
 class ProductRoadmapWidget(QFrame):
-    """Z-MAX 产品迭代路线图：System1 → Sys-11 → Sys-12 → System2"""
+    """Z-MAX 产品迭代路线图：Sys-1 → Sys-11 → Sys-12 → Sys-2"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -646,7 +646,7 @@ class ProductRoadmapWidget(QFrame):
             },
             {
                 "phase": "Phase 1",
-                "title": "系统1 · VTLA端到端",
+                "title": "Sys-1 · VTLA端到端",
                 "time": "2026 Q4",
                 "dims": "M + A",
                 "desc": "自研VTLA多模态模型\n感知→动作端到端执行",
@@ -1099,7 +1099,7 @@ class HomeWidget(QWidget):
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "训练控制台",   "Sys-11 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
-            ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
+            ("hardware", "🔧", "硬件工具箱",   "Sys-0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
             ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
             ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
@@ -3402,14 +3402,14 @@ class EvalModule(SubModuleWidget):
 
 
 class HardwareModule(SubModuleWidget):
-    """硬件工具箱 — System 0 基石层: 仿真 + 真实硬件统一接口
+    """硬件工具箱 — Sys-0 基石层: 仿真 + 真实硬件统一接口
     
     架构: 仿真引擎(hardware_simulator.py) ↔ GUI ↔ ROS2/gRPC(真机)
     模式: sim(虚拟设备) | local(本地ROS2) | real(Orin真机TCP桥)
     """
     
     def __init__(self):
-        super().__init__("硬件工具箱", [("System 0", SYS0_COLOR)])
+        super().__init__("硬件工具箱", [("Sys-0", SYS0_COLOR)])
         
         # SSH 连接复用 — 加速所有硬件控制命令
         import subprocess
@@ -3515,7 +3515,7 @@ class HardwareModule(SubModuleWidget):
         self.log.setFixedHeight(80)
         self.log.setFont(QFont("Consolas", 9))
         self.log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
-        self.log.setText("  System 0 硬件工具箱就绪 · 仿真模式 · 等待启动 ...\n")
+        self.log.setText("  Sys-0 硬件工具箱就绪 · 仿真模式 · 等待启动 ...\n")
         
         # ── 组装 ──
         body = QVBoxLayout()
@@ -3943,7 +3943,7 @@ class HardwareModule(SubModuleWidget):
         l = self._detail_section("系统概览", C_CYAN)
         
         info_text = QLabel(
-            "<b>Z-MAX 多模态动作专家 · System 0 硬件抽象层</b><br><br>"
+            "<b>Z-MAX 多模态动作专家 · Sys-0 硬件抽象层</b><br><br>"
             "<b>硬件平台:</b> Z700 轮式双臂机器人<br>"
             "<b>算力平台:</b> NVIDIA AGX Orin<br>"
             "<b>控制周期:</b> 1ms (1000Hz)<br>"
@@ -6178,7 +6178,7 @@ class PluggingSceneModule(SubModuleWidget):
     """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
 
     def __init__(self):
-        super().__init__("插拔场景 · Z700", [("Z700", ROI_ACCENT), ("System 0", SYS0_COLOR)])
+        super().__init__("插拔场景 · Z700", [("Z700", ROI_ACCENT), ("Sys-0", SYS0_COLOR)])
         body = QWidget()
         bl = QVBoxLayout(); bl.setSpacing(12)
         
