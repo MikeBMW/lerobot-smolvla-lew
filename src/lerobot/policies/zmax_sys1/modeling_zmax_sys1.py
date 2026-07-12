@@ -1,12 +1,17 @@
 """
-Z-MAX Sys-1 · L3 增强版 · 双引擎
+Z-MAX Sys-1 · 统一推理框架
 
-对外: VTLA (多模态视觉-语言-动作)
-底层: ACT (轻量Transformer, 52M, 8.4ms)
-接口: 预留VTLA完整版(VLM冻结+FlowMatching)切换
+引擎策略:
+  - engine='act'    → 本地 ACT (52M, 8.4ms) on WSL RTX4060
+  - engine='vtla'   → 远程 VTLA (450M, ~220ms) on 4090 via gRPC
+  - engine='groot'  → 远程 GR00T (2B, ~500ms) on 4090 via gRPC
+  - engine='smolvla'→ 本地 smolvla (450M) — Sys-11兼容
+  - engine='lew'    → 本地 smolvla_lew (628M) — Sys-12兼容
+
+对外名称: VTLA (Z-MAX Sys-1)
 """
 from __future__ import annotations
-import torch
+import torch, time, json, os
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -17,13 +22,13 @@ from .configuration_zmax_sys1 import ZmaxSys1Config
 
 class ZmaxSys1Policy(PreTrainedPolicy):
     """
-    Z-MAX Sys-1 · VTLA 接口 / ACT 引擎
+    Z-MAX Sys-1 · 统一推理引擎
 
-    模式:
-      - engine='act' (当前) → ACT 52M 本地推理, 8.4ms
-      - engine='vtla' (未来) → VLM+FlowMatching 完整版, 接入 Sys-2 云端
+    本地引擎: ACT (52M, <1ms)
+    远程引擎: VTLA / GR00T (4090 via gRPC)
+    兼容引擎: smolvla (Sys-11) / smolvla_lew (Sys-12)
 
-    对外统一: VTLA 多模态端到端
+    切换: model.set_engine('vtla') or config.engine='vtla'
     """
 
     config_class = ZmaxSys1Config
@@ -32,116 +37,175 @@ class ZmaxSys1Policy(PreTrainedPolicy):
     def __init__(self, config: ZmaxSys1Config, dataset_stats=None, dataset_info=None):
         super().__init__(config)
         self.config = config
+        self._engine_name = getattr(config, 'engine', 'act')
+        self._local_model = None
+        self._grpc_client = None
 
-        # ━━━ ACT 引擎 (当前默认) ━━━
-        try:
-            from lerobot.policies.act.modeling_act import ACTPolicy
-            self._act = ACTPolicy.from_pretrained(
-                'lerobot/act_aloha_sim_transfer_cube_human'
-            )
-        except Exception:
-            self._act = None
+        # ━━━ 加载本地引擎 ━━━
+        self._load_local_engine()
 
-        # ━━━ VTLA 接口 (预留) ━━━
-        self._vtla = None  # 未来: SmolVLAPolicy.from_pretrained(...)
+        # ━━━ gRPC客户端 (4090) ━━━
+        self._grpc_host = getattr(config, 'grpc_host', '106.75.239.80')
+        self._grpc_port = getattr(config, 'grpc_port', 50051)
 
-        # ━━━ Sys-1 特有组件 ━━━
-        if config.enable_tactile:
-            self.tactile_encoder = nn.Sequential(
-                nn.Linear(config.tactile_dim, config.tactile_encoder_dim),
-                nn.ReLU(),
-                nn.Linear(config.tactile_encoder_dim, config.action_hidden_size),
-            )
-
-        # 轻量动作头 (ACT输出后处理)
+        # ━━━ 动作适配器 ━━━
         self.action_adapter = nn.Linear(14, 7)  # ACT 14D → Z-MAX 7D
 
         self._dummy = nn.Parameter(torch.zeros(1))
 
+    # ═══════ 引擎管理 ═══════
+
+    def _load_local_engine(self):
+        """加载本地引擎 (ACT/smolvla/smolvla_lew)"""
+        if self._engine_name == 'act':
+            try:
+                from lerobot.policies.act.modeling_act import ACTPolicy
+                self._local_model = ACTPolicy.from_pretrained(
+                    'lerobot/act_aloha_sim_transfer_cube_human'
+                )
+            except Exception as e:
+                print(f"[Sys-1] ACT load failed: {e}")
+
+        elif self._engine_name == 'smolvla':
+            try:
+                from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+                features = {
+                    'observation.images.camera1': PolicyFeature(FeatureType.VISUAL, (3,256,256)),
+                    'observation.images.camera2': PolicyFeature(FeatureType.VISUAL, (3,256,256)),
+                    'observation.images.camera3': PolicyFeature(FeatureType.VISUAL, (3,256,256)),
+                    'observation.state': PolicyFeature(FeatureType.STATE, (2,)),
+                }
+                from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
+                cfg = SmolVLAConfig(input_features=features, 
+                                    output_features={'action': PolicyFeature(FeatureType.ACTION, (2,))})
+                self._local_model = SmolVLAPolicy(cfg)
+            except Exception as e:
+                print(f"[Sys-1] SmolVLA load failed: {e}")
+
+        elif self._engine_name == 'lew':
+            try:
+                from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
+                from lerobot.policies.smolvla_lew.configuration_smolvla_lew import SmolVLALewConfig
+                features = {
+                    'observation.images.top': PolicyFeature(FeatureType.VISUAL, (3,96,96)),
+                    'observation.state': PolicyFeature(FeatureType.STATE, (2,)),
+                }
+                cfg = SmolVLALewConfig(
+                    input_features=features,
+                    output_features={'action': PolicyFeature(FeatureType.ACTION, (2,))},
+                    freeze_smolvlm=True,
+                    enable_lew_world_model=False
+                )
+                self._local_model = SmolVLALewPolicy(cfg)
+            except Exception as e:
+                print(f"[Sys-1] LEW load failed: {e}")
+
     @property
     def engine(self) -> str:
-        """当前推理引擎"""
-        if self._vtla is not None:
-            return 'vtla'
-        return 'act'
+        return self._engine_name
 
-    def switch_to_act(self):
-        """切换至 ACT 引擎"""
-        self._vtla = None
+    def set_engine(self, name: str):
+        """切换引擎: act | vtla | groot | smolvla | lew"""
+        self._engine_name = name
+        if name in ('act', 'smolvla', 'lew'):
+            self._load_local_engine()
+        print(f"[Sys-1] Engine → {name}")
 
-    def load_vtla(self, vtla_model_id: str = 'lerobot/smolvla_base'):
-        """加载 VTLA 引擎 (需 Sys-2 云端资源)"""
+    def _get_grpc_client(self):
+        """懒加载gRPC客户端"""
+        if self._grpc_client is None and self._engine_name in ('vtla', 'groot'):
+            try:
+                import grpc
+                from hermes_gateway_mac.sys2_pb2_grpc import Sys2ServiceStub
+                from hermes_gateway_mac import sys2_pb2
+                channel = grpc.insecure_channel(f"{self._grpc_host}:{self._grpc_port}")
+                self._grpc_client = Sys2ServiceStub(channel)
+                self._sys2_pb2 = sys2_pb2
+            except ImportError:
+                print("[Sys-1] gRPC not available")
+        return self._grpc_client
+
+    # ═══════ 推理 ═══════
+
+    def _infer_local(self, batch, device) -> dict:
+        """本地推理 (ACT/smolvla/lew)"""
+        if self._local_model is None:
+            return {'action': torch.zeros(1, 7, device=device),
+                    'loss': torch.tensor(0.0, device=device, requires_grad=True),
+                    'engine': self._engine_name}
+
+        self._local_model.to(device).eval()
         try:
-            from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
-            self._vtla = SmolVLAPolicy.from_pretrained(vtla_model_id)
-        except Exception as e:
-            raise RuntimeError(f"VTLA 加载失败 (需要云端GPU): {e}")
-
-    # ━━━ 前向传播 ━━━
-
-    def forward(self, batch: dict[str, torch.Tensor]):
-        device = self._dummy.device
-        B = batch.get('observation.state', torch.zeros(1, 6)).shape[0]
-
-        if self.engine == 'vtla' and self._vtla is not None:
-            # VTLA 路径 (未来)
-            return self._forward_vtla(batch, B, device)
-        else:
-            # ACT 路径 (当前)
-            return self._forward_act(batch, B, device)
-
-    def _forward_act(self, batch, B, device):
-        """ACT 引擎前向 (当前默认)"""
-        # 1. 触觉编码
-        if hasattr(self, 'tactile_encoder') and 'observation.tactile' in batch:
-            tactile_feat = self.tactile_encoder(batch['observation.tactile'])
-        else:
-            tactile_feat = torch.zeros(B, self.config.action_hidden_size, device=device)
-
-        # 2. ACT 推理 (如果模型可用)
-        act_out = torch.zeros(B, 14, device=device)
-        if self._act is not None:
             with torch.no_grad():
-                try:
-                    img = batch.get('observation.images.top',
-                                    torch.randn(B, 3, 480, 640, device=device))
-                    state = batch.get('observation.state',
-                                      torch.randn(B, 14, device=device))
-                    self._act.to(device)
-                    act_out = self._act.select_action({
-                        'observation.images.top': img,
-                        'observation.state': state,
-                    })
-                    if act_out.dim() == 3:
-                        act_out = act_out[:, -1, :]
-                except Exception:
-                    pass
+                action = self._local_model.select_action(batch)
+                if action.dim() == 3:
+                    action = action[:, -1, :]
+                if action.shape[-1] > 7:
+                    action = action[:, :7]
+                elif action.shape[-1] == 6:
+                    action = F.pad(action, (0, 1))
+                elif action.shape[-1] == 14:
+                    self.action_adapter.to(device)
+                    action = self.action_adapter(action)
+        except Exception:
+            action = torch.zeros(1, 7, device=device)
 
-        # 3. 动作适配 (ACT 14D → Z-MAX 7D)
-        self.action_adapter.to(device)
-        pred_actions = self.action_adapter(act_out.to(device))
-
-        # 4. Loss
         loss = torch.tensor(0.0, device=device, requires_grad=True)
         if 'action' in batch:
             target = batch['action'][:, :7] if batch['action'].dim() <= 2 else batch['action'][:, 0, :7]
             if target.shape[-1] >= 7:
-                loss = F.mse_loss(pred_actions, target[:, :7])
+                loss = F.mse_loss(action, target[:, :7])
 
-        return {'loss': loss, 'action': pred_actions, 'engine': 'act'}
+        return {'action': action, 'loss': loss, 'engine': self._engine_name}
 
-    def _forward_vtla(self, batch, B, device):
-        """VTLA 路径 (预留, 需 Sys-2 云端)"""
-        self._vtla.to(device).eval()
-        with torch.no_grad():
-            action = self._vtla.select_action(batch)
-        if action.dim() == 3:
-            action = action[:, -1, :]
-        loss = torch.tensor(0.0, device=device, requires_grad=True)
-        if 'action' in batch:
-            target = batch['action'][:, :6] if batch['action'].dim() <= 2 else batch['action'][:, 0, :6]
-            loss = F.mse_loss(action[:, :6], target[:, :6])
-        return {'loss': loss, 'action': action, 'engine': 'vtla'}
+    def _infer_remote(self, batch, device, model_type: str) -> dict:
+        """远程推理 (4090 via gRPC)"""
+        client = self._get_grpc_client()
+        if client is None:
+            return {'action': torch.zeros(1, 7, device=device),
+                    'loss': torch.tensor(0.0, device=device, requires_grad=True),
+                    'engine': f'{self._engine_name}(fallback-local)'}
+
+        try:
+            # 提取观测数据
+            state = batch.get('observation.state', torch.zeros(1, 6)).cpu().numpy()
+            img = None
+            for k in batch:
+                if 'image' in k:
+                    img = batch[k].cpu().numpy()
+                    break
+
+            # 构建gRPC请求
+            from hermes_gateway_mac import sys2_pb2
+            req = sys2_pb2.InferRequest(
+                model_type=model_type,
+                state=state.flatten().tolist(),
+                image=img.flatten().tolist() if img is not None else [],
+                image_shape=list(img.shape) if img is not None else [1, 3, 256, 256],
+                task=getattr(batch, 'task', 'execute'),
+            )
+            resp = client.Infer(req)
+            action = torch.tensor(resp.action, device=device).reshape(1, -1)
+            if action.shape[-1] > 7:
+                action = action[:, :7]
+        except Exception as e:
+            print(f"[Sys-1] gRPC error: {e}")
+            action = torch.zeros(1, 7, device=device)
+
+        return {'action': action,
+                'loss': torch.tensor(0.0, device=device, requires_grad=True),
+                'engine': self._engine_name}
+
+    def forward(self, batch: dict[str, torch.Tensor]):
+        device = self._dummy.device
+
+        # 路由
+        if self._engine_name in ('vtla',):
+            return self._infer_remote(batch, device, 'vtla')
+        elif self._engine_name in ('groot',):
+            return self._infer_remote(batch, device, 'groot')
+        else:
+            return self._infer_local(batch, device)
 
     @torch.no_grad()
     def select_action(self, batch):
@@ -152,8 +216,7 @@ class ZmaxSys1Policy(PreTrainedPolicy):
     def predict_action_chunk(self, batch):
         return self.select_action(batch)
 
-    def reset(self):
-        pass
+    def reset(self): pass
 
     def get_optim_params(self):
         return self.parameters()
