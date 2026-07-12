@@ -5197,7 +5197,7 @@ class MonitorModule(SubModuleWidget):
         elif self.src_pusht.isChecked():
             pass  # 已在上一步生成
         
-        self._open_rerun_local()
+        self._open_rerun_local_safe()
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
@@ -5734,6 +5734,14 @@ class MonitorModule(SubModuleWidget):
             self._mlog("   🌐 http://127.0.0.1:9090")
         except Exception as e:
             self._mlog(f"   ❌ {e}")
+
+    def _open_rerun_local_safe(self):
+        """安全启动Rerun，异常时优雅降级"""
+        try:
+            self._open_rerun_local()
+        except Exception as e:
+            self._mlog(f"⚠️ Rerun启动失败: {e}，使用内置数据显示")
+            self._show_inline_data()
 
 
 # ═══════════════════════════════════════════════
