@@ -45,7 +45,7 @@
       "name": "Z700 轮式双臂旗舰",
       "automation": "高度自动化",
       "compute": "Orin AGX 32GB + RK3588 + RK1860",
-      "arm": "双臂力控 (关节>10kHz) + 六维力",
+      "arm": "双臂力控 (关节1kHz) + 六维力",
       "gripper": "电动夹爪 + 吸盘 (AI决策)",
       "force_sensor": "六维力 ×2 + 触觉 ×2",
       "camera": "16路 GMSL2 + 360°鱼眼",

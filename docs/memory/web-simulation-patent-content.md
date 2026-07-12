@@ -73,7 +73,7 @@ python3 simulation_server.py --policy lerobot/smolvla_base
 - **核心创新**:
   - SmolVLA 类脑双通路架构 (VLM冻结 + Expert可训练)
   - 三层解耦 (感知层/认知层/执行层) + OTA软件升级
-  - >10kHz 力控自适应插拔 + 三级异常自恢复
+  - 1kHz 力控自适应插拔 + 三级异常自恢复
   - 仿真联调Client-Server系统
 - **权利要求**: 1项独立 + 7项从属
 - **文档**: `Z-MAX-专利交底书-实用新型.docx`
@@ -81,7 +81,7 @@ python3 simulation_server.py --policy lerobot/smolvla_base
 ### 技术创新点 (卡片网格)
 1. **类脑双通路** — 腹侧VLM(识别) + 背侧Expert(动作)，仅22%参数可训练
 2. **三层解耦** — 感知层(Sys-2) → 认知层(Sys-11) → 执行层(Sys-12)
-3. **>10kHz力控** — 微牛级精细力保护，1000倍于传统方案
+3. **1kHz力控** — 微牛级精细力保护，100倍于传统方案
 4. **OTA升级** — L2→L3→L4三级跃迁，硬件一步到位
 5. **仿真联调** — WebSocket协议，5类传感器，30Hz实时闭环
 6. **双模型分流** — ACT高速执行(2172FPS) + SmolVLA智能决策(4.7FPS)

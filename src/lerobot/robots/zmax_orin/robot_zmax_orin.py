@@ -12,7 +12,7 @@ Z-MAX Orin Robot — leRobot 标准接口实现
   Robot
   ├── joints ×6 (XMS5-R800)
   ├── gripper (DH PGE/PGC)
-  ├── force_sensor (TS-T-15 六维力 >10kHz)
+  ├── force_sensor (TS-T-15 六维力 1kHz)
   ├── tactile_sensor ×2 (CH341 触觉阵列)
   ├── camera_realsense (D405 RGB-D)
   ├── camera_mechmind (Mech-Mind 3D)
