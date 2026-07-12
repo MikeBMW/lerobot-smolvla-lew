@@ -38,6 +38,15 @@ from PyQt5.QtGui import (
 # Z-MAX 版本同步模块
 from version_sync import VersionSyncWidget
 
+
+import sys, traceback
+def _global_excepthook(exc_type, exc_value, exc_tb):
+    with open("/tmp/gui_crash.log", "w") as f:
+        traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
+    print(f"CRASH: {exc_type.__name__}: {exc_value}", file=sys.stderr)
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+sys.excepthook = _global_excepthook
+
 # 硬件仿真引擎 (System 0 硬件工具箱)
 from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
 from hardware_simulator import HardwareDiscoveryThread
