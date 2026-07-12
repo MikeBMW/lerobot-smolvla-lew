@@ -5446,6 +5446,11 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
+        # 定时刷新信号追踪面板
+        self._live_timer = QTimer()
+        self._live_timer.timeout.connect(self._refresh_live_display)
+        self._live_timer.start(2000)
+        
         self._live_timer = QTimer()
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
@@ -5494,6 +5499,11 @@ class MonitorModule(SubModuleWidget):
         self._live_running = True
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
+        
+        # 定时刷新信号追踪面板
+        self._live_timer = QTimer()
+        self._live_timer.timeout.connect(self._refresh_live_display)
+        self._live_timer.start(2000)
         
         self._live_timer = QTimer()
         self._live_timer.timeout.connect(self._update_live_display)
@@ -7102,3 +7112,21 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    def _refresh_live_display(self):
+        """读取 _live_data 更新信号追踪面板"""
+        d = getattr(self, '_live_data', {})
+        topics = d.get("topics", {})
+        if not topics:
+            return
+        joint_data = topics.get("joint_states", "无数据")
+        lines = [
+            "<div style='font-family:monospace;font-size:12px;color:#4ADE80'>",
+            f"<b>实时信号追踪</b> | {d.get('status','')}<br><br>",
+            f"关节: {joint_data[:200]}<br>",
+            f"夹爪: {topics.get('gripper_pos','')[:80]}<br>",
+            f"力: {topics.get('force_torque','')[:120]}<br>",
+            f"急停: {topics.get('emergency_stop','')[:60]}<br>",
+            "</div>"
+        ]
+        self.mon_data_preview.setHtml("".join(lines))
