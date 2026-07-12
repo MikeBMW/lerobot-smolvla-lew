@@ -1,52 +1,43 @@
-# Z-MAX 三体协作 · Team Sync v2.0
+# 静界科技 · Z-MAX 三体协作
 
-> 飞书群: dataworld · 更新: 2026-07-12
+> 公司: **静界科技 (JingJie Tech)**  
+> 飞书群: dataworld · 2026-07-12
 
-## 👥 团队成员 (角色重定义)
+## 👥 成员
 
-| 分身 | 环境 | 角色 | 核心职责 |
-|------|------|------|------|
-| **xspace/静静** | WSL2 (RTX4060 32GB) | 🏗️ **总工程师** | 整体架构方案、代码审核、产品统筹 |
-| **小芳** | Mac M1 (8GB) | 🔧 **端侧部署** | Orin连接、传感器采集、仿真桥、硬件数据 |
-| **web** | RTX 4090 云端 | ☁️ **云端训练 + 网站** | GPU训练、zmax-website.git 维护、Web前端 |
+| 分身 | 角色 | 环境 | 仓库 | 职责 |
+|------|------|------|------|------|
+| **xspace/静静** | 🏗️ 总工程师 | WSL2 RTX4060 32GB | `lerobot-smolvla-lew` **main分支** | 架构方案、代码审核、产品统筹、GUI工程管理者 |
+| **web** | 🎨 前端+☁️训练 | RTX4090 云端 | `zmax-website` | 网站设计维护、云端模型训练 |
+| **小芳** | 🔧 硬件+端侧 | Mac M1 8GB | `lerobot-smolvla-lew` **mac分支** | Orin机器人、传感器、仿真、端侧部署 |
 
-## 🏗️ 信息流
+## 🔗 仓库
 
-```
-xspace (总工/架构)
-  ├── 设计方案 → web (云端训练 + 网站)
-  │               ├── RTX4090 模型训练
-  │               └── zmax-website.git
-  └── 设计方案 → 小芳 (端侧部署)
-                  ├── Orin 机器人连接
-                  └── GUI工程 硬件数据
-```
-
-## 🔗 代码仓库
-
-| 仓库 | 负责人 | 用途 |
+| 仓库 | 管理者 | 分支策略 |
 |------|:---:|------|
-| `MikeBMW/lerobot-smolvla-lew` (GUI) | xspace统筹 + 小芳mac分支 | 机器人工程 |
-| `MikeBMW/zmax-website` (web) | **web** | 官网维护 |
+| `MikeBMW/lerobot-smolvla-lew` (GUI) | xspace(main守护) + 小芳(mac开发) | mac→PR→xspace审核→main |
+| `MikeBMW/zmax-website` (Web) | **web** | 直接维护 |
 
-## 📊 当前状态
+## 🧠 互相记忆规则
 
-### xspace (总工) — 统筹
-- 整体架构方案
-- 代码审核 + PR合并
-- 文档一致性
-- Web硬件树页面设计
+三人可以随时读取对方的记忆档案，按需同步：
+- `docs/memory/hermes-xiaofang.md` — 小芳记忆
+- `docs/memory/hermes-xspace.md` — xspace记忆  
+- `docs/memory/shared-memory.md` — 共享记忆
+- `docs/memory/team-sync.md` — 本文件
 
-### 小芳 (端侧) — 已完成
-- Orin真机6轴验证 ✅
-- Sys-0安全模块 ✅
-- 仿真桥 ✅
-- leRobot抽象 ✅
-- 硬件树数据 ✅
-- 实时监控 ✅
+任何更新→git commit→push→通知对方 pull
 
-### web (云端) — 新增
-- RTX4090 模型训练
-- zmax-website.git 维护
-- Web前端渲染
-- 仿真报告页面
+## 📊 分工
+
+```
+xspace (总工)
+  ├── 架构设计 → web (前端+云端)
+  │               ├── RTX4090 训练 SmolVLA/ACT
+  │               └── zmax-website 维护
+  └── 架构设计 → 小芳 (端侧)
+                  ├── Orin + 珞石 XMS5-R800
+                  ├── 传感器采集 (相机/力/触觉)
+                  ├── 仿真桥 + 安全系统
+                  └── leRobot 抽象层
+```
