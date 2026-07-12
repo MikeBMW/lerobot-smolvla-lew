@@ -6605,7 +6605,7 @@ class StudioMainWindow(QMainWindow):
         # 状态栏
         sb = self.statusBar()
         sb.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border-top:1px solid {C_BORDER};")
-        sb.showMessage("● Ready  |  Python 3.12 · PyTorch  |  lerobot v0.5.2  |  smolvla_lew")
+        sb.showMessage("● Ready  |  Sys-1 ACT(Local · 8ms)  |  Sys-2(4090)  |  Z-MAX v1.0.4")
 
     def _on_nav(self, target):
         """导航切换"""
