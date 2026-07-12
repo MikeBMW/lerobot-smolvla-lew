@@ -41,6 +41,10 @@ class ZmaxSys1Config(PreTrainedConfig):
     @property
     def reward_delta_indices(self): return []
     """Phase 1: VTLA 基础插拔策略"""
+    # 引擎选择
+    engine: str = "act"   # act | vtla | groot | smolvla | lew
+    grpc_host: str = "106.75.239.80"
+    grpc_port: int = 50051
     # VLM
     smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
     freeze_smolvlm: bool = True
