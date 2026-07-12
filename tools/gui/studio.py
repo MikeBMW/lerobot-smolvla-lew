@@ -6602,10 +6602,53 @@ class StudioMainWindow(QMainWindow):
             "sys2":  "dataset",
         }
 
-        # 状态栏
+        # 状态栏 - 引擎选择与状态
         sb = self.statusBar()
         sb.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border-top:1px solid {C_BORDER};")
-        sb.showMessage("● Ready  |  Sys-1 ACT(Local · 8ms)  |  Sys-2(4090)  |  Z-MAX v1.0.4")
+
+        self._engine_combo = QComboBox()
+        self._engine_combo.addItems(["ACT (Local · 1ms)", "VTLA (Remote 4090)", "GR00T (Remote 4090)", "smolvla Sys-11 (Local)", "LEW Sys-12 (Local)"])
+        self._engine_combo.setCurrentIndex(0)
+        self._engine_combo.setStyleSheet(f"""
+            QComboBox {{ background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER};
+            border-radius:4px; padding:4px 10px; font-size:13px; min-width:200px; }}
+            QComboBox::drop-down {{ border:none; width:20px; }}
+            QComboBox QAbstractItemView {{ background:{C_BG2}; color:{C_TEXT}; selection-background-color:{C_GREEN}22; }}
+        """)
+        self._engine_combo.currentIndexChanged.connect(self._on_engine_change)
+
+        self._engine_status = QLabel("● 本地就绪")
+        self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:12px; font-weight:600; padding:0 10px;")
+
+        sb.addPermanentWidget(self._engine_status)
+        sb.addPermanentWidget(self._engine_combo)
+        sb.showMessage("Z-MAX v1.0.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+
+    def _on_engine_change(self, idx):
+        """引擎切换"""
+        mapping = {0:"act", 1:"vtla", 2:"groot", 3:"smolvla", 4:"lew"}
+        names = {0:"ACT 本地(1ms)", 1:"VTLA 4090(~220ms)", 2:"GR00T 4090(~500ms)", 3:"smolvla 本地(215ms)", 4:"LEW 本地(186ms)"}
+        colors = {0:C_GREEN, 1:C_GREEN, 2:C_GREEN, 3:C_GREEN, 4:C_GREEN}
+        engine = mapping.get(idx, "act")
+
+        # 测试gRPC连接状态 (VTLA/GR00T)
+        if engine in ("vtla", "groot"):
+            import requests
+            try:
+                r = requests.get("http://106.75.239.80:50051/health", timeout=2)
+                if r.status_code == 200:
+                    self._engine_status.setText("● 4090 已连接")
+                    self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:12px; font-weight:600; padding:0 10px;")
+                else:
+                    raise Exception("bad status")
+            except:
+                self._engine_status.setText("● 4090 断开 → 将回退ACT")
+                self._engine_status.setStyleSheet(f"color:{C_WARN}; font-size:12px; font-weight:600; padding:0 10px;")
+        else:
+            self._engine_status.setText("● 本地就绪")
+            self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:12px; font-weight:600; padding:0 10px;")
+
+        self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
 
     def _on_nav(self, target):
         """导航切换"""
