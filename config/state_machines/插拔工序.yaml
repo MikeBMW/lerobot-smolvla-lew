@@ -1,0 +1,6 @@
+state_machine:
+  start_state: call_grasp_vision
+  states:
+    call_grasp_vision:
+      motion: motion/call_grasp_vision.yaml
+      next: null
