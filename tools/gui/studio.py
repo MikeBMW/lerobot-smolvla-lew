@@ -5271,7 +5271,8 @@ class MonitorModule(SubModuleWidget):
     
     def _mlog(self, msg):
         ts = time.strftime("%H:%M:%S")
-def _show_inline_data(self):
+    def _show_inline_data(self):
+
         """从Orin拉取真实机器人数据显示"""
         try:
             import subprocess, re
@@ -5312,45 +5313,45 @@ def _show_inline_data(self):
                 f"<div style='color:#F87171'>连接异常: {e}</div>"
             )
     def _gen_rrd_demo(self):
-        """生成演示 .rrd 文件 — 6-DOF 机器人动画"""
-        import rerun as rr, math, os
-        
-        out = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
-        os.makedirs(os.path.dirname(out), exist_ok=True)
-        
-        self._mlog("📊 生成演示动画 .rrd...")
-        rr.init('Z-MAX Robot Demo', spawn=False)
-        
-        rr.log('world/xyz', rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0],[0,0,0]],
-            vectors=[[0.5,0,0],[0,0.5,0],[0,0,0.5]],
-            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
-        rr.log('robot/base', rr.Points3D([[0,0,0]], radii=[0.08], colors=[[100,100,100]]), static=True)
-        
-        trail = []
-        for frame in range(60):
-            t = frame * 0.1
-            rr.set_time('frame', sequence=frame)
-            pts = []; x = y = z = 0.0
-            for j in range(6):
-                phase = j * 0.8; amp = 0.3/(j+1)
-                x += math.cos(t*2+phase)*amp*0.5
-                y += math.sin(t*2+phase)*amp*0.6
-                z += math.cos(t*1.5+phase)*amp*0.3
-                pts.append([x,y,z])
-            colors = [[255-i*30,100+i*20,i*40] for i in range(6)]
-            rr.log('robot/joints', rr.Points3D(pts, radii=[0.05]*6, colors=colors))
-            for i in range(5):
-                rr.log(f'robot/link_{i}', rr.Arrows3D(
-                    origins=[pts[i]], vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]], radii=[0.015]))
-            trail.append(pts[-1])
-            if len(trail)>1: rr.log('robot/trail', rr.LineStrips3D([trail[-60:]], colors=[[255,200,0]]))
-        
-        rr.save(out)
-        size_kb = os.path.getsize(out)/1024
-        self._mlog(f"✅ {out} ({size_kb:.0f}KB)")
-        self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
-    
+            """生成演示 .rrd 文件 — 6-DOF 机器人动画"""
+            import rerun as rr, math, os
+
+            out = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+
+            self._mlog("📊 生成演示动画 .rrd...")
+            rr.init('Z-MAX Robot Demo', spawn=False)
+
+            rr.log('world/xyz', rr.Arrows3D(
+                origins=[[0,0,0],[0,0,0],[0,0,0]],
+                vectors=[[0.5,0,0],[0,0.5,0],[0,0,0.5]],
+                colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+            rr.log('robot/base', rr.Points3D([[0,0,0]], radii=[0.08], colors=[[100,100,100]]), static=True)
+
+    trail = []
+    for frame in range(60):
+        t = frame * 0.1
+        rr.set_time('frame', sequence=frame)
+        pts = []; x = y = z = 0.0
+        for j in range(6):
+            phase = j * 0.8; amp = 0.3/(j+1)
+            x += math.cos(t*2+phase)*amp*0.5
+            y += math.sin(t*2+phase)*amp*0.6
+            z += math.cos(t*1.5+phase)*amp*0.3
+            pts.append([x,y,z])
+        colors = [[255-i*30,100+i*20,i*40] for i in range(6)]
+        rr.log('robot/joints', rr.Points3D(pts, radii=[0.05]*6, colors=colors))
+        for i in range(5):
+            rr.log(f'robot/link_{i}', rr.Arrows3D(
+                origins=[pts[i]], vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]], radii=[0.015]))
+        trail.append(pts[-1])
+        if len(trail)>1: rr.log('robot/trail', rr.LineStrips3D([trail[-60:]], colors=[[255,200,0]]))
+
+    rr.save(out)
+    size_kb = os.path.getsize(out)/1024
+    self._mlog(f"✅ {out} ({size_kb:.0f}KB)")
+    self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
+
     def _gen_replay_rrd(self):
         """回放数据 → .rrd"""
         if self.replay.total_frames <= 0:
