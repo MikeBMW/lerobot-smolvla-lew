@@ -5263,6 +5263,16 @@ class MonitorModule(SubModuleWidget):
     
     def _mlog(self, msg):
         ts = time.strftime("%H:%M:%S")
+    def _show_inline_data(self):
+        self.mon_data_preview.setHtml(
+            "<div style=\"font-family:monospace;font-size:12px;color:#E2E8F0\">"
+            "<b>Z-MAX 实时信号追踪</b><br><br>"
+            "J1:+0.1602 J2:-0.0615 J3:-2.5455<br>"
+            "J4:+1.4469 J5:+0.4350 J6:-0.8225<br><br>"
+            "Fx:+2.48N Fy:-1.73N Fz:+0.17N<br>"
+            "夹爪:0.0 急停:ACTIVE</div>"
+        )
+
         self.mon_log.append(f"  [{ts}] {msg}")
     
     def _gen_rrd_demo(self):
@@ -7078,15 +7088,6 @@ def main():
     sys.exit(app.exec_())
 
 
+
 if __name__ == "__main__":
     main()
-
-    def _show_inline_data(self):
-        self.mon_data_preview.setHtml(
-            "<div style='font-family:monospace;font-size:12px;color:#E2E8F0'>"
-            "<b>Z-MAX 实时信号追踪</b><br><br>"
-            "J1:+0.1602 J2:-0.0615 J3:-2.5455<br>"
-            "J4:+1.4469 J5:+0.4350 J6:-0.8225<br><br>"
-            "Fx:+2.48N Fy:-1.73N Fz:+0.17N<br>"
-            "夹爪:0.0 急停:ACTIVE</div>"
-        )
