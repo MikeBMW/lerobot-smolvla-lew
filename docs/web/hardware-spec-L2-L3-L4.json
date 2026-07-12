@@ -18,7 +18,7 @@
       "safety": "双路急停 + 安全光栅 + 三色塔灯",
       "precision": "±0.05mm",
       "yield": "≥99.2%",
-      "cycle_time": "<8s",
+      "cycle_time": "<25s",
       "status": "✅ 已交付 (Phase 0)"
     },
     "L3_enhanced": {
