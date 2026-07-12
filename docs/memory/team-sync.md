@@ -1,43 +1,44 @@
-# 静界科技 · Z-MAX 三体协作
+# 静界科技 · Z-MAX 系统分工
 
-> 公司: **静界科技 (JingJie Tech)**  
-> 飞书群: dataworld · 2026-07-12
+> 2026-07-12 · 飞书群 dataworld
 
-## 👥 成员
+## 🎯 系统层分工
 
-| 分身 | 角色 | 环境 | 仓库 | 职责 |
-|------|------|------|------|------|
-| **xspace/静静** | 🏗️ 总工程师 | WSL2 RTX4060 32GB | `lerobot-smolvla-lew` **main分支** | 架构方案、代码审核、产品统筹、GUI工程管理者 |
-| **web** | 🎨 前端+☁️训练 | RTX4090 云端 | `zmax-website` | 网站设计维护、云端模型训练 |
-| **小芳** | 🔧 硬件+端侧 | Mac M1 8GB | `lerobot-smolvla-lew` **mac分支** | Orin机器人、传感器、仿真、端侧部署 |
+| 系统层 | 负责人 | 设备 | 内容 |
+|:---:|------|------|------|
+| **Sys-0** | 小芳 | Mac M1 / Orin | 安全层 (急停/力控/关节限位/光幕) |
+| **Sys-1** | xspace | WSL2 RTX4060 | ACT 51.6M 高速执行底座 |
+| **Sys-2** | web | RTX 4090 | VTLA + GR00T 云端大模型 |
+| **Sys-11** | xspace | WSL2 RTX4060 | SmolVLA 450M 认知推理 |
+| **Sys-12** | xspace | WSL2 RTX4060 | LeWorldModel 执行层 |
+
+## 👥 角色卡
+
+| 分身 | 角色 | 系统 | 环境 |
+|------|------|:---:|------|
+| **xspace/静静** | 🏗️ 总工/架构师 | Sys-1/11/12 | WSL2 RTX4060 |
+| **web** | ☁️ 云端训练+前端 | Sys-2 | RTX 4090 |
+| **小芳** | 🔧 硬件/安全/测试 | Sys-0 | Mac M1 + Orin |
+
+## 🏗️ 架构
+
+```
+Sys-2 (web/4090)  VTLA + GR00T
+    ↓ gRPC API
+Sys-11 (xspace/4060) SmolVLA 450M
+    ↓
+Sys-1 (xspace/4060) ACT 51.6M 底座
+    ↓ 共享接口
+Sys-12 (xspace/4060) LeWorldModel
+    ↓
+Sys-0 (小芳/Mac+Orin) 安全层
+    ↓
+XMS5-R800 真机
+```
 
 ## 🔗 仓库
 
-| 仓库 | 管理者 | 分支策略 |
-|------|:---:|------|
-| `MikeBMW/lerobot-smolvla-lew` (GUI) | xspace(main守护) + 小芳(mac开发) | mac→PR→xspace审核→main |
-| `MikeBMW/zmax-website` (Web) | **web** | 直接维护 |
-
-## 🧠 互相记忆规则
-
-三人可以随时读取对方的记忆档案，按需同步：
-- `docs/memory/hermes-xiaofang.md` — 小芳记忆
-- `docs/memory/hermes-xspace.md` — xspace记忆  
-- `docs/memory/shared-memory.md` — 共享记忆
-- `docs/memory/team-sync.md` — 本文件
-
-任何更新→git commit→push→通知对方 pull
-
-## 📊 分工
-
-```
-xspace (总工)
-  ├── 架构设计 → web (前端+云端)
-  │               ├── RTX4090 训练 SmolVLA/ACT
-  │               └── zmax-website 维护
-  └── 架构设计 → 小芳 (端侧)
-                  ├── Orin + 珞石 XMS5-R800
-                  ├── 传感器采集 (相机/力/触觉)
-                  ├── 仿真桥 + 安全系统
-                  └── leRobot 抽象层
-```
+| 仓库 | 负责人 |
+|------|:---:|
+| `lerobot-smolvla-lew` (GUI) | xspace(main) + 小芳(mac) |
+| `zmax-website` (Web) | web |
