@@ -100,10 +100,11 @@ C_DIM       = "#484f58"
 C_BORDER    = "#30363d"
 
 # Z-MAX系统层级颜色
-SYS0_COLOR  = C_ORANGE   # 基石层
-SYS11_COLOR = C_BLUE     # 动作系统
-SYS12_COLOR = C_PURPLE   # 引导系统
-SYS2_COLOR  = C_GREEN    # L4大脑
+SYS0_COLOR  = C_ORANGE   # 安全规则层
+SYS1_COLOR  = C_CYAN     # 视觉语言动作层 (VTLA/ACT)
+SYS11_COLOR = C_BLUE     # 纯动作系统
+SYS12_COLOR = C_PURPLE   # 世界模型系统
+SYS2_COLOR  = C_GREEN    # 云端智能引擎
 
 
 # ============================================================
@@ -6631,8 +6632,8 @@ class StudioMainWindow(QMainWindow):
     def _on_engine_change(self, idx):
         """引擎切换"""
         mapping = {0:"act", 1:"vtla", 2:"groot", 3:"smolvla", 4:"lew"}
-        names = {0:"ACT 本地(1ms)", 1:"VTLA 4090(~220ms)", 2:"GR00T 4090(~500ms)", 3:"smolvla 本地(215ms)", 4:"LEW 本地(186ms)"}
-        colors = {0:C_GREEN, 1:C_GREEN, 2:C_GREEN, 3:C_GREEN, 4:C_GREEN}
+        names = {0:"ACT 本地(1ms)", 1:"VTLA 4090(~280ms)", 2:"GR00T 4090(~500ms)", 3:"smolvla 本地(215ms)", 4:"LEW 本地(186ms)"}
+        engine_colors = {0:SYS1_COLOR, 1:SYS2_COLOR, 2:SYS2_COLOR, 3:SYS11_COLOR, 4:SYS12_COLOR}
         engine = mapping.get(idx, "act")
         import requests, time
 
