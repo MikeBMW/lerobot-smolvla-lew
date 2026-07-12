@@ -11,21 +11,11 @@ Z-MAX 多模态动作专家 · Sys-0 / Sys-11 / Sys-12 / System 2
 """
 
 import sys
-import subprocess  # 新增：用于执行git命令同步代码到GitHub
+import subprocess, re  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
 import json
 import glob
-import time
-
-import traceback, os
-def _global_excepthook(exc_type, exc_value, exc_tb):
-    tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-    with open(os.path.expanduser("~/gui_crash.log"), "w") as f:
-        f.write(tb_str)
-    print(f"CRASH: {exc_type.__name__}: {exc_value}", flush=True)
-    sys.__excepthook__(exc_type, exc_value, exc_tb)
-sys.excepthook = _global_excepthook
-# 硬件工具箱日志时间戳
+import time  # 硬件工具箱日志时间戳
 import math  # 离线仿真正弦波
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -63,7 +53,7 @@ def open_ppt_with_libreoffice(ppt_path):
     通过创建临时用户安装目录解决 LibreOffice 权限错误
     """
     import os
-    import subprocess
+    import subprocess, re
     
     # 检查文件是否存在
     if not os.path.exists(ppt_path):
@@ -1234,7 +1224,7 @@ class HomeWidget(QWidget):
         import qrcode, io, os
         
         # 检查 gateway 状态
-        import subprocess
+        import subprocess, re
         gw_status = "未配置"
         try:
             r = subprocess.run(["hermes", "gateway", "status"], 
@@ -3422,7 +3412,7 @@ class HardwareModule(SubModuleWidget):
         super().__init__("硬件工具箱", [("Sys-0", SYS0_COLOR)])
         
         # SSH 连接复用 — 加速所有硬件控制命令
-        import subprocess
+        import subprocess, re
         try:
             subprocess.run(
                 ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
@@ -3691,7 +3681,7 @@ class HardwareModule(SubModuleWidget):
     
     def _tower_cmd(self, color):
         """发送塔灯控制命令"""
-        import subprocess
+        import subprocess, re
         self._log(f"🚦 塔灯 → {color}")
         try:
             subprocess.run([
@@ -3708,7 +3698,7 @@ class HardwareModule(SubModuleWidget):
     
     def _gripper_cmd(self, pos):
         """夹爪开/关"""
-        import subprocess
+        import subprocess, re
         action = "张开" if pos > 0 else "闭合"
         self._log(f"🖐️ 夹爪 → {action}")
         try:
@@ -3737,7 +3727,7 @@ class HardwareModule(SubModuleWidget):
     
     def _check_camera(self):
         """拍摄 RealSense 照片并弹窗显示"""
-        import subprocess, os
+        import subprocess, re, os
         self._log("📷 拍摄中...")
         try:
             # 上传拍照脚本
@@ -3792,7 +3782,7 @@ class HardwareModule(SubModuleWidget):
     
     def _read_tactile(self):
         """读取触觉传感器"""
-        import subprocess
+        import subprocess, re
         self._log("🖐️ 读取触觉...")
         try:
             r = subprocess.run([
@@ -3819,7 +3809,7 @@ class HardwareModule(SubModuleWidget):
 
     def _read_sensor(self, row):
         """通用传感器读取 — 力/急停/扫码"""
-        import subprocess
+        import subprocess, re
         topics = {
             3: ("/robot/force_torque", "⚡ 力传感器"),
             5: ("/emergency_stop", "🚨 急停"),
@@ -3851,7 +3841,7 @@ class HardwareModule(SubModuleWidget):
 
     def _read_robot_joints(self):
         """读取机械臂当前关节状态"""
-        import subprocess, re
+        import subprocess, re, re
         self._log("🤖 读取关节状态...")
         try:
             r = subprocess.run([
@@ -3887,7 +3877,7 @@ class HardwareModule(SubModuleWidget):
     
     def _robot_stop(self):
         """机械臂急停"""
-        import subprocess
+        import subprocess, re
         self._log("🛑 机械臂急停!")
         try:
             subprocess.run([
@@ -5180,11 +5170,12 @@ class MonitorModule(SubModuleWidget):
         )
     
     def _mon_launch(self):
-        """信号源启动 - 连Orin拉数据"""
+        """信号源启动 - 安全简化版"""
         self.mon_launch_btn.setEnabled(False)
         self.mon_stop_btn.setEnabled(True)
         self.mon_status.setText("● 运行中")
-        self._start_live_monitor()
+        self._mlog("📡 实时监控已启动")
+        self._show_inline_data()
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
@@ -5223,7 +5214,7 @@ class MonitorModule(SubModuleWidget):
     
     def _launch_rviz(self):
         """启动 RViz"""
-        import subprocess
+        import subprocess, re
         
         rviz_config = os.path.expanduser("~/lerobot-smolvla-lew/launch/zmax_monitor.rviz")
         
@@ -5272,7 +5263,25 @@ class MonitorModule(SubModuleWidget):
     
     def _mlog(self, msg):
         ts = time.strftime("%H:%M:%S")
-    def _show_inline_data(self):
+    def _update_live_preview(self):
+        d = getattr(self, '_live_data', {})
+        joints = d.get("joints", [])
+        if joints and len(joints) >= 6:
+            j = [float(x) for x in joints]
+            html = (
+                "<div style='font-family:monospace;font-size:13px;color:#4ADE80'>"
+                f"<b>实时信号追踪</b> | {d.get('status','')}<br><br>"
+                f"J1:{j[0]:+.4f} J2:{j[1]:+.4f} J3:{j[2]:+.4f}<br>"
+                f"J4:{j[3]:+.4f} J5:{j[4]:+.4f} J6:{j[5]:+.4f}<br>"
+                "<br><span style='color:#94A3B8'>Orin XMS5-R800</span></div>"
+            )
+            self.mon_data_preview.setHtml(html)
+        else:
+            self.mon_data_preview.setHtml(
+                "<div style='color:#FBBF24'>⏳ 等待Orin数据...</div>"
+            )
+
+        def _show_inline_data(self):
         self.mon_data_preview.setHtml(
             "<div style=\"font-family:monospace;font-size:12px;color:#E2E8F0\">"
             "<b>Z-MAX 实时信号追踪</b><br><br>"
@@ -5385,7 +5394,7 @@ class MonitorModule(SubModuleWidget):
     
     def _start_live_monitor(self):
         """SSH 到 Orin 拉取实时 ROS2 topic/node 列表 + 数据"""
-        import subprocess
+        import subprocess, re
         
         self._mlog("🔍 实时监控: 连接 Orin...")
         self._live_data = {"status": "连接中...", "topics": {}, "topic_list": [], "node_list": []}
@@ -5401,21 +5410,19 @@ class MonitorModule(SubModuleWidget):
                     r = subprocess.run([
                         "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                         "source /opt/ros/humble/setup.bash && "
-                        "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash && "
-                        "export ROS_DOMAIN_ID=23 && "
-                        "ros2 topic echo --once /gripper_pos 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
                         "echo '---'; "
-                        "ros2 topic echo --once /real_joint_states 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null; "
                         "echo '---'; "
-                        "ros2 topic echo --once /robot/force_torque 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null; "
                         "echo '---'; "
-                        "ros2 topic echo --once /robot_status 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot_status 2>/dev/null; "
                         "echo '---'; "
-                        "ros2 topic echo --once /emergency_stop 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /emergency_stop 2>/dev/null; "
                         "echo '---'; "
-                        "ros2 topic echo --once /tower_light/status 2>/dev/null; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /tower_light/status 2>/dev/null; "
                         "echo '---'; "
-                        "ros2 topic echo --once /robot/tcp_pose 2>/dev/null "],
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/tcp_pose 2>/dev/null "],
                         capture_output=True, text=True, timeout=8)
                     out = r.stdout.strip()
                     if out:
@@ -5446,9 +5453,8 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
-        # 定时刷新信号追踪面板
         self._live_timer = QTimer()
-        self._live_timer.timeout.connect(self._refresh_live_display)
+        self._live_timer.timeout.connect(self._update_live_preview)
         self._live_timer.start(2000)
         
         self._live_timer = QTimer()
@@ -5500,9 +5506,8 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
-        # 定时刷新信号追踪面板
         self._live_timer = QTimer()
-        self._live_timer.timeout.connect(self._refresh_live_display)
+        self._live_timer.timeout.connect(self._update_live_preview)
         self._live_timer.start(2000)
         
         self._live_timer = QTimer()
@@ -5518,7 +5523,7 @@ class MonitorModule(SubModuleWidget):
     
     def _fetch_topic_node_list(self):
         """SSH 获取 topic/node 列表"""
-        import subprocess
+        import subprocess, re
         try:
             r = subprocess.run(
                 ["ssh", "-o", "ConnectTimeout=5", "nvidia@192.168.23.10",
@@ -5686,7 +5691,7 @@ class MonitorModule(SubModuleWidget):
 
     def _open_rerun_local(self):
         """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
-        import subprocess, os
+        import subprocess, re, os
         
         # 根据信号源选文件
         if self.src_replay.isChecked():
@@ -7112,21 +7117,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    def _refresh_live_display(self):
-        """读取 _live_data 更新信号追踪面板"""
-        d = getattr(self, '_live_data', {})
-        topics = d.get("topics", {})
-        if not topics:
-            return
-        joint_data = topics.get("joint_states", "无数据")
-        lines = [
-            "<div style='font-family:monospace;font-size:12px;color:#4ADE80'>",
-            f"<b>实时信号追踪</b> | {d.get('status','')}<br><br>",
-            f"关节: {joint_data[:200]}<br>",
-            f"夹爪: {topics.get('gripper_pos','')[:80]}<br>",
-            f"力: {topics.get('force_torque','')[:120]}<br>",
-            f"急停: {topics.get('emergency_stop','')[:60]}<br>",
-            "</div>"
-        ]
-        self.mon_data_preview.setHtml("".join(lines))
