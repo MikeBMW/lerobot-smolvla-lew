@@ -1,0 +1,106 @@
+state_machine:
+  start_state: 初始化循环
+  states:
+    初始化循环:
+      motion: motion/初始化循环.yaml
+      post_params:
+        pick_place_loop_count: 0
+        place_loop_count: 0
+        ng_place_count: 0
+        consecutive_grasp_fail_count: 0
+        monitor_grasp_hold: false
+        monitor_grasp_hold_min_nf: 5.0
+        monitor_gripper_closed_max_pos: 300.0
+        aoi_detect_count: 0
+        aoi_fail_flag: 0
+      next: 取料
+    取料:
+      pre_params:
+        grasp_loop_index: "(context.get('pick_place_loop_count', 0))"
+      motion: motion/取料.yaml
+      next: 扫码
+    扫码:
+      motion: motion/扫码.yaml
+      post_params:
+        grasp_normal_force: "(context.get('tactile_force', {}).get('contact', {}).get('max_normal_force'))"
+        grasp_failed: "(context.get('tactile_force', {}).get('contact', {}).get('max_normal_force') is not None and context.get('tactile_force', {}).get('contact', {}).get('max_normal_force') < 5.0)"
+        consecutive_grasp_fail_count: "(context.get('consecutive_grasp_fail_count', 0) + 1 if (context.get('tactile_force', {}).get('contact', {}).get('max_normal_force') is not None and context.get('tactile_force', {}).get('contact', {}).get('max_normal_force') < 5.0) else 0)"
+      next:
+        cases:
+        - if: "context.get('grasp_failed', False) and context.get('consecutive_grasp_fail_count', 0) >= 2"
+          then: 连续抓取失败报错
+        - if: "context.get('grasp_failed', False)"
+          then: 抓取失败开爪
+        default: 尝试插入第一次
+    尝试插入第一次:
+      motion: motion/尝试插入第一次.yaml
+      next:
+        if: "context.get('end_pose',[0.0])[0]>0.750"
+        then: 插入完成
+        else: 尝试插入第二次
+    尝试插入第二次:
+      motion: motion/尝试插入第二次.yaml
+      next:
+        if: "context.get('end_pose',[0.0])[0]>0.750"
+        then: 插入完成
+        else: null
+    插入完成:
+      motion: motion/插入完成.yaml
+      next: 等待测试结果
+    等待测试结果:
+      hmi_event:
+        atom_type: WaitContextValue
+        wait_key: test_result
+      motion: motion/等待测试结果.yaml
+      next: 拔出
+    拔出:
+      pre_params:
+        monitor_grasp_hold: false
+      motion: motion/拔出.yaml
+      next:
+        cases:
+        - if: "context.get('test_result') == 'PASS'"
+          then: AOI_1
+        - if: "context.get('test_result') == 'FAIL'"
+          then: NG
+        default: null
+    AOI_1: { motion: motion/AOI_1.yaml, next: { if: "context.get('aoi_msg') == 'success'", then: AOI_2, else: AOI_1NG } }
+    AOI_1NG: { motion: null, post_params: { aoi_fail_flag: "(context.get('aoi_fail_flag', 0) + 1)" }, next: AOI_2 }
+    AOI_2: { motion: motion/AOI_2.yaml, next: { if: "context.get('aoi_msg') == 'success'", then: AOI_3, else: AOI_2NG } }
+    AOI_2NG: { motion: null, post_params: { aoi_fail_flag: "(context.get('aoi_fail_flag', 0) + 1)" }, next: AOI_3 }
+    AOI_3: { motion: motion/AOI_3.yaml, next: { if: "context.get('aoi_msg') == 'success'", then: AOI_4, else: AOI_3NG } }
+    AOI_3NG: { motion: null, post_params: { aoi_fail_flag: "(context.get('aoi_fail_flag', 0) + 1)" }, next: AOI_4 }
+    AOI_4: { motion: motion/AOI_4.yaml, next: { if: "context.get('aoi_msg') == 'success'", then: AOI_5, else: AOI_4NG } }
+    AOI_4NG: { motion: null, post_params: { aoi_fail_flag: "(context.get('aoi_fail_flag', 0) + 1)" }, next: AOI_5 }
+    AOI_5: { motion: motion/AOI_5.yaml, next: { if: "context.get('aoi_msg') == 'success'", then: AOI_6, else: AOI_5NG } }
+    AOI_5NG: { motion: null, post_params: { aoi_fail_flag: "(context.get('aoi_fail_flag', 0) + 1)" }, next: AOI_6 }
+    AOI_6: { motion: motion/AOI_6.yaml, next: { if: "context.get('aoi_fail_flag', 0) > 0", then: AOING, else: OK } }
+    OK:
+      post_params: { place_loop_count: "(context.get('place_loop_count', 0) + 1)", test_result: null, test_passed: null }
+      motion: motion/OK.yaml
+      next: 循环守卫
+    AOING:
+      pre_params: { ng_place_pose_key: "(['manual_pose_25', 'manual_pose_26'][context.get('ng_place_count', 0) % 2])" }
+      post_params: { ng_place_count: "(context.get('ng_place_count', 0) + 1)", test_result: null }
+      motion: motion/AOING.yaml
+      next: 循环守卫
+    NG:
+      pre_params: { ng_place_pose_key: "(['manual_pose_25', 'manual_pose_26'][context.get('ng_place_count', 0) % 2])" }
+      post_params: { ng_place_count: "(context.get('ng_place_count', 0) + 1)", test_result: null }
+      motion: motion/NG.yaml
+      next: 循环守卫
+    连续抓取失败报错:
+      pre_params: { monitor_grasp_hold: false }
+      motion: motion/连续抓取失败报错.yaml
+      next: null
+    抓取失败开爪:
+      pre_params: { monitor_grasp_hold: false }
+      motion: motion/抓取失败开爪.yaml
+      next: 循环守卫
+    循环守卫:
+      pre_params: { monitor_grasp_hold: false }
+      motion: motion/循环守卫.yaml
+      next:
+        if: "context.get('pick_place_loop_done', False)"
+        then: null
+        else: 取料
