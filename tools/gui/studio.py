@@ -5170,6 +5170,16 @@ class MonitorModule(SubModuleWidget):
     
     def _mon_launch(self):
         """根据信号源启动可视化"""
+        try:
+            self._mon_launch_inner()
+        except Exception as e:
+            self._mlog(f"⚠️ 启动失败: {e}")
+            self._show_inline_data()
+            self.mon_launch_btn.setEnabled(True)
+            self.mon_stop_btn.setEnabled(False)
+            self.mon_status.setText("● 就绪 (降级模式)")
+
+    def _mon_launch_inner(self):
         mode = "rerun" if self.mon_rerun_btn.isChecked() else "rviz"
         
         if mode == "rviz":
