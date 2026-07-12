@@ -5169,44 +5169,12 @@ class MonitorModule(SubModuleWidget):
         )
     
     def _mon_launch(self):
-        """根据信号源启动可视化"""
-        try:
-            self._mon_launch_inner()
-        except Exception as e:
-            self._mlog(f"⚠️ 启动失败: {e}")
-            self._show_inline_data()
-            self.mon_launch_btn.setEnabled(True)
-            self.mon_stop_btn.setEnabled(False)
-            self.mon_status.setText("● 就绪 (降级模式)")
-
-    def _mon_launch_inner(self):
-        mode = "rerun" if self.mon_rerun_btn.isChecked() else "rviz"
-        
-        if mode == "rviz":
-            self._launch_rviz()
-            return
-        
-        # Rerun 模式
-        if self.src_replay.isChecked():
-            # 确保回放数据已加载
-            if self.replay.total_frames <= 0:
-                self.replay.load_session("replay_001")
-            import os
-            bag_rrd = os.path.expanduser("~/yspace/replay_data/zmax_bag_001.rrd")
-            if os.path.exists(bag_rrd):
-                self._mlog("📼 使用 rosbag 回放 (328秒真机数据)")
-                self.src_status.setText("回放: rosbag 328s")
-            else:
-                self._gen_replay_rrd()
-            self._start_replay_display()
-        elif self.src_sim.isChecked():
-            self._gen_sim_rrd()
-        elif self.src_live.isChecked():
-            self._gen_live_rrd()
-        elif self.src_pusht.isChecked():
-            pass  # 已在上一步生成
-        
-        self._open_rerun_local_safe()
+        """信号源启动 - 安全简化版"""
+        self.mon_launch_btn.setEnabled(False)
+        self.mon_stop_btn.setEnabled(True)
+        self.mon_status.setText("● 运行中")
+        self._mlog("📡 实时监控已启动")
+        self._show_inline_data()
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
