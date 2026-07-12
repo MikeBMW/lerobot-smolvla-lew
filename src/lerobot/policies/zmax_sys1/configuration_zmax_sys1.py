@@ -44,7 +44,7 @@ class ZmaxSys1Config(PreTrainedConfig):
     # 引擎选择
     engine: str = "act"   # act | vtla | groot | smolvla | lew
     grpc_host: str = "106.75.239.80"
-    grpc_port: int = 50051
+    grpc_port: int = 50052
     # VLM
     smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
     freeze_smolvlm: bool = True
