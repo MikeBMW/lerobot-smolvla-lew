@@ -48,7 +48,7 @@ class JointState:
 
 @dataclass
 class ForceTorque:
-    """六维力/扭矩传感器 (TS-T-15, >10kHz)"""
+    """六维力/扭矩传感器 (TS-T-15, 1kHz)"""
     fx: float = 0.0   # N
     fy: float = 0.0
     fz: float = 0.0

@@ -3947,7 +3947,7 @@ class HardwareModule(SubModuleWidget):
             "<b>硬件平台:</b> Z700 轮式双臂机器人<br>"
             "<b>算力平台:</b> NVIDIA AGX Orin<br>"
             "<b>控制周期:</b> 1ms (1000Hz)<br>"
-            "<b>力控带宽:</b> >10kHz 关节力矩闭环<br>"
+            "<b>力控带宽:</b> 1kHz 关节力矩闭环<br>"
             "<b>推理延迟:</b> VLA <10ms<br>"
             "<b>通讯:</b> EtherCAT (电机) / TCP Bridge (Orin↔PC) / gRPC (控制)<br>"
             "<b>安全:</b> 急停 · 力控柔顺 · 光栅 · 塔灯<br><br>"
@@ -4037,7 +4037,7 @@ class HardwareModule(SubModuleWidget):
             grid.addWidget(val, i//3*2+1, i%3)
         l.addLayout(grid)
         
-        info = QLabel("力控带宽: >10kHz | 精度: <2N | 量程: ±500N / ±20Nm")
+        info = QLabel("力控带宽: 1kHz | 精度: <2N | 量程: ±500N / ±20Nm")
         info.setStyleSheet(f"color:{C_GRAY}; font-size:10px;")
         l.addWidget(info)
         l.addStretch()
@@ -6220,7 +6220,7 @@ class PluggingSceneModule(SubModuleWidget):
             "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
             "固定式精密操作具身机器人 · 精密制造智能技工<br><br>"
             "基于 Phase 0 交付物: SR5-C 6轴机械臂 · AGX Orin NX · 双3D相机 · DH夹爪 · TS-T-15触觉<br>"
-            "双路急停 · 安全光栅 · 三色塔灯 · 力控闭环 >10kHz"
+            "双路急停 · 安全光栅 · 三色塔灯 · 力控闭环 1kHz"
         )
         hw_info.setFont(QFont("Arial", 12)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:12px;")
         hw_info.setWordWrap(True)
@@ -6254,7 +6254,7 @@ class PluggingSceneModule(SubModuleWidget):
             "◈ <b>人工流程编排</b>: 操作员在 XSpace Studio 中设定工序参数，选择标准原子功能<br>"
             "◈ <b>标准原子功能库</b>: 取料、扫码、定位、对准、插入、拔出、检测、分类<br>"
             "◈ <b>动作执行 (标准接口)</b>: 基于 ROS2 Service 接口，点到点精确运动 ±0.05mm<br>"
-            "◈ <b>力控反馈</b>: 六维力传感器 >10kHz 采样，夹持力自适应<br>"
+            "◈ <b>力控反馈</b>: 六维力传感器 1kHz 采样，夹持力自适应<br>"
             "◈ <b>分段式验证</b>: 每个步骤完成确认后才进入下一步 · 异常自动停机<br>"
             "◈ <b>真实环境运行</b>: 苏州实验室 Phase 0 验收通过 · 关键工序良率 ≥99.2%"
         )
@@ -6345,7 +6345,7 @@ class PluggingSceneModule(SubModuleWidget):
         safe.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
         sl = QVBoxLayout()
         for level, name, desc, color in [
-            ("L1", "力控预判",      "力传感器>10kHz采样 → 接触力超阈值0.05s内停机", SYS11_COLOR),
+            ("L1", "力控预判",      "力传感器1kHz采样 → 接触力超阈值0.05s内停机", SYS11_COLOR),
             ("L2", "触觉闭环",      "TS-T-15实时反馈 → 夹持力>2N自动释放", C_GREEN),
             ("L3", "光幕联动",      "安全光栅检测人员 → 自动降速/分区停机", C_ORANGE),
             ("L4", "自诊断预警",    "电机温度/电流/振动异常 → 提前48h通知维护", ROI_ACCENT),
@@ -6999,7 +6999,7 @@ class StudioMainWindow(QMainWindow):
 • VTLA 多模态模型 (视觉 + 触觉 + 语言 + 动作)<br>
 • 插拔精度: ±0.02mm<br>
 • 关键工序良率: 99%+<br>
-• 力控带宽: &gt;10kHz<br>
+• 力控带宽: 1kHz<br>
 • 双臂协同: 左取料-右插拔<br>
 • ROI 回收期: 14~22 个月<br>
 <br>
