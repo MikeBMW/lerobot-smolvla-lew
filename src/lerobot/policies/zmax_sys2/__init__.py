@@ -1,14 +1,33 @@
 """
-Z-MAX Phase 4: System 2 — 全系统 (L4级大脑)
-Z·M·A·X 全域: 云端智能体 + 多产线调度 + 任务拆解
+Z-MAX Sys2 · 云端智能体 (web 分支 - 4090 实现)
 
-架构: Phase1-3 子系统编排 + 任务规划器 + 多工位协调
-核心: 感知全局 → 拆解任务 → 调度Sys-11/Sys-12 → 全域闭环
+Sys2 = 云端大模型推理层，运行在 4090 上：
+- VTLA: Vision-Touch-Language-Action (触觉VLA, ~450M)
+- GR00T: NVIDIA GR00T N1.7 通用机器人模型 (~7B)
+- ACT: Action Chunking Transformer fallback (~52M)
 
-依赖: zmax_sys1, zmax_sys11, zmax_sys12
+通过 gRPC/HTTP API 暴露给 Sys1 (4060) 调用。
+Sys1 ACT 模板可通过网络切换到 Sys2 的大模型推理。
 """
 
-from .configuration_zmax_sys2 import ZmaxSys2Config
-from .modeling_zmax_sys2 import ZmaxSystem2Policy
+from .configuration_zmax_sys2 import ZmaxSys2Config, Sys2ModelType, SubSystemMode
+from .modeling_zmax_sys2 import (
+    ZmaxSys2Policy,
+    VTLAInferenceEngine,
+    GR00TInferenceEngine,
+    ACTInferenceEngine,
+    SimFeedback,
+    Sys2InferenceResult,
+)
 
-__all__ = ["ZmaxSys2Config", "ZmaxSystem2Policy"]
+__all__ = [
+    "ZmaxSys2Config",
+    "ZmaxSys2Policy",
+    "Sys2ModelType",
+    "SubSystemMode",
+    "VTLAInferenceEngine",
+    "GR00TInferenceEngine",
+    "ACTInferenceEngine",
+    "SimFeedback",
+    "Sys2InferenceResult",
+]
