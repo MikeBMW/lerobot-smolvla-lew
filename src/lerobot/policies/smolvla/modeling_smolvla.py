@@ -125,6 +125,10 @@ def make_att_2d_masks(pad_masks, att_masks):
         raise ValueError(att_masks.ndim)
     if pad_masks.ndim != 2:
         raise ValueError(pad_masks.ndim)
+    # Align dimensions if they differ (e.g., prefix_length=0 causes mismatch)
+    min_len = min(pad_masks.shape[1], att_masks.shape[1])
+    pad_masks = pad_masks[:, :min_len]
+    att_masks = att_masks[:, :min_len]
 
     cumsum = torch.cumsum(att_masks, dim=1)
     att_2d_masks = cumsum[:, None, :] <= cumsum[:, :, None]

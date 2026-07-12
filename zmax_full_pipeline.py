@@ -3,7 +3,8 @@
 Z-MAX SmolVLA 全流程 v3 — 直接用推理验证训练可行性
 先用最简单的流程: 加载模型 → 过一遍数据 → 看loss变化
 """
-import torch, json, time, os
+import torch, json, time, os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 device = torch.device("cuda")
 from lerobot.datasets import LeRobotDataset
