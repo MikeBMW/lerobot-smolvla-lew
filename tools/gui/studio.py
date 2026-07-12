@@ -6870,6 +6870,10 @@ class StudioMainWindow(QMainWindow):
         act_lerobot.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/docs/lerobot")))
         m_help.addAction(act_lerobot)
         
+        act_patent = QAction("📜 专利展示面板 (6项权利要求)", self)
+        act_patent.triggered.connect(self._toggle_patent_panel)
+        m_help.addAction(act_patent)
+        
         # ── 右上角状态灯 (单灯指示) ──
         status_widget = QWidget()
         status_widget.setStyleSheet("background:transparent;")
@@ -6953,6 +6957,18 @@ class StudioMainWindow(QMainWindow):
         act = QAction(label, self)
         act.triggered.connect(open_doc)
         return act
+
+    def _toggle_patent_panel(self):
+        """弹出专利权利要求摘要"""
+        self.statusBar().showMessage("📜 专利·6项权利要求")
+        QMessageBox.information(self, "📜 Z-MAX 专利 · 权利要求摘要",
+            "【权利要求1】双臂协同控制，单次节拍<25秒\n"
+            "【权利要求2】ACT/VTLA/GR00T多引擎热切换\n"
+            "【权利要求3】本地-云端统一推理，断连回退ACT\n"
+            "【权利要求4】力控闭环1kHz，三路冗余传感器\n"
+            "【权利要求5】L2→L3→L4软件升级，硬件不变\n"
+            "【权利要求6】光电传感器实时追踪自适应对准\n\n"
+            "完整文档：帮助文档 → 专利交底书 (Word .docx)")
 
     def _copy_git_cmd(self, cmd):
         """将 Git 命令复制到剪贴板并提示用户"""
