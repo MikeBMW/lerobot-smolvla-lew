@@ -5271,18 +5271,46 @@ class MonitorModule(SubModuleWidget):
     
     def _mlog(self, msg):
         ts = time.strftime("%H:%M:%S")
-    def _show_inline_data(self):
-        self.mon_data_preview.setHtml(
-            "<div style=\"font-family:monospace;font-size:12px;color:#E2E8F0\">"
-            "<b>Z-MAX 实时信号追踪</b><br><br>"
-            "J1:+0.1602 J2:-0.0615 J3:-2.5455<br>"
-            "J4:+1.4469 J5:+0.4350 J6:-0.8225<br><br>"
-            "Fx:+2.48N Fy:-1.73N Fz:+0.17N<br>"
-            "夹爪:0.0 急停:ACTIVE</div>"
-        )
-
-        self.mon_log.append(f"  [{ts}] {msg}")
-    
+def _show_inline_data(self):
+        """从Orin拉取真实机器人数据显示"""
+        try:
+            import subprocess, re
+            r = subprocess.run([
+                "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash && "
+                "export ROS_DOMAIN_ID=23 && "
+                "timeout 3 ros2 topic echo /real_joint_states --once 2>/dev/null"
+            ], capture_output=True, text=True, timeout=10)
+            
+            if r.returncode == 0 and "position:" in r.stdout:
+                # Parse positions
+                positions = []
+                for line in r.stdout.split("\n"):
+                    m = re.search(r"-\s+([\d.\-]+)", line)
+                    if m:
+                        positions.append(float(m.group(1)))
+                
+                if len(positions) >= 6:
+                    j = positions
+                    html = (
+                        "<div style='font-family:monospace;font-size:12px;color:#4ADE80'>"
+                        "<b>Orin 实时信号追踪</b><br><br>"
+                        f"J1:{j[0]:+.4f} J2:{j[1]:+.4f} J3:{j[2]:+.4f}<br>"
+                        f"J4:{j[3]:+.4f} J5:{j[4]:+.4f} J6:{j[5]:+.4f}<br>"
+                        "<br><span style='color:#94A3B8'>数据源: Orin 真机 XMS5-R800</span></div>"
+                    )
+                    self.mon_data_preview.setHtml(html)
+                    self._mlog(f"Joints: {[round(x,4) for x in j[:6]]}")
+                    return
+            
+            self.mon_data_preview.setHtml(
+                "<div style='color:#F87171'>Orin连接失败或机器人未运行</div>"
+            )
+        except Exception as e:
+            self.mon_data_preview.setHtml(
+                f"<div style='color:#F87171'>连接异常: {e}</div>"
+            )
     def _gen_rrd_demo(self):
         """生成演示 .rrd 文件 — 6-DOF 机器人动画"""
         import rerun as rr, math, os
