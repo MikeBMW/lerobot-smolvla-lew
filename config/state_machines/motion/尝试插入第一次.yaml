@@ -1,0 +1,38 @@
+pipeline:
+- type: GetTaughtPose
+  param: { pose_key: manual_pose_9 }
+  run_args: { output: { pose: insert_pose, joint_position: insert_joint } }
+- type: PoseTranslateLocalOffset
+  run_args: { input: { pose: insert_pose }, translate_local: [0.0, 0.0, -0.06], output: { new_pose: pre_insert_pose } }
+- type: BuildMoveSequence
+  run_args:
+    input:
+      waypoints:
+      - { type: line, target_pose: pre_insert_pose, speed: 4000, zone: 50 }
+      - { type: line, target_pose: insert_pose, speed: 4000, zone: 0 }
+    output: { moves: place_moves }
+- type: MoveSequence
+  param: { srv_name: move_sequence, timeout: 100 }
+  run_args: { input: { moves: place_moves }, output: { moves: executed_place_moves } }
+- type: LissajousForceSearch
+  param:
+    srv_name: lissajous_force_search
+    timeout: 30
+  run_args:
+    input:
+      frame_type: 3; plane: 0
+      load: [0.963,-0.0094,0.0024,0.0509,0,0,0]
+      cartesian_stiffness: [6000,6000,0,300,300,100]
+      cartesian_max_vel: [0.1,0.1,0.01,5,5,5]
+      cartesian_desired_force: [0,0,6,0,0,0]
+      amplify_one: 6; frequency_one: 3
+      amplify_two: 4; frequency_two: 2
+      phase_diff: 0; calibrate_force_sensor: true
+      force_settle_sec: 0.1; timeout_sec: 2
+      use_current_pose_as_box_origin: true
+      search_box: [-0.01,0.01,-0.01,0.01,-0.01,0.01]
+      search_box_is_inside: true; search_box_timeout_sec: 8
+    output: {}
+- type: JointAndPoseServer
+  param: { server_name: joint_and_pose, timeout: 100 }
+  run_args: { input: {}, output: { end_pose: end_pose, joint_position: joint_position } }
