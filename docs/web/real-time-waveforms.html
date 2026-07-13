@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Z-MAX 实时波形监控</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0A0E17;color:#E2E8F0;font-family:Consolas,monospace;padding:20px}
+h1{font-size:18px;color:#4ADE80;margin-bottom:16px}
+.status{font-size:12px;color:#94A3B8;margin-bottom:20px}
+#status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.online{background:#4ADE80;box-shadow:0 0 6px #4ADE80}
+.offline{background:#F87171;box-shadow:0 0 6px #F87171}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+canvas{background:#0d1117;border-radius:8px;border:1px solid #1E2A3A;padding:8px;max-height:250px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<h1>Z-MAX 实时波形 · XMS5-R800</h1>
+<div class="status">
+  <span id="status-dot" class="offline"></span>
+  数据源: <span id="data-source">等待连接...</span>
+  <span style="margin-left:20px">刷新: <span id="freq">0</span> Hz</span>
+  <span style="margin-left:20px">记录: <span id="pts">0</span> 帧</span>
+</div>
+<div class="grid" id="chart-grid"></div>
+
+<script>
+const COLORS = ['#4ADE80','#60A5FA','#FBBF24','#F87171','#A78BFA','#F472B6'];
+const LABELS = ['J1 基座','J2 肩部','J3 肘部','J4 腕1','J5 腕2','J6 腕3'];
+const ORIN = "http://192.168.23.10:8765/joints";
+const MAX_PTS = 200;
+const history = [[],[],[],[],[],[]];
+const charts = [];
+
+// 创建6个图表
+for (let i = 0; i < 6; i++) {
+  const ctx = document.createElement('canvas');
+  ctx.id = 'chart-'+i;
+  document.getElementById('chart-grid').appendChild(ctx);
+  charts.push(new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: LABELS[i],
+      data: [],
+      borderColor: COLORS[i],
+      backgroundColor: COLORS[i]+'20',
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.3,
+      fill: true
+    }]},
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#E2E8F0', font: {size:11} } } },
+      scales: {
+        x: { display: true, grid: {color:'#1E2A3A'}, ticks: {color:'#94A3B8', maxTicksLimit: 8} },
+        y: { display: true, grid: {color:'#1E2A3A'}, ticks: {color:'#94A3B8'}, min: -3, max: 3 }
+      }
+    }
+  }));
+}
+
+let frame = 0;
+async function poll() {
+  try {
+    const r = await fetch(ORIN);
+    const d = await r.json();
+    if (d.joints && d.joints.length === 6) {
+      document.getElementById('status-dot').className = 'status-dot online';
+      document.getElementById('data-source').textContent = 'Orin 在线';
+      for (let i = 0; i < 6; i++) {
+        history[i].push(d.joints[i]);
+        if (history[i].length > MAX_PTS) history[i].shift();
+      }
+      frame++;
+      document.getElementById('pts').textContent = frame;
+      for (let i = 0; i < 6; i++) {
+        charts[i].data.labels = history[i].map((_, j) => j);
+        charts[i].data.datasets[0].data = history[i];
+        charts[i].update('none');
+      }
+    }
+  } catch(e) {
+    document.getElementById('status-dot').className = 'status-dot offline';
+    document.getElementById('data-source').textContent = '离线';
+  }
+}
+setInterval(poll, 200);
+</script>
+</body>
+</html>
