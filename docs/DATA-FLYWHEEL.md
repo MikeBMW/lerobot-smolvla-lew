@@ -1,80 +1,68 @@
-# Z-MAX 数据闭环方案 · Data Flywheel
+# Z-MAX 数据闭环 v2 · Data Flywheel
 
-> 小芳(Mac) + xspace(4060) + web(4090)  
-> 目标: Orin真机数据 → 混合仿真 → 推理 → 训练 → 部署
+> 2026-07-13 · 三体分工重定义
 
 ---
 
-## 一、数据流
+## 👥 角色分工
+
+| 分身 | 核心职责 | 平台 |
+|:---:|------|------|
+| **小芳** | 旁路仿真 + 混合模型配置 + 部署Orin | Mac M1 |
+| **xspace** | 数据层 + 下发训练任务 | WSL2 RTX4060 |
+| **web** | 全部模型训练 | RTX4090 |
+
+---
+
+## 🏗️ 数据闭环
 
 ```
-Orin (192.168.23.10)         Mac (192.168.23.1)          WSL2/4060        RTX4090
-┌─────────────────┐         ┌─────────────────┐        ┌───────────┐    ┌───────────┐
-│ RealSense D405  │──RGB──→│ JSON+JPEG HTTP   │        │           │    │           │
-│ 640×480 30fps   │  HTTP  │ 缓存 → 混合推理   │──act──→│ Sys-11/12 │──→│ 全部模型   │
-│ joint_states 20 │──6D──→│ Sys-1 ACT 42ms   │  gRPC   │ 推理      │    │ 训练      │
-│ force_torque    │────────│ 动作输出          │←───────│           │←──│           │
-│ gripper_pos     │────────│                   │        │           │    │           │
-└─────────────────┘        └─────────────────┘        └───────────┘    └───────────┘
+Orin (真机)
+  │ 采集 RealSense + joint + force + gripper
+  ▼
+小芳 (Mac 旁路仿真)
+  │ 混合真实数据+仿真配置
+  │ Sys-1 ACT 42ms 推理
+  │ 保存为训练集
+  ▼
+xspace (数据层)
+  │ 下载 MetaWorld 数据集
+  │ 下发训练任务到 4090
+  │ 质量审核
+  ▼
+web (训练)
+  │ Sys-10 ACT 51.6M   → 底座模型
+  │ Sys-11 SmolVLA 450M → 认知推理
+  │ Sys-12 LeWorldModel → 世界模型
+  │ Sys-11+12 混合模型  → 认知+预测
+  │ Sys-21 VTLA         → 视觉语言
+  │ Sys-22 GR00T        → 具身智能
+  ▼
+小芳 (部署)
+  │ 量化 + Orin Nano/AGX 部署
+  │ 验证推理
+  ▼
+Orin (执行闭环)
 ```
 
-## 二、Orin 数据采集 (小芳)
+## 📦 小芳交付物
 
-```python
-# Orin 上运行的采集服务 (~/.zmax/gateway/)
-# HTTP GET http://192.168.23.10:8765/
-{
-  "joints": [6D],          # 实时关节位置
-  "image": "base64_jpeg",  # RealSense 640×480 JPEG
-  "gripper": float,        # 夹爪位置
-  "force": [6D],           # 六维力
-  "ts": timestamp
-}
-```
+| 模块 | 状态 | 说明 |
+|------|:---:|------|
+| Orin Gateway | ✅ | FastAPI HTTP 数据流 |
+| 实时波形 | ✅ | Chart.js 6轴监控 |
+| ACT 推理 | ✅ | 42ms MPS |
+| 仿真桥 | ✅ | 442kHz |
+| 部署管线 | ✅ | Edge-deployment 文档 |
+| 混合数据 | ⏳ | 待 RealSense 图像流 |
 
-关键: 图像用 JPEG 压缩 (≈50KB/帧), 5fps 约 250KB/s 带宽
+## 📊 训练模型清单 (web)
 
-## 三、Mac 混合推理 (小芳)
-
-```python
-# 1. 拉取 Orin 真实传感器数据
-data = requests.get("http://192.168.23.10:8765/observation").json()
-
-# 2. 组装 ACT 输入batch
-batch = {
-    "observation.state": torch.tensor(data["joints"] + [data["gripper"]]),  # 7D
-    "observation.images.top": torch.tensor(jpeg_to_tensor(data["image"])),  # 3×480×640
-}
-
-# 3. Sys-1 ACT 推理
-action = model.select_action(batch)  # 42ms MPS
-```
-
-## 四、4060 推理 (xspace)
-
-```python
-# Sys-11 SmolVLA 认知推理
-smolvla_action = smolvla_model.select_action(batch)  # 215ms 4060
-
-# Sys-12 LeWorldModel 仿真预测
-next_state = world_model.predict(current_state, action)
-```
-
-## 五、4090 训练 (web)
-
-```python
-# 全部模型训练
-- ACT 51.6M:  ~2h/epoch (4090)
-- SmolVLA 450M: ~8h/epoch (4090)
-- LeWorldModel: ~4h/epoch (4090)
-```
-
-## 六、数据闭环
-
-```
-Orin采集 → Mac推理 → 4060复核 → 4090训练 → 模型部署到Orin
-                                        ↓
-                                    Orin执行改进后动作
-                                        ↓
-                                    Orin采集更好的数据 (闭环)
-```
+| 模型 | 参数 | 训练时间(估) |
+|:---:|:---:|:---:|
+| Sys-10 ACT | 51.6M | ~2h/epoch |
+| Sys-11 SmolVLA | 450M | ~8h/epoch |
+| Sys-12 LeWorldModel | ~200M | ~4h/epoch |
+| Sys-11+12 混合 | ~650M | ~12h/epoch |
+| Sys-21 VTLA | ~1B | ~24h/epoch |
+| Sys-22 GR00T | ~1.5B | ~48h/epoch |
