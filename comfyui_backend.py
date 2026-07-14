@@ -11,8 +11,6 @@ LOG_BUFFER = []
 def log(msg):
     entry = f"[{time.strftime('%H:%M:%S')}] {msg}"
     LOG_BUFFER.append(entry)
-    if len(LOG_BUFFER) > 200:
-        LOG_BUFFER.pop(0)
     print(entry, flush=True)
 
 class ComfyHandler(BaseHTTPRequestHandler):
@@ -112,15 +110,17 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         log("  🔄 加载SmolVLA模型...")
                         model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
                         model.eval()
+                        dtype = next(model.parameters()).dtype
+                        log(f"  📦 模型dtype: {dtype}")
                         t_model_end = ttime.time()
                         task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
                         log(f"  📦 模型加载: {task['timing']['model_load']}")
                         
                         batch = {
-                            "observation.images.camera1": torch.randn(1,3,512,512).cuda(),
-                            "observation.images.camera2": torch.randn(1,3,512,512).cuda(),
-                            "observation.images.camera3": torch.randn(1,3,512,512).cuda(),
-                            "observation.state": torch.randn(1,2).cuda(),
+                            "observation.images.camera1": torch.randn(1,3,512,512).to(device="cuda",dtype=dtype),
+                            "observation.images.camera2": torch.randn(1,3,512,512).to(device="cuda",dtype=dtype),
+                            "observation.images.camera3": torch.randn(1,3,512,512).to(device="cuda",dtype=dtype),
+                            "observation.state": torch.randn(1,7).to(device="cuda",dtype=dtype),
                             "observation.language.tokens": torch.randint(0,32000,(1,48)).cuda(),
                             "observation.language.attention_mask": torch.ones(1,48).cuda(),
                         }
