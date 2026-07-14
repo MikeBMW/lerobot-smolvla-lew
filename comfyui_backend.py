@@ -91,7 +91,14 @@ class ComfyHandler(BaseHTTPRequestHandler):
             has_smolvla = any('SmolVLA' in str(n) or '推理引擎' in str(n) for n in task['nodes']) if isinstance(task['nodes'],list) else False
             
             if has_smolvla:
+                import torch
+                gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+                task["hardware"] = gpu_name
+                task["model"] = "SmolVLA (SmolVLM-500M + VTLA)"
+                task["location"] = "4090:50054→ECS隧道→datadrive.world"
                 log(f"  🧠 检测到SmolVLA推理节点, 执行真实推理...")
+                log(f"  🖥️ 硬件: {gpu_name}")
+                log(f"  📍 部署: 4090:50054")
                 import threading
                 def run_infer():
                     task["status"] = "running"
