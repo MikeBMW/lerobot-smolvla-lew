@@ -132,7 +132,7 @@ def make_att_2d_masks(pad_masks, att_masks):
 
     cumsum = torch.cumsum(att_masks, dim=1)
     att_2d_masks = cumsum[:, None, :] <= cumsum[:, :, None]
-    pad_2d_masks = pad_masks[:, None, :] * pad_masks[:, :, None]
+    pad_2d_masks = (pad_masks[:, None, :] * pad_masks[:, :, None]).bool()
     att_2d_masks = att_2d_masks & pad_2d_masks
     return att_2d_masks
 
