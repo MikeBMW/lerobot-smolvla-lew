@@ -13,9 +13,10 @@ h1{font-size:18px;color:#4ADE80;margin-bottom:16px}
 #status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 .online{background:#4ADE80;box-shadow:0 0 6px #4ADE80}
 .offline{background:#F87171;box-shadow:0 0 6px #F87171}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;height:85vh}
-canvas{background:#0d1117;border-radius:6px;border:1px solid #1E2A3A;padding:4px;max-height:28vh;width:100%}
-@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-auto-rows:1fr;gap:6px;height:52vh}
+canvas{background:#0d1117;border-radius:4px;border:1px solid #1E2A3A;padding:2px;height:100%;width:100%;min-height:0}
+@media(max-width:1100px){.grid{grid-template-columns:1fr 1fr;height:75vh}}
+@media(max-width:700px){.grid{grid-template-columns:1fr;height:90vh}}
 </style>
 </head>
 <body>
@@ -72,9 +73,11 @@ async function poll() {
   try {
     const r = await fetch(ORIN);
     const d = await r.json();
+    const dot = document.getElementById('status-dot');
+    const src = document.getElementById('data-source');
     if (d.joints && d.joints.length === 6) {
-      document.getElementById('status-dot').className = 'status-dot online';
-      document.getElementById('data-source').textContent = 'Orin 在线';
+      dot.className = 'status-dot online';
+      src.textContent = 'Orin ' + d.count + '轴 (' + (d.source||'?') + ')';
       for (let i = 0; i < 6; i++) {
         history[i].push(d.joints[i]);
         if (history[i].length > MAX_PTS) history[i].shift();
@@ -86,6 +89,12 @@ async function poll() {
         charts[i].data.datasets[0].data = history[i];
         charts[i].update('none');
       }
+    } else if (d.count === 6) {
+      dot.className = 'status-dot online';
+      src.textContent = 'Orin 6轴在线 — 等待数据管道';
+    } else {
+      dot.className = 'status-dot offline';
+      src.textContent = '等待连接...';
     }
   } catch(e) {
     document.getElementById('status-dot').className = 'status-dot offline';
