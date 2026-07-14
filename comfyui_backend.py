@@ -102,13 +102,20 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 import threading
                 def run_infer():
                     task["status"] = "running"
+                    task["timing"] = {}
                     try:
                         import sys, torch, time as ttime
+                        t_total = ttime.time()
                         sys.path.insert(0,'/root/lerobot-smolvla-lew/src')
                         from lerobot.policies.smolvla import SmolVLAPolicy
-                        log("  🔄 加载SmolVLA...")
+                        t_model_start = ttime.time()
+                        log("  🔄 加载SmolVLA模型...")
                         model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
                         model.eval()
+                        t_model_end = ttime.time()
+                        task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
+                        log(f"  📦 模型加载: {task['timing']['model_load']}")
+                        
                         batch = {
                             "observation.images.camera1": torch.randn(1,3,512,512).cuda(),
                             "observation.images.camera2": torch.randn(1,3,512,512).cuda(),
@@ -117,12 +124,16 @@ class ComfyHandler(BaseHTTPRequestHandler):
                             "observation.language.tokens": torch.randint(0,32000,(1,48)).cuda(),
                             "observation.language.attention_mask": torch.ones(1,48).cuda(),
                         }
+                        t_infer_start = ttime.time()
                         with torch.no_grad():
-                            t0 = ttime.time()
                             action = model.predict_action_chunk(batch)
-                            elapsed = (ttime.time()-t0)*1000
+                        t_infer_end = ttime.time()
+                        task["timing"]["inference"] = f"{(t_infer_end-t_infer_start)*1000:.0f}ms"
+                        log(f"  🧠 推理耗时: {task['timing']['inference']}")
+                        
+                        task["timing"]["total"] = f"{(ttime.time()-t_total)*1000:.0f}ms"
                         task["status"] = "done"
-                        task["result"] = f"模型:SmolVLA | Action:[1,50,6] | 推理:{elapsed:.0f}ms | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | 状态:✅成功"
+                        task["result"] = f"模型:SmolVLA | Action:[1,50,6] | 推理:{task['timing']['inference']} | 加载:{task['timing']['model_load']} | 总:{task['timing']['total']} | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | ✅成功"
                         log(f"  ✅ SmolVLA推理完成: {task['result']}")
                     except Exception as e:
                         task["status"] = "failed"
