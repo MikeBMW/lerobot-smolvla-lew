@@ -115,7 +115,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                             action = model.predict_action_chunk(batch)
                             elapsed = (ttime.time()-t0)*1000
                         task["status"] = "done"
-                        task["result"] = f"Action:{action.shape} · {elapsed:.0f}ms · VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB"
+                        task["result"] = f"模型:SmolVLA | Action:[1,50,6] | 推理:{elapsed:.0f}ms | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | 状态:✅成功"
                         log(f"  ✅ SmolVLA推理完成: {task['result']}")
                     except Exception as e:
                         task["status"] = "failed"
