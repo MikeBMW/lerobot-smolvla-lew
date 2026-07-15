@@ -86,7 +86,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             log(f"📝 新任务: {tid} · 节点:{task['nodes']}")
             
             # Check if this is a SmolVLA inference task
-            has_smolvla = any('SmolVLA' in str(n) or 'VTLA' in str(n) or '推理引擎' in str(n) for n in task['nodes']) if isinstance(task['nodes'],list) else False
+            has_smolvla = any('推理引擎' in str(n) or 'SmolVLA' in str(n) or 'VLA' in str(n) or 'VTLA' in str(n) or 'GR00T' in str(n) or 'ACT' in str(n) or 'LeWM' in str(n) for n in task['nodes']) if isinstance(task['nodes'],list) else False
             
             if has_smolvla:
                 import torch
