@@ -108,8 +108,10 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         from lerobot.policies.smolvla import SmolVLAPolicy
                         t_model_start = ttime.time()
                         log("  🔄 加载SmolVLA模型...")
-                        model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda").float()
+                        model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
+                        model = model.float()
                         model.eval()
+                        log(f"  📦 模型dtype: {next(model.parameters()).dtype}")
                         t_model_end = ttime.time()
                         task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
                         log(f"  📦 模型加载: {task['timing']['model_load']}")
