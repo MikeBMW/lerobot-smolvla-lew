@@ -133,7 +133,23 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         
                         task["timing"]["total"] = f"{(ttime.time()-t_total)*1000:.0f}ms"
                         task["status"] = "done"
-                        task["result"] = f"模型:SmolVLA | Action:[1,50,6] | 推理:{task['timing']['inference']} | 加载:{task['timing']['model_load']} | 总:{task['timing']['total']} | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | ✅成功"
+                        task["result"] = f"模型:SmolVLA | Action:[1,50,6] | 推理:{task['timing']['inference']} | 加载:{task['timing']['model_load']} | 总:{task['timing']['total']} | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | 成功"
+                        log(f"  ✅ SmolVLA推理完成: {task['result']}")
+                        # W&B 记录推理结果
+                        try:
+                            import wandb
+                            mn='smolvla'
+                            for n in task['nodes']:
+                                nn=str(n).lower()
+                                if 'vla-touch' in nn:mn='vla-touch'
+                                elif 'act' in nn:mn='act'
+                                elif 'gr00t' in nn:mn='gr00t'
+                                elif 'lewm' in nn:mn='lewm'
+                            pm={'smolvla':'zmax-smolvla','vla-touch':'zmax-vla-touch','gr00t':'zmax-gr00t','act':'zmax-act','lewm':'zmax-lewm'}
+                            wandb.init(project=pm.get(mn,'zmax-smolvla'),entity='xspace',name='infer-'+tid,reinit=True)
+                            wandb.log({'inference_ms':int(task['timing']['inference'].replace('ms','')),'load_ms':int(task['timing']['model_load'].replace('ms','')),'vram_gb':torch.cuda.max_memory_allocated()/1e9})
+                            wandb.finish()
+                        except: pass
                         log(f"  ✅ SmolVLA推理完成: {task['result']}")
                     except Exception as e:
                         task["status"] = "failed"
