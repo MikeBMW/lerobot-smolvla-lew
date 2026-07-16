@@ -138,7 +138,7 @@ if __name__ == '__main__':
     rgb, state = torch.randn(2,3,128,128).cuda(), torch.randn(2,7).cuda()
     m.set_train(); a_tr, e = m(rgb,state)
     m.set_infer(); a_inf, _ = m(rgb,state)
-    print(f'[训练] {a_tr.shape} E={e.item():.3f}')
+    print(f'[训练] {a_tr.shape} E={e.mean().item():.3f}')
     print(f'[推理] {a_inf.shape} (z注入=0)')
 
     ldr = MetaWorldLoader()
