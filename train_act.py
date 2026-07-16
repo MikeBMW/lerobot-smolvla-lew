@@ -48,7 +48,7 @@ def train():
         d = np.load(f)
         all_img.append(d['observations'])
         all_state.append(d['states'])
-        all_action.append(d.get('actions', d['states'][1:]-d['states'][:-1]))
+        all_action.append(np.diff(d["states"],axis=0,prepend=d["states"][:1]))
     img = torch.tensor(np.concatenate(all_img), dtype=torch.float32).cuda()
     state = torch.tensor(np.concatenate(all_state), dtype=torch.float32).cuda()
     action = torch.tensor(np.concatenate(all_action), dtype=torch.float32).cuda()
