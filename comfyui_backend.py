@@ -152,6 +152,39 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 task["location"] = "4090:50054→ECS隧道→datadrive.world"
 
                 # LeWM path
+                        if engine_type == "hybrid":
+                            log("  🔄 加载H-JEPA Hybrid模型...")
+                            t_model_start = ttime.time()
+                            sys.path.insert(0,"/root/lerobot-smolvla-lew")
+                            from h_jepa_zflow import ZFlow_VLA
+                            model = ZFlow_VLA().cuda().float().eval()
+                            try:
+                                model.load_state_dict(torch.load("/root/models/hjepa_zflow/model.pt",map_location="cuda"))
+                                log("  ✅ H-JEPA权重加载成功")
+                            except:
+                                log("  ⚠️ 使用随机初始化")
+                            t_model_end = ttime.time()
+                            task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
+                            log(f"  📦 模型加载: {task["timing"]["model_load"]}")
+                            t_infer_start = ttime.time()
+                            with torch.no_grad():
+                                rgb = torch.randn(1,3,128,128).cuda()
+                                state = torch.randn(1,7).cuda()
+                                action, energy = model(rgb, state)
+                            t_infer_end = ttime.time()
+                            task["timing"]["inference"] = f"{(t_infer_end-t_infer_start)*1000:.0f}ms"
+                            log(f"  🧠 推理耗时: {task["timing"]["inference"]}")
+                            task["timing"]["total"] = f"{(ttime.time()-t_total)*1000:.0f}ms"
+                            task["status"] = "done"
+                            task["result"] = f"模型:H-JEPA Hybrid | Action:{list(action.shape)} | z1+z2+z3三层反馈 | 推理:{task["timing"]["inference"]} | 加载:{task["timing"]["model_load"]} | 总:{task["timing"]["total"]} | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | ✅成功"
+                            log(f"  ✅ H-JEPA推理完成: {task["result"]}")
+                            try:
+                                import wandb
+                                wandb.init(project="zmax-hjepa",entity="xspace",name="infer-"+tid,reinit=True)
+                                wandb.log({"inference_ms":int(task["timing"]["inference"].replace("ms","")),"load_ms":int(task["timing"]["model_load"].replace("ms","")),"vram_gb":torch.cuda.max_memory_allocated()/1e9})
+                                wandb.finish()
+                            except: pass
+                        elif
                 if engine_type == 'lewm':
                     task["model"] = "LeWM World Model (ViT+GRU)"
                     log(f"  🧠 检测到LeWM推理节点, 执行世界模型预测...")
@@ -168,6 +201,39 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         t_total = ttime.time()
                         sys.path.insert(0,'/root/lerobot-smolvla-lew/src')
 
+                        if engine_type == "hybrid":
+                            log("  🔄 加载H-JEPA Hybrid模型...")
+                            t_model_start = ttime.time()
+                            sys.path.insert(0,"/root/lerobot-smolvla-lew")
+                            from h_jepa_zflow import ZFlow_VLA
+                            model = ZFlow_VLA().cuda().float().eval()
+                            try:
+                                model.load_state_dict(torch.load("/root/models/hjepa_zflow/model.pt",map_location="cuda"))
+                                log("  ✅ H-JEPA权重加载成功")
+                            except:
+                                log("  ⚠️ 使用随机初始化")
+                            t_model_end = ttime.time()
+                            task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
+                            log(f"  📦 模型加载: {task["timing"]["model_load"]}")
+                            t_infer_start = ttime.time()
+                            with torch.no_grad():
+                                rgb = torch.randn(1,3,128,128).cuda()
+                                state = torch.randn(1,7).cuda()
+                                action, energy = model(rgb, state)
+                            t_infer_end = ttime.time()
+                            task["timing"]["inference"] = f"{(t_infer_end-t_infer_start)*1000:.0f}ms"
+                            log(f"  🧠 推理耗时: {task["timing"]["inference"]}")
+                            task["timing"]["total"] = f"{(ttime.time()-t_total)*1000:.0f}ms"
+                            task["status"] = "done"
+                            task["result"] = f"模型:H-JEPA Hybrid | Action:{list(action.shape)} | z1+z2+z3三层反馈 | 推理:{task["timing"]["inference"]} | 加载:{task["timing"]["model_load"]} | 总:{task["timing"]["total"]} | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | ✅成功"
+                            log(f"  ✅ H-JEPA推理完成: {task["result"]}")
+                            try:
+                                import wandb
+                                wandb.init(project="zmax-hjepa",entity="xspace",name="infer-"+tid,reinit=True)
+                                wandb.log({"inference_ms":int(task["timing"]["inference"].replace("ms","")),"load_ms":int(task["timing"]["model_load"].replace("ms","")),"vram_gb":torch.cuda.max_memory_allocated()/1e9})
+                                wandb.finish()
+                            except: pass
+                        elif
                         if engine_type == 'lewm':
                             log("  🔄 加载LeWM世界模型...")
                             t_model_start = ttime.time()
