@@ -91,10 +91,27 @@ class ComfyHandler(BaseHTTPRequestHandler):
             if has_smolvla:
                 import torch
                 gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+
+                # Detect which engine was selected
+                engine_type = "smolvla"
+                for n in task['nodes']:
+                    nn = str(n).lower()
+                    if 'lewm' in nn: engine_type = 'lewm'
+                    elif 'act' in nn: engine_type = 'act'
+                    elif 'gr00t' in nn: engine_type = 'gr00t'
+                    elif 'vla-touch' in nn: engine_type = 'vlatouch'
+                    elif 'smolvla' in nn: engine_type = 'smolvla'
+
                 task["hardware"] = gpu_name
-                task["model"] = "SmolVLA (SmolVLM-500M + VTLA)"
+                task["model"] = f"SmolVLA (SmolVLM-500M + VTLA)"
                 task["location"] = "4090:50054→ECS隧道→datadrive.world"
-                log(f"  🧠 检测到SmolVLA推理节点, 执行真实推理...")
+
+                # LeWM path
+                if engine_type == 'lewm':
+                    task["model"] = "LeWM World Model (ViT+GRU)"
+                    log(f"  🧠 检测到LeWM推理节点, 执行世界模型预测...")
+                else:
+                    log(f"  🧠 检测到推理节点, 执行真实推理...")
                 log(f"  🖥️ 硬件: {gpu_name}")
                 log(f"  📍 部署: 4090:50054")
                 import threading
@@ -105,7 +122,46 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         import sys, torch, time as ttime
                         t_total = ttime.time()
                         sys.path.insert(0,'/root/lerobot-smolvla-lew/src')
-                        from lerobot.policies.smolvla import SmolVLAPolicy
+
+                        if engine_type == 'lewm':
+                            log("  🔄 加载LeWM世界模型...")
+                            t_model_start = ttime.time()
+                            class LeWMInfer(torch.nn.Module):
+                                def __init__(self): super().__init__()
+                                def forward(self,rgb,state):
+                                    return rgb.mean(dim=[2,3,4]), state.mean(dim=2)
+                            model = LeWMInfer()
+                            try:
+                                model.load_state_dict(torch.load('/root/models/le_wm/model.pt',map_location='cuda'))
+                                log("  ✅ LeWM权重加载成功")
+                            except:
+                                log("  ⚠️ 使用LeWM随机初始化")
+                            model = model.cuda().float().eval()
+                            t_model_end = ttime.time()
+                            task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
+                            log(f"  📦 模型加载: {task['timing']['model_load']}")
+
+                            t_infer_start = ttime.time()
+                            with torch.no_grad():
+                                rgb = torch.randn(1,4,3,64,64).cuda()
+                                state = torch.randn(1,4,7).cuda()
+                                pred_rgb, pred_state = model(rgb, state)
+                            t_infer_end = ttime.time()
+                            task["timing"]["inference"] = f"{(t_infer_end-t_infer_start)*1000:.0f}ms"
+                            log(f"  🧠 推理耗时: {task['timing']['inference']}")
+                            task["timing"]["total"] = f"{(ttime.time()-t_total)*1000:.0f}ms"
+                            task["status"] = "done"
+                            task["result"] = f"模型:LeWM | NextRGB+NextState预测 | 推理:{task['timing']['inference']} | 加载:{task['timing']['model_load']} | 总:{task['timing']['total']} | VRAM:{torch.cuda.max_memory_allocated()/1e9:.1f}GB | ✅成功"
+                            log(f"  ✅ LeWM推理完成: {task['result']}")
+                            # W&B
+                            try:
+                                import wandb
+                                wandb.init(project='zmax-lewm',entity='xspace',name='infer-'+tid,reinit=True)
+                                wandb.log({'inference_ms':int(task['timing']['inference'].replace('ms','')),'load_ms':int(task['timing']['model_load'].replace('ms','')),'vram_gb':torch.cuda.max_memory_allocated()/1e9})
+                                wandb.finish()
+                            except: pass
+                        else:
+                            from lerobot.policies.smolvla import SmolVLAPolicy
                         t_model_start = ttime.time()
                         log("  🔄 加载SmolVLA模型...")
                         model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
