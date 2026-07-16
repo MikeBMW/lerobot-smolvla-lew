@@ -58,6 +58,14 @@ class ComfyHandler(BaseHTTPRequestHandler):
         elif path == "/logs":
             self.wfile.write(json.dumps(LOG_BUFFER[-50:], ensure_ascii=False).encode())
 
+
+        elif path == "/train/hjepa":
+            import subprocess, threading
+            def run_hjepa():
+                subprocess.Popen(["/root/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12", "train_h_jepa.py"], cwd="/root/lerobot-smolvla-lew")
+            threading.Thread(target=run_hjepa).start()
+            self.wfile.write(json.dumps({"status":"started","model":"H-JEPA zFlow"},ensure_ascii=False).encode())
+
         elif path == "/debug":
             nodes = body.get("nodes",[]) if isinstance(body,dict) else []
             is_lewm = any("lewm" in str(n).lower() for n in nodes)
