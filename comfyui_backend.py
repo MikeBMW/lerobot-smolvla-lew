@@ -144,7 +144,6 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         import sys, torch, time as ttime
                         t_total = ttime.time()
                         sys.path.insert(0,'/root/lerobot-smolvla-lew/src')
-                        from lerobot.policies.smolvla import SmolVLAPolicy
 
                         if engine_type == 'lewm':
                             log("  🔄 加载LeWM世界模型...")
@@ -201,6 +200,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                                 wandb.finish()
                             except: pass
                         else:
+                            from lerobot.policies.smolvla import SmolVLAPolicy
                         t_model_start = ttime.time()
                         log("  🔄 加载SmolVLA模型...")
                         model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
