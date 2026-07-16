@@ -45,7 +45,7 @@ class HJEPA_Injector(nn.Module):
     def forward(self, vlas, wms, train=True):
         out = []
         for i,(v,wg) in enumerate(zip(vlas,wms)):
-            a,_ = self.attn[i](v,w,w)
+            a,_ = self.attn[i](v, wg, wg)
             g = torch.sigmoid(self.gate[i]) * self.w[i] * (1 if train else 0)
             out.append(self.norm[i](v + g*a))
         return out
