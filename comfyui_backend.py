@@ -96,11 +96,11 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 engine_type = "smolvla"
                 for n in task['nodes']:
                     nn = str(n).lower()
-                    if 'lewm' in nn: engine_type = 'lewm'
-                    elif 'act' in nn: engine_type = 'act'
-                    elif 'gr00t' in nn: engine_type = 'gr00t'
-                    elif 'vla-touch' in nn: engine_type = 'vlatouch'
-                    elif 'smolvla' in nn: engine_type = 'smolvla'
+                    if 'lewm' in nn: engine_type = 'lewm'; break
+                    elif 'vla-touch' in nn: engine_type = 'vlatouch'; break
+                    elif 'gr00t' in nn: engine_type = 'gr00t'; break
+                    elif 'act' in nn and 'action' not in nn: engine_type = 'act'; break
+                    elif 'smolvla' in nn: engine_type = 'smolvla'; break
 
                 task["hardware"] = gpu_name
                 task["model"] = f"SmolVLA (SmolVLM-500M + VTLA)"
@@ -127,9 +127,26 @@ class ComfyHandler(BaseHTTPRequestHandler):
                             log("  🔄 加载LeWM世界模型...")
                             t_model_start = ttime.time()
                             class LeWMInfer(torch.nn.Module):
-                                def __init__(self): super().__init__()
+                                def __init__(self, dim=256, hidden=512):
+                                    super().__init__()
+                                    self.enc = torch.nn.Sequential(
+                                        torch.nn.Conv2d(3,64,4,2,1),torch.nn.ReLU(),
+                                        torch.nn.Conv2d(64,128,4,2,1),torch.nn.ReLU(),
+                                        torch.nn.Conv2d(128,256,4,2,1),torch.nn.AdaptiveAvgPool2d(1))
+                                    self.state_proj = torch.nn.Linear(7,dim)
+                                    self.fuse = torch.nn.Linear(256+dim,hidden)
+                                    self.gru = torch.nn.GRU(hidden,hidden,2,batch_first=True)
+                                    self.dec_rgb = torch.nn.Linear(hidden,3*64*64)
+                                    self.dec_state = torch.nn.Linear(hidden,7)
                                 def forward(self,rgb,state):
-                                    return rgb.mean(dim=[2,3,4]), state.mean(dim=2)
+                                    b,t,c,h,w = rgb.shape
+                                    feats=[]
+                                    for i in range(t):
+                                        f=self.enc(rgb[:,i]).squeeze(-1).squeeze(-1)
+                                        s=self.state_proj(state[:,i])
+                                        feats.append(self.fuse(torch.cat([f,s],-1)))
+                                    x=torch.stack(feats,1); out,hn=self.gru(x)
+                                    return self.dec_rgb(out[:,-1]).view(b,3,64,64),self.dec_state(out[:,-1])
                             model = LeWMInfer()
                             try:
                                 model.load_state_dict(torch.load('/root/models/le_wm/model.pt',map_location='cuda'))
