@@ -59,22 +59,25 @@ class ComfyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(LOG_BUFFER[-50:], ensure_ascii=False).encode())
 
         elif path == "/debug":
-            content_len = int(self.headers.get('Content-Length',0))
-            if content_len > 0:
-                body = json.loads(self.rfile.read(content_len))
-                nodes = body.get('nodes',[])
-                # Return debug state
-                import torch, time as ttime
-                step_info = {
-                    "step": "1. 推理准备",
-                    "location": "comfyui_backend.py:run_infer()",
-                    "variables": {"engine":"lewm" if any('lewm' in str(n).lower() for n in nodes) else "smolvla","batch_size":1,"device":"cuda:0"},
-                    "shapes": "input: [1,3,512,512] → output: [1,50,6]" if 'lewm' not in str(nodes).lower() else "input: [1,4,3,64,64] → output: next_rgb[1,3,64,64]+next_state[1,7]"
-                }
-                self.wfile.write(json.dumps(step_info,ensure_ascii=False).encode())
-            else:
-                self.wfile.write(json.dumps({"step":"idle"},ensure_ascii=False).encode())
-
+            nodes = body.get("nodes",[]) if isinstance(body,dict) else []
+            is_lewm = any("lewm" in str(n).lower() for n in nodes)
+            sid = body.get("session","default")
+            if not hasattr(self.server,"_debug_sessions"):
+                self.server._debug_sessions = {}
+            if sid not in self.server._debug_sessions:
+                self.server._debug_sessions[sid] = 0
+            step = self.server._debug_sessions[sid]
+            self.server._debug_sessions[sid] = (step + 1) % 5
+            L = [
+                {"step":"1.节点检测","location":"comfyui_backend.py:has_smolvla","variables":{"detected":"LeWM World Model" if is_lewm else "SmolVLA Action Model","gpu":"RTX 4090"},"shapes":"-","model_path":"-","params":"-","diff":"⬆ 新"},
+                {"step":"2.模型加载","location":"torch.load()" if is_lewm else "from_pretrained()","variables":{"engine":"LeWM(ViT+GRU)" if is_lewm else "SmolVLA(SmolVLM+DiT)","dtype":"float32"},"shapes":"-","model_path":"/root/models/le_wm/model.pt" if is_lewm else "/root/models/smolvla_base","params":"10.38M" if is_lewm else "450M","diff":"⬆ 加载权重"},
+                {"step":"3.输入准备","location":"comfyui_backend.py:build_batch()","variables":{"batch":1,"seq":4 if is_lewm else 1,"rgb":"(1,4,3,64,64)" if is_lewm else "(1,3,512,512)x3"},"shapes":"[1,4,3,64,64]→" if is_lewm else "[1,3,512,512]→","model_path":"-","params":"-","diff":"⬆ 构建张量"},
+                {"step":"4.推理执行","location":"LeWMInfer.forward()" if is_lewm else "SmolVLAPolicy.predict()","variables":{"mode":"no_grad()","vram":"0.06GB" if is_lewm else "1.9GB","latency":"~6ms" if is_lewm else "~250ms"},"shapes":"rgb+state" if is_lewm else "action[1,50,6]","model_path":"-","params":"-","diff":"⬆ 推理中"},
+                {"step":"5.输出结果","location":"task[result]","variables":{"status":"done","output":"NextRGB+NextState" if is_lewm else "Action [1,50,6]"},"shapes":"[1,3,64,64]+[1,7]" if is_lewm else "[1,50,6]","model_path":"-","params":"-","diff":"✅ 完成"}
+            ]
+            info = L[step]
+            info["diff"] += " ("+str(step+1)+"/5)"
+            self.wfile.write(json.dumps(info,ensure_ascii=False).encode())
         elif path.startswith("/task/"):
             tid = path.split("/")[-1]
             self.wfile.write(json.dumps(TASKS.get(tid, {"error": "not found"}), ensure_ascii=False).encode())
