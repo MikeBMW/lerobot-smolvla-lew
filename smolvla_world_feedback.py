@@ -93,9 +93,9 @@ class SmolVLA_WorldFeedback(nn.Module):
             if use_wm:
                 wm_out, wm_hidden = self.world_model(vla_out, wm_hidden)
 
-        # 逐层交叉反馈: 每层的WM输出注入到每层的VLA特征
+        # 逐层交叉反馈
         if use_wm:
-            wm_feats = torch.cat([self.wm_predictor(wm_out).unsqueeze(1) for _ in range(self.num_layers)], dim=1)
+            wm_feats = self.wm_predictor(wm_out)  # (b,1,vla_dim)
             layer_outputs = self.feedback(layer_outputs, wm_feats)
 
         # 融合所有层输出
