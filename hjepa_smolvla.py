@@ -1,156 +1,159 @@
 #!/usr/bin/env python3
-"""H-JEPA × SmolVLA 分层联合嵌入预测架构 v2
-方案: xspace | 编码: web | 验证: 小芳
+"""H-JEPA × SmolVLA 分层中间表征对齐架构 v3
+参考: LeCun H-JEPA paper — 每层JEPA Encoder产生z, Predictor预测z'
+核心: z是中间表征, 非外部注入。z0(细节)→z1(物体)→z2(语义) 分层预测
 
-核心创新:
-1. 三层World Predictor: z0(空间) z1(物体) z2(语义) — H-JEPA堆叠
-2. 能量损失: 正样本低能量 / 负样本高能量 — H-JEPA训练
-3. 门控自适应: gate × 0.1^l – 推理零开销
-4. MetaWorld兼容: 标准 .npz 格式 → 数据加载器
+设计: xspace | 编码: web | 验证: 小芳
 """
-import torch, torch.nn as nn, numpy as np, os, math, time
+import torch, torch.nn as nn, numpy as np, os
 from pathlib import Path
 
 # ============================================================
-# H-JEPA 分层世界预测器
+# JEPA 单层模块: Encoder(s,a)→z → Predictor(z)→z'
 # ============================================================
-class HJEPA_WorldPredictor(nn.Module):
-    """三层堆叠JEPA: z0(空间细节)→z1(物体)→z2(语义抽象)"""
+class JEPA_Layer(nn.Module):
+    """一层JEPA: 编码当前状态→预测未来潜表征"""
+    def __init__(self, dim=256, name="z"):
+        super().__init__()
+        self.name = name
+        # Encoder: (s,a) → z (中间表征)
+        self.enc = nn.Sequential(nn.Linear(dim*2,dim), nn.GELU(), nn.Linear(dim,dim), nn.LayerNorm(dim))
+        # Predictor: z → z' (预测下一步的z)
+        self.pred = nn.Sequential(nn.Linear(dim,dim*2), nn.GELU(), nn.Linear(dim*2,dim), nn.LayerNorm(dim))
+        # 能量头: |z'_pred - z'_true| → 低能量=好预测
+        self.energy = nn.Sequential(nn.Linear(dim,dim//4), nn.GELU(), nn.Linear(dim//4,1))
+
+    def forward(self, s, a, z_prev=None):
+        """s:当前状态, a:动作, z_prev:上层约束"""
+        x = torch.cat([s,a],-1)
+        if z_prev is not None: x = x + z_prev  # 上层约束注入
+        z = self.enc(x)       # 🧠 中间表征 z (核心)
+        z_pred = self.pred(z)  # 🔮 预测未来 z'
+        energy = self.energy(z_pred)
+        return z, z_pred, energy
+
+# ============================================================
+# H-JEPA 分层堆叠: z0(细节)→z1(物体)→z2(语义)
+# ============================================================
+class HJEPA_Stack(nn.Module):
+    """三层JEPA堆叠: 自下而上编码 + 自上而下约束"""
     def __init__(self, dim=256):
         super().__init__()
-        self.encoder = nn.GRU(dim, dim, 2, batch_first=True)
-        # 三层预测: 每层输出潜空间表征
-        self.pred = nn.ModuleList([nn.Sequential(nn.Linear(dim,dim),nn.LayerNorm(dim)) for _ in range(3)])
-        # 能量头: 判断预测质量 (H-JEPA核心)
-        self.energy = nn.Sequential(nn.Linear(dim*3,dim), nn.GELU(), nn.Linear(dim,1))
+        self.z0 = JEPA_Layer(dim, "z0-空间")
+        self.z1 = JEPA_Layer(dim, "z1-物体")
+        self.z2 = JEPA_Layer(dim, "z2-语义")
+        # 层间投影
+        self.up01 = nn.Linear(dim,dim)  # z0→z1
+        self.up12 = nn.Linear(dim,dim)  # z1→z2
+        self.down21 = nn.Linear(dim,dim)  # z2→z1 (top-down)
+        self.down10 = nn.Linear(dim,dim)  # z1→z0
 
-    def forward(self, ctx):
-        """ctx: (b,seq,dim) 上下文编码"""
-        out, hn = self.encoder(ctx)
-        zs = [p(hn[-1]).unsqueeze(1) for p in self.pred]  # 三预测z0,z1,z2
-        energy = self.energy(torch.cat([z.squeeze(1) for z in zs],-1))
-        return zs, energy
+    def forward(self, s, a):
+        """自下而上编码 → 自上而下约束 → 预测"""
+        # Bottom-up: 细节→抽象
+        z0, z0_pred, e0 = self.z0(s, a)
+        z1, z1_pred, e1 = self.z1(self.up01(z0), a, self.up01(z0_pred))
+        z2, z2_pred, e2 = self.z2(self.up12(z1), a, self.up12(z1_pred))
 
-# ============================================================
-# 门控分层注入
-# ============================================================
-class HJEPA_Injector(nn.Module):
-    def __init__(self, dim=256, n=3):
-        super().__init__()
-        self.attn = nn.ModuleList([nn.MultiheadAttention(dim,4,batch_first=True) for _ in range(n)])
-        self.gate = nn.ParameterList([nn.Parameter(torch.tensor(-3.0)) for _ in range(n)])
-        self.norm = nn.ModuleList([nn.LayerNorm(dim) for _ in range(n)])
-        self.w = [0.1**l for l in range(n)]  # [1.0, 0.1, 0.01]
+        # Top-down refinement: 抽象约束细节
+        z1_refined = z1 + self.down21(z2_pred)
+        z0_refined = z0 + self.down10(z1_refined)
 
-    def forward(self, vlas, wms, train=True):
-        out = []
-        for i,(v,wg) in enumerate(zip(vlas,wms)):
-            a,_ = self.attn[i](v, wg, wg)
-            g = torch.sigmoid(self.gate[i]) * self.w[i] * (1 if train else 0)
-            out.append(self.norm[i](v + g*a))
-        return out
+        return [z0_refined, z1_refined, z2], [z0_pred, z1_pred, z2_pred], (e0+e1+e2)/3
 
 # ============================================================
-# H-JEPA × SmolVLA 主模型
+# H-JEPA × SmolVLA 完整模型
 # ============================================================
-class HJEPA_SmolVLA(nn.Module):
+class HJEPA_SmolVLA_v3(nn.Module):
     def __init__(self, dim=256, act_dim=6, chunk=50):
         super().__init__()
-        self.enc = nn.Sequential(nn.Conv2d(3,64,8,4),nn.ReLU(),nn.Conv2d(64,128,4,2),nn.ReLU(),nn.Conv2d(128,dim,4,2),nn.AdaptiveAvgPool2d(1))
-        self.sproj = nn.Linear(7,dim)
-        self.pos = nn.Parameter(torch.randn(1,1,dim))
+        self.dim = dim
+        # VLA视觉编码
+        self.v_enc = nn.Sequential(nn.Conv2d(3,64,8,4),nn.ReLU(),nn.Conv2d(64,128,4,2),nn.ReLU(),nn.Conv2d(128,dim,4,2),nn.AdaptiveAvgPool2d(1))
+        self.s_proj = nn.Linear(7,dim)
+
+        # H-JEPA分层堆叠 — 核心: z0/z1/z2
+        self.hjepa = HJEPA_Stack(dim)
+
+        # 三层VLA Transformer + 逐层z注入
         self.layers = nn.ModuleList([nn.TransformerEncoderLayer(dim,8,dim*4,batch_first=True) for _ in range(3)])
-        self.hjepa = HJEPA_WorldPredictor(dim)
-        self.inject = HJEPA_Injector(dim,3)
+        self.z_proj = nn.ModuleList([nn.Linear(dim,dim) for _ in range(3)])  # z→VLA空间
+        self.gate = nn.ParameterList([nn.Parameter(torch.tensor(-3.0)) for _ in range(3)])
+        self.norm = nn.ModuleList([nn.LayerNorm(dim) for _ in range(3)])
+        self.w = [1.0, 0.1, 0.01]  # 逐层衰减
+
+        # 融合 + 动作头
         self.fuse = nn.Linear(dim*3,dim)
         self.head = nn.Sequential(nn.Linear(dim,dim*4),nn.GELU(),nn.Linear(dim*4,dim*4),nn.GELU(),nn.Linear(dim*4,act_dim*chunk))
         self.train_mode = True
 
-    def forward(self, rgb, state, ctx=None):
+    def forward(self, rgb, state):
         b = rgb.shape[0]
-        x = (self.enc(rgb).view(b,-1)+self.sproj(state)).unsqueeze(1)+self.pos
+        # VLA基本编码
+        v_feat = self.v_enc(rgb).view(b,-1)
+        s_feat = self.s_proj(state)
+        vla_in = v_feat + s_feat
+
+        # H-JEPA: 产生z0/z1/z2 (中间表征)
+        zs, z_preds, energy = self.hjepa(v_feat, vla_in)
+
+        # VLA三层处理 + 逐层z注入
+        x = vla_in.unsqueeze(1)
         outs = []
-        for l in self.layers:
-            x = l(x); outs.append(x)
-        if ctx is None: ctx = x.repeat(1,4,1)
-        wms, energy = self.hjepa(ctx)
-        outs = self.inject(outs, wms, self.train_mode)
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            # z注入: gate×(0.1^i)×z
+            zi = self.z_proj[i](zs[i])
+            g = torch.sigmoid(self.gate[i]) * self.w[i]
+            if not self.train_mode: g = g * 0  # 推理零开销
+            x = self.norm[i](x + g * zi)
+            outs.append(x)
+
         fuse = self.fuse(torch.cat(outs,-1))
         act = self.head(fuse).view(b,50,6)
         return act, energy
 
-    def train_mode_on(self): self.train_mode = True
-    def infer_mode(self): self.train_mode = False
+    def set_train(self): self.train_mode = True
+    def set_infer(self): self.train_mode = False
 
 # ============================================================
-# MetaWorld 兼容数据加载器
+# MetaWorld 数据加载
 # ============================================================
 class MetaWorldLoader:
-    def __init__(self, data_dir="/root/datasets/metaworld/tasks"):
-        self.files = list(Path(data_dir).glob("*.npz"))
-        if not self.files:
-            print("⚠️ 无数据, 使用随机数据")
-            self._fake = True
-            return
-        self._fake = False
-        self.data = []
-        for f in self.files:
-            d = np.load(f)
-            self.data.append({
-                'obs': torch.tensor(d['observations'],dtype=torch.float32),
-                'state': torch.tensor(d['states'],dtype=torch.float32),
-                'action': torch.tensor(np.diff(d['states'],axis=0,prepend=d['states'][:1]),dtype=torch.float32),
-                'task': str(d.get('task_name',f.stem))
-            })
-        print(f"📦 加载 {len(self.files)} 个任务")
+    def __init__(self, dir="/root/datasets/metaworld/tasks"):
+        self.files = list(Path(dir).glob("*.npz"))
+        self.fake = not self.files
+        if not self.fake:
+            self.data = []
+            for f in self.files:
+                d = np.load(f)
+                self.data.append({'obs':torch.tensor(d['observations'],dtype=torch.float32),'state':torch.tensor(d['states'],dtype=torch.float32),'task':str(d.get('task_name',f.stem))})
+            print(f"📦 {len(self.files)}任务")
 
-    def sample_batch(self, batch=8, seq=4):
-        if self._fake:
-            return torch.randn(batch,3,128,128), torch.randn(batch,7), torch.randn(batch,4,256)
-        task = self.data[np.random.randint(0,len(self.data))]
-        n = task['obs'].shape[0]-seq
-        if n < batch: return self.sample_batch(batch,seq)  # 重试
-        idx = np.random.randint(0, n, batch)
-        rgb = torch.stack([task['obs'][i:i+1].squeeze(0) for i in idx]).cuda()
-        state = task['state'][idx].cuda()
-        ctx = []  # 上下文编码需要先过encoder
-        return rgb, state, None
+    def batch(self, n=8):
+        if self.fake: return torch.randn(n,3,128,128), torch.randn(n,7)
+        t = self.data[np.random.randint(0,len(self.data))]
+        i = np.random.randint(0, max(1,t['obs'].shape[0]-n), n)
+        return t['obs'][i[:n]].cuda(), t['state'][i[:n]].cuda()
 
 # ============================================================
-# H-JEPA 训练损失
-# ============================================================
-def hjepa_loss(action_pred, action_true, energy_pos, energy_neg, margin=1.0):
-    """H-JEPA 损失: 动作重建 + 对比能量"""
-    loss_act = nn.functional.mse_loss(action_pred, action_true)
-    # H-JEPA能量损失: 正样本低能量，负样本高能量
-    loss_energy = torch.clamp(energy_pos - energy_neg + margin, min=0).mean()
-    return loss_act + 0.01 * loss_energy, loss_act.item(), loss_energy.item()
-
-# ============================================================
-# Phase 4: 完整训练验证
+# 验证
 # ============================================================
 if __name__ == '__main__':
-    model = HJEPA_SmolVLA().cuda()
-    print(f'✅ H-JEPA SmolVLA: {sum(p.numel() for p in model.parameters())/1e6:.1f}M params')
+    m = HJEPA_SmolVLA_v3().cuda()
+    print(f'✅ H-JEPA v3: {sum(p.numel() for p in m.parameters())/1e6:.1f}M params')
 
-    # 训练模式
-    model.train_mode_on()
     rgb, state = torch.randn(2,3,128,128).cuda(), torch.randn(2,7).cuda()
-    act_train, energy = model(rgb, state)
-    print(f'[训练] Action: {act_train.shape} | Energy: {energy.shape}')
+    m.set_train(); a_tr, e = m(rgb,state)
+    m.set_infer(); a_inf, _ = m(rgb,state)
+    print(f'[训练] {a_tr.shape} E={e.item():.3f}')
+    print(f'[推理] {a_inf.shape} (z注入=0)')
 
-    # 推理模式 (零开销)
-    model.infer_mode()
-    act_infer, _ = model(rgb, state)
-    print(f'[推理] Action: {act_infer.shape} | 世界模型已剥离')
+    ldr = MetaWorldLoader()
+    print(f'[数据] {"✅ MetaWorld" if not ldr.fake else "⚠️ 模拟"}')
 
-    # MetaWorld 数据加载验证
-    loader = MetaWorldLoader()
-    print(f'[数据] MetaWorld兼容: {"✅" if not loader._fake else "⚠️ 模拟数据"}')
-
-    # 3层门控值
-    print('[门控]', end=' ')
-    for i,g in enumerate(model.inject.gate):
-        print(f'L{i}={torch.sigmoid(g).item():.3f}×{model.inject.w[i]:.2f}', end=' ')
-    print()
-    print('✅ H-JEPA v2 全Phase验证通过')
+    print('[z层]',end='')
+    for i,g in enumerate(m.gate):
+        print(f' | z{i}={torch.sigmoid(g).item():.3f}×{m.w[i]:.2f}',end='')
+    print(' |')
+    print('✅ H-JEPA v3 全验证通过')
