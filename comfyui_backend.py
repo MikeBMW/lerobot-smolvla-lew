@@ -89,7 +89,12 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         self.send_response(200); self.send_header("Content-Type", "application/json"); self._cors(); self.end_headers()
 
-        if path == "/task":
+        if path == "/debug":
+            nodes = body.get('nodes',[]) if isinstance(body,dict) else []
+            info = {"step":"1.推理准备","location":"comfyui_backend.py:run_infer()","variables":{"engine":"lewm" if any('lewm' in str(n).lower() for n in nodes) else "smolvla","batch_size":1,"device":"cuda:0"},"shapes":"input:[1,4,3,64,64]→next_rgb+next_state" if any('lewm' in str(n).lower() for n in nodes) else "input:[1,3,512,512]→[1,50,6]"}
+            self.wfile.write(json.dumps(info,ensure_ascii=False).encode())
+
+        elif path == "/task":
             tid = f"task_{int(time.time())}"
             task = {
                 "id": tid,
