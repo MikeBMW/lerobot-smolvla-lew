@@ -196,11 +196,11 @@ class ComfyHandler(BaseHTTPRequestHandler):
                             try:
                                 import wandb
                                 wandb.init(project='zmax-lewm',entity='xspace',name='infer-'+tid,reinit=True)
+                            from lerobot.policies.smolvla import SmolVLAPolicy
                                 wandb.log({'inference_ms':int(task['timing']['inference'].replace('ms','')),'load_ms':int(task['timing']['model_load'].replace('ms','')),'vram_gb':torch.cuda.max_memory_allocated()/1e9})
                                 wandb.finish()
                             except: pass
                         else:
-                            from lerobot.policies.smolvla import SmolVLAPolicy
                         t_model_start = ttime.time()
                         log("  🔄 加载SmolVLA模型...")
                         model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
