@@ -144,6 +144,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         import sys, torch, time as ttime
                         t_total = ttime.time()
                         sys.path.insert(0,'/root/lerobot-smolvla-lew/src')
+                        from lerobot.policies.smolvla import SmolVLAPolicy
 
                         if engine_type == 'lewm':
                             log("  🔄 加载LeWM世界模型...")
@@ -196,7 +197,6 @@ class ComfyHandler(BaseHTTPRequestHandler):
                             try:
                                 import wandb
                                 wandb.init(project='zmax-lewm',entity='xspace',name='infer-'+tid,reinit=True)
-                            from lerobot.policies.smolvla import SmolVLAPolicy
                                 wandb.log({'inference_ms':int(task['timing']['inference'].replace('ms','')),'load_ms':int(task['timing']['model_load'].replace('ms','')),'vram_gb':torch.cuda.max_memory_allocated()/1e9})
                                 wandb.finish()
                             except: pass
