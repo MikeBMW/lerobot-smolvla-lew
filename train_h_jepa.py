@@ -10,26 +10,30 @@ model = ZFlow_VLA(cfg).cuda()
 # MetaWorld 数据加载
 files = list(Path(cfg.data_dir).glob("*.npz"))
 if files:
-    data = []
+    valid_files = []
     for f in files:
         d = np.load(f)
-        data.append({'obs': torch.tensor(d['observations'], dtype=torch.float32),
-                     'state': torch.tensor(d['states'], dtype=torch.float32),
-                     'task': str(d.get('task_name', f.stem))})
-    print(f'📦 加载 {len(files)} 个任务')
+        if d["states"].shape[1] >= 7: valid_files.append(f)
+    files = valid_files
+    all_obs, all_state = [], []
+    for f in files:
+        d = np.load(f)
+        all_obs.append(torch.tensor(d['observations'],dtype=torch.float32).cuda())
+        all_state.append(torch.tensor(d['states'],dtype=torch.float32).cuda())
+    obs_data = torch.cat(all_obs,0)
+    state_data = torch.cat(all_state,0)
+    print(f'📦 加载 {len(files)} 个任务 ({obs_data.shape[0]}帧)')
 else:
-    print('⚠️ 无MetaWorld数据, 使用随机数据验证')
+    obs_data = torch.randn(1000,3,128,128).cuda()
+    state_data = torch.randn(1000,7).cuda()
+    print('⚠️ 无数据, 随机生成')
 
 opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
 wandb.init(project='zmax-hjepa', entity='xspace', name='zflow-v1')
 
 for epoch in range(cfg.epochs):
-    if files:
-        t = data[np.random.randint(0, len(data))]
-        i = np.random.randint(0, max(1, t['obs'].shape[0]-cfg.batch_size), cfg.batch_size)
-        rgb, state = t['obs'][i].cuda(), t['state'][i].cuda()
-    else:
-        rgb, state = torch.randn(cfg.batch_size,3,128,128).cuda(), torch.randn(cfg.batch_size,7).cuda()
+    i = np.random.randint(0, max(1, obs_data.shape[0]-cfg.batch_size), cfg.batch_size)
+    rgb, state = obs_data[i], state_data[i]
 
     model.set_train()
     pred, energy = model(rgb, state)
