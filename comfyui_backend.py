@@ -95,14 +95,18 @@ class ComfyHandler(BaseHTTPRequestHandler):
         if path == "/debug":
             nodes = body.get('nodes',[]) if isinstance(body,dict) else []
             is_lewm = any('lewm' in str(n).lower() for n in nodes)
-            info = {
-                "step": "2.推理准备" if is_lewm else "2.模型准备",
-                "location": "comfyui_backend.py:run_infer()" if not is_lewm else "comfyui_backend.py:LeWMInfer.forward()",
-                "variables": {"engine":"LeWM(ViT+GRU)" if is_lewm else "SmolVLA(SmolVLM+DiT)","batch_size":1,"device":"cuda:0","episode_length":4 if is_lewm else 1},
-                "shapes": "input:[1,4,3,64,64]+[1,4,7]→rgb[1,3,64,64]+state[1,7]" if is_lewm else "input:[1,3,512,512]×3+state[1,7]+tokens[1,48]→action[1,50,6]",
-                "model_path": "/root/models/le_wm/model.pt(41MB)" if is_lewm else "/root/models/smolvla_base(873MB)+/root/models/smolvlm2-500m(7.4GB)",
-                "params": "10.38M" if is_lewm else "450M(SmolVLM-2 200M+VTLA 250M)"
-            }
+            sid = body.get('session','default')
+            if not hasattr(self.server,'_ds'): self.server._ds = {}
+            if sid not in self.server._ds: self.server._ds[sid] = 0
+            st = self.server._ds[sid]; self.server._ds[sid] = (st+1)%5
+            L = [
+                {"step":"1.节点检测","location":"comfyui_backend.py:has_smolvla","variables":{"gpu":"RTX 4090","engine":"LeWM" if is_lewm else "SmolVLA"},"shapes":"-","model_path":"-","params":"-","diff":"⬆ 新 ("+str(st+1)+"/5)"},
+                {"step":"2.模型加载","location":"torch.load()" if is_lewm else "from_pretrained()","variables":{"dtype":"float32","device":"cuda:0"},"shapes":"-","model_path":"/root/models/le_wm/model.pt" if is_lewm else "/root/models/smolvla_base","params":"10.38M" if is_lewm else "450M","diff":"⬆ 加载 ("+str(st+1)+"/5)"},
+                {"step":"3.输入准备","location":"build_batch()","variables":{"batch":1,"seq_len":4 if is_lewm else 1},"shapes":"[1,4,3,64,64]" if is_lewm else "[1,3,512,512]x3","model_path":"-","params":"-","diff":"⬆ 张量 ("+str(st+1)+"/5)"},
+                {"step":"4.推理执行","location":"forward()","variables":{"mode":"no_grad()","vram":"0.06GB" if is_lewm else "1.9GB"},"shapes":"rgb[1,3,64,64]" if is_lewm else "action[1,50,6]","model_path":"-","params":"-","diff":"⬆ 推理 ("+str(st+1)+"/5)"},
+                {"step":"5.输出结果","location":"task[result]","variables":{"status":"done","output":"NextRGB+NextState" if is_lewm else "Action [1,50,6]"},"shapes":"[1,3,64,64]" if is_lewm else "[1,50,6]","model_path":"-","params":"-","diff":"✅ 完成 ("+str(st+1)+"/5)"},
+            ]
+            info = L[st]
             self.wfile.write(json.dumps(info,ensure_ascii=False).encode())
 
         elif path == "/task":
