@@ -11,7 +11,7 @@ class ZFlow_VLA(nn.Module):
         cfg = cfg or ZFlowConfig()
         zd = cfg.z_dims
         # VLA 视觉编码
-        self.v_enc = nn.Sequential(nn.Conv2d(3,64,8,4),nn.ReLU(),nn.Conv2d(64,128,4,2),nn.ReLU(),nn.Conv2d(128,cfg.vla_dim,4,2),nn.AdaptiveAvgPool2d(1))
+        self.v_enc = nn.Sequential(nn.Conv2d(3,64,4,2),nn.ReLU(),nn.Conv2d(64,128,3,2),nn.ReLU(),nn.Conv2d(128,cfg.vla_dim,3,2),nn.AdaptiveAvgPool2d(1))
         self.s_proj = nn.Linear(7, cfg.vla_dim)
         # H-JEPA 三层 z
         self.z_enc = nn.ModuleList([JEPAEncoder(cfg.vla_dim, zd[i]) for i in range(3)])
