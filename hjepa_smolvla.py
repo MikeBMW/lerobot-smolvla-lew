@@ -12,25 +12,17 @@ from pathlib import Path
 # JEPA 单层模块: Encoder(s,a)→z → Predictor(z)→z'
 # ============================================================
 class JEPA_Layer(nn.Module):
-    """一层JEPA: 编码当前状态→预测未来潜表征"""
-    def __init__(self, dim=256, name="z"):
+    def __init__(self, dim=256):
         super().__init__()
-        self.name = name
-        # Encoder: (s,a) → z (中间表征)
-        self.enc = nn.Sequential(nn.Linear(dim*2,dim), nn.GELU(), nn.Linear(dim,dim), nn.LayerNorm(dim))
-        # Predictor: z → z' (预测下一步的z)
-        self.pred = nn.Sequential(nn.Linear(dim,dim*2), nn.GELU(), nn.Linear(dim*2,dim), nn.LayerNorm(dim))
-        # 能量头: |z'_pred - z'_true| → 低能量=好预测
-        self.energy = nn.Sequential(nn.Linear(dim,dim//4), nn.GELU(), nn.Linear(dim//4,1))
-
-    def forward(self, s, a, z_prev=None):
-        """s:当前状态, a:动作, z_prev:上层约束"""
-        x = torch.cat([s,a],-1)
-        if z_prev is not None: x = x + z_prev  # 上层约束注入
-        z = self.enc(x)       # 🧠 中间表征 z (核心)
-        z_pred = self.pred(z)  # 🔮 预测未来 z'
-        energy = self.energy(z_pred)
-        return z, z_pred, energy
+        self.enc = nn.Sequential(nn.Linear(dim,dim),nn.GELU(),nn.Linear(dim,dim),nn.LayerNorm(dim))
+        self.pred = nn.Sequential(nn.Linear(dim,dim*2),nn.GELU(),nn.Linear(dim*2,dim),nn.LayerNorm(dim))
+        self.energy = nn.Sequential(nn.Linear(dim,dim//4),nn.GELU(),nn.Linear(dim//4,1))
+    def forward(self, s):
+        x = s
+        z = self.enc(x)
+        zp = self.pred(z)
+        e = self.energy(zp)
+        return z, zp, e
 
 # ============================================================
 # H-JEPA 分层堆叠: z0(细节)→z1(物体)→z2(语义)
@@ -39,9 +31,9 @@ class HJEPA_Stack(nn.Module):
     """三层JEPA堆叠: 自下而上编码 + 自上而下约束"""
     def __init__(self, dim=256):
         super().__init__()
-        self.z0 = JEPA_Layer(dim, "z0-空间")
-        self.z1 = JEPA_Layer(dim, "z1-物体")
-        self.z2 = JEPA_Layer(dim, "z2-语义")
+        self.z0 = JEPA_Layer(dim)
+        self.z1 = JEPA_Layer(dim)
+        self.z2 = JEPA_Layer(dim)
         # 层间投影
         self.up01 = nn.Linear(dim,dim)  # z0→z1
         self.up12 = nn.Linear(dim,dim)  # z1→z2
@@ -51,9 +43,9 @@ class HJEPA_Stack(nn.Module):
     def forward(self, s, a):
         """自下而上编码 → 自上而下约束 → 预测"""
         # Bottom-up: 细节→抽象
-        z0, z0_pred, e0 = self.z0(s, a)
-        z1, z1_pred, e1 = self.z1(self.up01(z0), a, self.up01(z0_pred))
-        z2, z2_pred, e2 = self.z2(self.up12(z1), a, self.up12(z1_pred))
+        z0, z0_pred, e0 = self.z0(s)
+        z1, z1_pred, e1 = self.z1(self.up01(z0))
+        z2, z2_pred, e2 = self.z2(self.up12(z1))
 
         # Top-down refinement: 抽象约束细节
         z1_refined = z1 + self.down21(z2_pred)
@@ -109,8 +101,8 @@ class HJEPA_SmolVLA_v3(nn.Module):
             x = self.norm[i](x + g * zi)
             outs.append(x)
 
-        fuse = self.fuse(torch.cat(outs,-1))
-        act = self.head(fuse).view(b,50,6)
+        fuse = self.fuse(torch.cat(outs,-1)).squeeze(1)
+        act = self.head(fuse).view(b, 50, -1)
         return act, energy
 
     def set_train(self): self.train_mode = True
