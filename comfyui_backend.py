@@ -58,6 +58,23 @@ class ComfyHandler(BaseHTTPRequestHandler):
         elif path == "/logs":
             self.wfile.write(json.dumps(LOG_BUFFER[-50:], ensure_ascii=False).encode())
 
+        elif path == "/debug":
+            content_len = int(self.headers.get('Content-Length',0))
+            if content_len > 0:
+                body = json.loads(self.rfile.read(content_len))
+                nodes = body.get('nodes',[])
+                # Return debug state
+                import torch, time as ttime
+                step_info = {
+                    "step": "1. 推理准备",
+                    "location": "comfyui_backend.py:run_infer()",
+                    "variables": {"engine":"lewm" if any('lewm' in str(n).lower() for n in nodes) else "smolvla","batch_size":1,"device":"cuda:0"},
+                    "shapes": "input: [1,3,512,512] → output: [1,50,6]" if 'lewm' not in str(nodes).lower() else "input: [1,4,3,64,64] → output: next_rgb[1,3,64,64]+next_state[1,7]"
+                }
+                self.wfile.write(json.dumps(step_info,ensure_ascii=False).encode())
+            else:
+                self.wfile.write(json.dumps({"step":"idle"},ensure_ascii=False).encode())
+
         elif path.startswith("/task/"):
             tid = path.split("/")[-1]
             self.wfile.write(json.dumps(TASKS.get(tid, {"error": "not found"}), ensure_ascii=False).encode())
