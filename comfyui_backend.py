@@ -272,10 +272,20 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         task["timing"]["model_load"] = f"{(t_model_end-t_model_start)*1000:.0f}ms"
                         log(f"  📦 模型加载: {task['timing']['model_load']}")
                         
+                        # 真机图像逻辑
+                        real_img = torch.randn(1,3,512,512).cuda()
+                        if task.get("real_image"):
+                            try:
+                                import base64, io; from PIL import Image; import numpy as np
+                                raw = base64.b64decode(task["real_image"].replace(" ","").replace(chr(10),""))
+                                img = Image.open(io.BytesIO(raw)).convert("RGB").resize((512,512))
+                                real_img = torch.tensor(np.array(img)/255.0).permute(2,0,1).unsqueeze(0).float().cuda()
+                                log("  📡 使用Orin真机图像推理")
+                            except Exception as e: log(f"  ⚠️ 图像解码失败: {e}")
                         batch = {
-                            "observation.images.camera1": torch.randn(1,3,512,512).cuda(),
-                            "observation.images.camera2": torch.randn(1,3,512,512).cuda(),
-                            "observation.images.camera3": torch.randn(1,3,512,512).cuda(),
+                            "observation.images.camera1": real_img,
+                            "observation.images.camera2": real_img,
+                            "observation.images.camera3": real_img,
                             "observation.state": torch.randn(1,7).cuda(),
                             "observation.language.tokens": torch.randint(0,32000,(1,48)).cuda(),
                             "observation.language.attention_mask": torch.ones(1,48).cuda(),
