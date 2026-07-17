@@ -190,6 +190,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                                 "timing":{"model_load":"0ms","inference":f"{(t1-t0)*1000:.0f}ms","total":f"{(ttime.time()-t_total)*1000:.0f}ms"},
                                 "result":f"H-JEPA Hybrid | Action:{list(action.shape)} | z1+z2+z3 | 推理:{(t1-t0)*1000:.0f}ms | VRAM:{vram:.1f}GB | ✅"})
                             log(f"  ✅ Hybrid: {task['result']}")
+                            return
                         elif engine_type == 'lewm':
                             log("  🔄 加载LeWM世界模型...")
                             t_model_start = ttime.time()
@@ -244,9 +245,9 @@ class ComfyHandler(BaseHTTPRequestHandler):
                                 wandb.log({'inference_ms':int(task['timing']['inference'].replace('ms','')),'load_ms':int(task['timing']['model_load'].replace('ms','')),'vram_gb':torch.cuda.max_memory_allocated()/1e9})
                                 wandb.finish()
                             except: pass
-                            if task.get("status") == "done": return
                         else:
                             from lerobot.policies.smolvla import SmolVLAPolicy
+                        if task.get("status") == "done": return
                         t_model_start = ttime.time()
                         log("  🔄 加载SmolVLA模型...")
                         model = SmolVLAPolicy.from_pretrained("/root/models/smolvla_base").to("cuda")
