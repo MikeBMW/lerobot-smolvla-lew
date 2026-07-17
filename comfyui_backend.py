@@ -49,6 +49,18 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
+        elif path == "/datasets":
+            import os, glob
+            files = glob.glob("/root/datasets/metaworld/tasks/*.npz")
+            ds = []
+            for f in files:
+                try:
+                    import numpy as np
+                    d = np.load(f)
+                    ds.append({"name":os.path.basename(f).replace(".npz",""),"frames":int(d["observations"].shape[0])})
+                except: pass
+            self.wfile.write(json.dumps(ds,ensure_ascii=False).encode())
+
         elif path == "/tasks":
             self.wfile.write(json.dumps(list(TASKS.values()), ensure_ascii=False).encode())
 
