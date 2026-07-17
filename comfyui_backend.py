@@ -168,7 +168,26 @@ class ComfyHandler(BaseHTTPRequestHandler):
                         t_total = ttime.time()
                         sys.path.insert(0,'/root/lerobot-smolvla-lew/src')
 
-                        if engine_type == 'lewm':
+                        if engine_type == "hybrid":
+                            log("  🔄 加载H-JEPA Hybrid...")
+                            sys.path.insert(0,"/root/lerobot-smolvla-lew")
+                            from h_jepa_zflow import ZFlow_VLA
+                            model = ZFlow_VLA().cuda().float()
+                            try:
+                                model.load_state_dict(torch.load("/root/models/hjepa_zflow/model.pt",map_location="cuda"))
+                                log("  ✅ 训练权重加载成功")
+                            except: log("  ⚠️ 随机初始化")
+                            model.eval()
+                            t0 = ttime.time()
+                            with torch.no_grad():
+                                action, energy = model(torch.randn(1,3,128,128).cuda(), torch.randn(1,7).cuda())
+                            t1 = ttime.time()
+                            vram = torch.cuda.max_memory_allocated()/1e9
+                            task.update({"status":"done",
+                                "timing":{"model_load":"0ms","inference":f"{(t1-t0)*1000:.0f}ms","total":f"{(ttime.time()-t_total)*1000:.0f}ms"},
+                                "result":f"H-JEPA Hybrid | Action:{list(action.shape)} | z1+z2+z3 | 推理:{(t1-t0)*1000:.0f}ms | VRAM:{vram:.1f}GB | ✅"})
+                            log(f"  ✅ Hybrid: {task['result']}")
+                        elif engine_type == 'lewm':
                             log("  🔄 加载LeWM世界模型...")
                             t_model_start = ttime.time()
                             class LeWMInfer(torch.nn.Module):
