@@ -244,6 +244,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                                 wandb.log({'inference_ms':int(task['timing']['inference'].replace('ms','')),'load_ms':int(task['timing']['model_load'].replace('ms','')),'vram_gb':torch.cuda.max_memory_allocated()/1e9})
                                 wandb.finish()
                             except: pass
+                            if task.get("status") == "done": return
                         else:
                             from lerobot.policies.smolvla import SmolVLAPolicy
                         t_model_start = ttime.time()
