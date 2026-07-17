@@ -141,7 +141,8 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 engine_type = "smolvla"
                 for n in task['nodes']:
                     nn = str(n).lower()
-                    if 'lewm' in nn: engine_type = 'lewm'; break
+                    if 'hybrid' in nn: engine_type = 'hybrid'; break
+                    elif 'lewm' in nn: engine_type = 'lewm'; break
                     elif 'vla-touch' in nn: engine_type = 'vlatouch'; break
                     elif 'gr00t' in nn: engine_type = 'gr00t'; break
                     elif 'act' in nn and 'action' not in nn: engine_type = 'act'; break
@@ -151,8 +152,10 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 task["model"] = f"SmolVLA (SmolVLM-500M + VTLA)"
                 task["location"] = "4090:50054→ECS隧道→datadrive.world"
 
-                # LeWM path
-                if engine_type == 'lewm':
+                if engine_type == 'hybrid':
+                    task["model"] = "H-JEPA zFlow Hybrid"
+                    log("  🧠 H-JEPA Hybrid 分布式反馈推理...")
+                elif engine_type == 'lewm':
                     task["model"] = "LeWM World Model (ViT+GRU)"
                     log(f"  🧠 检测到LeWM推理节点, 执行世界模型预测...")
                 else:
