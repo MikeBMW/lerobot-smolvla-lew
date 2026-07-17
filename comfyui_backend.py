@@ -139,7 +139,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "nodes": body.get("nodes", []),
                 "status": "created",
                 "created": time.strftime("%H:%M:%S"),
-                "steps": []
+                "steps": [],
                 "real_image": body.get("real_image"),
             }
             TASKS[tid] = task
