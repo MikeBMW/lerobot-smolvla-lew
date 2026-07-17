@@ -140,6 +140,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "status": "created",
                 "created": time.strftime("%H:%M:%S"),
                 "steps": []
+                "real_image": body.get("real_image"),
             }
             TASKS[tid] = task
             log(f"📝 新任务: {tid} · 节点:{task['nodes']}")
