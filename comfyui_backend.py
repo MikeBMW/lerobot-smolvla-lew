@@ -49,6 +49,8 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
+        elif path == "/api/comfy/datasets":
+            path = "/datasets"
         elif path == "/datasets":
             import os, glob
             files = glob.glob("/root/datasets/metaworld/tasks/*.npz")
