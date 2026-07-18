@@ -57,7 +57,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             query = parse_qs(urlparse(self.path).query)
             fname = query.get("file",[""])[0]
             if fname:
-                dest = os.path.join("/root/zmax-website",os.path.basename(fname))
+                dest = os.path.join("/root/zmax-website", os.path.basename(fname.lstrip("/")))
                 if os.path.exists(dest):
                     with open(dest) as fh: content = fh.read()
                     self.wfile.write(content.encode())
