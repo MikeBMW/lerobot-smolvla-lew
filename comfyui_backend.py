@@ -205,6 +205,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                     WS_STATUS["orin"]["online"] = orin.get("online", False)
                     WS_STATUS["orin"]["timestamp"] = orin.get("timestamp", "")
             resp = {"status":"ok","mac":WS_STATUS["mac"],"orin":WS_STATUS["orin"]}
+            global PENDING_COMMAND
             if PENDING_COMMAND:
                 resp["command"] = PENDING_COMMAND
                 PENDING_COMMAND = None
