@@ -56,7 +56,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
         elif path.startswith("/json-load"):
             fname = self.path.split("file=")[-1].split("&")[0] if "file=" in self.path else ""
             dest = os.path.join("/root/zmax-website", fname)
-            L(f"json-load: {self.path} -> {dest} exists={os.path.exists(dest)}")
+            # L(f"json-load: {self.path} -> {dest} exists={os.path.exists(dest)}")
             if os.path.exists(dest):
                 with open(dest,"rb") as fh: self.wfile.write(fh.read())
             else:
