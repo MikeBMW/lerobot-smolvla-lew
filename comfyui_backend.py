@@ -472,10 +472,10 @@ async def ws_handler(websocket):
         WS_STATUS["mac"]["connected"] = max(0, WS_STATUS["mac"]["connected"]-1)
 
 def run_ws():
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(websockets.serve(ws_handler, "0.0.0.0", 50056))
-    loop.run_forever()
+    async def main():
+        await websockets.serve(ws_handler, "0.0.0.0", 50056)
+        await asyncio.Future()  # run forever
+    asyncio.run(main())
 
 if __name__ == "__main__":
     socketserver.TCPServer.allow_reuse_address = True
