@@ -2,7 +2,7 @@
 """Z-MAX ComfyUI Backend · Node连接服务器 · 运行在 4090 :50053"""
 import json, time, os, subprocess, threading, socketserver
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
 TRAIN_JOBS = {}
@@ -54,7 +54,8 @@ class ComfyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
 
         elif path == "/json-load":
-            fname = query.get("file","")
+            query = parse_qs(urlparse(self.path).query)
+            fname = query.get("file",[""])[0]
             if fname:
                 dest = os.path.join("/root/zmax-website",os.path.basename(fname))
                 if os.path.exists(dest):
