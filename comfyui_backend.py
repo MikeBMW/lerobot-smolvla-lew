@@ -180,6 +180,17 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"status":"no name"},ensure_ascii=False).encode())
             return
 
+        if path == "/api/mac/heartbeat":
+            WS_STATUS["mac"]["connected"] = 1
+            WS_STATUS["mac"]["last_seen"] = time.time()
+            if body and isinstance(body, dict):
+                orin = body.get("orin",{})
+                if orin:
+                    WS_STATUS["orin"]["online"] = orin.get("online", False)
+                    WS_STATUS["orin"]["timestamp"] = orin.get("timestamp", "")
+            self.wfile.write(json.dumps({"status":"ok","mac":WS_STATUS["mac"],"orin":WS_STATUS["orin"]},ensure_ascii=False).encode())
+            return
+
         if path == "/json-save":
             self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
             jbody = body if body else {}
