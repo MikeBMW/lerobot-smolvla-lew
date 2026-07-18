@@ -51,6 +51,18 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets":
             path = "/datasets"
+        elif path == "/json-list":
+            import glob, json as j
+            files = glob.glob("/root/zmax-website/*.json")
+            result = []
+            for f in files:
+                try:
+                    with open(f) as fh:
+                        d = j.load(fh)
+                        result.append({"name":f.split("/")[-1],"nodes":len(d.get("nodes",[])),"desc":d.get("description",""),"url":"/"+f.split("/")[-1]})
+                except: pass
+            self.wfile.write(j.dumps(result,ensure_ascii=False).encode())
+
         elif path == "/datasets":
             import os, glob
             files = glob.glob("/root/datasets/metaworld/tasks/*.npz")
