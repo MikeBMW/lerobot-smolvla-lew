@@ -52,6 +52,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
         elif path == "/api/comfy/datasets":
             path = "/datasets"
         elif path == "/json-save":
+            self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
             jbody = json.loads(body) if body else {}
             fname = jbody.get("name","dds_cycle.json")
             data = jbody.get("data",{})
