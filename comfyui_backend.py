@@ -12,7 +12,7 @@ from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
 WS_STATUS = {"orin":{"online":False},"mac":{"connected":0}}
-PENDING_COMMAND = None
+PENDING_COMMAND = [None]
 AUTO_TRAIN = False
 TRAIN_JOBS = {}
 LOG_BUFFER = []
@@ -54,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND, "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
@@ -189,9 +189,9 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/comfy/command":
-            PENDING_COMMAND = body.get("command") if body else None
+            PENDING_COMMAND[0] = body.get("command") if body else None
             if PENDING_COMMAND:
-                PENDING_COMMAND["timestamp"] = time.time()
+                PENDING_COMMAND[0]["timestamp"] = time.time()
             self.wfile.write(json.dumps({"status":"ok","command":PENDING_COMMAND},ensure_ascii=False).encode())
             return
 
@@ -205,10 +205,9 @@ class ComfyHandler(BaseHTTPRequestHandler):
                     WS_STATUS["orin"]["online"] = orin.get("online", False)
                     WS_STATUS["orin"]["timestamp"] = orin.get("timestamp", "")
             resp = {"status":"ok","mac":WS_STATUS["mac"],"orin":WS_STATUS["orin"]}
-            global PENDING_COMMAND
             if PENDING_COMMAND:
-                resp["command"] = PENDING_COMMAND
-                PENDING_COMMAND = None
+                resp["command"] = dict(PENDING_COMMAND)
+                import comfyui_backend as cb; cb.PENDING_COMMAND = [None]
             self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
             return
 
