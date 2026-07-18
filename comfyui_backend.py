@@ -195,6 +195,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/mac/heartbeat":
+            self.send_response(200); self.send_header("Content-Type","application/json"); self.end_headers()
 
             WS_STATUS["mac"]["connected"] = 1
             WS_STATUS["mac"]["last_seen"] = time.time()
