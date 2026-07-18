@@ -155,6 +155,15 @@ class ComfyHandler(BaseHTTPRequestHandler):
         
         body = json.loads(self.rfile.read(length)) if length > 0 else {}
 
+        if path == "/json-save":
+            jbody = body if body else {}
+            fname = jbody.get("name","dds_cycle.json")
+            data = jbody.get("data",{})
+            dest = f"/root/zmax-website/{fname}"
+            with open(dest,"w") as fh: json.dump(data,fh,indent=2,ensure_ascii=False)
+            self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
+            return
+
         self.send_response(200); self.send_header("Content-Type", "application/json"); self._cors(); self.end_headers()
 
         if path == "/debug":
