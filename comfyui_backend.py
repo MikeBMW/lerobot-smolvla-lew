@@ -507,8 +507,30 @@ def run_ws():
         await asyncio.Future()  # run forever
     asyncio.run(main())
 
+def cleanup_disk():
+    """Keep only latest 5 npz, remove old W&B runs, delete raw MCAP"""
+    import glob
+    # Keep latest 5 npz
+    npz_files = sorted(glob.glob("/root/datasets/metaworld/tasks/*.npz"), key=os.path.getmtime, reverse=True)
+    for f in npz_files[5:]:
+        os.remove(f)
+        print(f"[CLEAN] Removed old dataset: {os.path.basename(f)}")
+    # Remove db3/mcap files
+    for f in glob.glob("/root/datasets/metaworld/tasks/*.db3") + glob.glob("/root/datasets/metaworld/tasks/*.mcap"):
+        os.remove(f)
+        print(f"[CLEAN] Removed raw MCAP: {os.path.basename(f)}")
+    # W&B cleanup older than 7 days
+    import time
+    now = time.time()
+    for d in glob.glob("/root/lerobot-smolvla-lew/wandb/run-*"):
+        if os.path.isdir(d) and os.path.getmtime(d) < now - 7*86400:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+            print(f"[CLEAN] Removed old W&B run: {os.path.basename(d)}")
+
 def auto_train(npz_path):
     import subprocess
+    cleanup_disk()
     print(f"[AUTO TRAIN] Starting with {npz_path}")
     result = subprocess.run(
         ["/root/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12", 
