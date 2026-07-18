@@ -110,6 +110,27 @@ class ComfyHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
+        # File upload handler
+        if path == "/upload":
+            import cgi, os, tempfile
+            content_type = self.headers.get("Content-Type","")
+            if "multipart/form-data" in content_type:
+                form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD":"POST","CONTENT_TYPE":content_type})
+                file_item = form["file"]
+                fname = file_item.filename
+                dest = f"/root/datasets/metaworld/tasks/{fname}"
+                with open(dest,"wb") as f:
+                    f.write(file_item.file.read())
+                try:
+                    import numpy as np
+                    d = np.load(dest)
+                    frames = d["observations"].shape[0]
+                    resp = {"status":"ok","file":fname,"frames":int(frames),"size":os.path.getsize(dest)}
+                except:
+                    resp = {"status":"ok","file":fname,"size":os.path.getsize(dest),"note":"not .npz or invalid"}
+                self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
+                return
+        
         body = json.loads(self.rfile.read(length)) if length > 0 else {}
 
         self.send_response(200); self.send_header("Content-Type", "application/json"); self._cors(); self.end_headers()
