@@ -149,6 +149,21 @@ class ComfyHandler(BaseHTTPRequestHandler):
         
         body = json.loads(self.rfile.read(length)) if length > 0 else {}
 
+        if path == "/json-delete":
+            self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
+            jbody = body if body else {}
+            fname = jbody.get("name","")
+            if fname:
+                dest = f"/root/zmax-website/{os.path.basename(fname)}"
+                if os.path.exists(dest):
+                    os.remove(dest)
+                    self.wfile.write(json.dumps({"status":"deleted","file":os.path.basename(dest)},ensure_ascii=False).encode())
+                else:
+                    self.wfile.write(json.dumps({"status":"not found"},ensure_ascii=False).encode())
+            else:
+                self.wfile.write(json.dumps({"status":"no name"},ensure_ascii=False).encode())
+            return
+
         if path == "/json-save":
             self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
             jbody = body if body else {}
