@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-07-18T10:39:49.155Z",
+  "filename": "2026-07-18_SysXX_Z700.json",
+  "system": "SysXX",
+  "machine": "Z700",
+  "canvas": {"px": 0, "py": 0, "zoom": 1},
+
+  "toolbar": {
+    "buttons": [
+      {"id": "connect", "label": "🔗 连接", "action": "health_check_all", "style": "background:#00d4aa;color:#000"},
+      {"id": "execute", "label": "▶ 执行", "action": "run_flow", "style": "background:#ff4444;color:#fff"},
+      {"id": "stop",    "label": "⏹ 停止", "action": "stop_all",    "style": "background:#666;color:#fff"}
+    ]
+  },
+
+  "execution": {
+    "orin_endpoint": "http://192.168.23.10:8765",
+    "mac_endpoint": "http://192.168.23.1:8765",
+    "poll_ms": 1000
+  },
+
+  "nodes": [
+    {"id": "n1784371153971a55", "type": "hardware", "name": "Orin Nano", "x": 67,  "y": 64,
+     "health": {"endpoint": "http://192.168.23.10:8765/health"}},
+    {"id": "n17843711561110hw", "type": "hardware", "name": "MAC", "x": 285, "y": 114,
+     "health": {"endpoint": "http://192.168.23.1:8765/health"}},
+    {"id": "n17843711589528z4", "type": "hardware", "name": "4090 训练", "x": 523, "y": 86,
+     "health": {"endpoint": "http://106.75.239.80:50053/health"}}
+  ],
+  "links": [
+    {"f": "n1784371153971a55", "t": "n17843711561110hw"},
+    {"f": "n17843711561110hw", "t": "n17843711589528z4"}
+  ],
+
+  "styles": {
+    "online":    "border:3px solid #00ff00; box-shadow: 0 0 8px #00ff00;",
+    "offline":   "border:1px solid #444;",
+    "running":   "border:3px solid #00ff00; animation: blink 0.5s infinite;",
+    "connected": "border:3px solid #00ff00;"
+  }
+}

@@ -1,0 +1,51 @@
+robot:
+  name: Z700
+  type: dual_arm_wheeled
+hardware:
+  left_arm:
+    controller: franka_panda
+    joints: [j1,j2,j3,j4,j5,j6]
+    action_dim: 7
+  right_arm:
+    controller: franka_panda
+    joints: [j1,j2,j3,j4,j5,j6]
+    action_dim: 7
+  camera:
+    type: realsense_d435
+    width: 640
+    height: 480
+    fps: 30
+  force_sensor:
+    type: ati_netft
+    topic: /force_torque
+    frequency: 1000
+models:
+  sys0_act:
+    path: lerobot/act_aloha_sim_transfer_cube_human
+    type: ACT
+    device: cuda:0
+    chunk_size: 100
+  sys1_vtla:
+    path: 106.75.239.80:50052
+    type: remote_http
+    endpoint: /predict
+  sys11_smolvla:
+    path: lerobot/smolvla_base
+    type: SmolVLA
+    device: cuda:0
+  sys12_lew:
+    path: zmax_sys12
+    type: SmolVLA_LEW
+    device: cuda:0
+    enable_lew: false
+scheduler:
+  type: infer_score
+  default_engine: sys0_act
+  scoring:
+    urgency: 0.4
+    device_affinity: 0.3
+    fairness: 0.15
+    resource: 0.15
+dds:
+  enabled: true
+  nodes: 21
