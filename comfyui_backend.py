@@ -54,13 +54,19 @@ class ComfyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
 
         elif path.startswith("/json-load"):
-            fname = self.path.split("file=")[-1].split("&")[0] if "file=" in self.path else ""
-            dest = os.path.join("/root/zmax-website", fname)
-            # L(f"json-load: {self.path} -> {dest} exists={os.path.exists(dest)}")
-            if os.path.exists(dest):
-                with open(dest,"rb") as fh: self.wfile.write(fh.read())
-            else:
-                self.wfile.write(b'{"error":"not found"}')
+            try:
+                fname = self.path.split("file=")[-1].split("&")[0] if "file=" in self.path else ""
+                dest = os.path.join("/root/zmax-website", os.path.basename(fname))
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                self._cors()
+                self.end_headers()
+                if os.path.exists(dest):
+                    with open(dest,"rb") as fh: self.wfile.write(fh.read())
+                else:
+                    self.wfile.write(json.dumps({"error":"not found","dest":dest}).encode())
+            except Exception as ex:
+                self.wfile.write(json.dumps({"error":str(ex)}).encode())
             return
 
         elif path == "/json-list":
