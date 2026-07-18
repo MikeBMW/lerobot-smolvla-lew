@@ -196,19 +196,13 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/mac/heartbeat":
-
             WS_STATUS["mac"]["connected"] = 1
             WS_STATUS["mac"]["last_seen"] = time.time()
-            if body and isinstance(body, dict):
-                orin = body.get("orin",{})
-                if orin:
-                    WS_STATUS["orin"]["online"] = orin.get("online", False)
-                    WS_STATUS["orin"]["timestamp"] = orin.get("timestamp", "")
-            resp = {"status":"ok","mac":WS_STATUS["mac"],"orin":WS_STATUS["orin"]}
-            if PENDING_COMMAND:
-                resp["command"] = dict(PENDING_COMMAND)
-                import comfyui_backend as cb; cb.PENDING_COMMAND = [None]
-            self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
+            if body and isinstance(body, dict) and body.get("orin"):
+                WS_STATUS["orin"]["online"] = body["orin"].get("online", False)
+            cmd = PENDING_COMMAND[0]
+            PENDING_COMMAND[0] = None
+            self.wfile.write(json.dumps({"st":"ok","mac":WS_STATUS["mac"]["connected"],"orin":WS_STATUS["orin"]["online"],"cmd":cmd}).encode())
             return
 
         if path == "/auto-train":
