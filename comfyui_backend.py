@@ -129,6 +129,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"comfyui": "Z-MAX Backend v1.0", "endpoints": ["/status","/tasks","/jobs","/logs","POST /task","POST /train"]}).encode())
 
     def do_POST(self):
+        import os
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
         # File upload handler
