@@ -115,6 +115,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             import cgi, os, tempfile
             content_type = self.headers.get("Content-Type","")
             if "multipart/form-data" in content_type:
+                    # Accept .npz and .mcap files
                 form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD":"POST","CONTENT_TYPE":content_type})
                 file_item = form["file"]
                 fname = file_item.filename
