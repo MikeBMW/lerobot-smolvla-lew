@@ -179,6 +179,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             else:
                 self.wfile.write(json.dumps({"status":"no name"},ensure_ascii=False).encode())
             return
+            return
 
         if path == "/api/mac/heartbeat":
             self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
