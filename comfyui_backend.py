@@ -127,14 +127,11 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         else:
             self.wfile.write(json.dumps({"comfyui": "Z-MAX Backend v1.0", "endpoints": ["/status","/tasks","/jobs","/logs","POST /task","POST /train"]}).encode())
-
-    def do_POST(self):
-        import os
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
         # File upload handler
         if path == "/upload":
-            import cgi, os, tempfile
+            import cgi, tempfile
             content_type = self.headers.get("Content-Type","")
             if "multipart/form-data" in content_type:
                     # Accept .npz and .mcap files
