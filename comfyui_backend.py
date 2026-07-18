@@ -59,8 +59,8 @@ class ComfyHandler(BaseHTTPRequestHandler):
             if fname:
                 dest = os.path.join("/root/zmax-website", os.path.basename(fname.lstrip("/")))
                 if os.path.exists(dest):
-                    with open(dest) as fh: content = fh.read()
-                    self.wfile.write(content.encode())
+                    with open(dest,"rb") as fh: content = fh.read()
+                    self.wfile.write(content)
                 else:
                     self.wfile.write(json.dumps({"error":"not found"}).encode())
             return
