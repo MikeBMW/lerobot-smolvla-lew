@@ -51,13 +51,6 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets":
             path = "/datasets"
-        elif path == "/json-save":
-            self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
-            jbody = json.loads(body) if body else {}
-            fname = jbody.get("name","dds_cycle.json")
-            data = jbody.get("data",{})
-            dest = f"/root/zmax-website/{fname}"
-            with open(dest,"w") as f: json.dump(data,f,indent=2,ensure_ascii=False)
             self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
 
         elif path == "/json-list":
@@ -157,6 +150,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length)) if length > 0 else {}
 
         if path == "/json-save":
+            self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
             jbody = body if body else {}
             fname = jbody.get("name","dds_cycle.json")
             data = jbody.get("data",{})
