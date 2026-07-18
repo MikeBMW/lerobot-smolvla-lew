@@ -10,6 +10,24 @@ MAC_PORT = 8766
 
 class MacHealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # 转发录制请求到 Orin
+        if "/record/start" in self.path:
+            try:
+                dur = 30
+                if "duration" in self.path:
+                    dur = int(self.path.split("duration=")[1].split("&")[0])
+                r = requests.post(f"{ORIN}/record/start?duration={dur}", timeout=50)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(r.content)
+                return
+            except Exception as e:
+                self.send_response(502)
+                self.end_headers()
+                self.wfile.write(str(e).encode())
+                return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
