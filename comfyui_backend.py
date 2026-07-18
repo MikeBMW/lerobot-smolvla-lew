@@ -51,6 +51,14 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets":
             path = "/datasets"
+        elif path == "/json-save":
+            jbody = json.loads(body) if body else {}
+            fname = jbody.get("name","dds_cycle.json")
+            data = jbody.get("data",{})
+            dest = f"/root/zmax-website/{fname}"
+            with open(dest,"w") as f: json.dump(data,f,indent=2,ensure_ascii=False)
+            self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
+
         elif path == "/json-list":
             import glob, json as j
             files = glob.glob("/root/zmax-website/*.json")
