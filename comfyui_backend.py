@@ -12,6 +12,8 @@ from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
 WS_STATUS = {"orin":{"online":False},"mac":{"connected":0}}
+PENDING_COMMAND = None
+AUTO_TRAIN = False
 TRAIN_JOBS = {}
 LOG_BUFFER = []
 
@@ -52,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND, "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
@@ -161,6 +163,10 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 except:
                     resp = {"status":"ok","file":fname,"size":os.path.getsize(dest),"note":"not .npz or invalid"}
                 self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
+                # Auto-trigger training if enabled
+                if AUTO_TRAIN and ".npz" in fname:
+                    print(f"[AUTO] Training triggered by upload: {fname}")
+                    threading.Thread(target=auto_train, args=(dest,), daemon=True).start()
                 return
         
         body = json.loads(self.rfile.read(length)) if length > 0 else {}
@@ -181,6 +187,13 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
             return
 
+        if path == "/api/comfy/command":
+            PENDING_COMMAND = body.get("command") if body else None
+            if PENDING_COMMAND:
+                PENDING_COMMAND["timestamp"] = time.time()
+            self.wfile.write(json.dumps({"status":"ok","command":PENDING_COMMAND},ensure_ascii=False).encode())
+            return
+
         if path == "/api/mac/heartbeat":
             self.send_response(200); self.send_header("Content-Type","application/json"); self._cors(); self.end_headers()
             WS_STATUS["mac"]["connected"] = 1
@@ -190,7 +203,16 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 if orin:
                     WS_STATUS["orin"]["online"] = orin.get("online", False)
                     WS_STATUS["orin"]["timestamp"] = orin.get("timestamp", "")
-            self.wfile.write(json.dumps({"status":"ok","mac":WS_STATUS["mac"],"orin":WS_STATUS["orin"]},ensure_ascii=False).encode())
+            resp = {"status":"ok","mac":WS_STATUS["mac"],"orin":WS_STATUS["orin"]}
+            if PENDING_COMMAND:
+                resp["command"] = PENDING_COMMAND
+                PENDING_COMMAND = None
+            self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
+            return
+
+        if path == "/auto-train":
+            AUTO_TRAIN = body.get("enabled", not AUTO_TRAIN) if isinstance(body, dict) else not AUTO_TRAIN
+            self.wfile.write(json.dumps({"status":"ok","auto_train":AUTO_TRAIN},ensure_ascii=False).encode())
             return
 
         if path == "/json-save":
@@ -489,6 +511,17 @@ def run_ws():
         await websockets.serve(ws_handler, "0.0.0.0", 50056)
         await asyncio.Future()  # run forever
     asyncio.run(main())
+
+def auto_train(npz_path):
+    import subprocess
+    print(f"[AUTO TRAIN] Starting with {npz_path}")
+    result = subprocess.run(
+        ["/root/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12", 
+         "train_h_jepa.py"],
+        cwd="/root/lerobot-smolvla-lew",
+        capture_output=True, text=True, timeout=600
+    )
+    print(f"[AUTO TRAIN] Done: {result.stdout[-200:] if result.stdout else result.stderr[:200]}")
 
 if __name__ == "__main__":
     socketserver.TCPServer.allow_reuse_address = True
