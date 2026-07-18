@@ -53,6 +53,17 @@ class ComfyHandler(BaseHTTPRequestHandler):
             path = "/datasets"
             self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
 
+        elif path == "/json-load":
+            fname = query.get("file","")
+            if fname:
+                dest = os.path.join("/root/zmax-website",os.path.basename(fname))
+                if os.path.exists(dest):
+                    with open(dest) as fh: content = fh.read()
+                    self.wfile.write(content.encode())
+                else:
+                    self.wfile.write(json.dumps({"error":"not found"}).encode())
+            return
+
         elif path == "/json-list":
             import glob, json as j
             files = glob.glob("/root/zmax-website/*.json")
