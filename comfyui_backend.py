@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Z-MAX ComfyUI Backend · Node连接服务器 · 运行在 4090 :50053"""
-import json, time, os, subprocess, threading, socketserver
+import json, time, os, subprocess, threading, socketserver, asyncio
+try:
+    import websockets
+    HAS_WS = True
+except:
+    HAS_WS = False
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
+WS_STATUS = {"orin":{"online":False},"mac":{"connected":0}}
 TRAIN_JOBS = {}
 LOG_BUFFER = []
 
@@ -452,14 +459,33 @@ class ComfyHandler(BaseHTTPRequestHandler):
         else:
             self.wfile.write(json.dumps({"error":"unknown endpoint"}).encode())
 
+async def ws_handler(websocket):
+    global WS_STATUS
+    WS_STATUS["mac"]["connected"] += 1
+    try:
+        async for msg in websocket:
+            data = json.loads(msg)
+            orin = data.get("orin",{})
+            WS_STATUS["orin"] = {"online":orin.get("online",False),"timestamp":orin.get("timestamp","")}
+            WS_STATUS["mac"]["last_seen"] = time.time()
+    finally:
+        WS_STATUS["mac"]["connected"] = max(0, WS_STATUS["mac"]["connected"]-1)
+
+def run_ws():
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(websockets.serve(ws_handler, "0.0.0.0", 50056))
+    loop.run_forever()
+
 if __name__ == "__main__":
     socketserver.TCPServer.allow_reuse_address = True
     START_TIME = time.time()
     port = 50054
     log(f"🚀 Z-MAX ComfyUI Backend @ 0.0.0.0:{port}")
     server = HTTPServer(("0.0.0.0", port), ComfyHandler)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        log("👋 服务关闭")
-        server.shutdown()
+    if HAS_WS:
+        ws_thread = threading.Thread(target=run_ws, daemon=True)
+        ws_thread.start()
+        print("[WS] WebSocket @ 0.0.0.0:50056")
+    print(f"🚀 Z-MAX ComfyUI Backend @ 0.0.0.0:{port}")
+    server.serve_forever()
