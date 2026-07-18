@@ -52,7 +52,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS),
+                "active_jobs": len(TRAIN_JOBS), "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
