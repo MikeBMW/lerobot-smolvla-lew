@@ -54,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
