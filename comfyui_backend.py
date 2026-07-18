@@ -82,7 +82,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             self.wfile.write(j.dumps(result,ensure_ascii=False).encode())
 
         elif path == "/datasets":
-            import os, glob
+            import glob
             files = glob.glob("/root/datasets/metaworld/tasks/*.npz")
             ds = []
             for f in files:
