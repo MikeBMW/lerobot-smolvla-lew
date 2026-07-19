@@ -206,6 +206,8 @@ class ComfyHandler(BaseHTTPRequestHandler):
                     WS_STATUS["orin"]["recording"] = body["orin"].get("recording", False)
                 if "forwarded_mb" in body:
                     WS_STATUS["mac"]["forwarded_mb"] = body["forwarded_mb"]
+                if body.get("orin") and "forwarded_mb" in body["orin"]:
+                    WS_STATUS["mac"]["forwarded_mb"] = body["orin"]["forwarded_mb"]
             cmd = PENDING_COMMAND[0]
             PENDING_COMMAND[0] = None
             self.wfile.write(json.dumps({"st":"ok","mac":WS_STATUS["mac"]["connected"],"orin":WS_STATUS["orin"]["online"],"cmd":cmd}).encode())
