@@ -21,11 +21,12 @@ if files:
         # Match frames count
         n = min(obs.shape[0], st.shape[0])
         obs, st = obs[:n], st[:n]
-        # Resize with simple avg pooling if too large
-        if obs.shape[2]>128:
-            factor = obs.shape[2]//128
-            obs = obs.reshape(obs.shape[0],3,128,factor,128,factor).mean((3,5))
-        data.append({'obs': torch.tensor(obs, dtype=torch.float32)/255.0,
+        # Resize to 128x128 using numpy interpolation
+        import torch.nn.functional as F
+        obs_t = torch.tensor(obs, dtype=torch.float32)
+        obs = F.interpolate(obs_t, size=(128,128), mode='bilinear', align_corners=False).numpy() / 255.0
+        obs_tensor = True
+        data.append({'obs': obs if 'obs_tensor' in dir() else torch.tensor(obs, dtype=torch.float32)/255.0,
                      'state': torch.tensor(st, dtype=torch.float32),
                      'task': str(d.get('task_name', f.stem))})
     print(f'📦 加载 {len(files)} 个任务')
