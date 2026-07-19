@@ -11,7 +11,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
-WS_STATUS = {"orin":{"online":False},"mac":{"connected":0,"packets":0}}
+WS_STATUS = {"orin":{"online":False},"mac":{"connected":0,"packets":0},"disk_gb":0}
 PENDING_COMMAND = [None]
 AUTO_TRAIN = False
 TRAIN_JOBS = {}
@@ -160,7 +160,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                     import numpy as np
                     d = np.load(dest)
                     frames = d["observations"].shape[0]
-                    resp = {"status":"ok","file":fname,"frames":int(frames),"size":os.path.getsize(dest)}
+                    fsize=os.path.getsize(dest);WS_STATUS["disk_gb"]=round((WS_STATUS.get("disk_gb",0)+fsize/1e9),2);resp={"status":"ok","file":fname,"frames":int(frames),"size":fsize}
                 except:
                     resp = {"status":"ok","file":fname,"size":os.path.getsize(dest),"note":"not .npz or invalid"}
                 self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
