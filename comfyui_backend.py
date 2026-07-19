@@ -58,7 +58,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "uptime": time.time() - START_TIME, "disk_gb": get_disk_gb()
             }, ensure_ascii=False).encode())
 
-        elif path == "/api/comfy/cleanup-old":
+        elif path == "/api/comfy/cleanup-old" or path == "/cleanup-old":
             files = sorted(__import__("glob").glob("/root/datasets/mcab/*"), key=os.path.getmtime)
             keep = 3; deleted = []
             for f in files[:-keep]:
