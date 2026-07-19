@@ -104,3 +104,40 @@ def record_download():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
+
+
+# ─── 磁盘监控 ───
+@app.get("/disk")
+def get_disk():
+    dirs = sorted(glob.glob("/tmp/zmax_*"), key=os.path.getmtime)
+    total_mb = 0
+    oldest = None
+    for d in dirs:
+        s = sum(os.path.getsize(f) for f in glob.glob(f"{d}/*") if os.path.isfile(f))
+        total_mb += s
+        if oldest is None:
+            oldest = {"dir": d, "size_mb": round(s / 1048576, 1)}
+    return {
+        "total_mb": round(total_mb / 1048576, 1),
+        "count": len(dirs),
+        "over_1g": total_mb > 1048576000,
+        "oldest": oldest
+    }
+
+
+# ─── 清理旧数据 ───
+@app.post("/record/cleanup")
+def cleanup(n: int = 10):
+    """保留最新的n个录制，删除旧的"""
+    dirs = sorted(glob.glob("/tmp/zmax_*"), key=os.path.getmtime)
+    if len(dirs) <= n:
+        return {"deleted": 0, "remaining": len(dirs)}
+    deleted = 0
+    freed_mb = 0
+    for d in dirs[:-n]:
+        s = sum(os.path.getsize(f) for f in glob.glob(f"{d}/*") if os.path.isfile(f))
+        freed_mb += s
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+        deleted += 1
+    return {"deleted": deleted, "freed_mb": round(freed_mb / 1048576, 1), "remaining": n}

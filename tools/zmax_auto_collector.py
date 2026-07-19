@@ -35,6 +35,11 @@ def do_cycle(cycle_num):
         pass
 
 log("Z-MAX 自动采集守护启动")
+# 清理旧数据，保留最新3个
+try:
+    r = requests.post("http://192.168.23.10:8765/record/cleanup?n=3")
+    log(f"清理旧数据: {r.json()}")
+except: pass
 cycle = 1
 while True:
     try:
