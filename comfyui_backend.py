@@ -13,7 +13,7 @@ from urllib.parse import urlparse, parse_qs
 TASKS = {}
 WS_STATUS = {"orin":{"online":False,"recording":False},"mac":{"connected":0,"packets":0,"forwarded_mb":0},"disk_gb":0}
 PENDING_COMMAND = [None]
-AUTO_TRAIN = False
+AUTO_TRAIN_LIST = [False]
 TRAIN_JOBS = {}
 LOG_BUFFER = []
 
@@ -54,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "forwarded_mb": WS_STATUS["mac"]["forwarded_mb"], "orin_online": WS_STATUS["orin"]["online"], "orin_recording": WS_STATUS["orin"]["recording"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN_LIST[0], "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "forwarded_mb": WS_STATUS["mac"]["forwarded_mb"], "orin_online": WS_STATUS["orin"]["online"], "orin_recording": WS_STATUS["orin"]["recording"],
                 "uptime": time.time() - START_TIME, "disk_gb": get_disk_gb()
             }, ensure_ascii=False).encode())
 
@@ -192,7 +192,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                     resp = {"status":"ok","file":fname,"size":os.path.getsize(dest),"note":"not .npz or invalid"}
                 self.wfile.write(json.dumps(resp,ensure_ascii=False).encode())
                 # Auto-trigger training if enabled
-                if AUTO_TRAIN and ".npz" in fname:
+                if AUTO_TRAIN_LIST[0] and ".npz" in fname:
                     print(f"[AUTO] Training triggered by upload: {fname}")
                     threading.Thread(target=auto_train, args=(dest,), daemon=True).start()
                 return
@@ -240,8 +240,8 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/auto-train":
-            AUTO_TRAIN = body.get("enabled", not AUTO_TRAIN) if isinstance(body, dict) else not AUTO_TRAIN
-            self.wfile.write(json.dumps({"status":"ok","auto_train":AUTO_TRAIN},ensure_ascii=False).encode())
+            AUTO_TRAIN_LIST[0] = body.get("enabled", not AUTO_TRAIN_LIST[0]) if isinstance(body, dict) else not AUTO_TRAIN_LIST[0]
+            self.wfile.write(json.dumps({"status":"ok","auto_train":AUTO_TRAIN_LIST[0]},ensure_ascii=False).encode())
             return
 
         if path == "/json-save":
