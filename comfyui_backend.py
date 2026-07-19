@@ -509,6 +509,13 @@ def run_ws():
         await asyncio.Future()  # run forever
     asyncio.run(main())
 
+def get_disk_gb():
+    try:
+        files = [f for f in glob.glob("/root/datasets/metaworld/tasks/*") if os.path.isfile(f)]
+        return round(sum(os.path.getsize(f) for f in files)/1e9, 3)
+    except:
+        return 0
+
 def cleanup_disk():
     """Keep only latest 5 npz, remove old W&B runs, delete raw MCAP"""
     import glob
