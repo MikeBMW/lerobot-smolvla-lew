@@ -196,6 +196,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/mac/heartbeat":
+            print(f"[HB] body={json.dumps(body)[:200]}", flush=True)
             WS_STATUS["mac"]["connected"] = 1
             WS_STATUS["mac"]["last_seen"] = time.time()
             WS_STATUS["mac"]["packets"] = WS_STATUS["mac"].get("packets",0) + 1
