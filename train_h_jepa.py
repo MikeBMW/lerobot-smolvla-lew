@@ -21,12 +21,10 @@ if files:
         # Match frames count
         n = min(obs.shape[0], st.shape[0])
         obs, st = obs[:n], st[:n]
-        # Resize to 128x128 using numpy interpolation
-        import torch.nn.functional as F
-        obs_t = torch.tensor(obs, dtype=torch.float32)
-        obs = F.interpolate(obs_t, size=(128,128), mode='bilinear', align_corners=False).numpy() / 255.0
-        obs_tensor = True
-        data.append({'obs': obs if 'obs_tensor' in dir() else torch.tensor(obs, dtype=torch.float32)/255.0,
+        # Resize to 128x128
+        obs = torch.tensor(obs, dtype=torch.float32).permute(0,3,1,2)  # NCHW
+        obs = torch.nn.functional.interpolate(obs, size=(128,128), mode='bilinear', align_corners=False)
+        data.append({'obs': obs / 255.0,
                      'state': torch.tensor(st, dtype=torch.float32),
                      'task': str(d.get('task_name', f.stem))})
     print(f'📦 加载 {len(files)} 个任务')
