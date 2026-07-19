@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Z-MAX ComfyUI Backend · Node连接服务器 · 运行在 4090 :50053"""
-import json, time, os, subprocess, threading, socketserver, asyncio
+import json, time, os, subprocess, threading, socketserver, asyncio, glob
 try:
     import websockets
     HAS_WS = True
