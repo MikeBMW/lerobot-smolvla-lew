@@ -11,7 +11,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
-WS_STATUS = {"orin":{"online":False},"mac":{"connected":0}}
+WS_STATUS = {"orin":{"online":False},"mac":{"connected":0,"packets":0}}
 PENDING_COMMAND = [None]
 AUTO_TRAIN = False
 TRAIN_JOBS = {}
@@ -54,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "orin_online": WS_STATUS["orin"]["online"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "orin_online": WS_STATUS["orin"]["online"],
                 "uptime": time.time() - START_TIME
             }, ensure_ascii=False).encode())
 
@@ -198,6 +198,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
         if path == "/api/mac/heartbeat":
             WS_STATUS["mac"]["connected"] = 1
             WS_STATUS["mac"]["last_seen"] = time.time()
+            WS_STATUS["mac"]["packets"] = WS_STATUS["mac"].get("packets",0) + 1
             if body and isinstance(body, dict) and body.get("orin"):
                 WS_STATUS["orin"]["online"] = body["orin"].get("online", False)
             cmd = PENDING_COMMAND[0]
