@@ -7,7 +7,10 @@ try:
 except:
     HAS_WS = False
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer
+from socketserver import ThreadingMixIn
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
@@ -586,7 +589,7 @@ if __name__ == "__main__":
     START_TIME = time.time()
     port = 50054
     log(f"🚀 Z-MAX ComfyUI Backend @ 0.0.0.0:{port}")
-    server = HTTPServer(("0.0.0.0", port), ComfyHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), ComfyHandler)
     if HAS_WS:
         ws_thread = threading.Thread(target=run_ws, daemon=True)
         ws_thread.start()
