@@ -11,7 +11,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
-WS_STATUS = {"orin":{"online":False},"mac":{"connected":0,"packets":0},"disk_gb":0}
+WS_STATUS = {"orin":{"online":False,"collecting":False},"mac":{"connected":0,"packets":0},"disk_gb":0}
 PENDING_COMMAND = [None]
 AUTO_TRAIN = False
 TRAIN_JOBS = {}
