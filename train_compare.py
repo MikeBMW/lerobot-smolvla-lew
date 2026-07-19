@@ -104,8 +104,8 @@ class Model_C_ZFlowVLA(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = VLAEncoder(256)
-        self.head = DiTActionHead(256, 512, 14, 7)
         self.lew = LeWorldModel(256, 192, 4)
+        self.head = DiTActionHead(512, 256, 14, 7)
         # ZFlow 三层: z1(空间256), z2(物体256), z3(语义128)
         self.z_layer = nn.ModuleList([
             ZFlowLayer(256, 256), ZFlowLayer(256, 256), ZFlowLayer(256, 128)])
