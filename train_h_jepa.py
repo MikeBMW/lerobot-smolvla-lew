@@ -13,20 +13,18 @@ if files:
     data = []
     for f in files:
         d = np.load(f)
-        obs = d['observations']
-        # Fix shape: NHWC -> NCHW, resize to 128x128
-        if len(obs.shape)==4 and obs.shape[-1]==3:
-            obs = np.transpose(obs, (0,3,1,2))  # NHWC -> NCHW
-        st = d['states']
-        # Match frames count
-        n = min(obs.shape[0], st.shape[0])
-        obs, st = obs[:n], st[:n]
-        # Resize to 128x128
-        obs = torch.tensor(obs, dtype=torch.float32).permute(0,3,1,2)  # NCHW
-        obs = torch.nn.functional.interpolate(obs, size=(128,128), mode='bilinear', align_corners=False)
-        data.append({'obs': obs / 255.0,
-                     'state': torch.tensor(st, dtype=torch.float32),
-                     'task': str(d.get('task_name', f.stem))})
+        obs_raw = d['observations']
+        st_raw = d['states']
+        # Standardize: NHWC -> NCHW
+        if len(obs_raw.shape)==4 and obs_raw.shape[-1]==3:
+            obs_raw = np.transpose(obs_raw, (0,3,1,2))
+        n = min(obs_raw.shape[0], st_raw.shape[0])
+        obs_t = torch.tensor(obs_raw[:n], dtype=torch.float32)
+        st_t = torch.tensor(st_raw[:n], dtype=torch.float32)
+        # Resize if needed
+        if obs_t.shape[2]!=128 or obs_t.shape[3]!=128:
+            obs_t = torch.nn.functional.interpolate(obs_t, size=(128,128), mode='bilinear', align_corners=False)
+        data.append({'obs': obs_t/255.0, 'state': st_t, 'task': str(d.get('task_name', f.stem))})
     print(f'📦 加载 {len(files)} 个任务')
 else:
     print('⚠️ 无MetaWorld数据, 使用随机数据验证')
