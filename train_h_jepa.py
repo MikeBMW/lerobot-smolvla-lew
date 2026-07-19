@@ -13,8 +13,20 @@ if files:
     data = []
     for f in files:
         d = np.load(f)
-        data.append({'obs': torch.tensor(d['observations'], dtype=torch.float32),
-                     'state': torch.tensor(d['states'], dtype=torch.float32),
+        obs = d['observations']
+        # Fix shape: NHWC -> NCHW, resize to 128x128
+        if len(obs.shape)==4 and obs.shape[-1]==3:
+            obs = np.transpose(obs, (0,3,1,2))  # NHWC -> NCHW
+        st = d['states']
+        # Match frames count
+        n = min(obs.shape[0], st.shape[0])
+        obs, st = obs[:n], st[:n]
+        # Resize with simple avg pooling if too large
+        if obs.shape[2]>128:
+            factor = obs.shape[2]//128
+            obs = obs.reshape(obs.shape[0],3,128,factor,128,factor).mean((3,5))
+        data.append({'obs': torch.tensor(obs, dtype=torch.float32)/255.0,
+                     'state': torch.tensor(st, dtype=torch.float32),
                      'task': str(d.get('task_name', f.stem))})
     print(f'📦 加载 {len(files)} 个任务')
 else:
