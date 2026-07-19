@@ -20,4 +20,4 @@ class ZFlowConfig:
     # 门控
     gate_init: float = -3.0
     # 数据
-    data_dir: str = "/root/datasets"
+    data_dir: str = "/root/datasets/metaworld/tasks"
