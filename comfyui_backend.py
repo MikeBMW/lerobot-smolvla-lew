@@ -59,6 +59,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             }, ensure_ascii=False).encode())
 
         elif path == "/api/comfy/datasets":
+            self.send_response(200);self.send_header("Content-Type","application/json");self._cors();self.end_headers()
             files = glob.glob("/root/datasets/metaworld/tasks/*")
             result = []
             for f in sorted(files, key=os.path.getmtime, reverse=True):
