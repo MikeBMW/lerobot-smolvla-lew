@@ -68,6 +68,15 @@ class ComfyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
             return
 
+        elif path == "/api/comfy/datasets-list":
+            files = glob.glob("/root/datasets/metaworld/tasks/*")
+            result = []
+            for f in sorted(files, key=os.path.getmtime, reverse=True):
+                if os.path.isfile(f):
+                    result.append({"name": os.path.basename(f), "size_mb": round(os.path.getsize(f)/1e6, 1), "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(f)))})
+            self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
+            return
+
         elif path == "/api/comfy/datasets_old":
             path = "/datasets"
             self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
