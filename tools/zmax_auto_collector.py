@@ -2,8 +2,8 @@
 """Z-MAX 自动化数据采集守护 · MAC端 · 持续循环轮询"""
 import requests, subprocess, time, os, json
 
-ORIN = "tashan@192.168.23.10"
-BACKEND = "http://datadrive.world"
+ORIN, ORIN_PW = "tashan@192.168.23.10", "ts123"
+BACKEND = "http://106.75.239.80:50053"
 MAC_DATA = os.path.expanduser("~/zmax_loop")
 os.makedirs(MAC_DATA, exist_ok=True)
 
@@ -12,7 +12,8 @@ def log(msg):
     print(f"[{t}] {msg}")
 
 def run_ssh(cmd, timeout=60):
-    return subprocess.run(["ssh", "-o", "StrictHostKeyChecking=no", ORIN, cmd], capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(["sshpass","-p",ORIN_PW,"ssh","-o","StrictHostKeyChecking=no",
+        ORIN, cmd], capture_output=True, text=True, timeout=timeout)
 
 def do_cycle(cycle_num):
     log(f"=== 循环 {cycle_num} ===")
@@ -24,7 +25,7 @@ def do_cycle(cycle_num):
     
     # 2. 拉取MCAP
     log("拉取MCAP到MAC...")
-    subprocess.run(["scp", "-o", "StrictHostKeyChecking=no", "-r",
+    subprocess.run(["sshpass","-p",ORIN_PW,"scp","-o","StrictHostKeyChecking=no","-r",
         f"{ORIN}:/tmp/orin_auto_{ts}", MAC_DATA], timeout=15)
     
     # 3. 通知4090
@@ -35,11 +36,6 @@ def do_cycle(cycle_num):
         pass
 
 log("Z-MAX 自动采集守护启动")
-# 清理旧数据，保留最新3个
-try:
-    r = requests.post("http://192.168.23.10:8765/record/cleanup?n=3")
-    log(f"清理旧数据: {r.json()}")
-except: pass
 cycle = 1
 while True:
     try:
