@@ -6506,7 +6506,7 @@ class PluggingSceneModule(SubModuleWidget):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX 多模态动作专家")  # 改名：LeRobot Studio → XSpace Studio
+        self.setWindowTitle(f"XSpace Studio — Z-MAX v2.3-merge-0719 · 41cbaddb")  # 改名：LeRobot Studio → XSpace Studio
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
