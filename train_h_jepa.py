@@ -8,7 +8,7 @@ cfg = ZFlowConfig()
 model = ZFlow_VLA(cfg).cuda()
 
 # MetaWorld 数据加载
-files = list(Path(cfg.data_dir).glob("*.npz"))
+files = [f for f in Path(cfg.data_dir).glob("*_demo.npz")]
 if files:
     data = []
     for f in files:
@@ -24,7 +24,9 @@ if files:
         # Resize if needed
         if obs_t.shape[2]!=128 or obs_t.shape[3]!=128:
             obs_t = torch.nn.functional.interpolate(obs_t, size=(128,128), mode='bilinear', align_corners=False)
-        if st_t.shape[-1] == 6:
+        if st_t.shape[-1] > 7:
+            st_t = st_t[:, :7]  # MetaWorld: use first 7 dims
+        elif st_t.shape[-1] == 6:
             st_t = torch.nn.functional.pad(st_t, (0, 1))
         data.append({'obs': obs_t/255.0, 'state': st_t, 'task': str(d.get('task_name', f.stem))})
     print(f'📦 加载 {len(files)} 个任务')
