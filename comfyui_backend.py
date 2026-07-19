@@ -54,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "forwarded_mb": WS_STATUS["mac"]["forwarded_mb"], "orin_online": WS_STATUS["orin"]["online"], "orin_recording": WS_STATUS["orin"]["collecting"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "forwarded_mb": WS_STATUS["mac"]["forwarded_mb"], "orin_online": WS_STATUS["orin"]["online"], "orin_recording": WS_STATUS["orin"]["recording"],
                 "uptime": time.time() - START_TIME, "disk_gb": get_disk_gb()
             }, ensure_ascii=False).encode())
 
@@ -199,9 +199,12 @@ class ComfyHandler(BaseHTTPRequestHandler):
             WS_STATUS["mac"]["connected"] = 1
             WS_STATUS["mac"]["last_seen"] = time.time()
             WS_STATUS["mac"]["packets"] = WS_STATUS["mac"].get("packets",0) + 1
-            if body and isinstance(body, dict) and body.get("orin"):
-                WS_STATUS["orin"]["online"] = body["orin"].get("online", False)
-            WS_STATUS["orin"]["collecting"] = body["orin"].get("recording", False)
+            if body and isinstance(body, dict):
+                if body.get("orin"):
+                    WS_STATUS["orin"]["online"] = body["orin"].get("online", False)
+                    WS_STATUS["orin"]["recording"] = body["orin"].get("recording", False)
+                if "forwarded_mb" in body:
+                    WS_STATUS["mac"]["forwarded_mb"] = body["forwarded_mb"]
             cmd = PENDING_COMMAND[0]
             PENDING_COMMAND[0] = None
             self.wfile.write(json.dumps({"st":"ok","mac":WS_STATUS["mac"]["connected"],"orin":WS_STATUS["orin"]["online"],"cmd":cmd}).encode())
