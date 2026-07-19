@@ -201,6 +201,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             WS_STATUS["mac"]["packets"] = WS_STATUS["mac"].get("packets",0) + 1
             if body and isinstance(body, dict) and body.get("orin"):
                 WS_STATUS["orin"]["online"] = body["orin"].get("online", False)
+            WS_STATUS["orin"]["collecting"] = body["orin"].get("collecting", False)
             cmd = PENDING_COMMAND[0]
             PENDING_COMMAND[0] = None
             self.wfile.write(json.dumps({"st":"ok","mac":WS_STATUS["mac"]["connected"],"orin":WS_STATUS["orin"]["online"],"cmd":cmd}).encode())
