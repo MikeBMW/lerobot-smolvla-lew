@@ -59,6 +59,15 @@ class ComfyHandler(BaseHTTPRequestHandler):
             }, ensure_ascii=False).encode())
 
         elif path == "/api/comfy/datasets":
+            files = glob.glob("/root/datasets/metaworld/tasks/*")
+            result = []
+            for f in sorted(files, key=os.path.getmtime, reverse=True):
+                if os.path.isfile(f):
+                    result.append({"name": os.path.basename(f), "size_mb": round(os.path.getsize(f)/1e6, 1), "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(f)))})
+            self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
+            return
+
+        elif path == "/api/comfy/datasets_old":
             path = "/datasets"
             self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
 
@@ -196,7 +205,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/mac/heartbeat":
-            WS_STATUS["mac"]["connected"] = 1
+            LOG_BUFFER.append(body);WS_STATUS["mac"]["connected"] = 1
             WS_STATUS["mac"]["last_seen"] = time.time()
             WS_STATUS["mac"]["packets"] = WS_STATUS["mac"].get("packets",0) + 1
             if body and isinstance(body, dict):
