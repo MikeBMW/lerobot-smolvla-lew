@@ -59,7 +59,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             }, ensure_ascii=False).encode())
 
         elif path == "/api/comfy/cleanup-old":
-            files = sorted(__import__("glob").glob("/root/datasets/metaworld/tasks/*"), key=os.path.getmtime)
+            files = sorted(__import__("glob").glob("/root/datasets/mcab/*"), key=os.path.getmtime)
             keep = 3; deleted = []
             for f in files[:-keep]:
                 if os.path.isfile(f):
@@ -70,7 +70,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets":
             self.send_response(200);self.send_header("Content-Type","application/json");self._cors();self.end_headers()
-            files = __import__("glob").glob("/root/datasets/metaworld/tasks/*")
+            files = __import__("glob").glob("/root/datasets/mcab/*")
             result = []
             for f in sorted(files, key=os.path.getmtime, reverse=True):
                 if os.path.isfile(f):
@@ -80,7 +80,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets-list" or path == "/datasets-list":
             try:
-                files = __import__("glob").glob("/root/datasets/metaworld/tasks/*")
+                files = __import__("glob").glob("/root/datasets/mcab/*")
                 result = []
                 for f in sorted(files, key=os.path.getmtime, reverse=True):
                     if os.path.isfile(f):
@@ -112,7 +112,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/datasets":
             import glob
-            files = glob.glob("/root/datasets/metaworld/tasks/*.npz")
+            files = glob.glob("/root/datasets/mcab/*.npz")
             ds = []
             for f in files:
                 try:
@@ -180,7 +180,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD":"POST","CONTENT_TYPE":content_type})
                 file_item = form["file"]
                 fname = file_item.filename
-                dest = f"/root/datasets/metaworld/tasks/{fname}"
+                dest = f"/root/datasets/mcab/{fname}"
                 with open(dest,"wb") as f:
                     f.write(file_item.file.read())
                 try:
@@ -543,7 +543,7 @@ def run_ws():
 
 def get_disk_gb():
     try:
-        files = [f for f in __import__("glob").glob("/root/datasets/metaworld/tasks/*") if os.path.isfile(f)]
+        files = [f for f in __import__("glob").glob("/root/datasets/mcab/*") if os.path.isfile(f)]
         return round(sum(os.path.getsize(f) for f in files)/1e9, 3)
     except:
         return 0
@@ -552,12 +552,12 @@ def cleanup_disk():
     """Keep only latest 5 npz, remove old W&B runs, delete raw MCAP"""
     import glob
     # Keep latest 5 npz
-    npz_files = sorted(glob.glob("/root/datasets/metaworld/tasks/*.npz"), key=os.path.getmtime, reverse=True)
+    npz_files = sorted(glob.glob("/root/datasets/mcab/*.npz"), key=os.path.getmtime, reverse=True)
     for f in npz_files[5:]:
         os.remove(f)
         print(f"[CLEAN] Removed old dataset: {os.path.basename(f)}")
     # Remove db3/mcap files
-    for f in glob.glob("/root/datasets/metaworld/tasks/*.db3") + glob.glob("/root/datasets/metaworld/tasks/*.mcap"):
+    for f in glob.glob("/root/datasets/mcab/*.db3") + glob.glob("/root/datasets/mcab/*.mcap"):
         os.remove(f)
         print(f"[CLEAN] Removed raw MCAP: {os.path.basename(f)}")
     # W&B cleanup older than 7 days
