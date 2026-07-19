@@ -60,7 +60,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets":
             self.send_response(200);self.send_header("Content-Type","application/json");self._cors();self.end_headers()
-            files = glob.glob("/root/datasets/metaworld/tasks/*")
+            files = __import__("glob").glob("/root/datasets/metaworld/tasks/*")
             result = []
             for f in sorted(files, key=os.path.getmtime, reverse=True):
                 if os.path.isfile(f):
@@ -70,20 +70,15 @@ class ComfyHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/comfy/datasets-list" or path == "/datasets-list":
             try:
-            files = glob.glob("/root/datasets/metaworld/tasks/*")
-            result = []
-            for f in sorted(files, key=os.path.getmtime, reverse=True):
-                if os.path.isfile(f):
-                    result.append({"name": os.path.basename(f), "size_mb": round(os.path.getsize(f)/1e6, 1)})
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
-except Exception as e:
-            self.wfile.write(json.dumps({"error":str(e)}, ensure_ascii=False).encode())
+                files = __import__("glob").glob("/root/datasets/metaworld/tasks/*")
+                result = []
+                for f in sorted(files, key=os.path.getmtime, reverse=True):
+                    if os.path.isfile(f):
+                        result.append({"name": os.path.basename(f), "size_mb": round(os.path.getsize(f)/1e6, 1)})
+                self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
+            except Exception as e:
+                self.wfile.write(json.dumps({"error":str(e)}, ensure_ascii=False).encode())
             return
-
-        elif path == "/api/comfy/datasets_old":
-            path = "/datasets"
-            self.wfile.write(json.dumps({"status":"ok","size":os.path.getsize(dest)},ensure_ascii=False).encode())
-
         elif path.startswith("/json-load"):
             fname = self.path.split("file=")[-1].split("&")[0] if "file=" in self.path else ""
             dest = os.path.join("/root/zmax-website", os.path.basename(fname))
@@ -538,7 +533,7 @@ def run_ws():
 
 def get_disk_gb():
     try:
-        files = [f for f in glob.glob("/root/datasets/metaworld/tasks/*") if os.path.isfile(f)]
+        files = [f for f in __import__("glob").glob("/root/datasets/metaworld/tasks/*") if os.path.isfile(f)]
         return round(sum(os.path.getsize(f) for f in files)/1e9, 3)
     except:
         return 0
