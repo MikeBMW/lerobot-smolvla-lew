@@ -11,7 +11,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 TASKS = {}
-WS_STATUS = {"orin":{"online":False,"collecting":False},"mac":{"connected":0,"packets":0},"disk_gb":0}
+WS_STATUS = {"orin":{"online":False,"recording":False},"mac":{"connected":0,"packets":0},"disk_gb":0}
 PENDING_COMMAND = [None]
 AUTO_TRAIN = False
 TRAIN_JOBS = {}
@@ -54,7 +54,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "gpu": gpu,
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
-                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "orin_online": WS_STATUS["orin"]["online"], "orin_collecting": WS_STATUS["orin"]["collecting"],
+                "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "orin_online": WS_STATUS["orin"]["online"], "orin_recording": WS_STATUS["orin"]["collecting"],
                 "uptime": time.time() - START_TIME, "disk_gb": WS_STATUS["disk_gb"]
             }, ensure_ascii=False).encode())
 
@@ -201,7 +201,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
             WS_STATUS["mac"]["packets"] = WS_STATUS["mac"].get("packets",0) + 1
             if body and isinstance(body, dict) and body.get("orin"):
                 WS_STATUS["orin"]["online"] = body["orin"].get("online", False)
-            WS_STATUS["orin"]["collecting"] = body["orin"].get("collecting", False)
+            WS_STATUS["orin"]["collecting"] = body["orin"].get("recording", False)
             cmd = PENDING_COMMAND[0]
             PENDING_COMMAND[0] = None
             self.wfile.write(json.dumps({"st":"ok","mac":WS_STATUS["mac"]["connected"],"orin":WS_STATUS["orin"]["online"],"cmd":cmd}).encode())
