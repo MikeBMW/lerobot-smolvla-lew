@@ -84,7 +84,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 result = []
                 for f in sorted(files, key=os.path.getmtime, reverse=True):
                     if os.path.isfile(f):
-                        result.append({"name": os.path.basename(f), "size_mb": round(os.path.getsize(f)/1e6, 1)})
+                        result.append({"name": os.path.basename(f), "size_mb": round(os.path.getsize(f)/1e6, 1), "modified": time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(f)))})
                 self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
             except Exception as e:
                 self.wfile.write(json.dumps({"error":str(e)}, ensure_ascii=False).encode())
