@@ -2,7 +2,7 @@
 """MAC 心跳 — 每5秒上报Orin状态(含recording)"""
 import requests, time, os, glob
 
-ORIN = "http://192.168.23.10:8765"
+ORIN = "http://192.168.23.66:8765"
 HB = "http://datadrive.world/api/comfy/api/mac/heartbeat"
 
 while True:
@@ -16,7 +16,7 @@ while True:
             except: pass
         forwarded_mb = round(forwarded / 1048576, 1)
         payload = {"mac_online": True, "orin": {"online": True, "recording": recording, "forwarded_mb": forwarded_mb}, "ts": time.time()}
-        requests.post(HB, json=payload, timeout=5)
+        requests.post(HB, json=payload, timeout=10)
     except:
         pass
     time.sleep(5)
