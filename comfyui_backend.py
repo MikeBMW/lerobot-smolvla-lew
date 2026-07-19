@@ -55,7 +55,7 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "vtla_online": vtla_online,
                 "active_tasks": len(TASKS),
                 "active_jobs": len(TRAIN_JOBS), "auto_train": AUTO_TRAIN, "pending_command": PENDING_COMMAND[0], "mac_connected": WS_STATUS["mac"]["connected"], "mac_packets": WS_STATUS["mac"]["packets"], "orin_online": WS_STATUS["orin"]["online"], "orin_recording": WS_STATUS["orin"]["collecting"],
-                "uptime": time.time() - START_TIME, "disk_gb": round(sum(os.path.getsize(f) for f in glob.glob("/root/datasets/metaworld/tasks/*") if os.path.isfile(f))/1e9, 3)
+                "uptime": time.time() - START_TIME, "disk_gb": round(sum(os.path.getsize(f) for f in glob.glob("/root/datasets/metaworld/tasks/*") if os.path.isfile(f))/1e6, 1)
             }, ensure_ascii=False).encode())
 
         elif path == "/api/comfy/datasets":
