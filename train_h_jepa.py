@@ -24,9 +24,9 @@ if files:
         # Resize if needed
         if obs_t.shape[2]!=128 or obs_t.shape[3]!=128:
             obs_t = torch.nn.functional.interpolate(obs_t, size=(128,128), mode='bilinear', align_corners=False)
-        data.append({'obs': obs_t/255.0, 'state': st_t, 'task': str(d.get('task_name', f.stem))})
         if st_t.shape[-1] == 6:
             st_t = torch.nn.functional.pad(st_t, (0, 1))
+        data.append({'obs': obs_t/255.0, 'state': st_t, 'task': str(d.get('task_name', f.stem))})
     print(f'📦 加载 {len(files)} 个任务')
 else:
     print('⚠️ 无MetaWorld数据, 使用随机数据验证')
