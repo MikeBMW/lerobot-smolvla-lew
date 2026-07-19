@@ -58,6 +58,16 @@ class ComfyHandler(BaseHTTPRequestHandler):
                 "uptime": time.time() - START_TIME, "disk_gb": get_disk_gb()
             }, ensure_ascii=False).encode())
 
+        elif path == "/api/comfy/cleanup-old":
+            files = sorted(__import__("glob").glob("/root/datasets/metaworld/tasks/*"), key=os.path.getmtime)
+            keep = 3; deleted = []
+            for f in files[:-keep]:
+                if os.path.isfile(f):
+                    os.remove(f)
+                    deleted.append(os.path.basename(f))
+            self.wfile.write(json.dumps({"status":"ok","deleted":len(deleted),"kept":min(keep,len(files))}, ensure_ascii=False).encode())
+            return
+
         elif path == "/api/comfy/datasets":
             self.send_response(200);self.send_header("Content-Type","application/json");self._cors();self.end_headers()
             files = __import__("glob").glob("/root/datasets/metaworld/tasks/*")
