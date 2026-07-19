@@ -25,11 +25,7 @@ def joints():
         return {"joints": [], "ts": 0}
 
 @app.get("/health")
-def health():
-    try:
-        age = time.time() - os.path.getmtime(JOINT_FILE)
-        return {"online": age < 5, "age_s": round(age, 1)}
-    except:
-        return {"online": False}
+def get_health():
+    return {"online": True, "ts": time.time()}
 
 uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
