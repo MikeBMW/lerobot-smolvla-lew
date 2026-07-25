@@ -431,6 +431,20 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
     def get_optim_params(self):
         return self.parameters()
 
+    def _save_pretrained(self, save_directory, state_dict=None):
+        """保存双格式 (.bin for GRU safety, .safetensors for loading)"""
+        import os
+        os.makedirs(save_directory, exist_ok=True)
+        self.config.save_pretrained(save_directory)
+        if state_dict is None:
+            state_dict = self.state_dict()
+        # Clone避免GRU共享权重问题
+        sd = {k: v.clone() for k, v in state_dict.items()}
+        torch.save(sd, os.path.join(save_directory, "pytorch_model.bin"))
+        # 同时保存safetensors (clone后GRU不再共享)
+        from safetensors.torch import save_file
+        save_file(sd, os.path.join(save_directory, "model.safetensors"))
+
     def _prepare_images(self, batch: dict) -> list:
         """从LeRobot batch提取图片tensor"""
         img_keys = [k for k in self.config.image_features if k in batch]
