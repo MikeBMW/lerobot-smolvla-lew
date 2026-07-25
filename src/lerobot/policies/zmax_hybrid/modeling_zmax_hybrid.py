@@ -425,16 +425,66 @@ class ZmaxHybridModel(nn.Module):
         instructions: list[str],
         state: Tensor,
     ) -> Tensor:
-        """推理模式: WM剥离, gate归零"""
-        out = self.forward(
-            images=images,
-            instructions=instructions,
-            state=state,
-            actions=None,
-            videos=None,
-            training=False,
-        )
-        return out["fused_features"]
+        """推理: 支持WM自回归 (enable_wm_inference=True时)
+        
+        WM自回归流程:
+          用预测动作逐步喂GRU → z随步数更新 → 每步gate全开
+        """
+        B = state.shape[0]
+        hdim = self.config.hybrid_hidden_size
+        
+        use_wm = (self.config.enable_wm_inference and self.world_model is not None)
+        
+        # ━━ 编码图像 ━━
+        vlm_features = self._encode_vlm(images, instructions)
+        vlm_global = vlm_features.mean(dim=1)
+        x_base = self.vlm_to_hybrid(vlm_global).unsqueeze(1)
+        state_emb = self.state_proj(state).unsqueeze(1)
+        x = torch.cat([x_base, state_emb], dim=1)  # [B, 2, hdim]
+        
+        if not use_wm:
+            for layer in self.hybrid_layers:
+                x = layer(x, None, gate=0.0)
+            return x.mean(dim=1)
+        
+        # ━━ WM自回归 ━━
+        chunk = self.config.chunk_size
+        action_dim = self.config.action_dim
+        
+        # 初始用零动作启动GRU
+        z_list = None
+        pred_actions = torch.zeros(B, 1, action_dim, device=state.device)
+        
+        for step in range(min(chunk, 4)):  # 最多4步自回归(避免太慢)
+            # 构建obs_seq: state + 累积预测动作
+            if step > 0:
+                obs_parts = [state]
+                for t in range(min(step, pred_actions.shape[1])):
+                    obs_parts.append(pred_actions[:, t, :])
+                obs_seq = torch.stack([
+                    torch.cat(obs_parts[:t+2], dim=-1)
+                    for t in range(step)
+                ], dim=1) if step > 0 else None
+                
+                if obs_seq is not None and obs_seq.shape[1] >= 1:
+                    ctx = x.mean(dim=1)
+                    z_list, _ = self.world_model(obs_seq, ctx)
+            
+            # VLA处理 (gate保留)
+            x_step = x.clone()
+            for i, layer in enumerate(self.hybrid_layers):
+                z = z_list[i] if z_list is not None else None
+                gate = self.config.hybrid_gates[i]
+                x_step = layer(x_step, z, gate)
+            
+            # 简单预测: 从特征中提取动作方向
+            step_action = x_step[:, 0, :action_dim]  # [B, act_dim]
+            pred_actions = torch.cat([pred_actions, step_action.unsqueeze(1)], dim=1)
+        
+        # 最终融合 (WM模式也做一次无WM的最终融合)
+        for layer in self.hybrid_layers:
+            x = layer(x, None, gate=0.0)
+        return x.mean(dim=1)
 
 
 # ═══════════════════════════════════════════════════════════════
