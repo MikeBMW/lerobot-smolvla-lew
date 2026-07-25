@@ -46,6 +46,9 @@ class ZmaxHybridConfig(PreTrainedConfig):
     num_vision_tokens: int = 64
     vlm_hidden_size: int = 960
 
+    # 预训练VLA路径 (加速收敛)
+    pretrained_vla_path: str | None = None
+
     # ━━━ 混合层配置 ━━━
     num_hybrid_layers: int = 3                 # VLA混合层数
     hybrid_hidden_size: int = 512               # 混合层隐藏维度
@@ -59,6 +62,7 @@ class ZmaxHybridConfig(PreTrainedConfig):
 
     # ━━━ 世界模型 (LeWM) ━━━
     enable_world_model: bool = True             # 训练时启用
+    enable_wm_inference: bool = False           # 推理时是否保留世界模型 (自回归, 更慢但可能更准)
     wm_hidden_dim: int = 256                    # GRU隐藏维度
     wm_num_layers: int = 2                      # GRU层数
     wm_latent_dims: tuple[int, ...] = (256, 256, 128)  # z₁空间/z₂物体/z₃语义维度

@@ -141,8 +141,13 @@ class VLAHybridLayer(nn.Module):
         )
         self.cross_ln = nn.LayerNorm(hidden_dim)
 
-        # Z投影 (WM潜空间→Cross-Attn的K/V维度)
-        self.z_proj = nn.Linear(z_dim, hidden_dim)
+        # Z投影 (WM潜空间→Cross-Attn的K/V，拆成多token)
+        self.num_z_tokens = 4  # 将z拆成4个token，每个携带不同子空间信息
+        z_chunk_dim = z_dim // self.num_z_tokens
+        self.z_token_projs = nn.ModuleList([
+            nn.Linear(z_chunk_dim, hidden_dim)
+            for _ in range(self.num_z_tokens)
+        ])
 
         # FFN
         ffn_dim = int(hidden_dim * ffn_multiplier)
@@ -174,12 +179,17 @@ class VLAHybridLayer(nn.Module):
         x, _ = self.self_attn(x, x, x)
         x = x + residual
 
-        # Cross-Attention (从WM注入)
+        # Cross-Attention (从WM注入 — 多token Z)
         if z is not None and gate > 0:
             residual = x
             x_norm = self.cross_ln(x)
-            z_proj = self.z_proj(z).unsqueeze(1)  # [B, 1, hidden]
-            x_cross, _ = self.cross_attn(x_norm, z_proj, z_proj)
+            # 将z拆成多个token，每个关注不同的潜空间子区域
+            z_chunks = z.chunk(self.num_z_tokens, dim=-1)  # [B, zdim/4] × 4
+            z_tokens = torch.stack([
+                proj(chunk) for proj, chunk in zip(self.z_token_projs, z_chunks)
+            ], dim=1)  # [B, num_z_tokens, hidden]
+            x_cross, _ = self.cross_attn(x_norm, z_tokens, z_tokens)
+            # x_norm [B, 2, 512] → 关注 z_tokens [B, 4, 512]
             x = residual + gate * x_cross
 
         # FFN
@@ -202,12 +212,12 @@ class ZmaxHybridModel(nn.Module):
                                     LeWM (GRU) → z₁,z₂,z₃
     """
 
-    def __init__(self, config: ZmaxHybridConfig) -> None:
+    def __init__(self, config: ZmaxHybridConfig, pretrained_vla: str | None = None) -> None:
         super().__init__()
         require_package("transformers", extra="zmax_hybrid")
         self.config = config
 
-        # ━━━ SmolVLM 视觉编码器 (仅用SigLIP, 不用完整VLM) ━━━
+        # ━━━ SmolVLM 视觉编码器 + 可选预训练权重 ━━━
         from transformers import AutoModel, AutoProcessor
         
         logger.info(f"Loading SmolVLM vision backbone...")
@@ -218,6 +228,19 @@ class ZmaxHybridModel(nn.Module):
             trust_remote_code=True,
         )
         self.processor = AutoProcessor.from_pretrained(config.smolvlm_name)
+        
+        # 从预训练SmolVLA加载VLM权重
+        if pretrained_vla is not None:
+            logger.info(f"Loading pretrained VLA weights from {pretrained_vla}...")
+            from lerobot.policies.smolvla import SmolVLAPolicy
+            pretrained = SmolVLAPolicy.from_pretrained(pretrained_vla)
+            vla_vlm = pretrained.model.vlm_with_expert.vlm
+            # 复制VLM权重到Hybrid
+            vla_state = vla_vlm.state_dict()
+            self.vlm.load_state_dict(vla_state, strict=False)
+            del pretrained, vla_vlm
+            torch.cuda.empty_cache()
+            logger.info("Pretrained VLM weights loaded")
         
         # 使用vision_model获取hidden_size，如果不可用则回退
         try:
@@ -348,12 +371,18 @@ class ZmaxHybridModel(nn.Module):
         z_list = None
         wm_energy_loss = torch.tensor(0.0, device=device)
 
-        if self.world_model is not None and training and videos is not None and actions is not None:
+        if self.world_model is not None and training and actions is not None:
             # 构建观测序列: [state, action] 拼接
-            T_video = videos.shape[2] if videos.ndim == 5 else 2
+            if videos is not None and videos.ndim == 5:
+                T_video = videos.shape[2]
+            else:
+                # 无视频时用action chunk构造伪序列 (state重复, action不同)
+                T_video = min(actions.shape[1], self.config.num_video_frames)
+            
             obs_seq_list = []
-            for t in range(min(T_video, self.config.num_video_frames)):
-                obs_t = torch.cat([state, actions[:, min(t, actions.shape[1]-1), :]], dim=-1)
+            for t in range(T_video):
+                act_t = actions[:, min(t, actions.shape[1]-1), :]
+                obs_t = torch.cat([state, act_t], dim=-1)
                 obs_seq_list.append(obs_t)
             obs_seq = torch.stack(obs_seq_list, dim=1)  # [B, T, obs_dim]
 
@@ -361,9 +390,11 @@ class ZmaxHybridModel(nn.Module):
             z_list, wm_energy_loss = self.world_model(obs_seq, ctx)
 
         # ━━ Step 3: 三层VLA混合层 ━━
+        # 推理时: enable_wm_inference=True → gate保留; 否则→gate归零
+        use_wm = training or (self.config.enable_wm_inference and self.world_model is not None)
         for i, layer in enumerate(self.hybrid_layers):
             z = z_list[i] if z_list is not None else None
-            gate = self.config.hybrid_gates[i] if training else 0.0
+            gate = self.config.hybrid_gates[i] if use_wm else 0.0
             x = layer(x, z, gate)
 
         # ━━ Step 4: 特征聚合 ━━
@@ -417,11 +448,11 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
     config_class = ZmaxHybridConfig
     name = "zmax_hybrid"
 
-    def __init__(self, config: ZmaxHybridConfig, dataset_stats=None, **kwargs):
+    def __init__(self, config: ZmaxHybridConfig, dataset_stats=None, pretrained_vla=None, **kwargs):
         super().__init__(config)
         config.validate_features()
         self.config = config
-        self.model = ZmaxHybridModel(config)
+        self.model = ZmaxHybridModel(config, pretrained_vla=config.pretrained_vla_path if hasattr(config, 'pretrained_vla_path') else pretrained_vla)
         self._queues = {ACTION: deque(maxlen=config.n_action_steps)}
         self.reset()
 
