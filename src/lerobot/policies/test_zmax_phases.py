@@ -88,23 +88,23 @@ def test_phase3():
     }
     out = policy(batch)
     print(f"  ✓ 前向传播成功  |  Loss: {out['loss'].item():.4f}  |  KL: {out['kl_loss'].item():.4f}")
-    print(f"  ✓ LeWorldModel: {config.lew_hidden_dim}d x {config.lew_num_layers}层  |  Target Pose: {out['target_pose'].shape}")
+    print(f"  ✓ LeWorldModel: {config.lew_hidden_dim}d x {config.lew_num_layers}层  |  LatentZ: {out['latent_z'].shape}")
     print(f"  ✓ 空间: {config.spatial_resolution}x{config.spatial_resolution}  |  深度={config.enable_depth}  |  引导强度={config.guidance_strength}")
     print()
     return True
 
 
 def test_phase4():
-    """Phase 4: System 2 全系统"""
+    """Phase 4: zmax_sys2 — System 2 全系统"""
     print("=" * 60)
-    print("Phase 4: zmax_system2 — System 2 全系统 (Z·M·A·X)")
+    print("Phase 4: zmax_sys2 — System 2 全系统")
     print("=" * 60)
 
-    from zmax_system2.configuration_zmax_system2 import ZmaxSystem2Config
-    from zmax_system2.modeling_zmax_system2 import ZmaxSystem2Policy
+    from zmax_sys2.configuration_zmax_sys2 import ZmaxSys2Config
+    from zmax_sys2.modeling_zmax_sys2 import ZmaxSys2Policy
 
-    config = ZmaxSystem2Config()
-    policy = ZmaxSystem2Policy(config)
+    config = ZmaxSys2Config()
+    policy = ZmaxSys2Policy(config)
     num_params = sum(p.numel() for p in policy.parameters())
     print(f"  ✓ 模型创建成功  |  参数量: {num_params:,}")
 

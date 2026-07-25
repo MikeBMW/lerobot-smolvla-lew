@@ -1,6 +1,7 @@
 """Z-MAX Phase 4 配置: System 2 全系统大脑"""
 from __future__ import annotations
 from dataclasses import dataclass, field
+from enum import Enum
 
 try:
     from lerobot.configs.policies import PreTrainedConfig
