@@ -530,3 +530,8 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
 
     def _check_get_actions_condition(self) -> bool:
         return len(self._queues[ACTION]) == 0
+
+    def state_dict(self, *args, **kwargs):
+        """Override to clone GRU weights (avoid safetensors shared tensor issue)"""
+        sd = super().state_dict(*args, **kwargs)
+        return {k: v.clone() if 'gru' in k else v for k, v in sd.items()}
