@@ -207,18 +207,23 @@ class ZmaxHybridModel(nn.Module):
         require_package("transformers", extra="zmax_hybrid")
         self.config = config
 
-        # ━━━ SmolVLM 编码器 ━━━
-        from transformers import AutoModelForImageTextToText, AutoProcessor
-
-        logger.info(f"Loading SmolVLM backbone: {config.smolvlm_name}")
-        self.vlm = AutoModelForImageTextToText.from_pretrained(
+        # ━━━ SmolVLM 视觉编码器 (仅用SigLIP, 不用完整VLM) ━━━
+        from transformers import AutoModel, AutoProcessor
+        
+        logger.info(f"Loading SmolVLM vision backbone...")
+        self.vlm = AutoModel.from_pretrained(
             config.smolvlm_name,
-            torch_dtype=config.torch_dtype if config.torch_dtype != "float16"
-            else torch.float16,
+            dtype=torch.float16,
             low_cpu_mem_usage=True,
+            trust_remote_code=True,
         )
         self.processor = AutoProcessor.from_pretrained(config.smolvlm_name)
-        self.vlm_hidden_size = self.vlm.config.text_config.hidden_size
+        
+        # 使用vision_model获取hidden_size，如果不可用则回退
+        try:
+            self.vlm_hidden_size = self.vlm.config.vision_config.hidden_size
+        except Exception:
+            self.vlm_hidden_size = 768  # SigLIP default for SmolVLM2
 
         # ━━━ 特征投影 ━━━
         self.vlm_to_hybrid = nn.Linear(self.vlm_hidden_size, config.hybrid_hidden_size)
@@ -261,37 +266,48 @@ class ZmaxHybridModel(nn.Module):
                 p.requires_grad = False
 
     def _encode_vlm(self, images: list, instructions: list[str]) -> Tensor:
-        """SmolVLM编码: 图片+语言 → 融合特征"""
+        """SigLIP视觉编码: 图片tensor → 视觉特征
+        
+        images: list of [C, H, W] tensors or PIL images
+        """
         device = next(self.vlm.parameters()).device
-
-        all_pixel_values = []
-        all_input_ids = []
-
-        for sample_imgs, text in zip(images, instructions):
-            num_imgs = len(sample_imgs) if isinstance(sample_imgs, list) else 1
-            image_tokens = "<image>" * num_imgs
-            full_text = f"{image_tokens}{text}"
-
-            proc = self.processor(
-                images=sample_imgs if isinstance(sample_imgs, list) else [sample_imgs],
-                text=full_text,
-                return_tensors="pt",
-            )
-            all_pixel_values.append(proc["pixel_values"])
-            all_input_ids.append(proc["input_ids"])
-
-        pixel_values = torch.cat(all_pixel_values, dim=0).to(device)
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-
+        
+        # Convert to tensor batch  
+        img_tensors = []
+        for img in images:
+            if isinstance(img, torch.Tensor):
+                if img.ndim == 3:
+                    img = img.unsqueeze(0)      # [1, C, H, W]
+                # 归一化: 假设输入在[0,1]或[-1,1]范围，统一到[0,1]
+                img = img.float()
+                if img.min() < 0:
+                    img = (img + 1) / 2         # [-1,1] → [0,1]
+                img_tensors.append(img.to(device))
+            else:
+                imgs = img if isinstance(img, list) else [img]
+                proc = self.processor(images=imgs, return_tensors="pt")
+                pv = proc["pixel_values"]
+                if pv.ndim == 5:
+                    pv = pv[:, 0]
+                img_tensors.append(pv.to(device).float())
+        
+        # Concatenate all images and scale to [0, 255]
+        pixel_values = torch.cat(img_tensors, dim=0)
+        if pixel_values.max() <= 1.0:
+            pixel_values = pixel_values * 255.0
+        
+        # 匹配VLM dtype (half精度)
+        vlm_dtype = next(self.vlm.vision_model.parameters()).dtype
+        pixel_values = pixel_values.to(dtype=vlm_dtype, device=device)
+        
         with torch.no_grad():
-            vlm_out = self.vlm(
-                pixel_values=pixel_values,
-                input_ids=input_ids,
-                output_hidden_states=True,
-                return_dict=True,
-            )
-
-        return vlm_out.hidden_states[-1]  # [B, seq_len, 960]
+            vis_out = self.vlm.vision_model(pixel_values)
+            features = vis_out.last_hidden_state  # [B, num_patches, 768]
+        
+        # 统一到float32（VLM可能是half）
+        features = features.float()
+        
+        return features
 
     def forward(
         self,
@@ -318,11 +334,11 @@ class ZmaxHybridModel(nn.Module):
         B = state.shape[0]
         hdim = self.config.hybrid_hidden_size
 
-        # ━━ Step 1: SmolVLM 编码 ━━
-        vlm_features = self._encode_vlm(images, instructions)  # [B, seq, 960]
+        # ━━ Step 1: SigLIP 编码 ━━
+        vlm_features = self._encode_vlm(images, instructions)  # [B, patches, 768]
 
         # 取平均作为全局特征 + 状态投影
-        vlm_global = vlm_features.mean(dim=1)  # [B, 960]
+        vlm_global = vlm_features.mean(dim=1)  # [B, 768]
         x = self.vlm_to_hybrid(vlm_global).unsqueeze(1)  # [B, 1, hdim]
 
         state_emb = self.state_proj(state).unsqueeze(1)   # [B, 1, hdim]
@@ -416,12 +432,10 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
         return self.parameters()
 
     def _prepare_images(self, batch: dict) -> list:
-        """从LeRobot batch提取图片"""
-        from PIL import Image
-
+        """从LeRobot batch提取图片tensor"""
         img_keys = [k for k in self.config.image_features if k in batch]
         if not img_keys:
-            return [Image.new("RGB", (64, 64))]
+            return [torch.randn(3, 64, 64)]
 
         images = []
         for k in img_keys:
@@ -430,8 +444,7 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
                 img_tensor = img_tensor[:, -1]
             if img_tensor.ndim == 4:
                 img_tensor = img_tensor[0]
-            img_np = (img_tensor.permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
-            images.append(Image.fromarray(img_np))
+            images.append(img_tensor.cpu())  # [C, H, W] tensor on CPU
         return images
 
     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict]:
@@ -461,7 +474,7 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
         action_is_pad = batch.get("action_is_pad")
 
         out = self.model.forward(
-            images=[images],
+            images=images,
             instructions=instructions,
             state=state,
             actions=actions,
