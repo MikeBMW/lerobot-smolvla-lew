@@ -1,13 +1,12 @@
-output_dir: outputs/zmax_hybrid_final
-job_name: zmax_hybrid_40k
+output_dir: outputs/zmax_hybrid_mw96
+job_name: test
 
 policy:
   type: zmax_hybrid
   push_to_hub: false
-  pretrained_vla_path: lerobot/smolvla_base
 
 dataset:
-  repo_id: lerobot/pusht
+  repo_id: lerobot/metaworld_mt50
 
 batch_size: 1
-steps: 40000
+steps: 1
