@@ -371,6 +371,8 @@ class ZmaxHybridModel(nn.Module):
         vlm_global = vlm_features.mean(dim=1)  # [B, 768]
         x = self.vlm_to_hybrid(vlm_global).unsqueeze(1)  # [B, 1, hdim]
 
+        # 确保state是2D: [B, state_dim]
+        state = state.reshape(B, -1)  # [B, state_dim] (修复: 处理多帧/多维度情况)
         state_emb = self.state_proj(state).unsqueeze(1)   # [B, 1, hdim]
         x = torch.cat([x, state_emb], dim=1)               # [B, 2, hdim]
 
@@ -534,19 +536,18 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
         save_file(sd, os.path.join(save_directory, "model.safetensors"))
 
     def _prepare_images(self, batch: dict) -> list:
-        """从LeRobot batch提取图片tensor"""
+        """从LeRobot batch提取图片tensor → list of [C, H, W] per batch element"""
         img_keys = [k for k in self.config.image_features if k in batch]
         if not img_keys:
             return [torch.randn(3, 64, 64)]
 
-        images = []
-        for k in img_keys:
-            img_tensor = batch[k]
-            if img_tensor.ndim == 5:
-                img_tensor = img_tensor[:, -1]
-            if img_tensor.ndim == 4:
-                img_tensor = img_tensor[0]
-            images.append(img_tensor.cpu())  # [C, H, W] tensor on CPU
+        # 取第一个camera的batch图片
+        img_tensor = batch[img_keys[0]]
+        if img_tensor.ndim == 5:  # [B, T, C, H, W]
+            img_tensor = img_tensor[:, -1]  # 取最后一帧 → [B, C, H, W]
+        # img_tensor: [B, C, H, W]
+        B = img_tensor.shape[0]
+        images = [img_tensor[i].cpu() for i in range(B)]  # list of [C, H, W]
         return images
 
     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict]:
@@ -567,8 +568,12 @@ class ZmaxHybridPolicy(PreTrainedPolicy):
         # 图片
         images = self._prepare_images(batch)
 
-        # 语言指令
-        instructions = ["push the T block to target"] * B
+        # 语言指令 (Multi-task: 用task描述或通用指令)
+        task = batch.get("task", batch.get("task_id", None))
+        if task is not None:
+            instructions = [f"complete task {int(t.item()) if hasattr(t, 'item') else t}" for t in task]
+        else:
+            instructions = ["manipulate objects to complete the task"] * B
 
         # 视频 (从连续帧构建)
         videos = None

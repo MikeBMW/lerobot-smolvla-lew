@@ -1,0 +1,22 @@
+# ZmaxHybrid PushT 快速训练 (子集验证)
+output_dir: outputs/zmax_hybrid_quick
+job_name: zmax_hybrid_quick
+
+policy:
+  type: zmax_hybrid
+  push_to_hub: false
+  freeze_smolvlm: true
+  chunk_size: 7
+  n_action_steps: 7
+  gradient_checkpointing: true
+  torch_dtype: float16
+  device: cuda
+  state_dim: 2
+  action_dim: 2
+
+dataset:
+  repo_id: lerobot/pusht
+
+batch_size: 16
+steps: 500
+num_workers: 2
