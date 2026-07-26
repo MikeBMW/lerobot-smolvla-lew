@@ -5,7 +5,7 @@ from lerobot.policies.factory import make_pre_post_processors
 from lerobot.datasets import LeRobotDataset
 from torch.utils.data import DataLoader
 
-ckpt='outputs/zmax_hybrid_final/checkpoints/010000/pretrained_model'
+ckpt='outputs/zmax_hybrid_final/checkpoints/020000/pretrained_model'
 m=ZmaxHybridPolicy.from_pretrained(ckpt,local_files_only=True).cuda().eval()
 pre,post=make_pre_post_processors(m.config, ckpt,
     preprocessor_overrides={'device_processor':{'device':'cuda'}})
