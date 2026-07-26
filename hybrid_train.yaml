@@ -1,5 +1,5 @@
 output_dir: outputs/zmax_hybrid_final
-job_name: zmax_hybrid_20k
+job_name: zmax_hybrid_40k
 
 policy:
   type: zmax_hybrid
@@ -10,4 +10,4 @@ dataset:
   repo_id: lerobot/pusht
 
 batch_size: 1
-steps: 20000
+steps: 40000

@@ -25,6 +25,8 @@ for ep in range(5):
         pp=pre(batch)
         with torch.no_grad(): action=m.predict_action_chunk(pp)
         action=post(action).cpu().numpy().squeeze(0)[0]
+        # 缩放到gym空间 [0,512]
+        action=np.clip(action*2.0, 0, 512)
         
         obs,reward,term,trunc,info=env.step(action)
         total_reward+=reward
