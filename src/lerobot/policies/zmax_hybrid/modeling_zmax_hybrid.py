@@ -41,6 +41,13 @@ class LeWorldModelGRU(nn.Module):
     z₁: 256维 — 空间潜变 (物体在哪里)
     z₂: 256维 — 物体潜变 (是什么物体)
     z₃: 128维 — 语义潜变 (任务目标是什么)
+
+    参考: LeWorldModel (Maes et al., 2026)
+      - 论文: arXiv 2603.19312
+      - 代码: https://github.com/lucas-maes/le-wm
+      - 原理: JEPA (Joint Embedding Predictive Architecture)
+      - 本实现: 将Transformer预测器改为GRU, 三层潜空间替代单层,
+        保留H-JEPA能量损失, 适配LeRobot VLA管线
     """
 
     def __init__(self, config: ZmaxHybridConfig, obs_dim: int, ctx_dim: int):
