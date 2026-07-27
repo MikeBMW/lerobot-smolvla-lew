@@ -195,3 +195,5 @@ ros_orin_ws/log/
 !ros_pc_ws/src/*/package.xml
 !ros_orin_ws/src/*/package.xml
 Zone.Identifier
+chat-watcher.py
+models/
