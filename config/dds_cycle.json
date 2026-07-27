@@ -1,0 +1,83 @@
+{
+  "name": "DDS数据闭环 · Orin→MAC→4090→W&B",
+  "version": "2.0",
+  "description": "Orin(192.168.23.10) → MAC(192.168.23.1) → 4090训练 → W&B",
+  "nodes": [
+    {
+      "id": "M01",
+      "type": "rosbag_record",
+      "label": "🎥 Orin录制30s",
+      "params": {
+        "duration_sec": 30,
+        "topics": [
+          "/realsense/color/image_raw",
+          "/real_joint_states",
+          "/robot/force_torque"
+        ],
+        "output_path": "/home/tashan/orin_30s",
+        "orin_ip": "192.168.23.10"
+      }
+    },
+    {
+      "id": "M02",
+      "type": "scp_transfer",
+      "label": "📤 MCAP → MAC(小芳)",
+      "params": {
+        "source": "tashan@192.168.23.66:~/orin_30s/",
+        "dest": "xiaofang@MAC_IP:~/orin_data/",
+        "mode": "pull",
+        "note": "MAC_IP由小芳提供"
+      }
+    },
+    {
+      "id": "M03",
+      "type": "mcap_to_npz",
+      "label": "🔄 MAC转NPZ",
+      "params": {
+        "mcap_path": "~/orin_data/orin_30s_0.db3",
+        "output_npz": "~/orin_data/orin_30s_data.npz",
+        "resize_w": 256,
+        "resize_h": 256,
+        "note": "在MAC上运行,无ROS依赖"
+      }
+    },
+    {
+      "id": "M04",
+      "type": "scp_upload",
+      "label": "📤 MAC → 4090训练",
+      "params": {
+        "source": "xiaofang@MAC_IP:~/orin_data/orin_30s_data.npz",
+        "dest": "root@106.75.239.80:/root/datasets/orin_30s_data.npz"
+      }
+    },
+    {
+      "id": "M05",
+      "type": "smolvla_train",
+      "label": "🧠 4090训练",
+      "params": {
+        "dataset": "/root/datasets/orin_30s_data.npz",
+        "model": "SmolVLA",
+        "epochs": 100,
+        "wandb_project": "zmax-dds-cycle"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "M01",
+      "to": "M02"
+    },
+    {
+      "from": "M02",
+      "to": "M03"
+    },
+    {
+      "from": "M03",
+      "to": "M04"
+    },
+    {
+      "from": "M04",
+      "to": "M05"
+    }
+  ]
+}

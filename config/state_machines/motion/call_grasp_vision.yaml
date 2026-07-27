@@ -1,0 +1,26 @@
+pipeline:
+- type: JointAndPoseServer
+  param: {"server_name": "joint_and_pose", "timeout": 100.0}
+  run_args:
+    input: {}
+    output: {"pose": "end_pose"}
+- type: QuatAndEuler
+  param: {"mod": "q2e"}
+  run_args:
+    input: {"pose": "end_pose"}
+    output: {}
+- type: MechVisionClient
+  param: {"windows_ip": "192.168.23.26", "expected_pose_count": 0}
+  run_args:
+    input: {"end_pose": "euler_pose", "project_id": "project_id"}
+    output: {"grasp_pose": "grasp_pose", "grasp_pose_list": "grasp_pose_list"}
+- type: QuatAndEuler
+  param: {"mod": "e2q"}
+  run_args:
+    input: {"pose": "grasp_pose", "pose_list": "grasp_pose_list"}
+    output: {"quat_pose": "quat_pose", "quat_pose_list": "quat_pose_list"}
+- type: CollectionResponseData
+  param: {}
+  run_args:
+    input: {"grasp_pose": "quat_pose", "grasp_pose_list": "quat_pose_list"}
+    output: {}

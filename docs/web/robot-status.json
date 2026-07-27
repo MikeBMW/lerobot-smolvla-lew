@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "timestamp": "2026-07-12 00:32:27",
+    "timestamp_unix": 1783787547.1612318,
+    "robot_model": "XMS5-R800-W4G3B4C",
+    "controller_ip": "192.168.23.160",
+    "collector": "小芳 (Mac M1)",
+    "next_L0_s": 5,
+    "next_L1_s": 300,
+    "next_L2_s": 1800,
+    "manual_refresh": true
+  },
+  "L0": {
+    "joints": {
+      "names": [
+        "XMS5-R800-W4G3B4C_joint_1",
+        "XMS5-R800-W4G3B4C_joint_2",
+        "XMS5-R800-W4G3B4C_joint_3",
+        "XMS5-R800-W4G3B4C_joint_4",
+        "XMS5-R800-W4G3B4C_joint_5",
+        "XMS5-R800-W4G3B4C_joint_6"
+      ],
+      "positions_rad": [
+        0.1602,
+        -0.0615,
+        -2.5455,
+        1.4469,
+        0.435,
+        -0.8225
+      ],
+      "positions_deg": [
+        9.2,
+        -3.5,
+        -145.9,
+        82.9,
+        24.9,
+        -47.1
+      ],
+      "velocities_rad_s": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "source": "cached"
+    },
+    "force_torque": {
+      "fx": 2.48,
+      "fy": -1.73,
+      "fz": 0.17,
+      "tx": 2.48,
+      "ty": 1.73,
+      "tz": 0.17
+    },
+    "alerts": [
+      {
+        "level": "info",
+        "msg": "离线模式 - Orin未连接",
+        "code": "OFFLINE"
+      }
+    ]
+  },
+  "L1": {
+    "topics": {
+      "count": 51,
+      "source": "cached",
+      "items": [
+        {
+          "name": "/real_joint_states",
+          "category": "joint",
+          "active": true
+        },
+        {
+          "name": "/gripper_pos",
+          "category": "gripper",
+          "active": true
+        },
+        {
+          "name": "/robot/force_torque",
+          "category": "sensor",
+          "active": true
+        },
+        {
+          "name": "/emergency_stop",
+          "category": "safety",
+          "active": true
+        },
+        {
+          "name": "/realsense/color/image_raw",
+          "category": "camera",
+          "active": true
+        },
+        {
+          "name": "/motion/execution_result",
+          "category": "motion",
+          "active": true
+        },
+        {
+          "name": "/tactile_sensor",
+          "category": "sensor",
+          "active": true
+        }
+      ]
+    },
+    "nodes": {
+      "count": 15,
+      "items": [
+        "robot_driver",
+        "motion",
+        "gripper_driver",
+        "tactile_force_node",
+        "realsense_source",
+        "honeywell_scanner",
+        "tower_light_node",
+        "vision",
+        "vision_pointcloud",
+        "vision_tag",
+        "external_comm",
+        "pointcloud_receiver",
+        "robot_state_publisher",
+        "sim_joint_state_publisher",
+        "obstacle_marker"
+      ]
+    },
+    "resources": {
+      "memory": "6.3G/7.4G"
+    }
+  },
+  "L2": {
+    "camera": {
+      "source": "realsense_d405",
+      "format": "jpeg_base64",
+      "resolution": "320x240",
+      "status": "offline",
+      "note": "Orin离线, 使用上次缓存"
+    },
+    "models": {
+      "smolvla_450m": "available",
+      "smolvlm2_500m": "available",
+      "cache_size": "2.8G"
+    }
+  }
+}

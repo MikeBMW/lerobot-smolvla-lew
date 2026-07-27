@@ -1,0 +1,191 @@
+{
+  "sensor_force_6d": {
+    "topic": "/zmax/sensor/force_torque",
+    "type": "Wrench",
+    "skill": "zmax-force-sensor",
+    "source": "orin",
+    "value": null,
+    "freq": 1000,
+    "last_update": 0.0
+  },
+  "sensor_tactile": {
+    "topic": "/zmax/sensor/tactile_array",
+    "type": "Tactile16",
+    "skill": "zmax-tactile-sensor",
+    "source": "orin",
+    "value": null,
+    "freq": 200,
+    "last_update": 0.0
+  },
+  "sensor_camera_rgb": {
+    "topic": "/camera/color/image_raw",
+    "type": "Image",
+    "skill": "zmax-camera",
+    "source": "orin",
+    "value": null,
+    "freq": 30,
+    "last_update": 0.0
+  },
+  "sensor_camera_depth": {
+    "topic": "/camera/depth/rect",
+    "type": "DepthImage",
+    "skill": "zmax-camera",
+    "source": "orin",
+    "value": null,
+    "freq": 30,
+    "last_update": 0.0
+  },
+  "sensor_light_curtain": {
+    "topic": "/zmax/sys0/light_curtain",
+    "type": "Bool",
+    "skill": "zmax-safety",
+    "source": "orin",
+    "value": null,
+    "freq": 50,
+    "last_update": 0.0
+  },
+  "sensor_barcode": {
+    "topic": "/barcode_scanner/status",
+    "type": "String",
+    "skill": "zmax-barcode",
+    "source": "orin",
+    "value": null,
+    "freq": 10,
+    "last_update": 0.0
+  },
+  "actuator_left_arm": {
+    "topic": "/left_arm/joint_states",
+    "type": "JointState6",
+    "skill": "zmax-robot-arm",
+    "source": "orin",
+    "value": null,
+    "freq": 100,
+    "last_update": 0.0
+  },
+  "actuator_right_arm": {
+    "topic": "/right_arm/joint_states",
+    "type": "JointState6",
+    "skill": "zmax-robot-arm",
+    "source": "orin",
+    "value": null,
+    "freq": 100,
+    "last_update": 0.0
+  },
+  "actuator_gripper_left": {
+    "topic": "/left_gripper/state",
+    "type": "GripperState",
+    "skill": "zmax-gripper",
+    "source": "orin",
+    "value": null,
+    "freq": 50,
+    "last_update": 0.0
+  },
+  "actuator_gripper_right": {
+    "topic": "/right_gripper/state",
+    "type": "GripperState",
+    "skill": "zmax-gripper",
+    "source": "orin",
+    "value": null,
+    "freq": 50,
+    "last_update": 0.0
+  },
+  "infer_sys0_action": {
+    "topic": "/zmax/sys0/action",
+    "type": "Action",
+    "skill": "zmax-sys0",
+    "source": "orin",
+    "value": null,
+    "freq": 100,
+    "last_update": 0.0
+  },
+  "infer_sys1_act": {
+    "topic": "/zmax/sys1/act_prediction",
+    "type": "Action",
+    "skill": "zmax-sys1-act",
+    "source": "wsl",
+    "value": null,
+    "freq": 50,
+    "last_update": 0.0
+  },
+  "infer_sys1_vtla": {
+    "topic": "/zmax/sys1/vtla_prediction",
+    "type": "Action",
+    "skill": "zmax-sys1-vtla",
+    "source": "4090",
+    "value": null,
+    "freq": 3,
+    "last_update": 0.0
+  },
+  "infer_sys11": {
+    "topic": "/zmax/sys11/prediction",
+    "type": "Action",
+    "skill": "zmax-sys11",
+    "source": "wsl",
+    "value": null,
+    "freq": 5,
+    "last_update": 0.0
+  },
+  "infer_sys12": {
+    "topic": "/zmax/sys12/prediction",
+    "type": "Action",
+    "skill": "zmax-sys12",
+    "source": "wsl",
+    "value": null,
+    "freq": 2,
+    "last_update": 0.0
+  },
+  "system_tower_light": {
+    "topic": "/zmax/sys0/tower_light",
+    "type": "Int8",
+    "skill": "zmax-safety",
+    "source": "orin",
+    "value": null,
+    "freq": 1,
+    "last_update": 0.0
+  },
+  "system_emergency": {
+    "topic": "/zmax/sys0/emergency_stop",
+    "type": "Service",
+    "skill": "zmax-safety",
+    "source": "orin",
+    "value": null,
+    "freq": 0,
+    "last_update": 0.0
+  },
+  "system_temperature": {
+    "topic": "/zmax/system/temperature",
+    "type": "Temperature",
+    "skill": "zmax-monitor",
+    "source": "orin",
+    "value": null,
+    "freq": 0.5,
+    "last_update": 0.0
+  },
+  "train_data_pool": {
+    "topic": "/zmax/train/data_pool",
+    "type": "Dataset",
+    "skill": "zmax-train",
+    "source": "4090",
+    "value": null,
+    "freq": 0,
+    "last_update": 0.0
+  },
+  "train_checkpoint": {
+    "topic": "/zmax/train/checkpoint",
+    "type": "ModelCheckpoint",
+    "skill": "zmax-train",
+    "source": "4090",
+    "value": null,
+    "freq": 0,
+    "last_update": 0.0
+  },
+  "train_metrics": {
+    "topic": "/zmax/train/metrics",
+    "type": "Metrics",
+    "skill": "zmax-train",
+    "source": "4090",
+    "value": null,
+    "freq": 0.1,
+    "last_update": 0.0
+  }
+}

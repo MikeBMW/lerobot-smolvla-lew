@@ -1,0 +1,241 @@
+{
+  "robot": {
+    "name": "Z700",
+    "model": "XMS5-R800-W4G3B4C",
+    "type": "轮式双臂人形机器人",
+    "dof": 6,
+    "controller": {
+      "ip": "192.168.23.160",
+      "brand": "珞石 ROKAE",
+      "protocol": "xCoreSDK UDP实时"
+    },
+    "compute": {
+      "orin": "192.168.23.10",
+      "orin_virtual": "192.168.23.66",
+      "platform": "NVIDIA AGX Orin 32GB",
+      "cuda": "12.6"
+    }
+  },
+  "actuators": {
+    "joints": [
+      {
+        "id": 1,
+        "name": "joint_1",
+        "axis": "基座旋转",
+        "type": "旋转",
+        "limits_rad": [
+          -2.0,
+          2.0
+        ],
+        "max_velocity_rad_s": 2.0,
+        "topic": "/real_joint_states"
+      },
+      {
+        "id": 2,
+        "name": "joint_2",
+        "axis": "肩部俯仰",
+        "type": "旋转",
+        "limits_rad": [
+          -2.0,
+          2.0
+        ],
+        "max_velocity_rad_s": 2.0,
+        "topic": "/real_joint_states"
+      },
+      {
+        "id": 3,
+        "name": "joint_3",
+        "axis": "肘部俯仰",
+        "type": "旋转",
+        "limits_rad": [
+          -3.0,
+          0.5
+        ],
+        "max_velocity_rad_s": 2.0,
+        "topic": "/real_joint_states"
+      },
+      {
+        "id": 4,
+        "name": "joint_4",
+        "axis": "腕部旋转",
+        "type": "旋转",
+        "limits_rad": [
+          -3.0,
+          3.0
+        ],
+        "max_velocity_rad_s": 2.0,
+        "topic": "/real_joint_states"
+      },
+      {
+        "id": 5,
+        "name": "joint_5",
+        "axis": "腕部俯仰",
+        "type": "旋转",
+        "limits_rad": [
+          -2.0,
+          2.0
+        ],
+        "max_velocity_rad_s": 2.0,
+        "topic": "/real_joint_states"
+      },
+      {
+        "id": 6,
+        "name": "joint_6",
+        "axis": "腕部末端",
+        "type": "旋转",
+        "limits_rad": [
+          -3.0,
+          3.0
+        ],
+        "max_velocity_rad_s": 2.0,
+        "topic": "/real_joint_states"
+      }
+    ],
+    "gripper": {
+      "model": "DH PGE/PGC",
+      "type": "电动平行夹爪",
+      "stroke_mm": 50,
+      "max_force_n": 50,
+      "topic": "/gripper_pos",
+      "service": "/gripper_driver"
+    },
+    "gripper_services": [
+      {
+        "name": "set_position",
+        "params": {
+          "pos": 0.0,
+          "speed": 100,
+          "force": 40
+        },
+        "service": "/gripper_driver"
+      }
+    ]
+  },
+  "sensors": {
+    "force_torque": {
+      "model": "TS-T-15",
+      "type": "六维力/扭矩",
+      "axes": [
+        "Fx",
+        "Fy",
+        "Fz",
+        "Tx",
+        "Ty",
+        "Tz"
+      ],
+      "sample_rate_hz": 10000,
+      "topic": "/robot/force_torque"
+    },
+    "tactile": [
+      {
+        "id": 1,
+        "location": "左手指尖",
+        "type": "4×4压力阵列",
+        "interface": "CH341 USB",
+        "topic": "/tactile_sensor"
+      },
+      {
+        "id": 2,
+        "location": "右手指尖",
+        "type": "4×4压力阵列",
+        "interface": "CH341 USB",
+        "topic": "/tactile_sensor"
+      }
+    ],
+    "cameras": [
+      {
+        "name": "realsense_d405",
+        "type": "RGB-D",
+        "resolution": "640×480",
+        "fps": 30,
+        "topic": "/realsense/color/image_raw",
+        "depth_topic": "/realsense/depth/image_rect_raw"
+      },
+      {
+        "name": "mechmind_3d",
+        "type": "3D结构光",
+        "resolution": "1280×800",
+        "topic": "/mechmind/color",
+        "service": "/vision_pipeline"
+      }
+    ],
+    "barcode_scanner": {
+      "model": "Honeywell 3310",
+      "type": "二维码扫描",
+      "interface": "USB Serial",
+      "service": "/barcode_scanner/start_scan"
+    },
+    "imu": {
+      "type": "内置6轴IMU",
+      "topic": "/robot/tcp_pose"
+    }
+  },
+  "safety": {
+    "emergency_stop": {
+      "type": "双路急停",
+      "channels": 2,
+      "response_ms": 1,
+      "topic": "/emergency_stop"
+    },
+    "light_curtain": {
+      "type": "安全光栅",
+      "topic": "/physical_estop"
+    },
+    "tower_light": {
+      "model": "Artery LED",
+      "type": "三色塔灯",
+      "states": [
+        "绿=正常",
+        "黄=警告",
+        "红=停止"
+      ],
+      "topic": "/tower_light/command"
+    },
+    "sys0_safety": {
+      "loaded": true,
+      "levels": [
+        "L1_estop",
+        "L2_force",
+        "L3_light_curtain",
+        "L4_predictive"
+      ]
+    }
+  },
+  "control": {
+    "motion_services": [
+      {
+        "name": "相对关节运动",
+        "service": "/target_relative_joint",
+        "params": "6D偏移量"
+      },
+      {
+        "name": "绝对关节运动",
+        "service": "/move_joint",
+        "params": "6D目标位置"
+      },
+      {
+        "name": "力控搜索插入",
+        "service": "/lissajous_force_search",
+        "params": "期望力+刚度"
+      },
+      {
+        "name": "运动序列",
+        "service": "/move_sequence",
+        "params": "waypoint序列"
+      }
+    ],
+    "state_machine": {
+      "service": "/state_machine/set_mode",
+      "modes": [
+        "实机",
+        "仿真"
+      ],
+      "topic": "/motion/execution_result"
+    },
+    "external_comm": {
+      "service": "/external_comm",
+      "topic": "/execute_external_task",
+      "type": "外部任务触发"
+    }
+  }
+}

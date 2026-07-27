@@ -1,0 +1,707 @@
+"""
+Z-MAX 硬件仿真引擎 · System 0
+================================
+模拟 Z700 轮式双臂机器人的完整硬件栈:
+  - VirtualRobot:  双臂14-DOF关节模拟 (位置/速度/力矩)
+  - VirtualCamera: 多路相机流 (头部3D/腕部RGB/鱼眼)
+  - VirtualForceSensor: 六维力/力矩传感器
+  - VirtualIO:     数字IO模拟 (急停/塔灯/光栅/扫码枪)
+  - VirtualGripper: 左右夹爪模拟 (位置/力控)
+
+设计原则:
+  - 与真实 ROS2 topic 接口保持一致，仿真→真机只需切换模式
+  - 独立的 QThread 周期更新，不阻塞 GUI
+  - 可配置噪声/延迟/故障注入，模拟真实工况
+"""
+
+import math
+import time
+import random
+import threading
+from dataclasses import dataclass, field
+from typing import Optional, Callable
+
+import numpy as np
+
+
+# ═══════════════════════════════════════════════
+# 数据模型
+# ═══════════════════════════════════════════════
+
+@dataclass
+class JointState:
+    """单关节状态"""
+    name: str
+    position: float = 0.0       # rad
+    velocity: float = 0.0       # rad/s
+    torque: float = 0.0         # Nm
+    target: float = 0.0         # 目标位置
+    enabled: bool = True
+    temperature: float = 35.0   # °C
+    current: float = 0.0        # A
+
+
+@dataclass
+class CameraFrame:
+    """单帧图像"""
+    name: str
+    width: int = 640
+    height: int = 480
+    fps: float = 30.0
+    encoding: str = "rgb8"      # rgb8 / mono8 / depth32
+    timestamp: float = 0.0
+    data: Optional[np.ndarray] = None
+
+
+@dataclass
+class ForceData:
+    """六维力数据"""
+    fx: float = 0.0; fy: float = 0.0; fz: float = 0.0   # N
+    tx: float = 0.0; ty: float = 0.0; tz: float = 0.0   # Nm
+    timestamp: float = 0.0
+
+
+@dataclass
+class IOState:
+    """数字IO状态"""
+    estop: bool = False         # 急停 (常开, True=按下)
+    tower_light: int = 0        # 塔灯 0=灭 1=红 2=黄 3=绿
+    light_curtain: bool = True  # 光栅 (True=未触发)
+    barcode_scanner: str = ""   # 扫码枪数据
+    gripper_left: float = 0.0   # 左夹爪开度 0-1
+    gripper_right: float = 0.0  # 右夹爪开度 0-1
+
+
+# ═══════════════════════════════════════════════
+# Z700 硬件定义
+# ═══════════════════════════════════════════════
+
+Z700_JOINTS = {
+    # 左臂 (7 DOF)
+    "left_joint_1":  "左臂基座旋转",
+    "left_joint_2":  "左臂肩部俯仰",
+    "left_joint_3":  "左臂肘部俯仰",
+    "left_joint_4":  "左臂腕部旋转",
+    "left_joint_5":  "左臂腕部俯仰",
+    "left_joint_6":  "左臂腕部偏航",
+    "left_gripper":  "左夹爪开合",
+    # 右臂 (7 DOF)
+    "right_joint_1": "右臂基座旋转",
+    "right_joint_2": "右臂肩部俯仰",
+    "right_joint_3": "右臂肘部俯仰",
+    "right_joint_4": "右臂腕部旋转",
+    "right_joint_5": "右臂腕部俯仰",
+    "right_joint_6": "右臂腕部偏航",
+    "right_gripper": "右夹爪开合",
+}
+
+Z700_CAMERAS = {
+    "head_3d":      {"w": 1280, "h": 720,  "fps": 30, "enc": "rgb8",   "desc": "头部3D深度相机 Gemini 335L"},
+    "left_wrist":   {"w": 640,  "h": 480,  "fps": 60, "enc": "rgb8",   "desc": "左腕部RGB相机"},
+    "right_wrist":  {"w": 640,  "h": 480,  "fps": 60, "enc": "rgb8",   "desc": "右腕部RGB相机"},
+    "fisheye_0":    {"w": 640,  "h": 480,  "fps": 15, "enc": "rgb8",   "desc": "鱼眼相机 #0"},
+    "fisheye_1":    {"w": 640,  "h": 480,  "fps": 15, "enc": "rgb8",   "desc": "鱼眼相机 #1"},
+    "fisheye_2":    {"w": 640,  "h": 480,  "fps": 15, "enc": "rgb8",   "desc": "鱼眼相机 #2"},
+    "fisheye_3":    {"w": 640,  "h": 480,  "fps": 15, "enc": "rgb8",   "desc": "鱼眼相机 #3"},
+}
+
+Z700_ROS2_NODES = {
+    # 仿真模式下可见的虚拟节点
+    "sim": [
+        ("/zmax/virtual_robot",     "关节状态发布 + 订阅目标"),
+        ("/zmax/camera_head_3d",    "头部3D相机 (rgb+depth)"),
+        ("/zmax/camera_left_wrist", "左腕相机"),
+        ("/zmax/camera_right_wrist","右腕相机"),
+        ("/zmax/force_sensor",      "六维力/力矩传感器"),
+        ("/zmax/io_controller",     "IO控制器 (急停/塔灯/光栅)"),
+        ("/zmax/gripper_control",   "夹爪控制 (力控+位置)"),
+        ("/zmax/safety_monitor",    "安全监控节点"),
+    ],
+    # 真机模式下的已知节点 (从 D23 实测)
+    "real": [
+        ("/tashan/robot_driver",        "他山机器人驱动"),
+        ("/tashan/real_joint_states",   "真实关节状态"),
+        ("/tashan/gripper_pos",         "夹爪位置"),
+        ("/tashan/robot_status",        "机器人状态"),
+        ("/tashan/tower_light/status",  "塔灯状态"),
+        ("/tashan/camera_*/",           "相机阵列"),
+        ("/tashan/barcode_scanner",     "扫码枪"),
+        ("/tashan/foundationpose",      "FoundationPose视觉"),
+        ("/tashan/force_sensor",        "力传感器"),
+        ("/tashan/emergency_stop",      "急停"),
+    ],
+}
+
+
+# ═══════════════════════════════════════════════
+# 仿真引擎核心
+# ═══════════════════════════════════════════════
+
+class HardwareSimulator:
+    """
+    Z700 硬件仿真引擎
+    
+    模式: 'sim' | 'local' | 'real'
+      - sim:   纯虚拟设备，带可调噪声
+      - local: 尝试连接本地 ROS2/DDS
+      - real:  连接 Orin 真机 (TCP Bridge / gRPC)
+    """
+
+    def __init__(self, mode: str = "sim"):
+        self.mode = mode
+        self.running = False
+        self._thread: Optional[threading.Thread] = None
+        self._tick_hz = 1000  # 1ms 控制周期
+        self._start_time = time.time()
+        self._callbacks: dict[str, list[Callable]] = {}
+
+        # 初始化虚拟设备
+        self.joints: dict[str, JointState] = {}
+        self.cameras: dict[str, CameraFrame] = {}
+        self.force = ForceData()
+        self.io = IOState()
+        self._init_sim_devices()
+
+        # 仿真参数
+        self.noise_level = 0.001    # 关节噪声 (rad)
+        self.force_noise = 0.05     # 力传感器噪声 (N)
+        self.fault_injection = {}   # 故障注入配置
+
+    def _init_sim_devices(self):
+        """初始化所有虚拟设备"""
+        for jname in Z700_JOINTS:
+            self.joints[jname] = JointState(name=jname)
+        for cname, cfg in Z700_CAMERAS.items():
+            self.cameras[cname] = CameraFrame(
+                name=cname,
+                width=cfg["w"], height=cfg["h"],
+                fps=cfg["fps"], encoding=cfg["enc"]
+            )
+
+    # ── 生命周期 ──
+
+    def start(self):
+        if self.running:
+            return
+        self.running = True
+        self._thread = threading.Thread(target=self._sim_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self.running = False
+        if self._thread:
+            self._thread.join(timeout=2)
+
+    def reset(self):
+        """重置所有设备到初始状态"""
+        self._start_time = time.time()
+        self._init_sim_devices()
+        self.force = ForceData()
+        self.io = IOState()
+
+    # ── 仿真主循环 ──
+
+    def _sim_loop(self):
+        """1ms 周期仿真循环"""
+        interval = 1.0 / self._tick_hz
+        while self.running:
+            t = time.time() - self._start_time
+            self._update_joints(t)
+            self._update_force(t)
+            self._update_cameras(t)
+            self._update_io(t)
+            time.sleep(interval)
+
+    def _update_joints(self, t: float):
+        """关节仿真: 正弦波 + 噪声"""
+        for i, (jname, joint) in enumerate(self.joints.items()):
+            if not joint.enabled:
+                continue
+            phase = i * 0.5  # 各关节不同相位
+            # 基础正弦运动
+            joint.position = joint.target + 0.1 * math.sin(t * 2.0 + phase)
+            joint.velocity = 0.1 * 2.0 * math.cos(t * 2.0 + phase)
+            joint.torque = 0.05 * math.sin(t * 1.5 + phase)
+            joint.current = abs(joint.torque) * 10.0
+            joint.temperature = 35.0 + random.gauss(0, 0.5)
+            # 加噪声
+            if self.noise_level > 0:
+                joint.position += random.gauss(0, self.noise_level)
+
+    def _update_force(self, t: float):
+        """力传感器仿真"""
+        self.force.timestamp = t
+        self.force.fx = 0.5 * math.sin(t * 1.5) + random.gauss(0, self.force_noise)
+        self.force.fy = 0.3 * math.cos(t * 2.0) + random.gauss(0, self.force_noise)
+        self.force.fz = random.gauss(-1.0, self.force_noise)  # 插入力
+        self.force.tx = random.gauss(0, 0.01)
+        self.force.ty = random.gauss(0, 0.01)
+        self.force.tz = random.gauss(0, 0.005)
+
+    def _update_cameras(self, t: float):
+        """相机仿真: 生成测试图案帧"""
+        for cname, cam in self.cameras.items():
+            cam.timestamp = t
+            # 测试图案: 彩色条纹
+            if cam.encoding == "rgb8":
+                h, w = cam.height, cam.width
+                data = np.zeros((h, w, 3), dtype=np.uint8)
+                stripe_width = 40
+                for col in range(w):
+                    color_val = int(127 + 127 * math.sin((col / stripe_width) + t * 3))
+                    data[:, col] = [color_val, (color_val + 85) % 255, (color_val + 170) % 255]
+                # 叠加文字提示
+                cam.data = data
+
+    def _update_io(self, t: float):
+        """IO 仿真"""
+        self.io.tower_light = 3 if self.running else 0  # 运行中绿灯
+        self.io.light_curtain = True
+        # 模拟夹爪随关节运动
+        if "left_gripper" in self.joints:
+            self.io.gripper_left = max(0, min(1, 
+                0.3 + 0.2 * math.sin(t * 1.5)))
+        if "right_gripper" in self.joints:
+            self.io.gripper_right = max(0, min(1,
+                0.5 + 0.3 * math.cos(t * 2.0)))
+
+    # ── 回调注册 ──
+
+    def on_update(self, event: str, callback: Callable):
+        """注册更新回调: joint_state / camera_frame / force_data / io_state"""
+        if event not in self._callbacks:
+            self._callbacks[event] = []
+        self._callbacks[event].append(callback)
+
+    def _notify(self, event: str):
+        for cb in self._callbacks.get(event, []):
+            try:
+                cb()
+            except Exception:
+                pass
+
+    # ── 故障注入 (调试用) ──
+
+    def inject_fault(self, device: str, fault_type: str, params: dict = None):
+        if params is None:
+            params = {}
+        """注入硬件故障"""
+        self.fault_injection[device] = {
+            "type": fault_type,
+            "params": params or {},
+            "active": True,
+        }
+
+    def clear_fault(self, device: str):
+        self.fault_injection.pop(device, None)
+
+    # ── 获取状态快照 ──
+
+    def get_joint_snapshot(self) -> dict:
+        """全部关节状态快照"""
+        return {
+            jname: {
+                "pos": round(j.position, 5),
+                "vel": round(j.velocity, 5),
+                "torque": round(j.torque, 5),
+                "temp": round(j.temperature, 1),
+                "current": round(j.current, 2),
+                "enabled": j.enabled,
+            }
+            for jname, j in self.joints.items()
+        }
+
+    def get_camera_snapshot(self) -> dict:
+        """相机状态快照"""
+        return {
+            cname: {
+                "size": f"{c.width}x{c.height}",
+                "fps": c.fps,
+                "enc": c.encoding,
+                "ts": round(c.timestamp, 3),
+            }
+            for cname, c in self.cameras.items()
+        }
+
+    def get_io_snapshot(self) -> dict:
+        """IO状态快照"""
+        return {
+            "estop": "🔴 触发" if self.io.estop else "🟢 正常",
+            "tower_light": ["⚫灭", "🔴红", "🟡黄", "🟢绿"][self.io.tower_light],
+            "light_curtain": "🟢 未触发" if self.io.light_curtain else "🔴 触发",
+            "gripper_left": f"{self.io.gripper_left:.2f}",
+            "gripper_right": f"{self.io.gripper_right:.2f}",
+        }
+
+    def get_topology(self) -> dict:
+        """系统拓扑"""
+        joint_count = len(Z700_JOINTS)
+        enabled = sum(1 for j in self.joints.values() if j.enabled)
+        return {
+            "mode": self.mode,
+            "joints": f"{enabled}/{joint_count} active",
+            "cameras": f"{len(Z700_CAMERAS)} configured",
+            "force_sensor": "✅ 1x 6-axis",
+            "io_devices": "estop + tower_light + curtain + barcode",
+            "control_hz": self._tick_hz,
+            "uptime": f"{time.time() - self._start_time:.1f}s",
+        }
+
+
+# ═══════════════════════════════════════════════
+# 单例
+# ═══════════════════════════════════════════════
+
+_simulator: Optional[HardwareSimulator] = None
+
+
+def get_simulator(mode: str = "sim") -> HardwareSimulator:
+    global _simulator
+    if _simulator is None:
+        _simulator = HardwareSimulator(mode=mode)
+    return _simulator
+
+
+# ═══════════════════════════════════════════════
+# 真机硬件发现 (Real mode)
+# ═══════════════════════════════════════════════
+
+from PyQt5.QtCore import QThread, pyqtSignal
+
+
+class HardwareDiscoveryThread(QThread):
+    """
+    后台线程: SSH 到 Orin 发现真实硬件
+    
+    发现内容:
+      - ROS2 节点列表 (ros2 node list)
+      - ROS2 Topic 列表 (ros2 topic list)
+      - Topic 详情 (ros2 topic info)
+      - TCP Bridge 连接状态
+      - 系统资源 (CPU/GPU/内存)
+    """
+    result_ready = pyqtSignal(dict)
+    progress = pyqtSignal(str)
+    
+    ORIN_HOST = "192.168.23.10"
+    ORIN_USER = "nvidia"
+    
+    def __init__(self):
+        super().__init__()
+        self._ssh_opts = [
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+        ]
+    
+    def _ssh(self, cmd: str, timeout: int = 10) -> tuple[str, int]:
+        """执行 SSH 远程命令"""
+        import subprocess
+        full_cmd = ["ssh"] + self._ssh_opts + [f"{self.ORIN_USER}@{self.ORIN_HOST}", cmd]
+        try:
+            r = subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
+            return r.stdout.strip(), r.returncode
+        except subprocess.TimeoutExpired:
+            return "TIMEOUT", -1
+        except Exception as e:
+            return str(e), -1
+    
+    def run(self):
+        results = {
+            "success": False,
+            "host": self.ORIN_HOST,
+            "nodes": [],
+            "topics": [],
+            "topic_details": {},
+            "node_count": 0,
+            "topic_count": 0,
+            "system": {},
+            "tcp_bridge": {"running": False, "port": 8765, "topics_forwarded": 0},
+            "domain_id": None,
+        }
+        
+        # 1. 连接检查
+        self.progress.emit("🔗 正在连接 Orin...")
+        out, rc = self._ssh("echo OK", timeout=5)
+        if rc != 0:
+            results["error"] = f"无法连接 Orin ({self.ORIN_HOST}): {out}"
+            self.result_ready.emit(results)
+            return
+        
+        self.progress.emit("✅ 已连接 Orin")
+        
+        # 2. ROS2 节点发现
+        self.progress.emit("🔍 发现 ROS2 节点...")
+        out, rc = self._ssh(
+            "source /opt/ros/humble/setup.bash 2>/dev/null; "
+            "ros2 node list 2>/dev/null || echo 'NO_ROS2'",
+            timeout=8
+        )
+        
+        if out == "NO_ROS2" or rc != 0:
+            results["error"] = "Orin 上 ROS2 未运行。请先启动机器人系统。"
+            self.result_ready.emit(results)
+            return
+        
+        nodes = [n.strip() for n in out.split('\n') if n.strip()]
+        results["nodes"] = nodes
+        results["node_count"] = len(nodes)
+        self.progress.emit(f"   发现 {len(nodes)} 个节点")
+        
+        # 3. ROS2 Topic 发现
+        self.progress.emit("🔍 发现 ROS2 Topic...")
+        out, rc = self._ssh(
+            "source /opt/ros/humble/setup.bash 2>/dev/null; "
+            "ros2 topic list 2>/dev/null",
+            timeout=8
+        )
+        topics = [t.strip() for t in out.split('\n') if t.strip()] if rc == 0 else []
+        results["topics"] = topics
+        results["topic_count"] = len(topics)
+        self.progress.emit(f"   发现 {len(topics)} 个 Topic")
+        
+        # 4. 关键 Topic 详情
+        self.progress.emit("📋 获取 Topic 详情...")
+        key_topics = [t for t in topics if any(k in t for k in [
+            "joint", "camera", "force", "gripper", "robot_status",
+            "tower_light", "emergency", "barcode", "scan"
+        ])]
+        for topic in key_topics[:10]:  # 最多10个
+            out, rc = self._ssh(
+                f"source /opt/ros/humble/setup.bash 2>/dev/null; "
+                f"ros2 topic info {topic} 2>/dev/null | head -3",
+                timeout=5
+            )
+            if rc == 0 and out:
+                results["topic_details"][topic] = out
+        
+        # 5. 系统资源
+        self.progress.emit("💻 获取系统资源...")
+        out, rc = self._ssh(
+            "echo CPU:$(top -bn1 | grep 'Cpu' | awk '{print $2}') "
+            "MEM:$(free -m | grep Mem | awk '{print $3\"/\"$2\"MB\"}') "
+            "GPU:$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader 2>/dev/null || echo 'N/A') "
+            "DISK:$(df -h / | tail -1 | awk '{print $3\"/\"$2}') "
+            "UPTIME:$(uptime -p)",
+            timeout=8
+        )
+        if rc == 0:
+            for part in out.split():
+                if ':' in part:
+                    k, v = part.split(':', 1)
+                    results["system"][k] = v
+        
+        # 6. TCP Bridge 状态
+        self.progress.emit("🌉 检查 TCP Bridge...")
+        out, rc = self._ssh(
+            "pgrep -f 'orin_forwarder' >/dev/null 2>&1 && echo 'RUNNING' || echo 'STOPPED'",
+            timeout=5
+        )
+        results["tcp_bridge"]["running"] = (out == "RUNNING")
+        
+        if results["tcp_bridge"]["running"]:
+            out, rc = self._ssh(
+                "ss -tlnp | grep 8765 >/dev/null 2>&1 && echo 'LISTENING' || echo 'NOT_LISTENING'",
+                timeout=5
+            )
+            results["tcp_bridge"]["listening"] = (out == "LISTENING" if rc == 0 else False)
+        
+        results["success"] = True
+        self.progress.emit("✅ 硬件发现完成！")
+        self.result_ready.emit(results)
+
+
+def discover_hardware_blocking() -> dict:
+    """同步版：直接发现硬件（用于终端测试）"""
+    import subprocess
+    results = {"success": False, "host": "192.168.23.10", "nodes": [], "topics": [], "error": ""}
+    
+    ssh_opts = ["-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5"]
+    
+    def ssh(cmd, timeout=10):
+        r = subprocess.run(["ssh"] + ssh_opts + ["nvidia@192.168.23.10", cmd],
+                          capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip(), r.returncode
+    
+    # 连接检查
+    out, rc = ssh("echo OK")
+    if rc != 0:
+        results["error"] = f"无法连接: {out}"
+        return results
+    
+    # 节点
+    out, rc = ssh("source /opt/ros/humble/setup.bash 2>/dev/null; ros2 node list 2>/dev/null")
+    results["nodes"] = [n for n in out.split('\n') if n.strip()] if rc == 0 else []
+    
+    # Topic
+    out, rc = ssh("source /opt/ros/humble/setup.bash 2>/dev/null; ros2 topic list 2>/dev/null")
+    results["topics"] = [t for t in out.split('\n') if t.strip()] if rc == 0 else []
+    
+    results["success"] = True
+    return results
+
+
+# ═══════════════════════════════════════════════
+# 数据回放引擎 (Offline Replay)
+# ═══════════════════════════════════════════════
+
+import os
+import glob
+import csv
+
+
+class ReplayEngine:
+    """离线数据回放引擎 — 加载CSV会话数据，按时间戳逐帧回放"""
+    
+    DATA_DIR = os.path.expanduser("~/yspace/replay_data")
+    
+    def __init__(self):
+        self.session: str = ""
+        self.session_path: str = ""
+        self.frames: list[dict] = []   # [{"ts": float, "joints": [...], "gripper": float, ...}, ...]
+        self.current_frame: int = 0
+        self.total_frames: int = 0
+        self.playing: bool = False
+        self.loop: bool = True
+        self.speed: float = 1.0
+        
+    def list_sessions(self) -> list[str]:
+        """列出所有可用回放会话"""
+        if not os.path.isdir(self.DATA_DIR):
+            return []
+        sessions = []
+        for d in sorted(os.listdir(self.DATA_DIR)):
+            full = os.path.join(self.DATA_DIR, d)
+            if os.path.isdir(full) and os.path.exists(os.path.join(full, "metadata.json")):
+                sessions.append(d)
+        return sessions
+    
+    def load_session(self, session_name: str) -> bool:
+        """加载指定会话的所有数据"""
+        path = os.path.join(self.DATA_DIR, session_name)
+        if not os.path.isdir(path):
+            return False
+        
+        self.session = session_name
+        self.session_path = path
+        self.frames = []
+        self.current_frame = 0
+        
+        # 加载 real_joint_states (最主要的数据源，频率最高)
+        joint_file = os.path.join(path, "_real_joint_states.csv")
+        if os.path.exists(joint_file):
+            with open(joint_file) as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) < 8:
+                        continue
+                    try:
+                        sec = int(row[0])
+                        nsec = int(row[1])
+                        ts = sec + nsec / 1e9
+                        # row[2]=frame_id, row[3:9]=joint names, row[9:15]=positions
+                        positions = [float(v) for v in row[9:15]]
+                        self.frames.append({
+                            "ts": ts,
+                            "joints": positions,
+                            "source": "real_joint_states",
+                        })
+                    except (ValueError, IndexError):
+                        continue
+        
+        # 加载 gripper_pos
+        gripper_file = os.path.join(path, "_gripper_pos.csv")
+        gripper_data = {}
+        if os.path.exists(gripper_file):
+            with open(gripper_file) as f:
+                for row in csv.reader(f):
+                    if len(row) >= 3:
+                        try:
+                            sec, nsec = int(row[0]), int(row[1])
+                            ts = sec + nsec / 1e9
+                            gripper_data[ts] = float(row[2])
+                        except (ValueError, IndexError):
+                            pass
+        
+        # 合并 gripper 数据到最近的帧
+        if gripper_data:
+            gripper_ts = sorted(gripper_data.keys())
+            for frame in self.frames:
+                # 找最接近的 gripper 时间戳
+                closest = min(gripper_ts, key=lambda t: abs(t - frame["ts"]))
+                if abs(closest - frame["ts"]) < 0.5:
+                    frame["gripper"] = gripper_data[closest]
+        
+        self.total_frames = len(self.frames)
+        return self.total_frames > 0
+    
+    def get_frame(self, index: int = None) -> dict | None:
+        """获取指定帧，默认当前帧"""
+        if index is None:
+            index = self.current_frame
+        if 0 <= index < self.total_frames:
+            return self.frames[index]
+        return None
+    
+    def advance(self) -> bool:
+        """前进一帧，返回是否到达末尾"""
+        self.current_frame += 1
+        if self.current_frame >= self.total_frames:
+            if self.loop:
+                self.current_frame = 0
+                return True
+            self.current_frame = self.total_frames - 1
+            self.playing = False
+            return False
+        return True
+    
+    @property
+    def progress(self) -> float:
+        """回放进度 0.0 ~ 1.0"""
+        if self.total_frames == 0:
+            return 0.0
+        return self.current_frame / self.total_frames
+    
+    @property
+    def duration(self) -> float:
+        """回放总时长(秒)"""
+        if self.total_frames < 2:
+            return 0.0
+        return self.frames[-1]["ts"] - self.frames[0]["ts"]
+    
+    @property
+    def current_time(self) -> float:
+        """当前帧时间(相对)"""
+        if self.total_frames == 0:
+            return 0.0
+        return self.frames[self.current_frame]["ts"] - self.frames[0]["ts"]
+
+
+class ReplayThread(QThread):
+    """后台回放线程 — 按帧率驱动回放"""
+    frame_ready = pyqtSignal(int)   # 当前帧索引
+    finished = pyqtSignal()          # 回放结束
+    
+    def __init__(self, engine: ReplayEngine, fps: int = 30):
+        super().__init__()
+        self.engine = engine
+        self.fps = fps
+        self._paused = False
+    
+    def run(self):
+        import time
+        interval = 1.0 / self.fps / self.engine.speed
+        while self.engine.playing:
+            if self._paused:
+                time.sleep(0.05)
+                continue
+            self.frame_ready.emit(self.engine.current_frame)
+            if not self.engine.advance():
+                break
+            time.sleep(interval)
+        self.finished.emit()
+    
+    def pause(self):
+        self._paused = True
+    
+    def resume(self):
+        self._paused = False

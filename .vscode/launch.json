@@ -1,0 +1,37 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug SmolVLA Train",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "/home/xspace/miniconda3/envs/lerobot/bin/python",
+            // 关键：使用模块启动，而非program文件路径
+            "module": "lerobot.scripts.lerobot_train",
+            "args": [
+                "--policy.type", "smolvla",
+                "--policy.push_to_hub", "false",
+                "--dataset.repo_id", "lerobot/pusht",
+                "--steps", "500",
+                "--batch_size", "5",
+                "--eval_freq", "500",
+                "--save_freq", "100",
+                "--optimizer.lr", "1e-06",
+                "--optimizer.weight_decay", "1e-07",
+                "--scheduler.type", "cosine_decay_with_warmup",
+                "--scheduler.num_warmup_steps", "500",
+                "--scheduler.num_decay_steps", "500",
+                "--scheduler.peak_lr", "1e-06",
+                "--scheduler.decay_lr", "1e-07",
+                "--wandb.enable", "false"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONUNBUFFERED": "1",
+                // 关键：把项目根目录加入Python搜索路径
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+}

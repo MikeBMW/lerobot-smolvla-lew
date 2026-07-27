@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Z-MAX 实时状态 | XMS5-R800</title>
+<style>
+:root{--bg:#0A0E17;--card:#141B2D;--gold:#F5A623;--green:#10B981;--red:#EF4444;--yellow:#F59E0B;--text:#E2E8F0;--dim:#94A3B8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter','PingFang SC',sans-serif;padding:16px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.topbar h1{font-size:22px}.topbar .meta{color:var(--dim);font-size:12px}
+.btn{background:var(--gold);color:#000;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.8}
+.btn:disabled{opacity:.4;cursor:wait}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.card{background:var(--card);border-radius:10px;padding:16px;border:1px solid rgba(255,255,255,0.05)}
+.card h3{font-size:13px;color:var(--dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between}
+.card h3 .layer{font-size:10px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px}
+.stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}.stat label{color:var(--dim)}.stat span{font-weight:600}
+.bar{height:5px;background:rgba(255,255,255,0.08);border-radius:3px;margin:3px 0;overflow:hidden}.bar div{height:100%;border-radius:3px;transition:width .5s}
+.bar .gold{background:var(--gold)}.bar .green{background:var(--green)}.bar .red{background:var(--red)}
+.badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600}
+.bg-red{background:rgba(239,68,68,0.2);color:var(--red)}.bg-green{background:rgba(16,185,129,0.2);color:var(--green)}.bg-yellow{background:rgba(245,158,11,0.2);color:var(--yellow)}
+.topics-grid{display:flex;flex-wrap:wrap;gap:3px;max-height:120px;overflow-y:auto}
+.topic-tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.05);white-space:nowrap}
+.topic-tag.joint{border-left:2px solid var(--gold)}.topic-tag.sensor{border-left:2px solid var(--green)}.topic-tag.safety{border-left:2px solid var(--red)}.topic-tag.camera{border-left:2px solid #6366F1}
+.cam-img{width:100%;border-radius:6px;margin-top:8px;image-rendering:pixelated;max-height:180px;object-fit:cover}
+.footer{text-align:center;color:var(--dim);font-size:10px;margin-top:16px;opacity:.6}
+.countdown{font-size:11px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div>
+    <h1>🤖 Z-MAX 实时状态监控</h1>
+    <div class="meta">XMS5-R800-W4G3B4C · Orin AGX · <span id="src">---</span> · <span id="ts">---</span></div>
+  </div>
+  <div style="text-align:right">
+    <button class="btn" id="refreshBtn" onclick="manualRefresh()">🔄 立即刷新</button>
+    <div class="countdown" id="countdown">下次自动更新: --:--</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card"><h3>🦾 6轴关节 <span class="layer">L0·5s</span></h3><div id="joints"></div></div>
+  <div class="card"><h3>📡 话题状态 <span class="layer">L1·5min</span></h3><div id="topics"></div></div>
+  <div class="card"><h3>💪 六维力 <span class="layer">L0·5s</span></h3><div id="force"></div></div>
+  <div class="card"><h3>🛡️ 安全 <span class="layer">L0·5s</span></h3><div id="safety"></div></div>
+  <div class="card" style="grid-column:span 2"><h3>📸 RealSense D405 <span class="layer">L2·30min</span></h3><div id="camera"></div></div>
+  <div class="card"><h3>⚡ 系统 <span class="layer">L1·5min</span></h3><div id="system"></div></div>
+</div>
+<p class="footer">Z-MAX · 智蜂创元 · 小芳(Mac)采集 · xspace渲染 · 每30分钟全量更新 · 点击刷新即时更新</p>
+
+<script>
+const JOINT_NAMES = ['J1基座','J2肩部','J3肘部','J4腕1','J5腕2','J6腕3'];
+const LIMITS = [[-3,3],[-3,3],[-3,3],[-3,3],[-3,3],[-3,3]];
+const INTERVALS = {L0:5, L1:300, L2:1800}; // seconds
+let nextUpdate = {L0:0, L1:0, L2:0};
+let loading = false;
+
+function pct(v,lo,hi){return Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100))}
+
+function render(d){
+  if(!d) return;
+  const m = d.metadata || {};
+  document.getElementById('src').textContent = m.collector || '---';
+  document.getElementById('ts').textContent = m.timestamp || '---';
+  nextUpdate = {L0:(m.next_L0_s||0)-Date.now()/1000+m.timestamp_unix||0,
+                L1:(m.next_L1_s||0)-Date.now()/1000+m.timestamp_unix||0,
+                L2:(m.next_L2_s||0)-Date.now()/1000+m.timestamp_unix||0};
+
+  // Joints
+  const l0 = d.L0 || {};
+  const j = l0.joints || {};
+  let jh = '';
+  (j.positions_rad||[]).forEach((p,i)=>{
+    const [lo,hi]=LIMITS[i]; const pp=pct(p,lo,hi);
+    const col=Math.abs(p)>(hi*0.8)?'red':'gold';
+    jh+=`<div style="font-size:12px">${JOINT_NAMES[i]} <span style="float:right;font-size:11px">${p.toFixed(4)}rad · ${(j.positions_deg||[])[i]||0}°</span></div>
+    <div class="bar"><div class="${col}" style="width:${pp}%"></div></div>`;
+  });
+  document.getElementById('joints').innerHTML = jh;
+  document.getElementById('joints').innerHTML += `<div style="font-size:10px;color:var(--dim);margin-top:4px">源: ${j.source||'?'}</div>`;
+
+  // Topics
+  const l1 = d.L1 || {};
+  const topics = l1.topics || {};
+  let th = `<div style="font-size:12px;margin-bottom:4px">${topics.count||0} 话题在线</div><div class="topics-grid">`;
+  (topics.items||[]).forEach(t=>{
+    th += `<span class="topic-tag ${t.category}">${t.name.split('/').pop()}</span>`;
+  });
+  th += '</div>';
+  if((topics.items||[]).length>7) th+='<div style="font-size:10px;color:var(--dim)">+更多...</div>';
+  document.getElementById('topics').innerHTML = th;
+
+  // Force
+  const ft = l0.force_torque || {};
+  document.getElementById('force').innerHTML =
+    `<div class="stat"><label>Fx</label><span>${(ft.fx||0).toFixed(2)} N</span></div>
+    <div class="stat"><label>Fy</label><span>${(ft.fy||0).toFixed(2)} N</span></div>
+    <div class="stat"><label>Fz</label><span>${(ft.fz||0).toFixed(2)} N</span></div>
+    <div class="stat"><label>Tz</label><span>${(ft.tz||0).toFixed(2)} Nm</span></div>`;
+
+  // Safety
+  const alerts = l0.alerts || [];
+  let sh = '';
+  alerts.forEach(a=>{
+    const cls = a.level==='critical'?'bg-red':a.level==='warning'?'bg-yellow':'bg-green';
+    sh += `<div class="stat"><label>${a.code}</label><span class="badge ${cls}">${a.msg}</span></div>`;
+  });
+  document.getElementById('safety').innerHTML = sh||'<div style="color:var(--dim);font-size:12px">无告警</div>';
+
+  // Camera
+  const l2 = d.L2 || {};
+  const cam = l2.camera || {};
+  let ch = `<div class="stat"><label>状态</label><span class="badge ${cam.status==='live'?'bg-green':'bg-yellow'}">${cam.status}</span></div>`;
+  ch += `<div class="stat"><label>分辨率</label><span>${cam.resolution||'?'}</span></div>`;
+  if(cam.data && cam.data.length>100){
+    ch += `<img class="cam-img" src="data:image/jpeg;base64,${cam.data}" alt="RealSense">`;
+    ch += `<div style="font-size:9px;color:var(--dim);margin-top:2px">${cam.note||''}</div>`;
+  } else {
+    ch += `<div style="color:var(--dim);font-size:12px;margin-top:4px">📷 ${cam.note||'Orin离线'}</div>`;
+  }
+  document.getElementById('camera').innerHTML = ch;
+
+  // System
+  const res = l1.resources || {};
+  document.getElementById('system').innerHTML =
+    `<div class="stat"><label>ROS2节点</label><span>${l1.nodes?.count||0}</span></div>
+    <div class="stat"><label>内存</label><span>${res.memory||'?'}</span></div>
+    <div class="stat"><label>模型</label><span>${(l2.models?.smolvla_450m||'?')} / ${l2.models?.cache_size||'?'}</span></div>
+    <div class="stat"><label>相机</label><span>${cam.status==='live'?'🟢在线':'⚫离线'}</span></div>`;
+}
+
+function updateCountdown(){
+  const now = Date.now()/1000;
+  let txt = [];
+  for(const [k,v] of Object.entries(nextUpdate)){
+    const rem = Math.max(0, v - now);
+    if(rem > 0) txt.push(`${k}:${Math.ceil(rem)}s`);
+  }
+  document.getElementById('countdown').textContent = txt.length ? '下次: '+txt.join(' ') : '等待更新...';
+}
+
+async function manualRefresh(){
+  if(loading) return;
+  loading = true;
+  const btn = document.getElementById('refreshBtn');
+  btn.textContent = '⏳ 刷新中...'; btn.disabled = true;
+  try{
+    const r = await fetch('https://raw.githubusercontent.com/MikeBMW/lerobot-smolvla-lew/mac/docs/web/robot-status.json?t='+Date.now());
+    const d = await r.json();
+    render(d);
+  }catch(e){
+    console.log('Refresh failed:', e);
+  }
+  loading = false;
+  btn.textContent = '🔄 立即刷新'; btn.disabled = false;
+}
+
+async function autoRefresh(){
+  await manualRefresh();
+}
+autoRefresh();
+setInterval(updateCountdown, 1000);
+setInterval(autoRefresh, 1800000); // 30分钟全量
+</script>
+</body>
+</html>
