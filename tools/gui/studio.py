@@ -6848,9 +6848,19 @@ class StudioMainWindow(QMainWindow):
 
         # 文档同步（PyInstaller .exe 专用）
         m_doc.addSeparator()
-        act_sync = QAction("📥 同步最新文档 (从 GitHub)", self)
+        act_sync = QAction("📥 同步文档 (从 GitHub 下载)", self)
         act_sync.triggered.connect(self._sync_docs)
         m_doc.addAction(act_sync)
+
+        act_push = QAction("📤 上传修改 (推送到 GitHub)", self)
+        act_push.triggered.connect(self._push_docs)
+        m_doc.addAction(act_push)
+
+        m_doc.addSeparator()
+        act_open_dir = QAction("📂 打开文档目录", self)
+        act_open_dir.triggered.connect(lambda: QDesktopServices.openUrl(
+            QUrl.fromLocalFile(self.docs_path)))
+        m_doc.addAction(act_open_dir)
 
         # ====== 帮助菜单 ======
         m_help = mb.addMenu("关于(&A)")
@@ -6904,9 +6914,9 @@ class StudioMainWindow(QMainWindow):
         try:
             from docs_sync import sync, get_status
             status = get_status()
-            msg = (f"当前文档目录: {status['doc_dir']}\\n"
-                   f"上次同步: {status['last_sync']}\\n"
-                   f"文档数量: {status['doc_count']}\\n\\n"
+            msg = (f"当前文档目录: {status['doc_dir']}\n"
+                   f"上次同步: {status['last_sync']}\n"
+                   f"文档数量: {status['doc_count']}\n\n"
                    f"点击确定开始从 GitHub 同步最新文档。")
             reply = QMessageBox.question(self, "同步文档", msg,
                 QMessageBox.Yes | QMessageBox.No)
@@ -6914,15 +6924,42 @@ class StudioMainWindow(QMainWindow):
                 return
 
             self.statusBar().showMessage("正在同步文档...")
-            def _do_sync():
-                sync(log_callback=lambda m: self.statusBar().showMessage(m))
-                self.statusBar().showMessage("✅ 文档同步完成")
-                QMessageBox.information(self, "同步完成",
-                    f"文档已更新到: {status['doc_dir']}\\n"
-                    f"请重新打开帮助文档查看。")
-            _do_sync()
+            sync(log_callback=lambda m: (
+                self.statusBar().showMessage(m),
+                QApplication.processEvents()
+            ))
+            self.statusBar().showMessage("✅ 文档同步完成")
+            QMessageBox.information(self, "同步完成",
+                f"文档已更新到: {status['doc_dir']}\n"
+                f"请重新打开帮助文档查看。")
         except Exception as e:
-            QMessageBox.warning(self, "同步失败", f"文档同步失败:\\n{e}")
+            QMessageBox.warning(self, "同步失败", f"文档同步失败:\n{e}")
+
+    def _push_docs(self):
+        """将本地文档修改推送到 GitHub"""
+        try:
+            from docs_sync import get_status, push_to_github
+            status = get_status()
+            msg = (f"当前文档目录: {status['doc_dir']}\n"
+                   f"版本: {status['version']}\n\n"
+                   f"将本地修改推送到 GitHub 主分支。\n"
+                   f"需要 GitHub Token 或 WSL 环境。")
+            reply = QMessageBox.question(self, "推送文档", msg,
+                QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+
+            self.statusBar().showMessage("正在推送...")
+            ok = push_to_github(log_callback=lambda m: (
+                self.statusBar().showMessage(m),
+                QApplication.processEvents()
+            ))
+            if ok:
+                self.statusBar().showMessage("✅ 推送完成")
+            else:
+                self.statusBar().showMessage("⚠ 推送未完成")
+        except Exception as e:
+            QMessageBox.warning(self, "推送失败", f"文档推送失败:\n{e}")
 
     def _mk_doc_action(self, label, paths_and_opener):
         """创建文档打开动作（支持多路径回退）"""
