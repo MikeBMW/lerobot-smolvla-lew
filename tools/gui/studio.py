@@ -6858,8 +6858,10 @@ class StudioMainWindow(QMainWindow):
 
         m_doc.addSeparator()
         act_open_dir = QAction("📂 打开文档目录", self)
-        act_open_dir.triggered.connect(lambda: QDesktopServices.openUrl(
-            QUrl.fromLocalFile(self.docs_path)))
+        def _open_docs_dir():
+            os.makedirs(self.docs_path, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.docs_path))
+        act_open_dir.triggered.connect(_open_docs_dir)
         m_doc.addAction(act_open_dir)
 
         # ====== 帮助菜单 ======
