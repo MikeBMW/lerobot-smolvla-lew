@@ -195,3 +195,5 @@ ros_orin_ws/log/
 !ros_pc_ws/src/*/package.xml
 !ros_orin_ws/src/*/package.xml
 Zone.Identifier
+# Windows NTFS ADS — files with :Zone.Identifier suffix cause checkout failure on Windows
+*:Zone.Identifier
