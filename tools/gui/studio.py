@@ -391,7 +391,7 @@ class ArchFlowBar(QFrame):
 
         # Sys-11 左（自适应宽度）
         mid_row.addWidget(self._make_stage_box(
-            "🧠", "SYS-11 动作系统", "L3 VLA多模态 · SmolVLA 500M", SYS11_COLOR), 1)
+            "🧠", "SYS-11 动作系统", "", SYS11_COLOR), 1)
         # 双向箭头
         link = QLabel("⟷")
         link.setFont(QFont("Arial", 18))
