@@ -6970,13 +6970,11 @@ class StudioMainWindow(QMainWindow):
             paths = [paths]
 
         def open_doc():
-            # PyInstaller .exe: 重定向到 GitHub 在线文档
+            # PyInstaller .exe: 打开 GitHub 文档目录（文件用同步功能下载）
             if getattr(sys, 'frozen', False):
-                for rel_path in paths:
-                    github_url = f"https://github.com/MikeBMW/lerobot-smolvla-lew/blob/main/docs/{rel_path}"
-                    QDesktopServices.openUrl(QUrl(github_url))
-                    self.statusBar().showMessage(f"已打开(在线): {github_url}")
-                    return
+                github_dir = "https://github.com/MikeBMW/lerobot-smolvla-lew/tree/main/docs"
+                QDesktopServices.openUrl(QUrl(github_dir))
+                self.statusBar().showMessage(f"已打开 GitHub 文档目录")
                 return
 
             for rel_path in paths:
