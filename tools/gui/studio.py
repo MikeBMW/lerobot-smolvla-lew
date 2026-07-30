@@ -656,7 +656,7 @@ class ProductRoadmapWidget(QFrame):
             },
             {
                 "phase": "Phase 3",
-                "title": "Sys-12 · 精细感知闭环",
+                "title": "Sys-12 · 精细感知潜空间闭环",
                 "time": "2027 Q1-Q2",
                 "dims": "X + Z 扩展",
                 "desc": "场景引导模型\n全域认知闭环",
