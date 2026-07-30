@@ -6884,6 +6884,14 @@ class StudioMainWindow(QMainWindow):
         act_lerobot = QAction("LeRobot 官方文档", self)
         act_lerobot.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/docs/lerobot")))
         m_help.addAction(act_lerobot)
+
+        m_help.addSeparator()
+        act_update = QAction("🔄 检查更新", self)
+        act_update.triggered.connect(self._check_updates)
+        m_help.addAction(act_update)
+
+        # 后台检查更新（启动后5秒）
+        QTimer.singleShot(5000, self._auto_check_update)
         
         act_patent = QAction("📜 专利展示面板 (6项权利要求)", self)
         act_patent.triggered.connect(self._toggle_patent_panel)
@@ -7018,6 +7026,49 @@ class StudioMainWindow(QMainWindow):
                 self.statusBar().showMessage("⚠ 部分指令执行失败")
         except Exception as e:
             QMessageBox.warning(self, "执行错误", f"PPT 解析失败:\n{e}")
+
+    def _check_updates(self):
+        """手动检查更新"""
+        from update_checker import check_latest, get_current_version
+        self.statusBar().showMessage("正在检查更新...")
+        info = check_latest()
+        if info is None:
+            QMessageBox.information(self, "检查失败",
+                "无法连接到 GitHub，请检查网络。\n"
+                "或手动访问：\n"
+                "https://github.com/MikeBMW/lerobot-smolvla-lew/releases")
+            self.statusBar().showMessage("⚠ 检查更新失败")
+            return
+
+        cur = get_current_version()
+        if info["version"] == cur:
+            QMessageBox.information(self, "已是最新版",
+                f"当前版本: {cur}\n"
+                f"已是最新版本 ✅")
+            self.statusBar().showMessage(f"✅ 已是最新版: {cur}")
+        else:
+            self.statusBar().showMessage(f"📢 发现新版本: {info['version']}")
+            msg = (f"当前版本: {cur}\n"
+                   f"最新版本: {info['version']}\n"
+                   f"发布时间: {info['published'][:10]}\n\n"
+                   f"更新内容:\n{info['body']}\n\n"
+                   f"点击确定打开下载页面。")
+            reply = QMessageBox.question(self, "📢 发现新版本", msg,
+                QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl(
+                    info.get("download_url") or info.get("release_url", "")))
+
+    def _auto_check_update(self):
+        """启动后后台检查更新（无声通知）"""
+        from update_checker import check_latest, get_current_version
+        try:
+            info = check_latest(timeout=5)
+            if info and info["version"] != get_current_version():
+                self.statusBar().showMessage(
+                    f"📢 发现新版本 {info['version']} — 关于 → 检查更新")
+        except Exception:
+            pass  # 静默失败
 
     def _mk_doc_action(self, label, paths_and_opener):
         """创建文档打开动作（支持多路径回退）"""
