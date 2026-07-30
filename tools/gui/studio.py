@@ -6193,7 +6193,7 @@ class ArchitectureModule(QWidget):
             ("L2 基线", "Z700F", SYS0_COLOR, [
                 ("SYS 2", "云端训练", SYS2_COLOR,
                  ["离线训练\n轻量模型"]),
-                ("SYS 1", SYS11_COLOR,
+                ("SYS 1", "边缘推理", SYS11_COLOR,
                  [("SYS 11", "ACT 52M", C_CYAN),
                   ("SYS 12", "—", C_GRAY)]),
                 ("SYS 0", "硬件执行", C_RED,
@@ -6202,7 +6202,7 @@ class ArchitectureModule(QWidget):
             ("L3 增强", "Z700F+", C_YELLOW, [
                 ("SYS 2", "云端训练", SYS2_COLOR,
                  ["远程下发\n模型热更新"]),
-                ("SYS 1", SYS11_COLOR,
+                ("SYS 1", "边缘推理", SYS11_COLOR,
                  [("SYS 11", "SmolVLA", C_CYAN),
                   ("SYS 12", "Z-Flow", C_BLUE)]),
                 ("SYS 0", "硬件执行", C_RED,
@@ -6211,7 +6211,7 @@ class ArchitectureModule(QWidget):
             ("L4 旗舰", "Z700", ROI_ACCENT, [
                 ("SYS 2", "云端训练", SYS2_COLOR,
                  ["全自动训练\n4090 GPU\n100K+数据集"]),
-                ("SYS 1", SYS11_COLOR,
+                ("SYS 1", "边缘推理", SYS11_COLOR,
                  [("SYS 11", "VLA-T", C_CYAN),
                   ("SYS 12", "Z-Flow", C_BLUE)]),
                 ("SYS 0", "硬件执行", C_RED,
