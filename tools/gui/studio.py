@@ -1104,6 +1104,7 @@ class HomeWidget(QWidget):
         grid = QGridLayout()
         grid.setSpacing(12)
         modules = [
+            ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "训练控制台",   "Sys-11 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
@@ -6162,6 +6163,81 @@ class InferencePanel(QWidget):
 # ============================================================
 # 插拔场景模块: Z700 L2基线/L3增强/L4旗舰
 # ============================================================
+class ArchitectureModule(QWidget):
+    """系统架构总览 — System 2 → System 1 → System 0 三层架构"""
+
+    ARCH_TEXT = r"""
+                       ╔══════════════════════════════╗
+                       ║     系统2 · 云端训练层        ║
+                       ║  ┌────────────────────────┐  ║
+                       ║  │  X-D · 数据采集与管理    │  ║
+                       ║  │  X-Mo · 模型训练与微调   │  ║
+                       ║  │  X-Ma · 模型部署与监控   │  ║
+                       ║  └────────────────────────┘  ║
+                       ║              ⬇ 模型下发       ║
+                       ║                               ║
+                       ║     系统1 · 边缘推理层        ║
+                       ║  ┌────────────────────────┐  ║
+                       ║  │  VLA推理 · Orin Nano    │  ║
+                       ║  │  力-位混合动作规划       │  ║
+                       ║  │  OTA远程升级与回滚       │  ║
+                       ║  └────────────────────────┘  ║
+                       ║              ⬇ 动作指令       ║
+                       ║                               ║
+                       ║     系统0 · 硬件执行层        ║
+                       ║  ┌────────────────────────┐  ║
+                       ║  │  机械臂运动控制          │  ║
+                       ║  │  六维力/力矩实时反馈     │  ║
+                       ║  │  视觉/触觉多模态采集    │  ║
+                       ║  └────────────────────────┘  ║
+                       ║              ⬆ 数据回传       ║
+                       ╚══════════════════════════════╝
+"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # 标题
+        title = QLabel("🏗  Z-MAX 三层系统架构")
+        title.setFont(QFont("Arial", 22, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE};")
+        layout.addWidget(title)
+
+        sub = QLabel("System 2（云端） → System 1（边缘） → System 0（硬件）  ·  数据闭环")
+        sub.setStyleSheet(f"color:{C_GRAY}; font-size:11px;")
+        layout.addWidget(sub)
+
+        # 架构图（等宽字体渲染 ASCII）
+        arch = QLabel(self.ARCH_TEXT)
+        arch.setFont(QFont("Consolas", 11))
+        arch.setStyleSheet(f"""
+            color: {C_CYAN};
+            background: {C_BG2};
+            border: 1px solid {C_CYAN}44;
+            border-radius: 10px;
+            padding: 16px;
+        """)
+        arch.setWordWrap(False)
+        arch.setAlignment(Qt.AlignCenter)
+        layout.addWidget(arch, 1)
+
+        # 数据流向说明
+        flow = QLabel(
+            "🔁 数据闭环：采集 → 标注 → 训练 → 部署 → 推理 → 回传"
+        )
+        flow.setStyleSheet(f"color:{C_DIM}; font-size:10px;")
+        flow.setAlignment(Qt.AlignCenter)
+        layout.addWidget(flow)
+
+        self.setLayout(layout)
+
+
 class PluggingSceneModule(SubModuleWidget):
     """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
 
@@ -6554,17 +6630,19 @@ class StudioMainWindow(QMainWindow):
         # Page 1-6: 子模块
         self.modules = {
             "home":       0,
-            "dataset":    1,
-            "training":   2,
-            "evaluation": 3,
-            "hardware":   4,
-            "config":     5,
-            "monitor":    6,
-            "plugging":   7,
-            "version":    8,
-            "inference":  9,
+            "architecture": 1,
+            "dataset":    2,
+            "training":   3,
+            "evaluation": 4,
+            "hardware":   5,
+            "config":     6,
+            "monitor":    7,
+            "plugging":   8,
+            "version":    9,
+            "inference":  10,
         }
 
+        self.stack.addWidget(ArchitectureModule())
         self.stack.addWidget(DatasetModule())
         self.stack.addWidget(TrainingModule())
         self.stack.addWidget(EvalModule())
