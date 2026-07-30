@@ -1028,7 +1028,7 @@ class HomeWidget(QWidget):
         upg_btn.setFont(QFont("Arial", 9, QFont.Bold))
         upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         upg_btn.setCursor(Qt.PointingHandCursor)
-        upg_btn.clicked.connect(self._check_updates)
+        upg_btn.clicked.connect(lambda: self.module_clicked.emit("check_updates"))
         row.addWidget(upg_btn)
 
         # ====== 版本同步按钮（快速跳转到版本管理页面） ======
@@ -6654,6 +6654,11 @@ class StudioMainWindow(QMainWindow):
 
     def _on_nav(self, target):
         """导航切换"""
+        # 特殊指令：检查更新
+        if target == "check_updates":
+            self._check_updates()
+            return
+
         # 系统层级映射
         if target in self.layer_map:
             target = self.layer_map[target]
