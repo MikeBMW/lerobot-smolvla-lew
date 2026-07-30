@@ -6164,78 +6164,151 @@ class InferencePanel(QWidget):
 # 插拔场景模块: Z700 L2基线/L3增强/L4旗舰
 # ============================================================
 class ArchitectureModule(QWidget):
-    """系统架构总览 — System 2 → System 1 → System 0 三层架构"""
-
-    ARCH_TEXT = r"""
-                       ╔══════════════════════════════╗
-                       ║     系统2 · 云端训练层        ║
-                       ║  ┌────────────────────────┐  ║
-                       ║  │  X-D · 数据采集与管理    │  ║
-                       ║  │  X-Mo · 模型训练与微调   │  ║
-                       ║  │  X-Ma · 模型部署与监控   │  ║
-                       ║  └────────────────────────┘  ║
-                       ║              ⬇ 模型下发       ║
-                       ║                               ║
-                       ║     系统1 · 边缘推理层        ║
-                       ║  ┌────────────────────────┐  ║
-                       ║  │  VLA推理 · Orin Nano    │  ║
-                       ║  │  力-位混合动作规划       │  ║
-                       ║  │  OTA远程升级与回滚       │  ║
-                       ║  └────────────────────────┘  ║
-                       ║              ⬇ 动作指令       ║
-                       ║                               ║
-                       ║     系统0 · 硬件执行层        ║
-                       ║  ┌────────────────────────┐  ║
-                       ║  │  机械臂运动控制          │  ║
-                       ║  │  六维力/力矩实时反馈     │  ║
-                       ║  │  视觉/触觉多模态采集    │  ║
-                       ║  └────────────────────────┘  ║
-                       ║              ⬆ 数据回传       ║
-                       ╚══════════════════════════════╝
-"""
+    """系统架构总览 — 匹配 PPT 第24页三层横排布局"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._build()
 
     def _build(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        main = QVBoxLayout()
+        main.setContentsMargins(20, 16, 20, 16)
+        main.setSpacing(12)
 
-        # 标题
-        title = QLabel("🏗  Z-MAX 三层系统架构")
-        title.setFont(QFont("Arial", 22, QFont.Bold))
-        title.setStyleSheet(f"color:{C_WHITE};")
-        layout.addWidget(title)
+        # Title row (title + marker)
+        title_row = QHBoxLayout()
+        title = QLabel("Z-MAX 系统架构 · 三层总览")
+        title.setFont(QFont("Arial", 20, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE}; background:transparent;")
+        title_row.addWidget(title)
+        title_row.addStretch()
 
-        sub = QLabel("System 2（云端） → System 1（边缘） → System 0（硬件）  ·  数据闭环")
-        sub.setStyleSheet(f"color:{C_GRAY}; font-size:11px;")
-        layout.addWidget(sub)
-
-        # 架构图（等宽字体渲染 ASCII）
-        arch = QLabel(self.ARCH_TEXT)
-        arch.setFont(QFont("Consolas", 11))
-        arch.setStyleSheet(f"""
-            color: {C_CYAN};
-            background: {C_BG2};
-            border: 1px solid {C_CYAN}44;
-            border-radius: 10px;
-            padding: 16px;
+        marker = QLabel("V 静")
+        marker.setFont(QFont("Consolas", 12, QFont.Bold))
+        marker.setStyleSheet(f"""
+            color:{C_ORANGE}; background:{C_BG2};
+            border:2px solid {C_ORANGE}; border-radius:6px;
+            padding:4px 12px;
         """)
-        arch.setWordWrap(False)
-        arch.setAlignment(Qt.AlignCenter)
-        layout.addWidget(arch, 1)
+        title_row.addWidget(marker)
+        main.addLayout(title_row)
 
-        # 数据流向说明
-        flow = QLabel(
-            "🔁 数据闭环：采集 → 标注 → 训练 → 部署 → 推理 → 回传"
-        )
-        flow.setStyleSheet(f"color:{C_DIM}; font-size:10px;")
-        flow.setAlignment(Qt.AlignCenter)
-        layout.addWidget(flow)
+        sub = QLabel("云-边-端 数据闭环体系")
+        sub.setStyleSheet(f"color:{C_GRAY}; font-size:11px;")
+        main.addWidget(sub)
 
-        self.setLayout(layout)
+        # Content frame matching PPT layout
+        frame = QFrame()
+        frame.setStyleSheet(f"background:{C_BG2}; border:1px solid {C_BORDER}; border-radius:10px;")
+        fl = QVBoxLayout()
+        fl.setSpacing(8)
+        fl.setContentsMargins(20, 16, 20, 16)
+
+        # SYS 2 — Top (purple)
+        sys2 = self._layer_bar("SYS 2", "云端训练", SYS2_COLOR)
+        fl.addWidget(sys2)
+
+        # Down arrow: model deployment
+        a1 = QLabel("⬇  模型下发")
+        a1.setAlignment(Qt.AlignCenter)
+        a1.setStyleSheet(f"color:{C_CYAN}; font-size:10px; background:transparent; border:none; padding:2px 0;")
+        fl.addWidget(a1)
+
+        # SYS 1 — Middle (blue), contains SYS 11 + SYS 12
+        sys1_out = QFrame()
+        sys1_out.setStyleSheet(f"background:{C_CYAN}22; border:2px solid {C_CYAN}88; border-radius:8px;")
+        sys1_out.setFixedHeight(120)
+        s1l = QHBoxLayout()
+        s1l.setSpacing(12)
+        s1l.setContentsMargins(12, 8, 12, 8)
+
+        # SYS 1 label on top-left of the container
+        s1_label = QLabel("SYS 1")
+        s1_label.setFont(QFont("Arial", 10, QFont.Bold))
+        s1_label.setStyleSheet(f"color:{C_CYAN}; background:transparent; border:none;")
+
+        # SYS 11 (left)
+        sys11 = self._sub_box("SYS 11", "VLA-T", C_CYAN)
+        # SYS 12 (right)
+        sys12 = self._sub_box("SYS 12", "Z-Flow", C_BLUE)
+
+        s1l.addWidget(sys11, 1)
+        s1l.addWidget(sys12, 1)
+
+        # Stack SYS1 label + sub-boxes
+        s1v = QVBoxLayout()
+        s1v.setSpacing(4)
+        s1v.addWidget(s1_label)
+        s1v.addLayout(s1l)
+        sys1_out.setLayout(s1v)
+        fl.addWidget(sys1_out)
+
+        # Down arrow: action commands
+        a2 = QLabel("⬇  动作指令")
+        a2.setAlignment(Qt.AlignCenter)
+        a2.setStyleSheet(f"color:{C_CYAN}; font-size:10px; background:transparent; border:none; padding:2px 0;")
+        fl.addWidget(a2)
+
+        # SYS 0 — Bottom (red)
+        sys0 = self._layer_bar("SYS 0", "硬件驱动+原子功能", C_RED)
+        fl.addWidget(sys0)
+
+        frame.setLayout(fl)
+        main.addWidget(frame, 1)
+
+        self.setLayout(main)
+
+    def _layer_bar(self, sys_id, desc, color):
+        """Full-width layer bar (SYS 2 / SYS 0)"""
+        bar = QFrame()
+        bar.setFixedHeight(80)
+        bar.setStyleSheet(f"""
+            background:{color};
+            border:1px solid {color}88;
+            border-radius:8px;
+        """)
+        bl = QHBoxLayout()
+        bl.setContentsMargins(20, 8, 20, 8)
+
+        sid = QLabel(sys_id)
+        sid.setFont(QFont("Consolas", 14, QFont.Bold))
+        sid.setStyleSheet(f"color:white; background:transparent; border:none;")
+        bl.addWidget(sid)
+
+        sd = QLabel(desc)
+        sd.setFont(QFont("Microsoft YaHei", 13))
+        sd.setStyleSheet(f"color:white; background:transparent; border:none;")
+        bl.addWidget(sd)
+        bl.addStretch()
+        bar.setLayout(bl)
+        return bar
+
+    def _sub_box(self, sys_id, desc, color):
+        """Sub-box inside SYS 1 (SYS 11 / SYS 12)"""
+        box = QFrame()
+        box.setStyleSheet(f"""
+            background:{color};
+            border:1px solid {color}88;
+            border-radius:6px;
+        """)
+        bl = QVBoxLayout()
+        bl.setContentsMargins(12, 6, 12, 6)
+        bl.setSpacing(2)
+
+        sid = QLabel(sys_id)
+        sid.setFont(QFont("Consolas", 12, QFont.Bold))
+        sid.setStyleSheet(f"color:white; background:transparent; border:none;")
+        sid.setAlignment(Qt.AlignCenter)
+        bl.addWidget(sid)
+
+        sd = QLabel(desc)
+        sd.setFont(QFont("Microsoft YaHei", 11))
+        sd.setStyleSheet(f"color:white; background:transparent; border:none;")
+        sd.setAlignment(Qt.AlignCenter)
+        bl.addWidget(sd)
+
+        box.setLayout(bl)
+        return box
 
 
 class PluggingSceneModule(SubModuleWidget):
