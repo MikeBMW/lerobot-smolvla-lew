@@ -16,7 +16,7 @@ RAW_BASE = "https://raw.githubusercontent.com/MikeBMW/lerobot-smolvla-lew/main/d
 
 # ── Z-MAX 文档结构（按产品分类组织） ──
 # 结构说明：
-#   _docs/                     ← 文档根目录（.exe 所在目录 / %LOCALAPPDATA%）
+#   静界/                     ← 文档根目录（.exe 所在目录 / %LOCALAPPDATA%）
 #   ├── .version               ← 版本追踪文件
 #   ├── 01-培训/                ← 产品培训
 #   ├── 02-解决方案/             ← 技术方案
@@ -52,15 +52,15 @@ def get_docs_dir():
     if getattr(sys, 'frozen', False):
         # .exe 同级
         exe_dir = os.path.dirname(sys.executable)
-        candidate = os.path.join(exe_dir, "_docs")
+        candidate = os.path.join(exe_dir, "静界")
         # 如果 .exe 在临时目录（安装时），回退到 AppData
         if "temp" in exe_dir.lower() or "tmp" in exe_dir.lower():
             fallback = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-            return os.path.join(fallback, "zmax", "_docs")
+            return os.path.join(fallback, "zmax", "静界")
         return candidate
     # 开发环境
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return os.path.join(repo, "_docs")
+    return os.path.join(repo, "静界")
 
 
 def classify(filename):
