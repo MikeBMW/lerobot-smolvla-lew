@@ -563,12 +563,6 @@ class PhaseCardButton(QFrame):
         kpi_lbl.setAlignment(Qt.AlignRight)
         layout.addWidget(kpi_lbl)
 
-        # 文件夹路径提示
-        path_lbl = QLabel(f"📁 {p['folder']}")
-        path_lbl.setFont(QFont("Consolas", 7))
-        path_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:2px 0;")
-        layout.addWidget(path_lbl)
-
         self.setLayout(layout)
 
     def enterEvent(self, e):
