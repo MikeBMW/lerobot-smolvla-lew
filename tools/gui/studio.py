@@ -6068,7 +6068,7 @@ class ArchitectureModule(QWidget):
                 ("SYS 2", "云端训练", SYS2_COLOR,
                  ["离线训练\n轻量模型"]),
                 ("SYS 1", "边缘推理", SYS11_COLOR,
-                 [("SYS 11", "ACT 52M", C_CYAN),
+                 [("SYS 10", "ACT", C_CYAN),
                   ("SYS 12", "—", C_GRAY)]),
                 ("SYS 0", "硬件执行", C_RED,
                  ["固定工位\n力控1kHz\n视觉定位"]),
