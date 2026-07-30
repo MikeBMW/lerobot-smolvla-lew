@@ -6083,7 +6083,7 @@ class ArchitectureModule(QWidget):
             ]),
             ("L4 旗舰", "Z700", ROI_ACCENT, [
                 ("SYS 2", "云端训练", SYS2_COLOR,
-                 ["全自动训练\n4090 GPU\n100K+数据集"]),
+                 ["全自动训练\n5090 GPU\n100K+数据集"]),
                 ("SYS 1", "边缘推理", SYS11_COLOR,
                  [("SYS 11", "VLA-T", C_CYAN),
                   ("SYS 12", "Z-Flow", C_BLUE)]),
