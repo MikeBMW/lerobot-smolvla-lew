@@ -652,7 +652,7 @@ class ProductRoadmapWidget(QFrame):
                 "dims": "M+A泛化",
                 "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
                 "color": SYS11_COLOR,
-                "kpi": "<10ms",
+                "kpi": "<70ms",
             },
             {
                 "phase": "Phase 3",
@@ -955,7 +955,7 @@ class HomeWidget(QWidget):
         for val, lbl, clr in [
             ("±0.02mm", "定位精度", SYS11_COLOR),
             (">99%", "连续成功率", C_GREEN),
-            ("<10ms", "推理延迟", SYS11_COLOR),
+            ("<70ms", "推理延迟", SYS11_COLOR),
             ("1ms", "控制周期", SYS0_COLOR),
         ]:
             col = QVBoxLayout(); col.setSpacing(1)
