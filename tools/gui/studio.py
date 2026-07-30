@@ -638,7 +638,7 @@ class ProductRoadmapWidget(QFrame):
             },
             {
                 "phase": "Phase 1",
-                "title": "Sys-10 · ACT端到端",
+                "title": "Sys-10 · ACT端到端+固定轨迹",
                 "time": "2026 Q4",
                 "dims": "M + A",
                 "desc": "感知→动作端到端执行",
