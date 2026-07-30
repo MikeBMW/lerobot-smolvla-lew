@@ -6846,7 +6846,18 @@ class StudioMainWindow(QMainWindow):
         m_admin.addAction(self._mk_doc_action("🔄 上游同步指南",
             (["Z-MAX-UPSTREAM-SYNC.md"], "xdg-open")))
 
-        # 文档同步（PyInstaller .exe 专用）
+        m_doc.addSeparator()
+        m_ppt = m_doc.addMenu("🎯 PPT 指令控制")
+        m_ppt.addAction(QAction("📝 生成指令模板 PPTX", self, triggered=lambda: self._gen_ppt_template()))
+        m_ppt.addAction(QAction("▶ 解析并执行当前 PPT", self, triggered=lambda: self._run_ppt()))
+        m_ppt.addAction(QAction("📂 打开指令目录", self, triggered=lambda: (
+            setattr(self, '_tmp_ppt', None),
+            QDesktopServices.openUrl(QUrl.fromLocalFile(
+                os.path.join(self.docs_path, "00-指令") if self.docs_path else ""
+            ))
+        )))
+
+        # 文档同步
         m_doc.addSeparator()
         act_sync = QAction("📥 同步文档 (从 GitHub 下载)", self)
         act_sync.triggered.connect(self._sync_docs)
@@ -6962,6 +6973,51 @@ class StudioMainWindow(QMainWindow):
                 self.statusBar().showMessage("⚠ 推送未完成")
         except Exception as e:
             QMessageBox.warning(self, "推送失败", f"文档推送失败:\n{e}")
+
+    def _gen_ppt_template(self):
+        """生成 PPT 指令模板"""
+        try:
+            from ppt_engine import create_template, get_instructions_dir
+            # 先确保 "静界" 目录存在
+            from docs_sync import get_docs_dir
+            os.makedirs(os.path.join(get_docs_dir(), "00-指令"), exist_ok=True)
+
+            ok, result = create_template()
+            if ok:
+                self.statusBar().showMessage(f"✅ 模板已生成: {result}")
+                QMessageBox.information(self, "模板已生成",
+                    f"指令模板已保存到:\n{result}\n\n"
+                    f"打开后按模板格式写指令，\n"
+                    f"然后点「解析并执行当前 PPT」运行。")
+            else:
+                QMessageBox.warning(self, "生成失败", f"请先同步文档:\n{result}")
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"生成模板失败:\n{e}")
+
+    def _run_ppt(self):
+        """选择 PPT 文件并执行指令"""
+        from PyQt5.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择指令 PPTX 文件", self.docs_path or "",
+            "PPTX 文件 (*.pptx)")
+        if not path:
+            return
+
+        try:
+            from ppt_engine import run_all
+            self.statusBar().showMessage(f"正在解析: {path}")
+            # 用 QMessageBox 显示执行日志
+            logs = []
+            ok = run_all(path, log_callback=lambda m: logs.append(m))
+            msg = "\n".join(logs)
+            if ok:
+                QMessageBox.information(self, "✅ 指令执行完成", msg)
+                self.statusBar().showMessage("✅ 指令全部执行成功")
+            else:
+                QMessageBox.warning(self, "⚠ 部分指令失败", msg)
+                self.statusBar().showMessage("⚠ 部分指令执行失败")
+        except Exception as e:
+            QMessageBox.warning(self, "执行错误", f"PPT 解析失败:\n{e}")
 
     def _mk_doc_action(self, label, paths_and_opener):
         """创建文档打开动作（支持多路径回退）"""
