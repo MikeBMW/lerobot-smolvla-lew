@@ -655,7 +655,7 @@ class ProductRoadmapWidget(QFrame):
                 "phase": "Phase 2",
                 "title": "VLA-T端到端泛化",
                 "time": "2026 Q4",
-                "dims": "Z 潜空间",
+                "dims": "M+A泛化",
                 "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
                 "color": SYS11_COLOR,
                 "kpi": "<10ms",
@@ -902,6 +902,15 @@ class HomeWidget(QWidget):
         upg_btn.setCursor(Qt.PointingHandCursor)
         upg_btn.clicked.connect(lambda: self.module_clicked.emit("check_updates"))
         row.addWidget(upg_btn)
+
+        # 官网按钮
+        web_btn = QPushButton("🌐 Z-MAX")
+        web_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        web_btn.setCursor(Qt.PointingHandCursor)
+        web_btn.setToolTip("datadrive.world")
+        web_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world")))
+        row.addWidget(web_btn)
 
         # ====== 版本同步按钮（快速跳转到版本管理页面） ======
         ver_btn = QPushButton("📦 版本同步")
