@@ -6660,7 +6660,13 @@ class StudioMainWindow(QMainWindow):
     def _build_menubar(self):
         """构建专业开发环境菜单栏"""
         self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.docs_path = os.path.join(self.repo_path, "docs")
+        # 文档根目录
+        if getattr(sys, 'frozen', False):
+            from docs_sync import get_docs_dir
+            self.docs_path = get_docs_dir()
+        else:
+            self.docs_path = os.path.join(self.repo_path, "docs")
+        self.docs_syncer = None  # lazy import
 
         mb = self.menuBar()
         mb.setStyleSheet(f"""
@@ -6840,6 +6846,12 @@ class StudioMainWindow(QMainWindow):
         m_admin.addAction(self._mk_doc_action("🔄 上游同步指南",
             (["Z-MAX-UPSTREAM-SYNC.md"], "xdg-open")))
 
+        # 文档同步（PyInstaller .exe 专用）
+        m_doc.addSeparator()
+        act_sync = QAction("📥 同步最新文档 (从 GitHub)", self)
+        act_sync.triggered.connect(self._sync_docs)
+        m_doc.addAction(act_sync)
+
         # ====== 帮助菜单 ======
         m_help = mb.addMenu("关于(&A)")
         act_about = QAction("关于 Z-MAX", self)
@@ -6887,6 +6899,31 @@ class StudioMainWindow(QMainWindow):
             self._on_nav(target)
         return nav
 
+    def _sync_docs(self):
+        """从 GitHub 同步最新文档到本地"""
+        try:
+            from docs_sync import sync, get_status
+            status = get_status()
+            msg = (f"当前文档目录: {status['doc_dir']}\\n"
+                   f"上次同步: {status['last_sync']}\\n"
+                   f"文档数量: {status['doc_count']}\\n\\n"
+                   f"点击确定开始从 GitHub 同步最新文档。")
+            reply = QMessageBox.question(self, "同步文档", msg,
+                QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+
+            self.statusBar().showMessage("正在同步文档...")
+            def _do_sync():
+                sync(log_callback=lambda m: self.statusBar().showMessage(m))
+                self.statusBar().showMessage("✅ 文档同步完成")
+                QMessageBox.information(self, "同步完成",
+                    f"文档已更新到: {status['doc_dir']}\\n"
+                    f"请重新打开帮助文档查看。")
+            _do_sync()
+        except Exception as e:
+            QMessageBox.warning(self, "同步失败", f"文档同步失败:\\n{e}")
+
     def _mk_doc_action(self, label, paths_and_opener):
         """创建文档打开动作（支持多路径回退）"""
         paths, opener = paths_and_opener
@@ -6894,6 +6931,15 @@ class StudioMainWindow(QMainWindow):
             paths = [paths]
 
         def open_doc():
+            # PyInstaller .exe: 重定向到 GitHub 在线文档
+            if getattr(sys, 'frozen', False):
+                for rel_path in paths:
+                    github_url = f"https://github.com/MikeBMW/lerobot-smolvla-lew/blob/main/docs/{rel_path}"
+                    QDesktopServices.openUrl(QUrl(github_url))
+                    self.statusBar().showMessage(f"已打开(在线): {github_url}")
+                    return
+                return
+
             for rel_path in paths:
                 full_path = os.path.join(self.docs_path, rel_path)
                 if os.path.exists(full_path):
@@ -6902,36 +6948,34 @@ class StudioMainWindow(QMainWindow):
                             # WSL: 复制到 Windows 临时目录 → PowerPoint 打开
                             import shutil
                             tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
-                            tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
+                            tmp_dir = "/tmp/zmax_docs"
                             os.makedirs(tmp_dir, exist_ok=True)
                             tmp_path = os.path.join(tmp_dir, tmp_name)
                             shutil.copy2(full_path, tmp_path)
-                            win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
-                            # .pptx 用 PowerPoint，其他用默认程序
+                            # .pptx 用 PowerPoint（通过cmd.exe），其他用默认程序
                             if full_path.endswith(".pptx"):
-                                subprocess.Popen(["cmd.exe", "/c", "start", "powerpnt", win_path])
+                                subprocess.Popen(["cmd.exe", "/c", "start", "powerpnt", tmp_path])
                             else:
-                                subprocess.Popen(["explorer.exe", win_path])
+                                subprocess.Popen(["explorer.exe", tmp_path])
                         elif opener == "xdg-open":
-                            # WSL: 复制到 Windows 临时目录再打开
                             import shutil
-                            ext = os.path.splitext(full_path)[1]
                             tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
-                            tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
+                            tmp_dir = "/tmp/zmax_docs"
                             os.makedirs(tmp_dir, exist_ok=True)
                             tmp_path = os.path.join(tmp_dir, tmp_name)
                             shutil.copy2(full_path, tmp_path)
-                            win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
-                            subprocess.Popen(["explorer.exe", win_path])
+                            subprocess.Popen(["explorer.exe", tmp_path])
                         else:
                             subprocess.Popen([opener, full_path])
                         self.statusBar().showMessage(f"已打开: {rel_path}")
                         return
                     except Exception as e:
-                        QMessageBox.warning(self, "打开失败", f"无法打开文档:\n{e}")
+                        QMessageBox.warning(self, "打开失败", f"无法打开文档:\
+{e}")
                         return
             QMessageBox.information(self, "文档未找到",
-                f"以下文档均不存在:\n" +
+                f"以下文档均不存在:\
+" +
                 "\n".join([os.path.join(self.docs_path, p) for p in paths]))
 
         act = QAction(label, self)
