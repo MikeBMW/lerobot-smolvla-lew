@@ -1,0 +1,42 @@
+# Z-MAX Console Windows build — PyInstaller cross-compile via Wine
+#
+# Usage:
+#   docker build -f Dockerfile.win -t zmax-console-win tools/gui/
+#   docker run --rm -v /mnt/c/Users:/output zmax-console-win
+#   → Windows 桌面出现 Z-MAX_Console.exe
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV WINEPREFIX=/wine
+ENV WINEARCH=win64
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Install Wine + dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wine64 \
+    wine32 \
+    wget \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python for Windows under Wine
+RUN wget -q https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe -O /tmp/python-installer.exe && \
+    xvfb-run wine /tmp/python-installer.exe /quiet InstallAllUsers=1 PrependPath=1 && \
+    rm /tmp/python-installer.exe
+
+# Install PyInstaller + PyQt5 + deps (Windows Python under Wine)
+RUN xvfb-run wine pip install --no-cache-dir pyinstaller PyQt5 numpy pillow
+
+WORKDIR /src
+COPY . /src/
+
+# Build .exe
+RUN xvfb-run wine pyinstaller --onefile --windowed \
+    --name "Z-MAX_Console" \
+    --icon /src/logo.ico \
+    --add-data "logo.png;." \
+    /src/studio.py
+
+# Export to /output
+CMD ["sh", "-c", "cp -v /src/dist/Z-MAX_Console.exe /output/ 2>/dev/null || cp -v /src/dist/Z-MAX_Console.exe /src/ && echo 'DONE'"]
