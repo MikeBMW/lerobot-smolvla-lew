@@ -1023,6 +1023,14 @@ class HomeWidget(QWidget):
         sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
         row.addWidget(sync_btn)  # 新增同步按钮
 
+        # 升级按钮
+        upg_btn = QPushButton("⬆ 升级")
+        upg_btn.setFont(QFont("Arial", 9, QFont.Bold))
+        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        upg_btn.setCursor(Qt.PointingHandCursor)
+        upg_btn.clicked.connect(self._check_updates)
+        row.addWidget(upg_btn)
+
         # ====== 版本同步按钮（快速跳转到版本管理页面） ======
         ver_btn = QPushButton("📦 版本同步")
         ver_btn.setFont(QFont("Arial", 9, QFont.Bold))
@@ -7028,8 +7036,8 @@ class StudioMainWindow(QMainWindow):
             QMessageBox.warning(self, "执行错误", f"PPT 解析失败:\n{e}")
 
     def _check_updates(self):
-        """手动检查更新"""
-        from update_checker import check_latest, get_current_version
+        """手动检查更新（支持自动下载升级）"""
+        from update_checker import check_latest, get_current_version, download_update
         self.statusBar().showMessage("正在检查更新...")
         info = check_latest()
         if info is None:
@@ -7043,21 +7051,75 @@ class StudioMainWindow(QMainWindow):
         cur = get_current_version()
         if info["version"] == cur:
             QMessageBox.information(self, "已是最新版",
-                f"当前版本: {cur}\n"
-                f"已是最新版本 ✅")
+                f"当前版本: {cur}\n已是最新版本 ✅")
             self.statusBar().showMessage(f"✅ 已是最新版: {cur}")
+            return
+
+        # 发现新版本
+        self.statusBar().showMessage(f"📢 发现新版本: {info['version']}")
+        msg = (f"当前版本: {cur}\n"
+               f"最新版本: {info['version']}\n"
+               f"发布时间: {info['published'][:10]}\n\n"
+               f"更新内容:\n{info['body']}\n\n"
+               f"选择操作：")
+        # 三个按钮：下载升级 / 打开页面 / 取消
+        btn_dl = QMessageBox(self)
+        btn_dl.setWindowTitle("📢 发现新版本")
+        btn_dl.setText(msg)
+        b_upgrade = btn_dl.addButton("⬇ 下载并升级", QMessageBox.AcceptRole)
+        b_open = btn_dl.addButton("🌐 打开下载页", QMessageBox.ActionRole)
+        b_cancel = btn_dl.addButton("稍后", QMessageBox.RejectRole)
+        btn_dl.setDefaultButton(b_upgrade)
+        btn_dl.exec()
+
+        if btn_dl.clickedButton() == b_cancel:
+            return
+
+        if btn_dl.clickedButton() == b_open:
+            QDesktopServices.openUrl(QUrl(
+                info.get("download_url") or info.get("release_url", "")))
+            return
+
+        # 下载升级
+        if not info.get("download_url"):
+            QMessageBox.warning(self, "下载失败", "未找到下载链接")
+            return
+
+        self.statusBar().showMessage("正在下载新版本...")
+        # 下载到临时目录
+        import tempfile
+        tmp_dir = os.path.join(tempfile.gettempdir(), "zmax_update")
+        os.makedirs(tmp_dir, exist_ok=True)
+        new_exe = os.path.join(tmp_dir, "Z-MAX_Console_new.exe")
+
+        ok = download_update(info["download_url"], new_exe)
+        if not ok:
+            QMessageBox.warning(self, "下载失败", f"下载失败，请手动下载:\n{info['download_url']}")
+            return
+
+        # 创建升级脚本
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else ""
+        if exe_path:
+            script_path = os.path.join(tmp_dir, "upgrade.bat")
+            with open(script_path, "w") as f:
+                f.write(f"""@echo off
+echo 正在升级 Z-MAX Console...
+timeout /t 2 /nobreak >nul
+copy /y "{new_exe}" "{exe_path}" >nul
+start "" "{exe_path}"
+del "%~f0"
+""")
+            self.statusBar().showMessage("✅ 下载完成，正在升级...")
+            QMessageBox.information(self, "下载完成",
+                "新版本已下载。\n"
+                "重启控制台后自动完成升级。\n\n"
+                f"下载路径: {new_exe}")
+            # 打开所在目录
+            QDesktopServices.openUrl(QUrl.fromLocalFile(tmp_dir))
         else:
-            self.statusBar().showMessage(f"📢 发现新版本: {info['version']}")
-            msg = (f"当前版本: {cur}\n"
-                   f"最新版本: {info['version']}\n"
-                   f"发布时间: {info['published'][:10]}\n\n"
-                   f"更新内容:\n{info['body']}\n\n"
-                   f"点击确定打开下载页面。")
-            reply = QMessageBox.question(self, "📢 发现新版本", msg,
-                QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                QDesktopServices.openUrl(QUrl(
-                    info.get("download_url") or info.get("release_url", "")))
+            QMessageBox.information(self, "下载完成",
+                f"新版本已下载到:\n{new_exe}\n\n"
+                f"请手动替换原 .exe 文件。")
 
     def _auto_check_update(self):
         """启动后后台检查更新（无声通知）"""

@@ -62,3 +62,27 @@ def check_in_background(callback):
         if info and info["version"] != CURRENT_VERSION:
             callback(info)
     threading.Thread(target=_run, daemon=True).start()
+
+
+def download_update(download_url, save_path, progress_callback=None):
+    """下载新版本 .exe 到指定路径"""
+    try:
+        req = urllib.request.Request(download_url, headers={
+            "User-Agent": "ZMAX-Console/1.0",
+        })
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            total = int(resp.headers.get("content-length", 0))
+            downloaded = 0
+            chunk_size = 8192
+            with open(save_path, "wb") as f:
+                while True:
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback and total:
+                        progress_callback(int(downloaded * 100 / total))
+        return True
+    except Exception as e:
+        return False
