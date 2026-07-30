@@ -653,7 +653,7 @@ class ProductRoadmapWidget(QFrame):
             },
             {
                 "phase": "Phase 2",
-                "title": "Sys-11 · Z潜空间泛化",
+                "title": "VLA-T端到端泛化",
                 "time": "2026 Q4",
                 "dims": "Z 潜空间",
                 "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
