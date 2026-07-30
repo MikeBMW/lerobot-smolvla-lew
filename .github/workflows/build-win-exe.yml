@@ -1,0 +1,53 @@
+name: Build Windows .exe (Z-MAX Console)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v1.0.6)'
+        required: false
+        default: 'dev-snapshot'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller PyQt5 numpy pillow
+
+      - name: Build .exe with PyInstaller
+        run: |
+          cd tools\gui
+          python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --add-data "logo.png;." studio.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Z-MAX_Console
+          path: tools\gui\dist\Z-MAX_Console.exe
+          compression-level: 0
+
+      - name: Upload to Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: tools\gui\dist\Z-MAX_Console.exe
+          asset_name: Z-MAX_Console.exe
+          tag: ${{ github.ref_name }}
+          overwrite: true
