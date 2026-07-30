@@ -400,7 +400,7 @@ class ArchFlowBar(QFrame):
         mid_row.addWidget(link)
         # Sys-12 右（自适应宽度）
         mid_row.addWidget(self._make_stage_box(
-            "🌐", "SYS-12 引导系统", "L4 世界模型 · LeWorldModel 15M", SYS12_COLOR), 1)
+            "🌐", "SYS-12 引导系统", "", SYS12_COLOR), 1)
 
         mid_container = QWidget()
         mid_container.setStyleSheet("background:transparent; border:none;")
