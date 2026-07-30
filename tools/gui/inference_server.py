@@ -9,18 +9,24 @@ from dataclasses import dataclass, field
 from typing import Optional, Callable
 
 import grpc
-import torch
+
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
 
 # 确保可以导入lerobot
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from lerobot.transport import services_pb2, services_pb2_grpc
-from lerobot.async_inference.configs import PolicyServerConfig
-from lerobot.async_inference.policy_server import PolicyServer
-from lerobot.async_inference.helpers import RemotePolicyConfig, TimedObservation
-from lerobot.policies.smolvla import SmolVLAPolicy
-from lerobot.utils.constants import OBS_LANGUAGE_TOKENS, OBS_LANGUAGE_ATTENTION_MASK
-from transformers import AutoTokenizer
+if _TORCH_AVAILABLE:
+    from lerobot.transport import services_pb2, services_pb2_grpc
+    from lerobot.async_inference.configs import PolicyServerConfig
+    from lerobot.async_inference.policy_server import PolicyServer
+    from lerobot.async_inference.helpers import RemotePolicyConfig, TimedObservation
+    from lerobot.policies.smolvla import SmolVLAPolicy
+    from lerobot.utils.constants import OBS_LANGUAGE_TOKENS, OBS_LANGUAGE_ATTENTION_MASK
+    from transformers import AutoTokenizer
 
 
 @dataclass

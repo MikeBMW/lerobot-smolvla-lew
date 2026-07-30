@@ -5880,11 +5880,17 @@ class InferencePanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        from inference_server import ZmaxInferenceServer
-        from inference_client import ZmaxInferenceClient, DataSource
-        
-        self.server = ZmaxInferenceServer(log_callback=self._log_server)
-        self.client = ZmaxInferenceClient(log_callback=self._log_client)
+        try:
+            from inference_server import ZmaxInferenceServer
+            from inference_client import ZmaxInferenceClient, DataSource
+            self.server = ZmaxInferenceServer(log_callback=self._log_server)
+            self.client = ZmaxInferenceClient(log_callback=self._log_client)
+            self._torch_ok = True
+        except ImportError as e:
+            self._torch_ok = False
+            self._import_error = str(e)
+            self.server = None
+            self.client = None
         
         self._init_ui()
     
