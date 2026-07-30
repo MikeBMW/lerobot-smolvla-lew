@@ -1078,11 +1078,10 @@ class HomeWidget(QWidget):
         kpi = QHBoxLayout()
         kpi.setSpacing(36)
         for val, lbl, clr in [
-            ("±0.02mm", "定位精度·Sys-11", SYS11_COLOR),
+            ("±0.02mm", "定位精度", SYS11_COLOR),
             (">99%", "连续成功率", C_GREEN),
-            ("<10ms", "推理延迟·Sys-11", SYS11_COLOR),
-            ("15M", "LeWorldModel·Sys-12", SYS12_COLOR),
-            ("1ms", "控制周期·Sys-0", SYS0_COLOR),
+            ("<10ms", "推理延迟", SYS11_COLOR),
+            ("1ms", "控制周期", SYS0_COLOR),
         ]:
             col = QVBoxLayout(); col.setSpacing(1)
             v = QLabel(val)
