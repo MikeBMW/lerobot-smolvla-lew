@@ -641,19 +641,15 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "人工编排原子功能\n流程验证·数据采集基线",
                 "color": SYS0_COLOR,
                 "kpi": "L2基线",
-                "folder": "zmax_sys1",
-                "config_file": "configuration_zmax_sys1.py",
             },
             {
                 "phase": "Phase 1",
-                "title": "Sys-1 · VTLA端到端",
+                "title": "Sys-10 · ACT端到端",
                 "time": "2026 Q4",
                 "dims": "M + A",
-                "desc": "自研VTLA多模态模型\n感知→动作端到端执行",
+                "desc": "感知→动作端到端执行",
                 "color": C_CYAN,
                 "kpi": "±0.02mm",
-                "folder": "zmax_sys1",
-                "config_file": "configuration_zmax_sys1.py",
             },
             {
                 "phase": "Phase 2",
@@ -663,8 +659,6 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
                 "color": SYS11_COLOR,
                 "kpi": "<10ms",
-                "folder": "zmax_sys11",
-                "config_file": "configuration_zmax_sys11.py",
             },
             {
                 "phase": "Phase 3",
@@ -674,8 +668,6 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "场景引导模型\n全域认知闭环",
                 "color": SYS12_COLOR,
                 "kpi": ">99%",
-                "folder": "zmax_sys12",
-                "config_file": "configuration_zmax_sys12.py",
             },
             {
                 "phase": "Phase 4",
@@ -685,8 +677,6 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "多产线规模化复制\nL4全自主闭环",
                 "color": SYS2_COLOR,
                 "kpi": "7×24h",
-                "folder": "zmax_system2",
-                "config_file": "configuration_zmax_system2.py",
             },
         ]
 
@@ -751,22 +741,14 @@ class ProductRoadmapWidget(QFrame):
         return params
 
     def _on_phase_clicked(self, phase_data):
-        """点击阶段卡片 → 弹出暗色自定义弹窗，参数可视化表格"""
+        """点击阶段卡片 → 弹出信息弹窗"""
         from PyQt5.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QHeaderView
-        from PyQt5.QtGui import QBrush
 
-        folder = phase_data["folder"]
-        config_file = phase_data["config_file"]
         color = phase_data["color"]
 
-        # 读取配置
-        content = self._read_config_file(folder, config_file)
-        files = self._list_folder_files(folder)
-
-        # 创建自定义暗色弹窗
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"{phase_data['phase']} — {phase_data['title']} [{folder}/]")
-        dialog.setFixedSize(780, 620)
+        dialog.setWindowTitle(f"{phase_data['phase']} — {phase_data['title']}")
+        dialog.setFixedSize(600, 400)
         dialog.setStyleSheet(f"""
             QDialog {{
                 background: #0d1117;
@@ -776,151 +758,41 @@ class ProductRoadmapWidget(QFrame):
         """)
 
         dlg_layout = QVBoxLayout()
-        dlg_layout.setSpacing(8)
-        dlg_layout.setContentsMargins(16, 12, 16, 12)
+        dlg_layout.setSpacing(12)
+        dlg_layout.setContentsMargins(20, 16, 20, 16)
 
-        # === 标题栏 ===
-        title_row = QHBoxLayout()
+        # Title
         title_lbl = QLabel(f"{phase_data['phase']}: {phase_data['title']}")
-        title_lbl.setFont(QFont("Arial", 15, QFont.Bold))
+        title_lbl.setFont(QFont("Arial", 16, QFont.Bold))
         title_lbl.setStyleSheet(f"color: {C_WHITE}; background: transparent; border: none;")
-        title_row.addWidget(title_lbl)
-        title_row.addStretch()
+        dlg_layout.addWidget(title_lbl)
 
-        # KPI badge
-        kpi_badge = QLabel(f"⚡ {phase_data['kpi']}")
-        kpi_badge.setFont(QFont("Consolas", 12, QFont.Bold))
-        kpi_badge.setStyleSheet(f"color: {color}; background: {color}22; border: 1px solid {color}66; border-radius: 6px; padding: 4px 12px;")
-        title_row.addWidget(kpi_badge)
+        # Badges row
+        badges = QHBoxLayout()
+        kpi = QLabel(f"⚡ {phase_data['kpi']}")
+        kpi.setStyleSheet(f"color: {color}; background: {color}22; border: 1px solid {color}66; border-radius: 6px; padding: 4px 12px;")
+        badges.addWidget(kpi)
+        dim = QLabel(phase_data["dims"])
+        dim.setStyleSheet(f"color: {C_WHITE}; background: {color}44; border: 1px solid {color}88; border-radius: 6px; padding: 4px 10px;")
+        badges.addWidget(dim)
+        badges.addStretch()
+        dlg_layout.addLayout(badges)
 
-        dim_badge = QLabel(phase_data["dims"])
-        dim_badge.setFont(QFont("Arial", 10, QFont.Bold))
-        dim_badge.setStyleSheet(f"color: {C_WHITE}; background: {color}44; border: 1px solid {color}88; border-radius: 6px; padding: 4px 10px;")
-        title_row.addWidget(dim_badge)
-        dlg_layout.addLayout(title_row)
+        # Description
+        desc = QLabel(phase_data["desc"])
+        desc.setStyleSheet(f"color: {C_GRAY}; font-size: 13px; padding: 8px;")
+        desc.setWordWrap(True)
+        dlg_layout.addWidget(desc)
 
-        # === 文件列表 ===
-        files_frame = QFrame()
-        files_frame.setStyleSheet(f"background: {C_BG2}; border: 1px solid {C_BORDER}; border-radius: 6px;")
-        fl = QHBoxLayout()
-        fl.setContentsMargins(10, 6, 10, 6)
-        fl.addWidget(QLabel(f"📁 {folder}/"))
-        for fn in files:
-            tag = QLabel(fn)
-            tag.setFont(QFont("Consolas", 9))
-            tag.setStyleSheet(f"color: {C_GRAY}; background: {C_CARD}; border: 1px solid {C_BORDER}; border-radius: 3px; padding: 2px 8px;")
-            fl.addWidget(tag)
-        fl.addStretch()
-        files_frame.setLayout(fl)
-        dlg_layout.addWidget(files_frame)
+        # Time
+        time_lbl = QLabel(f"📅 {phase_data['time']}")
+        time_lbl.setStyleSheet(f"color: {C_DIM}; font-size: 11px;")
+        dlg_layout.addWidget(time_lbl)
 
-        # === 参数可视化表格 ===
-        tab_widget = QTabWidget()
-        tab_widget.setStyleSheet(f"""
-            QTabWidget::pane {{ background: {C_BG}; border: 1px solid {C_BORDER}; border-radius: 6px; }}
-            QTabBar::tab {{ background: {C_CARD}; color: {C_GRAY}; padding: 6px 16px; border: 1px solid {C_BORDER}; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }}
-            QTabBar::tab:selected {{ background: {C_BG2}; color: {C_WHITE}; border-bottom: 2px solid {color}; }}
-        """)
-
-        if content:
-            params = self._parse_config_params(content)
-
-            # --- Tab 1: 参数表格 ---
-            table = QTableWidget()
-            table.setStyleSheet(f"""
-                QTableWidget {{ background: {C_BG}; color: {C_WHITE}; border: none; gridline-color: {C_BORDER}; }}
-                QTableWidget::item {{ padding: 4px 8px; }}
-                QTableWidget::item:selected {{ background: {color}33; }}
-                QHeaderView::section {{ background: {C_BG2}; color: {color}; border: 1px solid {C_BORDER}; padding: 4px 8px; font-weight: bold; }}
-                QScrollBar:vertical {{ background: {C_BG}; width: 8px; }}
-                QScrollBar::handle:vertical {{ background: {C_DIM}; border-radius: 4px; }}
-            """)
-            table.setColumnCount(5)
-            table.setHorizontalHeaderLabels(["分类", "参数名", "类型", "值", "说明"])
-            table.setRowCount(len(params))
-
-            prev_section = ""
-            for row, (section, name, ptype, pval, comment) in enumerate(params):
-                items = [
-                    (section if section != prev_section else "", f"color: {color};"),
-                    (name, f"color: {C_WHITE}; font-family: Consolas; font-weight: bold;"),
-                    (ptype, f"color: {C_CYAN}; font-family: Consolas;"),
-                    (pval, f"color: {C_GREEN}; font-family: Consolas; font-weight: bold;"),
-                    (comment, f"color: {C_GRAY}; font-size: 9pt;"),
-                ]
-                for col, (text, style) in enumerate(items):
-                    item = QTableWidgetItem(str(text))
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    # 设置样式
-                    if col <= 1:
-                        item.setFont(QFont("Consolas" if col == 1 else "Arial", 9 if col > 0 else 8))
-                    elif col == 2:
-                        item.setFont(QFont("Consolas", 8))
-                    elif col == 3:
-                        item.setFont(QFont("Consolas", 9, QFont.Bold))
-                    elif col == 4:
-                        item.setFont(QFont("Arial", 8))
-
-                    # 颜色
-                    if col == 0 and text:
-                        item.setForeground(QBrush(QColor(color)))
-                    elif col == 1:
-                        item.setForeground(QBrush(QColor(C_WHITE)))
-                    elif col == 2:
-                        item.setForeground(QBrush(QColor(C_CYAN)))
-                    elif col == 3:
-                        item.setForeground(QBrush(QColor(C_GREEN)))
-                    elif col == 4:
-                        item.setForeground(QBrush(QColor(C_GRAY)))
-
-                    table.setItem(row, col, item)
-
-                prev_section = section
-
-            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-            table.verticalHeader().setVisible(False)
-            tab_widget.addTab(table, f"📊 参数表格 ({len(params)})")
-
-            # --- Tab 2: 源码 ---
-            code_view = QTextEdit()
-            code_view.setReadOnly(True)
-            code_view.setFont(QFont("Consolas", 9))
-            code_view.setStyleSheet(f"""
-                QTextEdit {{ background: #0a0e14; color: {C_WHITE}; border: none; }}
-                QScrollBar:vertical {{ background: {C_BG}; width: 8px; }}
-                QScrollBar::handle:vertical {{ background: {C_DIM}; border-radius: 4px; }}
-            """)
-            code_view.setPlainText(content)
-            tab_widget.addTab(code_view, "📝 源码")
-
-        else:
-            err_lbl = QLabel("⚠️ 配置文件未找到")
-            err_lbl.setFont(QFont("Arial", 12))
-            err_lbl.setStyleSheet(f"color: {C_RED}; background: {C_CARD}; padding: 20px; border-radius: 8px;")
-            err_lbl.setAlignment(Qt.AlignCenter)
-            tab_widget.addTab(err_lbl, "错误")
-
-        dlg_layout.addWidget(tab_widget)
-
-        # === 底部按钮 ===
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        close_btn = QPushButton("关闭")
-        close_btn.setFont(QFont("Arial", 10, QFont.Bold))
-        close_btn.setStyleSheet(f"""
-            QPushButton {{ background: {color}; color: white; border: none; border-radius: 6px; padding: 8px 24px; }}
-            QPushButton:hover {{ opacity: 0.8; }}
-        """)
-        close_btn.clicked.connect(dialog.close)
-        btn_row.addWidget(close_btn)
-        dlg_layout.addLayout(btn_row)
-
+        dlg_layout.addStretch()
         dialog.setLayout(dlg_layout)
-        dialog.exec_()
+        dialog.exec()
+
 
 
 # ============================================================
