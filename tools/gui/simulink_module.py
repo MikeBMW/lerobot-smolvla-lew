@@ -202,7 +202,7 @@ class SimNodeItem(QGraphicsObject):
         painter.setBrush(grad)
         pen = QPen(color, 1.6)
         if self.isSelected():
-            pen.setWidth(2.4)
+            pen.setWidthF(2.4)
             pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
