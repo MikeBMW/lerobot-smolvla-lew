@@ -197,3 +197,5 @@ ros_orin_ws/log/
 Zone.Identifier
 # Windows NTFS ADS — files with :Zone.Identifier suffix cause checkout failure on Windows
 *:Zone.Identifier
+chat-watcher.py
+models/
