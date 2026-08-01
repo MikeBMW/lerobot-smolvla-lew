@@ -25,25 +25,8 @@ if _TORCH_AVAILABLE:
     from lerobot.async_inference.policy_server import PolicyServer
     from lerobot.async_inference.helpers import RemotePolicyConfig, TimedObservation
     from lerobot.policies.smolvla import SmolVLAPolicy
-    from lerobot.policies.act import ACTPolicy
     from lerobot.utils.constants import OBS_LANGUAGE_TOKENS, OBS_LANGUAGE_ATTENTION_MASK
     from transformers import AutoTokenizer
-
-
-# 支持的策略类型
-POLICY_TYPES = {
-    "smolvla": SmolVLAPolicy if _TORCH_AVAILABLE else None,
-    "act": ACTPolicy if _TORCH_AVAILABLE else None,
-}
-DEFAULT_POLICY = "smolvla"
-
-
-def load_policy(policy_type: str, checkpoint_path: str):
-    """按策略类型加载模型"""
-    cls = POLICY_TYPES.get(policy_type)
-    if cls is None:
-        raise ValueError(f"未知策略类型: {policy_type}，支持: {list(POLICY_TYPES)}")
-    return cls.from_pretrained(checkpoint_path)
 
 
 @dataclass
@@ -92,8 +75,7 @@ class ZmaxInferenceServer:
         self._log(f"❌ {msg}")
         self.state.error_message = msg
     
-    def start_server(self, checkpoint_path: str, host: str = "0.0.0.0", port: int = 50051,
-                     policy_type: str = DEFAULT_POLICY):
+    def start_server(self, checkpoint_path: str, host: str = "0.0.0.0", port: int = 50051):
         """启动gRPC服务（不加载模型，等客户端发送策略指令后加载）"""
         if self.state.running:
             self._log_info("服务已在运行")
@@ -102,16 +84,15 @@ class ZmaxInferenceServer:
         self.state.host = host
         self.state.port = port
         self.state.checkpoint_path = checkpoint_path
-        self._policy_type = policy_type
         
         try:
-            self._log_info(f"启动gRPC服务 @ {host}:{port} (策略: {policy_type})...")
+            self._log_info(f"启动gRPC服务 @ {host}:{port}...")
             
             cfg = PolicyServerConfig(host=host, port=port)
             self._policy_server = PolicyServer(cfg)
             
             # 注入定制预处理器
-            self._patch_preprocessor(checkpoint_path, policy_type)
+            self._patch_preprocessor(checkpoint_path)
             
             self._grpc_server = grpc.server(
                 futures.ThreadPoolExecutor(max_workers=4),
@@ -131,85 +112,9 @@ class ZmaxInferenceServer:
             self._log_err(f"启动失败: {e}")
             return False
     
-    def _patch_preprocessor(self, checkpoint_path: str, policy_type: str = DEFAULT_POLICY):
-        """注入定制预处理器 — 按策略类型分流：SmolVLA走定制管线，ACT走标准select_action"""
-
-        # ACT: 标准 LeRobot 策略，无需 SmolVLA 的 tokenizer/定制预处理
-        if policy_type == "act":
-            self._log_info("[ACT] 使用标准推理管线 (select_action)")
-            ps = self._policy_server
-            original_spi = ps.SendPolicyInstructions
-
-            def patched_spi_act(request, context):
-                result = original_spi(request, context)
-                if ps.policy is not None:
-                    # 透传预处理器（由checkpoint自带processor处理归一化）
-                    ps.preprocessor = lambda x: x
-                    ps.postprocessor = lambda x: x
-
-                    original_predict = ps._predict_action_chunk
-                    def patched_predict(observation_t):
-                        """ACT 标准推理：构建 input_features 字典 → select_action"""
-                        import numpy as np
-                        raw_obs = observation_t.get_observation()
-
-                        # 按策略 input_features 键名构建
-                        obs = {}
-                        feat_keys = list(ps.policy.config.input_features.keys())
-                        # State 特征
-                        state_key = next((k for k in feat_keys if "state" in k), "observation.state")
-                        if "observation.state" in raw_obs:
-                            state = np.asarray(raw_obs["observation.state"], dtype=np.float32)
-                            obs[state_key] = torch.from_numpy(state).unsqueeze(0).to(ps.device)
-                        elif any(k.startswith("s") for k in raw_obs):
-                            state_vals = [float(raw_obs[f"s{i}"]) for i in range(10) if f"s{i}" in raw_obs]
-                            obs[state_key] = torch.tensor([state_vals], device=ps.device, dtype=torch.float32)
-
-                        # Image 特征 (observation.images.xxx / observation.image)
-                        img_keys = [k for k in feat_keys if "image" in k]
-                        raw_img = None
-                        for key in raw_obs:
-                            if "image" in key.lower():
-                                raw_img = raw_obs[key]
-                                break
-                        if raw_img is not None:
-                            img = raw_img
-                            if isinstance(img, np.ndarray):
-                                img = torch.from_numpy(img).float()
-                            if img.max() > 1.0:
-                                img = img / 255.0
-                            if img.ndim == 3:
-                                img = img.unsqueeze(0)
-                            img = img.to(ps.device)
-                            for k in img_keys:
-                                obs[k] = img
-
-                        # 推理
-                        with torch.no_grad():
-                            chunk = ps.policy.select_action(obs)  # (chunk_size, action_dim) or (B, chunk, dim)
-                        if chunk.ndim == 3:
-                            chunk = chunk[0]
-                        chunk = chunk.unsqueeze(0)  # (1, chunk_size, action_dim)
-
-                        # 构建TimedAction
-                        from lerobot.async_inference.helpers import TimedAction
-                        chunk_size = chunk.shape[1]
-                        return [TimedAction(
-                            timestamp=observation_t.get_timestamp(),
-                            timestep=observation_t.get_timestep() * chunk_size + i,
-                            action=chunk[0, i, :]
-                        ) for i in range(chunk_size)]
-
-                    ps._predict_action_chunk = patched_predict
-                    self.state.model_loaded = True
-                    self._log_ok("[ACT] 模型加载完成，标准推理管线已注入")
-                return result
-
-            ps.SendPolicyInstructions = patched_spi_act
-            self._log_info("[ACT] 预处理器就绪")
-            return
-
-        # ── 以下为 SmolVLA 定制管线 ──
+    def _patch_preprocessor(self, checkpoint_path: str):
+        """注入定制预处理器 — 绕过checkpoint的训练预处理器"""
+        
         # 先临时加载模型获取tokenizer
         try:
             tmp_policy = SmolVLAPolicy.from_pretrained(checkpoint_path, local_files_only=True)

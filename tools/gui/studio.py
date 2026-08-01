@@ -37,7 +37,6 @@ from PyQt5.QtGui import (
 
 # Z-MAX 版本同步模块
 from version_sync import VersionSyncWidget
-from simulink_module import SimulinkModule
 
 # 硬件仿真引擎 (Sys-0 硬件工具箱)
 from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
@@ -987,7 +986,6 @@ class HomeWidget(QWidget):
             ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
             ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
-            ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
         ]
         for i, (mid, icon, title, syslbl, desc, color) in enumerate(modules):
@@ -5839,16 +5837,6 @@ class InferencePanel(QWidget):
         l = QFormLayout()
         l.setSpacing(8)
         
-        # 策略类型
-        strat_row = QHBoxLayout()
-        self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems(["SmolVLA", "ACT"])
-        self.strategy_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
-        self.strategy_combo.currentTextChanged.connect(self._on_strategy_changed)
-        strat_row.addWidget(self.strategy_combo)
-        strat_row.addStretch()
-        l.addRow("策略:", strat_row)
-        
         # 模型路径
         row = QHBoxLayout()
         self.ckpt_edit = QLineEdit("outputs/smolvla_metaworld/checkpoints/000300/pretrained_model")
@@ -5966,19 +5954,11 @@ class InferencePanel(QWidget):
         if path:
             self.ckpt_edit.setText(path)
     
-    def _on_strategy_changed(self, text: str):
-        """切换策略类型时更新模型路径提示"""
-        if text == "ACT":
-            self.ckpt_edit.setText("outputs/act/checkpoints/000300/pretrained_model")
-        else:
-            self.ckpt_edit.setText("outputs/smolvla_metaworld/checkpoints/000300/pretrained_model")
-
     def _server_start(self):
         ckpt = self.ckpt_edit.text().strip()
         host = self.host_edit.text().strip()
         port = self.port_spin.value()
-        policy_type = self.strategy_combo.currentText().lower()
-        if self.server.start_server(ckpt, host, port, policy_type=policy_type):
+        if self.server.start_server(ckpt, host, port):
             self.server_status.setText("🟢 运行中")
             self.server_status.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; padding:4px 8px; background:{C_GREEN}22; border-radius:4px;")
             self.srv_start.setEnabled(False)
@@ -6002,8 +5982,7 @@ class InferencePanel(QWidget):
             self.cli_stop.setEnabled(True)
             # 自动发送策略
             ckpt = self.ckpt_edit.text().strip()
-            policy_type = self.strategy_combo.currentText().lower()
-            self.client.send_policy(ckpt, policy_type=policy_type)
+            self.client.send_policy(ckpt)
             self._log_client(f"策略已发送")
     
     def _client_stream(self):
@@ -6610,7 +6589,6 @@ class StudioMainWindow(QMainWindow):
             "plugging":   8,
             "version":    9,
             "inference":  10,
-            "simulink":   11,
         }
 
         self.stack.addWidget(ArchitectureModule())
@@ -6628,11 +6606,6 @@ class StudioMainWindow(QMainWindow):
 
         # 推理服务面板
         self.stack.addWidget(InferencePanel())
-
-        # Simulink 模式 (对标 Simulink 拖拽仿真 · 与 web comfyui.html 同步)
-        self.simulink = SimulinkModule()
-        self.simulink.flow_synced = self.on_flow_sync
-        self.stack.addWidget(self.simulink)
 
         root.addWidget(self.stack, 1)
         central.setLayout(root)
@@ -6705,19 +6678,6 @@ class StudioMainWindow(QMainWindow):
             self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:11px; padding:0 8px;")
 
         self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
-
-    def on_flow_sync(self, flow):
-        """Simulink 工作流变更 → 推送到 web (datadrive.world/api/comfy/task)"""
-        try:
-            import requests
-            url = "https://datadrive.world/api/comfy/task"
-            r = requests.post(url, json=flow, timeout=8)
-            if r.status_code == 200:
-                self.statusBar().showMessage(f"🔄 Simulink 已同步到 web ({len(flow.get('nodes', []))}节点)")
-            else:
-                self.statusBar().showMessage(f"⚠️ web同步失败 HTTP {r.status_code}")
-        except Exception as ex:
-            self.statusBar().showMessage(f"⚠️ web同步不可用: {ex}")
 
     def _on_nav(self, target):
         """导航切换"""
