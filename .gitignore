@@ -199,3 +199,6 @@ Zone.Identifier
 *:Zone.Identifier
 chat-watcher.py
 models/
+
+# Windows ADS zone files
+*:Zone.Identifier
