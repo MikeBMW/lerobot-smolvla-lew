@@ -127,9 +127,14 @@ class BlockParamsDialog(QDialog):
                 cb.setCurrentText("true" if v else "false")
                 self._edits[k] = cb
             elif isinstance(v, (int, float)):
-                sb = QDoubleSpinBox() if isinstance(v, float) else QSpinBox()
-                sb.setRange(-1e9, 1e9)
-                sb.setValue(float(v))
+                if isinstance(v, float):
+                    sb = QDoubleSpinBox()
+                    sb.setRange(-1e9, 1e9)
+                    sb.setValue(v)
+                else:
+                    sb = QSpinBox()
+                    sb.setRange(-10**9, 10**9)
+                    sb.setValue(int(v))
                 self._edits[k] = sb
             else:
                 le = QLineEdit(str(v))
