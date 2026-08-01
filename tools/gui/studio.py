@@ -5837,6 +5837,16 @@ class InferencePanel(QWidget):
         l = QFormLayout()
         l.setSpacing(8)
         
+        # 策略类型
+        strat_row = QHBoxLayout()
+        self.strategy_combo = QComboBox()
+        self.strategy_combo.addItems(["SmolVLA", "ACT"])
+        self.strategy_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.strategy_combo.currentTextChanged.connect(self._on_strategy_changed)
+        strat_row.addWidget(self.strategy_combo)
+        strat_row.addStretch()
+        l.addRow("策略:", strat_row)
+        
         # 模型路径
         row = QHBoxLayout()
         self.ckpt_edit = QLineEdit("outputs/smolvla_metaworld/checkpoints/000300/pretrained_model")
@@ -5954,11 +5964,19 @@ class InferencePanel(QWidget):
         if path:
             self.ckpt_edit.setText(path)
     
+    def _on_strategy_changed(self, text: str):
+        """切换策略类型时更新模型路径提示"""
+        if text == "ACT":
+            self.ckpt_edit.setText("outputs/act/checkpoints/000300/pretrained_model")
+        else:
+            self.ckpt_edit.setText("outputs/smolvla_metaworld/checkpoints/000300/pretrained_model")
+
     def _server_start(self):
         ckpt = self.ckpt_edit.text().strip()
         host = self.host_edit.text().strip()
         port = self.port_spin.value()
-        if self.server.start_server(ckpt, host, port):
+        policy_type = self.strategy_combo.currentText().lower()
+        if self.server.start_server(ckpt, host, port, policy_type=policy_type):
             self.server_status.setText("🟢 运行中")
             self.server_status.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; padding:4px 8px; background:{C_GREEN}22; border-radius:4px;")
             self.srv_start.setEnabled(False)
@@ -5982,7 +6000,8 @@ class InferencePanel(QWidget):
             self.cli_stop.setEnabled(True)
             # 自动发送策略
             ckpt = self.ckpt_edit.text().strip()
-            self.client.send_policy(ckpt)
+            policy_type = self.strategy_combo.currentText().lower()
+            self.client.send_policy(ckpt, policy_type=policy_type)
             self._log_client(f"策略已发送")
     
     def _client_stream(self):

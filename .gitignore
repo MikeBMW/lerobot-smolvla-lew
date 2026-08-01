@@ -202,3 +202,7 @@ models/
 
 # Windows ADS zone files
 *:Zone.Identifier
+
+# Local venvs
+.venv/
+.venvs/

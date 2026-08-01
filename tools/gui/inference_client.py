@@ -98,14 +98,15 @@ class ZmaxInferenceClient:
             self.state.connected = False
             return False
     
-    def send_policy(self, checkpoint_path: str, dataset_repo: str = "lerobot/metaworld_mt50") -> bool:
+    def send_policy(self, checkpoint_path: str, dataset_repo: str = "lerobot/metaworld_mt50",
+                    policy_type: str = "smolvla", device: str = "cuda") -> bool:
         """发送策略配置到服务端"""
         if not self.state.connected:
             self._log_err("未连接")
             return False
         
         try:
-            self._log_info("构建策略配置...")
+            self._log_info(f"构建策略配置... (type={policy_type})")
             
             # 加载数据集特征
             from lerobot.datasets import LeRobotDatasetMetadata
@@ -118,15 +119,15 @@ class ZmaxInferenceClient:
                 if k == "observation.state":
                     lf[k] = {"dtype": "float32", "shape": list(v.shape),
                              "names": [f"s{i}" for i in range(v.shape[0])]}
-                elif k == "observation.image":
+                elif "image" in k:
                     lf[k] = {"dtype": "video", "shape": list(v.shape)}
             
             pcfg = RemotePolicyConfig(
-                policy_type="smolvla",
+                policy_type=policy_type,
                 pretrained_name_or_path=os.path.abspath(checkpoint_path),
                 lerobot_features=lf,
                 actions_per_chunk=50,
-                device="cuda",
+                device=device,
                 rename_map={},
             )
             
