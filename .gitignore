@@ -197,3 +197,6 @@ ros_orin_ws/log/
 Zone.Identifier
 chat-watcher.py
 models/
+
+# Windows ADS zone files
+*:Zone.Identifier
