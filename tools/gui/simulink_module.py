@@ -7,7 +7,7 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 """
 import json, math, random, time, os, sys
 from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF
-from PyQt5.QtGui import (QPainter, QPainterPath, QColor, QPen, QBrush, QFont,
+from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPolygonF, QLinearGradient, QRadialGradient)
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView,
                              QGraphicsScene, QGraphicsItem, QGraphicsObject,
@@ -264,7 +264,16 @@ class SimLinkItem(QGraphicsObject):
         self._hover = False
 
     def boundingRect(self):
-        return QRectF(-200, -200, 800, 400)
+        """动态覆盖实际路径区域 (Simulink 连线命中区), 避免固定矩形"""
+        path = self._path()
+        r = path.boundingRect()
+        return r.adjusted(-12, -12, 12, 12)
+
+    def shape(self):
+        """连线命中区域 = 路径本身 (细长), 避免巨大矩形误吞点击"""
+        stroker = QPainterPathStroker()
+        stroker.setWidth(14)
+        return stroker.createStroke(self._path())
 
     def _path(self):
         a = self.src.scenePos()
@@ -322,7 +331,9 @@ class SimCanvas(QGraphicsView):
         self.setScene(self._scene)
         self.setRenderHint(QPainter.Antialiasing)
         self.setBackgroundBrush(QColor("#0a0a0f"))
-        self.setDragMode(QGraphicsView.RubberBandDrag)
+        # NoDrag: 让 ItemIsMovable 的节点可自由拖动 (RubberBandDrag 会拦截节点移动)
+        self.setDragMode(QGraphicsView.NoDrag)
+        # 空格键临时平移 (Simulink 习惯: 按住空格拖动画布)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self._drag_from = None       # 连线起点 (SimNodeItem)
