@@ -256,6 +256,14 @@ class SimNodeItem(QGraphicsObject):
     def paint(self, painter, opt, widget=None):
         t = self.node["type"]
         color = QColor(COLORS.get(t, "#58a6ff"))
+        # 运行状态色: idle=类型色 running=青色脉冲 success=绿 error=红
+        status = self.node.get("status", "idle")
+        if status == "running":
+            color = QColor("#00d4aa")
+        elif status == "success":
+            color = QColor("#3fb950")
+        elif status == "error":
+            color = QColor("#ff4444")
         painter.setRenderHint(QPainter.Antialiasing)
         # 主体
         grad = QLinearGradient(0, 0, 0, self.h)
@@ -281,6 +289,12 @@ class SimNodeItem(QGraphicsObject):
         painter.setFont(QFont("Arial", 7))
         painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
                          NODE_TYPES.get(t, {}).get("cn", t))
+        # 状态徽章 (右上角: ● 运行中 / ✓ 成功 / ✕ 失败)
+        st_icon = {"running": "●", "success": "✓", "error": "✕"}.get(status, "")
+        if st_icon:
+            painter.setPen(color)
+            painter.setFont(QFont("Arial", 9, QFont.Bold))
+            painter.drawText(QRectF(self.w - 22, 2, 20, 16), Qt.AlignRight | Qt.AlignVCenter, st_icon)
         # 输入端口 (左)
         painter.setBrush(color)
         painter.setPen(QPen(QColor("#0a0a0f"), 1))
@@ -324,6 +338,19 @@ class SimLinkItem(QGraphicsObject):
         self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.setAcceptHoverEvents(True)
         self._hover = False
+        self._flow_offset = 0.0   # 流动动画偏移 (运行中)
+        self._anim_timer = QTimer()
+        self._anim_timer.timeout.connect(self._tick_flow)
+        self._anim_timer.start(80)
+
+    def _tick_flow(self):
+        """流动动画: 仅在链路有数据流时推进偏移"""
+        if self.src.node.get("status") == "success" or self.src.node.get("status") == "running":
+            self._flow_offset += 2.0
+            self.update()
+        elif self._flow_offset != 0:
+            self._flow_offset = 0
+            self.update()
 
     def boundingRect(self):
         """动态覆盖实际路径区域 (Simulink 连线命中区), 避免固定矩形"""
@@ -353,7 +380,14 @@ class SimLinkItem(QGraphicsObject):
         painter.setRenderHint(QPainter.Antialiasing)
         path = self._path()
         pen = QPen(color, 2.5 if self._hover or self.isSelected() else 1.8)
-        pen.setStyle(Qt.DashLine if self.isSelected() else Qt.SolidLine)
+        # 数据流动画: 源节点成功/运行中 → 虚线流动
+        flowing = self.src.node.get("status") in ("success", "running")
+        if flowing:
+            pen.setStyle(Qt.DashLine)
+            pen.setDashPattern([6, 4])
+            pen.setDashOffset(-self._flow_offset)
+        elif self.isSelected():
+            pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
         painter.drawPath(path)
         # 箭头 (指向输入)
@@ -770,6 +804,25 @@ class SimulinkModule(QWidget):
         split.setStretchFactor(1, 1)
         outer.addWidget(split, 1)
 
+        # 实时状态栏 (节点状态 + 时钟 + 运行状态)
+        st = QFrame()
+        st.setStyleSheet("background:#0d1117; border-top:1px solid #1e2740;")
+        st.setFixedHeight(28)
+        stl = QHBoxLayout(st)
+        stl.setContentsMargins(10, 3, 10, 3)
+        stl.setSpacing(14)
+        self.lbl_sys_state = QLabel("⏸ 待机")
+        self.lbl_sys_state.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
+        self.lbl_node_status = QLabel("节点: 0 | 成功: 0 | 运行中: 0 | 失败: 0")
+        self.lbl_node_status.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_rt = QLabel("")
+        self.lbl_rt.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        stl.addWidget(self.lbl_sys_state)
+        stl.addWidget(self.lbl_node_status)
+        stl.addStretch()
+        stl.addWidget(self.lbl_rt)
+        outer.addWidget(st)
+
         # 底部日志 (对标 Simulink 诊断)
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
@@ -1075,10 +1128,17 @@ class SimulinkModule(QWidget):
         self._sim_dt = self.sp_dt.value()
         self._sim_t_end = self.sp_t_end.value()
         self._sim_running = True
+        # 重置所有节点状态为 idle
+        for n in self.nodes:
+            n["status"] = "idle"
+            it = self._items.get(n["id"])
+            if it:
+                it.update()
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self._log(f"▶ 仿真开始 · t∈[0, {self._sim_t_end}s] · dt={self._sim_dt}s · 节点数={len(self.nodes)}")
         self._timer.start(max(16, int(self._sim_dt * 1000 / 10)))  # 每步最多10x加速
+        self._refresh_status()
         self._tutorial_on_action("run")
 
     def step_sim(self):
@@ -1102,9 +1162,16 @@ class SimulinkModule(QWidget):
         self.lbl_clock.setText(f"t = {self._sim_t:.2f}s")
 
     def _sim_node(self, n):
-        """本地模拟节点执行 (真实后端: 转发到硬件/远程, 后续接入)"""
+        """本地模拟节点执行: 标记运行中→成功, 画布实时变色"""
         t = n["type"]
         p = n.get("params", {})
+        # 状态: 运行中 (青色)
+        n["status"] = "running"
+        item = self._items.get(n["id"])
+        if item:
+            item.update()
+        self.canvas._scene.update()
+        # 模拟执行
         if t == "model":
             self._log(f"  🧠 {n['name']}: 推理完成 ({p.get('checkpoint', 'model')})")
         elif t == "action":
@@ -1115,6 +1182,27 @@ class SimulinkModule(QWidget):
             self._log(f"  ❖ {n['name']}: 条件评估 → 通过")
         else:
             self._log(f"  ◉ {n['name']}: 调度节点运行")
+        # 状态: 成功 (绿)
+        n["status"] = "success"
+        if item:
+            item.update()
+        self.canvas._scene.update()
+        self._refresh_status()
+
+    def _refresh_status(self):
+        """刷新底部实时状态栏 (节点计数/运行状态/时钟)"""
+        total = len(self.nodes)
+        ok = sum(1 for n in self.nodes if n.get("status") == "success")
+        running = sum(1 for n in self.nodes if n.get("status") == "running")
+        err = sum(1 for n in self.nodes if n.get("status") == "error")
+        self.lbl_node_status.setText(f"节点: {total} | 成功: {ok} | 运行中: {running} | 失败: {err}")
+        if self._sim_running:
+            self.lbl_sys_state.setText("▶ 仿真运行中")
+            self.lbl_sys_state.setStyleSheet("color:#00d4aa; font-size:11px; font-weight:700; background:transparent; border:none;")
+        else:
+            self.lbl_sys_state.setText("⏸ 待机")
+            self.lbl_sys_state.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
+        self.lbl_rt.setText(f"t = {self._sim_t:.2f}s · dt = {self._sim_dt}s")
 
     def _topo_sort(self):
         """DAG 拓扑排序 (连线确定执行顺序)"""
@@ -1145,6 +1233,7 @@ class SimulinkModule(QWidget):
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self._log(f"⏹ 仿真停止 · t = {self._sim_t:.2f}s")
+        self._refresh_status()
         self._tutorial_on_action("stop")
 
     def _by_id(self, nid):
