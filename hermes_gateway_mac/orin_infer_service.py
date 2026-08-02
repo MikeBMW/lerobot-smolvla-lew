@@ -53,6 +53,7 @@ def heartbeat_loop():
                             "last_infer_ms": STATE["last_infer_ms"],
                             "uptime": round(time.time() - STATE["started"]),
                             "error": STATE["error"],
+                            "sys": collect_sys_safe(),
                         }
                         await ws.send(json.dumps(pkg))
                         await asyncio.sleep(5)
@@ -62,6 +63,17 @@ def heartbeat_loop():
 
     # 主线程跑 WS 循环
     asyncio.run(ws_loop())
+
+
+def collect_sys_safe():
+    """采集 Orin 系统状态 (失败不阻断心跳)"""
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent))
+        from orin_sys_status import collect_system
+        return collect_system()
+    except Exception:
+        return {}
 
 
 def http_fallback():
@@ -75,6 +87,7 @@ def http_fallback():
                 "last_infer_ms": STATE["last_infer_ms"],
                 "uptime": round(time.time() - STATE["started"]),
                 "error": STATE["error"],
+                "sys": collect_sys_safe(),
             }
             requests.post(ECS_PING, json=pkg, timeout=5)
         except Exception:
