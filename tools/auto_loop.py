@@ -18,7 +18,7 @@ import requests
 RELAY = "https://datadrive.world/api/relay"
 HOME = Path.home() / "lerobot-smolvla-lew"
 LIVE = HOME / "data" / "orin_live"
-CFG = "config_act_cartesian.yaml"   # 笛卡尔接口 (7轴泛化6轴)
+CFG = "config_act_loop.yaml"   # 闭环训练配置 (真机6D数据)
 SEEN = set()
 
 

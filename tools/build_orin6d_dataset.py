@@ -57,6 +57,9 @@ def main():
                 "episode_index": si,
                 "frame_index": i,
                 "timestamp": i / 30.0,
+                "next.reward": 0.0,
+                "next.done": False,
+                "next.success": False,
             })
             ep_frames.append(i)
             total += 1
@@ -69,14 +72,44 @@ def main():
         print("❌ 无有效帧")
         return
 
-    # parquet
+    # parquet (float32 fixed-list 匹配 info)
+    import pandas as pd
     df = pd.DataFrame(frames_all)
     df["index"] = range(total)
     df["task_index"] = 0
-    df["next.reward"] = 0.0
-    df["next.done"] = False
-    df["next.success"] = False
-    df.to_parquet(DATA / "file-000.parquet")
+    df["next.reward"] = df["next.reward"].astype("float32")
+    df["next.done"] = df["next.done"].astype("bool")
+    df["next.success"] = df["next.success"].astype("bool")
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    states = np.stack(df["observation.state"].values).astype(np.float32)
+    actions = np.stack(df["action"].values).astype(np.float32)
+    schema = pa.schema([
+        pa.field("observation.state", pa.list_(pa.float32(), 6)),
+        pa.field("action", pa.list_(pa.float32(), 6)),
+        pa.field("episode_index", pa.int64()),
+        pa.field("frame_index", pa.int64()),
+        pa.field("timestamp", pa.float32()),
+        pa.field("next.reward", pa.float32()),
+        pa.field("next.done", pa.bool_()),
+        pa.field("next.success", pa.bool_()),
+        pa.field("index", pa.int64()),
+        pa.field("task_index", pa.int64()),
+    ])
+    table = pa.Table.from_arrays([
+        pa.array([pa.array(s, type=pa.float32()) for s in states], type=pa.list_(pa.float32(), 6)),
+        pa.array([pa.array(a, type=pa.float32()) for a in actions], type=pa.list_(pa.float32(), 6)),
+        df["episode_index"].astype("int64").values,
+        df["frame_index"].astype("int64").values,
+        df["timestamp"].astype("float32").values,
+        df["next.reward"].astype("float32").values,
+        df["next.done"].values,
+        df["next.success"].values,
+        df["index"].astype("int64").values,
+        df["task_index"].astype("int64").values,
+    ], schema=schema)
+    pq.write_table(table, DATA / "file-000.parquet")
+    print(f"✅ parquet float32 重写完成")
 
     # episodes
     eps = pd.DataFrame(eps_all)
@@ -95,6 +128,11 @@ def main():
         eps.at[i, "meta/episodes/chunk_index"] = 0
         eps.at[i, "meta/episodes/file_index"] = 0
         start += L
+    # Z-MAX 修复: 索引列转 int64 (format 需要)
+    for c in ["dataset_from_index", "dataset_to_index", "data/chunk_index", "data/file_index",
+              "videos/observation.image/chunk_index", "videos/observation.image/file_index",
+              "meta/episodes/chunk_index", "meta/episodes/file_index"]:
+        eps[c] = eps[c].astype("int64")
     eps.to_parquet(META / "file-000.parquet")
 
     # info.json
@@ -131,6 +169,10 @@ def main():
         },
     }
     (OUT / "meta" / "info.json").write_text(json.dumps(info, indent=1))
+    # Z-MAX 修复: 补 index/task_index features (parquet 列匹配)
+    info["features"]["index"] = {"dtype": "int64", "shape": [1]}
+    info["features"]["task_index"] = {"dtype": "int64", "shape": [1]}
+    (OUT / "meta" / "info.json").write_text(json.dumps(info, indent=1))
     states = np.stack([f["observation.state"] for f in frames_all])
     actions = np.stack([f["action"] for f in frames_all])
     stats = {
@@ -138,6 +180,30 @@ def main():
         "action": {"mean": actions.mean(axis=0).tolist(), "std": actions.std(axis=0).tolist()},
     }
     (OUT / "meta" / "stats.json").write_text(json.dumps(stats, indent=1))
+    # tasks.parquet (LeRobot 必需)
+    tasks_df = pd.DataFrame([{"task_index": 0, "task": "reach",
+                              "language_instruction": "reach target"}])
+    tasks_df.to_parquet(OUT / "meta" / "tasks.parquet")
+    # 图像 jpg → file-000.mp4 (LeRobot 视频格式)
+    import subprocess, tempfile, glob as _glob
+    jpgs = sorted(_glob.glob(str(VID / "ep*.jpg")))
+    if jpgs:
+        with tempfile.TemporaryDirectory() as td:
+            # 重命名连续序号
+            for k, j in enumerate(jpgs):
+                import shutil
+                shutil.copy(j, f"{td}/{k:06d}.jpg")
+            subprocess.run([
+                "ffmpeg", "-y", "-framerate", "30", "-i", f"{td}/%06d.jpg",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
+                "-loglevel", "error", str(VID / "file-000.mp4"),
+            ], check=True)
+        (VID / "file-000.mp4.metadata").write_text(
+            "\n".join(str(i) for i in range(total)))
+        # 删除 jpg
+        for j in jpgs:
+            Path(j).unlink(missing_ok=True)
+        print(f"🎬 视频合并: {len(jpgs)} 帧 → file-000.mp4")
     print(f"✅ 数据集: {OUT} ({total}帧/{len(eps_all)}轨迹)")
     print(f"   state {states.shape} action {actions.shape}")
     print(f"   action range: [{actions.min():.4f}, {actions.max():.4f}]")

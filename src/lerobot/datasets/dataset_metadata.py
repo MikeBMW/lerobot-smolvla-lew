@@ -233,6 +233,11 @@ class LeRobotDatasetMetadata:
             return
 
         self._requested_root.mkdir(exist_ok=True, parents=True)
+        # Z-MAX 修复: 本地数据集存在时跳过 hub 下载
+        if (self._requested_root / "meta" / "info.json").exists():
+            print(f"📂 metadata 使用本地: {self._requested_root}")
+            self.root = self._requested_root
+            return
         snapshot_download(
             self.repo_id,
             repo_type="dataset",
