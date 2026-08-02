@@ -576,6 +576,14 @@ class SimulinkModule(QWidget):
         self._sim_t_end = 10.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
+        # 教程状态
+        self._tutorial_active = False
+        self._tutorial_step = -1
+        self._tutorial_hl = None      # 当前高亮 widget
+        self._tutorial_orig_ss = {}   # 原样式表备份
+        self._tutorial_timer = QTimer(self)
+        self._tutorial_timer.timeout.connect(self._tutorial_pulse)
+        self._tutorial_pulse_on = False
         self._build()
         self._seed_default_flow()
 
@@ -653,9 +661,12 @@ class SimulinkModule(QWidget):
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
+        self.btn_tutorial = mk_btn("📖 教程", "交互式引导: 高亮+文字提示, 全程鼠标", self.start_tutorial, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_stop)
+        tl.addSpacing(8)
+        tl.addWidget(self.btn_tutorial)
 
         tl.addSpacing(16)
         tl.addWidget(QLabel("仿真时间"))
@@ -676,6 +687,8 @@ class SimulinkModule(QWidget):
 
         btn_save = mk_btn("💾 导出", "导出工作流 JSON (与 web 同格式)", self.export_flow)
         btn_load = mk_btn("📂 导入", "导入工作流 JSON", self.import_flow)
+        self.btn_save = btn_save
+        self.btn_load = btn_load
         tl.addWidget(btn_save)
         tl.addWidget(btn_load)
 
@@ -691,6 +704,7 @@ class SimulinkModule(QWidget):
         ra_lab = QLabel("🗂 参考应用:")
         ra_lab.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
         ral.addWidget(ra_lab)
+        self._ref_btns = {}
         for name, nodes, links in REFERENCE_APPS:
             b = QPushButton(name)
             b.setStyleSheet("""
@@ -699,6 +713,7 @@ class SimulinkModule(QWidget):
                 QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
             """)
             b.clicked.connect(lambda _, nm=name, nd=nodes, lk=links: self.load_reference_app(nm, nd, lk))
+            self._ref_btns[name] = b
             ral.addWidget(b)
         ral.addStretch()
         outer.addWidget(ra)
@@ -727,6 +742,130 @@ class SimulinkModule(QWidget):
     def _seed_default_flow(self):
         pass  # 空画布, 用户从零搭建
 
+    # ════════════════════════════════════════════════════════════
+    # 交互式教程 (高亮 + 文字提示, 全程鼠标)
+    # ════════════════════════════════════════════════════════════
+    TUTORIAL_STEPS = [
+        ("ref",  "📦 取料·100G 闭环",
+         "① 点击下方参考应用「📦 取料·100G 闭环」,\n自动生成 4 节点 + 3 连线的工作流 (共6步)"),
+        ("node", None,
+         "② 鼠标左键按住节点拖动, 试试移动它\n(注意: 只移动按下的节点, 其他节点不动)"),
+        ("btn_run", None,
+         "③ 点击工具栏「▶ 运行」, 按拓扑顺序执行仿真\n(Orin→ACT→取料→力控达标)"),
+        ("btn_step", None,
+         "④ 点击「⏭ 单步」, 每次执行一个时间步,\n观察底部日志中的节点执行记录"),
+        ("btn_stop", None,
+         "⑤ 点击「⏹ 停止」结束仿真,\n时钟归位, 运行按钮恢复"),
+        ("btn_save", None,
+         "⑥ 点击「💾 导出」, 把工作流保存为 JSON,\n该文件可直接被 CI/CD 验证器校验"),
+        ("done", None,
+         "🎉 教程完成! 你已经掌握 Simulink 模式:\n参考应用 → 拖拽 → 仿真 → 导出 → CI校验\n点击任意处退出教程"),
+    ]
+
+    def start_tutorial(self):
+        """开始交互式教程"""
+        if self._tutorial_active:
+            self._tutorial_cleanup()
+            return
+        self._tutorial_active = True
+        self._tutorial_step = -1
+        self._log("📖 教程开始 · 跟着高亮提示操作, 全程鼠标")
+        self._tutorial_next()
+
+    def _tutorial_next(self):
+        """推进到下一步: 高亮目标 + 气泡提示"""
+        self._tutorial_step += 1
+        if self._tutorial_step >= len(self.TUTORIAL_STEPS):
+            self._tutorial_cleanup()
+            self._log("📖 教程完成!")
+            return
+        kind, target, msg = self.TUTORIAL_STEPS[self._tutorial_step]
+
+        if kind == "ref":
+            widget = self._ref_btns.get(target)
+        elif kind == "node":
+            widget = self.canvas  # 高亮画布
+        elif kind in ("btn_run", "btn_step", "btn_stop", "btn_save"):
+            widget = getattr(self, {"btn_run": "btn_run", "btn_step": "btn_step",
+                                    "btn_stop": "btn_stop", "btn_save": "btn_save"}[kind])
+        else:  # done
+            self._tutorial_show_bubble("🎉 完成!", msg)
+            return
+
+        if widget is None:
+            widget = self.canvas
+        self._tutorial_highlight(widget)
+        self._tutorial_show_bubble(f"📖 第{self._tutorial_step + 1}/{len(self.TUTORIAL_STEPS)}步", msg)
+
+    def _tutorial_highlight(self, widget):
+        """高亮目标控件: 记录原样式, 应用青色发光边框"""
+        self._tutorial_cleanup_highlight()
+        self._tutorial_hl = widget
+        self._tutorial_orig_ss[id(widget)] = widget.styleSheet()
+        widget.setStyleSheet(widget.styleSheet() +
+            " QPushButton { border:3px solid #ffd700; border-radius:6px; }" if isinstance(widget, QPushButton)
+            else " border:3px solid #ffd700;")
+        self._tutorial_pulse_on = True
+        self._tutorial_timer.start(400)
+
+    def _tutorial_pulse(self):
+        """高亮脉冲闪烁 (金色 ↔ 青色)"""
+        if self._tutorial_hl is None:
+            return
+        self._tutorial_pulse_on = not self._tutorial_pulse_on
+        color = "#ffd700" if self._tutorial_pulse_on else "#00d4aa"
+        w = self._tutorial_hl
+        if isinstance(w, QPushButton):
+            w.setStyleSheet(w.styleSheet().rsplit(" QPushButton {", 1)[0] +
+                f" QPushButton {{ border:3px solid {color}; border-radius:6px; }}")
+        else:
+            w.setStyleSheet(w.styleSheet().rsplit(" border:", 1)[0] + f" border:3px solid {color};")
+
+    def _tutorial_cleanup_highlight(self):
+        """清除高亮, 恢复原样式"""
+        if self._tutorial_timer.isActive():
+            self._tutorial_timer.stop()
+        if self._tutorial_hl is not None:
+            orig = self._tutorial_orig_ss.get(id(self._tutorial_hl), "")
+            self._tutorial_hl.setStyleSheet(orig)
+            self._tutorial_hl = None
+
+    def _tutorial_show_bubble(self, title, msg):
+        """气泡提示: 用日志 + 状态栏显示 (轻量实现)"""
+        self._log(f"{title}\n{msg}")
+
+    def _tutorial_on_action(self, action):
+        """用户执行了动作 → 检查是否匹配当前步骤, 匹配则推进"""
+        if not self._tutorial_active:
+            return
+        kind, target, _ = self.TUTORIAL_STEPS[self._tutorial_step] if 0 <= self._tutorial_step < len(self.TUTORIAL_STEPS) else (None, None, None)
+        matched = False
+        if kind == "ref" and action == "ref":
+            matched = True
+        elif kind == "btn_run" and action == "run":
+            matched = True
+        elif kind == "btn_step" and action == "step":
+            matched = True
+        elif kind == "btn_stop" and action == "stop":
+            matched = True
+        elif kind == "btn_save" and action == "save":
+            matched = True
+        if matched:
+            self._tutorial_next()
+
+    def _tutorial_on_node_moved(self):
+        """节点被拖动 → 推进教程 (node 步骤)"""
+        if not self._tutorial_active:
+            return
+        if self._tutorial_step < len(self.TUTORIAL_STEPS) and self.TUTORIAL_STEPS[self._tutorial_step][0] == "node":
+            self._tutorial_next()
+
+    def _tutorial_cleanup(self):
+        """退出教程: 清除高亮"""
+        self._tutorial_active = False
+        self._tutorial_cleanup_highlight()
+        self._tutorial_step = -1
+
     # ── 工作流过滤 (对标 MathWorks 6 大分区导航) ──
     def _filter_library(self, wf_key):
         for k, b in self._wf_btns.items():
@@ -753,6 +892,7 @@ class SimulinkModule(QWidget):
                 self.add_link(self._items[ids[fi]], self._items[ids[ti]])
         self.canvas._scene.update()
         self._log(f"🗂 已加载参考应用: {name} ({len(ids)}节点 {len(link_specs)}连线) · 双击节点改参数")
+        self._tutorial_on_action("ref")
 
     # ── 节点操作 ──
     def add_node_at_center(self, ntype, name, params=None):
@@ -842,6 +982,7 @@ class SimulinkModule(QWidget):
     def on_node_moved(self, item):
         for li in self._link_items:
             li.update()
+        self._tutorial_on_node_moved()
 
     def on_zoom(self, scale):
         self._log(f"🔍 {round(scale * 100)}%")
@@ -865,6 +1006,7 @@ class SimulinkModule(QWidget):
         self.btn_stop.setEnabled(True)
         self._log(f"▶ 仿真开始 · t∈[0, {self._sim_t_end}s] · dt={self._sim_dt}s · 节点数={len(self.nodes)}")
         self._timer.start(max(16, int(self._sim_dt * 1000 / 10)))  # 每步最多10x加速
+        self._tutorial_on_action("run")
 
     def step_sim(self):
         if not self.nodes:
@@ -873,6 +1015,7 @@ class SimulinkModule(QWidget):
         self._sim_t += self._sim_dt
         self._exec_topological()
         self.lbl_clock.setText(f"t = {self._sim_t:.2f}s")
+        self._tutorial_on_action("step")
         if self._sim_t >= self._sim_t_end:
             self.stop_sim()
 
@@ -929,6 +1072,7 @@ class SimulinkModule(QWidget):
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self._log(f"⏹ 仿真停止 · t = {self._sim_t:.2f}s")
+        self._tutorial_on_action("stop")
 
     def _by_id(self, nid):
         for n in self.nodes:
@@ -947,6 +1091,7 @@ class SimulinkModule(QWidget):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(flow, f, ensure_ascii=False, indent=2)
             self._log(f"💾 已导出: {path}")
+            self._tutorial_on_action("save")
 
     def import_flow(self):
         from PyQt5.QtWidgets import QFileDialog
