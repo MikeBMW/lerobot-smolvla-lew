@@ -222,7 +222,9 @@ class SimNodeItem(QGraphicsObject):
         self.w = node.get("w", 150)
         self.h = DH
         self.setPos(node["x"], node["y"])
-        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable |
+        # 不用 ItemIsMovable: 拖动由 SimCanvas 手动 setPos 接管,
+        # 避免 QGraphicsScene 默认"移动所有选中项"导致联动
+        self.setFlags(QGraphicsItem.ItemIsSelectable |
                       QGraphicsItem.ItemSendsGeometryChanges)
         self.setZValue(10)
 
@@ -376,6 +378,8 @@ class SimCanvas(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self._drag_from = None       # 连线起点 (SimNodeItem)
         self._tmp_line = None        # 临时连线
+        self._drag_node = None       # 手动拖动的节点 (只移动它, 绕开scene多选)
+        self._drag_offset = QPointF()  # 按下点与节点原点的偏移
         self._panning = False
         self._pan_start = None
         self._scale = 1.0
@@ -409,28 +413,33 @@ class SimCanvas(QGraphicsView):
             return
         if e.button() == Qt.LeftButton:
             item = self.itemAt(e.pos())
-            # 点击节点: 非Ctrl时只选中当前节点 (防止多选联动拖动)
+            # 点击节点
             if isinstance(item, SimNodeItem):
                 p = self.mapToScene(e.pos())
                 n = item
                 rp = n.scenePos()
                 out_x = rp.x() + n.w
                 mid_y = rp.y() + n.h / 2
+                # 输出端口 → 连线模式
                 if abs(p.x() - out_x) < 12 and abs(p.y() - mid_y) < 12:
                     self._drag_from = n
                     self._tmp_line = self._scene.addLine(0, 0, 0, 0,
                         QPen(QColor(COLORS.get(n.node["type"], "#58a6ff")), 2, Qt.DashLine))
                     return
+                # 节点主体 → 手动拖动 (只移动它, 绕开 scene 多选联动)
+                if not (e.modifiers() & Qt.ControlModifier):
+                    for it in self._scene.selectedItems():
+                        if it is not item:
+                            it.setSelected(False)
+                    item.setSelected(True)
+                self._drag_node = item
+                self._drag_offset = p - rp
+                return
         super().mousePressEvent(e)
-        # 非Ctrl点击节点: 强制只选中当前节点 (覆盖 scene 默认多选/toggle)
+        # 点击空白处 (非Ctrl): 清除所有选中
         if e.button() == Qt.LeftButton and not (e.modifiers() & Qt.ControlModifier):
             item = self.itemAt(e.pos())
-            if isinstance(item, SimNodeItem):
-                for it in self._scene.selectedItems():
-                    if it is not item:
-                        it.setSelected(False)
-                item.setSelected(True)
-            elif not isinstance(item, SimLinkItem):
+            if not isinstance(item, (SimNodeItem, SimLinkItem)):
                 self._scene.clearSelection()
 
     def mouseMoveEvent(self, e):
@@ -444,6 +453,11 @@ class SimCanvas(QGraphicsView):
             p = self.mapToScene(e.pos())
             s = self._drag_from.scenePos()
             self._tmp_line.setLine(s.x() + self._drag_from.w, s.y() + self._drag_from.h / 2, p.x(), p.y())
+            return
+        if self._drag_node:
+            # 手动拖动: 只移动按下的节点
+            p = self.mapToScene(e.pos())
+            self._drag_node.setPos(p - self._drag_offset)
             return
         super().mouseMoveEvent(e)
 
@@ -459,6 +473,9 @@ class SimCanvas(QGraphicsView):
             if isinstance(item, SimNodeItem) and item is not self._drag_from:
                 self.module.add_link(self._drag_from, item)
             self._drag_from = None
+            return
+        if self._drag_node:
+            self._drag_node = None
             return
         super().mouseReleaseEvent(e)
 
