@@ -485,8 +485,9 @@ class CICDPanel(QDialog):
         fn = dict((s[0], s[3]) for s in self._stages).get(sid)
         if fn is None:
             return
+        title = dict((s[0], s[1]) for s in self._stages).get(sid, sid)
         self.module._cicd_state[sid] = 1
-        self._stage_log.setText(f"▶ 执行 {dict(validate='① 验证', train='② 训练', integrate='③ 集成', deploy='④ 部署')[sid]} …")
+        self._stage_log.setText(f"▶ 执行 {title} …")
         self._refresh()
         fn()
 
