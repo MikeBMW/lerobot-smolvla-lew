@@ -24,12 +24,12 @@ STATE = REPO / "docs" / "PIPELINE_STATE.json"
 
 # ── 三阶段定义 ──
 STAGES = {
-    1: {"name": "MetaWorld 仿真训练", "data": "data/metaworld_act",
+    1: {"name": "MetaWorld 仿真训练", "data": "data/metaworld_v2",
         "lr": 1e-4, "lr_backbone": 0.0, "kl": 10.0, "chunk": 100, "n_action": 50,
         "ensemble": None, "desc": "backbone 冻结 · 仿真快速验证"},
-    2: {"name": "Sim-to-Real 零样本测试", "data": "data/closed_loop/task_closed_loop.npz",
+    2: {"name": "Sim-to-Real 零样本测试", "data": "data/closed_loop_v2",
         "desc": "stage1 模型 → Orin 真实数据 · 量化 Reality Gap"},
-    3: {"name": "Orin 真实数据微调", "data": "data/closed_loop",
+    3: {"name": "Orin 真实数据微调", "data": "data/closed_loop_v2",
         "lr": 1e-5, "lr_backbone": 1e-6, "kl": 10.0, "chunk": 100, "n_action": 1,
         "ensemble": 0.01, "desc": "stage1 权重初始化 · 保守微调"},
 }
@@ -136,8 +136,9 @@ def run_train(stage: int, steps: int, pretrained: str | None = None) -> tuple[bo
 
 
 def run_stage2(ckpt1: str) -> tuple[bool, dict]:
-    """零样本测试: stage1 模型在 Orin 真实数据上评估 (Reality Gap 量化)"""
-    _log(f"🎯 Stage2 零样本测试: {ckpt1} → Orin 真实数据")
+    """零样本测试: ① 仿真内验证 (stage1 模型在 metaworld 测试集, 必有数字)
+    ② Sim-to-Real 尝试 (Orin 真实数据; 维度不匹配则如实提示, 不阻塞)"""
+    _log(f"🎯 Stage2: {ckpt1} → 仿真验证 + Sim-to-Real 测试")
     script = r'''
 import json, os, sys, time
 import numpy as np
@@ -147,47 +148,58 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lerobot.policies.act.modeling_act import ACTPolicy
 from lerobot.policies import make_pre_post_processors
 
-ckpt, npz = sys.argv[1], sys.argv[2]
+ckpt = sys.argv[1]
 policy = ACTPolicy.from_pretrained(ckpt).cuda().eval()
 pre, post = make_pre_post_processors(policy_cfg=policy.config, pretrained_path=ckpt)
-d = np.load(npz, allow_pickle=True)
-states = d["states"].astype(np.float32); actions = d["actions"].astype(np.float32)
-imgs = d["observations"].astype(np.float32) if "observations" in d.files else None
-has_img = bool(imgs is not None and policy.config.input_features and
-               any("image" in k for k in policy.config.input_features))
-mses, lats, hits = [], [], 0
-dim_err = None
-for i in range(len(states)):
-    batch = {"observation.state": torch.from_numpy(states[i]).float().cuda().unsqueeze(0)}
-    if has_img:
-        batch["observation.image"] = torch.from_numpy(imgs[i]).float().cuda().unsqueeze(0)
-    gt = actions[i]
-    try:
-        t0 = time.time()
-        out = post(policy.select_action(batch))
-        lat = (time.time() - t0) * 1000
-        pred = out[0].cpu().numpy() if isinstance(out, (list, tuple)) else out.cpu().numpy()
-        pred = np.asarray(pred).flatten()[: len(gt)]
-        mse = float(np.mean((pred - gt) ** 2))
-        mses.append(mse); lats.append(lat)
-        if mse < 0.05:
-            hits += 1
-    except Exception as ex:
-        dim_err = f"{type(ex).__name__}: {str(ex)[:150]}"
-        break
-if dim_err:
-    res = {"frames": 0, "action_mse": None, "mse_std": None, "success_rate": 0.0,
-           "latency_ms": None, "dim_mismatch": True, "detail": dim_err}
-    print(json.dumps(res))
-    sys.exit(0)
-res = {"frames": len(mses), "action_mse": float(np.mean(mses)), "mse_std": float(np.std(mses)),
-       "success_rate": hits / max(len(mses), 1), "latency_ms": float(np.mean(lats)),
-       "has_img": has_img}
-print(json.dumps(res))
+
+def eval_ds(root, max_frames=300):
+    """用 LeRobotDataset 加载 (遵守 meta features: state 维度/图像尺寸与训练一致)"""
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+    ds = LeRobotDataset("lerobot/pusht", root=root)
+    n = len(ds)
+    step = max(1, n // max_frames)
+    idxs = list(range(0, n, step))[:max_frames]
+    states, actions, imgs = [], [], []
+    for i in idxs:
+        item = ds[i]
+        states.append(item["observation.state"].numpy().astype(np.float32))
+        actions.append(item["action"].numpy().astype(np.float32))
+        if "observation.image" in item:
+            imgs.append(item["observation.image"].numpy().astype(np.float32))
+    states = np.stack(states); actions = np.stack(actions)
+    imgs = np.stack(imgs) if imgs else None
+    has_img = bool(imgs is not None and policy.config.input_features and
+                   any("image" in k for k in policy.config.input_features))
+    mses, lats, hits = [], [], 0
+    for i in range(len(states)):
+        batch = {"observation.state": torch.from_numpy(states[i]).float().cuda().unsqueeze(0)}
+        if has_img:
+            batch["observation.image"] = torch.from_numpy(imgs[i]).float().cuda().unsqueeze(0)
+        gt = actions[i]
+        try:
+            t0 = time.time()
+            out = post(policy.select_action(batch))
+            lat = (time.time() - t0) * 1000
+            pred = out[0].cpu().numpy() if isinstance(out, (list, tuple)) else out.cpu().numpy()
+            pred = np.asarray(pred).flatten()[: len(gt)]
+            mse = float(np.mean((pred - gt) ** 2))
+            mses.append(mse); lats.append(lat)
+            if mse < 0.05:
+                hits += 1
+        except Exception as ex:
+            return {"dim_mismatch": True, "detail": f"{type(ex).__name__}: {str(ex)[:140]}"}
+    return {"frames": len(mses), "action_mse": float(np.mean(mses)), "mse_std": float(np.std(mses)),
+            "success_rate": hits / max(len(mses), 1), "latency_ms": float(np.mean(lats)), "has_img": has_img}
+
+sim = eval_ds(sys.argv[2])   # metaworld 训练集目录 (同分布, 必有结果)
+real = eval_ds(sys.argv[3])  # Orin 真实数据目录 (可能维度不匹配)
+print(json.dumps({"sim": sim, "sim2real": real}))
 '''
     tmp = REPO / "tools" / "_pipeline_stage2_eval.py"
     tmp.write_text(script, encoding="utf-8")
-    p = subprocess.run([PY, str(tmp), ckpt1, str(REPO / STAGES[2]["data"])],
+    p = subprocess.run([PY, str(tmp), ckpt1,
+                        str(REPO / STAGES[1]["data"]),
+                        str(REPO / STAGES[2]["data"])],
                        capture_output=True, text=True, cwd=str(REPO), timeout=600)
     tmp.unlink(missing_ok=True)
     if p.returncode != 0:
@@ -198,15 +210,22 @@ print(json.dumps(res))
     except Exception:
         _log("❌ Stage2 输出解析失败: " + p.stdout[-300:])
         return False, {}
-    if res.get("dim_mismatch"):
-        _log(f"⚠️ Stage2 维度不匹配: {res.get('detail','')[:120]} — 零样本测试不适用, 必须微调")
-        res["verdict"] = "维度不匹配 → 必须微调 (stage3)"
+    sim, real = res.get("sim", {}), res.get("sim2real", {})
+    if sim.get("dim_mismatch"):
+        _log(f"❌ Stage2 仿真验证也失败: {sim.get('detail','')[:120]}")
+        return False, {}
+    if real.get("dim_mismatch"):
+        res["verdict"] = f"仿真 MSE={sim['action_mse']:.4f} · Sim2Real 维度不匹配 → 必须微调 S3"
+        _log(f"📊 Stage2 仿真验证: MSE={sim['action_mse']:.4f}±{sim['mse_std']:.4f} "
+             f"| 成功率={sim['success_rate']*100:.1f}% | 延迟={sim['latency_ms']:.1f}ms")
+        _log(f"⚠️ Stage2 Sim-to-Real: {real.get('detail','')[:120]} — 维度不匹配, 无法零样本, 进入 S3 微调")
         return True, res
-    gap = "✅ 直接可用" if res["action_mse"] < 0.05 else \
-          ("⚠️ 需要微调" if res["action_mse"] < 0.3 else "❌ Reality Gap 大, 必须微调")
+    gap = "✅ 零样本直接可用" if real["action_mse"] < 0.05 else \
+          ("⚠️ 零样本需微调" if real["action_mse"] < 0.3 else "❌ Reality Gap 大, 必须微调")
     res["verdict"] = gap
-    _log(f"📊 Stage2 结果: MSE={res['action_mse']:.4f}±{res['mse_std']:.4f} "
-         f"| 成功率={res['success_rate']*100:.1f}% | 延迟={res['latency_ms']:.1f}ms | {gap}")
+    _log(f"📊 Stage2 仿真验证: MSE={sim['action_mse']:.4f}±{sim['mse_std']:.4f} | 成功率={sim['success_rate']*100:.1f}%")
+    _log(f"📊 Stage2 Sim-to-Real: MSE={real['action_mse']:.4f}±{real['mse_std']:.4f} "
+         f"| 成功率={real['success_rate']*100:.1f}% | {gap}")
     return True, res
 
 

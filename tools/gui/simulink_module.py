@@ -636,10 +636,17 @@ class PipelinePanel(QDialog):
                 info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
             elif sid == 2 and sdata.get("result"):
                 r = sdata["result"]
-                if r.get("dim_mismatch"):
-                    info.setText("⚠️ 维度不匹配 → 必须微调 (S3)")
+                sim = r.get("sim", {})
+                if sim.get("action_mse") is not None:
+                    line = f"仿真 MSE={sim['action_mse']:.4f} 成功率={sim.get('success_rate',0)*100:.0f}%"
+                    if r.get("sim2real", {}).get("dim_mismatch"):
+                        line += " · Sim2Real 维度不匹配→S3"
+                    else:
+                        rr = r.get("sim2real", {})
+                        line += f" · Sim2Real MSE={rr.get('action_mse',0):.4f}"
+                    info.setText(line)
                 else:
-                    info.setText(f"MSE={r.get('action_mse',0):.4f} · 成功率={r.get('success_rate',0)*100:.0f}% · {r.get('verdict','')}")
+                    info.setText("⚠️ 维度不匹配 → 必须微调 (S3)")
             elif sid == 3 and sdata.get("ckpt"):
                 info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
         now = st.get("stage", "?")
