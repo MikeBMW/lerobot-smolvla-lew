@@ -128,8 +128,9 @@ if __name__ == "__main__":
     base = eval_model(base_p, base_pp, args.dataset, "基线", n_eps=args.n_eps)
     cand = eval_model(cand_p, cand_pp, args.dataset, "候选v1.1.0", n_eps=args.n_eps)
     make_report(base, cand, args.report)
-    # 输出对比 JSON (供 CICD 自动判断)
+    # 输出对比 JSON (供 CICD 自动判断) — 与 HTML 报告同名
+    json_path = Path(args.report).with_suffix(".json")
     result = {"baseline": base, "candidate": cand,
               "mse_improve_pct": round((base["action_mse"] - cand["action_mse"]) / max(base["action_mse"], 1e-9) * 100, 2)}
-    Path("docs/CICD_COMPARE_v1.1.0.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print("📊 JSON:", json.dumps(result["mse_improve_pct"]))

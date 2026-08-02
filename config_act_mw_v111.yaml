@@ -25,7 +25,7 @@ dataset:
   use_imagenet_stats: true
 
 batch_size: 8
-steps: 2000
+steps: 3000
 num_workers: 0
 persistent_workers: false
 log_freq: 200
@@ -36,7 +36,7 @@ seed: 1337
 
 optimizer:
   type: adam
-  lr: 1e-4
+  lr: 8.00e-05
   weight_decay: 0.0
 
 wandb:

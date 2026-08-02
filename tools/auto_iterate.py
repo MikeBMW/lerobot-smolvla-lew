@@ -45,8 +45,9 @@ def improve_config(round_num):
     steps = 2000 + round_num * 1000
     lr = 1e-4 * (0.8 ** round_num)  # lr 逐轮衰减
     import re
-    text = re.sub(r"steps: \d+", f"steps: {steps}", text)
-    text = re.sub(r"lr: [\d.e-]+", f"lr: {lr:.2e}", text)
+    # 只改顶层 training steps (行首, 不匹配 policy.n_obs_steps/n_action_steps)
+    text = re.sub(r"^steps: \d+", f"steps: {steps}", text, flags=re.M)
+    text = re.sub(r"^lr: [\d.e-]+", f"lr: {lr:.2e}", text, flags=re.M)
     cfg.write_text(text)
     print(f"🔧 改进方案 v{round_num+1}: steps={steps} lr={lr:.2e}")
 

@@ -5,15 +5,15 @@
     "action_mse": 12037.782962417603,
     "mse_std": 10849.215234327634,
     "success_rate": 0.0,
-    "latency_ms": 4.023501873016357
+    "latency_ms": 4.275388717651367
   },
   "candidate": {
     "tag": "\u5019\u9009v1.1.0",
     "frames": 100,
-    "action_mse": 11427.245814208984,
-    "mse_std": 10595.811110835932,
+    "action_mse": 11053.278440093995,
+    "mse_std": 10180.117996228568,
     "success_rate": 0.0,
-    "latency_ms": 1.4151310920715332
+    "latency_ms": 1.7896556854248047
   },
-  "mse_improve_pct": 5.07
+  "mse_improve_pct": 8.18
 }
