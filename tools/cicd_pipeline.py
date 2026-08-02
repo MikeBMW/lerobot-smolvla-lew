@@ -24,12 +24,12 @@ STATE = REPO / "docs" / "PIPELINE_STATE.json"
 
 # ── 三阶段定义 ──
 STAGES = {
-    1: {"name": "MetaWorld 仿真训练", "data": "data/metaworld_joint_v2",
+    1: {"name": "MetaWorld 仿真训练", "data": "data/metaworld_joint6_v2",
         "lr": 1e-4, "lr_backbone": 0.0, "kl": 10.0, "chunk": 100, "n_action": 50,
-        "ensemble": None, "desc": "Sawyer关节空间(7D/6D) · backbone 冻结 · 仿真快速验证"},
+        "ensemble": None, "desc": "Sawyer 6关节(6D/6D) · backbone 冻结 · 仿真快速验证"},
     2: {"name": "Sim-to-Real 零样本测试", "data": "data/closed_loop_v2",
         "desc": "stage1 模型 → Orin 真实数据 · 量化 Reality Gap"},
-    3: {"name": "Orin 真实数据微调", "data": "data/closed_loop_v2",
+    3: {"name": "Orin 真实数据微调", "data": "data/orin_real_v1",
         "lr": 1e-5, "lr_backbone": 1e-6, "kl": 10.0, "chunk": 100, "n_action": 1,
         "ensemble": 0.01, "desc": "stage1 权重初始化 · 保守微调"},
 }

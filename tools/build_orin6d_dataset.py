@@ -62,7 +62,7 @@ def main():
                 "action": action.tolist(),
                 "episode_index": si,   # 每包一个 episode (方案2, LeRobot 标准)
                 "frame_index": total,  # 全局索引 (视频合并顺序, 与 index 一致)
-                "timestamp": float(total / 30.0),  # 全局视频时间戳
+                "timestamp": float(i / 30.0),  # episode 内相对时间戳 (reader 会加 from_timestamp)
                 "next.reward": 0.0,
                 "next.done": False,
                 "next.success": False,

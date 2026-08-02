@@ -51,9 +51,8 @@ def main():
             act = env.action_space.sample()
             obs, rew, term, trunc, info = env.step(act)
             qpos = env.data.qpos.copy()
-            # state: 前6关节角 + 夹爪 (7D, 对齐 Orin)
-            st = np.concatenate([qpos[0:6].astype(np.float32),
-                                 [np.float32(gripper_norm(env))]])
+            # state: 前6关节角 (6D, 对齐 Orin n_joint=6; 不含夹爪维度)
+            st = qpos[0:6].astype(np.float32)
             # action: 关节速度差分 (6D, 对齐 Orin) — 首帧用零
             if prev_qpos is None:
                 ac = np.zeros(6, dtype=np.float32)
