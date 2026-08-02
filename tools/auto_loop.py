@@ -68,7 +68,7 @@ def train():
         f"--config_path {CFG} >> outputs/train/loop_train.log 2>&1"
     ], timeout=600)
     ckpts = sorted(glob.glob(str(HOME / "outputs/train/act_loop/checkpoints/*")))
-    ckpts = [c for c in ckpts if "last" not in c]
+    ckpts = [Path(c) for c in ckpts if "last" not in c]
     if ckpts:
         return ckpts[-1] / "pretrained_model" / "model.safetensors"
     return None
@@ -125,7 +125,8 @@ def main():
                 log("⏳ 队列空, 等小芳采集数据...")
             idle += 1
         except Exception as ex:
-            log(f"⚠️ 错误: {ex}")
+            import traceback
+            log(f"⚠️ 错误: {ex}\n{traceback.format_exc()[-400:]}")
         if once:
             break
         time.sleep(60)
