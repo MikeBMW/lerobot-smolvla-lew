@@ -20,9 +20,10 @@ def find_latest_model():
     cands = []
     for d in sorted(glob.glob(str(OUT / "*"))):
         # 找 policy 权重目录
-        for pat in ("**/checkpoint*", "**/policy/*.pt", "**/model.safetensors"):
+        for pat in ("**/model.safetensors", "**/policy/*.pt", "**/checkpoint*.pt"):
             for f in glob.glob(os.path.join(d, pat), recursive=True):
-                cands.append((os.path.getmtime(f), f))
+                if os.path.isfile(f):
+                    cands.append((os.path.getmtime(f), f))
     if not cands:
         print("⚠️  未找到训练产物")
         return None

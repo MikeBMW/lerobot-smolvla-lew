@@ -4883,6 +4883,37 @@ class MonitorModule(SubModuleWidget):
         
         bl.addLayout(top_row)
         
+        # ═══ Orin 部署状态条 (CICD 状态反馈 · 轮询 ECS) ═══
+        orin_bar = QGroupBox("🤖 Orin 部署状态 (CICD)")
+        orin_bar.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 10)}}}")
+        orin_lay = QHBoxLayout()
+        orin_lay.setSpacing(14)
+        self.orin_status_lbl = QLabel("● 未部署")
+        self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:13px; font-weight:700;")
+        orin_lay.addWidget(self.orin_status_lbl)
+        self.orin_model_lbl = QLabel("模型: -")
+        self.orin_model_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:11px;")
+        orin_lay.addWidget(self.orin_model_lbl)
+        self.orin_infer_lbl = QLabel("推理: -")
+        self.orin_infer_lbl.setStyleSheet(f"color:{C_CYAN}; font-size:11px;")
+        orin_lay.addWidget(self.orin_infer_lbl)
+        self.orin_lat_lbl = QLabel("延迟: -")
+        self.orin_lat_lbl.setStyleSheet(f"color:{C_DIM}; font-size:11px;")
+        orin_lay.addWidget(self.orin_lat_lbl)
+        orin_lay.addStretch()
+        ref_btn = QPushButton("刷新")
+        ref_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:10px;")
+        ref_btn.clicked.connect(self._refresh_orin_status)
+        orin_lay.addWidget(ref_btn)
+        orin_bar.setLayout(orin_lay)
+        bl.addWidget(orin_bar)
+        
+        # Orin 状态轮询 (每5秒)
+        self._orin_timer = QTimer(self)
+        self._orin_timer.timeout.connect(self._refresh_orin_status)
+        self._orin_timer.start(5000)
+        self._refresh_orin_status()
+        
         # ═══ 操作栏: 启动+停止+状态 ═══
         ctrl_row = QHBoxLayout()
         ctrl_row.setSpacing(10)
@@ -5054,6 +5085,32 @@ class MonitorModule(SubModuleWidget):
             "点击「启动可视化」查看实时仿真数据"
         )
     
+    def _refresh_orin_status(self):
+        """轮询 ECS 获取 Orin 部署/推理状态 (CICD 状态反馈)"""
+        try:
+            import requests
+            r = requests.get("https://datadrive.world/api/relay/orin/status", timeout=5)
+            if r.status_code != 200:
+                return
+            st = r.json()
+            online = st.get("online")
+            if online:
+                self.orin_status_lbl.setText("● 运行中")
+                self.orin_status_lbl.setStyleSheet(f"color:{C_GREEN}; font-size:13px; font-weight:700;")
+                model = st.get("model") or "-"
+                self.orin_model_lbl.setText(f"模型: {model}")
+                self.orin_infer_lbl.setText(f"推理: {st.get('infer_count', 0)}次")
+                lat = st.get("last_infer_ms")
+                self.orin_lat_lbl.setText(f"延迟: {lat}ms" if lat is not None else "延迟: -")
+            else:
+                self.orin_status_lbl.setText("● 未部署")
+                self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:13px; font-weight:700;")
+                self.orin_model_lbl.setText("模型: -")
+                self.orin_infer_lbl.setText("推理: -")
+                self.orin_lat_lbl.setText("延迟: -")
+        except Exception:
+            pass
+
     def _mon_launch(self):
         """信号源启动 - 安全简化版"""
         self.mon_launch_btn.setEnabled(False)

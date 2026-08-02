@@ -3,9 +3,11 @@
 从 ECS 中转拉取 4060 训练产物 → 部署到 Orin
 
 链路: 4060训练 → ECS中转 → Mac拉取 → Orin部署
+⚠️ 中继是弹栈式队列 (拉取即删, 一次成功, 不保存即丢)！
+⚠️ 二进制模型必须用本脚本或 curl -o 保存; relay_train.py pull 只用于 JSON 训练数据。
 用法:
   python3 cicd_pull_deploy.py       # 拉取最新模型并部署到 Orin
-  python3 cicd_pull_deploy.py pull  # 只拉取
+  python3 cicd_pull_deploy.py pull  # 只拉取 (保存到 ~/zmax_deploy/)
   python3 cicd_pull_deploy.py deploy <本地模型路径>  # 只部署
 """
 import json, sys, time, subprocess, os
@@ -39,7 +41,7 @@ def pull():
 
 
 def deploy(path):
-    """部署模型到 Orin (/zmax/sys1/act_action 域)"""
+    """部署模型到 Orin + 启动推理服务 (状态上报 ECS → 控制台可见)"""
     print(f"🤖 部署到 Orin: {path}...")
     # 1. 上传模型到 Orin
     r = subprocess.run(["sshpass", "-p", ORIN_PW, "scp", "-o", "StrictHostKeyChecking=no",
@@ -48,12 +50,22 @@ def deploy(path):
     if r.returncode != 0:
         print(f"❌ scp失败: {r.stderr[:200]}")
         return False
-    # 2. 触发 Orin 加载
-    r = run_ssh("ls -la /tmp/zmax_act_model.pt && echo MODEL_READY")
-    if "MODEL_READY" in r.stdout:
-        print("✅ 模型已部署 Orin (/tmp/zmax_act_model.pt)")
+    # 2. 上传推理服务脚本
+    script = Path(__file__).parent / "orin_infer_service.py"
+    subprocess.run(["sshpass", "-p", ORIN_PW, "scp", "-o", "StrictHostKeyChecking=no",
+                    str(script), f"{ORIN}:/tmp/orin_infer_service.py"],
+                   capture_output=True, text=True, timeout=60)
+    # 3. 启动推理服务 (重启已存在的)
+    cmd = ("pkill -f orin_infer_service.py 2>/dev/null; sleep 1; "
+           "cd /tmp && setsid nohup python3 orin_infer_service.py --model /tmp/zmax_act_model.pt "
+           "> /tmp/orin_infer.log 2>&1 < /dev/null & sleep 3; "
+           "curl -s -m 3 http://127.0.0.1:8766/status")
+    r = run_ssh(cmd, timeout=30)
+    print(f"  推理服务状态: {r.stdout[:200]}")
+    if "online" in r.stdout:
+        print("✅ 模型已部署并运行 Orin (:8766) · 状态已上报 ECS")
         return True
-    print(f"❌ Orin 加载失败: {r.stdout[:200]}{r.stderr[:200]}")
+    print(f"❌ Orin 启动失败: {r.stdout[:200]}{r.stderr[:200]}")
     return False
 
 
