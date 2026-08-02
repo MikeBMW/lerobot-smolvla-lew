@@ -74,7 +74,7 @@ def main():
                 "observation.state": state.tolist(),
                 "action": action.tolist(),
                 "episode_index": ep,
-                "frame_index": total,
+                "frame_index": i,   # 轨迹内索引 (LeRobot 标准)
                 "timestamp": i / 30.0,
             })
             total += 1
@@ -112,6 +112,12 @@ def main():
     df["next.success"] = False
     df.to_parquet(data_dir / "file-000.parquet")
     pd.DataFrame(all_eps).to_parquet(meta_dir / "file-000.parquet")
+    # 补视频索引列 (LeRobotDataset 需要)
+    eps_df = pd.read_parquet(meta_dir / "file-000.parquet")
+    eps_df["videos/observation.image/chunk_index"] = 0
+    eps_df["videos/observation.image/frame_index"] = eps_df["length"] - 1
+    eps_df["videos/observation.image/file_index"] = 0
+    eps_df.to_parquet(meta_dir / "file-000.parquet")
 
     # 写 meta/info.json (v3.0 标准)
     states = np.stack([f["observation.state"] for f in all_frames])

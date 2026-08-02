@@ -22,7 +22,7 @@ dataset:
   repo_id: MikeBMW/metaworld-joint-real
   root: data/metaworld_joint_real
   episodes: null
-  use_imagenet_stats: true
+  use_imagenet_stats: false
 
 batch_size: 8
 steps: 2000
