@@ -629,6 +629,33 @@ class PipelinePanel(QDialog):
         bl.addStretch()
         lay.addWidget(bar)
 
+        # ── 6 环节流水线 (采集→训练→验证→集成→部署→推理) ──
+        pipe = QHBoxLayout()
+        pipe.setSpacing(8)
+        self._pipe_btns = {}
+        pipe_defs = [
+            ("collect", "① 采集", self.module.on_collect),
+            ("train", "② 训练", self.module.on_train),
+            ("validate", "③ 验证", self.module.on_validate),
+            ("integrate", "④ 集成", self.module.on_integrate),
+            ("deploy", "⑤ 部署", self.module.on_deploy),
+            ("infer", "⑥ 推理", self.module.on_infer),
+        ]
+        for sid, label, fn in pipe_defs:
+            b = QPushButton(label)
+            b.setStyleSheet("QPushButton { background:#14181f; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
+                            "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
+            b.clicked.connect(lambda _, s=sid, f=fn: (self.module._cicd_state.__setitem__(s, 1), self._refresh(), f()))
+            self._pipe_btns[sid] = b
+            pipe.addWidget(b)
+        self.btn_pipe_full = QPushButton("▶ 流水线全流程")
+        self.btn_pipe_full.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:700; }"
+                                         "QPushButton:hover { background:#00d4aa33; }")
+        self.btn_pipe_full.clicked.connect(self.module._run_full_flow)
+        pipe.addWidget(self.btn_pipe_full)
+        pipe.addStretch()
+        lay.addLayout(pipe)
+
         row = QHBoxLayout()
         row.setSpacing(12)
         for sid in (1, 2, 3):
@@ -664,6 +691,18 @@ class PipelinePanel(QDialog):
         ck3 = stages.get("3", {}).get("ckpt") or stages.get("1", {}).get("ckpt")
         if ck3:
             self.lbl_model.setText("🧠 模型: " + ck3.replace("\\", "/").split("/")[-4])
+        # 6 环节按钮状态回显 (1运行中青/2成功绿/3失败红)
+        for sid, b in self._pipe_btns.items():
+            s = self.module._cicd_state.get(sid, 0)
+            if s == 1:
+                b.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:700; }")
+            elif s == 2:
+                b.setStyleSheet("QPushButton { background:#3fb95022; color:#3fb950; border:1px solid #3fb950; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:700; }")
+            elif s == 3:
+                b.setStyleSheet("QPushButton { background:#ff444422; color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:700; }")
+            else:
+                b.setStyleSheet("QPushButton { background:#14181f; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
+                                "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
         for sid, (card, st_lbl, info) in self._cards.items():
             sid_st = stages.get(str(sid), {}).get("state", "pending")
             st_lbl.setText(self._STATUS_ICON.get(sid_st, "○"))
@@ -1417,9 +1456,8 @@ class SimulinkModule(QWidget):
         tl2.setContentsMargins(10, 4, 10, 4)
         tl2.setSpacing(8)
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
-        self.btn_cicd = mk_btn("🔗 CI/CD 全链路", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
-        tl2.addWidget(self.btn_cicd)
-        self.btn_pipeline = mk_btn("🎯 三阶段管线", "三阶段渐进式训练: 仿真训练→零样本测试→真机微调 (自动流转, steps可配)",
+        # 数据闭环控制台 = 唯一 CICD 入口 (6环节流水线 + 三阶段训练合并)
+        self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
         tl2.addWidget(self.btn_pipeline)
         self.btn_validate = mk_btn("✅ 验证", "CI/CD 第一环: 模型标准合规校验 (Model Advisor 对标)", self.on_validate, "#a371f7")
