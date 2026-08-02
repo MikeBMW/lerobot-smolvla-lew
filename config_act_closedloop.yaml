@@ -1,9 +1,13 @@
 # Z-MAX 数据闭环 · ACT 最小训练配置 (静静4060)
-# 用法: uv run python -m lerobot.scripts.lerobot_train --config-path config_act_closedloop.yaml
-dataset_repo_id: lerobot/pusht
+# 用法: uv run python -m lerobot.scripts.lerobot_train --config_path config_act_closedloop.yaml
+output_dir: outputs/train/act_closed_loop
+job_name: act_closed_loop
+
 policy:
   type: act
-  n_obs_steps: 2
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-act-closedloop
+  n_obs_steps: 1
   n_action_steps: 7
   chunk_size: 7
   dim_model: 256
@@ -11,13 +15,29 @@ policy:
   n_heads: 8
   n_encoder_layers: 4
   n_decoder_layers: 4
-  num_inference_timesteps: 1
+  use_vae: true
+  latent_dim: 32
 
-training:
-  output_dir: outputs/train/act_closed_loop
-  num_epochs: 10
-  batch_size: 8
-  learning_rate: 1e-4
-  offline: true
-  device: cuda
-  seed: 1337
+dataset:
+  repo_id: lerobot/pusht
+  root: data/closed_loop
+  episodes: [0]
+  use_imagenet_stats: true
+
+batch_size: 8
+steps: 1000
+num_workers: 0
+persistent_workers: false
+log_freq: 100
+eval_freq: 500
+save_freq: 500
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 1e-4
+  weight_decay: 0.0
+
+wandb:
+  enable: false
