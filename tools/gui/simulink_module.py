@@ -521,8 +521,8 @@ class PipelinePanel(QDialog):
     def __init__(self, module, parent=None):
         super().__init__(parent)
         self.module = module
-        self.setWindowTitle("🎯 三阶段渐进式训练管线 · Z-MAX")
-        self.setMinimumSize(880, 520)
+        self.setWindowTitle("🎯 数据闭环 CICD 控制台 · Z-MAX")
+        self.setMinimumSize(920, 560)
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._cards = {}
         self._spin = {}
@@ -532,6 +532,11 @@ class PipelinePanel(QDialog):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh)
         self._timer.start(2000)
+        # 远程状态轮询 (relay/orin, 后台线程不卡 UI)
+        self._remote_timer = QTimer(self)
+        self._remote_timer.timeout.connect(self._poll_remote)
+        self._remote_timer.start(10000)
+        self._poll_remote()
 
     def _read_state(self):
         try:
@@ -589,12 +594,29 @@ class PipelinePanel(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(10)
-        t = QLabel("🎯 三阶段渐进式训练 · 仿真快速验证 → 零样本测试 → 真机保守微调")
+        t = QLabel("🎯 数据闭环 CICD 控制台 · 采集 → 训练 → 模型 → 部署 → 推理 → 迭代")
         t.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700; background:transparent; border:none;")
         lay.addWidget(t)
-        tip = QLabel("每阶段可单独运行 · steps 可配置 · ▶ 全流程 = 自动流转 1→2→3 · 状态每 2s 自动刷新")
+        tip = QLabel("三阶段自动流转 · steps 可配置 · 闭环状态每 10s 刷新 (Orin 心跳/推理/数据量)")
         tip.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
         lay.addWidget(tip)
+
+        # ── 闭环状态栏 (数据/模型/URL/Orin/推理) ──
+        bar = QFrame()
+        bar.setStyleSheet("QFrame { background:#14181f; border:1px solid #1e2740; border-radius:8px; }")
+        bl = QHBoxLayout(bar)
+        bl.setContentsMargins(12, 8, 12, 8)
+        bl.setSpacing(14)
+        self.lbl_data = QLabel("📥 数据: —")
+        self.lbl_model = QLabel("🧠 模型: —")
+        self.lbl_url = QLabel("🔗 URL: —")
+        self.lbl_orin = QLabel("🤖 Orin: —")
+        self.lbl_infer = QLabel("⚡ 推理: —")
+        for lb in (self.lbl_data, self.lbl_model, self.lbl_url, self.lbl_orin, self.lbl_infer):
+            lb.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+            bl.addWidget(lb)
+        bl.addStretch()
+        lay.addWidget(bar)
 
         row = QHBoxLayout()
         row.setSpacing(12)
@@ -622,6 +644,15 @@ class PipelinePanel(QDialog):
     def _refresh(self):
         st = self._read_state()
         stages = st.get("stages", {}) or {}
+        # 闭环状态栏: 本地部分 (数据量/模型)
+        try:
+            n_real = self._local_data_frames()
+            self.lbl_data.setText(f"📥 数据: {n_real}帧")
+        except Exception:
+            pass
+        ck3 = stages.get("3", {}).get("ckpt") or stages.get("1", {}).get("ckpt")
+        if ck3:
+            self.lbl_model.setText("🧠 模型: " + ck3.replace("\\", "/").split("/")[-4])
         for sid, (card, st_lbl, info) in self._cards.items():
             sid_st = stages.get(str(sid), {}).get("state", "pending")
             st_lbl.setText(self._STATUS_ICON.get(sid_st, "○"))
@@ -700,7 +731,97 @@ class PipelinePanel(QDialog):
 
     def closeEvent(self, e):
         self._timer.stop()
+        self._remote_timer.stop()
         super().closeEvent(e)
+
+    # ── 数据闭环状态: 本地数据量 + 远程轮询 ──
+    def _local_data_frames(self):
+        """本地 Orin 真实数据帧数统计"""
+        root = self.module._repo_root()
+        n = 0
+        import glob as _g
+        for jf in _g.glob(os.path.join(root, "data", "closed_loop", "*.json")):
+            try:
+                d = json.load(open(jf, encoding="utf-8"))
+                n += len(d.get("frames", []))
+            except Exception:
+                pass
+        npz = os.path.join(root, "data", "closed_loop", "task_closed_loop.npz")
+        if os.path.exists(npz):
+            try:
+                import numpy as _np
+                n += int(_np.load(npz, allow_pickle=True)["states"].shape[0])
+            except Exception:
+                pass
+        return n
+
+    def _poll_remote(self):
+        """后台线程拉 relay/orin 状态 (不卡 UI)"""
+        if getattr(self, "_remote_worker", None) and self._remote_worker.isRunning():
+            return
+
+        def _work():
+            import requests as _rq
+            out = {}
+            try:
+                r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
+                if r.status_code == 200:
+                    st = r.json()
+                    out["pkgs"] = st.get("packages", 0)
+                    meta = st.get("latest_meta") or {}
+                    out["frames"] = meta.get("frames", None)
+                    out["src"] = meta.get("source", None)
+            except Exception:
+                pass
+            try:
+                r = _rq.get("https://datadrive.world/api/relay/orin/status", timeout=6)
+                if r.status_code == 200:
+                    o = r.json()
+                    out["online"] = o.get("online", False)
+                    out["model"] = o.get("model", "?")
+                    out["infer"] = o.get("infer_count", 0)
+                    out["ms"] = o.get("last_infer_ms")
+                    out["seen"] = o.get("last_seen", "?")
+            except Exception:
+                pass
+            try:
+                r = _rq.head("https://datadrive.world/models/act_cartesian.safetensors", timeout=6)
+                out["url"] = r.status_code
+            except Exception:
+                out["url"] = None
+            import json as _json
+            return True, _json.dumps(out)
+
+        def _done(ok, info):
+            import json as _json
+            try:
+                d = _json.loads(info)
+            except Exception:
+                return
+            pkgs = d.get("pkgs", 0)
+            frm = d.get("frames")
+            if pkgs is not None:
+                extra = f" · 中转{pkgs}包" + (f"·{frm}帧" if frm else "")
+                try:
+                    self.lbl_data.setText(f"📥 数据: {self._local_data_frames()}帧{extra}")
+                except Exception:
+                    self.lbl_data.setText(f"📥 数据: 中转{pkgs}包")
+            online = d.get("online")
+            if online is not None:
+                color = "#3fb950" if online else "#ff4444"
+                self.lbl_orin.setText(f"🤖 Orin: {'●在线' if online else '○离线'} · {d.get('model','?')} · 心跳{d.get('seen','?')}")
+                self.lbl_orin.setStyleSheet(f"color:{color}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+            if d.get("infer") is not None:
+                ms = d.get("ms")
+                self.lbl_infer.setText(f"⚡ 推理: {d.get('infer')}次" + (f" · {ms}ms" if ms else ""))
+            if d.get("url"):
+                self.lbl_url.setText(f"🔗 URL: {'✅' if d['url'] == 200 else '⚠️' + str(d['url'])} act_cartesian")
+
+        worker = CICDWorker(_work)
+        worker.finished_ok.connect(_done)
+        worker.finished.connect(lambda: setattr(self, "_remote_worker", None))
+        self._remote_worker = worker
+        worker.start()
 
 
 # ════════════════════════════════════════════════════════════════
