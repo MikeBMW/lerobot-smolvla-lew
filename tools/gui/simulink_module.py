@@ -503,6 +503,194 @@ class CICDPanel(QDialog):
 
 
 # ════════════════════════════════════════════════════════════════
+# 三阶段渐进式训练管线面板 (老倪策略 2026-08-02)
+#   Stage1 MetaWorld 仿真训练 → Stage2 Sim-to-Real 零样本测试 → Stage3 Orin 微调
+#   自动流转, steps 可配置, 状态读 docs/PIPELINE_STATE.json
+# ════════════════════════════════════════════════════════════════
+class PipelinePanel(QDialog):
+    STAGE_DEFS = {
+        1: ("Stage 1", "MetaWorld 仿真训练", "backbone 冻结 · lr 1e-4 · kl 10 · chunk 100 · 仿真快速验证"),
+        2: ("Stage 2", "Sim-to-Real 零样本测试", "stage1 模型 → Orin 真实数据 · 量化 Reality Gap"),
+        3: ("Stage 3", "Orin 真实数据微调", "stage1 权重初始化 · lr 1e-5 · backbone 1e-6 · ensemble 0.01"),
+    }
+    _STATE = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "docs", "PIPELINE_STATE.json")
+    _PY = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", ".venv", "bin", "python")
+    _STATUS_COLOR = {"pending": "#8b949e", "running": "#00d4aa", "success": "#3fb950", "failed": "#ff4444"}
+    _STATUS_ICON = {"pending": "○ 未开始", "running": "● 运行中", "success": "✓ 成功", "failed": "✕ 失败"}
+
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.setWindowTitle("🎯 三阶段渐进式训练管线 · Z-MAX")
+        self.setMinimumSize(880, 520)
+        self.setStyleSheet("QDialog { background:#0d1117; }")
+        self._cards = {}
+        self._spin = {}
+        self._last_log = ""
+        self._build()
+        self._refresh()
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._refresh)
+        self._timer.start(2000)
+
+    def _read_state(self):
+        try:
+            return json.load(open(self._STATE, encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _mk_card(self, sid):
+        num, title, desc = self.STAGE_DEFS[sid]
+        card = QFrame()
+        card.setObjectName(f"stage{sid}")
+        card.setStyleSheet("QFrame#stage%d { background:#14181f; border:1px solid #1e2740; border-radius:10px; }" % sid)
+        card.setFixedWidth(250)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
+        h = QHBoxLayout()
+        t = QLabel(f"{num}  {title}")
+        t.setStyleSheet("color:#fff; font-size:13px; font-weight:700; background:transparent; border:none;")
+        h.addWidget(t)
+        h.addStretch()
+        st = QLabel("○")
+        st.setStyleSheet("color:#8b949e; font-size:13px; font-weight:700; background:transparent; border:none;")
+        h.addWidget(st)
+        lay.addLayout(h)
+        d = QLabel(desc)
+        d.setWordWrap(True)
+        d.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        lay.addWidget(d)
+        # steps 配置 (stage2 无)
+        if sid in (1, 3):
+            row = QHBoxLayout()
+            row.addWidget(QLabel("steps"))
+            sp = QSpinBox()
+            sp.setRange(1, 50000)
+            sp.setValue(300)
+            sp.setStyleSheet("background:#0d1117; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
+            row.addWidget(sp)
+            row.addStretch()
+            lay.addLayout(row)
+            self._spin[sid] = sp
+        info = QLabel("—")
+        info.setWordWrap(True)
+        info.setStyleSheet("color:#58a6ff; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+        lay.addWidget(info)
+        btn = QPushButton("▶ 运行本阶段")
+        btn.setStyleSheet("QPushButton { background:#1a2230; color:#00d4aa; border:1px solid #00d4aa44; border-radius:5px; padding:5px; font-size:11px; font-weight:600; }"
+                          "QPushButton:hover { border-color:#00d4aa; }")
+        btn.clicked.connect(lambda _, s=sid: self._run_stage(s))
+        lay.addWidget(btn)
+        self._cards[sid] = (card, st, info)
+        return card
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+        t = QLabel("🎯 三阶段渐进式训练 · 仿真快速验证 → 零样本测试 → 真机保守微调")
+        t.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700; background:transparent; border:none;")
+        lay.addWidget(t)
+        tip = QLabel("每阶段可单独运行 · steps 可配置 · ▶ 全流程 = 自动流转 1→2→3 · 状态每 2s 自动刷新")
+        tip.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        lay.addWidget(tip)
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        for sid in (1, 2, 3):
+            row.addWidget(self._mk_card(sid))
+        lay.addLayout(row)
+
+        bar = QHBoxLayout()
+        self.btn_full = QPushButton("▶ 全流程自动运行 (1→2→3)")
+        self.btn_full.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:700; }"
+                                    "QPushButton:hover { background:#00d4aa33; }")
+        self.btn_full.clicked.connect(self._run_full)
+        bar.addWidget(self.btn_full)
+        bar.addStretch()
+        self.lbl_stage_now = QLabel("当前: 未运行")
+        self.lbl_stage_now.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        bar.addWidget(self.lbl_stage_now)
+        lay.addLayout(bar)
+
+        self.log_box = QTextEdit()
+        self.log_box.setReadOnly(True)
+        self.log_box.setStyleSheet("background:#0d1117; color:#c9d1d9; border:1px solid #1e2740; border-radius:6px; font-family:Consolas; font-size:11px;")
+        lay.addWidget(self.log_box, 1)
+
+    def _refresh(self):
+        st = self._read_state()
+        now = st.get("stage", "?")
+        stt = st.get("state", "pending")
+        for sid, (card, st_lbl, info) in self._cards.items():
+            st_lbl.setText(self._STATUS_ICON.get(stt if sid == now else "pending", "○"))
+            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt if sid == now else 'pending','#8b949e')}; font-size:13px; font-weight:700; background:transparent; border:none;")
+            card.setStyleSheet("QFrame#stage%d { background:#14181f; border:2px solid %s; border-radius:10px; }"
+                               % (sid, self._STATUS_COLOR.get(stt if sid == now else "pending", "#1e2740")))
+            if sid == 1 and st.get("ckpt1"):
+                info.setText("ckpt1: " + os.path.basename(os.path.dirname(os.path.dirname(st["ckpt1"]))))
+            elif sid == 2 and st.get("stage2"):
+                r = st["stage2"]
+                if r.get("dim_mismatch"):
+                    info.setText("⚠️ 维度不匹配 → 必须微调")
+                else:
+                    info.setText(f"MSE={r.get('action_mse',0):.4f} · 成功率={r.get('success_rate',0)*100:.0f}% · {r.get('verdict','')}")
+            elif sid == 3 and st.get("ckpt3"):
+                info.setText("ckpt3: " + os.path.basename(os.path.dirname(os.path.dirname(st["ckpt3"]))))
+        self.lbl_stage_now.setText(f"当前: Stage {now} · {stt}")
+        self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#8b949e')}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        log = st.get("log", "")
+        if log != self._last_log:
+            self.log_box.setPlainText(log)
+            self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
+            self._last_log = log
+
+    def _run_pipeline_cmd(self, cmd):
+        if getattr(self, "_worker", None) and self._worker.isRunning():
+            self.log_box.append("⏳ 上一个任务还在跑…")
+            return
+        self.log_box.append("▶ " + " ".join(cmd))
+        worker = CICDWorker(lambda: self._run_cli(cmd))
+        worker.log.connect(lambda m: self.log_box.append(m))
+        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        self._worker = worker
+        worker.start()
+
+    def _run_cli(self, cmd):
+        import subprocess
+        try:
+            p = subprocess.Popen(cmd, cwd=self.module._repo_root(),
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True, bufsize=1, encoding="utf-8", errors="replace")
+            for line in p.stdout:
+                self.module.log_signal.emit(line.rstrip()[:200])
+            p.wait()
+            return (p.returncode == 0), ("管线命令完成 rc=%d" % p.returncode)
+        except Exception as ex:
+            return False, str(ex)
+
+    def _run_full(self):
+        s1 = self._spin[1].value() if 1 in self._spin else 300
+        s3 = self._spin[3].value() if 3 in self._spin else 300
+        self.log_box.append(f"🚀 全流程启动: Stage1={s1}步 → Stage2 → Stage3={s3}步")
+        self._run_pipeline_cmd([self._PY, os.path.join(self.module._repo_root(), "tools", "cicd_pipeline.py"),
+                                "run", "--steps1", str(s1), "--steps3", str(s3)])
+
+    def _run_stage(self, sid):
+        steps = self._spin[sid].value() if sid in self._spin else 0
+        cmd = [self._PY, os.path.join(self.module._repo_root(), "tools", "cicd_pipeline.py"),
+               "stage", str(sid)]
+        if steps:
+            cmd += ["--steps", str(steps)]
+        self._run_pipeline_cmd(cmd)
+
+    def closeEvent(self, e):
+        self._timer.stop()
+        super().closeEvent(e)
+
+
+# ════════════════════════════════════════════════════════════════
 # 画布节点 (QGraphicsItem)
 # ════════════════════════════════════════════════════════════════
 class SimNodeItem(QGraphicsObject):
@@ -1081,6 +1269,9 @@ class SimulinkModule(QWidget):
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
         self.btn_cicd = mk_btn("🔗 CI/CD", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
         tl.addWidget(self.btn_cicd)
+        self.btn_pipeline = mk_btn("🎯 3阶段", "三阶段渐进式训练管线: 仿真训练→零样本测试→真机微调 (自动流转, steps可配)",
+                                   self.open_pipeline_panel, "#00d4aa")
+        tl.addWidget(self.btn_pipeline)
         self.btn_validate = mk_btn("✅ 验证", "CI/CD 第一环: 模型标准合规校验 (Model Advisor 对标)", self.on_validate, "#a371f7")
         self.btn_train = mk_btn("🚀 训练", "选中模型节点 → 启动真实训练 (lerobot_train)", self.on_train, "#00d4aa")
         self.btn_integrate = mk_btn("📦 集成", "打包 checkpoint → 上传 ECS 中转 (cicd_deploy)", self.on_integrate, "#58a6ff")
@@ -1886,6 +2077,14 @@ class SimulinkModule(QWidget):
         self._cicd_panel.show()
         self._cicd_panel.raise_()
         self._cicd_panel.activateWindow()
+
+    def open_pipeline_panel(self):
+        """打开三阶段渐进式训练管线面板 (仿真→零样本测试→真机微调)"""
+        if not getattr(self, "_pipeline_panel", None):
+            self._pipeline_panel = PipelinePanel(self)
+        self._pipeline_panel.show()
+        self._pipeline_panel.raise_()
+        self._pipeline_panel.activateWindow()
 
     def on_validate(self):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
