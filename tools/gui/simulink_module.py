@@ -212,6 +212,28 @@ class BlockParamsDialog(QDialog):
 
 
 # ════════════════════════════════════════════════════════════════
+# CI/CD 后台工作线程 (避免阻塞 GUI 主线程)
+# ════════════════════════════════════════════════════════════════
+class CICDWorker(QThread):
+    log = pyqtSignal(str)      # 日志行 → 主线程
+    finished_ok = pyqtSignal(bool, str)  # (成功?, 摘要)
+
+    def __init__(self, fn, *args, **kwargs):
+        super().__init__()
+        self._fn = fn
+        self._args = args
+        self._kwargs = kwargs
+
+    def run(self):
+        try:
+            ok, summary = self._fn(*self._args, **self._kwargs)
+            self.finished_ok.emit(ok, summary)
+        except Exception as ex:
+            self.log.emit(f"❌ 后台任务异常: {ex}")
+            self.finished_ok.emit(False, str(ex))
+
+
+# ════════════════════════════════════════════════════════════════
 # 画布节点 (QGraphicsItem)
 # ════════════════════════════════════════════════════════════════
 class SimNodeItem(QGraphicsObject):
@@ -564,6 +586,10 @@ class LibraryPanel(QFrame):
 # Simulink 模式主模块
 # ════════════════════════════════════════════════════════════════
 class SimulinkModule(QWidget):
+    # 信号 (类级声明, worker 线程 → 主线程)
+    log_signal = pyqtSignal(str)
+    flow_synced = None
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.nodes = []    # [{id,type,name,x,y,w,params,inputs,outputs,actions}]
@@ -584,6 +610,9 @@ class SimulinkModule(QWidget):
         self._tutorial_timer = QTimer(self)
         self._tutorial_timer.timeout.connect(self._tutorial_pulse)
         self._tutorial_pulse_on = False
+        # CI/CD 后台线程信号 (worker 线程 → 主线程日志)
+        self.log_signal.connect(self._log)
+        self._worker = None
         self._build()
         self._seed_default_flow()
 
@@ -1212,18 +1241,18 @@ class SimulinkModule(QWidget):
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     def _run_cmd(self, cmd, cwd=None):
-        """后台执行命令, 输出流式进日志"""
+        """(后台线程内) 执行命令, 输出流式进日志"""
         import subprocess
         try:
             p = subprocess.Popen(cmd, cwd=cwd or self._repo_root(),
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                  bufsize=1, encoding="utf-8", errors="replace")
             for line in p.stdout:
-                self._log(line.rstrip()[:200])
+                self.log_signal.emit(line.rstrip()[:200])
             p.wait()
             return p.returncode
         except Exception as ex:
-            self._log(f"❌ 执行失败: {ex}")
+            self.log_signal.emit(f"❌ 执行失败: {ex}")
             return -1
 
     def _flow_dict(self):
@@ -1232,25 +1261,54 @@ class SimulinkModule(QWidget):
                 "sim": {"dt": self._sim_dt, "t_end": self._sim_t_end, "solver": "fixed-step"},
                 "nodes": self.nodes, "links": self.links}
 
+    # ── 启动器: 每个操作开一个后台线程, UI 不卡 ──
+    def _start_worker(self, fn, busy_msg):
+        """开后台线程执行 fn, 期间禁用 4 按钮防重入"""
+        if getattr(self, "_worker", None) and self._worker.isRunning():
+            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            return
+        for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
+            b.setEnabled(False)
+        self._log(f"⏳ {busy_msg} (后台执行, UI 可继续操作)…")
+
+        def _emit_log(msg):
+            self._log(msg)
+
+        def _done(ok, summary):
+            for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
+                b.setEnabled(True)
+            if ok:
+                self._log(f"✅ {summary}")
+            else:
+                self._log(f"❌ {summary}")
+
+        worker = CICDWorker(fn)
+        worker.log.connect(_emit_log)
+        worker.finished_ok.connect(_done)
+        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        self._worker = worker
+        worker.start()
+
     def on_validate(self):
-        """① 验证: 用 validate_flow.py 校验当前画布 (CI 第一环)"""
+        """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
         self._log("════ ① 模型验证 (Model Advisor 对标) ════")
-        import tempfile
-        flow = self._flow_dict()
-        tmp = os.path.join(tempfile.gettempdir(), "zmax_canvas_flow.json")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(flow, f, ensure_ascii=False, indent=2)
-        root = self._repo_root()
-        rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "ci", "validate_flow.py"),
-                            tmp, "--strict"])
-        os.remove(tmp)
-        if rc == 0:
-            self._log("✅ 验证通过 · 模型合规, 可进入训练")
-        else:
-            self._log("❌ 验证失败 · 修复后重试 (双击节点检查参数/连线)")
+
+        def _work():
+            import tempfile
+            flow = self._flow_dict()
+            tmp = os.path.join(tempfile.gettempdir(), "zmax_canvas_flow.json")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(flow, f, ensure_ascii=False, indent=2)
+            root = self._repo_root()
+            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "ci", "validate_flow.py"),
+                                tmp, "--strict"])
+            os.remove(tmp)
+            return (rc == 0), ("模型合规, 可进入训练" if rc == 0 else "验证失败 · 修复后重试")
+
+        self._start_worker(_work, "正在验证模型标准合规性")
 
     def _ensure_training_data(self):
-        """确定训练数据源:
+        """(后台线程内) 确定训练数据源:
         1) 优先拉取 ECS 中转的 Orin 真实采集数据 (relay /latest)
         2) 无真实数据 → 回退 metaworld 占位数据集 (明确提示)
         返回 (dataset_root, source_label, real_data:bool)
@@ -1262,7 +1320,7 @@ class SimulinkModule(QWidget):
 
         # 1. 尝试拉真实数据
         try:
-            r = _rq.get("https://datadrive.world/api/relay/latest", timeout=15)
+            r = _rq.get("https://datadrive.world/api/relay/latest", timeout=8)
             if r.status_code == 200:
                 pkg = r.json()
                 frames = pkg.get("frames", [])
@@ -1272,7 +1330,6 @@ class SimulinkModule(QWidget):
                     raw = os.path.join(real_dir, f"pkg_{ts}.json")
                     with open(raw, "w", encoding="utf-8") as f:
                         json.dump(pkg, f, ensure_ascii=False, indent=2)
-                    # 转 LeRobot npz
                     import numpy as np
                     n = len(frames)
                     n_state = len(frames[0].get("observation.state") or frames[0].get("joint") or [7])
@@ -1285,76 +1342,83 @@ class SimulinkModule(QWidget):
                     npz = os.path.join(real_dir, f"orin_{ts}.npz")
                     np.savez_compressed(npz, states=states, actions=actions,
                                         task_name="zmax_orin", fps=30)
-                    self._log(f"📡 拉取 Orin 真实数据: {n}帧 → {os.path.basename(npz)}")
+                    self.log_signal.emit(f"📡 拉取 Orin 真实数据: {n}帧 → {os.path.basename(npz)}")
                     return real_dir, f"Orin 真实数据 ({n}帧)", True
                 else:
-                    self._log("⚠️ relay 有响应但无帧数据")
+                    self.log_signal.emit("⚠️ relay 有响应但无帧数据")
             else:
-                self._log(f"⚠️ relay 无新数据 (HTTP {r.status_code})")
+                self.log_signal.emit(f"⚠️ relay 无新数据 (HTTP {r.status_code})")
         except Exception as ex:
-            self._log(f"⚠️ 拉取真实数据失败: {ex}")
+            self.log_signal.emit(f"⚠️ 拉取真实数据失败: {ex}")
 
         # 2. 回退占位数据
         if os.path.isdir(placeholder):
-            self._log("⚠️ 无真实数据 → 使用 metaworld 占位集训练 (验证管道用)")
+            self.log_signal.emit("⚠️ 无真实数据 → 使用 metaworld 占位集训练 (验证管道用)")
             return placeholder, "metaworld 占位集", False
-        self._log("❌ 无任何训练数据 (real 和 placeholder 都不存在)")
+        self.log_signal.emit("❌ 无任何训练数据 (real 和 placeholder 都不存在)")
         return None, None, False
 
     def on_train(self):
-        """② 训练: 优先 Orin 真实数据, 无则占位; 启动 lerobot_train"""
+        """② 训练: 后台执行 (数据源智能选择 + lerobot_train)"""
         self._log("════ ② 训练 (lerobot_train) ════")
-        root = self._repo_root()
 
-        # 确定数据源
-        data_root, source, real = self._ensure_training_data()
-        if not data_root:
-            return
-        self._log(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
+        def _work():
+            root = self._repo_root()
+            data_root, source, real = self._ensure_training_data()
+            if not data_root:
+                return False, "无训练数据"
+            self.log_signal.emit(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
 
-        # 动态生成训练配置 (数据源指向真实/占位目录)
-        cfg_path = os.path.join(root, "config_act_metaworld.yaml")
-        # 读模板 + 改写 dataset.root
-        try:
-            with open(cfg_path, encoding="utf-8") as f:
-                cfg_txt = f.read()
+            cfg_path = os.path.join(root, "config_act_metaworld.yaml")
             import re
-            cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
-            tmp_cfg = os.path.join(root, "config_act_runtime.yaml")
-            with open(tmp_cfg, "w", encoding="utf-8") as f:
-                f.write(cfg_txt)
-            self._log(f"⚙️ 训练配置已指向: {data_root}")
-        except Exception as ex:
-            self._log(f"❌ 配置生成失败: {ex}")
-            tmp_cfg = cfg_path
+            try:
+                with open(cfg_path, encoding="utf-8") as f:
+                    cfg_txt = f.read()
+                cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
+                tmp_cfg = os.path.join(root, "config_act_runtime.yaml")
+                with open(tmp_cfg, "w", encoding="utf-8") as f:
+                    f.write(cfg_txt)
+                self.log_signal.emit(f"⚙️ 训练配置已指向: {data_root}")
+            except Exception as ex:
+                self.log_signal.emit(f"❌ 配置生成失败: {ex}")
+                tmp_cfg = cfg_path
 
-        self._log("🚀 启动 ACT 训练 (300步 ~40s, 4060 CUDA)…")
-        self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
-                       "-m", "lerobot.scripts.lerobot_train",
-                       "--config_path", tmp_cfg], cwd=root)
-        self._log("🏁 训练结束 · 产物在 outputs/train/act_metaworld/checkpoints/")
-        try:
-            os.remove(tmp_cfg)
-        except Exception:
-            pass
+            self.log_signal.emit("🚀 启动 ACT 训练 (300步 ~40s, 4060 CUDA)…")
+            rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
+                                "-m", "lerobot.scripts.lerobot_train",
+                                "--config_path", tmp_cfg], cwd=root)
+            try:
+                os.remove(tmp_cfg)
+            except Exception:
+                pass
+            return (rc == 0), ("训练完成 · outputs/train/act_metaworld/checkpoints/" if rc == 0
+                               else "训练失败 (见上方日志)")
+
+        self._start_worker(_work, "正在准备训练 (拉取数据源 + 启动训练)")
 
     def on_integrate(self):
-        """③ 集成: 打包最新 checkpoint → 上传 ECS 中转"""
+        """③ 集成: 后台执行 (打包 checkpoint → 上传 ECS)"""
         self._log("════ ③ 集成 (checkpoint → ECS 中转) ════")
-        root = self._repo_root()
-        rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "push"],
-                           cwd=root)
-        if rc == 0:
-            self._log("✅ 集成完成 · 部署包已上传 ECS, 可进入部署")
+
+        def _work():
+            root = self._repo_root()
+            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "push"],
+                               cwd=root)
+            return (rc == 0), ("部署包已上传 ECS, 可进入部署" if rc == 0 else "集成失败 (见上方日志)")
+
+        self._start_worker(_work, "正在打包并上传 ECS")
 
     def on_deploy(self):
-        """④ 部署: 检查 ECS 部署状态 / 心跳"""
+        """④ 部署: 后台执行 (ECS 状态检查)"""
         self._log("════ ④ 部署 (ECS 状态检查) ════")
-        root = self._repo_root()
-        rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "status"],
-                           cwd=root)
-        if rc == 0:
-            self._log("✅ 部署状态已拉取 · 心跳正常")
+
+        def _work():
+            root = self._repo_root()
+            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "status"],
+                               cwd=root)
+            return (rc == 0), ("部署状态已拉取 · 心跳正常" if rc == 0 else "部署状态检查失败")
+
+        self._start_worker(_work, "正在查询部署状态")
 
 
 # ── 独立运行入口 (调试) ──
