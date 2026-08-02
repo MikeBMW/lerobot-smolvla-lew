@@ -110,6 +110,20 @@ def latest_ckpt(out_dir: str) -> str | None:
     return str(pm) if pm.is_dir() else None
 
 
+def latest_s1_ckpt() -> str | None:
+    """最新 Stage1 训练产物 (act_s1_* 目录, 真实 metaworld 4D 模型)"""
+    base = REPO / "outputs" / "train"
+    if not base.is_dir():
+        return None
+    dirs = sorted([d for d in base.iterdir() if d.name.startswith("act_s1_")],
+                  key=lambda d: d.stat().st_mtime, reverse=True)
+    for d in dirs:
+        ck = latest_ckpt(str(d.relative_to(REPO)))
+        if ck:
+            return ck
+    return None
+
+
 def run_train(stage: int, steps: int, pretrained: str | None = None) -> tuple[bool, str]:
     """后台子进程跑 lerobot_train, 流式输出, 返回 (ok, ckpt_path)"""
     ts_dir = f"act_s{stage}_{time.strftime('%Y%m%d_%H%M%S')}"
@@ -246,10 +260,7 @@ def run_stage(stage: int, steps: int) -> bool:
                 cur["ckpt"] = ckpt
                 cur["steps"] = steps
         elif stage == 2:
-            ckpt1 = st.get("ckpt1") or stages.get("1", {}).get("ckpt")
-            if not ckpt1:
-                # 兜底: 用最新 metaworld 训练 ckpt
-                ckpt1 = latest_ckpt("outputs/train/act_mw_v111")
+            ckpt1 = st.get("ckpt1") or stages.get("1", {}).get("ckpt") or latest_s1_ckpt()
             if not ckpt1:
                 _log("❌ Stage2 需要 Stage1 的 checkpoint (先跑 stage 1)")
                 return False
@@ -257,7 +268,7 @@ def run_stage(stage: int, steps: int) -> bool:
             if ok:
                 cur["result"] = res
         elif stage == 3:
-            ckpt1 = st.get("ckpt1") or stages.get("1", {}).get("ckpt") or latest_ckpt("outputs/train/act_mw_v111")
+            ckpt1 = st.get("ckpt1") or stages.get("1", {}).get("ckpt") or latest_s1_ckpt()
             if not ckpt1:
                 _log("❌ Stage3 需要 Stage1 的 checkpoint")
                 return False
