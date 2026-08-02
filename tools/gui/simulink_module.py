@@ -878,6 +878,10 @@ class SimulinkModule(QWidget):
         """用户执行了动作 → 检查是否匹配当前步骤, 匹配则推进"""
         if not self._tutorial_active:
             return
+        # 导出完成 = 用户已掌握 → 直接结束教程 (清除高亮)
+        if action == "save":
+            self._tutorial_finish_early()
+            return
         kind, target, _ = self.TUTORIAL_STEPS[self._tutorial_step] if 0 <= self._tutorial_step < len(self.TUTORIAL_STEPS) else (None, None, None)
         matched = False
         if kind == "ref" and action == "ref":
@@ -895,6 +899,11 @@ class SimulinkModule(QWidget):
         else:
             # 点错目标: 给出明确指引 (不静默)
             self._tutorial_hint_mismatch(action, kind)
+
+    def _tutorial_finish_early(self):
+        """用户提前完成关键操作(导出) → 结束教程, 清除高亮"""
+        self._tutorial_cleanup()
+        self._log("🎉 教程完成 · 高亮已清除, 可自由操作")
 
     def _tutorial_on_node_moved(self):
         """节点被拖动 → 推进教程 (node 步骤)"""
@@ -1371,14 +1380,18 @@ class SimulinkModule(QWidget):
 
             cfg_path = os.path.join(root, "config_act_metaworld.yaml")
             import re
+            ts_dir = "act_" + time.strftime("%Y%m%d_%H%M%S")  # 输出目录(时间戳, 防冲突)
             try:
                 with open(cfg_path, encoding="utf-8") as f:
                     cfg_txt = f.read()
+                # 输出目录加时间戳, 避免重复训练时 FileExistsError
+                cfg_txt = re.sub(r"(output_dir:\s*).*", f"output_dir: outputs/train/{ts_dir}", cfg_txt, count=1)
+                cfg_txt = re.sub(r"(job_name:\s*).*", f"job_name: {ts_dir}", cfg_txt, count=1)
                 cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
                 tmp_cfg = os.path.join(root, "config_act_runtime.yaml")
                 with open(tmp_cfg, "w", encoding="utf-8") as f:
                     f.write(cfg_txt)
-                self.log_signal.emit(f"⚙️ 训练配置已指向: {data_root}")
+                self.log_signal.emit(f"⚙️ 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}")
             except Exception as ex:
                 self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                 tmp_cfg = cfg_path
@@ -1391,7 +1404,7 @@ class SimulinkModule(QWidget):
                 os.remove(tmp_cfg)
             except Exception:
                 pass
-            return (rc == 0), ("训练完成 · outputs/train/act_metaworld/checkpoints/" if rc == 0
+            return (rc == 0), (f"训练完成 · outputs/train/{ts_dir}/checkpoints/" if rc == 0
                                else "训练失败 (见上方日志)")
 
         self._start_worker(_work, "正在准备训练 (拉取数据源 + 启动训练)")
