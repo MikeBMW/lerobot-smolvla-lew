@@ -2161,6 +2161,15 @@ class SimulinkModule(QWidget):
                 pkg = r.json()
                 frames = pkg.get("frames", [])
                 if frames:
+                    # action 恒等修复 (采集端 bug: action==state → 关节速度差分)
+                    try:
+                        sys.path.insert(0, os.path.join(root, "tools"))
+                        from fix_orin_action import fix_frames
+                        n_fixed, fixed = fix_frames(frames)
+                        if fixed:
+                            self.log_signal.emit(f"🛠 检测到 action==state → 已修复为关节速度差分 ({n_fixed}帧)")
+                    except Exception as ex:
+                        self.log_signal.emit(f"⚠️ action修复跳过: {ex}")
                     os.makedirs(real_dir, exist_ok=True)
                     ts = time.strftime("%Y%m%d_%H%M%S")
                     raw = os.path.join(real_dir, f"pkg_{ts}.json")
