@@ -1270,24 +1270,36 @@ class SimulinkModule(QWidget):
         tl.addWidget(btn_save)
         tl.addWidget(btn_load)
 
-        # ── 真实操作按钮 (CI/CD 闭环: 验证→训练→集成→部署) ──
-        tl.addSpacing(16)
+        # ── 真实操作按钮 (CI/CD 闭环: 验证→训练→集成→部署) — 独立第二行, 完整显示 ──
+        tb2 = QFrame()
+        tb2.setStyleSheet("background:#0d1117; border-bottom:1px solid #1e2740;")
+        tb2.setFixedHeight(44)
+        tl2 = QHBoxLayout(tb2)
+        tl2.setContentsMargins(10, 4, 10, 4)
+        tl2.setSpacing(8)
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
-        self.btn_cicd = mk_btn("🔗 CI/CD", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
-        tl.addWidget(self.btn_cicd)
-        self.btn_pipeline = mk_btn("🎯 3阶段", "三阶段渐进式训练管线: 仿真训练→零样本测试→真机微调 (自动流转, steps可配)",
+        self.btn_cicd = mk_btn("🔗 CI/CD 全链路", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
+        tl2.addWidget(self.btn_cicd)
+        self.btn_pipeline = mk_btn("🎯 三阶段管线", "三阶段渐进式训练: 仿真训练→零样本测试→真机微调 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
-        tl.addWidget(self.btn_pipeline)
+        tl2.addWidget(self.btn_pipeline)
         self.btn_validate = mk_btn("✅ 验证", "CI/CD 第一环: 模型标准合规校验 (Model Advisor 对标)", self.on_validate, "#a371f7")
         self.btn_train = mk_btn("🚀 训练", "选中模型节点 → 启动真实训练 (lerobot_train)", self.on_train, "#00d4aa")
         self.btn_integrate = mk_btn("📦 集成", "打包 checkpoint → 上传 ECS 中转 (cicd_deploy)", self.on_integrate, "#58a6ff")
         self.btn_deploy = mk_btn("🚚 部署", "从 ECS 拉取 → 推到 4090/Orin → 心跳验证", self.on_deploy, "#d4a800")
-        tl.addWidget(self.btn_validate)
-        tl.addWidget(self.btn_train)
-        tl.addWidget(self.btn_integrate)
-        tl.addWidget(self.btn_deploy)
+        tl2.addWidget(self.btn_validate)
+        tl2.addWidget(self.btn_train)
+        tl2.addWidget(self.btn_integrate)
+        tl2.addWidget(self.btn_deploy)
+        tl2.addStretch()
+        lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
+        lbl_op.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        tl2.addWidget(lbl_op)
 
         outer.addWidget(tb)
+
+        # CI/CD 操作行 (第二行工具栏, 在仿真工具栏之下)
+        outer.addWidget(tb2)
 
         # 参考应用条 (对标 MathWorks 参考应用列表)
         ra = QFrame()
