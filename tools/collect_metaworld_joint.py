@@ -18,6 +18,21 @@ import metaworld
 GRIPPER_MAX = 0.1  # 夹爪最大开合距离 (metaworld 归一化用)
 
 
+def load_policy(task, policy_mode):
+    """加载专家策略 (metaworld 自带 scripted policy)"""
+    if policy_mode != "expert":
+        return None
+    name = f"sawyer_{task.replace('-', '_')}_policy"
+    try:
+        import importlib
+        mod = importlib.import_module(f"metaworld.policies.{name}")
+        cls = getattr(mod, "".join(p.capitalize() for p in name.split("_")))
+        return cls()
+    except Exception as ex:
+        print(f"⚠️ 专家策略 {name} 加载失败 ({ex}) → 回退随机策略")
+        return None
+
+
 def gripper_norm(env):
     """夹爪两指距离 → 0-1 归一化"""
     fr = env.data.body("rightclaw").xpos
@@ -33,6 +48,8 @@ def main():
     ap.add_argument("--out", default="data/metaworld_joint.npz")
     ap.add_argument("--img", type=int, default=64, help="渲染图像尺寸 (对齐 Orin 64)")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--policy", default="expert", choices=("expert", "random"),
+                    help="expert=metaworld脚本策略(高质量演示), random=随机动作")
     args = ap.parse_args()
 
     np.random.seed(args.seed)
@@ -41,14 +58,19 @@ def main():
     env.set_task(mt.train_tasks[0])
     env.seed(args.seed)
     renderer = mujoco.Renderer(env.model, args.img, args.img)
+    policy = load_policy(args.task, args.policy)
+    print(f"策略: {'🎯 expert 脚本策略' if policy else '🎲 random 随机动作'}")
 
     states, actions, imgs, ep_ids = [], [], [], []
     for ep in range(args.episodes):
         obs, _ = env.reset()
         prev_qpos = None
         for t in range(args.steps):
-            # 执行: 默认 4D 末端随机动作 (无 joint action 模式, 用末端控制驱动仿真)
-            act = env.action_space.sample()
+            # 执行: expert 脚本策略 (高质量演示) 或 默认 4D 随机动作
+            if policy is not None:
+                act = policy.get_action(obs) if not isinstance(obs, tuple) else policy.get_action(obs[0])
+            else:
+                act = env.action_space.sample()
             obs, rew, term, trunc, info = env.step(act)
             qpos = env.data.qpos.copy()
             # state: 前6关节角 (6D, 对齐 Orin n_joint=6; 不含夹爪维度)

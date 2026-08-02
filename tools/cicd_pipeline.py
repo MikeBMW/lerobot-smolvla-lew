@@ -164,13 +164,18 @@ ckpt = sys.argv[1]
 policy = ACTPolicy.from_pretrained(ckpt).cuda().eval()
 pre, post = make_pre_post_processors(policy_cfg=policy.config, pretrained_path=ckpt)
 
-def eval_ds(root, max_frames=300):
-    """用 LeRobotDataset 加载 (遵守 meta features: state 维度/图像尺寸与训练一致)"""
+def eval_ds(root, max_frames=300, test_ratio=0.2):
+    """用 LeRobotDataset 加载 (遵守 meta features) · 测试集 = 尾部 test_ratio 帧
+    (训练用前 80%, 评估用后 20% 帧, 避免"同分布全量"过拟合假象)"""
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
     ds = LeRobotDataset("lerobot/pusht", root=root)
     n = len(ds)
-    step = max(1, n // max_frames)
-    idxs = list(range(0, n, step))[:max_frames]
+    start = max(0, int(n * (1 - test_ratio)))
+    test_n = n - start
+    step = max(1, test_n // max_frames)
+    idxs = list(range(start, n, step))[:max_frames]
+    if not idxs:
+        idxs = [n - 1]
     states, actions, imgs = [], [], []
     for i in idxs:
         item = ds[i]
