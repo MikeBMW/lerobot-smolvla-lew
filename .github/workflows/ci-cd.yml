@@ -1,0 +1,116 @@
+# Z-MAX CI/CD 主管道 — 对标 MathWorks 持续集成 (验证→构建→测试→通知)
+# 资源受限版: GitHub Actions 编排, GPU 阶段分派到 4060/4090/Orin
+name: Z-MAX CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/gui/**'
+      - 'tools/ci/**'
+      - 'simulink-spec.md'
+      - 'docs/ci-cd-design.md'
+      - 'flow*.json'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ── [1] 验证 (对标 Model Advisor) ──
+  validate:
+    name: ① 模型验证 (Model Advisor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulink 工作流标准合规检查
+        run: |
+          python3 tools/ci/validate_flow.py --all || true
+          echo "── 构建校验 (严格) ──"
+          # 主模型必须通过严格检查
+          python3 tools/ci/validate_flow.py --all --strict
+      - name: Python 语法检查
+        run: |
+          python3 - <<'EOF'
+          import ast, pathlib
+          ok = True
+          for f in pathlib.Path('tools/gui').rglob('*.py'):
+              try:
+                  ast.parse(f.read_text(encoding='utf-8'))
+              except SyntaxError as e:
+                  ok = False
+                  print(f'SYNTAX FAIL {f}: {e}')
+          print('PYTHON SYNTAX:', 'ALL OK' if ok else 'FAILED')
+          raise SystemExit(0 if ok else 1)
+          EOF
+
+  # ── [2] 构建检查 (对标代码生成前置) ──
+  build-check:
+    name: ② 构建检查
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - name: 工作流 JSON 可解析
+        run: |
+          python3 - <<'EOF'
+          import json, glob
+          for f in glob.glob('flow*.json'):
+              json.load(open(f))
+              print(f'JSON OK: {f}')
+          EOF
+      - name: 配置 YAML 可解析
+        run: |
+          python3 -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ['config_act_closedloop.yaml','hybrid_train.yaml']]; print('YAML OK')" || echo "YAML check skipped (pyyaml 可选)"
+
+  # ── [3] 快速测试 (对标 Simulink Test 套件轻量版) ──
+  test:
+    name: ③ 快速测试
+    runs-on: ubuntu-latest
+    needs: [validate, build-check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 验证器自测
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          sys.path.insert(0, 'tools/ci')
+          from validate_flow import validate_flow
+          # 合法模型
+          good = {'nodes': [
+              {'id': 'a', 'type': 'hardware', 'name': 'Orin', 'x': 0, 'y': 0},
+              {'id': 'b', 'type': 'model', 'name': 'ACT', 'x': 200, 'y': 0},
+          ], 'links': [{'f': 'a', 't': 'b'}]}
+          ok1, iss1 = validate_flow(good, strict=True)
+          # 非法模型 (自环)
+          bad = {'nodes': [
+              {'id': 'a', 'type': 'hardware', 'name': 'Orin', 'x': 0, 'y': 0},
+          ], 'links': [{'f': 'a', 't': 'a'}]}
+          ok2, iss2 = validate_flow(bad, strict=True)
+          print('GOOD model:', 'PASS' if ok1 else 'FAIL', iss1)
+          print('BAD  model:', 'REJECTED' if not ok2 else 'FAIL!', iss2)
+          assert ok1 and not ok2, 'validator self-test failed'
+          print('VALIDATOR SELF-TEST: PASS')
+          EOF
+
+  # ── [4] 状态汇总 (飞书通知 + 状态栏) ──
+  notify:
+    name: ④ 管道结果通知
+    runs-on: ubuntu-latest
+    needs: [validate, build-check, test]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - name: 汇总结果
+        run: |
+          echo "Z-MAX CI/CD 管道完成"
+          echo "① 验证: ${{ needs.validate.result }}"
+          echo "② 构建: ${{ needs.build-check.result }}"
+          echo "③ 测试: ${{ needs.test.result }}"
+      - name: 通知 ECS 状态 API (可选, 未配置则跳过)
+        run: |
+          # 飞书/ECS 通知在 web 侧已配 sys-watchdog, 这里留接口
+          echo "通知接口预留: ECS /api/ci/status"
+          exit 0
