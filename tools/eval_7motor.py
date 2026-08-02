@@ -38,7 +38,8 @@ def main():
         out = post(policy.select_action(batch))
         lat = (time.time() - ts) * 1000
         pred = np.asarray(out[0].cpu().numpy()).flatten()
-        mse = float(np.mean((pred[: len(gt)] - gt) ** 2))
+        n = min(len(pred), len(gt))
+        mse = float(np.mean((pred[:n] - gt[:n]) ** 2))
         mses.append(mse)
         lats.append(lat)
         if mse < 0.05:

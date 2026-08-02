@@ -1,0 +1,43 @@
+{
+  "stage": 3,
+  "state": "success",
+  "ts": "2026-08-02 17:37:27",
+  "log": "[17:33:23] 🧪 管线链路测试 (最少迭代)\n[17:34:09] 🧪 链路测试通过\n[17:36:48] 🧪 管线链路测试 (最少迭代)\n[17:37:27] 🧪 链路测试通过\n[17:37:43] 🏋️ Stage3 训练启动: data/closed_loop_v2 · 10步 · 输出 outputs/train/act_s3_20260802_173743 · 预训练初始化 /tmp/fake_ckpt\n[17:37:54] 🏋️ Stage3 训练启动: data/closed_loop_v2 · 10步 · 输出 outputs/train/act_s3_20260802_173754 · 预训练初始化 /tmp/fake_ckpt\n[17:38:13] 🏋️ Stage3 训练启动: data/closed_loop_v2 · 10步 · 输出 outputs/train/act_s3_20260802_173813 · 预训练初始化 /tmp/fake_ckpt\n[17:38:49] 🏋️ Stage3 训练启动: data/closed_loop_v2 · 10步 · 输出 outputs/train/act_s3_20260802_173849 · 预训练初始化 /tmp/fake_ckpt\n",
+  "stages": {
+    "1": {
+      "state": "success",
+      "ckpt": "/home/xspace/lerobot-smolvla-lew/outputs/train/act_s1_20260802_173648/checkpoints/000020/pretrained_model",
+      "steps": 20,
+      "ts": "2026-08-02 17:37:05"
+    },
+    "2": {
+      "state": "success",
+      "result": {
+        "sim": {
+          "frames": 180,
+          "action_mse": 2.0984130110769507e-05,
+          "mse_std": 1.5035181022676752e-05,
+          "success_rate": 1.0,
+          "latency_ms": 1.8837809562683105,
+          "has_img": true
+        },
+        "sim2real": {
+          "frames": 300,
+          "action_mse": 0.08836477061112721,
+          "mse_std": 0.014105112644441116,
+          "success_rate": 0.0,
+          "latency_ms": 0.5467375119527181,
+          "has_img": true
+        },
+        "verdict": "⚠️ 零样本需微调"
+      },
+      "ts": "2026-08-02 17:37:09"
+    },
+    "3": {
+      "state": "success",
+      "ckpt": "/home/xspace/lerobot-smolvla-lew/outputs/train/act_s3_20260802_173709/checkpoints/000020/pretrained_model",
+      "steps": 20,
+      "ts": "2026-08-02 17:37:27"
+    }
+  }
+}

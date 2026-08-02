@@ -1,12 +1,12 @@
-# Z-MAX ACT 微调配置 · 从基础模型继续训练 (真实微调对比)
-# 基础模型: act_metaworld (300步) → 微调: 同数据 +2000步
-output_dir: outputs/train/act_finetune
-job_name: act_finetune
+# Z-MAX ACT 微调配置 v2 · 从基础模型继续训练 (低lr保护基础权重)
+# 基础模型: act_metaworld (300步) → 微调v2: 同数据 +2000步, lr=1e-5 (v1用5e-5过拟合, MSE退化)
+output_dir: outputs/train/act_finetune_v2
+job_name: act_finetune_v2
 
 policy:
   type: act
   push_to_hub: false
-  repo_id: MikeBMW/zmax-act-finetune
+  repo_id: MikeBMW/zmax-act-finetune-v2
   pretrained_path: outputs/train/act_metaworld/checkpoints/000300/pretrained_model
   n_obs_steps: 1
   n_action_steps: 7
@@ -37,8 +37,9 @@ seed: 1337
 
 optimizer:
   type: adam
-  lr: 5e-5
+  lr: 1e-5
   weight_decay: 0.0
 
 wandb:
   enable: false
+
