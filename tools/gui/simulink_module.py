@@ -1249,19 +1249,94 @@ class SimulinkModule(QWidget):
         else:
             self._log("❌ 验证失败 · 修复后重试 (双击节点检查参数/连线)")
 
+    def _ensure_training_data(self):
+        """确定训练数据源:
+        1) 优先拉取 ECS 中转的 Orin 真实采集数据 (relay /latest)
+        2) 无真实数据 → 回退 metaworld 占位数据集 (明确提示)
+        返回 (dataset_root, source_label, real_data:bool)
+        """
+        import requests as _rq
+        root = self._repo_root()
+        real_dir = os.path.join(root, "data", "closed_loop")
+        placeholder = os.path.join(root, "data", "metaworld_act")
+
+        # 1. 尝试拉真实数据
+        try:
+            r = _rq.get("https://datadrive.world/api/relay/latest", timeout=15)
+            if r.status_code == 200:
+                pkg = r.json()
+                frames = pkg.get("frames", [])
+                if frames:
+                    os.makedirs(real_dir, exist_ok=True)
+                    ts = time.strftime("%Y%m%d_%H%M%S")
+                    raw = os.path.join(real_dir, f"pkg_{ts}.json")
+                    with open(raw, "w", encoding="utf-8") as f:
+                        json.dump(pkg, f, ensure_ascii=False, indent=2)
+                    # 转 LeRobot npz
+                    import numpy as np
+                    n = len(frames)
+                    n_state = len(frames[0].get("observation.state") or frames[0].get("joint") or [7])
+                    n_act = len(frames[0].get("action") or [6])
+                    states = np.zeros((n, n_state), dtype=np.float32)
+                    actions = np.zeros((n, n_act), dtype=np.float32)
+                    for i, fr in enumerate(frames):
+                        states[i] = (fr.get("observation.state") or fr.get("joint") or [0]*n_state)[:n_state]
+                        actions[i] = (fr.get("action") or [0]*n_act)[:n_act]
+                    npz = os.path.join(real_dir, f"orin_{ts}.npz")
+                    np.savez_compressed(npz, states=states, actions=actions,
+                                        task_name="zmax_orin", fps=30)
+                    self._log(f"📡 拉取 Orin 真实数据: {n}帧 → {os.path.basename(npz)}")
+                    return real_dir, f"Orin 真实数据 ({n}帧)", True
+                else:
+                    self._log("⚠️ relay 有响应但无帧数据")
+            else:
+                self._log(f"⚠️ relay 无新数据 (HTTP {r.status_code})")
+        except Exception as ex:
+            self._log(f"⚠️ 拉取真实数据失败: {ex}")
+
+        # 2. 回退占位数据
+        if os.path.isdir(placeholder):
+            self._log("⚠️ 无真实数据 → 使用 metaworld 占位集训练 (验证管道用)")
+            return placeholder, "metaworld 占位集", False
+        self._log("❌ 无任何训练数据 (real 和 placeholder 都不存在)")
+        return None, None, False
+
     def on_train(self):
-        """② 训练: 启动真实 ACT 训练 (lerobot_train)"""
+        """② 训练: 优先 Orin 真实数据, 无则占位; 启动 lerobot_train"""
         self._log("════ ② 训练 (lerobot_train) ════")
         root = self._repo_root()
-        cfg = os.path.join(root, "config_act_metaworld.yaml")
-        if not os.path.exists(cfg):
-            self._log(f"❌ 训练配置不存在: {cfg}")
+
+        # 确定数据源
+        data_root, source, real = self._ensure_training_data()
+        if not data_root:
             return
+        self._log(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
+
+        # 动态生成训练配置 (数据源指向真实/占位目录)
+        cfg_path = os.path.join(root, "config_act_metaworld.yaml")
+        # 读模板 + 改写 dataset.root
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                cfg_txt = f.read()
+            import re
+            cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
+            tmp_cfg = os.path.join(root, "config_act_runtime.yaml")
+            with open(tmp_cfg, "w", encoding="utf-8") as f:
+                f.write(cfg_txt)
+            self._log(f"⚙️ 训练配置已指向: {data_root}")
+        except Exception as ex:
+            self._log(f"❌ 配置生成失败: {ex}")
+            tmp_cfg = cfg_path
+
         self._log("🚀 启动 ACT 训练 (300步 ~40s, 4060 CUDA)…")
         self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
                        "-m", "lerobot.scripts.lerobot_train",
-                       "--config_path", cfg], cwd=root)
+                       "--config_path", tmp_cfg], cwd=root)
         self._log("🏁 训练结束 · 产物在 outputs/train/act_metaworld/checkpoints/")
+        try:
+            os.remove(tmp_cfg)
+        except Exception:
+            pass
 
     def on_integrate(self):
         """③ 集成: 打包最新 checkpoint → 上传 ECS 中转"""
