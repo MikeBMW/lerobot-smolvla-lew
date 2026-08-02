@@ -6602,9 +6602,18 @@ class PluggingSceneModule(SubModuleWidget):
 # 主窗口: 侧边栏 + 堆叠页面
 # ============================================================
 class StudioMainWindow(QMainWindow):
+    @staticmethod
+    def _git_short():
+        try:
+            import subprocess
+            return subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                  capture_output=True, text=True, timeout=3).stdout.strip()[:7] or "dev"
+        except Exception:
+            return "dev"
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"XSpace Studio — Z-MAX v2.5-stable-0719 · 41cbaddb")  # 改名：LeRobot Studio → XSpace Studio
+        self.setWindowTitle(f"XSpace Studio — Z-MAX v1.1.0-cicd · {self._git_short()}")  # v1.1.0: CICD闭环+WS心跳+SimulinkCI
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
