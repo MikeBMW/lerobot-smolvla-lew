@@ -1,43 +1,43 @@
 {
-  "stage": 1,
+  "stage": 3,
   "state": "success",
-  "ts": "2026-08-02 22:10:04",
-  "log": "': <NormalizationMode.MEAN_STD: 'MEAN_STD'>,\n[22:08:55]                                       'STATE': <NormalizationMode.MEAN_STD: 'MEAN_STD'>,\n[22:08:55]                                       'VISUAL': <NormalizationMode.MEAN_STD: 'MEAN_STD'>},\n[22:08:55]             'optimizer_lr': 0.0001,\n[22:08:55]             'optimizer_lr_backbone': 0.0,\n[22:08:55]             'optimizer_weight_decay': 0.0001,\n[22:08:55]             'output_features': {},\n[22:08:55]             'pre_norm': False,\n[22:08:55]             'pretrained_backbone_weights': 'ResNet18_Weights.IMAGENET1K_V1',\n[22:08:55]             'pretrained_path': None,\n[22:08:55]             'pretrained_revision': None,\n[22:08:55]             'private': None,\n[22:08:55]             'push_to_hub': False,\n[22:08:55]             'replace_final_stride_with_dilation': False,\n[22:08:55]             'repo_id': 'MikeBMW/zmax-act-metaworld',\n[22:08:55]             'tags': None,\n[22:08:55]             'temporal_ensemble_coeff': None,\n[22:08:55]             'type': 'act',\n[22:08:55]             'use_amp': False,\n[22:08:55]             'use_peft': False,\n[22:08:55]             'use_vae': True,\n[22:08:55]             'vision_backbone': 'resnet18'},\n[22:08:55]  'prefetch_factor': 4,\n[22:08:55]  'rename_map': {},\n[22:08:55]  'resume': False,\n[22:08:55]  'reward_model': None,\n[22:08:55]  'sample_weighting': None,\n[22:08:55]  'save_checkpoint': True,\n[22:08:55]  'save_freq': 150,\n[22:08:55]  'scheduler': None,\n[22:08:55]  'seed': 1337,\n[22:08:55]  'steps': 300,\n[22:08:55]  'tolerance_s': 0.0001,\n[22:08:55]  'use_policy_training_preset': True,\n[22:08:55]  'wandb': {'add_tags': True,\n[22:08:55]            'disable_artifact': False,\n[22:08:55]            'enable': False,\n[22:08:55]            'entity': None,\n[22:08:55]            'mode': None,\n[22:08:55]            'notes': None,\n[22:08:55]            'project': 'lerobot',\n[22:08:55]            'run_id': None}}\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:229 Logs will be saved locally.\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:247 Creating dataset\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:281 Creating policy\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:354 Creating optimizer and scheduler\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:386 Output dir: outputs/train/act_s1_20260802_220850\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:393 cfg.steps=300 (300)\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:394 dataset.num_frames=100 (100)\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:395 dataset.num_episodes=1\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:398 Effective batch size: 8 x 1 = 8\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:399 num_learnable_params=21888774 (22M)\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:400 num_total_params=21888774 (22M)\n[22:08:55] \n[22:08:55] Training:   0%|          | 0/300 [00:00<?, ?step/s]INFO 2026-08-02 22:08:55 ot_train.py:518 Start offline training on a fixed dataset, with effective batch size: 8\n",
+  "ts": "2026-08-02 22:49:49",
+  "log": "2:08:55]                                       'STATE': <NormalizationMode.MEAN_STD: 'MEAN_STD'>,\n[22:08:55]                                       'VISUAL': <NormalizationMode.MEAN_STD: 'MEAN_STD'>},\n[22:08:55]             'optimizer_lr': 0.0001,\n[22:08:55]             'optimizer_lr_backbone': 0.0,\n[22:08:55]             'optimizer_weight_decay': 0.0001,\n[22:08:55]             'output_features': {},\n[22:08:55]             'pre_norm': False,\n[22:08:55]             'pretrained_backbone_weights': 'ResNet18_Weights.IMAGENET1K_V1',\n[22:08:55]             'pretrained_path': None,\n[22:08:55]             'pretrained_revision': None,\n[22:08:55]             'private': None,\n[22:08:55]             'push_to_hub': False,\n[22:08:55]             'replace_final_stride_with_dilation': False,\n[22:08:55]             'repo_id': 'MikeBMW/zmax-act-metaworld',\n[22:08:55]             'tags': None,\n[22:08:55]             'temporal_ensemble_coeff': None,\n[22:08:55]             'type': 'act',\n[22:08:55]             'use_amp': False,\n[22:08:55]             'use_peft': False,\n[22:08:55]             'use_vae': True,\n[22:08:55]             'vision_backbone': 'resnet18'},\n[22:08:55]  'prefetch_factor': 4,\n[22:08:55]  'rename_map': {},\n[22:08:55]  'resume': False,\n[22:08:55]  'reward_model': None,\n[22:08:55]  'sample_weighting': None,\n[22:08:55]  'save_checkpoint': True,\n[22:08:55]  'save_freq': 150,\n[22:08:55]  'scheduler': None,\n[22:08:55]  'seed': 1337,\n[22:08:55]  'steps': 300,\n[22:08:55]  'tolerance_s': 0.0001,\n[22:08:55]  'use_policy_training_preset': True,\n[22:08:55]  'wandb': {'add_tags': True,\n[22:08:55]            'disable_artifact': False,\n[22:08:55]            'enable': False,\n[22:08:55]            'entity': None,\n[22:08:55]            'mode': None,\n[22:08:55]            'notes': None,\n[22:08:55]            'project': 'lerobot',\n[22:08:55]            'run_id': None}}\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:229 Logs will be saved locally.\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:247 Creating dataset\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:281 Creating policy\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:354 Creating optimizer and scheduler\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:386 Output dir: outputs/train/act_s1_20260802_220850\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:393 cfg.steps=300 (300)\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:394 dataset.num_frames=100 (100)\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:395 dataset.num_episodes=1\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:398 Effective batch size: 8 x 1 = 8\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:399 num_learnable_params=21888774 (22M)\n[22:08:55] INFO 2026-08-02 22:08:55 ot_train.py:400 num_total_params=21888774 (22M)\n[22:08:55] \n[22:08:55] Training:   0%|          | 0/300 [00:00<?, ?step/s]INFO 2026-08-02 22:08:55 ot_train.py:518 Start offline training on a fixed dataset, with effective batch size: 8\n[22:48:52] 🧪 管线链路测试 (最少迭代)\n[22:49:49] 🧪 链路测试通过\n",
   "stages": {
     "1": {
       "state": "success",
-      "ckpt": "/home/xspace/lerobot-smolvla-lew/outputs/train/act_s1_20260802_220927/checkpoints/000300/pretrained_model",
-      "steps": 300,
-      "ts": "2026-08-02 22:10:04"
+      "ckpt": "/home/xspace/lerobot-smolvla-lew/outputs/train/act_s1_20260802_224852/checkpoints/000020/pretrained_model",
+      "steps": 20,
+      "ts": "2026-08-02 22:49:18"
     },
     "2": {
       "state": "success",
       "result": {
         "sim": {
           "frames": 300,
-          "action_mse": 1.766694217423037e-05,
-          "mse_std": 5.488634917929957e-05,
+          "action_mse": 2.6069706295572813e-05,
+          "mse_std": 3.2942977537379504e-05,
           "success_rate": 1.0,
-          "latency_ms": 1.9233131408691406,
+          "latency_ms": 2.4681830406188965,
           "has_img": true
         },
         "sim2real": {
           "frames": 5,
-          "action_mse": 0.005135817886912264,
-          "mse_std": 0.009927446031508975,
+          "action_mse": 0.00475946788865258,
+          "mse_std": 0.009451952008963514,
           "success_rate": 1.0,
-          "latency_ms": 2.4813175201416016,
+          "latency_ms": 2.8913497924804688,
           "has_img": true
         },
         "verdict": "✅ 零样本直接可用"
       },
-      "ts": "2026-08-02 22:05:52"
+      "ts": "2026-08-02 22:49:24"
     },
     "3": {
       "state": "success",
-      "ckpt": "/home/xspace/lerobot-smolvla-lew/outputs/train/act_s3_20260802_220323/checkpoints/000300/pretrained_model",
-      "steps": 300,
-      "ts": "2026-08-02 22:03:59"
+      "ckpt": "/home/xspace/lerobot-smolvla-lew/outputs/train/act_s3_20260802_224924/checkpoints/000020/pretrained_model",
+      "steps": 20,
+      "ts": "2026-08-02 22:49:49"
     }
   }
 }
