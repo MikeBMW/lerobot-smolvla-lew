@@ -2,7 +2,7 @@
 """Orin 真机数据 → LeRobot 数据集 (6D state / 6D action)
 从 data/orin_live/*.json (小芳采集) 构建标准数据集
 """
-import json, glob, sys
+import json, glob, sys, os
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -19,11 +19,12 @@ VID.mkdir(parents=True, exist_ok=True)
 
 
 def main():
-    srcs = sorted(glob.glob(str(proj / "data/orin_live/*.json")))
+    srcs = sorted(glob.glob(str(proj / "data/orin_live/*.json")), key=os.path.getmtime)
     frames_all = []
     eps_all = []
     total = 0
-    print(f"📥 读取 {len(srcs)} 个真机数据包")
+    ep_idx = 0   # 连续 episode 编号 (IDLE 过滤后包索引不连续)
+    print("2/3 融合匹配...")
     for si, src in enumerate(srcs):
         d = json.load(open(src))
         frames = d.get("frames", [])
@@ -64,7 +65,7 @@ def main():
             frames_all.append({
                 "observation.state": state.tolist(),
                 "action": action.tolist(),
-                "episode_index": si,   # 每包一个 episode (方案2, LeRobot 标准)
+                "episode_index": ep_idx,   # 连续编号 (每包一个 episode)
                 "frame_index": total,  # 全局索引 (视频合并顺序, 与 index 一致)
                 "timestamp": float(i / 30.0),  # episode 内相对时间戳 (reader 会加 from_timestamp)
                 "next.reward": 0.0,
@@ -74,8 +75,11 @@ def main():
             ep_frames.append(i)
             total += 1
         if ep_frames:
-            eps_all.append({"episode_index": si, "length": len(ep_frames)})
-            print(f"  包{si}: {len(ep_frames)}帧")
+            eps_all.append({"episode_index": ep_idx, "length": len(ep_frames)})
+            print(f"  包{si}: {len(ep_frames)}帧 → ep{ep_idx}")
+            ep_idx += 1
+        else:
+            print(f"  包{si}: ⚠️ 无有效帧 (IDLE/全过滤), 跳过")
 
     print(f"\n✅ 总帧: {total}")
     if total == 0:
@@ -121,8 +125,9 @@ def main():
     pq.write_table(table, DATA / "file-000.parquet")
     print(f"✅ parquet float32 重写完成")
 
-    # episodes
+    # episodes (episode_index 重新编号为连续 0..N-1, 因 IDLE 过滤后包索引不连续)
     eps = pd.DataFrame(eps_all)
+    eps["episode_index"] = range(len(eps))
     start = 0
     for i, row in eps.iterrows():
         L = int(row["length"])
