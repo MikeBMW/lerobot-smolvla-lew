@@ -40,6 +40,20 @@ WORKFLOW_TYPES = {
 }
 # 参考应用模板 (对标 MathWorks 参考应用列表)
 REFERENCE_APPS = [
+    # 🎛 CICD 主控台: 全链路主要节点, 双击节点即可运行/切换 (老倪 2026-08-02 需求:
+    # "控制台是主控点, 能看到CICD全局, 在node上要有所有链路主要node, 要能运行;
+    #  既要有metaworld数据, 又要有Orin, 又要有ACT模型, 可随意切换如何训练")
+    ("🎛 CICD 主控台", [
+        ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin", "active": True,
+                                        "desc": "双击切换数据源 · 当前激活"}),
+        ("hardware", "📦 metaworld 数据", {"steps": 300, "source": "metaworld", "active": False,
+                                           "desc": "占位集 · 双击切换"}),
+        ("model", "🧠 ACT 训练", {"steps": 300, "chunk_size": 7, "dim_model": 256,
+                                  "desc": "双击运行训练 (lerobot_train)"}),
+        ("condition", "✅ 模型验证", {"strict": True, "desc": "双击运行验证 (validate_flow)"}),
+        ("action", "📦 集成打包", {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"}),
+        ("hardware", "🚚 部署 Orin", {"target": "192.168.23.10", "desc": "双击查部署状态"}),
+    ], [(0, 2), (1, 2), (2, 3), (3, 4), (4, 5)]),
     ("⚙️ CI/CD 默认流水线", [
         ("hardware", "📥 输入数据", {"ip": "Orin", "fps": 30, "desc": "采集数据源"}),
         ("model", "🧠 ACT 模型", {"chunk_size": 7, "dim_model": 256, "desc": "训练/推理"}),
@@ -523,6 +537,11 @@ class SimNodeItem(QGraphicsObject):
         grad.setColorAt(1, QColor("#111318"))
         painter.setBrush(grad)
         pen = QPen(color, 1.6)
+        # 激活的数据源节点 (CICD 主控台): 金色加粗边框 + ▶ 徽章
+        params = self.node.get("params", {})
+        is_active_src = params.get("source") and params.get("active")
+        if is_active_src:
+            pen = QPen(QColor("#ffd700"), 2.6)
         if self.isSelected():
             pen.setWidthF(2.4)
             pen.setStyle(Qt.DashLine)
@@ -543,6 +562,8 @@ class SimNodeItem(QGraphicsObject):
                          NODE_TYPES.get(t, {}).get("cn", t))
         # 状态徽章 (右上角: ● 运行中 / ✓ 成功 / ✕ 失败)
         st_icon = {"running": "●", "success": "✓", "error": "✕"}.get(status, "")
+        if is_active_src:
+            st_icon = "▶"  # 激活数据源
         if st_icon:
             painter.setPen(color)
             painter.setFont(QFont("Arial", 9, QFont.Bold))
@@ -570,9 +591,8 @@ class SimNodeItem(QGraphicsObject):
         return super().itemChange(change, value)
 
     def mouseDoubleClickEvent(self, e):
-        dlg = BlockParamsDialog(self.node, None)
-        if dlg.exec_() == QDialog.Accepted:
-            self.update()
+        # CICD 主控台: 双击节点 → 数据源切换 / 运行环节 / 参数框
+        self.scene_ref.on_node_activated(self.node)
         e.accept()
 
 
@@ -979,11 +999,13 @@ class SimulinkModule(QWidget):
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("📖 教程", "交互式引导: 高亮+文字提示, 全程鼠标", self.start_tutorial, "#d4a800")
+        self.btn_compare = mk_btn("📊 性能对比", "基础模型 vs 微调模型 性能对比 (CICD)", self.show_compare, "#00d4aa")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
+        tl.addWidget(self.btn_compare)
 
         tl.addSpacing(16)
         tl.addWidget(QLabel("仿真时间"))
@@ -1401,6 +1423,60 @@ class SimulinkModule(QWidget):
         if self._sim_t >= self._sim_t_end:
             self.stop_sim()
 
+    def show_compare(self):
+        """性能对比弹窗: 基础模型 vs 微调模型 (读取 CICD_COMPARE_*.json)"""
+        import glob
+        proj = str(Path(__file__).parent.parent.parent)
+        jsons = sorted(glob.glob(os.path.join(proj, "docs", "CICD_COMPARE_*.json")))
+        if not jsons:
+            QMessageBox.information(self, "性能对比", "⚠️ 无对比数据\n\n请先运行:\n  python3 tools/act_compare.py\n生成 CICD_COMPARE_*.json")
+            return
+        d = json.load(open(jsons[-1]))
+        base, cand = d["baseline"], d["candidate"]
+        imp = d.get("mse_improve_pct", 0)
+        improved = imp > 0
+        verdict = "✅ 提升" if improved else "❌ 未提升 (需改进重训)"
+        color = "#2ea043" if improved else "#f85149"
+
+        # 构造对比面板 (QDialog)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("📊 模型性能对比 (基础 vs 微调)")
+        dlg.setMinimumWidth(560)
+        lay = QVBoxLayout(dlg)
+
+        head = QLabel(f"<span style='font-size:15px;font-weight:700;color:{color}'>{verdict}</span> "
+                      f"<span style='color:#8b949e'> · MSE 提升 {imp:+.1f}%</span>")
+        lay.addWidget(head)
+
+        table = QTextEdit()
+        table.setReadOnly(True)
+        table.setStyleSheet("background:#0d1117; color:#c9d1d9; border:1px solid #1e2740; font-family:Consolas; font-size:12px;")
+        rows = [
+            ("指标", "基础模型", "微调模型", "提升"),
+            ("动作 MSE", f"{base['action_mse']:.2f}", f"{cand['action_mse']:.2f}", f"{imp:+.1f}%"),
+            ("成功率", f"{base['success_rate']*100:.1f}%", f"{cand['success_rate']*100:.1f}%",
+             f"{(cand['success_rate']-base['success_rate'])*100:+.1f}pp"),
+            ("推理延迟", f"{base['latency_ms']:.1f}ms", f"{cand['latency_ms']:.1f}ms",
+             f"{cand['latency_ms']-base['latency_ms']:+.1f}ms"),
+            ("测试帧数", str(base['frames']), str(cand['frames']), "-"),
+        ]
+        # 对齐列宽
+        w0 = max(len(r[0]) for r in rows) + 2
+        w1 = max(len(r[1]) for r in rows) + 2
+        w2 = max(len(r[2]) for r in rows) + 2
+        text = "\n".join(f"{r[0].ljust(w0)}{r[1].ljust(w1)}{r[2].ljust(w2)}{r[3]}" for r in rows)
+        table.setPlainText(text)
+        lay.addWidget(table)
+
+        note = QLabel(f"<span style='color:#8b949e;font-size:11px'>对比文件: {os.path.basename(jsons[-1])}<br>"
+                      f"提升路径: 基础(300步) → 更多数据 → 更长训练 → 超参调优 → 架构升级(SmolVLA)</span>")
+        lay.addWidget(note)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok)
+        btns.accepted.connect(dlg.accept)
+        lay.addWidget(btns)
+        dlg.exec_()
+
     def start_sim(self):
         if not self.nodes:
             self._log("⚠️ 画布为空 — 点击上方「🗂 参考应用」一键加载模板, 或从左侧模块库添加节点")
@@ -1785,6 +1861,16 @@ class SimulinkModule(QWidget):
         real_dir = os.path.join(root, "data", "closed_loop")
         placeholder = os.path.join(root, "data", "metaworld_act")
 
+        # 0. 画布数据源节点优先 (CICD 主控台): metaworld 激活 → 直接占位集, 跳过 relay
+        src = self._active_source()
+        if src == "metaworld":
+            if os.path.isdir(placeholder):
+                self.log_signal.emit("📦 画布数据源 [metaworld] 激活 → 使用 metaworld 占位集 (不拉 relay)")
+                return placeholder, "metaworld 占位集", False
+            self.log_signal.emit("⚠️ 画布选了 metaworld, 但 data/metaworld_act 不存在 → 回退自动选择")
+        elif src == "orin":
+            self.log_signal.emit("📥 画布数据源 [Orin] 激活 → 强制拉取 relay 真实数据")
+
         # 1. 尝试拉真实数据
         try:
             r = _rq.get("https://datadrive.world/api/relay/latest", timeout=8)
@@ -1890,6 +1976,103 @@ class SimulinkModule(QWidget):
             return (rc == 0), ("部署状态已拉取 · 心跳正常" if rc == 0 else "部署状态检查失败")
 
         self._start_worker(_work, "正在查询部署状态", stage="deploy")
+
+    # ════════════════════════════════════════════════════════════
+    # CICD 主控台: 节点双击 → 数据源切换 / 运行环节 (2026-08-02)
+    # 老倪: "控制台是主控点, 在node上要有所有链路主要node, 要能运行;
+    #        既要有metaworld数据, 又要有Orin, 又要有ACT模型, 可随意切换如何训练"
+    # ════════════════════════════════════════════════════════════
+    # 节点名 → 环节执行器 (双击运行)
+    NODE_RUN_ACTIONS = [
+        ("训练", "on_train"),
+        ("验证", "on_validate"),
+        ("集成", "on_integrate"),
+        ("部署", "on_deploy"),
+    ]
+
+    def on_node_activated(self, node):
+        """双击节点: 数据源 → 切换; 环节节点 → 运行; 其他 → 参数框"""
+        params = node.get("params", {})
+        # 1) 数据源节点: 切换激活
+        if params.get("source"):
+            self._toggle_source(node)
+            return
+        # 2) 环节节点: 按名称匹配执行器
+        for kw, meth in self.NODE_RUN_ACTIONS:
+            if kw in node.get("name", ""):
+                fn = getattr(self, meth, None)
+                if fn:
+                    self._run_node_stage(node, fn, kw)
+                return
+        # 3) 其他节点: 打开参数框
+        dlg = BlockParamsDialog(node, None)
+        if dlg.exec_() == QDialog.Accepted:
+            it = self._items.get(node["id"])
+            if it:
+                it.update()
+
+    def _toggle_source(self, node):
+        """切换训练数据源: 当前数据源节点激活, 其他数据源节点取消"""
+        node["params"]["active"] = True
+        for n in self.nodes:
+            if n["id"] != node["id"] and n.get("params", {}).get("source"):
+                n["params"]["active"] = False
+                it = self._items.get(n["id"])
+                if it:
+                    it.update()
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        src = node["params"].get("source", "?")
+        label = "Orin 真实数据 (relay/latest)" if src == "orin" else "metaworld 占位集"
+        self._log(f"🔄 训练数据源切换 → {label} · 双击任意数据源节点可再切换")
+        self._sync()
+
+    def _active_source(self):
+        """画布上激活的数据源节点 → 'orin' | 'metaworld' | None"""
+        for n in self.nodes:
+            p = n.get("params", {})
+            if p.get("source") and p.get("active"):
+                return p["source"]
+        return None
+
+    def _run_node_stage(self, node, fn, label):
+        """双击环节节点 → 后台执行, 节点状态 running→success/error (复用 _start_worker 防重入)"""
+        cur = getattr(self, "_worker", None)
+        if cur is not None and cur.isRunning():
+            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            return
+        for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
+            b.setEnabled(False)
+        node["status"] = "running"
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        self._log(f"⏳ 双击运行 [{node['name']}] ({label}) — 后台执行, UI 可继续操作…")
+
+        def _done(ok, summary):
+            for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
+                b.setEnabled(True)
+            node["status"] = "success" if ok else "error"
+            it2 = self._items.get(node["id"])
+            if it2:
+                it2.update()
+            self.canvas._scene.update()
+            if ok:
+                self._log(f"✅ [{node['name']}] {summary}")
+            else:
+                self._log(f"❌ [{node['name']}] {summary}")
+            if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
+                self._cicd_panel._refresh()
+
+        worker = CICDWorker(fn)
+        worker.log.connect(self._log)
+        worker.finished_ok.connect(_done)
+        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        self._worker = worker
+        worker.start()
 
 
 # ── 独立运行入口 (调试) ──
