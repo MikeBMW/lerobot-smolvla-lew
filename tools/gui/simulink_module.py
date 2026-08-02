@@ -29,6 +29,44 @@ NODE_TYPES = {
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
 
+# 工作流分区 (对标 MathWorks 解决方案页 6 大功能) → 节点类型映射
+WORKFLOW_TYPES = {
+    "data":     "hardware",   # ① 访问·标注数据: Orin/MAC/相机/数据集
+    "scene":    "system",     # ② 仿真场景: 调度/工作流/场景
+    "plan":     "model",      # ③ 规划·控制: VLA/ACT/SmolVLA 策略
+    "percept":  "condition",  # ④ 感知算法: 条件/触发/AOI/力控
+    "deploy":   "model",      # ⑤ 部署: 远程推理/4090/代码生成
+    "test":     "action",     # ⑥ 集成·测试: 原子动作/工位测试
+}
+# 参考应用模板 (对标 MathWorks 参考应用列表)
+REFERENCE_APPS = [
+    ("📦 取料·100G 闭环", [
+        ("hardware", "Orin Nano", {"ip": "192.168.23.10", "fps": 30}),
+        ("model", "ACT", {"chunk_size": 7, "dim_model": 256}),
+        ("action", "A01 取料·100G", {"pos": [0.1, 0.2, 0.3]}),
+        ("condition", "C03 力控达标", {"max_force": 5.0}),
+    ], [(0, 1), (1, 2), (2, 3)]),
+    ("🎛 力控插入·Z700", [
+        ("hardware", "机械臂", {"model": "Z700", "dof": 6}),
+        ("condition", "C01 到位判断", {"tolerance": 0.01}),
+        ("model", "VLA-T", {"remote": "4090:50054"}),
+        ("action", "A04 力控插入", {"force": 3.0}),
+    ], [(0, 1), (1, 2), (2, 3)]),
+    ("📡 数据闭环·Orin→4090", [
+        ("hardware", "Orin Nano", {"ip": "192.168.23.10", "fps": 30}),
+        ("hardware", "MAC", {"ip": "192.168.23.1", "port": 8769}),
+        ("hardware", "4090训练", {"host": "39.102.211.79", "port": 50054}),
+        ("model", "H-JEPA", {"remote": "4090"}),
+    ], [(0, 1), (1, 2), (2, 3)]),
+    ("🏭 AOI检测·分拣", [
+        ("hardware", "相机", {"res": "480x640", "fps": 30}),
+        ("condition", "C04 AOI通过", {}),
+        ("model", "SmolVLA", {"checkpoint": "smolvla-500m"}),
+        ("action", "A09 AOI检测", {}),
+        ("action", "A10 分拣", {"bin": 3}),
+    ], [(0, 1), (1, 2), (2, 3), (3, 4)]),
+]
+
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
 LIBRARY = [
     ("condition", "条件 (11)", [
@@ -441,18 +479,41 @@ class LibraryPanel(QFrame):
         title.setStyleSheet("color:#fff; font-size:13px; font-weight:700; padding:4px;")
         lay.addWidget(title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        inner = QWidget()
-        v = QVBoxLayout(inner)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(2)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.inner = QWidget()
+        self.v = QVBoxLayout(self.inner)
+        self.v.setContentsMargins(0, 0, 0, 0)
+        self.v.setSpacing(2)
 
+        # 工作流标签页 → 显示全部
+        self._current_wf = None
+        self._rebuild()
+
+        self.scroll.setWidget(self.inner)
+        lay.addWidget(self.scroll)
+
+        hint = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放 · 顶部工作流过滤")
+        hint.setStyleSheet("color:#666; font-size:9px; padding:4px;")
+        lay.addWidget(hint)
+
+    def _rebuild(self):
+        """重建模块库列表 (按工作流过滤)"""
+        # 清空
+        while self.v.count():
+            item = self.v.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
         for ntype, gname, items in LIBRARY:
+            # 工作流过滤: 按节点类型匹配
+            wf_of = {t: wf for wf, t in WORKFLOW_TYPES.items()}
+            if self._current_wf and wf_of.get(ntype) != self._current_wf:
+                continue
             lab = QLabel(f"{gname}")
             lab.setStyleSheet(f"color:{COLORS[ntype]}; font-size:11px; font-weight:700; padding:6px 2px 2px;")
-            v.addWidget(lab)
+            self.v.addWidget(lab)
             for it in items:
                 btn = QToolButton()
                 btn.setText(f"⬡  {it['name']}")
@@ -463,15 +524,13 @@ class LibraryPanel(QFrame):
                 """)
                 btn.clicked.connect(lambda _, t=ntype, nm=it["name"], ps=it["params"]:
                                     self.module.add_node_at_center(t, nm, ps))
-                v.addWidget(btn)
+                self.v.addWidget(btn)
+        self.v.addStretch()
 
-        v.addStretch()
-        scroll.setWidget(inner)
-        lay.addWidget(scroll)
-
-        hint = QLabel("拖拽逻辑: 点击添加 · 双击改参\n输出→输入 拖拽连线 · 点线删除")
-        hint.setStyleSheet("color:#666; font-size:9px; padding:4px;")
-        lay.addWidget(hint)
+    def set_filter(self, wf_key):
+        """按工作流过滤模块库 (None=全部)"""
+        self._current_wf = wf_key
+        self._rebuild()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -498,6 +557,50 @@ class SimulinkModule(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+
+        # ── Hero 标题条 (对标 MathWorks 解决方案页 Hero) ──
+        hero = QFrame()
+        hero.setStyleSheet("background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #0d1117, stop:0.6 #0f1a24, stop:1 #0d1117); border-bottom:1px solid #1e2740;")
+        hero.setFixedHeight(64)
+        hl = QHBoxLayout(hero)
+        hl.setContentsMargins(16, 8, 16, 8)
+        hl.setSpacing(14)
+        hero_title = QLabel("Z-MAX 具身智能 · Simulink 模式")
+        hero_title.setStyleSheet("color:#fff; font-size:19px; font-weight:800; background:transparent; border:none;")
+        hl.addWidget(hero_title)
+        hero_sub = QLabel("使用 XSpace Studio 实现产线机器人的感知、规划与控制 · 模块库拖拽 · 连线仿真 · 数据闭环")
+        hero_sub.setStyleSheet("color:#8b949e; font-size:11px; background:transparent; border:none;")
+        hl.addWidget(hero_sub)
+        hl.addStretch()
+        ver = QLabel("v1.0 · zmax-simulink")
+        ver.setStyleSheet("color:#00d4aa; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+        hl.addWidget(ver)
+        outer.addWidget(hero)
+
+        # ── 工作流导航条 (对标 MathWorks 6 大功能分区) ──
+        wf = QFrame()
+        wf.setStyleSheet("background:#0a0e14; border-bottom:1px solid #1e2740;")
+        wf.setFixedHeight(40)
+        wfl = QHBoxLayout(wf)
+        wfl.setContentsMargins(10, 4, 10, 4)
+        wfl.setSpacing(4)
+        self._wf_btns = {}
+        for key, label in [("data", "① 访问·标注数据"), ("scene", "② 仿真场景"),
+                           ("plan", "③ 规划·控制"), ("percept", "④ 感知算法"),
+                           ("deploy", "⑤ 部署"), ("test", "⑥ 集成·测试")]:
+            b = QPushButton(label)
+            b.setCheckable(True)
+            b.setStyleSheet("""
+                QPushButton { background:transparent; color:#8b949e; border:1px solid transparent;
+                border-radius:5px; padding:4px 12px; font-size:11px; font-weight:600; }
+                QPushButton:hover { color:#fff; background:#14181f; }
+                QPushButton:checked { color:#00d4aa; background:#00d4aa1a; border-color:#00d4aa44; }
+            """)
+            b.clicked.connect(lambda _, k=key: self._filter_library(k))
+            self._wf_btns[key] = b
+            wfl.addWidget(b)
+        wfl.addStretch()
+        outer.addWidget(wf)
 
         # 工具栏 (对标 Simulink 工具条)
         tb = QFrame()
@@ -551,12 +654,35 @@ class SimulinkModule(QWidget):
 
         outer.addWidget(tb)
 
+        # 参考应用条 (对标 MathWorks 参考应用列表)
+        ra = QFrame()
+        ra.setStyleSheet("background:#0a0e14; border-bottom:1px solid #1e2740;")
+        ra.setFixedHeight(38)
+        ral = QHBoxLayout(ra)
+        ral.setContentsMargins(10, 4, 10, 4)
+        ral.setSpacing(6)
+        ra_lab = QLabel("🗂 参考应用:")
+        ra_lab.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
+        ral.addWidget(ra_lab)
+        for name, nodes, links in REFERENCE_APPS:
+            b = QPushButton(name)
+            b.setStyleSheet("""
+                QPushButton { background:#14181f; color:#c9d1d9; border:1px solid #1e2740;
+                border-radius:4px; padding:3px 10px; font-size:10px; }
+                QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+            """)
+            b.clicked.connect(lambda _, nm=name, nd=nodes, lk=links: self.load_reference_app(nm, nd, lk))
+            ral.addWidget(b)
+        ral.addStretch()
+        outer.addWidget(ra)
+
         # 主体: 库 + 画布
         split = QSplitter(Qt.Horizontal)
         self.canvas = SimCanvas(self)
         self.canvas.flow_changed.connect(lambda: self._sync())
         self.canvas.log.connect(self._log)
-        split.addWidget(LibraryPanel(self))
+        self.library = LibraryPanel(self)
+        split.addWidget(self.library)
         split.addWidget(self.canvas)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
@@ -573,6 +699,33 @@ class SimulinkModule(QWidget):
     # ── 初始工作流: 空画布 (0帧起手) ──
     def _seed_default_flow(self):
         pass  # 空画布, 用户从零搭建
+
+    # ── 工作流过滤 (对标 MathWorks 6 大分区导航) ──
+    def _filter_library(self, wf_key):
+        for k, b in self._wf_btns.items():
+            b.setChecked(k == wf_key)
+        self.library.set_filter(wf_key)
+        self._log(f"🗂 工作流: {dict(data='① 访问·标注', scene='② 仿真场景', plan='③ 规划·控制', percept='④ 感知', deploy='⑤ 部署', test='⑥ 集成·测试').get(wf_key, wf_key)} · 模块库已过滤")
+
+    # ── 参考应用模板 (对标 MathWorks 参考应用列表) ──
+    def load_reference_app(self, name, node_specs, link_specs):
+        if self.nodes:
+            ret = QMessageBox.question(self, "加载参考应用",
+                                       f"加载「{name}」将清空当前画布，继续？",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if ret != QMessageBox.Yes:
+                return
+        self.clear()
+        ids = []
+        base_x, base_y = 120, 80
+        for i, (ntype, nm, params) in enumerate(node_specs):
+            n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
+            ids.append(n["id"])
+        for fi, ti in link_specs:
+            if fi < len(ids) and ti < len(ids):
+                self.add_link(self._items[ids[fi]], self._items[ids[ti]])
+        self.canvas._scene.update()
+        self._log(f"🗂 已加载参考应用: {name} ({len(ids)}节点 {len(link_specs)}连线) · 双击节点改参数")
 
     # ── 节点操作 ──
     def add_node_at_center(self, ntype, name, params=None):
