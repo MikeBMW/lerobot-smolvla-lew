@@ -1113,6 +1113,8 @@ class SimulinkModule(QWidget):
         QFileDialog QComboBox QAbstractItemView { background:#0d1117; color:#fff; selection-background-color:#00d4aa44; }
         QFileDialog QListView, QFileDialog QTreeView { background:#0d1117; color:#fff; border:1px solid #1e2740; }
         QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected { background:#00d4aa44; color:#fff; }
+        QFileDialog QHeaderView { background:#0d1117; color:#fff; }
+        QFileDialog QHeaderView::section { background:#14181f; color:#fff; border:none; border-right:1px solid #1e2740; padding:4px 8px; font-weight:600; }
         QFileDialog QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:5px 14px; }
         QFileDialog QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
         QMessageBox { background:#0d1117; color:#fff; }
