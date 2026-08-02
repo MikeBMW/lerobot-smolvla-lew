@@ -24,9 +24,9 @@ STATE = REPO / "docs" / "PIPELINE_STATE.json"
 
 # ── 三阶段定义 ──
 STAGES = {
-    1: {"name": "MetaWorld 仿真训练", "data": "data/metaworld_v2",
+    1: {"name": "MetaWorld 仿真训练", "data": "data/metaworld_joint_v2",
         "lr": 1e-4, "lr_backbone": 0.0, "kl": 10.0, "chunk": 100, "n_action": 50,
-        "ensemble": None, "desc": "backbone 冻结 · 仿真快速验证"},
+        "ensemble": None, "desc": "Sawyer关节空间(7D/6D) · backbone 冻结 · 仿真快速验证"},
     2: {"name": "Sim-to-Real 零样本测试", "data": "data/closed_loop_v2",
         "desc": "stage1 模型 → Orin 真实数据 · 量化 Reality Gap"},
     3: {"name": "Orin 真实数据微调", "data": "data/closed_loop_v2",
@@ -89,9 +89,6 @@ def gen_train_cfg(stage: int, data_root: str, steps: int, ts_dir: str,
            f"  n_obs_steps: 1\n")
     if s["ensemble"] is not None:
         pol += f"  temporal_ensemble_coeff: {_f(s['ensemble'])}\n"
-    # 预训练初始化 (stage3: 加载 stage1 权重) — parser 支持 YAML 内 policy.path
-    if pretrained:
-        pol += f"  path: {pretrained}\n"
     cfg = re.sub(r"(?m)^  type: act\n", "  type: act\n" + pol, cfg, count=1)
     tmp = REPO / f"config_pipeline_s{stage}.yaml"
     tmp.write_text(cfg, encoding="utf-8")
@@ -131,7 +128,8 @@ def run_train(stage: int, steps: int, pretrained: str | None = None) -> tuple[bo
     cfg = gen_train_cfg(stage, data_root, steps, ts_dir, pretrained)
     _log(f"🏋️ Stage{stage} 训练启动: {data_root} · {steps}步 · 输出 outputs/train/{ts_dir}"
          + (" · 预训练初始化 " + pretrained if pretrained else ""))
-    p = subprocess.Popen([PY, "-m", "lerobot.scripts.lerobot_train", "--config_path", str(cfg)],
+    p = subprocess.Popen([PY, "-m", "lerobot.scripts.lerobot_train", "--config_path", str(cfg)]
+                         + ([f"--policy.path={pretrained}"] if pretrained else []),
                          cwd=str(REPO), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, bufsize=1, encoding="utf-8", errors="replace")
     for line in p.stdout:
