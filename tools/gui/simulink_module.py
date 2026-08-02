@@ -409,7 +409,7 @@ class SimCanvas(QGraphicsView):
             return
         if e.button() == Qt.LeftButton:
             item = self.itemAt(e.pos())
-            # 从输出端口开始连线
+            # 点击节点: 非Ctrl时只选中当前节点 (防止多选联动拖动)
             if isinstance(item, SimNodeItem):
                 p = self.mapToScene(e.pos())
                 n = item
@@ -422,6 +422,16 @@ class SimCanvas(QGraphicsView):
                         QPen(QColor(COLORS.get(n.node["type"], "#58a6ff")), 2, Qt.DashLine))
                     return
         super().mousePressEvent(e)
+        # 非Ctrl点击节点: 强制只选中当前节点 (覆盖 scene 默认多选/toggle)
+        if e.button() == Qt.LeftButton and not (e.modifiers() & Qt.ControlModifier):
+            item = self.itemAt(e.pos())
+            if isinstance(item, SimNodeItem):
+                for it in self._scene.selectedItems():
+                    if it is not item:
+                        it.setSelected(False)
+                item.setSelected(True)
+            elif not isinstance(item, SimLinkItem):
+                self._scene.clearSelection()
 
     def mouseMoveEvent(self, e):
         if self._panning:
