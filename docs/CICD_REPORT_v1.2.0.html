@@ -1,0 +1,37 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Z-MAX v1.2.0 中版本报告</title>
+<style>
+body{font-family:Consolas,monospace;background:#0d1117;color:#c9d1d9;padding:32px;max-width:900px;margin:0 auto}
+h1{color:#58a6ff;border-bottom:2px solid #30363d;padding-bottom:8px}
+h2{color:#00d4aa;margin-top:28px}
+table{border-collapse:collapse;width:100%;margin:8px 0}
+td,th{border:1px solid #30363d;padding:10px 12px;font-size:13px;text-align:left}
+.badge{display:inline-block;padding:4px 16px;border-radius:12px;background:#1f6feb;color:#fff;font-weight:700}
+.meta{color:#8b949e;font-size:12px}
+.up{color:#2ea043}
+</style></head><body>
+<h1>🚀 Z-MAX <span class="badge">v1.2.0</span> 中版本迭代报告</h1>
+<p class="meta">时间: 2026-08-02 16:00:43 · commit <span class="badge">baf1d721</span></p>
+<p>v1.1.0 → v1.2.0 · 本轮主题: <b>现场直播 + 数据链路透明 + 自动迭代联调</b></p>
+
+<h2>✨ 新功能 (9 项)</h2>
+<table><tr><th style="width:200px">功能</th><th style="width:50px">状态</th><th>说明</th></tr><tr><td>📹 现场视频直播</td><td style="text-align:center">✅</td><td>cicd.html 实时画面 · 归档快照优先 · 2秒刷新 · 方向锚点</td></tr><tr><td>🖼 快照自动归档</td><td style="text-align:center">✅</td><td>Orin快照(1s/帧)→archive自动落盘 · 不占训练队列 · 983+帧可回溯</td></tr><tr><td>🔍 peek 归档兜底</td><td style="text-align:center">✅</td><td>队列空时返回最新快照(current_state+图像) · 页面状态机实时</td></tr><tr><td>📡 联调自动监控</td><td style="text-align:center">✅</td><td>30s轮询队列 · 过滤快照 · 检测stage_act动作标签→自动训练</td></tr><tr><td>🏋️ ACT 模型迭代</td><td style="text-align:center">✅</td><td>基线300步→v2 3000步 · MSE -8.18% · loss 1.339</td></tr><tr><td>🔬 基线对比工具</td><td style="text-align:center">✅</td><td>同数据公平对比(MSE/成功率/延迟) · 自动判定提升</td></tr><tr><td>🔄 自动迭代循环</td><td style="text-align:center">✅</td><td>训练→对比→判断→未达标改进重训(步数+lr衰减)</td></tr><tr><td>🤖 Orin 全量状态</td><td style="text-align:center">✅</td><td>CPU/GPU/内存/温度/ROS2节点/关节 · 心跳内嵌sys上报</td></tr><tr><td>🗂 数据路径透明</td><td style="text-align:center">✅</td><td>队列/归档/实时帧三目录 · 包数实时可查</td></tr></table>
+
+<h2>📈 模型迭代对比</h2>
+<table>
+<tr><th>版本</th><th>Steps</th><th>MSE</th><th>提升</th></tr>
+<tr><td>基线 (act_metaworld)</td><td>300</td><td>12037.8</td><td>—</td></tr>
+<tr><td>v1.1.0 (2000步)</td><td>2000</td><td>11155.0</td><td class="up">+7.33%</td></tr>
+<tr><td><b>v2 (3000步+lr调优)</b></td><td>3000</td><td><b>11053.3</b></td><td class="up"><b>+8.18%</b></td></tr>
+</table>
+
+<h2>📊 数据链路 (透明可查)</h2>
+<table>
+<tr><th>环节</th><th>路径</th><th>状态</th></tr>
+<tr><td>训练队列</td><td>ECS /root/zmax-relay/data/</td><td>只留可训练数据包</td></tr>
+<tr><td>快照归档</td><td>ECS /root/zmax-relay/archive/</td><td>983+ 帧 (1s/帧)</td></tr>
+<tr><td>实时帧</td><td>/api/relay/cam/latest.jpg</td><td>页面视频流</td></tr>
+<tr><td>本地训练</td><td>/home/xspace/lerobot-smolvla-lew/outputs/train/</td><td>3.7G · 6模型</td></tr>
+</table>
+
+<p class="meta" style="margin-top:24px">— Z-MAX CICD · 静静(4060) 自动生成 —</p>
+</body></html>
