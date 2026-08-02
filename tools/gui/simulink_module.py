@@ -684,14 +684,17 @@ class PipelinePanel(QDialog):
         stages = st.get("stages", {}) or {}
         # 闭环状态栏: 本地部分 (数据量/模型)
         try:
-            n_real = self._local_data_frames()
-            self.lbl_data.setText(f"📥 数据: {n_real}帧")
+            n_train, n_pkgs = self._local_data_frames()
+            self.lbl_data.setText(f"📥 数据: 训练集{n_train}帧" + (f" · 落地{n_pkgs}帧" if n_pkgs else ""))
         except Exception:
             pass
         ck3 = stages.get("3", {}).get("ckpt") or stages.get("1", {}).get("ckpt")
         if ck3:
             self.lbl_model.setText("🧠 模型: " + ck3.replace("\\", "/").split("/")[-4])
-        # 6 环节按钮状态回显 (1运行中青/2成功绿/3失败红)
+        # 最后运行时间标注 (状态文件 ts, 提示新旧)
+        ts = st.get("ts") or ""
+        self.lbl_stage_now.setText("当前: 未运行" if st.get("state") == "pending" else
+                                   f"最后运行: {ts[5:16] if ts else '?'} · 状态{st.get('state', '?')}")
         for sid, b in self._pipe_btns.items():
             s = self.module._cicd_state.get(sid, 0)
             if s == 1:
@@ -732,7 +735,6 @@ class PipelinePanel(QDialog):
                 info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
         now = st.get("stage", "?")
         stt = stages.get(str(now), {}).get("state", st.get("state", "pending"))
-        self.lbl_stage_now.setText(f"当前: Stage {now} · {stt}")
         self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#8b949e')}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         log = st.get("log", "")
         if log != self._last_log:
@@ -786,24 +788,24 @@ class PipelinePanel(QDialog):
 
     # ── 数据闭环状态: 本地数据量 + 远程轮询 ──
     def _local_data_frames(self):
-        """本地 Orin 真实数据帧数统计"""
+        """训练数据集帧数 (orin_real_v1, 与训练口径一致) + 中转落地包帧数"""
         root = self.module._repo_root()
-        n = 0
+        n_train = 0
+        info = os.path.join(root, "data", "orin_real_v1", "meta", "info.json")
+        if os.path.exists(info):
+            try:
+                n_train = int(json.load(open(info, encoding="utf-8")).get("total_frames", 0))
+            except Exception:
+                pass
+        n_pkgs = 0
         import glob as _g
         for jf in _g.glob(os.path.join(root, "data", "closed_loop", "*.json")):
             try:
                 d = json.load(open(jf, encoding="utf-8"))
-                n += len(d.get("frames", []))
+                n_pkgs += len(d.get("frames", []))
             except Exception:
                 pass
-        npz = os.path.join(root, "data", "closed_loop", "task_closed_loop.npz")
-        if os.path.exists(npz):
-            try:
-                import numpy as _np
-                n += int(_np.load(npz, allow_pickle=True)["states"].shape[0])
-            except Exception:
-                pass
-        return n
+        return n_train, n_pkgs
 
     def _poll_remote(self):
         """后台线程拉 relay/orin 状态 (不卡 UI)"""
@@ -853,7 +855,8 @@ class PipelinePanel(QDialog):
             if pkgs is not None:
                 extra = f" · 中转{pkgs}包" + (f"·{frm}帧" if frm else "")
                 try:
-                    self.lbl_data.setText(f"📥 数据: {self._local_data_frames()}帧{extra}")
+                    n_train, _ = self._local_data_frames()
+                    self.lbl_data.setText(f"📥 数据: 训练集{n_train}帧{extra}")
                 except Exception:
                     self.lbl_data.setText(f"📥 数据: 中转{pkgs}包")
             online = d.get("online")
