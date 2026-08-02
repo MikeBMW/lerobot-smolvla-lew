@@ -1105,13 +1105,35 @@ class SimulinkModule(QWidget):
         return None
 
     # ── 导入/导出 (与 web 一致) ──
+    DIALOG_SS = """
+        QFileDialog { background:#0d1117; color:#fff; }
+        QFileDialog QLabel { color:#fff; font-size:12px; }
+        QFileDialog QLineEdit { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:4px 8px; }
+        QFileDialog QComboBox { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:4px; }
+        QFileDialog QComboBox QAbstractItemView { background:#0d1117; color:#fff; selection-background-color:#00d4aa44; }
+        QFileDialog QListView, QFileDialog QTreeView { background:#0d1117; color:#fff; border:1px solid #1e2740; }
+        QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected { background:#00d4aa44; color:#fff; }
+        QFileDialog QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:5px 14px; }
+        QFileDialog QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+        QMessageBox { background:#0d1117; color:#fff; }
+        QMessageBox QLabel { color:#fff; }
+        QMessageBox QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:5px 16px; }
+        QMessageBox QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+    """
+
     def export_flow(self):
         flow = {"format": "zmax-simulink", "version": "1.0", "name": "untitled",
                 "sim": {"dt": self._sim_dt, "t_end": self._sim_t_end, "solver": "fixed-step"},
                 "nodes": self.nodes, "links": self.links}
         from PyQt5.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(self, "导出工作流", "flow.json", "JSON (*.json)")
-        if path:
+        dlg = QFileDialog(self, "导出工作流", "flow.json", "JSON (*.json)")
+        dlg.setAcceptMode(QFileDialog.AcceptSave)
+        dlg.setStyleSheet(self.DIALOG_SS)
+        dlg.setOption(QFileDialog.DontUseNativeDialog, True)  # 强制用 Qt 对话框, 应用深色样式
+        if dlg.exec_() == QFileDialog.Accepted:
+            path = dlg.selectedFiles()[0]
+            if not path.endswith(".json"):
+                path += ".json"
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(flow, f, ensure_ascii=False, indent=2)
             self._log(f"💾 已导出: {path}")
@@ -1119,15 +1141,18 @@ class SimulinkModule(QWidget):
 
     def import_flow(self):
         from PyQt5.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getOpenFileName(self, "导入工作流", "", "JSON (*.json)")
-        if not path:
-            return
-        try:
-            flow = json.load(open(path, encoding="utf-8"))
-            self.load_flow(flow)
-            self._log(f"📂 已导入: {path}")
-        except Exception as ex:
-            QMessageBox.warning(self, "导入失败", str(ex))
+        dlg = QFileDialog(self, "导入工作流", "", "JSON (*.json)")
+        dlg.setAcceptMode(QFileDialog.AcceptOpen)
+        dlg.setStyleSheet(self.DIALOG_SS)
+        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+        if dlg.exec_() == QFileDialog.Accepted:
+            path = dlg.selectedFiles()[0]
+            try:
+                flow = json.load(open(path, encoding="utf-8"))
+                self.load_flow(flow)
+                self._log(f"📂 已导入: {path}")
+            except Exception as ex:
+                QMessageBox.warning(self, "导入失败", str(ex))
 
     def load_flow(self, flow):
         self.clear()
