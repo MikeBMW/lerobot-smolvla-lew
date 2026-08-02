@@ -234,6 +234,143 @@ class CICDWorker(QThread):
 
 
 # ════════════════════════════════════════════════════════════════
+# CI/CD 全链路面板 (验证→训练→集成→部署 状态一览 + 一键执行)
+# ════════════════════════════════════════════════════════════════
+class CICDPanel(QDialog):
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.setWindowTitle("CI/CD 全链路 · Z-MAX")
+        self.setMinimumSize(560, 420)
+        self.setStyleSheet("QDialog { background:#0d1117; }")
+        self._stage_labels = {}
+        self._build()
+        self._refresh()
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+        # 标题
+        t = QLabel("🔗 CI/CD 全链路 · 验证 → 训练 → 集成 → 部署")
+        t.setStyleSheet("color:#ffd700; font-size:15px; font-weight:700; background:transparent; border:none;")
+        lay.addWidget(t)
+        tip = QLabel("点击各环节卡片执行 · 状态实时刷新 · 全部后台运行不卡界面")
+        tip.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        lay.addWidget(tip)
+
+        # 4 个环节卡片
+        self._stages = [
+            ("validate", "① 验证", "模型标准合规校验\n(Model Advisor 对标)", self.module.on_validate),
+            ("train",    "② 训练", "ACT 训练 (lerobot_train)\n优先 Orin 真实数据", self.module.on_train),
+            ("integrate","③ 集成", "打包 checkpoint → 上传 ECS\n(cicd_deploy push)", self.module.on_integrate),
+            ("deploy",   "④ 部署", "拉取部署包 → 推到 4090/Orin\n心跳验证", self.module.on_deploy),
+        ]
+        for sid, title, desc, fn in self._stages:
+            card = QFrame()
+            card.setStyleSheet("QFrame { background:#14181f; border:1px solid #1e2740; border-radius:8px; }")
+            card.setCursor(Qt.PointingHandCursor)
+            card.setFixedHeight(74)
+            cl = QHBoxLayout(card)
+            cl.setContentsMargins(14, 8, 14, 8)
+            # 状态圆点
+            dot = QLabel("○")
+            dot.setStyleSheet("font-size:20px; color:#3a3f4b; background:transparent; border:none;")
+            dot.setFixedWidth(26)
+            cl.addWidget(dot)
+            # 标题+描述
+            tl = QVBoxLayout()
+            tl.setSpacing(2)
+            tt = QLabel(title)
+            tt.setStyleSheet("color:#c9d1d9; font-size:13px; font-weight:700; background:transparent; border:none;")
+            td = QLabel(desc)
+            td.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+            tl.addWidget(tt)
+            tl.addWidget(td)
+            cl.addLayout(tl, 1)
+            # 状态文字
+            st = QLabel("未开始")
+            st.setStyleSheet("color:#8b949e; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+            st.setFixedWidth(90)
+            cl.addWidget(st)
+            # 执行按钮
+            btn = QPushButton("▶ 执行")
+            btn.setStyleSheet("""
+                QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66;
+                border-radius:4px; padding:4px 12px; font-size:11px; font-weight:600; }
+                QPushButton:hover { background:#00d4aa44; }
+            """)
+            btn.clicked.connect(lambda _, f=fn: self._run_stage(f))
+            cl.addWidget(btn)
+            lay.addWidget(card)
+            self._stage_labels[sid] = (dot, st)
+
+        # 底部: 刷新 + 关闭
+        bl = QHBoxLayout()
+        bl.addStretch()
+        self.btn_refresh = QPushButton("🔄 刷新状态")
+        self.btn_refresh.setStyleSheet("""
+            QPushButton { background:#14181f; color:#c9d1d9; border:1px solid #1e2740;
+            border-radius:4px; padding:5px 14px; font-size:11px; }
+            QPushButton:hover { border-color:#ffd700; color:#ffd700; }
+        """)
+        self.btn_refresh.clicked.connect(self._refresh)
+        bl.addWidget(self.btn_refresh)
+        self.btn_close = QPushButton("✕ 关闭")
+        self.btn_close.setStyleSheet(self.btn_refresh.styleSheet())
+        self.btn_close.clicked.connect(self.accept)
+        bl.addWidget(self.btn_close)
+        lay.addLayout(bl)
+
+    def _stage_state(self, sid):
+        """从模块读取环节当前状态"""
+        st_map = {"validate": self.module._cicd_state.get("validate", 0),
+                  "train": self.module._cicd_state.get("train", 0),
+                  "integrate": self.module._cicd_state.get("integrate", 0),
+                  "deploy": self.module._cicd_state.get("deploy", 0)}
+        return st_map.get(sid, 0)
+
+    def _refresh(self):
+        """刷新 4 环节状态 (0未开始 1运行中 2成功 3失败)"""
+        for sid, _, _, _ in self._stages:
+            dot, st = self._stage_labels[sid]
+            s = self._stage_state(sid)
+            if s == 0:
+                dot.setText("○"); dot.setStyleSheet("font-size:20px; color:#3a3f4b; background:transparent; border:none;")
+                st.setText("未开始"); st.setStyleSheet("color:#8b949e; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+            elif s == 1:
+                dot.setText("●"); dot.setStyleSheet("font-size:20px; color:#00d4aa; background:transparent; border:none;")
+                st.setText("运行中…"); st.setStyleSheet("color:#00d4aa; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+            elif s == 2:
+                dot.setText("✓"); dot.setStyleSheet("font-size:20px; color:#3fb950; background:transparent; border:none;")
+                st.setText("成功"); st.setStyleSheet("color:#3fb950; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+            elif s == 3:
+                dot.setText("✕"); dot.setStyleSheet("font-size:20px; color:#ff4444; background:transparent; border:none;")
+                st.setText("失败"); st.setStyleSheet("color:#ff4444; font-size:10px; font-family:Consolas; background:transparent; border:none;")
+
+    def _run_stage(self, fn):
+        """执行环节: 标记运行中 → 执行 → 完成后刷新"""
+        self._refresh()
+        # 找出该按钮对应的环节并标记运行中
+        for sid, _, _, f in self._stages:
+            if f == fn:
+                self.module._cicd_state[sid] = 1
+        self._refresh()
+        fn()
+        # 轮询等待 worker 完成
+        import time
+        from PyQt5.QtCore import QTimer
+        def _poll():
+            w = self.module._worker
+            if w is None or not w.isRunning():
+                # 根据日志判断结果: 更新状态 (由 worker 完成回调刷新)
+                self._refresh()
+                return
+            QTimer.singleShot(500, _poll)
+        QTimer.singleShot(500, _poll)
+
+
+# ════════════════════════════════════════════════════════════════
 # 画布节点 (QGraphicsItem)
 # ════════════════════════════════════════════════════════════════
 class SimNodeItem(QGraphicsObject):
@@ -647,6 +784,8 @@ class SimulinkModule(QWidget):
         # CI/CD 后台线程信号 (worker 线程 → 主线程日志)
         self.log_signal.connect(self._log)
         self._worker = None
+        # CI/CD 环节状态: 0未开始 1运行中 2成功 3失败
+        self._cicd_state = {"validate": 0, "train": 0, "integrate": 0, "deploy": 0}
         self._build()
         self._seed_default_flow()
 
@@ -757,6 +896,9 @@ class SimulinkModule(QWidget):
 
         # ── 真实操作按钮 (CI/CD 闭环: 验证→训练→集成→部署) ──
         tl.addSpacing(16)
+        # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
+        self.btn_cicd = mk_btn("🔗 CI/CD 全链路", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
+        tl.addWidget(self.btn_cicd)
         self.btn_validate = mk_btn("✅ 验证", "CI/CD 第一环: 模型标准合规校验 (Model Advisor 对标)", self.on_validate, "#a371f7")
         self.btn_train = mk_btn("🚀 训练", "选中模型节点 → 启动真实训练 (lerobot_train)", self.on_train, "#00d4aa")
         self.btn_integrate = mk_btn("📦 集成", "打包 checkpoint → 上传 ECS 中转 (cicd_deploy)", self.on_integrate, "#58a6ff")
@@ -791,6 +933,32 @@ class SimulinkModule(QWidget):
             ral.addWidget(b)
         ral.addStretch()
         outer.addWidget(ra)
+
+        # ── 📡 实时采集状态条 (轮询 ECS relay: Orin/MAC 采集数据实时可见) ──
+        acq = QFrame()
+        acq.setStyleSheet("background:#0a0e14; border-bottom:1px solid #1e2740;")
+        acq.setFixedHeight(34)
+        acl = QHBoxLayout(acq)
+        acl.setContentsMargins(12, 4, 12, 4)
+        acl.setSpacing(10)
+        acq_lab = QLabel("📡 实时采集")
+        acq_lab.setStyleSheet("color:#58a6ff; font-size:11px; font-weight:700; background:transparent; border:none;")
+        acl.addWidget(acq_lab)
+        self.lbl_acq_state = QLabel("⏳ 查询 ECS 中转…")
+        self.lbl_acq_state.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        acl.addWidget(self.lbl_acq_state)
+        acl.addStretch()
+        self.lbl_acq_pkgs = QLabel("数据包: 0")
+        self.lbl_acq_pkgs.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        acl.addWidget(self.lbl_acq_pkgs)
+        self.lbl_acq_latest = QLabel("最新: —")
+        self.lbl_acq_latest.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        acl.addWidget(self.lbl_acq_latest)
+        outer.addWidget(acq)
+        # 轮询定时器 (每 5s, 轻量)
+        self._acq_timer = QTimer(self)
+        self._acq_timer.timeout.connect(self._poll_acquisition)
+        self._acq_timer.start(5000)
 
         # 主体: 库 + 画布
         split = QSplitter(Qt.Horizontal)
@@ -1331,6 +1499,69 @@ class SimulinkModule(QWidget):
         self.log_box.append(msg)
         self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
 
+    # ── 📡 实时采集轮询 (后台线程, 不卡 UI) ──
+    def _poll_acquisition(self):
+        """每 5s 轮询 ECS relay /status + /packages, 更新采集状态条"""
+        if getattr(self, "_acq_worker", None) and self._acq_worker.isRunning():
+            return  # 上次还在查, 跳过
+
+        def _work():
+            import requests as _rq
+            try:
+                r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
+                if r.status_code != 200:
+                    return False, f"⚠️ relay HTTP {r.status_code}"
+                st = r.json()
+                uptime = st.get("uptime", 0)
+                npkg = st.get("packages", 0)
+                meta = st.get("latest_meta") or {}
+                frames = meta.get("frames", "?")
+                src = meta.get("source", "?")
+                ts = meta.get("ts") or meta.get("time") or "?"
+                # 打包成 JSON 字符串传递 (信号只支持 str)
+                import json as _json
+                return True, _json.dumps({"uptime": uptime, "npkg": npkg, "frames": frames,
+                                          "src": src, "ts": str(ts)})
+            except Exception as ex:
+                return False, f"⚠️ 采集查询失败: {ex}"
+
+        def _done(ok, info):
+            if not ok:
+                self.lbl_acq_state.setText(info)
+                self.lbl_acq_state.setStyleSheet("color:#ff4444; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+                return
+            import json as _json
+            try:
+                d = _json.loads(info)
+            except Exception:
+                self.lbl_acq_state.setText("⚠️ 采集状态解析失败")
+                return
+            uptime, npkg, frames, src, ts = d.get("uptime", 0), d.get("npkg", 0), d.get("frames", "?"), d.get("src", "?"), d.get("ts", "?")
+            if npkg > 0:
+                self.lbl_acq_state.setText(f"● 采集中 · 中转在线 {int(uptime)}s · 来源 {src}")
+                self.lbl_acq_state.setStyleSheet("color:#3fb950; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+                self.lbl_acq_pkgs.setText(f"数据包: {npkg}")
+                self.lbl_acq_latest.setText(f"最新: {frames}帧 @ {ts}")
+                # 采集进行中 → 画布 hardware 节点标记运行
+                for n in self.nodes:
+                    if n.get("type") == "hardware":
+                        n["status"] = "running"
+                        it = self._items.get(n["id"])
+                        if it:
+                            it.update()
+                self.canvas._scene.update()
+            else:
+                self.lbl_acq_state.setText("○ 等待采集数据…")
+                self.lbl_acq_state.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+                self.lbl_acq_pkgs.setText("数据包: 0")
+                self.lbl_acq_latest.setText("最新: —")
+
+        worker = CICDWorker(_work)
+        worker.finished_ok.connect(_done)
+        worker.finished.connect(lambda: setattr(self, "_acq_worker", None))
+        self._acq_worker = worker
+        worker.start()
+
     # ════════════════════════════════════════════════════════════
     # CI/CD 闭环: 验证 → 训练 → 集成 → 部署 (后台线程执行)
     # ════════════════════════════════════════════════════════════
@@ -1360,13 +1591,15 @@ class SimulinkModule(QWidget):
                 "nodes": self.nodes, "links": self.links}
 
     # ── 启动器: 每个操作开一个后台线程, UI 不卡 ──
-    def _start_worker(self, fn, busy_msg):
-        """开后台线程执行 fn, 期间禁用 4 按钮防重入"""
+    def _start_worker(self, fn, busy_msg, stage=None):
+        """开后台线程执行 fn, 期间禁用 4 按钮防重入; stage 更新 CI/CD 面板状态"""
         if getattr(self, "_worker", None) and self._worker.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候…")
             return
         for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
             b.setEnabled(False)
+        if stage:
+            self._cicd_state[stage] = 1  # 运行中
         self._log(f"⏳ {busy_msg} (后台执行, UI 可继续操作)…")
 
         def _emit_log(msg):
@@ -1375,10 +1608,15 @@ class SimulinkModule(QWidget):
         def _done(ok, summary):
             for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
                 b.setEnabled(True)
+            if stage:
+                self._cicd_state[stage] = 2 if ok else 3  # 成功/失败
             if ok:
                 self._log(f"✅ {summary}")
             else:
                 self._log(f"❌ {summary}")
+            # 若有打开的全链路面板, 自动刷新
+            if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
+                self._cicd_panel._refresh()
 
         worker = CICDWorker(fn)
         worker.log.connect(_emit_log)
@@ -1386,6 +1624,15 @@ class SimulinkModule(QWidget):
         worker.finished.connect(lambda: setattr(self, "_worker", None))
         self._worker = worker
         worker.start()
+
+    def open_cicd_panel(self):
+        """打开 CI/CD 全链路面板 (验证→训练→集成→部署 状态一览)"""
+        if not getattr(self, "_cicd_panel", None):
+            self._cicd_panel = CICDPanel(self)
+        self._cicd_panel._refresh()
+        self._cicd_panel.show()
+        self._cicd_panel.raise_()
+        self._cicd_panel.activateWindow()
 
     def on_validate(self):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
@@ -1403,7 +1650,7 @@ class SimulinkModule(QWidget):
             os.remove(tmp)
             return (rc == 0), ("模型合规, 可进入训练" if rc == 0 else "验证失败 · 修复后重试")
 
-        self._start_worker(_work, "正在验证模型标准合规性")
+        self._start_worker(_work, "正在验证模型标准合规性", stage="validate")
 
     def _ensure_training_data(self):
         """(后台线程内) 确定训练数据源:
@@ -1496,7 +1743,7 @@ class SimulinkModule(QWidget):
             return (rc == 0), (f"训练完成 · outputs/train/{ts_dir}/checkpoints/" if rc == 0
                                else "训练失败 (见上方日志)")
 
-        self._start_worker(_work, "正在准备训练 (拉取数据源 + 启动训练)")
+        self._start_worker(_work, "正在准备训练 (拉取数据源 + 启动训练)", stage="train")
 
     def on_integrate(self):
         """③ 集成: 后台执行 (打包 checkpoint → 上传 ECS)"""
@@ -1508,7 +1755,7 @@ class SimulinkModule(QWidget):
                                cwd=root)
             return (rc == 0), ("部署包已上传 ECS, 可进入部署" if rc == 0 else "集成失败 (见上方日志)")
 
-        self._start_worker(_work, "正在打包并上传 ECS")
+        self._start_worker(_work, "正在打包并上传 ECS", stage="integrate")
 
     def on_deploy(self):
         """④ 部署: 后台执行 (ECS 状态检查)"""
@@ -1520,7 +1767,7 @@ class SimulinkModule(QWidget):
                                cwd=root)
             return (rc == 0), ("部署状态已拉取 · 心跳正常" if rc == 0 else "部署状态检查失败")
 
-        self._start_worker(_work, "正在查询部署状态")
+        self._start_worker(_work, "正在查询部署状态", stage="deploy")
 
 
 # ── 独立运行入口 (调试) ──
