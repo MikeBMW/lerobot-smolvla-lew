@@ -1460,14 +1460,6 @@ class SimulinkModule(QWidget):
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
         tl2.addWidget(self.btn_pipeline)
-        self.btn_validate = mk_btn("✅ 验证", "CI/CD 第一环: 模型标准合规校验 (Model Advisor 对标)", self.on_validate, "#a371f7")
-        self.btn_train = mk_btn("🚀 训练", "选中模型节点 → 启动真实训练 (lerobot_train)", self.on_train, "#00d4aa")
-        self.btn_integrate = mk_btn("📦 集成", "打包 checkpoint → 上传 ECS 中转 (cicd_deploy)", self.on_integrate, "#58a6ff")
-        self.btn_deploy = mk_btn("🚚 部署", "从 ECS 拉取 → 推到 4090/Orin → 心跳验证", self.on_deploy, "#d4a800")
-        tl2.addWidget(self.btn_validate)
-        tl2.addWidget(self.btn_train)
-        tl2.addWidget(self.btn_integrate)
-        tl2.addWidget(self.btn_deploy)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
         lbl_op.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
@@ -2224,12 +2216,11 @@ class SimulinkModule(QWidget):
 
     # ── 启动器: 每个操作开一个后台线程, UI 不卡 ──
     def _start_worker(self, fn, busy_msg, stage=None):
-        """开后台线程执行 fn, 期间禁用 4 按钮防重入; stage 更新 CI/CD 面板状态"""
-        if getattr(self, "_worker", None) and self._worker.isRunning():
+        """开后台线程执行 fn, 期间防重入; stage 更新 CI/CD 面板状态"""
+        w = getattr(self, "_worker", None)
+        if w is not None and w.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候…")
             return
-        for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
-            b.setEnabled(False)
         if stage:
             self._cicd_state[stage] = 1  # 运行中
         self._log(f"⏳ {busy_msg} (后台执行, UI 可继续操作)…")
@@ -2238,8 +2229,6 @@ class SimulinkModule(QWidget):
             self._log(msg)
 
         def _done(ok, summary):
-            for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
-                b.setEnabled(True)
             if stage:
                 self._cicd_state[stage] = 2 if ok else 3  # 成功/失败
             if ok:
@@ -2609,8 +2598,6 @@ class SimulinkModule(QWidget):
         if cur is not None and cur.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候…")
             return
-        for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
-            b.setEnabled(False)
         node["status"] = "running"
         it = self._items.get(node["id"])
         if it:
@@ -2619,8 +2606,6 @@ class SimulinkModule(QWidget):
         self._log(f"⏳ 双击运行 [{node['name']}] ({label}) — 后台执行, UI 可继续操作…")
 
         def _done(ok, summary):
-            for b in (self.btn_validate, self.btn_train, self.btn_integrate, self.btn_deploy):
-                b.setEnabled(True)
             node["status"] = "success" if ok else "error"
             it2 = self._items.get(node["id"])
             if it2:
