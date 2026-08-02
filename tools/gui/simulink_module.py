@@ -852,6 +852,9 @@ class SimulinkModule(QWidget):
             matched = True
         if matched:
             self._tutorial_next()
+        else:
+            # 点错目标: 给出明确指引 (不静默)
+            self._tutorial_hint_mismatch(action, kind)
 
     def _tutorial_on_node_moved(self):
         """节点被拖动 → 推进教程 (node 步骤)"""
@@ -859,6 +862,25 @@ class SimulinkModule(QWidget):
             return
         if self._tutorial_step < len(self.TUTORIAL_STEPS) and self.TUTORIAL_STEPS[self._tutorial_step][0] == "node":
             self._tutorial_next()
+
+    def _tutorial_hint_mismatch(self, action, expected_kind):
+        """点错目标时给明确提示: 该点哪个高亮按钮"""
+        kind_labels = {"ref": "下方参考应用按钮(金色高亮)",
+                       "btn_run": "工具栏「▶ 运行」按钮(金色高亮)",
+                       "btn_step": "工具栏「⏭ 单步」按钮(金色高亮)",
+                       "btn_stop": "工具栏「⏹ 停止」按钮(金色高亮)",
+                       "btn_save": "工具栏「💾 导出」按钮(金色高亮)",
+                       "node": "画布上的节点(拖动它)"}
+        target = kind_labels.get(expected_kind, "高亮的位置")
+        self._log(f"❓ 不是这一步哦 — 请点击: {target}")
+        # 用 QToolTip 在目标控件旁弹出气泡 (更醒目)
+        try:
+            from PyQt5.QtWidgets import QToolTip
+            if self._tutorial_hl is not None:
+                QToolTip.showText(self._tutorial_hl.mapToGlobal(self._tutorial_hl.rect().center()),
+                                  f"👆 请点击这里:\n{target}", self._tutorial_hl)
+        except Exception:
+            pass
 
     def _tutorial_cleanup(self):
         """退出教程: 清除高亮"""
@@ -996,7 +1018,9 @@ class SimulinkModule(QWidget):
 
     def start_sim(self):
         if not self.nodes:
-            self._log("⚠️ 画布为空 — 先从左侧模块库添加节点 (0帧起手)")
+            self._log("⚠️ 画布为空 — 点击上方「🗂 参考应用」一键加载模板, 或从左侧模块库添加节点")
+            if self._tutorial_active:
+                self._tutorial_hint_mismatch("run", "ref")
             return
         self._sim_t = 0.0
         self._sim_dt = self.sp_dt.value()
