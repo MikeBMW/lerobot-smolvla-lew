@@ -634,9 +634,27 @@ class SimLinkItem(QGraphicsObject):
         self._anim_timer.timeout.connect(self._tick_flow)
         self._anim_timer.start(80)
 
+    def _switch_active(self):
+        """链路流入 Switch 节点时, 是否被当前路由选中:
+        选中 → 正常(可流动); 未选中 → 停流+暗灰 (老倪 2026-08-02: '选metaworld, orin那条线不该流动')"""
+        dst = self.dst.node
+        if dst.get("type") != "switch":
+            return True
+        sel = dst.get("params", {}).get("switch", "orin")
+        src = self.src.node
+        side = src.get("params", {}).get("source")
+        if side:
+            return side == sel
+        nm = src.get("name", "").lower()
+        if "orin" in nm:
+            return sel == "orin"
+        if "metaworld" in nm:
+            return sel == "metaworld"
+        return True
+
     def _tick_flow(self):
-        """流动动画: 仅在链路有数据流时推进偏移"""
-        if self.src.node.get("status") == "success" or self.src.node.get("status") == "running":
+        """流动动画: 链路被 switch 选中 且 源节点运行/成功 → 推进偏移; 否则停流"""
+        if self._switch_active() and self.src.node.get("status") in ("success", "running"):
             self._flow_offset += 2.0
             self.update()
         elif self._flow_offset != 0:
@@ -670,9 +688,13 @@ class SimLinkItem(QGraphicsObject):
         color = QColor(COLORS.get(t, "#58a6ff"))
         painter.setRenderHint(QPainter.Antialiasing)
         path = self._path()
+        active = self._switch_active()
+        # 未选中链路 (switch 未选该输入): 暗灰实线, 永不流动 — 与选中链路明显区分
+        if not active:
+            color = QColor("#3a3f4b")
         pen = QPen(color, 2.5 if self._hover or self.isSelected() else 1.8)
-        # 数据流动画: 源节点成功/运行中 → 虚线流动
-        flowing = self.src.node.get("status") in ("success", "running")
+        # 数据流动画: 链路被 switch 选中 且 源节点成功/运行中 → 虚线流动
+        flowing = active and self.src.node.get("status") in ("success", "running")
         if flowing:
             pen.setStyle(Qt.DashLine)
             pen.setDashPattern([6, 4])
@@ -1018,8 +1040,8 @@ class SimulinkModule(QWidget):
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("📖 教程", "交互式引导: 高亮+文字提示, 全程鼠标", self.start_tutorial, "#d4a800")
-        self.btn_compare = mk_btn("📊 性能对比", "基础模型 vs 微调模型 性能对比 (CICD)", self.show_compare, "#00d4aa")
-        self.btn_scope = mk_btn("🖥 Scope示波器", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
+        self.btn_compare = mk_btn("📊 对比", "基础模型 vs 微调模型 性能对比 (CICD)", self.show_compare, "#00d4aa")
+        self.btn_scope = mk_btn("🖥 Scope", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_stop)
@@ -1029,14 +1051,16 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_scope)
 
         tl.addSpacing(16)
-        tl.addWidget(QLabel("仿真时间"))
+        tl.addWidget(QLabel("时间"))
         self.sp_t_end = QDoubleSpinBox(); self.sp_t_end.setRange(0.1, 3600)
         self.sp_t_end.setValue(self._sim_t_end); self.sp_t_end.setSuffix(" s")
+        self.sp_t_end.setMaximumWidth(70)
         self.sp_t_end.setStyleSheet("background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
         tl.addWidget(self.sp_t_end)
-        tl.addWidget(QLabel("步长"))
+        tl.addWidget(QLabel("dt"))
         self.sp_dt = QDoubleSpinBox(); self.sp_dt.setRange(0.001, 1.0)
         self.sp_dt.setValue(self._sim_dt); self.sp_dt.setDecimals(3)
+        self.sp_dt.setMaximumWidth(62)
         self.sp_dt.setStyleSheet("background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
         tl.addWidget(self.sp_dt)
 
@@ -1055,7 +1079,7 @@ class SimulinkModule(QWidget):
         # ── 真实操作按钮 (CI/CD 闭环: 验证→训练→集成→部署) ──
         tl.addSpacing(16)
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
-        self.btn_cicd = mk_btn("🔗 CI/CD 全链路", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
+        self.btn_cicd = mk_btn("🔗 CI/CD", "打开 CI/CD 全景: 验证→训练→集成→部署 状态一目了然", self.open_cicd_panel, "#ffd700")
         tl.addWidget(self.btn_cicd)
         self.btn_validate = mk_btn("✅ 验证", "CI/CD 第一环: 模型标准合规校验 (Model Advisor 对标)", self.on_validate, "#a371f7")
         self.btn_train = mk_btn("🚀 训练", "选中模型节点 → 启动真实训练 (lerobot_train)", self.on_train, "#00d4aa")
