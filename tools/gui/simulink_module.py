@@ -621,23 +621,29 @@ class PipelinePanel(QDialog):
 
     def _refresh(self):
         st = self._read_state()
-        now = st.get("stage", "?")
-        stt = st.get("state", "pending")
+        stages = st.get("stages", {}) or {}
         for sid, (card, st_lbl, info) in self._cards.items():
-            st_lbl.setText(self._STATUS_ICON.get(stt if sid == now else "pending", "○"))
-            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt if sid == now else 'pending','#8b949e')}; font-size:13px; font-weight:700; background:transparent; border:none;")
+            sid_st = stages.get(str(sid), {}).get("state", "pending")
+            st_lbl.setText(self._STATUS_ICON.get(sid_st, "○"))
+            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(sid_st,'#8b949e')}; font-size:13px; font-weight:700; background:transparent; border:none;")
             card.setStyleSheet("QFrame#stage%d { background:#14181f; border:2px solid %s; border-radius:10px; }"
-                               % (sid, self._STATUS_COLOR.get(stt if sid == now else "pending", "#1e2740")))
-            if sid == 1 and st.get("ckpt1"):
-                info.setText("ckpt1: " + os.path.basename(os.path.dirname(os.path.dirname(st["ckpt1"]))))
-            elif sid == 2 and st.get("stage2"):
-                r = st["stage2"]
+                               % (sid, self._STATUS_COLOR.get(sid_st, "#1e2740")))
+            sdata = stages.get(str(sid), {})
+            def _ckpt_name(ck):
+                parts = ck.replace("\\", "/").split("/")
+                return parts[-4] if len(parts) >= 4 else ck
+            if sid == 1 and sdata.get("ckpt"):
+                info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
+            elif sid == 2 and sdata.get("result"):
+                r = sdata["result"]
                 if r.get("dim_mismatch"):
-                    info.setText("⚠️ 维度不匹配 → 必须微调")
+                    info.setText("⚠️ 维度不匹配 → 必须微调 (S3)")
                 else:
                     info.setText(f"MSE={r.get('action_mse',0):.4f} · 成功率={r.get('success_rate',0)*100:.0f}% · {r.get('verdict','')}")
-            elif sid == 3 and st.get("ckpt3"):
-                info.setText("ckpt3: " + os.path.basename(os.path.dirname(os.path.dirname(st["ckpt3"]))))
+            elif sid == 3 and sdata.get("ckpt"):
+                info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
+        now = st.get("stage", "?")
+        stt = stages.get(str(now), {}).get("state", st.get("state", "pending"))
         self.lbl_stage_now.setText(f"当前: Stage {now} · {stt}")
         self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#8b949e')}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         log = st.get("log", "")

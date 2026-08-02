@@ -42,7 +42,8 @@ def load_state():
         except Exception:
             pass
     return {"stage": 1, "state": "pending", "steps1": 300, "steps3": 300,
-            "ckpt1": None, "ckpt3": None, "stage2": None, "ts": None, "log": ""}
+            "ckpt1": None, "ckpt3": None, "stage2": None, "ts": None, "log": "",
+            "stages": {}}
 
 
 def save_state(st):
@@ -211,6 +212,9 @@ print(json.dumps(res))
 
 def run_stage(stage: int, steps: int) -> bool:
     st = load_state()
+    stages = st.setdefault("stages", {})
+    cur = stages.setdefault(str(stage), {"state": "pending"})
+    cur["state"] = "running"
     st["stage"] = stage
     st["state"] = "running"
     st["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -220,10 +224,10 @@ def run_stage(stage: int, steps: int) -> bool:
         if stage == 1:
             ok, ckpt = run_train(1, steps)
             if ok:
-                st["ckpt1"] = ckpt
-                st["steps1"] = steps
+                cur["ckpt"] = ckpt
+                cur["steps"] = steps
         elif stage == 2:
-            ckpt1 = st.get("ckpt1")
+            ckpt1 = st.get("ckpt1") or stages.get("1", {}).get("ckpt")
             if not ckpt1:
                 # 兜底: 用最新 metaworld 训练 ckpt
                 ckpt1 = latest_ckpt("outputs/train/act_mw_v111")
@@ -232,9 +236,9 @@ def run_stage(stage: int, steps: int) -> bool:
                 return False
             ok, res = run_stage2(ckpt1)
             if ok:
-                st["stage2"] = res
+                cur["result"] = res
         elif stage == 3:
-            ckpt1 = st.get("ckpt1") or latest_ckpt("outputs/train/act_mw_v111")
+            ckpt1 = st.get("ckpt1") or stages.get("1", {}).get("ckpt") or latest_ckpt("outputs/train/act_mw_v111")
             if not ckpt1:
                 _log("❌ Stage3 需要 Stage1 的 checkpoint")
                 return False
@@ -244,13 +248,17 @@ def run_stage(stage: int, steps: int) -> bool:
                 _log("⚠️ stage1 权重迁移失败 (可能维度不匹配) → 降级从零训练")
                 ok, ckpt = run_train(3, steps, pretrained=None)
             if ok:
-                st["ckpt3"] = ckpt
-                st["steps3"] = steps
+                cur["ckpt"] = ckpt
+                cur["steps"] = steps
     except Exception as ex:
         _log(f"❌ Stage{stage} 异常: {ex}")
         ok = False
-    st["state"] = "success" if ok else "failed"
-    st["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    # 每阶段独立状态 (历史阶段保持 success, 不被后续阶段覆盖)
+    cur["state"] = "success" if ok else "failed"
+    cur["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    st["stage"] = stage
+    st["state"] = cur["state"]
+    st["ts"] = cur["ts"]
     save_state(st)
     return ok
 
