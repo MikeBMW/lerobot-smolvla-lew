@@ -92,7 +92,7 @@ def main():
                 SEEN.add(latest)
                 frames = meta.get("frames", "?")
                 log(f"📥 新数据: {latest} | frames={frames}")
-                if isinstance(frames, int) and frames >= 50:
+                if isinstance(frames, int) and frames >= 20:
                     log("⚡ 数据量达标, 拉取+训练...")
                     pkg = pull_data()
                     if pkg:
