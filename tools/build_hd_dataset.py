@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Orin 真机数据 → LeRobot 数据集 (6D state / 6D action)
-从 data/orin_live/*.json (小芳采集) 构建标准数据集
+"""Z-MAX 高清训练数据集构建 · 采集数据(state/action) + 归档高清快照(318x180) 按时间戳融合
+原理:
+  采集包 meta.time + 帧 timestamp(相对秒) = 帧绝对时间
+  → 匹配归档快照 snap_{abs_ts}.jpg (高清图)
+  输出: 高清图 + 6D state/action/label → LeRobot 数据集
+
+用法: python3 tools/build_hd_dataset.py
 """
-import json, glob, sys
+import json, glob, os, sys, base64, io, subprocess, tempfile
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from PIL import Image
 
 proj = Path(__file__).parent.parent
-OUT = proj / "data" / "orin_6d"
+OUT = proj / "data" / "orin_hd"
 DATA = OUT / "data" / "chunk-000"
 META = OUT / "meta" / "episodes" / "chunk-000"
 VID = OUT / "videos" / "observation.image" / "chunk-000"
@@ -17,77 +22,113 @@ DATA.mkdir(parents=True, exist_ok=True)
 META.mkdir(parents=True, exist_ok=True)
 VID.mkdir(parents=True, exist_ok=True)
 
+ECS = "root@39.102.211.79"
+ARCHIVE = "/root/zmax-relay/archive"
+
+
+def fetch_snapshot_index():
+    """拉取归档快照索引 (文件名→绝对时间戳)"""
+    r = subprocess.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                        ECS, f"ls {ARCHIVE}/snap_*.jpg"], capture_output=True, text=True, timeout=30)
+    idx = {}
+    for line in r.stdout.strip().split("\n"):
+        if not line:
+            continue
+        name = os.path.basename(line)
+        try:
+            ts = int(name.split("_")[1])
+            idx[ts] = name
+        except Exception:
+            continue
+    return idx
+
+
+def fetch_snapshot_image(ts):
+    """从 ECS 拉取指定快照 (高清)"""
+    r = subprocess.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                        ECS, f"cat {ARCHIVE}/snap_{ts}_*.jpg"], capture_output=True, timeout=30)
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
 
 def main():
-    srcs = sorted(glob.glob(str(proj / "data/orin_live/*.json")))
+    print("📸 构建高清训练数据集 (采集state/action + 归档高清图)")
+    print("1/3 拉取归档索引...")
+    snap_idx = fetch_snapshot_index()
+    print(f"   归档快照: {len(snap_idx)} 帧")
+
+    # 读取所有采集包
+    srcs = sorted(glob.glob(str(proj / "data/orin_live/*.json")), key=os.path.getmtime)
     frames_all = []
     eps_all = []
     total = 0
-    print(f"📥 读取 {len(srcs)} 个真机数据包")
+    matched = 0
+    print("2/3 融合匹配...")
     for si, src in enumerate(srcs):
         d = json.load(open(src))
+        meta = d.get("meta", {})
+        base_ts = float(meta.get("time", 0))  # 包绝对时间
         frames = d.get("frames", [])
-        if not frames:
-            continue
-        ep_frames = []
-        ep_imgs = []
+        ep_frames = 0
         for i, fr in enumerate(frames):
-            st = fr.get("observation.state") or fr.get("state")
-            act = fr.get("action")
-            cam = fr.get("camera_b64") or fr.get("camera")
-            if st is None or act is None:
+            state = fr.get("observation.state") or fr.get("state")
+            action = fr.get("action")
+            if state is None or action is None:
                 continue
-            state = np.asarray(st, dtype=np.float32)
-            action = np.asarray(act, dtype=np.float32)
+            state = np.asarray(state, dtype=np.float32)
+            action = np.asarray(action, dtype=np.float32)
             if state.shape[0] != 6 or action.shape[0] != 6:
-                print(f"  ⚠️ {src} 帧{i} 维度异常: state{state.shape} action{action.shape}, 跳过")
                 continue
-            # 图像: base64 → 暂存 (按包分目录, 每包独立视频)
-            img_name = None
-            if cam:
-                import base64, io
-                try:
-                    img_bytes = base64.b64decode(cam)
-                    # 验证是有效 JPEG
-                    pil_check = Image.open(io.BytesIO(img_bytes))
-                    pil_check.verify()
-                    img_name = f"ep{si:03d}_f{total:05d}.jpg"
-                    (VID / img_name).write_bytes(img_bytes)
-                except Exception:
-                    img_name = None
-            if img_name is None:
-                continue  # 无有效图像 → 跳过该帧 (避免视频/parquet 帧数不一致)
+            # 绝对时间 = 包时间 + 帧相对时间
+            rel_ts = float(fr.get("timestamp") or i / 30.0)
+            abs_ts = int(base_ts + rel_ts)
+            # 找最近快照 (±2s)
+            best = None
+            best_d = 2.0
+            for st in snap_idx:
+                dd = abs(st - abs_ts)
+                if dd < best_d:
+                    best_d = dd
+                    best = st
+            if best is None:
+                continue
+            # 拉高清图
+            img_data = fetch_snapshot_image(best)
+            if not img_data:
+                continue
+            try:
+                Image.open(io.BytesIO(img_data)).verify()
+            except Exception:
+                continue
+            img_name = f"ep{si:03d}_f{total:05d}.jpg"
+            (VID / img_name).write_bytes(img_data)
             frames_all.append({
                 "observation.state": state.tolist(),
                 "action": action.tolist(),
-                "episode_index": si,   # 每包一个 episode (方案2, LeRobot 标准)
-                "frame_index": total,  # 全局索引 (视频合并顺序, 与 index 一致)
-                "timestamp": float(total / 30.0),  # 全局视频时间戳
+                "episode_index": si,
+                "frame_index": i,
+                "timestamp": rel_ts,
                 "next.reward": 0.0,
                 "next.done": False,
                 "next.success": False,
             })
-            ep_frames.append(i)
+            ep_frames += 1
             total += 1
+            matched += 1
         if ep_frames:
-            eps_all.append({"episode_index": si, "length": len(ep_frames)})
-            print(f"  包{si}: {len(ep_frames)}帧")
+            eps_all.append({"episode_index": si, "length": ep_frames})
+        print(f"   包{si}: {ep_frames}帧匹配高清")
 
-    print(f"\n✅ 总帧: {total}")
+    print(f"3/3 写数据集...")
+    print(f"   总帧: {total} (匹配高清 {matched})")
     if total == 0:
-        print("❌ 无有效帧")
+        print("❌ 无匹配帧")
         return
 
-    # parquet (float32 fixed-list 匹配 info)
-    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
     df = pd.DataFrame(frames_all)
     df["index"] = range(total)
     df["task_index"] = 0
-    df["next.reward"] = df["next.reward"].astype("float32")
-    df["next.done"] = df["next.done"].astype("bool")
-    df["next.success"] = df["next.success"].astype("bool")
-    import pyarrow as pa
-    import pyarrow.parquet as pq
     states = np.stack(df["observation.state"].values).astype(np.float32)
     actions = np.stack(df["action"].values).astype(np.float32)
     schema = pa.schema([
@@ -115,7 +156,6 @@ def main():
         df["task_index"].astype("int64").values,
     ], schema=schema)
     pq.write_table(table, DATA / "file-000.parquet")
-    print(f"✅ parquet float32 重写完成")
 
     # episodes
     eps = pd.DataFrame(eps_all)
@@ -128,13 +168,12 @@ def main():
         eps.at[i, "data/file_index"] = 0
         eps.at[i, "videos/observation.image/chunk_index"] = 0
         eps.at[i, "videos/observation.image/file_index"] = 0
-        eps.at[i, "videos/observation.image/from_timestamp"] = float(start) / 30.0   # 全局视频时间
-        eps.at[i, "videos/observation.image/to_timestamp"] = float(start + L - 1) / 30.0
+        eps.at[i, "videos/observation.image/from_timestamp"] = 0.0
+        eps.at[i, "videos/observation.image/to_timestamp"] = (L - 1) / 30.0
         eps.at[i, "tasks"] = 0
         eps.at[i, "meta/episodes/chunk_index"] = 0
         eps.at[i, "meta/episodes/file_index"] = 0
         start += L
-    # Z-MAX 修复: 索引列转 int64 (format 需要)
     for c in ["dataset_from_index", "dataset_to_index", "data/chunk_index", "data/file_index",
               "videos/observation.image/chunk_index", "videos/observation.image/file_index",
               "meta/episodes/chunk_index", "meta/episodes/file_index"]:
@@ -155,7 +194,7 @@ def main():
         "video_path": "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4",
         "features": {
             "observation.image": {
-                "dtype": "video", "shape": [480, 640, 3], "fps": 30,
+                "dtype": "video", "shape": [318, 180, 3], "fps": 30,
                 "names": ["height", "width", "channel"],
                 "video_info": {"video.fps": 30.0, "video.codec": "h264", "video.pix_fmt": "rgb24",
                                "video.is_depth_map": False, "has_audio": False},
@@ -172,48 +211,37 @@ def main():
             "next.reward": {"dtype": "float32", "shape": [1]},
             "next.done": {"dtype": "bool", "shape": [1]},
             "next.success": {"dtype": "bool", "shape": [1]},
+            "index": {"dtype": "int64", "shape": [1]},
+            "task_index": {"dtype": "int64", "shape": [1]},
         },
     }
     (OUT / "meta" / "info.json").write_text(json.dumps(info, indent=1))
-    # Z-MAX 修复: 补 index/task_index features (parquet 列匹配)
-    info["features"]["index"] = {"dtype": "int64", "shape": [1]}
-    info["features"]["task_index"] = {"dtype": "int64", "shape": [1]}
-    (OUT / "meta" / "info.json").write_text(json.dumps(info, indent=1))
-    states = np.stack([f["observation.state"] for f in frames_all])
-    actions = np.stack([f["action"] for f in frames_all])
     stats = {
         "observation.state": {"mean": states.mean(axis=0).tolist(), "std": states.std(axis=0).tolist()},
         "action": {"mean": actions.mean(axis=0).tolist(), "std": actions.std(axis=0).tolist()},
     }
     (OUT / "meta" / "stats.json").write_text(json.dumps(stats, indent=1))
-    # tasks.parquet (LeRobot 必需)
-    tasks_df = pd.DataFrame([{"task_index": 0, "task": "reach",
-                              "language_instruction": "reach target"}])
+    tasks_df = pd.DataFrame([{"task_index": 0, "task": "reach", "language_instruction": "reach target"}])
     tasks_df.to_parquet(OUT / "meta" / "tasks.parquet")
-    # 图像 jpg → file-000.mp4 (LeRobot 视频格式)
-    import subprocess, tempfile, glob as _glob
-    jpgs = sorted(_glob.glob(str(VID / "ep*.jpg")))
+
+    # 视频合并 (jpg → file-000.mp4)
+    jpgs = sorted(glob.glob(str(VID / "ep*.jpg")))
     if jpgs:
         with tempfile.TemporaryDirectory() as td:
-            # 重命名连续序号
             for k, j in enumerate(jpgs):
                 import shutil
                 shutil.copy(j, f"{td}/{k:06d}.jpg")
             subprocess.run([
                 "ffmpeg", "-y", "-framerate", "30", "-i", f"{td}/%06d.jpg",
                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
-                "-vsync", "0", "-fps_mode", "passthrough",
+                "-vsync", "cfr", "-r", "30", "-fps_mode", "cfr",
                 "-loglevel", "error", str(VID / "file-000.mp4"),
             ], check=True)
-        (VID / "file-000.mp4.metadata").write_text(
-            "\n".join(str(i) for i in range(total)))
-        # 删除 jpg
+        (VID / "file-000.mp4.metadata").write_text("\n".join(str(i) for i in range(total)))
         for j in jpgs:
             Path(j).unlink(missing_ok=True)
-        print(f"🎬 视频合并: {len(jpgs)} 帧 → file-000.mp4")
-    print(f"✅ 数据集: {OUT} ({total}帧/{len(eps_all)}轨迹)")
-    print(f"   state {states.shape} action {actions.shape}")
-    print(f"   action range: [{actions.min():.4f}, {actions.max():.4f}]")
+    print(f"✅ 高清数据集: {OUT} ({total}帧/{len(eps_all)}轨迹)")
+    print(f"   图像: 318x180 高清 (替代 64x64 缩略图)")
 
 
 if __name__ == "__main__":
