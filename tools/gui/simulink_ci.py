@@ -17,7 +17,7 @@ import json, sys, os, time, random, html
 from pathlib import Path
 
 # ── 规范 (与 simulink-spec.md v1.0 / simulink_module.py 完全一致) ──
-NODE_TYPES = {"condition", "model", "action", "system", "hardware"}
+NODE_TYPES = {"condition", "model", "action", "system", "hardware", "switch"}
 REQUIRED_NODE_KEYS = {"id", "type", "name", "x", "y"}
 FORMAT = "zmax-simulink"
 VERSION = "1.0"

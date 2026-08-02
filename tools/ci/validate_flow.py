@@ -14,7 +14,7 @@ CI/CD 管道第一环: 校验工作流 JSON 的标准合规性
 """
 import json, sys, os
 
-NODE_TYPES = {"condition", "model", "action", "system", "hardware"}
+NODE_TYPES = {"condition", "model", "action", "system", "hardware", "switch"}
 REQUIRED = {"id", "type", "name", "x", "y"}
 
 

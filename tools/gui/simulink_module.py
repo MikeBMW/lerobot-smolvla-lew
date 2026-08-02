@@ -25,6 +25,7 @@ NODE_TYPES = {
     "action":    {"cn": "动作", "color": "#00d4aa"},
     "system":    {"cn": "系统", "color": "#d4a800"},
     "hardware":  {"cn": "硬件", "color": "#ff4444"},
+    "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -44,16 +45,17 @@ REFERENCE_APPS = [
     # "控制台是主控点, 能看到CICD全局, 在node上要有所有链路主要node, 要能运行;
     #  既要有metaworld数据, 又要有Orin, 又要有ACT模型, 可随意切换如何训练")
     ("🎛 CICD 主控台", [
-        ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin", "active": True,
-                                        "desc": "双击切换数据源 · 当前激活"}),
-        ("hardware", "📦 metaworld 数据", {"steps": 300, "source": "metaworld", "active": False,
-                                           "desc": "占位集 · 双击切换"}),
+        ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin",
+                                        "desc": "真实产线数据"}),
+        ("hardware", "📦 metaworld 数据", {"steps": 300, "source": "metaworld",
+                                           "desc": "占位集·管道验证"}),
+        ("switch", "🔀 Switch 数据源", {"switch": "orin", "desc": "双击切换 Orin/metaworld"}),
         ("model", "🧠 ACT 训练", {"steps": 300, "chunk_size": 7, "dim_model": 256,
                                   "desc": "双击运行训练 (lerobot_train)"}),
         ("condition", "✅ 模型验证", {"strict": True, "desc": "双击运行验证 (validate_flow)"}),
         ("action", "📦 集成打包", {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"}),
         ("hardware", "🚚 部署 Orin", {"target": "192.168.23.10", "desc": "双击查部署状态"}),
-    ], [(0, 2), (1, 2), (2, 3), (3, 4), (4, 5)]),
+    ], [(0, 2), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)]),
     ("⚙️ CI/CD 默认流水线", [
         ("hardware", "📥 输入数据", {"ip": "Orin", "fps": 30, "desc": "采集数据源"}),
         ("model", "🧠 ACT 模型", {"chunk_size": 7, "dim_model": 256, "desc": "训练/推理"}),
@@ -117,13 +119,14 @@ LIBRARY = [
         {"name": "A09 AOI检测",    "params": {}},
         {"name": "A10 分拣",       "params": {"bin": 3}},
     ]),
-    ("system", "系统 (6)", [
+    ("system", "系统 (7)", [
         {"name": "S00 任务调度", "params": {"policy": "fifo"}},
         {"name": "S01 工作流",   "params": {"file": "flow.json"}},
         {"name": "S02 数据闭环", "params": {"mode": "auto"}},
         {"name": "S03 日志",     "params": {"level": "info"}},
         {"name": "S04 W&B监控",  "params": {}},
         {"name": "S05 心跳",     "params": {"interval": 5}},
+        {"name": "S06 Switch 数据源", "params": {"switch": "orin"}},
     ]),
     ("hardware", "硬件 (8)", [
         {"name": "H00 Orin Nano",  "params": {"ip": "192.168.23.10", "port": 8765, "fps": 30}},
@@ -555,11 +558,15 @@ class SimNodeItem(QGraphicsObject):
         if len(name) > 16:
             name = name[:15] + "…"
         painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, name)
-        # 类型标签
+        # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld)
         painter.setPen(color)
         painter.setFont(QFont("Arial", 7))
-        painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                         NODE_TYPES.get(t, {}).get("cn", t))
+        if t == "switch":
+            painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                             f"🔀 SEL: {params.get('switch', 'orin')}")
+        else:
+            painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                             NODE_TYPES.get(t, {}).get("cn", t))
         # 状态徽章 (右上角: ● 运行中 / ✓ 成功 / ✕ 失败)
         st_icon = {"running": "●", "success": "✓", "error": "✕"}.get(status, "")
         if is_active_src:
@@ -568,12 +575,24 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(color)
             painter.setFont(QFont("Arial", 9, QFont.Bold))
             painter.drawText(QRectF(self.w - 22, 2, 20, 16), Qt.AlignRight | Qt.AlignVCenter, st_icon)
-        # 输入端口 (左)
-        painter.setBrush(color)
-        painter.setPen(QPen(QColor("#0a0a0f"), 1))
-        painter.drawEllipse(QPointF(0, self.h / 2), 5, 5)
-        # 输出端口 (右)
-        painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
+        # 端口: Switch 双输入 (左上下) + 单输出 (右中); 其他节点单进单出
+        if t == "switch":
+            sel = params.get("switch", "orin")
+            for idx, key in ((0, "orin"), (1, "metaworld")):
+                py = 12 + idx * 26  # 上: in1(orin) 下: in2(metaworld)
+                active = (key == sel)
+                painter.setBrush(QColor("#3fb950") if active else color)
+                painter.setPen(QPen(QColor("#0a0a0f"), 1))
+                r = 7 if active else 5
+                painter.drawEllipse(QPointF(0, py), r, r)
+            painter.setBrush(color)
+            painter.setPen(QPen(QColor("#0a0a0f"), 1))
+            painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
+        else:
+            painter.setBrush(color)
+            painter.setPen(QPen(QColor("#0a0a0f"), 1))
+            painter.drawEllipse(QPointF(0, self.h / 2), 5, 5)
+            painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
         # 参数摘要
         params = self.node.get("params", {})
         if params:
@@ -1000,12 +1019,14 @@ class SimulinkModule(QWidget):
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("📖 教程", "交互式引导: 高亮+文字提示, 全程鼠标", self.start_tutorial, "#d4a800")
         self.btn_compare = mk_btn("📊 性能对比", "基础模型 vs 微调模型 性能对比 (CICD)", self.show_compare, "#00d4aa")
+        self.btn_scope = mk_btn("🖥 Scope示波器", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
         tl.addWidget(self.btn_compare)
+        tl.addWidget(self.btn_scope)
 
         tl.addSpacing(16)
         tl.addWidget(QLabel("仿真时间"))
@@ -1336,7 +1357,7 @@ class SimulinkModule(QWidget):
             "name": name,
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
-                     "system": "◉", "hardware": "▣"}[ntype],
+                     "system": "◉", "hardware": "▣", "switch": "🔀"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
             "inputs": [{"id": "in1", "label": "in", "dtype": "any"}],
@@ -1475,6 +1496,16 @@ class SimulinkModule(QWidget):
         btns = QDialogButtonBox(QDialogButtonBox.Ok)
         btns.accepted.connect(dlg.accept)
         lay.addWidget(btns)
+        dlg.exec_()
+
+    def show_scope(self):
+        """打开 Scope 示波器对比 (新老模型动作曲线)"""
+        try:
+            from simulink_scope import ScopeCompareDialog
+        except ImportError:
+            QMessageBox.warning(self, "Scope", "缺少 simulink_scope.py 模块")
+            return
+        dlg = ScopeCompareDialog(self)
         dlg.exec_()
 
     def start_sim(self):
@@ -1861,15 +1892,19 @@ class SimulinkModule(QWidget):
         real_dir = os.path.join(root, "data", "closed_loop")
         placeholder = os.path.join(root, "data", "metaworld_act")
 
-        # 0. 画布数据源节点优先 (CICD 主控台): metaworld 激活 → 直接占位集, 跳过 relay
-        src = self._active_source()
+        # 0. 画布数据源选择: Switch 节点优先, 其次数据源激活节点 (CICD 主控台)
+        sw = self._switch_state()
+        if sw is not None:
+            src = sw
+        else:
+            src = self._active_source()
         if src == "metaworld":
             if os.path.isdir(placeholder):
-                self.log_signal.emit("📦 画布数据源 [metaworld] 激活 → 使用 metaworld 占位集 (不拉 relay)")
+                self.log_signal.emit("📦 数据源 [metaworld] → 使用 metaworld 占位集 (不拉 relay)")
                 return placeholder, "metaworld 占位集", False
-            self.log_signal.emit("⚠️ 画布选了 metaworld, 但 data/metaworld_act 不存在 → 回退自动选择")
+            self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_act 不存在 → 回退自动选择")
         elif src == "orin":
-            self.log_signal.emit("📥 画布数据源 [Orin] 激活 → 强制拉取 relay 真实数据")
+            self.log_signal.emit("📥 数据源 [Orin] → 强制拉取 relay 真实数据")
 
         # 1. 尝试拉真实数据
         try:
@@ -1991,11 +2026,15 @@ class SimulinkModule(QWidget):
     ]
 
     def on_node_activated(self, node):
-        """双击节点: 数据源 → 切换; 环节节点 → 运行; 其他 → 参数框"""
+        """双击节点: 数据源 → 切换; Switch → 切换路由; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
         # 1) 数据源节点: 切换激活
         if params.get("source"):
             self._toggle_source(node)
+            return
+        # 1.5) Switch 节点 (仿 Simulink Switch 块): 切换数据源路由
+        if params.get("switch") or node.get("type") == "switch":
+            self._toggle_switch(node)
             return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
@@ -2010,6 +2049,27 @@ class SimulinkModule(QWidget):
             it = self._items.get(node["id"])
             if it:
                 it.update()
+
+    def _toggle_switch(self, node):
+        """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""
+        p = node.setdefault("params", {})
+        p["switch"] = "metaworld" if p.get("switch", "orin") == "orin" else "orin"
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        sel = p["switch"]
+        label = "Orin 真实数据 (relay/latest)" if sel == "orin" else "metaworld 占位集"
+        self._log(f"🔀 Switch 切换到 → {label} · 训练将使用该数据源 (双击可再切换)")
+        self._sync()
+
+    def _switch_state(self):
+        """画布上 Switch 节点当前路由 → 'orin' | 'metaworld' | None"""
+        for n in self.nodes:
+            p = n.get("params", {})
+            if p.get("switch"):
+                return p["switch"] if p["switch"] in ("orin", "metaworld") else "orin"
+        return None
 
     def _toggle_source(self, node):
         """切换训练数据源: 当前数据源节点激活, 其他数据源节点取消"""
