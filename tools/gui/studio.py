@@ -3241,7 +3241,18 @@ class EvalModule(SubModuleWidget):
             b.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px 18px;}} 
             QPushButton:hover{{border-color:{SYS12_COLOR};}}""")
             btn_row.addWidget(b)
+        # 模型对比按钮 (基线 vs 最新 · 自动迭代判断)
+        cmp_btn = QPushButton("🔬 基线对比")
+        cmp_btn.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_CYAN}; border:1px solid {C_CYAN}; border-radius:6px; padding:10px 18px;}}
+        QPushButton:hover{{border-color:{C_CYAN}; background:{C_HOVER};}}""")
+        cmp_btn.clicked.connect(self._run_compare)
+        btn_row.addWidget(cmp_btn)
         bl.addLayout(btn_row)
+        
+        # 对比结果标签
+        self.cmp_result = QLabel("未运行对比")
+        self.cmp_result.setStyleSheet(f"color:{C_GRAY}; font-size:11px; padding:4px;")
+        bl.addWidget(self.cmp_result)
         
         self.log = QTextEdit(); self.log.setReadOnly(True)
         self.log.setFont(QFont("Consolas", 10))
@@ -3250,6 +3261,28 @@ class EvalModule(SubModuleWidget):
         body.setLayout(bl)
         self._build_shell(body)
     
+    def _run_compare(self):
+        """模型对比: 读取 act_compare 结果 (基线 vs 最新) · 自动判断提升"""
+        import glob
+        proj = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        jsons = sorted(glob.glob(os.path.join(proj, "docs", "CICD_COMPARE_*.json")))
+        if not jsons:
+            self.cmp_result.setText("⚠️ 无对比结果 — 先运行 tools/act_compare.py")
+            self.cmp_result.setStyleSheet(f"color:#d29922; font-size:11px; padding:4px;")
+            return
+        d = json.load(open(jsons[-1]))
+        base, cand = d["baseline"], d["candidate"]
+        imp = d.get("mse_improve_pct", 0)
+        improved = imp > 0
+        color = "#2ea043" if improved else "#f85149"
+        verdict = "✅ 提升" if improved else "❌ 未提升 (需改进重训)"
+        self.cmp_result.setText(
+            f"{verdict} · MSE: 基线 {base['action_mse']:.1f} → 候选 {cand['action_mse']:.1f} "
+            f"({imp:+.1f}%) | 成功率: {base['success_rate']*100:.0f}% → {cand['success_rate']*100:.0f}% "
+            f"| 延迟: {base['latency_ms']:.1f}→{cand['latency_ms']:.1f}ms")
+        self.cmp_result.setStyleSheet(f"color:{color}; font-size:11px; font-weight:700; padding:4px;")
+        self.log.append(f"[{time.strftime('%H:%M:%S')}] 🔬 对比: {jsons[-1]} → {verdict} ({imp:+.1f}%)")
+
     def _show_training_record(self, records):
         """显示选中的训练记录"""
         idx = self.eval_record_combo.currentIndex()

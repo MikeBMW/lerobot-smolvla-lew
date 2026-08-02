@@ -1,0 +1,19 @@
+{
+  "baseline": {
+    "tag": "\u57fa\u7ebf",
+    "frames": 100,
+    "action_mse": 12037.782962417603,
+    "mse_std": 10849.215234327634,
+    "success_rate": 0.0,
+    "latency_ms": 3.9409947395324707
+  },
+  "candidate": {
+    "tag": "\u5019\u9009v1.1.0",
+    "frames": 100,
+    "action_mse": 11154.977496795655,
+    "mse_std": 10308.565151500126,
+    "success_rate": 0.0,
+    "latency_ms": 1.3088035583496094
+  },
+  "mse_improve_pct": 7.33
+}
