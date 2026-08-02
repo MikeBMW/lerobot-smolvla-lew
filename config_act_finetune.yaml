@@ -1,0 +1,44 @@
+# Z-MAX ACT 微调配置 · 从基础模型继续训练 (真实微调对比)
+# 基础模型: act_metaworld (300步) → 微调: 同数据 +2000步
+output_dir: outputs/train/act_finetune
+job_name: act_finetune
+
+policy:
+  type: act
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-act-finetune
+  pretrained_path: outputs/train/act_metaworld/checkpoints/000300/pretrained_model
+  n_obs_steps: 1
+  n_action_steps: 7
+  chunk_size: 7
+  dim_model: 256
+  dim_feedforward: 1024
+  n_heads: 8
+  n_encoder_layers: 4
+  n_decoder_layers: 4
+  use_vae: true
+  latent_dim: 32
+
+dataset:
+  repo_id: lerobot/pusht
+  root: data/metaworld_act
+  episodes: [0]
+  use_imagenet_stats: true
+
+batch_size: 8
+steps: 2000
+num_workers: 0
+persistent_workers: false
+log_freq: 200
+eval_freq: 1000
+save_freq: 1000
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 5e-5
+  weight_decay: 0.0
+
+wandb:
+  enable: false
