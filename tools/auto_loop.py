@@ -18,6 +18,7 @@ import requests
 RELAY = "https://datadrive.world/api/relay"
 HOME = Path.home() / "lerobot-smolvla-lew"
 LIVE = HOME / "data" / "orin_live"
+LOCK = HOME / "outputs" / "train" / ".loop_lock"   # 训练锁 (防并发重建数据集)
 CFG = "config_act_loop.yaml"   # 闭环训练配置 (真机6D数据)
 SEEN = set()
 
@@ -89,10 +90,13 @@ def main():
             latest, meta, n = check_new_data()
             now = time.strftime("%H:%M:%S")
             if latest and latest not in SEEN:
-                SEEN.add(latest)
                 frames = meta.get("frames", "?")
                 log(f"📥 新数据: {latest} | frames={frames}")
                 if isinstance(frames, int) and frames >= 20:
+                    if LOCK.exists():
+                        log("🔒 训练进行中, 该包留待下一轮 (防并发破坏数据集)")
+                        continue
+                    SEEN.add(latest)
                     log("⚡ 数据量达标, 拉取+训练...")
                     pkg = pull_data()
                     if pkg:
@@ -101,18 +105,22 @@ def main():
                         fp.write_text(json.dumps(pkg, ensure_ascii=False))
                         log(f"💾 已存 {fp.name} ({len(pkg.get('frames',[]))}帧)")
                         # 重建数据集 → 训练 → 上传
-                        if build_dataset():
-                            model = train()
-                            if model and model.exists():
-                                log(f"✅ 训练完成: {model}")
-                                if upload(model):
-                                    log("🚀 模型已推回 ECS → 小芳拉取部署 Orin")
+                        LOCK.touch()
+                        try:
+                            if build_dataset():
+                                model = train()
+                                if model and model.exists():
+                                    log(f"✅ 训练完成: {model}")
+                                    if upload(model):
+                                        log("🚀 模型已推回 ECS → 小芳拉取部署 Orin")
+                                    else:
+                                        log("❌ 模型上传失败")
                                 else:
-                                    log("❌ 模型上传失败")
+                                    log("❌ 训练失败")
                             else:
-                                log("❌ 训练失败")
-                        else:
-                            log("❌ 数据集构建失败")
+                                log("❌ 数据集构建失败")
+                        finally:
+                            LOCK.unlink(missing_ok=True)
             elif latest is None and idle % 6 == 0:
                 log("⏳ 队列空, 等小芳采集数据...")
             idle += 1

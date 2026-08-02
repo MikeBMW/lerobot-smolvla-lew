@@ -35,6 +35,10 @@ def main():
             st = fr.get("observation.state") or fr.get("state")
             act = fr.get("action")
             cam = fr.get("camera_b64") or fr.get("camera")
+            label = str(fr.get("label") or "")
+            # 跳过 IDLE 空闲态 (action==state, 无训练价值)
+            if "IDLE" in label.upper() or "空闲" in label:
+                continue
             if st is None or act is None:
                 continue
             state = np.asarray(st, dtype=np.float32)
