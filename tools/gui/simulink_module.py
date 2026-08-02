@@ -364,7 +364,7 @@ class CICDPanel(QDialog):
         super().__init__(parent)
         self.module = module
         self.setWindowTitle("CI/CD 全链路 · Z-MAX")
-        self.setMinimumSize(760, 420)
+        self.setMinimumSize(980, 460)
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stage_items = {}
         self._pulse_timer = QTimer(self)
@@ -378,10 +378,10 @@ class CICDPanel(QDialog):
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(10)
         # 标题
-        t = QLabel("🔗 CI/CD 全链路流水线 · 验证 → 训练 → 集成 → 部署")
+        t = QLabel("🔗 CI/CD 全链路流水线 · 采集 → 训练 → 验证 → 集成 → 部署 → 推理")
         t.setStyleSheet("color:#ffd700; font-size:15px; font-weight:700; background:transparent; border:none;")
         lay.addWidget(t)
-        tip = QLabel("点击环节节点执行 · 运行中青色脉冲 · 完成后自动流转 · 与 Simulink 仿真闭环一致")
+        tip = QLabel("点击环节节点执行该环节 · ▶ 全流程 = 依次自动流转 · 运行中青色脉冲 · 完成后状态回显")
         tip.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
         lay.addWidget(tip)
 
@@ -395,16 +395,18 @@ class CICDPanel(QDialog):
         self._view.setFixedHeight(180)
         lay.addWidget(self._view)
 
-        # 4 环节定义
+        # 6 环节定义 (数据闭环全链路: 采集→训练→验证→集成→部署→推理)
         self._stages = [
-            ("validate", "① 验证", "模型标准合规校验\nModel Advisor 对标", self.module.on_validate),
+            ("collect",  "① 采集", "拉取 Orin 真实数据\nrelay → 修复 action → 落地", self.module.on_collect),
             ("train",    "② 训练", "ACT 训练 lerobot_train\n优先 Orin 真实数据", self.module.on_train),
-            ("integrate","③ 集成", "打包 checkpoint → ECS\ncicd_deploy push", self.module.on_integrate),
-            ("deploy",   "④ 部署", "拉取 → 4090/Orin\n心跳验证", self.module.on_deploy),
+            ("validate", "③ 验证", "模型标准合规校验\nModel Advisor 对标", self.module.on_validate),
+            ("integrate","④ 集成", "打包 checkpoint → ECS\ncicd_deploy push", self.module.on_integrate),
+            ("deploy",   "⑤ 部署", "推送模型 → Orin\n心跳验证", self.module.on_deploy),
+            ("infer",    "⑥ 推理", "Orin 推理状态\ninfer_count / 延迟", self.module.on_infer),
         ]
         # 放置节点 (横排, 带箭头)
         x0, y0 = 30, 40
-        gap = 175
+        gap = 140
         prev_item = None
         for i, (sid, title, desc, fn) in enumerate(self._stages):
             it = CICDStageItem(sid, title, desc, 0)
@@ -425,8 +427,16 @@ class CICDPanel(QDialog):
         self._stage_log.setWordWrap(True)
         lay.addWidget(self._stage_log)
 
-        # 底部: 保存工作流 + 刷新 + 关闭
+        # 底部: 全流程 + 保存工作流 + 刷新 + 关闭
         bl = QHBoxLayout()
+        self.btn_full = QPushButton("▶ 全流程 (采集→训练→验证→集成→部署→推理)")
+        self.btn_full.setStyleSheet("""
+            QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;
+            border-radius:4px; padding:5px 14px; font-size:11px; font-weight:700; }
+            QPushButton:hover { background:#ffd70044; }
+        """)
+        self.btn_full.clicked.connect(self.module._run_full_flow)
+        bl.addWidget(self.btn_full)
         bl.addStretch()
         self.btn_save_flow = QPushButton("💾 保存工作流 JSON")
         self.btn_save_flow.setStyleSheet("""
@@ -2197,6 +2207,7 @@ class SimulinkModule(QWidget):
                 self._log(f"✅ {summary}")
             else:
                 self._log(f"❌ {summary}")
+            self._flow_next()  # 全流程流转钩子 (无队列时无操作)
             # 若有打开的全链路面板, 自动刷新
             if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
                 self._cicd_panel._refresh()
@@ -2379,8 +2390,8 @@ class SimulinkModule(QWidget):
         self._start_worker(_work, "正在打包并上传 ECS", stage="integrate")
 
     def on_deploy(self):
-        """④ 部署: 后台执行 (ECS 状态检查)"""
-        self._log("════ ④ 部署 (ECS 状态检查) ════")
+        """⑤ 部署: 后台执行 (ECS 状态检查)"""
+        self._log("════ ⑤ 部署 (ECS 状态检查) ════")
 
         def _work():
             root = self._repo_root()
@@ -2390,6 +2401,82 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在查询部署状态", stage="deploy")
 
+    def on_collect(self):
+        """① 采集: 拉取 relay Orin 真实数据 → action 修复 → 落地"""
+        self._log("════ ① 采集 (relay → 修复 action → 落地) ════")
+
+        def _work():
+            import requests as _rq
+            root = self._repo_root()
+            real_dir = os.path.join(root, "data", "closed_loop")
+            try:
+                r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
+                pkgs = r.json().get("packages", 0) if r.status_code == 200 else 0
+            except Exception:
+                pkgs = 0
+            if pkgs <= 0:
+                return True, "中转队列无新包 (已全部落地)"
+            r = _rq.get("https://datadrive.world/api/relay/latest", timeout=15)
+            if r.status_code != 200:
+                return False, "拉取失败"
+            pkg = r.json()
+            frames = pkg.get("frames", [])
+            if not frames:
+                return False, "包无 frames"
+            sys.path.insert(0, os.path.join(root, "tools"))
+            from fix_orin_action import fix_frames
+            n_fixed, fixed = fix_frames(frames)
+            os.makedirs(real_dir, exist_ok=True)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            raw = os.path.join(real_dir, f"pkg_{ts}.json")
+            with open(raw, "w", encoding="utf-8") as f:
+                json.dump(pkg, f, ensure_ascii=False, indent=2)
+            extra = f" · action恒等已修复({n_fixed}帧)" if fixed else ""
+            return True, f"已落地 {len(frames)}帧 → {os.path.basename(raw)}{extra}"
+
+        self._start_worker(_work, "正在拉取 Orin 真实数据", stage="collect")
+
+    def on_infer(self):
+        """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
+        self._log("════ ⑥ 推理 (Orin 状态检查) ════")
+
+        def _work():
+            import requests as _rq
+            try:
+                r = _rq.get("https://datadrive.world/api/relay/orin/status", timeout=6)
+                if r.status_code != 200:
+                    return False, "Orin 状态拉取失败"
+                o = r.json()
+                online = o.get("online", False)
+                infer = o.get("infer_count", 0)
+                ms = o.get("last_infer_ms")
+                model = o.get("model", "?")
+                msg = f"Orin {'●在线' if online else '○离线'} · 模型{model} · 推理{infer}次"
+                if ms:
+                    msg += f" · 最近{ms}ms"
+                return online, msg
+            except Exception as ex:
+                return False, f"Orin 状态拉取失败: {ex}"
+
+        self._start_worker(_work, "正在检查 Orin 推理状态", stage="infer")
+
+    # ── 全流程自动流转 (CICD 面板 ▶ 按钮): 依次执行 6 环节 ──
+    def _run_full_flow(self):
+        """采集→训练→验证→集成→部署→推理 依次自动流转"""
+        w = getattr(self, "_worker", None)
+        if w is not None and w.isRunning():
+            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            return
+        self._flow_queue = [self.on_collect, self.on_train, self.on_validate,
+                            self.on_integrate, self.on_deploy, self.on_infer]
+        self._flow_queue.pop(0)()
+
+    def _flow_next(self):
+        """(worker 完成后) 执行下一个环节"""
+        if getattr(self, "_flow_queue", None):
+            fn = self._flow_queue.pop(0)
+            fn()
+
     # ════════════════════════════════════════════════════════════
     # CICD 主控台: 节点双击 → 数据源切换 / 运行环节 (2026-08-02)
     # 老倪: "控制台是主控点, 在node上要有所有链路主要node, 要能运行;
@@ -2397,10 +2484,12 @@ class SimulinkModule(QWidget):
     # ════════════════════════════════════════════════════════════
     # 节点名 → 环节执行器 (双击运行)
     NODE_RUN_ACTIONS = [
+        ("采集", "on_collect"),
         ("训练", "on_train"),
         ("验证", "on_validate"),
         ("集成", "on_integrate"),
         ("部署", "on_deploy"),
+        ("推理", "on_infer"),
     ]
 
     def on_node_activated(self, node):
