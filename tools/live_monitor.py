@@ -49,6 +49,13 @@ def main():
             src = meta.get("source", "?")
             frames = meta.get("frames", "?")
             labels = meta.get("labels", {})
+            # 过滤快照包 (只处理 orin 真实数据)
+            if src == "orin_snapshot":
+                if idle_wait % 6 == 0:
+                    print(f"[{now}] 🖼 快照包跳过 (src={src})")
+                idle_wait += 1
+                time.sleep(30)
+                continue
             print(f"[{now}] 📥 新包: {latest} | src={src} frames={frames} labels={labels}")
             if has_action(meta):
                 print(f"  ⚡ 检测到动作标签! 拉取训练...")
