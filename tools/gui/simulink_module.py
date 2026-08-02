@@ -40,6 +40,11 @@ WORKFLOW_TYPES = {
 }
 # 参考应用模板 (对标 MathWorks 参考应用列表)
 REFERENCE_APPS = [
+    ("⚙️ CI/CD 默认流水线", [
+        ("hardware", "📥 输入数据", {"ip": "Orin", "fps": 30, "desc": "采集数据源"}),
+        ("model", "🧠 ACT 模型", {"chunk_size": 7, "dim_model": 256, "desc": "训练/推理"}),
+        ("action", "🎯 输出 action", {"pos": [0.1, 0.2, 0.3], "desc": "末端动作"}),
+    ], [(0, 1), (1, 2)]),
     ("📦 取料·100G 闭环", [
         ("hardware", "Orin Nano", {"ip": "192.168.23.10", "fps": 30}),
         ("model", "ACT", {"chunk_size": 7, "dim_model": 256}),
@@ -403,9 +408,17 @@ class CICDPanel(QDialog):
         self._stage_log.setWordWrap(True)
         lay.addWidget(self._stage_log)
 
-        # 底部: 刷新 + 关闭
+        # 底部: 保存工作流 + 刷新 + 关闭
         bl = QHBoxLayout()
         bl.addStretch()
+        self.btn_save_flow = QPushButton("💾 保存工作流 JSON")
+        self.btn_save_flow.setStyleSheet("""
+            QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;
+            border-radius:4px; padding:5px 14px; font-size:11px; font-weight:600; }
+            QPushButton:hover { background:#ffd70044; }
+        """)
+        self.btn_save_flow.clicked.connect(self._save_flow)
+        bl.addWidget(self.btn_save_flow)
         self.btn_refresh = QPushButton("🔄 刷新状态")
         self.btn_refresh.setStyleSheet("""
             QPushButton { background:#14181f; color:#c9d1d9; border:1px solid #1e2740;
@@ -453,6 +466,23 @@ class CICDPanel(QDialog):
     def _run_stage(self, fn):
         """兼容旧调用: 直接执行"""
         fn()
+
+    def _save_flow(self):
+        """保存主画布工作流 DAG 为 JSON (与 web simulink-spec 一致)"""
+        import json as _json
+        flow = {"format": "zmax-simulink", "version": "1.0",
+                "name": "cicd_workflow",
+                "sim": {"dt": self.module._sim_dt, "t_end": self.module._sim_t_end, "solver": "fixed-step"},
+                "nodes": self.module.nodes, "links": self.module.links}
+        path = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows",
+                            "cicd_workflow.json")
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                _json.dump(flow, f, ensure_ascii=False, indent=2)
+            self._stage_log.setText(f"💾 工作流已保存: {path} ({len(flow['nodes'])}节点 {len(flow['links'])}连线)")
+        except Exception as ex:
+            self._stage_log.setText(f"❌ 保存失败: {ex}")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1711,7 +1741,14 @@ class SimulinkModule(QWidget):
         worker.start()
 
     def open_cicd_panel(self):
-        """打开 CI/CD 全链路面板 (验证→训练→集成→部署 状态一览)"""
+        """打开 CI/CD 全链路面板:
+        1) 若主画布为空 → 自动加载默认流水线 DAG (输入数据→ACT模型→输出action)
+        2) 打开可视化流水线面板
+        """
+        # 画布空 → 加载默认 CI/CD 工作流 (可保存 JSON)
+        if not self.nodes:
+            self.load_reference_app("⚙️ CI/CD 默认流水线",
+                                    REFERENCE_APPS[0][1], REFERENCE_APPS[0][2])
         if not getattr(self, "_cicd_panel", None):
             self._cicd_panel = CICDPanel(self)
         self._cicd_panel._refresh()
