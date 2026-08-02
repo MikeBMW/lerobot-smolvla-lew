@@ -1,7 +1,7 @@
-# Z-MAX ACT 训练配置 · 7电机 metaworld 数据
-# 数据: metaworld_joint_v2 (state=7D, action=6D, 180帧/3集, fps=30)
-output_dir: outputs/train/act_7motor
-job_name: act_7motor
+# Z-MAX ACT 训练配置 · 7电机 metaworld 真实数据
+# 数据: metaworld_joint_real (真实渲染, state=7D, action=4D, 1200帧/8轨迹, fps=30)
+output_dir: outputs/train/act_7motor_real
+job_name: act_7motor_real
 
 policy:
   type: act
@@ -19,9 +19,9 @@ policy:
   latent_dim: 32
 
 dataset:
-  repo_id: lerobot/pusht
-  root: data/metaworld_joint_v2
-  episodes: [0]
+  repo_id: MikeBMW/metaworld-joint-real
+  root: data/metaworld_joint_real
+  episodes: null
   use_imagenet_stats: true
 
 batch_size: 8
