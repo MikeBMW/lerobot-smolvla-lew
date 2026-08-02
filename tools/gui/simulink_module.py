@@ -1674,15 +1674,29 @@ class SimulinkModule(QWidget):
         self._tutorial_show_bubble(f"📖 第{self._tutorial_step + 1}/{len(self.TUTORIAL_STEPS)}步", msg)
 
     def _tutorial_highlight(self, widget):
-        """高亮目标控件: 记录原样式, 应用青色发光边框"""
+        """高亮目标控件: 记录原样式, 应用金色发光边框"""
         self._tutorial_cleanup_highlight()
         self._tutorial_hl = widget
         self._tutorial_orig_ss[id(widget)] = widget.styleSheet()
-        widget.setStyleSheet(widget.styleSheet() +
-            " QPushButton { border:3px solid #ffd700; border-radius:6px; }" if isinstance(widget, QPushButton)
-            else " border:3px solid #ffd700;")
+        self._tutorial_apply_border(widget, "#ffd700")
         self._tutorial_pulse_on = True
         self._tutorial_timer.start(400)
+
+    def _tutorial_apply_border(self, widget, color):
+        """从原样式备份重建 + 追加高亮边框规则。
+
+        QSS 同选择器多规则 = 属性合并: 追加的 border 覆盖原 border,
+        background/color/padding 等原规则完整保留 (不再 rsplit 逆向截断)。
+        QToolButton 必须用 QToolButton 选择器 (它不是 QPushButton 子类,
+        裸属性/无选择器规则会被 Qt 忽略 → 原样式损坏回退黑字)。
+        """
+        base = self._tutorial_orig_ss.get(id(widget), "")
+        if isinstance(widget, QPushButton):
+            widget.setStyleSheet(base + f" QPushButton {{ border:3px solid {color}; border-radius:6px; }}")
+        elif isinstance(widget, QToolButton):
+            widget.setStyleSheet(base + f" QToolButton {{ border:3px solid {color}; border-radius:4px; }}")
+        else:
+            widget.setStyleSheet(base + f" {{ border:3px solid {color}; }}")
 
     def _tutorial_pulse(self):
         """高亮脉冲闪烁 (金色 ↔ 青色)"""
@@ -1690,12 +1704,7 @@ class SimulinkModule(QWidget):
             return
         self._tutorial_pulse_on = not self._tutorial_pulse_on
         color = "#ffd700" if self._tutorial_pulse_on else "#00d4aa"
-        w = self._tutorial_hl
-        if isinstance(w, QPushButton):
-            w.setStyleSheet(w.styleSheet().rsplit(" QPushButton {", 1)[0] +
-                f" QPushButton {{ border:3px solid {color}; border-radius:6px; }}")
-        else:
-            w.setStyleSheet(w.styleSheet().rsplit(" border:", 1)[0] + f" border:3px solid {color};")
+        self._tutorial_apply_border(self._tutorial_hl, color)
 
     def _tutorial_cleanup_highlight(self):
         """清除高亮, 恢复原样式"""
