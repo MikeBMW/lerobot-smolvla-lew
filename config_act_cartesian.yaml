@@ -1,0 +1,43 @@
+# Z-MAX ACT 训练 · 笛卡尔接口 (7轴→6轴泛化)
+# 数据: metaworld_cartesian (state=末端3D位置, action=4D末端速度, 500帧/5轨迹)
+output_dir: outputs/train/act_cartesian
+job_name: act_cartesian
+
+policy:
+  type: act
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-act-cartesian
+  n_obs_steps: 1
+  n_action_steps: 7
+  chunk_size: 7
+  dim_model: 256
+  dim_feedforward: 1024
+  n_heads: 8
+  n_encoder_layers: 4
+  n_decoder_layers: 4
+  use_vae: true
+  latent_dim: 32
+
+dataset:
+  repo_id: local/cartesian-v3
+  root: data/metaworld_cartesian
+  episodes: null
+  use_imagenet_stats: false
+
+batch_size: 8
+steps: 2000
+num_workers: 0
+persistent_workers: false
+log_freq: 200
+eval_freq: 1000
+save_freq: 1000
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 1e-4
+  weight_decay: 0.0
+
+wandb:
+  enable: false

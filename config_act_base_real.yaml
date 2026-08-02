@@ -1,0 +1,44 @@
+# Z-MAX ACT 基线重训 · 真实渲染数据
+# 数据: metaworld_joint_real (真实图像 var=4327, state=7D, action=4D)
+# 对比: 旧基线(黑图var=0) vs 新基线(真实图)
+output_dir: outputs/train/act_base_real
+job_name: act_base_real
+
+policy:
+  type: act
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-act-base-real
+  n_obs_steps: 1
+  n_action_steps: 7
+  chunk_size: 7
+  dim_model: 256
+  dim_feedforward: 1024
+  n_heads: 8
+  n_encoder_layers: 4
+  n_decoder_layers: 4
+  use_vae: true
+  latent_dim: 32
+
+dataset:
+  repo_id: MikeBMW/metaworld-joint-real
+  root: data/metaworld_joint_real
+  episodes: null
+  use_imagenet_stats: false
+
+batch_size: 8
+steps: 300
+num_workers: 0
+persistent_workers: false
+log_freq: 100
+eval_freq: 1000
+save_freq: 1000
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 1e-4
+  weight_decay: 0.0
+
+wandb:
+  enable: false

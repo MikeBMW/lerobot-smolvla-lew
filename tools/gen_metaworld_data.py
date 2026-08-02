@@ -21,7 +21,7 @@ def main():
     ap.add_argument("--eps", type=int, default=10, help="轨迹数")
     ap.add_argument("--steps", type=int, default=180, help="每条轨迹帧数")
     ap.add_argument("--task", default="reach-v3")
-    ap.add_argument("--out", default="data/metaworld_joint_real")
+    ap.add_argument("--out", default="data/metaworld_cartesian")
     args = ap.parse_args()
 
     import metaworld
@@ -53,15 +53,15 @@ def main():
             img = np.asarray(env.render())
             pil = Image.fromarray(img).resize((128, 128), Image.LANCZOS)
             ep_imgs.append(np.asarray(pil))
-            # 关节状态: qpos 前7维 (right_j0~j6)
-            state = env.data.qpos[:7].copy()
-            # 专家动作: 朝 goal 移动 (dx,dy,dz + gripper = 4维)
+            # 关节状态: 用末端笛卡尔位姿 (跨机器人泛化, 非Sawyer关节角)
+            ee = env.data.site_xpos[env.model.site("endEffector").id]
+            state = ee.astype(np.float32).copy()  # 3D 末端位置 (x,y,z)
+            # 专家动作: 朝 goal 移动 (dx,dy,dz + gripper = 4维, 笛卡尔速度)
             try:
                 gid = env.model.site("goal").id
                 goal = env.data.site_xpos[gid]
             except Exception:
                 goal = None
-            ee = env.data.site_xpos[env.model.site("endEffector").id]
             if goal is not None:
                 delta = goal - ee
                 norm = np.linalg.norm(delta)
@@ -141,8 +141,8 @@ def main():
                 "video.is_depth_map": False, "has_audio": False,
             },
             "observation.state": {
-                "dtype": "float32", "shape": [7],
-                "names": {"motors": [f"motor_{i}" for i in range(7)]}, "fps": 30.0,
+                "dtype": "float32", "shape": [3],
+                "names": {"motors": ["x", "y", "z"]}, "fps": 30.0,
             },
             "action": {"dtype": "float32", "shape": [4],
                        "names": {"motors": ["dx", "dy", "dz", "gripper"]}, "fps": 30.0},
