@@ -7402,8 +7402,19 @@ github.com/MikeBMW/lerobot-smolvla-lew
 # ============================================================
 def main():
     app = QApplication(sys.argv)
+    # WSLg/Windows 下 QMessageBox/QToolTip 默认走系统原生渲染 → QSS 失效, 黑字看不清
+    # 强制 Qt 自绘: 对话框 + 气泡提示都吃全局深色 QSS
+    app.setAttribute(Qt.AA_DontUseNativeDialogs, True)
     app.setStyle("Fusion")
     app.setFont(QFont("Arial", 10))
+
+    # QToolTip 原生气泡 → 强制深色 palette (QSS 对部分平台 QToolTip 无效)
+    from PyQt5.QtWidgets import QToolTip
+    from PyQt5.QtGui import QPalette, QColor as _QC
+    _ttp = QToolTip.palette()
+    _ttp.setColor(QPalette.ToolTipBase, _QC(C_BG2))
+    _ttp.setColor(QPalette.ToolTipText, _QC(C_WHITE))
+    QToolTip.setPalette(_ttp)
 
     # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
     app.setStyleSheet(f"""
