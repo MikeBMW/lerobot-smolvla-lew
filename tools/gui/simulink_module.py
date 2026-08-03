@@ -2222,9 +2222,11 @@ class SimulinkModule(QWidget):
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候…")
-            return
+            return  # 任务未启动 → 引导不推进 (等上一个完成后用户再点)
         if stage:
             self._cicd_state[stage] = 1  # 运行中
+            # 数据闭环引导: 任务真正启动才推进 (防重入 return 时不能推进)
+            self._tutorial_on_action(stage)
         self._log(f"⏳ {busy_msg} (后台执行, UI 可继续操作)…")
 
         def _emit_log(msg):
@@ -2277,7 +2279,6 @@ class SimulinkModule(QWidget):
     def on_validate(self):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
         self._log("════ ① 模型验证 (Model Advisor 对标) ════")
-        self._tutorial_on_action("validate")
 
         def _work():
             import tempfile
@@ -2370,7 +2371,6 @@ class SimulinkModule(QWidget):
     def on_train(self):
         """② 训练: 后台执行 (数据源智能选择 + lerobot_train)"""
         self._log("════ ② 训练 (lerobot_train) ════")
-        self._tutorial_on_action("train")
 
         def _work():
             root = self._repo_root()
@@ -2413,7 +2413,6 @@ class SimulinkModule(QWidget):
     def on_integrate(self):
         """③ 集成: 后台执行 (打包 checkpoint → 上传 ECS)"""
         self._log("════ ③ 集成 (checkpoint → ECS 中转) ════")
-        self._tutorial_on_action("integrate")
 
         def _work():
             root = self._repo_root()
@@ -2426,7 +2425,6 @@ class SimulinkModule(QWidget):
     def on_deploy(self):
         """⑤ 部署: 后台执行 (ECS 状态检查)"""
         self._log("════ ⑤ 部署 (ECS 状态检查) ════")
-        self._tutorial_on_action("deploy")
 
         def _work():
             root = self._repo_root()
@@ -2439,7 +2437,6 @@ class SimulinkModule(QWidget):
     def on_collect(self):
         """① 采集: 拉取 relay Orin 真实数据 → action 修复 → 落地"""
         self._log("════ ① 采集 (relay → 修复 action → 落地) ════")
-        self._tutorial_on_action("collect")
 
         def _work():
             import requests as _rq
@@ -2475,7 +2472,6 @@ class SimulinkModule(QWidget):
     def on_infer(self):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
         self._log("════ ⑥ 推理 (Orin 状态检查) ════")
-        self._tutorial_on_action("infer")
 
         def _work():
             import requests as _rq
