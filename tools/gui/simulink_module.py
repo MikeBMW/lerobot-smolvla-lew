@@ -1750,12 +1750,48 @@ class SimulinkModule(QWidget):
                        "infer": "控制台「⑥ 推理」按钮(金色高亮)"}
         target = kind_labels.get(expected_kind, "高亮的位置")
         self._log(f"❓ 不是这一步哦 — 请点击: {target}")
-        # 用 QToolTip 在目标控件旁弹出气泡 (更醒目)
+        # 自绘深色气泡 (替代 QToolTip: WSLg 下系统原生渲染黑字看不清)
         try:
-            from PyQt5.QtWidgets import QToolTip
-            if self._tutorial_hl is not None:
-                QToolTip.showText(self._tutorial_hl.mapToGlobal(self._tutorial_hl.rect().center()),
-                                  f"👆 请点击这里:\n{target}", self._tutorial_hl)
+            from PyQt5.QtCore import Qt as _Qt
+            if self._tutorial_hl is not None and self._tutorial_hl.isVisible():
+                pos = self._tutorial_hl.mapToGlobal(self._tutorial_hl.rect().center())
+                self._show_bubble(pos, f"👆 请点击这里:\n{target}")
+        except Exception:
+            pass
+
+    def _show_bubble(self, global_pos, text, ms=4000):
+        """自绘深色气泡浮层 (无边框置顶, 深底白字)"""
+        try:
+            from PyQt5.QtWidgets import QLabel
+            from PyQt5.QtCore import Qt as _Qt
+            if getattr(self, "_bubble", None) is not None:
+                try:
+                    self._bubble.close()
+                    self._bubble.deleteLater()
+                except Exception:
+                    pass
+            bub = QLabel(text)
+            bub.setWindowFlags(_Qt.ToolTip | _Qt.WindowStaysOnTopHint | _Qt.FramelessWindowHint)
+            bub.setStyleSheet("QLabel { background:#0d1117; color:#e6edf3; border:1px solid #00d4aa;"
+                              "border-radius:6px; padding:10px 14px; font-size:12px; }")
+            bub.adjustSize()
+            x = global_pos.x() - bub.width() // 2
+            y = global_pos.y() + 16
+            bub.move(x, y)
+            bub.show()
+            bub.raise_()
+            self._bubble = bub
+            QTimer.singleShot(ms, lambda: self._close_bubble(bub))
+        except Exception:
+            pass
+
+    def _close_bubble(self, bub):
+        """定时关闭气泡 (只关自己, 防误关新气泡)"""
+        try:
+            if getattr(self, "_bubble", None) is bub:
+                bub.close()
+                bub.deleteLater()
+                self._bubble = None
         except Exception:
             pass
 
@@ -2309,6 +2345,9 @@ class SimulinkModule(QWidget):
             self._cicd_state[stage] = 1  # 运行中
             # 数据闭环引导: 任务真正启动才推进 (防重入 return 时不能推进)
             self._tutorial_on_action(stage)
+            # 🧠 ACT-Meta 引导: 训练启动/完成时继续提示, 直到训练完成
+            if stage == "train" and getattr(self, "_act_train_guided", False):
+                self._log("🚀 训练已启动 (约40s, 4060 CUDA)… 完成后我会继续提示 👇")
         self._log(f"⏳ {busy_msg} (后台执行, UI 可继续操作)…")
 
         def _emit_log(msg):
@@ -2321,6 +2360,13 @@ class SimulinkModule(QWidget):
                 self._log(f"✅ {summary}")
             else:
                 self._log(f"❌ {summary}")
+            # 🧠 ACT-Meta 引导: 训练完成 → 提示下一步
+            if stage == "train" and getattr(self, "_act_train_guided", False):
+                if ok:
+                    self._log("🎉 训练完成! 全新 ACT-Meta 模型已就绪 ✓")
+                    self._log("👉 下一步: 双击「📦 集成打包」把模型推回 ECS, 或先「✅ 验证」检查合规")
+                else:
+                    self._log("❌ 训练失败, 请查看上方日志定位原因")
             self._flow_next()  # 全流程流转钩子 (无队列时无操作)
             # 若有打开的全链路面板, 自动刷新
             if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
@@ -2463,7 +2509,7 @@ class SimulinkModule(QWidget):
                     linked_pairs.add((sf, st))
 
     def _act_build_finish(self):
-        """8步搭完: 确认连线完整 → 提示训练"""
+        """8步搭完: 确认连线完整 → 进入训练引导 (直到训练完成)"""
         self._act_build_active = False
         self._act_build_step = -1
         # 兜底: 补齐模板拓扑连线 (增量阶段可能因顺序漏连)
@@ -2477,7 +2523,9 @@ class SimulinkModule(QWidget):
         if tmpl and len(self.nodes) >= 8:
             self._log("🎉 8/8 搭建完成! 已自动摆放 + 按官方 ACT 拓扑自动连线")
             self._log("👉 双击「🚀 全新训练」节点 → 启动 metaworld 全新训练 (300步 ~40s)")
-            self._log("💡 也可删除后重新搭建, 或在模块库点「🧠 ACT-Meta 完整模型」一键加载")
+            self._log("💡 训练完成后我会继续提示下一步; 也可删除后重新搭建")
+            # 开启训练引导: 训练启动/完成时自动提示
+            self._act_train_guided = True
         else:
             self._log("⚠️ 搭建未完成, 请检查画布节点")
 
