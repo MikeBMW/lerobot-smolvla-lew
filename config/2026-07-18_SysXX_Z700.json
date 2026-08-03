@@ -25,7 +25,7 @@
     {"id": "n17843711561110hw", "type": "hardware", "name": "MAC", "x": 285, "y": 114,
      "health": {"endpoint": "http://192.168.23.1:8765/health"}},
     {"id": "n17843711589528z4", "type": "hardware", "name": "4090 训练", "x": 523, "y": 86,
-     "health": {"endpoint": "http://106.75.239.80:50053/health"}}
+     "health": {"endpoint": "http://39.102.211.79:50053/health"}}
   ],
   "links": [
     {"f": "n1784371153971a55", "t": "n17843711561110hw"},

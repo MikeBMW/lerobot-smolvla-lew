@@ -60,7 +60,7 @@ DATA_FILE = str(OUT / "orin_episode_0.json")
 
 # 上传数据文件
 import requests
-r = requests.post("http://106.75.239.80:50053/task", json={
+r = requests.post("http://39.102.211.79:50053/task", json={
     "task": "train",
     "params": {
         "data": DATA_FILE,
@@ -74,7 +74,7 @@ print(f"  训练任务: {r.json()}")
 # ═══ Step 4: 等待训练完成 ═══
 print("\n=== Step 4: 等待4090训练 ===")
 for _ in range(60):  # 最多等5分钟
-    s = requests.get("http://106.75.239.80:50053/status", timeout=5).json()
+    s = requests.get("http://39.102.211.79:50053/status", timeout=5).json()
     if s.get("active_jobs", 0) == 0:
         print("  ✅ 训练完成!")
         break
@@ -86,7 +86,7 @@ print("\n=== Step 5: 下载checkpoint→4060 ===")
 CKPT = Path.home() / "lerobot-smolvla-lew" / "outputs" / "orin_act"
 CKPT.mkdir(parents=True, exist_ok=True)
 # 从4090拉取 (实际需要web提供下载接口)
-r = requests.get("http://106.75.239.80:50053/tasks", timeout=5).json()
+r = requests.get("http://39.102.211.79:50053/tasks", timeout=5).json()
 print(f"  可用checkpoint: {len(r)}个")
 print(f"  本地路径: {CKPT}")
 

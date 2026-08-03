@@ -47,7 +47,7 @@
       "label": "📤 MAC → 4090训练",
       "params": {
         "source": "xiaofang@MAC_IP:~/orin_data/orin_30s_data.npz",
-        "dest": "root@106.75.239.80:/root/datasets/orin_30s_data.npz"
+        "dest": "root@39.102.211.79:/root/datasets/orin_30s_data.npz"
       }
     },
     {

@@ -26,7 +26,7 @@ models:
     device: cuda:0
     chunk_size: 100
   sys1_vtla:
-    path: 106.75.239.80:50052
+    path: 39.102.211.79:50052
     type: remote_http
     endpoint: /predict
   sys11_smolvla:

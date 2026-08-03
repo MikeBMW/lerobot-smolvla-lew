@@ -6763,7 +6763,7 @@ class StudioMainWindow(QMainWindow):
         t0 = time.time()
         if engine in ("vtla", "groot"):
             try:
-                r = requests.get("http://106.75.239.80:50051/health", timeout=3)
+                r = requests.get("http://39.102.211.79:50051/health", timeout=3)
                 latency = (time.time() - t0) * 1000
                 if r.status_code == 200:
                     self._engine_status.setText("● 4090 已连接")

@@ -3,7 +3,7 @@
 import requests, subprocess, time, os, json
 
 ORIN, ORIN_PW = "tashan@192.168.23.10", "ts123"
-BACKEND = "http://106.75.239.80:50053"
+BACKEND = "http://datadrive.world/api/relay"
 MAC_DATA = os.path.expanduser("~/zmax_loop")
 os.makedirs(MAC_DATA, exist_ok=True)
 
