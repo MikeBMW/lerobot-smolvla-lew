@@ -2432,25 +2432,62 @@ class SimulinkModule(QWidget):
 
         def _work():
             import requests as _rq
+            import glob as _g
             root = self._repo_root()
             real_dir = os.path.join(root, "data", "closed_loop")
+            # ── 全链路证据: 中转状态 + Orin 心跳 ──
+            endpoint = "https://datadrive.world/api/relay"  # nginx反代 → ECS:39053 zmax_relay.py
             try:
-                r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
-                pkgs = r.json().get("packages", 0) if r.status_code == 200 else 0
-            except Exception:
+                r = _rq.get(f"{endpoint}/status", timeout=6)
+                st = r.json() if r.status_code == 200 else {}
+                pkgs = st.get("packages", 0)
+                uptime = st.get("uptime", 0)
+                self.log_signal.emit(f"📡 中转 {endpoint}/status → 在线{uptime}s · 队列包数: {pkgs}")
+            except Exception as ex:
                 pkgs = 0
+                self.log_signal.emit(f"⚠️ 中转状态查询失败: {ex}")
+            try:
+                r = _rq.get(f"{endpoint}/orin/status", timeout=6)
+                o = r.json() if r.status_code == 200 else {}
+                if o.get("online"):
+                    self.log_signal.emit(f"🤖 Orin 在线 · 模型{o.get('model')} · 心跳 {o.get('last_seen')} · 推理{o.get('infer_count')}次"
+                                         + (f" · {o.get('last_infer_ms')}ms" if o.get("last_infer_ms") else ""))
+                else:
+                    self.log_signal.emit("🤖 Orin 未上报心跳 (离线)")
+            except Exception as ex:
+                self.log_signal.emit(f"⚠️ Orin 状态查询失败: {ex}")
             if pkgs <= 0:
-                return True, "中转队列无新包 (已全部落地)"
-            r = _rq.get("https://datadrive.world/api/relay/latest", timeout=15)
+                # 无新包: 给出最近落地包证据 (时间/来源/帧数), 说明队列已清空
+                pkgs_files = sorted(_g.glob(os.path.join(real_dir, "*.json")), key=os.path.getmtime, reverse=True)
+                if pkgs_files:
+                    last = pkgs_files[0]
+                    try:
+                        ld = json.load(open(last, encoding="utf-8"))
+                        lm = ld.get("meta", {})
+                        nf = len(ld.get("frames", []))
+                        self.log_signal.emit(f"📦 最近落地包: {os.path.basename(last)} · 来源{lm.get('source','?')} · {nf}帧"
+                                             f" · {lm.get('n_joint','?')}D/{lm.get('n_action','?')}D" if nf else f"📦 最近落地包: {os.path.basename(last)}")
+                    except Exception:
+                        self.log_signal.emit(f"📦 最近落地包: {os.path.basename(last)}")
+                else:
+                    self.log_signal.emit("📦 本地无落地包 — 需小芳采集上传 (Orin→Mac:8769→ECS relay)")
+                return True, "中转队列无新包 (已全部落地) · 证据见日志"
+            r = _rq.get(f"{endpoint}/latest", timeout=15)
             if r.status_code != 200:
                 return False, "拉取失败"
             pkg = r.json()
             frames = pkg.get("frames", [])
             if not frames:
                 return False, "包无 frames"
+            meta = pkg.get("meta", {})
+            self.log_signal.emit(f"📥 拉取 {endpoint}/latest → 来源{meta.get('source','?')} · {len(frames)}帧"
+                                 f" · n_joint={meta.get('n_joint','?')} · n_action={meta.get('n_action','?')}"
+                                 f" · fps={meta.get('fps','?')} · 收到于{time.strftime('%H:%M:%S', time.localtime(meta.get('received_at', time.time())))}")
             sys.path.insert(0, os.path.join(root, "tools"))
             from fix_orin_action import fix_frames
             n_fixed, fixed = fix_frames(frames)
+            if fixed:
+                self.log_signal.emit(f"🛠 action 恒等修复: {n_fixed}帧 (action==state → 关节速度差分)")
             os.makedirs(real_dir, exist_ok=True)
             ts = time.strftime("%Y%m%d_%H%M%S")
             raw = os.path.join(real_dir, f"pkg_{ts}.json")
