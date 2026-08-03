@@ -537,7 +537,6 @@ class PipelinePanel(QDialog):
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._cards = {}
         self._spin = {}
-        self._last_log = ""
         self._build()
         self._refresh()
         self._timer = QTimer(self)
@@ -674,10 +673,8 @@ class PipelinePanel(QDialog):
         bar.addWidget(self.lbl_stage_now)
         lay.addLayout(bar)
 
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setStyleSheet("background:#0d1117; color:#c9d1d9; border:1px solid #1e2740; border-radius:6px; font-family:Consolas; font-size:11px;")
-        lay.addWidget(self.log_box, 1)
+        # 运行日志统一走主界面底部日志框 (SimulinkModule.log_box), Panel 不再内置终端
+        self.module.log_signal.emit("🎯 数据闭环控制台已打开 · 6环节流水线 + 三阶段训练 · 运行日志见主界面底部")
 
     def _refresh(self):
         st = self._read_state()
@@ -736,19 +733,14 @@ class PipelinePanel(QDialog):
         now = st.get("stage", "?")
         stt = stages.get(str(now), {}).get("state", st.get("state", "pending"))
         self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#8b949e')}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-        log = st.get("log", "")
-        if log != self._last_log:
-            self.log_box.setPlainText(log)
-            self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
-            self._last_log = log
 
     def _run_pipeline_cmd(self, cmd):
         if getattr(self, "_worker", None) and self._worker.isRunning():
-            self.log_box.append("⏳ 上一个任务还在跑…")
+            self.module.log_signal.emit("⏳ 上一个任务还在跑…")
             return
-        self.log_box.append("▶ " + " ".join(cmd))
+        self.module.log_signal.emit("▶ " + " ".join(cmd))
         worker = CICDWorker(lambda: self._run_cli(cmd))
-        worker.log.connect(lambda m: self.log_box.append(m))
+        worker.log.connect(self.module.log_signal.emit)
         worker.finished.connect(lambda: setattr(self, "_worker", None))
         self._worker = worker
         worker.start()
@@ -769,7 +761,7 @@ class PipelinePanel(QDialog):
     def _run_full(self):
         s1 = self._spin[1].value() if 1 in self._spin else 300
         s3 = self._spin[3].value() if 3 in self._spin else 300
-        self.log_box.append(f"🚀 全流程启动: Stage1={s1}步 → Stage2 → Stage3={s3}步")
+        self.module.log_signal.emit(f"🚀 全流程启动: Stage1={s1}步 → Stage2 → Stage3={s3}步")
         self._run_pipeline_cmd([self._PY, os.path.join(self.module._repo_root(), "tools", "cicd_pipeline.py"),
                                 "run", "--steps1", str(s1), "--steps3", str(s3)])
 
