@@ -86,6 +86,26 @@ REFERENCE_APPS = [
         ("action", "A09 AOI检测", {}),
         ("action", "A10 分拣", {"bin": 3}),
     ], [(0, 1), (1, 2), (2, 3), (3, 4)]),
+    # 🧠 ACT-Meta 全新训练: 用 metaworld 数据训练 ACT, 模型按官方源码拆成 7 子模块
+    # (2026-08-04 老倪: "在simulink功能页, 做一个用metaworld数据, 全新训练ACT的模型, 用simulink的模块搭建")
+    # Action Head 适配 metaworld 4D 输出 (action_dim=4, 真机 6D 对比标注)
+    ("🧠 ACT-Meta 全新训练", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "desc": "states 4D · actions 4D (sawyer 关节)"}),
+        ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
+                                          "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}),
+        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
+                                        "desc": "官方 ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
+        ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
+                                            "desc": "官方 ACT.encoder → 上下文 tokens (latent+state+图像)"}),
+        ("model", "🔡 Transformer Decoder", {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
+                                            "desc": "官方 ACT.decoder → DETR queries 解码动作块"}),
+        ("action", "🎯 Action Head 4D", {"action_dim": 4, "chunk_size": 7,
+                                        "desc": "★适配 metaworld: 输出 (B,7,4) · 真机 Orin 为 6D"}),
+        ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
+                                              "desc": "官方 ACTTemporalEnsembler → 动作块时间平滑"}),
+        ("system", "🚀 全新训练", {"steps": 300, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
+    ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)]),
 ]
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
@@ -1455,6 +1475,10 @@ class SimulinkModule(QWidget):
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
         tl2.addWidget(self.btn_pipeline)
+        # 🧠 ACT-Meta 引导: 一键打开 metaworld 全新训练模型 (2026-08-04 老倪)
+        self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始",
+                                  self.open_act_meta, "#58a6ff")
+        tl2.addWidget(self.btn_actmeta)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
         lbl_op.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
@@ -2267,6 +2291,43 @@ class SimulinkModule(QWidget):
         self._pipeline_panel.raise_()
         self._pipeline_panel.activateWindow()
         self._tutorial_on_action("pipeline")
+
+    def open_act_meta(self):
+        """🧠 ACT-Meta 引导: 加载 metaworld 全新训练模型 (7子模块) + 提示操作"""
+        name = "🧠 ACT-Meta 全新训练"
+        for nm, nodes, links in REFERENCE_APPS:
+            if nm == name:
+                # 若画布已有内容, 确认清空
+                if self.nodes:
+                    ret = QMessageBox.question(self, "加载 ACT-Meta 模型",
+                                               f"加载「{name}」将清空当前画布，继续？",
+                                               QMessageBox.Yes | QMessageBox.No)
+                    if ret != QMessageBox.Yes:
+                        return
+                self.load_reference_app(nm, nodes, links)
+                # 引导提示: 高亮「🚀 全新训练」节点, 明确告诉操作者
+                train_node = None
+                for n in self.nodes:
+                    if "全新训练" in n.get("name", ""):
+                        train_node = n
+                        break
+                self._log("════ 🧠 ACT-Meta 引导 ════")
+                self._log("📦 metaworld 数据 (4D/4D, 已激活) → 🖼 ResNet18 → 🧬 CVAE → 🔤 Encoder → 🔡 Decoder → 🎯 Action Head(4D) → ⏳ Ensemble")
+                self._log("🎯 Action Head 已适配 metaworld 4D 输出 (真机 Orin 为 6D, 本模型不部署真机)")
+                self._log("👉 双击「🚀 全新训练」节点 → 启动 metaworld 全新训练 (300步 ~40s)")
+                if train_node:
+                    it = self._items.get(train_node["id"])
+                    if it:
+                        # 高亮训练节点 2.5s (金框脉冲)
+                        self._tutorial_hl = it
+                        self._tutorial_orig_ss[id(it)] = it.styleSheet() if hasattr(it, "styleSheet") else ""
+                        try:
+                            it.setToolTip("👆 双击我启动 metaworld 全新训练")
+                        except Exception:
+                            pass
+                        QTimer.singleShot(2500, lambda: self._tutorial_cleanup_highlight())
+                return
+        self._log(f"❌ 找不到模板: {name}")
 
     def on_validate(self):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
