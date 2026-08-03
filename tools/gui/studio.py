@@ -1029,21 +1029,21 @@ class HomeWidget(QWidget):
             r = subprocess.run(["git", "add", "tools/gui/"],
                                capture_output=True, text=True, cwd=repo_dir, timeout=30)
             if r.returncode != 0:
-                QMessageBox.warning(self, "同步失败", f"git add 出错:\n{r.stderr}")
+                _msg_ok(self, "同步失败", f"git add 出错:\n{r.stderr}", kind="warning")
                 return
 
             # 第二步：检查是否有变更需要提交
             r = subprocess.run(["git", "status", "--porcelain", "tools/gui/"],
                                capture_output=True, text=True, cwd=repo_dir, timeout=30)
             if not r.stdout.strip():
-                QMessageBox.information(self, "无需同步", "本地 GUI 代码无变更，不需要推送。")
+                _msg_ok(self, "无需同步", "本地 GUI 代码无变更，不需要推送。")
                 return
 
             # 第三步：git commit
             r = subprocess.run(["git", "commit", "-m", "sync: 同步GUI界面代码更新"],
                                capture_output=True, text=True, cwd=repo_dir, timeout=30)
             if r.returncode != 0:
-                QMessageBox.warning(self, "同步失败", f"git commit 出错:\n{r.stderr}")
+                _msg_ok(self, "同步失败", f"git commit 出错:\n{r.stderr}", kind="warning")
                 return
 
             # 第四步：git push（尝试直接推送）
@@ -1071,20 +1071,19 @@ class HomeWidget(QWidget):
                     r = subprocess.run(["git", "push", "origin", "main"],
                                        capture_output=True, text=True, cwd=repo_dir, timeout=60)
                     if r.returncode != 0:
-                        QMessageBox.warning(self, "推送失败", f"推送仍然失败:\n{r.stderr}")
+                        _msg_ok(self, "推送失败", f"推送仍然失败:\n{r.stderr}", kind="warning")
                         return
 
                 else:
                     return  # 用户取消了
 
-            QMessageBox.information(self, "同步成功",
-                                    "✅ GUI 代码已成功推送到 GitHub!\n\n"
+            _msg_ok(self, "同步成功", "✅ GUI 代码已成功推送到 GitHub!\n\n"
                                     "https://github.com/MikeBMW/lerobot-smolvla-lew")
 
         except subprocess.TimeoutExpired:
-            QMessageBox.warning(self, "同步超时", "Git 操作超时，请检查网络连接。")
+            _msg_ok(self, "同步超时", "Git 操作超时，请检查网络连接。", kind="warning")
         except Exception as e:
-            QMessageBox.warning(self, "同步异常", f"发生异常:\n{str(e)}")
+            _msg_ok(self, "同步异常", f"发生异常:\n{str(e)}", kind="warning")
 
     def _open_spec_doc(self):
         """打开解决方案文档 v1.0.4"""
@@ -1101,7 +1100,7 @@ class HomeWidget(QWidget):
             win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
             subprocess.run(["explorer.exe", win_path], check=True, timeout=5)
         except Exception as e:
-            QMessageBox.critical(self, "打开失败", f"无法打开文档:\n{str(e)}")
+            _msg_ok(self, "打开失败", f"无法打开文档:\n{str(e)}", kind="critical")
 
     def _show_share_qr(self):
         """分享 — 飞书/微信远程对话配置入口"""
@@ -1628,10 +1627,8 @@ class DatasetModule(SubModuleWidget):
 
     def _clean_all_cache(self):
         """清理全部数据集缓存"""
-        reply = QMessageBox.warning(self, "确认清理",
-            f"将删除全部本地缓存:\n{self._cache_dir}\n\n"
-            f"这将释放磁盘空间，但可以重新下载。\n是否继续？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = _msg_ask(self, "确认清理", f"将删除全部本地缓存:\n{self._cache_dir}\n\n"
+            f"这将释放磁盘空间，但可以重新下载。\n是否继续？")
         if reply != QMessageBox.Yes:
             return
         import shutil
@@ -1639,9 +1636,9 @@ class DatasetModule(SubModuleWidget):
             if os.path.exists(self._cache_dir):
                 shutil.rmtree(self._cache_dir)
             self._refresh_cache_status()
-            QMessageBox.information(self, "清理完成", "所有缓存已删除")
+            _msg_ok(self, "清理完成", "所有缓存已删除")
         except Exception as e:
-            QMessageBox.warning(self, "清理失败", f"部分文件可能被占用:\n{e}")
+            _msg_ok(self, "清理失败", f"部分文件可能被占用:\n{e}", kind="warning")
 
     def _mk_info_func(self, ds):
         """创建查看信息的闭包"""
@@ -1806,7 +1803,7 @@ Default Branch: {branch}
    3. 解压到上面📁目录
    4. 回数据集管理点「刷新」
 """
-        QMessageBox.information(self, f"📥 手动下载 - {ds['name']}", msg)
+        _msg_ok(self, f"📥 手动下载 - {ds['name']}", msg)
         # 复制下载链接到剪贴板
         QApplication.clipboard().setText(hf_url)
     
@@ -1941,12 +1938,10 @@ Default Branch: {branch}
         cache_path = self._get_cache_dir_for_repo(repo_id)
 
         if not os.path.exists(cache_path):
-            QMessageBox.information(self, "未缓存", f"{ds['name']} 尚未下载到本地")
+            _msg_ok(self, "未缓存", f"{ds['name']} 尚未下载到本地")
             return
 
-        reply = QMessageBox.warning(self, "确认删除",
-            f"将删除 {ds['name']} 的本地缓存:\n{cache_path}\n\n可以重新下载，是否继续？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = _msg_ask(self, "确认删除", f"将删除 {ds['name']} 的本地缓存:\n{cache_path}\n\n可以重新下载，是否继续？")
         if reply != QMessageBox.Yes:
             return
 
@@ -1954,9 +1949,9 @@ Default Branch: {branch}
         try:
             shutil.rmtree(cache_path)
             self._refresh_cache_status()
-            QMessageBox.information(self, "已删除", f"{ds['name']} 缓存已清理")
+            _msg_ok(self, "已删除", f"{ds['name']} 缓存已清理")
         except Exception as e:
-            QMessageBox.warning(self, "删除失败", f"部分文件可能被占用:\n{e}")
+            _msg_ok(self, "删除失败", f"部分文件可能被占用:\n{e}", kind="warning")
 
 
 class TrainingModule(QWidget):
@@ -4081,12 +4076,11 @@ class HardwareModule(SubModuleWidget):
         if not result.get("success"):
             error = result.get("error", "未知错误")
             self._log(f"❌ 发现失败: {error}")
-            QMessageBox.warning(self, "硬件发现失败", 
-                f"无法连接到 Orin 或发现硬件:\n\n{error}\n\n"
+            _msg_ok(self, "硬件发现失败", f"无法连接到 Orin 或发现硬件:\n\n{error}\n\n"
                 "请确认:\n"
                 "1. Orin 已开机且网络连通\n"
                 "2. ROS2 系统已启动\n"
-                "3. SSH 免密已配置")
+                "3. SSH 免密已配置", kind="warning")
             return
         
         nodes = result.get("nodes", [])
@@ -4775,18 +4769,18 @@ class ConfigModule(SubModuleWidget):
         fp = os.path.join(config_dir, f"config_{ts}.txt")
         with open(fp, 'w') as f:
             f.write(self.config_preview.toPlainText())
-        QMessageBox.information(self, "保存成功", f"配置已保存到:\n{fp}")
+        _msg_ok(self, "保存成功", f"配置已保存到:\n{fp}")
     
     def _load_config(self):
         config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
         if not os.path.exists(config_dir):
-            QMessageBox.warning(self, "无配置", "配置目录不存在")
+            _msg_ok(self, "无配置", "配置目录不存在", kind="warning")
             return
         files = sorted([f for f in os.listdir(config_dir) if f.endswith('.txt')], reverse=True)
         if not files:
-            QMessageBox.warning(self, "无配置", "没有找到配置文件")
+            _msg_ok(self, "无配置", "没有找到配置文件", kind="warning")
             return
-        QMessageBox.information(self, "加载", f"最新配置: {files[0]}\n目录: {config_dir}")
+        _msg_ok(self, "加载", f"最新配置: {files[0]}\n目录: {config_dir}")
     
     def _export_yaml(self):
         config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
@@ -4797,7 +4791,7 @@ class ConfigModule(SubModuleWidget):
             f.write("policy:\n")
             for k, v in d.items():
                 f.write(f"  {k}: {v}\n")
-        QMessageBox.information(self, "导出成功", f"YAML 配置已导出到:\n{fp}\n\n可用于 lerobot-train 训练")
+        _msg_ok(self, "导出成功", f"YAML 配置已导出到:\n{fp}\n\n可用于 lerobot-train 训练")
     
     def _apply_config(self):
         d = self._get_config_dict()
@@ -4811,7 +4805,7 @@ class ConfigModule(SubModuleWidget):
             msg += f"LeWorldModel: 启用 (layers={d['lew_num_layers']}, hidden={d['lew_hidden_dim']})"
         else:
             msg += "LeWorldModel: 禁用"
-        QMessageBox.information(self, "应用成功", msg)
+        _msg_ok(self, "应用成功", msg)
 
 
 class MonitorModule(SubModuleWidget):
@@ -6634,6 +6628,46 @@ class PluggingSceneModule(SubModuleWidget):
 # ============================================================
 # 主窗口: 侧边栏 + 堆叠页面
 # ============================================================
+
+# ════════════════════════════════════════════════════════════
+# 深色消息框辅助 (WSLg 下 QMessageBox 原生渲染黑字 → 显式深色 QSS)
+# ════════════════════════════════════════════════════════════
+_MSG_SS = """
+    QMessageBox { background:#0d1117; color:#e6edf3; }
+    QMessageBox QLabel { color:#e6edf3; font-size:12px; background:transparent; }
+    QMessageBox QPushButton { background:#161b22; color:#e6edf3; border:1px solid #30363d;
+        border-radius:4px; padding:6px 18px; font-size:12px; min-width:70px; }
+    QMessageBox QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+    QMessageBox QPushButton:default { border-color:#00d4aa; }
+"""
+
+def _msg(parent, title, text, kind="info", yes_no=False):
+    """深色主题消息框: kind=info/warning/critical, yes_no=True 返回是否 Yes"""
+    mb = QMessageBox(parent)
+    mb.setWindowTitle(title)
+    mb.setText(text)
+    mb.setStyleSheet(_MSG_SS)
+    if yes_no:
+        mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        mb.setDefaultButton(QMessageBox.No)
+    else:
+        mb.setStandardButtons(QMessageBox.Ok)
+    ic = {"warning": QMessageBox.Warning, "critical": QMessageBox.Critical}.get(kind, QMessageBox.Information)
+    mb.setIcon(ic)
+    if yes_no:
+        return mb.exec_() == QMessageBox.Yes
+    mb.exec_()
+    return False
+
+def _msg_ok(parent, title, text, kind="info"):
+    """深色信息/警告框 (无返回值)"""
+    _msg(parent, title, text, kind=kind)
+
+def _msg_ask(parent, title, text, kind="warning"):
+    """深色确认框 → True=Yes"""
+    return _msg(parent, title, text, kind=kind, yes_no=True)
+
+
 class StudioMainWindow(QMainWindow):
     @staticmethod
     def _git_short():
@@ -7099,8 +7133,7 @@ class StudioMainWindow(QMainWindow):
                    f"上次同步: {status['last_sync']}\n"
                    f"文档数量: {status['doc_count']}\n\n"
                    f"点击确定开始从 GitHub 同步最新文档。")
-            reply = QMessageBox.question(self, "同步文档", msg,
-                QMessageBox.Yes | QMessageBox.No)
+            reply = _msg_ask(self, "同步文档", msg)
             if reply != QMessageBox.Yes:
                 return
 
@@ -7110,11 +7143,10 @@ class StudioMainWindow(QMainWindow):
                 QApplication.processEvents()
             ))
             self.statusBar().showMessage("✅ 文档同步完成")
-            QMessageBox.information(self, "同步完成",
-                f"文档已更新到: {status['doc_dir']}\n"
+            _msg_ok(self, "同步完成", f"文档已更新到: {status['doc_dir']}\n"
                 f"请重新打开帮助文档查看。")
         except Exception as e:
-            QMessageBox.warning(self, "同步失败", f"文档同步失败:\n{e}")
+            _msg_ok(self, "同步失败", f"文档同步失败:\n{e}", kind="warning")
 
     def _push_docs(self):
         """将本地文档修改推送到 GitHub"""
@@ -7125,8 +7157,7 @@ class StudioMainWindow(QMainWindow):
                    f"版本: {status['version']}\n\n"
                    f"将本地修改推送到 GitHub 主分支。\n"
                    f"需要 GitHub Token 或 WSL 环境。")
-            reply = QMessageBox.question(self, "推送文档", msg,
-                QMessageBox.Yes | QMessageBox.No)
+            reply = _msg_ask(self, "推送文档", msg)
             if reply != QMessageBox.Yes:
                 return
 
@@ -7140,7 +7171,7 @@ class StudioMainWindow(QMainWindow):
             else:
                 self.statusBar().showMessage("⚠ 推送未完成")
         except Exception as e:
-            QMessageBox.warning(self, "推送失败", f"文档推送失败:\n{e}")
+            _msg_ok(self, "推送失败", f"文档推送失败:\n{e}", kind="warning")
 
     def _gen_ppt_template(self):
         """生成 PPT 指令模板"""
@@ -7153,14 +7184,13 @@ class StudioMainWindow(QMainWindow):
             ok, result = create_template()
             if ok:
                 self.statusBar().showMessage(f"✅ 模板已生成: {result}")
-                QMessageBox.information(self, "模板已生成",
-                    f"指令模板已保存到:\n{result}\n\n"
+                _msg_ok(self, "模板已生成", f"指令模板已保存到:\n{result}\n\n"
                     f"打开后按模板格式写指令，\n"
                     f"然后点「解析并执行当前 PPT」运行。")
             else:
-                QMessageBox.warning(self, "生成失败", f"请先同步文档:\n{result}")
+                _msg_ok(self, "生成失败", f"请先同步文档:\n{result}", kind="warning")
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"生成模板失败:\n{e}")
+            _msg_ok(self, "错误", f"生成模板失败:\n{e}", kind="warning")
 
     def _run_ppt(self):
         """选择 PPT 文件并执行指令"""
@@ -7179,13 +7209,13 @@ class StudioMainWindow(QMainWindow):
             ok = run_all(path, log_callback=lambda m: logs.append(m))
             msg = "\n".join(logs)
             if ok:
-                QMessageBox.information(self, "✅ 指令执行完成", msg)
+                _msg_ok(self, "✅ 指令执行完成", msg)
                 self.statusBar().showMessage("✅ 指令全部执行成功")
             else:
-                QMessageBox.warning(self, "⚠ 部分指令失败", msg)
+                _msg_ok(self, "⚠ 部分指令失败", msg, kind="warning")
                 self.statusBar().showMessage("⚠ 部分指令执行失败")
         except Exception as e:
-            QMessageBox.warning(self, "执行错误", f"PPT 解析失败:\n{e}")
+            _msg_ok(self, "执行错误", f"PPT 解析失败:\n{e}", kind="warning")
 
     def _check_updates(self):
         """手动检查更新（支持自动下载升级）"""
@@ -7193,8 +7223,7 @@ class StudioMainWindow(QMainWindow):
         self.statusBar().showMessage("正在检查更新...")
         info = check_latest()
         if info is None:
-            QMessageBox.information(self, "检查失败",
-                "无法连接到 GitHub，请检查网络。\n"
+            _msg_ok(self, "检查失败", "无法连接到 GitHub，请检查网络。\n"
                 "或手动访问：\n"
                 "https://github.com/MikeBMW/lerobot-smolvla-lew/releases")
             self.statusBar().showMessage("⚠ 检查更新失败")
@@ -7202,8 +7231,7 @@ class StudioMainWindow(QMainWindow):
 
         cur = get_current_version()
         if info["version"] == cur:
-            QMessageBox.information(self, "已是最新版",
-                f"当前版本: {cur}\n已是最新版本 ✅")
+            _msg_ok(self, "已是最新版", f"当前版本: {cur}\n已是最新版本 ✅")
             self.statusBar().showMessage(f"✅ 已是最新版: {cur}")
             return
 
@@ -7234,7 +7262,7 @@ class StudioMainWindow(QMainWindow):
 
         # 下载升级
         if not info.get("download_url"):
-            QMessageBox.warning(self, "下载失败", "未找到下载链接")
+            _msg_ok(self, "下载失败", "未找到下载链接", kind="warning")
             return
 
         self.statusBar().showMessage("正在下载新版本...")
@@ -7246,7 +7274,7 @@ class StudioMainWindow(QMainWindow):
 
         ok = download_update(info["download_url"], new_exe)
         if not ok:
-            QMessageBox.warning(self, "下载失败", f"下载失败，请手动下载:\n{info['download_url']}")
+            _msg_ok(self, "下载失败", f"下载失败，请手动下载:\n{info['download_url']}", kind="warning")
             return
 
         # 创建升级脚本
@@ -7262,15 +7290,13 @@ start "" "{exe_path}"
 del "%~f0"
 """)
             self.statusBar().showMessage("✅ 下载完成，正在升级...")
-            QMessageBox.information(self, "下载完成",
-                "新版本已下载。\n"
+            _msg_ok(self, "下载完成", "新版本已下载。\n"
                 "重启控制台后自动完成升级。\n\n"
                 f"下载路径: {new_exe}")
             # 打开所在目录
             QDesktopServices.openUrl(QUrl.fromLocalFile(tmp_dir))
         else:
-            QMessageBox.information(self, "下载完成",
-                f"新版本已下载到:\n{new_exe}\n\n"
+            _msg_ok(self, "下载完成", f"新版本已下载到:\n{new_exe}\n\n"
                 f"请手动替换原 .exe 文件。")
 
     def _auto_check_update(self):
@@ -7328,11 +7354,10 @@ del "%~f0"
                         self.statusBar().showMessage(f"已打开: {rel_path}")
                         return
                     except Exception as e:
-                        QMessageBox.warning(self, "打开失败", f"无法打开文档:\
-{e}")
+                        _msg_ok(self, "打开失败", f"无法打开文档:\
+{e}", kind="warning")
                         return
-            QMessageBox.information(self, "文档未找到",
-                f"以下文档均不存在:\
+            _msg_ok(self, "文档未找到", f"以下文档均不存在:\
 " +
                 "\n".join([os.path.join(self.docs_path, p) for p in paths]))
 
@@ -7343,8 +7368,7 @@ del "%~f0"
     def _toggle_patent_panel(self):
         """弹出专利权利要求摘要"""
         self.statusBar().showMessage("📜 专利·6项权利要求")
-        QMessageBox.information(self, "📜 Z-MAX 专利 · 权利要求摘要",
-            "【权利要求1】双臂协同控制，单次节拍<25秒\n"
+        _msg_ok(self, "📜 Z-MAX 专利 · 权利要求摘要", "【权利要求1】双臂协同控制，单次节拍<25秒\n"
             "【权利要求2】ACT/VTLA/GR00T多引擎热切换\n"
             "【权利要求3】本地-云端统一推理，断连回退ACT\n"
             "【权利要求4】力控闭环1kHz，三路冗余传感器\n"
@@ -7357,13 +7381,12 @@ del "%~f0"
         try:
             clipboard = QApplication.clipboard()
             clipboard.setText(cmd)
-            QMessageBox.information(self, "Git 命令已复制",
-                f"以下命令已复制到剪贴板：\n\n"
+            _msg_ok(self, "Git 命令已复制", f"以下命令已复制到剪贴板：\n\n"
                 f"<code>{cmd}</code>\n\n"
                 f"粘贴到终端即可执行。\n\n"
                 f"完整文档请打开：\n  帮助文档 → Git 推送与拉取指南 → 📖 完整操作指南 (README.md)")
         except Exception as e:
-            QMessageBox.warning(self, "复制失败", f"无法复制命令: {e}\n\n{cmd}")
+            _msg_ok(self, "复制失败", f"无法复制命令: {e}\n\n{cmd}", kind="warning")
 
     def _menu_sync_to_github(self):
         """菜单调用的 GitHub 同步（委托给 HomeWidget）"""
@@ -7372,8 +7395,11 @@ del "%~f0"
 
     def _show_about(self):
         """显示关于对话框"""
-        QMessageBox.about(self, "关于 Z-MAX",
-            f"""
+        from PyQt5.QtCore import Qt as _Qt
+        mb = QMessageBox(self)
+        mb.setWindowTitle("关于 Z-MAX")
+        mb.setTextFormat(_Qt.RichText)
+        mb.setText(f"""
 <b>Z-MAX v1.0.1</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
@@ -7395,6 +7421,10 @@ LeRobot: v0.5.2 · Z-MAX: zmax-1.0.1<br>
 <b>智蜂创元 · 具身智能</b><br>
 github.com/MikeBMW/lerobot-smolvla-lew
 """)
+        mb.setStyleSheet(_MSG_SS)
+        mb.setIcon(QMessageBox.Information)
+        mb.addButton(QMessageBox.Ok)
+        mb.exec_()
 
 
 # ============================================================

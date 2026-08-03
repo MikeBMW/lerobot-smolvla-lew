@@ -2400,37 +2400,82 @@ class SimulinkModule(QWidget):
         self._log(f"👆 {msg}")
 
     def _act_build_on_add(self, name):
-        """用户从模块库点击了模块 → 匹配当前步骤则推进"""
+        """用户从模块库点击了模块 → 匹配则: 自动摆放理想位置 + 增量连线 + 推进"""
         if not getattr(self, "_act_build_active", False):
             return
         if self._act_build_step < 0:
             return
         cur_name, _, _ = self.ACT_BUILD_STEPS[self._act_build_step]
-        if name == cur_name:
-            self._tutorial_cleanup_highlight()
-            self._log(f"✅ 已添加: {name} · 画布节点 {len(self.nodes)}/{len(self.ACT_BUILD_STEPS)}")
-            self._act_build_next()
-        else:
+        if name != cur_name:
             # 点错模块: 明确提示 (不静默)
             self._log(f"❓ 不是这一步 — 请点击左侧模块库中金色高亮的「{cur_name}」")
+            return
+        # ✅ 匹配: 自动摆放 + 增量连线
+        self._tutorial_cleanup_highlight()
+        step = self._act_build_step
+        node = self.nodes[-1]  # 刚添加的节点 (add_node 追加到末尾)
+        it = self._items.get(node["id"])
+        # 理想位置: 按步骤横排 (x=120+i*260, y=80), 与模板一致
+        ideal_x, ideal_y = 120 + step * 260, 80
+        node["x"], node["y"] = ideal_x, ideal_y
+        if it is not None:
+            it.setPos(ideal_x, ideal_y)
+            it.update()
+        self._log(f"✅ 已添加: {name} · 自动摆放到 {ideal_x},{ideal_y} · 画布 {len(self.nodes)}/{len(self.ACT_BUILD_STEPS)}")
+        # 增量连线: 按 ACT-Meta 模板拓扑, 只连两端都已存在的连线 (不重复)
+        self._act_build_link_existing()
+        self.canvas._scene.update()
+        self._act_build_next()
+
+    def _act_build_link_existing(self):
+        """按模板拓扑连线: 两端节点都已存在且未连过的才连 (引导中增量调用)"""
+        tmpl = None
+        for nm, nodes, links in REFERENCE_APPS:
+            if nm == "🧠 ACT-Meta 全新训练":
+                tmpl = (nodes, links)
+                break
+        if not tmpl:
+            return
+        tpl_nodes, tpl_links = tmpl
+        existing = [n["id"] for n in self.nodes]
+        linked_pairs = set()
+        for lk in self.links:
+            # links 元素是 dict: {"f": src_id, "t": dst_id}
+            if isinstance(lk, dict):
+                linked_pairs.add((lk.get("f"), lk.get("t")))
+            else:
+                try:
+                    linked_pairs.add((lk[0], lk[1]))
+                except Exception:
+                    pass
+        # 找当前节点与模板索引的对应
+        idx_of = {}
+        for i, (ntype, nm, _p) in enumerate(tpl_nodes):
+            for n in self.nodes:
+                if n.get("name") == nm:
+                    idx_of[i] = n["id"]
+                    break
+        for fi, ti in tpl_links:
+            sf, st = idx_of.get(fi), idx_of.get(ti)
+            if sf and st and sf in existing and st in existing:
+                if (sf, st) not in linked_pairs:
+                    self.add_link(self._items.get(sf), self._items.get(st))
+                    linked_pairs.add((sf, st))
 
     def _act_build_finish(self):
-        """8步搭完: 自动连线 → 提示训练"""
+        """8步搭完: 确认连线完整 → 提示训练"""
         self._act_build_active = False
         self._act_build_step = -1
-        # 自动连线 (按 ACT-Meta 模板拓扑)
+        # 兜底: 补齐模板拓扑连线 (增量阶段可能因顺序漏连)
+        self._act_build_link_existing()
+        self.canvas._scene.update()
         tmpl = None
         for nm, nodes, links in REFERENCE_APPS:
             if nm == "🧠 ACT-Meta 全新训练":
                 tmpl = (nodes, links)
                 break
         if tmpl and len(self.nodes) >= 8:
-            ids = [n["id"] for n in self.nodes]
-            for fi, ti in tmpl[1]:
-                if fi < len(ids) and ti < len(ids):
-                    self.add_link(self._items[ids[fi]], self._items[ids[ti]])
-            self.canvas._scene.update()
-            self._log("🎉 8/8 搭建完成! 已按官方 ACT 拓扑自动连线 (8节点8连线)")
+            self._log("🎉 8/8 搭建完成! 已自动摆放 + 按官方 ACT 拓扑自动连线")
             self._log("👉 双击「🚀 全新训练」节点 → 启动 metaworld 全新训练 (300步 ~40s)")
             self._log("💡 也可删除后重新搭建, 或在模块库点「🧠 ACT-Meta 完整模型」一键加载")
         else:
