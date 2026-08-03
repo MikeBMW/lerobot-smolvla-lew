@@ -6646,7 +6646,7 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"XSpace Studio — Z-MAX v1.2.0-cicd · {self._git_short()}")  # v1.2.0: 现场直播+快照归档+状态机联调
+        self.setWindowTitle(f"XSpace Studio — Z-MAX v1.3.0-loop · {self._git_short()}")  # v1.3.0: 数据闭环全自动+水流DDS+主数据空间
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
