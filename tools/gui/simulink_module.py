@@ -1784,10 +1784,7 @@ class SimulinkModule(QWidget):
 
     def load_reference_app(self, name, node_specs, link_specs):
         if self.nodes:
-            ret = QMessageBox.question(self, "加载参考应用",
-                                       f"加载「{name}」将清空当前画布，继续？",
-                                       QMessageBox.Yes | QMessageBox.No)
-            if ret != QMessageBox.Yes:
+            if not self._qmsg_yes("加载参考应用", f"加载「{name}」将清空当前画布，继续？"):
                 return
         self.clear()
         ids = []
@@ -1911,7 +1908,7 @@ class SimulinkModule(QWidget):
         proj = str(Path(__file__).parent.parent.parent)
         jsons = sorted(glob.glob(os.path.join(proj, "docs", "CICD_COMPARE_*.json")))
         if not jsons:
-            QMessageBox.information(self, "性能对比", "⚠️ 无对比数据\n\n请先运行:\n  python3 tools/act_compare.py\n生成 CICD_COMPARE_*.json")
+            self._qmsg_info("性能对比", "⚠️ 无对比数据\n\n请先运行:\n  python3 tools/act_compare.py\n生成 CICD_COMPARE_*.json")
             return
         d = json.load(open(jsons[-1]))
         base, cand = d["baseline"], d["candidate"]
@@ -1964,7 +1961,7 @@ class SimulinkModule(QWidget):
         try:
             from simulink_scope import ScopeCompareDialog
         except ImportError:
-            QMessageBox.warning(self, "Scope", "缺少 simulink_scope.py 模块")
+            self._qmsg_info("Scope", "缺少 simulink_scope.py 模块")
             return
         dlg = ScopeCompareDialog(self)
         dlg.exec_()
@@ -2107,10 +2104,38 @@ class SimulinkModule(QWidget):
         QFileDialog QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:5px 14px; }
         QFileDialog QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
         QMessageBox { background:#0d1117; color:#fff; }
-        QMessageBox QLabel { color:#fff; }
-        QMessageBox QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:5px 16px; }
+        QMessageBox QLabel { color:#fff; font-size:12px; }
+        QMessageBox QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:6px 18px; font-size:12px; min-width:70px; }
         QMessageBox QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+        QMessageBox QPushButton:default { border-color:#00d4aa; }
     """
+
+    def _qmsg(self, title, text, kind="info", yes_no=False):
+        """统一深色主题消息框 (QMessageBox 为 Qt 自绘, setStyleSheet 直接生效)"""
+        mb = QMessageBox(self)
+        mb.setWindowTitle(title)
+        mb.setText(text)
+        mb.setStyleSheet(self.DIALOG_SS)
+        if yes_no:
+            mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            mb.setDefaultButton(QMessageBox.No)
+        else:
+            mb.setStandardButtons(QMessageBox.Ok)
+        if kind == "warning":
+            mb.setIcon(QMessageBox.Warning)
+        elif kind == "critical":
+            mb.setIcon(QMessageBox.Critical)
+        else:
+            mb.setIcon(QMessageBox.Information)
+        return mb.exec_()
+
+    def _qmsg_yes(self, title, text):
+        """深色主题 是/否 确认框 → True=是"""
+        return self._qmsg(title, text, kind="info", yes_no=True) == QMessageBox.Yes
+
+    def _qmsg_info(self, title, text):
+        """深色主题 信息框"""
+        self._qmsg(title, text, kind="info")
 
     def export_flow(self):
         flow = {"format": "zmax-simulink", "version": "1.0", "name": "untitled",
@@ -2143,7 +2168,7 @@ class SimulinkModule(QWidget):
                 self.load_flow(flow)
                 self._log(f"📂 已导入: {path}")
             except Exception as ex:
-                QMessageBox.warning(self, "导入失败", str(ex))
+                self._qmsg_info("导入失败", str(ex))
 
     def load_flow(self, flow):
         self.clear()
@@ -2350,10 +2375,8 @@ class SimulinkModule(QWidget):
         """🧠 ACT-Meta 引导: 从模块库逐步搭建 metaworld 全新训练模型, 全程提示"""
         # 若画布已有内容, 确认清空 (重新搭建)
         if self.nodes:
-            ret = QMessageBox.question(self, "ACT-Meta 逐步搭建",
-                                       "逐步搭建将清空当前画布，继续？\n(也可在左侧模块库点「🧠 ACT-Meta 完整模型」一键加载)",
-                                       QMessageBox.Yes | QMessageBox.No)
-            if ret != QMessageBox.Yes:
+            if not self._qmsg_yes("ACT-Meta 逐步搭建",
+                                  "逐步搭建将清空当前画布，继续？\n(也可在左侧模块库点「🧠 ACT-Meta 完整模型」一键加载)"):
                 return
         self.clear()
         self._act_build_step = -1
