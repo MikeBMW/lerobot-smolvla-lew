@@ -1414,7 +1414,7 @@ class SimulinkModule(QWidget):
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
-        self.btn_tutorial = mk_btn("📖 教程", "交互式引导: 高亮+文字提示, 全程鼠标", self.start_tutorial, "#d4a800")
+        self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         self.btn_compare = mk_btn("📊 对比", "基础模型 vs 微调模型 性能对比 (CICD)", self.show_compare, "#00d4aa")
         self.btn_scope = mk_btn("🖥 Scope", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
@@ -1570,20 +1570,22 @@ class SimulinkModule(QWidget):
     # 交互式教程 (高亮 + 文字提示, 全程鼠标)
     # ════════════════════════════════════════════════════════════
     TUTORIAL_STEPS = [
-        ("ref",  "📦 取料·100G 闭环",
-         "① 点击下方参考应用「📦 取料·100G 闭环」,\n自动生成 4 节点 + 3 连线的工作流 (共6步)"),
-        ("node", None,
-         "② 鼠标左键按住节点拖动, 试试移动它\n(注意: 只移动按下的节点, 其他节点不动)"),
-        ("btn_run", None,
-         "③ 点击工具栏「▶ 运行」, 按拓扑顺序执行仿真\n(Orin→ACT→取料→力控达标)"),
-        ("btn_step", None,
-         "④ 点击「⏭ 单步」, 每次执行一个时间步,\n观察底部日志中的节点执行记录"),
-        ("btn_stop", None,
-         "⑤ 点击「⏹ 停止」结束仿真,\n时钟归位, 运行按钮恢复"),
-        ("btn_save", None,
-         "⑥ 点击「💾 导出」, 把工作流保存为 JSON,\n该文件可直接被 CI/CD 验证器校验"),
+        ("pipeline", None,
+         "① 点击工具栏「🎯 数据闭环控制台」\n打开闭环控制台 (6环节: 采集→训练→验证→集成→部署→推理)"),
+        ("collect", None,
+         "② 点击「① 采集」→ 从 ECS 中转拉取 Orin 真实数据,\naction 恒等自动修复并落地 (队列空则提示无新包)"),
+        ("train", None,
+         "③ 点击「② 训练」→ 智能选数据源 (Orin真实 / metaworld占位),\n启动 ACT 训练 (~40s, 4060 CUDA)"),
+        ("validate", None,
+         "④ 点击「③ 验证」→ validate_flow.py 校验模型标准合规\n(通过才能进入集成)"),
+        ("integrate", None,
+         "⑤ 点击「④ 集成」→ 打包最新 checkpoint 上传 ECS 中转"),
+        ("deploy", None,
+         "⑥ 点击「⑤ 部署」→ 查询 Orin 部署状态 (心跳/模型)"),
+        ("infer", None,
+         "⑦ 点击「⑥ 推理」→ 检查 Orin 在线 / 推理次数 / 延迟"),
         ("done", None,
-         "🎉 教程完成! 你已经掌握 Simulink 模式:\n参考应用 → 拖拽 → 仿真 → 导出 → CI校验\n点击任意处退出教程"),
+         "🎉 数据闭环引导完成! 你已走通全链路:\n采集 → 训练 → 验证 → 集成 → 部署 → 推理\n点击任意处退出引导"),
     ]
 
     def start_tutorial(self):
@@ -1593,7 +1595,7 @@ class SimulinkModule(QWidget):
             return
         self._tutorial_active = True
         self._tutorial_step = -1
-        self._log("📖 教程开始 · 跟着高亮提示操作, 全程鼠标")
+        self._log("🧭 数据闭环引导开始 · 跟着高亮提示一步一步操作, 全程鼠标")
         self._tutorial_next()
 
     def _tutorial_next(self):
@@ -1605,10 +1607,15 @@ class SimulinkModule(QWidget):
             return
         kind, target, msg = self.TUTORIAL_STEPS[self._tutorial_step]
 
-        if kind == "ref":
-            widget = self._ref_btns.get(target)
-        elif kind == "node":
-            widget = self.canvas  # 高亮画布
+        if kind == "pipeline":
+            widget = self.btn_pipeline
+        elif kind in ("collect", "train", "validate", "integrate", "deploy", "infer"):
+            # 6 环节引导: 高亮控制台面板内的环节按钮
+            panel = getattr(self, "_pipeline_panel", None)
+            if panel is not None and hasattr(panel, "_pipe_btns") and kind in panel._pipe_btns:
+                widget = panel._pipe_btns[kind]
+            else:
+                widget = self.btn_pipeline  # 面板未打开 → 高亮入口按钮
         elif kind in ("btn_run", "btn_step", "btn_stop", "btn_save"):
             widget = getattr(self, {"btn_run": "btn_run", "btn_step": "btn_step",
                                     "btn_stop": "btn_stop", "btn_save": "btn_save"}[kind])
@@ -1662,21 +1669,12 @@ class SimulinkModule(QWidget):
         """用户执行了动作 → 检查是否匹配当前步骤, 匹配则推进"""
         if not self._tutorial_active:
             return
-        # 导出完成 = 用户已掌握 → 直接结束教程 (清除高亮)
-        if action == "save":
-            self._tutorial_finish_early()
-            return
+        # 任意环节完成 = 已掌握 → 直接结束教程 (清除高亮)
         kind, target, _ = self.TUTORIAL_STEPS[self._tutorial_step] if 0 <= self._tutorial_step < len(self.TUTORIAL_STEPS) else (None, None, None)
         matched = False
-        if kind == "ref" and action == "ref":
+        if kind == "pipeline" and action == "pipeline":
             matched = True
-        elif kind == "btn_run" and action == "run":
-            matched = True
-        elif kind == "btn_step" and action == "step":
-            matched = True
-        elif kind == "btn_stop" and action == "stop":
-            matched = True
-        elif kind == "btn_save" and action == "save":
+        elif kind in ("collect", "train", "validate", "integrate", "deploy", "infer") and action == kind:
             matched = True
         if matched:
             self._tutorial_next()
@@ -1698,12 +1696,13 @@ class SimulinkModule(QWidget):
 
     def _tutorial_hint_mismatch(self, action, expected_kind):
         """点错目标时给明确提示: 该点哪个高亮按钮"""
-        kind_labels = {"ref": "下方参考应用按钮(金色高亮)",
-                       "btn_run": "工具栏「▶ 运行」按钮(金色高亮)",
-                       "btn_step": "工具栏「⏭ 单步」按钮(金色高亮)",
-                       "btn_stop": "工具栏「⏹ 停止」按钮(金色高亮)",
-                       "btn_save": "工具栏「💾 导出」按钮(金色高亮)",
-                       "node": "画布上的节点(拖动它)"}
+        kind_labels = {"pipeline": "工具栏「🎯 数据闭环控制台」按钮(金色高亮)",
+                       "collect": "控制台「① 采集」按钮(金色高亮)",
+                       "train": "控制台「② 训练」按钮(金色高亮)",
+                       "validate": "控制台「③ 验证」按钮(金色高亮)",
+                       "integrate": "控制台「④ 集成」按钮(金色高亮)",
+                       "deploy": "控制台「⑤ 部署」按钮(金色高亮)",
+                       "infer": "控制台「⑥ 推理」按钮(金色高亮)"}
         target = kind_labels.get(expected_kind, "高亮的位置")
         self._log(f"❓ 不是这一步哦 — 请点击: {target}")
         # 用 QToolTip 在目标控件旁弹出气泡 (更醒目)
@@ -1917,7 +1916,7 @@ class SimulinkModule(QWidget):
         if not self.nodes:
             self._log("⚠️ 画布为空 — 点击上方「🗂 参考应用」一键加载模板, 或从左侧模块库添加节点")
             if self._tutorial_active:
-                self._tutorial_hint_mismatch("run", "ref")
+                self._tutorial_hint_mismatch("run", "pipeline")
             return
         self._sim_t = 0.0
         self._sim_dt = self.sp_dt.value()
@@ -2273,10 +2272,12 @@ class SimulinkModule(QWidget):
         self._pipeline_panel.show()
         self._pipeline_panel.raise_()
         self._pipeline_panel.activateWindow()
+        self._tutorial_on_action("pipeline")
 
     def on_validate(self):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
         self._log("════ ① 模型验证 (Model Advisor 对标) ════")
+        self._tutorial_on_action("validate")
 
         def _work():
             import tempfile
@@ -2369,6 +2370,7 @@ class SimulinkModule(QWidget):
     def on_train(self):
         """② 训练: 后台执行 (数据源智能选择 + lerobot_train)"""
         self._log("════ ② 训练 (lerobot_train) ════")
+        self._tutorial_on_action("train")
 
         def _work():
             root = self._repo_root()
@@ -2411,6 +2413,7 @@ class SimulinkModule(QWidget):
     def on_integrate(self):
         """③ 集成: 后台执行 (打包 checkpoint → 上传 ECS)"""
         self._log("════ ③ 集成 (checkpoint → ECS 中转) ════")
+        self._tutorial_on_action("integrate")
 
         def _work():
             root = self._repo_root()
@@ -2423,6 +2426,7 @@ class SimulinkModule(QWidget):
     def on_deploy(self):
         """⑤ 部署: 后台执行 (ECS 状态检查)"""
         self._log("════ ⑤ 部署 (ECS 状态检查) ════")
+        self._tutorial_on_action("deploy")
 
         def _work():
             root = self._repo_root()
@@ -2435,6 +2439,7 @@ class SimulinkModule(QWidget):
     def on_collect(self):
         """① 采集: 拉取 relay Orin 真实数据 → action 修复 → 落地"""
         self._log("════ ① 采集 (relay → 修复 action → 落地) ════")
+        self._tutorial_on_action("collect")
 
         def _work():
             import requests as _rq
@@ -2470,6 +2475,7 @@ class SimulinkModule(QWidget):
     def on_infer(self):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
         self._log("════ ⑥ 推理 (Orin 状态检查) ════")
+        self._tutorial_on_action("infer")
 
         def _work():
             import requests as _rq
