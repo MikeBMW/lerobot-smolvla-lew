@@ -126,6 +126,29 @@ LIBRARY = [
         {"name": "M04 LEW",     "params": {"horizon": 16}},
         {"name": "M05 H-JEPA",  "params": {"remote": "4090"}},
     ]),
+    # 🧠 ACT 模型·官方子模块 (2026-08-04 老倪: "在左侧模块库里分个类, 将ACT-meta保存到模块库里;
+    #  引导从最基础的模块库搭建成最终模型, 全程提示")
+    # 对应 modeling_act.py: backbone → vae_encoder → encoder → decoder → action_head → ACTTemporalEnsembler
+    ("model", "🧠 ACT 模型·子模块", [
+        {"name": "📦 metaworld 数据", "params": {"source": "metaworld", "frames": 696, "active": True,
+                                                "dims": "4D/4D", "desc": "states 4D · actions 4D (sawyer 关节)"}},
+        {"name": "🖼 视觉主干 ResNet18", "params": {"backbone": "resnet18", "pretrained": True,
+                                                   "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}},
+        {"name": "🧬 VAE 编码器 CVAE", "params": {"use_vae": True, "latent_dim": 32,
+                                                 "desc": "官方 ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}},
+        {"name": "🔤 Transformer Encoder", "params": {"n_layers": 4, "dim_model": 256, "n_heads": 8,
+                                                      "desc": "官方 ACT.encoder → 上下文 tokens"}},
+        {"name": "🔡 Transformer Decoder", "params": {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
+                                                      "desc": "官方 ACT.decoder → DETR queries 动作块"}},
+        {"name": "🎯 Action Head 4D", "params": {"action_dim": 4, "chunk_size": 7,
+                                                "desc": "★适配 metaworld: 输出 (B,7,4) · 真机 6D"}},
+        {"name": "⏳ Temporal Ensemble", "params": {"coeff": 0.01,
+                                                   "desc": "官方 ACTTemporalEnsembler → 动作平滑"}},
+        {"name": "🚀 全新训练", "params": {"steps": 300,
+                                          "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}},
+        {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
+         "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
+    ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
         {"name": "A01 取料·100G",  "params": {"pos": [0.1, 0.2, 0.3]}},
@@ -1289,6 +1312,7 @@ class LibraryPanel(QFrame):
             w = item.widget()
             if w:
                 w.deleteLater()
+        self._lib_btns = {}  # 模块名 → 按钮 (引导高亮用)
         for ntype, gname, items in LIBRARY:
             # 工作流过滤: 按节点类型匹配
             wf_of = {t: wf for wf, t in WORKFLOW_TYPES.items()}
@@ -1305,8 +1329,13 @@ class LibraryPanel(QFrame):
                     border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#fff; }}
                 """)
-                btn.clicked.connect(lambda _, t=ntype, nm=it["name"], ps=it["params"]:
-                                    self.module.add_node_at_center(t, nm, ps))
+                if it.get("template"):
+                    # 完整模型条目: 点击加载模板
+                    btn.clicked.connect(lambda _, tpl=it["template"]: self.module.load_reference_app_by_name(tpl))
+                else:
+                    btn.clicked.connect(lambda _, t=ntype, nm=it["name"], ps=it["params"]:
+                                        self.module.add_node_at_center(t, nm, ps))
+                self._lib_btns[it["name"]] = btn
                 self.v.addWidget(btn)
         self.v.addStretch()
 
@@ -1744,6 +1773,15 @@ class SimulinkModule(QWidget):
         self._log(f"🗂 工作流: {dict(data='① 访问·标注', scene='② 仿真场景', plan='③ 规划·控制', percept='④ 感知', deploy='⑤ 部署', test='⑥ 集成·测试').get(wf_key, wf_key)} · 模块库已过滤")
 
     # ── 参考应用模板 (对标 MathWorks 参考应用列表) ──
+    def load_reference_app_by_name(self, name):
+        """按模板名加载参考应用 (模块库完整模型条目用)"""
+        for nm, nodes, links in REFERENCE_APPS:
+            if nm == name:
+                self.load_reference_app(nm, nodes, links)
+                return True
+        self._log(f"❌ 找不到模板: {name}")
+        return False
+
     def load_reference_app(self, name, node_specs, link_specs):
         if self.nodes:
             ret = QMessageBox.question(self, "加载参考应用",
@@ -1767,8 +1805,11 @@ class SimulinkModule(QWidget):
     # ── 节点操作 ──
     def add_node_at_center(self, ntype, name, params=None):
         c = self.canvas.mapToScene(self.canvas.viewport().rect().center())
-        return self.add_node(ntype, name, int(c.x() - 75 + random.uniform(-30, 30)),
-                             int(c.y() - 25 + random.uniform(-30, 30)), params)
+        n = self.add_node(ntype, name, int(c.x() - 75 + random.uniform(-30, 30)),
+                          int(c.y() - 25 + random.uniform(-30, 30)), params)
+        # 🧠 ACT-Meta 逐步搭建引导: 匹配当前步骤模块则推进
+        self._act_build_on_add(name)
+        return n
 
     def add_node(self, ntype, name, x, y, params=None):
         node = {
@@ -2292,42 +2333,85 @@ class SimulinkModule(QWidget):
         self._pipeline_panel.activateWindow()
         self._tutorial_on_action("pipeline")
 
+    # 🧠 ACT-Meta 逐步搭建引导: 从模块库逐模块搭建成最终模型 (2026-08-04 老倪)
+    # 每步: 高亮模块库按钮 + 日志提示 → 用户点击添加 → 匹配推进 → 8步搭完自动连线
+    ACT_BUILD_STEPS = [
+        ("📦 metaworld 数据", "hardware", "第1/8步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
+        ("🖼 视觉主干 ResNet18", "model", "第2/8步 视觉编码: 点击「🖼 视觉主干 ResNet18」(官方 ACT.backbone, 图像→特征图)"),
+        ("🧬 VAE 编码器 CVAE", "model", "第3/8步 变分编码: 点击「🧬 VAE 编码器 CVAE」(官方 vae_encoder, 动作序列→潜变量)"),
+        ("🔤 Transformer Encoder", "model", "第4/8步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
+        ("🔡 Transformer Decoder", "model", "第5/8步 动作解码: 点击「🔡 Transformer Decoder」(官方 ACT.decoder, DETR queries)"),
+        ("🎯 Action Head 4D", "action", "第6/8步 输出适配: 点击「🎯 Action Head 4D」(★适配 metaworld 4D, 真机6D)"),
+        ("⏳ Temporal Ensemble", "condition", "第7/8步 动作平滑: 点击「⏳ Temporal Ensemble」(官方 ACTTemporalEnsembler)"),
+        ("🚀 全新训练", "system", "第8/8步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
+    ]
+
     def open_act_meta(self):
-        """🧠 ACT-Meta 引导: 加载 metaworld 全新训练模型 (7子模块) + 提示操作"""
-        name = "🧠 ACT-Meta 全新训练"
-        for nm, nodes, links in REFERENCE_APPS:
-            if nm == name:
-                # 若画布已有内容, 确认清空
-                if self.nodes:
-                    ret = QMessageBox.question(self, "加载 ACT-Meta 模型",
-                                               f"加载「{name}」将清空当前画布，继续？",
-                                               QMessageBox.Yes | QMessageBox.No)
-                    if ret != QMessageBox.Yes:
-                        return
-                self.load_reference_app(nm, nodes, links)
-                # 引导提示: 高亮「🚀 全新训练」节点, 明确告诉操作者
-                train_node = None
-                for n in self.nodes:
-                    if "全新训练" in n.get("name", ""):
-                        train_node = n
-                        break
-                self._log("════ 🧠 ACT-Meta 引导 ════")
-                self._log("📦 metaworld 数据 (4D/4D, 已激活) → 🖼 ResNet18 → 🧬 CVAE → 🔤 Encoder → 🔡 Decoder → 🎯 Action Head(4D) → ⏳ Ensemble")
-                self._log("🎯 Action Head 已适配 metaworld 4D 输出 (真机 Orin 为 6D, 本模型不部署真机)")
-                self._log("👉 双击「🚀 全新训练」节点 → 启动 metaworld 全新训练 (300步 ~40s)")
-                if train_node:
-                    it = self._items.get(train_node["id"])
-                    if it:
-                        # 高亮训练节点 2.5s (金框脉冲)
-                        self._tutorial_hl = it
-                        self._tutorial_orig_ss[id(it)] = it.styleSheet() if hasattr(it, "styleSheet") else ""
-                        try:
-                            it.setToolTip("👆 双击我启动 metaworld 全新训练")
-                        except Exception:
-                            pass
-                        QTimer.singleShot(2500, lambda: self._tutorial_cleanup_highlight())
+        """🧠 ACT-Meta 引导: 从模块库逐步搭建 metaworld 全新训练模型, 全程提示"""
+        # 若画布已有内容, 确认清空 (重新搭建)
+        if self.nodes:
+            ret = QMessageBox.question(self, "ACT-Meta 逐步搭建",
+                                       "逐步搭建将清空当前画布，继续？\n(也可在左侧模块库点「🧠 ACT-Meta 完整模型」一键加载)",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if ret != QMessageBox.Yes:
                 return
-        self._log(f"❌ 找不到模板: {name}")
+        self.clear()
+        self._act_build_step = -1
+        self._act_build_active = True
+        self._log("════ 🧠 ACT-Meta 逐步搭建引导 · 从模块库搭成完整模型 ════")
+        self._log("🎯 目标: metaworld 数据 → ResNet18 → CVAE → Encoder → Decoder → ActionHead(4D) → Ensemble → 训练")
+        self._log("📋 每步请点击左侧模块库「🧠 ACT 模型·子模块」分类下的高亮模块, 共8步")
+        self._act_build_next()
+
+    def _act_build_next(self):
+        """推进到下一步: 高亮模块库按钮 + 提示"""
+        self._act_build_step += 1
+        if self._act_build_step >= len(self.ACT_BUILD_STEPS):
+            self._act_build_finish()
+            return
+        name, ntype, msg = self.ACT_BUILD_STEPS[self._act_build_step]
+        # 高亮模块库对应按钮 (金框脉冲, 复用教程高亮工具)
+        btn = getattr(self.library, "_lib_btns", {}).get(name)
+        if btn is not None:
+            self._tutorial_highlight(btn)
+        self._log(f"👆 {msg}")
+
+    def _act_build_on_add(self, name):
+        """用户从模块库点击了模块 → 匹配当前步骤则推进"""
+        if not getattr(self, "_act_build_active", False):
+            return
+        if self._act_build_step < 0:
+            return
+        cur_name, _, _ = self.ACT_BUILD_STEPS[self._act_build_step]
+        if name == cur_name:
+            self._tutorial_cleanup_highlight()
+            self._log(f"✅ 已添加: {name} · 画布节点 {len(self.nodes)}/{len(self.ACT_BUILD_STEPS)}")
+            self._act_build_next()
+        else:
+            # 点错模块: 明确提示 (不静默)
+            self._log(f"❓ 不是这一步 — 请点击左侧模块库中金色高亮的「{cur_name}」")
+
+    def _act_build_finish(self):
+        """8步搭完: 自动连线 → 提示训练"""
+        self._act_build_active = False
+        self._act_build_step = -1
+        # 自动连线 (按 ACT-Meta 模板拓扑)
+        tmpl = None
+        for nm, nodes, links in REFERENCE_APPS:
+            if nm == "🧠 ACT-Meta 全新训练":
+                tmpl = (nodes, links)
+                break
+        if tmpl and len(self.nodes) >= 8:
+            ids = [n["id"] for n in self.nodes]
+            for fi, ti in tmpl[1]:
+                if fi < len(ids) and ti < len(ids):
+                    self.add_link(self._items[ids[fi]], self._items[ids[ti]])
+            self.canvas._scene.update()
+            self._log("🎉 8/8 搭建完成! 已按官方 ACT 拓扑自动连线 (8节点8连线)")
+            self._log("👉 双击「🚀 全新训练」节点 → 启动 metaworld 全新训练 (300步 ~40s)")
+            self._log("💡 也可删除后重新搭建, 或在模块库点「🧠 ACT-Meta 完整模型」一键加载")
+        else:
+            self._log("⚠️ 搭建未完成, 请检查画布节点")
 
     def on_validate(self):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
