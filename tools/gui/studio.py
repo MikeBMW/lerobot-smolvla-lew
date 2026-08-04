@@ -6821,17 +6821,27 @@ class StudioMainWindow(QMainWindow):
         self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
 
     def on_flow_sync(self, flow):
-        """Simulink 工作流变更 → 推送到 web (datadrive.world/api/comfy/task)"""
+        """Simulink 工作流变更 → 推送到 web (datadrive.world/api/comfy/task)
+        后台线程发送 (2026-08-05 实测: web comfy mock 常挂 → 同步请求超时卡主线程 8s,
+        对比模板 13 节点批量加载时更明显; 改线程后 UI 零卡顿)"""
         try:
-            import requests
-            url = "https://datadrive.world/api/comfy/task"
-            r = requests.post(url, json=flow, timeout=8)
-            if r.status_code == 200:
-                self.statusBar().showMessage(f"🔄 Simulink 已同步到 web ({len(flow.get('nodes', []))}节点)")
-            else:
-                self.statusBar().showMessage(f"⚠️ web同步失败 HTTP {r.status_code}")
-        except Exception as ex:
-            self.statusBar().showMessage(f"⚠️ web同步不可用: {ex}")
+            import threading
+
+            def _post():
+                try:
+                    import requests
+                    url = "https://datadrive.world/api/comfy/task"
+                    r = requests.post(url, json=flow, timeout=8)
+                    if r.status_code == 200:
+                        self.statusBar().showMessage(f"🔄 Simulink 已同步到 web ({len(flow.get('nodes', []))}节点)")
+                    else:
+                        self.statusBar().showMessage(f"⚠️ web同步失败 HTTP {r.status_code}")
+                except Exception as ex:
+                    self.statusBar().showMessage(f"⚠️ web同步不可用: {ex}")
+
+            threading.Thread(target=_post, daemon=True).start()
+        except Exception:
+            pass
 
     def _on_nav(self, target):
         """导航切换"""

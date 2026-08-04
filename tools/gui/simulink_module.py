@@ -1928,14 +1928,23 @@ class SimulinkModule(QWidget):
             if not self._qmsg_yes("加载参考应用", f"加载「{name}」将清空当前画布，继续？"):
                 return
         self.clear()
-        ids = []
-        base_x, base_y = 120, 80
-        for i, (ntype, nm, params) in enumerate(node_specs):
-            n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
-            ids.append(n["id"])
-        for fi, ti in link_specs:
-            if fi < len(ids) and ti < len(ids):
-                self.add_link(self._items[ids[fi]], self._items[ids[ti]])
+        # ⚠️ 批量加载性能 (2026-08-05 实测): add_node 每次 _sync() 会 POST web 同步,
+        # 13 节点模板 = 13 次串行网络请求 (web comfy mock 常挂 → 每个超时数秒) → 按钮卡死。
+        # 加载期间禁用 _sync, 末尾统一同步一次。
+        old_sync = self._sync
+        self._sync = lambda: None
+        try:
+            ids = []
+            base_x, base_y = 120, 80
+            for i, (ntype, nm, params) in enumerate(node_specs):
+                n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
+                ids.append(n["id"])
+            for fi, ti in link_specs:
+                if fi < len(ids) and ti < len(ids):
+                    self.add_link(self._items[ids[fi]], self._items[ids[ti]])
+        finally:
+            self._sync = old_sync
+        self._sync()  # 一次同步到位
         self.canvas._scene.update()
         self._log(f"🗂 已加载参考应用: {name} ({len(ids)}节点 {len(link_specs)}连线) · 双击节点改参数")
         self._tutorial_on_action("ref")
