@@ -1031,19 +1031,9 @@ class SimNodeItem(QGraphicsObject):
         self.scene_ref.on_node_activated(self.node)
         e.accept()
 
-    def contextMenuEvent(self, e):
-        # 🆕 右键节点 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区)
-        menu = QMenu()
-        a_logic = menu.addAction("📖 查看/编辑节点逻辑")
-        a_param = menu.addAction("⚙️ 节点参数")
-        a_run = menu.addAction("▶ 运行节点")
-        chosen = menu.exec_(e.screenPos())
-        if chosen == a_logic:
-            self.scene_ref.on_show_node_logic(self.node)
-        elif chosen == a_param:
-            self.scene_ref.on_node_params(self.node)
-        elif chosen == a_run:
-            self.scene_ref.on_node_activated(self.node)
+    # ⚠️ 无 contextMenuEvent — 右键统一走 SimCanvas.mousePressEvent(RightButton) 分支:
+    #   系统 QContextMenuEvent 的 screenPos 在 WSLg 虚拟屏坐标异常(菜单弹出屏幕外=没反应),
+    #   且与 canvas 分支会双弹. 菜单用 viewport().mapToGlobal(e.pos()) 坐标最可靠.
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1211,6 +1201,16 @@ class SimCanvas(QGraphicsView):
             self._pan_start = e.pos()
             self.setCursor(Qt.ClosedHandCursor)
             return
+        if e.button() == Qt.RightButton:
+            # 🆕 右键节点 → 查看/编辑节点逻辑.
+            # ⚠️ 不用 QGraphicsSceneContextMenuEvent.screenPos() (WSLg 虚拟屏下坐标异常, 菜单弹出屏幕外=没反应)
+            # 用 viewport 事件坐标 mapToGlobal, WSLg 可靠.
+            item = self.itemAt(e.pos())
+            if isinstance(item, SimNodeItem):
+                self._show_node_menu(item, e.pos())
+                return
+            super().mousePressEvent(e)
+            return
         if e.button() == Qt.LeftButton:
             item = self.itemAt(e.pos())
             # 点击节点
@@ -1241,6 +1241,24 @@ class SimCanvas(QGraphicsView):
             item = self.itemAt(e.pos())
             if not isinstance(item, (SimNodeItem, SimLinkItem)):
                 self._scene.clearSelection()
+
+    def _show_node_menu(self, item, view_pos):
+        """右键节点菜单 (viewport 全局坐标, WSLg 可靠; 深色QSS防黑字)"""
+        menu = QMenu()
+        menu.setStyleSheet(
+            "QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; }"
+            "QMenu::item { padding:6px 28px 6px 14px; color:#e6edf3; font-size:12px; }"
+            "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
+        a_logic = menu.addAction("📖 查看/编辑节点逻辑")
+        a_param = menu.addAction("⚙️ 节点参数")
+        a_run = menu.addAction("▶ 运行节点")
+        chosen = menu.exec_(self.viewport().mapToGlobal(view_pos))
+        if chosen == a_logic:
+            self.module.on_show_node_logic(item.node)
+        elif chosen == a_param:
+            self.module.on_node_params(item.node)
+        elif chosen == a_run:
+            self.module.on_node_activated(item.node)
 
     def mouseMoveEvent(self, e):
         if self._panning:
