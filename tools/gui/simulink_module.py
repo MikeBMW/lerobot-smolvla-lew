@@ -2056,6 +2056,12 @@ class SimulinkModule(QWidget):
             if self._tutorial_active:
                 self._tutorial_hint_mismatch("run", "pipeline")
             return
+        # 🆕 ▶ 运行 = 画布真实全流程: 画布上有环节节点(采集/训练/验证/集成/部署/推理)
+        #   就按拓扑顺序真实执行 (老倪: "运行按钮应该启动整个流程"), 没有环节节点才走拓扑仿真
+        stages = self._canvas_stage_nodes()
+        if stages:
+            self._start_canvas_flow(stages)
+            return
         self._sim_t = 0.0
         self._sim_dt = self.sp_dt.value()
         self._sim_t_end = self.sp_t_end.value()
@@ -2071,6 +2077,38 @@ class SimulinkModule(QWidget):
         self._log(f"▶ 仿真开始 · t∈[0, {self._sim_t_end}s] · dt={self._sim_dt}s · 节点数={len(self.nodes)}")
         self._timer.start(max(16, int(self._sim_dt * 1000 / 10)))  # 每步最多10x加速
         self._refresh_status()
+        self._tutorial_on_action("run")
+
+    def _canvas_stage_nodes(self):
+        """画布上匹配 NODE_RUN_ACTIONS 的环节节点, 按拓扑(依赖)顺序"""
+        order = self._topo_sort()
+        out = []
+        for nid in order:
+            n = self._by_id(nid)
+            for kw, meth in self.NODE_RUN_ACTIONS:
+                if kw in n.get("name", ""):
+                    out.append((n, meth, kw))
+                    break
+        return out
+
+    def _start_canvas_flow(self, stages):
+        """▶ 运行: 环节节点按拓扑序真实执行 (复用 _flow_queue 自动流转)"""
+        w = getattr(self, "_worker", None)
+        if w is not None and w.isRunning():
+            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            return
+        names = " → ".join(f"「{n['name']}」" for n, _, _ in stages)
+        self._log(f"▶ 真实全流程启动 ({len(stages)} 环节): {names}")
+        for n in self.nodes:
+            n["status"] = "idle"
+            it = self._items.get(n["id"])
+            if it:
+                it.update()
+        self.canvas._scene.update()
+        self._flow_queue = [
+            (lambda n=n, m=m, k=k: self._run_node_stage(n, getattr(self, m, None), k))
+            for n, m, k in stages]
+        self._flow_next()
         self._tutorial_on_action("run")
 
     def step_sim(self):
