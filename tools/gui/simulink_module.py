@@ -16,6 +16,13 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView,
                              QFormLayout, QTextEdit, QScrollArea, QMenu,
                              QMessageBox, QSplitter, QDialogButtonBox)
 
+# 🆕 节点逻辑库 (node_logic.py — 每个节点背后的可编辑逻辑, ✏️ 可修改区)
+_GUI_DIR = os.path.dirname(os.path.abspath(__file__))
+if _GUI_DIR not in sys.path:
+    sys.path.insert(0, _GUI_DIR)
+import node_logic
+from node_logic_dialog import NodeLogicDialog
+
 # ════════════════════════════════════════════════════════════════
 # 规范常量 (与 simulink-spec.md / web comfyui.html 完全一致)
 # ════════════════════════════════════════════════════════════════
@@ -1023,6 +1030,20 @@ class SimNodeItem(QGraphicsObject):
         # CICD 主控台: 双击节点 → 数据源切换 / 运行环节 / 参数框
         self.scene_ref.on_node_activated(self.node)
         e.accept()
+
+    def contextMenuEvent(self, e):
+        # 🆕 右键节点 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区)
+        menu = QMenu()
+        a_logic = menu.addAction("📖 查看/编辑节点逻辑")
+        a_param = menu.addAction("⚙️ 节点参数")
+        a_run = menu.addAction("▶ 运行节点")
+        chosen = menu.exec_(e.screenPos())
+        if chosen == a_logic:
+            self.scene_ref.on_show_node_logic(self.node)
+        elif chosen == a_param:
+            self.scene_ref.on_node_params(self.node)
+        elif chosen == a_run:
+            self.scene_ref.on_node_activated(self.node)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2538,8 +2559,11 @@ class SimulinkModule(QWidget):
         else:
             self._log("⚠️ 搭建未完成, 请检查画布节点")
 
-    def on_validate(self):
-        """① 验证: 后台执行 validate_flow.py (不卡 UI)"""
+    def on_validate(self, strict=True, **kw):
+        """① 验证: 后台执行 validate_flow.py (不卡 UI)
+
+        strict: 节点逻辑可修改区 (True=全8项检查 / False=只查格式与连线)
+        """
         self._log("════ ① 模型验证 (Model Advisor 对标) ════")
 
         def _work():
@@ -2549,17 +2573,20 @@ class SimulinkModule(QWidget):
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(flow, f, ensure_ascii=False, indent=2)
             root = self._repo_root()
-            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "ci", "validate_flow.py"),
-                                tmp, "--strict"])
+            cmd = [sys.executable, os.path.join(root, "tools", "ci", "validate_flow.py"), tmp]
+            if strict:
+                cmd.append("--strict")
+            rc = self._run_cmd(cmd)
             os.remove(tmp)
             return (rc == 0), ("模型合规, 可进入训练" if rc == 0 else "验证失败 · 修复后重试")
 
         self._start_worker(_work, "正在验证模型标准合规性", stage="validate")
 
-    def _ensure_training_data(self):
+    def _ensure_training_data(self, data_source=None):
         """(后台线程内) 确定训练数据源:
         1) 优先拉取 ECS 中转的 Orin 真实采集数据 (relay /latest)
         2) 无真实数据 → 回退 metaworld 占位数据集 (明确提示)
+        data_source: 节点逻辑可修改区强制 (orin=只拉真实 / metaworld=只占位 / None=画布switch决策)
         返回 (dataset_root, source_label, real_data:bool)
         """
         import requests as _rq
@@ -2567,19 +2594,29 @@ class SimulinkModule(QWidget):
         real_dir = os.path.join(root, "data", "closed_loop")
         placeholder = os.path.join(root, "data", "metaworld_act")
 
-        # 0. 画布数据源选择: Switch 节点优先, 其次数据源激活节点 (CICD 主控台)
-        sw = self._switch_state()
-        if sw is not None:
-            src = sw
-        else:
-            src = self._active_source()
-        if src == "metaworld":
+        # 0. 节点逻辑可修改区强制数据源 (node_logic.py ✏️) — 优先于画布 switch
+        if data_source == "metaworld":
             if os.path.isdir(placeholder):
-                self.log_signal.emit("📦 数据源 [metaworld] → 使用 metaworld 占位集 (不拉 relay)")
-                return placeholder, "metaworld 占位集", False
-            self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_act 不存在 → 回退自动选择")
-        elif src == "orin":
-            self.log_signal.emit("📥 数据源 [Orin] → 强制拉取 relay 真实数据")
+                self.log_signal.emit("📦 节点逻辑强制 [metaworld] → 使用占位集 (不拉 relay)")
+                return placeholder, "metaworld 占位集 (节点逻辑)", False
+            self.log_signal.emit("⚠️ 强制 metaworld 但 data/metaworld_act 不存在 → 回退自动选择")
+        elif data_source == "orin":
+            self.log_signal.emit("📥 节点逻辑强制 [Orin] → 只拉 relay 真实数据")
+            src = "orin"
+        else:
+            # 画布数据源选择: Switch 节点优先, 其次数据源激活节点 (CICD 主控台)
+            sw = self._switch_state()
+            if sw is not None:
+                src = sw
+            else:
+                src = self._active_source()
+            if src == "metaworld":
+                if os.path.isdir(placeholder):
+                    self.log_signal.emit("📦 数据源 [metaworld] → 使用 metaworld 占位集 (不拉 relay)")
+                    return placeholder, "metaworld 占位集", False
+                self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_act 不存在 → 回退自动选择")
+            elif src == "orin":
+                self.log_signal.emit("📥 数据源 [Orin] → 强制拉取 relay 真实数据")
 
         # 1. 尝试拉真实数据
         try:
@@ -2630,13 +2667,17 @@ class SimulinkModule(QWidget):
         self.log_signal.emit("❌ 无任何训练数据 (real 和 placeholder 都不存在)")
         return None, None, False
 
-    def on_train(self):
-        """② 训练: 后台执行 (数据源智能选择 + lerobot_train)"""
+    def on_train(self, steps=None, batch_size=None, lr=None, data_source=None, **kw):
+        """② 训练: 后台执行 (数据源智能选择 + lerobot_train)
+
+        steps/batch_size/lr 来自节点逻辑可修改区 (node_logic.py) — None=配置模板默认。
+        data_source: auto(画布switch决定) | orin(强制真实) | metaworld(占位集)
+        """
         self._log("════ ② 训练 (lerobot_train) ════")
 
         def _work():
             root = self._repo_root()
-            data_root, source, real = self._ensure_training_data()
+            data_root, source, real = self._ensure_training_data(data_source=data_source)
             if not data_root:
                 return False, "无训练数据"
             self.log_signal.emit(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
@@ -2651,15 +2692,23 @@ class SimulinkModule(QWidget):
                 cfg_txt = re.sub(r"(output_dir:\s*).*", f"output_dir: outputs/train/{ts_dir}", cfg_txt, count=1)
                 cfg_txt = re.sub(r"(job_name:\s*).*", f"job_name: {ts_dir}", cfg_txt, count=1)
                 cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
+                # 🆕 节点逻辑可修改区参数透传 (^ 行锚定防 n_obs_steps 误匹配)
+                if steps:
+                    cfg_txt = re.sub(r"^steps:\s*.*", f"steps: {int(steps)}", cfg_txt, count=1, flags=re.M)
+                if batch_size:
+                    cfg_txt = re.sub(r"^batch_size:\s*.*", f"batch_size: {int(batch_size)}", cfg_txt, count=1, flags=re.M)
+                if lr:
+                    cfg_txt = re.sub(r"^\s*lr:\s*.*", f"  lr: {lr}", cfg_txt, count=1, flags=re.M)
+                over = f" · ✏️节点逻辑: steps={steps}" + (f" batch={batch_size}" if batch_size else "") + (f" lr={lr}" if lr else "")
+                self.log_signal.emit(f"⚙️ 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}{over}")
                 tmp_cfg = os.path.join(root, "config_act_runtime.yaml")
                 with open(tmp_cfg, "w", encoding="utf-8") as f:
                     f.write(cfg_txt)
-                self.log_signal.emit(f"⚙️ 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}")
             except Exception as ex:
                 self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                 tmp_cfg = cfg_path
 
-            self.log_signal.emit("🚀 启动 ACT 训练 (300步 ~40s, 4060 CUDA)…")
+            self.log_signal.emit(f"🚀 启动 ACT 训练 ({steps or 300}步, 4060 CUDA)…")
             rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
                                 "-m", "lerobot.scripts.lerobot_train",
                                 "--config_path", tmp_cfg], cwd=root)
@@ -2672,7 +2721,7 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在准备训练 (拉取数据源 + 启动训练)", stage="train")
 
-    def on_integrate(self):
+    def on_integrate(self, **kw):
         """③ 集成: 后台执行 (打包 checkpoint → 上传 ECS)"""
         self._log("════ ③ 集成 (checkpoint → ECS 中转) ════")
 
@@ -2684,7 +2733,7 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在打包并上传 ECS", stage="integrate")
 
-    def on_deploy(self):
+    def on_deploy(self, **kw):
         """⑤ 部署: 后台执行 (ECS 状态检查)"""
         self._log("════ ⑤ 部署 (ECS 状态检查) ════")
 
@@ -2696,8 +2745,11 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在查询部署状态", stage="deploy")
 
-    def on_collect(self):
-        """① 采集: 拉取 relay Orin 真实数据 → action 修复 → 落地"""
+    def on_collect(self, timeout=8, fix_action=True, endpoint="https://datadrive.world/api/relay", **kw):
+        """① 采集: 拉取 relay Orin 真实数据 → action 修复 → 落地
+
+        timeout/fix_action/endpoint 来自节点逻辑可修改区 (node_logic.py)
+        """
         self._log("════ ① 采集 (relay → 修复 action → 落地) ════")
 
         def _work():
@@ -2706,9 +2758,9 @@ class SimulinkModule(QWidget):
             root = self._repo_root()
             real_dir = os.path.join(root, "data", "closed_loop")
             # ── 全链路证据: 中转状态 + Orin 心跳 ──
-            endpoint = "https://datadrive.world/api/relay"  # nginx反代 → ECS:39053 zmax_relay.py
+            # nginx反代 → ECS:39053 zmax_relay.py
             try:
-                r = _rq.get(f"{endpoint}/status", timeout=6)
+                r = _rq.get(f"{endpoint}/status", timeout=timeout)
                 st = r.json() if r.status_code == 200 else {}
                 pkgs = st.get("packages", 0)
                 uptime = st.get("uptime", 0)
@@ -2717,7 +2769,7 @@ class SimulinkModule(QWidget):
                 pkgs = 0
                 self.log_signal.emit(f"⚠️ 中转状态查询失败: {ex}")
             try:
-                r = _rq.get(f"{endpoint}/orin/status", timeout=6)
+                r = _rq.get(f"{endpoint}/orin/status", timeout=timeout)
                 o = r.json() if r.status_code == 200 else {}
                 if o.get("online"):
                     self.log_signal.emit(f"🤖 Orin 在线 · 模型{o.get('model')} · 心跳 {o.get('last_seen')} · 推理{o.get('infer_count')}次"
@@ -2742,7 +2794,7 @@ class SimulinkModule(QWidget):
                 else:
                     self.log_signal.emit("📦 本地无落地包 — 需小芳采集上传 (Orin→Mac:8769→ECS relay)")
                 return True, "中转队列无新包 (已全部落地) · 证据见日志"
-            r = _rq.get(f"{endpoint}/latest", timeout=15)
+            r = _rq.get(f"{endpoint}/latest", timeout=timeout + 7)
             if r.status_code != 200:
                 return False, "拉取失败"
             pkg = r.json()
@@ -2752,12 +2804,16 @@ class SimulinkModule(QWidget):
             meta = pkg.get("meta", {})
             self.log_signal.emit(f"📥 拉取 {endpoint}/latest → 来源{meta.get('source','?')} · {len(frames)}帧"
                                  f" · n_joint={meta.get('n_joint','?')} · n_action={meta.get('n_action','?')}"
-                                 f" · fps={meta.get('fps','?')} · 收到于{time.strftime('%H:%M:%S', time.localtime(meta.get('received_at', time.time())))}")
+                                 f" · fps={meta.get('fps','?')} · 收到于{time.strftime('%H:%M:%S', time.localtime(meta.get('received_at', time.time()))) }")
             sys.path.insert(0, os.path.join(root, "tools"))
-            from fix_orin_action import fix_frames
-            n_fixed, fixed = fix_frames(frames)
-            if fixed:
-                self.log_signal.emit(f"🛠 action 恒等修复: {n_fixed}帧 (action==state → 关节速度差分)")
+            n_fixed, fixed = 0, False
+            if fix_action:
+                from fix_orin_action import fix_frames
+                n_fixed, fixed = fix_frames(frames)
+                if fixed:
+                    self.log_signal.emit(f"🛠 action 恒等修复: {n_fixed}帧 (action==state → 关节速度差分)")
+            else:
+                self.log_signal.emit("⚙️ 已按节点逻辑关闭 action 修复 (fix_action=False)")
             os.makedirs(real_dir, exist_ok=True)
             ts = time.strftime("%Y%m%d_%H%M%S")
             raw = os.path.join(real_dir, f"pkg_{ts}.json")
@@ -2768,7 +2824,7 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在拉取 Orin 真实数据", stage="collect")
 
-    def on_infer(self):
+    def on_infer(self, **kw):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
         self._log("════ ⑥ 推理 (Orin 状态检查) ════")
 
@@ -2849,6 +2905,19 @@ class SimulinkModule(QWidget):
             if it:
                 it.update()
 
+    def on_show_node_logic(self, node):
+        """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
+        dlg = NodeLogicDialog(node.get("name", ""), node.get("type", ""), self)
+        dlg.exec_()
+
+    def on_node_params(self, node):
+        """右键 → 节点参数框"""
+        dlg = BlockParamsDialog(node, None)
+        if dlg.exec_() == QDialog.Accepted:
+            it = self._items.get(node["id"])
+            if it:
+                it.update()
+
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""
         p = node.setdefault("params", {})
@@ -2898,6 +2967,10 @@ class SimulinkModule(QWidget):
 
     def _run_node_stage(self, node, fn, label):
         """双击环节节点 → 后台执行, 节点状态 running→success/error (复用 _start_worker 防重入)"""
+        # 🆕 节点逻辑优先: node_logic.py ✏️ 可修改区 (用户改的参数/逻辑真生效)
+        logic_res = node_logic.execute_node_logic(self, node, label)
+        if logic_res is not None:
+            fn = (lambda _r=logic_res: _r)
         cur = getattr(self, "_worker", None)
         if cur is not None and cur.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候…")
