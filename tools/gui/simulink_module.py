@@ -1626,8 +1626,8 @@ class SimulinkModule(QWidget):
                                    self.open_pipeline_panel, "#00d4aa")
         tl2.addWidget(self.btn_pipeline)
         # 🧠 ACT-Meta 引导: 一键打开 metaworld 全新训练模型 (2026-08-04 老倪)
-        self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始",
-                                  self.open_act_meta, "#58a6ff")
+        self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始 (独立窗口新流程, 不占主画布)",
+                                  self.open_act_meta_float, "#58a6ff")
         tl2.addWidget(self.btn_actmeta)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
@@ -2681,6 +2681,48 @@ class SimulinkModule(QWidget):
         ("🚀 全新训练", "system", "第8/9步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
         ("📊 Scope 示波器", "action", "第9/9步 效果观察: 点击「📊 Scope 示波器」(训练完双击它看 loss 波形)"),
     ]
+
+    def _open_float_workflow(self, title, setup_fn):
+        """在独立浮动窗口打开一个新流程实例 (2026-08-05 老倪:
+        "点击 ACT-Meta 引导后主屏幕没有切换, 你应该再打开一个独立窗口, 直接打开新流程,
+         用户可以自主决定是否关掉这个独立窗口")
+        新实例自带 模块库+画布+日志, 停掉采集轮询; 窗口可最大化, 关闭即丢弃新流程。
+        """
+        new_w = self.__class__()          # 独立实例 (不碰主画布)
+        try:
+            new_w._acq_timer.stop()        # 浮动实例不轮询采集
+        except Exception:
+            pass
+        dlg = QDialog(self.window() or self)
+        dlg.setWindowTitle(title)
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint
+                           | Qt.WindowMinimizeButtonHint)
+        dlg.setStyleSheet("QDialog{background:#0d1117;}")
+        dlg.resize(1280, 840)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(new_w)
+
+        def _on_close(*_a):
+            try:
+                new_w._acq_timer.stop()
+            except Exception:
+                pass
+            try:
+                new_w._close_bubble(getattr(new_w, "_bubble", None))
+            except Exception:
+                pass
+            new_w.deleteLater()
+
+        dlg.finished.connect(_on_close)
+        setup_fn(new_w)
+        dlg.show()
+        return dlg
+
+    def open_act_meta_float(self):
+        """🧠 ACT-Meta 引导 → 独立浮动窗口新流程 (主画布保留, 用户自主决定关闭)"""
+        self._open_float_workflow("🧠 ACT-Meta 引导 · 新流程窗口 (可最大化, 关闭即弃)",
+                                  lambda w: w.open_act_meta())
 
     def open_act_meta(self):
         """🧠 ACT-Meta 引导: 从模块库逐步搭建 metaworld 全新训练模型, 全程提示"""
