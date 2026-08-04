@@ -4410,6 +4410,7 @@ class ConfigModule(SubModuleWidget):
         style_layout = QVBoxLayout()
         self.style_combo = QComboBox()
         self.style_combo.addItems(["浅色 (MATLAB Simulink / CANoe)", "深色 (原版)"])
+        self.style_combo.setCurrentIndex(1)  # 默认深色 (老倪: 还是用暗色调风格)
         self.style_combo.setStyleSheet(f"QComboBox{{color:{C_WHITE}; background:{C_BG}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:240px;}}")
         self.style_combo.currentIndexChanged.connect(self._on_style_changed)
         style_layout.addWidget(self.style_combo)

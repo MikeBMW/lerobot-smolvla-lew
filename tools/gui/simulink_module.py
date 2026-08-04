@@ -1493,7 +1493,7 @@ THEMES = {
         "grid_major": "#30363d",
     },
 }
-_CUR_THEME = "light"  # 当前主题 (🎨 switch_theme 切换)
+_CUR_THEME = "dark"  # 当前主题 (🎨 switch_theme 切换; 默认深色 — 老倪 2026-08-05: 还是用暗色调风格)
 
 
 class SimulinkModule(QWidget):
@@ -1657,8 +1657,8 @@ class SimulinkModule(QWidget):
                                    self.open_pipeline_panel, "#00d4aa")
         tl2.addWidget(self.btn_pipeline)
         # 🧠 ACT-Meta 引导: 一键打开 metaworld 全新训练模型 (2026-08-04 老倪)
-        self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始 (独立窗口新流程, 不占主画布)",
-                                  self.open_act_meta_float, "#58a6ff")
+        self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始 (嵌入式窗口引导)",
+                                  self.open_act_meta, "#58a6ff")
         tl2.addWidget(self.btn_actmeta)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
@@ -1781,6 +1781,13 @@ class SimulinkModule(QWidget):
         self.log_box.setMaximumHeight(110)
         self.log_box.setStyleSheet("background:#f6f8fa; color:#57606a; border:none; border-top:1px solid #d0d7de; font-size:11px; font-family:Consolas;")
         outer.addWidget(self.log_box)
+        # 🎨 应用当前主题 (QSS 硬编码为浅色模板, 构建后按 _CUR_THEME 重设为深/浅)
+        # (老倪 2026-08-05: 默认暗色调, 配置中心可切)
+        self._theme = _CUR_THEME
+        try:
+            self.switch_theme(_CUR_THEME)
+        except Exception:
+            pass
         self._log("Simulink 模式就绪 · 0帧起手, 从左侧模块库开始搭建")
 
     # ── 初始工作流: 空画布 (0帧起手) ──
