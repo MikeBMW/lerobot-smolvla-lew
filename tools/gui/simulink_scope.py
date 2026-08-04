@@ -21,11 +21,38 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QDialog, QLabel,
                              QPushButton, QComboBox, QFileDialog, QMessageBox,
                              QDialogButtonBox, QTextEdit, QFrame)
 
-# 示波器配色 (深色主题)
-BG_TOP = QColor("#f6f8fa")
-BG_BOT = QColor("#ffffff")
-GRID = QColor("#e9edf2")
-GRID_MAJOR = QColor("#b6bdc7")
+# 示波器配色 (🎨 主题: light=浅色 Simulink/CANoe 风, dark=原深色; 由 simulink_module.switch_theme 同步)
+CUR_THEME = "light"
+_SCOPE_THEMES = {
+    "light": {"bg_top": "#f6f8fa", "bg_bot": "#ffffff", "grid": "#e9edf2", "grid_major": "#b6bdc7",
+              "panel": "#f6f8fa", "input": "#e9edf2", "border": "#d0d7de", "text": "#24292f",
+              "text2": "#57606a", "btn": "#e9edf2", "hover": "#dbe9ff"},
+    "dark": {"bg_top": "#161b22", "bg_bot": "#0d1117", "grid": "#1e2740", "grid_major": "#30363d",
+             "panel": "#0d1117", "input": "#14181f", "border": "#1e2740", "text": "#c9d1d9",
+             "text2": "#8b949e", "btn": "#21262d", "hover": "#1a2230"},
+}
+
+
+def _st():
+    return _SCOPE_THEMES.get(CUR_THEME, _SCOPE_THEMES["light"])
+
+
+def _qss(ss):
+    """🎨 按当前主题映射 QSS 颜色 (dark 时把浅色值换成深色值, light 原样)"""
+    if CUR_THEME == "dark":
+        m = {"#f6f8fa": "#0d1117", "#ffffff": "#161b22", "#e9edf2": "#14181f",
+             "#d0d7de": "#1e2740", "#b6bdc7": "#30363d", "#24292f": "#c9d1d9",
+             "#1f2328": "#e6edf3", "#57606a": "#8b949e", "#484f58": "#8b949e",
+             "#dbe9ff": "#1a2230"}
+        for k, v in m.items():
+            ss = ss.replace(k, v)
+    return ss
+
+
+BG_TOP = QColor(_st()["bg_top"])
+BG_BOT = QColor(_st()["bg_bot"])
+GRID = QColor(_st()["grid"])
+GRID_MAJOR = QColor(_st()["grid_major"])
 COLORS = {
     "base": QColor("#f85149"),      # 基础模型 (红)
     "ft": QColor("#00d4aa"),        # 微调模型 (青)
@@ -44,7 +71,7 @@ class ScopeWidget(QWidget):
         super().__init__(parent)
         self.series = {}   # name -> (np.array y, QColor, dashed?)
         self.setMinimumSize(560, 300)
-        self.setStyleSheet("background:#f6f8fa;")
+        self.setStyleSheet(_qss("background:#f6f8fa;"))
 
     def set_series(self, series):
         """series: {name: (y_values, color_name, dashed)}"""
@@ -70,12 +97,13 @@ class ScopeWidget(QWidget):
         w, h = self.width(), self.height()
         # 背景
         grad = QLinearGradient(0, 0, 0, h)
-        grad.setColorAt(0, BG_TOP)
-        grad.setColorAt(1, BG_BOT)
+        t = _st()  # 🎨 主题动态取色
+        grad.setColorAt(0, QColor(t["bg_top"]))
+        grad.setColorAt(1, QColor(t["bg_bot"]))
         p.fillRect(0, 0, w, h, grad)
 
         # 网格 (12x8)
-        p.setPen(QPen(GRID, 1))
+        p.setPen(QPen(QColor(t["grid"]), 1))
         for i in range(1, 12):
             x = i * w / 12
             p.drawLine(int(x), 0, int(x), h)
@@ -83,7 +111,7 @@ class ScopeWidget(QWidget):
             y = j * h / 8
             p.drawLine(0, int(y), w, int(y))
         # 中线
-        p.setPen(QPen(GRID_MAJOR, 1))
+        p.setPen(QPen(QColor(t["grid_major"]), 1))
         p.drawLine(0, h // 2, w, h // 2)
 
         # 绘制各通道
@@ -112,7 +140,7 @@ class ScopeWidget(QWidget):
             # 图例
             p.setPen(color)
             p.drawRect(legend_x, 8, 14, 10)
-            p.setPen(COLORS["text"])
+            p.setPen(QColor(t["text2"]))
             p.setFont(QFont("Consolas", 9))
             p.drawText(legend_x + 18, 17, name)
             legend_x += 18 + p.fontMetrics().horizontalAdvance(name) + 16
@@ -127,7 +155,7 @@ class ScopeCompareDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("📊 Scope 示波器 — 新老模型对比")
         self.setMinimumSize(820, 620)
-        self.setStyleSheet("QDialog { background:#f6f8fa; }")
+        self.setStyleSheet(_qss("QDialog { background:#f6f8fa; }"))
         self._base_policy = None
         self._ft_policy = None
         self._base_pp = None
@@ -146,24 +174,24 @@ class ScopeCompareDialog(QDialog):
         ctrl.setSpacing(8)
 
         self.cmb_base = QComboBox()
-        self.cmb_base.setStyleSheet("background:#ffffff;color:#24292f;border:1px solid #b6bdc7;border-radius:4px;padding:4px 8px;")
+        self.cmb_base.setStyleSheet(_qss("background:#ffffff;color:#24292f;border:1px solid #b6bdc7;border-radius:4px;padding:4px 8px;"))
         self.cmb_base.addItem("基础模型 (act_metaworld)", "outputs/train/act_metaworld/checkpoints/000300/pretrained_model")
         ctrl.addWidget(QLabel("基础:"))
         ctrl.addWidget(self.cmb_base, 1)
 
         self.cmb_ft = QComboBox()
-        self.cmb_ft.setStyleSheet("background:#ffffff;color:#24292f;border:1px solid #b6bdc7;border-radius:4px;padding:4px 8px;")
+        self.cmb_ft.setStyleSheet(_qss("background:#ffffff;color:#24292f;border:1px solid #b6bdc7;border-radius:4px;padding:4px 8px;"))
         self._scan_models()
         ctrl.addWidget(QLabel("微调:"))
         ctrl.addWidget(self.cmb_ft, 1)
 
         btn_load = QPushButton("▶ 加载并对比")
-        btn_load.setStyleSheet("background:#00d4aa;color:#f6f8fa;font-weight:700;border:none;border-radius:4px;padding:6px 16px;")
+        btn_load.setStyleSheet(_qss("background:#00d4aa;color:#f6f8fa;font-weight:700;border:none;border-radius:4px;padding:6px 16px;"))
         btn_load.clicked.connect(self._run_compare)
         ctrl.addWidget(btn_load)
 
         btn_export = QPushButton("💾 导出PNG")
-        btn_export.setStyleSheet("background:#ffffff;color:#58a6ff;border:1px solid #b6bdc7;border-radius:4px;padding:6px 12px;")
+        btn_export.setStyleSheet(_qss("background:#ffffff;color:#58a6ff;border:1px solid #b6bdc7;border-radius:4px;padding:6px 12px;"))
         btn_export.clicked.connect(self._export_png)
         ctrl.addWidget(btn_export)
 
@@ -175,12 +203,12 @@ class ScopeCompareDialog(QDialog):
 
         # ═══ 指标栏 ═══
         self.metrics = QLabel("⏳ 等待加载模型...")
-        self.metrics.setStyleSheet("color:#57606a;font-size:12px;padding:6px;background:#ffffff;border-radius:4px;font-family:Consolas;")
+        self.metrics.setStyleSheet(_qss("color:#57606a;font-size:12px;padding:6px;background:#ffffff;border-radius:4px;font-family:Consolas;"))
         outer.addWidget(self.metrics)
 
         # ═══ 底部说明 ═══
         note = QLabel("🔴 基础模型动作  🟢 微调模型动作  ┄┄ 专家真值(参考)   |  X=帧序列  Y=动作值(各维度叠加)")
-        note.setStyleSheet("color:#484f58;font-size:10px;")
+        note.setStyleSheet(_qss("color:#484f58;font-size:10px;"))
         outer.addWidget(note)
 
     def _scan_models(self):
@@ -317,7 +345,7 @@ class FlowScopeDialog(QDialog):
         self.module = module
         self.setWindowTitle("📊 Scope 示波器 — 训练效果 (loss)")
         self.setMinimumSize(780, 540)
-        self.setStyleSheet(self._SS_DARK)
+        self.setStyleSheet(_qss(self._SS_DARK))
         self._build()
         self._load_data()
 
@@ -326,10 +354,10 @@ class FlowScopeDialog(QDialog):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
         title = QLabel("📊 Scope 示波器 · 训练 loss 曲线 (Simulink Scope 对标)")
-        title.setStyleSheet("font-size:14px; font-weight:700; color:#1f2328;")
+        title.setStyleSheet(_qss("font-size:14px; font-weight:700; color:#1f2328;"))
         root.addWidget(title)
         self.lbl_metrics = QLabel("加载中…")
-        self.lbl_metrics.setStyleSheet("color:#57606a; font-size:11px;")
+        self.lbl_metrics.setStyleSheet(_qss("color:#57606a; font-size:11px;"))
         root.addWidget(self.lbl_metrics)
         self.scope = ScopeWidget()
         root.addWidget(self.scope, 1)
@@ -369,9 +397,9 @@ class FlowScopeDialog(QDialog):
         mb = QMessageBox(self)
         mb.setWindowTitle("导出")
         mb.setText(f"已保存: {path}")
-        mb.setStyleSheet("QMessageBox{background:#f6f8fa} QLabel{color:#1f2328;}"
-                         "QPushButton{background:#e9edf2;color:#1f2328;border:1px solid #b6bdc7;"
-                         "border-radius:6px;padding:6px 18px;}")
+        mb.setStyleSheet(_qss("QMessageBox{background:#f6f8fa} QLabel{color:#1f2328;}"
+                               "QPushButton{background:#e9edf2;color:#1f2328;border:1px solid #b6bdc7;"
+                               "border-radius:6px;padding:6px 18px;}"))
         mb.addButton("好的", QMessageBox.AcceptRole)
         mb.exec_()
 
@@ -392,9 +420,10 @@ class BarCompareWidget(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
-        p.fillRect(0, 0, w, h, QColor("#f6f8fa"))
+        t = _st()
+        p.fillRect(0, 0, w, h, QColor(t["panel"]))
         if not self.data:
-            p.setPen(QColor("#57606a"))
+            p.setPen(QColor(t["text2"]))
             p.drawText(10, h // 2, "⚠️ 无对比数据 — 先 ▶ 运行训练两模型")
             p.end()
             return
@@ -402,7 +431,7 @@ class BarCompareWidget(QWidget):
         ACT_C, SML_C = QColor("#58a6ff"), QColor("#d29922")
         for i, (name, av, sv, lower) in enumerate(self.data):
             y0 = i * row_h
-            p.setPen(QColor("#24292f"))
+            p.setPen(QColor(t["text"]))
             p.setFont(QFont("Consolas", 9))
             p.drawText(8, y0 + 14, f"{name}")
             # 条区: x 从 150 到 w-90, 两模型各一条
@@ -412,7 +441,7 @@ class BarCompareWidget(QWidget):
             s_len = abs(sv) / vmax * bw
             p.fillRect(bx, y0 + 4, int(a_len), 10, ACT_C)
             p.fillRect(bx, y0 + 18, int(s_len), 10, SML_C)
-            p.setPen(QColor("#57606a"))
+            p.setPen(QColor(t["text2"]))
             p.drawText(bx + int(a_len) + 6, y0 + 13, f"{av:.3g}")
             p.drawText(bx + int(s_len) + 6, y0 + 27, f"{sv:.3g}")
             # 胜出标记 (好值绿)
@@ -420,9 +449,9 @@ class BarCompareWidget(QWidget):
                 winner = "ACT" if av < sv else "SmolVLA"
             else:
                 winner = "ACT" if av > sv else "SmolVLA"
-            p.setPen(QColor("#2ea043") if (av != sv) else QColor("#57606a"))
+            p.setPen(QColor("#2ea043") if (av != sv) else QColor(t["text2"]))
             p.drawText(w - 66, y0 + 20, f"✓ {winner}" if av != sv else "=")
-        p.setPen(QColor("#57606a"))
+        p.setPen(QColor(t["text2"]))
         p.setFont(QFont("Consolas", 8))
         p.drawText(8, h - 4, "■ ACT (#58a6ff)   ■ SmolVLA (#d29922)   · 好值标绿 ✓")
         p.end()
@@ -440,15 +469,15 @@ class ModelCompareDialog(QDialog):
         self.module = module
         self.setWindowTitle("⚔️ ACT vs SmolVLA 对比 · 统一 metaworld 数据集")
         self.setMinimumSize(720, 620)
-        self.setStyleSheet("QDialog{background:#f6f8fa;}")
+        self.setStyleSheet(_qss("QDialog{background:#f6f8fa;}"))
         root = QVBoxLayout(self)
 
         self.lbl_head = QLabel("⚔️ ACT vs SmolVLA 模型对比")
-        self.lbl_head.setStyleSheet("color:#a371f7;font-size:15px;font-weight:700;")
+        self.lbl_head.setStyleSheet(_qss("color:#a371f7;font-size:15px;font-weight:700;"))
         root.addWidget(self.lbl_head)
 
         self.lbl_note = QLabel("")
-        self.lbl_note.setStyleSheet("color:#57606a;font-size:11px;")
+        self.lbl_note.setStyleSheet(_qss("color:#57606a;font-size:11px;"))
         root.addWidget(self.lbl_note)
 
         self.scope = ScopeWidget(self)
@@ -461,8 +490,8 @@ class ModelCompareDialog(QDialog):
         self.table = QTextEdit()
         self.table.setReadOnly(True)
         self.table.setMinimumHeight(110)
-        self.table.setStyleSheet("background:#f6f8fa; color:#24292f; border:1px solid #d0d7de;"
-                                 "font-family:Consolas; font-size:12px;")
+        self.table.setStyleSheet(_qss("background:#f6f8fa; color:#24292f; border:1px solid #d0d7de;"
+                                        "font-family:Consolas; font-size:12px;"))
         root.addWidget(self.table)
 
         btns = QHBoxLayout()
@@ -548,8 +577,8 @@ class ModelCompareDialog(QDialog):
         mb = QMessageBox(self)
         mb.setWindowTitle("导出")
         mb.setText(f"已保存: {path}")
-        mb.setStyleSheet("QMessageBox{background:#f6f8fa} QLabel{color:#1f2328;}"
-                         "QPushButton{background:#e9edf2;color:#1f2328;border:1px solid #b6bdc7;"
-                         "border-radius:6px;padding:6px 18px;}")
+        mb.setStyleSheet(_qss("QMessageBox{background:#f6f8fa} QLabel{color:#1f2328;}"
+                               "QPushButton{background:#e9edf2;color:#1f2328;border:1px solid #b6bdc7;"
+                               "border-radius:6px;padding:6px 18px;}"))
         mb.addButton("好的", QMessageBox.AcceptRole)
         mb.exec_()

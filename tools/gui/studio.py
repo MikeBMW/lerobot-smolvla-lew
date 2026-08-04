@@ -4403,6 +4403,33 @@ class ConfigModule(SubModuleWidget):
         
         mode_group.setLayout(mode_layout)
         bl.addWidget(mode_group)
+
+        # ===== 🎨 UI 风格 (2026-08-05 老倪: "增加风格切换功能, UI操作你设计, 放在哪里你根据软件惯例, 在配置setting里改") =====
+        style_group = QGroupBox("🎨 UI 风格 (Simulink 功能区)")
+        style_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        style_layout = QVBoxLayout()
+        self.style_combo = QComboBox()
+        self.style_combo.addItems(["浅色 (MATLAB Simulink / CANoe)", "深色 (原版)"])
+        self.style_combo.setStyleSheet(f"QComboBox{{color:{C_WHITE}; background:{C_BG}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:240px;}}")
+        self.style_combo.currentIndexChanged.connect(self._on_style_changed)
+        style_layout.addWidget(self.style_combo)
+        style_desc = QLabel("浅色: 对标 MATLAB Simulink / CANoe 白底界面\n深色: 原版深色主题。切换即时生效 (画布/库/日志/图表)。")
+        style_desc.setWordWrap(True)
+        style_desc.setStyleSheet(f"color:{C_GRAY}; padding:8px; background:{C_BG}; border-radius:4px;")
+        style_layout.addWidget(style_desc)
+        style_group.setLayout(style_layout)
+        bl.addWidget(style_group)
+
+    def _on_style_changed(self, idx):
+        """🎨 风格切换 → Simulink 功能区即时生效 (light/dark)"""
+        name = "light" if idx == 0 else "dark"
+        try:
+            win = self.window()
+            sim = getattr(win, "simulink", None)
+            if sim is not None:
+                sim.switch_theme(name)
+        except Exception as ex:
+            print("style switch err:", ex)
         
         # ===== 基础配置 =====
         base_group = QGroupBox("基础配置 (两种模式共用)")

@@ -380,10 +380,11 @@ class CICDStageItem(QGraphicsObject):
     def paint(self, painter, opt, widget=None):
         c = QColor(["#9aa4b2", "#00d4aa", "#3fb950", "#ff4444"][self.state])
         painter.setRenderHint(QPainter.Antialiasing)
+        pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
         # 主体
         grad = QLinearGradient(0, 0, 0, self.h)
-        grad.setColorAt(0, QColor("#ffffff"))
-        grad.setColorAt(1, QColor("#e8ebf0"))
+        grad.setColorAt(0, QColor(pal["node_top"]))
+        grad.setColorAt(1, QColor(pal["node_bot"]))
         painter.setBrush(grad)
         pen = QPen(c, 2.2 if (self._hover or self.state == 1) else 1.6)
         painter.setPen(pen)
@@ -393,7 +394,7 @@ class CICDStageItem(QGraphicsObject):
         painter.setFont(QFont("Arial", 11, QFont.Bold))
         painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
         # 描述
-        painter.setPen(QColor("#57606a"))
+        painter.setPen(QColor(pal["label"]))
         painter.setFont(QFont("Arial", 8))
         painter.drawText(QRectF(8, 32, self.w - 16, 34), Qt.AlignTop | Qt.AlignLeft, self.desc)
         # 状态徽章
@@ -439,6 +440,7 @@ class CICDLinkItem(QGraphicsObject):
         active = self.src_item.state in (1, 2)
         c = QColor("#00d4aa" if active else "#9aa4b2")
         painter.setRenderHint(QPainter.Antialiasing)
+        pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
         pen = QPen(c, 2.2)
         if active:
             pen.setStyle(Qt.DashLine)
@@ -1000,10 +1002,11 @@ class SimNodeItem(QGraphicsObject):
         elif status == "error":
             color = QColor("#ff4444")
         painter.setRenderHint(QPainter.Antialiasing)
+        pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
         # 主体
         grad = QLinearGradient(0, 0, 0, self.h)
-        grad.setColorAt(0, QColor("#ffffff"))
-        grad.setColorAt(1, QColor("#e8ebf0"))
+        grad.setColorAt(0, QColor(pal["node_top"]))
+        grad.setColorAt(1, QColor(pal["node_bot"]))
         painter.setBrush(grad)
         pen = QPen(color, 1.6)
         # 激活的数据源节点 (CICD 主控台): 金色加粗边框 + ▶ 徽章
@@ -1024,7 +1027,7 @@ class SimNodeItem(QGraphicsObject):
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
         # 标题
-        painter.setPen(QColor("#24292f"))
+        painter.setPen(QColor(pal["title"]))
         f = QFont("Arial", 9, QFont.Bold)
         painter.setFont(f)
         name = self.node["name"]
@@ -1032,7 +1035,7 @@ class SimNodeItem(QGraphicsObject):
             name = name[:15] + "…"
         painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, name)
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
-        painter.setPen(QColor("#57606a"))
+        painter.setPen(QColor(pal["label"]))
         painter.setFont(QFont("Arial", 7))
         if t == "switch":
             painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
@@ -1057,22 +1060,22 @@ class SimNodeItem(QGraphicsObject):
                 py = 12 + idx * 26  # 上: in1(orin) 下: in2(metaworld)
                 active = (key == sel)
                 painter.setBrush(QColor("#3fb950") if active else color)
-                painter.setPen(QPen(QColor("#f0f2f5"), 1))
+                painter.setPen(QPen(QColor(pal["port_edge"]), 1))
                 r = 7 if active else 5
                 painter.drawEllipse(QPointF(0, py), r, r)
             painter.setBrush(color)
-            painter.setPen(QPen(QColor("#f0f2f5"), 1))
+            painter.setPen(QPen(QColor(pal["port_edge"]), 1))
             painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
         else:
             painter.setBrush(color)
-            painter.setPen(QPen(QColor("#f0f2f5"), 1))
+            painter.setPen(QPen(QColor(pal["port_edge"]), 1))
             painter.drawEllipse(QPointF(0, self.h / 2), 5, 5)
             painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
         # 参数摘要
         params = self.node.get("params", {})
         if params:
             first = list(params.items())[0]
-            painter.setPen(QColor("#57606a"))
+            painter.setPen(QColor(pal["label"]))
             painter.setFont(QFont("Consolas", 7))
             painter.drawText(QRectF(12, 36, self.w - 16, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              f"{first[0]}={first[1]}")
@@ -1170,7 +1173,7 @@ class SimLinkItem(QGraphicsObject):
         active = self._switch_active()
         # 未选中链路 (switch 未选该输入): 暗灰实线, 永不流动 — 与选中链路明显区分
         if not active:
-            color = QColor("#9aa4b2")
+            color = QColor(pal["inactive"])
         pen = QPen(color, 2.5 if self._hover or self.isSelected() else 1.8)
         # 数据流动画: 链路被 switch 选中 且 源节点成功/运行中 → 虚线流动
         flowing = active and self.src.node.get("status") in ("success", "running")
@@ -1218,7 +1221,7 @@ class SimCanvas(QGraphicsView):
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self.setRenderHint(QPainter.Antialiasing)
-        self.setBackgroundBrush(QColor("#f0f2f5"))
+        self.setBackgroundBrush(QColor(THEMES[_CUR_THEME]["canvas"]))
         # NoDrag: 让 ItemIsMovable 的节点可自由拖动 (RubberBandDrag 会拦截节点移动)
         self.setDragMode(QGraphicsView.NoDrag)
         # 空格键临时平移 (Simulink 习惯: 按住空格拖动画布)
@@ -1468,6 +1471,31 @@ class FloatingCanvasDialog(QDialog):
         super().closeEvent(ev)
 
 
+# 🎨 风格主题 (2026-08-05 老倪: "增加风格切换功能, UI操作你设计, 放在哪里你根据软件惯例, 在配置setting里改")
+# light = 对标 MATLAB Simulink / CANoe 浅色; dark = 原版深色。主窗口配置中心可切换。
+THEMES = {
+    "light": {
+        "node_top": "#ffffff", "node_bot": "#e8ebf0", "title": "#24292f",
+        "label": "#57606a", "port_edge": "#f0f2f5", "inactive": "#9aa4b2",
+        "canvas": "#f0f2f5", "bg": "#f6f8fa", "bg2": "#eef1f5", "panel": "#ffffff",
+        "input": "#e9edf2", "border": "#d0d7de", "border2": "#b6bdc7",
+        "btn": "#e9edf2", "text": "#24292f", "text2": "#57606a", "hover": "#dbe9ff",
+        "scope_top": "#ffffff", "scope_bot": "#eef1f5", "grid": "#d0d7de",
+        "grid_major": "#b6bdc7",
+    },
+    "dark": {
+        "node_top": "#1a1f2b", "node_bot": "#111318", "title": "#ddd",
+        "label": "#8b949e", "port_edge": "#0a0a0f", "inactive": "#3a3f4b",
+        "canvas": "#0a0a0f", "bg": "#0d1117", "bg2": "#0a0e14", "panel": "#161b22",
+        "input": "#14181f", "border": "#1e2740", "border2": "#30363d",
+        "btn": "#21262d", "text": "#c9d1d9", "text2": "#8b949e", "hover": "#1a2230",
+        "scope_top": "#161b22", "scope_bot": "#0d1117", "grid": "#1e2740",
+        "grid_major": "#30363d",
+    },
+}
+_CUR_THEME = "light"  # 当前主题 (🎨 switch_theme 切换)
+
+
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
@@ -1689,6 +1717,7 @@ class SimulinkModule(QWidget):
         outer.addWidget(acq)
         # 轮询定时器 (每 5s, 轻量)
         self._acq_timer = QTimer(self)
+        self._theme = _CUR_THEME  # 🎨 当前风格 (light/dark)
         self._acq_timer.timeout.connect(self._poll_acquisition)
         self._acq_timer.start(5000)
 
@@ -1914,6 +1943,42 @@ class SimulinkModule(QWidget):
                 self._show_bubble(pos, f"👆 请点击这里:\n{target}")
         except Exception:
             pass
+
+    def _pal(self):
+        """🎨 当前主题调色板 (light/dark)"""
+        return THEMES.get(getattr(self, "_theme", _CUR_THEME), THEMES["light"])
+
+    def switch_theme(self, name="light"):
+        """🎨 风格切换 (light=浅色 Simulink/CANoe 风 · dark=原深色):
+        重设全部控件 QSS + 画布背景 + 节点重绘 + 同步 Scope 图表主题"""
+        global _CUR_THEME
+        if name not in THEMES:
+            name = "light"
+        self._theme = name
+        _CUR_THEME = name
+        # 1) 全部控件 QSS: 浅↔深色值替换 (light值去重 — 同色多个 key 只保留首个 dark 值)
+        seen = {}
+        for k in THEMES["light"]:
+            seen.setdefault(THEMES["light"][k], THEMES["dark"][k])
+        pairs = list(seen.items()) + [("#dbe9ff", "#1a2230")]  # 按钮 hover
+        for wdg in [self] + self.findChildren(QWidget):
+            ss = wdg.styleSheet()
+            if not ss:
+                continue
+            for lc, dc in pairs:
+                ss = ss.replace(lc, dc) if name == "dark" else ss.replace(dc, lc)
+            wdg.setStyleSheet(ss)
+        # 2) 画布背景 + 场景重绘
+        self.canvas.setBackgroundBrush(QColor(self._pal()["canvas"]))
+        self.canvas.viewport().update()
+        self.canvas._scene.update()
+        # 3) 同步 Scope 图表主题
+        try:
+            import simulink_scope as _sc
+            _sc.CUR_THEME = name
+        except Exception:
+            pass
+        self._log(f"🎨 风格已切换: {'浅色 · MATLAB Simulink/CANoe' if name == 'light' else '深色 · 原版'}")
 
     def _show_bubble(self, global_pos, text, ms=4000):
         """自绘深色气泡浮层 (无边框置顶, 深底白字)"""
@@ -2747,10 +2812,15 @@ class SimulinkModule(QWidget):
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint
                            | Qt.WindowMinimizeButtonHint)
         dlg.setStyleSheet("QDialog{background:#f6f8fa;}")
-        dlg.resize(1280, 840)
+        dlg.resize(1360, 860)
         lay = QVBoxLayout(dlg)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(new_w)
+        # 只放 主要操作窗口 (模块库 + 画布 MDI) + 底部日志 — 不是整套控制台
+        # (2026-08-05 老倪: "actmeta按钮打开的是主要操作的子窗口, 不是又打开控制台")
+        lay.addWidget(new_w._main_split, 1)
+        lb = new_w.log_box
+        lb.setMaximumHeight(96)
+        lay.addWidget(lb)
 
         def _on_close(*_a):
             try:
