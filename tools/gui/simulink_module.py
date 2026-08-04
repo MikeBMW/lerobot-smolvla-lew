@@ -1444,6 +1444,29 @@ class LibraryPanel(QFrame):
 # ════════════════════════════════════════════════════════════════
 # Simulink 模式主模块
 # ════════════════════════════════════════════════════════════════
+class FloatingCanvasDialog(QDialog):
+    """⛶ 浮动画布窗口 (2026-08-05 老倪: "节点操作和显示的窗口变成独立浮动窗口, 可最大化, 看得范围更大")
+    非模态 show() + 标题栏最大化/拖边缩放; 关闭时自动把画布还原回主界面 split。
+    """
+
+    def __init__(self, module, canvas, parent=None):
+        super().__init__(parent)
+        self._module = module
+        self._canvas = canvas
+        self.setWindowTitle("⛶ Simulink 画布 · 浮动窗口 (关闭自动还原)")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint)
+        self.setStyleSheet("QDialog{background:#0d1117;}")
+        self.resize(1280, 820)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(canvas)  # 画布 reparent 到浮动窗口
+
+    def closeEvent(self, ev):
+        self._module._restore_canvas()
+        super().closeEvent(ev)
+
+
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
@@ -1561,6 +1584,8 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_tutorial)
         tl.addWidget(self.btn_compare)
         tl.addWidget(self.btn_scope)
+        self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
+        tl.addWidget(self.btn_float)
 
         tl.addSpacing(16)
         tl.addWidget(QLabel("时间"))
@@ -1666,6 +1691,7 @@ class SimulinkModule(QWidget):
 
         # 主体: 库 + 画布
         split = QSplitter(Qt.Horizontal)
+        self._main_split = split  # ⛶ 浮动窗口还原用
         self.canvas = SimCanvas(self)
         self.canvas.flow_changed.connect(lambda: self._sync())
         self.canvas.log.connect(self._log)
@@ -2073,6 +2099,35 @@ class SimulinkModule(QWidget):
         self._log("♻ 复用: 「🎯 Action Head 4D」两模型输出层同构 (Linear→action 4D), 画布只画一次, 紫色♻标识")
         self._log("▶ 点「▶ 运行」→ 依次训练 ACT(蓝) + SmolVLA(橙), 各 300 步 metaworld")
         self._log("📈 训练完双击「📊 对比评估 Scope」→ 对比图表: 训练速度 · 精确度(MSE/成功率) · 鲁棒性(方差) · 延迟")
+
+    def toggle_float_canvas(self):
+        """⛶ 浮动画布: 画布从主界面 split 取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
+        再点按钮或关闭浮动窗口 → 自动还原回原位"""
+        dlg = getattr(self, "_float_dlg", None)
+        if dlg is not None and dlg.isVisible():
+            dlg.close()  # closeEvent → _restore_canvas
+            return
+        split = getattr(self, "_main_split", None)
+        if split is None or split.indexOf(self.canvas) < 0:
+            return
+        # FloatingCanvasDialog 构造时 lay.addWidget(canvas) 自动 reparent,
+        # QWidget setParent 会从旧 QSplitter 布局自动移除 (无需手动移除)
+        dlg = FloatingCanvasDialog(self, self.canvas, self.window())
+        self._float_dlg = dlg
+        dlg.show()  # 非模态: 主窗口日志/按钮仍可操作
+        self._log("⛶ 画布已浮动 — 拖标题栏移动 · 拖边缩放 · 点最大化看全图; 关闭窗口自动还原")
+
+    def _restore_canvas(self):
+        """浮动窗口关闭 → 画布还原回主界面 split (index 1, 与库面板并列)"""
+        split = getattr(self, "_main_split", None)
+        if split is None or split.indexOf(self.canvas) >= 0:
+            self._float_dlg = None
+            return
+        split.insertWidget(1, self.canvas)  # insertWidget 自动 reparent + 显示
+        split.setStretchFactor(1, 1)
+        self.canvas.show()
+        self._log("⛶ 画布已还原回主界面")
+        self._float_dlg = None
 
     def show_compare(self):
         """性能对比弹窗: 基础模型 vs 微调模型 (读取 CICD_COMPARE_*.json)"""
