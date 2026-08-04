@@ -263,7 +263,7 @@ class BlockParamsDialog(QDialog):
         lay = QVBoxLayout(self)
 
         head = QLabel(f"{NODE_TYPES.get(node['type'], {}).get('cn', node['type'])} · {node['name']}")
-        head.setStyleSheet("font-size:14px; font-weight:700; color:#fff; padding:4px;")
+        head.setStyleSheet("font-size:14px; font-weight:700; color:#1f2328; padding:4px;")
         lay.addWidget(head)
 
         form = QFormLayout()
@@ -304,7 +304,7 @@ class BlockParamsDialog(QDialog):
 
         # 端口说明
         info = QLabel(f"输入: {len(node.get('inputs', []))} · 输出: {len(node.get('outputs', []))}")
-        info.setStyleSheet("color:#666; font-size:10px;")
+        info.setStyleSheet("color:#57606a; font-size:10px;")
         lay.addWidget(info)
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -378,22 +378,22 @@ class CICDStageItem(QGraphicsObject):
         return QRectF(-8, -8, self.w + 16, self.h + 16)
 
     def paint(self, painter, opt, widget=None):
-        c = QColor(["#3a3f4b", "#00d4aa", "#3fb950", "#ff4444"][self.state])
+        c = QColor(["#9aa4b2", "#00d4aa", "#3fb950", "#ff4444"][self.state])
         painter.setRenderHint(QPainter.Antialiasing)
         # 主体
         grad = QLinearGradient(0, 0, 0, self.h)
-        grad.setColorAt(0, QColor("#1a1f2b"))
-        grad.setColorAt(1, QColor("#111318"))
+        grad.setColorAt(0, QColor("#ffffff"))
+        grad.setColorAt(1, QColor("#e8ebf0"))
         painter.setBrush(grad)
         pen = QPen(c, 2.2 if (self._hover or self.state == 1) else 1.6)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 8, 8)
         # 标题
-        painter.setPen(QColor("#e6edf3"))
+        painter.setPen(QColor("#1f2328"))
         painter.setFont(QFont("Arial", 11, QFont.Bold))
         painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
         # 描述
-        painter.setPen(QColor("#8b949e"))
+        painter.setPen(QColor("#57606a"))
         painter.setFont(QFont("Arial", 8))
         painter.drawText(QRectF(8, 32, self.w - 16, 34), Qt.AlignTop | Qt.AlignLeft, self.desc)
         # 状态徽章
@@ -437,7 +437,7 @@ class CICDLinkItem(QGraphicsObject):
 
     def paint(self, painter, opt, widget=None):
         active = self.src_item.state in (1, 2)
-        c = QColor("#00d4aa" if active else "#3a3f4b")
+        c = QColor("#00d4aa" if active else "#9aa4b2")
         painter.setRenderHint(QPainter.Antialiasing)
         pen = QPen(c, 2.2)
         if active:
@@ -464,7 +464,7 @@ class CICDPanel(QDialog):
         self.module = module
         self.setWindowTitle("CI/CD 全链路 · Z-MAX")
         self.setMinimumSize(980, 460)
-        self.setStyleSheet("QDialog { background:#0d1117; }")
+        self.setStyleSheet("QDialog { background:#f6f8fa; }")
         self._stage_items = {}
         self._pulse_timer = QTimer(self)
         self._pulse_timer.timeout.connect(self._pulse)
@@ -481,13 +481,13 @@ class CICDPanel(QDialog):
         t.setStyleSheet("color:#ffd700; font-size:15px; font-weight:700; background:transparent; border:none;")
         lay.addWidget(t)
         tip = QLabel("点击环节节点执行该环节 · ▶ 全流程 = 依次自动流转 · 运行中青色脉冲 · 完成后状态回显")
-        tip.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        tip.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
         lay.addWidget(tip)
 
         # 流水线画布 (QGraphicsView)
         self._view = QGraphicsView()
         self._view.setRenderHints(QPainter.Antialiasing)
-        self._view.setStyleSheet("background:#0d1117; border:1px solid #1e2740; border-radius:8px;")
+        self._view.setStyleSheet("background:#f6f8fa; border:1px solid #d0d7de; border-radius:8px;")
         self._view.setDragMode(QGraphicsView.NoDrag)
         self._scene = QGraphicsScene(self)
         self._view.setScene(self._scene)
@@ -522,7 +522,7 @@ class CICDPanel(QDialog):
 
         # 日志行 (显示当前环节输出)
         self._stage_log = QLabel("就绪 · 点击环节节点开始")
-        self._stage_log.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:#14181f; border:1px solid #1e2740; border-radius:6px; padding:8px;")
+        self._stage_log.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:#e9edf2; border:1px solid #d0d7de; border-radius:6px; padding:8px;")
         self._stage_log.setWordWrap(True)
         lay.addWidget(self._stage_log)
 
@@ -547,7 +547,7 @@ class CICDPanel(QDialog):
         bl.addWidget(self.btn_save_flow)
         self.btn_refresh = QPushButton("🔄 刷新状态")
         self.btn_refresh.setStyleSheet("""
-            QPushButton { background:#14181f; color:#c9d1d9; border:1px solid #1e2740;
+            QPushButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
             border-radius:4px; padding:5px 14px; font-size:11px; }
             QPushButton:hover { border-color:#ffd700; color:#ffd700; }
         """)
@@ -625,7 +625,7 @@ class PipelinePanel(QDialog):
     }
     _STATE = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "docs", "PIPELINE_STATE.json")
     _PY = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", ".venv", "bin", "python")
-    _STATUS_COLOR = {"pending": "#8b949e", "running": "#00d4aa", "success": "#3fb950", "failed": "#ff4444"}
+    _STATUS_COLOR = {"pending": "#57606a", "running": "#00d4aa", "success": "#3fb950", "failed": "#ff4444"}
     _STATUS_ICON = {"pending": "○ 未开始", "running": "● 运行中", "success": "✓ 成功", "failed": "✕ 失败"}
 
     def __init__(self, module, parent=None):
@@ -633,7 +633,7 @@ class PipelinePanel(QDialog):
         self.module = module
         self.setWindowTitle("🎯 数据闭环 CICD 控制台 · Z-MAX")
         self.setMinimumSize(920, 560)
-        self.setStyleSheet("QDialog { background:#0d1117; }")
+        self.setStyleSheet("QDialog { background:#f6f8fa; }")
         self._cards = {}
         self._spin = {}
         self._build()
@@ -657,23 +657,23 @@ class PipelinePanel(QDialog):
         num, title, desc = self.STAGE_DEFS[sid]
         card = QFrame()
         card.setObjectName(f"stage{sid}")
-        card.setStyleSheet("QFrame#stage%d { background:#14181f; border:1px solid #1e2740; border-radius:10px; }" % sid)
+        card.setStyleSheet("QFrame#stage%d { background:#e9edf2; border:1px solid #d0d7de; border-radius:10px; }" % sid)
         card.setFixedWidth(250)
         lay = QVBoxLayout(card)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
         h = QHBoxLayout()
         t = QLabel(f"{num}  {title}")
-        t.setStyleSheet("color:#fff; font-size:13px; font-weight:700; background:transparent; border:none;")
+        t.setStyleSheet("color:#1f2328; font-size:13px; font-weight:700; background:transparent; border:none;")
         h.addWidget(t)
         h.addStretch()
         st = QLabel("○")
-        st.setStyleSheet("color:#8b949e; font-size:13px; font-weight:700; background:transparent; border:none;")
+        st.setStyleSheet("color:#57606a; font-size:13px; font-weight:700; background:transparent; border:none;")
         h.addWidget(st)
         lay.addLayout(h)
         d = QLabel(desc)
         d.setWordWrap(True)
-        d.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        d.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
         lay.addWidget(d)
         # steps 配置 (stage2 无)
         if sid in (1, 3):
@@ -682,7 +682,7 @@ class PipelinePanel(QDialog):
             sp = QSpinBox()
             sp.setRange(1, 50000)
             sp.setValue(300)
-            sp.setStyleSheet("background:#0d1117; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
+            sp.setStyleSheet("background:#f6f8fa; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:2px 6px;")
             row.addWidget(sp)
             row.addStretch()
             lay.addLayout(row)
@@ -707,12 +707,12 @@ class PipelinePanel(QDialog):
         t.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700; background:transparent; border:none;")
         lay.addWidget(t)
         tip = QLabel("三阶段自动流转 · steps 可配置 · 闭环状态每 10s 刷新 (Orin 心跳/推理/数据量)")
-        tip.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        tip.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
         lay.addWidget(tip)
 
         # ── 闭环状态栏 (数据/模型/URL/Orin/推理) ──
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background:#14181f; border:1px solid #1e2740; border-radius:8px; }")
+        bar.setStyleSheet("QFrame { background:#e9edf2; border:1px solid #d0d7de; border-radius:8px; }")
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(12, 8, 12, 8)
         bl.setSpacing(14)
@@ -722,7 +722,7 @@ class PipelinePanel(QDialog):
         self.lbl_orin = QLabel("🤖 Orin: —")
         self.lbl_infer = QLabel("⚡ 推理: —")
         for lb in (self.lbl_data, self.lbl_model, self.lbl_url, self.lbl_orin, self.lbl_infer):
-            lb.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+            lb.setStyleSheet("color:#24292f; font-size:11px; font-family:Consolas; background:transparent; border:none;")
             bl.addWidget(lb)
         bl.addStretch()
         lay.addWidget(bar)
@@ -741,7 +741,7 @@ class PipelinePanel(QDialog):
         ]
         for sid, label, fn in pipe_defs:
             b = QPushButton(label)
-            b.setStyleSheet("QPushButton { background:#14181f; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
+            b.setStyleSheet("QPushButton { background:#e9edf2; color:#57606a; border:1px solid #d0d7de; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
                             "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
             b.clicked.connect(lambda _, s=sid, f=fn: (self.module._cicd_state.__setitem__(s, 1), self._refresh(), f()))
             self._pipe_btns[sid] = b
@@ -768,7 +768,7 @@ class PipelinePanel(QDialog):
         bar.addWidget(self.btn_full)
         bar.addStretch()
         self.lbl_stage_now = QLabel("当前: 未运行")
-        self.lbl_stage_now.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_stage_now.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         bar.addWidget(self.lbl_stage_now)
         lay.addLayout(bar)
 
@@ -800,14 +800,14 @@ class PipelinePanel(QDialog):
             elif s == 3:
                 b.setStyleSheet("QPushButton { background:#ff444422; color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:700; }")
             else:
-                b.setStyleSheet("QPushButton { background:#14181f; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
+                b.setStyleSheet("QPushButton { background:#e9edf2; color:#57606a; border:1px solid #d0d7de; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
                                 "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
         for sid, (card, st_lbl, info) in self._cards.items():
             sid_st = stages.get(str(sid), {}).get("state", "pending")
             st_lbl.setText(self._STATUS_ICON.get(sid_st, "○"))
-            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(sid_st,'#8b949e')}; font-size:13px; font-weight:700; background:transparent; border:none;")
-            card.setStyleSheet("QFrame#stage%d { background:#14181f; border:2px solid %s; border-radius:10px; }"
-                               % (sid, self._STATUS_COLOR.get(sid_st, "#1e2740")))
+            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(sid_st,'#57606a')}; font-size:13px; font-weight:700; background:transparent; border:none;")
+            card.setStyleSheet("QFrame#stage%d { background:#e9edf2; border:2px solid %s; border-radius:10px; }"
+                               % (sid, self._STATUS_COLOR.get(sid_st, "#d0d7de")))
             sdata = stages.get(str(sid), {})
             def _ckpt_name(ck):
                 parts = ck.replace("\\", "/").split("/")
@@ -831,7 +831,7 @@ class PipelinePanel(QDialog):
                 info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
         now = st.get("stage", "?")
         stt = stages.get(str(now), {}).get("state", st.get("state", "pending"))
-        self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#8b949e')}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#57606a')}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
 
     def _run_pipeline_cmd(self, cmd):
         if getattr(self, "_worker", None) and self._worker.isRunning():
@@ -1002,8 +1002,8 @@ class SimNodeItem(QGraphicsObject):
         painter.setRenderHint(QPainter.Antialiasing)
         # 主体
         grad = QLinearGradient(0, 0, 0, self.h)
-        grad.setColorAt(0, QColor("#1a1f2b"))
-        grad.setColorAt(1, QColor("#111318"))
+        grad.setColorAt(0, QColor("#ffffff"))
+        grad.setColorAt(1, QColor("#e8ebf0"))
         painter.setBrush(grad)
         pen = QPen(color, 1.6)
         # 激活的数据源节点 (CICD 主控台): 金色加粗边框 + ▶ 徽章
@@ -1024,15 +1024,15 @@ class SimNodeItem(QGraphicsObject):
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
         # 标题
-        painter.setPen(QColor("#ddd"))
+        painter.setPen(QColor("#24292f"))
         f = QFont("Arial", 9, QFont.Bold)
         painter.setFont(f)
         name = self.node["name"]
         if len(name) > 16:
             name = name[:15] + "…"
         painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, name)
-        # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld)
-        painter.setPen(color)
+        # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
+        painter.setPen(QColor("#57606a"))
         painter.setFont(QFont("Arial", 7))
         if t == "switch":
             painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
@@ -1057,22 +1057,22 @@ class SimNodeItem(QGraphicsObject):
                 py = 12 + idx * 26  # 上: in1(orin) 下: in2(metaworld)
                 active = (key == sel)
                 painter.setBrush(QColor("#3fb950") if active else color)
-                painter.setPen(QPen(QColor("#0a0a0f"), 1))
+                painter.setPen(QPen(QColor("#f0f2f5"), 1))
                 r = 7 if active else 5
                 painter.drawEllipse(QPointF(0, py), r, r)
             painter.setBrush(color)
-            painter.setPen(QPen(QColor("#0a0a0f"), 1))
+            painter.setPen(QPen(QColor("#f0f2f5"), 1))
             painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
         else:
             painter.setBrush(color)
-            painter.setPen(QPen(QColor("#0a0a0f"), 1))
+            painter.setPen(QPen(QColor("#f0f2f5"), 1))
             painter.drawEllipse(QPointF(0, self.h / 2), 5, 5)
             painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
         # 参数摘要
         params = self.node.get("params", {})
         if params:
             first = list(params.items())[0]
-            painter.setPen(QColor("#8b949e"))
+            painter.setPen(QColor("#57606a"))
             painter.setFont(QFont("Consolas", 7))
             painter.drawText(QRectF(12, 36, self.w - 16, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              f"{first[0]}={first[1]}")
@@ -1170,7 +1170,7 @@ class SimLinkItem(QGraphicsObject):
         active = self._switch_active()
         # 未选中链路 (switch 未选该输入): 暗灰实线, 永不流动 — 与选中链路明显区分
         if not active:
-            color = QColor("#3a3f4b")
+            color = QColor("#9aa4b2")
         pen = QPen(color, 2.5 if self._hover or self.isSelected() else 1.8)
         # 数据流动画: 链路被 switch 选中 且 源节点成功/运行中 → 虚线流动
         flowing = active and self.src.node.get("status") in ("success", "running")
@@ -1218,7 +1218,7 @@ class SimCanvas(QGraphicsView):
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self.setRenderHint(QPainter.Antialiasing)
-        self.setBackgroundBrush(QColor("#0a0a0f"))
+        self.setBackgroundBrush(QColor("#f0f2f5"))
         # NoDrag: 让 ItemIsMovable 的节点可自由拖动 (RubberBandDrag 会拦截节点移动)
         self.setDragMode(QGraphicsView.NoDrag)
         # 空格键临时平移 (Simulink 习惯: 按住空格拖动画布)
@@ -1234,7 +1234,7 @@ class SimCanvas(QGraphicsView):
 
     def drawBackground(self, painter, rect):
         # 网格点 (Simulink 画布风格)
-        painter.fillRect(rect, QColor("#0a0a0f"))
+        painter.fillRect(rect, QColor("#f0f2f5"))
         grid = 40
         left = int(rect.left()) - (int(rect.left()) % grid)
         top = int(rect.top()) - (int(rect.top()) % grid)
@@ -1304,8 +1304,8 @@ class SimCanvas(QGraphicsView):
         """右键节点菜单 (viewport 全局坐标, WSLg 可靠; 深色QSS防黑字)"""
         menu = QMenu()
         menu.setStyleSheet(
-            "QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; }"
-            "QMenu::item { padding:6px 28px 6px 14px; color:#e6edf3; font-size:12px; }"
+            "QMenu { background:#ffffff; color:#1f2328; border:1px solid #b6bdc7; border-radius:6px; }"
+            "QMenu::item { padding:6px 28px 6px 14px; color:#1f2328; font-size:12px; }"
             "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
         a_logic = menu.addAction("📖 查看/编辑节点逻辑")
         a_param = menu.addAction("⚙️ 节点参数")
@@ -1373,13 +1373,13 @@ class LibraryPanel(QFrame):
         super().__init__()
         self.module = module
         self.setFixedWidth(220)
-        self.setStyleSheet("background:#0d1117; border-right:1px solid #1e2740;")
+        self.setStyleSheet("background:#f6f8fa; border-right:1px solid #d0d7de;")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(4)
 
         title = QLabel("📚 模块库")
-        title.setStyleSheet("color:#fff; font-size:13px; font-weight:700; padding:4px;")
+        title.setStyleSheet("color:#1f2328; font-size:13px; font-weight:700; padding:4px;")
         lay.addWidget(title)
 
         self.scroll = QScrollArea()
@@ -1398,7 +1398,7 @@ class LibraryPanel(QFrame):
         lay.addWidget(self.scroll)
 
         hint = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放 · 顶部工作流过滤")
-        hint.setStyleSheet("color:#666; font-size:9px; padding:4px;")
+        hint.setStyleSheet("color:#57606a; font-size:9px; padding:4px;")
         lay.addWidget(hint)
 
     def _rebuild(self):
@@ -1422,9 +1422,9 @@ class LibraryPanel(QFrame):
                 btn = QToolButton()
                 btn.setText(f"⬡  {it['name']}")
                 btn.setStyleSheet(f"""
-                    QToolButton {{ background:#14181f; color:#c9d1d9; border:1px solid #1e2740;
+                    QToolButton {{ background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
                     border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }}
-                    QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#fff; }}
+                    QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
                 if it.get("template"):
                     # 完整模型条目: 点击加载模板
@@ -1457,7 +1457,7 @@ class FloatingCanvasDialog(QDialog):
         self.setWindowTitle("⛶ Simulink 画布 · 浮动窗口 (关闭自动还原)")
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint
                             | Qt.WindowMinimizeButtonHint)
-        self.setStyleSheet("QDialog{background:#0d1117;}")
+        self.setStyleSheet("QDialog{background:#f6f8fa;}")
         self.resize(1280, 820)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -1509,16 +1509,16 @@ class SimulinkModule(QWidget):
 
         # ── Hero 标题条 (对标 MathWorks 解决方案页 Hero) ──
         hero = QFrame()
-        hero.setStyleSheet("background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #0d1117, stop:0.6 #0f1a24, stop:1 #0d1117); border-bottom:1px solid #1e2740;")
+        hero.setStyleSheet("background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #f6f8fa, stop:0.6 #0f1a24, stop:1 #f6f8fa); border-bottom:1px solid #d0d7de;")
         hero.setFixedHeight(64)
         hl = QHBoxLayout(hero)
         hl.setContentsMargins(16, 8, 16, 8)
         hl.setSpacing(14)
         hero_title = QLabel("Z-MAX 具身智能 · Simulink 模式")
-        hero_title.setStyleSheet("color:#fff; font-size:19px; font-weight:800; background:transparent; border:none;")
+        hero_title.setStyleSheet("color:#1f2328; font-size:19px; font-weight:800; background:transparent; border:none;")
         hl.addWidget(hero_title)
         hero_sub = QLabel("使用 XSpace Studio 实现产线机器人的感知、规划与控制 · 模块库拖拽 · 连线仿真 · 数据闭环")
-        hero_sub.setStyleSheet("color:#8b949e; font-size:11px; background:transparent; border:none;")
+        hero_sub.setStyleSheet("color:#57606a; font-size:11px; background:transparent; border:none;")
         hl.addWidget(hero_sub)
         hl.addStretch()
         ver = QLabel("v1.0 · zmax-simulink")
@@ -1528,7 +1528,7 @@ class SimulinkModule(QWidget):
 
         # ── 工作流导航条 (对标 MathWorks 6 大功能分区) ──
         wf = QFrame()
-        wf.setStyleSheet("background:#0a0e14; border-bottom:1px solid #1e2740;")
+        wf.setStyleSheet("background:#eef1f5; border-bottom:1px solid #d0d7de;")
         wf.setFixedHeight(40)
         wfl = QHBoxLayout(wf)
         wfl.setContentsMargins(10, 4, 10, 4)
@@ -1540,9 +1540,9 @@ class SimulinkModule(QWidget):
             b = QPushButton(label)
             b.setCheckable(True)
             b.setStyleSheet("""
-                QPushButton { background:transparent; color:#8b949e; border:1px solid transparent;
+                QPushButton { background:transparent; color:#57606a; border:1px solid transparent;
                 border-radius:5px; padding:4px 12px; font-size:11px; font-weight:600; }
-                QPushButton:hover { color:#fff; background:#14181f; }
+                QPushButton:hover { color:#1f2328; background:#e9edf2; }
                 QPushButton:checked { color:#00d4aa; background:#00d4aa1a; border-color:#00d4aa44; }
             """)
             b.clicked.connect(lambda _, k=key: self._filter_library(k))
@@ -1553,7 +1553,7 @@ class SimulinkModule(QWidget):
 
         # 工具栏 (对标 Simulink 工具条)
         tb = QFrame()
-        tb.setStyleSheet("background:#0d1117; border-bottom:1px solid #1e2740;")
+        tb.setStyleSheet("background:#f6f8fa; border-bottom:1px solid #d0d7de;")
         tb.setFixedHeight(44)
         tl = QHBoxLayout(tb)
         tl.setContentsMargins(10, 4, 10, 4)
@@ -1563,9 +1563,9 @@ class SimulinkModule(QWidget):
             b = QPushButton(text)
             b.setToolTip(tip)
             b.setStyleSheet(f"""
-                QPushButton {{ background:#14181f; color:{color}; border:1px solid #1e2740;
+                QPushButton {{ background:#e9edf2; color:{color}; border:1px solid #d0d7de;
                 border-radius:5px; padding:5px 14px; font-size:12px; font-weight:600; }}
-                QPushButton:hover {{ border-color:{color}; background:#1a2230; }}
+                QPushButton:hover {{ border-color:{color}; background:#dbe9ff; }}
                 QPushButton:disabled {{ color:#555; border-color:#222; }}
             """)
             b.clicked.connect(fn)
@@ -1587,7 +1587,7 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_scope)
         self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
         tl.addWidget(self.btn_float)
-        self.btn_win = mk_btn("🪟 画布窗口", "恢复画布子窗口 (MDI: 最小化/关闭后点此找回)", self.show_canvas_win, "#8b949e")
+        self.btn_win = mk_btn("🪟 画布窗口", "恢复画布子窗口 (MDI: 最小化/关闭后点此找回)", self.show_canvas_win, "#57606a")
         tl.addWidget(self.btn_win)
 
         tl.addSpacing(16)
@@ -1595,13 +1595,13 @@ class SimulinkModule(QWidget):
         self.sp_t_end = QDoubleSpinBox(); self.sp_t_end.setRange(0.1, 3600)
         self.sp_t_end.setValue(self._sim_t_end); self.sp_t_end.setSuffix(" s")
         self.sp_t_end.setMaximumWidth(70)
-        self.sp_t_end.setStyleSheet("background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
+        self.sp_t_end.setStyleSheet("background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:2px 6px;")
         tl.addWidget(self.sp_t_end)
         tl.addWidget(QLabel("dt"))
         self.sp_dt = QDoubleSpinBox(); self.sp_dt.setRange(0.001, 1.0)
         self.sp_dt.setValue(self._sim_dt); self.sp_dt.setDecimals(3)
         self.sp_dt.setMaximumWidth(62)
-        self.sp_dt.setStyleSheet("background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
+        self.sp_dt.setStyleSheet("background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:2px 6px;")
         tl.addWidget(self.sp_dt)
 
         tl.addStretch()
@@ -1618,7 +1618,7 @@ class SimulinkModule(QWidget):
 
         # ── 真实操作按钮 (CI/CD 闭环: 验证→训练→集成→部署) — 独立第二行, 完整显示 ──
         tb2 = QFrame()
-        tb2.setStyleSheet("background:#0d1117; border-bottom:1px solid #1e2740;")
+        tb2.setStyleSheet("background:#f6f8fa; border-bottom:1px solid #d0d7de;")
         tb2.setFixedHeight(44)
         tl2 = QHBoxLayout(tb2)
         tl2.setContentsMargins(10, 4, 10, 4)
@@ -1634,7 +1634,7 @@ class SimulinkModule(QWidget):
         tl2.addWidget(self.btn_actmeta)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
-        lbl_op.setStyleSheet("color:#8b949e; font-size:10px; background:transparent; border:none;")
+        lbl_op.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
         tl2.addWidget(lbl_op)
 
         outer.addWidget(tb)
@@ -1644,19 +1644,19 @@ class SimulinkModule(QWidget):
 
         # 参考应用条 (对标 MathWorks 参考应用列表)
         ra = QFrame()
-        ra.setStyleSheet("background:#0a0e14; border-bottom:1px solid #1e2740;")
+        ra.setStyleSheet("background:#eef1f5; border-bottom:1px solid #d0d7de;")
         ra.setFixedHeight(38)
         ral = QHBoxLayout(ra)
         ral.setContentsMargins(10, 4, 10, 4)
         ral.setSpacing(6)
         ra_lab = QLabel("🗂 参考应用:")
-        ra_lab.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
+        ra_lab.setStyleSheet("color:#57606a; font-size:11px; font-weight:600; background:transparent; border:none;")
         ral.addWidget(ra_lab)
         self._ref_btns = {}
         for name, nodes, links in REFERENCE_APPS:
             b = QPushButton(name)
             b.setStyleSheet("""
-                QPushButton { background:#14181f; color:#c9d1d9; border:1px solid #1e2740;
+                QPushButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
                 border-radius:4px; padding:3px 10px; font-size:10px; }
                 QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
             """)
@@ -1668,7 +1668,7 @@ class SimulinkModule(QWidget):
 
         # ── 📡 实时采集状态条 (轮询 ECS relay: Orin/MAC 采集数据实时可见) ──
         acq = QFrame()
-        acq.setStyleSheet("background:#0a0e14; border-bottom:1px solid #1e2740;")
+        acq.setStyleSheet("background:#eef1f5; border-bottom:1px solid #d0d7de;")
         acq.setFixedHeight(34)
         acl = QHBoxLayout(acq)
         acl.setContentsMargins(12, 4, 12, 4)
@@ -1677,11 +1677,11 @@ class SimulinkModule(QWidget):
         acq_lab.setStyleSheet("color:#58a6ff; font-size:11px; font-weight:700; background:transparent; border:none;")
         acl.addWidget(acq_lab)
         self.lbl_acq_state = QLabel("⏳ 查询 ECS 中转…")
-        self.lbl_acq_state.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_acq_state.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         acl.addWidget(self.lbl_acq_state)
         acl.addStretch()
         self.lbl_acq_pkgs = QLabel("数据包: 0")
-        self.lbl_acq_pkgs.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_acq_pkgs.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         acl.addWidget(self.lbl_acq_pkgs)
         self.lbl_acq_latest = QLabel("最新: —")
         self.lbl_acq_latest.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; background:transparent; border:none;")
@@ -1703,12 +1703,12 @@ class SimulinkModule(QWidget):
         self._mdi = QMdiArea()
         self._mdi.setViewMode(QMdiArea.SubWindowView)
         self._mdi.setStyleSheet("""
-            QMdiArea { background:#0a0e14; }
-            QMdiSubWindow { background:#0d1117; border:1px solid #1e2740; }
-            QMdiSubWindow::title { background:#161b22; color:#e6edf3;
+            QMdiArea { background:#eef1f5; }
+            QMdiSubWindow { background:#f6f8fa; border:1px solid #d0d7de; }
+            QMdiSubWindow::title { background:#ffffff; color:#1f2328;
                                    padding-left:10px; font-size:12px; font-weight:600; }
             QMdiSubWindow::close-button, QMdiSubWindow::minimize-button,
-            QMdiSubWindow::maximize-button { background:#21262d; border-radius:3px; }
+            QMdiSubWindow::maximize-button { background:#e9edf2; border-radius:3px; }
             QMdiSubWindow::close-button:hover { background:#f85149; }
             QMdiSubWindow::minimize-button:hover, QMdiSubWindow::maximize-button:hover { background:#1f6feb; }
         """)
@@ -1718,7 +1718,8 @@ class SimulinkModule(QWidget):
         self._canvas_win.resize(920, 620)
         self._canvas_win.setAttribute(Qt.WA_DeleteOnClose, False)  # 关闭=隐藏, 可恢复
         self._mdi.addSubWindow(self._canvas_win)
-        self._canvas_win.show()
+        # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
+        self._canvas_win.showMaximized()
         self.library = LibraryPanel(self)
         split.addWidget(self.library)
         split.addWidget(self._mdi)
@@ -1728,15 +1729,15 @@ class SimulinkModule(QWidget):
 
         # 实时状态栏 (节点状态 + 时钟 + 运行状态)
         st = QFrame()
-        st.setStyleSheet("background:#0d1117; border-top:1px solid #1e2740;")
+        st.setStyleSheet("background:#f6f8fa; border-top:1px solid #d0d7de;")
         st.setFixedHeight(28)
         stl = QHBoxLayout(st)
         stl.setContentsMargins(10, 3, 10, 3)
         stl.setSpacing(14)
         self.lbl_sys_state = QLabel("⏸ 待机")
-        self.lbl_sys_state.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
+        self.lbl_sys_state.setStyleSheet("color:#57606a; font-size:11px; font-weight:600; background:transparent; border:none;")
         self.lbl_node_status = QLabel("节点: 0 | 成功: 0 | 运行中: 0 | 失败: 0")
-        self.lbl_node_status.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_node_status.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         self.lbl_rt = QLabel("")
         self.lbl_rt.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; background:transparent; border:none;")
         stl.addWidget(self.lbl_sys_state)
@@ -1749,7 +1750,7 @@ class SimulinkModule(QWidget):
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setMaximumHeight(110)
-        self.log_box.setStyleSheet("background:#0d1117; color:#8b949e; border:none; border-top:1px solid #1e2740; font-size:11px; font-family:Consolas;")
+        self.log_box.setStyleSheet("background:#f6f8fa; color:#57606a; border:none; border-top:1px solid #d0d7de; font-size:11px; font-family:Consolas;")
         outer.addWidget(self.log_box)
         self._log("Simulink 模式就绪 · 0帧起手, 从左侧模块库开始搭建")
 
@@ -1927,7 +1928,7 @@ class SimulinkModule(QWidget):
                     pass
             bub = QLabel(text)
             bub.setWindowFlags(_Qt.ToolTip | _Qt.WindowStaysOnTopHint | _Qt.FramelessWindowHint)
-            bub.setStyleSheet("QLabel { background:#0d1117; color:#e6edf3; border:1px solid #00d4aa;"
+            bub.setStyleSheet("QLabel { background:#f6f8fa; color:#1f2328; border:1px solid #00d4aa;"
                               "border-radius:6px; padding:10px 14px; font-size:12px; }")
             bub.adjustSize()
             x = global_pos.x() - bub.width() // 2
@@ -2199,12 +2200,12 @@ class SimulinkModule(QWidget):
         lay = QVBoxLayout(dlg)
 
         head = QLabel(f"<span style='font-size:15px;font-weight:700;color:{color}'>{verdict}</span> "
-                      f"<span style='color:#8b949e'> · MSE 提升 {imp:+.1f}%</span>")
+                      f"<span style='color:#57606a'> · MSE 提升 {imp:+.1f}%</span>")
         lay.addWidget(head)
 
         table = QTextEdit()
         table.setReadOnly(True)
-        table.setStyleSheet("background:#0d1117; color:#c9d1d9; border:1px solid #1e2740; font-family:Consolas; font-size:12px;")
+        table.setStyleSheet("background:#f6f8fa; color:#24292f; border:1px solid #d0d7de; font-family:Consolas; font-size:12px;")
         rows = [
             ("指标", "基础模型", "微调模型", "提升"),
             ("动作 MSE", f"{base['action_mse']:.2f}", f"{cand['action_mse']:.2f}", f"{imp:+.1f}%"),
@@ -2222,7 +2223,7 @@ class SimulinkModule(QWidget):
         table.setPlainText(text)
         lay.addWidget(table)
 
-        note = QLabel(f"<span style='color:#8b949e;font-size:11px'>对比文件: {os.path.basename(jsons[-1])}<br>"
+        note = QLabel(f"<span style='color:#57606a;font-size:11px'>对比文件: {os.path.basename(jsons[-1])}<br>"
                       f"提升路径: 基础(300步) → 更多数据 → 更长训练 → 超参调优 → 架构升级(SmolVLA)</span>")
         lay.addWidget(note)
 
@@ -2365,7 +2366,7 @@ class SimulinkModule(QWidget):
             self.lbl_sys_state.setStyleSheet("color:#00d4aa; font-size:11px; font-weight:700; background:transparent; border:none;")
         else:
             self.lbl_sys_state.setText("⏸ 待机")
-            self.lbl_sys_state.setStyleSheet("color:#8b949e; font-size:11px; font-weight:600; background:transparent; border:none;")
+            self.lbl_sys_state.setStyleSheet("color:#57606a; font-size:11px; font-weight:600; background:transparent; border:none;")
         self.lbl_rt.setText(f"t = {self._sim_t:.2f}s · dt = {self._sim_dt}s")
 
     def _topo_sort(self):
@@ -2408,20 +2409,20 @@ class SimulinkModule(QWidget):
 
     # ── 导入/导出 (与 web 一致) ──
     DIALOG_SS = """
-        QFileDialog { background:#0d1117; color:#fff; }
-        QFileDialog QLabel { color:#fff; font-size:12px; }
-        QFileDialog QLineEdit { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:4px 8px; }
-        QFileDialog QComboBox { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:4px; }
-        QFileDialog QComboBox QAbstractItemView { background:#0d1117; color:#fff; selection-background-color:#00d4aa44; }
-        QFileDialog QListView, QFileDialog QTreeView { background:#0d1117; color:#fff; border:1px solid #1e2740; }
-        QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected { background:#00d4aa44; color:#fff; }
-        QFileDialog QHeaderView { background:#0d1117; color:#fff; }
-        QFileDialog QHeaderView::section { background:#14181f; color:#fff; border:none; border-right:1px solid #1e2740; padding:4px 8px; font-weight:600; }
-        QFileDialog QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:5px 14px; }
+        QFileDialog { background:#f6f8fa; color:#1f2328; }
+        QFileDialog QLabel { color:#1f2328; font-size:12px; }
+        QFileDialog QLineEdit { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:4px 8px; }
+        QFileDialog QComboBox { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:4px; }
+        QFileDialog QComboBox QAbstractItemView { background:#f6f8fa; color:#1f2328; selection-background-color:#00d4aa44; }
+        QFileDialog QListView, QFileDialog QTreeView { background:#f6f8fa; color:#1f2328; border:1px solid #d0d7de; }
+        QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected { background:#00d4aa44; color:#1f2328; }
+        QFileDialog QHeaderView { background:#f6f8fa; color:#1f2328; }
+        QFileDialog QHeaderView::section { background:#e9edf2; color:#1f2328; border:none; border-right:1px solid #d0d7de; padding:4px 8px; font-weight:600; }
+        QFileDialog QPushButton { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:5px 14px; }
         QFileDialog QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
-        QMessageBox { background:#0d1117; color:#fff; }
-        QMessageBox QLabel { color:#fff; font-size:12px; }
-        QMessageBox QPushButton { background:#14181f; color:#fff; border:1px solid #1e2740; border-radius:4px; padding:6px 18px; font-size:12px; min-width:70px; }
+        QMessageBox { background:#f6f8fa; color:#1f2328; }
+        QMessageBox QLabel { color:#1f2328; font-size:12px; }
+        QMessageBox QPushButton { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:6px 18px; font-size:12px; min-width:70px; }
         QMessageBox QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
         QMessageBox QPushButton:default { border-color:#00d4aa; }
     """
@@ -2576,7 +2577,7 @@ class SimulinkModule(QWidget):
                 self.canvas._scene.update()
             else:
                 self.lbl_acq_state.setText("○ 等待采集数据…")
-                self.lbl_acq_state.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+                self.lbl_acq_state.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
                 self.lbl_acq_pkgs.setText("数据包: 0")
                 self.lbl_acq_latest.setText("最新: —")
 
@@ -2745,7 +2746,7 @@ class SimulinkModule(QWidget):
         dlg.setWindowTitle(title)
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint
                            | Qt.WindowMinimizeButtonHint)
-        dlg.setStyleSheet("QDialog{background:#0d1117;}")
+        dlg.setStyleSheet("QDialog{background:#f6f8fa;}")
         dlg.resize(1280, 840)
         lay = QVBoxLayout(dlg)
         lay.setContentsMargins(0, 0, 0, 0)
