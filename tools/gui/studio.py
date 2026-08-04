@@ -5141,13 +5141,28 @@ class MonitorModule(SubModuleWidget):
         )
     
     def _refresh_orin_status(self):
-        """轮询 ECS 获取 Orin 部署/推理状态 (CICD 状态反馈)"""
+        """轮询 ECS 获取 Orin 部署/推理状态 (CICD 状态反馈)
+        2026-08-05 改后台线程 — 原主线程同步 requests.get(timeout=5),
+        Orin 离线/端点慢时每 5s 阻塞 UI 一次 → 控制台卡顿根因之一"""
+        import threading
+
+        def _work():
+            try:
+                import requests
+                r = requests.get("https://datadrive.world/api/relay/orin/status", timeout=5)
+                if r.status_code != 200:
+                    return
+                st = r.json()
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(0, lambda s=st: self._apply_orin_status(s))
+            except Exception:
+                pass
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _apply_orin_status(self, st):
+        """主线程应用 Orin 状态 (来自 _refresh_orin_status 后台线程)"""
         try:
-            import requests
-            r = requests.get("https://datadrive.world/api/relay/orin/status", timeout=5)
-            if r.status_code != 200:
-                return
-            st = r.json()
             online = st.get("online")
             if online:
                 self.orin_status_lbl.setText("● 运行中")
