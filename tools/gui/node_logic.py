@@ -398,6 +398,22 @@ def node_ensemble(ctx):
     return (True, f"Ensemble 配置: coeff={coeff}")
 
 
+# ════════════════════════════════════════════════════════════════
+# 📊 Scope 示波器 — 训练效果观察 (Simulink Scope 对标)
+# ════════════════════════════════════════════════════════════════
+def node_scope(ctx):
+    """📊 Scope 示波器 — 显示训练 loss 曲线/执行效果"""
+    module = ctx["module"]
+    log = ctx["log"]
+    # === ✏️ 可修改区 START ===
+    if log:
+        log("📊 Scope: 打开示波器查看训练 loss 曲线 (Simulink Scope 对标)")
+    # 想加通道? 在这里写 (例如: 训练完同时统计 action 输出范围)
+    # === ✏️ 可修改区 END ===
+    # 🔒 框架动作: 打开示波器对话框 (勿改)
+    return module.on_scope()
+
+
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)
 _reg("train",      ["训练", "全新训练"], "② 训练 — ACT 策略训练 (含 metaworld 全新训练)", node_train)
@@ -412,3 +428,4 @@ _reg("encoder",    ["Encoder", "encoder"], "🔤 Transformer Encoder — 上下�
 _reg("decoder",    ["Decoder", "decoder"], "🔡 Transformer Decoder — 动作序列", node_decoder)
 _reg("action_head", ["Action Head", "action_head"], "🎯 Action Head — 关节动作映射", node_action_head)
 _reg("ensemble",   ["Temporal Ensemble", "Ensemble"], "⏳ Temporal Ensemble — 动作平滑", node_ensemble)
+_reg("scope",      ["Scope"], "📊 Scope 示波器 — 训练效果波形", node_scope)

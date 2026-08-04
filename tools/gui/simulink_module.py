@@ -112,7 +112,8 @@ REFERENCE_APPS = [
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "官方 ACTTemporalEnsembler → 动作块时间平滑"}),
         ("system", "🚀 全新训练", {"steps": 300, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
-    ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)]),
+        ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
+    ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
 ]
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
@@ -153,6 +154,7 @@ LIBRARY = [
                                                    "desc": "官方 ACTTemporalEnsembler → 动作平滑"}},
         {"name": "🚀 全新训练", "params": {"steps": 300,
                                           "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}},
+        {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
     ]),
@@ -2080,11 +2082,14 @@ class SimulinkModule(QWidget):
         self._tutorial_on_action("run")
 
     def _canvas_stage_nodes(self):
-        """画布上匹配 NODE_RUN_ACTIONS 的环节节点, 按拓扑(依赖)顺序"""
+        """画布上匹配 NODE_RUN_ACTIONS 的环节节点, 按拓扑(依赖)顺序.
+        Scope 示波器是观察节点 → 排除 (训练完用户手动双击看波形, 不阻塞自动流程)"""
         order = self._topo_sort()
         out = []
         for nid in order:
             n = self._by_id(nid)
+            if "Scope" in n.get("name", ""):
+                continue  # 📊 Scope 手动双击观察
             for kw, meth in self.NODE_RUN_ACTIONS:
                 if kw in n.get("name", ""):
                     out.append((n, meth, kw))
@@ -2399,15 +2404,18 @@ class SimulinkModule(QWidget):
         """仓库根: tools/gui/simulink_module.py → lerobot-smolvla-lew/"""
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    def _run_cmd(self, cmd, cwd=None):
-        """(后台线程内) 执行命令, 输出流式进日志"""
+    def _run_cmd(self, cmd, cwd=None, collect=None):
+        """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行"""
         import subprocess
         try:
             p = subprocess.Popen(cmd, cwd=cwd or self._repo_root(),
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                  bufsize=1, encoding="utf-8", errors="replace")
             for line in p.stdout:
-                self.log_signal.emit(line.rstrip()[:200])
+                txt = line.rstrip()
+                self.log_signal.emit(txt[:200])
+                if collect is not None:
+                    collect.append(txt)
             p.wait()
             return p.returncode
         except Exception as ex:
@@ -2419,6 +2427,27 @@ class SimulinkModule(QWidget):
         return {"format": "zmax-simulink", "version": "1.0", "name": "canvas",
                 "sim": {"dt": self._sim_dt, "t_end": self._sim_t_end, "solver": "fixed-step"},
                 "nodes": self.nodes, "links": self.links}
+
+    @staticmethod
+    def _parse_loss_curve(lines):
+        """训练日志行 → [(step, loss), ...] (宽松解析: step在前或loss在前都认, 失败返回空)"""
+        import re
+        pat1 = re.compile(r"step\s*[=:]?\s*(\d+).*?loss[=:\s]+([\d.eE+-]+)")
+        pat2 = re.compile(r"loss[=:\s]+([\d.eE+-]+).*?step\s*[=:]?\s*(\d+)")
+        dedup = {}
+        for ln in lines:
+            if "loss" not in ln.lower():
+                continue
+            m = pat1.search(ln)
+            if m:
+                step, loss = int(m.group(1)), float(m.group(2))
+            else:
+                m = pat2.search(ln)
+                if not m:
+                    continue
+                step, loss = int(m.group(2)), float(m.group(1))
+            dedup[step] = loss
+        return sorted(dedup.items())
 
     # ── 启动器: 每个操作开一个后台线程, UI 不卡 ──
     def _start_worker(self, fn, busy_msg, stage=None):
@@ -2493,14 +2522,15 @@ class SimulinkModule(QWidget):
     # 🧠 ACT-Meta 逐步搭建引导: 从模块库逐模块搭建成最终模型 (2026-08-04 老倪)
     # 每步: 高亮模块库按钮 + 日志提示 → 用户点击添加 → 匹配推进 → 8步搭完自动连线
     ACT_BUILD_STEPS = [
-        ("📦 metaworld 数据", "hardware", "第1/8步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
-        ("🖼 视觉主干 ResNet18", "model", "第2/8步 视觉编码: 点击「🖼 视觉主干 ResNet18」(官方 ACT.backbone, 图像→特征图)"),
-        ("🧬 VAE 编码器 CVAE", "model", "第3/8步 变分编码: 点击「🧬 VAE 编码器 CVAE」(官方 vae_encoder, 动作序列→潜变量)"),
-        ("🔤 Transformer Encoder", "model", "第4/8步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
-        ("🔡 Transformer Decoder", "model", "第5/8步 动作解码: 点击「🔡 Transformer Decoder」(官方 ACT.decoder, DETR queries)"),
-        ("🎯 Action Head 4D", "action", "第6/8步 输出适配: 点击「🎯 Action Head 4D」(★适配 metaworld 4D, 真机6D)"),
-        ("⏳ Temporal Ensemble", "condition", "第7/8步 动作平滑: 点击「⏳ Temporal Ensemble」(官方 ACTTemporalEnsembler)"),
-        ("🚀 全新训练", "system", "第8/8步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
+        ("📦 metaworld 数据", "hardware", "第1/9步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
+        ("🖼 视觉主干 ResNet18", "model", "第2/9步 视觉编码: 点击「🖼 视觉主干 ResNet18」(官方 ACT.backbone, 图像→特征图)"),
+        ("🧬 VAE 编码器 CVAE", "model", "第3/9步 变分编码: 点击「🧬 VAE 编码器 CVAE」(官方 vae_encoder, 动作序列→潜变量)"),
+        ("🔤 Transformer Encoder", "model", "第4/9步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
+        ("🔡 Transformer Decoder", "model", "第5/9步 动作解码: 点击「🔡 Transformer Decoder」(官方 ACT.decoder, DETR queries)"),
+        ("🎯 Action Head 4D", "action", "第6/9步 输出适配: 点击「🎯 Action Head 4D」(★适配 metaworld 4D, 真机6D)"),
+        ("⏳ Temporal Ensemble", "condition", "第7/9步 动作平滑: 点击「⏳ Temporal Ensemble」(官方 ACTTemporalEnsembler)"),
+        ("🚀 全新训练", "system", "第8/9步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
+        ("📊 Scope 示波器", "action", "第9/9步 效果观察: 点击「📊 Scope 示波器」(训练完双击它看 loss 波形)"),
     ]
 
     def open_act_meta(self):
@@ -2514,8 +2544,8 @@ class SimulinkModule(QWidget):
         self._act_build_step = -1
         self._act_build_active = True
         self._log("════ 🧠 ACT-Meta 逐步搭建引导 · 从模块库搭成完整模型 ════")
-        self._log("🎯 目标: metaworld 数据 → ResNet18 → CVAE → Encoder → Decoder → ActionHead(4D) → Ensemble → 训练")
-        self._log("📋 每步请点击左侧模块库「🧠 ACT 模型·子模块」分类下的高亮模块, 共8步")
+        self._log("🎯 目标: metaworld 数据 → ResNet18 → CVAE → Encoder → Decoder → ActionHead(4D) → Ensemble → 训练 → Scope")
+        self._log("📋 每步请点击左侧模块库「🧠 ACT 模型·子模块」分类下的高亮模块, 共9步")
         self._act_build_next()
 
     def _act_build_next(self):
@@ -2606,9 +2636,10 @@ class SimulinkModule(QWidget):
             if nm == "🧠 ACT-Meta 全新训练":
                 tmpl = (nodes, links)
                 break
-        if tmpl and len(self.nodes) >= 8:
-            self._log("🎉 8/8 搭建完成! 已自动摆放 + 按官方 ACT 拓扑自动连线")
-            self._log("👉 双击「🚀 全新训练」节点 → 启动 metaworld 全新训练 (300步 ~40s)")
+        if tmpl and len(self.nodes) >= 9:
+            self._log("🎉 9/9 搭建完成! 已自动摆放 + 按官方 ACT 拓扑自动连线")
+            self._log("👉 点「▶ 运行」启动全流程 (训练 ~40s), 或双击「🚀 全新训练」节点")
+            self._log("📊 训练完成后双击「📊 Scope 示波器」→ 看 loss 下降波形 (Simulink Scope 对标)")
             self._log("💡 训练完成后我会继续提示下一步; 也可删除后重新搭建")
             # 开启训练引导: 训练启动/完成时自动提示
             self._act_train_guided = True
@@ -2765,9 +2796,12 @@ class SimulinkModule(QWidget):
                 tmp_cfg = cfg_path
 
             self.log_signal.emit(f"🚀 启动 ACT 训练 ({steps or 300}步, 4060 CUDA)…")
+            # 📊 Scope: 收集训练输出行 → 解析 loss 曲线 (供示波器显示)
+            out_lines = []
             rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
                                 "-m", "lerobot.scripts.lerobot_train",
-                                "--config_path", tmp_cfg], cwd=root)
+                                "--config_path", tmp_cfg], cwd=root, collect=out_lines)
+            self._train_curve = self._parse_loss_curve(out_lines)
             try:
                 os.remove(tmp_cfg)
             except Exception:
@@ -2934,7 +2968,18 @@ class SimulinkModule(QWidget):
         ("集成", "on_integrate"),
         ("部署", "on_deploy"),
         ("推理", "on_infer"),
+        ("Scope", "on_scope"),
     ]
+
+    def on_scope(self, **kw):
+        """📊 Scope 示波器: 显示最近训练 loss 曲线 (Simulink Scope 对标)"""
+        try:
+            from simulink_scope import FlowScopeDialog
+        except ImportError as ex:
+            self._log(f"❌ 缺少 simulink_scope.py: {ex}")
+            return
+        dlg = FlowScopeDialog(self)
+        dlg.exec_()
 
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 环节节点 → 运行; 其他 → 参数框"""

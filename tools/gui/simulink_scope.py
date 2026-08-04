@@ -294,3 +294,81 @@ class ScopeCompareDialog(QDialog):
         pm = self.scope.grab()
         pm.save(path)
         self.metrics.setText(f"💾 已导出: {path}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 📊 FlowScopeDialog — 全流程 Scope 示波器 (Simulink Scope 对标)
+# 老倪 2026-08-04: "需要最后出一个结果报告, 类似simulink的scope示波器, 能看到效果"
+# 用法: 画布流程末尾接「📊 Scope 示波器」节点 → 训练完成后双击它 → 看 loss 波形
+# ════════════════════════════════════════════════════════════════
+class FlowScopeDialog(QDialog):
+    """📊 Scope 示波器 — 训练效果 (loss 曲线 + 指标)"""
+
+    _SS_DARK = ("QDialog { background:#0d1117; }"
+                "QLabel { color:#e6edf3; }"
+                "QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d;"
+                " border-radius:6px; padding:6px 16px; font-size:12px; }"
+                "QPushButton:hover { border-color:#00d4aa; }")
+
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.setWindowTitle("📊 Scope 示波器 — 训练效果 (loss)")
+        self.setMinimumSize(780, 540)
+        self.setStyleSheet(self._SS_DARK)
+        self._build()
+        self._load_data()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(8)
+        title = QLabel("📊 Scope 示波器 · 训练 loss 曲线 (Simulink Scope 对标)")
+        title.setStyleSheet("font-size:14px; font-weight:700; color:#e6edf3;")
+        root.addWidget(title)
+        self.lbl_metrics = QLabel("加载中…")
+        self.lbl_metrics.setStyleSheet("color:#8b949e; font-size:11px;")
+        root.addWidget(self.lbl_metrics)
+        self.scope = ScopeWidget()
+        root.addWidget(self.scope, 1)
+        btns = QHBoxLayout()
+        self.btn_export = QPushButton("💾 导出 PNG")
+        self.btn_close = QPushButton("❌ 关闭")
+        self.btn_export.clicked.connect(self._export_png)
+        self.btn_close.clicked.connect(self.accept)
+        btns.addStretch(1)
+        btns.addWidget(self.btn_export)
+        btns.addWidget(self.btn_close)
+        root.addLayout(btns)
+
+    def _load_data(self):
+        curve = getattr(self.module, "_train_curve", None) or []
+        if not curve:
+            self.scope.set_series({})
+            self.lbl_metrics.setText("⚠️ 暂无训练曲线 — 点「▶ 运行」训练完成后自动出波形")
+            self.btn_export.setEnabled(False)
+            return
+        ys = np.array([l for _, l in curve])
+        first, last = float(ys[0]), float(ys[-1])
+        drop = first - last
+        pct = (drop / first * 100) if first else 0.0
+        self.scope.set_series({"loss": (ys, "ft", False)})
+        step_w = (curve[1][0] - curve[0][0]) if len(curve) > 1 else 1
+        self.lbl_metrics.setText(
+            f"📈 loss: {first:.3f} → {last:.3f} (↓{drop:.3f}, {pct:+.1f}%) · "
+            f"采样 {len(curve)} 点 · 每 {step_w} 步一点")
+
+    def _export_png(self):
+        root = self.module._repo_root()
+        out_dir = os.path.join(root, "reports")
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f"scope_loss_{time.strftime('%Y%m%d_%H%M%S')}.png")
+        self.scope.grab().save(path)
+        mb = QMessageBox(self)
+        mb.setWindowTitle("导出")
+        mb.setText(f"已保存: {path}")
+        mb.setStyleSheet("QMessageBox{background:#0d1117} QLabel{color:#e6edf3;}"
+                         "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                         "border-radius:6px;padding:6px 18px;}")
+        mb.addButton("好的", QMessageBox.AcceptRole)
+        mb.exec_()
