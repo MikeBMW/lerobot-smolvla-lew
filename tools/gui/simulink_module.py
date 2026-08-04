@@ -14,7 +14,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView,
                              QLabel, QPushButton, QToolButton, QFrame, QSpinBox,
                              QDoubleSpinBox, QComboBox, QLineEdit, QDialog,
                              QFormLayout, QTextEdit, QScrollArea, QMenu,
-                             QMessageBox, QSplitter, QDialogButtonBox)
+                             QMessageBox, QSplitter, QDialogButtonBox,
+                             QMdiArea, QMdiSubWindow)
 
 # 🆕 节点逻辑库 (node_logic.py — 每个节点背后的可编辑逻辑, ✏️ 可修改区)
 _GUI_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1586,6 +1587,8 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_scope)
         self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
         tl.addWidget(self.btn_float)
+        self.btn_win = mk_btn("🪟 画布窗口", "恢复画布子窗口 (MDI: 最小化/关闭后点此找回)", self.show_canvas_win, "#8b949e")
+        tl.addWidget(self.btn_win)
 
         tl.addSpacing(16)
         tl.addWidget(QLabel("时间"))
@@ -1689,15 +1692,36 @@ class SimulinkModule(QWidget):
         self._acq_timer.timeout.connect(self._poll_acquisition)
         self._acq_timer.start(5000)
 
-        # 主体: 库 + 画布
+        # 主体: 库 + MDI 画布子窗口 (2026-08-05 老倪: 对标 MATLAB Simulink / CANoe —
+        # 主要操作窗口首次打开嵌在主窗口内部, 子窗口带 最小化/最大化/关闭)
         split = QSplitter(Qt.Horizontal)
-        self._main_split = split  # ⛶ 浮动窗口还原用
+        self._main_split = split
         self.canvas = SimCanvas(self)
         self.canvas.flow_changed.connect(lambda: self._sync())
         self.canvas.log.connect(self._log)
+        # MDI 容器 (画布作为子窗口, 可最小化/最大化/关闭/移动/缩放)
+        self._mdi = QMdiArea()
+        self._mdi.setViewMode(QMdiArea.SubWindowView)
+        self._mdi.setStyleSheet("""
+            QMdiArea { background:#0a0e14; }
+            QMdiSubWindow { background:#0d1117; border:1px solid #1e2740; }
+            QMdiSubWindow::title { background:#161b22; color:#e6edf3;
+                                   padding-left:10px; font-size:12px; font-weight:600; }
+            QMdiSubWindow::close-button, QMdiSubWindow::minimize-button,
+            QMdiSubWindow::maximize-button { background:#21262d; border-radius:3px; }
+            QMdiSubWindow::close-button:hover { background:#f85149; }
+            QMdiSubWindow::minimize-button:hover, QMdiSubWindow::maximize-button:hover { background:#1f6feb; }
+        """)
+        self._canvas_win = QMdiSubWindow()
+        self._canvas_win.setWidget(self.canvas)
+        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型 (可最小化/最大化/关闭)")
+        self._canvas_win.resize(920, 620)
+        self._canvas_win.setAttribute(Qt.WA_DeleteOnClose, False)  # 关闭=隐藏, 可恢复
+        self._mdi.addSubWindow(self._canvas_win)
+        self._canvas_win.show()
         self.library = LibraryPanel(self)
         split.addWidget(self.library)
-        split.addWidget(self.canvas)
+        split.addWidget(self._mdi)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
         outer.addWidget(split, 1)
@@ -2101,33 +2125,57 @@ class SimulinkModule(QWidget):
         self._log("📈 训练完双击「📊 对比评估 Scope」→ 对比图表: 训练速度 · 精确度(MSE/成功率) · 鲁棒性(方差) · 延迟")
 
     def toggle_float_canvas(self):
-        """⛶ 浮动画布: 画布从主界面 split 取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
-        再点按钮或关闭浮动窗口 → 自动还原回原位"""
+        """⛶ 浮动画布: 画布从 MDI 子窗口取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
+        再点按钮或关闭浮动窗口 → 自动还原回 MDI"""
         dlg = getattr(self, "_float_dlg", None)
         if dlg is not None and dlg.isVisible():
             dlg.close()  # closeEvent → _restore_canvas
             return
-        split = getattr(self, "_main_split", None)
-        if split is None or split.indexOf(self.canvas) < 0:
-            return
-        # FloatingCanvasDialog 构造时 lay.addWidget(canvas) 自动 reparent,
-        # QWidget setParent 会从旧 QSplitter 布局自动移除 (无需手动移除)
+        mdi = getattr(self, "_mdi", None)
+        if mdi is not None:
+            win = getattr(self, "_canvas_win", None)
+            if win is None or win not in mdi.subWindowList():
+                return
+            mdi.removeSubWindow(win)  # 从 MDI 移除 (canvas 仍在 subwin 内, 不销毁)
+            win.hide()
+        # FloatingCanvasDialog 构造时 lay.addWidget(canvas) 自动 reparent
         dlg = FloatingCanvasDialog(self, self.canvas, self.window())
         self._float_dlg = dlg
         dlg.show()  # 非模态: 主窗口日志/按钮仍可操作
-        self._log("⛶ 画布已浮动 — 拖标题栏移动 · 拖边缩放 · 点最大化看全图; 关闭窗口自动还原")
+        self._log("⛶ 画布已浮动 — 拖标题栏移动 · 拖边缩放 · 点最大化看全图; 关闭浮动窗口自动还原")
 
     def _restore_canvas(self):
-        """浮动窗口关闭 → 画布还原回主界面 split (index 1, 与库面板并列)"""
-        split = getattr(self, "_main_split", None)
-        if split is None or split.indexOf(self.canvas) >= 0:
+        """浮动窗口关闭 → 画布还原回主窗口 MDI 子窗口"""
+        mdi = getattr(self, "_mdi", None)
+        if mdi is None:
             self._float_dlg = None
             return
-        split.insertWidget(1, self.canvas)  # insertWidget 自动 reparent + 显示
-        split.setStretchFactor(1, 1)
-        self.canvas.show()
-        self._log("⛶ 画布已还原回主界面")
+        old = getattr(self, "_canvas_win", None)
+        if old is not None:
+            old.deleteLater()  # 旧空子窗口清理 (canvas 已 reparent, 不受影响)
+        self._canvas_win = QMdiSubWindow()
+        self._canvas_win.setWidget(self.canvas)  # 自动 reparent 回 MDI 子窗口
+        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型 (可最小化/最大化/关闭)")
+        self._canvas_win.resize(920, 620)
+        self._canvas_win.setAttribute(Qt.WA_DeleteOnClose, False)
+        self._mdi.addSubWindow(self._canvas_win)
+        self._canvas_win.show()
+        self._mdi.setActiveSubWindow(self._canvas_win)
+        self._log("⛶ 画布已还原回主窗口")
         self._float_dlg = None
+
+    def show_canvas_win(self):
+        """🪟 恢复画布子窗口: MDI 最小化/关闭(隐藏)后找回"""
+        mdi = getattr(self, "_mdi", None)
+        win = getattr(self, "_canvas_win", None)
+        if mdi is None or win is None:
+            return
+        if win.isMinimized():
+            win.showNormal()
+        elif win.isHidden():
+            win.show()
+        mdi.setActiveSubWindow(win)
+        self._log("🪟 画布子窗口已恢复")
 
     def show_compare(self):
         """性能对比弹窗: 基础模型 vs 微调模型 (读取 CICD_COMPARE_*.json)"""
