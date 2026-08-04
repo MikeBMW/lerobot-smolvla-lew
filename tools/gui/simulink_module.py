@@ -114,6 +114,50 @@ REFERENCE_APPS = [
         ("system", "🚀 全新训练", {"steps": 300, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
+    # ⚔️ ACT vs SmolVLA 对比 (2026-08-04 老倪: "将对比按钮改造成对比 act 和 smolvla 模型,
+    #   数据集统一用 metaworld, 你来决定模块划分, 同等结构的模块要复用, 让用户清晰感知哪个模块被复用了,
+    #   增加 scope 图表体现两模型区别: 训练速度/精确度/鲁棒性")
+    # 模块划分: ♻ 3 个共用节点 (metaworld 数据 / Action Head 4D / 对比评估 Scope)
+    #           ACT 分支 6 节点 (ResNet18→CVAE→Encoder→Decoder→[ActionHead]→Ensemble)
+    #           SmolVLA 分支 4 节点 (SmolVLM2-500M→DiT-B→LeWorldModel→[ActionHead])
+    # 复用依据 (官方代码): ACT.action_head = nn.Linear(dim_model, action_dim) ·
+    #   SmolVLA ActionEncoder 输出层同为 Linear→action_dim → 两模型输出层同构, 画布只画一次
+    ("⚔️ ACT vs SmolVLA 对比", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "shared": True,
+                                           "desc": "♻ 两模型共用: 统一 metaworld 数据集 (696帧, states/actions 4D)"}),
+        ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
+                                          "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
+        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
+                                        "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
+        ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
+                                            "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"}),
+        ("model", "🔡 Transformer Decoder", {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
+                                            "desc": "ACT.decoder → DETR queries 解码动作块"}),
+        ("model", "🎯 Action Head 4D", {"action_dim": 4, "chunk_size": 7, "shared": True,
+                                        "desc": "♻ 两模型共用: 输出层同为 Linear→action(4D) — ACT/SmolVLA 都过它 (复用)"}),
+        ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
+                                              "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 300,
+                                  "desc": "双击 → on_train(policy=act) · metaworld 训练"}), 
+        ("model", "🧠 SmolVLM2-500M", {"freeze": True,
+                                       "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+                                       "desc": "SmolVLA 视觉语言主干 (冻结, 多模态编码)"}),
+        ("model", "🌀 DiT-B 动作解码", {"hidden": 256, "layers": 1, "timesteps": 2,
+                                       "desc": "SmolVLA action_model DiT-B → 动作去噪生成"}), 
+        ("model", "🌐 LeWorldModel", {"desc": "LeWorldModel 世界模型 → 状态/未来预测"}), 
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla_lew", "steps": 300,
+                                      "desc": "双击 → on_train(policy=smolvla_lew) · metaworld 训练"}), 
+        ("system", "📊 对比评估 Scope", {"shared": True,
+                                        "desc": "♻ 共用: 双击 → 双模型 训练速度/精确度/鲁棒性 对比图表 (Simulink Scope 对标)"}),
+    ], [
+        # ACT 路: 数据→ResNet18 (+CVAE) →Encoder→Decoder→ActionHead→Ensemble→ACT训练
+        (0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7),
+        # SmolVLA 路: 数据→SmolVLM2→DiT-B→LeWorldModel→ActionHead(复用)→SmolVLA训练
+        (0, 8), (8, 9), (9, 10), (10, 5), (5, 11),
+        # 评估: 两训练 → 对比 Scope
+        (7, 12), (11, 12),
+    ]),
 ]
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
@@ -157,6 +201,8 @@ LIBRARY = [
         {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
+        {"name": "⚔️ ACT vs SmolVLA 对比", "params": {}, "template": "⚔️ ACT vs SmolVLA 对比",
+         "desc": "一键搭建双模型对比 (13节点: 3共用♻ + ACT 6 + SmolVLA 4) · 点▶运行出对比图表"},
     ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
@@ -970,6 +1016,10 @@ class SimNodeItem(QGraphicsObject):
         # 引导高亮 (ACT-Meta 训练完成 → 金色粗框指引下一步节点)
         if self.node.get("hl"):
             pen = QPen(QColor("#ffd700"), 3.2)
+        # ♻ 复用节点 (ACT vs SmolVLA 对比): 紫色粗框 + 复用徽章, 让用户清晰感知被两模型共用
+        shared = self.node.get("params", {}).get("shared")
+        if shared:
+            pen = QPen(QColor("#a371f7"), 2.8)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
         # 标题
@@ -993,6 +1043,8 @@ class SimNodeItem(QGraphicsObject):
         st_icon = {"running": "●", "success": "✓", "error": "✕"}.get(status, "")
         if is_active_src:
             st_icon = "▶"  # 激活数据源
+        if shared:
+            st_icon = "♻"  # 复用节点 (被两模型共用, 紫框)
         if st_icon:
             painter.setPen(color)
             painter.setFont(QFont("Arial", 9, QFont.Bold))
@@ -1500,7 +1552,7 @@ class SimulinkModule(QWidget):
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
-        self.btn_compare = mk_btn("📊 对比", "基础模型 vs 微调模型 性能对比 (CICD)", self.show_compare, "#00d4aa")
+        self.btn_compare = mk_btn("⚔️ 对比", "ACT vs SmolVLA 对比: 统一 metaworld 数据集 · ♻同构模块复用 · ▶运行出对比图表", self.open_compare, "#a371f7")
         self.btn_scope = mk_btn("🖥 Scope", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
@@ -1990,6 +2042,28 @@ class SimulinkModule(QWidget):
         self.step_sim()
         if self._sim_t >= self._sim_t_end:
             self.stop_sim()
+
+    def open_compare(self):
+        """⚔️ ACT vs SmolVLA 对比: 加载对比模板 (3共用♻ + ACT 6 + SmolVLA 4, 统一 metaworld)
+        点「▶ 运行」依次训练两模型 → 双击「📊 对比评估 Scope」看 训练速度/精确度/鲁棒性 图表
+        """
+        if self.nodes:
+            if not self._qmsg_yes("⚔️ 模型对比",
+                                  "将清空当前画布, 加载 ACT vs SmolVLA 对比模型?\n\n"
+                                  "模块划分: ♻共用3 (metaworld数据 / Action Head / 对比评估Scope)\n"
+                                  "          ACT 分支 6 + SmolVLA 分支 4\n"
+                                  "♻ 紫色节点 = 两模型共用的同构模块 (复用)\n"
+                                  "▶ 点「▶ 运行」→ 依次训练两模型 → 双击 Scope 看对比图表"):
+                return
+        self.clear()
+        if not self.load_reference_app_by_name("⚔️ ACT vs SmolVLA 对比"):
+            self._qmsg_info("⚔️ 模型对比", "模板加载失败")
+            return
+        self._log("════ ⚔️ ACT vs SmolVLA 对比 (统一 metaworld 数据集) ════")
+        self._log("📦 模块划分: ♻共用 3 (metaworld数据 / 🎯Action Head / 📊对比评估Scope) + ACT 6 + SmolVLA 4")
+        self._log("♻ 复用: 「🎯 Action Head 4D」两模型输出层同构 (Linear→action 4D), 画布只画一次, 紫色♻标识")
+        self._log("▶ 点「▶ 运行」→ 依次训练 ACT(蓝) + SmolVLA(橙), 各 300 步 metaworld")
+        self._log("📈 训练完双击「📊 对比评估 Scope」→ 对比图表: 训练速度 · 精确度(MSE/成功率) · 鲁棒性(方差) · 延迟")
 
     def show_compare(self):
         """性能对比弹窗: 基础模型 vs 微调模型 (读取 CICD_COMPARE_*.json)"""
@@ -2822,11 +2896,12 @@ class SimulinkModule(QWidget):
         self.log_signal.emit("❌ 无任何训练数据 (real 和 placeholder 都不存在)")
         return None, None, False
 
-    def on_train(self, steps=None, batch_size=None, lr=None, data_source=None, **kw):
+    def on_train(self, steps=None, batch_size=None, lr=None, data_source=None, policy="act", **kw):
         """② 训练: 后台执行 (数据源智能选择 + lerobot_train)
 
         steps/batch_size/lr 来自节点逻辑可修改区 (node_logic.py) — None=配置模板默认。
         data_source: auto(画布switch决定) | orin(强制真实) | metaworld(占位集)
+        policy: "act" | "smolvla_lew" (⚔️ 对比模板两训练节点各设一种, 默认 act)
         """
         self._log("════ ② 训练 (lerobot_train) ════")
 
@@ -2837,9 +2912,16 @@ class SimulinkModule(QWidget):
                 return False, "无训练数据"
             self.log_signal.emit(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
 
-            cfg_path = os.path.join(root, "config_act_metaworld.yaml")
+            # ⚔️ 双策略: ACT 用 config_act_metaworld.yaml, SmolVLA 用 config_smolvla_metaworld.yaml
+            if policy == "smolvla_lew":
+                cfg_path = os.path.join(root, "config_smolvla_metaworld.yaml")
+                ts_dir = "smolvla_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "SmolVLA"
+            else:
+                cfg_path = os.path.join(root, "config_act_metaworld.yaml")
+                ts_dir = "act_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "ACT"
             import re
-            ts_dir = "act_" + time.strftime("%Y%m%d_%H%M%S")  # 输出目录(时间戳, 防冲突)
             try:
                 with open(cfg_path, encoding="utf-8") as f:
                     cfg_txt = f.read()
@@ -2855,29 +2937,55 @@ class SimulinkModule(QWidget):
                 if lr:
                     cfg_txt = re.sub(r"^\s*lr:\s*.*", f"  lr: {lr}", cfg_txt, count=1, flags=re.M)
                 over = f" · ✏️节点逻辑: steps={steps}" + (f" batch={batch_size}" if batch_size else "") + (f" lr={lr}" if lr else "")
-                self.log_signal.emit(f"⚙️ 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}{over}")
-                tmp_cfg = os.path.join(root, "config_act_runtime.yaml")
+                self.log_signal.emit(f"⚙️ {pname} 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}{over}")
+                tmp_cfg = os.path.join(root, f"config_{policy}_runtime.yaml")
                 with open(tmp_cfg, "w", encoding="utf-8") as f:
                     f.write(cfg_txt)
             except Exception as ex:
                 self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                 tmp_cfg = cfg_path
 
-            self.log_signal.emit(f"🚀 启动 ACT 训练 ({steps or 300}步, 4060 CUDA)…")
-            # 📊 Scope: 收集训练输出行 → 解析 loss 曲线 (供示波器显示)
+            self.log_signal.emit(f"🚀 启动 {pname} 训练 ({steps or 300}步, 4060 CUDA)…")
+            # 📊 Scope: 收集训练输出行 → 解析 loss 曲线 (供示波器/对比图表显示)
             out_lines = []
             rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
                                 "-m", "lerobot.scripts.lerobot_train",
                                 "--config_path", tmp_cfg], cwd=root, collect=out_lines)
             self._train_curve = self._parse_loss_curve(out_lines)
+            step_s = self._parse_step_s(out_lines)
+            # ⚔️ 对比: 落盘曲线+速度 → reports/train_curve_<policy>.json (对比评估 Scope 读取)
+            try:
+                import json as _json
+                os.makedirs(os.path.join(root, "reports"), exist_ok=True)
+                with open(os.path.join(root, "reports", f"train_curve_{policy}.json"), "w", encoding="utf-8") as f:
+                    _json.dump({"policy": policy, "name": pname, "ts": time.strftime("%Y%m%d_%H%M%S"),
+                                "curve": self._train_curve, "step_s": step_s,
+                                "ckpt": f"outputs/train/{ts_dir}/checkpoints"}, f, ensure_ascii=False)
+                self.log_signal.emit(f"📈 {pname} 曲线已存: reports/train_curve_{policy}.json · 速度 {step_s:.1f} step/s" if step_s else f"📈 {pname} 曲线已存: reports/train_curve_{policy}.json")
+            except Exception:
+                pass
             try:
                 os.remove(tmp_cfg)
             except Exception:
                 pass
-            return (rc == 0), (f"训练完成 · outputs/train/{ts_dir}/checkpoints/" if rc == 0
-                               else "训练失败 (见上方日志)")
+            return (rc == 0), (f"{pname} 训练完成 · outputs/train/{ts_dir}/checkpoints/" if rc == 0
+                               else f"{pname} 训练失败 (见上方日志)")
 
-        self._start_worker(_work, "正在准备训练 (拉取数据源 + 启动训练)", stage="train")
+        self._start_worker(_work, f"正在准备 {policy} 训练 (拉取数据源 + 启动训练)", stage="train")
+
+    @staticmethod
+    def _parse_step_s(lines):
+        """训练日志行 → 平均 step/s (tqdm 进度条 "12.68step/s" 或 "it/s" 格式)"""
+        import re
+        vals = []
+        pat = re.compile(r"([\d.]+)\s*(?:step/s|it/s)")
+        for ln in lines:
+            for m in pat.finditer(ln):
+                try:
+                    vals.append(float(m.group(1)))
+                except ValueError:
+                    pass
+        return sum(vals) / len(vals) if vals else 0.0
 
     def on_integrate(self, **kw):
         """③ 集成: 后台执行 (打包 checkpoint → 上传 ECS)"""

@@ -180,21 +180,22 @@ def node_collect(ctx):
 #   同时服务「🚀 全新训练」节点 (metaworld 全新训练) 与「② 训练」环节
 # ════════════════════════════════════════════════════════════════
 def node_train(ctx):
-    """② 训练 — ACT 策略训练 (参数在可修改区, 真实写入训练配置)"""
+    """② 训练 — ACT/SmolVLA 策略训练 (参数在可修改区, 真实写入训练配置)"""
     module = ctx["module"]
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
-    steps = p.get("steps", 300)      # 训练步数 (4060 实测 ~13步/s, 300步≈40s)
-    batch_size = 8                   # batch size
+    steps = p.get("steps", 300)      # 训练步数 (4060 实测 ACT ~13步/s, 300步≈40s; SmolVLA 更慢)
+    batch_size = 8                   # batch size (SmolVLA 显存小可改 1)
     lr = 1e-4                        # 学习率 (S3 真机微调用 1e-5)
     data_source = "auto"             # auto(画布switch决定) | orin(只拉真实) | metaworld(占位集)
+    policy = p.get("policy", "act")  # act | smolvla_lew (⚔️ 对比模板两训练节点各设一种, 节点params指定)
     if log:
-        log(f"🧠 训练配置: steps={steps} · batch={batch_size} · lr={lr} · 数据源={data_source}")
+        log(f"🧠 训练配置: steps={steps} · batch={batch_size} · lr={lr} · 数据源={data_source} · policy={policy}")
     # 想改训练逻辑? 在这里写 (例如: 按数据帧数自动调整 steps)
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: 真实 lerobot_train (数据源智能选择, 勿改)
-    return module.on_train(steps=steps, batch_size=batch_size, lr=lr, data_source=data_source)
+    return module.on_train(steps=steps, batch_size=batch_size, lr=lr, data_source=data_source, policy=policy)
 
 
 # ════════════════════════════════════════════════════════════════
