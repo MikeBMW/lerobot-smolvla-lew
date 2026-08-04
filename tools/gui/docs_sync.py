@@ -190,7 +190,7 @@ def sync(log_callback=print, progress_callback=None):
     # 写版本文件
     h = _compute_hash(docs_dir)
     ver = {
-        "version": "v1.5.0",
+        "version": "v1.6.0",
         "last_sync": time.strftime("%Y-%m-%d %H:%M:%S"),
         "doc_count": success,
         "hash": h,
