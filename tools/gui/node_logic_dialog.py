@@ -94,7 +94,7 @@ class NodeLogicDialog(QDialog):
         self.edit = QPlainTextEdit()
         self.edit.setStyleSheet(
             f"QPlainTextEdit {{ background:#010409; color:{_TEXT}; border:1px solid #30363d;"
-            " border-radius:6px; font-family:'DejaVu Sans Mono';"
+            " border-radius:6px; font-family:DejaVu Sans Mono;"
             " font-size:12px; padding:8px; }}")
         self.edit.setReadOnly(True)
         self.edit.setLineWrapMode(QPlainTextEdit.NoWrap)
