@@ -1975,8 +1975,16 @@ class SimulinkModule(QWidget):
             for lc, dc in pairs:
                 ss = ss.replace(lc, dc) if name == "dark" else ss.replace(dc, lc)
             wdg.setStyleSheet(ss)
-        # 2) 画布背景 + 场景重绘
-        self.canvas.setBackgroundBrush(QColor(self._pal()["canvas"]))
+        # 2) 画布背景 + viewport 深色 (边缘/缩放间隙不露白) + 场景重绘
+        pc = self._pal()
+        self.canvas.setBackgroundBrush(QColor(pc["canvas"]))
+        for wv, key in ((self.canvas.viewport(), "canvas"),
+                        (self._mdi.viewport(), "bg2")):
+            pal = wv.palette()
+            pal.setColor(pal.Window, QColor(pc[key]))
+            pal.setColor(pal.Base, QColor(pc[key]))
+            wv.setPalette(pal)
+            wv.setAutoFillBackground(True)
         self.canvas.viewport().update()
         self.canvas._scene.update()
         # 3) 同步 Scope 图表主题

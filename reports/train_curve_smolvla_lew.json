@@ -1,0 +1,1 @@
+{"policy": "smolvla_lew", "name": "SmolVLA", "ts": "20260805_071401", "curve": [[50, 0.844], [100, 0.592], [150, 0.498], [200, 0.483], [250, 0.478], [300, 0.417]], "step_s": 19.20248344370861, "ckpt": "outputs/train/smolvla_metaworld/checkpoints"}
