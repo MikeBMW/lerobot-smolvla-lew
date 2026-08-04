@@ -456,7 +456,8 @@ class SmolVLALewPolicy(PreTrainedPolicy):
 
     @classmethod
     def _load_as_safetensor(cls, model: T, model_file: str, map_location: str, strict: bool) -> T:
-        reinit_prefixes = model.config.reinit_modules
+        # 2026-08-05 实测: SmolVLALewConfig 无 reinit_modules 字段 (config.json 不含), 直接读会 AttributeError
+        reinit_prefixes = getattr(model.config, "reinit_modules", None) or []
         if not reinit_prefixes:
             return super()._load_as_safetensor(model, model_file, map_location, strict)
 

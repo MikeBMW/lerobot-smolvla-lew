@@ -46,12 +46,29 @@ def load_smolvla(ckpt):
 
 
 def load_data(max_frames=120):
-    npz = np.load(ROOT / "data" / "metaworld_act" / "train.npz")
-    obs, st, act = npz["observations"], npz["states"], npz["actions"]
-    n = len(st)
+    """用 LeRobotDataset 加载 (与训练同管道 — info.json 定义 state/action 维度, 2026-08-05 实测:
+    metaworld_act 的 info.json 是 2D (pusht 模板残留), 训练出的两模型 checkpoint 均为 action[2];
+    npz 是 4D 不能直接用 → 必须走 LeRobotDataset 与训练对齐)
+    同时返回 action 归一化统计 (mean/std, 全量帧) — 评估在归一化空间进行:
+    模型输出即归一化空间, gt 用同统计归一化, 两模型同标准公平对比。"""
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+    ds = LeRobotDataset("lerobot/pusht", root=ROOT / "data" / "metaworld_act")
+    n = len(ds)
     step = max(1, n // max_frames)
     idxs = list(range(0, n, step))[:max_frames]
-    return obs[idxs], st[idxs], act[idxs]
+    states, actions, imgs = [], [], []
+    for i in idxs:
+        item = ds[i]
+        states.append(item["observation.state"].numpy().astype(np.float32))
+        actions.append(item["action"].numpy().astype(np.float32))
+        imgs.append(item["observation.image"].numpy().astype(np.float32))
+    obs, st, act = np.stack(imgs), np.stack(states), np.stack(actions)
+    # 归一化统计: 全量帧 (与训练 stats 同源, 采样帧近似即可 — 60 帧样本足够稳定)
+    act_mean = act.mean(axis=0)
+    act_std = act.std(axis=0) + 1e-6
+    print(f"📦 统一测试集: {len(st)} 帧 · state{st.shape[1]}D · action{act.shape[1]}D · img{obs.shape}"
+          f" · act_mean{np.round(act_mean,1)} std{np.round(act_std,1)} (归一化空间评估)")
+    return obs, st, act, act_mean, act_std
 
 
 def _post(post, out):
@@ -68,38 +85,35 @@ def _flat(out, n_act):
     return np.asarray(pred).flatten()[:n_act]
 
 
-def eval_policy(policy, post, obs, st, act, tag, is_act=True, n_repeat=5):
+def eval_policy(policy, post, obs, st, act, act_mean, act_std, tag, is_act=True, n_repeat=5):
     mses, lats, robust = [], [], []
     hits = 0
     with torch.no_grad():
         for i in range(len(st)):
-            if is_act:
-                batch = {
-                    "observation.state": torch.from_numpy(st[i]).float().to(DEVICE).unsqueeze(0),
-                    "observation.image": torch.from_numpy(obs[i] / 255.0).float().to(DEVICE).unsqueeze(0),
-                }
-            else:
-                # SmolVLA: NHWC (H,W,C) 0-255, select_action 有状态队列 → 每帧先 reset 保证独立
-                img = obs[i].transpose(1, 2, 0)  # (3,128,128) → (128,128,3)
-                batch = {
-                    "observation.state": torch.from_numpy(st[i]).float().to(DEVICE).unsqueeze(0),
-                    "observation.image": torch.from_numpy(img).float().to(DEVICE).unsqueeze(0),
-                }
-            gt = act[i]
+            if not is_act:
+                policy.reset()  # SmolVLA select_action 有状态队列 → 每帧清空保证独立预测
+            # 图像统一 NCHW 0-1 (与训练同管道: LeRobotDataset 图像 (C,H,W);
+            # tensor_to_pil 内部 *255+permute(1,2,0), 2026-08-05 实测传 NHWC 会 KeyError |u1)
+            batch = {
+                "observation.state": torch.from_numpy(st[i]).float().to(DEVICE).unsqueeze(0),
+                "observation.image": torch.from_numpy(obs[i] / 255.0).float().to(DEVICE).unsqueeze(0),
+            }
+            # 归一化空间评估: gt 用同统计归一化, 模型输出即归一化空间 (不反归一化, 两模型同标准)
+            gt = (act[i] - act_mean) / act_std
             t0 = time.time()
             out = policy.select_action(batch)
             lat = (time.time() - t0) * 1000
-            pred = _flat(_post(post, out), len(gt))
+            pred = _flat(out, len(gt))  # 两模型统一: 原始输出 (归一化空间), 不反归一化
             mse = float(np.mean((pred - gt) ** 2))
             mses.append(mse)
             lats.append(lat)
             if mse < 0.05:
                 hits += 1
-            # 鲁棒性: 同一状态重复推理 → 动作 std (小=稳定)
+            # 鲁棒性: 同一状态重复推理 → 动作 std (小=稳定, 归一化空间)
             stds = []
             for _ in range(n_repeat):
                 o2 = policy.select_action(batch)
-                stds.append(_flat(_post(post, o2), len(gt)))
+                stds.append(_flat(o2, len(gt)))
             robust.append(float(np.mean(np.std(np.stack(stds), axis=0))))
     n = len(mses)
     res = {
@@ -126,21 +140,20 @@ def main():
     if not ckpt_act and not ckpt_sm:
         print("❌ 无训练产物 — 先在控制台 ▶ 运行对比模板 (ACT + SmolVLA 各训练一次)")
         return 1
-    obs, st, act = load_data(args.frames)
-    print(f"📦 统一测试集: {len(st)} 帧 · state{st.shape[1]}D · action{act.shape[1]}D · img{obs.shape}")
+    obs, st, act, act_mean, act_std = load_data(args.frames)
 
     results = {}
     if ckpt_act:
         print(f"✅ 加载 ACT: {ckpt_act}")
         p, post = load_act(ckpt_act)
-        results["act"] = eval_policy(p, post, obs, st, act, "ACT", is_act=True, n_repeat=args.repeat)
+        results["act"] = eval_policy(p, post, obs, st, act, act_mean, act_std, "ACT", is_act=True, n_repeat=args.repeat)
         results["act"]["step_s"] = spd_act
         results["act"]["curve"] = curve_act
         results["act"]["ts"] = ts_act
     if ckpt_sm:
         print(f"✅ 加载 SmolVLA: {ckpt_sm}")
         p, post = load_smolvla(ckpt_sm)
-        results["smolvla_lew"] = eval_policy(p, post, obs, st, act, "SmolVLA", is_act=False, n_repeat=args.repeat)
+        results["smolvla_lew"] = eval_policy(p, post, obs, st, act, act_mean, act_std, "SmolVLA", is_act=False, n_repeat=args.repeat)
         results["smolvla_lew"]["step_s"] = spd_sm
         results["smolvla_lew"]["curve"] = curve_sm
         results["smolvla_lew"]["ts"] = ts_sm
