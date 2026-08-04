@@ -2559,6 +2559,14 @@ class SimulinkModule(QWidget):
                     self._act_append_after_train()
                 else:
                     self._log("❌ 训练失败, 请查看上方日志定位原因")
+            # ⚔️ 对比评估完成 → 自动弹出对比图表
+            if stage == "compare" and ok:
+                try:
+                    from simulink_scope import ModelCompareDialog
+                    dlg = ModelCompareDialog(self)
+                    dlg.exec_()
+                except Exception as ex:
+                    self._log(f"⚠️ 对比图表打开失败: {ex}")
             self._flow_next()  # 全流程流转钩子 (无队列时无操作)
             # 若有打开的全链路面板, 自动刷新
             if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
@@ -3144,8 +3152,30 @@ class SimulinkModule(QWidget):
         ("集成", "on_integrate"),
         ("部署", "on_deploy"),
         ("推理", "on_infer"),
+        ("对比评估", "on_compare_scope"),
         ("Scope", "on_scope"),
     ]
+
+    def on_compare_scope(self, **kw):
+        """⚔️ 对比评估 Scope: 双击 → 自动跑双模型统一评估 → 弹出对比图表"""
+        root = self._repo_root()
+        rc_act = os.path.join(root, "reports", "train_curve_act.json")
+        rc_sml = os.path.join(root, "reports", "train_curve_smolvla_lew.json")
+        if not (os.path.exists(rc_act) and os.path.exists(rc_sml)):
+            self._log("⚠️ 对比评估: 还缺训练产物 — 先点「▶ 运行」(或分别双击两个训练节点) 训练 ACT + SmolVLA")
+            self._qmsg_info("⚔️ 对比评估",
+                            "还缺训练产物!\n\n请先点「▶ 运行」依次训练 ACT 和 SmolVLA,\n"
+                            "或分别双击「🚀 ACT 训练」「🚀 SmolVLA 训练」节点。")
+            return
+        self._log("⚔️ 对比评估: 统一 metaworld 测试集 (120帧) 评估两模型 — 精确度/鲁棒性/延迟, 完成自动弹图表…")
+
+        def _work():
+            rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
+                                os.path.join(root, "tools", "compare_models.py"),
+                                "--frames", "120"], cwd=root)
+            return (rc == 0), ("对比评估完成 · 弹窗展示图表" if rc == 0 else "对比评估失败 (见上方日志)")
+
+        self._start_worker(_work, "正在评估 ACT vs SmolVLA (统一 metaworld)", stage="compare")
 
     def on_scope(self, **kw):
         """📊 Scope 示波器: 显示最近训练 loss 曲线 (Simulink Scope 对标)"""

@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""⚔️ ACT vs SmolVLA 对比评估 — 统一 metaworld 数据集 (2026-08-04 老倪需求)
+
+对比维度 (模型设计师口径):
+  - 训练速度: 从 reports/train_curve_<policy>.json 读训练时实测 step/s (两模型同机同数据)
+  - 精确度:   动作 MSE (预测 vs 专家) + 成功率 (MSE < 0.05)
+  - 鲁棒性:   同一状态重复推理 5 次 → 预测动作标准差 (小 = 决策稳定)
+  - 推理延迟: 单次 select_action 平均 ms (4060 CUDA)
+
+用法: .venv/bin/python tools/compare_models.py [--frames 120]
+输出: reports/model_compare_<ts>.json (供「📊 对比评估 Scope」读取绘图)
+"""
+import argparse, glob, json, os, sys, time
+import numpy as np
+import torch
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def find_ckpt(policy):
+    """读 reports/train_curve_<policy>.json → 最新 checkpoint 目录 + 训练速度 + loss曲线"""
+    p = ROOT / "reports" / f"train_curve_{policy}.json"
+    if not p.exists():
+        return None, 0.0, [], None
+    d = json.load(open(p))
+    cands = sorted(glob.glob(str(ROOT / d.get("ckpt", "")) + "/*/pretrained_model"),
+                   key=os.path.getmtime)
+    return (cands[-1] if cands else None), d.get("step_s", 0.0), d.get("curve", []), d.get("ts")
+
+
+def load_act(ckpt):
+    from lerobot.policies.act.modeling_act import ACTPolicy
+    from lerobot.policies import make_pre_post_processors
+    policy = ACTPolicy.from_pretrained(ckpt).to(DEVICE).eval()
+    _, post = make_pre_post_processors(policy_cfg=policy.config, pretrained_path=str(ckpt))
+    return policy, post
+
+
+def load_smolvla(ckpt):
+    from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
+    policy = SmolVLALewPolicy.from_pretrained(ckpt).to(DEVICE).eval()
+    post = getattr(policy, "postprocessor", None)
+    return policy, post
+
+
+def load_data(max_frames=120):
+    npz = np.load(ROOT / "data" / "metaworld_act" / "train.npz")
+    obs, st, act = npz["observations"], npz["states"], npz["actions"]
+    n = len(st)
+    step = max(1, n // max_frames)
+    idxs = list(range(0, n, step))[:max_frames]
+    return obs[idxs], st[idxs], act[idxs]
+
+
+def _post(post, out):
+    if post is not None:
+        try:
+            return post(out)
+        except Exception:
+            pass
+    return out
+
+
+def _flat(out, n_act):
+    pred = out[0].cpu().numpy() if isinstance(out, (list, tuple)) else out.cpu().numpy()
+    return np.asarray(pred).flatten()[:n_act]
+
+
+def eval_policy(policy, post, obs, st, act, tag, is_act=True, n_repeat=5):
+    mses, lats, robust = [], [], []
+    hits = 0
+    with torch.no_grad():
+        for i in range(len(st)):
+            if is_act:
+                batch = {
+                    "observation.state": torch.from_numpy(st[i]).float().to(DEVICE).unsqueeze(0),
+                    "observation.image": torch.from_numpy(obs[i] / 255.0).float().to(DEVICE).unsqueeze(0),
+                }
+            else:
+                # SmolVLA: NHWC (H,W,C) 0-255, select_action 有状态队列 → 每帧先 reset 保证独立
+                img = obs[i].transpose(1, 2, 0)  # (3,128,128) → (128,128,3)
+                batch = {
+                    "observation.state": torch.from_numpy(st[i]).float().to(DEVICE).unsqueeze(0),
+                    "observation.image": torch.from_numpy(img).float().to(DEVICE).unsqueeze(0),
+                }
+            gt = act[i]
+            t0 = time.time()
+            out = policy.select_action(batch)
+            lat = (time.time() - t0) * 1000
+            pred = _flat(_post(post, out), len(gt))
+            mse = float(np.mean((pred - gt) ** 2))
+            mses.append(mse)
+            lats.append(lat)
+            if mse < 0.05:
+                hits += 1
+            # 鲁棒性: 同一状态重复推理 → 动作 std (小=稳定)
+            stds = []
+            for _ in range(n_repeat):
+                o2 = policy.select_action(batch)
+                stds.append(_flat(_post(post, o2), len(gt)))
+            robust.append(float(np.mean(np.std(np.stack(stds), axis=0))))
+    n = len(mses)
+    res = {
+        "tag": tag, "frames": n,
+        "action_mse": float(np.mean(mses)), "mse_std": float(np.std(mses)),
+        "success_rate": hits / n, "latency_ms": float(np.mean(lats)),
+        "robustness_std": float(np.mean(robust)),
+    }
+    print(f"📊 {tag}: MSE={res['action_mse']:.4f}±{res['mse_std']:.4f} | "
+          f"成功率={res['success_rate']*100:.1f}% | 延迟={res['latency_ms']:.1f}ms | "
+          f"鲁棒性(动作std)={res['robustness_std']:.4f}")
+    return res
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--frames", type=int, default=120)
+    ap.add_argument("--repeat", type=int, default=5)
+    args = ap.parse_args()
+
+    print(f"⚔️ ACT vs SmolVLA 对比评估 · 统一 metaworld_act · {DEVICE}")
+    ckpt_act, spd_act, curve_act, ts_act = find_ckpt("act")
+    ckpt_sm, spd_sm, curve_sm, ts_sm = find_ckpt("smolvla_lew")
+    if not ckpt_act and not ckpt_sm:
+        print("❌ 无训练产物 — 先在控制台 ▶ 运行对比模板 (ACT + SmolVLA 各训练一次)")
+        return 1
+    obs, st, act = load_data(args.frames)
+    print(f"📦 统一测试集: {len(st)} 帧 · state{st.shape[1]}D · action{act.shape[1]}D · img{obs.shape}")
+
+    results = {}
+    if ckpt_act:
+        print(f"✅ 加载 ACT: {ckpt_act}")
+        p, post = load_act(ckpt_act)
+        results["act"] = eval_policy(p, post, obs, st, act, "ACT", is_act=True, n_repeat=args.repeat)
+        results["act"]["step_s"] = spd_act
+        results["act"]["curve"] = curve_act
+        results["act"]["ts"] = ts_act
+    if ckpt_sm:
+        print(f"✅ 加载 SmolVLA: {ckpt_sm}")
+        p, post = load_smolvla(ckpt_sm)
+        results["smolvla_lew"] = eval_policy(p, post, obs, st, act, "SmolVLA", is_act=False, n_repeat=args.repeat)
+        results["smolvla_lew"]["step_s"] = spd_sm
+        results["smolvla_lew"]["curve"] = curve_sm
+        results["smolvla_lew"]["ts"] = ts_sm
+
+    os.makedirs(ROOT / "reports", exist_ok=True)
+    out = ROOT / "reports" / f"model_compare_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    json.dump({"ts": time.strftime("%Y%m%d_%H%M%S"), "dataset": "metaworld_act",
+               "frames": len(st), "models": results}, open(out, "w"), ensure_ascii=False, indent=1)
+    print(f"✅ 对比结果已存: {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -30,6 +30,8 @@ COLORS = {
     "base": QColor("#f85149"),      # 基础模型 (红)
     "ft": QColor("#00d4aa"),        # 微调模型 (青)
     "gt": QColor("#3fb950"),        # 专家真值 (绿)
+    "act": QColor("#58a6ff"),       # ⚔️ ACT 对比 (蓝)
+    "smolvla": QColor("#d29922"),   # ⚔️ SmolVLA 对比 (橙)
     "grid": GRID,
     "text": QColor("#8b949e"),
 }
@@ -364,6 +366,185 @@ class FlowScopeDialog(QDialog):
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, f"scope_loss_{time.strftime('%Y%m%d_%H%M%S')}.png")
         self.scope.grab().save(path)
+        mb = QMessageBox(self)
+        mb.setWindowTitle("导出")
+        mb.setText(f"已保存: {path}")
+        mb.setStyleSheet("QMessageBox{background:#0d1117} QLabel{color:#e6edf3;}"
+                         "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                         "border-radius:6px;padding:6px 18px;}")
+        mb.addButton("好的", QMessageBox.AcceptRole)
+        mb.exec_()
+
+
+class BarCompareWidget(QWidget):
+    """⚔️ 指标对比条形图: 每指标两模型横向条 (ACT 蓝 vs SmolVLA 橙)"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.data = []   # [(指标名, act值, smol值, lower_better)]
+        self.setMinimumSize(560, 190)
+
+    def set_data(self, rows):
+        self.data = rows
+        self.update()
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        p.fillRect(0, 0, w, h, QColor("#0d1117"))
+        if not self.data:
+            p.setPen(QColor("#8b949e"))
+            p.drawText(10, h // 2, "⚠️ 无对比数据 — 先 ▶ 运行训练两模型")
+            p.end()
+            return
+        row_h = h / max(len(self.data), 1)
+        ACT_C, SML_C = QColor("#58a6ff"), QColor("#d29922")
+        for i, (name, av, sv, lower) in enumerate(self.data):
+            y0 = i * row_h
+            p.setPen(QColor("#c9d1d9"))
+            p.setFont(QFont("Consolas", 9))
+            p.drawText(8, y0 + 14, f"{name}")
+            # 条区: x 从 150 到 w-90, 两模型各一条
+            bx, bw = 150, w - 250
+            vmax = max(abs(av), abs(sv), 1e-9)
+            a_len = abs(av) / vmax * bw
+            s_len = abs(sv) / vmax * bw
+            p.fillRect(bx, y0 + 4, int(a_len), 10, ACT_C)
+            p.fillRect(bx, y0 + 18, int(s_len), 10, SML_C)
+            p.setPen(QColor("#8b949e"))
+            p.drawText(bx + int(a_len) + 6, y0 + 13, f"{av:.3g}")
+            p.drawText(bx + int(s_len) + 6, y0 + 27, f"{sv:.3g}")
+            # 胜出标记 (好值绿)
+            if lower:
+                winner = "ACT" if av < sv else "SmolVLA"
+            else:
+                winner = "ACT" if av > sv else "SmolVLA"
+            p.setPen(QColor("#2ea043") if (av != sv) else QColor("#8b949e"))
+            p.drawText(w - 66, y0 + 20, f"✓ {winner}" if av != sv else "=")
+        p.setPen(QColor("#8b949e"))
+        p.setFont(QFont("Consolas", 8))
+        p.drawText(8, h - 4, "■ ACT (#58a6ff)   ■ SmolVLA (#d29922)   · 好值标绿 ✓")
+        p.end()
+
+
+class ModelCompareDialog(QDialog):
+    """⚔️ ACT vs SmolVLA 对比 Scope (2026-08-04 老倪需求)
+    图表: ① 训练 loss 双折线 (速度/收敛对比) ② 五指标条形图
+          (训练速度/精确度MSE/成功率/鲁棒性/延迟) ③ 对比表
+    数据源: reports/model_compare_<ts>.json (tools/compare_models.py 生成)
+    """
+
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.setWindowTitle("⚔️ ACT vs SmolVLA 对比 · 统一 metaworld 数据集")
+        self.setMinimumSize(720, 620)
+        self.setStyleSheet("QDialog{background:#0d1117;}")
+        root = QVBoxLayout(self)
+
+        self.lbl_head = QLabel("⚔️ ACT vs SmolVLA 模型对比")
+        self.lbl_head.setStyleSheet("color:#a371f7;font-size:15px;font-weight:700;")
+        root.addWidget(self.lbl_head)
+
+        self.lbl_note = QLabel("")
+        self.lbl_note.setStyleSheet("color:#8b949e;font-size:11px;")
+        root.addWidget(self.lbl_note)
+
+        self.scope = ScopeWidget(self)
+        self.scope.setMinimumHeight(200)
+        root.addWidget(self.scope)
+
+        self.bars = BarCompareWidget(self)
+        root.addWidget(self.bars)
+
+        self.table = QTextEdit()
+        self.table.setReadOnly(True)
+        self.table.setMinimumHeight(110)
+        self.table.setStyleSheet("background:#0d1117; color:#c9d1d9; border:1px solid #1e2740;"
+                                 "font-family:Consolas; font-size:12px;")
+        root.addWidget(self.table)
+
+        btns = QHBoxLayout()
+        self.btn_export = QPushButton("💾 导出 PNG")
+        self.btn_close = QPushButton("❌ 关闭")
+        self.btn_export.clicked.connect(self._export_png)
+        self.btn_close.clicked.connect(self.accept)
+        btns.addStretch(1)
+        btns.addWidget(self.btn_export)
+        btns.addWidget(self.btn_close)
+        root.addLayout(btns)
+
+        self._load_data()
+
+    def _latest(self):
+        import glob
+        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
+        files = sorted(glob.glob(os.path.join(root, "reports", "model_compare_*.json")))
+        return json.load(open(files[-1])) if files else None
+
+    def _load_data(self):
+        d = self._latest()
+        if not d:
+            self.lbl_note.setText("⚠️ 无对比结果 — 点「▶ 运行」依次训练 ACT + SmolVLA, 完成后自动生成对比报告")
+            self.scope.set_series({})
+            self.bars.set_data([])
+            self.table.setPlainText("无对比数据\n\n运行方式: 画布点「▶ 运行」→ 训练两模型 → 本窗口自动有图表")
+            self.btn_export.setEnabled(False)
+            return
+        m = d.get("models", {})
+        act = m.get("act", {})
+        sml = m.get("smolvla_lew", {})
+        self.lbl_note.setText(
+            f"数据集: {d.get('dataset', 'metaworld_act')} · 测试 {d.get('frames', 0)} 帧 · "
+            f"时间 {d.get('ts', '')} · ♻ 同数据/同机评估 (4060)")
+        # ① loss 双折线
+        series = {}
+        c_act, c_sml = act.get("curve", []), sml.get("curve", [])
+        if c_act:
+            series["ACT loss"] = (np.array([l for _, l in c_act], dtype=float), "act", False)
+        if c_sml:
+            series["SmolVLA loss"] = (np.array([l for _, l in c_sml], dtype=float), "smolvla", False)
+        self.scope.set_series(series)
+        # ② 五指标条形
+        rows = []
+        for name, key, lower in [("训练速度 step/s", "step_s", False),
+                                 ("动作 MSE", "action_mse", True),
+                                 ("成功率 %", "success_rate", False),
+                                 ("鲁棒性 std", "robustness_std", True),
+                                 ("推理延迟 ms", "latency_ms", True)]:
+            av = act.get(key, 0.0) if act else 0.0
+            sv = sml.get(key, 0.0) if sml else 0.0
+            if key == "success_rate":
+                av, sv = av * 100, sv * 100
+            rows.append((name, av, sv, lower))
+        self.bars.set_data(rows)
+        # ③ 表格
+        lines = [f"{'维度':<14}{'ACT':>14}{'SmolVLA':>14}{'胜出':>10}"]
+        for name, key, lower, fmt in [("训练速度 step/s", "step_s", False, "{:.2f}"),
+                                      ("动作 MSE", "action_mse", True, "{:.4f}"),
+                                      ("成功率 %", "success_rate", False, "{:.1f}"),
+                                      ("鲁棒性 std", "robustness_std", True, "{:.4f}"),
+                                      ("推理延迟 ms", "latency_ms", True, "{:.1f}")]:
+            av = act.get(key, float("nan")) if act else float("nan")
+            sv = sml.get(key, float("nan")) if sml else float("nan")
+            if key == "success_rate":
+                av, sv = av * 100, sv * 100
+            if lower:
+                win = "ACT" if av < sv else ("SmolVLA" if sv < av else "=")
+            else:
+                win = "ACT" if av > sv else ("SmolVLA" if sv > av else "=")
+            a_txt = fmt.format(av) if av == av else "-"
+            s_txt = fmt.format(sv) if sv == sv else "-"
+            lines.append(f"{name:<14}{a_txt:>14}{s_txt:>14}{win:>10}")
+        self.table.setPlainText("\n".join(lines))
+
+    def _export_png(self):
+        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
+        out_dir = os.path.join(root, "reports")
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f"compare_scope_{time.strftime('%Y%m%d_%H%M%S')}.png")
+        self.grab().save(path)
         mb = QMessageBox(self)
         mb.setWindowTitle("导出")
         mb.setText(f"已保存: {path}")
