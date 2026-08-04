@@ -80,12 +80,28 @@ class NodeLogicDialog(QDialog):
         hl.setContentsMargins(12, 10, 12, 10)
         t1 = QLabel(f"🔷 {self._node_name}")
         t1.setStyleSheet(f"color:{_TEXT}; font-size:15px; font-weight:700;")
+        # 📂 代码位置行 (VSCode 打开用): 路径:行号 · 函数名
+        loc_row = QHBoxLayout()
+        loc_row.setSpacing(6)
+        self.lbl_loc = QLabel("📂 定位中…")
+        self.lbl_loc.setStyleSheet(f"color:#58a6ff; font-size:11px; font-family:DejaVu Sans Mono;")
+        self.lbl_loc.setTextInteractionFlags(Qt.TextSelectableByMouse)  # 可选中复制
+        self.btn_copy_loc = QPushButton("📋 复制路径")
+        self.btn_copy_loc.setStyleSheet(
+            "QPushButton { background:#161b22; color:#58a6ff; border:1px solid #58a6ff66;"
+            " border-radius:4px; padding:2px 10px; font-size:10px; }"
+            "QPushButton:hover { border-color:#58a6ff; }")
+        self.btn_copy_loc.setCursor(Qt.PointingHandCursor)
+        self.btn_copy_loc.clicked.connect(self._copy_location)
+        loc_row.addWidget(self.lbl_loc, 1)
+        loc_row.addWidget(self.btn_copy_loc)
         self.lbl_doc = QLabel("加载中…")
         self.lbl_doc.setWordWrap(True)
         self.lbl_doc.setStyleSheet(f"color:{_DIM}; font-size:11px;")
         self.lbl_hint = QLabel("🛠 只改金色 ✏️ 可修改区 (保存即生效) · 🔒 框架区勿动")
         self.lbl_hint.setStyleSheet(f"color:{_GOLD}; font-size:11px; font-weight:600;")
         hl.addWidget(t1)
+        hl.addLayout(loc_row)
         hl.addWidget(self.lbl_doc)
         hl.addWidget(self.lbl_hint)
         root.addWidget(head)
@@ -121,8 +137,26 @@ class NodeLogicDialog(QDialog):
         root.addLayout(btns)
 
     # ── 数据 ─────────────────────────────────────────────
+    def _copy_location(self):
+        from PyQt5.QtWidgets import QApplication as _QA
+        _QA.clipboard().setText(self.lbl_loc.text())
+        self.lbl_loc.setText("📋 已复制!")
+
     def _load_source(self):
         src, doc = node_logic.get_node_source(self._key)
+        # 📂 代码位置: 文件绝对路径:行号 · 函数名 (VSCode 打开用)
+        path, line, modified = node_logic.get_node_location(self._key) if self._key else (None, None, False)
+        if path:
+            fn_name = node_logic.NODE_LOGIC[self._key]["fn"].__name__
+            loc = f"📂 {path}" + (f":{line}" if line else "") + f" · def {fn_name}()"
+            if modified:
+                loc += " · ⚡已修改(动态生效)"
+            self.lbl_loc.setText(loc)
+            self.lbl_loc.setToolTip("在 VSCode 中打开: code -g " + path + (f":{line}" if line else ""))
+            self.btn_copy_loc.setEnabled(True)
+        else:
+            self.lbl_loc.setText("📂 无独立逻辑文件")
+            self.btn_copy_loc.setEnabled(False)
         if src is None:
             self.edit.setPlainText(f"# 节点「{self._node_name}」没有独立逻辑\n# 双击运行时走框架默认动作 (无用户可修改区)")
             self.lbl_doc.setText("🔒 该节点无独立逻辑 — 使用框架默认行为")

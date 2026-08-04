@@ -73,6 +73,26 @@ def get_node_source(key):
     return src, info["doc"]
 
 
+def get_node_location(key):
+    """语义key → 代码位置 (path, line, modified) 供 VSCode 打开.
+
+    path: 绝对路径 (原始=node_logic.py; 用户修改过=仍在 node_logic.py, 但逻辑是动态加载)
+    line: 函数定义行号 (修改版为 None, 动态 exec 无行号)
+    modified: True=用户改过(动态生效, 未落盘)
+    """
+    info = NODE_LOGIC.get(key)
+    if not info:
+        return None, None, False
+    fn = info["fn"]
+    modified = key in _SOURCE_CACHE
+    path = getattr(fn.__code__, "co_filename", None)
+    line = getattr(fn.__code__, "co_firstlineno", None)
+    if not path or not path.endswith(".py"):
+        path = _LOGIC_FILE
+        line = None
+    return path, line, modified
+
+
 def save_node_logic(key, new_code):
     """保存用户修改 → exec 原地替换函数 (即时生效, 无需重启/热重载).
 
@@ -102,28 +122,28 @@ def save_node_logic(key, new_code):
 
 
 def restore_default(key):
-    """恢复出厂模板. 返回 (ok, msg)"""
+    """恢复出厂逻辑: 从文件重新 exec 取原始函数 (真实文件行号 + 清修改缓存).
+
+    返回 (ok, msg)
+    """
     info = NODE_LOGIC.get(key)
     if not info:
         return False, f"未知节点逻辑: {key}"
     fn_name = info["fn"].__name__
     try:
         with open(_LOGIC_FILE, encoding="utf-8") as f:
-            src_all = f.read()
-        # 出厂模板 = 当前文件里函数定义行到 def 下一段 (从 def 行到下一个同级 def)
-        lines = src_all.split("\n")
-        idx = next(i for i, l in enumerate(lines) if l.startswith("def " + fn_name))
-        # 找函数结束 (下一个顶格 def 或文件尾)
-        end = len(lines)
-        for j in range(idx + 1, len(lines)):
-            if lines[j].startswith("def ") or lines[j].startswith("_reg("):
-                end = j
-                break
-        default_src = "\n".join(lines[idx:end])
+            code = f.read()
+        ns = {"__file__": _LOGIC_FILE, "__name__": __name__}
+        # filename=真实路径 → exec 出的函数 co_filename/co_firstlineno 指向文件真实位置
+        exec(compile(code, _LOGIC_FILE, "exec"), ns)
+        orig_fn = ns.get(fn_name)
+        if orig_fn is None:
+            return False, f"❌ 文件中找不到 def {fn_name}"
+        NODE_LOGIC[key]["fn"] = orig_fn
+        _SOURCE_CACHE.pop(key, None)   # 清修改标记
+        return True, f"✅ 已恢复出厂逻辑 ({fn_name})"
     except Exception as ex:
         return False, f"❌ 恢复失败: {ex}"
-    ok, msg, _warn = save_node_logic(key, default_src)
-    return ok, msg
 
 
 def reload_node_logic():
