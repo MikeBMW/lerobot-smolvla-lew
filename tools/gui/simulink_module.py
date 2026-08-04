@@ -967,6 +967,9 @@ class SimNodeItem(QGraphicsObject):
         if self.isSelected():
             pen.setWidthF(2.4)
             pen.setStyle(Qt.DashLine)
+        # 引导高亮 (ACT-Meta 训练完成 → 金色粗框指引下一步节点)
+        if self.node.get("hl"):
+            pen = QPen(QColor("#ffd700"), 3.2)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
         # 标题
@@ -2475,11 +2478,11 @@ class SimulinkModule(QWidget):
                 self._log(f"✅ {summary}")
             else:
                 self._log(f"❌ {summary}")
-            # 🧠 ACT-Meta 引导: 训练完成 → 提示下一步
+            # 🧠 ACT-Meta 引导: 训练完成 → 自动追加下游节点 + 高亮引导下一步
             if stage == "train" and getattr(self, "_act_train_guided", False):
                 if ok:
                     self._log("🎉 训练完成! 全新 ACT-Meta 模型已就绪 ✓")
-                    self._log("👉 下一步: 双击「📦 集成打包」把模型推回 ECS, 或先「✅ 验证」检查合规")
+                    self._act_append_after_train()
                 else:
                     self._log("❌ 训练失败, 请查看上方日志定位原因")
             self._flow_next()  # 全流程流转钩子 (无队列时无操作)
@@ -2645,6 +2648,71 @@ class SimulinkModule(QWidget):
             self._act_train_guided = True
         else:
             self._log("⚠️ 搭建未完成, 请检查画布节点")
+
+    def _highlight_node(self, node, ms=6000):
+        """画布节点金框高亮 (paint 读 node['hl'] 画金色粗框), ms 后自动清除"""
+        # 清掉其他节点的高亮, 保证只有一个金框
+        for n in self.nodes:
+            if n.get("hl"):
+                n["hl"] = False
+                it = self._items.get(n["id"])
+                if it:
+                    it.update()
+        node["hl"] = True
+        it = self._items.get(node["id"])
+        if it is not None:
+            it.update()
+        self.canvas._scene.update()
+
+        def _clear():
+            if node.get("hl") and self._items.get(node["id"]) is it:
+                node["hl"] = False
+                if it is not None:
+                    it.update()
+
+        QTimer.singleShot(ms, _clear)
+
+    def _act_append_after_train(self):
+        """🧠 ACT-Meta 引导: 训练完成 → 自动追加「✅ 模型验证」+「📦 集成打包」
+        节点并连线 (训练→验证→集成), 金框高亮集成节点 + 气泡引导双击推回 ECS。
+        画布已有同名节点则跳过添加只补连线, 可重复训练不产生重复节点。
+        """
+        names = [n["name"] for n in self.nodes]
+        n_verify = None
+        n_pack = None
+        if "✅ 模型验证" not in names:
+            x = 120 + len(self.nodes) * 260
+            n_verify = self.add_node("condition", "✅ 模型验证", x, 80,
+                                     {"strict": True, "desc": "双击运行验证 (validate_flow)"})
+        else:
+            n_verify = next(n for n in self.nodes if n["name"] == "✅ 模型验证")
+        if "📦 集成打包" not in names:
+            x = 120 + len(self.nodes) * 260
+            n_pack = self.add_node("action", "📦 集成打包", x, 80,
+                                   {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"})
+        else:
+            n_pack = next(n for n in self.nodes if n["name"] == "📦 集成打包")
+        # 连线: 训练 → 验证 → 集成 (add_link 自带防重复)
+        train_nodes = [n for n in self.nodes if "训练" in n["name"]]
+        if train_nodes:
+            src = train_nodes[-1]
+            have = {(lk["f"], lk["t"]) for lk in self.links}
+            if (src["id"], n_verify["id"]) not in have:
+                self.add_link(self._items[src["id"]], self._items[n_verify["id"]])
+            if (n_verify["id"], n_pack["id"]) not in have:
+                self.add_link(self._items[n_verify["id"]], self._items[n_pack["id"]])
+        self._log("➕ 已自动追加「✅ 模型验证」「📦 集成打包」节点并连线 (训练→验证→集成)")
+        self._log("👆 金色高亮 = 「📦 集成打包」— 双击它把新模型推回 ECS; 也可先双击「✅ 模型验证」检查合规")
+        # 金框高亮 + 气泡指引
+        self._highlight_node(n_pack)
+        try:
+            view = self.canvas
+            it = self._items.get(n_pack["id"])
+            if it is not None:
+                gp = view.mapToGlobal(view.mapFromScene(it.sceneBoundingRect().center()))
+                self._show_bubble(gp, "👆 双击金色高亮「📦 集成打包」→ 新模型推回 ECS", ms=6000)
+        except Exception:
+            pass
 
     def on_validate(self, strict=True, **kw):
         """① 验证: 后台执行 validate_flow.py (不卡 UI)
