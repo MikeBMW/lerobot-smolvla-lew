@@ -2595,18 +2595,19 @@ class SimulinkModule(QWidget):
         self._rec_start = time.time()
         self._rec_timer = QTimer(self)
         self._rec_timer.timeout.connect(self._rec_tick)
-        self._rec_timer.start(500)  # 2fps 采集 → 2x 加速
+        self._rec_timer.start(1000)  # 1fps 采集 (2026-08-05: 500ms grab 大窗卡UI停止按钮无响应 → 1s 减负)
         # 🎬 录制中视觉指示: 按钮变红字 + 呼吸闪烁 (500ms 交替样式)
         self.btn_record.setText("⏺ 录制中…")
         self.btn_record.setEnabled(True)   # 保持可点? 不, 录制中禁点(防重复), 用样式表强调
         self.btn_record.setEnabled(False)
+        self._rec_busy = False  # 防堆积: 上一次 grab 未完成则跳过本次
         self._rec_blink = QTimer(self)
         self._rec_blink.timeout.connect(self._rec_blink_tick)
         self._rec_blink.start(500)
         self._rec_blink_on = True
         self._rec_style_normal = self.btn_record.styleSheet()
         self.btn_stop_rec.setEnabled(True)
-        self._log(f"🔴 录屏开始 → {os.path.relpath(self._rec_dir, root)} (2fps 采集, 停止后合成 MP4)")
+        self._log(f"🔴 录屏开始 → {os.path.relpath(self._rec_dir, root)} (1fps 采集, 停止后合成 MP4)")
 
     def _rec_blink_tick(self):
         """呼吸闪烁: 交替按钮背景红/深红"""
@@ -2621,17 +2622,23 @@ class SimulinkModule(QWidget):
 
     def _rec_tick(self):
         """采集一帧: 整窗截图 (含终端输出/模型结果/画布) — JPEG 快速保存 (2026-08-05:
-        PNG 压缩大图慢 → UI 卡顿停止按钮无响应; JPEG q85 快 ~10x)"""
+        PNG 压缩大图慢 → UI 卡顿停止按钮无响应; JPEG q85 快 ~10x; 防堆积: busy 标志
+        上一次 grab 未完成跳过, 保证事件循环不被占满)"""
+        if getattr(self, "_rec_busy", False):
+            return  # 上一帧还在处理 (grab+save 超 1s), 跳过保持 UI 响应
         try:
+            self._rec_busy = True
             pm = self.grab()
             if not pm.isNull():
                 pm.save(os.path.join(self._rec_dir, f"frame_{self._rec_idx:04d}.jpg"), "JPG", 85)
                 self._rec_idx += 1
-                # 状态提示: 每 30 帧 (15s) 更新一次
+                # 状态提示: 每 30 帧 (30s) 更新一次
                 if self._rec_idx % 30 == 0:
                     self._log(f"⏺ 录屏中: {self._rec_idx} 帧 · {time.time() - self._rec_start:.0f}s")
         except Exception:
             pass
+        finally:
+            self._rec_busy = False
 
     def stop_recording(self):
         """⏹ 停止: 停定时器 → 后台线程 ffmpeg 合成 MP4 (2026-08-05: 合成移后台,
@@ -2655,7 +2662,7 @@ class SimulinkModule(QWidget):
             self._log("⚠️ 无录屏帧 (录制时间过短)")
             return
         dur = time.time() - getattr(self, "_rec_start", time.time())
-        fps = 2.0
+        fps = 1.0  # 1fps 采集 → 合成 2fps 输出 = 2x 加速
         out_mp4 = os.path.join(rec_dir, "screen_rec.mp4")
         self._log(f"⏳ 正在合成视频 ({n} 帧, ffmpeg 后台)…")
         import threading
@@ -2663,14 +2670,15 @@ class SimulinkModule(QWidget):
         t.start()
 
     def _ffmpeg_compose(self, rec_dir, out_mp4, fps, n, dur):
-        """(后台线程) ffmpeg 合成 MP4 — 帧是 JPG 序列, 输出 2fps 视频 (总长 = 录制/2)
-        2026-08-05 修复: libx264 要求宽高偶数, 窗口高度奇数(如929)导致 0 字节 MP4
-        → -vf pad 补齐偶数"""
+        """(后台线程) ffmpeg 合成 MP4 — 1fps 采集帧以 2fps 播放 = 2x 加速
+        2026-08-05: -framerate 1 + -r 2 不加速 (时长按输入帧数), 直接 -framerate 2 播放"""
         import subprocess
-        cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i",
+        play_fps = fps * 2  # 1fps 采集 → 2fps 播放 = 2x 加速
+        cmd = ["ffmpeg", "-y", "-framerate", str(play_fps), "-i",
                os.path.join(rec_dir, "frame_%04d.jpg"),
                "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
-               "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(fps), out_mp4]
+               "-c:v", "libx264", "-pix_fmt", "yuv420p",
+               "-r", str(play_fps), out_mp4]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if r.returncode == 0:
