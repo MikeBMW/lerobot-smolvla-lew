@@ -5,7 +5,7 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 对标 Simulink 交互: 0帧起手 → 模块库拖拽 → 连线 → 双击参数 → 运行/单步/停止
 与 Web comfyui.html 共用 simulink-spec.md v1.0 节点规范 (JSON 完全一致)
 """
-import json, math, random, time, os, sys
+import json, math, random, time, os, sys, glob
 from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPolygonF, QLinearGradient, QRadialGradient)
@@ -1758,6 +1758,9 @@ class SimulinkModule(QWidget):
         self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
         self.btn_back.setVisible(False)
         tl2.addWidget(self.btn_back)
+        # 💾 保存模型 (2026-08-05 老倪: "当前训练的模型可以保存, 下次直接应用")
+        self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
+        tl2.addWidget(self.btn_save_model)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
         lbl_op.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
@@ -2500,6 +2503,66 @@ class SimulinkModule(QWidget):
         if btn is None:
             return
         btn.setVisible(bool(getattr(self, "_subsystem_stack", None)))
+
+    def save_trained_model(self):
+        """💾 保存模型 (2026-08-05 老倪: 训练好的模型保存, 下次直接应用):
+        读 reports/train_curve_<policy>.json 的 ckpt 路径 → 复制 last/pretrained_model
+        到 models/saved/<policy>_<ts>/ → 写 models/saved/registry.json (推理服务下拉读取)"""
+        import shutil
+        root = self._repo_root()
+        saved_dir = os.path.join(root, "models", "saved")
+        os.makedirs(saved_dir, exist_ok=True)
+        # 1) 收集所有已训练策略的 checkpoint
+        found = []
+        for f in sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json"))):
+            policy = os.path.basename(f).replace("train_curve_", "").replace(".json", "")
+            try:
+                d = json.load(open(f, encoding="utf-8"))
+            except Exception:
+                continue
+            ckpt_base = d.get("ckpt", "")
+            last_pm = os.path.join(root, ckpt_base, "last", "pretrained_model")
+            if not os.path.isdir(last_pm):
+                last_pm = os.path.join(root, ckpt_base, "000300", "pretrained_model")
+            if not os.path.isdir(last_pm):
+                self._log(f"⚠️ {policy}: 无可用 checkpoint ({ckpt_base})")
+                continue
+            found.append((policy, d.get("name", policy), last_pm, d.get("step_s", 0)))
+        if not found:
+            self._qmsg_info("💾 保存模型", "没有已训练的模型 — 先点「▶ 运行」训练至少一个模型")
+            return
+        # 2) 复制到 models/saved/
+        saved_names = []
+        for policy, pname, pm_path, step_s in found:
+            dst = os.path.join(saved_dir, f"{policy}_{time.strftime('%Y%m%d_%H%M%S')}")
+            os.makedirs(dst, exist_ok=True)
+            try:
+                shutil.copytree(pm_path, os.path.join(dst, "pretrained_model"), dirs_exist_ok=True)
+                saved_names.append({"policy": policy, "name": pname, "path": dst,
+                                    "step_s": step_s, "ts": time.strftime("%Y%m%d_%H%M%S")})
+                self._log(f"💾 已保存模型: {pname} ({policy}) → {os.path.relpath(dst, root)}")
+            except Exception as ex:
+                self._log(f"❌ 保存失败 {policy}: {ex}")
+        # 3) 写 registry.json (推理面板下拉读)
+        reg_path = os.path.join(saved_dir, "registry.json")
+        reg = []
+        if os.path.exists(reg_path):
+            try:
+                reg = json.load(open(reg_path, encoding="utf-8"))
+            except Exception:
+                reg = []
+        reg.extend(saved_names)
+        with open(reg_path, "w", encoding="utf-8") as f:
+            json.dump(reg, f, ensure_ascii=False, indent=1)
+        self._log(f"💾 已更新模型注册表: {os.path.relpath(reg_path, root)} ({len(saved_names)} 个新模型)")
+        # 4) 气泡提示
+        try:
+            gp = self.mapToGlobal(self.btn_save_model.rect().center())
+            self._show_bubble(gp, f"✅ 已保存 {len(saved_names)} 个模型\n"
+                                  f"推理服务 → 推理页「已保存模型」下拉直接选\n"
+                                  f"路径: models/saved/", ms=5000)
+        except Exception:
+            pass
 
     def show_compare(self):
         """性能对比弹窗: 基础模型 vs 微调模型 (读取 CICD_COMPARE_*.json)"""

@@ -5977,6 +5977,21 @@ class InferencePanel(QWidget):
         row.addWidget(self.ckpt_edit)
         row.addWidget(browse_btn)
         l.addRow("模型:", row)
+        # 🆕 已保存模型下拉 (2026-08-05 老倪: "训练好的模型保存, 下次直接应用" —
+        #   读 models/saved/registry.json, 选中即填 ckpt_edit)
+        saved_row = QHBoxLayout()
+        self.saved_combo = QComboBox()
+        self.saved_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.saved_combo.addItem("📦 已保存模型… (下拉选择)")
+        self.saved_combo.activated.connect(self._on_saved_model_selected)
+        saved_row.addWidget(self.saved_combo)
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setFixedWidth(36)
+        refresh_btn.clicked.connect(self._refresh_saved_models)
+        refresh_btn.setStyleSheet(f"background:{C_BORDER}; color:{C_WHITE}; border:none; border-radius:4px;")
+        saved_row.addWidget(refresh_btn)
+        l.addRow("已保存:", saved_row)
+        self._refresh_saved_models()
         
         # 端口
         port_row = QHBoxLayout()
@@ -6082,6 +6097,39 @@ class InferencePanel(QWidget):
         path = QFileDialog.getExistingDirectory(self, "选择模型checkpoint", "outputs/")
         if path:
             self.ckpt_edit.setText(path)
+
+    # ── 🆕 已保存模型 (2026-08-05 老倪: 训练好的模型保存, 下次直接应用) ──
+    def _saved_registry_path(self):
+        """models/saved/registry.json 绝对路径"""
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "models", "saved", "registry.json")
+
+    def _refresh_saved_models(self):
+        """读 registry.json 填充下拉 (最近保存在前)"""
+        try:
+            self.saved_combo.blockSignals(True)
+            self.saved_combo.clear()
+            self.saved_combo.addItem("📦 已保存模型… (下拉选择)")
+            reg_path = self._saved_registry_path()
+            if os.path.exists(reg_path):
+                reg = json.load(open(reg_path, encoding="utf-8"))
+                for item in reversed(reg):  # 新的在前
+                    label = f"{item.get('name', item.get('policy','?'))} · {item.get('ts','')}"
+                    self.saved_combo.addItem(label, item.get("path", ""))
+            self.saved_combo.blockSignals(False)
+        except Exception:
+            pass
+
+    def _on_saved_model_selected(self, idx):
+        """选中已保存模型 → 填 ckpt_edit (指向 .../pretrained_model)"""
+        if idx <= 0:
+            return
+        base = self.saved_combo.itemData(idx)
+        if not base:
+            return
+        pm = os.path.join(base, "pretrained_model")
+        self.ckpt_edit.setText(pm if os.path.isdir(pm) else base)
+        self._log_client(f"📦 已选保存模型: {pm}")
     
     def _server_start(self):
         ckpt = self.ckpt_edit.text().strip()
