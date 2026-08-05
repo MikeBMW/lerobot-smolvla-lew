@@ -349,6 +349,17 @@ class FlowScopeDialog(QDialog):
         self.setStyleSheet(_qss(self._SS_DARK))
         self._build()
         self._load_data()
+        # 训练中实时刷新 (2026-08-05): 2s 轮询最新曲线文件, 波形实时动
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.timeout.connect(self._load_data)
+        self._refresh_timer.start(2000)
+
+    def closeEvent(self, e):
+        try:
+            self._refresh_timer.stop()
+        except Exception:
+            pass
+        super().closeEvent(e)
 
     def _build(self):
         root = QVBoxLayout(self)
@@ -373,10 +384,24 @@ class FlowScopeDialog(QDialog):
         root.addLayout(btns)
 
     def _load_data(self):
-        curve = getattr(self.module, "_train_curve", None) or []
+        # 2026-08-05 老倪: "训练都开始了, 为什么scope没有波形" — 优先读实时落盘文件
+        # (on_train 训练中每行 loss 增量写 reports/train_curve_<policy>.json), 训练中波形实时可见
+        curve = None
+        try:
+            root = self.module._repo_root()
+            files = sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json")),
+                           key=os.path.getmtime, reverse=True)
+            if files:
+                d = json.load(open(files[0], encoding="utf-8"))
+                if d.get("curve"):
+                    curve = d["curve"]
+        except Exception:
+            curve = None
+        if not curve:
+            curve = getattr(self.module, "_train_curve", None) or []
         if not curve:
             self.scope.set_series({})
-            self.lbl_metrics.setText("⚠️ 暂无训练曲线 — 点「▶ 运行」训练完成后自动出波形")
+            self.lbl_metrics.setText("⚠️ 暂无训练曲线 — 点「▶ 运行」, 训练中即可见实时波形")
             self.btn_export.setEnabled(False)
             return
         ys = np.array([l for _, l in curve])

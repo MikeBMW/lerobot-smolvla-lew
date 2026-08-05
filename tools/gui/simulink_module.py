@@ -3028,8 +3028,8 @@ class SimulinkModule(QWidget):
         """仓库根: tools/gui/simulink_module.py → lerobot-smolvla-lew/"""
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    def _run_cmd(self, cmd, cwd=None, collect=None):
-        """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行"""
+    def _run_cmd(self, cmd, cwd=None, collect=None, line_hook=None):
+        """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行; line_hook(ln) 每行回调"""
         import subprocess
         try:
             p = subprocess.Popen(cmd, cwd=cwd or self._repo_root(),
@@ -3040,6 +3040,11 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit(txt[:200])
                 if collect is not None:
                     collect.append(txt)
+                if line_hook is not None:
+                    try:
+                        line_hook(txt)
+                    except Exception:
+                        pass
             p.wait()
             return p.returncode
         except Exception as ex:
@@ -3555,14 +3560,43 @@ class SimulinkModule(QWidget):
                 tmp_cfg = cfg_path
 
             self.log_signal.emit(f"🚀 启动 {pname} 训练 ({steps or 300}步, 4060 CUDA)…")
-            # 📊 Scope: 收集训练输出行 → 解析 loss 曲线 (供示波器/对比图表显示)
+            # 📊 Scope: 训练中实时落盘 loss 曲线 (2026-08-05 老倪: "训练都开始了, 为什么scope没有波形"
+            #   — 原来训练结束才落盘; 改流式: 每行 loss 增量写 reports/train_curve_<policy>.json,
+            #   Scope 打开时即可见实时波形)
             out_lines = []
+            cur_dict = {}
+            cur_ts = time.strftime("%Y%m%d_%H%M%S")
+            import json as _json  # 闭包用
+
+            def _line_hook(ln):
+                """训练中实时: 解析 loss 行 → 增量更新曲线 → 写盘 (Scope 可见实时波形)"""
+                try:
+                    pts = self._parse_loss_curve([ln])
+                    if not pts:
+                        return
+                    step, loss = pts[-1]
+                    cur_dict[step] = loss
+                    _flush_curve()
+                except Exception:
+                    pass
+
+            def _flush_curve():
+                try:
+                    os.makedirs(os.path.join(root, "reports"), exist_ok=True)
+                    with open(os.path.join(root, "reports", f"train_curve_{policy}.json"), "w", encoding="utf-8") as f:
+                        _json.dump({"policy": policy, "name": pname, "ts": cur_ts,
+                                    "curve": sorted(cur_dict.items()), "step_s": 0,
+                                    "ckpt": f"outputs/train/{ts_dir}/checkpoints"}, f, ensure_ascii=False)
+                except Exception:
+                    pass
+
             rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
                                 "-m", "lerobot.scripts.lerobot_train",
-                                "--config_path", tmp_cfg], cwd=root, collect=out_lines)
+                                "--config_path", tmp_cfg], cwd=root, collect=out_lines,
+                               line_hook=lambda ln: _line_hook(ln))
             self._train_curve = self._parse_loss_curve(out_lines)
             step_s = self._parse_step_s(out_lines)
-            # ⚔️ 对比: 落盘曲线+速度 → reports/train_curve_<policy>.json (对比评估 Scope 读取)
+            # 最终落盘 (训练结束后覆盖实时文件: 补全 step_s + 最终曲线)
             try:
                 import json as _json
                 os.makedirs(os.path.join(root, "reports"), exist_ok=True)
