@@ -70,7 +70,7 @@ class ScopeWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.series = {}   # name -> (np.array y, QColor, dashed?)
+        self.series = {}   # name -> (xs, y, QColor, dashed?) — xs=None 时用索引 (兼容旧格式)
         self.setMinimumSize(560, 300)
         self.setStyleSheet(_qss("background:#f6f8fa;"))
         # 🔍 缩放/平移 (2026-08-05 老倪: "scope的波形, 大小要能够缩放, 现在动不了, UI不好")
@@ -79,7 +79,7 @@ class ScopeWidget(QWidget):
         self._drag_last = None     # 拖拽平移起点 (y 值)
 
     def set_series(self, series):
-        """series: {name: (y_values, color_name, dashed)}"""
+        """series: {name: (xs, y, color_name, dashed)} — xs=None 时 x 轴用索引 (旧格式兼容)"""
         self.series = series
         self.update()
 
@@ -89,7 +89,7 @@ class ScopeWidget(QWidget):
 
     # ── 🔍 交互: 滚轮缩放 / 拖拽平移 / 双击复位 (Simulink Scope 风格) ──
     def _y_range(self):
-        ys = [v[0] for v in self.series.values() if len(v[0]) > 0]
+        ys = [v[1] if len(v) >= 2 else v[0] for v in self.series.values() if len(v[0]) > 0]
         if not ys:
             return -1.0, 1.0
         all_v = np.concatenate(ys)
@@ -180,28 +180,70 @@ class ScopeWidget(QWidget):
         p.setPen(QPen(QColor(t["grid_major"]), 1))
         p.drawLine(0, h // 2, w, h // 2)
 
-        # 绘制各通道
+        # 📐 坐标轴 (2026-08-05 老倪: "loss曲线为什么没有横纵坐标" — Simulink Scope 风格:
+        #   x 轴底部 step 刻度, y 轴左侧 loss 值刻度)
         y_lo, y_hi = self._y_range()
         if y_hi <= y_lo:
             y_hi = y_lo + 1
-        for name, (data, cname, dashed) in self.series.items():
+        ax_font = QFont("Consolas", 8)
+        p.setFont(ax_font)
+        fm = p.fontMetrics()
+        # x 轴: step 刻度 (底部, 5 等分; 从 series 最大点数推断 step 范围)
+        max_n = max((len(d[0]) for d in self.series.values()), default=0)
+        if max_n >= 2:
+            step_hi = max_n - 1
+            for k in range(5):
+                xi = int(k * w / 4)
+                step_val = int(round(k * step_hi / 4))
+                p.setPen(QColor(t["text2"]))
+                p.drawText(xi + 3, h - 4, str(step_val))
+                # 短刻度线
+                p.setPen(QPen(QColor(t["grid_major"]), 1))
+                p.drawLine(xi, h - 14, xi, h - 10)
+        # x 轴标签
+        p.setPen(QColor(t["text2"]))
+        p.drawText(w - 30, h - 4, "step")
+        # y 轴: loss 值刻度 (左侧, 5 等分)
+        for k in range(5):
+            yi = int(k * h / 4)
+            val = y_hi - k * (y_hi - y_lo) / 4
+            p.setPen(QColor(t["text2"]))
+            p.drawText(4, yi - 3, f"{val:.2f}")
+            p.setPen(QPen(QColor(t["grid_major"]), 1))
+            p.drawLine(0, yi, 6, yi)
+        # y 轴标签 (2026-08-05: 移到左下角, 原 (4,14) 与图例重叠)
+        p.setPen(QColor(t["text2"]))
+        p.drawText(4, h - 18, "loss")
+
+        # 绘制各通道 (2026-08-05: series 值 = (xs, y, color, dashed), xs=None 用索引)
+        y_lo, y_hi = self._y_range()
+        if y_hi <= y_lo:
+            y_hi = y_lo + 1
+        for name, val in self.series.items():
+            xs, data = (val[0], val[1]) if len(val) >= 2 else (None, val[0])
+            cname = val[2] if len(val) >= 3 else "base"
+            dashed = val[3] if len(val) >= 4 else False
             if len(data) < 1:
                 continue
             color = COLORS.get(cname, COLORS["base"])
             pen = QPen(color, 2)
             if dashed:
                 pen.setStyle(Qt.DashLine)
-            if len(data) < 2:
+            n = len(data)
+            if n < 2:
                 # 训练中 1 点: 画圆点标记 (2026-08-05 老倪: 训练刚开始 Scope 就要有波形)
                 p.setPen(pen)
                 p.setBrush(color)
                 p.drawEllipse(QPointF(w / 2, h / 2), 4, 4)
                 continue
             p.setPen(pen)
-            n = len(data)
+            x_lo, x_hi = (float(xs[0]), float(xs[-1])) if xs is not None else (0.0, float(n - 1))
+            if x_hi <= x_lo:
+                x_hi = x_lo + 1
             prev = None
             for i in range(n):
-                x = i * w / (n - 1)
+                xi = float(xs[i]) if xs is not None else float(i)
+                x = (xi - x_lo) / (x_hi - x_lo) * w
                 y = h - (float(data[i]) - y_lo) / (y_hi - y_lo) * (h - 20) - 10
                 pt = QPointF(x, y)
                 if prev is not None:
@@ -211,7 +253,9 @@ class ScopeWidget(QWidget):
         #   移到循环外统一绘制, 1 点曲线也有图例; 2026-08-05 修复2: 色块必须显式 setBrush —
         #   否则残留圆点画的 brush → 所有图例色块变同一颜色)
         legend_x = 10
-        for name, (data, cname, dashed) in self.series.items():
+        for name, val in self.series.items():
+            data = val[1] if len(val) >= 2 else val[0]
+            cname = val[2] if len(val) >= 3 else "base"
             if len(data) < 1:
                 continue
             color = COLORS.get(cname, COLORS["base"])
@@ -503,20 +547,24 @@ class FlowScopeDialog(QDialog):
                 disp = _DISPLAY.get(policy, policy)
                 color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
                 ys = np.array([l for _, l in cv])
+                # 📐 x 轴用真实 step (2026-08-05 老倪: "只显示1 2 4 step" — 之前丢弃 step 用索引)
+                xs = np.array([float(s) for s, _ in cv])
                 # 1 点 = 训练中 (实时写盘) → 名称标注 (2026-08-05: 避免误以为异常)
                 tag = " (训练中)" if len(cv) < 2 else ""
-                series[f"{disp}{tag}"] = (ys, color, False)
+                series[f"{disp}{tag}"] = (xs, ys, color, False)
                 present_policies.add(policy)
         except Exception:
             pass
         if not series:
             # 兜底: 至少显示单条
             ys = np.array([l for _, l in curve])
-            series = {"loss": (ys, "ft", False)}
+            xs = np.array([float(s) for s, _ in curve])
+            series = {"loss": (xs, ys, "ft", False)}
         self.scope.set_series(series)
         # 指标行: 各模型首尾 loss + 缺哪些模型提示 (ACT/SmolVLA/SmolVLA+LEW 三模型对比)
         parts = []
-        for name, (ys, *_rest) in series.items():
+        for name, val in series.items():
+            ys = val[1] if len(val) >= 2 else val[0]
             first, last = float(ys[0]), float(ys[-1])
             drop = first - last
             pct = (drop / first * 100) if first else 0.0

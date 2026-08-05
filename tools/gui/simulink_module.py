@@ -3252,8 +3252,8 @@ class SimulinkModule(QWidget):
                 ma = re.search(r"action_loss[:=\s]+([\d.eE+-]+)", ln)
                 if ma:
                     loss = float(ma.group(1))
-                    # 该行无 step; 用已有最大步数 + log_freq 推断
-                    step = (max(dedup, default=0) + 50) if dedup else 50
+                    # 该行无 step; 用已有最大步数 + log_freq(10) 推断 (2026-08-05: log_freq 50→10)
+                    step = (max(dedup, default=0) + 10) if dedup else 10
                     dedup[step] = loss
                     continue
             pat1 = re.compile(r"step\s*[=:]?\s*(\d+).*?loss[=:\s]+([\d.eE+-]+)")
