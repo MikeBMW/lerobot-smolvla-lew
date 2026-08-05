@@ -733,3 +733,159 @@ class ModelCompareDialog(QDialog):
                                "border-radius:6px;padding:6px 18px;}"))
         mb.addButton("好的", QMessageBox.AcceptRole)
         mb.exec_()
+
+
+class InferenceVideoDialog(QDialog):
+    """🎥 三模型推理效果对比 (2026-08-05 老倪: 训练完继续推理, 3个视频display窗口)"""
+    POLICIES = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
+                ("smolvla_lew", "SmolVLA+LEW", "#a371f7")]
+
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.setWindowTitle("🎥 三模型推理效果对比 — metaworld push 场景")
+        self.setMinimumSize(1280, 640)
+        self.setStyleSheet(_qss("QDialog{background:#f6f8fa;}"))
+        root = QVBoxLayout(self)
+        head = QLabel("🎥 推理效果对比 · 同一场景 (metaworld push-v3) · 3 模型 rollout 同步播放")
+        head.setStyleSheet(_qss("color:#a371f7;font-size:14px;font-weight:700;"))
+        root.addWidget(head)
+        self.lbl_note = QLabel("")
+        self.lbl_note.setStyleSheet(_qss("color:#57606a;font-size:11px;"))
+        root.addWidget(self.lbl_note)
+        vid_row = QHBoxLayout()
+        self.video_labels = {}
+        self.frame_dirs = {}
+        self.cur_idx = 0
+        for policy, name, color in self.POLICIES:
+            box = QVBoxLayout()
+            cap = QLabel(f"■ {name}")
+            cap.setStyleSheet(_qss(f"color:{color};font-size:12px;font-weight:700;"))
+            box.addWidget(cap)
+            lab = QLabel("—")
+            lab.setFixedSize(400, 300)
+            lab.setAlignment(Qt.AlignCenter)
+            lab.setStyleSheet(_qss("background:#24292f;color:#8b949e;border:1px solid #d0d7de;border-radius:6px;font-size:11px;"))
+            box.addWidget(lab)
+            box.addStretch()
+            self.video_labels[policy] = lab
+            vid_row.addLayout(box)
+        root.addLayout(vid_row)
+        ctrl = QHBoxLayout()
+        self.btn_play = QPushButton("▶ 播放")
+        self.btn_pause = QPushButton("⏸ 暂停")
+        self.btn_reload = QPushButton("🔄 重新生成推理 (rollout)")
+        self.btn_export = QPushButton("💾 导出 PNG")
+        self.btn_close = QPushButton("❌ 关闭")
+        for b in (self.btn_play, self.btn_pause, self.btn_reload, self.btn_export, self.btn_close):
+            b.setStyleSheet(_qss("background:#e9edf2;color:#1f2328;border:1px solid #b6bdc7;border-radius:4px;padding:6px 14px;font-size:11px;"))
+        self.btn_play.clicked.connect(self._play)
+        self.btn_pause.clicked.connect(self._pause)
+        self.btn_reload.clicked.connect(self._run_rollouts)
+        self.btn_export.clicked.connect(self._export_png)
+        self.btn_close.clicked.connect(self.accept)
+        ctrl.addStretch(1)
+        for b in (self.btn_play, self.btn_pause, self.btn_reload, self.btn_export, self.btn_close):
+            ctrl.addWidget(b)
+        root.addLayout(ctrl)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.setInterval(100)
+        self._load_frames()
+        if self.frame_dirs:
+            self._play()
+
+    def _load_frames(self):
+        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
+        min_len = None
+        dirs = {}
+        for policy, name, color in self.POLICIES:
+            d = os.path.join(root, "reports", f"rollout_{policy}")
+            frames = sorted(glob.glob(os.path.join(d, "frame_*.png")))
+            if frames:
+                dirs[policy] = frames
+                min_len = len(frames) if min_len is None else min(min_len, len(frames))
+        self.frame_dirs = dirs
+        if not dirs:
+            self.lbl_note.setText("⚠️ 无推理视频 — 点「🔄 重新生成推理」跑 3 模型 rollout (各 120 帧, 约 1-2 分钟)")
+            for lab in self.video_labels.values():
+                lab.setText("无数据")
+            return
+        for p in dirs:
+            dirs[p] = dirs[p][:min_len]
+        self.cur_idx = 0
+        self.lbl_note.setText(f"🎞 {len(dirs)} 模型 × {min_len} 帧 · 同一场景同步播放")
+
+    def _tick(self):
+        if not self.frame_dirs or self.cur_idx >= len(next(iter(self.frame_dirs.values()))):
+            self._timer.stop()
+            return
+        from PyQt5.QtGui import QPixmap
+        for policy, frames in self.frame_dirs.items():
+            f = frames[self.cur_idx]
+            pm = QPixmap(f)
+            lab = self.video_labels[policy]
+            if not pm.isNull():
+                lab.setPixmap(pm.scaled(lab.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.cur_idx += 1
+
+    def _play(self):
+        if self.frame_dirs:
+            self._timer.start()
+
+    def _pause(self):
+        self._timer.stop()
+
+    def _run_rollouts(self):
+        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
+        self.lbl_note.setText("⏳ 正在生成 3 模型推理视频 (metaworld rollout, 各 120 帧)…")
+        self.btn_reload.setEnabled(False)
+        import subprocess
+        import threading
+
+        def _work():
+            out = {}
+            for policy, name, _c in self.POLICIES:
+                try:
+                    r = subprocess.run([os.path.join(root, ".venv", "bin", "python"),
+                                        os.path.join(root, "tools", "rollout_video.py"),
+                                        "--policy", policy, "--steps", "120"],
+                                       capture_output=True, text=True, timeout=300, cwd=root)
+                    out[policy] = (r.returncode == 0, r.stdout.strip().splitlines()[-1] if r.stdout else "")
+                except Exception as ex:
+                    out[policy] = (False, str(ex))
+            return out
+
+        def _done(res):
+            self.btn_reload.setEnabled(True)
+            self._load_frames()
+            if self.frame_dirs:
+                self._play()
+                self.lbl_note.setText("✅ 推理视频已生成, 3 窗口同步播放")
+            else:
+                self.lbl_note.setText("⚠️ 生成失败 — 检查日志")
+
+        t = threading.Thread(target=_work, daemon=True)
+        t.start()
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(lambda: self._check_done(t, _done))
+        self._poll_timer.start(500)
+
+    def _check_done(self, t, done):
+        if t.is_alive():
+            return
+        self._poll_timer.stop()
+        done(t)
+
+    def _export_png(self):
+        out_dir = os.path.join(self.module._repo_root() if hasattr(self.module, "_repo_root") else ".", "reports")
+        path = os.path.join(out_dir, f"infer_video_{time.strftime('%Y%m%d_%H%M%S')}.png")
+        self.grab().save(path)
+        mb = QMessageBox(self)
+        mb.setWindowTitle("导出")
+        mb.setText(f"已保存: {path}")
+        mb.setStyleSheet(_qss("QMessageBox{background:#f6f8fa} QLabel{color:#1f2328;}"
+                              "QPushButton{background:#e9edf2;color:#1f2328;border:1px solid #b6bdc7;"
+                              "border-radius:6px;padding:6px 18px;}"))
+        mb.addButton("好的", QMessageBox.AcceptRole)
+        mb.exec_()

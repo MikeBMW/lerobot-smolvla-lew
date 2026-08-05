@@ -208,6 +208,30 @@ REFERENCE_APPS = [
         ["📦 metaworld 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
         ["📊 对比评估 Scope"],
     ]),
+    # 🎥 推理对比 (2026-08-05 老倪: "训练完后继续推理, 对比3个模型的推理效果,
+    #   要有视频显示的node, 3个视频display窗口")
+    # 数据 → 3 训练 → 3 视频显示 (双击任意视频节点 → 3 窗口同步播放推理效果)
+    ("🎥 推理效果对比", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "shared": True,
+                                           "desc": "统一 metaworld 数据集 (训练 + 推理共用)"}),
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 150,
+                                    "desc": "训练 ACT (metaworld, 150步)"}),
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 150,
+                                        "desc": "训练 SmolVLA 纯动作 (metaworld, 150步)"}),
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 150,
+                                            "desc": "训练 SmolVLA+LeWorldModel (metaworld, 150步)"}),
+        ("system", "🎥 视频显示 · ACT", {"video": "act", "desc": "双击 → 3 窗口同步播放: ACT 推理效果 (metaworld push-v3 rollout)"}),
+        ("system", "🎥 视频显示 · SmolVLA", {"video": "smolvla", "desc": "双击 → 3 窗口同步播放: SmolVLA 推理效果"}),
+        ("system", "🎥 视频显示 · SmolVLA+LEW", {"video": "smolvla_lew", "desc": "双击 → 3 窗口同步播放: SmolVLA+LEW 推理效果"}),
+    ], [
+        (0, 1), (0, 2), (0, 3), (1, 4), (2, 5), (3, 6),
+    ],
+    [
+        ["📦 metaworld 数据", "🚀 ACT 训练", "🎥 视频显示 · ACT"],
+        ["", "🚀 SmolVLA 训练", "🎥 视频显示 · SmolVLA"],
+        ["", "🚀 SmolVLA+LEW 训练", "🎥 视频显示 · SmolVLA+LEW"],
+    ]),
 ]
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
@@ -3752,10 +3776,20 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在拉取 Orin 真实数据", stage="collect")
 
+    def on_infer_video(self, **kw):
+        """🎥 推理效果对比 (2026-08-05 老倪): 3 模型 rollout 视频 3 窗口同步播放
+        数据源: reports/rollout_<policy>/ (tools/rollout_video.py 生成, 无则自动生成)"""
+        try:
+            from simulink_scope import InferenceVideoDialog
+        except ImportError as ex:
+            self._log(f"❌ 缺少 simulink_scope.InferenceVideoDialog: {ex}")
+            return
+        dlg = InferenceVideoDialog(self)
+        dlg.exec_()
+
     def on_infer(self, **kw):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
         self._log("════ ⑥ 推理 (Orin 状态检查) ════")
-
         def _work():
             import requests as _rq
             try:
@@ -3845,8 +3879,12 @@ class SimulinkModule(QWidget):
         dlg.exec_()
 
     def on_node_activated(self, node):
-        """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 环节节点 → 运行; 其他 → 参数框"""
+        """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 0) 视频显示节点 (🎥 推理效果对比, 2026-08-05 老倪): 双击 → 3 窗口同步播放
+        if params.get("video"):
+            self.on_infer_video()
+            return
         # 0) 子系统节点 (Simulink Subsystem): 双击展开内部流程
         if params.get("subsystem"):
             self._open_subsystem(node)
