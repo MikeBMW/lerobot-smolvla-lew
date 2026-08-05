@@ -531,6 +531,7 @@ class FlowScopeDialog(QDialog):
         #   len(cv)>=1: 训练中 1 点也显示 (老倪: 训练刚开始 Scope 就要有波形)
         series = {}
         present_policies = set()
+        training = set()  # 训练中模型 (1点曲线, 不显示但提示)
         try:
             root = self.module._repo_root()
             all_files = sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json")),
@@ -538,20 +539,21 @@ class FlowScopeDialog(QDialog):
             for f in all_files:
                 d = json.load(open(f, encoding="utf-8"))
                 cv = d.get("curve") or []
-                if len(cv) < 1:
-                    continue
                 policy = d.get("policy", "?")
                 # 🏷 显示名映射 (2026-08-05 老倪: "SmolVLA(smolvla_lew)分开写, 这是两个模型" —
                 #   policy 标识不显示, 用模型显示名: act→ACT / smolvla→SmolVLA / smolvla_lew→SmolVLA+LEW)
                 _DISPLAY = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW"}
                 disp = _DISPLAY.get(policy, policy)
                 color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
+                if len(cv) < 2:
+                    # 2026-08-05 老倪: "刚开始, 不要显示任何曲线, 会引起歧义. 训练完了再显示"
+                    # 1 点(训练中)不进 series → 不画; 但记录训练中状态供指标行提示
+                    training.add(disp)
+                    continue
                 ys = np.array([l for _, l in cv])
                 # 📐 x 轴用真实 step (2026-08-05 老倪: "只显示1 2 4 step" — 之前丢弃 step 用索引)
                 xs = np.array([float(s) for s, _ in cv])
-                # 1 点 = 训练中 (实时写盘) → 名称标注 (2026-08-05: 避免误以为异常)
-                tag = " (训练中)" if len(cv) < 2 else ""
-                series[f"{disp}{tag}"] = (xs, ys, color, False)
+                series[f"{disp}"] = (xs, ys, color, False)
                 present_policies.add(policy)
         except Exception:
             pass
@@ -561,7 +563,7 @@ class FlowScopeDialog(QDialog):
             xs = np.array([float(s) for s, _ in curve])
             series = {"loss": (xs, ys, "ft", False)}
         self.scope.set_series(series)
-        # 指标行: 各模型首尾 loss + 缺哪些模型提示 (ACT/SmolVLA/SmolVLA+LEW 三模型对比)
+        # 指标行: 各模型首尾 loss + 训练中/缺模型提示 (2026-08-05: 训练中显示⏳不显示曲线)
         parts = []
         for name, val in series.items():
             ys = val[1] if len(val) >= 2 else val[0]
@@ -570,9 +572,10 @@ class FlowScopeDialog(QDialog):
             pct = (drop / first * 100) if first else 0.0
             parts.append(f"{name}: {first:.3f}→{last:.3f} (↓{drop:.3f}, {pct:+.1f}%)")
         missing = [n for p, n in (("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"))
-                   if p not in present_policies]
+                   if p not in present_policies and n not in training]
+        train_tip = f" · ⏳ 训练中: {'/'.join(sorted(training))}" if training else ""
         tip = f" · ⚠️ 缺: {'/'.join(missing)} (训练后自动出现)" if missing else ""
-        self.lbl_metrics.setText("📈 " + " · ".join(parts) + tip)
+        self.lbl_metrics.setText("📈 " + " · ".join(parts) + train_tip + tip)
 
     def _export_png(self):
         root = self.module._repo_root()
