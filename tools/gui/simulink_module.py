@@ -3855,12 +3855,13 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                 tmp_cfg = cfg_path
 
-            # 📊 Scope 清空: 新训练从空开始 (2026-08-05 老倪: "默认不要显示线, 还没训练呢,
-            #   scope先清空" — 删除旧曲线文件, Scope 无默认显示, 训练完才出现新曲线)
+            # 📊 Scope 曲线管理 (2026-08-05 调整): 只重置当前 policy 自己的旧曲线,
+            #   保留其他模型已完成曲线 — 三模型对比时 ACT 训完波形保留, SmolVLA 训练中可见
+            #   (老倪: 现在smolvla训练, 为什么之前的act波形没有了 — 原实现清空全部文件)
             try:
-                import glob as _glob
-                for _old in _glob.glob(os.path.join(root, "reports", "train_curve_*.json")):
-                    os.remove(_old)
+                _own = os.path.join(root, "reports", f"train_curve_{policy}.json")
+                if os.path.exists(_own):
+                    os.remove(_own)
             except Exception:
                 pass
 
