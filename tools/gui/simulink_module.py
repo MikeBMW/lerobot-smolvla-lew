@@ -991,6 +991,20 @@ class PipelinePanel(QDialog):
             except Exception:
                 pass
         self._acq_worker = None
+        # 🛡 全流程 worker 清理 (2026-08-05 崩溃修复#6: CICDPanel 的 _worker(CICDWorker)
+        #   947行创建, closeEvent 漏清 → 训练/评估中关面板 → QThread destroyed exit 134)
+        cw = getattr(self, "_worker", None)
+        if cw is not None and cw.isRunning():
+            try:
+                import subprocess as _sp
+                _sp.run(["pkill", "-f", "lerobot.scripts.lerobot_train"],
+                        capture_output=True, timeout=5)
+                _sp.run(["pkill", "-f", "tools.cicd_pipeline"],
+                        capture_output=True, timeout=5)
+                cw.wait(10000)
+            except Exception:
+                pass
+        self._worker = None
         # 🛡 录屏定时器清理 (2026-08-05 崩溃修复#2: 用户在录制中关闭窗口 → _rec_timer 还在跑
         #   → QThread: Destroyed while thread is still running exit 134)
         rec_timer = getattr(self, "_rec_timer", None)
