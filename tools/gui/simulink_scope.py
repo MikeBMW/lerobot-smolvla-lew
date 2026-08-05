@@ -501,6 +501,14 @@ class ModelCompareDialog(QDialog):
         self.bars = BarCompareWidget(self)
         root.addWidget(self.bars)
 
+        # 🔬 性能扩展 (2026-08-05 老倪): 逐帧误差曲线 + 误差分布 (P50/P90) + 动作平滑度
+        self.lbl_err_head = QLabel("📉 逐帧误差 MSE (归一化空间) — 误差集中区间对比")
+        self.lbl_err_head.setStyleSheet(_qss("color:#57606a;font-size:11px;font-weight:700;"))
+        root.addWidget(self.lbl_err_head)
+        self.err_scope = ScopeWidget(self)
+        self.err_scope.setMinimumHeight(140)
+        root.addWidget(self.err_scope)
+
         self.table = QTextEdit()
         self.table.setReadOnly(True)
         self.table.setMinimumHeight(110)
@@ -532,6 +540,7 @@ class ModelCompareDialog(QDialog):
             self.lbl_note.setText("⚠️ 无对比结果 — 点「▶ 运行」依次训练 ACT + SmolVLA, 完成后自动生成对比报告")
             self.scope.set_series({})
             self.bars.set_data([])
+            self.err_scope.set_series({})
             self.table.setPlainText("无对比数据\n\n运行方式: 画布点「▶ 运行」→ 训练两模型 → 本窗口自动有图表")
             self.btn_export.setEnabled(False)
             return
@@ -549,13 +558,16 @@ class ModelCompareDialog(QDialog):
             if curve:
                 series[f"{tag} loss"] = (np.array([l for _, l in curve], dtype=float), c, False)
         self.scope.set_series(series)
-        # ② 指标条形 (N 模型)
+        # ② 指标条形 (N 模型) — 🔬 8 指标: 速度/MSE/成功率/鲁棒性/延迟/P50/P90/平滑度
         rows = []
         for name, key, lower in [("训练速度 step/s", "step_s", False),
                                  ("动作 MSE", "action_mse", True),
                                  ("成功率 %", "success_rate", False),
                                  ("鲁棒性 std", "robustness_std", True),
-                                 ("推理延迟 ms", "latency_ms", True)]:
+                                 ("推理延迟 ms", "latency_ms", True),
+                                 ("误差 P50", "mse_p50", True),
+                                 ("误差 P90", "mse_p90", True),
+                                 ("平滑度", "smoothness", True)]:
             vals = []
             for k, tag, c in present:
                 v = m[k].get(key, 0.0) or 0.0
@@ -564,6 +576,13 @@ class ModelCompareDialog(QDialog):
                 vals.append(v)
             rows.append((name, vals, lower))
         self.bars.set_data(rows, names=[tag for _, tag, _ in present])
+        # 🔬 逐帧误差曲线 (每个模型一条, 归一化空间 MSE over frames)
+        err_series = {}
+        for k, tag, c in present:
+            fe = m[k].get("frame_err", [])
+            if fe:
+                err_series[f"{tag} MSE"] = (np.array(fe, dtype=float), c, False)
+        self.err_scope.set_series(err_series)
         # ③ 表格 (N 模型列)
         hdr = f"{'维度':<14}" + "".join(f"{tag:>14}" for _, tag, _ in present) + f"{'胜出':>10}"
         lines = [hdr]
@@ -571,7 +590,10 @@ class ModelCompareDialog(QDialog):
                                       ("动作 MSE", "action_mse", True, "{:.4f}"),
                                       ("成功率 %", "success_rate", False, "{:.1f}"),
                                       ("鲁棒性 std", "robustness_std", True, "{:.4f}"),
-                                      ("推理延迟 ms", "latency_ms", True, "{:.1f}")]:
+                                      ("推理延迟 ms", "latency_ms", True, "{:.1f}"),
+                                      ("误差P50", "mse_p50", True, "{:.4f}"),
+                                      ("误差P90(长尾)", "mse_p90", True, "{:.4f}"),
+                                      ("动作平滑度", "smoothness", True, "{:.4f}")]:
             vals = []
             for k, tag, c in present:
                 v = m[k].get(key, float("nan"))

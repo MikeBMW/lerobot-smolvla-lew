@@ -88,6 +88,8 @@ def _flat(out, n_act):
 def eval_policy(policy, post, obs, st, act, act_mean, act_std, tag, is_act=True, n_repeat=5):
     mses, lats, robust = [], [], []
     hits = 0
+    traj_pred, traj_gt = [], []   # 逐帧动作轨迹 (归一化空间) — 轨迹对比图数据源
+    frame_err = []                # 逐帧 MSE — 误差曲线数据源
     with torch.no_grad():
         for i in range(len(st)):
             if not is_act:
@@ -109,6 +111,9 @@ def eval_policy(policy, post, obs, st, act, act_mean, act_std, tag, is_act=True,
             lats.append(lat)
             if mse < 0.05:
                 hits += 1
+            traj_pred.append(pred.tolist())
+            traj_gt.append(gt.tolist())
+            frame_err.append(mse)
             # 鲁棒性: 同一状态重复推理 → 动作 std (小=稳定, 归一化空间)
             stds = []
             for _ in range(n_repeat):
@@ -116,15 +121,29 @@ def eval_policy(policy, post, obs, st, act, act_mean, act_std, tag, is_act=True,
                 stds.append(_flat(o2, len(gt)))
             robust.append(float(np.mean(np.std(np.stack(stds), axis=0))))
     n = len(mses)
+    # 🔬 性能扩展维度 (2026-08-05 老倪: "除了loss曲线, 还有什么能对比模型性能"):
+    # 轨迹/逐帧误差/误差分布/收敛指标 — 存进结果供 Scope 图表展示
+    errs = np.array(mses)
+    mse_p50 = float(np.percentile(errs, 50)) if n else 0.0
+    mse_p90 = float(np.percentile(errs, 90)) if n else 0.0
+    # 平滑度: 相邻预测动作差分 std (小=动作平稳, 真机抖动小)
+    smooth = 0.0
+    if len(traj_pred) > 1:
+        diff = np.diff(np.array(traj_pred), axis=0)
+        smooth = float(np.mean(np.std(diff, axis=0)))
     res = {
         "tag": tag, "frames": n,
         "action_mse": float(np.mean(mses)), "mse_std": float(np.std(mses)),
+        "mse_p50": mse_p50, "mse_p90": mse_p90,      # 误差分布: 中位/长尾
         "success_rate": hits / n, "latency_ms": float(np.mean(lats)),
         "robustness_std": float(np.mean(robust)),
+        "smoothness": smooth,                          # 动作平滑度
+        "traj_pred": traj_pred[:120], "traj_gt": traj_gt[:120],  # 轨迹对比 (限120帧)
+        "frame_err": frame_err[:120],                  # 逐帧误差曲线
     }
     print(f"📊 {tag}: MSE={res['action_mse']:.4f}±{res['mse_std']:.4f} | "
           f"成功率={res['success_rate']*100:.1f}% | 延迟={res['latency_ms']:.1f}ms | "
-          f"鲁棒性(动作std)={res['robustness_std']:.4f}")
+          f"鲁棒性={res['robustness_std']:.4f} | P90={mse_p90:.4f} | 平滑度={smooth:.4f}")
     return res
 
 

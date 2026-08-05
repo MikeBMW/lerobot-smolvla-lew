@@ -206,7 +206,7 @@ REFERENCE_APPS = [
         ("model", "🌀 DiT-B 动作解码 · LEW", {"hidden": 256, "layers": 1, "timesteps": 2,
                                               "desc": "SmolVLA action_model DiT-B → 动作去噪生成"}),
         ("model", "🌐 LeWorldModel", {"lew_loss_weight": 0.1, "num_video_frames": 2,
-                                      "desc": "世界模型串行在 DiT 之后: 消费动作+视频预测世界演化 (官方 forward 顺序)"}),
+                                      "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"}),
         ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
                                                       "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
         ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 300,
@@ -220,8 +220,12 @@ REFERENCE_APPS = [
         (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
         # SmolVLA 纯动作路 (4): 数据→SmolVLM2→DiT-B→ActionHead→训练
         (0, 8, "图像+状态"), (8, 9, "多模态embeds"), (9, 10), (10, 11),
-        # SmolVLA+LEW 路 (5): 数据→SmolVLM2·LEW→DiT-B·LEW→LeWorldModel→ActionHead·LEW→训练
-        (0, 12, "图像+状态"), (12, 13, "多模态embeds"), (13, 14), (14, 15, "世界预测"), (15, 16),
+        # SmolVLA+LEW 路 (6): 数据→SmolVLM2·LEW→DiT-B·LEW→ActionHead·LEW→训练 (主策略链路)
+        #   + LeWorldModel 旁路: 数据→LEW (视频帧+动作) — 官方 world_model_le.py forward(videos, actions):
+        #   SigLIP 编码视频帧 + action_encoder 编码动作 → ARPredictor(AdaLN-zero 条件调制) 预测下一帧,
+        #   与 DiT-B 输出无关 (训练时用真值动作); 主链路与 LEW 并列, 非串行
+        (0, 12, "图像+状态"), (12, 13, "多模态embeds"), (13, 15, "动作块"), (15, 16),
+        (0, 14, "视频+动作"), (14, 16, "世界预测"),
         # 评估: 三训练 → 对比 Scope
         (7, 17), (11, 17), (16, 17),
     ],
