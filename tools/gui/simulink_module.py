@@ -223,7 +223,7 @@ REFERENCE_APPS = [
     #   SmolVLA 4 (SmolVLM2→DiT-B→ActionHead→训练, 无 LEW)
     #   SmolVLA+LEW 5 (SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练)
     #   VLA-Touch 6 (DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练)
-    #   AWE 6 (SigLIP视触觉→H-JEPA三层潜空间→zFlow世界引擎→交叉注意力注入→ActionHead→训练)
+    #   AWE 6 (SigLIP视触觉→H-JEPA三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练)
     # 布局: 每行一个模型; 同构模块同列垂直对齐 (视觉编码列/动作生成列/附加列/Action Head列/训练列)
     ("🔬 五模型对比", [
         ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
@@ -287,7 +287,7 @@ REFERENCE_APPS = [
                                           "desc": "z₁空间/ z₂物体/ z₃语义 三层潜表示 (场景原生融合)"}),
         ("model", "🌊 zFlow 世界引擎", {"gru": 128, "layers": 1,
                                        "desc": "GRU 预测器: 潜空间推演未来状态/接触演化 (轻量)"}),
-        ("model", "🔀 交叉注意力注入", {"gates": "1.0/0.1/0.01",
+        ("model", "🔀 未来决策交叉注意力", {"gates": "1.0/0.1/0.01",
                                       "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离)"}),
         ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
                                            "desc": "隐空间动作 → 真实动作"}),
@@ -310,7 +310,7 @@ REFERENCE_APPS = [
         (0, 17, "图像"), (0, 18, "触觉图"), (0, 19, "状态+指令"),
         (17, 21, "视觉嵌入"), (18, 21, "触觉信号m"), (19, 20, "动作块"), (20, 21, "VLA动作a"),
         (21, 22, "精炼动作"),
-        # AWE 路 (8): 数据→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→交叉注意力注入→ActionHead→训练
+        # AWE 路 (8): 数据→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练
         (0, 23, "图像+力觉"), (0, 24, "状态+力觉"), (23, 24, "视触觉特征"), (24, 25, "三层潜状态"),
         (25, 26, "未来潜状态"), (26, 27, "注入动作"), (27, 28, "动作"),
         # 评估: 五训练 → 对比 Scope
@@ -325,7 +325,7 @@ REFERENCE_APPS = [
         ["📦 metaworld 数据", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
         ["📦 metaworld 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
         ["📦 metaworld 数据", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "🌉 Interpolant 控制器", "🎯 Action Head · VLA", "", "🚀 VLA-Touch 训练"],
-        ["📦 metaworld 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 交叉注意力注入", "🎯 Action Head · AWE", "", "🚀 AWE 训练"],
+        ["📦 metaworld 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练"],
         ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比"],
     ]),
     # 🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: "参考VLA-Touch项目, 4060资源有限要改造,
@@ -377,12 +377,12 @@ REFERENCE_APPS = [
     #   根据当前模块的抽象结构, 同构模型要纵向对比" — 它石智航 AWE 3.5/OmniVTA)
     # Z-MAX 场景原生路线 (老倪架构参考): 视觉·触觉·力觉·动作 场景级深度融合
     #   + zFlow 世界模型 (H-JEPA 三层潜空间: z₁空间/z₂物体/z₃语义 + GRU预测器
-    #   + 交叉注意力分层注入, 门控 1.0/0.1/0.01)
+    #   + 未来决策交叉注意力, 门控 1.0/0.1/0.01)
     # 4060 精简: SigLIP-base 冻结 + 潜空间等比缩小 (256/256/128→128/128/64), 可训练≈15M
     # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope) + AWE 分支 6
     #   ①🖼 SigLIP 视觉 (与 VLA-Touch DINOv2 同列 — 视觉编码列) ②🧠 H-JEPA 三层潜空间
     #   ③🌊 zFlow 世界引擎 (GRU 预测器 — 世界模型列, 与 LEW ARPredictor / VLA-Touch
-    #     Interpolant 同列对比) ④🔀 交叉注意力注入 ⑤🎯 Action Head (同列)
+    #     Interpolant 同列对比) ④🔀 未来决策交叉注意力 ⑤🎯 Action Head (同列)
     #   ⑥🚀 训练 (同列) ⑦📊 对比评估 Scope (共用)
     ("🧿 AWE 场景原生对比", [
         ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
@@ -395,7 +395,7 @@ REFERENCE_APPS = [
                                           "desc": "z₁空间/ z₂物体/ z₃语义 三层潜表示 (场景原生融合, 非乐高拼接)"}),
         ("model", "🌊 zFlow 世界引擎", {"gru": 128, "layers": 1,
                                        "desc": "GRU 预测器: 潜空间推演未来状态/接触演化 (轻量, 适合 Orin Nano)"}),
-        ("model", "🔀 交叉注意力注入", {"gates": "1.0/0.1/0.01",
+        ("model", "🔀 未来决策交叉注意力", {"gates": "1.0/0.1/0.01",
                                       "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"}),
         ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
                                            "desc": "隐空间动作 → 真实动作 (与其它模型 Action Head 同列)"}),
@@ -410,7 +410,7 @@ REFERENCE_APPS = [
     ],
     # 🗂 单行展开布局 (与 VLA-Touch 同构: 数据 → 视触觉编码 → 世界模型 → ActionHead → 训练 → 评估)
     [
-        ["📦 metaworld 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 交叉注意力注入", "🎯 Action Head · AWE", "🚀 AWE 训练", "📊 对比评估 Scope"],
+        ["📦 metaworld 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "🚀 AWE 训练", "📊 对比评估 Scope"],
     ]),
     # 🎥 推理对比 (2026-08-05 老倪: "训练完后继续推理, 对比3个模型的推理效果,
     #   要有视频显示的node, 3个视频display窗口")
@@ -529,7 +529,7 @@ LIBRARY = [
     # 🧿 AWE·场景原生子模块 (2026-08-05 老倪: 参考它石 AWE 3.5 原生架构 + Z-MAX 场景原生路线 —
     #   H-JEPA 三层潜空间 zFlow 世界模型, 4060 精简)
     # 对应 train_awe_zflow.py: SigLIP视触觉编码 → HJEPAEncoder(三层潜空间) → GRUPredictor(zFlow世界引擎)
-    #   → CrossAttnInject(交叉注意力分层注入) → ActionHead
+    #   → CrossAttnInject(未来决策交叉注意力) → ActionHead
     ("model", "🧿 AWE·场景原生子模块", [
         {"name": "🖐 SigLIP 视触觉编码", "params": {"backbone": "siglip-base", "freeze": True,
           "tactile_dim": 4, "force_dim": 3,
@@ -541,7 +541,7 @@ LIBRARY = [
         {"name": "🌊 zFlow 世界引擎", "params": {"gru": 128, "layers": 1,
           "desc": "GRU 预测器: 潜空间推演未来状态/接触演化 (轻量, Orin Nano 可部署)"},
           },
-        {"name": "🔀 交叉注意力注入", "params": {"gates": "1.0/0.1/0.01",
+        {"name": "🔀 未来决策交叉注意力", "params": {"gates": "1.0/0.1/0.01",
           "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"},
           },
         {"name": "🧿 AWE 完整模型", "params": {}, "template": "🧿 AWE 场景原生对比",
@@ -2272,8 +2272,8 @@ class SimulinkModule(QWidget):
         self.btn_vlatouch = mk_btn("🖐 VLA-Touch", "VLA-Touch 触觉对比管道 (4060 精简): DINOv2视觉 + Marker触觉 + DiT-B base VLA 冻结 + Interpolant 触觉控制器 (唯一训练模块) · 纵向对比触觉增强 vs 纯动作", self.open_vlatouch, "#58a6ff")
         tl2.addWidget(self.btn_vlatouch)
         # 🧿 AWE 场景原生对比 (2026-08-05 老倪: 它石 AWE 3.5/OmniVTA 架构) —
-        # 同构模型纵向对比: SigLIP视觉 + H-JEPA 三层潜空间 + zFlow GRU 世界引擎 + 交叉注意力注入
-        self.btn_awe = mk_btn("🧿 AWE", "AWE 场景原生对比管道 (它石架构, 4060 精简): SigLIP视触觉编码冻结 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 交叉注意力分层注入 · 纵向对比世界模型架构", self.open_awe, "#a371f7")
+        # 同构模型纵向对比: SigLIP视觉 + H-JEPA 三层潜空间 + zFlow GRU 世界引擎 + 未来决策交叉注意力
+        self.btn_awe = mk_btn("🧿 AWE", "AWE 场景原生对比管道 (它石架构, 4060 精简): SigLIP视触觉编码冻结 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 未来决策交叉注意力 · 纵向对比世界模型架构", self.open_awe, "#a371f7")
         tl2.addWidget(self.btn_awe)
         # 🎛 顶层总系统 (2026-08-05 老倪: "顶层总系统没有啊" — 参考应用滚动条里不易发现, 加显眼工具栏入口)
         self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
@@ -2927,7 +2927,7 @@ class SimulinkModule(QWidget):
         self._log("🔬 ② SmolVLA 4: SmolVLM2→DiT-B→ActionHead→训练 (扩散, 无世界模型)")
         self._log("🔬 ③ SmolVLA+LEW 5: SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练 (扩散+世界模型)")
         self._log("🖐 ④ VLA-Touch 6: DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练 (触觉增强)")
-        self._log("🧿 ⑤ AWE 6: SigLIP视触觉编码→H-JEPA三层潜空间→zFlow世界引擎→交叉注意力注入→ActionHead→训练 (场景原生)")
+        self._log("🧿 ⑤ AWE 6: SigLIP视触觉编码→H-JEPA三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练 (场景原生)")
         self._log("📍 同构模块同列垂直对齐: 视觉编码列 / 动作生成列 / 世界模型列 / ActionHead列 / 训练列")
         self._log("▶ 点「▶ 运行」→ 依次训练 5 模型 (各 50 步快速验证) → 双击「📊 对比评估 Scope」看五模型对比")
         # 🎨 5 行彩色背景 + 左侧大字模型名 (2026-08-05 老倪: 好区分)
@@ -2963,7 +2963,7 @@ class SimulinkModule(QWidget):
                                   "将清空当前画布, 加载 AWE 场景原生对比?\\n\\n"
                                   "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope) + AWE 6\\n"
                                   "🧿 AWE: SigLIP视触觉编码 + H-JEPA三层潜空间(z₁/z₂/z₃)\\n"
-                                  "        + zFlow GRU 世界引擎 + 交叉注意力分层注入\\n"
+                                  "        + zFlow GRU 世界引擎 + 未来决策交叉注意力\\n"
                                   "▶ 点「▶ 运行」→ 训练 → 双击 Scope 看对比图表"):
                 return
         self.clear()
@@ -2972,7 +2972,7 @@ class SimulinkModule(QWidget):
             return
         self._log("════ 🧿 AWE 场景原生对比 (它石架构 · 4060 精简) ════")
         self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 对比评估Scope) + AWE 6")
-        self._log("🧿 场景原生: SigLIP视触觉编码 (视觉+力觉+触觉原生融合) + H-JEPA 三层潜空间 (z₁空间/z₂物体/z₃语义) + zFlow GRU 世界引擎 + 交叉注意力注入")
+        self._log("🧿 场景原生: SigLIP视触觉编码 (视觉+力觉+触觉原生融合) + H-JEPA 三层潜空间 (z₁空间/z₂物体/z₃语义) + zFlow GRU 世界引擎 + 未来决策交叉注意力")
         self._log("▶ 点「▶ 运行」→ 训练 (50步快速验证) → 双击「📊 对比评估 Scope」看对比")
 
     def open_topsys(self):

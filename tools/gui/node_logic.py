@@ -594,16 +594,16 @@ def node_zflow(ctx):
 
 
 # ════════════════════════════════════════════════════════════════
-# 🔀 交叉注意力注入 — AWE CrossAttnInject (预测潜状态 K/V 注入动作解码)
+# 🔀 未来决策交叉注意力 — AWE CrossAttnInject (预测潜状态 K/V 注入动作解码)
 # ════════════════════════════════════════════════════════════════
 def node_cross_attn(ctx):
-    """🔀 交叉注意力注入 — 三层未来潜状态各作 K/V 注入动作解码 (真 CrossAttention, 分层门控 1.0/0.1/0.01)"""
+    """🔀 未来决策交叉注意力 — 三层未来潜状态各作 K/V 注入动作解码 (真 CrossAttention, 分层门控 1.0/0.1/0.01)"""
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
     gates = p.get("gates", "1.0/0.1/0.01")   # 三层潜状态门控权重 (z₁空间/z₂物体/z₃语义)
     if log:
-        log(f"🔀 交叉注意力注入: gates={gates} (训练注入 / 推理门控归零可剥离, 零额外开销)")
+        log(f"🔀 未来决策交叉注意力: gates={gates} (训练注入 / 推理门控归零可剥离, 零额外开销)")
     # 官方源码: train_awe_zflow.py CrossAttnInject (2026-08-05 老倪纠正为真 CrossAttention):
     #   z₁/z₂/z₃ 各自独立投影为 K/V token (ModuleList, 层间不共享) → Q=解码隐层
     #   → 逐层 MultiheadAttention 交互 → 每层输出乘各自门控再残差融合
@@ -673,6 +673,6 @@ _reg("interpolant", ["Interpolant"], "🌉 Interpolant 控制器 — 桥式扩�
 _reg("siglip",     ["SigLIP"], "🖐 SigLIP 视触觉编码 — AWE 原生多模态融合", node_siglip)
 _reg("hjepa",      ["H-JEPA"], "🧠 H-JEPA 三层潜空间 — z₁/z₂/z₃ 分层潜表示", node_hjepa)
 _reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜状态", node_zflow)
-_reg("cross_attn", ["交叉注意力"], "🔀 交叉注意力注入 — 未来潜状态 K/V 注入", node_cross_attn)
+_reg("cross_attn", ["交叉注意力"], "🔀 未来决策交叉注意力 — 未来潜状态 K/V 注入", node_cross_attn)
 _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
 _reg("video_display", ["视频显示", "视频"], "🎥 视频显示 — rollout 推理效果对比", node_video_display)
