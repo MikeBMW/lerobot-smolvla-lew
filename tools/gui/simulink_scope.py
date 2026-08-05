@@ -208,14 +208,17 @@ class ScopeWidget(QWidget):
                     p.drawLine(prev, pt)
                 prev = pt
         # 图例 (2026-08-05 修复: 原在循环内且 1点曲线 continue 跳过 → 训练中曲线无名字;
-        #   移到循环外统一绘制, 1 点曲线也有图例)
+        #   移到循环外统一绘制, 1 点曲线也有图例; 2026-08-05 修复2: 色块必须显式 setBrush —
+        #   否则残留圆点画的 brush → 所有图例色块变同一颜色)
         legend_x = 10
         for name, (data, cname, dashed) in self.series.items():
             if len(data) < 1:
                 continue
             color = COLORS.get(cname, COLORS["base"])
-            p.setPen(color)
+            p.setPen(QPen(color, 2))
+            p.setBrush(color)  # 实心色块 = 各自曲线颜色
             p.drawRect(legend_x, 8, 14, 10)
+            p.setBrush(Qt.NoBrush)
             p.setPen(QColor(t["text2"]))
             p.setFont(QFont("Consolas", 9))
             p.drawText(legend_x + 18, 17, name)
