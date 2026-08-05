@@ -28,7 +28,7 @@ batch_size: 8
 steps: 150
 num_workers: 0
 persistent_workers: false
-log_freq: 10
+log_freq: 5
 eval_freq: 150
 save_freq: 150
 save_checkpoint: true
