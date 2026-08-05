@@ -185,7 +185,7 @@ def node_train(ctx):
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
-    steps = p.get("steps", 100)      # 训练步数 (4060 实测 ACT ~13步/s, 300步≈40s; SmolVLA 更慢)
+    steps = p.get("steps", 50)      # 训练步数 (4060 实测 ACT ~13步/s, 300步≈40s; SmolVLA 更慢)
     batch_size = 8                   # batch size (SmolVLA 显存小可改 1)
     lr = 1e-4                        # 学习率 (S3 真机微调用 1e-5)
     data_source = "auto"             # auto(画布switch决定) | orin(只拉真实) | metaworld(占位集)
