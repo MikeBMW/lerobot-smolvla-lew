@@ -597,14 +597,17 @@ def node_zflow(ctx):
 # 🔀 交叉注意力注入 — AWE CrossAttnInject (预测潜状态 K/V 注入动作解码)
 # ════════════════════════════════════════════════════════════════
 def node_cross_attn(ctx):
-    """🔀 交叉注意力注入 — 未来潜状态 K/V 注入动作解码 (分层门控 1.0/0.1/0.01)"""
+    """🔀 交叉注意力注入 — 三层未来潜状态各作 K/V 注入动作解码 (真 CrossAttention, 分层门控 1.0/0.1/0.01)"""
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
-    gates = p.get("gates", "1.0/0.1/0.01")   # 三层潜状态门控权重
+    gates = p.get("gates", "1.0/0.1/0.01")   # 三层潜状态门控权重 (z₁空间/z₂物体/z₃语义)
     if log:
         log(f"🔀 交叉注意力注入: gates={gates} (训练注入 / 推理门控归零可剥离, 零额外开销)")
-    # 官方源码: train_awe_zflow.py CrossAttnInject — MultiheadAttention(Q=解码隐层, K/V=预测潜状态)
+    # 官方源码: train_awe_zflow.py CrossAttnInject (2026-08-05 老倪纠正为真 CrossAttention):
+    #   z₁/z₂/z₃ 各自独立投影为 K/V token (ModuleList, 层间不共享) → Q=解码隐层
+    #   → 逐层 MultiheadAttention 交互 → 每层输出乘各自门控再残差融合
+    #   ⚠️ 不能拼接成单 token (那退化成恒等, 非真注意力)
     #   对标它石 LAS 隐空间丝滑动作 / OmniVTA 分层注入
     # === ✏️ 可修改区 END ===
     # 🔒 结构节点 (勿改)

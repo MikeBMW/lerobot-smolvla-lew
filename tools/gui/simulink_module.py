@@ -1495,17 +1495,22 @@ class SimNodeItem(QGraphicsObject):
             w = self.node.get("w", 150)
             h = self.node.get("h", 214)
             painter.setRenderHint(QPainter.Antialiasing)
-            # 整行半透明色带 (底部)
-            painter.setPen(QPen(color, 1.2))
-            painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 40)))
+            # 整行色带: 深色底(alpha 120) + 色相(alpha 90) 叠加 — 深色画布上颜色清晰可见,
+            # 不会因 alpha 过低显示成黑色块 (2026-08-05 修复: 原 alpha=40 在 #0a0a0f 画布上≈黑)
+            painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 200), 1.2))
+            painter.setBrush(QBrush(QColor(13, 17, 23, 120)))
             painter.drawRoundedRect(QRectF(0, 0, w, h), 10, 10)
+            # 色相薄层 (让颜色明显)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 90)))
+            painter.drawRoundedRect(QRectF(2, 2, w - 4, h - 4), 8, 8)
             # 左侧大字模型名 (竖向居中)
             name = self.node.get("name", "")
-            painter.setPen(QColor("#e6edf3"))
+            painter.setPen(QColor("#ffffff"))
             painter.setFont(QFont("Arial", 24, QFont.Bold))
             painter.drawText(QRectF(14, 0, w - 28, h), Qt.AlignVCenter | Qt.AlignLeft, name)
             # 左上角小标: 可编辑提示
-            painter.setPen(QColor(255, 255, 255, 120))
+            painter.setPen(QColor(255, 255, 255, 140))
             painter.setFont(QFont("Arial", 7))
             painter.drawText(QRectF(14, 4, w - 28, 12), Qt.AlignLeft | Qt.AlignTop,
                              "▤ 背景行 · 右键改名/改色")
@@ -3765,7 +3770,9 @@ class SimulinkModule(QWidget):
             n["h"] = row_h - 16
             it = self._items.get(n["id"])
             if it is not None:
-                it.setZValue(1)   # 背景低于节点(z=10): 点空白命中背景行, 点节点命中节点
+                it.w = int(w)          # ⚠️ 必须同步 item 尺寸 (boundingRect 用 item.w/h,
+                it.h = row_h - 16      #    不同步 → 只渲染 150×50 深色小块 = "黑色块" bug)
+                it.setZValue(1)        # 背景低于节点(z=10): 点空白命中背景行, 点节点命中节点
                 it.update()
         self.canvas._scene.update()
         self._model_row_items = []   # 真节点由 nodes 持有, 无需单独引用
