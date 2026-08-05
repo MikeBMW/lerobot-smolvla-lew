@@ -2911,7 +2911,7 @@ class SimulinkModule(QWidget):
         让 3 条曲线尽快在 Scope 里齐 (老倪: 应该是3条曲线同时生成, 不是一个大点+一条)"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
             return
         # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew 最慢), 其余环节保持拓扑序
         _speed = {"act": 0, "smolvla": 1, "smolvla_lew": 2}
@@ -3320,7 +3320,7 @@ class SimulinkModule(QWidget):
         """开后台线程执行 fn, 期间防重入; stage 更新 CI/CD 面板状态"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
             return  # 任务未启动 → 引导不推进 (等上一个完成后用户再点)
         if stage:
             self._cicd_state[stage] = 1  # 运行中
@@ -3817,7 +3817,8 @@ class SimulinkModule(QWidget):
             def _line_hook(ln):
                 """训练中实时: 解析 loss 行 → 增量更新曲线 → 写盘 (Scope 可见实时波形)
                 2026-08-05 口径统一: 优先解析 action_loss:xxx (剔除 lew_loss, 三模型可比);
-                无 action_loss 的行回退解析 loss:xxx"""
+                无 action_loss 的行回退解析 loss:xxx; 每 10 步输出进度日志 (老倪: 感觉卡住
+                — 训练中无进度反馈, 加 📈 进度行)"""
                 try:
                     pts = self._parse_loss_curve([ln], prefer_action=True)
                     if not pts:
@@ -3825,6 +3826,10 @@ class SimulinkModule(QWidget):
                     step, loss = pts[-1]
                     cur_dict[step] = loss
                     _flush_curve()
+                    # 进度日志: 每 10 步一行 (log_freq=10 与落盘一致)
+                    total = int(steps) if steps else 300
+                    self.log_signal.emit(
+                        f"📈 {pname} 训练中: {step}/{total} 步 · loss {loss:.4f}")
                 except Exception:
                     pass
 
@@ -4031,7 +4036,7 @@ class SimulinkModule(QWidget):
         """采集→训练→验证→集成→部署→推理 依次自动流转"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
             return
         self._flow_queue = [self.on_collect, self.on_train, self.on_validate,
                             self.on_integrate, self.on_deploy, self.on_infer]
@@ -4195,7 +4200,7 @@ class SimulinkModule(QWidget):
             fn = (lambda _r=logic_res: _r)
         cur = getattr(self, "_worker", None)
         if cur is not None and cur.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候…")
+            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
             return
         node["status"] = "running"
         it = self._items.get(node["id"])
