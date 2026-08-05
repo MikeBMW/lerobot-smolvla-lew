@@ -4299,22 +4299,30 @@ class SimulinkModule(QWidget):
                 it.update()
 
     def on_train_config(self, node):
-        """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)"""
+        """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)
+        2026-08-05 修复#2: 模态 exec_ 在 WSLg 下弹窗不可见 → 界面'卡死'(按啥都不好使);
+        改非模态 show + 自动居中置前, 主窗口永不被禁用"""
         dlg = TrainConfigDialog(node, self)
-        # 2026-08-05 修复: 模态框弹到不可见位置 → 界面'卡死'(点击无效); 居中+置前确保可见
         try:
             dlg.move(self.mapToGlobal(self.rect().center()) - dlg.rect().center())
         except Exception:
             pass
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
         dlg.raise_()
         dlg.activateWindow()
-        if dlg.exec_() == QDialog.Accepted:
-            p = node.get("params", {})
-            self._log(f"⚙️ [{node['name']}] 训练配置已更新: steps={p.get('steps')} · "
-                      f"batch={p.get('batch_size')} · lr={p.get('lr')} (下次训练生效)")
-            it = self._items.get(node["id"])
-            if it:
-                it.update()
+
+        def _on_done(result):
+            if result == QDialog.Accepted:
+                p = node.get("params", {})
+                self._log(f"⚙️ [{node['name']}] 训练配置已更新: steps={p.get('steps')} · "
+                          f"batch={p.get('batch_size')} · lr={p.get('lr')} (下次训练生效)")
+                it = self._items.get(node["id"])
+                if it:
+                    it.update()
+            dlg.deleteLater()
+
+        dlg.finished.connect(_on_done)
+        dlg.show()  # 非模态: 主窗口可继续操作, 对话框置顶显示
 
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
