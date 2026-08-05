@@ -2663,11 +2663,14 @@ class SimulinkModule(QWidget):
         t.start()
 
     def _ffmpeg_compose(self, rec_dir, out_mp4, fps, n, dur):
-        """(后台线程) ffmpeg 合成 MP4 — 帧是 JPG 序列, 输出 2fps 视频 (总长 = 录制/2)"""
+        """(后台线程) ffmpeg 合成 MP4 — 帧是 JPG 序列, 输出 2fps 视频 (总长 = 录制/2)
+        2026-08-05 修复: libx264 要求宽高偶数, 窗口高度奇数(如929)导致 0 字节 MP4
+        → -vf pad 补齐偶数"""
         import subprocess
         cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i",
-               os.path.join(rec_dir, "frame_%04d.jpg"), "-c:v", "libx264",
-               "-pix_fmt", "yuv420p", "-r", str(fps), out_mp4]
+               os.path.join(rec_dir, "frame_%04d.jpg"),
+               "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+               "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(fps), out_mp4]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if r.returncode == 0:
