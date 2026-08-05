@@ -1639,8 +1639,8 @@ class SimulinkModule(QWidget):
         self.lbl_clock.setStyleSheet("color:#00d4aa; font-size:13px; font-weight:700; font-family:Consolas;")
         tl.addWidget(self.lbl_clock)
 
-        btn_save = mk_btn("💾 导出", "导出工作流 JSON (与 web 同格式)", self.export_flow)
-        btn_load = mk_btn("📂 导入", "导入工作流 JSON", self.import_flow)
+        btn_save = mk_btn("💾 另存为", "保存当前画布 (含节点位置/连线) 为 JSON 文件, 可下次加载回来", self.export_flow, "#3fb950")
+        btn_load = mk_btn("📂 加载", "从 JSON 文件加载工作流 (恢复节点位置与连线)", self.import_flow, "#58a6ff")
         self.btn_save = btn_save
         self.btn_load = btn_load
         tl.addWidget(btn_save)
@@ -2010,7 +2010,8 @@ class SimulinkModule(QWidget):
                     pass
             bub = QLabel(text)
             bub.setWindowFlags(_Qt.ToolTip | _Qt.WindowStaysOnTopHint | _Qt.FramelessWindowHint)
-            bub.setStyleSheet("QLabel { background:#f6f8fa; color:#1f2328; border:1px solid #00d4aa;"
+            pal = self._pal()
+            bub.setStyleSheet(f"QLabel {{ background:{pal['panel']}; color:{pal['text']}; border:1px solid #00d4aa;"
                               "border-radius:6px; padding:10px 14px; font-size:12px; }")
             bub.adjustSize()
             x = global_pos.x() - bub.width() // 2
@@ -2206,6 +2207,24 @@ class SimulinkModule(QWidget):
         self._log("♻ 复用: 「🎯 Action Head 4D」两模型输出层同构 (Linear→action 4D), 画布只画一次, 紫色♻标识")
         self._log("▶ 点「▶ 运行」→ 依次训练 ACT(蓝) + SmolVLA(橙), 各 300 步 metaworld")
         self._log("📈 训练完双击「📊 对比评估 Scope」→ 对比图表: 训练速度 · 精确度(MSE/成功率) · 鲁棒性(方差) · 延迟")
+        # 🆕 加载后气泡提示 (2026-08-05 老倪: "点击ACT-Meta引导后, 又点击对比, 你要有提示")
+        # 高亮「📊 对比评估 Scope」节点 + 气泡指引下一步 (深色主题白字)
+        QTimer.singleShot(300, lambda: self._compare_load_hint())
+
+    def _compare_load_hint(self):
+        """对比模板加载后的气泡引导: 高亮对比评估节点 + 气泡提示"""
+        try:
+            scope = next((n for n in self.nodes if "对比评估" in n.get("name", "")), None)
+            if scope is not None:
+                self._highlight_node(scope, ms=6000)
+                it = self._items.get(scope["id"])
+                if it is not None:
+                    gp = self.canvas.mapToGlobal(
+                        self.canvas.mapFromScene(it.sceneBoundingRect().center()))
+                    self._show_bubble(gp, "👆 双击金色高亮「📊 对比评估 Scope」→ 查看两模型对比图表\n"
+                                         "(先点「▶ 运行」训练 ACT + SmolVLA)", ms=6000)
+        except Exception:
+            pass
 
     def toggle_float_canvas(self):
         """⛶ 浮动画布: 画布从 MDI 子窗口取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
@@ -2490,31 +2509,38 @@ class SimulinkModule(QWidget):
         return None
 
     # ── 导入/导出 (与 web 一致) ──
-    DIALOG_SS = """
-        QFileDialog { background:#f6f8fa; color:#1f2328; }
-        QFileDialog QLabel { color:#1f2328; font-size:12px; }
-        QFileDialog QLineEdit { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:4px 8px; }
-        QFileDialog QComboBox { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:4px; }
-        QFileDialog QComboBox QAbstractItemView { background:#f6f8fa; color:#1f2328; selection-background-color:#00d4aa44; }
-        QFileDialog QListView, QFileDialog QTreeView { background:#f6f8fa; color:#1f2328; border:1px solid #d0d7de; }
-        QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected { background:#00d4aa44; color:#1f2328; }
-        QFileDialog QHeaderView { background:#f6f8fa; color:#1f2328; }
-        QFileDialog QHeaderView::section { background:#e9edf2; color:#1f2328; border:none; border-right:1px solid #d0d7de; padding:4px 8px; font-weight:600; }
-        QFileDialog QPushButton { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:5px 14px; }
-        QFileDialog QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
-        QMessageBox { background:#f6f8fa; color:#1f2328; }
-        QMessageBox QLabel { color:#1f2328; font-size:12px; }
-        QMessageBox QPushButton { background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:6px 18px; font-size:12px; min-width:70px; }
-        QMessageBox QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
-        QMessageBox QPushButton:default { border-color:#00d4aa; }
-    """
+    def _dialog_ss(self):
+        """🎨 对话框 QSS — 按当前主题动态生成 (2026-08-05 修复: 原 DIALOG_SS 是类常量
+        硬编码浅色黑字 #1f2328, switch_theme 只替换 widget QSS 不更新常量 → 深色主题下
+        消息框/文件框永远黑字看不清)"""
+        pal = self._pal()
+        bg, inp, bd, tx = pal["bg"], pal["input"], pal["border"], pal["text"]
+        tx2 = pal["text2"]
+        return f"""
+        QFileDialog {{ background:{bg}; color:{tx}; }}
+        QFileDialog QLabel {{ color:{tx}; font-size:12px; }}
+        QFileDialog QLineEdit {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:4px 8px; }}
+        QFileDialog QComboBox {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:4px; }}
+        QFileDialog QComboBox QAbstractItemView {{ background:{bg}; color:{tx}; selection-background-color:#00d4aa44; }}
+        QFileDialog QListView, QFileDialog QTreeView {{ background:{bg}; color:{tx}; border:1px solid {bd}; }}
+        QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected {{ background:#00d4aa44; color:{tx}; }}
+        QFileDialog QHeaderView {{ background:{bg}; color:{tx}; }}
+        QFileDialog QHeaderView::section {{ background:{inp}; color:{tx}; border:none; border-right:1px solid {bd}; padding:4px 8px; font-weight:600; }}
+        QFileDialog QPushButton {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:5px 14px; }}
+        QFileDialog QPushButton:hover {{ border-color:#00d4aa; color:#00d4aa; }}
+        QMessageBox {{ background:{bg}; color:{tx}; }}
+        QMessageBox QLabel {{ color:{tx}; font-size:12px; }}
+        QMessageBox QPushButton {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:6px 18px; font-size:12px; min-width:70px; }}
+        QMessageBox QPushButton:hover {{ border-color:#00d4aa; color:#00d4aa; }}
+        QMessageBox QPushButton:default {{ border-color:#00d4aa; }}
+        """
 
     def _qmsg(self, title, text, kind="info", yes_no=False):
         """统一深色主题消息框 (QMessageBox 为 Qt 自绘, setStyleSheet 直接生效)"""
         mb = QMessageBox(self)
         mb.setWindowTitle(title)
         mb.setText(text)
-        mb.setStyleSheet(self.DIALOG_SS)
+        mb.setStyleSheet(self._dialog_ss())
         if yes_no:
             mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             mb.setDefaultButton(QMessageBox.No)
@@ -2540,10 +2566,18 @@ class SimulinkModule(QWidget):
         flow = {"format": "zmax-simulink", "version": "1.0", "name": "untitled",
                 "sim": {"dt": self._sim_dt, "t_end": self._sim_t_end, "solver": "fixed-step"},
                 "nodes": self.nodes, "links": self.links}
+        if not self.nodes:
+            self._qmsg_info("💾 另存为", "画布为空, 没有可保存的内容")
+            return
         from PyQt5.QtWidgets import QFileDialog
-        dlg = QFileDialog(self, "导出工作流", "flow.json", "JSON (*.json)")
+        # 默认保存到仓库 flows/ 目录 (与 cicd_workflow.json 同目录), 文件名含时间戳防覆盖
+        flows_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "flows")
+        os.makedirs(flows_dir, exist_ok=True)
+        default_name = f"flow_{time.strftime('%Y%m%d_%H%M%S')}.json"
+        dlg = QFileDialog(self, "💾 另存为工作流", os.path.join(flows_dir, default_name), "JSON (*.json)")
         dlg.setAcceptMode(QFileDialog.AcceptSave)
-        dlg.setStyleSheet(self.DIALOG_SS)
+        dlg.setStyleSheet(self._dialog_ss())
         dlg.setOption(QFileDialog.DontUseNativeDialog, True)  # 强制用 Qt 对话框, 应用深色样式
         if dlg.exec_() == QFileDialog.Accepted:
             path = dlg.selectedFiles()[0]
@@ -2551,23 +2585,42 @@ class SimulinkModule(QWidget):
                 path += ".json"
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(flow, f, ensure_ascii=False, indent=2)
-            self._log(f"💾 已导出: {path}")
+            self._log(f"💾 已另存为: {path} ({len(flow['nodes'])}节点 {len(flow['links'])}连线, 含位置坐标)")
             self._tutorial_on_action("save")
+            # 🆕 保存成功气泡提示 (深色主题白字, 2026-08-05)
+            try:
+                gp = self.mapToGlobal(self.btn_save.rect().center())
+                self._show_bubble(gp, f"✅ 已保存: {os.path.basename(path)}\n"
+                                      f"{len(flow['nodes'])} 节点 · {len(flow['links'])} 连线 · 位置已记录\n"
+                                      f"随时点「📂 加载」恢复此布局", ms=5000)
+            except Exception:
+                pass
 
     def import_flow(self):
         from PyQt5.QtWidgets import QFileDialog
-        dlg = QFileDialog(self, "导入工作流", "", "JSON (*.json)")
+        flows_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "flows")
+        os.makedirs(flows_dir, exist_ok=True)
+        dlg = QFileDialog(self, "📂 加载工作流", flows_dir, "JSON (*.json)")
         dlg.setAcceptMode(QFileDialog.AcceptOpen)
-        dlg.setStyleSheet(self.DIALOG_SS)
+        dlg.setStyleSheet(self._dialog_ss())
         dlg.setOption(QFileDialog.DontUseNativeDialog, True)
         if dlg.exec_() == QFileDialog.Accepted:
             path = dlg.selectedFiles()[0]
             try:
                 flow = json.load(open(path, encoding="utf-8"))
                 self.load_flow(flow)
-                self._log(f"📂 已导入: {path}")
+                self._log(f"📂 已加载: {path} ({len(flow.get('nodes', []))}节点 {len(flow.get('links', []))}连线)")
+                # 🆕 加载成功气泡提示 (深色主题白字)
+                try:
+                    gp = self.mapToGlobal(self.btn_load.rect().center())
+                    self._show_bubble(gp, f"✅ 已加载: {os.path.basename(path)}\n"
+                                          f"{len(flow.get('nodes', []))} 节点 · {len(flow.get('links', []))} 连线\n"
+                                          f"节点位置与连线已恢复", ms=5000)
+                except Exception:
+                    pass
             except Exception as ex:
-                self._qmsg_info("导入失败", str(ex))
+                self._qmsg_info("加载失败", str(ex))
 
     def load_flow(self, flow):
         self.clear()
