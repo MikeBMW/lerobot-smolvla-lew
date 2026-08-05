@@ -110,8 +110,61 @@ class ConditionalBlock(nn.Module):
         return x
 
 
+class CrossAttention(nn.Module):
+    """🆕 真·交叉注意力 (2026-08-05 老倪: "action 与潜在空间做真正的 cross-attention (K/V 注入)")
+    Q=帧嵌入(潜在空间) · K/V=动作嵌入 — action 直接作为键值注入每层潜在空间,
+    区别于 AdaLN-zero 调制 (仅生成 shift/scale/gate 参数, 不做 attention 键值)"""
+
+    def __init__(self, dim, heads, dim_head, dropout=0.0):
+        super().__init__()
+        inner_dim = dim_head * heads
+        self.heads = heads
+        self.scale = dim_head**-0.5
+        self.dropout = dropout
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)     # Q ← 帧嵌入 (潜在空间)
+        self.to_k = nn.Linear(dim, inner_dim, bias=False)     # K ← action 嵌入
+        self.to_v = nn.Linear(dim, inner_dim, bias=False)     # V ← action 嵌入
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
+
+    def forward(self, x, c):
+        """x: (B,T,D) 帧嵌入 · c: (B,T,D) 动作嵌入"""
+        q = self.norm_q(x)
+        kv = self.norm_kv(c)
+        q = self.to_q(q).reshape(q.shape[0], q.shape[1], self.heads, -1).permute(0, 2, 1, 3)
+        k = self.to_k(kv).reshape(kv.shape[0], kv.shape[1], self.heads, -1).permute(0, 2, 1, 3)
+        v = self.to_v(kv).reshape(kv.shape[0], kv.shape[1], self.heads, -1).permute(0, 2, 1, 3)
+        out = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout if self.training else 0.0)
+        out = out.permute(0, 2, 1, 3).reshape(out.shape[0], out.shape[2], -1)
+        return self.to_out(out)
+
+
+class CrossConditionalBlock(nn.Module):
+    """🆕 交叉注意条件块: 自注意力(帧内) + 交叉注意力(action K/V 注入) + MLP
+    与 ConditionalBlock(AdaLN) 二选一, 由 lew_attn_mode 配置切换"""
+
+    def __init__(self, dim, heads, dim_head, mlp_dim, dropout=0.0):
+        super().__init__()
+        self.self_attn = Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)
+        self.cross_attn = CrossAttention(dim, heads=heads, dim_head=dim_head, dropout=dropout)
+        self.mlp = FeedForward(dim, mlp_dim, dropout=dropout)
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.norm3 = nn.LayerNorm(dim)
+
+    def forward(self, x, c):
+        # ① 帧内自注意力 (潜在空间序列内部关系)
+        x = x + self.self_attn(self.norm1(x))
+        # ② 交叉注意力: Q=帧嵌入, K/V=action 嵌入 — action 真注入潜在空间
+        x = x + self.cross_attn(self.norm2(x), c)
+        # ③ 前馈
+        x = x + self.mlp(self.norm3(x))
+        return x
+
+
 class Transformer(nn.Module):
-    """Transformer with AdaLN-zero blocks"""
+    """Transformer with conditional blocks (AdaLN-zero 或 Cross-Attention K/V 注入, 可切换)"""
 
     def __init__(
         self,
@@ -123,10 +176,12 @@ class Transformer(nn.Module):
         dim_head,
         mlp_dim,
         dropout=0.0,
+        attn_mode="adaln",
     ):
         super().__init__()
         self.norm = nn.LayerNorm(hidden_dim)
         self.layers = nn.ModuleList([])
+        self.attn_mode = attn_mode  # "adaln" | "cross"
 
         self.input_proj = (
             nn.Linear(input_dim, hidden_dim)
@@ -146,9 +201,10 @@ class Transformer(nn.Module):
             else nn.Identity()
         )
 
+        block_cls = CrossConditionalBlock if attn_mode == "cross" else ConditionalBlock
         for _ in range(depth):
             self.layers.append(
-                ConditionalBlock(hidden_dim, heads, dim_head, mlp_dim, dropout)
+                block_cls(hidden_dim, heads, dim_head, mlp_dim, dropout)
             )
 
     def forward(self, x, c=None):
@@ -213,6 +269,7 @@ class ARPredictor(nn.Module):
         dim_head=64,
         dropout=0.0,
         emb_dropout=0.0,
+        attn_mode="adaln",
     ):
         super().__init__()
         self.pos_embedding = nn.Parameter(torch.randn(1, num_frames, input_dim))
@@ -226,6 +283,7 @@ class ARPredictor(nn.Module):
             dim_head,
             mlp_dim,
             dropout,
+            attn_mode=attn_mode,
         )
 
     def forward(self, x, c):
@@ -272,6 +330,7 @@ class LeWorldModel(nn.Module):
         mlp_dim=768,
         num_frames=2,
         dropout=0.0,
+        attn_mode="adaln",
     ):
         super().__init__()
         
@@ -297,6 +356,7 @@ class LeWorldModel(nn.Module):
             output_dim=obs_embed_dim,
             dim_head=dim_head,
             dropout=dropout,
+            attn_mode=attn_mode,
         )
         
         # Projector for vision encoder output

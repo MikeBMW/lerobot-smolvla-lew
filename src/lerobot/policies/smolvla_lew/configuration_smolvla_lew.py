@@ -84,6 +84,7 @@ class SmolVLALewConfig(PreTrainedConfig):
     # ========== Sys-12 参数: LeWorldModel 世界模型 ==========
     # [可配置] 当架构模式 = Sys-11+Sys-12 混合时生效；Sys-11 纯动作模式下强制为 False
     enable_lew_world_model: bool = False
+    lew_attn_mode: str = "adaln"                            # [可配置] "adaln"=AdaLN-zero调制 | "cross"=真·交叉注意力(action K/V 注入每层潜在空间, 2026-08-05 老倪)
     lew_loss_weight: float = 0.1                            # [可配置] 世界模型 loss 权重 (0.01-1.0)
     lew_hidden_dim: int = 192                               # [可配置] ARPredictor 隐藏层维度 (64-512)
     lew_num_layers: int = 6                                 # [可配置] ARPredictor Transformer 层数 (1-12)

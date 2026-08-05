@@ -109,8 +109,9 @@ class SmolVLALewModel(nn.Module):
                 mlp_dim=config.lew_hidden_dim * 4,
                 num_frames=config.num_video_frames,
                 dropout=0.1,
+                attn_mode=getattr(config, "lew_attn_mode", "adaln"),
             )
-            print(f"✓ LeWorldModel initialized: hidden_dim={config.lew_hidden_dim}, layers={config.lew_num_layers}")
+            print(f"✓ LeWorldModel initialized: hidden_dim={config.lew_hidden_dim}, layers={config.lew_num_layers}, attn_mode={getattr(config, 'lew_attn_mode', 'adaln')}")
 
         # 冻结VLM主干
         if config.freeze_smolvlm:

@@ -115,6 +115,24 @@ REFERENCE_APPS = [
         ("system", "🚀 全新训练", {"steps": 300, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
+    # 🎛 顶层总系统 (2026-08-05 老倪: "参考 Simulink, 用一个模块表示总系统; 双击打开后,
+    #   可以看到 ACT, SmolVLA, SmolVLA+LEW 三条线" — Simulink Subsystem 语义)
+    # 顶层: 数据 → 总系统块 (双击展开内部三线) → 评估 Scope
+    ("🎛 总系统·三模型对比", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "shared": True,
+                                           "desc": "顶层输入: 统一 metaworld 数据集 (696帧, states/actions 4D)"}),
+        ("system", "🔬 总系统·三模型对比", {"subsystem": "🔬 三模型对比", "type_label": "Subsystem",
+                                            "desc": "Simulink 子系统: 双击展开 → ACT / SmolVLA / SmolVLA+LEW 三条并行训练线"}),
+        ("system", "📊 对比评估 Scope", {"shared": True,
+                                        "desc": "顶层输出: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表"}),
+    ], [
+        (0, 1, "数据"), (1, 2, "评估"),
+    ],
+    # 顶层布局: 单行三节点 (数据 → 总系统 → Scope)
+    [
+        ["📦 metaworld 数据", "🔬 总系统·三模型对比", "📊 对比评估 Scope"],
+    ]),
     # 🔬 三模型对比 (2026-08-05 老倪: "增加一个没有leworldmodel的流程, 三个模型对比,
     #   即 ACT, SmolVLA, SmolVLA+LeWorldModel 串行")
     # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope)
@@ -235,6 +253,30 @@ LIBRARY = [
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
         {"name": "🔬 三模型对比", "params": {}, "template": "🔬 三模型对比",
          "desc": "一键搭建三模型对比 (18节点: 2共用♻ + ACT 7 + SmolVLA纯 4 + SmolVLA+LEW 5, Action Head 各一个) · 点▶运行出对比图表"},
+    ]),
+    # 🌐 LeWorldModel·官方子模块 (2026-08-05 老倪: "ARPredictor Transformer 还能拆解出来么"
+    #   + "action 与潜在空间做真正的 cross-attention (K/V 注入)")
+    # 对应 world_model_le.py: SigLIP帧编码 → ActionEmbedder → 位置编码 → 投影 → CrossAttn块×N → 输出投影
+    # lew_attn_mode=cross: action 作为 K/V 注入每层潜在空间 (CrossAttention, 非 AdaLN 调制)
+    ("model", "🌐 LeWorldModel·子模块", [
+        {"name": "🖼 SigLIP 帧编码", "params": {"hidden": 192,
+          "desc": "world_model_le.encode_frame: SigLIP(共享SmolVLM视觉) → CLS → projector → 帧嵌入 [B,T,obs]"},
+          },
+        {"name": "🎛 Action Embedder", "params": {"emb_dim": 192, "mlp_scale": 4,
+          "desc": "world_model_le.Embedder: Conv1d + MLP(SiLU) → 动作嵌入 [B,T,obs] — 作为交叉注意 K/V"},
+          },
+        {"name": "🔤 位置编码", "params": {"num_frames": 2,
+          "desc": "ARPredictor.pos_embedding: 帧嵌入加时序位置 (可学习参数)"},
+          },
+        {"name": "🔀 输入/条件投影", "params": {"input_dim": 192, "hidden_dim": 192,
+          "desc": "Transformer.input_proj(x) + cond_proj(c=action) → hidden 空间"},
+          },
+        {"name": "🧠 CrossAttn 块 ×N", "params": {"depth": 6, "heads": 8, "dim_head": 24, "mlp_dim": 768,
+          "desc": "CrossConditionalBlock: ①自注意力(帧内) ②交叉注意力 Q=帧 K/V=action ③MLP — action 真注入潜在空间"},
+          },
+        {"name": "📤 输出投影", "params": {"output_dim": 192,
+          "desc": "Transformer.norm + output_proj → 下一帧嵌入预测"},
+          },
     ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
@@ -1709,6 +1751,10 @@ class SimulinkModule(QWidget):
         # 🔬 三模型对比: 与⚔️对比同族 (2026-08-05 老倪) — 放第二行, 第一行按钮太多会被挤掉
         self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
         tl2.addWidget(self.btn_compare3)
+        # 🎛 子系统返回 (2026-08-05 老倪: 顶层总系统双击展开内部三线, 返回恢复顶层)
+        self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
+        self.btn_back.setVisible(False)
+        tl2.addWidget(self.btn_back)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
         lbl_op.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
@@ -2359,6 +2405,50 @@ class SimulinkModule(QWidget):
         mdi.setActiveSubWindow(win)
         self._log("🪟 画布子窗口已恢复")
 
+    # ── 🎛 Simulink 子系统 (2026-08-05 老倪: "顶层系统用一个模块表示, 双击打开看到三条线") ──
+    def _open_subsystem(self, node):
+        """双击子系统节点: 保存当前顶层 flow → 加载子系统内部模板"""
+        sub_name = node.get("params", {}).get("subsystem", "")
+        if not sub_name:
+            return
+        # 保存顶层 flow (含节点位置) 到子系统栈, 供「⬅ 返回」恢复
+        top_flow = {"format": "zmax-simulink", "version": "1.0", "name": node.get("name", "top"),
+                    "sim": {"dt": self._sim_dt, "t_end": self._sim_t_end, "solver": "fixed-step"},
+                    "nodes": self.nodes, "links": self.links}
+        if not hasattr(self, "_subsystem_stack"):
+            self._subsystem_stack = []
+        self._subsystem_stack.append(top_flow)
+        # 加载子系统内部模板 (三模型对比: 三条并行训练线)
+        if not self.load_reference_app_by_name(sub_name):
+            self._subsystem_stack.pop()
+            self._qmsg_info("🎛 子系统", f"找不到子系统模板: {sub_name}")
+            return
+        self._subsystem_active = True
+        self._update_back_btn()
+        self._log(f"🎛 已进入子系统「{sub_name}」— ACT / SmolVLA / SmolVLA+LEW 三条并行训练线")
+        self._log("   ▶ 点「▶ 运行」依次训练三模型 → 双击「📊 对比评估 Scope」出对比图表")
+        self._log("   ⬅ 完成后点工具栏「⬅ 返回总系统」恢复顶层")
+        QTimer.singleShot(300, lambda: self._compare_load_hint())
+
+    def back_to_subsystem(self):
+        """⬅ 返回上一层: 恢复子系统栈顶的 flow"""
+        if not getattr(self, "_subsystem_stack", None):
+            self._log("已在顶层, 无上级系统")
+            return
+        top_flow = self._subsystem_stack.pop()
+        self.load_flow(top_flow)
+        if not self._subsystem_stack:
+            self._subsystem_active = False
+        self._update_back_btn()
+        self._log(f"⬅ 已返回: {top_flow.get('name', '总系统')} ({len(top_flow.get('nodes', []))}节点)")
+
+    def _update_back_btn(self):
+        """子系统返回按钮显隐: 在子系统内才显示"""
+        btn = getattr(self, "btn_back", None)
+        if btn is None:
+            return
+        btn.setVisible(bool(getattr(self, "_subsystem_stack", None)))
+
     def show_compare(self):
         """性能对比弹窗: 基础模型 vs 微调模型 (读取 CICD_COMPARE_*.json)"""
         import glob
@@ -2718,6 +2808,7 @@ class SimulinkModule(QWidget):
             self.links.append(dict(l))
         self._draw_links()
         self.canvas._scene.update()
+        self._update_back_btn()
 
     def clear(self):
         self.canvas._scene.clear()
@@ -3573,8 +3664,12 @@ class SimulinkModule(QWidget):
         dlg.exec_()
 
     def on_node_activated(self, node):
-        """双击节点: 数据源 → 切换; Switch → 切换路由; 环节节点 → 运行; 其他 → 参数框"""
+        """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 0) 子系统节点 (Simulink Subsystem): 双击展开内部流程
+        if params.get("subsystem"):
+            self._open_subsystem(node)
+            return
         # 1) 数据源节点: 切换激活
         if params.get("source"):
             self._toggle_source(node)
