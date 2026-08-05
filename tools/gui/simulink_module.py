@@ -1666,6 +1666,30 @@ class SimulinkModule(QWidget):
         self._build()
         self._seed_default_flow()
 
+    def closeEvent(self, ev):
+        """🛡 关闭时清理所有 QThread + 定时器 (2026-08-05 崩溃修复#3:
+        SimulinkModule 主类原本无 closeEvent → _worker(CICDWorker QThread)/_acq_worker/
+        _rec_timer 在窗口关闭时未清理 → QThread: Destroyed while thread is still running
+        exit 134 SIGABRT (用户在录屏/训练/评估中关闭窗口必崩)"""
+        for attr in ("_timer", "_remote_timer", "_acq_timer", "_rec_timer", "_tutorial_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                try:
+                    t.stop()
+                except Exception:
+                    pass
+        for attr in ("_worker", "_acq_worker"):
+            w = getattr(self, attr, None)
+            if w is not None and hasattr(w, "isRunning") and w.isRunning():
+                try:
+                    w.wait(3000)  # 最多等 3s, 避免退出时线程未结束
+                except Exception:
+                    pass
+        self._worker = None
+        self._acq_worker = None
+        self._rec_timer = None
+        super().closeEvent(ev)
+
     # ── UI ──
     def _build(self):
         outer = QVBoxLayout(self)
