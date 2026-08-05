@@ -438,7 +438,7 @@ class BarCompareWidget(QWidget):
         row_h = h / max(len(self.data), 1)
         bar_h = min(12, (row_h - 8) / max(n_mod, 1))
         for i, (name, vals, lower) in enumerate(self.data):
-            y0 = i * row_h
+            y0 = int(i * row_h)  # ⚠️ PyQt5 drawText/fillRect 严格 int (float 崩, 2026-08-05 渲染暴露)
             p.setPen(QColor(t["text"]))
             p.setFont(QFont("Consolas", 9))
             p.drawText(8, y0 + 14, f"{name}")
@@ -448,11 +448,11 @@ class BarCompareWidget(QWidget):
             for j, v in enumerate(vals):
                 if v != v:  # nan
                     continue
-                yy = y0 + 6 + j * (bar_h + 2)
+                yy = y0 + 6 + int(j * (bar_h + 2))
                 ln = abs(v) / vmax * bw
-                p.fillRect(bx, int(yy), int(ln), int(bar_h), self.COLORS[j % len(self.COLORS)])
+                p.fillRect(bx, yy, int(ln), int(bar_h), self.COLORS[j % len(self.COLORS)])
                 p.setPen(QColor(t["text2"]))
-                p.drawText(bx + int(ln) + 6, int(yy + bar_h - 1), f"{v:.3g}")
+                p.drawText(bx + int(ln) + 6, yy + int(bar_h) - 1, f"{v:.3g}")
             # 胜出标记 (好值绿)
             good = [v for v in vals if v == v]
             if good:
