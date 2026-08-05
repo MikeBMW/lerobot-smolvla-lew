@@ -1671,7 +1671,7 @@ class SimulinkModule(QWidget):
         SimulinkModule 主类原本无 closeEvent → _worker(CICDWorker QThread)/_acq_worker/
         _rec_timer 在窗口关闭时未清理 → QThread: Destroyed while thread is still running
         exit 134 SIGABRT (用户在录屏/训练/评估中关闭窗口必崩)"""
-        for attr in ("_timer", "_remote_timer", "_acq_timer", "_rec_timer", "_tutorial_timer"):
+        for attr in ("_timer", "_remote_timer", "_acq_timer", "_rec_timer", "_tutorial_timer", "_rec_blink"):
             t = getattr(self, attr, None)
             if t is not None:
                 try:
@@ -2583,7 +2583,9 @@ class SimulinkModule(QWidget):
 
     # ── 🎥 录屏 (2026-08-05 老倪: 训练→推理→部署全程录制, 可加速, 总长<1分钟) ──
     def start_recording(self):
-        """🔴 录制: QTimer 定时 grab 整窗 (画布+终端+模型结果) → 存 PNG 序列"""
+        """🔴 录制: QTimer 定时 grab 整窗 (画布+终端+模型结果) → 存 JPG 序列
+        2026-08-05 反馈修复: 加醒目录制中指示 (按钮变「⏺ 录制中…」红色呼吸闪烁),
+        用户点录制要有明确视觉反馈"""
         if getattr(self, "_rec_timer", None) and self._rec_timer.isActive():
             return
         root = self._repo_root()
@@ -2594,9 +2596,28 @@ class SimulinkModule(QWidget):
         self._rec_timer = QTimer(self)
         self._rec_timer.timeout.connect(self._rec_tick)
         self._rec_timer.start(500)  # 2fps 采集 → 2x 加速
+        # 🎬 录制中视觉指示: 按钮变红字 + 呼吸闪烁 (500ms 交替样式)
+        self.btn_record.setText("⏺ 录制中…")
+        self.btn_record.setEnabled(True)   # 保持可点? 不, 录制中禁点(防重复), 用样式表强调
         self.btn_record.setEnabled(False)
+        self._rec_blink = QTimer(self)
+        self._rec_blink.timeout.connect(self._rec_blink_tick)
+        self._rec_blink.start(500)
+        self._rec_blink_on = True
+        self._rec_style_normal = self.btn_record.styleSheet()
         self.btn_stop_rec.setEnabled(True)
         self._log(f"🔴 录屏开始 → {os.path.relpath(self._rec_dir, root)} (2fps 采集, 停止后合成 MP4)")
+
+    def _rec_blink_tick(self):
+        """呼吸闪烁: 交替按钮背景红/深红"""
+        try:
+            self._rec_blink_on = not self._rec_blink_on
+            bg = "#b32424" if self._rec_blink_on else "#7a1a1a"
+            self.btn_record.setStyleSheet(
+                f"QPushButton {{ background:{bg}; color:white; border:2px solid #ff5555; "
+                f"border-radius:5px; padding:5px 14px; font-size:12px; font-weight:800; }}")
+        except Exception:
+            pass
 
     def _rec_tick(self):
         """采集一帧: 整窗截图 (含终端输出/模型结果/画布) — JPEG 快速保存 (2026-08-05:
@@ -2617,6 +2638,15 @@ class SimulinkModule(QWidget):
         停止按钮立即响应不再卡 UI)"""
         if getattr(self, "_rec_timer", None):
             self._rec_timer.stop()
+        # 停呼吸闪烁, 恢复按钮
+        blink = getattr(self, "_rec_blink", None)
+        if blink is not None:
+            blink.stop()
+        self.btn_record.setText("🔴 录制")
+        try:
+            self.btn_record.setStyleSheet(getattr(self, "_rec_style_normal", ""))
+        except Exception:
+            pass
         self.btn_record.setEnabled(True)
         self.btn_stop_rec.setEnabled(False)
         rec_dir = getattr(self, "_rec_dir", "")
