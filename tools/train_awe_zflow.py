@@ -243,8 +243,10 @@ def main():
     def _log_loss(step, loss):
         print(f"action_loss:{loss:.6f}", flush=True)  # GUI Scope 曲线解析
         print(f"📈 AWE 训练中: {step}/{args.steps} 步 · loss {loss:.4f}", flush=True)
+        curve.append([step, round(loss, 6)])
 
     t0 = time.time()
+    curve = []
     for step in range(1, args.steps + 1):
         model.train()
         idx = rng.randint(0, n, size=args.batch)
@@ -298,7 +300,8 @@ def main():
     with open(os.path.join(ROOT, "reports", "train_curve_awe_zflow.json"), "w") as f:
         json.dump({"policy": "awe_zflow", "name": "AWE-zFlow",
                    "ts": time.strftime("%Y%m%d_%H%M%S"), "step_s": round(step_s, 2),
-                   "ckpt": f"outputs/train/awe_zflow_{ts}/checkpoints"}, f, ensure_ascii=False)
+                   "ckpt": f"outputs/train/awe_zflow_{ts}/checkpoints",
+                   "curve": curve}, f, ensure_ascii=False)
 
     print(f"✅ AWE-zFlow 训练完成: {step_s:.1f} step/s · ckpt {ckpt_dir}", flush=True)
     return 0

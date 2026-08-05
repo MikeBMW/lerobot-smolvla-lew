@@ -9,6 +9,8 @@ GUI: 推理对比对话框读 reports/rollout_<policy>/ 三个目录, 3 窗口�
 """
 import argparse, json, os, sys, time
 import numpy as np
+import torch
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -25,6 +27,7 @@ def load_policy(policy: str):
         os.path.join(ROOT, ckpt_base, "last", "pretrained_model"),
         os.path.join(ROOT, ckpt_base, "000150", "pretrained_model"),
         os.path.join(ROOT, ckpt_base, "000300", "pretrained_model"),
+        os.path.join(ROOT, ckpt_base, "000050", "pretrained_model"),
     ]
     pm = next((p for p in cands if os.path.isdir(p)), None)
     if pm is None:
@@ -32,8 +35,29 @@ def load_policy(policy: str):
     # ACT 用 act factory; smolvla 系用 smolvla_lew
     if policy == "act":
         from lerobot.policies.act.modeling_act import ACTPolicy
-        from lerobot.policies.act.configuration_act import ACTConfig
         pol = ACTPolicy.from_pretrained(pm, local_files_only=True)
+    elif policy == "vla_touch":
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("train_vla_touch", os.path.join(ROOT, "tools", "train_vla_touch.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        data = torch.load(Path(pm) / "model.pt", map_location="cpu")
+        cfg = data["config"]
+        pol = mod.InterpolantPolicy(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
+                                    cfg["vis_dim"], cfg["hidden"])
+        pol.load_state_dict(data["state_dict"])
+        pol.eval()
+    elif policy == "awe_zflow":
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("train_awe_zflow", os.path.join(ROOT, "tools", "train_awe_zflow.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        data = torch.load(Path(pm) / "model.pt", map_location="cpu")
+        cfg = data["config"]
+        pol = mod.AWEZFlowModel(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
+                                cfg["vis_dim"], hidden=cfg["hidden"])
+        pol.load_state_dict(data["state_dict"])
+        pol.eval()
     else:
         from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
         pol = SmolVLALewPolicy.from_pretrained(pm, local_files_only=True)
@@ -96,7 +120,7 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--policy", choices=["act", "smolvla", "smolvla_lew"], default="act")
+    ap.add_argument("--policy", choices=["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow"], default="act")
     ap.add_argument("--steps", type=int, default=120)
     ap.add_argument("--out", default=None)
     ap.add_argument("--seed", type=int, default=0)

@@ -1,1 +1,1 @@
-{"policy": "smolvla_lew", "name": "SmolVLA", "ts": "20260805_071401", "curve": [[50, 0.844], [100, 0.592], [150, 0.498], [200, 0.483], [250, 0.478], [300, 0.417]], "step_s": 2.0, "ckpt": "outputs/train/smolvla_metaworld/checkpoints"}
+{"policy": "smolvla_lew", "name": "SmolVLA+LEW", "ts": "20260805_204324", "curve": [[5, 1.168], [10, 1.078], [15, 0.89], [20, 0.754], [25, 0.56], [30, 0.535], [35, 0.687], [40, 0.571], [45, 0.562], [50, 0.519]], "step_s": 2190.903333333333, "ckpt": "outputs/train/smolvla_lew_20260805_203951/checkpoints"}
