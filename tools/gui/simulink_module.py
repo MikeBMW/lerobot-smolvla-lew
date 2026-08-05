@@ -2101,6 +2101,14 @@ class SimulinkModule(QWidget):
         # 🔬 三模型对比: 与⚔️对比同族 (2026-08-05 老倪) — 放第二行, 第一行按钮太多会被挤掉
         self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
         tl2.addWidget(self.btn_compare3)
+        # 🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: 参考 VLA-Touch 项目, 4060 精简) —
+        # 参考应用滚动条里排末尾不易发现, 加显眼工具栏入口 (同 ACT-Meta/总系统 处理)
+        self.btn_vlatouch = mk_btn("🖐 VLA-Touch", "VLA-Touch 触觉对比管道 (4060 精简): DINOv2视觉 + Marker触觉 + DiT-B base VLA 冻结 + Interpolant 触觉控制器 (唯一训练模块) · 纵向对比触觉增强 vs 纯动作", self.open_vlatouch, "#58a6ff")
+        tl2.addWidget(self.btn_vlatouch)
+        # 🧿 AWE 场景原生对比 (2026-08-05 老倪: 它石 AWE 3.5/OmniVTA 架构) —
+        # 同构模型纵向对比: SigLIP视觉 + H-JEPA 三层潜空间 + zFlow GRU 世界引擎 + 交叉注意力注入
+        self.btn_awe = mk_btn("🧿 AWE", "AWE 场景原生对比管道 (它石架构, 4060 精简): SigLIP视觉冻结 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 交叉注意力分层注入 · 纵向对比世界模型架构", self.open_awe, "#a371f7")
+        tl2.addWidget(self.btn_awe)
         # 🎛 顶层总系统 (2026-08-05 老倪: "顶层总系统没有啊" — 参考应用滚动条里不易发现, 加显眼工具栏入口)
         self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
         tl2.addWidget(self.btn_topsys)
@@ -2728,6 +2736,47 @@ class SimulinkModule(QWidget):
         self._log("▶ 点「▶ 运行」→ 依次训练三模型, 各 300 步 metaworld")
         self._log("📈 训练完双击「📊 对比评估 Scope」→ 三模型对比: 训练速度 · 精确度(MSE/成功率) · 鲁棒性 · 延迟")
         QTimer.singleShot(300, lambda: self._compare_load_hint())
+
+    def open_vlatouch(self):
+        """🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: 参考 VLA-Touch 项目, 4060 精简):
+        加载「🖐 VLA-Touch 触觉对比」模板 — base VLA 冻结只训 Interpolant 触觉控制器"""
+        if self.nodes:
+            if not self._qmsg_yes("🖐 VLA-Touch 触觉对比",
+                                  "将清空当前画布, 加载 VLA-Touch 触觉对比?\\n\\n"
+                                  "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope) + VLA-Touch 6\\n"
+                                  "🖐 VLA-Touch: DINOv2视觉 + Marker触觉 + DiT-B base VLA(冻结)\\n"
+                                  "            + Interpolant 触觉控制器 (唯一训练模块)\\n"
+                                  "▶ 点「▶ 运行」→ 训练控制器 → 双击 Scope 看对比图表"):
+                return
+        self.clear()
+        if not self.load_reference_app_by_name("🖐 VLA-Touch 触觉对比"):
+            self._qmsg_info("🖐 VLA-Touch 触觉对比", "模板加载失败")
+            return
+        self._log("════ 🖐 VLA-Touch 触觉对比 (4060 精简) ════")
+        self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 对比评估Scope) + VLA-Touch 6")
+        self._log("🖐 官方 Manipulation 层: base VLA π(a|s,I) 生成动作 → Interpolant π_I(â|s,a,m) 用触觉精炼")
+        self._log("🔧 4060 精简: DINOv2-small 冻结 + Marker 触觉跟踪 + DiT-B base VLA 冻结 + Interpolant 控制器 (唯一训练)")
+        self._log("▶ 点「▶ 运行」→ 训练控制器 (50步快速验证) → 双击「📊 对比评估 Scope」看对比")
+
+    def open_awe(self):
+        """🧿 AWE 场景原生对比 (2026-08-05 老倪: 它石 AWE 3.5/OmniVTA 架构):
+        加载「🧿 AWE 场景原生对比」模板 — SigLIP + H-JEPA 三层潜空间 + zFlow GRU 世界引擎"""
+        if self.nodes:
+            if not self._qmsg_yes("🧿 AWE 场景原生对比",
+                                  "将清空当前画布, 加载 AWE 场景原生对比?\\n\\n"
+                                  "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope) + AWE 6\\n"
+                                  "🧿 AWE: SigLIP视觉 + H-JEPA三层潜空间(z₁/z₂/z₃)\\n"
+                                  "        + zFlow GRU 世界引擎 + 交叉注意力分层注入\\n"
+                                  "▶ 点「▶ 运行」→ 训练 → 双击 Scope 看对比图表"):
+                return
+        self.clear()
+        if not self.load_reference_app_by_name("🧿 AWE 场景原生对比"):
+            self._qmsg_info("🧿 AWE 场景原生对比", "模板加载失败")
+            return
+        self._log("════ 🧿 AWE 场景原生对比 (它石架构 · 4060 精简) ════")
+        self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 对比评估Scope) + AWE 6")
+        self._log("🧿 场景原生: SigLIP视觉 + H-JEPA 三层潜空间 (z₁空间/z₂物体/z₃语义) + zFlow GRU 世界引擎 + 交叉注意力注入")
+        self._log("▶ 点「▶ 运行」→ 训练 (50步快速验证) → 双击「📊 对比评估 Scope」看对比")
 
     def open_topsys(self):
         """🎛 顶层总系统 (2026-08-05 老倪: Simulink 子系统语义):
