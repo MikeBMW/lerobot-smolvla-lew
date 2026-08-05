@@ -1504,16 +1504,27 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(Qt.NoPen)
             painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 90)))
             painter.drawRoundedRect(QRectF(2, 2, w - 4, h - 4), 8, 8)
-            # 左侧大字模型名 (竖向居中)
+            # 左侧模型名 (竖向居中; 2026-08-05 修复: 去 emoji 前缀, 名字长则拆两行,
+            #   大字区 130px 与节点列 (x≥120) 隔离 → 不再"重复/叠字")
             name = self.node.get("name", "")
+            if name.startswith("🎨 "):
+                name = name[2:]
             painter.setPen(QColor("#ffffff"))
-            painter.setFont(QFont("Arial", 24, QFont.Bold))
-            painter.drawText(QRectF(14, 0, w - 28, h), Qt.AlignVCenter | Qt.AlignLeft, name)
+            painter.setFont(QFont("Arial", 15, QFont.Bold))
+            # 拆行: "+" 处断开 (SmolVLA+LEW → SmolVLA / LEW)
+            line1, line2 = name, ""
+            if "+" in name:
+                line1, line2 = name.split("+", 1)
+            if line1 and line2:
+                painter.drawText(QRectF(8, h / 2 - 24, 126, 24), Qt.AlignVCenter | Qt.AlignLeft, line1)
+                painter.drawText(QRectF(8, h / 2 + 2, 126, 24), Qt.AlignVCenter | Qt.AlignLeft, line2)
+            else:
+                painter.drawText(QRectF(8, 0, 126, h), Qt.AlignVCenter | Qt.AlignLeft, name)
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
             painter.setFont(QFont("Arial", 7))
-            painter.drawText(QRectF(14, 4, w - 28, 12), Qt.AlignLeft | Qt.AlignTop,
-                             "▤ 背景行 · 右键改名/改色")
+            painter.drawText(QRectF(8, 4, 110, 12), Qt.AlignLeft | Qt.AlignTop,
+                             "▤ 背景行")
             return
         color = QColor(COLORS.get(t, "#58a6ff"))
         # 运行状态色: idle=类型色 running=青色脉冲 success=绿 error=红
@@ -3766,7 +3777,8 @@ class SimulinkModule(QWidget):
             "ACT": "#26418f", "SmolVLA": "#8f6a26", "SmolVLA+LEW": "#1f7a4d",
             "VLA-Touch": "#6a2d8f", "AWE": "#8f2d4d",
         }
-        x0 = base_x - 60
+        x0 = base_x - 130          # 🎨 大字区 130px 宽 (VLA-Touch 15px bold ≈120px),
+                                   #   不覆盖节点列 (x≥120); 2026-08-05 修复"叠字/重复"观感
         w = (base_x + n_cols * col_w + 120) - x0
         for r, name in enumerate(row_names):
             y0 = base_y + r * row_h - 20
