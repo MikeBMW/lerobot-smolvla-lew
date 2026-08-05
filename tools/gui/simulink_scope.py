@@ -188,21 +188,24 @@ class ScopeWidget(QWidget):
         ax_font = QFont("Consolas", 8)
         p.setFont(ax_font)
         fm = p.fontMetrics()
-        # x 轴: step 刻度 (底部, 5 等分; 从 series 最大点数推断 step 范围)
-        max_n = max((len(d[0]) for d in self.series.values()), default=0)
-        if max_n >= 2:
-            step_hi = max_n - 1
+        # x 轴: step 刻度 (底部, 5 等分; 真实 step 范围)
+        x_min, x_max = None, None
+        for name, val in self.series.items():
+            xs = val[0] if len(val) >= 2 else None
+            if xs is not None and len(xs) >= 2:
+                x_min = float(xs[0]) if x_min is None else min(x_min, float(xs[0]))
+                x_max = float(xs[-1]) if x_max is None else max(x_max, float(xs[-1]))
+        if x_max is not None and x_max > x_min:
             for k in range(5):
                 xi = int(k * w / 4)
-                step_val = int(round(k * step_hi / 4))
+                step_val = int(round(x_min + k * (x_max - x_min) / 4))
                 p.setPen(QColor(t["text2"]))
                 p.drawText(xi + 3, h - 4, str(step_val))
-                # 短刻度线
                 p.setPen(QPen(QColor(t["grid_major"]), 1))
                 p.drawLine(xi, h - 14, xi, h - 10)
-        # x 轴标签
+        # x 轴标签 (含含义)
         p.setPen(QColor(t["text2"]))
-        p.drawText(w - 30, h - 4, "step")
+        p.drawText(w - 78, h - 4, "step (训练步数)")
         # y 轴: loss 值刻度 (左侧, 5 等分)
         for k in range(5):
             yi = int(k * h / 4)
@@ -211,9 +214,9 @@ class ScopeWidget(QWidget):
             p.drawText(4, yi - 3, f"{val:.2f}")
             p.setPen(QPen(QColor(t["grid_major"]), 1))
             p.drawLine(0, yi, 6, yi)
-        # y 轴标签 (2026-08-05: 移到左下角, 原 (4,14) 与图例重叠)
+        # y 轴标签 (2026-08-05: 左下角, 含单位+含义: loss = 动作预测均方误差 MSE)
         p.setPen(QColor(t["text2"]))
-        p.drawText(4, h - 18, "loss")
+        p.drawText(4, h - 18, "loss (MSE · 动作预测误差)")
 
         # 绘制各通道 (2026-08-05: series 值 = (xs, y, color, dashed), xs=None 用索引)
         y_lo, y_hi = self._y_range()
@@ -1021,3 +1024,15 @@ class InferenceVideoDialog(QDialog):
                               "border-radius:6px;padding:6px 18px;}"))
         mb.addButton("好的", QMessageBox.AcceptRole)
         mb.exec_()
+
+    def closeEvent(self, ev):
+        """🛡 关闭时停全部定时器 (2026-08-05 崩溃修复#7: InferenceVideoDialog 原本无 closeEvent →
+        _timer(播放)/_poll_timer(rollout轮询) 关闭时未停 → QThread destroyed exit 134)"""
+        for attr in ("_timer", "_poll_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                try:
+                    t.stop()
+                except Exception:
+                    pass
+        super().closeEvent(ev)
