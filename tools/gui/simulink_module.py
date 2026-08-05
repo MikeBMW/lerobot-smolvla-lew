@@ -2599,11 +2599,12 @@ class SimulinkModule(QWidget):
         self._log(f"🔴 录屏开始 → {os.path.relpath(self._rec_dir, root)} (2fps 采集, 停止后合成 MP4)")
 
     def _rec_tick(self):
-        """采集一帧: 整窗截图 (含终端输出/模型结果/画布)"""
+        """采集一帧: 整窗截图 (含终端输出/模型结果/画布) — JPEG 快速保存 (2026-08-05:
+        PNG 压缩大图慢 → UI 卡顿停止按钮无响应; JPEG q85 快 ~10x)"""
         try:
             pm = self.grab()
             if not pm.isNull():
-                pm.save(os.path.join(self._rec_dir, f"frame_{self._rec_idx:04d}.png"))
+                pm.save(os.path.join(self._rec_dir, f"frame_{self._rec_idx:04d}.jpg"), "JPG", 85)
                 self._rec_idx += 1
                 # 状态提示: 每 30 帧 (15s) 更新一次
                 if self._rec_idx % 30 == 0:
@@ -2612,7 +2613,8 @@ class SimulinkModule(QWidget):
             pass
 
     def stop_recording(self):
-        """⏹ 停止: 停定时器 → ffmpeg 合成 MP4 (2fps → 视频长 = 录制时长/2, 加速 2x)"""
+        """⏹ 停止: 停定时器 → 后台线程 ffmpeg 合成 MP4 (2026-08-05: 合成移后台,
+        停止按钮立即响应不再卡 UI)"""
         if getattr(self, "_rec_timer", None):
             self._rec_timer.stop()
         self.btn_record.setEnabled(True)
@@ -2625,21 +2627,28 @@ class SimulinkModule(QWidget):
         dur = time.time() - getattr(self, "_rec_start", time.time())
         fps = 2.0
         out_mp4 = os.path.join(rec_dir, "screen_rec.mp4")
-        # ffmpeg: 2fps 输入 → 输出 fps=2 (总长 = 录制时长/2)
+        self._log(f"⏳ 正在合成视频 ({n} 帧, ffmpeg 后台)…")
+        import threading
+        t = threading.Thread(target=self._ffmpeg_compose, args=(rec_dir, out_mp4, fps, n, dur), daemon=True)
+        t.start()
+
+    def _ffmpeg_compose(self, rec_dir, out_mp4, fps, n, dur):
+        """(后台线程) ffmpeg 合成 MP4 — 帧是 JPG 序列, 输出 2fps 视频 (总长 = 录制/2)"""
+        import subprocess
         cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i",
-               os.path.join(rec_dir, "frame_%04d.png"), "-c:v", "libx264",
+               os.path.join(rec_dir, "frame_%04d.jpg"), "-c:v", "libx264",
                "-pix_fmt", "yuv420p", "-r", str(fps), out_mp4]
         try:
-            import subprocess
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if r.returncode == 0:
                 vlen = dur / 2.0
-                self._log(f"✅ 录屏完成: {os.path.relpath(out_mp4, self._repo_root())} · {n}帧 · 录制{dur:.0f}s → 视频{vlen:.0f}s (加速2x, 总长<1min)")
-                self._qmsg_info("🎥 录屏完成", f"已保存: {out_mp4}\n{n} 帧 · 录制 {dur:.0f}s → 视频 {vlen:.0f}s (2x 加速)\n含画布+终端输出+模型结果")
+                self.log_signal.emit(
+                    f"✅ 录屏完成: {os.path.relpath(out_mp4, self._repo_root())} · {n}帧 · "
+                    f"录制{dur:.0f}s → 视频{vlen:.0f}s (加速2x, 总长<1min)")
             else:
-                self._log(f"❌ ffmpeg 合成失败: {r.stderr[-200:]}")
+                self.log_signal.emit(f"❌ ffmpeg 合成失败: {r.stderr[-200:]}")
         except Exception as ex:
-            self._log(f"❌ 录屏合成异常: {ex}")
+            self.log_signal.emit(f"❌ 录屏合成异常: {ex}")
 
     def save_trained_model(self):
         """💾 保存模型 (2026-08-05 老倪: 训练好的模型保存, 下次直接应用):

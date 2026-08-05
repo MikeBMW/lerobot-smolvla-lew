@@ -490,12 +490,15 @@ class FlowScopeDialog(QDialog):
                 if len(cv) < 1:
                     continue
                 policy = d.get("policy", "?")
-                name = d.get("name", policy)
+                # 🏷 显示名映射 (2026-08-05 老倪: "SmolVLA(smolvla_lew)分开写, 这是两个模型" —
+                #   policy 标识不显示, 用模型显示名: act→ACT / smolvla→SmolVLA / smolvla_lew→SmolVLA+LEW)
+                _DISPLAY = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW"}
+                disp = _DISPLAY.get(policy, policy)
                 color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
                 ys = np.array([l for _, l in cv])
                 # 1 点 = 训练中 (实时写盘) → 名称标注 (2026-08-05: 避免误以为异常)
                 tag = " (训练中)" if len(cv) < 2 else ""
-                series[f"{name} ({policy}){tag}"] = (ys, color, False)
+                series[f"{disp}{tag}"] = (ys, color, False)
                 present_policies.add(policy)
         except Exception:
             pass
