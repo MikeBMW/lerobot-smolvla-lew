@@ -355,6 +355,74 @@ def link_id():
 # ════════════════════════════════════════════════════════════════
 # 参数面板 (Block Parameters — 对标 Simulink 双击弹窗)
 # ════════════════════════════════════════════════════════════════
+class TrainConfigDialog(QDialog):
+    """⚙️ 训练配置对话框 (2026-08-05 老倪: "增加一个训练步数调整的功能, 在训练模块,
+    双击打开配置或右键打开" — 训练节点双击/右键 → 调整 steps/batch/lr, 保存到节点
+    params, node_logic 透传生效)"""
+
+    def __init__(self, node, parent=None):
+        super().__init__(parent)
+        self.node = node
+        self.setWindowTitle(f"⚙️ 训练配置 — {node['name']}")
+        self.setMinimumWidth(420)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        head = QLabel(f"🎛 {node['name']} 训练参数")
+        head.setStyleSheet("font-size:14px; font-weight:700; color:#1f2328; padding:2px;")
+        lay.addWidget(head)
+
+        note = QLabel("保存后对下次训练生效 (当前 50 步快速验证, 跑通后可加大)")
+        note.setStyleSheet("color:#57606a; font-size:11px;")
+        lay.addWidget(note)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight)
+
+        p = node.get("params", {})
+        self.ed_steps = QSpinBox()
+        self.ed_steps.setRange(10, 5000)
+        self.ed_steps.setSingleStep(50)
+        self.ed_steps.setValue(int(p.get("steps", 50)))
+        form.addRow("训练步数 steps", self.ed_steps)
+
+        self.ed_batch = QSpinBox()
+        self.ed_batch.setRange(1, 64)
+        self.ed_batch.setValue(int(p.get("batch_size", 8)))
+        form.addRow("批次 batch", self.ed_batch)
+
+        self.ed_lr = QDoubleSpinBox()
+        self.ed_lr.setRange(1e-6, 1e-2)
+        self.ed_lr.setDecimals(6)
+        self.ed_lr.setSingleStep(1e-5)
+        self.ed_lr.setValue(float(p.get("lr", 1e-4)))
+        form.addRow("学习率 lr", self.ed_lr)
+
+        tip = QLabel("当前: " + (f"steps={p.get('steps', 50)}" if "steps" in p else "steps=50(默认)") +
+                     (f" · batch={p['batch_size']}" if "batch_size" in p else "") +
+                     (f" · lr={p['lr']}" if "lr" in p else ""))
+        tip.setStyleSheet("color:#8b949e; font-size:11px;")
+        lay.addWidget(tip)
+        lay.addLayout(form)
+
+        btns = QHBoxLayout()
+        b_ok = QPushButton("✅ 保存并应用到训练")
+        b_ok.clicked.connect(self._apply)
+        b_cancel = QPushButton("取消")
+        b_cancel.clicked.connect(self.reject)
+        btns.addStretch(1)
+        btns.addWidget(b_ok)
+        btns.addWidget(b_cancel)
+        lay.addLayout(btns)
+
+    def _apply(self):
+        p = self.node.setdefault("params", {})
+        p["steps"] = self.ed_steps.value()
+        p["batch_size"] = self.ed_batch.value()
+        p["lr"] = self.ed_lr.value()
+        self.accept()
+
+
 class BlockParamsDialog(QDialog):
     def __init__(self, node, parent=None):
         super().__init__(parent)
@@ -1475,12 +1543,18 @@ class SimCanvas(QGraphicsView):
             "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
         a_logic = menu.addAction("📖 查看/编辑节点逻辑")
         a_param = menu.addAction("⚙️ 节点参数")
+        # 2026-08-05 老倪: 训练节点右键 → 训练配置 (步数/batch/lr)
+        a_train = None
+        if "训练" in item.node.get("name", ""):
+            a_train = menu.addAction("🎛 训练配置 (步数/batch/lr)")
         a_run = menu.addAction("▶ 运行节点")
         chosen = menu.exec_(self.viewport().mapToGlobal(view_pos))
         if chosen == a_logic:
             self.module.on_show_node_logic(item.node)
         elif chosen == a_param:
             self.module.on_node_params(item.node)
+        elif a_train is not None and chosen == a_train:
+            self.module.on_train_config(item.node)
         elif chosen == a_run:
             self.module.on_node_activated(item.node)
 
@@ -4210,11 +4284,27 @@ class SimulinkModule(QWidget):
             if kw in node.get("name", ""):
                 fn = getattr(self, meth, None)
                 if fn:
-                    self._run_node_stage(node, fn, kw)
+                    # 2026-08-05 老倪: "增加训练步数调整功能, 双击打开配置" —
+                    # 训练节点双击 → 训练配置对话框 (不直接运行)
+                    if kw == "训练":
+                        self.on_train_config(node)
+                    else:
+                        self._run_node_stage(node, fn, kw)
                 return
         # 3) 其他节点: 打开参数框
         dlg = BlockParamsDialog(node, None)
         if dlg.exec_() == QDialog.Accepted:
+            it = self._items.get(node["id"])
+            if it:
+                it.update()
+
+    def on_train_config(self, node):
+        """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)"""
+        dlg = TrainConfigDialog(node, self)
+        if dlg.exec_() == QDialog.Accepted:
+            p = node.get("params", {})
+            self._log(f"⚙️ [{node['name']}] 训练配置已更新: steps={p.get('steps')} · "
+                      f"batch={p.get('batch_size')} · lr={p.get('lr')} (下次训练生效)")
             it = self._items.get(node["id"])
             if it:
                 it.update()
