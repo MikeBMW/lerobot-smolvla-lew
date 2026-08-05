@@ -199,3 +199,6 @@ Zone.Identifier
 *:Zone.Identifier
 chat-watcher.py
 models/
+
+# 训练运行时临时配置 (on_train 动态生成, 每次训练后删除/重建)
+config_*_runtime.yaml

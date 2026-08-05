@@ -1,0 +1,513 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "n1785897557578nx3",
+      "type": "hardware",
+      "name": "📦 metaworld 数据",
+      "x": 120,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "source": "metaworld",
+        "frames": 696,
+        "active": true,
+        "dims": "4D/4D",
+        "shared": true,
+        "desc": "♻ 两模型共用: 统一 metaworld 数据集 (696帧, states/actions 4D)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557578n4o",
+      "type": "model",
+      "name": "🖼 视觉主干 ResNet18",
+      "x": 424,
+      "y": 17,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "backbone": "resnet18",
+        "pretrained": true,
+        "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17858975575787ar",
+      "type": "model",
+      "name": "🧬 VAE 编码器 CVAE",
+      "x": 459,
+      "y": -130,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "use_vae": true,
+        "latent_dim": 32,
+        "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557579e0k",
+      "type": "model",
+      "name": "🔤 Transformer Encoder",
+      "x": 809,
+      "y": -57,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "n_layers": 4,
+        "dim_model": 256,
+        "n_heads": 8,
+        "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557579ofb",
+      "type": "model",
+      "name": "🔡 Transformer Decoder",
+      "x": 1117,
+      "y": -53,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "n_layers": 4,
+        "chunk_size": 7,
+        "n_heads": 8,
+        "desc": "ACT.decoder → DETR queries 解码动作块"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557579e39",
+      "type": "model",
+      "name": "🎯 Action Head 4D",
+      "x": 1512,
+      "y": 20,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "shared": true,
+        "desc": "♻ 两模型共用: 输出层同为 Linear→action(4D) — ACT/SmolVLA 都过它 (复用)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557579m9y",
+      "type": "condition",
+      "name": "⏳ Temporal Ensemble",
+      "x": 1788,
+      "y": 2,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "coeff": 0.01,
+        "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557579rre",
+      "type": "system",
+      "name": "🚀 ACT 训练",
+      "x": 2133,
+      "y": 13,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "act",
+        "steps": 300,
+        "desc": "双击 → on_train(policy=act) · metaworld 训练"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n178589755757925i",
+      "type": "model",
+      "name": "🧠 SmolVLM2-500M",
+      "x": 810,
+      "y": 191,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "freeze": true,
+        "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "desc": "SmolVLA 视觉语言主干 (冻结, 多模态编码)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557579o82",
+      "type": "model",
+      "name": "🌀 DiT-B 动作解码",
+      "x": 1132,
+      "y": 208,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "hidden": 256,
+        "layers": 1,
+        "timesteps": 2,
+        "desc": "SmolVLA action_model DiT-B → 动作去噪生成"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557580xkw",
+      "type": "model",
+      "name": "🌐 LeWorldModel",
+      "x": 1341,
+      "y": 304,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "LeWorldModel 世界模型 → 状态/未来预测"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557580gss",
+      "type": "system",
+      "name": "🚀 SmolVLA 训练",
+      "x": 2145,
+      "y": 254,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "smolvla_lew",
+        "steps": 300,
+        "desc": "双击 → on_train(policy=smolvla_lew) · metaworld 训练"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1785897557580v3i",
+      "type": "system",
+      "name": "📊 对比评估 Scope",
+      "x": 2545,
+      "y": 133,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "shared": true,
+        "desc": "♻ 共用: 双击 → 双模型 训练速度/精确度/鲁棒性 对比图表 (Simulink Scope 对标)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "hl": false
+    }
+  ],
+  "links": [
+    {
+      "id": "l1785897557580em",
+      "f": "n1785897557578nx3",
+      "t": "n1785897557578n4o",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557581hr",
+      "f": "n1785897557578nx3",
+      "t": "n17858975575787ar",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557581ah",
+      "f": "n1785897557578n4o",
+      "t": "n1785897557579e0k",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l17858975575810s",
+      "f": "n17858975575787ar",
+      "t": "n1785897557579e0k",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557581gl",
+      "f": "n1785897557579e0k",
+      "t": "n1785897557579ofb",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557581sn",
+      "f": "n1785897557579ofb",
+      "t": "n1785897557579e39",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557582e2",
+      "f": "n1785897557579e39",
+      "t": "n1785897557579m9y",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557582oe",
+      "f": "n1785897557579m9y",
+      "t": "n1785897557579rre",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557582ap",
+      "f": "n1785897557578nx3",
+      "t": "n178589755757925i",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557582ho",
+      "f": "n178589755757925i",
+      "t": "n1785897557579o82",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557583gr",
+      "f": "n1785897557579o82",
+      "t": "n1785897557580xkw",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l17858975575834h",
+      "f": "n1785897557580xkw",
+      "t": "n1785897557579e39",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557583vo",
+      "f": "n1785897557579e39",
+      "t": "n1785897557580gss",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557584zy",
+      "f": "n1785897557579rre",
+      "t": "n1785897557580v3i",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785897557584vh",
+      "f": "n1785897557580gss",
+      "t": "n1785897557580v3i",
+      "f_port": "out1",
+      "t_port": "in1"
+    }
+  ]
+}

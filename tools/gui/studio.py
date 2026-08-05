@@ -6723,7 +6723,7 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"XSpace Studio — Z-MAX v1.6.1 · {self._git_short()}")  # v1.6.0: 📊Scope示波器节点+▶运行=真实全流程+节点逻辑库
+        self.setWindowTitle(f"XSpace Studio — Z-MAX v1.7.0 · {self._git_short()}")  # v1.6.0: 📊Scope示波器节点+▶运行=真实全流程+节点逻辑库
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
