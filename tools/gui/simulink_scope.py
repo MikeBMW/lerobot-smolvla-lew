@@ -428,7 +428,9 @@ class FlowScopeDialog(QDialog):
                 name = d.get("name", policy)
                 color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
                 ys = np.array([l for _, l in cv])
-                series[f"{name} ({policy})"] = (ys, color, False)
+                # 1 点 = 训练中 (实时写盘) → 名称标注 (2026-08-05: 避免误以为异常)
+                tag = " (训练中)" if len(cv) < 2 else ""
+                series[f"{name} ({policy}){tag}"] = (ys, color, False)
                 present_policies.add(policy)
         except Exception:
             pass
