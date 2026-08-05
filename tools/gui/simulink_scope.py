@@ -184,7 +184,6 @@ class ScopeWidget(QWidget):
         y_lo, y_hi = self._y_range()
         if y_hi <= y_lo:
             y_hi = y_lo + 1
-        legend_x = 10
         for name, (data, cname, dashed) in self.series.items():
             if len(data) < 1:
                 continue
@@ -200,7 +199,6 @@ class ScopeWidget(QWidget):
                 continue
             p.setPen(pen)
             n = len(data)
-            path = None
             prev = None
             for i in range(n):
                 x = i * w / (n - 1)
@@ -209,7 +207,13 @@ class ScopeWidget(QWidget):
                 if prev is not None:
                     p.drawLine(prev, pt)
                 prev = pt
-            # 图例
+        # 图例 (2026-08-05 修复: 原在循环内且 1点曲线 continue 跳过 → 训练中曲线无名字;
+        #   移到循环外统一绘制, 1 点曲线也有图例)
+        legend_x = 10
+        for name, (data, cname, dashed) in self.series.items():
+            if len(data) < 1:
+                continue
+            color = COLORS.get(cname, COLORS["base"])
             p.setPen(color)
             p.drawRect(legend_x, 8, 14, 10)
             p.setPen(QColor(t["text2"]))
