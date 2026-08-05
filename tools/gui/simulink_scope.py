@@ -556,10 +556,15 @@ class FlowScopeDialog(QDialog):
         except Exception:
             pass
         if not series:
-            # 兜底: 至少显示单条
-            ys = np.array([l for _, l in curve])
-            xs = np.array([float(s) for s, _ in curve])
-            series = {"loss": (xs, ys, "ft", False)}
+            # 2026-08-05 老倪: "刚开始, 不要显示任何曲线, 会引起歧义. 训练完了再显示"
+            # 去掉原兜底单条显示 (曾用旧 _train_curve 数据画默认 loss 曲线 → 歧义)
+            self.scope.set_series({})
+            if training:
+                self.lbl_metrics.setText(f"⏳ 训练中: {'/'.join(sorted(training))} — 训练完成后显示曲线")
+            else:
+                self.lbl_metrics.setText("📈 暂无完整训练曲线 — 训练完成后自动显示")
+            self.scope.update()
+            return
         self.scope.set_series(series)
         # 指标行: 各模型首尾 loss + 训练中/缺模型提示 (2026-08-05: 训练中显示⏳不显示曲线)
         parts = []
