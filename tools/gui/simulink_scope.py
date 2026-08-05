@@ -231,10 +231,8 @@ class ScopeWidget(QWidget):
                 pen.setStyle(Qt.DashLine)
             n = len(data)
             if n < 2:
-                # 训练中 1 点: 画圆点标记 (2026-08-05 老倪: 训练刚开始 Scope 就要有波形)
-                p.setPen(pen)
-                p.setBrush(color)
-                p.drawEllipse(QPointF(w / 2, h / 2), 4, 4)
+                # 2026-08-05 老倪: "刚开始, 不要显示任何曲线, 会引起歧义. 训练完了再显示"
+                # 1 点(训练中)不画任何标记 (调用方 FlowScopeDialog 已过滤, 这里兜底)
                 continue
             p.setPen(pen)
             x_lo, x_hi = (float(xs[0]), float(xs[-1])) if xs is not None else (0.0, float(n - 1))
