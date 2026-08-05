@@ -415,6 +415,236 @@ def node_scope(ctx):
     return module.on_scope()
 
 
+# ════════════════════════════════════════════════════════════════
+# 🧠 SmolVLM2-500M — SmolVLA 视觉语言主干 (多模态编码, 冻结/参与训练)
+# ════════════════════════════════════════════════════════════════
+def node_smolvlm2(ctx):
+    """🧠 SmolVLM2-500M — 视觉语言主干 (SmolVLM2-500M-Video-Instruct)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    freeze = p.get("freeze", True)      # True=冻结(VLM 只做编码) / False=参与训练(LEW 需要)
+    smolvlm = p.get("smolvlm", "HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
+    if log:
+        log(f"🧠 SmolVLM2-500M: freeze={freeze} · {smolvlm}")
+    # 官方源码: modeling_smolvla_lew.py SmolVLALewPolicy — SmolVLM2 多模态编码
+    #   视觉+语言 → 多模态 embeds → DiT 动作解码; LEW 分支要求 freeze=False
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点: 参数在「训练」时合并进 SmolVLA 配置 (勿改)
+    return (True, f"SmolVLM2: freeze={freeze}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🌀 DiT-B 动作解码 — SmolVLA action_model (扩散去噪生成动作块)
+# ════════════════════════════════════════════════════════════════
+def node_dit_b(ctx):
+    """🌀 DiT-B 动作解码 — SmolVLA 扩散动作生成器 (含 base VLA 冻结版)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    hidden = p.get("hidden", 256)       # DiT 隐藏宽度 (4060 精简 256)
+    layers = p.get("layers", 1)         # 层数 (1=精简, 官方更多)
+    timesteps = p.get("timesteps", 2)   # 推理扩散步数 (num_inference_timesteps)
+    freeze = p.get("freeze", False)     # VLA-Touch base VLA 冻结版=True
+    if log:
+        log(f"🌀 DiT-B: hidden={hidden} · layers={layers} · timesteps={timesteps} · freeze={freeze}")
+    # 官方源码: action_model_type="DiT-B" — 噪声预测网络, 条件=多模态 embeds
+    #   VLA-Touch 中作 base VLA 冻结 (不训练, 只出粗动作给 Interpolant 精炼)
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"DiT-B: hidden={hidden} layers={layers} freeze={freeze}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🌐 LeWorldModel — 世界模型旁路 (视频帧+动作 → 预测下一帧)
+# ════════════════════════════════════════════════════════════════
+def node_lew(ctx):
+    """🌐 LeWorldModel — 潜空间世界模型 (SigLIP 编码→AdaLN-zero 调制→预测下一帧)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    lew_loss_weight = p.get("lew_loss_weight", 0.1)   # 世界模型 loss 权重 (总loss=扩散+0.1×LEW)
+    num_video_frames = p.get("num_video_frames", 2)   # 输入视频帧数
+    if log:
+        log(f"🌐 LeWorldModel: loss_weight={lew_loss_weight} · frames={num_video_frames}")
+    # 官方源码: world_model_le.py LeWorldModel — forward(videos, actions):
+    #   SigLIP 编码视频帧 + action_encoder 编码动作 → ARPredictor 预测下一帧
+    #   与 DiT-B 并列 (训练时用真值动作), loss 按 lew_loss_weight 加权
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"LEW: weight={lew_loss_weight}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🖼 DINOv2 视觉编码 — VLA-Touch visual_encoder (视觉嵌入条件)
+# ════════════════════════════════════════════════════════════════
+def node_dinov2(ctx):
+    """🖼 DINOv2 视觉编码 — VLA-Touch 视觉条件 (dinov2-small 22M 冻结)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    backbone = p.get("backbone", "dinov2-small")
+    freeze = p.get("freeze", True)
+    if log:
+        log(f"🖼 DINOv2: {backbone} · freeze={freeze} (22M, 4060 无压力)")
+    # 官方源码: residual_controller/visual_encoder.py DINOv2Encoder
+    #   视觉嵌入 → Interpolant 控制器条件 (π_I(â|s,a,m) 的视觉通道)
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"DINOv2: {backbone} freeze={freeze}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 📍 Marker 触觉跟踪 — VLA-Touch marker_tracker (GelSight 标记位移→力)
+# ════════════════════════════════════════════════════════════════
+def node_marker(ctx):
+    """📍 Marker 触觉跟踪 — GelSight 标记位移 → 低维力信号 m"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    grid = p.get("grid", "7x9")        # 标记网格 (GelSight 默认 7x9)
+    dim = p.get("dim", 4)              # 输出力信号维度
+    if log:
+        log(f"📍 Marker: grid={grid} · dim={dim} (⚠️ metaworld 无真触觉, 当前状态差分模拟, 真机换 H06)")
+    # 官方源码: residual_controller/tactile/marker/marker_tracker.py
+    #   EnhancedMarkerTracker: 预处理→检测标记→位移→低维触觉信号 m_t
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"Marker: {grid} dim={dim}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🌉 Interpolant 控制器 — VLA-Touch StochasticInterpolants (桥式扩散精炼)
+# ════════════════════════════════════════════════════════════════
+def node_interpolant(ctx):
+    """🌉 Interpolant 控制器 — 触觉精炼 VLA 动作 (桥式扩散, 唯一训练模块)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    diffuse_steps = p.get("diffuse_steps", 10)   # 采样扩散步数
+    hidden = p.get("hidden", 256)                # 控制器隐藏宽度
+    if log:
+        log(f"🌉 Interpolant: diffuse_steps={diffuse_steps} · hidden={hidden}")
+    # 官方源码: residual_controller/bridge/bridge_model.py StochasticInterpolants
+    #   输入 x0=VLA 动作 / x1=专家动作 / cond=视觉+触觉+状态 → velocity_loss
+    #   4060 精简: base VLA 冻结, 只训练此控制器 (≈1M 参数)
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"Interpolant: steps={diffuse_steps} hidden={hidden}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🖐 SigLIP 视触觉编码 — AWE 场景原生 (视觉+力觉/触觉 原生融合)
+# ════════════════════════════════════════════════════════════════
+def node_siglip(ctx):
+    """🖐 SigLIP 视触觉编码 — AWE 原生多模态 (视觉+力觉/触觉 场景级融合)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    backbone = p.get("backbone", "siglip-base")
+    freeze = p.get("freeze", True)
+    tactile_dim = p.get("tactile_dim", 4)
+    if log:
+        log(f"🖐 SigLIP 视触觉: {backbone} · freeze={freeze} · tactile_dim={tactile_dim} (⚠️ metaworld 力觉为模拟)")
+    # 官方源码: 对标它石 Born as One — 视觉·触觉·力觉·动作 从基因层面融合
+    #   train_awe_zflow.py HJEPAEncoder: proj_vis + proj_state + proj_tactile 同层相加
+    #   (非后期"乐高式"拼接)
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"SigLIP 视触觉: {backbone} freeze={freeze}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🧠 H-JEPA 三层潜空间 — AWE zFlow (z₁空间/z₂物体/z₃语义)
+# ════════════════════════════════════════════════════════════════
+def node_hjepa(ctx):
+    """🧠 H-JEPA 三层潜空间 — 空间/物体/语义 分层潜表示"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    d_z1 = p.get("d_z1", 128)    # z₁空间 (物体位姿)
+    d_z2 = p.get("d_z2", 128)    # z₂物体 (类别属性)
+    d_z3 = p.get("d_z3", 64)     # z₃语义 (任务目标)
+    if log:
+        log(f"🧠 H-JEPA: z₁={d_z1} z₂={d_z2} z₃={d_z3} (4060 等比缩小自 256/256/128)")
+    # 官方源码: train_awe_zflow.py HJEPAEncoder — 三层潜空间头分离
+    #   对标它石 OmniVTA / H-JEPA: 从被动感知 → 主动预测接触演化
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"H-JEPA: z₁={d_z1} z₂={d_z2} z₃={d_z3}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🌊 zFlow 世界引擎 — AWE GRU 预测器 (潜空间推演未来状态)
+# ════════════════════════════════════════════════════════════════
+def node_zflow(ctx):
+    """🌊 zFlow 世界引擎 — GRU 预测未来潜状态 (轻量, Orin Nano 可部署)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    gru = p.get("gru", 128)      # GRU 隐藏宽度
+    layers = p.get("layers", 1)
+    if log:
+        log(f"🌊 zFlow: GRU hidden={gru} · layers={layers}")
+    # 官方源码: train_awe_zflow.py GRUPredictor — 潜状态+动作历史 → 未来潜状态
+    #   对标它石 zFlow 世界引擎: 世界模型驱动后训练, 潜空间推演未来状态
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"zFlow: GRU={gru}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 🔀 交叉注意力注入 — AWE CrossAttnInject (预测潜状态 K/V 注入动作解码)
+# ════════════════════════════════════════════════════════════════
+def node_cross_attn(ctx):
+    """🔀 交叉注意力注入 — 未来潜状态 K/V 注入动作解码 (分层门控 1.0/0.1/0.01)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    gates = p.get("gates", "1.0/0.1/0.01")   # 三层潜状态门控权重
+    if log:
+        log(f"🔀 交叉注意力注入: gates={gates} (训练注入 / 推理门控归零可剥离, 零额外开销)")
+    # 官方源码: train_awe_zflow.py CrossAttnInject — MultiheadAttention(Q=解码隐层, K/V=预测潜状态)
+    #   对标它石 LAS 隐空间丝滑动作 / OmniVTA 分层注入
+    # === ✏️ 可修改区 END ===
+    # 🔒 结构节点 (勿改)
+    return (True, f"CrossAttn: gates={gates}")
+
+
+# ════════════════════════════════════════════════════════════════
+# ☑ 训练开关 — checkbox 打勾=训练 / 不打=不训练 (train_gate 节点)
+# ════════════════════════════════════════════════════════════════
+def node_train_gate(ctx):
+    """☑ 训练开关 — 打勾=训练 / 不打=不训练 (放最前边控全链路)"""
+    module = ctx["module"]
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    train_enabled = p.get("train_enabled", True)
+    if log:
+        log(f"☑ 训练开关: {'打勾 → 训练启用' if train_enabled else '不打勾 → 训练跳过'} (双击切换)")
+    # 想自定义判定? 在这里写 (例如: 按时间段/产线状态自动决定是否训练)
+    # === ✏️ 可修改区 END ===
+    # 🔒 框架动作: 切换开关状态 (勿改)
+    return module._toggle_train_gate_ctx(ctx["name"], train_enabled)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🎥 视频显示 — 推理效果对比 (rollout 视频播放窗口)
+# ════════════════════════════════════════════════════════════════
+def node_video_display(ctx):
+    """🎥 视频显示 — 训练后 rollout 推理效果 (多窗口同步播放)"""
+    module = ctx["module"]
+    log = ctx["log"]
+    # === ✏️ 可修改区 START ===
+    if log:
+        log("🎥 视频显示: 双击 → 多模型 rollout 视频同步播放对比 (推理效果)")
+    # 想自定义? 例如: 只播放指定模型的视频
+    # === ✏️ 可修改区 END ===
+    # 🔒 框架动作: 推理效果对比 (勿改)
+    return module.on_infer_video()
+
+
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)
 _reg("train",      ["训练", "全新训练"], "② 训练 — ACT 策略训练 (含 metaworld 全新训练)", node_train)
@@ -430,3 +660,16 @@ _reg("decoder",    ["Decoder", "decoder"], "🔡 Transformer Decoder — 动作�
 _reg("action_head", ["Action Head", "action_head"], "🎯 Action Head — 关节动作映射", node_action_head)
 _reg("ensemble",   ["Temporal Ensemble", "Ensemble"], "⏳ Temporal Ensemble — 动作平滑", node_ensemble)
 _reg("scope",      ["Scope"], "📊 Scope 示波器 — 训练效果波形", node_scope)
+# 🆕 2026-08-05 新增模型节点 (五模型对比 / VLA-Touch / AWE 管道)
+_reg("smolvlm2",   ["SmolVLM2"], "🧠 SmolVLM2-500M — 视觉语言主干", node_smolvlm2)
+_reg("dit_b",      ["DiT-B", "DiT"], "🌀 DiT-B 动作解码 — 扩散动作生成器", node_dit_b)
+_reg("lew",        ["LeWorldModel"], "🌐 LeWorldModel — 潜空间世界模型", node_lew)
+_reg("dinov2",     ["DINOv2"], "🖼 DINOv2 视觉编码 — VLA-Touch 视觉条件", node_dinov2)
+_reg("marker",     ["Marker"], "📍 Marker 触觉跟踪 — GelSight 标记位移→力", node_marker)
+_reg("interpolant", ["Interpolant"], "🌉 Interpolant 控制器 — 桥式扩散精炼", node_interpolant)
+_reg("siglip",     ["SigLIP"], "🖐 SigLIP 视触觉编码 — AWE 原生多模态融合", node_siglip)
+_reg("hjepa",      ["H-JEPA"], "🧠 H-JEPA 三层潜空间 — z₁/z₂/z₃ 分层潜表示", node_hjepa)
+_reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜状态", node_zflow)
+_reg("cross_attn", ["交叉注意力"], "🔀 交叉注意力注入 — 未来潜状态 K/V 注入", node_cross_attn)
+_reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
+_reg("video_display", ["视频显示", "视频"], "🎥 视频显示 — rollout 推理效果对比", node_video_display)

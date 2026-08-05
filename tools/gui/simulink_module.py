@@ -4798,6 +4798,14 @@ class SimulinkModule(QWidget):
         self._log(f"☑ 训练开关: {'打勾 → 训练启用' if en else '不打勾 → 训练跳过'} (双击可再切换)")
         self._sync()
 
+    def _toggle_train_gate_ctx(self, name, train_enabled):
+        """node_logic 框架动作: 按节点名找到画布开关节点并切换 (兼容右键逻辑执行)"""
+        for n in self.nodes:
+            if n.get("name") == name:
+                self._toggle_train_gate(n)
+                return (True, f"训练开关: {'打勾 → 训练' if n.get('params', {}).get('train_enabled', True) else '不打勾 → 跳过'}")
+        return (True, f"训练开关: 状态 {train_enabled}")
+
     def _train_gate_state(self):
         """画布上 ☑ 训练开关节点状态: 存在任一开关节点时返回其 enabled 值;
         无开关节点 = 放行 (True, 保持向后兼容)"""
