@@ -384,8 +384,8 @@ class FlowScopeDialog(QDialog):
         root.addLayout(btns)
 
     def _load_data(self):
-        # 2026-08-05 老倪: "训练都开始了, 为什么scope没有波形" — 优先读实时落盘文件
-        # (on_train 训练中每行 loss 增量写 reports/train_curve_<policy>.json), 训练中波形实时可见
+        # 2026-08-05 老倪: "怎么就一条曲线, 不应该是3个曲线对比么" — 读全部 train_curve_*.json,
+        #   每个模型一条 loss 曲线叠加对比 (act蓝/smolvla橙/smolvla_lew紫); 训练中实时刷新
         curve = None
         try:
             root = self.module._repo_root()
@@ -404,15 +404,37 @@ class FlowScopeDialog(QDialog):
             self.lbl_metrics.setText("⚠️ 暂无训练曲线 — 点「▶ 运行」, 训练中即可见实时波形")
             self.btn_export.setEnabled(False)
             return
-        ys = np.array([l for _, l in curve])
-        first, last = float(ys[0]), float(ys[-1])
-        drop = first - last
-        pct = (drop / first * 100) if first else 0.0
-        self.scope.set_series({"loss": (ys, "ft", False)})
-        step_w = (curve[1][0] - curve[0][0]) if len(curve) > 1 else 1
-        self.lbl_metrics.setText(
-            f"📈 loss: {first:.3f} → {last:.3f} (↓{drop:.3f}, {pct:+.1f}%) · "
-            f"采样 {len(curve)} 点 · 每 {step_w} 步一点")
+        # 🔬 全部模型曲线叠加 (2026-08-05: 3条对比)
+        series = {}
+        try:
+            root = self.module._repo_root()
+            all_files = sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json")),
+                               key=os.path.getmtime)
+            for f in all_files:
+                d = json.load(open(f, encoding="utf-8"))
+                cv = d.get("curve") or []
+                if len(cv) < 2:
+                    continue
+                policy = d.get("policy", "?")
+                name = d.get("name", policy)
+                color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
+                ys = np.array([l for _, l in cv])
+                series[name] = (ys, color, False)
+        except Exception:
+            pass
+        if not series:
+            # 兜底: 至少显示单条
+            ys = np.array([l for _, l in curve])
+            series = {"loss": (ys, "ft", False)}
+        self.scope.set_series(series)
+        # 指标行: 各模型首尾 loss
+        parts = []
+        for name, (ys, *_rest) in series.items():
+            first, last = float(ys[0]), float(ys[-1])
+            drop = first - last
+            pct = (drop / first * 100) if first else 0.0
+            parts.append(f"{name}: {first:.3f}→{last:.3f} (↓{drop:.3f}, {pct:+.1f}%)")
+        self.lbl_metrics.setText("📈 " + " · ".join(parts))
 
     def _export_png(self):
         root = self.module._repo_root()
