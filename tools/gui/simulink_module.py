@@ -2918,6 +2918,25 @@ class SimulinkModule(QWidget):
         stages = sorted(stages, key=lambda s: _speed.get(s[0].get("params", {}).get("policy", ""), 9))
         names = " → ".join(f"「{n['name']}」" for n, _, _ in stages)
         self._log(f"▶ 真实全流程启动 ({len(stages)} 环节): {names}")
+        # 🚀 醒目反馈 (2026-08-05 老倪: "点击运行没反应没有反馈" — 弹非阻塞提示窗,
+        #   不阻塞流程, 用户立刻看到执行已开始)
+        try:
+            from PyQt5.QtWidgets import QMessageBox as _QMB
+            mb = _QMB(self)
+            mb.setWindowTitle("▶ 运行已启动")
+            mb.setText(f"🚀 正在执行 {len(stages)} 个环节:\n\n{names}\n\n"
+                       f"后台自动运行中 — 关闭本窗口可继续查看画布/日志区进度")
+            mb.setStyleSheet("QMessageBox{background:#161b22;}"
+                             "QLabel{color:#c9d1d9;font-size:13px;}"
+                             "QPushButton{background:#21262d;color:#c9d1d9;"
+                             "border:1px solid #30363d;border-radius:5px;padding:6px 20px;}")
+            mb.addButton("知道了, 开始运行", _QMB.AcceptRole)
+            # 非模态: show() 不阻塞主线程, 3s 自动关闭 (2026-08-05: exec_ 模态会卡住
+            # 训练中的日志刷新/画布, 且 offscreen 测试会阻塞)
+            mb.show()
+            QTimer.singleShot(3000, mb.close)
+        except Exception:
+            pass
         for n in self.nodes:
             n["status"] = "idle"
             it = self._items.get(n["id"])
