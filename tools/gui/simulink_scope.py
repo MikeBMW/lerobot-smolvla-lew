@@ -220,9 +220,10 @@ class ScopeWidget(QWidget):
             p.drawText(4, yi - 3, f"{val:.2f}")
             p.setPen(QPen(QColor(t["grid_major"]), 1))
             p.drawLine(0, yi, 6, yi)
-        # y 轴标签 (2026-08-05: 左下角, 含单位+含义: loss = 动作预测均方误差 MSE)
+        # y 轴标签 (2026-08-05: 左下角, 含单位+含义: loss = 动作预测均方误差 MSE;
+        #   归一化后: 相对 loss, 起点=1.0, 三模型统一量纲对比)
         p.setPen(QColor(t["text2"]))
-        p.drawText(4, h - 18, "loss (MSE · 动作预测误差)")
+        p.drawText(4, h - 18, "loss (归一化 · 起点=1)")
 
         # 绘制各通道 (2026-08-05: series 值 = (xs, y, color, dashed), xs=None 用索引)
         y_lo, y_hi = self._y_range()
@@ -576,6 +577,11 @@ class FlowScopeDialog(QDialog):
                 ys = np.array([l for _, l in cv])
                 # 📐 x 轴用真实 step (2026-08-05 老倪: "只显示1 2 4 step" — 之前丢弃 step 用索引)
                 xs = np.array([float(s) for s, _ in cv])
+                # ⚖️ 统一量纲 (2026-08-05 老倪: "三个模型改成统一量纲" — ACT 是动作空间 MSE
+                #   (rad/s)², SmolVLA 系是扩散噪声空间 MSE, 绝对值差量级不可比;
+                #   归一化: 每条曲线除以起点 → 都从 1.0 开始, 直观对比下降速度/幅度)
+                if ys[0] != 0:
+                    ys = ys / ys[0]
                 series[f"{disp}"] = (xs, ys, color, False)
                 present_policies.add(policy)
         except Exception:
