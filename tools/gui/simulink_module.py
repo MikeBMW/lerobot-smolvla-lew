@@ -2848,6 +2848,25 @@ class SimulinkModule(QWidget):
         if stages:
             self._start_canvas_flow(stages)
             return
+        # 2026-08-05 老倪: "点击运行, 感觉没反应, 没有反馈" — 有节点但无执行环节
+        #   (总系统/Scope 观察模板) → 自动展开子系统块后重试, 仍无环节才明确提示
+        sub_node = next((n for n in self.nodes if n.get("params", {}).get("subsystem")), None)
+        if sub_node is not None:
+            self._log(f"🎛 检测到子系统块「{sub_node['name']}」— 自动展开内部流程…")
+            self._open_subsystem(sub_node)
+            _app = __import__("PyQt5.QtWidgets", fromlist=["QApplication"]).QApplication.instance()
+            if _app is not None:
+                _app.processEvents()
+            stages = self._canvas_stage_nodes()
+            if stages:
+                self._log("▶ 子系统已展开, 启动内部真实流程…")
+                self._start_canvas_flow(stages)
+                return
+            self._log("⚠️ 子系统内部也无执行环节节点")
+            self._show_bubble(self.rect().center(), "子系统内部无执行环节 — 加载「🔬 三模型对比」模板再运行", 5000)
+            return
+        self._log("ℹ️ 画布无执行环节节点 (采集/训练/验证/部署/推理) — 进入观察模式")
+        self._show_bubble(self.rect().center(), "画布无执行环节 — 加载「🔬 三模型对比」等模板再运行", 5000)
         self._sim_t = 0.0
         self._sim_dt = self.sp_dt.value()
         self._sim_t_end = self.sp_t_end.value()
