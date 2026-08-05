@@ -6876,6 +6876,37 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._engine_combo)
         sb.showMessage("Z-MAX v1.0.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
+    def closeEvent(self, ev):
+        """🛡 主窗口关闭清理 (2026-08-05 崩溃修复#4: StudioMainWindow 原本无 closeEvent →
+        _orin_timer(5s轮询)/_rerun_worker(QThread)/_live_timer/_replay_timer/_stats_timer
+        关闭时未清理 → QThread: Destroyed while thread is still running exit 134 SIGABRT)
+        注意: 子组件 (SimulinkModule) 的 closeEvent 会自动触发 (Qt 关闭事件传播)"""
+        # 停所有主窗口定时器
+        for attr in ("_timer", "_orin_timer", "_live_timer", "_replay_timer", "_stats_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                try:
+                    t.stop()
+                except Exception:
+                    pass
+        # 停 Rerun 后台 QThread (有 stop() 方法)
+        rw = getattr(self, "_rerun_worker", None)
+        if rw is not None:
+            try:
+                rw.stop()
+                rw.wait(3000)
+            except Exception:
+                pass
+        self._rerun_worker = None
+        # 清理子组件录屏 (SimulinkModule 的 closeEvent 会触发, 这里兜底)
+        sim = getattr(self, "simulink", None)
+        if sim is not None:
+            try:
+                sim.close()  # 触发 SimulinkModule.closeEvent 清理 _rec_timer/_worker
+            except Exception:
+                pass
+        super().closeEvent(ev)
+
     def _on_engine_change(self, idx):
         """引擎切换"""
         mapping = {0:"act", 1:"vtla", 2:"groot", 3:"smolvla", 4:"lew"}
