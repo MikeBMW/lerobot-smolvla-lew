@@ -35,6 +35,7 @@ NODE_TYPES = {
     "hardware":  {"cn": "硬件", "color": "#ff4444"},
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
+    "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 五模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -726,8 +727,25 @@ class BlockParamsDialog(QDialog):
                     sb.setValue(int(v))
                 self._edits[k] = sb
             else:
-                le = QLineEdit(str(v))
-                self._edits[k] = le
+                # 🎨 bg/背景色 参数 → 颜色下拉 (row_bg 节点改色用, 2026-08-05 老倪)
+                if k in ("bg", "bg_color", "color"):
+                    cb = QComboBox()
+                    _preset = ["#26418f", "#8f6a26", "#1f7a4d", "#6a2d8f", "#8f2d4d",
+                               "#3a3f4b", "#2d7a5c", "#7a5c2d", "#5c2d7a", "#7a2d4a",
+                               "#0d1117", "#f0a030"]
+                    _labels = {"#26418f": "蓝 (ACT)", "#8f6a26": "黄褐 (SmolVLA)",
+                               "#1f7a4d": "绿 (SmolVLA+LEW)", "#6a2d8f": "紫 (VLA-Touch)",
+                               "#8f2d4d": "玫红 (AWE)", "#3a3f4b": "灰", "#2d7a5c": "深绿",
+                               "#7a5c2d": "深黄", "#5c2d7a": "深紫", "#7a2d4a": "深红",
+                               "#0d1117": "黑", "#f0a030": "橙"}
+                    for _c in _preset:
+                        cb.addItem(f"● {_labels.get(_c, _c)}  {_c}", _c)
+                    idx = _preset.index(v) if v in _preset else 0
+                    cb.setCurrentIndex(idx)
+                    self._edits[k] = cb
+                else:
+                    le = QLineEdit(str(v))
+                    self._edits[k] = le
             form.addRow(k, self._edits[k])
 
         lay.addLayout(form)
@@ -757,6 +775,8 @@ class BlockParamsDialog(QDialog):
                 n["params"][k] = int(w.value())
             elif isinstance(cur, float):
                 n["params"][k] = float(w.value())
+            elif isinstance(w, QComboBox):
+                n["params"][k] = w.currentData() or w.currentText()  # 🎨 颜色取 itemData
             else:
                 n["params"][k] = w.text()
         self.accept()
@@ -1454,7 +1474,7 @@ class SimNodeItem(QGraphicsObject):
         self.node = node
         self.scene_ref = scene_ref
         self.w = node.get("w", 150)
-        self.h = DH
+        self.h = node.get("h", DH)   # 🎨 row_bg 背景行节点自定义高度 (2026-08-05)
         self.setPos(node["x"], node["y"])
         # 不用 ItemIsMovable: 拖动由 SimCanvas 手动 setPos 接管,
         # 避免 QGraphicsScene 默认"移动所有选中项"导致联动
@@ -1467,6 +1487,29 @@ class SimNodeItem(QGraphicsObject):
 
     def paint(self, painter, opt, widget=None):
         t = self.node["type"]
+        # 🎨 背景行节点 (五模型对比): 整行彩色半透明色带 + 左侧大字模型名
+        # 可编辑: 右键参数框改 name (大字)/ params.bg (背景色); 不与普通节点同规格绘制
+        if t == "row_bg":
+            p = self.node.get("params", {})
+            color = QColor(p.get("bg", "#26418f"))
+            w = self.node.get("w", 150)
+            h = self.node.get("h", 214)
+            painter.setRenderHint(QPainter.Antialiasing)
+            # 整行半透明色带 (底部)
+            painter.setPen(QPen(color, 1.2))
+            painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 40)))
+            painter.drawRoundedRect(QRectF(0, 0, w, h), 10, 10)
+            # 左侧大字模型名 (竖向居中)
+            name = self.node.get("name", "")
+            painter.setPen(QColor("#e6edf3"))
+            painter.setFont(QFont("Arial", 24, QFont.Bold))
+            painter.drawText(QRectF(14, 0, w - 28, h), Qt.AlignVCenter | Qt.AlignLeft, name)
+            # 左上角小标: 可编辑提示
+            painter.setPen(QColor(255, 255, 255, 120))
+            painter.setFont(QFont("Arial", 7))
+            painter.drawText(QRectF(14, 4, w - 28, 12), Qt.AlignLeft | Qt.AlignTop,
+                             "▤ 背景行 · 右键改名/改色")
+            return
         color = QColor(COLORS.get(t, "#58a6ff"))
         # 运行状态色: idle=类型色 running=青色脉冲 success=绿 error=红
         status = self.node.get("status", "idle")
@@ -1818,8 +1861,8 @@ class SimCanvas(QGraphicsView):
         """右键节点菜单 (viewport 全局坐标, WSLg 可靠; 深色QSS防黑字)"""
         menu = QMenu()
         menu.setStyleSheet(
-            "QMenu { background:#ffffff; color:#1f2328; border:1px solid #b6bdc7; border-radius:6px; }"
-            "QMenu::item { padding:6px 28px 6px 14px; color:#1f2328; font-size:12px; }"
+            "QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; }"
+            "QMenu::item { padding:6px 28px 6px 14px; color:#e6edf3; font-size:12px; }"
             "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
         a_logic = menu.addAction("📖 查看/编辑节点逻辑")
         a_param = menu.addAction("⚙️ 节点参数")
@@ -2722,7 +2765,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑"}[ntype],
+                     "train_gate": "☑", "row_bg": "▤"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
             "inputs": [{"id": "in1", "label": "in", "dtype": "any"}],
@@ -2882,6 +2925,8 @@ class SimulinkModule(QWidget):
         self._log("🧿 ⑤ AWE 6: SigLIP视触觉编码→H-JEPA三层潜空间→zFlow世界引擎→交叉注意力注入→ActionHead→训练 (场景原生)")
         self._log("📍 同构模块同列垂直对齐: 视觉编码列 / 动作生成列 / 世界模型列 / ActionHead列 / 训练列")
         self._log("▶ 点「▶ 运行」→ 依次训练 5 模型 (各 50 步快速验证) → 双击「📊 对比评估 Scope」看五模型对比")
+        # 🎨 5 行彩色背景 + 左侧大字模型名 (2026-08-05 老倪: 好区分)
+        self._draw_model_rows(["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE"])
         QTimer.singleShot(300, lambda: self._compare_load_hint())
 
     def open_vlatouch(self):
@@ -3677,11 +3722,53 @@ class SimulinkModule(QWidget):
         self._update_back_btn()
 
     def clear(self):
+        self._clear_model_rows()          # 先清五模型背景条 (2026-08-05)
         self.canvas._scene.clear()
         self.nodes = []
         self.links = []
         self._items = {}
         self._link_items = []
+
+    # ── 🎨 五模型对比: 5 行彩色背景 node (row_bg) + 左侧大字模型名 (2026-08-05 老倪) ──
+    def _clear_model_rows(self):
+        """删除背景行 row_bg 节点 (真节点, 随 clear 一起清)"""
+        for n in list(self.nodes):
+            if n.get("type") == "row_bg":
+                try:
+                    it = self._items.get(n["id"])
+                    if it is not None:
+                        self.canvas._scene.removeItem(it)
+                        self._items.pop(n["id"], None)
+                    self.nodes.remove(n)
+                except Exception:
+                    pass
+        self._model_row_items = []
+
+    def _draw_model_rows(self, row_names, row_h=230, col_w=260,
+                         base_x=120, base_y=80, n_cols=8):
+        """在画布插入 N 个背景行 row_bg 节点 (真节点, 可右键编辑).
+        row_names: 每行模型名 (大字) → 生成 name='🎨 {名}' bg=预设色 的 row_bg 节点,
+        宽 = 整行跨度, 高 = 行高; 双击/右键参数框可改名改色"""
+        self._clear_model_rows()
+        palette = {
+            "ACT": "#26418f", "SmolVLA": "#8f6a26", "SmolVLA+LEW": "#1f7a4d",
+            "VLA-Touch": "#6a2d8f", "AWE": "#8f2d4d",
+        }
+        x0 = base_x - 60
+        w = (base_x + n_cols * col_w + 120) - x0
+        for r, name in enumerate(row_names):
+            y0 = base_y + r * row_h - 20
+            bg = palette.get(name, "#26418f")
+            n = self.add_node("row_bg", f"🎨 {name}", x0, y0,
+                              {"bg": bg, "model": name, "desc": "背景行: 右键改名/改色"})
+            n["w"] = int(w)
+            n["h"] = row_h - 16
+            it = self._items.get(n["id"])
+            if it is not None:
+                it.setZValue(1)   # 背景低于节点(z=10): 点空白命中背景行, 点节点命中节点
+                it.update()
+        self.canvas._scene.update()
+        self._model_row_items = []   # 真节点由 nodes 持有, 无需单独引用
 
     def _sync(self):
         """节点变更 → 通知主窗口 (可用于推送 web /api/comfy/task)"""
