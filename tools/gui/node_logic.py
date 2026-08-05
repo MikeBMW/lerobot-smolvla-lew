@@ -648,6 +648,19 @@ def node_video_display(ctx):
     return module.on_infer_video()
 
 
+# ════════════════════════════════════════════════════════════════
+# 📄 PDF 技术选型报告 — 五模型对比实验 → 11 章专业报告
+# ════════════════════════════════════════════════════════════════
+def node_pdf_report(ctx):
+    """📄 PDF 技术选型报告 — 概况/系统全貌/分系统功能/接口/参数/架构/功能/性价比/优劣势"""
+    module = ctx["module"]
+    log = ctx["log"]
+    if log:
+        log("📄 生成五模型对比技术选型报告 (数据: 曲线+视频+画布拓扑)")
+    # === ✏️ 可修改区 END ===
+    return module.on_pdf_report()
+
+
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)
 _reg("train",      ["训练", "全新训练"], "② 训练 — ACT 策略训练 (含 metaworld 全新训练)", node_train)
@@ -675,4 +688,5 @@ _reg("hjepa",      ["H-JEPA"], "🧠 H-JEPA 三层潜空间 — z₁/z₂/z₃ �
 _reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜状态", node_zflow)
 _reg("cross_attn", ["交叉注意力"], "🔀 未来决策交叉注意力 — 未来潜状态 K/V 注入", node_cross_attn)
 _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
-_reg("video_display", ["视频显示", "视频"], "🎥 视频显示 — rollout 推理效果对比", node_video_display)
+_reg("video_display", ["视频"], "🎥 视频显示 — 推理效果 rollout 播放", node_video_display)
+_reg("pdf_report",   ["PDF"], "📄 PDF 报告 — 五模型技术选型 (11章)", node_pdf_report)

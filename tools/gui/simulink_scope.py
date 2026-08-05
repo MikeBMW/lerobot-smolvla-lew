@@ -898,18 +898,28 @@ class ModelCompareDialog(QDialog):
 
 
 class InferenceVideoDialog(QDialog):
-    """🎥 三模型推理效果对比 (2026-08-05 老倪: 训练完继续推理, 3个视频display窗口)"""
+    """🎥 推理效果对比 (2026-08-05 老倪: 训练完继续推理, 多模型视频 display 窗口)
+    POLICIES 可传: 默认 3 模型 (act/smolvla/smolvla_lew) 兼容旧调用;
+    五模型对比传 5 模型 (含 vla_touch/awe_zflow)"""
+
     POLICIES = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
                 ("smolvla_lew", "SmolVLA+LEW", "#a371f7")]
+    # 五模型版 (2026-08-05): 含 VLA-Touch/AWE, 与五模型对比模板同序
+    POLICIES_5 = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
+                  ("smolvla_lew", "SmolVLA+LEW", "#a371f7"),
+                  ("vla_touch", "VLA-Touch", "#6a2d8f"),
+                  ("awe_zflow", "AWE", "#8f2d4d")]
 
-    def __init__(self, module, parent=None):
+    def __init__(self, module, policies=None, parent=None):
         super().__init__(parent)
         self.module = module
-        self.setWindowTitle("🎥 三模型推理效果对比 — metaworld push 场景")
-        self.setMinimumSize(1280, 640)
+        self.POLICIES = list(policies or self.POLICIES)
+        n = len(self.POLICIES)
+        self.setWindowTitle(f"🎥 {n} 模型推理效果对比 — metaworld push 场景")
+        self.setMinimumSize(min(1280, 240 + n * 220), 640)
         self.setStyleSheet(_qss("QDialog{background:#f6f8fa;}"))
         root = QVBoxLayout(self)
-        head = QLabel("🎥 推理效果对比 · 同一场景 (metaworld push-v3) · 3 模型 rollout 同步播放")
+        head = QLabel(f"🎥 推理效果对比 · 同一场景 (metaworld push-v3) · {n} 模型 rollout 同步播放")
         head.setStyleSheet(_qss("color:#a371f7;font-size:14px;font-weight:700;"))
         root.addWidget(head)
         self.lbl_note = QLabel("")
@@ -1003,7 +1013,8 @@ class InferenceVideoDialog(QDialog):
 
     def _run_rollouts(self):
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
-        self.lbl_note.setText("⏳ 正在生成 3 模型推理视频 (metaworld rollout, 各 120 帧)…")
+        n = len(self.POLICIES)
+        self.lbl_note.setText(f"⏳ 正在生成 {n} 模型推理视频 (metaworld rollout, 各 120 帧)…")
         self.btn_reload.setEnabled(False)
         import subprocess
         import threading

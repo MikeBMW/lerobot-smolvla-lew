@@ -36,6 +36,7 @@ NODE_TYPES = {
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
     "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 五模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
+    "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 五模型对比技术选型报告生成 (2026-08-05 老倪)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -298,6 +299,20 @@ REFERENCE_APPS = [
                                         "desc": "♻ 共用: 双击 → 五模型 训练速度/精确度/鲁棒性 对比图表"}),
         ("system", "🎥 推理效果对比", {"video": "all", "auto": True,
                                           "desc": "训练完自动触发: 5 模型 rollout 视频同步播放对比"}),
+        # ── 5 个视频对比 node (2026-08-05 老倪: 推理效果对比之后, 每模型一个视频) ──
+        ("system", "🎥 视频对比 · ACT", {"video": True, "video_policy": "act",
+                                          "desc": "ACT rollout 视频 (reports/rollout_act/), 双击播放"}),
+        ("system", "🎥 视频对比 · SmolVLA", {"video": True, "video_policy": "smolvla",
+                                              "desc": "SmolVLA rollout 视频, 双击播放"}),
+        ("system", "🎥 视频对比 · SmolVLA+LEW", {"video": True, "video_policy": "smolvla_lew",
+                                                  "desc": "SmolVLA+LEW rollout 视频, 双击播放"}),
+        ("system", "🎥 视频对比 · VLA-Touch", {"video": True, "video_policy": "vla_touch",
+                                                "desc": "VLA-Touch rollout 视频, 双击播放"}),
+        ("system", "🎥 视频对比 · AWE", {"video": True, "video_policy": "awe_zflow",
+                                          "desc": "AWE rollout 视频, 双击播放"}),
+        # ── 📄 PDF 技术选型报告 (2026-08-05 老倪: 报告含概况/分系统/接口/参数/架构/功能/性价比/优劣势) ──
+        ("pdf_report", "📄 PDF 技术选型报告", {"auto": True,
+                                             "desc": "双击生成 11 章技术选型 PDF: 实验概况·系统全貌·分系统功能·接口说明·参数对比·架构区别·功能分析·性价比·优势劣势·视频对比·结论"}),
     ], [
         # ACT 路 (9): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
         (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
@@ -317,6 +332,14 @@ REFERENCE_APPS = [
         (7, 29), (11, 29), (16, 29), (22, 29), (28, 29),
         # 推理对比: 五训练 → 推理对比节点
         (7, 30), (11, 30), (16, 30), (22, 30), (28, 30),
+        # 视频对比: 五训练 → 各自视频节点 + 推理对比 → 5 视频节点 (2026-08-05 老倪)
+        (7, 31, "rollout"), (11, 32, "rollout"), (16, 33, "rollout"),
+        (22, 34, "rollout"), (28, 35, "rollout"),
+        (30, 31), (30, 32), (30, 33), (30, 34), (30, 35),
+        # PDF 报告: 5 视频节点 + Scope + 推理对比 → PDF (数据支撑: 曲线+视频+评估)
+        (29, 36, "评估结果"), (30, 36, "推理对比"),
+        (31, 36, "ACT视频"), (32, 36, "SmolVLA视频"), (33, 36, "SmolVLA+LEW视频"),
+        (34, 36, "VLA-Touch视频"), (35, 36, "AWE视频"),
     ],
     # 🗂 多行展开布局 (每行一个模型; 同构模块同列垂直对齐)
     # 列: 数据 | 视觉编码 | 动作生成 | 附加模块 | 附加模块 | Action Head | (空) | 训练
@@ -327,6 +350,11 @@ REFERENCE_APPS = [
         ["📦 metaworld 数据", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "🌉 Interpolant 控制器", "🎯 Action Head · VLA", "", "🚀 VLA-Touch 训练"],
         ["📦 metaworld 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练"],
         ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比"],
+        # 🎥 视频对比行 (2026-08-05 老倪: 推理效果对比之后 5 个视频节点)
+        ["", "🎥 视频对比 · ACT", "🎥 视频对比 · SmolVLA", "🎥 视频对比 · SmolVLA+LEW",
+         "🎥 视频对比 · VLA-Touch", "🎥 视频对比 · AWE", "", ""],
+        # 📄 PDF 报告行 (2026-08-05 老倪: 最后生成技术选型报告)
+        ["", "", "", "", "", "", "", "📄 PDF 技术选型报告"],
     ]),
     # 🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: "参考VLA-Touch项目, 4060资源有限要改造,
     #   纵向对比不同模型的区别, 用于技术选型" — github.com/jxbi1010/VLA-Touch, RA-L 2026)
@@ -570,6 +598,8 @@ LIBRARY = [
         {"name": "S06 Switch 数据源", "params": {"switch": "orin"}},
         {"name": "☑ 训练开关", "params": {"train_enabled": True},
          "desc": "checkbox: 打勾=训练 / 不打=不训练 (双击切换, 放最前边控全链路)"},
+        {"name": "📄 PDF 技术选型报告", "params": {},
+         "desc": "五模型对比实验 → 11 章技术选型 PDF (概况/系统全貌/分系统功能/接口/参数/架构/功能/性价比/优劣势/视频对比/结论)"},
     ]),
     ("hardware", "硬件 (8)", [
         {"name": "H00 Orin Nano",  "params": {"ip": "192.168.23.10", "port": 8765, "fps": 30}},
@@ -2781,7 +2811,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑", "row_bg": "▤"}[ntype],
+                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
             "inputs": [{"id": "in1", "label": "in", "dtype": "any"}],
@@ -4661,27 +4691,90 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在拉取 Orin 真实数据", stage="collect")
 
-    def on_infer_video(self, **kw):
-        """🎥 推理效果对比 (2026-08-05 老倪): 3 模型 rollout 视频 3 窗口同步播放
+    def on_infer_video(self, policy=None, **kw):
+        """🎥 推理效果对比 (2026-08-05 老倪): 多模型 rollout 视频 多窗口同步播放
         数据源: reports/rollout_<policy>/ (tools/rollout_video.py 生成, 无则自动生成)
-        auto=True (模板参数): 训练完自动触发 — 先后台生成 3 模型 rollout, 完成后弹窗"""
+        policy=None → 全模型 (模板: 3 模型三对比 / 5 模型五模型对比自动探测);
+        policy='act' → 单模型视频节点 (🎥 视频对比 · ACT)
+        auto=True (模板参数): 训练完自动触发 — 先后台生成 rollout, 完成后弹窗"""
         try:
             from simulink_scope import InferenceVideoDialog
         except ImportError as ex:
             self._log(f"❌ 缺少 simulink_scope.InferenceVideoDialog: {ex}")
             return
-        # 检查是否已有 rollout 帧
+        # 单模型视频节点 → 只放该模型 (🎥 视频对比 · <模型>)
+        if policy:
+            policies = [(policy, self._policy_display(policy), self._policy_color(policy))]
+        else:
+            # 自动探测: 画布有 vla_touch/awe_zflow 训练节点 → 5 模型, 否则 3 模型
+            names = " ".join(n.get("name", "") for n in self.nodes)
+            if "VLA-Touch" in names or "AWE" in names:
+                policies = InferenceVideoDialog.POLICIES_5
+            else:
+                policies = InferenceVideoDialog.POLICIES
         root = self._repo_root()
         import glob as _glob
         have = all(_glob.glob(os.path.join(root, "reports", f"rollout_{p}", "frame_*.png"))
-                   for p in ("act", "smolvla", "smolvla_lew"))
+                   for p, _, _ in policies)
         if not have:
-            self._log("🎥 推理对比: 生成 3 模型 rollout 视频 (metaworld push-v3, 各 120 帧)…")
+            self._log(f"🎥 推理对比: 生成 {len(policies)} 模型 rollout 视频 (metaworld push-v3, 各 120 帧)…")
             self._qmsg_info("🎥 推理效果对比",
-                            "3 模型推理视频将自动生成 (metaworld rollout, 各 120 帧)\n"
-                            "生成完成自动弹出 3 窗口同步播放对比。")
-        dlg = InferenceVideoDialog(self)
+                            f"{len(policies)} 模型推理视频将自动生成 (metaworld rollout, 各 120 帧)\n"
+                            "生成完成自动弹出多窗口同步播放对比。")
+        dlg = InferenceVideoDialog(self, policies=policies)
         self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
+
+    @staticmethod
+    def _policy_display(policy):
+        """policy → 显示名 (act→ACT / smolvla→SmolVLA / smolvla_lew→SmolVLA+LEW / vla_touch→VLA-Touch / awe_zflow→AWE)"""
+        return {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW",
+                "vla_touch": "VLA-Touch", "awe_zflow": "AWE"}.get(policy, policy)
+
+    @staticmethod
+    def _policy_color(policy):
+        """policy → 主题色"""
+        return {"act": "#58a6ff", "smolvla": "#d29922", "smolvla_lew": "#a371f7",
+                "vla_touch": "#6a2d8f", "awe_zflow": "#8f2d4d"}.get(policy, "#58a6ff")
+
+    def on_pdf_report(self, **kw):
+        """📄 PDF 技术选型报告 (2026-08-05 老倪): 五模型对比实验 → 11 章专业报告
+        数据: 画布 flow (系统全貌) + reports/train_curve_*.json (训练结果)
+              + reports/rollout_*/ (推理视频帧) → tools/generate_report.py"""
+        self._log("📄 正在生成五模型对比技术选型报告 (概况/分系统/接口/参数/架构/功能/性价比/优劣势)…")
+
+        def _work():
+            try:
+                import subprocess
+                root = self._repo_root()
+                # 保存当前画布 flow → 临时 JSON (报告第2章 系统全貌)
+                flow_json = os.path.join(root, "reports", "_flow_snapshot.json")
+                try:
+                    with open(flow_json, "w", encoding="utf-8") as f:
+                        json.dump({"format": "zmax-simulink", "name": "五模型对比",
+                                   "nodes": self.nodes, "links": self.links}, f,
+                                  ensure_ascii=False, indent=1)
+                except Exception:
+                    flow_json = None
+                cmd = [os.path.join(root, ".venv", "bin", "python"),
+                       os.path.join(root, "tools", "generate_report.py")]
+                if flow_json:
+                    cmd += ["--flow", flow_json]
+                r = subprocess.run(cmd, capture_output=True, text=True,
+                                   timeout=300, cwd=root)
+                out = (r.stdout or "").strip().splitlines()
+                last = out[-1] if out else "?"
+                if r.returncode == 0 and os.path.exists(os.path.join(root, "reports")):
+                    import glob as _g
+                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
+                                  key=os.path.getmtime)
+                    if pdfs:
+                        return True, f"📄 报告已生成: {os.path.basename(pdfs[-1])}"
+                    return True, f"📄 报告已生成 (reports/ 下, 输出: {last})"
+                return False, f"PDF 生成失败: {last}"
+            except Exception as ex:
+                return False, f"PDF 生成失败: {ex}"
+
+        self._start_worker(_work, "正在生成 PDF 技术选型报告…", stage="report")
 
     def on_infer(self, **kw):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
@@ -4744,6 +4837,7 @@ class SimulinkModule(QWidget):
         ("推理", "on_infer"),
         ("对比评估", "on_compare_scope"),
         ("Scope", "on_scope"),
+        ("PDF", "on_pdf_report"),   # 📄 技术选型报告 (2026-08-05 老倪)
     ]
 
     def on_compare_scope(self, **kw):
@@ -4787,9 +4881,10 @@ class SimulinkModule(QWidget):
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
-        # 0) 视频显示节点 (🎥 推理效果对比, 2026-08-05 老倪): 双击 → 3 窗口同步播放
+        # 0) 视频显示节点 (🎥 推理效果对比 / 🎥 视频对比 · <模型>, 2026-08-05 老倪):
+        #    双击 → 同步播放; 单模型视频节点 (params.video_policy) → 只放该模型
         if params.get("video"):
-            self.on_infer_video()
+            self.on_infer_video(policy=params.get("video_policy"))
             return
         # 0) 子系统节点 (Simulink Subsystem): 双击展开内部流程
         if params.get("subsystem"):

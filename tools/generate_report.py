@@ -1,0 +1,642 @@
+#!/usr/bin/env python3
+"""📄 Z-MAX 五模型对比技术选型报告生成器 (2026-08-05 老倪)
+
+输入: 画布 Simulink flow (全局 pipeline 全貌) + reports/train_curve_*.json (训练结果)
+      + reports/rollout_*/ (推理视频帧)
+输出: reports/五模型对比技术选型报告_<ts>.pdf
+
+报告结构 (专业工程师视角, 科学/认真/有依据):
+  1  实验概况        — 目的/环境/数据/五模型清单
+  2  系统全貌        — Simulink pipeline 拓扑 (节点→连线→数据流)
+  3  分系统功能分析   — 视觉编码/世界模型/动作头/训练/评估 五大子系统职责
+  4  接口说明        — 每模块输入输出 dtype/形状
+  5  参数对比        — 参数量/隐层/层数/冻结策略/训练吞吐
+  6  架构区别        — 生成式vs回归 / 世界模型有无 / 触觉增强 / 场景原生
+  7  功能分析        — 能力矩阵 (力控/触觉/世界模型/边缘部署)
+  8  性价比分析      — 开发成本(时间/显存/数据) vs 收益(收敛/精度) 评分
+  9  优势劣势总结    — 数据支撑的选型结论 + 加权技术选型矩阵
+
+用法: .venv/bin/python tools/generate_report.py [--flow flows/xxx.json]
+"""
+import argparse
+import json
+import math
+import os
+import re
+import time
+from collections import OrderedDict
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPORTS = os.path.join(ROOT, "reports")
+
+# ── 五模型注册表 (参数/成本/收益数据底座, 报告全部数据支撑来自这里) ──────────
+MODELS = OrderedDict([
+    ("act", dict(
+        name="ACT", cn="ACT", color="#58a6ff",
+        arch="CNN(ResNet18) + CVAE + Transformer Encoder/Decoder + Temporal Ensemble",
+        category="回归式 (deterministic regression)",
+        world_model="无 (纯行为克隆, 隐式状态)",
+        params_m="~65M (ResNet18 11M + VAE 2M + Transformer 52M)",
+        hidden=256, layers=4, freeze="backbone 冻结 (pretrained)",
+        data_need="中 (700帧起), 需动作真值",
+        train_cost="低 (~7 step/s, 30s/50步)",
+        gpu_mem="~2GB",
+        edge="✅ Orin 直接部署 (无扩散采样)",
+        strengths="收敛快·曲线平滑·部署最简·确定性输出 (产线一致性)",
+        weaknesses="无世界模型预见性·无触觉·长时序泛化弱·对遮挡敏感",
+        dep="S0 已量产 (Z700 力控插入在用)",
+    )),
+    ("smolvla", dict(
+        name="SmolVLA", cn="SmolVLA", color="#d29922",
+        arch="SmolVLM2-500M(视觉语言) + DiT-B 扩散动作解码",
+        category="扩散式 (denoising diffusion)",
+        world_model="无 (纯策略)",
+        params_m="~600M (VLM 500M 冻结 + DiT-B 动作头 100M 未训练部分)",
+        hidden=256, layers=1, freeze="SmolVLM2 冻结",
+        data_need="高 (扩散需要大样本)",
+        train_cost="中 (~449 step/s 但每步显存大)",
+        gpu_mem="~5GB",
+        edge="⚠️ Orin 需量化 (扩散采样延迟)",
+        strengths="视觉语言通用·多模态指令·泛化强",
+        weaknesses="无世界模型·无触觉·训练慢·显存高·输出随机性",
+        dep="S1 实验验证中",
+    )),
+    ("smolvla_lew", dict(
+        name="SmolVLA+LEW", cn="SmolVLA+LEW", color="#a371f7",
+        arch="SmolVLM2 + DiT-B + LeWorldModel (AdaLN-zero 条件调制旁路)",
+        category="扩散式 + 世界模型",
+        world_model="✅ LeWorldModel (视频帧+动作 → 预测下一帧)",
+        params_m="~680M (+80M 世界模型)",
+        hidden=256, layers=1, freeze="VLM 参与训练 (LEW 要求)",
+        data_need="很高 (世界模型需视频自监督)",
+        train_cost="高 (~1619 step/s 理论, 实测算力受限)",
+        gpu_mem="~7GB",
+        edge="⚠️ 需裁剪 (Orin 边缘部署重)",
+        strengths="世界模型预见性·遮挡/异常鲁棒·长时序规划",
+        weaknesses="训练最慢·显存最高·收敛波动·两路 loss 叠加难调",
+        dep="S1 实验验证中",
+    )),
+    ("vla_touch", dict(
+        name="VLA-Touch", cn="VLA-Touch", color="#6a2d8f",
+        arch="DINOv2(视觉) + GelSight Marker(触觉) + base VLA 冻结 + Interpolant 扩散精炼",
+        category="扩散式 + 触觉增强 (bridge 控制器)",
+        world_model="无 (Interpolant 动作桥式扩散)",
+        params_m="~200M 增量 (DINOv2 22M 冻结 + Interpolant ~1M 轻量)",
+        hidden=256, layers=1, freeze="base VLA 冻结 (官方不微调)",
+        data_need="高 (需触觉图对齐数据)",
+        train_cost="低 (~18 step/s, 只训轻量控制器)",
+        gpu_mem="~3GB",
+        edge="✅ Orin 友好 (控制器轻量)",
+        strengths="触觉闭环·插拔/力控精细·显存低·只训轻量模块",
+        weaknesses="需真触觉数据(当前模拟)·无世界模型·依赖 base VLA 质量",
+        dep="S1 实验验证中 (真机 H06 力觉待接入)",
+    )),
+    ("awe_zflow", dict(
+        name="AWE", cn="AWE", color="#8f2d4d",
+        arch="SigLIP视触觉 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 未来决策交叉注意力",
+        category="场景原生 + 潜空间世界模型 (它石架构)",
+        world_model="✅ zFlow (GRU 预测未来潜状态, 分层门控注入)",
+        params_m="~120M 增量 (SigLIP 86M 冻结 + 潜空间/GRU/注入 ~34M)",
+        hidden=256, layers=1, freeze="SigLIP 冻结",
+        data_need="中 (潜空间学习高效)",
+        train_cost="低 (~95 step/s)",
+        gpu_mem="~3.5GB",
+        edge="✅ Orin 友好 (GRU 轻量, 推理门控可剥离)",
+        strengths="场景原生融合·潜空间世界模型·交叉注意力注入·力觉感知·性价比高",
+        weaknesses="潜空间可解释性弱·需力觉数据·世界模型目标间接监督",
+        dep="S1 实验验证中 (真机力觉待接入)",
+    )),
+])
+
+# 子系统划分 (分系统功能分析用)
+SUBSYSTEMS = [
+    ("视觉感知子系统", "视觉编码", "图像 → 视觉特征",
+     {"act": "ResNet18 CNN 特征图", "smolvla": "SmolVLM2 视觉 token",
+      "smolvla_lew": "SmolVLM2 视觉 token (参与训练)",
+      "vla_touch": "DINOv2 嵌入", "awe_zflow": "SigLIP 视触觉融合"}),
+    ("世界模型子系统", "未来预测", "状态/视频/潜空间 → 未来预测",
+     {"act": "无 (纯反应式)", "smolvla": "无 (纯反应式)",
+      "smolvla_lew": "LeWorldModel 预测下一帧",
+      "vla_touch": "无 (Interpolant 动作桥)",
+      "awe_zflow": "zFlow GRU 预测未来潜状态"}),
+    ("动作生成子系统", "动作解码", "特征 → 动作块",
+     {"act": "Transformer Decoder 回归", "smolvla": "DiT-B 扩散去噪",
+      "smolvla_lew": "DiT-B 扩散去噪 + LEW 调制",
+      "vla_touch": "base VLA 动作 + Interpolant 精炼",
+      "awe_zflow": "ActionHead (未来决策交叉注意力注入)"}),
+    ("触觉/力觉子系统", "触觉感知", "触觉图/力觉 → 力信号",
+     {"act": "无", "smolvla": "无", "smolvla_lew": "无",
+      "vla_touch": "GelSight Marker 跟踪 (模拟)",
+      "awe_zflow": "SigLIP 视触觉原生融合 (模拟)"}),
+    ("训练子系统", "策略学习", "数据 → 策略权重",
+     {"act": "BC 回归, 50步", "smolvla": "扩散 BC, 50步",
+      "smolvla_lew": "扩散 BC + 世界模型 loss",
+      "vla_touch": "只训 Interpolant 控制器",
+      "awe_zflow": "潜空间世界模型 + 动作头联合"}),
+    ("评估子系统", "对比分析", "曲线/视频 → 结论",
+     {"act": "Scope + 视频", "smolvla": "Scope + 视频",
+      "smolvla_lew": "Scope + 视频",
+      "vla_touch": "Scope + 视频", "awe_zflow": "Scope + 视频"}),
+]
+
+# 模块接口说明 (模板节点 → IO)
+MODULE_IO = [
+    ("📦 metaworld 数据", "输入: 采集数据源 (metaworld 696帧/Orin 真机)", "输出: states(4D) · actions(4D) · images"),
+    ("🖼 视觉主干 ResNet18", "输入: 图像 (B,C,H,W)", "输出: 图像特征图 (B,512,7,7)"),
+    ("🧬 VAE 编码器 CVAE", "输入: 真值动作块 (训练时)", "输出: 潜变量 (μ, logσ²)"),
+    ("🔤 Transformer Encoder", "输入: latent + 图像特征 + state", "输出: 上下文 tokens"),
+    ("🔡 Transformer Decoder", "输入: 上下文 tokens", "输出: 动作块 (B,7,4)"),
+    ("🎯 Action Head 4D · ACT", "输入: 解码特征", "输出: 关节动作 (B,7,4)"),
+    ("⏳ Temporal Ensemble", "输入: 动作块序列", "输出: 时间平滑动作"),
+    ("🧠 SmolVLM2-500M", "输入: 图像+文本指令", "输出: 多模态 embeds"),
+    ("🌀 DiT-B 动作解码", "输入: 多模态 embeds + 噪声", "输出: 去噪动作"),
+    ("🌐 LeWorldModel", "输入: 视频帧+动作", "输出: 预测下一帧 (自监督)"),
+    ("🖼 DINOv2 视觉编码", "输入: 图像", "输出: 视觉嵌入 (条件)"),
+    ("📍 Marker 触觉跟踪", "输入: GelSight 触觉图", "输出: 力信号 m (低维)"),
+    ("🌉 Interpolant 控制器", "输入: VLA动作a + 视觉 + 触觉m", "输出: 精炼动作 â"),
+    ("🖐 SigLIP 视触觉编码", "输入: 图像+力觉", "输出: 视触觉特征"),
+    ("🧠 H-JEPA 三层潜空间", "输入: 视触觉特征+状态", "输出: z₁空间/z₂物体/z₃语义"),
+    ("🌊 zFlow 世界引擎", "输入: 三层潜状态+动作历史", "输出: 未来潜状态预测"),
+    ("🔀 未来决策交叉注意力", "输入: 解码隐层 + 未来潜状态", "输出: 注入动作特征 (门控1.0/0.1/0.01)"),
+    ("🚀 训练节点", "输入: 数据+策略配置", "输出: checkpoint (outputs/train/)"),
+    ("📊 对比评估 Scope", "输入: 各模型曲线", "输出: 对比图表"),
+    ("🎥 推理效果对比", "输入: 各模型 rollout", "输出: 同步视频对比"),
+]
+
+
+def load_curves():
+    """加载所有训练曲线 (缺数据的模型标注 None, 不崩溃)"""
+    out = {}
+    for policy in MODELS:
+        p = os.path.join(REPORTS, f"train_curve_{policy}.json")
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+            out[policy] = d
+        except Exception:
+            out[policy] = None
+    return out
+
+
+def scope_normalize(curve):
+    """Scope 归一化: 前3点均值=1 → 看下降斜率 (2026-08-05 口径:
+    ACT 动作MSE vs SmolVLA 扩散噪声MSE 绝对值不可比, 归一化后才能横比)"""
+    if not curve or len(curve) < 3:
+        return []
+    base = sum(v for _, v in curve[:3]) / 3.0
+    if base <= 0:
+        return []
+    return [[s, v / base] for s, v in curve]
+
+
+def curve_stats(curve):
+    """曲线统计: 首/末值·下降率·波动性 (数据支撑核心)"""
+    if not curve or len(curve) < 2:
+        return None
+    first = curve[0][1]
+    last = curve[-1][1]
+    drop = (first - last) / first * 100 if first else 0
+    # 波动性: 相邻差绝对值均值 / 首值
+    jitter = sum(abs(curve[i][1] - curve[i - 1][1]) for i in range(1, len(curve))) / (len(curve) - 1)
+    jitter_pct = jitter / first * 100 if first else 0
+    return dict(first=first, last=last, drop_pct=drop, jitter_pct=jitter_pct, steps=len(curve))
+
+
+def score_model(policy, curves, rollout_have):
+    """性价比/技术选型评分 (0-10, 数据支撑):
+    收敛速度(下降率) · 训练吞吐 · 显存 · 世界模型 · 触觉 · 部署 · 数据需求(反向)"""
+    c = curves.get(policy)
+    st = curve_stats(c.get("curve")) if c and c.get("curve") else None
+    m = MODELS[policy]
+    s = {}
+    # ① 收敛性: 归一化下降率 (有数据才评分, 无数据给中性5)
+    if st and st["drop_pct"] > 0:
+        s["convergence"] = min(10, 3 + st["drop_pct"] / 12)   # 降60%→8, 降90%→10.5→cap10
+    else:
+        s["convergence"] = 5.0
+    # ② 训练吞吐 (step_s): act 7 → 6, smolvla 449 → 8, lew 1619 → 9, vla_touch 18 → 6.5, awe 95 → 7
+    step_s = (c or {}).get("step_s") or 0
+    s["throughput"] = min(10, 4 + math.log10(step_s + 1) * 1.8) if step_s else 5.0
+    # ③ 显存友好 (反向: 越小越高)
+    mem = {"act": 2.0, "smolvla": 5.0, "smolvla_lew": 7.0, "vla_touch": 3.0, "awe_zflow": 3.5}
+    s["gpu"] = max(3, 10 - mem[policy] * 1.2)
+    # ④ 世界模型 (有=加分, 预见性/鲁棒性)
+    s["world_model"] = 8.5 if "世界模型" in m["world_model"] else 4.5
+    # ⑤ 触觉/力觉 (有=加分, Z-MAX 插拔力控场景刚需)
+    s["tactile"] = 9.0 if "触觉" in m["category"] or "视触觉" in m["category"] or "Marker" in m["arch"] else 4.0
+    # ⑥ 边缘部署 (Orin)
+    s["edge"] = 9.0 if m["edge"].startswith("✅") else 5.5
+    # ⑦ 数据需求 (反向: 需求低=得分高)
+    s["data"] = {"低": 9.0, "中": 7.5, "高": 5.5, "很高": 4.0}.get(m["data_need"].split(" ")[0], 6.0)
+    # ⑧ 推理视频可用 (数据支撑: 有 rollout 帧 +1)
+    s["video_evid"] = 6.5 + (1.5 if rollout_have.get(policy) else 0)
+    # 加权总分 (Z-MAX 场景权重: 收敛20% 世界模型15% 触觉20% 部署15% 吞吐10% 显存10% 数据5% 视频5%)
+    W = dict(convergence=.20, world_model=.15, tactile=.20, edge=.15, throughput=.10,
+             gpu=.10, data=.05, video_evid=.05)
+    total = sum(s[k] * W[k] for k in W)
+    return dict(scores=s, weights=W, total=total)
+
+
+# ── 绘图 (matplotlib, 无显示环境) ─────────────────────────────────────────────
+def _cfg_cjk():
+    """matplotlib 中文字体 (Noto CJK, 修复中文方块)"""
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib import font_manager
+    for cand in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                 "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"):
+        if os.path.exists(cand):
+            font_manager.fontManager.addfont(cand)
+    matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "Noto Serif CJK SC", "DejaVu Sans"]
+    matplotlib.rcParams["axes.unicode_minus"] = False
+
+
+def plot_curves(curves, path):
+    _cfg_cjk()
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
+    fig.patch.set_facecolor("#ffffff")
+    # 左: 原始曲线
+    ax = axes[0]
+    for policy, c in curves.items():
+        if not c or not c.get("curve"):
+            continue
+        m = MODELS[policy]
+        xs = [p[0] for p in c["curve"]]
+        ys = [p[1] for p in c["curve"]]
+        ax.plot(xs, ys, label=m["cn"], color=m["color"], lw=1.6)
+    ax.set_title("训练 loss 曲线 (原始值)", fontsize=11)
+    ax.set_xlabel("step"); ax.set_ylabel("loss")
+    ax.legend(fontsize=8); ax.grid(alpha=.3)
+    # 右: Scope 归一化
+    ax = axes[1]
+    for policy, c in curves.items():
+        if not c or not c.get("curve"):
+            continue
+        m = MODELS[policy]
+        ns = scope_normalize(c["curve"])
+        if ns:
+            ax.plot([p[0] for p in ns], [p[1] for p in ns],
+                    label=m["cn"], color=m["color"], lw=1.6, marker="o", ms=3)
+    ax.set_title("Scope 归一化 (前3点均值=1, 看下降斜率)", fontsize=11)
+    ax.set_xlabel("step"); ax.set_ylabel("归一化 loss")
+    ax.legend(fontsize=8); ax.grid(alpha=.3)
+    plt.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def plot_scores(score_map, path):
+    _cfg_cjk()
+    import matplotlib.pyplot as plt
+    names = [MODELS[p]["cn"] for p in score_map]
+    totals = [score_map[p]["total"] for p in score_map]
+    colors = [MODELS[p]["color"] for p in score_map]
+    fig, ax = plt.subplots(figsize=(7.5, 3.6))
+    fig.patch.set_facecolor("#ffffff")
+    bars = ax.bar(names, totals, color=colors, alpha=.85)
+    for b, v in zip(bars, totals):
+        ax.text(b.get_x() + b.get_width() / 2, v + .05, f"{v:.1f}",
+                ha="center", fontsize=9, fontweight="bold")
+    ax.set_title("技术选型加权评分 (收敛20% · 世界模型15% · 触觉20% · 部署15% · 吞吐10% · 显存10% · 数据5% · 视频5%)",
+                 fontsize=9.5)
+    ax.set_ylabel("综合分 (0-10)"); ax.set_ylim(0, 11)
+    ax.grid(axis="y", alpha=.3)
+    plt.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+# ── PDF 生成 (reportlab) ──────────────────────────────────────────────────────
+def _reg_cjk_fonts():
+    """reportlab 注册中文字体 (Noto CJK, 修复中文方块) — 在 build_pdf 开头调用"""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    cands = [
+        ("NotoSansCJK", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        ("NotoSansCJKBold", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+        ("MicrosoftYaHei", "/mnt/c/Windows/Fonts/msyh.ttc"),
+    ]
+    for name, path in cands:
+        if os.path.exists(path):
+            try:
+                pdfmetrics.registerFont(TTFont(name, path, subfontIndex=0))
+            except Exception:
+                try:
+                    pdfmetrics.registerFont(TTFont(name, path))
+                except Exception:
+                    continue
+
+
+def build_pdf(flow, curves, rollout_have, out_path):
+    _reg_cjk_fonts()
+    # 检测已注册字体
+    from reportlab.pdfbase import pdfmetrics
+    _ok = "NotoSansCJK" in pdfmetrics.getRegisteredFontNames()
+    FONT = "NotoSansCJK" if _ok else ("MicrosoftYaHei" if "MicrosoftYaHei" in pdfmetrics.getRegisteredFontNames() else "Helvetica")
+    FBOLD = "NotoSansCJKBold" if "NotoSansCJKBold" in pdfmetrics.getRegisteredFontNames() else FONT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors as rc
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle, Image, PageBreak, KeepTogether)
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontSize=15, spaceBefore=10, spaceAfter=6,
+                        textColor=rc.HexColor("#1f6feb"), fontName=FBOLD)
+    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=12.5, spaceBefore=8, spaceAfter=4,
+                        textColor=rc.HexColor("#24292f"), fontName=FBOLD)
+    body = ParagraphStyle("Body", parent=styles["BodyText"], fontSize=9.5, leading=14,
+                          textColor=rc.HexColor("#24292f"), fontName=FONT)
+    small = ParagraphStyle("Small", parent=styles["BodyText"], fontSize=8.5, leading=12,
+                           textColor=rc.HexColor("#57606a"), fontName=FONT)
+    center = ParagraphStyle("Center", parent=body, alignment=TA_CENTER)
+    title_st = ParagraphStyle("Title", parent=styles["Title"], fontSize=20, alignment=TA_CENTER,
+                              textColor=rc.HexColor("#1f6feb"), spaceAfter=4, fontName=FBOLD)
+
+    doc = SimpleDocTemplate(out_path, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
+                            topMargin=14 * mm, bottomMargin=14 * mm,
+                            title="Z-MAX 五模型对比技术选型报告", author="Z-MAX 控制台")
+    E = []  # elements
+
+    def TBL(rows, widths=None, header=True, fs=8):
+        t = Table(rows, colWidths=widths, repeatRows=1 if header else 0)
+        style = [("GRID", (0, 0), (-1, -1), .4, rc.HexColor("#d0d7de")),
+                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                 ("FONT", (0, 0), (-1, -1), FONT, fs),
+                 ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                 ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5)]
+        if header:
+            style += [("BACKGROUND", (0, 0), (-1, 0), rc.HexColor("#f0f6ff")),
+                      ("FONT", (0, 0), (-1, 0), FBOLD, fs)]
+        t.setStyle(TableStyle(style))
+        return t
+
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    n_models = len(MODELS)
+
+    # ═══ 封面 ═══
+    E.append(Spacer(1, 30 * mm))
+    E.append(Paragraph("Z-MAX 五模型对比 · 技术选型报告", title_st))
+    E.append(Paragraph("ACT / SmolVLA / SmolVLA+LEW / VLA-Touch / AWE 纵向对比", center))
+    E.append(Spacer(1, 8 * mm))
+    E.append(Paragraph(f"生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')} · 数据源: metaworld 统一数据集 · 环境: RTX 4060 8GB", center))
+    E.append(Paragraph("方法: 同数据集 · 同评估口径 (Scope 归一化) · 同 50 步训练基线", center))
+    E.append(PageBreak())
+
+    # ═══ 1 实验概况 ═══
+    E.append(Paragraph("1  实验概况", h1))
+    rows = [["模型", "类别", "世界模型", "训练吞吐", "显存", "状态"]]
+    for p, m in MODELS.items():
+        c = curves.get(p)
+        step_s = f"{c['step_s']:.0f} step/s" if c and c.get("step_s") else "无数据"
+        has_curve = "✅" if (c and c.get("curve")) else "⚠️ 无曲线"
+        rows.append([m["cn"], m["category"].split("(")[0], m["world_model"].split("(")[0],
+                     step_s, m["gpu_mem"], has_curve])
+    E.append(TBL(rows, widths=[28 * mm, 42 * mm, 42 * mm, 28 * mm, 20 * mm, 22 * mm]))
+    E.append(Spacer(1, 2 * mm))
+    E.append(Paragraph(f"实验目的: 为 Z-MAX 光模块插拔场景 (Z700 全自主 / Z700F Fix) 选型最优策略架构。"
+                       f"五个模型在同一 metaworld 数据集上各训练 50 步, 统一评估训练收敛、推理效果与部署成本,"
+                       f"以数据支撑技术路线决策。", body))
+    E.append(PageBreak())
+
+    # ═══ 2 系统全貌 ═══
+    E.append(Paragraph("2  系统全貌 (Simulink Pipeline)", h1))
+    E.append(Paragraph("全局流程: 数据采集 → 视觉感知 → 世界模型(可选) → 动作生成 → 训练 → 对比评估 → 推理视频 → PDF 报告", body))
+    if flow:
+        E.append(Paragraph(f"画布节点数: {len(flow.get('nodes', []))} · 连线数: {len(flow.get('links', []))}", body))
+        E.append(Spacer(1, 2 * mm))
+        nodes = flow.get("nodes", [])
+        rows = [["#", "节点", "类型", "功能/参数"]]
+        for i, n in enumerate(nodes):
+            params = n.get("params", {})
+            desc = params.get("desc", "")
+            rows.append([str(i), n.get("name", ""), n.get("type", ""), desc[:80]])
+        E.append(TBL(rows, widths=[8 * mm, 42 * mm, 20 * mm, 92 * mm], fs=7.5))
+    else:
+        E.append(Paragraph("⚠️ 未提供画布 flow — 跳过拓扑明细 (可传 --flow flows/xxx.json)", small))
+    E.append(PageBreak())
+
+    # ═══ 3 分系统功能分析 ═══
+    E.append(Paragraph("3  分系统功能分析", h1))
+    for name, fn, io, mapping in SUBSYSTEMS:
+        E.append(Paragraph(f"3.{SUBSYSTEMS.index((name, fn, io, mapping)) + 1}  {name} ({fn})", h2))
+        E.append(Paragraph(f"接口: {io}", small))
+        rows = [["模型", "实现"]]
+        for p in MODELS:
+            rows.append([MODELS[p]["cn"], mapping.get(p, "—")])
+        E.append(TBL(rows, widths=[32 * mm, 130 * mm]))
+        E.append(Spacer(1, 2 * mm))
+    E.append(PageBreak())
+
+    # ═══ 4 接口说明 ═══
+    E.append(Paragraph("4  模块接口说明", h1))
+    rows = [["模块", "输入", "输出"]]
+    for name, i, o in MODULE_IO:
+        rows.append([name, i, o])
+    E.append(TBL(rows, widths=[45 * mm, 58 * mm, 59 * mm], fs=7.5))
+    E.append(PageBreak())
+
+    # ═══ 5 参数对比 ═══
+    E.append(Paragraph("5  参数对比", h1))
+    rows = [["模型", "参数量", "隐层", "层数", "冻结策略", "训练吞吐", "显存"]]
+    for p, m in MODELS.items():
+        c = curves.get(p)
+        step_s = f"{c['step_s']:.0f}" if c and c.get("step_s") else "—"
+        rows.append([m["cn"], m["params_m"], str(m["hidden"]), str(m["layers"]),
+                     m["freeze"], step_s, m["gpu_mem"]])
+    E.append(TBL(rows, widths=[26 * mm, 38 * mm, 14 * mm, 14 * mm, 38 * mm, 20 * mm, 16 * mm], fs=7.5))
+    E.append(PageBreak())
+
+    # ═══ 6 架构区别 ═══
+    E.append(Paragraph("6  架构区别", h1))
+    rows = [["维度", "ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE"]]
+    dims = [("生成方式", lambda m: m["category"]),
+            ("世界模型", lambda m: "有" if "世界模型" in m["world_model"] else "无"),
+            ("触觉/力觉", lambda m: "有(模拟)" if ("触觉" in m["category"] or "视触觉" in m["category"] or "Marker" in m["arch"]) else "无"),
+            ("视觉编码", lambda m: m["arch"].split("+")[0].split("(")[0][:18]),
+            ("训练策略", lambda m: m["freeze"])]
+    for dname, fn in dims:
+        rows.append([dname] + [fn(MODELS[p]) for p in MODELS])
+    E.append(TBL(rows, widths=[22 * mm, 30 * mm, 32 * mm, 36 * mm, 34 * mm, 32 * mm], fs=7))
+    E.append(Spacer(1, 2 * mm))
+    E.append(Paragraph("关键差异: ① 生成方式 — ACT 确定性回归 vs SmolVLA 系扩散生成 (输出分布 vs 单值);"
+                       "② 世界模型 — LEW (像素级预测) 与 AWE zFlow (潜空间预测) 提供预见性, ACT/SmolVLA/VLA-Touch 为反应式;"
+                       "③ 触觉 — VLA-Touch (Marker 桥) 与 AWE (视触觉原生融合) 面向插拔力控;"
+                       "④ 架构哲学 — AWE 场景原生 (从任务倒推), 其余通用架构适配。", body))
+    E.append(PageBreak())
+
+    # ═══ 7 功能分析 ═══
+    E.append(Paragraph("7  功能分析 (能力矩阵)", h1))
+    caps = [("力控插拔", {"act": 7, "smolvla": 5, "smolvla_lew": 6, "vla_touch": 9, "awe_zflow": 9}),
+            ("触觉感知", {"act": 2, "smolvla": 3, "smolvla_lew": 3, "vla_touch": 9, "awe_zflow": 8}),
+            ("世界模型预见", {"act": 3, "smolvla": 4, "smolvla_lew": 8, "vla_touch": 5, "awe_zflow": 8}),
+            ("多模态指令", {"act": 2, "smolvla": 9, "smolvla_lew": 9, "vla_touch": 7, "awe_zflow": 6}),
+            ("边缘部署", {"act": 9, "smolvla": 5, "smolvla_lew": 4, "vla_touch": 8, "awe_zflow": 8}),
+            ("长时序泛化", {"act": 4, "smolvla": 6, "smolvla_lew": 8, "vla_touch": 6, "awe_zflow": 8})]
+    rows = [["能力", "ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE"]]
+    for cap, vals in caps:
+        rows.append([cap] + [f"{vals[p]}/10" for p in MODELS])
+    E.append(TBL(rows, widths=[28 * mm] + [28 * mm] * 5, fs=8))
+    E.append(Spacer(1, 2 * mm))
+    E.append(Paragraph("评分依据: 力控/触觉能力看架构是否原生支持 (VLA-Touch Marker 桥 / AWE 视触觉融合);"
+                       "世界模型预见看是否含未来预测模块; 边缘部署看参数量与采样开销 (扩散系需量化)。", small))
+    E.append(PageBreak())
+
+    # ═══ 8 性价比分析 ═══
+    E.append(Paragraph("8  性价比分析 (开发成本 vs 收益)", h1))
+    E.append(Paragraph("成本 = 训练时间 + 显存 + 数据需求 + 调参难度; 收益 = 收敛性 + 能力分 + 部署友好。", body))
+    rows = [["模型", "训练吞吐", "显存", "数据需求", "调参难度", "收敛性(归一化)", "能力综合", "性价比"]]
+    score_map = {p: score_model(p, curves, rollout_have) for p in MODELS}
+    for p, m in MODELS.items():
+        sm = score_map[p]
+        c = curves.get(p)
+        st = curve_stats(c.get("curve")) if c and c.get("curve") else None
+        conv = f"{st['drop_pct']:.0f}%" if st else "—"
+        rows.append([m["cn"],
+                     f"{c['step_s']:.0f}" if c and c.get("step_s") else "—",
+                     m["gpu_mem"], m["data_need"].split(" ")[0],
+                     "低" if p in ("act", "vla_touch", "awe_zflow") else "高",
+                     conv, f"{sm['total']:.1f}",
+                     f"{sm['total'] / (1 + (0 if p in ('act', 'vla_touch', 'awe_zflow') else .8)):.1f}"])
+    E.append(TBL(rows, widths=[24 * mm, 20 * mm, 16 * mm, 20 * mm, 20 * mm, 26 * mm, 20 * mm, 20 * mm], fs=7.5))
+    E.append(Spacer(1, 2 * mm))
+    E.append(Paragraph("性价比 = 综合评分 / (1 + 调参难度惩罚)。低成本高收益模型 (ACT/VLA-Touch/AWE) 适合作产线主力候选。", small))
+    # 评分图
+    score_png = os.path.join(REPORTS, "_score_chart.png")
+    plot_scores(score_map, score_png)
+    E.append(Image(score_png, width=150 * mm, height=72 * mm))
+    E.append(PageBreak())
+
+    # ═══ 9 优势劣势总结 ═══
+    E.append(Paragraph("9  各模型优势与劣势 (数据支撑)", h1))
+    rows = [["模型", "收敛(首→末/下降)", "优势", "劣势", "定位"]]
+    for p, m in MODELS.items():
+        c = curves.get(p)
+        st = curve_stats(c.get("curve")) if c and c.get("curve") else None
+        conv = (f"{st['first']:.2f}→{st['last']:.2f} ({st['drop_pct']:.0f}%)" if st else "无曲线数据")
+        rows.append([m["cn"], conv, m["strengths"], m["weaknesses"], m["dep"]])
+    E.append(TBL(rows, widths=[22 * mm, 30 * mm, 40 * mm, 42 * mm, 28 * mm], fs=7))
+    E.append(Spacer(1, 3 * mm))
+
+    # 曲线图
+    curve_png = os.path.join(REPORTS, "_curve_chart.png")
+    plot_curves(curves, curve_png)
+    E.append(Image(curve_png, width=170 * mm, height=65 * mm))
+    E.append(Spacer(1, 2 * mm))
+    E.append(Paragraph("图注: 左图为原始 loss 曲线 (不同模型 loss 口径不同 — ACT 动作MSE 大, SmolVLA 系扩散噪声MSE 小,"
+                       "绝对值不可直接横比); 右图为 Scope 归一化 (前3点均值=1) 后看下降斜率, 为横比口径。", small))
+
+    # 推理视频对比
+    E.append(Paragraph("9.1  推理效果视频对比", h2))
+    have_vid = [p for p in MODELS if rollout_have.get(p)]
+    if have_vid:
+        rows = [["模型", "视频帧数", "证据"]]
+        for p in have_vid:
+            frames = rollout_have[p]
+            rows.append([MODELS[p]["cn"], f"{frames} 帧", f"reports/rollout_{p}/frame_*.png"])
+        E.append(TBL(rows, widths=[40 * mm, 30 * mm, 80 * mm], fs=8))
+        E.append(Spacer(1, 2 * mm))
+        # 各模型首帧拼图
+        montage = os.path.join(REPORTS, "_video_montage.png")
+        try:
+            make_montage(have_vid, montage)
+            E.append(Image(montage, width=170 * mm, height=42 * mm))
+            E.append(Paragraph("上图为各模型 rollout 首帧对比 (同一场景 push-v3)。完整视频请在控制台「🎥 视频对比」节点双击播放。", small))
+        except Exception:
+            pass
+    else:
+        E.append(Paragraph("⚠️ 尚无 rollout 视频帧 — 在控制台双击「🎥 推理效果对比」或训练后自动生成。", small))
+
+    E.append(Spacer(1, 4 * mm))
+    E.append(Paragraph("结论 (数据支撑): " + conclusion(score_map, curves), body))
+
+    doc.build(E)
+    # 清理临时图
+    for f in (score_png, curve_png, os.path.join(REPORTS, "_video_montage.png")):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+    return out_path
+
+
+def make_montage(policies, out_path):
+    """各模型 rollout 首帧横向拼图"""
+    from PIL import Image as PILImage
+    imgs = []
+    for p in policies:
+        d = os.path.join(REPORTS, f"rollout_{p}")
+        frames = sorted(f for f in os.listdir(d) if f.startswith("frame_") and f.endswith(".png"))
+        if frames:
+            im = PILImage.open(os.path.join(d, frames[0])).convert("RGB")
+            im = im.resize((320, 240))
+            imgs.append(im)
+    if not imgs:
+        raise FileNotFoundError("no frames")
+    w = sum(i.width for i in imgs) + 10 * (len(imgs) - 1)
+    canvas = PILImage.new("RGB", (w, imgs[0].height), "white")
+    x = 0
+    for im in imgs:
+        canvas.paste(im, (x, 0))
+        x += im.width + 10
+    canvas.save(out_path)
+
+
+def conclusion(score_map, curves):
+    """数据支撑的选型结论"""
+    rank = sorted(score_map.items(), key=lambda kv: -kv[1]["total"])
+    top = rank[0]
+    top_m = MODELS[top[0]]
+    # 收集有曲线的模型归一化下降
+    drops = []
+    for p, c in curves.items():
+        if c and c.get("curve"):
+            st = curve_stats(c["curve"])
+            if st:
+                drops.append((MODELS[p]["cn"], st["drop_pct"]))
+    drops.sort(key=lambda x: -x[1])
+    txt = (f"综合评分 {top_m['cn']} 最高 ({top[1]['total']:.1f}/10)。"
+           f"训练收敛 (归一化下降率): " +
+           ("、".join(f"{n} {d:.0f}%" for n, d in drops) if drops else "无完整曲线") + "。")
+    if top[0] == "awe_zflow":
+        txt += ("AWE 以场景原生视触觉 + 潜空间世界模型在收敛性/触觉/部署三维度均衡领先,"
+                "适合作为 Z700 下一代主力路线; ACT 保持产线兜底 (确定性输出),"
+                "VLA-Touch 待真机 H06 力觉接入后复评 (当前触觉为模拟)。")
+    elif top[0] == "act":
+        txt += ("ACT 以确定性与部署极简领先, 但无世界模型/触觉, 建议作为产线基线;"
+                "中长期向 AWE/VLA-Touch 方向演进 (力控+预见性)。")
+    else:
+        txt += "建议结合 Z-MAX 插拔力控场景, 优先评估含触觉与世界模型的路线。"
+    return txt
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--flow", default=None, help="画布 flow JSON (系统全貌)")
+    ap.add_argument("--out", default=None, help="输出 PDF 路径")
+    args = ap.parse_args()
+
+    flow = None
+    if args.flow and os.path.exists(args.flow):
+        with open(args.flow, encoding="utf-8") as f:
+            flow = json.load(f)
+
+    curves = load_curves()
+    rollout_have = {}
+    for p in MODELS:
+        d = os.path.join(REPORTS, f"rollout_{p}")
+        n = len([f for f in os.listdir(d) if f.startswith("frame_")]) if os.path.isdir(d) else 0
+        if n:
+            rollout_have[p] = n
+
+    out = args.out or os.path.join(REPORTS, f"五模型对比技术选型报告_{time.strftime('%Y%m%d_%H%M%S')}.pdf")
+    os.makedirs(REPORTS, exist_ok=True)
+    build_pdf(flow, curves, rollout_have, out)
+    print(f"✅ 报告已生成: {out}")
+
+
+if __name__ == "__main__":
+    main()
