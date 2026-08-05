@@ -579,9 +579,11 @@ class FlowScopeDialog(QDialog):
                 xs = np.array([float(s) for s, _ in cv])
                 # ⚖️ 统一量纲 (2026-08-05 老倪: "三个模型改成统一量纲" — ACT 是动作空间 MSE
                 #   (rad/s)², SmolVLA 系是扩散噪声空间 MSE, 绝对值差量级不可比;
-                #   归一化: 每条曲线除以起点 → 都从 1.0 开始, 直观对比下降速度/幅度)
-                if ys[0] != 0:
-                    ys = ys / ys[0]
+                #   归一化: 除以前3点平均 (2026-08-05 修复: 单点基准不稳 — SmolVLA 首点
+                #   0.4357 异常小, 次点 1.049/0.4357=2.4 暴涨; 前3点平均抗波动))
+                base = float(np.mean(ys[:3])) if len(ys) >= 3 else float(ys[0])
+                if base != 0:
+                    ys = ys / base
                 series[f"{disp}"] = (xs, ys, color, False)
                 present_policies.add(policy)
         except Exception:
