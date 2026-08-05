@@ -359,9 +359,11 @@ class LeWorldModel(nn.Module):
             attn_mode=attn_mode,
         )
         
-        # Projector for vision encoder output
+        # Projector for vision encoder output (2026-08-05 修复: 兼容 SmolVLMVisionConfig 无嵌套 vision_config)
+        _vc = getattr(vision_encoder.config, "vision_config", None)
+        _vhs = getattr(_vc, "hidden_size", None) or getattr(vision_encoder.config, "hidden_size", 1152)
         self.projector = nn.Linear(
-            vision_encoder.config.vision_config.hidden_size, 
+            _vhs,
             obs_embed_dim
         )
         

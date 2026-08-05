@@ -94,8 +94,10 @@ class SmolVLALewModel(nn.Module):
         if config.enable_lew_world_model:
             # 获取SigLIP视觉编码器
             vision_encoder = self.smolvlm.vlm.model.vision_model
-            # 获取视觉编码器输出维度
-            vision_hidden_size = vision_encoder.config.vision_config.hidden_size
+            # 获取视觉编码器输出维度 (2026-08-05 修复: SmolVLMVisionConfig 无嵌套 vision_config,
+            #   直接取 config.hidden_size — 之前 freeze=true 强制关 LEW 从未走到此路径, 共存后暴露)
+            vc = getattr(vision_encoder.config, "vision_config", None)
+            vision_hidden_size = getattr(vc, "hidden_size", None) or getattr(vision_encoder.config, "hidden_size", 1152)
             
             # 初始化LeWorldModel
             self.le_world_model = LeWorldModel(

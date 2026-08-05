@@ -123,8 +123,9 @@ class SmolVLALewConfig(PreTrainedConfig):
     def __post_init__(self) -> None:
         super().__post_init__()
         # 逻辑替换：原freeze_qwen + enable_world_model → freeze_smolvlm + enable_lew_world_model
-        if self.freeze_smolvlm and self.enable_lew_world_model:
-            self.enable_lew_world_model = False
+        # 2026-08-05 老倪修正: 允许 freeze_smolvlm=true + enable_lew_world_model=true 共存 —
+        #   LeWorldModel.encode_frame 用 with torch.no_grad() (冻结 SigLIP 提特征, 不依赖 VLM 梯度),
+        #   LEW 的 predictor/action_encoder 独立训练; VLM 冻结省显存+加速 (4060)
         if self.n_action_steps > self.chunk_size:
             raise ValueError("`n_action_steps` must be <= `chunk_size`.")
         # LeWorldModel 最低帧数校验，替换原jepa tubelet判断

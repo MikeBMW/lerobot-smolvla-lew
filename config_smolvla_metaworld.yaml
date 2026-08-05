@@ -24,7 +24,7 @@ dataset:
   episodes: [0]
 
 batch_size: 1
-steps: 300
+steps: 150
 num_workers: 0
 persistent_workers: false
 log_freq: 50
