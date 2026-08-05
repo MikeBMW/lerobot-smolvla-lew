@@ -2837,7 +2837,13 @@ class SimulinkModule(QWidget):
         dlg.exec_()
 
     def start_sim(self):
+        # 🚀 即时反馈 (2026-08-05 老倪: "运行, 还是没反应" — 点击瞬间按钮变运行中+状态栏提示)
+        self.btn_run.setText("⏳ 运行中…")
+        self.btn_run.setEnabled(False)
+        self._log("▶ 运行指令已接收, 正在解析画布…")
         if not self.nodes:
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
             self._log("⚠️ 画布为空 — 点击上方「🗂 参考应用」一键加载模板, 或从左侧模块库添加节点")
             if self._tutorial_active:
                 self._tutorial_hint_mismatch("run", "pipeline")

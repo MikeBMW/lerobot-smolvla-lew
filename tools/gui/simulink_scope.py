@@ -537,7 +537,15 @@ class FlowScopeDialog(QDialog):
             root = self.module._repo_root()
             all_files = sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json")),
                                key=os.path.getmtime)
+            now = time.time()
             for f in all_files:
+                # 2026-08-05 老倪: "scope默认还是留了一条训练loss曲线" — 只显示本轮训练
+                # (文件最近 10 分钟内写入) 的曲线; 重启后旧文件不显示, Scope 默认空
+                try:
+                    if now - os.path.getmtime(f) > 600:
+                        continue  # 旧曲线 (>10min) 不显示
+                except Exception:
+                    continue
                 d = json.load(open(f, encoding="utf-8"))
                 cv = d.get("curve") or []
                 policy = d.get("policy", "?")
