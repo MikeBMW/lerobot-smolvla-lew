@@ -34,6 +34,7 @@ NODE_TYPES = {
     "system":    {"cn": "系统", "color": "#d4a800"},
     "hardware":  {"cn": "硬件", "color": "#ff4444"},
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
+    "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -53,6 +54,8 @@ REFERENCE_APPS = [
     # "控制台是主控点, 能看到CICD全局, 在node上要有所有链路主要node, 要能运行;
     #  既要有metaworld数据, 又要有Orin, 又要有ACT模型, 可随意切换如何训练")
     ("🎛 CICD 主控台", [
+        ("train_gate", "☑ 训练开关", {"train_enabled": True,
+                                      "desc": "checkbox: 打勾=训练 / 不打=不训练 · 双击切换"}),
         ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin",
                                         "desc": "真实产线数据"}),
         ("hardware", "📦 metaworld 数据", {"steps": 50, "source": "metaworld",
@@ -63,7 +66,7 @@ REFERENCE_APPS = [
         ("condition", "✅ 模型验证", {"strict": True, "desc": "双击运行验证 (validate_flow)"}),
         ("action", "📦 集成打包", {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"}),
         ("hardware", "🚚 部署 Orin", {"target": "192.168.23.10", "desc": "双击查部署状态"}),
-    ], [(0, 2), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)]),
+    ], [(1, 3), (2, 3), (3, 0), (0, 4), (4, 5), (5, 6), (6, 7)]),
     ("⚙️ CI/CD 默认流水线", [
         ("hardware", "📥 输入数据", {"ip": "Orin", "fps": 30, "desc": "采集数据源"}),
         ("model", "🧠 ACT 模型", {"chunk_size": 7, "dim_model": 256, "desc": "训练/推理"}),
@@ -212,6 +215,89 @@ REFERENCE_APPS = [
         ["📦 metaworld 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
         ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比"],
     ]),
+    # 🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: "参考VLA-Touch项目, 4060资源有限要改造,
+    #   纵向对比不同模型的区别, 用于技术选型" — github.com/jxbi1010/VLA-Touch, RA-L 2026)
+    # 官方 Manipulation 层拓扑 (bridge_controller.py / bridge_model.py):
+    #   base VLA π(a|s,I) 生成动作块 → Interpolant π_I(â|s,a,m) 用触觉精炼动作
+    #   Interpolant 输入 = DINOv2 视觉嵌入 + GelSight marker 触觉信号 m + VLA 动作 a
+    # 4060 精简: base VLA 冻结 (官方: without fine-tuning the base VLA) → 只训轻量控制器
+    #   DINOv2-small 22M 冻结 · Marker 触觉 CV 轻量 · Interpolant MLP ~1M — 显存无忧
+    # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope) + VLA-Touch 分支 7
+    #   ①🖼 DINOv2 视觉 (官方 visual_encoder.py) ②📍 Marker 触觉跟踪 (marker_tracker.py)
+    #   ③🌀 DiT-B base VLA (与 SmolVLA 同构, 冻结) ④🎯 Action Head (VLA 动作输出)
+    #   ⑤🌉 Interpolant 触觉控制器 (bridge_model.py StochasticInterpolants)
+    #   ⑥🚀 训练 (只训控制器) ⑦📊 对比评估 Scope (共用)
+    ("🖐 VLA-Touch 触觉对比", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "shared": True,
+                                           "desc": "♻ 统一数据集 (训练/评估共用, 与其他模型同源可比)"}),
+        ("model", "🖼 DINOv2 视觉编码", {"backbone": "dinov2-small", "freeze": True,
+                                        "desc": "官方 visual_encoder: 视觉嵌入条件 (22M 冻结)"}),
+        ("condition", "📍 Marker 触觉跟踪", {"grid": "7x9", "dim": 4,
+                                            "desc": "官方 marker_tracker: GelSight 标记位移 → 低维力信号 m"}), 
+        ("model", "🌀 DiT-B base VLA", {"hidden": 256, "layers": 1, "freeze": True,
+                                        "desc": "base VLA 动作生成 (与 SmolVLA 同构, 冻结不训练)"}),
+        ("model", "🎯 Action Head · VLA", {"action_dim": 4, "chunk_size": 7,
+                                           "desc": "VLA 动作块 a_t → Interpolant 精炼输入"}), 
+        ("model", "🌉 Interpolant 控制器", {"diffuse_steps": 10, "hidden": 256,
+                                           "desc": "官方 StochasticInterpolants: 桥式扩散精炼动作 (输入=VLA动作+视觉+触觉, 只训练此模块)"}),
+        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 50,
+                                        "desc": "双击 → on_train(policy=vla_touch) · 冻结 VLA 只训 Interpolant (4060 精简)"}),
+        ("system", "📊 对比评估 Scope", {"shared": True,
+                                        "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"}),
+    ], [
+        # 官方 forward 数据流 (VLA/residual_controller):
+        # 数据 → DINOv2 视觉 (0,1) · 数据 → Marker 触觉 (0,2) · 数据 → DiT-B (0,3)
+        # DINOv2 视觉嵌入 → Interpolant 条件 (1,5) · Marker 触觉 m → Interpolant 条件 (2,5)
+        # DiT-B → Action Head (3,4) · VLA 动作 a → Interpolant x0 (4,5)
+        # Interpolant 精炼动作 → 训练 (5,6) · 训练 → 对比 Scope (6,7)
+        (0, 1, "图像"), (0, 2, "触觉图"), (0, 3, "状态+指令"),
+        (1, 5, "视觉嵌入"), (2, 5, "触觉信号m"), (3, 4, "动作块"), (4, 5, "VLA动作a"),
+        (5, 6, "精炼动作"), (6, 7, "评估"),
+    ],
+    # 🗂 单行展开布局 (数据 → 双路感知 → VLA 动作 → Interpolant → 训练 → 评估)
+    [
+        ["📦 metaworld 数据", "🖼 DINOv2 视觉编码", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "📊 对比评估 Scope"],
+        ["", "📍 Marker 触觉跟踪", "🌀 DiT-B base VLA", "🎯 Action Head · VLA", ""],
+    ]),
+    # 🧿 AWE 场景原生对比 (2026-08-05 老倪: "增加它石的AWE模型, 同样原则要纵向对比,
+    #   根据当前模块的抽象结构, 同构模型要纵向对比" — 它石智航 AWE 3.5/OmniVTA)
+    # Z-MAX 场景原生路线 (老倪架构参考): 视觉·触觉·力觉·动作 场景级深度融合
+    #   + zFlow 世界模型 (H-JEPA 三层潜空间: z₁空间/z₂物体/z₃语义 + GRU预测器
+    #   + 交叉注意力分层注入, 门控 1.0/0.1/0.01)
+    # 4060 精简: SigLIP-base 冻结 + 潜空间等比缩小 (256/256/128→128/128/64), 可训练≈15M
+    # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope) + AWE 分支 6
+    #   ①🖼 SigLIP 视觉 (与 VLA-Touch DINOv2 同列 — 视觉编码列) ②🧠 H-JEPA 三层潜空间
+    #   ③🌊 zFlow 世界引擎 (GRU 预测器 — 世界模型列, 与 LEW ARPredictor / VLA-Touch
+    #     Interpolant 同列对比) ④🔀 交叉注意力注入 ⑤🎯 Action Head (同列)
+    #   ⑥🚀 训练 (同列) ⑦📊 对比评估 Scope (共用)
+    ("🧿 AWE 场景原生对比", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "shared": True,
+                                           "desc": "♻ 统一数据集 (训练/评估共用, 与其他模型同源可比)"}),
+        ("model", "🖼 SigLIP 视觉编码", {"backbone": "siglip-base", "freeze": True,
+                                        "desc": "原生多模态感知: SigLIP-base 视觉特征 (86M 冻结, 4060 无压力)"}),
+        ("model", "🧠 H-JEPA 三层潜空间", {"d_z1": 128, "d_z2": 128, "d_z3": 64,
+                                          "desc": "z₁空间/ z₂物体/ z₃语义 三层潜表示 (场景原生融合, 非乐高拼接)"}),
+        ("model", "🌊 zFlow 世界引擎", {"gru": 128, "layers": 1,
+                                       "desc": "GRU 预测器: 潜空间推演未来状态/接触演化 (轻量, 适合 Orin Nano)"}),
+        ("model", "🔀 交叉注意力注入", {"gates": "1.0/0.1/0.01",
+                                      "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"}),
+        ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
+                                           "desc": "隐空间动作 → 真实动作 (与其它模型 Action Head 同列)"}),
+        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 50,
+                                  "desc": "双击 → on_train(policy=awe_zflow) · 场景原生+zFlow 世界模型 (4060 精简)"}),
+        ("system", "📊 对比评估 Scope", {"shared": True,
+                                        "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"}),
+    ], [
+        # 官方数据流 (场景原生: 数据 → 视觉/潜空间/世界引擎/注入/动作头 → 训练 → Scope)
+        (0, 1, "图像"), (0, 2, "状态+力觉"), (1, 2, "视觉特征"), (2, 3, "三层潜状态"),
+        (3, 4, "未来潜状态"), (4, 5, "注入动作"), (5, 6, "动作"), (6, 7, "评估"),
+    ],
+    # 🗂 单行展开布局 (与 VLA-Touch 同构: 数据 → 视觉 → 世界模型 → ActionHead → 训练 → 评估)
+    [
+        ["📦 metaworld 数据", "🖼 SigLIP 视觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 交叉注意力注入", "🎯 Action Head · AWE", "🚀 AWE 训练", "📊 对比评估 Scope"],
+    ]),
     # 🎥 推理对比 (2026-08-05 老倪: "训练完后继续推理, 对比3个模型的推理效果,
     #   要有视频显示的node, 3个视频display窗口")
     # 数据 → 3 训练 → 3 视频显示 (双击任意视频节点 → 3 窗口同步播放推理效果)
@@ -306,6 +392,46 @@ LIBRARY = [
           "desc": "Transformer.norm + output_proj → 下一帧嵌入预测"},
           },
     ]),
+    # 🖐 VLA-Touch·触觉控制器子模块 (2026-08-05 老倪: 参考 VLA-Touch 项目 —
+    #   4060 精简版: base VLA 冻结只训 Interpolant, DINOv2-small 22M + Marker CV + MLP)
+    # 对应官方 VLA/residual_controller/: visual_encoder.py → marker_tracker.py →
+    #   bridge_controller.py (StateEncoder) → bridge/bridge_model.py (StochasticInterpolants)
+    ("model", "🖐 VLA-Touch·触觉子模块", [
+        {"name": "🖼 DINOv2 视觉编码", "params": {"backbone": "dinov2-small", "freeze": True,
+          "desc": "官方 visual_encoder: DINOv2-small 视觉嵌入 (22M 冻结, 4060 无压力)"},
+          },
+        {"name": "📍 Marker 触觉跟踪", "params": {"grid": "7x9", "dim": 4,
+          "desc": "官方 marker_tracker: GelSight 标记位移 → 低维力信号 m_t (CV 轻量)"},
+          },
+        {"name": "🌀 DiT-B base VLA", "params": {"hidden": 256, "layers": 1, "freeze": True,
+          "desc": "base VLA 动作生成 (与 SmolVLA 同构 — 同构模型放同位置, 冻结不训练)"},
+          },
+        {"name": "🌉 Interpolant 控制器", "params": {"diffuse_steps": 10, "hidden": 256,
+          "desc": "官方 StochasticInterpolants: 桥式扩散 (velocity_loss) 精炼 VLA 动作 — 唯一训练模块"},
+          },
+        {"name": "🖐 VLA-Touch 完整模型", "params": {}, "template": "🖐 VLA-Touch 触觉对比",
+         "desc": "一键搭建 VLA-Touch 对比管道 (8节点9连线: 数据→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练→Scope)"},
+    ]),
+    # 🧿 AWE·场景原生子模块 (2026-08-05 老倪: 参考它石 AWE 3.5 原生架构 + Z-MAX 场景原生路线 —
+    #   H-JEPA 三层潜空间 zFlow 世界模型, 4060 精简)
+    # 对应 train_awe_zflow.py: SigLIP视觉 → HJEPAEncoder(三层潜空间) → GRUPredictor(zFlow世界引擎)
+    #   → CrossAttnInject(交叉注意力分层注入) → ActionHead
+    ("model", "🧿 AWE·场景原生子模块", [
+        {"name": "🖼 SigLIP 视觉编码", "params": {"backbone": "siglip-base", "freeze": True,
+          "desc": "原生多模态感知: SigLIP-base 视觉特征 (86M 冻结)"},
+          },
+        {"name": "🧠 H-JEPA 三层潜空间", "params": {"d_z1": 128, "d_z2": 128, "d_z3": 64,
+          "desc": "z₁空间/ z₂物体/ z₃语义 三层潜表示 (场景原生融合, 非乐高拼接)"},
+          },
+        {"name": "🌊 zFlow 世界引擎", "params": {"gru": 128, "layers": 1,
+          "desc": "GRU 预测器: 潜空间推演未来状态/接触演化 (轻量, Orin Nano 可部署)"},
+          },
+        {"name": "🔀 交叉注意力注入", "params": {"gates": "1.0/0.1/0.01",
+          "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"},
+          },
+        {"name": "🧿 AWE 完整模型", "params": {}, "template": "🧿 AWE 场景原生对比",
+         "desc": "一键搭建 AWE 场景原生对比管道 (8节点8连线: 数据→SigLIP→三层潜空间→zFlow世界引擎→注入→ActionHead→训练→Scope)"},
+    ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
         {"name": "A01 取料·100G",  "params": {"pos": [0.1, 0.2, 0.3]}},
@@ -319,7 +445,7 @@ LIBRARY = [
         {"name": "A09 AOI检测",    "params": {}},
         {"name": "A10 分拣",       "params": {"bin": 3}},
     ]),
-    ("system", "系统 (7)", [
+    ("system", "系统 (8)", [
         {"name": "S00 任务调度", "params": {"policy": "fifo"}},
         {"name": "S01 工作流",   "params": {"file": "flow.json"}},
         {"name": "S02 数据闭环", "params": {"mode": "auto"}},
@@ -327,6 +453,8 @@ LIBRARY = [
         {"name": "S04 W&B监控",  "params": {}},
         {"name": "S05 心跳",     "params": {"interval": 5}},
         {"name": "S06 Switch 数据源", "params": {"switch": "orin"}},
+        {"name": "☑ 训练开关", "params": {"train_enabled": True},
+         "desc": "checkbox: 打勾=训练 / 不打=不训练 (双击切换, 放最前边控全链路)"},
     ]),
     ("hardware", "硬件 (8)", [
         {"name": "H00 Orin Nano",  "params": {"ip": "192.168.23.10", "port": 8765, "fps": 30}},
@@ -347,6 +475,23 @@ def gen_id():
         random.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(3)))
 
 
+# ── 深色对话框 QSS (2026-08-05 老倪: 训练配置对话框黑字看不清 → 统一深底白字) ──
+_DLG_DARK_QSS = """
+QDialog { background:#0d1117; }
+QLabel { color:#e6edf3; font-size:12px; }
+QLabel#dim { color:#8b949e; font-size:11px; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
+    background:#010409; color:#e6edf3; border:1px solid #30363d; border-radius:6px;
+    padding:4px 8px; min-height:22px; selection-background-color:#1f6feb; }
+QComboBox::drop-down { border:none; width:22px; }
+QComboBox QAbstractItemView { background:#161b22; color:#e6edf3; selection-background-color:#1f6feb; }
+QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px;
+    padding:6px 14px; font-size:12px; font-weight:600; }
+QPushButton:hover { border-color:#00d4aa; }
+QDialogButtonBox QPushButton { min-width:72px; }
+"""
+
+
 def link_id():
     return "l%d%s" % (int(time.time() * 1000), ''.join(
         random.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(2)))
@@ -365,15 +510,16 @@ class TrainConfigDialog(QDialog):
         self.node = node
         self.setWindowTitle(f"⚙️ 训练配置 — {node['name']}")
         self.setMinimumWidth(420)
+        self.setStyleSheet(_DLG_DARK_QSS)
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
 
         head = QLabel(f"🎛 {node['name']} 训练参数")
-        head.setStyleSheet("font-size:14px; font-weight:700; color:#1f2328; padding:2px;")
+        head.setStyleSheet("font-size:14px; font-weight:700; color:#e6edf3; padding:2px;")
         lay.addWidget(head)
 
         note = QLabel("保存后对下次训练生效 (当前 50 步快速验证, 跑通后可加大)")
-        note.setStyleSheet("color:#57606a; font-size:11px;")
+        note.setStyleSheet("color:#8b949e; font-size:11px;")
         lay.addWidget(note)
 
         form = QFormLayout()
@@ -429,10 +575,11 @@ class BlockParamsDialog(QDialog):
         self.node = node
         self.setWindowTitle(f"Block Parameters: {node['name']}")
         self.setMinimumWidth(380)
+        self.setStyleSheet(_DLG_DARK_QSS)
         lay = QVBoxLayout(self)
 
         head = QLabel(f"{NODE_TYPES.get(node['type'], {}).get('cn', node['type'])} · {node['name']}")
-        head.setStyleSheet("font-size:14px; font-weight:700; color:#1f2328; padding:4px;")
+        head.setStyleSheet("font-size:14px; font-weight:700; color:#e6edf3; padding:4px;")
         lay.addWidget(head)
 
         form = QFormLayout()
@@ -447,7 +594,7 @@ class BlockParamsDialog(QDialog):
         params = node.get("params", {})
         if not params:
             lab = QLabel("(无参数)")
-            lab.setStyleSheet("color:#888; font-size:11px;")
+            lab.setStyleSheet("color:#8b949e; font-size:11px;")
             form.addRow("参数", lab)
         for k, v in params.items():
             if isinstance(v, bool):
@@ -473,7 +620,7 @@ class BlockParamsDialog(QDialog):
 
         # 端口说明
         info = QLabel(f"输入: {len(node.get('inputs', []))} · 输出: {len(node.get('outputs', []))}")
-        info.setStyleSheet("color:#57606a; font-size:10px;")
+        info.setStyleSheet("color:#8b949e; font-size:10px;")
         lay.addWidget(info)
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1254,6 +1401,25 @@ class SimNodeItem(QGraphicsObject):
         if t == "switch":
             painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              f"🔀 SEL: {params.get('switch', 'orin')}")
+        elif t == "train_gate":
+            # ☑ 训练开关 (2026-08-05 老倪: checkbox 打勾=训练 / 不打=不训练)
+            en = params.get("train_enabled", True)
+            gate_col = QColor("#3fb950") if en else QColor("#f85149")
+            # 绘制 checkbox 方块 + 对号
+            cb = QRectF(12, 24, 13, 13)
+            painter.setBrush(QColor("#0d1117"))
+            painter.setPen(QPen(gate_col, 1.4))
+            painter.drawRect(cb)
+            if en:
+                painter.setPen(QPen(gate_col, 1.8))
+                painter.drawLine(QPointF(cb.left() + 2.5, cb.top() + 6.5),
+                                 QPointF(cb.left() + 5.5, cb.top() + 9.5))
+                painter.drawLine(QPointF(cb.left() + 5.5, cb.top() + 9.5),
+                                 QPointF(cb.left() + 10.5, cb.top() + 3.5))
+            painter.setFont(QFont("Arial", 8, QFont.Bold))
+            painter.setPen(QColor("#e6edf3") if en else QColor("#f85149"))
+            painter.drawText(QRectF(29, 22, self.w - 40, 16), Qt.AlignVCenter | Qt.AlignLeft,
+                             "训练: 开" if en else "训练: 关")
         else:
             painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              NODE_TYPES.get(t, {}).get("cn", t))
@@ -2429,7 +2595,8 @@ class SimulinkModule(QWidget):
             "name": name,
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
-                     "system": "◉", "hardware": "▣", "switch": "🔀"}[ntype],
+                     "system": "◉", "hardware": "▣", "switch": "🔀",
+                     "train_gate": "☑"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
             "inputs": [{"id": "in1", "label": "in", "dtype": "any"}],
@@ -3907,12 +4074,19 @@ class SimulinkModule(QWidget):
 
         def _work():
             root = self._repo_root()
+            # ☑ 训练开关检查 (2026-08-05 老倪: checkbox 打勾=训练 / 不打=不训练 —
+            #   开关节点放最前边, 关掉后整个训练环节跳过)
+            if not self._train_gate_state():
+                self.log_signal.emit("⏭ 训练开关未打勾 — 跳过训练 (双击 ☑ 训练开关节点可切换)")
+                return True, "训练已跳过 (开关关闭)"
             data_root, source, real = self._ensure_training_data(data_source=data_source)
             if not data_root:
                 return False, "无训练数据"
             self.log_signal.emit(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
 
-            # 🔬 三策略: act=ACT / smolvla=SmolVLA 纯动作(无LEW) / smolvla_lew=SmolVLA+LeWorldModel
+            # 🔬 多策略: act=ACT / smolvla=SmolVLA 纯动作(无LEW) / smolvla_lew=SmolVLA+LeWorldModel
+            #   / vla_touch=VLA-Touch 触觉增强控制器 (🖐 2026-08-05 老倪: 参考 VLA-Touch 项目,
+            #   base VLA 冻结只训 Interpolant 控制器 — 4060 精简版)
             # 各用独立配置模板; ts_dir 前缀区分; 曲线落盘 reports/train_curve_<policy>.json
             if policy == "smolvla_lew":
                 cfg_path = os.path.join(root, "config_smolvla_lew_metaworld.yaml")
@@ -3922,33 +4096,45 @@ class SimulinkModule(QWidget):
                 cfg_path = os.path.join(root, "config_smolvla_metaworld.yaml")
                 ts_dir = "smolvla_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "SmolVLA"
+            elif policy == "vla_touch":
+                # 🖐 VLA-Touch: 独立精简训练脚本 (Interpolant 触觉控制器, 不依赖 lerobot_train)
+                cfg_path = None
+                ts_dir = "vla_touch_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "VLA-Touch"
+            elif policy == "awe_zflow":
+                # 🧿 AWE-zFlow: 独立精简训练脚本 (场景原生 + zFlow 三层潜空间世界模型)
+                cfg_path = None
+                ts_dir = "awe_zflow_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "AWE-zFlow"
             else:
                 cfg_path = os.path.join(root, "config_act_metaworld.yaml")
                 ts_dir = "act_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "ACT"
             import re
-            try:
-                with open(cfg_path, encoding="utf-8") as f:
-                    cfg_txt = f.read()
-                # 输出目录加时间戳, 避免重复训练时 FileExistsError
-                cfg_txt = re.sub(r"(output_dir:\s*).*", f"output_dir: outputs/train/{ts_dir}", cfg_txt, count=1)
-                cfg_txt = re.sub(r"(job_name:\s*).*", f"job_name: {ts_dir}", cfg_txt, count=1)
-                cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
-                # 🆕 节点逻辑可修改区参数透传 (^ 行锚定防 n_obs_steps 误匹配)
-                if steps:
-                    cfg_txt = re.sub(r"^steps:\s*.*", f"steps: {int(steps)}", cfg_txt, count=1, flags=re.M)
-                if batch_size:
-                    cfg_txt = re.sub(r"^batch_size:\s*.*", f"batch_size: {int(batch_size)}", cfg_txt, count=1, flags=re.M)
-                if lr:
-                    cfg_txt = re.sub(r"^\s*lr:\s*.*", f"  lr: {lr}", cfg_txt, count=1, flags=re.M)
-                over = f" · ✏️节点逻辑: steps={steps}" + (f" batch={batch_size}" if batch_size else "") + (f" lr={lr}" if lr else "")
-                self.log_signal.emit(f"⚙️ {pname} 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}{over}")
-                tmp_cfg = os.path.join(root, f"config_{policy}_runtime.yaml")
-                with open(tmp_cfg, "w", encoding="utf-8") as f:
-                    f.write(cfg_txt)
-            except Exception as ex:
-                self.log_signal.emit(f"❌ 配置生成失败: {ex}")
-                tmp_cfg = cfg_path
+            tmp_cfg = cfg_path
+            if cfg_path is not None:
+                try:
+                    with open(cfg_path, encoding="utf-8") as f:
+                        cfg_txt = f.read()
+                    # 输出目录加时间戳, 避免重复训练时 FileExistsError
+                    cfg_txt = re.sub(r"(output_dir:\s*).*", f"output_dir: outputs/train/{ts_dir}", cfg_txt, count=1)
+                    cfg_txt = re.sub(r"(job_name:\s*).*", f"job_name: {ts_dir}", cfg_txt, count=1)
+                    cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
+                    # 🆕 节点逻辑可修改区参数透传 (^ 行锚定防 n_obs_steps 误匹配)
+                    if steps:
+                        cfg_txt = re.sub(r"^steps:\s*.*", f"steps: {int(steps)}", cfg_txt, count=1, flags=re.M)
+                    if batch_size:
+                        cfg_txt = re.sub(r"^batch_size:\s*.*", f"batch_size: {int(batch_size)}", cfg_txt, count=1, flags=re.M)
+                    if lr:
+                        cfg_txt = re.sub(r"^\s*lr:\s*.*", f"  lr: {lr}", cfg_txt, count=1, flags=re.M)
+                    over = f" · ✏️节点逻辑: steps={steps}" + (f" batch={batch_size}" if batch_size else "") + (f" lr={lr}" if lr else "")
+                    self.log_signal.emit(f"⚙️ {pname} 训练配置已指向: {data_root} · 输出: outputs/train/{ts_dir}{over}")
+                    tmp_cfg = os.path.join(root, f"config_{policy}_runtime.yaml")
+                    with open(tmp_cfg, "w", encoding="utf-8") as f:
+                        f.write(cfg_txt)
+                except Exception as ex:
+                    self.log_signal.emit(f"❌ 配置生成失败: {ex}")
+                    tmp_cfg = cfg_path
 
             # 📊 Scope 曲线管理 (2026-08-05 调整): 只重置当前 policy 自己的旧曲线,
             #   保留其他模型已完成曲线 — 三模型对比时 ACT 训完波形保留, SmolVLA 训练中可见
@@ -3998,10 +4184,35 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
 
-            rc = self._run_cmd(["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
-                                "-m", "lerobot.scripts.lerobot_train",
-                                "--config_path", tmp_cfg], cwd=root, collect=out_lines,
-                               line_hook=lambda ln: _line_hook(ln))
+            if policy == "vla_touch":
+                # 🖐 VLA-Touch: 独立精简训练脚本 (train_vla_touch.py, 不依赖 lerobot_train)
+                cmd = ["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
+                       os.path.join(root, "tools", "train_vla_touch.py"),
+                       "--steps", str(int(steps) if steps else 50),
+                       "--data-root", data_root]
+                if batch_size:
+                    cmd += ["--batch", str(int(batch_size))]
+                if lr:
+                    cmd += ["--lr", str(lr)]
+                rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
+                                   line_hook=lambda ln: _line_hook(ln))
+            elif policy == "awe_zflow":
+                # 🧿 AWE-zFlow: 独立精简训练脚本 (train_awe_zflow.py)
+                cmd = ["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
+                       os.path.join(root, "tools", "train_awe_zflow.py"),
+                       "--steps", str(int(steps) if steps else 50),
+                       "--data-root", data_root]
+                if batch_size:
+                    cmd += ["--batch", str(int(batch_size))]
+                if lr:
+                    cmd += ["--lr", str(lr)]
+                rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
+                                   line_hook=lambda ln: _line_hook(ln))
+            else:
+                rc = self._run_cmd(["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
+                                    "-m", "lerobot.scripts.lerobot_train",
+                                    "--config_path", tmp_cfg], cwd=root, collect=out_lines,
+                                   line_hook=lambda ln: _line_hook(ln))
             self._train_curve = self._parse_loss_curve(out_lines)
             step_s = self._parse_step_s(out_lines)
             # 最终落盘 (训练结束后覆盖实时文件: 补全 step_s + 最终曲线)
@@ -4228,17 +4439,21 @@ class SimulinkModule(QWidget):
 
     def on_compare_scope(self, **kw):
         """🔬 对比评估 Scope: 双击 → 自动跑已训练模型统一评估 → 弹出对比图表
-        (兼容双/三模型: 至少一个模型有训练产物即可, compare_models.py 会跳过缺失的)"""
+        (兼容双/三/四模型: 至少一个模型有训练产物即可, compare_models.py 会跳过缺失的)"""
         root = self._repo_root()
         rc_act = os.path.join(root, "reports", "train_curve_act.json")
         rc_sml = os.path.join(root, "reports", "train_curve_smolvla.json")
         rc_lew = os.path.join(root, "reports", "train_curve_smolvla_lew.json")
-        have = [p for p, f in (("ACT", rc_act), ("SmolVLA", rc_sml), ("SmolVLA+LEW", rc_lew)) if os.path.exists(f)]
+        rc_vt = os.path.join(root, "reports", "train_curve_vla_touch.json")
+        rc_aw = os.path.join(root, "reports", "train_curve_awe_zflow.json")
+        have = [p for p, f in (("ACT", rc_act), ("SmolVLA", rc_sml),
+                               ("SmolVLA+LEW", rc_lew), ("VLA-Touch", rc_vt),
+                               ("AWE-zFlow", rc_aw)) if os.path.exists(f)]
         if not have:
             self._log("⚠️ 对比评估: 还缺训练产物 — 先点「▶ 运行」(或分别双击训练节点) 训练模型")
             self._qmsg_info("🔬 对比评估",
                             "还缺训练产物!\n\n请先点「▶ 运行」依次训练模型\n"
-                            "或分别双击「🚀 ACT 训练」「🚀 SmolVLA 训练」「🚀 SmolVLA+LEW 训练」节点。")
+                            "或分别双击「🚀 ACT 训练」「🚀 SmolVLA 训练」「🚀 SmolVLA+LEW 训练」「🚀 VLA-Touch 训练」「🚀 AWE 训练」节点。")
             return
         self._log(f"⚔️ 对比评估: 统一 metaworld 测试集 (120帧) 评估 {len(have)} 个已训练模型 ({' / '.join(have)}) — 精确度/鲁棒性/延迟, 完成自动弹图表…")
 
@@ -4278,6 +4493,10 @@ class SimulinkModule(QWidget):
         # 1.5) Switch 节点 (仿 Simulink Switch 块): 切换数据源路由
         if params.get("switch") or node.get("type") == "switch":
             self._toggle_switch(node)
+            return
+        # 1.6) ☑ 训练开关节点 (2026-08-05 老倪: checkbox 打勾=训练 / 不打=不训练)
+        if node.get("type") == "train_gate":
+            self._toggle_train_gate(node)
             return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
@@ -4370,6 +4589,27 @@ class SimulinkModule(QWidget):
         label = "Orin 真实数据 (relay/latest)" if sel == "orin" else "metaworld 占位集"
         self._log(f"🔀 Switch 切换到 → {label} · 训练将使用该数据源 (双击可再切换)")
         self._sync()
+
+    def _toggle_train_gate(self, node):
+        """双击 ☑ 训练开关节点: 打勾=训练 / 不打=不训练 (checkbox 语义, 2026-08-05 老倪)"""
+        p = node.setdefault("params", {})
+        p["train_enabled"] = not p.get("train_enabled", True)
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        en = p["train_enabled"]
+        self._log(f"☑ 训练开关: {'打勾 → 训练启用' if en else '不打勾 → 训练跳过'} (双击可再切换)")
+        self._sync()
+
+    def _train_gate_state(self):
+        """画布上 ☑ 训练开关节点状态: 存在任一开关节点时返回其 enabled 值;
+        无开关节点 = 放行 (True, 保持向后兼容)"""
+        gates = [n for n in self.nodes if n.get("type") == "train_gate"]
+        if not gates:
+            return True
+        # 多开关: 任一关闭则训练跳过 (保守语义 — 关闭总开关必须真的挡住)
+        return all(n.get("params", {}).get("train_enabled", True) for n in gates)
 
     def _switch_state(self):
         """画布上 Switch 节点当前路由 → 'orin' | 'metaworld' | None"""
