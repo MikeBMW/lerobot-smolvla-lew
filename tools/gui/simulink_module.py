@@ -943,7 +943,7 @@ class PipelinePanel(QDialog):
         self.module.log_signal.emit("▶ " + " ".join(cmd))
         worker = CICDWorker(lambda: self._run_cli(cmd))
         worker.log.connect(self.module.log_signal.emit)
-        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        worker.finished.connect(lambda _w=worker: setattr(self, "_worker", _w))
         self._worker = worker
         worker.start()
 
@@ -1001,7 +1001,10 @@ class PipelinePanel(QDialog):
                         capture_output=True, timeout=5)
                 _sp.run(["pkill", "-f", "tools.cicd_pipeline"],
                         capture_output=True, timeout=5)
-                cw.wait(10000)
+                _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
+                        capture_output=True, timeout=5)
+                if not cw.wait(15000):
+                    self._keep_worker = cw  # 保留引用防 GC (崩溃修复#9 同款)
             except Exception:
                 pass
         self._worker = None
@@ -1108,7 +1111,7 @@ class PipelinePanel(QDialog):
 
         worker = CICDWorker(_work)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda: setattr(self, "_remote_worker", None))
+        worker.finished.connect(lambda _w=worker: setattr(self, "_remote_worker", _w))
         self._remote_worker = worker
         worker.start()
 
@@ -1712,7 +1715,13 @@ class SimulinkModule(QWidget):
                             capture_output=True, timeout=5)
                     _sp.run(["pkill", "-f", "tools.cicd_pipeline"],
                             capture_output=True, timeout=5)
-                    w.wait(10000)
+                    # 2026-08-05 崩溃修复#9: wait 超时若置 None → worker 被 GC 时线程还在跑
+                    # → QThread destroyed SIGABRT; 改 pkill -9 强杀 + wait 15s, 失败保留引用
+                    _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
+                            capture_output=True, timeout=5)
+                    if not w.wait(15000):
+                        # 仍没结束: 保留引用防 GC (不置 None), 由 Qt 进程退出时统一处理
+                        self._keep_worker = w
                 except Exception:
                     pass
         self._worker = None
@@ -3270,7 +3279,7 @@ class SimulinkModule(QWidget):
 
         worker = CICDWorker(_work)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda: setattr(self, "_acq_worker", None))
+        worker.finished.connect(lambda _w=worker: setattr(self, "_acq_worker", _w))
         self._acq_worker = worker
         worker.start()
 
@@ -3392,7 +3401,10 @@ class SimulinkModule(QWidget):
         worker = CICDWorker(fn)
         worker.log.connect(_emit_log)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        # 2026-08-05 崩溃修复#10: 原 lambda setattr(self,"_worker",None) → finished 回调里
+        # 置 None → worker 无引用被 GC, 而 QThread 底层线程未完全终止 → QThread destroyed
+        # SIGABRT (PyQt 竞态, 实测 3404 行崩溃); 改: 不置 None, 引用保留到下次覆盖回收
+        worker.finished.connect(lambda _w=worker: setattr(self, "_worker", _w))
         self._worker = worker
         worker.start()
 
@@ -4253,7 +4265,7 @@ class SimulinkModule(QWidget):
         worker = CICDWorker(fn)
         worker.log.connect(self._log)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        worker.finished.connect(lambda _w=worker: setattr(self, "_worker", _w))
         self._worker = worker
         worker.start()
 
