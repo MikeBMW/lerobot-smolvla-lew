@@ -121,12 +121,18 @@ class ScopeWidget(QWidget):
             y_hi = y_lo + 1
         legend_x = 10
         for name, (data, cname, dashed) in self.series.items():
-            if len(data) < 2:
+            if len(data) < 1:
                 continue
             color = COLORS.get(cname, COLORS["base"])
             pen = QPen(color, 2)
             if dashed:
                 pen.setStyle(Qt.DashLine)
+            if len(data) < 2:
+                # 训练中 1 点: 画圆点标记 (2026-08-05 老倪: 训练刚开始 Scope 就要有波形)
+                p.setPen(pen)
+                p.setBrush(color)
+                p.drawEllipse(QPointF(w / 2, h / 2), 4, 4)
+                continue
             p.setPen(pen)
             n = len(data)
             path = None
@@ -406,7 +412,9 @@ class FlowScopeDialog(QDialog):
             return
         # 🔬 全部模型曲线叠加 (2026-08-05: 3条对比) — key 用 policy 防同名覆盖
         #   (曾出现 smolvla/smolvla_lew 两文件 name 都是 "SmolVLA", dict 同名覆盖 → 显示1条)
+        #   len(cv)>=1: 训练中 1 点也显示 (老倪: 训练刚开始 Scope 就要有波形)
         series = {}
+        present_policies = set()
         try:
             root = self.module._repo_root()
             all_files = sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json")),
@@ -414,13 +422,14 @@ class FlowScopeDialog(QDialog):
             for f in all_files:
                 d = json.load(open(f, encoding="utf-8"))
                 cv = d.get("curve") or []
-                if len(cv) < 2:
+                if len(cv) < 1:
                     continue
                 policy = d.get("policy", "?")
                 name = d.get("name", policy)
                 color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
                 ys = np.array([l for _, l in cv])
                 series[f"{name} ({policy})"] = (ys, color, False)
+                present_policies.add(policy)
         except Exception:
             pass
         if not series:
@@ -428,14 +437,17 @@ class FlowScopeDialog(QDialog):
             ys = np.array([l for _, l in curve])
             series = {"loss": (ys, "ft", False)}
         self.scope.set_series(series)
-        # 指标行: 各模型首尾 loss
+        # 指标行: 各模型首尾 loss + 缺哪些模型提示 (ACT/SmolVLA/SmolVLA+LEW 三模型对比)
         parts = []
         for name, (ys, *_rest) in series.items():
             first, last = float(ys[0]), float(ys[-1])
             drop = first - last
             pct = (drop / first * 100) if first else 0.0
             parts.append(f"{name}: {first:.3f}→{last:.3f} (↓{drop:.3f}, {pct:+.1f}%)")
-        self.lbl_metrics.setText("📈 " + " · ".join(parts))
+        missing = [n for p, n in (("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"))
+                   if p not in present_policies]
+        tip = f" · ⚠️ 缺: {'/'.join(missing)} (训练后自动出现)" if missing else ""
+        self.lbl_metrics.setText("📈 " + " · ".join(parts) + tip)
 
     def _export_png(self):
         root = self.module._repo_root()
