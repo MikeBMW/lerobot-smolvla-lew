@@ -1678,7 +1678,6 @@ class SimulinkModule(QWidget):
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         self.btn_compare = mk_btn("⚔️ 对比", "ACT vs SmolVLA 对比: 统一 metaworld 数据集 · ♻同构模块复用 · ▶运行出对比图表", self.open_compare, "#a371f7")
-        self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
         self.btn_scope = mk_btn("🖥 Scope", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
@@ -1734,6 +1733,9 @@ class SimulinkModule(QWidget):
         self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始 (嵌入式窗口引导)",
                                   self.open_act_meta, "#58a6ff")
         tl2.addWidget(self.btn_actmeta)
+        # 🔬 三模型对比: 与⚔️对比同族 (2026-08-05 老倪) — 放第二行, 第一行按钮太多会被挤掉
+        self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
+        tl2.addWidget(self.btn_compare3)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
         lbl_op.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
