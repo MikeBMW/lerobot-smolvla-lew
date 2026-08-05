@@ -2686,11 +2686,16 @@ class SimulinkModule(QWidget):
         return out
 
     def _start_canvas_flow(self, stages):
-        """▶ 运行: 环节节点按拓扑序真实执行 (复用 _flow_queue 自动流转)"""
+        """▶ 运行: 环节节点按拓扑序真实执行 (复用 _flow_queue 自动流转)
+        2026-08-05 优化: 多个训练节点按耗时升序排 (act→smolvla→smolvla_lew),
+        让 3 条曲线尽快在 Scope 里齐 (老倪: 应该是3条曲线同时生成, 不是一个大点+一条)"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候…")
             return
+        # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew 最慢), 其余环节保持拓扑序
+        _speed = {"act": 0, "smolvla": 1, "smolvla_lew": 2}
+        stages = sorted(stages, key=lambda s: _speed.get(s[0].get("params", {}).get("policy", ""), 9))
         names = " → ".join(f"「{n['name']}」" for n, _, _ in stages)
         self._log(f"▶ 真实全流程启动 ({len(stages)} 环节): {names}")
         for n in self.nodes:
