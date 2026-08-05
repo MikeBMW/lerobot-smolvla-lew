@@ -12,6 +12,11 @@ import numpy as np
 import torch
 from pathlib import Path
 
+# 渲染必须的 GL 环境 (在 import mujoco/metaworld 前设置, WSLg X0 socket)
+os.environ.setdefault("DISPLAY", ":0")
+os.environ.setdefault("MUJOCO_GL", "glfw")
+os.environ.setdefault("MUJOCO_EGL_DEVICE", "0")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -46,6 +51,8 @@ def load_policy(policy: str):
         pol = mod.InterpolantPolicy(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
                                     cfg["vis_dim"], cfg["hidden"])
         pol.load_state_dict(data["state_dict"])
+        pol.state_dim = int(cfg["state_dim"])  # rollout 维度推断
+        pol.action_dim = int(cfg["action_dim"])
         pol.eval()
     elif policy == "awe_zflow":
         import importlib.util
@@ -57,6 +64,8 @@ def load_policy(policy: str):
         pol = mod.AWEZFlowModel(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
                                 cfg["vis_dim"], hidden=cfg["hidden"])
         pol.load_state_dict(data["state_dict"])
+        pol.state_dim = int(cfg["state_dim"])
+        pol.action_dim = int(cfg["action_dim"])
         pol.eval()
     else:
         from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
@@ -72,7 +81,7 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0):
     # metaworld V3: push-v3 (与 metaworld_act 数据集同族) — 标准 V3 用法
     from metaworld.env_dict import ALL_V3_ENVIRONMENTS
     env_cls = ALL_V3_ENVIRONMENTS["push-v3"]
-    env = env_cls()
+    env = env_cls(render_mode="rgb_array")  # 必须 rgb_array 模式, 否则 render 全黑
     env._freeze_rand_vec = False  # 允许随机初始化
     mt1 = metaworld.MT1("push-v3", seed=seed)
     env.set_task(mt1.train_tasks[0])  # V3 必需: set_task 后才能 step
@@ -81,27 +90,69 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0):
     obs, _info = env.reset()
     t0 = time.time()
     for i in range(steps):
-        # 取 RGB 帧 (V3 env render_mode='rgb_array' → env.render() 返回 (H,W,3))
+        # 取 RGB 帧: 优先 obs 里的真渲染图 (V3 observation.image = 相机视图), 兜底 env.render()
+        rgb = None
         try:
-            rgb = env.render()  # (H,W,3) uint8
+            oimg = obs.get("observation.image") if isinstance(obs, dict) else None
+            if oimg is not None:
+                oimg = np.asarray(oimg)
+                if oimg.ndim == 3 and oimg.shape[2] == 3 and oimg.var() > 1:
+                    rgb = oimg
+                elif oimg.ndim == 4 and oimg.shape[0] == 1:
+                    rgb = oimg[0].transpose(1, 2, 0) if oimg.shape[1] == 3 else oimg[0]
         except Exception:
-            rgb = None
+            pass
+        if rgb is None:
+            try:
+                rgb = env.render()  # (H,W,3) uint8
+            except Exception:
+                rgb = None
         if rgb is None:
             rgb = np.zeros((480, 640, 3), dtype=np.uint8)
         if rgb.dtype != np.uint8:
             rgb = (rgb * 255).astype(np.uint8)
+        if rgb.ndim == 3 and rgb.shape[2] == 3 and rgb.shape[0] < 100:
+            rgb = np.asarray(Image.fromarray(rgb).resize((640, 480)))
         frames.append(rgb)
         # 模型推理 (用 env obs 视觉 + state)
         act = np.zeros(env.action_space.shape, dtype=float)
         try:
-            batch = {"observation.image": rgb[np.newaxis].transpose(0, 3, 1, 2) / 255.0}
-            pred = policy.select_action(batch)  # (action_dim,)
+            cfg = getattr(policy, "config", None)
+            if cfg is not None and hasattr(cfg, "input_features"):
+                st_dim = cfg.input_features["observation.state"].shape[0]
+            else:
+                # 精简模型 (vla_touch/awe): 从 model.pt config 推断
+                st_dim = int(getattr(policy, "state_dim", 2) or 2)
+            st_vec = np.asarray(obs, dtype=np.float32)
+            st = st_vec[:st_dim] if st_vec.ndim == 1 else np.zeros(st_dim, dtype=np.float32)
+            dev = next(policy.parameters()).device
+            batch = {
+                "observation.image": torch.from_numpy(rgb[np.newaxis].transpose(0, 3, 1, 2) / 255.0).float().to(dev),
+                "observation.state": torch.from_numpy(st).float().unsqueeze(0).to(dev),
+            }
+            with torch.no_grad():
+                if hasattr(policy, "select_action"):
+                    pred = policy.select_action(batch)
+                elif hasattr(policy, "_cond"):  # vla_touch: interpolant 采样
+                    tac = torch.zeros((1, 3), dtype=torch.float32, device=dev)
+                    cond = policy._cond(batch["observation.state"], tac, None)
+                    x0 = torch.randn_like(batch["observation.state"].new_zeros((1, policy.action_dim))) * 0.1
+                    pred = policy.sample(x0, cond, diffuse_steps=10)
+                else:  # awe_zflow: 直接 forward
+                    ah = batch["observation.state"].new_zeros((1, 2))
+                    pred = policy(batch["observation.state"], tac_zero := batch["observation.state"].new_zeros((1, 3)), ah, None)
+                    if isinstance(pred, tuple):
+                        pred = pred[0]
+            if isinstance(pred, torch.Tensor):
+                pred = pred.detach().cpu()
             a = np.asarray(pred).ravel()
             if a.size >= act.size:
                 act[:] = a[: act.size]
             else:
                 act[: a.size] = a
         except Exception as ex:
+            import traceback as _tb
+            print(f"⚠️ 推理异常({policy.__class__.__name__}): {ex}")
             pass  # 推理失败用零动作 (视频仍展示环境)
         actions.append(act)
         obs, _, terminated, truncated, _ = env.step(act)

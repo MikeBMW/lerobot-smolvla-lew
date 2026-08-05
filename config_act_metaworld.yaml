@@ -1,7 +1,7 @@
 # Z-MAX 数据闭环 · ACT 训练配置 (metaworld 子集 · 静静4060)
 # 用法: .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_act_metaworld.yaml
-output_dir: outputs/train/act_metaworld
-job_name: act_metaworld
+output_dir: outputs/train/act_metaworld_final
+job_name: act_metaworld_final
 
 policy:
   type: act
@@ -25,7 +25,7 @@ dataset:
   use_imagenet_stats: false
 
 batch_size: 8
-steps: 50
+steps: 2000
 num_workers: 0
 persistent_workers: false
 log_freq: 5

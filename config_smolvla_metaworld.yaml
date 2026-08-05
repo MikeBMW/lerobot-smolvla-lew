@@ -1,7 +1,7 @@
 # Z-MAX · SmolVLA-LEW 训练配置 (metaworld 统一数据集 · 对比用)
 # 用法: .venv/bin/python -m lerobot.scripts.lerobot_train --config_path <此文件>
-output_dir: outputs/train/smolvla_metaworld
-job_name: smolvla_metaworld
+output_dir: outputs/train/smolvla_metaworld_final
+job_name: smolvla_metaworld_final
 
 policy:
   type: smolvla_lew
@@ -24,7 +24,7 @@ dataset:
   episodes: [0]
 
 batch_size: 1
-steps: 50
+steps: 2000
 num_workers: 0
 persistent_workers: false
 log_freq: 5

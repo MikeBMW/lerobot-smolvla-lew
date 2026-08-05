@@ -1,1 +1,1 @@
-{"ts": "20260805_205732", "ckpt": "outputs/train/vla_touch_20260805_200549/checkpoints", "step_s": 15.0, "curve": [[0, 1.6], [10, 1.42], [20, 1.31], [30, 1.25], [40, 1.21], [50, 1.18]]}
+{"policy": "vla_touch", "name": "VLA-Touch", "ts": "20260805_224553", "step_s": 34.27, "ckpt": "outputs/train/vla_touch_20260805_224454/checkpoints"}

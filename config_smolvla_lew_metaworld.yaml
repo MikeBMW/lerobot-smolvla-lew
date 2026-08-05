@@ -3,8 +3,8 @@
 # ⚠️ 关键: enable_lew_world_model:true + freeze_smolvlm:true 可共存 (2026-08-05 老倪修正:
 #   configuration_smolvla_lew.py __post_init__ 原强制关 LEW 已移除; LeWorldModel.encode_frame
 #   用 no_grad 冻结 SigLIP 提特征, predictor/action_encoder 独立训练; VLM 冻结省显存+加速)
-output_dir: outputs/train/smolvla_lew_metaworld
-job_name: smolvla_lew_metaworld
+output_dir: outputs/train/smolvla_lew_metaworld_final
+job_name: smolvla_lew_metaworld_final
 
 policy:
   type: smolvla_lew
@@ -37,7 +37,7 @@ dataset:
   episodes: [0]
 
 batch_size: 1
-steps: 50
+steps: 2000
 num_workers: 0
 persistent_workers: false
 log_freq: 5
