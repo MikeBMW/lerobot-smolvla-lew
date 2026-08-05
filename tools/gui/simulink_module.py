@@ -118,11 +118,11 @@ REFERENCE_APPS = [
     # ⚔️ ACT vs SmolVLA 对比 (2026-08-04 老倪: "将对比按钮改造成对比 act 和 smolvla 模型,
     #   数据集统一用 metaworld, 你来决定模块划分, 同等结构的模块要复用, 让用户清晰感知哪个模块被复用了,
     #   增加 scope 图表体现两模型区别: 训练速度/精确度/鲁棒性")
-    # 模块划分: ♻ 3 个共用节点 (metaworld 数据 / Action Head 4D / 对比评估 Scope)
-    #           ACT 分支 6 节点 (ResNet18→CVAE→Encoder→Decoder→[ActionHead]→Ensemble)
-    #           SmolVLA 分支 4 节点 (SmolVLM2-500M→DiT-B→LeWorldModel→[ActionHead])
-    # 复用依据 (官方代码): ACT.action_head = nn.Linear(dim_model, action_dim) ·
-    #   SmolVLA ActionEncoder 输出层同为 Linear→action_dim → 两模型输出层同构, 画布只画一次
+    # 模块划分: ♻ 2 个共用节点 (metaworld 数据 / 对比评估 Scope)
+    #           ACT 分支 7 节点 (ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练)
+    #           SmolVLA 分支 5 节点 (SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练)
+    # 2026-08-05 老倪纠正: Action Head 4D 拆成两个 — ACT 和 SmolVLA 各一个,
+    #   因为是两个独立模型在运行 (原共用节点 5 已拆分为 5·ACT / 11·SmolVLA)
     ("⚔️ ACT vs SmolVLA 对比", [
         ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
                                            "dims": "4D/4D", "shared": True,
@@ -135,8 +135,8 @@ REFERENCE_APPS = [
                                             "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"}),
         ("model", "🔡 Transformer Decoder", {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
                                             "desc": "ACT.decoder → DETR queries 解码动作块"}),
-        ("model", "🎯 Action Head 4D", {"action_dim": 4, "chunk_size": 7, "shared": True,
-                                        "desc": "♻ 两模型共用: 输出层同为 Linear→action(4D) — ACT/SmolVLA 都过它 (复用)"}),
+        ("model", "🎯 Action Head 4D · ACT", {"action_dim": 4, "chunk_size": 7,
+                                              "desc": "ACT 专用: 输出 (B,7,4) · 与 SmolVLA 的 ActionHead 同构但独立实例"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
         ("system", "🚀 ACT 训练", {"policy": "act", "steps": 300,
@@ -147,17 +147,19 @@ REFERENCE_APPS = [
         ("model", "🌀 DiT-B 动作解码", {"hidden": 256, "layers": 1, "timesteps": 2,
                                        "desc": "SmolVLA action_model DiT-B → 动作去噪生成"}), 
         ("model", "🌐 LeWorldModel", {"desc": "LeWorldModel 世界模型 → 状态/未来预测"}), 
+        ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
+                                                  "desc": "SmolVLA 专用: 输出 (B,7,4) · 与 ACT 的 ActionHead 同构但独立实例"}),
         ("system", "🚀 SmolVLA 训练", {"policy": "smolvla_lew", "steps": 300,
                                       "desc": "双击 → on_train(policy=smolvla_lew) · metaworld 训练"}), 
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 双模型 训练速度/精确度/鲁棒性 对比图表 (Simulink Scope 对标)"}),
     ], [
-        # ACT 路: 数据→ResNet18 (+CVAE) →Encoder→Decoder→ActionHead→Ensemble→ACT训练
+        # ACT 路: 数据→ResNet18 (+CVAE) →Encoder→Decoder→ActionHead·ACT→Ensemble→ACT训练
         (0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7),
-        # SmolVLA 路: 数据→SmolVLM2→DiT-B→LeWorldModel→ActionHead(复用)→SmolVLA训练
-        (0, 8), (8, 9), (9, 10), (10, 5), (5, 11),
+        # SmolVLA 路: 数据→SmolVLM2→DiT-B→LeWorldModel→ActionHead·SmolVLA→SmolVLA训练
+        (0, 8), (8, 9), (9, 10), (10, 11), (11, 12),
         # 评估: 两训练 → 对比 Scope
-        (7, 12), (11, 12),
+        (7, 13), (12, 13),
     ]),
 ]
 
@@ -203,7 +205,7 @@ LIBRARY = [
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
         {"name": "⚔️ ACT vs SmolVLA 对比", "params": {}, "template": "⚔️ ACT vs SmolVLA 对比",
-         "desc": "一键搭建双模型对比 (13节点: 3共用♻ + ACT 6 + SmolVLA 4) · 点▶运行出对比图表"},
+         "desc": "一键搭建双模型对比 (14节点: 2共用♻ + ACT 7 + SmolVLA 5, Action Head 各一个) · 点▶运行出对比图表"},
     ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
@@ -2193,9 +2195,10 @@ class SimulinkModule(QWidget):
         if self.nodes:
             if not self._qmsg_yes("⚔️ 模型对比",
                                   "将清空当前画布, 加载 ACT vs SmolVLA 对比模型?\n\n"
-                                  "模块划分: ♻共用3 (metaworld数据 / Action Head / 对比评估Scope)\n"
-                                  "          ACT 分支 6 + SmolVLA 分支 4\n"
-                                  "♻ 紫色节点 = 两模型共用的同构模块 (复用)\n"
+                                  "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope)\n"
+                                  "          ACT 分支 7 + SmolVLA 分支 5\n"
+                                  "🎯 Action Head 4D 两个模型各一个 (独立运行)\n"
+                                  "♻ 紫色节点 = 两模型共用 (统一数据集 / 对比Scope)\n"
                                   "▶ 点「▶ 运行」→ 依次训练两模型 → 双击 Scope 看对比图表"):
                 return
         self.clear()
@@ -2203,8 +2206,9 @@ class SimulinkModule(QWidget):
             self._qmsg_info("⚔️ 模型对比", "模板加载失败")
             return
         self._log("════ ⚔️ ACT vs SmolVLA 对比 (统一 metaworld 数据集) ════")
-        self._log("📦 模块划分: ♻共用 3 (metaworld数据 / 🎯Action Head / 📊对比评估Scope) + ACT 6 + SmolVLA 4")
-        self._log("♻ 复用: 「🎯 Action Head 4D」两模型输出层同构 (Linear→action 4D), 画布只画一次, 紫色♻标识")
+        self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 📊对比评估Scope) + ACT 7 + SmolVLA 5")
+        self._log("🎯 Action Head 4D 拆两个: 「· ACT」接 Decoder→Ensemble, 「· SmolVLA」接 LeWorldModel — 两个模型独立运行")
+        self._log("♻ 共用: 「📦 metaworld 数据」统一数据集 + 「📊 对比评估 Scope」评估入口, 紫色♻标识")
         self._log("▶ 点「▶ 运行」→ 依次训练 ACT(蓝) + SmolVLA(橙), 各 300 步 metaworld")
         self._log("📈 训练完双击「📊 对比评估 Scope」→ 对比图表: 训练速度 · 精确度(MSE/成功率) · 鲁棒性(方差) · 延迟")
         # 🆕 加载后气泡提示 (2026-08-05 老倪: "点击ACT-Meta引导后, 又点击对比, 你要有提示")
