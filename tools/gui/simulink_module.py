@@ -950,6 +950,19 @@ class PipelinePanel(QDialog):
     def closeEvent(self, e):
         self._timer.stop()
         self._remote_timer.stop()
+        # 🛡 采集轮询线程清理 (2026-08-05 崩溃修复: QThread: Destroyed while thread is still running
+        #   exit 134 SIGABRT — closeEvent 只停 _timer/_remote_timer, 没停 _acq_timer 且没等 _acq_worker,
+        #   退出时 worker 还在跑 → 析构 QThread 崩溃)
+        acq_timer = getattr(self, "_acq_timer", None)
+        if acq_timer is not None:
+            acq_timer.stop()
+        aw = getattr(self, "_acq_worker", None)
+        if aw is not None and aw.isRunning():
+            try:
+                aw.wait(3000)  # 最多等 3s, 避免退出时 worker 未结束
+            except Exception:
+                pass
+        self._acq_worker = None
         super().closeEvent(e)
 
     # ── 数据闭环状态: 本地数据量 + 远程轮询 ──
