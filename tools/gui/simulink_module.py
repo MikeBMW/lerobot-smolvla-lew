@@ -2936,6 +2936,18 @@ class SimulinkModule(QWidget):
         stages = sorted(stages, key=lambda s: _speed.get(s[0].get("params", {}).get("policy", ""), 9))
         names = " → ".join(f"「{n['name']}」" for n, _, _ in stages)
         self._log(f"▶ 真实全流程启动 ({len(stages)} 环节): {names}")
+        # 2026-08-05 老倪: "打开就有个smolvla+lew" — 多训练节点(三模型对比)启动时清空
+        # 全部曲线文件, 本轮从零开始 (Scope 只显示本轮三模型); 单训练节点不清 (保留历史)
+        _train_stages = [s for s in stages if "训练" in s[2]]
+        if len(_train_stages) >= 2:
+            try:
+                import glob as _g2
+                root0 = self._repo_root()
+                for _old in _g2.glob(os.path.join(root0, "reports", "train_curve_*.json")):
+                    os.remove(_old)
+                self._log(f"🧹 三模型对比: 已清空旧曲线, 本轮从零开始")
+            except Exception:
+                pass
         # 🚀 醒目反馈 (2026-08-05 老倪: "点击运行没反应没有反馈" — 弹非阻塞提示窗,
         #   不阻塞流程, 用户立刻看到执行已开始)
         try:
