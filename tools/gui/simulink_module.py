@@ -2174,7 +2174,11 @@ class SimulinkModule(QWidget):
                 self.canvas._scene.addItem(item)
 
     def on_node_moved(self, item):
+        # ⚠️ 必须 prepareGeometryChange (2026-08-05 修复): 连线 boundingRect 随节点位置
+        # 动态变化, 只 update() 时 QGraphicsView 渲染索引仍缓存旧矩形 → 节点移出旧矩形
+        # 后连线不重绘=消失, 再移动碰回范围又出现. prepareGeometryChange 通知场景几何已变
         for li in self._link_items:
+            li.prepareGeometryChange()
             li.update()
         self._tutorial_on_node_moved()
 
