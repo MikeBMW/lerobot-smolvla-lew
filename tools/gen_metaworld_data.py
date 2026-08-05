@@ -56,17 +56,41 @@ def main():
             # 关节状态: 用末端笛卡尔位姿 (跨机器人泛化, 非Sawyer关节角)
             ee = env.data.site_xpos[env.model.site("endEffector").id]
             state = ee.astype(np.float32).copy()  # 3D 末端位置 (x,y,z)
-            # 专家动作: 朝 goal 移动 (dx,dy,dz + gripper = 4维, 笛卡尔速度)
+            # 专家动作: 多阶段决策 (2026-08-06, 老倪要求"预测中决策"场景)
+            # Phase 1: 快速接近 hole 上方 (水平面)
+            # Phase 2: 缓慢对准+下降插入 (预测接触)
+            # Phase 3: 完成保持
+            try:
+                hid = env.model.site("hole").id
+                hole = env.data.site_xpos[hid]
+            except Exception:
+                hole = None
+            # 目标点: 先用 hole (peg 任务), 回退 goal
             try:
                 gid = env.model.site("goal").id
                 goal = env.data.site_xpos[gid]
             except Exception:
                 goal = None
-            if goal is not None:
-                delta = goal - ee
-                norm = np.linalg.norm(delta)
-                vel = delta / max(norm, 1e-6) * min(norm, 0.08)
-                action = np.concatenate([vel, [0.0]])
+            target = hole if hole is not None else goal
+            if target is not None:
+                delta = target - ee
+                dist_xy = np.linalg.norm(delta[:2])
+                dist_z = abs(delta[2])
+                if dist_xy > 0.05:
+                    # Phase 1: 水平快速接近 (上方 5cm 处)
+                    horiz = np.array([delta[0], delta[1], max(delta[2] - 0.05, -0.05)])
+                    vel = horiz / max(np.linalg.norm(horiz), 1e-6) * 0.12
+                    gripper = 0.0
+                elif dist_z > 0.03:
+                    # Phase 2: 垂直缓慢插入 (预测接触, 减速)
+                    vert = np.array([delta[0] * 0.2, delta[1] * 0.2, delta[2]])
+                    vel = vert / max(np.linalg.norm(vert), 1e-6) * 0.05
+                    gripper = -0.5  # 夹爪闭合
+                else:
+                    # Phase 3: 完成保持
+                    vel = np.zeros(3)
+                    gripper = -1.0
+                action = np.concatenate([vel, [gripper]])
             else:
                 action = np.zeros(4)
             env.step(action)
