@@ -2955,6 +2955,10 @@ class SimulinkModule(QWidget):
             QTimer.singleShot(3000, mb.close)
         except Exception:
             pass
+        # 🎛 运行中按钮状态 (2026-08-05 老倪: 停止按钮灰了) — 真实流程运行时 btn_stop 可用
+        self.btn_run.setText("⏳ 运行中…")
+        self.btn_run.setEnabled(False)
+        self.btn_stop.setEnabled(True)
         for n in self.nodes:
             n["status"] = "idle"
             it = self._items.get(n["id"])
@@ -3056,6 +3060,20 @@ class SimulinkModule(QWidget):
     def stop_sim(self):
         self._sim_running = False
         self._timer.stop()
+        # 2026-08-05 老倪: "运行点击之后停止按钮怎么变灰了" — 真实流程运行时 btn_stop
+        # 应可用, 且点击后要真能终止训练 (原来只停仿真 timer 不碰 worker)
+        w = getattr(self, "_worker", None)
+        if w is not None and w.isRunning():
+            import subprocess as _sp
+            try:
+                _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
+                        capture_output=True, timeout=5)
+                w.wait(10000)
+            except Exception:
+                pass
+            self._flow_queue = []
+            self._log("⏹ 已终止训练进程 (worker 已停止)")
+        self.btn_run.setText("▶ 运行")
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self._log(f"⏹ 仿真停止 · t = {self._sim_t:.2f}s")
@@ -4084,10 +4102,16 @@ class SimulinkModule(QWidget):
         self._flow_queue.pop(0)()
 
     def _flow_next(self):
-        """(worker 完成后) 执行下一个环节"""
+        """(worker 完成后) 执行下一个环节; 队列空 → 全流程结束, 恢复按钮"""
         if getattr(self, "_flow_queue", None):
             fn = self._flow_queue.pop(0)
             fn()
+        else:
+            # 2026-08-05 老倪: 全流程完成/终止后恢复运行按钮
+            if getattr(self, "_worker", None) is None or not self._worker.isRunning():
+                self.btn_run.setText("▶ 运行")
+                self.btn_run.setEnabled(True)
+                self.btn_stop.setEnabled(False)
 
     # ════════════════════════════════════════════════════════════
     # CICD 主控台: 节点双击 → 数据源切换 / 运行环节 (2026-08-02)
