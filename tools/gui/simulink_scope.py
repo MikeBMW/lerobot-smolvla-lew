@@ -152,10 +152,16 @@ class ScopeWidget(QWidget):
 
     def mouseDoubleClickEvent(self, ev):
         """双击: 复位自动范围"""
+        self.fit_all()
+        super().mouseDoubleClickEvent(ev)
+
+    def fit_all(self):
+        """🌐 全局适配: 清除手动缩放/平移 → 自动范围显示全部曲线
+        (2026-08-05 老倪: 鼠标缩放后曲线找不到, 需要全局适配看全图)"""
         self._y_lo_manual = None
         self._y_hi_manual = None
+        self._drag_last = None
         self.update()
-        super().mouseDoubleClickEvent(ev)
 
     def paintEvent(self, ev):
         p = QPainter(self)
@@ -498,13 +504,19 @@ class FlowScopeDialog(QDialog):
         root.addWidget(self.scope, 1)
         btns = QHBoxLayout()
         self.btn_export = QPushButton("💾 导出 PNG")
+        self.btn_fit = QPushButton("🌐 全局适配")
         self.btn_close = QPushButton("❌ 关闭")
         self.btn_export.clicked.connect(self._export_png)
+        self.btn_fit.clicked.connect(self.scope.fit_all)  # 一键回自动范围 (2026-08-05 老倪)
         self.btn_close.clicked.connect(self.accept)
         btns.addStretch(1)
         btns.addWidget(self.btn_export)
+        btns.addWidget(self.btn_fit)
         btns.addWidget(self.btn_close)
         root.addLayout(btns)
+        hint = QLabel("🖱 滚轮=缩放Y轴 · 中键拖动=平移 · 双击/🌐全局适配=复位看全图")
+        hint.setStyleSheet(_qss("color:#8b949e; font-size:10px;"))
+        root.addWidget(hint)
 
     def _load_data(self):
         # 2026-08-05 老倪: "怎么就一条曲线, 不应该是3个曲线对比么" — 读全部 train_curve_*.json,
