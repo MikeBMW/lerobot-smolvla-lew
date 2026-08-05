@@ -3058,15 +3058,27 @@ class SimulinkModule(QWidget):
                 "nodes": self.nodes, "links": self.links}
 
     @staticmethod
-    def _parse_loss_curve(lines):
-        """训练日志行 → [(step, loss), ...] (宽松解析: step在前或loss在前都认, 失败返回空)"""
+    def _parse_loss_curve(lines, prefer_action=False):
+        """训练日志行 → [(step, loss), ...] (宽松解析: step在前或loss在前都认, 失败返回空)
+        prefer_action=True (2026-08-05): 优先解析 action_loss:xxx 字段 (剔除 lew_loss,
+        三模型 loss 口径统一可比); 无 action_loss 的行回退 loss:xxx"""
         import re
-        pat1 = re.compile(r"step\s*[=:]?\s*(\d+).*?loss[=:\s]+([\d.eE+-]+)")
-        pat2 = re.compile(r"loss[=:\s]+([\d.eE+-]+).*?step\s*[=:]?\s*(\d+)")
         dedup = {}
         for ln in lines:
             if "loss" not in ln.lower():
                 continue
+            m = None
+            if prefer_action and "action_loss" in ln:
+                # 新格式: "action_loss:1.2345 lew_loss:0.5678" (无 step → 用日志累积步数)
+                ma = re.search(r"action_loss[:=\s]+([\d.eE+-]+)", ln)
+                if ma:
+                    loss = float(ma.group(1))
+                    # 该行无 step; 用已有最大步数 + log_freq 推断
+                    step = (max(dedup, default=0) + 50) if dedup else 50
+                    dedup[step] = loss
+                    continue
+            pat1 = re.compile(r"step\s*[=:]?\s*(\d+).*?loss[=:\s]+([\d.eE+-]+)")
+            pat2 = re.compile(r"loss[=:\s]+([\d.eE+-]+).*?step\s*[=:]?\s*(\d+)")
             m = pat1.search(ln)
             if m:
                 step, loss = int(m.group(1)), float(m.group(2))
@@ -3569,9 +3581,11 @@ class SimulinkModule(QWidget):
             import json as _json  # 闭包用
 
             def _line_hook(ln):
-                """训练中实时: 解析 loss 行 → 增量更新曲线 → 写盘 (Scope 可见实时波形)"""
+                """训练中实时: 解析 loss 行 → 增量更新曲线 → 写盘 (Scope 可见实时波形)
+                2026-08-05 口径统一: 优先解析 action_loss:xxx (剔除 lew_loss, 三模型可比);
+                无 action_loss 的行回退解析 loss:xxx"""
                 try:
-                    pts = self._parse_loss_curve([ln])
+                    pts = self._parse_loss_curve([ln], prefer_action=True)
                     if not pts:
                         return
                     step, loss = pts[-1]

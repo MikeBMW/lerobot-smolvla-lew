@@ -559,6 +559,17 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
                 if step_time > 0:
                     train_tracker.samples_per_s = effective_batch_size / step_time
                 logging.info(train_tracker)
+                # 🎯 2026-08-05 老倪: loss 曲线口径统一 — 额外输出 action_loss (剔除 lew_loss),
+                #   供 GUI Scope 解析画三模型对比 (纯动作 loss, 各模型可比)
+                if output_dict:
+                    _al = output_dict.get("action_loss")
+                    _ll = output_dict.get("lew_loss")
+                    if _al is not None:
+                        _s = f"action_loss:{_al.item():.4f}" if hasattr(_al, "item") else f"action_loss:{_al:.4f}"
+                        if _ll is not None:
+                            _v = _ll.item() if hasattr(_ll, "item") else _ll
+                            _s += f" lew_loss:{_v:.4f}"
+                        logging.info(_s)
                 if wandb_logger:
                     wandb_log_dict = train_tracker.to_dict()
                     if output_dict:
