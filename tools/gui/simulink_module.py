@@ -3777,8 +3777,8 @@ class SimulinkModule(QWidget):
             "ACT": "#26418f", "SmolVLA": "#8f6a26", "SmolVLA+LEW": "#1f7a4d",
             "VLA-Touch": "#6a2d8f", "AWE": "#8f2d4d",
         }
-        x0 = base_x - 130          # 🎨 大字区 130px 宽 (VLA-Touch 15px bold ≈120px),
-                                   #   不覆盖节点列 (x≥120); 2026-08-05 修复"叠字/重复"观感
+        x0 = base_x - 140          # 🎨 大字区让开节点列: 大字绝对右界 = x0+8+126 = -12
+                                   #   < 节点 x=120, 零重叠 (2026-08-05 修复"叠字/重复"观感)
         w = (base_x + n_cols * col_w + 120) - x0
         for r, name in enumerate(row_names):
             y0 = base_y + r * row_h - 20
