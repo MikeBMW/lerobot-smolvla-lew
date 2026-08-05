@@ -22,6 +22,7 @@ dataset:
   repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
   root: data/metaworld_peg
   episodes: [0]
+  use_imagenet_stats: true   # SmolVLM 视觉用 ImageNet 归一化 (stats.json 无 image 统计)
 
 batch_size: 1
 steps: 2000

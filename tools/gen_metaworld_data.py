@@ -172,8 +172,14 @@ def main():
     }
     (out / "meta" / "info.json").write_text(json.dumps(info, indent=1))
     stats = {
-        "observation.state": {"mean": states.mean(axis=0).tolist(), "std": states.std(axis=0).tolist()},
-        "action": {"mean": actions.mean(axis=0).tolist(), "std": actions.std(axis=0).tolist()},
+        "observation.state": {"mean": states.mean(axis=0).tolist(), "std": states.std(axis=0).tolist(),
+                              "min": states.min(axis=0).tolist(), "max": states.max(axis=0).tolist()},
+        "action": {"mean": actions.mean(axis=0).tolist(), "std": actions.std(axis=0).tolist(),
+                   "min": actions.min(axis=0).tolist(), "max": actions.max(axis=0).tolist()},
+        "observation.image": {  # ImageNet 归一化 (SmolVLM 视觉需要, 2026-08-06 修复)
+            "mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225],
+            "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 1.0],
+        },
     }
     (out / "meta" / "stats.json").write_text(json.dumps(stats, indent=1))
 
