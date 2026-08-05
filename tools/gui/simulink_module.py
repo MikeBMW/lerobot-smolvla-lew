@@ -1751,6 +1751,9 @@ class SimulinkModule(QWidget):
         # 🔬 三模型对比: 与⚔️对比同族 (2026-08-05 老倪) — 放第二行, 第一行按钮太多会被挤掉
         self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
         tl2.addWidget(self.btn_compare3)
+        # 🎛 顶层总系统 (2026-08-05 老倪: "顶层总系统没有啊" — 参考应用滚动条里不易发现, 加显眼工具栏入口)
+        self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
+        tl2.addWidget(self.btn_topsys)
         # 🎛 子系统返回 (2026-08-05 老倪: 顶层总系统双击展开内部三线, 返回恢复顶层)
         self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
         self.btn_back.setVisible(False)
@@ -2365,6 +2368,41 @@ class SimulinkModule(QWidget):
         self._log("▶ 点「▶ 运行」→ 依次训练三模型, 各 300 步 metaworld")
         self._log("📈 训练完双击「📊 对比评估 Scope」→ 三模型对比: 训练速度 · 精确度(MSE/成功率) · 鲁棒性 · 延迟")
         QTimer.singleShot(300, lambda: self._compare_load_hint())
+
+    def open_topsys(self):
+        """🎛 顶层总系统 (2026-08-05 老倪: Simulink 子系统语义):
+        加载 3 节点顶层 (数据→总系统块→评估Scope), 双击总系统块展开内部三条训练线"""
+        if self.nodes:
+            if not self._qmsg_yes("🎛 顶层总系统",
+                                  "将清空当前画布, 加载顶层总系统?\n\n"
+                                  "顶层: 📦metaworld数据 → 🔬总系统块 → 📊评估Scope\n"
+                                  "双击总系统块 → 展开 ACT / SmolVLA / SmolVLA+LEW 三条训练线\n"
+                                  "⬅ 在子系统内点「⬅ 返回总系统」恢复顶层"):
+                return
+        self.clear()
+        if not self.load_reference_app_by_name("🎛 总系统·三模型对比"):
+            self._qmsg_info("🎛 顶层总系统", "模板加载失败")
+            return
+        self._log("════ 🎛 顶层总系统 (Simulink Subsystem) ════")
+        self._log("顶层: 📦metaworld数据 → 🔬总系统块 → 📊对比评估Scope")
+        self._log("双击「🔬 总系统·三模型对比」块 → 展开内部三条训练线 (ACT / SmolVLA / SmolVLA+LEW)")
+        self._log("⬅ 在子系统内点工具栏「⬅ 返回总系统」恢复顶层")
+        QTimer.singleShot(300, lambda: self._topsys_hint())
+
+    def _topsys_hint(self):
+        """顶层总系统加载后气泡引导: 高亮总系统块提示双击展开"""
+        try:
+            sys_node = next((n for n in self.nodes if n.get("params", {}).get("subsystem")), None)
+            if sys_node is not None:
+                self._highlight_node(sys_node, ms=6000)
+                it = self._items.get(sys_node["id"])
+                if it is not None:
+                    gp = self.canvas.mapToGlobal(
+                        self.canvas.mapFromScene(it.sceneBoundingRect().center()))
+                    self._show_bubble(gp, "👆 双击金色高亮「🔬 总系统·三模型对比」\n"
+                                         "→ 展开 ACT / SmolVLA / SmolVLA+LEW 三条训练线", ms=6000)
+        except Exception:
+            pass
 
     def toggle_float_canvas(self):
         """⛶ 浮动画布: 画布从 MDI 子窗口取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
