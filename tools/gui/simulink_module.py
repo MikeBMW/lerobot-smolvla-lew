@@ -115,53 +115,6 @@ REFERENCE_APPS = [
         ("system", "🚀 全新训练", {"steps": 300, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
-    # ⚔️ ACT vs SmolVLA 对比 (2026-08-04 老倪: "将对比按钮改造成对比 act 和 smolvla 模型,
-    #   数据集统一用 metaworld, 你来决定模块划分, 同等结构的模块要复用, 让用户清晰感知哪个模块被复用了,
-    #   增加 scope 图表体现两模型区别: 训练速度/精确度/鲁棒性")
-    # 模块划分: ♻ 2 个共用节点 (metaworld 数据 / 对比评估 Scope)
-    #           ACT 分支 7 节点 (ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练)
-    #           SmolVLA 分支 5 节点 (SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练)
-    # 2026-08-05 老倪纠正: Action Head 4D 拆成两个 — ACT 和 SmolVLA 各一个,
-    #   因为是两个独立模型在运行 (原共用节点 5 已拆分为 5·ACT / 11·SmolVLA)
-    ("⚔️ ACT vs SmolVLA 对比", [
-        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
-                                           "dims": "4D/4D", "shared": True,
-                                           "desc": "♻ 两模型共用: 统一 metaworld 数据集 (696帧, states/actions 4D)"}),
-        ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
-                                          "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
-        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
-                                        "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
-        ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
-                                            "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"}),
-        ("model", "🔡 Transformer Decoder", {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
-                                            "desc": "ACT.decoder → DETR queries 解码动作块"}),
-        ("model", "🎯 Action Head 4D · ACT", {"action_dim": 4, "chunk_size": 7,
-                                              "desc": "ACT 专用: 输出 (B,7,4) · 与 SmolVLA 的 ActionHead 同构但独立实例"}),
-        ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
-                                              "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 300,
-                                  "desc": "双击 → on_train(policy=act) · metaworld 训练"}), 
-        ("model", "🧠 SmolVLM2-500M", {"freeze": True,
-                                       "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
-                                       "desc": "SmolVLA 视觉语言主干 (冻结, 多模态编码)"}),
-        ("model", "🌀 DiT-B 动作解码", {"hidden": 256, "layers": 1, "timesteps": 2,
-                                       "desc": "SmolVLA action_model DiT-B → 动作去噪生成"}), 
-        ("model", "🌐 LeWorldModel", {"desc": "LeWorldModel 世界模型 → 状态/未来预测"}), 
-        ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
-                                                  "desc": "SmolVLA 专用: 输出 (B,7,4) · 与 ACT 的 ActionHead 同构但独立实例"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla_lew", "steps": 300,
-                                      "desc": "双击 → on_train(policy=smolvla_lew) · metaworld 训练"}), 
-        ("system", "📊 对比评估 Scope", {"shared": True,
-                                        "desc": "♻ 共用: 双击 → 双模型 训练速度/精确度/鲁棒性 对比图表 (Simulink Scope 对标)"}),
-    ], [
-        # ACT 路: 数据→ResNet18 (+CVAE) →Encoder→Decoder→ActionHead·ACT→Ensemble→ACT训练
-        # 🏷 数据三路: (0,1)=图像 (0,2)=动作 (0,3)=状态
-        (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
-        # SmolVLA 路: 数据→SmolVLM2→DiT-B→LeWorldModel→ActionHead·SmolVLA→SmolVLA训练
-        (0, 8, "图像+状态"), (8, 9, "多模态embeds"), (9, 10), (10, 11), (11, 12),
-        # 评估: 两训练 → 对比 Scope
-        (7, 13), (12, 13),
-    ]),
     # 🔬 三模型对比 (2026-08-05 老倪: "增加一个没有leworldmodel的流程, 三个模型对比,
     #   即 ACT, SmolVLA, SmolVLA+LeWorldModel 串行")
     # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope)
@@ -280,8 +233,8 @@ LIBRARY = [
         {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
-        {"name": "⚔️ ACT vs SmolVLA 对比", "params": {}, "template": "⚔️ ACT vs SmolVLA 对比",
-         "desc": "一键搭建双模型对比 (14节点: 2共用♻ + ACT 7 + SmolVLA 5, Action Head 各一个) · 点▶运行出对比图表"},
+        {"name": "🔬 三模型对比", "params": {}, "template": "🔬 三模型对比",
+         "desc": "一键搭建三模型对比 (18节点: 2共用♻ + ACT 7 + SmolVLA纯 4 + SmolVLA+LEW 5, Action Head 各一个) · 点▶运行出对比图表"},
     ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
@@ -1699,14 +1652,12 @@ class SimulinkModule(QWidget):
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
-        self.btn_compare = mk_btn("⚔️ 对比", "ACT vs SmolVLA 对比: 统一 metaworld 数据集 · ♻同构模块复用 · ▶运行出对比图表", self.open_compare, "#a371f7")
         self.btn_scope = mk_btn("🖥 Scope", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
-        tl.addWidget(self.btn_compare)
         tl.addWidget(self.btn_scope)
         self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
         tl.addWidget(self.btn_float)
@@ -2314,33 +2265,6 @@ class SimulinkModule(QWidget):
         self.step_sim()
         if self._sim_t >= self._sim_t_end:
             self.stop_sim()
-
-    def open_compare(self):
-        """⚔️ ACT vs SmolVLA 对比: 加载对比模板 (3共用♻ + ACT 6 + SmolVLA 4, 统一 metaworld)
-        点「▶ 运行」依次训练两模型 → 双击「📊 对比评估 Scope」看 训练速度/精确度/鲁棒性 图表
-        """
-        if self.nodes:
-            if not self._qmsg_yes("⚔️ 模型对比",
-                                  "将清空当前画布, 加载 ACT vs SmolVLA 对比模型?\n\n"
-                                  "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope)\n"
-                                  "          ACT 分支 7 + SmolVLA 分支 5\n"
-                                  "🎯 Action Head 4D 两个模型各一个 (独立运行)\n"
-                                  "♻ 紫色节点 = 两模型共用 (统一数据集 / 对比Scope)\n"
-                                  "▶ 点「▶ 运行」→ 依次训练两模型 → 双击 Scope 看对比图表"):
-                return
-        self.clear()
-        if not self.load_reference_app_by_name("⚔️ ACT vs SmolVLA 对比"):
-            self._qmsg_info("⚔️ 模型对比", "模板加载失败")
-            return
-        self._log("════ ⚔️ ACT vs SmolVLA 对比 (统一 metaworld 数据集) ════")
-        self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 📊对比评估Scope) + ACT 7 + SmolVLA 5")
-        self._log("🎯 Action Head 4D 拆两个: 「· ACT」接 Decoder→Ensemble, 「· SmolVLA」接 LeWorldModel — 两个模型独立运行")
-        self._log("♻ 共用: 「📦 metaworld 数据」统一数据集 + 「📊 对比评估 Scope」评估入口, 紫色♻标识")
-        self._log("▶ 点「▶ 运行」→ 依次训练 ACT(蓝) + SmolVLA(橙), 各 300 步 metaworld")
-        self._log("📈 训练完双击「📊 对比评估 Scope」→ 对比图表: 训练速度 · 精确度(MSE/成功率) · 鲁棒性(方差) · 延迟")
-        # 🆕 加载后气泡提示 (2026-08-05 老倪: "点击ACT-Meta引导后, 又点击对比, 你要有提示")
-        # 高亮「📊 对比评估 Scope」节点 + 气泡指引下一步 (深色主题白字)
-        QTimer.singleShot(300, lambda: self._compare_load_hint())
 
     def _compare_load_hint(self):
         """对比模板加载后的气泡引导: 高亮对比评估节点 + 气泡提示"""
