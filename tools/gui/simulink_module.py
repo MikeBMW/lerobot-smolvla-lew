@@ -1682,7 +1682,14 @@ class SimulinkModule(QWidget):
             w = getattr(self, attr, None)
             if w is not None and hasattr(w, "isRunning") and w.isRunning():
                 try:
-                    w.wait(3000)  # 最多等 3s, 避免退出时线程未结束
+                    # 2026-08-05 崩溃修复#5: 训练中关闭窗口 → CICDWorker(阻塞训练 subprocess)
+                    # wait(3000) 不够 → 先终止训练子进程让 worker 快速结束再 wait
+                    import subprocess as _sp
+                    _sp.run(["pkill", "-f", "lerobot.scripts.lerobot_train"],
+                            capture_output=True, timeout=5)
+                    _sp.run(["pkill", "-f", "tools.cicd_pipeline"],
+                            capture_output=True, timeout=5)
+                    w.wait(10000)
                 except Exception:
                     pass
         self._worker = None
@@ -3749,6 +3756,15 @@ class SimulinkModule(QWidget):
             except Exception as ex:
                 self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                 tmp_cfg = cfg_path
+
+            # 📊 Scope 清空: 新训练从空开始 (2026-08-05 老倪: "默认不要显示线, 还没训练呢,
+            #   scope先清空" — 删除旧曲线文件, Scope 无默认显示, 训练完才出现新曲线)
+            try:
+                import glob as _glob
+                for _old in _glob.glob(os.path.join(root, "reports", "train_curve_*.json")):
+                    os.remove(_old)
+            except Exception:
+                pass
 
             self.log_signal.emit(f"🚀 启动 {pname} 训练 ({steps or 300}步, 4060 CUDA)…")
             # 📊 Scope: 训练中实时落盘 loss 曲线 (2026-08-05 老倪: "训练都开始了, 为什么scope没有波形"
