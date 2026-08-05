@@ -1005,6 +1005,15 @@ class PipelinePanel(QDialog):
             except Exception:
                 pass
         self._worker = None
+        # 🛡 远程轮询 worker 清理 (2026-08-05 崩溃修复#8: CICDPanel 的 _remote_worker
+        #   1103行创建, closeEvent 漏清 → 远程状态查询中关面板 → QThread destroyed exit 134)
+        rw = getattr(self, "_remote_worker", None)
+        if rw is not None and rw.isRunning():
+            try:
+                rw.wait(3000)
+            except Exception:
+                pass
+        self._remote_worker = None
         # 🛡 录屏定时器清理 (2026-08-05 崩溃修复#2: 用户在录制中关闭窗口 → _rec_timer 还在跑
         #   → QThread: Destroyed while thread is still running exit 134)
         rec_timer = getattr(self, "_rec_timer", None)
