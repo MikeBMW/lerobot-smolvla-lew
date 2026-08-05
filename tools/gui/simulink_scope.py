@@ -73,6 +73,10 @@ class ScopeWidget(QWidget):
         self.series = {}   # name -> (np.array y, QColor, dashed?)
         self.setMinimumSize(560, 300)
         self.setStyleSheet(_qss("background:#f6f8fa;"))
+        # 🔍 缩放/平移 (2026-08-05 老倪: "scope的波形, 大小要能够缩放, 现在动不了, UI不好")
+        self._y_lo_manual = None   # 手动缩放后的 y 范围 (None=自动)
+        self._y_hi_manual = None
+        self._drag_last = None     # 拖拽平移起点 (y 值)
 
     def set_series(self, series):
         """series: {name: (y_values, color_name, dashed)}"""
@@ -83,6 +87,7 @@ class ScopeWidget(QWidget):
         self.series = {}
         self.update()
 
+    # ── 🔍 交互: 滚轮缩放 / 拖拽平移 / 双击复位 (Simulink Scope 风格) ──
     def _y_range(self):
         ys = [v[0] for v in self.series.values() if len(v[0]) > 0]
         if not ys:
@@ -90,7 +95,58 @@ class ScopeWidget(QWidget):
         all_v = np.concatenate(ys)
         lo, hi = float(np.min(all_v)), float(np.max(all_v))
         span = max(hi - lo, 0.5)
-        return lo - span * 0.1, hi + span * 0.1
+        auto_lo, auto_hi = lo - span * 0.1, hi + span * 0.1
+        if self._y_lo_manual is None:
+            return auto_lo, auto_hi
+        return self._y_lo_manual, self._y_hi_manual
+
+    def wheelEvent(self, ev):
+        """滚轮: 以鼠标位置为中心缩放 y 轴 (up=放大 1.25x, down=缩小 0.8x)"""
+        lo, hi = self._y_range()
+        span = hi - lo
+        if span <= 0:
+            return
+        # 鼠标 y → 数据值 (缩放中心)
+        h = self.height()
+        frac = 1.0 - (ev.pos().y() / h) if h > 0 else 0.5
+        center = lo + frac * span
+        factor = 1.25 if ev.angleDelta().y() > 0 else 0.8
+        new_span = span / factor
+        # 限制缩放范围: 0.01x ~ 100x 原始
+        self._y_lo_manual = center - new_span / 2
+        self._y_hi_manual = center + new_span / 2
+        self.update()
+        ev.accept()
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            self._drag_last = ev.pos()
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._drag_last is not None and self._y_lo_manual is not None:
+            lo, hi = self._y_range()
+            span = hi - lo
+            h = self.height()
+            if h > 0:
+                dy = ev.pos().y() - self._drag_last.y()
+                dval = dy * span / h
+                self._y_lo_manual += dval
+                self._y_hi_manual += dval
+                self._drag_last = ev.pos()
+                self.update()
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        self._drag_last = None
+        super().mouseReleaseEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev):
+        """双击: 复位自动范围"""
+        self._y_lo_manual = None
+        self._y_hi_manual = None
+        self.update()
+        super().mouseDoubleClickEvent(ev)
 
     def paintEvent(self, ev):
         p = QPainter(self)
@@ -794,6 +850,9 @@ class InferenceVideoDialog(QDialog):
         self._load_frames()
         if self.frame_dirs:
             self._play()
+        else:
+            # 无帧 → 自动生成 3 模型 rollout (2026-08-05 老倪: 训练完自动接推理对比)
+            QTimer.singleShot(300, self._run_rollouts)
 
     def _load_frames(self):
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."

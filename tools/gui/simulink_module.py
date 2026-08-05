@@ -184,6 +184,8 @@ REFERENCE_APPS = [
                                           "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表"}),
+        ("system", "🎥 推理效果对比", {"video": "all", "auto": True,
+                                          "desc": "训练完自动触发: 3 模型 metaworld rollout 生成视频 → 3 窗口同步播放对比 (推理效果)"}),
     ], [
         # ACT 路 (9): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
         # 🏷 数据节点三路输出 (官方 modeling_act.py): (0,1)=图像→ResNet18 · (0,2)=动作→CVAE(训练时编码真值动作)
@@ -199,6 +201,8 @@ REFERENCE_APPS = [
         (0, 14, "视频+动作"), (14, 16, "世界预测"),
         # 评估: 三训练 → 对比 Scope
         (7, 17), (11, 17), (16, 17),
+        # 🎥 推理对比 (2026-08-05 老倪: 训练完继续推理): 三训练 → 推理对比节点
+        (7, 18), (11, 18), (16, 18),
     ],
     # 🗂 多行展开布局 (2026-08-05 老倪: "不要排成一条直线, 要展开; 类似功能如 Action Head 垂直对齐")
     # 每行 = 一个模型分支; 每列 = 一个功能角色; 空串占位列保持 Action Head 对齐到第5列
@@ -206,7 +210,7 @@ REFERENCE_APPS = [
         ["📦 metaworld 数据", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
         ["📦 metaworld 数据", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
         ["📦 metaworld 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
-        ["📊 对比评估 Scope"],
+        ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比"],
     ]),
     # 🎥 推理对比 (2026-08-05 老倪: "训练完后继续推理, 对比3个模型的推理效果,
     #   要有视频显示的node, 3个视频display窗口")
@@ -987,6 +991,12 @@ class PipelinePanel(QDialog):
             except Exception:
                 pass
         self._acq_worker = None
+        # 🛡 录屏定时器清理 (2026-08-05 崩溃修复#2: 用户在录制中关闭窗口 → _rec_timer 还在跑
+        #   → QThread: Destroyed while thread is still running exit 134)
+        rec_timer = getattr(self, "_rec_timer", None)
+        if rec_timer is not None:
+            rec_timer.stop()
+        self._rec_timer = None
         super().closeEvent(e)
 
     # ── 数据闭环状态: 本地数据量 + 远程轮询 ──
@@ -3844,12 +3854,23 @@ class SimulinkModule(QWidget):
 
     def on_infer_video(self, **kw):
         """🎥 推理效果对比 (2026-08-05 老倪): 3 模型 rollout 视频 3 窗口同步播放
-        数据源: reports/rollout_<policy>/ (tools/rollout_video.py 生成, 无则自动生成)"""
+        数据源: reports/rollout_<policy>/ (tools/rollout_video.py 生成, 无则自动生成)
+        auto=True (模板参数): 训练完自动触发 — 先后台生成 3 模型 rollout, 完成后弹窗"""
         try:
             from simulink_scope import InferenceVideoDialog
         except ImportError as ex:
             self._log(f"❌ 缺少 simulink_scope.InferenceVideoDialog: {ex}")
             return
+        # 检查是否已有 rollout 帧
+        root = self._repo_root()
+        import glob as _glob
+        have = all(_glob.glob(os.path.join(root, "reports", f"rollout_{p}", "frame_*.png"))
+                   for p in ("act", "smolvla", "smolvla_lew"))
+        if not have:
+            self._log("🎥 推理对比: 生成 3 模型 rollout 视频 (metaworld push-v3, 各 120 帧)…")
+            self._qmsg_info("🎥 推理效果对比",
+                            "3 模型推理视频将自动生成 (metaworld rollout, 各 120 帧)\n"
+                            "生成完成自动弹出 3 窗口同步播放对比。")
         dlg = InferenceVideoDialog(self)
         dlg.exec_()
 
