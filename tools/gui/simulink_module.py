@@ -155,9 +155,10 @@ REFERENCE_APPS = [
                                         "desc": "♻ 共用: 双击 → 双模型 训练速度/精确度/鲁棒性 对比图表 (Simulink Scope 对标)"}),
     ], [
         # ACT 路: 数据→ResNet18 (+CVAE) →Encoder→Decoder→ActionHead·ACT→Ensemble→ACT训练
-        (0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7),
+        # 🏷 数据三路: (0,1)=图像 (0,2)=动作 (0,3)=状态
+        (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
         # SmolVLA 路: 数据→SmolVLM2→DiT-B→LeWorldModel→ActionHead·SmolVLA→SmolVLA训练
-        (0, 8), (8, 9), (9, 10), (10, 11), (11, 12),
+        (0, 8, "图像+状态"), (8, 9, "多模态embeds"), (9, 10), (10, 11), (11, 12),
         # 评估: 两训练 → 对比 Scope
         (7, 13), (12, 13),
     ]),
@@ -213,12 +214,14 @@ REFERENCE_APPS = [
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表"}),
     ], [
-        # ACT 路 (8): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
-        (0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7),
+        # ACT 路 (9): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
+        # 🏷 数据节点三路输出 (官方 modeling_act.py): (0,1)=图像→ResNet18 · (0,2)=动作→CVAE(训练时编码真值动作)
+        #   · (0,3)=状态→Encoder (encoder 拼接 latent+图像特征+state); (2,3)=CVAE 潜变量→Encoder
+        (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
         # SmolVLA 纯动作路 (4): 数据→SmolVLM2→DiT-B→ActionHead→训练
-        (0, 8), (8, 9), (9, 10), (10, 11),
+        (0, 8, "图像+状态"), (8, 9, "多模态embeds"), (9, 10), (10, 11),
         # SmolVLA+LEW 路 (5): 数据→SmolVLM2·LEW→DiT-B·LEW→LeWorldModel→ActionHead·LEW→训练
-        (0, 12), (12, 13), (13, 14), (14, 15), (15, 16),
+        (0, 12, "图像+状态"), (12, 13, "多模态embeds"), (13, 14), (14, 15, "世界预测"), (15, 16),
         # 评估: 三训练 → 对比 Scope
         (7, 17), (11, 17), (16, 17),
     ],
@@ -1256,6 +1259,21 @@ class SimLinkItem(QGraphicsObject):
             pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
         painter.drawPath(path)
+        # 🏷 数据流标签 (2026-08-05 老倪: 数据节点三路输出 图像/状态/动作 要标清楚)
+        # 画在贝塞尔中点, 半透明底 + 主题色文字, 不干扰连线
+        lbl = self.link.get("label", "")
+        if lbl:
+            mid = path.pointAtPercent(0.5)
+            painter.setFont(QFont("Consolas", 7))
+            fm = painter.fontMetrics()
+            lw = fm.horizontalAdvance(lbl) + 8
+            lh = fm.height() + 2
+            lr = QRectF(mid.x() - lw / 2, mid.y() - lh / 2, lw, lh)
+            painter.setBrush(QColor(0, 0, 0, 160))
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(lr, 3, 3)
+            painter.setPen(QColor("#e6edf3"))
+            painter.drawText(lr, Qt.AlignCenter, lbl)
         # 箭头 (指向输入)
         b = self.dst.scenePos()
         bx, by = b.x(), b.y() + self.dst.h / 2
@@ -2173,9 +2191,10 @@ class SimulinkModule(QWidget):
                 for i, (ntype, nm, params) in enumerate(node_specs):
                     n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
                     ids.append(n["id"])
-            for fi, ti in link_specs:
+            for fi, ti, *label in link_specs:
                 if fi < len(ids) and ti < len(ids):
-                    self.add_link(self._items[ids[fi]], self._items[ids[ti]])
+                    self.add_link(self._items[ids[fi]], self._items[ids[ti]],
+                                  label=label[0] if label else None)
         finally:
             self._sync = old_sync
         self._sync()  # 一次同步到位
@@ -2215,7 +2234,7 @@ class SimulinkModule(QWidget):
         self._sync()
         return node
 
-    def add_link(self, src_item, dst_item):
+    def add_link(self, src_item, dst_item, label=None):
         src, dst = src_item.node, dst_item.node
         if src["id"] == dst["id"]:
             return
@@ -2226,6 +2245,8 @@ class SimulinkModule(QWidget):
                 return
         link = {"id": link_id(), "f": src["id"], "t": dst["id"],
                 "f_port": "out1", "t_port": "in1"}
+        if label:
+            link["label"] = label  # 🏷 数据流标签: 图像/状态/动作 (2026-08-05 老倪)
         self.links.append(link)
         self._draw_links()
         self._log(f"🔗 {src['name']} → {dst['name']}")
