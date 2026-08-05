@@ -117,7 +117,21 @@ def main():
     eps_df["videos/observation.image/chunk_index"] = 0
     eps_df["videos/observation.image/frame_index"] = eps_df["length"] - 1
     eps_df["videos/observation.image/file_index"] = 0
+    # v3.0 标准: from/to_timestamp + dataset 索引 (2026-08-06 修复, 否则 LeRobot 解码 KeyError)
+    from_idx = eps_df["dataset_from_index"] if "dataset_from_index" in eps_df.columns else eps_df["episode_index"] * args.steps
+    eps_df["dataset_from_index"] = from_idx
+    eps_df["dataset_to_index"] = eps_df["dataset_from_index"] + eps_df["length"] - 1
+    eps_df["videos/observation.image/from_timestamp"] = 0.0
+    eps_df["videos/observation.image/to_timestamp"] = (eps_df["length"] - 1) / 30.0
+    eps_df["data/chunk_index"] = 0
+    eps_df["data/file_index"] = 0
+    eps_df["tasks"] = 0
+    eps_df["meta/episodes/chunk_index"] = 0
+    eps_df["meta/episodes/file_index"] = 0
     eps_df.to_parquet(meta_dir / "file-000.parquet")
+    # tasks.parquet (LeRobotDataset 需要)
+    import pandas as _pd
+    _pd.DataFrame({"task_index": [0], "task": [args.task]}).to_parquet(out / "meta" / "tasks.parquet")
 
     # 写 meta/info.json (v3.0 标准)
     states = np.stack([f["observation.state"] for f in all_frames])
@@ -132,7 +146,7 @@ def main():
         "fps": 30,
         "splits": {"train": f"0:{total}"},
         "data_path": "data/chunk-000/file-000.parquet",
-        "video_path": "videos/observation.image/chunk-000/",
+        "video_path": "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4",
         "repo_id": "MikeBMW/metaworld-joint-real",
         "features": {
             "observation.image": {

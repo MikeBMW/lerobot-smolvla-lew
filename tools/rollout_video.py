@@ -73,17 +73,17 @@ def load_policy(policy: str):
     pol.eval()
     return pol, pm
 
-def run_rollout(policy, steps: int, out_dir: str, seed: int = 0):
+def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str = "push-v3"):
     """metaworld V3 环境 rollout: 每个 episode 重置, 推理 select_action 步进, 存观测帧"""
     import metaworld
     from PIL import Image
     os.makedirs(out_dir, exist_ok=True)
     # metaworld V3: push-v3 (与 metaworld_act 数据集同族) — 标准 V3 用法
     from metaworld.env_dict import ALL_V3_ENVIRONMENTS
-    env_cls = ALL_V3_ENVIRONMENTS["push-v3"]
+    env_cls = ALL_V3_ENVIRONMENTS[task_name]
     env = env_cls(render_mode="rgb_array")  # 必须 rgb_array 模式, 否则 render 全黑
     env._freeze_rand_vec = False  # 允许随机初始化
-    mt1 = metaworld.MT1("push-v3", seed=seed)
+    mt1 = metaworld.MT1(task_name, seed=seed)
     env.set_task(mt1.train_tasks[0])  # V3 必需: set_task 后才能 step
     env.reset(seed=seed)
     frames, actions = [], []
@@ -175,11 +175,12 @@ def main():
     ap.add_argument("--steps", type=int, default=120)
     ap.add_argument("--out", default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--task", default="push-v3")
     a = ap.parse_args()
     out = a.out or os.path.join(ROOT, "reports", f"rollout_{a.policy}")
     pol, pm = load_policy(a.policy)
-    print(f"🎥 推理 {a.policy} · checkpoint: {os.path.basename(pm)}")
-    run_rollout(pol, a.steps, out, a.seed)
+    print(f"🎥 推理 {a.policy} · checkpoint: {os.path.basename(pm)} · task={a.task}")
+    run_rollout(pol, a.steps, out, a.seed, a.task)
 
 if __name__ == "__main__":
     main()
