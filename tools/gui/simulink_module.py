@@ -3902,7 +3902,7 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
 
-            rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
+            rc = self._run_cmd(["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
                                 "-m", "lerobot.scripts.lerobot_train",
                                 "--config_path", tmp_cfg], cwd=root, collect=out_lines,
                                line_hook=lambda ln: _line_hook(ln))
