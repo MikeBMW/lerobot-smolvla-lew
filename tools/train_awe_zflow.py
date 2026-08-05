@@ -138,23 +138,32 @@ class GRUPredictor(nn.Module):
 
 
 class CrossAttnInject(nn.Module):
-    """交叉注意力分层注入: 预测潜状态作为 K/V 注入动作解码 (门控 1.0/0.1/0.01)
+    """🔀 交叉注意力分层注入 (真 CrossAttention, 2026-08-05 老倪纠正):
+    三层潜状态 z₁/z₂/z₃ 各自独立投影为 K/V token → Q=解码隐层 → 逐层交叉注意力
+    → 每层输出乘各自门控 (1.0/0.1/0.01) 再残差融合。
+    ⚠️ 必须每层独立 K/V + 独立门控, 不能拼接后单 token (那退化成恒等, 非真注意力)。
     训练时注入 (世界模型驱动决策); 推理门控归零可剥离 — 对标 AWE 论文"训练/推理可切换\""""
 
     def __init__(self, latent_dims, hidden=256, num_heads=4):
         super().__init__()
-        self.d_in = sum(latent_dims)
-        self.proj_kv = nn.Linear(self.d_in, hidden)
+        self.num_layers = len(latent_dims)
+        # 每层潜状态独立投影 → 独立 K/V token (层间不共享, 语义分离)
+        self.proj_kv = nn.ModuleList(nn.Linear(d, hidden) for d in latent_dims)
         self.proj_q = nn.Linear(hidden, hidden)
         self.ca = nn.MultiheadAttention(hidden, num_heads, batch_first=True)
-        self.gates = nn.Parameter(torch.tensor([1.0, 0.1, 0.01]))  # 分层门控
+        # 分层门控: 每层一个权重 (z₁空间 1.0 / z₂物体 0.1 / z₃语义 0.01)
+        self.gates = nn.Parameter(torch.tensor([1.0, 0.1, 0.01]))
 
-    def forward(self, dec_hidden, z_pred):
-        # z_pred: (B, d_in) 三层拼接 → K/V; dec_hidden: (B, hidden) → Q
-        kv = self.proj_kv(z_pred).unsqueeze(1)
-        q = self.proj_q(dec_hidden).unsqueeze(1)
-        attn, _ = self.ca(q, kv, kv)
-        return (dec_hidden + attn.squeeze(1)) * self.gates.sum()
+    def forward(self, dec_hidden, z_triple):
+        # dec_hidden: (B, hidden) 解码隐层 → Q (查询)
+        # z_triple: (z1, z2, z3) 每层 (B, d) → 各层独立 K/V
+        q = self.proj_q(dec_hidden).unsqueeze(1)          # (B,1,H)
+        outs = []
+        for i, (proj, z) in enumerate(zip(self.proj_kv, z_triple)):
+            kv = proj(z).unsqueeze(1)                     # (B,1,H) 本层 K/V
+            attn, _ = self.ca(q, kv, kv)                  # 真交叉注意力 (1×1 交互)
+            outs.append(self.gates[i] * attn.squeeze(1))  # 本层门控加权
+        return dec_hidden + sum(outs)
 
 
 class AWEZFlowModel(nn.Module):
@@ -190,11 +199,13 @@ class AWEZFlowModel(nn.Module):
         z_cur = self.encoder(state, tactile, vision_feat)
         z_cat = self._z_cat(z_cur)
         # 世界模型预测未来潜状态 (zFlow: 潜空间推演未来状态/接触演化)
-        z_future = self.world_model(z_cat, act_hist)
-        # 解码: 动作头输入 = 潜状态线性基底 + 交叉注意力注入未来预测
+        z_future = self.world_model(z_cat, act_hist)   # (B, Σd)
+        # 未来潜状态拆回三层 (对齐 latent_dims) — 每层独立注入
+        z_future_triple = torch.split(z_future, self.latent_dims, dim=-1)
+        # 解码: 动作头输入 = 当前潜状态线性基底 + 交叉注意力注入未来预测
         dec_hidden = F.gelu(self.dec_proj(z_cat))
-        # 用注入层融合未来潜状态
-        fused = self.inject(dec_hidden, z_future)
+        # 真分层交叉注意力: 未来三层潜状态各作 K/V, 门控 1.0/0.1/0.01 加权融合
+        fused = self.inject(dec_hidden, z_future_triple)
         return self.action_head(fused)
 
 
