@@ -943,7 +943,7 @@ class PipelinePanel(QDialog):
         self.module.log_signal.emit("▶ " + " ".join(cmd))
         worker = CICDWorker(lambda: self._run_cli(cmd))
         worker.log.connect(self.module.log_signal.emit)
-        worker.finished.connect(lambda _w=worker: setattr(self, "_worker", _w))
+        worker.finished.connect(lambda: None)
         self._worker = worker
         worker.start()
 
@@ -1111,7 +1111,7 @@ class PipelinePanel(QDialog):
 
         worker = CICDWorker(_work)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda _w=worker: setattr(self, "_remote_worker", _w))
+        worker.finished.connect(lambda: None)
         self._remote_worker = worker
         worker.start()
 
@@ -3297,7 +3297,7 @@ class SimulinkModule(QWidget):
 
         worker = CICDWorker(_work)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda _w=worker: setattr(self, "_acq_worker", _w))
+        worker.finished.connect(lambda: None)
         self._acq_worker = worker
         worker.start()
 
@@ -3423,7 +3423,7 @@ class SimulinkModule(QWidget):
         # 2026-08-05 崩溃修复#10: 原 lambda setattr(self,"_worker",None) → finished 回调里
         # 置 None → worker 无引用被 GC, 而 QThread 底层线程未完全终止 → QThread destroyed
         # SIGABRT (PyQt 竞态, 实测 3404 行崩溃); 改: 不置 None, 引用保留到下次覆盖回收
-        worker.finished.connect(lambda _w=worker: setattr(self, "_worker", _w))
+        worker.finished.connect(lambda: None)
         self._worker = worker
         worker.start()
 
@@ -4284,13 +4284,24 @@ class SimulinkModule(QWidget):
                 self._log(f"✅ [{node['name']}] {summary}")
             else:
                 self._log(f"❌ [{node['name']}] {summary}")
+            # 2026-08-05 修复: finished_ok emit 时线程未完全结束 → 下一个环节被
+            # _worker.isRunning() 误拦 (ACT完成后SmolVLA启动被拦截); wait(100) 等线程
+            # 真正结束再置 None — 线程已死 GC 安全 (崩溃修复#10 保留引用不冲突)
+            cur = getattr(self, "_worker", None)
+            if cur is not None:
+                try:
+                    cur.wait(100)
+                except Exception:
+                    pass
+                self._worker = None
             if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
                 self._cicd_panel._refresh()
+            self._flow_next()  # 全流程流转
 
         worker = CICDWorker(fn)
         worker.log.connect(self._log)
         worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda _w=worker: setattr(self, "_worker", _w))
+        worker.finished.connect(lambda: None)
         self._worker = worker
         worker.start()
 
