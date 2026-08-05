@@ -404,7 +404,8 @@ class FlowScopeDialog(QDialog):
             self.lbl_metrics.setText("⚠️ 暂无训练曲线 — 点「▶ 运行」, 训练中即可见实时波形")
             self.btn_export.setEnabled(False)
             return
-        # 🔬 全部模型曲线叠加 (2026-08-05: 3条对比)
+        # 🔬 全部模型曲线叠加 (2026-08-05: 3条对比) — key 用 policy 防同名覆盖
+        #   (曾出现 smolvla/smolvla_lew 两文件 name 都是 "SmolVLA", dict 同名覆盖 → 显示1条)
         series = {}
         try:
             root = self.module._repo_root()
@@ -419,7 +420,7 @@ class FlowScopeDialog(QDialog):
                 name = d.get("name", policy)
                 color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
                 ys = np.array([l for _, l in cv])
-                series[name] = (ys, color, False)
+                series[f"{name} ({policy})"] = (ys, color, False)
         except Exception:
             pass
         if not series:
@@ -556,6 +557,15 @@ class ModelCompareDialog(QDialog):
         self.err_scope.setMinimumHeight(140)
         root.addWidget(self.err_scope)
 
+        # 🎯 典型场景轨迹对比 (2026-08-05 老倪: "一个典型场景, 用3个模型分别跑, 对比效果")
+        # 同一帧序列 (同一典型场景) 下, 各模型预测动作轨迹 vs 专家真值轨迹叠加 — 直观看出谁跟得紧
+        self.lbl_traj_head = QLabel("🎯 典型场景动作轨迹 — 同一场景 3 模型预测 vs 专家真值 (归一化空间)")
+        self.lbl_traj_head.setStyleSheet(_qss("color:#57606a;font-size:11px;font-weight:700;"))
+        root.addWidget(self.lbl_traj_head)
+        self.traj_scope = ScopeWidget(self)
+        self.traj_scope.setMinimumHeight(160)
+        root.addWidget(self.traj_scope)
+
         self.table = QTextEdit()
         self.table.setReadOnly(True)
         self.table.setMinimumHeight(110)
@@ -630,6 +640,39 @@ class ModelCompareDialog(QDialog):
             if fe:
                 err_series[f"{tag} MSE"] = (np.array(fe, dtype=float), c, False)
         self.err_scope.set_series(err_series)
+        # 🎯 典型场景轨迹对比: 同一帧序列 (典型场景) 下各模型预测 vs 专家真值
+        # 取各模型 traj_pred 最小公共长度; 通道数 = 4D (metaworld); 用第一个动作通道代表主趋势,
+        # 其余通道折叠到图例说明 — 保持 1 张图 N+1 条线 (N模型 + 真值)
+        traj_series = {}
+        gt_ref = None
+        n_frames_min = None
+        for k, tag, c in present:
+            tp = m[k].get("traj_pred", [])
+            if tp:
+                n_frames_min = len(tp) if n_frames_min is None else min(n_frames_min, len(tp))
+        for k, tag, c in present:
+            tp = m[k].get("traj_pred", [])
+            tg = m[k].get("traj_gt", [])
+            if not tp:
+                continue
+            tp = tp[:n_frames_min] if n_frames_min else tp
+            arr = np.array(tp, dtype=float)
+            # 多通道 → 取各通道均值曲线 (代表整体跟踪趋势), 图例注明
+            if arr.ndim == 2 and arr.shape[1] > 1:
+                y = arr.mean(axis=1)
+                traj_series[f"{tag} 预测"] = (y, c, False)
+            else:
+                traj_series[f"{tag} 预测"] = (arr.ravel(), c, False)
+            if tg and gt_ref is None:
+                tg = tg[:n_frames_min] if n_frames_min else tg
+                gt_arr = np.array(tg, dtype=float)
+                if gt_arr.ndim == 2 and gt_arr.shape[1] > 1:
+                    gt_ref = gt_arr.mean(axis=1)
+                else:
+                    gt_ref = gt_arr.ravel()
+        if gt_ref is not None:
+            traj_series["专家真值"] = (gt_ref, "grid", True)  # 虚线参考
+        self.traj_scope.set_series(traj_series)
         # ③ 表格 (N 模型列)
         hdr = f"{'维度':<14}" + "".join(f"{tag:>14}" for _, tag, _ in present) + f"{'胜出':>10}"
         lines = [hdr]
