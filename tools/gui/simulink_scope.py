@@ -507,7 +507,7 @@ class FlowScopeDialog(QDialog):
         self.btn_fit = QPushButton("🌐 全局适配")
         self.btn_close = QPushButton("❌ 关闭")
         self.btn_export.clicked.connect(self._export_png)
-        self.btn_fit.clicked.connect(self.scope.fit_all)  # 一键回自动范围 (2026-08-05 老倪)
+        self.btn_fit.clicked.connect(self._fit_clicked)  # 一键回自动范围 (2026-08-05 老倪)
         self.btn_close.clicked.connect(self.accept)
         btns.addStretch(1)
         btns.addWidget(self.btn_export)
@@ -517,6 +517,13 @@ class FlowScopeDialog(QDialog):
         hint = QLabel("🖱 滚轮=缩放Y轴 · 中键拖动=平移 · 双击/🌐全局适配=复位看全图")
         hint.setStyleSheet(_qss("color:#8b949e; font-size:10px;"))
         root.addWidget(hint)
+
+    def _fit_clicked(self):
+        """🌐 全局适配 + 点击反馈 (2026-08-05 老倪: 第二次点为什么就没用了 —
+        功能正常但无视觉变化, 加按钮文字反馈 1.5s)"""
+        self.scope.fit_all()
+        self.btn_fit.setText("✓ 已全局适配")
+        QTimer.singleShot(1500, lambda: self.btn_fit.setText("🌐 全局适配"))
 
     def _load_data(self):
         # 2026-08-05 老倪: "怎么就一条曲线, 不应该是3个曲线对比么" — 读全部 train_curve_*.json,
