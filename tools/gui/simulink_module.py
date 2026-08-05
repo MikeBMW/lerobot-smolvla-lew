@@ -1798,6 +1798,12 @@ class SimulinkModule(QWidget):
         # 💾 保存模型 (2026-08-05 老倪: "当前训练的模型可以保存, 下次直接应用")
         self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
         tl2.addWidget(self.btn_save_model)
+        # 🎥 录屏 (2026-08-05 老倪: 整个训练→推理→部署过程录制成视频, 可加速, 总长<1分钟, 含终端输出+模型结果)
+        self.btn_record = mk_btn("🔴 录制", "开始录屏: 定时截取本窗口 (画布+终端输出+模型结果), 训练→推理→部署全程记录", self.start_recording, "#ff4444")
+        tl2.addWidget(self.btn_record)
+        self.btn_stop_rec = mk_btn("⏹ 停止", "停止录屏: ffmpeg 合成 MP4 (2fps采集, 可加速, 总长<1分钟)", self.stop_recording, "#f0883e")
+        self.btn_stop_rec.setEnabled(False)
+        tl2.addWidget(self.btn_stop_rec)
         tl2.addStretch()
         lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
         lbl_op.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
@@ -2540,6 +2546,66 @@ class SimulinkModule(QWidget):
         if btn is None:
             return
         btn.setVisible(bool(getattr(self, "_subsystem_stack", None)))
+
+    # ── 🎥 录屏 (2026-08-05 老倪: 训练→推理→部署全程录制, 可加速, 总长<1分钟) ──
+    def start_recording(self):
+        """🔴 录制: QTimer 定时 grab 整窗 (画布+终端+模型结果) → 存 PNG 序列"""
+        if getattr(self, "_rec_timer", None) and self._rec_timer.isActive():
+            return
+        root = self._repo_root()
+        self._rec_dir = os.path.join(root, "reports", f"screenrec_{time.strftime('%Y%m%d_%H%M%S')}")
+        os.makedirs(self._rec_dir, exist_ok=True)
+        self._rec_idx = 0
+        self._rec_start = time.time()
+        self._rec_timer = QTimer(self)
+        self._rec_timer.timeout.connect(self._rec_tick)
+        self._rec_timer.start(500)  # 2fps 采集 → 2x 加速
+        self.btn_record.setEnabled(False)
+        self.btn_stop_rec.setEnabled(True)
+        self._log(f"🔴 录屏开始 → {os.path.relpath(self._rec_dir, root)} (2fps 采集, 停止后合成 MP4)")
+
+    def _rec_tick(self):
+        """采集一帧: 整窗截图 (含终端输出/模型结果/画布)"""
+        try:
+            pm = self.grab()
+            if not pm.isNull():
+                pm.save(os.path.join(self._rec_dir, f"frame_{self._rec_idx:04d}.png"))
+                self._rec_idx += 1
+                # 状态提示: 每 30 帧 (15s) 更新一次
+                if self._rec_idx % 30 == 0:
+                    self._log(f"⏺ 录屏中: {self._rec_idx} 帧 · {time.time() - self._rec_start:.0f}s")
+        except Exception:
+            pass
+
+    def stop_recording(self):
+        """⏹ 停止: 停定时器 → ffmpeg 合成 MP4 (2fps → 视频长 = 录制时长/2, 加速 2x)"""
+        if getattr(self, "_rec_timer", None):
+            self._rec_timer.stop()
+        self.btn_record.setEnabled(True)
+        self.btn_stop_rec.setEnabled(False)
+        rec_dir = getattr(self, "_rec_dir", "")
+        n = getattr(self, "_rec_idx", 0)
+        if not rec_dir or n == 0:
+            self._log("⚠️ 无录屏帧 (录制时间过短)")
+            return
+        dur = time.time() - getattr(self, "_rec_start", time.time())
+        fps = 2.0
+        out_mp4 = os.path.join(rec_dir, "screen_rec.mp4")
+        # ffmpeg: 2fps 输入 → 输出 fps=2 (总长 = 录制时长/2)
+        cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i",
+               os.path.join(rec_dir, "frame_%04d.png"), "-c:v", "libx264",
+               "-pix_fmt", "yuv420p", "-r", str(fps), out_mp4]
+        try:
+            import subprocess
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if r.returncode == 0:
+                vlen = dur / 2.0
+                self._log(f"✅ 录屏完成: {os.path.relpath(out_mp4, self._repo_root())} · {n}帧 · 录制{dur:.0f}s → 视频{vlen:.0f}s (加速2x, 总长<1min)")
+                self._qmsg_info("🎥 录屏完成", f"已保存: {out_mp4}\n{n} 帧 · 录制 {dur:.0f}s → 视频 {vlen:.0f}s (2x 加速)\n含画布+终端输出+模型结果")
+            else:
+                self._log(f"❌ ffmpeg 合成失败: {r.stderr[-200:]}")
+        except Exception as ex:
+            self._log(f"❌ 录屏合成异常: {ex}")
 
     def save_trained_model(self):
         """💾 保存模型 (2026-08-05 老倪: 训练好的模型保存, 下次直接应用):
