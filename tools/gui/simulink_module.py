@@ -389,8 +389,8 @@ class CICDStageItem(QGraphicsObject):
         pen = QPen(c, 2.2 if (self._hover or self.state == 1) else 1.6)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 8, 8)
-        # 标题
-        painter.setPen(QColor("#1f2328"))
+        # 标题 (🎨 主题色 — 硬编码 #1f2328 深色主题下黑字黑底看不见)
+        painter.setPen(QColor(pal["title"]))
         painter.setFont(QFont("Arial", 11, QFont.Bold))
         painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
         # 描述
@@ -1236,12 +1236,14 @@ class SimCanvas(QGraphicsView):
         self._scale = 1.0
 
     def drawBackground(self, painter, rect):
-        # 网格点 (Simulink 画布风格)
-        painter.fillRect(rect, QColor("#f0f2f5"))
+        # 网格点 (Simulink 画布风格) — 颜色走主题 (2026-08-05 修复: 硬编码 #f0f2f5 浅色
+        # 每次重绘盖住深色 backgroundBrush → 画布永远白色, palette 设置无效)
+        pal = THEMES[_CUR_THEME]
+        painter.fillRect(rect, QColor(pal["canvas"]))
         grid = 40
         left = int(rect.left()) - (int(rect.left()) % grid)
         top = int(rect.top()) - (int(rect.top()) % grid)
-        painter.setPen(QPen(QColor("#14161c"), 1))
+        painter.setPen(QPen(QColor(pal["grid"]), 1))
         for x in range(left, int(rect.right()), grid):
             for y in range(top, int(rect.bottom()), grid):
                 painter.drawPoint(x, y)
@@ -1734,7 +1736,7 @@ class SimulinkModule(QWidget):
         self._mdi.setStyleSheet("""
             QMdiArea { background:#eef1f5; }
             QMdiSubWindow { background:#f6f8fa; border:1px solid #d0d7de; }
-            QMdiSubWindow::title { background:#ffffff; color:#1f2328;
+            QMdiSubWindow::title { background:#ffffff; color:#24292f;
                                    padding-left:10px; font-size:12px; font-weight:600; }
             QMdiSubWindow::close-button, QMdiSubWindow::minimize-button,
             QMdiSubWindow::maximize-button { background:#e9edf2; border-radius:3px; }
