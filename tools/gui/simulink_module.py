@@ -389,7 +389,7 @@ REFERENCE_APPS = [
                                            "desc": "♻ 统一数据集 (训练/评估共用, 与其他模型同源可比)"}),
         ("model", "🖐 SigLIP 视触觉编码", {"backbone": "siglip-base", "freeze": True,
                                           "tactile_dim": 4, "force_dim": 3,
-                                          "desc": "场景原生视触觉编码: SigLIP视觉 + 力觉/触觉 原生融合 (86M 冻结, 非乐高拼接)"}),
+                                          "desc": "场景原生视触觉编码: SigLIP视觉 + 力觉/触觉 原生融合 (86M 冻结, 非乐高拼接; ⚠️ metaworld 无真触觉, 力觉为状态差分模拟, 真机换 H06)"}),
         ("model", "🧠 H-JEPA 三层潜空间", {"d_z1": 128, "d_z2": 128, "d_z3": 64,
                                           "desc": "z₁空间/ z₂物体/ z₃语义 三层潜表示 (场景原生融合, 非乐高拼接)"}),
         ("model", "🌊 zFlow 世界引擎", {"gru": 128, "layers": 1,
