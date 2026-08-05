@@ -3068,7 +3068,16 @@ class SimulinkModule(QWidget):
             try:
                 _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
                         capture_output=True, timeout=5)
-                w.wait(10000)
+                # 2026-08-05 修复: 阻塞 wait 卡死 UI — 改 processEvents 轮询 (最大 10s,
+                # 期间界面可拖动/日志刷新, 老倪: 怎么又卡死了)
+                from PyQt5.QtWidgets import QApplication as _QA
+                _app = _QA.instance()
+                for _i in range(200):
+                    if not w.isRunning():
+                        break
+                    if _app is not None:
+                        _app.processEvents()
+                    time.sleep(0.05)
             except Exception:
                 pass
             self._flow_queue = []
