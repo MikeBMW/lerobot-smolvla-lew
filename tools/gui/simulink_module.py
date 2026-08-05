@@ -4301,6 +4301,13 @@ class SimulinkModule(QWidget):
     def on_train_config(self, node):
         """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)"""
         dlg = TrainConfigDialog(node, self)
+        # 2026-08-05 修复: 模态框弹到不可见位置 → 界面'卡死'(点击无效); 居中+置前确保可见
+        try:
+            dlg.move(self.mapToGlobal(self.rect().center()) - dlg.rect().center())
+        except Exception:
+            pass
+        dlg.raise_()
+        dlg.activateWindow()
         if dlg.exec_() == QDialog.Accepted:
             p = node.get("params", {})
             self._log(f"⚙️ [{node['name']}] 训练配置已更新: steps={p.get('steps')} · "
