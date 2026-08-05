@@ -88,8 +88,9 @@ def make_vision_encoder():
 
 # ── zFlow 世界模型 (H-JEPA 三层潜空间 + GRU 预测器 + 交叉注意力注入) ───────────
 class HJEPAEncoder(nn.Module):
-    """H-JEPA 三层潜空间编码: z₁空间(物体位姿) / z₂物体(类别属性) / z₃语义(任务目标)
-    输入: 视觉特征 + 状态 + 力觉 → 三层潜表示 (场景原生融合, 非拼接后单空间)"""
+    """🖐 场景原生视触觉编码 (对标 AWE "视觉·触觉·力觉·动作 场景级深度融合"):
+    H-JEPA 三层潜空间编码: z₁空间(物体位姿) / z₂物体(类别属性) / z₃语义(任务目标)
+    输入: SigLIP视觉特征 + 状态 + 力觉/触觉 → 三层潜表示 (原生融合, 非拼接后单空间)"""
 
     def __init__(self, state_dim, tactile_dim, vis_dim=0,
                  d_z1=128, d_z2=128, d_z3=64, hidden=256):
@@ -97,6 +98,7 @@ class HJEPAEncoder(nn.Module):
         self.d_z1, self.d_z2, self.d_z3 = d_z1, d_z2, d_z3
         self.vis_dim = vis_dim
         # 场景原生: 各模态原生投影进各自潜空间 (非共享投影 — 三层语义分离)
+        # 视触觉融合: 视觉(proj_vis) + 力觉/触觉(proj_tactile) + 状态(proj_state) 同层相加
         self.proj_vis = nn.Linear(max(vis_dim, 1), hidden) if vis_dim else None
         self.proj_state = nn.Linear(state_dim, hidden)
         self.proj_tactile = nn.Linear(tactile_dim, hidden)
