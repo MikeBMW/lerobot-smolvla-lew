@@ -7563,6 +7563,16 @@ github.com/MikeBMW/lerobot-smolvla-lew
 # 入口
 # ============================================================
 def main():
+    # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
+    # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
+    try:
+        from PyQt5.QtCore import Qt as _Qt
+        from PyQt5.QtWidgets import QApplication as _QA
+        _QA.setAttribute(_Qt.AA_DisableWindowManagerEffects, True)
+        _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
+        _QA.setAttribute(_Qt.AA_UseHighDpiPixmaps, False)
+    except Exception:
+        pass
     app = QApplication(sys.argv)
     # WSLg/Windows 下 QMessageBox/QToolTip 默认走系统原生渲染 → QSS 失效, 黑字看不清
     # 强制 Qt 自绘: 对话框 + 气泡提示都吃全局深色 QSS
