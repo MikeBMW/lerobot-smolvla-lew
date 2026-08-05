@@ -3404,6 +3404,12 @@ class SimulinkModule(QWidget):
             n = self._by_id(nid)
             if "Scope" in n.get("name", ""):
                 continue  # 📊 Scope 手动双击观察
+            if n.get("params", {}).get("video"):
+                continue  # 🎥 视频显示节点: 观察类, 训练完手动双击播放 (2026-08-05 修复:
+                #   "推理"关键字会误匹配 on_infer → 混进五模型对比执行队列阻塞流程)
+            if n.get("type") == "train_gate":
+                continue  # ☑ 训练开关: 控制标志非执行环节 ("训练"关键字会误匹配 on_train,
+                #   CICD 主控台 ▶运行 时被当环节执行 → 打乱流程语义; 开关状态由 on_train 内部检查)
             for kw, meth in self.NODE_RUN_ACTIONS:
                 if kw in n.get("name", ""):
                     out.append((n, meth, kw))
@@ -3418,8 +3424,9 @@ class SimulinkModule(QWidget):
         if w is not None and w.isRunning():
             self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
             return
-        # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew 最慢), 其余环节保持拓扑序
-        _speed = {"act": 0, "smolvla": 1, "smolvla_lew": 2}
+        # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew → vla_touch → awe_zflow 最慢),
+        # 其余环节保持拓扑序; 未知 policy 排最后
+        _speed = {"act": 0, "smolvla": 1, "smolvla_lew": 2, "vla_touch": 3, "awe_zflow": 4}
         stages = sorted(stages, key=lambda s: _speed.get(s[0].get("params", {}).get("policy", ""), 9))
         names = " → ".join(f"「{n['name']}」" for n, _, _ in stages)
         self._log(f"▶ 真实全流程启动 ({len(stages)} 环节): {names}")
