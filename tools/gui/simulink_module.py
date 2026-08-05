@@ -2916,7 +2916,7 @@ class SimulinkModule(QWidget):
         btns = QDialogButtonBox(QDialogButtonBox.Ok)
         btns.accepted.connect(dlg.accept)
         lay.addWidget(btns)
-        dlg.exec_()
+        self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
     def show_scope(self):
         """打开 Scope 示波器对比 (新老模型动作曲线)"""
@@ -2926,7 +2926,7 @@ class SimulinkModule(QWidget):
             self._qmsg_info("Scope", "缺少 simulink_scope.py 模块")
             return
         dlg = ScopeCompareDialog(self)
-        dlg.exec_()
+        self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
     def start_sim(self):
         # 🚀 即时反馈 (2026-08-05 老倪: "运行, 还是没反应" — 点击瞬间按钮变运行中+状态栏提示)
@@ -3499,12 +3499,12 @@ class SimulinkModule(QWidget):
                     self._act_append_after_train()
                 else:
                     self._log("❌ 训练失败, 请查看上方日志定位原因")
-            # ⚔️ 对比评估完成 → 自动弹出对比图表
+            # ⚔️ 对比评估完成 → 自动弹出对比图表 (非模态, 2026-08-05 防卡死)
             if stage == "compare" and ok:
                 try:
                     from simulink_scope import ModelCompareDialog
                     dlg = ModelCompareDialog(self)
-                    dlg.exec_()
+                    self._show_nonmodal(dlg)
                 except Exception as ex:
                     self._log(f"⚠️ 对比图表打开失败: {ex}")
             self._flow_next()  # 全流程流转钩子 (无队列时无操作)
@@ -4161,7 +4161,7 @@ class SimulinkModule(QWidget):
                             "3 模型推理视频将自动生成 (metaworld rollout, 各 120 帧)\n"
                             "生成完成自动弹出 3 窗口同步播放对比。")
         dlg = InferenceVideoDialog(self)
-        dlg.exec_()
+        self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
     def on_infer(self, **kw):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
@@ -4258,7 +4258,7 @@ class SimulinkModule(QWidget):
             self._log(f"❌ 缺少 simulink_scope.py: {ex}")
             return
         dlg = FlowScopeDialog(self)
-        dlg.exec_()
+        self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
@@ -4291,12 +4291,9 @@ class SimulinkModule(QWidget):
                     else:
                         self._run_node_stage(node, fn, kw)
                 return
-        # 3) 其他节点: 打开参数框
+        # 3) 其他节点: 打开参数框 (非模态, 2026-08-05 防卡死)
         dlg = BlockParamsDialog(node, None)
-        if dlg.exec_() == QDialog.Accepted:
-            it = self._items.get(node["id"])
-            if it:
-                it.update()
+        self._show_nonmodal(dlg, on_accept=lambda: self._refresh_node(node))
 
     def on_train_config(self, node):
         """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)
@@ -4324,18 +4321,42 @@ class SimulinkModule(QWidget):
         dlg.finished.connect(_on_done)
         dlg.show()  # 非模态: 主窗口可继续操作, 对话框置顶显示
 
+    def _show_nonmodal(self, dlg, on_accept=None):
+        """🖥 通用非模态对话框 (2026-08-05 根治: exec_ 模态在 WSLg 下弹窗不可见 →
+        主窗口被禁用'卡死'; 统一 show() + 置顶 + finished 回调, 主窗口永不被禁)"""
+        try:
+            dlg.move(self.mapToGlobal(self.rect().center()) - dlg.rect().center())
+        except Exception:
+            pass
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
+        dlg.raise_()
+        dlg.activateWindow()
+
+        def _done(result):
+            if result == QDialog.Accepted and on_accept is not None:
+                try:
+                    on_accept()
+                except Exception:
+                    pass
+            dlg.deleteLater()
+
+        dlg.finished.connect(_done)
+        dlg.show()
+
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
         dlg = NodeLogicDialog(node.get("name", ""), node.get("type", ""), self)
-        dlg.exec_()
+        self._show_nonmodal(dlg)
 
     def on_node_params(self, node):
         """右键 → 节点参数框"""
         dlg = BlockParamsDialog(node, None)
-        if dlg.exec_() == QDialog.Accepted:
-            it = self._items.get(node["id"])
-            if it:
-                it.update()
+        self._show_nonmodal(dlg, on_accept=lambda: self._refresh_node(node))
+
+    def _refresh_node(self, node):
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
 
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""
