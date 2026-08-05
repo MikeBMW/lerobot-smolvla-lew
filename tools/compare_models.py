@@ -134,29 +134,28 @@ def main():
     ap.add_argument("--repeat", type=int, default=5)
     args = ap.parse_args()
 
-    print(f"⚔️ ACT vs SmolVLA 对比评估 · 统一 metaworld_act · {DEVICE}")
-    ckpt_act, spd_act, curve_act, ts_act = find_ckpt("act")
-    ckpt_sm, spd_sm, curve_sm, ts_sm = find_ckpt("smolvla_lew")
-    if not ckpt_act and not ckpt_sm:
-        print("❌ 无训练产物 — 先在控制台 ▶ 运行对比模板 (ACT + SmolVLA 各训练一次)")
+    print(f"🔬 ACT / SmolVLA / SmolVLA+LEW 三模型对比评估 · 统一 metaworld_act · {DEVICE}")
+    # 三策略: act / smolvla (纯动作, 无LEW) / smolvla_lew (串行世界模型)
+    policies = [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW")]
+    ckpts = {p: find_ckpt(p) for p, _ in policies}
+    if not any(c[0] for c in ckpts.values()):
+        print("❌ 无训练产物 — 先在控制台 ▶ 运行对比模板 (ACT + SmolVLA + SmolVLA+LEW 各训练一次)")
         return 1
     obs, st, act, act_mean, act_std = load_data(args.frames)
 
     results = {}
-    if ckpt_act:
-        print(f"✅ 加载 ACT: {ckpt_act}")
-        p, post = load_act(ckpt_act)
-        results["act"] = eval_policy(p, post, obs, st, act, act_mean, act_std, "ACT", is_act=True, n_repeat=args.repeat)
-        results["act"]["step_s"] = spd_act
-        results["act"]["curve"] = curve_act
-        results["act"]["ts"] = ts_act
-    if ckpt_sm:
-        print(f"✅ 加载 SmolVLA: {ckpt_sm}")
-        p, post = load_smolvla(ckpt_sm)
-        results["smolvla_lew"] = eval_policy(p, post, obs, st, act, act_mean, act_std, "SmolVLA", is_act=False, n_repeat=args.repeat)
-        results["smolvla_lew"]["step_s"] = spd_sm
-        results["smolvla_lew"]["curve"] = curve_sm
-        results["smolvla_lew"]["ts"] = ts_sm
+    for pol, tag in policies:
+        ckpt, spd, curve, ts = ckpts[pol]
+        if not ckpt:
+            print(f"⏭️ {tag} 无 checkpoint, 跳过")
+            continue
+        print(f"✅ 加载 {tag}: {ckpt}")
+        p, post = load_smolvla(ckpt) if pol != "act" else load_act(ckpt)
+        results[pol] = eval_policy(p, post, obs, st, act, act_mean, act_std, tag,
+                                   is_act=(pol == "act"), n_repeat=args.repeat)
+        results[pol]["step_s"] = spd
+        results[pol]["curve"] = curve
+        results[pol]["ts"] = ts
 
     os.makedirs(ROOT / "reports", exist_ok=True)
     out = ROOT / "reports" / f"model_compare_{time.strftime('%Y%m%d_%H%M%S')}.json"

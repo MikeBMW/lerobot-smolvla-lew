@@ -59,6 +59,7 @@ COLORS = {
     "gt": QColor("#3fb950"),        # 专家真值 (绿)
     "act": QColor("#58a6ff"),       # ⚔️ ACT 对比 (蓝)
     "smolvla": QColor("#d29922"),   # ⚔️ SmolVLA 对比 (橙)
+    "smolvla_lew": QColor("#a371f7"),  # 🔬 SmolVLA+LEW 对比 (紫)
     "grid": GRID,
     "text": QColor("#57606a"),
 }
@@ -405,15 +406,20 @@ class FlowScopeDialog(QDialog):
 
 
 class BarCompareWidget(QWidget):
-    """⚔️ 指标对比条形图: 每指标两模型横向条 (ACT 蓝 vs SmolVLA 橙)"""
+    """🔬 指标对比条形图: 每指标 N 模型横向条 (ACT 蓝 / SmolVLA 橙 / SmolVLA+LEW 金)"""
+
+    COLORS = [QColor("#58a6ff"), QColor("#d29922"), QColor("#a371f7")]  # 蓝/橙/紫
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.data = []   # [(指标名, act值, smol值, lower_better)]
+        self.data = []   # [(指标名, [n模型值...], lower_better)]
+        self.names = []  # [模型标签...]
         self.setMinimumSize(560, 190)
 
-    def set_data(self, rows):
+    def set_data(self, rows, names=None):
         self.data = rows
+        if names:
+            self.names = names
         self.update()
 
     def paintEvent(self, ev):
@@ -424,36 +430,44 @@ class BarCompareWidget(QWidget):
         p.fillRect(0, 0, w, h, QColor(t["panel"]))
         if not self.data:
             p.setPen(QColor(t["text2"]))
-            p.drawText(10, h // 2, "⚠️ 无对比数据 — 先 ▶ 运行训练两模型")
+            p.drawText(10, h // 2, "⚠️ 无对比数据 — 先 ▶ 运行训练模型")
             p.end()
             return
+        n_mod = max((len(vals) for _, vals, _ in self.data), default=1)
+        names = self.names or [f"M{i+1}" for i in range(n_mod)]
         row_h = h / max(len(self.data), 1)
-        ACT_C, SML_C = QColor("#58a6ff"), QColor("#d29922")
-        for i, (name, av, sv, lower) in enumerate(self.data):
+        bar_h = min(12, (row_h - 8) / max(n_mod, 1))
+        for i, (name, vals, lower) in enumerate(self.data):
             y0 = i * row_h
             p.setPen(QColor(t["text"]))
             p.setFont(QFont("Consolas", 9))
             p.drawText(8, y0 + 14, f"{name}")
-            # 条区: x 从 150 到 w-90, 两模型各一条
-            bx, bw = 150, w - 250
-            vmax = max(abs(av), abs(sv), 1e-9)
-            a_len = abs(av) / vmax * bw
-            s_len = abs(sv) / vmax * bw
-            p.fillRect(bx, y0 + 4, int(a_len), 10, ACT_C)
-            p.fillRect(bx, y0 + 18, int(s_len), 10, SML_C)
-            p.setPen(QColor(t["text2"]))
-            p.drawText(bx + int(a_len) + 6, y0 + 13, f"{av:.3g}")
-            p.drawText(bx + int(s_len) + 6, y0 + 27, f"{sv:.3g}")
+            # 条区: x 从 150 到 w-90
+            bx, bw = 150, w - 260
+            vmax = max((abs(v) for v in vals if v == v), default=1e-9) or 1e-9
+            for j, v in enumerate(vals):
+                if v != v:  # nan
+                    continue
+                yy = y0 + 6 + j * (bar_h + 2)
+                ln = abs(v) / vmax * bw
+                p.fillRect(bx, int(yy), int(ln), int(bar_h), self.COLORS[j % len(self.COLORS)])
+                p.setPen(QColor(t["text2"]))
+                p.drawText(bx + int(ln) + 6, int(yy + bar_h - 1), f"{v:.3g}")
             # 胜出标记 (好值绿)
-            if lower:
-                winner = "ACT" if av < sv else "SmolVLA"
-            else:
-                winner = "ACT" if av > sv else "SmolVLA"
-            p.setPen(QColor("#2ea043") if (av != sv) else QColor(t["text2"]))
-            p.drawText(w - 66, y0 + 20, f"✓ {winner}" if av != sv else "=")
+            good = [v for v in vals if v == v]
+            if good:
+                if lower:
+                    best = min(good)
+                else:
+                    best = max(good)
+                wins = [j for j, v in enumerate(vals) if v == v and v == best]
+                if len(wins) < len(vals):
+                    p.setPen(QColor("#2ea043"))
+                    p.drawText(w - 66, y0 + 20, f"✓ {names[wins[0]]}")
         p.setPen(QColor(t["text2"]))
         p.setFont(QFont("Consolas", 8))
-        p.drawText(8, h - 4, "■ ACT (#58a6ff)   ■ SmolVLA (#d29922)   · 好值标绿 ✓")
+        legend = "   ".join(f"■ {names[j]} ({self.COLORS[j].name()})" for j in range(n_mod))
+        p.drawText(8, h - 4, legend + "   · 好值标绿 ✓")
         p.end()
 
 
@@ -522,50 +536,61 @@ class ModelCompareDialog(QDialog):
             self.btn_export.setEnabled(False)
             return
         m = d.get("models", {})
-        act = m.get("act", {})
-        sml = m.get("smolvla_lew", {})
+        # 🔬 通用多模型 (2或3): act=ACT / smolvla=SmolVLA(纯动作) / smolvla_lew=SmolVLA+LEW
+        MODELS = [("act", "ACT", "act"), ("smolvla", "SmolVLA", "smolvla"), ("smolvla_lew", "SmolVLA+LEW", "smolvla_lew")]
+        present = [(k, tag, c) for k, tag, c in MODELS if k in m and m[k]]
         self.lbl_note.setText(
             f"数据集: {d.get('dataset', 'metaworld_act')} · 测试 {d.get('frames', 0)} 帧 · "
-            f"时间 {d.get('ts', '')} · ♻ 同数据/同机评估 (4060)")
-        # ① loss 双折线
+            f"时间 {d.get('ts', '')} · ♻ 同数据/同机评估 (4060) · {len(present)} 模型")
+        # ① loss 折线 (每个已训练模型一条)
         series = {}
-        c_act, c_sml = act.get("curve", []), sml.get("curve", [])
-        if c_act:
-            series["ACT loss"] = (np.array([l for _, l in c_act], dtype=float), "act", False)
-        if c_sml:
-            series["SmolVLA loss"] = (np.array([l for _, l in c_sml], dtype=float), "smolvla", False)
+        for k, tag, c in present:
+            curve = m[k].get("curve", [])
+            if curve:
+                series[f"{tag} loss"] = (np.array([l for _, l in curve], dtype=float), c, False)
         self.scope.set_series(series)
-        # ② 五指标条形
+        # ② 指标条形 (N 模型)
         rows = []
         for name, key, lower in [("训练速度 step/s", "step_s", False),
                                  ("动作 MSE", "action_mse", True),
                                  ("成功率 %", "success_rate", False),
                                  ("鲁棒性 std", "robustness_std", True),
                                  ("推理延迟 ms", "latency_ms", True)]:
-            av = act.get(key, 0.0) if act else 0.0
-            sv = sml.get(key, 0.0) if sml else 0.0
-            if key == "success_rate":
-                av, sv = av * 100, sv * 100
-            rows.append((name, av, sv, lower))
-        self.bars.set_data(rows)
-        # ③ 表格
-        lines = [f"{'维度':<14}{'ACT':>14}{'SmolVLA':>14}{'胜出':>10}"]
+            vals = []
+            for k, tag, c in present:
+                v = m[k].get(key, 0.0) or 0.0
+                if key == "success_rate":
+                    v = v * 100
+                vals.append(v)
+            rows.append((name, vals, lower))
+        self.bars.set_data(rows, names=[tag for _, tag, _ in present])
+        # ③ 表格 (N 模型列)
+        hdr = f"{'维度':<14}" + "".join(f"{tag:>14}" for _, tag, _ in present) + f"{'胜出':>10}"
+        lines = [hdr]
         for name, key, lower, fmt in [("训练速度 step/s", "step_s", False, "{:.2f}"),
                                       ("动作 MSE", "action_mse", True, "{:.4f}"),
                                       ("成功率 %", "success_rate", False, "{:.1f}"),
                                       ("鲁棒性 std", "robustness_std", True, "{:.4f}"),
                                       ("推理延迟 ms", "latency_ms", True, "{:.1f}")]:
-            av = act.get(key, float("nan")) if act else float("nan")
-            sv = sml.get(key, float("nan")) if sml else float("nan")
-            if key == "success_rate":
-                av, sv = av * 100, sv * 100
+            vals = []
+            for k, tag, c in present:
+                v = m[k].get(key, float("nan"))
+                if key == "success_rate" and v == v:
+                    v = v * 100
+                vals.append(v)
             if lower:
-                win = "ACT" if av < sv else ("SmolVLA" if sv < av else "=")
+                best = min(v for v in vals if v == v) if any(v == v for v in vals) else float("nan")
             else:
-                win = "ACT" if av > sv else ("SmolVLA" if sv > av else "=")
-            a_txt = fmt.format(av) if av == av else "-"
-            s_txt = fmt.format(sv) if sv == sv else "-"
-            lines.append(f"{name:<14}{a_txt:>14}{s_txt:>14}{win:>10}")
+                best = max(v for v in vals if v == v) if any(v == v for v in vals) else float("nan")
+            line = f"{name:<14}"
+            win_i = None
+            for i, v in enumerate(vals):
+                txt = fmt.format(v) if v == v else "-"
+                line += f"{txt:>14}"
+                if v == v and v == best:
+                    win_i = i
+            line += f"{present[win_i][1] if win_i is not None else '=':>10}"
+            lines.append(line)
         self.table.setPlainText("\n".join(lines))
 
     def _export_png(self):

@@ -161,6 +161,75 @@ REFERENCE_APPS = [
         # 评估: 两训练 → 对比 Scope
         (7, 13), (12, 13),
     ]),
+    # 🔬 三模型对比 (2026-08-05 老倪: "增加一个没有leworldmodel的流程, 三个模型对比,
+    #   即 ACT, SmolVLA, SmolVLA+LeWorldModel 串行")
+    # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope)
+    #           ACT 分支 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练)
+    #           SmolVLA 纯动作分支 4 (SmolVLM2→DiT-B→ActionHead→训练, 无 LEW)
+    #           SmolVLA+LEW 分支 5 (SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练)
+    # 配置区分: smolvla 用 config_smolvla_metaworld.yaml (freeze_smolvlm:true → LEW 强制关)
+    #           smolvla_lew 用 config_smolvla_lew_metaworld.yaml (freeze:false + enable_lew:true)
+    ("🔬 三模型对比", [
+        ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
+                                           "dims": "4D/4D", "shared": True,
+                                           "desc": "♻ 三模型共用: 统一 metaworld 数据集 (696帧, states/actions 4D)"}),
+        # ── ACT 分支 (7) ──
+        ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
+                                          "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
+        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
+                                        "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
+        ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
+                                            "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"}),
+        ("model", "🔡 Transformer Decoder", {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
+                                            "desc": "ACT.decoder → DETR queries 解码动作块"}),
+        ("model", "🎯 Action Head 4D · ACT", {"action_dim": 4, "chunk_size": 7,
+                                              "desc": "ACT 专用: 输出 (B,7,4)"}),
+        ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
+                                              "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 300,
+                                  "desc": "双击 → on_train(policy=act) · metaworld 训练"}),
+        # ── SmolVLA 纯动作分支 (4, 无 LEW) ──
+        ("model", "🧠 SmolVLM2-500M", {"freeze": True,
+                                       "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+                                       "desc": "SmolVLA 视觉语言主干 (冻结, 多模态编码)"}),
+        ("model", "🌀 DiT-B 动作解码", {"hidden": 256, "layers": 1, "timesteps": 2,
+                                       "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"}),
+        ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
+                                                  "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"}),
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 300,
+                                      "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"}),
+        # ── SmolVLA+LEW 分支 (5, 串行世界模型) ──
+        ("model", "🧠 SmolVLM2-500M · LEW", {"freeze": False,
+                                             "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+                                             "desc": "SmolVLA 视觉语言主干 (参与训练 — LEW 要求 VLM 不冻结)"}),
+        ("model", "🌀 DiT-B 动作解码 · LEW", {"hidden": 256, "layers": 1, "timesteps": 2,
+                                              "desc": "SmolVLA action_model DiT-B → 动作去噪生成"}),
+        ("model", "🌐 LeWorldModel", {"lew_loss_weight": 0.1, "num_video_frames": 2,
+                                      "desc": "世界模型串行在 DiT 之后: 消费动作+视频预测世界演化 (官方 forward 顺序)"}),
+        ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
+                                                      "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 300,
+                                          "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
+        ("system", "📊 对比评估 Scope", {"shared": True,
+                                        "desc": "♻ 共用: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表"}),
+    ], [
+        # ACT 路 (8): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
+        (0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7),
+        # SmolVLA 纯动作路 (4): 数据→SmolVLM2→DiT-B→ActionHead→训练
+        (0, 8), (8, 9), (9, 10), (10, 11),
+        # SmolVLA+LEW 路 (5): 数据→SmolVLM2·LEW→DiT-B·LEW→LeWorldModel→ActionHead·LEW→训练
+        (0, 12), (12, 13), (13, 14), (14, 15), (15, 16),
+        # 评估: 三训练 → 对比 Scope
+        (7, 17), (11, 17), (16, 17),
+    ],
+    # 🗂 多行展开布局 (2026-08-05 老倪: "不要排成一条直线, 要展开; 类似功能如 Action Head 垂直对齐")
+    # 每行 = 一个模型分支; 每列 = 一个功能角色; 空串占位列保持 Action Head 对齐到第5列
+    [
+        ["📦 metaworld 数据", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
+        ["📦 metaworld 数据", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
+        ["📦 metaworld 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
+        ["📊 对比评估 Scope"],
+    ]),
 ]
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
@@ -1609,6 +1678,7 @@ class SimulinkModule(QWidget):
         self.btn_stop.setEnabled(False)
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         self.btn_compare = mk_btn("⚔️ 对比", "ACT vs SmolVLA 对比: 统一 metaworld 数据集 · ♻同构模块复用 · ▶运行出对比图表", self.open_compare, "#a371f7")
+        self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
         self.btn_scope = mk_btn("🖥 Scope", "示波器: 新老模型动作曲线对比", self.show_scope, "#d4a800")
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
@@ -1685,14 +1755,17 @@ class SimulinkModule(QWidget):
         ra_lab.setStyleSheet("color:#57606a; font-size:11px; font-weight:600; background:transparent; border:none;")
         ral.addWidget(ra_lab)
         self._ref_btns = {}
-        for name, nodes, links in REFERENCE_APPS:
+        for item in REFERENCE_APPS:
+            name = item[0]
+            nodes, links = item[1], item[2]
+            layout = item[3] if len(item) > 3 else None
             b = QPushButton(name)
             b.setStyleSheet("""
                 QPushButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
                 border-radius:4px; padding:3px 10px; font-size:10px; }
                 QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
             """)
-            b.clicked.connect(lambda _, nm=name, nd=nodes, lk=links: self.load_reference_app(nm, nd, lk))
+            b.clicked.connect(lambda _, nm=name, nd=nodes, lk=links, lo=layout: self.load_reference_app(nm, nd, lk, layout=lo))
             self._ref_btns[name] = b
             ral.addWidget(b)
         ral.addStretch()
@@ -2052,14 +2125,17 @@ class SimulinkModule(QWidget):
     # ── 参考应用模板 (对标 MathWorks 参考应用列表) ──
     def load_reference_app_by_name(self, name):
         """按模板名加载参考应用 (模块库完整模型条目用)"""
-        for nm, nodes, links in REFERENCE_APPS:
+        for item in REFERENCE_APPS:
+            nm = item[0]
             if nm == name:
-                self.load_reference_app(nm, nodes, links)
+                nodes, links = item[1], item[2]
+                layout = item[3] if len(item) > 3 else None
+                self.load_reference_app(nm, nodes, links, layout=layout)
                 return True
         self._log(f"❌ 找不到模板: {name}")
         return False
 
-    def load_reference_app(self, name, node_specs, link_specs):
+    def load_reference_app(self, name, node_specs, link_specs, layout=None):
         if self.nodes:
             if not self._qmsg_yes("加载参考应用", f"加载「{name}」将清空当前画布，继续？"):
                 return
@@ -2072,9 +2148,29 @@ class SimulinkModule(QWidget):
         try:
             ids = []
             base_x, base_y = 120, 80
-            for i, (ntype, nm, params) in enumerate(node_specs):
-                n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
-                ids.append(n["id"])
+            # 🗂 多行展开布局 (2026-08-05): layout 是 [[节点名...]每行] 网格 —
+            # 行 = 模型分支, 列 = 功能角色, 同名节点多行出现→垂直对齐(如 Action Head 共第5列);
+            # 空串 = 占位跳过。无 layout → 传统单行横排 (兼容旧模板)。
+            if layout:
+                pos = {}
+                for r, row in enumerate(layout):
+                    for c, nm in enumerate(row):
+                        if not nm:
+                            continue  # 占位空串, 跳过
+                        pos.setdefault(nm, []).append((base_x + c * 260, base_y + r * 230))
+                used = set()
+                for i, (ntype, nm, params) in enumerate(node_specs):
+                    cands = pos.get(nm, [])
+                    xy = next((p for p in cands if p not in used), None)
+                    if xy is None:
+                        xy = (base_x + i * 260, base_y)  # 兜底单行
+                    used.add(xy)
+                    n = self.add_node(ntype, nm, xy[0], xy[1], params)
+                    ids.append(n["id"])
+            else:
+                for i, (ntype, nm, params) in enumerate(node_specs):
+                    n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
+                    ids.append(n["id"])
             for fi, ti in link_specs:
                 if fi < len(ids) and ti < len(ids):
                     self.add_link(self._items[ids[fi]], self._items[ids[ti]])
@@ -2233,6 +2329,31 @@ class SimulinkModule(QWidget):
                                          "(先点「▶ 运行」训练 ACT + SmolVLA)", ms=6000)
         except Exception:
             pass
+
+    def open_compare3(self):
+        """🔬 三模型对比: ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel
+        加载「🔬 三模型对比」模板 — LeWorldModel 串行在 DiT-B 之后 (官方 forward 顺序),
+        SmolVLA 纯动作 = freeze_smolvlm:true (LEW 强制关), SmolVLA+LEW = freeze:false + enable_lew:true
+        """
+        if self.nodes:
+            if not self._qmsg_yes("🔬 三模型对比",
+                                  "将清空当前画布, 加载 三模型对比?\n\n"
+                                  "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope)\n"
+                                  "          ACT 分支 7 + SmolVLA 纯动作 4 + SmolVLA+LEW 5\n"
+                                  "🔬 三模型: ACT / SmolVLA(无LEW) / SmolVLA+LeWorldModel 串行\n"
+                                  "▶ 点「▶ 运行」→ 依次训练三模型 → 双击 Scope 看对比图表"):
+                return
+        self.clear()
+        if not self.load_reference_app_by_name("🔬 三模型对比"):
+            self._qmsg_info("🔬 三模型对比", "模板加载失败")
+            return
+        self._log("════ 🔬 三模型对比 (统一 metaworld 数据集) ════")
+        self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 对比评估Scope) + ACT 7 + SmolVLA纯 4 + SmolVLA+LEW 5")
+        self._log("🔬 三模型: ① ACT ② SmolVLA 纯动作 (freeze_smolvlm:true → LEW 强制关) ③ SmolVLA+LeWorldModel 串行 (freeze:false + enable_lew:true)")
+        self._log("🌐 LeWorldModel 串行在 DiT-B 之后 — 官方 forward 顺序: SmolVLM2 编码 → DiT 动作 → LEW 世界预测")
+        self._log("▶ 点「▶ 运行」→ 依次训练三模型, 各 300 步 metaworld")
+        self._log("📈 训练完双击「📊 对比评估 Scope」→ 三模型对比: 训练速度 · 精确度(MSE/成功率) · 鲁棒性 · 延迟")
+        QTimer.singleShot(300, lambda: self._compare_load_hint())
 
     def toggle_float_canvas(self):
         """⛶ 浮动画布: 画布从 MDI 子窗口取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
@@ -2980,9 +3101,10 @@ class SimulinkModule(QWidget):
     def _act_build_link_existing(self):
         """按模板拓扑连线: 两端节点都已存在且未连过的才连 (引导中增量调用)"""
         tmpl = None
-        for nm, nodes, links in REFERENCE_APPS:
+        for item in REFERENCE_APPS:
+            nm = item[0]
             if nm == "🧠 ACT-Meta 全新训练":
-                tmpl = (nodes, links)
+                tmpl = (item[1], item[2])
                 break
         if not tmpl:
             return
@@ -3020,9 +3142,10 @@ class SimulinkModule(QWidget):
         self._act_build_link_existing()
         self.canvas._scene.update()
         tmpl = None
-        for nm, nodes, links in REFERENCE_APPS:
+        for item in REFERENCE_APPS:
+            nm = item[0]
             if nm == "🧠 ACT-Meta 全新训练":
-                tmpl = (nodes, links)
+                tmpl = (item[1], item[2])
                 break
         if tmpl and len(self.nodes) >= 9:
             self._log("🎉 9/9 搭建完成! 已自动摆放 + 按官方 ACT 拓扑自动连线")
@@ -3223,8 +3346,13 @@ class SimulinkModule(QWidget):
                 return False, "无训练数据"
             self.log_signal.emit(f"📊 训练数据源: {source}" + (" · 真实产线数据" if real else ""))
 
-            # ⚔️ 双策略: ACT 用 config_act_metaworld.yaml, SmolVLA 用 config_smolvla_metaworld.yaml
+            # 🔬 三策略: act=ACT / smolvla=SmolVLA 纯动作(无LEW) / smolvla_lew=SmolVLA+LeWorldModel
+            # 各用独立配置模板; ts_dir 前缀区分; 曲线落盘 reports/train_curve_<policy>.json
             if policy == "smolvla_lew":
+                cfg_path = os.path.join(root, "config_smolvla_lew_metaworld.yaml")
+                ts_dir = "smolvla_lew_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "SmolVLA+LEW"
+            elif policy == "smolvla":
                 cfg_path = os.path.join(root, "config_smolvla_metaworld.yaml")
                 ts_dir = "smolvla_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "SmolVLA"
@@ -3460,17 +3588,20 @@ class SimulinkModule(QWidget):
     ]
 
     def on_compare_scope(self, **kw):
-        """⚔️ 对比评估 Scope: 双击 → 自动跑双模型统一评估 → 弹出对比图表"""
+        """🔬 对比评估 Scope: 双击 → 自动跑已训练模型统一评估 → 弹出对比图表
+        (兼容双/三模型: 至少一个模型有训练产物即可, compare_models.py 会跳过缺失的)"""
         root = self._repo_root()
         rc_act = os.path.join(root, "reports", "train_curve_act.json")
-        rc_sml = os.path.join(root, "reports", "train_curve_smolvla_lew.json")
-        if not (os.path.exists(rc_act) and os.path.exists(rc_sml)):
-            self._log("⚠️ 对比评估: 还缺训练产物 — 先点「▶ 运行」(或分别双击两个训练节点) 训练 ACT + SmolVLA")
-            self._qmsg_info("⚔️ 对比评估",
-                            "还缺训练产物!\n\n请先点「▶ 运行」依次训练 ACT 和 SmolVLA,\n"
-                            "或分别双击「🚀 ACT 训练」「🚀 SmolVLA 训练」节点。")
+        rc_sml = os.path.join(root, "reports", "train_curve_smolvla.json")
+        rc_lew = os.path.join(root, "reports", "train_curve_smolvla_lew.json")
+        have = [p for p, f in (("ACT", rc_act), ("SmolVLA", rc_sml), ("SmolVLA+LEW", rc_lew)) if os.path.exists(f)]
+        if not have:
+            self._log("⚠️ 对比评估: 还缺训练产物 — 先点「▶ 运行」(或分别双击训练节点) 训练模型")
+            self._qmsg_info("🔬 对比评估",
+                            "还缺训练产物!\n\n请先点「▶ 运行」依次训练模型\n"
+                            "或分别双击「🚀 ACT 训练」「🚀 SmolVLA 训练」「🚀 SmolVLA+LEW 训练」节点。")
             return
-        self._log("⚔️ 对比评估: 统一 metaworld 测试集 (120帧) 评估两模型 — 精确度/鲁棒性/延迟, 完成自动弹图表…")
+        self._log(f"⚔️ 对比评估: 统一 metaworld 测试集 (120帧) 评估 {len(have)} 个已训练模型 ({' / '.join(have)}) — 精确度/鲁棒性/延迟, 完成自动弹图表…")
 
         def _work():
             rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
@@ -3478,7 +3609,7 @@ class SimulinkModule(QWidget):
                                 "--frames", "120"], cwd=root)
             return (rc == 0), ("对比评估完成 · 弹窗展示图表" if rc == 0 else "对比评估失败 (见上方日志)")
 
-        self._start_worker(_work, "正在评估 ACT vs SmolVLA (统一 metaworld)", stage="compare")
+        self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
 
     def on_scope(self, **kw):
         """📊 Scope 示波器: 显示最近训练 loss 曲线 (Simulink Scope 对标)"""
