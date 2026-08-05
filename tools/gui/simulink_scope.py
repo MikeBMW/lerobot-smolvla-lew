@@ -119,7 +119,15 @@ class ScopeWidget(QWidget):
         ev.accept()
 
     def mousePressEvent(self, ev):
-        if ev.button() == Qt.LeftButton:
+        if ev.button() == Qt.MiddleButton:
+            # 🖱 中键拖动平移 (2026-08-05 老倪: "scope 无法用鼠标中键拖动, 改" —
+            #   Simulink Scope 惯例: 滚轮缩放 + 中键平移; 未缩放过也直接可拖
+            if self._y_lo_manual is None:
+                lo, hi = self._y_range()
+                self._y_lo_manual, self._y_hi_manual = lo, hi
+            self._drag_last = ev.pos()
+            self.setCursor(Qt.ClosedHandCursor)
+        elif ev.button() == Qt.LeftButton:
             self._drag_last = ev.pos()
         super().mousePressEvent(ev)
 
@@ -139,6 +147,7 @@ class ScopeWidget(QWidget):
 
     def mouseReleaseEvent(self, ev):
         self._drag_last = None
+        self.setCursor(Qt.ArrowCursor)
         super().mouseReleaseEvent(ev)
 
     def mouseDoubleClickEvent(self, ev):
