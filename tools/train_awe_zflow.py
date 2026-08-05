@@ -67,7 +67,8 @@ def load_data(root, max_frames=200):
     act_hist = np.concatenate([np.zeros_like(act_n[:1]), act_n[:-1]], axis=0)
     print(f"📦 数据: {len(st)}帧 · state{st.shape[1]}D · action{act.shape[1]}D · "
           f"触觉{tac.shape[1]}D · img{obs.shape}", flush=True)
-    return obs, st_n, act_n, tac_n, act_hist, act.shape[1], st.shape[1], tac.shape[1]
+    return obs, st_n, act_n, tac_n, act_hist, act.shape[1], st.shape[1], tac.shape[1], \
+           (a_mean, a_std, s_mean, s_std, t_mean, t_std)  # 原始统计 (反归一化用, 2026-08-06 修复)
 
 
 # ── 视觉编码: SigLIP-base (86M 冻结; 失败回退 None) ───────────────────────────
@@ -221,7 +222,8 @@ def main():
     args = ap.parse_args()
 
     print(f"🧿 Z-MAX AWE 精简训练 (场景原生 + zFlow 三层潜空间世界模型) · {DEVICE} · 4060 适配版", flush=True)
-    obs, st, act, tac, act_hist, act_dim, st_dim, tac_dim = load_data(args.data_root)
+    obs, st, act, tac, act_hist, act_dim, st_dim, tac_dim, raw_stats = load_data(args.data_root)
+    a_mean, a_std, s_mean, s_std, t_mean, t_std = raw_stats  # 原始统计 (反归一化用)
     n = len(st)
 
     vis_model, vis_tf = make_vision_encoder()
@@ -290,7 +292,9 @@ def main():
                 "config": {"action_dim": act_dim, "state_dim": st_dim, "tactile_dim": tac_dim,
                            "vis_dim": vis_dim, "hidden": args.hidden,
                            "d_z": model.latent_dims, "arch": "awe-zflow-4060"},
-                "stats": {"a_mean": act.mean(0).tolist(), "a_std": act.std(0).tolist()}},
+                "stats": {"a_mean": a_mean.tolist(), "a_std": a_std.tolist(),
+                          "s_mean": s_mean.tolist(), "s_std": s_std.tolist(),
+                          "t_mean": t_mean.tolist(), "t_std": t_std.tolist()}},
                os.path.join(ckpt_dir, "model.pt"))
     with open(os.path.join(ckpt_dir, "config.json"), "w") as f:
         json.dump({"policy": "awe_zflow", "arch": "awe-zflow"}, f, indent=1)

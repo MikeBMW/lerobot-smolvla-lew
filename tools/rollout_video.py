@@ -53,6 +53,7 @@ def load_policy(policy: str):
         pol.load_state_dict(data["state_dict"])
         pol.state_dim = int(cfg["state_dim"])  # rollout 维度推断
         pol.action_dim = int(cfg["action_dim"])
+        pol.tactile_dim = int(cfg.get("tactile_dim", 3))
         pol.eval()
     elif policy == "awe_zflow":
         import importlib.util
@@ -62,10 +63,14 @@ def load_policy(policy: str):
         data = torch.load(Path(pm) / "model.pt", map_location="cpu")
         cfg = data["config"]
         pol = mod.AWEZFlowModel(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
-                                cfg["vis_dim"], hidden=cfg["hidden"])
+                                cfg["vis_dim"], d_z1=cfg["d_z"][0], d_z2=cfg["d_z"][1],
+                                d_z3=cfg["d_z"][2], hidden=cfg["hidden"])
         pol.load_state_dict(data["state_dict"])
         pol.state_dim = int(cfg["state_dim"])
         pol.action_dim = int(cfg["action_dim"])
+        pol.tactile_dim = int(cfg.get("tactile_dim", 3))
+        # 归一化统计 (训练管道一致, 2026-08-06 修复: 输入必须归一化否则输出饱和)
+        pol.stats = data.get("stats", {})
         pol.eval()
     else:
         from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
@@ -73,21 +78,23 @@ def load_policy(policy: str):
     pol.eval()
     return pol, pm
 
-def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str = "push-v3"):
+def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str = "push-v3",
+                camera: str = "corner"):
     """metaworld V3 环境 rollout: 每个 episode 重置, 推理 select_action 步进, 存观测帧"""
     import metaworld
     from PIL import Image
     os.makedirs(out_dir, exist_ok=True)
-    # metaworld V3: push-v3 (与 metaworld_act 数据集同族) — 标准 V3 用法
+    # metaworld V3: task 环境 + 指定相机视角 (corner=斜侧看插销)
     from metaworld.env_dict import ALL_V3_ENVIRONMENTS
     env_cls = ALL_V3_ENVIRONMENTS[task_name]
-    env = env_cls(render_mode="rgb_array")  # 必须 rgb_array 模式, 否则 render 全黑
+    env = env_cls(render_mode="rgb_array", camera_name=camera)  # camera_name 必须构造时传入!
     env._freeze_rand_vec = False  # 允许随机初始化
     mt1 = metaworld.MT1(task_name, seed=seed)
     env.set_task(mt1.train_tasks[0])  # V3 必需: set_task 后才能 step
     env.reset(seed=seed)
     frames, actions = [], []
     obs, _info = env.reset()
+    act_hist = None  # AWE 自回归动作历史
     t0 = time.time()
     for i in range(steps):
         # 取 RGB 帧: 优先 obs 里的真渲染图 (V3 observation.image = 相机视图), 兜底 env.render()
@@ -126,6 +133,11 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
             st_vec = np.asarray(obs, dtype=np.float32)
             st = st_vec[:st_dim] if st_vec.ndim == 1 else np.zeros(st_dim, dtype=np.float32)
             dev = next(policy.parameters()).device
+            # AWE: 输入归一化 (训练管道一致)
+            if hasattr(policy, "stats") and policy.stats.get("s_mean"):
+                sm = np.array(policy.stats["s_mean"], dtype=np.float32)[:st_dim]
+                ss = np.array(policy.stats["s_std"], dtype=np.float32)[:st_dim] + 1e-6
+                st = (st - sm) / ss
             batch = {
                 "observation.image": torch.from_numpy(rgb[np.newaxis].transpose(0, 3, 1, 2) / 255.0).float().to(dev),
                 "observation.state": torch.from_numpy(st).float().unsqueeze(0).to(dev),
@@ -134,18 +146,26 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
                 if hasattr(policy, "select_action"):
                     pred = policy.select_action(batch)
                 elif hasattr(policy, "_cond"):  # vla_touch: interpolant 采样
-                    tac = torch.zeros((1, 3), dtype=torch.float32, device=dev)
+                    tac_dim = getattr(policy, "tactile_dim", 3) or 3
+                    tac = torch.zeros((1, tac_dim), dtype=torch.float32, device=dev)
                     cond = policy._cond(batch["observation.state"], tac, None)
                     x0 = torch.randn_like(batch["observation.state"].new_zeros((1, policy.action_dim))) * 0.1
                     pred = policy.sample(x0, cond, diffuse_steps=10)
-                else:  # awe_zflow: 直接 forward
-                    ah = batch["observation.state"].new_zeros((1, 2))
-                    pred = policy(batch["observation.state"], tac_zero := batch["observation.state"].new_zeros((1, 3)), ah, None)
+                else:  # awe_zflow: 直接 forward (动作历史=上一帧动作, 自回归)
+                    tac_dim = getattr(policy, "tactile_dim", 3) or 3
+                    act_dim = getattr(policy, "action_dim", 4) or 4
+                    ah = act_hist.to(dev) if act_hist is not None else batch["observation.state"].new_zeros((1, act_dim))
+                    pred = policy(batch["observation.state"], batch["observation.state"].new_zeros((1, tac_dim)), ah, None)
                     if isinstance(pred, tuple):
                         pred = pred[0]
             if isinstance(pred, torch.Tensor):
                 pred = pred.detach().cpu()
             a = np.asarray(pred).ravel()
+            # AWE: 输出反归一化 (归一化空间 → 真实动作)
+            if hasattr(policy, "stats") and policy.stats.get("a_mean") and a.size:
+                am = np.array(policy.stats["a_mean"], dtype=np.float32)[: a.size]
+                asd = np.array(policy.stats["a_std"], dtype=np.float32)[: a.size] + 1e-6
+                a = a * asd + am
             if a.size >= act.size:
                 act[:] = a[: act.size]
             else:
@@ -155,6 +175,8 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
             print(f"⚠️ 推理异常({policy.__class__.__name__}): {ex}")
             pass  # 推理失败用零动作 (视频仍展示环境)
         actions.append(act)
+        # 更新 AWE 动作历史 (归一化空间, 与训练一致)
+        act_hist = torch.from_numpy(np.asarray(act, dtype=np.float32)[:4]).float().unsqueeze(0)
         obs, _, terminated, truncated, _ = env.step(act)
         if terminated or truncated:
             obs = env.reset()
@@ -176,11 +198,12 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--task", default="push-v3")
+    ap.add_argument("--camera", default="corner", help="corner/topview/behindGripper/gripperPOV")
     a = ap.parse_args()
     out = a.out or os.path.join(ROOT, "reports", f"rollout_{a.policy}")
     pol, pm = load_policy(a.policy)
-    print(f"🎥 推理 {a.policy} · checkpoint: {os.path.basename(pm)} · task={a.task}")
-    run_rollout(pol, a.steps, out, a.seed, a.task)
+    print(f"🎥 推理 {a.policy} · checkpoint: {os.path.basename(pm)} · task={a.task} · cam={a.camera}")
+    run_rollout(pol, a.steps, out, a.seed, a.task, a.camera)
 
 if __name__ == "__main__":
     main()
