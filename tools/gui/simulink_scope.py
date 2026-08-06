@@ -982,10 +982,37 @@ class InferenceVideoDialog(QDialog):
         self._timer.setInterval(100)
         self._load_frames()
         if self.frame_dirs:
-            self._play()
+            # 🔄 2026-08-06 老倪: "视频怎么还显示 14:21" — 训练(17:21)后旧帧还在播;
+            #   检测到任一模型训练曲线比视频帧新 → 自动重新生成 rollout
+            if self._check_newer_ckpt():
+                self.lbl_note.setText("🔄 检测到新训练 checkpoint, 正在重新生成推理视频…")
+                QTimer.singleShot(300, self._run_rollouts)
+            else:
+                self._play()
         else:
             # 无帧 → 自动生成 3 模型 rollout (2026-08-05 老倪: 训练完自动接推理对比)
             QTimer.singleShot(300, self._run_rollouts)
+
+    def _check_newer_ckpt(self):
+        """任一模型 train_curve json 的 ts 比其视频帧 mtime 新 → 需重新生成 (60s 容差)"""
+        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
+        import json as _json
+        for policy, frames in self.frame_dirs.items():
+            cf = os.path.join(root, "reports", f"train_curve_{policy}.json")
+            if not frames or not os.path.exists(cf):
+                continue
+            try:
+                d = _json.load(open(cf, encoding="utf-8"))
+                ts = d.get("ts", "")
+                if len(ts) != 15:
+                    continue
+                t_ckpt = time.mktime(time.strptime(ts, "%Y%m%d_%H%M%S"))
+                t_frame = os.path.getmtime(frames[0])
+                if t_ckpt > t_frame + 60:
+                    return True
+            except Exception:
+                continue
+        return False
 
     def _load_frames(self):
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
