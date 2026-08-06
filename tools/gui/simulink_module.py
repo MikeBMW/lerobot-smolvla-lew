@@ -2287,22 +2287,12 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_scope)
         self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
         tl.addWidget(self.btn_float)
-        self.btn_win = mk_btn("🪟 画布窗口", "恢复画布子窗口 (MDI: 最小化/关闭后点此找回)", self.show_canvas_win, "#57606a")
-        tl.addWidget(self.btn_win)
+        # (2026-08-06 老倪: 「🪟 画布窗口」按钮没用 → 删除; 画布子窗口已不可
+        #  最小化/关闭 (be1ba44a), show_canvas_win 恢复逻辑无存在必要)
 
         tl.addSpacing(16)
-        tl.addWidget(QLabel("时间"))
-        self.sp_t_end = QDoubleSpinBox(); self.sp_t_end.setRange(0.1, 3600)
-        self.sp_t_end.setValue(self._sim_t_end); self.sp_t_end.setSuffix(" s")
-        self.sp_t_end.setMaximumWidth(70)
-        self.sp_t_end.setStyleSheet("background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:2px 6px;")
-        tl.addWidget(self.sp_t_end)
-        tl.addWidget(QLabel("dt"))
-        self.sp_dt = QDoubleSpinBox(); self.sp_dt.setRange(0.001, 1.0)
-        self.sp_dt.setValue(self._sim_dt); self.sp_dt.setDecimals(3)
-        self.sp_dt.setMaximumWidth(62)
-        self.sp_dt.setStyleSheet("background:#e9edf2; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:2px 6px;")
-        tl.addWidget(self.sp_dt)
+        # (2026-08-06 老倪: 「时间 10.0s / dt」仿真参数控件没用 → 删除;
+        #  仿真用内部 _sim_t_end/_sim_dt 默认值, 无逻辑引用)
 
         tl.addStretch()
         self.lbl_clock = QLabel("t = 0.00s")
@@ -3109,18 +3099,8 @@ class SimulinkModule(QWidget):
         self._log("⛶ 画布已还原回主窗口 (铺满)")
         self._float_dlg = None
 
-    def show_canvas_win(self):
-        """🪟 恢复画布子窗口: MDI 最小化/关闭(隐藏)后找回"""
-        mdi = getattr(self, "_mdi", None)
-        win = getattr(self, "_canvas_win", None)
-        if mdi is None or win is None:
-            return
-        if win.isMinimized():
-            win.showNormal()
-        elif win.isHidden():
-            win.show()
-        mdi.setActiveSubWindow(win)
-        self._log("🪟 画布子窗口已恢复")
+    # (2026-08-06 老倪: 「🪟 画布窗口」按钮+show_canvas_win 方法删除 — 画布子窗口
+    #  已不可最小化/关闭, 恢复逻辑无存在必要)
 
     # ── 🎛 Simulink 子系统 (2026-08-05 老倪: "顶层系统用一个模块表示, 双击打开看到三条线") ──
     def _open_subsystem(self, node):
@@ -3438,8 +3418,9 @@ class SimulinkModule(QWidget):
         self._log("ℹ️ 画布无执行环节节点 (采集/训练/验证/部署/推理) — 进入观察模式")
         self._show_bubble(self.rect().center(), "画布无执行环节 — 加载「🔬 三模型对比」等模板再运行", 5000)
         self._sim_t = 0.0
-        self._sim_dt = self.sp_dt.value()
-        self._sim_t_end = self.sp_t_end.value()
+        # 🐛 2026-08-06: sp_dt/sp_t_end 控件已删 (老倪: 没用), 用内部默认值
+        self._sim_dt = getattr(self, "_sim_dt", 0.02)
+        self._sim_t_end = getattr(self, "_sim_t_end", 10.0)
         self._sim_running = True
         # 重置所有节点状态为 idle
         for n in self.nodes:
