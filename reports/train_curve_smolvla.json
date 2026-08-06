@@ -1,1 +1,1 @@
-{"policy": "smolvla", "name": "SmolVLA", "ts": "20260806_peg", "curve": [[5, 1.204], [10, 0.998], [15, 0.893], [20, 0.701], [25, 0.508], [30, 0.532], [35, 0.58], [40, 0.48], [45, 0.501], [50, 0.445]], "step_s": 423.3755555555556, "ckpt": "outputs/train/smolvla_peg_final/checkpoints"}
+{"policy": "smolvla", "name": "SmolVLA", "ts": "20260806_pegv3", "curve": [[5, 1.204], [10, 0.998], [15, 0.893], [20, 0.701], [25, 0.508], [30, 0.532], [35, 0.58], [40, 0.48], [45, 0.501], [50, 0.445]], "step_s": 423.3755555555556, "ckpt": "outputs/train/smolvla_peg_v3/checkpoints"}
