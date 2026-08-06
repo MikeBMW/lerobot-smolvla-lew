@@ -2315,62 +2315,48 @@ class SimulinkModule(QWidget):
         tl.addWidget(btn_save)
         tl.addWidget(btn_load)
 
-        # ── 真实操作按钮 (CI/CD 闭环: 验证→训练→集成→部署) — 独立第二行, 完整显示 ──
-        tb2 = QFrame()
-        tb2.setStyleSheet("background:#f6f8fa; border-bottom:1px solid #d0d7de;")
-        tb2.setFixedHeight(44)
-        tl2 = QHBoxLayout(tb2)
-        tl2.setContentsMargins(10, 4, 10, 4)
-        tl2.setSpacing(8)
-        # (2026-08-06 老倪: 「📚 模块库」工具栏按钮没用 → 删除; 面板内已有「◀ 收起」折叠,
-        #  tl2 按钮冗余)
+        # 🎥 录屏 + 💾 保存模型 (工具类, 2026-08-06 老倪: 归类一行)
+        self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
+        tl.addWidget(self.btn_save_model)
+        self.btn_record = mk_btn("🔴 录制", "开始录屏: 定时截取本窗口 (画布+终端输出+模型结果), 训练→推理→部署全程记录", self.start_recording, "#ff4444")
+        tl.addWidget(self.btn_record)
+        self.btn_stop_rec = mk_btn("⏹ 停止", "停止录屏: ffmpeg 合成 MP4 (2fps采集, 可加速, 总长<1分钟)", self.stop_recording, "#f0883e")
+        self.btn_stop_rec.setEnabled(False)
+        tl.addWidget(self.btn_stop_rec)
+
+        # ┃ 分割线: 工具类 | 数据典型应用 (2026-08-06 老倪: 归类, 中间分割线分开)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setFixedHeight(28)
+        sep.setStyleSheet("color:#b6bdc7; background:#b6bdc7; border:none; width:1px; margin:0 4px;")
+        tl.addWidget(sep)
+
+        # ── 数据典型应用按钮 (第二行并入第一行, 2026-08-06 老倪: 放工具按钮右侧) ──
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
-        # 数据闭环控制台 = 唯一 CICD 入口 (6环节流水线 + 三阶段训练合并)
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
-        tl2.addWidget(self.btn_pipeline)
-        # (2026-08-06 老倪: 「🧠 ACT-Meta 引导」按钮点击没反应 → 删除;
-        #  ACT-Meta 模板仍可从模块库「🧠 ACT 模型·子模块」组进入)
-        # 🔬 三模型对比: 与⚔️对比同族 (2026-08-05 老倪) — 放第二行, 第一行按钮太多会被挤掉
+        tl.addWidget(self.btn_pipeline)
         self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
-        tl2.addWidget(self.btn_compare3)
-        # 🔬 五模型对比 (2026-08-05 老倪: "ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型放到一起纵向对比")
-        # 终极技术选型画布: 五条模型线同画布, 同构模块同列垂直对齐
+        tl.addWidget(self.btn_compare3)
         self.btn_compare5 = mk_btn("🔬 五模型对比", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE 五模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 5 模型 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
-        tl2.addWidget(self.btn_compare5)
-        # 🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: 参考 VLA-Touch 项目, 4060 精简) —
-        # 参考应用滚动条里排末尾不易发现, 加显眼工具栏入口 (同 ACT-Meta/总系统 处理)
+        tl.addWidget(self.btn_compare5)
         self.btn_vlatouch = mk_btn("🖐 VLA-Touch", "VLA-Touch 触觉对比管道 (4060 精简): DINOv2视觉 + Marker触觉 + DiT-B base VLA 冻结 + Interpolant 触觉控制器 (唯一训练模块) · 纵向对比触觉增强 vs 纯动作", self.open_vlatouch, "#58a6ff")
-        tl2.addWidget(self.btn_vlatouch)
-        # 🧿 AWE 场景原生对比 (2026-08-05 老倪: 它石 AWE 3.5/OmniVTA 架构) —
-        # 同构模型纵向对比: SigLIP视觉 + H-JEPA 三层潜空间 + zFlow GRU 世界引擎 + 未来决策交叉注意力
+        tl.addWidget(self.btn_vlatouch)
         self.btn_awe = mk_btn("🧿 AWE", "AWE 场景原生对比管道 (它石架构, 4060 精简): SigLIP视触觉编码冻结 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 未来决策交叉注意力 · 纵向对比世界模型架构", self.open_awe, "#a371f7")
-        tl2.addWidget(self.btn_awe)
-        # 🎛 顶层总系统 (2026-08-05 老倪: "顶层总系统没有啊" — 参考应用滚动条里不易发现, 加显眼工具栏入口)
+        tl.addWidget(self.btn_awe)
         self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
-        tl2.addWidget(self.btn_topsys)
+        tl.addWidget(self.btn_topsys)
         # 🎛 子系统返回 (2026-08-05 老倪: 顶层总系统双击展开内部三线, 返回恢复顶层)
         self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
         self.btn_back.setVisible(False)
-        tl2.addWidget(self.btn_back)
-        # 💾 保存模型 (2026-08-05 老倪: "当前训练的模型可以保存, 下次直接应用")
-        self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
-        tl2.addWidget(self.btn_save_model)
-        # 🎥 录屏 (2026-08-05 老倪: 整个训练→推理→部署过程录制成视频, 可加速, 总长<1分钟, 含终端输出+模型结果)
-        self.btn_record = mk_btn("🔴 录制", "开始录屏: 定时截取本窗口 (画布+终端输出+模型结果), 训练→推理→部署全程记录", self.start_recording, "#ff4444")
-        tl2.addWidget(self.btn_record)
-        self.btn_stop_rec = mk_btn("⏹ 停止", "停止录屏: ffmpeg 合成 MP4 (2fps采集, 可加速, 总长<1分钟)", self.stop_recording, "#f0883e")
-        self.btn_stop_rec.setEnabled(False)
-        tl2.addWidget(self.btn_stop_rec)
-        tl2.addStretch()
-        lbl_op = QLabel("双击节点即运行 · Switch 选数据源 · 3阶段自动流转")
-        lbl_op.setStyleSheet("color:#57606a; font-size:10px; background:transparent; border:none;")
-        tl2.addWidget(lbl_op)
+        tl.addWidget(self.btn_back)
+
+        tl.addStretch()
+        self.lbl_clock = QLabel("t = 0.00s")
+        self.lbl_clock.setStyleSheet("color:#00d4aa; font-size:13px; font-weight:700; font-family:Consolas;")
+        tl.addWidget(self.lbl_clock)
 
         outer.addWidget(tb)
-
-        # CI/CD 操作行 (第二行工具栏, 在仿真工具栏之下)
-        outer.addWidget(tb2)
 
         # (2026-08-06 老倪: 「参考应用」整行删除 — 白色字体按钮与上方彩色工具栏
         #  按钮重复 (三/五模型对比·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
