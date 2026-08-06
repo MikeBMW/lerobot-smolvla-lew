@@ -2241,23 +2241,8 @@ class SimulinkModule(QWidget):
         outer.setSpacing(0)
 
         # ── Hero 标题条 (对标 MathWorks 解决方案页 Hero) ──
-        hero = QFrame()
-        hero.setStyleSheet("background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #f6f8fa, stop:0.6 #0f1a24, stop:1 #f6f8fa); border-bottom:1px solid #d0d7de;")
-        hero.setFixedHeight(64)
-        hl = QHBoxLayout(hero)
-        hl.setContentsMargins(16, 8, 16, 8)
-        hl.setSpacing(14)
-        hero_title = QLabel("Z-MAX 具身智能 · Simulink 模式")
-        hero_title.setStyleSheet("color:#1f2328; font-size:19px; font-weight:800; background:transparent; border:none;")
-        hl.addWidget(hero_title)
-        hero_sub = QLabel("使用 XSpace Studio 实现产线机器人的感知、规划与控制 · 模块库拖拽 · 连线仿真 · 数据闭环")
-        hero_sub.setStyleSheet("color:#57606a; font-size:11px; background:transparent; border:none;")
-        hl.addWidget(hero_sub)
-        hl.addStretch()
-        ver = QLabel("v1.0 · zmax-simulink")
-        ver.setStyleSheet("color:#00d4aa; font-size:10px; font-family:Consolas; background:transparent; border:none;")
-        hl.addWidget(ver)
-        outer.addWidget(hero)
+        # (2026-08-06 老倪: 「Z-MAX 具身智能 · Simulink 模式」大标题行太黑看不清且占
+        #  64px → 删除, 标题提升到主窗口菜单栏 (studio.py); 顶部直接是工具栏, 更紧凑)
 
         # ── 工作流导航条 (对标 MathWorks 6 大功能分区) ──
         # (2026-08-06 老倪: 工作流过滤按钮行「① 访问·标注数据…」白色按钮没用占地方 → 删除;
