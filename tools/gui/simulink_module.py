@@ -4714,12 +4714,14 @@ class SimulinkModule(QWidget):
                 policies = InferenceVideoDialog.POLICIES
         root = self._repo_root()
         import glob as _glob
-        have = all(_glob.glob(os.path.join(root, "reports", f"rollout_{p}", "frame_*.png"))
+        # 多候选目录: rollout_final_<p> > rollout_peg_<p> > rollout_<p> (2026-08-06 同步昨晚产物)
+        have = all(any(_glob.glob(os.path.join(root, "reports", cand, "frame_*.png"))
+                       for cand in (f"rollout_final_{p}", f"rollout_peg_{p}", f"rollout_{p}"))
                    for p, _, _ in policies)
         if not have:
-            self._log(f"🎥 推理对比: 生成 {len(policies)} 模型 rollout 视频 (metaworld push-v3, 各 120 帧)…")
+            self._log(f"🎥 推理对比: 生成 {len(policies)} 模型 rollout 视频 (peg-insert, corner2↺90°, 各 60 帧)…")
             self._qmsg_info("🎥 推理效果对比",
-                            f"{len(policies)} 模型推理视频将自动生成 (metaworld rollout, 各 120 帧)\n"
+                            f"{len(policies)} 模型推理视频将自动生成 (peg-insert rollout, 各 60 帧)\n"
                             "生成完成自动弹出多窗口同步播放对比。")
         dlg = InferenceVideoDialog(self, policies=policies)
         self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死

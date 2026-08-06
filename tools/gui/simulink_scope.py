@@ -915,6 +915,8 @@ class InferenceVideoDialog(QDialog):
         self.module = module
         self.POLICIES = list(policies or self.POLICIES)
         n = len(self.POLICIES)
+        # 🖥 置顶 (2026-08-06 老倪: 5 窗口保持最前不被遮挡, 看着做对比)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setWindowTitle(f"🎥 {n} 模型推理效果对比 — metaworld push 场景")
         self.setMinimumSize(min(1280, 240 + n * 220), 640)
         self.setStyleSheet(_qss("QDialog{background:#f6f8fa;}"))
@@ -974,15 +976,22 @@ class InferenceVideoDialog(QDialog):
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
         min_len = None
         dirs = {}
+        # 候选目录优先级: rollout_final_<p> (昨晚 peg 最终版) > rollout_peg_<p> > rollout_<p>
+        # (2026-08-06 老倪: 视频打开不动 — 昨晚生成在 rollout_peg_*, 旧逻辑只找 rollout_*)
         for policy, name, color in self.POLICIES:
-            d = os.path.join(root, "reports", f"rollout_{policy}")
-            frames = sorted(glob.glob(os.path.join(d, "frame_*.png")))
-            if frames:
-                dirs[policy] = frames
-                min_len = len(frames) if min_len is None else min(min_len, len(frames))
+            found = []
+            for cand in (f"rollout_final_{policy}", f"rollout_peg_{policy}", f"rollout_{policy}"):
+                d = os.path.join(root, "reports", cand)
+                frames = sorted(glob.glob(os.path.join(d, "frame_*.png")))
+                if frames:
+                    found = frames
+                    break
+            if found:
+                dirs[policy] = found
+                min_len = len(found) if min_len is None else min(min_len, len(found))
         self.frame_dirs = dirs
         if not dirs:
-            self.lbl_note.setText("⚠️ 无推理视频 — 点「🔄 重新生成推理」跑 3 模型 rollout (各 120 帧, 约 1-2 分钟)")
+            self.lbl_note.setText("⚠️ 无推理视频 — 点「🔄 重新生成推理」跑多模型 rollout (各 60 帧, 约 1-2 分钟)")
             for lab in self.video_labels.values():
                 lab.setText("无数据")
             return
@@ -992,8 +1001,12 @@ class InferenceVideoDialog(QDialog):
         self.lbl_note.setText(f"🎞 {len(dirs)} 模型 × {min_len} 帧 · 同一场景同步播放")
 
     def _tick(self):
-        if not self.frame_dirs or self.cur_idx >= len(next(iter(self.frame_dirs.values()))):
+        if not self.frame_dirs:
             self._timer.stop()
+            return
+        n = len(next(iter(self.frame_dirs.values())))
+        if self.cur_idx >= n:
+            self.cur_idx = 0  # 🔁 循环播放 (2026-08-06 老倪: 看着做对比, 播完自动重头)
             return
         from PyQt5.QtGui import QPixmap
         for policy, frames in self.frame_dirs.items():
@@ -1014,7 +1027,7 @@ class InferenceVideoDialog(QDialog):
     def _run_rollouts(self):
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
         n = len(self.POLICIES)
-        self.lbl_note.setText(f"⏳ 正在生成 {n} 模型推理视频 (metaworld rollout, 各 120 帧)…")
+        self.lbl_note.setText(f"⏳ 正在生成 {n} 模型推理视频 (peg-insert, corner2↺90°, 各 60 帧)…")
         self.btn_reload.setEnabled(False)
         import subprocess
         import threading
@@ -1023,9 +1036,14 @@ class InferenceVideoDialog(QDialog):
             out = {}
             for policy, name, _c in self.POLICIES:
                 try:
+                    # 昨晚验证的方向正确配置 (2026-08-06): peg-insert 插销场景 + corner2 视角
+                    # + 逆时针旋转90° → 插孔可见方向正立; 输出 rollout_final_<p>
                     r = subprocess.run([os.path.join(root, ".venv", "bin", "python"),
                                         os.path.join(root, "tools", "rollout_video.py"),
-                                        "--policy", policy, "--steps", "120"],
+                                        "--policy", policy, "--steps", "60",
+                                        "--task", "peg-insert-side-v3",
+                                        "--camera", "corner2", "--rotate-ccw",
+                                        "--out", os.path.join(root, "reports", f"rollout_final_{policy}")],
                                        capture_output=True, text=True, timeout=300, cwd=root)
                     out[policy] = (r.returncode == 0, r.stdout.strip().splitlines()[-1] if r.stdout else "")
                 except Exception as ex:
@@ -1037,7 +1055,7 @@ class InferenceVideoDialog(QDialog):
             self._load_frames()
             if self.frame_dirs:
                 self._play()
-                self.lbl_note.setText("✅ 推理视频已生成, 3 窗口同步播放")
+                self.lbl_note.setText(f"✅ 推理视频已生成, {len(self.POLICIES)} 窗口同步播放")
             else:
                 self.lbl_note.setText("⚠️ 生成失败 — 检查日志")
 
