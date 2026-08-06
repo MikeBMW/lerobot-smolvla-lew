@@ -212,19 +212,10 @@ class SystemSidebar(QFrame):
         layout.setSpacing(8)
         layout.setContentsMargins(12, 16, 12, 16)
 
-        # 标题行: logo + XSpace Studio + ◀ 收起按钮 (2026-08-06 老倪: 列表栏要能隐藏)
+        # 标题行: 精简为「◀ 收起 + 版本号」一行 (2026-08-06 老倪: 大标题太黑看不清
+        # 还占地方 → 品牌信息提升到菜单栏, 侧栏只留功能按钮)
         logo_row = QHBoxLayout()
-        icon = QLabel()
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
-        pixmap = QPixmap(icon_path)
-        icon.setPixmap(pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        icon.setStyleSheet("background:transparent; border:none; margin:0;")
-        logo_row.addWidget(icon)
-        title = QLabel("XSpace Studio")  # 改名：LeRobot Studio → XSpace Studio
-        title.setFont(QFont("Arial", 14, QFont.Bold))
-        title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
-        logo_row.addWidget(title)
-        logo_row.addStretch()
+        logo_row.setSpacing(6)
         btn_collapse = QPushButton("◀")
         btn_collapse.setFixedWidth(34)
         btn_collapse.setToolTip("隐藏左侧栏, 内容区占满 (再点左缘 ▶ 展开)")
@@ -235,6 +226,10 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
+        ver = QLabel("Z-MAX v1.7.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
+        logo_row.addWidget(ver)
+        logo_row.addStretch()
         layout.addLayout(logo_row)
 
         # 返回按钮
@@ -7282,12 +7277,16 @@ class StudioMainWindow(QMainWindow):
         act_patent.triggered.connect(self._toggle_patent_panel)
         m_help.addAction(act_patent)
         
-        # ── 右上角状态灯 (单灯指示) ──
+        # ── 右上角: 品牌标签 + 状态灯 (2026-08-06 老倪: 侧栏大标题提升到菜单栏) ──
         status_widget = QWidget()
         status_widget.setStyleSheet("background:transparent;")
         sl = QHBoxLayout()
         sl.setContentsMargins(4, 2, 8, 2)
         sl.setSpacing(4)
+        # 🏷 品牌标签 (原侧栏大标题提升至此, 白字清晰可见, 不占侧栏空间)
+        brand = QLabel("🦾 Z-MAX 具身智能 · Simulink 模式")
+        brand.setStyleSheet("color:#e6edf3; font-size:11px; font-weight:600; background:transparent; border:none; padding:0 8px;")
+        sl.addWidget(brand)
         
         self._status_lights = {}
         for color_on, name, tooltip in [
