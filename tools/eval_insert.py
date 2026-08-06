@@ -23,11 +23,14 @@ def load_policy(policy):
     if policy == "act":
         from lerobot.policies.act.modeling_act import ACTPolicy
         cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model")), key=os.path.getmtime)
-        return ACTPolicy.from_pretrained(cands[-1], local_files_only=True).to(DEVICE).eval(), None
+        # 相对路径 (HF 校验拒绝绝对路径, 2026-08-06)
+        rel = os.path.relpath(cands[-1], ROOT)
+        return ACTPolicy.from_pretrained(rel, local_files_only=True).to(DEVICE).eval(), None
     elif policy in ("smolvla", "smolvla_lew"):
         from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
         cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model")), key=os.path.getmtime)
-        return SmolVLALewPolicy.from_pretrained(cands[-1], local_files_only=True).to(DEVICE).eval(), None
+        rel = os.path.relpath(cands[-1], ROOT)  # 相对路径 (HF 校验)
+        return SmolVLALewPolicy.from_pretrained(rel, local_files_only=True).to(DEVICE).eval(), None
     elif policy == "vla_touch":
         from importlib import util
         spec = util.spec_from_file_location("tv", os.path.join(ROOT, "tools", "train_vla_touch.py"))
@@ -55,6 +58,15 @@ def load_policy(policy):
         return pol, None
     return None, None
 
+def _load_stats():
+    """加载训练 stats (data/metaworld_peg_v4/meta/stats.json)"""
+    import json as _j
+    for root in ["data/metaworld_peg_v4", "data/metaworld_peg_v3", "data/metaworld_peg_v2"]:
+        p = os.path.join(ROOT, root, "meta", "stats.json")
+        if os.path.exists(p):
+            return _j.load(open(p))
+    return None
+
 def run_episode(policy, seed, steps=200):
     """单次插拔尝试: 返回 peg 是否抬起 + 是否插入"""
     import metaworld
@@ -67,6 +79,12 @@ def run_episode(policy, seed, steps=200):
         st_dim = policy.config.input_features["observation.state"].shape[0]
     else:
         st_dim = getattr(policy, "state_dim", 3)
+    # 归一化统计 (LeRobot 训练管道, 2026-08-06: ACT/SmolVLA 无 processor, 需手动归一化)
+    stats = _load_stats()
+    sm = np.array(stats["observation.state"]["mean"], dtype=np.float32)[:st_dim]
+    ss = np.array(stats["observation.state"]["std"], dtype=np.float32)[:st_dim] + 1e-6
+    am = np.array(stats["action"]["mean"], dtype=np.float32)[:4]
+    asd = np.array(stats["action"]["std"], dtype=np.float32)[:4] + 1e-6
     peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
     hole = env.data.site_xpos[env.model.site("hole").id]
     sm = np.zeros(st_dim, dtype=np.float32)
@@ -78,11 +96,10 @@ def run_episode(policy, seed, steps=200):
         if peg[2] - peg_z0 > 0.05:
             lifted = True
         st_raw = np.asarray(obs, dtype=np.float32)[:st_dim]
-        if st_raw.shape[0] < 3:  # 调试: obs 维度异常
-            print(f"⚠️ {policy.__class__.__name__} obs shape={np.asarray(obs).shape} st_raw={st_raw.shape}")
+        st_n = (st_raw - sm) / ss  # 归一化 (训练管道)
         d = np.zeros(policy.tactile_dim if hasattr(policy, "tactile_dim") else 3, dtype=np.float32)
         d[:3] = st_raw[:3] * 0.1
-        s_t = torch.from_numpy(st_raw).float().to(DEVICE).unsqueeze(0)
+        s_t = torch.from_numpy(st_n).float().to(DEVICE).unsqueeze(0)  # 归一化输入
         t_t = torch.from_numpy(d).float().to(DEVICE).unsqueeze(0)
         with torch.no_grad():
             if hasattr(policy, "select_action"):
@@ -95,6 +112,10 @@ def run_episode(policy, seed, steps=200):
                 pred = policy.select_action(batch)
                 if isinstance(pred, torch.Tensor): pred = pred.detach().cpu()
                 act = np.asarray(pred).ravel()
+                # 反归一化 (训练管道: 归一化空间 → 真实动作) — 2026-08-06 修复: 必须还原后才能 env.step
+                if act.size == 4:
+                    act = act * asd + am
+                    act_hist = torch.from_numpy(act).float().to(DEVICE).unsqueeze(0)
             elif hasattr(policy, "_cond"):
                 cond = policy._cond(s_t, t_t, None)
                 x0 = torch.randn_like(s_t.new_zeros((1, policy.action_dim))) * 0.1

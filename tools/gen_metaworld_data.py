@@ -39,8 +39,8 @@ def main():
 
     mt = metaworld.MT1(args.task)
     env = mt.train_classes[args.task](render_mode="rgb_array")
-    task = mt.train_tasks[0]
-    env.set_task(task)
+    env.set_task(mt.train_tasks[0])
+    env._freeze_rand_vec = False  # 允许随机初始化 (多 seed 探索)
 
     out = proj / args.out
     data_dir = out / "data" / "chunk-000"
@@ -57,6 +57,11 @@ def main():
     print(f"🎯 生成 {args.task} · {args.eps} 条轨迹 × {args.steps} 帧")
     for ep in range(args.eps):
         obs, _ = env.reset()
+        # 记录轨迹开始时 peg 高度 (成功判定基准, 2026-08-06)
+        try:
+            peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
+        except Exception:
+            peg_z0 = 0.02
         ep_imgs = []
         for i in range(args.steps):
             # 渲染真实图像 (480x480 → 128x128)
@@ -165,9 +170,19 @@ def main():
                 "timestamp": i / 30.0,
             })
             total += 1
-        ep_imgs_all[ep] = ep_imgs
-        all_eps.append({"episode_index": ep, "length": args.steps})
-        print(f"  轨迹{ep}: 完成")
+        # 成功过滤 (2026-08-06: 只保留抓起 peg 的轨迹, 失败轨迹污染训练)
+        try:
+            peg_z1 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
+        except Exception:
+            peg_z1 = 0.02
+        if peg_z1 - peg_z0 > 0.05:
+            ep_imgs_all[ep] = ep_imgs
+            all_eps.append({"episode_index": ep, "length": args.steps})
+            print(f"  轨迹{ep}: 完成 (抓取成功 +{peg_z1-peg_z0:.3f}m)")
+        else:
+            # 丢弃失败轨迹: 从 all_frames 移除该 episode
+            all_frames[:] = [f for f in all_frames if f["episode_index"] != ep]
+            print(f"  轨迹{ep}: 丢弃 (未抓起 peg, 升高{peg_z1-peg_z0:+.3f}m)")
 
     # 写视频 (单文件 file-000.mp4, LeRobot 标准 — 所有 episode 帧按序合成一个 mp4,
     #   episodes meta 用 from/to_frame 定位; 2026-08-06 修复: 原来每 episode 一个
