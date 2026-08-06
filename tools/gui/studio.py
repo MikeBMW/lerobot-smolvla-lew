@@ -2827,26 +2827,38 @@ class TrainingModule(QWidget):
         layout.addWidget(self.progress_bar)
         
         # ===== Log Output Terminal =====
-        log_group = QGroupBox(" Training Log ")
+        # 📋 终端区可折叠 (2026-08-06 老倪: 下面的终端窗口也要能隐藏 — 标题行
+        #   「📋 Training Log」+ ◀ 收起按钮; 收起后只剩标题行, 展开恢复)
+        log_group = QWidget()
         log_group.setStyleSheet(f"""
-            QGroupBox {{
+            QWidget {{
                 color: {C_WHITE};
                 background: {C_CARD};
                 border: 1px solid {C_BORDER};
                 border-radius: 8px;
-                padding: 12px;
-                margin-top: 8px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 16px;
-                padding: 0 8px;
-                font-weight: bold;
             }}
         """)
-        
-        log_layout = QVBoxLayout()
-        
+        log_outer = QVBoxLayout(log_group)
+        log_outer.setContentsMargins(12, 8, 12, 12)
+        log_outer.setSpacing(6)
+
+        log_head = QHBoxLayout()
+        log_title = QLabel("📋 Training Log")
+        log_title.setStyleSheet(f"color:{C_WHITE}; font-size:12px; font-weight:bold; background:transparent;")
+        log_head.addWidget(log_title)
+        log_head.addStretch()
+        self.btn_log_collapse = QPushButton("◀ 收起")
+        self.btn_log_collapse.setFixedWidth(72)
+        self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
+        self.btn_log_collapse.setStyleSheet(f"""
+            QPushButton {{ background: {C_CYAN}; color: {C_BG}; border: none;
+                           border-radius: 4px; font-size: 11px; font-weight: bold; padding: 4px 8px; }}
+            QPushButton:hover {{ background: {C_CYAN_HOVER if 'C_CYAN_HOVER' in dir() else '#00e6c3'}; }}
+        """)
+        self.btn_log_collapse.clicked.connect(self._toggle_log_area)
+        log_head.addWidget(self.btn_log_collapse)
+        log_outer.addLayout(log_head)
+
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMinimumHeight(600)  # 确保 log 区域足够大
@@ -2877,9 +2889,8 @@ class TrainingModule(QWidget):
                 height: 0px;
             }}
         """)
-        log_layout.addWidget(self.log_text)
+        log_outer.addWidget(self.log_text)
         
-        log_group.setLayout(log_layout)
         layout.addWidget(log_group, 1)  # stretch=1 让 log 占据大部分空间
         
         # Set content widget in scroll area and add to main layout
@@ -2911,6 +2922,17 @@ class TrainingModule(QWidget):
         # Auto scroll to bottom
         scrollbar = self.log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+
+    def _toggle_log_area(self):
+        """📋 终端日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
+        if self.log_text.isVisible():
+            self.log_text.setVisible(False)
+            self.btn_log_collapse.setText("▶ 展开")
+            self.btn_log_collapse.setToolTip("展开终端日志区")
+        else:
+            self.log_text.setVisible(True)
+            self.btn_log_collapse.setText("◀ 收起")
+            self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
     
     def _switch_to_smolvla(self):
         """SmolVLA is the only model — refresh params"""
