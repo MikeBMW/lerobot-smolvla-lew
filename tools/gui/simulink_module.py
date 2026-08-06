@@ -1990,23 +1990,26 @@ class LibraryPanel(QFrame):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(4)
 
-        # 标题行: 📚 模块库 + 折叠按钮 ◀ (2026-08-06 老倪: 隐藏左侧栏省地方)
+        # 标题行: 📚 模块库 + 折叠按钮 ◀ (2026-08-06 老倪: 隐藏左侧栏省地方;
+        #   v2 2026-08-06: 按钮加大加醒目 + 双击标题也可折叠)
         head = QHBoxLayout()
         title = QLabel("📚 模块库")
         title.setStyleSheet("color:#1f2328; font-size:13px; font-weight:700; padding:4px;")
         head.addWidget(title)
         head.addStretch()
         btn_collapse = QPushButton("◀ 收起")
-        btn_collapse.setFixedWidth(64)
+        btn_collapse.setFixedWidth(72)
         btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
         btn_collapse.setStyleSheet("""
-            QPushButton{background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
-                        border-radius:4px; font-size:10px; padding:3px 6px;}
-            QPushButton:hover{background:#d0d7de;}
+            QPushButton{background:#1f6feb; color:#ffffff; border:none;
+                        border-radius:4px; font-size:11px; font-weight:700; padding:4px 8px;}
+            QPushButton:hover{background:#388bfd;}
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         head.addWidget(btn_collapse)
         lay.addLayout(head)
+        # 双击「📚 模块库」标题也可折叠 (2026-08-06 v2: 更易发现)
+        title.mousePressEvent = self._title_clicked
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -2026,6 +2029,15 @@ class LibraryPanel(QFrame):
         hint = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放 · 顶部工作流过滤")
         hint.setStyleSheet("color:#57606a; font-size:9px; padding:4px;")
         lay.addWidget(hint)
+
+    def _title_clicked(self, ev):
+        """双击标题 → 折叠左侧栏 (2026-08-06 v2: 用户反馈找不到 ◀ 按钮)"""
+        import time as _t
+        now = _t.time()
+        last = getattr(self, "_title_click_ts", 0.0)
+        self._title_click_ts = now
+        if now - last < 0.4:  # 双击
+            self.collapse_requested.emit()
 
     def _rebuild(self):
         """重建模块库列表 (按工作流过滤)"""
