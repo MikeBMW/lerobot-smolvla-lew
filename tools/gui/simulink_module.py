@@ -1978,6 +1978,9 @@ class SimCanvas(QGraphicsView):
 # 模块库面板 (左侧, 对标 Simulink Library Browser)
 # ════════════════════════════════════════════════════════════════
 class LibraryPanel(QFrame):
+    # 📚 模块库左侧栏折叠信号 (2026-08-06 老倪: 太占地方, 可缩到左边)
+    collapse_requested = pyqtSignal()
+
     def __init__(self, module):
         super().__init__()
         self.module = module
@@ -1987,9 +1990,23 @@ class LibraryPanel(QFrame):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(4)
 
+        # 标题行: 📚 模块库 + 折叠按钮 ◀ (2026-08-06 老倪: 隐藏左侧栏省地方)
+        head = QHBoxLayout()
         title = QLabel("📚 模块库")
         title.setStyleSheet("color:#1f2328; font-size:13px; font-weight:700; padding:4px;")
-        lay.addWidget(title)
+        head.addWidget(title)
+        head.addStretch()
+        btn_collapse = QPushButton("◀ 收起")
+        btn_collapse.setFixedWidth(64)
+        btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
+        btn_collapse.setStyleSheet("""
+            QPushButton{background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
+                        border-radius:4px; font-size:10px; padding:3px 6px;}
+            QPushButton:hover{background:#d0d7de;}
+        """)
+        btn_collapse.clicked.connect(self.collapse_requested.emit)
+        head.addWidget(btn_collapse)
+        lay.addLayout(head)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -2439,10 +2456,24 @@ class SimulinkModule(QWidget):
         # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
         self._canvas_win.showMaximized()
         self.library = LibraryPanel(self)
+        # 📚 左侧栏折叠/展开 (2026-08-06 老倪: 太占地方可缩到左边)
+        self._lib_expand_bar = QPushButton("▶")
+        self._lib_expand_bar.setFixedWidth(16)
+        self._lib_expand_bar.setToolTip("展开模块库左侧栏")
+        self._lib_expand_bar.setStyleSheet("""
+            QPushButton{background:#e9edf2; color:#1f6feb; border:none;
+                        border-left:1px solid #d0d7de; font-size:11px; font-weight:700;}
+            QPushButton:hover{background:#d0d7de;}
+        """)
+        self._lib_expand_bar.clicked.connect(self._expand_library)
+        self._lib_expand_bar.setVisible(False)
+        self.library.collapse_requested.connect(self._collapse_library)
         split.addWidget(self.library)
+        split.addWidget(self._lib_expand_bar)
         split.addWidget(self._mdi)
         split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 1)
+        split.setStretchFactor(1, 0)
+        split.setStretchFactor(2, 1)
         outer.addWidget(split, 1)
 
         # 实时状态栏 (节点状态 + 时钟 + 运行状态)
@@ -4945,6 +4976,19 @@ class SimulinkModule(QWidget):
 
         dlg.finished.connect(_on_done)
         dlg.show()  # 非模态: 主窗口可继续操作, 对话框置顶显示
+
+    # ── 📚 左侧模块库栏 折叠/展开 (2026-08-06 老倪: 太占地方可缩到左边) ──
+    def _collapse_library(self):
+        """隐藏模块库左侧栏 → 画布占满; 左缘留 16px ▶ 展开条"""
+        self.library.setVisible(False)
+        self._lib_expand_bar.setVisible(True)
+        self._log("📚 模块库已收起 (点左缘 ▶ 展开)")
+
+    def _expand_library(self):
+        """恢复模块库左侧栏"""
+        self.library.setVisible(True)
+        self._lib_expand_bar.setVisible(False)
+        self._log("📚 模块库已展开")
 
     def _show_nonmodal(self, dlg, on_accept=None):
         """🖥 通用非模态对话框 (2026-08-05 根治: exec_ 模态在 WSLg 下弹窗不可见 →
