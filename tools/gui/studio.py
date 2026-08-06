@@ -198,6 +198,8 @@ class SystemLayerCard(QFrame):
 # ============================================================
 class SystemSidebar(QFrame):
     layer_clicked = pyqtSignal(str)
+    # 📚 左侧栏折叠信号 (2026-08-06 老倪: XSpace Studio 列表栏要能隐藏)
+    collapse_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -210,7 +212,7 @@ class SystemSidebar(QFrame):
         layout.setSpacing(8)
         layout.setContentsMargins(12, 16, 12, 16)
 
-        # 标题
+        # 标题行: logo + XSpace Studio + ◀ 收起按钮 (2026-08-06 老倪: 列表栏要能隐藏)
         logo_row = QHBoxLayout()
         icon = QLabel()
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
@@ -222,6 +224,17 @@ class SystemSidebar(QFrame):
         title.setFont(QFont("Arial", 14, QFont.Bold))
         title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
         logo_row.addWidget(title)
+        logo_row.addStretch()
+        btn_collapse = QPushButton("◀")
+        btn_collapse.setFixedWidth(34)
+        btn_collapse.setToolTip("隐藏左侧栏, 内容区占满 (再点左缘 ▶ 展开)")
+        btn_collapse.setStyleSheet(f"""
+            QPushButton {{ background:{C_CARD}; color:{C_BLUE}; border:1px solid {C_BORDER};
+                           border-radius:4px; font-size:12px; font-weight:700; padding:2px 0; }}
+            QPushButton:hover {{ border-color:{C_BLUE}; }}
+        """)
+        btn_collapse.clicked.connect(self.collapse_requested.emit)
+        logo_row.addWidget(btn_collapse)
         layout.addLayout(logo_row)
 
         # 返回按钮
@@ -6810,10 +6823,22 @@ class StudioMainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 侧边栏 (可隐藏)
+        # 侧边栏 (可隐藏 — 2026-08-06 老倪: XSpace Studio 列表栏要能隐藏, 终于实现)
         self.sidebar = SystemSidebar()
         self.sidebar.layer_clicked.connect(self._on_nav)
+        self._sb_expand_bar = QPushButton("▶")
+        self._sb_expand_bar.setFixedWidth(16)
+        self._sb_expand_bar.setToolTip("展开左侧栏 (XSpace Studio)")
+        self._sb_expand_bar.setStyleSheet(f"""
+            QPushButton {{ background:{C_BG2}; color:{C_BLUE}; border:none;
+                           border-right:1px solid {C_BORDER}; font-size:11px; font-weight:700; }}
+            QPushButton:hover {{ background:{C_CARD}; }}
+        """)
+        self._sb_expand_bar.clicked.connect(self._expand_sidebar)
+        self._sb_expand_bar.setVisible(False)
+        self.sidebar.collapse_requested.connect(self._collapse_sidebar)
         root.addWidget(self.sidebar)
+        root.addWidget(self._sb_expand_bar)
 
         # 页面堆叠
         self.stack = QStackedWidget()
@@ -6986,6 +7011,18 @@ class StudioMainWindow(QMainWindow):
             threading.Thread(target=_post, daemon=True).start()
         except Exception:
             pass
+
+    def _collapse_sidebar(self):
+        """📚 隐藏 XSpace Studio 左侧栏 (2026-08-06 老倪: 列表栏要能隐藏)"""
+        self.sidebar.setVisible(False)
+        self._sb_expand_bar.setVisible(True)
+        self.statusBar().showMessage("📚 左侧栏已收起 (点左缘 ▶ 展开)", 3000)
+
+    def _expand_sidebar(self):
+        """📚 恢复 XSpace Studio 左侧栏"""
+        self.sidebar.setVisible(True)
+        self._sb_expand_bar.setVisible(False)
+        self.statusBar().showMessage("📚 左侧栏已展开", 3000)
 
     def _on_nav(self, target):
         """导航切换"""
