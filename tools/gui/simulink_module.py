@@ -2457,7 +2457,23 @@ class SimulinkModule(QWidget):
         stl.addWidget(self.lbl_rt)
         outer.addWidget(st)
 
-        # 底部日志 (对标 Simulink 诊断)
+        # 底部日志 (对标 Simulink 诊断) — 📋 可折叠 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)
+        log_head = QHBoxLayout()
+        log_title = QLabel("📋 日志")
+        log_title.setStyleSheet("color:#57606a; font-size:10px; font-weight:700; background:transparent; border:none;")
+        log_head.addWidget(log_title)
+        log_head.addStretch()
+        self.btn_log_toggle = QPushButton("◀ 收起")
+        self.btn_log_toggle.setFixedWidth(64)
+        self.btn_log_toggle.setToolTip("隐藏底部日志区")
+        self.btn_log_toggle.setStyleSheet("""
+            QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
+                        border-radius:4px; font-size:10px; font-weight:700; padding:2px 8px;}
+            QPushButton:hover{border-color:#1f6feb;}
+        """)
+        self.btn_log_toggle.clicked.connect(self._toggle_log_box)
+        log_head.addWidget(self.btn_log_toggle)
+        outer.addLayout(log_head)
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setMaximumHeight(110)
@@ -3837,6 +3853,17 @@ class SimulinkModule(QWidget):
     def _log(self, msg):
         self.log_box.append(msg)
         self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
+
+    def _toggle_log_box(self):
+        """📋 底部日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
+        if self.log_box.isVisible():
+            self.log_box.setVisible(False)
+            self.btn_log_toggle.setText("▶ 展开")
+            self.btn_log_toggle.setToolTip("展开底部日志区")
+        else:
+            self.log_box.setVisible(True)
+            self.btn_log_toggle.setText("◀ 收起")
+            self.btn_log_toggle.setToolTip("隐藏底部日志区")
 
     # ── 📡 实时采集轮询 (后台线程, 不卡 UI) ──
     def _poll_acquisition(self):
