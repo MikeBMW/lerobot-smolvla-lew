@@ -2375,46 +2375,9 @@ class SimulinkModule(QWidget):
         # CI/CD 操作行 (第二行工具栏, 在仿真工具栏之下)
         outer.addWidget(tb2)
 
-        # 参考应用条 (对标 MathWorks 参考应用列表) — 横向滚动, 模板多不挤压 (2026-08-05 修复:
-        # 9 个模板单行 QHBoxLayout 后面的总系统/三模型被挤没, 改 QScrollArea 横向滚动)
-        ra = QFrame()
-        ra.setStyleSheet("background:#eef1f5; border-bottom:1px solid #d0d7de;")
-        ra.setFixedHeight(44)
-        ral = QHBoxLayout(ra)
-        ral.setContentsMargins(10, 4, 10, 4)
-        ral.setSpacing(6)
-        ra_lab = QLabel("🗂 参考应用:")
-        ra_lab.setStyleSheet("color:#57606a; font-size:11px; font-weight:600; background:transparent; border:none;")
-        ral.addWidget(ra_lab)
-        ra_scroll = QScrollArea()
-        ra_scroll.setWidgetResizable(True)
-        ra_scroll.setFixedHeight(32)
-        ra_scroll.setStyleSheet("QScrollArea { background:transparent; border:none; }"
-                                "QScrollArea > QWidget > QWidget { background:transparent; }"
-                                "QScrollBar:horizontal { height:6px; background:#eef1f5; }"
-                                "QScrollBar::handle:horizontal { background:#b6bdc7; border-radius:3px; }")
-        ra_inner = QWidget()
-        ra_inner_lay = QHBoxLayout(ra_inner)
-        ra_inner_lay.setContentsMargins(0, 0, 0, 0)
-        ra_inner_lay.setSpacing(6)
-        self._ref_btns = {}
-        for item in REFERENCE_APPS:
-            name = item[0]
-            nodes, links = item[1], item[2]
-            layout = item[3] if len(item) > 3 else None
-            b = QPushButton(name)
-            b.setStyleSheet("""
-                QPushButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
-                border-radius:4px; padding:3px 10px; font-size:10px; }
-                QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
-            """)
-            b.clicked.connect(lambda _, nm=name, nd=nodes, lk=links, lo=layout: self.load_reference_app(nm, nd, lk, layout=lo))
-            self._ref_btns[name] = b
-            ra_inner_lay.addWidget(b)
-        ra_inner_lay.addStretch()
-        ra_scroll.setWidget(ra_inner)
-        ral.addWidget(ra_scroll, 1)
-        outer.addWidget(ra)
+        # (2026-08-06 老倪: 「参考应用」整行删除 — 白色字体按钮与上方彩色工具栏
+        #  按钮重复 (三/五模型对比·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
+        #  REFERENCE_APPS 数据保留, 模块库完整模型条目/load_reference_app_by_name 仍可用)
 
         # ── 📡 实时采集状态条 (轮询 ECS relay: Orin/MAC 采集数据实时可见) ──
         acq = QFrame()
