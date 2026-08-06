@@ -27,12 +27,23 @@ def load_policy(policy: str):
     if not os.path.exists(curve_path):
         raise FileNotFoundError(f"无训练产物: {curve_path} (先训练 {policy})")
     ckpt_base = json.load(open(curve_path, encoding="utf-8")).get("ckpt", "")
+    # 🐛 2026-08-06 修复: on_train 的 ts_dir 与 train_vla_touch/train_awe_zflow 内部
+    # 生成的 ts 可能差几秒 → 记录路径不存在 → rollout 失败 (自动交付卡在这)
+    # 兜底: glob 找最新同前缀目录
+    base_dir = os.path.join(ROOT, ckpt_base)
+    if not os.path.isdir(base_dir):
+        import glob as _g
+        prefix = os.path.basename(os.path.dirname(ckpt_base)).rsplit("_", 1)[0]  # vla_touch_20260806_180350 → vla_touch_20260806
+        hits = sorted(_g.glob(os.path.join(ROOT, "outputs", "train", f"{prefix}_*", "checkpoints")),
+                      key=os.path.getmtime)
+        if hits:
+            base_dir = hits[-1]
     # last → pretrained_model 目录
     cands = [
-        os.path.join(ROOT, ckpt_base, "last", "pretrained_model"),
-        os.path.join(ROOT, ckpt_base, "000150", "pretrained_model"),
-        os.path.join(ROOT, ckpt_base, "000300", "pretrained_model"),
-        os.path.join(ROOT, ckpt_base, "000050", "pretrained_model"),
+        os.path.join(base_dir, "last", "pretrained_model"),
+        os.path.join(base_dir, "000150", "pretrained_model"),
+        os.path.join(base_dir, "000300", "pretrained_model"),
+        os.path.join(base_dir, "000050", "pretrained_model"),
     ]
     pm = next((p for p in cands if os.path.isdir(p)), None)
     if pm is None:
