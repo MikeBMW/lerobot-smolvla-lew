@@ -2332,9 +2332,7 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_back)
 
         tl.addStretch()
-        self.lbl_clock = QLabel("t = 0.00s")
-        self.lbl_clock.setStyleSheet("color:#00d4aa; font-size:13px; font-weight:700; font-family:Consolas;")
-        tl.addWidget(self.lbl_clock)
+        # (2026-08-06 老倪: 右上角 t= 时钟与底部状态栏 t 重复 → 删除; 底部 lbl_rt 已显示)
 
         outer.addWidget(tb)
 
@@ -3477,7 +3475,7 @@ class SimulinkModule(QWidget):
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
         # ⏱ 流程时钟 (2026-08-06 老倪: 点击运行 t 时间也不变 — 真实流程不走仿真 tick,
-        #   lbl_clock 停在 0.00; 加独立 1s 时钟显示流程流逝时间, 结束/停止时停)
+        #   底部状态栏 t 停在 0.00; 加独立 1s 时钟, 结束/停止时停)
         self._sim_t = 0.0
         if getattr(self, "_flow_clock", None) is None:
             self._flow_clock = QTimer(self)
@@ -3503,7 +3501,6 @@ class SimulinkModule(QWidget):
             return
         self._sim_t += self._sim_dt
         self._exec_topological()
-        self.lbl_clock.setText(f"t = {self._sim_t:.2f}s")
         self._tutorial_on_action("step")
         if self._sim_t >= self._sim_t_end:
             self.stop_sim()
@@ -3515,7 +3512,6 @@ class SimulinkModule(QWidget):
         for nid in order:
             n = self._by_id(nid)
             self._sim_node(n)
-        self.lbl_clock.setText(f"t = {self._sim_t:.2f}s")
 
     def _sim_node(self, n):
         """本地模拟节点执行: 标记运行中→成功, 画布实时变色"""
@@ -4879,9 +4875,8 @@ class SimulinkModule(QWidget):
     def _flow_clock_tick(self):
         """⏱ 流程时钟: 真实流程运行时 t 每秒 +1 (2026-08-06 老倪: 运行 t 不变)"""
         self._sim_t += 1.0
-        self.lbl_clock.setText(f"t = {self._sim_t:.0f}s")
         try:
-            self._refresh_status()
+            self._refresh_status()  # 底部状态栏 lbl_rt 显示 t (右上角时钟已删)
         except Exception:
             pass
 
