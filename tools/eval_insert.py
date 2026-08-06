@@ -98,7 +98,9 @@ def run_episode(policy, seed, steps=200):
         st_raw = np.asarray(obs, dtype=np.float32)[:st_dim]
         st_n = (st_raw - sm) / ss  # 归一化 (训练管道)
         d = np.zeros(policy.tactile_dim if hasattr(policy, "tactile_dim") else 3, dtype=np.float32)
-        d[:3] = st_raw[:3] * 0.1
+        # 触觉模拟: 用 state 差分 (2026-08-06 修复: st_dim 可能小于 3, 用可用维度)
+        _td = min(len(st_raw), len(d))
+        d[:_td] = st_raw[:_td] * 0.1
         s_t = torch.from_numpy(st_n).float().to(DEVICE).unsqueeze(0)  # 归一化输入
         t_t = torch.from_numpy(d).float().to(DEVICE).unsqueeze(0)
         with torch.no_grad():

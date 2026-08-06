@@ -312,15 +312,17 @@ def _reg_cjk_fonts():
     """reportlab 注册中文字体 (Noto CJK, 修复中文乱码/方块) — 在 build_pdf 开头调用"""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    # 扫描系统所有中文字体候选 (2026-08-06 修复: 系统只有 NotoSerifCJK, 原脚本只找 Sans 导致回退 Helvetica 乱码)
+    # 扫描系统所有中文字体候选 (2026-08-06 修复: NotoSerifCJK 是 PostScript outlines, reportlab 不支持;
+    # SimHei/msyh 是 TrueType 可用)
     cands = []
-    for p in ["/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    for p in ["/mnt/c/Windows/Fonts/simhei.ttf",       # SimHei 黑体 (TrueType 单文件, 首选)
+              "/mnt/c/Windows/Fonts/msyh.ttc",         # 微软雅黑 (TrueType TTC)
+              "/mnt/c/Windows/Fonts/msyhbd.ttc",
+              "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
               "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
               "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-              "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
-              "/mnt/c/Windows/Fonts/msyh.ttc",
-              "/mnt/c/Windows/Fonts/msyhbd.ttc",
-              "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"]:
+              "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc"]:
         if os.path.exists(p):
             cands.append(p)
     # 兜底: 扫描 fc-list 输出的所有 CJK 字体
