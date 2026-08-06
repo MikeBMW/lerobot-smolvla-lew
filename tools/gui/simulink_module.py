@@ -60,10 +60,10 @@ REFERENCE_APPS = [
                                       "desc": "checkbox: 打勾=训练 / 不打=不训练 · 双击切换"}),
         ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin",
                                         "desc": "真实产线数据"}),
-        ("hardware", "📦 metaworld 数据", {"steps": 10, "source": "metaworld",
+        ("hardware", "📦 metaworld 数据", {"steps": 3, "source": "metaworld",
                                            "desc": "占位集·管道验证"}),
         ("switch", "🔀 Switch 数据源", {"switch": "orin", "desc": "双击切换 Orin/metaworld"}),
-        ("model", "🧠 ACT 训练", {"steps": 10, "chunk_size": 7, "dim_model": 256,
+        ("model", "🧠 ACT 训练", {"steps": 3, "chunk_size": 7, "dim_model": 256,
                                   "desc": "双击运行训练 (lerobot_train)"}),
         ("condition", "✅ 模型验证", {"strict": True, "desc": "双击运行验证 (validate_flow)"}),
         ("action", "📦 集成打包", {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"}),
@@ -108,7 +108,7 @@ REFERENCE_APPS = [
                                         "desc": "★适配 metaworld: 输出 (B,7,4) · 真机 Orin 为 6D"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "官方 ACTTemporalEnsembler → 动作块时间平滑"}),
-        ("system", "🚀 全新训练", {"steps": 10, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
+        ("system", "🚀 全新训练", {"steps": 3, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
     # 🎛 顶层总系统 (2026-08-05 老倪: "参考 Simulink, 用一个模块表示总系统; 双击打开后,
@@ -154,7 +154,7 @@ REFERENCE_APPS = [
                                               "desc": "ACT 专用: 输出 (B,7,4)"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 10,
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 3,
                                   "desc": "双击 → on_train(policy=act) · metaworld 训练"}),
         # ── SmolVLA 纯动作分支 (4, 无 LEW) ──
         ("model", "🧠 SmolVLM2-500M", {"freeze": True,
@@ -164,7 +164,7 @@ REFERENCE_APPS = [
                                        "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"}),
         ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
                                                   "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 10,
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 3,
                                       "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"}),
         # ── SmolVLA+LEW 分支 (5, 串行世界模型) ──
         ("model", "🧠 SmolVLM2-500M · LEW", {"freeze": False,
@@ -176,7 +176,7 @@ REFERENCE_APPS = [
                                       "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"}),
         ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
                                                       "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 10,
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 3,
                                           "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表"}),
@@ -234,7 +234,7 @@ REFERENCE_APPS = [
                                               "desc": "ACT 专用: 输出 (B,7,4)"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 10,
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 3,
                                   "desc": "双击 → on_train(policy=act) · metaworld 训练"}),
         # ── SmolVLA 纯动作分支 (4, 无 LEW) ──
         ("model", "🧠 SmolVLM2-500M", {"freeze": True,
@@ -244,7 +244,7 @@ REFERENCE_APPS = [
                                        "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"}),
         ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
                                                   "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 10,
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 3,
                                       "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"}),
         # ── SmolVLA+LEW 分支 (5, 串行世界模型) ──
         ("model", "🧠 SmolVLM2-500M · LEW", {"freeze": False,
@@ -256,7 +256,7 @@ REFERENCE_APPS = [
                                       "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"}),
         ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
                                                       "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 10,
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 3,
                                           "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
         # ── VLA-Touch 分支 (6) ──
         ("model", "🖼 DINOv2 视觉编码", {"backbone": "dinov2-small", "freeze": True,
@@ -269,7 +269,7 @@ REFERENCE_APPS = [
                                            "desc": "VLA 动作块 a_t → Interpolant 精炼输入"}),
         ("model", "🌉 Interpolant 控制器", {"diffuse_steps": 10, "hidden": 256,
                                            "desc": "官方 StochasticInterpolants: 桥式扩散精炼动作 (输入=VLA动作+视觉+触觉, 只训练此模块)"}),
-        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 10,
+        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 3,
                                         "desc": "双击 → on_train(policy=vla_touch) · 冻结 VLA 只训 Interpolant (4060 精简)"}),
         # ── AWE 分支 (6) ──
         ("model", "🖐 SigLIP 视触觉编码", {"backbone": "siglip-base", "freeze": True,
@@ -283,7 +283,7 @@ REFERENCE_APPS = [
                                       "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离)"}),
         ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
                                            "desc": "隐空间动作 → 真实动作"}),
-        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 10,
+        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 3,
                                   "desc": "双击 → on_train(policy=awe_zflow) · 场景原生+zFlow 世界模型"}),
         # ── 评估 ──
         ("system", "📊 对比评估 Scope", {"shared": True,
@@ -373,7 +373,7 @@ REFERENCE_APPS = [
                                            "desc": "VLA 动作块 a_t → Interpolant 精炼输入"}), 
         ("model", "🌉 Interpolant 控制器", {"diffuse_steps": 10, "hidden": 256,
                                            "desc": "官方 StochasticInterpolants: 桥式扩散精炼动作 (输入=VLA动作+视觉+触觉, 只训练此模块)"}),
-        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 10,
+        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 3,
                                         "desc": "双击 → on_train(policy=vla_touch) · 冻结 VLA 只训 Interpolant (4060 精简)"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"}),
@@ -418,7 +418,7 @@ REFERENCE_APPS = [
                                       "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"}),
         ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
                                            "desc": "隐空间动作 → 真实动作 (与其它模型 Action Head 同列)"}),
-        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 10,
+        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 3,
                                   "desc": "双击 → on_train(policy=awe_zflow) · 场景原生+zFlow 世界模型 (4060 精简)"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"}),
@@ -438,11 +438,11 @@ REFERENCE_APPS = [
         ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
                                            "dims": "4D/4D", "shared": True,
                                            "desc": "统一 metaworld 数据集 (训练 + 推理共用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 10,
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 3,
                                     "desc": "训练 ACT (metaworld, 150步)"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 10,
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 3,
                                         "desc": "训练 SmolVLA 纯动作 (metaworld, 150步)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 10,
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 3,
                                             "desc": "训练 SmolVLA+LeWorldModel (metaworld, 150步)"}),
         ("system", "🎥 视频显示 · ACT", {"video": "act", "desc": "双击 → 3 窗口同步播放: ACT 推理效果 (metaworld push-v3 rollout)"}),
         ("system", "🎥 视频显示 · SmolVLA", {"video": "smolvla", "desc": "双击 → 3 窗口同步播放: SmolVLA 推理效果"}),
@@ -493,7 +493,7 @@ LIBRARY = [
                                                 "desc": "★适配 metaworld: 输出 (B,7,4) · 真机 6D"}},
         {"name": "⏳ Temporal Ensemble", "params": {"coeff": 0.01,
                                                    "desc": "官方 ACTTemporalEnsembler → 动作平滑"}},
-        {"name": "🚀 全新训练", "params": {"steps": 10,
+        {"name": "🚀 全新训练", "params": {"steps": 3,
                                           "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}},
         {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
@@ -3917,6 +3917,11 @@ class SimulinkModule(QWidget):
                     self._show_nonmodal(dlg)
                 except Exception as ex:
                     self._log(f"⚠️ 对比图表打开失败: {ex}")
+            # 📤 PDF 报告完成 → 自动发飞书 dataworld 群 (2026-08-06 老倪:
+            #   最后的 PDF 报告也要发到飞书 dataworld 群里; 后台线程发送不卡 UI)
+            if stage == "report" and ok:
+                self._log("📤 正在发送报告到飞书 dataworld 群…")
+                self._send_report_to_feishu_async(summary)
             self._flow_next()  # 全流程流转钩子 (无队列时无操作)
             # 若有打开的全链路面板, 自动刷新
             if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
@@ -4767,6 +4772,243 @@ class SimulinkModule(QWidget):
         parts.append("(日志区可看到 📈 进度)")
         return " · ".join(parts)
 
+    def _send_report_to_feishu_async(self, summary):
+        """📤 PDF 报告自动发飞书 dataworld 群 (2026-08-06 老倪)
+        后台线程: 找最新 PDF → 上传 → 发文件消息 → 发文本摘要; 失败仅日志, 不影响主流程"""
+        import threading
+        threading.Thread(target=self._send_report_to_feishu_work, args=(summary,),
+                         daemon=True).start()
+
+    def _send_report_to_feishu_work(self, summary):
+        """(后台线程) 飞书上传 PDF + 发消息到 dataworld 群"""
+        try:
+            import json as _j, glob as _g, urllib.request as _ur, os as _os
+            root = self._repo_root()
+            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
+                          key=_os.path.getmtime)
+            if not pdfs:
+                self._log("⚠️ 飞书发送: 未找到 PDF 报告文件")
+                return
+            pdf = pdfs[-1]
+            # 凭据: ~/.hermes/.env (FEISHU_APP_ID/SECRET)
+            env = {}
+            env_path = _os.path.expanduser("~/.hermes/.env")
+            if _os.path.exists(env_path):
+                for line in open(env_path, encoding="utf-8"):
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        env[k] = v
+            app_id = env.get("FEISHU_APP_ID", "")
+            app_secret = env.get("FEISHU_APP_SECRET", "")
+            chat_id = env.get("FEISHU_REPORT_CHAT_ID", "oc_c0b4048546145c5c581ddd1a9e8f565d")
+            if not app_id or not app_secret:
+                self._log("⚠️ 飞书发送: .env 无 FEISHU_APP_ID/SECRET")
+                return
+
+            def _post(url, data, headers=None):
+                req = _ur.Request(url, data=_j.dumps(data).encode(),
+                                  headers={"Content-Type": "application/json", **(headers or {})})
+                return _j.loads(_ur.urlopen(req, timeout=15).read())
+
+            r = _post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                      {"app_id": app_id, "app_secret": app_secret})
+            tok = r.get("tenant_access_token")
+            if not tok:
+                self._log("⚠️ 飞书发送: token 获取失败")
+                return
+            H = {"Authorization": "Bearer " + tok}
+            # 上传 PDF
+            boundary = "----zmaxreport"
+            with open(pdf, "rb") as f:
+                content = f.read()
+            body = (("--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file_type\"\r\n\r\npdf\r\n" +
+                     "--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file_name\"\r\n\r\n" +
+                     _os.path.basename(pdf) + "\r\n" +
+                     "--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file\"; filename=\"" +
+                     _os.path.basename(pdf) + "\"\r\n"
+                     "Content-Type: application/pdf\r\n\r\n").encode() + content + (
+                     "\r\n--" + boundary + "--\r\n").encode())
+            req = _ur.Request("https://open.feishu.cn/open-apis/im/v1/files", data=body,
+                              headers={**H, "Content-Type": "multipart/form-data; boundary=" + boundary})
+            r2 = _j.loads(_ur.urlopen(req, timeout=30).read())
+            file_key = r2.get("data", {}).get("file_key")
+            if not file_key:
+                self._log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
+                return
+            # 发文件消息
+            r3 = _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                       {"receive_id": chat_id, "msg_type": "file",
+                        "content": _j.dumps({"file_key": file_key})}, H)
+            # 发文本摘要 (报告标题 + 生成信息)
+            title = _os.path.basename(pdf).replace("_", " ").replace(".pdf", "")
+            txt = f"📄 Z-MAX 五模型技术选型报告已生成\n{title}\n{summary}"
+            _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                  {"receive_id": chat_id, "msg_type": "text",
+                   "content": _j.dumps({"text": txt})}, H)
+            self._log(f"✅ 报告已发送到飞书 dataworld 群 · {_os.path.basename(pdf)}")
+        except Exception as ex:
+            self._log(f"⚠️ 飞书发送失败: {ex}")
+
+    # ── 🏁 自动最终交付: rollout 视频 + 拼接对比 + PDF + 发飞书 (2026-08-06 老倪) ──
+    def _auto_finalize(self):
+        """训练全流程完成后自动触发 (ZMAX_AUTO_RUN=1): 后台线程跑 rollout+PDF+飞书"""
+        self._log("🏁 五模型训练完成! 自动生成推理视频 + PDF 报告 → 发飞书 dataworld 群…")
+        import threading
+        threading.Thread(target=self._auto_finalize_work, daemon=True).start()
+
+    def _auto_finalize_work(self):
+        """(后台线程) ① rollout 5 模型 → ② 每模型 mp4 → ③ 3+2 对比拼接 → ④ PDF → ⑤ 发飞书"""
+        try:
+            import subprocess as _sp
+            root = self._repo_root()
+            venv = os.path.join(root, ".venv", "bin", "python")
+            pols = [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                    ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE")]
+            # ① rollout 5 模型 (60 帧, 同视频规格)
+            for pol, _nm in pols:
+                try:
+                    r = _sp.run([venv, os.path.join(root, "tools", "rollout_video.py"),
+                                 "--policy", pol, "--steps", "60",
+                                 "--task", "peg-insert-side-v3", "--camera", "corner2",
+                                 "--rotate-ccw", "--out", os.path.join(root, "reports", f"rollout_final_{pol}")],
+                                capture_output=True, text=True, timeout=600, cwd=root)
+                    self._log(f"🎥 {pol} rollout {'✅' if r.returncode == 0 else '❌'}"
+                              + (f" · {(r.stdout or '').strip().splitlines()[-1][:60]}" if r.returncode == 0 and r.stdout else ""))
+                except Exception as ex:
+                    self._log(f"🎥 {pol} rollout ❌ {ex}")
+            # ② 每模型帧 → mp4
+            mp4s = []
+            for pol, _nm in pols:
+                d = os.path.join(root, "reports", f"rollout_final_{pol}")
+                out_mp4 = os.path.join(root, "reports", f"rollout_final_{pol}.mp4")
+                if not os.path.isdir(d):
+                    continue
+                try:
+                    _sp.run(["ffmpeg", "-y", "-framerate", "20", "-i",
+                             os.path.join(d, "frame_%04d.png"), "-c:v", "libx264",
+                             "-pix_fmt", "yuv420p", "-loglevel", "error", out_mp4],
+                            capture_output=True, timeout=120)
+                    if os.path.exists(out_mp4):
+                        mp4s.append((pol, out_mp4))
+                        self._log(f"🎞 {pol} mp4 已生成")
+                except Exception:
+                    pass
+            # ③ 3+2 网格对比拼接 (xstack)
+            cmp_mp4 = os.path.join(root, "reports", f"五模型对比_rollout_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
+            try:
+                if len(mp4s) == 5:
+                    fc = ("[0:v]scale=320:240[a0];[1:v]scale=320:240[a1];"
+                          "[2:v]scale=320:240[a2];[3:v]scale=320:240[a3];"
+                          "[4:v]scale=320:240[a4];"
+                          "[a0][a1][a2]xstack=inputs=3:layout=0_0|w_0_0|w_0+w_1_0[v0];"
+                          "[a3][a4]xstack=inputs=2:layout=0_0|w_0_0[v1];"
+                          "[v0][v1]xstack=inputs=2:layout=0_0|0_h_0[v]")
+                    _sp.run(["ffmpeg", "-y"] +
+                            sum([["-i", m] for _, m in mp4s], []) +
+                            ["-filter_complex", fc, "-map", "[v]", "-c:v", "libx264",
+                             "-pix_fmt", "yuv420p", "-loglevel", "error", cmp_mp4],
+                            capture_output=True, timeout=180)
+                    if os.path.exists(cmp_mp4):
+                        self._log(f"🎬 五模型对比视频: {os.path.basename(cmp_mp4)}")
+                else:
+                    cmp_mp4 = None
+            except Exception:
+                cmp_mp4 = None
+            # ④ PDF 报告
+            try:
+                _sp.run([venv, os.path.join(root, "tools", "generate_report.py")],
+                        capture_output=True, text=True, timeout=300, cwd=root)
+                self._log("📄 PDF 报告已生成")
+            except Exception as ex:
+                self._log(f"📄 PDF 生成失败: {ex}")
+            # ⑤ 发飞书: 对比视频 + PDF (先视频后报告, 用户群里看)
+            if cmp_mp4 and os.path.exists(cmp_mp4):
+                self._send_file_to_feishu(cmp_mp4, "🎬 Z-MAX 五模型 rollout 对比视频",
+                                          file_type="mp4")
+            for pol, _nm in pols:
+                m = os.path.join(root, "reports", f"rollout_final_{pol}.mp4")
+                if os.path.exists(m):
+                    self._send_file_to_feishu(m, f"🎥 {_nm} rollout 视频", file_type="mp4")
+            # PDF (复用既有发送逻辑)
+            self._send_report_to_feishu_work("五模型对比技术选型报告")
+            self._log("✅ 自动交付完成: 视频 + PDF 已发飞书 dataworld 群")
+        except Exception as ex:
+            self._log(f"⚠️ 自动交付失败: {ex}")
+
+    def _send_file_to_feishu(self, path, text_msg, file_type="mp4"):
+        """📤 通用飞书发文件 (mp4/pdf 等): 上传 → 发 file 消息 + 文本说明 (后台线程)"""
+        import threading
+        threading.Thread(target=self._send_file_to_feishu_work, args=(path, text_msg, file_type),
+                         daemon=True).start()
+
+    def _send_file_to_feishu_work(self, path, text_msg, file_type="mp4"):
+        """(后台线程) 上传任意文件到飞书并发送到 dataworld 群"""
+        try:
+            import json as _j, urllib.request as _ur, os as _os
+            if not _os.path.exists(path):
+                self._log(f"⚠️ 飞书发送: 文件不存在 {path}")
+                return
+            env = {}
+            env_path = _os.path.expanduser("~/.hermes/.env")
+            if _os.path.exists(env_path):
+                for line in open(env_path, encoding="utf-8"):
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        env[k] = v
+            app_id = env.get("FEISHU_APP_ID", "")
+            app_secret = env.get("FEISHU_APP_SECRET", "")
+            chat_id = env.get("FEISHU_REPORT_CHAT_ID", "oc_c0b4048546145c5c581ddd1a9e8f565d")
+            if not app_id or not app_secret:
+                self._log("⚠️ 飞书发送: .env 无凭据")
+                return
+
+            def _post(url, data, headers=None):
+                req = _ur.Request(url, data=_j.dumps(data).encode(),
+                                  headers={"Content-Type": "application/json", **(headers or {})})
+                return _j.loads(_ur.urlopen(req, timeout=15).read())
+
+            r = _post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                      {"app_id": app_id, "app_secret": app_secret})
+            tok = r.get("tenant_access_token")
+            if not tok:
+                self._log("⚠️ 飞书发送: token 失败")
+                return
+            H = {"Authorization": "Bearer " + tok}
+            boundary = "----zmaxfile"
+            with open(path, "rb") as f:
+                content = f.read()
+            body = (("--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file_type\"\r\n\r\n" + file_type + "\r\n" +
+                     "--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file_name\"\r\n\r\n" +
+                     _os.path.basename(path) + "\r\n" +
+                     "--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file\"; filename=\"" +
+                     _os.path.basename(path) + "\"\r\n"
+                     "Content-Type: application/octet-stream\r\n\r\n").encode() + content + (
+                     "\r\n--" + boundary + "--\r\n").encode())
+            req = _ur.Request("https://open.feishu.cn/open-apis/im/v1/files", data=body,
+                              headers={**H, "Content-Type": "multipart/form-data; boundary=" + boundary})
+            r2 = _j.loads(_ur.urlopen(req, timeout=30).read())
+            file_key = r2.get("data", {}).get("file_key")
+            if not file_key:
+                self._log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
+                return
+            _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                  {"receive_id": chat_id, "msg_type": "file",
+                   "content": _j.dumps({"file_key": file_key})}, H)
+            _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                  {"receive_id": chat_id, "msg_type": "text",
+                   "content": _j.dumps({"text": text_msg + " · " + _os.path.basename(path)})}, H)
+            self._log(f"✅ 已发送到飞书 dataworld 群: {_os.path.basename(path)}")
+        except Exception as ex:
+            self._log(f"⚠️ 飞书发送失败: {ex}")
+
     def _flow_next(self):
         """(worker 完成后) 执行下一个环节; 队列空 → 全流程结束, 恢复按钮"""
         if getattr(self, "_flow_queue", None):
@@ -4784,6 +5026,12 @@ class SimulinkModule(QWidget):
                 self.btn_run.setText("▶ 运行")
                 self.btn_run.setEnabled(True)
                 self.btn_stop.setEnabled(False)
+            # 🏁 全流程完成 → 自动最终交付 (2026-08-06 老倪: 要能插拔的视频 + PDF,
+            #   且视频也发 dataworld 群; 仅 ZMAX_AUTO_RUN=1 自动模式触发, 手动运行不打扰)
+            if os.environ.get("ZMAX_AUTO_RUN") == "1" and \
+                    not getattr(self, "_auto_finalize_done", False):
+                self._auto_finalize_done = True
+                self._auto_finalize()
 
     def _flow_clock_tick(self):
         """⏱ 流程时钟: 真实流程运行时 t 每秒 +1 (2026-08-06 老倪: 运行 t 不变)"""

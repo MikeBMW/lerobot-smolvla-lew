@@ -6909,6 +6909,24 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._engine_combo)
         sb.showMessage("Z-MAX v1.0.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
+        # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
+        # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
+        if os.environ.get("ZMAX_AUTO_RUN") == "1":
+            QTimer.singleShot(2500, self._auto_run_compare5)
+
+    def _auto_run_compare5(self):
+        """🔬 自动加载五模型对比模板并启动运行 (ZMAX_AUTO_RUN=1 时启动后触发)"""
+        try:
+            self.stack.setCurrentWidget(self.simulink)
+            # 确认框自动点是 (2026-08-06: 老倪看着自动跑, 不弹窗拦截)
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            self.simulink.open_compare5()
+            QTimer.singleShot(1200, self.simulink.start_sim)
+            self.simulink._log("🚀 ZMAX_AUTO_RUN: 已自动加载五模型对比并启动训练 (500步/模型, 串行)")
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+
     def closeEvent(self, ev):
         """🛡 主窗口关闭清理 (2026-08-05 崩溃修复#4: StudioMainWindow 原本无 closeEvent →
         _orin_timer(5s轮询)/_rerun_worker(QThread)/_live_timer/_replay_timer/_stats_timer
