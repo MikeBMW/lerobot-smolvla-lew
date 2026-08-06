@@ -152,7 +152,13 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
                     tac_dim = getattr(policy, "tactile_dim", 3) or 3
                     tac = torch.zeros((1, tac_dim), dtype=torch.float32, device=dev)
                     cond = policy._cond(batch["observation.state"], tac, None)
-                    x0 = torch.randn_like(batch["observation.state"].new_zeros((1, policy.action_dim))) * 0.1
+                    # 🐛 2026-08-06: x0 用上一帧动作 (插值起点, 与训练 q_sample 一致) —
+                    #   之前 randn*0.1 纯噪声 → 扩散从噪声出发走不到动作空间 → 动作幅度小
+                    act_dim = getattr(policy, "action_dim", 4) or 4
+                    if act_hist is not None:
+                        x0 = act_hist.to(dev).float()
+                    else:
+                        x0 = torch.zeros((1, act_dim), dtype=torch.float32, device=dev)
                     pred = policy.sample(x0, cond, diffuse_steps=10)
                 else:  # awe_zflow: 直接 forward (动作历史=上一帧动作, 自回归)
                     tac_dim = getattr(policy, "tactile_dim", 3) or 3
