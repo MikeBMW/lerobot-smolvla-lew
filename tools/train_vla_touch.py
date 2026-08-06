@@ -14,7 +14,7 @@
       checkpoint 落 outputs/train/vla_touch_<ts>/checkpoints/ (pretrained_model 结构供评估复用)
 
 用法:
-  .venv/bin/python tools/train_vla_touch.py --steps 50 --data-root data/metaworld_act
+  .venv/bin/python tools/train_vla_touch.py --steps 10 --data-root data/metaworld_act
 """
 import argparse
 import json
@@ -165,7 +165,7 @@ class InterpolantPolicy(nn.Module):
 # ── 训练主循环 ────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--steps", type=int, default=50)
+    ap.add_argument("--steps", type=int, default=10)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--data-root", default=os.path.join(ROOT, "data", "metaworld_act"))

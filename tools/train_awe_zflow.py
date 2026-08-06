@@ -19,7 +19,7 @@ GRU hidden 128 — 可训练参数 ≈ 15M, 8GB 显存无忧。
 outputs/train/awe_zflow_<ts>/checkpoints/<step>/pretrained_model/
 
 用法:
-  .venv/bin/python tools/train_awe_zflow.py --steps 50 --data-root data/metaworld_act
+  .venv/bin/python tools/train_awe_zflow.py --steps 10 --data-root data/metaworld_act
 """
 import argparse
 import json
@@ -213,7 +213,7 @@ class AWEZFlowModel(nn.Module):
 # ── 训练主循环 ────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--steps", type=int, default=50)
+    ap.add_argument("--steps", type=int, default=10)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--data-root", default=os.path.join(ROOT, "data", "metaworld_act"))

@@ -60,10 +60,10 @@ REFERENCE_APPS = [
                                       "desc": "checkbox: 打勾=训练 / 不打=不训练 · 双击切换"}),
         ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin",
                                         "desc": "真实产线数据"}),
-        ("hardware", "📦 metaworld 数据", {"steps": 50, "source": "metaworld",
+        ("hardware", "📦 metaworld 数据", {"steps": 10, "source": "metaworld",
                                            "desc": "占位集·管道验证"}),
         ("switch", "🔀 Switch 数据源", {"switch": "orin", "desc": "双击切换 Orin/metaworld"}),
-        ("model", "🧠 ACT 训练", {"steps": 50, "chunk_size": 7, "dim_model": 256,
+        ("model", "🧠 ACT 训练", {"steps": 10, "chunk_size": 7, "dim_model": 256,
                                   "desc": "双击运行训练 (lerobot_train)"}),
         ("condition", "✅ 模型验证", {"strict": True, "desc": "双击运行验证 (validate_flow)"}),
         ("action", "📦 集成打包", {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"}),
@@ -117,7 +117,7 @@ REFERENCE_APPS = [
                                         "desc": "★适配 metaworld: 输出 (B,7,4) · 真机 Orin 为 6D"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "官方 ACTTemporalEnsembler → 动作块时间平滑"}),
-        ("system", "🚀 全新训练", {"steps": 50, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
+        ("system", "🚀 全新训练", {"steps": 10, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
     # 🎛 顶层总系统 (2026-08-05 老倪: "参考 Simulink, 用一个模块表示总系统; 双击打开后,
@@ -163,7 +163,7 @@ REFERENCE_APPS = [
                                               "desc": "ACT 专用: 输出 (B,7,4)"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 50,
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 10,
                                   "desc": "双击 → on_train(policy=act) · metaworld 训练"}),
         # ── SmolVLA 纯动作分支 (4, 无 LEW) ──
         ("model", "🧠 SmolVLM2-500M", {"freeze": True,
@@ -173,7 +173,7 @@ REFERENCE_APPS = [
                                        "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"}),
         ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
                                                   "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 50,
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 10,
                                       "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"}),
         # ── SmolVLA+LEW 分支 (5, 串行世界模型) ──
         ("model", "🧠 SmolVLM2-500M · LEW", {"freeze": False,
@@ -185,7 +185,7 @@ REFERENCE_APPS = [
                                       "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"}),
         ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
                                                       "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 50,
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 10,
                                           "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表"}),
@@ -243,7 +243,7 @@ REFERENCE_APPS = [
                                               "desc": "ACT 专用: 输出 (B,7,4)"}),
         ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
                                               "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 50,
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 10,
                                   "desc": "双击 → on_train(policy=act) · metaworld 训练"}),
         # ── SmolVLA 纯动作分支 (4, 无 LEW) ──
         ("model", "🧠 SmolVLM2-500M", {"freeze": True,
@@ -253,7 +253,7 @@ REFERENCE_APPS = [
                                        "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"}),
         ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
                                                   "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 50,
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 10,
                                       "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"}),
         # ── SmolVLA+LEW 分支 (5, 串行世界模型) ──
         ("model", "🧠 SmolVLM2-500M · LEW", {"freeze": False,
@@ -265,7 +265,7 @@ REFERENCE_APPS = [
                                       "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"}),
         ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
                                                       "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 50,
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 10,
                                           "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
         # ── VLA-Touch 分支 (6) ──
         ("model", "🖼 DINOv2 视觉编码", {"backbone": "dinov2-small", "freeze": True,
@@ -278,7 +278,7 @@ REFERENCE_APPS = [
                                            "desc": "VLA 动作块 a_t → Interpolant 精炼输入"}),
         ("model", "🌉 Interpolant 控制器", {"diffuse_steps": 10, "hidden": 256,
                                            "desc": "官方 StochasticInterpolants: 桥式扩散精炼动作 (输入=VLA动作+视觉+触觉, 只训练此模块)"}),
-        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 50,
+        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 10,
                                         "desc": "双击 → on_train(policy=vla_touch) · 冻结 VLA 只训 Interpolant (4060 精简)"}),
         # ── AWE 分支 (6) ──
         ("model", "🖐 SigLIP 视触觉编码", {"backbone": "siglip-base", "freeze": True,
@@ -292,7 +292,7 @@ REFERENCE_APPS = [
                                       "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离)"}),
         ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
                                            "desc": "隐空间动作 → 真实动作"}),
-        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 50,
+        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 10,
                                   "desc": "双击 → on_train(policy=awe_zflow) · 场景原生+zFlow 世界模型"}),
         # ── 评估 ──
         ("system", "📊 对比评估 Scope", {"shared": True,
@@ -382,7 +382,7 @@ REFERENCE_APPS = [
                                            "desc": "VLA 动作块 a_t → Interpolant 精炼输入"}), 
         ("model", "🌉 Interpolant 控制器", {"diffuse_steps": 10, "hidden": 256,
                                            "desc": "官方 StochasticInterpolants: 桥式扩散精炼动作 (输入=VLA动作+视觉+触觉, 只训练此模块)"}),
-        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 50,
+        ("system", "🚀 VLA-Touch 训练", {"policy": "vla_touch", "steps": 10,
                                         "desc": "双击 → on_train(policy=vla_touch) · 冻结 VLA 只训 Interpolant (4060 精简)"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"}),
@@ -427,7 +427,7 @@ REFERENCE_APPS = [
                                       "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"}),
         ("model", "🎯 Action Head · AWE", {"action_dim": 4, "chunk_size": 7,
                                            "desc": "隐空间动作 → 真实动作 (与其它模型 Action Head 同列)"}),
-        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 50,
+        ("system", "🚀 AWE 训练", {"policy": "awe_zflow", "steps": 10,
                                   "desc": "双击 → on_train(policy=awe_zflow) · 场景原生+zFlow 世界模型 (4060 精简)"}),
         ("system", "📊 对比评估 Scope", {"shared": True,
                                         "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"}),
@@ -447,11 +447,11 @@ REFERENCE_APPS = [
         ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
                                            "dims": "4D/4D", "shared": True,
                                            "desc": "统一 metaworld 数据集 (训练 + 推理共用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 50,
+        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 10,
                                     "desc": "训练 ACT (metaworld, 150步)"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 50,
+        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 10,
                                         "desc": "训练 SmolVLA 纯动作 (metaworld, 150步)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 50,
+        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 10,
                                             "desc": "训练 SmolVLA+LeWorldModel (metaworld, 150步)"}),
         ("system", "🎥 视频显示 · ACT", {"video": "act", "desc": "双击 → 3 窗口同步播放: ACT 推理效果 (metaworld push-v3 rollout)"}),
         ("system", "🎥 视频显示 · SmolVLA", {"video": "smolvla", "desc": "双击 → 3 窗口同步播放: SmolVLA 推理效果"}),
@@ -502,7 +502,7 @@ LIBRARY = [
                                                 "desc": "★适配 metaworld: 输出 (B,7,4) · 真机 6D"}},
         {"name": "⏳ Temporal Ensemble", "params": {"coeff": 0.01,
                                                    "desc": "官方 ACTTemporalEnsembler → 动作平滑"}},
-        {"name": "🚀 全新训练", "params": {"steps": 50,
+        {"name": "🚀 全新训练", "params": {"steps": 10,
                                           "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}},
         {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
@@ -674,7 +674,7 @@ class TrainConfigDialog(QDialog):
         self.ed_steps = QSpinBox()
         self.ed_steps.setRange(10, 5000)
         self.ed_steps.setSingleStep(50)
-        self.ed_steps.setValue(int(p.get("steps", 50)))
+        self.ed_steps.setValue(int(p.get("steps", 10)))
         form.addRow("训练步数 steps", self.ed_steps)
 
         self.ed_batch = QSpinBox()
@@ -689,7 +689,7 @@ class TrainConfigDialog(QDialog):
         self.ed_lr.setValue(float(p.get("lr", 1e-4)))
         form.addRow("学习率 lr", self.ed_lr)
 
-        tip = QLabel("当前: " + (f"steps={p.get('steps', 50)}" if "steps" in p else "steps=50(默认)") +
+        tip = QLabel("当前: " + (f"steps={p.get('steps', 10)}" if "steps" in p else "steps=10(默认)") +
                      (f" · batch={p['batch_size']}" if "batch_size" in p else "") +
                      (f" · lr={p['lr']}" if "lr" in p else ""))
         tip.setStyleSheet("color:#8b949e; font-size:11px;")
