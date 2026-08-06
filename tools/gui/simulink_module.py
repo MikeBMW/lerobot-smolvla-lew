@@ -3796,6 +3796,19 @@ class SimulinkModule(QWidget):
         self.log_box.append(msg)
         self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
 
+    def _safe_log(self, msg):
+        """🛡 后台线程安全日志 (2026-08-06: _auto_finalize_work 等 threading.Thread 直接
+        _log → 跨线程操作 QTextEdit → GUI 崩溃! 用 QMetaObject 队列调用回主线程)"""
+        try:
+            from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(self.log_box, "append", Qt.QueuedConnection,
+                                     Q_ARG(str, msg))
+            QMetaObject.invokeMethod(self.log_box.verticalScrollBar(), "setValue",
+                                     Qt.QueuedConnection,
+                                     Q_ARG(int, self.log_box.verticalScrollBar().maximum()))
+        except Exception:
+            pass
+
     def _toggle_log_box(self):
         """📋 底部日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
         if self.log_box.isVisible():
@@ -4793,7 +4806,7 @@ class SimulinkModule(QWidget):
             pdfs = sorted(_g.glob(_os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
                           key=_os.path.getmtime)
             if not pdfs:
-                self._log("⚠️ 飞书发送: 未找到 PDF 报告文件")
+                self._safe_log("⚠️ 飞书发送: 未找到 PDF 报告文件")
                 return
             pdf = pdfs[-1]
             # 凭据: ~/.hermes/.env (FEISHU_APP_ID/SECRET)
@@ -4809,7 +4822,7 @@ class SimulinkModule(QWidget):
             app_secret = env.get("FEISHU_APP_SECRET", "")
             chat_id = env.get("FEISHU_REPORT_CHAT_ID", "oc_c0b4048546145c5c581ddd1a9e8f565d")
             if not app_id or not app_secret:
-                self._log("⚠️ 飞书发送: .env 无 FEISHU_APP_ID/SECRET")
+                self._safe_log("⚠️ 飞书发送: .env 无 FEISHU_APP_ID/SECRET")
                 return
 
             def _post(url, data, headers=None):
@@ -4821,7 +4834,7 @@ class SimulinkModule(QWidget):
                       {"app_id": app_id, "app_secret": app_secret})
             tok = r.get("tenant_access_token")
             if not tok:
-                self._log("⚠️ 飞书发送: token 获取失败")
+                self._safe_log("⚠️ 飞书发送: token 获取失败")
                 return
             H = {"Authorization": "Bearer " + tok}
             # 上传 PDF
@@ -4843,7 +4856,7 @@ class SimulinkModule(QWidget):
             r2 = _j.loads(_ur.urlopen(req, timeout=30).read())
             file_key = r2.get("data", {}).get("file_key")
             if not file_key:
-                self._log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
+                self._safe_log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
                 return
             # 发文件消息
             r3 = _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
@@ -4855,9 +4868,9 @@ class SimulinkModule(QWidget):
             _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
                   {"receive_id": chat_id, "msg_type": "text",
                    "content": _j.dumps({"text": txt})}, H)
-            self._log(f"✅ 报告已发送到飞书 dataworld 群 · {_os.path.basename(pdf)}")
+            self._safe_log(f"✅ 报告已发送到飞书 dataworld 群 · {_os.path.basename(pdf)}")
         except Exception as ex:
-            self._log(f"⚠️ 飞书发送失败: {ex}")
+            self._safe_log(f"⚠️ 飞书发送失败: {ex}")
 
     # ── 🏁 自动最终交付: rollout 视频 + 拼接对比 + PDF + 发飞书 (2026-08-06 老倪) ──
     def _auto_finalize(self):
@@ -4882,10 +4895,10 @@ class SimulinkModule(QWidget):
                                  "--task", "peg-insert-side-v3", "--camera", "corner2",
                                  "--rotate-ccw", "--out", os.path.join(root, "reports", f"rollout_final_{pol}")],
                                 capture_output=True, text=True, timeout=600, cwd=root)
-                    self._log(f"🎥 {pol} rollout {'✅' if r.returncode == 0 else '❌'}"
+                    self._safe_log(f"🎥 {pol} rollout {'✅' if r.returncode == 0 else '❌'}"
                               + (f" · {(r.stdout or '').strip().splitlines()[-1][:60]}" if r.returncode == 0 and r.stdout else ""))
                 except Exception as ex:
-                    self._log(f"🎥 {pol} rollout ❌ {ex}")
+                    self._safe_log(f"🎥 {pol} rollout ❌ {ex}")
             # ② 每模型帧 → mp4
             mp4s = []
             for pol, _nm in pols:
@@ -4900,7 +4913,7 @@ class SimulinkModule(QWidget):
                             capture_output=True, timeout=120)
                     if os.path.exists(out_mp4):
                         mp4s.append((pol, out_mp4))
-                        self._log(f"🎞 {pol} mp4 已生成")
+                        self._safe_log(f"🎞 {pol} mp4 已生成")
                 except Exception:
                     pass
             # ③ 3+2 网格对比拼接 (xstack)
@@ -4919,7 +4932,7 @@ class SimulinkModule(QWidget):
                              "-pix_fmt", "yuv420p", "-loglevel", "error", cmp_mp4],
                             capture_output=True, timeout=180)
                     if os.path.exists(cmp_mp4):
-                        self._log(f"🎬 五模型对比视频: {os.path.basename(cmp_mp4)}")
+                        self._safe_log(f"🎬 五模型对比视频: {os.path.basename(cmp_mp4)}")
                 else:
                     cmp_mp4 = None
             except Exception:
@@ -4928,9 +4941,9 @@ class SimulinkModule(QWidget):
             try:
                 _sp.run([venv, os.path.join(root, "tools", "generate_report.py")],
                         capture_output=True, text=True, timeout=300, cwd=root)
-                self._log("📄 PDF 报告已生成")
+                self._safe_log("📄 PDF 报告已生成")
             except Exception as ex:
-                self._log(f"📄 PDF 生成失败: {ex}")
+                self._safe_log(f"📄 PDF 生成失败: {ex}")
             # ⑤ 发飞书: 对比视频 + PDF (先视频后报告, 用户群里看)
             if cmp_mp4 and os.path.exists(cmp_mp4):
                 self._send_file_to_feishu(cmp_mp4, "🎬 Z-MAX 五模型 rollout 对比视频",
@@ -4941,9 +4954,9 @@ class SimulinkModule(QWidget):
                     self._send_file_to_feishu(m, f"🎥 {_nm} rollout 视频", file_type="mp4")
             # PDF (复用既有发送逻辑)
             self._send_report_to_feishu_work("五模型对比技术选型报告")
-            self._log("✅ 自动交付完成: 视频 + PDF 已发飞书 dataworld 群")
+            self._safe_log("✅ 自动交付完成: 视频 + PDF 已发飞书 dataworld 群")
         except Exception as ex:
-            self._log(f"⚠️ 自动交付失败: {ex}")
+            self._safe_log(f"⚠️ 自动交付失败: {ex}")
 
     def _send_file_to_feishu(self, path, text_msg, file_type="mp4"):
         """📤 通用飞书发文件 (mp4/pdf 等): 上传 → 发 file 消息 + 文本说明 (后台线程)"""
@@ -4956,7 +4969,7 @@ class SimulinkModule(QWidget):
         try:
             import json as _j, urllib.request as _ur, os as _os
             if not _os.path.exists(path):
-                self._log(f"⚠️ 飞书发送: 文件不存在 {path}")
+                self._safe_log(f"⚠️ 飞书发送: 文件不存在 {path}")
                 return
             env = {}
             env_path = _os.path.expanduser("~/.hermes/.env")
@@ -4970,7 +4983,7 @@ class SimulinkModule(QWidget):
             app_secret = env.get("FEISHU_APP_SECRET", "")
             chat_id = env.get("FEISHU_REPORT_CHAT_ID", "oc_c0b4048546145c5c581ddd1a9e8f565d")
             if not app_id or not app_secret:
-                self._log("⚠️ 飞书发送: .env 无凭据")
+                self._safe_log("⚠️ 飞书发送: .env 无凭据")
                 return
 
             def _post(url, data, headers=None):
@@ -4982,7 +4995,7 @@ class SimulinkModule(QWidget):
                       {"app_id": app_id, "app_secret": app_secret})
             tok = r.get("tenant_access_token")
             if not tok:
-                self._log("⚠️ 飞书发送: token 失败")
+                self._safe_log("⚠️ 飞书发送: token 失败")
                 return
             H = {"Authorization": "Bearer " + tok}
             boundary = "----zmaxfile"
@@ -5003,7 +5016,7 @@ class SimulinkModule(QWidget):
             r2 = _j.loads(_ur.urlopen(req, timeout=30).read())
             file_key = r2.get("data", {}).get("file_key")
             if not file_key:
-                self._log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
+                self._safe_log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
                 return
             _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
                   {"receive_id": chat_id, "msg_type": "file",
@@ -5011,9 +5024,9 @@ class SimulinkModule(QWidget):
             _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
                   {"receive_id": chat_id, "msg_type": "text",
                    "content": _j.dumps({"text": text_msg + " · " + _os.path.basename(path)})}, H)
-            self._log(f"✅ 已发送到飞书 dataworld 群: {_os.path.basename(path)}")
+            self._safe_log(f"✅ 已发送到飞书 dataworld 群: {_os.path.basename(path)}")
         except Exception as ex:
-            self._log(f"⚠️ 飞书发送失败: {ex}")
+            self._safe_log(f"⚠️ 飞书发送失败: {ex}")
 
     def _flow_next(self):
         """(worker 完成后) 执行下一个环节; 队列空 → 全流程结束, 恢复按钮"""
