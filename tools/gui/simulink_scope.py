@@ -14,7 +14,6 @@ Z-MAX Simulink Scope 示波器模块
 import json, math, os, time, glob
 from pathlib import Path
 import numpy as np
-
 from PyQt5.QtCore import Qt, QTimer, QPointF
 from PyQt5.QtGui import (QPainter, QColor, QPen, QFont, QLinearGradient)
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QDialog, QLabel,
@@ -929,13 +928,19 @@ class InferenceVideoDialog(QDialog):
         root.addWidget(self.lbl_note)
         vid_row = QHBoxLayout()
         self.video_labels = {}
+        self._meta_labels = {}
         self.frame_dirs = {}
         self.cur_idx = 0
+        self.frame_meta = {}   # policy → 元信息 (生成时间/动作幅度), 2026-08-06 老倪
         for policy, name, color in self.POLICIES:
             box = QVBoxLayout()
             cap = QLabel(f"■ {name}")
             cap.setStyleSheet(_qss(f"color:{color};font-size:12px;font-weight:700;"))
             box.addWidget(cap)
+            # 🕐 元信息副标题: 生成时间 + 动作幅度 (2026-08-06 老倪: 不知道啥时候生成的, 对比没依据)
+            meta = QLabel("—")
+            meta.setStyleSheet(_qss("color:#57606a;font-size:9px;"))
+            box.addWidget(meta)
             lab = QLabel("—")
             lab.setFixedSize(400, 300)
             lab.setAlignment(Qt.AlignCenter)
@@ -943,6 +948,7 @@ class InferenceVideoDialog(QDialog):
             box.addWidget(lab)
             box.addStretch()
             self.video_labels[policy] = lab
+            self._meta_labels[policy] = meta
             vid_row.addLayout(box)
         root.addLayout(vid_row)
         ctrl = QHBoxLayout()
@@ -999,6 +1005,21 @@ class InferenceVideoDialog(QDialog):
             dirs[p] = dirs[p][:min_len]
         self.cur_idx = 0
         self.lbl_note.setText(f"🎞 {len(dirs)} 模型 × {min_len} 帧 · 同一场景同步播放")
+        # 🕐 元信息: 生成时间 (帧 mtime) + 动作幅度 (actions.npy std) — 2026-08-06 老倪:
+        #   不知道啥时候生成的 + 对比没依据 (视频"都差不多/没拿起来" → 动作 std 直接可见)
+        for p in dirs:
+            frames = dirs[p]
+            mtime = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(frames[0])))
+            astd = "—"
+            try:
+                a = np.load(os.path.join(os.path.dirname(frames[0]), "actions.npy"))
+                astd = f"动作σ={float(np.asarray(a).std()):.3f}"
+            except Exception:
+                pass
+            self.frame_meta[p] = f"{mtime} · {astd}"
+            lab = self._meta_labels.get(p)
+            if lab is not None:
+                lab.setText(self.frame_meta[p])
 
     def _tick(self):
         if not self.frame_dirs:

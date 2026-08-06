@@ -72,12 +72,13 @@ def main():
                 try:
                     a4 = np.asarray(expert.get_action(obs_vec), dtype=np.float32).ravel()
                     # 官方策略输出已是 metaworld 兼容动作 (delta_pos 速度 + grab_effort), 直接执行
-                    ee_before = env.data.site_xpos[env.model.site("endEffector").id].copy()
                     gripper_cmd = a4[3] if a4.size >= 4 else 0.0
                     obs, _, _, _, _ = env.step(a4[:4])  # 更新 obs (官方策略每帧需要新观测)
-                    ee_after = env.data.site_xpos[env.model.site("endEffector").id]
-                    vel = (ee_after - ee_before) * 30.0  # 每帧位移 × fps = 实际速度
-                    action = np.concatenate([vel, [gripper_cmd]])
+                    # 🐛 2026-08-06 修复: 直接存专家速度指令 (a4[:4]), 不要用"位移×30" —
+                    #   位移×30 把动作压到 0.03 (std=0.0335), 模型学到"不动"→视频拿不起来
+                    #   metaworld 是速度控制 (delta_pos ∈ [-1,1]), 专家输出需 clip 到 [-1,1]
+                    #   与 env.step 实际执行一致 (否则训练目标与执行不一致)
+                    action = np.clip(a4[:4], -1.0, 1.0)
                 except Exception:
                     action = np.zeros(4)
                 all_frames.append({
