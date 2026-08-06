@@ -36,6 +36,12 @@ def load_data(root, max_frames=200):
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
     ds = LeRobotDataset("lerobot/pusht", root=root)
     n = len(ds)
+    # 🐛 2026-08-06 修复: len(ds) 按 meta 帧数(4500) 但 hf 表只有 3600 行 →
+    #   索引 ≥3600 越界 (3608 out of bounds); 用 hf 实际行数截断
+    try:
+        n = min(n, len(ds._ensure_reader().hf_dataset))
+    except Exception:
+        pass
     step = max(1, n // max_frames)
     idxs = list(range(0, n, step))[:max_frames]
     states, actions, imgs = [], [], []
