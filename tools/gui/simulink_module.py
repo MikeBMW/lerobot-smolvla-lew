@@ -3448,7 +3448,16 @@ class SimulinkModule(QWidget):
         让 3 条曲线尽快在 Scope 里齐 (老倪: 应该是3条曲线同时生成, 不是一个大点+一条)"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
+            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息 (任务名/耗时/队列剩余)
+            bi = getattr(self, "_busy_info", None)
+            if bi:
+                el = int(time.time() - bi["start"])
+                q = bi.get("queue_len", 0)
+                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
+                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
+                          " (日志区可看到 📈 进度)")
+            else:
+                self._log("⏳ 上一个任务还在跑 (worker 运行中), 请稍候…")
             return
         # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew → vla_touch → awe_zflow 最慢),
         # 其余环节保持拓扑序; 未知 policy 排最后
@@ -3973,7 +3982,17 @@ class SimulinkModule(QWidget):
         """开后台线程执行 fn, 期间防重入; stage 更新 CI/CD 面板状态"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
+            # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" —
+            # 显示当前任务名/已耗时/队列剩余, 不一句话带过
+            bi = getattr(self, "_busy_info", None)
+            if bi:
+                el = int(time.time() - bi["start"])
+                q = bi.get("queue_len", 0)
+                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
+                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
+                          " (日志区可看到 📈 进度)")
+            else:
+                self._log("⏳ 上一个任务还在跑 (worker 运行中)…")
             return  # 任务未启动 → 引导不推进 (等上一个完成后用户再点)
         if stage:
             self._cicd_state[stage] = 1  # 运行中
@@ -4022,6 +4041,12 @@ class SimulinkModule(QWidget):
         # SIGABRT (PyQt 竞态, 实测 3404 行崩溃); 改: 不置 None, 引用保留到下次覆盖回收
         worker.finished.connect(lambda: None)
         self._worker = worker
+        # 🔎 2026-08-06 老倪: 记录当前任务详情 (防重入提示用) — 任务名/开始时间/队列剩余
+        self._busy_info = {
+            "name": (busy_msg or stage or "任务").split("(")[0].strip().lstrip("⏳ "),
+            "start": time.time(),
+            "queue_len": max(0, len(getattr(self, "_flow_queue", []) or []) - 1),
+        }
         worker.start()
 
     def open_cicd_panel(self):
@@ -4804,7 +4829,16 @@ class SimulinkModule(QWidget):
         """采集→训练→验证→集成→部署→推理 依次自动流转"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
+            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
+            bi = getattr(self, "_busy_info", None)
+            if bi:
+                el = int(time.time() - bi["start"])
+                q = bi.get("queue_len", 0)
+                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
+                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
+                          " (日志区可看到 📈 进度)")
+            else:
+                self._log("⏳ 上一个任务还在跑 (worker 运行中), 请稍候…")
             return
         self._flow_queue = [self.on_collect, self.on_train, self.on_validate,
                             self.on_integrate, self.on_deploy, self.on_infer]
@@ -5098,7 +5132,16 @@ class SimulinkModule(QWidget):
             fn = (lambda _r=logic_res: _r)
         cur = getattr(self, "_worker", None)
         if cur is not None and cur.isRunning():
-            self._log("⏳ 上一个任务还在跑, 请稍候… (训练中, 日志区可看到 📈 进度)")
+            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
+            bi = getattr(self, "_busy_info", None)
+            if bi:
+                el = int(time.time() - bi["start"])
+                q = bi.get("queue_len", 0)
+                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
+                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
+                          " (日志区可看到 📈 进度)")
+            else:
+                self._log("⏳ 上一个任务还在跑 (worker 运行中), 请稍候…")
             return
         node["status"] = "running"
         it = self._items.get(node["id"])
