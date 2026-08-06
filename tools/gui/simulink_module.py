@@ -2303,11 +2303,6 @@ class SimulinkModule(QWidget):
         # (2026-08-06 老倪: 「时间 10.0s / dt」仿真参数控件没用 → 删除;
         #  仿真用内部 _sim_t_end/_sim_dt 默认值, 无逻辑引用)
 
-        tl.addStretch()
-        self.lbl_clock = QLabel("t = 0.00s")
-        self.lbl_clock.setStyleSheet("color:#00d4aa; font-size:13px; font-weight:700; font-family:Consolas;")
-        tl.addWidget(self.lbl_clock)
-
         btn_save = mk_btn("💾 另存为", "保存当前画布 (含节点位置/连线) 为 JSON 文件, 可下次加载回来", self.export_flow, "#3fb950")
         btn_load = mk_btn("📂 加载", "从 JSON 文件加载工作流 (恢复节点位置与连线)", self.import_flow, "#58a6ff")
         self.btn_save = btn_save
