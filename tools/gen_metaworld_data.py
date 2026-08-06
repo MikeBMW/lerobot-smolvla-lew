@@ -242,6 +242,9 @@ def main():
                 "dtype": "video", "shape": [128, 128, 3], "fps": 30,
                 "video.codec": "h264", "video.pix_fmt": "rgb24",
                 "video.is_depth_map": False, "has_audio": False,
+                # 🐛 2026-08-06 修复: 缺 names → feature_utils.py L153 ft["names"] KeyError
+                #   (metaworld_act 有 ['height','width','channel'], 对齐)
+                "names": ["height", "width", "channel"],
             },
             "observation.state": {
                 "dtype": "float32", "shape": [3],
@@ -255,10 +258,10 @@ def main():
             "next.reward": {"dtype": "float32", "shape": [1]},
             "next.done": {"dtype": "bool", "shape": [1]},
             "next.success": {"dtype": "bool", "shape": [1]},
-            # 🐛 2026-08-06 修复: 补 index/task_index 声明 — parquet 有这两列但 info 缺声明
-            #   → LeRobot CastError "column names don't match" (metaworld_act 能读因为它声明了)
-            "index": {"dtype": "int64", "shape": [1]},
-            "task_index": {"dtype": "int64", "shape": [1]},
+            # 🐛 2026-08-06 修复: 补 index/task_index 声明 + names 键 (feature_utils.py
+            #   dataset_to_policy_features 读 ft["names"], 缺键 → KeyError)
+            "index": {"dtype": "int64", "shape": [1], "names": None},
+            "task_index": {"dtype": "int64", "shape": [1], "names": None},
         },
         "data_files_size_in_mb": 0.1,
         "video_files_size_in_mb": 12.0,
