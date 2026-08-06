@@ -2446,6 +2446,11 @@ class SimulinkModule(QWidget):
             self.switch_theme(_CUR_THEME)
         except Exception:
             pass
+        # 📺 外部命令行训练日志监视 (2026-08-06 老倪: 终端要有东西)
+        try:
+            self._start_ext_log_watch()
+        except Exception:
+            pass
         self._log("Simulink 模式就绪 · 0帧起手, 从左侧模块库开始搭建")
 
     # ── 初始工作流: 空画布 (0帧起手) ──
@@ -3806,6 +3811,43 @@ class SimulinkModule(QWidget):
             QMetaObject.invokeMethod(self.log_box.verticalScrollBar(), "setValue",
                                      Qt.QueuedConnection,
                                      Q_ARG(int, self.log_box.verticalScrollBar().maximum()))
+        except Exception:
+            pass
+
+    # ── 📺 外部训练日志监视 (2026-08-06 老倪: 命令行训练, GUI 终端也要有东西) ──
+    def _start_ext_log_watch(self):
+        """监视命令行训练日志文件 → 过滤关键行 → append 到 log_box"""
+        self._ext_log_pos = {p: 0 for p in ("/home/xspace/zmax_train4.log",
+                                            "/home/xspace/zmax_deliver_latest.log")}
+        if getattr(self, "_ext_log_timer", None) is None:
+            from PyQt5.QtCore import QTimer as _QT
+            self._ext_log_timer = _QT(self)
+            self._ext_log_timer.timeout.connect(self._poll_ext_log)
+        self._ext_log_timer.start(2000)
+
+    def _poll_ext_log(self):
+        """每 2s: 读外部训练日志新行, 过滤关键行 (loss/进度/完成) 显示"""
+        _keep = ("loss", "step=", "✅", "❌", "===", "完成", "📈", "训练",
+                 "epoch", "it/s", "step/s", "curve")
+        try:
+            for p, pos in list(getattr(self, "_ext_log_pos", {}).items()):
+                if not os.path.exists(p):
+                    continue
+                sz = os.path.getsize(p)
+                if sz <= pos:
+                    continue
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    f.seek(pos)
+                    chunk = f.read()
+                self._ext_log_pos[p] = sz
+                for ln in chunk.splitlines():
+                    if not ln.strip() or ln.startswith("+ "):
+                        continue
+                    if any(k in ln for k in _keep):
+                        self.log_box.append(ln.rstrip()[:200])
+            # 日志区自动滚底
+            self.log_box.verticalScrollBar().setValue(
+                self.log_box.verticalScrollBar().maximum())
         except Exception:
             pass
 
