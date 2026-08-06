@@ -1,0 +1,43 @@
+# Z-MAX · SmolVLA-LEW 训练配置 (metaworld 统一数据集 · 对比用)
+# 用法: .venv/bin/python -m lerobot.scripts.lerobot_train --config_path <此文件>
+output_dir: outputs/train/smolvla_peg_v6
+job_name: smolvla_peg_v3
+
+policy:
+  type: smolvla_lew
+  push_to_hub: false
+  smolvlm_name: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+  freeze_smolvlm: true
+  action_model_type: DiT-B
+  action_hidden_size: 256
+  action_num_layers: 1
+  num_inference_timesteps: 2
+  chunk_size: 7
+  n_action_steps: 7
+  n_obs_steps: 1
+  siglip_image_size: 64
+  num_vision_tokens: 64
+
+dataset:
+  repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
+  root: data/metaworld_peg_v6
+  episodes: [0]
+  use_imagenet_stats: true   # SmolVLM 视觉用 ImageNet 归一化 (stats.json 无 image 统计)
+
+batch_size: 1
+steps: 10
+num_workers: 0
+persistent_workers: false
+log_freq: 5
+eval_freq: 150
+save_freq: 150
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 1e-4
+  weight_decay: 0.0
+
+wandb:
+  enable: false

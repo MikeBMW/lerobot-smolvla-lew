@@ -315,21 +315,23 @@ REFERENCE_APPS = [
         ("pdf_report", "📄 PDF 技术选型报告", {"auto": True,
                                              "desc": "双击生成 11 章技术选型 PDF: 实验概况·系统全貌·分系统功能·接口说明·参数对比·架构区别·功能分析·性价比·优势劣势·视频对比·结论"}),
     ], [
-        # 感知链: 数据→YOLO开关→YOLO检测→2D→3D解算→StateAdapter (2026-08-06)
+        # 感知链 (2026-08-06 老倪修正: YOLO 只做 state 适配, 视频直接进各模型视觉 ViT):
+        #   state 通道: 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter→各模型 state 输入
+        #   图像通道: 数据→各模型视觉主干 (ResNet18/SmolVLM2/DINOv2/SigLIP) 直接进, 不经 YOLO
         (0, 1, "图像"), (1, 2, "开=39D"), (2, 3, "2D框"), (3, 4, "3D坐标"),
-        # ACT 路: StateAdapter→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
-        (4, 5, "state"), (4, 6, "状态"), (4, 7, "state"), (5, 7, "图像特征"), (6, 7, "潜变量"), (7, 8), (8, 9), (9, 10), (10, 11),
-        # SmolVLA 纯动作路 (4)
-        (4, 12, "state"), (12, 13, "多模态embeds"), (13, 14), (14, 15),
-        # SmolVLA+LEW 路 (6): 主策略链路 + LeWorldModel 旁路
-        (4, 16, "state"), (16, 17, "多模态embeds"), (17, 19, "动作块"), (19, 20),
-        (4, 18, "视频+动作"), (18, 20, "世界预测"),
-        # VLA-Touch 路 (9): StateAdapter→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练
-        (4, 21, "图像"), (4, 22, "触觉图"), (4, 23, "状态+指令"),
+        # ACT 路: 图像→ResNet18(视觉) + StateAdapter→Encoder(state); 动作→CVAE
+        (0, 5, "图像"), (4, 7, "state39D"), (0, 6, "动作"), (5, 7, "图像特征"), (6, 7, "潜变量"), (7, 8), (8, 9), (9, 10), (10, 11),
+        # SmolVLA 纯动作路: 图像→SmolVLM2(视觉) + StateAdapter→DiT-B(state)
+        (0, 12, "图像"), (4, 12, "state39D"), (12, 13, "多模态embeds"), (13, 14), (14, 15),
+        # SmolVLA+LEW 路: 图像→SmolVLM2·LEW + StateAdapter→DiT-B·LEW; LeWorldModel 旁路
+        (0, 16, "图像"), (4, 16, "state39D"), (16, 17, "多模态embeds"), (17, 19, "动作块"), (19, 20),
+        (0, 18, "视频+动作"), (18, 20, "世界预测"),
+        # VLA-Touch 路: 图像→DINOv2(视觉) + StateAdapter→DiT-B(state); Marker 触觉
+        (0, 21, "图像"), (4, 23, "state39D"), (0, 22, "触觉图"),
         (21, 25, "视觉嵌入"), (22, 25, "触觉信号m"), (23, 24, "动作块"), (24, 25, "VLA动作a"),
         (25, 26, "精炼动作"),
-        # AWE 路 (8): StateAdapter→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练
-        (4, 27, "图像+力觉"), (4, 28, "状态+力觉"), (27, 28, "视触觉特征"), (28, 29, "三层潜状态"),
+        # AWE 路: 图像+力觉→SigLIP(视觉) + StateAdapter→H-JEPA(state)
+        (0, 27, "图像+力觉"), (4, 28, "state39D"), (27, 28, "视触觉特征"), (28, 29, "三层潜状态"),
         (29, 30, "未来潜状态"), (30, 31, "注入动作"), (31, 32, "动作"),
         # 评估: 五训练 → 对比 Scope
         (11, 33), (15, 33), (20, 33), (26, 33), (32, 33),
