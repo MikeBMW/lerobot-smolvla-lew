@@ -70,7 +70,13 @@ def main():
             ep_imgs.append(np.asarray(pil))
             # 关节状态: 用末端笛卡尔位姿 (跨机器人泛化, 非Sawyer关节角)
             ee = env.data.site_xpos[env.model.site("endEffector").id]
-            state = ee.astype(np.float32).copy()  # 3D 末端位置 (x,y,z)
+            # 关节状态: 39 维完整观测 (2026-08-06 老倪: 给所有模型完整观测, 含 hand/peg/hole 位置)
+            # 原来只有 3D 末端位置 → 模型不知道 peg 在哪 → 插拔学不会 (ACT/SmolVLA 全 0%)
+            # 官方专家用 39 维 (env._get_obs) 所以 85% 成功; 蒸馏 MLP 也用 39 维 → 55%
+            try:
+                state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D
+            except Exception:
+                state = ee.astype(np.float32).copy()  # 兜底 3D
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
             if expert_mode and expert is not None:
                 obs_vec = np.asarray(obs, dtype=np.float64).ravel()
@@ -262,7 +268,7 @@ def main():
                 "names": ["height", "width", "channel"],
             },
             "observation.state": {
-                "dtype": "float32", "shape": [3],
+                "dtype": "float32", "shape": [39],
                 "names": {"motors": ["x", "y", "z"]}, "fps": 30.0,
             },
             "action": {"dtype": "float32", "shape": [4],
