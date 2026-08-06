@@ -1,0 +1,24 @@
+{
+ "vla_touch": {
+  "init_dist": 0.2243,
+  "final_dist": 0.2184,
+  "pre_dist": 0.2195,
+  "post_dist": 0.2208,
+  "degration": 0.0012,
+  "amp_pre": 0.0577,
+  "amp_post": 0.0639,
+  "amp_drop": 0.0063,
+  "success": 0.0
+ },
+ "awe_zflow": {
+  "init_dist": 0.2243,
+  "final_dist": 0.1349,
+  "pre_dist": 0.2077,
+  "post_dist": 0.1608,
+  "degration": -0.0469,
+  "amp_pre": 0.0628,
+  "amp_post": 0.0495,
+  "amp_drop": -0.0133,
+  "success": 0.0
+ }
+}

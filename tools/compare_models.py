@@ -79,14 +79,15 @@ def load_awe_zflow(ckpt):
     return model, None
 
 
-def load_data(max_frames=120):
+def load_data(max_frames=120, data_root=None):
     """用 LeRobotDataset 加载 (与训练同管道 — info.json 定义 state/action 维度, 2026-08-05 实测:
     metaworld_act 的 info.json 是 2D (pusht 模板残留), 训练出的两模型 checkpoint 均为 action[2];
     npz 是 4D 不能直接用 → 必须走 LeRobotDataset 与训练对齐)
     同时返回 action 归一化统计 (mean/std, 全量帧) — 评估在归一化空间进行:
     模型输出即归一化空间, gt 用同统计归一化, 两模型同标准公平对比。"""
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
-    ds = LeRobotDataset("lerobot/pusht", root=ROOT / "data" / "metaworld_act")
+    root = ROOT / (data_root or "data/metaworld_act")
+    ds = LeRobotDataset("lerobot/pusht", root=root)
     n = len(ds)
     step = max(1, n // max_frames)
     idxs = list(range(0, n, step))[:max_frames]
@@ -298,9 +299,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frames", type=int, default=120)
     ap.add_argument("--repeat", type=int, default=5)
+    ap.add_argument("--data-root", default=None, help="数据根目录 (默认 metaworld_act)")
     args = ap.parse_args()
 
-    print(f"🔬 ACT / SmolVLA / SmolVLA+LEW / VLA-Touch / AWE-zFlow 模型对比评估 · 统一 metaworld_act · {DEVICE}")
+    print(f"🔬 ACT / SmolVLA / SmolVLA+LEW / VLA-Touch / AWE-zFlow 模型对比评估 · {DEVICE}")
     # 多策略: act / smolvla (纯动作) / smolvla_lew (串行世界模型) / vla_touch (触觉增强)
     #   / awe_zflow (场景原生+zFlow 三层潜空间世界模型)
     policies = [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
@@ -309,7 +311,7 @@ def main():
     if not any(c[0] for c in ckpts.values()):
         print("❌ 无训练产物 — 先在控制台 ▶ 运行对比模板 (各模型训练一次)")
         return 1
-    obs, st, act, act_mean, act_std = load_data(args.frames)
+    obs, st, act, act_mean, act_std = load_data(args.frames, args.data_root)
 
     results = {}
     for pol, tag in policies:

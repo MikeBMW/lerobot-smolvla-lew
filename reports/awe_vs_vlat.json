@@ -1,0 +1,70 @@
+{
+ "vla_touch": {
+  "zero": {
+   "init_dist": 0.2243,
+   "final_dist": 0.2185,
+   "improve": 0.0059,
+   "action_amp": 0.0791,
+   "smoothness": 0.1145,
+   "success": 0.0
+  },
+  "real": {
+   "init_dist": 0.2243,
+   "final_dist": 0.2172,
+   "improve": 0.0071,
+   "action_amp": 0.0768,
+   "smoothness": 0.1124,
+   "success": 0.0
+  },
+  "noise": {
+   "init_dist": 0.2243,
+   "final_dist": 0.2303,
+   "improve": -0.006,
+   "action_amp": 0.0761,
+   "smoothness": 0.1075,
+   "success": 0.0
+  },
+  "delay": {
+   "init_dist": 0.2243,
+   "final_dist": 0.2134,
+   "improve": 0.011,
+   "action_amp": 0.0779,
+   "smoothness": 0.1073,
+   "success": 0.0
+  }
+ },
+ "awe_zflow": {
+  "zero": {
+   "init_dist": 0.2243,
+   "final_dist": 0.3902,
+   "improve": -0.1659,
+   "action_amp": 0.6991,
+   "smoothness": 0.0018,
+   "success": 0.0
+  },
+  "real": {
+   "init_dist": 0.2243,
+   "final_dist": 0.3903,
+   "improve": -0.1659,
+   "action_amp": 0.7142,
+   "smoothness": 0.0017,
+   "success": 0.0
+  },
+  "noise": {
+   "init_dist": 0.2243,
+   "final_dist": 0.3903,
+   "improve": -0.1659,
+   "action_amp": 0.7009,
+   "smoothness": 0.0199,
+   "success": 0.0
+  },
+  "delay": {
+   "init_dist": 0.2243,
+   "final_dist": 0.3903,
+   "improve": -0.166,
+   "action_amp": 0.7431,
+   "smoothness": 0.0022,
+   "success": 0.0
+  }
+ }
+}
