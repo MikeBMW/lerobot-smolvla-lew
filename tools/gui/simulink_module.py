@@ -2329,10 +2329,8 @@ class SimulinkModule(QWidget):
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
         tl2.addWidget(self.btn_pipeline)
-        # 🧠 ACT-Meta 引导: 一键打开 metaworld 全新训练模型 (2026-08-04 老倪)
-        self.btn_actmeta = mk_btn("🧠 ACT-Meta 引导", "打开 metaworld 数据全新训练 ACT 模型: 7个子模块搭建, Action Head 适配 4D 输出, 双击「🚀 全新训练」即可开始 (嵌入式窗口引导)",
-                                  self.open_act_meta, "#58a6ff")
-        tl2.addWidget(self.btn_actmeta)
+        # (2026-08-06 老倪: 「🧠 ACT-Meta 引导」按钮点击没反应 → 删除;
+        #  ACT-Meta 模板仍可从模块库「🧠 ACT 模型·子模块」组进入)
         # 🔬 三模型对比: 与⚔️对比同族 (2026-08-05 老倪) — 放第二行, 第一行按钮太多会被挤掉
         self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
         tl2.addWidget(self.btn_compare3)
@@ -4984,6 +4982,13 @@ class SimulinkModule(QWidget):
                     on_accept()
                 except Exception:
                     pass
+            # 🐛 2026-08-06 老倪: 视频对比只能打开一次 — _done 闭包捕获 dlg 形成
+            # 循环引用 (dlg.finished → _done → dlg), deleteLater 后 Python wrapper
+            # 不释放 → 旧 dialog 幽灵残留 (timer 继续跑), 二次打开出现两个窗口
+            try:
+                dlg.finished.disconnect(_done)  # 断开循环引用, 允许真正释放
+            except Exception:
+                pass
             dlg.deleteLater()
 
         dlg.finished.connect(_done)
