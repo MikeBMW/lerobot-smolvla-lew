@@ -937,7 +937,8 @@ class CICDPanel(QDialog):
         self.module = module
         self.setWindowTitle("CI/CD 全链路 · Z-MAX")
         self.setMinimumSize(980, 460)
-        self.setStyleSheet("QDialog { background:#f6f8fa; }")
+        # 🎨 2026-08-06 老倪: CICD 面板改回深色背景 (与整体暗色调统一)
+        self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stage_items = {}
         self._pulse_timer = QTimer(self)
         self._pulse_timer.timeout.connect(self._pulse)
@@ -960,7 +961,7 @@ class CICDPanel(QDialog):
         # 流水线画布 (QGraphicsView)
         self._view = QGraphicsView()
         self._view.setRenderHints(QPainter.Antialiasing)
-        self._view.setStyleSheet("background:#f6f8fa; border:1px solid #d0d7de; border-radius:8px;")
+        self._view.setStyleSheet("background:#0d1117; border:1px solid #1e2740; border-radius:8px;")
         self._view.setDragMode(QGraphicsView.NoDrag)
         self._scene = QGraphicsScene(self)
         self._view.setScene(self._scene)
@@ -995,7 +996,7 @@ class CICDPanel(QDialog):
 
         # 日志行 (显示当前环节输出)
         self._stage_log = QLabel("就绪 · 点击环节节点开始")
-        self._stage_log.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:#e9edf2; border:1px solid #d0d7de; border-radius:6px; padding:8px;")
+        self._stage_log.setStyleSheet("color:#8b949e; font-size:11px; font-family:Consolas; background:#161b22; border:1px solid #1e2740; border-radius:6px; padding:8px;")
         self._stage_log.setWordWrap(True)
         lay.addWidget(self._stage_log)
 
@@ -1020,7 +1021,7 @@ class CICDPanel(QDialog):
         bl.addWidget(self.btn_save_flow)
         self.btn_refresh = QPushButton("🔄 刷新状态")
         self.btn_refresh.setStyleSheet("""
-            QPushButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
+            QPushButton { background:#21262d; color:#c9d1d9; border:1px solid #1e2740;
             border-radius:4px; padding:5px 14px; font-size:11px; }
             QPushButton:hover { border-color:#ffd700; color:#ffd700; }
         """)
@@ -1106,7 +1107,8 @@ class PipelinePanel(QDialog):
         self.module = module
         self.setWindowTitle("🎯 数据闭环 CICD 控制台 · Z-MAX")
         self.setMinimumSize(920, 560)
-        self.setStyleSheet("QDialog { background:#f6f8fa; }")
+        # 🎨 2026-08-06 老倪: 数据闭环控制台改回深色背景 (浅色与整体暗色调不协调)
+        self.setStyleSheet("QDialog { background:#0d1117; }")
         self._cards = {}
         self._spin = {}
         self._build()
@@ -1130,14 +1132,14 @@ class PipelinePanel(QDialog):
         num, title, desc = self.STAGE_DEFS[sid]
         card = QFrame()
         card.setObjectName(f"stage{sid}")
-        card.setStyleSheet("QFrame#stage%d { background:#e9edf2; border:1px solid #d0d7de; border-radius:10px; }" % sid)
+        card.setStyleSheet("QFrame#stage%d { background:#161b22; border:1px solid #1e2740; border-radius:10px; }" % sid)
         card.setFixedWidth(250)
         lay = QVBoxLayout(card)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
         h = QHBoxLayout()
         t = QLabel(f"{num}  {title}")
-        t.setStyleSheet("color:#1f2328; font-size:13px; font-weight:700; background:transparent; border:none;")
+        t.setStyleSheet("color:#c9d1d9; font-size:13px; font-weight:700; background:transparent; border:none;")
         h.addWidget(t)
         h.addStretch()
         st = QLabel("○")
@@ -1155,7 +1157,7 @@ class PipelinePanel(QDialog):
             sp = QSpinBox()
             sp.setRange(1, 50000)
             sp.setValue(300)
-            sp.setStyleSheet("background:#f6f8fa; color:#1f2328; border:1px solid #d0d7de; border-radius:4px; padding:2px 6px;")
+            sp.setStyleSheet("background:#0d1117; color:#c9d1d9; border:1px solid #1e2740; border-radius:4px; padding:2px 6px;")
             row.addWidget(sp)
             row.addStretch()
             lay.addLayout(row)
@@ -1185,7 +1187,7 @@ class PipelinePanel(QDialog):
 
         # ── 闭环状态栏 (数据/模型/URL/Orin/推理) ──
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background:#e9edf2; border:1px solid #d0d7de; border-radius:8px; }")
+        bar.setStyleSheet("QFrame { background:#161b22; border:1px solid #1e2740; border-radius:8px; }")
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(12, 8, 12, 8)
         bl.setSpacing(14)
@@ -1195,7 +1197,7 @@ class PipelinePanel(QDialog):
         self.lbl_orin = QLabel("🤖 Orin: —")
         self.lbl_infer = QLabel("⚡ 推理: —")
         for lb in (self.lbl_data, self.lbl_model, self.lbl_url, self.lbl_orin, self.lbl_infer):
-            lb.setStyleSheet("color:#24292f; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+            lb.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; background:transparent; border:none;")
             bl.addWidget(lb)
         bl.addStretch()
         lay.addWidget(bar)
@@ -1214,7 +1216,7 @@ class PipelinePanel(QDialog):
         ]
         for sid, label, fn in pipe_defs:
             b = QPushButton(label)
-            b.setStyleSheet("QPushButton { background:#e9edf2; color:#57606a; border:1px solid #d0d7de; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
+            b.setStyleSheet("QPushButton { background:#21262d; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
                             "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
             b.clicked.connect(lambda _, s=sid, f=fn: (self.module._cicd_state.__setitem__(s, 1), self._refresh(), f()))
             self._pipe_btns[sid] = b
@@ -1273,14 +1275,14 @@ class PipelinePanel(QDialog):
             elif s == 3:
                 b.setStyleSheet("QPushButton { background:#ff444422; color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:700; }")
             else:
-                b.setStyleSheet("QPushButton { background:#e9edf2; color:#57606a; border:1px solid #d0d7de; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
+                b.setStyleSheet("QPushButton { background:#21262d; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; }"
                                 "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
         for sid, (card, st_lbl, info) in self._cards.items():
             sid_st = stages.get(str(sid), {}).get("state", "pending")
             st_lbl.setText(self._STATUS_ICON.get(sid_st, "○"))
             st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(sid_st,'#57606a')}; font-size:13px; font-weight:700; background:transparent; border:none;")
-            card.setStyleSheet("QFrame#stage%d { background:#e9edf2; border:2px solid %s; border-radius:10px; }"
-                               % (sid, self._STATUS_COLOR.get(sid_st, "#d0d7de")))
+            card.setStyleSheet("QFrame#stage%d { background:#161b22; border:2px solid %s; border-radius:10px; }"
+                               % (sid, self._STATUS_COLOR.get(sid_st, "#1e2740")))
             sdata = stages.get(str(sid), {})
             def _ckpt_name(ck):
                 parts = ck.replace("\\", "/").split("/")
