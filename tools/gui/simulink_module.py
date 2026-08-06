@@ -3470,25 +3470,8 @@ class SimulinkModule(QWidget):
                 self._log(f"🧹 三模型对比: 已清空旧曲线, 本轮从零开始")
             except Exception:
                 pass
-        # 🚀 醒目反馈 (2026-08-05 老倪: "点击运行没反应没有反馈" — 弹非阻塞提示窗,
-        #   不阻塞流程, 用户立刻看到执行已开始)
-        try:
-            from PyQt5.QtWidgets import QMessageBox as _QMB
-            mb = _QMB(self)
-            mb.setWindowTitle("▶ 运行已启动")
-            mb.setText(f"🚀 正在执行 {len(stages)} 个环节:\n\n{names}\n\n"
-                       f"后台自动运行中 — 关闭本窗口可继续查看画布/日志区进度")
-            mb.setStyleSheet("QMessageBox{background:#161b22;}"
-                             "QLabel{color:#c9d1d9;font-size:13px;}"
-                             "QPushButton{background:#21262d;color:#c9d1d9;"
-                             "border:1px solid #30363d;border-radius:5px;padding:6px 20px;}")
-            mb.addButton("知道了, 开始运行", _QMB.AcceptRole)
-            # 非模态: show() 不阻塞主线程, 3s 自动关闭 (2026-08-05: exec_ 模态会卡住
-            # 训练中的日志刷新/画布, 且 offscreen 测试会阻塞)
-            mb.show()
-            QTimer.singleShot(3000, mb.close)
-        except Exception:
-            pass
+        # (2026-08-06 老倪: 「运行已启动」小窗口不许弹 — 弹窗遮挡画布/训练进度,
+        #  按钮状态(⏳运行中) + 日志区已足够反馈)
         # 🎛 运行中按钮状态 (2026-08-05 老倪: 停止按钮灰了) — 真实流程运行时 btn_stop 可用
         self.btn_run.setText("⏳ 运行中…")
         self.btn_run.setEnabled(False)
