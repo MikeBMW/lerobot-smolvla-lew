@@ -69,17 +69,8 @@ REFERENCE_APPS = [
         ("action", "📦 集成打包", {"target": "ECS", "desc": "双击上传 ECS (cicd_deploy push)"}),
         ("hardware", "🚚 部署 Orin", {"target": "192.168.23.10", "desc": "双击查部署状态"}),
     ], [(1, 3), (2, 3), (3, 0), (0, 4), (4, 5), (5, 6), (6, 7)]),
-    ("⚙️ CI/CD 默认流水线", [
-        ("hardware", "📥 输入数据", {"ip": "Orin", "fps": 30, "desc": "采集数据源"}),
-        ("model", "🧠 ACT 模型", {"chunk_size": 7, "dim_model": 256, "desc": "训练/推理"}),
-        ("action", "🎯 输出 action", {"pos": [0.1, 0.2, 0.3], "desc": "末端动作"}),
-    ], [(0, 1), (1, 2)]),
-    ("📦 取料·100G 闭环", [
-        ("hardware", "Orin Nano", {"ip": "192.168.23.10", "fps": 30}),
-        ("model", "ACT", {"chunk_size": 7, "dim_model": 256}),
-        ("action", "A01 取料·100G", {"pos": [0.1, 0.2, 0.3]}),
-        ("condition", "C03 力控达标", {"max_force": 5.0}),
-    ], [(0, 1), (1, 2), (2, 3)]),
+    # (2026-08-06 老倪: 参考应用条按钮太多没用 — 删除旧演示模板
+    #  「⚙️ CI/CD 默认流水线」+「📦 取料·100G 闭环」; 保留 11 个有效模板)
     ("🎛 力控插入·Z700", [
         ("hardware", "机械臂", {"model": "Z700", "dof": 6}),
         ("condition", "C01 到位判断", {"tolerance": 0.01}),
@@ -2048,13 +2039,23 @@ class LibraryPanel(QFrame):
             if w:
                 w.deleteLater()
         self._lib_btns = {}  # 模块名 → 按钮 (引导高亮用)
+        # 📚 分组折叠状态 (2026-08-06 老倪: System2/SYS1/SYS0 列表栏也要能隐藏 —
+        #   点击分组标题 折叠/展开 该组模块按钮, ▾ 展开 / ▸ 收起)
+        if not hasattr(self, "_group_collapsed"):
+            self._group_collapsed = {}
         for ntype, gname, items in LIBRARY:
             # 工作流过滤: 按节点类型匹配
             wf_of = {t: wf for wf, t in WORKFLOW_TYPES.items()}
             if self._current_wf and wf_of.get(ntype) != self._current_wf:
                 continue
-            lab = QLabel(f"{gname}")
+            collapsed = self._group_collapsed.get(gname, False)
+            marker = "▸ " if collapsed else "▾ "
+            lab = QLabel(f"{marker}{gname}")
             lab.setStyleSheet(f"color:{COLORS[ntype]}; font-size:11px; font-weight:700; padding:6px 2px 2px;")
+            lab.setToolTip("点击 折叠/展开 该分组")
+            lab.setCursor(Qt.PointingHandCursor)
+            # 点击标题 → toggle 该组按钮可见性
+            lab.mousePressEvent = lambda ev, gn=gname, lbl=lab: self._toggle_group(gn, lbl)
             self.v.addWidget(lab)
             for it in items:
                 btn = QToolButton()
@@ -2071,8 +2072,26 @@ class LibraryPanel(QFrame):
                     btn.clicked.connect(lambda _, t=ntype, nm=it["name"], ps=it["params"]:
                                         self.module.add_node_at_center(t, nm, ps))
                 self._lib_btns[it["name"]] = btn
+                btn.setVisible(not collapsed)  # 分组折叠时隐藏组内按钮
                 self.v.addWidget(btn)
         self.v.addStretch()
+
+    def _toggle_group(self, gname, lab):
+        """📚 点击分组标题 → 折叠/展开该组 (2026-08-06 老倪: System2/SYS1/SYS0 列表栏可隐藏)"""
+        self._group_collapsed[gname] = not self._group_collapsed.get(gname, False)
+        collapsed = self._group_collapsed[gname]
+        # 更新标题 marker
+        lab.setText(f"{'▸ ' if collapsed else '▾ '}{gname}")
+        # 该组的按钮 → 显示/隐藏
+        group_items = []
+        for ntype, g, items in LIBRARY:
+            if g == gname:
+                group_items = items
+                break
+        for it in group_items:
+            btn = self._lib_btns.get(it["name"])
+            if btn is not None:
+                btn.setVisible(not collapsed)
 
     def set_filter(self, wf_key):
         """按工作流过滤模块库 (None=全部)"""
@@ -2461,9 +2480,14 @@ class SimulinkModule(QWidget):
         """)
         self._canvas_win = QMdiSubWindow()
         self._canvas_win.setWidget(self.canvas)
-        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型 (可最小化/最大化/关闭)")
+        # 🖥 2026-08-06 老倪: 画布窗口标题栏按钮(最小化/最大化/关闭)点击没用且关闭后
+        # 画布消失难以恢复 → 去掉这些按钮, 画布始终铺满 MDI 区不可关闭
+        self._canvas_win.setWindowFlags(
+            self._canvas_win.windowFlags()
+            & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint
+            & ~Qt.WindowCloseButtonHint)
+        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型")
         self._canvas_win.resize(920, 620)
-        self._canvas_win.setAttribute(Qt.WA_DeleteOnClose, False)  # 关闭=隐藏, 可恢复
         self._mdi.addSubWindow(self._canvas_win)
         # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
         self._canvas_win.showMaximized()
@@ -3125,13 +3149,18 @@ class SimulinkModule(QWidget):
             old.deleteLater()  # 旧空子窗口清理 (canvas 已 reparent, 不受影响)
         self._canvas_win = QMdiSubWindow()
         self._canvas_win.setWidget(self.canvas)  # 自动 reparent 回 MDI 子窗口
-        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型 (可最小化/最大化/关闭)")
+        # 🖥 2026-08-06: 与主窗口创建一致 — 去掉标题栏按钮 + 铺满 MDI (修复:
+        # 浮动关闭后还原 show() 只有 920x620 → 露灰色背景)
+        self._canvas_win.setWindowFlags(
+            self._canvas_win.windowFlags()
+            & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint
+            & ~Qt.WindowCloseButtonHint)
+        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型")
         self._canvas_win.resize(920, 620)
-        self._canvas_win.setAttribute(Qt.WA_DeleteOnClose, False)
         self._mdi.addSubWindow(self._canvas_win)
-        self._canvas_win.show()
+        self._canvas_win.showMaximized()  # 铺满 MDI, 不露背景
         self._mdi.setActiveSubWindow(self._canvas_win)
-        self._log("⛶ 画布已还原回主窗口")
+        self._log("⛶ 画布已还原回主窗口 (铺满)")
         self._float_dlg = None
 
     def show_canvas_win(self):
@@ -4076,9 +4105,10 @@ class SimulinkModule(QWidget):
         1) 若主画布为空 → 自动加载默认流水线 DAG (输入数据→ACT模型→输出action)
         2) 打开可视化流水线面板
         """
-        # 画布空 → 加载默认 CI/CD 工作流 (可保存 JSON)
+        # 画布空 → 加载 CICD 主控台模板 (2026-08-06: 旧「CI/CD 默认流水线」模板已删,
+        # 改用 REFERENCE_APPS[0] CICD 主控台 — 全链路主要节点)
         if not self.nodes:
-            self.load_reference_app("⚙️ CI/CD 默认流水线",
+            self.load_reference_app(REFERENCE_APPS[0][0],
                                     REFERENCE_APPS[0][1], REFERENCE_APPS[0][2])
         if not getattr(self, "_cicd_panel", None):
             self._cicd_panel = CICDPanel(self)
