@@ -309,24 +309,85 @@ def plot_scores(score_map, path):
 
 # ── PDF 生成 (reportlab) ──────────────────────────────────────────────────────
 def _reg_cjk_fonts():
-    """reportlab 注册中文字体 (Noto CJK, 修复中文方块) — 在 build_pdf 开头调用"""
+    """reportlab 注册中文字体 (Noto CJK, 修复中文乱码/方块) — 在 build_pdf 开头调用"""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    cands = [
-        ("NotoSansCJK", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-        ("NotoSansCJKBold", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
-        ("MicrosoftYaHei", "/mnt/c/Windows/Fonts/msyh.ttc"),
-    ]
-    for name, path in cands:
-        if os.path.exists(path):
+    # 扫描系统所有中文字体候选 (2026-08-06 修复: 系统只有 NotoSerifCJK, 原脚本只找 Sans 导致回退 Helvetica 乱码)
+    cands = []
+    for p in ["/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+              "/mnt/c/Windows/Fonts/msyh.ttc",
+              "/mnt/c/Windows/Fonts/msyhbd.ttc",
+              "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"]:
+        if os.path.exists(p):
+            cands.append(p)
+    # 兜底: 扫描 fc-list 输出的所有 CJK 字体
+    if not cands:
+        try:
+            import subprocess
+            r = subprocess.run(["fc-list", ":lang=zh", "file"], capture_output=True, text=True, timeout=10)
+            for line in r.stdout.splitlines():
+                p = line.split(":")[0].strip()
+                if p and os.path.exists(p) and p not in cands:
+                    cands.append(p)
+        except Exception:
+            pass
+    for i, path in enumerate(cands):
+        name = f"CJK{i}"
+        try:
+            pdfmetrics.registerFont(TTFont(name, path, subfontIndex=0))
+        except Exception:
             try:
-                pdfmetrics.registerFont(TTFont(name, path, subfontIndex=0))
+                pdfmetrics.registerFont(TTFont(name, path))
             except Exception:
+                continue
+    # 别名: 让 NotoSansCJK/NotoSansCJKBold/MicrosoftYaHei 都映射到成功注册的 CJK 字体
+    # (2026-08-06: Sans TTC 加载失败, 用成功注册的 Serif 兜底)
+    reg = pdfmetrics.getRegisteredFontNames()
+    alias_src = None
+    for i in range(len(cands)):
+        if f"CJK{i}" in reg:
+            alias_src = cands[i]
+            break
+    if alias_src is None and cands:
+        alias_src = cands[0]
+    if "NotoSansCJK" not in reg and alias_src:
+        for alias in ["NotoSansCJK", "NotoSansCJKBold"]:
+            if alias not in reg:
                 try:
-                    pdfmetrics.registerFont(TTFont(name, path))
+                    pdfmetrics.registerFont(TTFont(alias, alias_src, subfontIndex=0))
                 except Exception:
-                    continue
+                    try:
+                        pdfmetrics.registerFont(TTFont(alias, alias_src))
+                    except Exception:
+                        pass
+    if "MicrosoftYaHei" not in reg and alias_src:
+        try:
+            pdfmetrics.registerFont(TTFont("MicrosoftYaHei", alias_src, subfontIndex=0))
+        except Exception:
+            pass
 
+
+
+_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\U00002700-\U000027BF\U0001F1E6-\U0001F1FF"
+    "\U00002600-\U000026FF\U00002B00-\U00002BFF\uFE0F\u200D"
+    "\U00002190-\U000021FF\U000025A0-\U000025FF\u2705\u26A0\u274C"
+    "\U00002300-\U000023FF\U00002500-\U0000257F\U00002900-\U000029FF"
+    "\U00002080-\U0000209F\U00002070-\U0000207F\U00000000-\U0000001F]")
+
+def _clean(text: str) -> str:
+    """清除 PDF 不支持的 emoji/符号 (reportlab 渲染会变空字符或重叠)"""
+    if not isinstance(text, str):
+        return text
+    text = _EMOJI_RE.sub("", text)
+    # 下标/上标 → 普通数字 (PDF 渲染下标变空字符, 2026-08-06)
+    text = text.replace("\u2081", "1").replace("\u2082", "2").replace("\u2083", "3")
+    text = text.replace("\u2084", "4").replace("\u2085", "5").replace("\u2086", "6")
+    text = text.replace("\u2070", "0").replace("\u00b9", "1").replace("\u00b2", "2").replace("\u00b3", "3")
+    return text
 
 def build_pdf(flow, curves, rollout_have, out_path):
     _reg_cjk_fonts()
@@ -361,7 +422,14 @@ def build_pdf(flow, curves, rollout_have, out_path):
                             title="Z-MAX 五模型对比技术选型报告", author="Z-MAX 控制台")
     E = []  # elements
 
+    def _P(text, style):
+        """Paragraph + emoji 清理 (2026-08-06: 修复 PDF 乱码/重叠)"""
+        return Paragraph(_clean(text), style)
+
+
     def TBL(rows, widths=None, header=True, fs=8):
+        # 清理 emoji (PDF 渲染 emoji 变空字符/重叠, 2026-08-06 修复)
+        rows = [[_clean(c) if isinstance(c, str) else c for c in row] for row in rows]
         t = Table(rows, colWidths=widths, repeatRows=1 if header else 0)
         style = [("GRID", (0, 0), (-1, -1), .4, rc.HexColor("#d0d7de")),
                  ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -379,15 +447,15 @@ def build_pdf(flow, curves, rollout_have, out_path):
 
     # ═══ 封面 ═══
     E.append(Spacer(1, 30 * mm))
-    E.append(Paragraph("Z-MAX 五模型对比 · 技术选型报告", title_st))
-    E.append(Paragraph("ACT / SmolVLA / SmolVLA+LEW / VLA-Touch / AWE 纵向对比", center))
+    E.append(_P("Z-MAX 五模型对比 · 技术选型报告", title_st))
+    E.append(_P("ACT / SmolVLA / SmolVLA+LEW / VLA-Touch / AWE 纵向对比", center))
     E.append(Spacer(1, 8 * mm))
-    E.append(Paragraph(f"生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')} · 数据源: metaworld 统一数据集 · 环境: RTX 4060 8GB", center))
-    E.append(Paragraph("方法: 同数据集 · 同评估口径 (Scope 归一化) · 同 50 步训练基线", center))
+    E.append(_P(f"生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')} · 数据源: metaworld 统一数据集 · 环境: RTX 4060 8GB", center))
+    E.append(_P("方法: 同数据集 · 同评估口径 (Scope 归一化) · 同 50 步训练基线", center))
     E.append(PageBreak())
 
     # ═══ 1 实验概况 ═══
-    E.append(Paragraph("1  实验概况", h1))
+    E.append(_P("1  实验概况", h1))
     rows = [["模型", "类别", "世界模型", "训练吞吐", "显存", "状态"]]
     for p, m in MODELS.items():
         c = curves.get(p)
@@ -397,27 +465,27 @@ def build_pdf(flow, curves, rollout_have, out_path):
                      step_s, m["gpu_mem"], has_curve])
     E.append(TBL(rows, widths=[28 * mm, 42 * mm, 42 * mm, 28 * mm, 20 * mm, 22 * mm]))
     E.append(Spacer(1, 2 * mm))
-    E.append(Paragraph(f"实验目的: 为 Z-MAX 光模块插拔场景 (Z700 全自主 / Z700F Fix) 选型最优策略架构。"
+    E.append(_P(f"实验目的: 为 Z-MAX 光模块插拔场景 (Z700 全自主 / Z700F Fix) 选型最优策略架构。"
                        f"五个模型在同一 metaworld 数据集上各训练 50 步, 统一评估训练收敛、推理效果与部署成本,"
                        f"以数据支撑技术路线决策。", body))
     E.append(PageBreak())
 
     # ═══ 2 系统全貌 (Simulink Pipeline) ═══
-    E.append(Paragraph("2  系统全貌 (Simulink Pipeline)", h1))
-    E.append(Paragraph("全局流程: 数据采集 → 视觉感知 → 世界模型(可选) → 动作生成 → 训练 → 对比评估 → 推理视频 → PDF 报告", body))
+    E.append(_P("2  系统全貌 (Simulink Pipeline)", h1))
+    E.append(_P("全局流程: 数据采集 → 视觉感知 → 世界模型(可选) → 动作生成 → 训练 → 对比评估 → 推理视频 → PDF 报告", body))
     # pipeline 图
     _fig_pipeline = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reports", "figs", "pipeline.png")
     if os.path.exists(_fig_pipeline):
         E.append(Image(_fig_pipeline, width=170 * mm, height=46 * mm))
     else:
-        E.append(Paragraph("⚠️ 缺 pipeline.png (先跑 tools/gen_report_figs.py)", small))
+        E.append(_P("⚠️ 缺 pipeline.png (先跑 tools/gen_report_figs.py)", small))
     # 训练流程 (三阶段)
     _fig_train = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reports", "figs", "training_flow.png")
     if os.path.exists(_fig_train):
         E.append(Image(_fig_train, width=170 * mm, height=42 * mm))
     E.append(Spacer(1, 2 * mm))
     if flow:
-        E.append(Paragraph(f"画布节点数: {len(flow.get('nodes', []))} · 连线数: {len(flow.get('links', []))}", body))
+        E.append(_P(f"画布节点数: {len(flow.get('nodes', []))} · 连线数: {len(flow.get('links', []))}", body))
         E.append(Spacer(1, 2 * mm))
         nodes = flow.get("nodes", [])
         rows = [["#", "节点", "类型", "功能/参数"]]
@@ -427,14 +495,14 @@ def build_pdf(flow, curves, rollout_have, out_path):
             rows.append([str(i), n.get("name", ""), n.get("type", ""), desc[:80]])
         E.append(TBL(rows, widths=[8 * mm, 42 * mm, 20 * mm, 92 * mm], fs=7.5))
     else:
-        E.append(Paragraph("⚠️ 未提供画布 flow — 跳过拓扑明细 (可传 --flow flows/xxx.json)", small))
+        E.append(_P("⚠️ 未提供画布 flow — 跳过拓扑明细 (可传 --flow flows/xxx.json)", small))
     E.append(PageBreak())
 
     # ═══ 3 分系统功能分析 ═══
-    E.append(Paragraph("3  分系统功能分析", h1))
+    E.append(_P("3  分系统功能分析", h1))
     for name, fn, io, mapping in SUBSYSTEMS:
-        E.append(Paragraph(f"3.{SUBSYSTEMS.index((name, fn, io, mapping)) + 1}  {name} ({fn})", h2))
-        E.append(Paragraph(f"接口: {io}", small))
+        E.append(_P(f"3.{SUBSYSTEMS.index((name, fn, io, mapping)) + 1}  {name} ({fn})", h2))
+        E.append(_P(f"接口: {io}", small))
         rows = [["模型", "实现"]]
         for p in MODELS:
             rows.append([MODELS[p]["cn"], mapping.get(p, "—")])
@@ -443,7 +511,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
     E.append(PageBreak())
 
     # ═══ 4 接口说明 ═══
-    E.append(Paragraph("4  模块接口说明", h1))
+    E.append(_P("4  模块接口说明", h1))
     rows = [["模块", "输入", "输出"]]
     for name, i, o in MODULE_IO:
         rows.append([name, i, o])
@@ -451,7 +519,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
     E.append(PageBreak())
 
     # ═══ 5 参数对比 ═══
-    E.append(Paragraph("5  参数对比", h1))
+    E.append(_P("5  参数对比", h1))
     rows = [["模型", "参数量", "隐层", "层数", "冻结策略", "训练吞吐", "显存"]]
     for p, m in MODELS.items():
         c = curves.get(p)
@@ -462,7 +530,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
     E.append(PageBreak())
 
     # ═══ 6 架构区别 ═══
-    E.append(Paragraph("6  架构区别", h1))
+    E.append(_P("6  架构区别", h1))
     rows = [["维度", "ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE"]]
     dims = [("生成方式", lambda m: m["category"]),
             ("世界模型", lambda m: "有" if "世界模型" in m["world_model"] else "无"),
@@ -473,7 +541,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
         rows.append([dname] + [fn(MODELS[p]) for p in MODELS])
     E.append(TBL(rows, widths=[22 * mm, 30 * mm, 32 * mm, 36 * mm, 34 * mm, 32 * mm], fs=7))
     E.append(Spacer(1, 2 * mm))
-    E.append(Paragraph("关键差异: ① 生成方式 — ACT 确定性回归 vs SmolVLA 系扩散生成 (输出分布 vs 单值);"
+    E.append(_P("关键差异: ① 生成方式 — ACT 确定性回归 vs SmolVLA 系扩散生成 (输出分布 vs 单值);"
                        "② 世界模型 — LEW (像素级预测) 与 AWE zFlow (潜空间预测) 提供预见性, ACT/SmolVLA/VLA-Touch 为反应式;"
                        "③ 触觉 — VLA-Touch (Marker 桥) 与 AWE (视触觉原生融合) 面向插拔力控;"
                        "④ 架构哲学 — AWE 场景原生 (从任务倒推), 其余通用架构适配。", body))
@@ -481,14 +549,14 @@ def build_pdf(flow, curves, rollout_have, out_path):
     # 模型架构图
     _fig_arch = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reports", "figs", "model_arch.png")
     if os.path.exists(_fig_arch):
-        E.append(Paragraph("6.1  模型架构图", h2))
+        E.append(_P("6.1  模型架构图", h2))
         E.append(Image(_fig_arch, width=175 * mm, height=200 * mm))
     else:
-        E.append(Paragraph("⚠️ 缺 model_arch.png (先跑 tools/gen_report_figs.py)", small))
+        E.append(_P("⚠️ 缺 model_arch.png (先跑 tools/gen_report_figs.py)", small))
     E.append(PageBreak())
 
     # ═══ 7 功能分析 ═══
-    E.append(Paragraph("7  功能分析 (能力矩阵)", h1))
+    E.append(_P("7  功能分析 (能力矩阵)", h1))
     caps = [("力控插拔", {"act": 7, "smolvla": 5, "smolvla_lew": 6, "vla_touch": 9, "awe_zflow": 9}),
             ("触觉感知", {"act": 2, "smolvla": 3, "smolvla_lew": 3, "vla_touch": 9, "awe_zflow": 8}),
             ("世界模型预见", {"act": 3, "smolvla": 4, "smolvla_lew": 8, "vla_touch": 5, "awe_zflow": 8}),
@@ -500,13 +568,13 @@ def build_pdf(flow, curves, rollout_have, out_path):
         rows.append([cap] + [f"{vals[p]}/10" for p in MODELS])
     E.append(TBL(rows, widths=[28 * mm] + [28 * mm] * 5, fs=8))
     E.append(Spacer(1, 2 * mm))
-    E.append(Paragraph("评分依据: 力控/触觉能力看架构是否原生支持 (VLA-Touch Marker 桥 / AWE 视触觉融合);"
+    E.append(_P("评分依据: 力控/触觉能力看架构是否原生支持 (VLA-Touch Marker 桥 / AWE 视触觉融合);"
                        "世界模型预见看是否含未来预测模块; 边缘部署看参数量与采样开销 (扩散系需量化)。", small))
     E.append(PageBreak())
 
     # ═══ 8 性价比分析 ═══
-    E.append(Paragraph("8  性价比分析 (开发成本 vs 收益)", h1))
-    E.append(Paragraph("成本 = 训练时间 + 显存 + 数据需求 + 调参难度; 收益 = 收敛性 + 能力分 + 部署友好。", body))
+    E.append(_P("8  性价比分析 (开发成本 vs 收益)", h1))
+    E.append(_P("成本 = 训练时间 + 显存 + 数据需求 + 调参难度; 收益 = 收敛性 + 能力分 + 部署友好。", body))
     rows = [["模型", "训练吞吐", "显存", "数据需求", "调参难度", "收敛性(归一化)", "能力综合", "性价比"]]
     score_map = {p: score_model(p, curves, rollout_have) for p in MODELS}
     for p, m in MODELS.items():
@@ -522,7 +590,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
                      f"{sm['total'] / (1 + (0 if p in ('act', 'vla_touch', 'awe_zflow') else .8)):.1f}"])
     E.append(TBL(rows, widths=[24 * mm, 20 * mm, 16 * mm, 20 * mm, 20 * mm, 26 * mm, 20 * mm, 20 * mm], fs=7.5))
     E.append(Spacer(1, 2 * mm))
-    E.append(Paragraph("性价比 = 综合评分 / (1 + 调参难度惩罚)。低成本高收益模型 (ACT/VLA-Touch/AWE) 适合作产线主力候选。", small))
+    E.append(_P("性价比 = 综合评分 / (1 + 调参难度惩罚)。低成本高收益模型 (ACT/VLA-Touch/AWE) 适合作产线主力候选。", small))
     # 评分图
     score_png = os.path.join(REPORTS, "_score_chart.png")
     plot_scores(score_map, score_png)
@@ -530,11 +598,11 @@ def build_pdf(flow, curves, rollout_have, out_path):
     E.append(PageBreak())
 
     # ═══ 9 优势劣势总结 ═══
-    E.append(Paragraph("9  各模型优势与劣势 (数据支撑)", h1))
+    E.append(_P("9  各模型优势与劣势 (数据支撑)", h1))
     # 触觉中断实验 (AWE vs VLA-Touch) — 2026-08-06 关键证据
     _interrupt = os.path.join(REPORTS, "tactile_interrupt.json")
     if os.path.exists(_interrupt):
-        E.append(Paragraph("9.0  关键实验: 触觉中断 (AWE 预测中决策 vs VLA-Touch 反应式)", h2))
+        E.append(_P("9.0  关键实验: 触觉中断 (AWE 预测中决策 vs VLA-Touch 反应式)", h2))
         try:
             import json as _json
             it = _json.load(open(_interrupt))
@@ -548,7 +616,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
                         ["动作退化", f"{v['amp_drop']:+.3f}", f"{a['amp_drop']:+.3f}",
                          "AWE" if a["amp_drop"] > v["amp_drop"] else "VLA-Touch"]]
                 E.append(TBL(rows, widths=[42 * mm, 42 * mm, 42 * mm, 30 * mm], fs=8))
-                E.append(Paragraph("实验: peg-insert-side-v3 插销, 前30帧真触觉→30帧后触觉传感器中断。"
+                E.append(_P("实验: peg-insert-side-v3 插销, 前30帧真触觉→30帧后触觉传感器中断。"
                                    "结论: VLA-Touch (触觉反应式) 中断后原地踏步, AWE (世界模型预见式) "
                                    "靠潜空间预测接触演化继续接近 — 预测中决策优势。", small))
                 E.append(Spacer(1, 3 * mm))
@@ -568,11 +636,11 @@ def build_pdf(flow, curves, rollout_have, out_path):
     plot_curves(curves, curve_png)
     E.append(Image(curve_png, width=170 * mm, height=65 * mm))
     E.append(Spacer(1, 2 * mm))
-    E.append(Paragraph("图注: 左图为原始 loss 曲线 (不同模型 loss 口径不同 — ACT 动作MSE 大, SmolVLA 系扩散噪声MSE 小,"
+    E.append(_P("图注: 左图为原始 loss 曲线 (不同模型 loss 口径不同 — ACT 动作MSE 大, SmolVLA 系扩散噪声MSE 小,"
                        "绝对值不可直接横比); 右图为 Scope 归一化 (前3点均值=1) 后看下降斜率, 为横比口径。", small))
 
     # 推理视频对比
-    E.append(Paragraph("9.1  推理效果视频对比", h2))
+    E.append(_P("9.1  推理效果视频对比", h2))
     have_vid = [p for p in MODELS if rollout_have.get(p)]
     if have_vid:
         rows = [["模型", "视频帧数", "证据"]]
@@ -586,19 +654,19 @@ def build_pdf(flow, curves, rollout_have, out_path):
         try:
             make_montage(have_vid, montage)
             E.append(Image(montage, width=170 * mm, height=42 * mm))
-            E.append(Paragraph("上图为各模型 rollout 首帧对比 (同一场景 push-v3)。完整视频请在控制台「🎥 视频对比」节点双击播放。", small))
+            E.append(_P("上图为各模型 rollout 首帧对比 (同一场景 push-v3)。完整视频请在控制台「🎥 视频对比」节点双击播放。", small))
         except Exception:
             pass
     else:
-        E.append(Paragraph("⚠️ 尚无 rollout 视频帧 — 在控制台双击「🎥 推理效果对比」或训练后自动生成。", small))
+        E.append(_P("⚠️ 尚无 rollout 视频帧 — 在控制台双击「🎥 推理效果对比」或训练后自动生成。", small))
 
     E.append(Spacer(1, 4 * mm))
-    E.append(Paragraph("结论 (数据支撑): " + conclusion(score_map, curves), body))
+    E.append(_P("结论 (数据支撑): " + conclusion(score_map, curves), body))
 
     # ═══ 10 理论分析 (公式+推导+证明) ═══
     E.append(PageBreak())
-    E.append(Paragraph("10  理论分析 (公式 · 推导 · 证明)", h1))
-    E.append(Paragraph("从理论上论证各模型架构的优劣 — 每个模型给出核心损失/预测公式 + 定理 + 证明。"
+    E.append(_P("10  理论分析 (公式 · 推导 · 证明)", h1))
+    E.append(_P("从理论上论证各模型架构的优劣 — 每个模型给出核心损失/预测公式 + 定理 + 证明。"
                        "理论结论与第 9.0 节触觉中断实验相互印证。", body))
     _theory_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reports", "figs", "theory")
     _theory_order = [("act", "10.1  ACT — 确定性动作分块"), ("smolvla", "10.2  SmolVLA — VLM扩散策略"),
@@ -607,11 +675,11 @@ def build_pdf(flow, curves, rollout_have, out_path):
     for key, title in _theory_order:
         _tf = os.path.join(_theory_dir, f"theory_{key}.png")
         if os.path.exists(_tf):
-            E.append(Paragraph(title, h2))
+            E.append(_P(title, h2))
             E.append(Image(_tf, width=172 * mm, height=58 * mm))
             E.append(Spacer(1, 2 * mm))
     # 理论结论表
-    E.append(Paragraph("10.6  理论综合结论", h2))
+    E.append(_P("10.6  理论综合结论", h2))
     th_rows = [["维度", "ACT", "SmolVLA", "LEW", "VLA-Touch", "AWE-zFlow"],
                ["预见性", "无", "无", "像素级", "无", "潜空间级 ★"],
                ["触觉利用", "无", "无", "无", "有", "有 ★"],
@@ -620,7 +688,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
                ["样本复杂度", "高", "高", "中", "中", "低 ★"]]
     E.append(TBL(th_rows, widths=[26 * mm, 28 * mm, 28 * mm, 32 * mm, 30 * mm, 34 * mm], fs=7.5))
     E.append(Spacer(1, 2 * mm))
-    E.append(Paragraph("理论优选: 光模块插拔 (长程+力控+多阶段) 场景, AWE-zFlow 因 ①世界模型预见 "
+    E.append(_P("理论优选: 光模块插拔 (长程+力控+多阶段) 场景, AWE-zFlow 因 ①世界模型预见 "
                        "(定理3/6 遗憾上界最小) ②触觉融合 (定理4) ③潜空间分层加速 (定理5) 综合最优; "
                        "VLA-Touch 纯力控环节 MSE 理论最优; ACT 延迟敏感+简单任务占优。", small))
 
