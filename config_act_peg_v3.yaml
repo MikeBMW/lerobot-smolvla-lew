@@ -20,7 +20,7 @@ policy:
 
 dataset:
   repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
-  root: data/metaworld_peg_v3
+  root: data/metaworld_peg
   episodes: [0]
   use_imagenet_stats: false
 

@@ -169,22 +169,24 @@ def main():
         all_eps.append({"episode_index": ep, "length": args.steps})
         print(f"  轨迹{ep}: 完成")
 
-    # 写视频 (每轨迹 mp4 + metadata) — 用 ffmpeg 命令行 (imageio PyAV 参数不兼容)
+    # 写视频 (单文件 file-000.mp4, LeRobot 标准 — 所有 episode 帧按序合成一个 mp4,
+    #   episodes meta 用 from/to_frame 定位; 2026-08-06 修复: 原来每 episode 一个
+    #   episode_XXX.mp4 与 info.video_path (file-{file_index}.mp4) 不一致 → 读取失败)
     import subprocess, tempfile
-    for ep, imgs in ep_imgs_all.items():
-        mp4_name = f"episode_{ep:06d}.mp4"
-        # 图像存临时目录 → ffmpeg 编码
-        with tempfile.TemporaryDirectory() as td:
-            for i, im in enumerate(imgs):
-                Image.fromarray(im).save(f"{td}/{i:06d}.png")
-            subprocess.run([
-                "ffmpeg", "-y", "-framerate", "30", "-i", f"{td}/%06d.png",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
-                "-loglevel", "error", str(img_dir / mp4_name),
-            ], check=True)
-        (img_dir / f"{mp4_name}.metadata").write_text(
-            "\n".join(str(i) for i in range(len(imgs))))
-    print(f"  🎬 视频: {len(ep_imgs_all)} 个 mp4")
+    all_frames_flat = []
+    for ep in range(args.eps):
+        all_frames_flat.extend(ep_imgs_all.get(ep, []))
+    with tempfile.TemporaryDirectory() as td:
+        for i, im in enumerate(all_frames_flat):
+            Image.fromarray(im).save(f"{td}/{i:06d}.png")
+        subprocess.run([
+            "ffmpeg", "-y", "-framerate", "30", "-i", f"{td}/%06d.png",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
+            "-loglevel", "error", str(img_dir / "file-000.mp4"),
+        ], check=True)
+    (img_dir / "file-000.mp4.metadata").write_text(
+        "\n".join(str(i) for i in range(len(all_frames_flat))))
+    print(f"  🎬 视频: 1 个 file-000.mp4 ({len(all_frames_flat)} 帧)")
 
     # 写 parquet (float32 匹配 info)
     import pandas as pd
@@ -253,6 +255,10 @@ def main():
             "next.reward": {"dtype": "float32", "shape": [1]},
             "next.done": {"dtype": "bool", "shape": [1]},
             "next.success": {"dtype": "bool", "shape": [1]},
+            # 🐛 2026-08-06 修复: 补 index/task_index 声明 — parquet 有这两列但 info 缺声明
+            #   → LeRobot CastError "column names don't match" (metaworld_act 能读因为它声明了)
+            "index": {"dtype": "int64", "shape": [1]},
+            "task_index": {"dtype": "int64", "shape": [1]},
         },
         "data_files_size_in_mb": 0.1,
         "video_files_size_in_mb": 12.0,
