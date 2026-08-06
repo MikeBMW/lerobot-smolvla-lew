@@ -2412,7 +2412,7 @@ class SimulinkModule(QWidget):
             self._canvas_win.windowFlags()
             & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint
             & ~Qt.WindowCloseButtonHint)
-        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型")
+        self._canvas_win.setWindowTitle("画布")
         self._canvas_win.resize(920, 620)
         self._mdi.addSubWindow(self._canvas_win)
         # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
@@ -3077,7 +3077,7 @@ class SimulinkModule(QWidget):
             self._canvas_win.windowFlags()
             & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint
             & ~Qt.WindowCloseButtonHint)
-        self._canvas_win.setWindowTitle("🖥 画布 · Simulink 模型")
+        self._canvas_win.setWindowTitle("画布")
         self._canvas_win.resize(920, 620)
         self._mdi.addSubWindow(self._canvas_win)
         self._canvas_win.showMaximized()  # 铺满 MDI, 不露背景
@@ -3491,6 +3491,13 @@ class SimulinkModule(QWidget):
         self.btn_run.setText("⏳ 运行中…")
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
+        # ⏱ 流程时钟 (2026-08-06 老倪: 点击运行 t 时间也不变 — 真实流程不走仿真 tick,
+        #   lbl_clock 停在 0.00; 加独立 1s 时钟显示流程流逝时间, 结束/停止时停)
+        self._sim_t = 0.0
+        if getattr(self, "_flow_clock", None) is None:
+            self._flow_clock = QTimer(self)
+            self._flow_clock.timeout.connect(self._flow_clock_tick)
+        self._flow_clock.start(1000)
         for n in self.nodes:
             n["status"] = "idle"
             it = self._items.get(n["id"])
@@ -3617,6 +3624,10 @@ class SimulinkModule(QWidget):
         self.btn_run.setText("▶ 运行")
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        # 2026-08-06 老倪: 手动停止 → 停流程时钟
+        fc = getattr(self, "_flow_clock", None)
+        if fc is not None:
+            fc.stop()
         self._log(f"⏹ 仿真停止 · t = {self._sim_t:.2f}s")
         self._refresh_status()
         self._tutorial_on_action("stop")
@@ -4805,11 +4816,24 @@ class SimulinkModule(QWidget):
             fn = self._flow_queue.pop(0)
             fn()
         else:
+            # 2026-08-06 老倪: 流程结束 → 停流程时钟 (t 定格)
+            fc = getattr(self, "_flow_clock", None)
+            if fc is not None:
+                fc.stop()
             # 2026-08-05 老倪: 全流程完成/终止后恢复运行按钮
             if getattr(self, "_worker", None) is None or not self._worker.isRunning():
                 self.btn_run.setText("▶ 运行")
                 self.btn_run.setEnabled(True)
                 self.btn_stop.setEnabled(False)
+
+    def _flow_clock_tick(self):
+        """⏱ 流程时钟: 真实流程运行时 t 每秒 +1 (2026-08-06 老倪: 运行 t 不变)"""
+        self._sim_t += 1.0
+        self.lbl_clock.setText(f"t = {self._sim_t:.0f}s")
+        try:
+            self._refresh_status()
+        except Exception:
+            pass
 
     # ════════════════════════════════════════════════════════════
     # CICD 主控台: 节点双击 → 数据源切换 / 运行环节 (2026-08-02)
