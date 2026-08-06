@@ -229,6 +229,8 @@ REFERENCE_APPS = [
                                      "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"}),
         ("condition", "📐 2D→3D 解算", {"intrinsics": "camera_K", "method": "depth|hand-eye",
                                       "desc": "♻ 坐标解算: YOLO 2D框中心 + 深度/单目标定 → 目标 3D 坐标 → 拼入 39D state"}),
+        ("model", "🔌 State Adapter", {"in_dim": 39, "out_dim": 39, "normalize": True,
+                                      "desc": "state 适配器 (2026-08-06 老倪): YOLO 3D检测输出(目标坐标+置信度) → 统一 state 格式。开=39D含目标坐标, 关=3D仅末端, 适配各策略输入维度", "shared": True}),
         # ── ACT 分支 (7) ──
         ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
                                           "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
@@ -337,42 +339,44 @@ REFERENCE_APPS = [
         ("pdf_report", "📄 PDF 技术选型报告", {"auto": True,
                                              "desc": "双击生成 11 章技术选型 PDF: 实验概况·系统全貌·分系统功能·接口说明·参数对比·架构区别·功能分析·性价比·优势劣势·视频对比·结论"}),
     ], [
-        # ACT 路 (9): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
-        (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
+        # 感知链: 数据→YOLO开关→YOLO检测→2D→3D解算→StateAdapter (2026-08-06)
+        (0, 1, "图像"), (1, 2, "开=39D"), (2, 3, "2D框"), (3, 4, "3D坐标"),
+        # ACT 路: StateAdapter→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
+        (4, 5, "state"), (4, 6, "状态"), (4, 7, "state"), (5, 7, "图像特征"), (6, 7, "潜变量"), (7, 8), (8, 9), (9, 10), (10, 11),
         # SmolVLA 纯动作路 (4)
-        (0, 8, "图像+状态"), (8, 9, "多模态embeds"), (9, 10), (10, 11),
+        (4, 12, "state"), (12, 13, "多模态embeds"), (13, 14), (14, 15),
         # SmolVLA+LEW 路 (6): 主策略链路 + LeWorldModel 旁路
-        (0, 12, "图像+状态"), (12, 13, "多模态embeds"), (13, 15, "动作块"), (15, 16),
-        (0, 14, "视频+动作"), (14, 16, "世界预测"),
-        # VLA-Touch 路 (9): 数据→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练
-        (0, 17, "图像"), (0, 18, "触觉图"), (0, 19, "状态+指令"),
-        (17, 21, "视觉嵌入"), (18, 21, "触觉信号m"), (19, 20, "动作块"), (20, 21, "VLA动作a"),
-        (21, 22, "精炼动作"),
-        # AWE 路 (8): 数据→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练
-        (0, 23, "图像+力觉"), (0, 24, "状态+力觉"), (23, 24, "视触觉特征"), (24, 25, "三层潜状态"),
-        (25, 26, "未来潜状态"), (26, 27, "注入动作"), (27, 28, "动作"),
+        (4, 16, "state"), (16, 17, "多模态embeds"), (17, 19, "动作块"), (19, 20),
+        (4, 18, "视频+动作"), (18, 20, "世界预测"),
+        # VLA-Touch 路 (9): StateAdapter→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练
+        (4, 21, "图像"), (4, 22, "触觉图"), (4, 23, "状态+指令"),
+        (21, 25, "视觉嵌入"), (22, 25, "触觉信号m"), (23, 24, "动作块"), (24, 25, "VLA动作a"),
+        (25, 26, "精炼动作"),
+        # AWE 路 (8): StateAdapter→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练
+        (4, 27, "图像+力觉"), (4, 28, "状态+力觉"), (27, 28, "视触觉特征"), (28, 29, "三层潜状态"),
+        (29, 30, "未来潜状态"), (30, 31, "注入动作"), (31, 32, "动作"),
         # 评估: 五训练 → 对比 Scope
-        (7, 29), (11, 29), (16, 29), (22, 29), (28, 29),
+        (11, 33), (15, 33), (20, 33), (26, 33), (32, 33),
         # 推理对比: 五训练 → 推理对比节点
-        (7, 30), (11, 30), (16, 30), (22, 30), (28, 30),
+        (11, 34), (15, 34), (20, 34), (26, 34), (32, 34),
         # 视频对比: 五训练 → 各自视频节点 + 推理对比 → 5 视频节点 (2026-08-05 老倪)
-        (7, 31, "rollout"), (11, 32, "rollout"), (16, 33, "rollout"),
-        (22, 34, "rollout"), (28, 35, "rollout"),
-        (30, 31), (30, 32), (30, 33), (30, 34), (30, 35),
+        (11, 35, "rollout"), (15, 36, "rollout"), (20, 37, "rollout"),
+        (26, 38, "rollout"), (32, 39, "rollout"),
+        (34, 35), (34, 36), (34, 37), (34, 38), (34, 39),
         # PDF 报告: 5 视频节点 + Scope + 推理对比 → PDF (数据支撑: 曲线+视频+评估)
-        (29, 36, "评估结果"), (30, 36, "推理对比"),
-        (31, 36, "ACT视频"), (32, 36, "SmolVLA视频"), (33, 36, "SmolVLA+LEW视频"),
-        (34, 36, "VLA-Touch视频"), (35, 36, "AWE视频"),
+        (33, 40, "评估结果"), (34, 40, "推理对比"),
+        (35, 40, "ACT视频"), (36, 40, "SmolVLA视频"), (37, 40, "SmolVLA+LEW视频"),
+        (38, 40, "VLA-Touch视频"), (39, 40, "AWE视频"),
     ],
     # 🗂 多行展开布局 (每行一个模型; 同构模块同列垂直对齐)
-    # 列: 数据 | 视觉编码 | 动作生成 | 附加模块 | 附加模块 | Action Head | (空) | 训练
+    # 列: 数据 | YOLO感知 | StateAdapter | 视觉编码 | 动作生成 | Action Head | (空) | 训练
     [
-        ["📦 metaworld 数据", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
-        ["📦 metaworld 数据", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
-        ["📦 metaworld 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
-        ["📦 metaworld 数据", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "🌉 Interpolant 控制器", "🎯 Action Head · VLA", "", "🚀 VLA-Touch 训练"],
-        ["📦 metaworld 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练"],
-        ["📦 metaworld 数据", "🎯 YOLO 目标检测", "📥 全观测编码 39D", "🔗 全连接层 512·1", "🔗 全连接层 512·2", "🎯 Action Head 4D · MLP", "", "🎓 专家蒸馏训练"],
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🎯 Action Head 4D · SmolVLA+LEW", "🌐 LeWorldModel", "🚀 SmolVLA+LEW 训练"],
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "🎯 Action Head · VLA", "📍 Marker 触觉跟踪", "🚀 VLA-Touch 训练"],
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🎯 Action Head · AWE", "🌊 zFlow 世界引擎", "🚀 AWE 训练"],
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "📥 全观测编码 39D", "🔗 全连接层 512·1", "🎯 Action Head 4D · MLP", "", "🎓 专家蒸馏训练"],
         ["📦 metaworld 数据", "🧭 位置控制律", "🤏 夹爪状态机", "", "", "🎯 Action Head 4D · 专家", "", "📏 官方专家基准"],
         ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比"],
         # 🎥 视频对比行 (2026-08-05 老倪: 推理效果对比之后 5 个视频节点)
@@ -493,6 +497,18 @@ REFERENCE_APPS = [
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
 LIBRARY = [
+    # 🎯 YOLO 3D 检测感知模块 (2026-08-06 老倪: 控制台要明显看到 yolo 3d 检测模块, state 输入来源)
+    ("model", "🎯 YOLO 3D 检测 (感知)", [
+        {"name": "🎯 YOLO 3D 检测", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
+                                             "yolo_enabled": True, "state_dim": 39,
+                                             "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D→3D解算 → 39D state 输入。控制台常驻感知前端, 默认开 (关=3D仅末端)"}},
+        {"name": "🎯 YOLO 感知开关", "params": {"yolo_enabled": True, "state_dim": 39,
+                                             "desc": "state 输入 switch: 开=39D(YOLO产出) / 关=3D(仅末端) · 默认开"}},
+        {"name": "📐 2D→3D 解算", "params": {"intrinsics": "camera_K", "method": "depth|hand-eye",
+                                           "desc": "YOLO 2D框中心 + 深度/标定 → 目标 3D 坐标 → 拼入 state"}},
+        {"name": "🔌 State Adapter", "params": {"in_dim": 39, "out_dim": 39, "normalize": True,
+                                              "desc": "state 适配器: YOLO 3D检测输出 → 统一 state 格式 (开=39D含目标坐标/关=3D仅末端), 适配各策略输入维度"}},
+    ]),
     ("condition", "条件 (11)", [
         {"name": "C00 信号触发", "params": {"threshold": 0.5}},
         {"name": "C01 到位判断", "params": {"tolerance": 0.01}},
