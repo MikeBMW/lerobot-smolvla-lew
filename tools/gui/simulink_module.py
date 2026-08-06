@@ -35,6 +35,7 @@ NODE_TYPES = {
     "hardware":  {"cn": "硬件", "color": "#ff4444"},
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
+    "yolo_gate":  {"cn": "YOLO开关", "color": "#d4a800"},  # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
     "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 五模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
     "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 五模型对比技术选型报告生成 (2026-08-05 老倪)
 }
@@ -219,8 +220,15 @@ REFERENCE_APPS = [
     # 布局: 每行一个模型; 同构模块同列垂直对齐 (视觉编码列/动作生成列/附加列/Action Head列/训练列)
     ("🔬 五模型对比", [
         ("hardware", "📦 metaworld 数据", {"source": "metaworld", "frames": 696, "active": True,
-                                           "dims": "4D/4D", "shared": True,
-                                           "desc": "♻ 五模型共用: 统一 metaworld 数据集 (696帧, states/actions 4D)"}),
+                                           "dims": "39D/4D", "shared": True,
+                                           "desc": "♻ 七模型共用: 统一 metaworld 数据集 (peg-v6, state 39D 完整观测, action 4D)"}),
+        # ── YOLO 感知前端 (2026-08-06 老倪: YOLO 加所有模型最前端, 自动标注+真机感知) ──
+        ("train_gate", "🎯 YOLO 感知开关", {"yolo_enabled": True, "state_dim": 39,
+                                          "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含销钉/孔坐标) / 关=3D(仅末端) · 默认开"}),
+        ("model", "🎯 YOLO 目标检测", {"model": "yolov8s", "classes": "peg/hole/hand", "shared": True,
+                                     "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"}),
+        ("condition", "📐 2D→3D 解算", {"intrinsics": "camera_K", "method": "depth|hand-eye",
+                                      "desc": "♻ 坐标解算: YOLO 2D框中心 + 深度/单目标定 → 目标 3D 坐标 → 拼入 39D state"}),
         # ── ACT 分支 (7) ──
         ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
                                           "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
@@ -1632,6 +1640,21 @@ class SimNodeItem(QGraphicsObject):
         if t == "switch":
             painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              f"🔀 SEL: {params.get('switch', 'orin')}")
+        elif t == "yolo_gate":
+            # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
+            en = params.get("yolo_enabled", True)
+            gate_col = QColor("#d4a800") if en else QColor("#8b949e")
+            cb = QRectF(12, 24, 13, 13)
+            painter.setBrush(QColor("#0d1117"))
+            painter.setPen(QPen(gate_col, 1.4))
+            painter.drawRect(cb)
+            if en:
+                painter.setPen(QPen(gate_col, 1.8))
+                painter.drawLine(QPointF(cb.x()+2, cb.y()+7), QPointF(cb.x()+5, cb.y()+10))
+                painter.drawLine(QPointF(cb.x()+5, cb.y()+10), QPointF(cb.x()+11, cb.y()+3))
+            painter.setPen(QColor(pal["label"]))
+            painter.drawText(QRectF(30, 24, self.w - 34, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                             f"YOLO: {'39D 开' if en else '3D 关'}")
         elif t == "train_gate":
             # ☑ 训练开关 (2026-08-05 老倪: checkbox 打勾=训练 / 不打=不训练)
             en = params.get("train_enabled", True)

@@ -644,6 +644,26 @@ def node_train_gate(ctx):
 
 
 # ════════════════════════════════════════════════════════════════
+# 🎯 YOLO 感知开关 — 有 YOLO(39D) / 无 YOLO(3D) (2026-08-06 老倪: state 输入 switch,
+#    默认加载 YOLO 状态)
+# ════════════════════════════════════════════════════════════════
+def node_yolo_gate(ctx):
+    """🎯 YOLO 感知开关 — 开=39D完整观测(YOLO检测产出) / 关=3D末端位置(无感知)"""
+    module = ctx["module"]
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    yolo_enabled = p.get("yolo_enabled", True)  # 默认加载 YOLO (39D)
+    state_dim = 39 if yolo_enabled else 3
+    if log:
+        log(f"🎯 YOLO 感知开关: {'开 → state 39D (YOLO检测产出, 含销钉/孔坐标)' if yolo_enabled else '关 → state 3D (仅末端位置, 无目标感知)'} · 默认开")
+    # 想自定义判定? 在这里写 (例如: 按相机可用性自动切换)
+    # === ✏️ 可修改区 END ===
+    # 🔒 框架动作: 记录开关状态到节点 (勿改)
+    return module._set_yolo_gate_ctx(ctx["name"], yolo_enabled, state_dim)
+
+
+# ════════════════════════════════════════════════════════════════
 # 🎥 视频显示 — 推理效果对比 (rollout 视频播放窗口)
 # ════════════════════════════════════════════════════════════════
 def node_video_display(ctx):
@@ -699,5 +719,6 @@ _reg("hjepa",      ["H-JEPA"], "🧠 H-JEPA 三层潜空间 — z₁/z₂/z₃ �
 _reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜状态", node_zflow)
 _reg("cross_attn", ["交叉注意力"], "🔀 未来决策交叉注意力 — 未来潜状态 K/V 注入", node_cross_attn)
 _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
+_reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
 _reg("video_display", ["视频"], "🎥 视频显示 — 推理效果 rollout 播放", node_video_display)
 _reg("pdf_report",   ["PDF"], "📄 PDF 报告 — 五模型技术选型 (11章)", node_pdf_report)
