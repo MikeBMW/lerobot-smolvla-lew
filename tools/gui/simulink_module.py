@@ -4733,16 +4733,17 @@ class SimulinkModule(QWidget):
         except ImportError as ex:
             self._log(f"❌ 缺少 simulink_scope.InferenceVideoDialog: {ex}")
             return
-        # 单模型视频节点 → 只放该模型 (🎥 视频对比 · <模型>)
-        if policy:
-            policies = [(policy, self._policy_display(policy), self._policy_color(policy))]
+        # 单模型视频节点 → 自动升级为全模型对比 (2026-08-06 老倪: 5 个要同时一起打开做对比,
+        #   只开单个没意义); 画布有五模型 → 全开 5 个, 否则默认 3 个
+        names = " ".join(n.get("name", "") for n in self.nodes)
+        if "VLA-Touch" in names or "AWE" in names:
+            policies = InferenceVideoDialog.POLICIES_5
         else:
-            # 自动探测: 画布有 vla_touch/awe_zflow 训练节点 → 5 模型, 否则 3 模型
-            names = " ".join(n.get("name", "") for n in self.nodes)
-            if "VLA-Touch" in names or "AWE" in names:
-                policies = InferenceVideoDialog.POLICIES_5
-            else:
-                policies = InferenceVideoDialog.POLICIES
+            policies = InferenceVideoDialog.POLICIES
+        if policy:
+            # 若单模型不在全模型列表 (异常), 退回单模型; 正常都在 → 全开对比
+            if not any(p == policy for p, _, _ in policies):
+                policies = [(policy, self._policy_display(policy), self._policy_color(policy))]
         root = self._repo_root()
         import glob as _glob
         # 多候选目录: rollout_final_<p> > rollout_peg_<p> > rollout_<p> (2026-08-06 同步昨晚产物)

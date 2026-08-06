@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 from PyQt5.QtCore import Qt, QTimer, QPointF
 from PyQt5.QtGui import (QPainter, QColor, QPen, QFont, QLinearGradient)
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QDialog, QLabel,
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QDialog, QLabel,
                              QPushButton, QComboBox, QFileDialog, QMessageBox,
                              QDialogButtonBox, QTextEdit, QFrame)
 
@@ -916,23 +916,33 @@ class InferenceVideoDialog(QDialog):
         n = len(self.POLICIES)
         # 🖥 置顶 (2026-08-06 老倪: 5 窗口保持最前不被遮挡, 看着做对比)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        self.setWindowTitle(f"🎥 {n} 模型推理效果对比 — metaworld push 场景")
-        self.setMinimumSize(min(1280, 240 + n * 220), 640)
+        n = len(self.POLICIES)
+        self.setWindowTitle(f"🎥 {n} 模型推理效果对比 — metaworld peg 场景")
+        # 🖥 2026-08-06 修复: 5 模型 400px 并排=2000px 超出窗口(1280) → 后 4 个被挤出屏外
+        #   (老倪: "第一个能打开, 第二个呢? 5个要同时一起打开做对比")
+        #   → 网格布局: 5 模型 2 行 (3+2), 视频框自适应缩放
+        cols = 3 if n > 3 else n
+        rows = (n + cols - 1) // cols
+        w_min = 1280 if n <= 3 else 1500
+        h_min = 640 if n <= 3 else 700
+        self.setMinimumSize(w_min, h_min)
         self.setStyleSheet(_qss("QDialog{background:#f6f8fa;}"))
         root = QVBoxLayout(self)
-        head = QLabel(f"🎥 推理效果对比 · 同一场景 (metaworld push-v3) · {n} 模型 rollout 同步播放")
+        head = QLabel(f"🎥 推理效果对比 · 同一场景 (metaworld peg-insert) · {n} 模型 rollout 同步播放")
         head.setStyleSheet(_qss("color:#a371f7;font-size:14px;font-weight:700;"))
         root.addWidget(head)
         self.lbl_note = QLabel("")
         self.lbl_note.setStyleSheet(_qss("color:#57606a;font-size:11px;"))
         root.addWidget(self.lbl_note)
-        vid_row = QHBoxLayout()
+        # 📐 网格布局 (2026-08-06: 5 模型 3+2 两行, 全部同屏可见)
+        vid_grid = QGridLayout()
         self.video_labels = {}
         self._meta_labels = {}
         self.frame_dirs = {}
         self.cur_idx = 0
         self.frame_meta = {}   # policy → 元信息 (生成时间/动作幅度), 2026-08-06 老倪
-        for policy, name, color in self.POLICIES:
+        for i, (policy, name, color) in enumerate(self.POLICIES):
+            r, c = divmod(i, cols)
             box = QVBoxLayout()
             cap = QLabel(f"■ {name}")
             cap.setStyleSheet(_qss(f"color:{color};font-size:12px;font-weight:700;"))
@@ -942,15 +952,14 @@ class InferenceVideoDialog(QDialog):
             meta.setStyleSheet(_qss("color:#57606a;font-size:9px;"))
             box.addWidget(meta)
             lab = QLabel("—")
-            lab.setFixedSize(400, 300)
+            lab.setMinimumSize(240, 180)   # 自适应缩放, 不固定 400x300
             lab.setAlignment(Qt.AlignCenter)
             lab.setStyleSheet(_qss("background:#24292f;color:#8b949e;border:1px solid #d0d7de;border-radius:6px;font-size:11px;"))
             box.addWidget(lab)
-            box.addStretch()
             self.video_labels[policy] = lab
             self._meta_labels[policy] = meta
-            vid_row.addLayout(box)
-        root.addLayout(vid_row)
+            vid_grid.addLayout(box, r, c)
+        root.addLayout(vid_grid)
         ctrl = QHBoxLayout()
         self.btn_play = QPushButton("▶ 播放")
         self.btn_pause = QPushButton("⏸ 暂停")
