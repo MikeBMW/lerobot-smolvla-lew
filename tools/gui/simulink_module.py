@@ -602,6 +602,15 @@ LIBRARY = [
         {"name": "H06 力传感器",   "params": {"range": 50}},
         {"name": "H07 扫码枪",     "params": {}},
     ]),
+    # 📊 评估分组 (2026-08-06 老倪: Scope 放到左侧 node 库, 直接拖到主窗口)
+    ("system", "📊 评估 (3)", [
+        {"name": "📊 Scope 示波器", "params": {"scope": True},
+         "desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"},
+        {"name": "📊 对比评估 Scope", "params": {"shared": True},
+         "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"},
+        {"name": "🎥 推理效果对比", "params": {"video": "all", "auto": True},
+         "desc": "多模型 metaworld rollout 视频 → 窗口同步播放对比 (推理效果)"},
+    ]),
 ]
 
 
