@@ -1992,10 +1992,12 @@ class LibraryPanel(QFrame):
         btn_collapse = QPushButton("◀ 收起")
         btn_collapse.setFixedWidth(72)
         btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
+        # 🎨 用浅底样式 (switch_theme 会正确转深色; 之前 #1f6feb 蓝底白字被
+        # switch_theme 把白字替换成深色 → 蓝底深字看不清, 老倪反馈找不到)
         btn_collapse.setStyleSheet("""
-            QPushButton{background:#1f6feb; color:#ffffff; border:none;
+            QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
                         border-radius:4px; font-size:11px; font-weight:700; padding:4px 8px;}
-            QPushButton:hover{background:#388bfd;}
+            QPushButton:hover{border-color:#1f6feb; background:#dbe9ff;}
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         head.addWidget(btn_collapse)
@@ -2319,6 +2321,10 @@ class SimulinkModule(QWidget):
         tl2 = QHBoxLayout(tb2)
         tl2.setContentsMargins(10, 4, 10, 4)
         tl2.setSpacing(8)
+        # 📚 模块库 折叠/展开切换 (2026-08-06 老倪 第3次反馈: 左侧模块库还是没隐藏 —
+        #   面板内 ◀ 按钮不够醒目, 加显眼工具栏入口, 双入口必能找到)
+        self.btn_lib_toggle = mk_btn("📚 模块库", "隐藏/显示 左侧模块库面板 (点击切换)", self._toggle_lib_btn, "#1f6feb")
+        tl2.addWidget(self.btn_lib_toggle)
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
         # 数据闭环控制台 = 唯一 CICD 入口 (6环节流水线 + 三阶段训练合并)
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
@@ -5007,6 +5013,15 @@ class SimulinkModule(QWidget):
         self.library.setVisible(True)
         self._lib_expand_bar.setVisible(False)
         self._log("📚 模块库已展开")
+
+    def _toggle_lib_btn(self):
+        """📚 工具栏按钮: 模块库 折叠/展开 切换 (2026-08-06 老倪 第3次反馈)"""
+        if self.library.isVisible():
+            self._collapse_library()
+            self.btn_lib_toggle.setText("📚 模块库 (隐藏中)")
+        else:
+            self._expand_library()
+            self.btn_lib_toggle.setText("📚 模块库")
 
     def _show_nonmodal(self, dlg, on_accept=None):
         """🖥 通用非模态对话框 (2026-08-05 根治: exec_ 模态在 WSLg 下弹窗不可见 →
