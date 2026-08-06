@@ -1746,8 +1746,9 @@ class SimLinkItem(QGraphicsObject):
         path = self._path()
         active = self._switch_active()
         # 未选中链路 (switch 未选该输入): 暗灰实线, 永不流动 — 与选中链路明显区分
+        # 🐛 2026-08-06 修复: 原 pal["inactive"] 引用已删除的主题字典 → NameError 反复崩溃
         if not active:
-            color = QColor(pal["inactive"])
+            color = QColor("#8b949e")  # 未选中暗灰
         pen = QPen(color, 2.5 if self._hover or self.isSelected() else 1.8)
         # 数据流动画: 链路被 switch 选中 且 源节点成功/运行中 → 虚线流动
         flowing = active and self.src.node.get("status") in ("success", "running")
@@ -2017,7 +2018,7 @@ class LibraryPanel(QFrame):
         self.scroll.setWidget(self.inner)
         lay.addWidget(self.scroll)
 
-        hint = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放 · 顶部工作流过滤")
+        hint = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放")
         hint.setStyleSheet("color:#57606a; font-size:9px; padding:4px;")
         lay.addWidget(hint)
 
@@ -2246,30 +2247,8 @@ class SimulinkModule(QWidget):
         outer.addWidget(hero)
 
         # ── 工作流导航条 (对标 MathWorks 6 大功能分区) ──
-        wf = QFrame()
-        wf.setStyleSheet("background:#eef1f5; border-bottom:1px solid #d0d7de;")
-        wf.setFixedHeight(40)
-        wfl = QHBoxLayout(wf)
-        wfl.setContentsMargins(10, 4, 10, 4)
-        wfl.setSpacing(4)
-        self._wf_btns = {}
-        for key, label in [("data", "① 访问·标注数据"), ("scene", "② 仿真场景"),
-                           ("plan", "③ 规划·控制"), ("percept", "④ 感知算法"),
-                           ("deploy", "⑤ 部署"), ("test", "⑥ 集成·测试")]:
-            b = QPushButton(label)
-            b.setCheckable(True)
-            b.setStyleSheet("""
-                QPushButton { background:transparent; color:#57606a; border:1px solid transparent;
-                border-radius:5px; padding:4px 12px; font-size:11px; font-weight:600; }
-                QPushButton:hover { color:#1f2328; background:#e9edf2; }
-                QPushButton:checked { color:#00d4aa; background:#00d4aa1a; border-color:#00d4aa44; }
-            """)
-            b.clicked.connect(lambda _, k=key: self._filter_library(k))
-            self._wf_btns[key] = b
-            wfl.addWidget(b)
-        wfl.addStretch()
-        outer.addWidget(wf)
-
+        # (2026-08-06 老倪: 工作流过滤按钮行「① 访问·标注数据…」白色按钮没用占地方 → 删除;
+        #  set_filter/_filter_library 方法保留, 无 UI 入口不影响任何功能)
         # 工具栏 (对标 Simulink 工具条)
         tb = QFrame()
         tb.setStyleSheet("background:#f6f8fa; border-bottom:1px solid #d0d7de;")
@@ -2795,12 +2774,8 @@ class SimulinkModule(QWidget):
         self._tutorial_step = -1
 
     # ── 工作流过滤 (对标 MathWorks 6 大分区导航) ──
-    def _filter_library(self, wf_key):
-        for k, b in self._wf_btns.items():
-            b.setChecked(k == wf_key)
-        self.library.set_filter(wf_key)
-        self._log(f"🗂 工作流: {dict(data='① 访问·标注', scene='② 仿真场景', plan='③ 规划·控制', percept='④ 感知', deploy='⑤ 部署', test='⑥ 集成·测试').get(wf_key, wf_key)} · 模块库已过滤")
-
+    # (2026-08-06: 工作流过滤按钮行已删, _filter_library 随之移除 — 无 UI 入口不调用;
+    #  LibraryPanel.set_filter 保留供内部使用)
     # ── 参考应用模板 (对标 MathWorks 参考应用列表) ──
     def load_reference_app_by_name(self, name):
         """按模板名加载参考应用 (模块库完整模型条目用)"""
