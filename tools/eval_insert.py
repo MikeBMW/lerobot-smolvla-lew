@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""插拔成功率评估 — 5 模型在 peg-insert-side-v3 的真实插拔表现
+指标: ①peg 被抓起(抬起>5cm) ②peg 插入孔(pegHead 距 hole<3cm) ③成功率(10次)
+"""
+import os, sys, json, glob
+import numpy as np
+import torch
+
+# 渲染环境 (metaworld 需要, 2026-08-06)
+os.environ.setdefault("DISPLAY", ":0")
+os.environ.setdefault("MUJOCO_GL", "glfw")
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+def load_policy(policy):
+    """按 train_curve 加载 (v3 模型)"""
+    curve = json.load(open(os.path.join(ROOT, "reports", f"train_curve_{policy}.json")))
+    ckpt_base = os.path.join(ROOT, curve["ckpt"])
+    if policy == "act":
+        from lerobot.policies.act.modeling_act import ACTPolicy
+        cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model")), key=os.path.getmtime)
+        return ACTPolicy.from_pretrained(cands[-1], local_files_only=True).to(DEVICE).eval(), None
+    elif policy in ("smolvla", "smolvla_lew"):
+        from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
+        cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model")), key=os.path.getmtime)
+        return SmolVLALewPolicy.from_pretrained(cands[-1], local_files_only=True).to(DEVICE).eval(), None
+    elif policy == "vla_touch":
+        from importlib import util
+        spec = util.spec_from_file_location("tv", os.path.join(ROOT, "tools", "train_vla_touch.py"))
+        mod = util.module_from_spec(spec); spec.loader.exec_module(mod)
+        cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model/model.pt")), key=os.path.getmtime)
+        data = torch.load(cands[-1], map_location="cpu"); cfg = data["config"]
+        pol = mod.InterpolantPolicy(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
+                                    cfg["vis_dim"], cfg["hidden"]).to(DEVICE)
+        pol.load_state_dict(data["state_dict"]); pol.eval()
+        pol.state_dim = int(cfg["state_dim"]); pol.action_dim = int(cfg["action_dim"])
+        pol.tactile_dim = int(cfg.get("tactile_dim", 3)); pol.stats = data.get("stats", {})
+        return pol, None
+    elif policy == "awe_zflow":
+        from importlib import util
+        spec = util.spec_from_file_location("az", os.path.join(ROOT, "tools", "train_awe_zflow.py"))
+        mod = util.module_from_spec(spec); spec.loader.exec_module(mod)
+        cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model/model.pt")), key=os.path.getmtime)
+        data = torch.load(cands[-1], map_location="cpu"); cfg = data["config"]
+        pol = mod.AWEZFlowModel(cfg["action_dim"], cfg["state_dim"], cfg["tactile_dim"],
+                                cfg["vis_dim"], d_z1=cfg["d_z"][0], d_z2=cfg["d_z"][1],
+                                d_z3=cfg["d_z"][2], hidden=cfg["hidden"]).to(DEVICE)
+        pol.load_state_dict(data["state_dict"]); pol.eval()
+        pol.state_dim = int(cfg["state_dim"]); pol.action_dim = int(cfg["action_dim"])
+        pol.tactile_dim = int(cfg.get("tactile_dim", 3)); pol.stats = data.get("stats", {})
+        return pol, None
+    return None, None
+
+def run_episode(policy, seed, steps=200):
+    """单次插拔尝试: 返回 peg 是否抬起 + 是否插入"""
+    import metaworld
+    mt = metaworld.MT1("peg-insert-side-v3", seed=seed)
+    env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array")
+    env.set_task(mt.train_tasks[0])
+    obs, _ = env.reset(seed=seed)
+    # state 维度: 从 policy 推断 (ACT/SmolVLA 用 config, 精简模型用属性)
+    if hasattr(policy, "config") and hasattr(policy.config, "input_features"):
+        st_dim = policy.config.input_features["observation.state"].shape[0]
+    else:
+        st_dim = getattr(policy, "state_dim", 3)
+    peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
+    hole = env.data.site_xpos[env.model.site("hole").id]
+    sm = np.zeros(st_dim, dtype=np.float32)
+    ss = np.ones(st_dim, dtype=np.float32)
+    act_hist = torch.zeros((1, 4), dtype=torch.float32, device=DEVICE)
+    lifted = False
+    for i in range(steps):
+        peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+        if peg[2] - peg_z0 > 0.05:
+            lifted = True
+        st_raw = np.asarray(obs, dtype=np.float32)[:st_dim]
+        if st_raw.shape[0] < 3:  # 调试: obs 维度异常
+            print(f"⚠️ {policy.__class__.__name__} obs shape={np.asarray(obs).shape} st_raw={st_raw.shape}")
+        d = np.zeros(policy.tactile_dim if hasattr(policy, "tactile_dim") else 3, dtype=np.float32)
+        d[:3] = st_raw[:3] * 0.1
+        s_t = torch.from_numpy(st_raw).float().to(DEVICE).unsqueeze(0)
+        t_t = torch.from_numpy(d).float().to(DEVICE).unsqueeze(0)
+        with torch.no_grad():
+            if hasattr(policy, "select_action"):
+                from PIL import Image as _PIL
+                rgb = np.asarray(env.render())
+                rgb = np.asarray(_PIL.fromarray(rgb).resize((128, 128), _PIL.LANCZOS))  # 训练尺寸 128
+                rgb = rgb.transpose(2, 0, 1) / 255.0
+                batch = {"observation.image": torch.from_numpy(rgb).float().to(DEVICE).unsqueeze(0),
+                         "observation.state": s_t}
+                pred = policy.select_action(batch)
+                if isinstance(pred, torch.Tensor): pred = pred.detach().cpu()
+                act = np.asarray(pred).ravel()
+            elif hasattr(policy, "_cond"):
+                cond = policy._cond(s_t, t_t, None)
+                x0 = torch.randn_like(s_t.new_zeros((1, policy.action_dim))) * 0.1
+                pred = policy.sample(x0, cond, diffuse_steps=10)
+                act = pred.detach().cpu().numpy().ravel()
+            else:
+                pred = policy(s_t, t_t, act_hist, None)
+                if isinstance(pred, tuple): pred = pred[0]
+                act = pred.detach().cpu().numpy().ravel()
+        a4 = np.zeros(4); a4[:min(4, len(act))] = act[:min(4, len(act))]
+        act_hist = torch.from_numpy(a4).float().to(DEVICE).unsqueeze(0)
+        obs, _, term, trunc, _ = env.step(a4)
+        if term or trunc:
+            break
+    peg_final = env.data.site_xpos[env.model.site("pegGrasp").id]
+    dist_hole = float(np.linalg.norm(peg_final - hole))
+    inserted = lifted and dist_hole < 0.05
+    return {"lifted": lifted, "inserted": inserted, "dist_hole": round(dist_hole, 3),
+            "peg_rise": round(float(peg_final[2] - peg_z0), 3)}
+
+def main():
+    print("🔬 插拔成功率评估 · peg-insert-side-v3 · 每模型 10 次")
+    results = {}
+    for p in ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow"]:
+        try:
+            policy, _ = load_policy(p)
+        except Exception as ex:
+            print(f"⚠️ {p} 加载失败: {str(ex)[:60]}")
+            continue
+        lifts = ins = 0
+        dists = []
+        for seed in range(10):
+            r = run_episode(policy, seed)
+            lifts += int(r["lifted"]); ins += int(r["inserted"]); dists.append(r["dist_hole"])
+        results[p] = {"lift_rate": lifts / 10, "insert_rate": ins / 10,
+                      "avg_dist": round(float(np.mean(dists)), 3)}
+        print(f"  {p:12s}: 抓取率={results[p]['lift_rate']:.0%} 插入率={results[p]['insert_rate']:.0%} 平均距孔={results[p]['avg_dist']:.3f}")
+    out = os.path.join(ROOT, "reports", "insert_success.json")
+    json.dump(results, open(out, "w"), ensure_ascii=False, indent=1)
+    print(f"✅ 结果已存: {out}")
+
+if __name__ == "__main__":
+    main()
