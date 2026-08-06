@@ -2313,10 +2313,8 @@ class SimulinkModule(QWidget):
         tl2 = QHBoxLayout(tb2)
         tl2.setContentsMargins(10, 4, 10, 4)
         tl2.setSpacing(8)
-        # 📚 模块库 折叠/展开切换 (2026-08-06 老倪 第3次反馈: 左侧模块库还是没隐藏 —
-        #   面板内 ◀ 按钮不够醒目, 加显眼工具栏入口, 双入口必能找到)
-        self.btn_lib_toggle = mk_btn("📚 模块库", "隐藏/显示 左侧模块库面板 (点击切换)", self._toggle_lib_btn, "#1f6feb")
-        tl2.addWidget(self.btn_lib_toggle)
+        # (2026-08-06 老倪: 「📚 模块库」工具栏按钮没用 → 删除; 面板内已有「◀ 收起」折叠,
+        #  tl2 按钮冗余)
         # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
         # 数据闭环控制台 = 唯一 CICD 入口 (6环节流水线 + 三阶段训练合并)
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
@@ -4959,15 +4957,6 @@ class SimulinkModule(QWidget):
         self.library.setVisible(True)
         self._lib_expand_bar.setVisible(False)
         self._log("📚 模块库已展开")
-
-    def _toggle_lib_btn(self):
-        """📚 工具栏按钮: 模块库 折叠/展开 切换 (2026-08-06 老倪 第3次反馈)"""
-        if self.library.isVisible():
-            self._collapse_library()
-            self.btn_lib_toggle.setText("📚 模块库 (隐藏中)")
-        else:
-            self._expand_library()
-            self.btn_lib_toggle.setText("📚 模块库")
 
     def _show_nonmodal(self, dlg, on_accept=None):
         """🖥 通用非模态对话框 (2026-08-05 根治: exec_ 模态在 WSLg 下弹窗不可见 →
