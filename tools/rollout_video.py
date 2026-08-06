@@ -79,7 +79,7 @@ def load_policy(policy: str):
     return pol, pm
 
 def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str = "push-v3",
-                camera: str = "corner"):
+                camera: str = "corner", rotate_ccw: bool = False):
     """metaworld V3 环境 rollout: 每个 episode 重置, 推理 select_action 步进, 存观测帧"""
     import metaworld
     from PIL import Image
@@ -120,6 +120,9 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
             rgb = (rgb * 255).astype(np.uint8)
         if rgb.ndim == 3 and rgb.shape[2] == 3 and rgb.shape[0] < 100:
             rgb = np.asarray(Image.fromarray(rgb).resize((640, 480)))
+        # 逆时针水平旋转90° (老倪要求: 视频方向转正, 2026-08-06)
+        if rotate_ccw:
+            rgb = np.rot90(rgb, k=1)
         frames.append(rgb)
         # 模型推理 (用 env obs 视觉 + state)
         act = np.zeros(env.action_space.shape, dtype=float)
@@ -199,11 +202,12 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--task", default="push-v3")
     ap.add_argument("--camera", default="corner", help="corner/topview/behindGripper/gripperPOV")
+    ap.add_argument("--rotate-ccw", action="store_true", help="逆时针水平旋转90° (方向转正)")
     a = ap.parse_args()
     out = a.out or os.path.join(ROOT, "reports", f"rollout_{a.policy}")
     pol, pm = load_policy(a.policy)
-    print(f"🎥 推理 {a.policy} · checkpoint: {os.path.basename(pm)} · task={a.task} · cam={a.camera}")
-    run_rollout(pol, a.steps, out, a.seed, a.task, a.camera)
+    print(f"🎥 推理 {a.policy} · checkpoint: {os.path.basename(pm)} · task={a.task} · cam={a.camera} · rot90={a.rotate_ccw}")
+    run_rollout(pol, a.steps, out, a.seed, a.task, a.camera, a.rotate_ccw)
 
 if __name__ == "__main__":
     main()
