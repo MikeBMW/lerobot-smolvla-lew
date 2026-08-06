@@ -120,9 +120,9 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
             rgb = (rgb * 255).astype(np.uint8)
         if rgb.ndim == 3 and rgb.shape[2] == 3 and rgb.shape[0] < 100:
             rgb = np.asarray(Image.fromarray(rgb).resize((640, 480)))
-        # 逆时针水平旋转90° (老倪要求: 视频方向转正, 2026-08-06)
+        # 逆时针水平旋转 (老倪要求: 视频方向转正, 2026-08-06; 再转90°=共180° k=2)
         if rotate_ccw:
-            rgb = np.rot90(rgb, k=1)
+            rgb = np.rot90(rgb, k=2)
         frames.append(rgb)
         # 模型推理 (用 env obs 视觉 + state)
         act = np.zeros(env.action_space.shape, dtype=float)
