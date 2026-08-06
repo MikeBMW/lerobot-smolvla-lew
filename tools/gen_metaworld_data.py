@@ -26,6 +26,16 @@ def main():
 
     import metaworld
     from PIL import Image
+    # 官方专家策略 (保证真正抓取-插入, 2026-08-06 v3 修复: 手写 5 阶段夹不住 peg)
+    try:
+        from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
+        expert = SawyerPegInsertionSideV3Policy()
+        expert_mode = True
+        print("🎯 使用官方专家策略 (peg-insert-side-v3)")
+    except Exception as ex:
+        expert = None
+        expert_mode = False
+        print(f"⚠️ 官方策略加载失败 ({ex}), 用手写多阶段专家")
 
     mt = metaworld.MT1(args.task)
     env = mt.train_classes[args.task](render_mode="rgb_array")
@@ -56,39 +66,91 @@ def main():
             # 关节状态: 用末端笛卡尔位姿 (跨机器人泛化, 非Sawyer关节角)
             ee = env.data.site_xpos[env.model.site("endEffector").id]
             state = ee.astype(np.float32).copy()  # 3D 末端位置 (x,y,z)
-            # 专家动作: 多阶段决策 (2026-08-06, 老倪要求"预测中决策"场景)
-            # Phase 1: 快速接近 hole 上方 (水平面)
-            # Phase 2: 缓慢对准+下降插入 (预测接触)
-            # Phase 3: 完成保持
+            # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
+            if expert_mode and expert is not None:
+                obs_vec = np.asarray(obs, dtype=np.float64).ravel()
+                try:
+                    a4 = np.asarray(expert.get_action(obs_vec), dtype=np.float32).ravel()
+                    # 官方策略输出已是 metaworld 兼容动作 (delta_pos 速度 + grab_effort), 直接执行
+                    ee_before = env.data.site_xpos[env.model.site("endEffector").id].copy()
+                    gripper_cmd = a4[3] if a4.size >= 4 else 0.0
+                    obs, _, _, _, _ = env.step(a4[:4])  # 更新 obs (官方策略每帧需要新观测)
+                    ee_after = env.data.site_xpos[env.model.site("endEffector").id]
+                    vel = (ee_after - ee_before) * 30.0  # 每帧位移 × fps = 实际速度
+                    action = np.concatenate([vel, [gripper_cmd]])
+                except Exception:
+                    action = np.zeros(4)
+                all_frames.append({
+                    "observation.state": state.tolist(),
+                    "action": action.tolist(),
+                    "episode_index": ep,
+                    "frame_index": i,   # 轨迹内索引 (LeRobot 标准)
+                    "timestamp": i / 30.0,
+                })
+                total += 1
+                continue
+            # 专家动作: 完整插销流程 5 阶段 (2026-08-06 v3, 老倪要求"拿起插销")
+            # Phase 1: 接近 peg (绿色长条) 上方
+            # Phase 2: 下降抓取 peg (夹爪闭合)
+            # Phase 3: 抬起 peg (升高到孔高度)
+            # Phase 4: 水平移到 hole 上方
+            # Phase 5: 下降插入 + 保持
             try:
                 hid = env.model.site("hole").id
                 hole = env.data.site_xpos[hid]
             except Exception:
                 hole = None
-            # 目标点: 先用 hole (peg 任务), 回退 goal
+            try:
+                pid = env.model.site("pegGrasp").id  # 正确抓握点 (peg 中段)
+                peg = env.data.site_xpos[pid]
+            except Exception:
+                try:
+                    pid = env.model.site("pegHead").id
+                    peg = env.data.site_xpos[pid]
+                except Exception:
+                    peg = None
             try:
                 gid = env.model.site("goal").id
                 goal = env.data.site_xpos[gid]
             except Exception:
                 goal = None
-            target = hole if hole is not None else goal
-            if target is not None:
-                delta = target - ee
-                dist_xy = np.linalg.norm(delta[:2])
-                dist_z = abs(delta[2])
-                if dist_xy > 0.05:
-                    # Phase 1: 水平快速接近 (上方 5cm 处)
-                    horiz = np.array([delta[0], delta[1], max(delta[2] - 0.05, -0.05)])
+            target_hole = hole if hole is not None else goal
+            # 抓取点: peg 上方 3cm (抓握高度)
+            grasp_pt = np.array([peg[0], peg[1], peg[2] + 0.03]) if peg is not None else None
+            if grasp_pt is not None and target_hole is not None:
+                d_peg = np.linalg.norm(ee - grasp_pt)          # 到抓取点距离
+                d_peg_xy = np.linalg.norm((ee - grasp_pt)[:2]) # 水平距离
+                d_hole = np.linalg.norm(ee - target_hole)      # 到孔距离
+                lifted = ee[2] > target_hole[2] - 0.01         # 是否已抬到孔高度
+                if d_peg > 0.06:
+                    # Phase 1: 接近 peg 上方 (水平 + 升到抓取高度)
+                    dv = grasp_pt - ee
+                    horiz = np.array([dv[0], dv[1], dv[2] * 0.5])
                     vel = horiz / max(np.linalg.norm(horiz), 1e-6) * 0.12
-                    gripper = 0.0
-                elif dist_z > 0.03:
-                    # Phase 2: 垂直缓慢插入 (预测接触, 减速)
-                    vert = np.array([delta[0] * 0.2, delta[1] * 0.2, delta[2]])
-                    vel = vert / max(np.linalg.norm(vert), 1e-6) * 0.05
-                    gripper = -0.5  # 夹爪闭合
+                    gripper = 0.0  # 张开
+                elif ee[2] < grasp_pt[2] - 0.01:
+                    # Phase 2: 下降抓取 (夹爪闭合)
+                    dv = grasp_pt - ee
+                    vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.05
+                    gripper = -0.8  # 闭合抓取
+                elif not lifted:
+                    # Phase 3: 抬起 peg 到孔高度
+                    lift_pt = np.array([ee[0], ee[1], target_hole[2] + 0.02])
+                    dv = lift_pt - ee
+                    vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.08
+                    gripper = -1.0  # 保持闭合
+                elif d_hole > 0.06:
+                    # Phase 4: 水平移到 hole 上方 (保持高度)
+                    dv = np.array([target_hole[0] - ee[0], target_hole[1] - ee[1], 0.0])
+                    vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.10
+                    gripper = -1.0  # 保持闭合
                 else:
-                    # Phase 3: 完成保持
-                    vel = np.zeros(3)
+                    # Phase 5: 下降插入 + 保持
+                    dv = target_hole - ee
+                    if np.linalg.norm(dv) > 0.02:
+                        vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.04
+                    else:
+                        vel = np.zeros(3)
                     gripper = -1.0
                 action = np.concatenate([vel, [gripper]])
             else:
