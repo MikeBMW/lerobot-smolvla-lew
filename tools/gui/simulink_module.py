@@ -3448,16 +3448,8 @@ class SimulinkModule(QWidget):
         让 3 条曲线尽快在 Scope 里齐 (老倪: 应该是3条曲线同时生成, 不是一个大点+一条)"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息 (任务名/耗时/队列剩余)
-            bi = getattr(self, "_busy_info", None)
-            if bi:
-                el = int(time.time() - bi["start"])
-                q = bi.get("queue_len", 0)
-                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
-                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
-                          " (日志区可看到 📈 进度)")
-            else:
-                self._log("⏳ 上一个任务还在跑 (worker 运行中), 请稍候…")
+            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
+            self._log(self._busy_hint())
             return
         # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew → vla_touch → awe_zflow 最慢),
         # 其余环节保持拓扑序; 未知 policy 排最后
@@ -3516,6 +3508,8 @@ class SimulinkModule(QWidget):
         self._flow_queue = [
             (lambda n=n, m=m, k=k: self._run_node_stage(n, getattr(self, m, None), k))
             for n, m, k in stages]
+        # 🔎 2026-08-06 老倪: 队列任务名列表 (防重入提示显示剩余具体任务)
+        self._flow_names = [n["name"] for n, m, k in stages]
         self._flow_next()
         self._tutorial_on_action("run")
 
@@ -3982,17 +3976,8 @@ class SimulinkModule(QWidget):
         """开后台线程执行 fn, 期间防重入; stage 更新 CI/CD 面板状态"""
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" —
-            # 显示当前任务名/已耗时/队列剩余, 不一句话带过
-            bi = getattr(self, "_busy_info", None)
-            if bi:
-                el = int(time.time() - bi["start"])
-                q = bi.get("queue_len", 0)
-                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
-                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
-                          " (日志区可看到 📈 进度)")
-            else:
-                self._log("⏳ 上一个任务还在跑 (worker 运行中)…")
+            # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" — 详细提示
+            self._log(self._busy_hint())
             return  # 任务未启动 → 引导不推进 (等上一个完成后用户再点)
         if stage:
             self._cicd_state[stage] = 1  # 运行中
@@ -4042,11 +4027,18 @@ class SimulinkModule(QWidget):
         worker.finished.connect(lambda: None)
         self._worker = worker
         # 🔎 2026-08-06 老倪: 记录当前任务详情 (防重入提示用) — 任务名/开始时间/队列剩余
+        import re as _re
         self._busy_info = {
             "name": (busy_msg or stage or "任务").split("(")[0].strip().lstrip("⏳ "),
             "start": time.time(),
             "queue_len": max(0, len(getattr(self, "_flow_queue", []) or []) - 1),
+            "policy": None,
+            "total_steps": None,
         }
+        # policy 从 busy_msg 提取 (如 "正在准备 vla_touch 训练") → 训练实时进度读取用
+        m = _re.search(r"(act|smolvla_?lew?|vla_touch|awe_zflow)", str(busy_msg))
+        if m:
+            self._busy_info["policy"] = m.group(1)
         worker.start()
 
     def open_cicd_panel(self):
@@ -4743,9 +4735,16 @@ class SimulinkModule(QWidget):
                    for p, _, _ in policies)
         if not have:
             self._log(f"🎥 推理对比: 生成 {len(policies)} 模型 rollout 视频 (peg-insert, corner2↺90°, 各 60 帧)…")
-            self._qmsg_info("🎥 推理效果对比",
-                            f"{len(policies)} 模型推理视频将自动生成 (peg-insert rollout, 各 60 帧)\n"
-                            "生成完成自动弹出多窗口同步播放对比。")
+            # 🐛 2026-08-06 老倪: "视频非得第二次双击才能打开" — 原 _qmsg_info 是
+            # exec_ 模态, WSLg 下弹窗不可见 → 主线程阻塞 → 用户重复点击/按键才解除,
+            # 看似第二次双击才打开; 改非模态: 对话框自身 lbl_note 会显示"生成中",
+            # 不再阻塞主线程, 第一次双击立即出现窗口
+            try:
+                self._show_bubble(self.rect().center(),
+                                  f"🎥 正在生成 {len(policies)} 模型推理视频 (各 60 帧, 约 1-2 分钟)…\n"
+                                  "生成完成自动播放对比", 5000)
+            except Exception:
+                pass
         dlg = InferenceVideoDialog(self, policies=policies)
         self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
@@ -4830,24 +4829,46 @@ class SimulinkModule(QWidget):
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
             # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
-            bi = getattr(self, "_busy_info", None)
-            if bi:
-                el = int(time.time() - bi["start"])
-                q = bi.get("queue_len", 0)
-                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
-                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
-                          " (日志区可看到 📈 进度)")
-            else:
-                self._log("⏳ 上一个任务还在跑 (worker 运行中), 请稍候…")
+            self._log(self._busy_hint())
             return
         self._flow_queue = [self.on_collect, self.on_train, self.on_validate,
                             self.on_integrate, self.on_deploy, self.on_infer]
         self._flow_queue.pop(0)()
 
+    def _busy_hint(self):
+        """🔎 2026-08-06 老倪: 防重入详细提示 — 当前任务 + 已耗时 + 训练实时进度 + 剩余队列具体任务
+        训练进度: 读 reports/train_curve_<policy>.json (训练中每 10 步落盘, curve 最后一条=最新 step/loss)"""
+        bi = getattr(self, "_busy_info", None)
+        if not bi:
+            return "⏳ 上一个任务还在跑 (worker 运行中), 请稍候…"
+        parts = [f"⏳ 正在运行「{bi['name']}」已 {int(time.time() - bi['start'])}s"]
+        # 训练实时进度 (若当前任务带 policy)
+        pol = bi.get("policy")
+        if pol:
+            try:
+                import json as _j
+                cf = os.path.join(self._repo_root(), "reports", f"train_curve_{pol}.json")
+                if os.path.exists(cf):
+                    d = _j.load(open(cf, encoding="utf-8"))
+                    cur = d.get("curve") or []
+                    if cur:
+                        step, loss = cur[-1]
+                        parts.append(f"训练 {step}/{bi.get('total_steps', '?')} 步 · loss {loss:.4f}")
+            except Exception:
+                pass
+        # 剩余队列具体任务
+        rem = list(getattr(self, "_flow_names", None) or [])[1:]
+        if rem:
+            parts.append("剩余: " + " → ".join(rem[:4]) + ("…" if len(rem) > 4 else ""))
+        parts.append("(日志区可看到 📈 进度)")
+        return " · ".join(parts)
+
     def _flow_next(self):
         """(worker 完成后) 执行下一个环节; 队列空 → 全流程结束, 恢复按钮"""
         if getattr(self, "_flow_queue", None):
             fn = self._flow_queue.pop(0)
+            if getattr(self, "_flow_names", None):
+                self._flow_names.pop(0)  # 🔎 同步队列名
             fn()
         else:
             # 2026-08-06 老倪: 流程结束 → 停流程时钟 (t 定格)
@@ -5133,15 +5154,7 @@ class SimulinkModule(QWidget):
         cur = getattr(self, "_worker", None)
         if cur is not None and cur.isRunning():
             # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
-            bi = getattr(self, "_busy_info", None)
-            if bi:
-                el = int(time.time() - bi["start"])
-                q = bi.get("queue_len", 0)
-                self._log(f"⏳ 正在运行「{bi['name']}」已 {el}s" +
-                          (f" · 队列还有 {q} 个任务, 完成后自动继续" if q else " · 完成后自动继续") +
-                          " (日志区可看到 📈 进度)")
-            else:
-                self._log("⏳ 上一个任务还在跑 (worker 运行中), 请稍候…")
+            self._log(self._busy_hint())
             return
         node["status"] = "running"
         it = self._items.get(node["id"])
