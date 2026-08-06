@@ -2340,32 +2340,9 @@ class SimulinkModule(QWidget):
         #  按钮重复 (三/五模型对比·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
         #  REFERENCE_APPS 数据保留, 模块库完整模型条目/load_reference_app_by_name 仍可用)
 
-        # ── 📡 实时采集状态条 (轮询 ECS relay: Orin/MAC 采集数据实时可见) ──
-        acq = QFrame()
-        acq.setStyleSheet("background:#eef1f5; border-bottom:1px solid #d0d7de;")
-        acq.setFixedHeight(34)
-        acl = QHBoxLayout(acq)
-        acl.setContentsMargins(12, 4, 12, 4)
-        acl.setSpacing(10)
-        acq_lab = QLabel("📡 实时采集")
-        acq_lab.setStyleSheet("color:#58a6ff; font-size:11px; font-weight:700; background:transparent; border:none;")
-        acl.addWidget(acq_lab)
-        self.lbl_acq_state = QLabel("⏳ 查询 ECS 中转…")
-        self.lbl_acq_state.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-        acl.addWidget(self.lbl_acq_state)
-        acl.addStretch()
-        self.lbl_acq_pkgs = QLabel("数据包: 0")
-        self.lbl_acq_pkgs.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-        acl.addWidget(self.lbl_acq_pkgs)
-        self.lbl_acq_latest = QLabel("最新: —")
-        self.lbl_acq_latest.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-        acl.addWidget(self.lbl_acq_latest)
-        outer.addWidget(acq)
-        # 轮询定时器 (每 5s, 轻量)
-        self._acq_timer = QTimer(self)
+        # (2026-08-06 老倪: 📡 实时采集状态条「采集中/数据包:24」整行删除 —
+        #  无 UI 入口, 轮询只做展示; _poll_acquisition 方法一并删)
         self._theme = _CUR_THEME  # 🎨 当前风格 (light/dark)
-        self._acq_timer.timeout.connect(self._poll_acquisition)
-        self._acq_timer.start(5000)
 
         # 主体: 库 + MDI 画布子窗口 (2026-08-05 老倪: 对标 MATLAB Simulink / CANoe —
         # 主要操作窗口首次打开嵌在主窗口内部, 子窗口带 最小化/最大化/关闭)
@@ -3830,71 +3807,7 @@ class SimulinkModule(QWidget):
             self.btn_log_toggle.setToolTip("隐藏底部日志区")
 
     # ── 📡 实时采集轮询 (后台线程, 不卡 UI) ──
-    def _poll_acquisition(self):
-        """每 5s 轮询 ECS relay /status + /packages, 更新采集状态条"""
-        if getattr(self, "_acq_worker", None) and self._acq_worker.isRunning():
-            return  # 上次还在查, 跳过
 
-        def _work():
-            import requests as _rq
-            try:
-                r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
-                if r.status_code != 200:
-                    return False, f"⚠️ relay HTTP {r.status_code}"
-                st = r.json()
-                uptime = st.get("uptime", 0)
-                npkg = st.get("packages", 0)
-                meta = st.get("latest_meta") or {}
-                frames = meta.get("frames", "?")
-                src = meta.get("source", "?")
-                ts = meta.get("ts") or meta.get("time") or "?"
-                # 打包成 JSON 字符串传递 (信号只支持 str)
-                import json as _json
-                return True, _json.dumps({"uptime": uptime, "npkg": npkg, "frames": frames,
-                                          "src": src, "ts": str(ts)})
-            except Exception as ex:
-                return False, f"⚠️ 采集查询失败: {ex}"
-
-        def _done(ok, info):
-            if not ok:
-                self.lbl_acq_state.setText(info)
-                self.lbl_acq_state.setStyleSheet("color:#ff4444; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-                return
-            import json as _json
-            try:
-                d = _json.loads(info)
-            except Exception:
-                self.lbl_acq_state.setText("⚠️ 采集状态解析失败")
-                return
-            uptime, npkg, frames, src, ts = d.get("uptime", 0), d.get("npkg", 0), d.get("frames", "?"), d.get("src", "?"), d.get("ts", "?")
-            if npkg > 0:
-                self.lbl_acq_state.setText(f"● 采集中 · 中转在线 {int(uptime)}s · 来源 {src}")
-                self.lbl_acq_state.setStyleSheet("color:#3fb950; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-                self.lbl_acq_pkgs.setText(f"数据包: {npkg}")
-                self.lbl_acq_latest.setText(f"最新: {frames}帧 @ {ts}")
-                # 采集进行中 → 画布 hardware 节点标记运行
-                for n in self.nodes:
-                    if n.get("type") == "hardware":
-                        n["status"] = "running"
-                        it = self._items.get(n["id"])
-                        if it:
-                            it.update()
-                self.canvas._scene.update()
-            else:
-                self.lbl_acq_state.setText("○ 等待采集数据…")
-                self.lbl_acq_state.setStyleSheet("color:#57606a; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-                self.lbl_acq_pkgs.setText("数据包: 0")
-                self.lbl_acq_latest.setText("最新: —")
-
-        worker = CICDWorker(_work)
-        worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda: None)
-        self._acq_worker = worker
-        worker.start()
-
-    # ════════════════════════════════════════════════════════════
-    # CI/CD 闭环: 验证 → 训练 → 集成 → 部署 (后台线程执行)
-    # ════════════════════════════════════════════════════════════
     def _repo_root(self):
         """仓库根: tools/gui/simulink_module.py → lerobot-smolvla-lew/"""
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

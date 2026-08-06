@@ -6790,18 +6790,9 @@ def _msg_ask(parent, title, text, kind="warning"):
 
 
 class StudioMainWindow(QMainWindow):
-    @staticmethod
-    def _git_short():
-        try:
-            import subprocess
-            return subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                                  capture_output=True, text=True, timeout=3).stdout.strip()[:7] or "dev"
-        except Exception:
-            return "dev"
-
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"XSpace Studio — Z-MAX v1.7.0 · {self._git_short()}")  # v1.6.0: 📊Scope示波器节点+▶运行=真实全流程+节点逻辑库
+        self.setWindowTitle("XSpace Studio — Z-MAX v1.7.0")  # v1.6.0: 📊Scope示波器节点+▶运行=真实全流程+节点逻辑库; 2026-08-06: 去掉 git hash (老倪: 没用)
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
