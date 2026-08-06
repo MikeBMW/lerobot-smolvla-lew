@@ -3423,9 +3423,10 @@ class SimulinkModule(QWidget):
         2026-08-05 优化: 多个训练节点按耗时升序排 (act→smolvla→smolvla_lew),
         让 3 条曲线尽快在 Scope 里齐 (老倪: 应该是3条曲线同时生成, 不是一个大点+一条)"""
         w = getattr(self, "_worker", None)
-        if w is not None and w.isRunning():
-            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
-            self._log(self._busy_hint())
+        if w is not None:
+            # 🐛 2026-08-06: worker 终止竞态 → wait(300) 等正常收尾放行
+            if w.isRunning() and not w.wait(300):
+                self._log(self._busy_hint())
             return
         # 训练节点耗时升序 (act 最快 → smolvla → smolvla_lew → vla_touch → awe_zflow 最慢),
         # 其余环节保持拓扑序; 未知 policy 排最后
@@ -3879,10 +3880,14 @@ class SimulinkModule(QWidget):
     def _start_worker(self, fn, busy_msg, stage=None):
         """开后台线程执行 fn, 期间防重入; stage 更新 CI/CD 面板状态"""
         w = getattr(self, "_worker", None)
-        if w is not None and w.isRunning():
-            # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" — 详细提示
-            self._log(self._busy_hint())
-            return  # 任务未启动 → 引导不推进 (等上一个完成后用户再点)
+        if w is not None:
+            # 🐛 2026-08-06 修复: worker 终止竞态 — _done(主线程) 触发 _flow_next 时,
+            #   worker 线程刚 emit 完还在收尾, isRunning() 短暂 True → 防重入误拦截
+            #   后续任务 (五模型对比 VLA-Touch 卡住不启动!); wait(300) 等正常收尾放行
+            if w.isRunning() and not w.wait(300):
+                # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" — 详细提示
+                self._log(self._busy_hint())
+                return  # 任务未启动 → 引导不推进 (等上一个完成后用户再点)
         if stage:
             self._cicd_state[stage] = 1  # 运行中
             # 数据闭环引导: 任务真正启动才推进 (防重入 return 时不能推进)
@@ -4736,9 +4741,10 @@ class SimulinkModule(QWidget):
     def _run_full_flow(self):
         """采集→训练→验证→集成→部署→推理 依次自动流转"""
         w = getattr(self, "_worker", None)
-        if w is not None and w.isRunning():
-            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
-            self._log(self._busy_hint())
+        if w is not None:
+            # 🐛 2026-08-06: worker 终止竞态 → wait(300) 等正常收尾放行
+            if w.isRunning() and not w.wait(300):
+                self._log(self._busy_hint())
             return
         self._flow_queue = [self.on_collect, self.on_train, self.on_validate,
                             self.on_integrate, self.on_deploy, self.on_infer]
@@ -5303,10 +5309,12 @@ class SimulinkModule(QWidget):
         if logic_res is not None:
             fn = (lambda _r=logic_res: _r)
         cur = getattr(self, "_worker", None)
-        if cur is not None and cur.isRunning():
-            # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
-            self._log(self._busy_hint())
-            return
+        if cur is not None:
+            # 🐛 2026-08-06: worker 终止竞态 → wait(300) 等正常收尾放行
+            if cur.isRunning() and not cur.wait(300):
+                # 🔎 2026-08-06 老倪: 防重入提示显示详细信息
+                self._log(self._busy_hint())
+                return
         node["status"] = "running"
         it = self._items.get(node["id"])
         if it:
