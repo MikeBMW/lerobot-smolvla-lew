@@ -19,10 +19,23 @@ sys.path.insert(0, str(proj))
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--eps", type=int, default=10, help="轨迹数")
+    ap.add_argument("--yolo", action="store_true", help="用 YOLO 检测替换 39D (模拟真机感知)")
     ap.add_argument("--steps", type=int, default=180, help="每条轨迹帧数")
     ap.add_argument("--task", default="reach-v3")
     ap.add_argument("--out", default="data/metaworld_cartesian")
     args = ap.parse_args()
+    yolo_mode = getattr(args, "yolo", False)
+    yolo_aligner = None
+    if yolo_mode:
+        from tools.yolo_state_aligner import YoloStateAligner
+        WEIGHTS = "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt"
+        import metaworld as _mt
+        _mt_env = _mt.MT1("peg-insert-side-v3")
+        _env0 = _mt_env.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
+        _env0._freeze_rand_vec = False
+        _env0.set_task(_mt_env.train_tasks[0])
+        _env0.reset(seed=0)
+        yolo_aligner = YoloStateAligner(WEIGHTS, _env0)
 
     import metaworld
     from PIL import Image
@@ -68,15 +81,23 @@ def main():
             img = np.asarray(env.render())
             pil = Image.fromarray(img).resize((128, 128), Image.LANCZOS)
             ep_imgs.append(np.asarray(pil))
+            # YOLO 检测必须用 480 原图 (128 分辨率检测不准)
+            yolo_img = img
             # 关节状态: 用末端笛卡尔位姿 (跨机器人泛化, 非Sawyer关节角)
             ee = env.data.site_xpos[env.model.site("endEffector").id]
-            # 关节状态: 39 维完整观测 (2026-08-06 老倪: 给所有模型完整观测, 含 hand/peg/hole 位置)
-            # 原来只有 3D 末端位置 → 模型不知道 peg 在哪 → 插拔学不会 (ACT/SmolVLA 全 0%)
-            # 官方专家用 39 维 (env._get_obs) 所以 85% 成功; 蒸馏 MLP 也用 39 维 → 55%
-            try:
-                state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D
-            except Exception:
-                state = ee.astype(np.float32).copy()  # 兜底 3D
+            # 关节状态: 39 维完整观测 (2026-08-07: --yolo 模式用 YOLO 检测替换, 模拟真机感知)
+            # 默认用模拟器直给 (完美观测); --yolo 时 YOLO 2D 检测 → 3D → 替换对应段
+            if yolo_mode and yolo_aligner is not None:
+                try:
+                    det3d = yolo_aligner.detect_3d(yolo_img)
+                    state = yolo_aligner.align(np.asarray(env._get_obs(), dtype=np.float32).ravel(), det3d).astype(np.float32)
+                except Exception:
+                    state = np.asarray(env._get_obs(), dtype=np.float32).ravel()
+            else:
+                try:
+                    state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D
+                except Exception:
+                    state = ee.astype(np.float32).copy()  # 兜底 3D
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
             if expert_mode and expert is not None:
                 obs_vec = np.asarray(obs, dtype=np.float64).ravel()
