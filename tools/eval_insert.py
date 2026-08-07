@@ -59,16 +59,48 @@ def load_policy(policy):
     return None, None
 
 def _load_stats():
-    """加载训练 stats (data/metaworld_peg_v4/meta/stats.json)"""
+    """加载训练 stats — 2026-08-07: 优先从 checkpoint preprocessor safetensors 读 (v7 数据被清)"""
     import json as _j
-    for root in ["data/metaworld_peg_v4", "data/metaworld_peg_v3", "data/metaworld_peg_v2"]:
+    # 从 ACT checkpoint 的 normalizer 读 (正确 39D/4D)
+    for ck in ["outputs/train/act_peg_long/checkpoints/004000/pretrained_model",
+               "outputs/train/act_peg_v7/checkpoints/004000/pretrained_model",
+               "outputs/train/act_peg_v6/checkpoints/004000/pretrained_model"]:
+        st_f = os.path.join(ROOT, ck, "policy_preprocessor_step_3_normalizer_processor.safetensors")
+        if os.path.exists(st_f):
+            try:
+                from safetensors.torch import load_file
+                sd = load_file(st_f)
+                # normalizer 存 mean/std 键 (查实际键名)
+                keys = list(sd.keys())
+                state_keys = [k for k in keys if "state" in k.lower()]
+                act_keys = [k for k in keys if "action" in k.lower()]
+                if "observation.state.mean" in sd:
+                    sm = sd["observation.state.mean"].cpu().numpy().reshape(-1)
+                    ss = sd["observation.state.std"].cpu().numpy().reshape(-1)
+                    am = sd["action.mean"].cpu().numpy().reshape(-1)
+                    asd = sd["action.std"].cpu().numpy().reshape(-1)
+                    # 广播到完整维度 (MEAN_STD 标量 → 39D/4D)
+                    sm = np.full(39, sm[0], dtype=np.float32)
+                    ss = np.full(39, ss[0], dtype=np.float32)
+                    am = np.full(4, am[0], dtype=np.float32)
+                    asd = np.full(4, asd[0], dtype=np.float32)
+                    return {"observation.state": {"mean": sm, "std": ss},
+                            "action": {"mean": am, "std": asd}}
+            except Exception:
+                pass
+    # fallback: 数据 stats.json
+    import json as _j2
+    for root in ["data/metaworld_peg_v7", "data/metaworld_peg_v6", "data/metaworld_peg_v5",
+                 "data/metaworld_peg_v4", "data/metaworld_peg_v3", "data/metaworld_peg_v2",
+                 "data/metaworld_peg_lerobot", "data/metaworld_act"]:
         p = os.path.join(ROOT, root, "meta", "stats.json")
         if os.path.exists(p):
-            return _j.load(open(p))
+            return _j2.load(open(p))
     return None
 
-def run_episode(policy, seed, steps=200, yolo_aligner=None):
-    """单次插拔尝试: 返回 peg 是否抬起 + 是否插入"""
+def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False):
+    """单次插拔尝试: 返回 peg 是否抬起 + 是否插入
+    grip_assist=True: 夹爪辅助 (接近 peg 强制闭合 — 2026-08-07 老倪: ACT 方向性已学会, 差夹爪决策)"""
     import metaworld
     mt = metaworld.MT1("peg-insert-side-v3", seed=seed)
     env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array")
@@ -87,8 +119,6 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None):
     asd = np.array(stats["action"]["std"], dtype=np.float32)[:4] + 1e-6
     peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
     hole = env.data.site_xpos[env.model.site("hole").id]
-    sm = np.zeros(st_dim, dtype=np.float32)
-    ss = np.ones(st_dim, dtype=np.float32)
     act_hist = torch.zeros((1, 4), dtype=torch.float32, device=DEVICE)
     lifted = False
     for i in range(steps):
@@ -103,7 +133,12 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None):
                 st_raw = yolo_aligner.align(st_raw, det3d).astype(np.float32)[:st_dim]
             except Exception:
                 pass
-        st_n = (st_raw - sm) / ss  # 归一化 (训练管道)
+        # 归一化: AWE/VLA-Touch 用 checkpoint 自己的 s_mean/s_std (2026-08-07 修复: 数据 stats 可能错位)
+        _sm, _ss = sm, ss
+        if hasattr(policy, "stats") and policy.stats and "s_mean" in policy.stats:
+            _sm = np.array(policy.stats["s_mean"], dtype=np.float32)[:st_dim]
+            _ss = np.array(policy.stats["s_std"], dtype=np.float32)[:st_dim] + 1e-6
+        st_n = (st_raw - _sm) / _ss  # 归一化 (训练管道)
         d = np.zeros(policy.tactile_dim if hasattr(policy, "tactile_dim") else 3, dtype=np.float32)
         # 触觉模拟: 用 state 差分 (2026-08-06 修复: st_dim 可能小于 3, 用可用维度)
         _td = min(len(st_raw), len(d))
@@ -130,11 +165,33 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None):
                 x0 = torch.randn_like(s_t.new_zeros((1, policy.action_dim))) * 0.1
                 pred = policy.sample(x0, cond, diffuse_steps=10)
                 act = pred.detach().cpu().numpy().ravel()
+                # 2026-08-07 修复: AWE/VLA-Touch 输出是归一化空间, 必须反归一化 (与 ACT 一致)
+                if act.size == 4 and hasattr(policy, "stats") and policy.stats:
+                    _st = policy.stats
+                    _std = np.array(_st.get("a_std", _st.get("action", {}).get("std", np.ones(4))), dtype=np.float32)[:4]
+                    _mean = np.array(_st.get("a_mean", _st.get("action", {}).get("mean", np.zeros(4))), dtype=np.float32)[:4]
+                    act = act * _std + _mean
             else:
                 pred = policy(s_t, t_t, act_hist, None)
                 if isinstance(pred, tuple): pred = pred[0]
                 act = pred.detach().cpu().numpy().ravel()
+                # 2026-08-07 修复: else 分支 (AWE 等无 _cond) 同样要反归一化
+                if act.size == 4 and hasattr(policy, "stats") and policy.stats:
+                    _st = policy.stats
+                    _std = np.array(_st.get("a_std", _st.get("action", {}).get("std", np.ones(4))), dtype=np.float32)[:4]
+                    _mean = np.array(_st.get("a_mean", _st.get("action", {}).get("mean", np.zeros(4))), dtype=np.float32)[:4]
+                    act = act * _std + _mean
         a4 = np.zeros(4); a4[:min(4, len(act))] = act[:min(4, len(act))]
+        # 2026-08-07: 夹爪辅助 (grip_assist) — 接近 peg 强制闭合 (ACT 方向性已学会, 差夹爪决策)
+        if grip_assist:
+            hand_pos = env.data.site_xpos[env.model.site("endEffector").id]
+            d_peg_now = np.linalg.norm(hand_pos - peg)
+            if d_peg_now < 0.08 and not lifted:
+                a4[3] = -1.0   # 闭合夹爪 (metaworld: -1=闭合)
+            elif lifted:
+                a4[3] = 0.6    # 保持抓住
+            else:
+                a4[3] = 0.0    # 张开
         act_hist = torch.from_numpy(a4).float().to(DEVICE).unsqueeze(0)
         obs, _, term, trunc, _ = env.step(a4)
         if term or trunc:

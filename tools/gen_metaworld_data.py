@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--eps", type=int, default=10, help="轨迹数")
     ap.add_argument("--yolo", action="store_true", help="用 YOLO 检测替换 39D (模拟真机感知)")
     ap.add_argument("--steps", type=int, default=180, help="每条轨迹帧数")
+    ap.add_argument("--far", action="store_true", help="远起点模式 (2026-08-07 老倪: 让模型学会更长接近轨迹)")
     ap.add_argument("--task", default="reach-v3")
     ap.add_argument("--out", default="data/metaworld_cartesian")
     args = ap.parse_args()
@@ -40,6 +41,7 @@ def main():
     import metaworld
     from PIL import Image
     # 官方专家策略 (保证真正抓取-插入, 2026-08-06 v3 修复: 手写 5 阶段夹不住 peg)
+    # 2026-08-07: --far 远起点用多阶段专家 (官方专家假设标准起点, 远移后状态机失效)
     try:
         from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
         expert = SawyerPegInsertionSideV3Policy()
@@ -70,6 +72,16 @@ def main():
     print(f"🎯 生成 {args.task} · {args.eps} 条轨迹 × {args.steps} 帧")
     for ep in range(args.eps):
         obs, _ = env.reset()
+        # 远起点模式 (2026-08-07 老倪: 长接近轨迹) — 先移手到远处再记录
+        if getattr(args, "far", False):
+            ee_site = env.model.site("endEffector").id
+            tgt = np.array([-0.05, 0.3, 0.25])  # 远处起点 (远离 peg)
+            for _ in range(40):
+                cur = env.data.site_xpos[ee_site]
+                delta = (tgt - cur) * 0.3
+                env.step(np.concatenate([delta, [0.0]]))
+            # 远移后重新获取 obs (专家要用最新状态)
+            obs, _, _, _, _ = env.step(np.zeros(4))
         # 记录轨迹开始时 peg 高度 (成功判定基准, 2026-08-06)
         try:
             peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
@@ -99,7 +111,9 @@ def main():
                 except Exception:
                     state = ee.astype(np.float32).copy()  # 兜底 3D
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
-            if expert_mode and expert is not None:
+            # 2026-08-07: --far 用多阶段专家 (官方专家远起点状态机失效)
+            use_official = expert_mode and expert is not None and not getattr(args, "far", False)
+            if use_official:
                 obs_vec = np.asarray(obs, dtype=np.float64).ravel()
                 try:
                     a4 = np.asarray(expert.get_action(obs_vec), dtype=np.float32).ravel()

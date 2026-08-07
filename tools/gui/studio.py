@@ -996,6 +996,7 @@ class HomeWidget(QWidget):
             ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
             ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
             ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
+            ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
         ]
         for i, (mid, icon, title, syslbl, desc, color) in enumerate(modules):
@@ -1254,102 +1255,6 @@ class DatasetModule(SubModuleWidget):
 
     # 主要机器人开源数据集
     DATASETS = [
-        {
-            "repo_id": "lerobot/pusht",
-            "name": "PushT",
-            "robot": "Desk arm + gripper",
-            "tasks": 1,
-            "desc": "桌面推T块到目标位姿，经典IL基准",
-            "tags": ["manipulation", "pushing", "benchmark"],
-        },
-        {
-            "repo_id": "lerobot/xarm_lift_medium",
-            "name": "xArm Lift",
-            "robot": "xArm (6-DoF)",
-            "tasks": 1,
-            "desc": "xArm抓取并提升物体，中等难度",
-            "tags": ["manipulation", "grasping"],
-        },
-        {
-            "repo_id": "lerobot/xarm_lift_medium_image",
-            "name": "xArm Lift (Image)",
-            "robot": "xArm (6-DoF)",
-            "tasks": 1,
-            "desc": "xArm提升物体（仅图像输入，无本体状态）",
-            "tags": ["manipulation", "vision-only"],
-        },
-        {
-            "repo_id": "lerobot/aloha_sim_transfer_cube_human",
-            "name": "ALOHA Sim Transfer Cube",
-            "robot": "ALOHA (bimanual sim)",
-            "tasks": 1,
-            "desc": "双臂ALOHA仿真传递方块，sim-to-real基准",
-            "tags": ["bimanual", "sim2real", "ALOHA"],
-        },
-        {
-            "repo_id": "lerobot/aloha_sim_insertion_human",
-            "name": "ALOHA Sim Insertion",
-            "robot": "ALOHA (bimanual sim)",
-            "tasks": 1,
-            "desc": "双臂ALOHA仿真插入任务，sim-to-real基准",
-            "tags": ["bimanual", "sim2real", "insertion"],
-        },
-        {
-            "repo_id": "lerobot/koch_bimanual_folding",
-            "name": "Koch Bimanual Folding",
-            "robot": "Koch (bimanual real)",
-            "tasks": 1,
-            "desc": "双臂Koch折叠衣物，真实机器人数据",
-            "tags": ["bimanual", "folding", "real-robot"],
-        },
-        {
-            "repo_id": "lerobot/so100_pick_place",
-            "name": "SO-100 Pick Place",
-            "robot": "SO-100 (low-cost arm)",
-            "tasks": 1,
-            "desc": "低成本机械臂抓取放置，适合入门学习",
-            "tags": ["low-cost", "pick-place", "education"],
-        },
-        {
-            "repo_id": "lerobot/utokyo_pr2_tabletop_manipulation",
-            "name": "PR2 Tabletop",
-            "robot": "PR2 (full humanoid)",
-            "tasks": 1,
-            "desc": "PR2机器人在桌面上的操作任务",
-            "tags": ["humanoid", "tabletop"],
-        },
-        {
-            "repo_id": "lerobot/cmu_franka_exploration_dataset",
-            "name": "CMU Franka Exploration",
-            "robot": "Franka Emika Panda",
-            "tasks": 1,
-            "desc": "Franka机械臂探索数据集，CMU实验室",
-            "tags": ["exploration", "franka"],
-        },
-        {
-            "repo_id": "lerobot/nyu_rot_dataset",
-            "name": "NYU Rot",
-            "robot": "Rotatable fixture",
-            "tasks": 1,
-            "desc": "NYU旋转操作数据集，研究基准",
-            "tags": ["research", "rotation"],
-        },
-        {
-            "repo_id": "lerobot/metaworld_mt50",
-            "name": "MetaWorld MT50",
-            "robot": "Sawyer (sim)",
-            "tasks": 50,
-            "desc": "MetaWorld 50种桌面任务，多任务学习基准",
-            "tags": ["multi-task", "meta-learning", "benchmark"],
-        },
-        {
-            "repo_id": "lerobot/asu_table_top",
-            "name": "ASU Table Top",
-            "robot": "xArm (sim)",
-            "tasks": 2,
-            "desc": "ASU桌面操作数据集，含2种任务",
-            "tags": ["tabletop", "research"],
-        },
     ]
 
     def __init__(self):
@@ -1388,6 +1293,26 @@ class DatasetModule(SubModuleWidget):
         top_bar.setLayout(top_layout)
         bl.addWidget(top_bar)
 
+        # 📌 当前训练数据集卡片 (2026-08-07 老倪: 数据集管理页要能看到当前训练的数据集)
+        cur_card = QFrame()
+        cur_card.setStyleSheet(f"background:{C_CARD}; border:1px solid {C_GREEN}66; border-radius:8px;")
+        cur_lay = QHBoxLayout()
+        cur_lay.setContentsMargins(14, 10, 14, 10)
+        cur_lbl = QLabel()
+        cur_lbl.setTextFormat(Qt.RichText)
+        cur_lbl.setFont(QFont("Arial", 10))
+        cur_lbl.setText(self._current_dataset_html())
+        cur_lay.addWidget(cur_lbl)
+        cur_lay.addStretch()
+        refresh_cur = QPushButton("🔄")
+        refresh_cur.setFixedSize(32, 32)
+        refresh_cur.setToolTip("刷新当前训练数据集")
+        refresh_cur.setStyleSheet(f"background:{C_CARD}; color:{C_GREEN}; border:1px solid {C_GREEN}66; border-radius:4px;")
+        refresh_cur.clicked.connect(lambda: cur_lbl.setText(self._current_dataset_html()))
+        cur_lay.addWidget(refresh_cur)
+        cur_card.setLayout(cur_lay)
+        bl.addWidget(cur_card)
+
         # === 数据集列表 ===
         list_label = QLabel(f"开源机器人数据集 ({len(self.DATASETS)}个)")
         list_label.setFont(QFont("Arial", 11, QFont.Bold))
@@ -1420,11 +1345,14 @@ class DatasetModule(SubModuleWidget):
         self._build_shell(body)
 
     def _populate_table(self):
-        """填充数据集表格"""
+        """填充数据集表格 (2026-08-07 老倪: 控制台全管 — 本地 metaworld 数据集并入)"""
         from PyQt5.QtWidgets import QHeaderView
-        self._table.setRowCount(len(self.DATASETS))
+        local_rows = self._local_datasets()
+        rows = local_rows + self.DATASETS
+        self._table.setRowCount(len(rows))
 
-        for i, ds in enumerate(self.DATASETS):
+        for i, ds in enumerate(rows):
+            is_local = ds.get("local", False)
             # 名称
             name_item = QTableWidgetItem(ds["name"])
             name_item.setFont(QFont("Arial", 10, QFont.Bold))
@@ -1454,11 +1382,15 @@ class DatasetModule(SubModuleWidget):
             task_item.setFlags(task_item.flags() & ~Qt.ItemIsEditable)
             self._table.setItem(i, 3, task_item)
 
-            # 缓存状态
-            cached = self._is_cached(ds["repo_id"])
-            cache_item = QTableWidgetItem("✅ 已缓存" if cached else "—")
+            # 缓存状态 (2026-08-07: 本地训练数据集恒 ✅ 本地)
+            if is_local:
+                cache_item = QTableWidgetItem("✅ 本地")
+                cache_item.setForeground(QBrush(QColor(C_GREEN)))
+            else:
+                cached = self._is_cached(ds["repo_id"])
+                cache_item = QTableWidgetItem("✅ 已缓存" if cached else "—")
+                cache_item.setForeground(QBrush(QColor(C_GREEN) if cached else QColor(C_DIM)))
             cache_item.setFont(QFont("Consolas", 9))
-            cache_item.setForeground(QBrush(QColor(C_GREEN) if cached else QColor(C_DIM)))
             cache_item.setTextAlignment(Qt.AlignCenter)
             cache_item.setFlags(cache_item.flags() & ~Qt.ItemIsEditable)
             self._table.setItem(i, 4, cache_item)
@@ -1500,7 +1432,20 @@ class DatasetModule(SubModuleWidget):
 
             dl_btn = QPushButton("下载")
             dl_btn.setFixedHeight(36)
-            dl_btn.setToolTip("下载前N个episodes (用户指定数量)")
+            if is_local:
+                # 📁 本地数据 (2026-08-07 老倪: orin 真机从 cicd.html 网页下载; metaworld 本地已有)
+                tags = ds.get("tags", [])
+                if "orin" in tags:
+                    dl_btn.setText("📥 CICD")
+                    dl_btn.setToolTip("真机数据在 datadrive.world/cicd.html 采集下载 (ECS 中转)")
+                    dl_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world/cicd.html")))
+                else:
+                    dl_btn.setText("本地")
+                    dl_btn.setEnabled(False)
+                    dl_btn.setToolTip("本地已有数据，无需下载")
+            else:
+                dl_btn.setToolTip("下载前N个episodes (用户指定数量)")
+                dl_btn.clicked.connect(self._mk_download_func(ds))
             dl_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: {C_CARD};
@@ -1517,7 +1462,6 @@ class DatasetModule(SubModuleWidget):
                     background: {C_GREEN}33;
                 }}
             """)
-            dl_btn.clicked.connect(self._mk_download_func(ds))
             btn_layout.addWidget(dl_btn)
 
             # 手动下载按钮
@@ -1590,14 +1534,121 @@ class DatasetModule(SubModuleWidget):
             btn_container.setLayout(btn_layout)
             self._table.setCellWidget(i, 6, btn_container)
 
+    def _current_dataset_html(self):
+        """📌 当前训练数据集 (2026-08-07 老倪): 从最近训练 config 的 root 探测"""
+        try:
+            import glob as _g, re as _re
+            root = self._repo_root()
+            cfgs = sorted(_g.glob(os.path.join(root, "config_*.yaml")), key=os.path.getmtime, reverse=True)
+            cur = None
+            for cf in cfgs:
+                try:
+                    txt = open(cf, encoding="utf-8").read()
+                    m = _re.search(r"^\s*root:\s*(data/\S+)", txt, flags=_re.M)
+                    if m and os.path.isdir(os.path.join(root, m.group(1))):
+                        cur = m.group(1)
+                        break
+                except Exception:
+                    continue
+            if cur is None:
+                cur = "data/metaworld_peg_lerobot"
+            dp = os.path.join(root, cur)
+            eps = frames = state_d = "?"
+            try:
+                ij = os.path.join(dp, "meta", "info.json")
+                if os.path.exists(ij):
+                    import json as _j
+                    d = _j.load(open(ij, encoding="utf-8"))
+                    eps, frames = d.get("total_episodes", "?"), d.get("total_frames", "?")
+            except Exception:
+                pass
+            try:
+                import numpy as _np
+                tn = os.path.join(dp, "train.npz")
+                if os.path.exists(tn):
+                    d = _np.load(tn)
+                    frames = len(d["observations"])
+                    state_d = d["states"].shape[1]
+                    eps = "npz"
+            except Exception:
+                pass
+            kind = "插销插拔 (peg-insert)" if "peg" in cur else "nut-on-peg 套环"
+            color = C_GREEN if "peg" in cur else "#d29922"
+            return (f"📌 当前训练数据集: <b>{cur}</b> · <font color='{color}'>{kind}</font>"
+                    f" · {frames} 帧 · {eps} eps · state {state_d}D"
+                    f"<br><font color='{C_GRAY}' size='2'>检测自最近训练 config (root 字段), 点击 🔄 刷新</font>")
+        except Exception as e:
+            return f"📌 当前训练数据集: <b>检测失败</b> ({e})"
+
+    def _local_datasets(self):
+        """📁 本地训练数据集探测 (2026-08-07 老倪: 数据集只留 metaworld, 插销/套环)"""
+        rows = []
+        root = self._repo_root()
+        import os as _os
+        cands = [
+            ("metaworld_peg_lerobot", "插销插拔", "peg-insert-side-v3", "peg", "Sawyer (metaworld)"),
+            # 2026-08-07 老倪: 只留插销数据 — metaworld_act(套环) 已删; orin 行已删
+        ]
+        for d, cn, official, tag, robot in cands:
+            dp = _os.path.join(root, "data", d)
+            if not _os.path.isdir(dp):
+                continue
+            frames = eps = "?"
+            # 2026-08-07 老倪: orin 数据无 info.json/npz — 按格式探测 (json 采集包数 / parquet)
+            try:
+                import glob as _g2
+                njson = len(_g2.glob(_os.path.join(dp, "*.json")))
+                if njson > 0:
+                    frames, eps = f"{njson} 采集包", "json"
+            except Exception:
+                pass
+            try:
+                ij = _os.path.join(dp, "meta", "info.json")
+                if _os.path.exists(ij):
+                    import json as _j
+                    m = _j.load(open(ij, encoding="utf-8"))
+                    frames, eps = m.get("total_frames", "?"), m.get("total_episodes", "?")
+            except Exception:
+                pass
+            try:
+                tn = _os.path.join(dp, "train.npz")
+                if _os.path.exists(tn):
+                    import numpy as _np
+                    darr = _np.load(tn)
+                    frames, eps = len(darr["observations"]), "npz"
+            except Exception:
+                pass
+            rows.append({
+                "repo_id": f"local://{d}",
+                # 2026-08-07 老倪: 两行命名 — 上行中文名 / 下行官方任务名
+                "name": f"📁 {cn}\n{official}",
+                "robot": robot,
+                "tasks": "—",  # 2026-08-07 老倪: 本地是单一任务演示集, 任务数列不填帧数 (描述列有)
+                "desc": f"{cn} ({official}) · {frames}" + ("" if "采集包" in str(frames) else " 帧") + f" · {eps} eps",
+                "tags": ["local", tag],
+                "local": True,
+                "local_root": dp,
+                "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
+            })
+        return rows
+
     def _get_cache_dir_for_repo(self, repo_id):
         """获取数据集本地缓存路径 (LeRobot/HuggingFace datasets 格式)"""
         repo_slug = repo_id.replace("/", "___")
         # LeRobot datasets 缓存在 ~/.cache/huggingface/datasets/
         return os.path.expanduser(f"~/.cache/huggingface/datasets/{repo_slug}")
 
+    def _repo_root(self):
+        """项目根目录 (tools/gui/ → 上三级)"""
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
     def _is_cached(self, repo_id):
-        """检查数据集是否已缓存"""
+        """检查数据集是否已缓存 (2026-08-07: metaworld_mt50 本地实际数据在项目 data/, 不在 HF 缓存)"""
+        if repo_id == "lerobot/metaworld_mt50":
+            import glob
+            # 🐛 2026-08-07 老倪: 缓存没显示 — parquet 在 chunk-000/ 子目录, glob 需递归
+            return len(glob.glob(os.path.join(self._repo_root(), "data", "metaworld_mt50",
+                                              "data", "**", "*.parquet"), recursive=True)) > 0
         path = self._get_cache_dir_for_repo(repo_id)
         if not os.path.exists(path):
             return False
@@ -1673,8 +1724,13 @@ class DatasetModule(SubModuleWidget):
         return delete
 
     def _show_dataset_info(self, ds):
-        """查看数据集信息 — 通过 HuggingFace Hub API 获取元数据"""
+        """查看数据集信息 — 本地训练数据集直接显示本地信息, 云端走 HuggingFace Hub API"""
         repo_id = ds["repo_id"]
+        if ds.get("local"):
+            info_text = (f"{ds['name']}\n{'─' * 40}\n路径: {ds.get('local_root', repo_id)}\n"
+                         f"类型: {ds['desc']}\n状态: ✅ 本地 (simulink 训练数据)")
+            _msg_ok(self, f"📊 {ds['name']} — 本地训练数据集", info_text)
+            return
         QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
         info_text = f"""
@@ -1933,12 +1989,15 @@ Default Branch: {branch}
         self._download_dialog = progress_dialog
 
     def _on_view_dataset(self, ds):
-        """打开数据集内容查看器"""
+        """打开数据集内容查看器 (2026-08-07 老倪: exec_ 模态 WSLg 不显示 → 改非模态;
+        metaworld_mt50 本地实际数据在 data/, 不在 HF 缓存 → 传 local_root/local_npz)"""
         from dataset_viewer import DatasetViewer
         repo_id = ds["repo_id"]
         cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
-        viewer = DatasetViewer(repo_id, cache_dir, self)
-        viewer.exec_()
+        local_root = ds.get("local_root")
+        local_npz = ds.get("local_npz")
+        viewer = DatasetViewer(repo_id, cache_dir, self, local_root=local_root, local_npz=local_npz)
+        viewer.show()  # 非模态, WSLg 弹窗零容忍 (exec_ 假死)
 
     def _delete_dataset(self, ds):
         """删除数据集本地缓存"""
@@ -1960,6 +2019,97 @@ Default Branch: {branch}
             _msg_ok(self, "已删除", f"{ds['name']} 缓存已清理")
         except Exception as e:
             _msg_ok(self, "删除失败", f"部分文件可能被占用:\n{e}", kind="warning")
+
+
+class DataSpaceModule(QWidget):
+    """🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息, 数据一致性)
+    每个 simulink node ↔ 关联数据对象 (数据集/曲线/模型/视频/报告) 全息映射表"""
+
+    def __init__(self, main_win, parent=None):
+        super().__init__(parent)
+        self.main = main_win
+        from data_space import GlobalDataSpace
+        self.ds = GlobalDataSpace()
+        self._build()
+        self.refresh()
+
+    def _build(self):
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        bl = QVBoxLayout(self)
+        bl.setContentsMargins(18, 18, 18, 18)
+        bl.setSpacing(10)
+
+        title = QLabel("🌐 全局数据空间 — node ↔ 数据对象 全息映射")
+        title.setFont(QFont("Arial", 13, QFont.Bold))
+        title.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none;")
+        bl.addWidget(title)
+
+        top = QHBoxLayout()
+        self.lbl_summary = QLabel("加载中…")
+        self.lbl_summary.setFont(QFont("Arial", 10))
+        self.lbl_summary.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
+        top.addWidget(self.lbl_summary)
+        top.addStretch()
+        btn = QPushButton("🔄 刷新数据空间")
+        btn.setFont(QFont("Arial", 10))
+        btn.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 16px;")
+        btn.clicked.connect(self.refresh)
+        top.addWidget(btn)
+        bl.addLayout(top)
+
+        self._table = QTableWidget()
+        self._table.setColumnCount(7)
+        self._table.setHorizontalHeaderLabels(["节点", "节点类型", "关联数据对象", "关键属性", "时间", "状态", "路径"])
+        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setStyleSheet(f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}"
+                                  f"QHeaderView::section {{ background:{C_BG2}; color:{SYS2_COLOR}; border:1px solid {C_BORDER}; padding:6px; font-weight:bold; }}")
+        bl.addWidget(self._table, 1)
+
+        self.lbl_issues = QLabel("")
+        self.lbl_issues.setFont(QFont("Arial", 10))
+        self.lbl_issues.setWordWrap(True)
+        self.lbl_issues.setStyleSheet(f"color:{C_RED}; background:transparent; border:none;")
+        bl.addWidget(self.lbl_issues)
+
+    def refresh(self):
+        try:
+            self.ds.scan(force=True)
+            nodes = getattr(self.main, "simulink", None)
+            node_list = nodes.nodes if nodes else []
+            from PyQt5.QtWidgets import QTableWidgetItem
+            rows = []
+            for n in node_list:
+                objs = self.ds.node_objects(n)
+                if not objs:
+                    rows.append((n.get("name", "?"), n.get("type", "?"), "—", "—", "—", "·", "—"))
+                for kind, obj in objs[:3]:
+                    attr = obj.get("frames", obj.get("points", obj.get("steps", obj.get("size", "—"))))
+                    ts = obj.get("ts", obj.get("mtime", "—"))
+                    if isinstance(ts, float):
+                        import time as _t
+                        ts = _t.strftime("%m-%d %H:%M", _t.localtime(ts))
+                    pth = obj.get("path", obj.get("file", obj.get("dir", "—")))
+                    rows.append((n.get("name", "?"), n.get("type", "?"),
+                                 f"{kind}: {obj.get('id', obj.get('policy', obj.get('dir', '?')))}",
+                                 str(attr), str(ts), "✅", str(pth)))
+            self._table.setRowCount(len(rows))
+            for i, r in enumerate(rows):
+                for c, v in enumerate(r):
+                    it = QTableWidgetItem(str(v))
+                    it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+                    self._table.setItem(i, c, it)
+            s = self.ds.summary()
+            issues = self.ds.consistency()
+            self.lbl_summary.setText(
+                f"📦 数据集 {s['datasets']} · 📈 曲线 {s['curves']} · 🧠 模型 {s['models']}"
+                f" · 🎬 视频 {s['rollouts']} · 📄 报告 {s['reports']} · 画布节点 {len(node_list)}")
+            self.lbl_issues.setText(
+                f"⚠️ 一致性问题 {len(issues)}: {'; '.join(issues[:5])}" if issues else "✅ 数据一致性正常")
+        except Exception as e:
+            self.lbl_summary.setText(f"❌ 数据空间刷新失败: {e}")
 
 
 class TrainingModule(QWidget):
@@ -6849,6 +6999,7 @@ class StudioMainWindow(QMainWindow):
             "version":    9,
             "inference":  10,
             "simulink":   11,
+            "dataspace":  12,
         }
 
         self.stack.addWidget(ArchitectureModule())
@@ -6871,6 +7022,10 @@ class StudioMainWindow(QMainWindow):
         self.simulink = SimulinkModule()
         self.simulink.flow_synced = self.on_flow_sync
         self.stack.addWidget(self.simulink)
+
+        # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
+        self.dataspace = DataSpaceModule(self)
+        self.stack.addWidget(self.dataspace)
 
         root.addWidget(self.stack, 1)
         central.setLayout(root)

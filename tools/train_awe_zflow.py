@@ -223,12 +223,13 @@ def main():
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--data-root", default=os.path.join(ROOT, "data", "metaworld_act"))
+    ap.add_argument("--max-frames", type=int, default=2000, help="最多使用帧数 (2026-08-07: 默认200太少)")
     ap.add_argument("--hidden", type=int, default=256)
     ap.add_argument("--log-freq", type=int, default=5)
     args = ap.parse_args()
 
     print(f"🧿 Z-MAX AWE 精简训练 (场景原生 + zFlow 三层潜空间世界模型) · {DEVICE} · 4060 适配版", flush=True)
-    obs, st, act, tac, act_hist, act_dim, st_dim, tac_dim, raw_stats = load_data(args.data_root)
+    obs, st, act, tac, act_hist, act_dim, st_dim, tac_dim, raw_stats = load_data(args.data_root, max_frames=args.max_frames)
     a_mean, a_std, s_mean, s_std, t_mean, t_std = raw_stats  # 原始统计 (反归一化用)
     n = len(st)
 

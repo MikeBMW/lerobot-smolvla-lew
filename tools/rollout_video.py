@@ -59,6 +59,21 @@ def load_policy(policy: str):
     # 生成的 ts 可能差几秒 → 记录路径不存在 → rollout 失败 (自动交付卡在这)
     # 兜底: glob 找最新同前缀目录
     base_dir = os.path.join(ROOT, ckpt_base)
+    # 🐛 2026-08-07: expert_mlp 是 .pt 文件 (distill 保存) 非目录 → 特判
+    if policy == "expert_mlp" and os.path.isfile(base_dir):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "distill_expert", os.path.join(ROOT, "tools", "distill_expert.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        data = torch.load(base_dir, map_location="cpu")
+        pol = mod.ExpertMLP(int(data.get("obs_dim", 39)), int(data.get("act_dim", 4)))
+        pol.load_state_dict(data["model"])
+        pol.obs_dim = int(data.get("obs_dim", 39))
+        pol.state_dim = pol.obs_dim  # 🐛 2026-08-07: st_dim 推断用 obs_dim (默认2 致 forward 失败)
+        pol.action_dim = int(data.get("act_dim", 4))
+        pol.eval()
+        return pol, base_dir
     if not os.path.isdir(base_dir):
         import glob as _g
         prefix = os.path.basename(os.path.dirname(ckpt_base)).rsplit("_", 1)[0]  # vla_touch_20260806_180350 → vla_touch_20260806
@@ -198,10 +213,16 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
                 _st_raw = np.asarray(obs, dtype=np.float32)
             st = _st_raw[:st_dim] if _st_raw.ndim == 1 and _st_raw.size >= st_dim else np.zeros(st_dim, dtype=np.float32)
             dev = next(policy.parameters()).device
-            # AWE: 输入归一化 (训练管道一致)
+            # AWE/ACT: 输入归一化 (训练管道一致) — 🐛 2026-08-07: stats 可能旧 3D 而
+            #   state 39D (完整观测) → (39,) - (3,) 广播异常 → 维度不足补零
             if hasattr(policy, "stats") and policy.stats.get("s_mean") is not None:
-                sm = np.array(policy.stats["s_mean"], dtype=np.float32)[:st_dim]
-                ss = np.array(policy.stats["s_std"], dtype=np.float32)[:st_dim] + 1e-6
+                sm = np.array(policy.stats["s_mean"], dtype=np.float32)
+                ss = np.array(policy.stats["s_std"], dtype=np.float32) + 1e-6
+                if sm.size >= st_dim:
+                    sm, ss = sm[:st_dim], ss[:st_dim]
+                else:
+                    sm = np.pad(sm, (0, st_dim - sm.size))
+                    ss = np.pad(ss, (0, st_dim - ss.size)) + 1e-6  # 补零区防除0 NaN
                 st = (st - sm) / ss
             batch = {
                 "observation.image": torch.from_numpy(rgb[np.newaxis].transpose(0, 3, 1, 2) / 255.0).float().to(dev),
@@ -218,6 +239,9 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
             with torch.no_grad():
                 if hasattr(policy, "select_action"):
                     pred = policy.select_action(batch)
+                elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"):
+                    # 🐛 2026-08-07: ExpertMLP 纯 forward (39D 状态直出动作)
+                    pred = policy(batch["observation.state"])
                 elif hasattr(policy, "_cond"):  # vla_touch: interpolant 采样
                     tac_dim = getattr(policy, "tactile_dim", 3) or 3
                     tac = torch.zeros((1, tac_dim), dtype=torch.float32, device=dev)
@@ -252,6 +276,7 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
         except Exception as ex:
             import traceback as _tb
             print(f"⚠️ 推理异常({policy.__class__.__name__}): {ex}")
+            _tb.print_exc(limit=3)  # 2026-08-07 诊断: 定位 39 vs 3 广播来源
             pass  # 推理失败用零动作 (视频仍展示环境)
         actions.append(act)
         # 更新 AWE 动作历史 (归一化空间, 与训练一致)
@@ -272,7 +297,8 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--policy", choices=["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow"], default="act")
+    ap.add_argument("--policy", choices=["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow",
+                                        "expert_mlp", "expert_policy"], default="act")
     ap.add_argument("--steps", type=int, default=120)
     ap.add_argument("--out", default=None)
     ap.add_argument("--seed", type=int, default=0)

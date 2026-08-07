@@ -301,7 +301,8 @@ def score_model(policy, curves, rollout_have):
     memv = mem.get(policy, 3.0)
     deriv["gpu"] = "max(3, 10-1.2·mem) = max(3, 10-1.2·%.1f) = max(3, %.1f) = %.1f  [表格权威 %.1f]" % (memv, 10 - memv * 1.2, max(3, 10 - memv * 1.2), s["gpu"])
     # ④ 世界模型
-    deriv["world_model"] = ("有世界模型 → 8.5" if "世界模型" in m["world_model"] else "无世界模型(纯策略) → 4.5") + "  [表格权威 %.1f]" % s["world_model"]
+    _has_wm = "世界模型" in m["world_model"] or "zFlow" in m["arch"] or "LeWorldModel" in m["arch"]
+    deriv["world_model"] = ("有世界模型(未来预测) → 8.5" if _has_wm else "无世界模型(纯策略) → 4.5") + "  [表格权威 %.1f]" % s["world_model"]
     # ⑤ 触觉/力觉
     has_tac = ("触觉" in m["category"] or "视触觉" in m["category"]
                or "Marker" in m["arch"] or "触觉" in m["arch"] or "视触觉" in m["arch"])
@@ -318,6 +319,17 @@ def score_model(policy, curves, rollout_have):
     terms = ["%.1f×%.0f%%" % (s[k], W[k] * 100) for k in W]
     total = sum(s[k] * W[k] for k in W)
     deriv["_total"] = "综合 = Σ(得分×权重) = %s = %.2f" % (" + ".join(terms), total)
+    # 为什么这个评价 (2026-08-07 老倪: 每项得分必须解释为什么)
+    WHY = {
+        "act": "ACT 是回归式基准: 收敛仅降1%(行为克隆小模型慢) · 无世界模型/触觉 · 但边缘友好(无扩散采样)显存小",
+        "smolvla": "SmolVLA 吞吐极高(2753步/s)但全量采样慢于ACT · 无世界模型/触觉 · 边缘需量化 · 数据需求高",
+        "smolvla_lew": "有 LeWorldModel 世界模型(8.5) · 但收敛差(5%)·显存最大7GB(4060吃力)·边缘重 · 数据需求中",
+        "vla_touch": "触觉 Marker 桥原生(9.0)是插拔刚需 · 边缘Orin友好 · 但无世界模型 · 吞吐/显存中等 · 数据需求中",
+        "awe_zflow": "收敛最佳(降94%→10.0) + zFlow 世界模型(8.5) + 视触觉(9.0) + 边缘友好 — 全维度无短板; 显存3.5GB中等; 数据需求低(蒸馏) — 综合最高 8.36 当选型首选",
+        "expert_mlp": "蒸馏自专家: 收敛快(降70%→9.1)·吞吐极高(微秒级MLP)·数据需求低 · 无世界模型/触觉 · 显存仅0.5GB",
+        "expert_policy": "官方规则基准(真值锚点): 不训练(收敛/吞吐中性5.0) · 无触觉/世界模型 · 部署零开销 · 数据需求无(9.5) — 任务成功率85%是评分外真值, 不参与排名",
+    }
+    deriv["_why"] = WHY.get(policy, "")
     return dict(scores=s, weights=W, total=total, deriv=deriv)
 
 
@@ -722,6 +734,49 @@ def build_pdf(flow, curves, rollout_have, out_path):
     E.append(TBL(rows, widths=[24 * mm, 20 * mm, 16 * mm, 20 * mm, 20 * mm, 26 * mm, 20 * mm, 20 * mm], fs=7.5))
     E.append(Spacer(1, 2 * mm))
     E.append(_P("性价比 = 综合评分 / (1 + 调参难度惩罚)。低成本高收益模型 (ACT/VLA-Touch/AWE) 适合作产线主力候选。", small))
+    # 📐 8.0 评分体系说明 (2026-08-07 老倪: 每个指标+权重都要解释)
+    E.append(_P("8.0  评分体系说明 (每个指标是什么 · 为什么这个权重 · 怎么测)", h2))
+    _W_EXPLAIN = [
+        ("① 收敛性 (convergence) · 权重20%",
+         "含义: 训练损失曲线下降幅度, 反映模型「学得动」的程度。Z-MAX 产线要快速迭代, 收敛差=训练浪费GPU时间。"
+         "权重20% = 全维度最高档, 因为收敛性是训练可行性的第一门槛(不收敛=其余全白搭)。"
+         "测量: 训练曲线首点loss vs 末点loss 的下降百分比, 归一化到 0-10。"
+         "满分10 = 下降率≥84% (如 AWE 94%: 0.63→0.036)。"),
+        ("② 世界模型 (world_model) · 权重15%",
+         "含义: 模型是否含「预测未来状态」模块(如 LeWorldModel/zFlow GRU), 有=能预判目标运动, 插拔对准更稳。"
+         "权重15%: 世界模型是 SmolVLA+LEW/AWE 的核心卖点, 但对插拔最终成功率贡献间接(可被直接感知替代), 故低于触觉。"
+         "测量: 架构是否含未来预测模块。有=8.5, 无=4.5。"),
+        ("③ 触觉/力觉 (tactile) · 权重20%",
+         "含义: 是否原生支持触觉/力觉输入。Z-MAX 光模块插拔是力控场景 — 插入瞬间的力反馈决定成功与否, 无触觉=盲插。"
+         "权重20% = 与收敛性并列最高档, 插拔力控是产品刚需。"
+         "测量: 架构 category/arch 是否含触觉/视触觉/Marker。有=9.0 (VLA-Touch/AWE), 无=4.0。"),
+        ("④ 边缘部署 (edge) · 权重15%",
+         "含义: 能否直接部署到 Orin (Z700 边缘算力 ~275 TOPS)。部署不了=模型再好也上不了产线。"
+         "权重15%: 部署可行性是工程落地门槛, 但不是算法能力本身。"
+         "测量: 推理链是否 Orin 友好(无重扩散采样/量化代价)。✅=9.0, ⚠️=5.5。"),
+        ("⑤ 训练吞吐 (throughput) · 权重10%",
+         "含义: 训练速度 (step/s)。产线数据源源不断, 吞吐低=训练跟不上采集。"
+         "权重10%: 吞吐影响迭代速度, 但不影响最终精度, 故中等权重。"
+         "测量: 训练日志实测 step/s。公式 min(10, 4+1.8·log10(step_s+1))。"),
+        ("⑥ 显存友好 (gpu) · 权重10%",
+         "含义: 训练显存占用 (反向: 占用越小分越高)。4060 8GB 是训练主力, 显存超=训不动。"
+         "权重10%: 与吞吐并列, 资源约束类指标。"
+         "测量: 实测峰值显存档位。公式 max(3, 10-1.2×mem_GB)。"),
+        ("⑦ 数据需求 (data) · 权重5%",
+         "含义: 训练所需数据量 (反向: 需求低分高)。真机数据采集昂贵(Orin 逐条采集), 数据饥渴=成本高。"
+         "权重5%: 数据量影响成本但可用仿真补, 权重最低档。"
+         "测量: 数据需求等级映射 {无:9.5, 低:9.0, 中:7.5, 高:5.5, 很高:4.0}。"),
+        ("⑧ 视频证据 (video_evid) · 权重5%",
+         "含义: 是否有 rollout 推理视频佐证 (有视频=结果可肉眼核验, 非空谈)。"
+         "权重5%: 证据性指标, 不反映能力本身。"
+         "测量: 是否有 rollout 帧。6.5 + 1.5 (有) = 8.0。"),
+    ]
+    for t, f in _W_EXPLAIN:
+        E.append(_P(f"{t}: {f}", small))
+    E.append(_P("权重合计 = 20+15+20+15+10+10+5+5 = 100%。综合 = Σ(得分×权重), 满分10。"
+                "设计原则: 能力类(收敛/触觉)权重最高, 工程类(部署/吞吐/显存)次之, 成本类(数据)与证据类(视频)最低。", small))
+    E.append(Spacer(1, 2 * mm))
+
     # 📐 8.1 评分公式明细 (2026-08-07 老倪: 对比分数要有公式对应, 说明怎么得到的)
     E.append(_P("8.1  评分公式 (每个维度怎么得到的)", h2))
     E.append(_P("综合评分 = Σᵢ (维度得分ᵢ × 权重ᵢ), 满分 10; 各维度得分公式如下:", body))
@@ -756,6 +811,8 @@ def build_pdf(flow, curves, rollout_have, out_path):
         for k, w in sm["weights"].items():
             lines.append(f"  {k} ({w*100:.0f}%) → {d[k]}")
         lines.append(f"  综合 → {d['_total']}")
+        if d.get("_why"):
+            lines.append(f"  📌 为什么这个评价: {d['_why']}")
         E.append(_P(" | ".join(lines), small))
     E.append(Spacer(1, 2 * mm))
 

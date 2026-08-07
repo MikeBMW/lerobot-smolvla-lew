@@ -55,10 +55,15 @@ GRID_MAJOR = QColor(_st()["grid_major"])
 COLORS = {
     "base": QColor("#f85149"),      # 基础模型 (红)
     "ft": QColor("#00d4aa"),        # 微调模型 (青)
-    "gt": QColor("#3fb950"),        # 专家真值 (绿)
+    "gt": QColor("#f778ba"),        # 专家真值 (粉, 2026-08-07 改: 避免与 vla 绿撞)
     "act": QColor("#58a6ff"),       # ⚔️ ACT 对比 (蓝)
     "smolvla": QColor("#d29922"),   # ⚔️ SmolVLA 对比 (橙)
     "smolvla_lew": QColor("#a371f7"),  # 🔬 SmolVLA+LEW 对比 (紫)
+    # 2026-08-07 老倪: 示波器那么多紫色分不清 → 7 模型各一色高区分
+    "vla_touch": QColor("#3fb950"),     # VLA-Touch (绿)
+    "awe_zflow": QColor("#ff6b6b"),     # AWE-zFlow (亮红)
+    "expert_mlp": QColor("#00b4d8"),    # MLP 蒸馏 (天蓝)
+    "expert_policy": QColor("#e3b341"), # 官方专家 (金 🏆)
     "grid": GRID,
     "text": QColor("#57606a"),
 }
@@ -528,6 +533,7 @@ class FlowScopeDialog(QDialog):
     def _load_data(self):
         # 2026-08-05 老倪: "怎么就一条曲线, 不应该是3个曲线对比么" — 读全部 train_curve_*.json,
         #   每个模型一条 loss 曲线叠加对比 (act蓝/smolvla橙/smolvla_lew紫); 训练中实时刷新
+        ts_map = {}  # 2026-08-07 老倪: loss 带训练时间
         curve = None
         try:
             root = self.module._repo_root()
@@ -557,6 +563,7 @@ class FlowScopeDialog(QDialog):
             all_files = sorted(glob.glob(os.path.join(root, "reports", "train_curve_*.json")),
                                key=os.path.getmtime)
             now = time.time()
+            ts_map = {}  # 2026-08-07 老倪: loss 要显示训练时间
             for f in all_files:
                 # 2026-08-05: 保留所有已训练完成的曲线 (训练启动只重置当前policy,
                 # 不再按 mtime 过滤 — 三模型对比需要同时看已完成模型波形)
@@ -565,9 +572,21 @@ class FlowScopeDialog(QDialog):
                 policy = d.get("policy", "?")
                 # 🏷 显示名映射 (2026-08-05 老倪: "SmolVLA(smolvla_lew)分开写, 这是两个模型" —
                 #   policy 标识不显示, 用模型显示名: act→ACT / smolvla→SmolVLA / smolvla_lew→SmolVLA+LEW)
-                _DISPLAY = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW"}
+                _DISPLAY = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW",
+                            "vla_touch": "VLA-Touch", "awe_zflow": "AWE-zFlow",
+                            "expert_mlp": "MLP 蒸馏", "expert_policy": "官方专家"}
                 disp = _DISPLAY.get(policy, policy)
-                color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")
+                # 🕐 训练时间 (ts 字段 %Y%m%d_%H%M%S → MM-DD HH:MM; 缺失用文件 mtime)
+                _ts = d.get("ts", "")
+                if len(_ts) == 15 and _ts[:8].isdigit():
+                    ts_map[disp] = f"{_ts[4:6]}-{_ts[6:8]} {_ts[9:11]}:{_ts[11:13]}"
+                else:
+                    ts_map[disp] = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(f)))
+                # 🎨 7 模型各一色 (2026-08-07 老倪: 原来非 act/smolvla 全归紫色分不清)
+                _CMAP = {"act": "act", "smolvla": "smolvla", "smolvla_lew": "smolvla_lew",
+                         "vla_touch": "vla_touch", "awe_zflow": "awe_zflow",
+                         "expert_mlp": "expert_mlp", "expert_policy": "expert_policy"}
+                color = _CMAP.get(policy, "base")
                 if len(cv) < 2:
                     # 2026-08-05 老倪: "刚开始, 不要显示任何曲线, 会引起歧义. 训练完了再显示"
                     # 1 点(训练中)不进 series → 不画; 但记录训练中状态供指标行提示
@@ -598,14 +617,16 @@ class FlowScopeDialog(QDialog):
             self.scope.update()
             return
         self.scope.set_series(series)
-        # 指标行: 各模型首尾 loss + 训练中/缺模型提示 (2026-08-05: 训练中显示⏳不显示曲线)
+        # 指标行: 各模型首尾 loss + 训练时间 + 训练中/缺模型提示
+        # (2026-08-07 老倪: loss 显示上次/最新结果, 要带训练时间)
         parts = []
         for name, val in series.items():
             ys = val[1] if len(val) >= 2 else val[0]
             first, last = float(ys[0]), float(ys[-1])
             drop = first - last
             pct = (drop / first * 100) if first else 0.0
-            parts.append(f"{name}: {first:.3f}→{last:.3f} (↓{drop:.3f}, {pct:+.1f}%)")
+            _t = ts_map.get(name, "")
+            parts.append(f"{name}·{_t}: {first:.3f}→{last:.3f} (↓{drop:.3f}, {pct:+.1f}%)")
         missing = [n for p, n in (("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"))
                    if p not in present_policies and n not in training]
         train_tip = f" · ⏳ 训练中: {'/'.join(sorted(training))}" if training else ""
@@ -998,13 +1019,11 @@ class InferenceVideoDialog(QDialog):
         self._timer.setInterval(100)
         self._load_frames()
         if self.frame_dirs:
-            # 🔄 2026-08-06 老倪: "视频怎么还显示 14:21" — 训练(17:21)后旧帧还在播;
-            #   检测到任一模型训练曲线比视频帧新 → 自动重新生成 rollout
+            # 🐛 2026-08-08 老倪: 白屏反复出现 — 打开永远先显示历史视频 (不自动重生成),
+            #   新 checkpoint 只在 note 提示, 点「🔄 重新生成」才更新
+            self._play()
             if self._check_newer_ckpt():
-                self.lbl_note.setText("🔄 检测到新训练 checkpoint, 正在重新生成推理视频…")
-                QTimer.singleShot(300, self._run_rollouts)
-            else:
-                self._play()
+                self.lbl_note.setText("🔄 检测到新训练 checkpoint · 已显示历史视频 · 点「🔄 重新生成推理」更新")
         else:
             # 无帧 → 自动生成 3 模型 rollout (2026-08-05 老倪: 训练完自动接推理对比)
             QTimer.singleShot(300, self._run_rollouts)

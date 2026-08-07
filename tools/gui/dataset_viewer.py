@@ -31,10 +31,12 @@ C_BORDER = "#30363d"
 class DatasetViewer(QDialog):
     """数据集内容查看器"""
 
-    def __init__(self, repo_id: str, cache_dir: str, parent=None):
+    def __init__(self, repo_id: str, cache_dir: str, parent=None, local_root=None, local_npz=None):
         super().__init__(parent)
         self.repo_id = repo_id
         self.cache_dir = cache_dir
+        self.local_root = local_root  # 2026-08-07 老倪: metaworld_mt50 本地实际数据在 data/, 不在 HF 缓存
+        self.local_npz = local_npz    # 2026-08-07: metaworld_act/train.npz (系统 python3 无 pandas, numpy 直接读)
         self.repo_cache = self._get_repo_cache_dir(repo_id, cache_dir)
 
         self.setWindowTitle(f"📊 数据集查看器 — {repo_id}")
@@ -47,9 +49,16 @@ class DatasetViewer(QDialog):
         self.current_episode = 0
         self.current_frame = 0
         self.frames = []  # numpy arrays
+        self._npz_cache = None  # 2026-08-07: npz 拖动滑块缓存 (不重复 np.load 28MB)
+        self._npz_obs = None   # 提取到内存的观测数组 (翻帧提速)
+        self._npz_st = None
+        self._npz_ac = None
 
         self._build_ui()
         self._load_dataset_info()
+        # 2026-08-07 老倪: 下一帧点不了 — 打开即自动加载第一帧 (maximum 就位, 不用手动点加载帧)
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(0, self._load_video_frame)
 
     def _get_repo_cache_dir(self, repo_id, cache_dir):
         """找到 HuggingFace Hub 缓存目录"""
@@ -292,7 +301,7 @@ class DatasetViewer(QDialog):
                                self._find_files_in_cache("*.webm") + \
                                self._find_files_in_cache("*.avi")
             for vf in self.video_files:
-                item = QListWidgetItem(f"🎥 {os.path.relpath(vf, self.repo_cache)}")
+                item = QListWidgetItem(f"🎥 {os.path.relpath(vf, self.local_root or self.repo_cache)}")
                 item.setData(Qt.UserRole, vf)
                 self.video_list.addItem(item)
 
@@ -309,18 +318,26 @@ class DatasetViewer(QDialog):
 
     def _find_file_in_cache(self, filename):
         """在缓存目录中查找文件"""
-        for root, dirs, files in os.walk(self.repo_cache):
-            if filename in files:
-                return os.path.join(root, filename)
+        roots = [self.repo_cache]
+        if self.local_root:  # 2026-08-07: 本地项目数据 (metaworld_mt50 在 data/)
+            roots.append(self.local_root)
+        for base in roots:
+            for root, dirs, files in os.walk(base):
+                if filename in files:
+                    return os.path.join(root, filename)
         return None
 
     def _find_files_in_cache(self, pattern):
         """在缓存目录中查找匹配的文件"""
         results = []
-        for root, dirs, files in os.walk(self.repo_cache):
-            for f in files:
-                if f.endswith(pattern[1:]):
-                    results.append(os.path.join(root, f))
+        roots = [self.repo_cache]
+        if self.local_root:
+            roots.append(self.local_root)
+        for base in roots:
+            for root, dirs, files in os.walk(base):
+                for f in files:
+                    if f.endswith(pattern[1:]):
+                        results.append(os.path.join(root, f))
         return sorted(results)
 
     def _on_episode_changed(self, val):
@@ -338,9 +355,24 @@ class DatasetViewer(QDialog):
     def _on_frame_changed(self, val):
         self.current_frame = val
         self.frame_label.setText(str(val))
+        # 🐛 2026-08-07 老倪: 点不了下一帧 — 滑块变化只改数字不加载图 → 触发重新加载
+        if self.video_files or self.parquet_files or self.local_npz:
+            self._load_video_frame()
 
     def _load_video_frame(self):
-        """从视频文件中解码指定帧"""
+        """从视频文件/parquet/npz/json 采集包中解码指定帧
+        (2026-08-07 老倪: orin_live 是 json 采集包(无图像) → 显示包 meta + 帧状态/动作)"""
+        if self.local_npz and os.path.exists(self.local_npz):
+            self._load_npz_frame()
+            return
+        if self.local_root and not self.parquet_files and not self.video_files:
+            import glob as _g
+            if _g.glob(os.path.join(self.local_root, "*.json")):
+                self._load_json_package()
+                return
+        if not self.video_files and self.parquet_files:
+            self._load_parquet_frame()
+            return
         ep = self.current_episode
         # 找到对应 episode 的视频
         video_path = None
@@ -394,6 +426,119 @@ class DatasetViewer(QDialog):
             self.lbl_image.setText("⚠️ 需要安装 opencv-python\npip install opencv-python")
         except Exception as e:
             self.lbl_image.setText(f"⚠️ 读取失败: {e}")
+
+    def _load_parquet_frame(self):
+        """2026-08-07 老倪: 本地数据无 mp4 → 从 npz (numpy 直读) 或 parquet 内嵌图像读帧"""
+        if self.local_npz and os.path.exists(self.local_npz):
+            self._load_npz_frame()
+            return
+        try:
+            import pandas as _pd
+            import numpy as _np
+            import io as _io
+            from PIL import Image as _PIL
+            if not self.parquet_files:
+                self.lbl_image.setText("⚠️ 无数据文件")
+                return
+            df = _pd.read_parquet(self.parquet_files[0])
+            ep_df = df[df["episode_index"] == self.current_episode] if "episode_index" in df else df
+            if len(ep_df) == 0:
+                ep_df = df  # 单 episode / 无该 ep → 全量
+            if self.current_frame >= len(ep_df):
+                self.lbl_image.setText(f"⚠️ 帧 {self.current_frame} 超出 (该 episode 共 {len(ep_df)} 帧)")
+                return
+            img = ep_df.iloc[self.current_frame]["observation.image"]
+            if isinstance(img, dict) and "bytes" in img:
+                img = img["bytes"]
+            if isinstance(img, bytes):
+                pil = _PIL.open(_io.BytesIO(img)).convert("RGB")
+                rgb = _np.asarray(pil)
+                h, w, ch = rgb.shape
+                q_img = QImage(rgb.data.tobytes(), w, h, ch * w, QImage.Format_RGB888)
+                self.lbl_image.setPixmap(QPixmap.fromImage(q_img).scaled(640, 480, Qt.KeepAspectRatio))
+                self.lbl_image.setText("")
+                if self.frame_slider.maximum() < 10:
+                    self.frame_slider.setMaximum(max(0, len(ep_df) - 1))
+            else:
+                self.lbl_image.setText(f"⚠️ 图像字段格式: {type(img).__name__}")
+        except Exception as e:
+            self.lbl_image.setText(f"⚠️ parquet 读取失败: {e}")
+
+    def _load_npz_frame(self):
+        """2026-08-07: metaworld_act/train.npz 帧显示 (系统 python3 有 numpy, 无 pandas/pyarrow)"""
+        try:
+            import numpy as _np
+            if self._npz_cache is None:
+                self._npz_cache = _np.load(self.local_npz)
+                # 🐛 2026-08-07 老倪: 翻帧慢 (1.5s/帧) — NpzFile 数组访问是 lazy 解压,
+                #   每帧 d["observations"] 都重新解压 → 提取到内存 ndarray 一次
+                self._npz_obs = _np.array(self._npz_cache["observations"])
+                self._npz_st = self._npz_cache["states"] if "states" in self._npz_cache else None
+                self._npz_ac = self._npz_cache["actions"] if "actions" in self._npz_cache else None
+            obs = self._npz_obs
+            n = len(obs)
+            if self.current_frame >= n:
+                self.lbl_image.setText(f"⚠️ 帧 {self.current_frame} 超出 (共 {n} 帧)")
+                return
+            arr = obs[self.current_frame]  # (3,H,W)
+            if arr.ndim == 4 and arr.shape[0] == 1:
+                arr = arr[0]
+            rgb = (arr.transpose(1, 2, 0) * 255).astype(_np.uint8) if arr.shape[0] == 3 else arr
+            # 2026-08-07 老倪: 插销数据(peg_v2/peg_lerobot)与视频同源需 180° 旋转;
+            #   metaworld_act 是 MT50 官方数据(方向本来正确) → 不转
+            if "peg" in (self.local_npz or ""):
+                rgb = _np.rot90(rgb, k=2)
+            h, w, ch = rgb.shape
+            q_img = QImage(rgb.data.tobytes(), w, h, ch * w, QImage.Format_RGB888)
+            self.lbl_image.setPixmap(QPixmap.fromImage(q_img).scaled(640, 480, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.lbl_image.setText("")
+            if self.frame_slider.maximum() < 10:
+                self.frame_slider.setMaximum(max(0, n - 1))
+            st = self._npz_st[self.current_frame] if self._npz_st is not None else None
+            ac = self._npz_ac[self.current_frame] if self._npz_ac is not None else None
+            tip = f"帧 {self.current_frame}/{n} · 任务: {self._npz_cache['task_name'] if 'task_name' in self._npz_cache else '?'}"
+            if st is not None:
+                tip += f"\nstate {st.round(3).tolist()}"
+            if ac is not None:
+                tip += f"\naction {ac.round(3).tolist()}"
+            self.lbl_image.setToolTip(tip)
+        except Exception as e:
+            self.lbl_image.setText(f"⚠️ npz 读取失败: {e}")
+
+    def _load_json_package(self):
+        """2026-08-07 老倪: orin 采集包 (json, 无图像) → 显示包 meta + 帧状态/动作"""
+        try:
+            import json as _j, glob as _g
+            jsons = sorted(_g.glob(os.path.join(self.local_root, "*.json")))
+            if not jsons:
+                self.lbl_image.setText("⚠️ 无数据文件")
+                return
+            if self.current_episode >= len(jsons):
+                self.current_episode = 0
+            d = _j.load(open(jsons[self.current_episode], encoding="utf-8"))
+            meta = d.get("meta", {})
+            frames = d.get("frames", [])
+            if not frames:
+                self.lbl_image.setText(f"📦 包 {os.path.basename(jsons[self.current_episode])} 无帧数据")
+                return
+            if self.current_frame >= len(frames):
+                self.current_frame = len(frames) - 1
+            fr = frames[self.current_frame]
+            st = fr.get("observation.state", [])
+            ac = fr.get("action", [])
+            txt = (f"📦 {os.path.basename(jsons[self.current_episode])}\n"
+                   f"源: {meta.get('source', '?')} · 帧: {len(frames)} · 关节: {meta.get('n_joint', '?')}D\n\n"
+                   f"帧 {self.current_frame}/{len(frames)}\n"
+                   f"state: {str(st)[:84]}\n"
+                   f"action: {str(ac)[:64]}")
+            self.lbl_image.setPixmap(QPixmap())
+            self.lbl_image.setText(txt)
+            if self.frame_slider.maximum() < len(frames) - 1:
+                self.frame_slider.setMaximum(max(0, len(frames) - 1))
+            if self.ep_slider.maximum() < len(jsons) - 1:
+                self.ep_slider.setMaximum(max(0, len(jsons) - 1))
+        except Exception as e:
+            self.lbl_image.setText(f"⚠️ json 读取失败: {e}")
 
     def _load_state_action_plot(self):
         """加载并显示 state/action 数据（文本形式）"""
