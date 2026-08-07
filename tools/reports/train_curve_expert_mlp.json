@@ -1,0 +1,1 @@
+{"policy": "expert_mlp", "name": "MLP 蒸馏", "ts": "20260807_150756", "curve": [], "step_s": 0, "ckpt": "outputs/rl_peg/expert_mlp.pt", "success": "抓起18/20 插入11/20 (55%)"}

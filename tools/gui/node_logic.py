@@ -730,6 +730,19 @@ _reg("decoder",    ["Decoder", "decoder"], "🔡 Transformer Decoder — 动作�
 _reg("action_head", ["Action Head", "action_head"], "🎯 Action Head — 关节动作映射", node_action_head)
 _reg("ensemble",   ["Temporal Ensemble", "Ensemble"], "⏳ Temporal Ensemble — 动作平滑", node_ensemble)
 _reg("scope",      ["Scope"], "📊 Scope 示波器 — 训练效果波形", node_scope)
+# 🆕 2026-08-08 老倪: 总系统节点标准化 — Subsystem 双击展开「🔬 模型对比」
+def node_topsys(module, node, label=None):
+    """🔬 总系统 (Subsystem) — 双击展开「🔬 模型对比」七模型训练线"""
+    try:
+        sub = (node.get("params") or {}).get("subsystem", "🔬 模型对比")
+        if getattr(module, "load_reference_app_by_name", None):
+            module.load_reference_app_by_name(sub)
+            module._log(f"🔬 总系统 → 展开子系统: {sub}")
+    except Exception:
+        pass
+    return None, "总系统子系统"
+
+_reg("topsys",     ["总系统", "Subsystem"], "🔬 总系统 — Subsystem 双击展开模型对比", node_topsys)
 # 🆕 2026-08-05 新增模型节点 (五模型对比 / VLA-Touch / AWE 管道)
 _reg("smolvlm2",   ["SmolVLM2"], "🧠 SmolVLM2-500M — 视觉语言主干", node_smolvlm2)
 _reg("dit_b",      ["DiT-B", "DiT"], "🌀 DiT-B 动作解码 — 扩散动作生成器", node_dit_b)

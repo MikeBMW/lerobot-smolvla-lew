@@ -244,38 +244,30 @@ class SystemSidebar(QFrame):
 
         layout.addSpacing(8)
 
-        sep_label = QLabel("模块库")  # 改名：Z-MAX 系统架构 → 模块库，后续支持拖拽到主窗口
+        sep_label = QLabel("三层系统")  # 2026-08-08 老倪: 模块库 → 三层系统
         sep_label.setFont(QFont("Arial", 10, QFont.Bold))
         sep_label.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(sep_label)
 
-        # System 2
+        # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
-            "sys2", "System 2", "L4级大脑 · 5G/有线",
-            SYS2_COLOR, "云端智能体 · 任务拆解\n动态调度Sys-11/Sys-12"
+            "sys2", "System 2", "L4级大脑 · 云端训练",
+            SYS2_COLOR, "云端智能体 · 任务拆解\n大模型训练 · 4090 · 动态调度 Sys-1"
         )
         self.sys2.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys2)
 
-        # Sys-12
-        self.sys12 = SystemLayerCard(
-            "sys12", "Sys-12 引导系统", "引导 · LeWorldModel · 15M",
-            SYS12_COLOR, "3D空间推理 · 10-20Hz\n目标位姿引导 · Jetson Orin"
+        # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
+        self.sys1 = SystemLayerCard(
+            "sys1", "System 1", "VLA-T + Z-Flow · 500M/15M",
+            SYS11_COLOR, "SYS11 VLA-T 动作 · SmolVLA 500M\nSYS12 Z-Flow 引导 · LeWorldModel 15M"
         )
-        self.sys12.clicked.connect(self.layer_clicked.emit)
-        layout.addWidget(self.sys12)
+        self.sys1.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.sys1)
 
-        # Sys-11
-        self.sys11 = SystemLayerCard(
-            "sys11", "Sys-11 动作系统", "动作 · SmolVLA · 500M",
-            SYS11_COLOR, "端到端VLA · 100Hz+\n精细力控 · 实时Linux"
-        )
-        self.sys11.clicked.connect(self.layer_clicked.emit)
-        layout.addWidget(self.sys11)
-
-        # Sys-0
+        # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
-            "sys0", "Sys-0", "L2基石 · EtherCAT",
+            "sys0", "System 0", "L2基石 · EtherCAT",
             SYS0_COLOR, "安全层 · HAL驱动层\n运动学正逆解 · 急停"
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
@@ -986,26 +978,71 @@ class HomeWidget(QWidget):
     def _modules_grid(self):
         grid = QGridLayout()
         grid.setSpacing(12)
+        # 2026-08-08 老倪: 功能模块顺序 — 第一行: 数据集管理/训练控制台/硬件工具箱;
+        #   第二行: 系统架构/Simulink模式/配置中心; 第三行: 全局数据空间/实时监控/评估分析;
+        #   最后一行: 插拔场景/版本同步
         modules = [
-            ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
-            ("training", "🏋️", "训练控制台",   "Sys-11 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
-            ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
-            ("hardware", "🔧", "硬件工具箱",   "Sys-0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
-            ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
-            ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
-            ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
+            ("training", "🏋️", "训练控制台",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
+            ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
+            ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),
             ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
+            ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
+            ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
+            ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
+            ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
+            ("website",  "🌍", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线\nhttps://datadrive.world/factory-dashboard.html", "#1f6feb"),
         ]
-        for i, (mid, icon, title, syslbl, desc, color) in enumerate(modules):
-            card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color)
-            card.clicked.connect(self.module_clicked.emit)
-            grid.addWidget(card, i // 3, i % 3)
+        # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
+        _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
+        _GROUP_SUBS = ["平台底座 · 数据/训练/硬件", "系统结构 · 架构/仿真/配置",
+                       "数据资产 · 空间/监控/评估", "应用场景 · 插拔/版本/官网"]
+        _GROUP_COLORS = ["#58a6ff", "#00d4aa", "#a371f7", "#e3b341"]  # 每层专属色 (标题用)
+        _GROUP_BORDERS = ["rgba(88,166,255,0.40)", "rgba(0,212,170,0.40)",
+                          "rgba(163,113,247,0.40)", "rgba(227,179,65,0.40)"]  # 边框暗淡 (2026-08-08 老倪: 默认太亮)
+        outer = QVBoxLayout()
+        outer.setSpacing(10)
+        for gi, (gtitle, gsub) in enumerate(zip(_GROUP_TITLES, _GROUP_SUBS)):
+            gcol = _GROUP_COLORS[gi]
+            gbord = _GROUP_BORDERS[gi]
+            frame = QFrame()
+            # 🐛 2026-08-08 老倪: 边框默认暗淡 (rgba 40%), hover 全色 — 与整体协调
+            frame.setStyleSheet(f"""
+                QFrame {{ background:{C_BG}; border:2px solid {gbord}; border-radius:10px; }}
+                QFrame:hover {{ border-color:{gcol}; }}
+            """)
+            fl = QVBoxLayout(frame)
+            fl.setContentsMargins(14, 10, 14, 12)
+            fl.setSpacing(6)
+            # 标题行: 色条 + 组名 + 副标题 (组色)
+            th = QHBoxLayout()
+            bar = QLabel("▍")
+            bar.setStyleSheet(f"color:{gcol}; background:transparent; border:none; font-size:16px; font-weight:900;")
+            th.addWidget(bar)
+            tl = QLabel(gtitle)
+            tl.setFont(QFont("Arial", 12, QFont.Bold))
+            tl.setStyleSheet(f"color:{gcol}; background:transparent; border:none;")
+            th.addWidget(tl)
+            sub = QLabel(gsub)
+            sub.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:9px;")
+            th.addWidget(sub)
+            th.addStretch()
+            fl.addLayout(th)
+            # 3 张卡横排
+            row = QHBoxLayout()
+            row.setSpacing(12)
+            for c in range(3):
+                mid, icon, title, syslbl, desc, color = modules[gi * 3 + c]
+                card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color)
+                card.clicked.connect(self.module_clicked.emit)
+                row.addWidget(card)
+            fl.addLayout(row)
+            outer.addWidget(frame)
         container = QWidget()
         container.setStyleSheet("background:transparent;")
-        container.setLayout(grid)
+        container.setLayout(outer)
         return container
 
     def _stats_bar(self):
@@ -1341,8 +1378,58 @@ class DatasetModule(SubModuleWidget):
         self._populate_table()
         bl.addWidget(self._table)
 
+        # 🧠 2026-08-08 老倪: 训练结果完全可控 — outputs/train 列表 + 删除
+        tr_label = QLabel("🧠 训练结果 (outputs/train)")
+        tr_label.setStyleSheet(f"color:{SYS2_COLOR}; font-size:13px; font-weight:700; background:transparent; border:none; margin-top:6px;")
+        bl.addWidget(tr_label)
+        self._tr_box = QVBoxLayout()
+        bl.addLayout(self._tr_box)
+        self._refresh_train_results()
+
         body.setLayout(bl)
         self._build_shell(body)
+
+    def _refresh_train_results(self):
+        """🧠 列出 outputs/train 全部训练目录 (名字/步数/大小/时间 + 🗑 删除) — 完全可控"""
+        from PyQt5.QtWidgets import QHBoxLayout
+        import glob as _g
+        while self._tr_box.count():
+            it = self._tr_box.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        root = self._repo_root()
+        dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", "*")), key=os.path.getmtime, reverse=True)
+        for d in dirs[:20]:
+            name = os.path.basename(d)
+            ck = os.path.join(d, "checkpoints")
+            steps = max([int(b) for b in os.listdir(ck) if b.isdigit()]) if os.path.isdir(ck) else 0
+            sz = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(d) for f in fs) / 1e6
+            tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
+            row = QHBoxLayout()
+            lbl = QLabel(f"⚙ {name}  ·  {steps} 步  ·  {sz:.0f}MB  ·  {tm}")
+            lbl.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+            row.addWidget(lbl)
+            row.addStretch()
+            btn = QPushButton("🗑")
+            btn.setFixedSize(30, 24)
+            btn.setToolTip(f"删除 {name} (训练中不可删)")
+            btn.setStyleSheet(f"QPushButton {{ background:{C_BG2}; color:#ff6b6b; border:1px solid {C_BORDER}; border-radius:4px; }}")
+            btn.clicked.connect(lambda _, dd=d: self._delete_train_dir(dd))
+            row.addWidget(btn)
+            self._tr_box.addLayout(row)
+
+    def _delete_train_dir(self, d):
+        """🗑 删除训练目录 (确认后 rm -rf)"""
+        import subprocess as _sp
+        _running = bool(_sp.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5).stdout.strip())
+        if _running:
+            self.log_signal.emit("⚠️ 训练进行中, 不删除训练目录")
+            return
+        name = os.path.basename(d)
+        self.log_signal.emit(f"🗑 删除训练结果: {name}")
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+        self._refresh_train_results()
 
     def _populate_table(self):
         """填充数据集表格 (2026-08-07 老倪: 控制台全管 — 本地 metaworld 数据集并入)"""
@@ -1551,7 +1638,7 @@ class DatasetModule(SubModuleWidget):
                 except Exception:
                     continue
             if cur is None:
-                cur = "data/metaworld_peg_lerobot"
+                cur = "data/metaworld_peg"
             dp = os.path.join(root, cur)
             eps = frames = state_d = "?"
             try:
@@ -1586,7 +1673,12 @@ class DatasetModule(SubModuleWidget):
         root = self._repo_root()
         import os as _os
         cands = [
-            ("metaworld_peg_lerobot", "插销插拔", "peg-insert-side-v3", "peg", "Sawyer (metaworld)"),
+            ("metaworld_peg", "插销插拔", "peg-insert-side-v3", "peg", "Sawyer (metaworld)"),
+            # 2026-08-08 老倪: 训练用的 peg_long/peg_far (long2 训练在读) — 探测存在性加入
+            ("metaworld_peg_long", "插销插拔 (长程)", "peg-insert-side-v3 (long)", "peg", "Sawyer (metaworld)"),
+            ("metaworld_peg_far", "插销插拔 (远端)", "peg-insert-side-v3 (far)", "peg", "Sawyer (metaworld)"),
+            # 2026-08-08 老倪: 全能看到 — YOLO 检测数据也显示
+            ("yolo_peg_full", "YOLO 插销检测", "yolo (peg)", "yolo", "YOLOv8"),
             # 2026-08-07 老倪: 只留插销数据 — metaworld_act(套环) 已删; orin 行已删
         ]
         for d, cn, official, tag, robot in cands:
@@ -1630,6 +1722,22 @@ class DatasetModule(SubModuleWidget):
                 "local_root": dp,
                 "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
             })
+        # 🐛 2026-08-08 老倪: 本地所有数据透明 — 自动补全 data/ 未列入白名单的目录
+        shown = {r["local_root"] for r in rows}
+        for _d in sorted(_os.listdir(_os.path.join(root, "data"))):
+            dp = _os.path.join(root, "data", _d)
+            if _os.path.isdir(dp) and dp not in shown:
+                rows.append({
+                    "repo_id": f"local://{_d}",
+                    "name": f"📁 {_d}\n(data/)",
+                    "robot": "?",
+                    "tasks": "—",
+                    "desc": f"本地数据目录 · {_d}",
+                    "tags": ["local", "auto"],
+                    "local": True,
+                    "local_root": dp,
+                    "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
+                })
         return rows
 
     def _get_cache_dir_for_repo(self, repo_id):
@@ -7030,9 +7138,10 @@ class StudioMainWindow(QMainWindow):
         root.addWidget(self.stack, 1)
         central.setLayout(root)
 
-        # 系统层级点击映射
+        # 系统层级点击映射 (2026-08-08 老倪: 三层系统 — SYS2顶/SYS1中(含VLA-T+Z-Flow)/SYS0底)
         self.layer_map = {
             "sys0":  "hardware",
+            "sys1":  "training",
             "sys11": "training",
             "sys12": "evaluation",
             "sys2":  "dataset",
@@ -7216,6 +7325,13 @@ class StudioMainWindow(QMainWindow):
         # 特殊指令：检查更新
         if target == "check_updates":
             self._check_updates()
+            return
+
+        # 特殊指令：产品大屏 (2026-08-08 老倪: 打开工厂数字大屏)
+        # 🐛 WSL 无 xdg-open → QDesktopServices.openUrl 失效 → 用 cmd.exe start (Windows 默认浏览器)
+        if target == "website":
+            import subprocess as _sp
+            _sp.Popen(["cmd.exe", "/c", "start", "", "https://datadrive.world/factory-dashboard.html"])
             return
 
         # 系统层级映射

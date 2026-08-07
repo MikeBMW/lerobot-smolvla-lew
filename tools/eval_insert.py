@@ -58,41 +58,48 @@ def load_policy(policy):
         return pol, None
     return None, None
 
-def _load_stats():
-    """加载训练 stats — 2026-08-07: 优先从 checkpoint preprocessor safetensors 读 (v7 数据被清)"""
+def _load_stats(policy_hint=None):
+    """加载训练 stats — 2026-08-08: 从模型 checkpoint preprocessor 读逐维 norm (v7 数据被清, 逐维才是对的)"""
     import json as _j
-    # 从 ACT checkpoint 的 normalizer 读 (正确 39D/4D)
-    for ck in ["outputs/train/act_peg_long/checkpoints/004000/pretrained_model",
-               "outputs/train/act_peg_v7/checkpoints/004000/pretrained_model",
-               "outputs/train/act_peg_v6/checkpoints/004000/pretrained_model"]:
+    # 候选 checkpoint (按模型)
+    cands = ["outputs/train/smolvla_peg_long2/checkpoints/004000/pretrained_model",
+             "outputs/train/act_peg_long/checkpoints/004000/pretrained_model",
+             "outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
+             "outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model",
+             "outputs/train/smolvla_ft_20260807_161841/checkpoints/004000/pretrained_model",
+             "outputs/train/act_peg_v6/checkpoints/004000/pretrained_model"]
+    for ck in cands:
         st_f = os.path.join(ROOT, ck, "policy_preprocessor_step_3_normalizer_processor.safetensors")
-        if os.path.exists(st_f):
+        if not os.path.exists(st_f):
+            # 尝试 step_2 (AWE 可能不同)
+            import glob as _g
+            cand = _g.glob(os.path.join(ROOT, ck, "policy_preprocessor_step_*normalizer*.safetensors"))
+            st_f = cand[0] if cand else None
+        if st_f and os.path.exists(st_f):
             try:
                 from safetensors.torch import load_file
                 sd = load_file(st_f)
-                # normalizer 存 mean/std 键 (查实际键名)
-                keys = list(sd.keys())
-                state_keys = [k for k in keys if "state" in k.lower()]
-                act_keys = [k for k in keys if "action" in k.lower()]
                 if "observation.state.mean" in sd:
                     sm = sd["observation.state.mean"].cpu().numpy().reshape(-1)
                     ss = sd["observation.state.std"].cpu().numpy().reshape(-1)
                     am = sd["action.mean"].cpu().numpy().reshape(-1)
                     asd = sd["action.std"].cpu().numpy().reshape(-1)
-                    # 广播到完整维度 (MEAN_STD 标量 → 39D/4D)
-                    sm = np.full(39, sm[0], dtype=np.float32)
-                    ss = np.full(39, ss[0], dtype=np.float32)
-                    am = np.full(4, am[0], dtype=np.float32)
-                    asd = np.full(4, asd[0], dtype=np.float32)
+                    # 标量 → 广播 (ACT 旧版); 逐维 → 直接用
+                    if sm.size == 1:
+                        sm = np.full(39, sm[0], dtype=np.float32)
+                        ss = np.full(39, ss[0], dtype=np.float32)
+                    if am.size == 1:
+                        am = np.full(4, am[0], dtype=np.float32)
+                        asd = np.full(4, asd[0], dtype=np.float32)
                     return {"observation.state": {"mean": sm, "std": ss},
                             "action": {"mean": am, "std": asd}}
             except Exception:
                 pass
     # fallback: 数据 stats.json
     import json as _j2
-    for root in ["data/metaworld_peg_v7", "data/metaworld_peg_v6", "data/metaworld_peg_v5",
-                 "data/metaworld_peg_v4", "data/metaworld_peg_v3", "data/metaworld_peg_v2",
-                 "data/metaworld_peg_lerobot", "data/metaworld_act"]:
+    for root in ["data/metaworld_peg_long", "data/metaworld_peg_v7", "data/metaworld_peg_v6",
+                 "data/metaworld_peg_v5", "data/metaworld_peg_v4", "data/metaworld_peg_v3",
+                 "data/metaworld_peg_v2", "data/metaworld_peg_lerobot", "data/metaworld_act"]:
         p = os.path.join(ROOT, root, "meta", "stats.json")
         if os.path.exists(p):
             return _j2.load(open(p))
@@ -149,7 +156,9 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False):
             if hasattr(policy, "select_action"):
                 from PIL import Image as _PIL
                 rgb = np.asarray(env.render())
-                rgb = np.asarray(_PIL.fromarray(rgb).resize((128, 128), _PIL.LANCZOS))  # 训练尺寸 128
+                # 2026-08-08 修复: SmolVLA 视觉输入 64x64 (siglip_image_size), ACT 128x128
+                img_size = 64 if type(policy).__name__.lower().startswith("smolvla") else 128
+                rgb = np.asarray(_PIL.fromarray(rgb).resize((img_size, img_size), _PIL.LANCZOS))
                 rgb = rgb.transpose(2, 0, 1) / 255.0
                 batch = {"observation.image": torch.from_numpy(rgb).float().to(DEVICE).unsqueeze(0),
                          "observation.state": s_t}

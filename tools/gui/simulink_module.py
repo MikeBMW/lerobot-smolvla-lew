@@ -36,8 +36,8 @@ NODE_TYPES = {
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
     "yolo_gate":  {"cn": "YOLO开关", "color": "#d4a800"},  # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
-    "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 五模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
-    "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 五模型对比技术选型报告生成 (2026-08-05 老倪)
+    "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
+    "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 模型对比技术选型报告生成 (2026-08-05 老倪)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -61,7 +61,7 @@ REFERENCE_APPS = [
                                       "desc": "checkbox: 打勾=训练 / 不打=不训练 · 双击切换"}),
         ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin",
                                         "desc": "真实产线数据"}),
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"steps": 1000, "source": "metaworld",
+        ("hardware", "📦 metaworld_peg", {"steps": 1000, "source": "metaworld",
                                            "desc": "占位集·管道验证"}),
         ("switch", "🔀 Switch 数据源", {"switch": "orin", "desc": "双击切换 Orin/metaworld"}),
         ("model", "🧠 ACT 训练", {"steps": 1000, "chunk_size": 7, "dim_model": 256,
@@ -95,7 +95,7 @@ REFERENCE_APPS = [
     # (2026-08-04 老倪: "在simulink功能页, 做一个用metaworld数据, 全新训练ACT的模型, 用simulink的模块搭建")
     # Action Head 适配 metaworld 4D 输出 (action_dim=4, 真机 6D 对比标注)
     ("🧠 ACT-Meta 全新训练", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
+        ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "4D/4D", "desc": "states 4D · actions 4D (sawyer 关节)"}),
         ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
                                           "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}),
@@ -112,104 +112,39 @@ REFERENCE_APPS = [
         ("system", "🚀 全新训练", {"steps": 1000, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
-    # 🎛 顶层总系统 (2026-08-05 老倪: "参考 Simulink, 用一个模块表示总系统; 双击打开后,
-    #   可以看到 ACT, SmolVLA, SmolVLA+LEW 三条线" — Simulink Subsystem 语义)
-    # 顶层: 数据 → 总系统块 (双击展开内部三线) → 评估 Scope
-    ("🎛 总系统·三模型对比", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
+    # 🎛 顶层总系统 (2026-08-08 老倪: 总系统节点标准化 — Subsystem 双击展开「🔬 模型对比」)
+    ("🎛 顶层总系统", [
+        ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "4D/4D", "shared": True,
-                                           "desc": "顶层输入: 统一 metaworld 数据集 (4800帧, states/actions 4D)"}),
-        ("system", "🔬 总系统·三模型对比", {"subsystem": "🔬 三模型对比", "type_label": "Subsystem",
-                                            "desc": "Simulink 子系统: 双击展开 → ACT / SmolVLA / SmolVLA+LEW 三条并行训练线"}),
+                                           "desc": "顶层输入: 统一 metaworld 数据集 (4800帧)"}),
+        ("system", "🔬 总系统", {"subsystem": "🔬 模型对比", "type_label": "Subsystem",
+                                            "desc": "Simulink 子系统: 双击展开 → 🔬 模型对比 (七模型并行训练线)"}),
         ("system", "📊 对比评估 Scope (仿真)", {"shared": True,
-                                        "desc": "顶层输出: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表 · 🎮 仿真评估 (metaworld 环境, 非 Orin 真机)"}),
+                                        "desc": "顶层输出: 双击 → 模型对比图表 · 🎮 仿真评估 (metaworld 环境)"}),
     ], [
         (0, 1, "数据"), (1, 2, "评估"),
     ],
     # 顶层布局: 单行三节点 (数据 → 总系统 → Scope)
     [
-        ["📦 metaworld_peg_lerobot 数据", "🔬 总系统·三模型对比", "📊 对比评估 Scope (仿真)"],
+        ["📦 metaworld_peg", "🔬 总系统", "📊 对比评估 Scope (仿真)"],
     ]),
-    # 🔬 三模型对比 (2026-08-05 老倪: "增加一个没有leworldmodel的流程, 三个模型对比,
-    #   即 ACT, SmolVLA, SmolVLA+LeWorldModel 串行")
-    # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope)
-    #           ACT 分支 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练)
-    #           SmolVLA 纯动作分支 4 (SmolVLM2→DiT-B→ActionHead→训练, 无 LEW)
-    #           SmolVLA+LEW 分支 5 (SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练)
-    # 配置区分: smolvla 用 config_smolvla_metaworld.yaml (freeze_smolvlm:true → LEW 强制关)
-    #           smolvla_lew 用 config_smolvla_lew_metaworld.yaml (freeze:false + enable_lew:true)
-    ("🔬 三模型对比", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
-                                           "dims": "4D/4D", "shared": True,
-                                           "desc": "♻ 三模型共用: 统一 metaworld 数据集 (4800帧, states/actions 4D)"}),
-        # ── ACT 分支 (7) ──
-        ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
-                                          "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
-        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
-                                        "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
-        ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
-                                            "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"}),
-        ("model", "🔡 Transformer Decoder", {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
-                                            "desc": "ACT.decoder → DETR queries 解码动作块"}),
-        ("model", "🎯 Action Head 4D · ACT", {"action_dim": 4, "chunk_size": 7,
-                                              "desc": "ACT 专用: 输出 (B,7,4)"}),
-        ("condition", "⏳ Temporal Ensemble", {"coeff": 0.01,
-                                              "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"}),
-        ("system", "🚀 ACT 训练", {"policy": "act", "steps": 1000,
-                                  "desc": "双击 → on_train(policy=act) · metaworld 训练"}),
-        # ── SmolVLA 纯动作分支 (4, 无 LEW) ──
-        ("model", "🧠 SmolVLM2-500M", {"freeze": True,
-                                       "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
-                                       "desc": "SmolVLA 视觉语言主干 (冻结, 多模态编码)"}),
-        ("model", "🌀 DiT-B 动作解码", {"hidden": 256, "layers": 1, "timesteps": 2,
-                                       "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"}),
-        ("model", "🎯 Action Head 4D · SmolVLA", {"action_dim": 4, "chunk_size": 7,
-                                                  "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"}),
-        ("system", "🚀 SmolVLA 训练", {"policy": "smolvla", "steps": 1000,
-                                      "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"}),
-        # ── SmolVLA+LEW 分支 (5, 串行世界模型) ──
-        ("model", "🧠 SmolVLM2-500M · LEW", {"freeze": False,
-                                             "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
-                                             "desc": "SmolVLA 视觉语言主干 (参与训练 — LEW 要求 VLM 不冻结)"}),
-        ("model", "🌀 DiT-B 动作解码 · LEW", {"hidden": 256, "layers": 1, "timesteps": 2,
-                                              "desc": "SmolVLA action_model DiT-B → 动作去噪生成"}),
-        ("model", "🌐 LeWorldModel", {"lew_loss_weight": 0.1, "num_video_frames": 2,
-                                      "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"}),
-        ("model", "🎯 Action Head 4D · SmolVLA+LEW", {"action_dim": 4, "chunk_size": 7,
-                                                      "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"}),
-        ("system", "🚀 SmolVLA+LEW 训练", {"policy": "smolvla_lew", "steps": 1000,
-                                          "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"}),
-        ("system", "📊 对比评估 Scope (仿真)", {"shared": True,
-                                        "desc": "♻ 共用: 双击 → 三模型 训练速度/精确度/鲁棒性 对比图表 · 🎮 仿真评估 (metaworld, 非 Orin 真机)"}),
-        ("system", "🎮 仿真推理对比", {"video": "all", "auto": True,
-                                          "desc": "训练完自动触发: 🎮 本地仿真 rollout (metaworld 环境, 非 Orin 真机) 生成对比视频 → 多窗口同步播放"}),
+    # 🏗 Z-MAX 架构总览 (2026-08-08 老倪: system2/sys12/sys11/sys0 迁移到 simulink 模块库)
+    # 三行横排 (老倪架构布局: SYS2 云端训练(顶) → SYS1含SYS11 VLA-T+SYS12 Z-Flow(中) → SYS0 红底(底))
+    ("🏗 Z-MAX 架构", [
+        ("system", "🖥 SYS2 云端训练", {"desc": "云端训练 · 4090 · 大模型训练/部署 (Z-MAX 架构顶层)"}),
+        ("system", "🧠 SYS12 Z-Flow", {"desc": "Z-Flow 数据流引擎 (SYS1 层, 与 SYS11 并列)"}),
+        ("system", "🖐 SYS11 VLA-T", {"desc": "VLA-T 触觉大模型 (SYS1 层, 与 SYS12 并列)"}),
+        ("system", "🔧 SYS0 硬件驱动", {"desc": "硬件驱动 + 原子功能 (Z-MAX 架构底层)"}),
     ], [
-        # ACT 路 (9): 数据→ResNet18(+CVAE)→Encoder→Decoder→ActionHead·ACT→Ensemble→训练
-        # 🏷 数据节点三路输出 (官方 modeling_act.py): (0,1)=图像→ResNet18 · (0,2)=动作→CVAE(训练时编码真值动作)
-        #   · (0,3)=状态→Encoder (encoder 拼接 latent+图像特征+state); (2,3)=CVAE 潜变量→Encoder
-        (0, 1, "图像"), (0, 2, "动作"), (0, 3, "状态"), (1, 3, "图像特征"), (2, 3, "潜变量"), (3, 4), (4, 5), (5, 6), (6, 7),
-        # SmolVLA 纯动作路 (4): 数据→SmolVLM2→DiT-B→ActionHead→训练
-        (0, 8, "图像+状态"), (8, 9, "多模态embeds"), (9, 10), (10, 11),
-        # SmolVLA+LEW 路 (6): 数据→SmolVLM2·LEW→DiT-B·LEW→ActionHead·LEW→训练 (主策略链路)
-        #   + LeWorldModel 旁路: 数据→LEW (视频帧+动作) — 官方 world_model_le.py forward(videos, actions):
-        #   SigLIP 编码视频帧 + action_encoder 编码动作 → ARPredictor(AdaLN-zero 条件调制) 预测下一帧,
-        #   与 DiT-B 输出无关 (训练时用真值动作); 主链路与 LEW 并列, 非串行
-        (0, 12, "图像+状态"), (12, 13, "多模态embeds"), (13, 15, "动作块"), (15, 16),
-        (0, 14, "视频+动作"), (14, 16, "世界预测"),
-        # 评估: 三训练 → 对比 Scope
-        (7, 17), (11, 17), (16, 17),
-        # 🎥 推理对比 (2026-08-05 老倪: 训练完继续推理): 三训练 → 推理对比节点
-        (7, 18), (11, 18), (16, 18),
+        (0, 1), (0, 2), (1, 3), (2, 3),
     ],
-    # 🗂 多行展开布局 (2026-08-05 老倪: "不要排成一条直线, 要展开; 类似功能如 Action Head 垂直对齐")
-    # 每行 = 一个模型分支; 每列 = 一个功能角色; 空串占位列保持 Action Head 对齐到第5列
+    # 三行横排布局: SYS2 顶行 / SYS12+SYS11 中行 / SYS0 底行
     [
-        ["📦 metaworld_peg_lerobot 数据", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
-        ["📦 metaworld_peg_lerobot 数据", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
-        ["📦 metaworld_peg_lerobot 数据", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
-        ["📊 对比评估 Scope (仿真)", "", "", "", "", "", "", "🎮 仿真推理对比"],
+        ["🖥 SYS2 云端训练", "", "", ""],
+        ["", "🧠 SYS12 Z-Flow", "🖐 SYS11 VLA-T", ""],
+        ["", "", "🔧 SYS0 硬件驱动", ""],
     ]),
-    # 🔬 五模型对比 (2026-08-05 老倪: "把 ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
+    # 🔬 模型对比 (2026-08-05 老倪: "把 ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
     #   放到一起, 纵向对比" — 技术选型终极画布)
     # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope / 推理效果对比) + 五模型分支
     #   ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练)
@@ -218,8 +153,8 @@ REFERENCE_APPS = [
     #   VLA-Touch 6 (DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练)
     #   AWE 6 (SigLIP视触觉→H-JEPA三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练)
     # 布局: 每行一个模型; 同构模块同列垂直对齐 (视觉编码列/动作生成列/附加列/Action Head列/训练列)
-    ("🔬 五模型对比", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
+    ("🔬 模型对比", [
+        ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "39D/4D", "shared": True,
                                            "desc": "♻ 七模型共用: 统一 metaworld 数据集 (peg-v6, state 39D 完整观测, action 4D)"}),
         # ── YOLO 感知前端 (2026-08-06 老倪: YOLO 加所有模型最前端, 自动标注+真机感知) ──
@@ -405,21 +340,21 @@ REFERENCE_APPS = [
     # 对齐约定 (2026-08-07): 列3=输入编码/主干 · 列7=Action Head · 列9=训练/基准 · 列10=🎮仿真推理 · 列11=🎮仿真视频(对应本行模型)
     [
         # 感知前端链 (共享): 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", "", "", ""],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", "", "", ""],
         # ACT 行: 训练 → 🎮仿真推理·ACT → 🎮仿真视频·ACT
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
         # SmolVLA 纯动作行
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练", "🎮 仿真推理 · SmolVLA", "🎮 仿真视频 · SmolVLA"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练", "🎮 仿真推理 · SmolVLA", "🎮 仿真视频 · SmolVLA"],
         # SmolVLA+LEW 行
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练", "🎮 仿真推理 · SmolVLA+LEW", "🎮 仿真视频 · SmolVLA+LEW"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练", "🎮 仿真推理 · SmolVLA+LEW", "🎮 仿真视频 · SmolVLA+LEW"],
         # VLA-Touch 行: 拓扑 ActionHead→Interpolant→训练, Marker→Interpolant (ActionHead 对齐列7)
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "", "🎯 Action Head · VLA", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "🎮 仿真推理 · VLA-Touch", "🎮 仿真视频 · VLA-Touch"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "", "🎯 Action Head · VLA", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "🎮 仿真推理 · VLA-Touch", "🎮 仿真视频 · VLA-Touch"],
         # AWE 行: 拓扑 zFlow→交叉注意力→ActionHead→训练
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练", "🎮 仿真推理 · AWE", "🎮 仿真视频 · AWE"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练", "🎮 仿真推理 · AWE", "🎮 仿真视频 · AWE"],
         # MLP 蒸馏行 (2026-08-07 老倪: MLP 强化学习入七模型画布)
-        ["📦 metaworld_peg_lerobot 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "📥 全观测编码 39D", "🔗 全连接层 512·1", "", "", "🎯 Action Head 4D · MLP", "", "🎓 专家蒸馏训练", "🎮 仿真推理 · MLP", "🎮 仿真视频 · MLP"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "📥 全观测编码 39D", "🔗 全连接层 512·1", "", "", "🎯 Action Head 4D · MLP", "", "🎓 专家蒸馏训练", "🎮 仿真推理 · MLP", "🎮 仿真视频 · MLP"],
         # 官方专家行 (🏆 真值锚点: 最好的真值, 目标基准)
-        ["📦 metaworld_peg_lerobot 数据", "", "", "🧭 位置控制律", "🤏 夹爪状态机", "", "", "🎯 Action Head 4D · 专家", "", "📏 官方专家基准", "🎮 仿真推理 · 专家", "🎮 仿真视频 · 专家"],
+        ["📦 metaworld_peg", "", "", "🧭 位置控制律", "🤏 夹爪状态机", "", "", "🎯 Action Head 4D · 专家", "", "📏 官方专家基准", "🎮 仿真推理 · 专家", "🎮 仿真视频 · 专家"],
         # 评估行: 全模型仿真推理对比(列7) + Scope 对比图表(列10) + PDF 报告(最右列11, 2026-08-07 老倪)
         ["", "", "", "", "", "", "", "🎮 仿真推理对比", "", "", "📊 对比评估 Scope (仿真)", "📄 PDF 技术选型报告"],
     ]),
@@ -436,7 +371,7 @@ REFERENCE_APPS = [
     #   ⑤🌉 Interpolant 触觉控制器 (bridge_model.py StochasticInterpolants)
     #   ⑥🚀 训练 (只训控制器) ⑦📊 对比评估 Scope (仿真) (共用)
     ("🖐 VLA-Touch 触觉对比", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
+        ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "4D/4D", "shared": True,
                                            "desc": "♻ 统一数据集 (训练/评估共用, 与其他模型同源可比)"}),
         ("model", "🖼 DINOv2 视觉编码", {"backbone": "dinov2-small", "freeze": True,
@@ -465,7 +400,7 @@ REFERENCE_APPS = [
     ],
     # 🗂 单行展开布局 (数据 → 双路感知 → VLA 动作 → Interpolant → 训练 → 评估)
     [
-        ["📦 metaworld_peg_lerobot 数据", "🖼 DINOv2 视觉编码", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "📊 对比评估 Scope (仿真)"],
+        ["📦 metaworld_peg", "🖼 DINOv2 视觉编码", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "📊 对比评估 Scope (仿真)"],
         ["", "📍 Marker 触觉跟踪", "🌀 DiT-B base VLA", "🎯 Action Head · VLA", ""],
     ]),
     # 🧿 AWE 场景原生对比 (2026-08-05 老倪: "增加它石的AWE模型, 同样原则要纵向对比,
@@ -480,7 +415,7 @@ REFERENCE_APPS = [
     #     Interpolant 同列对比) ④🔀 未来决策交叉注意力 ⑤🎯 Action Head (同列)
     #   ⑥🚀 训练 (同列) ⑦📊 对比评估 Scope (仿真) (共用)
     ("🧿 AWE 场景原生对比", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
+        ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "4D/4D", "shared": True,
                                            "desc": "♻ 统一数据集 (训练/评估共用, 与其他模型同源可比)"}),
         ("model", "🖐 SigLIP 视触觉编码", {"backbone": "siglip-base", "freeze": True,
@@ -505,13 +440,13 @@ REFERENCE_APPS = [
     ],
     # 🗂 单行展开布局 (与 VLA-Touch 同构: 数据 → 视触觉编码 → 世界模型 → ActionHead → 训练 → 评估)
     [
-        ["📦 metaworld_peg_lerobot 数据", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "🚀 AWE 训练", "📊 对比评估 Scope (仿真)"],
+        ["📦 metaworld_peg", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "🚀 AWE 训练", "📊 对比评估 Scope (仿真)"],
     ]),
     # 🎥 推理对比 (2026-08-05 老倪: "训练完后继续推理, 对比3个模型的推理效果,
     #   要有视频显示的node, 3个视频display窗口")
     # 数据 → 3 训练 → 3 视频显示 (双击任意视频节点 → 3 窗口同步播放推理效果)
     ("🎮 仿真推理对比", [
-        ("hardware", "📦 metaworld_peg_lerobot 数据", {"source": "metaworld", "frames": 4800, "active": True,
+        ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "4D/4D", "shared": True,
                                            "desc": "统一 metaworld 数据集 (训练 + 推理共用)"}),
         ("system", "🚀 ACT 训练", {"policy": "act", "steps": 1000,
@@ -527,7 +462,7 @@ REFERENCE_APPS = [
         (0, 1), (0, 2), (0, 3), (1, 4), (2, 5), (3, 6),
     ],
     [
-        ["📦 metaworld_peg_lerobot 数据", "🚀 ACT 训练", "🎥 视频显示 · ACT"],
+        ["📦 metaworld_peg", "🚀 ACT 训练", "🎥 视频显示 · ACT"],
         ["", "🚀 SmolVLA 训练", "🎥 视频显示 · SmolVLA"],
         ["", "🚀 SmolVLA+LEW 训练", "🎥 视频显示 · SmolVLA+LEW"],
     ]),
@@ -546,6 +481,8 @@ LIBRARY = [
                                            "desc": "YOLO 2D框中心 + 深度/标定 → 目标 3D 坐标 → 拼入 state"}},
         {"name": "🔌 State Adapter", "params": {"in_dim": 39, "out_dim": 39, "normalize": True,
                                               "desc": "state 适配器: YOLO 3D检测输出 → 统一 state 格式 (开=39D含目标坐标/关=3D仅末端), 适配各策略输入维度"}},
+        {"name": "🎯 YOLO 目标检测", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
+                                            "desc": "YOLO 目标检测: 销钉/插孔/末端 2D 检测 (模型对比画布节点)"}},
     ]),
     ("condition", "条件 (11)", [
         {"name": "C00 信号触发", "params": {"threshold": 0.5}},
@@ -567,8 +504,7 @@ LIBRARY = [
     #  引导从最基础的模块库搭建成最终模型, 全程提示")
     # 对应 modeling_act.py: backbone → vae_encoder → encoder → decoder → action_head → ACTTemporalEnsembler
     ("model", "🧠 ACT 模型·子模块", [
-        {"name": "📦 metaworld_peg_lerobot 数据", "params": {"source": "metaworld", "frames": 4800, "active": True,
-                                                "dims": "4D/4D", "desc": "states 4D · actions 4D (sawyer 关节)"}},
+        # 2026-08-08 老倪: 数据源条目删除 (数据集组已有, 子模块链不含数据源)
         {"name": "🖼 视觉主干 ResNet18", "params": {"backbone": "resnet18", "pretrained": True,
                                                    "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}},
         {"name": "🧬 VAE 编码器 CVAE", "params": {"use_vae": True, "latent_dim": 32,
@@ -586,8 +522,10 @@ LIBRARY = [
         {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
-        {"name": "🔬 三模型对比", "params": {}, "template": "🔬 三模型对比",
-         "desc": "一键搭建三模型对比 (18节点: 2共用♻ + ACT 7 + SmolVLA纯 4 + SmolVLA+LEW 5, Action Head 各一个) · 点▶运行出对比图表"},
+        {"name": "🎛 顶层总系统", "params": {}, "template": "🎛 顶层总系统",
+         "desc": "一键搭建顶层总系统 (数据→🔬总系统Subsystem→评估Scope) · 双击总系统块展开「🔬 模型对比」七模型训练线"},
+        {"name": "🏗 Z-MAX 架构", "params": {}, "template": "🏗 Z-MAX 架构",
+         "desc": "一键搭建 Z-MAX 四层架构: SYS2 云端训练(顶) → SYS12 Z-Flow + SYS11 VLA-T(中) → SYS0 硬件驱动+原子功能(底)"},
     ]),
     # 🌐 LeWorldModel·官方子模块 (2026-08-05 老倪: "ARPredictor Transformer 还能拆解出来么"
     #   + "action 与潜在空间做真正的 cross-attention (K/V 注入)")
@@ -678,7 +616,86 @@ LIBRARY = [
         {"name": "☑ 训练开关", "params": {"train_enabled": True},
          "desc": "checkbox: 打勾=训练 / 不打=不训练 (双击切换, 放最前边控全链路)"},
         {"name": "📄 PDF 技术选型报告", "params": {},
-         "desc": "五模型对比实验 → 11 章技术选型 PDF (概况/系统全貌/分系统功能/接口/参数/架构/功能/性价比/优劣势/视频对比/结论)"},
+         "desc": "模型对比实验 → 11 章技术选型 PDF (概况/系统全貌/分系统功能/接口/参数/架构/功能/性价比/优劣势/视频对比/结论)"},
+    ]),
+    # 🏗 Z-MAX 架构分组 (2026-08-08 老倪: system2/sys12/sys11/sys0 迁移到 simulink 模块库 —
+    #   主页左侧 SystemLayerCard 四层架构, 可拖入画布)
+    ("system", "🏗 Z-MAX 架构 (4)", [
+        {"name": "🖥 SYS2 云端训练", "params": {"desc": "云端训练 · 4090 · 大模型训练/部署 (架构顶层, L4 大脑)"}},
+        {"name": "🧠 SYS12 Z-Flow", "params": {"desc": "SYS12 引导系统 · Z-Flow 数据流引擎 (SYS1 层)"}},
+        {"name": "🖐 SYS11 VLA-T", "params": {"desc": "SYS11 · VLA-T 触觉大模型 (SYS1 层)"}},
+        {"name": "🔧 SYS0 硬件驱动", "params": {"desc": "SYS0 · 硬件驱动 + 原子功能 (架构底层)"}},
+    ]),
+    # 🧠 模型主干组 (2026-08-08 老倪: 模型对比所有模块都要能从左侧拖出 — SmolVLM2/DiT-B/LEW)
+    ("model", "🧠 模型主干 (5)", [
+        {"name": "🧠 SmolVLM2-500M", "params": {"freeze": False, "desc": "视觉语言主干 · 500M (SmolVLM2-500M-Video-Instruct)"}},
+        {"name": "🧠 SmolVLM2-500M · LEW", "params": {"freeze": False, "desc": "视觉语言主干 · LEW 版 (enable_lew:true)"}},
+        {"name": "🌀 DiT-B 动作解码", "params": {"diT": "B", "desc": "DiT-B 扩散动作生成器 (纯动作版)"}},
+        {"name": "🌀 DiT-B 动作解码 · LEW", "params": {"diT": "B", "lew": True, "desc": "DiT-B 动作解码 · LEW 串行版"}},
+        {"name": "🌐 LeWorldModel", "params": {"n_layers": 4, "desc": "LeWorldModel 世界模型 (官方 forward 串行)"}},
+        # 2026-08-08 老倪: 模板名别名 (力控插入/数据闭环模板)
+        {"name": "VLA-T", "params": {"desc": "VLA-T 触觉大模型 (力控插入模板)"}},
+        {"name": "SmolVLA", "params": {"desc": "SmolVLA 动作模型 (AOI 检测模板)"}},
+        {"name": "H-JEPA", "params": {"desc": "H-JEPA 三层潜空间 (数据闭环模板)"}},
+    ]),
+    # 🚀 训练组 (2026-08-08 老倪: 模型对比的训练节点全部可拖)
+    ("system", "🚀 训练 (7)", [
+        {"name": "🚀 ACT 训练", "params": {"policy": "act", "steps": 1000, "desc": "双击 → 训练 ACT (metaworld 插销数据)"}},
+        {"name": "🚀 SmolVLA 训练", "params": {"policy": "smolvla", "steps": 1000, "desc": "双击 → 训练 SmolVLA (纯动作)"}},
+        {"name": "🚀 SmolVLA+LEW 训练", "params": {"policy": "smolvla_lew", "steps": 1000, "desc": "双击 → 训练 SmolVLA+LEW"}},
+        {"name": "🚀 VLA-Touch 训练", "params": {"policy": "vla_touch", "steps": 1000, "desc": "双击 → 训练 VLA-Touch (Interpolant 控制器)"}},
+        {"name": "🚀 AWE 训练", "params": {"policy": "awe_zflow", "steps": 1000, "desc": "双击 → 训练 AWE-zFlow"}},
+        {"name": "🎓 专家蒸馏训练", "params": {"policy": "expert_mlp", "desc": "双击 → MLP 从官方专家策略蒸馏 (最快学插拔)"}},
+        {"name": "📏 官方专家基准", "params": {"policy": "expert_policy", "desc": "官方专家策略 (🏆 真值锚点 85%)"}},
+    ]),
+    # 🎛 CICD 环节组 (2026-08-08 老倪: CICD 主控台/仿真推理对比模板节点全覆盖)
+    ("system", "🎛 CICD 环节 (6)", [
+        {"name": "📥 Orin 数据源", "params": {"ip": "192.168.23.10", "fps": 30, "source": "orin",
+                                            "desc": "📥 Orin 数据源 · 真实产线数据"}},
+        {"name": "🔀 Switch 数据源", "params": {"switch": "orin", "desc": "双击切换 Orin/metaworld 数据源"}},
+        {"name": "🧠 ACT 训练", "params": {"policy": "act", "steps": 1000, "desc": "双击 → 训练 ACT (CICD 主控台环节)"}},
+        {"name": "✅ 模型验证", "params": {"desc": "③ 验证 — 流程拓扑合规检查 (validate_flow)"}},
+        {"name": "📦 集成打包", "params": {"desc": "④ 集成 — 打包 checkpoint → 上传 ECS 中转"}},
+        {"name": "🚚 部署 Orin", "params": {"desc": "⑤ 部署 — 部署状态检查与推送"}},
+    ]),
+    # 🔬 总系统节点 (2026-08-08 老倪: 总系统 Subsystem 可拖 — 双击展开模型对比)
+    ("system", "🔬 总系统 (1)", [
+        {"name": "🔬 总系统", "params": {"subsystem": "🔬 模型对比", "type_label": "Subsystem",
+                                        "desc": "Simulink 子系统: 双击展开 → 🔬 模型对比 (七模型训练线)"}},
+    ]),
+    # 🎯 Action Head 组 (2026-08-08 老倪: 模型对比各模型 Action Head 均可拖)
+    ("action", "🎯 Action Head (7)", [
+        {"name": "🎯 Action Head 4D · ACT", "params": {"action_dim": 4, "chunk_size": 7, "desc": "ACT 动作头 · 输出 (B,7,4)"}},
+        {"name": "🎯 Action Head 4D · SmolVLA", "params": {"action_dim": 4, "desc": "SmolVLA 动作头 · 4D"}},
+        {"name": "🎯 Action Head 4D · SmolVLA+LEW", "params": {"action_dim": 4, "desc": "SmolVLA+LEW 动作头 · 4D"}},
+        {"name": "🎯 Action Head · VLA", "params": {"action_dim": 4, "desc": "VLA-Touch 动作头"}},
+        {"name": "🎯 Action Head · AWE", "params": {"action_dim": 4, "desc": "AWE 动作头"}},
+        {"name": "🎯 Action Head 4D · MLP", "params": {"action_dim": 4, "desc": "MLP 蒸馏动作头 · 4D"}},
+        {"name": "🎯 Action Head 4D · 专家", "params": {"action_dim": 4, "desc": "官方专家动作头 · 4D"}},
+    ]),
+    # 🧠 MLP 蒸馏 / 🧭 官方专家 结构组 (2026-08-08 老倪)
+    ("model", "🧠 MLP 蒸馏 (2)", [
+        {"name": "📥 全观测编码 39D", "params": {"dim": 39, "desc": "全观测编码 · 39D 状态 (robot+env)"}},
+        {"name": "🔗 全连接层 512·1", "params": {"hidden": 512, "desc": "全连接层 · 512 单层 (MLP 蒸馏)"}},
+    ]),
+    ("model", "🧭 官方专家 (2)", [
+        {"name": "🧭 位置控制律", "params": {"desc": "官方专家位置控制律 (peg-insert-side)"}},
+        {"name": "🤏 夹爪状态机", "params": {"desc": "官方专家夹爪状态机 (抓取/释放)"}},
+    ]),
+    # 🎮 仿真推理/视频组 (2026-08-08 老倪: 每模型推理/视频节点均可拖 — 与模型对比行一致)
+    ("action", "🎮 仿真推理/视频 (14)", [
+        {"name": f"🎮 仿真推理 · {m}", "params": {"video": "infer", "model": m, "auto": True,
+                                              "desc": f"🎮 仿真评估 (metaworld 非 Orin) · {m} 推理对比"}}
+        for m in ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP", "专家"]
+    ] + [
+        {"name": f"🎮 仿真视频 · {m}", "params": {"video": "play", "model": m,
+                                              "desc": f"🎮 仿真评估 (metaworld 非 Orin) · {m} 推理视频"}}
+        for m in ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP", "专家"]
+    ] + [
+        # 2026-08-08 老倪: 🎥 视频显示节点 (仿真推理对比模板)
+        {"name": f"🎥 视频显示 · {m}", "params": {"video": "display", "model": m,
+                                              "desc": f"🎥 视频显示窗口 · {m} (推理对比模板)"}}
+        for m in ["ACT", "SmolVLA", "SmolVLA+LEW"]
     ]),
     ("hardware", "硬件 (8)", [
         {"name": "H00 Orin Nano",  "params": {"ip": "192.168.23.10", "port": 8765, "fps": 30}},
@@ -689,6 +706,12 @@ LIBRARY = [
         {"name": "H05 相机",       "params": {"res": "480x640", "fps": 30}},
         {"name": "H06 力传感器",   "params": {"range": 50}},
         {"name": "H07 扫码枪",     "params": {}},
+        # 2026-08-08 老倪: 模板名别名 (力控插入/AOI/数据闭环模板节点 — 与 H 编号条目功能相同)
+        {"name": "机械臂", "params": {"model": "Z700", "dof": 6, "desc": "Z700 机械臂 (力控插入模板)"}},
+        {"name": "相机", "params": {"res": "480x640", "fps": 30, "desc": "相机 (AOI 检测模板)"}},
+        {"name": "Orin Nano", "params": {"ip": "192.168.23.10", "port": 8765, "fps": 30, "desc": "Orin Nano 边缘计算 (数据闭环模板)"}},
+        {"name": "MAC", "params": {"ip": "192.168.23.1", "port": 8769, "desc": "MAC 中转 (数据闭环模板)"}},
+        {"name": "4090训练", "params": {"host": "39.102.211.79", "port": 50054, "desc": "4090 云端训练 (数据闭环模板)"}},
     ]),
     # 📊 评估分组 (2026-08-06 老倪: Scope 放到左侧 node 库, 直接拖到主窗口)
     ("system", "📊 评估 (3)", [
@@ -1698,7 +1721,7 @@ class SimNodeItem(QGraphicsObject):
 
     def paint(self, painter, opt, widget=None):
         t = self.node["type"]
-        # 🎨 背景行节点 (五模型对比): 整行彩色半透明色带 + 左侧大字模型名
+        # 🎨 背景行节点 (模型对比): 整行彩色半透明色带 + 左侧大字模型名
         # 可编辑: 右键参数框改 name (大字)/ params.bg (背景色); 不与普通节点同规格绘制
         if t == "row_bg":
             p = self.node.get("params", {})
@@ -2358,7 +2381,7 @@ class LibraryPanel(QFrame):
         # 📦 数据集组 (2026-08-07 老倪: 功能块同步显示已有数据集 — 插销/套环/Orin)
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else os.path.expanduser("~/lerobot-smolvla-lew")
         _dset_cands = [
-            ("metaworld_peg_lerobot", "插销插拔 (lerobot)", "metaworld"),
+            ("metaworld_peg", "插销插拔 (lerobot)", "metaworld"),
         ]
         _exists = [c for c in _dset_cands if os.path.isdir(os.path.join(root, "data", c[0]))]
         if _exists:
@@ -2607,9 +2630,7 @@ class SimulinkModule(QWidget):
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
         tl.addWidget(self.btn_pipeline)
-        self.btn_compare3 = mk_btn("🔬 三模型对比", "ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel 三模型对比: 无LEW/有LEW 同骨干差异直观可见 · ▶运行出对比图表", self.open_compare3, "#d4a800")
-        tl.addWidget(self.btn_compare3)
-        self.btn_compare5 = mk_btn("🔬 五模型对比", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE 五模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 5 模型 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
+        self.btn_compare5 = mk_btn("🔬 模型对比", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE + MLP + 专家 七模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
         tl.addWidget(self.btn_compare5)
         self.btn_vlatouch = mk_btn("🖐 VLA-Touch", "VLA-Touch 触觉对比管道 (4060 精简): DINOv2视觉 + Marker触觉 + DiT-B base VLA 冻结 + Interpolant 触觉控制器 (唯一训练模块) · 纵向对比触觉增强 vs 纯动作", self.open_vlatouch, "#58a6ff")
         tl.addWidget(self.btn_vlatouch)
@@ -2628,7 +2649,7 @@ class SimulinkModule(QWidget):
         outer.addWidget(tb)
 
         # (2026-08-06 老倪: 「参考应用」整行删除 — 白色字体按钮与上方彩色工具栏
-        #  按钮重复 (三/五模型对比·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
+        #  按钮重复 (三/模型对比·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
         #  REFERENCE_APPS 数据保留, 模块库完整模型条目/load_reference_app_by_name 仍可用)
 
         # (2026-08-06 老倪: 📡 实时采集状态条「采集中/数据包:24」整行删除 —
@@ -3295,38 +3316,13 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
-    def open_compare3(self):
-        """🔬 三模型对比: ACT vs SmolVLA(纯动作) vs SmolVLA+LeWorldModel
-        加载「🔬 三模型对比」模板 — LeWorldModel 串行在 DiT-B 之后 (官方 forward 顺序),
-        SmolVLA 纯动作 = freeze_smolvlm:true (LEW 强制关), SmolVLA+LEW = freeze:false + enable_lew:true
-        """
-        if self.nodes:
-            if not self._qmsg_yes("🔬 三模型对比",
-                                  "将清空当前画布, 加载 三模型对比?\n\n"
-                                  "模块划分: ♻共用2 (metaworld数据 / 对比评估Scope)\n"
-                                  "          ACT 分支 7 + SmolVLA 纯动作 4 + SmolVLA+LEW 5\n"
-                                  "🔬 三模型: ACT / SmolVLA(无LEW) / SmolVLA+LeWorldModel 串行\n"
-                                  "▶ 点「▶ 运行」→ 依次训练三模型 → 双击 Scope 看对比图表"):
-                return
-        self.clear()
-        if not self.load_reference_app_by_name("🔬 三模型对比"):
-            self._qmsg_info("🔬 三模型对比", "模板加载失败")
-            return
-        self._log("════ 🔬 三模型对比 (统一 metaworld 数据集) ════")
-        self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 对比评估Scope) + ACT 7 + SmolVLA纯 4 + SmolVLA+LEW 5")
-        self._log("🔬 三模型: ① ACT ② SmolVLA 纯动作 (freeze_smolvlm:true → LEW 强制关) ③ SmolVLA+LeWorldModel 串行 (freeze:false + enable_lew:true)")
-        self._log("🌐 LeWorldModel 串行在 DiT-B 之后 — 官方 forward 顺序: SmolVLM2 编码 → DiT 动作 → LEW 世界预测")
-        self._log("▶ 点「▶ 运行」→ 依次训练三模型, 各 300 步 metaworld")
-        self._log("📈 训练完双击「📊 对比评估 Scope (仿真)」→ 三模型对比: 训练速度 · 精确度(MSE/成功率) · 鲁棒性 · 延迟")
-        QTimer.singleShot(300, lambda: self._compare_load_hint())
-
     def open_compare5(self):
-        """🔬 五模型对比 (2026-08-05 老倪: "ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
+        """🔬 模型对比 (2026-08-05 老倪: "ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
         放到一起, 纵向对比" — 技术选型终极画布):
-        加载「🔬 五模型对比」模板 — 五条模型线同画布, 同构模块同列垂直对齐"""
+        加载「🔬 模型对比」模板 — 五条模型线同画布, 同构模块同列垂直对齐"""
         if self.nodes:
-            if not self._qmsg_yes("🔬 五模型对比",
-                                  "将清空当前画布, 加载 五模型对比?\\n\\n"
+            if not self._qmsg_yes("🔬 模型对比",
+                                  "将清空当前画布, 加载 模型对比?\\n\\n"
                                   "模块划分: ♻共用 (metaworld数据 / 对比评估Scope / 推理对比)\\n"
                                   "          五模型分支: ACT 7 + SmolVLA 4 + SmolVLA+LEW 5\\n"
                                   "                     + VLA-Touch 6 + AWE 6\\n"
@@ -3335,10 +3331,10 @@ class SimulinkModule(QWidget):
                                   "▶ 点「▶ 运行」→ 依次训练 5 模型 → 双击 Scope 看对比图表"):
                 return
         self.clear()
-        if not self.load_reference_app_by_name("🔬 五模型对比"):
-            self._qmsg_info("🔬 五模型对比", "模板加载失败")
+        if not self.load_reference_app_by_name("🔬 模型对比"):
+            self._qmsg_info("🔬 模型对比", "模板加载失败")
             return
-        self._log("════ 🔬 五模型对比 (统一 metaworld 数据集 · 纵向对比) ════")
+        self._log("════ 🔬 模型对比 (统一 metaworld 数据集 · 纵向对比) ════")
         self._log("📦 模块划分: ♻共用 3 (metaworld数据 / 对比评估Scope / 推理效果对比) + 五模型分支")
         self._log("🔬 ① ACT 7: ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练 (确定性回归)")
         self._log("🔬 ② SmolVLA 4: SmolVLM2→DiT-B→ActionHead→训练 (扩散, 无世界模型)")
@@ -3346,7 +3342,7 @@ class SimulinkModule(QWidget):
         self._log("🖐 ④ VLA-Touch 6: DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练 (触觉增强)")
         self._log("🧿 ⑤ AWE 6: SigLIP视触觉编码→H-JEPA三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练 (场景原生)")
         self._log("📍 同构模块同列垂直对齐: 视觉编码列 / 动作生成列 / 世界模型列 / ActionHead列 / 训练列")
-        self._log("▶ 点「▶ 运行」→ 依次训练 5 模型 (各 50 步快速验证) → 双击「📊 对比评估 Scope (仿真)」看五模型对比")
+        self._log("▶ 点「▶ 运行」→ 依次训练 5 模型 (各 50 步快速验证) → 双击「📊 对比评估 Scope (仿真)」看模型对比")
         # 🎨 8 行彩色背景 + 左侧大字模型名 (2026-08-07: YOLO 感知链独占首行 + 七模型;
         # 背景行从首行开始排, 否则 ACT 背景会盖在感知行上 → 背景与模型行错位)
         # n_cols=12 (2026-08-07 老倪: 训练右侧=仿真推理, 再右侧=仿真视频 — 12 列布局)
@@ -3406,12 +3402,12 @@ class SimulinkModule(QWidget):
                                   "⬅ 在子系统内点「⬅ 返回总系统」恢复顶层"):
                 return
         self.clear()
-        if not self.load_reference_app_by_name("🎛 总系统·三模型对比"):
+        if not self.load_reference_app_by_name("🎛 顶层总系统"):
             self._qmsg_info("🎛 顶层总系统", "模板加载失败")
             return
         self._log("════ 🎛 顶层总系统 (Simulink Subsystem) ════")
         self._log("顶层: 📦metaworld数据 → 🔬总系统块 → 📊对比评估Scope")
-        self._log("双击「🔬 总系统·三模型对比」块 → 展开内部三条训练线 (ACT / SmolVLA / SmolVLA+LEW)")
+        self._log("双击「🔬 总系统」块 → 展开内部「🔬 模型对比」七模型训练线")
         self._log("⬅ 在子系统内点工具栏「⬅ 返回总系统」恢复顶层")
         QTimer.singleShot(300, lambda: self._topsys_hint())
 
@@ -3425,7 +3421,7 @@ class SimulinkModule(QWidget):
                 if it is not None:
                     gp = self.canvas.mapToGlobal(
                         self.canvas.mapFromScene(it.sceneBoundingRect().center()))
-                    self._show_bubble(gp, "👆 双击金色高亮「🔬 总系统·三模型对比」\n"
+                    self._show_bubble(gp, "👆 双击金色高亮「🔬 总系统」\n"
                                          "→ 展开 ACT / SmolVLA / SmolVLA+LEW 三条训练线", ms=6000)
         except Exception:
             pass
@@ -3822,7 +3818,7 @@ class SimulinkModule(QWidget):
                 continue  # 📊 Scope 手动双击观察
             if n.get("params", {}).get("video"):
                 continue  # 🎥 视频显示节点: 观察类, 训练完手动双击播放 (2026-08-05 修复:
-                #   "推理"关键字会误匹配 on_infer → 混进五模型对比执行队列阻塞流程)
+                #   "推理"关键字会误匹配 on_infer → 混进模型对比执行队列阻塞流程)
             if n.get("type") == "train_gate":
                 continue  # ☑ 训练开关: 控制标志非执行环节 ("训练"关键字会误匹配 on_train,
                 #   CICD 主控台 ▶运行 时被当环节执行 → 打乱流程语义; 开关状态由 on_train 内部检查)
@@ -4157,7 +4153,7 @@ class SimulinkModule(QWidget):
         # ↩️ 新画布 = 旧撤销栈作废 (2026-08-07: 避免撤销到上一个模板的节点)
         self._undo_stack = []
 
-    # ── 🎨 五模型对比: 5 行彩色背景 node (row_bg) + 左侧大字模型名 (2026-08-05 老倪) ──
+    # ── 🎨 模型对比: 5 行彩色背景 node (row_bg) + 左侧大字模型名 (2026-08-05 老倪) ──
     def _clear_model_rows(self):
         """删除背景行 row_bg 节点 (真节点, 随 clear 一起清)"""
         for n in list(self.nodes):
@@ -4268,8 +4264,53 @@ class SimulinkModule(QWidget):
             # 日志区自动滚底
             self.log_box.verticalScrollBar().setValue(
                 self.log_box.verticalScrollBar().maximum())
+            # ⚙ 2026-08-08 老倪: 训练中终端要看到状态 — 动态检测 lerobot_train 进程 + 进度 (去重)
+            self._poll_train_state()
         except Exception:
             pass
+
+    def _poll_train_state(self):
+        """每 2s: 检测训练进程 → 日志框显示「训练中: 目录 · 步数」; 开始/结束各提示一次"""
+        import subprocess as _sp
+        try:
+            _out = _sp.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            return
+        root = self._repo_root()
+        _running = bool(_out.strip())
+        _state = ""
+        if _running:
+            _dirs = sorted(glob.glob(os.path.join(root, "outputs", "train", "*", "checkpoints")),
+                           key=os.path.getmtime)
+            if _dirs:
+                d = _dirs[-1]
+                _steps = [int(b) for b in os.listdir(d) if b.isdigit()]
+                _mx = max(_steps) if _steps else 0
+                _name = os.path.basename(os.path.dirname(d))
+                # 🐛 2026-08-08 老倪: 日志就一句话 — 加详细: 总步数(config)/百分比/loss
+                _total = 0
+                _cf = os.path.join(root, f"config_{_name}.yaml")
+                if os.path.exists(_cf):
+                    import re as _re
+                    m = _re.search(r"^steps:\s*(\d+)", open(_cf, encoding="utf-8").read(), _re.M)
+                    _total = int(m.group(1)) if m else 0
+                _pct = f"{_mx / _total * 100:.0f}%" if _total else "?"
+                _loss = ""
+                _pol = _name.split("_")[0]  # smolvla_peg_long2 → smolvla
+                _cvf = os.path.join(root, "reports", f"train_curve_{_pol}.json")
+                try:
+                    _cv = json.load(open(_cvf, encoding="utf-8")).get("curve") or []
+                    if _cv and os.path.getmtime(_cvf) > os.path.getmtime(d):
+                        _loss = f" · loss {_cv[-1][1]:.4f}"
+                except Exception:
+                    pass
+                _state = f"⚙ 训练中: {_name} · 步 {_mx}/{_total or '?'} ({_pct}){_loss}"
+        _prev = getattr(self, "_last_train_state", "")
+        if _state and _state != _prev:
+            self._safe_log(_state)
+        elif not _state and _prev:
+            self._safe_log("✅ 训练完成")
+        self._last_train_state = _state
 
     def _toggle_log_box(self):
         """📋 底部日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
@@ -4358,7 +4399,7 @@ class SimulinkModule(QWidget):
         if w is not None:
             # 🐛 2026-08-06 修复: worker 终止竞态 — _done(主线程) 触发 _flow_next 时,
             #   worker 线程刚 emit 完还在收尾, isRunning() 短暂 True → 防重入误拦截
-            #   后续任务 (五模型对比 VLA-Touch 卡住不启动!); wait(300) 等正常收尾放行
+            #   后续任务 (模型对比 VLA-Touch 卡住不启动!); wait(300) 等正常收尾放行
             if w.isRunning() and not w.wait(300):
                 # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" — 详细提示
                 self._log(self._busy_hint())
@@ -4459,7 +4500,7 @@ class SimulinkModule(QWidget):
     # 🧠 ACT-Meta 逐步搭建引导: 从模块库逐模块搭建成最终模型 (2026-08-04 老倪)
     # 每步: 高亮模块库按钮 + 日志提示 → 用户点击添加 → 匹配推进 → 8步搭完自动连线
     ACT_BUILD_STEPS = [
-        ("📦 metaworld_peg_lerobot 数据", "hardware", "第1/9步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
+        ("📦 metaworld_peg", "hardware", "第1/9步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
         ("🖼 视觉主干 ResNet18", "model", "第2/9步 视觉编码: 点击「🖼 视觉主干 ResNet18」(官方 ACT.backbone, 图像→特征图)"),
         ("🧬 VAE 编码器 CVAE", "model", "第3/9步 变分编码: 点击「🧬 VAE 编码器 CVAE」(官方 vae_encoder, 动作序列→潜变量)"),
         ("🔤 Transformer Encoder", "model", "第4/9步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
@@ -4730,14 +4771,14 @@ class SimulinkModule(QWidget):
         import requests as _rq
         root = self._repo_root()
         real_dir = os.path.join(root, "data", "closed_loop")
-        placeholder = os.path.join(root, "data", "metaworld_peg_lerobot")
+        placeholder = os.path.join(root, "data", "metaworld_peg")
 
         # 0. 节点逻辑可修改区强制数据源 (node_logic.py ✏️) — 优先于画布 switch
         if data_source == "metaworld":
             if os.path.isdir(placeholder):
                 self.log_signal.emit("📦 节点逻辑强制 [metaworld] → 使用占位集 (不拉 relay)")
                 return placeholder, "metaworld 占位集 (节点逻辑)", False
-            self.log_signal.emit("⚠️ 强制 metaworld 但 data/metaworld_peg_lerobot 不存在 → 回退自动选择")
+            self.log_signal.emit("⚠️ 强制 metaworld 但 data/metaworld_peg 不存在 → 回退自动选择")
         elif data_source == "orin":
             self.log_signal.emit("📥 节点逻辑强制 [Orin] → 只拉 relay 真实数据")
             src = "orin"
@@ -4752,7 +4793,7 @@ class SimulinkModule(QWidget):
                 if os.path.isdir(placeholder):
                     self.log_signal.emit("📦 数据源 [metaworld] → 使用 metaworld 占位集 (不拉 relay)")
                     return placeholder, "metaworld 占位集", False
-                self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_peg_lerobot 不存在 → 回退自动选择")
+                self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_peg 不存在 → 回退自动选择")
             elif src == "orin":
                 self.log_signal.emit("📥 数据源 [Orin] → 强制拉取 relay 真实数据")
 
@@ -5097,7 +5138,7 @@ class SimulinkModule(QWidget):
     def on_infer_video(self, policy=None, **kw):
         """🎮 仿真推理对比 (2026-08-05 老倪): 多模型 rollout 视频 多窗口同步播放
         数据源: reports/rollout_<policy>/ (tools/rollout_video.py 生成, 无则自动生成)
-        policy=None → 全模型 (模板: 3 模型三对比 / 5 模型五模型对比自动探测);
+        policy=None → 全模型 (模板: 3 模型三对比 / 5 模型模型对比自动探测);
         policy='act' → 单模型视频节点 (🎮 仿真视频 · ACT)
         auto=True (模板参数): 训练完自动触发 — 先后台生成 rollout, 完成后弹窗"""
         try:
@@ -5158,10 +5199,10 @@ class SimulinkModule(QWidget):
                 "expert_mlp": "#2d6a8f", "expert_policy": "#8f8a3d"}.get(policy, "#58a6ff")
 
     def on_pdf_report(self, **kw):
-        """📄 PDF 技术选型报告 (2026-08-05 老倪): 五模型对比实验 → 11 章专业报告
+        """📄 PDF 技术选型报告 (2026-08-05 老倪): 模型对比实验 → 11 章专业报告
         数据: 画布 flow (系统全貌) + reports/train_curve_*.json (训练结果)
               + reports/rollout_*/ (推理视频帧) → tools/generate_report.py"""
-        self._log("📄 正在生成五模型对比技术选型报告 (概况/分系统/接口/参数/架构/功能/性价比/优劣势)…")
+        self._log("📄 正在生成模型对比技术选型报告 (概况/分系统/接口/参数/架构/功能/性价比/优劣势)…")
 
         def _work():
             try:
@@ -5171,7 +5212,7 @@ class SimulinkModule(QWidget):
                 flow_json = os.path.join(root, "reports", "_flow_snapshot.json")
                 try:
                     with open(flow_json, "w", encoding="utf-8") as f:
-                        json.dump({"format": "zmax-simulink", "name": "五模型对比",
+                        json.dump({"format": "zmax-simulink", "name": "模型对比",
                                    "nodes": self.nodes, "links": self.links}, f,
                                   ensure_ascii=False, indent=1)
                 except Exception:
@@ -5186,7 +5227,7 @@ class SimulinkModule(QWidget):
                 last = out[-1] if out else "?"
                 if r.returncode == 0 and os.path.exists(os.path.join(root, "reports")):
                     import glob as _g
-                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
+                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "模型对比技术选型报告_*.pdf")),
                                   key=os.path.getmtime)
                     if pdfs:
                         return True, f"📄 报告已生成: {os.path.basename(pdfs[-1])}"
@@ -5273,7 +5314,7 @@ class SimulinkModule(QWidget):
         try:
             import json as _j, glob as _g, urllib.request as _ur, os as _os
             root = self._repo_root()
-            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
+            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "模型对比技术选型报告_*.pdf")),
                           key=_os.path.getmtime)
             if not pdfs:
                 self._safe_log("⚠️ 飞书发送: 未找到 PDF 报告文件")
@@ -5387,7 +5428,7 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
             # ③ 3+2 网格对比拼接 (xstack)
-            cmp_mp4 = os.path.join(root, "reports", f"五模型对比_rollout_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
+            cmp_mp4 = os.path.join(root, "reports", f"模型对比_rollout_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
             try:
                 if len(mp4s) == 5:
                     fc = ("[0:v]scale=320:240[a0];[1:v]scale=320:240[a1];"
@@ -5402,7 +5443,7 @@ class SimulinkModule(QWidget):
                              "-pix_fmt", "yuv420p", "-loglevel", "error", cmp_mp4],
                             capture_output=True, timeout=180)
                     if os.path.exists(cmp_mp4):
-                        self._safe_log(f"🎬 五模型对比视频: {os.path.basename(cmp_mp4)}")
+                        self._safe_log(f"🎬 模型对比视频: {os.path.basename(cmp_mp4)}")
                 else:
                     cmp_mp4 = None
             except Exception:
@@ -5423,7 +5464,7 @@ class SimulinkModule(QWidget):
                 if os.path.exists(m):
                     self._send_file_to_feishu(m, f"🎥 {_nm} rollout 视频", file_type="mp4")
             # PDF (复用既有发送逻辑)
-            self._send_report_to_feishu_work("五模型对比技术选型报告")
+            self._send_report_to_feishu_work("模型对比技术选型报告")
             self._safe_log("✅ 自动交付完成: 视频 + PDF 已发飞书 dataworld 群")
         except Exception as ex:
             self._safe_log(f"⚠️ 自动交付失败: {ex}")
@@ -5818,9 +5859,9 @@ class SimulinkModule(QWidget):
         src = node["params"].get("source", "metaworld")
         root = self._repo_root()
         cands = {
-            "metaworld": ["data/metaworld_peg_lerobot"],
+            "metaworld": ["data/metaworld_peg"],
             # 2026-08-07 老倪: orin/closed_loop 数据已删 — orin 候选移除
-        }.get(src, ["data/metaworld_peg_lerobot"])
+        }.get(src, ["data/metaworld_peg"])
         dlg = QDialog(self.window() or self)
         dlg.setWindowTitle(f"📦 数据源: {node['name']}")
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
