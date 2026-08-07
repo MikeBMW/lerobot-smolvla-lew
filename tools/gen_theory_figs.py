@@ -6,6 +6,18 @@ import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
+
+# 🀄 中文字体 (2026-08-07 老倪: 理论图中文乱码 — 之前无字体配置, 默认 DejaVu 无中文)
+for _cand in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"):
+    if os.path.exists(_cand):
+        try:
+            font_manager.fontManager.addfont(_cand)
+        except Exception:
+            pass
+matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "Noto Serif CJK SC", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "reports", "figs", "theory")

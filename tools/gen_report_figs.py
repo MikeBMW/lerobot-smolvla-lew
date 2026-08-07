@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """生成报告用架构图: 5 模型架构图 + Simulink pipeline 图 → PNG (供 PDF 嵌入)
 2026-08-06 老倪要求: PDF 要有模型架构图 + pipeline
+2026-08-07 老倪: 图片中文乱码 → 加 Noto CJK 中文字体 (matplotlib 默认 DejaVu 无中文)
 """
 import os
 import matplotlib
@@ -8,6 +9,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib import font_manager
+
+# 🀄 中文字体 (2026-08-07: 之前无字体配置 → 全图中文乱码; 与 generate_report._cfg_cjk 同款)
+for _cand in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"):
+    if os.path.exists(_cand):
+        try:
+            font_manager.fontManager.addfont(_cand)
+        except Exception:
+            pass
+matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "Noto Serif CJK SC", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "reports", "figs")
@@ -31,11 +44,15 @@ MODELS = [
      ["观测: 状态+触觉", "触觉编码器", "Interpolant 采样", "小步精炼动作"]),
     ("AWE-zFlow", "场景原生 + 世界模型\n(zFlow 三层潜空间)", C["yellow"],
      ["观测: 状态+视触觉", "三层潜空间(几何/物体/语义)", "GRU 世界模型预测未来", "潜空间推演→动作"]),
+    ("MLP 蒸馏", "行为克隆 MLP\n(蒸馏自官方专家)", "#2d6a8f",
+     ["观测: 39D 完整观测", "全连接 512×1", "专家 BC 蒸馏 300eps", "直接输出动作"]),
+    ("官方专家", "规则策略 (真值基准)\n(PD 控制律+夹爪状态机)", "#8f8a3d",
+     ["观测: 状态+目标", "PD 位置控制律", "夹爪状态机", "规则直算动作"]),
 ]
 
 def draw_model_arch():
-    """5 模型架构图 (纵排卡片, 每卡片: 名称+架构+组件流)"""
-    fig, axes = plt.subplots(5, 1, figsize=(10.5, 12.5))
+    """7 模型架构图 (纵排卡片, 每卡片: 名称+架构+组件流) — 2026-08-07 七模型 + 字体调大"""
+    fig, axes = plt.subplots(7, 1, figsize=(11, 17.5))
     fig.patch.set_facecolor(C["bg"])
     for ax, (name, arch, color, comps) in zip(axes, MODELS):
         ax.set_facecolor(C["bg"])
@@ -43,25 +60,25 @@ def draw_model_arch():
         ax.axis("off")
         # 卡片底
         card = FancyBboxPatch((0.05, 0.08), 9.9, 1.85, boxstyle="round,pad=0.05",
-                              fc=C["card"], ec=color, lw=1.6)
+                              fc=C["card"], ec=color, lw=1.8)
         ax.add_patch(card)
         # 模型名
-        ax.text(0.3, 1.45, name, fontsize=13, fontweight="bold", color=color, va="center")
-        ax.text(0.3, 0.9, arch, fontsize=9.5, color=C["text"], va="center")
+        ax.text(0.3, 1.45, name, fontsize=17, fontweight="bold", color=color, va="center")
+        ax.text(0.3, 0.9, arch, fontsize=12.5, color=C["text"], va="center")
         # 组件流 (右向)
-        x = 3.6
+        x = 3.7
         for i, ctext in enumerate(comps):
-            box = FancyBboxPatch((x, 0.55), 1.5, 0.95, boxstyle="round,pad=0.03",
-                                 fc="#21262d", ec=C["border"], lw=0.8)
+            box = FancyBboxPatch((x, 0.55), 1.55, 0.95, boxstyle="round,pad=0.03",
+                                 fc="#21262d", ec=C["border"], lw=0.9)
             ax.add_patch(box)
-            ax.text(x + 0.75, 1.02, ctext.split("\n")[0][:8], fontsize=6.6,
+            ax.text(x + 0.78, 1.02, ctext.split("\n")[0], fontsize=9.5,
                     color=C["text"], ha="center", va="center")
             if ctext != comps[-1]:
-                ax.annotate("", xy=(x + 1.58, 1.02), xytext=(x + 1.48, 1.02),
-                            arrowprops=dict(arrowstyle="->", color=color, lw=1.4))
-            x += 1.62
-    fig.suptitle("Z-MAX 五模型架构对比", fontsize=15, color=C["text"], fontweight="bold", y=0.98)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+                ax.annotate("", xy=(x + 1.63, 1.02), xytext=(x + 1.53, 1.02),
+                            arrowprops=dict(arrowstyle="->", color=color, lw=1.6))
+            x += 1.68
+    fig.suptitle("Z-MAX 七模型架构对比", fontsize=19, color=C["text"], fontweight="bold", y=0.985)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
     out = os.path.join(OUT, "model_arch.png")
     fig.savefig(out, dpi=110, facecolor=C["bg"])
     plt.close(fig)
