@@ -7743,6 +7743,14 @@ def main():
 
     win = StudioMainWindow()
     win.show()
+    # 2026-08-07 老倪: 控制台置顶到桌面前端 (WSLg 窗口可能被遮挡)
+    try:
+        win.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        win.show()
+        win.raise_()
+        win.activateWindow()
+    except Exception:
+        pass
     sys.exit(app.exec_())
 
 

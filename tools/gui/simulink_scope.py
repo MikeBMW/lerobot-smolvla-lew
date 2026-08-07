@@ -305,7 +305,7 @@ class ScopeCompareDialog(QDialog):
 
         self.cmb_base = QComboBox()
         self.cmb_base.setStyleSheet(_qss("background:#ffffff;color:#24292f;border:1px solid #b6bdc7;border-radius:4px;padding:4px 8px;"))
-        self.cmb_base.addItem("基础模型 (act_metaworld)", "outputs/train/act_metaworld/checkpoints/000300/pretrained_model")
+        self.cmb_base.addItem("基础模型 (act_metaworld_final)", "outputs/train/act_metaworld_final/checkpoints/002000/pretrained_model")
         ctrl.addWidget(QLabel("基础:"))
         ctrl.addWidget(self.cmb_base, 1)
 

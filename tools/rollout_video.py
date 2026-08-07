@@ -21,6 +21,34 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+def _load_preprocessor_stats(pm: str):
+    """从 checkpoint preprocessor 读归一化 stats — 2026-08-06: preprocessor 可能坏(2D state/像素级action),
+    改用数据 stats.json (与训练一致)"""
+    import json as _j
+    # 优先数据 stats.json (正确来源)
+    for root in ["data/metaworld_peg_v5", "data/metaworld_peg_v4", "data/metaworld_peg_v3"]:
+        p = os.path.join(ROOT, root, "meta", "stats.json")
+        if os.path.exists(p):
+            try:
+                d = _j.load(open(p))
+                return {"action.mean": np.array(d["action"]["mean"], dtype=np.float32),
+                        "action.std": np.array(d["action"]["std"], dtype=np.float32),
+                        "observation.state.mean": np.array(d["observation.state"]["mean"], dtype=np.float32),
+                        "observation.state.std": np.array(d["observation.state"]["std"], dtype=np.float32)}
+            except Exception:
+                pass
+    # 兜底: preprocessor
+    import glob as _g
+    try:
+        from safetensors.torch import load_file
+        hits = _g.glob(os.path.join(pm, "policy_preprocessor_step_*normalizer*.safetensors"))
+        if not hits:
+            return None
+        d = load_file(hits[-1])
+        return {k: v.numpy() for k, v in d.items()}
+    except Exception:
+        return None
+
 def load_policy(policy: str):
     """按 policy 加载已训练 checkpoint (train_curve_<policy>.json 记录 ckpt 路径)"""
     curve_path = os.path.join(ROOT, "reports", f"train_curve_{policy}.json")
@@ -52,6 +80,18 @@ def load_policy(policy: str):
     if policy == "act":
         from lerobot.policies.act.modeling_act import ACTPolicy
         pol = ACTPolicy.from_pretrained(pm, local_files_only=True)
+        # 从 checkpoint preprocessor 读归一化 stats (2026-08-06: ACT 输出归一化, 需反归一化)
+        _st = _load_preprocessor_stats(pm)
+        if _st:
+            pol.stats = {"a_mean": _st["action.mean"], "a_std": _st["action.std"],
+                         "s_mean": _st["observation.state.mean"], "s_std": _st["observation.state.std"]}
+    elif policy == "smolvla" or policy == "smolvla_lew":
+        from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
+        pol = SmolVLALewPolicy.from_pretrained(pm, local_files_only=True)
+        _st = _load_preprocessor_stats(pm)
+        if _st:
+            pol.stats = {"a_mean": _st["action.mean"], "a_std": _st["action.std"],
+                         "s_mean": _st["observation.state.mean"], "s_std": _st["observation.state.std"]}
     elif policy == "vla_touch":
         import importlib.util
         spec = importlib.util.spec_from_file_location("train_vla_touch", os.path.join(ROOT, "tools", "train_vla_touch.py"))
@@ -144,11 +184,17 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
             else:
                 # 精简模型 (vla_touch/awe): 从 model.pt config 推断
                 st_dim = int(getattr(policy, "state_dim", 2) or 2)
+            # ACT 权重可能是 2D (热启动残留, config 3D 但权重 2D) — 2026-08-06 修复
+            if hasattr(policy, "model") and hasattr(policy.model, "encoder_robot_state_input_proj"):
+                w_dim = policy.model.encoder_robot_state_input_proj.weight.shape[1]
+                if w_dim != st_dim:
+                    print(f"⚠️ state 维度修正: config={st_dim} → 权重={w_dim}")
+                    st_dim = w_dim
             st_vec = np.asarray(obs, dtype=np.float32)
             st = st_vec[:st_dim] if st_vec.ndim == 1 else np.zeros(st_dim, dtype=np.float32)
             dev = next(policy.parameters()).device
             # AWE: 输入归一化 (训练管道一致)
-            if hasattr(policy, "stats") and policy.stats.get("s_mean"):
+            if hasattr(policy, "stats") and policy.stats.get("s_mean") is not None:
                 sm = np.array(policy.stats["s_mean"], dtype=np.float32)[:st_dim]
                 ss = np.array(policy.stats["s_std"], dtype=np.float32)[:st_dim] + 1e-6
                 st = (st - sm) / ss
@@ -182,7 +228,7 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
                 pred = pred.detach().cpu()
             a = np.asarray(pred).ravel()
             # AWE: 输出反归一化 (归一化空间 → 真实动作)
-            if hasattr(policy, "stats") and policy.stats.get("a_mean") and a.size:
+            if hasattr(policy, "stats") and policy.stats.get("a_mean") is not None and a.size:
                 am = np.array(policy.stats["a_mean"], dtype=np.float32)[: a.size]
                 asd = np.array(policy.stats["a_std"], dtype=np.float32)[: a.size] + 1e-6
                 a = a * asd + am

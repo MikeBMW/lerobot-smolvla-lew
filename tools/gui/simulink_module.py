@@ -347,21 +347,30 @@ REFERENCE_APPS = [
         (38, 40, "VLA-Touch视频"), (39, 40, "AWE视频"),
     ],
     # 🗂 多行展开布局 (每行一个模型; 同构模块同列垂直对齐)
-    # 列: 数据 | YOLO感知 | StateAdapter | 视觉编码 | 动作生成 | Action Head | (空) | 训练
+    # 列: 数据 | YOLO感知 | YOLO检测 | 2D→3D | StateAdapter | 视觉编码 | 动作生成 | 附加 | Action Head | 训练
+    # ⚠️ 2026-08-07 老倪: Interpolant/交叉注意力 跑到显示区右侧太远 —
+    #    根因: YOLO检测/2D→3D/Encoder/Decoder/Interpolant/交叉注意力 漏出网格 →
+    #    走兜底单行 (x=640..7920)。以下补全全部 41 节点, 感知链独占首行。
     [
-        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
-        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
-        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🎯 Action Head 4D · SmolVLA+LEW", "🌐 LeWorldModel", "🚀 SmolVLA+LEW 训练"],
-        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "🎯 Action Head · VLA", "📍 Marker 触觉跟踪", "🚀 VLA-Touch 训练"],
-        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🎯 Action Head · AWE", "🌊 zFlow 世界引擎", "🚀 AWE 训练"],
-        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "📥 全观测编码 39D", "🔗 全连接层 512·1", "🎯 Action Head 4D · MLP", "", "🎓 专家蒸馏训练"],
-        ["📦 metaworld 数据", "🧭 位置控制律", "🤏 夹爪状态机", "", "", "🎯 Action Head 4D · 专家", "", "📏 官方专家基准"],
-        ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比"],
+        # 感知前端链 (共享): 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", ""],
+        # ACT 行 (10列)
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练"],
+        # SmolVLA 纯动作行
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练"],
+        # SmolVLA+LEW 行
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练"],
+        # VLA-Touch 行: 拓扑 ActionHead→Interpolant→训练, Marker→Interpolant
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "", "🎯 Action Head · VLA", "🌉 Interpolant 控制器", "📍 Marker 触觉跟踪", "🚀 VLA-Touch 训练"],
+        # AWE 行: 拓扑 zFlow→交叉注意力→ActionHead→训练
+        ["📦 metaworld 数据", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练"],
+        # 评估行
+        ["📊 对比评估 Scope", "", "", "", "", "", "", "🎥 推理效果对比", "", ""],
         # 🎥 视频对比行 (2026-08-05 老倪: 推理效果对比之后 5 个视频节点)
         ["", "🎥 视频对比 · ACT", "🎥 视频对比 · SmolVLA", "🎥 视频对比 · SmolVLA+LEW",
-         "🎥 视频对比 · VLA-Touch", "🎥 视频对比 · AWE", "", ""],
+         "🎥 视频对比 · VLA-Touch", "🎥 视频对比 · AWE", "", "", "", ""],
         # 📄 PDF 报告行 (2026-08-05 老倪: 最后生成技术选型报告)
-        ["", "", "", "", "", "", "", "📄 PDF 技术选型报告"],
+        ["", "", "", "", "", "", "", "📄 PDF 技术选型报告", "", ""],
     ]),
     # 🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: "参考VLA-Touch项目, 4060资源有限要改造,
     #   纵向对比不同模型的区别, 用于技术选型" — github.com/jxbi1010/VLA-Touch, RA-L 2026)
@@ -2776,25 +2785,27 @@ class SimulinkModule(QWidget):
             # 🗂 多行展开布局 (2026-08-05): layout 是 [[节点名...]每行] 网格 —
             # 行 = 模型分支, 列 = 功能角色, 同名节点多行出现→垂直对齐(如 Action Head 共第5列);
             # 空串 = 占位跳过。无 layout → 传统单行横排 (兼容旧模板)。
+            # ⚠️ 列距 200 (2026-08-07 老倪: 节点跑到显示区右侧太远 → 260 太宽, 10 列网格
+            #    也放得下; specs 无 layout 位置的节点走兜底单行会甩到 x=6000+, 必须补全 layout!)
             if layout:
                 pos = {}
                 for r, row in enumerate(layout):
                     for c, nm in enumerate(row):
                         if not nm:
                             continue  # 占位空串, 跳过
-                        pos.setdefault(nm, []).append((base_x + c * 260, base_y + r * 230))
+                        pos.setdefault(nm, []).append((base_x + c * 200, base_y + r * 230))
                 used = set()
                 for i, (ntype, nm, params) in enumerate(node_specs):
                     cands = pos.get(nm, [])
                     xy = next((p for p in cands if p not in used), None)
                     if xy is None:
-                        xy = (base_x + i * 260, base_y)  # 兜底单行
+                        xy = (base_x + i * 200, base_y)  # 兜底单行
                     used.add(xy)
                     n = self.add_node(ntype, nm, xy[0], xy[1], params)
                     ids.append(n["id"])
             else:
                 for i, (ntype, nm, params) in enumerate(node_specs):
-                    n = self.add_node(ntype, nm, base_x + i * 260, base_y, params)
+                    n = self.add_node(ntype, nm, base_x + i * 200, base_y, params)
                     ids.append(n["id"])
             for fi, ti, *label in link_specs:
                 if fi < len(ids) and ti < len(ids):
