@@ -3,8 +3,8 @@
 # ⚠️ 关键: enable_lew_world_model:true + freeze_smolvlm:true 可共存 (2026-08-05 老倪修正:
 #   configuration_smolvla_lew.py __post_init__ 原强制关 LEW 已移除; LeWorldModel.encode_frame
 #   用 no_grad 冻结 SigLIP 提特征, predictor/action_encoder 独立训练; VLM 冻结省显存+加速)
-output_dir: outputs/train/smolvla_lew_peg_v6
-job_name: smolvla_lew_peg_v3
+output_dir: outputs/train/smolvla_lew_20260807_154617
+job_name: smolvla_lew_20260807_154617
 
 policy:
   type: smolvla_lew
@@ -33,12 +33,11 @@ policy:
 
 dataset:
   repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
-  root: data/metaworld_peg_v6
+  root: data/metaworld_act
   episodes: [0]
-  use_imagenet_stats: true   # SmolVLM 视觉用 ImageNet 归一化 (stats.json 无 image 统计)
 
 batch_size: 1
-steps: 2000
+steps: 1000
 num_workers: 0
 persistent_workers: false
 log_freq: 5

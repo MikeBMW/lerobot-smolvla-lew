@@ -190,8 +190,13 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
                 if w_dim != st_dim:
                     print(f"⚠️ state 维度修正: config={st_dim} → 权重={w_dim}")
                     st_dim = w_dim
-            st_vec = np.asarray(obs, dtype=np.float32)
-            st = st_vec[:st_dim] if st_vec.ndim == 1 else np.zeros(st_dim, dtype=np.float32)
+            # 🐛 2026-08-07: V3 环境 obs 是 dict (observation.state/image) —
+            #   np.asarray(dict) → 0维对象数组 → state 全零 → 所有模型推理异常/动作≈0
+            if isinstance(obs, dict):
+                _st_raw = np.asarray(obs.get("observation.state", np.zeros(st_dim, dtype=np.float32)), dtype=np.float32)
+            else:
+                _st_raw = np.asarray(obs, dtype=np.float32)
+            st = _st_raw[:st_dim] if _st_raw.ndim == 1 and _st_raw.size >= st_dim else np.zeros(st_dim, dtype=np.float32)
             dev = next(policy.parameters()).device
             # AWE: 输入归一化 (训练管道一致)
             if hasattr(policy, "stats") and policy.stats.get("s_mean") is not None:
@@ -202,6 +207,14 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
                 "observation.image": torch.from_numpy(rgb[np.newaxis].transpose(0, 3, 1, 2) / 255.0).float().to(dev),
                 "observation.state": torch.from_numpy(st).float().unsqueeze(0).to(dev),
             }
+            # ACT: 39D 完整观测 = robot(3) + env(36) → 拆分 (2026-08-07: 广播 39 vs 3 修复 —
+            #   ACTPolicy 期望 observation.environment_state; 从权重维度推断 robot/env 维)
+            _env_proj = None
+            if hasattr(policy, "model") and hasattr(policy.model, "encoder_env_state_input_proj"):
+                _env_proj = policy.model.encoder_env_state_input_proj.weight.shape[1]
+            if _env_proj and st.shape[0] >= 3 + _env_proj:
+                batch["observation.state"] = torch.from_numpy(st[:3]).float().unsqueeze(0).to(dev)
+                batch["observation.environment_state"] = torch.from_numpy(st[3:3 + _env_proj]).float().unsqueeze(0).to(dev)
             with torch.no_grad():
                 if hasattr(policy, "select_action"):
                     pred = policy.select_action(batch)

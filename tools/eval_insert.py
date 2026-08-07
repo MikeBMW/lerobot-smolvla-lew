@@ -67,7 +67,7 @@ def _load_stats():
             return _j.load(open(p))
     return None
 
-def run_episode(policy, seed, steps=200):
+def run_episode(policy, seed, steps=200, yolo_aligner=None):
     """单次插拔尝试: 返回 peg 是否抬起 + 是否插入"""
     import metaworld
     mt = metaworld.MT1("peg-insert-side-v3", seed=seed)
@@ -96,6 +96,13 @@ def run_episode(policy, seed, steps=200):
         if peg[2] - peg_z0 > 0.05:
             lifted = True
         st_raw = np.asarray(obs, dtype=np.float32)[:st_dim]
+        # 2026-08-07: YOLO 感知模式 — 评估也用 YOLO 检测 state (与训练同构, 真机一致)
+        if yolo_aligner is not None:
+            try:
+                det3d = yolo_aligner.detect_3d(np.asarray(env.render()))
+                st_raw = yolo_aligner.align(st_raw, det3d).astype(np.float32)[:st_dim]
+            except Exception:
+                pass
         st_n = (st_raw - sm) / ss  # 归一化 (训练管道)
         d = np.zeros(policy.tactile_dim if hasattr(policy, "tactile_dim") else 3, dtype=np.float32)
         # 触觉模拟: 用 state 差分 (2026-08-06 修复: st_dim 可能小于 3, 用可用维度)

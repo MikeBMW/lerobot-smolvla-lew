@@ -1,0 +1,43 @@
+# Z-MAX 数据闭环 · ACT 训练配置 (metaworld 子集 · 静静4060)
+# 用法: .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_act_metaworld.yaml
+output_dir: outputs/train/act_20260807_153646
+job_name: act_20260807_153646
+
+policy:
+  type: act
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-act-metaworld
+  n_obs_steps: 1
+  n_action_steps: 7
+  chunk_size: 7
+  dim_model: 256
+  dim_feedforward: 1024
+  n_heads: 8
+  n_encoder_layers: 4
+  n_decoder_layers: 4
+  use_vae: true
+  latent_dim: 32
+
+dataset:
+  repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
+  root: data/metaworld_act
+  episodes: [0]
+  use_imagenet_stats: false
+
+batch_size: 8
+steps: 1000
+num_workers: 0
+persistent_workers: false
+log_freq: 5
+eval_freq: 150
+save_freq: 150
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 1e-4
+  weight_decay: 0.0
+
+wandb:
+  enable: false

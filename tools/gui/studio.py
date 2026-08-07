@@ -6921,8 +6921,36 @@ class StudioMainWindow(QMainWindow):
             # 确认框自动点是 (2026-08-06: 老倪看着自动跑, 不弹窗拦截)
             self.simulink._qmsg_yes = lambda *a, **k: True
             self.simulink.open_compare5()
-            QTimer.singleShot(1200, self.simulink.start_sim)
-            self.simulink._log("🚀 ZMAX_AUTO_RUN: 已自动加载五模型对比并启动训练 (500步/模型, 串行)")
+            # 🛡 2026-08-07 老倪: 刷新控制台不能影响训练 — 已有其他训练进程
+            #   (YOLO/独立脚本) 时只加载画布不自动训练, 防多训练抢 GPU
+            import subprocess as _sp
+            busy = _sp.run(["pgrep", "-f",
+                            "train_yolo|train_vla_touch|train_awe_zflow|distill_expert|lerobot.scripts.lerobot_train"],
+                           capture_output=True, text=True).returncode == 0
+            # 🛡 2026-08-07 老倪: 曲线已完整 (五模型已训完) → 只加载画布不重复训练
+            #   (老倪: "一次训练的时间太长了" — 重启 GUI 不应再触发全量重训)
+            import json as _j
+            _root = os.path.expanduser("~/lerobot-smolvla-lew")
+            def _curves_done():
+                for _p in ("act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow"):
+                    _f = os.path.join(_root, "reports", f"train_curve_{_p}.json")
+                    try:
+                        if not (_j.load(open(_f, encoding="utf-8")).get("curve") or []):
+                            return False
+                    except Exception:
+                        return False
+                return True
+            if busy:
+                self.simulink._log("🛡 检测到已有训练进程 — 跳过自动训练, 仅加载画布 (新代码已生效)")
+            elif os.environ.get("ZMAX_AUTO_TRAIN") == "1":
+                # 2026-08-07 老倪: 训练已完成过一轮, 重启只加载画布不重训 (避免覆盖曲线)
+                # 需要自动训练时: ZMAX_AUTO_TRAIN=1 启动
+                QTimer.singleShot(1200, self.simulink.start_sim)
+                self.simulink._log("🚀 ZMAX_AUTO_RUN+ZMAX_AUTO_TRAIN: 已自动加载画布并启动训练")
+            elif _curves_done():
+                self.simulink._log("🛡 检测到五模型曲线已完整 — 跳过自动训练, 仅加载画布 (仿真标识已生效)")
+            else:
+                self.simulink._log("⏸ 仅加载画布 (ZMAX_AUTO_RUN=1): 不自动训练, 点「▶ 运行」或双击训练节点可手动训练")
         except Exception as ex:
             import traceback
             traceback.print_exc()

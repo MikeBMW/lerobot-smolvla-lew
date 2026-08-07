@@ -908,6 +908,14 @@ class InferenceVideoDialog(QDialog):
                   ("smolvla_lew", "SmolVLA+LEW", "#a371f7"),
                   ("vla_touch", "VLA-Touch", "#6a2d8f"),
                   ("awe_zflow", "AWE", "#8f2d4d")]
+    # 七模型版 (2026-08-07 老倪: MLP 强化学习 + 官方专家入七模型画布;
+    #   专家=🏆真值锚点金色, MLP=蒸馏自专家)
+    POLICIES_7 = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
+                  ("smolvla_lew", "SmolVLA+LEW", "#a371f7"),
+                  ("vla_touch", "VLA-Touch", "#6a2d8f"),
+                  ("awe_zflow", "AWE", "#8f2d4d"),
+                  ("expert_mlp", "MLP 蒸馏", "#2d6a8f"),
+                  ("expert_policy", "官方专家", "#8f8a3d")]
 
     def __init__(self, module, policies=None, parent=None):
         super().__init__(parent)
@@ -917,7 +925,7 @@ class InferenceVideoDialog(QDialog):
         # 🖥 置顶 (2026-08-06 老倪: 5 窗口保持最前不被遮挡, 看着做对比)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         n = len(self.POLICIES)
-        self.setWindowTitle(f"🎥 {n} 模型推理效果对比 — metaworld peg 场景")
+        self.setWindowTitle(f"🎮 {n} 模型仿真 rollout 对比 (metaworld peg 场景 — 本地评估, 非 Orin 真机)")
         # 🖥 2026-08-06 修复: 5 模型 400px 并排=2000px 超出窗口(1280) → 后 4 个被挤出屏外
         #   (老倪: "第一个能打开, 第二个呢? 5个要同时一起打开做对比")
         #   → 网格布局: 5 模型 2 行 (3+2), 视频框自适应缩放
@@ -944,9 +952,6 @@ class InferenceVideoDialog(QDialog):
         for i, (policy, name, color) in enumerate(self.POLICIES):
             r, c = divmod(i, cols)
             box = QVBoxLayout()
-            cap = QLabel(f"■ {name}")
-            cap.setStyleSheet(_qss(f"color:{color};font-size:12px;font-weight:700;"))
-            box.addWidget(cap)
             # 🕐 元信息副标题: 生成时间 + 动作幅度 (2026-08-06 老倪: 不知道啥时候生成的, 对比没依据)
             meta = QLabel("—")
             meta.setStyleSheet(_qss("color:#57606a;font-size:9px;"))
@@ -955,7 +960,18 @@ class InferenceVideoDialog(QDialog):
             lab.setMinimumSize(240, 180)   # 自适应缩放, 不固定 400x300
             lab.setAlignment(Qt.AlignCenter)
             lab.setStyleSheet(_qss("background:#24292f;color:#8b949e;border:1px solid #d0d7de;border-radius:6px;font-size:11px;"))
-            box.addWidget(lab)
+            # 🏷 模型名标题: 叠加在视频框左下角 (2026-08-07 老倪: 标题在框上方 → 视觉飘到上面窗口,
+            #   改左下角半透明底, 像图片水印说明)
+            cap = QLabel(f"■ {name}")
+            cap.setStyleSheet(_qss(f"color:{color};font-size:12px;font-weight:700;"
+                                   f"background:rgba(13,17,23,140);padding:2px 6px;border-radius:3px;"))
+            cap.setAttribute(Qt.WA_TransparentForMouseEvents)
+            stack = QGridLayout()
+            stack.setContentsMargins(0, 0, 0, 0)
+            stack.setSpacing(0)
+            stack.addWidget(lab, 0, 0)
+            stack.addWidget(cap, 0, 0, Qt.AlignLeft | Qt.AlignBottom)
+            box.addLayout(stack)
             self.video_labels[policy] = lab
             self._meta_labels[policy] = meta
             vid_grid.addLayout(box, r, c)
@@ -1006,6 +1022,11 @@ class InferenceVideoDialog(QDialog):
                 ts = d.get("ts", "")
                 if len(ts) != 15:
                     continue
+                # 🛡 2026-08-07 老倪: 视频打开闪一下再次打开 — 训练中断残留的残缺曲线
+                #   (如 act 50 点/0 点, ts 却更新) 被误判为"新 checkpoint" → 每次打开都
+                #   触发重新生成 rollout。曲线不完整 (<100 点 = 非正常 1000 步训练) 不算新。
+                if len(d.get("curve") or []) < 100:
+                    continue
                 t_ckpt = time.mktime(time.strptime(ts, "%Y%m%d_%H%M%S"))
                 t_frame = os.path.getmtime(frames[0])
                 if t_ckpt > t_frame + 60:
@@ -1020,9 +1041,16 @@ class InferenceVideoDialog(QDialog):
         dirs = {}
         # 候选目录优先级: rollout_final_<p> (昨晚 peg 最终版) > rollout_peg_<p> > rollout_<p>
         # (2026-08-06 老倪: 视频打开不动 — 昨晚生成在 rollout_peg_*, 旧逻辑只找 rollout_*)
+        # (2026-08-07: expert_mlp/expert_policy 无 rollout_final_* — 现成成功视频在
+        #   rollout_mlp/ rollout_expert_full/, 按 policy 走专用候选目录)
+        _dir_map = {
+            "expert_mlp": ("rollout_mlp", "rollout_final_expert_mlp", "rollout_expert_mlp"),
+            "expert_policy": ("rollout_expert_full", "rollout_expert", "rollout_final_expert_policy"),
+        }
         for policy, name, color in self.POLICIES:
             found = []
-            for cand in (f"rollout_final_{policy}", f"rollout_peg_{policy}", f"rollout_{policy}"):
+            cands = _dir_map.get(policy) or (f"rollout_final_{policy}", f"rollout_peg_{policy}", f"rollout_{policy}")
+            for cand in cands:
                 d = os.path.join(root, "reports", cand)
                 frames = sorted(glob.glob(os.path.join(d, "frame_*.png")))
                 if frames:
@@ -1071,7 +1099,12 @@ class InferenceVideoDialog(QDialog):
             pm = QPixmap(f)
             lab = self.video_labels[policy]
             if not pm.isNull():
-                lab.setPixmap(pm.scaled(lab.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                # 🐛 2026-08-07: 对话框未显示时 lab.size()=0 → scaled(0,0) 白屏;
+                #   尺寸有效才缩放, 否则先显示原图 (QLabel 自适应)
+                if lab.size().width() > 0 and lab.size().height() > 0:
+                    lab.setPixmap(pm.scaled(lab.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                else:
+                    lab.setPixmap(pm)
         self.cur_idx += 1
 
     def _play(self):
