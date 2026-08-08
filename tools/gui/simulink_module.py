@@ -148,7 +148,7 @@ REFERENCE_APPS = [
     # 🔬 模型对比 (2026-08-05 老倪: "把 ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
     #   放到一起, 纵向对比" — 技术选型终极画布)
     # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope / 推理效果对比) + 五模型分支
-    #   ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练)
+    #   ACT 7 (ResNet18→Encoder→Decoder→ActionHead→Ensemble→训练·无VAE)
     #   SmolVLA 4 (SmolVLM2→DiT-B→ActionHead→训练, 无 LEW)
     #   SmolVLA+LEW 5 (SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练)
     #   VLA-Touch 6 (DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练)
@@ -3378,7 +3378,7 @@ class SimulinkModule(QWidget):
             return
         self._log("════ 🔬 模型对比 (统一 metaworld 数据集 · 纵向对比) ════")
         self._log("📦 模块划分: ♻共用 3 (metaworld数据 / 对比评估Scope / 推理效果对比) + 五模型分支")
-        self._log("🔬 ① ACT 7: ResNet18→CVAE→Encoder→Decoder→ActionHead→Ensemble→训练 (确定性回归)")
+        self._log("🔬 ① ACT 7: ResNet18→Encoder→Decoder→ActionHead→Ensemble→训练 (无VAE确定性回归)")
         self._log("🔬 ② SmolVLA 4: SmolVLM2→DiT-B→ActionHead→训练 (扩散, 无世界模型)")
         self._log("🔬 ③ SmolVLA+LEW 5: SmolVLM2→DiT-B→LeWorldModel→ActionHead→训练 (扩散+世界模型)")
         self._log("🖐 ④ VLA-Touch 6: DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练 (触觉增强)")
@@ -4611,7 +4611,7 @@ class SimulinkModule(QWidget):
         self._act_build_step = -1
         self._act_build_active = True
         self._log("════ 🧠 ACT-Meta 逐步搭建引导 · 从模块库搭成完整模型 ════")
-        self._log("🎯 目标: metaworld 数据 → ResNet18 → CVAE → Encoder → Decoder → ActionHead(4D) → Ensemble → 训练 → Scope")
+        self._log("🎯 目标: metaworld 数据 → ResNet18 → Encoder → Decoder → ActionHead(4D) → Ensemble → 训练(无VAE) → Scope")
         self._log("📋 每步请点击左侧模块库「🧠 ACT 模型·子模块」分类下的高亮模块, 共9步")
         self._act_build_next()
 
