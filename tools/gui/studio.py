@@ -2492,7 +2492,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._ct_mode_grp.addButton(b)
             self._ct_mode_btns[key] = b
             b.clicked.connect(lambda _, k=key: self._ct_pick(k))
-            rowm.addWidget(b)
+            rowm.addWidget(self._holo_badge(b, mid))  # 🌐 左下角 ID 角标
         self._ct_mode_btns["train"].setChecked(True)  # 默认远程训练
         cv.addLayout(rowm)
         # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
@@ -2501,7 +2501,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._btn_upload_ct = QPushButton("🔼 上传容器到远程")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
-        rowc.addWidget(self._btn_upload_ct)
+        rowc.addWidget(self._holo_badge(self._btn_upload_ct, "B-04"))  # 🌐 左下角 ID 角标
         rowc.addStretch()
         cv.addLayout(rowc)
         # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
@@ -4155,7 +4155,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         """🌐 控件左下角小字全局唯一 ID 角标 (2026-08-08 老倪: 统一左下角小字显示, 眼睛可见)"""
         try:
             badge = QLabel(h_id)
-            badge.setStyleSheet(f"color:{C_DIM}; font-size:8px; background:transparent; border:none; padding:0px;")
+            badge.setStyleSheet(f"color:{C_CYAN}; font-size:10px; font-weight:bold; background:transparent; border:none; padding:0px;")
             badge.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             # 方案: 控件外包 QVBoxLayout (控件 + 左下角 ID 小字)
             wrap = QWidget()
@@ -4172,6 +4172,125 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return wrap
         except Exception:
             return widget
+
+    def _holo_apply_all(self, root=None):
+        """🌐 全控制台所有控件 ID 角标 — 递归包装所有可交互控件 (2026-08-08 老倪: 所有所有所有)"""
+        try:
+            root = root or self
+            self._holo_applied = set()
+            self._holo_seq = 0
+            # 递归遍历布局树
+            self._holo_walk(root)
+            self._register_holo_all()
+        except Exception:
+            pass
+
+    def _holo_walk(self, w):
+        """递归: 遍历 widget 的布局 → 包装可交互控件 → 递归子容器"""
+        try:
+            lay = w.layout() if hasattr(w, "layout") else None
+            if lay is not None:
+                self._holo_walk_layout(lay)
+            # 递归子容器 (QGroupBox/QWidget 容器)
+            for child in w.findChildren(QWidget):
+                if child is w or child in self._holo_applied:
+                    continue
+                if isinstance(child, (QPushButton, QCheckBox, QComboBox, QLineEdit, QTableWidget, QRadioButton)):
+                    continue  # 叶子 — 布局 walk 已处理
+                if child.layout() is not None and not child.isWindow():
+                    self._holo_walk(child)
+        except Exception:
+            pass
+
+    def _holo_walk_layout(self, lay):
+        """遍历布局 items: 可交互控件 → 左下角 ID 角标 (replaceWidget 包装)"""
+        try:
+            for i in range(lay.count()):
+                item = lay.itemAt(i)
+                if item is None:
+                    continue
+                wgt = item.widget()
+                if wgt is not None and id(wgt) not in self._holo_applied:
+                    if isinstance(wgt, (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget)):
+                        self._holo_seq += 1
+                        self._holo_applied.add(id(wgt))
+                        h_id = self._holo_assign_id(wgt)
+                        wrap = self._holo_badge(wgt, h_id)
+                        if wrap is not wgt:
+                            try:
+                                lay.replaceWidget(wgt, wrap)
+                                wrap.show()
+                            except Exception:
+                                pass
+                        self._holo_reg[h_id] = (wgt, self._holo_name(wgt), self._holo_type(wgt), lambda w=wgt: self._holo_state(w))
+                elif wgt is not None:
+                    pass
+                sub = item.layout()
+                if sub is not None:
+                    self._holo_walk_layout(sub)
+        except Exception:
+            pass
+
+    def _holo_assign_id(self, w):
+        """🌐 分配全局唯一 ID (W/B/M/S/T/L/D 前缀)"""
+        if isinstance(w, QPushButton):
+            t = w.text()
+            if "Start" in t or "训练" in t and "开关" not in t:
+                return f"B-{self._holo_seq:02d}"
+            if "Stop" in t or "停止" in t:
+                return f"B-{self._holo_seq:02d}"
+            return f"B-{self._holo_seq:02d}"
+        if isinstance(w, (QCheckBox, QRadioButton)):
+            return f"S-{self._holo_seq:02d}"
+        if isinstance(w, QComboBox):
+            return f"D-{self._holo_seq:02d}"
+        if isinstance(w, QLineEdit):
+            return f"E-{self._holo_seq:02d}"
+        if isinstance(w, QTableWidget):
+            return f"T-{self._holo_seq:02d}"
+        return f"X-{self._holo_seq:02d}"
+
+    def _holo_name(self, w):
+        """控件名 (可读)"""
+        try:
+            if isinstance(w, (QPushButton, QCheckBox, QRadioButton)):
+                return w.text()[:20]
+            if isinstance(w, QComboBox):
+                return f"下拉 {w.currentText()[:12]}"
+            if isinstance(w, QLineEdit):
+                return "输入框"
+            if isinstance(w, QTableWidget):
+                return "表格"
+        except Exception:
+            pass
+        return type(w).__name__
+
+    def _holo_type(self, w):
+        if isinstance(w, QPushButton):
+            return "按钮"
+        if isinstance(w, (QCheckBox, QRadioButton)):
+            return "开关"
+        if isinstance(w, QComboBox):
+            return "下拉"
+        if isinstance(w, QLineEdit):
+            return "输入"
+        if isinstance(w, QTableWidget):
+            return "表格"
+        return "控件"
+
+    def _holo_state(self, w):
+        try:
+            if isinstance(w, (QCheckBox, QRadioButton)):
+                return "开" if w.isChecked() else "关"
+            if isinstance(w, QPushButton):
+                return "可用" if w.isEnabled() else "禁用"
+            if isinstance(w, QComboBox):
+                return w.currentText()[:14]
+            if isinstance(w, QLineEdit):
+                return (w.text() or "空")[:14]
+        except Exception:
+            pass
+        return "—"
 
     def _append_log(self, text):
         """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
@@ -8051,6 +8170,13 @@ class StudioMainWindow(QMainWindow):
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
+        # 🌐 2026-08-08 老倪: 全控制台所有控件 ID 角标 (递归包装) — 🐛 崩溃风险: replaceWidget 在复杂布局会崩,
+        #    先禁用递归 (改安全遍历后恢复); 手动页内角标已生效
+        # try:
+        #     from PyQt5.QtCore import QTimer as _QTM
+        #     _QTM.singleShot(1500, lambda: self.model_engine._holo_apply_all(self))
+        # except Exception:
+        #     pass
 
     def _build(self):
         central = QWidget()
