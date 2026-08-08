@@ -1,77 +1,67 @@
-# Docker
+# Z-MAX 标准容器框架 (2026-08-08 老倪设计)
 
-This directory contains Dockerfiles for running LeRobot in containerized environments. Both images are **built nightly from `main`** and published to Docker Hub with the full environment pre-baked — no dependency setup required.
+> **一个标准容器环境，四处运行**：远程 GPU 训练 / 本地推理测试 / Mac 数据推理 / Orin 真机部署。
+> 训练、推理、评测全部容器化 —— 环境永远一致，不再有"我这能跑你那不行"。
 
-## Pre-built Images
+## 架构
 
-```bash
-# CPU-only image (based on Dockerfile.user)
-docker pull huggingface/lerobot-cpu:latest
-
-# GPU image with CUDA support (based on Dockerfile.internal)
-docker pull huggingface/lerobot-gpu:latest
+```
+docker/
+├── Dockerfile               # 多阶段: base → train(GPU) / infer(轻量, 多平台)
+├── requirements.lock        # 锁定依赖 (transformers 4.44.2 + torch 2.4.1 — 飞书端 v6 验证稳定)
+├── entrypoints/
+│   ├── train.sh             # 训练入口 (zmax-train --config_path xxx.yaml)
+│   └── infer.sh             # 推理入口 (zmax-infer --policy act / --video / --report)
+└── deploy/
+    └── push.sh              # 推送: ./deploy/push.sh {remote|mac|orin}
 ```
 
-## Quick Start
+## 四处运行
 
-The fastest way to start training is to pull the GPU image and run `lerobot-train` directly. This is the same environment used for all of our CI, so it is a well-tested, batteries-included setup.
+| 目标 | 架构 | 用途 | 命令 |
+|---|---|---|---|
+| 远程 GPU 服务器 (V100) | amd64+CUDA | **训练** | `./deploy/push.sh remote` |
+| 本地 (4060 WSL) | amd64+CUDA | **推理测试** | `docker run zmax-std:1.0 zmax-infer --policy act` |
+| Mac M1 (小芳) | arm64+CPU | 数据/推理 | `./deploy/push.sh mac` |
+| Orin (部署) | arm64+JetPack | **真机推理** | `./deploy/push.sh orin` |
 
-```bash
-docker run -it --rm --gpus all --shm-size 16gb huggingface/lerobot-gpu:latest
-
-# inside the container:
-lerobot-train --policy.type=act --dataset.repo_id=lerobot/aloha_sim_transfer_cube_human
-```
-
-## Dockerfiles
-
-### `Dockerfile.user` (CPU)
-
-A lightweight image based on `python:3.12-slim`. Includes all Python dependencies and system libraries but does not include CUDA — there is no GPU support. Useful for exploring the codebase, running scripts, or working with robots, but not practical for training.
-
-### `Dockerfile.internal` (GPU)
-
-A CUDA-enabled image based on `nvidia/cuda`. This is the image for training — mostly used for internal interactions with the GPU cluster.
-
-## Usage
-
-### Running a pre-built image
+## 构建
 
 ```bash
-# CPU
-docker run -it --rm huggingface/lerobot-cpu:latest
+# 当前架构单平台 (最快)
+docker build --target train -t zmax-std:1.0 -f docker/Dockerfile .
 
-# GPU
-docker run -it --rm --gpus all --shm-size 16gb huggingface/lerobot-gpu:latest
+# 多平台 (推 Mac/Orin 用 — buildx)
+docker buildx build --platform linux/amd64,linux/arm64 --target train -t zmax-std:1.0 -f docker/Dockerfile .
 ```
 
-### Building locally
-
-From the repo root:
+## 训练 (远程)
 
 ```bash
-# CPU
-docker build -f docker/Dockerfile.user -t lerobot-user .
-docker run -it --rm lerobot-user
-
-# GPU
-docker build -f docker/Dockerfile.internal -t lerobot-internal .
-docker run -it --rm --gpus all --shm-size 16gb lerobot-internal
+docker run --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm \
+  -v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1 \
+  -v $(pwd):/app \
+  zmax-std:1.0 zmax-train --config_path config_act_peg_novae.yaml
 ```
+（免 nvidia-container-toolkit — `--device` 直通 + libcuda 挂载，全平台实测可用）
 
-### Multi-GPU training
-
-To select specific GPUs, set `CUDA_VISIBLE_DEVICES` when launching the container:
+## 推理/评测
 
 ```bash
-# Use 4 GPUs
-docker run -it --rm --gpus all --shm-size 16gb \
-  -e CUDA_VISIBLE_DEVICES=0,1,2,3 \
-  huggingface/lerobot-gpu:latest
+docker run zmax-std:1.0 zmax-infer --policy act --ckpt outputs/train/act_xxx/checkpoints/last
+docker run zmax-std:1.0 zmax-infer --video        # 7 模型仿真对比视频
+docker run zmax-std:1.0 zmax-infer --report       # Model Zoo PDF 报告
 ```
 
-### USB device access (e.g. robots, cameras)
+## 版本锁定原则
 
-```bash
-docker run -it --device=/dev/ -v /dev/:/dev/ --rm huggingface/lerobot-cpu:latest
-```
+- `requirements.lock` 是唯一真相 — 升级版本 = 改 lock 文件 → 重新 build → 四处同步
+- 当前基线 (踩坑换来的稳定组合):
+  - transformers **4.44.2** (5.x 的 accelerate/torch 集成坑, 4.49/4.51 缺 TextConfig — 别动)
+  - torch **2.4.1** (与驱动 550/CUDA12.4 匹配; arm64 自动切 CPU wheel)
+  - Python 3.12 (lerobot 源码 PEP695 已去 — 3.10 容器也兼容)
+- 数据统一: 容器内 `data/metaworld_peg_grab6` (train.sh 自动 sed root)
+
+## GUI 集成
+
+模型引擎 → 🐳 训练容器区: 上传/构建状态实时显示; 训练明确在标准容器中执行。
