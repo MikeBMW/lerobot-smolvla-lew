@@ -55,7 +55,7 @@ class LookAheadError(Exception):
     pass
 
 
-class Backtrackable[T]:
+class Backtrackable:  # 🐛 去PEP695泛型(Py3.10)
     """
     Wrap any iterator/iterable so you can step back up to `history` items
     and look ahead up to `lookahead` items.
@@ -102,7 +102,7 @@ class Backtrackable[T]:
         self._history = history
         self._lookahead = lookahead
 
-    def __iter__(self) -> "Backtrackable[T]":
+    def __iter__(self) -> "Backtrackable":
         return self
 
     def __next__(self) -> T:
