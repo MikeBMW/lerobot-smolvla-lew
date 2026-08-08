@@ -125,9 +125,9 @@ class PolicyContext:
 class ProcessorContext:
     """Robot-side pipelines (run outside the policy)."""
 
-    teleop_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction]
-    robot_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction]
-    robot_observation_processor: RobotProcessorPipeline[RobotObservation, RobotObservation]
+    teleop_action_processor: RobotProcessorPipeline
+    robot_action_processor: RobotProcessorPipeline
+    robot_observation_processor: RobotProcessorPipeline
 
 
 @dataclass
