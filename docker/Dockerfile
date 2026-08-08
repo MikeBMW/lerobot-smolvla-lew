@@ -32,11 +32,12 @@ WORKDIR /app
 # ---- 阶段1: 训练 (GPU) --------------------------------------------------------
 FROM base AS train
 # torch 按平台: amd64 → CUDA wheel; arm64 → CPU wheel (Orin 用 JetPack 版可覆盖)
-ARG TORCH_INDEX=https://download.pytorch.org/whl/cu124
+# 2026-08-08 飞书端: 本地 4060 全模型验证组合 torch 2.11.0+cu128 (requirements.lock 为准)
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-      pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu; \
+      pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu; \
     else \
-      pip install torch==2.4.1 torchvision --index-url ${TORCH_INDEX}; \
+      pip install torch==2.11.0 torchvision==0.26.0 --index-url ${TORCH_INDEX}; \
     fi
 
 # lerobot 工程 + 锁定依赖 (transformers 5.5.4 + torch 2.11.0 — 本地全模型验证)
