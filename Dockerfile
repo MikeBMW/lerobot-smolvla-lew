@@ -7,10 +7,10 @@ WORKDIR /app
 # 项目代码 (data/outputs 由 .dockerignore 排除, 运行时挂载)
 COPY . /app
 
-# lerobot + 依赖 (一次性构建, 训练复用; 🐛 2026-08-08: 镜像 Python 3.10 < pyproject >=3.12 → --ignore-requires-python)
-RUN pip install --no-cache-dir --ignore-requires-python -e . --no-deps 2>/dev/null; \
-    pip install --no-cache-dir --ignore-requires-python transformers sentencepiece protobuf 2>/dev/null; \
-    pip install --no-cache-dir --ignore-requires-python huggingface_hub accelerate 2>/dev/null; true
+# lerobot + 依赖 (一次性构建, 训练复用; 🐛 2026-08-08: 镜像 Python 3.10 < pyproject >=3.12 → --ignore-requires-python;
+#   全依赖安装 (termcolor/tensorboard 等 — --no-deps 会漏))
+RUN pip install --no-cache-dir --ignore-requires-python -e . 2>/dev/null; \
+    pip install --no-cache-dir --ignore-requires-python termcolor tensorboard 2>/dev/null; true
 
 # 默认: 模型引擎训练入口
 CMD ["python", "-m", "lerobot.scripts.lerobot_train", "--help"]
