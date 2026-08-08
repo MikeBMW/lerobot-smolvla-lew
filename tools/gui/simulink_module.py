@@ -5095,10 +5095,10 @@ class SimulinkModule(QWidget):
                                    line_hook=lambda ln: _line_hook(ln))
             else:
                 # 🐳 2026-08-08 老倪: 本地训练切容器运行 (zmax-std:1.0 — 与远程容器环境一致)
+                # WSL2 用 --gpus all (NVIDIA Container Toolkit); 远程 Linux 用 --device 透传
                 cfg_in = os.path.join("/app", os.path.basename(tmp_cfg)) if tmp_cfg else None
                 cmd = ["sudo", "docker", "run", "--rm",
-                       "--device", "/dev/nvidia0", "--device", "/dev/nvidiactl", "--device", "/dev/nvidia-uvm",
-                       "-v", "/usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro",
+                       "--gpus", "all",
                        "-v", f"{root}:/app", "-w", "/app",
                        "-e", "PYTHONPATH=/app/src",  # 🐛 lerobot 源码在 /app/src (镜像 COPY)
                        "--entrypoint", "python", "zmax-std:1.0",
