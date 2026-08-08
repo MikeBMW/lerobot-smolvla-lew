@@ -2300,8 +2300,8 @@ class TrainingModule(QWidget):
         # 创建内容容器
         content_widget = QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(6)  # 🐛 2026-08-08 老倪: 整体紧凑上移 (紧挨 GPU 服务器, 不空一大段)
+        layout.setContentsMargins(16, 6, 16, 12)
         
         # ===== Top Bar: Title + SmolVLA Button =====
         top_bar = QHBoxLayout()
@@ -2465,8 +2465,8 @@ class TrainingModule(QWidget):
         # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
         self._build_zoo_table(param_layout)
         
-        # 🐳 2026-08-08 老倪: 容器管理框架区 (高效 — 一处构建, 远程训练/本地推理/端侧部署)
-        cg = QGroupBox(" 🐳 容器管理框架 ")
+        # 🐳 2026-08-08 老倪: 容器管理 — 简化为几个点选控件 (单选 radio, 不搞复杂状态机)
+        cg = QGroupBox(" 🐳 容器管理 ")
         cg.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:10px; padding-top:8px;}} QGroupBox::title{{subcontrol-origin:margin; left:10px;}}")
         cv = QVBoxLayout(cg)
         cv.setSpacing(6)
@@ -2474,30 +2474,36 @@ class TrainingModule(QWidget):
         self._ct_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:11px;")
         self._ct_status.setWordWrap(True)
         cv.addWidget(self._ct_status)
-        # 操作按钮行: 构建上传 / 容器训练 / 容器推理 / 推送 Mac / 推送 Orin
-        row1 = QHBoxLayout()
-        row1.setSpacing(6)
-        self._btn_upload_ct = QPushButton("🔼 构建·上传远程")
-        self._btn_infer_ct = QPushButton("🎮 容器推理")
-        self._btn_train_ct = QPushButton("🚀 容器训练")
-        for b in (self._btn_upload_ct, self._btn_infer_ct, self._btn_train_ct):
-            b.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:7px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
-            row1.addWidget(b)
+        # 三模式卡片 (2026-08-08 老倪: 选中 → 外边框包裹高亮)
+        self._ct_mode_grp = QButtonGroup(self)
+        self._ct_mode_grp.setExclusive(True)
+        cards = [("train", "🚀 远程训练", "V100 服务器"), ("infer", "🎮 本地运行", "4060 测试"), ("deploy", "📱 端侧部署", "Mac / Orin")]
+        rowm = QHBoxLayout()
+        rowm.setSpacing(10)
+        self._ct_mode_btns = {}
+        for key, title, sub in cards:
+            b = QPushButton(f"{title}\n{sub}")
+            b.setCheckable(True)
+            b.setMinimumSize(150, 64)
+            b.setStyleSheet(f"""QPushButton{{background:#0d1117; color:{C_WHITE}; border:2px solid #30363d; border-radius:8px; font-size:12px; font-weight:bold; padding:8px; text-align:center;}}
+QPushButton:hover{{border-color:#58a6ff;}}
+QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHITE};}}""")
+            self._ct_mode_grp.addButton(b)
+            self._ct_mode_btns[key] = b
+            b.clicked.connect(lambda _, k=key: self._ct_pick(k))
+            rowm.addWidget(b)
+        self._ct_mode_btns["train"].setChecked(True)  # 默认远程训练
+        cv.addLayout(rowm)
+        # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
+        rowc = QHBoxLayout()
+        rowc.setSpacing(6)
+        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
+        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
-        self._btn_train_ct.clicked.connect(lambda: self._container_action("train"))
-        self._btn_infer_ct.clicked.connect(lambda: self._container_action("infer"))
-        cv.addLayout(row1)
-        row2 = QHBoxLayout()
-        row2.setSpacing(6)
-        self._btn_push_mac = QPushButton("🍎 推送 Mac")
-        self._btn_push_orin = QPushButton("🤖 推送 Orin")
-        for b in (self._btn_push_mac, self._btn_push_orin):
-            b.setStyleSheet(f"QPushButton{{background:#16233a; color:{C_WHITE}; border:1px solid #58a6ff; border-radius:6px; padding:6px 10px;}} QPushButton:hover{{background:#1f3a5f;}}")
-            row2.addWidget(b)
-        self._btn_push_mac.clicked.connect(lambda: self._container_action("mac"))
-        self._btn_push_orin.clicked.connect(lambda: self._container_action("orin"))
-        cv.addLayout(row2)
-        param_layout.addRow(cg)
+        rowc.addWidget(self._btn_upload_ct)
+        rowc.addStretch()
+        cv.addLayout(rowc)
+        # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
         
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
@@ -3008,7 +3014,8 @@ class TrainingModule(QWidget):
                 height: 0px;
             }}
         """)
-        layout.addWidget(self.param_scroll)
+        layout.addWidget(self.param_scroll, 1)  # 🐛 2026-08-08 老倪: 配置通道表格向下伸长占满 (看不全用右侧拖动条)
+        layout.addWidget(cg)  # 🐛 2026-08-08 老倪: 容器管理放外面一层 (param_group 外, 页面底部)
         
         # ===== Control Button Area =====
         # Wrap buttons in a container widget with explicit background to prevent color bleeding
@@ -3025,7 +3032,7 @@ class TrainingModule(QWidget):
         btn_layout.setContentsMargins(0, 8, 0, 8)  # 增加上下边距防止紫色渗透
         
         # Start button
-        self.start_btn = QPushButton("▶ Start Training")
+        self.start_btn = QPushButton("▶ Start")  # 2026-08-08 老倪: 通用开始 (无论容器/位置 — 模式决定动作)
         self.start_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {C_GREEN};
@@ -3075,39 +3082,8 @@ class TrainingModule(QWidget):
         self.defaults_btn.clicked.connect(self._reset_defaults)
         btn_layout.addWidget(self.defaults_btn)
         
-        # Pause/Resume button
-        self.pause_btn = QPushButton("⏸ Pause")
-        self.pause_btn.setEnabled(False)
-        self.pause_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {C_ORANGE};
-                color: white;
-                border: 2px solid {C_ORANGE};
-                border-radius: 6px;
-                padding: 12px 32px;
-                margin: 0px;
-                font-size: 14px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {C_ORANGE};
-                border: 2px solid {C_BLUE};
-            }}
-            QPushButton:pressed {{
-                background-color: {C_ORANGE}bb;
-                border: 2px solid {C_BLUE};
-            }}
-            QPushButton:disabled {{
-                background-color: {C_GRAY}44;
-                color: {C_GRAY};
-                border: 2px solid {C_GRAY}44;
-            }}
-        """)
-        self.pause_btn.clicked.connect(self._pause_training)
-        btn_layout.addWidget(self.pause_btn)
-        
-        # Stop button
-        self.stop_btn = QPushButton("⏹ Stop Training")
+        # Stop button (2026-08-08 老倪: Pause 取消 — 只留 Stop, 真正停止训练)
+        self.stop_btn = QPushButton("⏹ Stop")
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet(f"""
             QPushButton {{
@@ -3285,7 +3261,32 @@ class TrainingModule(QWidget):
             pass
 
     def _poll_remote_container(self):
-        """🔄 远程容器状态轮询 → 控制台日志区 (2026-08-08 老倪: 安装/训练信息实时可见)"""
+        """🔄 容器状态详细轮询 → 控制台日志区 (2026-08-08 老倪: 本地/远程容器都反馈)"""
+        # 🐳 2026-08-08 老倪: 本地模式 → 查本地 docker 容器 (本地运行=容器化, 要能看到容器)
+        if getattr(self, "gpu_mode", "local") != "remote":
+            try:
+                import subprocess as _sp
+                out = _sp.check_output(
+                    ["sudo", "docker", "ps", "--format", "{{.Names}} {{.Image}} {{.Status}}"],
+                    timeout=15, stderr=_sp.STDOUT).decode(errors="replace").strip()
+                lines = [l for l in out.splitlines() if l.strip()]
+                running = [l for l in lines if "zmax-std" in l and "Up" in l]
+                if running:
+                    st = running[0]
+                    key = f"LOCAL|{st[:60]}"
+                    if key != getattr(self, "_container_state", ""):
+                        self._container_state = key
+                        self._log(f"🐳 本地容器运行中: {st} — 训练在容器内执行 (docker)")
+                    self._ct_status.setText(f"🐳 本地容器: {st.split()[0]} 训练中")
+                else:
+                    key = "LOCAL|none"
+                    if key != getattr(self, "_container_state", ""):
+                        self._container_state = key
+                        self._log("🐳 本地无容器运行 (点 Start 启动容器训练)")
+                    self._ct_status.setText("🐳 本地容器: 未运行")
+            except Exception:
+                pass
+            return
         try:
             re_ = getattr(self, "remote_engine", None)
             if not re_:
@@ -3293,22 +3294,38 @@ class TrainingModule(QWidget):
             import subprocess as _sp
             out = _sp.check_output(
                 f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={re_['port']} "
-                f"{re_['user']}@{re_['host']} 'docker ps --filter name=zmax_train --format \"{{{{.Status}}}}\" | head -1; "
-                f"echo ---; docker logs zmax_train 2>&1 | tail -3 | tr \"\\r\" \" \" | head -c 280'",
+                f"{re_['user']}@{re_['host']} 'docker ps -a --filter name=zmax_train --format \"{{{{.Status}}}}\" | head -1; "
+                f"echo CT_IMG; docker images | grep zmax-train | head -1 | awk \"{{print \\$1\\\":\\\"\\$2\\\" (\\\"\\$4\\\")\"}}; "
+                f"echo CT_LOG; docker logs zmax_train 2>&1 | grep -oE \"Training: *[0-9]+%|loss [0-9.]+|config_[a-z_0-9]+\\.yaml|===\\\\s*开始训练 [a-z_]+|ALL_DONE[^ ]*\" | tail -4 | tr \"\\n\" \" \"; "
+                f"echo CT_GPU; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader | head -1'",
                 shell=True, timeout=20, stderr=_sp.STDOUT).decode(errors="replace").strip()
             lines = [l for l in out.splitlines() if l.strip()]
-            st = lines[0] if lines else "容器未运行"
-            detail = lines[1] if len(lines) > 1 else ""
-            key = f"{st}|{detail[:60]}"
+            st = img = log = gpu = ""
+            for i, l in enumerate(lines):
+                if l == "CT_IMG" and i + 1 < len(lines):
+                    img = lines[i + 1]
+                elif l == "CT_LOG" and i + 1 < len(lines):
+                    log = lines[i + 1]
+                elif l == "CT_GPU" and i + 1 < len(lines):
+                    gpu = lines[i + 1]
+                elif "Up" in l or "Exited" in l or "Paused" in l or "Created" in l:
+                    st = l
+            key = f"{st}|{log[:70]}|{gpu}"
             if key != getattr(self, "_container_state", ""):
                 self._container_state = key
-                self._log(f"🔄 远程容器: {st}" + (f" · {detail[:130]}" if detail else ""))
+                self._log("🐳 远程容器: " + (st if st else "未运行 (zmax_train 容器不存在)"))
+                if img:
+                    self._log(f"   ├ 镜像: {img}")
+                if log:
+                    self._log(f"   ├ 训练: {log[:140]}")
+                if gpu:
+                    self._log(f"   └ GPU: {gpu}")
             if st and "Up" in st:
-                self._ct_status.setText(f"🐳 远程容器运行中: {st} — 训练在该容器内执行")
+                self._ct_status.setText(f"🐳 容器运行中: {st}")
             elif st and "Exited" in st:
-                self._ct_status.setText(f"🐳 远程容器已停止: {st} — 点上传/启动训练")
+                self._ct_status.setText(f"🐳 容器已停止: {st}")
             else:
-                self._ct_status.setText(f"🐳 远程容器: {st}")
+                self._ct_status.setText("🐳 容器未运行")
         except Exception:
             pass
 
@@ -3320,10 +3337,14 @@ class TrainingModule(QWidget):
 
         def _w():
             try:
-                # 本地 docker 可用性检测
-                local_docker = _sp.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
-                                       capture_output=True, text=True, timeout=15)
-                if local_docker.returncode == 0 and "zmax-train" in local_docker.stdout:
+                # 本地 docker 可用性检测 (2026-08-08 老倪: 无 docker CLI → 直接远程构建, 不抛错)
+                try:
+                    local_docker = _sp.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+                                           capture_output=True, text=True, timeout=15)
+                    has_local = local_docker.returncode == 0 and "zmax-train" in local_docker.stdout
+                except Exception:
+                    has_local = False
+                if has_local:
                     self._log("🐳 本地有 zmax-train 镜像 — docker save → scp → load")
                     savef = "/tmp/zmax-train.tar"
                     _sp.run(["docker", "save", "-o", savef, "zmax-train:latest"], timeout=1800)
@@ -3412,6 +3433,18 @@ class TrainingModule(QWidget):
                     pass
 
         _th.Thread(target=_w, daemon=True).start()
+
+    def _ct_pick(self, key):
+        """🐳 点选模式: 远程训练(remote) / 本地运行(local 训练) / 端侧部署
+        2026-08-08 老倪: 本地运行 = 本地训练 (非推理弹scope) — 模式联动 GPU 引擎"""
+        self._ct_mode = key
+        names = {"train": "🚀 远程训练", "infer": "🎮 本地运行", "deploy": "📱 端侧部署"}
+        # 模式 → GPU 引擎: 远程训练→remote, 本地运行→local
+        if key == "train":
+            self.gpu_mode = "remote"
+        elif key == "infer":
+            self.gpu_mode = "local"
+        self._ct_status.setText(f"📌 已选: {names[key]} · GPU 引擎: {'远程 V100' if key == 'train' else ('本地 4060' if key == 'infer' else '—')}")
 
     # 🎛 2026-08-08 老倪: 注入 Simulink Model Zoo (训练按钮 → simulink on_train — 训练即 Model Zoo)
     def set_simulink(self, s):
@@ -4054,8 +4087,13 @@ class TrainingModule(QWidget):
         self._log("🔄 已恢复 SmolVLA 原始默认训练参数")
 
     def _start_training(self):
-        """Start SmolVLA training"""
-        # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo 完整训练 (7 模型串行队列)
+        """Start training — 2026-08-08 老倪: 三模式统一走训练队列 (GPU 引擎由模式联动: 远程V100/本地4060)"""
+        # 📱 端侧部署 → 推送容器 (Mac/Orin)
+        if getattr(self, "_ct_mode", "train") == "deploy":
+            self._log("📱 端侧部署模式 — 构建推送容器 (Mac/Orin arm64)…")
+            self._container_action("mac")
+            return
+        # 🎛 训练按钮 → Simulink Model Zoo 完整训练 (7 模型串行队列 — 本地运行=本地4060训练)
         if getattr(self, "_simulink", None) is not None:
             if getattr(self, "_zoo_queue", None):
                 self._log("🎛 Model Zoo 训练队列已在进行中 (监控日志区)")
@@ -4144,46 +4182,43 @@ class TrainingModule(QWidget):
             
             # Update button states
             self.start_btn.setEnabled(False)
-            self.pause_btn.setEnabled(True)
             self.stop_btn.setEnabled(True)
             
             self._log("✅ Training started successfully")
         else:
             self._log("❌ Failed to start training")
     
-    def _pause_training(self):
-        """Pause/Resume training"""
-        if self.is_paused:
-            # Resume
-            success = self.train_backend.resume_training(log_callback=self._log)
-            if success:
-                self.is_paused = False
-                self.pause_btn.setText("⏸ Pause")
-                self._log("▶ Training resumed")
-        else:
-            # Pause
-            success = self.train_backend.pause_training(log_callback=self._log)
-            if success:
-                self.is_paused = True
-                self.pause_btn.setText("▶ Resume")
-                self._log("⏸ Training paused")
-    
     def _stop_training(self):
-        """Stop training"""
-        success = self.train_backend.stop_training(log_callback=self._log)
-        
-        if success:
-            self.is_training = False
-            self.is_paused = False
-            
-            # Reset button states
-            self.start_btn.setEnabled(True)
-            self.pause_btn.setEnabled(False)
-            self.pause_btn.setText("⏸ Pause")
-            self.stop_btn.setEnabled(False)
-            
-            self._log("⏹ Training stopped")
-    
+        """⏹ Stop — 2026-08-08 老倪: 真正停止 (队列清空 + 训练进程 kill + simulink 停止)"""
+        self._log("⏹ Stop: 正在停止训练…")
+        # 1. Model Zoo 队列停止 (清队列 + 停轮询)
+        try:
+            self._zoo_queue = None
+            if getattr(self, "_zoo_timer", None):
+                self._zoo_timer.stop()
+        except Exception:
+            pass
+        # 2. kill 训练进程 (本地 + 远程)
+        try:
+            import subprocess as _sp
+            _sp.run(["pkill", "-9", "-f", "lerobot_train"], timeout=5)
+            _sp.run(["pkill", "-9", "-f", "train_awe_zflow"], timeout=5)
+            self._log("✅ 训练进程已终止")
+        except Exception as e:
+            self._log(f"⚠ 停止进程失败: {str(e)[:60]}")
+        # 3. simulink 停止 (远程容器训练也停)
+        try:
+            if getattr(self, "_simulink", None) and hasattr(self._simulink, "on_stop"):
+                self._simulink.on_stop()
+        except Exception:
+            pass
+        # 4. 按钮状态恢复
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.is_training = False
+        self.is_paused = False
+        self._log("✅ 训练已停止 (Stop 完成)")
+
     def _preview_command(self):
         """Preview SmolVLA training configuration"""
         dataset_repo_id = self.dataset_combo.currentText()
@@ -7892,6 +7927,8 @@ class StudioMainWindow(QMainWindow):
         self.simulink.flow_synced = self.on_flow_sync
         self.simulink.set_model_engine(self.model_engine)  # 🌐 2026-08-08 老倪: simulink 训练走 Model Engine
         self.model_engine.set_simulink(self.simulink)      # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo on_train
+        # 🐛 2026-08-08 老倪: simulink 训练日志 → 模型引擎日志区 (本地/远程训练输出可见)
+        self.simulink.log_signal.connect(self.model_engine._log)
         self.stack.addWidget(self.simulink)
 
         # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
