@@ -3278,7 +3278,10 @@ class TrainingModule(QWidget):
     # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性/参数预设跟随)
     def _on_model_changed(self, name):
         try:
-            self.param_group.setTitle(f" {name} Parameters ")
+            # 🚫 2026-08-08 老倪(静界结论): peg-insert 单模态唯一路线 = 填空题 → 无 VAE 直接映射最干净
+            #   (原版 ACT 多模态 + 大数据才需要 VAE 多样性开关 — 选择题才用)
+            _suffix = "🚫无VAE" if name == "ACT" else ("无VAE" if name in ("MLP 蒸馏",) else "")
+            self.param_group.setTitle(f" {name} Parameters" + (f" · {_suffix}" if _suffix else "") + " ")
             root = os.path.expanduser("~/lerobot-smolvla-lew")
             tag = ({"MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}.get(name)
                    or {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
