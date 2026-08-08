@@ -113,19 +113,31 @@ def compute_reward(env, prev_peg_z, prev_dist_hand_peg, prev_dist_peg_hole,
     return r, info
 
 def run_episode(env, model, info, render_every=None):
-    """跑一个 episode 收集轨迹"""
+    """跑一个 episode 收集轨迹 — 2026-08-08 组合: 位置RL + 夹爪规则(grip_assist)"""
     obs = get_obs(env)
     states, actions, logps, rewards, values, dones = [], [], [], [], [], []
     prev_peg_z = info["peg_z0"]
+    lifted = False
     for t in range(MAX_EP_STEPS):
         s_t = torch.from_numpy(obs).float().unsqueeze(0).to(DEVICE)
         with torch.no_grad():
             a, lp, v = model.act(s_t)
         a_np = a.cpu().numpy().ravel()
-        # 动作缩放: 速度 [-1,1] → [-0.15, 0.15], 夹爪 [-1,1] 直接
+        # 动作缩放: 速度 [-1,1] → [-0.15, 0.15]
         act = np.zeros(4)
         act[:3] = np.clip(a_np[:3], -1, 1) * 0.15
-        act[3] = np.clip(a_np[3], -1, 1)
+        # 2026-08-08 grip_assist: 夹爪规则触发 (RL 不学夹爪, 解决稀疏奖励)
+        hand = env.data.site_xpos[env.model.site("endEffector").id]
+        peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+        d_hp = float(np.linalg.norm(hand - peg))
+        if d_hp < 0.08 and not lifted:
+            act[3] = -1.0   # 接近闭合
+        elif lifted:
+            act[3] = 0.6    # 保持抓住
+        else:
+            act[3] = 0.0    # 张开
+        if peg[2] - info["peg_z0"] > 0.05:
+            lifted = True
         states.append(obs); actions.append(a_np); logps.append(lp.cpu()); values.append(v.cpu())
         obs, rw, term, trunc, _ = env.step(act)
         info["gripper_cmd"] = float(act[3])  # 传给 reward (夹爪闭合奖励)

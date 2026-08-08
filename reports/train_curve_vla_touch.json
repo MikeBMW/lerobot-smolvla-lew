@@ -1,1 +1,1 @@
-{"policy": "vla_touch", "name": "VLA-Touch", "ts": "20260808_080123", "step_s": 14.56, "ckpt": "outputs/train/vla_touch_20260808_075905/checkpoints"}
+{"policy": "vla_touch", "name": "VLA-Touch", "ts": "20260808_084219", "step_s": 8.17, "ckpt": "outputs/train/vla_touch_20260808_083814/checkpoints"}

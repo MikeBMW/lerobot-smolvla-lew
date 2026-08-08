@@ -61,15 +61,26 @@ def load_policy(policy):
 def _load_stats(policy_hint=None):
     """加载训练 stats — 2026-08-08: 从模型 checkpoint preprocessor 读逐维 norm (v7 数据被清, 逐维才是对的)"""
     import json as _j
+    # VLA-Touch/AWE: checkpoint 无 preprocessor → 直接用数据 stats.json (2026-08-08)
+    if policy_hint in ("vla_touch", "awe_zflow"):
+        import json as _j3
+        for root in ["data/metaworld_peg_seg", "data/metaworld_peg_long", "data/metaworld_peg_v6"]:
+            p = os.path.join(ROOT, root, "meta", "stats.json")
+            if os.path.exists(p):
+                return _j3.load(open(p))
     # 候选 checkpoint: 优先 policy_hint 对应模型 (2026-08-08 修复: 每个模型 stats 不同)
     _by_policy = {
-        "smolvla": ["outputs/train/smolvla_peg_long2/checkpoints/004000/pretrained_model",
+        "smolvla": ["outputs/train/smolvla_peg_seg/checkpoints/004000/pretrained_model",
+                    "outputs/train/smolvla_peg_long2/checkpoints/004000/pretrained_model",
                     "outputs/train/smolvla_ft_20260807_161841/checkpoints/004000/pretrained_model"],
         "smolvla_lew": ["outputs/train/smolvla_lew_ft_20260807_164927/checkpoints/004000/pretrained_model"],
-        "act": ["outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
+        "act": ["outputs/train/act_peg_seg/checkpoints/004000/pretrained_model",
+                "outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
                 "outputs/train/act_peg_long/checkpoints/004000/pretrained_model"],
-        "vla_touch": ["outputs/train/vla_touch_20260807_141958/checkpoints/000050/pretrained_model"],
-        "awe_zflow": ["outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model"],
+        "vla_touch": ["outputs/train/vla_touch_20260808_083814/checkpoints/000050/pretrained_model",
+                      "outputs/train/vla_touch_20260807_141958/checkpoints/000050/pretrained_model"],
+        "awe_zflow": ["outputs/train/awe_zflow_20260808_084811/checkpoints/000050/pretrained_model",
+                      "outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model"],
         "expert_mlp": ["outputs/rl_peg"],
     }
     cands = _by_policy.get(policy_hint, []) if policy_hint else []
@@ -104,9 +115,9 @@ def _load_stats(policy_hint=None):
                             "action": {"mean": am, "std": asd}}
             except Exception:
                 pass
-    # fallback: 数据 stats.json
+    # fallback: 数据 stats.json (2026-08-08: seg 数据 45D)
     import json as _j2
-    for root in ["data/metaworld_peg_long", "data/metaworld_peg_v7", "data/metaworld_peg_v6",
+    for root in ["data/metaworld_peg_seg", "data/metaworld_peg_long", "data/metaworld_peg_v7", "data/metaworld_peg_v6",
                  "data/metaworld_peg_v5", "data/metaworld_peg_v4", "data/metaworld_peg_v3",
                  "data/metaworld_peg_v2", "data/metaworld_peg_lerobot", "data/metaworld_act"]:
         p = os.path.join(ROOT, root, "meta", "stats.json")
@@ -142,7 +153,17 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
         peg = env.data.site_xpos[env.model.site("pegGrasp").id]
         if peg[2] - peg_z0 > 0.05:
             lifted = True
-        st_raw = np.asarray(obs, dtype=np.float32)[:st_dim]
+        st_raw = np.asarray(obs, dtype=np.float32)[:39]
+        # 2026-08-08 ③目标条件化: 评估时补相对向量 (模型 45D 输入, 训练数据含 rel_vec)
+        if st_dim == 45 and st_raw.size == 39:
+            try:
+                hand_pos = env.data.site_xpos[env.model.site("endEffector").id].astype(np.float32)
+                peg_pos = env.data.site_xpos[env.model.site("pegGrasp").id].astype(np.float32)
+                hole_pos = env.data.site_xpos[env.model.site("hole").id].astype(np.float32)
+                rel_vec = np.concatenate([peg_pos - hand_pos, hole_pos - peg_pos]).astype(np.float32)
+                st_raw = np.concatenate([st_raw, rel_vec]).astype(np.float32)
+            except Exception:
+                st_raw = np.pad(st_raw, (0, 6), constant_values=0)[:st_dim]
         # 2026-08-07: YOLO 感知模式 — 评估也用 YOLO 检测 state (与训练同构, 真机一致)
         if yolo_aligner is not None:
             try:

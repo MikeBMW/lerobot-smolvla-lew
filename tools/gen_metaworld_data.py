@@ -22,6 +22,8 @@ def main():
     ap.add_argument("--yolo", action="store_true", help="用 YOLO 检测替换 39D (模拟真机感知)")
     ap.add_argument("--steps", type=int, default=180, help="每条轨迹帧数")
     ap.add_argument("--grab-only", action="store_true", help="只到抓起(不含插入), 2026-08-08 老倪: 方向一致防平均化")
+    ap.add_argument("--stop-after-grab", action="store_true", help="抓起后即停(分段数据), 2026-08-08 老倪: 防方向反转")
+    ap.add_argument("--rel-vec", action="store_true", help="state加相对向量(hand→peg,peg→hole), 2026-08-08 ③目标条件化")
     ap.add_argument("--far", action="store_true", help="远起点模式 (2026-08-07 老倪: 让模型学会更长接近轨迹)")
     ap.add_argument("--task", default="reach-v3")
     ap.add_argument("--out", default="data/metaworld_cartesian")
@@ -89,7 +91,11 @@ def main():
         except Exception:
             peg_z0 = 0.02
         ep_imgs = []
+        grabbed_frames = 0  # 2026-08-08: 分段数据 — 抓起后保持 N 帧即停 (方向一致, 无转移反转)
         for i in range(args.steps):
+            # 2026-08-08: 分段数据 — 官方专家抓起 peg 后保持 30 帧即停止记录
+            if getattr(args, "stop_after_grab", False) and grabbed_frames >= 30:
+                break
             # 渲染真实图像 (480x480 → 128x128)
             img = np.asarray(env.render())
             pil = Image.fromarray(img).resize((128, 128), Image.LANCZOS)
@@ -111,6 +117,16 @@ def main():
                     state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D
                 except Exception:
                     state = ee.astype(np.float32).copy()  # 兜底 3D
+            # 2026-08-08 ③目标条件化: state 加相对向量 (hand→peg, peg→hole) — MLP 成功的核心
+            if getattr(args, "rel_vec", False) and state.size >= 39:
+                try:
+                    hand_pos = env.data.site_xpos[env.model.site("endEffector").id].astype(np.float32)
+                    peg_pos = env.data.site_xpos[env.model.site("pegGrasp").id].astype(np.float32)
+                    hole_pos = env.data.site_xpos[env.model.site("hole").id].astype(np.float32)
+                    rel_vec = np.concatenate([peg_pos - hand_pos, hole_pos - peg_pos]).astype(np.float32)
+                    state = np.concatenate([state, rel_vec]).astype(np.float32)  # 39+6=45D
+                except Exception:
+                    pass
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
             # 2026-08-07: --far 用多阶段专家 (官方专家远起点状态机失效)
             # 2026-08-08: --grab-only 也用多阶段专家 (官方专家夹爪离散, 学不到闭合)
@@ -217,6 +233,16 @@ def main():
             else:
                 action = np.zeros(4)
             env.step(action)
+            # 2026-08-08: 分段数据 — 检测 peg 是否被抓起 (升高 4cm, 锁存不回落)
+            if getattr(args, "stop_after_grab", False):
+                try:
+                    peg_z_now = env.data.site_xpos[env.model.site("pegGrasp").id][2]
+                    if peg_z_now > peg_z0 + 0.04:
+                        grabbed_frames = max(grabbed_frames, 1)  # 锁存: 抓起过就持续
+                    elif grabbed_frames >= 1:
+                        grabbed_frames += 1  # 已抓起后每帧累加 (含回落段)
+                except Exception:
+                    pass
             all_frames.append({
                 "observation.state": state.tolist(),
                 "action": action.tolist(),

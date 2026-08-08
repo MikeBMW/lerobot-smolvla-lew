@@ -756,5 +756,29 @@ _reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜�
 _reg("cross_attn", ["交叉注意力"], "🔀 未来决策交叉注意力 — 未来潜状态 K/V 注入", node_cross_attn)
 _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
 _reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🧩 坐标叠加 (CoordOverlay) — 2026-08-08 老倪架构: 坐标是逻辑主线,
+#    图像是背景 — state 叠加进 latent (latent += 坐标投影), 不混合进 token 序列
+# ════════════════════════════════════════════════════════════════
+def node_coord_overlay(ctx):
+    """🧩 坐标叠加 — 坐标投影叠加到 latent (逻辑主线), 图像作背景 token (旁路)"""
+    module = ctx["module"]
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    gate = p.get("overlay_gate", 1.0)      # 叠加门控: 1.0=坐标完全叠加, 0.0=禁用叠加
+    state_dim = p.get("state_dim", 45)     # 39D 或 45D (含相对向量)
+    if log:
+        log(f"🧩 坐标叠加: latent += 坐标投影 × {gate} (state {state_dim}D) — 图像降为背景 token, 坐标是逻辑主线")
+    # 想自定义? 例如: 按任务切换 gate 或 state_dim
+    # === ✏️ 可修改区 END ===
+    # 🔒 框架动作: 记录叠加状态到节点 (勿改)
+    fn = getattr(module, "_set_coord_overlay_ctx", None)
+    return fn(ctx["name"], gate, state_dim) if fn else None
+
+
+_reg("coord_overlay", ["坐标叠加", "CoordOverlay"], "🧩 坐标叠加 — state 叠加进 latent (逻辑主线), 图像作背景", node_coord_overlay)
 _reg("video_display", ["视频"], "🎥 视频显示 — 推理效果 rollout 播放", node_video_display)
 _reg("pdf_report",   ["PDF"], "📄 PDF 报告 — 五模型技术选型 (11章)", node_pdf_report)
