@@ -39,9 +39,11 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
       pip install torch==2.4.1 torchvision --index-url ${TORCH_INDEX}; \
     fi
 
-# lerobot 工程 + 锁定依赖 (transformers 4.44.2 等 — 飞书端验证稳定版)
+# lerobot 工程 + 锁定依赖 (transformers 5.14.1 + torch 2.5.1 — 全模型可训)
 COPY requirements.lock /app/requirements.lock
-RUN pip install -r /app/requirements.lock
+# torch 先装 cu124 (lock 里的 torch==2.5.1 默认 PyPI 源无 CUDA wheel → 显式 cu124)
+RUN pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124 && \
+    pip install --no-cache-dir -r /app/requirements.lock
 
 # 工程源码 (构建时注入; 运行时可 -v 挂载覆盖)
 COPY . /app

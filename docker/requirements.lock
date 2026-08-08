@@ -1,11 +1,17 @@
 # Z-MAX 标准容器框架 — 锁定依赖 (2026-08-08)
-# 基线: transformers 4.44.2 + torch 2.4.1 (飞书端 v6 镜像验证稳定 — 勿随意升级)
+# 基线: transformers 5.14.1 + torch 2.5.1 (V100 远程全模型验证组合 — 勿随意升级)
+# 🐛 踩坑记录 (飞书端 2026-08-08):
+#   transformers 4.44.2 缺 qwen2_5_vl (SmolVLA 必需) → 训不了 SmolVLA
+#   transformers 4.49/4.50/4.51 缺 torch_compilable_check (eo1 引用) → import 失败
+#   transformers 5.14.1 有全部 → 但需要 torch 2.5+ 的 DTensor (2.4.1 缺) → torch 必须 2.5.1
+#   最终组合: transformers 5.14.1 + torch 2.5.1+cu124 + torchaudio 2.5.1 (全模型可训)
 # 用法: pip install -r requirements.lock  (容器内由 Dockerfile 调用)
 
-# ---- 核心 ML 栈 (锁定版本 — 踩坑换来的稳定组合) ----
-transformers==4.44.2
-torch==2.4.1
-torchvision==0.19.1
+# ---- 核心 ML 栈 (锁定版本 — 全 7 模型可训的稳定组合) ----
+transformers==5.14.1
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1
 accelerate==1.14.0
 safetensors==0.8.0
 tokenizers==0.21.4
