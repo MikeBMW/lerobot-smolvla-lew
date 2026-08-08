@@ -2417,7 +2417,7 @@ class TrainingModule(QWidget):
         layout.addLayout(top_bar)
         
         # ===== Training Parameter Area =====
-        self.param_group = QGroupBox(" 配置通道 [T-01] ")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self.param_group = QGroupBox(" 配置通道 ")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         param_group = self.param_group
         param_group.setStyleSheet(f"""
             QGroupBox {{
@@ -2498,7 +2498,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
         rowc = QHBoxLayout()
         rowc.setSpacing(6)
-        self._btn_upload_ct = QPushButton("🔼 上传容器到远程 [B-04]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
         rowc.addWidget(self._btn_upload_ct)
@@ -3040,7 +3040,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         btn_layout.setContentsMargins(0, 8, 0, 8)  # 增加上下边距防止紫色渗透
         
         # Start button
-        self.start_btn = QPushButton("▶ Start [B-01]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self.start_btn = QPushButton("▶ Start")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self.start_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {C_GREEN};
@@ -3067,7 +3067,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         self.start_btn.clicked.connect(self._start_training)
-        btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self._holo_badge(self.start_btn, "B-01"))  # 🌐 左下角 ID 角标
 
         # 🎛 2026-08-08 老倪: 每模型训练开关 (参考 YOLO 感知开关样式 — 训练:开, 控制队列训练)
         sw_box = QGroupBox(" 🎛 训练开关 ")
@@ -3093,7 +3093,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         layout.addWidget(sw_box)
         
         # 恢复默认参数
-        self.defaults_btn = QPushButton("🔄 恢复默认 [B-03]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self.defaults_btn = QPushButton("🔄 恢复默认")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self.defaults_btn.setToolTip("一键恢复 SmolVLA 原始默认训练参数")
         self.defaults_btn.setStyleSheet(f"""
             QPushButton {{
@@ -3114,7 +3114,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         btn_layout.addWidget(self.defaults_btn)
         
         # Stop button (2026-08-08 老倪: Pause 取消 — 只留 Stop, 真正停止训练)
-        self.stop_btn = QPushButton("⏹ Stop [B-02]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self.stop_btn = QPushButton("⏹ Stop")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet(f"""
             QPushButton {{
@@ -3142,7 +3142,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         self.stop_btn.clicked.connect(self._stop_training)
-        btn_layout.addWidget(self.stop_btn)
+        btn_layout.addWidget(self._holo_badge(self.stop_btn, "B-02"))  # 🌐 左下角 ID 角标
         
         # Preview command button
         self.preview_btn = QPushButton("👁 Preview CLI Command")
@@ -3214,7 +3214,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         log_outer.setSpacing(6)
 
         log_head = QHBoxLayout()
-        log_title = QLabel("📋 终端日志区 [L-01]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        log_title = QLabel("📋 终端日志区")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         log_title.setStyleSheet(f"color:{C_WHITE}; font-size:12px; font-weight:bold; background:transparent;")
         log_head.addWidget(log_title)
         log_head.addStretch()
@@ -4150,6 +4150,28 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return f"✅ {h_id} ({nm}) — 状态: {g() if g else '—'}"
         except Exception as e:
             return f"❌ 执行失败: {str(e)[:60]}"
+
+    def _holo_badge(self, widget, h_id, parent_layout=None):
+        """🌐 控件左下角小字全局唯一 ID 角标 (2026-08-08 老倪: 统一左下角小字显示, 眼睛可见)"""
+        try:
+            badge = QLabel(h_id)
+            badge.setStyleSheet(f"color:{C_DIM}; font-size:8px; background:transparent; border:none; padding:0px;")
+            badge.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            # 方案: 控件外包 QVBoxLayout (控件 + 左下角 ID 小字)
+            wrap = QWidget()
+            wrap.setStyleSheet("background:transparent;")
+            wl = QVBoxLayout(wrap)
+            wl.setContentsMargins(0, 0, 0, 0)
+            wl.setSpacing(0)
+            wl.addWidget(widget)
+            hl = QHBoxLayout()
+            hl.setContentsMargins(2, 0, 0, 0)
+            hl.addWidget(badge)
+            hl.addStretch()
+            wl.addLayout(hl)
+            return wrap
+        except Exception:
+            return widget
 
     def _append_log(self, text):
         """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
