@@ -3318,6 +3318,22 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     if key != getattr(self, "_container_state", ""):
                         self._container_state = key
                         self._log(f"🐳 本地容器运行中: {st} — 训练在容器内执行 (docker)")
+                    # 🐛 2026-08-08 老倪: 容器训练日志实时显示到日志区 (Training %/loss)
+                    try:
+                        cname = st.split()[0]
+                        clog = _sp.check_output(
+                            ["sudo", "docker", "logs", "--tail", "3", cname],
+                            timeout=8, stderr=_sp.STDOUT).decode(errors="replace")
+                        prog = ""
+                        for l in clog.splitlines():
+                            if "Training:" in l and "%" in l:
+                                prog = l.strip()[:60]
+                            elif "loss" in l and "step:" in l:
+                                prog = l.strip()[:90]
+                        if prog:
+                            self._log(f"   ├ 进度: {prog}")
+                    except Exception:
+                        pass
                     self._ct_status.setText(f"🐳 本地容器: {st.split()[0]} 训练中")
                 else:
                     key = "LOCAL|none"
