@@ -90,7 +90,7 @@ def write_video(video_path: str | Path, stacked_frames: list, fps: int) -> None:
             container.mux(packet)
 
 
-def deserialize_json_into_object[T: JsonLike](fpath: Path, obj: T) -> T:
+def deserialize_json_into_object(fpath: Path, obj):  # 🐛 2026-08-08: 去PEP695泛型 (镜像Py3.10兼容) — 原: def ...[T: JsonLike](fpath, obj) -> T
     """
     Loads the JSON data from `fpath` and recursively fills `obj` with the
     corresponding values (strictly matching structure and types).
