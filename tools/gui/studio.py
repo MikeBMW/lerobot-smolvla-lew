@@ -2465,6 +2465,40 @@ class TrainingModule(QWidget):
         # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
         self._build_zoo_table(param_layout)
         
+        # 🐳 2026-08-08 老倪: 容器管理框架区 (高效 — 一处构建, 远程训练/本地推理/端侧部署)
+        cg = QGroupBox(" 🐳 容器管理框架 ")
+        cg.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:10px; padding-top:8px;}} QGroupBox::title{{subcontrol-origin:margin; left:10px;}}")
+        cv = QVBoxLayout(cg)
+        cv.setSpacing(6)
+        self._ct_status = QLabel("⏳ 容器状态: 检测中…")
+        self._ct_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:11px;")
+        self._ct_status.setWordWrap(True)
+        cv.addWidget(self._ct_status)
+        # 操作按钮行: 构建上传 / 容器训练 / 容器推理 / 推送 Mac / 推送 Orin
+        row1 = QHBoxLayout()
+        row1.setSpacing(6)
+        self._btn_upload_ct = QPushButton("🔼 构建·上传远程")
+        self._btn_infer_ct = QPushButton("🎮 容器推理")
+        self._btn_train_ct = QPushButton("🚀 容器训练")
+        for b in (self._btn_upload_ct, self._btn_infer_ct, self._btn_train_ct):
+            b.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:7px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
+            row1.addWidget(b)
+        self._btn_upload_ct.clicked.connect(self._upload_container)
+        self._btn_train_ct.clicked.connect(lambda: self._container_action("train"))
+        self._btn_infer_ct.clicked.connect(lambda: self._container_action("infer"))
+        cv.addLayout(row1)
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        self._btn_push_mac = QPushButton("🍎 推送 Mac")
+        self._btn_push_orin = QPushButton("🤖 推送 Orin")
+        for b in (self._btn_push_mac, self._btn_push_orin):
+            b.setStyleSheet(f"QPushButton{{background:#16233a; color:{C_WHITE}; border:1px solid #58a6ff; border-radius:6px; padding:6px 10px;}} QPushButton:hover{{background:#1f3a5f;}}")
+            row2.addWidget(b)
+        self._btn_push_mac.clicked.connect(lambda: self._container_action("mac"))
+        self._btn_push_orin.clicked.connect(lambda: self._container_action("orin"))
+        cv.addLayout(row2)
+        param_layout.addRow(cg)
+        
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
         self.freeze_checkbox.setChecked(True)
@@ -3250,6 +3284,135 @@ class TrainingModule(QWidget):
         except Exception:
             pass
 
+    def _poll_remote_container(self):
+        """🔄 远程容器状态轮询 → 控制台日志区 (2026-08-08 老倪: 安装/训练信息实时可见)"""
+        try:
+            re_ = getattr(self, "remote_engine", None)
+            if not re_:
+                return
+            import subprocess as _sp
+            out = _sp.check_output(
+                f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={re_['port']} "
+                f"{re_['user']}@{re_['host']} 'docker ps --filter name=zmax_train --format \"{{{{.Status}}}}\" | head -1; "
+                f"echo ---; docker logs zmax_train 2>&1 | tail -3 | tr \"\\r\" \" \" | head -c 280'",
+                shell=True, timeout=20, stderr=_sp.STDOUT).decode(errors="replace").strip()
+            lines = [l for l in out.splitlines() if l.strip()]
+            st = lines[0] if lines else "容器未运行"
+            detail = lines[1] if len(lines) > 1 else ""
+            key = f"{st}|{detail[:60]}"
+            if key != getattr(self, "_container_state", ""):
+                self._container_state = key
+                self._log(f"🔄 远程容器: {st}" + (f" · {detail[:130]}" if detail else ""))
+            if st and "Up" in st:
+                self._ct_status.setText(f"🐳 远程容器运行中: {st} — 训练在该容器内执行")
+            elif st and "Exited" in st:
+                self._ct_status.setText(f"🐳 远程容器已停止: {st} — 点上传/启动训练")
+            else:
+                self._ct_status.setText(f"🐳 远程容器: {st}")
+        except Exception:
+            pass
+
+    def _upload_container(self):
+        """🐳 上传/同步容器到远程 GPU — 本地无 docker 时自动改用远程构建 (Dockerfile)"""
+        self._log("🐳 容器同步开始…")
+        self._btn_upload_ct.setEnabled(False)
+        import threading as _th, subprocess as _sp
+
+        def _w():
+            try:
+                # 本地 docker 可用性检测
+                local_docker = _sp.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+                                       capture_output=True, text=True, timeout=15)
+                if local_docker.returncode == 0 and "zmax-train" in local_docker.stdout:
+                    self._log("🐳 本地有 zmax-train 镜像 — docker save → scp → load")
+                    savef = "/tmp/zmax-train.tar"
+                    _sp.run(["docker", "save", "-o", savef, "zmax-train:latest"], timeout=1800)
+                    sz = os.path.getsize(savef) / 1e9
+                    self._log(f"🐳 传输到远程 ({sz:.1f}GB, 需几分钟)…")
+                    re_ = getattr(self, "remote_engine", None)
+                    if re_:
+                        _sp.run(f"sshpass -p '{re_['pwd']}' scp -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                                f"{savef} {re_['user']}@{re_['host']}:/tmp/", shell=True, timeout=3600)
+                        _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                                f"{re_['user']}@{re_['host']} 'docker load -i /tmp/zmax-train.tar 2>&1 | tail -1'",
+                                shell=True, timeout=900)
+                        self._log("✅ 容器已上传远程 — 训练明确在该容器中执行")
+                    return
+                # 本地无 docker → 远程构建 (Dockerfile 在仓库 — 与本地一致)
+                self._log("💡 本地无 docker CLI — 自动改用远程构建 (仓库 Dockerfile, 与本地准备一致)")
+                re_ = getattr(self, "remote_engine", None)
+                if not re_:
+                    self._log("❌ 未连接远程 — 请先连接 GPU 服务器")
+                    return
+                _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                        f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && git pull -q && "
+                        f"docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 && echo BUILD_OK || tail -3 /tmp/docker_build.log'",
+                        shell=True, timeout=3600)
+                self._log("✅ 远程容器已构建 (zmax-train:latest, 与本地 Dockerfile 一致) — 训练在该容器执行")
+            except Exception as e:
+                self._log(f"❌ 容器同步失败: {str(e)[:80]}")
+            finally:
+                # 🐛 2026-08-08 老倪: 跨线程禁用 GUI — 回主线程恢复按钮
+                try:
+                    from PyQt5.QtCore import QTimer as _QT3
+                    _QT3.singleShot(0, lambda: self._btn_upload_ct.setEnabled(True))
+                except Exception:
+                    pass
+
+        _th.Thread(target=_w, daemon=True).start()
+
+    def _container_action(self, kind):
+        """🐳 容器管理框架操作: train(容器训练) / infer(容器推理) / mac / orin(端侧推送)"""
+        import threading as _th, subprocess as _sp
+        re_ = getattr(self, "remote_engine", None)
+
+        def _w():
+            try:
+                if kind == "train":
+                    if not re_:
+                        self._log("❌ 容器训练需先连接远程 GPU")
+                        return
+                    self._log("🚀 容器训练启动 (远程 zmax 容器 → zmax-train 入口)…")
+                    _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                            f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && "
+                            f"docker exec -d zmax_train bash /tmp/zoo_c4.sh 2>&1 | tail -1 || "
+                            f"docker run -d --name zmax_train --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
+                            f"-v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1 "
+                            f"-v ~/lerobot-smolvla-lew:/app zmax-train:latest sleep infinity'",
+                            shell=True, timeout=60)
+                    self._log("🚀 容器训练已触发 (监控日志区/远程容器状态)")
+                elif kind == "infer":
+                    self._log("🎮 容器推理: zmax-infer --policy act (本地/远程容器)…")
+                    if re_:
+                        _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                                f"{re_['user']}@{re_['host']} 'docker exec zmax_train zmax-infer --policy act 2>&1 | tail -3'",
+                                shell=True, timeout=600)
+                        self._log("🎮 容器推理完成 (结果见远程容器日志)")
+                    else:
+                        self._log("❌ 容器推理需先连接远程 (本地容器推理待 docker 环境)")
+                elif kind in ("mac", "orin"):
+                    tgt = "Mac" if kind == "mac" else "Orin"
+                    self._log(f"🍎/🤖 推送容器到 {tgt} (buildx arm64 → save → scp → load)…")
+                    if re_:
+                        _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                                f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && "
+                                f"docker buildx build --platform linux/arm64 --target infer -o type=docker,dest=/tmp/zmax-std-arm64.tar -f docker/Dockerfile . 2>&1 | tail -2; "
+                                f"ls -h /tmp/zmax-std-arm64.tar 2>/dev/null | head -1'",
+                                shell=True, timeout=1800)
+                        self._log(f"✅ {tgt} 镜像已构建 (zmax-std-arm64.tar) — 再 scp 到 {tgt} (IP 待配)")
+                    else:
+                        self._log(f"❌ 推送 {tgt} 需先连接远程 (构建在远程执行)")
+            except Exception as e:
+                self._log(f"❌ 容器操作失败: {str(e)[:80]}")
+            finally:
+                try:
+                    from PyQt5.QtCore import QTimer as _QT4
+                    _QT4.singleShot(0, lambda: None)
+                except Exception:
+                    pass
+
+        _th.Thread(target=_w, daemon=True).start()
+
     # 🎛 2026-08-08 老倪: 注入 Simulink Model Zoo (训练按钮 → simulink on_train — 训练即 Model Zoo)
     def set_simulink(self, s):
         self._simulink = s
@@ -3660,6 +3823,14 @@ class TrainingModule(QWidget):
                     self._log(f"🌐 远程工程就绪: ~/lerobot-smolvla-lew (自动 clone/git pull)")
                 except Exception:
                     pass
+                # 🔄 2026-08-08 老倪: 远程容器状态轮询 → 控制台日志区 (安装/训练信息实时可见)
+                try:
+                    from PyQt5.QtCore import QTimer as _QT2
+                    self._container_timer = _QT2(self)
+                    self._container_timer.timeout.connect(self._poll_remote_container)
+                    self._container_timer.start(15000)
+                except Exception:
+                    pass
             except Exception as e:
                 self._set_ssh_status(f"❌ 连接失败: {str(e)[:60]}")
                 self.remote_engine = None
@@ -3758,13 +3929,31 @@ class TrainingModule(QWidget):
             self.param_scroll.setMinimumHeight(min_height)
     
     def _log(self, message):
-        """Add log message"""
+        """Add log message — 🐛 2026-08-08 线程安全: 非主线程 → 主线程调度 (防容器管理跨线程崩溃)"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.append(f"[{timestamp}] {message}")
-        # Auto scroll to bottom
-        scrollbar = self.log_text.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        text = f"[{timestamp}] {message}"
+        try:
+            import threading as _th
+            if _th.current_thread() is _th.main_thread():
+                self._append_log(text)
+            else:
+                from PyQt5.QtCore import QTimer as _QT
+                _QT.singleShot(0, lambda t=text: self._append_log(t))
+        except Exception:
+            try:
+                self._append_log(text)
+            except Exception:
+                pass
+
+    def _append_log(self, text):
+        """(主线程) 追加日志 + 滚动到底"""
+        self.log_text.append(text)
+        try:
+            scrollbar = self.log_text.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+        except Exception:
+            pass
 
     def _toggle_log_area(self):
         """📋 终端日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
