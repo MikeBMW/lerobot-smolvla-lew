@@ -2258,6 +2258,7 @@ class TrainingModule(QWidget):
         # Import training backend
         from training_backend import training_backend
         self.train_backend = training_backend
+        self._simulink = None  # 🎛 2026-08-08 老倪: Simulink Model Zoo 引用 (训练按钮 → simulink on_train)
         
         # Status tracking
         self.is_training = False
@@ -2392,10 +2393,7 @@ class TrainingModule(QWidget):
 
         # (旧引擎状态条已上移 — 顶部 radio 选择 + SSH 面板)
         
-        # 🤖 模型选择下拉 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 模型引擎核心; 旧 ✅SmolVLA 徽章已删)
-        model_lbl = QLabel("🤖 模型:")
-        model_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none;")
-        top_bar.addWidget(model_lbl)
+        # 🤖 模型选择 (2026-08-08 老倪: 右侧模型选择功能删除 — 配置表格已展示7模型; 下拉对象保留供训练逻辑, 默认ACT)
         self.model_combo = QComboBox()
         self.model_combo.addItems(["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家"])
         self.model_combo.setFixedWidth(150)
@@ -2406,10 +2404,15 @@ class TrainingModule(QWidget):
             QComboBox QAbstractItemView {{ background:{C_BG}; color:{C_WHITE}; selection-background-color:#1f6feb; }}
         """)
         self.model_combo.currentTextChanged.connect(self._on_model_changed)
-        top_bar.addWidget(self.model_combo)
         self.model_name = QLabel("")  # 模型属性摘要
         self.model_name.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:10px;")
         top_bar.addWidget(self.model_name)
+
+        # 🗂 2026-08-08 老倪: 模型源标识 (右侧层架 — 配置与训练统一走 Simulink Model Zoo)
+        src_lbl = QLabel("🗂 模型源：Simulink Model Zoo")
+        src_lbl.setStyleSheet(f"color:#00d4aa; background:#0d2a24; border:1px solid #00d4aa; border-radius:4px;"
+                              f"padding:4px 10px; font-size:11px; font-weight:bold;")
+        top_bar.addWidget(src_lbl)
         
         layout.addLayout(top_bar)
         
@@ -3232,6 +3235,10 @@ class TrainingModule(QWidget):
         self._log("🎮 Training console initialized")
         self._log("Ready to start training...")
 
+    # 🎛 2026-08-08 老倪: 注入 Simulink Model Zoo (训练按钮 → simulink on_train — 训练即 Model Zoo)
+    def set_simulink(self, s):
+        self._simulink = s
+
     # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
     def _build_zoo_table(self, layout):
         from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
@@ -3245,6 +3252,9 @@ class TrainingModule(QWidget):
         t.verticalHeader().setVisible(False)
         t.horizontalHeader().setVisible(False)
         t.setShowGrid(True)
+        # 🐛 2026-08-08 老倪: 表格自身滚动条关闭 (外层 scroll 已有 — 两个拖动条重复)
+        t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         t.setStyleSheet("""
             QTableWidget#zoo_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
                                      gridline-color:#30363d; font-size:11px; }
@@ -3292,7 +3302,7 @@ class TrainingModule(QWidget):
         hdr.setSectionResizeMode(1, QHeaderView.Stretch)
         for c in range(2, n_cols):
             hdr.setSectionResizeMode(c, QHeaderView.Stretch)
-        t.setMinimumHeight(min(n_rows * 28 + 30, 420))
+        t.setMinimumHeight(n_rows * 28 + 30)  # 内容全高 — 外层 scroll 滚动 (表格自身不滚)
         layout.addRow(t)
         self.zoo_table = t
         # 旧参数控件隐藏 (表格替代显示 — 控件保留供训练逻辑读值)
@@ -3794,6 +3804,14 @@ class TrainingModule(QWidget):
 
     def _start_training(self):
         """Start SmolVLA training"""
+        # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo (配置表格 ↔ Model Zoo 数据一致, 训练即 simulink 模型)
+        if getattr(self, "_simulink", None) is not None:
+            tag_map = {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
+                       "VLA-Touch": "vla_touch", "AWE": "awe_zflow", "MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}
+            pol = tag_map.get(self.model_combo.currentText(), "act")
+            self._log(f"🎛 训练按钮 → Simulink Model Zoo (policy={pol})")
+            self._simulink.on_train(policy=pol)
+            return
         # 🌐 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 remote → 训练提交远程 V100
         if getattr(self, "gpu_mode", "local") == "remote" and getattr(self, "remote_engine", None):
             self._start_remote_training()
@@ -7620,6 +7638,7 @@ class StudioMainWindow(QMainWindow):
         self.simulink = SimulinkModule()
         self.simulink.flow_synced = self.on_flow_sync
         self.simulink.set_model_engine(self.model_engine)  # 🌐 2026-08-08 老倪: simulink 训练走 Model Engine
+        self.model_engine.set_simulink(self.simulink)      # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo on_train
         self.stack.addWidget(self.simulink)
 
         # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
