@@ -5338,8 +5338,10 @@ class SimulinkModule(QWidget):
                                   ensure_ascii=False, indent=1)
                 except Exception:
                     flow_json = None
-                cmd = [os.path.join(root, ".venv", "bin", "python"),
-                       os.path.join(root, "tools", "generate_report.py")]
+                cmd = ["sudo", "docker", "run", "--rm",
+                       "-v", f"{root}:/app", "-w", "/app", "-e", "PYTHONPATH=/app/src",
+                       "--entrypoint", "python", "zmax-std:1.0",
+                       "/app/tools/generate_report.py"]
                 if flow_json:
                     cmd += ["--flow", flow_json]
                 r = subprocess.run(cmd, capture_output=True, text=True,
@@ -5516,16 +5518,20 @@ class SimulinkModule(QWidget):
         try:
             import subprocess as _sp
             root = self._repo_root()
-            venv = os.path.join(root, ".venv", "bin", "python")
+            # 🐳 2026-08-08 老倪: 评估/rollout 强制容器 (zmax-std)
+            venv = "docker"  # placeholder — 用容器命令
             pols = [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
                     ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE")]
             # ① rollout 5 模型 (60 帧, 同视频规格)
             for pol, _nm in pols:
                 try:
-                    r = _sp.run([venv, os.path.join(root, "tools", "rollout_video.py"),
+                    r = _sp.run(["sudo", "docker", "run", "--rm", "--gpus", "all",
+                                 "-v", f"{root}:/app", "-w", "/app", "-e", "PYTHONPATH=/app/src",
+                                 "--entrypoint", "python", "zmax-std:1.0",
+                                 "/app/tools/rollout_video.py",
                                  "--policy", pol, "--steps", "60",
                                  "--task", "peg-insert-side-v3", "--camera", "corner2",
-                                 "--rotate-ccw", "--out", os.path.join(root, "reports", f"rollout_final_{pol}")],
+                                 "--rotate-ccw", "--out", os.path.join("/app", "reports", f"rollout_final_{pol}")],
                                 capture_output=True, text=True, timeout=600, cwd=root)
                     self._safe_log(f"🎥 {pol} rollout {'✅' if r.returncode == 0 else '❌'}"
                               + (f" · {(r.stdout or '').strip().splitlines()[-1][:60]}" if r.returncode == 0 and r.stdout else ""))
@@ -5735,8 +5741,10 @@ class SimulinkModule(QWidget):
         self._log(f"⚔️ 对比评估: 统一 metaworld 测试集 (120帧) 评估 {len(have)} 个已训练模型 ({' / '.join(have)}) — 精确度/鲁棒性/延迟, 完成自动弹图表…")
 
         def _work():
-            rc = self._run_cmd([os.path.join(root, ".venv", "bin", "python"),
-                                os.path.join(root, "tools", "compare_models.py"),
+            rc = self._run_cmd(["sudo", "docker", "run", "--rm", "--gpus", "all",
+                                "-v", f"{root}:/app", "-w", "/app", "-e", "PYTHONPATH=/app/src",
+                                "--entrypoint", "python", "zmax-std:1.0",
+                                "/app/tools/compare_models.py",
                                 "--frames", "120"], cwd=root)
             return (rc == 0), ("对比评估完成 · 弹窗展示图表" if rc == 0 else "对比评估失败 (见上方日志)")
 
