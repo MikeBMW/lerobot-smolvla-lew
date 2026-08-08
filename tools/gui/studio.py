@@ -3060,6 +3060,27 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         """)
         self.start_btn.clicked.connect(self._start_training)
         btn_layout.addWidget(self.start_btn)
+
+        # 🎛 2026-08-08 老倪: 每模型训练开关 (参考 YOLO 感知开关样式 — 训练:开, 控制队列训练)
+        sw_box = QGroupBox(" 🎛 训练开关 ")
+        sw_box.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:8px; padding-top:6px;}}")
+        swl = QHBoxLayout()
+        swl.setSpacing(14)
+        self._zoo_sw = {}
+        for key, label in [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                           ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
+                           ("expert_policy", "官方专家")]:
+            cb = QCheckBox(f"训练：开 {label}")
+            cb.setChecked(True)
+            cb.setStyleSheet(f"QCheckBox{{color:{C_WHITE}; background:transparent; font-size:11px; font-weight:bold;}}"
+                             f"QCheckBox::indicator{{width:30px; height:16px; border-radius:8px; border:1px solid {C_BORDER}; background:#21262d;}}"
+                             f"QCheckBox::indicator:checked{{background:{C_GREEN}; border-color:{C_GREEN};}}")
+            self._zoo_sw[key] = cb
+            swl.addWidget(cb)
+        swl.addStretch()
+        sw_box.setLayout(swl)
+        btn_container_layout = btn_container.layout() if btn_container.layout() else None
+        layout.addWidget(sw_box)
         
         # 恢复默认参数
         self.defaults_btn = QPushButton("🔄 恢复默认")
@@ -3501,6 +3522,17 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 return
         except Exception:
             pass
+        # 🐛 2026-08-08 老倪: 训练开关 — 关的模型跳过 (参考 YOLO 感知开关)
+        while self._zoo_queue:
+            nxt = self._zoo_queue[0]
+            sw = getattr(self, "_zoo_sw", {}).get(nxt)
+            if sw is None or sw.isChecked():
+                break
+            self._log(f"⏭ 跳过 {nxt} (训练开关: 关)")
+            self._zoo_queue.pop(0)
+        if not self._zoo_queue:
+            self._log("🏁 Model Zoo 训练队列已空 (全部模型训练完成或跳过)")
+            return
         pol = self._zoo_queue.pop(0)
         left = len(self._zoo_queue)
         self._log(f"🎛 Model Zoo 训练 [{7 - left}/7] → {pol} ({left} 个剩余)")
