@@ -3888,18 +3888,20 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:12px; }}")
                 self.radio_local.setChecked(True)
                 self.btn_ssh.setText("🔌 连接")
+                # 🐛 2026-08-08 老倪: 远程不可达 → 明确提示 (不误导)
+                self._log("⚠️ 远程 GPU 不可达 (已关机/网络不通) — 自动使用本地引擎 (4060)")
         except Exception:
             pass
 
     def _on_gpu_mode(self, *_):
         """Model Engine GPU 引擎选择: local=本地 4060 / remote=远程 V100"""
         try:
-            if self.radio_remote.isChecked() and getattr(self, "remote_engine", None):
+            if self.radio_remote.isChecked() and getattr(self, "remote_engine", None) and self.remote_engine.get("connected"):
                 self.gpu_mode = "remote"
                 self._log(f"🖥 训练引擎 → 远程 GPU ({self.remote_engine['host']})")
             else:
                 self.gpu_mode = "local"
-                if not self.radio_remote.isChecked():
+                if not self.radio_remote.isChecked() or not getattr(self, "remote_engine", {}).get("connected"):
                     self._log("🖥 训练引擎 → 本地 GPU (RTX 4060)")
         except Exception:
             self.gpu_mode = "local"
