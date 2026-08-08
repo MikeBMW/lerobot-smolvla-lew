@@ -61,13 +61,22 @@ def load_policy(policy):
 def _load_stats(policy_hint=None):
     """加载训练 stats — 2026-08-08: 从模型 checkpoint preprocessor 读逐维 norm (v7 数据被清, 逐维才是对的)"""
     import json as _j
-    # 候选 checkpoint (按模型)
-    cands = ["outputs/train/smolvla_peg_long2/checkpoints/004000/pretrained_model",
-             "outputs/train/act_peg_long/checkpoints/004000/pretrained_model",
-             "outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
-             "outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model",
-             "outputs/train/smolvla_ft_20260807_161841/checkpoints/004000/pretrained_model",
-             "outputs/train/act_peg_v6/checkpoints/004000/pretrained_model"]
+    # 候选 checkpoint: 优先 policy_hint 对应模型 (2026-08-08 修复: 每个模型 stats 不同)
+    _by_policy = {
+        "smolvla": ["outputs/train/smolvla_peg_long2/checkpoints/004000/pretrained_model",
+                    "outputs/train/smolvla_ft_20260807_161841/checkpoints/004000/pretrained_model"],
+        "smolvla_lew": ["outputs/train/smolvla_lew_ft_20260807_164927/checkpoints/004000/pretrained_model"],
+        "act": ["outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
+                "outputs/train/act_peg_long/checkpoints/004000/pretrained_model"],
+        "vla_touch": ["outputs/train/vla_touch_20260807_141958/checkpoints/000050/pretrained_model"],
+        "awe_zflow": ["outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model"],
+        "expert_mlp": ["outputs/rl_peg"],
+    }
+    cands = _by_policy.get(policy_hint, []) if policy_hint else []
+    cands += ["outputs/train/smolvla_peg_long2/checkpoints/004000/pretrained_model",
+              "outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
+              "outputs/train/act_peg_long/checkpoints/004000/pretrained_model",
+              "outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model"]
     for ck in cands:
         st_f = os.path.join(ROOT, ck, "policy_preprocessor_step_3_normalizer_processor.safetensors")
         if not os.path.exists(st_f):
@@ -105,9 +114,10 @@ def _load_stats(policy_hint=None):
             return _j2.load(open(p))
     return None
 
-def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False):
+def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, policy_name=None):
     """单次插拔尝试: 返回 peg 是否抬起 + 是否插入
-    grip_assist=True: 夹爪辅助 (接近 peg 强制闭合 — 2026-08-07 老倪: ACT 方向性已学会, 差夹爪决策)"""
+    grip_assist=True: 夹爪辅助 (接近 peg 强制闭合 — 2026-08-07 老倪: ACT 方向性已学会, 差夹爪决策)
+    policy_name: 2026-08-08 用于加载对应模型的归一化 stats (每模型不同)"""
     import metaworld
     mt = metaworld.MT1("peg-insert-side-v3", seed=seed)
     env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array")
@@ -119,7 +129,7 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False):
     else:
         st_dim = getattr(policy, "state_dim", 3)
     # 归一化统计 (LeRobot 训练管道, 2026-08-06: ACT/SmolVLA 无 processor, 需手动归一化)
-    stats = _load_stats()
+    stats = _load_stats(policy_name)
     sm = np.array(stats["observation.state"]["mean"], dtype=np.float32)[:st_dim]
     ss = np.array(stats["observation.state"]["std"], dtype=np.float32)[:st_dim] + 1e-6
     am = np.array(stats["action"]["mean"], dtype=np.float32)[:4]

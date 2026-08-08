@@ -113,7 +113,8 @@ def main():
                     state = ee.astype(np.float32).copy()  # 兜底 3D
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
             # 2026-08-07: --far 用多阶段专家 (官方专家远起点状态机失效)
-            use_official = expert_mode and expert is not None and not getattr(args, "far", False)
+            # 2026-08-08: --grab-only 也用多阶段专家 (官方专家夹爪离散, 学不到闭合)
+            use_official = expert_mode and expert is not None and not getattr(args, "far", False) and not getattr(args, "grab_only", False)
             if use_official:
                 obs_vec = np.asarray(obs, dtype=np.float64).ravel()
                 try:
@@ -163,19 +164,24 @@ def main():
             except Exception:
                 goal = None
             target_hole = hole if hole is not None else goal
-            # 抓取点: peg 上方 3cm (抓握高度)
-            grasp_pt = np.array([peg[0], peg[1], peg[2] + 0.03]) if peg is not None else None
+            # 抓取点: peg 上方 3cm (抓握高度) — 2026-08-08 修复: 每步重新获取 peg 位置 (循环内 peg 会动)
+            pid_use = pid if 'pid' in dir() else env.model.site("pegGrasp").id
+            peg_cur = env.data.site_xpos[pid_use]
+            grasp_pt = np.array([peg_cur[0], peg_cur[1], peg_cur[2] + 0.03]) if peg_cur is not None else None
             if grasp_pt is not None and target_hole is not None:
                 d_peg = np.linalg.norm(ee - grasp_pt)          # 到抓取点距离
                 d_peg_xy = np.linalg.norm((ee - grasp_pt)[:2]) # 水平距离
                 d_hole = np.linalg.norm(ee - target_hole)      # 到孔距离
-                lifted = ee[2] > target_hole[2] - 0.01         # 是否已抬到孔高度
+                # 2026-08-08 修复: lifted 用 peg 是否被抓起 (手初始 z 就高, 用手的 z 判断永远 True → 跳过抓取)
+                pid_use = pid if 'pid' in dir() else env.model.site("pegGrasp").id
+                peg_now = env.data.site_xpos[pid_use]
+                lifted = peg_now[2] > peg_z0 + 0.04            # peg 相对初始升高 4cm = 已抓起
                 if d_peg > 0.06:
                     # Phase 1: 接近 peg 上方 (水平 + 升到抓取高度)
                     dv = grasp_pt - ee
                     horiz = np.array([dv[0], dv[1], dv[2] * 0.5])
-                    # 2026-08-08 grab-only: 接近加速 (防轨迹全在接近段, 夹爪没机会闭合)
-                    spd = 0.3 if getattr(args, "grab_only", False) else 0.12
+                    # 2026-08-08 grab-only: 接近加速 (防轨迹全在接近段), 0.3太快抓取失误→0.18
+                    spd = 0.18 if getattr(args, "grab_only", False) else 0.12
                     vel = horiz / max(np.linalg.norm(horiz), 1e-6) * spd
                     gripper = 0.0  # 张开
                 elif ee[2] < grasp_pt[2] - 0.01:
