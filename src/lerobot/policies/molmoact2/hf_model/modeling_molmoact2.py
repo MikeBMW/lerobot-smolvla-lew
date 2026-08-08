@@ -36,7 +36,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.configuration_utils import PretrainedConfig
-from transformers.generation import GenerationMixin
+from transformers.generation.utils import GenerationMixin  # 🐛 5.x兼容
 from transformers.masking_utils import create_causal_mask, create_masks_for_generate
 from transformers.modeling_flash_attention_utils import (
     FlashAttentionKwargs,
