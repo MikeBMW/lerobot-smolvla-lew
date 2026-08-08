@@ -2462,18 +2462,6 @@ class TrainingModule(QWidget):
         # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
         self._build_zoo_table(param_layout)
         
-        # ===== SmolVLA Model Info =====
-        policy_label = QLabel("🧠 SmolVLA Model")
-        policy_label.setFont(QFont("Arial", 12, QFont.Bold))
-        policy_label.setStyleSheet(f"color: {C_BLUE}; padding-bottom: 4px;")
-        param_layout.addRow(policy_label)
-        
-        # SmolVLA version info (read-only display)
-        self.vlm_info = QLabel("SmolVLM2-500M-Video-Instruct · 450M params · Cross-Attention")
-        self.vlm_info.setStyleSheet(f"color: {C_GRAY}; font-size: 10px; padding: 4px 8px; background: {C_BG}; border-radius: 4px;")
-        self.vlm_info.setWordWrap(True)
-        param_layout.addRow("VLM Backbone:", self.vlm_info)
-        
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
         self.freeze_checkbox.setChecked(True)
@@ -2496,7 +2484,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.freeze_checkbox.setToolTip("Freeze SmolVLM backbone (--policy.freeze_smolvlm)")
-        param_layout.addRow("Freeze SmolVLM:", self.freeze_checkbox)
         
         # Enable World Model
         self.world_model_checkbox = QCheckBox("Enabled")
@@ -2520,7 +2507,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.world_model_checkbox.setToolTip("Enable LeWorld Model (--policy.enable_lew_world_model)")
-        param_layout.addRow("World Model:", self.world_model_checkbox)
         
         # Repeated Diffusion Steps
         self.diffusion_spin = QSpinBox()
@@ -2536,21 +2522,18 @@ class TrainingModule(QWidget):
             }}
         """)
         self.diffusion_spin.setToolTip("Action prediction steps (repeated diffusion/flow matching steps)")
-        param_layout.addRow("Action Steps:", self.diffusion_spin)
 
         # VLM layers
         self.vlm_layers_spin = QSpinBox()
         self.vlm_layers_spin.setRange(0, 32)  # 0=无VLM (ACT/MLP/专家禁用时显示0)
         self.vlm_layers_spin.setValue(16)
         self.vlm_layers_spin.setToolTip("Number of VLM layers used (num_vlm_layers)")
-        param_layout.addRow("VLM Layers:", self.vlm_layers_spin)
 
         # Expert layers
         self.expert_layers_spin = QSpinBox()
         self.expert_layers_spin.setRange(-1, 32)
         self.expert_layers_spin.setValue(-1)
         self.expert_layers_spin.setToolTip("Expert layers (-1 = same as VLM)")
-        param_layout.addRow("Expert Layers:", self.expert_layers_spin)
 
         # Expert width
         self.expert_width_spin = QDoubleSpinBox()
@@ -2558,27 +2541,23 @@ class TrainingModule(QWidget):
         self.expert_width_spin.setValue(0.75)
         self.expert_width_spin.setSingleStep(0.25)
         self.expert_width_spin.setToolTip("Expert hidden size relative to VLM")
-        param_layout.addRow("Expert Width:", self.expert_width_spin)
 
         # Self-attention interval
         self.self_attn_spin = QSpinBox()
         self.self_attn_spin.setRange(1, 8)
         self.self_attn_spin.setValue(2)
         self.self_attn_spin.setToolTip("Self-attention every N layers")
-        param_layout.addRow("Self-Attn Every:", self.self_attn_spin)
 
         # ===== I/O Dimensions =====
         io_label = QLabel("Input / Output")
         io_label.setFont(QFont("Arial", 11, QFont.Bold))
         io_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(io_label)
 
         # Observation steps
         self.obs_steps_spin = QSpinBox()
         self.obs_steps_spin.setRange(1, 10)
         self.obs_steps_spin.setValue(1)
         self.obs_steps_spin.setToolTip("Number of observation steps (n_obs_steps)")
-        param_layout.addRow("Obs Steps:", self.obs_steps_spin)
 
         # Chunk size  
         self.chunk_spin = QSpinBox()
@@ -2586,21 +2565,18 @@ class TrainingModule(QWidget):
         self.chunk_spin.setValue(50)
         self.chunk_spin.setSingleStep(10)
         self.chunk_spin.setToolTip("Action chunk size")
-        param_layout.addRow("Chunk Size:", self.chunk_spin)
 
         # State dim
         self.state_dim_spin = QSpinBox()
         self.state_dim_spin.setRange(1, 128)
         self.state_dim_spin.setValue(32)
         self.state_dim_spin.setToolTip("Max state dimension (padded)")
-        param_layout.addRow("Max State Dim:", self.state_dim_spin)
 
         # Action dim
         self.action_dim_spin = QSpinBox()
         self.action_dim_spin.setRange(1, 128)
         self.action_dim_spin.setValue(32)
         self.action_dim_spin.setToolTip("Max action dimension (padded)")
-        param_layout.addRow("Max Action Dim:", self.action_dim_spin)
         
         # Dataset selection
         self.dataset_combo = QComboBox()
@@ -2622,7 +2598,6 @@ class TrainingModule(QWidget):
                 min-width: 200px;
             }}
         """)
-        param_layout.addRow("Dataset:", self.dataset_combo)
         # 同步 combo 到老的 edit 字段
         self.dataset_combo.currentTextChanged.connect(lambda t: self.dataset_repo_edit.setText(t))
         self.dataset_combo.currentTextChanged.connect(self._auto_output_dir)
@@ -2633,7 +2608,6 @@ class TrainingModule(QWidget):
         self.dataset_path_label.setFont(QFont("Consolas", 8))
         self.dataset_path_label.setStyleSheet(f"color:{C_GRAY}; padding-left:4px;")
         self.dataset_path_label.setWordWrap(True)
-        param_layout.addRow("本地路径:", self.dataset_path_label)
         self.dataset_combo.currentTextChanged.connect(self._update_dataset_path)
         # 初始化显示
         self._update_dataset_path(self.dataset_combo.currentText())
@@ -2652,7 +2626,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.batch_spin.setToolTip("Number of samples processed per training step")
-        param_layout.addRow("Batch Size:", self.batch_spin)
         
         # Training steps
         self.steps_spin = QSpinBox()
@@ -2669,13 +2642,11 @@ class TrainingModule(QWidget):
             }}
         """)
         self.steps_spin.setToolTip("Total number of training steps")
-        param_layout.addRow("Training Steps:", self.steps_spin)
         
         # ===== Image Preprocessing =====
         img_label = QLabel("Image Preprocessing")
         img_label.setFont(QFont("Arial", 11, QFont.Bold))
         img_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(img_label)
 
         # Resize width
         self.resize_w_spin = QSpinBox()
@@ -2683,7 +2654,6 @@ class TrainingModule(QWidget):
         self.resize_w_spin.setValue(512)
         self.resize_w_spin.setSingleStep(64)
         self.resize_w_spin.setToolTip("Image resize width")
-        param_layout.addRow("Resize Width:", self.resize_w_spin)
 
         # Resize height
         self.resize_h_spin = QSpinBox()
@@ -2691,14 +2661,12 @@ class TrainingModule(QWidget):
         self.resize_h_spin.setValue(512)
         self.resize_h_spin.setSingleStep(64)
         self.resize_h_spin.setToolTip("Image resize height")
-        param_layout.addRow("Resize Height:", self.resize_h_spin)
 
         # Empty cameras
         self.empty_cameras_spin = QSpinBox()
         self.empty_cameras_spin.setRange(0, 4)
         self.empty_cameras_spin.setValue(0)
         self.empty_cameras_spin.setToolTip("Number of empty camera channels")
-        param_layout.addRow("Extra Cameras:", self.empty_cameras_spin)
 
         # Position encoding
         self.min_period_spin = QDoubleSpinBox()
@@ -2707,14 +2675,12 @@ class TrainingModule(QWidget):
         self.min_period_spin.setDecimals(4)
         self.min_period_spin.setSingleStep(0.001)
         self.min_period_spin.setToolTip("Min period for sine-cosine positional encoding")
-        param_layout.addRow("Min Period:", self.min_period_spin)
 
         self.max_period_spin = QDoubleSpinBox()
         self.max_period_spin.setRange(1.0, 16.0)
         self.max_period_spin.setValue(4.0)
         self.max_period_spin.setSingleStep(1.0)
         self.max_period_spin.setToolTip("Max period for sine-cosine positional encoding")
-        param_layout.addRow("Max Period:", self.max_period_spin)
         
         # Checkpoint interval
         self.ckpt_spin = QSpinBox()
@@ -2731,13 +2697,11 @@ class TrainingModule(QWidget):
             }}
         """)
         self.ckpt_spin.setToolTip("Number of steps to save checkpoint")
-        param_layout.addRow("Checkpoint Interval:", self.ckpt_spin)
         
         # ===== Dataset Settings =====
         dataset_label = QLabel("Dataset Settings")
         dataset_label.setFont(QFont("Arial", 11, QFont.Bold))
         dataset_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(dataset_label)
         
         # Dataset Repo ID
         self.dataset_repo_edit = QLineEdit("lerobot/pusht")
@@ -2751,13 +2715,11 @@ class TrainingModule(QWidget):
             }}
         """)
         self.dataset_repo_edit.setToolTip("HuggingFace dataset repo ID (--dataset.repo_id)")
-        param_layout.addRow("Dataset Repo ID:", self.dataset_repo_edit)
         
         # ===== Optimizer Settings =====
         opt_label = QLabel("Optimizer Settings")
         opt_label.setFont(QFont("Arial", 11, QFont.Bold))
         opt_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(opt_label)
         
         # Learning Rate
         self.lr_spin = QDoubleSpinBox()
@@ -2775,7 +2737,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.lr_spin.setToolTip("Optimizer learning rate (--optimizer.lr)")
-        param_layout.addRow("Learning Rate:", self.lr_spin)
         
         # Weight Decay
         self.weight_decay_spin = QDoubleSpinBox()
@@ -2793,7 +2754,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.weight_decay_spin.setToolTip("Weight decay (--optimizer.weight_decay)")
-        param_layout.addRow("Weight Decay:", self.weight_decay_spin)
         
         # Gradient Clipping
         self.grad_clip_spin = QDoubleSpinBox()
@@ -2811,13 +2771,11 @@ class TrainingModule(QWidget):
             }}
         """)
         self.grad_clip_spin.setToolTip("Gradient clipping norm (--optimizer.grad_clip_norm)")
-        param_layout.addRow("Grad Clip Norm:", self.grad_clip_spin)
         
         # ===== Scheduler Settings =====
         sched_label = QLabel("Scheduler Settings")
         sched_label.setFont(QFont("Arial", 11, QFont.Bold))
         sched_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(sched_label)
         
         # Scheduler Type
         self.scheduler_combo = QComboBox()
@@ -2837,7 +2795,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
-        param_layout.addRow("Scheduler Type:", self.scheduler_combo)
         
         # Warmup Steps
         self.warmup_spin = QSpinBox()
@@ -2854,7 +2811,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.warmup_spin.setToolTip("Number of warmup steps (--scheduler.num_warmup_steps)")
-        param_layout.addRow("Warmup Steps:", self.warmup_spin)
         
         # Decay Steps
         self.decay_spin = QSpinBox()
@@ -2871,7 +2827,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.decay_spin.setToolTip("Number of decay steps (--scheduler.num_decay_steps)")
-        param_layout.addRow("Decay Steps:", self.decay_spin)
         
         # Peak LR
         self.peak_lr_spin = QDoubleSpinBox()
@@ -2889,7 +2844,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.peak_lr_spin.setToolTip("Peak learning rate (--scheduler.peak_lr)")
-        param_layout.addRow("Peak LR:", self.peak_lr_spin)
         
         # Decay LR
         self.decay_lr_spin = QDoubleSpinBox()
@@ -2907,13 +2861,11 @@ class TrainingModule(QWidget):
             }}
         """)
         self.decay_lr_spin.setToolTip("Final learning rate after decay (--scheduler.decay_lr)")
-        param_layout.addRow("Decay LR:", self.decay_lr_spin)
         
         # ===== Experiment Settings =====
         exp_label = QLabel("Experiment Settings")
         exp_label.setFont(QFont("Arial", 11, QFont.Bold))
         exp_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(exp_label)
         
         # Eval Frequency
         self.eval_freq_spin = QSpinBox()
@@ -2930,7 +2882,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.eval_freq_spin.setToolTip("Evaluation frequency in steps, 0 to disable (--eval.frequency)")
-        param_layout.addRow("Eval Frequency:", self.eval_freq_spin)
         
         # Push to Hub
         self.push_hub_checkbox = QCheckBox("Enabled")
@@ -2954,7 +2905,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.push_hub_checkbox.setToolTip("Push checkpoint to HuggingFace Hub (--policy.push_to_hub)")
-        param_layout.addRow("Push to Hub:", self.push_hub_checkbox)
 
         # Compile model
         self.compile_checkbox = QCheckBox("Use torch.compile (faster, higher first-run)")
@@ -2977,7 +2927,6 @@ class TrainingModule(QWidget):
                 border-color: {C_BLUE};
             }}
         """)
-        param_layout.addRow("Compile:", self.compile_checkbox)
         
         # Output Directory
         self.output_dir_edit = QLineEdit("outputs/smolvla_pusht")
@@ -2991,7 +2940,6 @@ class TrainingModule(QWidget):
             }}
         """)
         self.output_dir_edit.setToolTip("Output directory for checkpoints and logs")
-        param_layout.addRow("Output Directory:", self.output_dir_edit)
         
         param_group.setLayout(param_layout)
         
