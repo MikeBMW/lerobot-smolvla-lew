@@ -3234,6 +3234,21 @@ class TrainingModule(QWidget):
         # Initialize log
         self._log("🎮 Training console initialized")
         self._log("Ready to start training...")
+        # 🖥 2026-08-08 老倪: 模型引擎自动连接远程 GPU (凭据预填 ~/.zmax_ssh.json — 启动即连)
+        from PyQt5.QtCore import QTimer as _QT
+        _QT.singleShot(3000, self._auto_connect_gpu)
+
+    def _auto_connect_gpu(self):
+        """🖥 模型引擎自动连接远程 GPU (无需手动点连接按钮)"""
+        try:
+            if not os.path.exists(os.path.expanduser("~/.zmax_ssh.json")):
+                return
+            if getattr(self, "remote_engine", None) and self.remote_engine.get("connected"):
+                return  # 已连接
+            self._log("🖥 模型引擎自动连接远程 GPU…")
+            self._connect_gpu()
+        except Exception:
+            pass
 
     # 🎛 2026-08-08 老倪: 注入 Simulink Model Zoo (训练按钮 → simulink on_train — 训练即 Model Zoo)
     def set_simulink(self, s):
@@ -3257,17 +3272,23 @@ class TrainingModule(QWidget):
                 self._log(f"❌ 视频生成失败: {e}")
             self._log("✅ 报告/视频已同步本地: reports/ + outputs/train/ (控制台可见)")
             return
-        # 等当前训练进程结束 (15s 轮询) — 进程消失才启动下一个 (避免 GPU 冲突)
+        # 🐛 2026-08-08 老倪: 防误判 — on_train 数据准备有延迟, 启动后 45s 内不判完成
+        import time as _t
+        if getattr(self, "_zoo_start_ts", 0) and _t.time() - self._zoo_start_ts < 45:
+            return  # 训练启动窗口内 — 轮询等待
+        # 训练进程还在 → 等 (真正完成才推进)
         import subprocess
         try:
             r = subprocess.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5)
             if r.stdout.strip():
-                return  # 训练中 — 轮询等待
+                self._zoo_start_ts = None  # 训练中 — 重置窗口 (下一轮等 45s 再判)
+                return
         except Exception:
             pass
         pol = self._zoo_queue.pop(0)
         left = len(self._zoo_queue)
         self._log(f"🎛 Model Zoo 训练 [{7 - left}/7] → {pol} ({left} 个剩余)")
+        self._zoo_start_ts = _t.time()  # 记录启动时间 — 45s 内不判完成
         try:
             self._simulink.on_train(policy=pol)
         except Exception as e:
