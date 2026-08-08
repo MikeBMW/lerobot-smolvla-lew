@@ -979,7 +979,7 @@ class HomeWidget(QWidget):
         #   最后一行: 插拔场景/版本同步
         modules = [
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
-            ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
+            ("training", "🏋️", "配置通道",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
             ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
             ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
@@ -2277,7 +2277,7 @@ class TrainingModule(QWidget):
         # ===== Top Bar: Title + SmolVLA Button =====
         top_bar = QHBoxLayout()
         
-        title = QLabel("🧠 Model Engine")  # 2026-08-08 老倪: SmolVLA Training Console → Model Engine (模型引擎)
+        title = QLabel("🧠 配置通道")  # 2026-08-08 老倪: SmolVLA Training Console → Model Engine (模型引擎)
         title.setStyleSheet(f"color: {C_WHITE}; font-size: 20px; font-weight: bold;")
         top_bar.addWidget(title)
         
@@ -2289,7 +2289,7 @@ class TrainingModule(QWidget):
         eh = QHBoxLayout(engine_box)
         eh.setContentsMargins(12, 8, 12, 8)
         eh.setSpacing(10)
-        eng_lbl = QLabel("🖥 模型引擎:")  # 2026-08-08 老倪: 训练引擎 → 模型引擎
+        eng_lbl = QLabel("🖥 配置通道:")  # 2026-08-08 老倪: 训练引擎 → 模型引擎
         eng_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none; font-size:13px;")
         eh.addWidget(eng_lbl)
         # GPU 引擎选择 (Model Engine 中枢 — 所有训练统一走这里)
@@ -2386,8 +2386,7 @@ class TrainingModule(QWidget):
         layout.addLayout(top_bar)
         
         # ===== Training Parameter Area =====
-        self.param_group = QGroupBox(" Model Parameters ")  # 2026-08-08 老倪: 标题跟随模型选择
-        self.param_group.setVisible(False)  # 🗑 2026-08-08 老倪: 参数窗口删除 (选模型自动内部参数, 不手动调)
+        self.param_group = QGroupBox(" 配置通道 ")  # 2026-08-08 老倪: 模型参数窗口 → 配置通道
         param_group = self.param_group
         param_group.setStyleSheet(f"""
             QGroupBox {{
