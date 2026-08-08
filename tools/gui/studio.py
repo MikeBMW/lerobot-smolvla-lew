@@ -2505,6 +2505,38 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         cv.addLayout(rowc)
         # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
         
+        # 🌐 2026-08-08 老倪: 全息 ID 管控面板 (深度交互 — 每个窗口/按钮/开关有 ID, 无歧义下指令)
+        hg = QGroupBox(" 🌐 全息 ID 管控 ")
+        hg.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:8px; padding-top:6px;}}")
+        hvl = QVBoxLayout()
+        hvl.setSpacing(4)
+        hinfo = QLabel("每个控件有唯一 ID — 对我说「点 B-03」「开 S-02」即可精确控制 · 点表行可定位")
+        hinfo.setStyleSheet(f"color:{C_DIM}; font-size:10px; background:transparent; border:none;")
+        hinfo.setWordWrap(True)
+        hvl.addWidget(hinfo)
+        self._holo_table = QTableWidget(0, 4)
+        self._holo_table.setHorizontalHeaderLabels(["ID", "名称", "类型", "状态"])
+        self._holo_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._holo_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._holo_table.setSelectionMode(QTableWidget.SingleSelection)
+        self._holo_table.setStyleSheet(f"QTableWidget{{background:#0d1117; color:{C_WHITE}; border:1px solid #30363d; gridline-color:#21262d; font-size:10px;}}"
+                                       f"QHeaderView::section{{background:#161b22; color:{C_WHITE}; border:none; padding:3px; font-weight:bold;}}")
+        self._holo_table.setMaximumHeight(150)
+        self._holo_table.setColumnWidth(0, 60)
+        self._holo_table.setColumnWidth(1, 150)
+        self._holo_table.setColumnWidth(2, 60)
+        self._holo_table.setColumnWidth(3, 90)
+        hvl.addWidget(self._holo_table)
+        self._holo_reg = {}  # id → (widget, name, type, getter)
+        hg.setLayout(hvl)
+        layout.addWidget(hg)
+        # 🐛 2026-08-08: 延迟注册 (等按钮/开关全部构造完 — 2504 处调用太早)
+        try:
+            from PyQt5.QtCore import QTimer as _QTH
+            _QTH.singleShot(600, self._register_holo_all)
+        except Exception:
+            self._register_holo_all()
+        
         # Freeze SmolVLM
         self.freeze_checkbox = QCheckBox("Enabled")
         self.freeze_checkbox.setChecked(True)
@@ -4048,6 +4080,96 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self._append_log(text)
             except Exception:
                 pass
+
+    def _register_holo_all(self):
+        """🌐 全息 ID 注册 — 所有可交互控件注册唯一 ID (窗口/按钮/开关/表格/日志)"""
+        try:
+            reg = []
+            # 窗口 (W-xx)
+            reg.append(("W-01", "主窗口 (XSpace Studio)", "窗口", lambda: "可见" if self.isVisible() else "隐藏"))
+            reg.append(("W-02", "Model Engine 页", "窗口", lambda: "当前" if getattr(self, "isVisible", lambda: False)() else "页"))
+            # 按钮 (B-xx)
+            for key, nm in [("start_btn", "Start (开始)"), ("stop_btn", "Stop (停止)"),
+                            ("defaults_btn", "恢复默认"), ("_btn_upload_ct", "上传容器到远程")]:
+                if hasattr(self, key):
+                    w = getattr(self, key)
+                    reg.append((f"B-{len(reg) - 1:02d}" if False else f"B-{len([r for r in reg if r[2] == '按钮']) + 1:02d}",
+                                nm, "按钮", lambda w=w: "可用" if w.isEnabled() else "禁用"))
+            # 模式卡片 (M-xx)
+            for key, nm in [("train", "远程训练"), ("infer", "本地运行"), ("deploy", "端侧部署")]:
+                if hasattr(self, "_ct_mode_btns") and key in self._ct_mode_btns:
+                    w = self._ct_mode_btns[key]
+                    reg.append((f"M-{len([r for r in reg if r[2] == '模式']) + 1:02d}", f"模式卡片 {nm}", "模式",
+                                lambda w=w: "选中" if w.isChecked() else "未选"))
+            # 训练开关 (S-xx)
+            for key, nm in [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                            ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
+                            ("expert_policy", "官方专家")]:
+                if hasattr(self, "_zoo_sw") and key in self._zoo_sw:
+                    w = self._zoo_sw[key]
+                    reg.append((f"S-{len([r for r in reg if r[2] == '开关']) + 1:02d}", f"训练开关 {nm}", "开关",
+                                lambda w=w: "开" if w.isChecked() else "关"))
+            # 表格/日志 (T-xx / L-xx)
+            if hasattr(self, "zoo_table"):
+                reg.append(("T-01", "配置通道表格", "表格", lambda: "7 模型" ))
+            if hasattr(self, "log_text"):
+                reg.append(("L-01", "终端日志区", "日志", lambda: f"{self.log_text.document().blockCount()} 行"))
+            self._holo_reg = {i: (w, nm, ty, g) for i, (_, nm, ty, g) in []}  # placeholder
+            self._holo_reg = {}
+            for i in reg:
+                self._holo_reg[i[0]] = (None, i[1], i[2], i[3])
+            self._holo_refresh()
+        except Exception:
+            pass
+
+    def _holo_refresh(self):
+        """🌐 刷新全息 ID 面板 (状态列实时)"""
+        try:
+            t = self._holo_table
+            t.setRowCount(0)
+            for h_id, (w, nm, ty, g) in sorted(self._holo_reg.items()):
+                r = t.rowCount()
+                t.insertRow(r)
+                st = "—"
+                try:
+                    st = g() if g else "—"
+                except Exception:
+                    st = "—"
+                for c, v in enumerate([h_id, nm, ty, str(st)]):
+                    item = QTableWidgetItem(v)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    t.setItem(r, c, item)
+        except Exception:
+            pass
+
+    def _holo_act(self, h_id):
+        """🌐 执行 ID 指令 (点按钮/切开关/定位) — 返回执行结果"""
+        try:
+            info = self._holo_reg.get(h_id)
+            if not info:
+                return f"❌ 无此 ID: {h_id}"
+            w, nm, ty, g = info
+            if ty == "按钮" or ty == "模式":
+                # 找真实控件 (按钮 ID 映射)
+                btn_map = {"B-01": "start_btn", "B-02": "stop_btn", "B-03": "defaults_btn", "B-04": "_btn_upload_ct",
+                           "M-01": ("_ct_mode_btns", "train"), "M-02": ("_ct_mode_btns", "infer"), "M-03": ("_ct_mode_btns", "deploy")}
+                tgt = btn_map.get(h_id)
+                if tgt:
+                    if isinstance(tgt, tuple):
+                        getattr(self, tgt[0])[tgt[1]].click()
+                    else:
+                        getattr(self, tgt).click()
+                    return f"✅ 已执行 {h_id} ({nm})"
+            elif ty == "开关":
+                sw_map = {"S-01": "act", "S-02": "smolvla", "S-03": "smolvla_lew", "S-04": "vla_touch",
+                          "S-05": "awe_zflow", "S-06": "expert_mlp", "S-07": "expert_policy"}
+                k = sw_map.get(h_id)
+                if k and hasattr(self, "_zoo_sw"):
+                    self._zoo_sw[k].toggle()
+                    return f"✅ 已切换 {h_id} ({nm}) → {'开' if self._zoo_sw[k].isChecked() else '关'}"
+            return f"✅ {h_id} ({nm}) — 状态: {g() if g else '—'}"
+        except Exception as e:
+            return f"❌ 执行失败: {str(e)[:60]}"
 
     def _append_log(self, text):
         """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
