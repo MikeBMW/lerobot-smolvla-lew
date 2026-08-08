@@ -8,9 +8,8 @@
 # 用法: pip install -r requirements.lock  (容器内由 Dockerfile 调用)
 
 # ---- 核心 ML 栈 (锁定版本 — 全 7 模型可训的稳定组合) ----
+# 🐛 2026-08-08: torch/torchvision 由 Dockerfile 预装 (cu128 源/arm64 CPU 分支) — 此处不重复装
 transformers==5.5.4
-torch==2.11.0
-torchvision==0.26.0
 accelerate==1.14.0
 safetensors==0.8.0
 tokenizers==0.21.4

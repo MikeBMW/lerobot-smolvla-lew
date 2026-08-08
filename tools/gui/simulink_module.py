@@ -4979,7 +4979,8 @@ class SimulinkModule(QWidget):
                     # 输出目录加时间戳, 避免重复训练时 FileExistsError
                     cfg_txt = re.sub(r"(output_dir:\s*).*", f"output_dir: outputs/train/{ts_dir}", cfg_txt, count=1)
                     cfg_txt = re.sub(r"(job_name:\s*).*", f"job_name: {ts_dir}", cfg_txt, count=1)
-                    cfg_txt = re.sub(r"(root:\s*).*", f"root: {data_root}", cfg_txt, count=1)
+                    # 🐳 2026-08-08 容器训练: root 必须容器内路径 /app/data/... (挂载 -v root:/app)
+                    cfg_txt = re.sub(r"(root:\s*).*", f"root: /app/{os.path.relpath(data_root, root)}", cfg_txt, count=1)
                     # 🆕 节点逻辑可修改区参数透传 (^ 行锚定防 n_obs_steps 误匹配)
                     if steps:
                         cfg_txt = re.sub(r"^steps:\s*.*", f"steps: {int(steps)}", cfg_txt, count=1, flags=re.M)
@@ -5070,11 +5071,16 @@ class SimulinkModule(QWidget):
                     pass
 
             if policy == "vla_touch":
-                # 🖐 VLA-Touch: 独立精简训练脚本 (train_vla_touch.py, 不依赖 lerobot_train)
-                cmd = ["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
-                       os.path.join(root, "tools", "train_vla_touch.py"),
+                # 🖐 VLA-Touch: 独立精简训练脚本 (train_vla_touch.py) — 🐳 2026-08-08 强制容器
+                cfg_in = None
+                script_in = os.path.join("/app", "tools", "train_vla_touch.py")
+                data_in = os.path.join("/app", os.path.relpath(data_root, root))
+                cmd = ["sudo", "docker", "run", "--rm", "--gpus", "all",
+                       "-v", f"{root}:/app", "-w", "/app",
+                       "--entrypoint", "python", "zmax-std:1.0",
+                       "-u", script_in,
                        "--steps", str(int(steps) if steps else 50),
-                       "--data-root", data_root]
+                       "--data-root", data_in]
                 if batch_size:
                     cmd += ["--batch", str(int(batch_size))]
                 if lr:
@@ -5082,11 +5088,15 @@ class SimulinkModule(QWidget):
                 rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
                                    line_hook=lambda ln: _line_hook(ln))
             elif policy == "awe_zflow":
-                # 🧿 AWE-zFlow: 独立精简训练脚本 (train_awe_zflow.py)
-                cmd = ["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
-                       os.path.join(root, "tools", "train_awe_zflow.py"),
+                # 🧿 AWE-zFlow: 独立精简训练脚本 (train_awe_zflow.py) — 🐳 2026-08-08 强制容器
+                script_in = os.path.join("/app", "tools", "train_awe_zflow.py")
+                data_in = os.path.join("/app", os.path.relpath(data_root, root))
+                cmd = ["sudo", "docker", "run", "--rm", "--gpus", "all",
+                       "-v", f"{root}:/app", "-w", "/app",
+                       "--entrypoint", "python", "zmax-std:1.0",
+                       "-u", script_in,
                        "--steps", str(int(steps) if steps else 50),
-                       "--data-root", data_root]
+                       "--data-root", data_in]
                 if batch_size:
                     cmd += ["--batch", str(int(batch_size))]
                 if lr:
@@ -5094,7 +5104,8 @@ class SimulinkModule(QWidget):
                 rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
                                    line_hook=lambda ln: _line_hook(ln))
             else:
-                # 🐳 2026-08-08 老倪: 本地训练切容器运行 (zmax-std:1.0 — 与远程容器环境一致)
+                # 🐳 2026-08-08 老倪: 训练强制容器 (zmax-std:1.0 — 与远程容器环境一致)
+                # 删除旧代码: 不再用本地 .venv 直接训练
                 # WSL2 用 --gpus all (NVIDIA Container Toolkit); 远程 Linux 用 --device 透传
                 cfg_in = os.path.join("/app", os.path.basename(tmp_cfg)) if tmp_cfg else None
                 cmd = ["sudo", "docker", "run", "--rm",
