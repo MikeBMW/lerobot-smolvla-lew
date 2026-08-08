@@ -3396,14 +3396,17 @@ class TrainingModule(QWidget):
         def _submit():
             try:
                 # 🐳 2026-08-08 老倪: 容器化方案 — 远程 GPU 训练走 Docker (zmax-train 镜像)
-                # 镜像未构建 → 自动 docker build (pytorch 基础 + lerobot); 已构建 → docker run --gpus all
+                # 镜像未构建 → 自动 docker build (pytorch 基础 + lerobot); 已构建 → docker run --device GPU透传
                 cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
                        f"-o Port={r['port']} {r['user']}@{r['host']} "
-                       f"'cd ~/lerobot-smolvla-lew && "
+                       f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
+                       f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg} 2>/dev/null; "
                        f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                        f"echo BUILDING; nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & "
                        f"else "
-                       f"docker run -d --rm --gpus all -v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
+                       f"docker run -d --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
+                       f"-v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro "
+                       f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
                        f"zmax-train:latest python -m lerobot.scripts.lerobot_train --config-path {cfg} "
                        f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'")
                 out = _sp.check_output(cmd, shell=True, timeout=40).decode().strip()
