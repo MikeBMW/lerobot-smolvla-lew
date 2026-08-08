@@ -10,7 +10,7 @@
 # ---- 核心 ML 栈 (锁定版本 — 全 7 模型可训的稳定组合) ----
 transformers==5.5.4
 torch==2.11.0
-torchvision==0.24.0
+torchvision==0.26.0
 accelerate==1.14.0
 safetensors==0.8.0
 tokenizers==0.21.4

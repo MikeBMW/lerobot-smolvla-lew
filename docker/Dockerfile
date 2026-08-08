@@ -40,9 +40,9 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
     fi
 
 # lerobot 工程 + 锁定依赖 (transformers 5.5.4 + torch 2.11.0 — 本地全模型验证)
-COPY requirements.lock /app/requirements.lock
-# torch 显式 cu128 (V100 驱动 550/CUDA12.4 兼容; 本地 4060 cu128 验证)
-RUN pip install --no-cache-dir torch==2.11.0 torchvision==0.24.0 --index-url https://download.pytorch.org/whl/cu128 && \
+COPY docker/requirements.lock /app/requirements.lock
+# torch 显式 cu128 (本地 4060 验证: torch 2.11.0+cu128 + torchvision 0.26.0+cu128)
+RUN pip install --no-cache-dir torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128 && \
     pip install --no-cache-dir -r /app/requirements.lock
 
 # 工程源码 (构建时注入; 运行时可 -v 挂载覆盖)
