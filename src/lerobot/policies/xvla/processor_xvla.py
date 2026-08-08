@@ -54,8 +54,8 @@ def make_xvla_pre_post_processors(
     config: XVLAConfig,
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
 ) -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """
     Build the LeRobot processor pipelines for XVLA.
@@ -89,11 +89,11 @@ def make_xvla_pre_post_processors(
     ]
 
     return (
-        PolicyProcessorPipeline[dict[str, Any], dict[str, Any]](
+        PolicyProcessorPipeline(
             steps=input_steps,
             name=POLICY_PREPROCESSOR_DEFAULT_NAME,
         ),
-        PolicyProcessorPipeline[PolicyAction, PolicyAction](
+        PolicyProcessorPipeline(
             steps=output_steps,
             name=POLICY_POSTPROCESSOR_DEFAULT_NAME,
             to_transition=policy_action_to_transition,
@@ -536,8 +536,8 @@ class XVLARotation6DToAxisAngleProcessorStep(ProcessorStep):
 
 
 def make_xvla_libero_pre_post_processors() -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """
     Build the LeRobot processor pipelines for XVLA with LIBERO environment.
@@ -549,10 +549,10 @@ def make_xvla_libero_pre_post_processors() -> tuple[
     )
     post_processor_steps.extend([XVLARotation6DToAxisAngleProcessorStep()])
     return (
-        PolicyProcessorPipeline[dict[str, Any], dict[str, Any]](
+        PolicyProcessorPipeline(
             steps=pre_processor_steps,
         ),
-        PolicyProcessorPipeline[PolicyAction, PolicyAction](
+        PolicyProcessorPipeline(
             steps=post_processor_steps,
         ),
     )

@@ -2364,20 +2364,7 @@ class TrainingModule(QWidget):
 
         # (旧引擎状态条已上移 — 顶部 radio 选择 + SSH 面板)
         
-        # SmolVLA info badge
-        self.smolvla_btn = QPushButton("✅ SmolVLA")
-        self.smolvla_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {C_GREEN};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 20px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-        """)
-        # 🤖 模型选择下拉 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 模型引擎核心)
+        # 🤖 模型选择下拉 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 模型引擎核心; 旧 ✅SmolVLA 徽章已删)
         model_lbl = QLabel("🤖 模型:")
         model_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none;")
         top_bar.addWidget(model_lbl)
@@ -2395,7 +2382,6 @@ class TrainingModule(QWidget):
         self.model_name = QLabel("")  # 模型属性摘要
         self.model_name.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:10px;")
         top_bar.addWidget(self.model_name)
-        top_bar.addWidget(self.smolvla_btn)
         
         layout.addLayout(top_bar)
         
@@ -3670,8 +3656,6 @@ class TrainingModule(QWidget):
     def _switch_to_smolvla(self):
         """SmolVLA is the only model — refresh params"""
         self._log("🧠 SmolVLA mode — 参数已按默认配置")
-        self.smolvla_btn.setText("✅ SmolVLA Active")
-        self.smolvla_btn.setEnabled(False)
     
     def _update_dataset_path(self, repo_id):
         """更新数据集本地缓存路径显示"""
@@ -3839,7 +3823,6 @@ class TrainingModule(QWidget):
             self.start_btn.setEnabled(False)
             self.pause_btn.setEnabled(True)
             self.stop_btn.setEnabled(True)
-            self.smolvla_btn.setEnabled(False)
             
             self._log("✅ Training started successfully")
         else:
@@ -3875,21 +3858,6 @@ class TrainingModule(QWidget):
             self.pause_btn.setEnabled(False)
             self.pause_btn.setText("⏸ Pause")
             self.stop_btn.setEnabled(False)
-            
-            # Reset SmolVLA button
-            self.smolvla_btn.setEnabled(True)
-            self.smolvla_btn.setText("✅ SmolVLA")
-            self.smolvla_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: {C_GREEN};
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    padding: 8px 20px;
-                    font-size: 12px;
-                    font-weight: bold;
-                }}
-            """)
             
             self._log("⏹ Training stopped")
     

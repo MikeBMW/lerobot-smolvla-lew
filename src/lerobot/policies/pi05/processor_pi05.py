@@ -101,8 +101,8 @@ def make_pi05_pre_post_processors(
     config: PI05Config,
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
 ) -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """
     Constructs pre-processor and post-processor pipelines for the PI0 policy.
@@ -166,11 +166,11 @@ def make_pi05_pre_post_processors(
     ]
 
     return (
-        PolicyProcessorPipeline[dict[str, Any], dict[str, Any]](
+        PolicyProcessorPipeline(
             steps=input_steps,
             name=POLICY_PREPROCESSOR_DEFAULT_NAME,
         ),
-        PolicyProcessorPipeline[PolicyAction, PolicyAction](
+        PolicyProcessorPipeline(
             steps=output_steps,
             name=POLICY_POSTPROCESSOR_DEFAULT_NAME,
             to_transition=policy_action_to_transition,

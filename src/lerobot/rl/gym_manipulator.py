@@ -358,7 +358,7 @@ def make_robot_env(cfg: HILSerlRobotEnvConfig) -> tuple[gym.Env, Any]:
 def make_processors(
     env: gym.Env, teleop_device: Teleoperator | None, cfg: HILSerlRobotEnvConfig, device: str = "cpu"
 ) -> tuple[
-    DataProcessorPipeline[EnvTransition, EnvTransition], DataProcessorPipeline[EnvTransition, EnvTransition]
+    DataProcessorPipeline, DataProcessorPipeline
 ]:
     """Create environment and action processors.
 
@@ -533,8 +533,8 @@ def step_env_and_process_transition(
     env: gym.Env,
     transition: EnvTransition,
     action: torch.Tensor,
-    env_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
-    action_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
+    env_processor: DataProcessorPipeline,
+    action_processor: DataProcessorPipeline,
 ) -> EnvTransition:
     """
     Execute one step with processor pipeline.
@@ -594,8 +594,8 @@ def step_env_and_process_transition(
 
 def reset_and_build_transition(
     env: gym.Env,
-    env_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
-    action_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
+    env_processor: DataProcessorPipeline,
+    action_processor: DataProcessorPipeline,
 ) -> EnvTransition:
     """Reset env + processors and return the first env-processed transition."""
     obs, info = env.reset()
@@ -612,8 +612,8 @@ def reset_and_build_transition(
 
 def control_loop(
     env: gym.Env,
-    env_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
-    action_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
+    env_processor: DataProcessorPipeline,
+    action_processor: DataProcessorPipeline,
     teleop_device: Teleoperator,
     cfg: GymManipulatorConfig,
 ) -> None:

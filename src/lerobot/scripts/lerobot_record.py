@@ -219,15 +219,9 @@ def record_loop(
     robot: Robot,
     events: dict,
     fps: int,
-    teleop_action_processor: RobotProcessorPipeline[
-        tuple[RobotAction, RobotObservation], RobotAction
-    ],  # runs after teleop
-    robot_action_processor: RobotProcessorPipeline[
-        tuple[RobotAction, RobotObservation], RobotAction
-    ],  # runs before robot
-    robot_observation_processor: RobotProcessorPipeline[
-        RobotObservation, RobotObservation
-    ],  # runs after robot
+    teleop_action_processor: RobotProcessorPipeline,  # runs after teleop
+    robot_action_processor: RobotProcessorPipeline,  # runs before robot
+    robot_observation_processor: RobotProcessorPipeline,  # runs after robot
     dataset: LeRobotDataset | None = None,
     teleop: Teleoperator | list[Teleoperator] | None = None,
     control_time_s: int | None = None,

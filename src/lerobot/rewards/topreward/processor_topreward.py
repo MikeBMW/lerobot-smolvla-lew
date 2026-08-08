@@ -269,8 +269,8 @@ def make_topreward_pre_post_processors(
     config: TOPRewardConfig,
     dataset_stats: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """Pipeline that pre-encodes frames + task into Qwen-VL tensors.
 
@@ -279,7 +279,7 @@ def make_topreward_pre_post_processors(
     moves everything to the configured device. The postprocessor is
     the identity since TOPReward outputs a single reward tensor.
     """
-    preprocessor = PolicyProcessorPipeline[dict[str, Any], dict[str, Any]](
+    preprocessor = PolicyProcessorPipeline(
         steps=[
             AddBatchDimensionProcessorStep(),
             TOPRewardEncoderProcessorStep(

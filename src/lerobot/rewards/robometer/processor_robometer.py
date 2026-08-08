@@ -303,8 +303,8 @@ def make_robometer_pre_post_processors(
     config: RobometerConfig,
     dataset_stats: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """Pipeline that pre-encodes frames + task into Qwen-VL tensors.
 
@@ -315,7 +315,7 @@ def make_robometer_pre_post_processors(
     """
     del dataset_stats  # Robometer has its own normalisation inside the Qwen-VL processor.
 
-    preprocessor = PolicyProcessorPipeline[dict[str, Any], dict[str, Any]](
+    preprocessor = PolicyProcessorPipeline(
         steps=[
             AddBatchDimensionProcessorStep(),
             RobometerEncoderProcessorStep(
