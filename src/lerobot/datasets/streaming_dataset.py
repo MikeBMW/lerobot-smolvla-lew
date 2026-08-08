@@ -16,6 +16,9 @@
 from collections import deque
 from collections.abc import Callable, Generator, Iterable, Iterator
 from pathlib import Path
+from typing import TypeVar  # 🐛 2026-08-08: Backtrackable 去PEP695泛型后补传统 TypeVar (Py3.10)
+
+T = TypeVar("T")  # Backtrackable 泛型参数 (兼容 3.10: class Backtrackable[T] → class Backtrackable)
 
 import datasets
 import numpy as np
