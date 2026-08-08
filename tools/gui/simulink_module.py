@@ -4395,22 +4395,34 @@ class SimulinkModule(QWidget):
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     def _run_cmd(self, cmd, cwd=None, collect=None, line_hook=None):
-        """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行; line_hook(ln) 每行回调"""
+        """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行; line_hook(ln) 每行回调
+        🐛 2026-08-08 老倪: tqdm 用 \\r 刷新不换行 — for line 卡住 → 块读按 \\r/\\n 分行, 实时全量输出"""
         import subprocess
         try:
             p = subprocess.Popen(cmd, cwd=cwd or self._repo_root(),
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                 bufsize=1, encoding="utf-8", errors="replace")
-            for line in p.stdout:
-                txt = line.rstrip()
-                self.log_signal.emit(txt[:200])
-                if collect is not None:
-                    collect.append(txt)
-                if line_hook is not None:
-                    try:
-                        line_hook(txt)
-                    except Exception:
-                        pass
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            buf = b""
+            while True:
+                chunk = p.stdout.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf or b"\r" in buf:
+                    if b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                    elif b"\r" in buf:
+                        line, buf = buf.split(b"\r", 1)
+                    txt = line.decode("utf-8", "replace").rstrip("\r").strip()
+                    if not txt:
+                        continue
+                    self.log_signal.emit(txt[:600])  # 🐛 老倪: 不要简化 — 完整终端信息
+                    if collect is not None:
+                        collect.append(txt)
+                    if line_hook is not None:
+                        try:
+                            line_hook(txt)
+                        except Exception:
+                            pass
             p.wait()
             return p.returncode
         except Exception as ex:
@@ -5083,7 +5095,7 @@ class SimulinkModule(QWidget):
                                    line_hook=lambda ln: _line_hook(ln))
             else:
                 rc = self._run_cmd(["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
-                                    "-m", "lerobot.scripts.lerobot_train",
+                                    "-u", "-m", "lerobot.scripts.lerobot_train",  # 🐛 -u 无缓冲: 终端信息实时 (老倪监控)
                                     "--config_path", tmp_cfg], cwd=root, collect=out_lines,
                                    line_hook=lambda ln: _line_hook(ln))
             self._train_curve = self._parse_loss_curve(out_lines)
