@@ -2223,7 +2223,35 @@ class DataSpaceModule(QWidget):
 
 class TrainingModule(QWidget):
     """Training Console - Support for SmolVLA and custom policy training"""
-    
+
+    # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (参考宝马整车配置表 — 类别分组 × 7模型横列)
+    ZOO_SPEC = [
+        ("🏗 架构", [
+            ("架构", {"ACT": "ResNet18→Transformer", "SmolVLA": "SmolVLM2-500M→DiT-B", "SmolVLA+LEW": "SmolVLM2·LEW→DiT-B·LEW",
+                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律"}),
+            ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—"}),
+            ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—"}),
+            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—"}),
+            ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—"}),
+        ]),
+        ("⚙️ 训练", [
+            ("步数", {"ACT": "4000", "SmolVLA": "4000", "SmolVLA+LEW": "4000", "VLA-Touch": "4000", "AWE": "4000", "MLP 蒸馏": "4000", "官方专家": "基准"}),
+            ("批量", {"ACT": "8", "SmolVLA": "1", "SmolVLA+LEW": "1", "VLA-Touch": "1", "AWE": "1", "MLP 蒸馏": "8", "官方专家": "—"}),
+            ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "SmolVLA+LEW": "1e-4", "VLA-Touch": "1e-4", "AWE": "1e-4", "MLP 蒸馏": "1e-4", "官方专家": "—"}),
+            ("VAE", {"ACT": "🚫无", "SmolVLA": "无", "SmolVLA+LEW": "无", "VLA-Touch": "无", "AWE": "无", "MLP 蒸馏": "🚫无", "官方专家": "—"}),
+        ]),
+        ("📊 数据·输出", [
+            ("动作块", {"ACT": "100", "SmolVLA": "100", "SmolVLA+LEW": "100", "VLA-Touch": "50", "AWE": "50", "MLP 蒸馏": "100", "官方专家": "—"}),
+            ("状态空间", {"ACT": "39D", "SmolVLA": "39D", "SmolVLA+LEW": "39D", "VLA-Touch": "39D+触觉", "AWE": "39D+力觉", "MLP 蒸馏": "39D", "官方专家": "39D"}),
+            ("结构条件", {"ACT": "✅", "SmolVLA": "✅", "SmolVLA+LEW": "✅", "VLA-Touch": "✅", "AWE": "✅", "MLP 蒸馏": "✅", "官方专家": "—"}),
+        ]),
+        ("🏆 性能", [
+            ("插拔结果", {"ACT": "0/10 → novae 0.066m接近", "SmolVLA": "训练中", "SmolVLA+LEW": "训练中", "VLA-Touch": "训练中",
+                          "AWE": "训练中", "MLP 蒸馏": "2/5 唯一可插拔", "官方专家": "85% 🏆基准"}),
+        ]),
+    ]
+    ZOO_MODELS = ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家"]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         
@@ -2430,6 +2458,9 @@ class TrainingModule(QWidget):
         param_layout.setHorizontalSpacing(20)
         param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         param_layout.setContentsMargins(0, 4, 0, 0)
+
+        # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
+        self._build_zoo_table(param_layout)
         
         # ===== SmolVLA Model Info =====
         policy_label = QLabel("🧠 SmolVLA Model")
@@ -3252,7 +3283,81 @@ class TrainingModule(QWidget):
         # Initialize log
         self._log("🎮 Training console initialized")
         self._log("Ready to start training...")
-    
+
+    # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
+    def _build_zoo_table(self, layout):
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        n_cols = len(self.ZOO_MODELS) + 1
+        n_rows = 1 + sum(len(items) + 1 for _, items in self.ZOO_SPEC)  # 表头 + (类别行+参数行)
+        t = QTableWidget(n_rows, n_cols)
+        t.setObjectName("zoo_table")
+        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        t.setSelectionMode(QAbstractItemView.NoSelection)
+        t.setFocusPolicy(Qt.NoFocus)
+        t.verticalHeader().setVisible(False)
+        t.horizontalHeader().setVisible(False)
+        t.setShowGrid(True)
+        t.setStyleSheet("""
+            QTableWidget#zoo_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
+                                     gridline-color:#30363d; font-size:11px; }
+            QTableWidget#zoo_table::item { padding:4px 8px; }
+        """)
+        # 表头: 参数名 + 7 模型
+        h = QTableWidgetItem("配置项")
+        h.setTextAlignment(Qt.AlignCenter)
+        h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
+        h.setFont(QFont("Arial", 11, QFont.Bold))
+        t.setItem(0, 0, h)
+        for c, nm in enumerate(self.ZOO_MODELS):
+            it = QTableWidgetItem(nm)
+            it.setTextAlignment(Qt.AlignCenter)
+            it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
+            it.setFont(QFont("Arial", 10, QFont.Bold))
+            t.setItem(0, c + 1, it)
+        t.setRowHeight(0, 30)
+        # 类别分组 + 参数行 (宝马配置表风格)
+        r = 1
+        for cat, items in self.ZOO_SPEC:
+            ci = QTableWidgetItem(f"  {cat}")
+            ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
+            ci.setFont(QFont("Arial", 10, QFont.Bold))
+            t.setItem(r, 0, ci)
+            t.setSpan(r, 0, 1, n_cols)          # 类别行横跨全宽
+            t.setRowHeight(r, 26)
+            r += 1
+            for pname, pvals in items:
+                pi = QTableWidgetItem("  " + pname)
+                pi.setBackground(QColor("#161b22")); pi.setForeground(QColor("#e6edf3"))
+                pi.setFont(QFont("Arial", 10, QFont.Bold))
+                t.setItem(r, 0, pi)
+                for c, nm in enumerate(self.ZOO_MODELS):
+                    v = pvals.get(nm, "—")
+                    it = QTableWidgetItem(v)
+                    it.setTextAlignment(Qt.AlignCenter)
+                    it.setBackground(QColor("#161b22"))
+                    it.setForeground(QColor("#ffd33d") if ("✅" in v or "🏆" in v or "唯一" in v or "novae" in v) else QColor("#c9d1d9"))
+                    t.setItem(r, c + 1, it)
+                t.setRowHeight(r, 28)
+                r += 1
+        hdr = t.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+        for c in range(2, n_cols):
+            hdr.setSectionResizeMode(c, QHeaderView.Stretch)
+        t.setMinimumHeight(min(n_rows * 28 + 30, 420))
+        layout.addRow(t)
+        self.zoo_table = t
+        # 旧参数控件隐藏 (表格替代显示 — 控件保留供训练逻辑读值)
+        for w in (getattr(self, a, None) for a in
+                  ("steps_spin", "batch_spin", "lr_spin", "vlm_layers_spin", "expert_layers_spin",
+                   "chunk_spin", "obs_steps_spin", "diffusion_spin", "freeze_checkbox",
+                   "world_model_checkbox", "vlm_info", "expert_width_spin")):
+            if w is not None:
+                try:
+                    w.setVisible(False)
+                except Exception:
+                    pass
+
     # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性/参数预设跟随)
     def _on_model_changed(self, name):
         try:
