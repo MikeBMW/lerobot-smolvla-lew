@@ -352,7 +352,7 @@ def node_cvae(ctx):
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
-    use_vae = p.get("use_vae", True)       # 是否启用 VAE (False=确定性策略)
+    use_vae = p.get("use_vae", False)       # 是否启用 VAE (False=确定性策略)
     latent_dim = p.get("latent_dim", 32)   # 潜变量维度 (官方默认 32)
     if log:
         log(f"🧬 CVAE: use_vae={use_vae} · latent_dim={latent_dim}")

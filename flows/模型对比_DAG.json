@@ -1,0 +1,3102 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "🔬 模型对比",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "n17861674927663j9",
+      "type": "hardware",
+      "name": "📦 metaworld_peg",
+      "x": 120,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "source": "metaworld",
+        "frames": 4800,
+        "active": true,
+        "dims": "39D/4D",
+        "shared": true,
+        "desc": "♻ 七模型共用: 统一 metaworld 数据集 (peg-v6, state 39D 完整观测, action 4D)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927663ds",
+      "type": "train_gate",
+      "name": "🎯 YOLO 感知开关",
+      "x": 320,
+      "y": 80,
+      "w": 150,
+      "icon": "☑",
+      "color": "#3fb950",
+      "params": {
+        "yolo_enabled": true,
+        "state_dim": 39,
+        "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含销钉/孔坐标) / 关=3D(仅末端) · 默认开"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766yug",
+      "type": "model",
+      "name": "🎯 YOLO 目标检测",
+      "x": 520,
+      "y": 80,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "model": "yolov8s",
+        "classes": "peg/hole/hand",
+        "shared": true,
+        "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766959",
+      "type": "condition",
+      "name": "📐 2D→3D 解算",
+      "x": 720,
+      "y": 80,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "intrinsics": "camera_K",
+        "method": "depth|hand-eye",
+        "desc": "♻ 坐标解算: YOLO 2D框中心 + 深度/单目标定 → 目标 3D 坐标 → 拼入 39D state"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766r1c",
+      "type": "model",
+      "name": "🔌 State Adapter",
+      "x": 920,
+      "y": 80,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "in_dim": 39,
+        "out_dim": 39,
+        "normalize": true,
+        "desc": "state 适配器 (2026-08-06 老倪): YOLO 3D检测输出(目标坐标+置信度) → 统一 state 格式。开=39D含目标坐标, 关=3D仅末端, 适配各策略输入维度",
+        "shared": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766dvc",
+      "type": "model",
+      "name": "🖼 视觉主干 ResNet18",
+      "x": 720,
+      "y": 310,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "backbone": "resnet18",
+        "pretrained": true,
+        "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766qiy",
+      "type": "model",
+      "name": "🚫 VAE 编码器（无）",
+      "x": 1120,
+      "y": 310,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "use_vae": false,
+        "latent_dim": 32,
+        "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766bh2",
+      "type": "model",
+      "name": "🔤 Transformer Encoder",
+      "x": 1320,
+      "y": 310,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "n_layers": 4,
+        "dim_model": 256,
+        "n_heads": 8,
+        "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492766hno",
+      "type": "model",
+      "name": "🔡 Transformer Decoder",
+      "x": 1520,
+      "y": 310,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "n_layers": 4,
+        "chunk_size": 7,
+        "n_heads": 8,
+        "desc": "ACT.decoder → DETR queries 解码动作块"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767u8z",
+      "type": "model",
+      "name": "🎯 Action Head 4D · ACT",
+      "x": 1720,
+      "y": 310,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "ACT 专用: 输出 (B,7,4)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767ewk",
+      "type": "condition",
+      "name": "⏳ Temporal Ensemble",
+      "x": 1920,
+      "y": 310,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "coeff": 0.01,
+        "desc": "ACTTemporalEnsembler → 动作块时间平滑 (仅 ACT 用)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927674vf",
+      "type": "system",
+      "name": "🚀 ACT 训练",
+      "x": 2120,
+      "y": 310,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "act",
+        "steps": 1000,
+        "desc": "双击 → on_train(policy=act) · metaworld 训练"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767aji",
+      "type": "model",
+      "name": "🧠 SmolVLM2-500M",
+      "x": 720,
+      "y": 540,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "freeze": true,
+        "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "desc": "SmolVLA 视觉语言主干 (冻结, 多模态编码)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767l3c",
+      "type": "model",
+      "name": "🌀 DiT-B 动作解码",
+      "x": 1120,
+      "y": 540,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "hidden": 256,
+        "layers": 1,
+        "timesteps": 2,
+        "desc": "SmolVLA action_model DiT-B → 动作去噪生成 (无世界模型)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767opg",
+      "type": "model",
+      "name": "🎯 Action Head 4D · SmolVLA",
+      "x": 1720,
+      "y": 540,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "SmolVLA 纯动作版: 输出 (B,7,4) · 无 LEW"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767pau",
+      "type": "system",
+      "name": "🚀 SmolVLA 训练",
+      "x": 2120,
+      "y": 540,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "smolvla",
+        "steps": 1000,
+        "desc": "双击 → on_train(policy=smolvla) · 纯动作, 无 LeWorldModel"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767adc",
+      "type": "model",
+      "name": "🧠 SmolVLM2-500M · LEW",
+      "x": 720,
+      "y": 770,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "freeze": false,
+        "smolvlm": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "desc": "SmolVLA 视觉语言主干 (参与训练 — LEW 要求 VLM 不冻结)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767sjo",
+      "type": "model",
+      "name": "🌀 DiT-B 动作解码 · LEW",
+      "x": 1120,
+      "y": 770,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "hidden": 256,
+        "layers": 1,
+        "timesteps": 2,
+        "desc": "SmolVLA action_model DiT-B → 动作去噪生成"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767xwh",
+      "type": "model",
+      "name": "🌐 LeWorldModel",
+      "x": 1320,
+      "y": 770,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "lew_loss_weight": 0.1,
+        "num_video_frames": 2,
+        "desc": "世界模型旁路: 输入=视频帧+动作 (官方 forward(videos,actions)), SigLIP 编码→AdaLN-zero 条件调制→预测下一帧; 与 DiT-B 并列, 非串行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767kg3",
+      "type": "model",
+      "name": "🎯 Action Head 4D · SmolVLA+LEW",
+      "x": 1720,
+      "y": 770,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "SmolVLA+LEW 专用: 输出 (B,7,4)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927678eg",
+      "type": "system",
+      "name": "🚀 SmolVLA+LEW 训练",
+      "x": 2120,
+      "y": 770,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "smolvla_lew",
+        "steps": 1000,
+        "desc": "双击 → on_train(policy=smolvla_lew) · 冻结关 + 世界模型开"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767dfz",
+      "type": "model",
+      "name": "🖼 DINOv2 视觉编码",
+      "x": 720,
+      "y": 1000,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "backbone": "dinov2-small",
+        "freeze": true,
+        "desc": "官方 visual_encoder: 视觉嵌入条件 (22M 冻结)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767o4j",
+      "type": "condition",
+      "name": "📍 Marker 触觉跟踪",
+      "x": 1320,
+      "y": 1000,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "grid": "7x9",
+        "dim": 4,
+        "desc": "官方 marker_tracker: GelSight 标记位移 → 低维力信号 m"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767f40",
+      "type": "model",
+      "name": "🌀 DiT-B base VLA",
+      "x": 1120,
+      "y": 1000,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "hidden": 256,
+        "layers": 1,
+        "freeze": true,
+        "desc": "base VLA 动作生成 (与 SmolVLA 同构, 冻结不训练)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927671xq",
+      "type": "model",
+      "name": "🎯 Action Head · VLA",
+      "x": 1720,
+      "y": 1000,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "VLA 动作块 a_t → Interpolant 精炼输入"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767kw2",
+      "type": "model",
+      "name": "🌉 Interpolant 控制器",
+      "x": 1920,
+      "y": 1000,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "diffuse_steps": 10,
+        "hidden": 256,
+        "desc": "官方 StochasticInterpolants: 桥式扩散精炼动作 (输入=VLA动作+视觉+触觉, 只训练此模块)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n178616749276744y",
+      "type": "system",
+      "name": "🚀 VLA-Touch 训练",
+      "x": 2120,
+      "y": 1000,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "vla_touch",
+        "steps": 1000,
+        "desc": "双击 → on_train(policy=vla_touch) · 冻结 VLA 只训 Interpolant (4060 精简)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927677j7",
+      "type": "model",
+      "name": "🖐 SigLIP 视触觉编码",
+      "x": 720,
+      "y": 1230,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "backbone": "siglip-base",
+        "freeze": true,
+        "tactile_dim": 4,
+        "force_dim": 3,
+        "desc": "场景原生视触觉编码: SigLIP视觉 + 力觉/触觉 原生融合 (86M 冻结; ⚠️ metaworld 无真触觉, 力觉为状态差分模拟, 真机换 H06)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767stx",
+      "type": "model",
+      "name": "🧠 H-JEPA 三层潜空间",
+      "x": 1120,
+      "y": 1230,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "d_z1": 128,
+        "d_z2": 128,
+        "d_z3": 64,
+        "desc": "z₁空间/ z₂物体/ z₃语义 三层潜表示 (场景原生融合)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767ozb",
+      "type": "model",
+      "name": "🌊 zFlow 世界引擎",
+      "x": 1320,
+      "y": 1230,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "gru": 128,
+        "layers": 1,
+        "desc": "GRU 预测器: 潜空间推演未来状态/接触演化 (轻量)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767l5b",
+      "type": "model",
+      "name": "🔀 未来决策交叉注意力",
+      "x": 1520,
+      "y": 1230,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "gates": "1.0/0.1/0.01",
+        "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767ece",
+      "type": "model",
+      "name": "🎯 Action Head · AWE",
+      "x": 1720,
+      "y": 1230,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "隐空间动作 → 真实动作"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767v7e",
+      "type": "system",
+      "name": "🚀 AWE 训练",
+      "x": 2120,
+      "y": 1230,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "awe_zflow",
+        "steps": 1000,
+        "desc": "双击 → on_train(policy=awe_zflow) · 场景原生+zFlow 世界模型"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767dlu",
+      "type": "system",
+      "name": "📊 对比评估 Scope (仿真)",
+      "x": 2120,
+      "y": 1920,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "shared": true,
+        "desc": "♻ 共用: 双击 → 五模型 训练速度/精确度/鲁棒性 对比图表 · 🎮 仿真评估 (metaworld, 非 Orin 真机)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767b4h",
+      "type": "system",
+      "name": "🎮 仿真推理对比",
+      "x": 1520,
+      "y": 1920,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": "all",
+        "auto": true,
+        "desc": "训练完自动触发: 🎮 本地仿真 rollout (metaworld 环境, 非 Orin 真机) 多窗口同步播放对比"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767bh9",
+      "type": "system",
+      "name": "🎮 仿真视频 · ACT",
+      "x": 2520,
+      "y": 310,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "act",
+        "desc": "🎮 ACT 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767s5q",
+      "type": "system",
+      "name": "🎮 仿真视频 · SmolVLA",
+      "x": 2520,
+      "y": 540,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "smolvla",
+        "desc": "🎮 SmolVLA 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767dqy",
+      "type": "system",
+      "name": "🎮 仿真视频 · SmolVLA+LEW",
+      "x": 2520,
+      "y": 770,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "smolvla_lew",
+        "desc": "🎮 SmolVLA+LEW 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767egk",
+      "type": "system",
+      "name": "🎮 仿真视频 · VLA-Touch",
+      "x": 2520,
+      "y": 1000,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "vla_touch",
+        "desc": "🎮 VLA-Touch 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927673se",
+      "type": "system",
+      "name": "🎮 仿真视频 · AWE",
+      "x": 2520,
+      "y": 1230,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "awe_zflow",
+        "desc": "🎮 AWE 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767j7z",
+      "type": "pdf_report",
+      "name": "📄 PDF 技术选型报告",
+      "x": 2320,
+      "y": 1920,
+      "w": 150,
+      "icon": "📄",
+      "color": "#1f6feb",
+      "params": {
+        "auto": true,
+        "desc": "双击生成 11 章技术选型 PDF: 实验概况·系统全貌·分系统功能·接口说明·参数对比·架构区别·功能分析·性价比·优势劣势·视频对比·结论"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767fk7",
+      "type": "model",
+      "name": "📥 全观测编码 39D",
+      "x": 720,
+      "y": 1460,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "in_dim": 39,
+        "out_dim": 128,
+        "desc": "39D 完整观测编码 (含 peg/孔 3D 坐标 — 五模型失败根因修复): 状态→128D 特征"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767tm3",
+      "type": "model",
+      "name": "🔗 全连接层 512·1",
+      "x": 920,
+      "y": 1460,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "hidden": 512,
+        "layers": 1,
+        "desc": "BC 蒸馏 MLP: 128D 特征 → 4D 动作 (expert_mlp.pt)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767oy3",
+      "type": "model",
+      "name": "🎯 Action Head 4D · MLP",
+      "x": 1520,
+      "y": 1460,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "MLP 蒸馏输出 (B,7,4) · 抓起18/20 插入11/20 (55%)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767sjl",
+      "type": "system",
+      "name": "🎓 专家蒸馏训练",
+      "x": 1920,
+      "y": 1460,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "expert_mlp",
+        "steps": 300,
+        "desc": "双击 → BC 蒸馏: 300 episodes 官方专家数据 → MLP (tools/distill_expert.py) · 学专家的插拔路径"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927678zy",
+      "type": "condition",
+      "name": "🧭 位置控制律",
+      "x": 720,
+      "y": 1690,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "method": "PD+前馈",
+        "rate": "500Hz",
+        "desc": "🏆 真值: metaworld 内置规则专家 — PD 位置控制律 (接近 peg→抓取→抬起→转移→插入)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767j4a",
+      "type": "condition",
+      "name": "🤏 夹爪状态机",
+      "x": 920,
+      "y": 1690,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "states": "open→grasp→hold→release",
+        "desc": "🏆 真值: 夹爪状态机 (接近→合拢→夹持→释放)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767nw4",
+      "type": "model",
+      "name": "🎯 Action Head 4D · 专家",
+      "x": 1520,
+      "y": 1690,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "action_dim": 4,
+        "chunk_size": 7,
+        "desc": "🏆 真值动作: 规则专家输出 · 抓起19/20 插入17/20 (85%) — 七模型最高基准"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927679o5",
+      "type": "system",
+      "name": "📏 官方专家基准",
+      "x": 1920,
+      "y": 1690,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "policy": "expert_policy",
+        "success": "85%",
+        "desc": "🏆 真值锚点 (非训练): 85% 成功率参考基准 — 所有学习模型的目标; 双击=执行一次基准演示"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n178616749276734f",
+      "type": "system",
+      "name": "🎮 仿真视频 · MLP",
+      "x": 2320,
+      "y": 1460,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "expert_mlp",
+        "desc": "🎮 MLP 蒸馏仿真 rollout 插拔成功视频 (metaworld, 非 Orin 真机; 抓起✅ 插入✅ 距孔 0.020m), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767dne",
+      "type": "system",
+      "name": "🎮 仿真视频 · 专家",
+      "x": 2320,
+      "y": 1690,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "expert_policy",
+        "desc": "🎮 官方专家仿真 rollout 插拔成功视频 (metaworld, 非 Orin 真机; 🏆 抓起✅ 插入✅ 距孔 0.011m, 85%), 双击播放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767nle",
+      "type": "system",
+      "name": "🎮 仿真推理 · ACT",
+      "x": 2320,
+      "y": 310,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "act",
+        "infer": true,
+        "desc": "🎮 ACT 本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767zl1",
+      "type": "system",
+      "name": "🎮 仿真推理 · SmolVLA",
+      "x": 2320,
+      "y": 540,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "smolvla",
+        "infer": true,
+        "desc": "🎮 SmolVLA 本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767buo",
+      "type": "system",
+      "name": "🎮 仿真推理 · SmolVLA+LEW",
+      "x": 2320,
+      "y": 770,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "smolvla_lew",
+        "infer": true,
+        "desc": "🎮 SmolVLA+LEW 本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767uwc",
+      "type": "system",
+      "name": "🎮 仿真推理 · VLA-Touch",
+      "x": 2320,
+      "y": 1000,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "vla_touch",
+        "infer": true,
+        "desc": "🎮 VLA-Touch 本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767796",
+      "type": "system",
+      "name": "🎮 仿真推理 · AWE",
+      "x": 2320,
+      "y": 1230,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "awe_zflow",
+        "infer": true,
+        "desc": "🎮 AWE 本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17861674927678x2",
+      "type": "system",
+      "name": "🎮 仿真推理 · MLP",
+      "x": 2120,
+      "y": 1460,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "expert_mlp",
+        "infer": true,
+        "desc": "🎮 MLP 蒸馏本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767kr8",
+      "type": "system",
+      "name": "🎮 仿真推理 · 专家",
+      "x": 2120,
+      "y": 1690,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "video": true,
+        "video_policy": "expert_policy",
+        "infer": true,
+        "desc": "🎮 官方专家本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767fnx",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · ACT",
+      "x": 920,
+      "y": 310,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "gate": 0.5,
+        "state_dim": 39,
+        "dim_mode": "concat",
+        "desc": "🧩 ACT 结构条件: latent += proj(state)×gate — 目标结构坐标(39D)叠加进潜空间, 图像作背景 (双击改 gate/state_dim)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767qnk",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · SmolVLA",
+      "x": 920,
+      "y": 540,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "gate": 0.5,
+        "state_dim": 39,
+        "dim_mode": "concat",
+        "desc": "🧩 SmolVLA 结构条件: latent += proj(state)×gate — 目标结构坐标叠加进多模态embeds (双击改 gate/state_dim)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767i2o",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · LEW",
+      "x": 920,
+      "y": 770,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "gate": 0.5,
+        "state_dim": 39,
+        "dim_mode": "concat",
+        "desc": "🧩 SmolVLA+LEW 结构条件: latent += proj(state)×gate — 结构坐标叠加进多模态embeds (双击改 gate/state_dim)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492767tru",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · VLA-Touch",
+      "x": 920,
+      "y": 1000,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "gate": 0.5,
+        "state_dim": 39,
+        "dim_mode": "concat",
+        "desc": "🧩 VLA-Touch 结构条件: latent += proj(state)×gate — 结构坐标叠加进视觉嵌入 (双击改 gate/state_dim)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786167492768o7l",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · AWE",
+      "x": 920,
+      "y": 1230,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "gate": 0.5,
+        "state_dim": 39,
+        "dim_mode": "concat",
+        "desc": "🧩 AWE 结构条件: latent += proj(state)×gate — 结构坐标叠加进视触觉潜状态 (双击改 gate/state_dim)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    }
+  ],
+  "links": [
+    {
+      "id": "l17861674927685y",
+      "f": "n17861674927663j9",
+      "t": "n17861674927663ds",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像",
+      "_fo": 0,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492768hh",
+      "f": "n17861674927663ds",
+      "t": "n1786167492766yug",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "开=39D",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492768qw",
+      "f": "n1786167492766yug",
+      "t": "n1786167492766959",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "2D框",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927686b",
+      "f": "n1786167492766959",
+      "t": "n1786167492766r1c",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "3D坐标",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178616749276820",
+      "f": "n17861674927663j9",
+      "t": "n1786167492766dvc",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像",
+      "_fo": 1,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492768cd",
+      "f": "n1786167492766r1c",
+      "t": "n1786167492767fnx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 0,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l178616749276835",
+      "f": "n1786167492766dvc",
+      "t": "n1786167492767fnx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像特征",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492768qk",
+      "f": "n1786167492767fnx",
+      "t": "n1786167492766qiy",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "latent+",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927687n",
+      "f": "n1786167492766qiy",
+      "t": "n1786167492766bh2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492768ub",
+      "f": "n1786167492766bh2",
+      "t": "n1786167492766hno",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492768lc",
+      "f": "n1786167492766hno",
+      "t": "n1786167492767u8z",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492768qv",
+      "f": "n1786167492767u8z",
+      "t": "n1786167492767ewk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492769hy",
+      "f": "n17861674927663j9",
+      "t": "n1786167492767aji",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像",
+      "_fo": 2,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492769me",
+      "f": "n1786167492766r1c",
+      "t": "n1786167492767qnk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 1,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492769kn",
+      "f": "n1786167492767aji",
+      "t": "n1786167492767qnk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "多模态embeds",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492769eh",
+      "f": "n1786167492767qnk",
+      "t": "n1786167492767l3c",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "latent+",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927695h",
+      "f": "n1786167492767l3c",
+      "t": "n1786167492767opg",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927695a",
+      "f": "n17861674927663j9",
+      "t": "n1786167492767adc",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像",
+      "_fo": 3,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492769pn",
+      "f": "n1786167492766r1c",
+      "t": "n1786167492767i2o",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 2,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492770fj",
+      "f": "n1786167492767adc",
+      "t": "n1786167492767i2o",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "多模态embeds",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492770bl",
+      "f": "n1786167492767i2o",
+      "t": "n1786167492767xwh",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "latent+",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927708i",
+      "f": "n1786167492767xwh",
+      "t": "n1786167492767kg3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l17861674927706t",
+      "f": "n17861674927663j9",
+      "t": "n1786167492767sjo",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "视频+动作",
+      "_fo": 4,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927712i",
+      "f": "n1786167492767sjo",
+      "t": "n1786167492767kg3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "世界预测",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l17861674927710h",
+      "f": "n17861674927663j9",
+      "t": "n1786167492767o4j",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像",
+      "_fo": 5,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492771ql",
+      "f": "n1786167492766r1c",
+      "t": "n1786167492767tru",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 3,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492771mt",
+      "f": "n1786167492767o4j",
+      "t": "n1786167492767tru",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "视觉嵌入",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l17861674927726z",
+      "f": "n1786167492767tru",
+      "t": "n1786167492767f40",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "latent+",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492772kr",
+      "f": "n17861674927663j9",
+      "t": "n1786167492767dfz",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "触觉图",
+      "_fo": 6,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492772hx",
+      "f": "n17861674927678eg",
+      "t": "n1786167492767o4j",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "视觉嵌入",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492773nj",
+      "f": "n17861674927678eg",
+      "t": "n17861674927671xq",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "视觉嵌入",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492773gi",
+      "f": "n1786167492767dfz",
+      "t": "n17861674927671xq",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "触觉信号m",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492773dh",
+      "f": "n1786167492767f40",
+      "t": "n17861674927671xq",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "VLA动作a",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492774fo",
+      "f": "n17861674927671xq",
+      "t": "n1786167492767kw2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "精炼动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927747o",
+      "f": "n17861674927663j9",
+      "t": "n17861674927677j7",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像+力觉",
+      "_fo": 7,
+      "_no": 8,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492786gj",
+      "f": "n1786167492766r1c",
+      "t": "n1786167492768o7l",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 4,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l178616749278731",
+      "f": "n17861674927677j7",
+      "t": "n1786167492768o7l",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "视触觉特征",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1786167492788r7",
+      "f": "n1786167492768o7l",
+      "t": "n1786167492767stx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "latent+",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492789oy",
+      "f": "n1786167492767stx",
+      "t": "n1786167492767ozb",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "未来潜状态",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927907q",
+      "f": "n1786167492767ozb",
+      "t": "n1786167492767l5b",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "注入动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674927901s",
+      "f": "n1786167492767l5b",
+      "t": "n1786167492767ece",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492791zz",
+      "f": "n1786167492767ewk",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 7
+    },
+    {
+      "id": "l178616749279319",
+      "f": "n1786167492767opg",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492794zk",
+      "f": "n1786167492767kg3",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 2,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492795kq",
+      "f": "n1786167492767kw2",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 3,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492797bg",
+      "f": "n1786167492767ece",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 4,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492798dk",
+      "f": "n1786167492767ewk",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 7
+    },
+    {
+      "id": "l17861674927995h",
+      "f": "n1786167492767opg",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492800oj",
+      "f": "n1786167492767kg3",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 2,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492804w2",
+      "f": "n1786167492767kw2",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 3,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492805vo",
+      "f": "n1786167492767ece",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 4,
+      "_mi": 7
+    },
+    {
+      "id": "l17861674928060w",
+      "f": "n1786167492767ewk",
+      "t": "n1786167492767b4h",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l17861674928073y",
+      "f": "n1786167492767opg",
+      "t": "n1786167492767bh9",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l178616749280882",
+      "f": "n1786167492767kg3",
+      "t": "n1786167492767s5q",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492810ee",
+      "f": "n1786167492767kw2",
+      "t": "n1786167492767dqy",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492811qg",
+      "f": "n1786167492767ece",
+      "t": "n1786167492767egk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492812n8",
+      "f": "n1786167492767dlu",
+      "t": "n1786167492767b4h",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492814oj",
+      "f": "n1786167492767dlu",
+      "t": "n1786167492767bh9",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492815e5",
+      "f": "n1786167492767dlu",
+      "t": "n1786167492767s5q",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 2,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492817x5",
+      "f": "n1786167492767dlu",
+      "t": "n1786167492767dqy",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 3,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492818qu",
+      "f": "n1786167492767dlu",
+      "t": "n1786167492767egk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 4,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492820ni",
+      "f": "n1786167492767v7e",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "评估结果",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 9
+    },
+    {
+      "id": "l1786167492822m6",
+      "f": "n1786167492767dlu",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "推理对比",
+      "_fo": 5,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 9
+    },
+    {
+      "id": "l1786167492824r2",
+      "f": "n1786167492767b4h",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "ACT视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 9
+    },
+    {
+      "id": "l1786167492825e3",
+      "f": "n1786167492767bh9",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "SmolVLA视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 3,
+      "_mi": 9
+    },
+    {
+      "id": "l1786167492827x3",
+      "f": "n1786167492767s5q",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "SmolVLA+LEW视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 4,
+      "_mi": 9
+    },
+    {
+      "id": "l17861674928284z",
+      "f": "n1786167492767dqy",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "VLA-Touch视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 5,
+      "_mi": 9
+    },
+    {
+      "id": "l17861674928292o",
+      "f": "n1786167492767egk",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "AWE视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 6,
+      "_mi": 9
+    },
+    {
+      "id": "l1786167492831d5",
+      "f": "n1786167492766959",
+      "t": "n1786167492767j7z",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492833b6",
+      "f": "n1786167492767j7z",
+      "t": "n1786167492767fk7",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "特征",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492834yf",
+      "f": "n1786167492767fk7",
+      "t": "n1786167492767tm3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492836pd",
+      "f": "n1786167492767tm3",
+      "t": "n1786167492767oy3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "MLP动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178616749283805",
+      "f": "n1786167492767oy3",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "MLP评估",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 5,
+      "_mi": 7
+    },
+    {
+      "id": "l178616749283987",
+      "f": "n1786167492767oy3",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "MLP推理",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 5,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492840z0",
+      "f": "n1786167492767oy3",
+      "t": "n17861674927679o5",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l17861674928431r",
+      "f": "n1786167492766959",
+      "t": "n1786167492767sjl",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "state39D",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674928443l",
+      "f": "n1786167492767sjl",
+      "t": "n17861674927678zy",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "控制量",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674928456y",
+      "f": "n17861674927678zy",
+      "t": "n1786167492767j4a",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492846rg",
+      "f": "n1786167492767j4a",
+      "t": "n1786167492767nw4",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "专家动作",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492847ax",
+      "f": "n1786167492767nw4",
+      "t": "n1786167492767v7e",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "专家评估",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 6,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492849iw",
+      "f": "n1786167492767nw4",
+      "t": "n1786167492767dlu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "专家推理",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 6,
+      "_mi": 7
+    },
+    {
+      "id": "l1786167492850uc",
+      "f": "n1786167492767nw4",
+      "t": "n178616749276734f",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492851x1",
+      "f": "n1786167492767dlu",
+      "t": "n17861674927679o5",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 6,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l17861674928521w",
+      "f": "n1786167492767dlu",
+      "t": "n178616749276734f",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 7,
+      "_no": 8,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l17861674928538f",
+      "f": "n17861674927679o5",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "MLP视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 7,
+      "_mi": 9
+    },
+    {
+      "id": "l1786167492854r0",
+      "f": "n178616749276734f",
+      "t": "n17861674927673se",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "专家视频",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 8,
+      "_mi": 9
+    },
+    {
+      "id": "l17861674928569s",
+      "f": "n1786167492767ewk",
+      "t": "n1786167492767dne",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492858bm",
+      "f": "n1786167492767opg",
+      "t": "n1786167492767nle",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492859n7",
+      "f": "n1786167492767kg3",
+      "t": "n1786167492767zl1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674928619s",
+      "f": "n1786167492767kw2",
+      "t": "n1786167492767buo",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17861674928624s",
+      "f": "n1786167492767ece",
+      "t": "n1786167492767uwc",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492863v9",
+      "f": "n1786167492767oy3",
+      "t": "n1786167492767796",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492864q2",
+      "f": "n1786167492767nw4",
+      "t": "n17861674927678x2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真推理",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786167492865s6",
+      "f": "n1786167492767dne",
+      "t": "n1786167492767b4h",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l17861674928677b",
+      "f": "n1786167492767nle",
+      "t": "n1786167492767bh9",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l17861674928688d",
+      "f": "n1786167492767zl1",
+      "t": "n1786167492767s5q",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492869gv",
+      "f": "n1786167492767buo",
+      "t": "n1786167492767dqy",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492871jp",
+      "f": "n1786167492767uwc",
+      "t": "n1786167492767egk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1786167492872jz",
+      "f": "n1786167492767796",
+      "t": "n17861674927679o5",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l178616749287373",
+      "f": "n17861674927678x2",
+      "t": "n178616749276734f",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "rollout",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    }
+  ]
+}

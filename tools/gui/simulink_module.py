@@ -100,7 +100,7 @@ REFERENCE_APPS = [
                                            "dims": "4D/4D", "desc": "states 4D · actions 4D (sawyer 关节)"}),
         ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
                                           "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}),
-        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
+        ("model", "🚫 VAE 编码器（无）", {"use_vae": False, "latent_dim": 32,
                                         "desc": "官方 ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
         ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
                                             "desc": "官方 ACT.encoder → 上下文 tokens (latent+state+图像)"}),
@@ -173,7 +173,7 @@ REFERENCE_APPS = [
         # ── ACT 分支 (7) ──
         ("model", "🖼 视觉主干 ResNet18", {"backbone": "resnet18", "pretrained": True,
                                           "desc": "ACT.backbone → layer4 特征图 (B,C,H,W)"}),
-        ("model", "🧬 VAE 编码器 CVAE", {"use_vae": True, "latent_dim": 32,
+        ("model", "🚫 VAE 编码器（无）", {"use_vae": False, "latent_dim": 32,
                                         "desc": "ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}),
         ("model", "🔤 Transformer Encoder", {"n_layers": 4, "dim_model": 256, "n_heads": 8,
                                             "desc": "ACT.encoder → 上下文 tokens (latent+state+图像)"}),
@@ -307,19 +307,19 @@ REFERENCE_APPS = [
         #   state 通道: 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter→各模型 state 输入
         #   图像通道: 数据→各模型视觉主干 (ResNet18/SmolVLM2/DINOv2/SigLIP) 直接进, 不经 YOLO
         (0, 1, "图像"), (1, 3, "开=39D"), (3, 4, "2D框"), (4, 5, "3D坐标"),  # 感知链: 开关→YOLO→2D→3D→StateAdapter (共享🧩已下放)
-        # ACT 路: 图像→ResNet18(6); State→🧩结构·ACT(58); 主干latent→🧩; latent+→Encoder(7)
-        (0, 6, "图像"), (5, 58, "state39D"), (6, 58, "图像特征"), (58, 7, "latent+"), (7, 8), (8, 9), (9, 10), (10, 11),
-        # SmolVLA 路: 图像→SmolVLM2(13); State→🧩结构·SmolVLA(59); latent+→DiT-B(14)
-        (0, 13, "图像"), (5, 59, "state39D"), (13, 59, "多模态embeds"), (59, 14, "latent+"), (14, 15),
-        # SmolVLA+LEW 路: 图像→SmolVLM2·LEW(17); State→🧩(60); latent+→DiT-B·LEW(19); LeWorldModel 旁路
-        (0, 17, "图像"), (5, 60, "state39D"), (17, 60, "多模态embeds"), (60, 19, "latent+"), (19, 20),
+        # ACT 路: 图像→ResNet18(6); State→🧩结构·ACT(59); 主干latent→🧩; latent+→Encoder(7)
+        (0, 6, "图像"), (5, 59, "state39D"), (6, 59, "图像特征"), (59, 7, "latent+"), (7, 8), (8, 9), (9, 10), (10, 11),
+        # SmolVLA 路: 图像→SmolVLM2(13); State→🧩结构·SmolVLA(60); latent+→DiT-B(14)
+        (0, 13, "图像"), (5, 60, "state39D"), (13, 60, "多模态embeds"), (60, 14, "latent+"), (14, 15),
+        # SmolVLA+LEW 路: 图像→SmolVLM2·LEW(17); State→🧩(61); latent+→DiT-B·LEW(19); LeWorldModel 旁路
+        (0, 17, "图像"), (5, 61, "state39D"), (17, 61, "多模态embeds"), (61, 19, "latent+"), (19, 20),
         (0, 18, "视频+动作"), (18, 20, "世界预测"),
-        # VLA-Touch 路: 图像→DINOv2(23); State→🧩(61); latent+→base VLA(24); Marker 触觉
-        (0, 23, "图像"), (5, 61, "state39D"), (23, 61, "视觉嵌入"), (61, 24, "latent+"),
+        # VLA-Touch 路: 图像→DINOv2(23); State→🧩(62); latent+→base VLA(24); Marker 触觉
+        (0, 23, "图像"), (5, 62, "state39D"), (23, 62, "视觉嵌入"), (62, 24, "latent+"),
         (0, 22, "触觉图"), (21, 23, "视觉嵌入"), (21, 25, "视觉嵌入"), (22, 25, "触觉信号m"), (24, 25, "VLA动作a"),
         (25, 26, "精炼动作"),
-        # AWE 路: 图像+力觉→SigLIP(28); State→🧩(62); latent+→H-JEPA(29)
-        (0, 28, "图像+力觉"), (5, 62, "state39D"), (28, 62, "视触觉特征"), (62, 29, "latent+"),
+        # AWE 路: 图像+力觉→SigLIP(28); State→🧩(63); latent+→H-JEPA(29)
+        (0, 28, "图像+力觉"), (5, 63, "state39D"), (28, 63, "视触觉特征"), (63, 29, "latent+"),
         (29, 30, "未来潜状态"), (30, 31, "注入动作"), (31, 32, "动作"),
         # 评估: 五训练 → 对比 Scope
         (11, 33), (15, 33), (20, 33), (26, 33), (32, 33),
@@ -355,7 +355,7 @@ REFERENCE_APPS = [
         # 感知前端链 (共享): 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter (🧩结构条件已下放到各模型行 latent 处)
         ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", "", "", ""],
         # ACT 行: 训练 → 🎮仿真推理·ACT → 🎮仿真视频·ACT
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧩 结构条件 · ACT", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧩 结构条件 · ACT", "🚫 VAE 编码器（无）", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
         # SmolVLA 纯动作行
         ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🧩 结构条件 · SmolVLA", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练", "🎮 仿真推理 · SmolVLA", "🎮 仿真视频 · SmolVLA"],
         # SmolVLA+LEW 行
@@ -520,7 +520,7 @@ LIBRARY = [
         # 2026-08-08 老倪: 数据源条目删除 (数据集组已有, 子模块链不含数据源)
         {"name": "🖼 视觉主干 ResNet18", "params": {"backbone": "resnet18", "pretrained": True,
                                                    "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}},
-        {"name": "🧬 VAE 编码器 CVAE", "params": {"use_vae": True, "latent_dim": 32,
+        {"name": "🚫 VAE 编码器（无）", "params": {"use_vae": False, "latent_dim": 32,
                                                  "desc": "官方 ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}},
         {"name": "🔤 Transformer Encoder", "params": {"n_layers": 4, "dim_model": 256, "n_heads": 8,
                                                       "desc": "官方 ACT.encoder → 上下文 tokens"}},
@@ -3084,6 +3084,7 @@ class SimulinkModule(QWidget):
             # 空串 = 占位跳过。无 layout → 传统单行横排 (兼容旧模板)。
             # ⚠️ 列距 200 (2026-08-07 老倪: 节点跑到显示区右侧太远 → 260 太宽, 10 列网格
             #    也放得下; specs 无 layout 位置的节点走兜底单行会甩到 x=6000+, 必须补全 layout!)
+            index_to_id = {}  # 🐛 2026-08-08 老倪: 定义索引→实际节点id (共享跳过导致 ids 错位 — SmolVLM2/SigLIP 没接)
             if layout:
                 pos = {}
                 for r, row in enumerate(layout):
@@ -3103,13 +3104,16 @@ class SimulinkModule(QWidget):
                     used.add(xy)
                     n = self.add_node(ntype, nm, xy[0], xy[1], params)
                     ids.append(n["id"])
+                    index_to_id[i] = n["id"]
             else:
                 for i, (ntype, nm, params) in enumerate(node_specs):
                     n = self.add_node(ntype, nm, base_x + i * 200, base_y, params)
                     ids.append(n["id"])
+                    index_to_id[i] = n["id"]
             for fi, ti, *label in link_specs:
-                if fi < len(ids) and ti < len(ids):
-                    self.add_link(self._items[ids[fi]], self._items[ids[ti]],
+                fid, tid = index_to_id.get(fi), index_to_id.get(ti)
+                if fid and tid:
+                    self.add_link(self._items[fid], self._items[tid],
                                   label=label[0] if label else None)
         finally:
             self._sync = old_sync
@@ -4540,7 +4544,7 @@ class SimulinkModule(QWidget):
     ACT_BUILD_STEPS = [
         ("📦 metaworld_peg", "hardware", "第1/9步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
         ("🖼 视觉主干 ResNet18", "model", "第2/9步 视觉编码: 点击「🖼 视觉主干 ResNet18」(官方 ACT.backbone, 图像→特征图)"),
-        ("🧬 VAE 编码器 CVAE", "model", "第3/9步 变分编码: 点击「🧬 VAE 编码器 CVAE」(官方 vae_encoder, 动作序列→潜变量)"),
+        ("🚫 VAE 编码器（无）", "model", "第3/9步 变分编码: 点击「🚫 VAE 编码器（无）」(官方 vae_encoder, 动作序列→潜变量)"),
         ("🔤 Transformer Encoder", "model", "第4/9步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
         ("🔡 Transformer Decoder", "model", "第5/9步 动作解码: 点击「🔡 Transformer Decoder」(官方 ACT.decoder, DETR queries)"),
         ("🎯 Action Head 4D", "action", "第6/9步 输出适配: 点击「🎯 Action Head 4D」(★适配 metaworld 4D, 真机6D)"),
