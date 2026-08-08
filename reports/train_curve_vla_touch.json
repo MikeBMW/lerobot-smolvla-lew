@@ -1,1 +1,1 @@
-{"policy": "vla_touch", "name": "VLA-Touch", "ts": "20260808_140856", "curve": [], "step_s": 0.0, "ckpt": "outputs/train/vla_touch_20260808_140854/checkpoints"}
+{"ckpt": "outputs/train/vla_touch_20260808_083814/checkpoints", "train_src": "\u672c\u57304060"}

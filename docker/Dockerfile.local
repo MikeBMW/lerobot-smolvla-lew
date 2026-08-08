@@ -1,0 +1,12 @@
+# Z-MAX 本地环境镜像 (2026-08-08) — 直接复制本地 .venv site-packages, 免重新下载
+FROM python:3.12-slim
+WORKDIR /app
+# 系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 libsm6 libxext6 libgomp1 git curl && rm -rf /var/lib/apt/lists/*
+# 复制本地已验证的 site-packages (torch 2.11+cu128 全套)
+COPY .venv/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages/
+# 工程源码
+COPY . /app
+COPY docker/entrypoints/train.sh /usr/local/bin/zmax-train
+RUN chmod +x /usr/local/bin/zmax-train
+ENTRYPOINT ["zmax-train"]

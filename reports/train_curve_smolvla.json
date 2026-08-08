@@ -1,1 +1,1 @@
-{"policy": "smolvla", "name": "SmolVLA", "ts": "20260808_140852", "curve": [], "step_s": 0.0, "ckpt": "outputs/train/smolvla_20260808_140850/checkpoints"}
+{"policy": "smolvla", "name": "SmolVLA", "ts": "20260808_211950", "curve": [[5, 0.9883], [10, 1.129], [15, 1.044], [20, 0.989], [25, 0.924], [30, 1.064], [35, 0.958], [40, 1.024]], "step_s": 0, "ckpt": "outputs/train/smolvla_20260808_211950/checkpoints"}

@@ -42,9 +42,10 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
 
 # lerobot 工程 + 锁定依赖 (transformers 5.5.4 + torch 2.11.0 — 本地全模型验证)
 COPY docker/requirements.lock /app/requirements.lock
-# torch 显式 cu128 (本地 4060 验证: torch 2.11.0+cu128 + torchvision 0.26.0+cu128)
-RUN pip install --no-cache-dir torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128 && \
-    pip install --no-cache-dir -r /app/requirements.lock
+# 用清华镜像 (pypi.nvidia.com 慢/超时; 清华镜像同步 nvidia wheel)
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+      torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r /app/requirements.lock
 
 # 工程源码 (构建时注入; 运行时可 -v 挂载覆盖)
 COPY . /app
@@ -56,13 +57,13 @@ ENTRYPOINT ["zmax-train"]
 
 # ---- 阶段2: 推理 (轻量, 多平台) ------------------------------------------------
 FROM base AS infer
-ARG TORCH_INDEX=https://download.pytorch.org/whl/cu124
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-      pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu; \
+      pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu; \
     else \
-      pip install torch==2.4.1 torchvision --index-url ${TORCH_INDEX}; \
+      pip install torch==2.11.0 torchvision==0.26.0 --index-url ${TORCH_INDEX}; \
     fi
-COPY requirements.lock /app/requirements.lock
+COPY docker/requirements.lock /app/requirements.lock
 RUN pip install -r /app/requirements.lock
 COPY . /app
 COPY docker/entrypoints/infer.sh /usr/local/bin/zmax-infer

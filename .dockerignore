@@ -8,4 +8,6 @@ reports/
 .git/
 *.log
 __pycache__/
-.venv/
+.venv/bin/
+.venv/lib/python3.12/site-packages/*
+!.venv/lib/python3.12/site-packages/

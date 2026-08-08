@@ -1,1 +1,1 @@
-{"policy": "awe_zflow", "name": "AWE-zFlow", "ts": "20260808_140859", "curve": [], "step_s": 0.0, "ckpt": "outputs/train/awe_zflow_20260808_140856/checkpoints"}
+{"ckpt": "outputs/train/awe_zflow_20260808_200936/checkpoints", "train_src": "\u672c\u57304060"}
