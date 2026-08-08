@@ -819,10 +819,6 @@ class HomeWidget(QWidget):
         layout.addWidget(hero)
 
         # --- 架构流程 ---
-        lbl1 = QLabel("系统架构  Architecture")
-        lbl1.setFont(QFont("Arial", 11, QFont.Bold))
-        lbl1.setStyleSheet(f"color:{C_GRAY};")
-        layout.addWidget(lbl1)
         layout.addWidget(ArchFlowBar())
 
         # --- 产品迭代路线图 ---
@@ -985,7 +981,6 @@ class HomeWidget(QWidget):
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
-            ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),
             ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
             ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
@@ -1030,11 +1025,14 @@ class HomeWidget(QWidget):
             th.addWidget(sub)
             th.addStretch()
             fl.addLayout(th)
-            # 3 张卡横排
+            # 3 张卡横排 (🐛 2026-08-08: 删 Architecture 后列表非3倍数 — 越界防护)
             row = QHBoxLayout()
             row.setSpacing(12)
             for c in range(3):
-                mid, icon, title, syslbl, desc, color = modules[gi * 3 + c]
+                idx = gi * 3 + c
+                if idx >= len(modules):
+                    break
+                mid, icon, title, syslbl, desc, color = modules[idx]
                 card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color)
                 card.clicked.connect(self.module_clicked.emit)
                 row.addWidget(card)
@@ -2403,6 +2401,7 @@ class TrainingModule(QWidget):
         
         # ===== Training Parameter Area =====
         self.param_group = QGroupBox(" Model Parameters ")  # 2026-08-08 老倪: 标题跟随模型选择
+        self.param_group.setVisible(False)  # 🗑 2026-08-08 老倪: 参数窗口删除 (选模型自动内部参数, 不手动调)
         param_group = self.param_group
         param_group.setStyleSheet(f"""
             QGroupBox {{
@@ -2523,15 +2522,9 @@ class TrainingModule(QWidget):
         self.diffusion_spin.setToolTip("Action prediction steps (repeated diffusion/flow matching steps)")
         param_layout.addRow("Action Steps:", self.diffusion_spin)
 
-        # ===== Architecture =====
-        arch_label = QLabel("Architecture")
-        arch_label.setFont(QFont("Arial", 11, QFont.Bold))
-        arch_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
-        param_layout.addRow(arch_label)
-
         # VLM layers
         self.vlm_layers_spin = QSpinBox()
-        self.vlm_layers_spin.setRange(4, 32)
+        self.vlm_layers_spin.setRange(0, 32)  # 0=无VLM (ACT/MLP/专家禁用时显示0)
         self.vlm_layers_spin.setValue(16)
         self.vlm_layers_spin.setToolTip("Number of VLM layers used (num_vlm_layers)")
         param_layout.addRow("VLM Layers:", self.vlm_layers_spin)
@@ -3305,19 +3298,26 @@ class TrainingModule(QWidget):
             # 🧠 2026-08-08 老倪: 架构参数预设跟随模型 (独立于 config — 每模型特性)
             arch = {
                 "ACT": {"obs": 1, "chunk": 100, "vlm": 0, "expert": 0, "width": 512,
-                        "freeze": True, "wm": False, "attn": 1, "compile": False},
+                        "freeze": True, "wm": False, "attn": 1, "compile": False,
+                        "steps": 4000, "batch": 8, "lr": 1e-4},
                 "SmolVLA": {"obs": 1, "chunk": 100, "vlm": 16, "expert": 4, "width": 1024,
-                            "freeze": False, "wm": False, "attn": 1, "compile": False},
+                            "freeze": False, "wm": False, "attn": 1, "compile": False,
+                            "steps": 4000, "batch": 1, "lr": 1e-4},
                 "SmolVLA+LEW": {"obs": 1, "chunk": 100, "vlm": 16, "expert": 4, "width": 1024,
-                                "freeze": False, "wm": True, "attn": 1, "compile": False},
+                                "freeze": False, "wm": True, "attn": 1, "compile": False,
+                                "steps": 4000, "batch": 1, "lr": 1e-4},
                 "VLA-Touch": {"obs": 1, "chunk": 50, "vlm": 8, "expert": 2, "width": 256,
-                              "freeze": True, "wm": False, "attn": 1, "compile": False},
+                              "freeze": True, "wm": False, "attn": 1, "compile": False,
+                              "steps": 4000, "batch": 1, "lr": 1e-4},
                 "AWE": {"obs": 1, "chunk": 50, "vlm": 6, "expert": 2, "width": 256,
-                        "freeze": True, "wm": False, "attn": 1, "compile": False},
+                        "freeze": True, "wm": False, "attn": 1, "compile": False,
+                        "steps": 4000, "batch": 1, "lr": 1e-4},
                 "MLP 蒸馏": {"obs": 1, "chunk": 100, "vlm": 0, "expert": 1, "width": 512,
-                            "freeze": True, "wm": False, "attn": 0, "compile": False},
+                            "freeze": True, "wm": False, "attn": 0, "compile": False,
+                            "steps": 4000, "batch": 8, "lr": 1e-4},
                 "官方专家": {"obs": 1, "chunk": 50, "vlm": 0, "expert": 0, "width": 256,
-                            "freeze": True, "wm": False, "attn": 0, "compile": False},
+                            "freeze": True, "wm": False, "attn": 0, "compile": False,
+                            "steps": 100, "batch": 1, "lr": 1e-4},
             }.get(name)
             if arch:
                 for attr, key in (("vlm_layers_spin", "vlm"), ("expert_layers_spin", "expert")):
@@ -3357,7 +3357,7 @@ class TrainingModule(QWidget):
             }
             import re as _re
             cfg = cfg_map.get(name)
-            if cfg:
+            if cfg and os.path.exists(os.path.join(root, cfg)):
                 cpath = os.path.join(root, cfg)
                 if os.path.exists(cpath):
                     txt = open(cpath, encoding="utf-8").read()
@@ -3376,6 +3376,19 @@ class TrainingModule(QWidget):
                                     spin.setValue(int(val))  # QSpinBox (steps/batch)
                                 except Exception:
                                     pass
+            elif arch and getattr(self, "steps_spin", None) is not None:
+                # 🐛 2026-08-08 老倪: config 缺失 (如官方专家) → 用 arch 预设 (不留上一模型残留参数)
+                for attr, key in (("steps_spin", "steps"), ("batch_spin", "batch"), ("lr_spin", "lr")):
+                    w = getattr(self, attr, None)
+                    v = arch.get(key)
+                    if w is not None and v is not None:
+                        try:
+                            w.setValue(v)
+                        except Exception:
+                            try:
+                                w.setValue(int(v))
+                            except Exception:
+                                pass
         except Exception:
             pass
 
@@ -7554,21 +7567,19 @@ class StudioMainWindow(QMainWindow):
         # Page 1-6: 子模块
         self.modules = {
             "home":       0,
-            "architecture": 1,
-            "dataset":    2,
-            "training":   3,
-            "evaluation": 4,
-            "hardware":   5,
-            "config":     6,
-            "monitor":    7,
-            "plugging":   8,
-            "version":    9,
-            "inference":  10,
-            "simulink":   11,
-            "dataspace":  12,
+            "dataset":    1,
+            "training":   2,
+            "evaluation": 3,
+            "hardware":   4,
+            "config":     5,
+            "monitor":    6,
+            "plugging":   7,
+            "version":    8,
+            "inference":  9,
+            "simulink":   10,
+            "dataspace":  11,
         }
 
-        self.stack.addWidget(ArchitectureModule())
         self.stack.addWidget(DatasetModule())
         self.model_engine = TrainingModule()  # 🌐 2026-08-08 老倪: Model Engine 中枢 (GPU 引擎选择)
         self.stack.addWidget(self.model_engine)
