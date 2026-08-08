@@ -5022,7 +5022,7 @@ class SimulinkModule(QWidget):
                         f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_base} 2>/dev/null; "
                         f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
-                        f"else docker run -d --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
+                        f"else docker rm -f zmax_train 2>/dev/null; docker run -d --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
                         f"-v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro "
                         f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
                         f"zmax-train:latest python -m lerobot.scripts.lerobot_train --config_path {cfg_base} "
@@ -5094,9 +5094,17 @@ class SimulinkModule(QWidget):
                 rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
                                    line_hook=lambda ln: _line_hook(ln))
             else:
-                rc = self._run_cmd(["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
-                                    "-u", "-m", "lerobot.scripts.lerobot_train",  # 🐛 -u 无缓冲: 终端信息实时 (老倪监控)
-                                    "--config_path", tmp_cfg], cwd=root, collect=out_lines,
+                # 🐳 2026-08-08 老倪: 本地训练切容器运行 (zmax-std:1.0 — 与远程容器环境一致)
+                cfg_in = os.path.join("/app", os.path.basename(tmp_cfg)) if tmp_cfg else None
+                cmd = ["sudo", "docker", "run", "--rm",
+                       "--device", "/dev/nvidia0", "--device", "/dev/nvidiactl", "--device", "/dev/nvidia-uvm",
+                       "-v", "/usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro",
+                       "-v", f"{root}:/app", "-w", "/app",
+                       "-e", "PYTHONPATH=/app/src",  # 🐛 lerobot 源码在 /app/src (镜像 COPY)
+                       "--entrypoint", "python", "zmax-std:1.0",
+                       "-u", "-m", "lerobot.scripts.lerobot_train",
+                       "--config_path", cfg_in]
+                rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
                                    line_hook=lambda ln: _line_hook(ln))
             self._train_curve = self._parse_loss_curve(out_lines)
             step_s = self._parse_step_s(out_lines)
