@@ -60,6 +60,14 @@ REFERENCE_APPS = [
     ("🎛 CICD 主控台", [
         ("train_gate", "☑ 训练开关", {"train_enabled": True,
                                       "desc": "checkbox: 打勾=训练 / 不打=不训练 · 双击切换"}),
+        # 🎛 2026-08-08 老倪: 每模型训练开关 (放最前端 — YOLO开关位置, 用户感知开始即开/关)
+        ("train_gate", "ACT 训练开关", {"train_enabled": True, "policy": "act", "desc": "ACT 训练: 开/关 · 双击切换"}),
+        ("train_gate", "SmolVLA 训练开关", {"train_enabled": True, "policy": "smolvla", "desc": "SmolVLA 训练: 开/关 · 双击切换"}),
+        ("train_gate", "SmolVLA+LEW 训练开关", {"train_enabled": True, "policy": "smolvla_lew", "desc": "SmolVLA+LEW 训练: 开/关 · 双击切换"}),
+        ("train_gate", "VLA-Touch 训练开关", {"train_enabled": True, "policy": "vla_touch", "desc": "VLA-Touch 训练: 开/关 · 双击切换"}),
+        ("train_gate", "AWE 训练开关", {"train_enabled": True, "policy": "awe_zflow", "desc": "AWE 训练: 开/关 · 双击切换"}),
+        ("train_gate", "MLP蒸馏 训练开关", {"train_enabled": True, "policy": "expert_mlp", "desc": "MLP蒸馏 训练: 开/关 · 双击切换"}),
+        ("train_gate", "官方专家 训练开关", {"train_enabled": True, "policy": "expert_policy", "desc": "官方专家 训练: 开/关 · 双击切换"}),
         ("hardware", "📥 Orin 数据源", {"ip": "192.168.23.10", "fps": 30, "source": "orin",
                                         "desc": "真实产线数据"}),
         ("hardware", "📦 metaworld_peg", {"steps": 4000, "source": "metaworld",
@@ -4924,12 +4932,19 @@ class SimulinkModule(QWidget):
         return None, None, False
 
     def on_train(self, steps=None, batch_size=None, lr=None, data_source=None, policy="act", **kw):
-        """② 训练: 后台执行 (数据源智能选择 + lerobot_train)
-
+        """🎛 模型训练入口 — 🐛 2026-08-08 老倪: 开头检查画布每模型训练开关 (关则跳过)
+        ② 训练: 后台执行 (数据源智能选择 + lerobot_train)
         steps/batch_size/lr 来自节点逻辑可修改区 (node_logic.py) — None=配置模板默认。
         data_source: auto(画布switch决定) | orin(强制真实) | metaworld(占位集)
         policy: "act" | "smolvla_lew" (⚔️ 对比模板两训练节点各设一种, 默认 act)
         """
+        # ☑ 画布训练开关检查: 总开关 + 该模型开关 (关 → 跳过)
+        try:
+            if not self._train_gate_state(policy=policy):
+                self.log_signal.emit(f"⏭ 跳过 {policy} — 画布训练开关: 关 (双击开关节点可打开)")
+                return True, f"{policy} 训练已跳过 (开关关)"
+        except Exception:
+            pass
         self._log("════ ② 训练 (lerobot_train) ════")
 
         def _work():
@@ -5106,6 +5121,12 @@ class SimulinkModule(QWidget):
             else:
                 # 🐳 2026-08-08 老倪: 训练强制容器 (zmax-std:1.0 — 与远程容器环境一致)
                 # 删除旧代码: 不再用本地 .venv 直接训练
+                # 容器属性信息 → 终端显示 (在哪/镜像/GPU/挂载)
+                self.log_signal.emit("🐳 容器启动: 本地 (WSL2 docker) · 镜像 zmax-std:1.0 (28GB · torch 2.11.0+cu128 · transformers 5.5.4)")
+                self.log_signal.emit("   ├ GPU: --gpus all (RTX 4060 · NVIDIA Container Toolkit)")
+                self.log_signal.emit(f"   ├ 挂载: {root} → /app (工程/数据/输出)")
+                self.log_signal.emit("   ├ PYTHONPATH: /app/src · 工作目录: /app")
+                self.log_signal.emit(f"   └ 训练: {pname} · 容器内执行 (lerobot_train)")
                 # WSL2 用 --gpus all (NVIDIA Container Toolkit); 远程 Linux 用 --device 透传
                 cfg_in = os.path.join("/app", os.path.basename(tmp_cfg)) if tmp_cfg else None
                 cmd = ["sudo", "docker", "run", "--rm",
@@ -5916,14 +5937,21 @@ class SimulinkModule(QWidget):
                 return (True, f"训练开关: {'打勾 → 训练' if n.get('params', {}).get('train_enabled', True) else '不打勾 → 跳过'}")
         return (True, f"训练开关: 状态 {train_enabled}")
 
-    def _train_gate_state(self):
-        """画布上 ☑ 训练开关节点状态: 存在任一开关节点时返回其 enabled 值;
-        无开关节点 = 放行 (True, 保持向后兼容)"""
+    def _train_gate_state(self, policy=None):
+        """画布上 ☑ 训练开关节点状态: 总开关(无policy) + 模型开关(policy匹配) — 🐛 2026-08-08 老倪 每模型独立"""
         gates = [n for n in self.nodes if n.get("type") == "train_gate"]
         if not gates:
             return True
-        # 多开关: 任一关闭则训练跳过 (保守语义 — 关闭总开关必须真的挡住)
-        return all(n.get("params", {}).get("train_enabled", True) for n in gates)
+        # 总开关 (无 policy): 任一关 → 跳过
+        master = [n for n in gates if not n.get("params", {}).get("policy")]
+        if master and not all(n.get("params", {}).get("train_enabled", True) for n in master):
+            return False
+        # 模型开关 (policy 匹配): 匹配的开关关 → 跳过该模型
+        if policy:
+            pol_gates = [n for n in gates if n.get("params", {}).get("policy") == policy]
+            if pol_gates and not all(n.get("params", {}).get("train_enabled", True) for n in pol_gates):
+                return False
+        return True
 
     def _switch_state(self):
         """画布上 Switch 节点当前路由 → 'orin' | 'metaworld' | None"""
