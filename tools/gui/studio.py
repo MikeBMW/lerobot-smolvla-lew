@@ -4060,8 +4060,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 pass
 
     def _register_holo_all(self):
-        """🌐 全息 ID 注册 — 所有可交互控件注册唯一 ID (窗口/按钮/开关/表格/日志)"""
+        """🌐 全息 ID 注册 — 所有可交互控件注册唯一 ID (窗口/按钮/开关/表格/日志) + 3D 坐标点"""
         try:
+            self._holo_coords = getattr(self, "_holo_coords", {})
             reg = []
             # 窗口 (W-xx)
             reg.append(("W-01", "主窗口 (XSpace Studio)", "窗口", lambda: "可见" if self.isVisible() else "隐藏"))
@@ -4096,6 +4097,33 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._holo_reg = {}
             for i in reg:
                 self._holo_reg[i[0]] = (None, i[1], i[2], i[3])
+            # 🌐 3D 坐标注册 (P03 模型引擎页: 01训练区 02容器区 03配置区 06日志区)
+            if hasattr(self, "start_btn"):
+                self._holo_coord_register("P03", "01", "01", self.start_btn, "Start 开始", "按钮",
+                                          lambda: "可用" if self.start_btn.isEnabled() else "禁用")
+            if hasattr(self, "stop_btn"):
+                self._holo_coord_register("P03", "01", "02", self.stop_btn, "Stop 停止", "按钮",
+                                          lambda: "可用" if self.stop_btn.isEnabled() else "禁用")
+            if hasattr(self, "defaults_btn"):
+                self._holo_coord_register("P03", "01", "03", self.defaults_btn, "恢复默认", "按钮")
+            if hasattr(self, "_zoo_sw"):
+                for i, (k, nm) in enumerate([("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                                             ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
+                                             ("expert_policy", "官方专家")], start=5):
+                    w = self._zoo_sw[k]
+                    self._holo_coord_register("P03", "01", f"{i:02d}", w, f"训练开关 {nm}", "开关",
+                                              lambda w=w: "开" if w.isChecked() else "关")
+            if hasattr(self, "_ct_mode_btns"):
+                for z, (k, nm) in enumerate([("train", "远程训练"), ("infer", "本地运行"), ("deploy", "端侧部署")], start=1):
+                    w = self._ct_mode_btns[k]
+                    self._holo_coord_register("P03", "02", f"{z:02d}", w, f"模式卡片 {nm}", "按钮",
+                                              lambda w=w: "选中" if w.isChecked() else "未选")
+            if hasattr(self, "_btn_upload_ct"):
+                self._holo_coord_register("P03", "02", "04", self._btn_upload_ct, "上传容器到远程", "按钮")
+            if hasattr(self, "zoo_table"):
+                self._holo_coord_register("P03", "03", "01", self.zoo_table, "配置通道表格", "表格")
+            if hasattr(self, "log_text"):
+                self._holo_coord_register("P03", "06", "01", self.log_text, "终端日志区", "日志")
             self._holo_refresh()
         except Exception:
             pass
@@ -4122,9 +4150,58 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             pass
 
-    def _holo_act(self, h_id):
-        """🌐 执行 ID 指令 (点按钮/切开关/定位) — 返回执行结果"""
+    # ═══ 🌐 全局 3D 坐标 ID 系统 (2026-08-08 老倪: 每个 ID 是控制台结构的一个点) ═══
+    # 坐标 = X(页) . Y(区块) . Z(控件) — 统筹控制台结构, 全局数据管控
+    # X 轴 (页): P01首页 P02数据集 P03模型引擎 P04评估 P05硬件 P06配置 P07监控 P08场景 P09版本 P10推理 P11画布 P12数据空间
+    # Y 轴 (区块): 01训练区 02容器区 03配置区 04数据区 05评估区 06日志区 07导航区 08状态区 09对比区 10部署区
+    # Z 轴 (控件): 01起 02止 03默认 04上传 05开关A ... (页内顺序)
+    HOLO_PAGES = {
+        "P01": "首页", "P02": "数据集", "P03": "模型引擎", "P04": "评估", "P05": "硬件",
+        "P06": "配置", "P07": "监控", "P08": "场景", "P09": "版本", "P10": "推理",
+        "P11": "画布(Model Zoo)", "P12": "数据空间",
+    }
+    HOLO_ZONES = {
+        "01": "训练区", "02": "容器区", "03": "配置区", "04": "数据区", "05": "评估区",
+        "06": "日志区", "07": "导航区", "08": "状态区", "09": "对比区", "10": "部署区",
+    }
+
+    def _holo_coord(self, x, y, z):
+        """🌐 3D 坐标 → 全局 ID (X.Y.Z)"""
+        return f"{x}.{y}.{z}"
+
+    def _holo_coord_desc(self, cid):
+        """🌐 坐标 ID → 人类可读 (P03.01.01 = 模型引擎·训练区·控件01)"""
         try:
+            x, y, z = cid.split(".")
+            return f"{self.HOLO_PAGES.get(x, x)} · {self.HOLO_ZONES.get(y, y)} · 控件{z}"
+        except Exception:
+            return cid
+
+    def _holo_coord_register(self, x, y, z, widget, name, wtype, getter=None):
+        """🌐 注册 3D 坐标点 (全局数据管控 — 每个 ID 是结构的一个点)"""
+        cid = self._holo_coord(x, y, z)
+        self._holo_coords[cid] = (widget, name, wtype, getter)
+        return cid
+
+    def _holo_act(self, h_id):
+        """🌐 执行 ID 指令 (点按钮/切开关/定位) — 支持 3D 坐标 (P03.01.01) 与简写 (B-01)"""
+        try:
+            # 3D 坐标 → 控件
+            if "." in str(h_id):
+                info = getattr(self, "_holo_coords", {}).get(h_id)
+                if not info:
+                    return f"❌ 无此坐标: {h_id} ({self._holo_coord_desc(h_id) if hasattr(self, '_holo_coord_desc') else ''})"
+                w, nm, ty, g = info
+                if ty == "按钮" and hasattr(w, "click"):
+                    w.click()
+                    return f"✅ 已执行 {h_id} ({nm})"
+                if ty == "开关" and hasattr(w, "toggle"):
+                    w.toggle()
+                    return f"✅ 已切换 {h_id} ({nm}) → {'开' if w.isChecked() else '关'}"
+                if ty == "下拉" and hasattr(w, "showPopup"):
+                    w.showPopup()
+                    return f"✅ 已展开 {h_id} ({nm})"
+                return f"✅ {h_id} ({nm}) — 状态: {g() if g else '—'}"
             info = self._holo_reg.get(h_id)
             if not info:
                 return f"❌ 无此 ID: {h_id}"
