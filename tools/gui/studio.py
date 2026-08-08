@@ -2348,7 +2348,7 @@ class TrainingModule(QWidget):
         sh.addWidget(self.remote_env_lbl)
         layout.addWidget(ssh_box)
         self.ssh_host.setText("223.109.239.36")
-        self.ssh_port.setText("24212")
+        self.ssh_port.setText("24424")
         self.ssh_user.setText("root")
         # 载入上次凭据 (覆盖默认)
         try:
@@ -3275,15 +3275,14 @@ class TrainingModule(QWidget):
         self._log("🎮 Training console initialized")
         self._log("Ready to start training...")
     
-    # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性跟随)
+    # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性/参数预设跟随)
     def _on_model_changed(self, name):
         try:
             self.param_group.setTitle(f" {name} Parameters ")
-            # 探测模型产物属性 (ckpt/训练时间)
             root = os.path.expanduser("~/lerobot-smolvla-lew")
-            tag = {"MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}.get(name, {
-                "ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
-                "VLA-Touch": "vla_touch", "AWE": "awe_zflow"}[name])
+            tag = ({"MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}.get(name)
+                   or {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
+                       "VLA-Touch": "vla_touch", "AWE": "awe_zflow"}.get(name, "act"))  # 🐛 默认参数无条件求值→KeyError(官方专家)
             import glob as _g
             dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", f"*{tag}*")),
                           key=os.path.getmtime)
@@ -3300,8 +3299,82 @@ class TrainingModule(QWidget):
                 self.model_name.setText(f"{os.path.basename(d)} · {mx} 步 · {ts}")
             else:
                 self.model_name.setText("(无训练产物)")
+            # 🧠 2026-08-08 老倪: 架构参数预设跟随模型 (独立于 config — 每模型特性)
+            arch = {
+                "ACT": {"obs": 1, "chunk": 100, "vlm": 0, "expert": 0, "width": 512,
+                        "freeze": True, "wm": False, "attn": 1, "compile": False},
+                "SmolVLA": {"obs": 1, "chunk": 100, "vlm": 16, "expert": 4, "width": 1024,
+                            "freeze": False, "wm": False, "attn": 1, "compile": False},
+                "SmolVLA+LEW": {"obs": 1, "chunk": 100, "vlm": 16, "expert": 4, "width": 1024,
+                                "freeze": False, "wm": True, "attn": 1, "compile": False},
+                "VLA-Touch": {"obs": 1, "chunk": 50, "vlm": 8, "expert": 2, "width": 256,
+                              "freeze": True, "wm": False, "attn": 1, "compile": False},
+                "AWE": {"obs": 1, "chunk": 50, "vlm": 6, "expert": 2, "width": 256,
+                        "freeze": True, "wm": False, "attn": 1, "compile": False},
+                "MLP 蒸馏": {"obs": 1, "chunk": 100, "vlm": 0, "expert": 1, "width": 512,
+                            "freeze": True, "wm": False, "attn": 0, "compile": False},
+                "官方专家": {"obs": 1, "chunk": 50, "vlm": 0, "expert": 0, "width": 256,
+                            "freeze": True, "wm": False, "attn": 0, "compile": False},
+            }.get(name)
+            if arch:
+                for attr, key in (("vlm_layers_spin", "vlm"), ("expert_layers_spin", "expert")):
+                    w = getattr(self, attr, None)
+                    if w is not None:
+                        try:
+                            if arch[key] <= 0:
+                                w.setEnabled(False)
+                                w.setValue(w.minimum())
+                            else:
+                                w.setEnabled(True)
+                                w.setValue(arch[key])
+                        except Exception:
+                            pass
+                for attr, key in (("obs_steps_spin", "obs"), ("chunk_spin", "chunk"),
+                                  ("expert_width_spin", "width"), ("self_attn_spin", "attn")):
+                    w = getattr(self, attr, None)
+                    if w is not None:
+                        try:
+                            w.setValue(arch[key])
+                        except Exception:
+                            pass
+                for attr, key in (("freeze_checkbox", "freeze"), ("world_model_checkbox", "wm"),
+                                  ("compile_checkbox", "compile")):
+                    w = getattr(self, attr, None)
+                    if w is not None:
+                        try:
+                            w.setChecked(bool(arch[key]))
+                        except Exception:
+                            pass
+            # ⚙️ 2026-08-08 老倪: 参数预设跟随模型 (读对应 config — steps/batch/lr)
+            cfg_map = {
+                "ACT": "config_act_pegdata.yaml", "SmolVLA": "config_smolvla_peg_long2.yaml",
+                "SmolVLA+LEW": "config_smolvla_lew_ft.yaml", "VLA-Touch": "config_vla_touch_ft.yaml",
+                "AWE": "config_awe_zflow_ft.yaml", "MLP 蒸馏": "config_mlp_distill.yaml",
+                "官方专家": "config_expert_policy.yaml",
+            }
+            import re as _re
+            cfg = cfg_map.get(name)
+            if cfg:
+                cpath = os.path.join(root, cfg)
+                if os.path.exists(cpath):
+                    txt = open(cpath, encoding="utf-8").read()
+                    def gv(key):
+                        m_ = _re.search(rf"^\s*{key}:\s*([\d.eE+-]+)", txt, _re.M)
+                        return float(m_.group(1)) if m_ else None
+                    st = gv("steps"); bs = gv("batch_size"); lr = gv("lr")
+                    for spin, val in ((getattr(self, "steps_spin", None), st),
+                                      (getattr(self, "batch_spin", None), bs),
+                                      (getattr(self, "lr_spin", None), lr)):
+                        if spin is not None and val is not None:
+                            try:
+                                spin.setValue(val)  # QDoubleSpinBox (lr 浮点)
+                            except Exception:
+                                try:
+                                    spin.setValue(int(val))  # QSpinBox (steps/batch)
+                                except Exception:
+                                    pass
         except Exception:
-            self.model_name.setText("")
+            pass
 
     # 🌐 远程 GPU 训练提交 (2026-08-08 老倪: 模型引擎连远程 GPU — SSH 提交 lerobot_train + 进度轮询)
     def _start_remote_training(self):
@@ -3322,21 +3395,32 @@ class TrainingModule(QWidget):
 
         def _submit():
             try:
+                # 🐳 2026-08-08 老倪: 容器化方案 — 远程 GPU 训练走 Docker (zmax-train 镜像)
+                # 镜像未构建 → 自动 docker build (pytorch 基础 + lerobot); 已构建 → docker run --gpus all
                 cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
                        f"-o Port={r['port']} {r['user']}@{r['host']} "
-                       f"'cd ~/lerobot-smolvla-lew && nohup /root/lerobot-venv/bin/python3 -m lerobot.scripts.lerobot_train "
-                       f"--config-path {cfg} > /tmp/remote_train.log 2>&1 & echo $!'")
-                out = _sp.check_output(cmd, shell=True, timeout=25).decode().strip()
-                # 🐛 2026-08-08: 提交后验证进程真的起来了 (python3 -m 模块方式; nohup 失败会秒崩)
+                       f"'cd ~/lerobot-smolvla-lew && "
+                       f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
+                       f"echo BUILDING; nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & "
+                       f"else "
+                       f"docker run -d --rm --gpus all -v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
+                       f"zmax-train:latest python -m lerobot.scripts.lerobot_train --config-path {cfg} "
+                       f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'")
+                out = _sp.check_output(cmd, shell=True, timeout=40).decode().strip()
+                if "BUILDING" in out:
+                    self._log(f"🐳 远程镜像 zmax-train 构建中 (首次容器化, pytorch+lerobot) · 完成后自动可训练")
+                    self._log(f"   → 构建日志远程 /tmp/docker_build.log · 完成后重新点 Start")
+                    self.is_training = False
+                    return
+                # 🐛 2026-08-08: 提交后验证容器真的起来了 (docker ps + 日志无 Error)
                 import time as _time
                 _time.sleep(3)
                 chk = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
                        f"-o Port={r['port']} {r['user']}@{r['host']} "
-                       f"'ps -eo pid,cmd | grep \"[l]erobot_train\" | grep -v ssh; "
+                       f"'docker ps --filter name=zmax_train --format {{.Names}}; "
                        f"tail -2 /tmp/remote_train.log 2>/dev/null'")
                 vout = _sp.check_output(chk, shell=True, timeout=20).decode(errors="replace").strip()
-                alive = bool(vout) and "Error" not in vout and "Traceback" not in vout and \
-                        "No such file" not in vout and "lerobot_train" in vout
+                alive = "zmax_train" in vout and "Error" not in vout and "Traceback" not in vout
                 if alive:
                     self._log(f"🌐 远程训练已启动并存活 (pid {out}) · 日志 /tmp/remote_train.log")
                     self._start_remote_progress_poll(cfg)
