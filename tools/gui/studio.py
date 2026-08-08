@@ -4369,6 +4369,69 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
         return "—"
 
+    def _holo_badge_overlay(self, widget, h_id):
+        """🌐 控件左下角叠加 ID 小字 (QLabel 子控件 — 无布局改造, 不崩, 所有 Qt 控件可用)"""
+        try:
+            lbl = QLabel(h_id, widget)
+            lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
+            lbl.adjustSize()
+            lbl.move(2, max(0, widget.height() - lbl.height() - 2))
+            lbl.raise_()
+            setattr(widget, "_holo_badge_lbl", lbl)
+            return lbl
+        except Exception:
+            return None
+
+    def _holo_apply_all(self, root=None):
+        """🌐 全控制台所有 Qt 控件 ID 角标 (叠加式 — 左下角可见, 安全不崩, 2026-08-08 老倪: 所有所有所有)"""
+        try:
+            root = root or self
+            self._holo_coords = getattr(self, "_holo_coords", {})
+            self._holo_seq = 0
+            self._holo_applied = set()
+            # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框/面板)
+            targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
+            for w in root.findChildren(QWidget):
+                if id(w) in self._holo_applied:
+                    continue
+                if isinstance(w, targets) and w.isVisible() is not False:
+                    self._holo_seq += 1
+                    self._holo_applied.add(id(w))
+                    h_id = self._holo_seq_id(w)
+                    self._holo_badge_overlay(w, h_id)
+                    self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                               lambda w=w: self._holo_state(w))
+            self._register_holo_all()
+        except Exception:
+            pass
+
+    def _holo_seq_id(self, w):
+        """🌐 顺序 ID (P页.区.序号 — 可读坐标)"""
+        try:
+            pg = self._holo_page_of(w)
+            zn = "01"
+            return f"{pg}.{zn}.{self._holo_seq:02d}"
+        except Exception:
+            return f"X.{self._holo_seq:02d}"
+
+    def _holo_page_of(self, w):
+        """🌐 控件所在页 (parent 链 → stack 页)"""
+        try:
+            p = w
+            while p is not None:
+                if hasattr(p, "objectName") and p.objectName():
+                    on = p.objectName()
+                    for k, v in [("home", "P01"), ("dataset", "P02"), ("model_engine", "P03"),
+                                 ("eval", "P04"), ("hardware", "P05"), ("config", "P06"),
+                                 ("monitor", "P07"), ("scene", "P08"), ("version", "P09"),
+                                 ("inference", "P10"), ("simulink", "P11"), ("dataspace", "P12")]:
+                        if k in on.lower():
+                            return v
+                p = p.parent()
+            return "P00"
+        except Exception:
+            return "P00"
+
     def _append_log(self, text):
         """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
         try:
@@ -8247,13 +8310,12 @@ class StudioMainWindow(QMainWindow):
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
-        # 🌐 2026-08-08 老倪: 全控制台所有控件 ID 角标 (递归包装) — 🐛 崩溃风险: replaceWidget 在复杂布局会崩,
-        #    先禁用递归 (改安全遍历后恢复); 手动页内角标已生效
-        # try:
-        #     from PyQt5.QtCore import QTimer as _QTM
-        #     _QTM.singleShot(1500, lambda: self.model_engine._holo_apply_all(self))
-        # except Exception:
-        #     pass
+        # 🌐 2026-08-08 老倪: 全控制台所有 Qt 控件 ID 角标 (叠加式 QLabel — 安全不崩, 所有页所有控件)
+        try:
+            from PyQt5.QtCore import QTimer as _QTM
+            _QTM.singleShot(1500, lambda: self.model_engine._holo_apply_all(self))
+        except Exception:
+            pass
 
     def _build(self):
         central = QWidget()
