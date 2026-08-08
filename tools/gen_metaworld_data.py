@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--eps", type=int, default=10, help="轨迹数")
     ap.add_argument("--yolo", action="store_true", help="用 YOLO 检测替换 39D (模拟真机感知)")
     ap.add_argument("--steps", type=int, default=180, help="每条轨迹帧数")
+    ap.add_argument("--grab-only", action="store_true", help="只到抓起(不含插入), 2026-08-08 老倪: 方向一致防平均化")
     ap.add_argument("--far", action="store_true", help="远起点模式 (2026-08-07 老倪: 让模型学会更长接近轨迹)")
     ap.add_argument("--task", default="reach-v3")
     ap.add_argument("--out", default="data/metaworld_cartesian")
@@ -173,7 +174,9 @@ def main():
                     # Phase 1: 接近 peg 上方 (水平 + 升到抓取高度)
                     dv = grasp_pt - ee
                     horiz = np.array([dv[0], dv[1], dv[2] * 0.5])
-                    vel = horiz / max(np.linalg.norm(horiz), 1e-6) * 0.12
+                    # 2026-08-08 grab-only: 接近加速 (防轨迹全在接近段, 夹爪没机会闭合)
+                    spd = 0.3 if getattr(args, "grab_only", False) else 0.12
+                    vel = horiz / max(np.linalg.norm(horiz), 1e-6) * spd
                     gripper = 0.0  # 张开
                 elif ee[2] < grasp_pt[2] - 0.01:
                     # Phase 2: 下降抓取 (夹爪闭合)
@@ -188,9 +191,14 @@ def main():
                     gripper = -1.0  # 保持闭合
                 elif d_hole > 0.06:
                     # Phase 4: 水平移到 hole 上方 (保持高度)
-                    dv = np.array([target_hole[0] - ee[0], target_hole[1] - ee[1], 0.0])
-                    vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.10
-                    gripper = -1.0  # 保持闭合
+                    # 2026-08-08 grab-only: 只到抓起, 不转移 (防方向反转平均化)
+                    if getattr(args, "grab_only", False):
+                        vel = np.zeros(3)
+                        gripper = -1.0  # 保持抓住, 原地不动
+                    else:
+                        dv = np.array([target_hole[0] - ee[0], target_hole[1] - ee[1], 0.0])
+                        vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.10
+                        gripper = -1.0  # 保持闭合
                 else:
                     # Phase 5: 下降插入 + 保持
                     dv = target_hole - ee

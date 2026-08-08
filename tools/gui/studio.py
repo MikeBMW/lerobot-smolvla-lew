@@ -1723,21 +1723,24 @@ class DatasetModule(SubModuleWidget):
                 "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
             })
         # 🐛 2026-08-08 老倪: 本地所有数据透明 — 自动补全 data/ 未列入白名单的目录
+        #   Windows exe 无 data/ 目录 (cwd=AppData) → isdir 守卫防 FileNotFoundError
+        _data_root = _os.path.join(root, "data")
         shown = {r["local_root"] for r in rows}
-        for _d in sorted(_os.listdir(_os.path.join(root, "data"))):
-            dp = _os.path.join(root, "data", _d)
-            if _os.path.isdir(dp) and dp not in shown:
-                rows.append({
-                    "repo_id": f"local://{_d}",
-                    "name": f"📁 {_d}\n(data/)",
-                    "robot": "?",
-                    "tasks": "—",
-                    "desc": f"本地数据目录 · {_d}",
-                    "tags": ["local", "auto"],
-                    "local": True,
-                    "local_root": dp,
-                    "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
-                })
+        if _os.path.isdir(_data_root):
+            for _d in sorted(_os.listdir(_data_root)):
+                dp = _os.path.join(root, "data", _d)
+                if _os.path.isdir(dp) and dp not in shown:
+                    rows.append({
+                        "repo_id": f"local://{_d}",
+                        "name": f"📁 {_d}\n(data/)",
+                        "robot": "?",
+                        "tasks": "—",
+                        "desc": f"本地数据目录 · {_d}",
+                        "tags": ["local", "auto"],
+                        "local": True,
+                        "local_root": dp,
+                        "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
+                    })
         return rows
 
     def _get_cache_dir_for_repo(self, repo_id):
