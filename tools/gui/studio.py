@@ -3249,13 +3249,33 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         _QT.singleShot(3000, self._auto_connect_gpu)
 
     def _auto_connect_gpu(self):
-        """🖥 模型引擎自动连接远程 GPU (无需手动点连接按钮)"""
+        """🖥 模型引擎自动连接远程 GPU — 2026-08-08 老倪: 连不上直接报 (不磨蹭不误导)"""
         try:
             if not os.path.exists(os.path.expanduser("~/.zmax_ssh.json")):
                 return
             if getattr(self, "remote_engine", None) and self.remote_engine.get("connected"):
-                return  # 已连接
-            self._log("🖥 模型引擎自动连接远程 GPU…")
+                return
+            self._log("🖥 模型引擎检测远程 GPU…")
+            # 快速可达性检测 (3s) — 不可达直接报连不上, 不误导
+            try:
+                import subprocess as _sp, json as _json
+                creds = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
+                port = creds.get("port", 22)
+                r = _sp.run(
+                    f"sshpass -p '{creds.get('password', '')}' ssh -o StrictHostKeyChecking=no "
+                    f"-o ConnectTimeout=3 -o Port={port} {creds.get('user', 'root')}@{creds.get('host', '')} 'echo OK'",
+                    shell=True, capture_output=True, text=True, timeout=6)
+                if "OK" not in r.stdout:
+                    raise ConnectionError("unreachable")
+            except Exception:
+                self._log("⚠️ 远程 GPU 连不上 (已关机/网络不通) — 使用本地引擎 (4060 容器)")
+                self.gpu_mode = "local"
+                try:
+                    self.radio_local.setChecked(True)
+                except Exception:
+                    pass
+                return
+            self._log("✅ 远程 GPU 可达 — 自动连接")
             self._connect_gpu()
         except Exception:
             pass
@@ -3982,13 +4002,19 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 pass
 
     def _append_log(self, text):
-        """(主线程) 追加日志 + 滚动到底"""
-        self.log_text.append(text)
+        """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
         try:
             scrollbar = self.log_text.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+            at_bottom = scrollbar.value() >= scrollbar.maximum() - 12
         except Exception:
-            pass
+            at_bottom = True
+        self.log_text.append(text)
+        if at_bottom:
+            try:
+                scrollbar = self.log_text.verticalScrollBar()
+                scrollbar.setValue(scrollbar.maximum())
+            except Exception:
+                pass
 
     def _toggle_log_area(self):
         """📋 终端日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
