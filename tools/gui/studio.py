@@ -3239,6 +3239,47 @@ class TrainingModule(QWidget):
     def set_simulink(self, s):
         self._simulink = s
 
+    # 🎛 2026-08-08 老倪: Model Zoo 完整训练队列 (7 模型串行 — 训练按钮触发)
+    ZOO_POLICIES = ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow", "expert_mlp", "expert_policy"]
+
+    def _zoo_next(self):
+        if not getattr(self, "_zoo_queue", None):
+            self._zoo_queue = None
+            self._log("🏁 Model Zoo 完整训练完成 (7 模型)")
+            self._log("📄 生成 Model Zoo 报告 + 视频对比…")
+            try:
+                self._simulink.on_pdf_report()
+            except Exception as e:
+                self._log(f"❌ 报告生成失败: {e}")
+            try:
+                self._simulink.on_infer_video()
+            except Exception as e:
+                self._log(f"❌ 视频生成失败: {e}")
+            self._log("✅ 报告/视频已同步本地: reports/ + outputs/train/ (控制台可见)")
+            return
+        # 等当前训练进程结束 (15s 轮询) — 进程消失才启动下一个 (避免 GPU 冲突)
+        import subprocess
+        try:
+            r = subprocess.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5)
+            if r.stdout.strip():
+                return  # 训练中 — 轮询等待
+        except Exception:
+            pass
+        pol = self._zoo_queue.pop(0)
+        left = len(self._zoo_queue)
+        self._log(f"🎛 Model Zoo 训练 [{7 - left}/7] → {pol} ({left} 个剩余)")
+        try:
+            self._simulink.on_train(policy=pol)
+        except Exception as e:
+            self._log(f"❌ {pol} 启动失败: {e}")
+        from PyQt5.QtCore import QTimer
+        try:
+            self._zoo_timer = QTimer(self)
+            self._zoo_timer.timeout.connect(self._zoo_next)
+            self._zoo_timer.start(15000)
+        except Exception:
+            pass
+
     # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
     def _build_zoo_table(self, layout):
         from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
@@ -3471,7 +3512,7 @@ class TrainingModule(QWidget):
                        f"docker run -d --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
                        f"-v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro "
                        f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
-                       f"zmax-train:latest python -m lerobot.scripts.lerobot_train --config-path {cfg} "
+                       f"zmax-train:latest python -m lerobot.scripts.lerobot_train --config_path {cfg} "
                        f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'")
                 out = _sp.check_output(cmd, shell=True, timeout=40).decode().strip()
                 if "BUILDING" in out:
@@ -3804,13 +3845,15 @@ class TrainingModule(QWidget):
 
     def _start_training(self):
         """Start SmolVLA training"""
-        # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo (配置表格 ↔ Model Zoo 数据一致, 训练即 simulink 模型)
+        # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo 完整训练 (7 模型串行队列)
         if getattr(self, "_simulink", None) is not None:
-            tag_map = {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
-                       "VLA-Touch": "vla_touch", "AWE": "awe_zflow", "MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}
-            pol = tag_map.get(self.model_combo.currentText(), "act")
-            self._log(f"🎛 训练按钮 → Simulink Model Zoo (policy={pol})")
-            self._simulink.on_train(policy=pol)
+            if getattr(self, "_zoo_queue", None):
+                self._log("🎛 Model Zoo 训练队列已在进行中 (监控日志区)")
+                return
+            self._zoo_queue = list(self.ZOO_POLICIES)  # 7 模型依次训练
+            self._log(f"🎛 Model Zoo 完整训练启动: {len(self._zoo_queue)} 个模型串行 → {self._zoo_queue}")
+            self._log("📡 终端详细打印已开启 (每行完整输出, 老倪监控中)")
+            self._zoo_next()
             return
         # 🌐 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 remote → 训练提交远程 V100
         if getattr(self, "gpu_mode", "local") == "remote" and getattr(self, "remote_engine", None):
