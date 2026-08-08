@@ -2417,7 +2417,7 @@ class TrainingModule(QWidget):
         layout.addLayout(top_bar)
         
         # ===== Training Parameter Area =====
-        self.param_group = QGroupBox(" 配置通道 ")  # 2026-08-08 老倪: 模型参数窗口 → 配置通道
+        self.param_group = QGroupBox(" 配置通道 [T-01] ")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         param_group = self.param_group
         param_group.setStyleSheet(f"""
             QGroupBox {{
@@ -2482,7 +2482,8 @@ class TrainingModule(QWidget):
         rowm.setSpacing(10)
         self._ct_mode_btns = {}
         for key, title, sub in cards:
-            b = QPushButton(f"{title}\n{sub}")
+            mid = {"train": "M-01", "infer": "M-02", "deploy": "M-03"}[key]  # 🐛 2026-08-08 老倪: ID 渲染到控件
+            b = QPushButton(f"{title} [{mid}]\n{sub}")
             b.setCheckable(True)
             b.setMinimumSize(150, 64)
             b.setStyleSheet(f"""QPushButton{{background:#0d1117; color:{C_WHITE}; border:2px solid #30363d; border-radius:8px; font-size:12px; font-weight:bold; padding:8px; text-align:center;}}
@@ -2497,40 +2498,15 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
         rowc = QHBoxLayout()
         rowc.setSpacing(6)
-        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
+        self._btn_upload_ct = QPushButton("🔼 上传容器到远程 [B-04]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
         rowc.addWidget(self._btn_upload_ct)
         rowc.addStretch()
         cv.addLayout(rowc)
         # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
-        
-        # 🌐 2026-08-08 老倪: 全息 ID 管控面板 (深度交互 — 每个窗口/按钮/开关有 ID, 无歧义下指令)
-        hg = QGroupBox(" 🌐 全息 ID 管控 ")
-        hg.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:8px; padding-top:6px;}}")
-        hvl = QVBoxLayout()
-        hvl.setSpacing(4)
-        hinfo = QLabel("每个控件有唯一 ID — 对我说「点 B-03」「开 S-02」即可精确控制 · 点表行可定位")
-        hinfo.setStyleSheet(f"color:{C_DIM}; font-size:10px; background:transparent; border:none;")
-        hinfo.setWordWrap(True)
-        hvl.addWidget(hinfo)
-        self._holo_table = QTableWidget(0, 4)
-        self._holo_table.setHorizontalHeaderLabels(["ID", "名称", "类型", "状态"])
-        self._holo_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self._holo_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self._holo_table.setSelectionMode(QTableWidget.SingleSelection)
-        self._holo_table.setStyleSheet(f"QTableWidget{{background:#0d1117; color:{C_WHITE}; border:1px solid #30363d; gridline-color:#21262d; font-size:10px;}}"
-                                       f"QHeaderView::section{{background:#161b22; color:{C_WHITE}; border:none; padding:3px; font-weight:bold;}}")
-        self._holo_table.setMaximumHeight(150)
-        self._holo_table.setColumnWidth(0, 60)
-        self._holo_table.setColumnWidth(1, 150)
-        self._holo_table.setColumnWidth(2, 60)
-        self._holo_table.setColumnWidth(3, 90)
-        hvl.addWidget(self._holo_table)
-        self._holo_reg = {}  # id → (widget, name, type, getter)
-        hg.setLayout(hvl)
-        layout.addWidget(hg)
-        # 🐛 2026-08-08: 延迟注册 (等按钮/开关全部构造完 — 2504 处调用太早)
+        # 🌐 2026-08-08 老倪: 全息 ID 注册表 (内部 — ID 渲染到每个控件本身, 非表格)
+        self._holo_reg = {}
         try:
             from PyQt5.QtCore import QTimer as _QTH
             _QTH.singleShot(600, self._register_holo_all)
@@ -3064,7 +3040,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         btn_layout.setContentsMargins(0, 8, 0, 8)  # 增加上下边距防止紫色渗透
         
         # Start button
-        self.start_btn = QPushButton("▶ Start")  # 2026-08-08 老倪: 通用开始 (无论容器/位置 — 模式决定动作)
+        self.start_btn = QPushButton("▶ Start [B-01]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self.start_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {C_GREEN};
@@ -3102,7 +3078,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         for key, label in [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
                            ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
                            ("expert_policy", "官方专家")]:
-            cb = QCheckBox(f"训练：开 {label}")
+            sid = {"act": "S-01", "smolvla": "S-02", "smolvla_lew": "S-03", "vla_touch": "S-04",
+                   "awe_zflow": "S-05", "expert_mlp": "S-06", "expert_policy": "S-07"}[key]  # 🐛 ID 渲染
+            cb = QCheckBox(f"训练：开 {label} [{sid}]")
             cb.setChecked(True)
             cb.setStyleSheet(f"QCheckBox{{color:{C_WHITE}; background:transparent; font-size:11px; font-weight:bold;}}"
                              f"QCheckBox::indicator{{width:30px; height:16px; border-radius:8px; border:1px solid {C_BORDER}; background:#21262d;}}"
@@ -3115,7 +3093,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         layout.addWidget(sw_box)
         
         # 恢复默认参数
-        self.defaults_btn = QPushButton("🔄 恢复默认")
+        self.defaults_btn = QPushButton("🔄 恢复默认 [B-03]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self.defaults_btn.setToolTip("一键恢复 SmolVLA 原始默认训练参数")
         self.defaults_btn.setStyleSheet(f"""
             QPushButton {{
@@ -3136,7 +3114,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         btn_layout.addWidget(self.defaults_btn)
         
         # Stop button (2026-08-08 老倪: Pause 取消 — 只留 Stop, 真正停止训练)
-        self.stop_btn = QPushButton("⏹ Stop")
+        self.stop_btn = QPushButton("⏹ Stop [B-02]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet(f"""
             QPushButton {{
@@ -3236,7 +3214,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         log_outer.setSpacing(6)
 
         log_head = QHBoxLayout()
-        log_title = QLabel("📋 Training Log")
+        log_title = QLabel("📋 终端日志区 [L-01]")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         log_title.setStyleSheet(f"color:{C_WHITE}; font-size:12px; font-weight:bold; background:transparent;")
         log_head.addWidget(log_title)
         log_head.addStretch()
@@ -4123,8 +4101,10 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
 
     def _holo_refresh(self):
-        """🌐 刷新全息 ID 面板 (状态列实时)"""
+        """🌐 刷新全息 ID 状态 (内部注册表 — 🐛 2026-08-08 无表格, ID 渲染在控件上)"""
         try:
+            if not hasattr(self, "_holo_table"):
+                return
             t = self._holo_table
             t.setRowCount(0)
             for h_id, (w, nm, ty, g) in sorted(self._holo_reg.items()):
@@ -8045,7 +8025,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v1.7.0")  # v1.6.0: 📊Scope示波器节点+▶运行=真实全流程+节点逻辑库; 2026-08-06: 去掉 git hash (老倪: 没用)
+        self.setWindowTitle("XSpace Studio — Z-MAX v1.7.0 [W-01]")  # 🐛 2026-08-08 老倪: 窗口 ID 渲染
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
