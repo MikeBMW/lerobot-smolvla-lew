@@ -37,8 +37,8 @@ NODE_TYPES = {
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
     "yolo_gate":  {"cn": "YOLO开关", "color": "#d4a800"},  # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
     "coord_overlay": {"cn": "坐标叠加", "color": "#58a6ff"},  # 🧩 结构条件 (2026-08-08 老倪: 坐标逻辑主线, 图像背景)
-    "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
-    "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 模型对比技术选型报告生成 (2026-08-05 老倪)
+    "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 Model Zoo: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
+    "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 Model Zoo技术选型报告生成 (2026-08-05 老倪)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -113,21 +113,44 @@ REFERENCE_APPS = [
         ("system", "🚀 全新训练", {"steps": 1000, "desc": "双击 → on_train (metaworld 占位集, 全新不续训)"}),
         ("action", "📊 Scope 示波器", {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果 (Simulink Scope 对标)"}),
     ], [(0, 1), (1, 3), (0, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]),
-    # 🎛 顶层总系统 (2026-08-08 老倪: 总系统节点标准化 — Subsystem 双击展开「🔬 模型对比」)
+    # 🎛 顶层总系统 (2026-08-08 老倪: 总系统节点标准化 — Subsystem 双击展开「🔬 Model Zoo」)
     ("🎛 顶层总系统", [
         ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "4D/4D", "shared": True,
                                            "desc": "顶层输入: 统一 metaworld 数据集 (4800帧)"}),
-        ("system", "🔬 总系统", {"subsystem": "🔬 模型对比", "type_label": "Subsystem",
-                                            "desc": "Simulink 子系统: 双击展开 → 🔬 模型对比 (七模型并行训练线)"}),
+        ("system", "🔬 总系统", {"subsystem": "🏗 三层总系统", "type_label": "Subsystem",
+                                            "desc": "Simulink 子系统: 双击展开 → 三层系统 (SYS2 数据+GPU / SYS1 Model Zoo / SYS0 硬件)"}),
         ("system", "📊 对比评估 Scope (仿真)", {"shared": True,
-                                        "desc": "顶层输出: 双击 → 模型对比图表 · 🎮 仿真评估 (metaworld 环境)"}),
+                                        "desc": "顶层输出: 双击 → Model Zoo图表 · 🎮 仿真评估 (metaworld 环境)"}),
     ], [
         (0, 1, "数据"), (1, 2, "评估"),
     ],
     # 顶层布局: 单行三节点 (数据 → 总系统 → Scope)
     [
         ["📦 metaworld_peg", "🔬 总系统", "📊 对比评估 Scope (仿真)"],
+    ]),
+    # 🏗 三层总系统 (2026-08-08 老倪: 总系统展开 = SYS2 数据集合+GPU服务器 / SYS1 Model Zoo / SYS0 硬件配置)
+    ("🏗 三层总系统", [
+        ("system", "🖥 SYS2 云端训练", {"layer": "sys2",
+                                       "desc": "顶层 SYS2: 数据集合 + GPU 服务器 (云端训练引擎 — 模型引擎容器化)"}),
+        ("hardware", "📦 数据集合", {"shared": True,
+                                     "desc": "SYS2: 统一数据集集合 (metaworld_peg / peg_grab6 等, 数据集管理全透明)"}),
+        ("system", "🖥 GPU 服务器", {"desc": "SYS2: 远程 GPU 服务器 (V100 · docker zmax-train 容器化训练)"}),
+        ("system", "🧠 SYS1 动作系统", {"layer": "sys1",
+                                       "desc": "中层 SYS1: Model Zoo — 七模型并行 (ACT/SmolVLA/LEW/VLA-Touch/AWE/MLP/专家)"}),
+        ("system", "🔬 Model Zoo", {"subsystem": "🔬 Model Zoo", "type_label": "Subsystem",
+                                    "desc": "SYS1: 双击展开 → Model Zoo (七模型并行训练线)"}),
+        ("system", "🔧 SYS0 硬件驱动", {"layer": "sys0",
+                                       "desc": "底层 SYS0: 硬件配置 (电机/相机/力控/急停 — L2基石)"}),
+        ("hardware", "🔧 硬件配置", {"desc": "SYS0: 电机·相机·力控·急停 EtherCAT 驱动 HAL 层"}),
+    ], [
+        (1, 2, "数据"), (0, 1, "SYS2"), (0, 2, "SYS2"), (3, 4, "SYS1"), (5, 6, "SYS0"),
+    ],
+    # 三行横排: SYS2 顶(数据+GPU) / SYS1 中(Model Zoo) / SYS0 底(硬件配置)
+    [
+        ["🖥 SYS2 云端训练", "📦 数据集合", "🖥 GPU 服务器", "", "", "", "", "", "", "", "", ""],
+        ["🧠 SYS1 动作系统", "🔬 Model Zoo", "", "", "", "", "", "", "", "", "", ""],
+        ["🔧 SYS0 硬件驱动", "🔧 硬件配置", "", "", "", "", "", "", "", "", "", ""],
     ]),
     # 🏗 Z-MAX 架构总览 (2026-08-08 老倪: system2/sys12/sys11/sys0 迁移到 simulink 模块库)
     # 三行横排 (老倪架构布局: SYS2 云端训练(顶) → SYS1含SYS11 VLA-T+SYS12 Z-Flow(中) → SYS0 红底(底))
@@ -145,7 +168,7 @@ REFERENCE_APPS = [
         ["", "🧠 SYS12 Z-Flow", "🖐 SYS11 VLA-T", ""],
         ["", "", "🔧 SYS0 硬件驱动", ""],
     ]),
-    # 🔬 模型对比 (2026-08-05 老倪: "把 ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
+    # 🔬 Model Zoo (2026-08-05 老倪: "把 ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
     #   放到一起, 纵向对比" — 技术选型终极画布)
     # 模块划分: ♻ 2 共用 (metaworld数据 / 对比评估 Scope / 推理效果对比) + 五模型分支
     #   ACT 7 (ResNet18→Encoder→Decoder→ActionHead→Ensemble→训练·无VAE)
@@ -154,7 +177,7 @@ REFERENCE_APPS = [
     #   VLA-Touch 6 (DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练)
     #   AWE 6 (SigLIP视触觉→H-JEPA三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练)
     # 布局: 每行一个模型; 同构模块同列垂直对齐 (视觉编码列/动作生成列/附加列/Action Head列/训练列)
-    ("🔬 模型对比", [
+    ("🔬 Model Zoo", [
         ("hardware", "📦 metaworld_peg", {"source": "metaworld", "frames": 4800, "active": True,
                                            "dims": "39D/4D", "shared": True,
                                            "desc": "♻ 七模型共用: 统一 metaworld 数据集 (peg-v6, state 39D 完整观测, action 4D)"}),
@@ -495,7 +518,7 @@ LIBRARY = [
         {"name": "🔌 State Adapter", "params": {"in_dim": 39, "out_dim": 39, "normalize": True,
                                               "desc": "state 适配器: YOLO 3D检测输出 → 统一 state 格式 (开=39D含目标坐标/关=3D仅末端), 适配各策略输入维度"}},
         {"name": "🎯 YOLO 目标检测", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
-                                            "desc": "YOLO 目标检测: 销钉/插孔/末端 2D 检测 (模型对比画布节点)"}},
+                                            "desc": "YOLO 目标检测: 销钉/插孔/末端 2D 检测 (Model Zoo画布节点)"}},
     ]),
     ("condition", "条件 (11)", [
         {"name": "C00 信号触发", "params": {"threshold": 0.5}},
@@ -536,7 +559,7 @@ LIBRARY = [
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
         {"name": "🎛 顶层总系统", "params": {}, "template": "🎛 顶层总系统",
-         "desc": "一键搭建顶层总系统 (数据→🔬总系统Subsystem→评估Scope) · 双击总系统块展开「🔬 模型对比」七模型训练线"},
+         "desc": "一键搭建顶层总系统 (数据→🔬总系统Subsystem→评估Scope) · 双击总系统块展开「🔬 Model Zoo」七模型训练线"},
         {"name": "🏗 Z-MAX 架构", "params": {}, "template": "🏗 Z-MAX 架构",
          "desc": "一键搭建 Z-MAX 四层架构: SYS2 云端训练(顶) → SYS12 Z-Flow + SYS11 VLA-T(中) → SYS0 硬件驱动+原子功能(底)"},
     ]),
@@ -629,7 +652,7 @@ LIBRARY = [
         {"name": "☑ 训练开关", "params": {"train_enabled": True},
          "desc": "checkbox: 打勾=训练 / 不打=不训练 (双击切换, 放最前边控全链路)"},
         {"name": "📄 PDF 技术选型报告", "params": {},
-         "desc": "模型对比实验 → 11 章技术选型 PDF (概况/系统全貌/分系统功能/接口/参数/架构/功能/性价比/优劣势/视频对比/结论)"},
+         "desc": "Model Zoo实验 → 11 章技术选型 PDF (概况/系统全貌/分系统功能/接口/参数/架构/功能/性价比/优劣势/视频对比/结论)"},
     ]),
     # 🏗 Z-MAX 架构分组 (2026-08-08 老倪: system2/sys12/sys11/sys0 迁移到 simulink 模块库 —
     #   主页左侧 SystemLayerCard 四层架构, 可拖入画布)
@@ -639,7 +662,7 @@ LIBRARY = [
         {"name": "🖐 SYS11 VLA-T", "params": {"desc": "SYS11 · VLA-T 触觉大模型 (SYS1 层)"}},
         {"name": "🔧 SYS0 硬件驱动", "params": {"desc": "SYS0 · 硬件驱动 + 原子功能 (架构底层)"}},
     ]),
-    # 🧠 模型主干组 (2026-08-08 老倪: 模型对比所有模块都要能从左侧拖出 — SmolVLM2/DiT-B/LEW)
+    # 🧠 模型主干组 (2026-08-08 老倪: Model Zoo所有模块都要能从左侧拖出 — SmolVLM2/DiT-B/LEW)
     ("model", "🧠 模型主干 (5)", [
         {"name": "🧠 SmolVLM2-500M", "params": {"freeze": False, "desc": "视觉语言主干 · 500M (SmolVLM2-500M-Video-Instruct)"}},
         {"name": "🧠 SmolVLM2-500M · LEW", "params": {"freeze": False, "desc": "视觉语言主干 · LEW 版 (enable_lew:true)"}},
@@ -654,7 +677,7 @@ LIBRARY = [
         {"name": "🧩 结构条件", "params": {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
                                         "desc": "坐标叠加: 坐标逻辑主线(state 含销钉/孔坐标) 叠加图像背景; 训练注入, 推理可剥离"}},
     ]),
-    # 🚀 训练组 (2026-08-08 老倪: 模型对比的训练节点全部可拖)
+    # 🚀 训练组 (2026-08-08 老倪: Model Zoo的训练节点全部可拖)
     ("system", "🚀 训练 (7)", [
         {"name": "🚀 ACT 训练", "params": {"policy": "act", "steps": 1000, "desc": "双击 → 训练 ACT (metaworld 插销数据)"}},
         {"name": "🚀 SmolVLA 训练", "params": {"policy": "smolvla", "steps": 1000, "desc": "双击 → 训练 SmolVLA (纯动作)"}},
@@ -674,12 +697,12 @@ LIBRARY = [
         {"name": "📦 集成打包", "params": {"desc": "④ 集成 — 打包 checkpoint → 上传 ECS 中转"}},
         {"name": "🚚 部署 Orin", "params": {"desc": "⑤ 部署 — 部署状态检查与推送"}},
     ]),
-    # 🔬 总系统节点 (2026-08-08 老倪: 总系统 Subsystem 可拖 — 双击展开模型对比)
+    # 🔬 总系统节点 (2026-08-08 老倪: 总系统 Subsystem 可拖 — 双击展开Model Zoo)
     ("system", "🔬 总系统 (1)", [
-        {"name": "🔬 总系统", "params": {"subsystem": "🔬 模型对比", "type_label": "Subsystem",
-                                        "desc": "Simulink 子系统: 双击展开 → 🔬 模型对比 (七模型训练线)"}},
+        {"name": "🔬 总系统", "params": {"subsystem": "🔬 Model Zoo", "type_label": "Subsystem",
+                                        "desc": "Simulink 子系统: 双击展开 → 🔬 Model Zoo (七模型训练线)"}},
     ]),
-    # 🎯 Action Head 组 (2026-08-08 老倪: 模型对比各模型 Action Head 均可拖)
+    # 🎯 Action Head 组 (2026-08-08 老倪: Model Zoo各模型 Action Head 均可拖)
     ("action", "🎯 Action Head (7)", [
         {"name": "🎯 Action Head 4D · ACT", "params": {"action_dim": 4, "chunk_size": 7, "desc": "ACT 动作头 · 输出 (B,7,4)"}},
         {"name": "🎯 Action Head 4D · SmolVLA", "params": {"action_dim": 4, "desc": "SmolVLA 动作头 · 4D"}},
@@ -698,7 +721,7 @@ LIBRARY = [
         {"name": "🧭 位置控制律", "params": {"desc": "官方专家位置控制律 (peg-insert-side)"}},
         {"name": "🤏 夹爪状态机", "params": {"desc": "官方专家夹爪状态机 (抓取/释放)"}},
     ]),
-    # 🎮 仿真推理/视频组 (2026-08-08 老倪: 每模型推理/视频节点均可拖 — 与模型对比行一致)
+    # 🎮 仿真推理/视频组 (2026-08-08 老倪: 每模型推理/视频节点均可拖 — 与Model Zoo行一致)
     ("action", "🎮 仿真推理/视频 (14)", [
         {"name": f"🎮 仿真推理 · {m}", "params": {"video": "infer", "model": m, "auto": True,
                                               "desc": f"🎮 仿真评估 (metaworld 非 Orin) · {m} 推理对比"}}
@@ -1737,7 +1760,7 @@ class SimNodeItem(QGraphicsObject):
 
     def paint(self, painter, opt, widget=None):
         t = self.node["type"]
-        # 🎨 背景行节点 (模型对比): 整行彩色半透明色带 + 左侧大字模型名
+        # 🎨 背景行节点 (Model Zoo): 整行彩色半透明色带 + 左侧大字模型名
         # 可编辑: 右键参数框改 name (大字)/ params.bg (背景色); 不与普通节点同规格绘制
         if t == "row_bg":
             p = self.node.get("params", {})
@@ -2664,7 +2687,7 @@ class SimulinkModule(QWidget):
         self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
                                    self.open_pipeline_panel, "#00d4aa")
         tl.addWidget(self.btn_pipeline)
-        self.btn_compare5 = mk_btn("🔬 模型对比", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE + MLP + 专家 七模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
+        self.btn_compare5 = mk_btn("🔬 Model Zoo", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE + MLP + 专家 七模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
         tl.addWidget(self.btn_compare5)
         self.btn_vlatouch = mk_btn("🖐 VLA-Touch", "VLA-Touch 触觉对比管道 (4060 精简): DINOv2视觉 + Marker触觉 + DiT-B base VLA 冻结 + Interpolant 触觉控制器 (唯一训练模块) · 纵向对比触觉增强 vs 纯动作", self.open_vlatouch, "#58a6ff")
         tl.addWidget(self.btn_vlatouch)
@@ -2683,7 +2706,7 @@ class SimulinkModule(QWidget):
         outer.addWidget(tb)
 
         # (2026-08-06 老倪: 「参考应用」整行删除 — 白色字体按钮与上方彩色工具栏
-        #  按钮重复 (三/模型对比·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
+        #  按钮重复 (三/Model Zoo·VLA-Touch·AWE·总系统·ACT-Meta 都有彩色入口);
         #  REFERENCE_APPS 数据保留, 模块库完整模型条目/load_reference_app_by_name 仍可用)
 
         # (2026-08-06 老倪: 📡 实时采集状态条「采集中/数据包:24」整行删除 —
@@ -3353,18 +3376,18 @@ class SimulinkModule(QWidget):
                 if it is not None:
                     gp = self.canvas.mapToGlobal(
                         self.canvas.mapFromScene(it.sceneBoundingRect().center()))
-                    self._show_bubble(gp, "👆 双击金色高亮「📊 对比评估 Scope (仿真)」→ 查看两模型对比图表\n"
+                    self._show_bubble(gp, "👆 双击金色高亮「📊 对比评估 Scope (仿真)」→ 查看两Model Zoo图表\n"
                                          "(先点「▶ 运行」训练 ACT + SmolVLA)", ms=6000)
         except Exception:
             pass
 
     def open_compare5(self):
-        """🔬 模型对比 (2026-08-05 老倪: "ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
+        """🔬 Model Zoo (2026-08-05 老倪: "ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
         放到一起, 纵向对比" — 技术选型终极画布):
-        加载「🔬 模型对比」模板 — 五条模型线同画布, 同构模块同列垂直对齐"""
+        加载「🔬 Model Zoo」模板 — 五条模型线同画布, 同构模块同列垂直对齐"""
         if self.nodes:
-            if not self._qmsg_yes("🔬 模型对比",
-                                  "将清空当前画布, 加载 模型对比?\\n\\n"
+            if not self._qmsg_yes("🔬 Model Zoo",
+                                  "将清空当前画布, 加载 Model Zoo?\\n\\n"
                                   "模块划分: ♻共用 (metaworld数据 / 对比评估Scope / 推理对比)\\n"
                                   "          五模型分支: ACT 7 + SmolVLA 4 + SmolVLA+LEW 5\\n"
                                   "                     + VLA-Touch 6 + AWE 6\\n"
@@ -3373,10 +3396,10 @@ class SimulinkModule(QWidget):
                                   "▶ 点「▶ 运行」→ 依次训练 5 模型 → 双击 Scope 看对比图表"):
                 return
         self.clear()
-        if not self.load_reference_app_by_name("🔬 模型对比"):
-            self._qmsg_info("🔬 模型对比", "模板加载失败")
+        if not self.load_reference_app_by_name("🔬 Model Zoo"):
+            self._qmsg_info("🔬 Model Zoo", "模板加载失败")
             return
-        self._log("════ 🔬 模型对比 (统一 metaworld 数据集 · 纵向对比) ════")
+        self._log("════ 🔬 Model Zoo (统一 metaworld 数据集 · 纵向对比) ════")
         self._log("📦 模块划分: ♻共用 3 (metaworld数据 / 对比评估Scope / 推理效果对比) + 五模型分支")
         self._log("🔬 ① ACT 7: ResNet18→Encoder→Decoder→ActionHead→Ensemble→训练 (无VAE确定性回归)")
         self._log("🔬 ② SmolVLA 4: SmolVLM2→DiT-B→ActionHead→训练 (扩散, 无世界模型)")
@@ -3384,7 +3407,7 @@ class SimulinkModule(QWidget):
         self._log("🖐 ④ VLA-Touch 6: DINOv2→Marker→DiT-B base VLA→ActionHead→Interpolant→训练 (触觉增强)")
         self._log("🧿 ⑤ AWE 6: SigLIP视触觉编码→H-JEPA三层潜空间→zFlow世界引擎→未来决策交叉注意力→ActionHead→训练 (场景原生)")
         self._log("📍 同构模块同列垂直对齐: 视觉编码列 / 动作生成列 / 世界模型列 / ActionHead列 / 训练列")
-        self._log("▶ 点「▶ 运行」→ 依次训练 5 模型 (各 50 步快速验证) → 双击「📊 对比评估 Scope (仿真)」看模型对比")
+        self._log("▶ 点「▶ 运行」→ 依次训练 5 模型 (各 50 步快速验证) → 双击「📊 对比评估 Scope (仿真)」看Model Zoo")
         # 🎨 8 行彩色背景 + 左侧大字模型名 (2026-08-07: YOLO 感知链独占首行 + 七模型;
         # 背景行从首行开始排, 否则 ACT 背景会盖在感知行上 → 背景与模型行错位)
         # n_cols=12 (2026-08-07 老倪: 训练右侧=仿真推理, 再右侧=仿真视频 — 12 列布局)
@@ -3449,7 +3472,7 @@ class SimulinkModule(QWidget):
             return
         self._log("════ 🎛 顶层总系统 (Simulink Subsystem) ════")
         self._log("顶层: 📦metaworld数据 → 🔬总系统块 → 📊对比评估Scope")
-        self._log("双击「🔬 总系统」块 → 展开内部「🔬 模型对比」七模型训练线")
+        self._log("双击「🔬 总系统」块 → 展开内部「🔬 Model Zoo」七模型训练线")
         self._log("⬅ 在子系统内点工具栏「⬅ 返回总系统」恢复顶层")
         QTimer.singleShot(300, lambda: self._topsys_hint())
 
@@ -3529,7 +3552,7 @@ class SimulinkModule(QWidget):
         if not hasattr(self, "_subsystem_stack"):
             self._subsystem_stack = []
         self._subsystem_stack.append(top_flow)
-        # 加载子系统内部模板 (三模型对比: 三条并行训练线)
+        # 加载子系统内部模板 (三Model Zoo: 三条并行训练线)
         if not self.load_reference_app_by_name(sub_name):
             self._subsystem_stack.pop()
             self._qmsg_info("🎛 子系统", f"找不到子系统模板: {sub_name}")
@@ -3827,10 +3850,10 @@ class SimulinkModule(QWidget):
                 self._start_canvas_flow(stages)
                 return
             self._log("⚠️ 子系统内部也无执行环节节点")
-            self._show_bubble(self.rect().center(), "子系统内部无执行环节 — 加载「🔬 三模型对比」模板再运行", 5000)
+            self._show_bubble(self.rect().center(), "子系统内部无执行环节 — 加载「🔬 三Model Zoo」模板再运行", 5000)
             return
         self._log("ℹ️ 画布无执行环节节点 (采集/训练/验证/部署/推理) — 进入观察模式")
-        self._show_bubble(self.rect().center(), "画布无执行环节 — 加载「🔬 三模型对比」等模板再运行", 5000)
+        self._show_bubble(self.rect().center(), "画布无执行环节 — 加载「🔬 三Model Zoo」等模板再运行", 5000)
         self._sim_t = 0.0
         # 🐛 2026-08-06: sp_dt/sp_t_end 控件已删 (老倪: 没用), 用内部默认值
         self._sim_dt = getattr(self, "_sim_dt", 0.02)
@@ -3860,7 +3883,7 @@ class SimulinkModule(QWidget):
                 continue  # 📊 Scope 手动双击观察
             if n.get("params", {}).get("video"):
                 continue  # 🎥 视频显示节点: 观察类, 训练完手动双击播放 (2026-08-05 修复:
-                #   "推理"关键字会误匹配 on_infer → 混进模型对比执行队列阻塞流程)
+                #   "推理"关键字会误匹配 on_infer → 混进Model Zoo执行队列阻塞流程)
             if n.get("type") == "train_gate":
                 continue  # ☑ 训练开关: 控制标志非执行环节 ("训练"关键字会误匹配 on_train,
                 #   CICD 主控台 ▶运行 时被当环节执行 → 打乱流程语义; 开关状态由 on_train 内部检查)
@@ -3888,7 +3911,7 @@ class SimulinkModule(QWidget):
         stages = sorted(stages, key=lambda s: _speed.get(s[0].get("params", {}).get("policy", ""), 9))
         names = " → ".join(f"「{n['name']}」" for n, _, _ in stages)
         self._log(f"▶ 真实全流程启动 ({len(stages)} 环节): {names}")
-        # 2026-08-05 老倪: "打开就有个smolvla+lew" — 多训练节点(三模型对比)启动时清空
+        # 2026-08-05 老倪: "打开就有个smolvla+lew" — 多训练节点(三Model Zoo)启动时清空
         # 全部曲线文件, 本轮从零开始 (Scope 只显示本轮三模型); 单训练节点不清 (保留历史)
         _train_stages = [s for s in stages if "训练" in s[2]]
         if len(_train_stages) >= 2:
@@ -3897,7 +3920,7 @@ class SimulinkModule(QWidget):
                 root0 = self._repo_root()
                 for _old in _g2.glob(os.path.join(root0, "reports", "train_curve_*.json")):
                     os.remove(_old)
-                self._log(f"🧹 三模型对比: 已清空旧曲线, 本轮从零开始")
+                self._log(f"🧹 三Model Zoo: 已清空旧曲线, 本轮从零开始")
             except Exception:
                 pass
         # (2026-08-06 老倪: 「运行已启动」小窗口不许弹 — 弹窗遮挡画布/训练进度,
@@ -4195,7 +4218,7 @@ class SimulinkModule(QWidget):
         # ↩️ 新画布 = 旧撤销栈作废 (2026-08-07: 避免撤销到上一个模板的节点)
         self._undo_stack = []
 
-    # ── 🎨 模型对比: 5 行彩色背景 node (row_bg) + 左侧大字模型名 (2026-08-05 老倪) ──
+    # ── 🎨 Model Zoo: 5 行彩色背景 node (row_bg) + 左侧大字模型名 (2026-08-05 老倪) ──
     def _clear_model_rows(self):
         """删除背景行 row_bg 节点 (真节点, 随 clear 一起清)"""
         for n in list(self.nodes):
@@ -4441,7 +4464,7 @@ class SimulinkModule(QWidget):
         if w is not None:
             # 🐛 2026-08-06 修复: worker 终止竞态 — _done(主线程) 触发 _flow_next 时,
             #   worker 线程刚 emit 完还在收尾, isRunning() 短暂 True → 防重入误拦截
-            #   后续任务 (模型对比 VLA-Touch 卡住不启动!); wait(300) 等正常收尾放行
+            #   后续任务 (Model Zoo VLA-Touch 卡住不启动!); wait(300) 等正常收尾放行
             if w.isRunning() and not w.wait(300):
                 # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" — 详细提示
                 self._log(self._busy_hint())
@@ -4962,7 +4985,7 @@ class SimulinkModule(QWidget):
                     tmp_cfg = cfg_path
 
             # 📊 Scope 曲线管理 (2026-08-05 调整): 只重置当前 policy 自己的旧曲线,
-            #   保留其他模型已完成曲线 — 三模型对比时 ACT 训完波形保留, SmolVLA 训练中可见
+            #   保留其他模型已完成曲线 — 三Model Zoo时 ACT 训完波形保留, SmolVLA 训练中可见
             #   (老倪: 现在smolvla训练, 为什么之前的act波形没有了 — 原实现清空全部文件)
             try:
                 _own = os.path.join(root, "reports", f"train_curve_{policy}.json")
@@ -5208,7 +5231,7 @@ class SimulinkModule(QWidget):
     def on_infer_video(self, policy=None, **kw):
         """🎮 仿真推理对比 (2026-08-05 老倪): 多模型 rollout 视频 多窗口同步播放
         数据源: reports/rollout_<policy>/ (tools/rollout_video.py 生成, 无则自动生成)
-        policy=None → 全模型 (模板: 3 模型三对比 / 5 模型模型对比自动探测);
+        policy=None → 全模型 (模板: 3 模型三对比 / 5 模型Model Zoo自动探测);
         policy='act' → 单模型视频节点 (🎮 仿真视频 · ACT)
         auto=True (模板参数): 训练完自动触发 — 先后台生成 rollout, 完成后弹窗"""
         try:
@@ -5216,7 +5239,7 @@ class SimulinkModule(QWidget):
         except ImportError as ex:
             self._log(f"❌ 缺少 simulink_scope.InferenceVideoDialog: {ex}")
             return
-        # 单模型视频节点 → 自动升级为全模型对比 (2026-08-06 老倪: 5 个要同时一起打开做对比,
+        # 单模型视频节点 → 自动升级为全Model Zoo (2026-08-06 老倪: 5 个要同时一起打开做对比,
         #   只开单个没意义); 画布有五模型 → 全开 5 个, 七模型(MLP/专家) → 全开 7 个
         names = " ".join(n.get("name", "") for n in self.nodes)
         if "MLP" in names or "专家" in names:
@@ -5269,10 +5292,10 @@ class SimulinkModule(QWidget):
                 "expert_mlp": "#2d6a8f", "expert_policy": "#8f8a3d"}.get(policy, "#58a6ff")
 
     def on_pdf_report(self, **kw):
-        """📄 PDF 技术选型报告 (2026-08-05 老倪): 模型对比实验 → 11 章专业报告
+        """📄 PDF 技术选型报告 (2026-08-05 老倪): Model Zoo实验 → 11 章专业报告
         数据: 画布 flow (系统全貌) + reports/train_curve_*.json (训练结果)
               + reports/rollout_*/ (推理视频帧) → tools/generate_report.py"""
-        self._log("📄 正在生成模型对比技术选型报告 (概况/分系统/接口/参数/架构/功能/性价比/优劣势)…")
+        self._log("📄 正在生成Model Zoo技术选型报告 (概况/分系统/接口/参数/架构/功能/性价比/优劣势)…")
 
         def _work():
             try:
@@ -5282,7 +5305,7 @@ class SimulinkModule(QWidget):
                 flow_json = os.path.join(root, "reports", "_flow_snapshot.json")
                 try:
                     with open(flow_json, "w", encoding="utf-8") as f:
-                        json.dump({"format": "zmax-simulink", "name": "模型对比",
+                        json.dump({"format": "zmax-simulink", "name": "Model Zoo",
                                    "nodes": self.nodes, "links": self.links}, f,
                                   ensure_ascii=False, indent=1)
                 except Exception:
@@ -5297,7 +5320,7 @@ class SimulinkModule(QWidget):
                 last = out[-1] if out else "?"
                 if r.returncode == 0 and os.path.exists(os.path.join(root, "reports")):
                     import glob as _g
-                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "模型对比技术选型报告_*.pdf")),
+                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "Model Zoo技术选型报告_*.pdf")),
                                   key=os.path.getmtime)
                     if pdfs:
                         return True, f"📄 报告已生成: {os.path.basename(pdfs[-1])}"
@@ -5384,7 +5407,7 @@ class SimulinkModule(QWidget):
         try:
             import json as _j, glob as _g, urllib.request as _ur, os as _os
             root = self._repo_root()
-            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "模型对比技术选型报告_*.pdf")),
+            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "Model Zoo技术选型报告_*.pdf")),
                           key=_os.path.getmtime)
             if not pdfs:
                 self._safe_log("⚠️ 飞书发送: 未找到 PDF 报告文件")
@@ -5498,7 +5521,7 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
             # ③ 3+2 网格对比拼接 (xstack)
-            cmp_mp4 = os.path.join(root, "reports", f"模型对比_rollout_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
+            cmp_mp4 = os.path.join(root, "reports", f"Model Zoo_rollout_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
             try:
                 if len(mp4s) == 5:
                     fc = ("[0:v]scale=320:240[a0];[1:v]scale=320:240[a1];"
@@ -5513,7 +5536,7 @@ class SimulinkModule(QWidget):
                              "-pix_fmt", "yuv420p", "-loglevel", "error", cmp_mp4],
                             capture_output=True, timeout=180)
                     if os.path.exists(cmp_mp4):
-                        self._safe_log(f"🎬 模型对比视频: {os.path.basename(cmp_mp4)}")
+                        self._safe_log(f"🎬 Model Zoo视频: {os.path.basename(cmp_mp4)}")
                 else:
                     cmp_mp4 = None
             except Exception:
@@ -5534,7 +5557,7 @@ class SimulinkModule(QWidget):
                 if os.path.exists(m):
                     self._send_file_to_feishu(m, f"🎥 {_nm} rollout 视频", file_type="mp4")
             # PDF (复用既有发送逻辑)
-            self._send_report_to_feishu_work("模型对比技术选型报告")
+            self._send_report_to_feishu_work("Model Zoo技术选型报告")
             self._safe_log("✅ 自动交付完成: 视频 + PDF 已发飞书 dataworld 群")
         except Exception as ex:
             self._safe_log(f"⚠️ 自动交付失败: {ex}")
