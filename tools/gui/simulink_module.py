@@ -36,7 +36,7 @@ NODE_TYPES = {
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
     "yolo_gate":  {"cn": "YOLO开关", "color": "#d4a800"},  # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
-    "coord_overlay": {"cn": "坐标叠加", "color": "#58a6ff"},  # 🧩 坐标叠加 (2026-08-08 老倪: 坐标逻辑主线, 图像背景)
+    "coord_overlay": {"cn": "坐标叠加", "color": "#58a6ff"},  # 🧩 几何条件 (2026-08-08 老倪: 坐标逻辑主线, 图像背景)
     "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 模型对比: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
     "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 模型对比技术选型报告生成 (2026-08-05 老倪)
 }
@@ -161,17 +161,9 @@ REFERENCE_APPS = [
         # ── YOLO 感知前端 (2026-08-06 老倪: YOLO 加所有模型最前端, 自动标注+真机感知) ──
         ("train_gate", "🎯 YOLO 感知开关", {"yolo_enabled": True, "state_dim": 39,
                                           "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含销钉/孔坐标) / 关=3D(仅末端) · 默认开"}),
-        # 🧩 坐标叠加 (2026-08-08 飞书端: 坐标逻辑主线+图像背景 — 5 模型行各一, 双击可改 gate/state_dim)
-        ("coord_overlay", "🧩 坐标叠加", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
-                                        "desc": "坐标叠加: 坐标逻辑主线(高维 state 含销钉/孔坐标) 叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
-        ("coord_overlay", "🧩 坐标叠加", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
-                                        "desc": "坐标叠加: 坐标逻辑主线叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
-        ("coord_overlay", "🧩 坐标叠加", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
-                                        "desc": "坐标叠加: 坐标逻辑主线叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
-        ("coord_overlay", "🧩 坐标叠加", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
-                                        "desc": "坐标叠加: 坐标逻辑主线叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
-        ("coord_overlay", "🧩 坐标叠加", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
-                                        "desc": "坐标叠加: 坐标逻辑主线叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
+        # 🧩 几何条件 (2026-08-08 老倪: 简化 — 5 个合并为 1 个共享, 放公共感知链)
+        ("coord_overlay", "🧩 几何条件", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat", "shared": True,
+                                        "desc": "♻ 坐标叠加 (七模型共用): 坐标逻辑主线(state 含销钉/孔坐标) 叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
         ("model", "🎯 YOLO 目标检测", {"model": "yolov8s", "classes": "peg/hole/hand", "shared": True,
                                      "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"}),
         ("condition", "📐 2D→3D 解算", {"intrinsics": "camera_K", "method": "depth|hand-eye",
@@ -351,18 +343,18 @@ REFERENCE_APPS = [
     # 列: 数据 | YOLO感知 | YOLO检测 | 2D→3D | StateAdapter | 输入编码 | 处理 | 附加 | Action Head | 训练/基准 | 仿真推理 | 仿真视频
     # 对齐约定 (2026-08-07): 列3=输入编码/主干 · 列7=Action Head · 列9=训练/基准 · 列10=🎮仿真推理 · 列11=🎮仿真视频(对应本行模型)
     [
-        # 感知前端链 (共享): 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", "", "", ""],
+        # 感知前端链 (共享): 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter→🧩坐标叠加
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "🧩 几何条件", "", "", "", "", "", ""],
         # ACT 行: 训练 → 🎮仿真推理·ACT → 🎮仿真视频·ACT
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧩 坐标叠加", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧬 VAE 编码器 CVAE", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
         # SmolVLA 纯动作行
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧩 坐标叠加", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练", "🎮 仿真推理 · SmolVLA", "🎮 仿真视频 · SmolVLA"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M", "🌀 DiT-B 动作解码", "", "", "🎯 Action Head 4D · SmolVLA", "", "🚀 SmolVLA 训练", "🎮 仿真推理 · SmolVLA", "🎮 仿真视频 · SmolVLA"],
         # SmolVLA+LEW 行
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧩 坐标叠加", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练", "🎮 仿真推理 · SmolVLA+LEW", "🎮 仿真视频 · SmolVLA+LEW"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧠 SmolVLM2-500M · LEW", "🌀 DiT-B 动作解码 · LEW", "🌐 LeWorldModel", "", "🎯 Action Head 4D · SmolVLA+LEW", "", "🚀 SmolVLA+LEW 训练", "🎮 仿真推理 · SmolVLA+LEW", "🎮 仿真视频 · SmolVLA+LEW"],
         # VLA-Touch 行: 拓扑 ActionHead→Interpolant→训练, Marker→Interpolant (ActionHead 对齐列7)
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧩 坐标叠加", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "", "🎯 Action Head · VLA", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "🎮 仿真推理 · VLA-Touch", "🎮 仿真视频 · VLA-Touch"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 DINOv2 视觉编码", "🌀 DiT-B base VLA", "📍 Marker 触觉跟踪", "", "🎯 Action Head · VLA", "🌉 Interpolant 控制器", "🚀 VLA-Touch 训练", "🎮 仿真推理 · VLA-Touch", "🎮 仿真视频 · VLA-Touch"],
         # AWE 行: 拓扑 zFlow→交叉注意力→ActionHead→训练
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🧩 坐标叠加", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练", "🎮 仿真推理 · AWE", "🎮 仿真视频 · AWE"],
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖐 SigLIP 视触觉编码", "🧠 H-JEPA 三层潜空间", "🌊 zFlow 世界引擎", "🔀 未来决策交叉注意力", "🎯 Action Head · AWE", "", "🚀 AWE 训练", "🎮 仿真推理 · AWE", "🎮 仿真视频 · AWE"],
         # MLP 蒸馏行 (2026-08-07 老倪: MLP 强化学习入七模型画布)
         ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "📥 全观测编码 39D", "🔗 全连接层 512·1", "", "", "🎯 Action Head 4D · MLP", "", "🎓 专家蒸馏训练", "🎮 仿真推理 · MLP", "🎮 仿真视频 · MLP"],
         # 官方专家行 (🏆 真值锚点: 最好的真值, 目标基准)
@@ -649,8 +641,8 @@ LIBRARY = [
         {"name": "VLA-T", "params": {"desc": "VLA-T 触觉大模型 (力控插入模板)"}},
         {"name": "SmolVLA", "params": {"desc": "SmolVLA 动作模型 (AOI 检测模板)"}},
         {"name": "H-JEPA", "params": {"desc": "H-JEPA 三层潜空间 (数据闭环模板)"}},
-        # 2026-08-08 飞书端: 🧩 坐标叠加 — 可拖入画布 (双击改 gate/state_dim)
-        {"name": "🧩 坐标叠加", "params": {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
+        # 2026-08-08 飞书端: 🧩 几何条件 — 可拖入画布 (双击改 gate/state_dim)
+        {"name": "🧩 几何条件", "params": {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
                                         "desc": "坐标叠加: 坐标逻辑主线(state 含销钉/孔坐标) 叠加图像背景; 训练注入, 推理可剥离"}},
     ]),
     # 🚀 训练组 (2026-08-08 老倪: 模型对比的训练节点全部可拖)
@@ -1856,7 +1848,7 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(30, 24, self.w - 34, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              f"YOLO: {'39D 开' if en else '3D 关'}")
         elif t == "coord_overlay":
-            # 🧩 坐标叠加 (2026-08-08 老倪: 坐标是逻辑主线, 图像是背景 — 叠加进 latent)
+            # 🧩 几何条件 (2026-08-08 老倪: 坐标是逻辑主线, 图像是背景 — 叠加进 latent)
             gate = params.get("overlay_gate", 1.0)
             sd = params.get("state_dim", 45)
             # 画 + 号 (叠加标志)

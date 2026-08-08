@@ -56,7 +56,7 @@ def main():
         print(f"⚠️ 官方策略加载失败 ({ex}), 用手写多阶段专家")
 
     mt = metaworld.MT1(args.task)
-    env = mt.train_classes[args.task](render_mode="rgb_array")
+    env = mt.train_classes[args.task](render_mode="rgb_array", camera_name="corner2")
     env.set_task(mt.train_tasks[0])
     env._freeze_rand_vec = False  # 允许随机初始化 (多 seed 探索)
 
@@ -145,6 +145,16 @@ def main():
                     action = np.clip(a4[:4], -1.0, 1.0)
                 except Exception:
                     action = np.zeros(4)
+                # 2026-08-08: 分段数据 — 官方专家路径同样截断 (抓起后 30 帧即停)
+                if getattr(args, "stop_after_grab", False):
+                    try:
+                        peg_z_now = env.data.site_xpos[env.model.site("pegGrasp").id][2]
+                        if peg_z_now > peg_z0 + 0.03:
+                            grabbed_frames = max(grabbed_frames, 1)
+                        if grabbed_frames >= 1:
+                            grabbed_frames += 1
+                    except Exception:
+                        pass
                 all_frames.append({
                     "observation.state": state.tolist(),
                     "action": action.tolist(),
@@ -153,6 +163,9 @@ def main():
                     "timestamp": i / 30.0,
                 })
                 total += 1
+                # 2026-08-08: 分段数据 — 官方专家路径: 截断条件满足即 break (continue 前检查)
+                if getattr(args, "stop_after_grab", False) and grabbed_frames >= 30:
+                    break
                 continue
             # 专家动作: 完整插销流程 5 阶段 (2026-08-06 v3, 老倪要求"拿起插销")
             # Phase 1: 接近 peg (绿色长条) 上方
@@ -233,14 +246,14 @@ def main():
             else:
                 action = np.zeros(4)
             env.step(action)
-            # 2026-08-08: 分段数据 — 检测 peg 是否被抓起 (升高 4cm, 锁存不回落)
+            # 2026-08-08: 分段数据 — 检测 peg 是否被抓起 (升高 3cm, 锁存后每帧+1)
             if getattr(args, "stop_after_grab", False):
                 try:
                     peg_z_now = env.data.site_xpos[env.model.site("pegGrasp").id][2]
-                    if peg_z_now > peg_z0 + 0.04:
-                        grabbed_frames = max(grabbed_frames, 1)  # 锁存: 抓起过就持续
-                    elif grabbed_frames >= 1:
-                        grabbed_frames += 1  # 已抓起后每帧累加 (含回落段)
+                    if peg_z_now > peg_z0 + 0.03:
+                        grabbed_frames = max(grabbed_frames, 1)  # 锁存
+                    if grabbed_frames >= 1:
+                        grabbed_frames += 1  # 锁存后每帧累加 (无论 peg 是否保持)
                 except Exception:
                     pass
             all_frames.append({
@@ -258,8 +271,10 @@ def main():
             peg_z1 = 0.02
         if peg_z1 - peg_z0 > 0.05:
             ep_imgs_all[ep] = ep_imgs
-            all_eps.append({"episode_index": ep, "length": args.steps})
-            print(f"  轨迹{ep}: 完成 (抓取成功 +{peg_z1-peg_z0:.3f}m)")
+            # 2026-08-08 修复: length 用实际帧数 (stop_after_grab 截断后 < args.steps)
+            actual_len = len([f for f in all_frames if f["episode_index"] == ep])
+            all_eps.append({"episode_index": ep, "length": actual_len if actual_len > 0 else args.steps})
+            print(f"  轨迹{ep}: 完成 (抓取成功 +{peg_z1-peg_z0:.3f}m, {actual_len}帧)")
         else:
             # 丢弃失败轨迹: 从 all_frames 移除该 episode
             all_frames[:] = [f for f in all_frames if f["episode_index"] != ep]

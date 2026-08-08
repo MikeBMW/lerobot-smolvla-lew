@@ -779,6 +779,6 @@ def node_coord_overlay(ctx):
     return fn(ctx["name"], gate, state_dim) if fn else None
 
 
-_reg("coord_overlay", ["坐标叠加", "CoordOverlay"], "🧩 坐标叠加 — state 叠加进 latent (逻辑主线), 图像作背景", node_coord_overlay)
+_reg("coord_overlay", ["几何条件", "坐标叠加", "CoordOverlay"], "🧩 几何条件 — state 叠加进 latent (逻辑主线), 图像作背景", node_coord_overlay)
 _reg("video_display", ["视频"], "🎥 视频显示 — 推理效果 rollout 播放", node_video_display)
 _reg("pdf_report",   ["PDF"], "📄 PDF 报告 — 五模型技术选型 (11章)", node_pdf_report)
