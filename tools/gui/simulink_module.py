@@ -161,9 +161,6 @@ REFERENCE_APPS = [
         # ── YOLO 感知前端 (2026-08-06 老倪: YOLO 加所有模型最前端, 自动标注+真机感知) ──
         ("train_gate", "🎯 YOLO 感知开关", {"yolo_enabled": True, "state_dim": 39,
                                           "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含销钉/孔坐标) / 关=3D(仅末端) · 默认开"}),
-        # 🧩 几何条件 (2026-08-08 老倪: 简化 — 5 个合并为 1 个共享, 放公共感知链)
-        ("coord_overlay", "🧩 几何条件", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat", "shared": True,
-                                        "desc": "♻ 坐标叠加 (七模型共用): 坐标逻辑主线(state 含销钉/孔坐标) 叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
         ("model", "🎯 YOLO 目标检测", {"model": "yolov8s", "classes": "peg/hole/hand", "shared": True,
                                      "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"}),
         ("condition", "📐 2D→3D 解算", {"intrinsics": "camera_K", "method": "depth|hand-eye",
@@ -291,6 +288,9 @@ REFERENCE_APPS = [
                                         "desc": "🎮 MLP 蒸馏本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"}),
         ("system", "🎮 仿真推理 · 专家", {"video": True, "video_policy": "expert_policy", "infer": True,
                                         "desc": "🎮 官方专家本地仿真推理: metaworld rollout 评估 (非 Orin 真机) → 生成该模型视频, 双击执行"}),
+        # 🧩 几何条件 (2026-08-08 老倪: 共享节点定义放末尾 — 不占原索引保 edges 不变; 布局感知链列5引用)
+        ("coord_overlay", "🧩 几何条件", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat", "shared": True,
+                                        "desc": "♻ 几何条件 (七模型共用): 目标结构坐标 (YOLO bbox→3D) 叠加进 latent, 图像作背景 token; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
     ], [
         # 感知链 (2026-08-06 老倪修正: YOLO 只做 state 适配, 视频直接进各模型视觉 ViT):
         #   state 通道: 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter→各模型 state 输入
@@ -1910,6 +1910,27 @@ class SimNodeItem(QGraphicsObject):
             # 📐 端口垂直分布 (2026-08-07): 多入/多出节点端口散开, 与连线终点对齐;
             # 无连线保持中间单端口 (拖线起点/终点交互不变)
             nid = self.node["id"]
+            # 🧩 2026-08-08 老倪: 几何条件等定义多端口节点 — 按定义画端口+标签 (bbox/latent→latent+)
+            ins = self.node.get("inputs", [])
+            outs = self.node.get("outputs", [])
+            if len(ins) > 1 or len(outs) > 1:
+                for i, pt in enumerate(ins):
+                    py = self.h * (i + 1) / (len(ins) + 1)
+                    painter.setBrush(color)
+                    painter.setPen(QPen(QColor(pal["port_edge"]), 1))
+                    painter.drawEllipse(QPointF(0, py), 5, 5)
+                    painter.setPen(QColor(pal["label"]))
+                    painter.setFont(QFont("Arial", 7))
+                    painter.drawText(QRectF(7, py - 7, 60, 14), Qt.AlignVCenter | Qt.AlignLeft, pt.get("label", ""))
+                for i, pt in enumerate(outs):
+                    py = self.h * (i + 1) / (len(outs) + 1)
+                    painter.setBrush(color)
+                    painter.setPen(QPen(QColor(pal["port_edge"]), 1))
+                    painter.drawEllipse(QPointF(self.w, py), 5, 5)
+                    painter.setPen(QColor(pal["label"]))
+                    painter.setFont(QFont("Arial", 7))
+                    painter.drawText(QRectF(self.w - 67, py - 7, 60, 14), Qt.AlignVCenter | Qt.AlignRight, pt.get("label", ""))
+                return
             n_in = sum(1 for l in self.scene_ref.links if l["t"] == nid)
             n_out = sum(1 for l in self.scene_ref.links if l["f"] == nid)
             if n_in:
@@ -2512,6 +2533,7 @@ class SimulinkModule(QWidget):
         self._sim_t = 0.0
         self._sim_dt = 0.01
         self._sim_t_end = 10.0
+        self._model_engine = None  # 🌐 2026-08-08 老倪: Model Engine 引用 (远程 GPU 统一训练模式)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         # 教程状态
@@ -3116,14 +3138,21 @@ class SimulinkModule(QWidget):
             "type": ntype,
             "name": name,
             "x": int(x), "y": int(y), "w": 150,
+            "h": 84 if ntype == "coord_overlay" else 50,  # 🧩 几何条件: 加高显示多端口 (bbox/latent)
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
                      "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄",
                      "coord_overlay": "🧩"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
-            "inputs": [{"id": "in1", "label": "in", "dtype": "any"}],
-            "outputs": [{"id": "out1", "label": "out", "dtype": "any"}],
+            # 🧩 几何条件 (2026-08-08 老倪: 输入=YOLO bbox 结构几何 + 图像 latent → 输出=叠加后 latent)
+            "inputs": ([{"id": "in1", "label": "bbox", "dtype": "geo"},
+                        {"id": "in2", "label": "latent", "dtype": "latent"}]
+                       if ntype == "coord_overlay" else
+                       [{"id": "in1", "label": "in", "dtype": "any"}]),
+            "outputs": ([{"id": "out1", "label": "latent+", "dtype": "latent"}]
+                        if ntype == "coord_overlay" else
+                        [{"id": "out1", "label": "out", "dtype": "any"}]),
             "actions": [],
         }
         self.nodes.append(node)
@@ -4866,6 +4895,11 @@ class SimulinkModule(QWidget):
         self.log_signal.emit("❌ 无任何训练数据 (real 和 placeholder 都不存在)")
         return None, None, False
 
+    # 🌐 Model Engine 注入 (2026-08-08 老倪: simulink 训练统一走引擎 — 本地/远程 GPU 选择)
+    def set_model_engine(self, engine):
+        """注入 Model Engine — on_train 时检查 gpu_mode: remote → 提交远程 V100"""
+        self._model_engine = engine
+
     def on_train(self, steps=None, batch_size=None, lr=None, data_source=None, policy="act", **kw):
         """② 训练: 后台执行 (数据源智能选择 + lerobot_train)
 
@@ -4950,6 +4984,25 @@ class SimulinkModule(QWidget):
                 pass
 
             self.log_signal.emit(f"🚀 启动 {pname} 训练 ({steps or 300}步, 4060 CUDA)…")
+            # 🌐 2026-08-08 老倪: Model Engine 统一训练模式 — 远程 GPU 已连接则提交远程 (V100)
+            me = getattr(self, "_model_engine", None)
+            if me and getattr(me, "gpu_mode", "local") == "remote" and getattr(me, "remote_engine", None):
+                r = me.remote_engine
+                import subprocess as _spr
+                self.log_signal.emit(f"🌐 提交 {pname} 训练 → 远程 GPU ({r['host']}) · Model Engine 统一模式")
+                try:
+                    cfg_base = os.path.basename(cfg_path or "config_act_metaworld.yaml")
+                    _spr.run(
+                        f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o Port={r['port']} "
+                        f"{r['user']}@{r['host']} "
+                        f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
+                        f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_base} 2>/dev/null; "
+                        f"nohup /root/lerobot-venv/bin/python3 -m lerobot.scripts.lerobot_train --config-path {cfg_base} > /tmp/remote_train.log 2>&1 & echo $!'",
+                        shell=True, timeout=30)
+                    self.log_signal.emit(f"🌐 远程训练已提交 ({pname} · {cfg_base}) · 日志远程 /tmp/remote_train.log")
+                    return True, f"{pname} 远程训练提交成功"
+                except Exception as ex:
+                    self.log_signal.emit(f"❌ 远程提交失败 {str(ex)[:50]} — 回退本地训练")
             # 📊 Scope: 训练中实时落盘 loss 曲线 (2026-08-05 老倪: "训练都开始了, 为什么scope没有波形"
             #   — 原来训练结束才落盘; 改流式: 每行 loss 增量写 reports/train_curve_<policy>.json,
             #   Scope 打开时即可见实时波形)

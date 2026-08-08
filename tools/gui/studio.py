@@ -983,7 +983,7 @@ class HomeWidget(QWidget):
         #   最后一行: 插拔场景/版本同步
         modules = [
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
-            ("training", "🏋️", "训练控制台",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
+            ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
             ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),
             ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
@@ -2236,6 +2236,8 @@ class TrainingModule(QWidget):
         # Status tracking
         self.is_training = False
         self.is_paused = False
+        self.remote_engine = None  # 2026-08-08 老倪: 远程 GPU 引擎状态 (SSH 连接后设置)
+        self.gpu_mode = "local"   # 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 (local/remote)
         
         self._init_ui()
     
@@ -2277,11 +2279,92 @@ class TrainingModule(QWidget):
         # ===== Top Bar: Title + SmolVLA Button =====
         top_bar = QHBoxLayout()
         
-        title = QLabel("🧠 SmolVLA Training Console")
+        title = QLabel("🧠 Model Engine")  # 2026-08-08 老倪: SmolVLA Training Console → Model Engine (模型引擎)
         title.setStyleSheet(f"color: {C_WHITE}; font-size: 20px; font-weight: bold;")
         top_bar.addWidget(title)
         
         top_bar.addStretch()
+        
+        # ===== 🖥 训练引擎选择 (2026-08-08 老倪: 顶部 — 本地/远程 GPU 选择) =====
+        engine_box = QFrame()
+        engine_box.setStyleSheet(f"QFrame {{ background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; }}")
+        eh = QHBoxLayout(engine_box)
+        eh.setContentsMargins(12, 8, 12, 8)
+        eh.setSpacing(10)
+        eng_lbl = QLabel("🖥 模型引擎:")  # 2026-08-08 老倪: 训练引擎 → 模型引擎
+        eng_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none; font-size:13px;")
+        eh.addWidget(eng_lbl)
+        # GPU 引擎选择 (Model Engine 中枢 — 所有训练统一走这里)
+        self.radio_local = QRadioButton("本地 GPU (RTX 4060)")
+        self.radio_local.setChecked(True)
+        self.radio_local.setStyleSheet(f"QRadioButton {{ color:{C_WHITE}; background:transparent; border:none; font-size:13px; font-weight:bold; }}")
+        self.radio_remote = QRadioButton("远程 GPU (未连接)")
+        self.radio_remote.setEnabled(False)
+        self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:13px; }}")
+        self.radio_local.toggled.connect(self._on_gpu_mode)
+        self.radio_remote.toggled.connect(self._on_gpu_mode)
+        eh.addWidget(self.radio_local)
+        eh.addWidget(self.radio_remote)
+        eh.addStretch()
+        layout.addWidget(engine_box)
+        
+        # ===== 🔗 SSH GPU 服务器连接 (2026-08-08 老倪: 模型引擎连接 GPU 服务器远程训练) =====
+        self.ssh_box = QFrame()
+        ssh_box = self.ssh_box
+        ssh_box.setStyleSheet(f"QFrame {{ background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; }}")
+        sh = QHBoxLayout(ssh_box)
+        sh.setContentsMargins(12, 8, 12, 8)
+        sh.setSpacing(8)
+        ssh_lbl = QLabel("🔗 GPU 服务器:")
+        ssh_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none;")
+        sh.addWidget(ssh_lbl)
+        self.ssh_host = QLineEdit()
+        self.ssh_host.setPlaceholderText("host (如 223.109.239.36)")
+        self.ssh_host.setFixedWidth(140)
+        self.ssh_port = QLineEdit()
+        self.ssh_port.setPlaceholderText("port")
+        self.ssh_port.setFixedWidth(55)
+        self.ssh_user = QLineEdit()
+        self.ssh_user.setPlaceholderText("user")
+        self.ssh_user.setFixedWidth(70)
+        self.ssh_pass = QLineEdit()
+        self.ssh_pass.setPlaceholderText("password")
+        self.ssh_pass.setEchoMode(QLineEdit.Password)
+        self.ssh_pass.setFixedWidth(105)
+        for _w in (self.ssh_host, self.ssh_port, self.ssh_user, self.ssh_pass):
+            _w.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 6px; }}")
+            sh.addWidget(_w)
+        self.btn_ssh = QPushButton("🔌 连接")
+        self.btn_ssh.setStyleSheet(f"QPushButton {{ background:#1f6feb; color:white; border:none; border-radius:4px; padding:6px 14px; font-weight:bold; }} QPushButton:hover {{ background:#388bfd; }}")
+        self.btn_ssh.clicked.connect(self._connect_gpu)
+        sh.addWidget(self.btn_ssh)
+        self.ssh_status = QLabel("未连接")
+        self.ssh_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:11px;")
+        sh.addWidget(self.ssh_status)
+        sh.addStretch()
+        # 🔧 远程环境状态 (2026-08-08 老倪: 终端可见远程环境安装进度)
+        self.remote_env_lbl = QLabel("🔧 远程环境: 未连接")
+        self.remote_env_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:10px;")
+        sh.addWidget(self.remote_env_lbl)
+        layout.addWidget(ssh_box)
+        self.ssh_host.setText("223.109.239.36")
+        self.ssh_port.setText("24212")
+        self.ssh_user.setText("root")
+        # 载入上次凭据 (覆盖默认)
+        try:
+            import json as _json
+            _cred = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
+            self.ssh_host.setText(_cred.get("host", self.ssh_host.text()))
+            self.ssh_port.setText(str(_cred.get("port", self.ssh_port.text())))
+            self.ssh_user.setText(_cred.get("user", self.ssh_user.text()))
+            self.ssh_pass.setText(_cred.get("pwd", ""))
+            if _cred.get("host"):
+                self.ssh_status.setText(f"已载入 {_cred['host']}:{_cred.get('port','22')} (未连接)")
+        except Exception:
+            pass
+        layout.addWidget(ssh_box)
+
+        # (旧引擎状态条已上移 — 顶部 radio 选择 + SSH 面板)
         
         # SmolVLA info badge
         self.smolvla_btn = QPushButton("✅ SmolVLA")
@@ -2296,13 +2379,31 @@ class TrainingModule(QWidget):
                 font-weight: bold;
             }}
         """)
-        self.smolvla_btn.setEnabled(False)
+        # 🤖 模型选择下拉 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 模型引擎核心)
+        model_lbl = QLabel("🤖 模型:")
+        model_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none;")
+        top_bar.addWidget(model_lbl)
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家"])
+        self.model_combo.setFixedWidth(150)
+        self.model_combo.setStyleSheet(f"""
+            QComboBox {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER};
+                         border-radius:4px; padding:4px 8px; font-size:12px; font-weight:bold; }}
+            QComboBox::drop-down {{ border:none; width:20px; }}
+            QComboBox QAbstractItemView {{ background:{C_BG}; color:{C_WHITE}; selection-background-color:#1f6feb; }}
+        """)
+        self.model_combo.currentTextChanged.connect(self._on_model_changed)
+        top_bar.addWidget(self.model_combo)
+        self.model_name = QLabel("")  # 模型属性摘要
+        self.model_name.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:10px;")
+        top_bar.addWidget(self.model_name)
         top_bar.addWidget(self.smolvla_btn)
         
         layout.addLayout(top_bar)
         
         # ===== Training Parameter Area =====
-        param_group = QGroupBox(" SmolVLA Parameters ")
+        self.param_group = QGroupBox(" Model Parameters ")  # 2026-08-08 老倪: 标题跟随模型选择
+        param_group = self.param_group
         param_group.setStyleSheet(f"""
             QGroupBox {{
                 color: {C_WHITE};
@@ -3174,6 +3275,266 @@ class TrainingModule(QWidget):
         self._log("🎮 Training console initialized")
         self._log("Ready to start training...")
     
+    # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性跟随)
+    def _on_model_changed(self, name):
+        try:
+            self.param_group.setTitle(f" {name} Parameters ")
+            # 探测模型产物属性 (ckpt/训练时间)
+            root = os.path.expanduser("~/lerobot-smolvla-lew")
+            tag = {"MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}.get(name, {
+                "ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
+                "VLA-Touch": "vla_touch", "AWE": "awe_zflow"}[name])
+            import glob as _g
+            dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", f"*{tag}*")),
+                          key=os.path.getmtime)
+            if dirs:
+                d = dirs[-1]
+                ckdir = os.path.join(d, "checkpoints")
+                if os.path.isdir(ckdir):
+                    cks = [b for b in os.listdir(ckdir) if b.isdigit()]
+                    mx = max(cks) if cks else "?"
+                else:
+                    mx = "?"
+                import datetime as _dt
+                ts = _dt.datetime.fromtimestamp(os.path.getmtime(d)).strftime("%m-%d %H:%M")
+                self.model_name.setText(f"{os.path.basename(d)} · {mx} 步 · {ts}")
+            else:
+                self.model_name.setText("(无训练产物)")
+        except Exception:
+            self.model_name.setText("")
+
+    # 🌐 远程 GPU 训练提交 (2026-08-08 老倪: 模型引擎连远程 GPU — SSH 提交 lerobot_train + 进度轮询)
+    def _start_remote_training(self):
+        r = self.remote_engine
+        model = self.model_combo.currentText()
+        # 当前模型 → 远程 config (SmolVLA = config_smolvla_peg_long2.yaml 插销数据)
+        cfg_map = {
+            "ACT": "config_act_pegdata.yaml", "SmolVLA": "config_smolvla_peg_long2.yaml",
+            "SmolVLA+LEW": "config_smolvla_lew_ft.yaml", "VLA-Touch": "config_vla_touch_ft.yaml",
+            "AWE": "config_awe_zflow_ft.yaml", "MLP 蒸馏": "config_mlp_distill.yaml",
+            "官方专家": "config_expert_policy.yaml",
+        }
+        cfg = cfg_map.get(model, "config_smolvla_peg_long2.yaml")
+        self._log(f"🌐 提交远程 GPU 训练 ({r['host']}) · 模型 {model} · config {cfg}")
+        self._log(f"   → 远程 V100 执行 (本地 4060 空闲) · 进度每 30s 轮询")
+        self.is_training = True
+        import subprocess as _sp, threading as _th
+
+        def _submit():
+            try:
+                cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
+                       f"-o Port={r['port']} {r['user']}@{r['host']} "
+                       f"'cd ~/lerobot-smolvla-lew && nohup /root/lerobot-venv/bin/python3 -m lerobot.scripts.lerobot_train "
+                       f"--config-path {cfg} > /tmp/remote_train.log 2>&1 & echo $!'")
+                out = _sp.check_output(cmd, shell=True, timeout=25).decode().strip()
+                # 🐛 2026-08-08: 提交后验证进程真的起来了 (python3 -m 模块方式; nohup 失败会秒崩)
+                import time as _time
+                _time.sleep(3)
+                chk = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                       f"-o Port={r['port']} {r['user']}@{r['host']} "
+                       f"'ps -eo pid,cmd | grep \"[l]erobot_train\" | grep -v ssh; "
+                       f"tail -2 /tmp/remote_train.log 2>/dev/null'")
+                vout = _sp.check_output(chk, shell=True, timeout=20).decode(errors="replace").strip()
+                alive = bool(vout) and "Error" not in vout and "Traceback" not in vout and \
+                        "No such file" not in vout and "lerobot_train" in vout
+                if alive:
+                    self._log(f"🌐 远程训练已启动并存活 (pid {out}) · 日志 /tmp/remote_train.log")
+                    self._start_remote_progress_poll(cfg)
+                else:
+                    self._log(f"❌ 远程训练启动失败: {vout[-80:]}")
+                    self.is_training = False
+            except Exception as e:
+                self._log(f"❌ 远程提交失败: {str(e)[:70]}")
+                self.is_training = False
+
+        _th.Thread(target=_submit, daemon=True).start()
+
+    def _start_remote_progress_poll(self, cfg):
+        try:
+            if hasattr(self, "_remote_timer"):
+                self._remote_timer.stop()
+            self._remote_cfg = cfg
+            self._remote_timer = QTimer(self)
+            self._remote_timer.timeout.connect(self._poll_remote_progress)
+            self._remote_timer.start(30000)
+        except Exception:
+            pass
+
+    def _poll_remote_progress(self):
+        """🌐 轮询远程训练进度 (ckpt 步数 → 进度条/日志)"""
+        r = self.remote_engine
+        if not r:
+            return
+        import subprocess as _sp
+        try:
+            cfg = getattr(self, "_remote_cfg", "config_smolvla_peg_long2.yaml")
+            name = cfg.replace("config_", "").replace(".yaml", "")
+            cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                   f"-o Port={r['port']} {r['user']}@{r['host']} "
+                   f"'ls ~/lerobot-smolvla-lew/outputs/train/{name}/checkpoints 2>/dev/null | grep -v last | sort | tail -1; "
+                   f"ps aux | grep -c \"[l]erobot_train\"'")
+            out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").splitlines()
+            step = next((l for l in out if l.strip().isdigit()), "")
+            running = any("1" == l.strip() for l in out) or bool(step)
+            if step:
+                total = 4000
+                pct = min(int(step) / total * 100, 100)
+                if hasattr(self, "_update_progress"):
+                    self._update_progress(pct)
+                self._log(f"🌐 远程训练: {name} · {step}/{total} 步 ({pct:.0f}%)")
+            if not running and step:
+                self._log(f"✅ 远程训练完成 ({name} · {step} 步)")
+                try:
+                    self._remote_timer.stop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # 🔗 SSH GPU 服务器连接 (2026-08-08 老倪: 模型引擎连接 GPU 服务器远程训练)
+    def _connect_gpu(self):
+        host = self.ssh_host.text().strip()
+        port = self.ssh_port.text().strip() or "22"
+        user = self.ssh_user.text().strip()
+        pwd = self.ssh_pass.text().strip()
+        if not (host and user and pwd):
+            self.ssh_status.setText("⚠ 请填主机/用户/密码")
+            return
+        try:
+            import json as _json
+            _json.dump({"host": host, "port": port, "user": user, "pwd": pwd},
+                       open(os.path.expanduser("~/.zmax_ssh.json"), "w"))
+        except Exception:
+            pass
+        self.ssh_status.setText(f"🔌 连接中 {host}:{port}...")
+        self.btn_ssh.setEnabled(False)
+        import subprocess as _sp, threading as _th
+
+        def _worker():
+            try:
+                cmd = (f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                       f"-o Port={port} {user}@{host} \"nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total "
+                       f"--format=csv,noheader 2>/dev/null | head -1; echo '---'; "
+                       f"ps aux | grep -c '[l]erobot_train'; echo '---'; "
+                       f"df -h / | tail -1 | awk '{{print \\$3, \\$5}}'\"")
+                out = _sp.check_output(cmd, shell=True, timeout=20,
+                                       stderr=_sp.STDOUT).decode(errors="replace").strip()
+                lines = [l for l in out.splitlines() if l.strip()]
+                gpu = lines[0] if lines else "?"
+                train_n = "0"
+                disk = "?"
+                for l in lines:
+                    if l == "---":
+                        continue
+                    if "MiB" in l and "/" in l and "%" in l:
+                        gpu = l
+                    elif l.isdigit():
+                        train_n = l
+                    elif "%" in l and "G" in l:
+                        disk = l
+                self._set_ssh_status(f"✅ {host} · GPU {gpu} · 训练进程 {train_n} · 磁盘 {disk}")
+                # 2026-08-08 老倪: 记录远程引擎 + 更新引擎状态条 (用户感知远程 GPU)
+                self.remote_engine = {"host": host, "port": port, "user": user, "pwd": pwd, "gpu": gpu}
+                self._set_engine_ui(True, gpu)
+                # 🌐 2026-08-08 老倪: 连接外部计算资源 → 默认 git clone 控制台工程 (统一训练模式)
+                try:
+                    _sp.check_output(
+                        f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={port} "
+                        f"{user}@{host} 'cd ~ && ls -d lerobot-smolvla-lew 2>/dev/null || "
+                        f"git clone --depth 1 https://github.com/MikeBMW/lerobot-smolvla-lew.git 2>&1 | tail -1; "
+                        f"echo SYNC_OK'",
+                        shell=True, timeout=120)
+                    self._log(f"🌐 远程工程就绪: ~/lerobot-smolvla-lew (自动 clone/git pull)")
+                except Exception:
+                    pass
+            except Exception as e:
+                self._set_ssh_status(f"❌ 连接失败: {str(e)[:60]}")
+                self.remote_engine = None
+                self._set_engine_ui(False, "")
+        _th.Thread(target=_worker, daemon=True).start()
+
+    def _set_engine_ui(self, remote, gpu):
+        """🖥 训练引擎状态条: 远程 GPU / 本地 4060 感知"""
+        try:
+            if remote:
+                self.radio_remote.setText(f"远程 GPU ({gpu.split('/')[0].strip() if '/' in gpu else gpu} · {self.ssh_host.text()})")
+                self.radio_remote.setEnabled(True)
+                self.radio_remote.setStyleSheet(f"QRadioButton {{ color:#3fb950; background:transparent; border:none; font-size:12px; font-weight:bold; }}")
+                self.btn_ssh.setText("🔌 已连接")
+                # 连接成功默认切远程引擎 (Model Engine 中枢)
+                self.radio_remote.setChecked(True)
+                # 🔧 远程环境状态轮询 (每 30s — 安装进度可见)
+                self._start_env_poll()
+            else:
+                self.radio_remote.setText("远程 GPU (未连接)")
+                self.radio_remote.setEnabled(False)
+                self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:12px; }}")
+                self.radio_local.setChecked(True)
+                self.btn_ssh.setText("🔌 连接")
+        except Exception:
+            pass
+
+    def _on_gpu_mode(self, *_):
+        """Model Engine GPU 引擎选择: local=本地 4060 / remote=远程 V100"""
+        try:
+            if self.radio_remote.isChecked() and getattr(self, "remote_engine", None):
+                self.gpu_mode = "remote"
+                self._log(f"🖥 训练引擎 → 远程 GPU ({self.remote_engine['host']})")
+            else:
+                self.gpu_mode = "local"
+                if not self.radio_remote.isChecked():
+                    self._log("🖥 训练引擎 → 本地 GPU (RTX 4060)")
+        except Exception:
+            self.gpu_mode = "local"
+
+    # 🔧 远程环境状态轮询 (2026-08-08 老倪: 终端可见远程环境安装进度)
+    def _start_env_poll(self):
+        try:
+            if hasattr(self, "_env_timer"):
+                self._env_timer.stop()
+            self._env_timer = QTimer(self)
+            self._env_timer.timeout.connect(self._poll_remote_env)
+            self._env_timer.start(30000)
+            self._poll_remote_env()
+        except Exception:
+            pass
+
+    def _poll_remote_env(self):
+        """轮询远程环境: venv/lerobot 就绪状态 + 安装日志尾部"""
+        r = getattr(self, "remote_engine", None)
+        if not r:
+            return
+        import subprocess as _sp
+        try:
+            cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                   f"-o Port={r['port']} {r['user']}@{r['host']} "
+                   f"'ls /root/lerobot-venv/bin/python3 2>/dev/null && /root/lerobot-venv/bin/python3 "
+                   f"-c \"import lerobot; print(\\\"LEROBOT_OK\\\")\" 2>/dev/null; "
+                   f"tail -1 /tmp/venv_install.log 2>/dev/null'")
+            out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").strip()
+            if "LEROBOT_OK" in out:
+                self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + lerobot)")
+                self.remote_env_lbl.setStyleSheet(f"color:#3fb950; background:transparent; border:none; font-size:10px; font-weight:bold;")
+                try:
+                    self._env_timer.stop()
+                except Exception:
+                    pass
+            elif "lerobot-venv" in out or "venv_install" in out or out:
+                last = [l for l in out.splitlines() if l.strip()][-1] if out.splitlines() else ""
+                self.remote_env_lbl.setText(f"🔧 远程环境: 安装中 · {last[:45]}")
+                self.remote_env_lbl.setStyleSheet(f"color:{C_ORANGE}; background:transparent; border:none; font-size:10px;")
+            else:
+                self.remote_env_lbl.setText("🔧 远程环境: 未检测到 venv (自动安装中)")
+        except Exception:
+            self.remote_env_lbl.setText("🔧 远程环境: 检查中...")
+
+    def _set_ssh_status(self, text):
+        try:
+            self.ssh_status.setText(text)
+            self.btn_ssh.setEnabled(True)
+        except Exception:
+            pass
+    
     def showEvent(self, event):
         """Override showEvent to set minimum height based on screen size"""
         super().showEvent(event)
@@ -3294,6 +3655,10 @@ class TrainingModule(QWidget):
 
     def _start_training(self):
         """Start SmolVLA training"""
+        # 🌐 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 remote → 训练提交远程 V100
+        if getattr(self, "gpu_mode", "local") == "remote" and getattr(self, "remote_engine", None):
+            self._start_remote_training()
+            return
         # Dataset
         dataset_repo_id = self.dataset_combo.currentText()
         ds_name = dataset_repo_id.split("/")[-1]
@@ -7115,7 +7480,8 @@ class StudioMainWindow(QMainWindow):
 
         self.stack.addWidget(ArchitectureModule())
         self.stack.addWidget(DatasetModule())
-        self.stack.addWidget(TrainingModule())
+        self.model_engine = TrainingModule()  # 🌐 2026-08-08 老倪: Model Engine 中枢 (GPU 引擎选择)
+        self.stack.addWidget(self.model_engine)
         self.stack.addWidget(EvalModule())
         self.stack.addWidget(HardwareModule())
         self.stack.addWidget(ConfigModule())
@@ -7132,6 +7498,7 @@ class StudioMainWindow(QMainWindow):
         # Simulink 模式 (对标 Simulink 拖拽仿真 · 与 web comfyui.html 同步)
         self.simulink = SimulinkModule()
         self.simulink.flow_synced = self.on_flow_sync
+        self.simulink.set_model_engine(self.model_engine)  # 🌐 2026-08-08 老倪: simulink 训练走 Model Engine
         self.stack.addWidget(self.simulink)
 
         # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
@@ -7429,7 +7796,7 @@ class StudioMainWindow(QMainWindow):
         view_targets = [
             ("返回首页", "home"),
             ("数据集管理", "dataset"),
-            ("训练控制台", "training"),
+            ("模型引擎", "training"),
             ("评估分析", "evaluation"),
             ("硬件工具箱", "hardware"),
             ("配置中心", "config"),
