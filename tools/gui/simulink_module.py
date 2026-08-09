@@ -508,12 +508,6 @@ REFERENCE_APPS = [
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
 LIBRARY = [
-    # 🧩 原子技能入口 (2026-08-09 老倪: 模块库最顶部 — 打开原子技能 → 结构条件 → SYS1 → action)
-    ("skill", "🧩 原子技能入口", [
-        {"name": "🧩 原子", "params": {"atomic_gate": True},
-         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
-    ]),
-    # 🏭 场景功能块 (2026-08-09 老倪: 光模块工厂三大场景 — 点击打开 ECS 链接 + 建场景节点链)
     # 场景定义见 flows/scene_skills_3scenarios.json (静静 2026-08-09: 三场景 JSON 含工艺指标/结构尺寸)
     ("scene", "🏭 场景 (3)", [
         {"name": "🔌 插拔场景 · QSFP-DD", "params": {"scene_id": "SCN-01",
@@ -523,6 +517,13 @@ LIBRARY = [
         {"name": "🔍 光学检测场景 · AOI", "params": {"scene_id": "SCN-03",
           "desc": "光模块全检AOI: 检出率≥99.9%, 12s/颗, 0.35μm分辨率 (SCN-03)"}},
     ]),
+    # 🧩 原子技能入口 (2026-08-09 老倪: 模块库最顶部 — 打开原子技能 → 结构条件 → SYS1 → action)
+    ("skill", "🧩 原子技能入口", [
+        {"name": "🧩 原子", "params": {"atomic_gate": True},
+         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
+    ]),
+    # 🏭 场景功能块 (2026-08-09 老倪: 光模块工厂三大场景 — 点击打开 ECS 链接 + 建场景节点链)
+
     # 🎯 YOLO 3D感知模块 (2026-08-06 老倪: 控制台要明显看到 yolo 3d 检测模块, state 输入来源)
     ("model", "🎯 YOLO 3D (感知)", [
         {"name": "🎯 YOLO 3D", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
@@ -1943,6 +1944,31 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, disp)
         else:
             painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
+        # 🤖 2026-08-09 老倪: 场景节点 — 右上角画小机器人图标 (参考半导体产线机器人)
+        if t == "scene":
+            try:
+                _rx = self.w - 26
+                _ry = 2
+                _rc = QColor("#00d4aa")
+                painter.setRenderHint(QPainter.Antialiasing)
+                # 天线
+                painter.setPen(QPen(_rc, 1.2))
+                painter.drawLine(QPointF(_rx + 8, _ry - 1), QPointF(_rx + 8, _ry + 4))
+                painter.drawEllipse(QPointF(_rx + 8, _ry - 3), 2.5, 2.5)
+                # 头 (圆角矩形)
+                painter.setBrush(QColor(0, 212, 170, 60))
+                painter.drawRoundedRect(QRectF(_rx, _ry + 4, 16, 13), 3, 3)
+                # 眼睛
+                painter.setPen(QPen(_rc, 1.1))
+                painter.drawPoint(QPointF(_rx + 5, _ry + 9))
+                painter.drawPoint(QPointF(_rx + 11, _ry + 9))
+                # 身体
+                painter.drawRoundedRect(QRectF(_rx + 3, _ry + 19, 10, 9), 2, 2)
+                # 手臂
+                painter.drawLine(QPointF(_rx + 1, _ry + 21), QPointF(_rx - 2, _ry + 26))
+                painter.drawLine(QPointF(_rx + 15, _ry + 21), QPointF(_rx + 18, _ry + 26))
+            except Exception:
+                pass
         # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角青色小字)
         try:
             # 🐛 2026-08-09 老倪: 画布节点 ID 常显 (不依赖 hover — 用户要求与模块库一致可见)
@@ -3384,7 +3410,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🏭",
+                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖",
                      "coord_overlay": "🧩"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
