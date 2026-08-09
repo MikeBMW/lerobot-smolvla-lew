@@ -1785,7 +1785,7 @@ class SimNodeItem(QGraphicsObject):
         # 避免 QGraphicsScene 默认"移动所有选中项"导致联动
         self.setFlags(QGraphicsItem.ItemIsSelectable |
                       QGraphicsItem.ItemSendsGeometryChanges)
-        self.setZValue(10)
+        self.setZValue(1 if node.get("type") == "row_bg" else 10)  # 🐛 2026-08-09: row_bg 垫底 (否则盖在节点上颜色模糊)
 
     def boundingRect(self):
         return QRectF(0, 0, self.w, self.h).adjusted(-12, -12, 12, 12)
