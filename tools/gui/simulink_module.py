@@ -778,10 +778,17 @@ for _gtype, _gname, _items in LIBRARY:
     for _it in _items:
         _lib_seq += 1
         LIBRARY_SEQ[_it["name"]] = _lib_seq
+# 🐛 2026-08-09 老倪: 模板节点名也注册 (总系统 SYS1动作系统/数据集合 等在 LIBRARY 无对应 → 画布回退随机撞号)
+for _app in REFERENCE_APPS:
+    for _n in _app[1]:
+        _nm = _n[1]
+        if _nm and _nm not in LIBRARY_SEQ:
+            _lib_seq += 1
+            LIBRARY_SEQ[_nm] = _lib_seq
 
 
 def lib_seq_of(name):
-    """模块 name → LIBRARY 稳定序号 (未找到 → None)"""
+    """模块/模板 name → 稳定序号 (未找到 → None)"""
     return LIBRARY_SEQ.get(name)
 
 
