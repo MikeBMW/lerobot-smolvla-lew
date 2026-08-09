@@ -2643,6 +2643,9 @@ class SimulinkModule(QWidget):
                     continue  # 🐛 2026-08-09: 模块库按钮跳过 (用 lib_seq 编号, 与画布一致)
                 if isinstance(w, (QScrollArea, QScrollBar)):
                     continue
+                from PyQt5.QtWidgets import QGraphicsView
+                if isinstance(w, QGraphicsView) or isinstance(w, QGraphicsView.viewport().__class__):
+                    continue  # 🐛 画布/场景不编号 (节点 ID 由 paint 常显)
                 if isinstance(w, QFrame) and (w.layout() is not None or w.children()):
                     continue  # 容器卡片
                 if isinstance(w, QLabel):
