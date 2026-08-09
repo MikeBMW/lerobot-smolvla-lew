@@ -4897,6 +4897,12 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_peg 不存在 → 回退自动选择")
             elif src == "orin":
                 self.log_signal.emit("📥 数据源 [Orin] → 强制拉取 relay 真实数据")
+            else:
+                # 🐛 2026-08-09 老倪: 无 switch 时默认本地 metaworld (Orin 原始包未转 parquet 数据集,
+                #   拉 relay 存档 closed_loop 会 FileNotFoundError — 不再默认拉)
+                if os.path.isdir(placeholder):
+                    self.log_signal.emit("📦 数据源默认 [metaworld] → 本地占位集训练 (Orin 未转数据集前不用 relay)")
+                    return placeholder, "metaworld 占位集 (默认)", False
 
         # 1. 尝试拉真实数据
         try:
