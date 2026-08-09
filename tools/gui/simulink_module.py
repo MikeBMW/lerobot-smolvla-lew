@@ -6024,6 +6024,10 @@ class SimulinkModule(QWidget):
         if node.get("type") == "train_gate":
             self._toggle_train_gate(node)
             return
+        # 1.7) 🧩 结构条件节点 (2026-08-09 老倪: ControlNet 思想 — 双击从原子技能库选条件编码注入)
+        if node.get("type") == "coord_overlay":
+            self._pick_atomic_condition(node)
+            return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
             if kw in node.get("name", ""):
@@ -6147,6 +6151,80 @@ class SimulinkModule(QWidget):
         en = p["train_enabled"]
         self._log(f"☑ 训练开关: {'打勾 → 训练启用' if en else '不打勾 → 训练跳过'} (双击可再切换)")
         self._sync()
+
+    def _pick_atomic_condition(self, node):
+        """🧩 ControlNet 思想: 双击结构条件节点 → 从 atomic_skills_conditions.json 选原子技能条件 → 注入节点
+        条件编码 (多模态 one-hot) 作为控制信号, latent += proj(cond)×gate (图像是背景, 条件是主线)"""
+        import os as _os, json as _j
+        path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "flows", "atomic_skills_conditions.json")
+        if not _os.path.exists(path):
+            self._log(f"❌ 条件库不存在: {path} (先运行 flows/gen_atomic_conditions.py)")
+            return
+        try:
+            conds = _j.load(open(path, encoding="utf-8"))
+        except Exception as e:
+            self._log(f"❌ 条件库解析失败: {e}")
+            return
+        # 弹选择框: 分类 → 技能 → 条件
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QComboBox, QPushButton, QLabel
+        dlg = QDialog(self)
+        dlg.setWindowTitle("🧩 结构条件 · 原子技能库 (ControlNet)")
+        dlg.setMinimumWidth(480)
+        lay = QVBoxLayout(dlg)
+        from collections import OrderedDict
+        by_cat = OrderedDict()
+        for c in conds:
+            by_cat.setdefault(c["category"], []).append(c)
+        cat_cb = QComboBox()
+        cat_cb.addItems(list(by_cat.keys()))
+        skill_cb = QComboBox()
+        def fill_skills(_):
+            skill_cb.clear()
+            for c in by_cat.get(cat_cb.currentText(), []):
+                skill_cb.addItem(f"{c['cond_id']} {c['skill_name'][:22]} · {c['action']}", c)
+        cat_cb.currentIndexChanged.connect(fill_skills)
+        fill_skills(0)
+        lay.addWidget(QLabel("① 技能大类:"))
+        lay.addWidget(cat_cb)
+        lay.addWidget(QLabel("② 原子技能 → 条件编码:"))
+        lay.addWidget(skill_cb)
+        info = QLabel("")
+        info.setWordWrap(True)
+        info.setStyleSheet("color:#8b949e; font-size:10px;")
+        lay.addWidget(info)
+        def show_info(_):
+            c = skill_cb.currentData()
+            if c:
+                enc = c.get("encoding", {})
+                on = [k for k, v in enc.items() if v]
+                info.setText(f"Topic: {c['topic']}\n模态: {', '.join(c.get('modalities', []))} · 编码位: {on}\n动作: {c['action']} · gate={c.get('gate', 0.5)}")
+        skill_cb.currentIndexChanged.connect(show_info)
+        show_info(0)
+        btn_ok = QPushButton("✅ 注入此条件")
+        btn_ok.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border-radius:4px; padding:8px; font-weight:bold;}")
+        def apply():
+            c = skill_cb.currentData()
+            if not c:
+                return
+            p = node.setdefault("params", {})
+            p["cond_ref"] = c["cond_id"]
+            p["skill"] = c["skill_name"]
+            p["topic"] = c["topic"]
+            p["action"] = c["action"]
+            p["modalities"] = c.get("modalities", [])
+            p["encoding"] = c.get("encoding", {})
+            p["gate"] = c.get("gate", 0.5)
+            p["desc"] = f"🧩 {c['skill_name'][:24]} 条件编码 (ControlNet: latent += proj(cond)×{p['gate']})"
+            it = self._items.get(node["id"])
+            if it:
+                it.update()
+            self.canvas._scene.update()
+            self._log(f"🧩 结构条件 ← {c['cond_id']} {c['skill_name']} (模态 {c.get('modalities')} · gate {p['gate']})")
+            dlg.accept()
+            self._sync()
+        btn_ok.clicked.connect(apply)
+        lay.addWidget(btn_ok)
+        dlg.exec_()
 
     def _toggle_train_gate_ctx(self, name, train_enabled):
         """node_logic 框架动作: 按节点名找到画布开关节点并切换 (兼容右键逻辑执行)"""

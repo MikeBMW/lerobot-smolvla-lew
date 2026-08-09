@@ -1,0 +1,6687 @@
+[
+ {
+  "skill_id": "NPO002",
+  "skill_name": "NPO精密料盘穴位与满空映射",
+  "category": "NPO近封装光学",
+  "cond_id": "D001",
+  "condition": "NPO精密料盘穴位与满空映射条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别料盘基准→解析行列穴位→检测满空/错位/翻转→生成可取列表。"
+ },
+ {
+  "skill_id": "NPO003",
+  "skill_name": "NPO主板/PCB中介板载具6D定位",
+  "category": "NPO近封装光学",
+  "cond_id": "D002",
+  "condition": "NPO主板/PCB中介板载具6D定位条件",
+  "topic": "/dds/cond/npo___pcb_____6d",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "粗定位→孔/边/销基准识别→手眼变换→输出装配坐标系。"
+ },
+ {
+  "skill_id": "NPO004",
+  "skill_name": "ASIC周边禁入区/装配位检查",
+  "category": "NPO近封装光学",
+  "cond_id": "D003",
+  "condition": "ASIC周边禁入区/装配位检查条件",
+  "topic": "/dds/cond/asic",
+  "modalities": [
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "3D扫描→与CAD比对→输出干涉体、装配窗口和安全路径。"
+ },
+ {
+  "skill_id": "NPO005",
+  "skill_name": "光电引擎基板/子载板装入工装",
+  "category": "NPO近封装光学",
+  "cond_id": "D004",
+  "condition": "光电引擎基板/子载板装入工装条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取基板→方向确认→二次视觉定位→低力落位→在位确认。"
+ },
+ {
+  "skill_id": "NPO006",
+  "skill_name": "VCSEL/PIC/PD阵列微小件取料",
+  "category": "NPO近封装光学",
+  "cond_id": "D005",
+  "condition": "VCSEL/PIC/PD阵列微小件取料条件",
+  "topic": "/dds/cond/vcsel_pic_pd",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微定位→真空/微夹持→受控分离→取后残留检查→转运。"
+ },
+ {
+  "skill_id": "NPO007",
+  "skill_name": "光电芯片方向/极性/批次绑定",
+  "category": "NPO近封装光学",
+  "cond_id": "D006",
+  "condition": "光电芯片方向/极性/批次绑定条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "code"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微成像→特征/标记识别→方向校正→芯片ID与基板位置绑定。"
+ },
+ {
+  "skill_id": "NPO008",
+  "skill_name": "光电芯片精密贴装/低力落位",
+  "category": "NPO近封装光学",
+  "cond_id": "D007",
+  "condition": "光电芯片精密贴装/低力落位条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "粗对准→局部视觉二次定位→低力接触→位置/高度复检→释放。"
+ },
+ {
+  "skill_id": "NPO009",
+  "skill_name": "微量胶/助焊材料定量点涂",
+  "category": "NPO近封装光学",
+  "cond_id": "D008",
+  "condition": "微量胶/助焊材料定量点涂条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "dispense",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别点胶位→针尖标定→定量点涂→胶形视觉检查→异常补偿。"
+ },
+ {
+  "skill_id": "NPO010",
+  "skill_name": "光纤阵列/MT类端头精密取放",
+  "category": "NPO近封装光学",
+  "cond_id": "D009",
+  "condition": "光纤阵列/MT类端头精密取放条件",
+  "topic": "/dds/cond/mt",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别端头和尾纤→夹持刚性区→控制柔性尾纤→放入主动对准台。"
+ },
+ {
+  "skill_id": "NPO011",
+  "skill_name": "光纤阵列主动光学对准",
+  "category": "NPO近封装光学",
+  "cond_id": "D010",
+  "condition": "光纤阵列主动光学对准条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "粗对准→六自由度微扫→读取光功率→峰值搜索→稳定性确认。"
+ },
+ {
+  "skill_id": "NPO012",
+  "skill_name": "对准后固定与固化状态确认",
+  "category": "NPO近封装光学",
+  "cond_id": "D011",
+  "condition": "对准后固定与固化状态确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "align",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "保持位姿→点胶→触发固化→监测功率/位移→固化后复测。"
+ },
+ {
+  "skill_id": "NPO013",
+  "skill_name": "微互连/焊点/金线显微复检",
+  "category": "NPO近封装光学",
+  "cond_id": "D012",
+  "condition": "微互连/焊点/金线显微复检条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多角度成像→缺陷检测→尺寸/形貌量测→分级→结果绑定。"
+ },
+ {
+  "skill_id": "NPO014",
+  "skill_name": "光电引擎盖板/屏蔽罩装配",
+  "category": "NPO近封装光学",
+  "cond_id": "D013",
+  "condition": "光电引擎盖板/屏蔽罩装配条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取盖板→方向识别→避开尾纤→低力落位→扣合/锁付→外观复检。"
+ },
+ {
+  "skill_id": "NPO015",
+  "skill_name": "NPO光电引擎从料盘低力取出",
+  "category": "NPO近封装光学",
+  "cond_id": "D014",
+  "condition": "NPO光电引擎从料盘低力取出条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别抓取禁区→选择末端→低力夹持/托举→离盘复检→搬运。"
+ },
+ {
+  "skill_id": "NPO016",
+  "skill_name": "高速电接口焊盘/插座预检",
+  "category": "NPO近封装光学",
+  "cond_id": "D015",
+  "condition": "高速电接口焊盘/插座预检条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微/3D扫描→缺陷与共面度分析→合格放行或返修。"
+ },
+ {
+  "skill_id": "NPO017",
+  "skill_name": "可分离高速互连/LGA插座对准",
+  "category": "NPO近封装光学",
+  "cond_id": "D016",
+  "condition": "可分离高速互连/LGA插座对准条件",
+  "topic": "/dds/cond/lga",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "粗定位→孔/边/接点对准→视觉-力觉微调→进入预压位置。"
+ },
+ {
+  "skill_id": "NPO018",
+  "skill_name": "NPO模块均匀压合与就位",
+  "category": "NPO近封装光学",
+  "cond_id": "D017",
+  "condition": "NPO模块均匀压合与就位条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多点高度确认→垂直压合→实时监测力-位移→到位停机→回弹复检。"
+ },
+ {
+  "skill_id": "NPO019",
+  "skill_name": "保持框/压板定位与锁止",
+  "category": "NPO近封装光学",
+  "cond_id": "D018",
+  "condition": "保持框/压板定位与锁止条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取件→方向确认→避让光纤→放置→锁扣/插销操作→到位检查。"
+ },
+ {
+  "skill_id": "NPO020",
+  "skill_name": "多螺钉顺序锁付与扭矩角度追溯",
+  "category": "NPO近封装光学",
+  "cond_id": "D019",
+  "condition": "多螺钉顺序锁付与扭矩角度追溯条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别螺孔→自动上钉→分级预紧→按序终拧→记录扭矩/角度。"
+ },
+ {
+  "skill_id": "NPO021",
+  "skill_name": "NPO模块拆卸/抬升防粘连",
+  "category": "NPO近封装光学",
+  "cond_id": "D020",
+  "condition": "NPO模块拆卸/抬升防粘连条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "确认安全状态→解锁→均匀卸载→微量抬升/分离→取出→接口保护。"
+ },
+ {
+  "skill_id": "NPO022",
+  "skill_name": "TIM/导热垫型号与正反识别",
+  "category": "NPO近封装光学",
+  "cond_id": "D021",
+  "condition": "TIM/导热垫型号与正反识别条件",
+  "topic": "/dds/cond/tim",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读码/视觉→厚度/外形检查→正反面识别→加载贴装参数。"
+ },
+ {
+  "skill_id": "NPO023",
+  "skill_name": "TIM/导热垫无褶皱贴装",
+  "category": "NPO近封装光学",
+  "cond_id": "D022",
+  "condition": "TIM/导热垫无褶皱贴装条件",
+  "topic": "/dds/cond/tim",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "attach",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取材→撕保护膜→视觉对准→滚压/低力贴合→轮廓复检。"
+ },
+ {
+  "skill_id": "NPO024",
+  "skill_name": "NPO冷板/热扩散件对准放置",
+  "category": "NPO近封装光学",
+  "cond_id": "D023",
+  "condition": "NPO冷板/热扩散件对准放置条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别冷板接口→路径避让→多点高度对准→缓慢落位→在位复检。"
+ },
+ {
+  "skill_id": "NPO025",
+  "skill_name": "冷板锁付顺序与接触压力确认",
+  "category": "NPO近封装光学",
+  "cond_id": "D024",
+  "condition": "冷板锁付顺序与接触压力确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "分级预紧→对角锁付→采集扭矩/位移/压力→热界面复检。"
+ },
+ {
+  "skill_id": "NPO026",
+  "skill_name": "液冷快速接头对准与插接",
+  "category": "NPO近封装光学",
+  "cond_id": "D025",
+  "condition": "液冷快速接头对准与插接条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "joint",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别公母端→检查保护状态→同轴微调→受控插入→锁止确认。"
+ },
+ {
+  "skill_id": "NPO027",
+  "skill_name": "液冷接头锁止/泄漏初检",
+  "category": "NPO近封装光学",
+  "cond_id": "D026",
+  "condition": "液冷接头锁止/泄漏初检条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "锁止复检→低压预充→监测压力保持和渗漏→异常隔离。"
+ },
+ {
+  "skill_id": "NPO028",
+  "skill_name": "流量/压力/温度传感器接入与读数确认",
+  "category": "NPO近封装光学",
+  "cond_id": "D027",
+  "condition": "流量/压力/温度传感器接入与读数确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "temp"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "插接传感器/线缆→上电→读取数值→与配方比对→记录基线。"
+ },
+ {
+  "skill_id": "NPO029",
+  "skill_name": "光口防尘帽取下与回装",
+  "category": "NPO近封装光学",
+  "cond_id": "D028",
+  "condition": "光口防尘帽取下与回装条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别帽体→夹持非光学区→直线拔出→存入对应槽位→装配后回装。"
+ },
+ {
+  "skill_id": "NPO030",
+  "skill_name": "盲插光连接器/MT端面对准",
+  "category": "NPO近封装光学",
+  "cond_id": "D029",
+  "condition": "盲插光连接器/MT端面对准条件",
+  "topic": "/dds/cond/mt",
+  "modalities": [
+   "image",
+   "force",
+   "joint"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别键位/导向特征→粗对准→视觉-力觉微调→进入导向段。"
+ },
+ {
+  "skill_id": "NPO031",
+  "skill_name": "光连接器受控插入与锁止确认",
+  "category": "NPO近封装光学",
+  "cond_id": "D030",
+  "condition": "光连接器受控插入与锁止确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force",
+   "joint",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "慢速插入→监测力位移→到位/卡扣确认→轻拉复检→记录曲线。"
+ },
+ {
+  "skill_id": "NPO032",
+  "skill_name": "光纤端面显微检查与局部处理",
+  "category": "NPO近封装光学",
+  "cond_id": "D031",
+  "condition": "光纤端面显微检查与局部处理条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取图→缺陷判定→必要时局部端面处理→复检→记录图像。"
+ },
+ {
+  "skill_id": "NPO033",
+  "skill_name": "光纤极性/端口/通道映射",
+  "category": "NPO近封装光学",
+  "cond_id": "D032",
+  "condition": "光纤极性/端口/通道映射条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读取标签/视觉键位→光路通断测试→与设计映射比对→错误分流。"
+ },
+ {
+  "skill_id": "NPO034",
+  "skill_name": "光纤路径与最小弯曲半径控制",
+  "category": "NPO近封装光学",
+  "cond_id": "D033",
+  "condition": "光纤路径与最小弯曲半径控制条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "press",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别起终点→规划低曲率路径→逐段铺设→视觉检查弯曲半径和交叉。"
+ },
+ {
+  "skill_id": "NPO035",
+  "skill_name": "光纤余量/应变释放与夹扣操作",
+  "category": "NPO近封装光学",
+  "cond_id": "D034",
+  "condition": "光纤余量/应变释放与夹扣操作条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "测量余量→形成规定弯曲→压入夹扣→轻拉验证→复检。"
+ },
+ {
+  "skill_id": "NPO036",
+  "skill_name": "外置激光源模块识别与防呆",
+  "category": "NPO近封装光学",
+  "cond_id": "D035",
+  "condition": "外置激光源模块识别与防呆条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读码/外形识别→功率等级校验→方向防呆→加载插拔配方。"
+ },
+ {
+  "skill_id": "NPO037",
+  "skill_name": "外置激光源模块盲插与电光接口接合",
+  "category": "NPO近封装光学",
+  "cond_id": "D036",
+  "condition": "外置激光源模块盲插与电光接口接合条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "对准导轨→低速插入→监测力曲线→锁止→接口在位检测。"
+ },
+ {
+  "skill_id": "NPO038",
+  "skill_name": "激光安全互锁/存在信号确认",
+  "category": "NPO近封装光学",
+  "cond_id": "D037",
+  "condition": "激光安全互锁/存在信号确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读取存在/锁止/盖板信号→执行安全逻辑→允许或阻断激光使能。"
+ },
+ {
+  "skill_id": "NPO039",
+  "skill_name": "外置激光光功率/稳定性确认",
+  "category": "NPO近封装光学",
+  "cond_id": "D038",
+  "condition": "外置激光光功率/稳定性确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "上电→逐通道读取功率→稳定时间监测→阈值判定→结果绑定。"
+ },
+ {
+  "skill_id": "NPO040",
+  "skill_name": "NPO电源/控制连接器插接",
+  "category": "NPO近封装光学",
+  "cond_id": "D039",
+  "condition": "NPO电源/控制连接器插接条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接口检查→键位识别→微动搜索→柔顺插入→到位/导通确认。"
+ },
+ {
+  "skill_id": "NPO041",
+  "skill_name": "NPO上电/下电与模块激活顺序",
+  "category": "NPO近封装光学",
+  "cond_id": "D040",
+  "condition": "NPO上电/下电与模块激活顺序条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "确认装配/冷却/互锁→分阶段上电→状态读取→测试→按逆序安全停用。"
+ },
+ {
+  "skill_id": "NPO042",
+  "skill_name": "模块ID/固件/端口映射绑定",
+  "category": "NPO近封装光学",
+  "cond_id": "D041",
+  "condition": "模块ID/固件/端口映射绑定条件",
+  "topic": "/dds/cond/id",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读模块ID/固件→校验版本→绑定物理位置和端口→写入谱系。"
+ },
+ {
+  "skill_id": "NPO043",
+  "skill_name": "Tx/Rx光功率与波长测试",
+  "category": "NPO近封装光学",
+  "cond_id": "D042",
+  "condition": "Tx/Rx光功率与波长测试条件",
+  "topic": "/dds/cond/tx_rx",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接入测试光路→逐通道激活→采集功率/波长→判定→分流。"
+ },
+ {
+  "skill_id": "NPO044",
+  "skill_name": "200G/lane高速电通道连续性/接触测试",
+  "category": "NPO近封装光学",
+  "cond_id": "D043",
+  "condition": "200G/lane高速电通道连续性/接触测试条件",
+  "topic": "/dds/cond/200g_lane",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "加载测试模式→逐通道连续性/误码初检→识别开路/接触不良→重压/返修。"
+ },
+ {
+  "skill_id": "NPO045",
+  "skill_name": "多通道BER/眼图/链路裕量测试",
+  "category": "NPO近封装光学",
+  "cond_id": "D044",
+  "condition": "多通道BER/眼图/链路裕量测试条件",
+  "topic": "/dds/cond/ber",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "自动连线/切换→并行或逐通道测试→统计弱通道→关联装配数据。"
+ },
+ {
+  "skill_id": "NPO046",
+  "skill_name": "液冷/温度循环下光电性能联测",
+  "category": "NPO近封装光学",
+  "cond_id": "D045",
+  "condition": "液冷/温度循环下光电性能联测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "temp",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "设定流量/温度→分阶段加载→采集温度/功率/BER→异常降载或停机。"
+ },
+ {
+  "skill_id": "NPO047",
+  "skill_name": "NPO装配3D终检",
+  "category": "NPO近封装光学",
+  "cond_id": "D046",
+  "condition": "NPO装配3D终检条件",
+  "topic": "/dds/cond/npo__3d",
+  "modalities": [
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多角度2D/3D扫描→与CAD/工艺规则比对→缺陷分级→记录。"
+ },
+ {
+  "skill_id": "NPO048",
+  "skill_name": "NPO模块重插/重压/复测",
+  "category": "NPO近封装光学",
+  "cond_id": "D047",
+  "condition": "NPO模块重插/重压/复测条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "定位异常通道→安全下电→解锁/卸载→重插或重压→重新锁付→复测。"
+ },
+ {
+  "skill_id": "NPO049",
+  "skill_name": "光纤/激光/液冷接口安全拆解",
+  "category": "NPO近封装光学",
+  "cond_id": "D048",
+  "condition": "光纤/激光/液冷接口安全拆解条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "停用→确认无光/无压→释放锁止→逐接口断开→装防护帽→状态记录。"
+ },
+ {
+  "skill_id": "NPO050",
+  "skill_name": "NPO模块/主板防护包装与周转",
+  "category": "NPO近封装光学",
+  "cond_id": "D049",
+  "condition": "NPO模块/主板防护包装与周转条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "端口保护确认→放入定制穴位→防震固定→读码绑定→合盖/封装。"
+ },
+ {
+  "skill_id": "NPO051",
+  "skill_name": "NPO全链路谱系绑定",
+  "category": "NPO近封装光学",
+  "cond_id": "D050",
+  "condition": "NPO全链路谱系绑定条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "逐工序采集ID/槽位/参数→绑定关系→异常继承→正反向查询。"
+ },
+ {
+  "skill_id": "NPO052",
+  "skill_name": "新NPO模块/主板接口快速建模与换型",
+  "category": "NPO近封装光学",
+  "cond_id": "D051",
+  "condition": "新NPO模块/主板接口快速建模与换型条件",
+  "topic": "/dds/cond/npo",
+  "modalities": [
+   "force",
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "扫描/CAD导入→定义基准/抓取区/接口/力阈值→仿真→首件验证→发布配方。"
+ },
+ {
+  "skill_id": "XPO002",
+  "skill_name": "双Paddle Card料盘穴位映射",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D052",
+  "condition": "双Paddle Card料盘穴位映射条件",
+  "topic": "/dds/cond/paddle_card",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别料盘基准→解析穴位→检测正反/缺件→绑定Card 1与Card 2配对。"
+ },
+ {
+  "skill_id": "XPO003",
+  "skill_name": "中央冷板/液冷组件载具识别",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D053",
+  "condition": "中央冷板/液冷组件载具识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读码/外形识别→方向防呆→接口保护状态检查→加载装配参数。"
+ },
+ {
+  "skill_id": "XPO004",
+  "skill_name": "上/下壳体与弹出机构部件齐套检查",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D054",
+  "condition": "上/下壳体与弹出机构部件齐套检查条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "扫描部件盘→数量/型号比对→方向分类→缺件报警。"
+ },
+ {
+  "skill_id": "XPO005",
+  "skill_name": "MPO-16/光连接器组件料盘识别",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D055",
+  "condition": "MPO-16/光连接器组件料盘识别条件",
+  "topic": "/dds/cond/mpo_16",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微/宏观识别→键位/极性确认→穴位绑定→不良件隔离。"
+ },
+ {
+  "skill_id": "XPO006",
+  "skill_name": "48V/50V电源与通信板部件识别",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D056",
+  "condition": "48V/50V电源与通信板部件识别条件",
+  "topic": "/dds/cond/48v_50v",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "press",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读码→外形/键位识别→额定电压校验→ESD/安全状态确认。"
+ },
+ {
+  "skill_id": "XPO007",
+  "skill_name": "Paddle Card热侧/冷侧方向识别",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D057",
+  "condition": "Paddle Card热侧/冷侧方向识别条件",
+  "topic": "/dds/cond/paddle_card",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多角度成像→器件布局/标记识别→热/冷侧判定→方向防呆。"
+ },
+ {
+  "skill_id": "XPO008",
+  "skill_name": "Paddle Card器件干涉/高度图检查",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D058",
+  "condition": "Paddle Card器件干涉/高度图检查条件",
+  "topic": "/dds/cond/paddle_card",
+  "modalities": [
+   "image",
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "3D扫描→建立高度图→与末端/冷板/壳体碰撞模型比对。"
+ },
+ {
+  "skill_id": "XPO009",
+  "skill_name": "Paddle Card精密抓取与板弯控制",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D059",
+  "condition": "Paddle Card精密抓取与板弯控制条件",
+  "topic": "/dds/cond/paddle_card",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别可夹持边→多点支撑→受控抬升→姿态保持→放入装配治具。"
+ },
+ {
+  "skill_id": "XPO010",
+  "skill_name": "中央冷板定向放置",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D060",
+  "condition": "中央冷板定向放置条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取冷板→方向/端口识别→6D对准→低力落位→在位确认。"
+ },
+ {
+  "skill_id": "XPO011",
+  "skill_name": "双面TIM/导热界面材料贴装",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D061",
+  "condition": "双面TIM/导热界面材料贴装条件",
+  "topic": "/dds/cond/tim",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "attach",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "材料识别→去膜→双面定位贴合→平整度/覆盖检查。"
+ },
+ {
+  "skill_id": "XPO012",
+  "skill_name": "第一块Paddle Card与冷板对准贴合",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D062",
+  "condition": "第一块Paddle Card与冷板对准贴合条件",
+  "topic": "/dds/cond/paddle_card",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "attach",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "粗定位→基准对准→缓慢贴合→监测力/高度→夹持保持。"
+ },
+ {
+  "skill_id": "XPO013",
+  "skill_name": "第二块Paddle Card反向贴合/对称叠装",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D063",
+  "condition": "第二块Paddle Card反向贴合/对称叠装条件",
+  "topic": "/dds/cond/paddle_card",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "attach",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "方向确认→翻转/重构→对准另一侧→低力贴合→双板相对位置复检。"
+ },
+ {
+  "skill_id": "XPO014",
+  "skill_name": "Belly-to-Belly多点压合与平行度控制",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D064",
+  "condition": "Belly-to-Belly多点压合与平行度控制条件",
+  "topic": "/dds/cond/belly_to_belly",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "press",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多点夹具闭合→同步采集位移/压力→逐级加载→稳定保持→复检。"
+ },
+ {
+  "skill_id": "XPO015",
+  "skill_name": "CPC Fly-over线缆取放与路径规划",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D065",
+  "condition": "CPC Fly-over线缆取放与路径规划条件",
+  "topic": "/dds/cond/cpc_fly_over",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别线缆端头→夹持刚性区→规划低应力路径→放入导向区域。"
+ },
+ {
+  "skill_id": "XPO016",
+  "skill_name": "CPC Fly-over连接器柔顺插接",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D066",
+  "condition": "CPC Fly-over连接器柔顺插接条件",
+  "topic": "/dds/cond/cpc_fly_over",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "键位识别→微动搜索→柔顺插入→力曲线/卡扣/导通复检。"
+ },
+ {
+  "skill_id": "XPO017",
+  "skill_name": "电源/通信板定向装入",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D067",
+  "condition": "电源/通信板定向装入条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "方向识别→抓取→6D对准→低力装入→在位确认。"
+ },
+ {
+  "skill_id": "XPO018",
+  "skill_name": "独立电源/控制连接器压接或插接",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D068",
+  "condition": "独立电源/控制连接器压接或插接条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接口预检→键位对准→受控插入/压接→锁止和导通确认。"
+ },
+ {
+  "skill_id": "XPO019",
+  "skill_name": "XPO光连接器阵列定位与装入",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D069",
+  "condition": "XPO光连接器阵列定位与装入条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "穴位取件→键位确认→精密放置→锁止/紧固→位置复检。"
+ },
+ {
+  "skill_id": "XPO020",
+  "skill_name": "MPO-16键位/极性/端口编号防错",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D070",
+  "condition": "MPO-16键位/极性/端口编号防错条件",
+  "topic": "/dds/cond/mpo_16",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微/视觉识别→极性规则校验→端口编号绑定→错误隔离。"
+ },
+ {
+  "skill_id": "XPO021",
+  "skill_name": "光连接器受控插入/锁止",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D071",
+  "condition": "光连接器受控插入/锁止条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "joint"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "键位对准→慢速插入→监测力位移→锁止确认→轻拉复检。"
+ },
+ {
+  "skill_id": "XPO022",
+  "skill_name": "光纤端面显微检查与局部处理",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D072",
+  "condition": "光纤端面显微检查与局部处理条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "端面成像→缺陷判定→必要时局部处理→复检→图像绑定。"
+ },
+ {
+  "skill_id": "XPO023",
+  "skill_name": "下壳体定位与叠层装入",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D073",
+  "condition": "下壳体定位与叠层装入条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "壳体定位→叠层托举→多基准对准→缓慢装入→在位复检。"
+ },
+ {
+  "skill_id": "XPO024",
+  "skill_name": "上壳体对准合盖",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D074",
+  "condition": "上壳体对准合盖条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "align",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "抓取上壳→方向确认→路径避让→低力合盖→卡合/孔位复检。"
+ },
+ {
+  "skill_id": "XPO025",
+  "skill_name": "壳体多螺钉顺序锁付",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D075",
+  "condition": "壳体多螺钉顺序锁付条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "螺孔识别→自动上钉→预紧→对角终拧→曲线复核。"
+ },
+ {
+  "skill_id": "XPO026",
+  "skill_name": "弹出器杠杆机构装配",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D076",
+  "condition": "弹出器杠杆机构装配条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "joint"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "零件取放→方向识别→轴孔对准→插销/扣合→运动间隙检查。"
+ },
+ {
+  "skill_id": "XPO027",
+  "skill_name": "释放拉片/Pull Tab装配",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D077",
+  "condition": "释放拉片/Pull Tab装配条件",
+  "topic": "/dds/cond/pull_tab",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取拉片→穿入/扣接→方向检查→拉动回位测试→外观复检。"
+ },
+ {
+  "skill_id": "XPO028",
+  "skill_name": "弹出器1:11杠杆功能与行程测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D078",
+  "condition": "弹出器1:11杠杆功能与行程测试条件",
+  "topic": "/dds/cond/1_11",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "固定模块→施加拉力→测量输入/输出力和行程→重复循环→判定。"
+ },
+ {
+  "skill_id": "XPO029",
+  "skill_name": "模块尺寸/平面度/外观3D终检",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D079",
+  "condition": "模块尺寸/平面度/外观3D终检条件",
+  "topic": "/dds/cond/3d",
+  "modalities": [
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多面3D扫描→尺寸/形貌比对→外观缺陷检测→分级和记录。"
+ },
+ {
+  "skill_id": "XPO030",
+  "skill_name": "液冷快速接头保护帽取下/回装",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D080",
+  "condition": "液冷快速接头保护帽取下/回装条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "识别帽体→无扭矩拔出→存入对应槽位→测试后回装。"
+ },
+ {
+  "skill_id": "XPO031",
+  "skill_name": "液冷快速接头同轴对准与盲插",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D081",
+  "condition": "液冷快速接头同轴对准与盲插条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force",
+   "joint"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接口视觉定位→XYθ微调→慢速插入→监测力/位移→锁止确认。"
+ },
+ {
+  "skill_id": "XPO032",
+  "skill_name": "液冷接头滴漏/锁止状态检测",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D082",
+  "condition": "液冷接头滴漏/锁止状态检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "锁止复检→低压预充→监测压力保持/液滴→异常隔离和退回。"
+ },
+ {
+  "skill_id": "XPO033",
+  "skill_name": "液冷回路耐压/保压测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D083",
+  "condition": "液冷回路耐压/保压测试条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接入测试台→排气→分级加压→保压→采集压降→安全卸压。"
+ },
+ {
+  "skill_id": "XPO034",
+  "skill_name": "流量-压降/流阻测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D084",
+  "condition": "流量-压降/流阻测试条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "设定多档流量→采集入口/出口压力→计算流阻→异常定位。"
+ },
+ {
+  "skill_id": "XPO035",
+  "skill_name": "冷板热接触/红外温升均匀性测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D085",
+  "condition": "冷板热接触/红外温升均匀性测试条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "temp"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "加载分级功耗→稳定流量→红外/温度阵列采集→热点识别→判定。"
+ },
+ {
+  "skill_id": "XPO036",
+  "skill_name": "50V输入极性/绝缘/安全确认",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D086",
+  "condition": "50V输入极性/绝缘/安全确认条件",
+  "topic": "/dds/cond/50v",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接口检查→极性/绝缘测试→接地确认→互锁满足后允许上电。"
+ },
+ {
+  "skill_id": "XPO037",
+  "skill_name": "电源/控制接口I2C/I3C/Reset/Interrupt测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D087",
+  "condition": "电源/控制接口I2C/I3C/Reset/Interrupt测试条件",
+  "topic": "/dds/cond/i2c_i3c_reset_interrupt",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "插入测试治具→读取设备→执行Reset/Interrupt→记录响应和异常。"
+ },
+ {
+  "skill_id": "XPO038",
+  "skill_name": "64条高速电通道连续性/开短路测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D088",
+  "condition": "64条高速电通道连续性/开短路测试条件",
+  "topic": "/dds/cond/64",
+  "modalities": [
+   "pointcloud",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "自动对接→逐通道扫描→异常定位到卡/连接器/通道→结果绑定。"
+ },
+ {
+  "skill_id": "XPO039",
+  "skill_name": "Tx/Rx分区与串扰/路径一致性测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D089",
+  "condition": "Tx/Rx分区与串扰/路径一致性测试条件",
+  "topic": "/dds/cond/tx_rx",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "加载Tx/Rx模式→通道映射比对→串扰/误接检测→弱通道定位。"
+ },
+ {
+  "skill_id": "XPO040",
+  "skill_name": "MPO-16端口映射/极性通断测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D090",
+  "condition": "MPO-16端口映射/极性通断测试条件",
+  "topic": "/dds/cond/mpo_16",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "自动插接测试光纤→逐端口发光/检测→与端口表比对→错误分流。"
+ },
+ {
+  "skill_id": "XPO041",
+  "skill_name": "多端口Tx/Rx光功率/波长测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D091",
+  "condition": "多端口Tx/Rx光功率/波长测试条件",
+  "topic": "/dds/cond/tx_rx",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "自动接纤→逐端口/并行测试→结果判定→弱端口定位。"
+ },
+ {
+  "skill_id": "XPO042",
+  "skill_name": "12.8Tbps多通道BER/眼图/链路裕量测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D092",
+  "condition": "12.8Tbps多通道BER/眼图/链路裕量测试条件",
+  "topic": "/dds/cond/12_8tbps___ber",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "自动对接→加载高速模式→并行/逐通道BER/眼图→统计弱通道→关联装配数据。"
+ },
+ {
+  "skill_id": "XPO043",
+  "skill_name": "400W+热负载下性能联测",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D093",
+  "condition": "400W+热负载下性能联测条件",
+  "topic": "/dds/cond/400w",
+  "modalities": [
+   "temp"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "建立液冷→分级上电/加载→采集温度/流量/BER→异常降载/停机。"
+ },
+ {
+  "skill_id": "XPO044",
+  "skill_name": "流量-温度-性能闭环调节测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D094",
+  "condition": "流量-温度-性能闭环调节测试条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "temp"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "读取功耗/温度→调整流量→监控稳态与瞬态→记录控制曲线。"
+ },
+ {
+  "skill_id": "XPO045",
+  "skill_name": "XPO主机笼子/插槽识别与状态判断",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D095",
+  "condition": "XPO主机笼子/插槽识别与状态判断条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "pointcloud",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "3D扫描→插槽编号/占用识别→导轨与接口基准定位→安全许可检查。"
+ },
+ {
+  "skill_id": "XPO046",
+  "skill_name": "XPO模块预插入姿态与多接口同轴对准",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D096",
+  "condition": "XPO模块预插入姿态与多接口同轴对准条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "joint"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "模块抓取→多基准识别→六自由度微调→进入导向段→保持姿态。"
+ },
+ {
+  "skill_id": "XPO047",
+  "skill_name": "XPO高插入力受控推进",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D097",
+  "condition": "XPO高插入力受控推进条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "低速推进→实时监测力-位移→微调防卡→达到锁止位置→停止。"
+ },
+ {
+  "skill_id": "XPO048",
+  "skill_name": "电/光/液冷盲插同时到位确认",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D098",
+  "condition": "电/光/液冷盲插同时到位确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "到位后读取锁止/导通/压力/光路状态→交叉校验→允许激活。"
+ },
+ {
+  "skill_id": "XPO049",
+  "skill_name": "弹出器锁止/拉片位置确认",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D099",
+  "condition": "弹出器锁止/拉片位置确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "视觉检查→轻推/轻拉验证→锁止信号确认→记录状态。"
+ },
+ {
+  "skill_id": "XPO050",
+  "skill_name": "上电/通液/模块激活顺序",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D100",
+  "condition": "上电/通液/模块激活顺序条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "确认锁止和无漏液→先建立冷却→分阶段上电→管理接口自检→启用链路。"
+ },
+ {
+  "skill_id": "XPO051",
+  "skill_name": "XPO安全停用/卸压/断电顺序",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D101",
+  "condition": "XPO安全停用/卸压/断电顺序条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "extract",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "业务许可→链路停用→降功耗→断电→关闭/隔离液冷→确认无压。"
+ },
+ {
+  "skill_id": "XPO052",
+  "skill_name": "Pull Tab释放与弹出器助力拔出",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D102",
+  "condition": "Pull Tab释放与弹出器助力拔出条件",
+  "topic": "/dds/cond/pull_tab",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "extract",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "夹持拉片→按规定方向/行程拉动→确认解锁→持续监测力和模块位移。"
+ },
+ {
+  "skill_id": "XPO053",
+  "skill_name": "XPO模块直线拔出与接口保护",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D103",
+  "condition": "XPO模块直线拔出与接口保护条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "extract",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "夹持模块→受控直线后退→监测拔出力→完全脱离→端口保护。"
+ },
+ {
+  "skill_id": "XPO054",
+  "skill_name": "拔出后液滴/残液检查与隔离",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D104",
+  "condition": "拔出后液滴/残液检查与隔离条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "extract",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "视觉/湿度/液滴扫描→异常定位→吸液隔离/托盘接液→报警。"
+ },
+ {
+  "skill_id": "XPO055",
+  "skill_name": "故障XPO模块更换/重插/复测",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D105",
+  "condition": "故障XPO模块更换/重插/复测条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "定位故障端口→安全停用→拔出→备件识别→插入/激活→链路复测。"
+ },
+ {
+  "skill_id": "XPO056",
+  "skill_name": "高密度多槽位顺序与邻口防碰撞规划",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D106",
+  "condition": "高密度多槽位顺序与邻口防碰撞规划条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "扫描占用→建立可达模型→按遮挡/维护优先级排序→逐槽执行。"
+ },
+ {
+  "skill_id": "XPO057",
+  "skill_name": "XPO模块全链路谱系绑定",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D107",
+  "condition": "XPO模块全链路谱系绑定条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "test",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "逐工序采集ID和位置→建立装配树→绑定测试/返修→支持正反向查询。"
+ },
+ {
+  "skill_id": "XPO058",
+  "skill_name": "XPO现场服务保护帽/防护包装",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D108",
+  "condition": "XPO现场服务保护帽/防护包装条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "extract",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "端口检查→逐口装保护帽→放入定制穴位→固定→读码绑定→合盖。"
+ },
+ {
+  "skill_id": "XPO059",
+  "skill_name": "新XPO版本快速建模与动作配方发布",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D109",
+  "condition": "新XPO版本快速建模与动作配方发布条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "force",
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "扫描/CAD导入→定义抓取/禁区/接口/力阈值→仿真→首件验证→发布。"
+ },
+ {
+  "skill_id": "XPO060",
+  "skill_name": "XPO插拔寿命/循环可靠性自动测试",
+  "category": "XPO高密可插拔光学",
+  "cond_id": "D110",
+  "condition": "XPO插拔寿命/循环可靠性自动测试条件",
+  "topic": "/dds/cond/xpo",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "按周期执行插入→激活/简测→停用→拔出→泄漏/磨损检查→统计。"
+ },
+ {
+  "skill_id": "L001",
+  "skill_name": "示教学习",
+  "category": "学习泛化",
+  "cond_id": "D111",
+  "condition": "示教学习条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "示教轨迹、示教图片"
+ },
+ {
+  "skill_id": "L002",
+  "skill_name": "视频/仿真学习",
+  "category": "学习泛化",
+  "cond_id": "D112",
+  "condition": "视频/仿真学习条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "视频/仿真/任务定义"
+ },
+ {
+  "skill_id": "L003",
+  "skill_name": "技能参数化配置",
+  "category": "学习泛化",
+  "cond_id": "D113",
+  "condition": "技能参数化配置条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "技能模板、参数表"
+ },
+ {
+  "skill_id": "L004",
+  "skill_name": "失败案例回放/诊断",
+  "category": "学习泛化",
+  "cond_id": "D114",
+  "condition": "失败案例回放/诊断条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "日志、图像、力曲线"
+ },
+ {
+  "skill_id": "L005",
+  "skill_name": "跨工位迁移",
+  "category": "学习泛化",
+  "cond_id": "D115",
+  "condition": "跨工位迁移条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "源技能、目标参数"
+ },
+ {
+  "skill_id": "L006",
+  "skill_name": "新物料快速建模",
+  "category": "学习泛化",
+  "cond_id": "D116",
+  "condition": "新物料快速建模条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "样本、CAD、规则"
+ },
+ {
+  "skill_id": "L007",
+  "skill_name": "自主校准/重标定",
+  "category": "学习泛化",
+  "cond_id": "D117",
+  "condition": "自主校准/重标定条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "标定件、检测数据"
+ },
+ {
+  "skill_id": "L008",
+  "skill_name": "多模态指令理解",
+  "category": "学习泛化",
+  "cond_id": "D118",
+  "condition": "多模态指令理解条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "人类指令、工单、图像"
+ },
+ {
+  "skill_id": "S001",
+  "skill_name": "安全区域监控",
+  "category": "安全集成",
+  "cond_id": "D119",
+  "condition": "安全区域监控条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "安全地图、传感器"
+ },
+ {
+  "skill_id": "S002",
+  "skill_name": "人员/叉车/料车避让",
+  "category": "安全集成",
+  "cond_id": "D120",
+  "condition": "人员/叉车/料车避让条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "传感器、目标轨迹"
+ },
+ {
+  "skill_id": "S003",
+  "skill_name": "急停/安全状态切换",
+  "category": "安全集成",
+  "cond_id": "D121",
+  "condition": "急停/安全状态切换条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "安全信号、任务状态"
+ },
+ {
+  "skill_id": "S004",
+  "skill_name": "力/碰撞检测",
+  "category": "安全集成",
+  "cond_id": "D122",
+  "condition": "力/碰撞检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "力矩、电流、位移"
+ },
+ {
+  "skill_id": "S005",
+  "skill_name": "权限/任务确认",
+  "category": "安全集成",
+  "cond_id": "D123",
+  "condition": "权限/任务确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "用户、任务、设备状态"
+ },
+ {
+  "skill_id": "S006",
+  "skill_name": "异常恢复/重试",
+  "category": "安全集成",
+  "cond_id": "D124",
+  "condition": "异常恢复/重试条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "异常码、传感数据"
+ },
+ {
+  "skill_id": "S007",
+  "skill_name": "MES/WMS/SCADA/PLC对接",
+  "category": "安全集成",
+  "cond_id": "D125",
+  "condition": "MES/WMS/SCADA/PLC对接条件",
+  "topic": "/dds/cond/mes_wms_scada_plc",
+  "modalities": [
+   "signal",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "接口协议、工单、设备状态"
+ },
+ {
+  "skill_id": "S008",
+  "skill_name": "任务编排/排程",
+  "category": "安全集成",
+  "cond_id": "D126",
+  "condition": "任务编排/排程条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工单、设备、机器人状态"
+ },
+ {
+  "skill_id": "S009",
+  "skill_name": "日志/质量/过程追溯",
+  "category": "安全集成",
+  "cond_id": "D127",
+  "condition": "日志/质量/过程追溯条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "任务数据、传感数据"
+ },
+ {
+  "skill_id": "S010",
+  "skill_name": "远程运维/OTA",
+  "category": "安全集成",
+  "cond_id": "D128",
+  "condition": "远程运维/OTA条件",
+  "topic": "/dds/cond/ota",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "机器人状态、网络、版本"
+ },
+ {
+  "skill_id": "P001",
+  "skill_name": "作业对象识别",
+  "category": "感知定位",
+  "cond_id": "D129",
+  "condition": "作业对象识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "相机/点云/工位图像"
+ },
+ {
+  "skill_id": "P002",
+  "skill_name": "工装/孔位/接口识别",
+  "category": "感知定位",
+  "cond_id": "D130",
+  "condition": "工装/孔位/接口识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工装CAD/图像/点云"
+ },
+ {
+  "skill_id": "P003",
+  "skill_name": "条码/二维码/OCR读取",
+  "category": "感知定位",
+  "cond_id": "D131",
+  "condition": "条码/二维码/OCR读取条件",
+  "topic": "/dds/cond/ocr",
+  "modalities": [
+   "image",
+   "code"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像、标签位置"
+ },
+ {
+  "skill_id": "P004",
+  "skill_name": "缺陷/污染/异物识别",
+  "category": "感知定位",
+  "cond_id": "D132",
+  "condition": "缺陷/污染/异物识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像/显微图/污染与异物传感"
+ },
+ {
+  "skill_id": "P005",
+  "skill_name": "6D位姿估计",
+  "category": "感知定位",
+  "cond_id": "D133",
+  "condition": "6D位姿估计条件",
+  "topic": "/dds/cond/6d",
+  "modalities": [
+   "image",
+   "pose",
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "2D/3D图像、CAD模型"
+ },
+ {
+  "skill_id": "P006",
+  "skill_name": "3D点云重建/配准",
+  "category": "感知定位",
+  "cond_id": "D134",
+  "condition": "3D点云重建/配准条件",
+  "topic": "/dds/cond/3d",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "3D相机/结构光/ToF"
+ },
+ {
+  "skill_id": "P007",
+  "skill_name": "手眼标定/坐标变换",
+  "category": "感知定位",
+  "cond_id": "D135",
+  "condition": "手眼标定/坐标变换条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pose",
+   "joint"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "标定板/基准件/机器人姿态"
+ },
+ {
+  "skill_id": "P008",
+  "skill_name": "高精度边缘/角点/轮廓检测",
+  "category": "感知定位",
+  "cond_id": "D136",
+  "condition": "高精度边缘/角点/轮廓检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "高分辨率图像"
+ },
+ {
+  "skill_id": "P009",
+  "skill_name": "视觉-力觉融合定位",
+  "category": "感知定位",
+  "cond_id": "D137",
+  "condition": "视觉-力觉融合定位条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force",
+   "pose"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "位姿、力/扭矩、位移"
+ },
+ {
+  "skill_id": "P010",
+  "skill_name": "视觉伺服追踪",
+  "category": "感知定位",
+  "cond_id": "D138",
+  "condition": "视觉伺服追踪条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "实时图像/目标位置"
+ },
+ {
+  "skill_id": "P011",
+  "skill_name": "透明/反光物识别",
+  "category": "感知定位",
+  "cond_id": "D139",
+  "condition": "透明/反光物识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "多角度图像/偏振/3D"
+ },
+ {
+  "skill_id": "P012",
+  "skill_name": "颗粒/洁净度感知",
+  "category": "感知定位",
+  "cond_id": "D140",
+  "condition": "颗粒/洁净度感知条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "颗粒传感器、图像、路径数据"
+ },
+ {
+  "skill_id": "P013",
+  "skill_name": "仪表/屏幕/指示灯识别",
+  "category": "感知定位",
+  "cond_id": "D141",
+  "condition": "仪表/屏幕/指示灯识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force",
+   "temp"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像/视频"
+ },
+ {
+  "skill_id": "P014",
+  "skill_name": "物料分类/分拣识别",
+  "category": "感知定位",
+  "cond_id": "D142",
+  "condition": "物料分类/分拣识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "code"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像/扫码/重量"
+ },
+ {
+  "skill_id": "P015",
+  "skill_name": "工位状态判别",
+  "category": "感知定位",
+  "cond_id": "D143",
+  "condition": "工位状态判别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像、PLC、传感器"
+ },
+ {
+  "skill_id": "A001",
+  "skill_name": "精密对准",
+  "category": "操作动作",
+  "cond_id": "D144",
+  "condition": "精密对准条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "6D位姿、关键点、力反馈"
+ },
+ {
+  "skill_id": "A002",
+  "skill_name": "插入/拔出",
+  "category": "操作动作",
+  "cond_id": "D145",
+  "condition": "插入/拔出条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "目标接口、姿态、力阈值"
+ },
+ {
+  "skill_id": "A003",
+  "skill_name": "压装/扣合",
+  "category": "操作动作",
+  "cond_id": "D146",
+  "condition": "压装/扣合条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "press",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "零件位姿、装配力阈值"
+ },
+ {
+  "skill_id": "A004",
+  "skill_name": "旋拧/锁付",
+  "category": "操作动作",
+  "cond_id": "D147",
+  "condition": "旋拧/锁付条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "孔位、螺丝、扭矩参数"
+ },
+ {
+  "skill_id": "A005",
+  "skill_name": "扭矩/角度控制",
+  "category": "操作动作",
+  "cond_id": "D148",
+  "condition": "扭矩/角度控制条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "扭矩曲线、角度、工单"
+ },
+ {
+  "skill_id": "A006",
+  "skill_name": "轨迹跟踪加工",
+  "category": "操作动作",
+  "cond_id": "D149",
+  "condition": "轨迹跟踪加工条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "weld",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "轨迹、工件位姿、工艺参数"
+ },
+ {
+  "skill_id": "A007",
+  "skill_name": "点胶/涂布/喷涂",
+  "category": "操作动作",
+  "cond_id": "D150",
+  "condition": "点胶/涂布/喷涂条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "dispense",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "轨迹、胶量、工艺参数"
+ },
+ {
+  "skill_id": "A008",
+  "skill_name": "贴标/贴装",
+  "category": "操作动作",
+  "cond_id": "D151",
+  "condition": "贴标/贴装条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "标签位置、目标区域"
+ },
+ {
+  "skill_id": "A009",
+  "skill_name": "撕膜/贴膜",
+  "category": "操作动作",
+  "cond_id": "D152",
+  "condition": "撕膜/贴膜条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "attach",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "膜边位置、表面状态"
+ },
+ {
+  "skill_id": "A010",
+  "skill_name": "锡焊/钎焊",
+  "category": "操作动作",
+  "cond_id": "D153",
+  "condition": "锡焊/钎焊条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "temp"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 1,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "焊盘位置、锡量、温度"
+ },
+ {
+  "skill_id": "A011",
+  "skill_name": "接插件/线束插接",
+  "category": "操作动作",
+  "cond_id": "D154",
+  "condition": "接插件/线束插接条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "端子位置、线缆状态"
+ },
+ {
+  "skill_id": "A012",
+  "skill_name": "柔顺接触/力控",
+  "category": "操作动作",
+  "cond_id": "D155",
+  "condition": "柔顺接触/力控条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "目标力、接触状态、位移"
+ },
+ {
+  "skill_id": "A013",
+  "skill_name": "微动搜索与容差补偿",
+  "category": "操作动作",
+  "cond_id": "D156",
+  "condition": "微动搜索与容差补偿条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "力觉、视觉、位移"
+ },
+ {
+  "skill_id": "A014",
+  "skill_name": "传送带动态抓取",
+  "category": "操作动作",
+  "cond_id": "D157",
+  "condition": "传送带动态抓取条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "code"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "视觉、编码器、目标速度"
+ },
+ {
+  "skill_id": "A015",
+  "skill_name": "工装定位/基准寻边",
+  "category": "操作动作",
+  "cond_id": "D158",
+  "condition": "工装定位/基准寻边条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pose",
+   "cad"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工装图像/CAD"
+ },
+ {
+  "skill_id": "AO002",
+  "skill_name": "中文名称/别名归一",
+  "category": "操作动作",
+  "cond_id": "D159",
+  "condition": "中文名称/别名归一条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "客户口头名称、英文名称、现场照片"
+ },
+ {
+  "skill_id": "AO003",
+  "skill_name": "载具ID读取",
+  "category": "操作动作",
+  "cond_id": "D160",
+  "condition": "载具ID读取条件",
+  "topic": "/dds/cond/id",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "标签可见、读码规则、工单信息"
+ },
+ {
+  "skill_id": "AO004",
+  "skill_name": "载具方向/正反/防呆识别",
+  "category": "操作动作",
+  "cond_id": "D161",
+  "condition": "载具方向/正反/防呆识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "缺口、定位孔、防呆边、模板"
+ },
+ {
+  "skill_id": "AO005",
+  "skill_name": "满空/槽位占用检测",
+  "category": "操作动作",
+  "cond_id": "D162",
+  "condition": "满空/槽位占用检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "槽位地图、当前图像"
+ },
+ {
+  "skill_id": "AO006",
+  "skill_name": "载具破损/变形/污染/异物检测",
+  "category": "操作动作",
+  "cond_id": "D163",
+  "condition": "载具破损/变形/污染/异物检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像/点云、缺陷规则"
+ },
+ {
+  "skill_id": "AO007",
+  "skill_name": "外框/角点/边基准定位",
+  "category": "操作动作",
+  "cond_id": "D164",
+  "condition": "外框/角点/边基准定位条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具在视野中、模板已知"
+ },
+ {
+  "skill_id": "AO008",
+  "skill_name": "孔/销/导轨基准定位",
+  "category": "操作动作",
+  "cond_id": "D165",
+  "condition": "孔/销/导轨基准定位条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "有基准特征或CAD"
+ },
+ {
+  "skill_id": "AO009",
+  "skill_name": "槽位/穴位坐标生成",
+  "category": "操作动作",
+  "cond_id": "D166",
+  "condition": "槽位/穴位坐标生成条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具模板、行列规则"
+ },
+ {
+  "skill_id": "AO010",
+  "skill_name": "层位/窄槽定位",
+  "category": "操作动作",
+  "cond_id": "D167",
+  "condition": "层位/窄槽定位条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "层高/槽距模板、当前图像"
+ },
+ {
+  "skill_id": "AO011",
+  "skill_name": "叉孔/把手/牵引点定位",
+  "category": "操作动作",
+  "cond_id": "D168",
+  "condition": "叉孔/把手/牵引点定位条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具可见、机器人/AMR可接近"
+ },
+ {
+  "skill_id": "AO012",
+  "skill_name": "整盘夹取/托举",
+  "category": "操作动作",
+  "cond_id": "D169",
+  "condition": "整盘夹取/托举条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "已识别盘型和抓取点"
+ },
+ {
+  "skill_id": "AO013",
+  "skill_name": "整箱夹持/托举",
+  "category": "操作动作",
+  "cond_id": "D170",
+  "condition": "整箱夹持/托举条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "箱体尺寸、重量、把手位置"
+ },
+ {
+  "skill_id": "AO014",
+  "skill_name": "料盘堆叠/拆垛",
+  "category": "操作动作",
+  "cond_id": "D171",
+  "condition": "料盘堆叠/拆垛条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "堆叠层数、顶层高度"
+ },
+ {
+  "skill_id": "AO015",
+  "skill_name": "滚筒/输送线移载",
+  "category": "操作动作",
+  "cond_id": "D172",
+  "condition": "滚筒/输送线移载条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "输送线就绪、对接高度确认"
+ },
+ {
+  "skill_id": "AO016",
+  "skill_name": "料车顶升/牵引/脱钩",
+  "category": "操作动作",
+  "cond_id": "D173",
+  "condition": "料车顶升/牵引/脱钩条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "AMR到位、牵引销/顶升点识别"
+ },
+ {
+  "skill_id": "AO017",
+  "skill_name": "按穴位取件/放件",
+  "category": "操作动作",
+  "cond_id": "D174",
+  "condition": "按穴位取件/放件条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "槽位地图、物料状态"
+ },
+ {
+  "skill_id": "AO018",
+  "skill_name": "Tray-to-Tray转盘",
+  "category": "操作动作",
+  "cond_id": "D175",
+  "condition": "Tray-to-Tray转盘条件",
+  "topic": "/dds/cond/tray_to_tray",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "源/目标槽位映射"
+ },
+ {
+  "skill_id": "AO019",
+  "skill_name": "Tray-to-Fixture装入",
+  "category": "操作动作",
+  "cond_id": "D176",
+  "condition": "Tray-to-Fixture装入条件",
+  "topic": "/dds/cond/tray_to_fixture",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "目标Nest/Fixture已打开并定位"
+ },
+ {
+  "skill_id": "AO020",
+  "skill_name": "Fixture-to-Tray出料分Bin",
+  "category": "操作动作",
+  "cond_id": "D177",
+  "condition": "Fixture-to-Tray出料分Bin条件",
+  "topic": "/dds/cond/fixture_to_tray___bin",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "测试结果、目标盘规则"
+ },
+ {
+  "skill_id": "AO021",
+  "skill_name": "微小/反光/透明件低力取放",
+  "category": "操作动作",
+  "cond_id": "D178",
+  "condition": "微小/反光/透明件低力取放条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微图像、低力参数"
+ },
+ {
+  "skill_id": "AO022",
+  "skill_name": "PCB Magazine抽板/插板",
+  "category": "操作动作",
+  "cond_id": "D179",
+  "condition": "PCB Magazine抽板/插板条件",
+  "topic": "/dds/cond/pcb_magazine",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "槽位地图、板边可夹区"
+ },
+ {
+  "skill_id": "AO023",
+  "skill_name": "料管/弹匣供料与换管",
+  "category": "操作动作",
+  "cond_id": "D180",
+  "condition": "料管/弹匣供料与换管条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "料管方向、端盖状态"
+ },
+ {
+  "skill_id": "AO024",
+  "skill_name": "卷盘换料与读码防错",
+  "category": "操作动作",
+  "cond_id": "D181",
+  "condition": "卷盘换料与读码防错条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "joint",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 1,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "料号、卷盘状态"
+ },
+ {
+  "skill_id": "AO025",
+  "skill_name": "开盖/合盖",
+  "category": "操作动作",
+  "cond_id": "D182",
+  "condition": "开盖/合盖条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "开口位置、卡扣状态"
+ },
+ {
+  "skill_id": "AO026",
+  "skill_name": "锁扣/插销/门操作",
+  "category": "操作动作",
+  "cond_id": "D183",
+  "condition": "锁扣/插销/门操作条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "锁扣位置识别、安全允许"
+ },
+ {
+  "skill_id": "AO027",
+  "skill_name": "治具开合/压合",
+  "category": "操作动作",
+  "cond_id": "D184",
+  "condition": "治具开合/压合条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "产品到位、测试允许"
+ },
+ {
+  "skill_id": "AO028",
+  "skill_name": "Socket/连接器插拔",
+  "category": "操作动作",
+  "cond_id": "D185",
+  "condition": "Socket/连接器插拔条件",
+  "topic": "/dds/cond/socket",
+  "modalities": [
+   "force",
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "位姿、插入力阈值"
+ },
+ {
+  "skill_id": "AO029",
+  "skill_name": "请求/允许/就绪握手",
+  "category": "操作动作",
+  "cond_id": "D186",
+  "condition": "请求/允许/就绪握手条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "PLC/MES/WMS权限"
+ },
+ {
+  "skill_id": "AO030",
+  "skill_name": "在位/锁止/交接完成确认",
+  "category": "操作动作",
+  "cond_id": "D187",
+  "condition": "在位/锁止/交接完成确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具已到位/进入缓存"
+ },
+ {
+  "skill_id": "AO031",
+  "skill_name": "空满载具交换",
+  "category": "操作动作",
+  "cond_id": "D188",
+  "condition": "空满载具交换条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "设备缺料、空载具位置"
+ },
+ {
+  "skill_id": "AO032",
+  "skill_name": "双缓存连续供料",
+  "category": "操作动作",
+  "cond_id": "D189",
+  "condition": "双缓存连续供料条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "节拍目标、缓存状态"
+ },
+ {
+  "skill_id": "AO033",
+  "skill_name": "AMR精准停靠与二次对接",
+  "category": "操作动作",
+  "cond_id": "D190",
+  "condition": "AMR精准停靠与二次对接条件",
+  "topic": "/dds/cond/amr",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "地图、站点标记、定位基准"
+ },
+ {
+  "skill_id": "AO034",
+  "skill_name": "WIP/FIFO/急单调度",
+  "category": "操作动作",
+  "cond_id": "D191",
+  "condition": "WIP/FIFO/急单调度条件",
+  "topic": "/dds/cond/wip_fifo",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工单、站点状态、载具状态"
+ },
+ {
+  "skill_id": "AO035",
+  "skill_name": "工单-载具绑定",
+  "category": "操作动作",
+  "cond_id": "D192",
+  "condition": "工单-载具绑定条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具ID、工单、批次"
+ },
+ {
+  "skill_id": "AO036",
+  "skill_name": "槽位-物料SN绑定",
+  "category": "操作动作",
+  "cond_id": "D193",
+  "condition": "槽位-物料SN绑定条件",
+  "topic": "/dds/cond/sn",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "槽位地图、物料SN"
+ },
+ {
+  "skill_id": "AO037",
+  "skill_name": "测试/检测结果分流绑定",
+  "category": "操作动作",
+  "cond_id": "D194",
+  "condition": "测试/检测结果分流绑定条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "测试/检测结果、分Bin规则"
+ },
+ {
+  "skill_id": "AO038",
+  "skill_name": "正向/反向谱系查询",
+  "category": "操作动作",
+  "cond_id": "D195",
+  "condition": "正向/反向谱系查询条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工单、批次、SN、载具ID"
+ },
+ {
+  "skill_id": "AO039",
+  "skill_name": "未抓/双取/掉料检测",
+  "category": "操作动作",
+  "cond_id": "D196",
+  "condition": "未抓/双取/掉料检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "取放前后图像/真空/力"
+ },
+ {
+  "skill_id": "AO040",
+  "skill_name": "卡板/卡料恢复",
+  "category": "操作动作",
+  "cond_id": "D197",
+  "condition": "卡板/卡料恢复条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "力曲线、位置异常、设备停机允许"
+ },
+ {
+  "skill_id": "AO041",
+  "skill_name": "载具偏位/未锁恢复",
+  "category": "操作动作",
+  "cond_id": "D198",
+  "condition": "载具偏位/未锁恢复条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "在位/锁止失败"
+ },
+ {
+  "skill_id": "AO042",
+  "skill_name": "插拔失败微动搜索",
+  "category": "操作动作",
+  "cond_id": "D199",
+  "condition": "插拔失败微动搜索条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "插入力异常/不到位"
+ },
+ {
+  "skill_id": "AO043",
+  "skill_name": "新载具快速建模",
+  "category": "操作动作",
+  "cond_id": "D200",
+  "condition": "新载具快速建模条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "样件、CAD、照片、关键尺寸"
+ },
+ {
+  "skill_id": "AO044",
+  "skill_name": "工站动作配方管理",
+  "category": "操作动作",
+  "cond_id": "D201",
+  "condition": "工站动作配方管理条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工站流程、动作顺序、异常策略"
+ },
+ {
+  "skill_id": "M001",
+  "skill_name": "接近/预抓取姿态生成",
+  "category": "操作动作",
+  "cond_id": "D202",
+  "condition": "接近/预抓取姿态生成条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "位姿、障碍物、夹具模型"
+ },
+ {
+  "skill_id": "M002",
+  "skill_name": "夹爪抓取",
+  "category": "操作动作",
+  "cond_id": "D203",
+  "condition": "夹爪抓取条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "目标位姿、抓取点"
+ },
+ {
+  "skill_id": "M003",
+  "skill_name": "真空吸取/释放",
+  "category": "操作动作",
+  "cond_id": "D204",
+  "condition": "真空吸取/释放条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "目标平面、吸附区域"
+ },
+ {
+  "skill_id": "M004",
+  "skill_name": "夹持力控制与释放",
+  "category": "操作动作",
+  "cond_id": "D205",
+  "condition": "夹持力控制与释放条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "物体类型、力反馈"
+ },
+ {
+  "skill_id": "M005",
+  "skill_name": "姿态重构/翻转",
+  "category": "操作动作",
+  "cond_id": "D206",
+  "condition": "姿态重构/翻转条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "当前姿态、目标姿态"
+ },
+ {
+  "skill_id": "M006",
+  "skill_name": "精准放置/码放",
+  "category": "操作动作",
+  "cond_id": "D207",
+  "condition": "精准放置/码放条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "目标位置、放置姿态"
+ },
+ {
+  "skill_id": "M007",
+  "skill_name": "小件拾取/微小件操作",
+  "category": "操作动作",
+  "cond_id": "D208",
+  "condition": "小件拾取/微小件操作条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微/高分辨率图像"
+ },
+ {
+  "skill_id": "M008",
+  "skill_name": "线缆/柔性物处理",
+  "category": "操作动作",
+  "cond_id": "D209",
+  "condition": "线缆/柔性物处理条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "线缆形态、端子位置"
+ },
+ {
+  "skill_id": "M009",
+  "skill_name": "夹具开合/按钮拨动",
+  "category": "操作动作",
+  "cond_id": "D210",
+  "condition": "夹具开合/按钮拨动条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "设备状态、操作位姿"
+ },
+ {
+  "skill_id": "M010",
+  "skill_name": "门盖/抽屉/料盘开闭",
+  "category": "操作动作",
+  "cond_id": "D211",
+  "condition": "门盖/抽屉/料盘开闭条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "把手位置、开合轨迹"
+ },
+ {
+  "skill_id": "M011",
+  "skill_name": "托盘/料盒/载具搬运",
+  "category": "操作动作",
+  "cond_id": "D212",
+  "condition": "托盘/料盒/载具搬运条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "transfer",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具位置、重量、路径"
+ },
+ {
+  "skill_id": "M012",
+  "skill_name": "双臂协同",
+  "category": "操作动作",
+  "cond_id": "D213",
+  "condition": "双臂协同条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "pose",
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 1,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "align",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "两臂状态、目标位姿"
+ },
+ {
+  "skill_id": "M013",
+  "skill_name": "末端工具快换",
+  "category": "操作动作",
+  "cond_id": "D214",
+  "condition": "末端工具快换条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "任务类型、工具状态"
+ },
+ {
+  "skill_id": "M014",
+  "skill_name": "受限空间伸入操作",
+  "category": "操作动作",
+  "cond_id": "D215",
+  "condition": "受限空间伸入操作条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "空间模型、目标位置"
+ },
+ {
+  "skill_id": "M015",
+  "skill_name": "防刮防碰运动控制",
+  "category": "操作动作",
+  "cond_id": "D216",
+  "condition": "防刮防碰运动控制条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "材质属性、力阈值、路径"
+ },
+ {
+  "skill_id": "N001",
+  "skill_name": "定位建图SLAM",
+  "category": "移动导航",
+  "cond_id": "D217",
+  "condition": "定位建图SLAM条件",
+  "topic": "/dds/cond/slam",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "激光/视觉/IMU/里程计"
+ },
+ {
+  "skill_id": "N002",
+  "skill_name": "全局/局部路径规划",
+  "category": "移动导航",
+  "cond_id": "D218",
+  "condition": "全局/局部路径规划条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "地图、目标点、禁行区"
+ },
+ {
+  "skill_id": "N003",
+  "skill_name": "动态避障",
+  "category": "移动导航",
+  "cond_id": "D219",
+  "condition": "动态避障条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "激光/视觉/安全传感"
+ },
+ {
+  "skill_id": "N004",
+  "skill_name": "精准停靠/对接",
+  "category": "移动导航",
+  "cond_id": "D220",
+  "condition": "精准停靠/对接条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "地图、视觉标志、对接机构"
+ },
+ {
+  "skill_id": "N005",
+  "skill_name": "门禁/电梯/自动门交互",
+  "category": "移动导航",
+  "cond_id": "D221",
+  "condition": "门禁/电梯/自动门交互条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "screw",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "IO/API/视觉"
+ },
+ {
+  "skill_id": "N006",
+  "skill_name": "窄通道低振动移动",
+  "category": "移动导航",
+  "cond_id": "D222",
+  "condition": "窄通道低振动移动条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "地图、速度约束、地面状态"
+ },
+ {
+  "skill_id": "N007",
+  "skill_name": "多机器人群体调度",
+  "category": "移动导航",
+  "cond_id": "D223",
+  "condition": "多机器人群体调度条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "任务队列、地图、机器人状态"
+ },
+ {
+  "skill_id": "Q001",
+  "skill_name": "2D外观检测",
+  "category": "视觉检测",
+  "cond_id": "D224",
+  "condition": "2D外观检测条件",
+  "topic": "/dds/cond/2d",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "图像/光源"
+ },
+ {
+  "skill_id": "Q002",
+  "skill_name": "3D尺寸/形貌检测",
+  "category": "视觉检测",
+  "cond_id": "D225",
+  "condition": "3D尺寸/形貌检测条件",
+  "topic": "/dds/cond/3d",
+  "modalities": [
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "点云/结构光"
+ },
+ {
+  "skill_id": "Q003",
+  "skill_name": "金线/焊点显微检测",
+  "category": "视觉检测",
+  "cond_id": "D226",
+  "condition": "金线/焊点显微检测条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "显微图像"
+ },
+ {
+  "skill_id": "Q004",
+  "skill_name": "读数/状态确认",
+  "category": "视觉检测",
+  "cond_id": "D227",
+  "condition": "读数/状态确认条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "视觉、传感、PLC"
+ },
+ {
+  "skill_id": "Q005",
+  "skill_name": "功能测试/按键测试",
+  "category": "视觉检测",
+  "cond_id": "D228",
+  "condition": "功能测试/按键测试条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "测试流程、设备状态"
+ },
+ {
+  "skill_id": "Q006",
+  "skill_name": "缺陷复判/分级",
+  "category": "视觉检测",
+  "cond_id": "D229",
+  "condition": "缺陷复判/分级条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "缺陷图、规则、历史样本"
+ },
+ {
+  "skill_id": "Q007",
+  "skill_name": "数据记录/质量追溯",
+  "category": "视觉检测",
+  "cond_id": "D230",
+  "condition": "数据记录/质量追溯条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "工单、设备、结果数据"
+ },
+ {
+  "skill_id": "Q008",
+  "skill_name": "良次品判定/分拣",
+  "category": "视觉检测",
+  "cond_id": "D231",
+  "condition": "良次品判定/分拣条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "state_2d"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0,
+   "state_2d": 1
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "检测结果、路径规划"
+ },
+ {
+  "skill_id": "Q009",
+  "skill_name": "标定/自检",
+  "category": "视觉检测",
+  "cond_id": "D232",
+  "condition": "标定/自检条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "标定件、传感状态"
+ },
+ {
+  "skill_id": "Q010",
+  "skill_name": "工艺参数闭环调整",
+  "category": "视觉检测",
+  "cond_id": "D233",
+  "condition": "工艺参数闭环调整条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "force"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "inspect",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "过程数据、检测结果"
+ },
+ {
+  "skill_id": "C001",
+  "skill_name": "载具中文命名/别名归一",
+  "category": "载具物流",
+  "cond_id": "D234",
+  "condition": "载具中文命名/别名归一条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "code"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "客户叫法、现场照片、英文名称、样件"
+ },
+ {
+  "skill_id": "C002",
+  "skill_name": "载具基准/接口识别",
+  "category": "载具物流",
+  "cond_id": "D235",
+  "condition": "载具基准/接口识别条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud",
+   "cad"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 1
+  },
+  "action": "locate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具图像/点云、CAD、接口模板"
+ },
+ {
+  "skill_id": "C003",
+  "skill_name": "槽位/层位/穴位地图生成",
+  "category": "载具物流",
+  "cond_id": "D236",
+  "condition": "槽位/层位/穴位地图生成条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "pointcloud"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 1,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具模板、图像/点云、行列/层高规则"
+ },
+ {
+  "skill_id": "C004",
+  "skill_name": "整载具搬运/空满交换",
+  "category": "载具物流",
+  "cond_id": "D237",
+  "condition": "整载具搬运/空满交换条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "满空状态、目标位置、设备允许信号"
+ },
+ {
+  "skill_id": "C005",
+  "skill_name": "工站接驳/状态握手",
+  "category": "载具物流",
+  "cond_id": "D238",
+  "condition": "工站接驳/状态握手条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "PLC/I/O、MES/WMS任务、在位/锁止传感"
+ },
+ {
+  "skill_id": "C006",
+  "skill_name": "料架/Magazine/卡匣抽插",
+  "category": "载具物流",
+  "cond_id": "D239",
+  "condition": "料架/Magazine/卡匣抽插条件",
+  "topic": "/dds/cond/magazine",
+  "modalities": [
+   "image"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "insert",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "层位/槽位地图、板边/导轨定位、设备允许"
+ },
+ {
+  "skill_id": "C007",
+  "skill_name": "盖板/门/锁扣/治具开合",
+  "category": "载具物流",
+  "cond_id": "D240",
+  "condition": "盖板/门/锁扣/治具开合条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "signal"
+  ],
+  "encoding": {
+   "image": 0,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "place",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "锁扣位置、门状态、安全允许信号"
+ },
+ {
+  "skill_id": "C008",
+  "skill_name": "载具异常检测与恢复",
+  "category": "载具物流",
+  "cond_id": "D241",
+  "condition": "载具异常检测与恢复条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "force",
+   "signal"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 1,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 1,
+   "code": 0,
+   "cad": 0
+  },
+  "action": "pick",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "视觉/真空/力曲线/在位信号、异常码"
+ },
+ {
+  "skill_id": "C009",
+  "skill_name": "载具-槽位-物料谱系管理",
+  "category": "载具物流",
+  "cond_id": "D242",
+  "condition": "载具-槽位-物料谱系管理条件",
+  "topic": "/dds/cond/",
+  "modalities": [
+   "image",
+   "code"
+  ],
+  "encoding": {
+   "image": 1,
+   "force": 0,
+   "pose": 0,
+   "tactile": 0,
+   "joint": 0,
+   "pointcloud": 0,
+   "temp": 0,
+   "signal": 0,
+   "code": 1,
+   "cad": 0
+  },
+  "action": "operate",
+  "gate": 0.5,
+  "source": "atomic_skill",
+  "input_cond": "载具ID、槽位图、SN、测试/检测结果、路由规则"
+ }
+]
