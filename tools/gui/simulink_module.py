@@ -625,6 +625,8 @@ LIBRARY = [
         {"name": "🔀 未来决策交叉注意力", "params": {"gates": "1.0/0.1/0.01",
           "desc": "预测潜状态 K/V 注入动作解码 (分层门控; 推理可剥离零开销)"},
           },
+        {"name": "🖐 VLA-Touch 完整模型", "params": {}, "template": "🖐 VLA-Touch 触觉对比",
+         "desc": "一键搭建 VLA-Touch 对比管道 (8节点9连线: 数据→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练→Scope)"},
         {"name": "🧿 AWE 完整模型", "params": {}, "template": "🧿 AWE 场景原生对比",
          "desc": "一键搭建 AWE 场景原生对比管道 (8节点8连线: 数据→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→注入→ActionHead→训练→Scope)"},
     ]),
@@ -2845,8 +2847,8 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_pipeline)
         self.btn_compare5 = mk_btn("🔬 Model Zoo", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE + MLP + 专家 七模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
         tl.addWidget(self.btn_compare5)
-        self.btn_vlatouch = mk_btn("🖐 VLA-Touch", "VLA-Touch 触觉对比管道 (4060 精简): DINOv2视觉 + Marker触觉 + DiT-B base VLA 冻结 + Interpolant 触觉控制器 (唯一训练模块) · 纵向对比触觉增强 vs 纯动作", self.open_vlatouch, "#58a6ff")
-        tl.addWidget(self.btn_vlatouch)
+        self.btn_atomic = mk_btn("🧩 原子", "打开原子技能库 (242条, W²-VLA Token) → 选技能 → 自动建节点链: 技能→结构条件→SYS1→action JSON", self.open_atomic_skill_flow, "#00d4aa")
+        tl.addWidget(self.btn_atomic)
         self.btn_awe = mk_btn("🧿 AWE", "AWE 场景原生对比管道 (它石架构, 4060 精简): SigLIP视触觉编码冻结 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 未来决策交叉注意力 · 纵向对比世界模型架构", self.open_awe, "#a371f7")
         tl.addWidget(self.btn_awe)
         self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
