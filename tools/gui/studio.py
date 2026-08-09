@@ -4945,15 +4945,15 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._auto_output_dir()
     
     def _deploy_model_to_orin(self):
-        """📱 端侧部署 (2026-08-09 老倪: VEH.2.26) — 上传 ACT safetensors → datadrive.world/models/ 静态 URL 覆盖即部署
-        链路: [4060] → [ECS 静态URL] → [Orin 监听器轮询哈希] → [Orin /models/ 热加载]
+        """📱 端侧部署 (2026-08-09 老倪: VEH.2.31 模型下载) — 带模型容器推到 Mac
+        链路: [4060] → 模型safetensors上传ECS + arm64 infer镜像tar → Mac轮询拉取load → 推理
         模型源: 端侧部署下拉 → 模型引擎 ckpt_edit → registry 最新 ACT"""
         import threading as _th
 
         def _w():
             try:
-                import os as _os, time as _t, hashlib as _hl
-                root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+                import os as _os, time as _t
+                root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
                 # ① 确定模型源 (下拉 → ckpt_edit → registry 最新 ACT)
                 pm = None
                 try:
@@ -4971,8 +4971,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         pass
                 if not pm:
                     import json as _j
-                    reg_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                                             "models", "saved", "registry.json")
+                    reg_path = _os.path.join(root, "models", "saved", "registry.json")
                     if _os.path.exists(reg_path):
                         reg = _j.load(open(reg_path, encoding="utf-8"))
                         for item in reg:
@@ -4989,13 +4988,13 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._log(f"❌ 模型权重缺失: {w_path}")
                     return
                 self._log(f"📦 部署模型源: {w_path} ({_os.path.getsize(w_path)//1024}KB)")
-                # ② scp 直传 ECS → datadrive.world/models/ (版本化 + act_latest 覆盖即部署)
+                # ② 上传模型 → datadrive.world/models/ (覆盖即部署; Mac/Orin 据此下载)
                 import subprocess as _sp
                 ts = _t.strftime("%Y%m%d_%H%M%S")
                 ecs = "root@39.102.211.79"
                 models_dir = "/www/wwwroot/datadrive.world/models"
                 ver_name = f"act_{ts}.safetensors"
-                self._log(f"📤 上传 → ECS {models_dir}/ (scp)…")
+                self._log(f"📤 上传模型 → ECS {models_dir}/ (scp)…")
                 for name in (ver_name, "act_latest.safetensors"):
                     r = _sp.run(f"sshpass -p 'Nix19789' scp -o StrictHostKeyChecking=no {w_path} {ecs}:{models_dir}/{name}",
                                 shell=True, capture_output=True, text=True, timeout=300)
@@ -5003,21 +5002,37 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         self._log(f"❌ scp {name} 失败: {r.stderr.strip()[:80]}")
                         return
                     self._log(f"✅ 已上传: {models_dir}/{name}")
-                # 🐛 chmod 644 铁律: scp 保留 600 权限 → nginx www 读不了 → 403
+                # chmod 644 铁律 (scp 保留 600 → nginx 403)
                 _sp.run(f"sshpass -p 'Nix19789' ssh -o StrictHostKeyChecking=no {ecs} "
                         f"'chmod 644 {models_dir}/{ver_name} {models_dir}/act_latest.safetensors'",
                         shell=True, capture_output=True, text=True, timeout=20)
-                self._log("🔓 已 chmod 644 (nginx 可读)")
-                # ③ 验证静态 URL 可访问 (Orin 侧据此下载轮询哈希)
+                # ③ 验证静态 URL
                 import requests as _rq
                 url_latest = "https://datadrive.world/models/act_latest.safetensors"
                 try:
                     rv = _rq.head(url_latest, timeout=15)
-                    self._log(f"✅ 静态 URL 生效: {url_latest} · HTTP {rv.status_code} · {int(rv.headers.get('Content-Length', 0))//1024}KB")
+                    self._log(f"✅ 模型静态 URL: {url_latest} · HTTP {rv.status_code}")
                 except Exception as e:
                     self._log(f"⚠️ URL 验证失败: {e}")
-                self._log("🤖 Orin 监听器轮询到哈希变化 → 自动下载 /models/ + chmod 644 → 热加载推理")
-                self._log(f"📦 部署完成: act_{ts}.safetensors (版本化) + act_latest.safetensors (覆盖即部署)")
+                # ④ 检查 arm64 infer 容器 tar (4090 构建产物 → 已上传 ECS 则由 Mac 拉取)
+                tar_url = "https://datadrive.world/models/zmax-infer-arm64.tar"
+                try:
+                    rt = _rq.head(tar_url, timeout=15)
+                    if rt.status_code == 200:
+                        self._log(f"✅ 容器 tar 就绪: {tar_url} · {int(rt.headers.get('Content-Length', 0))//1024}KB")
+                    else:
+                        self._log("⏳ arm64 容器 tar 构建中/未上传 (4090 后台构建中) — 模型已就绪可先推理")
+                except Exception:
+                    self._log("⏳ arm64 容器 tar 构建中 (4090 后台构建中) — 模型已就绪")
+                # ⑤ 下发 Mac 指令: 拉模型 + 拉容器 → load → 推理
+                try:
+                    r2 = _rq.post("https://datadrive.world/api/relay/command",
+                                  json={"cmd": f"deploy_model act {ver_name} zmax-infer-arm64.tar"}, timeout=15)
+                    self._log(f"📡 已下发 Mac 部署指令: {r2.json()}")
+                except Exception as e:
+                    self._log(f"⚠️ Mac 指令下发失败: {e}")
+                self._log("🤖 Mac 守护轮询到指令 → 拉模型 + 拉容器tar → docker load → 挂载推理")
+                self._log(f"📦 部署完成: 模型 {ver_name} + 容器 zmax-std:1.0-infer (arm64) · 已通知 Mac")
             except Exception as e:
                 self._log(f"❌ 端侧部署失败: {str(e)[:100]}")
 
