@@ -10199,6 +10199,18 @@ def main():
     """)
 
     win = StudioMainWindow()
+    # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)
+    try:
+        from PyQt5.QtGui import QGuiApplication
+        scr = QGuiApplication.primaryScreen()
+        if scr:
+            geo = scr.availableGeometry()
+            win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
+                            1400, 900)
+        else:
+            win.setGeometry(60, 40, 1400, 900)
+    except Exception:
+        win.setGeometry(60, 40, 1400, 900)
     win.show()
     # 2026-08-07 老倪: 控制台置顶到桌面前端 (WSLg 窗口可能被遮挡)
     try:
