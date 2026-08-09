@@ -5062,10 +5062,9 @@ class SimulinkModule(QWidget):
                         f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_base} 2>/dev/null; "
                         f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
-                        f"else docker rm -f zmax_train 2>/dev/null; docker run -d --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
-                        f"-v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro "
+                        f"else docker rm -f zmax_train 2>/dev/null; docker run -d --runtime nvidia --gpus all "
                         f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
-                        f"zmax-train:latest python -m lerobot.scripts.lerobot_train --config_path {cfg_base} "
+                        f"zmax-train:latest python remote_train_entry.py --config_path {cfg_base} "
                         f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'",
                         shell=True, timeout=40).decode().strip()
                     if "BUILDING" in out:
