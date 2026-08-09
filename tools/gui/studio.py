@@ -3511,6 +3511,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self._log(f"❌ 报告生成失败: {e}")
             # 🚫 2026-08-09 老倪: 训练完不自动弹视频 (烦) — 视频需手动点
             self._log("🎬 视频未自动生成 (需要时点推理/视频节点手动生成)")
+            # 🐛 2026-08-09 老倪: 队列结束恢复按钮 (start 可点 / stop 灰)
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
             return
         # 🐛 2026-08-08 老倪: 防误判 — on_train 数据准备有延迟, 启动后 45s 内不判完成
         import time as _t
@@ -3535,6 +3538,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._zoo_queue.pop(0)
         if not self._zoo_queue:
             self._log("🏁 Model Zoo 训练队列已空 (全部模型训练完成或跳过)")
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
             return
         pol = self._zoo_queue.pop(0)
         left = len(self._zoo_queue)
@@ -4418,6 +4423,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._log(f"🎛 Model Zoo 训练启动 — 开关: 开 {on if on else '无'} | 跳过 {off if off else '无'}")
             self._zoo_queue = on or list(self.ZOO_POLICIES)  # 全关 → 全部训练 (保险)
             self._log(f"📡 终端详细打印已开启 (每行完整输出, 老倪监控中)")
+            # 🐛 2026-08-09 老倪: 队列训练中 start 灰 / stop 可用 (之前漏 enable, stop 不好使)
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
             self._zoo_next()
             return
         # 🌐 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 remote → 训练提交远程 V100
