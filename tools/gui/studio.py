@@ -3412,6 +3412,22 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._log("❌ 未连接远程 GPU — 请先在模型引擎顶部点「🔌 连接」, 再上传容器")
                     self._log("   （当前远程状态: 已关机/网络不通 → 本地引擎 4060 容器）")
                     return
+                # 🐛 2026-08-09 老倪: 上传前实测远程连通性, 结果写日志 (不再静默黑盒)
+                self._log(f"  └ 检测远程 {re_['host']}:{re_['port']} …")
+                try:
+                    _probe = _sp.run(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                        f"-o Port={re_['port']} {re_['user']}@{re_['host']} 'echo REMOTE_OK'",
+                        shell=True, capture_output=True, text=True, timeout=20)
+                    if "REMOTE_OK" in _probe.stdout:
+                        self._log(f"  └ ✅ 远程可达 ({re_['host']}:{re_['port']}) — 开始同步")
+                    else:
+                        self._log(f"  └ ❌ 远程不可达 ({re_['host']}:{re_['port']}) — SSH 失败: {_probe.stderr.strip()[:60]}")
+                        self._log("   （请确认远程已开机/网络通, 或重新点「🔌 连接」）")
+                        return
+                except Exception as _e:
+                    self._log(f"  └ ❌ 远程检测异常: {str(_e)[:60]}")
+                    return
                 # 本地 docker 可用性检测 (2026-08-08 老倪: 无 docker CLI → 直接远程构建, 不抛错)
                 try:
                     local_docker = _sp.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
