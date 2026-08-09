@@ -558,8 +558,6 @@ LIBRARY = [
         {"name": "📊 Scope 示波器", "params": {"desc": "双击 → 示波器: 训练 loss 曲线/执行效果"}},
         {"name": "🧠 ACT-Meta 完整模型", "params": {}, "template": "🧠 ACT-Meta 全新训练",
          "desc": "一键搭建完整模型 (8节点8连线) · 或按上方子模块逐步搭建"},
-        {"name": "🎛 顶层总系统", "params": {}, "template": "🎛 顶层总系统",
-         "desc": "一键搭建顶层总系统 (数据→🔬总系统Subsystem→评估Scope) · 双击总系统块展开「🔬 Model Zoo」七模型训练线"},
         {"name": "🏗 Z-MAX 架构", "params": {}, "template": "🏗 Z-MAX 架构",
          "desc": "一键搭建 Z-MAX 四层架构: SYS2 云端训练(顶) → SYS12 Z-Flow + SYS11 VLA-T(中) → SYS0 硬件驱动+原子功能(底)"},
     ]),
@@ -699,10 +697,6 @@ LIBRARY = [
     ]),
     # 🔬 总系统节点 (2026-08-08 老倪: 总系统 Subsystem 可拖 — 双击展开Model Zoo)
     ("system", "🔬 总系统 (1)", [
-        {"name": "🔬 总系统", "params": {"subsystem": "🔬 Model Zoo", "type_label": "Subsystem",
-                                        "desc": "Simulink 子系统: 双击展开 → 🔬 Model Zoo (七模型训练线)"},
-         "flow": "flows/system.json",  # 🐛 2026-08-09 老倪: 点击加载用户保存的总系统 (SYS2→SYS11+SYS12→Scope)
-         "desc": "点击加载用户保存的总系统 flows/system.json (5节点)"},
     ]),
     # 🎯 Action Head 组 (2026-08-08 老倪: Model Zoo各模型 Action Head 均可拖)
     ("action", "🎯 Action Head (7)", [
