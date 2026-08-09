@@ -3465,17 +3465,19 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         self._log(f"  └ ✅ 远程已有镜像 ({re_['host']}):")
                         for _rl in _remote_has.splitlines()[:3]:
                             self._log(f"      · {_rl.strip()}")
-                        # 🔍 显示远程镜像存储路径 (overlay2 层)
+                        # 🔍 显示远程镜像信息 (ID + docker 数据根目录 + 磁盘)
                         try:
                             _rinsp = _sp.run(
                                 f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
                                 f"-o Port={re_['port']} {re_['user']}@{re_['host']} "
-                                f"'docker inspect zmax-train:latest --format \"{{{{.GraphDriver.Data.UpperDir}}}}\" 2>/dev/null; "
-                                f"echo; df -h / | tail -1 | awk \\\"{{print \\\\$2, \\\\$4}}\\\"'",
-                                shell=True, capture_output=True, text=True, timeout=20)
-                            _p1, _p2 = (_rinsp.stdout.strip().splitlines() + ["", ""])[:2]
-                            self._log(f"      · 存储路径: {_p1[:90]}")
-                            self._log(f"      · 磁盘: {_p2.strip()}")
+                                f"'docker inspect zmax-train:latest --format \"{{{{.Id}}}}\" 2>/dev/null | cut -c8-19; "
+                                f"docker info --format \"{{{{.DockerRootDir}}}}\" 2>/dev/null; "
+                                f"df -h / | tail -1'"
+                                , shell=True, capture_output=True, text=True, timeout=20)
+                            _p1, _p2, _p3 = (_rinsp.stdout.strip().splitlines() + ["", "", ""])[:3]
+                            self._log(f"      · 镜像ID: {_p1.strip()[:20]}")
+                            self._log(f"      · 存储目录: {_p2.strip()[:60]}")
+                            self._log(f"      · 磁盘: {_p3.strip()[:40]}")
                         except Exception:
                             pass
                         # 🐛 2026-08-09 老倪: 连续点两次 = 强制重新上传 (第一次显示信息, 第二次真传)
