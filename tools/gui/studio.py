@@ -3293,10 +3293,15 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             try:
                 import subprocess as _sp, json as _json
                 creds = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
-                port = creds.get("port", 22)
+                # 🐛 2026-08-09 老倪: 兼容 嵌套 gpu_4090/gpu_v100 与 旧扁平结构
+                if isinstance(creds, dict) and "host" in creds:
+                    c = creds
+                else:
+                    c = creds.get("gpu_4090") or creds.get("gpu_v100") or {}
+                port = c.get("port", 22)
                 r = _sp.run(
-                    f"sshpass -p '{creds.get('password', '')}' ssh -o StrictHostKeyChecking=no "
-                    f"-o ConnectTimeout=3 -o Port={port} {creds.get('user', 'root')}@{creds.get('host', '')} 'echo OK'",
+                    f"sshpass -p '{c.get('pwd', c.get('password', ''))}' ssh -o StrictHostKeyChecking=no "
+                    f"-o ConnectTimeout=3 -o Port={port} {c.get('user', 'root')}@{c.get('host', '')} 'echo OK'",
                     shell=True, capture_output=True, text=True, timeout=6)
                 if "OK" not in r.stdout:
                     raise ConnectionError("unreachable")
