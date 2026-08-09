@@ -340,11 +340,11 @@ class ModuleCard(QFrame):
         layout.addStretch()
 
         bottom = QHBoxLayout()
-        # 🌐 2026-08-09 老倪: VEH-ID 左下角常显 (对话用 ID — VEH-1~VEH-12)
+        # 🌐 2026-08-09 老倪: VEH-ID 左下角常显 (对话用 ID — VEH.1~VEH.12; 字体小不明显)
         if self.veh_id:
             veh = QLabel(self.veh_id)
-            veh.setFont(QFont("Consolas", 10, QFont.Bold))
-            veh.setStyleSheet("color:#00d4aa; background:transparent; border:none; margin:0; padding:0;")
+            veh.setFont(QFont("Consolas", 5, QFont.Bold))
+            veh.setStyleSheet("color:#00d4aa88; background:transparent; border:none; margin:0; padding:0;")
             veh.setToolTip(f"{self.veh_id} — 与静静对话时用此 ID 指代本卡片")
             bottom.addWidget(veh)
             bottom.addStretch()
@@ -1046,7 +1046,7 @@ class HomeWidget(QWidget):
                     break
                 mid, icon, title, syslbl, desc, color = modules[idx]
                 card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color,
-                                  veh_id=f"VEH-{idx + 1}")  # 🌐 2026-08-09 老倪: VEH-1~VEH-12 对话 ID
+                                  veh_id=f"VEH.{idx + 1}")  # 🌐 2026-08-09 老倪: VEH.1~VEH.12 对话 ID (点号)
                 card.clicked.connect(self.module_clicked.emit)
                 row.addWidget(card)
             fl.addLayout(row)
@@ -4162,7 +4162,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         return f"{x}.{y}.{z}"
 
     def _holo_coord_desc(self, cid):
-        """🌐 坐标 ID → 人类可读 (P03.01.01 = 模型引擎·训练区·控件01)"""
+        """🌐 坐标 ID → 人类可读 (VEH.2.01 = 模型引擎·页内控件01; 2026-08-09 老倪: 取消 Pxx 系统)"""
         try:
             x, y, z = cid.split(".")
             return f"{self.HOLO_PAGES.get(x, x)} · {self.HOLO_ZONES.get(y, y)} · 控件{z}"
@@ -4176,7 +4176,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         return cid
 
     def _holo_act(self, h_id):
-        """🌐 执行 ID 指令 (点按钮/切开关/定位) — 支持 3D 坐标 (P03.01.01) 与简写 (B-01)"""
+        """🌐 执行 ID 指令 (点按钮/切开关/定位) — 支持 VEH.卡.序号 与简写 (B-01)"""
         try:
             # 3D 坐标 → 控件
             if "." in str(h_id):
@@ -4299,7 +4299,17 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             else:
                 lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
             lbl.adjustSize()
-            lbl.move(2, max(0, widget.height() - lbl.height() - 2))
+            # 🐛 2026-08-09 老倪: ID 写到空白处不覆盖文字 — 长条(输入/下拉)最右, 方块(按钮/开关/表格/分组)右下角
+            try:
+                if isinstance(widget, (QLineEdit, QComboBox)):
+                    x = max(0, widget.width() - lbl.width() - 6)
+                    y = max(0, (widget.height() - lbl.height()) // 2)
+                else:
+                    x = max(0, widget.width() - lbl.width() - 4)
+                    y = max(0, widget.height() - lbl.height() - 3)
+                lbl.move(x, y)
+            except Exception:
+                lbl.move(2, max(0, widget.height() - lbl.height() - 2))
             lbl.raise_()
             setattr(widget, "_holo_badge_lbl", lbl)
             return lbl
@@ -4321,7 +4331,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 if id(w) in self._holo_applied:
                     continue
                 self._holo_applied.add(id(w))
-                h_id = f"VEH-2-{i:02d}"
+                h_id = f"VEH.2.{i:02d}"
                 self._holo_badge_overlay(w, h_id, veh_small=True)
                 self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
                                            lambda w=w: self._holo_state(w))
@@ -4383,14 +4393,18 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             pass
 
+    # 🌐 2026-08-09 老倪: 页 → VEH 卡号 (主页功能卡顺序: VEH.1数据集 2模型引擎 3硬件 4架构 5Simulink 6配置 7数据空间 8监控 9评估 10插拔 11版本 12大屏)
+    _VEH_PAGE = {"P01": 1, "P02": 1, "P03": 2, "P04": 9, "P05": 3, "P06": 6,
+                 "P07": 8, "P08": 10, "P09": 11, "P10": 2, "P11": 5, "P12": 7}
+
     def _holo_seq_id(self, w):
-        """🌐 顺序 ID (P页.区.序号 — 可读坐标)"""
+        """🌐 顺序 ID (VEH.卡号.序号 — 2026-08-09 老倪: 取消 Pxx 系统, 全 VEH 点号)"""
         try:
             pg = self._holo_page_of(w)
-            zn = "01"
-            return f"{pg}.{zn}.{self._holo_seq:02d}"
+            veh_n = self._VEH_PAGE.get(pg, 0)
+            return f"VEH.{veh_n}.{self._holo_seq:02d}"
         except Exception:
-            return f"X.{self._holo_seq:02d}"
+            return f"VEH.0.{self._holo_seq:02d}"
 
     def _holo_page_of(self, w):
         """🌐 控件所在页 (parent 链 → stack 页)"""

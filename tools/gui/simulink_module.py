@@ -1045,7 +1045,7 @@ class CICDStageItem(QGraphicsObject):
             if getattr(self, "_hover", False):
                 painter.setPen(QColor("#00d4aa"))
                 painter.setFont(QFont("Arial", 7))
-                nid = getattr(self, "nid", None) or f"P11.{self.sid % 100:02d}"
+                nid = getattr(self, "nid", None) or f"VEH.5.{self.sid % 100:02d}"
                 painter.drawText(QRectF(6, self.h - 13, self.w - 12, 12), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
@@ -1878,7 +1878,7 @@ class SimNodeItem(QGraphicsObject):
             if getattr(self, "_hover", False):
                 painter.setPen(QColor("#00d4aa"))
                 painter.setFont(QFont("Arial", 7))
-                nid = self.node.get("nid") or f"P11.{self.node.get('id', 0) % 100:02d}"
+                nid = self.node.get("nid") or f"VEH.5.{self.node.get('id', 0) % 100:02d}"
                 painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
