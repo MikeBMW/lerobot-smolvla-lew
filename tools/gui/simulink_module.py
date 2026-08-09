@@ -606,8 +606,6 @@ LIBRARY = [
         {"name": "🌉 Interpolant 控制器", "params": {"diffuse_steps": 10, "hidden": 256,
           "desc": "官方 StochasticInterpolants: 桥式扩散 (velocity_loss) 精炼 VLA 动作 — 唯一训练模块"},
           },
-        {"name": "🖐 VLA-Touch 完整模型", "params": {}, "template": "🖐 VLA-Touch 触觉对比",
-         "desc": "一键搭建 VLA-Touch 对比管道 (8节点9连线: 数据→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练→Scope)"},
     ]),
     # 🧿 AWE·场景原生子模块 (2026-08-05 老倪: 参考它石 AWE 3.5 原生架构 + Z-MAX 场景原生路线 —
     #   H-JEPA 三层潜空间 zFlow 世界模型, 4060 精简)
