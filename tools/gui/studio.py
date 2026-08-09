@@ -3913,6 +3913,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 alive = "zmax_train" in vout and "Error" not in vout and "Traceback" not in vout
                 if alive:
                     self._log(f"🌐 远程训练已启动并存活 (pid {out}) · 日志 /tmp/remote_train.log")
+                    # 🐛 2026-08-09 老倪: 远程训练日志实时拉流 — 每5s tail增量, 数据加载/epoch/loss 全显示
+                    self._start_remote_log_stream()
                     self._start_remote_progress_poll(cfg)
                 else:
                     self._log(f"❌ 远程训练启动失败: {vout[-80:]}")
@@ -3922,6 +3924,52 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self.is_training = False
 
         _th.Thread(target=_submit, daemon=True).start()
+
+    def _start_remote_log_stream(self):
+        """🐛 2026-08-09 老倪: 远程训练日志实时拉流 — 每5s tail增量打印 (数据加载/epoch/loss 全显示)"""
+        try:
+            self._remote_log_seen = set()
+            self._remote_log_lines = 0
+            if hasattr(self, "_remote_log_timer"):
+                try:
+                    self._remote_log_timer.stop()
+                except Exception:
+                    pass
+            self._remote_log_timer = QTimer(self)
+            self._remote_log_timer.timeout.connect(self._poll_remote_log)
+            self._remote_log_timer.start(5000)
+            self._log("   └ 📡 远程日志流已开启 (每5秒增量拉取) …")
+        except Exception:
+            pass
+
+    def _poll_remote_log(self):
+        """🐛 2026-08-09: 增量拉远程训练日志 tail, 打印新行; 容器退出后停止"""
+        try:
+            r = self.remote_engine
+            if not r:
+                return
+            import subprocess as _sp
+            cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                   f"-o Port={r['port']} {r['user']}@{r['host']} "
+                   f"'docker ps -q --filter name=zmax_train | head -1; echo ---; "
+                   f"tail -n +{self._remote_log_lines + 1} /tmp/remote_train.log 2>/dev/null'")
+            out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace")
+            parts = out.split("---", 1)
+            alive = bool(parts[0].strip())
+            newlog = parts[1].strip() if len(parts) > 1 else ""
+            if newlog:
+                for line in newlog.splitlines():
+                    if line.strip():
+                        self._log(f"   📡 {line.strip()[:150]}")
+                self._remote_log_lines += len(newlog.splitlines())
+            if not alive:
+                self._log("   └ 📡 远程训练容器已退出 — 日志流停止")
+                try:
+                    self._remote_log_timer.stop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _start_remote_progress_poll(self, cfg):
         try:
