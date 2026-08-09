@@ -3919,6 +3919,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                        f"-o Port={r['port']} {r['user']}@{r['host']} "
                        f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
                        f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg} 2>/dev/null; "
+                       f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{cfg[:-5]}_$(date +%Y%m%d_%H%M%S)|\" {cfg} 2>/dev/null; "
                        f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                        f"echo BUILDING; nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & "
                        f"else "

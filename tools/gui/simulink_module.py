@@ -5055,11 +5055,13 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit(f"🐳 提交 {pname} 训练 → 远程容器 (Docker · {r['host']}) · Model Engine 容器化")
                 try:
                     cfg_base = os.path.basename(cfg_path or "config_act_metaworld.yaml")
+                    _odir = cfg_base.replace(".yaml", "") + "_$(date +%Y%m%d_%H%M%S)"
                     out = _spr.check_output(
                         f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o Port={r['port']} "
                         f"{r['user']}@{r['host']} "
                         f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
                         f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_base} 2>/dev/null; "
+                        f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{_odir}|\" {cfg_base} 2>/dev/null; "
                         f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
                         f"else docker rm -f zmax_train 2>/dev/null; docker run -d --runtime nvidia --gpus all "
