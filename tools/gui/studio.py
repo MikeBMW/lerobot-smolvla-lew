@@ -4457,8 +4457,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._holo_seq += 1
                     self._holo_applied.add(id(w))
                     h_id = self._holo_seq_id(w)
-                    # 🐛 2026-08-09 老倪: simulink 画布页 (P11) 按钮 ID 不常显 → 悬停 tooltip
-                    hover_only = self._holo_page_of(w) == "P11"
+                    # 🐛 2026-08-09 老倪: 首页(P01)/simulink(P11) 按钮 ID 不常显 → 悬停 tooltip (避免污染)
+                    hover_only = self._holo_page_of(w) in ("P01", "P11")
                     self._holo_badge_overlay(w, h_id, hover_only=hover_only)
                     self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
                                                lambda w=w: self._holo_state(w))
