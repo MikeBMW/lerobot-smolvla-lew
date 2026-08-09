@@ -5552,6 +5552,34 @@ class HardwareModule(SubModuleWidget):
         hw_group.setLayout(hw_layout)
         body.addWidget(hw_group)
         
+        # ── 📷 摄像头实时画面 (2026-08-09 老倪: 参考 cicd.html /api/snapshot/latest 轮询方案) ──
+        cam_group = QGroupBox("📷 摄像头实时画面")
+        cam_group.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:10px; padding-top:28px; margin-top:10px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        cam_layout = QVBoxLayout()
+        cam_layout.setSpacing(8)
+        # 顶部: 连接按钮 + 状态
+        cam_bar = QHBoxLayout()
+        self.btn_cam_connect = QPushButton("🔌 连接摄像头")
+        self.btn_cam_connect.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 12px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
+        self.btn_cam_connect.clicked.connect(self._cam_connect)
+        cam_bar.addWidget(self.btn_cam_connect)
+        self.cam_status = QLabel("⚪ 未连接 · 快照端点 datadrive.world/api/snapshot/latest")
+        self.cam_status.setStyleSheet(f"color:{C_GRAY}; font-size:10px; background:transparent; border:none;")
+        cam_bar.addWidget(self.cam_status, 1)
+        cam_layout.addLayout(cam_bar)
+        # 画面显示 (QLabel 承载 QPixmap, 固定高度 240)
+        self.cam_view = QLabel("📷 点击「连接摄像头」查看实时画面 (Orin 快照)")
+        self.cam_view.setFixedHeight(240)
+        self.cam_view.setAlignment(Qt.AlignCenter)
+        self.cam_view.setStyleSheet(f"background:#000; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; font-size:11px;")
+        cam_layout.addWidget(self.cam_view)
+        cam_group.setLayout(cam_layout)
+        body.addWidget(cam_group)
+        # 轮询定时器 (1s — cicd.html 100ms 太频, 快照 10s 间隔足够)
+        self._cam_timer = QTimer()
+        self._cam_timer.timeout.connect(self._cam_poll)
+        self._cam_last_ts = ""
+        
         # ── 填充硬件列表 ──
         self._build_hardware_bus()
         
@@ -5679,6 +5707,53 @@ class HardwareModule(SubModuleWidget):
         btn.setToolTip(f"塔灯 {text}")
         return btn
     
+    def _cam_connect(self):
+        """🔌 摄像头连接: 探测快照端点 → 开始轮询显示 (2026-08-09 老倪: cicd.html 方案)"""
+        import requests as _rq
+        try:
+            r = _rq.get("https://datadrive.world/api/snapshot/latest", timeout=10)
+            if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
+                self.cam_status.setText("🟢 已连接 · 快照端点正常 · 实时画面轮询中")
+                self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:10px; background:transparent; border:none;")
+                self.btn_cam_connect.setText("⏹ 断开摄像头")
+                # 立即显示一帧
+                self._show_cam_frame(r.content)
+                self._cam_timer.start(1500)  # 1.5s 轮询
+                self._log("📷 摄像头已连接 — 轮询 datadrive.world/api/snapshot/latest (Orin 快照)")
+            else:
+                self.cam_status.setText(f"⚠️ 快照端点异常: HTTP {r.status_code}")
+                self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:10px; background:transparent; border:none;")
+                self._log(f"⚠️ 摄像头连接失败: HTTP {r.status_code} (快照端点无图)")
+        except Exception as e:
+            self.cam_status.setText(f"❌ 连接失败: {str(e)[:40]}")
+            self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:10px; background:transparent; border:none;")
+            self._log(f"❌ 摄像头连接失败: {e}")
+
+    def _cam_poll(self):
+        """📷 轮询快照端点 (QTimer 1.5s — 参考 cicd.html setInterval 方案)"""
+        try:
+            import requests as _rq
+            r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
+                        timeout=8)
+            if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
+                self._show_cam_frame(r.content)
+        except Exception:
+            pass  # 单帧失败不中断轮询
+
+    def _show_cam_frame(self, data):
+        """📷 QLabel 显示 JPEG 帧"""
+        try:
+            from PyQt5.QtGui import QPixmap
+            from PyQt5.QtCore import QBuffer, QByteArray
+            pm = QPixmap()
+            pm.loadFromData(data, "JPG")
+            if not pm.isNull():
+                # 等比缩放保持比例
+                self.cam_view.setPixmap(pm.scaled(self.cam_view.width(), self.cam_view.height(),
+                                                  Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception:
+            pass
+
     def _tower_cmd(self, color):
         """发送塔灯控制命令 (2026-08-09 老倪: VEH.3.16 红灯控制不了修复)
         双通道: ①本地 SSH 直连 Orin (同网段时) ②ECS relay /command 下发 Mac 执行 (Orin 局域网内)"""

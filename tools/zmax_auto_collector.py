@@ -2,8 +2,8 @@
 """Z-MAX 自动化数据采集守护 · MAC端 · 持续循环轮询"""
 import requests, subprocess, time, os, json
 
-ORIN, ORIN_PW = "tashan@192.168.23.10", "ts123"
-BACKEND = "http://datadrive.world/api/relay"
+ORIN, ORIN_PW = "tashan@192.168.23.66", ""
+BACKEND = "https://datadrive.world/api/relay"  # 🐛 2026-08-09: 统一到当前 ECS (旧 106.75.239.80:50053 已废)
 MAC_DATA = os.path.expanduser("~/zmax_loop")
 os.makedirs(MAC_DATA, exist_ok=True)
 
@@ -46,6 +46,21 @@ while True:
         if cmd == "collect":
             do_cycle(cycle)
             cycle += 1
+        elif cmd.startswith("tower_light"):
+            # 🐛 2026-08-09: 塔灯控制 (4090 控制台硬件工具箱下发 → Mac 执行 Orin)
+            color = cmd.split()[-1]
+            log(f"🚦 塔灯 → {color}")
+            run_ssh(f"source /opt/ros/humble/setup.bash && "
+                    f"ROS_DOMAIN_ID=23 ros2 topic pub --once /tower_light/command "
+                    f"std_msgs/msg/String '{{\"data\":\"{color}\"}}'", timeout=10)
+            log(f"✅ 塔灯 {color} 已执行")
+        elif cmd.startswith("deploy_model"):
+            # 🐛 2026-08-09: 模型部署 (4090 → Mac 拉模型 → 构建容器)
+            log("📦 部署模型指令收到 — 拉取 act_latest.safetensors")
+            subprocess.run(["curl","-s","--max-time","590",
+                "https://datadrive.world/models/act_latest.safetensors",
+                "-o","/tmp/act_latest.safetensors"], timeout=600)
+            log("✅ 模型已拉取 /tmp/act_latest.safetensors")
         time.sleep(5)
     except Exception as e:
         log(f"错误: {e}")
