@@ -12,9 +12,9 @@ import numpy as np
 import torch
 from pathlib import Path
 
-# 渲染必须的 GL 环境 (在 import mujoco/metaworld 前设置, WSLg X0 socket)
+# 渲染必须的 GL 环境 (在 import mujoco/metaworld 前设置; 🐛 2026-08-09: glfw 需 X11, 容器无显示 → 默认 egl 无头 GPU 渲染)
 os.environ.setdefault("DISPLAY", ":0")
-os.environ.setdefault("MUJOCO_GL", "glfw")
+os.environ.setdefault("MUJOCO_GL", "egl")
 os.environ.setdefault("MUJOCO_EGL_DEVICE", "0")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
