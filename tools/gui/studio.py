@@ -4322,6 +4322,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             lbl.adjustSize()
             lbl.move(2, max(0, widget.height() - lbl.height() - 2))  # 左下角固定
             lbl.raise_()
+            lbl.show()  # 🐛 2026-08-09 老倪: 必须显式 show (父已显示时新建子控件默认不可见 — 窗口里一个ID都没有的根因)
             setattr(widget, "_holo_badge_lbl", lbl)
             # tooltip: ID + 控件名 (悬停即知对应啥)
             try:
@@ -4352,6 +4353,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     lbl = getattr(w, "_holo_badge_lbl", None)
                     if lbl is not None:
                         lbl.move(2, max(0, w.height() - lbl.height() - 2))
+                        if not lbl.isVisible():
+                            lbl.show()
                         lbl.raise_()
                 except Exception:
                     pass
