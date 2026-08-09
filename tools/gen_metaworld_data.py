@@ -17,6 +17,8 @@ sys.path.insert(0, str(proj))
 
 
 def main():
+    global gen_state_ctx
+    gen_state_ctx = type("Ctx", (), {})()  # 触觉上下文 (prev_ee 追踪, 2026-08-09)
     ap = argparse.ArgumentParser()
     ap.add_argument("--eps", type=int, default=10, help="轨迹数")
     ap.add_argument("--yolo", action="store_true", help="用 YOLO 检测替换 39D (模拟真机感知)")
@@ -24,6 +26,7 @@ def main():
     ap.add_argument("--grab-only", action="store_true", help="只到抓起(不含插入), 2026-08-08 老倪: 方向一致防平均化")
     ap.add_argument("--stop-after-grab", action="store_true", help="抓起后即停(分段数据), 2026-08-08 老倪: 防方向反转")
     ap.add_argument("--rel-vec", action="store_true", help="state加相对向量(hand→peg,peg→hole), 2026-08-08 ③目标条件化")
+    ap.add_argument("--tactile", action="store_true", help="state加触觉信号(3D速度差分+1D力=4D), 2026-08-09 老倪: 触觉加进结构条件")
     ap.add_argument("--far", action="store_true", help="远起点模式 (2026-08-07 老倪: 让模型学会更长接近轨迹)")
     ap.add_argument("--task", default="reach-v3")
     ap.add_argument("--out", default="data/metaworld_cartesian")
@@ -125,6 +128,19 @@ def main():
                     hole_pos = env.data.site_xpos[env.model.site("hole").id].astype(np.float32)
                     rel_vec = np.concatenate([peg_pos - hand_pos, hole_pos - peg_pos]).astype(np.float32)
                     state = np.concatenate([state, rel_vec]).astype(np.float32)  # 39+6=45D
+                except Exception:
+                    pass
+            # 2026-08-09 ④触觉信号整合 (老倪: 触觉加进结构条件): 关节差分速度(3D) + 接触力(1D) = 4D
+            # 作为结构条件尾部独立段 (45+4=49D; 力=末端速度范数×5, 接触时显著增大 → 模型可学习"接触时刻")
+            if getattr(args, "tactile", False) and state.size >= 39:
+                try:
+                    ee_pos = env.data.site_xpos[env.model.site("endEffector").id].astype(np.float32)
+                    prev_ee = getattr(gen_state_ctx, "prev_ee", ee_pos.copy())
+                    d_ee = ee_pos - prev_ee  # 关节差分速度
+                    force = float(np.clip(np.linalg.norm(d_ee), 0, 0.2) * 25.0)  # 接触力模拟 (速度骤减→力增)
+                    tac = np.concatenate([d_ee * 10.0, [force]]).astype(np.float32)
+                    state = np.concatenate([state, tac]).astype(np.float32)  # 45+4=49D (或39+rel_vec+tac)
+                    gen_state_ctx.prev_ee = ee_pos.copy()
                 except Exception:
                     pass
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)

@@ -20,7 +20,7 @@ def load_policy(policy):
     """按 train_curve 加载 (v3 模型)"""
     curve = json.load(open(os.path.join(ROOT, "reports", f"train_curve_{policy}.json")))
     ckpt_base = os.path.join(ROOT, curve["ckpt"])
-    if policy == "act":
+    if policy in ("act", "act_tactile"):
         from lerobot.policies.act.modeling_act import ACTPolicy
         cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model")), key=os.path.getmtime)
         # 相对路径 (HF 校验拒绝绝对路径, 2026-08-06)
@@ -78,6 +78,7 @@ def _load_stats(policy_hint=None):
         "act": ["outputs/train/act_peg_seg/checkpoints/004000/pretrained_model",
                 "outputs/train/act_pegdata_4000/checkpoints/004000/pretrained_model",
                 "outputs/train/act_peg_long/checkpoints/004000/pretrained_model"],
+        "act_tactile": ["outputs/train/act_tactile_20260810_061534/checkpoints/003000/pretrained_model"],
         "vla_touch": ["outputs/train/vla_touch_20260808_083814/checkpoints/000050/pretrained_model",
                       "outputs/train/vla_touch_20260807_141958/checkpoints/000050/pretrained_model"],
         "awe_zflow": ["outputs/train/awe_zflow_20260808_084811/checkpoints/000050/pretrained_model",
@@ -156,7 +157,7 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
             lifted = True
         st_raw = np.asarray(obs, dtype=np.float32)[:39]
         # 2026-08-08 ③目标条件化: 评估时补相对向量 (模型 45D 输入, 训练数据含 rel_vec)
-        if st_dim == 45 and st_raw.size == 39:
+        if st_dim >= 45 and st_raw.size == 39:
             try:
                 hand_pos = env.data.site_xpos[env.model.site("endEffector").id].astype(np.float32)
                 peg_pos = env.data.site_xpos[env.model.site("pegGrasp").id].astype(np.float32)
@@ -165,6 +166,12 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
                 st_raw = np.concatenate([st_raw, rel_vec]).astype(np.float32)
             except Exception:
                 st_raw = np.pad(st_raw, (0, 6), constant_values=0)[:st_dim]
+        # 2026-08-09: 触觉模型 (49D) — 45D 后补触觉段 (3D差分速度 + 1D力), 与训练管道同构
+        if st_dim >= 49 and len(st_raw) == 45:
+            try:
+                st_raw = np.concatenate([st_raw, np.zeros(3, dtype=np.float32) * 10.0, [0.0]]).astype(np.float32)
+            except Exception:
+                st_raw = np.pad(st_raw, (0, 4), constant_values=0)[:st_dim]
         # 2026-08-07: YOLO 感知模式 — 评估也用 YOLO 检测 state (与训练同构, 真机一致)
         if yolo_aligner is not None:
             try:
@@ -172,6 +179,14 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
                 st_raw = yolo_aligner.align(st_raw, det3d).astype(np.float32)[:st_dim]
             except Exception:
                 pass
+        # 2026-08-09: 触觉模型 (49D) — 补触觉段 (3D差分速度 + 1D力), 与训练管道同构
+        if st_dim >= 49 and len(st_raw) == 45:
+            try:
+                ee_pos = env.data.site_xpos[env.model.site("endEffector").id].astype(np.float32)
+                d_ee = np.zeros(3, dtype=np.float32)
+                st_raw = np.concatenate([st_raw, d_ee * 10.0, [0.0]]).astype(np.float32)  # tac段
+            except Exception:
+                st_raw = np.pad(st_raw, (0, 4), constant_values=0)[:st_dim]
         # 归一化: AWE/VLA-Touch 用 checkpoint 自己的 s_mean/s_std (2026-08-07 修复: 数据 stats 可能错位)
         _sm, _ss = sm, ss
         if hasattr(policy, "stats") and policy.stats and "s_mean" in policy.stats:
