@@ -2563,6 +2563,7 @@ class SimulinkModule(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("simulink")  # 🌐 2026-08-09 老倪: Simulink 页识别 (VEH-5 功能卡编号 — VEH.5.xx)
         self.nodes = []    # [{id,type,name,x,y,w,params,inputs,outputs,actions}]
         self.links = []    # [{id,f,t,f_port,t_port}]
         self._items = {}   # node_id -> SimNodeItem
@@ -2589,6 +2590,57 @@ class SimulinkModule(QWidget):
         self._build()
         self._seed_default_flow()
         self._model_engine = None  # 🌐 Model Engine 中枢 (2026-08-08: 训练走 GPU 引擎选择)
+
+    def _veh5_apply(self):
+        """🌐 VEH.5 (Simulink 页) 控件编号 (2026-08-09 老倪: 所有可见控件 VEH.5.xx 悬浮显示)
+        独立窗口 — 不走 studio 全局循环, 自身遍历编号"""
+        try:
+            from PyQt5.QtWidgets import QLabel, QScrollArea, QScrollBar, QFrame
+            ws = []
+            for w in self.findChildren(QWidget):
+                if w is self:
+                    continue
+                if type(w) is QWidget:
+                    continue
+                if isinstance(w, (QScrollArea, QScrollBar)):
+                    continue
+                if isinstance(w, QFrame) and (w.layout() is not None or w.children()):
+                    continue  # 容器卡片
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue
+                    if txt.startswith("VEH."):
+                        continue
+                ws.append(w)
+            def _ay(w):
+                try:
+                    return w.mapTo(self, w.rect().topLeft()).y()
+                except Exception:
+                    return 0
+            def _ax(w):
+                try:
+                    return w.mapTo(self, w.rect().topLeft()).x()
+                except Exception:
+                    return 0
+            ws.sort(key=lambda w: (_ay(w), _ax(w)))
+            self._veh5_ids = {}
+            for i, w in enumerate(ws, 1):
+                h_id = f"VEH.5.{i:02d}"
+                w.setToolTip(f"{h_id} — {w.__class__.__name__}")
+                self._veh5_ids[id(w)] = h_id
+        except Exception:
+            pass
+
+    def showEvent(self, ev):
+        """🌐 窗口显示时编号 (VEH.5)"""
+        super().showEvent(ev)
+        try:
+            if not getattr(self, "_veh5_done", False):
+                self._veh5_apply()
+                self._veh5_done = True
+        except Exception:
+            pass
 
     def set_model_engine(self, engine):
         """🌐 绑定 Model Engine (studio 传入 — 训练节点双击 → 引擎选择/启动训练)"""
