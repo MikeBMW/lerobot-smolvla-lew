@@ -660,7 +660,7 @@ class ProductRoadmapWidget(QFrame):
             },
             {
                 "phase": "Phase 2",
-                "title": "VLA-T端到端泛化",
+                "title": "Sys-11 VLA-T\n端到端泛化",
                 "time": "2026 Q4",
                 "dims": "M+A泛化",
                 "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
