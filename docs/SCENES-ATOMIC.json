@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "scene_library": "Z-MAX 光模块400G AOI产线 原子场景库",
+  "engineer": "小芳 (工厂工艺工程师)",
+  "date": "2026-08-09",
+  "product": {
+    "name": "400G 光模块 (QSFP-DD)",
+    "dimensions": "78.5mm × 18.35mm × 8.5mm (L×W×H)",
+    "weight": "≤ 85g",
+    "material": "铝合金外壳 + 金手指金触点",
+    "tolerance": "插拔对准 ±0.05mm, 插入深度公差 ±0.1mm",
+    "packaging": "料盘 (Tray), 4×8=32 槽位, 槽距 25mm",
+    "line_speed": "节拍目标 ≤ 15s/件"
+  },
+
+  "scene_nodes": [
+    {
+      "id": "SCN_PLUG",
+      "name": "插拔场景",
+      "category": "插拔类",
+      "description": "光模块金手指插入治具插槽并拔出 (AOI检测联动)",
+      "link": "https://datadrive.world/scene/SCN_PLUG",
+      "atomic_skills": [
+        {"id": "SK_GRASP_PICK", "name": "抓取位姿识别", "type": "视觉检测", "source": "抓取位姿识别/state_machine.yaml"},
+        {"id": "SK_MOVE_SLOT", "name": "移动到治具插槽", "type": "搬运", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_INSERT_1", "name": "尝试插入第一次", "type": "插拔", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_INSERT_2", "name": "尝试插入第二次", "type": "插拔", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_INSERT_DONE", "name": "插入完成", "type": "插拔", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_RELEASE", "name": "暂时松开", "type": "插拔", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_PULL_OUT", "name": "拔出", "type": "插拔", "source": "抓取放置/state_machine.yaml"}
+      ],
+      "process_metrics": {
+        "operation_success_rate": "≥ 99%",
+        "cycle_time": "≤ 12s (插入+检测+拔出)",
+        "insertion_force": "≤ 15N (超限报警)",
+        "insertion_depth": "8.0 ± 0.1mm",
+        "alignment_accuracy": "± 0.05mm (视觉引导)",
+        "insert_retry": "2次 (第1次失败自动重试)",
+        "safety": "力觉保护, 插入力>15N 立即回退",
+        "structural": "治具插槽间距 25mm, 插槽深度 12mm, 导向倒角 0.5×45°"
+      }
+    },
+    {
+      "id": "SCN_TRANSFER",
+      "name": "搬运场景",
+      "category": "搬运类",
+      "description": "光模块从料盘抓取搬运至治具工位 (含扫码追溯)",
+      "link": "https://datadrive.world/scene/SCN_TRANSFER",
+      "atomic_skills": [
+        {"id": "SK_TRAY_RECOG", "name": "料盘识别", "type": "视觉检测", "source": "识别下料盘位置/state_machine.yaml"},
+        {"id": "SK_PICK", "name": "取料", "type": "搬运", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_SCAN", "name": "扫码", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_MOVE_FIXTURE", "name": "移动到治具插槽", "type": "搬运", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_PLACE", "name": "放置", "type": "搬运", "source": "抓取放置/state_machine.yaml"}
+      ],
+      "process_metrics": {
+        "operation_success_rate": "≥ 99.5%",
+        "cycle_time": "≤ 8s (料盘→工位)",
+        "pick_accuracy": "± 0.3mm (视觉定位)",
+        "transfer_speed": "≤ 1.2m/s (末端线速度)",
+        "acceleration": "≤ 4m/s² (防跌落)",
+        "gripper_force": "5-12N (可调, 防夹伤壳体)",
+        "barcode_read": "≥ 99.8% (一次读码率)",
+        "structural": "料盘32槽(4×8), 槽距25mm, 治具高度 850mm, 机械臂行程 800mm"
+      }
+    },
+    {
+      "id": "SCN_AOI",
+      "name": "光学检测场景",
+      "category": "视觉检测类",
+      "description": "金手指+壳体表面 AOI 光学检测 (6视角+PD判定)",
+      "link": "https://datadrive.world/scene/SCN_AOI",
+      "atomic_skills": [
+        {"id": "SK_AOI_1", "name": "AOI_1 金手指正面", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_AOI_2", "name": "AOI_2 金手指反面", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_AOI_3", "name": "AOI_3 表面左视", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_AOI_4", "name": "AOI_4 表面右视", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_AOI_5", "name": "AOI_5 顶面", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_AOI_6", "name": "AOI_6 底面", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_AOI_PD", "name": "AOI_PD 缺陷判定", "type": "视觉检测", "source": "抓取放置/state_machine.yaml"},
+        {"id": "SK_OK_NG", "name": "OK/NG 判定", "type": "决策", "source": "抓取放置/state_machine.yaml"}
+      ],
+      "process_metrics": {
+        "operation_success_rate": "≥ 99% (误判率 < 1%)",
+        "cycle_time": "≤ 15s (6视角+判定)",
+        "resolution": "金手指 2448×2048 (0.02mm/pixel)",
+        "surface_resolution": "1600×220 校正图 (0.01mm/pixel)",
+        "detect_defect": "划痕/氧化/金手指污染/壳体压伤",
+        "min_defect": "≥ 0.05mm (检出下限)",
+        "false_positive": "≤ 1% (过杀率)",
+        "false_negative": "≤ 0.5% (漏杀率, 关键指标)",
+        "structural": "相机 OPT-CC1-GG50(金手指) + OPT-CC1-C050-GG3(表面), 视野 60×50mm, 工作距离 120mm"
+      }
+    }
+  ],
+
+  "atomic_skill_library": {
+    "插拔类": ["尝试插入第一次", "尝试插入第二次", "插入完成", "暂时松开", "拔出"],
+    "搬运类": ["取料", "移动到治具插槽", "放置"],
+    "视觉检测类": ["抓取位姿识别", "料盘识别", "扫码", "AOI_1~6", "AOI_PD", "OK/NG判定"]
+  },
+
+  "integration": {
+    "ecs_endpoint": "https://datadrive.world/api/scene/upload",
+    "flow": "左侧模块库点击场景 → 打开链接 → 场景JSON传给ECS → web可视化"
+  }
+}
