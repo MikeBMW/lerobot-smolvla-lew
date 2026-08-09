@@ -531,11 +531,13 @@ LIBRARY = [
     ]),
     ("model", "模型 (9)", [
         {"name": "M00 SmolVLA", "params": {"checkpoint": "smolvla-500m", "fps": 100}},
-        {"name": "M01 ACT",     "params": {"chunk_size": 7, "dim_model": 256}},
         {"name": "M02 VLA-T",   "params": {"remote": "4090:50054"}},
         {"name": "M03 GR00T",   "params": {"remote": "4090:50056"}},
         {"name": "M04 LEW",     "params": {"horizon": 16}},
         {"name": "M05 H-JEPA",  "params": {"remote": "4090"}},
+        # 🧩 原子 (2026-08-09 老倪: 打开原子技能选择器 → 输入结构条件 → 进SYS1 → 出action)
+        {"name": "🧩 原子", "params": {"atomic_gate": True},
+         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
     ]),
     # 🧠 ACT 模型·官方子模块 (2026-08-04 老倪: "在左侧模块库里分个类, 将ACT-meta保存到模块库里;
     #  引导从最基础的模块库搭建成最终模型, 全程提示")
@@ -2507,7 +2509,10 @@ class LibraryPanel(QFrame):
                     border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
-                if it.get("flow"):
+                if it.get("params", {}).get("atomic_gate"):
+                    # 🧩 原子 (2026-08-09 老倪: 打开原子技能 → 结构条件 → SYS1 → action)
+                    btn.clicked.connect(lambda _, nm=it["name"]: self.module.open_atomic_skill_flow(nm))
+                elif it.get("flow"):
                     # 🐛 2026-08-09 老倪: 点击加载保存的工作流 JSON (总系统)
                     btn.clicked.connect(lambda _, fl=it["flow"]: self.module.load_flow_file(fl))
                 elif it.get("template"):
@@ -6251,6 +6256,99 @@ class SimulinkModule(QWidget):
         _j.dump(flow, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         self._log(f"🧩 已导出 {len(acts)} 个技能 action → {out} (画板可加载)")
         return out
+
+    def open_atomic_skill_flow(self, btn_name="🧩 原子"):
+        """🧩 原子按钮: 打开原子技能选择器 → 自动建节点链:
+        技能(skill) → 结构条件(coord_overlay) → SYS1 → 导出 action JSON
+        (2026-08-09 老倪: 原子技能工程化/模块化 — 每个技能都能实现落地)"""
+        import os as _os, json as _j, time as _t
+        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        p = _os.path.join(repo, "flows", "atomic_skill_tokens.json")
+        if not _os.path.exists(p):
+            self._log(f"❌ 技能库不存在: {p} (先运行 flows/gen_skill_tokens.py)")
+            return
+        try:
+            data = _j.load(open(p, encoding="utf-8"))
+            skills = data.get("skills", [])
+        except Exception as e:
+            self._log(f"❌ 技能库解析失败: {e}")
+            return
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QComboBox, QPushButton, QLabel
+        from collections import OrderedDict
+        by_cat = OrderedDict()
+        for s in skills:
+            by_cat.setdefault(s["category"], []).append(s)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("🧩 原子技能 → 结构条件 → SYS1 → action")
+        dlg.setMinimumWidth(520)
+        lay = QVBoxLayout(dlg)
+        cat_cb = QComboBox()
+        cat_cb.addItems(list(by_cat.keys()))
+        skill_cb = QComboBox()
+        def fill_skills(_):
+            skill_cb.clear()
+            for s in by_cat.get(cat_cb.currentText(), []):
+                skill_cb.addItem(f"{s['skill_id']} {s['name'][:24]} · {s.get('action','operate')}", s)
+        cat_cb.currentIndexChanged.connect(fill_skills)
+        fill_skills(0)
+        lay.addWidget(QLabel("① 技能大类:"))
+        lay.addWidget(cat_cb)
+        lay.addWidget(QLabel("② 原子技能 (W²-VLA 6元组 Token):"))
+        lay.addWidget(skill_cb)
+        info = QLabel("")
+        info.setWordWrap(True)
+        info.setStyleSheet("color:#8b949e; font-size:10px;")
+        lay.addWidget(info)
+        def show_info(_):
+            s = skill_cb.currentData()
+            if s:
+                tk = s.get("tokens", {})
+                info.setText(
+                    f"Token: {tk.get('id','')} {tk.get('semantic','')}\n"
+                    f"场景: {tk.get('scene','')} · 阶段: {tk.get('stage','')} · 成熟度: {tk.get('maturity','')}\n"
+                    f"CoT: {tk.get('cot','')}")
+        skill_cb.currentIndexChanged.connect(show_info)
+        show_info(0)
+        btn_ok = QPushButton("✅ 建节点链: 技能 → 结构条件 → SYS1 → action")
+        btn_ok.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border-radius:4px; padding:8px; font-weight:bold;}")
+        def apply():
+            s = skill_cb.currentData()
+            if not s:
+                return
+            # 1) 技能节点
+            sn = self.add_node_at_center("skill", f"🧩 {s['skill_id']} {s['name'][:16]}", {
+                "skill_id": s["skill_id"], "tokens": s.get("tokens", {}),
+                "action": s.get("action", "operate"), "modalities": s.get("modalities", []),
+                "encoding": s.get("encoding", {}), "gate": s.get("gate", 0.5),
+                "desc": s.get("desc", "")[:80]})
+            # 2) 结构条件节点 (右侧)
+            cx, cy = sn.get("x", 300) + 240, sn.get("y", 200)
+            cn = self.add_node("coord_overlay", f"🧩 结构条件 · {s['skill_id']}", cx, cy, {
+                "cond_ref": s["skill_id"], "skill": s["name"],
+                "tokens": s.get("tokens", {}), "gate": 0.5,
+                "desc": f"🧩 {s['name'][:24]} 条件编码 (ControlNet: latent += proj(cond)×0.5)"})
+            # 3) 连接: 技能 → 结构条件
+            fi = self._items.get(sn["id"]); ti = self._items.get(cn["id"])
+            if fi and ti:
+                self.add_link(fi, ti, "cond")
+            # 4) 导出 action JSON
+            act = {
+                "format": "zmax-skill-action", "generated": _t.strftime("%Y%m%d_%H%M%S"),
+                "skill_id": s["skill_id"], "name": s["name"],
+                "tokens": s.get("tokens", {}), "action": s.get("action", "operate"),
+                "modalities": s.get("modalities", []), "encoding": s.get("encoding", {}),
+                "gate": s.get("gate", 0.5),
+                "input": {"topic": "/dds/cond/" + s["skill_id"].lower()},
+                "output": {"topic": "/dds/action/" + s["skill_id"].lower()},
+            }
+            out = _os.path.join(repo, "flows", f"action_{s['skill_id']}.json")
+            _j.dump(act, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            self._log(f"🧩 {s['skill_id']} 节点链已建: 技能→结构条件→SYS1, action → {out}")
+            dlg.accept()
+            self._sync()
+        btn_ok.clicked.connect(apply)
+        lay.addWidget(btn_ok)
+        dlg.exec_()
 
     def _pick_atomic_condition(self, node):
         """🧩 ControlNet 思想: 双击结构条件节点 → 从 atomic_skills_conditions.json 选原子技能条件 → 注入节点
