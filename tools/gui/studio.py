@@ -3638,8 +3638,12 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
     ZOO_POLICIES = ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow", "expert_mlp", "expert_policy"]
 
     def _zoo_next(self):
+        # 🐛 2026-08-09 老倪: 防重复交付 — 完成只触发一次自动交付 (远程提交后轮询误判循环刷屏)
         if not getattr(self, "_zoo_queue", None):
             self._zoo_queue = None
+            if getattr(self, "_zoo_finalized", False):
+                return  # 已交付过 — 不再重复 (否则 15s 轮询无限触发)
+            self._zoo_finalized = True
             self._log("🏁 Model Zoo 完整训练完成")
             # 🎬 2026-08-09 老倪: 训练完 → 自动交付 (rollout 视频 + PDF 报告 → 飞书 dataworld 群)
             self._log("📤 自动交付: 生成 rollout 视频 + PDF 报告 → 飞书 dataworld 群…")
@@ -3651,11 +3655,27 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
             return
+        # 🐛 2026-08-09 老倪: 远程容器训练等待 — 容器还在跑则不推进 (远程无本地 lerobot_train 进程)
+        if getattr(self, "_zoo_remote_wait", None):
+            try:
+                import subprocess as _sp
+                r = getattr(self, "remote_engine", None)
+                if r:
+                    _ck = _sp.run(
+                        f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={r['port']} "
+                        f"{r['user']}@{r['host']} 'docker ps -q --filter name=zmax_train | head -1'",
+                        shell=True, capture_output=True, text=True, timeout=15)
+                    if _ck.stdout.strip():
+                        return  # 远程训练中 — 等下一轮
+                self._zoo_remote_wait = None  # 容器已结束 → 推进下一个
+                self._log(f"✅ 远程训练完成: {getattr(self, '_zoo_remote_pol', '')} — 推进队列")
+            except Exception:
+                return
         # 🐛 2026-08-08 老倪: 防误判 — on_train 数据准备有延迟, 启动后 45s 内不判完成
         import time as _t
         if getattr(self, "_zoo_start_ts", 0) and _t.time() - self._zoo_start_ts < 45:
             return  # 训练启动窗口内 — 轮询等待
-        # 训练进程还在 → 等 (真正完成才推进)
+        # 训练进程还在 → 等 (真正完成才推进) — 仅本地训练有效; 远程由 _zoo_remote_wait 处理
         import subprocess
         try:
             r = subprocess.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5)
@@ -3681,8 +3701,16 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         left = len(self._zoo_queue)
         self._log(f"🎛 Model Zoo 训练 [{7 - left}/7] → {pol} ({left} 个剩余)")
         self._zoo_start_ts = _t.time()  # 记录启动时间 — 45s 内不判完成
+        self._zoo_finalized = False  # 🐛 2026-08-09: 新一轮训练重置交付标志
         try:
-            self._simulink.on_train(policy=pol)
+            _ret = self._simulink.on_train(policy=pol)
+            # 🐛 2026-08-09 老倪: 远程容器提交 (返回 '容器化远程提交') → 等远程容器完成再推进
+            if isinstance(_ret, tuple) and _ret and "容器化远程提交" in str(_ret[1] if len(_ret) > 1 else _ret):
+                self._zoo_remote_wait = pol
+                self._zoo_remote_pol = pol
+                self._log(f"⏳ 远程容器训练中 ({pol}) — 容器退出后自动推进队列")
+            else:
+                self._zoo_remote_wait = None
         except Exception as e:
             self._log(f"❌ {pol} 启动失败: {e}")
         from PyQt5.QtCore import QTimer
