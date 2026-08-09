@@ -4301,9 +4301,12 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         固定左下角, 跟随控件移动, 不遮挡不悬浮; tooltip 带控件名)"""
         try:
             if hover_only:
-                base = widget.toolTip() or ""
-                tag = f"[ID {h_id}]"
-                widget.setToolTip(f"{tag} {base}".strip())
+                # 🐛 2026-08-09 老倪 v5: 小控件悬停弹出 ID + 控件名 (不占地方)
+                try:
+                    nm = self._holo_name(widget)
+                    widget.setToolTip(f"{h_id} — {nm}")
+                except Exception:
+                    widget.setToolTip(h_id)
                 return None
             # 防重复叠加: 先删旧角标
             old = getattr(widget, "_holo_badge_lbl", None)
@@ -4361,18 +4364,24 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
 
     def _veh2_apply(self, root=None):
-        """🌐 VEH.2 (模型引擎页) 可见控件按布局顺序编号 (2026-08-09 老倪:
-        上→下、左→右 VEH.2.01/02/… 贴纸式左下角; 只编真实可见控件, 排除容器/滚动条/裸壳)"""
+        """🌐 VEH.2 (模型引擎页) 编号 (2026-08-09 老倪 v5: 大窗口常显 ID,
+        小控件悬停 tooltip 弹出不占地方; 上→下左→右 VEH.2.xx)"""
         try:
-            from PyQt5.QtWidgets import QScrollArea, QScrollBar
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar, QGroupBox, QTableWidget
             root = root or self
-            # 排除容器类: 滚动区/滚动条/裸 QWidget 壳 (它们会盖住子控件角标)
-            EXCLUDE = (QScrollArea, QScrollBar, QWidget)
+            # 大窗口判定: 分组框/表格/面积≥20000 (约 440x64 模式卡 / 大面板) 常显; 其余悬停
+            def _is_big(w):
+                try:
+                    if isinstance(w, (QGroupBox, QTableWidget)):
+                        return True
+                    return w.width() * max(w.height(), 1) >= 20000
+                except Exception:
+                    return False
             ws = []
             for w in root.findChildren(QWidget):
                 if self._holo_page_of(w) != "P03":
                     continue
-                if isinstance(w, EXCLUDE) and type(w) is QWidget:
+                if type(w) is QWidget:
                     continue  # 裸 QWidget 壳 (布局容器) 不编号
                 if isinstance(w, (QScrollArea, QScrollBar)):
                     continue
@@ -4390,7 +4399,10 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     continue
                 self._holo_applied.add(id(w))
                 h_id = f"VEH.2.{i:02d}"
-                self._holo_badge_overlay(w, h_id, veh_small=True)
+                if _is_big(w):
+                    self._holo_badge_overlay(w, h_id, veh_small=True)  # 大窗口: 左下角常显
+                else:
+                    self._holo_badge_overlay(w, h_id, hover_only=True)  # 小控件: 悬停弹出
                 self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
                                            lambda w=w: self._holo_state(w))
         except Exception:
