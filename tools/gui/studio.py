@@ -340,11 +340,11 @@ class ModuleCard(QFrame):
         layout.addStretch()
 
         bottom = QHBoxLayout()
-        # 🌐 2026-08-09 老倪: VEH-ID 左下角常显 (对话用 ID — VEH.1~VEH.12; 字体小不明显)
+        # 🌐 2026-08-09 老倪: VEH-ID 左下角常显 (对话用 ID — VEH.1~VEH.12; 7px 小字不抢眼但可见)
         if self.veh_id:
             veh = QLabel(self.veh_id)
-            veh.setFont(QFont("Consolas", 5, QFont.Bold))
-            veh.setStyleSheet("color:#00d4aa88; background:transparent; border:none; margin:0; padding:0;")
+            veh.setFont(QFont("Consolas", 7, QFont.Bold))
+            veh.setStyleSheet("color:#00d4aacc; background:transparent; border:none; margin:0; padding:0;")
             veh.setToolTip(f"{self.veh_id} — 与静静对话时用此 ID 指代本卡片")
             bottom.addWidget(veh)
             bottom.addStretch()
