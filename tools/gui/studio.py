@@ -3015,6 +3015,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.param_scroll.setWidgetResizable(True)
         self.param_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # 🐛 2026-08-09 老倪: VEH.2.17 配置表默认展开全部 (表格全高 ~534 + 余量, 不用拖动条)
+        self.param_scroll.setMinimumHeight(600)
         self.param_scroll.setStyleSheet(f"""
             QScrollArea {{
                 border: none;
@@ -3226,7 +3228,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(600)  # 确保 log 区域足够大
+        self.log_text.setMinimumHeight(200)  # 🐛 2026-08-09 老倪: 600→200 给上方配置表腾空间 (日志可滚动/可折叠)
         self.log_text.setStyleSheet(f"""
             QTextEdit {{
                 background: {C_BG};
@@ -4028,13 +4030,11 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
     
     def showEvent(self, event):
-        """Override showEvent to set minimum height based on screen size"""
+        """Override showEvent — 🐛 2026-08-09 老倪: 配置表默认展开全部 (不再用屏幕1/3覆盖)"""
         super().showEvent(event)
-        # Dynamically set param_scroll minimum height to 1/3 of screen height
+        # VEH.2.17 配置表: 最小高度 = 表格全高 (~534) + 余量, 默认加载全部不用拖动
         if hasattr(self, 'param_scroll'):
-            screen = QApplication.primaryScreen().geometry()
-            min_height = screen.height() // 3
-            self.param_scroll.setMinimumHeight(min_height)
+            self.param_scroll.setMinimumHeight(600)
     
     def _log(self, message):
         """Add log message — 🐛 2026-08-08 线程安全: 非主线程 → 主线程调度 (防容器管理跨线程崩溃)"""
