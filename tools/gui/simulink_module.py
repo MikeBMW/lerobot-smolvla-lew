@@ -785,6 +785,11 @@ for _app in REFERENCE_APPS:
         if _nm and _nm not in LIBRARY_SEQ:
             _lib_seq += 1
             LIBRARY_SEQ[_nm] = _lib_seq
+# 🐛 2026-08-09 老倪: CICD 流水线环节也注册 (采集/训练/验证/集成/部署/推理 — sid 是字符串)
+for _st in ("① 采集", "② 训练", "③ 验证", "④ 集成", "⑤ 部署", "⑥ 推理"):
+    if _st not in LIBRARY_SEQ:
+        _lib_seq += 1
+        LIBRARY_SEQ[_st] = _lib_seq
 
 
 def lib_seq_of(name):
@@ -1065,7 +1070,9 @@ class CICDStageItem(QGraphicsObject):
             if getattr(self, "_hover", False):
                 painter.setPen(QColor("#8b949e"))
                 painter.setFont(QFont("Arial", 7))
-                nid = getattr(self, "nid", None) or f"VEH.5.{self.sid % 100:02d}"
+                nid = getattr(self, "nid", None) or (
+                    f"VEH.5.{lib_seq_of(self.title):03d}" if lib_seq_of(self.title) else
+                    f"VEH.5.CICD.{self.sid}")  # 🐛 sid 字符串不能 % 100
                 painter.drawText(QRectF(6, self.h - 13, self.w - 12, 12), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
@@ -2622,11 +2629,18 @@ class SimulinkModule(QWidget):
         try:
             from PyQt5.QtWidgets import QLabel, QScrollArea, QScrollBar, QFrame
             ws = []
+            _lib_btn_ids = set()
+            try:
+                _lib = getattr(self, "library", None)
+                if _lib is not None:
+                    _lib_btn_ids = set(id(b) for b in getattr(_lib, "_lib_btns", {}).values())
+            except Exception:
+                pass
             for w in self.findChildren(QWidget):
                 if w is self:
                     continue
-                if type(w) is QWidget:
-                    continue
+                if id(w) in _lib_btn_ids:
+                    continue  # 🐛 2026-08-09: 模块库按钮跳过 (用 lib_seq 编号, 与画布一致)
                 if isinstance(w, (QScrollArea, QScrollBar)):
                     continue
                 if isinstance(w, QFrame) and (w.layout() is not None or w.children()):
