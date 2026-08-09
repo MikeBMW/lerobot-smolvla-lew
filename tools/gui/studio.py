@@ -3999,14 +3999,114 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._remote_log_timer.stop()
                 except Exception:
                     pass
+                # 🐛 2026-08-09 老倪: 训练结束 → 自动拉回模型到本地 (模型引擎可见可编辑路径)
+                self._pull_remote_model()
         except Exception:
             pass
+
+    def _pull_remote_model(self):
+        """🐛 2026-08-09 老倪: 远程训练结束 → 拉回最新 checkpoint 到本地 models/saved/ + 注册 + 回填路径"""
+        try:
+            r = self.remote_engine
+            if not r:
+                return
+            import subprocess as _sp
+            cfg = getattr(self, "_remote_cfg", "config_act_metaworld.yaml")
+            # 🐛 2026-08-09: policy 名 (rollout 按 train_curve_<policy>.json 找) — 从 cfg 前缀映射
+            _pol = getattr(self, "_remote_policy", None) or cfg.replace("config_", "").replace(".yaml", "").split("_")[0]
+            name = cfg.replace("config_", "").replace(".yaml", "")
+            # 远程最新输出目录 (时间戳) → 找 latest checkpoint (注意: output_dir sed 用完整 cfg 名 → config_act_metaworld_<ts>)
+            _cfg_full = cfg.replace(".yaml", "")  # config_act_metaworld
+            _ls = _sp.run(
+                f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={r['port']} "
+                f"{r['user']}@{r['host']} "
+                f"'ls -dt ~/lerobot-smolvla-lew/outputs/train/{_cfg_full}_* 2>/dev/null | head -1'",
+                shell=True, capture_output=True, text=True, timeout=20)
+            _rdir = _ls.stdout.strip()
+            if not _rdir:
+                self._log("   └ ⚠️ 未找到远程训练输出目录, 跳过拉回")
+                return
+            # 找 checkpoint (pretrained_model 或最新 step)
+            _ck = _sp.run(
+                f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={r['port']} "
+                f"{r['user']}@{r['host']} "
+                f"'ls -d {_rdir}/checkpoints/*/pretrained_model 2>/dev/null | sort | tail -1 || "
+                f"ls -d {_rdir}/checkpoints/* 2>/dev/null | sort | tail -1'",
+                shell=True, capture_output=True, text=True, timeout=20)
+            _remote_ck = _ck.stdout.strip()
+            if not _remote_ck:
+                self._log("   └ ⚠️ 远程无 checkpoint, 跳过拉回")
+                return
+            # 本地目标: outputs/train/<name>_<ts>/checkpoints/last/pretrained_model (rollout 按此找) 
+            import time as _t
+            ts = _t.strftime("%Y%m%d_%H%M%S")
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            train_dir = os.path.join(root, "outputs", "train", f"{name}_{ts}", "checkpoints", "last")
+            os.makedirs(train_dir, exist_ok=True)
+            self._log(f"   └ 📥 拉回远程模型: {_remote_ck} → {train_dir}/pretrained_model")
+            _scp = _sp.run(
+                f"sshpass -p '{r['pwd']}' scp -o StrictHostKeyChecking=no -o ConnectTimeout=8 -P {r['port']} "
+                f"-r {r['user']}@{r['host']}:{_remote_ck} {train_dir}/pretrained_model",
+                shell=True, capture_output=True, text=True, timeout=600)
+            if _scp.returncode != 0:
+                self._log(f"   └ ❌ 拉回失败: {_scp.stderr.strip()[:80]}")
+                return
+            # 写 train_curve_<policy>.json — rollout 按此找 ckpt (Simulink 推理/报告/视频消费)
+            try:
+                curve_path = os.path.join(root, "reports", f"train_curve_{_pol}.json")
+                curve = {}
+                if os.path.exists(curve_path):
+                    try:
+                        curve = json.load(open(curve_path, encoding="utf-8"))
+                    except Exception:
+                        curve = {}
+                curve.update({"ckpt": os.path.join("outputs", "train", f"{name}_{ts}"),
+                              "name": name, "policy": _pol, "step_s": 2000, "loss": None,
+                              "ts": ts, "remote": f"{r['host']}:{_remote_ck}"})
+                os.makedirs(os.path.dirname(curve_path), exist_ok=True)
+                json.dump(curve, open(curve_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+                self._log(f"   └ 📝 已写 reports/train_curve_{_pol}.json (ckpt 记录) — Simulink 推理可消费")
+            except Exception as e:
+                self._log(f"   └ ⚠️ 写 curve json 失败: {str(e)[:60]}")
+            # 注册 registry.json (模型引擎下拉)
+            reg_path = self._saved_registry_path()
+            reg = []
+            if os.path.exists(reg_path):
+                try:
+                    reg = json.load(open(reg_path, encoding="utf-8"))
+                except Exception:
+                    reg = []
+            reg.insert(0, {"name": name, "policy": name.split("_")[0], "ts": ts,
+                           "path": os.path.join(root, "outputs", "train", f"{name}_{ts}"),
+                           "remote": f"{r['host']}:{_remote_ck}"})
+            os.makedirs(os.path.dirname(reg_path), exist_ok=True)
+            json.dump(reg, open(reg_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            # 回填 ckpt_edit + 刷新下拉 (模型引擎页可见路径)
+            try:
+                pm = os.path.join(train_dir, "pretrained_model")
+                self.ckpt_edit.setText(pm if os.path.isdir(pm) else train_dir)
+                self._refresh_saved_models()
+            except Exception:
+                pass
+            self._log(f"   └ ✅ 模型已拉回本地: {train_dir}")
+            self._log(f"   └ 📂 模型引擎「模型:」路径已更新 — 可编辑/Simulink 推理/报告/视频")
+        except Exception as e:
+            self._log(f"   └ ❌ 拉回模型异常: {str(e)[:80]}")
 
     def _start_remote_progress_poll(self, cfg):
         try:
             if hasattr(self, "_remote_timer"):
                 self._remote_timer.stop()
             self._remote_cfg = cfg
+            # 🐛 2026-08-09: 记录 policy 名 (拉回模型时写 train_curve_<policy>.json 供 Simulink 推理消费)
+            try:
+                _m = self.model_combo.currentText()
+                _pmap = {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
+                         "VLA-Touch": "vla_touch", "AWE": "awe_zflow", "MLP 蒸馏": "expert_mlp",
+                         "官方专家": "expert_policy"}
+                self._remote_policy = _pmap.get(_m, cfg.replace("config_", "").replace(".yaml", "").split("_")[0])
+            except Exception:
+                pass
             self._remote_timer = QTimer(self)
             self._remote_timer.timeout.connect(self._poll_remote_progress)
             self._remote_timer.start(30000)
