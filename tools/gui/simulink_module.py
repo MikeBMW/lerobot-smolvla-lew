@@ -771,6 +771,19 @@ LIBRARY = [
     ]),
 ]
 
+# 🌐 2026-08-09 老倪: LIBRARY 模块 → 稳定序号 (模块库按钮与画布节点 ID 一致)
+LIBRARY_SEQ = {}
+_lib_seq = 0
+for _gtype, _gname, _items in LIBRARY:
+    for _it in _items:
+        _lib_seq += 1
+        LIBRARY_SEQ[_it["name"]] = _lib_seq
+
+
+def lib_seq_of(name):
+    """模块 name → LIBRARY 稳定序号 (未找到 → None)"""
+    return LIBRARY_SEQ.get(name)
+
 
 def gen_id():
     """节点 id: n + 时间戳 + 3位随机 (与 web 同规则)"""
@@ -1878,7 +1891,10 @@ class SimNodeItem(QGraphicsObject):
             if getattr(self, "_hover", False):
                 painter.setPen(QColor("#8b949e"))
                 painter.setFont(QFont("Arial", 7))
-                nid = self.node.get("nid") or f"VEH.5.{self.node.get('id', 0) % 100:02d}"
+                nid = self.node.get("nid") or (
+                    f"VEH.5.{lib_seq_of(self.node.get('name','')):03d}"
+                    if lib_seq_of(self.node.get('name','')) else
+                    f"VEH.5.{self.node.get('id', 0) % 100:02d}")
                 painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
@@ -2440,7 +2456,9 @@ class LibraryPanel(QFrame):
             self.v.addWidget(lab)
             for it in items:
                 btn = QToolButton()
-                btn.setText(f"⬡  {it['name']}")
+                _seq = lib_seq_of(it['name'])
+                btn.setText(f"⬡  {it['name']}" + (f"  ·  VEH.5.{_seq:03d}" if _seq else ""))
+                btn.setToolTip((f"VEH.5.{_seq:03d} — " if _seq else "") + f"{it['name']} (与画布节点 ID 一致)")
                 btn.setStyleSheet(f"""
                     QToolButton {{ background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
                     border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }}
@@ -3077,7 +3095,8 @@ class SimulinkModule(QWidget):
         seen = {}
         for k in THEMES["light"]:
             seen.setdefault(THEMES["light"][k], THEMES["dark"][k])
-        pairs = list(seen.items()) + [("#dbe9ff", "#1a2230")]  # 按钮 hover
+        pairs = list(seen.items()) + [("#dbe9ff", "#1a2230"),   # 按钮 hover 底色
+                                       ("#1f2328", "#c9d1d9")]  # 🐛 2026-08-09: hover 文字色 (深色下黑字看不清)
         for wdg in [self] + self.findChildren(QWidget):
             ss = wdg.styleSheet()
             if not ss:
