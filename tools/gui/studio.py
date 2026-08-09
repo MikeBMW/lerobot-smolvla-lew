@@ -291,10 +291,11 @@ class SystemSidebar(QFrame):
 class ModuleCard(QFrame):
     clicked = pyqtSignal(str)
 
-    def __init__(self, mid, icon, title, subtitle, desc, sys_label, color, parent=None):
+    def __init__(self, mid, icon, title, subtitle, desc, sys_label, color, veh_id=None, parent=None):
         super().__init__(parent)
         self.mid = mid
         self.color = color
+        self.veh_id = veh_id  # 🌐 2026-08-09 老倪: VEH-ID (对话用卡片ID)
         self.setFixedHeight(230)  # 增大：行间距 5→14 后需要更多空间，避免标题白色字显示不全
         self.setMinimumWidth(260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -338,10 +339,20 @@ class ModuleCard(QFrame):
 
         layout.addStretch()
 
+        bottom = QHBoxLayout()
+        # 🌐 2026-08-09 老倪: VEH-ID 左下角常显 (对话用 ID — VEH-1~VEH-12)
+        if self.veh_id:
+            veh = QLabel(self.veh_id)
+            veh.setFont(QFont("Consolas", 10, QFont.Bold))
+            veh.setStyleSheet("color:#00d4aa; background:transparent; border:none; margin:0; padding:0;")
+            veh.setToolTip(f"{self.veh_id} — 与静静对话时用此 ID 指代本卡片")
+            bottom.addWidget(veh)
+            bottom.addStretch()
         arrow = QLabel("点击进入 →")
         arrow.setFont(QFont("Arial", 9))
         arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:0;")
-        layout.addWidget(arrow)
+        bottom.addWidget(arrow)
+        layout.addLayout(bottom)
 
         self.setLayout(layout)
         shadow = QGraphicsDropShadowEffect()
@@ -1034,7 +1045,8 @@ class HomeWidget(QWidget):
                 if idx >= len(modules):
                     break
                 mid, icon, title, syslbl, desc, color = modules[idx]
-                card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color)
+                card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color,
+                                  veh_id=f"VEH-{idx + 1}")  # 🌐 2026-08-09 老倪: VEH-1~VEH-12 对话 ID
                 card.clicked.connect(self.module_clicked.emit)
                 row.addWidget(card)
             fl.addLayout(row)
