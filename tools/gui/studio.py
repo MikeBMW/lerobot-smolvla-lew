@@ -226,7 +226,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v1.7.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v1.8.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -981,6 +981,7 @@ class HomeWidget(QWidget):
             ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
+            ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),  # 🐛 恢复三层架构功能卡 (页面在, 卡列表漏加)
             ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
             ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
@@ -4317,7 +4318,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             for w in root.findChildren(QWidget):
                 if id(w) in self._holo_applied:
                     continue
-                if isinstance(w, targets) and w.isVisible() is not False:
+                if isinstance(w, targets):
                     self._holo_seq += 1
                     self._holo_applied.add(id(w))
                     h_id = self._holo_seq_id(w)
@@ -8229,7 +8230,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v1.7.0 [W-01]")  # 🐛 2026-08-08 老倪: 窗口 ID 渲染
+        self.setWindowTitle("XSpace Studio — Z-MAX v1.8.0 [W-01]")  # v1.8.0: 恢复主页三层架构卡(卡↔页↔字典↔导航一致性检查保护)
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
@@ -8272,6 +8273,12 @@ class StudioMainWindow(QMainWindow):
         # 页面堆叠
         self.stack = QStackedWidget()
         self.stack.setStyleSheet(f"background:{C_BG};")
+        # 🌐 2026-08-08 老倪: 页切换 → 当前页控件重打 ID 角标 (确保每页可见)
+        try:
+            self.stack.currentChanged.connect(
+                lambda _i: self.model_engine._holo_apply_all(self) if hasattr(self, "model_engine") else None)
+        except Exception:
+            pass
 
         # Page 0: 首页
         self.home = HomeWidget()
@@ -8292,6 +8299,7 @@ class StudioMainWindow(QMainWindow):
             "inference":  9,
             "simulink":   10,
             "dataspace":  11,
+            "architecture": 12,  # 🐛 2026-08-08 老倪: 恢复架构页 (三层架构功能卡)
         }
 
         self.stack.addWidget(DatasetModule())
@@ -8322,6 +8330,9 @@ class StudioMainWindow(QMainWindow):
         # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
         self.dataspace = DataSpaceModule(self)
         self.stack.addWidget(self.dataspace)
+
+        # 🐛 2026-08-08 老倪: 恢复架构页 (三层架构功能卡 — L2/L3/L4 + SYS0/1/2)
+        self.stack.addWidget(ArchitectureModule())
 
         root.addWidget(self.stack, 1)
         central.setLayout(root)
@@ -8530,7 +8541,7 @@ class StudioMainWindow(QMainWindow):
         self.stack.setCurrentIndex(idx)
 
         # 更新状态栏
-        names = ["首页", "架构", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步", "推理服务", "Simulink"]
+        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步", "推理服务", "Simulink", "数据空间", "架构总览"]  # v1.8.0: 与 self.modules 顺序一致 (13项)
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
 
     def _build_menubar(self):

@@ -190,11 +190,11 @@ def sync(log_callback=print, progress_callback=None):
     # 写版本文件
     h = _compute_hash(docs_dir)
     ver = {
-        "version": "v1.7.0",
+        "version": "v1.8.0",
         "last_sync": time.strftime("%Y-%m-%d %H:%M:%S"),
         "doc_count": success,
         "hash": h,
-        "zmax_version": "v1.7.0",
+        "zmax_version": "v1.8.0",
     }
     with open(_version_file(docs_dir), "w") as f:
         json.dump(ver, f, ensure_ascii=False, indent=2)
