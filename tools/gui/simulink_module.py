@@ -6510,16 +6510,15 @@ class SimulinkModule(QWidget):
         self._sync()
 
     def open_scene_link(self, scene_id):
-        """🏭 场景 → 只打开 ECS 3D 链接 (2026-08-09 老倪: 不建子模块, 只要链接)"""
-        import os as _os, json as _j, base64 as _b64, urllib.parse as _up
+        """🏭 场景 → 只打开 ECS 3D 链接 (2026-08-09 老倪: 不建子模块, 只要链接)
+        🐛 WSL 无 xdg-open → QDesktopServices 找不到浏览器 → 用 cmd.exe start (Windows 默认浏览器)"""
+        import os as _os, json as _j, base64 as _b64, urllib.parse as _up, subprocess as _sp
+        _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
+        _k = _SCENE3D.get(scene_id, scene_id.lower())
+        url = f"https://datadrive.world/scene-3d.html?scene={_k}"
         try:
-            from PyQt5.QtCore import QUrl
-            from PyQt5.QtGui import QDesktopServices
-            _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
-            _k = _SCENE3D.get(scene_id, scene_id.lower())
-            url = f"https://datadrive.world/scene-3d.html?scene={_k}"
-            QDesktopServices.openUrl(QUrl(url))
-            self._log(f"🏭 打开 3D 场景: {scene_id} → {url}")
+            _sp.Popen(["cmd.exe", "/c", "start", "", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            self._log(f"🏭 打开 3D 场景: {scene_id} → {url} (Windows 浏览器)")
         except Exception as e:
             self._log(f"⚠️ 打开链接失败: {e}")
 
