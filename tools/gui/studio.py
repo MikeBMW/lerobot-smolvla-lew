@@ -2502,7 +2502,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._btn_upload_ct = QPushButton("🔼 上传容器到远程")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
-        rowc.addWidget(self._holo_badge(self._btn_upload_ct, "B-04"))  # 🌐 左下角 ID 角标
+        rowc.addWidget(self._holo_badge(self._btn_upload_ct, "B-03"))  # 🌐 左下角 ID 角标
         rowc.addStretch()
         cv.addLayout(rowc)
         # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
@@ -3092,27 +3092,6 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         sw_box.setLayout(swl)
         btn_container_layout = btn_container.layout() if btn_container.layout() else None
         layout.addWidget(sw_box)
-        
-        # 恢复默认参数
-        self.defaults_btn = QPushButton("🔄 恢复默认")  # 🐛 2026-08-08 老倪: ID 渲染到控件
-        self.defaults_btn.setToolTip("一键恢复 SmolVLA 原始默认训练参数")
-        self.defaults_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {C_CARD};
-                color: {C_GRAY};
-                border: 1px solid {C_BORDER};
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {C_BORDER};
-                color: {C_WHITE};
-            }}
-        """)
-        self.defaults_btn.clicked.connect(self._reset_defaults)
-        btn_layout.addWidget(self.defaults_btn)
         
         # Stop button (2026-08-08 老倪: Pause 取消 — 只留 Stop, 真正停止训练)
         self.stop_btn = QPushButton("⏹ Stop")  # 🐛 2026-08-08 老倪: ID 渲染到控件
@@ -4070,7 +4049,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             reg.append(("W-02", "Model Engine 页", "窗口", lambda: "当前" if getattr(self, "isVisible", lambda: False)() else "页"))
             # 按钮 (B-xx)
             for key, nm in [("start_btn", "Start (开始)"), ("stop_btn", "Stop (停止)"),
-                            ("defaults_btn", "恢复默认"), ("_btn_upload_ct", "上传容器到远程")]:
+                            ("_btn_upload_ct", "上传容器到远程")]:
                 if hasattr(self, key):
                     w = getattr(self, key)
                     reg.append((f"B-{len(reg) - 1:02d}" if False else f"B-{len([r for r in reg if r[2] == '按钮']) + 1:02d}",
@@ -4105,8 +4084,6 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             if hasattr(self, "stop_btn"):
                 self._holo_coord_register("P03", "01", "02", self.stop_btn, "Stop 停止", "按钮",
                                           lambda: "可用" if self.stop_btn.isEnabled() else "禁用")
-            if hasattr(self, "defaults_btn"):
-                self._holo_coord_register("P03", "01", "03", self.defaults_btn, "恢复默认", "按钮")
             if hasattr(self, "_zoo_sw"):
                 for i, (k, nm) in enumerate([("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
                                              ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
@@ -4209,7 +4186,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             w, nm, ty, g = info
             if ty == "按钮" or ty == "模式":
                 # 找真实控件 (按钮 ID 映射)
-                btn_map = {"B-01": "start_btn", "B-02": "stop_btn", "B-03": "defaults_btn", "B-04": "_btn_upload_ct",
+                btn_map = {"B-01": "start_btn", "B-02": "stop_btn", "B-03": "_btn_upload_ct",
                            "M-01": ("_ct_mode_btns", "train"), "M-02": ("_ct_mode_btns", "infer"), "M-03": ("_ct_mode_btns", "deploy")}
                 tgt = btn_map.get(h_id)
                 if tgt:
@@ -4424,51 +4401,6 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._update_dataset_path(ds)
         self._auto_output_dir()
     
-    def _reset_defaults(self):
-        """恢复 SmolVLA 原始默认训练参数（来自 configuration_smolvla.py）"""
-        # Architecture
-        self.vlm_layers_spin.setValue(16)
-        self.expert_layers_spin.setValue(-1)
-        self.expert_width_spin.setValue(0.75)
-        self.self_attn_spin.setValue(2)
-        # I/O
-        self.obs_steps_spin.setValue(1)
-        self.chunk_spin.setValue(50)
-        self.state_dim_spin.setValue(32)
-        self.action_dim_spin.setValue(32)
-        # Image
-        self.resize_w_spin.setValue(512)
-        self.resize_h_spin.setValue(512)
-        self.empty_cameras_spin.setValue(0)
-        self.min_period_spin.setValue(0.004)
-        self.max_period_spin.setValue(4.0)
-        # Policy
-        self.freeze_checkbox.setChecked(True)
-        self.world_model_checkbox.setChecked(False)
-        self.diffusion_spin.setValue(5)
-        # Dataset + Training
-        self.dataset_combo.setCurrentText("lerobot/pusht")
-        self.batch_spin.setValue(1)
-        self.steps_spin.setValue(500)
-        self.ckpt_spin.setValue(100)
-        # Optimizer
-        self.lr_spin.setValue(0.0001)
-        self.weight_decay_spin.setValue(0.000000001)
-        self.grad_clip_spin.setValue(10.0)
-        # Scheduler
-        self.scheduler_combo.setCurrentText("cosine_decay_with_warmup")
-        self.warmup_spin.setValue(1000)
-        self.decay_spin.setValue(30000)
-        self.peak_lr_spin.setValue(0.0001)
-        self.decay_lr_spin.setValue(0.0000025)
-        # Experiment
-        self.output_dir_edit.setText("outputs/smolvla_pusht")
-        self.eval_freq_spin.setValue(500)
-        self.push_hub_checkbox.setChecked(False)
-        self.compile_checkbox.setChecked(False)
-        self._update_dataset_path("lerobot/pusht")
-        self._log("🔄 已恢复 SmolVLA 原始默认训练参数")
-
     def _start_training(self):
         """Start training — 2026-08-08 老倪: 三模式统一走训练队列 (GPU 引擎由模式联动: 远程V100/本地4060)"""
         # 📱 端侧部署 → 推送容器 (Mac/Orin)
