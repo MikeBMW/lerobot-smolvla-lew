@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (
     QSlider, QListWidget, QDialog,  # DatasetModule viewer
     QTreeWidget, QTreeWidgetItem,  # 硬件工具箱设备树
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl, QDateTime, QThread  # QThread 用于 Rerun 后台线程
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QTimer, QUrl, QDateTime, QThread  # QThread 用于 Rerun 后台线程
 from PyQt5.QtGui import (
     QFont, QColor, QCursor, QPainter, QLinearGradient, QBrush,
     QPainterPath, QPen, QDesktopServices, QPixmap  # 新增 QCursor, QDesktopServices, QPixmap
@@ -3234,6 +3234,11 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
+        # 🐛 2026-08-09 老倪: 子线程日志队列 + 主线程 200ms flush (跨线程日志可靠显示)
+        self._log_queue = []
+        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer.timeout.connect(self._flush_log_queue)
+        self._log_flush_timer.start(200)
         self.log_text.setMinimumHeight(200)  # 🐛 2026-08-09 老倪: 600→200 给上方配置表腾空间 (日志可滚动/可折叠)
         self.log_text.setStyleSheet(f"""
             QTextEdit {{
@@ -4131,7 +4136,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self.param_scroll.setMinimumHeight(600)
     
     def _log(self, message):
-        """Add log message — 🐛 2026-08-08 线程安全: 非主线程 → 主线程调度 (防容器管理跨线程崩溃)"""
+        """Add log message — 🐛 2026-08-09 线程安全: 非主线程 → 入队, 主线程 QTimer 每 200ms flush
+        (QTimer.singleShot/invokeMethod 跨线程在 PyQt5 下丢消息 — 老倪: 容器同步没反馈)"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
         text = f"[{timestamp}] {message}"
@@ -4140,8 +4146,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             if _th.current_thread() is _th.main_thread():
                 self._append_log(text)
             else:
-                from PyQt5.QtCore import QTimer as _QT
-                _QT.singleShot(0, lambda t=text: self._append_log(t))
+                self._log_queue.append(text)
         except Exception:
             try:
                 self._append_log(text)
@@ -4578,6 +4583,21 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             return "P00"
 
+    def _flush_log_queue(self):
+        """🐛 2026-08-09: 主线程定时冲刷子线程日志队列 (QTimer 200ms)"""
+        try:
+            q = self._log_queue
+            if q:
+                self._log_queue = []
+                for t in q:
+                    try:
+                        self._append_log(t)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    @pyqtSlot(str)
     def _append_log(self, text):
         """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
         try:
