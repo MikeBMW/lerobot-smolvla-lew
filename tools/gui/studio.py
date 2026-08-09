@@ -5680,21 +5680,37 @@ class HardwareModule(SubModuleWidget):
         return btn
     
     def _tower_cmd(self, color):
-        """发送塔灯控制命令"""
-        import subprocess
+        """发送塔灯控制命令 (2026-08-09 老倪: VEH.3.16 红灯控制不了修复)
+        双通道: ①本地 SSH 直连 Orin (同网段时) ②ECS relay /command 下发 Mac 执行 (Orin 局域网内)"""
+        import subprocess as _sp
         self._log(f"🚦 塔灯 → {color}")
+        # ① 本地直连 (192.168.23.x 同网段才可达 — WSL 172.18.x 不通, 会走 ②)
         try:
-            subprocess.run([
+            r = _sp.run([
                 "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
                 "source /opt/ros/humble/setup.bash && "
                 f"ROS_DOMAIN_ID=23 ros2 topic pub --once /tower_light/command "
                 f"std_msgs/msg/String '{{\"data\":\"{color}\"}}'"
-            ], timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # 更新状态
-            self.hw_table.item(0, 2).setText("🟢 已控制")
-            self.hw_table.item(0, 3).setText(color)
+            ], timeout=5, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            if r.returncode == 0:
+                self.hw_table.item(0, 2).setText("🟢 已控制")
+                self.hw_table.item(0, 3).setText(color)
+                self._log("   ✅ 塔灯已控制 (本地 SSH 直连)")
+                return
+            self._log(f"   ⚠️ 本地直连失败 (exit {r.returncode}) — 走 ECS relay 经 Mac 下发")
         except Exception as e:
-            self._log(f"   ❌ 塔灯控制失败: {e}")
+            self._log(f"   ⚠️ 本地直连异常: {e} — 走 ECS relay 经 Mac 下发")
+        # ② ECS relay 下发 Mac 执行 (Orin 在 192.168.23.x 局域网, Mac 192.168.23.1 可达)
+        try:
+            import requests as _rq
+            r2 = _rq.post("https://datadrive.world/api/relay/command",
+                          json={"cmd": f"tower_light {color}"}, timeout=15)
+            self._log(f"   📡 已下发 Mac 塔灯指令: {r2.json().get('cmd','')}")
+            self.hw_table.item(0, 2).setText("🟡 指令已下发")
+            self.hw_table.item(0, 3).setText(color)
+            self._log("   🤖 Mac 守护轮询到指令 → ssh Orin → ros2 topic pub /tower_light/command")
+        except Exception as e:
+            self._log(f"   ❌ 塔灯控制失败 (本地直连+relay 均不可用): {e}")
     
     def _gripper_cmd(self, pos):
         """夹爪开/关"""
