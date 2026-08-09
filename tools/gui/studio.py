@@ -2528,20 +2528,20 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.deploy_model_combo = QComboBox()
         self.deploy_model_combo.setMinimumWidth(280)
         self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:11px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
-        deploy_row.addWidget(deploy_lbl)
-        deploy_row.addWidget(self.deploy_model_combo, 1)
-        # 🐛 2026-08-09 老倪: 布局 — 下拉(27) + 上传容器(29) 中间, 推送到Orin(28) 最右侧
-        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
-        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
-        self._btn_upload_ct.clicked.connect(self._upload_container)
-        deploy_row.addWidget(self._btn_upload_ct)
-        deploy_row.addStretch()
+        # 🐛 2026-08-09 老倪: 布局 — 推送到Orin(28) 整行最左侧, 下拉(27) 中间, 上传容器(29) 右侧
         self.btn_deploy_orin = QPushButton("📥 推送到 Orin")
         self.btn_deploy_orin.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
         self.btn_deploy_orin.clicked.connect(self._deploy_model_to_orin)
         self.btn_deploy_orin.setToolTip("将下拉选中的模型推送到 Orin (上传 datadrive.world/models/act_latest.safetensors → Orin 监听器自动下载)")
         self.btn_deploy_orin.setEnabled(False)  # 🐛 2026-08-09: 端侧部署高亮选中后才可点
         deploy_row.addWidget(self.btn_deploy_orin)
+        deploy_row.addWidget(deploy_lbl)
+        deploy_row.addWidget(self.deploy_model_combo, 1)
+        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
+        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
+        self._btn_upload_ct.clicked.connect(self._upload_container)
+        deploy_row.addWidget(self._btn_upload_ct)
+        deploy_row.addStretch()
         cv.addLayout(deploy_row)
         # 填充下拉 (registry 已保存模型, 默认第一个=最新 ACT) — 端侧部署/推理共用
         try:
