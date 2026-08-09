@@ -6,7 +6,7 @@ Connects to Orin's TCP forwarder, receives topic data stream,
 and displays/logs it. Supports JSON log output and real-time display.
 
 Usage:
-    python3 pc_receiver.py [--host 192.168.23.10] [--port 9999] [--log data.jsonl]
+    python3 pc_receiver.py [--host 192.168.23.66] [--port 9999] [--log data.jsonl]
 
 No ROS2 required on PC side — pure Python 3 stdlib.
 """
@@ -24,7 +24,7 @@ from datetime import datetime
 class TopicReceiver:
     """Connect to Orin forwarder, receive and display topic data."""
 
-    def __init__(self, host: str = "192.168.23.10", port: int = 9999,
+    def __init__(self, host: str = "192.168.23.66", port: int = 9999,
                  log_file: str | None = None, quiet: bool = False):
         self.host = host
         self.port = port
@@ -123,7 +123,7 @@ class TopicReceiver:
 
 def main():
     parser = argparse.ArgumentParser(description="PC TCP Receiver for Orin Topic Forwarder")
-    parser.add_argument("--host", default="192.168.23.10", help="Orin IP address")
+    parser.add_argument("--host", default="192.168.23.66", help="Orin IP address")
     parser.add_argument("--port", type=int, default=9999, help="TCP port")
     parser.add_argument("--log", default=None, help="Save received data to JSONL file")
     parser.add_argument("--quiet", action="store_true", help="Suppress display, only log")

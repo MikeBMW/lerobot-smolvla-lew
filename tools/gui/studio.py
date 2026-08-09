@@ -3416,7 +3416,7 @@ class HardwareModule(SubModuleWidget):
         try:
             subprocess.run(
                 ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
-                 "-o", "ControlPersist=120", "-fN", "nvidia@192.168.23.10"],
+                 "-o", "ControlPersist=120", "-fN", "tashan@192.168.23.66"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
         except:
             pass  # Orin 不在线也不崩溃
@@ -3685,7 +3685,7 @@ class HardwareModule(SubModuleWidget):
         self._log(f"🚦 塔灯 → {color}")
         try:
             subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && "
                 f"ROS_DOMAIN_ID=23 ros2 topic pub --once /tower_light/command "
                 f"std_msgs/msg/String '{{\"data\":\"{color}\"}}'"
@@ -3703,7 +3703,7 @@ class HardwareModule(SubModuleWidget):
         self._log(f"🖐️ 夹爪 → {action}")
         try:
             r = subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 f"ROS_DOMAIN_ID=23 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
@@ -3735,19 +3735,19 @@ class HardwareModule(SubModuleWidget):
             
             # 1. 上传脚本到Orin
             subprocess.run(["scp", "-o", "ControlPath=/tmp/orin-ssh.sock",
-                cap_script, "nvidia@192.168.23.10:/tmp/cam_cap.py"],
+                cap_script, "tashan@192.168.23.66:/tmp/cam_cap.py"],
                 timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
             # 2. 运行拍照
             r = subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && python3 /tmp/cam_cap.py"
             ], capture_output=True, text=True, timeout=12)
             
             if "OK" in r.stdout:
                 # 3. 拉回图片
                 subprocess.run(["scp", "-o", "ControlPath=/tmp/orin-ssh.sock",
-                    "nvidia@192.168.23.10:/tmp/cam.jpg", "/tmp/orin_cam.jpg"],
+                    "tashan@192.168.23.66:/tmp/cam.jpg", "/tmp/orin_cam.jpg"],
                     timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
                 from PyQt5.QtGui import QPixmap
@@ -3786,7 +3786,7 @@ class HardwareModule(SubModuleWidget):
         self._log("🖐️ 读取触觉...")
         try:
             r = subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && "
                 "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /tactile_sensor 2>/dev/null"
             ], capture_output=True, text=True, timeout=8)
@@ -3820,7 +3820,7 @@ class HardwareModule(SubModuleWidget):
         self._log(f"{label} 读取中...")
         try:
             r = subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && "
                 f"ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once {topic} 2>/dev/null"
             ], capture_output=True, text=True, timeout=8)
@@ -3845,7 +3845,7 @@ class HardwareModule(SubModuleWidget):
         self._log("🤖 读取关节状态...")
         try:
             r = subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /robot/joint_states 2>/dev/null"
@@ -3881,7 +3881,7 @@ class HardwareModule(SubModuleWidget):
         self._log("🛑 机械臂急停!")
         try:
             subprocess.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
                 "source /opt/ros/humble/setup.bash && "
                 "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
                 "ROS_DOMAIN_ID=23 ros2 service call /robot_stop std_srvs/srv/Trigger '{}'"
@@ -4149,7 +4149,7 @@ class HardwareModule(SubModuleWidget):
         """SSH到Orin发现真实硬件"""
         self.btn_discover.setEnabled(False)
         self.btn_discover.setText("⏳ 发现中...")
-        self._log("🔍 开始发现硬件 · 连接 Orin (192.168.23.10)...")
+        self._log("🔍 开始发现硬件 · 连接 Orin (192.168.23.66)...")
         
         self._discovery_thread = HardwareDiscoveryThread()
         self._discovery_thread.progress.connect(lambda msg: self._log(msg))
@@ -5390,7 +5390,7 @@ class MonitorModule(SubModuleWidget):
             while getattr(self, '_live_running', True):
                 try:
                     r = subprocess.run([
-                        "ssh", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
+                        "ssh", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
                         "source /opt/ros/humble/setup.bash && "
                         "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
                         "echo '---'; "
@@ -5500,7 +5500,7 @@ class MonitorModule(SubModuleWidget):
         import subprocess
         try:
             r = subprocess.run(
-                ["ssh", "-o", "ConnectTimeout=5", "nvidia@192.168.23.10",
+                ["ssh", "-o", "ConnectTimeout=5", "tashan@192.168.23.66",
                  "source /opt/ros/humble/setup.bash && "
                  "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
                  "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list 2>/dev/null"],

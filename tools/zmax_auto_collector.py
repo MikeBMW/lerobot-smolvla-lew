@@ -2,7 +2,7 @@
 """Z-MAX 自动化数据采集守护 · MAC端 · 持续循环轮询"""
 import requests, subprocess, time, os, json
 
-ORIN, ORIN_PW = "tashan@192.168.23.10", "ts123"
+ORIN, ORIN_PW = "tashan@192.168.23.66", ""
 BACKEND = "http://106.75.239.80:50053"
 MAC_DATA = os.path.expanduser("~/zmax_loop")
 os.makedirs(MAC_DATA, exist_ok=True)
