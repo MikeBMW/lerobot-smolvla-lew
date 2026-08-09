@@ -4369,12 +4369,15 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         try:
             from PyQt5.QtWidgets import QScrollArea, QScrollBar, QGroupBox, QTableWidget
             root = root or self
-            # 大窗口判定: 分组框/表格/面积≥20000 (约 440x64 模式卡 / 大面板) 常显; 其余悬停
+            # 大窗口判定 (2026-08-09 老倪 v6): 只有分组框/表格/超大面板(≥60000)常显;
+            # 按钮/输入/下拉/数值/标签一律悬停 tooltip — 小按钮常显灰色字脏
             def _is_big(w):
                 try:
                     if isinstance(w, (QGroupBox, QTableWidget)):
                         return True
-                    return w.width() * max(w.height(), 1) >= 20000
+                    if isinstance(w, QPushButton):
+                        return False  # 按钮一律悬停, 不常显
+                    return w.width() * max(w.height(), 1) >= 60000
                 except Exception:
                     return False
             ws = []
