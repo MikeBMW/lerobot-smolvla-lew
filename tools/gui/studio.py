@@ -3414,18 +3414,36 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 except Exception:
                     has_local = False
                 if has_local:
-                    self._log("🐳 本地有 zmax-train 镜像 — docker save → scp → load")
+                    self._log("🐳 本地有 zmax-train 镜像 — 打包 → 传输 → 远程载入")
                     savef = "/tmp/zmax-train.tar"
+                    # 🐛 2026-08-09 老倪: 详细进度 (1) docker save 计时+大小
+                    t0 = time.time()
                     _sp.run(["docker", "save", "-o", savef, "zmax-train:latest"], timeout=1800)
                     sz = os.path.getsize(savef) / 1e9
-                    self._log(f"🐳 传输到远程 ({sz:.1f}GB, 需几分钟)…")
+                    self._log(f"  └ 打包完成: {sz:.1f}GB · 耗时 {time.time()-t0:.0f}s · 本地镜像 zmax-train:latest")
                     re_ = getattr(self, "remote_engine", None)
                     if re_:
-                        _sp.run(f"sshpass -p '{re_['pwd']}' scp -o StrictHostKeyChecking=no -o Port={re_['port']} "
-                                f"{savef} {re_['user']}@{re_['host']}:/tmp/", shell=True, timeout=3600)
-                        _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
-                                f"{re_['user']}@{re_['host']} 'docker load -i /tmp/zmax-train.tar 2>&1 | tail -1'",
-                                shell=True, timeout=900)
+                        # 🐛 2026-08-09 老倪: (2) 用 rsync 传输 → 实时速率/进度可见
+                        self._log(f"  └ 传输到 {re_['host']}:{re_['port']} …")
+                        t1 = time.time()
+                        p = _sp.Popen(
+                            f"sshpass -p '{re_['pwd']}' rsync -e 'ssh -o StrictHostKeyChecking=no -o Port={re_['port']}' "
+                            f"--info=progress2 {savef} {re_['user']}@{re_['host']}:/tmp/",
+                            shell=True, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True, bufsize=1)
+                        for line in p.stdout:
+                            ln = line.strip()
+                            if ln and ("%" in ln or "GB" in ln or "MB" in ln or "speedup" in ln):
+                                self._log(f"     {ln}")
+                        p.wait(timeout=3600)
+                        self._log(f"  └ 传输完成 · 耗时 {time.time()-t1:.0f}s · 平均 {sz/(time.time()-t1):.2f}GB/s")
+                        # 🐛 2026-08-09 老倪: (3) 远程载入 + 结果
+                        t2 = time.time()
+                        r = _sp.run(
+                            f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                            f"{re_['user']}@{re_['host']} 'docker load -i /tmp/zmax-train.tar 2>&1 | tail -1; "
+                            f"rm -f /tmp/zmax-train.tar; docker images zmax-train --format \"{{{{.Repository}}}}:{{{{.Tag}}}} {{{{.Size}}}}\" | head -1'",
+                            shell=True, capture_output=True, text=True, timeout=900)
+                        self._log(f"  └ 远程载入: {r.stdout.strip()[:100]} · 耗时 {time.time()-t2:.0f}s")
                         self._log("✅ 容器已上传远程 — 训练明确在该容器中执行")
                     return
                 # 本地无 docker → 远程构建 (Dockerfile 在仓库 — 与本地一致)
