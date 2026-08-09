@@ -4365,22 +4365,11 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
 
     def _veh2_apply(self, root=None):
-        """🌐 VEH.2 (模型引擎页) 编号 (2026-08-09 老倪 v5: 大窗口常显 ID,
-        小控件悬停 tooltip 弹出不占地方; 上→下左→右 VEH.2.xx)"""
+        """🌐 VEH.2 (模型引擎页) 编号 (2026-08-09 老倪 v7: 所有 ID 一律悬停,
+        无静态常显 — 常显遮挡原文字; 上→下左→右 VEH.2.xx)"""
         try:
-            from PyQt5.QtWidgets import QScrollArea, QScrollBar, QGroupBox, QTableWidget
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar
             root = root or self
-            # 大窗口判定 (2026-08-09 老倪 v6): 只有分组框/表格/超大面板(≥60000)常显;
-            # 按钮/输入/下拉/数值/标签一律悬停 tooltip — 小按钮常显灰色字脏
-            def _is_big(w):
-                try:
-                    if isinstance(w, (QGroupBox, QTableWidget)):
-                        return True
-                    if isinstance(w, QPushButton):
-                        return False  # 按钮一律悬停, 不常显
-                    return w.width() * max(w.height(), 1) >= 60000
-                except Exception:
-                    return False
             ws = []
             for w in root.findChildren(QWidget):
                 if self._holo_page_of(w) != "P03":
@@ -4403,10 +4392,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     continue
                 self._holo_applied.add(id(w))
                 h_id = f"VEH.2.{i:02d}"
-                if _is_big(w):
-                    self._holo_badge_overlay(w, h_id, veh_small=True)  # 大窗口: 左下角常显
-                else:
-                    self._holo_badge_overlay(w, h_id, hover_only=True)  # 小控件: 悬停弹出
+                # 🐛 2026-08-09 老倪 v7: 全部悬停 tooltip, 无静态常显 (不遮挡原文字)
+                self._holo_badge_overlay(w, h_id, hover_only=True)
                 self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
                                            lambda w=w: self._holo_state(w))
         except Exception:
