@@ -40,6 +40,7 @@ NODE_TYPES = {
     "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 Model Zoo: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
     "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 Model Zoo技术选型报告生成 (2026-08-05 老倪)
     "skill":     {"cn": "原子技能", "color": "#00d4aa"},  # 🧩 原子技能 (2026-08-09 老倪: W²-VLA Token — 拖入画布→连结构条件→SYS1→action)
+    "scene":     {"cn": "场景", "color": "#ff9f43"},     # 🏭 场景 (2026-08-09 老倪: 插拔/搬运/光学检测 — 点击打开 ECS 链接 + 建场景节点链)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -511,6 +512,16 @@ LIBRARY = [
     ("skill", "🧩 原子技能入口", [
         {"name": "🧩 原子", "params": {"atomic_gate": True},
          "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
+    ]),
+    # 🏭 场景功能块 (2026-08-09 老倪: 光模块工厂三大场景 — 点击打开 ECS 链接 + 建场景节点链)
+    # 场景定义见 flows/scene_skills_3scenarios.json (静静 2026-08-09: 三场景 JSON 含工艺指标/结构尺寸)
+    ("scene", "🏭 场景 (3)", [
+        {"name": "🔌 插拔场景 · QSFP-DD", "params": {"scene_id": "SCN-01",
+          "desc": "光模块高密插拔: 成功率≥99.5%, 节拍≤3.5s/颗, 插拔力≤15N (SCN-01)"}},
+        {"name": "🤖 搬运场景 · 柔性物流", "params": {"scene_id": "SCN-02",
+          "desc": "光模块柔性搬运: 成功率≥99%, 节拍≤8s/颗, 防静电全程 (SCN-02)"}},
+        {"name": "🔍 光学检测场景 · AOI", "params": {"scene_id": "SCN-03",
+          "desc": "光模块全检AOI: 检出率≥99.9%, 12s/颗, 0.35μm分辨率 (SCN-03)"}},
     ]),
     # 🎯 YOLO 3D感知模块 (2026-08-06 老倪: 控制台要明显看到 yolo 3d 检测模块, state 输入来源)
     ("model", "🎯 YOLO 3D (感知)", [
@@ -2510,7 +2521,10 @@ class LibraryPanel(QFrame):
                     border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
-                if it.get("params", {}).get("atomic_gate"):
+                if it.get("params", {}).get("scene_id"):
+                    # 🏭 场景 (2026-08-09 老倪: 点击 → 打开 ECS 链接 + 建场景节点链)
+                    btn.clicked.connect(lambda _, sid=it["params"]["scene_id"]: self.module.open_scene(sid))
+                elif it.get("params", {}).get("atomic_gate"):
                     # 🧩 原子 (2026-08-09 老倪: 打开原子技能 → 结构条件 → SYS1 → action)
                     btn.clicked.connect(lambda _, nm=it["name"]: self.module.open_atomic_skill_flow(nm))
                 elif it.get("flow"):
@@ -3370,7 +3384,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩",
+                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🏭",
                      "coord_overlay": "🧩"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
@@ -6079,6 +6093,10 @@ class SimulinkModule(QWidget):
         if node.get("type") == "skill":
             self._export_skill_action(node)
             return
+        # 1.9) 🏭 场景节点 (2026-08-09 老倪: 双击 → 打开 ECS 链接 + 建场景节点链)
+        if node.get("type") == "scene":
+            self._open_scene(node)
+            return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
             if kw in node.get("name", ""):
@@ -6350,6 +6368,90 @@ class SimulinkModule(QWidget):
         btn_ok.clicked.connect(apply)
         lay.addWidget(btn_ok)
         dlg.exec_()
+
+    def open_scene(self, scene_id, node=None):
+        """🏭 场景: 打开 ECS 链接 (传场景 JSON) + 建场景节点链 (2026-08-09 老倪)
+        数据源: flows/scenes.json — 光模块工厂三大场景 (插拔/搬运/光学检测)
+        ECS 链接: https://datadrive.world/scene.html?scene=<scene_id>&json=<base64>"""
+        import os as _os, json as _j, base64 as _b64, urllib.parse as _up
+        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        p = _os.path.join(repo, "flows", "scenes.json")
+        if not _os.path.exists(p):
+            self._log(f"❌ 场景库不存在: {p} (先运行 flows/gen_scenes.py)")
+            return
+        try:
+            data = _j.load(open(p, encoding="utf-8"))
+            scene = next((s for s in data.get("scenes", []) if s["scene_id"] == scene_id), None)
+        except Exception as e:
+            self._log(f"❌ 场景库解析失败: {e}")
+            return
+        if not scene:
+            self._log(f"❌ 场景不存在: {scene_id}")
+            return
+        # 1) 打开 ECS 链接 (场景 JSON base64 传给网站)
+        try:
+            from PyQt5.QtCore import QUrl
+            from PyQt5.QtGui import QDesktopServices
+            b64 = _b64.b64encode(_j.dumps(scene, ensure_ascii=False).encode()).decode()
+            url = f"https://datadrive.world/scene.html?scene={scene_id}&json={_up.quote(b64)}"
+            QDesktopServices.openUrl(QUrl(url))
+            self._log(f"🏭 已打开 ECS 场景链接: {scene_id}")
+        except Exception as e:
+            self._log(f"⚠️ 打开链接失败: {e}")
+        # 2) 建场景节点链 (画布: 场景节点 + 技能节点序列 → 结构条件 → SYS1)
+        self._build_scene_flow(scene, node)
+
+    def _build_scene_flow(self, scene, scene_node=None):
+        """🏭 场景节点链: 场景 → 技能序列 (skill) → 结构条件 (coord_overlay) → SYS1"""
+        import os as _os, json as _j, time as _t
+        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        tk_p = _os.path.join(repo, "flows", "atomic_skill_tokens.json")
+        try:
+            tks = {s["skill_id"]: s for s in _j.load(open(tk_p, encoding="utf-8")).get("skills", [])}
+        except Exception:
+            tks = {}
+        if scene_node:
+            sx, sy = scene_node.get("x", 200), scene_node.get("y", 150)
+        else:
+            sx, sy = 120, 150
+        prev = None
+        for i, step in enumerate(scene.get("process", [])):
+            sid = step.get("skill_id", "")
+            tk = tks.get(sid, {})
+            # 技能节点
+            sn = self.add_node("skill", f"🧩 {sid} {step.get('name','')[:14]}", sx, sy + i * 90, {
+                "skill_id": sid, "tokens": tk.get("tokens", {}),
+                "action": step.get("action", "operate"), "gate": 0.5,
+                "scene": scene["scene_id"], "step": step.get("step", i + 1),
+                "desc": step.get("desc", "")[:60]})
+            if prev:
+                fi = self._items.get(prev["id"]); ti = self._items.get(sn["id"])
+                if fi and ti:
+                    self.add_link(fi, ti, "next")
+            prev = sn
+        # 结构条件节点 (场景级)
+        cn = self.add_node("coord_overlay", f"🧩 结构条件 · {scene['scene_id']}", sx + 260, sy, {
+            "cond_ref": scene["scene_id"], "skill": scene["name"],
+            "tokens": {"scene": scene["scene_id"]}, "gate": 0.5,
+            "desc": f"🏭 {scene['name'][:20]} 条件编码 (成功率{scene['metrics']['operation_success_rate']}, 节拍{scene['metrics']['cycle_time']})"})
+        # 技能 → 结构条件
+        if prev:
+            fi = self._items.get(prev["id"]); ti = self._items.get(cn["id"])
+            if fi and ti:
+                self.add_link(fi, ti, "cond")
+        # SYS1 动作系统
+        s1 = self.add_node("system", "🧠 SYS1 动作系统", sx + 260, sy + 120, {
+            "layer": "sys1", "desc": f"执行 {scene['name'][:16]} — 原子技能序列落地"})
+        si = self._items.get(cn["id"]); s1i = self._items.get(s1["id"])
+        if si and s1i:
+            self.add_link(si, s1i, "action")
+        self._log(f"🏭 场景 {scene['scene_id']} 节点链已建: 场景→{len(scene.get('process',[]))}技能→结构条件→SYS1")
+        self._sync()
+
+    def _open_scene(self, node):
+        """双击场景节点: 打开 ECS 链接 + 建节点链"""
+        sid = node.get("params", {}).get("scene_id", "")
+        self.open_scene(sid, node)
 
     def _pick_atomic_condition(self, node):
         """🧩 ControlNet 思想: 双击结构条件节点 → 从 atomic_skills_conditions.json 选原子技能条件 → 注入节点
