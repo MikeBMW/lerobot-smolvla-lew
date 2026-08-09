@@ -345,7 +345,7 @@ class ModuleCard(QFrame):
         if self.veh_id:
             veh = QLabel(self.veh_id)
             veh.setFont(QFont("Consolas", 7, QFont.Bold))
-            veh.setStyleSheet("color:#cc00d4aa; background:transparent; border:none; margin:0; padding:0;")  # #AARRGGBB: alpha CC 在前
+            veh.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
             veh.setToolTip(f"{self.veh_id} — 与静静对话时用此 ID 指代本卡片")
             bottom.addWidget(veh)
             bottom.addStretch()
@@ -4314,9 +4314,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     pass
                 setattr(widget, "_holo_badge_lbl", None)
             lbl = QLabel(h_id, widget)
-            # 🐛 2026-08-09 老倪 v3: 10px 无背景纯文字 (不覆盖原文字, 不抢眼, 可读)
+            # 🐛 2026-08-09 老倪 v4: 灰色贴近背景 (能看清不显眼), 10px 无背景不覆盖
             lbl.setStyleSheet(
-                "color:#00d4aa; font-size:10px; font-weight:bold; "
+                f"color:{C_GRAY}; font-size:10px; font-weight:bold; "
                 "background:transparent; border:none;")
             lbl.adjustSize()
             lbl.move(2, max(0, widget.height() - lbl.height() - 1))  # 左下角

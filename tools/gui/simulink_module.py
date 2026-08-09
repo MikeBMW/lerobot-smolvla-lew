@@ -1043,7 +1043,7 @@ class CICDStageItem(QGraphicsObject):
         # 🌐 2026-08-08 老倪: 节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角小字青色)
         try:
             if getattr(self, "_hover", False):
-                painter.setPen(QColor("#00d4aa"))
+                painter.setPen(QColor("#8b949e"))
                 painter.setFont(QFont("Arial", 7))
                 nid = getattr(self, "nid", None) or f"VEH.5.{self.sid % 100:02d}"
                 painter.drawText(QRectF(6, self.h - 13, self.w - 12, 12), Qt.AlignLeft | Qt.AlignVCenter, nid)
@@ -1876,7 +1876,7 @@ class SimNodeItem(QGraphicsObject):
         # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角青色小字)
         try:
             if getattr(self, "_hover", False):
-                painter.setPen(QColor("#00d4aa"))
+                painter.setPen(QColor("#8b949e"))
                 painter.setFont(QFont("Arial", 7))
                 nid = self.node.get("nid") or f"VEH.5.{self.node.get('id', 0) % 100:02d}"
                 painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
