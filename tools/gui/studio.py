@@ -3014,7 +3014,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.param_scroll.setWidget(param_group)
         self.param_scroll.setWidgetResizable(True)
         self.param_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # 🐛 2026-08-09 老倪: VEH.2.01 取消拖动条 — 垂直滚动条 AlwaysOff (内容全高展开, 表格区不滚)
+        self.param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # 🐛 2026-08-09 老倪: VEH.2.17 配置表默认展开全部 (表格全高 ~534 + 余量, 不用拖动条)
         self.param_scroll.setMinimumHeight(600)
         self.param_scroll.setStyleSheet(f"""
