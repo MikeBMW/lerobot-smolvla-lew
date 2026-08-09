@@ -4803,10 +4803,11 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             root = root or self
             self._holo_coords = getattr(self, "_holo_coords", {})
             self._holo_seq = 0
+            self._holo_page_seq = {}  # 🐛 2026-08-09: 每页独立序号 (VEH.3.01 起, 非全局)
             self._holo_applied = set()
             # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03 model_engine) 页打布局序编号, 主循环跳过该页
             self._veh2_apply(root)
-            # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框/面板)
+            # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框)
             targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
             for w in root.findChildren(QWidget):
                 if id(w) in self._holo_applied:
@@ -4830,11 +4831,15 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                  "P07": 8, "P08": 10, "P09": 11, "P10": 2, "P11": 5, "P12": 7}
 
     def _holo_seq_id(self, w):
-        """🌐 顺序 ID (VEH.卡号.序号 — 2026-08-09 老倪: 取消 Pxx 系统, 全 VEH 点号)"""
+        """🌐 顺序 ID (VEH.卡号.序号 — 2026-08-09 老倪: 取消 Pxx 系统, 全 VEH 点号)
+        🐛 2026-08-09: 每页独立序号 (VEH.3.01 起, 非全局递增)"""
         try:
             pg = self._holo_page_of(w)
             veh_n = self._VEH_PAGE.get(pg, 0)
-            return f"VEH.{veh_n}.{self._holo_seq:02d}"
+            # 每页独立计数器
+            seq = self._holo_page_seq.get(pg, 0) + 1
+            self._holo_page_seq[pg] = seq
+            return f"VEH.{veh_n}.{seq:02d}"
         except Exception:
             return f"VEH.0.{self._holo_seq:02d}"
 
@@ -5404,6 +5409,7 @@ class HardwareModule(SubModuleWidget):
     
     def __init__(self):
         super().__init__("硬件工具箱", [("Sys-0", SYS0_COLOR)])
+        self.setObjectName("hardware")  # 🌐 2026-08-09 老倪: 页识别 (VEH-3 功能卡编号用 — 硬件工具箱 VEH.3.xx)
         
         # SSH 连接复用 — 加速所有硬件控制命令
         import subprocess
