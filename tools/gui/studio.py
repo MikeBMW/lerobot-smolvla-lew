@@ -4359,14 +4359,20 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
 
     def _veh2_apply(self, root=None):
-        """🌐 VEH.2 (模型引擎页) 所有 layout 对象按布局顺序编号 (2026-08-09 老倪:
-        上→下、左→右 VEH.2.01/02/… 小字淡色常显; 所有 QWidget 全覆盖, 排除空标签/角标自身)"""
+        """🌐 VEH.2 (模型引擎页) 可见控件按布局顺序编号 (2026-08-09 老倪:
+        上→下、左→右 VEH.2.01/02/… 贴纸式左下角; 只编真实可见控件, 排除容器/滚动条/裸壳)"""
         try:
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar
             root = root or self
-            # 所有 QWidget 都编号 (含 QLabel/QFrame/QGroupBox/滚动区等 — 老倪: 所有对象都要有 ID)
+            # 排除容器类: 滚动区/滚动条/裸 QWidget 壳 (它们会盖住子控件角标)
+            EXCLUDE = (QScrollArea, QScrollBar, QWidget)
             ws = []
             for w in root.findChildren(QWidget):
                 if self._holo_page_of(w) != "P03":
+                    continue
+                if isinstance(w, EXCLUDE) and type(w) is QWidget:
+                    continue  # 裸 QWidget 壳 (布局容器) 不编号
+                if isinstance(w, (QScrollArea, QScrollBar)):
                     continue
                 if isinstance(w, QLabel):
                     txt = (w.text() or "").strip()
