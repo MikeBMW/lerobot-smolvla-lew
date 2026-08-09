@@ -27,6 +27,7 @@ def main():
     ap.add_argument("--stop-after-grab", action="store_true", help="抓起后即停(分段数据), 2026-08-08 老倪: 防方向反转")
     ap.add_argument("--rel-vec", action="store_true", help="state加相对向量(hand→peg,peg→hole), 2026-08-08 ③目标条件化")
     ap.add_argument("--tactile", action="store_true", help="state加触觉信号(3D速度差分+1D力=4D), 2026-08-09 老倪: 触觉加进结构条件")
+    ap.add_argument("--w2cot", action="store_true", help="state加W2-CoT结构化标注(4阶段+3物理线索+2腕部证据=9D), 2026-08-10 老倪: W2-VLA论文整合")
     ap.add_argument("--far", action="store_true", help="远起点模式 (2026-08-07 老倪: 让模型学会更长接近轨迹)")
     ap.add_argument("--task", default="reach-v3")
     ap.add_argument("--out", default="data/metaworld_cartesian")
@@ -143,6 +144,34 @@ def main():
                     gen_state_ctx.prev_ee = ee_pos.copy()
                 except Exception:
                     pass
+            # 2026-08-10 ⑤W2-CoT 结构化标注 (老倪: W2-VLA 论文整合): 阶段4 + 物理线索3 + 腕部证据2 = 9D
+            # 辅助监督: 模型学习预测"下一阶段/接触时刻" → 塑造任务条件化 latent 接口 (对标 W2 接口)
+            if getattr(args, "w2cot", False) and state.size >= 39:
+                try:
+                    import w2cot as _w2c
+                    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                    from w2cot import w2cot_annotate
+                    # 阶段判定: 0接近 1抓取 2抬起 3插入
+                    _hand = env.data.site_xpos[env.model.site("endEffector").id]
+                    _peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+                    _hole = env.data.site_xpos[env.model.site("hole").id]
+                    _d_hp = float(np.linalg.norm(_hand - _peg))
+                    _d_ph = float(np.linalg.norm(_peg - _hole))
+                    _peg_z0 = getattr(gen_state_ctx, "peg_z0", float(_peg[2]))
+                    _peg_lifted = float(_peg[2]) - _peg_z0 > 0.02
+                    if _peg_lifted:
+                        _phase = 3 if _d_ph < 0.15 else 2  # 插入 or 抬起转移
+                    else:
+                        _phase = 1 if _d_hp < 0.08 else 0  # 抓取 or 接近
+                    _prev_contact = getattr(gen_state_ctx, "prev_contact", 0.0)
+                    _prev_peg_z = getattr(gen_state_ctx, "prev_peg_z", float(_peg[2]))
+                    cot9 = w2cot_annotate(env, _phase, _prev_contact, _prev_peg_z, _peg_z0)
+                    state = np.concatenate([state, cot9]).astype(np.float32)  # 49+9=58D
+                    gen_state_ctx.prev_contact = cot9[4]
+                    gen_state_ctx.prev_peg_z = float(_peg[2])
+                    gen_state_ctx.peg_z0 = _peg_z0
+                except Exception:
+                    state = np.pad(state, (0, 9), constant_values=0)[: state.size + 9]
             # 官方专家策略优先 (保证抓取-插入成功, 2026-08-06)
             # 2026-08-07: --far 用多阶段专家 (官方专家远起点状态机失效)
             # 2026-08-08: --grab-only 也用多阶段专家 (官方专家夹爪离散, 学不到闭合)
