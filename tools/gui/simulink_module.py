@@ -2327,7 +2327,7 @@ class SimCanvas(QGraphicsView):
             self._drag_start = None
             # ↩️ 位置变了才入撤销栈 (2026-08-07: 拖动结束回退一步)
             if nid is not None:
-                it = self._items.get(nid)
+                it = self.module._items.get(nid) if self.module else None
                 if it is not None and (abs(it.scenePos().x() - ox) > 0.5
                                        or abs(it.scenePos().y() - oy) > 0.5):
                     self.module._push_undo(("move", [(nid, ox, oy)]))
