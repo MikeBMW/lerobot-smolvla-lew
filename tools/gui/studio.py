@@ -4093,7 +4093,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         curve = json.load(open(curve_path, encoding="utf-8"))
                     except Exception:
                         curve = {}
-                curve.update({"ckpt": os.path.join("outputs", "train", f"{name}_{ts}"),
+                curve.update({"ckpt": os.path.join("outputs", "train", f"{name}_{ts}", "checkpoints"),
                               "name": name, "policy": _pol, "step_s": 2000, "loss": None,
                               "ts": ts, "remote": f"{r['host']}:{_remote_ck}"})
                 os.makedirs(os.path.dirname(curve_path), exist_ok=True)
@@ -4878,12 +4878,77 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._update_dataset_path(ds)
         self._auto_output_dir()
     
+    def _deploy_model_to_orin(self):
+        """📱 端侧部署 (2026-08-09 老倪: VEH.2.26) — 打包已训练 ACT 模型 → ECS 中转 → Mac 拉取 → Orin
+        模型源: 模型引擎 ckpt_edit 指向的 pretrained_model (或 registry 最新 ACT)"""
+        import threading as _th, subprocess as _sp
+
+        def _w():
+            try:
+                import os as _os, json as _j, time as _t, tarfile as _tf
+                root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+                # ① 确定模型源: ckpt_edit (模型引擎路径) → 存在则用; 否则 registry 最新 ACT
+                pm = None
+                try:
+                    _p = self.ckpt_edit.text().strip()
+                    if _p and _os.path.isdir(_p):
+                        pm = _p
+                except Exception:
+                    pass
+                if not pm:
+                    reg_path = self._saved_registry_path()
+                    if _os.path.exists(reg_path):
+                        reg = _j.load(open(reg_path, encoding="utf-8"))
+                        for item in reg:
+                            if item.get("policy") == "act":
+                                cand = _os.path.join(item["path"], "checkpoints", "last", "pretrained_model")
+                                if _os.path.isdir(cand):
+                                    pm = cand
+                                    break
+                if not pm:
+                    self._log("❌ 端侧部署: 未找到已训练 ACT 模型 (先训练/拉回模型)")
+                    return
+                self._log(f"📦 部署模型源: {pm}")
+                # ② 打包 tar.gz
+                ts = _t.strftime("%Y%m%d_%H%M%S")
+                tar_path = _os.path.join(root, "reports", f"orin_deploy_act_{ts}.tar.gz")
+                with _tf.open(tar_path, "w:gz") as tf:
+                    tf.add(pm, arcname="pretrained_model")
+                sz = _os.path.getsize(tar_path)
+                self._log(f"🗜 已打包: {tar_path} ({sz//1024}KB)")
+                # ③ 上传 ECS 中转 (datadrive.world relay)
+                import requests as _rq
+                url = "https://datadrive.world/api/relay"
+                try:
+                    r = _rq.get(f"{url}/status", timeout=8)
+                    self._log(f"📡 ECS 中转状态: {r.json().get('uptime', 0)}s 在线 · 队列 {r.json().get('packages', 0)} 包")
+                except Exception as e:
+                    self._log(f"⚠️ ECS 中转状态查询失败: {e} (继续尝试上传)")
+                with open(tar_path, "rb") as f:
+                    r2 = _rq.post(f"{url}/upload", data=f.read(), timeout=120)
+                self._log(f"📤 上传结果: {r2.json()}")
+                # ④ 元数据 (Mac 侧据此拉取 → Orin)
+                meta = {"name": f"orin_deploy_act_{ts}.tar.gz", "size": sz,
+                        "source": "4060", "time": _t.time(), "model": "act", "target": "orin",
+                        "ckpt": pm}
+                try:
+                    _rq.post(f"{url}/upload", json={"name": f"deploy_meta_act_{ts}.json", "meta": meta}, timeout=10)
+                except Exception:
+                    pass
+                self._log("✅ 部署包已上传 ECS — 通知小芳 Mac 拉取 → Orin")
+                self._log(f"📦 部署包: reports/orin_deploy_act_{ts}.tar.gz · {meta['name']} · {sz//1024}KB")
+                self._log("🤖 Orin 上线后自动加载部署 (小芳侧 cicd 拉取)")
+            except Exception as e:
+                self._log(f"❌ 端侧部署失败: {str(e)[:100]}")
+
+        _th.Thread(target=_w, daemon=True).start()
+
     def _start_training(self):
         """Start training — 2026-08-08 老倪: 三模式统一走训练队列 (GPU 引擎由模式联动: 远程V100/本地4060)"""
-        # 📱 端侧部署 → 推送容器 (Mac/Orin)
+        # 📱 端侧部署 → 打包已训练模型 → ECS 中转 → 小芳Mac拉取 → Orin (2026-08-09 老倪: VEH.2.26 部署ACT模型到Orin)
         if getattr(self, "_ct_mode", "train") == "deploy":
-            self._log("📱 端侧部署模式 — 构建推送容器 (Mac/Orin arm64)…")
-            self._container_action("mac")
+            self._log("📱 端侧部署 — 打包 ACT 模型 → ECS 中转 → Mac 拉取 → Orin…")
+            self._deploy_model_to_orin()
             return
         # 🎛 训练按钮 → Simulink Model Zoo 完整训练 (7 模型串行队列 — 本地运行=本地4060训练)
         if getattr(self, "_simulink", None) is not None:
