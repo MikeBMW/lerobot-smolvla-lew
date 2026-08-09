@@ -3433,20 +3433,42 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 except Exception as _e:
                     self._log(f"  └ ❌ 远程检测异常: {str(_e)[:60]}")
                     return
-                # 本地 docker 可用性检测 (2026-08-08 老倪: 无 docker CLI → 直接远程构建, 不抛错)
+                # 本地 docker 可用性检测 (2026-08-09 老倪: 兼容 zmax-std/zmax-train 双命名)
                 try:
                     local_docker = _sp.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
                                            capture_output=True, text=True, timeout=15)
-                    has_local = local_docker.returncode == 0 and "zmax-train" in local_docker.stdout
+                    _img = None
+                    if local_docker.returncode == 0:
+                        for _ln in local_docker.stdout.splitlines():
+                            _nm = _ln.split(":")[0]
+                            if _nm in ("zmax-train", "zmax-std"):
+                                _img = _ln.strip()
+                                break
+                    has_local = _img is not None
                 except Exception:
-                    has_local = False
+                    _img, has_local = None, False
+                # 🐛 2026-08-09 老倪: 先查远程是否已有 zmax 镜像 — 有就直接用, 不传 28GB
+                self._log("  └ 查询远程已有镜像 …")
+                try:
+                    _rimg = _sp.run(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
+                        f"-o Port={re_['port']} {re_['user']}@{re_['host']} "
+                        f"'docker images --format \"{{{{.Repository}}}}:{{{{.Tag}}}} {{{{.Size}}}}\" | grep -E \"zmax-(train|std)\" | head -3'",
+                        shell=True, capture_output=True, text=True, timeout=25)
+                    _remote_has = _rimg.stdout.strip()
+                    if _remote_has:
+                        self._log(f"  └ ✅ 远程已有: {_remote_has[:80]}")
+                        self._log(f"  └ 🎉 无需上传 — 远程镜像已就绪, 训练直接用远程容器")
+                        return
+                except Exception:
+                    pass
                 if has_local:
-                    self._log("🐳 本地有 zmax-train 镜像 — 打包 → 传输 → 远程载入")
+                    self._log(f"🐳 本地有 {_img} — 打包 → 传输 → 远程载入")
                     savef = "/tmp/zmax-train.tar"
                     # 🐛 2026-08-09 老倪: (1) docker save 开始+完成 计时/大小
-                    self._log("  └ ① 打包本地镜像 zmax-train:latest … (约几分钟)")
+                    self._log(f"  └ ① 打包本地镜像 {_img} … (约几分钟, 28GB)")
                     t0 = time.time()
-                    _sp.run(["docker", "save", "-o", savef, "zmax-train:latest"], timeout=1800)
+                    _sp.run(["docker", "save", "-o", savef, _img], timeout=1800)
                     sz = os.path.getsize(savef) / 1e9
                     self._log(f"  └ ① 打包完成: {sz:.1f}GB · 耗时 {time.time()-t0:.0f}s")
                     # 🐛 2026-08-09 老倪: (2) 传输 — Python 分块管道直写远程, 每1%变化实时打印
