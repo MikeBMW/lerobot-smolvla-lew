@@ -2539,8 +2539,8 @@ class LibraryPanel(QFrame):
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
                 if it.get("params", {}).get("scene_id"):
-                    # 🏭 场景 (2026-08-09 老倪: 点击 → 打开 ECS 链接 + 建场景节点链)
-                    btn.clicked.connect(lambda _, sid=it["params"]["scene_id"]: self.module.open_scene(sid))
+                    # 🏭 场景 (2026-08-09 老倪: 点击 → 只打开 3D 链接, 不建子模块)
+                    btn.clicked.connect(lambda _, sid=it["params"]["scene_id"]: self.module.open_scene_link(sid))
                 elif it.get("params", {}).get("atomic_gate"):
                     # 🧩 原子 (2026-08-09 老倪: 打开原子技能 → 结构条件 → SYS1 → action)
                     btn.clicked.connect(lambda _, nm=it["name"]: self.module.open_atomic_skill_flow(nm))
@@ -2601,7 +2601,7 @@ class LibraryPanel(QFrame):
                                   " border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }"
                                   "QToolButton:hover { border-color:#00d4aa; color:#00d4aa; }")
                 btn.setToolTip(f"{s['name']} — 成功率{_perf.get('operation_success_rate','')} · 节拍{_perf.get('cycle_time','')} · 点击打开 ECS 链接 + 建节点链")
-                btn.clicked.connect(lambda _, sid=s["id"]: self.module.open_scene(sid))
+                btn.clicked.connect(lambda _, sid=s["id"]: self.module.open_scene_link(sid))
                 self.v.addWidget(btn)
         self.v.addStretch()
 
@@ -6509,10 +6509,24 @@ class SimulinkModule(QWidget):
         self._log(f"🏭 场景 {_sid} 节点链已建: 场景→{len(_steps)}技能→结构条件→SYS1")
         self._sync()
 
+    def open_scene_link(self, scene_id):
+        """🏭 场景 → 只打开 ECS 3D 链接 (2026-08-09 老倪: 不建子模块, 只要链接)"""
+        import os as _os, json as _j, base64 as _b64, urllib.parse as _up
+        try:
+            from PyQt5.QtCore import QUrl
+            from PyQt5.QtGui import QDesktopServices
+            _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
+            _k = _SCENE3D.get(scene_id, scene_id.lower())
+            url = f"https://datadrive.world/scene-3d.html?scene={_k}"
+            QDesktopServices.openUrl(QUrl(url))
+            self._log(f"🏭 打开 3D 场景: {scene_id} → {url}")
+        except Exception as e:
+            self._log(f"⚠️ 打开链接失败: {e}")
+
     def _open_scene(self, node):
-        """双击场景节点: 打开 ECS 链接 + 建节点链"""
+        """双击场景节点 (2026-08-09 老倪): 只打开 3D 链接, 不建子模块"""
         sid = node.get("params", {}).get("scene_id", "")
-        self.open_scene(sid, node)
+        self.open_scene_link(sid)
 
     def _pick_atomic_condition(self, node):
         """🧩 ControlNet 思想: 双击结构条件节点 → 从 atomic_skills_conditions.json 选原子技能条件 → 注入节点
