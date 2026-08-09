@@ -2393,16 +2393,21 @@ class TrainingModule(QWidget):
         self.ssh_host.setText("223.109.239.36")
         self.ssh_port.setText("24424")
         self.ssh_user.setText("root")
-        # 载入上次凭据 (覆盖默认)
+        # 载入上次凭据 (覆盖默认; 🐛 2026-08-09 兼容扁平结构 与 嵌套 gpu_4090/gpu_v100)
         try:
             import json as _json
             _cred = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
-            self.ssh_host.setText(_cred.get("host", self.ssh_host.text()))
-            self.ssh_port.setText(str(_cred.get("port", self.ssh_port.text())))
-            self.ssh_user.setText(_cred.get("user", self.ssh_user.text()))
-            self.ssh_pass.setText(_cred.get("pwd", ""))
-            if _cred.get("host"):
-                self.ssh_status.setText(f"已载入 {_cred['host']}:{_cred.get('port','22')} (未连接)")
+            if isinstance(_cred, dict) and "host" in _cred:
+                _c = _cred  # 扁平: {"host","port","user","pwd"}
+            else:
+                # 嵌套: {"gpu_v100": {...}, "gpu_4090": {...}} → 优先 4090 (最近连接)
+                _c = _cred.get("gpu_4090") or _cred.get("gpu_v100") or {}
+            self.ssh_host.setText(_c.get("host", self.ssh_host.text()))
+            self.ssh_port.setText(str(_c.get("port", self.ssh_port.text())))
+            self.ssh_user.setText(_c.get("user", self.ssh_user.text()))
+            self.ssh_pass.setText(_c.get("pwd", ""))
+            if _c.get("host"):
+                self.ssh_status.setText(f"已载入 {_c['host']}:{_c.get('port','22')} (未连接)")
         except Exception:
             pass
         layout.addWidget(ssh_box)
@@ -3887,8 +3892,16 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return
         try:
             import json as _json
-            _json.dump({"host": host, "port": port, "user": user, "pwd": pwd},
-                       open(os.path.expanduser("~/.zmax_ssh.json"), "w"))
+            _p = os.path.expanduser("~/.zmax_ssh.json")
+            try:
+                _old = _json.load(open(_p))
+            except Exception:
+                _old = {}
+            if isinstance(_old, dict) and "host" in _old:
+                _old = {"gpu_v100": _old}  # 旧扁平结构 → 归到 gpu_v100
+            _new = {"host": host, "port": port, "user": user, "pwd": pwd}
+            _old.setdefault("gpu_4090", {}).update(_new)
+            _json.dump(_old, open(_p, "w"))
         except Exception:
             pass
         self.ssh_status.setText(f"🔌 连接中 {host}:{port}...")
