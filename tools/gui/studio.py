@@ -4297,32 +4297,66 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         return "—"
 
     def _holo_badge_overlay(self, widget, h_id, hover_only=False, veh_small=False):
-        """🌐 控件 ID 标注 (2026-08-09 老倪: simulink 页按钮左下角 ID 不常显, 悬停才见;
-        veh_small=True → VEH 页小字淡色, 不明显)"""
+        """🌐 控件 ID 标注 (2026-08-09 老倪 v2: 14px 粗体 + 深色半透明底贴纸式,
+        固定左下角, 跟随控件移动, 不遮挡不悬浮; tooltip 带控件名)"""
         try:
             if hover_only:
                 base = widget.toolTip() or ""
                 tag = f"[ID {h_id}]"
                 widget.setToolTip(f"{tag} {base}".strip())
                 return None
+            # 防重复叠加: 先删旧角标
+            old = getattr(widget, "_holo_badge_lbl", None)
+            if old is not None:
+                try:
+                    old.deleteLater()
+                except Exception:
+                    pass
+                setattr(widget, "_holo_badge_lbl", None)
             lbl = QLabel(h_id, widget)
-            if veh_small:
-                lbl.setStyleSheet("color:#aa00d4aa; font-size:7px; font-weight:normal; background:transparent; border:none;")  # #AARRGGBB: alpha AA 在前
-            else:
-                lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
+            # 贴纸式: 深色半透明底 + 青字 14px 粗体 (两倍字高字宽, 可读不遮挡)
+            lbl.setStyleSheet(
+                "color:#00ffd0; font-size:14px; font-weight:bold; "
+                "background:rgba(13,17,23,200); border:1px solid #00d4aa55; "
+                "border-radius:3px; padding:1px 4px;")
             lbl.adjustSize()
-            # 🐛 2026-08-09 老倪: ID 统一左下角 (不覆盖文字 — 控件左下角空白处)
-            try:
-                x = max(0, 2)
-                y = max(0, widget.height() - lbl.height() - 2)
-                lbl.move(x, y)
-            except Exception:
-                lbl.move(2, max(0, widget.height() - lbl.height() - 2))
+            lbl.move(2, max(0, widget.height() - lbl.height() - 2))  # 左下角固定
             lbl.raise_()
             setattr(widget, "_holo_badge_lbl", lbl)
+            # tooltip: ID + 控件名 (悬停即知对应啥)
+            try:
+                nm = self._holo_name(widget)
+                widget.setToolTip(f"{h_id} — {nm}")
+            except Exception:
+                pass
+            # 跟随控件移动/缩放: 轻量 QTimer 全局同步 (不 monkey-patch 控件事件, 安全)
+            try:
+                from PyQt5.QtCore import QTimer as _QTimer
+                if not getattr(self, "_holo_sync_timer", None):
+                    t = _QTimer(self)
+                    t.timeout.connect(self._holo_sync_badges)
+                    t.start(1200)
+                    self._holo_sync_timer = t
+            except Exception:
+                pass
             return lbl
         except Exception:
             return None
+
+    def _holo_sync_badges(self):
+        """🌐 定时同步所有角标到控件左下角 (跟随滚动/布局变化, 防错位)"""
+        try:
+            for hid, info in list(getattr(self, "_holo_coords", {}).items()):
+                try:
+                    w = info[0]
+                    lbl = getattr(w, "_holo_badge_lbl", None)
+                    if lbl is not None:
+                        lbl.move(2, max(0, w.height() - lbl.height() - 2))
+                        lbl.raise_()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _veh2_apply(self, root=None):
         """🌐 VEH.2 (模型引擎页) 所有 layout 对象按布局顺序编号 (2026-08-09 老倪:
