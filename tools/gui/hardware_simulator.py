@@ -383,7 +383,7 @@ class HardwareDiscoveryThread(QThread):
     result_ready = pyqtSignal(dict)
     progress = pyqtSignal(str)
     
-    ORIN_HOST = "192.168.23.10"
+    ORIN_HOST = "192.168.23.66"
     ORIN_USER = "nvidia"
     
     def __init__(self):
@@ -513,12 +513,12 @@ class HardwareDiscoveryThread(QThread):
 def discover_hardware_blocking() -> dict:
     """同步版：直接发现硬件（用于终端测试）"""
     import subprocess
-    results = {"success": False, "host": "192.168.23.10", "nodes": [], "topics": [], "error": ""}
+    results = {"success": False, "host": "192.168.23.66", "nodes": [], "topics": [], "error": ""}
     
     ssh_opts = ["-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5"]
     
     def ssh(cmd, timeout=10):
-        r = subprocess.run(["ssh"] + ssh_opts + ["nvidia@192.168.23.10", cmd],
+        r = subprocess.run(["ssh"] + ssh_opts + ["tashan@192.168.23.66", cmd],
                           capture_output=True, text=True, timeout=timeout)
         return r.stdout.strip(), r.returncode
     

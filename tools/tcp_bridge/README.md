@@ -42,7 +42,7 @@ bash run_pc.sh
 PORT=8888 THROTTLE=5 bash run_orin.sh
 
 # PC: 连接指定 Orin + 保存日志
-python3 pc_receiver.py --host 192.168.23.10 --port 9999 --log session.jsonl
+python3 pc_receiver.py --host 192.168.23.66 --port 9999 --log session.jsonl
 
 # PC: 安静模式（仅记录不显示）
 python3 pc_receiver.py --quiet --log data.jsonl
