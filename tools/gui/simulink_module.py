@@ -5072,6 +5072,40 @@ class SimulinkModule(QWidget):
                         self.log_signal.emit(f"🐳 远程镜像构建中 (首次容器化) · 日志 /tmp/docker_build.log · 完成后重跑")
                     else:
                         self.log_signal.emit(f"🐳 远程容器训练已启动 ({pname} · {cfg_base}) · 日志 /tmp/remote_train.log")
+                        # 🐛 2026-08-09 老倪: 远程训练日志实时拉流 — 每5s tail增量, 数据加载/epoch/loss 全显示
+                        try:
+                            import threading as _thr
+                            _rlog_seen = [0]  # 已读行数
+
+                            def _rstream():
+                                import time as _rt, subprocess as _rsp
+                                while True:
+                                    try:
+                                        _o = _rsp.check_output(
+                                            f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                                            f"-o Port={r['port']} {r['user']}@{r['host']} "
+                                            f"'docker ps -q --filter name=zmax_train | head -1; echo ---; "
+                                            f"tail -n +{_rlog_seen[0] + 1} /tmp/remote_train.log 2>/dev/null'",
+                                            shell=True, timeout=20).decode(errors="replace")
+                                        _parts = _o.split("---", 1)
+                                        _alive = bool(_parts[0].strip())
+                                        _new = _parts[1].strip() if len(_parts) > 1 else ""
+                                        if _new:
+                                            for _ln in _new.splitlines():
+                                                if _ln.strip():
+                                                    self.log_signal.emit(f"   📡 {_ln.strip()[:150]}")
+                                            _rlog_seen[0] += len(_new.splitlines())
+                                        if not _alive:
+                                            self.log_signal.emit("   └ 📡 远程训练容器已退出 — 日志流停止")
+                                            return
+                                    except Exception:
+                                        pass
+                                    _rt.sleep(5)
+
+                            _thr.Thread(target=_rstream, daemon=True).start()
+                            self.log_signal.emit("   └ 📡 远程日志流已开启 (每5秒增量拉取) …")
+                        except Exception:
+                            pass
                     return True, f"{pname} 容器化远程提交"
                 except Exception as ex:
                     self.log_signal.emit(f"❌ 远程容器提交失败 {str(ex)[:50]} — 回退本地训练")
