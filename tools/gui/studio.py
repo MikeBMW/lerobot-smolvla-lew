@@ -810,6 +810,7 @@ class HomeWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("home")  # 🌐 2026-08-09 老倪: 页识别 (首页按钮 ID 悬停不常显)
         self.setStyleSheet(f"background:{C_BG};")
         self._build()
 
