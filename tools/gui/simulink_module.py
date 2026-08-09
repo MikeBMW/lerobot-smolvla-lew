@@ -156,8 +156,8 @@ REFERENCE_APPS = [
     # 三行横排 (老倪架构布局: SYS2 云端训练(顶) → SYS1含SYS11 VLA-T+SYS12 Z-Flow(中) → SYS0 红底(底))
     ("🏗 Z-MAX 架构", [
         ("system", "🖥 SYS2 云端训练", {"desc": "云端训练 · 4090 · 大模型训练/部署 (Z-MAX 架构顶层)"}),
-        ("system", "🧠 SYS12 Z-Flow", {"desc": "Z-Flow 数据流引擎 (SYS1 层, 与 SYS11 并列)"}),
-        ("system", "🖐 SYS11 VLA-T", {"desc": "VLA-T 触觉大模型 (SYS1 层, 与 SYS12 并列)"}),
+        ("system", "🧠 SYS12 引导系统", {"desc": "SYS12 引导系统 · Z-Flow 数据流引擎 (SYS1 层, 与 SYS11 并列)"}),
+        ("system", "🖐 SYS11 动作系统", {"desc": "SYS11 动作系统 · VLA-T 触觉大模型 (SYS1 层, 与 SYS12 并列)"}),
         ("system", "🔧 SYS0 硬件驱动", {"desc": "硬件驱动 + 原子功能 (Z-MAX 架构底层)"}),
     ], [
         (0, 1), (0, 2), (1, 3), (2, 3),
@@ -165,7 +165,7 @@ REFERENCE_APPS = [
     # 三行横排布局: SYS2 顶行 / SYS12+SYS11 中行 / SYS0 底行
     [
         ["🖥 SYS2 云端训练", "", "", ""],
-        ["", "🧠 SYS12 Z-Flow", "🖐 SYS11 VLA-T", ""],
+        ["", "🧠 SYS12 引导系统", "🖐 SYS11 动作系统", ""],
         ["", "", "🔧 SYS0 硬件驱动", ""],
     ]),
     # 🔬 Model Zoo (2026-08-05 老倪: "把 ACT SmolVLA smolvla+lew VLA-Touch AWE 5个模型
@@ -658,8 +658,8 @@ LIBRARY = [
     #   主页左侧 SystemLayerCard 四层架构, 可拖入画布)
     ("system", "🏗 Z-MAX 架构 (4)", [
         {"name": "🖥 SYS2 云端训练", "params": {"desc": "云端训练 · 4090 · 大模型训练/部署 (架构顶层, L4 大脑)"}},
-        {"name": "🧠 SYS12 Z-Flow", "params": {"desc": "SYS12 引导系统 · Z-Flow 数据流引擎 (SYS1 层)"}},
-        {"name": "🖐 SYS11 VLA-T", "params": {"desc": "SYS11 · VLA-T 触觉大模型 (SYS1 层)"}},
+        {"name": "🧠 SYS12 引导系统", "params": {"desc": "SYS12 引导系统 · Z-Flow 数据流引擎 (SYS1 层)"}},
+        {"name": "🖐 SYS11 动作系统", "params": {"desc": "SYS11 动作系统 · VLA-T 触觉大模型 (SYS1 层)"}},
         {"name": "🔧 SYS0 硬件驱动", "params": {"desc": "SYS0 · 硬件驱动 + 原子功能 (架构底层)"}},
     ]),
     # 🧠 模型主干组 (2026-08-08 老倪: Model Zoo所有模块都要能从左侧拖出 — SmolVLM2/DiT-B/LEW)
