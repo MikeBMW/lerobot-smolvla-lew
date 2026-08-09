@@ -6388,12 +6388,32 @@ class SimulinkModule(QWidget):
                 _ci = self._items.get(cn["id"]); _s1i = self._items.get(s1["id"])
                 if _ci and _s1i:
                     self.add_link(_ci, _s1i, "action")
-            # ⑤ action 输出节点 (SYS1 后面)
-            act = self.add_node("action", "🎯 Action 输出", 1250, 300, {
+            # ⑤ action 输出节点群 (2026-08-09 老倪: A00~A10 全是 SYS1 的输出)
+            #   A001 精密对准 ~ A010 锡焊/钎焊 (操作动作系列, 每动作一个输出节点)
+            _A_NAMES = {"A000": "动作库", "A001": "精密对准", "A002": "插入/拔出",
+                        "A003": "压装/扣合", "A004": "旋拧/锁付", "A005": "扭矩/角度控制",
+                        "A006": "轨迹跟踪加工", "A007": "点胶/涂布/喷涂", "A008": "贴标/贴装",
+                        "A009": "撕膜/贴膜", "A010": "锡焊/钎焊"}
+            _s1i = self._items.get(s1["id"])
+            _act_prev = None
+            for _ai in range(1, 11):
+                _aid = f"A{_ai:03d}"
+                _ax = 1250 + (_ai - 1) % 5 * 190
+                _ay = 180 + (_ai - 1) // 5 * 120
+                act = self.add_node("action", f"🎯 {_aid} {_A_NAMES.get(_aid, '')[:8]}", _ax, _ay, {
+                    "action_out": f"/dds/action/{_aid.lower()}",
+                    "scene": "SCN-01/02/03", "gate": 0.5,
+                    "desc": f"{_aid} {_A_NAMES.get(_aid, '')} — SYS1 动作输出"})
+                _ai2 = self._items.get(act["id"])
+                if _s1i and _ai2:
+                    self.add_link(_s1i, _ai2, "action")
+                _act_prev = act
+            # action 汇聚输出
+            act_all = self.add_node("action", "📤 Action 汇总", 1250 + 5 * 190 - 100, 180 + 2 * 120, {
                 "action_out": "/dds/action/scn_all",
                 "scene": "SCN-01/02/03", "gate": 0.5,
-                "desc": "三场景统一 action 输出: /dds/action/scn_all (插拔/搬运/检测 动作流)"})
-            _s1i = self._items.get(s1["id"]); _ai2 = self._items.get(act["id"])
+                "desc": "A001~A010 动作汇总输出: /dds/action/scn_all (画板可加载)"})
+            _ai2 = self._items.get(act_all["id"])
             if _s1i and _ai2:
                 self.add_link(_s1i, _ai2, "action")
         finally:
