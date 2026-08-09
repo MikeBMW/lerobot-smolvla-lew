@@ -4837,6 +4837,56 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             pass
 
+    def _veh0_apply(self, root=None):
+        """🌐 VEH.0 (首页) 编号 (2026-08-09 老倪: 首页所有可见控件 VEH.0.xx 悬停显示)
+        首页功能卡是 ModuleCard(QFrame) — 通用分支覆盖不到, 单独编号"""
+        try:
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar, QFrame
+            root = root or self
+            ws = []
+            home_w = None
+            for w in root.findChildren(QWidget):
+                if w.objectName() == "home":
+                    home_w = w
+                    break
+            for w in root.findChildren(QWidget):
+                if w is home_w:
+                    continue  # 页面自身
+                # 🐛 2026-08-09: 严格限定 — parent 链经过 HomeWidget (防侧栏等空链控件误入)
+                _p = w
+                _in_home = False
+                while _p is not None:
+                    if _p is home_w:
+                        _in_home = True
+                        break
+                    _p = _p.parent()
+                if not _in_home:
+                    continue
+                if type(w) is QWidget:
+                    continue
+                if isinstance(w, (QScrollArea, QScrollBar)):
+                    continue
+                if isinstance(w, QFrame) and (w.layout() is not None or w.children()) and not isinstance(w, ModuleCard):
+                    continue  # 容器卡片 (ModuleCard 是功能卡要编号)
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue
+                    if txt.startswith("VEH."):
+                        continue
+                ws.append(w)
+            ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
+            for i, w in enumerate(ws, 1):
+                if id(w) in self._holo_applied:
+                    continue
+                self._holo_applied.add(id(w))
+                h_id = f"VEH.0.{i:02d}"
+                self._holo_badge_overlay(w, h_id, hover_only=True)
+                self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                           lambda w=w: self._holo_state(w))
+        except Exception:
+            pass
+
     def _holo_apply_all(self, root=None):
         """🌐 全控制台所有 Qt 控件 ID 角标 (叠加式 — 左下角可见, 安全不崩, 2026-08-08 老倪: 所有所有所有)"""
         try:
@@ -4845,7 +4895,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._holo_seq = 0
             self._holo_page_seq = {}  # 🐛 2026-08-09: 每页独立序号 (VEH.3.01 起, 非全局)
             self._holo_applied = set()
-            # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03 model_engine) / VEH-4 (P13 architecture) 页打布局序编号
+            # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03) / VEH-4 (P13) / VEH-0 (P01 首页) 页打布局序编号
+            self._veh0_apply(root)
             self._veh2_apply(root)
             self._veh4_apply(root)
             # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框)
@@ -4854,10 +4905,13 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 if id(w) in self._holo_applied:
                     continue
                 if isinstance(w, targets):
-                    if self._holo_page_of(w) == "P03":
+                    _pg = self._holo_page_of(w)
+                    if _pg == "P03":
                         continue  # VEH-2 已编号
-                    if self._holo_page_of(w) == "P01":
-                        continue  # 首页导航不编号 (VEH.1 仅数据集页)
+                    if _pg == "P01":
+                        continue  # 首页由 _veh0_apply 专门编号
+                    if _pg == "P00" or _pg is None:
+                        continue  # 🐛 2026-08-09: 未识别页不编号 (侧栏等 — 防误编 VEH.0)
                     self._holo_seq += 1
                     self._holo_applied.add(id(w))
                     h_id = self._holo_seq_id(w)
