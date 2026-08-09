@@ -3989,7 +3989,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         disk = l
                 self._set_ssh_status(f"✅ {host} · GPU {gpu} · 训练进程 {train_n} · 磁盘 {disk}")
                 # 2026-08-08 老倪: 记录远程引擎 + 更新引擎状态条 (用户感知远程 GPU)
-                self.remote_engine = {"host": host, "port": port, "user": user, "pwd": pwd, "gpu": gpu}
+                self.remote_engine = {"host": host, "port": port, "user": user, "pwd": pwd, "gpu": gpu,
+                                      "connected": True}  # 🐛 2026-08-09: connected 标志 (自动连接防重)
                 self._set_engine_ui(True, gpu)
                 # 🌐 2026-08-08 老倪: 连接外部计算资源 → 默认 git clone 控制台工程 (统一训练模式)
                 try:
