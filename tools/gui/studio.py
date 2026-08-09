@@ -2267,6 +2267,7 @@ class TrainingModule(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("model_engine")  # 🌐 2026-08-09 老倪: 页识别 (VEH-2 功能卡编号用)
         
         # Import training backend
         from training_backend import training_backend
@@ -4283,9 +4284,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
         return "—"
 
-    def _holo_badge_overlay(self, widget, h_id, hover_only=False):
-        """🌐 控件 ID 标注 (2026-08-09 老倪: simulink 页按钮左下角 ID 不常显, 悬停才见)
-        hover_only=True → 不叠加角标, 改为 tooltip 悬停显示 ID"""
+    def _holo_badge_overlay(self, widget, h_id, hover_only=False, veh_small=False):
+        """🌐 控件 ID 标注 (2026-08-09 老倪: simulink 页按钮左下角 ID 不常显, 悬停才见;
+        veh_small=True → VEH 页小字淡色, 不明显)"""
         try:
             if hover_only:
                 base = widget.toolTip() or ""
@@ -4293,7 +4294,10 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 widget.setToolTip(f"{tag} {base}".strip())
                 return None
             lbl = QLabel(h_id, widget)
-            lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
+            if veh_small:
+                lbl.setStyleSheet("color:#00d4aa77; font-size:7px; font-weight:normal; background:transparent; border:none;")
+            else:
+                lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
             lbl.adjustSize()
             lbl.move(2, max(0, widget.height() - lbl.height() - 2))
             lbl.raise_()
@@ -4302,6 +4306,54 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             return None
 
+    def _veh2_apply(self, root=None):
+        """🌐 VEH-2 (模型引擎页) 内所有控件按布局顺序编号 (2026-08-09 老倪:
+        上→下、左→右 VEH-2-01/02/… 小字淡色常显; 跳过已打标控件)"""
+        try:
+            root = root or self
+            targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
+            # 收集 P03 页 (model_engine) 下所有目标控件
+            ws = [w for w in root.findChildren(QWidget)
+                  if isinstance(w, targets) and self._holo_page_of(w) == "P03"]
+            # 按布局位置排序: y 优先 (上→下), 再 x (左→右)
+            ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
+            for i, w in enumerate(ws, 1):
+                if id(w) in self._holo_applied:
+                    continue
+                self._holo_applied.add(id(w))
+                h_id = f"VEH-2-{i:02d}"
+                self._holo_badge_overlay(w, h_id, veh_small=True)
+                self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                           lambda w=w: self._holo_state(w))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _holo_abs_y(w):
+        """控件全局 Y (相对顶层窗口)"""
+        try:
+            p = w
+            y = 0
+            while p is not None:
+                y += p.y()
+                p = p.parentWidget()
+            return y
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _holo_abs_x(w):
+        """控件全局 X (相对顶层窗口)"""
+        try:
+            p = w
+            x = 0
+            while p is not None:
+                x += p.x()
+                p = p.parentWidget()
+            return x
+        except Exception:
+            return 0
+
     def _holo_apply_all(self, root=None):
         """🌐 全控制台所有 Qt 控件 ID 角标 (叠加式 — 左下角可见, 安全不崩, 2026-08-08 老倪: 所有所有所有)"""
         try:
@@ -4309,12 +4361,16 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._holo_coords = getattr(self, "_holo_coords", {})
             self._holo_seq = 0
             self._holo_applied = set()
+            # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03 model_engine) 页打布局序编号, 主循环跳过该页
+            self._veh2_apply(root)
             # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框/面板)
             targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
             for w in root.findChildren(QWidget):
                 if id(w) in self._holo_applied:
                     continue
                 if isinstance(w, targets):
+                    if self._holo_page_of(w) == "P03":
+                        continue  # VEH-2 已编号
                     self._holo_seq += 1
                     self._holo_applied.add(id(w))
                     h_id = self._holo_seq_id(w)
