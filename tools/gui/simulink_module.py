@@ -6344,7 +6344,7 @@ class SimulinkModule(QWidget):
             _co_nodes = []  # 三场景结构条件节点 (汇聚到同一 SYS1)
             for _si, scene in enumerate(scenes):
                 _sid = scene.get("id", f"SCN-{_si+1:02d}")
-                _row_y = 60 + _si * 250
+                _row_y = 60 + _si * 680  # 🐛 2026-08-09: 行距 680 (技能 7×90=630 不重叠)
                 # ① 场景节点 (左)
                 sn = self.add_node("scene", f"{_ICON.get(_sid,'🏭')} {_sid} {scene.get('name','')[:12]}",
                                    80, _row_y, {"scene_id": _sid,
@@ -6355,12 +6355,12 @@ class SimulinkModule(QWidget):
                     for a in st.get("atoms", []):
                         if a not in atoms:
                             atoms.append(a)
-                _px, _py = 320, _row_y - 30
+                _px, _py = 320, _row_y - 40
                 _prev = sn
                 for _ai, atom in enumerate(atoms):
                     _aid = atom.split(" ")[0]
                     _anm = atom[len(_aid):].strip() or _aid
-                    an = self.add_node("skill", f"🧩 {_aid} {_anm[:10]}", _px, _py + _ai * 56, {
+                    an = self.add_node("skill", f"🧩 {_aid} {_anm[:10]}", _px, _py + _ai * 90, {  # 🐛 间距 90 不重叠
                         "skill_id": _aid, "scene": _sid, "step": _ai + 1,
                         "action": "operate", "gate": 0.5,
                         "desc": f"{_sid} 第{_ai+1}步: {_anm}"})
@@ -6371,7 +6371,7 @@ class SimulinkModule(QWidget):
                 # ③ 结构条件 (每场景一个)
                 _perf = scene.get("performance", {})
                 cn = self.add_node("coord_overlay",
-                                   f"🧩 结构条件 · {_sid}", _px + 260, _row_y, {
+                                   f"🧩 结构条件 · {_sid}", _px + 260, _row_y + 200, {  # 🐛 对齐技能列中部
                                        "cond_ref": _sid, "skill": scene.get("name", ""),
                                        "scene": _sid, "gate": 0.5,
                                        "desc": f"🏭 {scene.get('name','')[:14]} 条件编码 (成功率{_perf.get('operation_success_rate','')}, 节拍{_perf.get('cycle_time','')})"})
