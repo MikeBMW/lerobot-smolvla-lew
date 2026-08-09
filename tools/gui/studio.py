@@ -4253,6 +4253,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 return "输入框"
             if isinstance(w, QAbstractSpinBox):
                 return f"数值 {w.value() if hasattr(w, 'value') else ''}"
+            if isinstance(w, QLabel):
+                return (w.text() or "标签")[:20]
             if isinstance(w, QTableWidget):
                 return "表格"
         except Exception:
@@ -4270,6 +4272,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return "输入"
         if isinstance(w, QAbstractSpinBox):
             return "数值"
+        if isinstance(w, QLabel):
+            return "标签"
         if isinstance(w, QTableWidget):
             return "表格"
         return "控件"
@@ -4286,6 +4290,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 return (w.text() or "空")[:14]
             if isinstance(w, QAbstractSpinBox):
                 return str(w.value()) if hasattr(w, "value") else "—"
+            if isinstance(w, QLabel):
+                return (w.text() or "空")[:14]
         except Exception:
             pass
         return "—"
@@ -4305,14 +4311,10 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             else:
                 lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
             lbl.adjustSize()
-            # 🐛 2026-08-09 老倪: ID 写到空白处不覆盖文字 — 长条(输入/下拉)最右, 方块(按钮/开关/表格/分组)右下角
+            # 🐛 2026-08-09 老倪: ID 统一左下角 (不覆盖文字 — 控件左下角空白处)
             try:
-                if isinstance(widget, (QLineEdit, QComboBox)):
-                    x = max(0, widget.width() - lbl.width() - 6)
-                    y = max(0, (widget.height() - lbl.height()) // 2)
-                else:
-                    x = max(0, widget.width() - lbl.width() - 4)
-                    y = max(0, widget.height() - lbl.height() - 3)
+                x = max(0, 2)
+                y = max(0, widget.height() - lbl.height() - 2)
                 lbl.move(x, y)
             except Exception:
                 lbl.move(2, max(0, widget.height() - lbl.height() - 2))
@@ -4323,15 +4325,22 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return None
 
     def _veh2_apply(self, root=None):
-        """🌐 VEH.2 (模型引擎页) 内所有控件按布局顺序编号 (2026-08-09 老倪:
-        上→下、左→右 VEH.2.01/02/… 小字淡色常显; 覆盖按钮/开关/下拉/输入/数值/表格/分组)"""
+        """🌐 VEH.2 (模型引擎页) 所有 layout 对象按布局顺序编号 (2026-08-09 老倪:
+        上→下、左→右 VEH.2.01/02/… 小字淡色常显; 所有 QWidget 全覆盖, 排除空标签/角标自身)"""
         try:
             root = root or self
-            targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit,
-                       QAbstractSpinBox, QTableWidget, QGroupBox)
-            # 收集 P03 页 (model_engine) 下所有目标控件
-            ws = [w for w in root.findChildren(QWidget)
-                  if isinstance(w, targets) and self._holo_page_of(w) == "P03"]
+            # 所有 QWidget 都编号 (含 QLabel/QFrame/QGroupBox/滚动区等 — 老倪: 所有对象都要有 ID)
+            ws = []
+            for w in root.findChildren(QWidget):
+                if self._holo_page_of(w) != "P03":
+                    continue
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue  # 空标签/图标占位不编号
+                    if txt.startswith("VEH."):
+                        continue  # 角标自身跳过
+                ws.append(w)
             # 按布局位置排序: y 优先 (上→下), 再 x (左→右)
             ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
             for i, w in enumerate(ws, 1):
