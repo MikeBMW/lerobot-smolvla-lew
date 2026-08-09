@@ -2530,29 +2530,24 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:11px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
         deploy_row.addWidget(deploy_lbl)
         deploy_row.addWidget(self.deploy_model_combo, 1)
-        # 🐛 2026-08-09 老倪: VEH.2.31 右侧「模型下载」= 推送到 Orin (复用 _deploy_model_to_orin)
+        # 🐛 2026-08-09 老倪: 布局 — 下拉(27) + 上传容器(29) 中间, 推送到Orin(28) 最右侧
+        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
+        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
+        self._btn_upload_ct.clicked.connect(self._upload_container)
+        deploy_row.addWidget(self._btn_upload_ct)
+        deploy_row.addStretch()
         self.btn_deploy_orin = QPushButton("📥 推送到 Orin")
         self.btn_deploy_orin.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
         self.btn_deploy_orin.clicked.connect(self._deploy_model_to_orin)
         self.btn_deploy_orin.setToolTip("将下拉选中的模型推送到 Orin (上传 datadrive.world/models/act_latest.safetensors → Orin 监听器自动下载)")
         self.btn_deploy_orin.setEnabled(False)  # 🐛 2026-08-09: 端侧部署高亮选中后才可点
         deploy_row.addWidget(self.btn_deploy_orin)
-        deploy_row.addStretch()
         cv.addLayout(deploy_row)
         # 填充下拉 (registry 已保存模型, 默认第一个=最新 ACT) — 端侧部署/推理共用
         try:
             self._refresh_deploy_models()
         except Exception:
             pass
-        # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
-        rowc = QHBoxLayout()
-        rowc.setSpacing(6)
-        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")  # 🐛 2026-08-08 老倪: ID 渲染到控件
-        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
-        self._btn_upload_ct.clicked.connect(self._upload_container)
-        rowc.addWidget(self._btn_upload_ct)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
-        rowc.addStretch()
-        cv.addLayout(rowc)
         # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
         # 🌐 2026-08-08 老倪: 全息 ID 注册表 (内部 — ID 渲染到每个控件本身, 非表格)
         self._holo_reg = {}
