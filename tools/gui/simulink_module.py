@@ -508,15 +508,6 @@ REFERENCE_APPS = [
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
 LIBRARY = [
-    # 场景定义见 flows/scene_skills_3scenarios.json (静静 2026-08-09: 三场景 JSON 含工艺指标/结构尺寸)
-    ("scene", "🏭 场景 (3)", [
-        {"name": "🔌 插拔场景 · QSFP-DD", "params": {"scene_id": "SCN-01",
-          "desc": "光模块高密插拔: 成功率≥99.5%, 节拍≤3.5s/颗, 插拔力≤15N (SCN-01)"}},
-        {"name": "🤖 搬运场景 · 柔性物流", "params": {"scene_id": "SCN-02",
-          "desc": "光模块柔性搬运: 成功率≥99%, 节拍≤8s/颗, 防静电全程 (SCN-02)"}},
-        {"name": "🔍 光学检测场景 · AOI", "params": {"scene_id": "SCN-03",
-          "desc": "光模块全检AOI: 检出率≥99.9%, 12s/颗, 0.35μm分辨率 (SCN-03)"}},
-    ]),
     # 🧩 原子技能入口 (2026-08-09 老倪: 模块库最顶部 — 打开原子技能 → 结构条件 → SYS1 → action)
     ("skill", "🧩 原子技能入口", [
         {"name": "🧩 原子", "params": {"atomic_gate": True},
@@ -2588,6 +2579,29 @@ class LibraryPanel(QFrame):
                                         "data", f"📦 {dd} 数据",
                                         {"source": ss, "data_dir": dd, "frames": "?", "active": True,
                                          "desc": f"{ds} · data/{dd} (功能块同步显示)"}))
+                self.v.addWidget(btn)
+        # 🏭 场景分组 (2026-08-09 老倪: 数据集分组下面 — 三场景 node, 点击打开 ECS 链接 + 建节点链)
+        try:
+            import json as _j
+            _sp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "flows", "scene_skills_3scenarios.json")
+            _scenes = _j.load(open(_sp, encoding="utf-8")).get("scenes", [])
+        except Exception:
+            _scenes = []
+        if _scenes:
+            lab = QLabel("▾ 🏭 场景 (光模块工厂三大工艺)")
+            lab.setStyleSheet("color:#00d4aa; font-size:11px; font-weight:700; padding:6px 2px 2px;")
+            lab.setToolTip("光模块工厂真实场景 — 点击打开 ECS 可视化链接 + 建场景节点链")
+            self.v.addWidget(lab)
+            _ICON = {"SCN-01": "🔌", "SCN-02": "🤖", "SCN-03": "🔍"}
+            for s in _scenes:
+                _perf = s.get("performance", {})
+                btn = QToolButton()
+                btn.setText(f"{_ICON.get(s['id'], '🏭')} {s['id']} {s['name'][:14]} · {_perf.get('operation_success_rate', '')}")
+                btn.setStyleSheet("QToolButton { background:#0d1117; color:#e6edf3; border:1px solid #0d3b33;"
+                                  " border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }"
+                                  "QToolButton:hover { border-color:#00d4aa; color:#00d4aa; }")
+                btn.setToolTip(f"{s['name']} — 成功率{_perf.get('operation_success_rate','')} · 节拍{_perf.get('cycle_time','')} · 点击打开 ECS 链接 + 建节点链")
+                btn.clicked.connect(lambda _, sid=s["id"]: self.module.open_scene(sid))
                 self.v.addWidget(btn)
         self.v.addStretch()
 
