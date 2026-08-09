@@ -1415,7 +1415,12 @@ class DatasetModule(SubModuleWidget):
         for d in dirs[:20]:
             name = os.path.basename(d)
             ck = os.path.join(d, "checkpoints")
-            steps = max([int(b) for b in os.listdir(ck) if b.isdigit()]) if os.path.isdir(ck) else 0
+            # 🐛 2026-08-09: 空数字列表 (仅 last/ 的远程拉回目录) → 回退 0, 不崩
+            try:
+                _nums = [int(b) for b in os.listdir(ck) if b.isdigit()]
+                steps = max(_nums) if _nums else 0
+            except Exception:
+                steps = 0
             sz = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(d) for f in fs) / 1e6
             tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
             row = QHBoxLayout()
