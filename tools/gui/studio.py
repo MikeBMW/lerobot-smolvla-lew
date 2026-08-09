@@ -2530,6 +2530,13 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:11px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
         deploy_row.addWidget(deploy_lbl)
         deploy_row.addWidget(self.deploy_model_combo, 1)
+        # 🐛 2026-08-09 老倪: VEH.2.31 右侧「模型下载」= 推送到 Orin (复用 _deploy_model_to_orin)
+        self.btn_deploy_orin = QPushButton("📥 推送到 Orin")
+        self.btn_deploy_orin.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:11px;}} QPushButton:hover{{background:#14564a;}}")
+        self.btn_deploy_orin.clicked.connect(self._deploy_model_to_orin)
+        self.btn_deploy_orin.setToolTip("将下拉选中的模型推送到 Orin (上传 datadrive.world/models/act_latest.safetensors → Orin 监听器自动下载)")
+        self.btn_deploy_orin.setEnabled(False)  # 🐛 2026-08-09: 端侧部署高亮选中后才可点
+        deploy_row.addWidget(self.btn_deploy_orin)
         deploy_row.addStretch()
         cv.addLayout(deploy_row)
         # 填充下拉 (registry 已保存模型, 默认第一个=最新 ACT) — 端侧部署/推理共用
@@ -3651,6 +3658,11 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         elif key == "infer":
             self.gpu_mode = "local"
         self._ct_status.setText(f"📌 已选: {names[key]} · GPU 引擎: {'远程 V100' if key == 'train' else ('本地 4060' if key == 'infer' else '—')}")
+        # 🐛 2026-08-09 老倪: 端侧部署高亮选中 → 才可点「📥 推送到 Orin」模型下载按钮
+        try:
+            self.btn_deploy_orin.setEnabled(key == "deploy")
+        except Exception:
+            pass
 
     # 🎛 2026-08-08 老倪: 注入 Simulink Model Zoo (训练按钮 → simulink on_train — 训练即 Model Zoo)
     def set_simulink(self, s):
@@ -4090,7 +4102,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             # 本地目标: outputs/train/<name>_<ts>/checkpoints/last/pretrained_model (rollout 按此找) 
             import time as _t
             ts = _t.strftime("%Y%m%d_%H%M%S")
-            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             train_dir = os.path.join(root, "outputs", "train", f"{name}_{ts}", "checkpoints", "last")
             os.makedirs(train_dir, exist_ok=True)
             self._log(f"   └ 📥 拉回远程模型: {_remote_ck} → {train_dir}/pretrained_model")
@@ -4142,6 +4154,43 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._log(f"   └ 📂 模型引擎「模型:」路径已更新 — 可编辑/Simulink 推理/报告/视频")
         except Exception as e:
             self._log(f"   └ ❌ 拉回模型异常: {str(e)[:80]}")
+
+    def _refresh_deploy_models(self):
+        """🐛 2026-08-09 老倪: 填充端侧部署模型下拉 (TrainingModule 内 — 原误放 InferencePanel 致 AttributeError 空下拉)
+        registry 已保存模型, ACT 优先在首 (默认第一个=ACT)"""
+        try:
+            if not hasattr(self, "deploy_model_combo"):
+                return
+            self.deploy_model_combo.blockSignals(True)
+            self.deploy_model_combo.clear()
+            reg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                                    "models", "saved", "registry.json")
+            items = []
+            if os.path.exists(reg_path):
+                try:
+                    reg = json.load(open(reg_path, encoding="utf-8"))
+                    for item in reg:
+                        base = item.get("path", "")
+                        pm = os.path.join(base, "checkpoints", "last", "pretrained_model")
+                        if not os.path.isdir(pm):
+                            continue
+                        pol = item.get("policy", item.get("name", "?"))
+                        nm = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW",
+                              "vla_touch": "VLA-Touch", "awe_zflow": "AWE", "expert_mlp": "MLP蒸馏",
+                              "expert_policy": "官方专家"}.get(pol, pol)
+                        label = f"{nm} · {item.get('ts', '')}"
+                        items.append((pol, label, pm))
+                except Exception:
+                    pass
+            # ACT 优先在首 (用户要求默认第一个=ACT)
+            items.sort(key=lambda x: (0 if x[0] == "act" else 1,))
+            for pol, label, pm in items:
+                self.deploy_model_combo.addItem(label, pm)
+            if self.deploy_model_combo.count() == 0:
+                self.deploy_model_combo.addItem("📦 无已训练模型 (先训练/拉回)", "")
+            self.deploy_model_combo.blockSignals(False)
+        except Exception:
+            pass
 
     def _start_remote_progress_poll(self, cfg):
         try:
@@ -4922,7 +4971,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         pass
                 if not pm:
                     import json as _j
-                    reg_path = self._saved_registry_path()
+                    reg_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                                             "models", "saved", "registry.json")
                     if _os.path.exists(reg_path):
                         reg = _j.load(open(reg_path, encoding="utf-8"))
                         for item in reg:
@@ -8081,43 +8131,8 @@ class InferencePanel(QWidget):
     # ── 🆕 已保存模型 (2026-08-05 老倪: 训练好的模型保存, 下次直接应用) ──
     def _saved_registry_path(self):
         """models/saved/registry.json 绝对路径"""
-        return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                             "models", "saved", "registry.json")
-
-    def _refresh_deploy_models(self):
-        """🐛 2026-08-09 老倪: 填充端侧部署模型下拉 (registry 已保存模型, ACT 优先在首)"""
-        try:
-            if not hasattr(self, "deploy_model_combo"):
-                return
-            self.deploy_model_combo.blockSignals(True)
-            self.deploy_model_combo.clear()
-            reg_path = self._saved_registry_path()
-            items = []
-            if os.path.exists(reg_path):
-                try:
-                    reg = json.load(open(reg_path, encoding="utf-8"))
-                    for item in reg:
-                        base = item.get("path", "")
-                        pm = os.path.join(base, "checkpoints", "last", "pretrained_model")
-                        if not os.path.isdir(pm):
-                            continue
-                        pol = item.get("policy", item.get("name", "?"))
-                        nm = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW",
-                              "vla_touch": "VLA-Touch", "awe_zflow": "AWE", "expert_mlp": "MLP蒸馏",
-                              "expert_policy": "官方专家"}.get(pol, pol)
-                        label = f"{nm} · {item.get('ts', '')}"
-                        items.append((pol, label, pm))
-                except Exception:
-                    pass
-            # ACT 优先在首 (用户要求默认第一个=ACT)
-            items.sort(key=lambda x: (0 if x[0] == "act" else 1,))
-            for pol, label, pm in items:
-                self.deploy_model_combo.addItem(label, pm)
-            if self.deploy_model_combo.count() == 0:
-                self.deploy_model_combo.addItem("📦 无已训练模型 (先训练/拉回)", "")
-            self.deploy_model_combo.blockSignals(False)
-        except Exception:
-            pass
 
     def _refresh_saved_models(self):
         """读 registry.json 填充下拉 (最近保存在前)"""
