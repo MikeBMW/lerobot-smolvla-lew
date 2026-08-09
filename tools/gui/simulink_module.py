@@ -6375,13 +6375,15 @@ class SimulinkModule(QWidget):
         ECS 链接: https://datadrive.world/scene.html?scene=<scene_id>&json=<base64>"""
         import os as _os, json as _j, base64 as _b64, urllib.parse as _up
         repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-        p = _os.path.join(repo, "flows", "scenes.json")
+        p = _os.path.join(repo, "flows", "scene_skills_3scenarios.json")
         if not _os.path.exists(p):
-            self._log(f"❌ 场景库不存在: {p} (先运行 flows/gen_scenes.py)")
+            self._log(f"❌ 场景库不存在: {p}")
             return
         try:
             data = _j.load(open(p, encoding="utf-8"))
-            scene = next((s for s in data.get("scenes", []) if s["scene_id"] == scene_id), None)
+            scene = next((s for s in data.get("scenes", []) if s.get("id") == scene_id), None)
+            if scene is None:
+                scene = next((s for s in data.get("scenes", []) if s.get("scene_id") == scene_id), None)
         except Exception as e:
             self._log(f"❌ 场景库解析失败: {e}")
             return
@@ -6415,14 +6417,18 @@ class SimulinkModule(QWidget):
         else:
             sx, sy = 120, 150
         prev = None
-        for i, step in enumerate(scene.get("process", [])):
+        # 🐛 兼容用户场景库: process_steps (用户) / process (旧)
+        _steps = scene.get("process_steps") or scene.get("process") or []
+        _perf = scene.get("performance") or scene.get("metrics") or {}
+        for i, step in enumerate(_steps):
             sid = step.get("skill_id", "")
             tk = tks.get(sid, {})
             # 技能节点
+            _sid = scene.get("scene_id") or scene.get("id") or ""
             sn = self.add_node("skill", f"🧩 {sid} {step.get('name','')[:14]}", sx, sy + i * 90, {
                 "skill_id": sid, "tokens": tk.get("tokens", {}),
                 "action": step.get("action", "operate"), "gate": 0.5,
-                "scene": scene["scene_id"], "step": step.get("step", i + 1),
+                "scene": _sid, "step": step.get("step", i + 1),
                 "desc": step.get("desc", "")[:60]})
             if prev:
                 fi = self._items.get(prev["id"]); ti = self._items.get(sn["id"])
@@ -6430,10 +6436,10 @@ class SimulinkModule(QWidget):
                     self.add_link(fi, ti, "next")
             prev = sn
         # 结构条件节点 (场景级)
-        cn = self.add_node("coord_overlay", f"🧩 结构条件 · {scene['scene_id']}", sx + 260, sy, {
-            "cond_ref": scene["scene_id"], "skill": scene["name"],
-            "tokens": {"scene": scene["scene_id"]}, "gate": 0.5,
-            "desc": f"🏭 {scene['name'][:20]} 条件编码 (成功率{scene['metrics']['operation_success_rate']}, 节拍{scene['metrics']['cycle_time']})"})
+        cn = self.add_node("coord_overlay", f"🧩 结构条件 · {_sid}", sx + 260, sy, {
+            "cond_ref": _sid, "skill": scene.get("name", ""),
+            "tokens": {"scene": _sid}, "gate": 0.5,
+            "desc": f"🏭 {str(scene.get('name', ''))[:20]} 条件编码 (成功率{_perf.get('operation_success_rate', '')}, 节拍{_perf.get('cycle_time', '')})"})
         # 技能 → 结构条件
         if prev:
             fi = self._items.get(prev["id"]); ti = self._items.get(cn["id"])
@@ -6441,11 +6447,11 @@ class SimulinkModule(QWidget):
                 self.add_link(fi, ti, "cond")
         # SYS1 动作系统
         s1 = self.add_node("system", "🧠 SYS1 动作系统", sx + 260, sy + 120, {
-            "layer": "sys1", "desc": f"执行 {scene['name'][:16]} — 原子技能序列落地"})
+            "layer": "sys1", "desc": f"执行 {str(scene.get('name', ''))[:16]} — 原子技能序列落地"})
         si = self._items.get(cn["id"]); s1i = self._items.get(s1["id"])
         if si and s1i:
             self.add_link(si, s1i, "action")
-        self._log(f"🏭 场景 {scene['scene_id']} 节点链已建: 场景→{len(scene.get('process',[]))}技能→结构条件→SYS1")
+        self._log(f"🏭 场景 {_sid} 节点链已建: 场景→{len(_steps)}技能→结构条件→SYS1")
         self._sync()
 
     def _open_scene(self, node):
