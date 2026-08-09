@@ -6298,16 +6298,47 @@ class SimulinkModule(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle("🧩 原子技能 → 场景 → 结构条件 → SYS1 → action")
         dlg.setMinimumWidth(560)
+        # 🐛 2026-08-09 老倪: 弹窗字体统一白色 (深色主题下黑字看不清)
+        dlg.setStyleSheet("""
+            QDialog { background:#0d1117; }
+            QLabel { color:#e6edf3; font-size:12px; }
+            QComboBox { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:4px; padding:4px 8px; }
+            QComboBox QAbstractItemView { background:#161b22; color:#e6edf3; selection-background-color:#0d3b33; }
+            QCheckBox { color:#e6edf3; font-size:11px; }
+            QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:4px; padding:6px 12px; }
+        """)
         lay = QVBoxLayout(dlg)
-        # ① 场景选择
+        # ① 场景选择 — 3 个大按钮卡片 (明显可见, 2026-08-09 老倪)
         lay.addWidget(QLabel("① 选择场景 (光模块工厂真实工艺):"))
-        scene_cb = QComboBox()
+        from PyQt5.QtWidgets import QHBoxLayout, QButtonGroup
+        scene_row = QHBoxLayout()
+        scene_btns = []
+        _scene_sel = [scenes[0]["id"] if scenes else None]
+        def _scene_click(s):
+            _scene_sel[0] = s["id"]
+            for b in scene_btns:
+                b.setStyleSheet(_btn_style(b.property("sid") == s["id"]))
+            refresh_recommend()
+        def _btn_style(active):
+            return (f"QPushButton{{background:#0d3b33; color:#fff; border:2px solid #00d4aa; border-radius:8px; padding:10px 8px; font-weight:700; font-size:12px;}}"
+                    if active else
+                    f"QPushButton{{background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:8px; padding:10px 8px; font-weight:600; font-size:12px;}}"
+                    f"QPushButton:hover{{border-color:#00d4aa; color:#00d4aa;}}")
         for s in scenes:
-            scene_cb.addItem(f"{s['id']} {s['name']} · {s['category']}", s)
-        lay.addWidget(scene_cb)
+            icon = {"SCN-01": "🔌", "SCN-02": "🤖", "SCN-03": "🔍"}.get(s["id"], "🏭")
+            perf = s.get("performance", {})
+            b = QPushButton(f"{icon} {s['id']}\n{s['name'][:10]}\n{perf.get('operation_success_rate','')}")
+            b.setProperty("sid", s["id"])
+            b.setMinimumHeight(64)
+            b.clicked.connect(lambda _, ss=s: _scene_click(ss))
+            scene_btns.append(b)
+            scene_row.addWidget(b)
+        for b in scene_btns:
+            b.setStyleSheet(_btn_style(b.property("sid") == scenes[0]["id"]))
+        lay.addLayout(scene_row)
         # ② 推荐技能
         rec_lbl = QLabel("② 自动推荐组合原子技能:")
-        rec_lbl.setStyleSheet("font-weight:700;")
+        rec_lbl.setStyleSheet("font-weight:700; color:#00d4aa;")
         lay.addWidget(rec_lbl)
         rec_text = QLabel("")
         rec_text.setWordWrap(True)
@@ -6316,12 +6347,12 @@ class SimulinkModule(QWidget):
         # 技能勾选 (推荐项默认全选)
         check_lay = QVBoxLayout()
         checkboxes = []
-        def refresh_recommend(_):
+        def refresh_recommend(_=None):
             for cb in checkboxes:
                 check_lay.removeWidget(cb)
                 cb.deleteLater()
             checkboxes.clear()
-            s = scene_cb.currentData()
+            s = next((x for x in scenes if x["id"] == _scene_sel[0]), None)
             if not s:
                 return
             # 推荐技能: process_steps.atoms (去重) + key_atoms
@@ -6348,26 +6379,24 @@ class SimulinkModule(QWidget):
                 cb.setStyleSheet("font-size:11px; color:#c9d1d9;")
                 check_lay.addWidget(cb)
                 checkboxes.append((cb, aid))
-        scene_cb.currentIndexChanged.connect(refresh_recommend)
-        refresh_recommend(0)
+        refresh_recommend()
         lay.addLayout(check_lay)
         info = QLabel("")
         info.setWordWrap(True)
         info.setStyleSheet("color:#8b949e; font-size:10px;")
         lay.addWidget(info)
-        def show_info(_):
-            s = scene_cb.currentData()
+        def show_info(_=None):
+            s = next((x for x in scenes if x["id"] == _scene_sel[0]), None)
             if s:
                 perf = s.get("performance", {})
                 info.setText(
                     f"工艺指标: 成功率{perf.get('operation_success_rate','')} · 节拍{perf.get('cycle_time','')} · "
                     f"{perf.get('insertion_force', perf.get('pick_accuracy', perf.get('defect_detection_rate','')))}")
-        scene_cb.currentIndexChanged.connect(show_info)
-        show_info(0)
+        show_info()
         btn_ok = QPushButton("✅ 建场景节点链: 场景 → 组合技能 → 结构条件 → SYS1 → action")
         btn_ok.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border-radius:4px; padding:8px; font-weight:bold;}")
         def apply():
-            s = scene_cb.currentData()
+            s = next((x for x in scenes if x["id"] == _scene_sel[0]), None)
             if not s:
                 return
             sel = [aid for cb, aid in checkboxes if cb.isChecked()]
