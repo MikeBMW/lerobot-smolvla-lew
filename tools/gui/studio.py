@@ -3504,13 +3504,12 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         if not getattr(self, "_zoo_queue", None):
             self._zoo_queue = None
             self._log("🏁 Model Zoo 完整训练完成")
-            self._log("📄 生成 Model Zoo 报告…")
+            # 🎬 2026-08-09 老倪: 训练完 → 自动交付 (rollout 视频 + PDF 报告 → 飞书 dataworld 群)
+            self._log("📤 自动交付: 生成 rollout 视频 + PDF 报告 → 飞书 dataworld 群…")
             try:
-                self._simulink.on_pdf_report()
+                self._simulink._auto_finalize()
             except Exception as e:
-                self._log(f"❌ 报告生成失败: {e}")
-            # 🚫 2026-08-09 老倪: 训练完不自动弹视频 (烦) — 视频需手动点
-            self._log("🎬 视频未自动生成 (需要时点推理/视频节点手动生成)")
+                self._log(f"❌ 自动交付失败: {e}")
             # 🐛 2026-08-09 老倪: 队列结束恢复按钮 (start 可点 / stop 灰)
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)

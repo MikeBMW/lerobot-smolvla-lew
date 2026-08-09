@@ -5565,6 +5565,15 @@ class SimulinkModule(QWidget):
             venv = "docker"  # placeholder — 用容器命令
             pols = [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
                     ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE")]
+            # 🎛 2026-08-09 老倪: 按训练开关过滤 rollout 模型 (只出训过的, 不白跑全量)
+            try:
+                zoo_sw = getattr(self, "_zoo_sw", {})
+                on_pols = [p for p, _ in pols if zoo_sw.get(p) is not None and zoo_sw[p].isChecked()]
+                if on_pols:
+                    pols = [p for p in pols if p[0] in on_pols]
+                    self._safe_log(f"🎛 自动交付: 仅训过的模型 {[p for p, _ in pols]}")
+            except Exception:
+                pass
             # ① rollout 5 模型 (60 帧, 同视频规格)
             for pol, _nm in pols:
                 try:
@@ -5597,7 +5606,7 @@ class SimulinkModule(QWidget):
                         self._safe_log(f"🎞 {pol} mp4 已生成")
                 except Exception:
                     pass
-            # ③ 3+2 网格对比拼接 (xstack)
+            # ③ 拼接对比 (xstack: 5模型=3+2 / 1模型=单视频直接用)
             cmp_mp4 = os.path.join(root, "reports", f"Model Zoo_rollout_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
             try:
                 if len(mp4s) == 5:
@@ -5614,6 +5623,11 @@ class SimulinkModule(QWidget):
                             capture_output=True, timeout=180)
                     if os.path.exists(cmp_mp4):
                         self._safe_log(f"🎬 Model Zoo视频: {os.path.basename(cmp_mp4)}")
+                elif len(mp4s) == 1:
+                    # 🎬 2026-08-09 老倪: 单模型 (只训一个开关) → 直接用该 mp4 当对比视频
+                    import shutil
+                    shutil.copy(mp4s[0][1], cmp_mp4)
+                    self._safe_log(f"🎬 Model Zoo视频: {os.path.basename(cmp_mp4)} (单模型)")
                 else:
                     cmp_mp4 = None
             except Exception:
