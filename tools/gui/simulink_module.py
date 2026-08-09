@@ -1040,12 +1040,13 @@ class CICDStageItem(QGraphicsObject):
         painter.setPen(c)
         painter.setFont(QFont("Arial", 9, QFont.Bold))
         painter.drawText(QRectF(8, 66, self.w - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, icon)
-        # 🌐 2026-08-08 老倪: 节点全局 ID (左下角小字青色 — 画布所有节点可见)
+        # 🌐 2026-08-08 老倪: 节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角小字青色)
         try:
-            painter.setPen(QColor("#00d4aa"))
-            painter.setFont(QFont("Arial", 7))
-            nid = getattr(self, "nid", None) or f"P11.{self.sid % 100:02d}"
-            painter.drawText(QRectF(6, self.h - 13, self.w - 12, 12), Qt.AlignLeft | Qt.AlignVCenter, nid)
+            if getattr(self, "_hover", False):
+                painter.setPen(QColor("#00d4aa"))
+                painter.setFont(QFont("Arial", 7))
+                nid = getattr(self, "nid", None) or f"P11.{self.sid % 100:02d}"
+                painter.drawText(QRectF(6, self.h - 13, self.w - 12, 12), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
 
@@ -1872,12 +1873,13 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, disp)
         else:
             painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
-        # 🌐 2026-08-08 老倪: 画布节点全局 ID (左下角青色小字 — 每个节点可见)
+        # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角青色小字)
         try:
-            painter.setPen(QColor("#00d4aa"))
-            painter.setFont(QFont("Arial", 7))
-            nid = self.node.get("nid") or f"P11.{self.node.get('id', 0) % 100:02d}"
-            painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
+            if getattr(self, "_hover", False):
+                painter.setPen(QColor("#00d4aa"))
+                painter.setFont(QFont("Arial", 7))
+                nid = self.node.get("nid") or f"P11.{self.node.get('id', 0) % 100:02d}"
+                painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字

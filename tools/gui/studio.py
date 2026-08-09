@@ -4271,9 +4271,15 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
         return "—"
 
-    def _holo_badge_overlay(self, widget, h_id):
-        """🌐 控件左下角叠加 ID 小字 (QLabel 子控件 — 无布局改造, 不崩, 所有 Qt 控件可用)"""
+    def _holo_badge_overlay(self, widget, h_id, hover_only=False):
+        """🌐 控件 ID 标注 (2026-08-09 老倪: simulink 页按钮左下角 ID 不常显, 悬停才见)
+        hover_only=True → 不叠加角标, 改为 tooltip 悬停显示 ID"""
         try:
+            if hover_only:
+                base = widget.toolTip() or ""
+                tag = f"[ID {h_id}]"
+                widget.setToolTip(f"{tag} {base}".strip())
+                return None
             lbl = QLabel(h_id, widget)
             lbl.setStyleSheet("color:#00d4aa; font-size:8px; font-weight:bold; background:transparent; border:none;")
             lbl.adjustSize()
@@ -4300,7 +4306,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._holo_seq += 1
                     self._holo_applied.add(id(w))
                     h_id = self._holo_seq_id(w)
-                    self._holo_badge_overlay(w, h_id)
+                    # 🐛 2026-08-09 老倪: simulink 画布页 (P11) 按钮 ID 不常显 → 悬停 tooltip
+                    hover_only = self._holo_page_of(w) == "P11"
+                    self._holo_badge_overlay(w, h_id, hover_only=hover_only)
                     self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
                                                lambda w=w: self._holo_state(w))
             self._register_holo_all()
