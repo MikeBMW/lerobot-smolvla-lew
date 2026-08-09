@@ -2520,6 +2520,23 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             rowm.addWidget(b)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
         self._ct_mode_btns["train"].setChecked(True)  # 默认远程训练
         cv.addLayout(rowm)
+        # 🐛 2026-08-09 老倪: VEH.2.26 端侧部署 → 已训练模型下拉 (默认第一个=ACT)
+        deploy_row = QHBoxLayout()
+        deploy_row.setSpacing(6)
+        deploy_lbl = QLabel("📦 部署模型:")
+        deploy_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:11px; font-weight:bold; background:transparent; border:none;")
+        self.deploy_model_combo = QComboBox()
+        self.deploy_model_combo.setMinimumWidth(280)
+        self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:11px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
+        deploy_row.addWidget(deploy_lbl)
+        deploy_row.addWidget(self.deploy_model_combo, 1)
+        deploy_row.addStretch()
+        cv.addLayout(deploy_row)
+        # 填充下拉 (registry 已保存模型, 默认第一个=最新 ACT) — 端侧部署/推理共用
+        try:
+            self._refresh_deploy_models()
+        except Exception:
+            pass
         # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
         rowc = QHBoxLayout()
         rowc.setSpacing(6)
@@ -4879,23 +4896,32 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._auto_output_dir()
     
     def _deploy_model_to_orin(self):
-        """📱 端侧部署 (2026-08-09 老倪: VEH.2.26) — 打包已训练 ACT 模型 → ECS 中转 → Mac 拉取 → Orin
-        模型源: 模型引擎 ckpt_edit 指向的 pretrained_model (或 registry 最新 ACT)"""
-        import threading as _th, subprocess as _sp
+        """📱 端侧部署 (2026-08-09 老倪: VEH.2.26) — 上传 ACT safetensors → datadrive.world/models/ 静态 URL 覆盖即部署
+        链路: [4060] → [ECS 静态URL] → [Orin 监听器轮询哈希] → [Orin /models/ 热加载]
+        模型源: 端侧部署下拉 → 模型引擎 ckpt_edit → registry 最新 ACT"""
+        import threading as _th
 
         def _w():
             try:
-                import os as _os, json as _j, time as _t, tarfile as _tf
+                import os as _os, time as _t, hashlib as _hl
                 root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-                # ① 确定模型源: ckpt_edit (模型引擎路径) → 存在则用; 否则 registry 最新 ACT
+                # ① 确定模型源 (下拉 → ckpt_edit → registry 最新 ACT)
                 pm = None
                 try:
-                    _p = self.ckpt_edit.text().strip()
-                    if _p and _os.path.isdir(_p):
-                        pm = _p
+                    _sel = self.deploy_model_combo.currentData()
+                    if _sel and _os.path.isdir(_sel):
+                        pm = _sel
                 except Exception:
                     pass
                 if not pm:
+                    try:
+                        _p = self.ckpt_edit.text().strip()
+                        if _p and _os.path.isdir(_p):
+                            pm = _p
+                    except Exception:
+                        pass
+                if not pm:
+                    import json as _j
                     reg_path = self._saved_registry_path()
                     if _os.path.exists(reg_path):
                         reg = _j.load(open(reg_path, encoding="utf-8"))
@@ -4908,36 +4934,40 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 if not pm:
                     self._log("❌ 端侧部署: 未找到已训练 ACT 模型 (先训练/拉回模型)")
                     return
-                self._log(f"📦 部署模型源: {pm}")
-                # ② 打包 tar.gz
+                w_path = _os.path.join(pm, "model.safetensors")
+                if not _os.path.isfile(w_path):
+                    self._log(f"❌ 模型权重缺失: {w_path}")
+                    return
+                self._log(f"📦 部署模型源: {w_path} ({_os.path.getsize(w_path)//1024}KB)")
+                # ② scp 直传 ECS → datadrive.world/models/ (版本化 + act_latest 覆盖即部署)
+                import subprocess as _sp
                 ts = _t.strftime("%Y%m%d_%H%M%S")
-                tar_path = _os.path.join(root, "reports", f"orin_deploy_act_{ts}.tar.gz")
-                with _tf.open(tar_path, "w:gz") as tf:
-                    tf.add(pm, arcname="pretrained_model")
-                sz = _os.path.getsize(tar_path)
-                self._log(f"🗜 已打包: {tar_path} ({sz//1024}KB)")
-                # ③ 上传 ECS 中转 (datadrive.world relay)
+                ecs = "root@39.102.211.79"
+                models_dir = "/www/wwwroot/datadrive.world/models"
+                ver_name = f"act_{ts}.safetensors"
+                self._log(f"📤 上传 → ECS {models_dir}/ (scp)…")
+                for name in (ver_name, "act_latest.safetensors"):
+                    r = _sp.run(f"sshpass -p 'Nix19789' scp -o StrictHostKeyChecking=no {w_path} {ecs}:{models_dir}/{name}",
+                                shell=True, capture_output=True, text=True, timeout=300)
+                    if r.returncode != 0:
+                        self._log(f"❌ scp {name} 失败: {r.stderr.strip()[:80]}")
+                        return
+                    self._log(f"✅ 已上传: {models_dir}/{name}")
+                # 🐛 chmod 644 铁律: scp 保留 600 权限 → nginx www 读不了 → 403
+                _sp.run(f"sshpass -p 'Nix19789' ssh -o StrictHostKeyChecking=no {ecs} "
+                        f"'chmod 644 {models_dir}/{ver_name} {models_dir}/act_latest.safetensors'",
+                        shell=True, capture_output=True, text=True, timeout=20)
+                self._log("🔓 已 chmod 644 (nginx 可读)")
+                # ③ 验证静态 URL 可访问 (Orin 侧据此下载轮询哈希)
                 import requests as _rq
-                url = "https://datadrive.world/api/relay"
+                url_latest = "https://datadrive.world/models/act_latest.safetensors"
                 try:
-                    r = _rq.get(f"{url}/status", timeout=8)
-                    self._log(f"📡 ECS 中转状态: {r.json().get('uptime', 0)}s 在线 · 队列 {r.json().get('packages', 0)} 包")
+                    rv = _rq.head(url_latest, timeout=15)
+                    self._log(f"✅ 静态 URL 生效: {url_latest} · HTTP {rv.status_code} · {int(rv.headers.get('Content-Length', 0))//1024}KB")
                 except Exception as e:
-                    self._log(f"⚠️ ECS 中转状态查询失败: {e} (继续尝试上传)")
-                with open(tar_path, "rb") as f:
-                    r2 = _rq.post(f"{url}/upload", data=f.read(), timeout=120)
-                self._log(f"📤 上传结果: {r2.json()}")
-                # ④ 元数据 (Mac 侧据此拉取 → Orin)
-                meta = {"name": f"orin_deploy_act_{ts}.tar.gz", "size": sz,
-                        "source": "4060", "time": _t.time(), "model": "act", "target": "orin",
-                        "ckpt": pm}
-                try:
-                    _rq.post(f"{url}/upload", json={"name": f"deploy_meta_act_{ts}.json", "meta": meta}, timeout=10)
-                except Exception:
-                    pass
-                self._log("✅ 部署包已上传 ECS — 通知小芳 Mac 拉取 → Orin")
-                self._log(f"📦 部署包: reports/orin_deploy_act_{ts}.tar.gz · {meta['name']} · {sz//1024}KB")
-                self._log("🤖 Orin 上线后自动加载部署 (小芳侧 cicd 拉取)")
+                    self._log(f"⚠️ URL 验证失败: {e}")
+                self._log("🤖 Orin 监听器轮询到哈希变化 → 自动下载 /models/ + chmod 644 → 热加载推理")
+                self._log(f"📦 部署完成: act_{ts}.safetensors (版本化) + act_latest.safetensors (覆盖即部署)")
             except Exception as e:
                 self._log(f"❌ 端侧部署失败: {str(e)[:100]}")
 
@@ -8053,6 +8083,41 @@ class InferencePanel(QWidget):
         """models/saved/registry.json 绝对路径"""
         return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "models", "saved", "registry.json")
+
+    def _refresh_deploy_models(self):
+        """🐛 2026-08-09 老倪: 填充端侧部署模型下拉 (registry 已保存模型, ACT 优先在首)"""
+        try:
+            if not hasattr(self, "deploy_model_combo"):
+                return
+            self.deploy_model_combo.blockSignals(True)
+            self.deploy_model_combo.clear()
+            reg_path = self._saved_registry_path()
+            items = []
+            if os.path.exists(reg_path):
+                try:
+                    reg = json.load(open(reg_path, encoding="utf-8"))
+                    for item in reg:
+                        base = item.get("path", "")
+                        pm = os.path.join(base, "checkpoints", "last", "pretrained_model")
+                        if not os.path.isdir(pm):
+                            continue
+                        pol = item.get("policy", item.get("name", "?"))
+                        nm = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW",
+                              "vla_touch": "VLA-Touch", "awe_zflow": "AWE", "expert_mlp": "MLP蒸馏",
+                              "expert_policy": "官方专家"}.get(pol, pol)
+                        label = f"{nm} · {item.get('ts', '')}"
+                        items.append((pol, label, pm))
+                except Exception:
+                    pass
+            # ACT 优先在首 (用户要求默认第一个=ACT)
+            items.sort(key=lambda x: (0 if x[0] == "act" else 1,))
+            for pol, label, pm in items:
+                self.deploy_model_combo.addItem(label, pm)
+            if self.deploy_model_combo.count() == 0:
+                self.deploy_model_combo.addItem("📦 无已训练模型 (先训练/拉回)", "")
+            self.deploy_model_combo.blockSignals(False)
+        except Exception:
+            pass
 
     def _refresh_saved_models(self):
         """读 registry.json 填充下拉 (最近保存在前)"""
