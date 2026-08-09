@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
     QGraphicsDropShadowEffect, QScrollArea, QStackedWidget,
     QSplitter, QTextEdit, QGroupBox, QFormLayout, QLineEdit,
     QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QProgressBar,
+    QAbstractSpinBox,  # 🐛 2026-08-09 老倪: VEH.2 编号覆盖数值控件
     QTabWidget, QAction, QMenu, QInputDialog, QMessageBox,
     QRadioButton, QButtonGroup,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
@@ -2496,8 +2497,7 @@ class TrainingModule(QWidget):
         rowm.setSpacing(10)
         self._ct_mode_btns = {}
         for key, title, sub in cards:
-            mid = {"train": "M-01", "infer": "M-02", "deploy": "M-03"}[key]  # 🐛 2026-08-08 老倪: ID 渲染到控件
-            b = QPushButton(f"{title} [{mid}]\n{sub}")
+            b = QPushButton(f"{title}\n{sub}")  # 🐛 2026-08-09 老倪: 去掉 [M-xx] 文字, ID 统一 VEH.2 overlay
             b.setCheckable(True)
             b.setMinimumSize(150, 64)
             b.setStyleSheet(f"""QPushButton{{background:#0d1117; color:{C_WHITE}; border:2px solid #30363d; border-radius:8px; font-size:12px; font-weight:bold; padding:8px; text-align:center;}}
@@ -2506,7 +2506,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._ct_mode_grp.addButton(b)
             self._ct_mode_btns[key] = b
             b.clicked.connect(lambda _, k=key: self._ct_pick(k))
-            rowm.addWidget(self._holo_badge(b, mid))  # 🌐 左下角 ID 角标
+            rowm.addWidget(b)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
         self._ct_mode_btns["train"].setChecked(True)  # 默认远程训练
         cv.addLayout(rowm)
         # 操作按钮: 上传容器到远程 (训练按钮在主训练区)
@@ -2515,7 +2515,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._btn_upload_ct = QPushButton("🔼 上传容器到远程")  # 🐛 2026-08-08 老倪: ID 渲染到控件
         self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
-        rowc.addWidget(self._holo_badge(self._btn_upload_ct, "B-03"))  # 🌐 左下角 ID 角标
+        rowc.addWidget(self._btn_upload_ct)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
         rowc.addStretch()
         cv.addLayout(rowc)
         # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
@@ -3081,7 +3081,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         self.start_btn.clicked.connect(self._start_training)
-        btn_layout.addWidget(self._holo_badge(self.start_btn, "B-01"))  # 🌐 左下角 ID 角标
+        btn_layout.addWidget(self.start_btn)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
 
         # 🎛 2026-08-08 老倪: 每模型训练开关 (参考 YOLO 感知开关样式 — 训练:开, 控制队列训练)
         sw_box = QGroupBox(" 🎛 训练开关 ")
@@ -3135,7 +3135,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         self.stop_btn.clicked.connect(self._stop_training)
-        btn_layout.addWidget(self._holo_badge(self.stop_btn, "B-02"))  # 🌐 左下角 ID 角标
+        btn_layout.addWidget(self.stop_btn)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
         
         # Preview command button
         self.preview_btn = QPushButton("👁 Preview CLI Command")
@@ -4251,6 +4251,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 return f"下拉 {w.currentText()[:12]}"
             if isinstance(w, QLineEdit):
                 return "输入框"
+            if isinstance(w, QAbstractSpinBox):
+                return f"数值 {w.value() if hasattr(w, 'value') else ''}"
             if isinstance(w, QTableWidget):
                 return "表格"
         except Exception:
@@ -4266,6 +4268,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return "下拉"
         if isinstance(w, QLineEdit):
             return "输入"
+        if isinstance(w, QAbstractSpinBox):
+            return "数值"
         if isinstance(w, QTableWidget):
             return "表格"
         return "控件"
@@ -4280,6 +4284,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 return w.currentText()[:14]
             if isinstance(w, QLineEdit):
                 return (w.text() or "空")[:14]
+            if isinstance(w, QAbstractSpinBox):
+                return str(w.value()) if hasattr(w, "value") else "—"
         except Exception:
             pass
         return "—"
@@ -4317,11 +4323,12 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             return None
 
     def _veh2_apply(self, root=None):
-        """🌐 VEH-2 (模型引擎页) 内所有控件按布局顺序编号 (2026-08-09 老倪:
-        上→下、左→右 VEH-2-01/02/… 小字淡色常显; 跳过已打标控件)"""
+        """🌐 VEH.2 (模型引擎页) 内所有控件按布局顺序编号 (2026-08-09 老倪:
+        上→下、左→右 VEH.2.01/02/… 小字淡色常显; 覆盖按钮/开关/下拉/输入/数值/表格/分组)"""
         try:
             root = root or self
-            targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
+            targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit,
+                       QAbstractSpinBox, QTableWidget, QGroupBox)
             # 收集 P03 页 (model_engine) 下所有目标控件
             ws = [w for w in root.findChildren(QWidget)
                   if isinstance(w, targets) and self._holo_page_of(w) == "P03"]
