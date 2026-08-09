@@ -3428,31 +3428,36 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     _sp.run(["docker", "save", "-o", savef, "zmax-train:latest"], timeout=1800)
                     sz = os.path.getsize(savef) / 1e9
                     self._log(f"  └ ① 打包完成: {sz:.1f}GB · 耗时 {time.time()-t0:.0f}s")
-                    # 🐛 2026-08-09 老倪: (2) 传输 — rsync 后台跑, 每10s查远程文件大小报真实百分比
-                    self._log(f"  └ ② 传输到 {re_['host']}:{re_['port']} … (每10秒报告进度)")
+                    # 🐛 2026-08-09 老倪: (2) 传输 — Python 分块管道直写远程, 每1%变化实时打印
+                    sz_b = os.path.getsize(savef)
+                    self._log(f"  └ ② 传输到 {re_['host']}:{re_['port']} ({sz_b/1e9:.2f}GB) …")
                     t1 = time.time()
-                    p = _sp.Popen(
-                        f"sshpass -p '{re_['pwd']}' rsync -e 'ssh -o StrictHostKeyChecking=no -o Port={re_['port']}' "
-                        f"--info=progress2 {savef} {re_['user']}@{re_['host']}:/tmp/",
-                        shell=True, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                    _p = _sp.Popen(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
+                        f"-o Port={re_['port']} {re_['user']}@{re_['host']} 'cat > /tmp/zmax-train.tar'",
+                        shell=True, stdin=_sp.PIPE)
+                    sent = 0
                     last_pct = -1
-                    while p.poll() is None:
-                        time.sleep(10)
+                    try:
+                        with open(savef, "rb") as _f:
+                            while True:
+                                _chunk = _f.read(8 * 1024 * 1024)  # 8MB 块
+                                if not _chunk:
+                                    break
+                                _p.stdin.write(_chunk)
+                                sent += len(_chunk)
+                                pct = int(sent / sz_b * 100) if sz_b else 100
+                                if pct != last_pct:
+                                    last_pct = pct
+                                    spd = (sent / 1e9) / max(time.time() - t1, 0.1)
+                                    self._log(f"     {pct:3d}% · {sent/1e9:.2f}/{sz_b/1e9:.2f}GB · {spd:.2f}GB/s")
+                    finally:
                         try:
-                            rr = _sp.run(
-                                f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
-                                f"{re_['user']}@{re_['host']} 'stat -c %s /tmp/zmax-train.tar 2>/dev/null || echo 0'",
-                                shell=True, capture_output=True, text=True, timeout=12)
-                            got = float(rr.stdout.strip() or 0) / 1e9
-                            pct = int(got / sz * 100) if sz else 0
-                            if pct != last_pct and pct >= 0:
-                                last_pct = pct
-                                spd = got / max(time.time() - t1, 0.1)
-                                self._log(f"     {pct:3d}% · {got:.2f}/{sz:.2f}GB · {spd:.2f}GB/s")
+                            _p.stdin.close()
                         except Exception:
                             pass
-                    p.wait(timeout=3600)
-                    self._log(f"  └ ② 传输完成 · 耗时 {time.time()-t1:.0f}s · 平均 {sz/max(time.time()-t1,0.1):.2f}GB/s")
+                    _p.wait(timeout=3600)
+                    self._log(f"  └ ② 传输完成 · 耗时 {time.time()-t1:.0f}s · 平均 {sz_b/1e9/max(time.time()-t1,0.1):.2f}GB/s")
                     # 🐛 2026-08-09 老倪: (3) 远程载入 + 结果
                     t2 = time.time()
                     r = _sp.run(
