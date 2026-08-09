@@ -137,28 +137,20 @@ REFERENCE_APPS = [
     [
         ["📦 metaworld_peg", "🔬 总系统", "📊 对比评估 Scope (仿真)"],
     ]),
-    # 🏗 三层总系统 (2026-08-08 老倪: 总系统展开 = SYS2 数据集合+GPU服务器 / SYS1 Model Zoo / SYS0 硬件配置)
+    # 🏗 三层总系统 (2026-08-09 老倪重写: 删全部功能块 — 只表达 SYS2 云端训练 → 部署 → SYS1)
+    #   System 2 = 云端训练引擎; 训练好的模型部署到 System 1 动作系统
     ("🏗 三层总系统", [
         ("system", "🖥 SYS2 云端训练", {"layer": "sys2",
-                                       "desc": "顶层 SYS2: 数据集合 + GPU 服务器 (云端训练引擎 — 模型引擎容器化)"}),
-        ("hardware", "📦 数据集合", {"shared": True,
-                                     "desc": "SYS2: 统一数据集集合 (metaworld_peg / peg_grab6 等, 数据集管理全透明)"}),
-        ("system", "🖥 GPU 服务器", {"desc": "SYS2: 远程 GPU 服务器 (V100 · docker zmax-train 容器化训练)"}),
+                                       "desc": "System 2 云端训练: 4090 GPU 引擎 — 训练 ACT/SmolVLA 等模型 (模型引擎容器化)"}),
         ("system", "🧠 SYS1 动作系统", {"layer": "sys1",
-                                       "desc": "中层 SYS1: Model Zoo — 七模型并行 (ACT/SmolVLA/LEW/VLA-Touch/AWE/MLP/专家)"}),
-        ("system", "🔬 Model Zoo", {"subsystem": "🔬 Model Zoo", "type_label": "Subsystem",
-                                    "desc": "SYS1: 双击展开 → Model Zoo (七模型并行训练线)"}),
-        ("system", "🔧 SYS0 硬件驱动", {"layer": "sys0",
-                                       "desc": "底层 SYS0: 硬件配置 (电机/相机/力控/急停 — L2基石)"}),
-        ("hardware", "🔧 硬件配置", {"desc": "SYS0: 电机·相机·力控·急停 EtherCAT 驱动 HAL 层"}),
+                                       "desc": "System 1 动作系统: 接收部署的模型 — 端侧执行精细操作"}),
     ], [
-        (1, 2, "数据"), (0, 1, "SYS2"), (0, 2, "SYS2"), (3, 4, "SYS1"), (5, 6, "SYS0"),
+        (0, 1, "部署"),
     ],
-    # 三行横排: SYS2 顶(数据+GPU) / SYS1 中(Model Zoo) / SYS0 底(硬件配置)
+    # 两行横排: SYS2 顶(云端训练) → SYS1 底(动作系统) — 部署链路
     [
-        ["🖥 SYS2 云端训练", "📦 数据集合", "🖥 GPU 服务器", "", "", "", "", "", "", "", "", ""],
-        ["🧠 SYS1 动作系统", "🔬 Model Zoo", "", "", "", "", "", "", "", "", "", ""],
-        ["🔧 SYS0 硬件驱动", "🔧 硬件配置", "", "", "", "", "", "", "", "", "", ""],
+        ["🖥 SYS2 云端训练", "", "", ""],
+        ["🧠 SYS1 动作系统", "", "", ""],
     ]),
     # 🏗 Z-MAX 架构总览 (2026-08-08 老倪: system2/sys12/sys11/sys0 迁移到 simulink 模块库)
     # 三行横排 (老倪架构布局: SYS2 云端训练(顶) → SYS1含SYS11 VLA-T+SYS12 Z-Flow(中) → SYS0 红底(底))
