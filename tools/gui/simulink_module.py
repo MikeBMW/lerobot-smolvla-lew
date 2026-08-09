@@ -530,14 +530,12 @@ LIBRARY = [
         {"name": "C05 温控阈值", "params": {"limit": 45.0}},
     ]),
     ("model", "模型 (9)", [
+        {"name": "🧩 原子", "params": {"atomic_gate": True},
+         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
         {"name": "M00 SmolVLA", "params": {"checkpoint": "smolvla-500m", "fps": 100}},
-        {"name": "M01 ACT",     "params": {"chunk_size": 7, "dim_model": 256}},
         {"name": "M03 GR00T",   "params": {"remote": "4090:50056"}},
         {"name": "M04 LEW",     "params": {"horizon": 16}},
         {"name": "M05 H-JEPA",  "params": {"remote": "4090"}},
-        # 🧩 原子 (2026-08-09 老倪: 打开原子技能选择器 → 输入结构条件 → 进SYS1 → 出action)
-        {"name": "🧩 原子", "params": {"atomic_gate": True},
-         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
     ]),
     # 🧠 ACT 模型·官方子模块 (2026-08-04 老倪: "在左侧模块库里分个类, 将ACT-meta保存到模块库里;
     #  引导从最基础的模块库搭建成最终模型, 全程提示")
