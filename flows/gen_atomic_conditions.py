@@ -55,8 +55,10 @@ ACTION_RULES = [
 ]
 
 def encode_modalities(text):
-    """从 input_cond/definition 提取模态编码 (ControlNet 通道)"""
+    """从 input_cond/definition 提取模态编码 (ControlNet 通道)
+    固定 11 通道: 10 模态 + state_2d 兜底 (无模态匹配时 state_2d=1)"""
     enc = {m: 0 for m, _ in MODALITY_RULES}
+    enc["state_2d"] = 0  # 兜底通道 (固定第 11 位)
     mods = []
     for m, kws in MODALITY_RULES:
         for kw in kws:

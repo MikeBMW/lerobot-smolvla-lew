@@ -22,7 +22,7 @@
   "modalities": ["image", "state_2d"],      # 自动提取
   "encoding": {"image":1,"force":0,"pose":0,"tactile":0,
                "joint":0,"pointcloud":0,"temp":0,"signal":0,
-               "code":0,"cad":0},            # ControlNet 多模态通道
+               "code":0,"cad":0,"state_2d":0}, # ControlNet 11通道 (10模态+state_2d兜底)
   "action": "pick",                          # 动作类型
   "gate": 0.5, "source": "atomic_skill"
 }
@@ -41,6 +41,7 @@
 | signal | 信号/IO/触发/到位/仓/状态 |
 | code | ID/条码/二维码/扫码/编码 |
 | cad | CAD/图纸/模型比对 |
+| state_2d | 兜底: 无模态匹配时=1 (固定第11位) |
 
 ## 使用 (Simulink)
 双击画布上的「🧩 结构条件」节点 → 弹出原子技能库选择器:
