@@ -531,7 +531,6 @@ LIBRARY = [
     ]),
     ("model", "模型 (9)", [
         {"name": "M00 SmolVLA", "params": {"checkpoint": "smolvla-500m", "fps": 100}},
-        {"name": "M02 VLA-T",   "params": {"remote": "4090:50054"}},
         {"name": "M03 GR00T",   "params": {"remote": "4090:50056"}},
         {"name": "M04 LEW",     "params": {"horizon": 16}},
         {"name": "M05 H-JEPA",  "params": {"remote": "4090"}},
