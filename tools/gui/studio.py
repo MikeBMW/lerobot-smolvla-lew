@@ -6656,17 +6656,6 @@ class ConfigModule(SubModuleWidget):
         style_group.setLayout(style_layout)
         bl.addWidget(style_group)
 
-    def _on_style_changed(self, idx):
-        """🎨 风格切换 → Simulink 功能区即时生效 (light/dark)"""
-        name = "light" if idx == 0 else "dark"
-        try:
-            win = self.window()
-            sim = getattr(win, "simulink", None)
-            if sim is not None:
-                sim.switch_theme(name)
-        except Exception as ex:
-            print("style switch err:", ex)
-        
         # ===== 基础配置 =====
         base_group = QGroupBox("基础配置 (两种模式共用)")
         base_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
@@ -6886,6 +6875,104 @@ class ConfigModule(SubModuleWidget):
         preview_group.setLayout(preview_layout)
         bl.addWidget(preview_group)
         
+        # ===== 📋 Lerobot 标准参数总表 (2026-08-09 老倪: 配置中心全参数 — 对标 VEH.2.17 配置通道) =====
+        cfg_spec = [
+            ("🏗 模型架构", [
+                ("backbone 主干", {"ACT": "ResNet18", "SmolVLA": "SmolVLM2-500M", "VLA-JEPA": "DINOv2+ViT-S"}),
+                ("backbone 参数量", {"ACT": "11.7M", "SmolVLA": "500M", "VLA-JEPA": "21M"}),
+                ("backbone 输出维度", {"ACT": "512", "SmolVLA": "1024", "VLA-JEPA": "384"}),
+                ("action head", {"ACT": "Transformer 6层", "SmolVLA": "DiT-B 12层", "VLA-JEPA": "MLP 3层"}),
+                ("head 隐藏维度", {"ACT": "512", "SmolVLA": "768", "VLA-JEPA": "512"}),
+                ("VAE 潜变量", {"ACT": "无", "SmolVLA": "无", "VLA-JEPA": "JEPA特征"}),
+            ]),
+            ("📷 视觉编码", [
+                ("camera 输入", {"ACT": "1×480×640", "SmolVLA": "1×480×640", "VLA-JEPA": "1×224×224"}),
+                ("图像归一化", {"ACT": "ImageNet", "SmolVLA": "SmolVLM2", "VLA-JEPA": "CLIP"}),
+                ("触觉输入", {"ACT": "无", "SmolVLA": "可选", "VLA-JEPA": "JEPA统一"}),
+                ("obs 观测步数", {"ACT": "1", "SmolVLA": "1", "VLA-JEPA": "1"}),
+            ]),
+            ("🎮 动作解码", [
+                ("chunk size", {"ACT": "100", "SmolVLA": "100", "VLA-JEPA": "50"}),
+                ("动作维度", {"ACT": "39D", "SmolVLA": "39D", "VLA-JEPA": "39D+触觉"}),
+                ("动作归一化", {"ACT": "per-dim", "SmolVLA": "per-dim", "VLA-JEPA": "per-dim"}),
+                ("动作块预测", {"ACT": "自回归", "SmolVLA": "DiT扩散", "VLA-JEPA": "联合"}),
+            ]),
+            ("⚙️ 训练超参", [
+                ("训练步数", {"ACT": "4000", "SmolVLA": "4000", "VLA-JEPA": "6000"}),
+                ("batch size", {"ACT": "8", "SmolVLA": "1", "VLA-JEPA": "2"}),
+                ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "VLA-JEPA": "1e-4"}),
+                ("warmup", {"ACT": "1000", "SmolVLA": "1000", "VLA-JEPA": "500"}),
+                ("optimizer", {"ACT": "AdamW", "SmolVLA": "AdamW", "VLA-JEPA": "AdamW"}),
+            ]),
+            ("📊 数据/预处理", [
+                ("数据集格式", {"ACT": "LeRobot HF", "SmolVLA": "LeRobot HF", "VLA-JEPA": "LeRobot HF"}),
+                ("episode 数", {"ACT": "50", "SmolVLA": "50", "VLA-JEPA": "50"}),
+                ("采样频率", {"ACT": "30Hz", "SmolVLA": "30Hz", "VLA-JEPA": "30Hz"}),
+            ]),
+            ("🚀 推理/部署", [
+                ("推理频率", {"ACT": "30Hz", "SmolVLA": "15Hz", "VLA-JEPA": "20Hz"}),
+                ("显存需求", {"ACT": "~2GB", "SmolVLA": "~8GB", "VLA-JEPA": "~4GB"}),
+                ("端侧部署", {"ACT": "✅ Orin", "SmolVLA": "✅ Orin", "VLA-JEPA": "✅ Orin"}),
+            ]),
+        ]
+        cfg_models = ["ACT", "SmolVLA", "VLA-JEPA"]
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        n_cols = len(cfg_models) + 1
+        n_rows = 1 + sum(len(items) + 1 for _, items in cfg_spec)
+        zoo_t = QTableWidget(n_rows, n_cols)
+        zoo_t.setObjectName("cfg_std_table")
+        zoo_t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        zoo_t.setSelectionMode(QAbstractItemView.NoSelection)
+        zoo_t.setFocusPolicy(Qt.NoFocus)
+        zoo_t.verticalHeader().setVisible(False)
+        zoo_t.horizontalHeader().setVisible(False)
+        zoo_t.setShowGrid(True)
+        zoo_t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        zoo_t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        zoo_t.setStyleSheet("""
+            QTableWidget#cfg_std_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
+                                         gridline-color:#30363d; font-size:11px; }
+            QTableWidget#cfg_std_table::item { padding:4px 8px; }
+        """)
+        h = QTableWidgetItem("标准参数")
+        h.setTextAlignment(Qt.AlignCenter)
+        h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
+        h.setFont(QFont("Arial", 11, QFont.Bold))
+        zoo_t.setItem(0, 0, h)
+        for c, nm in enumerate(cfg_models):
+            it = QTableWidgetItem(nm)
+            it.setTextAlignment(Qt.AlignCenter)
+            it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
+            it.setFont(QFont("Arial", 10, QFont.Bold))
+            zoo_t.setItem(0, c + 1, it)
+        zoo_t.setRowHeight(0, 30)
+        r = 1
+        for cat, items in cfg_spec:
+            ci = QTableWidgetItem(f"  {cat}")
+            ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
+            ci.setFont(QFont("Arial", 10, QFont.Bold))
+            zoo_t.setItem(r, 0, ci)
+            zoo_t.setSpan(r, 0, 1, n_cols)
+            zoo_t.setRowHeight(r, 26)
+            r += 1
+            for pname, pvals in items:
+                pi = QTableWidgetItem("  " + pname)
+                pi.setForeground(QColor("#e6edf3"))
+                zoo_t.setItem(r, 0, pi)
+                for c, nm in enumerate(cfg_models):
+                    v = QTableWidgetItem(str(pvals.get(nm, "—")))
+                    v.setTextAlignment(Qt.AlignCenter)
+                    v.setForeground(QColor("#9da7b3"))
+                    zoo_t.setItem(r, c + 1, v)
+                zoo_t.setRowHeight(r, 24)
+                r += 1
+        zoo_t.setColumnWidth(0, 170)
+        for c in range(1, n_cols):
+            zoo_t.setColumnWidth(c, 110)
+        zoo_t.setMinimumHeight(min(n_rows * 24 + 30, 640))
+        bl.addWidget(zoo_t)
+        self.cfg_std_table = zoo_t  # 供导出 EXCEL 用
+        
         # ===== 按钮 =====
         btn_layout = QHBoxLayout()
         
@@ -6903,6 +6990,11 @@ class ConfigModule(SubModuleWidget):
         export_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{SYS12_COLOR}; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
         export_btn.clicked.connect(self._export_yaml)
         btn_layout.addWidget(export_btn)
+        
+        export_xls_btn = QPushButton("📊 导出 Excel")
+        export_xls_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:#1f6feb; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
+        export_xls_btn.clicked.connect(self._export_excel)
+        btn_layout.addWidget(export_xls_btn)
         
         apply_btn = QPushButton("应用")
         apply_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{C_ORANGE}; color:{C_BG}; border-radius:4px; font-weight:bold;}}")
@@ -6927,6 +7019,18 @@ class ConfigModule(SubModuleWidget):
         container = QWidget()
         container.setLayout(outer)
         self._build_shell(container)
+    def _on_style_changed(self, idx):
+        """🎨 风格切换 → Simulink 功能区即时生效 (light/dark)"""
+        name = "light" if idx == 0 else "dark"
+        try:
+            win = self.window()
+            sim = getattr(win, "simulink", None)
+            if sim is not None:
+                sim.switch_theme(name)
+        except Exception as ex:
+            print("style switch err:", ex)
+        return  # 🐛 2026-08-09: 方法结束
+        
     
     def _on_mode_changed(self, checked):
         if not checked:
@@ -7056,6 +7160,39 @@ class ConfigModule(SubModuleWidget):
                 f.write(f"  {k}: {v}\n")
         _msg_ok(self, "导出成功", f"YAML 配置已导出到:\n{fp}\n\n可用于 lerobot-train 训练")
     
+    def _export_excel(self):
+        """📊 导出配置表为 Excel (2026-08-09 老倪: 配置中心导出EXCEL)"""
+        try:
+            import pandas as pd
+            rows = []
+            t = getattr(self, "cfg_std_table", None)
+            if t is not None:
+                # 表头
+                header = [t.item(0, c).text() if t.item(0, c) else "" for c in range(t.columnCount())]
+                for r in range(1, t.rowCount()):
+                    row = [t.item(r, c).text() if t.item(r, c) else "" for c in range(t.columnCount())]
+                    rows.append(row)
+                df = pd.DataFrame(rows, columns=header)
+            else:
+                # 兜底: 从基础配置导出
+                import json
+                cfg = self._get_config_dict()
+                df = pd.DataFrame([cfg])
+            import os
+            from datetime import datetime
+            out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports")
+            os.makedirs(out_dir, exist_ok=True)
+            out = os.path.join(out_dir, f"config_center_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+            df.to_excel(out, index=False, sheet_name="Lerobot标准参数")
+            self._log(f"📊 已导出 Excel: {out}")
+            _msg_ok(self, "导出成功", f"配置表已导出:\n{out}")
+        except ImportError:
+            self._log("❌ 导出 Excel 需 pandas + openpyxl: pip install pandas openpyxl")
+            _msg_ok(self, "缺少依赖", "请先安装: pip install pandas openpyxl")
+        except Exception as e:
+            self._log(f"❌ 导出 Excel 失败: {e}")
+            _msg_ok(self, "导出失败", str(e))
+
     def _apply_config(self):
         d = self._get_config_dict()
         mode_str = d['mode']
