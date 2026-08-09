@@ -3503,17 +3503,14 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
     def _zoo_next(self):
         if not getattr(self, "_zoo_queue", None):
             self._zoo_queue = None
-            self._log("🏁 Model Zoo 完整训练完成 (7 模型)")
-            self._log("📄 生成 Model Zoo 报告 + 视频对比…")
+            self._log("🏁 Model Zoo 完整训练完成")
+            self._log("📄 生成 Model Zoo 报告…")
             try:
                 self._simulink.on_pdf_report()
             except Exception as e:
                 self._log(f"❌ 报告生成失败: {e}")
-            try:
-                self._simulink.on_infer_video()
-            except Exception as e:
-                self._log(f"❌ 视频生成失败: {e}")
-            self._log("✅ 报告/视频已同步本地: reports/ + outputs/train/ (控制台可见)")
+            # 🚫 2026-08-09 老倪: 训练完不自动弹视频 (烦) — 视频需手动点
+            self._log("🎬 视频未自动生成 (需要时点推理/视频节点手动生成)")
             return
         # 🐛 2026-08-08 老倪: 防误判 — on_train 数据准备有延迟, 启动后 45s 内不判完成
         import time as _t
@@ -4414,8 +4411,13 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self._log("🎛 Model Zoo 训练队列已在进行中 (监控日志区)")
                 return
             self._zoo_queue = list(self.ZOO_POLICIES)  # 7 模型依次训练
-            self._log(f"🎛 Model Zoo 完整训练启动: {len(self._zoo_queue)} 个模型串行 → {self._zoo_queue}")
-            self._log("📡 终端详细打印已开启 (每行完整输出, 老倪监控中)")
+            # 🎛 2026-08-09 老倪: 点开始即按训练开关过滤 + 提示 (开哪些/跳过哪些)
+            sw = getattr(self, "_zoo_sw", {})
+            on = [p for p in self._zoo_queue if sw.get(p) is not None and sw[p].isChecked()]
+            off = [p for p in self._zoo_queue if sw.get(p) is None or not sw[p].isChecked()]
+            self._log(f"🎛 Model Zoo 训练启动 — 开关: 开 {on if on else '无'} | 跳过 {off if off else '无'}")
+            self._zoo_queue = on or list(self.ZOO_POLICIES)  # 全关 → 全部训练 (保险)
+            self._log(f"📡 终端详细打印已开启 (每行完整输出, 老倪监控中)")
             self._zoo_next()
             return
         # 🌐 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 remote → 训练提交远程 V100
