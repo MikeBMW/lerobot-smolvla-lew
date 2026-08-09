@@ -3582,8 +3582,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
                             f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && "
                             f"docker exec -d zmax_train bash /tmp/zoo_c4.sh 2>&1 | tail -1 || "
-                            f"docker run -d --name zmax_train --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm "
-                            f"-v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1 "
+                            f"docker run -d --name zmax_train --runtime nvidia --gpus all "
                             f"-v ~/lerobot-smolvla-lew:/app zmax-train:latest sleep infinity'",
                             shell=True, timeout=60)
                     self._log("🚀 容器训练已触发 (监控日志区/远程容器状态)")
