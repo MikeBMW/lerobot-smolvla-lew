@@ -6317,9 +6317,9 @@ class SimulinkModule(QWidget):
         return out
 
     def open_atomic_skill_flow(self, btn_name="🧩 原子"):
-        """🧩 原子按钮 (2026-08-09 老倪 v3): 打开即把 SCN-01/02/03 三场景全链建到画布
-        每场景: 场景node → 原子技能序列(atoms) → 结构条件(coord_overlay) → SYS1(动作系统) → action
-        全部模块都要有 — 不弹选择框, 一键全建"""
+        """🧩 原子按钮 (2026-08-09 老倪 v4): SCN-01/02/03 三场景全链, 共用 1 个 SYS1
+        每场景: 场景node → 原子技能序列 → 结构条件
+        三场景结构条件 → 汇聚 1 个 SYS1 动作系统 → action 输出节点"""
         import os as _os, json as _j, time as _t
         repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
         sp = _os.path.join(repo, "flows", "scene_skills_3scenarios.json")
@@ -6331,7 +6331,6 @@ class SimulinkModule(QWidget):
         if not scenes:
             self._log("❌ 场景库为空")
             return
-        # 清空画布 (一键重建)
         if self.nodes:
             if not self._qmsg_yes("🧩 原子技能全场景", "将清空当前画布, 重建 SCN-01/02/03 三场景全链?"):
                 return
@@ -6342,9 +6341,10 @@ class SimulinkModule(QWidget):
         self._suspend_undo = True
         try:
             _ICON = {"SCN-01": "🔌", "SCN-02": "🤖", "SCN-03": "🔍"}
+            _co_nodes = []  # 三场景结构条件节点 (汇聚到同一 SYS1)
             for _si, scene in enumerate(scenes):
                 _sid = scene.get("id", f"SCN-{_si+1:02d}")
-                _row_y = 60 + _si * 340
+                _row_y = 60 + _si * 250
                 # ① 场景节点 (左)
                 sn = self.add_node("scene", f"{_ICON.get(_sid,'🏭')} {_sid} {scene.get('name','')[:12]}",
                                    80, _row_y, {"scene_id": _sid,
@@ -6368,7 +6368,7 @@ class SimulinkModule(QWidget):
                     if _fi and _ti:
                         self.add_link(_fi, _ti, "next")
                     _prev = an
-                # ③ 结构条件 (右)
+                # ③ 结构条件 (每场景一个)
                 _perf = scene.get("performance", {})
                 cn = self.add_node("coord_overlay",
                                    f"🧩 结构条件 · {_sid}", _px + 260, _row_y, {
@@ -6378,21 +6378,30 @@ class SimulinkModule(QWidget):
                 _fi = self._items.get(_prev["id"]); _ti = self._items.get(cn["id"])
                 if _fi and _ti:
                     self.add_link(_fi, _ti, "cond")
-                # ④ SYS1 动作系统 (右, 输出 action)
-                s1 = self.add_node("system", "🧠 SYS1 动作系统", _px + 260, _row_y + 150, {
-                    "layer": "sys1", "scene": _sid,
-                    "action_out": f"/dds/action/{_sid.lower()}",
-                    "desc": f"执行 {scene.get('name','')[:14]} — {len(atoms)} 原子技能落地, 输出 action"})
-                _si2 = self._items.get(cn["id"]); _s1i = self._items.get(s1["id"])
-                if _si2 and _s1i:
-                    self.add_link(_si2, _s1i, "action")
-                self._log(f"🏭 {_sid} {scene.get('name','')[:16]} 全链已建: 场景→{len(atoms)}技能→结构条件→SYS1→action")
+                _co_nodes.append(cn)
+                self._log(f"🏭 {_sid} 场景链已建: 场景→{len(atoms)}技能→结构条件")
+            # ④ 共用 1 个 SYS1 动作系统 (三场景结构条件汇聚)
+            s1 = self.add_node("system", "🧠 SYS1 动作系统", 950, 300, {
+                "layer": "sys1", "shared": True,
+                "desc": "三场景共用: 接收 SCN-01/02/03 结构条件编码, 执行动作序列"})
+            for cn in _co_nodes:
+                _ci = self._items.get(cn["id"]); _s1i = self._items.get(s1["id"])
+                if _ci and _s1i:
+                    self.add_link(_ci, _s1i, "action")
+            # ⑤ action 输出节点 (SYS1 后面)
+            act = self.add_node("action", "🎯 Action 输出", 1250, 300, {
+                "action_out": "/dds/action/scn_all",
+                "scene": "SCN-01/02/03", "gate": 0.5,
+                "desc": "三场景统一 action 输出: /dds/action/scn_all (插拔/搬运/检测 动作流)"})
+            _s1i = self._items.get(s1["id"]); _ai2 = self._items.get(act["id"])
+            if _s1i and _ai2:
+                self.add_link(_s1i, _ai2, "action")
         finally:
             self._sync = old_sync
             self._suspend_undo = old_undo
             self._sync()
             self.canvas._scene.update()
-        self._log(f"🧩 原子技能全场景已建: {len(scenes)} 场景全链 (场景→技能→结构条件→SYS1→action)")
+        self._log(f"🧩 原子技能全场景已建: {len(scenes)} 场景 → 共用 SYS1 → action 输出")
 
     def open_scene(self, scene_id, node=None):
         """🏭 场景: 打开 ECS 链接 (传场景 JSON) + 建场景节点链 (2026-08-09 老倪)
