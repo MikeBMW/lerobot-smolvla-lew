@@ -1,0 +1,9794 @@
+{
+ "format": "zmax-skill-tokens",
+ "version": "1.0",
+ "generated": "2026-08-09",
+ "reference": "W²-VLA Latent Modeling Tokens",
+ "categories": [
+  "NPO近封装光学",
+  "XPO高密可插拔光学",
+  "学习泛化",
+  "安全集成",
+  "感知定位",
+  "操作动作",
+  "移动导航",
+  "视觉检测",
+  "载具物流"
+ ],
+ "skills": [
+  {
+   "skill_id": "NPO002",
+   "category": "NPO近封装光学",
+   "name": "NPO精密料盘穴位与满空映射",
+   "tokens": {
+    "id": "[SKILL_NPO002]",
+    "semantic": "[SEM_NPO精密料盘穴位与满空映射_光纤阵列等精密来料生成穴]",
+    "scene": "[SCENE_JEDEC_定制精密料盘、Waffle Pack、Gel-Pak、器件]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对光电引擎、PIC/VCSEL/PD阵列、光纤阵列等精密来料生成穴位地图。"
+  },
+  {
+   "skill_id": "NPO003",
+   "category": "NPO近封装光学",
+   "name": "NPO主板/PCB中介板载具6D定位",
+   "tokens": {
+    "id": "[SKILL_NPO003]",
+    "semantic": "[SEM_NPO主板_PCB中介板载具6D定位_定位承载交换_模块的板级工装与装配位]",
+    "scene": "[SCENE_主板工艺托盘、PCB中介板载具、定位销_孔]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "定位承载交换ASIC、PCB中介板或NPO模块的板级工装与装配位。"
+  },
+  {
+   "skill_id": "NPO004",
+   "category": "NPO近封装光学",
+   "name": "ASIC周边禁入区/装配位检查",
+   "tokens": {
+    "id": "[SKILL_NPO004]",
+    "semantic": "[SEM_ASIC周边禁入区_装配位检查_螺柱和可装配空间_防止光电引擎碰撞]",
+    "scene": "[SCENE_交换主板、ASIC区域、NPO装配位]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别ASIC周边高件、禁入区、连接器、螺柱和可装配空间，防止光电引擎碰撞。"
+  },
+  {
+   "skill_id": "NPO005",
+   "category": "NPO近封装光学",
+   "name": "光电引擎基板/子载板装入工装",
+   "tokens": {
+    "id": "[SKILL_NPO005]",
+    "semantic": "[SEM_光电引擎基板_子载板装入工装_将光电引擎基板或子载板从_料盘装入微装配工装并确认]",
+    "scene": "[SCENE_陶瓷_有机基板、子载板料盘、微装配Nest]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将光电引擎基板或子载板从料盘装入微装配工装并确认基准。"
+  },
+  {
+   "skill_id": "NPO006",
+   "category": "NPO近封装光学",
+   "name": "VCSEL/PIC/PD阵列微小件取料",
+   "tokens": {
+    "id": "[SKILL_NPO006]",
+    "semantic": "[SEM_VCSEL_PIC_PD阵列微小件取料_从精密料盘中单件取出_或探测器阵列_防双取和掉料]",
+    "scene": "[SCENE_VCSEL_PIC_PD阵列、Waffle Pack]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "从精密料盘中单件取出VCSEL阵列、PIC或探测器阵列，防双取和掉料。"
+  },
+  {
+   "skill_id": "NPO007",
+   "category": "NPO近封装光学",
+   "name": "光电芯片方向/极性/批次绑定",
+   "tokens": {
+    "id": "[SKILL_NPO007]",
+    "semantic": "[SEM_光电芯片方向_极性_批次绑定_识别光电芯片正反面_基准边和批次_并绑定目标装配位]",
+    "scene": "[SCENE_VCSEL_PIC_PD阵列、芯片料盘、基板]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "code"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别光电芯片正反面、极性、基准边和批次，并绑定目标装配位。"
+  },
+  {
+   "skill_id": "NPO008",
+   "category": "NPO近封装光学",
+   "name": "光电芯片精密贴装/低力落位",
+   "tokens": {
+    "id": "[SKILL_NPO008]",
+    "semantic": "[SEM_光电芯片精密贴装_低力落位_将光电芯片以微米级位置和_角度放置到基板目标位_不包含具体焊接工艺开发]",
+    "scene": "[SCENE_光电芯片、基板、贴装工装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将光电芯片以微米级位置和角度放置到基板目标位，不包含具体焊接工艺开发。"
+  },
+  {
+   "skill_id": "NPO009",
+   "category": "NPO近封装光学",
+   "name": "微量胶/助焊材料定量点涂",
+   "tokens": {
+    "id": "[SKILL_NPO009]",
+    "semantic": "[SEM_微量胶_助焊材料定量点涂_在芯片或光纤阵列装配位执_助焊或固定材料的路径与剂]",
+    "scene": "[SCENE_基板、芯片、点胶针筒、胶材]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "dispense",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在芯片或光纤阵列装配位执行微量胶、助焊或固定材料的路径与剂量控制。"
+  },
+  {
+   "skill_id": "NPO010",
+   "category": "NPO近封装光学",
+   "name": "光纤阵列/MT类端头精密取放",
+   "tokens": {
+    "id": "[SKILL_NPO010]",
+    "semantic": "[SEM_光纤阵列_MT类端头精密取放_类端头或光耦合组件进行无_损取放和姿态保持]",
+    "scene": "[SCENE_光纤阵列、MT类端头、纤维载具、对准工装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对光纤阵列、MT类端头或光耦合组件进行无损取放和姿态保持。"
+  },
+  {
+   "skill_id": "NPO011",
+   "category": "NPO近封装光学",
+   "name": "光纤阵列主动光学对准",
+   "tokens": {
+    "id": "[SKILL_NPO011]",
+    "semantic": "[SEM_光纤阵列主动光学对准_在通光条件下搜索并锁定光_功率最优位置和角度]",
+    "scene": "[SCENE_光纤阵列、光电引擎、主动对准台]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "在通光条件下搜索并锁定光功率最优位置和角度。"
+  },
+  {
+   "skill_id": "NPO012",
+   "category": "NPO近封装光学",
+   "name": "对准后固定与固化状态确认",
+   "tokens": {
+    "id": "[SKILL_NPO012]",
+    "semantic": "[SEM_对准后固定与固化状态确认_在保持对准的同时完成固定_固化触发和位移漂移监控]",
+    "scene": "[SCENE_已对准光纤阵列、胶材、UV_热固化工装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "align",
+   "modalities": [
+    "pose",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在保持对准的同时完成固定材料施加、固化触发和位移漂移监控。"
+  },
+  {
+   "skill_id": "NPO013",
+   "category": "NPO近封装光学",
+   "name": "微互连/焊点/金线显微复检",
+   "tokens": {
+    "id": "[SKILL_NPO013]",
+    "semantic": "[SEM_微互连_焊点_金线显微复检_对光电引擎上的焊点_金线或微互连进行自动显微]",
+    "scene": "[SCENE_光电引擎、基板、金线_焊点]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对光电引擎上的焊点、金线或微互连进行自动显微检测与分级。"
+  },
+  {
+   "skill_id": "NPO014",
+   "category": "NPO近封装光学",
+   "name": "光电引擎盖板/屏蔽罩装配",
+   "tokens": {
+    "id": "[SKILL_NPO014]",
+    "semantic": "[SEM_光电引擎盖板_屏蔽罩装配_屏蔽罩或保护框执行定位]",
+    "scene": "[SCENE_盖板、屏蔽罩、光电引擎、微型螺钉_卡扣]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对微型盖板、屏蔽罩或保护框执行定位、扣合或锁付。"
+  },
+  {
+   "skill_id": "NPO015",
+   "category": "NPO近封装光学",
+   "name": "NPO光电引擎从料盘低力取出",
+   "tokens": {
+    "id": "[SKILL_NPO015]",
+    "semantic": "[SEM_NPO光电引擎从料盘低力取出_以不接触光纤_光口和敏感器件的方式抓取_完整光电引擎]",
+    "scene": "[SCENE_NPO光电引擎、精密料盘、保护盖]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "以不接触光纤、光口和敏感器件的方式抓取完整光电引擎。"
+  },
+  {
+   "skill_id": "NPO016",
+   "category": "NPO近封装光学",
+   "name": "高速电接口焊盘/插座预检",
+   "tokens": {
+    "id": "[SKILL_NPO016]",
+    "semantic": "[SEM_高速电接口焊盘_插座预检_在装配前检查焊盘_翘曲和共面性]",
+    "scene": "[SCENE_主板接口、LGA_可分离互连、光电模块底面]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在装配前检查焊盘、LGA插座、接点、异物、翘曲和共面性。"
+  },
+  {
+   "skill_id": "NPO017",
+   "category": "NPO近封装光学",
+   "name": "可分离高速互连/LGA插座对准",
+   "tokens": {
+    "id": "[SKILL_NPO017]",
+    "semantic": "[SEM_可分离高速互连_LGA插座对准_光电模块与可选_或其他可分离互连进行精密]",
+    "scene": "[SCENE_NPO模块、LGA插座、PCB中介板]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将NPO光电模块与可选LGA或其他可分离互连进行精密对准。"
+  },
+  {
+   "skill_id": "NPO018",
+   "category": "NPO近封装光学",
+   "name": "NPO模块均匀压合与就位",
+   "tokens": {
+    "id": "[SKILL_NPO018]",
+    "semantic": "[SEM_NPO模块均匀压合与就位_以受控速度和载荷将模块压_入插座或压接结构_并防止局部过载]",
+    "scene": "[SCENE_NPO模块、插座_压接框、主板]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "以受控速度和载荷将模块压入插座或压接结构，并防止局部过载。"
+  },
+  {
+   "skill_id": "NPO019",
+   "category": "NPO近封装光学",
+   "name": "保持框/压板定位与锁止",
+   "tokens": {
+    "id": "[SKILL_NPO019]",
+    "semantic": "[SEM_保持框_压板定位与锁止_安装用于保持接触压力和机_械稳定性的保持框]",
+    "scene": "[SCENE_保持框、压板、模块、主板]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "安装用于保持接触压力和机械稳定性的保持框、压板或夹具。"
+  },
+  {
+   "skill_id": "NPO020",
+   "category": "NPO近封装光学",
+   "name": "多螺钉顺序锁付与扭矩角度追溯",
+   "tokens": {
+    "id": "[SKILL_NPO020]",
+    "semantic": "[SEM_多螺钉顺序锁付与扭矩角度追溯_按对角或指定顺序锁紧保持_确保压力均匀]",
+    "scene": "[SCENE_螺钉、保持框、冷板、主板]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按对角或指定顺序锁紧保持框/冷板，确保压力均匀。"
+  },
+  {
+   "skill_id": "NPO021",
+   "category": "NPO近封装光学",
+   "name": "NPO模块拆卸/抬升防粘连",
+   "tokens": {
+    "id": "[SKILL_NPO021]",
+    "semantic": "[SEM_NPO模块拆卸_抬升防粘连_解锁后平稳释放模块]",
+    "scene": "[SCENE_NPO模块、保持框、插座、TIM]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在断电、解锁后平稳释放模块，处理压接、TIM或接口粘连。"
+  },
+  {
+   "skill_id": "NPO022",
+   "category": "NPO近封装光学",
+   "name": "TIM/导热垫型号与正反识别",
+   "tokens": {
+    "id": "[SKILL_NPO022]",
+    "semantic": "[SEM_TIM_导热垫型号与正反识别_正反面和保护膜状态]",
+    "scene": "[SCENE_TIM_导热垫、载带_料盘、模块]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别导热垫、相变材料或TIM的型号、厚度、正反面和保护膜状态。"
+  },
+  {
+   "skill_id": "NPO023",
+   "category": "NPO近封装光学",
+   "name": "TIM/导热垫无褶皱贴装",
+   "tokens": {
+    "id": "[SKILL_NPO023]",
+    "semantic": "[SEM_TIM_导热垫无褶皱贴装_准确贴到光电引擎或冷板区]",
+    "scene": "[SCENE_TIM_导热垫、模块、冷板]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "attach",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将TIM准确贴到光电引擎或冷板区域，避免气泡、褶皱和偏移。"
+  },
+  {
+   "skill_id": "NPO024",
+   "category": "NPO近封装光学",
+   "name": "NPO冷板/热扩散件对准放置",
+   "tokens": {
+    "id": "[SKILL_NPO024]",
+    "semantic": "[SEM_NPO冷板_热扩散件对准放置_将冷板或热扩散件在不挤压_光纤的情况下对准模块热界]",
+    "scene": "[SCENE_冷板、热扩散件、NPO模块、主板]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将冷板或热扩散件在不挤压光纤的情况下对准模块热界面。"
+  },
+  {
+   "skill_id": "NPO025",
+   "category": "NPO近封装光学",
+   "name": "冷板锁付顺序与接触压力确认",
+   "tokens": {
+    "id": "[SKILL_NPO025]",
+    "semantic": "[SEM_冷板锁付顺序与接触压力确认_通过顺序锁付_位移或压力传感确认冷板接]",
+    "scene": "[SCENE_冷板、螺钉_夹具、NPO模块]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "通过顺序锁付、位移或压力传感确认冷板接触均匀。"
+  },
+  {
+   "skill_id": "NPO026",
+   "category": "NPO近封装光学",
+   "name": "液冷快速接头对准与插接",
+   "tokens": {
+    "id": "[SKILL_NPO026]",
+    "semantic": "[SEM_液冷快速接头对准与插接_方案可能采用的液冷接口执_低冲击插接和锁止]",
+    "scene": "[SCENE_液冷快速接头、冷板、主机歧管]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "joint",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对NPO方案可能采用的液冷接口执行同轴对准、低冲击插接和锁止。"
+  },
+  {
+   "skill_id": "NPO027",
+   "category": "NPO近封装光学",
+   "name": "液冷接头锁止/泄漏初检",
+   "tokens": {
+    "id": "[SKILL_NPO027]",
+    "semantic": "[SEM_液冷接头锁止_泄漏初检_确认快速接头锁止状态_并在上压前后检测渗漏]",
+    "scene": "[SCENE_液冷接头、冷板回路、吸液_湿度传感]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "确认快速接头锁止状态，并在上压前后检测渗漏。"
+  },
+  {
+   "skill_id": "NPO028",
+   "category": "NPO近封装光学",
+   "name": "流量/压力/温度传感器接入与读数确认",
+   "tokens": {
+    "id": "[SKILL_NPO028]",
+    "semantic": "[SEM_流量_压力_温度传感器接入与读数确认_连接或读取液冷回路传感器_温度基线确认]",
+    "scene": "[SCENE_传感器接头、线缆、冷板回路、HMI]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "force",
+    "temp"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "连接或读取液冷回路传感器，完成流量、压力、温度基线确认。"
+  },
+  {
+   "skill_id": "NPO029",
+   "category": "NPO近封装光学",
+   "name": "光口防尘帽取下与回装",
+   "tokens": {
+    "id": "[SKILL_NPO029]",
+    "semantic": "[SEM_光口防尘帽取下与回装_光纤连接器和外置激光接口]",
+    "scene": "[SCENE_光纤连接器、光口、防尘帽、帽料盘]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "安全取下/回装NPO光口、光纤连接器和外置激光接口的防尘帽。"
+  },
+  {
+   "skill_id": "NPO030",
+   "category": "NPO近封装光学",
+   "name": "盲插光连接器/MT端面对准",
+   "tokens": {
+    "id": "[SKILL_NPO030]",
+    "semantic": "[SEM_盲插光连接器_MT端面对准_类端头或板级盲插接口执行_键位和同轴对准]",
+    "scene": "[SCENE_光纤连接器、MT端头、板级光接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "force",
+    "joint"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对光连接器、MT类端头或板级盲插接口执行键位和同轴对准。"
+  },
+  {
+   "skill_id": "NPO031",
+   "category": "NPO近封装光学",
+   "name": "光连接器受控插入与锁止确认",
+   "tokens": {
+    "id": "[SKILL_NPO031]",
+    "semantic": "[SEM_光连接器受控插入与锁止确认_沿规定轴线插入光连接器_卡扣和视觉确认锁止]",
+    "scene": "[SCENE_光连接器、板级接口、锁扣]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "force",
+    "joint",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "沿规定轴线插入光连接器，并通过力-位移、卡扣和视觉确认锁止。"
+  },
+  {
+   "skill_id": "NPO032",
+   "category": "NPO近封装光学",
+   "name": "光纤端面显微检查与局部处理",
+   "tokens": {
+    "id": "[SKILL_NPO032]",
+    "semantic": "[SEM_光纤端面显微检查与局部处理_检查端面颗粒_必要时执行连接器端面的局]",
+    "scene": "[SCENE_光纤端面、显微探头、端面处理工具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查端面颗粒、划伤和污染；必要时执行连接器端面的局部处理。"
+  },
+  {
+   "skill_id": "NPO033",
+   "category": "NPO近封装光学",
+   "name": "光纤极性/端口/通道映射",
+   "tokens": {
+    "id": "[SKILL_NPO033]",
+    "semantic": "[SEM_光纤极性_端口_通道映射_识别并校验光纤极性_方向和逻辑通道映射]",
+    "scene": "[SCENE_多芯光纤、MPO_MT接口、NPO光电引擎]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别并校验光纤极性、端口号、Tx/Rx方向和逻辑通道映射。"
+  },
+  {
+   "skill_id": "NPO034",
+   "category": "NPO近封装光学",
+   "name": "光纤路径与最小弯曲半径控制",
+   "tokens": {
+    "id": "[SKILL_NPO034]",
+    "semantic": "[SEM_光纤路径与最小弯曲半径控制_按设计路径布置光纤]",
+    "scene": "[SCENE_多芯光纤、尾纤、导向槽、冷板_壳体]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "press",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按设计路径布置光纤，避免过弯、扭转、夹压和遮挡。"
+  },
+  {
+   "skill_id": "NPO035",
+   "category": "NPO近封装光学",
+   "name": "光纤余量/应变释放与夹扣操作",
+   "tokens": {
+    "id": "[SKILL_NPO035]",
+    "semantic": "[SEM_光纤余量_应变释放与夹扣操作_控制尾纤余量_并操作导向夹_应变释放件和卡扣]",
+    "scene": "[SCENE_光纤、夹扣、导向槽、应变释放件]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "控制尾纤余量，并操作导向夹、应变释放件和卡扣。"
+  },
+  {
+   "skill_id": "NPO036",
+   "category": "NPO近封装光学",
+   "name": "外置激光源模块识别与防呆",
+   "tokens": {
+    "id": "[SKILL_NPO036]",
+    "semantic": "[SEM_外置激光源模块识别与防呆_等外置激光源模块的型号_方向和安全状态]",
+    "scene": "[SCENE_外置激光源模块、模块料盘、激光源笼子_接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别ELSFP/PLS等外置激光源模块的型号、功率等级、方向和安全状态。"
+  },
+  {
+   "skill_id": "NPO037",
+   "category": "NPO近封装光学",
+   "name": "外置激光源模块盲插与电光接口接合",
+   "tokens": {
+    "id": "[SKILL_NPO037]",
+    "semantic": "[SEM_外置激光源模块盲插与电光接口接合_将外置激光源模块插入笼子_并同时完成机械_电气和光学接口接合]",
+    "scene": "[SCENE_ELSFP_PLS、笼子、盲插光连接器、电接点]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将外置激光源模块插入笼子并同时完成机械、电气和光学接口接合。"
+  },
+  {
+   "skill_id": "NPO038",
+   "category": "NPO近封装光学",
+   "name": "激光安全互锁/存在信号确认",
+   "tokens": {
+    "id": "[SKILL_NPO038]",
+    "semantic": "[SEM_激光安全互锁_存在信号确认_在激光源使能前确认模块存_盖板和系统互锁]",
+    "scene": "[SCENE_激光源模块、互锁信号、光路]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在激光源使能前确认模块存在、连接器锁止、盖板和系统互锁。"
+  },
+  {
+   "skill_id": "NPO039",
+   "category": "NPO近封装光学",
+   "name": "外置激光光功率/稳定性确认",
+   "tokens": {
+    "id": "[SKILL_NPO039]",
+    "semantic": "[SEM_外置激光光功率_稳定性确认_在完成连接后读取各路激光_功率并判断稳定性和通道一]",
+    "scene": "[SCENE_外置激光源、光纤、功率计_监测PD]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "在完成连接后读取各路激光功率并判断稳定性和通道一致性。"
+  },
+  {
+   "skill_id": "NPO040",
+   "category": "NPO近封装光学",
+   "name": "NPO电源/控制连接器插接",
+   "tokens": {
+    "id": "[SKILL_NPO040]",
+    "semantic": "[SEM_NPO电源_控制连接器插接_插接模块电源_管理和控制接口]",
+    "scene": "[SCENE_电源_控制连接器、线缆、板级接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "插接模块电源、管理和控制接口，并确认针脚/键位状态。"
+  },
+  {
+   "skill_id": "NPO041",
+   "category": "NPO近封装光学",
+   "name": "NPO上电/下电与模块激活顺序",
+   "tokens": {
+    "id": "[SKILL_NPO041]",
+    "semantic": "[SEM_NPO上电_下电与模块激活顺序_按系统规定顺序完成电源轨_激光源和液冷状态的激活]",
+    "scene": "[SCENE_NPO模块、主板、电源、激光源、冷却回路]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按系统规定顺序完成电源轨、控制信号、激光源和液冷状态的激活/停用。"
+  },
+  {
+   "skill_id": "NPO042",
+   "category": "NPO近封装光学",
+   "name": "模块ID/固件/端口映射绑定",
+   "tokens": {
+    "id": "[SKILL_NPO042]",
+    "semantic": "[SEM_模块ID_固件_端口映射绑定_读取模块电子标识_固件版本和物理端口_光纤和工单的映射]",
+    "scene": "[SCENE_NPO模块、主板、光纤、固件接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "读取模块电子标识、固件版本和物理端口，建立与板卡、光纤和工单的映射。"
+  },
+  {
+   "skill_id": "NPO043",
+   "category": "NPO近封装光学",
+   "name": "Tx/Rx光功率与波长测试",
+   "tokens": {
+    "id": "[SKILL_NPO043]",
+    "semantic": "[SEM_Tx_Rx光功率与波长测试_光学通道进行发射功率_响应和波长相关测试]",
+    "scene": "[SCENE_NPO光电引擎、光纤、光功率_波长测试仪]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对NPO光学通道进行发射功率、接收灵敏度/响应和波长相关测试。"
+  },
+  {
+   "skill_id": "NPO044",
+   "category": "NPO近封装光学",
+   "name": "200G/lane高速电通道连续性/接触测试",
+   "tokens": {
+    "id": "[SKILL_NPO044]",
+    "semantic": "[SEM_200G_lane高速电通道连续性_接触测试_检查高速电通道连接和接触]",
+    "scene": "[SCENE_ASIC-NPO高速电互连、测试板、探针_内建测试]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "针对OIF在研200G/lane NPO接口，检查高速电通道连接和接触稳定性。"
+  },
+  {
+   "skill_id": "NPO045",
+   "category": "NPO近封装光学",
+   "name": "多通道BER/眼图/链路裕量测试",
+   "tokens": {
+    "id": "[SKILL_NPO045]",
+    "semantic": "[SEM_多通道BER_眼图_链路裕量测试_多通道链路执行误码率_眼图或等效链路裕量测试并]",
+    "scene": "[SCENE_NPO系统、测试仪、光纤链路]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对NPO多通道链路执行误码率、眼图或等效链路裕量测试并定位弱通道。"
+  },
+  {
+   "skill_id": "NPO046",
+   "category": "NPO近封装光学",
+   "name": "液冷/温度循环下光电性能联测",
+   "tokens": {
+    "id": "[SKILL_NPO046]",
+    "semantic": "[SEM_液冷_温度循环下光电性能联测_温度和功耗条件下同步采集_光电性能与热状态]",
+    "scene": "[SCENE_NPO系统、液冷回路、环境_热测试台]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "temp",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在规定流量、温度和功耗条件下同步采集光电性能与热状态。"
+  },
+  {
+   "skill_id": "NPO047",
+   "category": "NPO近封装光学",
+   "name": "NPO装配3D终检",
+   "tokens": {
+    "id": "[SKILL_NPO047]",
+    "semantic": "[SEM_NPO装配3D终检_检查模块高度_光纤路径和连接器锁止]",
+    "scene": "[SCENE_已装配NPO主板_模块]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查模块高度、共面性、冷板/保持框、螺钉、光纤路径和连接器锁止。"
+  },
+  {
+   "skill_id": "NPO048",
+   "category": "NPO近封装光学",
+   "name": "NPO模块重插/重压/复测",
+   "tokens": {
+    "id": "[SKILL_NPO048]",
+    "semantic": "[SEM_NPO模块重插_重压_复测_对接触不良或弱通道执行受_重压或保持结构复位]",
+    "scene": "[SCENE_NPO模块、插座、保持框、测试系统]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对接触不良或弱通道执行受控重插、重压或保持结构复位，并自动复测。"
+  },
+  {
+   "skill_id": "NPO049",
+   "category": "NPO近封装光学",
+   "name": "光纤/激光/液冷接口安全拆解",
+   "tokens": {
+    "id": "[SKILL_NPO049]",
+    "semantic": "[SEM_光纤_激光_液冷接口安全拆解_按安全顺序断开激光_电源和液冷接口_并保护所有端口]",
+    "scene": "[SCENE_NPO模块、光纤、激光源、液冷接头、电连接器]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按安全顺序断开激光、光纤、电源和液冷接口，并保护所有端口。"
+  },
+  {
+   "skill_id": "NPO050",
+   "category": "NPO近封装光学",
+   "name": "NPO模块/主板防护包装与周转",
+   "tokens": {
+    "id": "[SKILL_NPO050]",
+    "semantic": "[SEM_NPO模块_主板防护包装与周转_组件放入防静电_防震和端口保护载具_保持接口状态]",
+    "scene": "[SCENE_NPO模块、主板、定制Tray_周转箱、防护帽]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将高价值NPO组件放入防静电、防震和端口保护载具，保持接口状态。"
+  },
+  {
+   "skill_id": "NPO051",
+   "category": "NPO近封装光学",
+   "name": "NPO全链路谱系绑定",
+   "tokens": {
+    "id": "[SKILL_NPO051]",
+    "semantic": "[SEM_NPO全链路谱系绑定_测试结果的谱系]",
+    "scene": "[SCENE_所有关键部件ID、位置、过程曲线和测试数据]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "建立芯片/光电引擎—插座—主板—冷板—光纤—激光源—测试结果的谱系。"
+  },
+  {
+   "skill_id": "NPO052",
+   "category": "NPO近封装光学",
+   "name": "新NPO模块/主板接口快速建模与换型",
+   "tokens": {
+    "id": "[SKILL_NPO052]",
+    "semantic": "[SEM_新NPO模块_主板接口快速建模与换型_新冷板和新光纤路径参数化_为可调用配方]",
+    "scene": "[SCENE_新样件、CAD、接口图、测试规范]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_精密对准_微米级_低力落位]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将新模块、新插座、新冷板和新光纤路径参数化为可调用配方。"
+  },
+  {
+   "skill_id": "XPO002",
+   "category": "XPO高密可插拔光学",
+   "name": "双Paddle Card料盘穴位映射",
+   "tokens": {
+    "id": "[SKILL_XPO002]",
+    "semantic": "[SEM_双Paddle_Card料盘穴位映射_正反面和成对关系进行识别]",
+    "scene": "[SCENE_Paddle Card、定制穴位Tray、配对标签]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对两块32通道Paddle Card的料盘位置、正反面和成对关系进行识别。"
+  },
+  {
+   "skill_id": "XPO003",
+   "category": "XPO高密可插拔光学",
+   "name": "中央冷板/液冷组件载具识别",
+   "tokens": {
+    "id": "[SKILL_XPO003]",
+    "semantic": "[SEM_中央冷板_液冷组件载具识别_识别中央冷板_密封件和可安装方向]",
+    "scene": "[SCENE_中央冷板、液冷快速接头、密封件、专用Tray]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别中央冷板、流体接口、密封件和可安装方向。"
+  },
+  {
+   "skill_id": "XPO004",
+   "category": "XPO高密可插拔光学",
+   "name": "上/下壳体与弹出机构部件齐套检查",
+   "tokens": {
+    "id": "[SKILL_XPO004]",
+    "semantic": "[SEM_下壳体与弹出机构部件齐套检查_杠杆和锁止件是否齐套]",
+    "scene": "[SCENE_Top Shell、Bottom Shell、Pull Tab、Ejector、紧固件]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "核对上壳、下壳、螺钉、拉片、杠杆和锁止件是否齐套。"
+  },
+  {
+   "skill_id": "XPO005",
+   "category": "XPO高密可插拔光学",
+   "name": "MPO-16/光连接器组件料盘识别",
+   "tokens": {
+    "id": "[SKILL_XPO005]",
+    "semantic": "[SEM_MPO-16_光连接器组件料盘识别_使用的高密度光连接器]",
+    "scene": "[SCENE_MPO-16连接器、光口组件、精密Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别XPO使用的高密度光连接器、MPO-16端口件、键位和极性。"
+  },
+  {
+   "skill_id": "XPO006",
+   "category": "XPO高密可插拔光学",
+   "name": "48V/50V电源与通信板部件识别",
+   "tokens": {
+    "id": "[SKILL_XPO006]",
+    "semantic": "[SEM_48V_50V电源与通信板部件识别_识别中央电源_连接器和额定输入版本_防止错误高压部件装配]",
+    "scene": "[SCENE_48V & Comm. Card、电源_控制连接器、Tray]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "press",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别中央电源/通信板、连接器和额定输入版本，防止错误高压部件装配。"
+  },
+  {
+   "skill_id": "XPO007",
+   "category": "XPO高密可插拔光学",
+   "name": "Paddle Card热侧/冷侧方向识别",
+   "tokens": {
+    "id": "[SKILL_XPO007]",
+    "semantic": "[SEM_Paddle_Card热侧_冷侧方向识别_的热侧和冷侧_确保热侧朝向中央冷板]",
+    "scene": "[SCENE_Paddle Card 1_2、器件面、基准标记]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别两块Paddle Card的热侧和冷侧，确保热侧朝向中央冷板。"
+  },
+  {
+   "skill_id": "XPO008",
+   "category": "XPO高密可插拔光学",
+   "name": "Paddle Card器件干涉/高度图检查",
+   "tokens": {
+    "id": "[SKILL_XPO008]",
+    "semantic": "[SEM_Paddle_Card器件干涉_高度图检查_飞线接口和机械禁入区_为抓取和叠装生成安全路径]",
+    "scene": "[SCENE_Paddle Card、装配工装、CAD]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查高件、连接器、飞线接口和机械禁入区，为抓取和叠装生成安全路径。"
+  },
+  {
+   "skill_id": "XPO009",
+   "category": "XPO高密可插拔光学",
+   "name": "Paddle Card精密抓取与板弯控制",
+   "tokens": {
+    "id": "[SKILL_XPO009]",
+    "semantic": "[SEM_Paddle_Card精密抓取与板弯控制_元件碰撞和连接器受力]",
+    "scene": "[SCENE_Paddle Card、定制Tray、装配工装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "抓取和搬运Paddle Card时避免板弯、元件碰撞和连接器受力。"
+  },
+  {
+   "skill_id": "XPO010",
+   "category": "XPO高密可插拔光学",
+   "name": "中央冷板定向放置",
+   "tokens": {
+    "id": "[SKILL_XPO010]",
+    "semantic": "[SEM_中央冷板定向放置_将中央液冷冷板放入装配基_并保持流体接口方向正确]",
+    "scene": "[SCENE_中央冷板、装配Nest、液冷接口]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "force",
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将中央液冷冷板放入装配基准，并保持流体接口方向正确。"
+  },
+  {
+   "skill_id": "XPO011",
+   "category": "XPO高密可插拔光学",
+   "name": "双面TIM/导热界面材料贴装",
+   "tokens": {
+    "id": "[SKILL_XPO011]",
+    "semantic": "[SEM_双面TIM_导热界面材料贴装_在中央冷板两侧或]",
+    "scene": "[SCENE_TIM_导热垫、冷板、Paddle Card]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "attach",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "在中央冷板两侧或Paddle Card热侧贴装TIM，避免褶皱、污染和偏移。"
+  },
+  {
+   "skill_id": "XPO012",
+   "category": "XPO高密可插拔光学",
+   "name": "第一块Paddle Card与冷板对准贴合",
+   "tokens": {
+    "id": "[SKILL_XPO012]",
+    "semantic": "[SEM_第一块Paddle_Card与冷板对准贴合_热侧面向中央冷板并完成多_点高度和接触对准]",
+    "scene": "[SCENE_Paddle Card 1、中央冷板、TIM]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "attach",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将Card 1热侧面向中央冷板并完成多点高度和接触对准。"
+  },
+  {
+   "skill_id": "XPO013",
+   "category": "XPO高密可插拔光学",
+   "name": "第二块Paddle Card反向贴合/对称叠装",
+   "tokens": {
+    "id": "[SKILL_XPO013]",
+    "semantic": "[SEM_第二块Paddle_Card反向贴合_对称叠装_方向贴合冷板另一侧_并保持两板对称]",
+    "scene": "[SCENE_Paddle Card 2、中央冷板、Card 1]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "attach",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将Card 2以Belly-to-Belly方向贴合冷板另一侧，并保持两板对称。"
+  },
+  {
+   "skill_id": "XPO014",
+   "category": "XPO高密可插拔光学",
+   "name": "Belly-to-Belly多点压合与平行度控制",
+   "tokens": {
+    "id": "[SKILL_XPO014]",
+    "semantic": "[SEM_Belly-to-Belly多点压合与平行度控制_冷板叠层执行均匀夹持_平行度和压力分布]",
+    "scene": "[SCENE_双Paddle Card、中央冷板、装配夹具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "press",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对双板-冷板叠层执行均匀夹持，控制间距、平行度和压力分布。"
+  },
+  {
+   "skill_id": "XPO015",
+   "category": "XPO高密可插拔光学",
+   "name": "CPC Fly-over线缆取放与路径规划",
+   "tokens": {
+    "id": "[SKILL_XPO015]",
+    "semantic": "[SEM_CPC_Fly-over线缆取放与路径规划_线性高速通道使用的_线缆执行无扭转取放和路径]",
+    "scene": "[SCENE_CPC fly-over线缆、Paddle Card、连接器]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对XPO线性高速通道使用的CPC fly-over线缆执行无扭转取放和路径控制。"
+  },
+  {
+   "skill_id": "XPO016",
+   "category": "XPO高密可插拔光学",
+   "name": "CPC Fly-over连接器柔顺插接",
+   "tokens": {
+    "id": "[SKILL_XPO016]",
+    "semantic": "[SEM_CPC_Fly-over连接器柔顺插接_线缆端头插入_或系统连接器]",
+    "scene": "[SCENE_CPC fly-over线缆端头、板端连接器]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将fly-over线缆端头插入Paddle Card或系统连接器，并确认到位。"
+  },
+  {
+   "skill_id": "XPO017",
+   "category": "XPO高密可插拔光学",
+   "name": "电源/通信板定向装入",
+   "tokens": {
+    "id": "[SKILL_XPO017]",
+    "semantic": "[SEM_电源_通信板定向装入_将独立电源与通信板放入中_央位置并与双_壳体接口对准]",
+    "scene": "[SCENE_48V & Comm. Card、XPO叠层、装配工装]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "force",
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将独立电源与通信板放入中央位置并与双Paddle Card/壳体接口对准。"
+  },
+  {
+   "skill_id": "XPO018",
+   "category": "XPO高密可插拔光学",
+   "name": "独立电源/控制连接器压接或插接",
+   "tokens": {
+    "id": "[SKILL_XPO018]",
+    "semantic": "[SEM_独立电源_控制连接器压接或插接_装配独立的电源和低速控制_避免对高速通道造成干扰]",
+    "scene": "[SCENE_电源_控制连接器、Card-edge接口、通信板]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "装配独立的电源和低速控制连接器，避免对高速通道造成干扰。"
+  },
+  {
+   "skill_id": "XPO019",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO光连接器阵列定位与装入",
+   "tokens": {
+    "id": "[SKILL_XPO019]",
+    "semantic": "[SEM_XPO光连接器阵列定位与装入_将多个高密度光连接器组件_板卡指定位置]",
+    "scene": "[SCENE_光连接器阵列、MPO-16接口、Paddle Card_壳体]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将多个高密度光连接器组件装入壳体/板卡指定位置。"
+  },
+  {
+   "skill_id": "XPO020",
+   "category": "XPO高密可插拔光学",
+   "name": "MPO-16键位/极性/端口编号防错",
+   "tokens": {
+    "id": "[SKILL_XPO020]",
+    "semantic": "[SEM_MPO-16键位_极性_端口编号防错_极性和端口编号_阻止方向和映射错误]",
+    "scene": "[SCENE_MPO-16接口、标签、端口阵列]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别MPO-16键位、极性和端口编号，阻止方向和映射错误。"
+  },
+  {
+   "skill_id": "XPO021",
+   "category": "XPO高密可插拔光学",
+   "name": "光连接器受控插入/锁止",
+   "tokens": {
+    "id": "[SKILL_XPO021]",
+    "semantic": "[SEM_光连接器受控插入_锁止_对内部或外部光连接器执行_位移监控和锁止确认]",
+    "scene": "[SCENE_MPO-16_其他光连接器、板端_壳体接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "joint"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对内部或外部光连接器执行同轴插入、力-位移监控和锁止确认。"
+  },
+  {
+   "skill_id": "XPO022",
+   "category": "XPO高密可插拔光学",
+   "name": "光纤端面显微检查与局部处理",
+   "tokens": {
+    "id": "[SKILL_XPO022]",
+    "semantic": "[SEM_光纤端面显微检查与局部处理_等端面的颗粒_并记录处理前后状态]",
+    "scene": "[SCENE_光纤端面、端面显微镜、局部处理工具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查MPO-16等端面的颗粒、划伤和污染，并记录处理前后状态。"
+  },
+  {
+   "skill_id": "XPO023",
+   "category": "XPO高密可插拔光学",
+   "name": "下壳体定位与叠层装入",
+   "tokens": {
+    "id": "[SKILL_XPO023]",
+    "semantic": "[SEM_下壳体定位与叠层装入_冷板叠层放入_接口和螺柱对准]",
+    "scene": "[SCENE_XPO叠层、Bottom Shell、装配工装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将双板-冷板叠层放入Bottom Shell并控制边缘、接口和螺柱对准。"
+  },
+  {
+   "skill_id": "XPO024",
+   "category": "XPO高密可插拔光学",
+   "name": "上壳体对准合盖",
+   "tokens": {
+    "id": "[SKILL_XPO024]",
+    "semantic": "[SEM_上壳体对准合盖_避免压到拉片_光接口和液冷部件]",
+    "scene": "[SCENE_Top Shell、内部叠层、Pull Tab_接口]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "align",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将Top Shell对准并合盖，避免压到拉片、光接口和液冷部件。"
+  },
+  {
+   "skill_id": "XPO025",
+   "category": "XPO高密可插拔光学",
+   "name": "壳体多螺钉顺序锁付",
+   "tokens": {
+    "id": "[SKILL_XPO025]",
+    "semantic": "[SEM_壳体多螺钉顺序锁付_按指定顺序锁紧上下壳体和_并记录扭矩角度]",
+    "scene": "[SCENE_XPO壳体、螺钉、叠层]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "按指定顺序锁紧上下壳体和内部组件，并记录扭矩角度。"
+  },
+  {
+   "skill_id": "XPO026",
+   "category": "XPO高密可插拔光学",
+   "name": "弹出器杠杆机构装配",
+   "tokens": {
+    "id": "[SKILL_XPO026]",
+    "semantic": "[SEM_弹出器杠杆机构装配_连杆和锁止件]",
+    "scene": "[SCENE_Ejector部件、壳体、销轴_弹簧_紧固件]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "joint"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "装配XPO机械弹出器、支点、连杆和锁止件。"
+  },
+  {
+   "skill_id": "XPO027",
+   "category": "XPO高密可插拔光学",
+   "name": "释放拉片/Pull Tab装配",
+   "tokens": {
+    "id": "[SKILL_XPO027]",
+    "semantic": "[SEM_释放拉片_Pull_Tab装配_将释放拉片装到弹出机构并]",
+    "scene": "[SCENE_Pull Tab、Ejector、Top Shell]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将释放拉片装到弹出机构并验证方向、长度和回位。"
+  },
+  {
+   "skill_id": "XPO028",
+   "category": "XPO高密可插拔光学",
+   "name": "弹出器1:11杠杆功能与行程测试",
+   "tokens": {
+    "id": "[SKILL_XPO028]",
+    "semantic": "[SEM_弹出器1:11杠杆功能与行程测试_测试弹出机构的机械增益_释放和完整行程]",
+    "scene": "[SCENE_已装配XPO模块、弹出器测试治具]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "测试弹出机构的机械增益、锁止、释放和完整行程。"
+  },
+  {
+   "skill_id": "XPO029",
+   "category": "XPO高密可插拔光学",
+   "name": "模块尺寸/平面度/外观3D终检",
+   "tokens": {
+    "id": "[SKILL_XPO029]",
+    "semantic": "[SEM_模块尺寸_平面度_外观3D终检_端口和液冷接头位置]",
+    "scene": "[SCENE_已装配XPO模块]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查XPO外形尺寸、平面度、壳体缝隙、拉片、端口和液冷接头位置。"
+  },
+  {
+   "skill_id": "XPO030",
+   "category": "XPO高密可插拔光学",
+   "name": "液冷快速接头保护帽取下/回装",
+   "tokens": {
+    "id": "[SKILL_XPO030]",
+    "semantic": "[SEM_液冷快速接头保护帽取下_回装_液冷快速接头保护帽_保持密封面不受损]",
+    "scene": "[SCENE_液冷QD接头、防护帽、帽槽载具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "取下和回装XPO液冷快速接头保护帽，保持密封面不受损。"
+  },
+  {
+   "skill_id": "XPO031",
+   "category": "XPO高密可插拔光学",
+   "name": "液冷快速接头同轴对准与盲插",
+   "tokens": {
+    "id": "[SKILL_XPO031]",
+    "semantic": "[SEM_液冷快速接头同轴对准与盲插_模块与主机歧管的液冷_接头执行同轴]",
+    "scene": "[SCENE_XPO模块QD接头、主机冷却歧管]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "force",
+    "joint"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对XPO模块与主机歧管的液冷QD接头执行同轴、低冲击盲插。"
+  },
+  {
+   "skill_id": "XPO032",
+   "category": "XPO高密可插拔光学",
+   "name": "液冷接头滴漏/锁止状态检测",
+   "tokens": {
+    "id": "[SKILL_XPO032]",
+    "semantic": "[SEM_液冷接头滴漏_锁止状态检测_检测接头接合后的锁止_滴液和湿度异常]",
+    "scene": "[SCENE_QD接头、液冷回路、液滴_湿度传感]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检测接头接合后的锁止、渗漏、滴液和湿度异常。"
+  },
+  {
+   "skill_id": "XPO033",
+   "category": "XPO高密可插拔光学",
+   "name": "液冷回路耐压/保压测试",
+   "tokens": {
+    "id": "[SKILL_XPO033]",
+    "semantic": "[SEM_液冷回路耐压_保压测试_流道和连接器进行受控加压_保压和压降判定]",
+    "scene": "[SCENE_XPO冷板_模块、液冷测试台]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对中央冷板、流道和连接器进行受控加压、保压和压降判定。"
+  },
+  {
+   "skill_id": "XPO034",
+   "category": "XPO高密可插拔光学",
+   "name": "流量-压降/流阻测试",
+   "tokens": {
+    "id": "[SKILL_XPO034]",
+    "semantic": "[SEM_流量-压降_流阻测试_测量不同流量下的压降_气泡或流道异常]",
+    "scene": "[SCENE_XPO液冷回路、流量测试台]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "测量不同流量下的压降，识别堵塞、气泡或流道异常。"
+  },
+  {
+   "skill_id": "XPO035",
+   "category": "XPO高密可插拔光学",
+   "name": "冷板热接触/红外温升均匀性测试",
+   "tokens": {
+    "id": "[SKILL_XPO035]",
+    "semantic": "[SEM_冷板热接触_红外温升均匀性测试_热侧与中央冷板的热接触和]",
+    "scene": "[SCENE_XPO模块、热负载、液冷台]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "temp"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查两块Paddle Card热侧与中央冷板的热接触和温升均匀性。"
+  },
+  {
+   "skill_id": "XPO036",
+   "category": "XPO高密可插拔光学",
+   "name": "50V输入极性/绝缘/安全确认",
+   "tokens": {
+    "id": "[SKILL_XPO036]",
+    "semantic": "[SEM_50V输入极性_绝缘_安全确认_在高压直流上电前检查输入_接地和安全互锁]",
+    "scene": "[SCENE_XPO电源接口、测试治具、模块]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "在高压直流上电前检查输入极性、绝缘、接地和安全互锁。"
+  },
+  {
+   "skill_id": "XPO037",
+   "category": "XPO高密可插拔光学",
+   "name": "电源/控制接口I2C/I3C/Reset/Interrupt测试",
+   "tokens": {
+    "id": "[SKILL_XPO037]",
+    "semantic": "[SEM_电源_控制接口I2C_I3C_Reset_Interrupt测试_检查独立电源]",
+    "scene": "[SCENE_XPO模块、主机_测试板、管理接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查独立电源/控制连接器上的管理与控制信号。"
+  },
+  {
+   "skill_id": "XPO038",
+   "category": "XPO高密可插拔光学",
+   "name": "64条高速电通道连续性/开短路测试",
+   "tokens": {
+    "id": "[SKILL_XPO038]",
+    "semantic": "[SEM_64条高速电通道连续性_开短路测试_条高速电气通道的连续性_开短路和接触状态]",
+    "scene": "[SCENE_双Paddle Card、主机连接器、测试治具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "pointcloud",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查XPO 64条高速电气通道的连续性、开短路和接触状态。"
+  },
+  {
+   "skill_id": "XPO039",
+   "category": "XPO高密可插拔光学",
+   "name": "Tx/Rx分区与串扰/路径一致性测试",
+   "tokens": {
+    "id": "[SKILL_XPO039]",
+    "semantic": "[SEM_Tx_Rx分区与串扰_路径一致性测试_分置的线性通道连接正确_并检测串扰或错接]",
+    "scene": "[SCENE_Paddle Card、fly-over线缆、主机接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "验证Tx和Rx分置的线性通道连接正确，并检测串扰或错接。"
+  },
+  {
+   "skill_id": "XPO040",
+   "category": "XPO高密可插拔光学",
+   "name": "MPO-16端口映射/极性通断测试",
+   "tokens": {
+    "id": "[SKILL_XPO040]",
+    "semantic": "[SEM_MPO-16端口映射_极性通断测试_端口与内部光通道的映射]",
+    "scene": "[SCENE_XPO模块、MPO-16跳线、光开关_功率计]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "验证每个MPO-16端口与内部光通道的映射、极性和通断。"
+  },
+  {
+   "skill_id": "XPO041",
+   "category": "XPO高密可插拔光学",
+   "name": "多端口Tx/Rx光功率/波长测试",
+   "tokens": {
+    "id": "[SKILL_XPO041]",
+    "semantic": "[SEM_多端口Tx_Rx光功率_波长测试_按光学架构对多个端口执行_接收和波长相关测试]",
+    "scene": "[SCENE_XPO模块、光纤、光功率_光谱测试系统]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "按光学架构对多个端口执行发射功率、接收和波长相关测试。"
+  },
+  {
+   "skill_id": "XPO042",
+   "category": "XPO高密可插拔光学",
+   "name": "12.8Tbps多通道BER/眼图/链路裕量测试",
+   "tokens": {
+    "id": "[SKILL_XPO042]",
+    "semantic": "[SEM_12.8Tbps多通道BER_眼图_链路裕量测试_整模块进行多通道高速链路_性能测试和弱链路诊断]",
+    "scene": "[SCENE_XPO模块、主机_测试板、光链路]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对XPO整模块进行多通道高速链路性能测试和弱链路诊断。"
+  },
+  {
+   "skill_id": "XPO043",
+   "category": "XPO高密可插拔光学",
+   "name": "400W+热负载下性能联测",
+   "tokens": {
+    "id": "[SKILL_XPO043]",
+    "semantic": "[SEM_400W+热负载下性能联测_在高功耗热负载下同步测试_光电性能和保护动作]",
+    "scene": "[SCENE_XPO模块、液冷台、高功率测试系统]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "temp"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在高功耗热负载下同步测试温度、流量、功耗、光电性能和保护动作。"
+  },
+  {
+   "skill_id": "XPO044",
+   "category": "XPO高密可插拔光学",
+   "name": "流量-温度-性能闭环调节测试",
+   "tokens": {
+    "id": "[SKILL_XPO044]",
+    "semantic": "[SEM_流量-温度-性能闭环调节测试_按模块功耗动态调节液冷流_验证温度和链路性能闭环]",
+    "scene": "[SCENE_XPO模块、液冷控制器、测试系统]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "temp"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按模块功耗动态调节液冷流量，验证温度和链路性能闭环。"
+  },
+  {
+   "skill_id": "XPO045",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO主机笼子/插槽识别与状态判断",
+   "tokens": {
+    "id": "[SKILL_XPO045]",
+    "semantic": "[SEM_XPO主机笼子_插槽识别与状态判断_液冷歧管和邻近模块状态]",
+    "scene": "[SCENE_XPO Host Cage、前面板、插槽、歧管]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "pointcloud",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别XPO主机笼子、空闲插槽、导轨、液冷歧管和邻近模块状态。"
+  },
+  {
+   "skill_id": "XPO046",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO模块预插入姿态与多接口同轴对准",
+   "tokens": {
+    "id": "[SKILL_XPO046]",
+    "semantic": "[SEM_XPO模块预插入姿态与多接口同轴对准_在进入笼子前同时对准机械_光接口和液冷]",
+    "scene": "[SCENE_XPO模块、Host Cage、多个盲插接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "joint"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在进入笼子前同时对准机械导轨、电连接器、光接口和液冷QD接口。"
+  },
+  {
+   "skill_id": "XPO047",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO高插入力受控推进",
+   "tokens": {
+    "id": "[SKILL_XPO047]",
+    "semantic": "[SEM_XPO高插入力受控推进_在高接点数导致较大插入力_沿导轨受控推进模块]",
+    "scene": "[SCENE_XPO模块、Host Cage、电_光_液冷接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在高接点数导致较大插入力的情况下，沿导轨受控推进模块。"
+  },
+  {
+   "skill_id": "XPO048",
+   "category": "XPO高密可插拔光学",
+   "name": "电/光/液冷盲插同时到位确认",
+   "tokens": {
+    "id": "[SKILL_XPO048]",
+    "semantic": "[SEM_液冷盲插同时到位确认_光口和液冷状态确认所有接]",
+    "scene": "[SCENE_XPO模块、主机接口、传感器]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "综合力位移、卡扣、导通、光口和液冷状态确认所有接口到位。"
+  },
+  {
+   "skill_id": "XPO049",
+   "category": "XPO高密可插拔光学",
+   "name": "弹出器锁止/拉片位置确认",
+   "tokens": {
+    "id": "[SKILL_XPO049]",
+    "semantic": "[SEM_弹出器锁止_拉片位置确认_确认模块弹出机构处于锁止_拉片不干涉前面板和邻近端]",
+    "scene": "[SCENE_XPO模块、Ejector、Pull Tab、Host Cage]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "确认模块弹出机构处于锁止位置，拉片不干涉前面板和邻近端口。"
+  },
+  {
+   "skill_id": "XPO050",
+   "category": "XPO高密可插拔光学",
+   "name": "上电/通液/模块激活顺序",
+   "tokens": {
+    "id": "[SKILL_XPO050]",
+    "semantic": "[SEM_上电_通液_模块激活顺序_控制和光学链路的安全顺序]",
+    "scene": "[SCENE_已插入XPO模块、液冷_电源_控制系统]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "按液冷、50V电源、控制和光学链路的安全顺序激活XPO模块。"
+  },
+  {
+   "skill_id": "XPO051",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO安全停用/卸压/断电顺序",
+   "tokens": {
+    "id": "[SKILL_XPO051]",
+    "semantic": "[SEM_XPO安全停用_卸压_断电顺序_在拔出前完成链路停用_流体隔离和残压确认]",
+    "scene": "[SCENE_在线XPO模块、主机系统、液冷回路]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "extract",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "在拔出前完成链路停用、功率卸载、断电、流体隔离和残压确认。"
+  },
+  {
+   "skill_id": "XPO052",
+   "category": "XPO高密可插拔光学",
+   "name": "Pull Tab释放与弹出器助力拔出",
+   "tokens": {
+    "id": "[SKILL_XPO052]",
+    "semantic": "[SEM_Pull_Tab释放与弹出器助力拔出_使用释放拉片和_杠杆机构解锁模块并克服多]",
+    "scene": "[SCENE_XPO模块、Pull Tab、Ejector、Host Cage]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "extract",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "使用释放拉片和1:11杠杆机构解锁模块并克服多接口拔出力。"
+  },
+  {
+   "skill_id": "XPO053",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO模块直线拔出与接口保护",
+   "tokens": {
+    "id": "[SKILL_XPO053]",
+    "semantic": "[SEM_XPO模块直线拔出与接口保护_沿导轨直线拔出模块_避免侧载损伤电_光和液冷接口]",
+    "scene": "[SCENE_XPO模块、Host Cage、多个盲插接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "extract",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "沿导轨直线拔出模块，避免侧载损伤电、光和液冷接口。"
+  },
+  {
+   "skill_id": "XPO054",
+   "category": "XPO高密可插拔光学",
+   "name": "拔出后液滴/残液检查与隔离",
+   "tokens": {
+    "id": "[SKILL_XPO054]",
+    "semantic": "[SEM_拔出后液滴_残液检查与隔离_检查模块和主机液冷接口是_渗漏或密封异常]",
+    "scene": "[SCENE_已拔出XPO模块、Host Cage、QD接口]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "extract",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查模块和主机液冷接口是否有残液、渗漏或密封异常，并自动隔离。"
+  },
+  {
+   "skill_id": "XPO055",
+   "category": "XPO高密可插拔光学",
+   "name": "故障XPO模块更换/重插/复测",
+   "tokens": {
+    "id": "[SKILL_XPO055]",
+    "semantic": "[SEM_故障XPO模块更换_重插_复测_对故障模块执行安全拔出_重插和恢复测试]",
+    "scene": "[SCENE_故障XPO模块、备件、Host Cage、测试系统]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对故障模块执行安全拔出、替换、重插和恢复测试。"
+  },
+  {
+   "skill_id": "XPO056",
+   "category": "XPO高密可插拔光学",
+   "name": "高密度多槽位顺序与邻口防碰撞规划",
+   "tokens": {
+    "id": "[SKILL_XPO056]",
+    "semantic": "[SEM_高密度多槽位顺序与邻口防碰撞规划_在高密度前面板中规划多个_模块的插拔顺序和机器人可]",
+    "scene": "[SCENE_多插槽XPO交换机、相邻模块、线缆_液冷接口]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在高密度前面板中规划多个XPO模块的插拔顺序和机器人可达性。"
+  },
+  {
+   "skill_id": "XPO057",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO模块全链路谱系绑定",
+   "tokens": {
+    "id": "[SKILL_XPO057]",
+    "semantic": "[SEM_XPO模块全链路谱系绑定_弹出器和测试结果]",
+    "scene": "[SCENE_所有部件ID、槽位、过程曲线、测试数据]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "test",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "绑定Card 1/2、冷板、QD、光口、电源通信板、壳体、弹出器和测试结果。"
+  },
+  {
+   "skill_id": "XPO058",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO现场服务保护帽/防护包装",
+   "tokens": {
+    "id": "[SKILL_XPO058]",
+    "semantic": "[SEM_XPO现场服务保护帽_防护包装_模块安装光口和液冷口保护_并放入防静电防震载具]",
+    "scene": "[SCENE_XPO模块、防尘帽、液冷帽、定制Tray_箱]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "extract",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "对拔出的XPO模块安装光口和液冷口保护件，并放入防静电防震载具。"
+  },
+  {
+   "skill_id": "XPO059",
+   "category": "XPO高密可插拔光学",
+   "name": "新XPO版本快速建模与动作配方发布",
+   "tokens": {
+    "id": "[SKILL_XPO059]",
+    "semantic": "[SEM_新XPO版本快速建模与动作配方发布_拉片和主机笼子参数化]",
+    "scene": "[SCENE_新样件、CAD、接口图、测试规范]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "force",
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将新的外形、Paddle Card、冷板、接口、拉片和主机笼子参数化。"
+  },
+  {
+   "skill_id": "XPO060",
+   "category": "XPO高密可插拔光学",
+   "name": "XPO插拔寿命/循环可靠性自动测试",
+   "tokens": {
+    "id": "[SKILL_XPO060]",
+    "semantic": "[SEM_XPO插拔寿命_循环可靠性自动测试_自动执行模块插拔_统计力曲线和失效]",
+    "scene": "[SCENE_XPO模块、Host Cage、循环测试台]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_键位极性_端口防错_插拔柔顺]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "自动执行模块插拔、弹出器、液冷QD和光/电接口循环，统计力曲线和失效。"
+  },
+  {
+   "skill_id": "L001",
+   "category": "学习泛化",
+   "name": "示教学习",
+   "tokens": {
+    "id": "[SKILL_L001]",
+    "semantic": "[SEM_示教学习_通过人工拖动_少量样本配置技能参数]",
+    "scene": "[SCENE_换型、装配、载具动作配方]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "通过人工拖动、轨迹示教、少量样本配置技能参数。"
+  },
+  {
+   "skill_id": "L002",
+   "category": "学习泛化",
+   "name": "视频/仿真学习",
+   "tokens": {
+    "id": "[SKILL_L002]",
+    "semantic": "[SEM_视频_仿真学习_仿真或数字孪生中学习动作]",
+    "scene": "[SCENE_复杂操作储备]",
+    "stage": "[STAGE_P3]",
+    "maturity": "[MAT_0]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "从视频、仿真或数字孪生中学习动作策略。"
+  },
+  {
+   "skill_id": "L003",
+   "category": "学习泛化",
+   "name": "技能参数化配置",
+   "tokens": {
+    "id": "[SKILL_L003]",
+    "semantic": "[SEM_技能参数化配置_将原子技能封装为可配置模_支持不同工件和工站参数]",
+    "scene": "[SCENE_所有可复制场景]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将原子技能封装为可配置模块，支持不同工件和工站参数。"
+  },
+  {
+   "skill_id": "L004",
+   "category": "学习泛化",
+   "name": "失败案例回放/诊断",
+   "tokens": {
+    "id": "[SKILL_L004]",
+    "semantic": "[SEM_失败案例回放_诊断_回放失败时的图像_定位根因并迭代策略]",
+    "scene": "[SCENE_异常恢复、量产运维]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "回放失败时的图像、力曲线、轨迹，定位根因并迭代策略。"
+  },
+  {
+   "skill_id": "L005",
+   "category": "学习泛化",
+   "name": "跨工位迁移",
+   "tokens": {
+    "id": "[SKILL_L005]",
+    "semantic": "[SEM_跨工位迁移_把同类技能迁移到新客户]",
+    "scene": "[SCENE_复制销售]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_0]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "把同类技能迁移到新客户、新工装、新物料。"
+  },
+  {
+   "skill_id": "L006",
+   "category": "学习泛化",
+   "name": "新物料快速建模",
+   "tokens": {
+    "id": "[SKILL_L006]",
+    "semantic": "[SEM_新物料快速建模_训练或配置新]",
+    "scene": "[SCENE_视觉检测、拣选、换型]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "快速采集、标注、训练或配置新SKU识别/操作模型。"
+  },
+  {
+   "skill_id": "L007",
+   "category": "学习泛化",
+   "name": "自主校准/重标定",
+   "tokens": {
+    "id": "[SKILL_L007]",
+    "semantic": "[SEM_自主校准_重标定_检测漂移并自动执行标定]",
+    "scene": "[SCENE_精密检测、插拔、3D测量]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "检测漂移并自动执行标定、补偿、验证。"
+  },
+  {
+   "skill_id": "L008",
+   "category": "学习泛化",
+   "name": "多模态指令理解",
+   "tokens": {
+    "id": "[SKILL_L008]",
+    "semantic": "[SEM_多模态指令理解_任务单并转成技能调用]",
+    "scene": "[SCENE_售前演示、柔性任务]",
+    "stage": "[STAGE_P3]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_迁移学习_域适应_零样本]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "理解文字、语音、图片、任务单并转成技能调用。"
+  },
+  {
+   "skill_id": "S001",
+   "category": "安全集成",
+   "name": "安全区域监控",
+   "tokens": {
+    "id": "[SKILL_S001]",
+    "semantic": "[SEM_安全区域监控]",
+    "scene": "[SCENE_所有人机共线场景]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别危险区、协作区、禁入区，并执行限速、停机、告警。"
+  },
+  {
+   "skill_id": "S002",
+   "category": "安全集成",
+   "name": "人员/叉车/料车避让",
+   "tokens": {
+    "id": "[SKILL_S002]",
+    "semantic": "[SEM_人员_叉车_料车避让_保持安全距离]",
+    "scene": "[SCENE_移动作业、物流、巡检]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "识别人、叉车、AGV、料车，保持安全距离。"
+  },
+  {
+   "skill_id": "S003",
+   "category": "安全集成",
+   "name": "急停/安全状态切换",
+   "tokens": {
+    "id": "[SKILL_S003]",
+    "semantic": "[SEM_急停_安全状态切换_人员进入时进入安全状态并]",
+    "scene": "[SCENE_所有工位]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在异常、碰撞、人员进入时进入安全状态并可恢复。"
+  },
+  {
+   "skill_id": "S004",
+   "category": "安全集成",
+   "name": "力/碰撞检测",
+   "tokens": {
+    "id": "[SKILL_S004]",
+    "semantic": "[SEM_碰撞检测_检测末端过力]",
+    "scene": "[SCENE_装配、上下料、打磨]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检测末端过力、夹爪异常、碰撞、卡滞。"
+  },
+  {
+   "skill_id": "S005",
+   "category": "安全集成",
+   "name": "权限/任务确认",
+   "tokens": {
+    "id": "[SKILL_S005]",
+    "semantic": "[SEM_权限_任务确认_危险动作进行权限和二次确]",
+    "scene": "[SCENE_洁净室、巡检、设备交互]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对换型、开门、工具切换、危险动作进行权限和二次确认。"
+  },
+  {
+   "skill_id": "S006",
+   "category": "安全集成",
+   "name": "异常恢复/重试",
+   "tokens": {
+    "id": "[SKILL_S006]",
+    "semantic": "[SEM_异常恢复_重试_识别失败原因_安全停机或请求人工]",
+    "scene": "[SCENE_量产工位、卡料处理]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "识别失败原因，选择重试、退回、安全停机或请求人工。"
+  },
+  {
+   "skill_id": "S007",
+   "category": "安全集成",
+   "name": "MES/WMS/SCADA/PLC对接",
+   "tokens": {
+    "id": "[SKILL_S007]",
+    "semantic": "[SEM_MES_WMS_SCADA_PLC对接_与工厂系统和设备_接收任务和上传结果]",
+    "scene": "[SCENE_所有量产项目]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "与工厂系统和设备PLC通讯，接收任务和上传结果。"
+  },
+  {
+   "skill_id": "S008",
+   "category": "安全集成",
+   "name": "任务编排/排程",
+   "tokens": {
+    "id": "[SKILL_S008]",
+    "semantic": "[SEM_任务编排_排程_将工单拆解为机器人任务_资源和状态排程]",
+    "scene": "[SCENE_AMR、复合机器人、线边物流]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将工单拆解为机器人任务，按优先级、资源和状态排程。"
+  },
+  {
+   "skill_id": "S009",
+   "category": "安全集成",
+   "name": "日志/质量/过程追溯",
+   "tokens": {
+    "id": "[SKILL_S009]",
+    "semantic": "[SEM_日志_质量_过程追溯]",
+    "scene": "[SCENE_所有量产工位]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "记录动作、图片、力曲线、异常、版本、人员和工单。"
+  },
+  {
+   "skill_id": "S010",
+   "category": "安全集成",
+   "name": "远程运维/OTA",
+   "tokens": {
+    "id": "[SKILL_S010]",
+    "semantic": "[SEM_远程运维_OTA]",
+    "scene": "[SCENE_规模交付项目]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_安全区_碰撞检测_急停]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "远程诊断、参数下发、版本管理、健康监测。"
+  },
+  {
+   "skill_id": "P001",
+   "category": "感知定位",
+   "name": "作业对象识别",
+   "tokens": {
+    "id": "[SKILL_P001]",
+    "semantic": "[SEM_作业对象识别_工具等作业对象_输出类别和候选框]",
+    "scene": "[SCENE_上下料、拣选、包装、载具识别]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别零件、包装、料盘、载具、工具等作业对象，输出类别和候选框/掩膜。"
+  },
+  {
+   "skill_id": "P002",
+   "category": "感知定位",
+   "name": "工装/孔位/接口识别",
+   "tokens": {
+    "id": "[SKILL_P002]",
+    "semantic": "[SEM_工装_孔位_接口识别_识别夹具基准_螺孔等关键装配特征]",
+    "scene": "[SCENE_精密插拔、锁付、装配]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别夹具基准、孔位、插接口、定位销、螺孔等关键装配特征。"
+  },
+  {
+   "skill_id": "P003",
+   "category": "感知定位",
+   "name": "条码/二维码/OCR读取",
+   "tokens": {
+    "id": "[SKILL_P003]",
+    "semantic": "[SEM_条码_二维码_OCR读取_设备屏幕文字和标签信息]",
+    "scene": "[SCENE_仓储、包装、巡检、PCBA]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "code"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "读取料号、批次、工单、设备屏幕文字和标签信息。"
+  },
+  {
+   "skill_id": "P004",
+   "category": "感知定位",
+   "name": "缺陷/污染/异物识别",
+   "tokens": {
+    "id": "[SKILL_P004]",
+    "semantic": "[SEM_缺陷_污染_异物识别]",
+    "scene": "[SCENE_视觉检测、复检、载具检测]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别污渍、颗粒、划伤、毛刺、焊点缺陷、异物等异常。"
+  },
+  {
+   "skill_id": "P005",
+   "category": "感知定位",
+   "name": "6D位姿估计",
+   "tokens": {
+    "id": "[SKILL_P005]",
+    "semantic": "[SEM_6D位姿估计_估计物体相对机器人_工装的三维位置和姿态]",
+    "scene": "[SCENE_上下料、插拔、装配、打磨]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "pose",
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "估计物体相对机器人/工装的三维位置和姿态。"
+  },
+  {
+   "skill_id": "P006",
+   "category": "感知定位",
+   "name": "3D点云重建/配准",
+   "tokens": {
+    "id": "[SKILL_P006]",
+    "semantic": "[SEM_3D点云重建_配准_获取并配准工件]",
+    "scene": "[SCENE_3D检测、尺寸测量、打磨]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "获取并配准工件/工位点云，形成尺寸、姿态、表面信息。"
+  },
+  {
+   "skill_id": "P007",
+   "category": "感知定位",
+   "name": "手眼标定/坐标变换",
+   "tokens": {
+    "id": "[SKILL_P007]",
+    "semantic": "[SEM_手眼标定_坐标变换_之间的统一坐标关系]",
+    "scene": "[SCENE_所有视觉引导工位]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "pose",
+    "joint"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "建立相机、机械臂、工装、AMR之间的统一坐标关系。"
+  },
+  {
+   "skill_id": "P008",
+   "category": "感知定位",
+   "name": "高精度边缘/角点/轮廓检测",
+   "tokens": {
+    "id": "[SKILL_P008]",
+    "semantic": "[SEM_高精度边缘_角点_轮廓检测_反光或复杂背景下提取边缘]",
+    "scene": "[SCENE_3微米检测、金线检测、连接器对位]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在微小尺寸、反光或复杂背景下提取边缘、轮廓、角点、焊线特征。"
+  },
+  {
+   "skill_id": "P009",
+   "category": "感知定位",
+   "name": "视觉-力觉融合定位",
+   "tokens": {
+    "id": "[SKILL_P009]",
+    "semantic": "[SEM_视觉-力觉融合定位_将视觉位姿与接触力_修正最后毫米级误差]",
+    "scene": "[SCENE_插拔、压装、精密装配]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "image",
+    "force",
+    "pose"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将视觉位姿与接触力、扭矩、位移融合，修正最后毫米级误差。"
+  },
+  {
+   "skill_id": "P010",
+   "category": "感知定位",
+   "name": "视觉伺服追踪",
+   "tokens": {
+    "id": "[SKILL_P010]",
+    "semantic": "[SEM_视觉伺服追踪_在机器人运动过程中实时根_据视觉反馈修正轨迹]",
+    "scene": "[SCENE_动态抓取、插拔、焊接轨迹]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在机器人运动过程中实时根据视觉反馈修正轨迹。"
+  },
+  {
+   "skill_id": "P011",
+   "category": "感知定位",
+   "name": "透明/反光物识别",
+   "tokens": {
+    "id": "[SKILL_P011]",
+    "semantic": "[SEM_透明_反光物识别_识别透明塑料]",
+    "scene": "[SCENE_光学器件、电子件、洁净室容器]",
+    "stage": "[STAGE_P3]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别透明塑料、玻璃、金属镜面、高反光零件。"
+  },
+  {
+   "skill_id": "P012",
+   "category": "感知定位",
+   "name": "颗粒/洁净度感知",
+   "tokens": {
+    "id": "[SKILL_P012]",
+    "semantic": "[SEM_颗粒_洁净度感知_污染区域和低污染作业状态]",
+    "scene": "[SCENE_半导体_光电低污染作业、精密上下料]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检测空气/表面颗粒、污染区域和低污染作业状态。"
+  },
+  {
+   "skill_id": "P013",
+   "category": "感知定位",
+   "name": "仪表/屏幕/指示灯识别",
+   "tokens": {
+    "id": "[SKILL_P013]",
+    "semantic": "[SEM_仪表_屏幕_指示灯识别_读取设备仪表]",
+    "scene": "[SCENE_设备巡检、载具状态巡检]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "force",
+    "temp"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "读取设备仪表、HMI屏幕、指示灯、阀位、压力/温度显示。"
+  },
+  {
+   "skill_id": "P014",
+   "category": "感知定位",
+   "name": "物料分类/分拣识别",
+   "tokens": {
+    "id": "[SKILL_P014]",
+    "semantic": "[SEM_物料分类_分拣识别_尺寸对物料分类]",
+    "scene": "[SCENE_仓储、包装、分拣]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "code"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按外观、SKU、缺陷、标签、尺寸对物料分类。"
+  },
+  {
+   "skill_id": "P015",
+   "category": "感知定位",
+   "name": "工位状态判别",
+   "tokens": {
+    "id": "[SKILL_P015]",
+    "semantic": "[SEM_工位状态判别_判断设备是否空闲_夹具是否到位]",
+    "scene": "[SCENE_巡检、上下料、异常恢复]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_粗定位_基准识别_手眼变换]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "判断设备是否空闲、料满/料空、门开/门关、夹具是否到位。"
+  },
+  {
+   "skill_id": "A001",
+   "category": "操作动作",
+   "name": "精密对准",
+   "tokens": {
+    "id": "[SKILL_A001]",
+    "semantic": "[SEM_精密对准_工具对准目标孔]",
+    "scene": "[SCENE_光模块插拔、传动轴装配、锁付]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将工件、插头、治具、工具对准目标孔/接口/轨迹。"
+  },
+  {
+   "skill_id": "A002",
+   "category": "操作动作",
+   "name": "插入/拔出",
+   "tokens": {
+    "id": "[SKILL_A002]",
+    "semantic": "[SEM_插入_拔出_按给定路径和力阈值插入或]",
+    "scene": "[SCENE_光模块插拔、线束、半导体载具]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按给定路径和力阈值插入或拔出连接器、模块、治具。"
+  },
+  {
+   "skill_id": "A003",
+   "category": "操作动作",
+   "name": "压装/扣合",
+   "tokens": {
+    "id": "[SKILL_A003]",
+    "semantic": "[SEM_压装_扣合_控制力位曲线完成压装]",
+    "scene": "[SCENE_传动轴、塑胶件、电机装配]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "press",
+   "modalities": [
+    "force",
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "控制力位曲线完成压装、卡扣、扣合。"
+  },
+  {
+   "skill_id": "A004",
+   "category": "操作动作",
+   "name": "旋拧/锁付",
+   "tokens": {
+    "id": "[SKILL_A004]",
+    "semantic": "[SEM_旋拧_锁付]",
+    "scene": "[SCENE_PCBA、电子装配、外壳装配]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "完成取螺丝、对孔、锁付、退刀。"
+  },
+  {
+   "skill_id": "A005",
+   "category": "操作动作",
+   "name": "扭矩/角度控制",
+   "tokens": {
+    "id": "[SKILL_A005]",
+    "semantic": "[SEM_扭矩_角度控制_闭环控制扭矩_深度并输出追溯数据]",
+    "scene": "[SCENE_锁付、传动轴、设备维护]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "闭环控制扭矩、角度、深度并输出追溯数据。"
+  },
+  {
+   "skill_id": "A006",
+   "category": "操作动作",
+   "name": "轨迹跟踪加工",
+   "tokens": {
+    "id": "[SKILL_A006]",
+    "semantic": "[SEM_轨迹跟踪加工_边缘轨迹进行焊接_去毛刺等连续加工]",
+    "scene": "[SCENE_焊接、打磨、去毛刺]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "weld",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "沿焊缝、毛边、边缘轨迹进行焊接、打磨、去毛刺等连续加工。"
+  },
+  {
+   "skill_id": "A007",
+   "category": "操作动作",
+   "name": "点胶/涂布/喷涂",
+   "tokens": {
+    "id": "[SKILL_A007]",
+    "semantic": "[SEM_点胶_涂布_喷涂_按轨迹和流量执行点胶]",
+    "scene": "[SCENE_电子、密封、灌装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "dispense",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "按轨迹和流量执行点胶、涂布、喷涂、灌封。"
+  },
+  {
+   "skill_id": "A008",
+   "category": "操作动作",
+   "name": "贴标/贴装",
+   "tokens": {
+    "id": "[SKILL_A008]",
+    "semantic": "[SEM_贴标_贴装_部件并按姿态贴装到指定位]",
+    "scene": "[SCENE_包装、贴标、电子贴片]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "抓取标签/部件并按姿态贴装到指定位置。"
+  },
+  {
+   "skill_id": "A009",
+   "category": "操作动作",
+   "name": "撕膜/贴膜",
+   "tokens": {
+    "id": "[SKILL_A009]",
+    "semantic": "[SEM_撕膜_贴膜_撕除保护膜或贴合薄膜]",
+    "scene": "[SCENE_电子、光学、包装]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "attach",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "找到起膜边，撕除保护膜或贴合薄膜。"
+  },
+  {
+   "skill_id": "A010",
+   "category": "操作动作",
+   "name": "锡焊/钎焊",
+   "tokens": {
+    "id": "[SKILL_A010]",
+    "semantic": "[SEM_锡焊_钎焊_对焊点进行点焊_并检测焊点质量]",
+    "scene": "[SCENE_PCBA、线束、电子维修]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "temp"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 1,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对焊点进行点焊、拖焊、补焊，并检测焊点质量。"
+  },
+  {
+   "skill_id": "A011",
+   "category": "操作动作",
+   "name": "接插件/线束插接",
+   "tokens": {
+    "id": "[SKILL_A011]",
+    "semantic": "[SEM_接插件_线束插接_识别端子方向]",
+    "scene": "[SCENE_PCBA、设备维护]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别端子方向，完成线束、排线、连接器插接。"
+  },
+  {
+   "skill_id": "A012",
+   "category": "操作动作",
+   "name": "柔顺接触/力控",
+   "tokens": {
+    "id": "[SKILL_A012]",
+    "semantic": "[SEM_柔顺接触_力控_在接触任务中按力_位混合策略控制运动]",
+    "scene": "[SCENE_插拔、压装、打磨、上下料]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在接触任务中按力/位混合策略控制运动。"
+  },
+  {
+   "skill_id": "A013",
+   "category": "操作动作",
+   "name": "微动搜索与容差补偿",
+   "tokens": {
+    "id": "[SKILL_A013]",
+    "semantic": "[SEM_微动搜索与容差补偿_在小范围内搜索孔位_补偿加工和装配误差]",
+    "scene": "[SCENE_光模块插拔、精密装配]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在小范围内搜索孔位/接口，补偿加工和装配误差。"
+  },
+  {
+   "skill_id": "A014",
+   "category": "操作动作",
+   "name": "传送带动态抓取",
+   "tokens": {
+    "id": "[SKILL_A014]",
+    "semantic": "[SEM_传送带动态抓取_在运动输送线上识别_预测并抓取目标]",
+    "scene": "[SCENE_分拣、包装、食品_电子]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "code"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在运动输送线上识别、预测并抓取目标。"
+  },
+  {
+   "skill_id": "A015",
+   "category": "操作动作",
+   "name": "工装定位/基准寻边",
+   "tokens": {
+    "id": "[SKILL_A015]",
+    "semantic": "[SEM_工装定位_基准寻边_定位销完成工装坐标校准]",
+    "scene": "[SCENE_换型、上下料、精密装配]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "image",
+    "pose",
+    "cad"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "通过基准点、边线、定位销完成工装坐标校准。"
+  },
+  {
+   "skill_id": "AO002",
+   "category": "操作动作",
+   "name": "中文名称/别名归一",
+   "tokens": {
+    "id": "[SKILL_AO002]",
+    "semantic": "[SEM_中文名称_别名归一_料框等映射到统一中文通俗]",
+    "scene": "[SCENE_所有载具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "将Tray/托盘/料盘/料框等映射到统一中文通俗名称和载具ID"
+  },
+  {
+   "skill_id": "AO003",
+   "category": "操作动作",
+   "name": "载具ID读取",
+   "tokens": {
+    "id": "[SKILL_AO003]",
+    "semantic": "[SEM_载具ID读取_写入任务记录]",
+    "scene": "[SCENE_Tray、Tote、Rack、Cart、Pallet、治具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "定位标签→读码/RFID→校验→写入任务记录"
+  },
+  {
+   "skill_id": "AO004",
+   "category": "操作动作",
+   "name": "载具方向/正反/防呆识别",
+   "tokens": {
+    "id": "[SKILL_AO004]",
+    "semantic": "[SEM_载具方向_正反_防呆识别_必要时提示纠正或自动旋转]",
+    "scene": "[SCENE_Tray、Magazine、Fixture、Clamshell]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别缺口/孔位/标记→判断朝向→必要时提示纠正或自动旋转"
+  },
+  {
+   "skill_id": "AO005",
+   "category": "操作动作",
+   "name": "满空/槽位占用检测",
+   "tokens": {
+    "id": "[SKILL_AO005]",
+    "semantic": "[SEM_满空_槽位占用检测]",
+    "scene": "[SCENE_Tray、Magazine、Rack、Test Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "逐槽扫描→输出有料/空位/错放/禁用槽"
+  },
+  {
+   "skill_id": "AO006",
+   "category": "操作动作",
+   "name": "载具破损/变形/污染/异物检测",
+   "tokens": {
+    "id": "[SKILL_AO006]",
+    "semantic": "[SEM_载具破损_变形_污染_异物检测_合格放行或分流]",
+    "scene": "[SCENE_Tray、Tote、Pallet、Dunnage、Blister]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检查缺角/裂纹/翘曲/油污/异物→合格放行或分流"
+  },
+  {
+   "skill_id": "AO007",
+   "category": "操作动作",
+   "name": "外框/角点/边基准定位",
+   "tokens": {
+    "id": "[SKILL_AO007]",
+    "semantic": "[SEM_外框_角点_边基准定位_检测外框和角点]",
+    "scene": "[SCENE_Tray、Tote、Pallet、Blister]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "检测外框和角点→计算XYθ→生成抓取/放置基准"
+  },
+  {
+   "skill_id": "AO008",
+   "category": "操作动作",
+   "name": "孔/销/导轨基准定位",
+   "tokens": {
+    "id": "[SKILL_AO008]",
+    "semantic": "[SEM_导轨基准定位]",
+    "scene": "[SCENE_Process Pallet、Fixture、Rack、Magazine]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "pose",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "粗定位→识别孔/销/导轨→二次修正→输出6D位姿"
+  },
+  {
+   "skill_id": "AO009",
+   "category": "操作动作",
+   "name": "槽位/穴位坐标生成",
+   "tokens": {
+    "id": "[SKILL_AO009]",
+    "semantic": "[SEM_槽位_穴位坐标生成_生成取放点列表]",
+    "scene": "[SCENE_Tray、JEDEC、Waffle Pack、Test Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别行列→编号→标记禁用槽→生成取放点列表"
+  },
+  {
+   "skill_id": "AO010",
+   "category": "操作动作",
+   "name": "层位/窄槽定位",
+   "tokens": {
+    "id": "[SKILL_AO010]",
+    "semantic": "[SEM_层位_窄槽定位_输出进入角度和高度]",
+    "scene": "[SCENE_Rack、Magazine、Cassette、料笼]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别第N层/第N槽→输出进入角度和高度"
+  },
+  {
+   "skill_id": "AO011",
+   "category": "操作动作",
+   "name": "叉孔/把手/牵引点定位",
+   "tokens": {
+    "id": "[SKILL_AO011]",
+    "semantic": "[SEM_叉孔_把手_牵引点定位_识别叉孔或牵引点]",
+    "scene": "[SCENE_Pallet、Dunnage、Cart、料笼]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "识别叉孔或牵引点→规划插入/挂接轨迹"
+  },
+  {
+   "skill_id": "AO012",
+   "category": "操作动作",
+   "name": "整盘夹取/托举",
+   "tokens": {
+    "id": "[SKILL_AO012]",
+    "semantic": "[SEM_整盘夹取_托举]",
+    "scene": "[SCENE_Tray、JEDEC、Blister、Test Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "夹爪/托叉进入→夹紧/托举→移动→放置→释放确认"
+  },
+  {
+   "skill_id": "AO013",
+   "category": "操作动作",
+   "name": "整箱夹持/托举",
+   "tokens": {
+    "id": "[SKILL_AO013]",
+    "semantic": "[SEM_整箱夹持_托举_抓取把手或两侧夹持]",
+    "scene": "[SCENE_Tote、Bin、周转箱]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "抓取把手或两侧夹持→托举→称重/防偏载→放置"
+  },
+  {
+   "skill_id": "AO014",
+   "category": "操作动作",
+   "name": "料盘堆叠/拆垛",
+   "tokens": {
+    "id": "[SKILL_AO014]",
+    "semantic": "[SEM_料盘堆叠_拆垛]",
+    "scene": "[SCENE_Tray、Blister、空盘堆]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "测高→取顶层→分离粘连→放入缓存→更新层数"
+  },
+  {
+   "skill_id": "AO015",
+   "category": "操作动作",
+   "name": "滚筒/输送线移载",
+   "tokens": {
+    "id": "[SKILL_AO015]",
+    "semantic": "[SEM_滚筒_输送线移载]",
+    "scene": "[SCENE_Tray、Tote、Pallet、Process Pallet]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "推入/拉出→滚筒移载→在位确认→释放"
+  },
+  {
+   "skill_id": "AO016",
+   "category": "操作动作",
+   "name": "料车顶升/牵引/脱钩",
+   "tokens": {
+    "id": "[SKILL_AO016]",
+    "semantic": "[SEM_料车顶升_牵引_脱钩]",
+    "scene": "[SCENE_Cart、料笼、Dolly]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "精准停靠→挂接/顶升→锁定→移动→脱钩/落下"
+  },
+  {
+   "skill_id": "AO017",
+   "category": "操作动作",
+   "name": "按穴位取件/放件",
+   "tokens": {
+    "id": "[SKILL_AO017]",
+    "semantic": "[SEM_按穴位取件_放件_更新槽位状态]",
+    "scene": "[SCENE_Tray、JEDEC、Waffle Pack、Test Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "移动到槽位→取/放→在位复检→更新槽位状态"
+  },
+  {
+   "skill_id": "AO018",
+   "category": "操作动作",
+   "name": "Tray-to-Tray转盘",
+   "tokens": {
+    "id": "[SKILL_AO018]",
+    "semantic": "[SEM_Tray-to-Tray转盘_目标槽位复检]",
+    "scene": "[SCENE_Tray、JEDEC、Blister]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "从源盘取件→移动→目标盘放件→源/目标槽位复检"
+  },
+  {
+   "skill_id": "AO019",
+   "category": "操作动作",
+   "name": "Tray-to-Fixture装入",
+   "tokens": {
+    "id": "[SKILL_AO019]",
+    "semantic": "[SEM_Tray-to-Fixture装入]",
+    "scene": "[SCENE_Tray、Nest、Fixture]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "取件→二次定位→低力落位→在位确认"
+  },
+  {
+   "skill_id": "AO020",
+   "category": "操作动作",
+   "name": "Fixture-to-Tray出料分Bin",
+   "tokens": {
+    "id": "[SKILL_AO020]",
+    "semantic": "[SEM_Fixture-to-Tray出料分Bin_按结果放入良品]",
+    "scene": "[SCENE_Fixture、Test Tray、良品盘_NG盘]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "从治具取出→按结果放入良品/复测/NG槽位→更新追溯"
+  },
+  {
+   "skill_id": "AO021",
+   "category": "操作动作",
+   "name": "微小/反光/透明件低力取放",
+   "tokens": {
+    "id": "[SKILL_AO021]",
+    "semantic": "[SEM_微小_反光_透明件低力取放]",
+    "scene": "[SCENE_Waffle Pack、Gel-Pak、洁净Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "显微定位→真空/夹取→力控分离→放置→残留确认"
+  },
+  {
+   "skill_id": "AO022",
+   "category": "操作动作",
+   "name": "PCB Magazine抽板/插板",
+   "tokens": {
+    "id": "[SKILL_AO022]",
+    "semantic": "[SEM_PCB_Magazine抽板_插板]",
+    "scene": "[SCENE_PCB Magazine、Rack]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对准槽位→夹/托板边→抽出或插入→卡板检测→状态更新"
+  },
+  {
+   "skill_id": "AO023",
+   "category": "操作动作",
+   "name": "料管/弹匣供料与换管",
+   "tokens": {
+    "id": "[SKILL_AO023]",
+    "semantic": "[SEM_料管_弹匣供料与换管]",
+    "scene": "[SCENE_Tube、Stick、Cartridge]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "取整管→开端盖/放入机构→推出单件→堵料检测→空管回收"
+  },
+  {
+   "skill_id": "AO024",
+   "category": "操作动作",
+   "name": "卷盘换料与读码防错",
+   "tokens": {
+    "id": "[SKILL_AO024]",
+    "semantic": "[SEM_卷盘换料与读码防错]",
+    "scene": "[SCENE_Reel、Tape & Reel、Label Roll]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "force",
+    "joint",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 1,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "读码→抓取卷盘→装轴→找到料带头→余量/张力确认"
+  },
+  {
+   "skill_id": "AO025",
+   "category": "操作动作",
+   "name": "开盖/合盖",
+   "tokens": {
+    "id": "[SKILL_AO025]",
+    "semantic": "[SEM_开盖_合盖_操作内部物料]",
+    "scene": "[SCENE_Clamshell、带盖Tray、Tote、FOUP外围]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "定位开口→打开→操作内部物料→合盖→扣合确认"
+  },
+  {
+   "skill_id": "AO026",
+   "category": "操作动作",
+   "name": "锁扣/插销/门操作",
+   "tokens": {
+    "id": "[SKILL_AO026]",
+    "semantic": "[SEM_锁扣_插销_门操作]",
+    "scene": "[SCENE_Magazine、Rack、料笼、Fixture]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "拨动/拉开/旋转→状态复检→异常报警"
+  },
+  {
+   "skill_id": "AO027",
+   "category": "操作动作",
+   "name": "治具开合/压合",
+   "tokens": {
+    "id": "[SKILL_AO027]",
+    "semantic": "[SEM_治具开合_压合]",
+    "scene": "[SCENE_Fixture、Test Tray、RF箱]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "打开治具→放件→压合/扣锁→启动测试→打开取出"
+  },
+  {
+   "skill_id": "AO028",
+   "category": "操作动作",
+   "name": "Socket/连接器插拔",
+   "tokens": {
+    "id": "[SKILL_AO028]",
+    "semantic": "[SEM_Socket_连接器插拔]",
+    "scene": "[SCENE_Test Tray、Burn-in Board、Fixture]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "粗对准→微动搜索→低力插入→力曲线/电接触确认→拔出"
+  },
+  {
+   "skill_id": "AO029",
+   "category": "操作动作",
+   "name": "请求/允许/就绪握手",
+   "tokens": {
+    "id": "[SKILL_AO029]",
+    "semantic": "[SEM_请求_允许_就绪握手]",
+    "scene": "[SCENE_设备、工站、AMR、输送线]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "请求上料→等待允许→执行→完成→释放→日志上传"
+  },
+  {
+   "skill_id": "AO030",
+   "category": "操作动作",
+   "name": "在位/锁止/交接完成确认",
+   "tokens": {
+    "id": "[SKILL_AO030]",
+    "semantic": "[SEM_在位_锁止_交接完成确认_允许设备动作]",
+    "scene": "[SCENE_所有工站载具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "传感确认→机械锁止→互锁确认→交接完成→允许设备动作"
+  },
+  {
+   "skill_id": "AO031",
+   "category": "操作动作",
+   "name": "空满载具交换",
+   "tokens": {
+    "id": "[SKILL_AO031]",
+    "semantic": "[SEM_空满载具交换]",
+    "scene": "[SCENE_Tray、Tote、Magazine、Rack]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "满载具送入→空载具取出→状态更新→下一任务"
+  },
+  {
+   "skill_id": "AO032",
+   "category": "操作动作",
+   "name": "双缓存连续供料",
+   "tokens": {
+    "id": "[SKILL_AO032]",
+    "semantic": "[SEM_双缓存连续供料]",
+    "scene": "[SCENE_Tray、Magazine、Tote]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "监控缓存→提前补料→空满切换→异常隔离"
+  },
+  {
+   "skill_id": "AO033",
+   "category": "操作动作",
+   "name": "AMR精准停靠与二次对接",
+   "tokens": {
+    "id": "[SKILL_AO033]",
+    "semantic": "[SEM_AMR精准停靠与二次对接]",
+    "scene": "[SCENE_Cart、Rack、Tote、料笼]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "导航到站→二次视觉/激光定位→慢速靠接→锁止确认"
+  },
+  {
+   "skill_id": "AO034",
+   "category": "操作动作",
+   "name": "WIP/FIFO/急单调度",
+   "tokens": {
+    "id": "[SKILL_AO034]",
+    "semantic": "[SEM_WIP_FIFO_急单调度_按优先级派单]",
+    "scene": "[SCENE_Rack、Cart、Tote、Tray]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按优先级派单→路径规划→执行→回传WIP"
+  },
+  {
+   "skill_id": "AO035",
+   "category": "操作动作",
+   "name": "工单-载具绑定",
+   "tokens": {
+    "id": "[SKILL_AO035]",
+    "semantic": "[SEM_工单-载具绑定]",
+    "scene": "[SCENE_所有可追溯载具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "读取ID→校验工单→绑定→入站记录"
+  },
+  {
+   "skill_id": "AO036",
+   "category": "操作动作",
+   "name": "槽位-物料SN绑定",
+   "tokens": {
+    "id": "[SKILL_AO036]",
+    "semantic": "[SEM_槽位-物料SN绑定_操作后更新去向]",
+    "scene": "[SCENE_Tray、Test Tray、Burn-in Board、Rack]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "读SN或关联SN→绑定槽位→操作后更新去向"
+  },
+  {
+   "skill_id": "AO037",
+   "category": "操作动作",
+   "name": "测试/检测结果分流绑定",
+   "tokens": {
+    "id": "[SKILL_AO037]",
+    "semantic": "[SEM_测试_检测结果分流绑定]",
+    "scene": "[SCENE_Fixture、Test Tray、良品_NG盘]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "读取结果→决定去向→放入目标槽→记录原因"
+  },
+  {
+   "skill_id": "AO038",
+   "category": "操作动作",
+   "name": "正向/反向谱系查询",
+   "tokens": {
+    "id": "[SKILL_AO038]",
+    "semantic": "[SEM_正向_反向谱系查询]",
+    "scene": "[SCENE_所有载具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按任一ID查询上游/下游、工站、结果、异常"
+  },
+  {
+   "skill_id": "AO039",
+   "category": "操作动作",
+   "name": "未抓/双取/掉料检测",
+   "tokens": {
+    "id": "[SKILL_AO039]",
+    "semantic": "[SEM_未抓_双取_掉料检测_失败重试或隔离]",
+    "scene": "[SCENE_Tray、Gel-Pak、Waffle Pack、Bin]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "取前确认→取中监控→取后复检→失败重试或隔离"
+  },
+  {
+   "skill_id": "AO040",
+   "category": "操作动作",
+   "name": "卡板/卡料恢复",
+   "tokens": {
+    "id": "[SKILL_AO040]",
+    "semantic": "[SEM_卡板_卡料恢复_仍失败则人工接管]",
+    "scene": "[SCENE_Magazine、Tube、Rack、输送线]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检测卡滞→停止→微退/抖动/重试→仍失败则人工接管"
+  },
+  {
+   "skill_id": "AO041",
+   "category": "操作动作",
+   "name": "载具偏位/未锁恢复",
+   "tokens": {
+    "id": "[SKILL_AO041]",
+    "semantic": "[SEM_载具偏位_未锁恢复_退出到安全位]",
+    "scene": "[SCENE_Pallet、Rack、Cart、Fixture]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "退出到安全位→重新定位→重试锁止→报警/人工确认"
+  },
+  {
+   "skill_id": "AO042",
+   "category": "操作动作",
+   "name": "插拔失败微动搜索",
+   "tokens": {
+    "id": "[SKILL_AO042]",
+    "semantic": "[SEM_插拔失败微动搜索]",
+    "scene": "[SCENE_Socket、连接器、导轨]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "小范围XYθ/深度搜索→监测力曲线→成功或分流"
+  },
+  {
+   "skill_id": "AO043",
+   "category": "操作动作",
+   "name": "新载具快速建模",
+   "tokens": {
+    "id": "[SKILL_AO043]",
+    "semantic": "[SEM_新载具快速建模]",
+    "scene": "[SCENE_所有新载具]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "扫描→识别基准→定义槽位/抓取/禁区→生成配方→验证"
+  },
+  {
+   "skill_id": "AO044",
+   "category": "操作动作",
+   "name": "工站动作配方管理",
+   "tokens": {
+    "id": "[SKILL_AO044]",
+    "semantic": "[SEM_工站动作配方管理_追溯封装成配方]",
+    "scene": "[SCENE_Tray、Fixture、Rack、Cart等]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将识别/搬运/取放/追溯封装成配方→按SKU调用"
+  },
+  {
+   "skill_id": "M001",
+   "category": "操作动作",
+   "name": "接近/预抓取姿态生成",
+   "tokens": {
+    "id": "[SKILL_M001]",
+    "semantic": "[SEM_接近_预抓取姿态生成_规划末端从安全区接近目标_的预抓取姿态和轨迹]",
+    "scene": "[SCENE_所有机械臂工位]",
+    "stage": "[STAGE_P3]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "规划末端从安全区接近目标的预抓取姿态和轨迹。"
+  },
+  {
+   "skill_id": "M002",
+   "category": "操作动作",
+   "name": "夹爪抓取",
+   "tokens": {
+    "id": "[SKILL_M002]",
+    "semantic": "[SEM_夹爪抓取_自适应夹爪抓取刚性物体]",
+    "scene": "[SCENE_上下料、拣选、分拣]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "pose"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "使用两指/三指/自适应夹爪抓取刚性物体。"
+  },
+  {
+   "skill_id": "M003",
+   "category": "操作动作",
+   "name": "真空吸取/释放",
+   "tokens": {
+    "id": "[SKILL_M003]",
+    "semantic": "[SEM_真空吸取_释放_使用真空吸盘吸取]",
+    "scene": "[SCENE_电子件、包装、码垛]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "使用真空吸盘吸取、搬运、释放平面/轻薄物体。"
+  },
+  {
+   "skill_id": "M004",
+   "category": "操作动作",
+   "name": "夹持力控制与释放",
+   "tokens": {
+    "id": "[SKILL_M004]",
+    "semantic": "[SEM_夹持力控制与释放_根据物体脆弱性调节夹持力]",
+    "scene": "[SCENE_精密件、光模块、PCBA]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "根据物体脆弱性调节夹持力并稳定释放。"
+  },
+  {
+   "skill_id": "M005",
+   "category": "操作动作",
+   "name": "姿态重构/翻转",
+   "tokens": {
+    "id": "[SKILL_M005]",
+    "semantic": "[SEM_姿态重构_翻转_以满足后续检测或装配]",
+    "scene": "[SCENE_检测、装配、包装]",
+    "stage": "[STAGE_P3]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将工件翻面、旋转、换向，以满足后续检测或装配。"
+  },
+  {
+   "skill_id": "M006",
+   "category": "操作动作",
+   "name": "精准放置/码放",
+   "tokens": {
+    "id": "[SKILL_M006]",
+    "semantic": "[SEM_精准放置_码放_将物料放入料盘_托盘或堆垛位置]",
+    "scene": "[SCENE_上下料、包装、仓储]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "将物料放入料盘、盒、治具、托盘或堆垛位置。"
+  },
+  {
+   "skill_id": "M007",
+   "category": "操作动作",
+   "name": "小件拾取/微小件操作",
+   "tokens": {
+    "id": "[SKILL_M007]",
+    "semantic": "[SEM_小件拾取_微小件操作]",
+    "scene": "[SCENE_光模块、电子装配、金线检测]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "抓取小尺寸、薄片、轻柔、易滑件。"
+  },
+  {
+   "skill_id": "M008",
+   "category": "操作动作",
+   "name": "线缆/柔性物处理",
+   "tokens": {
+    "id": "[SKILL_M008]",
+    "semantic": "[SEM_线缆_柔性物处理_插接或避让柔性线缆]",
+    "scene": "[SCENE_PCBA线束、设备维护]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "抓取、理线、插接或避让柔性线缆/软管。"
+  },
+  {
+   "skill_id": "M009",
+   "category": "操作动作",
+   "name": "夹具开合/按钮拨动",
+   "tokens": {
+    "id": "[SKILL_M009]",
+    "semantic": "[SEM_夹具开合_按钮拨动_旋钮等简单设备交互]",
+    "scene": "[SCENE_机床上下料、巡检]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "pose",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "开合夹具、按按钮、拨动开关、拉杆、旋钮等简单设备交互。"
+  },
+  {
+   "skill_id": "M010",
+   "category": "操作动作",
+   "name": "门盖/抽屉/料盘开闭",
+   "tokens": {
+    "id": "[SKILL_M010]",
+    "semantic": "[SEM_门盖_抽屉_料盘开闭]",
+    "scene": "[SCENE_机床、异常恢复、PCBA]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "打开/关闭机台门、抽屉、料盘盖、保护罩。"
+  },
+  {
+   "skill_id": "M011",
+   "category": "操作动作",
+   "name": "托盘/料盒/载具搬运",
+   "tokens": {
+    "id": "[SKILL_M011]",
+    "semantic": "[SEM_托盘_料盒_载具搬运_搬运标准料盒_周转箱等载具]",
+    "scene": "[SCENE_物流、上下料、洁净上下料]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "transfer",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "搬运标准料盒、托盘、FOUP、周转箱等载具。"
+  },
+  {
+   "skill_id": "M012",
+   "category": "操作动作",
+   "name": "双臂协同",
+   "tokens": {
+    "id": "[SKILL_M012]",
+    "semantic": "[SEM_双臂协同_双臂同时完成固定]",
+    "scene": "[SCENE_大件装配、柔性物处理]",
+    "stage": "[STAGE_P3]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "align",
+   "modalities": [
+    "pose",
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 1,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "双臂同时完成固定、传递、对准、装配。"
+  },
+  {
+   "skill_id": "M013",
+   "category": "操作动作",
+   "name": "末端工具快换",
+   "tokens": {
+    "id": "[SKILL_M013]",
+    "semantic": "[SEM_末端工具快换_拨杆末端之间快速切换]",
+    "scene": "[SCENE_多工序工作站、装配、打磨]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在夹爪、吸盘、螺丝刀、检测头、拨杆末端之间快速切换。"
+  },
+  {
+   "skill_id": "M014",
+   "category": "操作动作",
+   "name": "受限空间伸入操作",
+   "tokens": {
+    "id": "[SKILL_M014]",
+    "semantic": "[SEM_受限空间伸入操作_在狭窄设备内部_机台间隙中完成取放]",
+    "scene": "[SCENE_卡料排障、洁净室设备间]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "在狭窄设备内部、机台间隙中完成取放、对接或排障。"
+  },
+  {
+   "skill_id": "M015",
+   "category": "操作动作",
+   "name": "防刮防碰运动控制",
+   "tokens": {
+    "id": "[SKILL_M015]",
+    "semantic": "[SEM_防刮防碰运动控制_洁净材料执行低冲击操作]",
+    "scene": "[SCENE_光模块、半导体、洁净室]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_力阈值_柔顺插入_扭矩控制]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对易划伤、易碎、洁净材料执行低冲击操作。"
+  },
+  {
+   "skill_id": "N001",
+   "category": "移动导航",
+   "name": "定位建图SLAM",
+   "tokens": {
+    "id": "[SKILL_N001]",
+    "semantic": "[SEM_定位建图SLAM_洁净室环境中建立地图并定]",
+    "scene": "[SCENE_AMR配送、巡检、线边物流]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在工厂/洁净室环境中建立地图并定位。"
+  },
+  {
+   "skill_id": "N002",
+   "category": "移动导航",
+   "name": "全局/局部路径规划",
+   "tokens": {
+    "id": "[SKILL_N002]",
+    "semantic": "[SEM_全局_局部路径规划_从当前位置到目标工位规划_安全可行路径]",
+    "scene": "[SCENE_AMR、巡检、包装、线边配送]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "从当前位置到目标工位规划安全可行路径。"
+  },
+  {
+   "skill_id": "N003",
+   "category": "移动导航",
+   "name": "动态避障",
+   "tokens": {
+    "id": "[SKILL_N003]",
+    "semantic": "[SEM_动态避障_移动障碍并减速]",
+    "scene": "[SCENE_工厂移动作业]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别人、叉车、料车、移动障碍并减速/绕行/停车。"
+  },
+  {
+   "skill_id": "N004",
+   "category": "移动导航",
+   "name": "精准停靠/对接",
+   "tokens": {
+    "id": "[SKILL_N004]",
+    "semantic": "[SEM_精准停靠_对接_机台前完成厘米]",
+    "scene": "[SCENE_上下料、载具补给、AMR]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在工位、充电桩、料架、机台前完成厘米/毫米级停靠。"
+  },
+  {
+   "skill_id": "N005",
+   "category": "移动导航",
+   "name": "门禁/电梯/自动门交互",
+   "tokens": {
+    "id": "[SKILL_N005]",
+    "semantic": "[SEM_门禁_电梯_自动门交互_互锁系统进行安全联动]",
+    "scene": "[SCENE_园区物流、巡检]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "screw",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "与门禁、电梯、自动门、互锁系统进行安全联动。"
+  },
+  {
+   "skill_id": "N006",
+   "category": "移动导航",
+   "name": "窄通道低振动移动",
+   "tokens": {
+    "id": "[SKILL_N006]",
+    "semantic": "[SEM_窄通道低振动移动_设备间低振动]",
+    "scene": "[SCENE_半导体_光电低污染上下料]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "在洁净室、窄通道、设备间低振动、低扬尘移动。"
+  },
+  {
+   "skill_id": "N007",
+   "category": "移动导航",
+   "name": "多机器人群体调度",
+   "tokens": {
+    "id": "[SKILL_N007]",
+    "semantic": "[SEM_多机器人群体调度_多台机器人任务分配]",
+    "scene": "[SCENE_物流、包装、线边配送]",
+    "stage": "[STAGE_P2]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_路径规划_避障_站点对接]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "多台机器人任务分配、路径避让、充电排程。"
+  },
+  {
+   "skill_id": "Q001",
+   "category": "视觉检测",
+   "name": "2D外观检测",
+   "tokens": {
+    "id": "[SKILL_Q001]",
+    "semantic": "[SEM_2D外观检测_检测表面缺陷]",
+    "scene": "[SCENE_外观检测、包装、复检]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_3]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "检测表面缺陷、错漏装、标签、颜色、形态。"
+  },
+  {
+   "skill_id": "Q002",
+   "category": "视觉检测",
+   "name": "3D尺寸/形貌检测",
+   "tokens": {
+    "id": "[SKILL_Q002]",
+    "semantic": "[SEM_3D尺寸_形貌检测_体积等三维指标]",
+    "scene": "[SCENE_3D检测、传动轴、打磨复检]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "测量高度、平面度、间隙、轮廓、体积等三维指标。"
+  },
+  {
+   "skill_id": "Q003",
+   "category": "视觉检测",
+   "name": "金线/焊点显微检测",
+   "tokens": {
+    "id": "[SKILL_Q003]",
+    "semantic": "[SEM_金线_焊点显微检测_识别金线弧高]",
+    "scene": "[SCENE_金线检测、PCBA焊点]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别金线弧高、断线、塌线、焊点缺陷。"
+  },
+  {
+   "skill_id": "Q004",
+   "category": "视觉检测",
+   "name": "读数/状态确认",
+   "tokens": {
+    "id": "[SKILL_Q004]",
+    "semantic": "[SEM_读数_状态确认_确认设备参数]",
+    "scene": "[SCENE_巡检、锁付、上下料]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "确认设备参数、按钮状态、锁付/插拔/检测结果。"
+  },
+  {
+   "skill_id": "Q005",
+   "category": "视觉检测",
+   "name": "功能测试/按键测试",
+   "tokens": {
+    "id": "[SKILL_Q005]",
+    "semantic": "[SEM_功能测试_按键测试_执行简单电测或功能确认]",
+    "scene": "[SCENE_PCBA、消费电子]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "按压按钮、读取响应、执行简单电测或功能确认。"
+  },
+  {
+   "skill_id": "Q006",
+   "category": "视觉检测",
+   "name": "缺陷复判/分级",
+   "tokens": {
+    "id": "[SKILL_Q006]",
+    "semantic": "[SEM_缺陷复判_分级_对初检结果进行二次判定]",
+    "scene": "[SCENE_视觉检测、复检、分拣]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "对初检结果进行二次判定、分级、原因标注。"
+  },
+  {
+   "skill_id": "Q007",
+   "category": "视觉检测",
+   "name": "数据记录/质量追溯",
+   "tokens": {
+    "id": "[SKILL_Q007]",
+    "semantic": "[SEM_数据记录_质量追溯_结果并关联工单]",
+    "scene": "[SCENE_所有量产工位]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "force"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "记录任务、图像、参数、力曲线、结果并关联工单。"
+  },
+  {
+   "skill_id": "Q008",
+   "category": "视觉检测",
+   "name": "良次品判定/分拣",
+   "tokens": {
+    "id": "[SKILL_Q008]",
+    "semantic": "[SEM_良次品判定_分拣_根据检测结果将物料分流到]",
+    "scene": "[SCENE_分拣、复检、包装]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "state_2d"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 1
+   },
+   "gate": 0.5,
+   "desc": "根据检测结果将物料分流到良品、不良、复检区域。"
+  },
+  {
+   "skill_id": "Q009",
+   "category": "视觉检测",
+   "name": "标定/自检",
+   "tokens": {
+    "id": "[SKILL_Q009]",
+    "semantic": "[SEM_标定_自检_自动检查相机_力传感是否漂移]",
+    "scene": "[SCENE_视觉检测、精密装配]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "自动检查相机、光源、工具、位置、力传感是否漂移。"
+  },
+  {
+   "skill_id": "Q010",
+   "category": "视觉检测",
+   "name": "工艺参数闭环调整",
+   "tokens": {
+    "id": "[SKILL_Q010]",
+    "semantic": "[SEM_工艺参数闭环调整_过程数据调整速度]",
+    "scene": "[SCENE_点胶、焊接、打磨、检测]",
+    "stage": "[STAGE_P1]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_显微复检_缺陷分级_视觉判定]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "inspect",
+   "modalities": [
+    "force"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "根据检测/过程数据调整速度、力、胶量、轨迹等参数。"
+  },
+  {
+   "skill_id": "C001",
+   "category": "载具物流",
+   "name": "载具中文命名/别名归一",
+   "tokens": {
+    "id": "[SKILL_C001]",
+    "semantic": "[SEM_载具中文命名_别名归一_等现场叫法映射到统一载具_与中文通俗名称]",
+    "scene": "[SCENE_售前调研、方案配置、载具模板库]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "code"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "把Tray、托盘、料笼、料车、料架、Magazine等现场叫法映射到统一载具ID与中文通俗名称。"
+  },
+  {
+   "skill_id": "C002",
+   "category": "载具物流",
+   "name": "载具基准/接口识别",
+   "tokens": {
+    "id": "[SKILL_C002]",
+    "semantic": "[SEM_载具基准_接口识别_叉孔和牵引点等接口]",
+    "scene": "[SCENE_Tray、托盘、料架、料车、治具对接]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "locate",
+   "modalities": [
+    "image",
+    "pointcloud",
+    "cad"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 1,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别外框、角点、定位孔、定位销、导轨、把手、叉孔和牵引点等接口。"
+  },
+  {
+   "skill_id": "C003",
+   "category": "载具物流",
+   "name": "槽位/层位/穴位地图生成",
+   "tokens": {
+    "id": "[SKILL_C003]",
+    "semantic": "[SEM_槽位_层位_穴位地图生成_识别料盘穴位_层位和禁用槽位_生成可编辑地图]",
+    "scene": "[SCENE_TrayBot、PCB Magazine、老化架]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "pointcloud"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 1,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别料盘穴位、Magazine槽位、Rack层位和禁用槽位，生成可编辑地图。"
+  },
+  {
+   "skill_id": "C004",
+   "category": "载具物流",
+   "name": "整载具搬运/空满交换",
+   "tokens": {
+    "id": "[SKILL_C004]",
+    "semantic": "[SEM_整载具搬运_空满交换_空满交换和堆拆垛]",
+    "scene": "[SCENE_CarrierSwap、DockLink、线边补料]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "完成整盘、整箱、整匣、整架的取放、送入、取出、空满交换和堆拆垛。"
+  },
+  {
+   "skill_id": "C005",
+   "category": "载具物流",
+   "name": "工站接驳/状态握手",
+   "tokens": {
+    "id": "[SKILL_C005]",
+    "semantic": "[SEM_工站接驳_状态握手_离开做成标准状态机]",
+    "scene": "[SCENE_DockLink、AMR停靠、输送线交接]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "把请求上料、允许、到位、锁止、完成、释放、离开做成标准状态机。"
+  },
+  {
+   "skill_id": "C006",
+   "category": "载具物流",
+   "name": "料架/Magazine/卡匣抽插",
+   "tokens": {
+    "id": "[SKILL_C006]",
+    "semantic": "[SEM_料架_Magazine_卡匣抽插_板卡料匣或卡匣中抽出_片材或工艺篮]",
+    "scene": "[SCENE_PCB Magazine、Rack_Burn-in、Cassette]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "insert",
+   "modalities": [
+    "image"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "从多层料架、板卡料匣或卡匣中抽出/插入盘、板、片材或工艺篮。"
+  },
+  {
+   "skill_id": "C007",
+   "category": "载具物流",
+   "name": "盖板/门/锁扣/治具开合",
+   "tokens": {
+    "id": "[SKILL_C007]",
+    "semantic": "[SEM_盖板_锁扣_治具开合_锁止或释放载具盖板_测试治具和包装盒]",
+    "scene": "[SCENE_TestHandler、FinalPack、PCB Magazine]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "place",
+   "modalities": [
+    "signal"
+   ],
+   "encoding": {
+    "image": 0,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "打开、关闭、锁止或释放载具盖板、笼车门、Magazine锁扣、测试治具和包装盒。"
+  },
+  {
+   "skill_id": "C008",
+   "category": "载具物流",
+   "name": "载具异常检测与恢复",
+   "tokens": {
+    "id": "[SKILL_C008]",
+    "semantic": "[SEM_载具异常检测与恢复_错放等异常并安全恢复]",
+    "scene": "[SCENE_TrayBot、TestHandler、DockLink]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_1]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "pick",
+   "modalities": [
+    "image",
+    "force",
+    "signal"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 1,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 1,
+    "code": 0,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "识别未抓、双取、掉料、卡板、载具偏位、未锁止、错放等异常并安全恢复。"
+  },
+  {
+   "skill_id": "C009",
+   "category": "载具物流",
+   "name": "载具-槽位-物料谱系管理",
+   "tokens": {
+    "id": "[SKILL_C009]",
+    "semantic": "[SEM_载具-槽位-物料谱系管理_去向和异常履历]",
+    "scene": "[SCENE_Genealogy、所有量产上下料项目]",
+    "stage": "[STAGE_PX]",
+    "maturity": "[MAT_2]",
+    "cot": "[CoT_料盘识别_载具对接_柔性搬运]"
+   },
+   "dimensions": {
+    "id": 64,
+    "semantic": 384,
+    "scene": 32,
+    "stage": 16,
+    "maturity": 8,
+    "cot": 256
+   },
+   "action": "operate",
+   "modalities": [
+    "image",
+    "code"
+   ],
+   "encoding": {
+    "image": 1,
+    "force": 0,
+    "pose": 0,
+    "tactile": 0,
+    "joint": 0,
+    "pointcloud": 0,
+    "temp": 0,
+    "signal": 0,
+    "code": 1,
+    "cad": 0,
+    "state_2d": 0
+   },
+   "gate": 0.5,
+   "desc": "记录工单、批次、载具ID、槽位ID、物料SN、工站结果、去向和异常履历。"
+  }
+ ]
+}

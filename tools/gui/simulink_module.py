@@ -39,6 +39,7 @@ NODE_TYPES = {
     "coord_overlay": {"cn": "坐标叠加", "color": "#58a6ff"},  # 🧩 结构条件 (2026-08-08 老倪: 坐标逻辑主线, 图像背景)
     "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 Model Zoo: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
     "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 Model Zoo技术选型报告生成 (2026-08-05 老倪)
+    "skill":     {"cn": "原子技能", "color": "#00d4aa"},  # 🧩 原子技能 (2026-08-09 老倪: W²-VLA Token — 拖入画布→连结构条件→SYS1→action)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
@@ -758,6 +759,46 @@ LIBRARY = [
          "desc": "多模型 metaworld rollout 视频 → 窗口同步播放对比 (推理效果)"},
     ]),
 ]
+
+# 🧩 原子技能组件区 (2026-08-09 老倪: W²-VLA Token — 从 atomic_skill_tokens.json 动态加载 9 大类)
+def _load_skill_library_groups():
+    """加载原子技能 token 库 → LIBRARY 分组 (每大类一组, 每条技能一个组件)
+    技能组件拖入画布 → 连 🧩结构条件 → 进 SYS1 → 导出 action JSON"""
+    import os as _os, json as _j
+    p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "flows", "atomic_skill_tokens.json")
+    try:
+        data = _j.load(open(p, encoding="utf-8"))
+        skills = data.get("skills", [])
+    except Exception:
+        return []
+    from collections import OrderedDict
+    by_cat = OrderedDict()
+    for s in skills:
+        by_cat.setdefault(s["category"], []).append(s)
+    groups = []
+    for cat, items in by_cat.items():
+        entries = []
+        for s in items:
+            entries.append({
+                "name": f"🧩 {s['skill_id']} {s['name'][:16]}",
+                "params": {
+                    "skill_id": s["skill_id"],
+                    "tokens": s.get("tokens", {}),
+                    "action": s.get("action", "operate"),
+                    "modalities": s.get("modalities", []),
+                    "encoding": s.get("encoding", {}),
+                    "gate": s.get("gate", 0.5),
+                    "desc": s.get("desc", "")[:80],
+                },
+            })
+        groups.append(("skill", f"🧩 原子技能 · {cat} ({len(items)})", entries))
+    return groups
+
+# 🧩 2026-08-09 老倪: 原子技能组件区 — 从 atomic_skill_tokens.json 动态加载 (W²-VLA Token)
+try:
+    LIBRARY += _load_skill_library_groups()
+except Exception:
+    pass  # 技能库缺失不影响模块库其余部分
 
 # 🌐 2026-08-09 老倪: LIBRARY 模块 → 稳定序号 (模块库按钮与画布节点 ID 一致)
 LIBRARY_SEQ = {}
@@ -3323,7 +3364,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄",
+                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩",
                      "coord_overlay": "🧩"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
@@ -6028,6 +6069,10 @@ class SimulinkModule(QWidget):
         if node.get("type") == "coord_overlay":
             self._pick_atomic_condition(node)
             return
+        # 1.8) 🧩 原子技能节点 (2026-08-09 老倪: W²-VLA Token — 双击导出该技能 action JSON)
+        if node.get("type") == "skill":
+            self._export_skill_action(node)
+            return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
             if kw in node.get("name", ""):
@@ -6151,6 +6196,61 @@ class SimulinkModule(QWidget):
         en = p["train_enabled"]
         self._log(f"☑ 训练开关: {'打勾 → 训练启用' if en else '不打勾 → 训练跳过'} (双击可再切换)")
         self._sync()
+
+    def _export_skill_action(self, node):
+        """🧩 原子技能 → action JSON (2026-08-09 老倪: W²-VLA Token 落地)
+        单技能: 双击技能节点 → 生成该技能的 action 定义 JSON"""
+        import json as _j, os as _os, time as _t
+        p = node.get("params", {})
+        act = {
+            "format": "zmax-skill-action",
+            "generated": _t.strftime("%Y%m%d_%H%M%S"),
+            "skill_id": p.get("skill_id", ""),
+            "name": node.get("name", "").replace("🧩 ", ""),
+            "tokens": p.get("tokens", {}),
+            "action": p.get("action", "operate"),
+            "modalities": p.get("modalities", []),
+            "encoding": p.get("encoding", {}),
+            "gate": p.get("gate", 0.5),
+            "input": {"topic": "/dds/cond/" + (p.get("skill_id", "skill").lower())},
+            "output": {"topic": "/dds/action/" + (p.get("skill_id", "skill").lower())},
+        }
+        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        out = _os.path.join(repo, "flows", f"action_{p.get('skill_id', 'skill')}.json")
+        _j.dump(act, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        self._log(f"🧩 技能 action 已导出: {out}")
+        return out
+
+    def export_all_skill_actions(self):
+        """🧩 导出画布上全部原子技能 → action JSON (汇总文件, 画板可加载)"""
+        import json as _j, os as _os, time as _t
+        skills = [n for n in self.nodes if n.get("type") == "skill"]
+        if not skills:
+            self._log("⚠️ 画布上没有原子技能节点")
+            return
+        acts = []
+        for n in skills:
+            p = n.get("params", {})
+            acts.append({
+                "skill_id": p.get("skill_id", ""),
+                "name": n.get("name", "").replace("🧩 ", ""),
+                "tokens": p.get("tokens", {}),
+                "action": p.get("action", "operate"),
+                "modalities": p.get("modalities", []),
+                "encoding": p.get("encoding", {}),
+                "gate": p.get("gate", 0.5),
+            })
+        flow = {
+            "format": "zmax-actions",
+            "generated": _t.strftime("%Y%m%d_%H%M%S"),
+            "count": len(acts),
+            "actions": acts,
+        }
+        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        out = _os.path.join(repo, "flows", f"actions_{_t.strftime('%Y%m%d_%H%M%S')}.json")
+        _j.dump(flow, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        self._log(f"🧩 已导出 {len(acts)} 个技能 action → {out} (画板可加载)")
+        return out
 
     def _pick_atomic_condition(self, node):
         """🧩 ControlNet 思想: 双击结构条件节点 → 从 atomic_skills_conditions.json 选原子技能条件 → 注入节点
