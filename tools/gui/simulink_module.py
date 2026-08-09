@@ -6277,97 +6277,114 @@ class SimulinkModule(QWidget):
         return out
 
     def open_atomic_skill_flow(self, btn_name="🧩 原子"):
-        """🧩 原子按钮: 打开原子技能选择器 → 自动建节点链:
-        技能(skill) → 结构条件(coord_overlay) → SYS1 → 导出 action JSON
-        (2026-08-09 老倪: 原子技能工程化/模块化 — 每个技能都能实现落地)"""
+        """🧩 原子按钮 (2026-08-09 老倪+web): ① 选场景 → ② 自动推荐组合原子技能 → ③ 建节点链
+        场景: SCN-01 插拔 / SCN-02 搬运 / SCN-03 光学检测 (scene_skills_3scenarios.json)
+        推荐技能: 场景 process_steps.atoms + key_atoms (W²-VLA Token)"""
         import os as _os, json as _j, time as _t
         repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-        p = _os.path.join(repo, "flows", "atomic_skill_tokens.json")
-        if not _os.path.exists(p):
-            self._log(f"❌ 技能库不存在: {p} (先运行 flows/gen_skill_tokens.py)")
+        sp = _os.path.join(repo, "flows", "scene_skills_3scenarios.json")
+        tp = _os.path.join(repo, "flows", "atomic_skill_tokens.json")
+        try:
+            scenes = _j.load(open(sp, encoding="utf-8")).get("scenes", [])
+        except Exception as e:
+            self._log(f"❌ 场景库读取失败: {e}")
             return
         try:
-            data = _j.load(open(p, encoding="utf-8"))
-            skills = data.get("skills", [])
-        except Exception as e:
-            self._log(f"❌ 技能库解析失败: {e}")
-            return
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QComboBox, QPushButton, QLabel
-        from collections import OrderedDict
-        by_cat = OrderedDict()
-        for s in skills:
-            by_cat.setdefault(s["category"], []).append(s)
+            skills = _j.load(open(tp, encoding="utf-8")).get("skills", [])
+        except Exception:
+            skills = []
+        skill_by_id = {s["skill_id"]: s for s in skills}
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QComboBox, QPushButton, QLabel, QCheckBox
         dlg = QDialog(self)
-        dlg.setWindowTitle("🧩 原子技能 → 结构条件 → SYS1 → action")
-        dlg.setMinimumWidth(520)
+        dlg.setWindowTitle("🧩 原子技能 → 场景 → 结构条件 → SYS1 → action")
+        dlg.setMinimumWidth(560)
         lay = QVBoxLayout(dlg)
-        cat_cb = QComboBox()
-        cat_cb.addItems(list(by_cat.keys()))
-        skill_cb = QComboBox()
-        def fill_skills(_):
-            skill_cb.clear()
-            for s in by_cat.get(cat_cb.currentText(), []):
-                skill_cb.addItem(f"{s['skill_id']} {s['name'][:24]} · {s.get('action','operate')}", s)
-        cat_cb.currentIndexChanged.connect(fill_skills)
-        fill_skills(0)
-        lay.addWidget(QLabel("① 技能大类:"))
-        lay.addWidget(cat_cb)
-        lay.addWidget(QLabel("② 原子技能 (W²-VLA 6元组 Token):"))
-        lay.addWidget(skill_cb)
+        # ① 场景选择
+        lay.addWidget(QLabel("① 选择场景 (光模块工厂真实工艺):"))
+        scene_cb = QComboBox()
+        for s in scenes:
+            scene_cb.addItem(f"{s['id']} {s['name']} · {s['category']}", s)
+        lay.addWidget(scene_cb)
+        # ② 推荐技能
+        rec_lbl = QLabel("② 自动推荐组合原子技能:")
+        rec_lbl.setStyleSheet("font-weight:700;")
+        lay.addWidget(rec_lbl)
+        rec_text = QLabel("")
+        rec_text.setWordWrap(True)
+        rec_text.setStyleSheet("color:#00d4aa; font-size:11px; background:#0d3b3322; border:1px solid #0d3b33; border-radius:6px; padding:8px;")
+        lay.addWidget(rec_text)
+        # 技能勾选 (推荐项默认全选)
+        check_lay = QVBoxLayout()
+        checkboxes = []
+        def refresh_recommend(_):
+            for cb in checkboxes:
+                check_lay.removeWidget(cb)
+                cb.deleteLater()
+            checkboxes.clear()
+            s = scene_cb.currentData()
+            if not s:
+                return
+            # 推荐技能: process_steps.atoms (去重) + key_atoms
+            rec = []
+            for st in s.get("process_steps", []):
+                for a in st.get("atoms", []):
+                    aid = a.split(" ")[0]
+                    if aid not in rec:
+                        rec.append(aid)
+            for aid in s.get("key_atoms", []):
+                if aid not in rec:
+                    rec.append(aid)
+            # 显示推荐列表
+            names = []
+            for aid in rec:
+                sk = skill_by_id.get(aid)
+                names.append(f"{aid}" + (f" {sk['name'][:12]}" if sk else ""))
+            rec_text.setText(" → ".join(names))
+            # 勾选框
+            for aid in rec:
+                sk = skill_by_id.get(aid, {})
+                cb = QCheckBox(f"☑ {aid} {sk.get('name', '')[:22]}", dlg)
+                cb.setChecked(True)
+                cb.setStyleSheet("font-size:11px; color:#c9d1d9;")
+                check_lay.addWidget(cb)
+                checkboxes.append((cb, aid))
+        scene_cb.currentIndexChanged.connect(refresh_recommend)
+        refresh_recommend(0)
+        lay.addLayout(check_lay)
         info = QLabel("")
         info.setWordWrap(True)
         info.setStyleSheet("color:#8b949e; font-size:10px;")
         lay.addWidget(info)
         def show_info(_):
-            s = skill_cb.currentData()
+            s = scene_cb.currentData()
             if s:
-                tk = s.get("tokens", {})
+                perf = s.get("performance", {})
                 info.setText(
-                    f"Token: {tk.get('id','')} {tk.get('semantic','')}\n"
-                    f"场景: {tk.get('scene','')} · 阶段: {tk.get('stage','')} · 成熟度: {tk.get('maturity','')}\n"
-                    f"CoT: {tk.get('cot','')}")
-        skill_cb.currentIndexChanged.connect(show_info)
+                    f"工艺指标: 成功率{perf.get('operation_success_rate','')} · 节拍{perf.get('cycle_time','')} · "
+                    f"{perf.get('insertion_force', perf.get('pick_accuracy', perf.get('defect_detection_rate','')))}")
+        scene_cb.currentIndexChanged.connect(show_info)
         show_info(0)
-        btn_ok = QPushButton("✅ 建节点链: 技能 → 结构条件 → SYS1 → action")
+        btn_ok = QPushButton("✅ 建场景节点链: 场景 → 组合技能 → 结构条件 → SYS1 → action")
         btn_ok.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border-radius:4px; padding:8px; font-weight:bold;}")
         def apply():
-            s = skill_cb.currentData()
+            s = scene_cb.currentData()
             if not s:
                 return
-            # 1) 技能节点
-            sn = self.add_node_at_center("skill", f"🧩 {s['skill_id']} {s['name'][:16]}", {
-                "skill_id": s["skill_id"], "tokens": s.get("tokens", {}),
-                "action": s.get("action", "operate"), "modalities": s.get("modalities", []),
-                "encoding": s.get("encoding", {}), "gate": s.get("gate", 0.5),
-                "desc": s.get("desc", "")[:80]})
-            # 2) 结构条件节点 (右侧)
-            cx, cy = sn.get("x", 300) + 240, sn.get("y", 200)
-            cn = self.add_node("coord_overlay", f"🧩 结构条件 · {s['skill_id']}", cx, cy, {
-                "cond_ref": s["skill_id"], "skill": s["name"],
-                "tokens": s.get("tokens", {}), "gate": 0.5,
-                "desc": f"🧩 {s['name'][:24]} 条件编码 (ControlNet: latent += proj(cond)×0.5)"})
-            # 3) 连接: 技能 → 结构条件
-            fi = self._items.get(sn["id"]); ti = self._items.get(cn["id"])
-            if fi and ti:
-                self.add_link(fi, ti, "cond")
-            # 4) 导出 action JSON
-            act = {
-                "format": "zmax-skill-action", "generated": _t.strftime("%Y%m%d_%H%M%S"),
-                "skill_id": s["skill_id"], "name": s["name"],
-                "tokens": s.get("tokens", {}), "action": s.get("action", "operate"),
-                "modalities": s.get("modalities", []), "encoding": s.get("encoding", {}),
-                "gate": s.get("gate", 0.5),
-                "input": {"topic": "/dds/cond/" + s["skill_id"].lower()},
-                "output": {"topic": "/dds/action/" + s["skill_id"].lower()},
-            }
-            out = _os.path.join(repo, "flows", f"action_{s['skill_id']}.json")
-            _j.dump(act, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-            self._log(f"🧩 {s['skill_id']} 节点链已建: 技能→结构条件→SYS1, action → {out}")
+            sel = [aid for cb, aid in checkboxes if cb.isChecked()]
+            if not sel:
+                self._log("⚠️ 未选择任何技能")
+                return
+            # 建场景节点链: 场景 → 技能序列 → 结构条件 → SYS1
+            snode = self.add_node_at_center("scene", f"🏭 {s['id']} {s['name'][:12]}", {
+                "scene_id": s["id"], "desc": s.get("description", "")[:80]})
+            self._build_scene_flow(s, snode)
+            self._log(f"🧩 {s['id']} 场景节点链已建: 场景→{len(sel)}技能→结构条件→SYS1 (推荐组合)")
             dlg.accept()
             self._sync()
         btn_ok.clicked.connect(apply)
         lay.addWidget(btn_ok)
         dlg.exec_()
+
 
     def open_scene(self, scene_id, node=None):
         """🏭 场景: 打开 ECS 链接 (传场景 JSON) + 建场景节点链 (2026-08-09 老倪)
