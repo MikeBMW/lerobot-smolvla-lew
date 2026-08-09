@@ -1,0 +1,298 @@
+{
+  "format": "zmax-cooperation-closed-loop",
+  "version": "1.0",
+  "meta": {
+    "title": "🤝 供应商合作 · 数据闭环合规流程",
+    "author": "静静 (Z-MAX 总工) + 老倪",
+    "date": "2026-08-09",
+    "principle": "供应商提供通用底座模型 → 我方实验室微调专有模型 → 数据闭环不出实验室"
+  },
+  "nodes": [
+    {
+      "id": "bg-supplier",
+      "type": "row_bg",
+      "name": "供应商合作区 (外部)",
+      "x": 60,
+      "y": 40,
+      "w": 900,
+      "h": 150
+    },
+    {
+      "id": "bg-lab",
+      "type": "row_bg",
+      "name": "实验室数据闭环区 (内部)",
+      "x": 60,
+      "y": 240,
+      "w": 900,
+      "h": 260
+    },
+    {
+      "id": "bg-field",
+      "type": "row_bg",
+      "name": "现场执行区 (SYS1+SYS0)",
+      "x": 60,
+      "y": 550,
+      "w": 900,
+      "h": 170
+    },
+    {
+      "id": "bg-wall",
+      "type": "row_bg",
+      "name": "🔒 合规边界: 数据不出实验室",
+      "x": 990,
+      "y": 40,
+      "w": 260,
+      "h": 680
+    },
+    {
+      "id": "sup",
+      "type": "model",
+      "name": "🏭 底座模型供应商",
+      "x": 110,
+      "y": 80,
+      "w": 170,
+      "params": {
+        "source": "vendor",
+        "desc": "提供通用底座模型 (ACT/SmolVLA/GR00T 等开源底座)"
+      }
+    },
+    {
+      "id": "agree",
+      "type": "coord_overlay",
+      "name": "📄 授权与合规协议",
+      "x": 340,
+      "y": 80,
+      "w": 170,
+      "params": {
+        "gate": 0.9,
+        "desc": "供应商授权协议: 底座可用于微调, 专有权归我方"
+      }
+    },
+    {
+      "id": "mask",
+      "type": "switch",
+      "name": "🔒 数据脱敏网关",
+      "x": 570,
+      "y": 80,
+      "w": 170,
+      "params": {
+        "switch": "mask",
+        "desc": "进入供应商侧前脱敏 (去除客户/批次/产线标识)"
+      }
+    },
+    {
+      "id": "base",
+      "type": "model",
+      "name": "🧬 通用底座模型",
+      "x": 800,
+      "y": 80,
+      "w": 170,
+      "params": {
+        "model": "base",
+        "desc": "冻结底座, 我方只微调任务头/适配层"
+      }
+    },
+    {
+      "id": "collect",
+      "type": "data",
+      "name": "📊 数据采集 (实验室)",
+      "x": 110,
+      "y": 280,
+      "w": 170,
+      "params": {
+        "source": "lab",
+        "desc": "真机/仿真采集: 视觉+力觉+状态 45D, 全部在实验室完成"
+      }
+    },
+    {
+      "id": "annotate",
+      "type": "coord_overlay",
+      "name": "🏷 数据标注+技能标签",
+      "x": 340,
+      "y": 280,
+      "w": 170,
+      "params": {
+        "gate": 0.5,
+        "desc": "标注原子技能 (W²-VLA Token), 不出实验室"
+      }
+    },
+    {
+      "id": "sys2",
+      "type": "system",
+      "name": "🚀 SYS2 云端训练/微调",
+      "x": 570,
+      "y": 280,
+      "w": 170,
+      "params": {
+        "layer": "sys2",
+        "desc": "底座冻结+专有微调 (4060/4090), 权重不出实验室"
+      }
+    },
+    {
+      "id": "zoo",
+      "type": "coord_overlay",
+      "name": "🎯 Model Zoo 对比评估",
+      "x": 800,
+      "y": 280,
+      "w": 170,
+      "params": {
+        "gate": 0.5,
+        "desc": "七模型横比: ACT/SmolVLA/LEW/VLA-Touch/AWE/MLP蒸馏/官方专家 85%"
+      }
+    },
+    {
+      "id": "eval",
+      "type": "train_gate",
+      "name": "✅ 评估通过?",
+      "x": 340,
+      "y": 420,
+      "w": 170,
+      "params": {
+        "gate": 0.9,
+        "desc": "成功率≥99% 且优于基线 → 部署; 否则回炉重训"
+      }
+    },
+    {
+      "id": "deploy",
+      "type": "action",
+      "name": "📦 部署到 SYS1",
+      "x": 570,
+      "y": 420,
+      "w": 170,
+      "params": {
+        "action_out": "/models/act_latest.safetensors",
+        "desc": "静态URL覆盖部署 (ECS), 版本可回溯"
+      }
+    },
+    {
+      "id": "sys1",
+      "type": "system",
+      "name": "🧠 SYS1 动作系统",
+      "x": 110,
+      "y": 600,
+      "w": 170,
+      "params": {
+        "layer": "sys1",
+        "desc": "执行动作序列 (A001~A010), 场景条件编码注入"
+      }
+    },
+    {
+      "id": "sys0",
+      "type": "hardware",
+      "name": "⚙️ SYS0 硬件驱动",
+      "x": 340,
+      "y": 600,
+      "w": 170,
+      "params": {
+        "desc": "Z700 六轴+力控夹爪+相机, 原子功能层"
+      }
+    },
+    {
+      "id": "feedback",
+      "type": "data",
+      "name": "🔄 新数据回传实验室",
+      "x": 570,
+      "y": 600,
+      "w": 170,
+      "params": {
+        "source": "field",
+        "desc": "现场异常/新工况数据 → 脱敏 → 回实验室闭环"
+      }
+    },
+    {
+      "id": "wall",
+      "type": "switch",
+      "name": "🛡 数据不出实验室",
+      "x": 1030,
+      "y": 120,
+      "w": 180,
+      "params": {
+        "switch": "wall",
+        "desc": "合规红线: 原始数据/标注/权重 不出实验室; 供应商仅获脱敏底座协议"
+      }
+    },
+    {
+      "id": "wall2",
+      "type": "hardware",
+      "name": "🔐 边界防火墙",
+      "x": 1030,
+      "y": 300,
+      "w": 180,
+      "params": {
+        "desc": "实验室→现场: 只出部署包 (模型+action), 数据单向回传"
+      }
+    }
+  ],
+  "links": [
+    {
+      "label": "底座授权",
+      "f": "sup",
+      "t": "agree"
+    },
+    {
+      "label": "脱敏",
+      "f": "agree",
+      "t": "mask"
+    },
+    {
+      "label": "底座入库",
+      "f": "mask",
+      "t": "base"
+    },
+    {
+      "label": "底座冻结微调",
+      "f": "base",
+      "t": "sys2"
+    },
+    {
+      "label": "标注",
+      "f": "collect",
+      "t": "annotate"
+    },
+    {
+      "label": "训练",
+      "f": "annotate",
+      "t": "sys2"
+    },
+    {
+      "label": "评估对比",
+      "f": "sys2",
+      "t": "zoo"
+    },
+    {
+      "label": "评审",
+      "f": "zoo",
+      "t": "eval"
+    },
+    {
+      "label": "通过→部署",
+      "f": "eval",
+      "t": "deploy"
+    },
+    {
+      "label": "不通过→回炉",
+      "f": "eval",
+      "t": "sys2"
+    },
+    {
+      "label": "模型下发",
+      "f": "deploy",
+      "t": "sys1"
+    },
+    {
+      "label": "动作指令",
+      "f": "sys1",
+      "t": "sys0"
+    },
+    {
+      "label": "现场数据",
+      "f": "sys0",
+      "t": "feedback"
+    },
+    {
+      "label": "回传闭环",
+      "f": "feedback",
+      "t": "collect"
+    }
+  ]
+}

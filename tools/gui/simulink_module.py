@@ -29,6 +29,7 @@ from node_logic_dialog import NodeLogicDialog
 # ════════════════════════════════════════════════════════════════
 NODE_TYPES = {
     "condition": {"cn": "条件", "color": "#a371f7"},
+    "data":      {"cn": "数据", "color": "#58a6ff"},  # 📊 数据节点 (2026-08-09: 数据集/采集/回传)
     "model":     {"cn": "模型", "color": "#58a6ff"},
     "action":    {"cn": "动作", "color": "#00d4aa"},
     "system":    {"cn": "系统", "color": "#d4a800"},
@@ -2603,6 +2604,24 @@ class LibraryPanel(QFrame):
                 btn.setToolTip(f"{s['name']} — 成功率{_perf.get('operation_success_rate','')} · 节拍{_perf.get('cycle_time','')} · 点击打开 ECS 链接 + 建节点链")
                 btn.clicked.connect(lambda _, sid=s["id"]: self.module.open_scene_link(sid))
                 self.v.addWidget(btn)
+        # 🤝 合作闭环 (2026-08-09 老倪: 供应商底座→实验室微调→数据不出实验室 — 加载合作JSON画布)
+        try:
+            _cp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "flows", "cooperation_closed_loop.json")
+            if os.path.exists(_cp):
+                lab = QLabel("▾ 🤝 合作闭环 (供应商·数据合规)")
+                lab.setStyleSheet("color:#a371f7; font-size:11px; font-weight:700; padding:6px 2px 2px;")
+                lab.setToolTip("供应商提供底座模型 → 实验室微调专有模型 → 数据闭环不出实验室 (点击加载画布)")
+                self.v.addWidget(lab)
+                btn = QToolButton()
+                btn.setText("🤝 合作数据闭环流程")
+                btn.setStyleSheet("QToolButton { background:#0d1117; color:#e6edf3; border:1px solid #a371f733;"
+                                  " border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }"
+                                  "QToolButton:hover { border-color:#a371f7; color:#a371f7; }")
+                btn.setToolTip("加载合作合规数据闭环画布: 供应商底座→SYS2微调→评估→SYS1/SYS0, 数据不出实验室")
+                btn.clicked.connect(lambda _, fl=_cp: self.module.load_flow_file(fl))
+                self.v.addWidget(btn)
+        except Exception:
+            pass
         self.v.addStretch()
 
     def _toggle_group(self, gname, lab):
@@ -3424,7 +3443,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖",
+                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖", "data": "📊",
                      "coord_overlay": "🧩"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
