@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🤖 3D 场景 · Z-MAX</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#0d1117;color:#e6edf3;overflow:hidden;height:100vh}
+#view{width:100%;height:100%}
+#panel{position:fixed;top:14px;left:14px;background:#0d1117ee;border:1px solid #1a1f2b;border-radius:10px;padding:12px 14px;max-width:300px;z-index:10;backdrop-filter:blur(4px)}
+#panel h1{font-size:16px;color:#00d4aa;margin-bottom:4px}
+#panel .sub{font-size:11px;color:#8b949e;margin-bottom:8px}
+#panel .kpi{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #1a1f2b33}
+#panel .kpi .v{color:#00d4aa;font-weight:700}
+#nav{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10}
+#nav button{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer}
+#nav button.on{background:#0d3b33;border-color:#00d4aa;color:#00d4aa}
+#hint{position:fixed;bottom:14px;right:14px;color:#484f58;font-size:10px;z-index:10}
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1 id="t"></h1>
+  <div class="sub" id="desc"></div>
+  <div id="kpis"></div>
+</div>
+<div id="view"></div>
+<div id="nav"><button id="b-insert" onclick="goto('insert')">🔌 插拔</button><button id="b-handle" onclick="goto('handle')">🤖 搬运</button><button id="b-aoi" onclick="goto('aoi')">🔍 AOI</button></div>
+<div id="hint">🖱 拖拽旋转 · 滚轮缩放</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const SCENES = {
+  insert:{name:'🔌 插拔场景 · 100G',desc:'老化箱 · QSFP28 · 力控插拔',kpi:[['成功率','≥99.5%'],['节拍','≤3.5s/颗'],['插拔力','≤15N'],['定位','±0.02mm']]},
+  handle:{name:'🤖 搬运场景 · 柔性物流',desc:'料盘 · 12槽 · 防静电搬运',kpi:[['成功率','≥99%'],['节拍','≤8s/颗'],['负载','≤2kg'],['防静电','全程']]},
+  aoi:{name:'🔍 AOI 检测场景',desc:'7 检测位 · 2μm 显微',kpi:[['检出率','≥99.9%'],['误判率','≤0.5%'],['分辨率','0.35μm'],['产能','≥300颗/h']]}
+};
+let scene, camera, renderer, controls, robot;
+
+function buildRobot(){ // 简易 6轴机械臂: 底座+腰+肩+肘+腕+夹爪
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({color:0x00d4aa,metalness:0.6,roughness:0.35});
+  const mat2 = new THREE.MeshStandardMaterial({color:0x2a3f5f,metalness:0.4,roughness:0.5});
+  // 底座
+  let b = new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.1,0.5,24), mat2); b.position.y=0.25; g.add(b);
+  // 腰
+  b = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.9,16), mat); b.position.y=0.95; g.add(b);
+  // 肩
+  b = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.6,0.7), mat); b.position.set(0,1.6,0); g.add(b);
+  // 大臂
+  b = new THREE.Mesh(new THREE.BoxGeometry(0.3,1.4,0.3), mat); b.position.set(0,2.5,0); b.rotation.x=0.25; g.add(b);
+  // 肘
+  b = new THREE.Mesh(new THREE.SphereGeometry(0.3,12,12), mat2); b.position.set(0.25,3.2,0.1); g.add(b);
+  // 小臂
+  b = new THREE.Mesh(new THREE.BoxGeometry(0.25,1.1,0.25), mat); b.position.set(0.45,3.75,0.15); b.rotation.x=-0.5; g.add(b);
+  // 夹爪
+  const claw = new THREE.Group();
+  const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.3,0.12), mat2); c1.position.set(-0.1,4.2,0.2);
+  const c2 = c1.clone(); c2.position.x=0.1;
+  g.add(c1); g.add(c2);
+  return g;
+}
+function buildWorkpiece(type){
+  const g = new THREE.Group();
+  const gold = new THREE.MeshStandardMaterial({color:0xd4a800,metalness:0.8,roughness:0.2});
+  const grey = new THREE.MeshStandardMaterial({color:0x4a5568,metalness:0.3,roughness:0.6});
+  if(type==='insert'){
+    // QSFP 模块 + 笼子
+    const cage = new THREE.Mesh(new THREE.BoxGeometry(2.2,0.7,0.9), grey); cage.position.set(2.6,0.9,0); g.add(cage);
+    const mod = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.4,0.25), gold); mod.position.set(1.6,1.0,0); g.add(mod);
+  }else if(type==='handle'){
+    // 料盘 + 12 槽
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(3.4,0.15,2.2), grey); tray.position.set(2.6,0.6,0); g.add(tray);
+    for(let i=0;i<4;i++){ const s=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.2,0.3), gold); s.position.set(1.8+i*0.55,0.8,0); g.add(s); }
+  }else{
+    // AOI 检测台 + 转位台
+    const table = new THREE.Mesh(new THREE.BoxGeometry(2.8,0.4,2.2), grey); table.position.set(2.6,0.5,0); g.add(table);
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,0.3,24), gold); st.position.set(2.6,0.9,0); g.add(st);
+  }
+  return g;
+}
+function init(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1117);
+  camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(6,4.5,7);
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.getElementById('view').appendChild(renderer.domElement);
+  // 灯光
+  scene.add(new THREE.AmbientLight(0x404060, 0.9));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(5,8,4); scene.add(dl);
+  // 地面网格
+  const grid = new THREE.GridHelper(12, 12, 0x1a3b33, 0x1a2a33); grid.position.y=0.02; scene.add(grid);
+  // 机器人 + 工件
+  robot = buildRobot(); scene.add(robot);
+  scene.add(buildWorkpiece(new URLSearchParams(location.search).get('scene')||'insert'));
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  animate();
+}
+function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera); }
+function showPanel(k){
+  const d = SCENES[k];
+  document.getElementById('t').textContent = d.name;
+  document.getElementById('desc').textContent = d.desc;
+  document.getElementById('kpis').innerHTML = d.kpi.map(x=>`<div class="kpi"><span>${x[0]}</span><span class="v">${x[1]}</span></div>`).join('');
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.id==='b-'+k));
+}
+function goto(k){ showPanel(k); /* 切换工件 */ }
+showPanel(new URLSearchParams(location.search).get('scene')||'insert');
+addEventListener('resize', ()=>{camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);});
+init();
+</script>
+</body>
+</html>

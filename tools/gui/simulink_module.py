@@ -6444,14 +6444,15 @@ class SimulinkModule(QWidget):
         if not scene:
             self._log(f"❌ 场景不存在: {scene_id}")
             return
-        # 1) 打开 ECS 链接 (场景 JSON base64 传给网站)
+        # 1) 打开 ECS 3D 场景链接 (2026-08-09 老倪+web: scene-3d.html 3D 机器人场景)
         try:
             from PyQt5.QtCore import QUrl
             from PyQt5.QtGui import QDesktopServices
-            b64 = _b64.b64encode(_j.dumps(scene, ensure_ascii=False).encode()).decode()
-            url = f"https://datadrive.world/scene.html?scene={scene_id}&json={_up.quote(b64)}"
+            _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
+            _k = _SCENE3D.get(scene_id, scene_id.lower())
+            url = f"https://datadrive.world/scene-3d.html?scene={_k}"
             QDesktopServices.openUrl(QUrl(url))
-            self._log(f"🏭 已打开 ECS 场景链接: {scene_id}")
+            self._log(f"🏭 已打开 3D 场景: {scene_id} → {url}")
         except Exception as e:
             self._log(f"⚠️ 打开链接失败: {e}")
         # 2) 建场景节点链 (画布: 场景节点 + 技能节点序列 → 结构条件 → SYS1)
