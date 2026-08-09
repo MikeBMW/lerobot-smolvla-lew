@@ -6570,9 +6570,132 @@ class SimulinkModule(QWidget):
             self._log(f"⚠️ 打开链接失败: {e}")
 
     def _open_scene(self, node):
-        """双击场景节点 (2026-08-09 老倪): 只打开 3D 链接, 不建子模块"""
+        """双击场景节点 (2026-08-09 老倪 v2): 打开 场景JSON上传窗口
+        UI: JSON 预览 + 上传链接 + 📤 上传按钮 + 上传结果 (窗口设计)"""
+        import os as _os, json as _j, base64 as _b64, urllib.parse as _up, urllib.request as _rq, re as _re, subprocess as _sp
         sid = node.get("params", {}).get("scene_id", "")
-        self.open_scene_link(sid)
+        # 读场景 JSON
+        _repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        _sp2 = _os.path.join(_repo, "flows", "scene_skills_3scenarios.json")
+        _scene = None
+        try:
+            _data = _j.load(open(_sp2, encoding="utf-8"))
+            _scene = next((s for s in _data.get("scenes", []) if s.get("id") == sid), None)
+        except Exception as e:
+            self._log(f"❌ 场景库读取失败: {e}")
+            return
+        if not _scene:
+            self._log(f"❌ 场景不存在: {sid}")
+            return
+        # 转换 web 格式 payload
+        def _num(v):
+            m = _re.search(r"\d+(\.\d+)?", str(v))
+            try:
+                return float(m.group(0)) if m else 0.0
+            except Exception:
+                return 0.0
+        _sr = _num(_scene.get("performance", {}).get("operation_success_rate", ""))
+        _payload = {
+            "name": _scene.get("name", sid),
+            "skills": [f"{st.get('step', i+1)}.{st.get('name', '')}" for i, st in enumerate(_scene.get("process_steps", []))],
+            "specs": {
+                "success_rate": round(_sr / 100.0, 4) if _sr > 1 else _sr,
+                "cycle_time": _num(_scene.get("performance", {}).get("cycle_time", "")),
+            },
+            "kpi": _scene.get("performance", {}),
+        }
+        _json_str = _j.dumps(_payload, ensure_ascii=False, indent=2)
+        _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
+        _k = _SCENE3D.get(sid, sid.lower())
+        _api_url = f"https://datadrive.world/scene-api.php/{_k}"
+        _view_url = f"https://datadrive.world/scene-3d.html?scene={_k}"
+        # ── UI ──
+        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                                     QPlainTextEdit, QPushButton, QLineEdit)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"🏭 场景 JSON 上传 · {sid} ({_scene.get('name', '')[:20]})")
+        dlg.setMinimumSize(640, 560)
+        dlg.setStyleSheet("""
+            QDialog { background:#0d1117; }
+            QLabel { color:#e6edf3; font-size:12px; }
+            QPlainTextEdit { background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; font-family:'Consolas','Menlo',monospace; font-size:11px; padding:6px; }
+            QLineEdit { background:#161b22; color:#00d4aa; border:1px solid #30363d; border-radius:4px; padding:5px 8px; font-size:11px; }
+            QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:4px; padding:7px 14px; font-weight:600; }
+            QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+        """)
+        lay = QVBoxLayout(dlg)
+        # 头部信息
+        _perf = _scene.get("performance", {})
+        hdr = QLabel(f"📋 {_scene.get('name', '')}  ({sid} · {_scene.get('category', '')})\n"
+                     f"📊 成功率 {_perf.get('operation_success_rate', '')} · 节拍 {_perf.get('cycle_time', '')}")
+        hdr.setWordWrap(True)
+        hdr.setStyleSheet("color:#00d4aa; font-weight:700; font-size:13px;")
+        lay.addWidget(hdr)
+        # JSON 预览
+        lay.addWidget(QLabel("📄 场景描述 JSON (可编辑):"))
+        editor = QPlainTextEdit(_json_str)
+        editor.setMinimumHeight(240)
+        lay.addWidget(editor)
+        # 上传链接
+        lay.addWidget(QLabel("🔗 上传链接 (ECS 接收端点):"))
+        url_row = QHBoxLayout()
+        url_edit = QLineEdit(_api_url)
+        url_edit.setReadOnly(True)
+        url_row.addWidget(url_edit, 1)
+        btn_copy = QPushButton("📋 复制")
+        url_row.addWidget(btn_copy)
+        lay.addLayout(url_row)
+        # 结果状态
+        status = QLabel("")
+        status.setWordWrap(True)
+        status.setStyleSheet("color:#8b949e; font-size:11px;")
+        lay.addWidget(status)
+        # 操作按钮
+        btn_row = QHBoxLayout()
+        btn_up = QPushButton("📤 上传到 ECS")
+        btn_up.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border:1px solid #00d4aa; border-radius:4px; padding:8px 16px; font-weight:700;}")
+        btn_3d = QPushButton("🌐 打开 3D 场景")
+        btn_close = QPushButton("✖ 关闭")
+        btn_row.addWidget(btn_up, 2)
+        btn_row.addWidget(btn_3d, 1)
+        btn_row.addWidget(btn_close, 1)
+        lay.addLayout(btn_row)
+        # 交互
+        def _copy():
+            from PyQt5.QtWidgets import QApplication as _QA
+            _QA.clipboard().setText(url_edit.text())
+            status.setText("✅ 链接已复制到剪贴板")
+        btn_copy.clicked.connect(_copy)
+        def _upload():
+            try:
+                _p = _j.loads(editor.toPlainText())
+            except Exception as e:
+                status.setText(f"❌ JSON 格式错误: {e}")
+                return
+            btn_up.setText("⏳ 上传中…")
+            btn_up.setEnabled(False)
+            try:
+                _req = _rq.Request(_api_url, data=_j.dumps(_p, ensure_ascii=False).encode(),
+                                   headers={"Content-Type": "application/json"}, method="POST")
+                with _rq.urlopen(_req, timeout=10) as _resp:
+                    _rb = _j.loads(_resp.read().decode("utf-8", "replace"))
+                if _rb.get("ok"):
+                    _saved = _rb.get("url", "")
+                    status.setText(f"✅ 上传成功!\n💾 保存: {_saved}\n(name={_rb.get('name', '')})")
+                    status.setStyleSheet("color:#3fb950; font-size:11px;")
+                else:
+                    status.setText(f"⚠️ 上传返回: {_rb.get('error', '未知')}")
+            except Exception as e:
+                status.setText(f"❌ 上传失败: {e}")
+            btn_up.setText("📤 上传到 ECS")
+            btn_up.setEnabled(True)
+        btn_up.clicked.connect(_upload)
+        def _open3d():
+            dlg.accept()
+            self.open_scene_link(sid)
+        btn_3d.clicked.connect(_open3d)
+        btn_close.clicked.connect(dlg.reject)
+        dlg.exec_()
 
     def _pick_atomic_condition(self, node):
         """🧩 ControlNet 思想: 双击结构条件节点 → 从 atomic_skills_conditions.json 选原子技能条件 → 注入节点
