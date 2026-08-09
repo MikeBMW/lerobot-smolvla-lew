@@ -700,7 +700,9 @@ LIBRARY = [
     # 🔬 总系统节点 (2026-08-08 老倪: 总系统 Subsystem 可拖 — 双击展开Model Zoo)
     ("system", "🔬 总系统 (1)", [
         {"name": "🔬 总系统", "params": {"subsystem": "🔬 Model Zoo", "type_label": "Subsystem",
-                                        "desc": "Simulink 子系统: 双击展开 → 🔬 Model Zoo (七模型训练线)"}},
+                                        "desc": "Simulink 子系统: 双击展开 → 🔬 Model Zoo (七模型训练线)"},
+         "flow": "flows/system.json",  # 🐛 2026-08-09 老倪: 点击加载用户保存的总系统 (SYS2→SYS11+SYS12→Scope)
+         "desc": "点击加载用户保存的总系统 flows/system.json (5节点)"},
     ]),
     # 🎯 Action Head 组 (2026-08-08 老倪: Model Zoo各模型 Action Head 均可拖)
     ("action", "🎯 Action Head (7)", [
@@ -2470,7 +2472,10 @@ class LibraryPanel(QFrame):
                     border-radius:4px; padding:4px 8px; font-size:11px; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
-                if it.get("template"):
+                if it.get("flow"):
+                    # 🐛 2026-08-09 老倪: 点击加载保存的工作流 JSON (总系统)
+                    btn.clicked.connect(lambda _, fl=it["flow"]: self.module.load_flow_file(fl))
+                elif it.get("template"):
                     # 完整模型条目: 点击加载模板
                     btn.clicked.connect(lambda _, tpl=it["template"]: self.module.load_reference_app_by_name(tpl))
                 else:
@@ -3198,6 +3203,54 @@ class SimulinkModule(QWidget):
                 return True
         self._log(f"❌ 找不到模板: {name}")
         return False
+
+    def load_flow_file(self, path):
+        """💾 加载保存的工作流 JSON (2026-08-09 老倪: 模块库总系统 → flows/system.json)
+        解析 {format,nodes[],links[]} → 恢复节点+连线 (复用 add_node 建节点, 保留位置)"""
+        import os as _os
+        if not _os.path.exists(path):
+            self._log(f"❌ 工作流文件不存在: {path}")
+            return False
+        try:
+            import json as _j
+            flow = _j.load(open(path, encoding="utf-8"))
+        except Exception as e:
+            self._log(f"❌ 工作流 JSON 解析失败: {e}")
+            return False
+        nodes = flow.get("nodes", [])
+        links = flow.get("links", [])
+        if self.nodes:
+            if not self._qmsg_yes("加载工作流", f"加载「{path}」将清空当前画布，继续？"):
+                return
+        self.clear()
+        old_sync = self._sync
+        self._sync = lambda: None
+        old_undo = getattr(self, "_suspend_undo", False)
+        self._suspend_undo = True
+        try:
+            id_map = {}
+            for spec in nodes:
+                n = self.add_node(spec.get("type", "system"), spec.get("name", "?"),
+                                  spec.get("x", 0), spec.get("y", 0), spec.get("params", {}))
+                id_map[spec["id"]] = n["id"]
+                n["w"] = spec.get("w", 150)
+            for spec in links:
+                f = id_map.get(spec.get("f"))
+                t = id_map.get(spec.get("t"))
+                if f and t:
+                    fi = self._items.get(f)
+                    ti = self._items.get(t)
+                    if fi and ti:
+                        self.add_link(fi, ti, spec.get("label"))
+            self._log(f"💾 已加载工作流: {path} ({len(nodes)}节点 {len(links)}连线)")
+        except Exception as e:
+            self._log(f"⚠️ 工作流加载部分失败: {e}")
+        finally:
+            self._sync = old_sync
+            self._suspend_undo = old_undo
+            self._sync()
+            self.canvas._scene.update()
+        return True
 
     def load_reference_app(self, name, node_specs, link_specs, layout=None):
         if self.nodes:
