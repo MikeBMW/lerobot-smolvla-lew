@@ -1309,6 +1309,7 @@ class DatasetModule(SubModuleWidget):
 
     def __init__(self):
         super().__init__("数据集管理", [("System 2", SYS2_COLOR)])
+        self.setObjectName("dataset")  # 🌐 2026-08-09 老倪: 页识别 (VEH-1 功能卡编号 — 数据集 VEH.1.xx)
         body = QWidget()
         bl = QVBoxLayout()
         bl.setSpacing(10)
@@ -4797,6 +4798,45 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             return 0
 
+    def _veh4_apply(self, root=None):
+        """🌐 VEH.4 (系统架构页) 编号 (2026-08-09 老倪: 所有可见控件 VEH.4.xx 悬停显示)
+        架构页用 QLabel/卡片 (非标准按钮) — 通用分支覆盖不到, 单独编号"""
+        try:
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar, QFrame
+            root = root or self
+            ws = []
+            for w in root.findChildren(QWidget):
+                if self._holo_page_of(w) != "P13":
+                    continue
+                if w.objectName() == "architecture":
+                    continue  # 页面自身不编号
+                if type(w) is QWidget:
+                    continue  # 裸壳不编号
+                if isinstance(w, QFrame):
+                    # 有布局/子控件的 QFrame = 容器卡片 → 跳 (只给叶子控件编号)
+                    if w.layout() is not None or w.children():
+                        continue
+                if isinstance(w, (QScrollArea, QScrollBar)):
+                    continue
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue  # 空标签/图标占位
+                    if txt.startswith("VEH."):
+                        continue  # 角标自身
+                ws.append(w)
+            ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
+            for i, w in enumerate(ws, 1):
+                if id(w) in self._holo_applied:
+                    continue
+                self._holo_applied.add(id(w))
+                h_id = f"VEH.4.{i:02d}"
+                self._holo_badge_overlay(w, h_id, hover_only=True)
+                self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                           lambda w=w: self._holo_state(w))
+        except Exception:
+            pass
+
     def _holo_apply_all(self, root=None):
         """🌐 全控制台所有 Qt 控件 ID 角标 (叠加式 — 左下角可见, 安全不崩, 2026-08-08 老倪: 所有所有所有)"""
         try:
@@ -4805,8 +4845,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._holo_seq = 0
             self._holo_page_seq = {}  # 🐛 2026-08-09: 每页独立序号 (VEH.3.01 起, 非全局)
             self._holo_applied = set()
-            # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03 model_engine) 页打布局序编号, 主循环跳过该页
+            # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03 model_engine) / VEH-4 (P13 architecture) 页打布局序编号
             self._veh2_apply(root)
+            self._veh4_apply(root)
             # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框)
             targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
             for w in root.findChildren(QWidget):
@@ -4815,6 +4856,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 if isinstance(w, targets):
                     if self._holo_page_of(w) == "P03":
                         continue  # VEH-2 已编号
+                    if self._holo_page_of(w) == "P01":
+                        continue  # 首页导航不编号 (VEH.1 仅数据集页)
                     self._holo_seq += 1
                     self._holo_applied.add(id(w))
                     h_id = self._holo_seq_id(w)
@@ -4827,8 +4870,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             pass
 
     # 🌐 2026-08-09 老倪: 页 → VEH 卡号 (主页功能卡顺序: VEH.1数据集 2模型引擎 3硬件 4架构 5Simulink 6配置 7数据空间 8监控 9评估 10插拔 11版本 12大屏)
-    _VEH_PAGE = {"P01": 1, "P02": 1, "P03": 2, "P04": 9, "P05": 3, "P06": 6,
-                 "P07": 8, "P08": 10, "P09": 11, "P10": 2, "P11": 5, "P12": 7}
+    _VEH_PAGE = {"P01": 0, "P02": 1, "P03": 2, "P04": 9, "P05": 3, "P06": 6,
+                 "P07": 8, "P08": 10, "P09": 11, "P10": 2, "P11": 5, "P12": 7,
+                 "P13": 4}  # P13=架构 (VEH.4 — 第4张功能卡)
 
     def _holo_seq_id(self, w):
         """🌐 顺序 ID (VEH.卡号.序号 — 2026-08-09 老倪: 取消 Pxx 系统, 全 VEH 点号)
@@ -4853,7 +4897,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     for k, v in [("home", "P01"), ("dataset", "P02"), ("model_engine", "P03"),
                                  ("eval", "P04"), ("hardware", "P05"), ("config", "P06"),
                                  ("monitor", "P07"), ("scene", "P08"), ("version", "P09"),
-                                 ("inference", "P10"), ("simulink", "P11"), ("dataspace", "P12")]:
+                                 ("inference", "P10"), ("simulink", "P11"), ("dataspace", "P12"),
+                                 ("architecture", "P13")]:
                         if k in on.lower():
                             return v
                 p = p.parent()
@@ -5425,6 +5470,12 @@ class HardwareModule(SubModuleWidget):
         self._selected_device = "overview"
         self._timer = QTimer()
         self._timer.timeout.connect(self._refresh)
+        # 📡 2026-08-09 老倪: 中间件 WS 实时通道 — Orin 状态实时推送 (非轮询)
+        try:
+            from relay_middleware import WSClient
+            self._ws = WSClient(on_status=self._on_ws_status)
+        except Exception:
+            self._ws = None  # 中间件不可用不影响硬件页
         
         # 回放引擎
         self.replay = ReplayEngine()
@@ -5754,39 +5805,44 @@ class HardwareModule(SubModuleWidget):
         except Exception:
             pass
 
+    def _on_ws_status(self, evt):
+        """📡 WS 实时 Orin 状态回调 (子线程 → QTimer.singleShot 主线程刷新, 铁律)"""
+        try:
+            from PyQt5.QtCore import QTimer as _QTM
+            _QTM.singleShot(0, lambda: self._apply_ws_status(evt))
+        except Exception:
+            pass
+
+    def _apply_ws_status(self, evt):
+        """主线程应用 Orin 实时状态到硬件表 (2026-08-09: WS 推送真值)"""
+        try:
+            online = evt.get("online", False)
+            self.status_label.setText("🟢 Orin 在线" if online else "🔴 Orin 离线")
+            self.status_label.setStyleSheet(
+                f"color:{C_GREEN if online else C_RED}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            # 更新硬件表第一行状态 (三色塔灯所在行)
+            if online:
+                self.hw_table.item(0, 2).setText("🟢 在线")
+                model = evt.get("model") or "—"
+                self.hw_table.item(0, 3).setText(f"推理 {evt.get('infer_count', 0)} 次 · {model}")
+        except Exception:
+            pass
+
     def _tower_cmd(self, color):
-        """发送塔灯控制命令 (2026-08-09 老倪: VEH.3.16 红灯控制不了修复)
-        双通道: ①本地 SSH 直连 Orin (同网段时) ②ECS relay /command 下发 Mac 执行 (Orin 局域网内)"""
-        import subprocess as _sp
+        """发送塔灯控制命令 (2026-08-09 老倪: 中间件通道统一版)
+        通道: ECS relay /command → Mac 守护 (tashan@192.168.23.66) → ros2 topic pub /tower_light/command
+        (本地 WSL 172.18.x 与 Orin 192.168.23.x 不同网段 — 直连永远不通, 统一走中间件)"""
+        from relay_middleware import RelayMiddleware, RelayError
         self._log(f"🚦 塔灯 → {color}")
-        # ① 本地直连 (192.168.23.x 同网段才可达 — WSL 172.18.x 不通, 会走 ②)
-        # 注: mac 分支曾用 tashan@192.168.23.66, main 用 nvidia@192.168.23.10 (Orin 当前地址)
         try:
-            r = _sp.run([
-                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "nvidia@192.168.23.10",
-                "source /opt/ros/humble/setup.bash && "
-                f"ROS_DOMAIN_ID=23 ros2 topic pub --once /tower_light/command "
-                f"std_msgs/msg/String '{{\"data\":\"{color}\"}}'"
-            ], timeout=5, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-            if r.returncode == 0:
-                self.hw_table.item(0, 2).setText("🟢 已控制")
-                self.hw_table.item(0, 3).setText(color)
-                self._log("   ✅ 塔灯已控制 (本地 SSH 直连)")
-                return
-            self._log(f"   ⚠️ 本地直连失败 (exit {r.returncode}) — 走 ECS relay 经 Mac 下发")
-        except Exception as e:
-            self._log(f"   ⚠️ 本地直连异常: {e} — 走 ECS relay 经 Mac 下发")
-        # ② ECS relay 下发 Mac 执行 (Orin 在 192.168.23.x 局域网, Mac 192.168.23.1 可达)
-        try:
-            import requests as _rq
-            r2 = _rq.post("https://datadrive.world/api/relay/command",
-                          json={"cmd": f"tower_light {color}"}, timeout=15)
-            self._log(f"   📡 已下发 Mac 塔灯指令: {r2.json().get('cmd','')}")
+            mw = RelayMiddleware(timeout=10)
+            resp = mw.send(f"tower_light {color}")
+            self._log(f"   📡 已下发 Mac 塔灯指令: {resp.get('cmd','')}")
             self.hw_table.item(0, 2).setText("🟡 指令已下发")
             self.hw_table.item(0, 3).setText(color)
-            self._log("   🤖 Mac 守护轮询到指令 → ssh Orin → ros2 topic pub /tower_light/command")
-        except Exception as e:
-            self._log(f"   ❌ 塔灯控制失败 (本地直连+relay 均不可用): {e}")
+            self._log("   🤖 Mac 守护轮询到指令 → ssh tashan@192.168.23.66 → ros2 topic pub /tower_light/command")
+        except RelayError as e:
+            self._log(f"   ❌ 塔灯控制失败 (中间件): {e}")
     
     def _gripper_cmd(self, pos):
         """夹爪开/关"""
@@ -8398,6 +8454,7 @@ class ArchitectureModule(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("architecture")  # 🌐 2026-08-09 老倪: 页识别 (VEH-4 功能卡编号 — 系统架构 VEH.4.xx)
         self._build()
 
     def _build(self):
