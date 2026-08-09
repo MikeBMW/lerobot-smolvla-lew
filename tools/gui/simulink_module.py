@@ -6510,14 +6510,16 @@ class SimulinkModule(QWidget):
         self._sync()
 
     def open_scene_link(self, scene_id):
-        """🏭 场景 → 打开 ECS 3D 链接, 并传场景描述 JSON (2026-08-09 老倪+web)
+        """🏭 场景 → ① POST 场景 JSON 到 ECS scene-api.php ② 打开 3D 链接 (2026-08-09 老倪+web)
+        POST: https://datadrive.world/scene-api.php/<insert|handle|aoi> (web 格式 name/skills/specs/kpi)
         URL: scene-3d.html?scene=<k>&json=<base64> — 页面渲染场景工艺指标/结构尺寸/工序
         🐛 WSL 无 xdg-open → QDesktopServices 找不到浏览器 → 用 cmd.exe start (Windows 默认浏览器)"""
         import os as _os, json as _j, base64 as _b64, urllib.parse as _up, subprocess as _sp
+        import urllib.request as _rq
         _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
         _k = _SCENE3D.get(scene_id, scene_id.lower())
         url = f"https://datadrive.world/scene-3d.html?scene={_k}"
-        # 场景描述 JSON → base64 → URL 参数 (页面渲染)
+        _scene = None
         try:
             _repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
             _sp2 = _os.path.join(_repo, "flows", "scene_skills_3scenarios.json")
@@ -6528,9 +6530,42 @@ class SimulinkModule(QWidget):
                 url += f"&json={_up.quote(_b)}"
         except Exception:
             pass
+        # ① POST 场景 JSON 到 ECS (web 格式: name/skills/specs/kpi)
+        try:
+            if _scene:
+                import re as _re
+                def _num(v):
+                    # 提取首个数字 (≥99.5% → 99.5; ≤3.5s/颗 → 3.5)
+                    m = _re.search(r"\d+(\.\d+)?", str(v))
+                    try:
+                        return float(m.group(0)) if m else 0.0
+                    except Exception:
+                        return 0.0
+                _steps = _scene.get("process_steps", [])
+                _sr = _num(_scene.get("performance", {}).get("operation_success_rate", ""))
+                _payload = {
+                    "name": _scene.get("name", scene_id),
+                    "skills": [f"{st.get('step', i+1)}.{st.get('name', '')}" for i, st in enumerate(_steps)],
+                    "specs": {
+                        # web 格式: success_rate 为小数 (99.5% → 0.995)
+                        "success_rate": round(_sr / 100.0, 4) if _sr > 1 else _sr,
+                        "cycle_time": _num(_scene.get("performance", {}).get("cycle_time", "")),
+                    },
+                    "kpi": _scene.get("performance", {}),
+                }
+                _req = _rq.Request(
+                    f"https://datadrive.world/scene-api.php/{_k}",
+                    data=_j.dumps(_payload, ensure_ascii=False).encode(),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with _rq.urlopen(_req, timeout=8) as _resp:
+                    _resp.read()
+                self._log(f"🏭 场景 JSON 已 POST → scene-api.php/{_k} (ECS 保存 scenes/scene_{_k}.json)")
+        except Exception as _e:
+            self._log(f"⚠️ 场景 JSON POST 失败: {_e}")
+        # ② 打开 3D 链接
         try:
             _sp.Popen(["cmd.exe", "/c", "start", "", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-            self._log(f"🏭 打开 3D 场景: {scene_id} (含场景描述 JSON) → Windows 浏览器")
+            self._log(f"🏭 打开 3D 场景: {scene_id} → Windows 浏览器")
         except Exception as e:
             self._log(f"⚠️ 打开链接失败: {e}")
 
