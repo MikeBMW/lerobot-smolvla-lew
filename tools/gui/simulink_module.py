@@ -507,6 +507,11 @@ REFERENCE_APPS = [
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
 LIBRARY = [
+    # 🧩 原子技能入口 (2026-08-09 老倪: 模块库最顶部 — 打开原子技能 → 结构条件 → SYS1 → action)
+    ("skill", "🧩 原子技能入口", [
+        {"name": "🧩 原子", "params": {"atomic_gate": True},
+         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
+    ]),
     # 🎯 YOLO 3D感知模块 (2026-08-06 老倪: 控制台要明显看到 yolo 3d 检测模块, state 输入来源)
     ("model", "🎯 YOLO 3D (感知)", [
         {"name": "🎯 YOLO 3D", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
@@ -530,8 +535,6 @@ LIBRARY = [
         {"name": "C05 温控阈值", "params": {"limit": 45.0}},
     ]),
     ("model", "模型 (9)", [
-        {"name": "🧩 原子", "params": {"atomic_gate": True},
-         "desc": "打开原子技能库 → 选技能 → 自动建节点链: 技能 → 结构条件 → SYS1 → 导出 action JSON"},
         {"name": "M00 SmolVLA", "params": {"checkpoint": "smolvla-500m", "fps": 100}},
         {"name": "M03 GR00T",   "params": {"remote": "4090:50056"}},
         {"name": "M04 LEW",     "params": {"horizon": 16}},
