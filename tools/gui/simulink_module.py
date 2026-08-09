@@ -6510,15 +6510,27 @@ class SimulinkModule(QWidget):
         self._sync()
 
     def open_scene_link(self, scene_id):
-        """🏭 场景 → 只打开 ECS 3D 链接 (2026-08-09 老倪: 不建子模块, 只要链接)
+        """🏭 场景 → 打开 ECS 3D 链接, 并传场景描述 JSON (2026-08-09 老倪+web)
+        URL: scene-3d.html?scene=<k>&json=<base64> — 页面渲染场景工艺指标/结构尺寸/工序
         🐛 WSL 无 xdg-open → QDesktopServices 找不到浏览器 → 用 cmd.exe start (Windows 默认浏览器)"""
         import os as _os, json as _j, base64 as _b64, urllib.parse as _up, subprocess as _sp
         _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
         _k = _SCENE3D.get(scene_id, scene_id.lower())
         url = f"https://datadrive.world/scene-3d.html?scene={_k}"
+        # 场景描述 JSON → base64 → URL 参数 (页面渲染)
+        try:
+            _repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+            _sp2 = _os.path.join(_repo, "flows", "scene_skills_3scenarios.json")
+            _data = _j.load(open(_sp2, encoding="utf-8"))
+            _scene = next((s for s in _data.get("scenes", []) if s.get("id") == scene_id), None)
+            if _scene:
+                _b = _b64.b64encode(_j.dumps(_scene, ensure_ascii=False).encode()).decode()
+                url += f"&json={_up.quote(_b)}"
+        except Exception:
+            pass
         try:
             _sp.Popen(["cmd.exe", "/c", "start", "", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-            self._log(f"🏭 打开 3D 场景: {scene_id} → {url} (Windows 浏览器)")
+            self._log(f"🏭 打开 3D 场景: {scene_id} (含场景描述 JSON) → Windows 浏览器")
         except Exception as e:
             self._log(f"⚠️ 打开链接失败: {e}")
 

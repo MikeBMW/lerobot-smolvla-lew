@@ -13,6 +13,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 #panel .sub{font-size:11px;color:#8b949e;margin-bottom:8px}
 #panel .kpi{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #1a1f2b33}
 #panel .kpi .v{color:#00d4aa;font-weight:700}
+#desc2{font-size:11px;color:#8b949e;line-height:1.5;margin-top:6px;padding-top:6px;border-top:1px solid #1a1f2b44;max-height:140px;overflow-y:auto}
+#desc2 b{color:#c9d1d9}
 #nav{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10}
 #nav button{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer}
 #nav button.on{background:#0d3b33;border-color:#00d4aa;color:#00d4aa}
@@ -24,6 +26,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   <h1 id="t"></h1>
   <div class="sub" id="desc"></div>
   <div id="kpis"></div>
+  <div id="desc2"></div>
 </div>
 <div id="view"></div>
 <div id="nav"><button id="b-insert" onclick="goto('insert')">🔌 插拔</button><button id="b-handle" onclick="goto('handle')">🤖 搬运</button><button id="b-aoi" onclick="goto('aoi')">🔍 AOI</button></div>
@@ -37,6 +40,27 @@ const SCENES = {
   aoi:{name:'🔍 AOI 检测场景',desc:'7 检测位 · 2μm 显微',kpi:[['检出率','≥99.9%'],['误判率','≤0.5%'],['分辨率','0.35μm'],['产能','≥300颗/h']]}
 };
 let scene, camera, renderer, controls, robot;
+function b64u(b){
+  try{return decodeURIComponent(atob(b).split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));}
+  catch(e){try{return atob(b);}catch(e2){return '';}}
+}
+function renderJsonDesc(){
+  const p = new URLSearchParams(location.search);
+  const j = p.get('json');
+  if(!j) return;
+  try{
+    const d = JSON.parse(b64u(j));
+    const perf = d.performance||{}, lay = d.layout||{}, dims = lay.dimensions||{};
+    const steps = d.process_steps||d.process||[];
+    let h = '';
+    if(d.description) h += `<div>📋 ${d.description}</div>`;
+    h += '<div><b>📊 工艺指标:</b> ' + Object.entries(perf).map(([k,v])=>`${k}:${v}`).join(' · ')+'</div>';
+    if(Object.keys(dims).length) h += '<div><b>📐 尺寸:</b> ' + Object.entries(dims).map(([k,v])=>`${k} ${v}`).join(' · ')+'</div>';
+    if(steps.length) h += '<div><b>🔗 工序:</b> ' + steps.map((s,i)=>`${i+1}.${s.name}`).join(' → ')+'</div>';
+    if(d.quality_gates&&d.quality_gates.length) h += '<div><b>🛡 质量门:</b> ' + d.quality_gates.join(' / ')+'</div>';
+    document.getElementById('desc2').innerHTML = h;
+  }catch(e){ document.getElementById('desc2').innerHTML = '<div style="color:#ff6b6b">JSON 解析失败</div>'; }
+}
 
 function buildRobot(){ // 简易 6轴机械臂: 底座+腰+肩+肘+腕+夹爪
   const g = new THREE.Group();
@@ -111,6 +135,7 @@ function showPanel(k){
 }
 function goto(k){ showPanel(k); /* 切换工件 */ }
 showPanel(new URLSearchParams(location.search).get('scene')||'insert');
+renderJsonDesc();
 addEventListener('resize', ()=>{camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);});
 init();
 </script>
