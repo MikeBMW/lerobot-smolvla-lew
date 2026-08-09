@@ -4314,13 +4314,12 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     pass
                 setattr(widget, "_holo_badge_lbl", None)
             lbl = QLabel(h_id, widget)
-            # 贴纸式: 深色半透明底 + 青字 14px 粗体 (两倍字高字宽, 可读不遮挡)
+            # 🐛 2026-08-09 老倪 v3: 10px 无背景纯文字 (不覆盖原文字, 不抢眼, 可读)
             lbl.setStyleSheet(
-                "color:#00ffd0; font-size:14px; font-weight:bold; "
-                "background:rgba(13,17,23,200); border:1px solid #00d4aa55; "
-                "border-radius:3px; padding:1px 4px;")
+                "color:#00d4aa; font-size:10px; font-weight:bold; "
+                "background:transparent; border:none;")
             lbl.adjustSize()
-            lbl.move(2, max(0, widget.height() - lbl.height() - 2))  # 左下角固定
+            lbl.move(2, max(0, widget.height() - lbl.height() - 1))  # 左下角
             lbl.raise_()
             lbl.show()  # 🐛 2026-08-09 老倪: 必须显式 show (父已显示时新建子控件默认不可见 — 窗口里一个ID都没有的根因)
             setattr(widget, "_holo_badge_lbl", lbl)
@@ -4352,7 +4351,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     w = info[0]
                     lbl = getattr(w, "_holo_badge_lbl", None)
                     if lbl is not None:
-                        lbl.move(2, max(0, w.height() - lbl.height() - 2))
+                        lbl.move(2, max(0, w.height() - lbl.height() - 1))
                         if not lbl.isVisible():
                             lbl.show()
                         lbl.raise_()
