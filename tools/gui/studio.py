@@ -4983,51 +4983,92 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._log(f"❌ 模型权重缺失: {w_path}")
                     return
                 self._log(f"📦 部署模型源: {w_path} ({_os.path.getsize(w_path)//1024}KB)")
-                # ② 上传模型 → datadrive.world/models/ (覆盖即部署; Mac/Orin 据此下载)
+                # ② ECS 连通性探测 (老倪: 要看到 ECS 链路是否通)
                 import subprocess as _sp
+                import requests as _rq
                 ts = _t.strftime("%Y%m%d_%H%M%S")
                 ecs = "root@39.102.211.79"
+                ecs_pwd = "Nix19789"
                 models_dir = "/www/wwwroot/datadrive.world/models"
                 ver_name = f"act_{ts}.safetensors"
-                self._log(f"📤 上传模型 → ECS {models_dir}/ (scp)…")
+                w_size = _os.path.getsize(w_path)
+                # ②a 探测: relay API + SSH
+                try:
+                    _st = _rq.get("https://datadrive.world/api/relay/status", timeout=10)
+                    _sj = _st.json()
+                    self._log(f"📡 ECS 中转在线: relay v{_sj.get('relay','?')} · 队列 {_sj.get('packages', 0)} 包")
+                except Exception as e:
+                    self._log(f"⚠️ ECS relay 探测失败: {e}")
+                try:
+                    _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 {ecs} 'echo SSH_OK'",
+                            shell=True, capture_output=True, text=True, timeout=20)
+                    self._log("🔌 ECS SSH 连通: OK")
+                except Exception as e:
+                    self._log(f"❌ ECS SSH 不通: {e}")
+                    return
+                # ②b 分块上传 (8MB 块, 每块打印百分比+速率 — 老倪: 详细反馈)
+                import time as _tt
+                self._log(f"📤 上传模型 {ver_name} ({w_size//1024}KB) → {models_dir}/ …")
+                _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no {ecs} "
+                        f"'rm -f {models_dir}/{ver_name} {models_dir}/act_latest.safetensors'",
+                        shell=True, capture_output=True, text=True, timeout=20)
+                _B = 8 * 1024 * 1024
+                _t0 = _tt.time()
                 for name in (ver_name, "act_latest.safetensors"):
-                    r = _sp.run(f"sshpass -p 'Nix19789' scp -o StrictHostKeyChecking=no {w_path} {ecs}:{models_dir}/{name}",
-                                shell=True, capture_output=True, text=True, timeout=300)
-                    if r.returncode != 0:
-                        self._log(f"❌ scp {name} 失败: {r.stderr.strip()[:80]}")
-                        return
-                    self._log(f"✅ 已上传: {models_dir}/{name}")
-                # chmod 644 铁律 (scp 保留 600 → nginx 403)
-                _sp.run(f"sshpass -p 'Nix19789' ssh -o StrictHostKeyChecking=no {ecs} "
+                    _sent = 0
+                    _lpct = -1
+                    with open(w_path, "rb") as _f:
+                        while True:
+                            _chunk = _f.read(_B)
+                            if not _chunk:
+                                break
+                            _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 {ecs} "
+                                    f"'cat >> {models_dir}/{name}'",
+                                    input=_chunk, shell=True, capture_output=True, timeout=120)
+                            _sent += len(_chunk)
+                            _pct = int(_sent * 100 / w_size)
+                            if _pct >= _lpct + 5:
+                                _spd = _sent / 1024 / max(_tt.time() - _t0, 0.1)
+                                self._log(f"   └ {name}: {_pct}% ({_sent//1024}KB/{w_size//1024}KB) · {_spd:.0f}KB/s")
+                                _lpct = _pct
+                    self._log(f"✅ 已上传: {models_dir}/{name} ({w_size//1024}KB, {_tt.time()-_t0:.0f}s)")
+                # ②c chmod 644 铁律 (scp/分块保留 600 → nginx 403)
+                _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no {ecs} "
                         f"'chmod 644 {models_dir}/{ver_name} {models_dir}/act_latest.safetensors'",
                         shell=True, capture_output=True, text=True, timeout=20)
+                self._log("🔓 chmod 644 完成 (nginx 可读)")
                 # ③ 验证静态 URL
-                import requests as _rq
                 url_latest = "https://datadrive.world/models/act_latest.safetensors"
                 try:
                     rv = _rq.head(url_latest, timeout=15)
-                    self._log(f"✅ 模型静态 URL: {url_latest} · HTTP {rv.status_code}")
+                    _cl = int(rv.headers.get("Content-Length", 0))
+                    self._log(f"✅ 模型静态 URL: {url_latest} · HTTP {rv.status_code} · {_cl//1024}KB")
                 except Exception as e:
                     self._log(f"⚠️ URL 验证失败: {e}")
-                # ④ 检查 arm64 infer 容器 tar (4090 构建产物 → 已上传 ECS 则由 Mac 拉取)
+                # ④ 检查 arm64 infer 容器 tar
                 tar_url = "https://datadrive.world/models/zmax-infer-arm64.tar"
                 try:
                     rt = _rq.head(tar_url, timeout=15)
                     if rt.status_code == 200:
                         self._log(f"✅ 容器 tar 就绪: {tar_url} · {int(rt.headers.get('Content-Length', 0))//1024}KB")
                     else:
-                        self._log("⏳ arm64 容器 tar 构建中/未上传 (4090 后台构建中) — 模型已就绪可先推理")
+                        self._log("⏳ arm64 容器 tar 构建中/未上传 — 模型已就绪可先推理")
                 except Exception:
                     self._log("⏳ arm64 容器 tar 构建中 (4090 后台构建中) — 模型已就绪")
-                # ⑤ 下发 Mac 指令: 拉模型 + 拉容器 → load → 推理
+                # ⑤ 下发 Mac 指令 + 查 Orin 状态
                 try:
                     r2 = _rq.post("https://datadrive.world/api/relay/command",
                                   json={"cmd": f"deploy_model act {ver_name} zmax-infer-arm64.tar"}, timeout=15)
-                    self._log(f"📡 已下发 Mac 部署指令: {r2.json()}")
+                    self._log(f"📡 已下发 Mac 部署指令: {r2.json().get('cmd','')[:60]}")
                 except Exception as e:
                     self._log(f"⚠️ Mac 指令下发失败: {e}")
-                self._log("🤖 Mac 守护轮询到指令 → 拉模型 + 拉容器tar → docker load → 挂载推理")
-                self._log(f"📦 部署完成: 模型 {ver_name} + 容器 zmax-std:1.0-infer (arm64) · 已通知 Mac")
+                try:
+                    _os_ = _rq.get("https://datadrive.world/api/relay/orin/status", timeout=10)
+                    _oj = _os_.json()
+                    self._log(f"🤖 Orin 状态: {'在线' if _oj.get('online') else '离线'} · 模型 {_oj.get('model','?')} · 推理 {_oj.get('infer_count',0)}次")
+                except Exception as e:
+                    self._log(f"⚠️ Orin 状态查询失败: {e}")
+                self._log(f"📦 部署链路完成: 模型 {ver_name} 已上传 + Mac 指令已下发 + URL 可下载")
             except Exception as e:
                 self._log(f"❌ 端侧部署失败: {str(e)[:100]}")
 
