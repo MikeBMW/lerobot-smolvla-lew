@@ -3267,6 +3267,14 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 height: 0px;
             }}
         """)
+        # 🐛 2026-08-09 老倪: 显式等宽字体 + 零文档边距 (WSLg 下 Consolas 回退致行高/光标两倍)
+        try:
+            _f = QFont("Consolas", 11)
+            _f.setStyleHint(QFont.Monospace)
+            self.log_text.setFont(_f)
+            self.log_text.document().setDocumentMargin(0)
+        except Exception:
+            pass
         log_outer.addWidget(self.log_text)
         
         layout.addWidget(log_group, 1)  # stretch=1 让 log 占据大部分空间
