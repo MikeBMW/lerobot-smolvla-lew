@@ -3246,7 +3246,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 color: {C_WHITE};
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
-                padding: 8px;
+                padding: 2px 4px;   /* 🐛 2026-08-09 老倪: 8px→2px 上下留白致光标/行距两倍 */
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 11px;
             }}
@@ -3452,7 +3452,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     has_local = _img is not None
                 except Exception:
                     _img, has_local = None, False
-                # 🐛 2026-08-09 老倪: 先查远程是否已有 zmax 镜像 — 有就直接用, 不传 28GB
+                # 🐛 2026-08-09 老倪: 查远程已有镜像 — 显示来源路径/存储位置; 连续点两次 = 强制重新上传
                 self._log("  └ 查询远程已有镜像 …")
                 try:
                     _rimg = _sp.run(
@@ -3462,9 +3462,31 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                         shell=True, capture_output=True, text=True, timeout=25)
                     _remote_has = _rimg.stdout.strip()
                     if _remote_has:
-                        self._log(f"  └ ✅ 远程已有: {_remote_has[:80]}")
-                        self._log(f"  └ 🎉 无需上传 — 远程镜像已就绪, 训练直接用远程容器")
-                        return
+                        self._log(f"  └ ✅ 远程已有镜像 ({re_['host']}):")
+                        for _rl in _remote_has.splitlines()[:3]:
+                            self._log(f"      · {_rl.strip()}")
+                        # 🔍 显示远程镜像存储路径 (overlay2 层)
+                        try:
+                            _rinsp = _sp.run(
+                                f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                                f"-o Port={re_['port']} {re_['user']}@{re_['host']} "
+                                f"'docker inspect zmax-train:latest --format \"{{{{.GraphDriver.Data.UpperDir}}}}\" 2>/dev/null; "
+                                f"echo; df -h / | tail -1 | awk \\\"{{print \\\\$2, \\\\$4}}\\\"'",
+                                shell=True, capture_output=True, text=True, timeout=20)
+                            _p1, _p2 = (_rinsp.stdout.strip().splitlines() + ["", ""])[:2]
+                            self._log(f"      · 存储路径: {_p1[:90]}")
+                            self._log(f"      · 磁盘: {_p2.strip()}")
+                        except Exception:
+                            pass
+                        # 🐛 2026-08-09 老倪: 连续点两次 = 强制重新上传 (第一次显示信息, 第二次真传)
+                        _fc = getattr(self, "_upload_force_cnt", 0) + 1
+                        self._upload_force_cnt = _fc
+                        if _fc >= 2:
+                            self._upload_force_cnt = 0
+                            self._log("  └ 🔁 强制重新上传 (连续两次点击) — 覆盖远程镜像 …")
+                        else:
+                            self._log("  └ ℹ️ 再点一次「容器同步」= 强制重新上传 (看实际传输过程)")
+                            return
                 except Exception:
                     pass
                 if has_local:
@@ -3952,7 +3974,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
                    f"-o Port={r['port']} {r['user']}@{r['host']} "
                    f"'docker ps -q --filter name=zmax_train | head -1; echo ---; "
-                   f"tail -n +{self._remote_log_lines + 1} /tmp/remote_train.log 2>/dev/null'")
+                   f"docker logs zmax_train 2>&1 | tail -n +{self._remote_log_lines + 1}'")
             out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace")
             parts = out.split("---", 1)
             alive = bool(parts[0].strip())
