@@ -48,8 +48,8 @@ class LeftRightConfig(PreTrainedConfig):
     insert_tolerance: float = 0.05         # 插入判定距离 (m)
     # 归一化
     normalization_mapping: dict = field(default_factory=lambda: {
-        "observation.state": NormalizationMode.MEAN_STD,
-        "action": NormalizationMode.MEAN_STD,
+        "STATE": NormalizationMode.MEAN_STD,
+        "ACTION": NormalizationMode.MEAN_STD,
     })
     # 输入输出维度 (运行时填充)
     input_features: dict = field(default_factory=dict)
@@ -73,8 +73,12 @@ class LeftRightConfig(PreTrainedConfig):
         return input_features, output_features
 
     def get_optimizer_preset(self):
-        """优化器配置 (lerobot 标准)"""
-        return {"optimizer_cls": "torch.optim.AdamW", "lr": 1e-4}
+        """优化器配置 (lerobot 标准, 返回 AdamWConfig 类)"""
+        try:
+            from lerobot.optim.optimizers import AdamWConfig
+            return AdamWConfig(lr=1e-4, weight_decay=0.0, grad_clip_norm=10.0)
+        except Exception:
+            return {"optimizer_cls": "torch.optim.AdamW", "lr": 1e-4}
 
     def get_scheduler_preset(self):
         """调度器配置 (lerobot 标准)"""

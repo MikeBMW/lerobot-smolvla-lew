@@ -37,6 +37,22 @@ def make_optimizer_and_scheduler(
     params = policy.get_optim_params() if cfg.use_policy_training_preset else policy.parameters()
     if cfg.optimizer is None:
         raise ValueError("Optimizer config is required but not provided in TrainPipelineConfig")
-    optimizer = cfg.optimizer.build(params)
-    lr_scheduler = cfg.scheduler.build(optimizer, cfg.steps) if cfg.scheduler is not None else None
+    optimizer_cfg = cfg.optimizer
+    # 2026-08-10: 兼容 dict (left_right preset 未覆盖时) — 转 AdamW
+    if isinstance(optimizer_cfg, dict):
+        from lerobot.optim.optimizers import AdamWConfig
+        optimizer_cfg = AdamWConfig(
+            lr=optimizer_cfg.get("lr", 1e-4),
+            weight_decay=optimizer_cfg.get("weight_decay", 0.0),
+            grad_clip_norm=optimizer_cfg.get("grad_clip_norm", 10.0),
+        )
+    optimizer = optimizer_cfg.build(params)
+    lr_scheduler = None
+    if cfg.scheduler is not None:
+        scheduler_cfg = cfg.scheduler
+        # 2026-08-10: 兼容 dict scheduler
+        if isinstance(scheduler_cfg, dict):
+            scheduler_cfg = None
+        if scheduler_cfg is not None:
+            lr_scheduler = scheduler_cfg.build(optimizer, cfg.steps)
     return optimizer, lr_scheduler

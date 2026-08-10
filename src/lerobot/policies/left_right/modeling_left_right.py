@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 import os
-from typing import Optional
+from typing import Optional, Any
 
 import torch
 import torch.nn as nn
@@ -85,7 +85,8 @@ class LeftRightPolicy(PreTrainedPolicy):
     # 状态机
     ST_APPROACH, ST_GRASP, ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE = 0, 1, 2, 3, 4, 5
 
-    def __init__(self, config: Optional[LeftRightConfig] = None):
+    def __init__(self, config: Optional[LeftRightConfig] = None, dataset_stats: Optional[dict] = None,
+                 dataset_meta: Optional[Any] = None):
         config = config or LeftRightConfig()
         self.config = config
         super().__init__(config)  # 2026-08-10: 必须先 super (模块赋值要求)
@@ -274,7 +275,15 @@ class LeftRightPolicy(PreTrainedPolicy):
             self._right_loss = nn.functional.mse_loss(pred_next, next_s)
         # 标准输出: action (无 chunk, 1 步)
         out = pred_act.unsqueeze(1) if pred_act.ndim == 2 else pred_act
-        return {"action": out}
+        # 2026-08-10: lerobot_train 期望 (loss, output_dict)
+        act_t = batch["action"].float()
+        if act_t.ndim == 3:
+            act_t = act_t[:, -1]
+        loss = nn.functional.mse_loss(out.squeeze(1), act_t)
+        right_loss = getattr(self, "_right_loss", None)
+        if right_loss is not None:
+            loss = loss + 0.5 * right_loss
+        return loss, {"action": out}
 
     def get_right_contact(self, obs, act):
         """右脑 contact 判断 (状态机用)"""
@@ -285,14 +294,7 @@ class LeftRightPolicy(PreTrainedPolicy):
 
     def compute_loss(self, batch, **kwargs):
         """lerobot 标准 loss 接口"""
-        out = self.forward(batch, **kwargs)
-        act = batch["action"].float()
-        if act.ndim == 3:
-            act = act[:, -1]
-        loss = nn.functional.mse_loss(out["action"].squeeze(1), act)
-        right_loss = getattr(self, "_right_loss", None)
-        if right_loss is not None:
-            loss = loss + 0.5 * right_loss
+        loss, _ = self.forward(batch, **kwargs)
         return {"loss": loss}
 
     def reset(self):
@@ -302,8 +304,11 @@ class LeftRightPolicy(PreTrainedPolicy):
         self.peg_lifted = False
 
     def get_optim_params(self):
-        """优化器参数 (lerobot 标准)"""
-        return {"params": list(self.left.parameters()) + list(self.right.parameters())}
+        """优化器参数 (lerobot 标准: 参数组列表)"""
+        return [
+            {"params": [p for p in self.left.parameters() if p.requires_grad]},
+            {"params": [p for p in self.right.parameters() if p.requires_grad]},
+        ]
 
     def predict_action_chunk(self, observation, **kwargs):
         """预测动作块 (lerobot 标准: [B, n_action_steps, act_dim])"""
@@ -319,6 +324,18 @@ class LeftRightPolicy(PreTrainedPolicy):
         os.makedirs(save_directory, exist_ok=True)
         # config.json
         import json
+        def _feat_to_dict(feats):
+            """PolicyFeature → dict (2026-08-10: 修 JSON 序列化)"""
+            out = {}
+            for k, v in (feats or {}).items():
+                if hasattr(v, "type") and hasattr(v, "shape"):  # PolicyFeature
+                    out[k] = {"type": str(v.type.value) if hasattr(v.type, "value") else str(v.type),
+                              "shape": list(v.shape)}
+                elif isinstance(v, dict):
+                    out[k] = v
+                else:
+                    out[k] = {"shape": list(v) if isinstance(v, (list, tuple)) else v}
+            return out
         cfg = {
             "type": "left_right",
             "left_hidden": self.config.left_hidden,
@@ -331,8 +348,8 @@ class LeftRightPolicy(PreTrainedPolicy):
             "n_obs_steps": self.config.n_obs_steps,
             "chunk_size": self.config.chunk_size,
             "n_action_steps": self.config.n_action_steps,
-            "input_features": self.config.input_features,
-            "output_features": self.config.output_features,
+            "input_features": _feat_to_dict(self.config.input_features),
+            "output_features": _feat_to_dict(self.config.output_features),
         }
         with open(os.path.join(save_directory, "config.json"), "w") as f:
             json.dump(cfg, f, indent=2)
