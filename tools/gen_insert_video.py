@@ -73,6 +73,12 @@ def _pick_seed(left, right, xm, xs, ym, ys, seed_max=11):
             _mx = float(np.abs(act).max()) if len(act) else 1.0
             if _mx > 1.0: act = act / _mx
             e.step(np.clip(act, -1, 1))
+            # ⚠️ 2026-08-10 关键: env.render() 会消耗 env.np_random → 扰动轨迹!
+            #   探测必须与真实渲染调用一致, 否则探测成功≠渲染成功 (seed0 无render✅/有render❌)
+            try:
+                e.render()
+            except Exception:
+                pass
             o = get_obs(e)
             if state == ST_DONE:
                 break
