@@ -84,6 +84,10 @@ def get_node_location(key):
     info = NODE_LOGIC.get(key)
     if not info:
         return None, None, False
+    # 📂 外部源码映射优先 (left_right 等真实实现不在 node_logic.py, 2026-08-10)
+    ext = globals().get("_EXTERNAL_LOC", {}).get(key)
+    if ext:
+        return ext[0], ext[1], False
     fn = info["fn"]
     modified = key in _SOURCE_CACHE
     path = getattr(fn.__code__, "co_filename", None)
@@ -92,6 +96,39 @@ def get_node_location(key):
         path = _LOGIC_FILE
         line = None
     return path, line, modified
+
+
+def get_node_external_symbol(key):
+    """外部源码映射的真实符号名 (VSCode 定位显示用) — 无映射返回 None"""
+    ext = globals().get("_EXTERNAL_LOC", {}).get(key)
+    return ext[2] if ext else None
+
+
+def get_external_source(key):
+    """外部真实实现的源码块 (按符号截取, 只读参考) — left_right 等节点
+    显示 modeling_left_right.py 的 class LeftBrainMLP 全文, 不是 node_logic 占位函数"""
+    ext = globals().get("_EXTERNAL_LOC", {}).get(key)
+    if not ext:
+        return None
+    path, line, sym = ext
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except Exception:
+        return None
+    out = []
+    for i in range(max(0, line - 1), len(lines)):
+        ln = lines[i]
+        if out and (ln.startswith("class ") or ln.startswith("def ") or ln.startswith("@")):
+            break  # 下一个顶层定义
+        out.append(ln)
+        # 符号体结束: 空行后出现顶格非空行 (缩进归零, 非注释/docstring)
+        if i > max(0, line - 1) and not ln.strip() and i + 1 < len(lines):
+            nxt = lines[i + 1]
+            if nxt and not nxt[0].isspace() and not nxt.startswith(("#", '"""', "'''", "from ", "import ")):
+                break
+    if not out:
+        return None
+    return "\n".join(out) + f"\n\n# ── {sym} 源码结束 (文件 {os.path.basename(path)}:{line}) ──"
 
 
 def save_node_logic(key, new_code):
@@ -782,3 +819,108 @@ def node_coord_overlay(ctx):
 _reg("coord_overlay", ["结构条件", "坐标叠加", "CoordOverlay"], "🧩 结构条件 — state 叠加进 latent (逻辑主线), 图像作背景", node_coord_overlay)
 _reg("video_display", ["视频"], "🎥 视频显示 — 推理效果 rollout 播放", node_video_display)
 _reg("pdf_report",   ["PDF"], "📄 PDF 报告 — 五模型技术选型 (11章)", node_pdf_report)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🧠 left_right 双脑工程 (2026-08-10 老倪: 左脑MLP动作 + 右脑WM判断 + 状态机)
+#   真实实现: src/lerobot/policies/left_right/modeling_left_right.py
+#   位置映射: _EXTERNAL_LOC (VSCode 打开真实源码)
+# ════════════════════════════════════════════════════════════════
+# 📂 外部源码位置: 语义key → (绝对路径, 行号, 真实符号名) — 覆盖 node_logic.py 自身位置
+_EXTERNAL_LOC = {}
+# node_logic.py 在 <root>/tools/gui/ → 仓库根 = dirname ×3
+_LR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))), "src", "lerobot", "policies", "left_right")
+_EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 44, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
+_EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 59, "class RightBrainWM")
+_EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 75, "class LeftRightPolicy")
+_EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 44, "grasp 阈值参数 (LeftRightConfig)")
+# 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
+
+
+def node_obs39(ctx):
+    """📊 39D obs 输入 — metaworld peg-insertion 完整观测 (2026-08-10 实测确认)
+
+    结构: 39D = 当前帧(18) + 上一帧(18) + 目标(3)   [帧堆叠]
+    ─────────────────────────────────────────────
+    [0:3]    hand_pos      末端执行器位置 xyz    单位: 米(m)
+    [3]      gripper       夹爪开度 (归一化)     0=闭合 · 1=张开
+    [4:7]    peg_pos       销钉位置 xyz          单位: 米(m)
+    [7:11]   peg_quat      销钉姿态四元数 xyzw   单位四元数 (w=1 无旋转)
+    [11:18]  pad           填充槽 (固定 0)       物体槽位余量
+    [18:21]  prev_hand_pos 上一帧末端位置 xyz    单位: 米(m)
+    [21]     prev_gripper  上一帧夹爪开度        0=闭合 · 1=张开
+    [22:25]  prev_peg_pos  上一帧销钉位置 xyz    单位: 米(m)
+    [25:29]  prev_peg_quat 上一帧销钉四元数 xyzw 单位四元数
+    [29:36]  prev_pad      填充槽 (固定 0)
+    [36:39]  hole_pos      插孔目标位置 xyz      单位: 米(m) (goal)
+    ─────────────────────────────────────────────
+    说明: peg-insertion 观测 = 末端+夹爪+销钉(位姿) 双帧堆叠 + 目标孔位。
+    45D 版本 = 39D + 6D 相对向量 (peg-hand, hole-peg); 49D 加触觉; 58D 加 W2-CoT。
+    left_right 工程用 39D (无相对向量)。
+    """
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    dim = p.get("dim", 39)
+    if log:
+        log(f"📊 39D obs: 末端{3}+夹爪{1}+销钉{7} ×2帧 + 孔位{3} = 39D (帧堆叠, 单位 m/四元数)")
+    # === ✏️ 可修改区 END ===
+    return True
+
+
+def node_left_brain(ctx):
+    """🧠 左脑 LeftBrainMLP — 39D obs → 4D 连续动作 (动作生成, 547K)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    hidden = p.get("hidden", 512)
+    if log:
+        log(f"🧠 左脑 LeftBrainMLP: 39D obs → 4D 动作 · 隐藏 {hidden} · 547K 参数 (MLP偏置接近 act*0.3+delta*2.0)")
+    # === ✏️ 可修改区 END ===
+    return True
+
+
+def node_right_brain(ctx):
+    """🧠 右脑 RightBrainWM — obs+action → next obs + contact 概率 (抓取时机, 87K, acc 1.00)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    hidden = p.get("hidden", 256)
+    if log:
+        log(f"🧠 右脑 RightBrainWM: obs+action → next obs + contact 概率 · 隐藏 {hidden} · 87K (contact>0.5 & d_hp<0.06 → 抓)")
+    # === ✏️ 可修改区 END ===
+    return True
+
+
+def node_left_right_policy(ctx):
+    """◉ LeftRightPolicy — lerobot 标准封装: 左脑动作 + 右脑判断 + 状态机编排 (抓起8/8 插入7/8)"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    th = p.get("grasp_contact_threshold", 0.5)
+    dhp = p.get("grasp_d_hp", 0.06)
+    lift = p.get("lift_height", 0.08)
+    if log:
+        log(f"◉ LeftRightPolicy: 状态机 接近→抓取(contact>{th} & d_hp<{dhp})→抬起(+{lift}m)→转移→插入 → 完成 · 125帧")
+    # === ✏️ 可修改区 END ===
+    return True
+
+
+def node_lr_contact(ctx):
+    """❖ 接触判定 — 右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"""
+    log = ctx["log"]
+    p = ctx["params"]
+    # === ✏️ 可修改区 START ===
+    th = p.get("contact_th", 0.5)
+    dhp = p.get("d_hp_th", 0.06)
+    if log:
+        log(f"❖ 接触判定: contact>{th} & d_hp<{dhp} → 夹持触发 (右脑 get_right_contact)")
+    # === ✏️ 可修改区 END ===
+    return True
+
+
+_reg("left_brain",  ["LeftBrainMLP"], "🧠 左脑 LeftBrainMLP — 39D→4D 连续动作 (547K, 源码 modeling_left_right.py:44)", node_left_brain)
+_reg("right_brain", ["RightBrainWM"], "🧠 右脑 RightBrainWM — contact 时机判断 (87K, 源码 modeling_left_right.py:59)", node_right_brain)
+_reg("left_right",  ["LeftRightPolicy"], "◉ LeftRightPolicy — 双脑+状态机 lerobot 封装 (源码 modeling_left_right.py:75)", node_left_right_policy)
+_reg("lr_contact",  ["接触判定"], "❖ 接触判定 — contact 阈值 + 距离联合判定 (参数在 configuration_left_right.py:44)", node_lr_contact)
+_reg("obs39",       ["39D obs", "39D"], "📊 39D obs 输入 — metaworld 完整观测结构 (末端/夹爪/销钉×2帧+孔位, 含单位与解释)", node_obs39)

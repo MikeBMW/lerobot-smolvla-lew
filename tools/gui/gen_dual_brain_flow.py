@@ -31,54 +31,63 @@ def add_link(f, t, label=None):
 
 BASE_X, BASE_Y, COL_W, ROW_H, BG_H = 140, 80, 240, 230, 214
 
-# ── 行1: 双脑 (感知·决策) ──
+# ── 行1: 双脑 (感知·决策) — 对齐 src/lerobot/policies/left_right/modeling_left_right.py ──
 y0 = BASE_Y
 obs   = add_node("a", 0, "data",      "📊 39D obs 输入", BASE_X + 0*COL_W, y0,
-                 {"dim": 39, "source": "metaworld peg-v6", "desc": "完整观测: 坐标+速度+相对向量 (YOLO 3D 产出)"})
-left  = add_node("a", 1, "model",     "🧠 左脑 MLP", BASE_X + 1*COL_W, y0,
-                 {"role": "连续动作生成", "in_dim": 39, "out_dim": 4,
-                  "structure": "3层MLP 512隐藏 (ExpertMLP结构)",
-                  "bias": "act*0.3 + hand→peg方向*2.0",
-                  "loss": "MSE 800 epoch", "seed": 42,
-                  "desc": "左脑: 39D obs → 4D 动作 (3D速度+夹爪)。偏置接近比纯解析强 (5/8 vs 0/8)"})
-right = add_node("a", 2, "model",     "🧠 右脑 WorldModel", BASE_X + 2*COL_W, y0,
-                 {"role": "抓取时机判断", "in_dim": "39D obs + 4D action",
-                  "out_dim": "next obs + contact概率", "contact_acc": "1.00",
-                  "loss": "BCE 800 epoch", "seed": 42,
-                  "trigger": "contact>0.5 且 d_hp<0.06 → 夹持触发",
-                  "desc": "右脑: 预测 next obs + contact 二分类 (该抓了吗)"})
+                 {"dim": 39, "source": "metaworld peg-v6",
+                  "norm": "MEAN_STD (normalization_mapping)",
+                  "desc": "完整观测: 坐标+速度+相对向量 → LeftRightConfig.input_features"})
+left  = add_node("a", 1, "model",     "🧠 左脑 LeftBrainMLP", BASE_X + 1*COL_W, y0,
+                 {"class": "LeftBrainMLP (modeling_left_right.py)",
+                  "role": "连续动作生成", "in_dim": 39, "out_dim": 4, "hidden": 512,
+                  "structure": "Linear(39,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Linear(512,4)",
+                  "params": "547K", "loss": "MSE (动作回归)", "optimizer": "AdamW lr=1e-4",
+                  "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)"})
+right = add_node("a", 2, "model",     "🧠 右脑 RightBrainWM", BASE_X + 2*COL_W, y0,
+                 {"class": "RightBrainWM (modeling_left_right.py)",
+                  "role": "抓取时机判断", "in_dim": "39D obs + 4D action", "hidden": 256,
+                  "structure": "enc: Linear(43,256)→ReLU→Linear(256,256)→ReLU; pred_next: Linear(256,39); contact_head: Linear(256,1)→sigmoid",
+                  "params": "87K", "contact_acc": "1.00", "loss": "MSE(next obs) + 0.5×BCE(contact)",
+                  "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)"})
 touch = add_node("a", 3, "condition", "❖ 接触判定", BASE_X + 3*COL_W, y0,
-                 {"rule": "contact>0.5 & d_hp<0.06", "d_hp_th": 0.06,
-                  "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 触发抓取"})
+                 {"rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
+                  "d_hp_th": 0.06, "contact_th": 0.5,
+                  "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"})
 
-# ── 行2: 状态机 (执行) ──
+# ── 行2: 状态机 (执行) — 对齐 LeftRightConfig 状态机参数 ──
 y1 = BASE_Y + ROW_H
-sm    = add_node("b", 0, "system",    "◉ 状态机 (6阶段)", BASE_X + 0*COL_W, y1,
-                 {"stages": ["接近", "抓取", "抬起", "转移", "插入", "完成"],
-                  "frames": "32+45+9+38+1 = 125帧", "desc": "接近→抓取→抬起(+8cm)→转移(容差5cm)→插入→完成"})
+sm    = add_node("b", 0, "system",    "◉ LeftRightPolicy", BASE_X + 0*COL_W, y1,
+                 {"class": "LeftRightPolicy (lerobot 标准)", "name": "left_right",
+                  "factory": "factory.make_policy('left_right') ✅",
+                  "stages": ["接近", "抓取", "抬起", "转移", "插入", "完成"],
+                  "frames": "32+45+9+38+1 = 125帧", "chunk_size": 1, "n_action_steps": 1,
+                  "grasp_contact_threshold": 0.5, "grasp_d_hp": 0.06,
+                  "lift_height": 0.08, "transfer_tolerance": 0.05, "insert_tolerance": 0.05,
+                  "desc": "推理编排: 接近→抓取(contact判定)→抬起(+0.08m)→转移(容差0.05)→插入(d_ph<0.05)→完成"})
 st_ap = add_node("b", 1, "action",    "➤ 接近", BASE_X + 1*COL_W, y1,
                  {"target": "d_hp 0.2→0.06", "desc": "左脑MLP偏置接近 (32帧)"})
 st_gr = add_node("b", 2, "action",    "➤ 抓取", BASE_X + 2*COL_W, y1,
                  {"trigger": "contact>0.5 & d_hp<0.06", "grab": "夹持0.6 + 位置锁定",
-                  "desc": "右脑判定触发 (45帧)"})
+                  "desc": "右脑 get_right_contact 判定触发 (45帧)"})
 st_li = add_node("b", 3, "action",    "➤ 抬起", BASE_X + 3*COL_W, y1,
-                 {"height": "+8cm", "force": 0.8, "desc": "peg z 升高避开台面 (9帧)"})
+                 {"height": "+0.08m (lift_height)", "force": 0.8, "desc": "peg z 升高避开台面 (9帧)"})
 st_mv = add_node("b", 4, "action",    "➤ 转移", BASE_X + 4*COL_W, y1,
-                 {"tolerance": "5cm", "desc": "水平移到 hole 上方, peg 有导向 (38帧)"})
+                 {"tolerance": "0.05m (transfer_tolerance)", "desc": "水平移到 hole 上方, peg 有导向 (38帧)"})
 st_in = add_node("b", 5, "action",    "➤ 插入", BASE_X + 5*COL_W, y1,
-                 {"target": "d_ph<0.05", "desc": "垂直下降插入 (1帧)"})
+                 {"target": "d_ph<0.05 (insert_tolerance)", "desc": "垂直下降插入 (1帧)"})
 st_ok = add_node("b", 6, "action",    "➤ 完成", BASE_X + 6*COL_W, y1,
                  {"desc": "✅ 插拔完成"})
 
 # ── 行3: 对比 (成绩) ──
 y2 = BASE_Y + 2*ROW_H
 ours  = add_node("c", 0, "system",    "🎉 双脑+状态机", BASE_X + 0*COL_W, y2,
-                 {"grab": "8/8", "insert": "7/8", "rank": "超越官方专家",
-                  "desc": "首个学习架构解决完整插拔 (抓起8/8 插入7/8)"})
+                 {"grab": "8/8", "insert": "7/8", "rank": "抓起超越官方专家",
+                  "params": "~635K (左脑547K + 右脑87K)", "speed": "80Hz+",
+                  "desc": "left_right 工程: 首个学习架构解决完整插拔"})
 exp   = add_node("c", 1, "system",    "◉ 官方专家", BASE_X + 1*COL_W, y2,
                  {"grab": "7/8", "insert": "7/8", "desc": "PD 控制律基准"})
 sm_lr = add_node("c", 2, "system",    "◉ 纯状态机+学习", BASE_X + 2*COL_W, y2,
-                 {"grab": "0/8", "insert": "0/8", "desc": "无学习"})
+                 {"grab": "0/8", "insert": "0/8", "desc": "无右脑判断"})
 mlp   = add_node("c", 3, "system",    "◉ MLP蒸馏", BASE_X + 3*COL_W, y2,
                  {"grab": "6/10", "insert": "3/10", "desc": "纯回归无右脑"})
 bc    = add_node("c", 4, "system",    "◉ 视觉BC模型", BASE_X + 4*COL_W, y2,
@@ -131,9 +140,11 @@ add_link(pdf, ours, "成绩入报告")
 
 flow = {
     "format": "hermes-flow",
-    "version": 1,
-    "name": "🧠 双脑 + 状态机 = 完整插拔",
-    "sim": "dual_brain_peg",
+    "version": 2,
+    "name": "🧠 left_right 双脑+状态机 (抓起8/8 插入7/8)",
+    "sim": "left_right",
+    "policy": "left_right",
+    "source": "src/lerobot/policies/left_right/ (8ed1c9e8)",
     "nodes": nodes,
     "links": links,
 }

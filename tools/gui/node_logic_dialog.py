@@ -143,12 +143,31 @@ class NodeLogicDialog(QDialog):
         self.lbl_loc.setText("📋 已复制!")
 
     def _load_source(self):
+        # 🐛 2026-08-10 老倪: 外部映射节点 (left_right) 直接显示真实实现源码 (modeling_left_right.py),
+        #   不是 node_logic.py 的占位函数 — "代码对不上" 根因
+        ext_src = node_logic.get_external_source(self._key) if self._key else None
+        if ext_src:
+            self.edit.setPlainText(ext_src)
+            self.edit.setReadOnly(True)
+            self.btn_edit.setEnabled(False)
+            self.btn_save.setEnabled(False)
+            self.btn_restore.setEnabled(False)
+            self.lbl_doc.setText(node_logic.NODE_LOGIC[self._key]["doc"] if self._key in node_logic.NODE_LOGIC else "")
+            self.lbl_hint.setText("🔒 真实实现 (src/lerobot/policies/left_right/) · 只读参考 — 编辑请直接打开源文件")
+            self._orig_src = None
         src, doc = node_logic.get_node_source(self._key)
         # 📂 代码位置: 文件绝对路径:行号 · 函数名 (VSCode 打开用)
         path, line, modified = node_logic.get_node_location(self._key) if self._key else (None, None, False)
         if path:
-            fn_name = node_logic.NODE_LOGIC[self._key]["fn"].__name__
-            loc = f"📂 {path}" + (f":{line}" if line else "") + f" · def {fn_name}()"
+            # 🐛 2026-08-10 老倪: 外部映射 (left_right) 显示真实符号名 class LeftBrainMLP,
+            #   不是 node_logic.py 里的函数名 node_left_brain — 之前两者混着显示误导
+            ext_sym = node_logic.get_node_external_symbol(self._key) if self._key else None
+            if ext_sym:
+                fn_name = ext_sym
+                loc = f"📂 {path}" + (f":{line}" if line else "") + f" · {fn_name}"
+            else:
+                fn_name = node_logic.NODE_LOGIC[self._key]["fn"].__name__
+                loc = f"📂 {path}" + (f":{line}" if line else "") + f" · def {fn_name}()"
             if modified:
                 loc += " · ⚡已修改(动态生效)"
             self.lbl_loc.setText(loc)
@@ -157,6 +176,9 @@ class NodeLogicDialog(QDialog):
         else:
             self.lbl_loc.setText("📂 无独立逻辑文件")
             self.btn_copy_loc.setEnabled(False)
+        if ext_src:
+            # 🐛 2026-08-10: 外部真实源码已显示 (只读) — 不再走 node_logic 占位函数路径
+            return
         if src is None:
             self.edit.setPlainText(f"# 节点「{self._node_name}」没有独立逻辑\n# 双击运行时走框架默认动作 (无用户可修改区)")
             self.lbl_doc.setText("🔒 该节点无独立逻辑 — 使用框架默认行为")

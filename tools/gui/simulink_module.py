@@ -548,10 +548,11 @@ LIBRARY = [
     # 对应 modeling_act.py: backbone → vae_encoder → encoder → decoder → action_head → ACTTemporalEnsembler
     ("model", "🧠 ACT 模型·子模块", [
         # 2026-08-08 老倪: 数据源条目删除 (数据集组已有, 子模块链不含数据源)
-        {"name": "🖼 视觉主干 ResNet18", "params": {"backbone": "resnet18", "pretrained": True,
-                                                   "desc": "官方 ACT.backbone → layer4 特征图 (B,C,H,W)"}},
-        {"name": "🚫 VAE 编码器（无）", "params": {"use_vae": False, "latent_dim": 32,
-                                                 "desc": "官方 ACT.vae_encoder → 潜变量分布 (μ,logσ²)"}},
+        # 🗑 2026-08-10 老倪: VEH.5.16/17 (视觉主干 ResNet18 + VAE 编码器) 已删 → 换成「双脑」入口
+        {"name": "🧠 双脑 (left_right)", "params": {"desc": "打开 left_right 工程完整画布: 左脑LeftBrainMLP+右脑RightBrainWM+状态机 (抓起8/8 插入7/8)"},
+         "flow": os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                              "flows", "dual_brain_peg.json"),
+         "desc": "打开 left_right 工程 (src/lerobot/policies/left_right/): 双脑+状态机完整插拔模型"},
         {"name": "🔤 Transformer Encoder", "params": {"n_layers": 4, "dim_model": 256, "n_heads": 8,
                                                       "desc": "官方 ACT.encoder → 上下文 tokens"}},
         {"name": "🔡 Transformer Decoder", "params": {"n_layers": 4, "chunk_size": 7, "n_heads": 8,
@@ -633,25 +634,28 @@ LIBRARY = [
         {"name": "🧿 AWE 完整模型", "params": {}, "template": "🧿 AWE 场景原生对比",
          "desc": "一键搭建 AWE 场景原生对比管道 (8节点8连线: 数据→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→注入→ActionHead→训练→Scope)"},
     ]),
-    # 🧠 双脑+状态机 (2026-08-10 老倪: 飞书端跑通 — 抓起8/8 插入7/8, 首个学习架构解决完整插拔)
+    # 🧠 双脑+状态机 (2026-08-10 老倪: left_right 工程封装 — src/lerobot/policies/left_right/ 8ed1c9e8)
     ("model", "🧠 双脑+状态机 (插拔)", [
-        {"name": "🧠 左脑 MLP", "params": {
-            "role": "连续动作生成", "in_dim": 39, "out_dim": 4,
-            "structure": "3层MLP 512隐藏 (ExpertMLP结构)",
-            "bias": "act*0.3 + hand→peg方向*2.0",
-            "loss": "MSE 800 epoch", "seed": 42,
-            "desc": "左脑: 39D obs → 4D 动作 (3D速度+夹爪)。偏置接近比纯解析强 (5/8 vs 0/8)"}},
-        {"name": "🧠 右脑 WorldModel", "params": {
-            "role": "抓取时机判断", "in_dim": "39D obs + 4D action",
-            "out_dim": "next obs + contact概率", "contact_acc": "1.00",
-            "loss": "BCE 800 epoch", "seed": 42,
-            "trigger": "contact>0.5 且 d_hp<0.06 → 夹持触发",
-            "desc": "右脑: 预测 next obs + contact 二分类 (该抓了吗)"}},
+        {"name": "🧠 左脑 LeftBrainMLP", "params": {
+            "class": "LeftBrainMLP", "role": "连续动作生成", "in_dim": 39, "out_dim": 4, "hidden": 512,
+            "structure": "Linear(39,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Linear(512,4)",
+            "params": "547K", "loss": "MSE (动作回归)", "optimizer": "AdamW lr=1e-4",
+            "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)"}},
+        {"name": "🧠 右脑 RightBrainWM", "params": {
+            "class": "RightBrainWM", "role": "抓取时机判断", "in_dim": "39D obs + 4D action", "hidden": 256,
+            "structure": "enc: Linear(43,256)→ReLU→Linear(256,256)→ReLU; pred_next: Linear(256,39); contact_head: Linear(256,1)→sigmoid",
+            "params": "87K", "contact_acc": "1.00", "loss": "MSE(next obs) + 0.5×BCE(contact)",
+            "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)"}},
         {"name": "🧠 双脑+状态机 完整模型",
-         "params": {"desc": "一键加载完整插拔模型画布 (19节点14连线): 39D→左脑MLP+右脑WM→接触判定→状态机6阶段→完成"},
+         "params": {"desc": "一键加载 left_right 完整模型画布 (19节点14连线): 39D→左脑LeftBrainMLP+右脑RightBrainWM→接触判定→LeftRightPolicy状态机6阶段→完成"},
          "flow": os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                               "flows", "dual_brain_peg.json"),
-         "desc": "一键加载双脑+状态机完整模型: 抓起8/8 插入7/8 (超越官方专家)"},
+         "desc": "一键加载 left_right 双脑+状态机完整模型: 抓起8/8 插入7/8 (抓起超越官方专家)"},
+        {"name": "🔬 转移速度自适应实验",
+         "params": {"desc": "一键加载实验总结画布 (18节点17连线): 固定0.6 vs 自适应对比 → 降波动三实验 → 物理碰撞根因 → 真机方向"},
+         "flow": os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                              "flows", "transfer_adaptive.json"),
+         "desc": "一键加载转移速度自适应实验 (a0f0f9cf): 抓起6-8 插入4-6, 根因=仿真物理碰撞"},
     ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
@@ -2376,7 +2380,9 @@ class SimCanvas(QGraphicsView):
                 self._scene.clearSelection()
 
     def _show_node_menu(self, item, view_pos):
-        """右键节点菜单 (viewport 全局坐标, WSLg 可靠; 深色QSS防黑字)"""
+        """右键节点菜单 (viewport 全局坐标, WSLg 可靠; 深色QSS防黑字)
+        🐛 2026-08-10 老倪: 菜单跑到另外屏幕 — mapToGlobal 在 WSLg 多屏下屏幕归属错位
+        → 用 QCursor.pos() 跟随系统光标真实位置, 菜单必在鼠标处弹出"""
         menu = QMenu()
         menu.setStyleSheet(
             "QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; }"
@@ -2389,7 +2395,8 @@ class SimCanvas(QGraphicsView):
         if "训练" in item.node.get("name", ""):
             a_train = menu.addAction("🎛 训练配置 (步数/batch/lr)")
         a_run = menu.addAction("▶ 运行节点")
-        chosen = menu.exec_(self.viewport().mapToGlobal(view_pos))
+        from PyQt5.QtGui import QCursor
+        chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
             self.module.on_show_node_logic(item.node)
         elif chosen == a_param:
@@ -2945,11 +2952,7 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_awe)
         self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
         tl.addWidget(self.btn_topsys)
-        # 🧠 双脑+状态机 (2026-08-10 老倪: 左右脑按钮 — 顶部工具栏, 点击画布加节点)
-        self.btn_left_brain = mk_btn("🧠 左脑", "左脑 MLP: 39D obs → 4D 连续动作 (3层MLP 512隐藏, 偏置接近 act*0.3+delta*2.0) — 双脑插拔方案", self.add_left_brain, "#58a6ff")
-        tl.addWidget(self.btn_left_brain)
-        self.btn_right_brain = mk_btn("🧠 右脑", "右脑 WorldModel: obs+action → next obs + contact概率 (该抓了吗, acc 1.00) — 双脑插拔方案", self.add_right_brain, "#a371f7")
-        tl.addWidget(self.btn_right_brain)
+        # 🗑 2026-08-10 老倪: 工具栏「🧠 左脑/🧠 右脑」按钮已删 (left_right 入口在模块库「🧠 双脑 (left_right)」)
         # 🎛 子系统返回 (2026-08-05 老倪: 顶层总系统双击展开内部三线, 返回恢复顶层)
         self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
         self.btn_back.setVisible(False)
@@ -3760,24 +3763,6 @@ class SimulinkModule(QWidget):
         self._log("🧿 场景原生: SigLIP视触觉编码 (视觉+力觉+触觉原生融合) + H-JEPA 三层潜空间 (z₁空间/z₂物体/z₃语义) + zFlow GRU 世界引擎 + 未来决策交叉注意力")
         self._log("▶ 点「▶ 运行」→ 训练 (50步快速验证) → 双击「📊 对比评估 Scope (仿真)」看对比")
 
-    def add_left_brain(self):
-        """🧠 左脑按钮 (2026-08-10 老倪: 顶部工具栏 → 画布加左脑 MLP 节点)"""
-        self.add_node_at_center("model", "🧠 左脑 MLP", {
-            "role": "连续动作生成", "in_dim": 39, "out_dim": 4,
-            "structure": "3层MLP 512隐藏 (ExpertMLP结构)",
-            "bias": "act*0.3 + hand→peg方向*2.0",
-            "loss": "MSE 800 epoch", "seed": 42,
-            "desc": "左脑: 39D obs → 4D 动作 (3D速度+夹爪)。偏置接近比纯解析强 (5/8 vs 0/8)"})
-
-    def add_right_brain(self):
-        """🧠 右脑按钮 (2026-08-10 老倪: 顶部工具栏 → 画布加右脑 WorldModel 节点)"""
-        self.add_node_at_center("model", "🧠 右脑 WorldModel", {
-            "role": "抓取时机判断", "in_dim": "39D obs + 4D action",
-            "out_dim": "next obs + contact概率", "contact_acc": "1.00",
-            "loss": "BCE 800 epoch", "seed": 42,
-            "trigger": "contact>0.5 且 d_hp<0.06 → 夹持触发",
-            "desc": "右脑: 预测 next obs + contact 二分类 (该抓了吗)"})
-
     def open_topsys(self):
         """🎛 顶层总系统 (2026-08-05 老倪: Simulink 子系统语义):
         加载 3 节点顶层 (数据→总系统块→评估Scope), 双击总系统块展开内部三条训练线"""
@@ -4150,6 +4135,13 @@ class SimulinkModule(QWidget):
             self._log("⚠️ 画布为空 — 点击上方「🗂 参考应用」一键加载模板, 或从左侧模块库添加节点")
             if self._tutorial_active:
                 self._tutorial_hint_mismatch("run", "pipeline")
+            return
+        # 🧠 2026-08-10 老倪: ▶ 运行 = left_right 工程画布 → 自动启动标准训练 (优先于环节节点
+        #   — 画布含「📄 PDF 报告」节点会命中 NODE_RUN_ACTIONS 的 on_pdf_report, 必须放最前)
+        if any(n.get("name") == "◉ LeftRightPolicy" for n in self.nodes):
+            self._log("🧠 检测到 left_right 工程 (双脑+状态机) — ▶ 运行 = 自动启动标准训练 (lerobot_train --policy left_right)")
+            self._log("   └ 配置: config_left_right.yaml · 39D 数据集 · 3000 步 · 容器强制 (zmax-std:1.0)")
+            self.on_train(policy="left_right")
             return
         # 🆕 ▶ 运行 = 画布真实全流程: 画布上有环节节点(采集/训练/验证/集成/部署/推理)
         #   就按拓扑顺序真实执行 (老倪: "运行按钮应该启动整个流程"), 没有环节节点才走拓扑仿真
@@ -4898,16 +4890,15 @@ class SimulinkModule(QWidget):
 
     # 🧠 ACT-Meta 逐步搭建引导: 从模块库逐模块搭建成最终模型 (2026-08-04 老倪)
     # 每步: 高亮模块库按钮 + 日志提示 → 用户点击添加 → 匹配推进 → 8步搭完自动连线
+    # 🗑 2026-08-10 老倪: 视觉主干/VAE 子模块已删 (VEH.5.16/17) → 引导同步去 2 步 (变 7 步)
     ACT_BUILD_STEPS = [
-        ("📦 metaworld_peg", "hardware", "第1/9步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
-        ("🖼 视觉主干 ResNet18", "model", "第2/9步 视觉编码: 点击「🖼 视觉主干 ResNet18」(官方 ACT.backbone, 图像→特征图)"),
-        ("🚫 VAE 编码器（无）", "model", "第3/9步 变分编码: 点击「🚫 VAE 编码器（无）」(官方 vae_encoder, 动作序列→潜变量)"),
-        ("🔤 Transformer Encoder", "model", "第4/9步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
-        ("🔡 Transformer Decoder", "model", "第5/9步 动作解码: 点击「🔡 Transformer Decoder」(官方 ACT.decoder, DETR queries)"),
-        ("🎯 Action Head 4D", "action", "第6/9步 输出适配: 点击「🎯 Action Head 4D」(★适配 metaworld 4D, 真机6D)"),
-        ("⏳ Temporal Ensemble", "condition", "第7/9步 动作平滑: 点击「⏳ Temporal Ensemble」(官方 ACTTemporalEnsembler)"),
-        ("🚀 全新训练", "system", "第8/9步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
-        ("📊 Scope 示波器", "action", "第9/9步 效果观察: 点击「📊 Scope 示波器」(训练完双击它看 loss 波形)"),
+        ("📦 metaworld_peg", "hardware", "第1/7步 数据源: 点击左侧模块库「📦 metaworld 数据」(4D/4D, sawyer 关节)"),
+        ("🔤 Transformer Encoder", "model", "第2/7步 上下文编码: 点击「🔤 Transformer Encoder」(官方 ACT.encoder, 4层)"),
+        ("🔡 Transformer Decoder", "model", "第3/7步 动作解码: 点击「🔡 Transformer Decoder」(官方 ACT.decoder, DETR queries)"),
+        ("🎯 Action Head 4D", "action", "第4/7步 输出适配: 点击「🎯 Action Head 4D」(★适配 metaworld 4D, 真机6D)"),
+        ("⏳ Temporal Ensemble", "condition", "第5/7步 动作平滑: 点击「⏳ Temporal Ensemble」(官方 ACTTemporalEnsembler)"),
+        ("🚀 全新训练", "system", "第6/7步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
+        ("📊 Scope 示波器", "action", "第7/7步 效果观察: 点击「📊 Scope 示波器」(训练完双击它看 loss 波形)"),
     ]
 
     def _open_float_workflow(self, title, setup_fn):
@@ -5282,8 +5273,14 @@ class SimulinkModule(QWidget):
             # 🔬 多策略: act=ACT / smolvla=SmolVLA 纯动作(无LEW) / smolvla_lew=SmolVLA+LeWorldModel
             #   / vla_touch=VLA-Touch 触觉增强控制器 (🖐 2026-08-05 老倪: 参考 VLA-Touch 项目,
             #   base VLA 冻结只训 Interpolant 控制器 — 4060 精简版)
+            #   / left_right=双脑 (🧠 2026-08-10 老倪: left_right 工程标准训练, config_left_right.yaml)
             # 各用独立配置模板; ts_dir 前缀区分; 曲线落盘 reports/train_curve_<policy>.json
-            if policy == "smolvla_lew":
+            if policy == "left_right":
+                # 📁 2026-08-10 老倪: 配置规范位置 configs/policies/ (不再堆工程根, 根目录已有64个历史遗留)
+                cfg_path = os.path.join(root, "configs", "policies", "config_left_right.yaml")
+                ts_dir = "left_right_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "LeftRight"
+            elif policy == "smolvla_lew":
                 cfg_path = os.path.join(root, "config_smolvla_lew_metaworld.yaml")
                 ts_dir = "smolvla_lew_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "SmolVLA+LEW"
@@ -5738,7 +5735,8 @@ class SimulinkModule(QWidget):
                 last = out[-1] if out else "?"
                 if r.returncode == 0 and os.path.exists(os.path.join(root, "reports")):
                     import glob as _g
-                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "Model Zoo技术选型报告_*.pdf")),
+                    # 🐛 2026-08-10 老倪: 文件名是 五模型对比技术选型报告_*.pdf (旧模式 Model Zoo 不匹配)
+                    pdfs = sorted(_g.glob(os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
                                   key=os.path.getmtime)
                     if pdfs:
                         return True, f"📄 报告已生成: {os.path.basename(pdfs[-1])}"
@@ -5767,6 +5765,19 @@ class SimulinkModule(QWidget):
             mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
             if r.returncode == 0 and os.path.exists(mp4):
                 self._send_video_to_feishu_async(mp4)
+                # 🐛 2026-08-10 老倪: 视频看不到 — WSLg 无内置播放器 + UNC(\\wsl.localhost) 被 CMD 拒
+                # → 复制到 Windows 可见 C 盘路径 (C:\Users\Public\ZMAX_videos) → explorer.exe 打开
+                try:
+                    import shutil as _sh
+                    _pub = "/mnt/c/Users/Public/ZMAX_videos"
+                    os.makedirs(_pub, exist_ok=True)
+                    _dst = os.path.join(_pub, os.path.basename(mp4))
+                    _sh.copy2(mp4, _dst)
+                    _win = _dst.replace("/mnt/c/", "C:\\").replace("/", "\\")
+                    _sp.Popen(["explorer.exe", _win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                    self._log(f"🎬 视频已生成并打开: {_win} ({os.path.getsize(mp4)//1024}KB)")
+                except Exception as _ex:
+                    self._log(f"🎬 视频已生成: reports/insert_success_demo.mp4 (自动打开失败: {str(_ex)[:50]})")
                 return True, f"🎬 视频已生成: reports/insert_success_demo.mp4"
             return False, f"视频生成失败: {last}"
 
@@ -5880,7 +5891,8 @@ class SimulinkModule(QWidget):
         try:
             import json as _j, glob as _g, urllib.request as _ur, os as _os
             root = self._repo_root()
-            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "Model Zoo技术选型报告_*.pdf")),
+            # 🐛 2026-08-10 老倪: 文件名是 五模型对比技术选型报告_*.pdf (旧模式 Model Zoo 不匹配 → 未找到)
+            pdfs = sorted(_g.glob(_os.path.join(root, "reports", "五模型对比技术选型报告_*.pdf")),
                           key=_os.path.getmtime)
             if not pdfs:
                 self._safe_log("⚠️ 飞书发送: 未找到 PDF 报告文件")

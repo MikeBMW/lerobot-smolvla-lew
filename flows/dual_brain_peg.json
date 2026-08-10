@@ -1,8 +1,10 @@
 {
  "format": "hermes-flow",
- "version": 1,
- "name": "🧠 双脑 + 状态机 = 完整插拔",
- "sim": "dual_brain_peg",
+ "version": 2,
+ "name": "🧠 left_right 双脑+状态机 (抓起8/8 插入7/8)",
+ "sim": "left_right",
+ "policy": "left_right",
+ "source": "src/lerobot/policies/left_right/ (8ed1c9e8)",
  "nodes": [
   {
    "id": "dba0",
@@ -16,7 +18,8 @@
    "params": {
     "dim": 39,
     "source": "metaworld peg-v6",
-    "desc": "完整观测: 坐标+速度+相对向量 (YOLO 3D 产出)"
+    "norm": "MEAN_STD (normalization_mapping)",
+    "desc": "完整观测: 坐标+速度+相对向量 → LeftRightConfig.input_features"
    },
    "inputs": [
     {
@@ -37,21 +40,23 @@
   {
    "id": "dba1",
    "type": "model",
-   "name": "🧠 左脑 MLP",
+   "name": "🧠 左脑 LeftBrainMLP",
    "x": 380,
    "y": 80,
    "w": 150,
    "icon": "◈",
    "color": "#58a6ff",
    "params": {
+    "class": "LeftBrainMLP (modeling_left_right.py)",
     "role": "连续动作生成",
     "in_dim": 39,
     "out_dim": 4,
-    "structure": "3层MLP 512隐藏 (ExpertMLP结构)",
-    "bias": "act*0.3 + hand→peg方向*2.0",
-    "loss": "MSE 800 epoch",
-    "seed": 42,
-    "desc": "左脑: 39D obs → 4D 动作 (3D速度+夹爪)。偏置接近比纯解析强 (5/8 vs 0/8)"
+    "hidden": 512,
+    "structure": "Linear(39,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Linear(512,4)",
+    "params": "547K",
+    "loss": "MSE (动作回归)",
+    "optimizer": "AdamW lr=1e-4",
+    "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)"
    },
    "inputs": [
     {
@@ -72,21 +77,22 @@
   {
    "id": "dba2",
    "type": "model",
-   "name": "🧠 右脑 WorldModel",
+   "name": "🧠 右脑 RightBrainWM",
    "x": 620,
    "y": 80,
    "w": 150,
    "icon": "◈",
    "color": "#58a6ff",
    "params": {
+    "class": "RightBrainWM (modeling_left_right.py)",
     "role": "抓取时机判断",
     "in_dim": "39D obs + 4D action",
-    "out_dim": "next obs + contact概率",
+    "hidden": 256,
+    "structure": "enc: Linear(43,256)→ReLU→Linear(256,256)→ReLU; pred_next: Linear(256,39); contact_head: Linear(256,1)→sigmoid",
+    "params": "87K",
     "contact_acc": "1.00",
-    "loss": "BCE 800 epoch",
-    "seed": 42,
-    "trigger": "contact>0.5 且 d_hp<0.06 → 夹持触发",
-    "desc": "右脑: 预测 next obs + contact 二分类 (该抓了吗)"
+    "loss": "MSE(next obs) + 0.5×BCE(contact)",
+    "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)"
    },
    "inputs": [
     {
@@ -114,9 +120,10 @@
    "icon": "❖",
    "color": "#a371f7",
    "params": {
-    "rule": "contact>0.5 & d_hp<0.06",
+    "rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
     "d_hp_th": 0.06,
-    "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 触发抓取"
+    "contact_th": 0.5,
+    "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"
    },
    "inputs": [
     {
@@ -137,13 +144,16 @@
   {
    "id": "dbb0",
    "type": "system",
-   "name": "◉ 状态机 (6阶段)",
+   "name": "◉ LeftRightPolicy",
    "x": 140,
    "y": 310,
    "w": 150,
    "icon": "◉",
    "color": "#d4a800",
    "params": {
+    "class": "LeftRightPolicy (lerobot 标准)",
+    "name": "left_right",
+    "factory": "factory.make_policy('left_right') ✅",
     "stages": [
      "接近",
      "抓取",
@@ -153,7 +163,14 @@
      "完成"
     ],
     "frames": "32+45+9+38+1 = 125帧",
-    "desc": "接近→抓取→抬起(+8cm)→转移(容差5cm)→插入→完成"
+    "chunk_size": 1,
+    "n_action_steps": 1,
+    "grasp_contact_threshold": 0.5,
+    "grasp_d_hp": 0.06,
+    "lift_height": 0.08,
+    "transfer_tolerance": 0.05,
+    "insert_tolerance": 0.05,
+    "desc": "推理编排: 接近→抓取(contact判定)→抬起(+0.08m)→转移(容差0.05)→插入(d_ph<0.05)→完成"
    },
    "inputs": [
     {
@@ -212,7 +229,7 @@
    "params": {
     "trigger": "contact>0.5 & d_hp<0.06",
     "grab": "夹持0.6 + 位置锁定",
-    "desc": "右脑判定触发 (45帧)"
+    "desc": "右脑 get_right_contact 判定触发 (45帧)"
    },
    "inputs": [
     {
@@ -240,7 +257,7 @@
    "icon": "➤",
    "color": "#00d4aa",
    "params": {
-    "height": "+8cm",
+    "height": "+0.08m (lift_height)",
     "force": 0.8,
     "desc": "peg z 升高避开台面 (9帧)"
    },
@@ -270,7 +287,7 @@
    "icon": "➤",
    "color": "#00d4aa",
    "params": {
-    "tolerance": "5cm",
+    "tolerance": "0.05m (transfer_tolerance)",
     "desc": "水平移到 hole 上方, peg 有导向 (38帧)"
    },
    "inputs": [
@@ -299,7 +316,7 @@
    "icon": "➤",
    "color": "#00d4aa",
    "params": {
-    "target": "d_ph<0.05",
+    "target": "d_ph<0.05 (insert_tolerance)",
     "desc": "垂直下降插入 (1帧)"
    },
    "inputs": [
@@ -358,8 +375,10 @@
    "params": {
     "grab": "8/8",
     "insert": "7/8",
-    "rank": "超越官方专家",
-    "desc": "首个学习架构解决完整插拔 (抓起8/8 插入7/8)"
+    "rank": "抓起超越官方专家",
+    "params": "~635K (左脑547K + 右脑87K)",
+    "speed": "80Hz+",
+    "desc": "left_right 工程: 首个学习架构解决完整插拔"
    },
    "inputs": [
     {
@@ -419,7 +438,7 @@
    "params": {
     "grab": "0/8",
     "insert": "0/8",
-    "desc": "无学习"
+    "desc": "无右脑判断"
    },
    "inputs": [
     {
@@ -685,7 +704,7 @@
  ],
  "links": [
   {
-   "id": "l85641621795359",
+   "id": "l66781721687727",
    "f": "dba0",
    "t": "dba1",
    "f_port": "out1",
@@ -693,7 +712,7 @@
    "label": "39D obs"
   },
   {
-   "id": "l55149405555264",
+   "id": "l71603986087323",
    "f": "dba0",
    "t": "dba2",
    "f_port": "out1",
@@ -701,7 +720,7 @@
    "label": "39D obs"
   },
   {
-   "id": "l36691382435580",
+   "id": "l91761752056733",
    "f": "dba1",
    "t": "dba2",
    "f_port": "out1",
@@ -709,7 +728,7 @@
    "label": "4D action"
   },
   {
-   "id": "l6912907364236",
+   "id": "l6641875460794",
    "f": "dba1",
    "t": "dbb0",
    "f_port": "out1",
@@ -717,7 +736,7 @@
    "label": "4D 动作"
   },
   {
-   "id": "l15640218665765",
+   "id": "l27292118166010",
    "f": "dba2",
    "t": "dba3",
    "f_port": "out1",
@@ -725,7 +744,7 @@
    "label": "contact概率"
   },
   {
-   "id": "l53002710826372",
+   "id": "l56857815908845",
    "f": "dba3",
    "t": "dbb0",
    "f_port": "out1",
@@ -733,7 +752,7 @@
    "label": "抓取触发"
   },
   {
-   "id": "l18967828087014",
+   "id": "l93958574033927",
    "f": "dba0",
    "t": "dbb0",
    "f_port": "out1",
@@ -741,7 +760,7 @@
    "label": "观测"
   },
   {
-   "id": "l21350810666462",
+   "id": "l32960755288925",
    "f": "dbb0",
    "t": "dbb1",
    "f_port": "out1",
@@ -749,7 +768,7 @@
    "label": "接近"
   },
   {
-   "id": "l11821213283670",
+   "id": "l18176031828948",
    "f": "dbb1",
    "t": "dbb2",
    "f_port": "out1",
@@ -757,7 +776,7 @@
    "label": "抓取"
   },
   {
-   "id": "l26927214453590",
+   "id": "l88524433944689",
    "f": "dbb2",
    "t": "dbb3",
    "f_port": "out1",
@@ -765,7 +784,7 @@
    "label": "抬起"
   },
   {
-   "id": "l45394032858839",
+   "id": "l95098440165931",
    "f": "dbb3",
    "t": "dbb4",
    "f_port": "out1",
@@ -773,7 +792,7 @@
    "label": "转移"
   },
   {
-   "id": "l19056441108370",
+   "id": "l22266630135743",
    "f": "dbb4",
    "t": "dbb5",
    "f_port": "out1",
@@ -781,7 +800,7 @@
    "label": "插入"
   },
   {
-   "id": "l95427415324100",
+   "id": "l96463692847894",
    "f": "dbb5",
    "t": "dbb6",
    "f_port": "out1",
@@ -789,7 +808,7 @@
    "label": "完成"
   },
   {
-   "id": "l88369706712815",
+   "id": "l29463521473429",
    "f": "dbb6",
    "t": "dbc0",
    "f_port": "out1",
@@ -797,7 +816,7 @@
    "label": "🎉 8/8 · 7/8"
   },
   {
-   "id": "l68728652533982",
+   "id": "l37877387379111",
    "f": "dbc0",
    "t": "dbc1",
    "f_port": "out1",
@@ -805,7 +824,7 @@
    "label": "持平 7/8"
   },
   {
-   "id": "l22026726198218",
+   "id": "l73339091145828",
    "f": "dbc0",
    "t": "dbc2",
    "f_port": "out1",
@@ -813,7 +832,7 @@
    "label": "8/8 vs 0/8"
   },
   {
-   "id": "l68276588941133",
+   "id": "l91833754014322",
    "f": "dbc0",
    "t": "dbc3",
    "f_port": "out1",
@@ -821,7 +840,7 @@
    "label": "7/8 vs 3/10"
   },
   {
-   "id": "l7470735532835",
+   "id": "l38086808286725",
    "f": "dbc0",
    "t": "dbc4",
    "f_port": "out1",
@@ -829,7 +848,7 @@
    "label": "8/8 vs 0/8"
   },
   {
-   "id": "l54798077147018",
+   "id": "l24780791661254",
    "f": "dbb6",
    "t": "dbd0",
    "f_port": "out1",
@@ -837,7 +856,7 @@
    "label": "插拔成功"
   },
   {
-   "id": "l36161296080289",
+   "id": "l46089487448965",
    "f": "dbd0",
    "t": "dbd1",
    "f_port": "out1",
@@ -845,7 +864,7 @@
    "label": "演示视频"
   },
   {
-   "id": "l7178170980891",
+   "id": "l4854726915466",
    "f": "dbd1",
    "t": "dbc0",
    "f_port": "out1",

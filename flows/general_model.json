@@ -1,0 +1,481 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "bg-supplier",
+      "type": "row_bg",
+      "name": "供应商区",
+      "x": 81,
+      "y": 44,
+      "w": 900,
+      "h": 150,
+      "params": {},
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "bg-lab",
+      "type": "row_bg",
+      "name": "实验室闭环区",
+      "x": 85,
+      "y": 239,
+      "w": 900,
+      "h": 260,
+      "params": {},
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "bg-field",
+      "type": "row_bg",
+      "name": "现场区",
+      "x": 94,
+      "y": 550,
+      "w": 900,
+      "h": 170,
+      "params": {},
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "sup",
+      "type": "model",
+      "name": "🏭 底座模型供应商",
+      "x": 197,
+      "y": 70,
+      "w": 170,
+      "params": {
+        "source": "vendor",
+        "desc": "提供通用底座模型 (ACT/SmolVLA/GR00T 等开源底座)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "base",
+      "type": "model",
+      "name": "🧬 通用底座模型",
+      "x": 390,
+      "y": 102,
+      "w": 170,
+      "params": {
+        "model": "base",
+        "desc": "冻结底座, 我方只微调任务头/适配层"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "collect",
+      "type": "data",
+      "name": "📊 数据采集 (实验室)",
+      "x": 143,
+      "y": 276,
+      "w": 170,
+      "params": {
+        "source": "lab",
+        "desc": "真机/仿真采集: 视觉+力觉+状态 45D, 全部在实验室完成"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "annotate",
+      "type": "coord_overlay",
+      "name": "🏷 数据标注+技能标签",
+      "x": 359,
+      "y": 269,
+      "w": 170,
+      "params": {
+        "gate": 0.5,
+        "desc": "标注原子技能 (W²-VLA Token), 不出实验室"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "sys2",
+      "type": "system",
+      "name": "🚀 SYS2 云端训练/微调",
+      "x": 594,
+      "y": 260,
+      "w": 170,
+      "params": {
+        "layer": "sys2",
+        "desc": "底座冻结+专有微调 (4060/4090), 权重不出实验室"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "zoo",
+      "type": "coord_overlay",
+      "name": "🎯 Model Zoo 对比评估",
+      "x": 807,
+      "y": 270,
+      "w": 170,
+      "params": {
+        "gate": 0.5,
+        "desc": "七模型横比: ACT/SmolVLA/LEW/VLA-Touch/AWE/MLP蒸馏/官方专家 85%"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "eval",
+      "type": "train_gate",
+      "name": "✅ 评估通过?",
+      "x": 256,
+      "y": 422,
+      "w": 170,
+      "params": {
+        "gate": 0.9,
+        "desc": "成功率≥99% 且优于基线 → 部署; 否则回炉重训"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "deploy",
+      "type": "action",
+      "name": "📦 部署到 SYS1",
+      "x": 646,
+      "y": 415,
+      "w": 170,
+      "params": {
+        "action_out": "/models/act_latest.safetensors",
+        "desc": "静态URL覆盖部署 (ECS), 版本可回溯"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "sys1",
+      "type": "system",
+      "name": "🧠 SYS1 动作系统",
+      "x": 213,
+      "y": 602,
+      "w": 170,
+      "params": {
+        "layer": "sys1",
+        "desc": "执行动作序列 (A001~A010), 场景条件编码注入"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "sys0",
+      "type": "hardware",
+      "name": "⚙️ SYS0 硬件驱动",
+      "x": 460,
+      "y": 602,
+      "w": 170,
+      "params": {
+        "desc": "Z700 六轴+力控夹爪+相机, 原子功能层"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "feedback",
+      "type": "data",
+      "name": "🔄 新数据回传实验室",
+      "x": 747,
+      "y": 612,
+      "w": 170,
+      "params": {
+        "source": "field",
+        "desc": "现场异常/新工况数据 → 脱敏 → 回实验室闭环"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "label": "底座冻结微调",
+      "f": "base",
+      "t": "sys2",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "label": "标注",
+      "f": "collect",
+      "t": "annotate",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "训练",
+      "f": "annotate",
+      "t": "sys2",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "label": "评估对比",
+      "f": "sys2",
+      "t": "zoo",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "评审",
+      "f": "zoo",
+      "t": "eval",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "通过→部署",
+      "f": "eval",
+      "t": "deploy",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "不通过→回炉",
+      "f": "eval",
+      "t": "sys2",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "label": "模型下发",
+      "f": "deploy",
+      "t": "sys1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "动作指令",
+      "f": "sys1",
+      "t": "sys0",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "现场数据",
+      "f": "sys0",
+      "t": "feedback",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "label": "回传闭环",
+      "f": "feedback",
+      "t": "collect",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862783421632j",
+      "f": "sup",
+      "t": "base",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    }
+  ]
+}

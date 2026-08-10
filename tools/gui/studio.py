@@ -227,7 +227,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v1.8.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.0.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -5813,37 +5813,75 @@ class HardwareModule(SubModuleWidget):
         return btn
     
     def _cam_connect(self):
-        """🔌 摄像头连接: 探测快照端点 → 开始轮询显示 (2026-08-09 老倪: cicd.html 方案)"""
-        import requests as _rq
-        try:
-            r = _rq.get("https://datadrive.world/api/snapshot/latest", timeout=10)
-            if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
+        """🔌 摄像头连接: 探测快照端点 → 开始轮询显示 (2026-08-09 老倪: cicd.html 方案)
+        🐛 2026-08-10 老倪: 同步 requests 在主线程会阻塞 GUI (网络超时=窗口假死)
+        → 探测请求移到子线程, 结果经 QTimer.singleShot 回主线程 (铁律)"""
+        import threading as _th
+        self.btn_cam_connect.setEnabled(False)
+
+        def _probe():
+            try:
+                import requests as _rq
+                r = _rq.get("https://datadrive.world/api/snapshot/latest", timeout=4)
+                return (r.status_code, r.headers.get("Content-Type", ""), r.content, None)
+            except Exception as e:
+                return (None, None, None, str(e)[:40])
+
+        def _apply(res):
+            code, ctype, content, err = res
+            self.btn_cam_connect.setEnabled(True)
+            if err:
+                self.cam_status.setText(f"❌ 连接失败: {err}")
+                self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:10px; background:transparent; border:none;")
+                self._log(f"❌ 摄像头连接失败: {err}")
+            elif code == 200 and ctype.startswith("image"):
                 self.cam_status.setText("🟢 已连接 · 快照端点正常 · 实时画面轮询中")
                 self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:10px; background:transparent; border:none;")
                 self.btn_cam_connect.setText("⏹ 断开摄像头")
-                # 立即显示一帧
-                self._show_cam_frame(r.content)
+                self._show_cam_frame(content)
                 self._cam_timer.start(1500)  # 1.5s 轮询
                 self._log("📷 摄像头已连接 — 轮询 datadrive.world/api/snapshot/latest (Orin 快照)")
             else:
-                self.cam_status.setText(f"⚠️ 快照端点异常: HTTP {r.status_code}")
+                self.cam_status.setText(f"⚠️ 快照端点异常: HTTP {code}")
                 self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:10px; background:transparent; border:none;")
-                self._log(f"⚠️ 摄像头连接失败: HTTP {r.status_code} (快照端点无图)")
-        except Exception as e:
-            self.cam_status.setText(f"❌ 连接失败: {str(e)[:40]}")
-            self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:10px; background:transparent; border:none;")
-            self._log(f"❌ 摄像头连接失败: {e}")
+                self._log(f"⚠️ 摄像头连接失败: HTTP {code} (快照端点无图)")
+
+        _th.Thread(target=lambda: self._cam_apply_later(_probe, _apply), daemon=True).start()
+
+    def _cam_apply_later(self, fn, apply):
+        """子线程执行 fn() → QTimer.singleShot 回主线程 apply (跨线程 GUI 铁律)
+        ⚠️ fn() 必须在子线程跑 (网络请求), 只有结果经 singleShot 回主线程"""
+        try:
+            from PyQt5.QtCore import QTimer as _QTM
+            res = fn()  # 网络请求在子线程执行
+            _QTM.singleShot(0, lambda: apply(res))
+        except Exception:
+            pass
 
     def _cam_poll(self):
-        """📷 轮询快照端点 (QTimer 1.5s — 参考 cicd.html setInterval 方案)"""
-        try:
-            import requests as _rq
-            r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
-                        timeout=8)
-            if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
-                self._show_cam_frame(r.content)
-        except Exception:
-            pass  # 单帧失败不中断轮询
+        """📷 轮询快照端点 (QTimer 1.5s — 参考 cicd.html setInterval 方案)
+        🐛 2026-08-10 老倪: 同步 GET 在主线程阻塞 (网络超时=窗口假死) → 子线程轮询 + 防重入"""
+        if getattr(self, "_cam_polling", False):
+            return  # 上一次请求未完成, 跳过本 tick (防线程堆积)
+        self._cam_polling = True
+
+        def _fetch():
+            try:
+                import requests as _rq
+                r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
+                            timeout=4)
+                if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
+                    return r.content
+            except Exception:
+                pass  # 单帧失败不中断轮询
+            return None
+
+        def _apply(data):
+            self._cam_polling = False
+            if data:
+                self._show_cam_frame(data)
+        import threading as _th
+        _th.Thread(target=lambda: self._cam_apply_later(_fetch, _apply), daemon=True).start()
 
     def _show_cam_frame(self, data):
         """📷 QLabel 显示 JPEG 帧"""
@@ -9189,7 +9227,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v1.8.0 [W-01]")  # v1.8.0: 恢复主页三层架构卡(卡↔页↔字典↔导航一致性检查保护)
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.0.0 [W-01]")  # v2.0.0: 左右脑策略大版本 (LeftRightPolicy + 8状态机 + 帮助文档)  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
@@ -9605,6 +9643,11 @@ class StudioMainWindow(QMainWindow):
         m_git.addAction(self._mk_doc_action("📖 完整操作指南 (README.md) — 含 git push/pull/clone",
             (["README.md"], "xdg-open")))
         m_git.addSeparator()
+
+        # 🧠 左右脑双脑策略 (2026-08-10 老倪: v2.0 大版本 — left动作/right世界模型/状态机调制)
+        m_doc.addAction(self._mk_doc_action("🧠 左右脑策略 · LeftRightPolicy 技术方案 (v2.0)",
+            (["docs/left_right_policy.md"], "xdg-open")))
+        m_doc.addSeparator()
         
         # 培训文档 (唯一 MD + PPTX)
         m_doc.addAction(self._mk_doc_action("📖 Z700 F · L2 产品培训手册 (MD)",

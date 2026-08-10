@@ -1,0 +1,38 @@
+# Z-MAX left_right 训练配置 (2026-08-10 老倪: lerobot_train 标准管道)
+# 用法: DISPLAY=:0 MUJOCO_GL=glfw .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_left_right.yaml
+output_dir: outputs/train/left_right_std
+job_name: left_right_std
+
+policy:
+  type: left_right
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-left-right
+  n_obs_steps: 1
+  n_action_steps: 1
+  chunk_size: 1
+  left_hidden: 512
+  right_hidden: 256
+
+dataset:
+  repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
+  root: data/metaworld_peg_long   # 39D 数据集 (2026-08-10: left_right 用 39D, 12集3600帧全量)
+  use_imagenet_stats: false
+
+batch_size: 8
+steps: 3000
+num_workers: 0
+persistent_workers: false
+log_freq: 5
+eval_freq: 0
+save_freq: 1000
+save_checkpoint: true
+seed: 42
+use_policy_training_preset: true   # 2026-08-10: 强制用 policy preset (optimizer自动生成)
+
+optimizer:
+  type: adam
+  lr: 0.0001
+  weight_decay: 0.0
+
+wandb:
+  enable: false
