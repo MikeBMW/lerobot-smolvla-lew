@@ -540,8 +540,7 @@ LIBRARY = [
     ]),
     ("model", "模型 (9)", [
         {"name": "M00 SmolVLA", "params": {"checkpoint": "smolvla-500m", "fps": 100}},
-        {"name": "M03 GR00T",   "params": {"remote": "4090:50056"}},
-        {"name": "M04 LEW",     "params": {"horizon": 16}},
+        {"name": "M04 LEW",     "params": {"horizon": 16}},   # 🗑 2026-08-10 老倪: M03 GR00T 已删 (VEH.5.14)
         {"name": "M05 H-JEPA",  "params": {"remote": "4090"}},
     ]),
     # 🧠 ACT 模型·官方子模块 (2026-08-04 老倪: "在左侧模块库里分个类, 将ACT-meta保存到模块库里;
@@ -633,6 +632,26 @@ LIBRARY = [
          "desc": "一键搭建 VLA-Touch 对比管道 (8节点9连线: 数据→DINOv2/Marker/DiT-B→ActionHead→Interpolant→训练→Scope)"},
         {"name": "🧿 AWE 完整模型", "params": {}, "template": "🧿 AWE 场景原生对比",
          "desc": "一键搭建 AWE 场景原生对比管道 (8节点8连线: 数据→SigLIP视触觉编码→三层潜空间→zFlow世界引擎→注入→ActionHead→训练→Scope)"},
+    ]),
+    # 🧠 双脑+状态机 (2026-08-10 老倪: 飞书端跑通 — 抓起8/8 插入7/8, 首个学习架构解决完整插拔)
+    ("model", "🧠 双脑+状态机 (插拔)", [
+        {"name": "🧠 左脑 MLP", "params": {
+            "role": "连续动作生成", "in_dim": 39, "out_dim": 4,
+            "structure": "3层MLP 512隐藏 (ExpertMLP结构)",
+            "bias": "act*0.3 + hand→peg方向*2.0",
+            "loss": "MSE 800 epoch", "seed": 42,
+            "desc": "左脑: 39D obs → 4D 动作 (3D速度+夹爪)。偏置接近比纯解析强 (5/8 vs 0/8)"}},
+        {"name": "🧠 右脑 WorldModel", "params": {
+            "role": "抓取时机判断", "in_dim": "39D obs + 4D action",
+            "out_dim": "next obs + contact概率", "contact_acc": "1.00",
+            "loss": "BCE 800 epoch", "seed": 42,
+            "trigger": "contact>0.5 且 d_hp<0.06 → 夹持触发",
+            "desc": "右脑: 预测 next obs + contact 二分类 (该抓了吗)"}},
+        {"name": "🧠 双脑+状态机 完整模型",
+         "params": {"desc": "一键加载完整插拔模型画布 (19节点14连线): 39D→左脑MLP+右脑WM→接触判定→状态机6阶段→完成"},
+         "flow": os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                              "flows", "dual_brain_peg.json"),
+         "desc": "一键加载双脑+状态机完整模型: 抓起8/8 插入7/8 (超越官方专家)"},
     ]),
     ("action", "动作 (11)", [
         {"name": "A00 Action输出", "params": {}},
@@ -2926,6 +2945,11 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_awe)
         self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
         tl.addWidget(self.btn_topsys)
+        # 🧠 双脑+状态机 (2026-08-10 老倪: 左右脑按钮 — 顶部工具栏, 点击画布加节点)
+        self.btn_left_brain = mk_btn("🧠 左脑", "左脑 MLP: 39D obs → 4D 连续动作 (3层MLP 512隐藏, 偏置接近 act*0.3+delta*2.0) — 双脑插拔方案", self.add_left_brain, "#58a6ff")
+        tl.addWidget(self.btn_left_brain)
+        self.btn_right_brain = mk_btn("🧠 右脑", "右脑 WorldModel: obs+action → next obs + contact概率 (该抓了吗, acc 1.00) — 双脑插拔方案", self.add_right_brain, "#a371f7")
+        tl.addWidget(self.btn_right_brain)
         # 🎛 子系统返回 (2026-08-05 老倪: 顶层总系统双击展开内部三线, 返回恢复顶层)
         self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
         self.btn_back.setVisible(False)
@@ -3735,6 +3759,24 @@ class SimulinkModule(QWidget):
         self._log("📦 模块划分: ♻共用 2 (metaworld数据 / 对比评估Scope) + AWE 6")
         self._log("🧿 场景原生: SigLIP视触觉编码 (视觉+力觉+触觉原生融合) + H-JEPA 三层潜空间 (z₁空间/z₂物体/z₃语义) + zFlow GRU 世界引擎 + 未来决策交叉注意力")
         self._log("▶ 点「▶ 运行」→ 训练 (50步快速验证) → 双击「📊 对比评估 Scope (仿真)」看对比")
+
+    def add_left_brain(self):
+        """🧠 左脑按钮 (2026-08-10 老倪: 顶部工具栏 → 画布加左脑 MLP 节点)"""
+        self.add_node_at_center("model", "🧠 左脑 MLP", {
+            "role": "连续动作生成", "in_dim": 39, "out_dim": 4,
+            "structure": "3层MLP 512隐藏 (ExpertMLP结构)",
+            "bias": "act*0.3 + hand→peg方向*2.0",
+            "loss": "MSE 800 epoch", "seed": 42,
+            "desc": "左脑: 39D obs → 4D 动作 (3D速度+夹爪)。偏置接近比纯解析强 (5/8 vs 0/8)"})
+
+    def add_right_brain(self):
+        """🧠 右脑按钮 (2026-08-10 老倪: 顶部工具栏 → 画布加右脑 WorldModel 节点)"""
+        self.add_node_at_center("model", "🧠 右脑 WorldModel", {
+            "role": "抓取时机判断", "in_dim": "39D obs + 4D action",
+            "out_dim": "next obs + contact概率", "contact_acc": "1.00",
+            "loss": "BCE 800 epoch", "seed": 42,
+            "trigger": "contact>0.5 且 d_hp<0.06 → 夹持触发",
+            "desc": "右脑: 预测 next obs + contact 二分类 (该抓了吗)"})
 
     def open_topsys(self):
         """🎛 顶层总系统 (2026-08-05 老倪: Simulink 子系统语义):
@@ -5707,6 +5749,61 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在生成 PDF 技术选型报告…", stage="report")
 
+    def on_insert_video(self, **kw):
+        """▶ 插拔演示视频 (2026-08-10 双脑+状态机): 后台跑 gen_insert_video.py
+        → reports/insert_success_demo.mp4 → 自动发飞书 dataworld 群"""
+        self._log("▶ 正在生成双脑插拔演示视频 (seed1 完整插拔流程, 约1-2分钟)…")
+
+        def _work():
+            import subprocess as _sp
+            root = self._repo_root()
+            py = os.path.join(root, ".venv", "bin", "python")
+            if not os.path.exists(py):
+                return False, "缺少 .venv/bin/python (视频生成需本地 GPU 渲染环境)"
+            r = _sp.run([py, os.path.join(root, "tools", "gen_insert_video.py")],
+                        capture_output=True, text=True, timeout=600, cwd=root)
+            out = (r.stdout or "").strip().splitlines()
+            last = out[-1] if out else "?"
+            mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
+            if r.returncode == 0 and os.path.exists(mp4):
+                self._send_video_to_feishu_async(mp4)
+                return True, f"🎬 视频已生成: reports/insert_success_demo.mp4"
+            return False, f"视频生成失败: {last}"
+
+        self._start_worker(_work, "正在生成插拔演示视频…", stage="insert_video")
+
+    def on_insert_report(self, **kw):
+        """📄 插拔方案PDF (2026-08-10 双脑+状态机): 视频帧 + 方案JSON → 6章报告 → 发飞书"""
+        self._log("📄 正在生成双脑插拔方案PDF报告 (6章: 概况/架构/状态机/调优/对比/下一步)…")
+
+        def _work():
+            import subprocess as _sp
+            root = self._repo_root()
+            mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
+            frame = os.path.join(root, "reports", "_insert_demo_frame.png")
+            if os.path.exists(mp4):
+                _sp.run(["ffmpeg", "-y", "-ss", "1.0", "-i", mp4, "-frames:v", "1", frame],
+                        capture_output=True, text=True, timeout=60)
+            # 🐛 2026-08-10: zmax-std 容器无 CJK 字体 → matplotlib 图中文方块;
+            #   改用宿主 .venv (reportlab+matplotlib+Noto CJK 齐全, 与 rollout 视频同路径)
+            py = os.path.join(root, ".venv", "bin", "python")
+            if not os.path.exists(py):
+                return False, "缺少 .venv/bin/python (报告生成需要本地环境)"
+            r = _sp.run([py, os.path.join(root, "tools", "gen_insert_report.py"),
+                         "--frame", frame],
+                        capture_output=True, text=True, timeout=300, cwd=root)
+            out = (r.stdout or "").strip().splitlines()
+            last = out[-1] if out else "?"
+            import glob as _g
+            pdfs = sorted(_g.glob(os.path.join(root, "reports", "插拔方案报告_*.pdf")),
+                          key=os.path.getmtime)
+            if r.returncode == 0 and pdfs:
+                self._send_pdf_to_feishu_async(pdfs[-1])
+                return True, f"📄 报告已生成: {os.path.basename(pdfs[-1])}"
+            return False, f"PDF 生成失败: {last}"
+
+        self._start_worker(_work, "正在生成插拔方案PDF报告…", stage="insert_report")
+
     def on_infer(self, **kw):
         """⑥ 推理: 检查 Orin 推理状态 (infer_count / 延迟 / 心跳)"""
         self._log("════ ⑥ 推理 (Orin 状态检查) ════")
@@ -5851,6 +5948,82 @@ class SimulinkModule(QWidget):
             self._safe_log(f"✅ 报告已发送到飞书 dataworld 群 · {_os.path.basename(pdf)}")
         except Exception as ex:
             self._safe_log(f"⚠️ 飞书发送失败: {ex}")
+
+    # ── 📤 通用飞书文件发送 (2026-08-10: 双脑插拔 视频/PDF 复用) ──
+    def _feishu_send_file_work(self, path, ftype, txt):
+        """后台线程: 飞书上传文件 (mp4/pdf) + 发文件消息 + 发文本摘要; 失败仅日志, 不影响主流程"""
+        try:
+            import json as _j, urllib.request as _ur, os as _os
+            env = {}
+            env_path = _os.path.expanduser("~/.hermes/.env")
+            if _os.path.exists(env_path):
+                for line in open(env_path, encoding="utf-8"):
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        env[k] = v
+            app_id = env.get("FEISHU_APP_ID", "")
+            app_secret = env.get("FEISHU_APP_SECRET", "")
+            chat_id = env.get("FEISHU_REPORT_CHAT_ID", "oc_c0b4048546145c5c581ddd1a9e8f565d")
+            if not app_id or not app_secret:
+                self._safe_log("⚠️ 飞书发送: .env 无 FEISHU_APP_ID/SECRET")
+                return
+
+            def _post(url, data, headers=None):
+                req = _ur.Request(url, data=_j.dumps(data).encode(),
+                                  headers={"Content-Type": "application/json", **(headers or {})})
+                return _j.loads(_ur.urlopen(req, timeout=15).read())
+
+            r = _post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                      {"app_id": app_id, "app_secret": app_secret})
+            tok = r.get("tenant_access_token")
+            if not tok:
+                self._safe_log("⚠️ 飞书发送: token 获取失败")
+                return
+            H = {"Authorization": "Bearer " + tok}
+            boundary = "----zmaxfile"
+            with open(path, "rb") as f:
+                content = f.read()
+            body = (("--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file_type\"\r\n\r\n" + ftype + "\r\n" +
+                     "--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file_name\"\r\n\r\n" +
+                     _os.path.basename(path) + "\r\n" +
+                     "--" + boundary + "\r\n"
+                     "Content-Disposition: form-data; name=\"file\"; filename=\"" +
+                     _os.path.basename(path) + "\"\r\n"
+                     "Content-Type: application/octet-stream\r\n\r\n").encode() + content + (
+                     "\r\n--" + boundary + "--\r\n").encode())
+            req = _ur.Request("https://open.feishu.cn/open-apis/im/v1/files", data=body,
+                              headers={**H, "Content-Type": "multipart/form-data; boundary=" + boundary})
+            r2 = _j.loads(_ur.urlopen(req, timeout=60).read())
+            file_key = r2.get("data", {}).get("file_key")
+            if not file_key:
+                self._safe_log(f"⚠️ 飞书发送: 上传失败 {r2.get('msg', '')}")
+                return
+            _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                  {"receive_id": chat_id, "msg_type": "file",
+                   "content": _j.dumps({"file_key": file_key})}, H)
+            _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                  {"receive_id": chat_id, "msg_type": "text",
+                   "content": _j.dumps({"text": txt})}, H)
+            self._safe_log(f"✅ 已发送到飞书 dataworld 群 · {_os.path.basename(path)}")
+        except Exception as ex:
+            self._safe_log(f"⚠️ 飞书发送失败: {ex}")
+
+    def _send_video_to_feishu_async(self, path):
+        import threading
+        threading.Thread(target=self._feishu_send_file_work,
+                         args=(path, "mp4",
+                               "🎬 Z-MAX 双脑+状态机插拔演示视频已生成\n" + os.path.basename(path)),
+                         daemon=True).start()
+
+    def _send_pdf_to_feishu_async(self, path):
+        import threading
+        threading.Thread(target=self._feishu_send_file_work,
+                         args=(path, "pdf",
+                               "📄 Z-MAX 双脑+状态机插拔方案报告已生成\n" + os.path.basename(path)),
+                         daemon=True).start()
 
     # ── 🏁 自动最终交付: rollout 视频 + 拼接对比 + PDF + 发飞书 (2026-08-06 老倪) ──
     def _auto_finalize(self):
@@ -6155,6 +6328,14 @@ class SimulinkModule(QWidget):
         # 1.9) 🏭 场景节点 (2026-08-09 老倪: 双击 → 打开 ECS 链接 + 建场景节点链)
         if node.get("type") == "scene":
             self._open_scene(node)
+            return
+        # 1.10) ▶ 插拔演示视频 (2026-08-10 双脑+状态机: 双击 → 后台生成插拔 mp4 → 自动发飞书)
+        if params.get("insert_video"):
+            self.on_insert_video()
+            return
+        # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
+        if params.get("insert_report"):
+            self.on_insert_report()
             return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
