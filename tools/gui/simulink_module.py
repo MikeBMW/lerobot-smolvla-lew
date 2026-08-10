@@ -5749,7 +5749,15 @@ class SimulinkModule(QWidget):
 
     def on_insert_video(self, **kw):
         """▶ 插拔演示视频 (2026-08-10 双脑+状态机): 后台跑 gen_insert_video.py
-        → reports/insert_success_demo.mp4 → 自动发飞书 dataworld 群"""
+        → reports/insert_success_demo.mp4 → 自动发飞书 dataworld 群
+        🐛 2026-08-10 老倪"视频早就生成好了怎么还要等" — 已存在直接打开, 不重新生成"""
+        root = self._repo_root()
+        mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
+        if os.path.exists(mp4) and os.path.getsize(mp4) > 0:
+            self._log(f"🎬 视频已存在 ({os.path.getsize(mp4)//1024}KB, 直接打开, 不重新生成)")
+            self._open_video_for_user(mp4)
+            self._send_video_to_feishu_async(mp4)
+            return
         self._log("▶ 正在生成双脑插拔演示视频 (seed1 完整插拔流程, 约1-2分钟)…")
 
         def _work():
@@ -5768,20 +5776,24 @@ class SimulinkModule(QWidget):
                 # 🐛 2026-08-10 老倪: 视频看不到 — WSLg 无内置播放器 + UNC(\\wsl.localhost) 被 CMD 拒
                 # → 复制到 Windows 可见 C 盘路径 (C:\Users\Public\ZMAX_videos) → explorer.exe 打开
                 try:
-                    import shutil as _sh
-                    _pub = "/mnt/c/Users/Public/ZMAX_videos"
-                    os.makedirs(_pub, exist_ok=True)
-                    _dst = os.path.join(_pub, os.path.basename(mp4))
-                    _sh.copy2(mp4, _dst)
-                    _win = _dst.replace("/mnt/c/", "C:\\").replace("/", "\\")
-                    _sp.Popen(["explorer.exe", _win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-                    self._log(f"🎬 视频已生成并打开: {_win} ({os.path.getsize(mp4)//1024}KB)")
+                    self._open_video_for_user(mp4)
                 except Exception as _ex:
                     self._log(f"🎬 视频已生成: reports/insert_success_demo.mp4 (自动打开失败: {str(_ex)[:50]})")
                 return True, f"🎬 视频已生成: reports/insert_success_demo.mp4"
             return False, f"视频生成失败: {last}"
 
         self._start_worker(_work, "正在生成插拔演示视频…", stage="insert_video")
+
+    def _open_video_for_user(self, mp4):
+        """🎬 打开视频给老倪看: 复制到 Windows 可见 C 盘 → explorer.exe (UNC 被 CMD 拒的可靠链路)"""
+        import shutil as _sh, subprocess as _sp
+        _pub = "/mnt/c/Users/Public/ZMAX_videos"
+        os.makedirs(_pub, exist_ok=True)
+        _dst = os.path.join(_pub, os.path.basename(mp4))
+        _sh.copy2(mp4, _dst)
+        _win = _dst.replace("/mnt/c/", "C:\\").replace("/", "\\")
+        _sp.Popen(["explorer.exe", _win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        self._log(f"🎬 已打开: {_win} ({os.path.getsize(mp4)//1024}KB)")
 
     def on_insert_report(self, **kw):
         """📄 插拔方案PDF (2026-08-10 双脑+状态机): 视频帧 + 方案JSON → 6章报告 → 发飞书"""

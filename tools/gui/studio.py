@@ -9645,8 +9645,9 @@ class StudioMainWindow(QMainWindow):
         m_git.addSeparator()
 
         # 🧠 左右脑双脑策略 (2026-08-10 老倪: v2.0 大版本 — left动作/right世界模型/状态机调制)
+        # ⚠️ _mk_doc_action 自动拼 self.docs_path(=docs/) — 传相对名, 别带 docs/ 前缀 (否则 docs/docs/ 不存在)
         m_doc.addAction(self._mk_doc_action("🧠 左右脑策略 · LeftRightPolicy 技术方案 (v2.0)",
-            (["docs/left_right_policy.md"], "xdg-open")))
+            (["left_right_policy.md"], "xdg-open")))
         m_doc.addSeparator()
         
         # 培训文档 (唯一 MD + PPTX)
