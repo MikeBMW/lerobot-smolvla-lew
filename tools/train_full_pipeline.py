@@ -205,7 +205,7 @@ def main():
                 if peg[2] - peg_z0 > 0.02:
                     state = ST_LIFT; peg_lifted = True
             elif state == ST_LIFT:
-                if peg[2] > peg_z0 + 0.05: state = ST_TRANSFER
+                if peg[2] > peg_z0 + 0.08: state = ST_TRANSFER  # 2026-08-10: 抬8cm避开台面, 防转移卡住
             elif state == ST_TRANSFER:
                 if abs(peg[0] - hole[0]) < 0.05 and abs(peg[1] - hole[1]) < 0.05: state = ST_INSERT  # 2026-08-10: 容差5cm (peg有导向)
             elif state == ST_INSERT:
@@ -223,7 +223,7 @@ def main():
                 act[3] = 0.6
                 grasp_force = 0.6
             elif state == ST_LIFT:
-                act[:3] = [0.0, 0.0, 0.5]
+                act[:3] = [0.0, 0.0, 0.8]  # 2026-08-10: 抬升力0.5→0.8 (更快到8cm)
                 act[3] = 0.6
             elif state == ST_TRANSFER:
                 d_xy = np.array([hole[0] - peg[0], hole[1] - peg[1]])
