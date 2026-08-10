@@ -233,29 +233,29 @@ class LeftRightPolicy(PreTrainedPolicy):
         }
         st = self.state
         if st == self.ST_APPROACH:
-            m["metrics"] = [{"k": "d_hp", "name": "收敛距离", "v": round(d_hp, 4), "unit": "m", "target": self.config.grasp_d_hp, "pass": d_hp < self.config.grasp_d_hp},
-                            {"k": "contact", "name": "接触概率", "v": round(contact_p, 3), "unit": "", "target": self.config.grasp_contact_threshold, "pass": contact_p > self.config.grasp_contact_threshold}]
+            m["metrics"] = [{"k": "d_hp", "name": "收敛距离", "v": float(round(d_hp, 4)), "unit": "m", "target": self.config.grasp_d_hp, "pass": bool(d_hp < self.config.grasp_d_hp)},
+                            {"k": "contact", "name": "接触概率", "v": float(round(contact_p, 3)), "unit": "", "target": self.config.grasp_contact_threshold, "pass": contact_p > self.config.grasp_contact_threshold}]
         elif st == self.ST_GRASP:
             z = peg[2] - (self.peg_z0 or 0)
-            m["metrics"] = [{"k": "contact", "name": "接触概率", "v": round(contact_p, 3), "unit": "", "target": self.config.grasp_contact_threshold, "pass": contact_p > self.config.grasp_contact_threshold},
-                            {"k": "grip_f", "name": "夹持力", "v": round(float(act[3]) if np.ndim(act) else 0, 3), "unit": "", "target": 0.6, "pass": abs(float(act[3]) - 0.6) < 0.05},
-                            {"k": "dz", "name": "抬升量", "v": round(z, 4), "unit": "m", "target": 0.02, "pass": z > 0.02}]
+            m["metrics"] = [{"k": "contact", "name": "接触概率", "v": float(round(contact_p, 3)), "unit": "", "target": self.config.grasp_contact_threshold, "pass": bool(contact_p > self.config.grasp_contact_threshold)},
+                            {"k": "grip_f", "name": "夹持力", "v": float(round(float(act[3]) if np.ndim(act) else 0, 3)), "unit": "", "target": 0.6, "pass": bool(abs(float(act[3]) - 0.6) < 0.05)},
+                            {"k": "dz", "name": "抬升量", "v": float(round(z, 4)), "unit": "m", "target": 0.02, "pass": bool(z > 0.02)}]
         elif st == self.ST_LIFT:
             z = peg[2] - (self.peg_z0 or 0)
-            m["metrics"] = [{"k": "dz", "name": "抬升高度", "v": round(z * 100, 2), "unit": "cm", "target": self.config.lift_height * 100, "pass": z >= self.config.lift_height},
-                            {"k": "t_lift", "name": "抬升时间", "v": round(self._t_stage.get("LIFT", 0), 2), "unit": "s", "target": 0.5, "pass": True}]
+            m["metrics"] = [{"k": "dz", "name": "抬升高度", "v": float(round(z * 100, 2)), "unit": "cm", "target": self.config.lift_height * 100, "pass": bool(z >= self.config.lift_height)},
+                            {"k": "t_lift", "name": "抬升时间", "v": float(round(self._t_stage.get("LIFT", 0), 2)), "unit": "s", "target": 0.5, "pass": True}]
         elif st == self.ST_TRANSFER:
             d_xy = float(np.linalg.norm(peg[:2] - hole[:2]))
-            m["metrics"] = [{"k": "e_xy", "name": "到位偏差", "v": round(d_xy * 1000, 2), "unit": "mm", "target": self.config.transfer_tolerance * 1000, "pass": d_xy < self.config.transfer_tolerance},
-                            {"k": "v_xfer", "name": "转移速度", "v": round(float(np.linalg.norm(act[:3])), 2), "unit": "m/s", "target": 0.6, "pass": True}]
+            m["metrics"] = [{"k": "e_xy", "name": "到位偏差", "v": float(round(d_xy * 1000, 2)), "unit": "mm", "target": self.config.transfer_tolerance * 1000, "pass": bool(d_xy < self.config.transfer_tolerance)},
+                            {"k": "v_xfer", "name": "转移速度", "v": float(round(float(np.linalg.norm(act[:3])), 2)), "unit": "m/s", "target": 0.6, "pass": True}]
         elif st == self.ST_INSERT:
-            m["metrics"] = [{"k": "d_ph", "name": "插入距离", "v": round(d_ph * 1000, 2), "unit": "mm", "target": self.config.insert_tolerance * 1000, "pass": d_ph < self.config.insert_tolerance},
-                            {"k": "f_ins", "name": "插入力", "v": round(float(act[3]) if np.ndim(act) else 0, 2), "unit": "", "target": 0.6, "pass": True}]
+            m["metrics"] = [{"k": "d_ph", "name": "插入距离", "v": float(round(d_ph * 1000, 2)), "unit": "mm", "target": self.config.insert_tolerance * 1000, "pass": bool(d_ph < self.config.insert_tolerance)},
+                            {"k": "f_ins", "name": "插入力", "v": float(round(float(act[3]) if np.ndim(act) else 0, 2)), "unit": "", "target": 0.6, "pass": True}]
         elif st == self.ST_DONE:
             m["metrics"] = [{"k": "done", "name": "完成判定", "v": 1, "unit": "", "target": 1, "pass": True}]
         else:
             m["metrics"] = [{"k": "stage", "name": "阶段", "v": st, "unit": "", "target": st, "pass": True}]
-        m["pass"] = all(x["pass"] for x in m["metrics"])
+        m["pass"] = bool(all(x["pass"] for x in m["metrics"]))
         # 阶段计时 (LIFT 用)
         if not hasattr(self, "_t_stage"):
             self._t_stage = {}
