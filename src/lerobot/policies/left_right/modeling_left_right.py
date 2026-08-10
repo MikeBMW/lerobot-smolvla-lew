@@ -82,8 +82,9 @@ class LeftRightPolicy(PreTrainedPolicy):
     config_class = LeftRightConfig  # lerobot 标准要求
     name = "left_right"            # lerobot 标准要求
 
-    # 状态机
-    ST_APPROACH, ST_GRASP, ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE = 0, 1, 2, 3, 4, 5
+    # 状态机 (8 状态, 与 train_full_pipeline 一致 — 2026-08-10: 插入4/8 vs 7/8 根因是缺对位/下降)
+    ST_APPROACH, ST_ALIGN, ST_DESCEND, ST_GRASP = 0, 1, 2, 3
+    ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE = 4, 5, 6, 7
 
     def __init__(self, config: Optional[LeftRightConfig] = None, dataset_stats: Optional[dict] = None,
                  dataset_meta: Optional[Any] = None):
@@ -107,7 +108,7 @@ class LeftRightPolicy(PreTrainedPolicy):
 
     # ── 状态机核心 (与 train_full_pipeline 一致) ──
     def _step_state_machine(self, obs, contact_p):
-        """状态机转移 (与 train_full_pipeline 一致)"""
+        """状态机转移 (8 状态, 与 train_full_pipeline 一致)"""
         hand, peg, hole = self._get_pose(obs)
         d_hp = float(np.linalg.norm(hand - peg))
         d_ph = float(np.linalg.norm(peg - hole))
@@ -131,7 +132,7 @@ class LeftRightPolicy(PreTrainedPolicy):
         return self.state
 
     def _act_state_machine(self, obs, act, contact_p):
-        """状态机动作 (与 train_full_pipeline 一致)"""
+        """状态机动作 (8 状态, 与 train_full_pipeline 一致)"""
         hand, peg, hole = self._get_pose(obs)
         act = np.asarray(act, dtype=np.float32).copy()
         if self.state == self.ST_APPROACH:

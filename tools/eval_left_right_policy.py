@@ -48,16 +48,17 @@ def main():
             act = policy.select_action(batch).squeeze(0).cpu().numpy()
             env.step(np.clip(act, -1, 1))
             o = np.asarray(env._get_obs(), dtype=np.float32).ravel()
-            peg = env.data.site_xpos[env.model.site("pegGrasp").id]
-            if np.linalg.norm(peg - hole) < 0.05:
+            # 2026-08-10: 插入判定 = 状态机 DONE (与 train_full_pipeline 口径一致)
+            if policy.state == 7:  # ST_DONE
                 ins += 1
                 break
         peg = env.data.site_xpos[env.model.site("pegGrasp").id]
         if peg[2] - peg_z0 > 0.05:
             lifts += 1
         env.close()
-        state_names = ["接近", "抓取", "抬起", "转移", "插入", "完成"]
-        print(f"  seed{seed}: 状态={state_names[policy.state]} 抓起={'✅' if peg[2]-peg_z0 > 0.05 else '❌'}", flush=True)
+        state_names = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+        s_n = state_names[policy.state] if policy.state < 8 else f"X{policy.state}"
+        print(f"  seed{seed}: 状态={s_n} 抓起={'✅' if peg[2]-peg_z0 > 0.05 else '❌'}", flush=True)
     print(f"== left_right policy: 抓起={lifts}/8 插入={ins}/8", flush=True)
     print(f"== 判定: 抓起8/8+插入7/8 = ✅ src工程完整可用", flush=True)
 
