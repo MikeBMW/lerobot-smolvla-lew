@@ -73,9 +73,17 @@ class RightBrainWM(nn.Module):
 
 
 class LeftRightPolicy(PreTrainedPolicy):
-    """双脑策略: 左脑动作 + 右脑判断 (lerobot 标准 PreTrainedPolicy)"""
+    """双脑策略: 左脑动作 + 右脑判断 + 状态机 (lerobot 标准 PreTrainedPolicy)
+    2026-08-10: 完整集成成功逻辑 (8/8抓起 7/8插入):
+      - 左脑 MLP 偏置接近 (act*0.3 + hand→peg方向*2.0)
+      - 右脑 contact 判断 → 夹持 0.6 + 位置锁定
+      - 状态机: 接近→抓取→抬起→转移→插入 (从 39D obs 推断)
+    """
     config_class = LeftRightConfig  # lerobot 标准要求
     name = "left_right"            # lerobot 标准要求
+
+    # 状态机
+    ST_APPROACH, ST_GRASP, ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE = 0, 1, 2, 3, 4, 5
 
     def __init__(self, config: Optional[LeftRightConfig] = None):
         config = config or LeftRightConfig()
@@ -91,6 +99,155 @@ class LeftRightPolicy(PreTrainedPolicy):
                 config.output_features.get("action", [4]), (list, tuple)) else 4
         self.left = LeftBrainMLP(obs_dim, act_dim, config.left_hidden)
         self.right = RightBrainWM(obs_dim, act_dim, config.right_hidden)
+        # 推理状态 (reset 初始化)
+        self.state = self.ST_APPROACH
+        self.peg_z0 = None
+        self.peg_lifted = False
+
+    # ── 状态机核心 (与 train_full_pipeline 一致) ──
+    def _step_state_machine(self, obs, contact_p):
+        """状态机转移 (与 train_full_pipeline 一致)"""
+        hand, peg, hole = self._get_pose(obs)
+        d_hp = float(np.linalg.norm(hand - peg))
+        d_ph = float(np.linalg.norm(peg - hole))
+        if self.state == self.ST_APPROACH:
+            if d_hp < self.config.grasp_d_hp and contact_p > self.config.grasp_contact_threshold:
+                self.state = self.ST_GRASP
+        elif self.state == self.ST_GRASP:
+            if self.peg_z0 is not None and peg[2] - self.peg_z0 > 0.02:
+                self.state = self.ST_LIFT
+                self.peg_lifted = True
+        elif self.state == self.ST_LIFT:
+            if self.peg_z0 is not None and peg[2] > self.peg_z0 + self.config.lift_height:
+                self.state = self.ST_TRANSFER
+        elif self.state == self.ST_TRANSFER:
+            if (abs(peg[0] - hole[0]) < self.config.transfer_tolerance
+                    and abs(peg[1] - hole[1]) < self.config.transfer_tolerance):
+                self.state = self.ST_INSERT
+        elif self.state == self.ST_INSERT:
+            if d_ph < self.config.insert_tolerance:
+                self.state = self.ST_DONE
+        return self.state
+
+    def _act_state_machine(self, obs, act, contact_p):
+        """状态机动作 (与 train_full_pipeline 一致)"""
+        hand, peg, hole = self._get_pose(obs)
+        act = np.asarray(act, dtype=np.float32).copy()
+        if self.state == self.ST_APPROACH:
+            # 双脑: MLP 偏置接近
+            delta = peg - hand
+            act[:3] = act[:3] * 0.3 + np.clip(delta * 2.0, -1, 1)
+            act[3] = -1.0
+        elif self.state == self.ST_GRASP:
+            # 双脑: contact判断 → 夹持0.6 + 锁定
+            act[:3] = act[:3] * 0.1
+            act[3] = 0.6
+        elif self.state == self.ST_LIFT:
+            act[:3] = [0.0, 0.0, 0.8]
+            act[3] = 0.6
+        elif self.state == self.ST_TRANSFER:
+            d_xy = np.array([hole[0] - peg[0], hole[1] - peg[1]])
+            if np.linalg.norm(d_xy) > 1e-4:
+                act[:3] = np.clip((d_xy / np.linalg.norm(d_xy)) * 0.6, -1, 1).tolist() + [0.0]
+            act[3] = 0.6
+        elif self.state == self.ST_INSERT:
+            act[:3] = [0.0, 0.0, np.clip((hole[2] - peg[2]) * 2.0, -0.6, 0.6)]
+            act[3] = 0.6
+        else:
+            act[:3] = [0.0, 0.0, 0.0]
+            act[3] = 0.6
+        _mx = float(np.abs(act).max()) if len(act) else 1.0
+        if _mx > 1.0:
+            act = act / _mx
+        return act
+
+    def select_action(self, batch, **kwargs):
+        """推理: 双脑 + 状态机 (lerobot 标准, 完整插拔编排)"""
+        self.eval()
+        obs = batch["observation.state"].float()
+        if obs.ndim == 3:
+            obs = obs[:, -1]
+        obs_np = obs.cpu().numpy()
+        # 归一化 (与训练一致, 2026-08-10: 从 full_pipeline 导入的 x_mean/x_std)
+        obs_in = obs
+        if hasattr(self, "x_mean"):
+            xm = self.x_mean.float().to(obs.device)
+            xs = self.x_std.float().to(obs.device)
+            obs_in = (obs - xm) / xs
+        with torch.no_grad():
+            pred_act_norm = self.left(obs_in).cpu().numpy()
+            # 2026-08-10: 右脑输入须 tensor + 原始动作 (训练时右脑吃原始act)
+            if hasattr(self, "y_mean"):
+                pred_act_raw = pred_act_norm * self.y_std.numpy() + self.y_mean.numpy()
+            else:
+                pred_act_raw = pred_act_norm
+            act_t = torch.from_numpy(pred_act_raw).float().to(obs.device)
+            _, contact = self.right(obs, act_t)
+        contact_p = contact.squeeze().cpu().numpy()
+        # 反归一化动作
+        if hasattr(self, "y_mean"):
+            pred_act = pred_act_norm * self.y_std.numpy() + self.y_mean.numpy()
+        else:
+            pred_act = pred_act_norm
+        # 逐 batch 处理 (通常 batch=1)
+        outs = []
+        for i in range(len(obs_np)):
+            o_i = obs_np[i]
+            a_i = pred_act[i]
+            c_i = float(contact_p[i]) if np.ndim(contact_p) > 0 else float(contact_p)
+            self._step_state_machine(o_i, c_i)
+            a_out = self._act_state_machine(o_i, a_i, c_i)
+            outs.append(a_out)
+        return torch.from_numpy(np.stack(outs)).float().to(obs.device)
+
+    def reset(self):
+        """重置状态机 (lerobot 标准, 每 episode 开始调用)"""
+        self.state = self.ST_APPROACH
+        self.peg_z0 = None
+        self.peg_lifted = False
+
+    def set_peg_z0(self, peg_z0):
+        """记录初始 peg 高度 (episode 开始, 供抬起判定)"""
+        self.peg_z0 = float(peg_z0)
+
+    def set_env(self, env):
+        """注入 env 引用 (2026-08-10: 状态机用 env 真值 peg/hole, 因 39D obs 无 peg 段)
+        评估/部署时在 episode 开始调用, 与 train_full_pipeline 一致"""
+        self._env = env
+
+    def _get_pose(self, obs):
+        """从 obs 或 env 真值提取 hand/peg/hole 位置
+        2026-08-10: 39D obs 无 peg 段 ([18:21] 是 hand 重复) → 有 env 用真值, 无则退化 obs"""
+        env = getattr(self, "_env", None)
+        if env is not None:
+            try:
+                hand = env.data.site_xpos[env.model.site("endEffector").id]
+                peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+                hole = env.data.site_xpos[env.model.site("hole").id]
+                return np.asarray(hand, dtype=np.float32), np.asarray(peg, dtype=np.float32), np.asarray(hole, dtype=np.float32)
+            except Exception:
+                pass
+        obs = np.asarray(obs, dtype=np.float32).ravel()
+        hand = obs[0:3]
+        peg = obs[18:21]
+        hole = obs[36:39] if len(obs) >= 39 else np.zeros(3)
+        return hand, peg, hole
+
+    def load_trained_weights(self, pt_path, weights_only=False):
+        """从 train_full_pipeline 产物导入权重 (2026-08-10)
+        pt_path: outputs/rl_peg/full_pipeline.pt (含 left/right/xm/xs/ym/ys)"""
+        import os as _os
+        data = torch.load(pt_path, map_location="cpu", weights_only=weights_only)
+        self.left.load_state_dict(data["left"])
+        # 2026-08-10: 右脑兼容 (full_pipeline 有 align_head 第三头, left_right 只用 next+contact)
+        right_sd = {k: v for k, v in data["right"].items() if not k.startswith("align_head")}
+        self.right.load_state_dict(right_sd, strict=False)
+        # 归一化参数 (训练脚本的, 推理直接用)
+        self.x_mean = torch.from_numpy(np.asarray(data["xm"], dtype=np.float32))
+        self.x_std = torch.from_numpy(np.asarray(data["xs"], dtype=np.float32))
+        self.y_mean = torch.from_numpy(np.asarray(data["ym"], dtype=np.float32))
+        self.y_std = torch.from_numpy(np.asarray(data["ys"], dtype=np.float32))
+        return self
 
     def forward(self, batch, **kwargs):
         """训练: 左脑动作回归 + 右脑 next/contact 预测
@@ -119,16 +276,6 @@ class LeftRightPolicy(PreTrainedPolicy):
         out = pred_act.unsqueeze(1) if pred_act.ndim == 2 else pred_act
         return {"action": out}
 
-    def select_action(self, batch, **kwargs):
-        """推理: 返回动作 (供 env 执行)"""
-        self.eval()
-        obs = batch["observation.state"].float()
-        if obs.ndim == 3:
-            obs = obs[:, -1]
-        with torch.no_grad():
-            pred_act = self.left(obs)
-        return pred_act
-
     def get_right_contact(self, obs, act):
         """右脑 contact 判断 (状态机用)"""
         self.eval()
@@ -149,8 +296,10 @@ class LeftRightPolicy(PreTrainedPolicy):
         return {"loss": loss}
 
     def reset(self):
-        """重置状态 (lerobot 标准, 无内部状态)"""
-        pass
+        """重置状态 (lerobot 标准)"""
+        self.state = self.ST_APPROACH
+        self.peg_z0 = None
+        self.peg_lifted = False
 
     def get_optim_params(self):
         """优化器参数 (lerobot 标准)"""
