@@ -97,13 +97,16 @@ def grasp_target(env, hand):
         pg = env.data.site_xpos[env.model.site("pegHead").id]
     return pg + np.array([0.0, 0.0, 0.02]), pg
 
-def collect_data(n_eps=60):
-    """专家轨迹 → (obs, action, next_obs, contact, 抓握点delta)"""
+def collect_data(n_eps=60, aug=False):
+    """专家轨迹 → (obs, action, next_obs, contact, 抓握点delta)
+    2026-08-10: aug=True 时种子随机化 (0-499 大范围), 数据增强降波动"""
     from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
     expert = SawyerPegInsertionSideV3Policy()
     obs_l, act_l, next_l, cont_l, align_l = [], [], [], [], []
     for ep in range(n_eps):
-        env = make_env(ep)
+        # 2026-08-10: 数据增强 — 种子大范围随机 (原 0-49 固定, 评估新扰动泛化差)
+        seed = np.random.randint(0, 500) if aug else ep
+        env = make_env(seed)
         o = get_obs(env)
         for _ in range(300):
             o_expert = np.asarray(env._get_obs(), dtype=np.float64).ravel()
@@ -127,7 +130,7 @@ def main():
     torch.manual_seed(42)
     np.random.seed(42)
     print(f"🧠 双脑 + 对位头 + 插入状态机 · {DEVICE}", flush=True)
-    obs_t, act_t, next_t, cont_t, align_t = collect_data(n_eps=50)
+    obs_t, act_t, next_t, cont_t, align_t = collect_data(n_eps=120, aug=True)  # 2026-08-10: 数据增强 50→120 eps
     n = len(obs_t)
     print(f"  📦 数据: {n}帧 · contact正例: {cont_t.sum():.0f}", flush=True)
     # 归一化
