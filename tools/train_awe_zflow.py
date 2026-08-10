@@ -58,10 +58,14 @@ def load_data(root, max_frames=200):
     obs = np.stack(imgs)
     st = np.stack(states)
     act = np.stack(actions)
-    # 力觉/触觉模拟 (场景原生: 力控插拔先验 — 关节差分 = 接触力变化; 与 VLA-Touch 同管道)
-    d = np.diff(st, axis=0, prepend=st[:1])
-    force = np.clip(np.linalg.norm(d, axis=1, keepdims=True), 0, 1) * 5.0
-    tac = np.concatenate([d[:, :3] * 10.0, force], axis=1).astype(np.float32)
+    # 力觉/触觉 (2026-08-09: 数据已整合 49D → 直接用 [45:49] 触觉段, 与训练同构)
+    # 旧逻辑: 关节差分构造 (d[:, :3]*10 + force); 新: 数据自带触觉段优先
+    if st.shape[1] >= 49:
+        tac = st[:, 45:49].astype(np.float32).copy()
+    else:
+        d = np.diff(st, axis=0, prepend=st[:1])
+        force = np.clip(np.linalg.norm(d, axis=1, keepdims=True), 0, 1) * 5.0
+        tac = np.concatenate([d[:, :3] * 10.0, force], axis=1).astype(np.float32)
     # 归一化
     a_mean, a_std = act.mean(0), act.std(0) + 1e-6
     s_mean, s_std = st.mean(0), st.std(0) + 1e-6

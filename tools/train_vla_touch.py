@@ -53,10 +53,14 @@ def load_data(root, max_frames=200):
     obs = np.stack(imgs)
     st = np.stack(states)
     act = np.stack(actions)
-    # 触觉信号模拟 (GelSight marker 位移 → 低维力): 关节差分 + 接触判定
-    d = np.diff(st, axis=0, prepend=st[:1])
-    force = np.clip(np.linalg.norm(d, axis=1, keepdims=True), 0, 1) * 5.0
-    tactile = np.concatenate([d[:, :3] * 10.0, force], axis=1).astype(np.float32)
+    # 触觉信号 (2026-08-09: 数据已整合 49D → 直接用 [45:49] 触觉段, 与训练同构)
+    # 旧逻辑: 关节差分构造 (d[:, :3]*10 + force); 新: 数据自带触觉段优先
+    if st.shape[1] >= 49:
+        tactile = st[:, 45:49].astype(np.float32).copy()
+    else:
+        d = np.diff(st, axis=0, prepend=st[:1])
+        force = np.clip(np.linalg.norm(d, axis=1, keepdims=True), 0, 1) * 5.0
+        tactile = np.concatenate([d[:, :3] * 10.0, force], axis=1).astype(np.float32)
     # 归一化
     a_mean, a_std = act.mean(0), act.std(0) + 1e-6
     s_mean, s_std = st.mean(0), st.std(0) + 1e-6

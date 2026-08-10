@@ -454,6 +454,13 @@ def make_pre_post_processors(
             dataset_stats=kwargs.get("dataset_stats"),
             dataset_meta=kwargs.get("dataset_meta"),
         )
+    elif isinstance(policy_cfg, LeftRightConfig):
+        from .left_right.processor_left_right import make_left_right_pre_post_processors
+
+        processors = make_left_right_pre_post_processors(
+            config=policy_cfg,
+            dataset_stats=kwargs.get("dataset_stats"),
+        )
 
     elif isinstance(policy_cfg, VLAJEPAConfig):
         from .vla_jepa.processor_vla_jepa import make_vla_jepa_pre_post_processors

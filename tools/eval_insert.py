@@ -31,7 +31,7 @@ def load_policy(policy):
         cands = sorted(glob.glob(os.path.join(ckpt_base, "*/pretrained_model")), key=os.path.getmtime)
         rel = os.path.relpath(cands[-1], ROOT)  # 相对路径 (HF 校验)
         return SmolVLALewPolicy.from_pretrained(rel, local_files_only=True).to(DEVICE).eval(), None
-    elif policy == "vla_touch":
+    elif policy in ("vla_touch", "vla_touch_tactile"):
         from importlib import util
         spec = util.spec_from_file_location("tv", os.path.join(ROOT, "tools", "train_vla_touch.py"))
         mod = util.module_from_spec(spec); spec.loader.exec_module(mod)
@@ -43,7 +43,7 @@ def load_policy(policy):
         pol.state_dim = int(cfg["state_dim"]); pol.action_dim = int(cfg["action_dim"])
         pol.tactile_dim = int(cfg.get("tactile_dim", 3)); pol.stats = data.get("stats", {})
         return pol, None
-    elif policy == "awe_zflow":
+    elif policy in ("awe_zflow", "awe_zflow_tactile"):
         from importlib import util
         spec = util.spec_from_file_location("az", os.path.join(ROOT, "tools", "train_awe_zflow.py"))
         mod = util.module_from_spec(spec); spec.loader.exec_module(mod)
@@ -62,8 +62,13 @@ def _load_stats(policy_hint=None):
     """加载训练 stats — 2026-08-08: 从模型 checkpoint preprocessor 读逐维 norm (v7 数据被清, 逐维才是对的)"""
     import json as _j
     # VLA-Touch/AWE: checkpoint 无 preprocessor → 直接用数据 stats.json (2026-08-08)
-    if policy_hint in ("vla_touch", "awe_zflow"):
+    if policy_hint in ("vla_touch", "awe_zflow", "vla_touch_tactile", "awe_zflow_tactile"):
         import json as _j3
+        # 触觉模型 (49D) 用 tactile2 数据 stats (2026-08-09)
+        if policy_hint.endswith("tactile"):
+            p = os.path.join(ROOT, "data", "metaworld_peg_tactile2", "meta", "stats.json")
+            if os.path.exists(p):
+                return _j3.load(open(p))
         for root in ["data/metaworld_peg_seg", "data/metaworld_peg_long", "data/metaworld_peg_v6"]:
             p = os.path.join(ROOT, root, "meta", "stats.json")
             if os.path.exists(p):
@@ -81,8 +86,10 @@ def _load_stats(policy_hint=None):
         "act_tactile": ["outputs/train/act_tactile_20260810_061534/checkpoints/003000/pretrained_model"],
         "vla_touch": ["outputs/train/vla_touch_20260808_083814/checkpoints/000050/pretrained_model",
                       "outputs/train/vla_touch_20260807_141958/checkpoints/000050/pretrained_model"],
+        "vla_touch_tactile": ["outputs/train/vla_touch_20260809_225238/checkpoints/000050/pretrained_model"],
         "awe_zflow": ["outputs/train/awe_zflow_20260808_084811/checkpoints/000050/pretrained_model",
                       "outputs/train/awe_zflow_20260808_002622/checkpoints/000050/pretrained_model"],
+        "awe_zflow_tactile": ["outputs/train/awe_zflow_20260809_225958/checkpoints/000050/pretrained_model"],
         "expert_mlp": ["outputs/rl_peg"],
     }
     cands = _by_policy.get(policy_hint, []) if policy_hint else []
