@@ -59,6 +59,7 @@ from .tdmpc.configuration_tdmpc import TDMPCConfig
 from .utils import validate_visual_features_consistency
 from .vla_jepa.configuration_vla_jepa import VLAJEPAConfig
 from .zmax_hybrid.configuration_zmax_hybrid import ZmaxHybridConfig
+from .left_right.configuration_left_right import LeftRightConfig
 from .vqbet.configuration_vqbet import VQBeTConfig
 from .wall_x.configuration_wall_x import WallXConfig
 from .xvla.configuration_xvla import XVLAConfig
@@ -167,6 +168,10 @@ def get_policy_class(name: str) -> type[PreTrainedPolicy]:
         from .zmax_hybrid.modeling_zmax_hybrid import ZmaxHybridPolicy
 
         return ZmaxHybridPolicy
+    elif name == "left_right":
+        from .left_right.modeling_left_right import LeftRightPolicy
+
+        return LeftRightPolicy
     else:
         try:
             return _get_policy_cls_from_policy_name(name=name)
