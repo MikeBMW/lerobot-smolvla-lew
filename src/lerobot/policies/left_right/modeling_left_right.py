@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 import os
+import time
 from typing import Optional, Any
 
 import torch
@@ -100,6 +101,10 @@ class LeftRightPolicy(PreTrainedPolicy):
             act_dim = config.output_features.get("action", [4])[0] if isinstance(
                 config.output_features.get("action", [4]), (list, tuple)) else 4
         self.left = LeftBrainMLP(obs_dim, act_dim, config.left_hidden)
+        # 2026-08-10 P3: 指标量测状态 (select_action 前可用, reset 重置)
+        self.metrics = {}
+        self.action_log = []
+        self._t_stage = {}
         self.right = RightBrainWM(obs_dim, act_dim, config.right_hidden)
         # 推理状态 (reset 初始化)
         self.state = self.ST_APPROACH
@@ -205,16 +210,79 @@ class LeftRightPolicy(PreTrainedPolicy):
             o_i = obs_np[i]
             a_i = pred_act[i]
             c_i = float(contact_p[i]) if np.ndim(contact_p) > 0 else float(contact_p)
+            st_prev = self.state
             self._step_state_machine(o_i, c_i)
             a_out = self._act_state_machine(o_i, a_i, c_i)
+            # 2026-08-10 P3: 动作级指标量测 (供大屏监督上报)
+            self._measure_metrics(o_i, c_i, st_prev, a_out)
             outs.append(a_out)
         return torch.from_numpy(np.stack(outs)).float().to(obs.device)
+
+    # ── P3: 动作级指标量测 (2026-08-10, 大屏监督方案) ──
+    def _measure_metrics(self, obs, contact_p, st_prev, act):
+        """记录当前阶段的实际量测指标 → self.metrics (大屏 API 上报用)
+        指标与 docs/factory_fine_ops_supervision.md 的 8 状态指标表一致"""
+        hand, peg, hole = self._get_pose(obs)
+        d_hp = float(np.linalg.norm(hand - peg))
+        d_ph = float(np.linalg.norm(peg - hole))
+        m = {
+            "ts": time.time(),
+            "stage": ["APPROACH", "ALIGN", "DESCEND", "GRASP", "LIFT", "TRANSFER", "INSERT", "DONE"][self.state],
+            "stageIdx": self.state,
+            "metrics": [],
+        }
+        st = self.state
+        if st == self.ST_APPROACH:
+            m["metrics"] = [{"k": "d_hp", "name": "收敛距离", "v": round(d_hp, 4), "unit": "m", "target": self.config.grasp_d_hp, "pass": d_hp < self.config.grasp_d_hp},
+                            {"k": "contact", "name": "接触概率", "v": round(contact_p, 3), "unit": "", "target": self.config.grasp_contact_threshold, "pass": contact_p > self.config.grasp_contact_threshold}]
+        elif st == self.ST_GRASP:
+            z = peg[2] - (self.peg_z0 or 0)
+            m["metrics"] = [{"k": "contact", "name": "接触概率", "v": round(contact_p, 3), "unit": "", "target": self.config.grasp_contact_threshold, "pass": contact_p > self.config.grasp_contact_threshold},
+                            {"k": "grip_f", "name": "夹持力", "v": round(float(act[3]) if np.ndim(act) else 0, 3), "unit": "", "target": 0.6, "pass": abs(float(act[3]) - 0.6) < 0.05},
+                            {"k": "dz", "name": "抬升量", "v": round(z, 4), "unit": "m", "target": 0.02, "pass": z > 0.02}]
+        elif st == self.ST_LIFT:
+            z = peg[2] - (self.peg_z0 or 0)
+            m["metrics"] = [{"k": "dz", "name": "抬升高度", "v": round(z * 100, 2), "unit": "cm", "target": self.config.lift_height * 100, "pass": z >= self.config.lift_height},
+                            {"k": "t_lift", "name": "抬升时间", "v": round(self._t_stage.get("LIFT", 0), 2), "unit": "s", "target": 0.5, "pass": True}]
+        elif st == self.ST_TRANSFER:
+            d_xy = float(np.linalg.norm(peg[:2] - hole[:2]))
+            m["metrics"] = [{"k": "e_xy", "name": "到位偏差", "v": round(d_xy * 1000, 2), "unit": "mm", "target": self.config.transfer_tolerance * 1000, "pass": d_xy < self.config.transfer_tolerance},
+                            {"k": "v_xfer", "name": "转移速度", "v": round(float(np.linalg.norm(act[:3])), 2), "unit": "m/s", "target": 0.6, "pass": True}]
+        elif st == self.ST_INSERT:
+            m["metrics"] = [{"k": "d_ph", "name": "插入距离", "v": round(d_ph * 1000, 2), "unit": "mm", "target": self.config.insert_tolerance * 1000, "pass": d_ph < self.config.insert_tolerance},
+                            {"k": "f_ins", "name": "插入力", "v": round(float(act[3]) if np.ndim(act) else 0, 2), "unit": "", "target": 0.6, "pass": True}]
+        elif st == self.ST_DONE:
+            m["metrics"] = [{"k": "done", "name": "完成判定", "v": 1, "unit": "", "target": 1, "pass": True}]
+        else:
+            m["metrics"] = [{"k": "stage", "name": "阶段", "v": st, "unit": "", "target": st, "pass": True}]
+        m["pass"] = all(x["pass"] for x in m["metrics"])
+        # 阶段计时 (LIFT 用)
+        if not hasattr(self, "_t_stage"):
+            self._t_stage = {}
+        if st_prev != self.state:
+            self._t_stage = {}
+        self._t_stage.setdefault(self._stage_name(st), time.time())
+        # 2026-08-10 P3 fix: actionLog 记录旧阶段的最后指标 (m 是新阶段)
+        prev_m = getattr(self, "_prev_metrics", None)
+        if st_prev != self.state and st_prev in range(8) and prev_m:
+            self.action_log.append({"ts": time.time(), "stage": prev_m.get("stage", self._stage_name(st_prev)),
+                                    "stageIdx": st_prev,
+                                    "metrics": prev_m.get("metrics", []), "pass": prev_m.get("pass", True)})
+        self._prev_metrics = m
+        self.metrics = m
+
+    def _stage_name(self, s):
+        return ["APPROACH", "ALIGN", "DESCEND", "GRASP", "LIFT", "TRANSFER", "INSERT", "DONE"][s] if 0 <= s < 8 else str(s)
 
     def reset(self):
         """重置状态机 (lerobot 标准, 每 episode 开始调用)"""
         self.state = self.ST_APPROACH
         self.peg_z0 = None
         self.peg_lifted = False
+        # 2026-08-10 P3: 指标量测状态重置
+        self.metrics = {}
+        self.action_log = []
+        self._t_stage = {}
 
     def set_peg_z0(self, peg_z0):
         """记录初始 peg 高度 (episode 开始, 供抬起判定)"""
