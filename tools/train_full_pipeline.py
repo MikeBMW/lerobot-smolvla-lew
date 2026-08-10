@@ -230,8 +230,17 @@ def main():
                 act[3] = 0.6
             elif state == ST_TRANSFER:
                 d_xy = np.array([hole[0] - peg[0], hole[1] - peg[1]])
-                if np.linalg.norm(d_xy) > 1e-4:
-                    act[:3] = np.clip((d_xy / np.linalg.norm(d_xy)) * 0.6, -1, 1).tolist() + [0.0]
+                d_xy_n = np.linalg.norm(d_xy)
+                if d_xy_n > 1e-4:
+                    # 2026-08-10: 转移速度自适应 — 距离越近越慢 (防过冲卡顿)
+                    # 远(>0.2): 0.6 快移; 中(0.05-0.2): 0.35; 近(<0.05): 0.15 慢调
+                    if d_xy_n > 0.2:
+                        vel = 0.6
+                    elif d_xy_n > 0.05:
+                        vel = 0.35
+                    else:
+                        vel = 0.15
+                    act[:3] = np.clip((d_xy / d_xy_n) * vel, -1, 1).tolist() + [0.0]
                 act[3] = 0.6
             elif state == ST_INSERT:
                 act[:3] = [0.0, 0.0, np.clip((hole[2] - peg[2]) * 2.0, -0.6, 0.6)]
