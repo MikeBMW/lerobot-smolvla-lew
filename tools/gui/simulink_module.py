@@ -2060,11 +2060,11 @@ class SimNodeItem(QGraphicsObject):
         # (右上角青色粗体 9px) — 常显占视觉, 用户要求鼠标放上才显示
         try:
             if getattr(self, "_hover", False) and self.node.get("type") != "row_bg":
-                # 🐛 2026-08-12 老倪: ID 浮在节点上方 (不占节点内部, 不遮挡标题/desc)
+                # 🐛 2026-08-12 老倪: ID 显示在右下角 (用户要求, 不遮挡标题/desc 主区)
                 painter.setPen(QColor("#e6edf3"))
                 painter.setFont(QFont("Arial", 9, QFont.Bold))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
-                painter.drawText(QRectF(0, -18, self.w, 16), Qt.AlignRight | Qt.AlignVCenter, nid)
+                painter.drawText(QRectF(8, self.h - 16, self.w - 16, 14), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
             pass
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
@@ -2375,6 +2375,11 @@ class SimCanvas(QGraphicsView):
         self._panning = False
         self._pan_start = None
         self._hover_items = set()  # 🐛 2026-08-12 老倪: mouseMove 驱动的 hover 节点集合
+        # 🐛 2026-08-12 老倪: hover 轮询兜底 — VcXsrv 鼠标事件流丢失时 mouseMove 驱动
+        # 会漏更新 (头几次后不显示/不消失) → 80ms 轮询全局鼠标位置
+        self._hover_timer = QTimer(self)
+        self._hover_timer.timeout.connect(self._poll_hover)
+        self._hover_timer.start(80)
         self._scale = 1.0
         # ↩️ Ctrl+Z 撤销 (2026-08-07 老倪: 挪动背景行回不去上一步)
         # WidgetWithChildrenShortcut: 焦点在画布内才触发, 不抢搜索框/输入框的原生撤销
@@ -2460,20 +2465,20 @@ class SimCanvas(QGraphicsView):
         → 用 QCursor.pos() 跟随系统光标真实位置, 菜单必在鼠标处弹出"""
         menu = QMenu()
         # 🐛 2026-08-12 老倪: 深色 QSS 在 VcXsrv 下渲染成黑屏无字 (border-radius 或
-        # 背景色合成失败) → 完全去掉 QSS 用系统默认菜单, 最稳
-        a_logic = menu.addAction("📖 查看/编辑节点逻辑")
-        a_param = menu.addAction("⚙️ 节点参数")
+        # 背景色合成失败) → 完全去掉 QSS 用系统默认菜单; 菜单项去 emoji (字体缺字形→黑块)
+        a_logic = menu.addAction("查看/编辑节点逻辑")
+        a_param = menu.addAction("节点参数")
         # 2026-08-05 老倪: 训练节点右键 → 训练配置 (步数/batch/lr)
         a_train = None
         if "训练" in item.node.get("name", ""):
-            a_train = menu.addAction("🎛 训练配置 (步数/batch/lr)")
+            a_train = menu.addAction("训练配置 (步数/batch/lr)")
         # 📂 打开源代码 (2026-08-12 老倪: YOLO/双脑等节点 params.source 映射源码目录;
         #   仅 src/ 开头显示 — 数据源节点的 source 是数据源标识非代码路径)
         a_src = None
         _nsrc = item.node.get("params", {}).get("source", "")
         if _nsrc.startswith("src/"):
-            a_src = menu.addAction("📂 打开源代码")
-        a_run = menu.addAction("▶ 运行节点")
+            a_src = menu.addAction("打开源代码")
+        a_run = menu.addAction("运行节点")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -2487,20 +2492,45 @@ class SimCanvas(QGraphicsView):
         elif chosen == a_run:
             self.module.on_node_activated(item.node)
 
+    def _poll_hover(self):
+        """🐛 2026-08-12 老倪: 80ms 轮询鼠标位置更新 hover (VcXsrv 事件流丢失兜底)"""
+        try:
+            from PyQt5.QtGui import QCursor
+            if not self.underMouse():
+                self._clear_hover()
+                return
+            vp = self.mapFromGlobal(QCursor.pos())
+            if not self.viewport().rect().contains(vp):
+                self._clear_hover()
+                return
+            self._update_hover_at(vp)
+        except Exception:
+            pass
+
+    def _clear_hover(self):
+        for it in self._hover_items:
+            it._hover = False
+            it.update()
+        self._hover_items = set()
+
+    def _update_hover_at(self, vp_pos):
+        """根据 viewport 坐标更新 hover 状态 (mouseMove 与轮询共用)"""
+        item = self.itemAt(vp_pos)
+        node_item = item if isinstance(item, SimNodeItem) and item.node.get("type") != "row_bg" else None
+        for it in self._hover_items:
+            if it is not node_item:
+                it._hover = False
+                it.update()
+        if node_item is not None and not node_item._hover:
+            node_item._hover = True
+            node_item.update()
+        self._hover_items = {node_item} if node_item is not None else set()
+
     def mouseMoveEvent(self, e):
         # 🐛 2026-08-12 老倪: hover 状态由鼠标位置直接驱动 (QGraphicsItem hover 事件
         # 在 VcXsrv 下迟钝/不触发 → ID 显示异常; itemAt 实时检测, 反应即时)
         try:
-            item = self.itemAt(e.pos())
-            node_item = item if isinstance(item, SimNodeItem) and item.node.get("type") != "row_bg" else None
-            for it in self._hover_items:
-                if it is not node_item:
-                    it._hover = False
-                    it.update()
-            if node_item is not None and not node_item._hover:
-                node_item._hover = True
-                node_item.update()
-            self._hover_items = {node_item} if node_item is not None else set()
+            self._update_hover_at(e.pos())
         except Exception:
             pass
         if self._panning:
