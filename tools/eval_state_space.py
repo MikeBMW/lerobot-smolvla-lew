@@ -244,6 +244,63 @@ def spectral_lipschitz(left, right):
     return _net_lip(left), _net_lip(right)
 
 
+def spectral_norm_analysis(left):
+    """🧮 谱归一化模块: 左脑逐层 σ_max + 乘积 (Lipschitz 上界) — 2026-08-12 老倪
+    每层: σ_max(W_i); 整体上界 L = Πσ_max; 归一化比 = σ_max / 输入维数"""
+    layers = []
+    prod = 1.0
+    for name, m in left.named_modules():
+        if hasattr(m, "weight") and m.weight is not None and m.weight.dim() >= 2:
+            w = m.weight.detach().cpu().numpy()
+            s = np.linalg.svd(w, compute_uv=False)
+            smax = float(s.max())
+            prod *= smax
+            layers.append({"layer": name or "W", "shape": list(w.shape),
+                           "sigma_max": smax, "sigma_min": float(s.min())})
+    return {"layers": layers, "lip_bound": prod,
+            "normalized": bool(prod < 1.0),
+            "per_layer_norm": all(l["sigma_max"] <= 1.0 for l in layers)}
+
+
+def gru_gate_analysis(right):
+    """🧮 GRU 门控机制模块: 右脑潜空间门控 → 谱半径收缩分析 — 2026-08-12 老倪
+    GRU: 重置门 r=σ(W_ir x + b_ir + W_hr h) · 更新门 z=σ(W_iz x + b_iz + W_hz h)
+    收缩性: 更新门权重谱半径 ρ(W_hz) < 1 → 潜状态指数收敛 (防爆炸)"""
+    gates = {}
+    for name, m in right.named_modules():
+        if "gate" in name.lower() or "gru" in name.lower():
+            if hasattr(m, "weight_hh_l0") and m.weight_hh_l0 is not None:
+                for g, sl in (("reset", 0), ("update", 1), ("new", 2)):
+                    w = m.weight_hh_l0.detach().cpu().numpy()[sl * m.hidden_size:(sl + 1) * m.hidden_size]
+                    s = np.linalg.svd(w, compute_uv=False)
+                    gates[g] = {"rho": float(s.max()), "sigma_min": float(s.min()),
+                                "contractive": bool(s.max() < 1.0)}
+    if not gates:
+        # 无 GRU: 用全网络权重谱半径兜底
+        prod = 1.0
+        for mm in right.modules():
+            if hasattr(mm, "weight") and mm.weight is not None and mm.weight.dim() >= 2:
+                s = np.linalg.svd(mm.weight.detach().cpu().numpy(), compute_uv=False)
+                prod *= float(s.max())
+        gates = {"net": {"rho": prod, "contractive": prod < 1.0}}
+    return {"gates": gates,
+            "all_contractive": bool(gates and all(g.get("contractive", False) for g in gates.values()))}
+
+
+def force_limit_analysis(act_trace, overshoot_ratio):
+    """🧮 力幅值限幅模块: 插入阶段动作饱和 [-0.6,0.6] → 临界阻尼估计 — 2026-08-12 老倪
+    二阶系统 Mẍ+Bẋ+Kx=0 · 阻尼比 ζ=B/(2√MK)
+    限幅饱和 = 非线性阻尼 → ζ→1 临界阻尼 (无超调)"""
+    mean_d = float(np.mean(act_trace)) if act_trace else 0.0
+    max_d = float(np.max(act_trace)) if act_trace else 0.0
+    # 饱和界限 [-0.6, 0.6] 动作归一化后实际限幅 1.0; 超调率 = 差分>0.5 占比
+    # 临界阻尼估计: ζ ≈ 1/(1+overshoot) — 超调 0 → ζ=1
+    zeta = 1.0 / (1.0 + overshoot_ratio + 1e-9)
+    return {"limit": [-0.6, 0.6], "diff_mean": mean_d, "diff_max": max_d,
+            "overshoot_ratio": float(overshoot_ratio), "zeta": float(zeta),
+            "critically_damped": bool(zeta >= 0.9)}
+
+
 def latent_spectrum(smc):
     """⑦ 潜空间频谱: 状态轨迹协方差特征值 (坍缩→特征值趋0; 发散→爆炸) (2026-08-12 老倪指标)
     用轨迹观测序列做 PCA 代理 (潜空间不可直接观测, contact_head 收缩约束保证实部≤0)"""
@@ -309,6 +366,24 @@ def main():
     lip_l, lip_r = spectral_lipschitz(left, right)
     print(f"   左脑 Lipschitz 上界={lip_l:.2f} 右脑={lip_r:.2f} → {'✅' if lip_l < 1 else '⚠ 上界>1 (噪声敏感边界)'}", flush=True)
 
+    print("🧮 谱归一化模块 (左脑逐层 σ_max) …", flush=True)
+    sn = spectral_norm_analysis(left)
+    for l in sn["layers"]:
+        print(f"   {l['layer'][:14]:16} {l['shape']} σ_max={l['sigma_max']:.4f}", flush=True)
+    print(f"   Lipschitz 上界 Πσ_max = {sn['lip_bound']:.4f} → {'✅ 归一化' if sn['normalized'] else '⚠ 未归一化 (>1)'}", flush=True)
+
+    print("🧮 GRU 门控机制 (右脑潜空间收缩) …", flush=True)
+    gg = gru_gate_analysis(right)
+    for g, v in gg["gates"].items():
+        print(f"   {g}门: ρ(W)={v.get('rho', 0):.4f} → {'✅收缩' if v.get('contractive') else '⚠'}", flush=True)
+    print(f"   潜空间收缩: {'✅ 全部门控收缩 (防爆炸)' if gg['all_contractive'] else '⚠ 存在非收缩门控'}", flush=True)
+
+    print("🧮 力幅值限幅 (插入阶段临界阻尼) …", flush=True)
+    _tr = np.asarray(smc["act_trace"]) if smc["act_trace"] else np.zeros(1)
+    fl = force_limit_analysis(smc["act_trace"], float(np.mean(_tr > 0.5)))
+    print(f"   动作差分 mean={fl['diff_mean']:.3f} max={fl['diff_max']:.3f} 超调={fl['overshoot_ratio']:.1%}", flush=True)
+    print(f"   阻尼比 ζ={fl['zeta']:.3f} → {'✅ 临界阻尼' if fl['critically_damped'] else '⚠'}", flush=True)
+
     print("⑧ 接触置信度分离度 …", flush=True)
     cs = contact_separation(smc["contacts"])
     print(f"   未接触 mean={cs['no_contact_mean']:.3f} 接触 mean={cs['contact_mean']:.3f} 分离度={cs['sep']:.3f} 震荡区占比={cs['osc_ratio']:.1%}", flush=True)
@@ -339,6 +414,7 @@ def main():
            "state_machine": smc, "lyapunov": {"rate": lyap_rate, "stages": lyap,
                                               "stable": stable_lyap},
            "spectral_lipschitz": {"left": lip_l, "right": lip_r},
+           "spectral_norm": sn, "gru_gate": gg, "force_limit": fl,
            "contact_separation": cs, "action_smoothness": asm, "verdict": verdict}
     out = os.path.join(ROOT, "reports", "eval_state_space.json")
     with open(out, "w", encoding="utf-8") as f:

@@ -368,12 +368,42 @@ def node_infer_rollout(ctx):
 def node_eval_state_space(ctx):
     """📊 模型评估 (状态空间) — Z700 双脑稳定性评估 (2026-08-12 老倪)
     指标: ①L2增益(左脑Lipschitz) ②BIBO(有界输入有界输出) ③自回归谱半径ρ(右脑预测误差)
-    ④状态机覆盖(6阶段可达+成功率) ⑤contact桥接(连续→离散)
+    ④状态机覆盖(6阶段可达+成功率) ⑤李雅普诺夫势能 ⑥谱范数 ⑦潜空间频谱 ⑧接触分离 ⑨动作平滑度
     状态空间: X=[X_obs(43D), X_latent(潜), X_sm(6阶段状态机)]
     真实实现: tools/eval_state_space.py → reports/eval_state_space.json + 飞书"""
     log = ctx["log"]
     node = ctx.get("node", {})
     log("📊 状态空间评估: L2增益 → BIBO → 自回归ρ → 状态机覆盖 → 稳定性结论")
+    return True
+
+
+def node_spectral_norm(ctx):
+    """🧮 谱归一化分析 — 左脑 MLP 逐层谱范数 σ_max + Lipschitz 上界 (2026-08-12 老倪)
+    原理: ||f(x1)-f(x2)|| ≤ L·||x1-x2||, L = Πσ_max(W_i) (ReLU 导数 0/1 不放大)
+    数据来自: 左脑权重 SVD (eval_state_space.py spectral_norm_analysis)
+    双击 → 全面 Z 分析 (含本模块计算结果)"""
+    log = ctx["log"]
+    log("🧮 谱归一化: 左脑逐层 σ_max → Lipschitz 上界 (双击已触发 Z 分析)")
+    return True
+
+
+def node_gru_gate(ctx):
+    """🧮 GRU 门控机制 — 右脑潜空间门控收缩分析 (2026-08-12 老倪)
+    原理: 重置门 r=σ(W_hr·h) · 更新门 z=σ(W_hz·h); ρ(W_hz)<1 → 潜状态指数收敛防爆炸
+    数据来自: 右脑 GRU 权重谱半径 (eval_state_space.py gru_gate_analysis)
+    双击 → 全面 Z 分析 (含本模块计算结果)"""
+    log = ctx["log"]
+    log("🧮 GRU 门控: 右脑潜空间 ρ(W) 收缩分析 (双击已触发 Z 分析)")
+    return True
+
+
+def node_force_limit(ctx):
+    """🧮 力幅值限幅 — 插入阶段动作饱和 → 临界阻尼估计 (2026-08-12 老倪)
+    原理: 二阶系统 Mẍ+Bẋ+Kx=0, 阻尼比 ζ=B/(2√MK); 限幅 [-0.6,0.6] = 非线性阻尼 → ζ→1
+    数据来自: rollout 动作差分 (eval_state_space.py force_limit_analysis)
+    双击 → 全面 Z 分析 (含本模块计算结果)"""
+    log = ctx["log"]
+    log("🧮 力幅值限幅: 插入阶段饱和 → 临界阻尼 ζ 估计 (双击已触发 Z 分析)")
     return True
 
 
@@ -809,6 +839,9 @@ _reg("infer",      ["推理"],        "⑥ 推理 — 产线推理服务状态",
 _reg("mode_switch", ["训练/推理", "模式开关"], "🔀 训练/推理模式开关 — 双击切换 train⇄infer", node_mode_switch)
 _reg("infer_rollout", ["推理 (rollout)", "rollout"], "📷 推理 (rollout) — 最新模型仿真插拔评估+视频", node_infer_rollout)
 _reg("eval_state_space", ["模型评估 (状态空间)", "状态空间评估"], "📊 状态空间稳定性评估 — L2/BIBO/谱半径/状态机覆盖", node_eval_state_space)
+_reg("spectral_norm", ["谱归一化"], "🧮 谱归一化 — 左脑逐层 σ_max → Lipschitz 上界", node_spectral_norm)
+_reg("gru_gate", ["GRU 门控"], "🧮 GRU 门控机制 — 右脑潜空间 ρ(W) 收缩", node_gru_gate)
+_reg("force_limit", ["力幅值限幅"], "🧮 力幅值限幅 — 插入阶段饱和 → 临界阻尼 ζ", node_force_limit)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

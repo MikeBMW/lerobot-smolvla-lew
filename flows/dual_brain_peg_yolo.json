@@ -865,6 +865,85 @@
     "out1"
    ],
    "actions": []
+  },
+  {
+   "id": "anbg",
+   "type": "row_bg",
+   "name": "🎨 数学分析",
+   "x": -20,
+   "y": 1040,
+   "w": 1160,
+   "icon": "🎨",
+   "color": "#1f2937",
+   "h": 214,
+   "params": {
+    "bg": "#1f2937",
+    "model": "math",
+    "desc": "数学分析行: 谱归一化/GRU门控/力幅值限幅 — 连线来自 左脑/右脑/状态机"
+   }
+  },
+  {
+   "id": "ans1",
+   "type": "system",
+   "name": "🧮 谱归一化分析",
+   "x": 140,
+   "y": 1060,
+   "w": 210,
+   "icon": "🧮",
+   "color": "#58a6ff",
+   "params": {
+    "spectral_norm": true,
+    "desc": "左脑权重谱范数 → Lipschitz 上界 (σ_max 乘积)"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ang1",
+   "type": "system",
+   "name": "🧮 GRU 门控机制",
+   "x": 420,
+   "y": 1060,
+   "w": 210,
+   "icon": "🧮",
+   "color": "#58a6ff",
+   "params": {
+    "gru_gate": true,
+    "desc": "右脑潜空间: 门控更新/重置 → 谱半径 ρ(W) 收缩分析"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "anf1",
+   "type": "system",
+   "name": "🧮 力幅值限幅",
+   "x": 700,
+   "y": 1060,
+   "w": 210,
+   "icon": "🧮",
+   "color": "#58a6ff",
+   "params": {
+    "force_limit": true,
+    "desc": "插入阶段动作饱和 [-0.6,0.6] → 临界阻尼 ζ 估计 + 超调"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
   }
  ],
  "links": [
@@ -1069,6 +1148,27 @@
    "id": "lkz03",
    "f": "dbt1",
    "t": "dbev",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkdba1ans1",
+   "f": "dba1",
+   "t": "ans1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkdba2ang1",
+   "f": "dba2",
+   "t": "ang1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkdbb5anf1",
+   "f": "dbb5",
+   "t": "anf1",
    "f_port": "out1",
    "t_port": "in1"
   }

@@ -6867,6 +6867,10 @@ class SimulinkModule(QWidget):
         if params.get("eval_state_space"):
             self.on_eval_state_space(node)
             return
+        # 1.77) 🧮 数学分析模块 (谱归一化/GRU门控/力幅值限幅) → 统一走 Z 分析 (2026-08-12 老倪)
+        if params.get("spectral_norm") or params.get("gru_gate") or params.get("force_limit"):
+            self.on_z_analysis()
+            return
         # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
         if params.get("insert_report"):
             self.on_insert_report()
