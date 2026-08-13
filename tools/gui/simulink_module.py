@@ -6617,8 +6617,9 @@ class SimulinkModule(QWidget):
         if params.get("subsystem"):
             self._open_subsystem(node)
             return
-        # 1) 数据源节点: 切换激活
-        if params.get("source"):
+        # 1) 数据源节点: 切换激活 — 🐛 2026-08-12 老倪: 排除 insert_video/insert_report
+        #   (▶视频/📄PDF 节点有 source 源码映射, 原被本分支抢先 → 双击变数据源切换)
+        if params.get("source") and not params.get("insert_video") and not params.get("insert_report"):
             self._toggle_source(node)
             return
         # 1.5) Switch 节点 (仿 Simulink Switch 块): 切换数据源路由
