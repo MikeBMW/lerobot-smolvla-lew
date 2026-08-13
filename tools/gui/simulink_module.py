@@ -5074,6 +5074,11 @@ class SimulinkModule(QWidget):
                     self._act_append_after_train()
                 else:
                     self._log("❌ 训练失败, 请查看上方日志定位原因")
+            # 🎬 双脑训练完成 → 自动后台生成插拔视频 (2026-08-12 老倪: 用户点节点秒开, 不等生成)
+            if stage == "train" and ok and "left_right" in summary.lower():
+                from PyQt5.QtCore import QTimer as _QT
+                self._log("🎬 双脑训练完成, 自动生成插拔视频 (后台, 完成后可秒开)…")
+                _QT.singleShot(800, lambda: self.on_insert_video(force=True))
             # ⚔️ 对比评估完成 → 自动弹出对比图表 (非模态, 2026-08-05 防卡死)
             if stage == "compare" and ok:
                 try:
@@ -6000,13 +6005,14 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在生成 PDF 技术选型报告…", stage="report")
 
-    def on_insert_video(self, **kw):
+    def on_insert_video(self, force=False, **kw):
         """▶ 插拔演示视频 (2026-08-10 双脑+状态机): 后台跑 gen_insert_video.py
         → reports/insert_success_demo.mp4 → 自动发飞书 dataworld 群
-        🐛 2026-08-10 老倪"视频早就生成好了怎么还要等" — 已存在直接打开, 不重新生成"""
+        🐛 2026-08-10 老倪"视频早就生成好了怎么还要等" — 已存在直接打开, 不重新生成
+        🐛 2026-08-12 老倪: force=True 强制重新生成 (训练完成自动触发, 用新模型覆盖旧视频)"""
         root = self._repo_root()
         mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
-        if os.path.exists(mp4) and os.path.getsize(mp4) > 0:
+        if os.path.exists(mp4) and os.path.getsize(mp4) > 0 and not force:
             # 🐛 2026-08-12 老倪: 防重复弹出 — 双击重复触发/多次点击会弹好几个播放器
             import time as _t
             now = _t.time()
@@ -6033,12 +6039,15 @@ class SimulinkModule(QWidget):
             mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
             if r.returncode == 0 and os.path.exists(mp4):
                 self._send_video_to_feishu_async(mp4)
-                # 🐛 2026-08-10 老倪: 视频看不到 — WSLg 无内置播放器 + UNC(\\wsl.localhost) 被 CMD 拒
-                # → 复制到 Windows 可见 C 盘路径 (C:\Users\Public\ZMAX_videos) → explorer.exe 打开
-                try:
-                    self._open_video_for_user(mp4)
-                except Exception as _ex:
-                    self._log(f"🎬 视频已生成: reports/insert_success_demo.mp4 (自动打开失败: {str(_ex)[:50]})")
+                # 🐛 2026-08-12 老倪: force 模式 (训练完自动生成) 不自动弹播放器 —
+                # 用户在训练监控中, 弹窗打扰; 点节点时秒开即可
+                if not force:
+                    try:
+                        self._open_video_for_user(mp4)
+                    except Exception as _ex:
+                        self._log(f"🎬 视频已生成: reports/insert_success_demo.mp4 (自动打开失败: {str(_ex)[:50]})")
+                else:
+                    self._log("🎬 视频已生成 (后台) — 双击 ▶ 生成插拔视频 节点即可秒开")
                 return True, f"🎬 视频已生成: reports/insert_success_demo.mp4"
             return False, f"视频生成失败: {last}"
 
