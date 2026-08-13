@@ -2041,17 +2041,16 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawLine(QPointF(_rx + 15, _ry + 21), QPointF(_rx + 18, _ry + 26))
             except Exception:
                 pass
-        # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角青色小字)
+        # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-12 老倪: 移到右上角 (标题右侧,
+        # 青色粗体 9px) — 节点高仅 50px, 底部与 desc 重叠导致 ID 看不清
         try:
-            # 🐛 2026-08-09 老倪: 画布节点 ID 常显 (不依赖 hover — 用户要求与模块库一致可见)
-            # 🐛 2026-08-12 老倪: id 是字符串 (dbt0/yol1/dba1), 取模 %100 抛 TypeError → except 吞掉 → ID 不显示
-            painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 7))
+            painter.setPen(QColor("#58a6ff"))
+            painter.setFont(QFont("Arial", 9, QFont.Bold))
             nid = self.node.get("nid") or (
                 f"VEH.5.{lib_seq_of(self.node.get('name', '')):03d}"
                 if lib_seq_of(self.node.get('name', '')) else
                 str(self.node.get("id", "")))
-            painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
+            painter.drawText(QRectF(self.w - 92, 8, 86, 22), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
             pass
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
