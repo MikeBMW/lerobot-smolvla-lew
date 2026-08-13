@@ -2343,6 +2343,9 @@ class SimCanvas(QGraphicsView):
         self.setScene(self._scene)
         self.setRenderHint(QPainter.Antialiasing)
         self.setBackgroundBrush(QColor(THEMES[_CUR_THEME]["canvas"]))
+        # 🐛 2026-08-12 老倪: 必须开 mouseTracking — 否则无按键时 QGraphicsView
+        # 不分发 hover 事件给节点 → _hover 永远 False → 悬停 ID 不显示
+        self.setMouseTracking(True)
         # NoDrag: 让 ItemIsMovable 的节点可自由拖动 (RubberBandDrag 会拦截节点移动)
         self.setDragMode(QGraphicsView.NoDrag)
         # 空格键临时平移 (Simulink 习惯: 按住空格拖动画布)
