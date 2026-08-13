@@ -843,7 +843,7 @@ _LR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FI
 _EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 44, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
 _EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 59, "class RightBrainWM")
 _EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 75, "class LeftRightPolicy")
-_EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 44, "grasp 阈值参数 (LeftRightConfig)")
+_EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 34, "class LeftRightConfig")  # 🐛 2026-08-12: 原 sym 非符号名定位失败 → 显示整个配置类 (含接触/状态机阈值)
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
 
 
