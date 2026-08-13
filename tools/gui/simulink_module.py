@@ -1995,12 +1995,13 @@ class SimNodeItem(QGraphicsObject):
         # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角青色小字)
         try:
             # 🐛 2026-08-09 老倪: 画布节点 ID 常显 (不依赖 hover — 用户要求与模块库一致可见)
+            # 🐛 2026-08-12 老倪: id 是字符串 (dbt0/yol1/dba1), 取模 %100 抛 TypeError → except 吞掉 → ID 不显示
             painter.setPen(QColor("#8b949e"))
             painter.setFont(QFont("Arial", 7))
             nid = self.node.get("nid") or (
-                f"VEH.5.{lib_seq_of(self.node.get('name','')):03d}"
-                if lib_seq_of(self.node.get('name','')) else
-                f"VEH.5.{self.node.get('id', 0) % 100:02d}")
+                f"VEH.5.{lib_seq_of(self.node.get('name', '')):03d}"
+                if lib_seq_of(self.node.get('name', '')) else
+                str(self.node.get("id", "")))
             painter.drawText(QRectF(6, self.h - 12, self.w - 10, 11), Qt.AlignLeft | Qt.AlignVCenter, nid)
         except Exception:
             pass
