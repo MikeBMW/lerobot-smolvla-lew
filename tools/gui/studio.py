@@ -9593,24 +9593,6 @@ class StudioMainWindow(QMainWindow):
                 background: {C_CARD};
                 color: {C_BLUE};
             }}
-            QMenu {{
-                background: {C_CARD};
-                color: {C_WHITE};
-                border: 1px solid {C_BORDER};
-                padding: 4px 0;
-            }}
-            QMenu::item {{
-                padding: 6px 30px 6px 15px;
-            }}
-            QMenu::item:selected {{
-                background: {C_BLUE}33;
-                color: {C_BLUE};
-            }}
-            QMenu::separator {{
-                height: 1px;
-                background: {C_BORDER};
-                margin: 4px 12px;
-            }}
         """)
 
         # ====== 文件菜单 ======
@@ -10276,27 +10258,8 @@ def main():
         QMessageBox QPushButton:pressed, QDialog QPushButton:pressed {{ 
             background: {C_BLUE}55; 
         }}
-
-        /* 右键菜单 (QMenu) 统一暗色主题 */
-        QMenu {{ 
-            background: {C_BG}; 
-            color: {C_WHITE}; 
-            border: 1px solid {C_BORDER};
-        }}
-        QMenu::item {{ 
-            color: {C_WHITE};
-            background: transparent;
-            padding: 4px 12px;
-        }}
-        QMenu::item:selected {{ 
-            background: {C_BLUE}44; 
-            color: {C_WHITE};
-        }}
-        QMenu::separator {{ 
-            height: 1px;
-            background: {C_BORDER};
-            margin: 4px 8px;
-        }}
+        /* 🐛 2026-08-12 老倪: 右键菜单 QMenu 暗色规则已删 — VcXsrv 下 QMenu QSS 渲染黑屏无字,
+           用系统默认菜单 (与 simulink 画布右键一致) */
 
         /* QComboBox下拉列表样式 - 简单干净 */
         QComboBox QAbstractItemView {{
