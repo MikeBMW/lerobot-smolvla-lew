@@ -1930,7 +1930,8 @@ class SimNodeItem(QGraphicsObject):
         e.accept()
 
     def boundingRect(self):
-        return QRectF(0, 0, self.w, self.h).adjusted(-12, -12, 12, 12)
+        # 🐛 2026-08-12 老倪: 顶部扩 18px — 悬停 ID 浮在节点上方 (y=-18~-2) 需在 boundingRect 内才显示
+        return QRectF(0, 0, self.w, self.h).adjusted(-12, -18, 12, 12)
 
     def paint(self, painter, opt, widget=None):
         t = self.node["type"]
@@ -2058,11 +2059,12 @@ class SimNodeItem(QGraphicsObject):
         # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-12 老倪: 仅悬停显示
         # (右上角青色粗体 9px) — 常显占视觉, 用户要求鼠标放上才显示
         try:
-            if getattr(self, "_hover", False):
-                painter.setPen(QColor("#e6edf3"))  # 🐛 2026-08-12 老倪: 白色 (原蓝色 #58a6ff)
+            if getattr(self, "_hover", False) and self.node.get("type") != "row_bg":
+                # 🐛 2026-08-12 老倪: ID 浮在节点上方 (不占节点内部, 不遮挡标题/desc)
+                painter.setPen(QColor("#e6edf3"))
                 painter.setFont(QFont("Arial", 9, QFont.Bold))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
-                painter.drawText(QRectF(self.w - 92, 8, 86, 22), Qt.AlignRight | Qt.AlignVCenter, nid)
+                painter.drawText(QRectF(0, -18, self.w, 16), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
             pass
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
@@ -2490,7 +2492,7 @@ class SimCanvas(QGraphicsView):
         # 在 VcXsrv 下迟钝/不触发 → ID 显示异常; itemAt 实时检测, 反应即时)
         try:
             item = self.itemAt(e.pos())
-            node_item = item if isinstance(item, SimNodeItem) else None
+            node_item = item if isinstance(item, SimNodeItem) and item.node.get("type") != "row_bg" else None
             for it in self._hover_items:
                 if it is not node_item:
                     it._hover = False
