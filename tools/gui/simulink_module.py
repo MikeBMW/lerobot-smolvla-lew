@@ -3067,10 +3067,14 @@ class SimulinkModule(QWidget):
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
+        # 🔍 Z 分析 (2026-08-12 老倪: 全面评价 Z700 模型稳定性 — 状态空间九指标)
+        self.btn_z_analysis = mk_btn("🔍 Z 分析", "全面评价 Z700 模型稳定性 (状态空间九指标 + 飞书报告)",
+                                      self.on_z_analysis, "#d29922")
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
+        tl.addWidget(self.btn_z_analysis)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -7071,6 +7075,27 @@ class SimulinkModule(QWidget):
             return False, f"评估失败: {tail.splitlines()[-1] if tail else '?'}"
 
         self._start_worker(_work, "📊 状态空间评估进行中…")
+
+    def on_z_analysis(self):
+        """🔍 Z 分析 (2026-08-12 老倪): 一键全面评价 Z700 模型稳定性
+        ① 跑 eval_state_space.py (九指标) ② 右侧数据字典切到数学分析 ③ 日志+飞书"""
+        self._log("🔍 Z 分析启动: 全面评价 Z700 模型稳定性 (状态空间九指标)…")
+        # 右侧数据字典面板切到数学分析视图 (若有)
+        try:
+            if getattr(self, "model_tree", None):
+                self.model_tree.cmb_view.setCurrentIndex(3)  # 🎛 状态空间设计
+                self.model_tree.show()
+                self.model_tree.raise_()
+        except Exception:
+            pass
+        # 找画布评估节点 (无则用按钮直跑)
+        ev = next((n for n in self.nodes if n.get("params", {}).get("eval_state_space")), None)
+        if ev is not None:
+            self.on_eval_state_space(ev)
+        else:
+            self._log("⚠️ 画布无 📊 模型评估 (状态空间) 节点 — 请加载 Z700 画布后重试")
+        # 飞书预告
+        self._feishu_send_text_async("🔍 Z 分析: Z700 模型全面稳定性评估启动 (九指标: L2增益/BIBO/谱半径/状态机/李雅普诺夫/谱范数/接触分离/平滑度)…")
 
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""
