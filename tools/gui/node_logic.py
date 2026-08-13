@@ -1003,9 +1003,10 @@ _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.
 # 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
 _YOLO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))), "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
-_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")  # 📐 2D→3D 解算
+_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 11, "def pixel_to_ray")  # 📐 2D→3D 解算: 像素→射线→平面交点 (反投影实现, 非整个类)
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
-_EXTERNAL_LOC["state_adapter"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")  # 🔌 State Adapter: YOLO检测 → 3D state 对齐 (39D) + 触觉4D → 43D
+# 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
+#   State Adapter 是融合节点 (视觉39D+触觉4D=43D), 无独立实现 → 显示 node_state_adapter 自身函数 (可编辑区)
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
 
 
