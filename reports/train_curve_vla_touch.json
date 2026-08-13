@@ -1,1 +1,4 @@
-{"policy": "vla_touch", "name": "VLA-Touch", "ts": "20260809_225405", "step_s": 34.74, "ckpt": "outputs/train/vla_touch_20260809_225238/checkpoints"}
+{
+  "ckpt": "outputs/train/vla_touch_20260809_144926/checkpoints",
+  "train_src": "本地docker 5000步 (Model Zoo)"
+}

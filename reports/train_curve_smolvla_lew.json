@@ -1,1 +1,4 @@
-{"ckpt": "outputs/train/smolvla_lew_5000_20260809_215838/checkpoints", "train_src": "\u672c\u5730docker 5000\u6b65", "steps": 5000}
+{
+  "ckpt": "outputs/train/smolvla_lew_5000_20260809_215838/checkpoints",
+  "train_src": "本地docker 5000步 (Model Zoo)"
+}
