@@ -2374,12 +2374,13 @@ class SimCanvas(QGraphicsView):
         self._drag_start = None      # 拖动起始 (id, x, y) — Ctrl+Z 回退用 (2026-08-07)
         self._panning = False
         self._pan_start = None
-        self._hover_items = set()  # 🐛 2026-08-12 老倪: mouseMove 驱动的 hover 节点集合
-        # 🐛 2026-08-12 老倪: hover 轮询兜底 — VcXsrv 鼠标事件流丢失时 mouseMove 驱动
-        # 会漏更新 (头几次后不显示/不消失) → 80ms 轮询全局鼠标位置
+        self._hover_items = set()  # 🐛 2026-08-12 老倪: hover 节点集合
+        # 🐛 2026-08-12 老倪: 悬停轮询 — VcXsrv 下无按键 mouseMove 事件不达画布
+        # (点击才有响应) → QCursor 150ms 轮询; 鼠标不动不重绘 (防狂闪); parent=this 防关闭崩溃
         self._hover_timer = QTimer(self)
         self._hover_timer.timeout.connect(self._poll_hover)
-        self._hover_timer.start(80)
+        self._hover_timer.start(150)
+        self._last_hover_pos = None
         self._scale = 1.0
         # ↩️ Ctrl+Z 撤销 (2026-08-07 老倪: 挪动背景行回不去上一步)
         # WidgetWithChildrenShortcut: 焦点在画布内才触发, 不抢搜索框/输入框的原生撤销
@@ -2493,13 +2494,17 @@ class SimCanvas(QGraphicsView):
             self.module.on_node_activated(item.node)
 
     def _poll_hover(self):
-        """🐛 2026-08-12 老倪: 80ms 轮询鼠标位置更新 hover (VcXsrv 事件流丢失兜底)"""
+        """🐛 2026-08-12 老倪: 150ms 轮询鼠标位置 → 悬停显示 ID (VcXsrv 无按键 mouseMove 不达)"""
         try:
             from PyQt5.QtGui import QCursor
-            if not self.underMouse():
+            gp = QCursor.pos()
+            if gp == self._last_hover_pos:
+                return  # 鼠标没动 → 不重绘 (防狂闪)
+            self._last_hover_pos = gp
+            if not self.isVisible() or not self.underMouse():
                 self._clear_hover()
                 return
-            vp = self.mapFromGlobal(QCursor.pos())
+            vp = self.mapFromGlobal(gp)
             if not self.viewport().rect().contains(vp):
                 self._clear_hover()
                 return
@@ -2508,19 +2513,27 @@ class SimCanvas(QGraphicsView):
             pass
 
     def _clear_hover(self):
-        for it in self._hover_items:
-            it._hover = False
-            it.update()
+        for it in list(self._hover_items):
+            try:
+                if it.scene() is not None:
+                    it._hover = False
+                    it.update()
+            except Exception:
+                pass
         self._hover_items = set()
 
     def _update_hover_at(self, vp_pos):
         """根据 viewport 坐标更新 hover 状态 (mouseMove 与轮询共用)"""
         item = self.itemAt(vp_pos)
-        node_item = item if isinstance(item, SimNodeItem) and item.node.get("type") != "row_bg" else None
-        for it in self._hover_items:
-            if it is not node_item:
-                it._hover = False
-                it.update()
+        node_item = item if isinstance(item, SimNodeItem) and item.node.get("type") != "row_bg" \
+            and item.scene() is not None else None
+        for it in list(self._hover_items):
+            if it.scene() is None or it is not node_item:
+                try:
+                    it._hover = False
+                    it.update()
+                except Exception:
+                    pass
         if node_item is not None and not node_item._hover:
             node_item._hover = True
             node_item.update()
@@ -6025,14 +6038,17 @@ class SimulinkModule(QWidget):
         self._start_worker(_work, "正在生成插拔演示视频…", stage="insert_video")
 
     def _open_video_for_user(self, mp4):
-        """🎬 打开视频给老倪看: 复制到 Windows 可见 C 盘 → explorer.exe (UNC 被 CMD 拒的可靠链路)"""
+        """🎬 打开视频给老倪看: 复制到 Windows 可见 C 盘 → cmd start (cwd=/mnt/c/Windows)
+        🐛 2026-08-12 老倪: explorer.exe 从 WSL 启动受 UNC cwd 影响静默失败 → 与项目其他
+        文件打开一致走 cmd start + cwd 修正 (记忆: 文档/链接/文件全走 cmd start)"""
         import shutil as _sh, subprocess as _sp
         _pub = "/mnt/c/Users/Public/ZMAX_videos"
         os.makedirs(_pub, exist_ok=True)
         _dst = os.path.join(_pub, os.path.basename(mp4))
         _sh.copy2(mp4, _dst)
         _win = _dst.replace("/mnt/c/", "C:\\").replace("/", "\\")
-        _sp.Popen(["explorer.exe", _win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        _sp.Popen(["cmd.exe", "/c", "start", "", _win], cwd="/mnt/c/Windows",
+                  stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
         self._log(f"🎬 已打开: {_win} ({os.path.getsize(mp4)//1024}KB)")
 
     def on_insert_report(self, **kw):
