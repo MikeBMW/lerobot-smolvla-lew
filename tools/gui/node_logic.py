@@ -809,9 +809,17 @@ _reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) /
 def node_yolo_3d(ctx):
     log = ctx["log"]
     """🎯 YOLO 3D — 相机图像 → 检测销钉/插孔/末端 (mAP 0.994) → 2D→3D 解算 → 39D state
-    真实实现: src/lerobot/policies/yolo_3d/ (train_yolo / yolo_state_aligner / gen_yolo_data / gen_tactile)"""
+    真实实现: src/lerobot/policies/yolo_3d/ (train_yolo / yolo_state_aligner / gen_yolo_data / gen_tactile)
+    ─────────────────────────────────────────────
+    📂 YOLO 模型加载位置:
+      · 加载代码: yolo_state_aligner.py:37 __init__ → YOLO(weights) (ultralytics)
+      · 调用入口: tools/gen_metaworld_data.py:41 WEIGHTS 常量 + :48 YoloStateAligner(WEIGHTS, env)
+      · 加载时机: 运行数据生成脚本时加载一次, detect_3d() 每帧只推理不重载
+    💾 权重文件: runs/detect/outputs/yolo_peg/peg_full/weights/best.pt (22MB, 8/07 训练)
+    ─────────────────────────────────────────────
+    数据流: YOLO 检测 {hand, peg, hole} → 反投影 3D → 替换 39D 中 hand[0:3]/peg[18:21]/hole[36:39]"""
     p = ctx.get("params", {})
-    log(f"🎯 YOLO 3D: model={p.get('model','yolov8s')} classes={p.get('classes','peg/hole/hand')} · mAP 0.994 · 源码 src/lerobot/policies/yolo_3d/")
+    log(f"🎯 YOLO 3D: model={p.get('model','yolov8s')} classes={p.get('classes','peg/hole/hand')} · mAP 0.994 · 权重 runs/detect/outputs/yolo_peg/peg_full/weights/best.pt")
     return True
 
 
