@@ -6007,6 +6007,13 @@ class SimulinkModule(QWidget):
         root = self._repo_root()
         mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
         if os.path.exists(mp4) and os.path.getsize(mp4) > 0:
+            # 🐛 2026-08-12 老倪: 防重复弹出 — 双击重复触发/多次点击会弹好几个播放器
+            import time as _t
+            now = _t.time()
+            if getattr(self, "_last_video_pop", 0) and now - self._last_video_pop < 15:
+                self._log("🎬 视频已弹出 (15秒内防重复)")
+                return
+            self._last_video_pop = now
             self._log(f"🎬 视频已存在 ({os.path.getsize(mp4)//1024}KB, 直接打开, 不重新生成)")
             self._open_video_for_user(mp4)
             self._send_video_to_feishu_async(mp4)
