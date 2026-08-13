@@ -2059,7 +2059,7 @@ class SimNodeItem(QGraphicsObject):
         # (右上角青色粗体 9px) — 常显占视觉, 用户要求鼠标放上才显示
         try:
             if getattr(self, "_hover", False):
-                painter.setPen(QColor("#58a6ff"))
+                painter.setPen(QColor("#e6edf3"))  # 🐛 2026-08-12 老倪: 白色 (原蓝色 #58a6ff)
                 painter.setFont(QFont("Arial", 9, QFont.Bold))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
                 painter.drawText(QRectF(self.w - 92, 8, 86, 22), Qt.AlignRight | Qt.AlignVCenter, nid)
