@@ -9325,13 +9325,11 @@ class StudioMainWindow(QMainWindow):
         self.stack.addWidget(InferencePanel())
 
         # Simulink 模式 (对标 Simulink 拖拽仿真 · 与 web comfyui.html 同步)
-        self.simulink = SimulinkModule()
-        self.simulink.flow_synced = self.on_flow_sync
-        self.simulink.set_model_engine(self.model_engine)  # 🌐 2026-08-08 老倪: simulink 训练走 Model Engine
-        self.model_engine.set_simulink(self.simulink)      # 🎛 2026-08-08 老倪: 训练按钮 → Simulink Model Zoo on_train
-        # 🐛 2026-08-08 老倪: simulink 训练日志 → 模型引擎日志区 (本地/远程训练输出可见)
-        self.simulink.log_signal.connect(self.model_engine._log)
-        self.stack.addWidget(self.simulink)
+        # 🐛 2026-08-12 老倪: SimulinkModule 重量级 (200+ 模块按钮/画布/网络同步) —
+        # 延迟创建让主窗口先显示 (VcXsrv 下构造慢 → 启动闪屏+卡死)
+        self._simulink_index = self.stack.count()   # 记录 tab 原位, 创建后插回
+        self.simulink = None
+        QTimer.singleShot(400, self._init_simulink)
 
         # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
         self.dataspace = DataSpaceModule(self)
@@ -9454,6 +9452,23 @@ class StudioMainWindow(QMainWindow):
             except Exception:
                 pass
         super().closeEvent(ev)
+
+    def _init_simulink(self):
+        """🚀 延迟创建 SimulinkModule (2026-08-12 老倪: 主窗口先显示, 画布后台建)"""
+        try:
+            sim = SimulinkModule()
+            sim.flow_synced = self.on_flow_sync
+            sim.set_model_engine(self.model_engine)  # 🌐 simulink 训练走 Model Engine
+            self.model_engine.set_simulink(sim)      # 🎛 训练按钮 → Simulink Model Zoo on_train
+            # 🐛 simulink 训练日志 → 模型引擎日志区 (本地/远程训练输出可见)
+            sim.log_signal.connect(self.model_engine._log)
+            self.stack.insertWidget(self._simulink_index, sim)  # 插回原 tab 位
+            self.simulink = sim
+            self.statusBar().showMessage("🚀 Simulink 画布已就绪", 2000)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.statusBar().showMessage(f"⚠️ Simulink 初始化失败: {e}", 5000)
 
     def _on_engine_change(self, idx):
         """引擎切换"""
