@@ -365,6 +365,18 @@ def node_infer_rollout(ctx):
     return True
 
 
+def node_eval_state_space(ctx):
+    """📊 模型评估 (状态空间) — Z700 双脑稳定性评估 (2026-08-12 老倪)
+    指标: ①L2增益(左脑Lipschitz) ②BIBO(有界输入有界输出) ③自回归谱半径ρ(右脑预测误差)
+    ④状态机覆盖(6阶段可达+成功率) ⑤contact桥接(连续→离散)
+    状态空间: X=[X_obs(43D), X_latent(潜), X_sm(6阶段状态机)]
+    真实实现: tools/eval_state_space.py → reports/eval_state_space.json + 飞书"""
+    log = ctx["log"]
+    node = ctx.get("node", {})
+    log("📊 状态空间评估: L2增益 → BIBO → 自回归ρ → 状态机覆盖 → 稳定性结论")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -796,6 +808,7 @@ _reg("deploy",     ["部署"],        "⑤ 部署 — 部署状态检查与推�
 _reg("infer",      ["推理"],        "⑥ 推理 — 产线推理服务状态", node_infer)
 _reg("mode_switch", ["训练/推理", "模式开关"], "🔀 训练/推理模式开关 — 双击切换 train⇄infer", node_mode_switch)
 _reg("infer_rollout", ["推理 (rollout)", "rollout"], "📷 推理 (rollout) — 最新模型仿真插拔评估+视频", node_infer_rollout)
+_reg("eval_state_space", ["模型评估 (状态空间)", "状态空间评估"], "📊 状态空间稳定性评估 — L2/BIBO/谱半径/状态机覆盖", node_eval_state_space)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

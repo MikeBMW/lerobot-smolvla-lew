@@ -6859,6 +6859,10 @@ class SimulinkModule(QWidget):
                 return
             self.on_infer_rollout(node)
             return
+        # 1.76) 📊 模型评估 (状态空间) (2026-08-12 老倪: 评估 Z700 模型稳定性)
+        if params.get("eval_state_space"):
+            self.on_eval_state_space(node)
+            return
         # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
         if params.get("insert_report"):
             self.on_insert_report()
@@ -7032,6 +7036,41 @@ class SimulinkModule(QWidget):
             return False, f"推理失败: {last}"
 
         self._start_worker(_work, "📷 推理 rollout 进行中…")
+
+    def on_eval_state_space(self, node):
+        """📊 模型评估 (状态空间): 后台跑 eval_state_space.py → 稳定性报告
+        L2增益/BIBO/自回归谱半径/状态机覆盖 → 终端 + reports/eval_state_space.json + 飞书"""
+        p = node.setdefault("params", {})
+        self._log("📊 状态空间评估开始: L2增益 → BIBO → 自回归谱半径 → 状态机覆盖 …")
+
+        def _work():
+            import subprocess as _sp
+            root = self._repo_root()
+            py = os.path.join(root, ".venv", "bin", "python")
+            if not os.path.exists(py):
+                return False, "缺少 .venv/bin/python (评估需本地 GPU 环境)"
+            r = _sp.run([py, os.path.join(root, "tools", "eval_state_space.py"), "0", "1", "2", "3"],
+                        capture_output=True, text=True, timeout=600, cwd=root)
+            out = (r.stdout or "").strip().splitlines()
+            tail = "\n".join(out[-14:]) if out else "?"
+            if r.returncode == 0:
+                # 📤 飞书报告 (2026-08-12 老倪: 在飞书等报告)
+                try:
+                    with open(os.path.join(root, "reports", "eval_state_space.json"), encoding="utf-8") as f:
+                        rep = json.load(f)
+                    _msg = (f"📊 Z700 状态空间稳定性报告\n· 模型: {rep.get('ckpt', '?')}\n"
+                            f"· L2增益: {rep['l2_gain']['max']:.4f} ({'✅' if rep['l2_gain']['stable'] else '⚠'})\n"
+                            f"· BIBO: 动作≤{rep['bibo']['act_max']:.3f} ({'✅' if rep['bibo']['stable'] else '❌'})\n"
+                            f"· 自回归ρ: {rep['autoregressive']['rho']:.4f} ({'✅' if rep['autoregressive']['stable'] else '⚠'})\n"
+                            f"· 状态机: 覆盖{rep['state_machine']['coverage']:.0%} 成功率{rep['state_machine']['success_rate']:.0%}\n"
+                            f"· 结论: {rep['verdict']}")
+                    self._feishu_send_text_async(_msg)
+                except Exception:
+                    self._feishu_send_text_async("📊 Z700 状态空间评估完成 (报告见 reports/eval_state_space.json)")
+                return True, "📊 状态空间评估完成: reports/eval_state_space.json"
+            return False, f"评估失败: {tail.splitlines()[-1] if tail else '?'}"
+
+        self._start_worker(_work, "📊 状态空间评估进行中…")
 
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""

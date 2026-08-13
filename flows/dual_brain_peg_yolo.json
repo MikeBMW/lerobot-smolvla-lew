@@ -844,6 +844,27 @@
     "out1"
    ],
    "actions": []
+  },
+  {
+   "id": "dbev",
+   "type": "system",
+   "name": "📊 模型评估 (状态空间)",
+   "x": 900,
+   "y": 540,
+   "w": 220,
+   "icon": "📊",
+   "color": "#d29922",
+   "params": {
+    "eval_state_space": true,
+    "desc": "状态空间稳定性评估: L2增益/BIBO/自回归谱半径/状态机覆盖 · 双击运行"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
   }
  ],
  "links": [
@@ -1041,6 +1062,13 @@
    "id": "lkz02",
    "f": "dbt2",
    "t": "dbt3",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkz03",
+   "f": "dbt1",
+   "t": "dbev",
    "f_port": "out1",
    "t_port": "in1"
   }
