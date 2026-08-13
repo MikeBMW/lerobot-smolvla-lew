@@ -5233,6 +5233,9 @@ class SimulinkModule(QWidget):
                 from PyQt5.QtCore import QTimer as _QT
                 self._log("🎬 双脑训练完成, 自动生成插拔视频 (后台, 完成后可秒开)…")
                 _QT.singleShot(800, lambda: self.on_insert_video(force=True))
+                # 📤 飞书训练报告 (2026-08-12 老倪: 在飞书等报告)
+                _msg = f"✅ Z700 训练完成报告\n· 策略: LeftRight 双脑 (左脑MLP+右脑WM)\n· 输出: {summary.split('·')[-1].strip() if '·' in summary else summary}\n· 视频: 后台生成中 (完成后另发)"
+                self._feishu_send_text_async(_msg)
             # ⚔️ 对比评估完成 → 自动弹出对比图表 (非模态, 2026-08-05 防卡死)
             if stage == "compare" and ok:
                 try:
@@ -6400,6 +6403,49 @@ class SimulinkModule(QWidget):
             self._safe_log(f"⚠️ 飞书发送失败: {ex}")
 
     # ── 📤 通用飞书文件发送 (2026-08-10: 双脑插拔 视频/PDF 复用) ──
+    def _feishu_send_text_async(self, text):
+        """📤 飞书文本消息 (2026-08-12 老倪: 推理/训练报告): 后台线程发 text 消息到 dataworld 群"""
+        import threading
+
+        def _work():
+            try:
+                import json as _j, urllib.request as _ur, os as _os
+                env = {}
+                env_path = _os.path.expanduser("~/.hermes/.env")
+                if _os.path.exists(env_path):
+                    for line in open(env_path, encoding="utf-8"):
+                        line = line.strip()
+                        if "=" in line and not line.startswith("#"):
+                            k, v = line.split("=", 1)
+                            env[k] = v
+                app_id = env.get("FEISHU_APP_ID", "")
+                app_secret = env.get("FEISHU_APP_SECRET", "")
+                chat_id = env.get("FEISHU_REPORT_CHAT_ID", "oc_c0b4048546145c5c581ddd1a9e8f565d")
+                if not app_id or not app_secret:
+                    self._safe_log("⚠️ 飞书报告: .env 无 FEISHU_APP_ID/SECRET")
+                    return
+
+                def _post(url, data, headers=None):
+                    req = _ur.Request(url, data=_j.dumps(data).encode(),
+                                      headers={"Content-Type": "application/json", **(headers or {})})
+                    return _j.loads(_ur.urlopen(req, timeout=15).read())
+
+                r = _post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                          {"app_id": app_id, "app_secret": app_secret})
+                tok = r.get("tenant_access_token")
+                if not tok:
+                    self._safe_log("⚠️ 飞书报告: token 获取失败")
+                    return
+                H = {"Authorization": "Bearer " + tok}
+                _post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                      {"receive_id": chat_id, "msg_type": "text",
+                       "content": _j.dumps({"text": text})}, H)
+                self._safe_log("📤 飞书报告已发送")
+            except Exception as ex:
+                self._safe_log(f"⚠️ 飞书报告失败: {ex}")
+
+        threading.Thread(target=_work, daemon=True).start()
+
     def _feishu_send_file_work(self, path, ftype, txt):
         """后台线程: 飞书上传文件 (mp4/pdf) + 发文件消息 + 发文本摘要; 失败仅日志, 不影响主流程"""
         try:
@@ -6942,7 +6988,8 @@ class SimulinkModule(QWidget):
         self.canvas._scene.update()
 
     def on_infer_rollout(self, node):
-        """📷 推理模块: 后台加载最新模型 → 仿真插拔 rollout → 评估+视频 (2026-08-12 老倪)"""
+        """📷 推理模块: 后台加载最新模型 → 仿真插拔 rollout → 评估+视频 (2026-08-12 老倪)
+        完成 → 自动发飞书 dataworld 群 (视频 + 文字报告)"""
         p = node.setdefault("params", {})
         frames = p.get("frames", 60)
         self._log(f"📷 推理 (rollout) 开始: 加载最新模型 → 仿真插拔 {frames} 帧评估…")
@@ -6957,9 +7004,16 @@ class SimulinkModule(QWidget):
                         capture_output=True, text=True, timeout=600, cwd=root)
             out = (r.stdout or "").strip().splitlines()
             last = out[-1] if out else "?"
-            if r.returncode == 0:
-                self._send_video_to_feishu_async(os.path.join(root, "reports", "insert_success_demo.mp4"))
+            mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
+            if r.returncode == 0 and os.path.exists(mp4):
+                self._send_video_to_feishu_async(mp4)
+                # 📤 飞书文字报告 (2026-08-12 老倪: 在飞书等报告)
+                _msg = "📷 Z700 推理报告\n· 模型: 最新 left_right checkpoint\n· 任务: 仿真插拔 (状态机驱动)\n· 结果: 成功 · 视频已生成\n· 文件: reports/insert_success_demo.mp4"
+                self._feishu_send_text_async(_msg)
                 return True, "🎬 推理 rollout 完成: reports/insert_success_demo.mp4 (双击 ▶视频 节点可播放)"
+            # ❌ 失败: 提示模型质量 (最新模型可能未收敛, 可用 BRAIN_CKPT 回退)
+            _hint = " — 最新模型插拔失败(卡阶段), 可换已验收模型重训/或检查训练数据"
+            self._log(f"⚠️ 推理失败: {last}{_hint}")
             return False, f"推理失败: {last}"
 
         self._start_worker(_work, "📷 推理 rollout 进行中…")

@@ -31,7 +31,7 @@ def _pick_seed(left, right, xm, xs, ym, ys, seed_max=11):
         peg_z0 = e.data.site_xpos[e.model.site("pegGrasp").id][2]
         hole = e.data.site_xpos[e.model.site("hole").id]
         state = ST_APPROACH
-        for _ in range(500):
+        for _ in range(200):
             hand = e.data.site_xpos[e.model.site("endEffector").id]
             peg = e.data.site_xpos[e.model.site("pegGrasp").id]
             d_hp = float(np.linalg.norm(hand - peg))
@@ -101,6 +101,11 @@ def _load_brain():
     # 🐛 2026-08-12: 按修改时间排序 (字母序会把 left_right_std 排最前) — 取最新训练
     cands = sorted(_g.glob(os.path.join(ROOT, "outputs", "train", "left_right_*")),
                    key=lambda p: os.path.getmtime(p), reverse=True)
+    # 🐛 2026-08-12 老倪: BRAIN_CKPT 环境变量可指定 checkpoint (最新模型效果差时回退已验证模型)
+    forced = os.environ.get("BRAIN_CKPT")
+    if forced:
+        forced = os.path.normpath(forced)
+        cands = [forced] + [c for c in cands if c != forced]
     for d in cands:
         pm = os.path.join(d, "checkpoints", "last", "pretrained_model")
         model_path = os.path.join(pm, "model.pt")
