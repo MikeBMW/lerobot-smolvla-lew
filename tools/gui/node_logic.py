@@ -857,11 +857,32 @@ def node_state_adapter(ctx):
 
 def node_obs43(ctx):
     log = ctx["log"]
-    """📊 43D obs 输入 — 统一状态输入节点 (感知链与策略的接口)
-    39D 结构: hand_pos[3]+gripper[1]+peg_pos[3]+peg_quat[4]+pad[7]+prev帧[18]+hole_pos[3]
-    + 触觉 4D (Marker) = 43D"""
+    """📊 43D obs 输入 — 感知链与策略的统一状态输入 (39D 视觉/关节 + 触觉 4D)
+
+    结构: 43D = 当前帧(18) + 上一帧(18) + 目标(3) + 触觉(4)   [双帧堆叠 + Marker 触觉]
+    ─────────────────────────────────────────────
+    39D 部分 (metaworld peg-insertion 观测, 与 node_obs39 一致):
+    [0:3]    hand_pos      末端执行器位置 xyz    单位: 米(m)
+    [3]      gripper       夹爪开度 (归一化)     0=闭合 · 1=张开
+    [4:7]    peg_pos       销钉位置 xyz          单位: 米(m)
+    [7:11]   peg_quat      销钉姿态四元数 xyzw   单位四元数 (w=1 无旋转)
+    [11:18]  pad           填充槽 ×7 (固定 0)    物体槽位余量
+    [18:21]  prev_hand_pos 上一帧末端位置 xyz    单位: 米(m)
+    [21]     prev_gripper  上一帧夹爪开度        0=闭合 · 1=张开
+    [22:25]  prev_peg_pos  上一帧销钉位置 xyz    单位: 米(m)
+    [25:29]  prev_peg_quat 上一帧销钉四元数 xyzw 单位四元数
+    [29:36]  prev_pad      填充槽 ×7 (固定 0)
+    [36:39]  hole_pos      插孔目标位置 xyz      单位: 米(m) (goal)
+    ─────────────────────────────────────────────
+    触觉 4D (Marker 触觉跟踪, gen_tactile.py 从 39D state 合成):
+    [39]     grasp_force   夹持力   = 1 − gripper   (夹爪闭合=1, 张开=0)
+    [40]     contact_force 接触力   = 1/(1+5d)      (d=|peg−hole|, 越近越大)
+    [41]     contact_dir_x 接触方向x = (peg_x−hole_x)/d
+    [42]     contact_dir_z 接触方向z = (peg_z−hole_z)/d
+    ─────────────────────────────────────────────
+    说明: 视觉/关节 39D 双帧堆叠感知时序, 触觉 4D 补力觉通道 (metaworld 无 GelSight 真实触觉)"""
     p = ctx.get("params", {})
-    log(f"📊 43D obs: dims={p.get('dims', 43)} · 39D 结构 + 触觉4D")
+    log(f"📊 43D obs: dims={p.get('dims', 43)} · 39D 结构(双帧堆叠+目标) + 触觉4D")
     return True
 
 
