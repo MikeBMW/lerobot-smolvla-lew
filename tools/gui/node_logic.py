@@ -882,36 +882,42 @@ _reg("solution_web", ["方案介绍"], "🌐 方案介绍 — 打开方案分页
 
 # ── ➤ 状态机 6 阶段 (2026-08-12 老倪: 每阶段代码, 参数对应 configuration_left_right.py) ──
 def node_stage_approach(ctx):
+    log = ctx["log"]
     p = ctx.get("params", {})
     log(f"➤ 接近: bias={p.get('bias', 'act*0.3 + hand→peg方向*2.0')} · 规则方向+学习修正 (5/8 vs 0/8)")
     return True
 
 
 def node_stage_grasp(ctx):
+    log = ctx["log"]
     p = ctx.get("params", {})
     log(f"➤ 抓取: effort={p.get('effort', 0.6)} · 专家式夹持+位置锁定")
     return True
 
 
 def node_stage_lift(ctx):
+    log = ctx["log"]
     p = ctx.get("params", {})
     log(f"➤ 抬起: height={p.get('height', 0.08)}m force={p.get('force', 0.8)} · 避开台面")
     return True
 
 
 def node_stage_transfer(ctx):
+    log = ctx["log"]
     p = ctx.get("params", {})
     log(f"➤ 转移: tolerance={p.get('tolerance', 0.05)}m · peg 有导向")
     return True
 
 
 def node_stage_insert(ctx):
+    log = ctx["log"]
     p = ctx.get("params", {})
     log(f"➤ 插入: tolerance={p.get('tolerance', 0.05)}m · 完成插拔")
     return True
 
 
 def node_stage_done(ctx):
+    log = ctx["log"]
     p = ctx.get("params", {})
     log(f"➤ 完成: stage={p.get('stage', 'done')} · 释放/复位, 进入下一循环")
     return True
