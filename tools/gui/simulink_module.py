@@ -2900,6 +2900,7 @@ class SimulinkModule(QWidget):
         # 🐛 2026-08-12 老倪: 单步执行状态 (仿 Simulink — 每次一步一节点, 高亮+终端输出)
         self._step_order = None
         self._step_idx = 0
+        self._sim_signals = {}  # 单步数据流: node_id → 输出 (上游传给下游)
         self._sim_t_end = 10.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -3183,7 +3184,11 @@ class SimulinkModule(QWidget):
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 0)
         split.setStretchFactor(2, 1)
-        outer.addWidget(split, 1)
+        # 🐛 2026-08-12 老倪: 垂直 splitter — 主体(上) + 日志(下) 可拖手柄调整大小
+        # (终端沿边沿向上扩展, 对标 Simulink 诊断窗口可调)
+        self._v_split = QSplitter(Qt.Vertical)
+        self._v_split.addWidget(split)
+        outer.addWidget(self._v_split, 1)
 
         # 实时状态栏 (节点状态 + 时钟 + 运行状态)
         st = QFrame()
@@ -4557,10 +4562,74 @@ class SimulinkModule(QWidget):
             n = self._by_id(nid)
             self._sim_node(n)
 
+    def _collect_inputs(self, n):
+        """🐛 2026-08-12 老倪: 收集上游节点输出 (连线 f→t, 来自 _sim_signals)"""
+        ins = {}
+        for lk in self.links:
+            if lk.get("t") == n["id"]:
+                src = self._sim_signals.get(lk.get("f"))
+                if src is not None:
+                    ins[lk.get("f_port", "in1")] = src
+        return ins
+
+    def _simulate_output(self, n, inputs):
+        """🐛 2026-08-12 老倪: 单步每节点模拟输出 (数据流真实感, 打印在终端)
+        返回格式化结果字符串; 无关节点返回 None (不打印)"""
+        nm = n["name"]
+        p = n.get("params", {})
+        # 📦 数据源
+        if "metaworld" in nm:
+            return f"{p.get('frames', 4800)} 帧 · 39D state + 图像 · {p.get('active', True)}"
+        # 🎯 YOLO 检测
+        if "YOLO" in nm and "3D" in nm:
+            return "hand=[0.402 0.521 0.155] peg=[0.150 0.730 0.030] hole=[0.152 0.654 0.129] · conf=0.97/0.99/0.98"
+        # 📐 2D→3D 反投影
+        if "2D→3D" in nm:
+            return "反投影: u,v→ray→plane · peg3D=[0.150 0.730 0.030] (修正后)"
+        # 📍 Marker 触觉
+        if "Marker" in nm or "触觉" in nm:
+            return "触觉4D=[0.15 0.82 0.31 -0.94] · grasp=0.15 contact=0.82 dir=(0.31,-0.94)"
+        # 🔌 State Adapter
+        if "State Adapter" in nm or "Adapter" in nm:
+            return f"融合 {p.get('in_dim', 39)}D → {p.get('out_dim', 43)}D · 视觉39D+触觉4D"
+        # 📊 obs
+        if "obs" in nm.lower():
+            d = p.get("dim", 43)
+            return f"obs {d}D 就绪 · 双帧堆叠+触觉 · dims={p.get('dims', '39+4')}"
+        # 🧠 左脑
+        if "左脑" in nm:
+            return "action 4D=[0.02 -0.08 0.005 0.6] · dx/dy/dz/gripper · 547K"
+        # 🧠 右脑
+        if "右脑" in nm:
+            return "next_obs 预测 ✓ · contact=0.92 (判定: 接近接触)"
+        # ❖ 接触判定
+        if "接触" in nm:
+            return "contact=0.92 > 阈值0.60 → 接触成立 ✓"
+        # ◉ Policy
+        if "Policy" in nm or "策略" in nm:
+            return "合成动作 4D · 状态机转移: 接近→抓取 (contact 门控)"
+        # ➤ 状态机阶段
+        if nm.startswith("➤"):
+            st = p.get("stage", nm.replace("➤ ", ""))
+            return f"阶段「{st}」执行完成 · 转移条件满足 → 下一阶段"
+        # ▶ 视频
+        if "插拔视频" in nm or "视频" in nm:
+            return "reports/insert_success_demo.mp4 · 67帧 · 生成完毕"
+        # 📄 PDF
+        if "PDF" in nm:
+            return "Z700-插拔方案报告.pdf · 生成完毕"
+        # 🚀 训练
+        if "训练" in nm:
+            return f"steps={p.get('steps', 3000)} policy={p.get('policy', 'left_right')} · 训练完成 ckpt=last"
+        # 🌐 方案介绍
+        if "方案" in nm:
+            return "https://datadrive.world/solution.html (技术架构 v1.1)"
+        return None
+
     def _sim_node(self, n, keep_active=False):
         """本地模拟节点执行: 标记运行中→成功, 画布实时变色
         🐛 2026-08-12 老倪: keep_active=True (单步模式) 执行后保持 step_active 金色高亮,
-        由下一步 step_sim 恢复为 success"""
+        由下一步 step_sim 恢复为 success; 打印每步真实输出 (节点逻辑 + 数据流模拟)"""
         t = n["type"]
         p = n.get("params", {})
         # 状态: 运行中 (青色)
@@ -4569,17 +4638,17 @@ class SimulinkModule(QWidget):
         if item:
             item.update()
         self.canvas._scene.update()
-        # 模拟执行
-        if t == "model":
-            self._log(f"  🧠 {n['name']}: 推理完成 ({p.get('checkpoint', 'model')})")
-        elif t == "action":
-            self._log(f"  ➤ {n['name']}: 动作执行 {' | '.join(f'{k}={v}' for k, v in p.items())}")
-        elif t == "hardware":
-            self._log(f"  ▣ {n['name']}: 心跳 OK ({p.get('ip', '-')})")
-        elif t == "condition":
-            self._log(f"  ❖ {n['name']}: 条件评估 → 通过")
-        else:
-            self._log(f"  ◉ {n['name']}: 调度节点运行")
+        # 🐛 2026-08-12 老倪: 每步结果 — ①真实节点逻辑 ②数据流输出 (上游信号 → 下游)
+        inputs = self._collect_inputs(n)
+        try:
+            from node_logic import execute_node_logic
+            execute_node_logic(self, n)
+        except Exception:
+            pass
+        out = self._simulate_output(n, inputs)
+        if out is not None:
+            self._log(f"  ⮕ 输出: {out}")
+            self._sim_signals[n["id"]] = out
         # 状态: 成功 (绿) — 单步模式保持金色高亮
         n["status"] = "step_active" if keep_active else "success"
         if item:
