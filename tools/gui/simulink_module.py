@@ -2450,6 +2450,16 @@ class SimCanvas(QGraphicsView):
                         QPen(QColor(COLORS.get(n.node["type"], "#58a6ff")), 2, Qt.DashLine))
                     return
                 # 节点主体 → 手动拖动 (只移动它, 绕开 scene 多选联动)
+                # 🐛 2026-08-12 老倪: 双击检测 — 本分支 return 拦截 press, item 收不到
+                # 双击事件 (SimNodeItem.mouseDoubleClickEvent 永不触发) → 手动检测
+                import time as _t
+                _now = _t.time()
+                if (getattr(self, "_last_dbl", None) and _now - self._last_dbl[0] < 0.4
+                        and self._last_dbl[1] is item):
+                    self._last_dbl = None
+                    self.module.on_node_activated(item.node)
+                    return
+                self._last_dbl = (_now, item)
                 if not (e.modifiers() & Qt.ControlModifier):
                     for it in self._scene.selectedItems():
                         if it is not item:
