@@ -1989,6 +1989,8 @@ class SimNodeItem(QGraphicsObject):
             color = QColor("#3fb950")
         elif status == "error":
             color = QColor("#ff4444")
+        elif status == "step_active":
+            color = QColor("#ffd700")  # 🐛 2026-08-12 老倪: 单步执行当前节点 = 金色高亮
         painter.setRenderHint(QPainter.Antialiasing)
         pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
         # 主体
@@ -1996,7 +1998,7 @@ class SimNodeItem(QGraphicsObject):
         grad.setColorAt(0, QColor(pal["node_top"]))
         grad.setColorAt(1, QColor(pal["node_bot"]))
         painter.setBrush(grad)
-        pen = QPen(color, 1.6)
+        pen = QPen(color, 2.8 if status == "step_active" else 1.6)
         # 激活的数据源节点 (CICD 主控台): 金色加粗边框 + ▶ 徽章
         params = self.node.get("params", {})
         is_active_src = params.get("source") and params.get("active")
@@ -2895,6 +2897,9 @@ class SimulinkModule(QWidget):
         self._sim_running = False
         self._sim_t = 0.0
         self._sim_dt = 0.01
+        # 🐛 2026-08-12 老倪: 单步执行状态 (仿 Simulink — 每次一步一节点, 高亮+终端输出)
+        self._step_order = None
+        self._step_idx = 0
         self._sim_t_end = 10.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -4405,6 +4410,15 @@ class SimulinkModule(QWidget):
         # 🐛 2026-08-06: sp_dt/sp_t_end 控件已删 (老倪: 没用), 用内部默认值
         self._sim_dt = getattr(self, "_sim_dt", 0.02)
         self._sim_t_end = getattr(self, "_sim_t_end", 10.0)
+        # 🐛 2026-08-12 老倪: 运行模式清除单步状态 (互斥)
+        self._step_order = None
+        self._step_idx = 0
+        for _nn in self.nodes:
+            if _nn.get("status") == "step_active":
+                _nn["status"] = "idle"
+                _it = self._items.get(_nn["id"])
+                if _it:
+                    _it.update()
         self._sim_running = True
         # 重置所有节点状态为 idle
         for n in self.nodes:
@@ -4498,14 +4512,42 @@ class SimulinkModule(QWidget):
         self._tutorial_on_action("run")
 
     def step_sim(self):
+        """🐛 2026-08-12 老倪: 仿 Simulink 单步执行 — 每次点击只执行一个节点
+        (按拓扑顺序), 当前节点金色高亮, 终端显示节点输出; 上一步节点变绿(success)"""
         if not self.nodes:
             self._log("⚠️ 画布为空")
             return
-        self._sim_t += self._sim_dt
-        self._exec_topological()
+        # 首次 → 拓扑排序 (🐛 2026-08-12: 排除 row_bg 背景行 — 背景不执行)
+        if self._step_order is None:
+            self._step_order = [nid for nid in self._topo_sort()
+                                if self._by_id(nid).get("type") != "row_bg"]
+            self._step_idx = 0
+        # 走完 → 完毕提示 + 重置 (再点从 1 开始)
+        if self._step_idx >= len(self._step_order):
+            self._log(f"✅ 单步执行完毕 ({len(self._step_order)} 节点) — 再点从 1 重新开始")
+            self._step_order = None
+            self._step_idx = 0
+            return
+        nid = self._step_order[self._step_idx]
+        n = self._by_id(nid)
+        # 上一步节点: 高亮 → 成功 (绿)
+        for nn in self.nodes:
+            if nn.get("status") == "step_active":
+                nn["status"] = "success"
+                _it = self._items.get(nn["id"])
+                if _it:
+                    _it.update()
+        # 当前节点: 金色高亮 + 执行 (终端输出)
+        n["status"] = "step_active"
+        it = self._items.get(nid)
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        self._log(f"⏭ 单步 [{self._step_idx + 1}/{len(self._step_order)}] {n['name']}")
+        self._sim_node(n, keep_active=True)
+        self._step_idx += 1
+        self._refresh_status()
         self._tutorial_on_action("step")
-        if self._sim_t >= self._sim_t_end:
-            self.stop_sim()
 
     def _exec_topological(self):
         order = self._topo_sort()
@@ -4515,8 +4557,10 @@ class SimulinkModule(QWidget):
             n = self._by_id(nid)
             self._sim_node(n)
 
-    def _sim_node(self, n):
-        """本地模拟节点执行: 标记运行中→成功, 画布实时变色"""
+    def _sim_node(self, n, keep_active=False):
+        """本地模拟节点执行: 标记运行中→成功, 画布实时变色
+        🐛 2026-08-12 老倪: keep_active=True (单步模式) 执行后保持 step_active 金色高亮,
+        由下一步 step_sim 恢复为 success"""
         t = n["type"]
         p = n.get("params", {})
         # 状态: 运行中 (青色)
@@ -4536,8 +4580,8 @@ class SimulinkModule(QWidget):
             self._log(f"  ❖ {n['name']}: 条件评估 → 通过")
         else:
             self._log(f"  ◉ {n['name']}: 调度节点运行")
-        # 状态: 成功 (绿)
-        n["status"] = "success"
+        # 状态: 成功 (绿) — 单步模式保持金色高亮
+        n["status"] = "step_active" if keep_active else "success"
         if item:
             item.update()
         self.canvas._scene.update()
