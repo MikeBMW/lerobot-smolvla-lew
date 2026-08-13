@@ -110,6 +110,25 @@ def main():
         "inputs": [{"id": "in1", "label": "in", "dtype": "any"}],
         "outputs": [{"id": "out1", "label": "out", "dtype": "any"}]},
     ]
+    # 5) 全节点源码映射 (2026-08-12 老倪: 右键"打开源代码" — 每个有源码的节点都能打开)
+    SRC_MAP = {
+        "dbt0": "tools/gen_metaworld_data.py",          # 📦 metaworld_peg (数据生成脚本)
+        "dba3": "src/lerobot/policies/left_right",      # ❖ 接触判定 (right_brain contact 判定)
+        "dbb1": "src/lerobot/policies/left_right",      # ➤ 接近 (状态机)
+        "dbb2": "src/lerobot/policies/left_right",      # ➤ 抓取
+        "dbb3": "src/lerobot/policies/left_right",      # ➤ 抬起
+        "dbb4": "src/lerobot/policies/left_right",      # ➤ 转移
+        "dbb5": "src/lerobot/policies/left_right",      # ➤ 插入
+        "dbb6": "src/lerobot/policies/left_right",      # ➤ 完成
+        "dba0": "src/lerobot/policies/left_right",      # 📊 43D obs (接口→策略)
+        "dbt1": "src/lerobot/policies/left_right",      # 🚀 训练 (left_right 策略)
+        "dbd0": "tools/gen_insert_video.py",            # ▶ 生成插拔视频
+        "dbd1": "tools/gen_insert_report.py",           # 📄 PDF 插拔方案报告
+    }
+    for n in d["nodes"]:
+        if n["id"] in SRC_MAP:
+            n.setdefault("params", {})["source"] = SRC_MAP[n["id"]]
+
     d["name"] = "🧠 left_right 双脑+状态机 + 🎯 YOLO感知链 + 📍触觉 + 📦训练"
 
     with open(OUT, "w", encoding="utf-8") as f:

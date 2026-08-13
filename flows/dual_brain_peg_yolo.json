@@ -46,7 +46,7 @@
       "icon": "📦",
       "color": "#3fb950",
       "params": {
-        "source": "metaworld",
+        "source": "tools/gen_metaworld_data.py",
         "frames": 4800,
         "active": true,
         "dims": "4D/4D",
@@ -201,7 +201,7 @@
       "color": "#58a6ff",
       "params": {
         "dim": 39,
-        "source": "metaworld peg-v6",
+        "source": "src/lerobot/policies/left_right",
         "norm": "MEAN_STD (normalization_mapping)",
         "desc": "视觉39D + 触觉4D = 43D 统一 state 输入"
       },
@@ -309,7 +309,8 @@
         "rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
         "d_hp_th": 0.06,
         "contact_th": 0.5,
-        "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"
+        "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -386,7 +387,8 @@
       "color": "#00d4aa",
       "params": {
         "target": "d_hp 0.2→0.06",
-        "desc": "左脑MLP偏置接近 (32帧)"
+        "desc": "左脑MLP偏置接近 (32帧)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -416,7 +418,8 @@
       "params": {
         "trigger": "contact>0.5 & d_hp<0.06",
         "grab": "夹持0.6 + 位置锁定",
-        "desc": "右脑 get_right_contact 判定触发 (45帧)"
+        "desc": "右脑 get_right_contact 判定触发 (45帧)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -446,7 +449,8 @@
       "params": {
         "height": "+0.08m (lift_height)",
         "force": 0.8,
-        "desc": "peg z 升高避开台面 (9帧)"
+        "desc": "peg z 升高避开台面 (9帧)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -475,7 +479,8 @@
       "color": "#00d4aa",
       "params": {
         "tolerance": "0.05m (transfer_tolerance)",
-        "desc": "水平移到 hole 上方, peg 有导向 (38帧)"
+        "desc": "水平移到 hole 上方, peg 有导向 (38帧)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -504,7 +509,8 @@
       "color": "#00d4aa",
       "params": {
         "target": "d_ph<0.05 (insert_tolerance)",
-        "desc": "垂直下降插入 (1帧)"
+        "desc": "垂直下降插入 (1帧)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -532,7 +538,8 @@
       "icon": "➤",
       "color": "#00d4aa",
       "params": {
-        "desc": "✅ 插拔完成"
+        "desc": "✅ 插拔完成",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -563,7 +570,8 @@
         "insert_video": true,
         "seed": 1,
         "out": "reports/insert_success_demo.mp4",
-        "desc": "双击运行: 后台录制 seed1 完整插拔流程 → 旋转180° → mp4 → 自动发飞书 (约1-2分钟)"
+        "desc": "双击运行: 后台录制 seed1 完整插拔流程 → 旋转180° → mp4 → 自动发飞书 (约1-2分钟)",
+        "source": "tools/gen_insert_video.py"
       },
       "inputs": [
         {
@@ -593,7 +601,8 @@
       "params": {
         "insert_report": true,
         "out": "reports/插拔方案报告_<时间戳>.pdf",
-        "desc": "双击运行: 方案JSON+视频帧 → 6章方案PDF → 自动发飞书"
+        "desc": "双击运行: 方案JSON+视频帧 → 6章方案PDF → 自动发飞书",
+        "source": "tools/gen_insert_report.py"
       },
       "inputs": [
         {
@@ -746,7 +755,8 @@
       "params": {
         "steps": 3000,
         "policy": "left_right",
-        "desc": "双击 → 配置/启动 left_right 训练 (metaworld_peg 数据, 39D, 3000步)"
+        "desc": "双击 → 配置/启动 left_right 训练 (metaworld_peg 数据, 39D, 3000步)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
