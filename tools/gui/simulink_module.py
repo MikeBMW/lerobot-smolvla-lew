@@ -1929,6 +1929,12 @@ class SimNodeItem(QGraphicsObject):
         self.update()
         e.accept()
 
+    def mouseDoubleClickEvent(self, e):
+        """🐛 2026-08-12 老倪: 节点双击处理 — 原类从未实现 (只有连线 SimLinkItem 有),
+        用户双击节点一直无反应 (双击▶生成插拔视频/数据源切换等全靠右键菜单运行)"""
+        self.scene_ref.on_node_activated(self.node)
+        e.accept()
+
     def boundingRect(self):
         # 🐛 2026-08-12 老倪: 顶部扩 18px — 悬停 ID 浮在节点上方 (y=-18~-2) 需在 boundingRect 内才显示
         return QRectF(0, 0, self.w, self.h).adjusted(-12, -18, 12, 12)
