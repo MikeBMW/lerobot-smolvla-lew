@@ -1914,6 +1914,20 @@ class SimNodeItem(QGraphicsObject):
         self.setFlags(QGraphicsItem.ItemIsSelectable |
                       QGraphicsItem.ItemSendsGeometryChanges)
         self.setZValue(1 if node.get("type") == "row_bg" else 10)  # 🐛 2026-08-09: row_bg 垫底 (否则盖在节点上颜色模糊)
+        # 🐛 2026-08-12 老倪: SimNodeItem 补 hover 机制 (原类无 hover 事件 →
+        # _hover 恒 False → 悬停 ID 不显示; setAcceptHoverEvents 只在 SimLinkItem)
+        self.setAcceptHoverEvents(True)
+        self._hover = False
+
+    def hoverEnterEvent(self, e):
+        self._hover = True
+        self.update()
+        e.accept()
+
+    def hoverLeaveEvent(self, e):
+        self._hover = False
+        self.update()
+        e.accept()
 
     def boundingRect(self):
         return QRectF(0, 0, self.w, self.h).adjusted(-12, -12, 12, 12)
