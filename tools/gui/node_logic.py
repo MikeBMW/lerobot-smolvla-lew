@@ -805,6 +805,34 @@ _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不�
 _reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
 
 
+# ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开) ──
+def node_yolo_3d(ctx):
+    """🎯 YOLO 3D — 相机图像 → 检测销钉/插孔/末端 (mAP 0.994) → 2D→3D 解算 → 39D state
+    真实实现: src/lerobot/policies/yolo_3d/ (train_yolo / yolo_state_aligner / gen_yolo_data / gen_tactile)"""
+    p = ctx.get("params", {})
+    log(f"🎯 YOLO 3D: model={p.get('model','yolov8s')} classes={p.get('classes','peg/hole/hand')} · mAP 0.994 · 源码 src/lerobot/policies/yolo_3d/")
+    return True
+
+
+def node_yolo_align(ctx):
+    """📐 2D→3D 解算 — YOLO 2D 框中心 + 相机内参 → 目标 3D 坐标 (pixel_to_ray / ray_plane_intersect / YoloStateAligner)"""
+    p = ctx.get("params", {})
+    log(f"📐 2D→3D 解算: intrinsics={p.get('intrinsics','camera_K')} method={p.get('method','depth|hand-eye')} · 源码 yolo_state_aligner.py")
+    return True
+
+
+def node_yolo_tactile(ctx):
+    """📍 Marker 触觉跟踪 — GelSight 标记位移 → 4D 触觉力信号 (夹持/接触/滑觉); 数据改造: metaworld_peg → 43D"""
+    p = ctx.get("params", {})
+    log(f"📍 Marker 触觉跟踪: grid={p.get('grid','7x9')} dim={p.get('dim',4)} · 触觉数据生成 gen_tactile.py")
+    return True
+
+
+_reg("yolo_3d",     ["YOLO 3D"], "🎯 YOLO 3D — 检测销钉/插孔/末端 → 2D→3D → 39D state (源码 yolo_3d/)", node_yolo_3d)
+_reg("yolo_align",  ["2D→3D"], "📐 2D→3D 解算 — 像素→3D 坐标 (源码 yolo_3d/yolo_state_aligner.py)", node_yolo_align)
+_reg("yolo_tactile", ["Marker 触觉"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
+
+
 # ════════════════════════════════════════════════════════════════
 # 🧩 坐标叠加 (CoordOverlay) — 2026-08-08 老倪架构: 坐标是逻辑主线,
 #    图像是背景 — state 叠加进 latent (latent += 坐标投影), 不混合进 token 序列
@@ -844,6 +872,12 @@ _EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"),
 _EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 59, "class RightBrainWM")
 _EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 75, "class LeftRightPolicy")
 _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 34, "class LeftRightConfig")  # 🐛 2026-08-12: 原 sym 非符号名定位失败 → 显示整个配置类 (含接触/状态机阈值)
+
+# 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
+_YOLO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))), "src", "lerobot", "policies", "yolo_3d")
+_EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
+_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")  # 📐 2D→3D 解算
+_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
 
 
