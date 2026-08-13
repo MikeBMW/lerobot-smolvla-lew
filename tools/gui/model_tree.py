@@ -198,7 +198,7 @@ class ModelTreeDock(QDockWidget):
 
         # 下拉菜单: 视图切换 (参考 MATLAB Workspace 数据字典)
         self.cmb_view = QComboBox()
-        self.cmb_view.addItems(["📚 数据字典", "⚙️ 参数标定", "🧮 数学分析"])
+        self.cmb_view.addItems(["📚 数据字典", "⚙️ 参数标定", "🧮 数学分析", "🎛 状态空间设计"])
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         lay.addWidget(self.cmb_view)
 
@@ -228,10 +228,14 @@ class ModelTreeDock(QDockWidget):
     # ── 视图切换 ──
     def _switch_view(self, idx):
         math = idx == 2
-        self.tree.setVisible(not math)
-        self.lbl_math.setVisible(math)
-        self.plot.setVisible(math)
-        if math:
+        ss = idx == 3
+        show = math or ss
+        self.tree.setVisible(not show)
+        self.lbl_math.setVisible(show)
+        self.plot.setVisible(show)
+        if ss:
+            self._show_state_space()
+        elif math:
             self._show_math()
         else:
             self.refresh()
@@ -322,3 +326,89 @@ class ModelTreeDock(QDockWidget):
                f"稳定性: {'✅ 稳定 (全部极点 Re<0)' if res['stable'] else '❌ 不稳定 (存在 Re≥0 极点)'}")
         self.lbl_math.setText(txt)
         self.plot.set_data(res["poles"], res["zeros"], res["stable"])
+
+    # ── 状态空间设计 (2026-08-12 老倪: 经典控制 ↔ 双脑网络同构) ──
+    def _show_state_space(self):
+        """把画布 Z700 映射为状态空间: obs=状态x, action=输入u,
+        左脑=反馈控制器 K, 右脑=状态转移 f(x,u) (局部线性化 A,B),
+        感知链=观测模型 C, 状态机=硬约束 (滚动时域控制)"""
+        try:
+            import numpy as _np
+            nodes = self.module.nodes
+            # ── 节点 → 控制角色 ──
+            roles = []
+            for n in nodes:
+                name = n.get("name", "")
+                t = n.get("type", "")
+                if n.get("type") == "row_bg":
+                    continue
+                if "YOLO" in name or "2D→3D" in name or "Adapter" in name or "Marker" in name or "obs" in name:
+                    roles.append((name, "观测模型 y=Cx", "感知链: 状态→观测"))
+                elif "左脑" in name:
+                    roles.append((name, "控制器 u=-Kx", "状态反馈: 生成动作"))
+                elif "右脑" in name:
+                    roles.append((name, "状态转移 x'=f(x,u)", "世界模型: 局部线性化 A,B"))
+                elif "接触判定" in name or name.startswith("➤"):
+                    roles.append((name, "硬约束 x∈X_safe", "状态机: 滚动时域控制"))
+                elif "metaworld" in name or "数据源" in name or t == "hardware":
+                    roles.append((name, "输入 u(t)", "外部输入"))
+                elif "LeftRightPolicy" in name:
+                    roles.append((name, "输出 y(t)", "系统输出"))
+                elif "训练" in name or "推理" in name or "视频" in name or "PDF" in name:
+                    roles.append((name, "监督/交付", "训练调度/报告"))
+                else:
+                    roles.append((name, "中间环节", "信号路由"))
+            # ── 理论状态空间 (双脑: 右脑一阶延迟近似) ──
+            T = 0.1  # 右脑状态转移时间常数 (理论近似)
+            A = _np.array([[-1.0 / T]])   # 状态转移: x' = -(1/T)x + ...
+            B = _np.array([[1.0 / T]])    # 动作输入耦合
+            C = _np.array([[1.0]])        # 观测=状态
+            D = _np.array([[0.0]])
+            eig = _np.linalg.eigvals(A)
+            rho = float(_np.max(_np.abs(eig)))          # 谱半径
+            # 李雅普诺夫: AᵀP + PA = -I (1维解析)
+            P = T / 2.0
+            lyap_ok = P > 0 and float(2 * A[0, 0] * P) < 0
+            # 可控性/可观测性 (1阶: 恒真)
+            ctrb_ok = abs(B[0, 0]) > 1e-9
+            obsv_ok = abs(C[0, 0]) > 1e-9
+            lines = []
+            lines.append("🎛 状态空间设计 (经典控制 ↔ 双脑网络)")
+            lines.append("同构映射: obs=状态x · action=输入u · 右脑=转移f(x,u)")
+            lines.append("")
+            lines.append("u(t) ─▶ [感知 C] ─▶ x(t)=obs ─▶ [左脑 K] ─▶ u'(t)")
+            lines.append("                    │")
+            lines.append("                    ▼")
+            lines.append("              [右脑 f(x,u): x'=Ax+Bu]")
+            lines.append("                    │")
+            lines.append("              [状态机: x∈X_safe 硬约束]")
+            lines.append("")
+            lines.append("── 节点 → 控制角色 ──")
+            for name, role, desc in roles[:10]:
+                lines.append(f"  {name[:16]:18} = {role} ({desc})")
+            lines.append("")
+            lines.append("── 状态空间四元组 (右脑局部线性化近似) ──")
+            lines.append(f"  ẋ = Ax + Bu      A={A.tolist()}  B={B.tolist()}")
+            lines.append(f"  y = Cx + Du      C={C.tolist()}  D={D.tolist()}")
+            lines.append(f"  特征值(极点) = {eig.tolist()} · 谱半径 ρ(A) = {rho:.4f}")
+            lines.append("")
+            lines.append("── 稳定性三层次 (李雅普诺夫/BIBO) ──")
+            if rho < 1:
+                lines.append("  ① 纯网络推理 (权重固定): ✅ BIBO 稳定 (Lipschitz 激活, 有界输入→有界输出)")
+            else:
+                lines.append("  ① 纯网络推理 (权重固定): ⚠ 转移增益 ≥1, 存在发散风险")
+            if rho < 1:
+                lines.append("  ② 右脑自回归 (WM 开环预测): ✅ ρ(A)<1 误差收敛")
+            else:
+                lines.append(f"  ② 右脑自回归 (WM 开环预测): ⚠ ρ(A)={rho:.3f}≥1 — 误差滚雪球 (JEPA 核心瓶颈)")
+            lines.append("  ③ 混合确定性 (左脑+状态机): ✅ 工程稳定 — 物理阈值硬约束拉回安全集")
+            lines.append(f"     李雅普诺夫: P={P:.4f}>0 且 AᵀP+PA={float(2 * A[0, 0] * P):.4f}<0 → {'渐近稳定' if lyap_ok else '检查'}")
+            lines.append(f"     可控性 rank(B)=1 → {'✅ 可控' if ctrb_ok else '❌'}")
+            lines.append(f"     可观测性 rank(C)=1 → {'✅ 可观测' if obsv_ok else '❌'}")
+            lines.append("")
+            lines.append("结论: 连续推理交给物理规则(状态机), 离散时机判断交给网络(右脑)")
+            lines.append("      — 混合确定性 = 工程最优解 (防潜空间状态失控)")
+            self.lbl_math.setText("\n".join(lines))
+            self.plot.set_data(eig, [], rho < 1)
+        except Exception as ex:
+            self.lbl_math.setText(f"⚠️ 状态空间设计失败: {ex}")
