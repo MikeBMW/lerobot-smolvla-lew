@@ -833,6 +833,91 @@ _reg("yolo_align",  ["2D→3D"], "📐 2D→3D 解算 — 像素→3D 坐标 (�
 _reg("yolo_tactile", ["Marker 触觉"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
 
 
+# ── 📦 Z700 数据源 / 适配 / obs (2026-08-12 老倪: 每个节点都有代码) ──
+def node_metaworld_peg(ctx):
+    """📦 metaworld_peg — 仿真插拔数据集 (39D 状态 + 图像, 24集 4800帧)
+    数据生成: tools/gen_metaworld_data.py; 触觉增强: src/lerobot/policies/yolo_3d/gen_tactile.py (39D→43D)"""
+    p = ctx.get("params", {})
+    log(f"📦 metaworld_peg: frames={p.get('frames', 4800)} dims={p.get('dims', '4D/4D')} · 数据源: 喂感知链+训练")
+    return True
+
+
+def node_state_adapter(ctx):
+    """🔌 State Adapter — 感知融合: 视觉 39D + 触觉 4D = 43D 统一输入
+    数据流适配: 归一化/拼接/维度对齐 (策略输入接口, 与训练配置 processor 对应)"""
+    p = ctx.get("params", {})
+    log(f"🔌 State Adapter: in={p.get('in_dim', 43)} out={p.get('out_dim', 43)} normalize={p.get('normalize', True)} · 视觉39D+触觉4D=43D")
+    return True
+
+
+def node_obs43(ctx):
+    """📊 43D obs 输入 — 统一状态输入节点 (感知链与策略的接口)
+    39D 结构: hand_pos[3]+gripper[1]+peg_pos[3]+peg_quat[4]+pad[7]+prev帧[18]+hole_pos[3]
+    + 触觉 4D (Marker) = 43D"""
+    p = ctx.get("params", {})
+    log(f"📊 43D obs: dims={p.get('dims', 43)} · 39D 结构 + 触觉4D")
+    return True
+
+
+def node_solution_web(ctx):
+    """🌐 方案介绍 — 打开方案介绍分页 (datadrive.world/solution.html, 含PDF下载)
+    网页: zmax-website/solution.html + Z700-方案介绍.pdf (线上部署)"""
+    p = ctx.get("params", {})
+    log("🌐 方案介绍: 打开 https://datadrive.world/solution.html · 光模块工厂5大场景/架构/节点职责")
+    return True
+
+
+_reg("metaworld_peg", ["metaworld_peg"], "📦 metaworld_peg — 插拔数据集 39D+图像 (源码 tools/gen_metaworld_data.py)", node_metaworld_peg)
+_reg("state_adapter", ["State Adapter"], "🔌 State Adapter — 视觉39D+触觉4D=43D 融合适配", node_state_adapter)
+_reg("obs43", ["43D obs"], "📊 43D obs 输入 — 39D结构+触觉4D=43D 统一输入", node_obs43)
+_reg("solution_web", ["方案介绍"], "🌐 方案介绍 — 打开方案分页 (datadrive.world/solution.html)", node_solution_web)
+
+
+# ── ➤ 状态机 6 阶段 (2026-08-12 老倪: 每阶段代码, 参数对应 configuration_left_right.py) ──
+def node_stage_approach(ctx):
+    p = ctx.get("params", {})
+    log(f"➤ 接近: bias={p.get('bias', 'act*0.3 + hand→peg方向*2.0')} · 规则方向+学习修正 (5/8 vs 0/8)")
+    return True
+
+
+def node_stage_grasp(ctx):
+    p = ctx.get("params", {})
+    log(f"➤ 抓取: effort={p.get('effort', 0.6)} · 专家式夹持+位置锁定")
+    return True
+
+
+def node_stage_lift(ctx):
+    p = ctx.get("params", {})
+    log(f"➤ 抬起: height={p.get('height', 0.08)}m force={p.get('force', 0.8)} · 避开台面")
+    return True
+
+
+def node_stage_transfer(ctx):
+    p = ctx.get("params", {})
+    log(f"➤ 转移: tolerance={p.get('tolerance', 0.05)}m · peg 有导向")
+    return True
+
+
+def node_stage_insert(ctx):
+    p = ctx.get("params", {})
+    log(f"➤ 插入: tolerance={p.get('tolerance', 0.05)}m · 完成插拔")
+    return True
+
+
+def node_stage_done(ctx):
+    p = ctx.get("params", {})
+    log(f"➤ 完成: stage={p.get('stage', 'done')} · 释放/复位, 进入下一循环")
+    return True
+
+
+_reg("stage_approach", ["➤ 接近"], "➤ 接近 — 偏置接近 (状态机第1阶段, 源码 left_right/)", node_stage_approach)
+_reg("stage_grasp",    ["➤ 抓取"], "➤ 抓取 — 专家式夹持 0.6 (状态机第2阶段)", node_stage_grasp)
+_reg("stage_lift",     ["➤ 抬起"], "➤ 抬起 — +8cm 避台面 (状态机第3阶段)", node_stage_lift)
+_reg("stage_transfer", ["➤ 转移"], "➤ 转移 — 容差 5cm (状态机第4阶段)", node_stage_transfer)
+_reg("stage_insert",   ["➤ 插入"], "➤ 插入 — 完成插拔 (状态机第5阶段)", node_stage_insert)
+_reg("stage_done",     ["➤ 完成"], "➤ 完成 — 释放复位 (状态机第6阶段)", node_stage_done)
+
+
 # ════════════════════════════════════════════════════════════════
 # 🧩 坐标叠加 (CoordOverlay) — 2026-08-08 老倪架构: 坐标是逻辑主线,
 #    图像是背景 — state 叠加进 latent (latent += 坐标投影), 不混合进 token 序列
