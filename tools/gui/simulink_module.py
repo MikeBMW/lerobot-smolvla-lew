@@ -2392,10 +2392,8 @@ class SimCanvas(QGraphicsView):
         🐛 2026-08-10 老倪: 菜单跑到另外屏幕 — mapToGlobal 在 WSLg 多屏下屏幕归属错位
         → 用 QCursor.pos() 跟随系统光标真实位置, 菜单必在鼠标处弹出"""
         menu = QMenu()
-        menu.setStyleSheet(
-            "QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; }"
-            "QMenu::item { padding:6px 28px 6px 14px; color:#e6edf3; font-size:12px; }"
-            "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
+        # 🐛 2026-08-12 老倪: 深色 QSS 在 VcXsrv 下渲染成黑屏无字 (border-radius 或
+        # 背景色合成失败) → 完全去掉 QSS 用系统默认菜单, 最稳
         a_logic = menu.addAction("📖 查看/编辑节点逻辑")
         a_param = menu.addAction("⚙️ 节点参数")
         # 2026-08-05 老倪: 训练节点右键 → 训练配置 (步数/batch/lr)
