@@ -2372,6 +2372,7 @@ class SimCanvas(QGraphicsView):
         self._drag_start = None      # 拖动起始 (id, x, y) — Ctrl+Z 回退用 (2026-08-07)
         self._panning = False
         self._pan_start = None
+        self._hover_items = set()  # 🐛 2026-08-12 老倪: mouseMove 驱动的 hover 节点集合
         self._scale = 1.0
         # ↩️ Ctrl+Z 撤销 (2026-08-07 老倪: 挪动背景行回不去上一步)
         # WidgetWithChildrenShortcut: 焦点在画布内才触发, 不抢搜索框/输入框的原生撤销
@@ -2485,6 +2486,21 @@ class SimCanvas(QGraphicsView):
             self.module.on_node_activated(item.node)
 
     def mouseMoveEvent(self, e):
+        # 🐛 2026-08-12 老倪: hover 状态由鼠标位置直接驱动 (QGraphicsItem hover 事件
+        # 在 VcXsrv 下迟钝/不触发 → ID 显示异常; itemAt 实时检测, 反应即时)
+        try:
+            item = self.itemAt(e.pos())
+            node_item = item if isinstance(item, SimNodeItem) else None
+            for it in self._hover_items:
+                if it is not node_item:
+                    it._hover = False
+                    it.update()
+            if node_item is not None and not node_item._hover:
+                node_item._hover = True
+                node_item.update()
+            self._hover_items = {node_item} if node_item is not None else set()
+        except Exception:
+            pass
         if self._panning:
             delta = e.pos() - self._pan_start
             self._pan_start = e.pos()
