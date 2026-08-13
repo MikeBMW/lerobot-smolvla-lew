@@ -3269,6 +3269,15 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
         self._log("Simulink 模式就绪 · 0帧起手, 从左侧模块库开始搭建")
+        # 📚 右侧数据字典 Model Tree (2026-08-12 老倪: 数学化改造 — 参数树/标定/数学分析)
+        try:
+            from model_tree import ModelTreeDock
+            self.model_tree = ModelTreeDock(self)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.model_tree)
+            self.model_tree.setMinimumWidth(300)
+        except Exception as _ex:
+            self._log(f"⚠️ 数据字典面板加载失败: {_ex}")
+            self.model_tree = None
 
     # ── 初始工作流: 空画布 (0帧起手) ──
     def _seed_default_flow(self):
@@ -3582,6 +3591,12 @@ class SimulinkModule(QWidget):
             self._sync()
             self.canvas._scene.update()
         self._assign_veh5_ids()  # 🐛 2026-08-12 老倪: 画布节点 ID = VEH.5.顺序号
+        # 📚 数据字典树刷新 (2026-08-12 老倪: 画布变化同步右侧 Model Tree)
+        try:
+            if getattr(self, "model_tree", None):
+                self.model_tree.refresh()
+        except Exception:
+            pass
         return True
 
     def load_reference_app(self, name, node_specs, link_specs, layout=None):
