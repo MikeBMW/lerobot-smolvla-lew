@@ -7063,6 +7063,7 @@ class SimulinkModule(QWidget):
             tail = "\n".join(out[-14:]) if out else "?"
             if r.returncode == 0:
                 # 📤 飞书报告 (2026-08-12 老倪: 在飞书等报告)
+                pdf_path = None
                 try:
                     with open(os.path.join(root, "reports", "eval_state_space.json"), encoding="utf-8") as f:
                         rep = json.load(f)
@@ -7073,9 +7074,21 @@ class SimulinkModule(QWidget):
                             f"· 状态机: 覆盖{rep['state_machine']['coverage']:.0%} 成功率{rep['state_machine']['success_rate']:.0%}\n"
                             f"· 结论: {rep['verdict']}")
                     self._feishu_send_text_async(_msg)
+                    # 📄 汇总 PDF 报告生成 + 发飞书 (2026-08-14 老倪: 每图详释+汇总)
+                    g = _sp.run([os.path.join(root, ".venv", "bin", "python"),
+                                 os.path.join(root, "tools", "gen_report_state_space.py")],
+                                capture_output=True, text=True, timeout=120, cwd=root)
+                    if g.returncode == 0:
+                        cands = sorted(glob.glob(os.path.join(root, "reports", "状态空间稳定性评估报告_*.pdf")),
+                                       key=os.path.getmtime)
+                        if cands:
+                            pdf_path = cands[-1]
+                            self._feishu_send_file_work(pdf_path, "pdf",
+                                                        "📊 Z700 状态空间稳定性评估报告 (图+公式+数据+结论)")
                 except Exception:
-                    self._feishu_send_text_async("📊 Z700 状态空间评估完成 (报告见 reports/eval_state_space.json)")
-                return True, "📊 状态空间评估完成: reports/eval_state_space.json"
+                    self._feishu_send_text_async("📊 Z700 状态空间评估完成 (报告见 reports/)")
+                return True, ("📊 状态空间评估完成: reports/eval_state_space.json"
+                              + (f" + {os.path.basename(pdf_path)}" if pdf_path else ""))
             return False, f"评估失败: {tail.splitlines()[-1] if tail else '?'}"
 
         self._start_worker(_work, "📊 状态空间评估进行中…")
