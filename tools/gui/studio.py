@@ -1422,7 +1422,13 @@ class DatasetModule(SubModuleWidget):
                 steps = max(_nums) if _nums else 0
             except Exception:
                 steps = 0
-            sz = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(d) for f in fs) / 1e6
+            # 🐛 2026-08-12 老倪: 遍历加容错 — docker root 产物权限异常(600)时
+            # os.path.getsize 抛 PermissionError → 整个 GUI 启动崩溃; 跳过不可读文件
+            sz = 0.0
+            try:
+                sz = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(d) for f in fs) / 1e6
+            except Exception:
+                sz = 0.0
             tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
             row = QHBoxLayout()
             lbl = QLabel(f"⚙ {name}  ·  {steps} 步  ·  {sz:.0f}MB  ·  {tm}")
