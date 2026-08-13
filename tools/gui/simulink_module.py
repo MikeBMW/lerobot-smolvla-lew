@@ -3222,6 +3222,11 @@ class SimulinkModule(QWidget):
         outer.addWidget(st)
 
         # 底部日志 (对标 Simulink 诊断) — 📋 可折叠 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)
+        # 🐛 2026-08-12 老倪: 日志区整体放进垂直 splitter → 鼠标拖边沿可扩大/抬高终端
+        self._log_panel = QWidget()
+        _lp = QVBoxLayout(self._log_panel)
+        _lp.setContentsMargins(0, 0, 0, 0)
+        _lp.setSpacing(0)
         log_head = QHBoxLayout()
         log_title = QLabel("📋 日志")
         log_title.setStyleSheet("color:#57606a; font-size:10px; font-weight:700; background:transparent; border:none;")
@@ -3237,12 +3242,20 @@ class SimulinkModule(QWidget):
         """)
         self.btn_log_toggle.clicked.connect(self._toggle_log_box)
         log_head.addWidget(self.btn_log_toggle)
-        outer.addLayout(log_head)
+        _lp.addLayout(log_head)
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(110)
+        # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
         self.log_box.setStyleSheet("background:#f6f8fa; color:#57606a; border:none; border-top:1px solid #d0d7de; font-size:11px; font-family:Consolas;")
-        outer.addWidget(self.log_box)
+        _lp.addWidget(self.log_box)
+        # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
+        self._v_split.addWidget(self._log_panel)
+        try:
+            self._v_split.setStretchFactor(0, 1)
+            self._v_split.setStretchFactor(1, 0)
+            self._v_split.setSizes([560, 160])
+        except Exception:
+            pass
         # 🎨 应用当前主题 (QSS 硬编码为浅色模板, 构建后按 _CUR_THEME 重设为深/浅)
         # (老倪 2026-08-05: 默认暗色调, 配置中心可切)
         self._theme = _CUR_THEME
@@ -6744,7 +6757,9 @@ class SimulinkModule(QWidget):
             return
         # 1) 数据源节点: 切换激活 — 🐛 2026-08-12 老倪: 排除 insert_video/insert_report
         #   (▶视频/📄PDF 节点有 source 源码映射, 原被本分支抢先 → 双击变数据源切换)
-        if params.get("source") and not params.get("insert_video") and not params.get("insert_report"):
+        #   + 排除 🚀训练 节点 (source 是源码映射, 双击语义=训练配置, 2026-08-12 同坑)
+        if params.get("source") and not params.get("insert_video") and not params.get("insert_report") \
+                and not (params.get("policy") and "训练" in node.get("name", "")):
             self._toggle_source(node)
             return
         # 1.5) Switch 节点 (仿 Simulink Switch 块): 切换数据源路由
@@ -6777,6 +6792,10 @@ class SimulinkModule(QWidget):
             return
         # 1.75) 📷 推理 (rollout) 模块 (2026-08-12 老倪: 训练旁推理模块)
         if params.get("infer_rollout"):
+            # 🐛 2026-08-12 老倪: 训练模式下推理节点禁用 (模式开关互斥)
+            if self._current_mode() == "train":
+                self._log("🔀 当前为训练模式 — 双击 🔀 训练/推理 开关切到推理后再推理")
+                return
             self.on_infer_rollout(node)
             return
         # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
@@ -6795,6 +6814,10 @@ class SimulinkModule(QWidget):
                     # 2026-08-05 老倪: "增加训练步数调整功能, 双击打开配置" —
                     # 训练节点双击 → 训练配置对话框 (不直接运行)
                     if kw == "训练":
+                        # 🐛 2026-08-12 老倪: 推理模式下训练节点禁用
+                        if self._current_mode() == "infer":
+                            self._log("🔀 当前为推理模式 — 双击 🔀 训练/推理 开关切回训练后再训练")
+                            return
                         self.on_train_config(node)
                     else:
                         self._run_node_stage(node, fn, kw)
@@ -6885,6 +6908,14 @@ class SimulinkModule(QWidget):
         it = self._items.get(node["id"])
         if it:
             it.update()
+
+    def _current_mode(self):
+        """🔀 画布模式开关当前状态 → 'train' | 'infer' | None (2026-08-12)"""
+        for n in self.nodes:
+            p = n.get("params", {})
+            if p.get("mode") in ("train", "infer"):
+                return p["mode"]
+        return None
 
     def _toggle_mode(self, node):
         """🔀 训练/推理模式开关 (2026-08-12 老倪: 训练旁推理模块)
