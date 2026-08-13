@@ -5298,11 +5298,20 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self._zoo_timer.stop()
         except Exception:
             pass
-        # 2. kill 训练进程 (本地 + 远程)
+        # 2. kill 训练进程 (本地 + 远程) — 2026-08-12: sudo docker 容器训练 → sudo pkill + docker kill
         try:
             import subprocess as _sp
-            _sp.run(["pkill", "-9", "-f", "lerobot_train"], timeout=5)
-            _sp.run(["pkill", "-9", "-f", "train_awe_zflow"], timeout=5)
+            for _pat in ("lerobot_train", "train_awe_zflow", "train_vla_touch",
+                         "train_yolo", "distill_expert"):
+                _sp.run(["sudo", "-n", "pkill", "-9", "-f", _pat], timeout=8)
+            try:
+                _out = _sp.run(["sudo", "-n", "docker", "ps", "-q",
+                                "--filter", "ancestor=zmax-std:1.0"],
+                               capture_output=True, text=True, timeout=10).stdout or ""
+                for _cid in _out.split():
+                    _sp.run(["sudo", "-n", "docker", "kill", _cid], timeout=10)
+            except Exception:
+                pass
             self._log("✅ 训练进程已终止")
         except Exception as e:
             self._log(f"⚠ 停止进程失败: {str(e)[:60]}")
@@ -9637,6 +9646,9 @@ class StudioMainWindow(QMainWindow):
 
         # ====== 文档菜单（帮助文档） ======
         m_doc = mb.addMenu("帮助文档(&H)")
+        # 📄 导出 PDF (2026-08-12 老倪: 帮助文档要有 PDF 导出功能)
+        m_doc.addAction("📄 导出文档为 PDF…", self._export_doc_pdf)
+        m_doc.addSeparator()
 
         # === Git 操作指南 + README（置顶） ===
         m_git = m_doc.addMenu("🔄 Git 推送与拉取指南")
@@ -9648,6 +9660,12 @@ class StudioMainWindow(QMainWindow):
         # ⚠️ _mk_doc_action 自动拼 self.docs_path(=docs/) — 传相对名, 别带 docs/ 前缀 (否则 docs/docs/ 不存在)
         m_doc.addAction(self._mk_doc_action("🧠 左右脑策略 · LeftRightPolicy 技术方案 (v2.0)",
             (["left_right_policy.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("🏭 精细操作场景 + 调制指标大屏监督方案",
+            (["factory_fine_ops_supervision.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("📋 光模块工厂精细操作需求规格书 (市场版)",
+            (["factory_fine_ops_demand.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("📑 Z700 具身方案技术协议 v3 (光模块工厂 5 场景)",
+            (["Z700_technical_agreement_v3.md"], "xdg-open")))
         m_doc.addSeparator()
         
         # 培训文档 (唯一 MD + PPTX)
@@ -10010,6 +10028,37 @@ del "%~f0"
         except Exception:
             pass  # 静默失败
 
+    def _export_doc_pdf(self):
+        """📄 导出帮助文档为 PDF (2026-08-12 老倪: 帮助文档 → 选 md → PDF → Windows 打开)"""
+        from PyQt5.QtWidgets import QFileDialog
+        try:
+            start = self.docs_path
+        except Exception:
+            start = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "docs")
+        path, _ = QFileDialog.getOpenFileName(self, "📄 选择要导出 PDF 的文档", start, "Markdown (*.md)")
+        if not path:
+            return
+        pdf_dir = os.path.join(os.path.dirname(path), "pdf")
+        out = os.path.join(pdf_dir, os.path.basename(path).replace(".md", ".pdf"))
+        # 🐛 2026-08-12: GUI 用系统 python3 (无 reportlab) → 用 .venv 子进程跑转换
+        import subprocess as _sp
+        _venv_py = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", ".venv", "bin", "python")
+        _tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs_pdf.py")
+        r = _sp.run([_venv_py, _tool, path, out], capture_output=True, text=True, timeout=120)
+        ok = r.returncode == 0 and os.path.exists(out)
+        if not ok:
+            _msg_ok(self, "导出失败", f"PDF 生成失败:\n{r.stderr[-300:]}", kind="critical")
+            return
+        # 🐛 WSL 路径 Windows 打不开 → 复制到 C 盘 + cmd start (同 _mk_doc_action 链路)
+        import shutil
+        _win_dir = "/mnt/c/Users/Public/ZMAX_docs"
+        os.makedirs(_win_dir, exist_ok=True)
+        _win_pdf = os.path.join(_win_dir, os.path.basename(out))
+        shutil.copy2(out, _win_pdf)
+        _sp.Popen(["cmd.exe", "/c", "start", "", _win_pdf.replace("/", "\\")],
+                  stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+        self.statusBar().showMessage(f"📄 已导出 PDF: {out}")
+
     def _mk_doc_action(self, label, paths_and_opener):
         """创建文档打开动作（支持多路径回退）"""
         paths, opener = paths_and_opener
@@ -10028,27 +10077,28 @@ del "%~f0"
                 full_path = os.path.join(self.docs_path, rel_path)
                 if os.path.exists(full_path):
                     try:
+                        # 🐛 2026-08-10 老倪"直接跳到 Windows 文档了": explorer.exe 不认 WSL /tmp 路径
+                        # → 一律复制到 Windows 可见 C 盘 (C:\Users\Public\ZMAX_docs) 再打开 (同视频链路)
+                        import shutil
+                        _win_dir = "/mnt/c/Users/Public/ZMAX_docs"
+                        os.makedirs(_win_dir, exist_ok=True)
+                        _win_path = os.path.join(_win_dir, os.path.basename(full_path))
+                        shutil.copy2(full_path, _win_path)
+                        _win = _win_path.replace("/mnt/c/", "C:\\").replace("/", "\\")
                         if opener == "libreoffice":
-                            # WSL: 复制到 Windows 临时目录 → PowerPoint 打开
-                            import shutil
-                            tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
-                            tmp_dir = "/tmp/zmax_docs"
-                            os.makedirs(tmp_dir, exist_ok=True)
-                            tmp_path = os.path.join(tmp_dir, tmp_name)
-                            shutil.copy2(full_path, tmp_path)
+                            # WSL: 复制到 Windows 可见路径 → PowerPoint 打开
                             # .pptx 用 PowerPoint（通过cmd.exe），其他用默认程序
                             if full_path.endswith(".pptx"):
-                                subprocess.Popen(["cmd.exe", "/c", "start", "powerpnt", tmp_path])
+                                subprocess.Popen(["cmd.exe", "/c", "start", "", _win],
+                                                 cwd="/mnt/c/Windows")
                             else:
-                                subprocess.Popen(["explorer.exe", tmp_path])
+                                subprocess.Popen(["cmd.exe", "/c", "start", "", _win],
+                                                 cwd="/mnt/c/Windows")
                         elif opener == "xdg-open":
-                            import shutil
-                            tmp_name = f"zmax_doc_{os.path.basename(full_path)}"
-                            tmp_dir = "/tmp/zmax_docs"
-                            os.makedirs(tmp_dir, exist_ok=True)
-                            tmp_path = os.path.join(tmp_dir, tmp_name)
-                            shutil.copy2(full_path, tmp_path)
-                            subprocess.Popen(["explorer.exe", tmp_path])
+                            # 🐛 2026-08-12 老倪: explorer.exe 打开 md 无关联程序没反应
+                            # → cmd start 用 Windows 默认程序 (md→编辑器/docx→Word/pptx→PPT)
+                            subprocess.Popen(["cmd.exe", "/c", "start", "", _win],
+                                             cwd="/mnt/c/Windows")
                         else:
                             subprocess.Popen([opener, full_path])
                         self.statusBar().showMessage(f"已打开: {rel_path}")
@@ -10256,10 +10306,9 @@ def main():
     except Exception:
         win.setGeometry(60, 40, 1400, 900)
     win.show()
-    # 2026-08-07 老倪: 控制台置顶到桌面前端 (WSLg 窗口可能被遮挡)
+    # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住
+    # 浏览器/文档窗口; 只保留启动时置前一次 (raise_ + activateWindow)
     try:
-        win.setWindowFlag(Qt.WindowStaysOnTopHint, True)
-        win.show()
         win.raise_()
         win.activateWindow()
     except Exception:

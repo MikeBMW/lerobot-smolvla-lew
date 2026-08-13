@@ -1,15 +1,199 @@
 {
   "format": "hermes-flow",
   "version": 2,
-  "name": "🧠 left_right 双脑+状态机 (抓起8/8 插入7/8)",
+  "name": "🧠 left_right 双脑+状态机 + 🎯 YOLO感知链 + 📍触觉 + 📦训练",
   "sim": "left_right",
   "policy": "left_right",
   "source": "src/lerobot/policies/left_right/ (8ed1c9e8)",
   "nodes": [
     {
+      "id": "yolbg",
+      "type": "row_bg",
+      "name": "🎨 YOLO 感知",
+      "x": -20,
+      "y": -170,
+      "w": 1790,
+      "icon": "🎨",
+      "color": "#2d6a8f",
+      "params": {
+        "bg": "#0f2438",
+        "model": "yolo_3d",
+        "desc": "YOLO 3D 感知链 (src/lerobot/policies/yolo_3d/)"
+      },
+      "h": 214,
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "dbt0",
+      "type": "hardware",
+      "name": "📦 metaworld_peg",
+      "x": 140,
+      "y": -150,
+      "w": 200,
+      "icon": "📦",
+      "color": "#3fb950",
+      "params": {
+        "source": "metaworld",
+        "frames": 4800,
+        "active": true,
+        "dims": "4D/4D",
+        "desc": "states 4D · actions 4D (sawyer 关节) · 24集4800帧 · 图像喂 YOLO 感知"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "yol1",
+      "type": "model",
+      "name": "🎯 YOLO 3D",
+      "x": 380,
+      "y": -150,
+      "w": 200,
+      "icon": "🎯",
+      "color": "#3fb950",
+      "params": {
+        "source": "src/lerobot/policies/yolo_3d",
+        "model": "yolov8s",
+        "classes": "peg/hole/hand",
+        "yolo_enabled": true,
+        "state_dim": 39,
+        "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D→3D解算 → 39D state (源码 src/lerobot/policies/yolo_3d/)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "yol2",
+      "type": "model",
+      "name": "📐 2D→3D 解算",
+      "x": 620,
+      "y": -150,
+      "w": 200,
+      "icon": "📐",
+      "color": "#58a6ff",
+      "params": {
+        "source": "src/lerobot/policies/yolo_3d",
+        "intrinsics": "camera_K",
+        "method": "depth|hand-eye",
+        "desc": "YOLO 2D框中心 + 深度/标定 → 目标 3D 坐标 → 拼入 state (yolo_state_aligner.py)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "yol3",
+      "type": "model",
+      "name": "🔌 State Adapter",
+      "x": 860,
+      "y": -150,
+      "w": 200,
+      "icon": "🔌",
+      "color": "#d4a800",
+      "params": {
+        "source": "src/lerobot/policies/yolo_3d",
+        "in_dim": 43,
+        "out_dim": 43,
+        "normalize": true,
+        "desc": "视觉39D + 触觉4D = 43D 统一 state, 接入双脑输入 (2026-08-12 触觉并入)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "yol4",
+      "type": "model",
+      "name": "📍 Marker 触觉跟踪",
+      "x": 1100,
+      "y": -150,
+      "w": 200,
+      "icon": "📍",
+      "color": "#f0883e",
+      "params": {
+        "source": "src/lerobot/policies/yolo_3d",
+        "grid": "7x9",
+        "dim": 4,
+        "desc": "GelSight 标记位移 → 低维力信号 4D (数据来自 metaworld_peg 改造, gen_tactile.py)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
       "id": "dba0",
       "type": "data",
-      "name": "📊 39D obs 输入",
+      "name": "📊 43D obs 输入",
       "x": 140,
       "y": 80,
       "w": 150,
@@ -19,7 +203,7 @@
         "dim": 39,
         "source": "metaworld peg-v6",
         "norm": "MEAN_STD (normalization_mapping)",
-        "desc": "完整观测: 坐标+速度+相对向量 → LeftRightConfig.input_features"
+        "desc": "视觉39D + 触觉4D = 43D 统一 state 输入"
       },
       "inputs": [
         {
@@ -56,7 +240,8 @@
         "params": "547K",
         "loss": "MSE (动作回归)",
         "optimizer": "AdamW lr=1e-4",
-        "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)"
+        "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -92,7 +277,8 @@
         "params": "87K",
         "contact_acc": "1.00",
         "loss": "MSE(next obs) + 0.5×BCE(contact)",
-        "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)"
+        "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -170,7 +356,8 @@
         "lift_height": 0.08,
         "transfer_tolerance": 0.05,
         "insert_tolerance": 0.05,
-        "desc": "推理编排: 接近→抓取(contact判定)→抬起(+0.08m)→转移(容差0.05)→插入(d_ph<0.05)→完成"
+        "desc": "推理编排: 接近→抓取(contact判定)→抬起(+0.08m)→转移(容差0.05)→插入(d_ph<0.05)→完成",
+        "source": "src/lerobot/policies/left_right"
       },
       "inputs": [
         {
@@ -516,9 +703,138 @@
       ],
       "actions": [],
       "h": 214
+    },
+    {
+      "id": "dbtbg",
+      "type": "row_bg",
+      "name": "🎨 训练",
+      "x": -20,
+      "y": 750,
+      "w": 1070,
+      "icon": "🎨",
+      "color": "#3fb950",
+      "params": {
+        "bg": "#10281c",
+        "model": "train",
+        "desc": "训练行: metaworld_peg 数据源 → left_right 训练"
+      },
+      "h": 214,
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "dbt1",
+      "type": "system",
+      "name": "🚀 训练",
+      "x": 140,
+      "y": 770,
+      "w": 200,
+      "icon": "🚀",
+      "color": "#00d4aa",
+      "params": {
+        "steps": 3000,
+        "policy": "left_right",
+        "desc": "双击 → 配置/启动 left_right 训练 (metaworld_peg 数据, 39D, 3000步)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
+    },
+    {
+      "id": "dbso",
+      "type": "system",
+      "name": "🌐 方案介绍",
+      "x": 620,
+      "y": 540,
+      "w": 200,
+      "icon": "🌐",
+      "color": "#1f6feb",
+      "params": {
+        "solution_web": true,
+        "desc": "双击 → 打开 Z-MAX 方案介绍分页 (datadrive.world/solution.html, 光模块工厂5大场景, 含PDF下载)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ]
     }
   ],
   "links": [
+    {
+      "id": "lyol0",
+      "f": "dbt0",
+      "f_port": "out1",
+      "t": "yol1",
+      "t_port": "in1"
+    },
+    {
+      "id": "lyol5",
+      "f": "dbt0",
+      "f_port": "out1",
+      "t": "yol4",
+      "t_port": "in1"
+    },
+    {
+      "id": "lyol1",
+      "f": "yol1",
+      "f_port": "out1",
+      "t": "yol2",
+      "t_port": "in1"
+    },
+    {
+      "id": "lyol2",
+      "f": "yol2",
+      "f_port": "out1",
+      "t": "yol3",
+      "t_port": "in1"
+    },
+    {
+      "id": "lyol4",
+      "f": "yol4",
+      "f_port": "out1",
+      "t": "yol3",
+      "t_port": "in1"
+    },
+    {
+      "id": "lyol3",
+      "f": "yol3",
+      "f_port": "out1",
+      "t": "dba0",
+      "t_port": "in1"
+    },
     {
       "id": "l66781721687727",
       "f": "dba0",
@@ -638,6 +954,20 @@
       "f_port": "out1",
       "t_port": "in1",
       "label": "演示视频"
+    },
+    {
+      "id": "ltr0",
+      "f": "dbt0",
+      "f_port": "out1",
+      "t": "dbt1",
+      "t_port": "in1"
+    },
+    {
+      "id": "ltr1",
+      "f": "dbt1",
+      "f_port": "out1",
+      "t": "dbb0",
+      "t_port": "in1"
     }
   ]
 }

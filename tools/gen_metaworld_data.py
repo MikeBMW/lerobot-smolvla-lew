@@ -35,7 +35,9 @@ def main():
     yolo_mode = getattr(args, "yolo", False)
     yolo_aligner = None
     if yolo_mode:
-        from tools.yolo_state_aligner import YoloStateAligner
+        # 🐛 2026-08-12 老倪: yolo_state_aligner 已移入 src/lerobot/policies/yolo_3d/
+        sys.path.insert(0, str(proj / "src"))
+        from lerobot.policies.yolo_3d.yolo_state_aligner import YoloStateAligner
         WEIGHTS = "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt"
         import metaworld as _mt
         _mt_env = _mt.MT1("peg-insert-side-v3")

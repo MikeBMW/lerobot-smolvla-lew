@@ -1728,12 +1728,20 @@ class PipelinePanel(QDialog):
         if cw is not None and cw.isRunning():
             try:
                 import subprocess as _sp
-                _sp.run(["pkill", "-f", "lerobot.scripts.lerobot_train"],
-                        capture_output=True, timeout=5)
-                _sp.run(["pkill", "-f", "tools.cicd_pipeline"],
-                        capture_output=True, timeout=5)
-                _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
-                        capture_output=True, timeout=5)
+                # 2026-08-12: 训练走 sudo docker run → sudo pkill 才能杀 root 进程
+                for _pat in ("lerobot.scripts.lerobot_train", "tools.cicd_pipeline"):
+                    _sp.run(["sudo", "-n", "pkill", "-9", "-f", _pat],
+                            capture_output=True, timeout=8)
+                # 🐳 容器训练兜底: docker kill (容器内进程 root, pkill 杀不掉)
+                try:
+                    _out = _sp.run(["sudo", "-n", "docker", "ps", "-q",
+                                    "--filter", "ancestor=zmax-std:1.0"],
+                                   capture_output=True, text=True, timeout=10).stdout or ""
+                    for _cid in _out.split():
+                        _sp.run(["sudo", "-n", "docker", "kill", _cid],
+                                capture_output=True, timeout=10)
+                except Exception:
+                    pass
                 if not cw.wait(15000):
                     self._keep_worker = cw  # 保留引用防 GC (崩溃修复#9 同款)
             except Exception:
@@ -2394,6 +2402,12 @@ class SimCanvas(QGraphicsView):
         a_train = None
         if "训练" in item.node.get("name", ""):
             a_train = menu.addAction("🎛 训练配置 (步数/batch/lr)")
+        # 📂 打开源代码 (2026-08-12 老倪: YOLO/双脑等节点 params.source 映射源码目录;
+        #   仅 src/ 开头显示 — 数据源节点的 source 是数据源标识非代码路径)
+        a_src = None
+        _nsrc = item.node.get("params", {}).get("source", "")
+        if _nsrc.startswith("src/"):
+            a_src = menu.addAction("📂 打开源代码")
         a_run = menu.addAction("▶ 运行节点")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
@@ -2403,6 +2417,8 @@ class SimCanvas(QGraphicsView):
             self.module.on_node_params(item.node)
         elif a_train is not None and chosen == a_train:
             self.module.on_train_config(item.node)
+        elif a_src is not None and chosen == a_src:
+            self.module.open_node_source(item.node)
         elif chosen == a_run:
             self.module.on_node_activated(item.node)
 
@@ -2843,15 +2859,10 @@ class SimulinkModule(QWidget):
                 try:
                     # 2026-08-05 崩溃修复#5: 训练中关闭窗口 → CICDWorker(阻塞训练 subprocess)
                     # wait(3000) 不够 → 先终止训练子进程让 worker 快速结束再 wait
-                    import subprocess as _sp
-                    _sp.run(["pkill", "-f", "lerobot.scripts.lerobot_train"],
-                            capture_output=True, timeout=5)
-                    _sp.run(["pkill", "-f", "tools.cicd_pipeline"],
-                            capture_output=True, timeout=5)
+                    # 2026-08-12: 训练走 sudo docker run → 统一 sudo pkill + docker kill
+                    self._kill_train_processes()
                     # 2026-08-05 崩溃修复#9: wait 超时若置 None → worker 被 GC 时线程还在跑
                     # → QThread destroyed SIGABRT; 改 pkill -9 强杀 + wait 15s, 失败保留引用
-                    _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
-                            capture_output=True, timeout=5)
                     if not w.wait(15000):
                         # 仍没结束: 保留引用防 GC (不置 None), 由 Qt 进程退出时统一处理
                         self._keep_worker = w
@@ -2946,6 +2957,10 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_pipeline)
         self.btn_compare5 = mk_btn("🔬 Model Zoo", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE + MLP + 专家 七模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
         tl.addWidget(self.btn_compare5)
+        # 🚀 Z700 快捷入口 (2026-08-12 老倪: 一键打开 Z700 完整工程 — YOLO感知+双脑+状态机+交付)
+        self.btn_z700 = mk_btn("🚀 Z700", "Z700 完整工程: 🎯YOLO感知链 → 🧠双脑+状态机 → ▶交付 (flows/dual_brain_peg_yolo.json, 感知源码 src/lerobot/policies/yolo_3d/)", self.open_z700_flow, "#00d4aa")
+        tl.addWidget(self.btn_z700)
+        # (🗑 2026-08-12 老倪: 工具栏 🌐方案介绍按钮已删 — 改用画布节点 (交付行))
         self.btn_atomic = mk_btn("🧩 原子", "打开原子技能库 (242条, W²-VLA Token) → 选技能 → 自动建节点链: 技能→结构条件→SYS1→action JSON", self.open_atomic_skill_flow, "#00d4aa")
         tl.addWidget(self.btn_atomic)
         self.btn_awe = mk_btn("🧿 AWE", "AWE 场景原生对比管道 (它石架构, 4060 精简): SigLIP视触觉编码冻结 + H-JEPA 三层潜空间(z₁/z₂/z₃) + zFlow GRU 世界引擎 + 未来决策交叉注意力 · 纵向对比世界模型架构", self.open_awe, "#a371f7")
@@ -2978,6 +2993,7 @@ class SimulinkModule(QWidget):
         self.canvas = SimCanvas(self)
         self.canvas.flow_changed.connect(lambda: self._sync())
         self.canvas.log.connect(self._log)
+        # (🗑 2026-08-12 老倪: 右上角 🌐方案介绍浮动按钮已删 — 改用画布节点 (交付行))
         # MDI 容器 (画布作为子窗口, 可最小化/最大化/关闭/移动/缩放)
         self._mdi = QMdiArea()
         self._mdi.setViewMode(QMdiArea.SubWindowView)
@@ -3722,6 +3738,70 @@ class SimulinkModule(QWidget):
                                "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家"], n_cols=12)
         QTimer.singleShot(300, lambda: self._compare_load_hint())
 
+    def open_z700_flow(self):
+        """🚀 Z700 快捷打开 (2026-08-12 老倪): 一键加载 Z700 完整工程 —
+        🎯YOLO感知链 → 🧠双脑+状态机 → ▶交付 (flows/dual_brain_peg_yolo.json)"""
+        flow = os.path.join(self._repo_root(), "flows", "dual_brain_peg_yolo.json")
+        if not os.path.exists(flow):
+            self._log("⚠️ 缺 flows/dual_brain_peg_yolo.json — 先跑 tools/gui/gen_dual_brain_yolo_flow.py")
+            self._qmsg_info("🚀 Z700", "缺 flows/dual_brain_peg_yolo.json\n\n先运行:\npython3 tools/gui/gen_dual_brain_yolo_flow.py")
+            return
+        if self.nodes:
+            if not self._qmsg_yes("🚀 Z700",
+                                  "将清空当前画布, 加载 Z700 完整工程?\n\n"
+                                  "🎨 YOLO感知: 🎯YOLO 3D → 📐2D→3D解算 → 🔌State Adapter\n"
+                                  "🎨 双脑: 39D obs → 左脑MLP → 右脑WM → 接触判定\n"
+                                  "🎨 状态机: LeftRightPolicy → 接近→抓取→抬起→转移→插入→完成\n"
+                                  "🎨 交付: ▶插拔视频 | 📄PDF报告\n"
+                                  "感知源码: src/lerobot/policies/yolo_3d/"):
+                return
+        self._log("🚀 打开 Z700 完整工程 (YOLO感知链 → 双脑+状态机 → 交付)…")
+        self.load_flow_file(flow)
+
+    def open_node_source(self, node):
+        """📂 打开节点源代码 (2026-08-12 老倪: 右键 YOLO/双脑等节点)
+        🐛 WSL 路径 Windows 打不开 (UNC 被拒) → 复制到 C:\\zmax_src_view + explorer 打开"""
+        src = node.get("params", {}).get("source", "")
+        if not src:
+            self._log("⚠️ 该节点无源码映射 (params.source)")
+            return
+        path = os.path.join(self._repo_root(), src)
+        if not os.path.exists(path):
+            self._log(f"⚠️ 源码不存在: {path}")
+            return
+        import shutil, subprocess as _sp
+        # 🐛 2026-08-12 老倪: 复制目标必须 WSL 路径 (/mnt/c/...), Windows 路径 "C:\\..." 
+        # 在 Linux 是相对路径 → 复制到错误位置 → 右键打不开
+        _name = os.path.basename(src.rstrip("/\\"))
+        dst_mnt = os.path.join("/mnt/c/zmax_src_view", _name)   # shutil 复制用 (WSL)
+        dst_win = os.path.join(r"C:\zmax_src_view", _name)      # cmd start 用 (Windows)
+        try:
+            if os.path.isdir(path):
+                if os.path.exists(dst_mnt):
+                    shutil.rmtree(dst_mnt)
+                shutil.copytree(path, dst_mnt, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            else:
+                os.makedirs(os.path.dirname(dst_mnt), exist_ok=True)
+                shutil.copy2(path, dst_mnt)
+            _sp.Popen(["cmd.exe", "/c", "start", "", dst_win],
+                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+            self._log(f"📂 已打开源码: {dst_win} ({src})")
+        except Exception as e:
+            self._log(f"⚠️ 打开源码失败: {e}")
+
+    def open_solution_web(self):
+        """🌐 方案介绍 (2026-08-12 老倪: 画板直达方案介绍分页 — 不干扰主页)
+        🐛 WSL 无 xdg-open → QDesktopServices 找不到浏览器 → cmd.exe start;
+        🐛 2026-08-12: cwd 必须 Windows 目录 — WSL 当前目录是 UNC, cmd start 静默失败"""
+        import subprocess as _sp
+        url = "https://datadrive.world/solution.html"  # 📄 方案介绍分页 (主页保持不动)
+        try:
+            _sp.Popen(["cmd.exe", "/c", "start", "", url],
+                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+            self._log(f"🌐 打开方案介绍分页: {url} → Windows 浏览器")
+        except Exception as e:
+            self._log(f"⚠️ 打开链接失败: {e}")
+
     def open_vlatouch(self):
         """🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: 参考 VLA-Touch 项目, 4060 精简):
         加载「🖐 VLA-Touch 触觉对比」模板 — base VLA 冻结只训 Interpolant 触觉控制器"""
@@ -4348,6 +4428,34 @@ class SimulinkModule(QWidget):
                 order.append(n["id"])
         return order
 
+    def _kill_train_processes(self):
+        """⏹ 统一停止训练进程/容器 (2026-08-12 修复: 训练走 sudo docker run → 容器内
+        python 是 root, 普通用户 pkill 无权限杀不掉 → sudo pkill + docker kill 双保险)"""
+        import subprocess as _sp
+        for pat in ("lerobot.scripts.lerobot_train", "train_awe_zflow",
+                    "train_vla_touch", "train_yolo", "distill_expert",
+                    "tools.cicd_pipeline"):
+            try:
+                _sp.run(["sudo", "-n", "pkill", "-9", "-f", pat],
+                        capture_output=True, timeout=8)
+            except Exception:
+                pass
+        # 🐳 docker kill: 容器内 python 进程是 root, pkill 只能杀 docker run 客户端,
+        # 容器照样跑 → 直接 kill 容器 (daemon 执行, 无权限问题)
+        try:
+            out = _sp.run(["sudo", "-n", "docker", "ps", "-q",
+                           "--filter", "ancestor=zmax-std:1.0"],
+                          capture_output=True, text=True, timeout=10).stdout or ""
+            for cid in out.split():
+                _sp.run(["sudo", "-n", "docker", "kill", cid],
+                        capture_output=True, timeout=10)
+        except Exception:
+            pass
+
+    def on_stop(self):
+        """studio 停止按钮 → simulink 停止 (2026-08-12: 原方法缺失, studio hasattr 静默失败)"""
+        self.stop_sim()
+
     def stop_sim(self):
         self._sim_running = False
         self._timer.stop()
@@ -4355,10 +4463,8 @@ class SimulinkModule(QWidget):
         # 应可用, 且点击后要真能终止训练 (原来只停仿真 timer 不碰 worker)
         w = getattr(self, "_worker", None)
         if w is not None and w.isRunning():
-            import subprocess as _sp
+            self._kill_train_processes()
             try:
-                _sp.run(["pkill", "-9", "-f", "lerobot.scripts.lerobot_train"],
-                        capture_output=True, timeout=5)
                 # 2026-08-05 修复: 阻塞 wait 卡死 UI — 改 processEvents 轮询 (最大 10s,
                 # 期间界面可拖动/日志刷新, 老倪: 怎么又卡死了)
                 from PyQt5.QtWidgets import QApplication as _QA
@@ -4803,6 +4909,16 @@ class SimulinkModule(QWidget):
             if stage == "train" and getattr(self, "_act_train_guided", False):
                 self._log("🚀 训练已启动 (约40s, 4060 CUDA)… 完成后我会继续提示 👇")
         self._log(f"⏳ {busy_msg} (后台执行, UI 可继续操作)…")
+        # 🐛 2026-08-12 老倪: ▶运行=left_right 自动训练时 ⏹停止一直灰 (start_sim 的
+        # left_right 分支直接 on_train 就 return, 不设按钮状态) → 训练类 worker 启动
+        # 时统一启用停止按钮 (stop_sim 会 sudo pkill + docker kill 容器训练)
+        if stage == "train":
+            try:
+                self.btn_run.setText("⏳ 训练中…")
+                self.btn_run.setEnabled(False)
+                self.btn_stop.setEnabled(True)
+            except Exception:
+                pass
 
         def _emit_log(msg):
             self._log(msg)
@@ -6361,6 +6477,10 @@ class SimulinkModule(QWidget):
         if params.get("insert_report"):
             self.on_insert_report()
             return
+        # 1.12) 🌐 方案介绍节点 (2026-08-12 老倪: 画布节点双击 → 打开方案介绍分页)
+        if params.get("solution_web"):
+            self.open_solution_web()
+            return
         # 2) 环节节点: 按名称匹配执行器
         for kw, meth in self.NODE_RUN_ACTIONS:
             if kw in node.get("name", ""):
@@ -6788,7 +6908,8 @@ class SimulinkModule(QWidget):
             self._log(f"⚠️ 场景 JSON POST 失败: {_e}")
         # ② 打开 3D 链接
         try:
-            _sp.Popen(["cmd.exe", "/c", "start", "", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            _sp.Popen(["cmd.exe", "/c", "start", "", url],
+                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
             self._log(f"🏭 打开 3D 场景: {scene_id} → Windows 浏览器")
         except Exception as e:
             self._log(f"⚠️ 打开链接失败: {e}")

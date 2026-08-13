@@ -8,7 +8,9 @@ import os, sys, json, numpy as np
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("MUJOCO_GL", "glfw")
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 🐛 2026-08-12 老倪: 已移入 src/lerobot/policies/yolo_3d/ — ROOT 上溯 4 层到仓库根
+#   (yolo_3d → policies → lerobot → src → 仓库根)
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".."))
 sys.path.insert(0, ROOT)
 
 from PIL import Image
