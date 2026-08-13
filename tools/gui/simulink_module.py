@@ -2041,16 +2041,14 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawLine(QPointF(_rx + 15, _ry + 21), QPointF(_rx + 18, _ry + 26))
             except Exception:
                 pass
-        # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-12 老倪: 移到右上角 (标题右侧,
-        # 青色粗体 9px) — 节点高仅 50px, 底部与 desc 重叠导致 ID 看不清
+        # 🌐 2026-08-08 老倪: 画布节点全局 ID — 🐛 2026-08-12 老倪: 仅悬停显示
+        # (右上角青色粗体 9px) — 常显占视觉, 用户要求鼠标放上才显示
         try:
-            painter.setPen(QColor("#58a6ff"))
-            painter.setFont(QFont("Arial", 9, QFont.Bold))
-            nid = self.node.get("nid") or (
-                f"VEH.5.{lib_seq_of(self.node.get('name', '')):03d}"
-                if lib_seq_of(self.node.get('name', '')) else
-                str(self.node.get("id", "")))
-            painter.drawText(QRectF(self.w - 92, 8, 86, 22), Qt.AlignRight | Qt.AlignVCenter, nid)
+            if getattr(self, "_hover", False):
+                painter.setPen(QColor("#58a6ff"))
+                painter.setFont(QFont("Arial", 9, QFont.Bold))
+                nid = self.node.get("nid") or str(self.node.get("id", ""))
+                painter.drawText(QRectF(self.w - 92, 8, 86, 22), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
             pass
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
@@ -3454,6 +3452,7 @@ class SimulinkModule(QWidget):
             self._suspend_undo = old_undo
             self._sync()
             self.canvas._scene.update()
+        self._assign_veh5_ids()  # 🐛 2026-08-12 老倪: 画布节点 ID = VEH.5.顺序号
         return True
 
     def load_reference_app(self, name, node_specs, link_specs, layout=None):
@@ -3515,6 +3514,18 @@ class SimulinkModule(QWidget):
         self.canvas._scene.update()
         self._log(f"🗂 已加载参考应用: {name} ({len(ids)}节点 {len(link_specs)}连线) · 双击节点改参数")
         self._tutorial_on_action("ref")
+        self._assign_veh5_ids()  # 🐛 2026-08-12 老倪: 画布节点 ID = VEH.5.顺序号 (布局排序)
+
+    def _assign_veh5_ids(self):
+        """simulink 画布节点 ID = VEH.5.顺序号 (2026-08-12 老倪: 按布局 y→x 排序, 悬停显示)
+        模块库按钮仍用库编号; 画布节点用画布顺序号 — 与库按钮 ID 解耦"""
+        try:
+            funcs = [n for n in self.nodes if n.get("type") != "row_bg"]
+            funcs.sort(key=lambda n: (n.get("y", 0), n.get("x", 0)))
+            for i, n in enumerate(funcs, 1):
+                n["nid"] = f"VEH.5.{i:03d}"
+        except Exception:
+            pass
 
     # ── 节点操作 ──
     def add_node_at_center(self, ntype, name, params=None):
