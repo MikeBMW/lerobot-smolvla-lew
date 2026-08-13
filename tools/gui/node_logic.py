@@ -340,6 +340,31 @@ def node_deploy(ctx):
 # ════════════════════════════════════════════════════════════════
 # ⑥ 推理 — Orin 推理服务状态
 # ════════════════════════════════════════════════════════════════
+def node_mode_switch(ctx):
+    """🔀 训练/推理模式开关 — 双击切换 train ⇄ infer, 激活路径金色高亮, 未激活灰显
+    数据流: 📦数据源 → 🔀开关 → 🚀训练 | 📷推理(rollout)
+    train → 训练节点激活(推理灰显); infer → 推理节点激活(训练灰显)
+    真实实现: simulink_module.py _toggle_mode / _apply_mode_highlight / paint(mode_active 灰显)"""
+    log = ctx["log"]
+    node = ctx.get("node", {})
+    p = node.get("params", {})
+    mode = p.get("mode", "train")
+    log(f"🔀 模式开关: 当前={'训练' if mode == 'train' else '推理'} (双击切换, 激活路径高亮)")
+    return True
+
+
+def node_infer_rollout(ctx):
+    """📷 推理 (rollout) — 加载最新双脑 checkpoint → 仿真插拔 rollout → 评估+视频
+    后台 worker: gen_insert_video.py (最新模型按 mtime 排序, 归一化从 preprocessor 读)
+    输出: reports/insert_success_demo.mp4 → 自动发飞书 dataworld 群
+    真实实现: simulink_module.py on_infer_rollout (_start_worker) + tools/gen_insert_video.py"""
+    log = ctx["log"]
+    node = ctx.get("node", {})
+    p = node.get("params", {})
+    log(f"📷 推理 rollout: policy={p.get('policy', 'left_right')} frames={p.get('frames', 60)} → 评估插拔成功率+视频")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -769,6 +794,8 @@ _reg("validate",   ["验证"],        "③ 验证 — 流程拓扑合规检查 (
 _reg("integrate",  ["集成"],        "④ 集成 — 打包 checkpoint → 上传 ECS 中转", node_integrate)
 _reg("deploy",     ["部署"],        "⑤ 部署 — 部署状态检查与推送", node_deploy)
 _reg("infer",      ["推理"],        "⑥ 推理 — 产线推理服务状态", node_infer)
+_reg("mode_switch", ["训练/推理", "模式开关"], "🔀 训练/推理模式开关 — 双击切换 train⇄infer", node_mode_switch)
+_reg("infer_rollout", ["推理 (rollout)", "rollout"], "📷 推理 (rollout) — 最新模型仿真插拔评估+视频", node_infer_rollout)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

@@ -1,983 +1,1048 @@
 {
-  "format": "hermes-flow",
-  "version": 2,
-  "name": "🧠 left_right 双脑+状态机 + 🎯 YOLO感知链 + 📍触觉 + 📦训练",
-  "sim": "left_right",
-  "policy": "left_right",
-  "source": "src/lerobot/policies/left_right/ (8ed1c9e8)",
-  "nodes": [
+ "format": "hermes-flow",
+ "version": 2,
+ "name": "🧠 left_right 双脑+状态机 + 🎯 YOLO感知链 + 📍触觉 + 📦训练",
+ "sim": "left_right",
+ "policy": "left_right",
+ "source": "src/lerobot/policies/left_right/ (8ed1c9e8)",
+ "nodes": [
+  {
+   "id": "yolbg",
+   "type": "row_bg",
+   "name": "🎨 YOLO 感知",
+   "x": -20,
+   "y": -170,
+   "w": 1790,
+   "icon": "🎨",
+   "color": "#2d6a8f",
+   "params": {
+    "bg": "#0f2438",
+    "model": "yolo_3d",
+    "desc": "YOLO 3D 感知链 (src/lerobot/policies/yolo_3d/)"
+   },
+   "h": 214,
+   "inputs": [
     {
-      "id": "yolbg",
-      "type": "row_bg",
-      "name": "🎨 YOLO 感知",
-      "x": -20,
-      "y": -170,
-      "w": 1790,
-      "icon": "🎨",
-      "color": "#2d6a8f",
-      "params": {
-        "bg": "#0f2438",
-        "model": "yolo_3d",
-        "desc": "YOLO 3D 感知链 (src/lerobot/policies/yolo_3d/)"
-      },
-      "h": 214,
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "dbt0",
-      "type": "hardware",
-      "name": "📦 metaworld_peg",
-      "x": 140,
-      "y": -150,
-      "w": 200,
-      "icon": "📦",
-      "color": "#3fb950",
-      "params": {
-        "source": "tools/gen_metaworld_data.py",
-        "frames": 4800,
-        "active": true,
-        "dims": "4D/4D",
-        "desc": "states 4D · actions 4D (sawyer 关节) · 24集4800帧 · 图像喂 YOLO 感知"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "yol1",
-      "type": "model",
-      "name": "🎯 YOLO 3D",
-      "x": 380,
-      "y": -150,
-      "w": 200,
-      "icon": "🎯",
-      "color": "#3fb950",
-      "params": {
-        "source": "src/lerobot/policies/yolo_3d",
-        "model": "yolov8s",
-        "classes": "peg/hole/hand",
-        "yolo_enabled": true,
-        "state_dim": 39,
-        "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D→3D解算 → 39D state (源码 src/lerobot/policies/yolo_3d/)"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "yol2",
-      "type": "model",
-      "name": "📐 2D→3D 解算",
-      "x": 620,
-      "y": -150,
-      "w": 200,
-      "icon": "📐",
-      "color": "#58a6ff",
-      "params": {
-        "source": "src/lerobot/policies/yolo_3d",
-        "intrinsics": "camera_K",
-        "method": "depth|hand-eye",
-        "desc": "YOLO 2D框中心 + 深度/标定 → 目标 3D 坐标 → 拼入 state (yolo_state_aligner.py)"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "yol3",
-      "type": "model",
-      "name": "🔌 State Adapter",
-      "x": 860,
-      "y": -150,
-      "w": 200,
-      "icon": "🔌",
-      "color": "#d4a800",
-      "params": {
-        "source": "src/lerobot/policies/yolo_3d",
-        "in_dim": 43,
-        "out_dim": 43,
-        "normalize": true,
-        "desc": "视觉39D + 触觉4D = 43D 统一 state, 接入双脑输入 (2026-08-12 触觉并入)"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "yol4",
-      "type": "model",
-      "name": "📍 Marker 触觉跟踪",
-      "x": 1100,
-      "y": -150,
-      "w": 200,
-      "icon": "📍",
-      "color": "#f0883e",
-      "params": {
-        "source": "src/lerobot/policies/yolo_3d",
-        "grid": "7x9",
-        "dim": 4,
-        "desc": "GelSight 标记位移 → 低维力信号 4D (数据来自 metaworld_peg 改造, gen_tactile.py)"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "dba0",
-      "type": "data",
-      "name": "📊 43D obs 输入",
-      "x": 140,
-      "y": 80,
-      "w": 150,
-      "icon": "📊",
-      "color": "#58a6ff",
-      "params": {
-        "dim": 39,
-        "source": "src/lerobot/policies/left_right",
-        "norm": "MEAN_STD (normalization_mapping)",
-        "desc": "视觉39D + 触觉4D = 43D 统一 state 输入"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dba1",
-      "type": "model",
-      "name": "🧠 左脑 LeftBrainMLP",
-      "x": 380,
-      "y": 80,
-      "w": 150,
-      "icon": "◈",
-      "color": "#58a6ff",
-      "params": {
-        "class": "LeftBrainMLP (modeling_left_right.py)",
-        "role": "连续动作生成",
-        "in_dim": 39,
-        "out_dim": 4,
-        "hidden": 512,
-        "structure": "Linear(39,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Linear(512,4)",
-        "params": "547K",
-        "loss": "MSE (动作回归)",
-        "optimizer": "AdamW lr=1e-4",
-        "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dba2",
-      "type": "model",
-      "name": "🧠 右脑 RightBrainWM",
-      "x": 620,
-      "y": 80,
-      "w": 150,
-      "icon": "◈",
-      "color": "#58a6ff",
-      "params": {
-        "class": "RightBrainWM (modeling_left_right.py)",
-        "role": "抓取时机判断",
-        "in_dim": "39D obs + 4D action",
-        "hidden": 256,
-        "structure": "enc: Linear(43,256)→ReLU→Linear(256,256)→ReLU; pred_next: Linear(256,39); contact_head: Linear(256,1)→sigmoid",
-        "params": "87K",
-        "contact_acc": "1.00",
-        "loss": "MSE(next obs) + 0.5×BCE(contact)",
-        "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dba3",
-      "type": "condition",
-      "name": "❖ 接触判定",
-      "x": 860,
-      "y": 80,
-      "w": 150,
-      "icon": "❖",
-      "color": "#a371f7",
-      "params": {
-        "rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
-        "d_hp_th": 0.06,
-        "contact_th": 0.5,
-        "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb0",
-      "type": "system",
-      "name": "◉ LeftRightPolicy",
-      "x": 140,
-      "y": 310,
-      "w": 150,
-      "icon": "◉",
-      "color": "#d4a800",
-      "params": {
-        "class": "LeftRightPolicy (lerobot 标准)",
-        "name": "left_right",
-        "factory": "factory.make_policy('left_right') ✅",
-        "stages": [
-          "接近",
-          "抓取",
-          "抬起",
-          "转移",
-          "插入",
-          "完成"
-        ],
-        "frames": "32+45+9+38+1 = 125帧",
-        "chunk_size": 1,
-        "n_action_steps": 1,
-        "grasp_contact_threshold": 0.5,
-        "grasp_d_hp": 0.06,
-        "lift_height": 0.08,
-        "transfer_tolerance": 0.05,
-        "insert_tolerance": 0.05,
-        "desc": "推理编排: 接近→抓取(contact判定)→抬起(+0.08m)→转移(容差0.05)→插入(d_ph<0.05)→完成",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb1",
-      "type": "action",
-      "name": "➤ 接近",
-      "x": 380,
-      "y": 310,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "target": "d_hp 0.2→0.06",
-        "desc": "左脑MLP偏置接近 (32帧)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb2",
-      "type": "action",
-      "name": "➤ 抓取",
-      "x": 620,
-      "y": 310,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "trigger": "contact>0.5 & d_hp<0.06",
-        "grab": "夹持0.6 + 位置锁定",
-        "desc": "右脑 get_right_contact 判定触发 (45帧)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb3",
-      "type": "action",
-      "name": "➤ 抬起",
-      "x": 860,
-      "y": 310,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "height": "+0.08m (lift_height)",
-        "force": 0.8,
-        "desc": "peg z 升高避开台面 (9帧)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb4",
-      "type": "action",
-      "name": "➤ 转移",
-      "x": 1100,
-      "y": 310,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "tolerance": "0.05m (transfer_tolerance)",
-        "desc": "水平移到 hole 上方, peg 有导向 (38帧)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb5",
-      "type": "action",
-      "name": "➤ 插入",
-      "x": 1340,
-      "y": 310,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "target": "d_ph<0.05 (insert_tolerance)",
-        "desc": "垂直下降插入 (1帧)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbb6",
-      "type": "action",
-      "name": "➤ 完成",
-      "x": 1580,
-      "y": 310,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "desc": "✅ 插拔完成",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbd0",
-      "type": "action",
-      "name": "▶ 生成插拔视频",
-      "x": 140,
-      "y": 540,
-      "w": 150,
-      "icon": "➤",
-      "color": "#00d4aa",
-      "params": {
-        "insert_video": true,
-        "seed": 1,
-        "out": "reports/insert_success_demo.mp4",
-        "desc": "双击运行: 后台录制 seed1 完整插拔流程 → 旋转180° → mp4 → 自动发飞书 (约1-2分钟)",
-        "source": "tools/gen_insert_video.py"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbd1",
-      "type": "pdf_report",
-      "name": "📄 PDF 插拔方案报告",
-      "x": 380,
-      "y": 540,
-      "w": 150,
-      "icon": "📄",
-      "color": "#1f6feb",
-      "params": {
-        "insert_report": true,
-        "out": "reports/插拔方案报告_<时间戳>.pdf",
-        "desc": "双击运行: 方案JSON+视频帧 → 6章方案PDF → 自动发飞书",
-        "source": "tools/gen_insert_report.py"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": []
-    },
-    {
-      "id": "dbbg0",
-      "type": "row_bg",
-      "name": "🎨 双脑",
-      "x": -20,
-      "y": 60,
-      "w": 1070,
-      "icon": "▤",
-      "color": "#3a3f4b",
-      "params": {
-        "bg": "#3a4a5a",
-        "model": "双脑",
-        "desc": "背景行: 左脑动作生成 + 右脑时机判断"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": [],
-      "h": 214
-    },
-    {
-      "id": "dbbg1",
-      "type": "row_bg",
-      "name": "🎨 状态机",
-      "x": -20,
-      "y": 290,
-      "w": 1790,
-      "icon": "▤",
-      "color": "#3a3f4b",
-      "params": {
-        "bg": "#3a5a3a",
-        "model": "状态机",
-        "desc": "背景行: 6阶段执行链"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": [],
-      "h": 214
-    },
-    {
-      "id": "dbbg3",
-      "type": "row_bg",
-      "name": "🎨 交付",
-      "x": -20,
-      "y": 520,
-      "w": 590,
-      "icon": "▤",
-      "color": "#3a3f4b",
-      "params": {
-        "bg": "#2d4a5a",
-        "model": "交付",
-        "desc": "背景行: 一键生成演示视频 + 方案PDF"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ],
-      "actions": [],
-      "h": 214
-    },
-    {
-      "id": "dbtbg",
-      "type": "row_bg",
-      "name": "🎨 训练",
-      "x": -20,
-      "y": 750,
-      "w": 1070,
-      "icon": "🎨",
-      "color": "#3fb950",
-      "params": {
-        "bg": "#10281c",
-        "model": "train",
-        "desc": "训练行: metaworld_peg 数据源 → left_right 训练"
-      },
-      "h": 214,
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "dbt1",
-      "type": "system",
-      "name": "🚀 训练",
-      "x": 140,
-      "y": 770,
-      "w": 200,
-      "icon": "🚀",
-      "color": "#00d4aa",
-      "params": {
-        "steps": 3000,
-        "policy": "left_right",
-        "desc": "双击 → 配置/启动 left_right 训练 (metaworld_peg 数据, 39D, 3000步)",
-        "source": "src/lerobot/policies/left_right"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
-    },
-    {
-      "id": "dbso",
-      "type": "system",
-      "name": "🌐 方案介绍",
-      "x": 620,
-      "y": 540,
-      "w": 200,
-      "icon": "🌐",
-      "color": "#1f6feb",
-      "params": {
-        "solution_web": true,
-        "desc": "双击 → 打开 Z-MAX 方案介绍分页 (datadrive.world/solution.html, 光模块工厂5大场景, 含PDF下载)"
-      },
-      "inputs": [
-        {
-          "id": "in1",
-          "label": "in",
-          "dtype": "any"
-        }
-      ],
-      "outputs": [
-        {
-          "id": "out1",
-          "label": "out",
-          "dtype": "any"
-        }
-      ]
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
     }
-  ],
-  "links": [
+   ],
+   "outputs": [
     {
-      "id": "lyol0",
-      "f": "dbt0",
-      "f_port": "out1",
-      "t": "yol1",
-      "t_port": "in1"
-    },
-    {
-      "id": "lyol5",
-      "f": "dbt0",
-      "f_port": "out1",
-      "t": "yol4",
-      "t_port": "in1"
-    },
-    {
-      "id": "lyol1",
-      "f": "yol1",
-      "f_port": "out1",
-      "t": "yol2",
-      "t_port": "in1"
-    },
-    {
-      "id": "lyol2",
-      "f": "yol2",
-      "f_port": "out1",
-      "t": "yol3",
-      "t_port": "in1"
-    },
-    {
-      "id": "lyol4",
-      "f": "yol4",
-      "f_port": "out1",
-      "t": "yol3",
-      "t_port": "in1"
-    },
-    {
-      "id": "lyol3",
-      "f": "yol3",
-      "f_port": "out1",
-      "t": "dba0",
-      "t_port": "in1"
-    },
-    {
-      "id": "l66781721687727",
-      "f": "dba0",
-      "t": "dba1",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "39D obs"
-    },
-    {
-      "id": "l71603986087323",
-      "f": "dba0",
-      "t": "dba2",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "39D obs"
-    },
-    {
-      "id": "l91761752056733",
-      "f": "dba1",
-      "t": "dba2",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "4D action"
-    },
-    {
-      "id": "l6641875460794",
-      "f": "dba1",
-      "t": "dbb0",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "4D 动作"
-    },
-    {
-      "id": "l27292118166010",
-      "f": "dba2",
-      "t": "dba3",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "contact概率"
-    },
-    {
-      "id": "l56857815908845",
-      "f": "dba3",
-      "t": "dbb0",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "抓取触发"
-    },
-    {
-      "id": "l93958574033927",
-      "f": "dba0",
-      "t": "dbb0",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "观测"
-    },
-    {
-      "id": "l32960755288925",
-      "f": "dbb0",
-      "t": "dbb1",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "接近"
-    },
-    {
-      "id": "l18176031828948",
-      "f": "dbb1",
-      "t": "dbb2",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "抓取"
-    },
-    {
-      "id": "l88524433944689",
-      "f": "dbb2",
-      "t": "dbb3",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "抬起"
-    },
-    {
-      "id": "l95098440165931",
-      "f": "dbb3",
-      "t": "dbb4",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "转移"
-    },
-    {
-      "id": "l22266630135743",
-      "f": "dbb4",
-      "t": "dbb5",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "插入"
-    },
-    {
-      "id": "l96463692847894",
-      "f": "dbb5",
-      "t": "dbb6",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "完成"
-    },
-    {
-      "id": "l24780791661254",
-      "f": "dbb6",
-      "t": "dbd0",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "插拔成功"
-    },
-    {
-      "id": "l46089487448965",
-      "f": "dbd0",
-      "t": "dbd1",
-      "f_port": "out1",
-      "t_port": "in1",
-      "label": "演示视频"
-    },
-    {
-      "id": "ltr0",
-      "f": "dbt0",
-      "f_port": "out1",
-      "t": "dbt1",
-      "t_port": "in1"
-    },
-    {
-      "id": "ltr1",
-      "f": "dbt1",
-      "f_port": "out1",
-      "t": "dbb0",
-      "t_port": "in1"
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
     }
-  ]
+   ]
+  },
+  {
+   "id": "dbt0",
+   "type": "hardware",
+   "name": "📦 metaworld_peg",
+   "x": 140,
+   "y": -150,
+   "w": 200,
+   "icon": "📦",
+   "color": "#3fb950",
+   "params": {
+    "source": "tools/gen_metaworld_data.py",
+    "frames": 4800,
+    "active": true,
+    "dims": "4D/4D",
+    "desc": "states 4D · actions 4D (sawyer 关节) · 24集4800帧 · 图像喂 YOLO 感知"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "yol1",
+   "type": "model",
+   "name": "🎯 YOLO 3D",
+   "x": 380,
+   "y": -150,
+   "w": 200,
+   "icon": "🎯",
+   "color": "#3fb950",
+   "params": {
+    "source": "src/lerobot/policies/yolo_3d",
+    "model": "yolov8s",
+    "classes": "peg/hole/hand",
+    "yolo_enabled": true,
+    "state_dim": 39,
+    "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D→3D解算 → 39D state (源码 src/lerobot/policies/yolo_3d/)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "yol2",
+   "type": "model",
+   "name": "📐 2D→3D 解算",
+   "x": 620,
+   "y": -150,
+   "w": 200,
+   "icon": "📐",
+   "color": "#58a6ff",
+   "params": {
+    "source": "src/lerobot/policies/yolo_3d",
+    "intrinsics": "camera_K",
+    "method": "depth|hand-eye",
+    "desc": "YOLO 2D框中心 + 深度/标定 → 目标 3D 坐标 → 拼入 state (yolo_state_aligner.py)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "yol3",
+   "type": "model",
+   "name": "🔌 State Adapter",
+   "x": 860,
+   "y": -150,
+   "w": 200,
+   "icon": "🔌",
+   "color": "#d4a800",
+   "params": {
+    "source": "src/lerobot/policies/yolo_3d",
+    "in_dim": 43,
+    "out_dim": 43,
+    "normalize": true,
+    "desc": "视觉39D + 触觉4D = 43D 统一 state, 接入双脑输入 (2026-08-12 触觉并入)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "yol4",
+   "type": "model",
+   "name": "📍 Marker 触觉跟踪",
+   "x": 1100,
+   "y": -150,
+   "w": 200,
+   "icon": "📍",
+   "color": "#f0883e",
+   "params": {
+    "source": "src/lerobot/policies/yolo_3d",
+    "grid": "7x9",
+    "dim": 4,
+    "desc": "GelSight 标记位移 → 低维力信号 4D (数据来自 metaworld_peg 改造, gen_tactile.py)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "dba0",
+   "type": "data",
+   "name": "📊 43D obs 输入",
+   "x": 140,
+   "y": 80,
+   "w": 150,
+   "icon": "📊",
+   "color": "#58a6ff",
+   "params": {
+    "dim": 39,
+    "source": "src/lerobot/policies/left_right",
+    "norm": "MEAN_STD (normalization_mapping)",
+    "desc": "视觉39D + 触觉4D = 43D 统一 state 输入"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dba1",
+   "type": "model",
+   "name": "🧠 左脑 LeftBrainMLP",
+   "x": 380,
+   "y": 80,
+   "w": 150,
+   "icon": "◈",
+   "color": "#58a6ff",
+   "params": {
+    "class": "LeftBrainMLP (modeling_left_right.py)",
+    "role": "连续动作生成",
+    "in_dim": 39,
+    "out_dim": 4,
+    "hidden": 512,
+    "structure": "Linear(39,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Dropout(0.1)→Linear(512,512)→ReLU→Linear(512,4)",
+    "params": "547K",
+    "loss": "MSE (动作回归)",
+    "optimizer": "AdamW lr=1e-4",
+    "desc": "左脑: 39D obs → 4D 动作 (MLP偏置接近 act*0.3+delta*2.0, 5/8 vs 纯解析 0/8)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dba2",
+   "type": "model",
+   "name": "🧠 右脑 RightBrainWM",
+   "x": 620,
+   "y": 80,
+   "w": 150,
+   "icon": "◈",
+   "color": "#58a6ff",
+   "params": {
+    "class": "RightBrainWM (modeling_left_right.py)",
+    "role": "抓取时机判断",
+    "in_dim": "39D obs + 4D action",
+    "hidden": 256,
+    "structure": "enc: Linear(43,256)→ReLU→Linear(256,256)→ReLU; pred_next: Linear(256,39); contact_head: Linear(256,1)→sigmoid",
+    "params": "87K",
+    "contact_acc": "1.00",
+    "loss": "MSE(next obs) + 0.5×BCE(contact)",
+    "desc": "右脑: obs+action → next obs 预测 + contact 概率 (该抓了吗)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dba3",
+   "type": "condition",
+   "name": "❖ 接触判定",
+   "x": 860,
+   "y": 80,
+   "w": 150,
+   "icon": "❖",
+   "color": "#a371f7",
+   "params": {
+    "rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
+    "d_hp_th": 0.06,
+    "contact_th": 0.5,
+    "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb0",
+   "type": "system",
+   "name": "◉ LeftRightPolicy",
+   "x": 140,
+   "y": 310,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "class": "LeftRightPolicy (lerobot 标准)",
+    "name": "left_right",
+    "factory": "factory.make_policy('left_right') ✅",
+    "stages": [
+     "接近",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入",
+     "完成"
+    ],
+    "frames": "32+45+9+38+1 = 125帧",
+    "chunk_size": 1,
+    "n_action_steps": 1,
+    "grasp_contact_threshold": 0.5,
+    "grasp_d_hp": 0.06,
+    "lift_height": 0.08,
+    "transfer_tolerance": 0.05,
+    "insert_tolerance": 0.05,
+    "desc": "推理编排: 接近→抓取(contact判定)→抬起(+0.08m)→转移(容差0.05)→插入(d_ph<0.05)→完成",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb1",
+   "type": "action",
+   "name": "➤ 接近",
+   "x": 380,
+   "y": 310,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "target": "d_hp 0.2→0.06",
+    "desc": "左脑MLP偏置接近 (32帧)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb2",
+   "type": "action",
+   "name": "➤ 抓取",
+   "x": 620,
+   "y": 310,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "trigger": "contact>0.5 & d_hp<0.06",
+    "grab": "夹持0.6 + 位置锁定",
+    "desc": "右脑 get_right_contact 判定触发 (45帧)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb3",
+   "type": "action",
+   "name": "➤ 抬起",
+   "x": 860,
+   "y": 310,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "height": "+0.08m (lift_height)",
+    "force": 0.8,
+    "desc": "peg z 升高避开台面 (9帧)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb4",
+   "type": "action",
+   "name": "➤ 转移",
+   "x": 1100,
+   "y": 310,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "tolerance": "0.05m (transfer_tolerance)",
+    "desc": "水平移到 hole 上方, peg 有导向 (38帧)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb5",
+   "type": "action",
+   "name": "➤ 插入",
+   "x": 1340,
+   "y": 310,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "target": "d_ph<0.05 (insert_tolerance)",
+    "desc": "垂直下降插入 (1帧)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbb6",
+   "type": "action",
+   "name": "➤ 完成",
+   "x": 1580,
+   "y": 310,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "desc": "✅ 插拔完成",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbd0",
+   "type": "action",
+   "name": "▶ 生成插拔视频",
+   "x": 140,
+   "y": 540,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "insert_video": true,
+    "seed": 1,
+    "out": "reports/insert_success_demo.mp4",
+    "desc": "双击运行: 后台录制 seed1 完整插拔流程 → 旋转180° → mp4 → 自动发飞书 (约1-2分钟)",
+    "source": "tools/gen_insert_video.py"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbd1",
+   "type": "pdf_report",
+   "name": "📄 PDF 插拔方案报告",
+   "x": 380,
+   "y": 540,
+   "w": 150,
+   "icon": "📄",
+   "color": "#1f6feb",
+   "params": {
+    "insert_report": true,
+    "out": "reports/插拔方案报告_<时间戳>.pdf",
+    "desc": "双击运行: 方案JSON+视频帧 → 6章方案PDF → 自动发飞书",
+    "source": "tools/gen_insert_report.py"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbbg0",
+   "type": "row_bg",
+   "name": "🎨 双脑",
+   "x": -20,
+   "y": 60,
+   "w": 1070,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#3a4a5a",
+    "model": "双脑",
+    "desc": "背景行: 左脑动作生成 + 右脑时机判断"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  },
+  {
+   "id": "dbbg1",
+   "type": "row_bg",
+   "name": "🎨 状态机",
+   "x": -20,
+   "y": 290,
+   "w": 1790,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#3a5a3a",
+    "model": "状态机",
+    "desc": "背景行: 6阶段执行链"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  },
+  {
+   "id": "dbbg3",
+   "type": "row_bg",
+   "name": "🎨 交付",
+   "x": -20,
+   "y": 520,
+   "w": 590,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#2d4a5a",
+    "model": "交付",
+    "desc": "背景行: 一键生成演示视频 + 方案PDF"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  },
+  {
+   "id": "dbtbg",
+   "type": "row_bg",
+   "name": "🎨 训练",
+   "x": -20,
+   "y": 750,
+   "w": 1070,
+   "icon": "🎨",
+   "color": "#3fb950",
+   "params": {
+    "bg": "#10281c",
+    "model": "train",
+    "desc": "训练行: metaworld_peg 数据源 → left_right 训练"
+   },
+   "h": 214,
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "dbt1",
+   "type": "system",
+   "name": "🚀 训练",
+   "x": 140,
+   "y": 770,
+   "w": 200,
+   "icon": "🚀",
+   "color": "#00d4aa",
+   "params": {
+    "steps": 3000,
+    "policy": "left_right",
+    "desc": "双击 → 配置/启动 left_right 训练 (metaworld_peg 数据, 39D, 3000步)",
+    "source": "src/lerobot/policies/left_right"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "dbso",
+   "type": "system",
+   "name": "🌐 方案介绍",
+   "x": 620,
+   "y": 540,
+   "w": 200,
+   "icon": "🌐",
+   "color": "#1f6feb",
+   "params": {
+    "solution_web": true,
+    "desc": "双击 → 打开 Z-MAX 方案介绍分页 (datadrive.world/solution.html, 光模块工厂5大场景, 含PDF下载)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "dbt2",
+   "type": "switch",
+   "name": "🔀 训练/推理",
+   "x": 390,
+   "y": 770,
+   "w": 170,
+   "icon": "🔀",
+   "color": "#3fb950",
+   "params": {
+    "mode": "train",
+    "desc": "模式开关: 双击切换 训练⇄推理"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "dbt3",
+   "type": "system",
+   "name": "📷 推理 (rollout)",
+   "x": 640,
+   "y": 770,
+   "w": 200,
+   "icon": "📷",
+   "color": "#58a6ff",
+   "params": {
+    "infer_rollout": true,
+    "policy": "left_right",
+    "frames": 60,
+    "desc": "加载最新模型 → 仿真插拔 rollout → 评估+视频 · 双击运行"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  }
+ ],
+ "links": [
+  {
+   "id": "lyol0",
+   "f": "dbt0",
+   "f_port": "out1",
+   "t": "yol1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lyol5",
+   "f": "dbt0",
+   "f_port": "out1",
+   "t": "yol4",
+   "t_port": "in1"
+  },
+  {
+   "id": "lyol1",
+   "f": "yol1",
+   "f_port": "out1",
+   "t": "yol2",
+   "t_port": "in1"
+  },
+  {
+   "id": "lyol2",
+   "f": "yol2",
+   "f_port": "out1",
+   "t": "yol3",
+   "t_port": "in1"
+  },
+  {
+   "id": "lyol4",
+   "f": "yol4",
+   "f_port": "out1",
+   "t": "yol3",
+   "t_port": "in1"
+  },
+  {
+   "id": "lyol3",
+   "f": "yol3",
+   "f_port": "out1",
+   "t": "dba0",
+   "t_port": "in1"
+  },
+  {
+   "id": "l66781721687727",
+   "f": "dba0",
+   "t": "dba1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "39D obs"
+  },
+  {
+   "id": "l71603986087323",
+   "f": "dba0",
+   "t": "dba2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "39D obs"
+  },
+  {
+   "id": "l91761752056733",
+   "f": "dba1",
+   "t": "dba2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "4D action"
+  },
+  {
+   "id": "l6641875460794",
+   "f": "dba1",
+   "t": "dbb0",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "4D 动作"
+  },
+  {
+   "id": "l27292118166010",
+   "f": "dba2",
+   "t": "dba3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "contact概率"
+  },
+  {
+   "id": "l56857815908845",
+   "f": "dba3",
+   "t": "dbb0",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "抓取触发"
+  },
+  {
+   "id": "l93958574033927",
+   "f": "dba0",
+   "t": "dbb0",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "观测"
+  },
+  {
+   "id": "l32960755288925",
+   "f": "dbb0",
+   "t": "dbb1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "接近"
+  },
+  {
+   "id": "l18176031828948",
+   "f": "dbb1",
+   "t": "dbb2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "抓取"
+  },
+  {
+   "id": "l88524433944689",
+   "f": "dbb2",
+   "t": "dbb3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "抬起"
+  },
+  {
+   "id": "l95098440165931",
+   "f": "dbb3",
+   "t": "dbb4",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "转移"
+  },
+  {
+   "id": "l22266630135743",
+   "f": "dbb4",
+   "t": "dbb5",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "插入"
+  },
+  {
+   "id": "l96463692847894",
+   "f": "dbb5",
+   "t": "dbb6",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "完成"
+  },
+  {
+   "id": "l24780791661254",
+   "f": "dbb6",
+   "t": "dbd0",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "插拔成功"
+  },
+  {
+   "id": "l46089487448965",
+   "f": "dbd0",
+   "t": "dbd1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "演示视频"
+  },
+  {
+   "id": "ltr0",
+   "f": "dbt0",
+   "f_port": "out1",
+   "t": "dbt1",
+   "t_port": "in1"
+  },
+  {
+   "id": "ltr1",
+   "f": "dbt1",
+   "f_port": "out1",
+   "t": "dbb0",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkr1n1",
+   "f": "dbt0",
+   "t": "dbt2",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkz01",
+   "f": "dbt2",
+   "t": "dbt1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkz02",
+   "f": "dbt2",
+   "t": "dbt3",
+   "f_port": "out1",
+   "t_port": "in1"
+  }
+ ]
 }

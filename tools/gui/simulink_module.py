@@ -1163,7 +1163,13 @@ class CICDStageItem(QGraphicsObject):
         # 标题 (🎨 主题色 — 硬编码 #1f2328 深色主题下黑字黑底看不见)
         painter.setPen(QColor(pal["title"]))
         painter.setFont(QFont("Arial", 11, QFont.Bold))
-        painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
+        # 🐛 2026-08-12 老倪: 训练/推理开关节点 — title 带当前模式 (🔀 训练模式/🔀 推理模式)
+        if self.node.get("type") == "switch" and self.node.get("params", {}).get("mode"):
+            _m = self.node["params"]["mode"]
+            painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft,
+                             f"🔀 {'训练' if _m == 'train' else '推理'}模式")
+        else:
+            painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
         # 描述
         painter.setPen(QColor(pal["label"]))
         painter.setFont(QFont("Arial", 8))
@@ -1991,6 +1997,8 @@ class SimNodeItem(QGraphicsObject):
             color = QColor("#ff4444")
         elif status == "step_active":
             color = QColor("#ffd700")  # 🐛 2026-08-12 老倪: 单步执行当前节点 = 金色高亮
+        # 🐛 2026-08-12 老倪: 训练/推理开关 — 未激活模式路径灰显 (训练模式下推理节点变灰)
+        mode_off = self.node.get("params", {}).get("mode_active") == "off"
         painter.setRenderHint(QPainter.Antialiasing)
         pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
         # 主体
@@ -1999,6 +2007,10 @@ class SimNodeItem(QGraphicsObject):
         grad.setColorAt(1, QColor(pal["node_bot"]))
         painter.setBrush(grad)
         pen = QPen(color, 2.8 if status == "step_active" else 1.6)
+        # 训练/推理开关: 激活路径金色边框, 未激活灰显 (mode_off → 全灰)
+        if mode_off:
+            color = QColor("#57606a")
+            pen = QPen(QColor("#57606a"), 1.2)
         # 激活的数据源节点 (CICD 主控台): 金色加粗边框 + ▶ 徽章
         params = self.node.get("params", {})
         is_active_src = params.get("source") and params.get("active")
@@ -6736,6 +6748,10 @@ class SimulinkModule(QWidget):
             self._toggle_source(node)
             return
         # 1.5) Switch 节点 (仿 Simulink Switch 块): 切换数据源路由
+        # 🐛 2026-08-12 老倪: 训练/推理模式开关 (params.mode) 优先于数据源路由 (params.switch)
+        if params.get("mode") in ("train", "infer"):
+            self._toggle_mode(node)
+            return
         if params.get("switch") or node.get("type") == "switch":
             self._toggle_switch(node)
             return
@@ -6758,6 +6774,10 @@ class SimulinkModule(QWidget):
         # 1.10) ▶ 插拔演示视频 (2026-08-10 双脑+状态机: 双击 → 后台生成插拔 mp4 → 自动发飞书)
         if params.get("insert_video"):
             self.on_insert_video()
+            return
+        # 1.75) 📷 推理 (rollout) 模块 (2026-08-12 老倪: 训练旁推理模块)
+        if params.get("infer_rollout"):
+            self.on_infer_rollout(node)
             return
         # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
         if params.get("insert_report"):
@@ -6865,6 +6885,53 @@ class SimulinkModule(QWidget):
         it = self._items.get(node["id"])
         if it:
             it.update()
+
+    def _toggle_mode(self, node):
+        """🔀 训练/推理模式开关 (2026-08-12 老倪: 训练旁推理模块)
+        双击切换: train ⇄ infer; 激活路径节点金色高亮, 未激活灰显"""
+        p = node.setdefault("params", {})
+        p["mode"] = "infer" if p.get("mode", "train") == "train" else "train"
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self._apply_mode_highlight(p["mode"])
+        self._log(f"🔀 模式切换 → {'🚀 训练' if p['mode'] == 'train' else '📷 推理 (rollout)'} (双击可再切换)")
+
+    def _apply_mode_highlight(self, mode):
+        """按模式高亮训练/推理节点: 激活金色边框 + 灰显未激活"""
+        for n in self.nodes:
+            p = n.get("params", {})
+            if p.get("train_gate") or p.get("policy") and n.get("type") == "system" and "训练" in n.get("name", ""):
+                p["mode_active"] = "train" == mode and "train" or "off"
+            elif p.get("infer_rollout"):
+                p["mode_active"] = "infer" == mode and "infer" or "off"
+            it = self._items.get(n["id"])
+            if it:
+                it.update()
+        self.canvas._scene.update()
+
+    def on_infer_rollout(self, node):
+        """📷 推理模块: 后台加载最新模型 → 仿真插拔 rollout → 评估+视频 (2026-08-12 老倪)"""
+        p = node.setdefault("params", {})
+        frames = p.get("frames", 60)
+        self._log(f"📷 推理 (rollout) 开始: 加载最新模型 → 仿真插拔 {frames} 帧评估…")
+
+        def _work():
+            import subprocess as _sp
+            root = self._repo_root()
+            py = os.path.join(root, ".venv", "bin", "python")
+            if not os.path.exists(py):
+                return False, "缺少 .venv/bin/python (推理需本地 GPU 环境)"
+            r = _sp.run([py, os.path.join(root, "tools", "gen_insert_video.py")],
+                        capture_output=True, text=True, timeout=600, cwd=root)
+            out = (r.stdout or "").strip().splitlines()
+            last = out[-1] if out else "?"
+            if r.returncode == 0:
+                self._send_video_to_feishu_async(os.path.join(root, "reports", "insert_success_demo.mp4"))
+                return True, "🎬 推理 rollout 完成: reports/insert_success_demo.mp4 (双击 ▶视频 节点可播放)"
+            return False, f"推理失败: {last}"
+
+        self._start_worker(_work, "📷 推理 rollout 进行中…")
 
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""
