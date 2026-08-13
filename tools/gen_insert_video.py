@@ -137,95 +137,106 @@ def _load_brain():
 def main():
     left, right, xm, xs, ym, ys = _load_brain()
 
-    seed = _pick_seed(left, right, xm, xs, ym, ys)
-    if seed is None:
-        print("❌ 0-11 全部 seed 无成功, 放弃生成 (可检查模型/状态机参数)", flush=True)
-        return
-    print(f"🎯 选定 seed={seed} 渲染演示视频…", flush=True)
-    env = make_env(seed)
-    o = get_obs(env)
-    peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
-    hole = env.data.site_xpos[env.model.site("hole").id]
-    state = ST_APPROACH
-    frames = []
-    states_track = []
-    success = False
-    for step in range(500):
-        hand = env.data.site_xpos[env.model.site("endEffector").id]
-        peg = env.data.site_xpos[env.model.site("pegGrasp").id]
-        d_hp = float(np.linalg.norm(hand - peg))
-        d_ph = float(np.linalg.norm(peg - hole))
-        xin = torch.from_numpy((o - xm) / xs).float().to(DEVICE)
-        with torch.no_grad():
-            pred = left(xin.unsqueeze(0)).squeeze(0).cpu().numpy()
-        act = pred * ys + ym
-        o_r = torch.from_numpy(o).float().to(DEVICE)
-        a_r = torch.from_numpy(act).float().to(DEVICE)
-        with torch.no_grad():
-            _, pred_cont = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
-        contact_p = pred_cont.item()
-        if state == ST_APPROACH:
-            if d_hp < 0.06 and contact_p > 0.5: state = ST_GRASP
-        elif state == ST_GRASP:
-            if peg[2] - peg_z0 > 0.02: state = ST_LIFT
-        elif state == ST_LIFT:
-            if peg[2] > peg_z0 + 0.08: state = ST_TRANSFER
-        elif state == ST_TRANSFER:
-            if abs(peg[0]-hole[0]) < 0.05 and abs(peg[1]-hole[1]) < 0.05: state = ST_INSERT
-        elif state == ST_INSERT:
-            if d_ph < 0.05:
-                state = ST_DONE; success = True
-        if state == ST_APPROACH:
-            delta = peg - hand
-            act[:3] = act[:3] * 0.3 + np.clip(delta * 2.0, -1, 1)
-            act[3] = -1.0
-        elif state == ST_GRASP:
-            act[:3] = act[:3] * 0.1; act[3] = 0.6
-        elif state == ST_LIFT:
-            act[:3] = [0,0,0.8]; act[3] = 0.6
-        elif state == ST_TRANSFER:
-            d_xy = np.array([hole[0]-peg[0], hole[1]-peg[1]])
-            if np.linalg.norm(d_xy) > 1e-4:
-                act[:3] = np.clip((d_xy/np.linalg.norm(d_xy))*0.6, -1, 1).tolist() + [0.0]
-            act[3] = 0.6
-        elif state == ST_INSERT:
-            act[:3] = [0,0,np.clip((hole[2]-peg[2])*2.0, -0.6, 0.6)]
-            act[3] = 0.6
-        else:
-            act[:3] = [0,0,0]; act[3] = 0.6
-        _mx = float(np.abs(act).max()) if len(act) else 1.0
-        if _mx > 1.0: act = act / _mx
-        env.step(np.clip(act, -1, 1))
+    # 🐛 2026-08-12 老倪: 渲染失败自动换 seed 重试 (16:49 模型 seed 探测成功但渲染失败 —
+    #   mujoco 随机性/轨迹分叉, 单 seed 渲染不稳) — 循环渲染直到成功或全失败
+    import shutil as _sh
+    for seed in range(12):
+        env = make_env(seed)
         o = get_obs(env)
-        states_track.append(ST_NAMES[state])
-        # 录帧 (间隔采样, 每2帧录1 → 视频流畅)
-        try:
-            img = env.render()
-            if img is not None and step % 2 == 0:
-                frames.append(img)
-        except Exception:
-            pass
-        if state == ST_DONE:
+        peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
+        hole = env.data.site_xpos[env.model.site("hole").id]
+        state = ST_APPROACH
+        frames = []
+        states_track = []
+        success = False
+        for step in range(500):
+            hand = env.data.site_xpos[env.model.site("endEffector").id]
+            peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+            d_hp = float(np.linalg.norm(hand - peg))
+            d_ph = float(np.linalg.norm(peg - hole))
+            xin = torch.from_numpy((o - xm) / xs).float().to(DEVICE)
+            with torch.no_grad():
+                pred = left(xin.unsqueeze(0)).squeeze(0).cpu().numpy()
+            act = pred * ys + ym
+            o_r = torch.from_numpy(o).float().to(DEVICE)
+            a_r = torch.from_numpy(act).float().to(DEVICE)
+            with torch.no_grad():
+                _, pred_cont = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
+            contact_p = pred_cont.item()
+            if state == ST_APPROACH:
+                if d_hp < 0.06 and contact_p > 0.5: state = ST_GRASP
+            elif state == ST_GRASP:
+                if peg[2] - peg_z0 > 0.02: state = ST_LIFT
+            elif state == ST_LIFT:
+                if peg[2] > peg_z0 + 0.08: state = ST_TRANSFER
+            elif state == ST_TRANSFER:
+                if abs(peg[0]-hole[0]) < 0.05 and abs(peg[1]-hole[1]) < 0.05: state = ST_INSERT
+            elif state == ST_INSERT:
+                if d_ph < 0.05:
+                    state = ST_DONE; success = True
+            if state == ST_APPROACH:
+                delta = peg - hand
+                act[:3] = act[:3] * 0.3 + np.clip(delta * 2.0, -1, 1)
+                act[3] = -1.0
+            elif state == ST_GRASP:
+                act[:3] = act[:3] * 0.1; act[3] = 0.6
+            elif state == ST_LIFT:
+                act[:3] = [0,0,0.8]; act[3] = 0.6
+            elif state == ST_TRANSFER:
+                d_xy = np.array([hole[0]-peg[0], hole[1]-peg[1]])
+                if np.linalg.norm(d_xy) > 1e-4:
+                    act[:3] = np.clip((d_xy/np.linalg.norm(d_xy))*0.6, -1, 1).tolist() + [0.0]
+                act[3] = 0.6
+            elif state == ST_INSERT:
+                act[:3] = [0,0,np.clip((hole[2]-peg[2])*2.0, -0.6, 0.6)]
+                act[3] = 0.6
+            else:
+                act[:3] = [0,0,0]; act[3] = 0.6
+            _mx = float(np.abs(act).max()) if len(act) else 1.0
+            if _mx > 1.0: act = act / _mx
+            env.step(np.clip(act, -1, 1))
+            o = get_obs(env)
+            states_track.append(ST_NAMES[state])
+            # 录帧 (间隔采样, 每2帧录1 → 视频流畅)
+            try:
+                img = env.render()
+                if img is not None and step % 2 == 0:
+                    frames.append(img)
+            except Exception:
+                pass
+            if state == ST_DONE:
+                break
+        print(f"✅ 完成状态={ST_NAMES[state]} 成功={success} 步骤={step} 帧数={len(frames)}", flush=True)
+        env.close()
+        if not frames:
+            print(f"❌ seed{seed} 无帧, 换下个 seed…", flush=True)
+            continue
+        # 保存帧 (png) → ffmpeg 合成 (2026-08-10: imageio av 编码器不兼容, 改 ffmpeg)
+        import tempfile, os as _os, shutil as _sh
+        tmpdir = tempfile.mkdtemp(prefix="insert_frames_")
+        for i, fr in enumerate(frames):
+            import cv2
+            cv2.imwrite(_os.path.join(tmpdir, f"f{i:05d}.png"), cv2.cvtColor(fr, cv2.COLOR_RGB2BGR))
+        print(f"💾 帧数: {len(frames)} @ {tmpdir}", flush=True)
+        # 🐛 2026-08-12 老倪: 先渲染到临时文件, 成功才替换正式视频 (渲染失败不覆盖好视频)
+        raw = _os.path.join(tmpdir, "raw.mp4")
+        out_tmp = _os.path.join(tmpdir, "demo.mp4")
+        subprocess.run(["ffmpeg", "-y", "-framerate", "30", "-i", _os.path.join(tmpdir, "f%05d.png"),
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", raw], check=True)
+        # 旋转180° (老倪要求)
+        subprocess.run(["ffmpeg", "-y", "-i", raw, "-vf", "transpose=2,transpose=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", out_tmp], check=True)
+        if success and _os.path.exists(out_tmp) and _os.path.getsize(out_tmp) > 0:
+            out = _os.path.join(ROOT, "reports", "insert_success_demo.mp4")
+            _sh.move(out_tmp, out)
+            print(f"🎬 最终: {out} (成功演示, seed={seed})", flush=True)
+            _sh.rmtree(tmpdir, ignore_errors=True)
             break
-    print(f"✅ 完成状态={ST_NAMES[state]} 成功={success} 步骤={step} 帧数={len(frames)}", flush=True)
-    env.close()
-    if not frames:
-        print("❌ 无帧", flush=True)
-        return
-    # 保存帧 (png) → ffmpeg 合成 (2026-08-10: imageio av 编码器不兼容, 改 ffmpeg)
-    import tempfile, os as _os
-    tmpdir = tempfile.mkdtemp(prefix="insert_frames_")
-    for i, fr in enumerate(frames):
-        import cv2
-        cv2.imwrite(_os.path.join(tmpdir, f"f{i:05d}.png"), cv2.cvtColor(fr, cv2.COLOR_RGB2BGR))
-    print(f"💾 帧数: {len(frames)} @ {tmpdir}", flush=True)
-    raw = os.path.join(ROOT, "reports", "insert_success_raw.mp4")
-    subprocess.run(["ffmpeg", "-y", "-framerate", "30", "-i", _os.path.join(tmpdir, "f%05d.png"),
-                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", raw], check=True)
-    # 旋转180° (老倪要求)
-    out = os.path.join(ROOT, "reports", "insert_success_demo.mp4")
-    subprocess.run(["ffmpeg", "-y", "-i", raw, "-vf", "transpose=2,transpose=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", out], check=True)
-    print(f"🎬 最终: {out}", flush=True)
+        else:
+            print(f"❌ seed{seed} 渲染未成功 (状态={ST_NAMES[state]}) — 换下个 seed…", flush=True)
+            _sh.rmtree(tmpdir, ignore_errors=True)
+    else:
+        print("❌ 0-11 全部 seed 渲染失败 (可检查模型/状态机参数)", flush=True)
+        sys.exit(2)
 
 if __name__ == "__main__":
     main()
