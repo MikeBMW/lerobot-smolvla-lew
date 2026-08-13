@@ -23,7 +23,13 @@ from gen_insert_video import _load_brain
 from train_full_pipeline import (make_env, get_obs, ST_APPROACH, ST_GRASP, ST_LIFT,
                                  ST_TRANSFER, ST_INSERT, ST_DONE, ST_NAMES)
 
-plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei", "SimHei", "DejaVu Sans"]
+# 🐛 2026-08-12 老倪: 图中文乱码 — matplotlib 未注册 WenQuanYi, 用已识别的 Noto Sans CJK SC
+try:
+    from matplotlib import font_manager as _fm
+    _fm.addfont("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc")  # 优先 wqy (TrueType)
+except Exception:
+    pass
+plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei", "Noto Sans CJK SC", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
 
 
