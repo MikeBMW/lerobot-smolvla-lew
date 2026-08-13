@@ -3774,7 +3774,7 @@ class SimulinkModule(QWidget):
         # 在 Linux 是相对路径 → 复制到错误位置 → 右键打不开
         _name = os.path.basename(src.rstrip("/\\"))
         dst_mnt = os.path.join("/mnt/c/zmax_src_view", _name)   # shutil 复制用 (WSL)
-        dst_win = os.path.join(r"C:\zmax_src_view", _name)      # cmd start 用 (Windows)
+        dst_win = os.path.join(r"C:\zmax_src_view", _name).replace("/", "\\")  # explorer 用 (Windows 反斜杠)
         try:
             if os.path.isdir(path):
                 if os.path.exists(dst_mnt):
@@ -3783,8 +3783,9 @@ class SimulinkModule(QWidget):
             else:
                 os.makedirs(os.path.dirname(dst_mnt), exist_ok=True)
                 shutil.copy2(path, dst_mnt)
-            _sp.Popen(["cmd.exe", "/c", "start", "", dst_win],
-                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+            # 🐛 2026-08-12 老倪: cmd start 打开目录/.py 静默失败 (无关联程序) →
+            # 改用 explorer.exe (资源管理器, 记忆验证过的链路)
+            _sp.Popen(["explorer.exe", dst_win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             self._log(f"📂 已打开源码: {dst_win} ({src})")
         except Exception as e:
             self._log(f"⚠️ 打开源码失败: {e}")

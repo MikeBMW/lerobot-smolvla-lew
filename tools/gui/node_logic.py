@@ -115,20 +115,30 @@ def get_external_source(key):
         lines = open(path, encoding="utf-8").read().splitlines()
     except Exception:
         return None
+    # 🐛 2026-08-12 老倪: 用符号名定位 (sym="class RightBrainWM") — 映射行号错位时
+    # 源码截取从空行开始 → 面板只显示"源码结束"标记 → 改用名称搜索, 行号仅兜底
+    start = None
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if s == sym or s.startswith(sym + "("):
+            start = i
+            break
+    if start is None:
+        start = max(0, line - 1)
     out = []
-    for i in range(max(0, line - 1), len(lines)):
+    for i in range(start, len(lines)):
         ln = lines[i]
         if out and (ln.startswith("class ") or ln.startswith("def ") or ln.startswith("@")):
             break  # 下一个顶层定义
         out.append(ln)
         # 符号体结束: 空行后出现顶格非空行 (缩进归零, 非注释/docstring)
-        if i > max(0, line - 1) and not ln.strip() and i + 1 < len(lines):
+        if i > start and not ln.strip() and i + 1 < len(lines):
             nxt = lines[i + 1]
             if nxt and not nxt[0].isspace() and not nxt.startswith(("#", '"""', "'''", "from ", "import ")):
                 break
     if not out:
         return None
-    return "\n".join(out) + f"\n\n# ── {sym} 源码结束 (文件 {os.path.basename(path)}:{line}) ──"
+    return "\n".join(out) + f"\n\n# ── {sym} 源码结束 (文件 {os.path.basename(path)}:{start + 1}) ──"
 
 
 def save_node_logic(key, new_code):
