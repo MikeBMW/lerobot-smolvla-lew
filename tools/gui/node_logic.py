@@ -807,6 +807,7 @@ _reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) /
 
 # ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开) ──
 def node_yolo_3d(ctx):
+    log = ctx["log"]
     """🎯 YOLO 3D — 相机图像 → 检测销钉/插孔/末端 (mAP 0.994) → 2D→3D 解算 → 39D state
     真实实现: src/lerobot/policies/yolo_3d/ (train_yolo / yolo_state_aligner / gen_yolo_data / gen_tactile)"""
     p = ctx.get("params", {})
@@ -815,6 +816,7 @@ def node_yolo_3d(ctx):
 
 
 def node_yolo_align(ctx):
+    log = ctx["log"]
     """📐 2D→3D 解算 — YOLO 2D 框中心 + 相机内参 → 目标 3D 坐标 (pixel_to_ray / ray_plane_intersect / YoloStateAligner)"""
     p = ctx.get("params", {})
     log(f"📐 2D→3D 解算: intrinsics={p.get('intrinsics','camera_K')} method={p.get('method','depth|hand-eye')} · 源码 yolo_state_aligner.py")
@@ -822,6 +824,7 @@ def node_yolo_align(ctx):
 
 
 def node_yolo_tactile(ctx):
+    log = ctx["log"]
     """📍 Marker 触觉跟踪 — GelSight 标记位移 → 4D 触觉力信号 (夹持/接触/滑觉); 数据改造: metaworld_peg → 43D"""
     p = ctx.get("params", {})
     log(f"📍 Marker 触觉跟踪: grid={p.get('grid','7x9')} dim={p.get('dim',4)} · 触觉数据生成 gen_tactile.py")
@@ -835,6 +838,7 @@ _reg("yolo_tactile", ["Marker 触觉"], "📍 Marker 触觉跟踪 — 4D 触觉�
 
 # ── 📦 Z700 数据源 / 适配 / obs (2026-08-12 老倪: 每个节点都有代码) ──
 def node_metaworld_peg(ctx):
+    log = ctx["log"]
     """📦 metaworld_peg — 仿真插拔数据集 (39D 状态 + 图像, 24集 4800帧)
     数据生成: tools/gen_metaworld_data.py; 触觉增强: src/lerobot/policies/yolo_3d/gen_tactile.py (39D→43D)"""
     p = ctx.get("params", {})
@@ -843,6 +847,7 @@ def node_metaworld_peg(ctx):
 
 
 def node_state_adapter(ctx):
+    log = ctx["log"]
     """🔌 State Adapter — 感知融合: 视觉 39D + 触觉 4D = 43D 统一输入
     数据流适配: 归一化/拼接/维度对齐 (策略输入接口, 与训练配置 processor 对应)"""
     p = ctx.get("params", {})
@@ -851,6 +856,7 @@ def node_state_adapter(ctx):
 
 
 def node_obs43(ctx):
+    log = ctx["log"]
     """📊 43D obs 输入 — 统一状态输入节点 (感知链与策略的接口)
     39D 结构: hand_pos[3]+gripper[1]+peg_pos[3]+peg_quat[4]+pad[7]+prev帧[18]+hole_pos[3]
     + 触觉 4D (Marker) = 43D"""
@@ -860,6 +866,7 @@ def node_obs43(ctx):
 
 
 def node_solution_web(ctx):
+    log = ctx["log"]
     """🌐 方案介绍 — 打开方案介绍分页 (datadrive.world/solution.html, 含PDF下载)
     网页: zmax-website/solution.html + Z700-方案介绍.pdf (线上部署)"""
     p = ctx.get("params", {})
@@ -963,6 +970,7 @@ _YOLO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
 _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")  # 📐 2D→3D 解算
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
+_EXTERNAL_LOC["state_adapter"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")  # 🔌 State Adapter: YOLO检测 → 3D state 对齐 (39D) + 触觉4D → 43D
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
 
 
