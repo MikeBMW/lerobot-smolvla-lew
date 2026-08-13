@@ -12,8 +12,12 @@ os.environ.setdefault("MUJOCO_EGL_DEVICE", "0")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from train_full_pipeline import (make_env, get_obs, LeftBrainMLP, RightBrainWM,
+from train_full_pipeline import (make_env, get_obs, LeftBrainMLP,
                                  ST_APPROACH, ST_GRASP, ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE, ST_NAMES)
+# 🐛 2026-08-12 老倪: RightBrainWM 用 modeling_left_right 版 (无 align_head) —
+# 本次训练 model.pt 的 right 权重是 {enc, pred_next, contact_head}, 旧管线版多 align_head 键不匹配
+sys.path.insert(0, os.path.join(ROOT, "src"))
+from lerobot.policies.left_right.modeling_left_right import RightBrainWM
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -39,7 +43,7 @@ def _pick_seed(left, right, xm, xs, ym, ys, seed_max=11):
             o_r = torch.from_numpy(o).float().to(DEVICE)
             a_r = torch.from_numpy(act).float().to(DEVICE)
             with torch.no_grad():
-                _, pred_cont, _ = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
+                _, pred_cont = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
             contact = pred_cont.item()
             if state == ST_APPROACH:
                 if d_hp < 0.06 and contact > 0.5: state = ST_GRASP
@@ -89,11 +93,44 @@ def _pick_seed(left, right, xm, xs, ym, ys, seed_max=11):
     return None
 
 
-def main():
+def _load_brain():
+    """🐛 2026-08-12 老倪: 优先最新 left_right 双脑 checkpoint (本次训练产物),
+    归一化从 preprocessor/postprocessor 读; 无则 fallback 旧 full_pipeline.pt"""
+    import glob as _g
+    from safetensors import safe_open
+    # 🐛 2026-08-12: 按修改时间排序 (字母序会把 left_right_std 排最前) — 取最新训练
+    cands = sorted(_g.glob(os.path.join(ROOT, "outputs", "train", "left_right_*")),
+                   key=lambda p: os.path.getmtime(p), reverse=True)
+    for d in cands:
+        pm = os.path.join(d, "checkpoints", "last", "pretrained_model")
+        model_path = os.path.join(pm, "model.pt")
+        if not os.path.exists(model_path):
+            continue
+        sd = torch.load(model_path, map_location="cpu", weights_only=False)
+        left = LeftBrainMLP(sd["obs_dim"], sd["act_dim"]).to(DEVICE)
+        left.load_state_dict(sd["left"]); left.eval()
+        right = RightBrainWM(sd["obs_dim"], sd["act_dim"]).to(DEVICE)
+        right.load_state_dict(sd["right"]); right.eval()
+        try:
+            with safe_open(os.path.join(pm, "left_right_preprocessor_step_3_normalizer_processor.safetensors"), framework="np") as f:
+                xm = float(f.get_tensor("observation.state.mean"))
+                xs = float(f.get_tensor("observation.state.std"))
+            with safe_open(os.path.join(pm, "left_right_postprocessor_step_0_unnormalizer_processor.safetensors"), framework="np") as f:
+                ym = float(f.get_tensor("action.mean"))
+                ys = float(f.get_tensor("action.std"))
+        except Exception:
+            xm, xs, ym, ys = 0.0, 1.0, 0.0, 1.0
+        print(f"🧠 双脑: {d} (obs={sd['obs_dim']} act={sd['act_dim']})", flush=True)
+        return left, right, xm, xs, ym, ys
+    # fallback 旧 RL 管线
     d = torch.load(os.path.join(ROOT, "outputs", "rl_peg", "full_pipeline.pt"), map_location="cpu", weights_only=False)
     left = LeftBrainMLP(39, 4).to(DEVICE); left.load_state_dict(d["left"]); left.eval()
     right = RightBrainWM(39, 4).to(DEVICE); right.load_state_dict(d["right"]); right.eval()
-    xm, xs, ym, ys = d["xm"], d["xs"], d["ym"], d["ys"]
+    return left, right, d["xm"], d["xs"], d["ym"], d["ys"]
+
+
+def main():
+    left, right, xm, xs, ym, ys = _load_brain()
 
     seed = _pick_seed(left, right, xm, xs, ym, ys)
     if seed is None:
@@ -120,7 +157,7 @@ def main():
         o_r = torch.from_numpy(o).float().to(DEVICE)
         a_r = torch.from_numpy(act).float().to(DEVICE)
         with torch.no_grad():
-            _, pred_cont, _ = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
+            _, pred_cont = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
         contact_p = pred_cont.item()
         if state == ST_APPROACH:
             if d_hp < 0.06 and contact_p > 0.5: state = ST_GRASP
