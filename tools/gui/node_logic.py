@@ -407,6 +407,15 @@ def node_force_limit(ctx):
     return True
 
 
+def node_eval_report_pdf(ctx):
+    """📄 稳定性评估 PDF — 汇总报告节点 (2026-08-14 老倪)
+    内容: 摘要结论 + 状态空间建模(公式) + 三工程图详释 + 九指标表 + 三模块公式 + 调优建议
+    数据: reports/eval_state_space.json + 三张 png → gen_report_state_space.py → PDF → 飞书"""
+    log = ctx["log"]
+    log("📄 稳定性评估 PDF: 九指标+三模块+三图详释 → 汇总报告 → 飞书")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -842,6 +851,7 @@ _reg("eval_state_space", ["模型评估 (状态空间)", "状态空间评估"], 
 _reg("spectral_norm", ["谱归一化"], "🧮 谱归一化 — 左脑逐层 σ_max → Lipschitz 上界", node_spectral_norm)
 _reg("gru_gate", ["GRU 门控"], "🧮 GRU 门控机制 — 右脑潜空间 ρ(W) 收缩", node_gru_gate)
 _reg("force_limit", ["力幅值限幅"], "🧮 力幅值限幅 — 插入阶段饱和 → 临界阻尼 ζ", node_force_limit)
+_reg("eval_report_pdf", ["稳定性评估 PDF"], "📄 稳定性评估汇总 PDF — 公式+图+数据+结论 → 飞书", node_eval_report_pdf)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

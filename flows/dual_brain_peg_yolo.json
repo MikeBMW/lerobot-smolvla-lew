@@ -944,6 +944,27 @@
     "out1"
    ],
    "actions": []
+  },
+  {
+   "id": "dbpdf",
+   "type": "system",
+   "name": "📄 稳定性评估 PDF",
+   "x": 1150,
+   "y": 540,
+   "w": 210,
+   "icon": "📄",
+   "color": "#3fb950",
+   "params": {
+    "eval_report_pdf": true,
+    "desc": "生成状态空间稳定性评估 PDF (九指标+三模块+三工程图详释) → 飞书"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
   }
  ],
  "links": [
@@ -1169,6 +1190,13 @@
    "id": "lkdbb5anf1",
    "f": "dbb5",
    "t": "anf1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkdbpdf",
+   "f": "dbev",
+   "t": "dbpdf",
    "f_port": "out1",
    "t_port": "in1"
   }

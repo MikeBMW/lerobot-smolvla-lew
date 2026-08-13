@@ -6871,6 +6871,10 @@ class SimulinkModule(QWidget):
         if params.get("spectral_norm") or params.get("gru_gate") or params.get("force_limit"):
             self.on_z_analysis()
             return
+        # 1.78) 📄 稳定性评估 PDF (2026-08-14 老倪: 汇总报告节点 → 飞书)
+        if params.get("eval_report_pdf"):
+            self.on_eval_report_pdf(node)
+            return
         # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
         if params.get("insert_report"):
             self.on_insert_report()
@@ -7092,6 +7096,28 @@ class SimulinkModule(QWidget):
             return False, f"评估失败: {tail.splitlines()[-1] if tail else '?'}"
 
         self._start_worker(_work, "📊 状态空间评估进行中…")
+
+    def on_eval_report_pdf(self, node):
+        """📄 稳定性评估 PDF: 读评估 JSON + 三图 → 汇总报告 PDF → 飞书 (2026-08-14 老倪)"""
+        self._log("📄 稳定性评估 PDF 生成中 (九指标+三模块+三图详释)…")
+
+        def _work():
+            import subprocess as _sp
+            root = self._repo_root()
+            g = _sp.run([os.path.join(root, ".venv", "bin", "python"),
+                         os.path.join(root, "tools", "gen_report_state_space.py")],
+                        capture_output=True, text=True, timeout=120, cwd=root)
+            if g.returncode != 0:
+                return False, f"PDF 生成失败: {(g.stderr or g.stdout or '?').splitlines()[-1][:120]}"
+            cands = sorted(glob.glob(os.path.join(root, "reports", "状态空间稳定性评估报告_*.pdf")),
+                           key=os.path.getmtime)
+            if not cands:
+                return False, "PDF 未产出"
+            pdf = cands[-1]
+            self._feishu_send_file_work(pdf, "pdf", "📊 Z700 状态空间稳定性评估报告 (图+公式+数据+结论)")
+            return True, f"📄 稳定性评估 PDF: {os.path.basename(pdf)} → 飞书"
+
+        self._start_worker(_work, "📄 稳定性评估 PDF 生成中…")
 
     def on_z_analysis(self):
         """🔍 Z 分析 (2026-08-12 老倪): 一键全面评价 Z700 模型稳定性
