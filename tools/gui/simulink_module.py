@@ -6876,17 +6876,21 @@ class SimulinkModule(QWidget):
         if params.get("spectral_norm") or params.get("gru_gate") or params.get("force_limit"):
             self.on_z_analysis()
             return
-        # 1.78) 📄 稳定性评估 PDF (2026-08-14 老倪: 汇总报告节点 → 飞书)
+        # 1.11) 📄 PDF 报告 (2026-08-10 双脑+状态机: 插拔方案报告; 2026-08-14 合并:
+        # 方案报告 + 稳定性评估报告 一个节点 → 飞书)
+        if params.get("insert_report"):
+            self.on_insert_report()
+            # 🐛 2026-08-14 老倪: 合并节点 — 同节点还含 稳定性评估 PDF
+            if params.get("eval_report_pdf"):
+                self.on_eval_report_pdf(node)
+            return
+        # 1.78) 📄 稳定性评估 PDF (独立节点时用; 已合并则走 1.11)
         if params.get("eval_report_pdf"):
             self.on_eval_report_pdf(node)
             return
         # 1.79) ⚙️ 前馈 PD 控制器 (2026-08-14 老倪: 顶层模型 — 增益调度PID+前馈, Z700=底层)
         if params.get("ff_pd_control"):
             self.on_ff_pd()
-            return
-        # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
-        if params.get("insert_report"):
-            self.on_insert_report()
             return
         # 1.12) 🌐 方案介绍节点 (2026-08-12 老倪: 画布节点双击 → 打开方案介绍分页)
         if params.get("solution_web"):

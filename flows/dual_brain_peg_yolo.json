@@ -560,7 +560,7 @@
   {
    "id": "dbd1",
    "type": "pdf_report",
-   "name": "📄 PDF 插拔方案报告",
+   "name": "📄 方案+评估 PDF 报告",
    "x": 380,
    "y": 540,
    "w": 150,
@@ -569,8 +569,9 @@
    "params": {
     "insert_report": true,
     "out": "reports/插拔方案报告_<时间戳>.pdf",
-    "desc": "双击运行: 方案JSON+视频帧 → 6章方案PDF → 自动发飞书",
-    "source": "tools/gen_insert_report.py"
+    "desc": "双击生成: 插拔方案报告 + 稳定性评估报告 (含图/公式/数据/结论) → 飞书",
+    "source": "tools/gen_insert_report.py",
+    "eval_report_pdf": true
    },
    "inputs": [
     {
@@ -917,27 +918,6 @@
    "actions": []
   },
   {
-   "id": "dbpdf",
-   "type": "system",
-   "name": "📄 稳定性评估 PDF",
-   "x": 1140,
-   "y": 1060,
-   "w": 210,
-   "icon": "📄",
-   "color": "#3fb950",
-   "params": {
-    "eval_report_pdf": true,
-    "desc": "生成状态空间稳定性评估 PDF (九指标+三模块+三工程图详释) → 飞书"
-   },
-   "inputs": [
-    "in1"
-   ],
-   "outputs": [
-    "out1"
-   ],
-   "actions": []
-  },
-  {
    "id": "tpbg",
    "type": "row_bg",
    "name": "🎛 顶层控制 (前馈 PD)",
@@ -1179,13 +1159,6 @@
    "t_port": "in1"
   },
   {
-   "id": "lkdbpdf",
-   "f": "dbev",
-   "t": "dbpdf",
-   "f_port": "out1",
-   "t_port": "in1"
-  },
-  {
    "id": "lkdbb0anf1",
    "f": "dbb0",
    "t": "anf1",
@@ -1226,6 +1199,13 @@
    "t": "dbev",
    "f_port": "out1",
    "t_port": "in4"
+  },
+  {
+   "id": "lkdbevdbd1",
+   "f": "dbev",
+   "t": "dbd1",
+   "f_port": "out1",
+   "t_port": "in1"
   }
  ]
 }
