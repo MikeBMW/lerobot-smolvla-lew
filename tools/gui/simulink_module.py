@@ -3564,9 +3564,11 @@ class SimulinkModule(QWidget):
         self._log(f"❌ 找不到模板: {name}")
         return False
 
-    def load_flow_file(self, path):
+    def load_flow_file(self, path, confirm=True):
         """💾 加载保存的工作流 JSON (2026-08-09 老倪: 模块库总系统 → flows/system.json)
-        解析 {format,nodes[],links[]} → 恢复节点+连线 (复用 add_node 建节点, 保留位置)"""
+        解析 {format,nodes[],links[]} → 恢复节点+连线 (复用 add_node 建节点, 保留位置)
+        🐛 2026-08-14 老倪: confirm=False (子系统展开/顶层切换直接加载, 不弹确认框 —
+        用户点 Z700 子系统就是要进入, 弹框点否 → 误判'找不到画布')"""
         import os as _os
         if not _os.path.exists(path):
             self._log(f"❌ 工作流文件不存在: {path}")
@@ -3579,9 +3581,9 @@ class SimulinkModule(QWidget):
             return False
         nodes = flow.get("nodes", [])
         links = flow.get("links", [])
-        if self.nodes:
+        if self.nodes and confirm:
             if not self._qmsg_yes("加载工作流", f"加载「{path}」将清空当前画布，继续？"):
-                return
+                return None
         self.clear()
         old_sync = self._sync
         self._sync = lambda: None
@@ -4166,7 +4168,7 @@ class SimulinkModule(QWidget):
         # 🐛 2026-08-14 老倪: Z700 子系统 → 加载 Z700 画布文件 (前馈PD顶层→Z700底层层级)
         if node.get("params", {}).get("z700_subsystem"):
             z700_flow = os.path.join(self._repo_root(), "flows", "dual_brain_peg_yolo.json")
-            if not os.path.exists(z700_flow) or not self.load_flow_file(z700_flow):
+            if not os.path.exists(z700_flow) or not self.load_flow_file(z700_flow, confirm=False):
                 self._subsystem_stack.pop()
                 self._log(f"❌ Z700 画布加载失败: {z700_flow} (exists={os.path.exists(z700_flow)}, repo={self._repo_root()})")
                 self._qmsg_info("🎛 子系统", "找不到 Z700 画布: dual_brain_peg_yolo.json")
@@ -7310,7 +7312,7 @@ class SimulinkModule(QWidget):
         🐛 2026-08-14: 去掉确认框 (用户点按钮直接打开, 工具按钮要好使)"""
         self.clear()
         flow = os.path.join(self._repo_root(), "flows", "ff_pd_top.json")
-        if not os.path.exists(flow) or not self.load_flow_file(flow):
+        if not os.path.exists(flow) or not self.load_flow_file(flow, confirm=False):
             self._qmsg_info("⚙️ 前馈 PD", "顶层系统画布加载失败")
             return
         self._log("════ ⚙️ 前馈 PD 顶层系统 (Simulink 层级) ════")
