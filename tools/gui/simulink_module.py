@@ -4168,6 +4168,7 @@ class SimulinkModule(QWidget):
             z700_flow = os.path.join(self._repo_root(), "flows", "dual_brain_peg_yolo.json")
             if not os.path.exists(z700_flow) or not self.load_flow_file(z700_flow):
                 self._subsystem_stack.pop()
+                self._log(f"❌ Z700 画布加载失败: {z700_flow} (exists={os.path.exists(z700_flow)}, repo={self._repo_root()})")
                 self._qmsg_info("🎛 子系统", "找不到 Z700 画布: dual_brain_peg_yolo.json")
                 return
             self._subsystem_active = True
