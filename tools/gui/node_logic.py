@@ -416,6 +416,21 @@ def node_eval_report_pdf(ctx):
     return True
 
 
+def node_ff_pd_control(ctx):
+    """⚙️ 前馈 PD 控制器 — 顶层控制模型 (2026-08-14 老倪)
+    思想: 系统 = 带前馈的增益调度 PID
+      状态机 = 强力 P (e×Kp: delta=peg−hand, act+=delta*2.0)
+      物理限幅 = 隐性 D 与饱和 (死区/限幅=非线性阻尼, 放弃 I 避免积分饱和)
+      左脑 MLP = 前馈控制器 (直接预测动作, 偏差产生前给力)
+      右脑 WM = 预测器 (预判接触提前减速)
+    层级: ⚙️前馈PD=顶层控制模型, Z700双脑+状态机=底层执行模型
+    数据: LeftRightPolicy 动作 → PD 分析 → 模型评估汇总 (ff_pd_analysis.py)
+    双击 → 前馈 vs 纯 PD 对比仿真 + 图 + 飞书"""
+    log = ctx["log"]
+    log("⚙️ 前馈 PD: 增益调度 P + 隐性 D + 前馈预测 → 对比仿真 (顶层控制模型)")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -852,6 +867,7 @@ _reg("spectral_norm", ["谱归一化"], "🧮 谱归一化 — 左脑逐层 σ_m
 _reg("gru_gate", ["GRU 门控"], "🧮 GRU 门控机制 — 右脑潜空间 ρ(W) 收缩", node_gru_gate)
 _reg("force_limit", ["力幅值限幅"], "🧮 力幅值限幅 — 插入阶段饱和 → 临界阻尼 ζ", node_force_limit)
 _reg("eval_report_pdf", ["稳定性评估 PDF"], "📄 稳定性评估汇总 PDF — 公式+图+数据+结论 → 飞书", node_eval_report_pdf)
+_reg("ff_pd_control", ["前馈 PD"], "⚙️ 前馈 PD 控制器 — 顶层增益调度PID+前馈, Z700=底层", node_ff_pd_control)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

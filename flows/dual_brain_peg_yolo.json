@@ -968,6 +968,43 @@
     "out1"
    ],
    "actions": []
+  },
+  {
+   "id": "tpbg",
+   "type": "row_bg",
+   "name": "🎛 顶层控制 (前馈 PD)",
+   "x": -20,
+   "y": -360,
+   "w": 900,
+   "icon": "🎛",
+   "color": "#1f2937",
+   "h": 170,
+   "params": {
+    "bg": "#1f2937",
+    "model": "ffpd",
+    "desc": "顶层: 增益调度PID+前馈 — 状态机=P/限幅=D/左脑=前馈/右脑=预测器"
+   }
+  },
+  {
+   "id": "tpff",
+   "type": "system",
+   "name": "⚙️ 前馈 PD 控制器",
+   "x": 140,
+   "y": -320,
+   "w": 230,
+   "icon": "⚙️",
+   "color": "#58a6ff",
+   "params": {
+    "ff_pd_control": true,
+    "desc": "顶层: 增益调度 P + 隐性 D + 前馈预测 — 双击运行对比分析"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
   }
  ],
  "links": [
@@ -1220,6 +1257,20 @@
   {
    "id": "lkanf1ev",
    "f": "anf1",
+   "t": "dbev",
+   "f_port": "out1",
+   "t_port": "in4"
+  },
+  {
+   "id": "lkdbb0tpff",
+   "f": "dbb0",
+   "t": "tpff",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lktpffev",
+   "f": "tpff",
    "t": "dbev",
    "f_port": "out1",
    "t_port": "in4"

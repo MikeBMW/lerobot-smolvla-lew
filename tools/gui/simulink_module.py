@@ -6880,6 +6880,10 @@ class SimulinkModule(QWidget):
         if params.get("eval_report_pdf"):
             self.on_eval_report_pdf(node)
             return
+        # 1.79) ⚙️ 前馈 PD 控制器 (2026-08-14 老倪: 顶层模型 — 增益调度PID+前馈, Z700=底层)
+        if params.get("ff_pd_control"):
+            self.on_ff_pd()
+            return
         # 1.11) 📄 插拔方案PDF (2026-08-10 双脑+状态机: 双击 → 6章方案报告 → 自动发飞书)
         if params.get("insert_report"):
             self.on_insert_report()
