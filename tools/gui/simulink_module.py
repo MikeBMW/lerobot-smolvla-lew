@@ -6903,6 +6903,13 @@ class SimulinkModule(QWidget):
         if params.get("ff_pd_control"):
             self.on_ff_pd()
             return
+        # 1.80) 🔬 Z700 内部模块 (顶层只读展示 → 提示进入完整画布) (2026-08-14 老倪)
+        if params.get("z700_internal"):
+            self._log("🔬 Z700 内部模块为只读展示 — 双击上方「🔬 Z700 子系统」进入完整画布 (含训练/评估/交付)")
+            self._highlight_node(next((n for n in self.nodes if n.get("params", {}).get("z700_subsystem")), None)
+                                 if any(n.get("params", {}).get("z700_subsystem") for n in self.nodes) else node,
+                                 ms=3000)
+            return
         # 1.12) 🌐 方案介绍节点 (2026-08-12 老倪: 画布节点双击 → 打开方案介绍分页)
         if params.get("solution_web"):
             self.open_solution_web()

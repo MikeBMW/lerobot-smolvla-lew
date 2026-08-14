@@ -447,6 +447,15 @@ def node_ff_scope(ctx):
     return True
 
 
+def node_z700_internal(ctx):
+    """🔬 Z700 内部模块 (顶层只读展示) — 2026-08-14 老倪
+    前馈PD顶层视角: 感知→双脑→接近→抓取→抬起→转移→插入→完成 模块链 (输入输出可见)
+    双击 → 提示进入上方「🔬 Z700 子系统」完整画布 (训练/评估/交付全功能)"""
+    log = ctx["log"]
+    log("🔬 Z700 内部模块 (只读): 感知→双脑→状态机链 — 完整功能请双击上方 Z700 子系统块")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -886,6 +895,7 @@ _reg("eval_report_pdf", ["稳定性评估 PDF"], "📄 稳定性评估汇总 PDF
 _reg("ff_pd_control", ["前馈 PD"], "⚙️ 前馈 PD 控制器 — 顶层增益调度PID+前馈, Z700=底层", node_ff_pd_control)
 _reg("ff_ref_input", ["参考输入"], "📡 参考输入 u(t) — 前馈PD顶层输入", node_ff_ref_input)
 _reg("ff_scope", ["输出 Scope"], "🖥 输出 Scope — 前馈PD顶层输出响应", node_ff_scope)
+_reg("z700_internal", ["Z700 内部"], "🔬 Z700 内部模块 (顶层只读展示)", node_z700_internal)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

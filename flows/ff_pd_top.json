@@ -1,33 +1,365 @@
 {
-  "format": "zmax-simulink",
-  "version": "1.0",
-  "name": "🎛 前馈 PD 顶层系统",
-  "sim": { "dt": 0.01, "t_end": 10.0, "solver": "fixed-step" },
-  "nodes": [
-    { "id": "ffbg", "type": "row_bg", "name": "🎛 前馈 PD 顶层系统", "x": -20, "y": -170,
-      "w": 1180, "icon": "🎛", "color": "#1f2937", "h": 210,
-      "params": { "bg": "#1f2937", "model": "ffpd", "desc": "顶层: 增益调度PID+前馈 (状态机=P/限幅=D/左脑=前馈/右脑=预测器) · 双击🔬Z700子系统进入底层" } },
-    { "id": "ffu", "type": "hardware", "name": "📡 参考输入 u(t)", "x": 140, "y": -130, "w": 200,
-      "icon": "📡", "color": "#58a6ff",
-      "params": { "ff_ref_input": true, "desc": "目标位置/力参考 (增益调度各阶段误差 e(t) 的期望)" },
-      "inputs": [], "outputs": ["out1"], "actions": [] },
-    { "id": "ffsub", "type": "system", "name": "🔬 Z700 子系统", "x": 420, "y": -130, "w": 240,
-      "icon": "🔬", "color": "#d29922",
-      "params": { "subsystem": "z700_sub", "z700_subsystem": true,
-                  "desc": "Z700 完整工程子系统: YOLO感知+双脑+状态机+交付 (双击展开 → dual_brain_peg_yolo.json)" },
-      "inputs": ["in1"], "outputs": ["out1"], "actions": [] },
-    { "id": "ffscope", "type": "system", "name": "🖥 输出 Scope", "x": 740, "y": -130, "w": 200,
-      "icon": "🖥", "color": "#3fb950",
-      "params": { "ff_scope": true, "desc": "系统输出 y(t): 完成状态/误差曲线 (等效 PD 响应)" },
-      "inputs": ["in1"], "outputs": ["out1"], "actions": [] },
-    { "id": "ffana", "type": "system", "name": "⚙️ 前馈 PD 分析", "x": 1000, "y": -130, "w": 200,
-      "icon": "⚙️", "color": "#58a6ff",
-      "params": { "ff_pd_control": true, "desc": "增益调度PD参数表 + 前馈vs纯PD对比仿真 + 图 (双击运行)" },
-      "inputs": ["in1"], "outputs": [], "actions": [] }
-  ],
-  "links": [
-    { "id": "lkffu1", "f": "ffu", "t": "ffsub", "f_port": "out1", "t_port": "in1" },
-    { "id": "lkffs1", "f": "ffsub", "t": "ffscope", "f_port": "out1", "t_port": "in1" },
-    { "id": "lkffa1", "f": "ffsub", "t": "ffana", "f_port": "out1", "t_port": "in1" }
-  ]
+ "format": "zmax-simulink",
+ "version": "1.0",
+ "name": "🎛 前馈 PD 顶层系统",
+ "sim": {
+  "dt": 0.01,
+  "t_end": 10.0,
+  "solver": "fixed-step"
+ },
+ "nodes": [
+  {
+   "id": "ffbg",
+   "type": "row_bg",
+   "name": "🎛 前馈 PD 顶层系统",
+   "x": -20,
+   "y": -170,
+   "w": 1180,
+   "icon": "🎛",
+   "color": "#1f2937",
+   "h": 210,
+   "params": {
+    "bg": "#1f2937",
+    "model": "ffpd",
+    "desc": "顶层: 增益调度PID+前馈 (状态机=P/限幅=D/左脑=前馈/右脑=预测器) · 双击🔬Z700子系统进入底层"
+   }
+  },
+  {
+   "id": "ffu",
+   "type": "hardware",
+   "name": "📡 参考输入 u(t)",
+   "x": 140,
+   "y": -130,
+   "w": 200,
+   "icon": "📡",
+   "color": "#58a6ff",
+   "params": {
+    "ff_ref_input": true,
+    "desc": "目标位置/力参考 (增益调度各阶段误差 e(t) 的期望)"
+   },
+   "inputs": [],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffsub",
+   "type": "system",
+   "name": "🔬 Z700 子系统",
+   "x": 420,
+   "y": -130,
+   "w": 240,
+   "icon": "🔬",
+   "color": "#d29922",
+   "params": {
+    "subsystem": "z700_sub",
+    "z700_subsystem": true,
+    "desc": "Z700 完整工程子系统: YOLO感知+双脑+状态机+交付 (双击展开 → dual_brain_peg_yolo.json)"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffscope",
+   "type": "system",
+   "name": "🖥 输出 Scope",
+   "x": 740,
+   "y": -130,
+   "w": 200,
+   "icon": "🖥",
+   "color": "#3fb950",
+   "params": {
+    "ff_scope": true,
+    "desc": "系统输出 y(t): 完成状态/误差曲线 (等效 PD 响应)"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffana",
+   "type": "system",
+   "name": "⚙️ 前馈 PD 分析",
+   "x": 1000,
+   "y": -130,
+   "w": 200,
+   "icon": "⚙️",
+   "color": "#58a6ff",
+   "params": {
+    "ff_pd_control": true,
+    "desc": "增益调度PD参数表 + 前馈vs纯PD对比仿真 + 图 (双击运行)"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [],
+   "actions": []
+  },
+  {
+   "id": "ffbg2",
+   "type": "row_bg",
+   "name": "🔬 Z700 内部结构 (只读)",
+   "x": -20,
+   "y": 60,
+   "w": 1180,
+   "icon": "🔬",
+   "color": "#2d333b",
+   "h": 230,
+   "params": {
+    "bg": "#2d333b",
+    "model": "z700",
+    "desc": "Z700 子系统内部: 感知→双脑→状态机链 (双击🔬Z700子系统进入完整画布)"
+   }
+  },
+  {
+   "id": "ffy1",
+   "type": "system",
+   "name": "🎯 感知链",
+   "x": 140,
+   "y": 100,
+   "w": 150,
+   "icon": "🎯",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffb1",
+   "type": "system",
+   "name": "🧠 双脑",
+   "x": 340,
+   "y": 100,
+   "w": 150,
+   "icon": "🧠",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffs1",
+   "type": "system",
+   "name": "➤ 接近",
+   "x": 540,
+   "y": 100,
+   "w": 150,
+   "icon": "➤",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffs2",
+   "type": "system",
+   "name": "➤ 抓取",
+   "x": 700,
+   "y": 100,
+   "w": 150,
+   "icon": "➤",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffs3",
+   "type": "system",
+   "name": "➤ 抬起",
+   "x": 860,
+   "y": 100,
+   "w": 150,
+   "icon": "➤",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffs4",
+   "type": "system",
+   "name": "➤ 转移",
+   "x": 1020,
+   "y": 100,
+   "w": 150,
+   "icon": "➤",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffs5",
+   "type": "system",
+   "name": "➤ 插入",
+   "x": 1180,
+   "y": 100,
+   "w": 150,
+   "icon": "➤",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffs6",
+   "type": "system",
+   "name": "➤ 完成",
+   "x": 1340,
+   "y": 100,
+   "w": 150,
+   "icon": "➤",
+   "color": "#3fb950",
+   "params": {
+    "z700_internal": true,
+    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  }
+ ],
+ "links": [
+  {
+   "id": "lkffu1",
+   "f": "ffu",
+   "t": "ffsub",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffs1",
+   "f": "ffsub",
+   "t": "ffscope",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffa1",
+   "f": "ffsub",
+   "t": "ffana",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffy1ffb1",
+   "f": "ffy1",
+   "t": "ffb1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffb1ffs1",
+   "f": "ffb1",
+   "t": "ffs1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffs1ffs2",
+   "f": "ffs1",
+   "t": "ffs2",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffs2ffs3",
+   "f": "ffs2",
+   "t": "ffs3",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffs3ffs4",
+   "f": "ffs3",
+   "t": "ffs4",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffs4ffs5",
+   "f": "ffs4",
+   "t": "ffs5",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffs5ffs6",
+   "f": "ffs5",
+   "t": "ffs6",
+   "f_port": "out1",
+   "t_port": "in1"
+  }
+ ]
 }
