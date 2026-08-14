@@ -12,7 +12,7 @@ import os
 import numpy as np
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QComboBox,
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QComboBox,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton)
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont
@@ -182,14 +182,16 @@ class PoleZeroPlot(QWidget):
 # ════════════════════════════════════════════════════════════════
 # 右侧数据字典面板
 # ════════════════════════════════════════════════════════════════
-class ModelTreeDock(QDockWidget):
-    """📚 数据字典 (Model Tree) — 画布节点参数树 + 标定 + 数学分析"""
+class ModelTreeDock(QWidget):
+    """📚 数据字典 (Model Tree) — 画布节点参数树 + 标定 + 数学分析
+    🐛 2026-08-14: QDockWidget → QWidget (SimulinkModule 是 QWidget 非 QMainWindow,
+    addDockWidget 不存在 → 面板一直没显示; 改嵌入右侧 split 列)"""
 
     def __init__(self, module, parent=None):
-        super().__init__("📚 数据字典 (Model Tree)", parent)
+        super().__init__(parent)
+        self.setObjectName("ModelTreeDock")
+        self.setMinimumWidth(300)
         self.module = module
-        self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        self.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
 
         root = QWidget()
         lay = QVBoxLayout(root)
@@ -222,7 +224,7 @@ class ModelTreeDock(QDockWidget):
         self.plot.setVisible(False)
         lay.addWidget(self.plot)
 
-        self.setWidget(root)
+        self.setLayout(lay)  # QWidget 布局 (原 QDockWidget.setWidget(root))
         self.refresh()
 
     # ── 视图切换 ──

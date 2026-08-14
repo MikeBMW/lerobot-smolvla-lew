@@ -3274,11 +3274,12 @@ class SimulinkModule(QWidget):
             pass
         self._log("Simulink 模式就绪 · 0帧起手, 从左侧模块库开始搭建")
         # 📚 右侧数据字典 Model Tree (2026-08-12 老倪: 数学化改造 — 参数树/标定/数学分析)
+        # 🐛 2026-08-14: 嵌入右侧 split 列 (SimulinkModule 是 QWidget, addDockWidget 不存在)
         try:
             from model_tree import ModelTreeDock
             self.model_tree = ModelTreeDock(self)
-            self.addDockWidget(Qt.RightDockWidgetArea, self.model_tree)
-            self.model_tree.setMinimumWidth(300)
+            split.addWidget(self.model_tree)
+            split.setStretchFactor(split.indexOf(self.model_tree), 0)
         except Exception as _ex:
             self._log(f"⚠️ 数据字典面板加载失败: {_ex}")
             self.model_tree = None
