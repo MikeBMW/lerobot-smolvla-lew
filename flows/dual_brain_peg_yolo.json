@@ -558,38 +558,6 @@
    "actions": []
   },
   {
-   "id": "dbd0",
-   "type": "action",
-   "name": "▶ 生成插拔视频",
-   "x": 140,
-   "y": 540,
-   "w": 150,
-   "icon": "➤",
-   "color": "#00d4aa",
-   "params": {
-    "insert_video": true,
-    "seed": 1,
-    "out": "reports/insert_success_demo.mp4",
-    "desc": "双击运行: 后台录制 seed1 完整插拔流程 → 旋转180° → mp4 → 自动发飞书 (约1-2分钟)",
-    "source": "tools/gen_insert_video.py"
-   },
-   "inputs": [
-    {
-     "id": "in1",
-     "label": "in",
-     "dtype": "any"
-    }
-   ],
-   "outputs": [
-    {
-     "id": "out1",
-     "label": "out",
-     "dtype": "any"
-    }
-   ],
-   "actions": []
-  },
-  {
    "id": "dbd1",
    "type": "pdf_report",
    "name": "📄 PDF 插拔方案报告",
@@ -1153,22 +1121,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "完成"
-  },
-  {
-   "id": "l24780791661254",
-   "f": "dbb6",
-   "t": "dbd0",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "插拔成功"
-  },
-  {
-   "id": "l46089487448965",
-   "f": "dbd0",
-   "t": "dbd1",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "演示视频"
   },
   {
    "id": "ltr0",
