@@ -118,7 +118,7 @@
    "params": {
     "bg": "#2d333b",
     "model": "z700",
-    "desc": "Z700 子系统内部: 感知→双脑→状态机链 (双击🔬Z700子系统进入完整画布)"
+    "desc": "Z700 子系统内部: 感知链→双脑→状态机→动作 (动作=接近/抓取/抬起/转移/插入)"
    }
   },
   {
@@ -164,17 +164,17 @@
    "actions": []
   },
   {
-   "id": "ffs1",
+   "id": "ffsm",
    "type": "system",
-   "name": "➤ 接近",
+   "name": "❖ 状态机",
    "x": 540,
    "y": 100,
    "w": 150,
-   "icon": "➤",
+   "icon": "❖",
    "color": "#3fb950",
    "params": {
     "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+    "desc": "状态机: 接触判定 → 阶段转移 (contact+距离阈值驱动)"
    },
    "inputs": [
     "in1"
@@ -185,101 +185,17 @@
    "actions": []
   },
   {
-   "id": "ffs2",
+   "id": "ffact",
    "type": "system",
-   "name": "➤ 抓取",
-   "x": 700,
+   "name": "🎮 动作",
+   "x": 740,
    "y": 100,
    "w": 150,
-   "icon": "➤",
+   "icon": "🎮",
    "color": "#3fb950",
    "params": {
     "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
-   },
-   "inputs": [
-    "in1"
-   ],
-   "outputs": [
-    "out1"
-   ],
-   "actions": []
-  },
-  {
-   "id": "ffs3",
-   "type": "system",
-   "name": "➤ 抬起",
-   "x": 860,
-   "y": 100,
-   "w": 150,
-   "icon": "➤",
-   "color": "#3fb950",
-   "params": {
-    "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
-   },
-   "inputs": [
-    "in1"
-   ],
-   "outputs": [
-    "out1"
-   ],
-   "actions": []
-  },
-  {
-   "id": "ffs4",
-   "type": "system",
-   "name": "➤ 转移",
-   "x": 1020,
-   "y": 100,
-   "w": 150,
-   "icon": "➤",
-   "color": "#3fb950",
-   "params": {
-    "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
-   },
-   "inputs": [
-    "in1"
-   ],
-   "outputs": [
-    "out1"
-   ],
-   "actions": []
-  },
-  {
-   "id": "ffs5",
-   "type": "system",
-   "name": "➤ 插入",
-   "x": 1180,
-   "y": 100,
-   "w": 150,
-   "icon": "➤",
-   "color": "#3fb950",
-   "params": {
-    "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
-   },
-   "inputs": [
-    "in1"
-   ],
-   "outputs": [
-    "out1"
-   ],
-   "actions": []
-  },
-  {
-   "id": "ffs6",
-   "type": "system",
-   "name": "➤ 完成",
-   "x": 1340,
-   "y": 100,
-   "w": 150,
-   "icon": "➤",
-   "color": "#3fb950",
-   "params": {
-    "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+    "desc": "动作执行: 接近→抓取→抬起→转移→插入 (状态机各阶段限幅/增益调度)"
    },
    "inputs": [
     "in1"
@@ -320,44 +236,16 @@
    "t_port": "in1"
   },
   {
-   "id": "lkffb1ffs1",
+   "id": "lkffb1ffsm",
    "f": "ffb1",
-   "t": "ffs1",
+   "t": "ffsm",
    "f_port": "out1",
    "t_port": "in1"
   },
   {
-   "id": "lkffs1ffs2",
-   "f": "ffs1",
-   "t": "ffs2",
-   "f_port": "out1",
-   "t_port": "in1"
-  },
-  {
-   "id": "lkffs2ffs3",
-   "f": "ffs2",
-   "t": "ffs3",
-   "f_port": "out1",
-   "t_port": "in1"
-  },
-  {
-   "id": "lkffs3ffs4",
-   "f": "ffs3",
-   "t": "ffs4",
-   "f_port": "out1",
-   "t_port": "in1"
-  },
-  {
-   "id": "lkffs4ffs5",
-   "f": "ffs4",
-   "t": "ffs5",
-   "f_port": "out1",
-   "t_port": "in1"
-  },
-  {
-   "id": "lkffs5ffs6",
-   "f": "ffs5",
-   "t": "ffs6",
+   "id": "lkffsmffact",
+   "f": "ffsm",
+   "t": "ffact",
    "f_port": "out1",
    "t_port": "in1"
   }
