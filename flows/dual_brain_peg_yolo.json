@@ -962,7 +962,10 @@
     "desc": "生成状态空间稳定性评估 PDF (九指标+三模块+三工程图详释) → 飞书"
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3",
+    "in4"
    ],
    "outputs": [
     "out1"
@@ -1204,23 +1207,23 @@
    "t_port": "in1"
   },
   {
-   "id": "lkans1dbev",
+   "id": "lkans1pdf",
    "f": "ans1",
-   "t": "dbev",
+   "t": "dbpdf",
    "f_port": "out1",
    "t_port": "in2"
   },
   {
-   "id": "lkang1dbev",
+   "id": "lkang1pdf",
    "f": "ang1",
-   "t": "dbev",
+   "t": "dbpdf",
    "f_port": "out1",
    "t_port": "in3"
   },
   {
-   "id": "lkanf1dbev",
+   "id": "lkanf1pdf",
    "f": "anf1",
-   "t": "dbev",
+   "t": "dbpdf",
    "f_port": "out1",
    "t_port": "in4"
   }
