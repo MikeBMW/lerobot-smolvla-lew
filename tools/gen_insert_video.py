@@ -149,6 +149,8 @@ def main():
         frames = []
         states_track = []
         success = False
+        last_state = state
+        stall = 0
         for step in range(500):
             hand = env.data.site_xpos[env.model.site("endEffector").id]
             peg = env.data.site_xpos[env.model.site("pegGrasp").id]
@@ -163,6 +165,16 @@ def main():
             with torch.no_grad():
                 _, pred_cont = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
             contact_p = pred_cont.item()
+            # 🐛 2026-08-14 老倪: 停滞检测 — 同一状态连续 120 步不推进 (卡抓取/卡接近)
+            #   → 提前 break 换下个 seed (原跑满 500 步 × render 0.08s = 40s+/seed 浪费)
+            if state == last_state:
+                stall += 1
+            else:
+                stall = 0
+                last_state = state
+            if stall >= 120:
+                print(f"⚠️ seed{seed} 停滞在 {ST_NAMES[state]} ({stall}步), 换下个 seed…", flush=True)
+                break
             if state == ST_APPROACH:
                 if d_hp < 0.06 and contact_p > 0.5: state = ST_GRASP
             elif state == ST_GRASP:
@@ -236,6 +248,14 @@ def main():
             _sh.rmtree(tmpdir, ignore_errors=True)
     else:
         print("❌ 0-11 全部 seed 渲染失败 (可检查模型/状态机参数)", flush=True)
+        # 🐛 2026-08-14 老倪: 最新模型全失败 → 自动回退已验证模型 (16:49, 曾 seed2 成功)
+        fb = os.path.join(ROOT, "outputs", "train", "left_right_20260813_164959")
+        cur = os.environ.get("BRAIN_CKPT", "")
+        if cur != fb and os.path.exists(os.path.join(fb, "checkpoints", "last", "pretrained_model", "model.pt")):
+            print(f"↩️ 自动回退已验证模型: {fb}", flush=True)
+            os.environ["BRAIN_CKPT"] = fb
+            main()
+            return
         sys.exit(2)
 
 if __name__ == "__main__":
