@@ -102,7 +102,12 @@
    "inputs": [
     "in1"
    ],
-   "outputs": [],
+   "outputs": [
+    "out1",
+    "out2",
+    "out3",
+    "out4"
+   ],
    "actions": []
   },
   {
@@ -132,7 +137,12 @@
    "color": "#3fb950",
    "params": {
     "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+    "desc": "感知链: Kp=1.0 感知增益 → 观测 y=Cx (前馈PD参数注入)",
+    "Kp": 1.0,
+    "limit": [
+     -1.0,
+     1.0
+    ]
    },
    "inputs": [
     "in1"
@@ -153,7 +163,12 @@
    "color": "#3fb950",
    "params": {
     "z700_internal": true,
-    "desc": "Z700 内部模块 (只读展示) — 双击上方🔬Z700子系统进入完整画布"
+    "desc": "双脑: K_ff=0.2 前馈增益(左脑预测动作) — 偏差产生前给力",
+    "K_ff": 0.2,
+    "limit": [
+     -1.0,
+     1.0
+    ]
    },
    "inputs": [
     "in1"
@@ -174,7 +189,9 @@
    "color": "#3fb950",
    "params": {
     "z700_internal": true,
-    "desc": "状态机: 接触判定 → 阶段转移 (contact+距离阈值驱动)"
+    "desc": "状态机: Kp=2.0 阶段P增益, 阈值0.06m — 误差越大纠正力越大",
+    "Kp": 2.0,
+    "thresh": 0.06
    },
    "inputs": [
     "in1"
@@ -195,7 +212,12 @@
    "color": "#3fb950",
    "params": {
     "z700_internal": true,
-    "desc": "动作执行: 接近→抓取→抬起→转移→插入 (状态机各阶段限幅/增益调度)"
+    "desc": "动作: Kd=0.3 隐性阻尼, 限幅±0.6 — 插入临界阻尼(力幅值限幅)",
+    "Kd": 0.3,
+    "limit": [
+     -0.6,
+     0.6
+    ]
    },
    "inputs": [
     "in1"
@@ -247,6 +269,34 @@
    "f": "ffsm",
    "t": "ffact",
    "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffanaffy1",
+   "f": "ffana",
+   "t": "ffy1",
+   "f_port": "out1",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffanaffb1",
+   "f": "ffana",
+   "t": "ffb1",
+   "f_port": "out2",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffanaffsm",
+   "f": "ffana",
+   "t": "ffsm",
+   "f_port": "out3",
+   "t_port": "in1"
+  },
+  {
+   "id": "lkffanaffact",
+   "f": "ffana",
+   "t": "ffact",
+   "f_port": "out4",
    "t_port": "in1"
   }
  ]

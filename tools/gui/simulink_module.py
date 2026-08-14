@@ -2051,6 +2051,18 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, disp)
         else:
             painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
+        # ⚙️ 2026-08-14 老倪: Z700 内部模块 — 显示前馈PD参数值 (Kp/K_ff/Kd/限幅/阈值)
+        if params.get("z700_internal"):
+            _pvals = [f"{k}={params[k]}" for k in ("Kp", "K_ff", "Kd", "thresh") if k in params]
+            if "limit" in params:
+                _pvals.append(f"lim={params['limit']}")
+            if _pvals:
+                painter.setPen(QColor("#9aa4b2"))
+                painter.setFont(QFont("Arial", 7))
+                _pline = " ".join(_pvals)
+                painter.drawText(QRectF(8, self.h - 16, self.w - 12, 13),
+                                 Qt.AlignVCenter | Qt.AlignLeft,
+                                 painter.fontMetrics().elidedText(_pline, Qt.ElideRight, self.w - 12))
         # 🤖 2026-08-09 老倪: 场景节点 — 右上角画小机器人图标 (参考半导体产线机器人)
         if t == "scene":
             try:
@@ -6901,7 +6913,7 @@ class SimulinkModule(QWidget):
             return
         # 1.79) ⚙️ 前馈 PD 控制器 (2026-08-14 老倪: 顶层模型 — 增益调度PID+前馈, Z700=底层)
         if params.get("ff_pd_control"):
-            self.on_ff_pd()
+            self.on_ff_pd_config(node)
             return
         # 1.80) 🔬 Z700 内部模块 (顶层只读展示 → 提示进入完整画布) (2026-08-14 老倪)
         if params.get("z700_internal"):
@@ -7170,6 +7182,78 @@ class SimulinkModule(QWidget):
             self._log("⚠️ 画布无 📊 模型评估 (状态空间) 节点 — 请加载 Z700 画布后重试")
         # 飞书预告
         self._feishu_send_text_async("🔍 Z 分析: Z700 模型全面稳定性评估启动 (九指标: L2增益/BIBO/谱半径/状态机/李雅普诺夫/谱范数/接触分离/平滑度)…")
+
+    def on_ff_pd_config(self, node):
+        """⚙️ 前馈 PD 参数配置 (2026-08-14 老倪): 增益调度PID参数 → 注入 Z700 内部 4 模块
+        UI: 对话框分 4 节 (感知链/双脑/状态机/动作), 每节 Kp/K_ff/Kd/限幅/阈值 可标定
+        保存 → 写回模块 params (画布节点显示更新); 可一键运行对比分析"""
+        mods = [n for n in self.nodes if n.get("params", {}).get("z700_internal")]
+        if not mods:
+            self._log("⚠️ 请先打开「⚙️ 前馈 PD」顶层系统 (Z700 内部模块在此)")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("⚙️ 前馈 PD 参数配置 (增益调度 PID → Z700 内部)")
+        dlg.setMinimumWidth(460)
+        lay = QVBoxLayout(dlg)
+        title = QLabel("前馈 PD 参数注入 Z700 内部模块 (标定后写回画布)")
+        title.setStyleSheet("color:#e6edf3; font-size:13px; font-weight:600;")
+        lay.addWidget(title)
+        form = QFormLayout()
+        spin_map = {}  # (module_id, key) -> QDoubleSpinBox
+        for n in mods:
+            p = n["params"]
+            name = n["name"]
+            hdr = QLabel(f"▸ {name}")
+            hdr.setStyleSheet("color:#58a6ff; font-size:12px; font-weight:600; margin-top:6px;")
+            form.addRow(hdr)
+            keys = [("Kp", 0.1, 10.0), ("K_ff", 0.0, 2.0), ("Kd", 0.0, 5.0), ("thresh", 0.001, 0.5)]
+            for k, lo, hi in keys:
+                if k not in p:
+                    continue
+                sp = QDoubleSpinBox()
+                sp.setRange(lo, hi)
+                sp.setSingleStep(0.05 if k != "thresh" else 0.005)
+                sp.setValue(float(p.get(k, 0)))
+                sp.setDecimals(3 if k == "thresh" else 2)
+                form.addRow(f"  {k}", sp)
+                spin_map[(n["id"], k)] = sp
+            if "limit" in p:
+                lim = QLineEdit(",".join(str(x) for x in p["limit"]))
+                form.addRow("  limit", lim)
+                spin_map[(n["id"], "limit")] = lim
+        lay.addLayout(form)
+        btns = QHBoxLayout()
+        b_run = QPushButton("▶ 运行对比分析")
+        b_save = QPushButton("💾 保存标定")
+        b_close = QPushButton("关闭")
+        for b, st in ((b_run, "background:#1f6feb;"), (b_save, "background:#238636;"),
+                      (b_close, "background:#30363d;")):
+            b.setStyleSheet(f"color:#e6edf3; padding:6px 14px; border:none; border-radius:4px; {st}")
+            btns.addWidget(b)
+        lay.addLayout(btns)
+
+        def _apply():
+            for n in mods:
+                for (mid, k), w in spin_map.items():
+                    if mid != n["id"]:
+                        continue
+                    if k == "limit":
+                        try:
+                            n["params"][k] = [float(x.strip()) for x in w.text().split(",")]
+                        except Exception:
+                            pass
+                    else:
+                        n["params"][k] = w.value()
+            self.canvas.update()
+            self._log("⚙️ 前馈 PD 参数已标定 → 写回 Z700 内部模块 (感知/双脑/状态机/动作)")
+            self._feishu_send_text_async("⚙️ 前馈 PD 参数标定: " +
+                " · ".join(f"{n['name'][2:]}: " +
+                           ",".join(f"{k}={n['params'].get(k)}" for k in ("Kp", "K_ff", "Kd", "thresh") if k in n["params"])
+                           for n in mods))
+        b_save.clicked.connect(lambda: (_apply(), self._qmsg_info("⚙️ 前馈 PD", "参数已写回画布模块 ✓")))
+        b_run.clicked.connect(lambda: (_apply(), self.on_ff_pd()))
+        b_close.clicked.connect(dlg.close)
+        dlg.exec_()
 
     def on_ff_pd(self):
         """⚙️ 前馈 PD 分析 (2026-08-14 老倪): 等效 PID 思想
