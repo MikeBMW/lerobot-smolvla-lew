@@ -3070,9 +3070,8 @@ class SimulinkModule(QWidget):
         # 🔍 Z 分析 (2026-08-12 老倪: 全面评价 Z700 模型稳定性 — 状态空间九指标)
         self.btn_z_analysis = mk_btn("🔍 Z 分析", "全面评价 Z700 模型稳定性 (状态空间九指标 + 飞书报告)",
                                       self.on_z_analysis, "#d29922")
-        # ⚙️ 前馈 PD (2026-08-14 老倪: 等效 PID 分析 — 状态机=P/限幅=D/左脑=前馈/右脑=预测器)
-        self.btn_ff_pd = mk_btn("⚙️ 前馈 PD", "等效 PID 分析: 增益调度 P + 隐性 D + 前馈预测 (对比仿真+图)",
-                                 self.on_ff_pd, "#58a6ff")
+        # ⚙️ 前馈 PD (2026-08-14 老倪: 顶层系统视角 — 前馈PD=顶层总系统, Z700=子系统)
+        self.btn_ff_pd = mk_btn("⚙️ 前馈 PD", "前馈 PD 顶层系统: 增益调度PID+前馈 = 总系统, Z700 = 子系统 (双击🔬Z700子系统展开)", self.open_ff_pd_top, "#58a6ff")
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
@@ -4152,6 +4151,18 @@ class SimulinkModule(QWidget):
             self._subsystem_stack = []
         self._subsystem_stack.append(top_flow)
         # 加载子系统内部模板 (三Model Zoo: 三条并行训练线)
+        # 🐛 2026-08-14 老倪: Z700 子系统 → 加载 Z700 画布文件 (前馈PD顶层→Z700底层层级)
+        if node.get("params", {}).get("z700_subsystem"):
+            z700_flow = os.path.join(self._repo_root(), "flows", "dual_brain_peg_yolo.json")
+            if not os.path.exists(z700_flow) or not self.load_flow_file(z700_flow):
+                self._subsystem_stack.pop()
+                self._qmsg_info("🎛 子系统", "找不到 Z700 画布: dual_brain_peg_yolo.json")
+                return
+            self._subsystem_active = True
+            self._update_back_btn()
+            self._log("🔬 已进入 Z700 子系统 — YOLO感知链 → 双脑+状态机 → 交付 (前馈PD=顶层)")
+            self._log("   ⬅ 完成后点工具栏「⬅ 返回总系统」恢复前馈 PD 顶层")
+            return
         if not self.load_reference_app_by_name(sub_name):
             self._subsystem_stack.pop()
             self._qmsg_info("🎛 子系统", f"找不到子系统模板: {sub_name}")
@@ -7186,6 +7197,43 @@ class SimulinkModule(QWidget):
             return False, f"前馈 PD 分析失败: {tail.splitlines()[-1] if tail else '?'}"
 
         self._start_worker(_work, "⚙️ 前馈 PD 分析进行中…")
+
+    def open_ff_pd_top(self):
+        """⚙️ 前馈 PD 顶层系统 (2026-08-14 老倪: Simulink 顶层/子系统层级)
+        前馈PD = 顶层总系统: 📡参考输入 → 🔬Z700子系统 → 🖥输出Scope + ⚙️前馈PD分析
+        Z700 子系统块: 双击展开 → 加载 Z700 画布 (dual_brain_peg_yolo.json, 原画布不动)"""
+        if self.nodes:
+            if not self._qmsg_yes("⚙️ 前馈 PD 顶层系统",
+                                  "将清空当前画布, 加载前馈 PD 顶层系统?\n\n"
+                                  "顶层: 📡参考输入 u(t) → 🔬Z700子系统 → 🖥输出Scope + ⚙️前馈PD分析\n"
+                                  "双击「🔬 Z700 子系统」→ 进入底层 Z700 完整工程\n"
+                                  "⬅ 在 Z700 内点「⬅ 返回总系统」恢复顶层"):
+                return
+        self.clear()
+        flow = os.path.join(self._repo_root(), "flows", "ff_pd_top.json")
+        if not os.path.exists(flow) or not self.load_flow_file(flow):
+            self._qmsg_info("⚙️ 前馈 PD", "顶层系统画布加载失败")
+            return
+        self._log("════ ⚙️ 前馈 PD 顶层系统 (Simulink 层级) ════")
+        self._log("顶层: 📡参考输入 u(t) → 🔬Z700子系统 → 🖥输出Scope (增益调度PID+前馈 = 总系统)")
+        self._log("双击「🔬 Z700 子系统」→ 展开底层 Z700 完整工程 (感知+双脑+状态机+交付)")
+        self._log("双击「⚙️ 前馈 PD 分析」→ 前馈vs纯PD对比仿真 + 图")
+        self._log("⬅ 在 Z700 子系统内点工具栏「⬅ 返回总系统」恢复顶层")
+        QTimer.singleShot(300, self._ff_pd_top_hint)
+
+    def _ff_pd_top_hint(self):
+        """前馈 PD 顶层加载后气泡引导: 高亮 Z700 子系统块"""
+        try:
+            sub = next((n for n in self.nodes if n.get("params", {}).get("z700_subsystem")), None)
+            if sub is not None:
+                self._highlight_node(sub, ms=6000)
+                it = self._items.get(sub["id"])
+                if it is not None:
+                    gp = self.canvas.mapToGlobal(
+                        self.canvas.mapFromScene(it.sceneBoundingRect().center()))
+                    self._show_bubble(gp, "👆 双击金色高亮「🔬 Z700 子系统」\n→ 进入底层 Z700 完整工程", ms=6000)
+        except Exception:
+            pass
 
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""

@@ -431,6 +431,22 @@ def node_ff_pd_control(ctx):
     return True
 
 
+def node_ff_ref_input(ctx):
+    """📡 参考输入 u(t) — 前馈 PD 顶层系统输入 (2026-08-14 老倪)
+    增益调度各阶段的期望: 目标位置/力参考, 误差 e(t) = 参考 − 实际"""
+    log = ctx["log"]
+    log("📡 参考输入 u(t): 目标位置/力参考 → 误差 e(t) 驱动增益调度 P 控制")
+    return True
+
+
+def node_ff_scope(ctx):
+    """🖥 输出 Scope — 前馈 PD 顶层系统输出 (2026-08-14 老倪)
+    y(t): 完成状态/误差曲线 (等效 PD 响应), 反映 Z700 子系统对参考输入的跟踪"""
+    log = ctx["log"]
+    log("🖥 输出 Scope: y(t) = Z700 子系统对参考输入的响应 (误差/完成状态)")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -868,6 +884,8 @@ _reg("gru_gate", ["GRU 门控"], "🧮 GRU 门控机制 — 右脑潜空间 ρ(W
 _reg("force_limit", ["力幅值限幅"], "🧮 力幅值限幅 — 插入阶段饱和 → 临界阻尼 ζ", node_force_limit)
 _reg("eval_report_pdf", ["稳定性评估 PDF"], "📄 稳定性评估汇总 PDF — 公式+图+数据+结论 → 飞书", node_eval_report_pdf)
 _reg("ff_pd_control", ["前馈 PD"], "⚙️ 前馈 PD 控制器 — 顶层增益调度PID+前馈, Z700=底层", node_ff_pd_control)
+_reg("ff_ref_input", ["参考输入"], "📡 参考输入 u(t) — 前馈PD顶层输入", node_ff_ref_input)
+_reg("ff_scope", ["输出 Scope"], "🖥 输出 Scope — 前馈PD顶层输出响应", node_ff_scope)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)
