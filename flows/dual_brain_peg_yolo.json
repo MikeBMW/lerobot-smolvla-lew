@@ -859,7 +859,10 @@
     "desc": "状态空间稳定性评估: L2增益/BIBO/自回归谱半径/状态机覆盖 · 双击运行"
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3",
+    "in4"
    ],
    "outputs": [
     "out1"
@@ -1199,6 +1202,27 @@
    "t": "anf1",
    "f_port": "out1",
    "t_port": "in1"
+  },
+  {
+   "id": "lkans1dbev",
+   "f": "ans1",
+   "t": "dbev",
+   "f_port": "out1",
+   "t_port": "in2"
+  },
+  {
+   "id": "lkang1dbev",
+   "f": "ang1",
+   "t": "dbev",
+   "f_port": "out1",
+   "t_port": "in3"
+  },
+  {
+   "id": "lkanf1dbev",
+   "f": "anf1",
+   "t": "dbev",
+   "f_port": "out1",
+   "t_port": "in4"
   }
  ]
 }
