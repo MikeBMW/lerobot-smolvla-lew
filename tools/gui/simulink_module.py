@@ -7208,14 +7208,8 @@ class SimulinkModule(QWidget):
     def open_ff_pd_top(self):
         """⚙️ 前馈 PD 顶层系统 (2026-08-14 老倪: Simulink 顶层/子系统层级)
         前馈PD = 顶层总系统: 📡参考输入 → 🔬Z700子系统 → 🖥输出Scope + ⚙️前馈PD分析
-        Z700 子系统块: 双击展开 → 加载 Z700 画布 (dual_brain_peg_yolo.json, 原画布不动)"""
-        if self.nodes:
-            if not self._qmsg_yes("⚙️ 前馈 PD 顶层系统",
-                                  "将清空当前画布, 加载前馈 PD 顶层系统?\n\n"
-                                  "顶层: 📡参考输入 u(t) → 🔬Z700子系统 → 🖥输出Scope + ⚙️前馈PD分析\n"
-                                  "双击「🔬 Z700 子系统」→ 进入底层 Z700 完整工程\n"
-                                  "⬅ 在 Z700 内点「⬅ 返回总系统」恢复顶层"):
-                return
+        Z700 子系统块: 双击展开 → 加载 Z700 画布 (dual_brain_peg_yolo.json, 原画布不动)
+        🐛 2026-08-14: 去掉确认框 (用户点按钮直接打开, 工具按钮要好使)"""
         self.clear()
         flow = os.path.join(self._repo_root(), "flows", "ff_pd_top.json")
         if not os.path.exists(flow) or not self.load_flow_file(flow):
