@@ -225,6 +225,20 @@ class ModelTreeDock(QWidget):
         lay.addWidget(self.plot)
 
         self.setLayout(lay)  # QWidget 布局 (原 QDockWidget.setWidget(root))
+        # 🐛 2026-08-14 老倪: 右侧面板黑字看不清 → 深色背景+白色字体
+        self.setStyleSheet("""
+            ModelTreeDock { background:#0d1117; }
+            QTreeWidget { background:#0d1117; color:#e6edf3; border:1px solid #30363d;
+                          font-size:11px; font-family:Consolas,monospace; }
+            QTreeWidget::item { color:#e6edf3; padding:2px; }
+            QTreeWidget::item:selected { background:#1f6feb; color:#ffffff; }
+            QTreeWidget::branch { background:#0d1117; }
+            QComboBox { background:#161b22; color:#e6edf3; border:1px solid #30363d;
+                        padding:3px; }
+            QComboBox QAbstractItemView { background:#161b22; color:#e6edf3;
+                                          selection-background-color:#1f6feb; }
+            QLabel { color:#e6edf3; }
+        """)
         self.refresh()
 
     # ── 视图切换 ──
