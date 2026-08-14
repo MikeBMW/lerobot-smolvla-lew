@@ -5283,6 +5283,8 @@ class SimulinkModule(QWidget):
                 # 📤 飞书训练报告 (2026-08-12 老倪: 在飞书等报告)
                 _msg = f"✅ Z700 训练完成报告\n· 策略: LeftRight 双脑 (左脑MLP+右脑WM)\n· 输出: {summary.split('·')[-1].strip() if '·' in summary else summary}\n· 视频: 后台生成中 (完成后另发)"
                 self._feishu_send_text_async(_msg)
+                # 📄 训练报告 PDF 自动生成+发飞书 (2026-08-14 老倪: 训练完自动发 PDF, 不等双击)
+                _QT.singleShot(5000, self._auto_train_report_pdf)
             # ⚔️ 对比评估完成 → 自动弹出对比图表 (非模态, 2026-08-05 防卡死)
             if stage == "compare" and ok:
                 try:
@@ -6256,6 +6258,17 @@ class SimulinkModule(QWidget):
             return False, f"视频生成失败: {last}"
 
         self._start_worker(_work, "正在生成插拔演示视频…", stage="insert_video")
+
+    def _auto_train_report_pdf(self):
+        """📄 训练完成自动发报告 PDF (2026-08-14 老倪: 在飞书等报告)
+        等视频生成完(约5s) → 生成插拔方案 PDF → 发飞书"""
+        if getattr(self, "_auto_pdf_busy", False):
+            return
+        self._auto_pdf_busy = True
+        try:
+            self.on_insert_report()
+        finally:
+            self._auto_pdf_busy = False
 
     def _open_video_for_user(self, mp4):
         """🎬 打开视频给老倪看: 复制到 Windows 可见 C 盘 → cmd start (cwd=/mnt/c/Windows)
