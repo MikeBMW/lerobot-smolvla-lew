@@ -3070,11 +3070,15 @@ class SimulinkModule(QWidget):
         # 🔍 Z 分析 (2026-08-12 老倪: 全面评价 Z700 模型稳定性 — 状态空间九指标)
         self.btn_z_analysis = mk_btn("🔍 Z 分析", "全面评价 Z700 模型稳定性 (状态空间九指标 + 飞书报告)",
                                       self.on_z_analysis, "#d29922")
+        # ⚙️ 前馈 PD (2026-08-14 老倪: 等效 PID 分析 — 状态机=P/限幅=D/左脑=前馈/右脑=预测器)
+        self.btn_ff_pd = mk_btn("⚙️ 前馈 PD", "等效 PID 分析: 增益调度 P + 隐性 D + 前馈预测 (对比仿真+图)",
+                                 self.on_ff_pd, "#58a6ff")
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_z_analysis)
+        tl.addWidget(self.btn_ff_pd)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -7140,6 +7144,40 @@ class SimulinkModule(QWidget):
             self._log("⚠️ 画布无 📊 模型评估 (状态空间) 节点 — 请加载 Z700 画布后重试")
         # 飞书预告
         self._feishu_send_text_async("🔍 Z 分析: Z700 模型全面稳定性评估启动 (九指标: L2增益/BIBO/谱半径/状态机/李雅普诺夫/谱范数/接触分离/平滑度)…")
+
+    def on_ff_pd(self):
+        """⚙️ 前馈 PD 分析 (2026-08-14 老倪): 等效 PID 思想
+        状态机=增益调度 P · 限幅=隐性 D(死区/饱和=非线性阻尼) · 左脑=前馈(直接预测动作)
+        · 右脑=预测器(预判接触提前减速) — 跑对比仿真 + 图 + 报告"""
+        self._log("⚙️ 前馈 PD 分析启动: 增益调度 P + 隐性 D + 前馈预测 → 对比仿真…")
+
+        def _work():
+            import subprocess as _sp
+            root = self._repo_root()
+            r = _sp.run([os.path.join(root, ".venv", "bin", "python"),
+                         os.path.join(root, "tools", "ff_pd_analysis.py")],
+                        capture_output=True, text=True, timeout=300, cwd=root)
+            out = (r.stdout or "").strip().splitlines()
+            tail = "\n".join(out[-8:]) if out else "?"
+            if r.returncode == 0:
+                # 📤 飞书 (2026-08-14 老倪: 在飞书等报告)
+                try:
+                    with open(os.path.join(root, "reports", "ff_pd.json"), encoding="utf-8") as f:
+                        rep = json.load(f)
+                    cmp = rep.get("compare", [{}])[0]
+                    _msg = (f"⚙️ Z700 前馈 PD 等效分析\n· 结论: {rep.get('verdict', '?')}\n"
+                            f"· 纯PD: 到阈值{cmp.get('pd', {}).get('steps', '?')}步 超调{cmp.get('pd', {}).get('overshoot', '?'):.3f}\n"
+                            f"· 前馈PD: 到阈值{cmp.get('ff_pd', {}).get('steps', '?')}步 超调{cmp.get('ff_pd', {}).get('overshoot', '?'):.3f}")
+                    self._feishu_send_text_async(_msg)
+                    cmp_png = os.path.join(root, "reports", "ff_pd_compare.png")
+                    if os.path.exists(cmp_png):
+                        self._feishu_send_file_work(cmp_png, "png", "⚙️ 前馈 PD vs 纯 PD 误差衰减对比图")
+                except Exception:
+                    self._feishu_send_text_async("⚙️ Z700 前馈 PD 分析完成 (reports/ff_pd.json)")
+                return True, "⚙️ 前馈 PD 分析完成: reports/ff_pd.json + ff_pd_compare.png"
+            return False, f"前馈 PD 分析失败: {tail.splitlines()[-1] if tail else '?'}"
+
+        self._start_worker(_work, "⚙️ 前馈 PD 分析进行中…")
 
     def _toggle_switch(self, node):
         """双击 Switch 节点: orin ↔ metaworld 切换 (Simulink Switch 块语义)"""
