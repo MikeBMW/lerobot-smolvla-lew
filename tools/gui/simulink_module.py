@@ -3060,9 +3060,9 @@ THEMES = {
     "light": {
         "node_top": "#ffffff", "node_bot": "#ffffff", "title": "#000000",
         "label": "#333333", "port_edge": "#000000", "inactive": "#9aa4b2",
-        "canvas": "#ffffff", "bg": "#ffffff", "bg2": "#f6f8fa", "panel": "#ffffff",
+        "canvas": "#f0f0f0", "bg": "#f0f0f0", "bg2": "#e8e8e8", "panel": "#ffffff",
         "input": "#ffffff", "border": "#000000", "border2": "#000000",
-        "btn": "#ffffff", "text": "#000000", "text2": "#333333", "hover": "#e9edf2",
+        "btn": "#ffffff", "text": "#000000", "text2": "#333333", "hover": "#e0e0e0",
         "scope_top": "#ffffff", "scope_bot": "#f6f8fa", "grid": "#d0d7de",
         "grid_major": "#b6bdc7",
     },
