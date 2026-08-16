@@ -1983,12 +1983,21 @@ class SimNodeItem(QGraphicsObject):
             painter.setRenderHint(QPainter.Antialiasing)
             # 整行色带: 深色底(alpha 120) + 色相(alpha 90) 叠加 — 深色画布上颜色清晰可见,
             # 不会因 alpha 过低显示成黑色块 (2026-08-05 修复: 原 alpha=40 在 #0a0a0f 画布上≈黑)
-            painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 200), 1.2))
-            painter.setBrush(QBrush(QColor(13, 17, 23, 120)))
+            # 🎨 2026-08-16 八版: 浅色下 row_bg 边框全黑
+            if _CUR_THEME == "light":
+                painter.setPen(QPen(QColor("#000000"), 1.5))
+                painter.setBrush(QBrush(QColor(255, 255, 255, 150)))
+            else:
+                painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 200), 1.2))
+                painter.setBrush(QBrush(QColor(13, 17, 23, 120)))
             painter.drawRoundedRect(QRectF(0, 0, w, h), 10, 10)
             # 色相薄层 (让颜色明显)
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 90)))
+            # 🎨 2026-08-16 八版: 浅色下 row_bg 底色半透明调浅 (深色底在浅色画布显暗块)
+            if _CUR_THEME == "light":
+                painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 40)))
+            else:
+                painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 90)))
             painter.drawRoundedRect(QRectF(2, 2, w - 4, h - 4), 8, 8)
             # 左侧模型名 (竖向居中; 2026-08-05 修复: 去 emoji 前缀, 名字长则拆两行,
             #   大字区 130px 与节点列 (x≥120) 隔离 → 不再"重复/叠字")
@@ -1999,7 +2008,7 @@ class SimNodeItem(QGraphicsObject):
             if name.startswith("🎨 "):
                 name = name[2:]
             avail_w = 122.0
-            painter.setPen(QColor("#ffffff"))
+            painter.setPen(QColor("#ffffff") if _CUR_THEME != "light" else QColor("#000000"))
             # 自适应字号: 从 15px 递减到 9px, 找到能单行放下的
             fs = 15
             while fs >= 9:
@@ -2033,9 +2042,15 @@ class SimNodeItem(QGraphicsObject):
         # ⚙️ 2026-08-15 老倪: Z700 内部模块 (前馈PD 标定层) — 完全独立绘制, 不碰通用路径
         # (标题/类型标签/端口/徽章全部跳过 — 通用路径与三区布局重叠, 用户多次反馈"字重合")
         if self.node.get("params", {}).get("z700_internal"):
-            self._paint_internal(painter, None, QColor(COLORS.get(t, "#58a6ff")), "idle")
+            # 🎨 2026-08-16 八版: 浅色下内部模块边框也全黑
+            frame_c = QColor("#000000") if _CUR_THEME == "light" else QColor(COLORS.get(t, "#58a6ff"))
+            self._paint_internal(painter, None, frame_c, "idle")
             return
         color = QColor(COLORS.get(t, "#58a6ff"))
+        # 🎨 2026-08-16 八版 老倪: 浅色画布方框边框全黑 — 类型色只用于内部标签/徽章,
+        #   边框统一黑色 (深色保持彩色)
+        if _CUR_THEME == "light":
+            color = QColor("#000000")
         # 运行状态色: idle=类型色 running=青色脉冲 success=绿 error=红
         status = self.node.get("status", "idle")
         if status == "running":
@@ -3060,9 +3075,10 @@ THEMES = {
     "light": {
         "node_top": "#ffffff", "node_bot": "#ffffff", "title": "#000000",
         "label": "#333333", "port_edge": "#000000", "inactive": "#9aa4b2",
-        "canvas": "#f0f0f0", "bg": "#f0f0f0", "bg2": "#e8e8e8", "panel": "#ffffff",
+        # 🎨 九版: 背景灰度统一 #e0e0e0 (CANoe 同款)
+        "canvas": "#e0e0e0", "bg": "#e0e0e0", "bg2": "#e0e0e0", "panel": "#ffffff",
         "input": "#ffffff", "border": "#000000", "border2": "#000000",
-        "btn": "#ffffff", "text": "#000000", "text2": "#333333", "hover": "#e0e0e0",
+        "btn": "#ffffff", "text": "#000000", "text2": "#333333", "hover": "#d9d9d9",
         "scope_top": "#ffffff", "scope_bot": "#f6f8fa", "grid": "#d0d7de",
         "grid_major": "#b6bdc7",
     },
