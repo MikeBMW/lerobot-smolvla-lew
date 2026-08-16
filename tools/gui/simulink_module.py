@@ -1790,6 +1790,13 @@ class PipelinePanel(QDialog):
     def closeEvent(self, e):
         self._timer.stop()
         self._remote_timer.stop()
+        # 🛡 2026-08-16: CICD 面板脉冲 timer 也停 (训练中关闭面板 → 析构跨线程崩溃)
+        pt = getattr(self, "_pulse_timer", None)
+        if pt is not None:
+            try:
+                pt.stop()
+            except Exception:
+                pass
         # 🛡 采集轮询线程清理 (2026-08-05 崩溃修复: QThread: Destroyed while thread is still running
         #   exit 134 SIGABRT — closeEvent 只停 _timer/_remote_timer, 没停 _acq_timer 且没等 _acq_worker,
         #   退出时 worker 还在跑 → 析构 QThread 崩溃)
@@ -3204,7 +3211,7 @@ class SimulinkModule(QWidget):
         SimulinkModule 主类原本无 closeEvent → _worker(CICDWorker QThread)/_acq_worker/
         _rec_timer 在窗口关闭时未清理 → QThread: Destroyed while thread is still running
         exit 134 SIGABRT (用户在录屏/训练/评估中关闭窗口必崩)"""
-        for attr in ("_timer", "_remote_timer", "_acq_timer", "_rec_timer", "_tutorial_timer", "_rec_blink"):
+        for attr in ("_timer", "_remote_timer", "_acq_timer", "_rec_timer", "_tutorial_timer", "_rec_blink", "_flow_clock"):
             t = getattr(self, attr, None)
             if t is not None:
                 try:

@@ -9682,8 +9682,10 @@ class StudioMainWindow(QMainWindow):
         _orin_timer(5s轮询)/_rerun_worker(QThread)/_live_timer/_replay_timer/_stats_timer
         关闭时未清理 → QThread: Destroyed while thread is still running exit 134 SIGABRT)
         注意: 子组件 (SimulinkModule) 的 closeEvent 会自动触发 (Qt 关闭事件传播)"""
-        # 停所有主窗口定时器
-        for attr in ("_timer", "_orin_timer", "_live_timer", "_replay_timer", "_stats_timer"):
+        # 停所有主窗口定时器 (🐛 2026-08-16: 补全 _cam_timer 无parent + _log_flush/_zoo/
+        #   _remote_log/_env — 运行时关闭窗口漏停 → Timers cannot be stopped from another thread SIGSEGV)
+        for attr in ("_timer", "_orin_timer", "_live_timer", "_replay_timer", "_stats_timer",
+                     "_cam_timer", "_zoo_timer", "_remote_log_timer", "_env_timer", "_log_flush_timer"):
             t = getattr(self, attr, None)
             if t is not None:
                 try:
