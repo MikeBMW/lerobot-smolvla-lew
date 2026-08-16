@@ -3669,6 +3669,9 @@ class SimulinkModule(QWidget):
                     ss = ss.replace(c, blk)
                 ss = ss.replace("background:#e9edf2", f"background:{_METAL}")
                 ss = ss.replace("background:#ffffff", f"background:{_METAL}")
+                # 🐛 七版: 按钮文字全黑 (渐变/浅灰底配白字看不见)
+                ss = ss.replace("color:#ffffff", "color:#000000")
+                ss = ss.replace("color:#f0f0f0", "color:#000000")
             wdg.setStyleSheet(ss)
         # 2) 画布背景 + viewport 深色 (边缘/缩放间隙不露白) + 场景重绘
         pc = self._pal()

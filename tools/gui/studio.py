@@ -237,11 +237,15 @@ def apply_ui_theme(window, theme):
             for dc, lc in pairs:
                 ss = ss.replace(dc, lc)
             # 🎨 2026-08-16 老倪: 按钮金属光泽 — 白底按钮 → 垂直渐变 (上白亮下浅灰)
+            # 🐛 七版: 按钮文字必须全黑 — 浅灰/渐变底配白字看不见; color:#ffffff 长格式
+            #   不在替换链 (#fff 短格式规则只匹配3位) → 按钮分组单独处理
             if isinstance(wdg, _BTN_TYPES):
                 ss = ss.replace(
                     "background:#ffffff",
                     "background:qlineargradient(x1:0, y1:0, x2:0, y2:1, "
                     "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
+                ss = ss.replace("color:#ffffff", "color:#000000")
+                ss = ss.replace("color:#f0f0f0", "color:#000000")
             wdg.setStyleSheet(ss)
     # 2) 同步模块级 C_* 常量 (后续新控件 f-string 用新色)
     if theme == "light":
@@ -321,11 +325,14 @@ def apply_ui_font(window, delta):
             for dc, lc in pairs:
                 base = base.replace(dc, lc)
             # 🎨 同 apply_ui_theme: 按钮金属光泽渐变
+            # 🐛 七版: 按钮文字全黑 (浅灰/渐变底配白字看不见)
             if isinstance(wdg, _BTN_TYPES):
                 base = base.replace(
                     "background:#ffffff",
                     "background:qlineargradient(x1:0, y1:0, x2:0, y2:1, "
                     "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
+                base = base.replace("color:#ffffff", "color:#000000")
+                base = base.replace("color:#f0f0f0", "color:#000000")
         if "font-size" not in base:
             continue
         def _scale(m):
