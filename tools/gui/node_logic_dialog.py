@@ -21,21 +21,23 @@ from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox,
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import node_logic
 
-_BG = "#0d1117"
-_PANEL = "#161b22"
-_TEXT = "#e6edf3"
-_DIM = "#8b949e"
-_GOLD = "#ffd700"
-_GOLD_BG = "#3d3410"      # ✏️ 可修改区底纹
-_GOLD_LINE = "#d4a800"    # ✏️ 分隔线
-_GREEN = "#3fb950"
+# 🎨 2026-08-16 老倪铁律: 只能红/黑/白+高光灰 — 从 studio 导入 C_* (浅色主题自动跟随)
+try:
+    from studio import C_BG as _BG, C_BG2 as _PANEL, C_WHITE as _TEXT, \
+        C_GRAY as _DIM, C_BLUE as _GOLD, C_GREEN as _GREEN, C_BORDER as _BRD
+    _GOLD_BG = "#f0e8ec"     # ✏️ 可修改区底纹 (浅朱红调)
+    _GOLD_LINE = "#b70032"   # ✏️ 分隔线 (朱红)
+except Exception:
+    _BG = "#0d1117"; _PANEL = "#161b22"; _TEXT = "#e6edf3"; _DIM = "#8b949e"
+    _GOLD = "#ffd700"; _GOLD_BG = "#3d3410"; _GOLD_LINE = "#d4a800"; _GREEN = "#3fb950"
+    _BRD = "#30363d"
 _BTN_SS = ("QPushButton {{ background:{bg}; color:{fg}; border:1px solid {br};"
            " border-radius:6px; padding:6px 14px; font-size:12px; font-weight:600; }}"
            "QPushButton:hover {{ border-color:{hc}; }}")
-_MSG_SS = ("QMessageBox {{ background:#0d1117; }} QLabel {{ color:#e6edf3; font-size:12px; }}"
-           "QPushButton {{ background:#21262d; color:#e6edf3; border:1px solid #30363d;"
+_MSG_SS = ("QMessageBox {{ background:{bg0}; }} QLabel {{ color:{fg0}; font-size:12px; }}"
+           "QPushButton {{ background:#ffffff; color:#000000; border:1px solid #000000;"
            " border-radius:6px; padding:6px 18px; font-size:12px; min-width:72px; }}"
-           "QPushButton:hover {{ border-color:#00d4aa; }}")
+           "QPushButton:hover {{ border-color:#b70032; }}")
 
 _START_MARK = "✏️ 可修改区 START"
 _END_MARK = "✏️ 可修改区 END"
@@ -84,13 +86,13 @@ class NodeLogicDialog(QDialog):
         loc_row = QHBoxLayout()
         loc_row.setSpacing(6)
         self.lbl_loc = QLabel("📂 定位中…")
-        self.lbl_loc.setStyleSheet(f"color:#58a6ff; font-size:11px; font-family:DejaVu Sans Mono;")
+        self.lbl_loc.setStyleSheet(f"color:{_GOLD}; font-size:11px; font-family:DejaVu Sans Mono;")
         self.lbl_loc.setTextInteractionFlags(Qt.TextSelectableByMouse)  # 可选中复制
         self.btn_copy_loc = QPushButton("📋 复制路径")
         self.btn_copy_loc.setStyleSheet(
-            "QPushButton { background:#161b22; color:#58a6ff; border:1px solid #58a6ff66;"
+            f"QPushButton {{ background:{_PANEL}; color:{_GOLD}; border:1px solid {_GOLD}66;"
             " border-radius:4px; padding:2px 10px; font-size:10px; }"
-            "QPushButton:hover { border-color:#58a6ff; }")
+            f"QPushButton:hover {{ border-color:{_GOLD}; }}")
         self.btn_copy_loc.setCursor(Qt.PointingHandCursor)
         self.btn_copy_loc.clicked.connect(self._copy_location)
         loc_row.addWidget(self.lbl_loc, 1)
@@ -109,7 +111,7 @@ class NodeLogicDialog(QDialog):
         # 中部: 源码编辑器
         self.edit = QPlainTextEdit()
         self.edit.setStyleSheet(
-            f"QPlainTextEdit {{ background:#010409; color:{_TEXT}; border:1px solid #30363d;"
+            f"QPlainTextEdit {{ background:{_PANEL}; color:{_TEXT}; border:1px solid {_BRD};"
             " border-radius:6px; font-family:DejaVu Sans Mono;"
             " font-size:12px; padding:8px; }}")
         self.edit.setReadOnly(True)
@@ -124,7 +126,7 @@ class NodeLogicDialog(QDialog):
         self.btn_restore = QPushButton("🔄 恢复默认")
         self.btn_close = QPushButton("❌ 关闭")
         for b, fg, br in ((self.btn_edit, _GOLD, _GOLD), (self.btn_save, _GREEN, _GREEN),
-                          (self.btn_restore, _TEXT, "#30363d"), (self.btn_close, _DIM, "#30363d")):
+                          (self.btn_restore, _TEXT, _BRD), (self.btn_close, _DIM, _BRD)):
             b.setStyleSheet(_BTN_SS.format(bg=_PANEL, fg=fg, br=br, hc=fg))
         self.btn_save.setEnabled(False)
         self.btn_edit.clicked.connect(self._on_edit)

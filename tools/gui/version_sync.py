@@ -13,19 +13,15 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QFont
 
-# 颜色（与 studio.py 一致）
-C_BG = "#0d1117"
-C_BG2 = "#161b22"
-C_CARD = "#1c2333"
-C_BORDER = "#30363d"
-C_WHITE = "#e6edf3"
-C_GRAY = "#8b949e"
-C_DIM = "#484f58"
-C_GREEN = "#3fb950"
-C_BLUE = "#58a6ff"
-C_ORANGE = "#d29922"
-C_RED = "#f85149"
-C_CYAN = "#39d2c0"
+# 颜色（与 studio.py 一致 — 🎨 2026-08-16 老倪铁律: 从 studio 导入, 浅色主题自动跟随）
+try:
+    from studio import (C_BG, C_BG2, C_CARD, C_BORDER, C_WHITE, C_GRAY,
+                        C_DIM, C_GREEN, C_BLUE, C_ORANGE, C_RED, C_CYAN)
+except Exception:
+    C_BG = "#0d1117"; C_BG2 = "#161b22"; C_CARD = "#1c2333"; C_BORDER = "#30363d"
+    C_WHITE = "#e6edf3"; C_GRAY = "#8b949e"; C_DIM = "#484f58"
+    C_GREEN = "#3fb950"; C_BLUE = "#58a6ff"; C_ORANGE = "#d29922"
+    C_RED = "#f85149"; C_CYAN = "#39d2c0"
 
 
 def _run_git(args, cwd, timeout=30):

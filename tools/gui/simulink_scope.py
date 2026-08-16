@@ -53,17 +53,18 @@ BG_BOT = QColor(_st()["bg_bot"])
 GRID = QColor(_st()["grid"])
 GRID_MAJOR = QColor(_st()["grid_major"])
 COLORS = {
-    "base": QColor("#f85149"),      # 基础模型 (红)
-    "ft": QColor("#00d4aa"),        # 微调模型 (青)
-    "gt": QColor("#f778ba"),        # 专家真值 (粉, 2026-08-07 改: 避免与 vla 绿撞)
-    "act": QColor("#58a6ff"),       # ⚔️ ACT 对比 (蓝)
-    "smolvla": QColor("#d29922"),   # ⚔️ SmolVLA 对比 (橙)
-    "smolvla_lew": QColor("#a371f7"),  # 🔬 SmolVLA+LEW 对比 (紫)
-    # 2026-08-07 老倪: 示波器那么多紫色分不清 → 7 模型各一色高区分
-    "vla_touch": QColor("#3fb950"),     # VLA-Touch (绿)
-    "awe_zflow": QColor("#ff6b6b"),     # AWE-zFlow (亮红)
-    "expert_mlp": QColor("#00b4d8"),    # MLP 蒸馏 (天蓝)
-    "expert_policy": QColor("#e3b341"), # 官方专家 (金 🏆)
+    # 🎨 2026-08-16 老倪: 只能红/黑/白 + 按钮高光灰 → 波形色去彩色
+    # 朱红 = 主模型, 黑色 = 专家真值, 灰阶 = 对比模型 (深灰/中灰/浅灰循环)
+    "base": QColor("#b70032"),      # 基础模型 (朱红 — CANoe 品牌色)
+    "ft": QColor("#333333"),        # 微调模型 (深灰)
+    "gt": QColor("#000000"),        # 专家真值 (黑)
+    "act": QColor("#6e7681"),       # ⚔️ ACT 对比 (中灰)
+    "smolvla": QColor("#9aa4b2"),   # ⚔️ SmolVLA 对比 (浅灰)
+    "smolvla_lew": QColor("#57606a"),  # 🔬 SmolVLA+LEW 对比 (深灰)
+    "vla_touch": QColor("#8b949e"),     # VLA-Touch (中灰)
+    "awe_zflow": QColor("#b70032"),     # AWE-zFlow (朱红)
+    "expert_mlp": QColor("#6e7681"),    # MLP 蒸馏 (中灰)
+    "expert_policy": QColor("#000000"), # 官方专家 (黑 🏆)
     "grid": GRID,
     "text": QColor("#57606a"),
 }
@@ -321,12 +322,12 @@ class ScopeCompareDialog(QDialog):
         ctrl.addWidget(self.cmb_ft, 1)
 
         btn_load = QPushButton("▶ 加载并对比")
-        btn_load.setStyleSheet(_qss("background:#00d4aa;color:#f6f8fa;font-weight:700;border:none;border-radius:4px;padding:6px 16px;"))
+        btn_load.setStyleSheet(_qss("background:#b70032;color:#ffffff;font-weight:700;border:none;border-radius:4px;padding:6px 16px;"))
         btn_load.clicked.connect(self._run_compare)
         ctrl.addWidget(btn_load)
 
         btn_export = QPushButton("💾 导出PNG")
-        btn_export.setStyleSheet(_qss("background:#ffffff;color:#58a6ff;border:1px solid #b6bdc7;border-radius:4px;padding:6px 12px;"))
+        btn_export.setStyleSheet(_qss("background:#ffffff;color:#000000;border:1px solid #000000;border-radius:4px;padding:6px 12px;"))
         btn_export.clicked.connect(self._export_png)
         ctrl.addWidget(btn_export)
 
@@ -441,7 +442,7 @@ class ScopeCompareDialog(QDialog):
             sr_b = hits_b / len(base_mse) * 100
             sr_f = hits_f / len(ft_mse) * 100
             verdict = "✅ 提升" if imp > 0 else "❌ 未提升"
-            color = "#2ea043" if imp > 0 else "#f85149"
+            color = "#b70032" if imp > 0 else "#6e7681"
             self.metrics.setText(
                 f"<span style='color:{color};font-weight:700'>{verdict}</span> "
                 f"MSE: 基础 {mse_b:.2f} → 微调 {mse_f:.2f} ({imp:+.1f}%) | "
@@ -473,7 +474,7 @@ class FlowScopeDialog(QDialog):
                 "QLabel { color:#1f2328; }"
                 "QPushButton { background:#e9edf2; color:#1f2328; border:1px solid #b6bdc7;"
                 " border-radius:6px; padding:6px 16px; font-size:12px; }"
-                "QPushButton:hover { border-color:#00d4aa; }")
+                "QPushButton:hover { border-color:#b70032; }")
 
     def __init__(self, module, parent=None):
         super().__init__(parent)
@@ -706,7 +707,7 @@ class BarCompareWidget(QWidget):
                     best = max(good)
                 wins = [j for j, v in enumerate(vals) if v == v and v == best]
                 if len(wins) < len(vals):
-                    p.setPen(QColor("#2ea043"))
+                    p.setPen(QColor("#b70032"))
                     p.drawText(w - 66, y0 + 20, f"✓ {names[wins[0]]}")
         p.setPen(QColor(t["text2"]))
         p.setFont(QFont("Consolas", 8))
@@ -731,7 +732,7 @@ class ModelCompareDialog(QDialog):
         root = QVBoxLayout(self)
 
         self.lbl_head = QLabel("⚔️ ACT vs SmolVLA 模型对比")
-        self.lbl_head.setStyleSheet(_qss("color:#a371f7;font-size:15px;font-weight:700;"))
+        self.lbl_head.setStyleSheet(_qss("color:#b70032;font-size:15px;font-weight:700;"))
         root.addWidget(self.lbl_head)
 
         self.lbl_note = QLabel("")
@@ -922,21 +923,22 @@ class InferenceVideoDialog(QDialog):
     POLICIES 可传: 默认 3 模型 (act/smolvla/smolvla_lew) 兼容旧调用;
     五模型对比传 5 模型 (含 vla_touch/awe_zflow)"""
 
-    POLICIES = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
-                ("smolvla_lew", "SmolVLA+LEW", "#a371f7")]
+    # 🎨 2026-08-16 老倪: 只能红/黑/白 → 对比模型色改灰阶 (朱红=ACT, 黑=专家)
+    POLICIES = [("act", "ACT", "#b70032"), ("smolvla", "SmolVLA", "#6e7681"),
+                ("smolvla_lew", "SmolVLA+LEW", "#9aa4b2")]
     # 五模型版 (2026-08-05): 含 VLA-Touch/AWE, 与五模型对比模板同序
-    POLICIES_5 = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
-                  ("smolvla_lew", "SmolVLA+LEW", "#a371f7"),
-                  ("vla_touch", "VLA-Touch", "#6a2d8f"),
-                  ("awe_zflow", "AWE", "#8f2d4d")]
+    POLICIES_5 = [("act", "ACT", "#b70032"), ("smolvla", "SmolVLA", "#6e7681"),
+                  ("smolvla_lew", "SmolVLA+LEW", "#9aa4b2"),
+                  ("vla_touch", "VLA-Touch", "#57606a"),
+                  ("awe_zflow", "AWE", "#8b949e")]
     # 七模型版 (2026-08-07 老倪: MLP 强化学习 + 官方专家入七模型画布;
-    #   专家=🏆真值锚点金色, MLP=蒸馏自专家)
-    POLICIES_7 = [("act", "ACT", "#58a6ff"), ("smolvla", "SmolVLA", "#d29922"),
-                  ("smolvla_lew", "SmolVLA+LEW", "#a371f7"),
-                  ("vla_touch", "VLA-Touch", "#6a2d8f"),
-                  ("awe_zflow", "AWE", "#8f2d4d"),
-                  ("expert_mlp", "MLP 蒸馏", "#2d6a8f"),
-                  ("expert_policy", "官方专家", "#8f8a3d")]
+    #   专家=🏆真值锚点黑, MLP=蒸馏自专家灰)
+    POLICIES_7 = [("act", "ACT", "#b70032"), ("smolvla", "SmolVLA", "#6e7681"),
+                  ("smolvla_lew", "SmolVLA+LEW", "#9aa4b2"),
+                  ("vla_touch", "VLA-Touch", "#57606a"),
+                  ("awe_zflow", "AWE", "#8b949e"),
+                  ("expert_mlp", "MLP 蒸馏", "#333333"),
+                  ("expert_policy", "官方专家", "#000000")]
 
     def __init__(self, module, policies=None, parent=None):
         super().__init__(parent)
@@ -958,7 +960,7 @@ class InferenceVideoDialog(QDialog):
         self.setStyleSheet(_qss("QDialog{background:#f6f8fa;}"))
         root = QVBoxLayout(self)
         head = QLabel(f"🎥 推理效果对比 · 同一场景 (metaworld peg-insert) · {n} 模型 rollout 同步播放")
-        head.setStyleSheet(_qss("color:#a371f7;font-size:14px;font-weight:700;"))
+        head.setStyleSheet(_qss("color:#b70032;font-size:14px;font-weight:700;"))
         root.addWidget(head)
         self.lbl_note = QLabel("")
         self.lbl_note.setStyleSheet(_qss("color:#57606a;font-size:11px;"))

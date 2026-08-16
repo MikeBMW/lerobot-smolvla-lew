@@ -138,6 +138,21 @@ THEME_PAIRS_EXTRA = [
     ("#1e2740", "#000000"), ("#14181f", "#f0f0f0"), ("#010409", "#f0f0f0"),
     ("#0a0a0f", "#f0f0f0"), ("#0a0e14", "#e8e8e8"), ("#21262d", "#e0e0e0"),
     ("#1a2230", "#dbe9ff"), ("#c9d1d9", "#24292f"),
+    # 🎨 2026-08-16 老倪铁律: 只能红/黑/白+按钮高光灰 → 残留彩色统一映射浅色
+    #   蓝/橙/紫/青/金/绿 → 黑/灰 (文字与描边), 红/亮红 → 朱红 #b70032
+    #   ⚠️ 按钮背景色 (#0d3b33/#1f6feb/#00d4aa 等 15 个) 不进 EXTRA —
+    #     由 THEME_PAIRS_BTN 单独处理成白底 (EXTRA 抢先把按钮变黑底会黑底黑字不可见)
+    ("#58a6ff", "#000000"), ("#d29922", "#000000"),
+    ("#a371f7", "#000000"), ("#bc8cff", "#000000"), ("#39d2c0", "#000000"),
+    ("#00b4d8", "#000000"), ("#e3b341", "#000000"),
+    ("#d4a800", "#000000"), ("#ffd700", "#000000"), ("#f778ba", "#000000"),
+    ("#3fb950", "#b70032"), ("#f85149", "#b70032"), ("#ff6b6b", "#b70032"),
+    ("#ff9f43", "#b70032"), ("#f87171", "#b70032"),
+    # ⚠️ #ff4444 既是按钮背景(停止)又是状态文字(失败/硬件): 按钮走 BTN→白底,
+    #   非按钮文字在此 → 朱红 (若放 EXTRA 会被 BTN 分组外的控件误用白底)
+    ("#ff4444", "#b70032"),
+    # ⚠️ #00d4aa/#1f6feb 同款: 按钮背景(加载/设置)走 BTN→白底, 非按钮文字/下拉高亮 → 黑
+    ("#00d4aa", "#000000"), ("#1f6feb", "#000000"),
 ]
 # 🎨 2026-08-16 老倪: 浅色主题按钮去彩色化 — 彩色按钮背景 → 白底黑框 CANoe 极简
 #   (0d3b33/14564a=深绿底, 00d4aa=青绿, 1f6feb=蓝, 58a6ff=亮蓝, d29922=橙, f85149=红,
@@ -148,6 +163,11 @@ THEME_PAIRS_BTN = [
     ("#f85149", "#ffffff"), ("#ff9f43", "#ffffff"), ("#ffd700", "#ffffff"),
     ("#3fb950", "#ffffff"), ("#bc8cff", "#ffffff"), ("#39d2c0", "#ffffff"),
     ("#e3b341", "#ffffff"), ("#f87171", "#ffffff"), ("#f6f8fa", "#ffffff"),
+    # 🎨 2026-08-16 老倪铁律: 绿按钮 (#238636/#2ea043) 也去彩色 → 白底
+    ("#238636", "#ffffff"), ("#2ea043", "#ffffff"), ("#ff4444", "#ffffff"),
+    # 🎨 2026-08-16: 按钮 hover/pressed 态残留彩色 (#388bfd 蓝hover/#4ade80/#22c55e 绿/#ef4444 红pressed) → 高光灰
+    ("#388bfd", "#e0e0e0"), ("#79b8ff", "#e0e0e0"), ("#56d364", "#e0e0e0"),
+    ("#4ade80", "#e0e0e0"), ("#22c55e", "#e0e0e0"), ("#ef4444", "#e0e0e0"),
     # 彩色按钮上的白字 → 黑字 (白底配黑字 CANoe 极简; 只用短格式 #fff — 按钮 color:#fff,
     #   长格式 #ffffff 留给 THEME_PAIRS_EXTRA 当背景/节点色, 避免误伤白底卡片)
     ("#fff", "#000000"),
@@ -191,15 +211,29 @@ def apply_ui_theme(window, theme):
             if id(wdg) in dmap:
                 wdg.setStyleSheet(dmap[id(wdg)])
     else:
-        # 从深色快照正向生成浅色: THEME_PAIRS + EXTRA + BTN(去彩色) 全部深→浅
+        # 从深色快照正向生成浅色
         # 🐛 2026-08-16 CANoe 改造: #fff 短格式规则必须最先执行 —
         #   否则会污染前面生成的 #ffffff (被 #fff 二次匹配成 #000000fff)
-        pairs = [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA + \
-                [p for p in THEME_PAIRS_BTN if p[0] != "#fff"]
+        # 🎨 2026-08-16 老倪铁律: 只能红/黑/白+按钮高光灰 —
+        #   按钮控件 (QPushButton/QToolButton 等) 走 BTN 去彩色规则 → 白底黑框黑字;
+        #   非按钮控件走 THEME_PAIRS + EXTRA → 残留彩色统一映射 黑/朱红。
+        #   (纯字符串替换无法区分同色值"按钮背景vs文字", 必须按控件类型分组)
+        from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton, QMenuBar
+        _BTN_TYPES = (QPushButton, QToolButton, QCheckBox, QRadioButton)
+        # 🐛 color:white 关键字不在此替换链 → 加前缀精确匹配 (避免误伤 background:white)
+        _WHITE_FIX = [("color:white", "color:#000000")]
+        text_pairs = _WHITE_FIX + [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA
+        # 🐛 THEME_PAIRS_BTN 自身末尾含 ("#fff","#000000") 条目 → 剔除防二次污染
+        btn_pairs = _WHITE_FIX + [("#fff", "#000000")] + \
+                    [p for p in THEME_PAIRS_BTN if p[0] != "#fff"] + THEME_PAIRS_EXTRA
         for wdg in widgets:
             if id(wdg) not in dmap:
                 continue
             ss = dmap[id(wdg)]
+            if isinstance(wdg, _BTN_TYPES) or isinstance(wdg, QMenuBar):
+                pairs = btn_pairs
+            else:
+                pairs = text_pairs
             for dc, lc in pairs:
                 ss = ss.replace(dc, lc)
             wdg.setStyleSheet(ss)
@@ -264,14 +298,20 @@ def apply_ui_font(window, delta):
         if id(wdg) not in dmap:
             dmap[id(wdg)] = cur
     # 从深色快照 → 先套当前主题色, 再缩字体
+    from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton, QMenuBar
+    _BTN_TYPES = (QPushButton, QToolButton, QCheckBox, QRadioButton)
     for wdg in widgets:
         if id(wdg) not in dmap:
             continue
         base = dmap[id(wdg)]
         if CUR_UI_THEME == "light":
             # 🐛 同 apply_ui_theme: #fff 规则最先执行防污染 #ffffff
-            pairs = [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA + \
-                    [p for p in THEME_PAIRS_BTN if p[0] != "#fff"]
+            # 🎨 同 apply_ui_theme: 按钮控件走 BTN 去彩色, 其他走 EXTRA 残留彩色映射
+            _WHITE_FIX = [("color:white", "color:#000000")]
+            text_pairs = _WHITE_FIX + [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA
+            btn_pairs = _WHITE_FIX + [("#fff", "#000000")] + \
+                        [p for p in THEME_PAIRS_BTN if p[0] != "#fff"] + THEME_PAIRS_EXTRA
+            pairs = btn_pairs if (isinstance(wdg, _BTN_TYPES) or isinstance(wdg, QMenuBar)) else text_pairs
             for dc, lc in pairs:
                 base = base.replace(dc, lc)
         if "font-size" not in base:

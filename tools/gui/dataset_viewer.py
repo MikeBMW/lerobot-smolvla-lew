@@ -17,15 +17,13 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPixmap, QImage
 
-# 颜色定义 (与 studio.py 一致)
-C_BG = "#0d1117"
-C_BG2 = "#161b22"
-C_CARD = "#1c2333"
-C_BLUE = "#58a6ff"
-C_GREEN = "#3fb950"
-C_WHITE = "#e6edf3"
-C_DIM = "#484f58"
-C_BORDER = "#30363d"
+# 颜色定义 (与 studio.py 一致 — 🎨 2026-08-16 老倪铁律: 从 studio 导入, 浅色主题自动跟随)
+try:
+    from studio import C_BG, C_BG2, C_CARD, C_BLUE, C_GREEN, C_WHITE, C_DIM, C_BORDER
+except Exception:
+    C_BG = "#0d1117"; C_BG2 = "#161b22"; C_CARD = "#1c2333"
+    C_BLUE = "#58a6ff"; C_GREEN = "#3fb950"; C_WHITE = "#e6edf3"
+    C_DIM = "#484f58"; C_BORDER = "#30363d"
 
 
 class DatasetViewer(QDialog):
