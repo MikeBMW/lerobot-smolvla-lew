@@ -101,6 +101,194 @@ C_GRAY      = "#8b949e"
 C_DIM       = "#484f58"
 C_BORDER    = "#30363d"
 
+# ═══ 浅色调色板 (2026-08-16 老倪: 编辑菜单 → UI风格 浅色; 08-16 二版: CANoe 极简风)
+# Vector CANoe 风格: 纯白背景 + 黑色边框 + 黑白灰三色 (去彩色, 清晰极简)
+L_BG        = "#ffffff"
+L_BG2       = "#f6f8fa"
+L_CARD      = "#ffffff"
+L_HOVER     = "#e9edf2"
+L_BLUE      = "#000000"
+L_GREEN     = "#000000"
+L_ORANGE    = "#000000"
+L_RED       = "#000000"
+L_PURPLE    = "#000000"
+L_CYAN      = "#000000"
+L_YELLOW    = "#000000"
+L_WHITE     = "#000000"
+L_GRAY      = "#333333"
+L_DIM       = "#6e7681"
+L_BORDER    = "#000000"
+
+# 当前 UI 主题 (dark=原版深色 / light=浅色 Simulink 简约) — 全局切换用
+CUR_UI_THEME = "dark"
+# 主题切换时同步的 (C_* ↔ L_*) 替换对 (simulink switch_theme 同款颜色替换法)
+THEME_PAIRS = [
+    (C_BG, L_BG), (C_BG2, L_BG2), (C_CARD, L_CARD), (C_HOVER, L_HOVER),
+    (C_BLUE, L_BLUE), (C_GREEN, L_GREEN), (C_ORANGE, L_ORANGE), (C_RED, L_RED),
+    (C_PURPLE, L_PURPLE), (C_CYAN, L_CYAN), (C_YELLOW, L_YELLOW),
+    (C_WHITE, L_WHITE), (C_GRAY, L_GRAY), (C_DIM, L_DIM), (C_BORDER, L_BORDER),
+]
+# 额外深色硬编码 (画布/节点/日志等 QSS 里写死的深色值) → 浅色对应
+# 注意: 每对 (dark, light) 双向替换 — 切 light 深→浅, 切 dark 浅→深 (恢复硬编码色)
+# 2026-08-16 二版 CANoe: 边框色 → 黑 #000000 (白底黑框极简), 文字 → 黑/深灰
+THEME_PAIRS_EXTRA = [
+    ("#0d1117", "#ffffff"), ("#161b22", "#f6f8fa"), ("#1c2333", "#ffffff"),
+    ("#252d3a", "#e9edf2"), ("#30363d", "#000000"), ("#484f58", "#6e7681"),
+    ("#8b949e", "#57606a"), ("#e6edf3", "#24292f"), ("#9aa4b2", "#57606a"),
+    ("#1e2740", "#000000"), ("#14181f", "#ffffff"), ("#010409", "#ffffff"),
+    ("#0a0a0f", "#ffffff"), ("#0a0e14", "#f6f8fa"), ("#21262d", "#e9edf2"),
+    ("#1a2230", "#dbe9ff"), ("#c9d1d9", "#24292f"),
+]
+# 🎨 2026-08-16 老倪: 浅色主题按钮去彩色化 — 彩色按钮背景 → 白底黑框 CANoe 极简
+#   (0d3b33/14564a=深绿底, 00d4aa=青绿, 1f6feb=蓝, 58a6ff=亮蓝, d29922=橙, f85149=红,
+#    ff9f43=橙黄, ffd700=金, 3fb950=绿, bc8cff=紫, 39d2c0=青, e3b341=黄)
+THEME_PAIRS_BTN = [
+    ("#0d3b33", "#ffffff"), ("#14564a", "#ffffff"), ("#00d4aa", "#ffffff"),
+    ("#1f6feb", "#ffffff"), ("#58a6ff", "#ffffff"), ("#d29922", "#ffffff"),
+    ("#f85149", "#ffffff"), ("#ff9f43", "#ffffff"), ("#ffd700", "#ffffff"),
+    ("#3fb950", "#ffffff"), ("#bc8cff", "#ffffff"), ("#39d2c0", "#ffffff"),
+    ("#e3b341", "#ffffff"), ("#f87171", "#ffffff"), ("#f6f8fa", "#ffffff"),
+    # 彩色按钮上的白字 → 黑字 (白底配黑字 CANoe 极简; 只用短格式 #fff — 按钮 color:#fff,
+    #   长格式 #ffffff 留给 THEME_PAIRS_EXTRA 当背景/节点色, 避免误伤白底卡片)
+    ("#fff", "#000000"),
+]
+# 当前字体基准 (编辑菜单 → 字体大小; QSS 里 font-size:Npx 按 delta 缩放)
+CUR_FONT_DELTA = 0  # 相对原始 11px 的偏移: 0=标准(11px) / +2=大 / +4=特大 / -2=小
+
+
+def apply_ui_theme(window, theme):
+    """🎨 全局 UI 主题切换 (dark=原版深色 / light=浅色 Simulink 简约风):
+    以深色为基准: 每个控件首次记录深色原始 QSS; 切 light 从原始正向替换生成浅色,
+    切 dark 直接恢复原始快照 → 反复切换零漂移 (字符串替换链不再互相污染)。
+    """
+    global CUR_UI_THEME, C_BG, C_BG2, C_CARD, C_HOVER, C_BLUE, C_GREEN, C_ORANGE
+    global C_RED, C_PURPLE, C_CYAN, C_YELLOW, C_WHITE, C_GRAY, C_DIM, C_BORDER
+    global SYS0_COLOR, SYS1_COLOR, SYS11_COLOR, SYS12_COLOR, SYS2_COLOR
+    if theme not in ("dark", "light"):
+        theme = "dark"
+    CUR_UI_THEME = theme
+    if not hasattr(window, "_dark_qss_map"):
+        window._dark_qss_map = {}
+    dmap = window._dark_qss_map
+    # QMenuBar 是 QMainWindow 特殊子控件 (不在 findChildren 返回里) → 显式加入
+    widgets = [window] + window.findChildren(QWidget)
+    try:
+        mb = window.menuBar()
+        if mb is not None:
+            widgets.append(mb)
+    except Exception:
+        pass
+    # 首次: 快照当前 (深色) QSS; 之后以快照为基准
+    for wdg in widgets:
+        cur = wdg.styleSheet()
+        if not cur:
+            continue
+        if id(wdg) not in dmap:
+            dmap[id(wdg)] = cur
+    if theme == "dark":
+        # 直接恢复深色快照 → 完美还原
+        for wdg in widgets:
+            if id(wdg) in dmap:
+                wdg.setStyleSheet(dmap[id(wdg)])
+    else:
+        # 从深色快照正向生成浅色: THEME_PAIRS + EXTRA + BTN(去彩色) 全部深→浅
+        # 🐛 2026-08-16 CANoe 改造: #fff 短格式规则必须最先执行 —
+        #   否则会污染前面生成的 #ffffff (被 #fff 二次匹配成 #000000fff)
+        pairs = [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA + \
+                [p for p in THEME_PAIRS_BTN if p[0] != "#fff"]
+        for wdg in widgets:
+            if id(wdg) not in dmap:
+                continue
+            ss = dmap[id(wdg)]
+            for dc, lc in pairs:
+                ss = ss.replace(dc, lc)
+            wdg.setStyleSheet(ss)
+    # 2) 同步模块级 C_* 常量 (后续新控件 f-string 用新色)
+    if theme == "light":
+        C_BG, C_BG2, C_CARD, C_HOVER = L_BG, L_BG2, L_CARD, L_HOVER
+        C_BLUE, C_GREEN, C_ORANGE, C_RED = L_BLUE, L_GREEN, L_ORANGE, L_RED
+        C_PURPLE, C_CYAN, C_YELLOW = L_PURPLE, L_CYAN, L_YELLOW
+        C_WHITE, C_GRAY, C_DIM, C_BORDER = L_WHITE, L_GRAY, L_DIM, L_BORDER
+    else:
+        C_BG, C_BG2, C_CARD, C_HOVER = "#0d1117", "#161b22", "#1c2333", "#252d3a"
+        C_BLUE, C_GREEN, C_ORANGE, C_RED = "#58a6ff", "#3fb950", "#d29922", "#f85149"
+        C_PURPLE, C_CYAN, C_YELLOW = "#bc8cff", "#39d2c0", "#e3b341"
+        C_WHITE, C_GRAY, C_DIM, C_BORDER = "#e6edf3", "#8b949e", "#484f58", "#30363d"
+    SYS0_COLOR, SYS1_COLOR = C_ORANGE, C_CYAN
+    SYS11_COLOR, SYS12_COLOR, SYS2_COLOR = C_BLUE, C_PURPLE, C_GREEN
+    # 3) simulink 画布主题 (节点/连线/Scope)
+    try:
+        sim = getattr(window, "simulink", None)
+        if sim is not None and hasattr(sim, "switch_theme"):
+            sim.switch_theme(theme)
+    except Exception:
+        pass
+    # 4) 全局 app 样式 (滚动条/对话框/QToolTip) 重刷
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(_build_global_qss())
+    except Exception:
+        pass
+    # 5) 状态栏提示
+    try:
+        window.statusBar().showMessage(
+            f"🎨 UI 风格: {'浅色 · Simulink 简约' if theme == 'light' else '深色 · 原版'} (全局生效)", 3000)
+    except Exception:
+        pass
+
+
+def apply_ui_font(window, delta):
+    """🔤 全局字体大小: QSS 里 font-size:Npx 统一缩放 (相对原始值, 防叠加漂移).
+    delta 相对标准 11px: -2=小 / 0=标准 / +2=大 / +4=特大.
+    基于深色快照重建 → 与主题切换互不干扰 (先主题后字体, 字体重刷不丢主题色).
+    """
+    global CUR_FONT_DELTA
+    import re as _re
+    CUR_FONT_DELTA = delta
+    # 深色快照 (apply_ui_theme 已建) — 没有则现建 (直接调字体而不切主题的场景)
+    if not hasattr(window, "_dark_qss_map"):
+        window._dark_qss_map = {}
+    dmap = window._dark_qss_map
+    widgets = [window] + window.findChildren(QWidget)
+    try:
+        mb = window.menuBar()
+        if mb is not None:
+            widgets.append(mb)
+    except Exception:
+        pass
+    for wdg in widgets:
+        cur = wdg.styleSheet()
+        if not cur:
+            continue
+        if id(wdg) not in dmap:
+            dmap[id(wdg)] = cur
+    # 从深色快照 → 先套当前主题色, 再缩字体
+    for wdg in widgets:
+        if id(wdg) not in dmap:
+            continue
+        base = dmap[id(wdg)]
+        if CUR_UI_THEME == "light":
+            # 🐛 同 apply_ui_theme: #fff 规则最先执行防污染 #ffffff
+            pairs = [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA + \
+                    [p for p in THEME_PAIRS_BTN if p[0] != "#fff"]
+            for dc, lc in pairs:
+                base = base.replace(dc, lc)
+        if "font-size" not in base:
+            continue
+        def _scale(m):
+            try:
+                return f"font-size:{max(8, int(m.group(1)) + delta)}px"
+            except Exception:
+                return m.group(0)
+        wdg.setStyleSheet(_re.sub(r"font-size:(\d+)px", _scale, base))
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            app.setFont(QFont("Arial", 10 + delta))
+    except Exception:
+        pass
+
 # Z-MAX系统层级颜色
 SYS0_COLOR  = C_ORANGE   # 安全规则层
 SYS1_COLOR  = C_CYAN     # 视觉语言动作层 (VTLA/ACT)
@@ -9470,6 +9658,16 @@ class StudioMainWindow(QMainWindow):
             sim.log_signal.connect(self.model_engine._log)
             self.stack.insertWidget(self._simulink_index, sim)  # 插回原 tab 位
             self.simulink = sim
+            # 🎨 2026-08-16 老倪: Simulink 延迟创建 → 补挂当前全局主题/字体
+            #   (若用户在画布就绪前切过主题, 新创建的画布要继承当前选择)
+            try:
+                if CUR_UI_THEME != "dark" and hasattr(sim, "switch_theme"):
+                    sim.switch_theme(CUR_UI_THEME)
+                if CUR_FONT_DELTA:
+                    from PyQt5.QtCore import QTimer as _QTM3
+                    _QTM3.singleShot(0, lambda: apply_ui_font(self, CUR_FONT_DELTA))
+            except Exception:
+                pass
             self.statusBar().showMessage("🚀 Simulink 画布已就绪", 2000)
         except Exception as e:
             import traceback
@@ -9646,6 +9844,32 @@ class StudioMainWindow(QMainWindow):
             act = QAction(label, self)
             act.triggered.connect(self._mk_nav_func(target))
             m_view.addAction(act)
+
+        # ====== 编辑菜单 (2026-08-16 老倪: UI风格 + 字体大小 全局设置) ======
+        m_edit = mb.addMenu("编辑(&E)")
+
+        # 🎨 UI 风格子菜单 (暗夜 / 浅色 Simulink 简约)
+        m_style = m_edit.addMenu("🎨 UI 风格")
+        self._style_acts = {}
+        for _label, _key in (("🌙 暗夜风格 (原版)", "dark"),
+                             ("☀️ 浅色 · Simulink 简约", "light")):
+            _a = QAction(_label, self)
+            _a.setCheckable(True)
+            _a.setChecked(_key == CUR_UI_THEME)
+            _a.triggered.connect(lambda _=False, k=_key: self._menu_set_style(k))
+            m_style.addAction(_a)
+            self._style_acts[_key] = _a
+
+        # 🔤 字体大小子菜单 (小/标准/大/特大 — 相对原始 11px 的 delta)
+        m_font = m_edit.addMenu("🔤 字体大小")
+        self._font_acts = {}
+        for _label, _delta in (("小", -2), ("标准", 0), ("大", 2), ("特大", 4)):
+            _a = QAction(_label, self)
+            _a.setCheckable(True)
+            _a.setChecked(_delta == CUR_FONT_DELTA)
+            _a.triggered.connect(lambda _=False, d=_delta: self._menu_set_font(d))
+            m_font.addAction(_a)
+            self._font_acts[_delta] = _a
 
         # ====== 文档菜单（帮助文档） ======
         m_doc = mb.addMenu("帮助文档(&H)")
@@ -10146,6 +10370,19 @@ del "%~f0"
         if hasattr(self, 'home'):
             self.home._sync_to_github()
 
+    # ═══ 编辑菜单动作 (2026-08-16 老倪: UI风格/字体大小 全局) ═══
+    def _menu_set_style(self, key):
+        """🎨 编辑菜单 → UI 风格: 全局主题切换 + 菜单勾选同步"""
+        apply_ui_theme(self, key)
+        for _k, _a in getattr(self, "_style_acts", {}).items():
+            _a.setChecked(_k == key)
+
+    def _menu_set_font(self, delta):
+        """🔤 编辑菜单 → 字体大小: 全局缩放 + 菜单勾选同步"""
+        apply_ui_font(self, delta)
+        for _d, _a in getattr(self, "_font_acts", {}).items():
+            _a.setChecked(_d == delta)
+
     def _show_about(self):
         """显示关于对话框"""
         from PyQt5.QtCore import Qt as _Qt
@@ -10183,42 +10420,19 @@ github.com/MikeBMW/lerobot-smolvla-lew
 # ============================================================
 # 入口
 # ============================================================
-def main():
-    # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
-    # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
-    try:
-        from PyQt5.QtCore import Qt as _Qt
-        from PyQt5.QtWidgets import QApplication as _QA
-        _QA.setAttribute(_Qt.AA_DisableWindowManagerEffects, True)
-        _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
-        _QA.setAttribute(_Qt.AA_UseHighDpiPixmaps, False)
-    except Exception:
-        pass
-    app = QApplication(sys.argv)
-    # WSLg/Windows 下 QMessageBox/QToolTip 默认走系统原生渲染 → QSS 失效, 黑字看不清
-    # 强制 Qt 自绘: 对话框 + 气泡提示都吃全局深色 QSS
-    app.setAttribute(Qt.AA_DontUseNativeDialogs, True)
-    app.setStyle("Fusion")
-    app.setFont(QFont("Arial", 10))
-
-    # QToolTip 原生气泡 → 强制深色 palette (QSS 对部分平台 QToolTip 无效)
-    from PyQt5.QtWidgets import QToolTip
-    from PyQt5.QtGui import QPalette, QColor as _QC
-    _ttp = QToolTip.palette()
-    _ttp.setColor(QPalette.ToolTipBase, _QC(C_BG2))
-    _ttp.setColor(QPalette.ToolTipText, _QC(C_WHITE))
-    QToolTip.setPalette(_ttp)
-
-    # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
-    app.setStyleSheet(f"""
+def _build_global_qss():
+    """🌐 全局 QSS (滚动条/ToolTip/对话框暗色主题) — 用当前 C_* 常量实时生成.
+    主题切换 (apply_ui_theme) 时重调此函数 → 全局样式跟主题走。
+    """
+    return f"""
         QScrollBar:vertical {{ background: transparent; width: 8px; margin: 0; }}
-        QScrollBar::handle:vertical {{ background: #484f58; border-radius: 4px; min-height: 20px; }}
+        QScrollBar::handle:vertical {{ background: {C_DIM}; border-radius: 4px; min-height: 20px; }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
         QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}
         QToolTip {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER}; padding: 4px 8px; }}
         QToolTip:hover {{ background: {C_BG2}; }}
 
-        /* 所有对话框统一暗色主题 */
+        /* 所有对话框统一主题 */
         QMessageBox, QDialog, QInputDialog {{ 
             background: {C_BG}; 
             color: {C_WHITE}; 
@@ -10274,7 +10488,37 @@ def main():
             border: 1px solid {C_BORDER};
             outline: none;
         }}
-    """)
+    """
+
+
+def main():
+    # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
+    # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
+    try:
+        from PyQt5.QtCore import Qt as _Qt
+        from PyQt5.QtWidgets import QApplication as _QA
+        _QA.setAttribute(_Qt.AA_DisableWindowManagerEffects, True)
+        _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
+        _QA.setAttribute(_Qt.AA_UseHighDpiPixmaps, False)
+    except Exception:
+        pass
+    app = QApplication(sys.argv)
+    # WSLg/Windows 下 QMessageBox/QToolTip 默认走系统原生渲染 → QSS 失效, 黑字看不清
+    # 强制 Qt 自绘: 对话框 + 气泡提示都吃全局深色 QSS
+    app.setAttribute(Qt.AA_DontUseNativeDialogs, True)
+    app.setStyle("Fusion")
+    app.setFont(QFont("Arial", 10))
+
+    # QToolTip 原生气泡 → 强制深色 palette (QSS 对部分平台 QToolTip 无效)
+    from PyQt5.QtWidgets import QToolTip
+    from PyQt5.QtGui import QPalette, QColor as _QC
+    _ttp = QToolTip.palette()
+    _ttp.setColor(QPalette.ToolTipBase, _QC(C_BG2))
+    _ttp.setColor(QPalette.ToolTipText, _QC(C_WHITE))
+    QToolTip.setPalette(_ttp)
+
+    # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
+    app.setStyleSheet(_build_global_qss())
 
     win = StudioMainWindow()
     # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)

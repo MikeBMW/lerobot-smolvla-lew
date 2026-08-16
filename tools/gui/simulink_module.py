@@ -3058,11 +3058,11 @@ class FloatingCanvasDialog(QDialog):
 # light = 对标 MATLAB Simulink / CANoe 浅色; dark = 原版深色。主窗口配置中心可切换。
 THEMES = {
     "light": {
-        "node_top": "#ffffff", "node_bot": "#f0f2f5", "title": "#000000",
-        "label": "#333333", "port_edge": "#e9edf2", "inactive": "#9aa4b2",
+        "node_top": "#ffffff", "node_bot": "#ffffff", "title": "#000000",
+        "label": "#333333", "port_edge": "#000000", "inactive": "#9aa4b2",
         "canvas": "#ffffff", "bg": "#ffffff", "bg2": "#f6f8fa", "panel": "#ffffff",
-        "input": "#e9edf2", "border": "#d0d7de", "border2": "#b6bdc7",
-        "btn": "#e9edf2", "text": "#000000", "text2": "#333333", "hover": "#e9edf2",
+        "input": "#ffffff", "border": "#000000", "border2": "#000000",
+        "btn": "#ffffff", "text": "#000000", "text2": "#333333", "hover": "#e9edf2",
         "scope_top": "#ffffff", "scope_bot": "#f6f8fa", "grid": "#d0d7de",
         "grid_major": "#b6bdc7",
     },
