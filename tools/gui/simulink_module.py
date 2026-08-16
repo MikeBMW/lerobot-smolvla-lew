@@ -557,6 +557,31 @@ LIBRARY = [
                                                "desc": "6章插拔方案报告 → 自动发飞书"}},
         {"name": "🌐 方案介绍", "params": {"solution_web": True,
                                           "desc": "双击 → 打开方案介绍分页 (datadrive.world/solution.html)"}},
+        # 🧠 神经同构模块 (2026-08-16 老倪: 左脑MLP≈小脑 / 右脑GRU≈非线性卡尔曼 / 状态机≈皮层)
+        {"name": "🔮 右脑 · 非线性卡尔曼", "params": {"neural_kalman": True, "z700_internal": True,
+                                                    "A": 0.95, "K": 0.5, "limit": [-1.0, 1.0],
+                                                    "desc": "世界模型: 预测(状态转移A≈循环权重)+更新(门控≈卡尔曼增益K) → 状态估计+contact"}},
+        {"name": "⚖️ α 融合层 (置信度旋钮)", "params": {"neural_alpha": True, "z700_internal": True,
+                                                      "alpha": 0.5, "alpha_approach": 0.3, "alpha_insert": 0.9,
+                                                      "limit": [0.0, 1.0],
+                                                      "desc": "fused=(1−α)·预测+α·观测 — α≈等效卡尔曼增益: 0=纯模型 1=纯传感器, 按阶段调度"}},
+        {"name": "🔧 左脑标定实验", "params": {"neural_calib": True, "z700_internal": True,
+                                            "n_static": 500, "fine_tune_steps": 3000,
+                                            "desc": "左脑三件套标定: 感知零偏x_mean/执行力act_gain·err_gain/现场微调 — 标定靠数据不靠权重"}},
+        {"name": "🧬 攀缘纤维 · 误差警戒", "params": {"neural_climbing": True, "z700_internal": True,
+                                                    "gate_th": 2.0, "gate_min": 0.1,
+                                                    "desc": "生物标定: 力传感器 vs 右脑预测 → 大误差=复杂脉冲 → 触发 gate 抑制 (LTD)"}},
+        {"name": "🛡 gate · 突触抑制 (LTD)", "params": {"neural_ltd": True, "z700_internal": True,
+                                                       "gate": 1.0, "gate_off": 0.1, "gate_off2": 0.01,
+                                                       "desc": "长时程抑制: 左脑不准 → 瞬间降 gate (1.0→0.1→0.01) 压制 MLP, 控制权移交传感器"}},
+        {"name": "🧠 左脑 · 小脑 (前馈)", "params": {"neural_cerebellum": True, "z700_internal": True,
+                                                    "K_ff": 0.2, "act_gain": 0.3, "err_gain": 2.0,
+                                                    "gate": 1.0, "x_mean": 0.0, "x_std": 1.0,
+                                                    "limit": [-1.0, 1.0],
+                                                    "desc": "小脑=前馈逆动力学: obs→action 直接映射; 标定旋钮: 零偏x_mean/执行力act_gain·err_gain"}},
+        {"name": "🧭 皮层 · 状态机", "params": {"neural_cortex": True, "z700_internal": True,
+                                               "contact_th": 0.6, "Kp": 2.0, "thresh": 0.06,
+                                               "desc": "认知决策: contact概率+几何误差 → 阶段切换 (接近→抓取→…→完成)"}},
     ]),
     # 🧩 原子技能入口 (2026-08-09 老倪: 模块库最顶部 — 打开原子技能 → 结构条件 → SYS1 → action)
     ("skill", "🧩 原子技能入口", [
@@ -3033,12 +3058,12 @@ class FloatingCanvasDialog(QDialog):
 # light = 对标 MATLAB Simulink / CANoe 浅色; dark = 原版深色。主窗口配置中心可切换。
 THEMES = {
     "light": {
-        "node_top": "#ffffff", "node_bot": "#e8ebf0", "title": "#24292f",
-        "label": "#57606a", "port_edge": "#f0f2f5", "inactive": "#9aa4b2",
-        "canvas": "#f0f2f5", "bg": "#f6f8fa", "bg2": "#eef1f5", "panel": "#ffffff",
+        "node_top": "#ffffff", "node_bot": "#f0f2f5", "title": "#000000",
+        "label": "#333333", "port_edge": "#e9edf2", "inactive": "#9aa4b2",
+        "canvas": "#ffffff", "bg": "#ffffff", "bg2": "#f6f8fa", "panel": "#ffffff",
         "input": "#e9edf2", "border": "#d0d7de", "border2": "#b6bdc7",
-        "btn": "#e9edf2", "text": "#24292f", "text2": "#57606a", "hover": "#dbe9ff",
-        "scope_top": "#ffffff", "scope_bot": "#eef1f5", "grid": "#d0d7de",
+        "btn": "#e9edf2", "text": "#000000", "text2": "#333333", "hover": "#e9edf2",
+        "scope_top": "#ffffff", "scope_bot": "#f6f8fa", "grid": "#d0d7de",
         "grid_major": "#b6bdc7",
     },
     "dark": {
@@ -7541,6 +7566,149 @@ class SimulinkModule(QWidget):
                 f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
                 f"📌 前馈物理含义: 即使系统特征解欠阻尼「爱晃」, 前馈给力准/时机好 → 轨迹可无超调 "
                 f"(左脑预测在误差产生前先动)</p>")
+        elif p.get("neural_kalman"):
+            # 🔮 右脑 · 非线性卡尔曼 (2026-08-16 老倪: 脑科学映射)
+            A = p.get("A", 0.95); K = p.get("K", 0.5)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🔮 右脑 · 非线性卡尔曼滤波器 (世界模型)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>经典卡尔曼 = 预测 + 更新; GRU 就是它的非线性黑盒版。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>卡尔曼组件</th><th>GRU/右脑 对应</th><th>物理含义</th></tr>"
+                f"<tr><td style='color:#00d4aa'>状态转移 A</td><td>循环权重 W_hh (隐状态 h_t)</td>"
+                f"<td>记住「世界怎么演」= 系统动力学模型</td></tr>"
+                f"<tr><td style='color:#00d4aa'>控制输入 B</td><td>action 输入</td>"
+                f"<td>动作如何改变世界状态</td></tr>"
+                f"<tr><td style='color:#00d4aa'>先验估计</td><td>(h_t₋₁, obs, action) → 潜状态预测</td>"
+                f"<td>猜执行动作后世界会变成什么样</td></tr>"
+                f"<tr><td style='color:#00d4aa'>观测值</td><td>next_obs / 误差信号</td>"
+                f"<td>世界实际变成了什么样</td></tr>"
+                f"<tr><td style='color:#00d4aa'>卡尔曼增益 K</td><td>更新门 + 重置门</td>"
+                f"<td>自动调节「信预测 vs 信观测」权重</td></tr>"
+                f"<tr><td style='color:#ffd700'>先验注入</td><td>ctx_proj (VLM 语义) 初始化 h₀</td>"
+                f"<td>带先验的非线性卡尔曼迭代</td></tr>"
+                f"<tr><td style='color:#ffd700'>标定参数</td><td>A = {A:.2f} · K = {K:.2f}</td>"
+                f"<td>预测强度 / 更新增益</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 输出: out1=状态预测 · out2=contact 概率 — 预测误差大 → 状态机减速/重试</p>")
+        elif p.get("neural_cerebellum"):
+            # 🧠 左脑 · 小脑 (前馈逆动力学 + 标定参数)
+            Kff = p.get("K_ff", 0.2); ag = p.get("act_gain", 0.3); eg = p.get("err_gain", 2.0)
+            gt = p.get("gate", 1.0)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🧠 左脑 · 小脑 (前馈逆动力学 + 标定参数)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>小脑 = 前馈控制 + 感觉-运动映射: "
+                f"不依赖漫长反馈回路, 根据当前状态直接算「该用什么力」→ 毫秒级无意识纠偏。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>项目</th><th>小脑 (神经科学)</th><th>左脑 MLP (工程实现)</th></tr>"
+                f"<tr><td style='color:#00d4aa'>功能</td><td>前馈控制 Feedforward</td>"
+                f"<td>obs → action 直接映射</td></tr>"
+                f"<tr><td style='color:#00d4aa'>标定方式</td><td>配平误差 (攀缘纤维→LTD)</td>"
+                f"<td>数据标定: 归一化零偏 + 执行限幅 + 现场微调</td></tr>"
+                f"<tr><td style='color:#ffd700'>旋钮① 零偏</td><td>校准零点</td>"
+                f"<td>x_mean={p.get('x_mean', 0.0):.2f} · x_std={p.get('x_std', 1.0):.2f} — 换位只更新零偏不重训</td></tr>"
+                f"<tr><td style='color:#ffd700'>旋钮② 执行力</td><td>限位器</td>"
+                f"<td>act_gain={ag:.2f} (肌肉记忆占比) · err_gain={eg:.2f} (误差纠正) — act=act·act_gain+clip(δ·err_gain)</td></tr>"
+                f"<tr><td style='color:#ffd700'>旋钮③ 微调</td><td>小脑手术</td>"
+                f"<td>20-30 条示教 → 4090 微调 5min → 热加载 .pt</td></tr>"
+                f"<tr><td style='color:#ffd700'>LTD 警戒</td><td>gate 突触抑制</td>"
+                f"<td>gate={gt:.2f} — 左脑不准时降 gate (1.0→0.1→0.01)</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 左脑标定 ≠ 调权重: 权重是肌肉记忆 (547K), 标定是数据与执行旋钮 — 见 🔧 左脑标定实验</p>")
+        elif p.get("neural_cortex"):
+            # 🧭 皮层 · 状态机 (认知决策)
+            cth = p.get("contact_th", 0.6); Kp = p.get("Kp", 2.0); th = p.get("thresh", 0.06)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🧭 皮层 · 状态机 (认知决策)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>前额叶 = 规划与决策: "
+                f"卡尔曼只估计「世界在什么状态」, 不决定「该做什么」; 皮层决定何时切换阶段。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
+                f"<tr><td style='color:#00d4aa'>contact 概率</td><td>右脑卡尔曼 out2</td>"
+                f"<td>感知异常阻力 → 减速/退出重试</td></tr>"
+                f"<tr><td style='color:#00d4aa'>几何误差</td><td>状态机链路</td>"
+                f"<td>判断任务是否完成 → 阶段切换</td></tr>"
+                f"<tr><td style='color:#00d4aa'>阶段序列</td><td>接近→抓取→抬起→转移→插入→完成</td>"
+                f"<td>6 阶段认知规划 (状态机)</td></tr>"
+                f"<tr><td style='color:#ffd700'>标定参数</td><td>contact_th={cth:.2f} · Kp={Kp:.2f} · thresh={th:.3f}m</td>"
+                f"<td>接触判定阈值 / 阶段P增益 / 几何阈值</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 系统 = 物理约束(小脑) + 学习的非线性卡尔曼(世界模型) + 认知规划器(状态机) — "
+                f"不是简单黑箱</p>")
+        elif p.get("neural_climbing"):
+            # 🧬 攀缘纤维 · 误差警戒
+            gth = p.get("gate_th", 2.0); gmin = p.get("gate_min", 0.1)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🧬 攀缘纤维 · 误差警戒 (生物标定机制)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>人类小脑不用计算角度/力矩, 只用「预测误差」标定自己:</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>生物机制</th><th>LeftRight 对应</th><th>说明</th></tr>"
+                f"<tr><td style='color:#00d4aa'>平行纤维 (上下文)</td><td>左脑 MLP 输出</td>"
+                f"<td>携带「我猜应该这么做」的预设动作指令</td></tr>"
+                f"<tr><td style='color:#00d4aa'>攀缘纤维 (误差信号)</td><td>右脑 contact + 力传感器对比</td>"
+                f"<td>力传感器 5N vs 右脑预测 0.5N → 大误差 = 复杂脉冲</td></tr>"
+                f"<tr><td style='color:#00d4aa'>复杂脉冲轰击</td><td>误差超阈值</td>"
+                f"<td>gate_th={gth:.1f}N — 触发浦肯野细胞 LTD</td></tr>"
+                f"<tr><td style='color:#00d4aa'>长时程抑制 LTD</td><td>gate 系数骤降</td>"
+                f"<td>gate 1.0 → {gmin:.2f} — 压制错误通路贡献</td></tr>"
+                f"<tr><td style='color:#ffd700'>标定参数</td><td>gate_th={gth:.1f}N · gate_min={gmin:.2f}</td>"
+                f"<td>误差阈值 / 最大抑制 (3-5 次试错即学会)</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 小脑实时标定: 不需要睡眠巩固, 误差一出现立即在线修正</p>")
+        elif p.get("neural_ltd"):
+            # 🛡 gate · 突触抑制 (LTD)
+            g = p.get("gate", 1.0); go = p.get("gate_off", 0.1); go2 = p.get("gate_off2", 0.01)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🛡 gate · 突触抑制 (LTD)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>发现左脑预测不准时, 不改 MLP 权重, 瞬间降 gate 强行压制左脑输出影响力:</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>gate 档位</th><th>系数</th><th>语义</th></tr>"
+                f"<tr><td style='color:#00d4aa'>全开</td><td>{g:.2f}</td><td>左脑主导 (肌肉记忆正常发挥)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>压制</td><td>{go:.2f}</td><td>左脑不准 → 控制权移交物理传感器</td></tr>"
+                f"<tr><td style='color:#00d4aa'>完全移交</td><td>{go2:.2f}</td><td>紧急: 完全靠传感器 (物理安全边界)</td></tr>"
+                f"<tr><td style='color:#ffd700'>恢复期</td><td>切阶段后复原</td><td>接触安全位置 → gate 恢复 → 左脑继续主导</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 工程类比: 小脑物理锁定错误动作, 强行走完正确后半程</p>")
+        elif p.get("neural_alpha"):
+            # ⚖️ α 融合层 (置信度旋钮)
+            a = p.get("alpha", 0.5); aa = p.get("alpha_approach", 0.3); ai = p.get("alpha_insert", 0.9)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>⚖️ α 融合层 (置信度旋钮 — 等效卡尔曼增益)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>右脑 GRU 是非线性黑箱, 无法直接改 A 矩阵 → "
+                f"在「预测值(GRU输出)」和「观测值(传感器)」之间外挂残差加权器:</p>"
+                f"<p style='color:#e6edf3;font-size:13px;font-family:Consolas;background:#161b22;padding:8px;border-radius:4px'>"
+                f"fused = (1 − α)·pred + α·meas &nbsp;&nbsp;&nbsp; α ∈ [0,1]</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>α 取值</th><th>含义</th><th>适用场景</th></tr>"
+                f"<tr><td style='color:#00d4aa'>α → 0</td><td>完全信任世界模型 (预测)</td>"
+                f"<td>传感器噪声大 / 瞬态干扰</td></tr>"
+                f"<tr><td style='color:#00d4aa'>α → 1</td><td>完全信任传感器 (观测)</td>"
+                f"<td>信号平滑准确时</td></tr>"
+                f"<tr><td style='color:#ffd700'>增益调度表</td><td>按状态机阶段切换 α</td>"
+                f"<td>接近 α={aa:.1f} (靠模型) · 插入 α={ai:.1f} (绝对靠反馈)</td></tr>"
+                f"<tr><td style='color:#ffd700'>标定参数</td><td>alpha={a:.2f} (默认)</td>"
+                f"<td>像拧电位器一样调, 不用改 GRU 权重</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 状态机 = 宏观决策 (何时切换阶段) · α = 微观信号融合 (怎么相信传感器) — 完整标定闭环</p>")
+        elif p.get("neural_calib"):
+            # 🔧 左脑标定实验
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🔧 左脑标定实验 (标定靠数据不靠权重)</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>左脑是固定 .pt 权重文件, 工程师用三个「数据/执行」旋钮标定:</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>步骤</th><th>操作</th><th>物理含义</th></tr>"
+                f"<tr><td style='color:#00d4aa'>① 感知零偏标定</td>"
+                f"<td>静止记录 obs → 新 x_mean; 满行程 → x_std</td>"
+                f"<td>校准零点: 光模块换位只更新参考坐标 → 输出整体平移 (最快重标定)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>② 执行力标定</td>"
+                f"<td>调 act_gain (肌肉记忆占比) / err_gain (误差纠正力度)</td>"
+                f"<td>限位器: 重物体调小 err_gain 防过冲 / 调大 act_gain 让 MLP 主导</td></tr>"
+                f"<tr><td style='color:#00d4aa'>③ 现场微调</td>"
+                f"<td>采集 20-30 条示教 → 4090 微调 5min → 热加载 .pt</td>"
+                f"<td>小脑急性手术: 物理特性剧变时换新肌肉记忆模板</td></tr>"
+                f"<tr><td style='color:#ffd700'>生物对照</td><td>攀缘纤维 → LTD → gate</td>"
+                f"<td>误差信号实时警戒: 左脑不准 → gate 骤降压制 (见 🧬/🛡 节点)</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 产物: reports/cerebellum_calib.json + cerebellum_gate.png (误差尖峰→gate 骤降→恢复)</p>")
         else:  # 感知链
             Kobs = p.get("K_obs", 1.0)
             html = (

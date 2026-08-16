@@ -1,0 +1,26 @@
+digraph kalman_inner {
+    // 自适应状态估计器内部: 非线性卡尔曼滤波器 (2026-08-16 老倪方案第3节)
+    rankdir=LR;
+    bgcolor="white";
+    fontname="WenQuanYi Micro Hei";
+    node [fontname="WenQuanYi Micro Hei", fontsize=12];
+    edge [fontname="WenQuanYi Micro Hei", fontsize=10];
+
+    subgraph cluster_K {
+        label="自适应状态估计器（非线性卡尔曼滤波器）";
+        fontsize=14; style="rounded,filled"; color="#3a5a8a"; fillcolor="#eef3fb";
+
+        P [label="① 先验动力学预测器\n(重置门 + 候选隐状态)", shape=box, style="rounded,filled", fillcolor="#E3F2FD"];
+        C [label="② 创新检测\n(计算残差)", shape=diamond, style=filled, fillcolor="#FFF9C4"];
+        F [label="实时传感器 z_k", shape=parallelogram, style=filled, fillcolor="#d4edda"];
+        U [label="③ 状态校正器\n(更新门 + 增益调节)", shape=box, style="rounded,filled", fillcolor="#E3F2FD"];
+        T [label="④ 接触事件触发器\n(sigmoid 输出)", shape=box, style="rounded,filled", fillcolor="#FFF3E0"];
+
+        P -> C [label="先验估计 x_pred"];
+        F -> C;
+        C -> U [label="残差 / 创新"];
+        U -> T [label="后验估计 x_hat"];
+        T -> CONTACT [label="contact 概率 → 认知任务调度器", color="#f85149", fontcolor="#f85149"];
+        CONTACT [label="接触事件信号", shape=hexagon, style=filled, fillcolor="#FF6B6B"];
+    }
+}

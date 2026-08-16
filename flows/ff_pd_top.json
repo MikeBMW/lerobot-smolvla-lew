@@ -207,7 +207,9 @@
     ]
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3"
    ],
    "outputs": [
     "out1"
@@ -265,6 +267,214 @@
     "model": "z700",
     "desc": "D微分/阻尼: 限幅制动(死区=非线性阻尼) — 动作 Kd=0.3 限幅±0.6"
    }
+  },
+  {
+   "id": "ffnbg",
+   "type": "row_bg",
+   "name": "🧠 神经同构 (脑↔控制)",
+   "x": -20,
+   "y": 290,
+   "w": 1530,
+   "params": {
+    "bg": "#1a1030",
+    "model": "z700",
+    "desc": "神经同构: 右脑=非线性卡尔曼(预测-更新) · α融合层=置信度旋钮 · 左脑=小脑(前馈) · 攀缘纤维=误差警戒 · gate=LTD抑制 · 皮层=状态机(决策)"
+   }
+  },
+  {
+   "id": "ffkal",
+   "type": "model",
+   "name": "🔮 右脑 · 非线性卡尔曼",
+   "x": 150,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_kalman": true,
+    "z700_internal": true,
+    "desc": "世界模型: 预测(状态转移A≈GRU循环权重) + 更新(门控≈卡尔曼增益K) — 输出状态预测+contact概率",
+    "A": 0.95,
+    "K": 0.5,
+    "limit": [
+     -1.0,
+     1.0
+    ]
+   },
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1",
+    "out2"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffkal2",
+   "type": "model",
+   "name": "⚖️ α 融合层 (置信度旋钮)",
+   "x": 360,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_alpha": true,
+    "z700_internal": true,
+    "desc": "fused = (1−α)·预测 + α·观测 — α≈等效卡尔曼增益: 0=纯模型 1=纯传感器, 按阶段调度",
+    "alpha": 0.5,
+    "alpha_approach": 0.3,
+    "alpha_insert": 0.9,
+    "limit": [
+     0.0,
+     1.0
+    ]
+   },
+   "inputs": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffcer",
+   "type": "model",
+   "name": "🧠 左脑 · 小脑 (前馈)",
+   "x": 570,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_cerebellum": true,
+    "z700_internal": true,
+    "desc": "小脑=学习过的逆动力学模型: obs→action 直接映射, 无递归无延迟, 偏差产生前给力",
+    "K_ff": 0.2,
+    "act_gain": 0.3,
+    "err_gain": 2.0,
+    "gate": 1.0,
+    "x_mean": 0.0,
+    "x_std": 1.0,
+    "limit": [
+     -1.0,
+     1.0
+    ]
+   },
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffclim",
+   "type": "system",
+   "name": "🧬 攀缘纤维 · 误差警戒",
+   "x": 730,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_climbing": true,
+    "z700_internal": true,
+    "desc": "生物标定: 力传感器 vs 右脑预测 → 大误差=复杂脉冲 → 触发 gate 抑制 (LTD)",
+    "gate_th": 2.0,
+    "gate_min": 0.1
+   },
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffltd",
+   "type": "model",
+   "name": "🛡 gate · 突触抑制 (LTD)",
+   "x": 890,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_ltd": true,
+    "z700_internal": true,
+    "desc": "长时程抑制: 左脑不准 → 瞬间降 gate (1.0→0.1) 压制 MLP, 控制权移交传感器; 恢复期切阶段 gate 复原",
+    "gate": 1.0,
+    "gate_off": 0.1,
+    "gate_off2": 0.01
+   },
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffctx",
+   "type": "system",
+   "name": "🧭 皮层 · 状态机",
+   "x": 1050,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_cortex": true,
+    "z700_internal": true,
+    "desc": "认知决策: 接收右脑contact概率+几何误差 → 决定阶段切换 (接近→抓取→…→完成)",
+    "contact_th": 0.6,
+    "Kp": 2.0,
+    "thresh": 0.06
+   },
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
+  },
+  {
+   "id": "ffcal",
+   "type": "system",
+   "name": "🔧 左脑标定实验",
+   "x": 1230,
+   "y": 330,
+   "w": 190,
+   "icon": "",
+   "color": "",
+   "params": {
+    "neural_calib": true,
+    "z700_internal": true,
+    "desc": "三件套标定: ①感知零偏(归一化x_mean) ②执行力(act_gain/err_gain) ③现场微调 — 左脑标定靠数据不靠权重",
+    "n_static": 500,
+    "fine_tune_steps": 3000
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": []
   }
  ],
  "links": [
@@ -337,6 +547,118 @@
    "t": "ffact",
    "f_port": "out4",
    "t_port": "in1"
+  },
+  {
+   "id": "ffy1->ffkal",
+   "f": "ffy1",
+   "t": "ffkal",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "ffb1->ffkal",
+   "f": "ffb1",
+   "t": "ffkal",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
+  },
+  {
+   "id": "ffkal->ffkal2",
+   "f": "ffkal",
+   "t": "ffkal2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "ffy1->ffkal2",
+   "f": "ffy1",
+   "t": "ffkal2",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
+  },
+  {
+   "id": "ffy1->ffcer",
+   "f": "ffy1",
+   "t": "ffcer",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "ffcer->ffclim",
+   "f": "ffcer",
+   "t": "ffclim",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "ffy1->ffclim",
+   "f": "ffy1",
+   "t": "ffclim",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
+  },
+  {
+   "id": "ffclim->ffltd",
+   "f": "ffclim",
+   "t": "ffltd",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "ffcer->ffltd",
+   "f": "ffcer",
+   "t": "ffltd",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
+  },
+  {
+   "id": "ffltd->ffact",
+   "f": "ffltd",
+   "t": "ffact",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
+  },
+  {
+   "id": "ffkal->ffctx",
+   "f": "ffkal",
+   "t": "ffctx",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "ffsm->ffctx",
+   "f": "ffsm",
+   "t": "ffctx",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
+  },
+  {
+   "id": "ffctx->ffact",
+   "f": "ffctx",
+   "t": "ffact",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": ""
+  },
+  {
+   "id": "ffcal->ffcer",
+   "f": "ffcal",
+   "t": "ffcer",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": ""
   }
  ]
 }

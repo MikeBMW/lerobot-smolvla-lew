@@ -1,0 +1,30 @@
+flowchart TD
+    subgraph S1[第一步：时空感知前端]
+        A[传感器融合<br>RGB-D + 力觉 + 触觉] --> B[43D 统一状态向量<br>（obs）]
+    end
+
+    subgraph S2[第二步：并行处理层（快慢分离）]
+        B --> C[前馈加速器<br>（原左脑 MLP）]
+        B --> D[自适应状态估计器<br>（原右脑 GRU）]
+
+        D --> D1[先验动力学预测器<br>预测 next_obs]
+        D --> D2[创新检测与状态校正器<br>计算残差 & 接触概率]
+    end
+
+    subgraph S3[第三步：认知决策层（握有否决权）]
+        C -->|建议动作 u_ff（权重 30%）| E[认知任务调度器<br>（原状态机）]
+        D2 -->|contact 概率 + 预测残差| E
+
+        E -->|阶段切换与动作融合| F[安全执行边界<br>（饱和限幅）]
+    end
+
+    F -->|物理指令| G[机器人执行器<br>（机械臂/夹爪）]
+    G -->|执行结果| H[物理世界]
+
+    %% 反馈闭环（卡尔曼校正）
+    H -.->|传感器反馈 z_k| D2
+    D2 -.->|校正后潜状态| D1
+
+    style C fill:#FFD700,stroke:#333
+    style D fill:#87CEEB,stroke:#333
+    style E fill:#FF6B6B,stroke:#333

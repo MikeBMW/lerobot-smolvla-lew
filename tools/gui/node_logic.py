@@ -456,6 +456,91 @@ def node_z700_internal(ctx):
     return True
 
 
+def node_neural_kalman(ctx):
+    """🔮 右脑 · 非线性卡尔曼滤波器 — 世界模型 (2026-08-16 老倪: 脑科学映射)
+    卡尔曼滤波两件事 = GRU 黑盒版:
+      预测 Predict: 状态转移 A ≈ GRU 循环权重 W_hh (记住"世界怎么演")
+                   + 控制输入 B ≈ action 输入 (动作如何改变状态)
+      更新 Update: 卡尔曼增益 K ≈ GRU 更新门/重置门 (自动调节相信预测 vs 相信观测)
+    先验注入: ctx_proj (VLM 高层语义) 初始化 h0 ≈ 带先验的卡尔曼迭代
+    输出: out1=状态预测, out2=contact 概率 (预测误差 → 状态机触发减速/重试)
+    双击 → 标定 A/K (预测强度 / 更新增益)"""
+    log = ctx["log"]
+    log("🔮 右脑·非线性卡尔曼: 预测(A≈循环权重) + 更新(K≈门控) → 状态估计+contact 概率")
+    return True
+
+
+def node_neural_cerebellum(ctx):
+    """🧠 左脑 · 小脑 (前馈逆动力学) — 2026-08-16 老倪: 脑科学映射
+    小脑 = 前馈控制 (Feedforward) + 感觉-运动映射: 不依赖漫长反馈回路,
+    根据当前状态直接算"该用什么力" → 毫秒级无意识纠偏
+    左脑 MLP = 学习过的逆动力学模型: obs → action 直接映射, 无递归无延迟
+    双击 → 标定 K_ff (前馈增益; 幅度要小, 0.5 会与 P 项冲突, 0.2 最佳)"""
+    log = ctx["log"]
+    log("🧠 左脑·小脑: 前馈逆动力学 obs→action 直接给力 (无递归无延迟, 熟练工直觉)")
+    return True
+
+
+def node_neural_cortex(ctx):
+    """🧭 皮层 · 状态机 (认知决策) — 2026-08-16 老倪: 脑科学映射
+    前额叶 = 规划与决策: 卡尔曼只估计"世界在什么状态", 不决定"该做什么"
+    状态机根据右脑 contact 概率 + 几何误差 → 决定阶段切换 (接近→抓取→…→完成)
+    认知层: 判断当前任务是否完成 → 改变控制策略
+    双击 → 标定 contact_th (接触判定阈值) / Kp (阶段 P 增益) / thresh (几何误差阈值)"""
+    log = ctx["log"]
+    log("🧭 皮层·状态机: contact 概率 + 几何误差 → 阶段切换决策 (认知层)")
+    return True
+
+
+def node_neural_alpha(ctx):
+    """⚖️ α 融合层 (置信度旋钮) — 2026-08-16 老倪: 右脑世界模型的可调节性
+    经典卡尔曼增益 K 无法直接改 GRU 的 A 矩阵 → 在预测/观测之间外挂残差加权器:
+      fused = (1−α)·pred + α·meas       α ∈ [0,1] = 等效卡尔曼增益
+      α=0 完全信任世界模型 (传感器噪声大/瞬态干扰)
+      α=1 完全信任传感器 (信号平滑准确)
+    增益调度表 α(Stage): 接近 0.3 (靠模型快速驱动) / 插入 0.9 (绝对依赖实时反馈)
+    双击 → 标定 α (默认/接近/插入阶段增益)"""
+    log = ctx["log"]
+    log("⚖️ α 融合层: fused = (1−α)·预测 + α·观测 — α≈卡尔曼增益旋钮 (0=纯模型 1=纯传感器)")
+    return True
+
+
+def node_neural_calib(ctx):
+    """🔧 左脑标定实验 — 2026-08-16 老倪: 左脑标定靠数据不靠权重
+    工程标定三旋钮 (tools/cerebellum_calib.py):
+      ① 感知零偏标定: 静止记录 obs → 新 x_mean (校准零点, 光模块换位不重训)
+      ② 执行力标定: act=act*act_gain+clip(delta*err_gain) — act_gain=肌肉记忆占比 err_gain=误差纠正力度
+      ③ 现场微调: 采集 20-30 条示教 → 4090 微调 5 分钟 → 热加载 .pt (小脑急性手术)
+    双击 → 跑三件套标定 + gate 仿真图 (reports/cerebellum_calib.json + cerebellum_gate.png)"""
+    log = ctx["log"]
+    log("🔧 左脑标定实验: ①感知零偏x_mean ②执行力act_gain/err_gain ③现场微调 → 数据标定不碰权重")
+    return True
+
+
+def node_neural_climbing(ctx):
+    """🧬 攀缘纤维 · 误差警戒 — 2026-08-16 老倪: 生物标定机制
+    小脑标定 = 配平误差, 不是死记硬背:
+      平行纤维(上下文) = 左脑 MLP 输出 (携带"我猜应该这么做"的预设动作)
+      攀缘纤维(误差信号) = 力传感器实测 vs 右脑 contact 预测 → 大误差 = 复杂脉冲
+    当力传感器显示 5N 而右脑预测 0.5N → 误差 = 复杂脉冲 → 触发 gate 抑制 (LTD)
+    双击 → 标定 gate_th (误差阈值N) / gate_min (最大抑制)"""
+    log = ctx["log"]
+    log("🧬 攀缘纤维: 力传感器 vs 右脑预测 → 大误差=复杂脉冲 → 触发 LTD gate 抑制")
+    return True
+
+
+def node_neural_ltd(ctx):
+    """🛡 gate · 突触抑制 (LTD) — 2026-08-16 老倪: 生物标定机制
+    长时程抑制: 左脑预测不准时, 不改 MLP 权重, 瞬间降 gate 压制左脑输出:
+      gate 1.0 → 0.1 → 0.01 (完全移交物理传感器)
+    标定完成(恢复期): 接触安全位置 → 状态机切阶段 → gate 恢复 1.0 → 左脑继续主导
+    工程类比: 小脑物理锁定错误动作, 强行走完正确后半程
+    双击 → 标定 gate (全开) / gate_off (压制) / gate_off2 (完全移交)"""
+    log = ctx["log"]
+    log("🛡 gate·LTD: 左脑不准 → gate 1.0→0.1 压制 MLP, 控制权移交传感器; 恢复期 gate 复原")
+    return True
+
+
 def node_infer(ctx):
     """⑥ 推理 — 产线推理服务状态查询"""
     module = ctx["module"]
@@ -896,6 +981,14 @@ _reg("ff_pd_control", ["前馈 PD"], "⚙️ 前馈 PD 控制器 — 顶层增�
 _reg("ff_ref_input", ["参考输入"], "📡 参考输入 u(t) — 前馈PD顶层输入", node_ff_ref_input)
 _reg("ff_scope", ["输出 Scope"], "🖥 输出 Scope — 前馈PD顶层输出响应", node_ff_scope)
 _reg("z700_internal", ["Z700 内部"], "🔬 Z700 内部模块 (顶层只读展示)", node_z700_internal)
+# 🧠 神经同构行 (2026-08-16 老倪: 左脑MLP≈小脑 / 右脑GRU≈非线性卡尔曼 / 状态机≈皮层)
+_reg("neural_kalman", ["右脑 · 非线性卡尔曼", "非线性卡尔曼"], "🔮 右脑·非线性卡尔曼 — 世界模型: 预测(状态转移A)+更新(门控K)", node_neural_kalman)
+_reg("neural_alpha", ["α 融合层", "置信度旋钮"], "⚖️ α融合层 — fused=(1−α)·预测+α·观测, α≈等效卡尔曼增益", node_neural_alpha)
+_reg("neural_calib", ["左脑标定实验", "标定实验"], "🔧 左脑标定 — 感知零偏/执行力act_gain·err_gain/现场微调 三件套", node_neural_calib)
+_reg("neural_climbing", ["攀缘纤维"], "🧬 攀缘纤维 — 力传感器vs右脑预测→复杂脉冲→LTD gate 抑制", node_neural_climbing)
+_reg("neural_ltd", ["gate · 突触抑制", "突触抑制"], "🛡 gate·LTD — 左脑不准→瞬间降gate压制, 控制权移交传感器", node_neural_ltd)
+_reg("neural_cerebellum", ["左脑 · 小脑", "小脑 (前馈)"], "🧠 左脑·小脑 — 前馈逆动力学 obs→action 直接映射", node_neural_cerebellum)
+_reg("neural_cortex", ["皮层 · 状态机"], "🧭 皮层·状态机 — contact+几何误差→阶段切换决策", node_neural_cortex)
 _reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 _reg("cvae",       ["CVAE", "cvae"], "🧬 VAE 编码器 — 动作条件变分自编码器", node_cvae)

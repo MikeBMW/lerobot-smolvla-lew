@@ -1,0 +1,56 @@
+digraph three_brain {
+    // Z-MAX 三脑架构: 前馈加速器 / 自适应状态估计器 / 认知任务调度器
+    // 分层递阶控制 + 数据流闭环 — TB 布局: 感知→并行→决策→执行, 自上而下分层
+    rankdir=TB;
+    bgcolor="white";
+    fontname="WenQuanYi Micro Hei";
+    node [fontname="WenQuanYi Micro Hei", fontsize=12];
+    edge [fontname="WenQuanYi Micro Hei", fontsize=10];
+
+    // ═══ 第一步: 时空感知前端 ═══
+    subgraph cluster_S1 {
+        label="第一步 · 时空感知前端";
+        fontsize=13; style="rounded,filled"; color="#4a7a5a"; fillcolor="#eef7f0";
+        A [label="传感器融合\nRGB-D + 力觉 + 触觉", shape=parallelogram, style=filled, fillcolor="#d4edda"];
+        B [label="43D 统一状态向量 (obs)", shape=parallelogram, style=filled, fillcolor="#c3e6cb"];
+        A -> B;
+    }
+
+    // ═══ 第二步: 并行处理层 (快慢分离) ═══
+    subgraph cluster_S2 {
+        label="第二步 · 并行处理层 (快慢分离)";
+        fontsize=13; style="rounded,filled"; color="#3a5a8a"; fillcolor="#eef3fb";
+        // 快慢通道左右并排 (rank=same)
+        { rank=same; C; D; }
+        C [label="前馈加速器\n(原左脑 MLP)\n~5ms", shape=box, style="rounded,filled", fillcolor="#FFD700"];
+        D [label="自适应状态估计器\n(原右脑 GRU)\n~15ms", shape=box, style="rounded,filled", fillcolor="#87CEEB"];
+        // 慢通道内部拆解 (D 下方)
+        D1 [label="先验动力学预测器\n预测 next_obs", shape=box, style="rounded,dashed,filled", fillcolor="#cfe8f7"];
+        D2 [label="创新检测与状态校正器\n计算残差 & 接触概率", shape=box, style="rounded,dashed,filled", fillcolor="#cfe8f7"];
+        B -> C [label="obs", constraint=true];
+        B -> D [label="obs", constraint=false];
+        D -> D1 [label="隐状态"];
+        D1 -> D2 [label="x_pred"];
+    }
+
+    // ═══ 第三步: 认知决策层 ═══
+    subgraph cluster_S3 {
+        label="第三步 · 认知决策层 (握有否决权)";
+        fontsize=13; style="rounded,filled"; color="#8a3a3a"; fillcolor="#fdf0f0";
+        E [label="认知任务调度器\n(原状态机)", shape=hexagon, style=filled, fillcolor="#FF6B6B"];
+        F [label="安全执行边界\n(饱和限幅)", shape=box, style="rounded,filled", fillcolor="#f8d7da"];
+        C -> E [label="建议动作 u_ff (权重 30%)"];
+        D2 -> E [label="contact 概率 + 预测残差"];
+        E -> F [label="阶段切换与动作融合"];
+    }
+
+    // ═══ 输出 ═══
+    G [label="机器人执行器\n(机械臂/夹爪)", shape=parallelogram, style=filled, fillcolor="#e2e3e5"];
+    H [label="物理世界", shape=box, style=filled, fillcolor="#f0f0f0"];
+    F -> G [label="物理指令"];
+    G -> H [label="执行结果"];
+
+    // ═══ 反馈闭环 (卡尔曼校正, 红色虚线) ═══
+    H -> D2 [label="传感器反馈 z_k", style=dashed, color="#f85149", fontcolor="#f85149", constraint=false];
+    D2 -> D1 [label="校正后潜状态", style=dashed, color="#f85149", fontcolor="#f85149", constraint=false];
+}
