@@ -123,7 +123,7 @@
     "rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
     "d_hp_th": 0.06,
     "contact_th": 0.5,
-    "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"
+    "desc": "右脑 contact 概率 + 钳口-光模块距离 联合判定 → 夹持触发"
    },
    "inputs": [
     {

@@ -9191,7 +9191,7 @@
   {
    "id": "ncond0189",
    "type": "coord_overlay",
-   "name": "🧩 D183 锁扣/插销/门操作",
+   "name": "🧩 D183 锁扣/光模块/门操作",
    "x": 7605,
    "y": 1008,
    "w": 180,
@@ -9199,7 +9199,7 @@
    "color": "#58a6ff",
    "params": {
     "cond_ref": "D183",
-    "skill": "锁扣/插销/门操作",
+    "skill": "锁扣/光模块/门操作",
     "topic": "/dds/cond/",
     "action": "insert",
     "modalities": [
@@ -9219,7 +9219,7 @@
      "state_2d": 0
     },
     "gate": 0.5,
-    "desc": "🧩 锁扣/插销/门操作 · signal · insert"
+    "desc": "🧩 锁扣/光模块/门操作 · signal · insert"
    },
    "inputs": [
     {

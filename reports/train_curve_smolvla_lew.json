@@ -1,4 +1,0 @@
-{
-  "ckpt": "outputs/train/smolvla_lew_5000_20260809_215838/checkpoints",
-  "train_src": "本地docker 5000步 (Model Zoo)"
-}

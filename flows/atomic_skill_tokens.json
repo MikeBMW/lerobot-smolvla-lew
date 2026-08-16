@@ -7374,10 +7374,10 @@
   {
    "skill_id": "AO026",
    "category": "操作动作",
-   "name": "锁扣/插销/门操作",
+   "name": "锁扣/光模块/门操作",
    "tokens": {
     "id": "[SKILL_AO026]",
-    "semantic": "[SEM_锁扣_插销_门操作]",
+    "semantic": "[SEM_锁扣_光模块_门操作]",
     "scene": "[SCENE_Magazine、Rack、料笼、Fixture]",
     "stage": "[STAGE_P1]",
     "maturity": "[MAT_2]",

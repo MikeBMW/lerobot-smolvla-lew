@@ -82,7 +82,7 @@
     "classes": "peg/hole/hand",
     "yolo_enabled": true,
     "state_dim": 39,
-    "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D→3D解算 → 39D state (源码 src/lerobot/policies/yolo_3d/)"
+    "desc": "相机图像 → YOLO 检测光模块/插孔/末端 → 2D→3D解算 → 39D state (源码 src/lerobot/policies/yolo_3d/)"
    },
    "inputs": [
     {
@@ -309,7 +309,7 @@
     "rule": "contact>grasp_contact_threshold(0.5) & d_hp<grasp_d_hp(0.06)",
     "d_hp_th": 0.06,
     "contact_th": 0.5,
-    "desc": "右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发",
+    "desc": "右脑 contact 概率 + 钳口-光模块距离 联合判定 → 夹持触发",
     "source": "src/lerobot/policies/left_right"
    },
    "inputs": [

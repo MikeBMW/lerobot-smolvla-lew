@@ -186,12 +186,12 @@ REFERENCE_APPS = [
                                            "desc": "♻ 七模型共用: 统一 metaworld 数据集 (peg-v6, state 39D 完整观测, action 4D)"}),
         # ── YOLO 感知前端 (2026-08-06 老倪: YOLO 加所有模型最前端, 自动标注+真机感知) ──
         ("train_gate", "🎯 YOLO 感知开关", {"yolo_enabled": True, "state_dim": 39,
-                                          "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含销钉/孔坐标) / 关=3D(仅末端) · 默认开"}),
+                                          "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含光模块/孔坐标) / 关=3D(仅末端) · 默认开"}),
         # 🧩 结构条件 (2026-08-08 老倪: 简化 — 5 个合并为 1 个共享, 放公共感知链)
         ("coord_overlay", "🧩 结构条件", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat", "shared": True,
-                                        "desc": "♻ 坐标叠加 (七模型共用): 坐标逻辑主线(state 含销钉/孔坐标) 叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
+                                        "desc": "♻ 坐标叠加 (七模型共用): 坐标逻辑主线(state 含光模块/孔坐标) 叠加图像背景特征; 训练注入, 推理可剥离 (双击改 gate/state_dim)"}),
         ("model", "🎯 YOLO 目标检测", {"model": "yolov8s", "classes": "peg/hole/hand", "shared": True,
-                                     "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"}),
+                                     "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测光模块/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"}),
         ("condition", "📐 2D→3D 解算", {"intrinsics": "camera_K", "method": "depth|hand-eye",
                                       "desc": "♻ 坐标解算: YOLO 2D框中心 + 深度/单目标定 → 目标 3D 坐标 → 拼入 39D state"}),
         ("model", "🔌 State Adapter", {"in_dim": 39, "out_dim": 39, "normalize": True,
@@ -516,7 +516,7 @@ LIBRARY = [
                                                 "desc": "metaworld 插拔数据集: 39D+图像 4800帧, 喂感知+训练"}},
         {"name": "🎯 YOLO 3D", "params": {"model": "yolov8s", "classes": "peg/hole/hand", "yolo_enabled": True,
                                           "state_dim": 39, "source": "src/lerobot/policies/yolo_3d",
-                                          "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D框 (mAP 0.994)"}},
+                                          "desc": "相机图像 → YOLO 检测光模块/插孔/末端 → 2D框 (mAP 0.994)"}},
         {"name": "📐 2D→3D 解算", "params": {"intrinsics": "camera_K", "method": "depth|hand-eye",
                                              "source": "src/lerobot/policies/yolo_3d",
                                              "desc": "YOLO 2D框中心 + 深度/标定 → 目标 3D 坐标 → 拼入 state"}},
@@ -569,7 +569,7 @@ LIBRARY = [
     ("model", "🎯 YOLO 3D (感知)", [
         {"name": "🎯 YOLO 3D", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
                                              "yolo_enabled": True, "state_dim": 39,
-                                             "desc": "相机图像 → YOLO 检测销钉/插孔/末端 → 2D→3D解算 → 39D state 输入。控制台常驻感知前端, 默认开 (关=3D仅末端)"}},
+                                             "desc": "相机图像 → YOLO 检测光模块/插孔/末端 → 2D→3D解算 → 39D state 输入。控制台常驻感知前端, 默认开 (关=3D仅末端)"}},
         {"name": "🎯 YOLO 感知开关", "params": {"yolo_enabled": True, "state_dim": 39,
                                              "desc": "state 输入 switch: 开=39D(YOLO产出) / 关=3D(仅末端) · 默认开"}},
         {"name": "📐 2D→3D 解算", "params": {"intrinsics": "camera_K", "method": "depth|hand-eye",
@@ -577,7 +577,7 @@ LIBRARY = [
         {"name": "🔌 State Adapter", "params": {"in_dim": 39, "out_dim": 39, "normalize": True,
                                               "desc": "state 适配器: YOLO 3D检测输出 → 统一 state 格式 (开=39D含目标坐标/关=3D仅末端), 适配各策略输入维度"}},
         {"name": "🎯 YOLO 目标检测", "params": {"model": "yolov8s", "classes": "peg/hole/hand",
-                                            "desc": "YOLO 目标检测: 销钉/插孔/末端 2D 检测 (Model Zoo画布节点)"}},
+                                            "desc": "YOLO 目标检测: 光模块/插孔/末端 2D 检测 (Model Zoo画布节点)"}},
     ]),
     ("condition", "条件 (11)", [
         {"name": "C00 信号触发", "params": {"threshold": 0.5}},
@@ -753,11 +753,11 @@ LIBRARY = [
         {"name": "H-JEPA", "params": {"desc": "H-JEPA 三层潜空间 (数据闭环模板)"}},
         # 2026-08-08 飞书端: 🧩 结构条件 — 可拖入画布 (双击改 gate/state_dim)
         {"name": "🧩 结构条件", "params": {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
-                                        "desc": "坐标叠加: 坐标逻辑主线(state 含销钉/孔坐标) 叠加图像背景; 训练注入, 推理可剥离"}},
+                                        "desc": "坐标叠加: 坐标逻辑主线(state 含光模块/孔坐标) 叠加图像背景; 训练注入, 推理可剥离"}},
     ]),
     # 🚀 训练组 (2026-08-08 老倪: Model Zoo的训练节点全部可拖)
     ("system", "🚀 训练 (7)", [
-        {"name": "🚀 ACT 训练", "params": {"policy": "act", "steps": 4000, "desc": "双击 → 训练 ACT (metaworld 插销数据)"}},
+        {"name": "🚀 ACT 训练", "params": {"policy": "act", "steps": 4000, "desc": "双击 → 训练 ACT (metaworld 光模块数据)"}},
         {"name": "🚀 SmolVLA 训练", "params": {"policy": "smolvla", "steps": 4000, "desc": "双击 → 训练 SmolVLA (纯动作)"}},
         {"name": "🚀 SmolVLA+LEW 训练", "params": {"policy": "smolvla_lew", "steps": 4000, "desc": "双击 → 训练 SmolVLA+LEW"}},
         {"name": "🚀 VLA-Touch 训练", "params": {"policy": "vla_touch", "steps": 4000, "desc": "双击 → 训练 VLA-Touch (Interpolant 控制器)"}},
@@ -1213,11 +1213,12 @@ class CICDLinkItem(QGraphicsObject):
         self._flow = 0.0
         self._t = QTimer()
         self._t.timeout.connect(self._tick)
-        self._t.start(90)
+        # 🐛 2026-08-15: 不启动 — dash 动画已改静态高亮 (VcXsrv 黑条根治)
+        # self._t.start(90)
 
     def _tick(self):
+        # 🐛 2026-08-15: 不再推进 dash 偏移 — 静态高亮表达运行状态
         if self.src_item.state in (1, 2):
-            self._flow += 2.0
             self.update()
 
     def boundingRect(self):
@@ -1229,11 +1230,11 @@ class CICDLinkItem(QGraphicsObject):
         c = QColor("#00d4aa" if active else "#9aa4b2")
         painter.setRenderHint(QPainter.Antialiasing)
         pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
-        pen = QPen(c, 2.2)
+        # 🐛 2026-08-15: dash 流动改静态高亮 (加粗+提亮) — VcXsrv 下 dash 动画=黑条
+        pen = QPen(c, 3.2 if active else 2.2)
         if active:
-            pen.setStyle(Qt.DashLine)
-            pen.setDashPattern([7, 5])
-            pen.setDashOffset(-self._flow)
+            c = c.lighter(135)
+            pen.setColor(c)
         painter.setPen(pen)
         painter.drawLine(self.a, self.b)
         # 箭头
@@ -1966,25 +1967,48 @@ class SimNodeItem(QGraphicsObject):
             painter.drawRoundedRect(QRectF(2, 2, w - 4, h - 4), 8, 8)
             # 左侧模型名 (竖向居中; 2026-08-05 修复: 去 emoji 前缀, 名字长则拆两行,
             #   大字区 130px 与节点列 (x≥120) 隔离 → 不再"重复/叠字")
+            # 🐛 2026-08-15 老倪: "背景字显示不全" — 固定 126px 宽度会裁剪长名
+            #   ("前馈 PD 顶层系统" 15px Bold ≈135px 被截) → 字号按像素自适应,
+            #   仍超则按词拆两行, 保证长名完整可见
             name = self.node.get("name", "")
             if name.startswith("🎨 "):
                 name = name[2:]
+            avail_w = 122.0
             painter.setPen(QColor("#ffffff"))
-            painter.setFont(QFont("Arial", 15, QFont.Bold))
-            # 拆行: "+" 处断开 (SmolVLA+LEW → SmolVLA / LEW)
+            # 自适应字号: 从 15px 递减到 9px, 找到能单行放下的
+            fs = 15
+            while fs >= 9:
+                painter.setFont(QFont("Arial", fs, QFont.Bold))
+                fm = painter.fontMetrics()
+                if fm.horizontalAdvance(name) <= avail_w:
+                    break
+                fs -= 1
             line1, line2 = name, ""
-            if "+" in name:
-                line1, line2 = name.split("+", 1)
+            if fm.horizontalAdvance(name) > avail_w:
+                # 15→9 仍超 → 按空格/符号拆两行 (每行再自适应)
+                parts = name.replace("(", " ( ").replace(")", " ) ").split()
+                line1, line2 = "", ""
+                for pt in parts:
+                    trial = (line1 + " " + pt).strip()
+                    if fm.horizontalAdvance(trial) <= avail_w or not line1:
+                        line1 = trial
+                    else:
+                        line2 = (line2 + " " + pt).strip()
             if line1 and line2:
                 painter.drawText(QRectF(8, h / 2 - 24, 126, 24), Qt.AlignVCenter | Qt.AlignLeft, line1)
                 painter.drawText(QRectF(8, h / 2 + 2, 126, 24), Qt.AlignVCenter | Qt.AlignLeft, line2)
             else:
-                painter.drawText(QRectF(8, 0, 126, h), Qt.AlignVCenter | Qt.AlignLeft, name)
+                painter.drawText(QRectF(8, 0, 126, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
             painter.setFont(QFont("Arial", 7))
             painter.drawText(QRectF(8, 4, 110, 12), Qt.AlignLeft | Qt.AlignTop,
                              "▤ 背景行")
+            return
+        # ⚙️ 2026-08-15 老倪: Z700 内部模块 (前馈PD 标定层) — 完全独立绘制, 不碰通用路径
+        # (标题/类型标签/端口/徽章全部跳过 — 通用路径与三区布局重叠, 用户多次反馈"字重合")
+        if self.node.get("params", {}).get("z700_internal"):
+            self._paint_internal(painter, None, QColor(COLORS.get(t, "#58a6ff")), "idle")
             return
         color = QColor(COLORS.get(t, "#58a6ff"))
         # 运行状态色: idle=类型色 running=青色脉冲 success=绿 error=红
@@ -2051,18 +2075,50 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, disp)
         else:
             painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
-        # ⚙️ 2026-08-14 老倪: Z700 内部模块 — 显示前馈PD参数值 (Kp/K_ff/Kd/限幅/阈值)
+        # ⚙️ 2026-08-14 老倪: Z700 内部模块 — 前馈PD 标定层 (Kp/K_ff/Kd/限幅/阈值)
+        # 🐛 2026-08-15 老倪: "字都重叠了" — 原参数一行拼接 + desc 不画 + h=50 太矮 →
+        # 重排三区: 标题 / desc(2行) / 参数(每行一个, 变量名彩色+值白色)
         if params.get("z700_internal"):
-            _pvals = [f"{k}={params[k]}" for k in ("Kp", "K_ff", "Kd", "thresh") if k in params]
-            if "limit" in params:
-                _pvals.append(f"lim={params['limit']}")
-            if _pvals:
-                painter.setPen(QColor("#9aa4b2"))
+            # ── 第一区: 类型标签 (模块角色) ──
+            painter.setPen(QColor(pal["label"]))
+            painter.setFont(QFont("Arial", 7))
+            role = {"感知链": "前馈·观测", "双脑": "前馈·预测",
+                    "状态机": "串联·P", "动作": "串联·D"}.get(name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
+            if role:
+                painter.drawText(QRectF(12, 24, self.w - 20, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                                 f"▸ {role}")
+            # ── 第二区: desc (最多 2 行, 超长省略) ──
+            desc = params.get("desc", "")
+            if desc:
+                painter.setPen(QColor("#8b949e"))
                 painter.setFont(QFont("Arial", 7))
-                _pline = " ".join(_pvals)
-                painter.drawText(QRectF(8, self.h - 16, self.w - 12, 13),
-                                 Qt.AlignVCenter | Qt.AlignLeft,
-                                 painter.fontMetrics().elidedText(_pline, Qt.ElideRight, self.w - 12))
+                _fm = painter.fontMetrics()
+                _avail = self.w - 20
+                _d1 = _fm.elidedText(desc, Qt.ElideRight, _avail)
+                painter.drawText(QRectF(12, 40, self.w - 20, 13), Qt.AlignVCenter | Qt.AlignLeft, _d1)
+            # ── 第三区: 参数 (每行一个, 变量名青色 + 值白色) ──
+            _pkeys = [k for k in ("Kp", "K_ff", "Kd", "thresh") if k in params]
+            if "limit" in params:
+                _pkeys.append("limit")
+            _py = 55
+            _ph = 15
+            for _k in _pkeys:
+                _v = params[_k]
+                if isinstance(_v, list):
+                    _vs = "[" + ", ".join(f"{x:g}" for x in _v) + "]"
+                elif isinstance(_v, float):
+                    _vs = f"{_v:g}"
+                else:
+                    _vs = str(_v)
+                # 变量名 (青色)
+                painter.setPen(QColor("#58a6ff"))
+                painter.setFont(QFont("Consolas", 8, QFont.Bold))
+                painter.drawText(QRectF(12, _py, self.w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
+                # 值 (白色, 右对齐)
+                painter.setPen(QColor("#e6edf3"))
+                painter.setFont(QFont("Consolas", 8))
+                painter.drawText(QRectF(12, _py, self.w - 24, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
+                _py += _ph
         # 🤖 2026-08-09 老倪: 场景节点 — 右上角画小机器人图标 (参考半导体产线机器人)
         if t == "scene":
             try:
@@ -2156,8 +2212,11 @@ class SimNodeItem(QGraphicsObject):
         else:
             if not params.get("video"):
                 # 视频节点名字已居中, 不画类型标签 (2026-08-07 老倪)
-                painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                                 NODE_TYPES.get(t, {}).get("cn", t))
+                # 🐛 2026-08-15 老倪: z700_internal 内部模块已有角色标签 (▸ 前馈·观测),
+                #   跳过默认类型标签 ("系统") — 两个标签同一位置重叠看不清
+                if not params.get("z700_internal"):
+                    painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                                     NODE_TYPES.get(t, {}).get("cn", t))
         # 状态徽章 (右上角: ● 运行中 / ✓ 成功 / ✕ 失败)
         st_icon = {"running": "●", "success": "✓", "error": "✕"}.get(status, "")
         if is_active_src:
@@ -2216,6 +2275,75 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(12, 36, self.w - 16, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              f"{first[0]}={first[1]}")
 
+    # ── ⚙️ Z700 内部模块独立绘制 (2026-08-15 老倪: "字还是重叠" 最终方案) ──
+    # 完全自包含: 背景/标题/角色/desc/参数/端口 全在本方法, 不依赖通用 paint 路径
+    def _paint_internal(self, painter, pal, color, status):
+        p = self.node.get("params", {})
+        name = self.node.get("name", "?")
+        w, h = self.w, self.h
+        # 🐛 2026-08-15: 独立分支在 paint 的 pal 定义之前 → 自取 (THEMES 是模块常量)
+        if pal is None:
+            pal = THEMES[_CUR_THEME]
+        # 背景 (与通用一致的渐变+边框)
+        grad = QLinearGradient(0, 0, 0, h)
+        grad.setColorAt(0, QColor(pal["node_top"]))
+        grad.setColorAt(1, QColor(pal["node_bot"]))
+        painter.setBrush(grad)
+        pen = QPen(QColor(color), 1.6)
+        painter.setPen(pen)
+        painter.drawRoundedRect(QRectF(0, 0, w, h), 6, 6)
+        # 标题 (顶部, 9px Bold)
+        painter.setPen(QColor(pal["title"]))
+        painter.setFont(QFont("Arial", 9, QFont.Bold))
+        _disp = name
+        _fm = painter.fontMetrics()
+        if _fm.horizontalAdvance(_disp) > w - 20:
+            _disp = _fm.elidedText(_disp, Qt.ElideRight, w - 20)
+        painter.drawText(QRectF(10, 2, w - 20, 20), Qt.AlignVCenter | Qt.AlignLeft, _disp)
+        # 角色标签 (y=24, 7px, 蓝)
+        role = {"感知链": "前馈·观测", "双脑": "前馈·预测",
+                "状态机": "串联·P", "动作": "串联·D"}.get(
+            name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
+        painter.setPen(QColor("#58a6ff"))
+        painter.setFont(QFont("Arial", 7))
+        if role:
+            painter.drawText(QRectF(10, 22, w - 20, 13), Qt.AlignVCenter | Qt.AlignLeft, f"▸ {role}")
+        # desc (y=38, 7px 灰, 单行省略)
+        desc = p.get("desc", "")
+        if desc:
+            painter.setPen(QColor("#8b949e"))
+            painter.setFont(QFont("Arial", 7))
+            _fm = painter.fontMetrics()
+            painter.drawText(QRectF(10, 37, w - 20, 12), Qt.AlignVCenter | Qt.AlignLeft,
+                             _fm.elidedText(desc, Qt.ElideRight, w - 20))
+        # 参数区 (y=52 起, 每行 15px: 变量名青左 + 值白右)
+        # 🐛 2026-08-15: 感知链 Kp→K_obs (观测增益 y=Cx, 非比例增益 — 与状态机 Kp 区分)
+        _pkeys = [k for k in ("Kp", "K_obs", "K_ff", "Kd", "thresh") if k in p]
+        if "limit" in p:
+            _pkeys.append("limit")
+        _py = 52
+        _ph = 15
+        for _k in _pkeys:
+            _v = p[_k]
+            if isinstance(_v, list):
+                _vs = "[" + ", ".join(f"{x:g}" for x in _v) + "]"
+            elif isinstance(_v, float):
+                _vs = f"{_v:g}"
+            else:
+                _vs = str(_v)
+            painter.setPen(QColor("#58a6ff"))
+            painter.setFont(QFont("Consolas", 8, QFont.Bold))
+            painter.drawText(QRectF(10, _py, w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
+            painter.setPen(QColor("#e6edf3"))
+            painter.setFont(QFont("Consolas", 8))
+            painter.drawText(QRectF(10, _py, w - 22, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
+            _py += _ph
+        # 端口锚点 (in1 左 / out1 右 — 连线依赖, 不能省)
+        painter.setBrush(color)
+        painter.setPen(QPen(QColor(pal["port_edge"]), 1))
+        painter.drawEllipse(QPointF(0, h / 2), 5, 5)
+        painter.drawEllipse(QPointF(w, h / 2), 5, 5)
+
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionChange:
             self.node["x"] = round(value.x())
@@ -2248,9 +2376,11 @@ class SimLinkItem(QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self._hover = False
         self._flow_offset = 0.0   # 流动动画偏移 (运行中)
+        # 🐛 2026-08-15 老倪: "启动狂闪黑条" — 原无条件 start(80) 每 80ms 全画布连线重绘,
+        #   VcXsrv 网络合成下闪成黑条。改惰性: 平时不启动, 仅在真正流动时由外部唤醒。
         self._anim_timer = QTimer()
         self._anim_timer.timeout.connect(self._tick_flow)
-        self._anim_timer.start(80)
+        # 不 start — 需要动画时由 _wake_flow_anim() 启动
 
     def _switch_active(self):
         """链路流入 Switch 节点时, 是否被当前路由选中:
@@ -2270,12 +2400,27 @@ class SimLinkItem(QGraphicsObject):
             return sel == "metaworld"
         return True
 
+    def _wake_flow_anim(self):
+        """外部唤醒: 节点状态变化/加载画布后调用
+        🐛 2026-08-15: dash 动画已改静态高亮 — 无需 timer, 只重绘一次反映流动状态"""
+        if self._anim_timer.isActive():
+            self._anim_timer.stop()
+        self.update()
+
     def _tick_flow(self):
-        """流动动画: 链路被 switch 选中 且 源节点运行/成功 → 推进偏移; 否则停流"""
-        if self._switch_active() and self.src.node.get("status") in ("success", "running"):
-            self._flow_offset += 2.0
+        """🐛 2026-08-15: dash 动画已废弃 (VcXsrv 黑条) — 不再推进偏移, 只停表"""
+        self._anim_timer.stop()
+        if self._flow_offset != 0:
+            self._flow_offset = 0
             self.update()
-        elif self._flow_offset != 0:
+
+    # 🐛 2026-08-15 老倪: "屏幕还是闪烁" — 无 switch 画布 (ff_pd_top) _switch_active
+    #   恒 True, 运行后节点 success → 连线动画永不停 → 每 80ms 全画布重绘 (VcXsrv 狂闪)。
+    #   运行结束必须显式停所有连线动画 (模拟 Simulink 运行完信号流静止)。
+    def stop_all_flow(self):
+        if self._anim_timer.isActive():
+            self._anim_timer.stop()
+        if self._flow_offset != 0:
             self._flow_offset = 0
             self.update()
 
@@ -2325,11 +2470,14 @@ class SimLinkItem(QGraphicsObject):
             color = QColor("#8b949e")  # 未选中暗灰
         pen = QPen(color, 2.5 if self._hover or self.isSelected() else 1.8)
         # 数据流动画: 链路被 switch 选中 且 源节点成功/运行中 → 虚线流动
+        # 🐛 2026-08-15 老倪: "黑色条纹闪烁" — VcXsrv 网络合成下 dash 动画每 80ms 重绘
+        #   整条线 → 渲染成移动黑条。根治: 流动不再用 dash 动画 (timer 全停),
+        #   改静态高亮 (加粗 + 亮色) 表达"数据流过", 信号流状态一眼可辨且零闪烁。
         flowing = active and self.src.node.get("status") in ("success", "running")
         if flowing:
-            pen.setStyle(Qt.DashLine)
-            pen.setDashPattern([6, 4])
-            pen.setDashOffset(-self._flow_offset)
+            pen.setWidthF(3.2)               # 流动 = 加粗
+            color = color.lighter(135)       # + 提亮 (青/绿色系更亮)
+            pen.setColor(color)
         elif self.isSelected():
             pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
@@ -2764,16 +2912,16 @@ class LibraryPanel(QFrame):
                 self._lib_btns[it["name"]] = btn
                 btn.setVisible(not collapsed)  # 分组折叠时隐藏组内按钮
                 self.v.addWidget(btn)
-        # 📦 数据集组 (2026-08-07 老倪: 功能块同步显示已有数据集 — 插销/套环/Orin)
+        # 📦 数据集组 (2026-08-07 老倪: 功能块同步显示已有数据集 — 光模块/套环/Orin)
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else os.path.expanduser("~/lerobot-smolvla-lew")
         _dset_cands = [
-            ("metaworld_peg", "插销插拔 (lerobot)", "metaworld"),
+            ("metaworld_peg", "光模块插拔 (lerobot)", "metaworld"),
         ]
         _exists = [c for c in _dset_cands if os.path.isdir(os.path.join(root, "data", c[0]))]
         if _exists:
             lab = QLabel(f"▾ 📦 数据集 (已有 {len(_exists)})")
             lab.setStyleSheet("color:#d29922; font-size:11px; font-weight:700; padding:6px 2px 2px;")
-            lab.setToolTip("已有训练数据集 (插销/套环/Orin) — 点击拖入画布作为数据源")
+            lab.setToolTip("已有训练数据集 (光模块/套环/Orin) — 点击拖入画布作为数据源")
             self.v.addWidget(lab)
             for d, desc, src in _exists:
                 btn = QToolButton()
@@ -3595,7 +3743,17 @@ class SimulinkModule(QWidget):
                 n = self.add_node(spec.get("type", "system"), spec.get("name", "?"),
                                   spec.get("x", 0), spec.get("y", 0), spec.get("params", {}))
                 id_map[spec["id"]] = n["id"]
+                # 🐛 2026-08-15 老倪: w/h 只写 dict 不写 item → SimNodeItem 创建时已固定
+                #   默认值 (w=150/h=50), JSON 里的 w/h 不生效 → 内部模块 UI 重叠。
+                #   必须同步更新 item 几何 (paint 读 self.w/self.h)。
                 n["w"] = spec.get("w", 150)
+                n["h"] = spec.get("h", DH)
+                _it = self._items.get(n["id"])
+                if _it is not None:
+                    _it.w = n["w"]
+                    _it.h = n["h"]
+                    _it.prepareGeometryChange()
+                    _it.update()
             for spec in links:
                 f = id_map.get(spec.get("f"))
                 t = id_map.get(spec.get("t"))
@@ -3893,6 +4051,27 @@ class SimulinkModule(QWidget):
             item = SimLinkItem(lk, s, d, self)
             self._link_items.append(item)
             self.canvas._scene.addItem(item)
+        # 🐛 2026-08-15 老倪: 连线动画惰性化 — 画布加载后按节点状态唤醒流动动画
+        #   (原无条件 start(80) 每 80ms 全画布重绘 → VcXsrv 狂闪黑条)
+        self._wake_flow_anim_all()
+
+    def _wake_flow_anim_all(self):
+        """批量唤醒/停止连线流动动画 (加载画布/仿真推进后调用)"""
+        for li in self._link_items:
+            try:
+                li._wake_flow_anim()
+            except Exception:
+                pass
+
+    # 🐛 2026-08-15 老倪: "屏幕还是闪烁" — 无 switch 画布 _switch_active 恒 True,
+    #   运行后节点 success → 连线动画永不停 → 每 80ms 全画布重绘 (VcXsrv 狂闪)。
+    #   运行结束/停止/清画布时显式停全部连线动画 (信号流静止)。
+    def _stop_all_flows(self):
+        for li in self._link_items:
+            try:
+                li.stop_all_flow()
+            except Exception:
+                pass
 
     def on_node_moved(self, item):
         # ⚠️ 必须 prepareGeometryChange (2026-08-05 修复): 连线 boundingRect 随节点位置
@@ -4469,7 +4648,11 @@ class SimulinkModule(QWidget):
             return
         # 2026-08-05 老倪: "点击运行, 感觉没反应, 没有反馈" — 有节点但无执行环节
         #   (总系统/Scope 观察模板) → 自动展开子系统块后重试, 仍无环节才明确提示
-        sub_node = next((n for n in self.nodes if n.get("params", {}).get("subsystem")), None)
+        # 🐛 2026-08-15 老倪: 前馈 PD 顶层画布点▶运行跳到 Z700 — 排除 z700_subsystem,
+        #   顶层运行 = 自身拓扑仿真 (参考输入→Z700子系统黑盒→Scope/分析), 不自动下钻
+        sub_node = next((n for n in self.nodes
+                         if n.get("params", {}).get("subsystem")
+                         and not n.get("params", {}).get("z700_subsystem")), None)
         if sub_node is not None:
             self._log(f"🎛 检测到子系统块「{sub_node['name']}」— 自动展开内部流程…")
             self._open_subsystem(sub_node)
@@ -4483,6 +4666,43 @@ class SimulinkModule(QWidget):
                 return
             self._log("⚠️ 子系统内部也无执行环节节点")
             self._show_bubble(self.rect().center(), "子系统内部无执行环节 — 加载「🔬 三Model Zoo」模板再运行", 5000)
+            return
+        # 🐛 2026-08-15 老倪: 前馈 PD 顶层画布点▶运行 = 顶层拓扑仿真 (Z700 子系统=黑盒),
+        #   不自动下钻 — 与上方 sub_node 排除 z700_subsystem 配套; 其余模板保持原观察模式提示
+        if any(n.get("params", {}).get("z700_subsystem") for n in self.nodes):
+            self._log("▶ 前馈 PD 顶层系统 — 拓扑仿真: 📡参考输入 → 🔬Z700子系统(黑盒) → 🖥Scope/⚙️PD分析")
+            self._log("   🔬Z700 子系统以黑盒参与顶层仿真; 双击它进入完整 Z700 画布 (运行不自动下钻)")
+            # 🐛 2026-08-15 老倪: "怎么疯狂显示单步" — 顶层画布走观察模式会启动 16ms timer,
+            #   _tick 调 step_sim 单步循环且 _sim_t 不推进 → 永不停止无限刷屏。
+            #   顶层画布点运行 = 一次性拓扑执行全部节点, 执行完即停, 不走 timer 循环。
+            self._sim_t = 0.0
+            self._step_order = None
+            self._step_idx = 0
+            self._sim_running = True
+            for n in self.nodes:
+                n["status"] = "idle"
+                it = self._items.get(n["id"])
+                if it:
+                    it.update()
+            self._exec_topological()
+            self._sim_running = False
+            # 🐛 2026-08-15 老倪: "屏幕还是闪烁" — 运行完停所有连线动画 (信号流静止)
+            self._stop_all_flows()
+            self._log(f"✅ 顶层系统仿真完成 · t = {self._sim_t:.2f}s · 节点数={len(self.nodes)}")
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self._refresh_status()
+            self._tutorial_on_action("run")
+            # 🐛 2026-08-15 老倪: "点击运行, 这些指标都要出来" — 仿真完成自动切到
+            #   🚀 运行汇总视图 (场景状态→性能指标→数学分析→稳定性 一页全出)
+            try:
+                mt = getattr(self, "model_tree", None)
+                if mt is not None:
+                    mt.cmb_view.setCurrentIndex(7)   # 🚀 运行汇总
+                    mt.run_summary.refresh_summary()
+            except Exception:
+                pass
             return
         self._log("ℹ️ 画布无执行环节节点 (采集/训练/验证/部署/推理) — 进入观察模式")
         self._show_bubble(self.rect().center(), "画布无执行环节 — 加载「🔬 三Model Zoo」等模板再运行", 5000)
@@ -4630,12 +4850,24 @@ class SimulinkModule(QWidget):
         self._tutorial_on_action("step")
 
     def _exec_topological(self):
-        order = self._topo_sort()
-        self._log(f"⚡ 单步执行 [{len(order)} 节点] · " + " → ".join(
+        order = [nid for nid in self._topo_sort()
+                 if self._by_id(nid).get("type") != "row_bg"]
+        self._log(f"⚡ 拓扑执行 [{len(order)} 节点] · " + " → ".join(
             [self._by_id(n)["name"] for n in order][:6]) + (" …" if len(order) > 6 else ""))
-        for nid in order:
-            n = self._by_id(nid)
-            self._sim_node(n)
+        # 🐛 2026-08-15 老倪: 一次性拓扑执行 = 突发模式 — 抑制逐个节点唤醒连线动画
+        #   (12节点逐个 success 会让动画逐个启动 → 80ms×N 全画布重绘 → VcXsrv 狂闪)
+        self._topo_burst = True
+        try:
+            for nid in order:
+                n = self._by_id(nid)
+                self._sim_node(n)
+        finally:
+            self._topo_burst = False
+            # 执行完统一停动画 (信号流静止, 不闪烁)
+            try:
+                self._stop_all_flows()
+            except Exception:
+                pass
 
     def _collect_inputs(self, n):
         """🐛 2026-08-12 老倪: 收集上游节点输出 (连线 f→t, 来自 _sim_signals)"""
@@ -4730,6 +4962,11 @@ class SimulinkModule(QWidget):
             item.update()
         self.canvas._scene.update()
         self._refresh_status()
+        # 🐛 2026-08-15 老倪: 节点状态变化 → 唤醒/停止连线流动动画 (惰性 timer)
+        #   顶层一次性拓扑执行 (_exec_topological) 期间不唤醒 — 12节点逐个 success
+        #   会让连线动画逐个启动, 80ms×N 全画布重绘 = VcXsrv 狂闪。执行完统一停。
+        if not getattr(self, "_topo_burst", False):
+            self._wake_flow_anim_all()
 
     def _refresh_status(self):
         """刷新底部实时状态栏 (节点计数/运行状态/时钟)"""
@@ -4800,6 +5037,11 @@ class SimulinkModule(QWidget):
     def stop_sim(self):
         self._sim_running = False
         self._timer.stop()
+        # 🐛 2026-08-15 老倪: "屏幕还是闪烁" — 停止时也停所有连线动画
+        try:
+            self._stop_all_flows()
+        except Exception:
+            pass
         # 2026-08-05 老倪: "运行点击之后停止按钮怎么变灰了" — 真实流程运行时 btn_stop
         # 应可用, 且点击后要真能终止训练 (原来只停仿真 timer 不碰 worker)
         w = getattr(self, "_worker", None)
@@ -4971,6 +5213,15 @@ class SimulinkModule(QWidget):
 
     def clear(self):
         self._clear_model_rows()          # 先清五模型背景条 (2026-08-05)
+        # 🐛 2026-08-15 老倪: 清画布前先停掉所有连线流动 timer — 否则旧 item 的 QTimer
+        #   还在跑 (VcXsrv 下 80ms 重绘 + 跨线程析构 → 崩溃 SIGSEGV)
+        for li in getattr(self, "_link_items", []):
+            try:
+                t = getattr(li, "_anim_timer", None)
+                if t is not None and t.isActive():
+                    t.stop()
+            except Exception:
+                pass
         self.canvas._scene.clear()
         self.nodes = []
         self.links = []
@@ -6931,12 +7182,10 @@ class SimulinkModule(QWidget):
         if params.get("ff_pd_control"):
             self.on_ff_pd_config(node)
             return
-        # 1.80) 🔬 Z700 内部模块 (顶层只读展示 → 提示进入完整画布) (2026-08-14 老倪)
+        # 1.80) 🔬 Z700 内部模块 — 🐛 2026-08-15 老倪: 双击查看各自详情
+        #   (状态机→各状态表 / 动作→各动作表 / 双脑→前馈链路 / 感知链→观测链)
         if params.get("z700_internal"):
-            self._log("🔬 Z700 内部模块为只读展示 — 双击上方「🔬 Z700 子系统」进入完整画布 (含训练/评估/交付)")
-            self._highlight_node(next((n for n in self.nodes if n.get("params", {}).get("z700_subsystem")), None)
-                                 if any(n.get("params", {}).get("z700_subsystem") for n in self.nodes) else node,
-                                 ms=3000)
+            self._show_internal_detail(node)
             return
         # 1.12) 🌐 方案介绍节点 (2026-08-12 老倪: 画布节点双击 → 打开方案介绍分页)
         if params.get("solution_web"):
@@ -7199,10 +7448,136 @@ class SimulinkModule(QWidget):
         # 飞书预告
         self._feishu_send_text_async("🔍 Z 分析: Z700 模型全面稳定性评估启动 (九指标: L2增益/BIBO/谱半径/状态机/李雅普诺夫/谱范数/接触分离/平滑度)…")
 
+    def _show_internal_detail(self, node):
+        """🔬 Z700 内部模块详情 (🐛 2026-08-15 老倪: 双击看各自内容, 原只读提示无内容)
+        感知链 → 观测链全景 (YOLO→2D→3D→触觉→Adapter→39D/45D 状态)
+        双脑   → 前馈链路 (左脑预测→右脑WM→contact→K_ff 前馈通道)
+        状态机 → 各状态表 (5 阶段 Kp/Kd/限幅/误差定义/特征根)
+        动作   → 各动作表 (每阶段 u=Kp·e+Kd·ė+u_ff 动作/夹爪/力控)"""
+        nm = node.get("name", "")
+        p = node.get("params", {})
+        # 各阶段增益调度 (画布标定优先, 否则默认表)
+        gs = p.get("gain_schedule", {})
+        STAGES = [
+            {"stage": "接近", "Kp": 2.0, "Kd": 0.3, "limit": [-1.0, 1.0],
+             "e_def": "‖hand−peg‖", "act": "u = Kp·e + Kd·ė + u_ff (硬拉回+制动)"},
+            {"stage": "抓取", "Kp": 0.1, "Kd": 0.0, "limit": [-1.0, 1.0],
+             "e_def": "peg_z − peg_z0", "act": "锁定位置 (act×0.1) + 夹爪闭合 0.6"},
+            {"stage": "抬起", "Kp": 0.8, "Kd": 0.0, "limit": [-0.8, 0.8],
+             "e_def": "目标高度 0.08m", "act": "z 轴比例上升 (×0.8)"},
+            {"stage": "转移", "Kp": 0.6, "Kd": 0.0, "limit": [-0.6, 0.6],
+             "e_def": "‖peg−hole‖_xy", "act": "方向归一化 ×0.6 (死区 0.05)"},
+            {"stage": "插入", "Kp": 2.0, "Kd": 0.0, "limit": [-0.6, 0.6],
+             "e_def": "hole_z − peg_z", "act": "z 比例 ×2.0 限幅 0.6 (防过冲)"},
+        ]
+        # 物理参数 (从动作节点读标定值)
+        act_node = next((n for n in self.nodes
+                         if n.get("params", {}).get("z700_internal") and "动作" in n.get("name", "")), None)
+        ap = act_node["params"] if act_node else {}
+        m2 = ap.get("m", 1.0); b2 = ap.get("b", 2.0); k2 = ap.get("k", 5.0)
+
+        import math as _m
+        rows_html = ""
+        if "状态机" in nm:
+            title = "❖ 状态机 — 5 阶段增益调度表"
+            for st in STAGES:
+                g = gs.get(st["stage"])
+                kp_s = g["Kp"] if isinstance(g, dict) else st["Kp"]
+                kd_s = g["Kd"] if isinstance(g, dict) else st["Kd"]
+                # 特征根: m·s²+(b+Kd)s+(k+Kp)=0
+                a_c, b_c, c_c = m2, b2 + kd_s, k2 + kp_s
+                disc = b_c * b_c - 4 * a_c * c_c
+                wn = _m.sqrt(c_c / a_c) if c_c > 0 else 0
+                zeta = b_c / (2 * _m.sqrt(a_c * c_c)) if a_c * c_c > 0 else 0
+                if disc >= 0:
+                    pole = f"{-b_c / (2 * a_c):.2f} (实根)"
+                else:
+                    re_p = -b_c / (2 * a_c)
+                    im_p = _m.sqrt(-disc) / (2 * a_c)
+                    pole = f"{re_p:.2f}±j{im_p:.2f}"
+                rows_html += (
+                    f"<tr><td style='color:#ffd700'>{st['stage']}</td>"
+                    f"<td>{kp_s:.3f}</td><td>{kd_s:.3f}</td>"
+                    f"<td style='color:#9aa4b2'>[{st['limit'][0]:g}, {st['limit'][1]:g}]</td>"
+                    f"<td style='color:#58a6ff'>{st['e_def']}</td>"
+                    f"<td style='color:#9aa4b2'>ωₙ={wn:.2f} ζ={zeta:.2f} s={pole}</td></tr>")
+            html = (f"<h3 style='color:#58a6ff;margin:4px'>❖ 状态机 — 5 阶段增益调度表</h3>"
+                    f"<p style='color:#8b949e;font-size:11px'>每个状态 = 一组特征根 (增益调度: "
+                    f"切换阶段即切换特征方程系数)。标定④写入的 gain_schedule 已并入。</p>"
+                    f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                    f"<tr style='color:#e6edf3'><th>状态</th><th>Kp</th><th>Kd</th><th>限幅</th>"
+                    f"<th>误差定义</th><th>特征根</th></tr>{rows_html}</table>")
+        elif "动作" in nm:
+            title = "🎮 动作 — 每阶段动作表"
+            for st in STAGES:
+                g = gs.get(st["stage"])
+                kp_s = g["Kp"] if isinstance(g, dict) else st["Kp"]
+                kd_s = g["Kd"] if isinstance(g, dict) else st["Kd"]
+                rows_html += (
+                    f"<tr><td style='color:#3fb950'>{st['stage']}</td>"
+                    f"<td style='color:#e6edf3'>{st['act']}</td>"
+                    f"<td style='color:#9aa4b2'>Kp={kp_s:.2f} Kd={kd_s:.2f}</td></tr>")
+            html = (f"<h3 style='color:#58a6ff;margin:4px'>🎮 动作 — 每阶段动作表</h3>"
+                    f"<p style='color:#8b949e;font-size:11px'>u(t) = Kp·e + Kd·ė + u_ff "
+                    f"(u_ff = 左脑前馈预测动作)。夹爪: 抓取闭合 0.6 / 插入保持。</p>"
+                    f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                    f"<tr style='color:#e6edf3'><th>阶段</th><th>动作指令</th><th>增益</th></tr>{rows_html}</table>")
+        elif "双脑" in nm:
+            Kff = p.get("K_ff", 0.2)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🧠 双脑 — 前馈链路</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>前馈 = 左脑预测动作, 在偏差产生前先出力 "
+                f"(回路外, 不改极点, 只补静差)</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>环节</th><th>角色</th><th>输出</th></tr>"
+                f"<tr><td style='color:#00d4aa'>左脑 MLP</td><td>前馈控制器 u_ff = π(x)</td>"
+                f"<td>action 4D = [dx dy dz gripper] · 547K 参数</td></tr>"
+                f"<tr><td style='color:#00d4aa'>右脑 WM</td><td>世界模型 x'=f(x,u) (预测下一步)</td>"
+                f"<td>next_obs 预测 + contact 概率</td></tr>"
+                f"<tr><td style='color:#00d4aa'>contact 判定</td><td>接触阈值 (数据驱动)</td>"
+                f"<td>contact_th={p.get('contact_th', 0.5):.2f} — 状态机切换依据</td></tr>"
+                f"<tr><td style='color:#ffd700'>前馈增益</td><td>K_ff (画布标定)</td>"
+                f"<td>K_ff = {Kff:.3f} → F(s) = K_obs×K_ff 补偿静差</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 前馈物理含义: 即使系统特征解欠阻尼「爱晃」, 前馈给力准/时机好 → 轨迹可无超调 "
+                f"(左脑预测在误差产生前先动)</p>")
+        else:  # 感知链
+            Kobs = p.get("K_obs", 1.0)
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🎯 感知链 — 观测链全景 (2D 像素 → 39D/45D 状态)</h3>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>环节</th><th>输入</th><th>输出</th></tr>"
+                f"<tr><td style='color:#00d4aa'>YOLO 2D 检测</td><td>相机图像</td>"
+                f"<td>hand/peg/hole 2D 像素框 · conf=0.97/0.99/0.98</td></tr>"
+                f"<tr><td style='color:#00d4aa'>2D→3D 反投影</td><td>像素 u,v + 手眼矩阵</td>"
+                f"<td>peg3D=[0.150 0.730 0.030] (ray→plane)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>Marker 触觉</td><td>六维力/标记点</td>"
+                f"<td>触觉 4D = [0.15 0.82 0.31 -0.94] (grasp/contact/dir)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>State Adapter</td><td>视觉 39D + 触觉 4D</td>"
+                f"<td>融合 43D (双帧堆叠) → 45D (+相对向量 2D)</td></tr>"
+                f"<tr><td style='color:#ffd700'>观测模型</td><td>y = C·x</td>"
+                f"<td>K_obs = {Kobs:.2f} (观测增益, 非 PID 组件)</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"39D 结构 = node_logic.node_obs39 · 坐标=逻辑主线, 图像=背景 (结构条件叠加)</p>")
+        # 对话框
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"🔬 {nm}")
+        dlg.resize(640, 460)
+        lay = QVBoxLayout(dlg)
+        from PyQt5.QtWidgets import QTextBrowser
+        tb = QTextBrowser()
+        tb.setHtml(html)
+        tb.setStyleSheet("QTextBrowser { background:#0d1117; color:#e6edf3; "
+                         "border:1px solid #30363d; font-size:13px; }")
+        lay.addWidget(tb)
+        b_close = QPushButton("关闭")
+        b_close.clicked.connect(dlg.accept)
+        b_close.setStyleSheet("QPushButton { background:#30363d; color:#fff; border:none; "
+                              "border-radius:4px; padding:6px 16px; }")
+        lay.addWidget(b_close, alignment=Qt.AlignRight)
+        dlg.exec_()
+
     def on_ff_pd_config(self, node):
-        """⚙️ 前馈 PD 参数配置 (2026-08-14 老倪): 增益调度PID参数 → 注入 Z700 内部 4 模块
-        UI: 对话框分 4 节 (感知链/双脑/状态机/动作), 每节 Kp/K_ff/Kd/限幅/阈值 可标定
-        保存 → 写回模块 params (画布节点显示更新); 可一键运行对比分析"""
         mods = [n for n in self.nodes if n.get("params", {}).get("z700_internal")]
         if not mods:
             self._log("⚠️ 请先打开「⚙️ 前馈 PD」顶层系统 (Z700 内部模块在此)")
@@ -7222,7 +7597,8 @@ class SimulinkModule(QWidget):
             hdr = QLabel(f"▸ {name}")
             hdr.setStyleSheet("color:#58a6ff; font-size:12px; font-weight:600; margin-top:6px;")
             form.addRow(hdr)
-            keys = [("Kp", 0.1, 10.0), ("K_ff", 0.0, 2.0), ("Kd", 0.0, 5.0), ("thresh", 0.001, 0.5)]
+            keys = [("Kp", 0.1, 10.0), ("K_obs", 0.0, 10.0), ("K_ff", 0.0, 2.0),
+                    ("Kd", 0.0, 5.0), ("thresh", 0.001, 0.5)]
             for k, lo, hi in keys:
                 if k not in p:
                     continue

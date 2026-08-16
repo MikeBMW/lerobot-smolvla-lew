@@ -227,7 +227,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.1.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.1.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -9242,7 +9242,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.1.0 [W-01]")  # v2.0.0: 左右脑策略大版本 (LeftRightPolicy + 8状态机 + 帮助文档)  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.1.1 [W-01]")  # v2.1.1: 数据字典右侧列表字体 11→13px  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
@@ -10289,7 +10289,17 @@ def main():
             win.setGeometry(60, 40, 1400, 900)
     except Exception:
         win.setGeometry(60, 40, 1400, 900)
-    win.show()
+    # 🐛 2026-08-15 老倪: "控制台打开之前狂闪5秒 / 黑色条纹闪烁" — 根治: 完全延迟 show。
+    #   原方案 show() 再离屏 move = 首帧已映射 + 多次整窗位移 → VcXsrv 网络合成狂闪黑条。
+    #   新方案: 窗口先不显示, 等 Simulink 模块构建完成 (singleShot 400ms 延迟创建)
+    #   + 首帧渲染稳定后一次性 show — 窗口第一次映射就是最终位置+完整内容, 无黑条。
+    try:
+        from PyQt5.QtCore import QTimer as _QTM2
+        from PyQt5.QtWidgets import QApplication as _QA2
+        _QTM2.singleShot(2000, lambda: (win.show(), win.raise_(),
+                                        win.activateWindow(), _QA2.processEvents()))
+    except Exception:
+        win.show()
     # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住
     # 浏览器/文档窗口; 只保留启动时置前一次 (raise_ + activateWindow)
     try:
@@ -10297,6 +10307,8 @@ def main():
         win.activateWindow()
     except Exception:
         pass
+    # 若离屏方案生效, 上面的 raise_/activateWindow 在屏幕外无意义但无害;
+    # 归位由 singleShot(1800) 完成 (含 raise_/activateWindow)
     sys.exit(app.exec_())
 
 

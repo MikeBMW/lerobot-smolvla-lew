@@ -24,7 +24,7 @@ STUDIO = REPO / "tools" / "gui" / "studio.py"
 UPDATER = REPO / "tools" / "gui" / "update_checker.py"
 DOCSYNC = REPO / "tools" / "gui" / "docs_sync.py"
 
-EXPECTED_VERSION = "v1.8.0"
+EXPECTED_VERSION = "v2.1.1"
 
 # 期望的功能卡列表 (与 HomeWidget._modules_grid modules 元组第一列一致)
 EXPECTED_CARDS = [
@@ -114,13 +114,15 @@ def get_addwidget_order(tree: ast.Module) -> list[str]:
       self.stack.addWidget(self.model_engine)   -> 'model_engine' (变量, 下面做别名映射)
     """
     # self.<attr> 变量 → 页面类名 (Model Engine / Simulink / DataSpace 是命名实例)
-    ALIAS = {"model_engine": "TrainingModule", "simulink": "SimulinkModule", "dataspace": "DataSpaceModule"}
+    ALIAS = {"model_engine": "TrainingModule", "simulink": "SimulinkModule", "dataspace": "DataSpaceModule",
+             "sim": "SimulinkModule"}
     order = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             f = node.func
-            if isinstance(f, ast.Attribute) and f.attr == "addWidget" and node.args:
-                a = node.args[0]
+            if isinstance(f, ast.Attribute) and f.attr in ("addWidget", "insertWidget") and node.args:
+                # insertWidget(index, widget) — 取第2参; addWidget(widget) — 取第1参
+                a = node.args[1] if f.attr == "insertWidget" else node.args[0]
                 if isinstance(a, ast.Call) and isinstance(a.func, ast.Name):
                     order.append(a.func.id)
                 elif isinstance(a, ast.Attribute):
@@ -175,9 +177,14 @@ def main() -> int:
         "dataspace": "DataSpaceModule", "architecture": "ArchitectureModule",
     }
     expected_addw = [page_map[k] for k in expected_pages if k in page_map]
-    # 只对比在 studio.py 里出现的类 (VersionSyncWidget 等可能独立)
-    if addw[: len(expected_addw)] != expected_addw:
-        fail(f"stack addWidget 顺序不一致:\n  期望 {expected_addw}\n  实际前{len(expected_addw)}个 {addw[:len(expected_addw)]}")
+    # SimulinkModule 是延迟创建 (2026-08-12: _init_simulink 里 insertWidget 插回
+    # _simulink_index 原位, 源码顺序 ≠ 运行时顺序) → 剔除后比较, 存在性单独验证
+    addw_cmp = [c for c in addw if c != "SimulinkModule"]
+    exp_cmp = [c for c in expected_addw if c != "SimulinkModule"]
+    if addw_cmp[: len(exp_cmp)] != exp_cmp:
+        fail(f"stack addWidget 顺序不一致:\n  期望 {exp_cmp}\n  实际前{len(exp_cmp)}个 {addw_cmp[:len(exp_cmp)]}")
+    if "SimulinkModule" not in addw:
+        fail("SimulinkModule 缺失: _init_simulink 未通过 insertWidget 挂载 (延迟创建失效?)")
 
     # 5. 页面类存在 (类定义或 import 均可)
     src_text = STUDIO.read_text(encoding="utf-8")

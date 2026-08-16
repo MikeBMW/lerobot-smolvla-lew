@@ -510,7 +510,7 @@
   "action": "screw",
   "gate": 0.5,
   "source": "atomic_skill",
-  "input_cond": "取件→方向确认→避让光纤→放置→锁扣/插销操作→到位检查。"
+  "input_cond": "取件→方向确认→避让光纤→放置→锁扣/光模块操作→到位检查。"
  },
  {
   "skill_id": "NPO020",
@@ -2155,7 +2155,7 @@
   "action": "screw",
   "gate": 0.5,
   "source": "atomic_skill",
-  "input_cond": "零件取放→方向识别→轴孔对准→插销/扣合→运动间隙检查。"
+  "input_cond": "零件取放→方向识别→轴孔对准→光模块/扣合→运动间隙检查。"
  },
  {
   "skill_id": "XPO027",
@@ -5173,10 +5173,10 @@
  },
  {
   "skill_id": "AO026",
-  "skill_name": "锁扣/插销/门操作",
+  "skill_name": "锁扣/光模块/门操作",
   "category": "操作动作",
   "cond_id": "D183",
-  "condition": "锁扣/插销/门操作条件",
+  "condition": "锁扣/光模块/门操作条件",
   "topic": "/dds/cond/",
   "modalities": [
    "signal"

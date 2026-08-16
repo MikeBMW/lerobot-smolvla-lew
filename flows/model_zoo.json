@@ -53,7 +53,7 @@
       "params": {
         "yolo_enabled": true,
         "state_dim": 39,
-        "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含销钉/孔坐标) / 关=3D(仅末端) · 默认开"
+        "desc": "state 输入 switch: 开=39D(YOLO检测产出, 含光模块/孔坐标) / 关=3D(仅末端) · 默认开"
       },
       "inputs": [
         {
@@ -84,7 +84,7 @@
         "model": "yolov8s",
         "classes": "peg/hole/hand",
         "shared": true,
-        "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测销钉/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"
+        "desc": "♻ 感知前端 (真机必需): 相机图像 → YOLO 检测光模块/插孔/末端 2D框 → 3D坐标。仿真=模拟器直给39D(等价完美YOLO)"
       },
       "inputs": [
         {
