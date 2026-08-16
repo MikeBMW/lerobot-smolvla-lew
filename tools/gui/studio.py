@@ -10618,11 +10618,30 @@ def main():
     #   原方案 show() 再离屏 move = 首帧已映射 + 多次整窗位移 → VcXsrv 网络合成狂闪黑条。
     #   新方案: 窗口先不显示, 等 Simulink 模块构建完成 (singleShot 400ms 延迟创建)
     #   + 首帧渲染稳定后一次性 show — 窗口第一次映射就是最终位置+完整内容, 无黑条。
+    # 🐛 2026-08-16 老倪: "启动前黑影闪动, 一直没修好" — 延迟 show 仍不够,
+    #   VcXsrv 在窗口映射瞬间仍可能闪。加 QSplashScreen 占位: 启动即显示纯色启动画面
+    #   (无内容无闪烁), 窗口完全就绪后 show + splash.finish() 平滑过渡。
     try:
+        from PyQt5.QtGui import QPixmap, QColor as _QC2
+        from PyQt5.QtWidgets import QSplashScreen
         from PyQt5.QtCore import QTimer as _QTM2
         from PyQt5.QtWidgets import QApplication as _QA2
-        _QTM2.singleShot(2000, lambda: (win.show(), win.raise_(),
-                                        win.activateWindow(), _QA2.processEvents()))
+        # 纯色启动画面 (与暗夜主题一致, 无文字无内容 → VcXsrv 稳定)
+        _splash_pm = QPixmap(1, 1)
+        _splash_pm.fill(_QC2(C_BG))
+        _splash = QSplashScreen(_splash_pm)
+        _splash.show()
+        _QA2.processEvents()
+        def _show_ready():
+            win.show()
+            win.raise_()
+            win.activateWindow()
+            try:
+                _splash.finish(win)  # 平滑移交焦点, splash 消失
+            except Exception:
+                _splash.close()
+            _QA2.processEvents()
+        _QTM2.singleShot(2000, _show_ready)
     except Exception:
         win.show()
     # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住
