@@ -108,9 +108,9 @@ L_BG2       = "#e8e8e8"
 L_CARD      = "#ffffff"
 L_HOVER     = "#e0e0e0"
 L_BLUE      = "#000000"
-L_GREEN     = "#b70032"
+L_GREEN     = "#000000"
 L_ORANGE    = "#000000"
-L_RED       = "#b70032"
+L_RED       = "#000000"
 L_PURPLE    = "#000000"
 L_CYAN      = "#000000"
 L_YELLOW    = "#000000"
@@ -139,18 +139,18 @@ THEME_PAIRS_EXTRA = [
     ("#0a0a0f", "#f0f0f0"), ("#0a0e14", "#e8e8e8"), ("#21262d", "#e0e0e0"),
     ("#1a2230", "#dbe9ff"), ("#c9d1d9", "#24292f"),
     # 🎨 2026-08-16 老倪铁律: 只能红/黑/白+按钮高光灰 → 残留彩色统一映射浅色
-    #   蓝/橙/紫/青/金/绿 → 黑/灰 (文字与描边), 红/亮红 → 朱红 #b70032
+    #   蓝/橙/紫/青/金/绿 → 黑/灰 (文字与描边); 状态文字 (绿/红/亮红) → 黑 (六版: 普通文字全黑)
     #   ⚠️ 按钮背景色 (#0d3b33/#1f6feb/#00d4aa 等 15 个) 不进 EXTRA —
     #     由 THEME_PAIRS_BTN 单独处理成白底 (EXTRA 抢先把按钮变黑底会黑底黑字不可见)
     ("#58a6ff", "#000000"), ("#d29922", "#000000"),
     ("#a371f7", "#000000"), ("#bc8cff", "#000000"), ("#39d2c0", "#000000"),
     ("#00b4d8", "#000000"), ("#e3b341", "#000000"),
     ("#d4a800", "#000000"), ("#ffd700", "#000000"), ("#f778ba", "#000000"),
-    ("#3fb950", "#b70032"), ("#f85149", "#b70032"), ("#ff6b6b", "#b70032"),
-    ("#ff9f43", "#b70032"), ("#f87171", "#b70032"),
+    ("#3fb950", "#000000"), ("#f85149", "#000000"), ("#ff6b6b", "#000000"),
+    ("#ff9f43", "#000000"), ("#f87171", "#000000"),
     # ⚠️ #ff4444 既是按钮背景(停止)又是状态文字(失败/硬件): 按钮走 BTN→白底,
-    #   非按钮文字在此 → 朱红 (若放 EXTRA 会被 BTN 分组外的控件误用白底)
-    ("#ff4444", "#b70032"),
+    #   非按钮文字在此 → 黑 (若放 EXTRA 会被 BTN 分组外的控件误用白底)
+    ("#ff4444", "#000000"),
     # ⚠️ #00d4aa/#1f6feb 同款: 按钮背景(加载/设置)走 BTN→白底, 非按钮文字/下拉高亮 → 黑
     ("#00d4aa", "#000000"), ("#1f6feb", "#000000"),
 ]
@@ -236,6 +236,12 @@ def apply_ui_theme(window, theme):
                 pairs = text_pairs
             for dc, lc in pairs:
                 ss = ss.replace(dc, lc)
+            # 🎨 2026-08-16 老倪: 按钮金属光泽 — 白底按钮 → 垂直渐变 (上白亮下浅灰)
+            if isinstance(wdg, _BTN_TYPES):
+                ss = ss.replace(
+                    "background:#ffffff",
+                    "background:qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
             wdg.setStyleSheet(ss)
     # 2) 同步模块级 C_* 常量 (后续新控件 f-string 用新色)
     if theme == "light":
@@ -314,6 +320,12 @@ def apply_ui_font(window, delta):
             pairs = btn_pairs if (isinstance(wdg, _BTN_TYPES) or isinstance(wdg, QMenuBar)) else text_pairs
             for dc, lc in pairs:
                 base = base.replace(dc, lc)
+            # 🎨 同 apply_ui_theme: 按钮金属光泽渐变
+            if isinstance(wdg, _BTN_TYPES):
+                base = base.replace(
+                    "background:#ffffff",
+                    "background:qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
         if "font-size" not in base:
             continue
         def _scale(m):
@@ -10463,7 +10475,27 @@ github.com/MikeBMW/lerobot-smolvla-lew
 def _build_global_qss():
     """🌐 全局 QSS (滚动条/ToolTip/对话框暗色主题) — 用当前 C_* 常量实时生成.
     主题切换 (apply_ui_theme) 时重调此函数 → 全局样式跟主题走。
+    🎨 2026-08-16 老倪: 按钮金属光泽 — 浅色用垂直渐变 (上白亮下浅灰) + 黑边框,
+      深色保持原样; hover 高光加深。
     """
+    if CUR_UI_THEME == "light":
+        # 金属光泽: qlineargradient 垂直渐变 (顶部高光 #ffffff → 底部 #d9d9d9) + 黑边框黑字
+        btn_bg = ("qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                  "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
+        btn_fg = "#000000"
+        btn_br = "#000000"
+        btn_bg_hover = ("qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                        "stop:0 #ffffff, stop:0.45 #f7f7f7, stop:0.55 #eeeeee, stop:1 #e0e0e0)")
+        btn_br_hover = "#000000"
+        btn_bg_pressed = ("qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                          "stop:0 #d9d9d9, stop:0.5 #e8e8e8, stop:1 #f2f2f2)")
+    else:
+        btn_bg = C_CARD
+        btn_fg = C_WHITE
+        btn_br = C_BORDER
+        btn_bg_hover = C_BLUE + "33"
+        btn_br_hover = C_BLUE
+        btn_bg_pressed = C_BLUE + "55"
     return f"""
         QScrollBar:vertical {{ background: transparent; width: 8px; margin: 0; }}
         QScrollBar::handle:vertical {{ background: {C_DIM}; border-radius: 4px; min-height: 20px; }}
@@ -10504,19 +10536,19 @@ def _build_global_qss():
             padding: 4px 8px;
         }}
         QMessageBox QPushButton, QDialog QPushButton {{ 
-            background: {C_CARD}; 
-            color: {C_WHITE}; 
-            border: 1px solid {C_BORDER}; 
+            background: {btn_bg}; 
+            color: {btn_fg}; 
+            border: 1px solid {btn_br}; 
             border-radius: 4px; 
             padding: 6px 16px;
             min-width: 60px;
         }}
         QMessageBox QPushButton:hover, QDialog QPushButton:hover {{ 
-            background: {C_BLUE}33; 
-            border-color: {C_BLUE};
+            background: {btn_bg_hover};
+            border-color: {btn_br_hover};
         }}
         QMessageBox QPushButton:pressed, QDialog QPushButton:pressed {{ 
-            background: {C_BLUE}55; 
+            background: {btn_bg_pressed}; 
         }}
         /* 🐛 2026-08-12 老倪: 右键菜单 QMenu 暗色规则已删 — VcXsrv 下 QMenu QSS 渲染黑屏无字,
            用系统默认菜单 (与 simulink 画布右键一致) */

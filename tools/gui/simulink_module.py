@@ -3651,12 +3651,24 @@ class SimulinkModule(QWidget):
             seen.setdefault(THEMES["light"][k], THEMES["dark"][k])
         pairs = list(seen.items()) + [("#dbe9ff", "#1a2230"),   # 按钮 hover 底色
                                        ("#1f2328", "#c9d1d9")]  # 🐛 2026-08-09: hover 文字色 (深色下黑字看不清)
+        # 🎨 2026-08-16 老倪: 画布按钮统一 — 彩色文字 → 黑, 金属渐变底
+        from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton
+        _BTN_T = (QPushButton, QToolButton, QCheckBox, QRadioButton)
+        _BTN_TXT = [("#00d4aa", "#000000"), ("#58a6ff", "#000000"), ("#d29922", "#000000"),
+                    ("#ff4444", "#000000"), ("#ffd700", "#000000"), ("#3fb950", "#000000"),
+                    ("#a371f7", "#000000"), ("#f85149", "#000000"), ("#1f6feb", "#000000")]
+        _METAL = "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)"
         for wdg in [self] + self.findChildren(QWidget):
             ss = wdg.styleSheet()
             if not ss:
                 continue
             for lc, dc in pairs:
                 ss = ss.replace(lc, dc) if name == "dark" else ss.replace(dc, lc)
+            if name == "light" and isinstance(wdg, _BTN_T):
+                for c, blk in _BTN_TXT:
+                    ss = ss.replace(c, blk)
+                ss = ss.replace("background:#e9edf2", f"background:{_METAL}")
+                ss = ss.replace("background:#ffffff", f"background:{_METAL}")
             wdg.setStyleSheet(ss)
         # 2) 画布背景 + viewport 深色 (边缘/缩放间隙不露白) + 场景重绘
         pc = self._pal()

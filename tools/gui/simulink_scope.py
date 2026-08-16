@@ -442,7 +442,7 @@ class ScopeCompareDialog(QDialog):
             sr_b = hits_b / len(base_mse) * 100
             sr_f = hits_f / len(ft_mse) * 100
             verdict = "✅ 提升" if imp > 0 else "❌ 未提升"
-            color = "#b70032" if imp > 0 else "#6e7681"
+            color = "#000000" if imp > 0 else "#6e7681"
             self.metrics.setText(
                 f"<span style='color:{color};font-weight:700'>{verdict}</span> "
                 f"MSE: 基础 {mse_b:.2f} → 微调 {mse_f:.2f} ({imp:+.1f}%) | "
