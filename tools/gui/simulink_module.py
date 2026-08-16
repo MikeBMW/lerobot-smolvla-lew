@@ -3666,7 +3666,8 @@ class SimulinkModule(QWidget):
         for k in THEMES["light"]:
             seen.setdefault(THEMES["light"][k], THEMES["dark"][k])
         pairs = list(seen.items()) + [("#dbe9ff", "#1a2230"),   # 按钮 hover 底色
-                                       ("#1f2328", "#c9d1d9")]  # 🐛 2026-08-09: hover 文字色 (深色下黑字看不清)
+                                       ("#1f2328", "#c9d1d9"),  # 🐛 2026-08-09: hover 文字色 (深色下黑字看不清)
+                                       ("#e9edf2", "#14181f")]  # 🐛 八版: 源码浅灰按钮底 → 深色 input 底 (暗夜无浅色按钮)
         # 🎨 2026-08-16 老倪: 画布按钮统一 — 彩色文字 → 黑, 金属渐变底
         from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton
         _BTN_T = (QPushButton, QToolButton, QCheckBox, QRadioButton)
@@ -3688,6 +3689,15 @@ class SimulinkModule(QWidget):
                 # 🐛 七版: 按钮文字全黑 (渐变/浅灰底配白字看不见)
                 ss = ss.replace("color:#ffffff", "color:#000000")
                 ss = ss.replace("color:#f0f0f0", "color:#000000")
+            elif name == "dark" and isinstance(wdg, _BTN_T):
+                # 🐛 八版: 金属渐变 → 还原深色按钮底 (浅→暗后渐变残留修复)
+                #   深色下按钮底 = THEMES dark.input #14181f (pairs 里 #e9edf2→#14181f)
+                import re as _re
+                ss = ss.replace(f"background:{_METAL}", "background:#14181f")
+                ss = _re.sub(r"background:qlineargradient\([^)]*\)", "background:#14181f", ss)
+                # 渐变里的 #ffffff/#f2f2f2 等被深色替换规则误伤 → 还原坏值
+                ss = ss.replace("#000000fff", "#ffffff").replace("#ddd33", "#e6edf3")
+                ss = ss.replace("color:#000000", "color:#e6edf3")
             wdg.setStyleSheet(ss)
         # 2) 画布背景 + viewport 深色 (边缘/缩放间隙不露白) + 场景重绘
         pc = self._pal()
