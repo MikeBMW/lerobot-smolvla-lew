@@ -3667,6 +3667,7 @@ class SimulinkModule(QWidget):
             seen.setdefault(THEMES["light"][k], THEMES["dark"][k])
         pairs = list(seen.items()) + [("#dbe9ff", "#1a2230"),   # 按钮 hover 底色
                                        ("#1f2328", "#c9d1d9"),  # 🐛 2026-08-09: hover 文字色 (深色下黑字看不清)
+                                       ("#24292f", "#c9d1d9"),  # 🐛 十版: 模块库按钮深灰字 → 浅字 (暗夜黑字看不清)
                                        ("#e9edf2", "#14181f")]  # 🐛 八版: 源码浅灰按钮底 → 深色 input 底 (暗夜无浅色按钮)
         # 🎨 2026-08-16 老倪: 画布按钮统一 — 彩色文字 → 黑, 金属渐变底
         from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton
