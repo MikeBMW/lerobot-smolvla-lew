@@ -101,17 +101,16 @@ C_GRAY      = "#8b949e"
 C_DIM       = "#484f58"
 C_BORDER    = "#30363d"
 
-# ═══ 浅色调色板 (2026-08-16 老倪: 编辑菜单 → UI风格 浅色; 08-16 三版: CANoe 参考图实测调优)
-# Vector CANoe 真实风格 (像素分析 CANoe.CANopen Gateway 1924x1084):
-#   浅灰底 #e0e0e0 81% + 白卡片 + 黑细边框黑字 + 绿色功能色 6% (状态/信号区)
+# ═══ 浅色调色板 (2026-08-16 老倪: 编辑菜单 → UI风格 浅色; 08-16 四版: CANoe 官网实测)
+# Vector CANoe 官网配色 (vector.com): 白底 + 深灰文字 #3a3e3f + 朱红 #b70032 (唯一强调色)
 L_BG        = "#f0f0f0"
 L_BG2       = "#e8e8e8"
 L_CARD      = "#ffffff"
 L_HOVER     = "#e0e0e0"
 L_BLUE      = "#000000"
-L_GREEN     = "#1a7f37"
+L_GREEN     = "#b70032"
 L_ORANGE    = "#000000"
-L_RED       = "#000000"
+L_RED       = "#b70032"
 L_PURPLE    = "#000000"
 L_CYAN      = "#000000"
 L_YELLOW    = "#000000"
