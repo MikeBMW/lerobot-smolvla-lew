@@ -10603,6 +10603,35 @@ def main():
     # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
     app.setStyleSheet(_build_global_qss())
 
+    # 🐛 2026-08-17: splash 提前到 win 构建前 — 重量级加载期(数秒)即有稳定纯色占位,
+    #   全程无黑条; 同尺寸同位纯色, 主窗口 show 时无缝覆盖 (1x1 splash 会成左上角黑条)
+    _splash = None
+    try:
+        from PyQt5.QtGui import QPixmap, QColor as _QC2
+        from PyQt5.QtWidgets import QSplashScreen
+        from PyQt5.QtCore import QTimer as _QTM2
+        from PyQt5.QtWidgets import QApplication as _QA2
+        from PyQt5.QtGui import QGuiApplication as _QGA2
+        _gx, _gy, _gw, _gh = 60, 40, 1400, 900
+        try:
+            _scr = _QGA2.primaryScreen()
+            if _scr:
+                _ag = _scr.availableGeometry()
+                _gx = max(0, min(60, _ag.width() - 300))
+                _gy = max(0, min(40, _ag.height() - 200))
+                _gw = min(1400, _ag.width())
+                _gh = min(900, _ag.height())
+        except Exception:
+            pass
+        _splash_pm = QPixmap(_gw, _gh)
+        _splash_pm.fill(_QC2(C_BG))
+        _splash = QSplashScreen(_splash_pm)
+        _splash.setGeometry(_gx, _gy, _gw, _gh)
+        _splash.show()
+        _QA2.processEvents()
+    except Exception:
+        _splash = None
+
     win = StudioMainWindow()
     # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)
     try:
@@ -10616,32 +10645,18 @@ def main():
             win.setGeometry(60, 40, 1400, 900)
     except Exception:
         win.setGeometry(60, 40, 1400, 900)
-    # 🐛 2026-08-15 老倪: "控制台打开之前狂闪5秒 / 黑色条纹闪烁" — 根治: 完全延迟 show。
-    #   原方案 show() 再离屏 move = 首帧已映射 + 多次整窗位移 → VcXsrv 网络合成狂闪黑条。
-    #   新方案: 窗口先不显示, 等 Simulink 模块构建完成 (singleShot 400ms 延迟创建)
-    #   + 首帧渲染稳定后一次性 show — 窗口第一次映射就是最终位置+完整内容, 无黑条。
-    # 🐛 2026-08-16 老倪: "启动前黑影闪动, 一直没修好" — 延迟 show 仍不够,
-    #   VcXsrv 在窗口映射瞬间仍可能闪。加 QSplashScreen 占位: 启动即显示纯色启动画面
-    #   (无内容无闪烁), 窗口完全就绪后 show + splash.finish() 平滑过渡。
+    # 🐛 2026-08-15/08-16 历史注释: 延迟 show + splash 占位 (splash 已提前到 win 前创建,
+    #   此处只做 2s 延迟 show + 平滑移交焦点)
     try:
-        from PyQt5.QtGui import QPixmap, QColor as _QC2
-        from PyQt5.QtWidgets import QSplashScreen
-        from PyQt5.QtCore import QTimer as _QTM2
-        from PyQt5.QtWidgets import QApplication as _QA2
-        # 纯色启动画面 (与暗夜主题一致, 无文字无内容 → VcXsrv 稳定)
-        _splash_pm = QPixmap(1, 1)
-        _splash_pm.fill(_QC2(C_BG))
-        _splash = QSplashScreen(_splash_pm)
-        _splash.show()
-        _QA2.processEvents()
         def _show_ready():
             win.show()
             win.raise_()
             win.activateWindow()
-            try:
-                _splash.finish(win)  # 平滑移交焦点, splash 消失
-            except Exception:
-                _splash.close()
+            if _splash is not None:
+                try:
+                    _splash.finish(win)  # 平滑移交焦点, splash 消失
+                except Exception:
+                    _splash.close()
             _QA2.processEvents()
         _QTM2.singleShot(2000, _show_ready)
     except Exception:
