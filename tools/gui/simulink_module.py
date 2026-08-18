@@ -8,6 +8,7 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 import json, math, random, time, os, sys, glob
 from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
+                         QPixmap, QTransform,  # 🐛 2026-08-18: 画布内嵌视频帧需要 (原只在 play_mlp_rollout 局部 import → _mlp_show NameError 静默)
                          QPolygonF, QLinearGradient, QRadialGradient, QKeySequence)
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView,
                              QGraphicsScene, QGraphicsItem, QGraphicsObject,
@@ -2081,6 +2082,9 @@ class SimNodeItem(QGraphicsObject):
         # _hover 恒 False → 悬停 ID 不显示; setAcceptHoverEvents 只在 SimLinkItem)
         self.setAcceptHoverEvents(True)
         self._hover = False
+        # 🎥 2026-08-18: 画布内嵌视频帧 (操作视频节点 — paint 直接绘制)
+        self.video_pixmap = None
+        self.video_overlay = ""   # 视频名/帧数小字
 
     def hoverEnterEvent(self, e):
         self._hover = True
@@ -2246,6 +2250,26 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, disp)
         else:
             painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
+        # 🎥 2026-08-18: 画布内嵌视频帧 — 操作视频节点 (视频画面画在节点主体内)
+        if self.video_pixmap is not None and not self.video_pixmap.isNull():
+            try:
+                vw, vh = self.w - 8, self.h - 34
+                if vw > 20 and vh > 20:
+                    pm = self.video_pixmap
+                    if pm.width() > vw or pm.height() > vh:
+                        pm = pm.scaled(int(vw), int(vh), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    px = (self.w - pm.width()) / 2
+                    py = 4 + (vh - pm.height()) / 2
+                    painter.setPen(Qt.NoPen)
+                    painter.drawPixmap(QRectF(px, py, pm.width(), pm.height()), pm,
+                                       QRectF(0, 0, pm.width(), pm.height()))
+                    if self.video_overlay:
+                        painter.setPen(QColor("#8b949e"))
+                        painter.setFont(QFont("Arial", 7))
+                        painter.drawText(QRectF(6, 4, self.w - 12, 12),
+                                         Qt.AlignLeft | Qt.AlignTop, self.video_overlay)
+            except Exception:
+                pass
         # ⚙️ 2026-08-14 老倪: Z700 内部模块 — 前馈PD 标定层 (Kp/K_ff/Kd/限幅/阈值)
         # 🐛 2026-08-15 老倪: "字都重叠了" — 原参数一行拼接 + desc 不画 + h=50 太矮 →
         # 重排三区: 标题 / desc(2行) / 参数(每行一个, 变量名彩色+值白色)
@@ -7361,12 +7385,23 @@ class SimulinkModule(QWidget):
         self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
 
     def play_mlp_rollout(self):
-        """🎥 操作视频 (状态空间画布) — 帧轮播播放 MLP rollout 视频
-        2026-08-18: ①gstreamer 无音频服务 → 播放跳跃 → 改 ffmpeg 抽帧 + QTimer 轮播
-        ②视频内容可能旋转 → ⏮⏭ 切换 + 🔄 转正
-        🐛 全部连接用绑定方法 (PyQt lambda/闭包连接桥接对象 GC 竞态 → 非确定性 SIGSEGV)"""
+        """🎥 操作视频 — 画布内嵌播放 (2026-08-18 老倪: 视频直接显示在 simulink 画布节点上)
+        帧轮播 → 节点 item.video_pixmap 更新 → 画布重绘; 双击节点 = 播放/暂停"""
         import glob as _glob
         root = self._repo_root()
+        # 画布上的视频节点 (📊 操作视频)
+        node = next((n for n in self.nodes
+                     if n.get("params", {}).get("state_space_rollout")), None)
+        if node is None:
+            self._log("⚠️ 画布无操作视频节点")
+            return
+        it = self._items.get(node["id"])
+        if it is None:
+            return
+        # 已在播放 → 暂停/继续切换
+        if getattr(self, "_mlp_playing", False):
+            self._mlp_toggle()
+            return
         cands = _glob.glob(os.path.join(root, "reports", "*MLP*.mp4")) + \
                 _glob.glob(os.path.join(root, "reports", "*mlp*.mp4"))
         cands = [c for c in cands if os.path.getsize(c) > 1000]
@@ -7381,47 +7416,23 @@ class SimulinkModule(QWidget):
         try:
             from PyQt5.QtCore import QTimer
             from PyQt5.QtGui import QPixmap, QTransform
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
-            win = QDialog(self)
-            win.setWindowTitle("🎥 操作视频 · MLP 策略 (metaworld peg-insert)")
-            win.resize(800, 600)
-            lay = QVBoxLayout(win)
-            self._mlp_lab = QLabel("—")
-            self._mlp_lab.setAlignment(Qt.AlignCenter)
-            self._mlp_lab.setStyleSheet("background:#0d1117; color:#8b949e; font-size:12px;")
-            lay.addWidget(self._mlp_lab)
-            ctrl = QHBoxLayout()
-            self._mlp_btn_prev = QPushButton("⏮ 上一个")
-            self._mlp_btn_next = QPushButton("⏭ 下一个")
-            self._mlp_btn_rot = QPushButton("🔄 转正 (180°)")
-            self._mlp_btn_play = QPushButton("⏸ 暂停")
-            for b in (self._mlp_btn_prev, self._mlp_btn_next,
-                      self._mlp_btn_rot, self._mlp_btn_play):
-                ctrl.addWidget(b)
-            lay.addLayout(ctrl)
+            self._mlp_item = it
             self._mlp_frames = []
             self._mlp_idx = 0
             self._mlp_vidx = 0
             self._mlp_cands = order
             self._mlp_rot = 0
-            self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_frames")
+            self._mlp_playing = True
             self._mlp_loading = False
-            self._mlp_win = win
-            # 绑定方法连接 (🐛 防 GC 竞态)
-            self._mlp_timer = QTimer(win)
-            self._mlp_timer.timeout.connect(self._mlp_tick)
+            self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_cache_发送_MLP插拔成功")
+            # 绑定方法连接 (🐛 防 GC 竞态) — 只在首次创建 timer
+            if not hasattr(self, "_mlp_timer") or self._mlp_timer is None:
+                self._mlp_timer = QTimer(self)
+                self._mlp_timer.timeout.connect(self._mlp_tick)
+                self._mlp_frames_ready.connect(self._mlp_on_frames_ready)
             self._mlp_timer.start(66)
-            self._mlp_frames_ready.connect(self._mlp_on_frames_ready)  # 后台抽帧完成 → 主线程刷新
-            self._mlp_btn_prev.clicked.connect(self._mlp_prev)
-            self._mlp_btn_next.clicked.connect(self._mlp_next)
-            self._mlp_btn_rot.clicked.connect(self._mlp_rot180)
-            self._mlp_btn_play.clicked.connect(self._mlp_toggle)
-            win.destroyed.connect(self._stop_mlp_timer)
-            win.show()
-            # 🎯 show 之后才定位 — 🐛 2026-08-18: move 在 show 前会被 Qt 居中父窗口覆盖
-            self._popup_on_main_screen(win)
             self._mlp_load_frames(0)
-            self._log(f"🎥 MLP 操作视频播放器: {len(cands)} 个视频 · ⏮⏭切换 · 🔄转正")
+            self._log(f"🎥 操作视频: 画布内嵌播放 (7 个视频 · 双击暂停/继续)")
         except Exception as e:
             self._log(f"⚠️ 操作视频播放失败: {e}")
 
@@ -7432,8 +7443,8 @@ class SimulinkModule(QWidget):
             self._mlp_vidx = vidx
             src = self._mlp_cands[vidx]
             self._mlp_loading = True
-            self._mlp_lab.setText(f"⏳ 加载中… {os.path.basename(src)}")
-            self._mlp_btn_play.setText("⏸ 暂停")
+            self._mlp_item.video_overlay = f"⏳ {os.path.basename(src)}"
+            self._mlp_item.update()
             cache = os.path.join(self._repo_root(), "reports",
                                  "_mlp_cache_" + os.path.splitext(os.path.basename(src))[0])
             if os.path.isdir(cache) and len(os.listdir(cache)) > 10:
@@ -7441,8 +7452,6 @@ class SimulinkModule(QWidget):
                 self._mlp_frames_dir = cache
                 self._mlp_frames = sorted(os.listdir(cache))
                 self._mlp_idx = 0
-                self._mlp_win.setWindowTitle(
-                    f"🎥 {os.path.basename(src)} · {len(self._mlp_frames)} 帧 · {vidx+1}/{len(self._mlp_cands)} · 缓存")
                 self._mlp_loading = False
                 self._mlp_show()
                 return
@@ -7464,7 +7473,6 @@ class SimulinkModule(QWidget):
                     if r.returncode != 0:
                         self._mlp_frames_ready.emit("")   # 失败
                         return
-                    # 抽完改名为缓存目录
                     if os.path.isdir(cache):
                         for f in os.listdir(cache):
                             os.remove(os.path.join(cache, f))
@@ -7485,7 +7493,8 @@ class SimulinkModule(QWidget):
         """主线程: 后台抽帧完成 → 刷新帧列表 (pyqtSignal 队列投递, 线程安全)"""
         try:
             if not name:
-                self._mlp_lab.setText("⚠️ 抽帧失败")
+                self._mlp_item.video_overlay = "⚠️ 抽帧失败"
+                self._mlp_item.update()
                 self._mlp_loading = False
                 return
             cache = os.path.join(self._repo_root(), "reports",
@@ -7493,8 +7502,6 @@ class SimulinkModule(QWidget):
             self._mlp_frames_dir = cache
             self._mlp_frames = sorted(os.listdir(cache))
             self._mlp_idx = 0
-            self._mlp_win.setWindowTitle(
-                f"🎥 {name} · {len(self._mlp_frames)} 帧 · {self._mlp_vidx+1}/{len(self._mlp_cands)}")
             self._mlp_loading = False
             self._mlp_show()
         except Exception:
@@ -7508,10 +7515,11 @@ class SimulinkModule(QWidget):
             pm = QPixmap(fp)
             if self._mlp_rot:
                 pm = pm.transformed(QTransform().rotate(self._mlp_rot), Qt.SmoothTransformation)
-            lab = self._mlp_lab
-            if lab.size().width() > 50 and lab.size().height() > 50:
-                pm = pm.scaled(lab.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            lab.setPixmap(pm)
+            self._mlp_item.video_pixmap = pm
+            self._mlp_item.video_overlay = (
+                f"{os.path.basename(self._mlp_cands[self._mlp_vidx])} · "
+                f"{self._mlp_idx+1}/{len(self._mlp_frames)}")
+            self._mlp_item.update()
         except Exception:
             pass
 
@@ -7534,15 +7542,19 @@ class SimulinkModule(QWidget):
         self._mlp_show()
 
     def _mlp_toggle(self):
-        if self._mlp_timer.isActive():
+        if getattr(self, "_mlp_timer", None) and self._mlp_timer.isActive():
             self._mlp_timer.stop()
-            self._mlp_btn_play.setText("▶ 播放")
+            self._mlp_playing = False
+            self._log("⏸ 操作视频已暂停 (再双击继续)")
         else:
-            self._mlp_timer.start(66)
-            self._mlp_btn_play.setText("⏸ 暂停")
+            t = getattr(self, "_mlp_timer", None)
+            if t is not None:
+                t.start(66)
+                self._mlp_playing = True
+                self._log("▶ 操作视频继续播放")
 
     def _stop_mlp_timer(self):
-        """🛡 播放窗口销毁 → 停轮播 timer (防 activateTimers 崩溃)"""
+        """🛡 播放停止 → 停轮播 timer (防 activateTimers 崩溃)"""
         try:
             t = getattr(self, "_mlp_timer", None)
             if t is not None:

@@ -343,10 +343,10 @@
    "name": "🎥 操作视频",
    "x": 1120,
    "y": 400,
-   "w": 280,
+   "w": 340,
    "icon": "🎥",
    "color": "#d29922",
-   "h": 88,
+   "h": 260,
    "params": {
     "state_space": true,
     "state_space_rollout": true,
