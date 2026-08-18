@@ -7407,8 +7407,6 @@ class SimulinkModule(QWidget):
             self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_frames")
             self._mlp_loading = False
             self._mlp_win = win
-            # 🎯 弹主窗口所在屏 (🐛 2026-08-18: self.window() 是浮动画布(副屏))
-            self._popup_on_main_screen(win)
             # 绑定方法连接 (🐛 防 GC 竞态)
             self._mlp_timer = QTimer(win)
             self._mlp_timer.timeout.connect(self._mlp_tick)
@@ -7420,6 +7418,8 @@ class SimulinkModule(QWidget):
             self._mlp_btn_play.clicked.connect(self._mlp_toggle)
             win.destroyed.connect(self._stop_mlp_timer)
             win.show()
+            # 🎯 show 之后才定位 — 🐛 2026-08-18: move 在 show 前会被 Qt 居中父窗口覆盖
+            self._popup_on_main_screen(win)
             self._mlp_load_frames(0)
             self._log(f"🎥 MLP 操作视频播放器: {len(cands)} 个视频 · ⏮⏭切换 · 🔄转正")
         except Exception as e:
@@ -7583,8 +7583,9 @@ class SimulinkModule(QWidget):
             return
         try:
             dlg = StateSpaceScopeDialog(tr, parent=self)
-            self._popup_on_main_screen(dlg)   # 🎯 弹主窗口所在屏 (浮动画布副屏修复)
             self._show_nonmodal(dlg)
+            # 🎯 show 之后才定位 — move 在 show 前会被 Qt 居中父窗口覆盖
+            self._popup_on_main_screen(dlg)
             self._log("📊 仿真波形: 距离/前馈/残差/接触概率 曲线 (阶段切换已标注)")
         except Exception as e:
             self._log(f"⚠️ Scope 打开失败: {e}")
