@@ -63,12 +63,22 @@ try:
                             sup = obj.metaObject().superClass().className()
                         except Exception:
                             sup = "?"
+                        # 🎯 2026-08-18: inherits 探测真身 (className 是 QObject 的未导出类)
+                        inh = []
+                        for _c in ("QClipboard", "QToolTip", "QTimer", "QSingleShotTimer",
+                                   "QNetworkAccessManager", "QDrag", "QApplication",
+                                   "QGuiApplication", "QWidget", "QWindow"):
+                            try:
+                                if obj.inherits(_c):
+                                    inh.append(_c)
+                            except Exception:
+                                pass
                         try:
                             props = [str(obj.property(p)) for p in obj.dynamicPropertyNames()][:3]
                         except Exception:
                             props = []
                         with open("/tmp/orphan_timers.log", "a") as f:
-                            f.write(line + f" | super={sup} props={props}\n")
+                            f.write(line + f" | super={sup} inherits={inh} props={props}\n")
             except Exception:
                 pass
             return False
