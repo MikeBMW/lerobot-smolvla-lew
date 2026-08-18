@@ -319,7 +319,7 @@
   {
    "id": "ssvideo",
    "type": "model",
-   "name": "📊 仿真 Scope",
+   "name": "📊 仿真波形",
    "x": 1120,
    "y": 590,
    "w": 280,
@@ -329,7 +329,7 @@
    "params": {
     "state_space": true,
     "state_space_scope": true,
-    "desc": "仿真 Scope: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)"
+    "desc": "仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)"
    },
    "inputs": [
     "in1"

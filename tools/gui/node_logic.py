@@ -1371,7 +1371,7 @@ def node_ss_video(ctx):
 
 
 def node_ss_scope(ctx):
-    """📊 仿真 Scope — 双击显示最近一次状态空间仿真波形 (距离/残差/接触概率 + 阶段切换)"""
+    """📊 仿真波形 — 双击显示最近一次状态空间仿真波形 (距离/残差/接触概率 + 阶段切换)"""
     module = ctx.get("module")
     if module and hasattr(module, "show_state_space_scope"):
         module.show_state_space_scope()
@@ -1409,4 +1409,4 @@ _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→�
 _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
 _reg("ss_world", ["物理世界"], "🌍 物理世界 — 执行结果→传感器反馈 z_k→卡尔曼校正闭环 (源码 execution.py PhysicalWorld)", node_ss_exec)
 _reg("ss_video", ["操作视频"], "🎥 操作视频 — metaworld 训练后 rollout 视频对比窗口 (多模型同步播放, InferenceVideoDialog)", node_ss_video)
-_reg("ss_scope", ["仿真 Scope"], "📊 仿真 Scope — 最近一次状态空间仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)", node_ss_scope)
+_reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空间仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)", node_ss_scope)

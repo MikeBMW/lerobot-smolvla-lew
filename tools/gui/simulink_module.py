@@ -1000,7 +1000,7 @@ class StateSpaceScopeDialog(QDialog):
     def __init__(self, tr, parent=None):
         super().__init__(parent)
         self._tr = tr
-        self.setWindowTitle("📊 状态空间仿真 Scope")
+        self.setWindowTitle("📊 仿真波形 · 状态空间")
         self.setMinimumSize(820, 560)
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stages = tr.get("stage", [])
@@ -1033,7 +1033,8 @@ class StateSpaceScopeDialog(QDialog):
             p.setPen(QColor("#30363d"))
             p.drawRect(int(x0), int(y0), int(w), int(h))
             p.setPen(QColor("#e6edf3"))
-            f = QFont("DejaVu Sans", 10); f.setBold(True)
+            # 🐛 2026-08-18: DejaVu 无中文字形 → 中文 fallback 渲染模糊; 用默认字体 (wqy 清晰)
+            f = QFont(); f.setPointSize(10); f.setBold(True)
             p.setFont(f)
             p.drawText(int(x0 + 8), int(y0 + 18), title)
             # 坐标变换: t → x, y → 画布
@@ -7327,7 +7328,7 @@ class SimulinkModule(QWidget):
         try:
             dlg = StateSpaceScopeDialog(tr, parent=self)
             self._show_nonmodal(dlg)
-            self._log("📊 仿真 Scope: 距离/前馈/残差/接触概率 波形 (阶段切换已标注)")
+            self._log("📊 仿真波形: 距离/前馈/残差/接触概率 曲线 (阶段切换已标注)")
         except Exception as e:
             self._log(f"⚠️ Scope 打开失败: {e}")
 
