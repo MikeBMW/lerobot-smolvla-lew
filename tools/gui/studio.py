@@ -3555,7 +3555,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._log_queue = []
         self._log_flush_timer = QTimer(self)
         self._log_flush_timer.timeout.connect(self._flush_log_queue)
-        self._log_flush_timer.start(200)
+        # 🐛 2026-08-18: 200ms → 500ms 降频 (timer 批处理碰撞减半)
+        self._log_flush_timer.start(500)
         self.log_text.setMinimumHeight(200)  # 🐛 2026-08-09 老倪: 600→200 给上方配置表腾空间 (日志可滚动/可折叠)
         self.log_text.setStyleSheet(f"""
             QTextEdit {{

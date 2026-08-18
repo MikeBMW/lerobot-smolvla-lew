@@ -2721,7 +2721,9 @@ class SimCanvas(QGraphicsView):
         # (点击才有响应) → QCursor 150ms 轮询; 鼠标不动不重绘 (防狂闪); parent=this 防关闭崩溃
         self._hover_timer = QTimer(self)
         self._hover_timer.timeout.connect(self._poll_hover)
-        self._hover_timer.start(150)
+        # 🐛 2026-08-18: 150ms → 300ms 降频 — Qt5.15 activateTimers 批处理碰撞
+        # (timer 回调改 timer 表 → NULL receiver SIGSEGV), 高频 timer 降频减碰撞
+        self._hover_timer.start(300)
         self._last_hover_pos = None
         self._scale = 1.0
         # ↩️ Ctrl+Z 撤销 (2026-08-07 老倪: 挪动背景行回不去上一步)
