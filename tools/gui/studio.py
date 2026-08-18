@@ -43,7 +43,7 @@ try:
                             chain.append("<?>")
                         o = o.parent()
                     from PyQt5 import sip
-                    cp = hex(sip.unwrap_instance(obj)) if sip.isdeleted(obj) is False else "DEL"
+                    cp = hex(sip.unwrapinstance(obj)) if sip.isdeleted(obj) is False else "DEL"
                     import time as _t
                     with open("/tmp/timer_trace.log", "a") as f:
                         f.write(f"{_t.time():.1f} {cp} {hex(id(obj))} {' > '.join(chain)}\n")
