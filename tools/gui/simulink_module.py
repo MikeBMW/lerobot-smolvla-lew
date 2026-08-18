@@ -7396,11 +7396,17 @@ class SimulinkModule(QWidget):
             self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_frames")
             self._mlp_loading = False
             self._mlp_win = win
-            # 🐛 2026-08-18: 播放器弹到扩展屏看不到 — primaryScreen 在 VcXsrv 多屏
-            # 下返回扩展屏; 改弹到主窗口所在屏 (用户实际看的地方)
+            # 🐛 2026-08-18: 播放器弹到扩展屏看不到 — self.window() 是浮动画布(副屏);
+            # 找主窗口 (标题含 XSpace 的可见顶层窗口) 所在屏
             try:
                 from PyQt5.QtWidgets import QApplication as _QA
-                _mw = self.window()
+                _mw = None
+                for _w in _QA.topLevelWidgets():
+                    if _w.isVisible() and "XSpace" in (_w.windowTitle() or ""):
+                        _mw = _w
+                        break
+                if _mw is None:
+                    _mw = self.window()
                 _scr = _QA.screenAt(_mw.frameGeometry().center()) or _QA.primaryScreen()
                 _g = _scr.availableGeometry()
                 win.move(_g.center().x() - win.width() // 2,
