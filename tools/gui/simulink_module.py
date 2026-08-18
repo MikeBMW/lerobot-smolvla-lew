@@ -7453,8 +7453,13 @@ class SimulinkModule(QWidget):
                 self._mlp_timer = _tq(self)
                 self._mlp_timer.timeout.connect(self._mlp_tick)
                 self._mlp_frames_ready.connect(self._mlp_on_frames_ready)
-            # 🐛 2026-08-18: 66ms → 150ms (VcXsrv 无硬件加速, 画布每帧重绘=狂闪; 6.6fps 动作可辨)
-            self._mlp_timer.start(150)
+            # 🐛 2026-08-18: 66ms 狂闪 → 150ms 卡顿 → 100ms (10fps) 平衡 + 播放时暂停 hover 轮询
+            self._mlp_timer.start(100)
+            # 播放期间暂停 hover timer (减画布重绘竞争, 视频更流畅)
+            try:
+                self._hover_timer.stop()
+            except Exception:
+                pass
             self._mlp_load_frames(0)
             self._log(f"🎥 操作视频: 画布内嵌播放 (7 个视频 · 双击暂停/继续)")
         except Exception as e:
@@ -7577,12 +7582,20 @@ class SimulinkModule(QWidget):
         if getattr(self, "_mlp_timer", None) and self._mlp_timer.isActive():
             self._mlp_timer.stop()
             self._mlp_playing = False
+            try:
+                self._hover_timer.start(300)   # 恢复 hover 轮询
+            except Exception:
+                pass
             self._log("⏸ 操作视频已暂停 (再双击继续)")
         else:
             t = getattr(self, "_mlp_timer", None)
             if t is not None:
-                t.start(66)
+                t.start(100)
                 self._mlp_playing = True
+                try:
+                    self._hover_timer.stop()   # 播放时暂停 hover
+                except Exception:
+                    pass
                 self._log("▶ 操作视频继续播放")
 
     def _stop_mlp_timer(self):

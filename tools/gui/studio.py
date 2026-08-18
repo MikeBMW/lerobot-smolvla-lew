@@ -561,7 +561,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.1.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.1.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -9581,7 +9581,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.1.2 [W-01]")  # v2.1.2: 小版本迭代(容器重建恢复)  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.1.3 [W-01]")  # v2.1.3: 物理面板+视频播放优化  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
