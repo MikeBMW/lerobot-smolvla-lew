@@ -59,6 +59,17 @@ try:
     _TIMER_TRACE = _TimerTrace()
 except Exception:
     _TIMER_TRACE = None
+
+from PyQt5.QtCore import QTimer as _QTimerS  # noqa: E402  (studio 顶部 PyQt5.QtWidgets import 之后)
+
+def _oneshot(parent, ms, fn):
+    """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
+    PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治"""
+    t = _QTimerS(parent)
+    t.setSingleShot(True)
+    t.timeout.connect(fn)
+    t.start(ms)
+    return t
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
@@ -7929,7 +7940,7 @@ class MonitorModule(SubModuleWidget):
                     return
                 st = r.json()
                 from PyQt5.QtCore import QTimer
-                QTimer.singleShot(0, lambda s=st: self._apply_orin_status(s))
+                _oneshot(self, 0, lambda s=st: self._apply_orin_status(s))
             except Exception:
                 pass
 
@@ -8970,8 +8981,8 @@ class InferencePanel(QWidget):
         self._server_start()
         # 等待服务端就绪后自动连接
         from PyQt5.QtCore import QTimer
-        QTimer.singleShot(2000, self._client_connect)
-        QTimer.singleShot(5000, self._client_stream)
+        _oneshot(self, 2000, self._client_connect)
+        _oneshot(self, 5000, self._client_stream)
     
     def _full_stop(self):
         self._client_stop()
@@ -9631,7 +9642,7 @@ class StudioMainWindow(QMainWindow):
         # 延迟创建让主窗口先显示 (VcXsrv 下构造慢 → 启动闪屏+卡死)
         self._simulink_index = self.stack.count()   # 记录 tab 原位, 创建后插回
         self.simulink = None
-        QTimer.singleShot(400, self._init_simulink)
+        _oneshot(self, 400, self._init_simulink)
 
         # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
         self.dataspace = DataSpaceModule(self)
@@ -9681,7 +9692,7 @@ class StudioMainWindow(QMainWindow):
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
         if os.environ.get("ZMAX_AUTO_RUN") == "1":
-            QTimer.singleShot(2500, self._auto_run_compare5)
+            _oneshot(self, 2500, self._auto_run_compare5)
 
     def _auto_run_compare5(self):
         """🔬 自动加载五模型对比模板并启动运行 (ZMAX_AUTO_RUN=1 时启动后触发)"""
@@ -9714,7 +9725,7 @@ class StudioMainWindow(QMainWindow):
             elif os.environ.get("ZMAX_AUTO_TRAIN") == "1":
                 # 2026-08-07 老倪: 训练已完成过一轮, 重启只加载画布不重训 (避免覆盖曲线)
                 # 需要自动训练时: ZMAX_AUTO_TRAIN=1 启动
-                QTimer.singleShot(1200, self.simulink.start_sim)
+                _oneshot(self, 1200, self.simulink.start_sim)
                 self.simulink._log("🚀 ZMAX_AUTO_RUN+ZMAX_AUTO_TRAIN: 已自动加载画布并启动训练")
             elif _curves_done():
                 self.simulink._log("🛡 检测到五模型曲线已完整 — 跳过自动训练, 仅加载画布 (仿真标识已生效)")
@@ -10136,7 +10147,7 @@ class StudioMainWindow(QMainWindow):
         m_help.addAction(act_update)
 
         # 后台检查更新（启动后5秒）
-        QTimer.singleShot(5000, self._auto_check_update)
+        _oneshot(self, 5000, self._auto_check_update)
         
         act_patent = QAction("📜 专利展示面板 (6项权利要求)", self)
         act_patent.triggered.connect(self._toggle_patent_panel)
@@ -10640,6 +10651,14 @@ def main():
     except Exception:
         pass
     app = QApplication(sys.argv)
+    # 🐛 2026-08-18 崩溃根治: QPixmapCache 内部 timer (QPMCache) 无 parent 且高频激活
+    # (播放器帧轮播每 66ms 创建/销毁 QPixmap) → activateTimers 批处理碰撞 → NULL receiver
+    # SIGSEGV (孤儿 timer 追踪实锤 QPMCache)。禁用缓存 → 该 timer 不再激活。
+    try:
+        from PyQt5.QtGui import QPixmapCache
+        QPixmapCache.setCacheLimit(0)
+    except Exception:
+        pass
     # 🐛 2026-08-18 崩溃诊断: 安装 TimerEvent 追踪 (崩溃前最后一行 = 凶手 timer 接收者)
     if _TIMER_TRACE is not None:
         app.installEventFilter(_TIMER_TRACE)

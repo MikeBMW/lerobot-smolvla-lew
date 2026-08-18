@@ -993,6 +993,15 @@ def link_id():
 # ════════════════════════════════════════════════════════════════
 import numpy as np   # 🐛 Scope 绘图需要 (文件顶部无 numpy import)
 
+def _oneshot(parent, ms, fn):
+    """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
+    PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治"""
+    t = QTimer(parent)
+    t.setSingleShot(True)
+    t.timeout.connect(fn)
+    t.start(ms)
+    return t
+
 
 class StateSpaceScopeDialog(QDialog):
     """📊 状态空间仿真 Scope — 2x2 子图 (距离/前馈/残差/接触概率 vs 时间) + 阶段切换竖线"""
@@ -3883,7 +3892,7 @@ class SimulinkModule(QWidget):
             bub.show()
             bub.raise_()
             self._bubble = bub
-            QTimer.singleShot(ms, lambda: self._close_bubble(bub))
+            _oneshot(self, ms, lambda: self._close_bubble(bub))
         except Exception:
             pass
 
@@ -4357,7 +4366,7 @@ class SimulinkModule(QWidget):
         # n_cols=12 (2026-08-07 老倪: 训练右侧=仿真推理, 再右侧=仿真视频 — 12 列布局)
         self._draw_model_rows(["YOLO 3D", "ACT", "SmolVLA", "SmolVLA+LEW",
                                "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家"], n_cols=12)
-        QTimer.singleShot(300, lambda: self._compare_load_hint())
+        _oneshot(self, 300, lambda: self._compare_load_hint())
 
     def open_z700_flow(self):
         """🚀 Z700 快捷打开 (2026-08-12 老倪): 一键加载 Z700 完整工程 —
@@ -4501,7 +4510,7 @@ class SimulinkModule(QWidget):
         self._log("顶层: 📦metaworld数据 → 🔬总系统块 → 📊对比评估Scope")
         self._log("双击「🔬 总系统」块 → 展开内部「🔬 Model Zoo」七模型训练线")
         self._log("⬅ 在子系统内点工具栏「⬅ 返回总系统」恢复顶层")
-        QTimer.singleShot(300, lambda: self._topsys_hint())
+        _oneshot(self, 300, lambda: self._topsys_hint())
 
     def _topsys_hint(self):
         """顶层总系统加载后气泡引导: 高亮总系统块提示双击展开"""
@@ -4602,7 +4611,7 @@ class SimulinkModule(QWidget):
         self._log(f"🎛 已进入子系统「{sub_name}」— ACT / SmolVLA / SmolVLA+LEW 三条并行训练线")
         self._log("   ▶ 点「▶ 运行」依次训练三模型 → 双击「📊 对比评估 Scope (仿真)」出对比图表")
         self._log("   ⬅ 完成后点工具栏「⬅ 返回总系统」恢复顶层")
-        QTimer.singleShot(300, lambda: self._compare_load_hint())
+        _oneshot(self, 300, lambda: self._compare_load_hint())
 
     def back_to_subsystem(self):
         """⬅ 返回上一层: 恢复子系统栈顶的 flow"""
@@ -6055,7 +6064,7 @@ class SimulinkModule(QWidget):
                 if it is not None:
                     it.update()
 
-        QTimer.singleShot(ms, _clear)
+        _oneshot(self, ms, _clear)
 
     def _act_append_after_train(self):
         """🧠 ACT-Meta 引导: 训练完成 → 自动追加「✅ 模型验证」+「📦 集成打包」
@@ -8449,7 +8458,7 @@ class SimulinkModule(QWidget):
         self._log("双击「🔬 Z700 子系统」→ 展开底层 Z700 完整工程 (感知+双脑+状态机+交付)")
         self._log("双击「⚙️ 前馈 PD 分析」→ 前馈vs纯PD对比仿真 + 图")
         self._log("⬅ 在 Z700 子系统内点工具栏「⬅ 返回总系统」恢复顶层")
-        QTimer.singleShot(300, self._ff_pd_top_hint)
+        _oneshot(self, 300, self._ff_pd_top_hint)
 
     def _ff_pd_top_hint(self):
         """前馈 PD 顶层加载后气泡引导: 高亮 Z700 子系统块"""
@@ -8483,7 +8492,7 @@ class SimulinkModule(QWidget):
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
         self._log("S3 认知决策层 (握有否决权): 🧭任务调度器(原状态机, 6阶段状态机) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
-        QTimer.singleShot(300, self._state_space_hint)
+        _oneshot(self, 300, self._state_space_hint)
 
     def _start_state_space_sim(self):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
