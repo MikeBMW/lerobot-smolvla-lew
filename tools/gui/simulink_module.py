@@ -7232,6 +7232,35 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
 
+    def play_state_space_video(self):
+        """🎥 GUI 内嵌播放最近仿真视频 (非模态, QMediaPlayer — 2026-08-18 老倪)"""
+        path = os.path.join(self._repo_root(), "reports", "state_space_sim.mp4")
+        if not os.path.exists(path):
+            self._log("⚠️ 视频不存在 — 先点「▶ 运行」跑一次状态空间仿真 (完成自动生成视频)")
+            return
+        try:
+            from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+            from PyQt5.QtMultimediaWidgets import QVideoWidget
+            from PyQt5.QtCore import QUrl
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout
+            win = QDialog(self)
+            win.setWindowTitle("🎥 状态空间仿真 · 操作视频")
+            win.resize(720, 500)
+            lay = QVBoxLayout(win)
+            vw = QVideoWidget()
+            lay.addWidget(vw)
+            player = QMediaPlayer()
+            player.setVideoOutput(vw)
+            player.setMedia(QMediaContent(QUrl.fromLocalFile(path)))
+            win.show()
+            player.play()
+            # 保引用防 GC (关窗后释放)
+            self._video_win = win
+            self._video_player = player
+            self._log(f"🎥 播放操作视频: {path}")
+        except Exception as e:
+            self._log(f"⚠️ 视频播放失败: {e}")
+
     def on_scope(self, **kw):
         """📊 Scope 示波器: 显示最近训练 loss 曲线 (Simulink Scope 对标)"""
         try:
@@ -7245,6 +7274,10 @@ class SimulinkModule(QWidget):
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 🎥 状态空间操作视频节点 (2026-08-18 老倪: GUI 内嵌播放最近仿真视频)
+        if params.get("state_space_video"):
+            self.play_state_space_video()
+            return
         # 0) 视频显示节点 (🎮 仿真推理对比 / 🎮 仿真视频 · <模型>, 2026-08-05 老倪):
         #    双击 → 同步播放; 单模型视频节点 (params.video_policy) → 只放该模型
         if params.get("video"):

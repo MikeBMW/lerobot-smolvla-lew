@@ -315,6 +315,27 @@
     "out1"
    ],
    "actions": []
+  },
+  {
+   "id": "ssvideo",
+   "type": "model",
+   "name": "🎥 操作视频",
+   "x": 1120,
+   "y": 590,
+   "w": 280,
+   "icon": "🎥",
+   "color": "#d29922",
+   "h": 80,
+   "params": {
+    "state_space": true,
+    "state_space_video": true,
+    "desc": "操作视频: 双击播放最近一次仿真的 mp4 (俯视图: 接近→接触→抓取→插入)"
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [],
+   "actions": []
   }
  ],
  "links": [
@@ -421,6 +442,14 @@
    "f_port": "out2",
    "t_port": "in1",
    "label": "校正后潜状态"
+  },
+  {
+   "id": "lks14",
+   "f": "ssworld",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "轨迹"
   }
  ]
 }

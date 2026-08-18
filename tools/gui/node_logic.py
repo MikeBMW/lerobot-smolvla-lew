@@ -1362,6 +1362,14 @@ def node_ss_exec(ctx):
     _ss_run(ctx, "执行层物理闭环", "execution.py")
 
 
+def node_ss_video(ctx):
+    """🎥 操作视频 — 双击 GUI 内嵌播放最近仿真视频 (仿真完成自动生成+传ECS)"""
+    module = ctx.get("module")
+    if module and hasattr(module, "play_state_space_video"):
+        module.play_state_space_video()
+    return True
+
+
 # 外部源码位置: 语义key → (绝对路径, 行号兜底, 真实符号名)
 _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
@@ -1392,3 +1400,4 @@ _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限�
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
 _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
 _reg("ss_world", ["物理世界"], "🌍 物理世界 — 执行结果→传感器反馈 z_k→卡尔曼校正闭环 (源码 execution.py PhysicalWorld)", node_ss_exec)
+_reg("ss_video", ["操作视频"], "🎥 操作视频 — 双击 GUI 内嵌播放最近仿真视频 (仿真完成自动生成 mp4 + 传 ECS)", node_ss_video)
