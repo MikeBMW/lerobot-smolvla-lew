@@ -7396,13 +7396,15 @@ class SimulinkModule(QWidget):
             self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_frames")
             self._mlp_loading = False
             self._mlp_win = win
-            # 🐛 2026-08-18: 播放器弹在扩展屏看不到 (画布被拖到副屏, QDialog 居中父窗口
-            # → 3750+187 屏幕外) — 强制弹到主屏中心
+            # 🐛 2026-08-18: 播放器弹到扩展屏看不到 — primaryScreen 在 VcXsrv 多屏
+            # 下返回扩展屏; 改弹到主窗口所在屏 (用户实际看的地方)
             try:
                 from PyQt5.QtWidgets import QApplication as _QA
-                _scr = _QA.primaryScreen().availableGeometry()
-                win.move(_scr.center().x() - win.width() // 2,
-                         _scr.center().y() - win.height() // 2)
+                _mw = self.window()
+                _scr = _QA.screenAt(_mw.frameGeometry().center()) or _QA.primaryScreen()
+                _g = _scr.availableGeometry()
+                win.move(_g.center().x() - win.width() // 2,
+                         _g.center().y() - win.height() // 2)
             except Exception:
                 pass
             # 绑定方法连接 (🐛 防 GC 竞态)
