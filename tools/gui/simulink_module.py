@@ -8230,6 +8230,40 @@ class SimulinkModule(QWidget):
                   f" · 残差峰值 {r_max:.4f} · 接触概率峰值 {cp_max:.2f}")
         self._log("链路: 📡43D感知 → ⚡前馈建议+🔮卡尔曼估计 → 📈动力学预测 → 🧪残差/接触校正 → 🧭调度融合 → 🛡限幅 → 🤖执行 → 🌍反馈闭环")
         self._refresh_status()
+        # 🎥 2026-08-18 老倪: 仿真完成自动输出操作视频 → 后台渲染 mp4 + 传 ECS + 打印链接
+        tr = getattr(self, "_ss_tr", None)
+        if tr and tr.get("x"):
+            self._start_video_export(tr)
+
+    def _start_video_export(self, tr):
+        """🎥 后台线程: 渲染操作视频 → 上传 ECS (datadrive.world) → 打印链接 (不卡 UI)"""
+        import threading
+        import subprocess as _sp
+        import os as _os
+
+        def _worker():
+            try:
+                from gen_state_space_video import make_video
+                out = _os.path.join(self._repo_root(), "reports", "state_space_sim.mp4")
+                make_video(tr, out)
+                try:
+                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                                 out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
+                                capture_output=True, timeout=60)
+                    if r.returncode == 0:
+                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                                 "root@39.102.211.79",
+                                 "chmod 644 /www/wwwroot/datadrive.world/state_space_sim.mp4"],
+                                capture_output=True, timeout=30)
+                        self._safe_log("🎥 操作视频已生成: https://datadrive.world/state_space_sim.mp4")
+                    else:
+                        self._safe_log(f"🎥 视频已生成 (上传失败): {out}")
+                except Exception as e:
+                    self._safe_log(f"🎥 视频已生成, 上传失败: {e} · 本地: {out}")
+            except Exception as e:
+                self._safe_log(f"⚠️ 视频生成失败: {e}")
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _state_space_hint(self):
         """🧮 状态空间加载后气泡引导: 高亮任务调度器 (握否决权核心)"""
