@@ -55,7 +55,7 @@
    "params": {
     "bg": "#3a1015",
     "model": "state_space",
-    "desc": "S3 认知决策层: 认知任务调度器 (原状态机) 握有否决权 — u_ff(30%) + contact概率 + 预测残差 → 安全执行边界",
+    "desc": "S3 认知决策层: 任务调度器 (原状态机) 握有否决权 — 6阶段状态机 + 接触/残差证据 → 安全执行边界",
     "source": "src/lerobot/policies/left_right/state_space/cognition.py"
    }
   },
@@ -224,7 +224,7 @@
   {
    "id": "sssched",
    "type": "system",
-   "name": "🧭 认知任务调度器",
+   "name": "🧭 任务调度器",
    "x": 380,
    "y": 360,
    "w": 280,
@@ -234,7 +234,7 @@
    "params": {
     "state_space": true,
     "cognitive_scheduler": true,
-    "desc": "认知任务调度器 (原状态机, 握有否决权): u_ff(30%) + contact概率 + 预测残差 → 阶段切换与动作融合",
+    "desc": "任务调度器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)",
     "source": "src/lerobot/policies/left_right/state_space/cognition.py"
    },
    "inputs": [

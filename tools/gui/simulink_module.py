@@ -3493,7 +3493,8 @@ class SimulinkModule(QWidget):
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
         # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
-        self.log_box.setStyleSheet("background:#f6f8fa; color:#57606a; border:none; border-top:1px solid #d0d7de; font-size:11px; font-family:Consolas;")
+        # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
+        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:11px; font-family:Consolas;")
         _lp.addWidget(self.log_box)
         # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
         self._v_split.addWidget(self._log_panel)
@@ -3716,6 +3717,9 @@ class SimulinkModule(QWidget):
                     ("#a371f7", "#000000"), ("#f85149", "#000000"), ("#1f6feb", "#000000")]
         _METAL = "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)"
         for wdg in [self] + self.findChildren(QWidget):
+            # 🐛 2026-08-18 老倪: 终端固定暗底白字, 主题切换不覆盖 (灰色看不清)
+            if wdg is getattr(self, "log_box", None):
+                continue
             ss = wdg.styleSheet()
             if not ss:
                 continue
@@ -7915,7 +7919,7 @@ class SimulinkModule(QWidget):
                 f"📌 卡尔曼反馈闭环: 传感器反馈 z_k (物理世界) → 残差 → 校正 → 预测 — 状态空间全程闭环</p>")
         elif p.get("cognitive_scheduler"):
             html = (
-                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 认知任务调度器 (原状态机) — 握有否决权</h3>"
+                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 任务调度器 (原状态机) — 6阶段状态机 + 否决权</h3>"
                 f"<p style='color:#8b949e;font-size:11px'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
                 f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
@@ -8109,7 +8113,7 @@ class SimulinkModule(QWidget):
         """🧮 状态空间模型画布 (2026-08-17 老倪: 按流程做状态空间新按钮 — 打开模型画布)
         S1 时空感知前端 (传感器融合 → 43D obs)
         S2 并行处理层 (快慢分离: 前馈加速器 MLP + 自适应状态估计器 GRU → 预测/校正)
-        S3 认知决策层 (认知任务调度器握否决权 → 安全执行边界)
+        S3 认知决策层 (任务调度器握否决权 → 安全执行边界)
         执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 状态校正)
         """
         self.clear()
@@ -8121,7 +8125,7 @@ class SimulinkModule(QWidget):
         self._log("S1 时空感知前端: 📡传感器融合 (RGB-D+力觉+触觉) → 🧩43D统一状态向量 obs")
         self._log("S2 并行处理层 (快慢分离): ⚡前馈加速器(原左脑MLP, u_ff权重30%) ‖ 🔮自适应状态估计器(原右脑GRU)")
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
-        self._log("S3 认知决策层 (握有否决权): 🧭认知任务调度器(原状态机) → 🛡安全执行边界(饱和限幅)")
+        self._log("S3 认知决策层 (握有否决权): 🧭任务调度器(原状态机, 6阶段状态机) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         QTimer.singleShot(300, self._state_space_hint)
 
@@ -8228,7 +8232,7 @@ class SimulinkModule(QWidget):
         self._refresh_status()
 
     def _state_space_hint(self):
-        """🧮 状态空间加载后气泡引导: 高亮认知任务调度器 (握否决权核心)"""
+        """🧮 状态空间加载后气泡引导: 高亮任务调度器 (握否决权核心)"""
         try:
             sched = next((n for n in self.nodes if n.get("params", {}).get("cognitive_scheduler")), None)
             if sched is not None:
@@ -8237,7 +8241,7 @@ class SimulinkModule(QWidget):
                 if it is not None:
                     gp = self.canvas.mapToGlobal(
                         self.canvas.mapFromScene(it.sceneBoundingRect().center()))
-                    self._show_bubble(gp, "👆 双击「🧭 认知任务调度器」\n→ 状态空间决策详情", ms=6000)
+                    self._show_bubble(gp, "👆 双击「🧭 任务调度器」\n→ 状态空间决策详情", ms=6000)
         except Exception:
             pass
 

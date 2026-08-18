@@ -97,7 +97,8 @@ class StateSpaceSim:
     def run(self, on_step=None):
         """跑完整仿真 (500 步 ≈ 0.1s 纯 numpy)。on_step(node_name, value_str) 每节点回调。"""
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
-              "u_sat": [], "stage": [], "done": []}
+              "u_sat": [], "stage": [], "done": [],
+              "x": [], "gripper": [], "force": []}   # 🎥 2026-08-18: 完整轨迹 (视频渲染用)
         done = False
         t = 0.0
         n_steps = int(self.t_end / self.dt)
@@ -157,14 +158,11 @@ class StateSpaceSim:
             g_cmd = float(u_vec[3])
             self.gripper += (g_cmd - self.gripper) * min(1.0, self.dt * 10.0)
             self.obs_prev = obs[0:18]
-            # 阶段推进 (调度器 stage_idx 由外部几何驱动 — 接触→抓取→插入→完成)
-            if d < D_INSERT and self.gripper > 0.85:
-                self.sched.stage_idx = min(5, self.sched.stage_idx + 1)  # 完成
-                done = True
-            elif self._contact and self.gripper > 0.8:
-                self.sched.stage_idx = max(1, self.sched.stage_idx)      # 抓取
-            elif d < D_CONTACT * 2.5:
-                self.sched.stage_idx = max(0, self.sched.stage_idx)
+            # 阶段推进: 调度器状态机 (advance 证据驱动 — 接触概率/距离/夹爪/深度)
+            d = self._dist_h()
+            self.sched.advance(contact_p=contact_p, dist_h=d,
+                               gripper=self.gripper, depth=d)
+            done = self.sched.stage() == "完成"
             # 记录
             tr["t"].append(round(t, 3))
             tr["dist"].append(d)
@@ -174,6 +172,9 @@ class StateSpaceSim:
             tr["u_sat"].append(float(np.linalg.norm(u_vec[:3])))
             tr["stage"].append(stage)
             tr["done"].append(done)
+            tr["x"].append(self.x.copy())
+            tr["gripper"].append(self.gripper)
+            tr["force"].append(force_norm)
             if on_step:
                 on_step("sensor", f"force_z={force[2]:+.3f}N")
                 on_step("obs", f"obs 43D · hand={self.x.round(4)} · gripper={self.gripper:.2f}")

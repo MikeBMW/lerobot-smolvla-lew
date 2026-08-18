@@ -120,7 +120,9 @@ def get_external_source(key):
     start = None
     for i, ln in enumerate(lines):
         s = ln.strip()
-        if s == sym or s.startswith(sym + "("):
+        # 🐛 2026-08-18: 支持类定义冒号 (class X:) — 原来只匹配 sym/sym(, 类名带冒号
+        # 匹配不上 → 回退行号定位 → 重写后的类行号偏移 → 截错位置 (源码显示几行)
+        if s == sym or s.startswith(sym + "(") or s.startswith(sym + ":"):
             start = i
             break
     if start is None:
@@ -1351,7 +1353,7 @@ def node_ss_dyn(ctx):
 
 
 def node_ss_s3(ctx):
-    """S3 认知决策层 — 认知任务调度器握否决权 (u_ff+contact+残差) → 安全执行边界 (饱和限幅)"""
+    """S3 认知决策层 — 任务调度器握否决权 (6阶段状态机 + 按阶段融合) → 安全执行边界 (饱和限幅)"""
     _ss_run(ctx, "S3 认知决策层", "cognition.py")
 
 
@@ -1385,7 +1387,7 @@ _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 �
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
 _reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
-_reg("ss_sched", ["认知任务调度器"], "🧭 认知任务调度器 — u_ff(30%)+contact+残差 → 阶段切换与动作融合 (源码 cognition.py CognitiveScheduler)", node_ss_s3)
+_reg("ss_sched", ["任务调度器"], "🧭 任务调度器 — 6阶段状态机(接近→抓取→抬起→转移→插入→完成) + 否决权 + 按阶段融合 (源码 cognition.py CognitiveScheduler)", node_ss_s3)
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
 _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
