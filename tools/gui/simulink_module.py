@@ -1351,7 +1351,7 @@ class CICDLinkItem(QGraphicsObject):
         self.src_item, self.dst_item = src_item, dst_item
         self.setZValue(5)
         self._flow = 0.0
-        self._t = QTimer()
+        self._t = QTimer(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
         self._t.timeout.connect(self._tick)
         # 🐛 2026-08-15: 不启动 — dash 动画已改静态高亮 (VcXsrv 黑条根治)
         # self._t.start(90)
@@ -2540,7 +2540,7 @@ class SimLinkItem(QGraphicsObject):
         self._flow_offset = 0.0   # 流动动画偏移 (运行中)
         # 🐛 2026-08-15 老倪: "启动狂闪黑条" — 原无条件 start(80) 每 80ms 全画布连线重绘,
         #   VcXsrv 网络合成下闪成黑条。改惰性: 平时不启动, 仅在真正流动时由外部唤醒。
-        self._anim_timer = QTimer()
+        self._anim_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
         self._anim_timer.timeout.connect(self._tick_flow)
         # 不 start — 需要动画时由 _wake_flow_anim() 启动
 

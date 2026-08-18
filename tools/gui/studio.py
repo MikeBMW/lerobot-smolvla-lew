@@ -5820,7 +5820,7 @@ class HardwareModule(SubModuleWidget):
         
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
-        self._timer = QTimer()
+        self._timer = QTimer(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
         self._timer.timeout.connect(self._refresh)
         # 📡 2026-08-09 老倪: 中间件 WS 实时通道 — Orin 状态实时推送 (非轮询)
         try:
@@ -5979,7 +5979,7 @@ class HardwareModule(SubModuleWidget):
         cam_group.setLayout(cam_layout)
         body.addWidget(cam_group)
         # 轮询定时器 (1s — cicd.html 100ms 太频, 快照 10s 间隔足够)
-        self._cam_timer = QTimer()
+        self._cam_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
         self._cam_timer.timeout.connect(self._cam_poll)
         self._cam_last_ts = ""
         
@@ -8209,7 +8209,7 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
-        self._live_timer = QTimer()
+        self._live_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
         self._mlog("   ✅ 实时监控已启动")
@@ -8258,7 +8258,7 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
-        self._live_timer = QTimer()
+        self._live_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
         self._mlog("   ✅ 离线仿真已启动")
@@ -8385,7 +8385,7 @@ class MonitorModule(SubModuleWidget):
             self.replay.advance()
         
         self._replay_display_running = True
-        self._replay_timer = QTimer()
+        self._replay_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
         self._replay_timer.timeout.connect(_show_frame)
         self._replay_timer.start(200)
         self._mlog("   ✅ 终端显示已启动")
@@ -8939,7 +8939,7 @@ class InferencePanel(QWidget):
         self.cli_stream.setEnabled(False)
         # 定时更新统计
         from PyQt5.QtCore import QTimer
-        self._stats_timer = QTimer()
+        self._stats_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
         self._stats_timer.timeout.connect(self._update_stats)
         self._stats_timer.start(1000)
     
