@@ -2866,6 +2866,12 @@ class SimCanvas(QGraphicsView):
         #   (任何画布/节点右键都有「打开源代码」, 无映射时点击给明确提示)
         a_src = menu.addAction("打开源代码")
         a_run = menu.addAction("运行节点")
+        # 🎥 操作视频节点右键: 转正/切换 (2026-08-18 老倪: 视频文字反 → 转正; 内容不对 → 切换)
+        a_rot = a_next = a_prev = None
+        if item.node.get("params", {}).get("state_space_rollout"):
+            a_rot = menu.addAction("转正 180 度 (文字反)")
+            a_next = menu.addAction("下一个视频")
+            a_prev = menu.addAction("上一个视频")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -2878,6 +2884,12 @@ class SimCanvas(QGraphicsView):
             self.module.open_node_source(item.node)
         elif chosen == a_run:
             self.module.on_node_activated(item.node)
+        elif a_rot is not None and chosen == a_rot:
+            self.module._mlp_rot180()
+        elif a_next is not None and chosen == a_next:
+            self.module._mlp_next()
+        elif a_prev is not None and chosen == a_prev:
+            self.module._mlp_prev()
 
     def _poll_hover(self):
         """🐛 2026-08-12 老倪: 150ms 轮询鼠标位置 → 悬停显示 ID (VcXsrv 无按键 mouseMove 不达)"""
@@ -7529,6 +7541,14 @@ class SimulinkModule(QWidget):
         self._mlp_idx += 1
         if self._mlp_idx >= len(self._mlp_frames):
             self._mlp_idx = 0
+            # 🐛 2026-08-18: 播完一圈自动暂停 (用户: 插拔动作重复太多) — 双击重播
+            t = getattr(self, "_mlp_timer", None)
+            if t is not None:
+                t.stop()
+            self._mlp_playing = False
+            self._mlp_item.video_overlay = "已播完 · 双击重播"
+            self._mlp_item.update()
+            return
         self._mlp_show()
 
     def _mlp_prev(self):
