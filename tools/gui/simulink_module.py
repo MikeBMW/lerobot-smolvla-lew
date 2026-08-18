@@ -7642,10 +7642,10 @@ class SimulinkModule(QWidget):
                 t.verticalHeader().setVisible(False)
                 t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
                 t.setEditTriggers(QTableWidget.NoEditTriggers)
-                # 🐛 2026-08-18 老倪: 字体白色 (面板默认深字看不清)
+                # 🐛 2026-08-18 老倪: 字体白色 + wqy (kg·m²/σ/≪ 等特殊字符有字形, 不显示 ?)
                 t.setStyleSheet(
                     "QTableWidget { color:#ffffff; background:#0d1117; gridline-color:#30363d; "
-                    "font-size:12px; } "
+                    "font-family:'WenQuanYi Micro Hei','Microsoft YaHei',sans-serif; font-size:12px; } "
                     "QTableWidget::item { padding:2px 6px; } "
                     "QHeaderView::section { color:#ffffff; background:#161b22; "
                     "border:1px solid #30363d; font-weight:bold; }")
@@ -7750,19 +7750,28 @@ class SimulinkModule(QWidget):
             out = "/tmp/physical_world_params.html"
             with open(out, "w", encoding="utf-8") as f:
                 f.write(page)
-            # scp 上传 ECS (同 orin_stream.sh 链路) + chmod 644
-            import subprocess as _sp
-            r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
-                         out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
-                        capture_output=True, timeout=60)
-            if r.returncode == 0:
-                _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
-                         "root@39.102.211.79",
-                         "chmod 644 /www/wwwroot/datadrive.world/physical_world_params.html"],
-                        capture_output=True, timeout=30)
-                self._log("📤 物理世界参数已导出: https://datadrive.world/physical_world_params.html")
-            else:
-                self._log(f"📤 导出失败 (上传): {r.stderr.decode(errors='ignore')[:200]}")
+            # scp 上传 ECS (同 orin_stream.sh 链路) + chmod 644 — 🐛 2026-08-18:
+            # 主线程同步 scp 会卡界面 60s → 后台线程
+            import threading
+
+            def _upload():
+                try:
+                    import subprocess as _sp
+                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                                 out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
+                                capture_output=True, timeout=60)
+                    if r.returncode == 0:
+                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                                 "root@39.102.211.79",
+                                 "chmod 644 /www/wwwroot/datadrive.world/physical_world_params.html"],
+                                capture_output=True, timeout=30)
+                        self._safe_log("📤 物理世界参数已导出: https://datadrive.world/physical_world_params.html")
+                    else:
+                        self._safe_log(f"📤 导出失败 (上传): {r.stderr.decode(errors='ignore')[:200]}")
+                except Exception as e:
+                    self._safe_log(f"⚠️ 导出上传失败: {e}")
+
+            threading.Thread(target=_upload, daemon=True).start()
         except Exception as e:
             self._log(f"⚠️ 导出参数失败: {e}")
 
