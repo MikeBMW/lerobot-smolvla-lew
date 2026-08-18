@@ -4469,7 +4469,10 @@ class SimulinkModule(QWidget):
         try:
             from node_logic_dialog import SourceViewDialog
             dlg = SourceViewDialog(path, src, parent=self)
-            dlg.exec_()
+            # 🐛 2026-08-18: exec_ 模态在 VcXsrv 下 = 黑屏 + 嵌套事件循环 timer 异常 (崩溃源);
+            # 统一 _show_nonmodal (与全部对话框一致)
+            self._show_nonmodal(dlg)
+            self._popup_on_main_screen(dlg)   # 🎯 show 之后定位
             self._log(f"📂 已打开源码弹窗: {path}")
         except Exception as e:
             self._log(f"⚠️ 打开源码弹窗失败: {e}")
