@@ -10659,6 +10659,13 @@ def main():
         QPixmapCache.setCacheLimit(0)
     except Exception:
         pass
+    # 🐛 2026-08-18 崩溃根治#2: QToolTip 全局隐藏 timer (10s 周期孤儿, 无 parent) —
+    # 悬停节点触发 tooltip → 孤儿 timer 激活 → 批处理碰撞 NULL receiver。禁用 tooltip。
+    try:
+        from PyQt5.QtWidgets import QToolTip as _QTT
+        _QTT.setDuration(0)
+    except Exception:
+        pass
     # 🐛 2026-08-18 崩溃诊断: 安装 TimerEvent 追踪 (崩溃前最后一行 = 凶手 timer 接收者)
     if _TIMER_TRACE is not None:
         app.installEventFilter(_TIMER_TRACE)
