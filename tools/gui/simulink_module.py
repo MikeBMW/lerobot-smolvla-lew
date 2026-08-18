@@ -7642,6 +7642,13 @@ class SimulinkModule(QWidget):
                 t.verticalHeader().setVisible(False)
                 t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
                 t.setEditTriggers(QTableWidget.NoEditTriggers)
+                # 🐛 2026-08-18 老倪: 字体白色 (面板默认深字看不清)
+                t.setStyleSheet(
+                    "QTableWidget { color:#ffffff; background:#0d1117; gridline-color:#30363d; "
+                    "font-size:12px; } "
+                    "QTableWidget::item { padding:2px 6px; } "
+                    "QHeaderView::section { color:#ffffff; background:#161b22; "
+                    "border:1px solid #30363d; font-weight:bold; }")
                 for i, row in enumerate(rows):
                     for j, v in enumerate(row):
                         t.setItem(i, j, QTableWidgetItem(str(v)))
