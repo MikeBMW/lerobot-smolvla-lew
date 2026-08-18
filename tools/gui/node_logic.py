@@ -1317,3 +1317,76 @@ _reg("right_brain", ["RightBrainWM"], "🧠 右脑 RightBrainWM — contact 时�
 _reg("left_right",  ["LeftRightPolicy"], "◉ LeftRightPolicy — 双脑+状态机 lerobot 封装 (源码 modeling_left_right.py:75)", node_left_right_policy)
 _reg("lr_contact",  ["接触判定"], "❖ 接触判定 — contact 阈值 + 距离联合判定 (参数在 configuration_left_right.py:44)", node_lr_contact)
 _reg("obs39",       ["39D obs", "39D"], "📊 39D obs 输入 — metaworld 完整观测结构 (末端/夹爪/销钉×2帧+孔位, 含单位与解释)", node_obs39)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🧮 状态空间模型画布 (2026-08-18 老倪: 六层源码注册 — 双击/右键显示真实实现)
+#   真实实现: src/lerobot/policies/left_right/state_space/*.py (六层模块)
+#   画布: flows/state_space_obs.json (14 节点: 4 背景行 + 10 功能节点)
+#   映射方式: _EXTERNAL_LOC → NodeLogicDialog 显示真实源码 (只读, 同 left_right 模式)
+# ════════════════════════════════════════════════════════════════
+_SS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))),
+                       "src", "lerobot", "policies", "left_right", "state_space")
+
+
+def _ss_run(ctx, layer, src):
+    log = ctx.get("log")
+    if log:
+        log(f"🧮 {ctx.get('name', '')} — {layer} (源码: src/lerobot/policies/left_right/state_space/{src})")
+
+
+def node_ss_s1(ctx):
+    """S1 时空感知前端 — 传感器融合 (RGB-D+力觉+触觉) → 43D obs (观测方程 y=Cx, 源码 perception.py)"""
+    _ss_run(ctx, "S1 时空感知前端", "perception.py")
+
+
+def node_ss_s2(ctx):
+    """S2 并行处理层 (快慢分离) — ⚡前馈加速器(左脑MLP, u_ff 30%) ‖ 🔮自适应状态估计器(右脑GRU 卡尔曼)"""
+    _ss_run(ctx, "S2 并行处理层", "parallel.py")
+
+
+def node_ss_dyn(ctx):
+    """📈 动力学预测-校正 — 先验预测 next_obs + 创新检测残差 (接触信号源头)"""
+    _ss_run(ctx, "动力学预测-校正", "dynamics.py")
+
+
+def node_ss_s3(ctx):
+    """S3 认知决策层 — 认知任务调度器握否决权 (u_ff+contact+残差) → 安全执行边界 (饱和限幅)"""
+    _ss_run(ctx, "S3 认知决策层", "cognition.py")
+
+
+def node_ss_exec(ctx):
+    """执行层 — 机器人执行器 → 物理世界 → z_k 传感器反馈 → 卡尔曼校正闭环"""
+    _ss_run(ctx, "执行层物理闭环", "execution.py")
+
+
+# 外部源码位置: 语义key → (绝对路径, 行号兜底, 真实符号名)
+_EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
+_EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
+_EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
+_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
+_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
+_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 34, "class AdaptiveStateEstimator")
+_EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
+_EXTERNAL_LOC["ss_innov"]  = (os.path.join(_SS_DIR, "cognition.py"), 17, "def innovation")
+_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 27, "class CognitiveScheduler")
+_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 27, "class CognitiveScheduler")
+_EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
+_EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
+_EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
+_EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class PhysicalWorld")
+
+_reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
+_reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
+_reg("ss_obs",   ["43D", "统一状态向量"], "🧩 43D 统一状态向量 — 39D 视觉结构 + 触觉 4D (源码 perception.py)", node_ss_s1)
+_reg("ss_bg2",   ["并行处理层"], "S2 并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
+_reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
+_reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
+_reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
+_reg("ss_innov", ["创新检测"], "🧪 创新检测与状态校正器 — 残差 z_k−ĥ(x̂) & 接触概率 (源码 cognition.py innovation)", node_ss_dyn)
+_reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
+_reg("ss_sched", ["认知任务调度器"], "🧭 认知任务调度器 — u_ff(30%)+contact+残差 → 阶段切换与动作融合 (源码 cognition.py CognitiveScheduler)", node_ss_s3)
+_reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
+_reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
+_reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
+_reg("ss_world", ["物理世界"], "🌍 物理世界 — 执行结果→传感器反馈 z_k→卡尔曼校正闭环 (源码 execution.py PhysicalWorld)", node_ss_exec)
