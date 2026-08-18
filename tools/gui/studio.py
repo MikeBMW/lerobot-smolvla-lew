@@ -18,6 +18,12 @@ import glob
 import time  # 硬件工具箱日志时间戳
 import math  # 离线仿真正弦波
 
+# 🐛 2026-08-18: 禁用 Qt D-Bus — QDBusConnection 无 parent 孤儿 + 10s 轮询 timer
+# (孤儿 timer 追踪实锤 10s 周期 QObject), 与 activateTimers 批次碰撞 → NULL receiver
+import os as _os
+_os.environ.setdefault("QT_NO_DBUS", "1")
+_os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "/dev/null")
+
 # 🐛 2026-08-18: SIGSEGV 崩溃留证 — 段错误时 dump Python 栈到 /tmp/studio_faulth.log
 try:
     import faulthandler
