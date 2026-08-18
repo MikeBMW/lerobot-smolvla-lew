@@ -17,6 +17,13 @@ import json
 import glob
 import time  # 硬件工具箱日志时间戳
 import math  # 离线仿真正弦波
+
+# 🐛 2026-08-18: SIGSEGV 崩溃留证 — 段错误时 dump Python 栈到 /tmp/studio_faulth.log
+try:
+    import faulthandler
+    faulthandler.enable()
+except Exception:
+    pass
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,

@@ -8348,6 +8348,13 @@ class SimulinkModule(QWidget):
         import threading
         import subprocess as _sp
         import os as _os
+        # 🐛 2026-08-18: PyQt5 模块必须主线程 import — 工作线程首次 import (真实 X 环境
+        # 触碰 Qt 全局初始化/连接) → SIGSEGV (QObject::killTimer / Timers cannot be
+        # stopped from another thread)。主线程预加载, 线程内走 sys.modules 缓存。
+        try:
+            import gen_state_space_video  # noqa: F401
+        except Exception:
+            pass
 
         def _worker():
             try:
