@@ -42,7 +42,7 @@ try:
                         except Exception:
                             chain.append("<?>")
                         o = o.parent()
-                    import sip
+                    from PyQt5 import sip
                     cp = hex(sip.unwrap_instance(obj)) if sip.isdeleted(obj) is False else "DEL"
                     import time as _t
                     with open("/tmp/timer_trace.log", "a") as f:
@@ -10620,6 +10620,13 @@ def main():
         _QA.setAttribute(_Qt.AA_DisableWindowManagerEffects, True)
         _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
         _QA.setAttribute(_Qt.AA_UseHighDpiPixmaps, False)
+    except Exception:
+        pass
+    # 🐛 2026-08-18: 禁用循环 GC — NULL receiver 崩溃 (timer 表残留) = PyQt 包装
+    # 被循环 GC 错误时序收集; 引用计数仍工作, QObject 树无循环垃圾
+    try:
+        import gc
+        gc.disable()
     except Exception:
         pass
     app = QApplication(sys.argv)

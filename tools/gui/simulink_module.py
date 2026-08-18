@@ -2866,7 +2866,7 @@ class SimCanvas(QGraphicsView):
     def _clear_hover(self):
         for it in list(self._hover_items):
             try:
-                import sip
+                from PyQt5 import sip
                 if sip.isdeleted(it):
                     continue   # 🐛 2026-08-18: 已删 item wrapper → 跳过 (防 C 层崩)
                 if it.scene() is not None:
@@ -2885,7 +2885,7 @@ class SimCanvas(QGraphicsView):
             if it is node_item:
                 continue
             try:
-                import sip
+                from PyQt5 import sip
                 if sip.isdeleted(it):
                     continue   # 🐛 2026-08-18: 已删 item wrapper → 跳过
                 if it.scene() is None:
