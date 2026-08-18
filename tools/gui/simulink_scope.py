@@ -529,7 +529,10 @@ class FlowScopeDialog(QDialog):
         功能正常但无视觉变化, 加按钮文字反馈 1.5s)"""
         self.scope.fit_all()
         self.btn_fit.setText("✓ 已全局适配")
-        QTimer.singleShot(1500, lambda: self.btn_fit.setText("🌐 全局适配"))
+        # 🐛 2026-08-18: singleShot 内部 timer 无 parent → 孤儿崩溃; 实例化挂 parent
+        _t = QTimer(self); _t.setSingleShot(True)
+        _t.timeout.connect(lambda: self.btn_fit.setText("🌐 全局适配"))
+        _t.start(1500)
 
     def _load_data(self):
         # 2026-08-05 老倪: "怎么就一条曲线, 不应该是3个曲线对比么" — 读全部 train_curve_*.json,
@@ -1028,7 +1031,10 @@ class InferenceVideoDialog(QDialog):
                 self.lbl_note.setText("🔄 检测到新训练 checkpoint · 已显示历史视频 · 点「🔄 重新生成推理」更新")
         else:
             # 无帧 → 自动生成 3 模型 rollout (2026-08-05 老倪: 训练完自动接推理对比)
-            QTimer.singleShot(300, self._run_rollouts)
+            # 🐛 2026-08-18: singleShot 内部 timer 无 parent → 孤儿崩溃; 实例化挂 parent
+            _t = QTimer(self); _t.setSingleShot(True)
+            _t.timeout.connect(self._run_rollouts)
+            _t.start(300)
 
     def _check_newer_ckpt(self):
         """任一模型 train_curve json 的 ts 比其视频帧 mtime 新 → 需重新生成 (60s 容差)"""
