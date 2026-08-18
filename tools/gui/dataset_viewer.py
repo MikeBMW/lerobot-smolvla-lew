@@ -56,7 +56,10 @@ class DatasetViewer(QDialog):
         self._load_dataset_info()
         # 2026-08-07 老倪: 下一帧点不了 — 打开即自动加载第一帧 (maximum 就位, 不用手动点加载帧)
         from PyQt5.QtCore import QTimer
-        QTimer.singleShot(0, self._load_video_frame)
+        # 🐛 2026-08-18: singleShot 内部 timer 无 parent → 孤儿崩溃; 实例化挂 parent
+        _t = QTimer(self); _t.setSingleShot(True)
+        _t.timeout.connect(self._load_video_frame)
+        _t.start(0)
 
     def _get_repo_cache_dir(self, repo_id, cache_dir):
         """找到 HuggingFace Hub 缓存目录"""
