@@ -1346,7 +1346,7 @@ def node_ss_s2(ctx):
 
 
 def node_ss_dyn(ctx):
-    """📈 动力学预测-校正 — 先验预测 next_obs + 创新检测残差 (接触信号源头)"""
+    """📈 动力学预测-校正 — 先验预测 next_obs + 状态校正残差 (接触信号源头)"""
     _ss_run(ctx, "动力学预测-校正", "dynamics.py")
 
 
@@ -1368,7 +1368,7 @@ _EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 21, "class F
 _EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
 _EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 34, "class AdaptiveStateEstimator")
 _EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
-_EXTERNAL_LOC["ss_innov"]  = (os.path.join(_SS_DIR, "cognition.py"), 17, "def innovation")
+_EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
 _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 27, "class CognitiveScheduler")
 _EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 27, "class CognitiveScheduler")
 _EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
@@ -1383,7 +1383,7 @@ _reg("ss_bg2",   ["并行处理层"], "S2 并行处理层 — 快慢分离 (源�
 _reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
 _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
-_reg("ss_innov", ["创新检测"], "🧪 创新检测与状态校正器 — 残差 z_k−ĥ(x̂) & 接触概率 (源码 cognition.py innovation)", node_ss_dyn)
+_reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
 _reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
 _reg("ss_sched", ["认知任务调度器"], "🧭 认知任务调度器 — u_ff(30%)+contact+残差 → 阶段切换与动作融合 (源码 cognition.py CognitiveScheduler)", node_ss_s3)
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)

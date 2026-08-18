@@ -7845,7 +7845,7 @@ class SimulinkModule(QWidget):
                 f"<tr><td style='color:#00d4aa'>卡尔曼增益 K</td><td>更新门 + 重置门</td><td>自动调节「信预测 vs 信观测」</td></tr>"
                 f"<tr><td style='color:#00d4aa'>先验估计</td><td>(hₜ₋₁, obs, action) → 潜状态</td><td>猜执行动作后世界变成什么样</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出 out1</td><td>潜状态 → 先验动力学预测器</td><td>预测 next_obs</td></tr>"
-                f"<tr><td style='color:#00d4aa'>输出 out2</td><td>潜状态 → 创新检测器</td><td>算残差 & 接触概率</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出 out2</td><td>潜状态 → 状态校正器</td><td>算残差 & 接触概率</td></tr>"
                 f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
                 f"📌 快慢分离: 慢路径递归校正, 给调度器「置信度」 — 预测误差大 → 降 u_ff 权重, 改信传感器</p>")
         elif p.get("prior_predict"):
@@ -7855,14 +7855,14 @@ class SimulinkModule(QWidget):
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
                 f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
                 f"<tr><td style='color:#00d4aa'>输入</td><td>潜状态 (估计器 out1)</td></tr>"
-                f"<tr><td style='color:#00d4aa'>输出</td><td>next_obs 预测 → 创新检测器 (残差基准)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出</td><td>next_obs 预测 → 状态校正器 (残差基准)</td></tr>"
                 f"<tr><td style='color:#ffd700'>状态转移</td><td>A ≈ GRU 循环权重 — 世界模型学到的动力学</td></tr>"
                 f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
-                f"📌 先验 vs 观测的差 = 创新 (残差): 残差大 = 世界出乎意料 → 接触/异常信号</p>")
-        elif p.get("innovation"):
+                f"📌 先验 vs 观测的差 = 残差: 残差大 = 世界出乎意料 → 接触/异常信号</p>")
+        elif p.get("state_corrector"):
             html = (
-                f"<h3 style='color:#FF6B6B;margin:4px'>🧪 创新检测与状态校正器 — 残差 & 接触概率</h3>"
-                f"<p style='color:#8b949e;font-size:11px'>卡尔曼更新核心: 用观测 z_k 校正先验, 残差 = 创新 (新信息)。</p>"
+                f"<h3 style='color:#FF6B6B;margin:4px'>🧪 状态校正器 — 残差 & 接触概率</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>卡尔曼更新核心: 用观测 z_k 校正先验, 残差 r = z_k − ĥ(x̂ₖ₋) (新信息)。</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
                 f"<tr style='color:#e6edf3'><th>信号</th><th>来源</th><th>含义</th></tr>"
                 f"<tr><td style='color:#00d4aa'>残差 r</td><td>z_k − ĥ(x̂ₖ₋)</td><td>传感器反馈 vs 先验预测之差</td></tr>"
@@ -7879,7 +7879,7 @@ class SimulinkModule(QWidget):
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
                 f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
                 f"<tr><td style='color:#FFD700'>u_ff 建议动作</td><td>前馈加速器 (权重 30%)</td><td>快路径建议, 可被否决</td></tr>"
-                f"<tr><td style='color:#FF6B6B'>contact 概率 + 残差</td><td>创新检测器</td><td>慢路径证据: 异常 → 否决 u_ff</td></tr>"
+                f"<tr><td style='color:#FF6B6B'>contact 概率 + 残差</td><td>状态校正器</td><td>慢路径证据: 异常 → 否决 u_ff</td></tr>"
                 f"<tr><td style='color:#00d4aa'>阶段切换</td><td>接近→抓取→抬起→转移→插入→完成</td><td>认知规划序列</td></tr>"
                 f"<tr><td style='color:#00d4aa'>动作融合</td><td>u = w_ff·u_ff + (1−w_ff)·u_fb</td><td>建议与反馈加权合成</td></tr>"
                 f"<tr><td style='color:#ffd700'>否决权</td><td>残差 > 阈值 → 强制减速/重试</td><td>认知层最后拍板</td></tr>"
@@ -8069,7 +8069,7 @@ class SimulinkModule(QWidget):
         S1 时空感知前端 (传感器融合 → 43D obs)
         S2 并行处理层 (快慢分离: 前馈加速器 MLP + 自适应状态估计器 GRU → 预测/校正)
         S3 认知决策层 (认知任务调度器握否决权 → 安全执行边界)
-        执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 创新检测)
+        执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 状态校正)
         """
         self.clear()
         flow = os.path.join(self._repo_root(), "flows", "state_space_obs.json")
@@ -8079,9 +8079,9 @@ class SimulinkModule(QWidget):
         self._log("════ 🧮 状态空间模型 (时空感知 → 并行认知 → 决策执行 → 物理闭环) ════")
         self._log("S1 时空感知前端: 📡传感器融合 (RGB-D+力觉+触觉) → 🧩43D统一状态向量 obs")
         self._log("S2 并行处理层 (快慢分离): ⚡前馈加速器(原左脑MLP, u_ff权重30%) ‖ 🔮自适应状态估计器(原右脑GRU)")
-        self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪创新检测与状态校正器(残差&接触概率)")
+        self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
         self._log("S3 认知决策层 (握有否决权): 🧭认知任务调度器(原状态机) → 🛡安全执行边界(饱和限幅)")
-        self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪创新检测 (卡尔曼校正闭环)")
+        self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         QTimer.singleShot(300, self._state_space_hint)
 
     def _state_space_hint(self):

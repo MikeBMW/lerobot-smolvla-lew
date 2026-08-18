@@ -198,7 +198,7 @@
   {
    "id": "ssinnov",
    "type": "model",
-   "name": "🧪 创新检测与状态校正器",
+   "name": "🧪 状态校正器",
    "x": 1120,
    "y": 80,
    "w": 280,
@@ -207,8 +207,8 @@
    "h": 88,
    "params": {
     "state_space": true,
-    "innovation": true,
-    "desc": "创新检测与状态校正器: 计算残差 (z_k − ĥ(x̂)) & 接触概率 — 卡尔曼更新核心",
+    "state_corrector": true,
+    "desc": "状态校正器: 残差 r = z_k − ĥ(x̂ₖ₋) & 接触概率 — 卡尔曼更新核心",
     "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
    },
    "inputs": [
