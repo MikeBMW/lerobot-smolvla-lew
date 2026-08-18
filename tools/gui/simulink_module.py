@@ -1033,10 +1033,10 @@ class StateSpaceScopeDialog(QDialog):
             p.setPen(QColor("#30363d"))
             p.drawRect(int(x0), int(y0), int(w), int(h))
             p.setPen(QColor("#e6edf3"))
-            # 🐛 2026-08-18: DejaVu 无中文字形 → 中文 fallback 渲染模糊; 用默认字体 (wqy 清晰)
-            f = QFont(); f.setPointSize(10); f.setBold(True)
+            # 🐛 2026-08-18: 中文模糊 — 默认字体 fallback 差; 显式 wqy (fc-list 已注册) + 加大字号
+            f = QFont("WenQuanYi Micro Hei", 12); f.setBold(True)
             p.setFont(f)
-            p.drawText(int(x0 + 8), int(y0 + 18), title)
+            p.drawText(int(x0 + 8), int(y0 + 20), title)
             # 坐标变换: t → x, y → 画布
             t0, t1 = self._t[0], self._t[-1]
             ymin, ymax = float(np.min(y)), float(np.max(y))
@@ -6598,11 +6598,12 @@ class SimulinkModule(QWidget):
         # 单模型视频节点 → 自动升级为全Model Zoo (2026-08-06 老倪: 5 个要同时一起打开做对比,
         #   只开单个没意义); 画布有五模型 → 全开 5 个, 七模型(MLP/专家) → 全开 7 个
         names = " ".join(n.get("name", "") for n in self.nodes)
-        # 🧮 状态空间画布: 操作视频 = MLP 蒸馏单模型 (2026-08-18 老倪: 状态空间六层
-        #   的前馈加速器 = 左脑MLP 39D→4D, 与通用 ACT/SmolVLA 无关, 只放同构策略)
+        # 🧮 状态空间画布: 操作视频 = MLP 同构策略 (2026-08-18 老倪: 前馈加速器=左脑MLP;
+        #   容器无 .venv/torch/权重 → rollout 生成必失败 → 直接播放现成 MLP 视频, 不再走生成)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
-            policies = [("expert_mlp", "MLP 蒸馏 (≈左脑)", "#2d6a8f")]
-        elif "MLP" in names or "专家" in names:
+            self.play_mlp_rollout()
+            return
+        if "MLP" in names or "专家" in names:
             policies = InferenceVideoDialog.POLICIES_7
         elif "VLA-Touch" in names or "AWE" in names:
             policies = InferenceVideoDialog.POLICIES_5
@@ -7321,6 +7322,40 @@ class SimulinkModule(QWidget):
             return (rc == 0), ("对比评估完成 · 弹窗展示图表" if rc == 0 else "对比评估失败 (见上方日志)")
 
         self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
+
+    def play_mlp_rollout(self):
+        """🎥 操作视频 (状态空间画布) — GUI 内嵌播放 MLP 策略现成 rollout 视频
+        2026-08-18: 容器无 .venv/torch/权重 → rollout 生成必失败; 直接播 reports/ 现成 mp4"""
+        import glob as _glob
+        root = self._repo_root()
+        cands = _glob.glob(os.path.join(root, "reports", "*MLP*.mp4")) + \
+                _glob.glob(os.path.join(root, "reports", "*mlp*.mp4"))
+        cands = [c for c in cands if os.path.getsize(c) > 1000]  # 排除 0 字节残件
+        if not cands:
+            self._log("⚠️ 无 MLP 操作视频 (reports/*MLP*.mp4) — 需在 4060/ECS (有 torch+权重) 生成后放回")
+            return
+        path = sorted(cands, key=os.path.getmtime)[-1]  # 最新
+        try:
+            from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+            from PyQt5.QtMultimediaWidgets import QVideoWidget
+            from PyQt5.QtCore import QUrl
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout
+            win = QDialog(self)
+            win.setWindowTitle("🎥 操作视频 · MLP 策略 (metaworld peg-insert)")
+            win.resize(720, 500)
+            lay = QVBoxLayout(win)
+            vw = QVideoWidget()
+            lay.addWidget(vw)
+            player = QMediaPlayer()
+            player.setVideoOutput(vw)
+            player.setMedia(QMediaContent(QUrl.fromLocalFile(path)))
+            win.show()
+            player.play()
+            self._video_win = win      # 保引用防 GC
+            self._video_player = player
+            self._log(f"🎥 播放 MLP 操作视频: {os.path.basename(path)}")
+        except Exception as e:
+            self._log(f"⚠️ 视频播放失败: {e}")
 
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
