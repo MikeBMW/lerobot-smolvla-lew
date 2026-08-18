@@ -7659,6 +7659,14 @@ class SimulinkModule(QWidget):
             dlg.resize(680, 560)
             lay = QVBoxLayout(dlg)
             tabs = QTabWidget(dlg)
+            # 🐛 2026-08-18 老倪: Tab 标签黑色字 → 全白 (暗底白字)
+            tabs.setStyleSheet(
+                "QTabWidget::pane { border:1px solid #30363d; } "
+                "QTabBar::tab { color:#ffffff; background:#161b22; padding:6px 12px; "
+                "border:1px solid #30363d; margin-right:2px; } "
+                "QTabBar::tab:selected { background:#0d1117; color:#ffffff; "
+                "border-bottom:2px solid #58a6ff; } "
+                "QTabBar::tab:hover { background:#21262d; }")
             # Tab1 硬件属性
             tabs.addTab(_mk_table(list(PW.HARDWARE_SPEC.items()), ["属性", "当前配置"]),
                         f"硬件属性 ({len(PW.HARDWARE_SPEC)})")
@@ -7683,12 +7691,80 @@ class SimulinkModule(QWidget):
                          "相邻轴耦合 5% (简化)")
             tip.setStyleSheet("color:#8b949e; font-size:11px; padding:4px;")
             lay.addWidget(tip)
+            # 📤 导出到 datadrive 网页 (2026-08-18 老倪)
+            from PyQt5.QtWidgets import QPushButton
+            b_export = QPushButton("📤 导出全部参数到网页 (datadrive.world)")
+            b_export.setStyleSheet("QPushButton { background:#238636; color:#ffffff; border:none; "
+                                   "border-radius:4px; padding:6px 14px; font-weight:bold; }")
+            b_export.clicked.connect(lambda: self._export_physical_params(PW))
+            lay.addWidget(b_export, alignment=Qt.AlignRight)
             self._show_nonmodal(dlg)
             self._popup_on_main_screen(dlg)   # 🎯 show 之后定位 (move 在 show 前被覆盖)
             self._log(f"🌍 物理世界参数: 硬件 {len(PW.HARDWARE_SPEC)} 项 + 电机 {len(PW.AXIS_MOTORS)} 轴 + "
                       f"臂段 {len(PW.ARM_SEGMENTS)} 段 (总 {_pw.total_mass} kg) + 广义质量 7×7")
         except Exception as e:
             self._log(f"⚠️ 物理世界参数面板失败: {e}")
+
+    def _export_physical_params(self, PW):
+        """📤 物理世界参数导出 → datadrive.world 网页 (2026-08-18 老倪)
+        生成暗色 HTML (硬件/电机/臂段/广义质量) → scp 上传 ECS → chmod 644 → 链接"""
+        try:
+            import html as _html
+            _pw = PW()
+            M = _pw.generalized_mass()
+
+            def _tbl(headers, rows):
+                h = "".join(f"<th>{_html.escape(str(x))}</th>" for x in headers)
+                body = ""
+                for r in rows:
+                    body += "<tr>" + "".join(f"<td>{_html.escape(str(x))}</td>" for x in r) + "</tr>"
+                return f"<table><thead><tr>{h}</tr></thead><tbody>{body}</tbody></table>"
+
+            hw_rows = list(PW.HARDWARE_SPEC.items())
+            motor_rows = PW.AXIS_MOTORS
+            seg_rows = [s + (f"{s[1]/_pw.total_mass*100:.1f}%",) for s in PW.ARM_SEGMENTS]
+            head7 = ["轴"] + [f"J{i+1}" for i in range(6)] + ["夹爪"]
+            m_rows = [[f"J{i+1}" if i < 6 else "夹爪"] + [f"{M[i, j]:.3f}" for j in range(7)]
+                      for i in range(7)]
+
+            page = f"""<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8">
+<title>🌍 物理世界 · 硬件与动力学参数 (Z700)</title>
+<style>
+ body {{ background:#0d1117; color:#e6edf3; font-family:"Microsoft YaHei",sans-serif; margin:24px; }}
+ h1 {{ color:#58a6ff; font-size:22px; }} h2 {{ color:#58a6ff; font-size:16px; margin-top:28px; }}
+ table {{ border-collapse:collapse; margin:8px 0; width:100%; max-width:900px; }}
+ th {{ background:#161b22; color:#ffffff; border:1px solid #30363d; padding:6px 10px; text-align:left; }}
+ td {{ border:1px solid #30363d; padding:5px 10px; }}
+ tr:nth-child(even) td {{ background:#161b22; }}
+ .meta {{ color:#8b949e; font-size:12px; }}
+</style></head><body>
+<h1>🌍 物理世界 · 硬件与动力学参数 (Z700)</h1>
+<p class="meta">总质量 {_pw.total_mass} kg · 7 自由度 (6×旋转关节 + 夹爪) · 生成时间 {time.strftime('%Y-%m-%d %H:%M')}</p>
+<h2>硬件属性</h2>{_tbl(["属性", "当前配置"], hw_rows)}
+<h2>每轴电机参数</h2>{_tbl(["轴", "额定扭矩 N·m", "峰值 N·m", "额定转速 rpm", "减速比", "转子惯量 kg·m²", "功率 W"], motor_rows)}
+<h2>臂段质量 (总 {_pw.total_mass} kg)</h2>{_tbl(["臂段", "质量 kg", "质心 m", "长度 m", "占比"], seg_rows)}
+<h2>广义质量矩阵 M(q) 7×7 (kg·m²)</h2>{_tbl(head7, m_rows)}
+<p class="meta">广义质量 = 典型位形 (竖直零位) 等效惯量 · 相邻轴耦合 5% (简化)</p>
+</body></html>"""
+            out = "/tmp/physical_world_params.html"
+            with open(out, "w", encoding="utf-8") as f:
+                f.write(page)
+            # scp 上传 ECS (同 orin_stream.sh 链路) + chmod 644
+            import subprocess as _sp
+            r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                         out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
+                        capture_output=True, timeout=60)
+            if r.returncode == 0:
+                _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                         "root@39.102.211.79",
+                         "chmod 644 /www/wwwroot/datadrive.world/physical_world_params.html"],
+                        capture_output=True, timeout=30)
+                self._log("📤 物理世界参数已导出: https://datadrive.world/physical_world_params.html")
+            else:
+                self._log(f"📤 导出失败 (上传): {r.stderr.decode(errors='ignore')[:200]}")
+        except Exception as e:
+            self._log(f"⚠️ 导出参数失败: {e}")
 
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
