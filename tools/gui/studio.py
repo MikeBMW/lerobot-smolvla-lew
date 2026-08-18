@@ -56,8 +56,16 @@ try:
                         f.write(line + "\n")
                     # 🐛 孤儿 timer (无 parent 链) = NULL receiver 崩溃嫌疑 — 单独记录
                     if len(chain) <= 1:
+                        try:
+                            sup = obj.metaObject().superClass().className()
+                        except Exception:
+                            sup = "?"
+                        try:
+                            props = [str(obj.property(p)) for p in obj.dynamicPropertyNames()][:3]
+                        except Exception:
+                            props = []
                         with open("/tmp/orphan_timers.log", "a") as f:
-                            f.write(line + "\n")
+                            f.write(line + f" | super={sup} props={props}\n")
             except Exception:
                 pass
             return False
