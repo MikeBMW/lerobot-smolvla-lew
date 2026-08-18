@@ -6598,7 +6598,11 @@ class SimulinkModule(QWidget):
         # 单模型视频节点 → 自动升级为全Model Zoo (2026-08-06 老倪: 5 个要同时一起打开做对比,
         #   只开单个没意义); 画布有五模型 → 全开 5 个, 七模型(MLP/专家) → 全开 7 个
         names = " ".join(n.get("name", "") for n in self.nodes)
-        if "MLP" in names or "专家" in names:
+        # 🧮 状态空间画布: 操作视频 = MLP 蒸馏单模型 (2026-08-18 老倪: 状态空间六层
+        #   的前馈加速器 = 左脑MLP 39D→4D, 与通用 ACT/SmolVLA 无关, 只放同构策略)
+        if any(n.get("params", {}).get("state_space") for n in self.nodes):
+            policies = [("expert_mlp", "MLP 蒸馏 (≈左脑)", "#2d6a8f")]
+        elif "MLP" in names or "专家" in names:
             policies = InferenceVideoDialog.POLICIES_7
         elif "VLA-Touch" in names or "AWE" in names:
             policies = InferenceVideoDialog.POLICIES_5
