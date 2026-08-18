@@ -7587,8 +7587,8 @@ class SimulinkModule(QWidget):
             pass
 
     def _popup_on_main_screen(self, dlg):
-        """🎯 弹窗定位到主窗口区域内居中 (🐛 2026-08-18: VcXsrv 多屏=一个虚拟大屏,
-        '屏幕居中'会落在两个屏之间; 直接按主窗口几何居中, 保证可见)"""
+        """🎯 弹窗定位到主窗口左上区域 + 级联偏移 (🐛 2026-08-18: 多个弹窗不叠不乱;
+        VcXsrv 多屏=虚拟大屏, 屏幕居中落屏缝 → 按主窗口几何定位)"""
         try:
             from PyQt5.QtWidgets import QApplication as _QA
             _mw = None
@@ -7605,8 +7605,11 @@ class SimulinkModule(QWidget):
             if _mw is None:
                 _mw = self.window()
             _g = _mw.frameGeometry()
-            dlg.move(_g.left() + (_g.width() - dlg.width()) // 2,
-                     _g.top() + (_g.height() - dlg.height()) // 2)
+            # 级联偏移: 每个新弹窗 +28px 错开, 8 个一轮回卷 (不叠不盖中央)
+            self._popup_cascade = getattr(self, "_popup_cascade", 0)
+            off = self._popup_cascade * 28
+            self._popup_cascade = (self._popup_cascade + 1) % 8
+            dlg.move(_g.left() + 60 + off, _g.top() + 40 + off)
         except Exception:
             pass
 
