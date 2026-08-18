@@ -3938,6 +3938,12 @@ class SimulinkModule(QWidget):
             if not self._qmsg_yes("加载工作流", f"加载「{path}」将清空当前画布，继续？"):
                 return None
         self.clear()
+        # 🐛 2026-08-18: 加载期间挂起重绘 — VcXsrv 逐节点增量渲染 = 一闪一闪太卡;
+        #   全部建完一次刷新 (加载完恢复 + update)
+        try:
+            self.canvas.setUpdatesEnabled(False)
+        except Exception:
+            pass
         old_sync = self._sync
         self._sync = lambda: None
         old_undo = getattr(self, "_suspend_undo", False)
@@ -3974,6 +3980,11 @@ class SimulinkModule(QWidget):
             self._sync = old_sync
             self._suspend_undo = old_undo
             self._sync()
+            # 🐛 2026-08-18: 恢复重绘 + 一次整体刷新 (防加载闪烁)
+            try:
+                self.canvas.setUpdatesEnabled(True)
+            except Exception:
+                pass
             self.canvas._scene.update()
         self._assign_veh5_ids()  # 🐛 2026-08-12 老倪: 画布节点 ID = VEH.5.顺序号
         # 📚 数据字典树刷新 (2026-08-12 老倪: 画布变化同步右侧 Model Tree)
@@ -8602,12 +8613,13 @@ class SimulinkModule(QWidget):
         try:
             sched = next((n for n in self.nodes if n.get("params", {}).get("cognitive_scheduler")), None)
             if sched is not None:
-                self._highlight_node(sched, ms=6000)
+                # 🐛 2026-08-18: 高亮 6s → 2.5s (VcXsrv 高亮动画闪烁太久)
+                self._highlight_node(sched, ms=2500)
                 it = self._items.get(sched["id"])
                 if it is not None:
                     gp = self.canvas.mapToGlobal(
                         self.canvas.mapFromScene(it.sceneBoundingRect().center()))
-                    self._show_bubble(gp, "👆 双击「🧭 任务调度器」\n→ 状态空间决策详情", ms=6000)
+                    self._show_bubble(gp, "👆 双击「🧭 任务调度器」\n→ 状态空间决策详情", ms=2500)
         except Exception:
             pass
 

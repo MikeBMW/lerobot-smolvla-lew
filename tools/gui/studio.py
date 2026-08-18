@@ -42,8 +42,11 @@ try:
                         except Exception:
                             chain.append("<?>")
                         o = o.parent()
+                    import sip
+                    cp = hex(sip.unwrap_instance(obj)) if sip.isdeleted(obj) is False else "DEL"
+                    import time as _t
                     with open("/tmp/timer_trace.log", "a") as f:
-                        f.write(f"{hex(id(obj))} {' > '.join(chain)}\n")
+                        f.write(f"{_t.time():.1f} {cp} {hex(id(obj))} {' > '.join(chain)}\n")
             except Exception:
                 pass
             return False
