@@ -23,6 +23,9 @@ import math  # 离线仿真正弦波
 import os as _os
 _os.environ.setdefault("QT_NO_DBUS", "1")
 _os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "/dev/null")
+# 🐛 2026-08-18: 绕开 glib 事件循环 — gdb 栈: activateTimers 由 g_main_context_iteration
+# 驱动 (Qt 5.15.14 glib 集成) → NULL receiver SIGSEGV; QT_NO_GLIB 强制 QEventDispatcherUNIX
+_os.environ.setdefault("QT_NO_GLIB", "1")
 
 # 🐛 2026-08-18: SIGSEGV 崩溃留证 — 段错误时 dump Python 栈到 /tmp/studio_faulth.log
 try:
