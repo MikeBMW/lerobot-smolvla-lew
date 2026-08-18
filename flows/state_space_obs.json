@@ -209,7 +209,7 @@
     "state_space": true,
     "state_corrector": true,
     "desc": "状态校正器: 残差 r = z_k − ĥ(x̂ₖ₋) & 接触概率 — 卡尔曼更新核心",
-    "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
+    "source": "src/lerobot/policies/left_right/state_space/cognition.py"
    },
    "inputs": [
     "in1",

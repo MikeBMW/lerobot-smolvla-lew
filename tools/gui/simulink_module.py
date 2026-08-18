@@ -904,6 +904,35 @@ try:
 except Exception:
     pass  # 技能库缺失不影响模块库其余部分
 
+
+# 🧮 状态空间模型组件区 (2026-08-18 老倪: 画布全部节点 → 库中一一对应,
+#   数据源唯一 = flows/state_space_obs.json — 改画布即同步库, 杜绝手抄漂移)
+def _load_state_space_library_group():
+    """状态空间画布 14 节点 → LIBRARY 一组 (与画布 JSON 同一数据源)"""
+    import os as _os, json as _j
+    p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+                      "flows", "state_space_obs.json")
+    try:
+        data = _j.load(open(p, encoding="utf-8"))
+        nodes = data.get("nodes", [])
+    except Exception:
+        return []
+    entries = []
+    for n in nodes:
+        params = dict(n.get("params", {}))
+        params.setdefault("state_space", True)
+        params["desc"] = params.get("desc", "")[:100]
+        entries.append({"name": n.get("name", "?"),
+                        "type": n.get("type", "model"),
+                        "params": params})
+    return [("model", f"🧮 状态空间模型 ({len(nodes)}节点)", entries)]
+
+
+try:
+    LIBRARY += _load_state_space_library_group()
+except Exception:
+    pass  # 状态空间库缺失不影响模块库其余部分
+
 # 🌐 2026-08-09 老倪: LIBRARY 模块 → 稳定序号 (模块库按钮与画布节点 ID 一致)
 LIBRARY_SEQ = {}
 _lib_seq = 0
@@ -2953,7 +2982,8 @@ class LibraryPanel(QFrame):
                     # 完整模型条目: 点击加载模板
                     btn.clicked.connect(lambda _, tpl=it["template"]: self.module.load_reference_app_by_name(tpl))
                 else:
-                    btn.clicked.connect(lambda _, t=ntype, nm=it["name"], ps=it["params"]:
+                    # 🧮 2026-08-18 老倪: 条目级 type 覆盖组类型 (状态空间混合类型组: model/system/hardware/row_bg)
+                    btn.clicked.connect(lambda _, t=it.get("type", ntype), nm=it["name"], ps=it["params"]:
                                         self.module.add_node_at_center(t, nm, ps))
                 self._lib_btns[it["name"]] = btn
                 btn.setVisible(not collapsed)  # 分组折叠时隐藏组内按钮
