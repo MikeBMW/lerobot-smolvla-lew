@@ -46,8 +46,15 @@ class CognitiveScheduler:
         return self.w_ff * u_ff + (1.0 - self.w_ff) * u_fb
 
     def decide(self, u_ff, u_fb, contact_p, residual):
-        """决策: 异常否决 → 强制减速; 否则融合动作 + 阶段推进"""
-        if residual > self.veto_th or contact_p > self.contact_th:
-            return 0.0, "否决: 减速/重试"      # 否决权生效
-        u = self.fuse(u_ff, u_fb)
+        """决策: ①残差超阈值=世界出乎意料 → 否决 (强制减速) ②接触成立 → 力控插入
+        (前馈推力主导 0.85, 校正 15% 兜底 — 快慢分离的阶段切换) ③接近 → 慢通道主导
+        (0.3 前馈 + 0.7 校正, 防碰撞)"""
+        if residual > self.veto_th:
+            return 0.0, "否决: 减速/重试"      # 否决权生效 (残差异常)
+        if contact_p > self.contact_th:
+            # 接触: 阶段推进到抓取 — 前馈推力主导 (插入靠推力, 不是比例衰减)
+            u = 0.85 * u_ff + 0.15 * u_fb
+            self.stage_idx = max(1, self.stage_idx)   # 接近 → 抓取
+            return u, f"阶段 {self.STAGES[self.stage_idx]} · 接触"
+        u = self.fuse(u_ff, u_fb)             # 接近: 慢通道校正主导
         return u, f"阶段 {self.STAGES[self.stage_idx]}"

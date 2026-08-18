@@ -4757,6 +4757,10 @@ class SimulinkModule(QWidget):
             if self._tutorial_active:
                 self._tutorial_hint_mismatch("run", "pipeline")
             return
+        # 🧮 状态空间画布 → 真实仿真引擎 (2026-08-18 老倪: 六层源码闭环, 非占位观察模式)
+        if any(n.get("params", {}).get("state_space") for n in self.nodes):
+            self._start_state_space_sim()
+            return
         # 🧠 2026-08-10 老倪: ▶ 运行 = left_right 工程画布 → 自动启动标准训练 (优先于环节节点
         #   — 画布含「📄 PDF 报告」节点会命中 NODE_RUN_ACTIONS 的 on_pdf_report, 必须放最前)
         if any(n.get("name") == "◉ LeftRightPolicy" for n in self.nodes):
@@ -5161,6 +5165,13 @@ class SimulinkModule(QWidget):
     def stop_sim(self):
         self._sim_running = False
         self._timer.stop()
+        # 🧮 状态空间仿真播放中 → 立即结束 (2026-08-18)
+        if hasattr(self, "_ss_timer") and self._ss_timer is not None and self._ss_timer.isActive():
+            self._ss_timer.stop()
+            try:
+                self._ss_finish()
+            except Exception:
+                pass
         # 🐛 2026-08-15 老倪: "屏幕还是闪烁" — 停止时也停所有连线动画
         try:
             self._stop_all_flows()
@@ -8113,6 +8124,108 @@ class SimulinkModule(QWidget):
         self._log("S3 认知决策层 (握有否决权): 🧭认知任务调度器(原状态机) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         QTimer.singleShot(300, self._state_space_hint)
+
+    def _start_state_space_sim(self):
+        """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
+        引擎 500 步纯 numpy <0.1s 快跑 → 收集时间序列 → QTimer 动画逐节点执行
+        + 每轮打印真实数值 (距离/残差/接触概率/阶段), 完成自动汇总"""
+        try:
+            from state_space_sim import StateSpaceSim
+        except Exception as e:
+            self._qmsg_info("🧮 状态空间", f"仿真引擎加载失败: {e}")
+            return
+        self._log("🧮 状态空间真实仿真 — 六层源码引擎: 📡感知→⚡前馈‖🔮估计→📈预测→🧪校正→🧭调度→🛡限幅→🤖执行→🌍物理闭环")
+        try:
+            sim = StateSpaceSim(log=self._log)
+            tr = sim.run()   # 纯 numpy, 500 步 <0.1s
+        except Exception as e:
+            import traceback
+            self._log(f"⚠️ 仿真引擎异常: {e}")
+            traceback.print_exc()
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
+            return
+        self._ss_tr = tr
+        self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+        if not self._ss_order:
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
+            return
+        # 全部节点 reset
+        for n in self.nodes:
+            n["status"] = "idle"
+            it = self._items.get(n["id"])
+            if it:
+                it.update()
+        self._ss_idx = 0                 # 播放步 (节点序列)
+        self._ss_round = 0               # 已播放轮数 (一轮 = 全部节点)
+        self.btn_run.setText("⏳ 仿真中…")
+        self.btn_run.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self._ss_timer = QTimer(self)
+        self._ss_timer.timeout.connect(self._ss_tick)
+        self._ss_timer.start(80)
+        self._log("▶ 仿真开始 · 物理世界: 末端 (0.10, -0.06, 0.12) → 孔位 (0.25, 0, 0.05) · 光模块插拔")
+
+    def _ss_tick(self):
+        """播放一帧: 全部节点闪 running(青) → 上一帧 success(绿); 每轮打印抽样真实数值"""
+        try:
+            tr = self._ss_tr
+            n_rounds = min(len(tr["t"]), 20)   # 抽样 20 个时间快照 (3s 播完)
+            # 当前快照索引 (均匀抽样引擎时间序列)
+            idx = int(self._ss_round / max(1, n_rounds - 1) * (len(tr["t"]) - 1)) if n_rounds > 1 else 0
+            # 上一帧 → success
+            for n in self._ss_order:
+                n["status"] = "success"
+                it = self._items.get(n["id"])
+                if it:
+                    it.update()
+            # 当前帧 → running
+            for n in self._ss_order:
+                n["status"] = "running"
+                it = self._items.get(n["id"])
+                if it:
+                    it.update()
+            self.canvas._scene.update()
+            # 打印该快照真实数值
+            stage = tr["stage"][idx].replace("阶段 ", "")
+            self._log(f"  ⏱ t={tr['t'][idx]:5.2f}s · 距离孔位 {tr['dist'][idx]:.4f}m · "
+                      f"前馈|u_ff|={tr['u_ff'][idx]:.3f} · 残差 {tr['residual'][idx]:.4f} · "
+                      f"接触概率 {tr['contact_p'][idx]:.2f} · 指令|u|={tr['u_sat'][idx]:.3f} · {stage}")
+            self._ss_round += 1
+            if self._ss_round >= n_rounds:
+                self._ss_finish()
+        except Exception:
+            self._ss_finish()
+
+    def _ss_finish(self):
+        """仿真完成: 全绿 + 汇总"""
+        try:
+            if hasattr(self, "_ss_timer") and self._ss_timer is not None:
+                self._ss_timer.stop()
+        except Exception:
+            pass
+        tr = getattr(self, "_ss_tr", {}) or {}
+        for n in self.nodes:
+            n["status"] = "success" if n.get("type") != "row_bg" else n.get("status", "idle")
+            it = self._items.get(n["id"])
+            if it:
+                it.update()
+        self.canvas._scene.update()
+        self.btn_run.setText("▶ 运行")
+        self.btn_run.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self._sim_running = False
+        done = bool(tr.get("done") and tr["done"][-1])
+        t_end = tr["t"][-1] if tr.get("t") else 0
+        d_end = tr["dist"][-1] if tr.get("dist") else 0
+        r_max = max(tr["residual"]) if tr.get("residual") else 0
+        cp_max = max(tr["contact_p"]) if tr.get("contact_p") else 0
+        self._log("════ 🧮 状态空间仿真完成 ════")
+        self._log(f"{'✅ 插入完成' if done else '⚠️ 未完成'} · 用时 {t_end:.2f}s · 最终距离 {d_end:.4f}m"
+                  f" · 残差峰值 {r_max:.4f} · 接触概率峰值 {cp_max:.2f}")
+        self._log("链路: 📡43D感知 → ⚡前馈建议+🔮卡尔曼估计 → 📈动力学预测 → 🧪残差/接触校正 → 🧭调度融合 → 🛡限幅 → 🤖执行 → 🌍反馈闭环")
+        self._refresh_status()
 
     def _state_space_hint(self):
         """🧮 状态空间加载后气泡引导: 高亮认知任务调度器 (握否决权核心)"""

@@ -25,6 +25,11 @@ class RobotExecutor:
 class PhysicalWorld:
     """🌍 物理世界 — 执行结果 → 传感器反馈 z_k"""
 
+    def __init__(self, noise=0.005, seed=42):
+        self.noise = noise          # 传感器噪声 σ (卡尔曼校正的残差来源)
+        self._rng = np.random.default_rng(seed)
+
     def observe(self, state):
-        """返回传感器观测 z_k (带噪声, 供卡尔曼校正)"""
-        return np.asarray(state, dtype=float)
+        """返回传感器观测 z_k (带高斯噪声, 供卡尔曼校正)"""
+        s = np.asarray(state, dtype=float)
+        return s + self._rng.normal(0.0, self.noise, size=s.shape)
