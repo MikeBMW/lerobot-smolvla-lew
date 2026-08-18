@@ -24,6 +24,25 @@ try:
     faulthandler.enable()
 except Exception:
     pass
+
+# 🐛 2026-08-18 崩溃诊断: TimerEvent 追踪 — 每次 QTimer 激活前记录接收者,
+#   崩溃前最后一行 = 凶手对象 (notifyInternal2 SIGSEGV 定位)
+try:
+    from PyQt5.QtCore import QObject, QEvent
+
+    class _TimerTrace(QObject):
+        def eventFilter(self, obj, ev):
+            try:
+                if ev.type() == QEvent.Timer:
+                    with open("/tmp/timer_trace.log", "a") as f:
+                        f.write(f"{obj.metaObject().className()} | {obj.objectName()}\n")
+            except Exception:
+                pass
+            return False
+
+    _TIMER_TRACE = _TimerTrace()
+except Exception:
+    _TIMER_TRACE = None
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
@@ -10593,6 +10612,9 @@ def main():
     except Exception:
         pass
     app = QApplication(sys.argv)
+    # 🐛 2026-08-18 崩溃诊断: 安装 TimerEvent 追踪 (崩溃前最后一行 = 凶手 timer 接收者)
+    if _TIMER_TRACE is not None:
+        app.installEventFilter(_TIMER_TRACE)
     # WSLg/Windows 下 QMessageBox/QToolTip 默认走系统原生渲染 → QSS 失效, 黑字看不清
     # 强制 Qt 自绘: 对话框 + 气泡提示都吃全局深色 QSS
     app.setAttribute(Qt.AA_DontUseNativeDialogs, True)

@@ -3220,6 +3220,7 @@ _CUR_THEME = "dark"  # 当前主题 (🎨 switch_theme 切换; 默认深色 — 
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
+    _mlp_frames_ready = pyqtSignal(str)   # 🎥 2026-08-18: 后台抽帧完成 → 主线程刷新
     flow_synced = None
 
     def __init__(self, parent=None):
@@ -7324,53 +7325,192 @@ class SimulinkModule(QWidget):
         self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
 
     def play_mlp_rollout(self):
-        """🎥 操作视频 (状态空间画布) — GUI 内嵌播放 MLP 策略现成 rollout 视频
-        2026-08-18: 容器无 .venv/torch/权重 → rollout 生成必失败; 直接播 reports/ 现成 mp4
-        🐛 选片: 排除 rot180/rot 变体 (内容旋转过=文字反着), 固定优先级 (完整插拔优先)"""
+        """🎥 操作视频 (状态空间画布) — 帧轮播播放 MLP rollout 视频
+        2026-08-18: ①gstreamer 无音频服务 → 播放跳跃 → 改 ffmpeg 抽帧 + QTimer 轮播
+        ②视频内容可能旋转 → ⏮⏭ 切换 + 🔄 转正
+        🐛 全部连接用绑定方法 (PyQt lambda/闭包连接桥接对象 GC 竞态 → 非确定性 SIGSEGV)"""
         import glob as _glob
         root = self._repo_root()
         cands = _glob.glob(os.path.join(root, "reports", "*MLP*.mp4")) + \
                 _glob.glob(os.path.join(root, "reports", "*mlp*.mp4"))
-        cands = [c for c in cands if os.path.getsize(c) > 1000]      # 排除 0 字节残件
-        cands = [c for c in cands if "rot" not in os.path.basename(c).lower()]  # 🐛 排除旋转变体
+        cands = [c for c in cands if os.path.getsize(c) > 1000]
         if not cands:
-            self._log("⚠️ 无正常 MLP 操作视频 (reports/*MLP*.mp4, 排除 rot 变体) — 需在 4060/ECS 生成")
+            self._log("⚠️ 无 MLP 操作视频 (reports/*MLP*.mp4) — 需在 4060/ECS 生成后放回")
             return
-        # 固定优先级: 完整插拔成功视频优先 (名字明确), 其余按 mtime 最新
         _PRIORITY = ["发送_MLP插拔成功.mp4", "mlp_insert_success_final.mp4",
                      "mlp_insert_success.mp4", "mlp_best_final.mp4", "mlp_best.mp4"]
-        path = None
-        for name in _PRIORITY:
-            hit = next((c for c in cands if os.path.basename(c) == name), None)
-            if hit:
-                path = hit
-                break
-        if path is None:
-            path = sorted(cands, key=os.path.getmtime)[-1]
+        order = sorted(cands, key=lambda c: (_PRIORITY.index(os.path.basename(c))
+                                             if os.path.basename(c) in _PRIORITY else 99,
+                                             -os.path.getmtime(c)))
         try:
-            from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-            from PyQt5.QtMultimediaWidgets import QVideoWidget
-            from PyQt5.QtCore import QUrl
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout
+            from PyQt5.QtCore import QTimer
+            from PyQt5.QtGui import QPixmap, QTransform
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
             win = QDialog(self)
             win.setWindowTitle("🎥 操作视频 · MLP 策略 (metaworld peg-insert)")
-            win.resize(720, 500)
+            win.resize(800, 600)
             lay = QVBoxLayout(win)
-            vw = QVideoWidget()
-            lay.addWidget(vw)
-            # 🐛 2026-08-18 崩溃实锤 (gdb): QMediaPlayer 无 parent → 窗口关闭 vw 销毁后
-            # player 内部 QTimer 仍激活 → notifyInternal2 分发事件给已销毁对象 → SIGSEGV
-            # (activateTimers → notifyInternal2)。player 挂 win 下, 窗口销毁级联销毁。
-            player = QMediaPlayer(win)
-            player.setVideoOutput(vw)
-            player.setMedia(QMediaContent(QUrl.fromLocalFile(path)))
+            self._mlp_lab = QLabel("—")
+            self._mlp_lab.setAlignment(Qt.AlignCenter)
+            self._mlp_lab.setStyleSheet("background:#0d1117; color:#8b949e; font-size:12px;")
+            lay.addWidget(self._mlp_lab)
+            ctrl = QHBoxLayout()
+            self._mlp_btn_prev = QPushButton("⏮ 上一个")
+            self._mlp_btn_next = QPushButton("⏭ 下一个")
+            self._mlp_btn_rot = QPushButton("🔄 转正 (180°)")
+            self._mlp_btn_play = QPushButton("⏸ 暂停")
+            for b in (self._mlp_btn_prev, self._mlp_btn_next,
+                      self._mlp_btn_rot, self._mlp_btn_play):
+                ctrl.addWidget(b)
+            lay.addLayout(ctrl)
+            self._mlp_frames = []
+            self._mlp_idx = 0
+            self._mlp_vidx = 0
+            self._mlp_cands = order
+            self._mlp_rot = 0
+            self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_frames")
+            self._mlp_loading = False
+            self._mlp_win = win
+            # 绑定方法连接 (🐛 防 GC 竞态)
+            self._mlp_timer = QTimer(win)
+            self._mlp_timer.timeout.connect(self._mlp_tick)
+            self._mlp_timer.start(66)
+            self._mlp_frames_ready.connect(self._mlp_on_frames_ready)  # 后台抽帧完成 → 主线程刷新
+            self._mlp_btn_prev.clicked.connect(self._mlp_prev)
+            self._mlp_btn_next.clicked.connect(self._mlp_next)
+            self._mlp_btn_rot.clicked.connect(self._mlp_rot180)
+            self._mlp_btn_play.clicked.connect(self._mlp_toggle)
+            win.destroyed.connect(self._stop_mlp_timer)
             win.show()
-            player.play()
-            self._video_win = win      # 保引用防 GC
-            self._video_player = player
-            self._log(f"🎥 播放 MLP 操作视频: {os.path.basename(path)}")
+            self._mlp_load_frames(0)
+            self._log(f"🎥 MLP 操作视频播放器: {len(cands)} 个视频 · ⏮⏭切换 · 🔄转正")
         except Exception as e:
-            self._log(f"⚠️ 视频播放失败: {e}")
+            self._log(f"⚠️ 操作视频播放失败: {e}")
+
+    def _mlp_load_frames(self, vidx):
+        """ffmpeg 抽帧 (后台线程, 有缓存秒开) + 信号回主线程刷新 — 🐛 2026-08-18:
+        原主线程 _sp.run 抽帧 250 帧 PNG → 阻塞 GUI 数秒 (假死/误判崩溃)"""
+        try:
+            self._mlp_vidx = vidx
+            src = self._mlp_cands[vidx]
+            self._mlp_loading = True
+            self._mlp_lab.setText(f"⏳ 加载中… {os.path.basename(src)}")
+            self._mlp_btn_play.setText("⏸ 暂停")
+            cache = os.path.join(self._repo_root(), "reports",
+                                 "_mlp_cache_" + os.path.splitext(os.path.basename(src))[0])
+            if os.path.isdir(cache) and len(os.listdir(cache)) > 10:
+                # 缓存命中 → 秒开
+                self._mlp_frames_dir = cache
+                self._mlp_frames = sorted(os.listdir(cache))
+                self._mlp_idx = 0
+                self._mlp_win.setWindowTitle(
+                    f"🎥 {os.path.basename(src)} · {len(self._mlp_frames)} 帧 · {vidx+1}/{len(self._mlp_cands)} · 缓存")
+                self._mlp_loading = False
+                self._mlp_show()
+                return
+            # 后台线程抽帧 (不碰 Qt), 完成后信号回主线程
+            import threading
+
+            def _work():
+                try:
+                    import subprocess as _sp
+                    tmp = cache + "_tmp"
+                    if os.path.isdir(tmp):
+                        for f in os.listdir(tmp):
+                            os.remove(os.path.join(tmp, f))
+                    else:
+                        os.makedirs(tmp, exist_ok=True)
+                    r = _sp.run(["ffmpeg", "-y", "-i", src, "-vsync", "0",
+                                 os.path.join(tmp, "f_%04d.png")],
+                                capture_output=True, timeout=120)
+                    if r.returncode != 0:
+                        self._mlp_frames_ready.emit("")   # 失败
+                        return
+                    # 抽完改名为缓存目录
+                    if os.path.isdir(cache):
+                        for f in os.listdir(cache):
+                            os.remove(os.path.join(cache, f))
+                    else:
+                        os.makedirs(cache, exist_ok=True)
+                    for f in os.listdir(tmp):
+                        os.replace(os.path.join(tmp, f), os.path.join(cache, f))
+                    os.rmdir(tmp)
+                    self._mlp_frames_ready.emit(os.path.basename(src))
+                except Exception:
+                    self._mlp_frames_ready.emit("")
+
+            threading.Thread(target=_work, daemon=True).start()
+        except Exception:
+            self._mlp_loading = False
+
+    def _mlp_on_frames_ready(self, name):
+        """主线程: 后台抽帧完成 → 刷新帧列表 (pyqtSignal 队列投递, 线程安全)"""
+        try:
+            if not name:
+                self._mlp_lab.setText("⚠️ 抽帧失败")
+                self._mlp_loading = False
+                return
+            cache = os.path.join(self._repo_root(), "reports",
+                                 "_mlp_cache_" + os.path.splitext(name)[0])
+            self._mlp_frames_dir = cache
+            self._mlp_frames = sorted(os.listdir(cache))
+            self._mlp_idx = 0
+            self._mlp_win.setWindowTitle(
+                f"🎥 {name} · {len(self._mlp_frames)} 帧 · {self._mlp_vidx+1}/{len(self._mlp_cands)}")
+            self._mlp_loading = False
+            self._mlp_show()
+        except Exception:
+            self._mlp_loading = False
+
+    def _mlp_show(self):
+        try:
+            if not self._mlp_frames:
+                return
+            fp = os.path.join(self._mlp_frames_dir, self._mlp_frames[self._mlp_idx])
+            pm = QPixmap(fp)
+            if self._mlp_rot:
+                pm = pm.transformed(QTransform().rotate(self._mlp_rot), Qt.SmoothTransformation)
+            lab = self._mlp_lab
+            if lab.size().width() > 50 and lab.size().height() > 50:
+                pm = pm.scaled(lab.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            lab.setPixmap(pm)
+        except Exception:
+            pass
+
+    def _mlp_tick(self):
+        if self._mlp_loading or not self._mlp_frames:
+            return
+        self._mlp_idx += 1
+        if self._mlp_idx >= len(self._mlp_frames):
+            self._mlp_idx = 0
+        self._mlp_show()
+
+    def _mlp_prev(self):
+        self._mlp_load_frames((self._mlp_vidx - 1) % len(self._mlp_cands))
+
+    def _mlp_next(self):
+        self._mlp_load_frames((self._mlp_vidx + 1) % len(self._mlp_cands))
+
+    def _mlp_rot180(self):
+        self._mlp_rot = (self._mlp_rot + 180) % 360
+        self._mlp_show()
+
+    def _mlp_toggle(self):
+        if self._mlp_timer.isActive():
+            self._mlp_timer.stop()
+            self._mlp_btn_play.setText("▶ 播放")
+        else:
+            self._mlp_timer.start(66)
+            self._mlp_btn_play.setText("⏸ 暂停")
+
+    def _stop_mlp_timer(self):
+        """🛡 播放窗口销毁 → 停轮播 timer (防 activateTimers 崩溃)"""
+        try:
+            t = getattr(self, "_mlp_timer", None)
+            if t is not None:
+                t.stop()
+        except Exception:
+            pass
 
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
