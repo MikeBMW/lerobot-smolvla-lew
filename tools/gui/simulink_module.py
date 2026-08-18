@@ -2866,6 +2866,9 @@ class SimCanvas(QGraphicsView):
     def _clear_hover(self):
         for it in list(self._hover_items):
             try:
+                import sip
+                if sip.isdeleted(it):
+                    continue   # 🐛 2026-08-18: 已删 item wrapper → 跳过 (防 C 层崩)
                 if it.scene() is not None:
                     it._hover = False
                     it.update()
@@ -2879,12 +2882,17 @@ class SimCanvas(QGraphicsView):
         node_item = item if isinstance(item, SimNodeItem) and item.node.get("type") != "row_bg" \
             and item.scene() is not None else None
         for it in list(self._hover_items):
-            if it.scene() is None or it is not node_item:
-                try:
+            if it is node_item:
+                continue
+            try:
+                import sip
+                if sip.isdeleted(it):
+                    continue   # 🐛 2026-08-18: 已删 item wrapper → 跳过
+                if it.scene() is None:
                     it._hover = False
                     it.update()
-                except Exception:
-                    pass
+            except Exception:
+                pass
         if node_item is not None and not node_item._hover:
             node_item._hover = True
             node_item.update()
@@ -5449,6 +5457,12 @@ class SimulinkModule(QWidget):
             except Exception:
                 pass
         self.canvas._scene.clear()
+        # 🐛 2026-08-18: 清 hover 集合 — 旧 item wrapper 悬挂, hover timer 访问已删
+        # C++ item → it.scene() SIGSEGV (try/except 抓不住 C 层崩)
+        try:
+            self.canvas._hover_items = set()
+        except Exception:
+            pass
         self.nodes = []
         self.links = []
         self._items = {}
