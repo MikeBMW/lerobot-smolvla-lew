@@ -7402,7 +7402,8 @@ class SimulinkModule(QWidget):
                 from PyQt5.QtWidgets import QApplication as _QA
                 _mw = None
                 for _w in _QA.topLevelWidgets():
-                    if _w.isVisible() and "XSpace" in (_w.windowTitle() or ""):
+                    _t = _w.windowTitle() or ""
+                    if _w.isVisible() and "XSpace" in _t and "[画布]" not in _t:
                         _mw = _w
                         break
                 if _mw is None:
