@@ -21,11 +21,8 @@ import math  # 离线仿真正弦波
 # 🐛 2026-08-18: 禁用 Qt D-Bus — QDBusConnection 无 parent 孤儿 + 10s 轮询 timer
 # (孤儿 timer 追踪实锤 10s 周期 QObject), 与 activateTimers 批次碰撞 → NULL receiver
 import os as _os
-_os.environ.setdefault("QT_NO_DBUS", "1")
-_os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "/dev/null")
-# 🐛 2026-08-18: 绕开 glib 事件循环 — gdb 栈: activateTimers 由 g_main_context_iteration
-# 驱动 (Qt 5.15.14 glib 集成) → NULL receiver SIGSEGV; QT_NO_GLIB 强制 QEventDispatcherUNIX
-_os.environ.setdefault("QT_NO_GLIB", "1")
+# 🐛 2026-08-18: 曾试 QT_NO_DBUS/QT_NO_GLIB 绕 timer 批处理 — 无改善且可能引入新问题 → 撤
+# 回到 Qt 默认事件循环 (glib 模式 Qt 内部保护最多); 保留 QPixmapCache/ToolTip 禁用 (有实锤)
 
 # 🐛 2026-08-18: SIGSEGV 崩溃留证 — 段错误时 dump Python 栈到 /tmp/studio_faulth.log
 try:
@@ -88,6 +85,14 @@ except Exception:
     _TIMER_TRACE = None
 
 from PyQt5.QtCore import QTimer as _QTimerS  # noqa: E402  (studio 顶部 PyQt5.QtWidgets import 之后)
+
+def _tq(parent):
+    """⏱ 精确 timer (PreciseTimer) — 🐛 2026-08-18: CoarseTimer 默认批处理合并
+    → activateTimers 批次内 NULL receiver 竞态; PreciseTimer 单独调度无批次"""
+    t = _QTimerS(parent)
+    t.setTimerType(Qt.PreciseTimer)
+    return t
+
 
 def _oneshot(parent, ms, fn):
     """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
@@ -3596,7 +3601,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.log_text.setReadOnly(True)
         # 🐛 2026-08-09 老倪: 子线程日志队列 + 主线程 200ms flush (跨线程日志可靠显示)
         self._log_queue = []
-        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer = _tq(self)
         self._log_flush_timer.timeout.connect(self._flush_log_queue)
         # 🐛 2026-08-18: 200ms → 500ms 降频 (timer 批处理碰撞减半)
         self._log_flush_timer.start(500)
@@ -4085,7 +4090,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self._log(f"❌ {pol} 启动失败: {e}")
         from PyQt5.QtCore import QTimer
         try:
-            self._zoo_timer = QTimer(self)
+            self._zoo_timer = _tq(self)
             self._zoo_timer.timeout.connect(self._zoo_next)
             self._zoo_timer.start(15000)
         except Exception:
@@ -4364,7 +4369,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._remote_log_timer.stop()
                 except Exception:
                     pass
-            self._remote_log_timer = QTimer(self)
+            self._remote_log_timer = _tq(self)
             self._remote_log_timer.timeout.connect(self._poll_remote_log)
             self._remote_log_timer.start(5000)
             self._log("   └ 📡 远程日志流已开启 (每5秒增量拉取) …")
@@ -4542,7 +4547,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 self._remote_policy = _pmap.get(_m, cfg.replace("config_", "").replace(".yaml", "").split("_")[0])
             except Exception:
                 pass
-            self._remote_timer = QTimer(self)
+            self._remote_timer = _tq(self)
             self._remote_timer.timeout.connect(self._poll_remote_progress)
             self._remote_timer.start(30000)
         except Exception:
@@ -4699,7 +4704,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         try:
             if hasattr(self, "_env_timer"):
                 self._env_timer.stop()
-            self._env_timer = QTimer(self)
+            self._env_timer = _tq(self)
             self._env_timer.timeout.connect(self._poll_remote_env)
             self._env_timer.start(30000)
             self._poll_remote_env()
@@ -5050,7 +5055,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             try:
                 from PyQt5.QtCore import QTimer as _QTimer
                 if not getattr(self, "_holo_sync_timer", None):
-                    t = _QTimer(self)
+                    t = __tq(self)
                     t.timeout.connect(self._holo_sync_badges)
                     t.start(1200)
                     self._holo_sync_timer = t
@@ -5871,7 +5876,7 @@ class HardwareModule(SubModuleWidget):
         
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
-        self._timer = QTimer(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
+        self._timer = _tq(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
         self._timer.timeout.connect(self._refresh)
         # 📡 2026-08-09 老倪: 中间件 WS 实时通道 — Orin 状态实时推送 (非轮询)
         try:
@@ -6030,7 +6035,7 @@ class HardwareModule(SubModuleWidget):
         cam_group.setLayout(cam_layout)
         body.addWidget(cam_group)
         # 轮询定时器 (1s — cicd.html 100ms 太频, 快照 10s 间隔足够)
-        self._cam_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
+        self._cam_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
         self._cam_timer.timeout.connect(self._cam_poll)
         self._cam_last_ts = ""
         
@@ -7777,7 +7782,7 @@ class MonitorModule(SubModuleWidget):
         bl.addWidget(orin_bar)
         
         # Orin 状态轮询 (每5秒)
-        self._orin_timer = QTimer(self)
+        self._orin_timer = _tq(self)
         self._orin_timer.timeout.connect(self._refresh_orin_status)
         self._orin_timer.start(5000)
         self._refresh_orin_status()
@@ -8260,7 +8265,7 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
-        self._live_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
+        self._live_timer = _tq(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
         self._mlog("   ✅ 实时监控已启动")
@@ -8309,7 +8314,7 @@ class MonitorModule(SubModuleWidget):
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
         
-        self._live_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
+        self._live_timer = _tq(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
         self._mlog("   ✅ 离线仿真已启动")
@@ -8436,7 +8441,7 @@ class MonitorModule(SubModuleWidget):
             self.replay.advance()
         
         self._replay_display_running = True
-        self._replay_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
+        self._replay_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
         self._replay_timer.timeout.connect(_show_frame)
         self._replay_timer.start(200)
         self._mlog("   ✅ 终端显示已启动")
@@ -8990,7 +8995,7 @@ class InferencePanel(QWidget):
         self.cli_stream.setEnabled(False)
         # 定时更新统计
         from PyQt5.QtCore import QTimer
-        self._stats_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
+        self._stats_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
         self._stats_timer.timeout.connect(self._update_stats)
         self._stats_timer.start(1000)
     

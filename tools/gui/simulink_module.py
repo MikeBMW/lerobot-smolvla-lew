@@ -994,10 +994,18 @@ def link_id():
 # ════════════════════════════════════════════════════════════════
 import numpy as np   # 🐛 Scope 绘图需要 (文件顶部无 numpy import)
 
+def _tq(parent):
+    """⏱ 精确 timer (PreciseTimer) — 🐛 2026-08-18: CoarseTimer 默认批处理合并
+    → activateTimers 批次内 NULL receiver 竞态; PreciseTimer 单独调度无批次"""
+    t = QTimer(parent)
+    t.setTimerType(Qt.PreciseTimer)
+    return t
+
+
 def _oneshot(parent, ms, fn):
     """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
     PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治"""
-    t = QTimer(parent)
+    t = _tq(parent)
     t.setSingleShot(True)
     t.timeout.connect(fn)
     t.start(ms)
@@ -1361,7 +1369,7 @@ class CICDLinkItem(QGraphicsObject):
         self.src_item, self.dst_item = src_item, dst_item
         self.setZValue(5)
         self._flow = 0.0
-        self._t = QTimer(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
+        self._t = _tq(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
         self._t.timeout.connect(self._tick)
         # 🐛 2026-08-15: 不启动 — dash 动画已改静态高亮 (VcXsrv 黑条根治)
         # self._t.start(90)
@@ -1408,7 +1416,7 @@ class CICDPanel(QDialog):
         # 🎨 2026-08-06 老倪: CICD 面板改回深色背景 (与整体暗色调统一)
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stage_items = {}
-        self._pulse_timer = QTimer(self)
+        self._pulse_timer = _tq(self)
         self._pulse_timer.timeout.connect(self._pulse)
         self._pulse_timer.start(500)
         self._build()
@@ -1581,11 +1589,11 @@ class PipelinePanel(QDialog):
         self._spin = {}
         self._build()
         self._refresh()
-        self._timer = QTimer(self)
+        self._timer = _tq(self)
         self._timer.timeout.connect(self._refresh)
         self._timer.start(2000)
         # 远程状态轮询 (relay/orin, 后台线程不卡 UI)
-        self._remote_timer = QTimer(self)
+        self._remote_timer = _tq(self)
         self._remote_timer.timeout.connect(self._poll_remote)
         self._remote_timer.start(10000)
         self._poll_remote()
@@ -2573,7 +2581,7 @@ class SimLinkItem(QGraphicsObject):
         self._flow_offset = 0.0   # 流动动画偏移 (运行中)
         # 🐛 2026-08-15 老倪: "启动狂闪黑条" — 原无条件 start(80) 每 80ms 全画布连线重绘,
         #   VcXsrv 网络合成下闪成黑条。改惰性: 平时不启动, 仅在真正流动时由外部唤醒。
-        self._anim_timer = QTimer(self)   # 🐛 2026-08-18 挂 parent
+        self._anim_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
         self._anim_timer.timeout.connect(self._tick_flow)
         # 不 start — 需要动画时由 _wake_flow_anim() 启动
 
@@ -2752,7 +2760,7 @@ class SimCanvas(QGraphicsView):
         self._hover_items = set()  # 🐛 2026-08-12 老倪: hover 节点集合
         # 🐛 2026-08-12 老倪: 悬停轮询 — VcXsrv 下无按键 mouseMove 事件不达画布
         # (点击才有响应) → QCursor 150ms 轮询; 鼠标不动不重绘 (防狂闪); parent=this 防关闭崩溃
-        self._hover_timer = QTimer(self)
+        self._hover_timer = _tq(self)
         self._hover_timer.timeout.connect(self._poll_hover)
         # 🐛 2026-08-18: 150ms → 300ms 降频 — Qt5.15 activateTimers 批处理碰撞
         # (timer 回调改 timer 表 → NULL receiver SIGSEGV), 高频 timer 降频减碰撞
@@ -3293,14 +3301,14 @@ class SimulinkModule(QWidget):
         self._step_idx = 0
         self._sim_signals = {}  # 单步数据流: node_id → 输出 (上游传给下游)
         self._sim_t_end = 10.0
-        self._timer = QTimer(self)
+        self._timer = _tq(self)
         self._timer.timeout.connect(self._tick)
         # 教程状态
         self._tutorial_active = False
         self._tutorial_step = -1
         self._tutorial_hl = None      # 当前高亮 widget
         self._tutorial_orig_ss = {}   # 原样式表备份
-        self._tutorial_timer = QTimer(self)
+        self._tutorial_timer = _tq(self)
         self._tutorial_timer.timeout.connect(self._tutorial_pulse)
         self._tutorial_pulse_on = False
         # CI/CD 后台线程信号 (worker 线程 → 主线程日志)
@@ -4683,7 +4691,7 @@ class SimulinkModule(QWidget):
         os.makedirs(self._rec_dir, exist_ok=True)
         self._rec_idx = 0
         self._rec_start = time.time()
-        self._rec_timer = QTimer(self)
+        self._rec_timer = _tq(self)
         self._rec_timer.timeout.connect(self._rec_tick)
         self._rec_timer.start(1000)  # 1fps 采集 (2026-08-05: 500ms grab 大窗卡UI停止按钮无响应 → 1s 减负)
         # 🎬 录制中视觉指示: 按钮变红字 + 呼吸闪烁 (500ms 交替样式)
@@ -4691,7 +4699,7 @@ class SimulinkModule(QWidget):
         self.btn_record.setEnabled(True)   # 保持可点? 不, 录制中禁点(防重复), 用样式表强调
         self.btn_record.setEnabled(False)
         self._rec_busy = False  # 防堆积: 上一次 grab 未完成则跳过本次
-        self._rec_blink = QTimer(self)
+        self._rec_blink = _tq(self)
         self._rec_blink.timeout.connect(self._rec_blink_tick)
         self._rec_blink.start(500)
         self._rec_blink_on = True
@@ -5082,7 +5090,7 @@ class SimulinkModule(QWidget):
         #   底部状态栏 t 停在 0.00; 加独立 1s 时钟, 结束/停止时停)
         self._sim_t = 0.0
         if getattr(self, "_flow_clock", None) is None:
-            self._flow_clock = QTimer(self)
+            self._flow_clock = _tq(self)
             self._flow_clock.timeout.connect(self._flow_clock_tick)
         self._flow_clock.start(1000)
         for n in self.nodes:
@@ -7442,7 +7450,7 @@ class SimulinkModule(QWidget):
             self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_cache_发送_MLP插拔成功")
             # 绑定方法连接 (🐛 防 GC 竞态) — 只在首次创建 timer
             if not hasattr(self, "_mlp_timer") or self._mlp_timer is None:
-                self._mlp_timer = QTimer(self)
+                self._mlp_timer = _tq(self)
                 self._mlp_timer.timeout.connect(self._mlp_tick)
                 self._mlp_frames_ready.connect(self._mlp_on_frames_ready)
             # 🐛 2026-08-18: 66ms → 150ms (VcXsrv 无硬件加速, 画布每帧重绘=狂闪; 6.6fps 动作可辨)
@@ -8637,7 +8645,7 @@ class SimulinkModule(QWidget):
         self.btn_run.setText("⏳ 仿真中…")
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
-        self._ss_timer = QTimer(self)
+        self._ss_timer = _tq(self)
         self._ss_timer.timeout.connect(self._ss_tick)
         self._ss_timer.start(80)
         self._log("▶ 仿真开始 · 物理世界: 末端 (0.10, -0.06, 0.12) → 孔位 (0.25, 0, 0.05) · 光模块插拔")
