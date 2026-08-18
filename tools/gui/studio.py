@@ -34,8 +34,16 @@ try:
         def eventFilter(self, obj, ev):
             try:
                 if ev.type() == QEvent.Timer:
+                    chain = []
+                    o = obj
+                    while o is not None:
+                        try:
+                            chain.append(f"{o.metaObject().className()}[{o.objectName()}]")
+                        except Exception:
+                            chain.append("<?>")
+                        o = o.parent()
                     with open("/tmp/timer_trace.log", "a") as f:
-                        f.write(f"{obj.metaObject().className()} | {obj.objectName()}\n")
+                        f.write(f"{hex(id(obj))} {' > '.join(chain)}\n")
             except Exception:
                 pass
             return False
