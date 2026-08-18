@@ -1,0 +1,50 @@
+"""cognition.py — S3 认知决策层 (状态空间模型画布)
+
+🧪 创新检测与状态校正器 (卡尔曼更新核心):
+  残差 r = z_k − ĥ(x̂ₖ₋)  (传感器反馈 vs 先验预测之差)
+  接触概率 = σ(残差·增益)
+  校正后潜状态 x̂ₖ = x̂ₖ₋ + K·r  → 喂回先验预测器 (闭环)
+
+🧭 认知任务调度器 (原状态机, 握有否决权):
+  输入: u_ff 建议动作 (前馈加速器) + contact 概率/残差 (创新检测器)
+  决策: 阶段切换 (接近→抓取→抬起→转移→插入→完成) + 动作融合
+  融合: u = w_ff·u_ff + (1−w_ff)·u_fb
+  否决权: 残差 > 阈值 → 强制减速/重试 (快路径无权独自行动)
+"""
+import numpy as np
+
+
+def innovation(prior_pred, z_k):
+    """残差 (创新): 传感器反馈 vs 先验预测"""
+    return z_k - prior_pred
+
+
+def contact_probability(residual, gain=1.0):
+    """接触概率: σ(残差·增益) — 残差大 → 接触/碰撞概率高"""
+    return 1.0 / (1.0 + np.exp(-gain * residual))
+
+
+class CognitiveScheduler:
+    """🧭 认知任务调度器 — 握有否决权
+
+    STAGES: 接近 → 抓取 → 抬起 → 转移 → 插入 → 完成
+    """
+
+    STAGES = ["接近", "抓取", "抬起", "转移", "插入", "完成"]
+
+    def __init__(self, w_ff=0.3, contact_th=0.6, veto_th=2.0):
+        self.w_ff = w_ff          # 前馈建议权重
+        self.contact_th = contact_th  # 接触判定阈值
+        self.veto_th = veto_th    # 否决阈值 (残差)
+        self.stage_idx = 0
+
+    def fuse(self, u_ff, u_fb):
+        """动作融合: u = w_ff·u_ff + (1−w_ff)·u_fb"""
+        return self.w_ff * u_ff + (1.0 - self.w_ff) * u_fb
+
+    def decide(self, u_ff, u_fb, contact_p, residual):
+        """决策: 异常否决 → 强制减速; 否则融合动作 + 阶段推进"""
+        if residual > self.veto_th or contact_p > self.contact_th:
+            return 0.0, "否决: 减速/重试"      # 否决权生效
+        u = self.fuse(u_ff, u_fb)
+        return u, f"阶段 {self.STAGES[self.stage_idx]}"

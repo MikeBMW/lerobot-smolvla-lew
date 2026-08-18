@@ -141,7 +141,7 @@ meta = {{"model":"SmolVLA-FlowMatching","dataset":"{dataset_repo_id}","params":i
 with open(f"{{output}}/training_meta.json", "w") as f: json.dump(meta, f, indent=2)
 print(f"DONE: {{pct}}% loss (SmolVLA原生Flow Matching)")
 """
-        script_path = os.path.join(repo_root, "_train_temp.py")
+        script_path = os.path.join(repo_root, "experiments", "train", "_train_temp.py")
         with open(script_path, 'w') as f: f.write(train_script)
         
         try:

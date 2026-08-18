@@ -1,0 +1,373 @@
+{
+ "format": "zmax-simulink",
+ "version": "1.0",
+ "name": "🧮 状态空间模型 (时空感知 → 并行认知 → 决策执行)",
+ "sim": {
+  "dt": 0.01,
+  "t_end": 10.0,
+  "solver": "fixed-step"
+ },
+ "nodes": [
+  {
+   "id": "ssbg1",
+   "type": "row_bg",
+   "name": "S1 · 时空感知前端",
+   "x": -20,
+   "y": -190,
+   "w": 1480,
+   "icon": "📡",
+   "color": "#1f2937",
+   "h": 170,
+   "params": {
+    "bg": "#12263f",
+    "model": "state_space",
+    "desc": "S1 时空感知前端: 传感器融合 (RGB-D + 力觉 + 触觉) → 43D 统一状态向量 obs",
+    "source": "src/lerobot/policies/left_right/state_space/perception.py"
+   }
+  },
+  {
+   "id": "ssbg2",
+   "type": "row_bg",
+   "name": "S2 · 并行处理层 (快慢分离)",
+   "x": -20,
+   "y": 40,
+   "w": 1480,
+   "icon": "⚡",
+   "color": "#1f2937",
+   "h": 240,
+   "params": {
+    "bg": "#1a1030",
+    "model": "state_space",
+    "desc": "S2 并行处理层: 快 = 前馈加速器 (左脑MLP) · 慢 = 自适应状态估计器 (右脑GRU 卡尔曼校正)",
+    "source": "src/lerobot/policies/left_right/state_space/parallel.py"
+   }
+  },
+  {
+   "id": "ssbg3",
+   "type": "row_bg",
+   "name": "S3 · 认知决策层 (握有否决权)",
+   "x": -20,
+   "y": 320,
+   "w": 1480,
+   "icon": "🧭",
+   "color": "#1f2937",
+   "h": 190,
+   "params": {
+    "bg": "#3a1015",
+    "model": "state_space",
+    "desc": "S3 认知决策层: 认知任务调度器 (原状态机) 握有否决权 — u_ff(30%) + contact概率 + 预测残差 → 安全执行边界",
+    "source": "src/lerobot/policies/left_right/state_space/cognition.py"
+   }
+  },
+  {
+   "id": "ssbg4",
+   "type": "row_bg",
+   "name": "执行层 · 物理闭环",
+   "x": -20,
+   "y": 550,
+   "w": 1480,
+   "icon": "🤖",
+   "color": "#1f2937",
+   "h": 150,
+   "params": {
+    "bg": "#123a22",
+    "model": "state_space",
+    "desc": "执行层: 机器人执行器 (机械臂/夹爪) → 物理世界 → 传感器反馈 z_k → 卡尔曼校正闭环",
+    "source": "src/lerobot/policies/left_right/state_space/execution.py"
+   }
+  },
+  {
+   "id": "sssensor",
+   "type": "hardware",
+   "name": "📡 传感器融合",
+   "x": 120,
+   "y": -150,
+   "w": 240,
+   "icon": "📡",
+   "color": "#58a6ff",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "desc": "传感器融合: RGB-D + 力觉 + 触觉 → 43D 统一状态向量 (obs)"
+   },
+   "inputs": [],
+   "outputs": ["out1"],
+   "actions": []
+  },
+  {
+   "id": "ssobs",
+   "type": "system",
+   "name": "🧩 43D 统一状态向量 (obs)",
+   "x": 460,
+   "y": -150,
+   "w": 240,
+   "icon": "🧩",
+   "color": "#3fb950",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "desc": "43D 统一状态向量 obs: 位置/姿态/速度/力/触觉 融合 — 时空感知前端输出"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1", "out2"],
+   "actions": []
+  },
+  {
+   "id": "ssff",
+   "type": "model",
+   "name": "⚡ 前馈加速器",
+   "x": 120,
+   "y": 80,
+   "w": 240,
+   "icon": "⚡",
+   "color": "#FFD700",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "ff_accel": true,
+    "w_ff": 0.3,
+    "desc": "前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1"],
+   "actions": []
+  },
+  {
+   "id": "ssest",
+   "type": "model",
+   "name": "🔮 自适应状态估计器",
+   "x": 480,
+   "y": 80,
+   "w": 260,
+   "icon": "🔮",
+   "color": "#87CEEB",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "kalman_estimator": true,
+    "desc": "自适应状态估计器 (原右脑 GRU): 慢路径 — 递归潜状态 + 卡尔曼预测-校正"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1", "out2"],
+   "actions": []
+  },
+  {
+   "id": "sspred",
+   "type": "model",
+   "name": "📈 先验动力学预测器",
+   "x": 860,
+   "y": 80,
+   "w": 250,
+   "icon": "📈",
+   "color": "#87CEEB",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "prior_predict": true,
+    "desc": "先验动力学预测器: 预测 next_obs — 状态转移 A ≈ GRU 循环权重"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1"],
+   "actions": []
+  },
+  {
+   "id": "ssinnov",
+   "type": "model",
+   "name": "🧪 创新检测与状态校正器",
+   "x": 1120,
+   "y": 80,
+   "w": 280,
+   "icon": "🧪",
+   "color": "#FF6B6B",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "innovation": true,
+    "desc": "创新检测与状态校正器: 计算残差 (z_k − ĥ(x̂)) & 接触概率 — 卡尔曼更新核心"
+   },
+   "inputs": ["in1", "in2"],
+   "outputs": ["out1", "out2"],
+   "actions": []
+  },
+  {
+   "id": "sssched",
+   "type": "system",
+   "name": "🧭 认知任务调度器",
+   "x": 380,
+   "y": 360,
+   "w": 280,
+   "icon": "🧭",
+   "color": "#FF6B6B",
+   "h": 100,
+   "params": {
+    "state_space": true,
+    "cognitive_scheduler": true,
+    "desc": "认知任务调度器 (原状态机, 握有否决权): u_ff(30%) + contact概率 + 预测残差 → 阶段切换与动作融合"
+   },
+   "inputs": ["in1", "in2"],
+   "outputs": ["out1"],
+   "actions": []
+  },
+  {
+   "id": "sslimit",
+   "type": "system",
+   "name": "🛡 安全执行边界 (饱和限幅)",
+   "x": 780,
+   "y": 360,
+   "w": 280,
+   "icon": "🛡",
+   "color": "#d29922",
+   "h": 100,
+   "params": {
+    "state_space": true,
+    "sat_limit": true,
+    "desc": "安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1"],
+   "actions": []
+  },
+  {
+   "id": "ssact",
+   "type": "hardware",
+   "name": "🤖 机器人执行器",
+   "x": 380,
+   "y": 590,
+   "w": 280,
+   "icon": "🤖",
+   "color": "#3fb950",
+   "h": 80,
+   "params": {
+    "state_space": true,
+    "desc": "机器人执行器 (机械臂/夹爪): 接收物理指令执行"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1"],
+   "actions": []
+  },
+  {
+   "id": "ssworld",
+   "type": "hardware",
+   "name": "🌍 物理世界",
+   "x": 780,
+   "y": 590,
+   "w": 280,
+   "icon": "🌍",
+   "color": "#3fb950",
+   "h": 80,
+   "params": {
+    "state_space": true,
+    "desc": "物理世界: 执行结果 → 传感器反馈 z_k → 卡尔曼校正闭环"
+   },
+   "inputs": ["in1"],
+   "outputs": ["out1"],
+   "actions": []
+  }
+ ],
+ "links": [
+  {
+   "id": "lks1",
+   "f": "sssensor",
+   "t": "ssobs",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "融合特征"
+  },
+  {
+   "id": "lks2",
+   "f": "ssobs",
+   "t": "ssff",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "obs 43D"
+  },
+  {
+   "id": "lks3",
+   "f": "ssobs",
+   "t": "ssest",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "obs 43D"
+  },
+  {
+   "id": "lks4",
+   "f": "ssff",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "u_ff 建议 (30%)"
+  },
+  {
+   "id": "lks5",
+   "f": "ssest",
+   "t": "sspred",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "潜状态"
+  },
+  {
+   "id": "lks6",
+   "f": "ssest",
+   "t": "ssinnov",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "潜状态"
+  },
+  {
+   "id": "lks7",
+   "f": "sspred",
+   "t": "ssinnov",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "next_obs 预测"
+  },
+  {
+   "id": "lks8",
+   "f": "ssinnov",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "contact + 残差"
+  },
+  {
+   "id": "lks9",
+   "f": "sssched",
+   "t": "sslimit",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "阶段切换与动作融合"
+  },
+  {
+   "id": "lks10",
+   "f": "sslimit",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "物理指令"
+  },
+  {
+   "id": "lks11",
+   "f": "ssact",
+   "t": "ssworld",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "执行结果"
+  },
+  {
+   "id": "lks12",
+   "f": "ssworld",
+   "t": "ssinnov",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "z_k 传感器反馈"
+  },
+  {
+   "id": "lks13",
+   "f": "ssinnov",
+   "t": "sspred",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "校正后潜状态"
+  }
+ ]
+}

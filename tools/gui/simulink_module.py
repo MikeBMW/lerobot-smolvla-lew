@@ -2712,10 +2712,9 @@ class SimCanvas(QGraphicsView):
             a_train = menu.addAction("训练配置 (步数/batch/lr)")
         # 📂 打开源代码 (2026-08-12 老倪: YOLO/双脑等节点 params.source 映射源码目录;
         #   仅 src/ 开头显示 — 数据源节点的 source 是数据源标识非代码路径)
-        a_src = None
-        _nsrc = item.node.get("params", {}).get("source", "")
-        if _nsrc.startswith("src/"):
-            a_src = menu.addAction("打开源代码")
+        #   2026-08-17 老倪: 状态空间节点 source 也支持 tools/; 菜单项始终显示
+        #   (任何画布/节点右键都有「打开源代码」, 无映射时点击给明确提示)
+        a_src = menu.addAction("打开源代码")
         a_run = menu.addAction("运行节点")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
@@ -3280,12 +3279,15 @@ class SimulinkModule(QWidget):
                                       self.on_z_analysis, "#d29922")
         # ⚙️ 前馈 PD (2026-08-14 老倪: 顶层系统视角 — 前馈PD=顶层总系统, Z700=子系统)
         self.btn_ff_pd = mk_btn("⚙️ 前馈 PD", "前馈 PD 顶层系统: 增益调度PID+前馈 = 总系统, Z700 = 子系统 (双击🔬Z700子系统展开)", self.open_ff_pd_top, "#58a6ff")
+        # 🧮 状态空间 (2026-08-17 老倪: 状态空间模型画布 — 时空感知→并行认知→决策执行→物理闭环)
+        self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: S1时空感知前端(43D obs) → S2并行处理层(前馈加速器+自适应状态估计器) → S3认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)", self.open_state_space, "#87CEEB")
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_z_analysis)
         tl.addWidget(self.btn_ff_pd)
+        tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -4240,7 +4242,10 @@ class SimulinkModule(QWidget):
         🐛 WSL 路径 Windows 打不开 (UNC 被拒) → 复制到 C:\\zmax_src_view + explorer 打开"""
         src = node.get("params", {}).get("source", "")
         if not src:
-            self._log("⚠️ 该节点无源码映射 (params.source)")
+            self._log("⚠️ 该节点无源码映射 (params.source 为空) — 仅状态空间/双脑等带源码的节点可打开")
+            self._qmsg_info("打开源代码",
+                            "该节点未配置源码映射 (params.source)。\n\n"
+                            "带源码的节点: 🧮状态空间画布全部节点 / YOLO感知链 / 双脑等。")
             return
         path = os.path.join(self._repo_root(), src)
         if not os.path.exists(path):
@@ -6151,7 +6156,7 @@ class SimulinkModule(QWidget):
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
                         f"else docker rm -f zmax_train 2>/dev/null; docker run -d --runtime nvidia --gpus all "
                         f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
-                        f"zmax-train:latest python remote_train_entry.py --config_path {cfg_base} "
+                        f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg_base} "
                         f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'",
                         shell=True, timeout=40).decode().strip()
                     if "BUILDING" in out:
@@ -7261,6 +7266,10 @@ class SimulinkModule(QWidget):
         if params.get("z700_internal"):
             self._show_internal_detail(node)
             return
+        # 1.81) 🧮 状态空间模型 (2026-08-17 老倪: 状态空间画布 — 双击看各层详情)
+        if params.get("state_space"):
+            self._show_state_space_detail(node)
+            return
         # 1.12) 🌐 方案介绍节点 (2026-08-12 老倪: 画布节点双击 → 打开方案介绍分页)
         if params.get("solution_web"):
             self.open_solution_web()
@@ -7794,7 +7803,118 @@ class SimulinkModule(QWidget):
         lay.addWidget(b_close, alignment=Qt.AlignRight)
         dlg.exec_()
 
+    def _show_state_space_detail(self, node):
+        """🧮 状态空间模型节点详情 (2026-08-17 老倪: 状态空间画布双击)
+        每层 = 一个状态空间环节: 感知(观测方程) → 并行(前馈/估计) → 决策(调度) → 执行(限幅)"""
+        nm = node.get("name", "")
+        p = node.get("params", {})
+        if p.get("ff_accel"):
+            html = (
+                f"<h3 style='color:#FFD700;margin:4px'>⚡ 前馈加速器 (原左脑 MLP) — 快路径</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>快慢分离中的「快」: 直接映射, 无递归无延迟, 偏差产生前给力。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
+                f"<tr><td style='color:#00d4aa'>输入</td><td>obs 43D 统一状态向量</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出</td><td>建议动作 u_ff (权重 30%)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>模型</td><td>MLP 547K 参数 — obs→action 直接映射 (原左脑)</td></tr>"
+                f"<tr><td style='color:#ffd700'>融合权重</td><td>w_ff = {p.get('w_ff', 0.3):.2f} — 调度器按此比例采纳建议动作</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 快慢分离: 快=前馈加速器(毫秒级, 无迭代) · 慢=状态估计器(递归校正) — 快给建议, 慢给置信</p>")
+        elif p.get("kalman_estimator"):
+            html = (
+                f"<h3 style='color:#87CEEB;margin:4px'>🔮 自适应状态估计器 (原右脑 GRU) — 慢路径</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>慢=递归潜状态 + 卡尔曼预测-校正: 世界模型判断「现在到底在哪」。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>卡尔曼组件</th><th>GRU 对应</th><th>物理含义</th></tr>"
+                f"<tr><td style='color:#00d4aa'>状态转移 A</td><td>循环权重 W_hh</td><td>记住「世界怎么演」= 系统动力学</td></tr>"
+                f"<tr><td style='color:#00d4aa'>卡尔曼增益 K</td><td>更新门 + 重置门</td><td>自动调节「信预测 vs 信观测」</td></tr>"
+                f"<tr><td style='color:#00d4aa'>先验估计</td><td>(hₜ₋₁, obs, action) → 潜状态</td><td>猜执行动作后世界变成什么样</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出 out1</td><td>潜状态 → 先验动力学预测器</td><td>预测 next_obs</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出 out2</td><td>潜状态 → 创新检测器</td><td>算残差 & 接触概率</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 快慢分离: 慢路径递归校正, 给调度器「置信度」 — 预测误差大 → 降 u_ff 权重, 改信传感器</p>")
+        elif p.get("prior_predict"):
+            html = (
+                f"<h3 style='color:#87CEEB;margin:4px'>📈 先验动力学预测器 — 预测 next_obs</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>状态空间前向: x̂ₖ₋ = A·x̂ₖ₋₁ + B·uₖ (先验 = 还没看传感器就先猜)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
+                f"<tr><td style='color:#00d4aa'>输入</td><td>潜状态 (估计器 out1)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出</td><td>next_obs 预测 → 创新检测器 (残差基准)</td></tr>"
+                f"<tr><td style='color:#ffd700'>状态转移</td><td>A ≈ GRU 循环权重 — 世界模型学到的动力学</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 先验 vs 观测的差 = 创新 (残差): 残差大 = 世界出乎意料 → 接触/异常信号</p>")
+        elif p.get("innovation"):
+            html = (
+                f"<h3 style='color:#FF6B6B;margin:4px'>🧪 创新检测与状态校正器 — 残差 & 接触概率</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>卡尔曼更新核心: 用观测 z_k 校正先验, 残差 = 创新 (新信息)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>信号</th><th>来源</th><th>含义</th></tr>"
+                f"<tr><td style='color:#00d4aa'>残差 r</td><td>z_k − ĥ(x̂ₖ₋)</td><td>传感器反馈 vs 先验预测之差</td></tr>"
+                f"<tr><td style='color:#00d4aa'>接触概率</td><td>σ(残差·增益)</td><td>残差大 → 接触/碰撞概率高</td></tr>"
+                f"<tr><td style='color:#ffd700'>校正后潜状态</td><td>x̂ₖ = x̂ₖ₋ + K·r</td><td>反馈闭环: 状态被拉回真实</td></tr>"
+                f"<tr><td style='color:#ffd700'>输出 out1</td><td>contact + 残差 → 认知调度器</td><td>调度器据此刻阶段切换/否决</td></tr>"
+                f"<tr><td style='color:#ffd700'>输出 out2</td><td>校正后潜状态 → 先验预测器</td><td>闭环: 校正结果喂回动力学</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 卡尔曼反馈闭环: 传感器反馈 z_k (物理世界) → 残差 → 校正 → 预测 — 状态空间全程闭环</p>")
+        elif p.get("cognitive_scheduler"):
+            html = (
+                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 认知任务调度器 (原状态机) — 握有否决权</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
+                f"<tr><td style='color:#FFD700'>u_ff 建议动作</td><td>前馈加速器 (权重 30%)</td><td>快路径建议, 可被否决</td></tr>"
+                f"<tr><td style='color:#FF6B6B'>contact 概率 + 残差</td><td>创新检测器</td><td>慢路径证据: 异常 → 否决 u_ff</td></tr>"
+                f"<tr><td style='color:#00d4aa'>阶段切换</td><td>接近→抓取→抬起→转移→插入→完成</td><td>认知规划序列</td></tr>"
+                f"<tr><td style='color:#00d4aa'>动作融合</td><td>u = w_ff·u_ff + (1−w_ff)·u_fb</td><td>建议与反馈加权合成</td></tr>"
+                f"<tr><td style='color:#ffd700'>否决权</td><td>残差 > 阈值 → 强制减速/重试</td><td>认知层最后拍板</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 三层架构: 感知(观测) → 并行(快慢分离) → 决策(否决权) — 状态空间模型的核心认知</p>")
+        elif p.get("sat_limit"):
+            html = (
+                f"<h3 style='color:#d29922;margin:4px'>🛡 安全执行边界 — 饱和限幅</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>物理安全: 任何融合后的动作先过限幅再下发执行器。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
+                f"<tr><td style='color:#00d4aa'>输入</td><td>阶段切换与动作融合结果</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出</td><td>物理指令 → 机器人执行器</td></tr>"
+                f"<tr><td style='color:#ffd700'>饱和限幅</td><td>速度/力/位置限幅 — 防过冲防碰撞</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 认知层否决权 + 物理限幅 = 双层安全: 决策层看语义, 执行层卡物理</p>")
+        elif "传感器融合" in nm:
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>📡 传感器融合 — 时空感知前端</h3>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>传感器</th><th>维度</th><th>信息</th></tr>"
+                f"<tr><td style='color:#00d4aa'>RGB-D</td><td>视觉</td><td>位置/姿态/深度 (YOLO 2D→3D)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>力觉</td><td>六维力</td><td>接触力/力矩</td></tr>"
+                f"<tr><td style='color:#00d4aa'>触觉</td><td>Marker</td><td>抓取/接触/方向</td></tr>"
+                f"<tr><td style='color:#ffd700'>输出</td><td>43D 统一状态向量</td><td>obs — 全感知融合 (结构条件叠加)</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 43D = 39D 视觉结构 + 触觉 4D (触觉增维) — 时空感知 = 当前帧 + 历史帧时序</p>")
+        else:
+            html = (
+                f"<h3 style='color:#58a6ff;margin:4px'>🧩 {nm}</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>{p.get('desc', '')}</p>")
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"🧮 {nm}")
+        dlg.resize(640, 460)
+        lay = QVBoxLayout(dlg)
+        from PyQt5.QtWidgets import QTextBrowser
+        tb = QTextBrowser()
+        tb.setHtml(html)
+        tb.setStyleSheet("QTextBrowser { background:#0d1117; color:#e6edf3; "
+                         "border:1px solid #30363d; font-size:13px; }")
+        lay.addWidget(tb)
+        b_close = QPushButton("关闭")
+        b_close.clicked.connect(dlg.accept)
+        b_close.setStyleSheet("QPushButton { background:#30363d; color:#fff; border:none; "
+                              "border-radius:4px; padding:6px 16px; }")
+        lay.addWidget(b_close, alignment=Qt.AlignRight)
+        dlg.exec_()
+
     def on_ff_pd_config(self, node):
+        """⚙️ 前馈 PD 参数配置 (增益调度 PID → Z700 内部模块)"""
         mods = [n for n in self.nodes if n.get("params", {}).get("z700_internal")]
         if not mods:
             self._log("⚠️ 请先打开「⚙️ 前馈 PD」顶层系统 (Z700 内部模块在此)")
@@ -7926,6 +8046,40 @@ class SimulinkModule(QWidget):
                     gp = self.canvas.mapToGlobal(
                         self.canvas.mapFromScene(it.sceneBoundingRect().center()))
                     self._show_bubble(gp, "👆 双击金色高亮「🔬 Z700 子系统」\n→ 进入底层 Z700 完整工程", ms=6000)
+        except Exception:
+            pass
+
+    def open_state_space(self):
+        """🧮 状态空间模型画布 (2026-08-17 老倪: 按流程做状态空间新按钮 — 打开模型画布)
+        S1 时空感知前端 (传感器融合 → 43D obs)
+        S2 并行处理层 (快慢分离: 前馈加速器 MLP + 自适应状态估计器 GRU → 预测/校正)
+        S3 认知决策层 (认知任务调度器握否决权 → 安全执行边界)
+        执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 创新检测)
+        """
+        self.clear()
+        flow = os.path.join(self._repo_root(), "flows", "state_space_obs.json")
+        if not os.path.exists(flow) or not self.load_flow_file(flow, confirm=False):
+            self._qmsg_info("🧮 状态空间", "状态空间模型画布加载失败")
+            return
+        self._log("════ 🧮 状态空间模型 (时空感知 → 并行认知 → 决策执行 → 物理闭环) ════")
+        self._log("S1 时空感知前端: 📡传感器融合 (RGB-D+力觉+触觉) → 🧩43D统一状态向量 obs")
+        self._log("S2 并行处理层 (快慢分离): ⚡前馈加速器(原左脑MLP, u_ff权重30%) ‖ 🔮自适应状态估计器(原右脑GRU)")
+        self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪创新检测与状态校正器(残差&接触概率)")
+        self._log("S3 认知决策层 (握有否决权): 🧭认知任务调度器(原状态机) → 🛡安全执行边界(饱和限幅)")
+        self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪创新检测 (卡尔曼校正闭环)")
+        QTimer.singleShot(300, self._state_space_hint)
+
+    def _state_space_hint(self):
+        """🧮 状态空间加载后气泡引导: 高亮认知任务调度器 (握否决权核心)"""
+        try:
+            sched = next((n for n in self.nodes if n.get("params", {}).get("cognitive_scheduler")), None)
+            if sched is not None:
+                self._highlight_node(sched, ms=6000)
+                it = self._items.get(sched["id"])
+                if it is not None:
+                    gp = self.canvas.mapToGlobal(
+                        self.canvas.mapFromScene(it.sceneBoundingRect().center()))
+                    self._show_bubble(gp, "👆 双击「🧭 认知任务调度器」\n→ 状态空间决策详情", ms=6000)
         except Exception:
             pass
 

@@ -4238,7 +4238,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                        f"else "
                        f"docker run -d --runtime nvidia --gpus all "
                        f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
-                       f"zmax-train:latest python remote_train_entry.py --config_path {cfg} "
+                       f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg} "
                        f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'")
                 out = _sp.check_output(cmd, shell=True, timeout=40).decode().strip()
                 if "BUILDING" in out:
