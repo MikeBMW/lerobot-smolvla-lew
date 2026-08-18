@@ -7442,7 +7442,8 @@ class SimulinkModule(QWidget):
                 self._mlp_timer = QTimer(self)
                 self._mlp_timer.timeout.connect(self._mlp_tick)
                 self._mlp_frames_ready.connect(self._mlp_on_frames_ready)
-            self._mlp_timer.start(66)
+            # 🐛 2026-08-18: 66ms → 150ms (VcXsrv 无硬件加速, 画布每帧重绘=狂闪; 6.6fps 动作可辨)
+            self._mlp_timer.start(150)
             self._mlp_load_frames(0)
             self._log(f"🎥 操作视频: 画布内嵌播放 (7 个视频 · 双击暂停/继续)")
         except Exception as e:
