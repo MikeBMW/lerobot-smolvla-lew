@@ -352,7 +352,9 @@
     "state_space_rollout": true,
     "desc": "操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"
    },
-   "inputs": [],
+   "inputs": [
+    "in1"
+   ],
    "outputs": [],
    "actions": []
   }
@@ -466,6 +468,14 @@
    "id": "lks14",
    "f": "ssworld",
    "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "轨迹"
+  },
+  {
+   "id": "lks15",
+   "f": "ssworld",
+   "t": "ssvideo2",
    "f_port": "out1",
    "t_port": "in1",
    "label": "轨迹"
