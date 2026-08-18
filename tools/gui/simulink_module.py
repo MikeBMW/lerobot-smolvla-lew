@@ -7325,16 +7325,28 @@ class SimulinkModule(QWidget):
 
     def play_mlp_rollout(self):
         """🎥 操作视频 (状态空间画布) — GUI 内嵌播放 MLP 策略现成 rollout 视频
-        2026-08-18: 容器无 .venv/torch/权重 → rollout 生成必失败; 直接播 reports/ 现成 mp4"""
+        2026-08-18: 容器无 .venv/torch/权重 → rollout 生成必失败; 直接播 reports/ 现成 mp4
+        🐛 选片: 排除 rot180/rot 变体 (内容旋转过=文字反着), 固定优先级 (完整插拔优先)"""
         import glob as _glob
         root = self._repo_root()
         cands = _glob.glob(os.path.join(root, "reports", "*MLP*.mp4")) + \
                 _glob.glob(os.path.join(root, "reports", "*mlp*.mp4"))
-        cands = [c for c in cands if os.path.getsize(c) > 1000]  # 排除 0 字节残件
+        cands = [c for c in cands if os.path.getsize(c) > 1000]      # 排除 0 字节残件
+        cands = [c for c in cands if "rot" not in os.path.basename(c).lower()]  # 🐛 排除旋转变体
         if not cands:
-            self._log("⚠️ 无 MLP 操作视频 (reports/*MLP*.mp4) — 需在 4060/ECS (有 torch+权重) 生成后放回")
+            self._log("⚠️ 无正常 MLP 操作视频 (reports/*MLP*.mp4, 排除 rot 变体) — 需在 4060/ECS 生成")
             return
-        path = sorted(cands, key=os.path.getmtime)[-1]  # 最新
+        # 固定优先级: 完整插拔成功视频优先 (名字明确), 其余按 mtime 最新
+        _PRIORITY = ["发送_MLP插拔成功.mp4", "mlp_insert_success_final.mp4",
+                     "mlp_insert_success.mp4", "mlp_best_final.mp4", "mlp_best.mp4"]
+        path = None
+        for name in _PRIORITY:
+            hit = next((c for c in cands if os.path.basename(c) == name), None)
+            if hit:
+                path = hit
+                break
+        if path is None:
+            path = sorted(cands, key=os.path.getmtime)[-1]
         try:
             from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
             from PyQt5.QtMultimediaWidgets import QVideoWidget
