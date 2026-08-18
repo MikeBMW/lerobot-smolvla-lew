@@ -988,6 +988,91 @@ def link_id():
 
 
 # ════════════════════════════════════════════════════════════════
+# 📊 状态空间仿真 Scope — 波形窗口 (2026-08-18 老倪: 操作视频节点改为 Scope 内容)
+# 显示最近一次仿真的时间序列: 距离/前馈指令/残差/接触概率 + 阶段切换标记
+# ════════════════════════════════════════════════════════════════
+import numpy as np   # 🐛 Scope 绘图需要 (文件顶部无 numpy import)
+
+
+class StateSpaceScopeDialog(QDialog):
+    """📊 状态空间仿真 Scope — 2x2 子图 (距离/前馈/残差/接触概率 vs 时间) + 阶段切换竖线"""
+
+    def __init__(self, tr, parent=None):
+        super().__init__(parent)
+        self._tr = tr
+        self.setWindowTitle("📊 状态空间仿真 Scope")
+        self.setMinimumSize(820, 560)
+        self.setStyleSheet("QDialog { background:#0d1117; }")
+        self._stages = tr.get("stage", [])
+        self._t = np.asarray(tr.get("t", []), dtype=float)
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor("#0d1117"))
+        if len(self._t) < 2:
+            p.setPen(QColor("#8b949e"))
+            p.drawText(self.rect(), Qt.AlignCenter,
+                       "暂无仿真数据 — 先点「▶ 运行」跑一次状态空间仿真")
+            p.end()
+            return
+        r = self.rect().adjusted(12, 12, -12, -12)
+        # 2x2 子图: 距离孔位 / 前馈指令 / 残差 / 接触概率
+        plots = [
+            ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff"),
+            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922"),
+            ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e"),
+            ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950"),
+        ]
+        gw, gh = r.width() / 2, r.height() / 2
+        for i, (title, y, color) in enumerate(plots):
+            x0 = r.left() + (i % 2) * gw + 8
+            y0 = r.top() + (i // 2) * gh + 8
+            w, h = gw - 16, gh - 16
+            # 边框 + 标题
+            p.setPen(QColor("#30363d"))
+            p.drawRect(int(x0), int(y0), int(w), int(h))
+            p.setPen(QColor("#e6edf3"))
+            f = QFont("DejaVu Sans", 10); f.setBold(True)
+            p.setFont(f)
+            p.drawText(int(x0 + 8), int(y0 + 18), title)
+            # 坐标变换: t → x, y → 画布
+            t0, t1 = self._t[0], self._t[-1]
+            ymin, ymax = float(np.min(y)), float(np.max(y))
+            if ymax - ymin < 1e-9:
+                ymax = ymin + 1.0
+            def X(t): return x0 + 8 + (t - t0) / (t1 - t0) * (w - 16)
+            def Y(v): return y0 + h - 16 - (v - ymin) / (ymax - ymin) * (h - 28)
+            # 网格 + y 轴范围
+            p.setPen(QColor("#1e2740"))
+            for gy in range(3):
+                v = ymin + (ymax - ymin) * gy / 2
+                p.drawLine(int(X(t0)), int(Y(v)), int(X(t1)), int(Y(v)))
+            p.setPen(QColor("#8b949e"))
+            p.drawText(int(x0 + 8), int(y0 + h - 4), f"{ymin:.3f} — {ymax:.3f}")
+            # 曲线
+            pen = QPen(QColor(color), 2)
+            p.setPen(pen)
+            pts = [QPointF(X(tt), Y(vv)) for tt, vv in zip(self._t, y)]
+            for j in range(1, len(pts)):
+                p.drawLine(pts[j - 1], pts[j])
+            # 阶段切换竖线 + 标签 (第一子图画)
+            if i == 0:
+                p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
+                last = None
+                for j, st in enumerate(self._stages):
+                    s = st.replace("阶段 ", "")
+                    if s != last:
+                        last = s
+                        p.drawLine(int(X(self._t[j])), int(y0 + 16),
+                                   int(X(self._t[j])), int(y0 + h - 16))
+                        p.setPen(QColor("#d29922"))
+                        p.drawText(int(X(self._t[j]) + 3), int(y0 + 14), s[:2])
+                        p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
+        p.end()
+
+
+# ════════════════════════════════════════════════════════════════
 # 参数面板 (Block Parameters — 对标 Simulink 双击弹窗)
 # ════════════════════════════════════════════════════════════════
 class TrainConfigDialog(QDialog):
@@ -7232,34 +7317,19 @@ class SimulinkModule(QWidget):
 
         self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
 
-    def play_state_space_video(self):
-        """🎥 GUI 内嵌播放最近仿真视频 (非模态, QMediaPlayer — 2026-08-18 老倪)"""
-        path = os.path.join(self._repo_root(), "reports", "state_space_sim.mp4")
-        if not os.path.exists(path):
-            self._log("⚠️ 视频不存在 — 先点「▶ 运行」跑一次状态空间仿真 (完成自动生成视频)")
+    def show_state_space_scope(self):
+        """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
+        2026-08-18 老倪: 「操作视频」节点内容改为 Scope (曲线), 真视频 = metaworld rollout"""
+        tr = getattr(self, "_ss_tr", None)
+        if not tr or len(tr.get("t", [])) < 2:
+            self._log("⚠️ 暂无仿真数据 — 先点「▶ 运行」跑一次状态空间仿真 (完成后自动出波形)")
             return
         try:
-            from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-            from PyQt5.QtMultimediaWidgets import QVideoWidget
-            from PyQt5.QtCore import QUrl
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout
-            win = QDialog(self)
-            win.setWindowTitle("🎥 状态空间仿真 · 操作视频")
-            win.resize(720, 500)
-            lay = QVBoxLayout(win)
-            vw = QVideoWidget()
-            lay.addWidget(vw)
-            player = QMediaPlayer()
-            player.setVideoOutput(vw)
-            player.setMedia(QMediaContent(QUrl.fromLocalFile(path)))
-            win.show()
-            player.play()
-            # 保引用防 GC (关窗后释放)
-            self._video_win = win
-            self._video_player = player
-            self._log(f"🎥 播放操作视频: {path}")
+            dlg = StateSpaceScopeDialog(tr, parent=self)
+            self._show_nonmodal(dlg)
+            self._log("📊 仿真 Scope: 距离/前馈/残差/接触概率 波形 (阶段切换已标注)")
         except Exception as e:
-            self._log(f"⚠️ 视频播放失败: {e}")
+            self._log(f"⚠️ Scope 打开失败: {e}")
 
     def on_scope(self, **kw):
         """📊 Scope 示波器: 显示最近训练 loss 曲线 (Simulink Scope 对标)"""
@@ -7274,9 +7344,13 @@ class SimulinkModule(QWidget):
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
-        # 🎥 状态空间操作视频节点 (2026-08-18 老倪: GUI 内嵌播放最近仿真视频)
-        if params.get("state_space_video"):
-            self.play_state_space_video()
+        # 📊 状态空间仿真 Scope 节点 (2026-08-18 老倪: 波形曲线)
+        if params.get("state_space_scope"):
+            self.show_state_space_scope()
+            return
+        # 🎥 状态空间操作视频节点 → metaworld 训练后 rollout 视频对比窗口 (2026-08-18)
+        if params.get("state_space_rollout"):
+            self.on_infer_video()
             return
         # 0) 视频显示节点 (🎮 仿真推理对比 / 🎮 仿真视频 · <模型>, 2026-08-05 老倪):
         #    双击 → 同步播放; 单模型视频节点 (params.video_policy) → 只放该模型

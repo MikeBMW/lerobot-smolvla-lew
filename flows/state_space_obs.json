@@ -319,21 +319,40 @@
   {
    "id": "ssvideo",
    "type": "model",
-   "name": "🎥 操作视频",
+   "name": "📊 仿真 Scope",
    "x": 1120,
    "y": 590,
    "w": 280,
-   "icon": "🎥",
-   "color": "#d29922",
+   "icon": "📊",
+   "color": "#1f6feb",
    "h": 80,
    "params": {
     "state_space": true,
-    "state_space_video": true,
-    "desc": "操作视频: 双击播放最近一次仿真的 mp4 (俯视图: 接近→接触→抓取→插入)"
+    "state_space_scope": true,
+    "desc": "仿真 Scope: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)"
    },
    "inputs": [
     "in1"
    ],
+   "outputs": [],
+   "actions": []
+  },
+  {
+   "id": "ssvideo2",
+   "type": "model",
+   "name": "🎥 操作视频",
+   "x": 1120,
+   "y": 400,
+   "w": 280,
+   "icon": "🎥",
+   "color": "#d29922",
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "state_space_rollout": true,
+    "desc": "操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"
+   },
+   "inputs": [],
    "outputs": [],
    "actions": []
   }
