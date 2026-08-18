@@ -3960,9 +3960,13 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
     ZOO_POLICIES = ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow", "expert_mlp", "expert_policy"]
 
     def _zoo_next(self):
-        # 🐛 2026-08-09 老倪: 防重复交付 — 完成只触发一次自动交付 (远程提交后轮询误判循环刷屏)
+        # 🐛 2026-08-18 崩溃根因: 用户从未训练 → 队列空却误判"训练完成" → 触发
+        # _auto_finalize (rollout 视频生成线程 + PDF + 飞书) → 与 simulink 操作并发
+        # → timer 竞态 NULL receiver SIGSEGV (gdb rdi=0x0 实锤, 崩溃时间全在 45s 后)
         if not getattr(self, "_zoo_queue", None):
             self._zoo_queue = None
+            if not getattr(self, "_zoo_start_ts", 0):
+                return  # 🐛 从未训练 (无启动时间戳) → 不触发自动交付
             if getattr(self, "_zoo_finalized", False):
                 return  # 已交付过 — 不再重复 (否则 15s 轮询无限触发)
             self._zoo_finalized = True
