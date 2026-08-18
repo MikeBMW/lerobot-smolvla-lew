@@ -2879,7 +2879,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._holo_reg = {}
         try:
             from PyQt5.QtCore import QTimer as _QTH
-            _QTH.singleShot(600, self._register_holo_all)
+            _oneshot(self, 600, self._register_holo_all)
         except Exception:
             self._register_holo_all()
         
@@ -3643,7 +3643,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._log("Ready to start training...")
         # 🖥 2026-08-08 老倪: 模型引擎自动连接远程 GPU (凭据预填 ~/.zmax_ssh.json — 启动即连)
         from PyQt5.QtCore import QTimer as _QT
-        _QT.singleShot(3000, self._auto_connect_gpu)
+        _oneshot(self, 3000, self._auto_connect_gpu)
 
     def _auto_connect_gpu(self):
         """🖥 模型引擎自动连接远程 GPU — 2026-08-08 老倪: 连不上直接报 (不磨蹭不误导)"""
@@ -3912,7 +3912,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 # 🐛 2026-08-08 老倪: 跨线程禁用 GUI — 回主线程恢复按钮
                 try:
                     from PyQt5.QtCore import QTimer as _QT3
-                    _QT3.singleShot(0, lambda: self._btn_upload_ct.setEnabled(True))
+                    _oneshot(self, 0, lambda: self._btn_upload_ct.setEnabled(True))
                 except Exception:
                     pass
 
@@ -3963,7 +3963,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             finally:
                 try:
                     from PyQt5.QtCore import QTimer as _QT4
-                    _QT4.singleShot(0, lambda: None)
+                    _oneshot(self, 0, lambda: None)
                 except Exception:
                     pass
 
