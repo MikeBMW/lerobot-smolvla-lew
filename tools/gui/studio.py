@@ -78,7 +78,7 @@ try:
                         except Exception:
                             props = []
                         with open("/tmp/orphan_timers.log", "a") as f:
-                            f.write(line + f" | super={sup} inherits={inh} props={props}\n")
+                            f.write(line + f" | super={sup} inherits={inh} pycls={type(obj).__name__} props={props}\n")
             except Exception:
                 pass
             return False
