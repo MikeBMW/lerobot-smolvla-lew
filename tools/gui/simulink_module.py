@@ -7606,6 +7606,38 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
+    def show_physical_hardware(self):
+        """🌍 物理世界 — 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)"""
+        try:
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
+            # importlib 动态加载 (与 state_space_sim 同款 — 不依赖 sys.path)
+            import importlib.util
+            path = os.path.join(self._repo_root(),
+                                "src/lerobot/policies/left_right/state_space/execution.py")
+            _spec = importlib.util.spec_from_file_location("state_space.execution_hw", path)
+            _mod = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+            spec = _mod.PhysicalWorld.HARDWARE_SPEC
+            dlg = QDialog(self)
+            dlg.setWindowTitle("🌍 物理世界 · 硬件属性 (Z700)")
+            dlg.resize(560, 520)
+            lay = QVBoxLayout(dlg)
+            tbl = QTableWidget(len(spec), 2)
+            tbl.setHorizontalHeaderLabels(["属性", "当前配置"])
+            tbl.verticalHeader().setVisible(False)
+            tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            for i, (k, v) in enumerate(spec.items()):
+                tbl.setItem(i, 0, QTableWidgetItem(k))
+                tbl.setItem(i, 1, QTableWidgetItem(v))
+            tbl.setEditTriggers(QTableWidget.NoEditTriggers)
+            lay.addWidget(tbl)
+            self._show_nonmodal(dlg)
+            self._popup_on_main_screen(dlg)   # 🎯 show 之后定位 (move 在 show 前被覆盖)
+            self._log(f"🌍 物理世界硬件属性: {len(spec)} 项 (自由度/质量/惯量/精度/仿真参数)")
+        except Exception as e:
+            self._log(f"⚠️ 硬件属性面板失败: {e}")
+
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
         2026-08-18 老倪: 「操作视频」节点内容改为 Scope (曲线), 真视频 = metaworld rollout"""
@@ -7635,6 +7667,10 @@ class SimulinkModule(QWidget):
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 🌍 物理世界节点 → 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)
+        if params.get("state_space") and "物理世界" in node.get("name", ""):
+            self.show_physical_hardware()
+            return
         # 📊 状态空间仿真 Scope 节点 (2026-08-18 老倪: 波形曲线)
         if params.get("state_space_scope"):
             self.show_state_space_scope()
