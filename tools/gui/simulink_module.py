@@ -7607,9 +7607,10 @@ class SimulinkModule(QWidget):
             pass
 
     def show_physical_hardware(self):
-        """🌍 物理世界 — 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)"""
+        """🌍 物理世界 — 硬件属性面板 (质量/惯量/自由度/电机/广义质量) (2026-08-18 老倪)"""
         try:
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
+            from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem,
+                                         QHeaderView, QTabWidget, QLabel)
             # importlib 动态加载 (与 state_space_sim 同款 — 不依赖 sys.path)
             import importlib.util
             path = os.path.join(self._repo_root(),
@@ -7617,26 +7618,55 @@ class SimulinkModule(QWidget):
             _spec = importlib.util.spec_from_file_location("state_space.execution_hw", path)
             _mod = importlib.util.module_from_spec(_spec)
             _spec.loader.exec_module(_mod)
-            spec = _mod.PhysicalWorld.HARDWARE_SPEC
+            PW = _mod.PhysicalWorld
+            _pw = PW()   # 🐛 total_mass 是 property — 需实例访问
+
+            def _mk_table(rows, headers):
+                t = QTableWidget(len(rows), len(headers))
+                t.setHorizontalHeaderLabels(headers)
+                t.verticalHeader().setVisible(False)
+                t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+                t.setEditTriggers(QTableWidget.NoEditTriggers)
+                for i, row in enumerate(rows):
+                    for j, v in enumerate(row):
+                        t.setItem(i, j, QTableWidgetItem(str(v)))
+                return t
+
             dlg = QDialog(self)
-            dlg.setWindowTitle("🌍 物理世界 · 硬件属性 (Z700)")
-            dlg.resize(560, 520)
+            dlg.setWindowTitle("🌍 物理世界 · 硬件与动力学参数 (Z700)")
+            dlg.resize(680, 560)
             lay = QVBoxLayout(dlg)
-            tbl = QTableWidget(len(spec), 2)
-            tbl.setHorizontalHeaderLabels(["属性", "当前配置"])
-            tbl.verticalHeader().setVisible(False)
-            tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-            for i, (k, v) in enumerate(spec.items()):
-                tbl.setItem(i, 0, QTableWidgetItem(k))
-                tbl.setItem(i, 1, QTableWidgetItem(v))
-            tbl.setEditTriggers(QTableWidget.NoEditTriggers)
-            lay.addWidget(tbl)
+            tabs = QTabWidget(dlg)
+            # Tab1 硬件属性
+            tabs.addTab(_mk_table(list(PW.HARDWARE_SPEC.items()), ["属性", "当前配置"]),
+                        f"硬件属性 ({len(PW.HARDWARE_SPEC)})")
+            # Tab2 每轴电机参数
+            tabs.addTab(_mk_table(PW.AXIS_MOTORS,
+                                  ["轴", "额定扭矩 N·m", "峰值 N·m", "额定转速 rpm",
+                                   "减速比", "转子惯量 kg·m²", "功率 W"]),
+                        f"电机参数 ({len(PW.AXIS_MOTORS)} 轴)")
+            # Tab3 臂段质量
+            tabs.addTab(_mk_table([s + (f"{s[1]/_pw.total_mass*100:.1f}%",) for s in PW.ARM_SEGMENTS],
+                                  ["臂段", "质量 kg", "质心 m", "长度 m", "占比"]),
+                        f"臂段质量 (总 {_pw.total_mass} kg)")
+            # Tab4 广义质量矩阵 M(q) 7×7 (kg·m²)
+            M = _pw.generalized_mass()
+            head = ["轴"] + [f"J{i+1}" for i in range(6)] + ["夹爪"]
+            rows = [[f"J{i+1}" if i < 6 else "夹爪"] + [f"{M[i, j]:.3f}" for j in range(7)]
+                    for i in range(7)]
+            tabs.addTab(_mk_table(rows, head),
+                        "广义质量 M(q) 7×7")
+            lay.addWidget(tabs)
+            tip = QLabel("广义质量 = 典型位形 (竖直零位) 等效惯量: 对角线=转子惯量×减速比²+臂段负载, "
+                         "相邻轴耦合 5% (简化)")
+            tip.setStyleSheet("color:#8b949e; font-size:11px; padding:4px;")
+            lay.addWidget(tip)
             self._show_nonmodal(dlg)
             self._popup_on_main_screen(dlg)   # 🎯 show 之后定位 (move 在 show 前被覆盖)
-            self._log(f"🌍 物理世界硬件属性: {len(spec)} 项 (自由度/质量/惯量/精度/仿真参数)")
+            self._log(f"🌍 物理世界参数: 硬件 {len(PW.HARDWARE_SPEC)} 项 + 电机 {len(PW.AXIS_MOTORS)} 轴 + "
+                      f"臂段 {len(PW.ARM_SEGMENTS)} 段 (总 {_pw.total_mass} kg) + 广义质量 7×7")
         except Exception as e:
-            self._log(f"⚠️ 硬件属性面板失败: {e}")
+            self._log(f"⚠️ 物理世界参数面板失败: {e}")
 
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
