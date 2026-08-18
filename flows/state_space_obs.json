@@ -88,10 +88,13 @@
    "h": 88,
    "params": {
     "state_space": true,
-    "desc": "传感器融合: RGB-D + 力觉 + 触觉 → 43D 统一状态向量 (obs)"
+    "desc": "传感器融合: RGB-D + 力觉 + 触觉 → 43D 统一状态向量 (obs)",
+    "source": "src/lerobot/policies/left_right/state_space/perception.py"
    },
    "inputs": [],
-   "outputs": ["out1"],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   },
   {
@@ -106,10 +109,16 @@
    "h": 88,
    "params": {
     "state_space": true,
-    "desc": "43D 统一状态向量 obs: 位置/姿态/速度/力/触觉 融合 — 时空感知前端输出"
+    "desc": "43D 统一状态向量 obs: 位置/姿态/速度/力/触觉 融合 — 时空感知前端输出",
+    "source": "src/lerobot/policies/left_right/state_space/perception.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1", "out2"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1",
+    "out2"
+   ],
    "actions": []
   },
   {
@@ -126,10 +135,15 @@
     "state_space": true,
     "ff_accel": true,
     "w_ff": 0.3,
-    "desc": "前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)"
+    "desc": "前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)",
+    "source": "src/lerobot/policies/left_right/state_space/parallel.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   },
   {
@@ -145,10 +159,16 @@
    "params": {
     "state_space": true,
     "kalman_estimator": true,
-    "desc": "自适应状态估计器 (原右脑 GRU): 慢路径 — 递归潜状态 + 卡尔曼预测-校正"
+    "desc": "自适应状态估计器 (原右脑 GRU): 慢路径 — 递归潜状态 + 卡尔曼预测-校正",
+    "source": "src/lerobot/policies/left_right/state_space/parallel.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1", "out2"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1",
+    "out2"
+   ],
    "actions": []
   },
   {
@@ -164,10 +184,15 @@
    "params": {
     "state_space": true,
     "prior_predict": true,
-    "desc": "先验动力学预测器: 预测 next_obs — 状态转移 A ≈ GRU 循环权重"
+    "desc": "先验动力学预测器: 预测 next_obs — 状态转移 A ≈ GRU 循环权重",
+    "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   },
   {
@@ -183,10 +208,17 @@
    "params": {
     "state_space": true,
     "innovation": true,
-    "desc": "创新检测与状态校正器: 计算残差 (z_k − ĥ(x̂)) & 接触概率 — 卡尔曼更新核心"
+    "desc": "创新检测与状态校正器: 计算残差 (z_k − ĥ(x̂)) & 接触概率 — 卡尔曼更新核心",
+    "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
    },
-   "inputs": ["in1", "in2"],
-   "outputs": ["out1", "out2"],
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1",
+    "out2"
+   ],
    "actions": []
   },
   {
@@ -202,10 +234,16 @@
    "params": {
     "state_space": true,
     "cognitive_scheduler": true,
-    "desc": "认知任务调度器 (原状态机, 握有否决权): u_ff(30%) + contact概率 + 预测残差 → 阶段切换与动作融合"
+    "desc": "认知任务调度器 (原状态机, 握有否决权): u_ff(30%) + contact概率 + 预测残差 → 阶段切换与动作融合",
+    "source": "src/lerobot/policies/left_right/state_space/cognition.py"
    },
-   "inputs": ["in1", "in2"],
-   "outputs": ["out1"],
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   },
   {
@@ -221,10 +259,15 @@
    "params": {
     "state_space": true,
     "sat_limit": true,
-    "desc": "安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令"
+    "desc": "安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令",
+    "source": "src/lerobot/policies/left_right/state_space/safety.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   },
   {
@@ -239,10 +282,15 @@
    "h": 80,
    "params": {
     "state_space": true,
-    "desc": "机器人执行器 (机械臂/夹爪): 接收物理指令执行"
+    "desc": "机器人执行器 (机械臂/夹爪): 接收物理指令执行",
+    "source": "src/lerobot/policies/left_right/state_space/execution.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   },
   {
@@ -257,10 +305,15 @@
    "h": 80,
    "params": {
     "state_space": true,
-    "desc": "物理世界: 执行结果 → 传感器反馈 z_k → 卡尔曼校正闭环"
+    "desc": "物理世界: 执行结果 → 传感器反馈 z_k → 卡尔曼校正闭环",
+    "source": "src/lerobot/policies/left_right/state_space/execution.py"
    },
-   "inputs": ["in1"],
-   "outputs": ["out1"],
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
    "actions": []
   }
  ],

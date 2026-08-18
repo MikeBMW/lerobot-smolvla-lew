@@ -4239,7 +4239,9 @@ class SimulinkModule(QWidget):
 
     def open_node_source(self, node):
         """📂 打开节点源代码 (2026-08-12 老倪: 右键 YOLO/双脑等节点)
-        🐛 WSL 路径 Windows 打不开 (UNC 被拒) → 复制到 C:\\zmax_src_view + explorer 打开"""
+        🐛 WSL 路径 Windows 打不开 (UNC 被拒) → 复制到 C:\\zmax_src_view + explorer 打开
+        🆕 2026-08-18 老倪: 容器环境 (无 /mnt/c + 无 explorer.exe, WSL interop 断)
+        → 老链路必挂, 自动回落 SourceViewDialog 弹窗查看 (绝对路径+行号+复制路径)"""
         src = node.get("params", {}).get("source", "")
         if not src:
             self._log("⚠️ 该节点无源码映射 (params.source 为空) — 仅状态空间/双脑等带源码的节点可打开")
@@ -4250,27 +4252,40 @@ class SimulinkModule(QWidget):
         path = os.path.join(self._repo_root(), src)
         if not os.path.exists(path):
             self._log(f"⚠️ 源码不存在: {path}")
+            self._qmsg_info("打开源代码", f"源码文件不存在:\n{path}")
             return
-        import shutil, subprocess as _sp
-        # 🐛 2026-08-12 老倪: 复制目标必须 WSL 路径 (/mnt/c/...), Windows 路径 "C:\\..." 
-        # 在 Linux 是相对路径 → 复制到错误位置 → 右键打不开
-        _name = os.path.basename(src.rstrip("/\\"))
-        dst_mnt = os.path.join("/mnt/c/zmax_src_view", _name)   # shutil 复制用 (WSL)
-        dst_win = os.path.join(r"C:\zmax_src_view", _name).replace("/", "\\")  # explorer 用 (Windows 反斜杠)
+        import shutil
+        # 🆕 环境自适应: 有 Windows 通道 (WSL 老家 /mnt/c + explorer.exe) → explorer 打开;
+        # 无通道 (纯 Docker Desktop 容器) → 弹窗查看 (2026-08-18 老倪)
+        if os.path.isdir("/mnt/c") and shutil.which("explorer.exe"):
+            import subprocess as _sp
+            # 🐛 2026-08-12 老倪: 复制目标必须 WSL 路径 (/mnt/c/...), Windows 路径 "C:\\..." 
+            # 在 Linux 是相对路径 → 复制到错误位置 → 右键打不开
+            _name = os.path.basename(src.rstrip("/\\"))
+            dst_mnt = os.path.join("/mnt/c/zmax_src_view", _name)   # shutil 复制用 (WSL)
+            dst_win = os.path.join(r"C:\zmax_src_view", _name).replace("/", "\\")  # explorer 用
+            try:
+                if os.path.isdir(path):
+                    if os.path.exists(dst_mnt):
+                        shutil.rmtree(dst_mnt)
+                    shutil.copytree(path, dst_mnt, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+                else:
+                    os.makedirs(os.path.dirname(dst_mnt), exist_ok=True)
+                    shutil.copy2(path, dst_mnt)
+                # 🐛 2026-08-12 老倪: cmd start 打开目录/.py 静默失败 → explorer.exe
+                _sp.Popen(["explorer.exe", dst_win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                self._log(f"📂 已打开源码: {dst_win} ({src})")
+            except Exception as e:
+                self._log(f"⚠️ 打开源码失败: {e}")
+            return
+        # 容器链路: 弹窗查看 (无 /mnt/c 老链路)
         try:
-            if os.path.isdir(path):
-                if os.path.exists(dst_mnt):
-                    shutil.rmtree(dst_mnt)
-                shutil.copytree(path, dst_mnt, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-            else:
-                os.makedirs(os.path.dirname(dst_mnt), exist_ok=True)
-                shutil.copy2(path, dst_mnt)
-            # 🐛 2026-08-12 老倪: cmd start 打开目录/.py 静默失败 (无关联程序) →
-            # 改用 explorer.exe (资源管理器, 记忆验证过的链路)
-            _sp.Popen(["explorer.exe", dst_win], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-            self._log(f"📂 已打开源码: {dst_win} ({src})")
+            from node_logic_dialog import SourceViewDialog
+            dlg = SourceViewDialog(path, src, parent=self)
+            dlg.exec_()
+            self._log(f"📂 已打开源码弹窗: {path}")
         except Exception as e:
-            self._log(f"⚠️ 打开源码失败: {e}")
+            self._log(f"⚠️ 打开源码弹窗失败: {e}")
 
     def open_solution_web(self):
         """🌐 方案介绍 (2026-08-12 老倪: 画板直达方案介绍分页 — 不干扰主页)

@@ -12,11 +12,11 @@ NodeLogicDialog — 节点逻辑查看/编辑器
 import os
 import sys
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRect, QSize
 from PyQt5.QtGui import QColor, QFont, QTextCursor, QTextFormat
 from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox,
                              QPlainTextEdit, QPushButton, QTextEdit,
-                             QVBoxLayout, QFrame)
+                             QVBoxLayout, QFrame, QWidget)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import node_logic
@@ -292,6 +292,150 @@ class NodeLogicDialog(QDialog):
         mb.setStyleSheet(_MSG_SS)
         mb.addButton("好的", QMessageBox.AcceptRole)
         mb.exec_()
+
+
+class _CodeEditor(QPlainTextEdit):
+    """带行号边栏的只读编辑器 — resize 时同步行号区几何 (SourceViewDialog 用)"""
+
+    def __init__(self, ln_area=None):
+        super().__init__()
+        self._ln_area = ln_area
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self._ln_area:
+            cr = self.contentsRect()
+            self._ln_area.setGeometry(
+                QRect(cr.left(), cr.top(), self._ln_area.sizeHint().width(), cr.height()))
+
+
+class _LineNumberArea(QWidget):
+    """行号边栏 — 跟随 QPlainTextEdit 滚动 (SourceViewDialog 用)"""
+
+    def __init__(self, editor):
+        super().__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self):
+        digits = len(str(max(1, self._editor.blockCount())))
+        w = 10 + self._editor.fontMetrics().horizontalAdvance("9") * digits
+        return QSize(w, 0)
+
+    def paintEvent(self, ev):
+        from PyQt5.QtGui import QPainter
+        p = QPainter(self)
+        p.fillRect(ev.rect(), QColor(_PANEL))
+        block = self._editor.firstVisibleBlock()
+        num = block.blockNumber()
+        top = self._editor.blockBoundingGeometry(block).translated(
+            self._editor.contentOffset()).top()
+        while block.isValid() and top <= ev.rect().bottom():
+            if block.isVisible():
+                bottom = top + self._editor.blockBoundingRect(block).height()
+                p.setPen(QColor(_DIM))
+                p.drawText(0, int(top), self.width() - 6, int(bottom - top),
+                           Qt.AlignRight, str(num + 1))
+            block = block.next()
+            top = self._editor.blockBoundingGeometry(block).translated(
+                self._editor.contentOffset()).top()
+            num += 1
+
+
+class SourceViewDialog(QDialog):
+    """📂 打开源代码 (容器环境 2026-08-18 老倪):
+    容器无 /mnt/c + 无 explorer.exe (WSL interop 断) → explorer 链路打不开源码,
+    改弹窗查看: 绝对路径 + 行号 + 📋复制路径按钮 + 只读源码 (可选中复制)。"""
+
+    def __init__(self, abs_path, rel_src="", parent=None):
+        super().__init__(parent)
+        self._abs = abs_path
+        self.setWindowTitle(f"📂 {os.path.basename(abs_path)} — {rel_src}")
+        self.setMinimumSize(820, 600)
+        self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
+        self._build()
+        self._load()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(8)
+
+        head = QFrame()
+        head.setStyleSheet(f"QFrame {{ background:{_PANEL}; border-radius:8px; }}")
+        hl = QVBoxLayout(head)
+        hl.setContentsMargins(12, 10, 12, 10)
+        t1 = QLabel(f"📂 {os.path.basename(self._abs)}")
+        t1.setStyleSheet(f"color:{_TEXT}; font-size:14px; font-weight:700;")
+        loc_row = QHBoxLayout()
+        loc_row.setSpacing(6)
+        self.lbl_loc = QLabel(self._abs)
+        self.lbl_loc.setStyleSheet(f"color:{_GOLD}; font-size:11px; font-family:DejaVu Sans Mono;")
+        self.lbl_loc.setTextInteractionFlags(Qt.TextSelectableByMouse)  # 可选中复制
+        self.btn_copy = QPushButton("📋 复制路径")
+        self.btn_copy.setStyleSheet(
+            f"QPushButton {{ background:{_PANEL}; color:{_GOLD}; border:1px solid {_GOLD}66;"
+            " border-radius:4px; padding:2px 10px; font-size:10px; }"
+            f"QPushButton:hover {{ border-color:{_GOLD}; }}")
+        self.btn_copy.setCursor(Qt.PointingHandCursor)
+        self.btn_copy.clicked.connect(self._copy_path)
+        loc_row.addWidget(self.lbl_loc, 1)
+        loc_row.addWidget(self.btn_copy)
+        hl.addWidget(t1)
+        hl.addLayout(loc_row)
+        root.addWidget(head)
+
+        # 中部: 只读源码 + 行号 (编程式样式 — PyQt 子类 metaObject 名非 QSS 已知类,
+        # setStyleSheet 会报 "Could not parse stylesheet", 故用 QFont+QPalette)
+        self.edit = _CodeEditor()
+        from PyQt5.QtGui import QFont as _QF, QPalette as _QP
+        _f = _QF("DejaVu Sans Mono", 12)
+        _f.setStyleHint(_QF.Monospace)
+        self.edit.setFont(_f)
+        _pal = self.edit.palette()
+        _pal.setColor(_QP.Base, QColor(_BG))
+        _pal.setColor(_QP.Text, QColor(_TEXT))
+        _pal.setColor(_QP.Highlight, QColor(_GOLD))
+        _pal.setColor(_QP.HighlightedText, QColor("#000000"))
+        self.edit.setPalette(_pal)
+        self.edit.setFrameShape(QFrame.StyledPanel)
+        self.edit.setStyleSheet("")  # 清空继承样式, 避免警告
+        self.edit.setReadOnly(True)
+        self.edit.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.edit.setTabStopDistance(4 * 8)  # 等宽字体 4 空格
+        self._ln = _LineNumberArea(self.edit)
+        self.edit._ln_area = self._ln  # resize 时同步行号区几何
+        self.edit.blockCountChanged.connect(lambda _n: self._ln.update())
+        self.edit.updateRequest.connect(self._update_ln)
+        self.edit.cursorPositionChanged.connect(lambda: self._ln.update())
+        root.addWidget(self.edit, 1)
+
+        btn_close = QPushButton("❌ 关闭")
+        btn_close.setStyleSheet(_BTN_SS.format(bg=_PANEL, fg=_DIM, br=_BRD, hc=_TEXT))
+        btn_close.clicked.connect(self.reject)
+        btm = QHBoxLayout()
+        btm.addStretch(1)
+        btm.addWidget(btn_close)
+        root.addLayout(btm)
+
+    def _update_ln(self, rect, dy):
+        if dy:
+            self._ln.scroll(0, dy)
+        else:
+            self._ln.update(0, rect.y(), self._ln.width(), rect.height())
+        if rect.contains(self.edit.viewport().rect()):
+            self._ln.update(0, 0, self._ln.width(), self.edit.height())
+
+    def _copy_path(self):
+        from PyQt5.QtWidgets import QApplication as _QA
+        _QA.clipboard().setText(self._abs)
+        self.btn_copy.setText("📋 已复制!")
+
+    def _load(self):
+        try:
+            with open(self._abs, "r", encoding="utf-8", errors="replace") as f:
+                self.edit.setPlainText(f.read())
+        except Exception as e:
+            self.edit.setPlainText(f"⚠️ 读取失败: {e}")
 
 
 # ── 独立调试入口 ─────────────────────────────────────
