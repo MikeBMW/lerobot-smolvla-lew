@@ -7358,7 +7358,10 @@ class SimulinkModule(QWidget):
             lay = QVBoxLayout(win)
             vw = QVideoWidget()
             lay.addWidget(vw)
-            player = QMediaPlayer()
+            # 🐛 2026-08-18 崩溃实锤 (gdb): QMediaPlayer 无 parent → 窗口关闭 vw 销毁后
+            # player 内部 QTimer 仍激活 → notifyInternal2 分发事件给已销毁对象 → SIGSEGV
+            # (activateTimers → notifyInternal2)。player 挂 win 下, 窗口销毁级联销毁。
+            player = QMediaPlayer(win)
             player.setVideoOutput(vw)
             player.setMedia(QMediaContent(QUrl.fromLocalFile(path)))
             win.show()
