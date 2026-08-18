@@ -7396,24 +7396,8 @@ class SimulinkModule(QWidget):
             self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_frames")
             self._mlp_loading = False
             self._mlp_win = win
-            # 🐛 2026-08-18: 播放器弹到扩展屏看不到 — self.window() 是浮动画布(副屏);
-            # 找主窗口 (标题含 XSpace 的可见顶层窗口) 所在屏
-            try:
-                from PyQt5.QtWidgets import QApplication as _QA
-                _mw = None
-                for _w in _QA.topLevelWidgets():
-                    _t = _w.windowTitle() or ""
-                    if _w.isVisible() and "XSpace" in _t and "[画布]" not in _t:
-                        _mw = _w
-                        break
-                if _mw is None:
-                    _mw = self.window()
-                _scr = _QA.screenAt(_mw.frameGeometry().center()) or _QA.primaryScreen()
-                _g = _scr.availableGeometry()
-                win.move(_g.center().x() - win.width() // 2,
-                         _g.center().y() - win.height() // 2)
-            except Exception:
-                pass
+            # 🎯 弹主窗口所在屏 (🐛 2026-08-18: self.window() 是浮动画布(副屏))
+            self._popup_on_main_screen(win)
             # 绑定方法连接 (🐛 防 GC 竞态)
             self._mlp_timer = QTimer(win)
             self._mlp_timer.timeout.connect(self._mlp_tick)
@@ -7555,6 +7539,25 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
+    def _popup_on_main_screen(self, dlg):
+        """🎯 弹窗定位到主窗口所在屏 (🐛 2026-08-18: 画布浮动到副屏后所有弹窗跑副屏看不见)"""
+        try:
+            from PyQt5.QtWidgets import QApplication as _QA
+            _mw = None
+            for _w in _QA.topLevelWidgets():
+                _t = _w.windowTitle() or ""
+                if _w.isVisible() and "XSpace" in _t and "[画布]" not in _t:
+                    _mw = _w
+                    break
+            if _mw is None:
+                _mw = self.window()
+            _scr = _QA.screenAt(_mw.frameGeometry().center()) or _QA.primaryScreen()
+            _g = _scr.availableGeometry()
+            dlg.move(_g.center().x() - dlg.width() // 2,
+                     _g.center().y() - dlg.height() // 2)
+        except Exception:
+            pass
+
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
         2026-08-18 老倪: 「操作视频」节点内容改为 Scope (曲线), 真视频 = metaworld rollout"""
@@ -7564,6 +7567,7 @@ class SimulinkModule(QWidget):
             return
         try:
             dlg = StateSpaceScopeDialog(tr, parent=self)
+            self._popup_on_main_screen(dlg)   # 🎯 弹主窗口所在屏 (浮动画布副屏修复)
             self._show_nonmodal(dlg)
             self._log("📊 仿真波形: 距离/前馈/残差/接触概率 曲线 (阶段切换已标注)")
         except Exception as e:
