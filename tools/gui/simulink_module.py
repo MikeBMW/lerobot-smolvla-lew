@@ -7540,21 +7540,26 @@ class SimulinkModule(QWidget):
             pass
 
     def _popup_on_main_screen(self, dlg):
-        """🎯 弹窗定位到主窗口所在屏 (🐛 2026-08-18: 画布浮动到副屏后所有弹窗跑副屏看不见)"""
+        """🎯 弹窗定位到主窗口区域内居中 (🐛 2026-08-18: VcXsrv 多屏=一个虚拟大屏,
+        '屏幕居中'会落在两个屏之间; 直接按主窗口几何居中, 保证可见)"""
         try:
             from PyQt5.QtWidgets import QApplication as _QA
             _mw = None
+            _mx = 0
             for _w in _QA.topLevelWidgets():
                 _t = _w.windowTitle() or ""
-                if _w.isVisible() and "XSpace" in _t and "[画布]" not in _t:
+                if not _w.isVisible() or "[画布]" in _t:
+                    continue
+                _g = _w.frameGeometry()
+                _a = _g.width() * _g.height()
+                if _a > _mx:
+                    _mx = _a
                     _mw = _w
-                    break
             if _mw is None:
                 _mw = self.window()
-            _scr = _QA.screenAt(_mw.frameGeometry().center()) or _QA.primaryScreen()
-            _g = _scr.availableGeometry()
-            dlg.move(_g.center().x() - dlg.width() // 2,
-                     _g.center().y() - dlg.height() // 2)
+            _g = _mw.frameGeometry()
+            dlg.move(_g.left() + (_g.width() - dlg.width()) // 2,
+                     _g.top() + (_g.height() - dlg.height()) // 2)
         except Exception:
             pass
 
