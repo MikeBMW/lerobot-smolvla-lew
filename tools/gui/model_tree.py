@@ -2589,13 +2589,23 @@ class ModelTreeDock(QWidget):
     def refresh(self):
         self.tree.clear()
         self.lbl_hint.setText("画布节点参数一览 · 双击参数值可标定/调节 (写回画布)")
-        # 🧩 模型 Feature (2026-08-19 老倪: 数据字典列表增加当前模型特征 —
-        #   模型特征 + 标准接口 + 模块化可替换 + 工程映射, 状态空间先行)
+        # 🧩 能力数据库 feature.dbc (2026-08-19 老倪: 参考 CANoe DBC, 文件即配置事实 —
+        #   同一平台/容器配置不同模型; 缺失时自动从能力库生成)
         try:
-            from model_feature import build_model_feature_item
-            mf = build_model_feature_item(self.module)
-            if mf is not None:
-                self.tree.addTopLevelItem(mf)
+            import feature_dbc as _fdb
+            _dbc = _fdb.load_dbc()
+            if _dbc is None:
+                from model_feature import (FEATURE_LIBRARY, MODEL_MANIFESTS,
+                                           DATAFLOW_STAGES, INTERFACE_DEFS)
+                _fdb.write_dbc(FEATURE_LIBRARY, MODEL_MANIFESTS,
+                               DATAFLOW_STAGES, INTERFACE_DEFS)
+                _dbc = _fdb.load_dbc()
+            if _dbc:
+                _item = _fdb.build_tree_from_dbc(
+                    _dbc, self.module,
+                    lambda texts: QTreeWidgetItem(texts), Qt.UserRole)
+                if _item is not None:
+                    self.tree.addTopLevelItem(_item)
         except Exception:
             pass
         # 系统参数
