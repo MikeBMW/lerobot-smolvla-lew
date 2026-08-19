@@ -2478,6 +2478,15 @@ class ModelTreeDock(QWidget):
         self.btn_export.setToolTip("导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载")
         self.btn_export.clicked.connect(self._export_feature)
         hdr.addWidget(self.btn_export)
+        # 🧩 导入第三方模型 (2026-08-19 老倪: 标准格式一键导入 → 加载进平台)
+        self.btn_import = QPushButton("导入")
+        self.btn_import.setStyleSheet(
+            "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+            "border-radius:4px;padding:3px 10px;font-size:11px;}"
+            "QPushButton:hover{background:#30363d;}")
+        self.btn_import.setToolTip("导入第三方模型包 (zip/目录, 标准格式 zmax-model-v1)")
+        self.btn_import.clicked.connect(self._import_model)
+        hdr.addWidget(self.btn_import)
         lay.addLayout(hdr)
 
         # 📐 2026-08-15 老倪: 现场标定向导 (3步标定法, 只看物理现象)
@@ -2588,6 +2597,44 @@ class ModelTreeDock(QWidget):
         self.lbl_hint.setText(msg)
         try:
             self.btn_export.setEnabled(True)
+        except Exception:
+            pass
+
+    # ── 导入第三方模型 (2026-08-19 老倪) ──
+    def _import_model(self):
+        """选模型包 → 一键导入 (校验/注册/挂载/冒烟) → 刷新树"""
+        from PyQt5.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(self, "选择第三方模型包 (zip)",
+                                              "", "模型包 (*.zip);;所有文件 (*)")
+        if not path:
+            return
+        self.lbl_hint.setText("⏳ 正在校验并导入模型包…")
+        self.btn_import.setEnabled(False)
+        import threading
+
+        def _work():
+            msg = "⚠️ 导入失败"
+            try:
+                from model_importer import import_model
+                ok, node, m = import_model(path)
+                msg = m
+            except Exception as ex:
+                msg = f"⚠️ 导入异常: {ex}"
+            self.export_done.emit(msg)
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _on_export_done(self, msg):
+        self.lbl_hint.setText(msg)
+        try:
+            self.btn_export.setEnabled(True)
+            self.btn_import.setEnabled(True)
+        except Exception:
+            pass
+        # 导入成功后刷新树 (能力库出现新节点)
+        try:
+            if "导入成功" in msg:
+                self.refresh()
         except Exception:
             pass
 
