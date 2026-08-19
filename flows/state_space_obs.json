@@ -534,7 +534,7 @@
    "actions": [],
    "color": "#3fb950",
    "params": {
-    "mode": "train",
+    "mode": "infer",
     "state_space": true,
     "desc": "运行模式选择: 🚀训练=训练真实模型 / 📷推理=加载真实模型rollout · 双击切换"
    }
