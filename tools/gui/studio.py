@@ -10026,6 +10026,9 @@ class StudioMainWindow(QMainWindow):
 
         # ====== 文档菜单（帮助文档） ======
         m_doc = mb.addMenu("帮助文档(&H)")
+        # ✨ Feature List 产品特征清单 (2026-08-19 老倪: 展品特征 — 场景/功能/标准接口/性能指标, 不强调模型架构)
+        m_doc.addAction("✨ Feature List · 产品特征清单", self._show_feature_list)
+        m_doc.addSeparator()
         # 📄 导出 PDF (2026-08-12 老倪: 帮助文档要有 PDF 导出功能)
         m_doc.addAction("📄 导出文档为 PDF…", self._export_doc_pdf)
         m_doc.addSeparator()
@@ -10438,6 +10441,24 @@ del "%~f0"
         _sp.Popen(["cmd.exe", "/c", "start", "", _win_pdf.replace("/", "\\")],
                   stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
         self.statusBar().showMessage(f"📄 已导出 PDF: {out}")
+
+    def _show_feature_list(self):
+        """✨ Feature List 产品特征清单 (2026-08-19 老倪: 右侧下拉菜单入口)
+        展品特征: 场景/功能/标准接口/性能指标, 不强调模型架构 (feature_list.py)"""
+        try:
+            from feature_list import FeatureListDialog
+        except ImportError as ex:
+            _msg_ok(self, "打开失败", f"缺少 feature_list.py: {ex}", kind="warning")
+            return
+        try:
+            dlg = FeatureListDialog(self)
+            dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
+            dlg.raise_()
+            dlg.activateWindow()
+            dlg.show()  # 非模态 (弹窗零容忍铁律, 不 exec_)
+            self.statusBar().showMessage("✨ Feature List · 产品特征清单")
+        except Exception as ex:
+            _msg_ok(self, "打开失败", f"{ex}", kind="warning")
 
     def _mk_doc_action(self, label, paths_and_opener):
         """创建文档打开动作（支持多路径回退）"""
