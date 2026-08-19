@@ -2663,6 +2663,23 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(QColor(pal["label"]))
             painter.drawText(QRectF(30, 24, self.w - 34, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              f"叠加: latent += state×{gate:.1f} ({sd}D)")
+        elif t == "mode_switch":
+            # 🔀 训练/推理模式开关 (2026-08-19 老倪: 数据层运行模式选择)
+            md = params.get("mode", "train")
+            md_col = QColor("#3fb950") if md == "train" else QColor("#58a6ff")
+            painter.setBrush(QColor("#0d1117"))
+            painter.setPen(QPen(md_col, 1.4))
+            painter.drawEllipse(QRectF(14, 26, 13, 13))
+            painter.setBrush(QColor(md_col))
+            painter.drawEllipse(QRectF(17.5, 29.5, 6, 6))
+            painter.setFont(QFont("Arial", 8, QFont.Bold))
+            painter.setPen(QColor("#e6edf3"))
+            painter.drawText(QRectF(33, 22, self.w - 46, 16), Qt.AlignVCenter | Qt.AlignLeft,
+                             "🚀 训练" if md == "train" else "📷 推理")
+            painter.setPen(QColor("#8b949e"))
+            painter.setFont(QFont("Arial", 7))
+            painter.drawText(QRectF(33, 38, self.w - 46, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                             "双击切换" if md == "train" else "双击切换")
         elif t == "train_gate":
             # ☑ 训练开关 (2026-08-05 老倪: checkbox 打勾=训练 / 不打=不训练)
             en = params.get("train_enabled", True)
@@ -8050,6 +8067,21 @@ class SimulinkModule(QWidget):
         dlg = FlowScopeDialog(self)
         self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
+    def on_run_env(self, node=None, **kw):
+        """📦 数据层运行环境 — 按当前模式运行真实模型 (2026-08-19 老倪)
+        模式来自 🔀 训练/推理 开关 (双击切换): 
+          🚀 训练模式 → 训练真实模型 (metaworld 数据, policy 取数据源节点配置)
+          📷 推理模式 → 加载已训练真实模型 rollout"""
+        mode = self._current_mode() or "train"
+        policy = "left_right"
+        if node:
+            policy = node.get("params", {}).get("policy", policy)
+        if mode == "train":
+            self._log(f"📦 数据层 · 🚀 训练模式 → 训练真实模型 (policy={policy}, metaworld 数据)")
+            return self.on_train(policy=policy)
+        self._log("📦 数据层 · 📷 推理模式 → 加载真实模型 rollout")
+        return self.on_infer()
+
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
@@ -8073,6 +8105,10 @@ class SimulinkModule(QWidget):
         # 0) 子系统节点 (Simulink Subsystem): 双击展开内部流程
         if params.get("subsystem"):
             self._open_subsystem(node)
+            return
+        # 0.9) 📦 数据层运行环境 (2026-08-19 老倪: 双击数据源 = 按当前模式运行真实模型)
+        if params.get("run_env"):
+            self.on_run_env(node)
             return
         # 1) 数据源节点: 切换激活 — 🐛 2026-08-12 老倪: 排除 insert_video/insert_report
         #   (▶视频/📄PDF 节点有 source 源码映射, 原被本分支抢先 → 双击变数据源切换)

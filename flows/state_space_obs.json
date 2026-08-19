@@ -91,7 +91,9 @@
     "desc": "传感器融合: RGB-D + 力觉 + 触觉 → 43D 统一状态向量 (obs)",
     "source": "src/lerobot/policies/left_right/state_space/perception.py"
    },
-   "inputs": [],
+   "inputs": [
+    "in1"
+   ],
    "outputs": [
     "out1"
    ],
@@ -369,7 +371,9 @@
    "y": -384,
    "w": 240,
    "h": 88,
-   "inputs": [],
+   "inputs": [
+    "in1"
+   ],
    "outputs": [
     "out1"
    ],
@@ -469,6 +473,70 @@
     "model": "state_space",
     "source": "tools/gui/yolo_perception.py",
     "desc": "感知层: 🎯YOLO目标识别(B1) → 📐2D→3D空间位姿(B2) · 🖐触觉感知(B3) · 🔍外观质量检测(B5) — 参考 Z700 感知执行层 (视觉800万像素/力觉0.1N/触觉4D)"
+   }
+  },
+  {
+   "id": "ssbg_data",
+   "name": "数据层 · metaworld 运行环境 (数据→感知→决策→执行)",
+   "type": "row_bg",
+   "icon": "📦",
+   "x": -20,
+   "y": -680,
+   "w": 1480,
+   "h": 200,
+   "color": "#1f2937",
+   "params": {
+    "bg": "#12263f",
+    "model": "state_space",
+    "source": "metaworld",
+    "desc": "数据层: 📦metaworld 数据源 (peg-insert 39D/4D) + 🔀训练/推理模式选择 — 双击数据源按模式运行真实模型"
+   }
+  },
+  {
+   "id": "ssdata",
+   "name": "📦 metaworld 数据源",
+   "type": "hardware",
+   "icon": "📦",
+   "x": 40,
+   "y": -630,
+   "w": 300,
+   "h": 88,
+   "inputs": [],
+   "outputs": [
+    "out1",
+    "out2"
+   ],
+   "actions": [],
+   "color": "#58a6ff",
+   "params": {
+    "source": "metaworld",
+    "task": "peg-insert-side-v3",
+    "frames": 4800,
+    "state_dim": 39,
+    "action_dim": 4,
+    "policy": "left_right",
+    "run_env": true,
+    "state_space": true,
+    "desc": "数据层·运行环境: metaworld 仿真数据 (39D 状态/4D 动作) → 感知层; 双击=按当前模式运行真实模型 (🚀训练/📷推理)"
+   }
+  },
+  {
+   "id": "ssmode",
+   "name": "🔀 训练/推理",
+   "type": "mode_switch",
+   "icon": "🔀",
+   "x": 420,
+   "y": -630,
+   "w": 300,
+   "h": 88,
+   "inputs": [],
+   "outputs": [],
+   "actions": [],
+   "color": "#3fb950",
+   "params": {
+    "mode": "train",
+    "state_space": true,
+    "desc": "运行模式选择: 🚀训练=训练真实模型 / 📷推理=加载真实模型rollout · 双击切换"
    }
   }
  ],
@@ -624,6 +692,22 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "检测区域"
+  },
+  {
+   "id": "lksd1",
+   "f": "ssdata",
+   "t": "ssyolo",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "图像流"
+  },
+  {
+   "id": "lksd2",
+   "f": "ssdata",
+   "t": "sssensor",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "状态流 39D"
   }
  ]
 }
