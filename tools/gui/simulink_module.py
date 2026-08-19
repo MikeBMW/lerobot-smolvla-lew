@@ -3078,6 +3078,21 @@ class SimCanvas(QGraphicsView):
     # 🐛 2026-08-18: 不重写 scrollContentsBy — MinimalViewportUpdate 默认滚动
     # = XCopyArea 位块移动(服务器端, 正常) + 露出小条重绘(小 XPutImage, 正常)。
     # 任何全量 repaint/update 都会触发 VcXsrv 大 XPutImage bug (只画顶部一点)
+    # 🐛 2026-08-19 复现: VcXsrv 会话状态变化后 XCopyArea 搬运也坏 —
+    #   滚动时上半部(露出重绘)正常、下半部(搬运区)残留不动。
+    # → 滚动后分块强制同步重绘 (400px 高一块 = 小 XPutImage, 绕开大图 bug;
+    #   repaint 同步绘制不合并 region, 逐块立即生效)
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        try:
+            vp = self.viewport()
+            w, h = vp.width(), vp.height()
+            if w > 20 and h > 20:
+                _step = 400
+                for _y in range(0, h, _step):
+                    vp.repaint(0, _y, w, min(_step, h - _y))
+        except Exception:
+            pass
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MiddleButton:
