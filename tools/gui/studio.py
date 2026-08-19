@@ -10479,6 +10479,11 @@ del "%~f0"
             # (repaint 同步立即绘制, 逐次覆盖残留区)
             def _repaint_fl():
                 try:
+                    # 🐛 2026-08-19: 防悬垂 — 窗口已关 (deleteLater) 后回调访问
+                    # 已删 C++ 对象 → Segfault 隐患; sip.isdeleted 先查
+                    from PyQt5 import sip as _sip
+                    if _sip.isdeleted(dlg):
+                        return
                     dlg._browser.viewport().repaint()
                     dlg.repaint()
                 except Exception:

@@ -262,6 +262,18 @@ FEATURE_LIBRARY = [
     ]),
 ]
 
+# ── 接口说明 (ModelSpec 8 接口, 每条特征标注对应接口及用途) ──
+INTERFACE_DEFS = {
+    "IN": "输入观测 · 现场信息接入 (图像/状态/触感)",
+    "OUT": "动作输出 · 作业动作下发 (机械臂/夹爪)",
+    "CFG": "参数配置 · 作业参数可调 (力度/速度/阈值), 运行期生效",
+    "TRAIN": "训练接入 · 数据与训练流程对接, 产线数据可反哺",
+    "DEPLOY": "部署接入 · 模型加载与更新生效, 作业不停机",
+    "EVAL": "评估接入 · 能力考核与结果反馈 (上岗前考核)",
+    "MON": "监控上报 · 运行数据对外上报 (状态/成功率/节拍)",
+    "SCHED": "调度接入 · 分步作业编排与阶段切换",
+}
+
 # ── 模型能力组合 (Manifest) ──
 MODEL_MANIFESTS = {
     "state_space": {
@@ -362,6 +374,9 @@ def build_model_feature_item(module):
             QTreeWidgetItem(ft, ["能力", f["explain"]])
             QTreeWidgetItem(ft, ["信号", f["io"]])
             QTreeWidgetItem(ft, ["接口", f"对应 {f['iface']}"])
+            QTreeWidgetItem(ft, ["接口说明",
+                " / ".join(INTERFACE_DEFS.get(x.strip(), x.strip())
+                           for x in f["iface"].split("/"))])
             QTreeWidgetItem(ft, ["场景", f["scene"]])
             QTreeWidgetItem(ft, ["工程", f["eng"]])
             QTreeWidgetItem(ft, ["归属", f["app"]])
