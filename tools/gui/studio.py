@@ -85,6 +85,19 @@ except Exception:
     _TIMER_TRACE = None
 
 from PyQt5.QtCore import QTimer as _QTimerS  # noqa: E402  (studio 顶部 PyQt5.QtWidgets import 之后)
+from PyQt5.QtCore import QObject as _QObjectS  # noqa: E402
+from PyQt5.QtCore import pyqtSignal as _pyqtSignalS  # noqa: E402
+
+
+class _OneshotBridge(_QObjectS):
+    """🔔 _oneshot 跨线程派发桥 (2026-08-19): worker 线程调 _oneshot 时,
+    经此信号 emit → 自动 QueuedConnection 到主线程执行 → 主线程创建 QTimer(parent)"""
+
+    sig = _pyqtSignalS(object, int, object)
+
+
+_oneshot_bridge = _OneshotBridge()
+_oneshot_bridge.sig.connect(lambda p, m, f: _oneshot(p, m, f))
 
 def _tq(parent):
     """⏱ 精确 timer (PreciseTimer) — 🐛 2026-08-18: CoarseTimer 默认批处理合并
@@ -96,12 +109,19 @@ def _tq(parent):
 
 def _oneshot(parent, ms, fn):
     """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
-    PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治"""
-    t = _QTimerS(parent)
-    t.setSingleShot(True)
-    t.timeout.connect(fn)
-    t.start(ms)
-    return t
+    PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治
+    🐛 2026-08-19: worker 线程调 _oneshot → 跨线程创建 QTimer(parent) 报错
+    (Cannot create children/startTimer — MonitorModule 轮询刷屏 + Segfault 隐患同源)
+    → 跨线程时经桥接信号派发回 parent 所在线程 (主线程) 创建"""
+    if QThread.currentThread() is parent.thread():
+        t = _QTimerS(parent)
+        t.setSingleShot(True)
+        t.timeout.connect(fn)
+        t.start(ms)
+        return t
+    # 跨线程: 桥接信号自动 QueuedConnection 到主线程, 主线程再走原路径
+    _oneshot_bridge.sig.emit(parent, ms, fn)
+    return None
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
