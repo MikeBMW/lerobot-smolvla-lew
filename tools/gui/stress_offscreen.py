@@ -4,9 +4,35 @@
 (offscreen 平台无 X11 → 若不崩 = X11 层问题; 若崩 = 纯 Qt/代码问题)
 """
 import sys, os, json
+# 解析 --minutes 后还原 argv (simulink_module 可能读 sys.argv)
+_minutes = 10
+for _i, _a in enumerate(sys.argv):
+    if _a == "--minutes" and _i + 1 < len(sys.argv):
+        try:
+            _minutes = max(1, min(int(sys.argv[_i + 1]), 60))
+        except ValueError:
+            pass
 sys.argv = ["x"]
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# ⚠️ 压测会触发模式开关持久化写回 (a72bb04 起) → 污染画布 JSON
+# 启动时全量备份 flows/, atexit 恢复 (崩溃时由调用方 git checkout 兜底)
+import atexit, shutil, tempfile
+_flows_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "flows")
+_flow_backup = tempfile.mkdtemp(prefix="flow_backup_")
+if os.path.isdir(_flows_dir):
+    for _f in os.listdir(_flows_dir):
+        if _f.endswith(".json"):
+            shutil.copy2(os.path.join(_flows_dir, _f), os.path.join(_flow_backup, _f))
+
+def _restore_flows():
+    if os.path.isdir(_flows_dir):
+        for _f in os.listdir(_flow_backup):
+            shutil.copy2(os.path.join(_flow_backup, _f), os.path.join(_flows_dir, _f))
+    print(f"[stress] 画布 JSON 已从备份恢复: {_flow_backup}")
+
+atexit.register(_restore_flows)
 
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from PyQt5.QtCore import QTimer, Qt
@@ -81,7 +107,7 @@ def _report():
     print(f"✅ offscreen 压测存活: {step['n']} 步 × 2s = {step['n']*2}s, 无崩溃")
     app.quit()
 
-QTimer.singleShot(600000, _report)  # 10 分钟
-print("offscreen 压测启动 (10分钟, 每2s模拟操作)...")
+QTimer.singleShot(_minutes * 60 * 1000, _report)  # 默认 10 分钟
+print(f"offscreen 压测启动 ({_minutes}分钟, 每2s模拟操作)...")
 app.exec_()
 print("压测结束")
