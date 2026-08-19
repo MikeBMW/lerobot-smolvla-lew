@@ -80,6 +80,19 @@ _HTML = """<html><body style="font-family:'WenQuanYi Micro Hei','Noto Sans CJK S
     .replace("%TEXT%", _TEXT).replace("%SUB%", _SUB).replace("%ACCENT%", _ACCENT)
 
 
+class _FLTextBrowser(QTextBrowser):
+    """🐛 2026-08-19 老倪报: Feature List 滚动条拖动只更新左侧窄条, 右侧残留不动
+    = VcXsrv XCopyArea 半移 bug (滚动搬运只画部分区域)。内容区小 (7KB HTML),
+    滚动后强制 viewport 全量重绘, 代价无感, 画面完整正确。"""
+
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        try:
+            self.viewport().update()
+        except Exception:
+            pass
+
+
 class FeatureListDialog(QDialog):
     """✨ Feature List 产品特征清单 — QTextBrowser 展示, 深色主题, 可调整大小"""
 
@@ -94,7 +107,7 @@ class FeatureListDialog(QDialog):
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(8)
 
-        self._browser = QTextBrowser()
+        self._browser = _FLTextBrowser()
         self._browser.setOpenExternalLinks(True)
         self._browser.setStyleSheet(
             f"QTextBrowser{{background:{_BG}; color:{_TEXT}; border:1px solid {_BORDER};"
