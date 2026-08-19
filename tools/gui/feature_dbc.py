@@ -184,6 +184,30 @@ def export_excel(path=None, dbc=None, library=None, manifests=None, iface_defs=N
     return path
 
 
+def upload_excel(path=None):
+    """导出 Excel 并上传 datadrive.world (ECS), 返回 (本地路径, 下载URL)
+    用户无 /mnt/c 共享 → 通过网站下载 (记忆链路: sshpass scp + chmod644)"""
+    import subprocess
+    path = path or export_excel()
+    url = "http://datadrive.world/feature_dbc.xlsx"
+    try:
+        r = subprocess.run(
+            ["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+             "-o", "ConnectTimeout=15", path,
+             "root@39.102.211.79:/www/wwwroot/datadrive.world/feature_dbc.xlsx"],
+            capture_output=True, timeout=60)
+        if r.returncode != 0:
+            return path, None
+        subprocess.run(
+            ["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+             "-o", "ConnectTimeout=15", "root@39.102.211.79",
+             "chmod 644 /www/wwwroot/datadrive.world/feature_dbc.xlsx"],
+            capture_output=True, timeout=60)
+        return path, url
+    except Exception:
+        return path, None
+
+
 def build_tree_from_dbc(dbc, module, make_item, user_role):
     """从解析的 dbc 构建能力库树 (供 model_tree.py 使用)
     make_item(texts) → QTreeWidgetItem; user_role 用于 setData"""

@@ -168,11 +168,14 @@ class FeatureListDialog(QDialog):
         lay.addLayout(h)
 
     def _export_excel(self):
-        """导出能力库 Excel (3 sheets) → reports/feature_dbc.xlsx"""
+        """导出能力库 Excel 并上传 datadrive.world (用户可下载)"""
         try:
-            from feature_dbc import export_excel, DBC_PATH
-            path = export_excel()
-            self._lbl_res.setText(f"✅ 已导出: {path}")
+            from feature_dbc import upload_excel
+            path, url = upload_excel()
+            if url:
+                self._lbl_res.setText(f"✅ 已导出并上传: {url} (浏览器打开下载)")
+            else:
+                self._lbl_res.setText(f"✅ 已导出(本机): {path}")
         except Exception as ex:
             self._lbl_res.setText(f"⚠️ 导出失败: {ex}")
 

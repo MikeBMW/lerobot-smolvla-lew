@@ -2460,12 +2460,24 @@ class ModelTreeDock(QWidget):
         lay.setSpacing(4)
 
         # 下拉菜单: 视图切换 (参考 MATLAB Workspace 数据字典)
+        hdr = QHBoxLayout()
+        hdr.setSpacing(4)
         self.cmb_view = QComboBox()
         self.cmb_view.addItems(["📚 数据字典", "⚙️ 参数标定", "🧮 数学分析",
                                 "🎛 状态空间设计", "📐 现场标定", "📊 性能指标",
                                 "🎯 场景状态", "🚀 运行汇总", "📋 工程需求"])
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
-        lay.addWidget(self.cmb_view)
+        hdr.addWidget(self.cmb_view, 1)
+        # 🧩 导出能力库 Excel (2026-08-19 老倪: feature 导出 → datadrive.world 可下载)
+        self.btn_export = QPushButton("导出")
+        self.btn_export.setStyleSheet(
+            "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+            "border-radius:4px;padding:3px 10px;font-size:11px;}"
+            "QPushButton:hover{background:#30363d;}")
+        self.btn_export.setToolTip("导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载")
+        self.btn_export.clicked.connect(self._export_feature)
+        hdr.addWidget(self.btn_export)
+        lay.addLayout(hdr)
 
         # 📐 2026-08-15 老倪: 现场标定向导 (3步标定法, 只看物理现象)
         self.stage_calib = StageCalibrationWidget(module)
@@ -2543,6 +2555,19 @@ class ModelTreeDock(QWidget):
             QLabel { color:#e6edf3; }
         """)
         self.refresh()
+
+    # ── 导出能力库 Excel (2026-08-19 老倪) ──
+    def _export_feature(self):
+        """导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载"""
+        try:
+            from feature_dbc import upload_excel
+            path, url = upload_excel()
+            if url:
+                self.lbl_hint.setText(f"✅ 已导出并上传: {url} (浏览器打开下载)")
+            else:
+                self.lbl_hint.setText(f"✅ 已导出(本机): {path}")
+        except Exception as ex:
+            self.lbl_hint.setText(f"⚠️ 导出失败: {ex}")
 
     # ── 视图切换 ──
     def _switch_view(self, idx):
