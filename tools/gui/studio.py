@@ -561,7 +561,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.1.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.1.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -9581,7 +9581,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.1.3 [W-01]")  # v2.1.3: 物理面板+视频播放优化  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.1.4 [W-01]")  # v2.1.4: 操作视频方向+播放卡顿修复  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
@@ -10785,6 +10785,14 @@ def main():
         pass
     # 若离屏方案生效, 上面的 raise_/activateWindow 在屏幕外无意义但无害;
     # 归位由 singleShot(1800) 完成 (含 raise_/activateWindow)
+    # 🐛 2026-08-18: faulthandler — 卡死/崩溃时 dump 全部线程 Python 栈到 stderr
+    # (dump_traceback_later 用信号定时器, 事件循环卡死也能触发; 排查主线程阻塞根因)
+    try:
+        import faulthandler
+        faulthandler.enable()
+        faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
+    except Exception:
+        pass
     sys.exit(app.exec_())
 
 
