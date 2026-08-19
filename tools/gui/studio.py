@@ -10451,7 +10451,7 @@ del "%~f0"
             _msg_ok(self, "打开失败", f"缺少 feature_list.py: {ex}", kind="warning")
             return
         try:
-            dlg = FeatureListDialog(self)
+            dlg = FeatureListDialog(self, module=getattr(self, "_simulink", None))
             # 🐛 2026-08-19: 操作视频窗口(置顶, 播放中频繁刷 X 层)遮挡+像素残留污染
             # Feature List → 弹出前把操作视频降置顶+下移 (用户要看再点它)
             try:

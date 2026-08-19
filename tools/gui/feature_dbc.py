@@ -119,6 +119,71 @@ def load_dbc(path=DBC_PATH):
 
 
 # ── 树构建 (文件即配置事实) ──────────────────────────
+def export_excel(path=None, dbc=None, library=None, manifests=None, iface_defs=None):
+    """能力库 → Excel (3 sheets: 能力库/模型组合/接口说明)
+    path=None → reports/feature_dbc.xlsx"""
+    if dbc is None:
+        dbc = load_dbc()
+    if library is None:
+        try:
+            import model_feature as _mf
+            library, manifests, iface_defs = (_mf.FEATURE_LIBRARY,
+                                              _mf.MODEL_MANIFESTS,
+                                              _mf.INTERFACE_DEFS)
+        except Exception:
+            library, manifests, iface_defs = [], {}, {}
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    if path is None:
+        path = os.path.join(_REPO_ROOT, "reports", "feature_dbc.xlsx")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    wb = openpyxl.Workbook()
+
+    _HDR = PatternFill("solid", fgColor="1F6FEB")
+    _HF = Font(color="FFFFFF", bold=True, size=11)
+
+    # ── Sheet1 能力库 ──
+    ws = wb.active
+    ws.title = "能力库"
+    cols = ["ID", "能力", "简述", "解释说明", "接口定义", "输入信号", "输出信号",
+            "接口", "场景", "工程落点", "归属"]
+    ws.append(cols)
+    for c in ws[1]:
+        c.fill, c.font = _HDR, _HF
+    for cat, items in library:
+        for f in items:
+            ws.append([f["id"], f["name"], f["desc"], f["explain"], f["iface_def"],
+                       f["io_in"], f["io_out"], f["iface"], f["scene"],
+                       f["eng"], f["app"]])
+    for i, w in enumerate((6, 14, 26, 52, 52, 42, 42, 12, 26, 24, 22), start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+
+    # ── Sheet2 模型组合 ──
+    ws2 = wb.create_sheet("模型组合")
+    ws2.append(["模型节点", "数据流形态", "能力数", "能力清单"])
+    for c in ws2[1]:
+        c.fill, c.font = _HDR, _HF
+    for key, m in manifests.items():
+        ws2.append([key.upper(), m.get("dataflow", ""), len(m["features"]),
+                    " ".join(sorted(m["features"]))])
+    for i, w in enumerate((16, 40, 10, 80), start=1):
+        ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ── Sheet3 接口说明 ──
+    ws3 = wb.create_sheet("接口说明")
+    ws3.append(["接口", "说明"])
+    for c in ws3[1]:
+        c.fill, c.font = _HDR, _HF
+    for k, v in (iface_defs or {}).items():
+        ws3.append([k, v])
+    ws3.column_dimensions["A"].width = 12
+    ws3.column_dimensions["B"].width = 60
+
+    wb.save(path)
+    return path
+
+
 def build_tree_from_dbc(dbc, module, make_item, user_role):
     """从解析的 dbc 构建能力库树 (供 model_tree.py 使用)
     make_item(texts) → QTreeWidgetItem; user_role 用于 setData"""
