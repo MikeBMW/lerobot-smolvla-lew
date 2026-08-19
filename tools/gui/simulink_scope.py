@@ -486,6 +486,7 @@ class FlowScopeDialog(QDialog):
         self._load_data()
         # 训练中实时刷新 (2026-08-05): 2s 轮询最新曲线文件, 波形实时动
         self._refresh_timer = QTimer(self)
+        self._refresh_timer.setTimerType(Qt.PreciseTimer)  # 🐛 2026-08-19: CoarseTimer批处理→activateTimers悬垂竞态SIGSEGV
         self._refresh_timer.timeout.connect(self._load_data)
         self._refresh_timer.start(2000)
 
@@ -530,7 +531,7 @@ class FlowScopeDialog(QDialog):
         self.scope.fit_all()
         self.btn_fit.setText("✓ 已全局适配")
         # 🐛 2026-08-18: singleShot 内部 timer 无 parent → 孤儿崩溃; 实例化挂 parent
-        _t = QTimer(self); _t.setSingleShot(True)
+        _t = QTimer(self); _t.setSingleShot(True); _t.setTimerType(Qt.PreciseTimer)  # 🐛 2026-08-19: PreciseTimer 防批处理竞态
         _t.timeout.connect(lambda: self.btn_fit.setText("🌐 全局适配"))
         _t.start(1500)
 
@@ -1020,6 +1021,7 @@ class InferenceVideoDialog(QDialog):
             ctrl.addWidget(b)
         root.addLayout(ctrl)
         self._timer = QTimer(self)
+        self._timer.setTimerType(Qt.PreciseTimer)  # 🐛 2026-08-19
         self._timer.timeout.connect(self._tick)
         self._timer.setInterval(100)
         self._load_frames()
@@ -1032,7 +1034,7 @@ class InferenceVideoDialog(QDialog):
         else:
             # 无帧 → 自动生成 3 模型 rollout (2026-08-05 老倪: 训练完自动接推理对比)
             # 🐛 2026-08-18: singleShot 内部 timer 无 parent → 孤儿崩溃; 实例化挂 parent
-            _t = QTimer(self); _t.setSingleShot(True)
+            _t = QTimer(self); _t.setSingleShot(True); _t.setTimerType(Qt.PreciseTimer)  # 🐛 2026-08-19: PreciseTimer 防批处理竞态
             _t.timeout.connect(self._run_rollouts)
             _t.start(300)
 
@@ -1179,6 +1181,7 @@ class InferenceVideoDialog(QDialog):
         t = threading.Thread(target=_work, daemon=True)
         t.start()
         self._poll_timer = QTimer(self)
+        self._poll_timer.setTimerType(Qt.PreciseTimer)  # 🐛 2026-08-19
         self._poll_timer.timeout.connect(lambda: self._check_done(t, _done))
         self._poll_timer.start(500)
 

@@ -58,6 +58,7 @@ class DatasetViewer(QDialog):
         from PyQt5.QtCore import QTimer
         # 🐛 2026-08-18: singleShot 内部 timer 无 parent → 孤儿崩溃; 实例化挂 parent
         _t = QTimer(self); _t.setSingleShot(True)
+        _t.setTimerType(Qt.PreciseTimer)  # 🐛 2026-08-19
         _t.timeout.connect(self._load_video_frame)
         _t.start(0)
 

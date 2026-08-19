@@ -9611,7 +9611,7 @@ class StudioMainWindow(QMainWindow):
         # 🌐 2026-08-08 老倪: 全控制台所有 Qt 控件 ID 角标 (叠加式 QLabel — 安全不崩, 所有页所有控件)
         try:
             from PyQt5.QtCore import QTimer as _QTM
-            _QTM.singleShot(1500, lambda: self.model_engine._holo_apply_all(self))
+            _oneshot(self, 1500, lambda: self.model_engine._holo_apply_all(self))
         except Exception:
             pass
 
@@ -9841,7 +9841,7 @@ class StudioMainWindow(QMainWindow):
                     sim.switch_theme(CUR_UI_THEME)
                 if CUR_FONT_DELTA:
                     from PyQt5.QtCore import QTimer as _QTM3
-                    _QTM3.singleShot(0, lambda: apply_ui_font(self, CUR_FONT_DELTA))
+                    _oneshot(self, 0, lambda: apply_ui_font(self, CUR_FONT_DELTA))
             except Exception:
                 pass
             self.statusBar().showMessage("🚀 Simulink 画布已就绪", 2000)
@@ -10494,8 +10494,8 @@ del "%~f0"
             # WindowStaysOnTopHint)在 VcXsrv 下 z-order 不稳, 盖住新弹窗 →
             # show 后延迟双 raise, 确保 Feature List 显示在最前
             from PyQt5.QtCore import QTimer as _QT
-            _QT.singleShot(60, dlg.raise_)
-            _QT.singleShot(250, dlg.raise_)
+            _oneshot(self, 60, dlg.raise_)
+            _oneshot(self, 250, dlg.raise_)
 
             # 🐛 2026-08-19 老倪报"左侧是操作视频遗留": 操作视频窗口频繁刷新 X 层,
             # 关闭后像素残留 → 新弹窗部分区域被旧画面污染 → 延迟多次强制全量重绘
@@ -10512,7 +10512,7 @@ del "%~f0"
                 except Exception:
                     pass
             for _ms in (100, 400, 800, 1500):
-                _QT.singleShot(_ms, _repaint_fl)
+                _oneshot(dlg, _ms, _repaint_fl)  # 🐛 2026-08-19: 挂parent — dialog关了timer一起销毁, 杜绝悬垂
             self.statusBar().showMessage("✨ Feature List · 产品特征清单")
         except Exception as ex:
             _msg_ok(self, "打开失败", f"{ex}", kind="warning")
@@ -10851,7 +10851,7 @@ def main():
                 except Exception:
                     _splash.close()
             _QA2.processEvents()
-        _QTM2.singleShot(2000, _show_ready)
+        _oneshot(win, 2000, _show_ready)
     except Exception:
         win.show()
     # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住
