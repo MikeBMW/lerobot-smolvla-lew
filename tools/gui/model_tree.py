@@ -2509,6 +2509,10 @@ class ModelTreeDock(QWidget):
         self.lbl_hint = QLabel("")
         self.lbl_hint.setStyleSheet("color:#9aa4b2; font-size:10px; background:transparent; border:none;")
         self.lbl_hint.setWordWrap(True)
+        # 🐛 2026-08-19: 链接可选中/可点击 (导出提示)
+        self.lbl_hint.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextBrowserInteraction)
+        self.lbl_hint.setOpenExternalLinks(True)
         lay.addWidget(self.lbl_hint)
 
         # 🎯 2026-08-15 老倪: 极点配置设计器 (参数标定视图, 性能指标→ζ/ωₙ→Kp/Kd)
@@ -2571,7 +2575,8 @@ class ModelTreeDock(QWidget):
             try:
                 from feature_dbc import upload_excel
                 path, url = upload_excel()
-                msg = f"✅ 已导出并上传: {url} (浏览器打开下载)" if url \
+                msg = (f'✅ 已导出并上传: <a href="{url}" style="color:#58a6ff;">'
+                       f'{url}</a> (点击打开/选中复制)') if url \
                     else f"✅ 已导出(本机): {path}"
             except Exception as ex:
                 msg = f"⚠️ 导出失败: {ex}"

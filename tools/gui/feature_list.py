@@ -153,6 +153,11 @@ class FeatureListDialog(QDialog):
         self._lbl_res = QLabel("")
         self._lbl_res.setStyleSheet(
             f"color:{_SUB}; font-size:12px; background:transparent; border:none;")
+        # 🐛 2026-08-19 老倪"链接点不了选不中" — QLabel 默认不可选中,
+        # 加可选+链接交互 (链接可点开/可选中复制)
+        self._lbl_res.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextBrowserInteraction)
+        self._lbl_res.setOpenExternalLinks(True)
         h.addWidget(self._lbl_res)
         h.addStretch()
         b_xlsx = QPushButton("导出 Excel")
@@ -180,7 +185,8 @@ class FeatureListDialog(QDialog):
             try:
                 from feature_dbc import upload_excel
                 path, url = upload_excel()
-                msg = f"✅ 已导出并上传: {url} (浏览器打开下载)" if url \
+                msg = (f'✅ 已导出并上传: <a href="{url}" style="color:{_ACCENT};">'
+                       f'{url}</a> (点击打开/选中复制)') if url \
                     else f"✅ 已导出(本机): {path}"
             except Exception as ex:
                 msg = f"⚠️ 导出失败: {ex}"
