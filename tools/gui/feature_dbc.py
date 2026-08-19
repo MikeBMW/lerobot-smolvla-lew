@@ -136,7 +136,8 @@ def build_tree_from_dbc(dbc, module, make_item, user_role):
             fid = parts[0]
             name = parts[1] if '"' in fl else fl
             desc = parts[2] if len(parts) > 2 else ""
-            make_item(df, [f"{fid} {name}", desc])
+            _it = make_item([f"{fid} {name}", desc])
+            df.addChild(_it)
 
     # 能力 (按库顺序: 解析时按 BO_ 出现顺序)
     caps = dbc.get("capabilities", {})
@@ -166,14 +167,16 @@ def build_tree_from_dbc(dbc, module, make_item, user_role):
             ft = make_item([f"{mark}{fid} {c['name']}", c.get("desc", "")])
             ft.setData(0, user_role, None)
             cn.addChild(ft)
-            make_item(ft, ["解释说明", c.get("explain", "")])
-            make_item(ft, ["接口定义", c.get("iface_def", "")])
-            make_item(ft, ["输入信号", c.get("io_in", "")])
-            make_item(ft, ["输出信号", c.get("io_out", "")])
-            make_item(ft, ["接口", c["iface"]])
-            make_item(ft, ["场景", c.get("scene", "")])
-            make_item(ft, ["工程", c.get("eng", "")])
-            make_item(ft, ["归属", c.get("app", "")])
+            for _label, _val in (("解释说明", c.get("explain", "")),
+                                ("接口定义", c.get("iface_def", "")),
+                                ("输入信号", c.get("io_in", "")),
+                                ("输出信号", c.get("io_out", "")),
+                                ("接口", c["iface"]),
+                                ("场景", c.get("scene", "")),
+                                ("工程", c.get("eng", "")),
+                                ("归属", c.get("app", ""))):
+                _it = make_item([_label, _val])
+                ft.addChild(_it)
 
     # 模型组合
     mn = make_item(["📦 模型节点 (feature.dbc 配置)", ""])
