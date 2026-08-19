@@ -1133,10 +1133,10 @@ class MLPRolloutDialog(QDialog):
         self._frames = []       # 帧文件名列表
         self._frames_dir = ""
         self._loading = False
-        # ✅ 2026-08-19 OCR 实锤: 4 个候选视频 (mlp_insert_success/final, mlp_best/final)
-        #   原始方向 rot0 文字即正 ("TREND peg->hole inserted / hand->peg" 可读),
-        #   默认 180° 会把字转倒 (8-18 早误判 rot180 副本为正片方向)
-        self._rot = 0
+        # 🎯 2026-08-19 老倪确认: 要画面正 (机械臂) → 默认 180°。
+        #   生成端画面本身反 (需 180° 转正), HUD 文字原方向正 (OCR 实锤 08-19) —
+        #   两者矛盾, 播放端以画面为准; 若文字也要正 → 生成端重生成视频
+        self._rot = 180
         self._mirror = False
         self._flip_v = False   # 🐛 2026-08-18: 上下翻转 (字体上下颠倒时用, 组合调到字正画面正)
         self._playing = True
@@ -1275,11 +1275,13 @@ class MLPRolloutDialog(QDialog):
                 return
             # 🐛 2026-08-18: 180° 旋转 = 水平+垂直镜像 — 用 QImage.mirrored (快速位图),
             # QPixmap 没有 mirrored 方法 (AttributeError 被吞 → 黑屏实锤!)
+            # 🐛 2026-08-19: 90/270° 旋转播放中必须用 Fast — Smooth 每帧全像素插值
+            #   (100ms tick × 780x480) = 用户报"很卡"根因; 暂停时才 Smooth
+            _rot_mode = Qt.FastTransformation if self._playing else Qt.SmoothTransformation
             if self._rot == 180:
                 pm = QPixmap.fromImage(pm.toImage().mirrored(True, True))
             elif self._rot:
-                pm = pm.transformed(QTransform().rotate(self._rot),
-                                    Qt.SmoothTransformation)
+                pm = pm.transformed(QTransform().rotate(self._rot), _rot_mode)
             if self._mirror:
                 pm = QPixmap.fromImage(pm.toImage().mirrored(True, False))
             if self._flip_v:
