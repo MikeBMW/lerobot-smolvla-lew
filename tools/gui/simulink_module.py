@@ -2161,6 +2161,9 @@ class PipelinePanel(QDialog):
         worker.log.connect(self.module.log_signal.emit)
         worker.finished.connect(lambda: None)
         self._worker = worker
+        if not hasattr(self, "_workers"):
+            self._workers = []
+        self._workers.append(worker)  # 🐛 2026-08-19: QThread 永不 GC
         worker.start()
 
     def _run_cli(self, cmd):
@@ -6203,6 +6206,12 @@ class SimulinkModule(QWidget):
         # SIGABRT (PyQt 竞态, 实测 3404 行崩溃); 改: 不置 None, 引用保留到下次覆盖回收
         worker.finished.connect(lambda: None)
         self._worker = worker
+        # 🐛 2026-08-19 Segfault 根治: QThread 对象永不 GC — 原"保留到下次覆盖回收",
+        # 覆盖时旧 QThread 析构, 其内部 timer 注册在已退出 worker 线程 →
+        # killTimer cross-thread → Qt timer 表损坏 → 稍后主线程 activateTimers 悬垂 SIGSEGV
+        if not hasattr(self, "_workers"):
+            self._workers = []
+        self._workers.append(worker)
         # 🔎 2026-08-06 老倪: 记录当前任务详情 (防重入提示用) — 任务名/开始时间/队列剩余
         import re as _re
         self._busy_info = {
@@ -9902,6 +9911,9 @@ class SimulinkModule(QWidget):
         worker.finished_ok.connect(_done)
         worker.finished.connect(lambda: None)
         self._worker = worker
+        if not hasattr(self, "_workers"):
+            self._workers = []
+        self._workers.append(worker)  # 🐛 2026-08-19: QThread 永不 GC
         worker.start()
 
 
