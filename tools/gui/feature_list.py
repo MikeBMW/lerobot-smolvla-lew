@@ -8,7 +8,7 @@
 """
 import os
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QTextBrowser, QPushButton,
                              QHBoxLayout, QLabel)
 
@@ -127,6 +127,7 @@ def _build_html(module=None):
 class FeatureListDialog(QDialog):
     """✨ Feature List 产品特征清单 — QTextBrowser 展示, 深色主题, 可调整大小
     module: SimulinkModule (可选) — 用于定位当前模型, 展示模型能力区块"""
+    export_done = pyqtSignal(str)  # 🐛 2026-08-19: 导出上传后台线程, 完成信号回主线程
 
     def __init__(self, parent=None, module=None):
         super().__init__(parent)
@@ -166,18 +167,26 @@ class FeatureListDialog(QDialog):
         h.addWidget(b_xlsx)
         h.addWidget(b_close)
         lay.addLayout(h)
+        self.export_done.connect(self._lbl_res.setText)
 
     def _export_excel(self):
-        """导出能力库 Excel 并上传 datadrive.world (用户可下载)"""
-        try:
-            from feature_dbc import upload_excel
-            path, url = upload_excel()
-            if url:
-                self._lbl_res.setText(f"✅ 已导出并上传: {url} (浏览器打开下载)")
-            else:
-                self._lbl_res.setText(f"✅ 已导出(本机): {path}")
-        except Exception as ex:
-            self._lbl_res.setText(f"⚠️ 导出失败: {ex}")
+        """导出能力库 Excel 并上传 datadrive.world (用户可下载)
+        🐛 2026-08-19 主线程跑 sshpass scp 卡 60s = 按钮没反应 → 后台线程 + 信号"""
+        self._lbl_res.setText("⏳ 正在导出并上传 datadrive.world…")
+        import threading
+
+        def _work():
+            msg = "⚠️ 导出失败"
+            try:
+                from feature_dbc import upload_excel
+                path, url = upload_excel()
+                msg = f"✅ 已导出并上传: {url} (浏览器打开下载)" if url \
+                    else f"✅ 已导出(本机): {path}"
+            except Exception as ex:
+                msg = f"⚠️ 导出失败: {ex}"
+            self.export_done.emit(msg)
+
+        threading.Thread(target=_work, daemon=True).start()
 
 
 class _FLTextBrowser(QTextBrowser):

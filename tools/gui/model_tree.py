@@ -12,7 +12,7 @@ import os
 import math
 import numpy as np
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QComboBox,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
@@ -2444,6 +2444,7 @@ class RunSummaryWidget(QWidget):
 # 右侧数据字典面板
 # ════════════════════════════════════════════════════════════════
 class ModelTreeDock(QWidget):
+    export_done = pyqtSignal(str)  # 🐛 2026-08-19: 导出上传走后台线程, 完成信号回主线程
     """📚 数据字典 (Model Tree) — 画布节点参数树 + 标定 + 数学分析
     🐛 2026-08-14: QDockWidget → QWidget (SimulinkModule 是 QWidget 非 QMainWindow,
     addDockWidget 不存在 → 面板一直没显示; 改嵌入右侧 split 列)"""
@@ -2554,20 +2555,36 @@ class ModelTreeDock(QWidget):
                                           selection-background-color:#1f6feb; }
             QLabel { color:#e6edf3; }
         """)
+        self.export_done.connect(self._on_export_done)
         self.refresh()
 
     # ── 导出能力库 Excel (2026-08-19 老倪) ──
     def _export_feature(self):
-        """导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载"""
+        """导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载
+        🐛 2026-08-19 主线程跑 sshpass scp 卡 60s = 按钮没反应 → 后台线程 + 信号"""
+        self.lbl_hint.setText("⏳ 正在导出并上传 datadrive.world…")
+        self.btn_export.setEnabled(False)
+        import threading
+
+        def _work():
+            msg = "⚠️ 导出失败"
+            try:
+                from feature_dbc import upload_excel
+                path, url = upload_excel()
+                msg = f"✅ 已导出并上传: {url} (浏览器打开下载)" if url \
+                    else f"✅ 已导出(本机): {path}"
+            except Exception as ex:
+                msg = f"⚠️ 导出失败: {ex}"
+            self.export_done.emit(msg)
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _on_export_done(self, msg):
+        self.lbl_hint.setText(msg)
         try:
-            from feature_dbc import upload_excel
-            path, url = upload_excel()
-            if url:
-                self.lbl_hint.setText(f"✅ 已导出并上传: {url} (浏览器打开下载)")
-            else:
-                self.lbl_hint.setText(f"✅ 已导出(本机): {path}")
-        except Exception as ex:
-            self.lbl_hint.setText(f"⚠️ 导出失败: {ex}")
+            self.btn_export.setEnabled(True)
+        except Exception:
+            pass
 
     # ── 视图切换 ──
     def _switch_view(self, idx):
