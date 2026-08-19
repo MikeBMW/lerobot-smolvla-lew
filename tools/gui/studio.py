@@ -5899,7 +5899,15 @@ class HardwareModule(SubModuleWidget):
         self._timer = _tq(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
         self._timer.timeout.connect(self._refresh)
         # 📡 2026-08-09 老倪: 中间件 WS 实时通道 — Orin 状态实时推送 (非轮询)
+        # 🐛 2026-08-19 Segfault 根治: WS 线程回调经 _oneshot 信号桥传函数仍触发
+        # killTimer cross-thread (信号跨线程参数包装临时 QObject 在 WS 线程 GC 析构)
+        # → WS 线程零 Qt 接触: 回调只写纯 Python 队列, 主线程 PreciseTimer 轮询消费
         try:
+            import queue as _queue
+            self._ws_queue = _queue.Queue()
+            self._ws_poll = _tq(self)
+            self._ws_poll.timeout.connect(self._drain_ws_queue)
+            self._ws_poll.start(100)
             from relay_middleware import WSClient
             self._ws = WSClient(on_status=self._on_ws_status)
         except Exception:
@@ -6273,12 +6281,25 @@ class HardwareModule(SubModuleWidget):
             pass
 
     def _on_ws_status(self, evt):
-        """📡 WS 实时 Orin 状态回调 (子线程 → _oneshot 主线程刷新)
-        🐛 2026-08-19 Segfault 根因: QTimer.singleShot 无 parent + 从 WS 子线程创建
-        → WS 线程退出时 timer 析构 killTimer from another thread → SIGSEGV
-        → 改 _oneshot (跨线程自动桥接派发主线程创建挂 parent timer)"""
+        """📡 WS 实时 Orin 状态回调 — 🐛 2026-08-19 Segfault 根治:
+        WS 线程零 Qt 接触, 回调只写纯 Python 队列 (不建 QObject 不 emit 信号),
+        主线程 _ws_poll (100ms PreciseTimer) 消费队列 → _apply_ws_status"""
         try:
-            _oneshot(self, 0, lambda: self._apply_ws_status(evt))
+            self._ws_queue.put(evt)
+        except Exception:
+            pass
+
+    def _drain_ws_queue(self):
+        """主线程消费 WS 队列 (由 _ws_poll 100ms 定时驱动)"""
+        try:
+            q = getattr(self, "_ws_queue", None)
+            if q is None:
+                return
+            while not q.empty():
+                try:
+                    self._apply_ws_status(q.get_nowait())
+                except Exception:
+                    pass
         except Exception:
             pass
 
