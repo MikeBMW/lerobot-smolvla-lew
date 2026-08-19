@@ -37,6 +37,7 @@ NODE_TYPES = {
     "hardware":  {"cn": "硬件", "color": "#ff4444"},
     "switch":    {"cn": "路由", "color": "#f0a030"},  # Simulink Switch 块: 数据源选择
     "train_gate": {"cn": "训练开关", "color": "#3fb950"},  # ☑ 训练使能开关 (2026-08-05 老倪: checkbox 打勾=训练)
+    "mode_switch": {"cn": "模式开关", "color": "#3fb950"},  # 🔀 训练/推理模式开关 (2026-08-19 老倪: 数据层运行模式)
     "yolo_gate":  {"cn": "YOLO开关", "color": "#d4a800"},  # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
     "coord_overlay": {"cn": "坐标叠加", "color": "#58a6ff"},  # 🧩 结构条件 (2026-08-08 老倪: 坐标逻辑主线, 图像背景)
     "row_bg":    {"cn": "背景行", "color": "#3a3f4b"},   # 🎨 Model Zoo: 整行彩色背景 + 左侧大字模型名 (可编辑/改名/改色)
@@ -4469,7 +4470,7 @@ class SimulinkModule(QWidget):
             "x": int(x), "y": int(y), "w": 150,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
-                     "train_gate": "☑", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖", "data": "📊",
+                     "train_gate": "☑", "mode_switch": "🔀", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖", "data": "📊",
                      "coord_overlay": "🧩"}[ntype],
             "color": COLORS[ntype],
             "params": params or {},
