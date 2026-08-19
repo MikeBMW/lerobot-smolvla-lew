@@ -4357,6 +4357,7 @@ class SimulinkModule(QWidget):
                     if fi and ti:
                         self.add_link(fi, ti, spec.get("label"))
             self._log(f"💾 已加载工作流: {path} ({len(nodes)}节点 {len(links)}连线)")
+            self._flow_path = path  # 🐛 2026-08-19: 记录画布文件 — 模式开关写回持久化
         except Exception as e:
             self._log(f"⚠️ 工作流加载部分失败: {e}")
         finally:
@@ -8313,7 +8314,41 @@ class SimulinkModule(QWidget):
         if it:
             it.update()
         self._apply_mode_highlight(p["mode"])
-        self._log(f"🔀 模式切换 → {'🚀 训练' if p['mode'] == 'train' else '📷 推理 (rollout)'} (双击可再切换)")
+        self._log(f"🔀 模式切换 → {'🚀 训练' if p['mode'] == 'train' else '📷 推理 (rollout)'}")
+        # 🐛 2026-08-19 老倪"选择训练怎么没有提示": 切换后给明确操作引导
+        # + 高亮数据源节点 (引导双击运行)
+        if p["mode"] == "train":
+            self._log("   ▶ 训练模式: 双击「📦 metaworld 数据源」→ 训练真实模型 (left_right)")
+        else:
+            self._log("   ▶ 推理模式: 双击「📦 metaworld 数据源」→ 加载真实模型 rollout")
+        try:
+            src = next((n for n in self.nodes if n.get("params", {}).get("run_env")), None)
+            if src is not None:
+                self._highlight_node(src, ms=5000)
+        except Exception:
+            pass
+        # 🐛 2026-08-19 老倪"开关不好使": 模式只存内存, 切走切回画布重置回 train
+        # → 写回画布 JSON 持久化
+        self._save_mode_to_flow(node)
+
+    def _save_mode_to_flow(self, node):
+        """💾 模式写回当前画布 JSON (按节点名匹配, 切走切回不丢)"""
+        try:
+            path = getattr(self, "_flow_path", None)
+            if not path or not os.path.exists(path):
+                return
+            import json as _j
+            flow = _j.load(open(path, encoding="utf-8"))
+            nm = node.get("name", "")
+            for n in flow.get("nodes", []):
+                if n.get("name") == nm:
+                    n.setdefault("params", {})["mode"] = node["params"]["mode"]
+                    break
+            _j.dump(flow, open(path, "w", encoding="utf-8"),
+                    ensure_ascii=False, indent=1)
+            self._log(f"💾 模式已保存: {os.path.basename(path)} → {node['params']['mode']}")
+        except Exception:
+            pass
 
     def _apply_mode_highlight(self, mode):
         """按模式高亮训练/推理节点: 激活金色边框 + 灰显未激活"""
