@@ -109,11 +109,13 @@
    "h": 88,
    "params": {
     "state_space": true,
-    "desc": "43D 统一状态向量 obs: 位置/姿态/速度/力/触觉 融合 — 时空感知前端输出",
+    "desc": "43D 统一状态向量 obs: 位置/姿态/速度/力/触觉 融合 — 时空感知前端输出; 感知层增强: in2=YOLO 2D→3D 感知坐标, in3=触觉感知",
     "source": "src/lerobot/policies/left_right/state_space/perception.py"
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -357,6 +359,100 @@
    ],
    "outputs": [],
    "actions": []
+  },
+  {
+   "id": "ssyolo",
+   "name": "🎯 YOLO 目标检测",
+   "type": "model",
+   "icon": "🎯",
+   "x": -340,
+   "y": -300,
+   "w": 240,
+   "h": 88,
+   "inputs": [],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "color": "#d4a800",
+   "params": {
+    "model": "yolov8s",
+    "classes": "peg/hole/hand",
+    "state_space": true,
+    "source": "tools/gui/yolo_perception.py",
+    "desc": "感知层·B1 目标识别定位: 相机图像 → YOLO 检测光模块/插孔/末端 2D框 (双击=实际模型加载验证)"
+   }
+  },
+  {
+   "id": "ss2d3d",
+   "name": "📐 2D→3D 解算",
+   "type": "condition",
+   "icon": "📐",
+   "x": -60,
+   "y": -300,
+   "w": 240,
+   "h": 88,
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "color": "#d4a800",
+   "params": {
+    "method": "depth|hand-eye",
+    "intrinsics": "camera_K",
+    "state_space": true,
+    "source": "tools/gui/yolo_perception.py",
+    "desc": "感知层·B2 空间位姿感知: YOLO 2D框中心 + 相机反投影 → 目标 3D 坐标 → 增强 43D 状态向量"
+   }
+  },
+  {
+   "id": "sstactile",
+   "name": "🖐 触觉感知",
+   "type": "hardware",
+   "icon": "🖐",
+   "x": -340,
+   "y": -80,
+   "w": 240,
+   "h": 88,
+   "inputs": [],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "color": "#d4a800",
+   "params": {
+    "force_res": "0.1N",
+    "tactile_dim": 4,
+    "state_space": true,
+    "source": "src/lerobot/policies/left_right/state_space/perception.py",
+    "desc": "感知层·B3 触感感知: 六维力觉(0.1N) + 触觉4D (grasp/contact/dir) → 43D 状态向量触觉段"
+   }
+  },
+  {
+   "id": "ssaoi",
+   "name": "🔍 外观质量检测",
+   "type": "model",
+   "icon": "🔍",
+   "x": -60,
+   "y": -80,
+   "w": 240,
+   "h": 88,
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "color": "#d4a800",
+   "params": {
+    "target": "金手指/端面/外观",
+    "state_space": true,
+    "desc": "感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)"
+   }
   }
  ],
  "links": [
@@ -479,6 +575,38 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "轨迹"
+  },
+  {
+   "id": "lksy1",
+   "f": "ssyolo",
+   "t": "ss2d3d",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "检测框 2D"
+  },
+  {
+   "id": "lksy2",
+   "f": "ss2d3d",
+   "t": "ssobs",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "感知坐标 3D"
+  },
+  {
+   "id": "lksy3",
+   "f": "sstactile",
+   "t": "ssobs",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "触觉 4D"
+  },
+  {
+   "id": "lksy4",
+   "f": "ssyolo",
+   "t": "ssaoi",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "检测区域"
   }
  ]
 }
