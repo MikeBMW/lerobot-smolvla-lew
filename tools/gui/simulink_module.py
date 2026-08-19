@@ -2944,8 +2944,13 @@ class SimLinkItem(QGraphicsObject):
             bx = b.x()
             by = b.y() + self.dst.h * (ti + 1) / (mi + 1)
         c1x, c2x = ax + (bx - ax) * .5, bx - (bx - ax) * .5
+        # 🐛 2026-08-19 老倪"连接线都没了": VcXsrv 下 QPainterPath cubicTo 贝塞尔
+        # 渲染崩溃/丢线 (切状态空间画布即 Segfault, 曲线绘制中途) → 改两段折线
+        # (lineTo), 视觉等价且 X11 渲染稳定; 离屏验证正常 (offscreen 不走 X11)
         path = QPainterPath(QPointF(ax, ay))
-        path.cubicTo(c1x, ay, c2x, by, bx, by)
+        path.lineTo((ax + bx) / 2, ay)
+        path.lineTo((ax + bx) / 2, by)
+        path.lineTo(bx, by)
         return path
 
     def paint(self, painter, opt, widget=None):
