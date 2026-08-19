@@ -7680,7 +7680,48 @@ class SimulinkModule(QWidget):
         ("对比评估", "on_compare_scope"),
         ("Scope", "on_scope"),
         ("PDF", "on_pdf_report"),   # 📄 技术选型报告 (2026-08-05 老倪)
+        ("YOLO", "on_yolo_sense"),  # 🎯 YOLO 感知 (2026-08-19 老倪: 实际模型加载验证)
     ]
+
+    def on_yolo_sense(self, **kw):
+        """🎯 YOLO 感知 — 实际模型加载验证 (2026-08-19 老倪: 状态空间补全 YOLO 感知)
+        双击「🎯 YOLO 目标检测」节点: 实际加载 yolov8s.pt → 检测 2D 框 → 3D 反投影
+        → 43D 状态空间观测 (B1 识别 + B2 位姿 + 状态对齐, 参考 Z700 感知执行层)"""
+        self._log("🎯 正在加载实际 YOLO 模型 (yolov8s.pt) 并跑检测…")
+
+        def _work():
+            try:
+                from yolo_perception import YoloPerception
+                import numpy as np
+                from PIL import Image
+                root = self._repo_root()
+                p = YoloPerception(weights=os.path.join(root, "yolov8s.pt"))
+                img_path = os.path.join(root, "reports", "_yolo_demo.jpg")
+                if not os.path.exists(img_path):
+                    img_path = os.path.join(root, "reports", "_yolo_demo.png")
+                if os.path.exists(img_path):
+                    img = np.asarray(Image.open(img_path).convert("RGB"))
+                else:
+                    img = np.zeros((480, 480, 3), dtype=np.uint8)
+                det = p.detect(img)
+                det3d = p.to_3d(det)
+                obs43 = p.align_obs(None, det3d)
+                lines = [f"🎯 YOLO 实际加载: yolov8s.pt ({len(p.names)} 类) · "
+                         f"检测 {len(det)} 个目标"]
+                for cls, dd in sorted(det.items(), key=lambda x: -x[1]['conf'])[:8]:
+                    s = f"  {cls}: conf={dd['conf']:.2f}"
+                    if cls in det3d:
+                        s += f"  3D={np.round(det3d[cls], 3).tolist()}"
+                    lines.append(s)
+                lines.append(f"  43D 状态空间观测: dim={obs43.shape[0]} "
+                             f"(39D 视觉结构含 YOLO 3D 坐标 + 触觉 4D)")
+                lines.append("  📌 peg 专用权重训练后即可检测光模块/插孔场景 "
+                             "(当前 yolov8s 为通用 COCO 权重)")
+                return True, "\n".join(lines)
+            except Exception as ex:
+                return False, f"YOLO 感知失败: {ex}"
+
+        self._start_worker(_work, "正在加载实际 YOLO 模型…", stage="yolo")
 
     def on_compare_scope(self, **kw):
         """🔬 对比评估 Scope: 双击 → 自动跑已训练模型统一评估 → 弹出对比图表
