@@ -10456,6 +10456,12 @@ del "%~f0"
             dlg.raise_()
             dlg.activateWindow()
             dlg.show()  # 非模态 (弹窗零容忍铁律, 不 exec_)
+            # 🐛 2026-08-19 老倪报"Feature List 打开的是视频": 操作视频窗口(置顶
+            # WindowStaysOnTopHint)在 VcXsrv 下 z-order 不稳, 盖住新弹窗 →
+            # show 后延迟双 raise, 确保 Feature List 显示在最前
+            from PyQt5.QtCore import QTimer as _QT
+            _QT.singleShot(60, dlg.raise_)
+            _QT.singleShot(250, dlg.raise_)
             self.statusBar().showMessage("✨ Feature List · 产品特征清单")
         except Exception as ex:
             _msg_ok(self, "打开失败", f"{ex}", kind="warning")
