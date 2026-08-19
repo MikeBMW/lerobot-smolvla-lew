@@ -1018,13 +1018,32 @@ class StateSpaceScopeDialog(QDialog):
     def __init__(self, tr, parent=None):
         super().__init__(parent)
         self._tr = tr
-        self.setWindowTitle("📊 仿真波形 · 状态空间")
-        self.setMinimumSize(820, 560)
+        self.setWindowTitle("仿真波形 · 状态空间")
+        # 🐛 2026-08-18 老倪: 窗口要"大一点看得更详细" — 初始 1280x820, 可最大化/自由调整
+        self.setMinimumSize(1024, 700)
+        self.resize(1280, 820)
+        self.setSizeGripEnabled(True)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stages = tr.get("stage", [])
         self._t = np.asarray(tr.get("t", []), dtype=float)
 
     def paintEvent(self, ev):
+        # 🐛 2026-08-18: paintEvent 必须 try — PyQt5 虚函数重写里 Python 异常
+        # → qFatal → abort (Segmentation fault 实锤, 与 resizeEvent 同款坑)
+        try:
+            self._paint(ev)
+        except Exception:
+            try:
+                p = QPainter(self)
+                p.fillRect(self.rect(), QColor("#0d1117"))
+                p.setPen(QColor("#8b949e"))
+                p.drawText(self.rect(), Qt.AlignCenter, "绘图异常")
+                p.end()
+            except Exception:
+                pass
+
+    def _paint(self, ev):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.fillRect(self.rect(), QColor("#0d1117"))
@@ -1052,7 +1071,7 @@ class StateSpaceScopeDialog(QDialog):
             p.drawRect(int(x0), int(y0), int(w), int(h))
             p.setPen(QColor("#e6edf3"))
             # 🐛 2026-08-18: 中文模糊 — 默认字体 fallback 差; 显式 wqy (fc-list 已注册) + 加大字号
-            f = QFont("WenQuanYi Micro Hei", 12); f.setBold(True)
+            f = QFont("WenQuanYi Micro Hei", 14); f.setBold(True)
             p.setFont(f)
             p.drawText(int(x0 + 8), int(y0 + 20), title)
             # 坐标变换: t → x, y → 画布
@@ -1069,12 +1088,17 @@ class StateSpaceScopeDialog(QDialog):
                 p.drawLine(int(X(t0)), int(Y(v)), int(X(t1)), int(Y(v)))
             p.setPen(QColor("#8b949e"))
             p.drawText(int(x0 + 8), int(y0 + h - 4), f"{ymin:.3f} — {ymax:.3f}")
-            # 曲线
-            pen = QPen(QColor(color), 2)
+            # 📐 2026-08-18 老倪: 图表要有横轴说明 — 右下角标 "t (s)" (纵轴单位在标题里)
+            p.drawText(int(x0 + w - 40), int(y0 + h - 4), "t (s)")
+            # 曲线 — 🐛 2026-08-18: 逐点 drawLine (2000 次) 在 resize 重绘时卡顿
+            # → QPainterPath 一次性批量绘制, 500 点 path < 5ms
+            pen = QPen(QColor(color), 2.5)
             p.setPen(pen)
-            pts = [QPointF(X(tt), Y(vv)) for tt, vv in zip(self._t, y)]
-            for j in range(1, len(pts)):
-                p.drawLine(pts[j - 1], pts[j])
+            path = QPainterPath()
+            path.moveTo(X(self._t[0]), Y(y[0]))
+            for tt, vv in zip(self._t[1:], y[1:]):
+                path.lineTo(X(tt), Y(vv))
+            p.drawPath(path)
             # 阶段切换竖线 + 标签 (第一子图画)
             if i == 0:
                 p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
@@ -1089,6 +1113,250 @@ class StateSpaceScopeDialog(QDialog):
                         p.drawText(int(X(self._t[j]) + 3), int(y0 + 14), s[:2])
                         p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
         p.end()
+
+
+# ════════════════════════════════════════════════════════════════
+# 🎥 操作视频 — 独立大窗口播放 (2026-08-18 老倪: 画布内嵌小窗又小又卡 → 双击弹大窗口)
+# 自包含: 后台抽帧(缓存秒开) + 100ms 轮播 + 上/下一个 + 转正 + 暂停 + 可调大小/最大化
+# ════════════════════════════════════════════════════════════════
+class MLPRolloutDialog(QDialog):
+    """🎥 MLP 操作视频播放窗 — QLabel 显示帧, 缩放适配窗口, resize 不卡"""
+
+    _frames_ready = pyqtSignal(str)   # 后台抽帧完成 → 主线程刷新
+
+    def __init__(self, cands, repo_root, parent=None):
+        super().__init__(parent)
+        self._cands = list(cands)
+        self._root = repo_root
+        self._vidx = 0          # 当前视频序号
+        self._idx = 0           # 当前帧序号
+        self._frames = []       # 帧文件名列表
+        self._frames_dir = ""
+        self._loading = False
+        # ✅ 2026-08-19 OCR 实锤: 4 个候选视频 (mlp_insert_success/final, mlp_best/final)
+        #   原始方向 rot0 文字即正 ("TREND peg->hole inserted / hand->peg" 可读),
+        #   默认 180° 会把字转倒 (8-18 早误判 rot180 副本为正片方向)
+        self._rot = 0
+        self._mirror = False
+        self._flip_v = False   # 🐛 2026-08-18: 上下翻转 (字体上下颠倒时用, 组合调到字正画面正)
+        self._playing = True
+        self._pm = None         # 当前帧原始 pixmap (旋转前)
+        self._pm_name = ""
+        self.setWindowTitle("操作视频 · 状态空间 (MLP 同构策略)")
+        # 🐛 2026-08-18 老倪: 窗口要"大一点看得更详细" — 初始 1280x820, 可最大化/自由调整
+        self.setMinimumSize(1024, 700)
+        self.resize(1280, 820)
+        self.setSizeGripEnabled(True)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
+        self.setStyleSheet("QDialog { background:#0d1117; }")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        self._lbl_title = QLabel("")
+        self._lbl_title.setStyleSheet(
+            "color:#e6edf3; font-size:13px; font-weight:600; padding:2px 6px;")
+        lay.addWidget(self._lbl_title)
+        self._lbl_video = QLabel()
+        self._lbl_video.setAlignment(Qt.AlignCenter)
+        self._lbl_video.setStyleSheet(
+            "background:#000000; border:1px solid #30363d; border-radius:4px;")
+        self._lbl_video.setMinimumSize(400, 300)
+        lay.addWidget(self._lbl_video, 1)
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        b_prev = QPushButton("上一个")
+        b_tog = QPushButton("暂停")
+        b_next = QPushButton("下一个")
+        b_rot = QPushButton("旋转 90°")
+        b_mir = QPushButton("左右翻转")
+        b_flip = QPushButton("上下翻转")
+        b_prev.clicked.connect(self._prev)
+        b_tog.clicked.connect(self._toggle)
+        b_next.clicked.connect(self._next)
+        b_rot.clicked.connect(self._rot90)
+        b_mir.clicked.connect(self._mirror_toggle)
+        b_flip.clicked.connect(self._flipv_toggle)
+        _BSS = ("QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                "border-radius:4px;padding:6px 14px;font-size:12px;}"
+                "QPushButton:hover{background:#30363d;}")
+        for b in (b_prev, b_tog, b_next, b_rot, b_mir, b_flip):
+            b.setStyleSheet(_BSS)
+            h.addWidget(b)
+        h.addStretch()
+        lay.addLayout(h)
+        # ⏱ PreciseTimer 挂 parent (防 NULL receiver 铁律)
+        self._timer = _tq(self)
+        self._timer.timeout.connect(self._tick)
+        self._frames_ready.connect(self._on_frames_ready)
+        self._timer.start(100)
+        self._load_frames(0)
+
+    # ── 帧加载 (后台线程抽帧, 缓存秒开) ──
+    def _load_frames(self, vidx):
+        try:
+            self._vidx = vidx
+            src = self._cands[vidx]
+            self._loading = True
+            self._lbl_title.setText(f"{os.path.basename(src)} 加载中…")
+            cache = os.path.join(self._root, "reports",
+                                 "_mlp_cache_" + os.path.splitext(os.path.basename(src))[0])
+            if os.path.isdir(cache) and len(os.listdir(cache)) > 10:
+                self._frames_dir = cache
+                self._frames = sorted(os.listdir(cache))
+                self._idx = 0
+                self._loading = False
+                self._show()
+                return
+            import threading
+            import subprocess as _sp
+
+            def _work():
+                try:
+                    tmp = cache + "_tmp"
+                    if os.path.isdir(tmp):
+                        for f in os.listdir(tmp):
+                            os.remove(os.path.join(tmp, f))
+                    else:
+                        os.makedirs(tmp, exist_ok=True)
+                    r = _sp.run(["ffmpeg", "-y", "-i", src, "-vsync", "0",
+                                 os.path.join(tmp, "f_%04d.png")],
+                                capture_output=True, timeout=120)
+                    if r.returncode != 0:
+                        self._frames_ready.emit("")
+                        return
+                    if os.path.isdir(cache):
+                        for f in os.listdir(cache):
+                            os.remove(os.path.join(cache, f))
+                    else:
+                        os.makedirs(cache, exist_ok=True)
+                    for f in os.listdir(tmp):
+                        os.replace(os.path.join(tmp, f), os.path.join(cache, f))
+                    os.rmdir(tmp)
+                    self._frames_ready.emit(os.path.basename(src))
+                except Exception:
+                    self._frames_ready.emit("")
+
+            threading.Thread(target=_work, daemon=True).start()
+        except Exception:
+            self._loading = False
+
+    def _on_frames_ready(self, name):
+        try:
+            if not name:
+                self._lbl_title.setText("抽帧失败")
+                self._loading = False
+                return
+            cache = os.path.join(self._root, "reports",
+                                 "_mlp_cache_" + os.path.splitext(name)[0])
+            self._frames_dir = cache
+            self._frames = sorted(os.listdir(cache))
+            self._idx = 0
+            self._loading = False
+            self._show()
+        except Exception:
+            self._loading = False
+
+    # ── 渲染 (缩放适配窗口, resize 不卡) ──
+    def _show(self):
+        try:
+            if not self._frames:
+                return
+            fp = os.path.join(self._frames_dir, self._frames[self._idx])
+            self._pm = QPixmap(fp)
+            self._pm_name = os.path.basename(self._cands[self._vidx])
+            self._render()
+        except Exception:
+            pass
+
+    def _render(self):
+        try:
+            pm = self._pm
+            if pm is None or pm.isNull():
+                return
+            # 🐛 2026-08-18: 180° 旋转 = 水平+垂直镜像 — 用 QImage.mirrored (快速位图),
+            # QPixmap 没有 mirrored 方法 (AttributeError 被吞 → 黑屏实锤!)
+            if self._rot == 180:
+                pm = QPixmap.fromImage(pm.toImage().mirrored(True, True))
+            elif self._rot:
+                pm = pm.transformed(QTransform().rotate(self._rot),
+                                    Qt.SmoothTransformation)
+            if self._mirror:
+                pm = QPixmap.fromImage(pm.toImage().mirrored(True, False))
+            if self._flip_v:
+                pm = QPixmap.fromImage(pm.toImage().mirrored(False, True))
+            sz = self._lbl_video.size()
+            if sz.width() > 20 and sz.height() > 20:
+                # 🐛 2026-08-18: 播放中用 Fast 缩放 (10fps 软渲染不掉帧), 暂停/翻转时 Smooth
+                mode = Qt.FastTransformation if self._playing else Qt.SmoothTransformation
+                pm = pm.scaled(sz, Qt.KeepAspectRatio, mode)
+            self._lbl_video.setPixmap(pm)
+            self._lbl_title.setText(
+                f"{self._pm_name} · {self._idx+1}/{len(self._frames)} · "
+                f"{pm.width()}x{pm.height()}")
+        except Exception:
+            pass
+
+    def resizeEvent(self, ev):
+        """🐛 2026-08-18: resizeEvent 必须 try — PyQt5 虚函数重写里 Python 异常
+        → sipQDialog::resizeEvent → qFatal → abort (Segmentation fault 实锤!)"""
+        try:
+            super().resizeEvent(ev)
+            self._render()
+        except Exception:
+            pass
+
+    # ── 轮播 (播完一圈自动循环, 🐛 2026-08-18: 不再自动暂停 — 用户误以为卡住) ──
+    def _tick(self):
+        if self._loading or not self._frames:
+            return
+        self._idx += 1
+        if self._idx >= len(self._frames):
+            self._idx = 0   # 循环播放
+        self._show()
+
+    def mouseDoubleClickEvent(self, e):
+        """双击画面 = 重播/暂停切换"""
+        if not self._playing:
+            self._timer.start(100)
+            self._playing = True
+        else:
+            self._toggle()
+        e.accept()
+
+    def _toggle(self):
+        if self._timer.isActive():
+            self._timer.stop()
+            self._playing = False
+        else:
+            self._timer.start(100)
+            self._playing = True
+
+    def _prev(self):
+        self._load_frames((self._vidx - 1) % len(self._cands))
+
+    def _next(self):
+        self._load_frames((self._vidx + 1) % len(self._cands))
+
+    def _rot90(self):
+        """🔄 每次 +90° 循环 (0→90→180→270) — 视频可能是 90° 旋转问题, 点几下找到字正画面正"""
+        self._rot = (self._rot + 90) % 360
+        self._render()
+
+    def _mirror_toggle(self):
+        self._mirror = not self._mirror
+        self._render()
+
+    def _flipv_toggle(self):
+        self._flip_v = not self._flip_v
+        self._render()
+
+    def closeEvent(self, ev):
+        """🛡 关窗停 timer (防 activateTimers 崩溃铁律)"""
+        try:
+            self._timer.stop()
+        except Exception:
+            pass
+        super().closeEvent(ev)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2750,6 +3018,14 @@ class SimCanvas(QGraphicsView):
         # 空格键临时平移 (Simulink 习惯: 按住空格拖动画布)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        # 🐛 2026-08-18 老倪"上边一小部分动" — VcXsrv (HC-Consult 12014000) 处理大
+        # XPutImage 请求有 bug (max request 16MB, Qt 单块上传整个窗口 ~5MB, VcXsrv 只画
+        # 顶部一点)。FullViewportUpdate 全量重绘 = 大 XPutImage = 必踩 bug!
+        # → 恢复默认 MinimalViewportUpdate: 滚动走 XCopyArea 位块移动(服务器端单请求, 正常)
+        #   + 只重绘露出小条(小 XPutImage, 正常)。分割条/窗口 resize 仍会全量重绘
+        #   (VcXsrv bug 绕不开, 需升级 VcXsrv 或换显示方案)。PyQt5 枚举错位:
+        #   NoViewport=3 Minimal=1 Full=0 Bounding=4 Smart=2 (传 1 = C++ Minimal ✓)
+        self.setViewportUpdateMode(1)   # C++ QGraphicsView::MinimalViewportUpdate
         self._drag_from = None       # 连线起点 (SimNodeItem)
         self._tmp_line = None        # 临时连线
         self._drag_node = None       # 手动拖动的节点 (只移动它, 绕开scene多选)
@@ -2796,6 +3072,10 @@ class SimCanvas(QGraphicsView):
             self.module.on_zoom(self._scale)
         else:
             super().wheelEvent(e)
+
+    # 🐛 2026-08-18: 不重写 scrollContentsBy — MinimalViewportUpdate 默认滚动
+    # = XCopyArea 位块移动(服务器端, 正常) + 露出小条重绘(小 XPutImage, 正常)。
+    # 任何全量 repaint/update 都会触发 VcXsrv 大 XPutImage bug (只画顶部一点)
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MiddleButton:
@@ -2902,6 +3182,9 @@ class SimCanvas(QGraphicsView):
     def _poll_hover(self):
         """🐛 2026-08-12 老倪: 150ms 轮询鼠标位置 → 悬停显示 ID (VcXsrv 无按键 mouseMove 不达)"""
         try:
+            # 🐛 2026-08-18: 滚动条拖动中跳过 hover — 减重绘竞争 + 减 timer 碰撞
+            if self.verticalScrollBar().isSliderDown() or self.horizontalScrollBar().isSliderDown():
+                return
             from PyQt5.QtGui import QCursor
             gp = QCursor.pos()
             if gp == self._last_hover_pos:
@@ -3551,6 +3834,10 @@ class SimulinkModule(QWidget):
         # MDI 容器 (画布作为子窗口, 可最小化/最大化/关闭/移动/缩放)
         self._mdi = QMdiArea()
         self._mdi.setViewMode(QMdiArea.SubWindowView)
+        # 🐛 2026-08-18 老倪: "上边动下边不动" — QMdiArea 自带滚动条 (子窗口超出时出现),
+        # VcXsrv 下位块滚动残影 → 禁用, 滚动全交给 SimCanvas (已 FullViewportUpdate 修复)
+        self._mdi.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._mdi.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._mdi.setStyleSheet("""
             QMdiArea { background:#eef1f5; }
             QMdiSubWindow { background:#f6f8fa; border:1px solid #d0d7de; }
@@ -3595,7 +3882,11 @@ class SimulinkModule(QWidget):
         split.setStretchFactor(2, 1)
         # 🐛 2026-08-12 老倪: 垂直 splitter — 主体(上) + 日志(下) 可拖手柄调整大小
         # (终端沿边沿向上扩展, 对标 Simulink 诊断窗口可调)
+        # 🐛 2026-08-18 老倪: "拖动条只有上半部分移动, 下半残留旧画面" — VcXsrv 下
+        # opaque resize 拖动时实时重绘两栏失败(残影) → setOpaqueResize(False)
+        # 拖动只画分割线, 松手后完整重绘, 无残影
         self._v_split = QSplitter(Qt.Vertical)
+        self._v_split.setOpaqueResize(False)
         self._v_split.addWidget(split)
         outer.addWidget(self._v_split, 1)
 
@@ -7408,204 +7699,91 @@ class SimulinkModule(QWidget):
         self._start_worker(_work, "正在评估已训练模型 (统一 metaworld)", stage="compare")
 
     def play_mlp_rollout(self):
-        """🎥 操作视频 — 画布内嵌播放 (2026-08-18 老倪: 视频直接显示在 simulink 画布节点上)
-        帧轮播 → 节点 item.video_pixmap 更新 → 画布重绘; 双击节点 = 播放/暂停"""
+        """🎥 操作视频 — 独立大窗口播放 (2026-08-18 老倪: 画布内嵌小窗又小又卡 → 双击弹大窗口)
+        复用 MLPRolloutDialog: 后台抽帧(缓存秒开) + 100ms 轮播 + 上/下一个 + 转正 + 暂停"""
         import glob as _glob
         root = self._repo_root()
-        # 画布上的视频节点 (📊 操作视频)
-        node = next((n for n in self.nodes
-                     if n.get("params", {}).get("state_space_rollout")), None)
-        if node is None:
-            self._log("⚠️ 画布无操作视频节点")
-            return
-        it = self._items.get(node["id"])
-        if it is None:
-            return
-        # 已在播放 → 暂停/继续切换
-        if getattr(self, "_mlp_playing", False):
-            self._mlp_toggle()
-            return
+        # 已在播放 → 提到前台, 不重复开窗 (🐛 2026-08-18: dialog 关闭后 C++ 对象已删,
+        # _mlp_dlg 引用悬垂 → isVisible() RuntimeError → qFatal; sip.isdeleted 检查)
+        dlg = getattr(self, "_mlp_dlg", None)
+        if dlg is not None:
+            from PyQt5 import sip
+            if not sip.isdeleted(dlg) and dlg.isVisible():
+                dlg.raise_()
+                dlg.activateWindow()
+                return
+            self._mlp_dlg = None
         cands = _glob.glob(os.path.join(root, "reports", "*MLP*.mp4")) + \
                 _glob.glob(os.path.join(root, "reports", "*mlp*.mp4"))
         cands = [c for c in cands if os.path.getsize(c) > 1000]
+        # 🐛 2026-08-18 老倪: 操作视频 = 机械臂操作动作视频 (MLP rollout), 不含仿真波形动画
+        # state_space_sim.mp4 (那是「📊 仿真波形」的内容, 用户明确纠正)
+        # 排除 rot180/rot 变体 (内容旋转过 = 文字反着, 老倪铁律)
+        cands = [c for c in cands
+                 if "rot180" not in os.path.basename(c).lower()
+                 and "rot" not in os.path.basename(c).lower().replace("_rot_", "")]
         if not cands:
             self._log("⚠️ 无 MLP 操作视频 (reports/*MLP*.mp4) — 需在 4060/ECS 生成后放回")
             return
-        _PRIORITY = ["发送_MLP插拔成功.mp4", "mlp_insert_success_final.mp4",
-                     "mlp_insert_success.mp4", "mlp_best_final.mp4", "mlp_best.mp4"]
+        _PRIORITY = ["mlp_insert_success_final.mp4", "mlp_insert_success.mp4",
+                     "mlp_best_final.mp4", "mlp_best.mp4"]
+        # 🐛 2026-08-18: 排除 rot180/rot 变体 + 伪装副本「发送_MLP插拔成功.mp4」
+        #   (字节数与 mlp_insert_success_rot180.mp4 完全相同 = rot180 副本, HUD 文字倒)
+        cands = [c for c in cands
+                 if os.path.basename(c) != "发送_MLP插拔成功.mp4"
+                 and "rot180" not in os.path.basename(c).lower()
+                 and "rot" not in os.path.basename(c).lower().replace("_rot_", "")]
         order = sorted(cands, key=lambda c: (_PRIORITY.index(os.path.basename(c))
                                              if os.path.basename(c) in _PRIORITY else 99,
                                              -os.path.getmtime(c)))
         try:
-            from PyQt5.QtCore import QTimer
-            from PyQt5.QtGui import QPixmap, QTransform
-            self._mlp_item = it
-            self._mlp_frames = []
-            self._mlp_idx = 0
-            self._mlp_vidx = 0
-            self._mlp_cands = order
-            self._mlp_rot = 0
-            self._mlp_playing = True
-            self._mlp_loading = False
-            self._mlp_frames_dir = os.path.join(root, "reports", "_mlp_cache_发送_MLP插拔成功")
-            # 绑定方法连接 (🐛 防 GC 竞态) — 只在首次创建 timer
-            if not hasattr(self, "_mlp_timer") or self._mlp_timer is None:
-                self._mlp_timer = _tq(self)
-                self._mlp_timer.timeout.connect(self._mlp_tick)
-                self._mlp_frames_ready.connect(self._mlp_on_frames_ready)
-            # 🐛 2026-08-18: 66ms 狂闪 → 150ms 卡顿 → 100ms (10fps) 平衡 + 播放时暂停 hover 轮询
-            self._mlp_timer.start(100)
-            # 播放期间暂停 hover timer (减画布重绘竞争, 视频更流畅)
-            try:
-                self._hover_timer.stop()
-            except Exception:
-                pass
-            self._mlp_load_frames(0)
-            self._log(f"🎥 操作视频: 画布内嵌播放 (7 个视频 · 双击暂停/继续)")
+            dlg = MLPRolloutDialog(order, root, parent=self)
+            self._mlp_dlg = dlg
+            self._show_nonmodal(dlg)
+            # 🎯 show 之后才定位 — move 在 show 前会被 Qt 居中父窗口覆盖
+            self._popup_on_main_screen(dlg)
+            self._log(f"🎥 操作视频: 大窗口播放 ({len(order)} 个视频 · 双击节点重开/前置)")
         except Exception as e:
-            self._log(f"⚠️ 操作视频播放失败: {e}")
+            self._log(f"⚠️ 操作视频打开失败: {e}")
 
-    def _mlp_load_frames(self, vidx):
-        """ffmpeg 抽帧 (后台线程, 有缓存秒开) + 信号回主线程刷新 — 🐛 2026-08-18:
-        原主线程 _sp.run 抽帧 250 帧 PNG → 阻塞 GUI 数秒 (假死/误判崩溃)"""
-        try:
-            self._mlp_vidx = vidx
-            src = self._mlp_cands[vidx]
-            self._mlp_loading = True
-            self._mlp_item.video_overlay = f"⏳ {os.path.basename(src)}"
-            self._mlp_item.update()
-            cache = os.path.join(self._repo_root(), "reports",
-                                 "_mlp_cache_" + os.path.splitext(os.path.basename(src))[0])
-            if os.path.isdir(cache) and len(os.listdir(cache)) > 10:
-                # 缓存命中 → 秒开
-                self._mlp_frames_dir = cache
-                self._mlp_frames = sorted(os.listdir(cache))
-                self._mlp_idx = 0
-                self._mlp_loading = False
-                self._mlp_show()
-                return
-            # 后台线程抽帧 (不碰 Qt), 完成后信号回主线程
-            import threading
-
-            def _work():
-                try:
-                    import subprocess as _sp
-                    tmp = cache + "_tmp"
-                    if os.path.isdir(tmp):
-                        for f in os.listdir(tmp):
-                            os.remove(os.path.join(tmp, f))
-                    else:
-                        os.makedirs(tmp, exist_ok=True)
-                    r = _sp.run(["ffmpeg", "-y", "-i", src, "-vsync", "0",
-                                 os.path.join(tmp, "f_%04d.png")],
-                                capture_output=True, timeout=120)
-                    if r.returncode != 0:
-                        self._mlp_frames_ready.emit("")   # 失败
-                        return
-                    if os.path.isdir(cache):
-                        for f in os.listdir(cache):
-                            os.remove(os.path.join(cache, f))
-                    else:
-                        os.makedirs(cache, exist_ok=True)
-                    for f in os.listdir(tmp):
-                        os.replace(os.path.join(tmp, f), os.path.join(cache, f))
-                    os.rmdir(tmp)
-                    self._mlp_frames_ready.emit(os.path.basename(src))
-                except Exception:
-                    self._mlp_frames_ready.emit("")
-
-            threading.Thread(target=_work, daemon=True).start()
-        except Exception:
-            self._mlp_loading = False
-
-    def _mlp_on_frames_ready(self, name):
-        """主线程: 后台抽帧完成 → 刷新帧列表 (pyqtSignal 队列投递, 线程安全)"""
-        try:
-            if not name:
-                self._mlp_item.video_overlay = "⚠️ 抽帧失败"
-                self._mlp_item.update()
-                self._mlp_loading = False
-                return
-            cache = os.path.join(self._repo_root(), "reports",
-                                 "_mlp_cache_" + os.path.splitext(name)[0])
-            self._mlp_frames_dir = cache
-            self._mlp_frames = sorted(os.listdir(cache))
-            self._mlp_idx = 0
-            self._mlp_loading = False
-            self._mlp_show()
-        except Exception:
-            self._mlp_loading = False
-
-    def _mlp_show(self):
-        try:
-            if not self._mlp_frames:
-                return
-            fp = os.path.join(self._mlp_frames_dir, self._mlp_frames[self._mlp_idx])
-            pm = QPixmap(fp)
-            if self._mlp_rot:
-                pm = pm.transformed(QTransform().rotate(self._mlp_rot), Qt.SmoothTransformation)
-            self._mlp_item.video_pixmap = pm
-            self._mlp_item.video_overlay = (
-                f"{os.path.basename(self._mlp_cands[self._mlp_vidx])} · "
-                f"{self._mlp_idx+1}/{len(self._mlp_frames)}")
-            self._mlp_item.update()
-        except Exception:
-            pass
-
-    def _mlp_tick(self):
-        if self._mlp_loading or not self._mlp_frames:
-            return
-        self._mlp_idx += 1
-        if self._mlp_idx >= len(self._mlp_frames):
-            self._mlp_idx = 0
-            # 🐛 2026-08-18: 播完一圈自动暂停 (用户: 插拔动作重复太多) — 双击重播
-            t = getattr(self, "_mlp_timer", None)
-            if t is not None:
-                t.stop()
-            self._mlp_playing = False
-            self._mlp_item.video_overlay = "已播完 · 双击重播"
-            self._mlp_item.update()
-            return
-        self._mlp_show()
-
-    def _mlp_prev(self):
-        self._mlp_load_frames((self._mlp_vidx - 1) % len(self._mlp_cands))
-
-    def _mlp_next(self):
-        self._mlp_load_frames((self._mlp_vidx + 1) % len(self._mlp_cands))
+    def _mlp_dlg_or_none(self):
+        """当前操作视频弹窗 (未开/已关/已删 → None)"""
+        dlg = getattr(self, "_mlp_dlg", None)
+        if dlg is None:
+            return None
+        from PyQt5 import sip
+        if sip.isdeleted(dlg) or not dlg.isVisible():
+            return None
+        return dlg
 
     def _mlp_rot180(self):
-        self._mlp_rot = (self._mlp_rot + 180) % 360
-        self._mlp_show()
+        dlg = self._mlp_dlg_or_none()
+        if dlg is not None:
+            dlg._rot90()
+
+    def _mlp_next(self):
+        dlg = self._mlp_dlg_or_none()
+        if dlg is not None:
+            dlg._next()
+
+    def _mlp_prev(self):
+        dlg = self._mlp_dlg_or_none()
+        if dlg is not None:
+            dlg._prev()
 
     def _mlp_toggle(self):
-        if getattr(self, "_mlp_timer", None) and self._mlp_timer.isActive():
-            self._mlp_timer.stop()
-            self._mlp_playing = False
-            try:
-                self._hover_timer.start(300)   # 恢复 hover 轮询
-            except Exception:
-                pass
-            self._log("⏸ 操作视频已暂停 (再双击继续)")
-        else:
-            t = getattr(self, "_mlp_timer", None)
-            if t is not None:
-                t.start(100)
-                self._mlp_playing = True
-                try:
-                    self._hover_timer.stop()   # 播放时暂停 hover
-                except Exception:
-                    pass
-                self._log("▶ 操作视频继续播放")
+        dlg = self._mlp_dlg_or_none()
+        if dlg is not None:
+            dlg._toggle()
 
     def _stop_mlp_timer(self):
-        """🛡 播放停止 → 停轮播 timer (防 activateTimers 崩溃)"""
-        try:
-            t = getattr(self, "_mlp_timer", None)
-            if t is not None:
-                t.stop()
-        except Exception:
-            pass
+        """🛡 关窗/画布切换 → 停轮播 timer (防 activateTimers 崩溃)"""
+        dlg = getattr(self, "_mlp_dlg", None)
+        if dlg is not None:
+            try:
+                dlg._timer.stop()
+            except Exception:
+                pass
 
     def _popup_on_main_screen(self, dlg):
         """🎯 弹窗定位到主窗口左上区域 + 级联偏移 (🐛 2026-08-18: 多个弹窗不叠不乱;
@@ -8820,28 +8998,28 @@ class SimulinkModule(QWidget):
             self._start_video_export(tr)
 
     def _start_video_export(self, tr):
-        """🎥 后台线程: 渲染操作视频 → 上传 ECS (datadrive.world) → 打印链接 (不卡 UI)"""
+        """🎥 后台渲染操作视频 → 上传 ECS (datadrive.world) → 打印链接 (不卡 UI)
+        🐛 2026-08-18: Pillow 渲染持 GIL, 线程内渲染卡主线程 (点运行后拖滚动条卡死)
+        → 渲染移子进程 (gen_state_space_video.py 自跑仿真, 主线程零阻塞)"""
         import threading
         import subprocess as _sp
         import os as _os
-        # 🐛 2026-08-18: PyQt5 模块必须主线程 import — 工作线程首次 import (真实 X 环境
-        # 触碰 Qt 全局初始化/连接) → SIGSEGV (QObject::killTimer / Timers cannot be
-        # stopped from another thread)。主线程预加载, 线程内走 sys.modules 缓存。
-        try:
-            import gen_state_space_video  # noqa: F401
-        except Exception:
-            pass
 
         def _worker():
             try:
-                from gen_state_space_video import make_video
-                out = _os.path.join(self._repo_root(), "reports", "state_space_sim.mp4")
-                make_video(tr, out)
+                root = self._repo_root()
+                gui_dir = _os.path.join(root, "tools", "gui")
+                out = _os.path.join(root, "reports", "state_space_sim.mp4")
+                r = _sp.run([sys.executable, "gen_state_space_video.py", out],
+                            capture_output=True, text=True, timeout=300, cwd=gui_dir)
+                if r.returncode != 0:
+                    self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")
+                    return
                 try:
-                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
-                                 out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
-                                capture_output=True, timeout=60)
-                    if r.returncode == 0:
+                    r2 = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                                  out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
+                                 capture_output=True, timeout=60)
+                    if r2.returncode == 0:
                         _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79",
                                  "chmod 644 /www/wwwroot/datadrive.world/state_space_sim.mp4"],
