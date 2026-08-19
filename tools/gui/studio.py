@@ -10452,6 +10452,17 @@ del "%~f0"
             return
         try:
             dlg = FeatureListDialog(self)
+            # 🐛 2026-08-19: 操作视频窗口(置顶, 播放中频繁刷 X 层)遮挡+像素残留污染
+            # Feature List → 弹出前把操作视频降置顶+下移 (用户要看再点它)
+            try:
+                _sim = getattr(self, "_simulink", None)
+                if _sim is not None and hasattr(_sim, "_mlp_dlg_or_none"):
+                    _vd = _sim._mlp_dlg_or_none()
+                    if _vd is not None:
+                        _vd.setWindowFlags(_vd.windowFlags() & ~Qt.WindowStaysOnTopHint)
+                        _vd.lower()
+            except Exception:
+                pass
             dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
             dlg.raise_()
             dlg.activateWindow()
@@ -10462,6 +10473,18 @@ del "%~f0"
             from PyQt5.QtCore import QTimer as _QT
             _QT.singleShot(60, dlg.raise_)
             _QT.singleShot(250, dlg.raise_)
+
+            # 🐛 2026-08-19 老倪报"左侧是操作视频遗留": 操作视频窗口频繁刷新 X 层,
+            # 关闭后像素残留 → 新弹窗部分区域被旧画面污染 → 延迟多次强制全量重绘
+            # (repaint 同步立即绘制, 逐次覆盖残留区)
+            def _repaint_fl():
+                try:
+                    dlg._browser.viewport().repaint()
+                    dlg.repaint()
+                except Exception:
+                    pass
+            for _ms in (100, 400, 800, 1500):
+                _QT.singleShot(_ms, _repaint_fl)
             self.statusBar().showMessage("✨ Feature List · 产品特征清单")
         except Exception as ex:
             _msg_ok(self, "打开失败", f"{ex}", kind="warning")
