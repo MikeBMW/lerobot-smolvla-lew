@@ -2589,6 +2589,15 @@ class ModelTreeDock(QWidget):
     def refresh(self):
         self.tree.clear()
         self.lbl_hint.setText("画布节点参数一览 · 双击参数值可标定/调节 (写回画布)")
+        # 🧩 模型 Feature (2026-08-19 老倪: 数据字典列表增加当前模型特征 —
+        #   模型特征 + 标准接口 + 模块化可替换 + 工程映射, 状态空间先行)
+        try:
+            from model_feature import build_model_feature_item
+            mf = build_model_feature_item(self.module)
+            if mf is not None:
+                self.tree.addTopLevelItem(mf)
+        except Exception:
+            pass
         # 系统参数
         sys_root = QTreeWidgetItem(["⚙ 系统参数"])
         self.tree.addTopLevelItem(sys_root)
