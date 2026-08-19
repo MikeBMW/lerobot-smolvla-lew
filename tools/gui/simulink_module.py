@@ -6167,12 +6167,12 @@ class SimulinkModule(QWidget):
             if stage == "train" and ok and "left_right" in summary.lower():
                 from PyQt5.QtCore import QTimer as _QT
                 self._log("🎬 双脑训练完成, 自动生成插拔视频 (后台, 完成后可秒开)…")
-                _QT.singleShot(800, lambda: self.on_insert_video(force=True))
+                _oneshot(self, 800, lambda: self.on_insert_video(force=True))
                 # 📤 飞书训练报告 (2026-08-12 老倪: 在飞书等报告)
                 _msg = f"✅ Z700 训练完成报告\n· 策略: LeftRight 双脑 (左脑MLP+右脑WM)\n· 输出: {summary.split('·')[-1].strip() if '·' in summary else summary}\n· 视频: 后台生成中 (完成后另发)"
                 self._feishu_send_text_async(_msg)
                 # 📄 训练报告 PDF 自动生成+发飞书 (2026-08-14 老倪: 训练完自动发 PDF, 不等双击)
-                _QT.singleShot(5000, self._auto_train_report_pdf)
+                _oneshot(self, 5000, self._auto_train_report_pdf)
             # ⚔️ 对比评估完成 → 自动弹出对比图表 (非模态, 2026-08-05 防卡死)
             if stage == "compare" and ok:
                 try:

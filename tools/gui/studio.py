@@ -6223,12 +6223,13 @@ class HardwareModule(SubModuleWidget):
         _th.Thread(target=lambda: self._cam_apply_later(_probe, _apply), daemon=True).start()
 
     def _cam_apply_later(self, fn, apply):
-        """子线程执行 fn() → QTimer.singleShot 回主线程 apply (跨线程 GUI 铁律)
-        ⚠️ fn() 必须在子线程跑 (网络请求), 只有结果经 singleShot 回主线程"""
+        """子线程执行 fn() → _oneshot 回主线程 apply (跨线程 GUI 铁律)
+        ⚠️ fn() 必须在子线程跑 (网络请求), 只有结果经回调回主线程
+        🐛 2026-08-19 Segfault 根因: 子线程 QTimer.singleShot 无 parent,
+        线程退出 GC → killTimer from another thread → SIGSEGV → _oneshot 桥接"""
         try:
-            from PyQt5.QtCore import QTimer as _QTM
             res = fn()  # 网络请求在子线程执行
-            _QTM.singleShot(0, lambda: apply(res))
+            _oneshot(self, 0, lambda: apply(res))
         except Exception:
             pass
 
@@ -6272,10 +6273,12 @@ class HardwareModule(SubModuleWidget):
             pass
 
     def _on_ws_status(self, evt):
-        """📡 WS 实时 Orin 状态回调 (子线程 → QTimer.singleShot 主线程刷新, 铁律)"""
+        """📡 WS 实时 Orin 状态回调 (子线程 → _oneshot 主线程刷新)
+        🐛 2026-08-19 Segfault 根因: QTimer.singleShot 无 parent + 从 WS 子线程创建
+        → WS 线程退出时 timer 析构 killTimer from another thread → SIGSEGV
+        → 改 _oneshot (跨线程自动桥接派发主线程创建挂 parent timer)"""
         try:
-            from PyQt5.QtCore import QTimer as _QTM
-            _QTM.singleShot(0, lambda: self._apply_ws_status(evt))
+            _oneshot(self, 0, lambda: self._apply_ws_status(evt))
         except Exception:
             pass
 
