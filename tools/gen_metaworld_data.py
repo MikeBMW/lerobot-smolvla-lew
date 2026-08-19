@@ -23,13 +23,14 @@ def main():
     ap.add_argument("--eps", type=int, default=10, help="轨迹数")
     ap.add_argument("--yolo", action="store_true", help="用 YOLO 检测替换 39D (模拟真机感知)")
     ap.add_argument("--steps", type=int, default=180, help="每条轨迹帧数")
+    ap.add_argument("--no-img", action="store_true", help="无图像模式: 跳过渲染/视频, 只写39D状态 (2026-08-19: headless osmesa渲染失败时用)")
     ap.add_argument("--grab-only", action="store_true", help="只到抓起(不含插入), 2026-08-08 老倪: 方向一致防平均化")
     ap.add_argument("--stop-after-grab", action="store_true", help="抓起后即停(分段数据), 2026-08-08 老倪: 防方向反转")
     ap.add_argument("--rel-vec", action="store_true", help="state加相对向量(hand→peg,peg→hole), 2026-08-08 ③目标条件化")
     ap.add_argument("--tactile", action="store_true", help="state加触觉信号(3D速度差分+1D力=4D), 2026-08-09 老倪: 触觉加进结构条件")
     ap.add_argument("--w2cot", action="store_true", help="state加W2-CoT结构化标注(4阶段+3物理线索+2腕部证据=9D), 2026-08-10 老倪: W2-VLA论文整合")
     ap.add_argument("--far", action="store_true", help="远起点模式 (2026-08-07 老倪: 让模型学会更长接近轨迹)")
-    ap.add_argument("--task", default="reach-v3")
+    ap.add_argument("--task", default="peg-insert-side-v3")  # 🐛 2026-08-19: 原默认reach-v3配peg专家策略→动作不匹配全丢
     ap.add_argument("--out", default="data/metaworld_cartesian")
     args = ap.parse_args()
     yolo_mode = getattr(args, "yolo", False)
@@ -102,12 +103,16 @@ def main():
             # 2026-08-08: 分段数据 — 官方专家抓起 peg 后保持 30 帧即停止记录
             if getattr(args, "stop_after_grab", False) and grabbed_frames >= 30:
                 break
-            # 渲染真实图像 (480x480 → 128x128)
-            img = np.asarray(env.render())
-            pil = Image.fromarray(img).resize((128, 128), Image.LANCZOS)
-            ep_imgs.append(np.asarray(pil))
+            # 渲染真实图像 (480x480 → 128x128) — 🐛 2026-08-19: --no-img 跳过 (headless osmesa 渲染失败)
+            if not getattr(args, "no_img", False):
+                try:
+                    img = np.asarray(env.render())
+                    pil = Image.fromarray(img).resize((128, 128), Image.LANCZOS)
+                    ep_imgs.append(np.asarray(pil))
+                except Exception:
+                    pass
             # YOLO 检测必须用 480 原图 (128 分辨率检测不准)
-            yolo_img = img
+            yolo_img = img if getattr(args, "no_img", False) is False else None
             # 关节状态: 用末端笛卡尔位姿 (跨机器人泛化, 非Sawyer关节角)
             ee = env.data.site_xpos[env.model.site("endEffector").id]
             # 关节状态: 39 维完整观测 (2026-08-07: --yolo 模式用 YOLO 检测替换, 模拟真机感知)
@@ -334,17 +339,23 @@ def main():
     all_frames_flat = []
     for ep in range(args.eps):
         all_frames_flat.extend(ep_imgs_all.get(ep, []))
-    with tempfile.TemporaryDirectory() as td:
-        for i, im in enumerate(all_frames_flat):
-            Image.fromarray(im).save(f"{td}/{i:06d}.png")
-        subprocess.run([
-            "ffmpeg", "-y", "-framerate", "30", "-i", f"{td}/%06d.png",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
-            "-loglevel", "error", str(img_dir / "file-000.mp4"),
-        ], check=True)
-    (img_dir / "file-000.mp4.metadata").write_text(
-        "\n".join(str(i) for i in range(len(all_frames_flat))))
-    print(f"  🎬 视频: 1 个 file-000.mp4 ({len(all_frames_flat)} 帧)")
+    if not all_frames_flat:
+        # 🐛 2026-08-19: --no-img 模式无帧 → 跳过视频 (info 不声明 image 键)
+        img_dir.mkdir(parents=True, exist_ok=True)
+        (img_dir / "file-000.mp4.metadata").write_text("")
+        print("  🎬 视频: 跳过 (无图像模式)")
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            for i, im in enumerate(all_frames_flat):
+                Image.fromarray(im).save(f"{td}/{i:06d}.png")
+            subprocess.run([
+                "ffmpeg", "-y", "-framerate", "30", "-i", f"{td}/%06d.png",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
+                "-loglevel", "error", str(img_dir / "file-000.mp4"),
+            ], check=True)
+        (img_dir / "file-000.mp4.metadata").write_text(
+            "\n".join(str(i) for i in range(len(all_frames_flat))))
+        print(f"  🎬 视频: 1 个 file-000.mp4 ({len(all_frames_flat)} 帧)")
 
     # 写 parquet (float32 匹配 info)
     import pandas as pd

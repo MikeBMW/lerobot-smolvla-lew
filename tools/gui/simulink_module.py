@@ -6526,7 +6526,10 @@ class SimulinkModule(QWidget):
         import requests as _rq
         root = self._repo_root()
         real_dir = os.path.join(root, "data", "closed_loop")
-        placeholder = os.path.join(root, "data", "metaworld_peg")
+        # 🐛 2026-08-19: left_right 训练配置用 data/metaworld_peg_long (39D 12集3600帧)
+        placeholder = os.path.join(root, "data", "metaworld_peg_long") \
+            if os.path.isdir(os.path.join(root, "data", "metaworld_peg_long")) \
+            else os.path.join(root, "data", "metaworld_peg")
 
         # 0. 节点逻辑可修改区强制数据源 (node_logic.py ✏️) — 优先于画布 switch
         if data_source == "metaworld":
