@@ -1,0 +1,598 @@
+{
+ "format": "zmax-detection-targets",
+ "version": "1.0",
+ "generated": "2026-08-20",
+ "source": "五大作业场景需求说明书 (flows/scenes_5jobs.json)",
+ "backbone": "YOLOv8 系列 (n/s/m/l), 当前画布默认 yolov8s",
+ "targets": [
+  {
+   "target_id": "DET-CLS-01",
+   "target": "光模块类别识别",
+   "category": "类别识别",
+   "objects": [
+    "QSFP",
+    "OSFP",
+    "CFP",
+    "NPO光电引擎",
+    "光纤阵列/MT端头"
+   ],
+   "desc": "识别来料/在持光模块型号类别 (吸塑盒、料盘、台面场景)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "2D框 + 类别标签",
+   "direction": "标签面朝向 (朝下/朝上)",
+   "metrics": {
+    "mAP@0.5": "≥0.98",
+    "mAP@0.5:0.95": "≥0.90",
+    "类别准确率": "≥99%",
+    "位置误差": "≤±1mm",
+    "推理时间": "≤4ms"
+   }
+  },
+  {
+   "target_id": "DET-CLS-02",
+   "target": "插座/接口类型识别",
+   "category": "类别识别",
+   "objects": [
+    "QSFP插座",
+    "EVB电口",
+    "光口",
+    "LC耦合器",
+    "笼子开口"
+   ],
+   "desc": "识别插座/接口类型与朝向 (导向槽、笼子、EVB子板)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "2D框 + 类别",
+   "direction": "接口朝向 (插入方向)",
+   "metrics": {
+    "mAP@0.5": "≥0.98",
+    "类别准确率": "≥99%",
+    "推理时间": "≤4ms"
+   }
+  },
+  {
+   "target_id": "DET-CLS-03",
+   "target": "料盘穴位/满空识别",
+   "category": "类别识别",
+   "objects": [
+    "吸塑盒20穴位",
+    "料盘12槽",
+    "缓存架层位",
+    "Pass/Fail料盘"
+   ],
+   "desc": "穴位地图与满空状态 (取料规划、分拣落位)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-02-HANDLE",
+    "SCN-03-BI"
+   ],
+   "pose": "穴位2D网格 + 占用状态",
+   "direction": "穴位方向",
+   "metrics": {
+    "mAP@0.5": "≥0.95",
+    "穴位映射准确率": "≥99.5%",
+    "推理时间": "≤6ms"
+   }
+  },
+  {
+   "target_id": "DET-CLS-04",
+   "target": "治具/载具识别",
+   "category": "类别识别",
+   "objects": [
+    "EVB测试子板",
+    "治具",
+    "ATS托架",
+    "对接台"
+   ],
+   "desc": "识别工装载具类型与姿态 (对接、装载)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-02-HANDLE",
+    "SCN-05-ATS"
+   ],
+   "pose": "2D框 + 类别",
+   "direction": "载具朝向",
+   "metrics": {
+    "mAP@0.5": "≥0.95",
+    "类别准确率": "≥99%",
+    "推理时间": "≤4ms"
+   }
+  },
+  {
+   "target_id": "DET-DET-01",
+   "target": "光模块 2D 框检测",
+   "category": "目标检测2D",
+   "objects": [
+    "来料模块",
+    "在持模块",
+    "在位模块",
+    "拔出模块"
+   ],
+   "desc": "全流程光模块 2D 定位 (抓取/插入/拔出/分拣手眼协同)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "2D框 (x,y,w,h)",
+   "direction": "长轴朝向角",
+   "metrics": {
+    "mAP@0.5": "≥0.95",
+    "mAP@0.5:0.95": "≥0.85",
+    "推理时间": "≤4ms"
+   }
+  },
+  {
+   "target_id": "DET-DET-02",
+   "target": "插座/导向槽检测",
+   "category": "目标检测2D",
+   "objects": [
+    "导向槽",
+    "槽位",
+    "笼子开口",
+    "电口/光口"
+   ],
+   "desc": "插拔目标接口 2D 定位 (对位引导, 偏差<0.1mm 依赖此框)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "2D框 + 中心点",
+   "direction": "导向槽方向",
+   "metrics": {
+    "mAP@0.5": "≥0.97",
+    "中心点误差": "≤±1px(1080p)",
+    "推理时间": "≤4ms"
+   }
+  },
+  {
+   "target_id": "DET-DET-03",
+   "target": "定位孔/定位销检测",
+   "category": "目标检测2D",
+   "objects": [
+    "治具4定位孔",
+    "视觉定位销",
+    "对接销"
+   ],
+   "desc": "精密对接定位特征 (治具对接精度<0.1mm、配送入位)",
+   "scenes": [
+    "SCN-02-HANDLE",
+    "SCN-03-BI"
+   ],
+   "pose": "2D框 + 亚像素中心",
+   "direction": "—",
+   "metrics": {
+    "mAP@0.5": "≥0.97",
+    "中心点误差": "≤±0.5px",
+    "推理时间": "≤5ms"
+   }
+  },
+  {
+   "target_id": "DET-DET-04",
+   "target": "托盘/料盘检测",
+   "category": "目标检测2D",
+   "objects": [
+    "料盘",
+    "吸塑盒",
+    "Pass料盘",
+    "Fail料盘"
+   ],
+   "desc": "料盘级 2D 定位 (整盘抓取、分拣落位)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-02-HANDLE"
+   ],
+   "pose": "2D框 + 角点",
+   "direction": "料盘朝向",
+   "metrics": {
+    "mAP@0.5": "≥0.95",
+    "推理时间": "≤4ms"
+   }
+  },
+  {
+   "target_id": "DET-DET-05",
+   "target": "末端/夹爪检测",
+   "category": "目标检测2D",
+   "objects": [
+    "末端执行器",
+    "夹爪",
+    "腕部"
+   ],
+   "desc": "手眼协同: 末端-目标相对位姿 (防止碰撞、对准引导)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "2D框 + 中心",
+   "direction": "夹爪朝向",
+   "metrics": {
+    "mAP@0.5": "≥0.95",
+    "推理时间": "≤3ms"
+   }
+  },
+  {
+   "target_id": "DET-POSE-01",
+   "target": "模块 3D 位置估计",
+   "category": "位姿估计",
+   "objects": [
+    "光模块中心点 3D"
+   ],
+   "desc": "2D→3D 反投影 (pixel_to_ray) 或深度相机: 模块空间坐标",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-02-HANDLE",
+    "SCN-03-BI",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "3D (x,y,z) m",
+   "direction": "—",
+   "metrics": {
+    "位置误差(对位)": "≤±0.1mm",
+    "位置误差(抓取)": "≤±1mm",
+    "位置误差(粗定位)": "≤±3mm",
+    "推理时间": "≤6ms"
+   }
+  },
+  {
+   "target_id": "DET-POSE-02",
+   "target": "模块 6D 姿态估计",
+   "category": "位姿估计",
+   "objects": [
+    "模块姿态 (R,t)"
+   ],
+   "desc": "俯仰/滚转/偏航 6D 姿态 (插入姿态、翻转后姿态校验)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "6D (位置+四元数)",
+   "direction": "翻转 180° 姿态",
+   "metrics": {
+    "角度误差(对位)": "≤±0.1°",
+    "角度误差(抓取)": "≤±1°",
+    "位置误差": "≤±0.2mm",
+    "推理时间": "≤8ms"
+   }
+  },
+  {
+   "target_id": "DET-POSE-03",
+   "target": "金手指朝向/方向判定",
+   "category": "位姿估计",
+   "objects": [
+    "金手指面朝向",
+    "标签面朝向"
+   ],
+   "desc": "翻转 180° 后方向判定 (标签面朝下/金手指朝上), 插入前置校验",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-05-ATS"
+   ],
+   "pose": "二分类方向",
+   "direction": "金手指朝上/朝下",
+   "metrics": {
+    "方向判定准确率": "≥99.9%",
+    "推理时间": "≤3ms"
+   }
+  },
+  {
+   "target_id": "DET-POSE-04",
+   "target": "插入深度估计",
+   "category": "位姿估计",
+   "objects": [
+    "模块-插座相对深度"
+   ],
+   "desc": "沿导向槽直推 35mm 的插入深度 (弹簧卡扣锁紧前到位判定)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-04-THERMAL"
+   ],
+   "pose": "1D 深度 (mm)",
+   "direction": "—",
+   "metrics": {
+    "深度误差": "≤±0.5mm",
+    "到位判定准确率": "≥99.9%",
+    "推理时间": "≤3ms"
+   }
+  },
+  {
+   "target_id": "DET-OCR-01",
+   "target": "SN 二维码读取",
+   "category": "扫码/OCR",
+   "objects": [
+    "模块 SN 二维码/条码"
+   ],
+   "desc": "扫码枪红色十字激光 / ATS 托架自动扫码 (溯源、测试绑定)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-05-ATS"
+   ],
+   "pose": "—",
+   "direction": "—",
+   "metrics": {
+    "读取成功率": "≥99.9%",
+    "单次耗时": "≤200ms",
+    "误读率": "≤0.01%"
+   }
+  },
+  {
+   "target_id": "DET-OCR-02",
+   "target": "铭牌/标识 OCR",
+   "category": "扫码/OCR",
+   "objects": [
+    "型号铭牌",
+    "批次标识"
+   ],
+   "desc": "铭牌字符识别 (批次追溯、来料核对)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-04-THERMAL"
+   ],
+   "pose": "—",
+   "direction": "—",
+   "metrics": {
+    "识别准确率": "≥99%",
+    "单次耗时": "≤300ms"
+   }
+  },
+  {
+   "target_id": "DET-AOI-01",
+   "target": "金手指表面缺陷",
+   "category": "缺陷检测AOI",
+   "objects": [
+    "金手指正反 2 面 + 4 侧面"
+   ],
+   "desc": "AOI 飞拍 (0.5s×2 + 0.5s×4=3.0s, 0.6m/s): 污染/划痕/氧化/镀层缺损",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-05-ATS"
+   ],
+   "pose": "缺陷 2D 框 + 类别",
+   "direction": "—",
+   "metrics": {
+    "缺陷检出率": "≥99%",
+    "误检率": "≤0.1%",
+    "缺陷分级准确率": "≥95%",
+    "单面飞拍": "≤0.5s"
+   }
+  },
+  {
+   "target_id": "DET-AOI-02",
+   "target": "光口端面清洁度",
+   "category": "缺陷检测AOI",
+   "objects": [
+    "LC 光口端面",
+    "MT 端面"
+   ],
+   "desc": "端面检测探头/显微: 划痕、污染、光纤端面破损",
+   "scenes": [
+    "SCN-04-THERMAL",
+    "SCN-05-ATS"
+   ],
+   "pose": "缺陷区域框",
+   "direction": "—",
+   "metrics": {
+    "检出率": "≥99%",
+    "误检率": "≤0.1%",
+    "检测耗时": "≤1.5s"
+   }
+  },
+  {
+   "target_id": "DET-AOI-03",
+   "target": "金线/焊点显微检测",
+   "category": "缺陷检测AOI",
+   "objects": [
+    "金线",
+    "焊点",
+    "微互连"
+   ],
+   "desc": "显微复检 (2s): 金线断裂/焊点虚焊/微互连缺陷分级",
+   "scenes": [
+    "SCN-02-HANDLE"
+   ],
+   "pose": "缺陷框 + 分级标签",
+   "direction": "—",
+   "metrics": {
+    "分级准确率": "≥95%",
+    "检出率": "≥99%",
+    "检测耗时": "≤2s"
+   }
+  },
+  {
+   "target_id": "DET-AOI-04",
+   "target": "外观/尺寸检测",
+   "category": "缺陷检测AOI",
+   "objects": [
+    "模块外观",
+    "3D 尺寸特征"
+   ],
+   "desc": "2D 外观 (2s) + 3D 尺寸 (2s): 变形/毛刺/尺寸超差",
+   "scenes": [
+    "SCN-02-HANDLE"
+   ],
+   "pose": "缺陷框 + 尺寸测量",
+   "direction": "—",
+   "metrics": {
+    "尺寸误差": "≤±0.02mm",
+    "检出率": "≥99%",
+    "检测耗时": "≤4s"
+   }
+  },
+  {
+   "target_id": "DET-ST-01",
+   "target": "锁止/锁紧确认",
+   "category": "状态识别",
+   "objects": [
+    "弹簧卡扣",
+    "抽屉锁扣",
+    "状态灯"
+   ],
+   "desc": "插入后弹簧卡扣锁紧、老化抽屉锁紧、状态灯变绿确认",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI"
+   ],
+   "pose": "锁扣状态框",
+   "direction": "—",
+   "metrics": {
+    "确认准确率": "≥99.9%",
+    "推理时间": "≤3ms"
+   }
+  },
+  {
+   "target_id": "DET-ST-02",
+   "target": "插入到位检测",
+   "category": "状态识别",
+   "objects": [
+    "模块-插座平齐面"
+   ],
+   "desc": "插入到位判定 (模块后端与插座/笼子平齐, 防半插)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-04-THERMAL"
+   ],
+   "pose": "平齐差 (px/mm)",
+   "direction": "—",
+   "metrics": {
+    "到位判定准确率": "≥99.9%",
+    "推理时间": "≤3ms"
+   }
+  },
+  {
+   "target_id": "DET-ST-03",
+   "target": "Pass/Fail 状态识别",
+   "category": "状态识别",
+   "objects": [
+    "测试结果灯/屏显",
+    "分拣流向"
+   ],
+   "desc": "测试结果 (PASS/FAIL) 读取 → 分拣落位绑定 (绿色/红色料盘)",
+   "scenes": [
+    "SCN-01-FW",
+    "SCN-03-BI",
+    "SCN-05-ATS"
+   ],
+   "pose": "—",
+   "direction": "—",
+   "metrics": {
+    "识别准确率": "≥99.99%",
+    "推理时间": "≤2ms"
+   }
+  }
+ ],
+ "metrics_def": [
+  {
+   "metric": "mAP@0.5",
+   "def": "IoU 阈值 0.5 下的平均精度均值",
+   "formula": "AP 按类别平均, IoU≥0.5 计 TP"
+  },
+  {
+   "metric": "mAP@0.5:0.95",
+   "def": "IoU 0.5~0.95 (步长 0.05) 的 mAP 均值",
+   "formula": "10 个 IoU 阈值的 mAP 平均"
+  },
+  {
+   "metric": "类别准确率",
+   "def": "分类正确的样本占比",
+   "formula": "TP / (TP+FP)"
+  },
+  {
+   "metric": "位置误差",
+   "def": "预测 3D 位置与真值的欧氏距离",
+   "formula": "‖p̂−p‖₂ (mm)"
+  },
+  {
+   "metric": "角度误差",
+   "def": "预测姿态与真值的旋转夹角",
+   "formula": "arccos 四元数点积 (°)"
+  },
+  {
+   "metric": "方向判定准确率",
+   "def": "朝向二分类正确率",
+   "formula": "翻转后金手指朝向判定 TP 占比"
+  },
+  {
+   "metric": "缺陷检出率",
+   "def": "缺陷召回率 (真缺陷被检出的比例)",
+   "formula": "TP / (TP+FN)"
+  },
+  {
+   "metric": "误检率",
+   "def": "正常件被误报缺陷的比例",
+   "formula": "FP / (FP+TN)"
+  },
+  {
+   "metric": "读取成功率",
+   "def": "SN 扫码/OCR 成功比例",
+   "formula": "成功读取 / 总尝试"
+  },
+  {
+   "metric": "推理时间",
+   "def": "单帧前向推理耗时 (GPU: 4090 / Orin)",
+   "formula": "端到端前向 ms, 不含预处理"
+  },
+  {
+   "metric": "FPS",
+   "def": "每秒处理帧数",
+   "formula": "1000 / 推理时间(ms)"
+  }
+ ],
+ "model_baseline": [
+  {
+   "variant": "YOLOv8n",
+   "input": "640×640",
+   "mAP@0.5": 0.947,
+   "mAP@0.5:0.95": 0.8,
+   "infer_4090_ms": 2.5,
+   "infer_orin_ms": 8.0,
+   "params_M": 3.2,
+   "note": "边缘端首选 (Orin 实时)"
+  },
+  {
+   "variant": "YOLOv8s",
+   "input": "640×640",
+   "mAP@0.5": 0.966,
+   "mAP@0.5:0.95": 0.846,
+   "infer_4090_ms": 4.0,
+   "infer_orin_ms": 12.0,
+   "params_M": 11.2,
+   "note": "精度/速度平衡 (当前画布默认)"
+  },
+  {
+   "variant": "YOLOv8m",
+   "input": "640×640",
+   "mAP@0.5": 0.976,
+   "mAP@0.5:0.95": 0.877,
+   "infer_4090_ms": 8.0,
+   "infer_orin_ms": 24.0,
+   "params_M": 25.9,
+   "note": "高精度场景 (AOI 复检)"
+  },
+  {
+   "variant": "YOLOv8l",
+   "input": "640×640",
+   "mAP@0.5": 0.982,
+   "mAP@0.5:0.95": 0.893,
+   "infer_4090_ms": 15.0,
+   "infer_orin_ms": 45.0,
+   "params_M": 43.7,
+   "note": "离线/服务端 (不部署 Orin)"
+  }
+ ]
+}
