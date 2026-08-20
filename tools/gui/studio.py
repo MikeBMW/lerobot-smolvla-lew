@@ -2609,29 +2609,29 @@ class TrainingModule(QWidget):
     ZOO_SPEC = [
         ("🏗 架构", [
             ("架构", {"ACT": "ResNet18→Transformer", "SmolVLA": "SmolVLM2-500M→DiT-B", "SmolVLA+LEW": "SmolVLM2·LEW→DiT-B·LEW",
-                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律", "状态空间": "MLP 512×3→4D"}),
-            ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—"}),
-            ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1"}),
-            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512"}),
-            ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器"}),
+                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律", "状态空间": "MLP 512×3→4D", "YOLO检测": "YOLOv8s 检测器"}),
+            ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
+            ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
+            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "yolov8s"}),
+            ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器", "YOLO检测": "—"}),
         ]),
         ("⚙️ 训练", [
-            ("步数", {"ACT": "4000", "SmolVLA": "4000", "SmolVLA+LEW": "4000", "VLA-Touch": "4000", "AWE": "4000", "MLP 蒸馏": "4000", "官方专家": "基准", "状态空间": "3000"}),
-            ("批量", {"ACT": "8", "SmolVLA": "1", "SmolVLA+LEW": "1", "VLA-Touch": "1", "AWE": "1", "MLP 蒸馏": "8", "官方专家": "—", "状态空间": "8"}),
-            ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "SmolVLA+LEW": "1e-4", "VLA-Touch": "1e-4", "AWE": "1e-4", "MLP 蒸馏": "1e-4", "官方专家": "—", "状态空间": "1e-4"}),
-            ("VAE", {"ACT": "🚫无", "SmolVLA": "无", "SmolVLA+LEW": "无", "VLA-Touch": "无", "AWE": "无", "MLP 蒸馏": "🚫无", "官方专家": "—", "状态空间": "无"}),
+            ("步数", {"ACT": "4000", "SmolVLA": "4000", "SmolVLA+LEW": "4000", "VLA-Touch": "4000", "AWE": "4000", "MLP 蒸馏": "4000", "官方专家": "基准", "状态空间": "3000", "YOLO检测": "50 epoch"}),
+            ("批量", {"ACT": "8", "SmolVLA": "1", "SmolVLA+LEW": "1", "VLA-Touch": "1", "AWE": "1", "MLP 蒸馏": "8", "官方专家": "—", "状态空间": "8", "YOLO检测": "8"}),
+            ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "SmolVLA+LEW": "1e-4", "VLA-Touch": "1e-4", "AWE": "1e-4", "MLP 蒸馏": "1e-4", "官方专家": "—", "状态空间": "1e-4", "YOLO检测": "自动"}),
+            ("VAE", {"ACT": "🚫无", "SmolVLA": "无", "SmolVLA+LEW": "无", "VLA-Touch": "无", "AWE": "无", "MLP 蒸馏": "🚫无", "官方专家": "—", "状态空间": "无", "YOLO检测": "—"}),
         ]),
         ("📊 数据·输出", [
-            ("动作块", {"ACT": "100", "SmolVLA": "100", "SmolVLA+LEW": "100", "VLA-Touch": "50", "AWE": "50", "MLP 蒸馏": "100", "官方专家": "—", "状态空间": "1"}),
-            ("状态空间", {"ACT": "39D", "SmolVLA": "39D", "SmolVLA+LEW": "39D", "VLA-Touch": "39D+触觉", "AWE": "39D+力觉", "MLP 蒸馏": "39D", "官方专家": "39D", "状态空间": "39D·仿真"}),
-            ("结构条件", {"ACT": "✅", "SmolVLA": "✅", "SmolVLA+LEW": "✅", "VLA-Touch": "✅", "AWE": "✅", "MLP 蒸馏": "✅", "官方专家": "—", "状态空间": "—"}),
+            ("动作块", {"ACT": "100", "SmolVLA": "100", "SmolVLA+LEW": "100", "VLA-Touch": "50", "AWE": "50", "MLP 蒸馏": "100", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
+            ("状态空间", {"ACT": "39D", "SmolVLA": "39D", "SmolVLA+LEW": "39D", "VLA-Touch": "39D+触觉", "AWE": "39D+力觉", "MLP 蒸馏": "39D", "官方专家": "39D", "状态空间": "39D·仿真", "YOLO检测": "39D 输出"}),
+            ("结构条件", {"ACT": "✅", "SmolVLA": "✅", "SmolVLA+LEW": "✅", "VLA-Touch": "✅", "AWE": "✅", "MLP 蒸馏": "✅", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
         ]),
         ("🏆 性能", [
             ("插拔结果", {"ACT": "0/10 → novae 0.066m接近", "SmolVLA": "训练中", "SmolVLA+LEW": "训练中", "VLA-Touch": "训练中",
-                          "AWE": "训练中", "MLP 蒸馏": "2/5 唯一可插拔", "官方专家": "85% 🏆基准", "状态空间": "仿真蒸馏 · 4/4 ✅"}),
+                          "AWE": "训练中", "MLP 蒸馏": "2/5 唯一可插拔", "官方专家": "85% 🏆基准", "状态空间": "仿真蒸馏 · 4/4 ✅", "YOLO检测": "感知前端 · mAP 0.994"}),
         ]),
     ]
-    ZOO_MODELS = ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间"]
+    ZOO_MODELS = ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间", "YOLO检测"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2782,7 +2782,7 @@ class TrainingModule(QWidget):
         
         # 🤖 模型选择 (2026-08-08 老倪: 右侧模型选择功能删除 — 配置表格已展示7模型; 下拉对象保留供训练逻辑, 默认ACT)
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间"])
+        self.model_combo.addItems(["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间", "YOLO检测"])
         self.model_combo.setFixedWidth(150)
         self.model_combo.setStyleSheet(f"""
             QComboBox {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER};
@@ -3485,10 +3485,10 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self._zoo_sw = {}
         for key, label in [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
                            ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
-                           ("expert_policy", "官方专家"), ("state_space", "状态空间")]:
+                           ("expert_policy", "官方专家"), ("state_space", "状态空间"), ("yolo", "YOLO检测")]:
             sid = {"act": "S-01", "smolvla": "S-02", "smolvla_lew": "S-03", "vla_touch": "S-04",
                    "awe_zflow": "S-05", "expert_mlp": "S-06", "expert_policy": "S-07",
-                   "state_space": "S-08"}[key]  # 🐛 ID 渲染
+                   "state_space": "S-08", "yolo": "S-09"}[key]  # 🐛 ID 渲染
             cb = QCheckBox(f"训练：开 {label} [{sid}]")
             cb.setChecked(True)
             cb.setStyleSheet(f"QCheckBox{{color:{C_WHITE}; background:transparent; font-size:11px; font-weight:bold;}}"
@@ -4028,7 +4028,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
 
     # 🎛 2026-08-08 老倪: Model Zoo 完整训练队列 (7 模型串行 — 训练按钮触发)
     # 🧮 2026-08-20 老倪: + state_space (状态空间·仿真蒸馏) = 8 模型
-    ZOO_POLICIES = ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow", "expert_mlp", "expert_policy", "state_space"]
+    ZOO_POLICIES = ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow", "expert_mlp", "expert_policy", "state_space", "yolo"]
 
     def _zoo_next(self):
         # 🐛 2026-08-18 崩溃根因: 用户从未训练 → 队列空却误判"训练完成" → 触发
@@ -4076,7 +4076,9 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         import subprocess
         try:
             r = subprocess.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5)
-            if r.stdout.strip():
+            # 🎯 2026-08-20 老倪: YOLO 训练进程 (train_yolo.py) 也纳入完成检测 — 否则误判提前推进队列
+            r2 = subprocess.run(["pgrep", "-f", "train_yolo"], capture_output=True, text=True, timeout=5)
+            if r.stdout.strip() or r2.stdout.strip():
                 self._zoo_start_ts = None  # 训练中 — 重置窗口 (下一轮等 45s 再判)
                 return
         except Exception:

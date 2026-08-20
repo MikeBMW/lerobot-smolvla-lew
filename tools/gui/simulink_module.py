@@ -6753,6 +6753,9 @@ class SimulinkModule(QWidget):
             if not self._train_gate_state():
                 self.log_signal.emit("⏭ 训练开关未打勾 — 跳过训练 (双击 ☑ 训练开关节点可切换)")
                 return True, "训练已跳过 (开关关闭)"
+            # 🎯 2026-08-20 老倪: YOLO检测 — 感知前端独立训练 (ultralytics yolov8s, 数据/配置不走 lerobot)
+            if policy == "yolo":
+                return self._train_yolo_detector(steps=steps)
             # 🧮 2026-08-20 老倪: 状态空间模型 — 数据源强制仿真数据集
             if policy == "state_space":
                 data_source = "ss_sim"
@@ -7047,6 +7050,36 @@ class SimulinkModule(QWidget):
                                else f"{pname} 训练失败 (见上方日志)")
 
         self._start_worker(_work, f"正在准备 {policy} 训练 (拉取数据源 + 启动训练)", stage="train")
+
+    def _train_yolo_detector(self, steps=None):
+        """🎯 YOLO检测训练 (ultralytics yolov8s) — 感知前端, 独立于 lerobot 策略训练
+        数据: data/yolo_peg (gen_yolo_data.py 仿真自动标注 peg/hole/hand)
+        训练: src/lerobot/policies/yolo_3d/train_yolo.py → outputs/yolo_peg/<name>
+        """
+        root = self._repo_root()
+        py = os.path.expanduser("~/lerobot-venv/bin/python")
+        train_script = os.path.join(root, "src", "lerobot", "policies", "yolo_3d", "train_yolo.py")
+        data_dir = os.path.join(root, "data", "yolo_peg")
+        data_yaml = os.path.join(data_dir, "data.yaml")
+        epochs = int(steps) if steps else 50
+        self.log_signal.emit("════ 🎯 YOLO检测训练 (ultralytics yolov8s) ════")
+        # 1. 环境 + 数据前置检测 (缺则明确根因, 不静默失败)
+        if not os.path.exists(py):
+            return False, "YOLO检测 训练失败: ~/lerobot-venv 环境缺失 (参考 zmax-state-space-training 技能重建)"
+        if os.system(f"{py} -c 'import ultralytics' >/dev/null 2>&1") != 0:
+            return False, "YOLO检测 训练失败: ultralytics 未安装 (lerobot-venv 执行 pip install ultralytics)"
+        if not os.path.exists(data_yaml):
+            return False, ("YOLO检测 训练失败: 数据缺失 — 先运行 gen_yolo_data.py 生成 "
+                           "(python src/lerobot/policies/yolo_3d/gen_yolo_data.py --eps 200 --out data/yolo_peg)")
+        # 2. 训练
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        self.log_signal.emit(f"🚀 YOLO检测 训练启动 (yolov8s · {epochs} epoch · 4060 GPU)...")
+        rc = self._run_cmd([py, "-u", train_script, "--data", data_dir, "--epochs", str(epochs),
+                            "--imgsz", "480", "--name", f"run_{ts}"], cwd=root)
+        if rc == 0:
+            self.log_signal.emit(f"✅ YOLO检测 训练完成: outputs/yolo_peg/run_{ts}")
+            return True, f"YOLO检测 训练完成 · outputs/yolo_peg/run_{ts}"
+        return False, "YOLO检测 训练失败 (见上方日志)"
 
     @staticmethod
     def _parse_step_s(lines):
