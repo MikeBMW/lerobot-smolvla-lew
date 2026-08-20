@@ -9012,7 +9012,7 @@ class SimulinkModule(QWidget):
                 f"<tr><td style='color:#ffd700'>输出 out2</td><td>校正后潜状态 → 先验预测器</td><td>闭环: 校正结果喂回动力学</td></tr>"
                 f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
                 f"📌 卡尔曼反馈闭环: 传感器反馈 z_k (物理世界) → 残差 → 校正 → 预测 — 状态空间全程闭环</p>")
-        elif p.get("cognitive_scheduler"):
+        elif p.get("action_modulator"):
             html = (
                 f"<h3 style='color:#FF6B6B;margin:4px'>🧭 动作调制器 (原状态机) — 6阶段状态机 + 否决权</h3>"
                 f"<p style='color:#8b949e;font-size:11px'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
@@ -9455,7 +9455,7 @@ class SimulinkModule(QWidget):
     def _state_space_hint(self):
         """🧮 状态空间加载后气泡引导: 高亮动作调制器 (握否决权核心)"""
         try:
-            sched = next((n for n in self.nodes if n.get("params", {}).get("cognitive_scheduler")), None)
+            sched = next((n for n in self.nodes if n.get("params", {}).get("action_modulator")), None)
             if sched is not None:
                 # 🐛 2026-08-18: 高亮 6s → 2.5s (VcXsrv 高亮动画闪烁太久)
                 self._highlight_node(sched, ms=2500)

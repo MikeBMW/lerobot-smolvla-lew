@@ -239,7 +239,7 @@
    "h": 84,
    "params": {
     "state_space": true,
-    "cognitive_scheduler": true,
+    "action_modulator": true,
     "desc": "动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)",
     "source": "src/lerobot/policies/left_right/state_space/cognition.py"
    },
