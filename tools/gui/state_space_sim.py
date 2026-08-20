@@ -65,7 +65,7 @@ class StateSpaceSim:
         # 会制造虚假残差 → 频繁否决; 物理自洽的预测器残差只来自真实扰动+传感器噪声
         self.est = self.parallel.AdaptiveStateEstimator(A=1.0, K=0.5, B=dt)
         self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=dt)
-        self.sched = self.cognition.CognitiveScheduler()
+        self.sched = self.cognition.ActionModulator()
         self.execr = self.execution.RobotExecutor()
         self.world = self.execution.PhysicalWorld()
         # 物理世界状态

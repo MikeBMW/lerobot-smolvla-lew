@@ -1353,7 +1353,7 @@ def node_ss_dyn(ctx):
 
 
 def node_ss_s3(ctx):
-    """S3 认知决策层 — 任务调度器握否决权 (6阶段状态机 + 按阶段融合) → 安全执行边界 (饱和限幅)"""
+    """S3 认知决策层 — 动作调制器握否决权 (6阶段状态机 + 按阶段融合) → 安全执行边界 (饱和限幅)"""
     _ss_run(ctx, "S3 认知决策层", "cognition.py")
 
 
@@ -1387,8 +1387,8 @@ _EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 21, "class F
 _EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 34, "class AdaptiveStateEstimator")
 _EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
-_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 27, "class CognitiveScheduler")
-_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 27, "class CognitiveScheduler")
+_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 27, "class ActionModulator")
+_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 27, "class ActionModulator")
 _EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
@@ -1403,7 +1403,7 @@ _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 �
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
 _reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
-_reg("ss_sched", ["任务调度器"], "🧭 任务调度器 — 6阶段状态机(接近→抓取→抬起→转移→插入→完成) + 否决权 + 按阶段融合 (源码 cognition.py CognitiveScheduler)", node_ss_s3)
+_reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 6阶段状态机(接近→抓取→抬起→转移→插入→完成) + 否决权 + 按阶段融合 (源码 cognition.py ActionModulator)", node_ss_s3)
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
 _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
@@ -1446,7 +1446,7 @@ def node_ss_llm(ctx):
             log(f"🧠 任务规划器: 「{ins}」 → 技能序列 (共 {len(tokens)} 步)")
             for i, (t, nm) in enumerate(zip(tokens, names), 1):
                 log(f"   {i}. {t}  {nm}")
-            log(f"   📚 Token 序列已下发 🧭任务调度器 (慢决策 · 回路外, 状态机握否决权)")
+            log(f"   📚 Token 序列已下发 🧭动作调制器 (慢决策 · 回路外, 状态机握否决权)")
         return True
     except Exception as e:
         if log:

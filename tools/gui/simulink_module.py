@@ -9014,7 +9014,7 @@ class SimulinkModule(QWidget):
                 f"📌 卡尔曼反馈闭环: 传感器反馈 z_k (物理世界) → 残差 → 校正 → 预测 — 状态空间全程闭环</p>")
         elif p.get("cognitive_scheduler"):
             html = (
-                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 任务调度器 (原状态机) — 6阶段状态机 + 否决权</h3>"
+                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 动作调制器 (原状态机) — 6阶段状态机 + 否决权</h3>"
                 f"<p style='color:#8b949e;font-size:11px'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
                 f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
@@ -9089,7 +9089,7 @@ class SimulinkModule(QWidget):
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
                 f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
                 f"<tr><td style='color:#00d4aa'>输入</td><td>MES 工单 / 自然语言指令 / 场景ID (五大作业场景)</td></tr>"
-                f"<tr><td style='color:#00d4aa'>输出</td><td>技能Token序列 [SKILL_xxx] → 🧭任务调度器 (规则校验后)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出</td><td>技能Token序列 [SKILL_xxx] → 🧭动作调制器 (规则校验后)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>模型</td><td>Qwen3-7B 可插拔 (llm_url); 未配置走规则拆解 (确定性优先)</td></tr>"
                 f"<tr><td style='color:#ffd700'>技能库</td><td>242 条原子技能 (flows/atomic_skill_tokens.json, 9 大类)</td></tr>"
                 f"<tr><td style='color:#ffd700'>校验</td><td>非法序列拒绝: Token 必须在库 + 阶段顺序合法</td></tr>"
@@ -9293,7 +9293,7 @@ class SimulinkModule(QWidget):
         """🧮 状态空间模型画布 (2026-08-17 老倪: 按流程做状态空间新按钮 — 打开模型画布)
         S1 时空感知前端 (传感器融合 → 43D obs)
         S2 并行处理层 (快慢分离: 前馈加速器 MLP + 自适应状态估计器 GRU → 预测/校正)
-        S3 认知决策层 (任务调度器握否决权 → 安全执行边界)
+        S3 认知决策层 (动作调制器握否决权 → 安全执行边界)
         执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 状态校正)
         """
         self.clear()
@@ -9305,7 +9305,7 @@ class SimulinkModule(QWidget):
         self._log("S1 时空感知前端: 📡传感器融合 (RGB-D+力觉+触觉) → 🧩43D统一状态向量 obs")
         self._log("S2 并行处理层 (快慢分离): ⚡前馈加速器(原左脑MLP, u_ff权重30%) ‖ 🔮自适应状态估计器(原右脑GRU)")
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
-        self._log("S3 认知决策层 (握有否决权): 🧭任务调度器(原状态机, 6阶段状态机) → 🛡安全执行边界(饱和限幅)")
+        self._log("S3 认知决策层 (握有否决权): 🧭动作调制器(原状态机, 6阶段状态机) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         _oneshot(self, 300, self._state_space_hint)
 
@@ -9453,7 +9453,7 @@ class SimulinkModule(QWidget):
         threading.Thread(target=_worker, daemon=True).start()
 
     def _state_space_hint(self):
-        """🧮 状态空间加载后气泡引导: 高亮任务调度器 (握否决权核心)"""
+        """🧮 状态空间加载后气泡引导: 高亮动作调制器 (握否决权核心)"""
         try:
             sched = next((n for n in self.nodes if n.get("params", {}).get("cognitive_scheduler")), None)
             if sched is not None:
@@ -9463,7 +9463,7 @@ class SimulinkModule(QWidget):
                 if it is not None:
                     gp = self.canvas.mapToGlobal(
                         self.canvas.mapFromScene(it.sceneBoundingRect().center()))
-                    self._show_bubble(gp, "👆 双击「🧭 任务调度器」\n→ 状态空间决策详情", ms=2500)
+                    self._show_bubble(gp, "👆 双击「🧭 动作调制器」\n→ 状态空间决策详情", ms=2500)
         except Exception:
             pass
 
