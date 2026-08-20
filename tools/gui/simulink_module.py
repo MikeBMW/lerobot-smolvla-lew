@@ -2649,7 +2649,7 @@ class SimNodeItem(QGraphicsObject):
             pass
         # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
         painter.setPen(QColor(pal["label"]))
-        painter.setFont(QFont("Arial", 7))
+        painter.setFont(QFont("Arial", 8))
         if params.get("video"):
             pass  # 视频节点: 无类型标签 (名字已居中)
         if t == "switch":
@@ -2748,7 +2748,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawEllipse(QPointF(0, py), r, r)
             painter.setBrush(color)
             painter.setPen(QPen(QColor(pal["port_edge"]), 1))
-            painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
+            painter.drawEllipse(QPointF(self.w, self.h / 2), 6, 6)
         else:
             # 📐 端口垂直分布 (2026-08-07): 多入/多出节点端口散开, 与连线终点对齐;
             # 无连线保持中间单端口 (拖线起点/终点交互不变)
@@ -2760,27 +2760,27 @@ class SimNodeItem(QGraphicsObject):
                     py = self.h * (i + 1) / (n_in + 1)
                     painter.setBrush(color)
                     painter.setPen(QPen(QColor(pal["port_edge"]), 1))
-                    painter.drawEllipse(QPointF(0, py), 5, 5)
+                    painter.drawEllipse(QPointF(0, py), 6, 6)
             else:
                 painter.setBrush(color)
                 painter.setPen(QPen(QColor(pal["port_edge"]), 1))
-                painter.drawEllipse(QPointF(0, self.h / 2), 5, 5)
+                painter.drawEllipse(QPointF(0, self.h / 2), 6, 6)
             if n_out:
                 for i in range(n_out):
                     py = self.h * (i + 1) / (n_out + 1)
                     painter.setBrush(color)
                     painter.setPen(QPen(QColor(pal["port_edge"]), 1))
-                    painter.drawEllipse(QPointF(self.w, py), 5, 5)
+                    painter.drawEllipse(QPointF(self.w, py), 6, 6)
             else:
                 painter.setBrush(color)
                 painter.setPen(QPen(QColor(pal["port_edge"]), 1))
-                painter.drawEllipse(QPointF(self.w, self.h / 2), 5, 5)
+                painter.drawEllipse(QPointF(self.w, self.h / 2), 6, 6)
         # 参数摘要
         params = self.node.get("params", {})
         if params:
             first = list(params.items())[0]
             painter.setPen(QColor(pal["label"]))
-            painter.setFont(QFont("Consolas", 7))
+            painter.setFont(QFont("Consolas", 8))
             painter.drawText(QRectF(12, 36, self.w - 16, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              f"{first[0]}={first[1]}")
         # 📥 Excel 导出按钮 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点右下角)
@@ -2862,8 +2862,8 @@ class SimNodeItem(QGraphicsObject):
         # 端口锚点 (in1 左 / out1 右 — 连线依赖, 不能省)
         painter.setBrush(color)
         painter.setPen(QPen(QColor(pal["port_edge"]), 1))
-        painter.drawEllipse(QPointF(0, h / 2), 5, 5)
-        painter.drawEllipse(QPointF(w, h / 2), 5, 5)
+        painter.drawEllipse(QPointF(0, h / 2), 6, 6)
+        painter.drawEllipse(QPointF(w, h / 2), 6, 6)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionChange:
@@ -3010,7 +3010,7 @@ class SimLinkItem(QGraphicsObject):
         lbl = self.link.get("label", "")
         if lbl:
             mid = path.pointAtPercent(0.5)
-            painter.setFont(QFont("Consolas", 7))
+            painter.setFont(QFont("Consolas", 8))
             fm = painter.fontMetrics()
             lw = fm.horizontalAdvance(lbl) + 8
             lh = fm.height() + 2
