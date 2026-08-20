@@ -14,7 +14,7 @@
    "name": "S1 · 时空感知前端",
    "x": -20,
    "y": -190,
-   "w": 1480,
+   "w": 3000,
    "icon": "📡",
    "color": "#1f2937",
    "h": 170,
@@ -31,7 +31,7 @@
    "name": "S2 · 并行处理层 (快慢分离)",
    "x": -20,
    "y": 40,
-   "w": 1480,
+   "w": 3000,
    "icon": "⚡",
    "color": "#1f2937",
    "h": 240,
@@ -48,7 +48,7 @@
    "name": "S3 · 认知决策层 (握有否决权)",
    "x": -20,
    "y": 320,
-   "w": 1480,
+   "w": 3000,
    "icon": "🧭",
    "color": "#1f2937",
    "h": 190,
@@ -65,7 +65,7 @@
    "name": "执行层 · 物理闭环",
    "x": -20,
    "y": 550,
-   "w": 1480,
+   "w": 3000,
    "icon": "🤖",
    "color": "#1f2937",
    "h": 150,
@@ -80,7 +80,7 @@
    "id": "sssensor",
    "type": "hardware",
    "name": "📡 传感器融合",
-   "x": 120,
+   "x": 100,
    "y": -150,
    "w": 240,
    "icon": "📡",
@@ -103,7 +103,7 @@
    "id": "ssobs",
    "type": "system",
    "name": "🧩 43D 统一状态向量 (obs)",
-   "x": 460,
+   "x": 860,
    "y": -150,
    "w": 240,
    "icon": "🧩",
@@ -129,7 +129,7 @@
    "id": "ssff",
    "type": "model",
    "name": "⚡ 前馈加速器",
-   "x": 120,
+   "x": 1140,
    "y": 80,
    "w": 240,
    "icon": "⚡",
@@ -154,7 +154,7 @@
    "id": "ssest",
    "type": "model",
    "name": "🔮 自适应状态估计器",
-   "x": 480,
+   "x": 1420,
    "y": 80,
    "w": 260,
    "icon": "🔮",
@@ -179,7 +179,7 @@
    "id": "sspred",
    "type": "model",
    "name": "📈 先验动力学预测器",
-   "x": 860,
+   "x": 1740,
    "y": 80,
    "w": 250,
    "icon": "📈",
@@ -192,7 +192,8 @@
     "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2"
    ],
    "outputs": [
     "out1"
@@ -203,7 +204,7 @@
    "id": "ssinnov",
    "type": "model",
    "name": "🧪 状态校正器",
-   "x": 1120,
+   "x": 2050,
    "y": 80,
    "w": 280,
    "icon": "🧪",
@@ -217,7 +218,8 @@
    },
    "inputs": [
     "in1",
-    "in2"
+    "in2",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -229,7 +231,7 @@
    "id": "sssched",
    "type": "system",
    "name": "🧭 任务调度器",
-   "x": 380,
+   "x": 1420,
    "y": 360,
    "w": 280,
    "icon": "🧭",
@@ -243,7 +245,10 @@
    },
    "inputs": [
     "in1",
-    "in2"
+    "in2",
+    "in3",
+    "in4",
+    "in5"
    ],
    "outputs": [
     "out1"
@@ -254,7 +259,7 @@
    "id": "sslimit",
    "type": "system",
    "name": "🛡 安全执行边界 (饱和限幅)",
-   "x": 780,
+   "x": 1760,
    "y": 360,
    "w": 280,
    "icon": "🛡",
@@ -278,7 +283,7 @@
    "id": "ssact",
    "type": "hardware",
    "name": "🤖 机器人执行器",
-   "x": 380,
+   "x": 2100,
    "y": 590,
    "w": 280,
    "icon": "🤖",
@@ -301,7 +306,7 @@
    "id": "ssworld",
    "type": "hardware",
    "name": "🌍 物理世界",
-   "x": 780,
+   "x": 2420,
    "y": 590,
    "w": 280,
    "icon": "🌍",
@@ -324,7 +329,7 @@
    "id": "ssvideo",
    "type": "model",
    "name": "📊 仿真波形",
-   "x": 1120,
+   "x": 2780,
    "y": 590,
    "w": 150,
    "icon": "📊",
@@ -345,7 +350,7 @@
    "id": "ssvideo2",
    "type": "model",
    "name": "🎥 操作视频",
-   "x": 1120,
+   "x": 2780,
    "y": 400,
    "w": 150,
    "icon": "🎥",
@@ -384,7 +389,8 @@
     "classes": "peg/hole/hand",
     "state_space": true,
     "source": "tools/gui/yolo_perception.py",
-    "desc": "感知层·B1 目标识别定位: 相机图像 → YOLO 检测光模块/插孔/末端 2D框 (双击=实际模型加载验证)"
+    "desc": "感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel",
+    "detection_targets": true
    }
   },
   {
@@ -392,7 +398,7 @@
    "name": "📐 2D→3D 解算",
    "type": "condition",
    "icon": "📐",
-   "x": 360,
+   "x": 280,
    "y": -384,
    "w": 240,
    "h": 88,
@@ -417,7 +423,7 @@
    "name": "🖐 触觉感知",
    "type": "hardware",
    "icon": "🖐",
-   "x": 680,
+   "x": 560,
    "y": -384,
    "w": 240,
    "h": 88,
@@ -440,7 +446,7 @@
    "name": "🔍 外观质量检测",
    "type": "model",
    "icon": "🔍",
-   "x": 1000,
+   "x": 1500,
    "y": -384,
    "w": 240,
    "h": 88,
@@ -465,7 +471,7 @@
    "icon": "🎯",
    "x": -20,
    "y": -430,
-   "w": 1480,
+   "w": 3000,
    "h": 180,
    "color": "#1f2937",
    "params": {
@@ -482,7 +488,7 @@
    "icon": "📦",
    "x": -20,
    "y": -680,
-   "w": 1480,
+   "w": 3000,
    "h": 200,
    "color": "#1f2937",
    "params": {
@@ -525,7 +531,7 @@
    "name": "🔀 训练/推理",
    "type": "mode_switch",
    "icon": "🔀",
-   "x": 420,
+   "x": 380,
    "y": -630,
    "w": 300,
    "h": 88,
@@ -538,128 +544,153 @@
     "state_space": true,
     "desc": "运行模式选择: 🚀训练=训练真实模型 / 📷推理=加载真实模型rollout · 双击切换"
    }
+  },
+  {
+   "id": "ssbg5",
+   "type": "row_bg",
+   "name": "大模型层 · 云端任务规划 (慢决策 · 回路外)",
+   "x": -20,
+   "y": -900,
+   "w": 3000,
+   "h": 180,
+   "icon": "🧠",
+   "color": "#312e81",
+   "params": {
+    "bg": "#1e1b4b",
+    "model": "state_space",
+    "desc": "大模型层 (云端): 任务规划器/异常推理器/技能编排器 — 只在任务开始/异常时介入, 不进实时控制回路; 输出技能Token序列下发 S3 状态机",
+    "source": "src/lerobot/policies/left_right/state_space/planner.py"
+   }
+  },
+  {
+   "id": "ssllm_in",
+   "type": "hardware",
+   "name": "📝 任务指令 · MES/自然语言",
+   "icon": "📝",
+   "color": "#58a6ff",
+   "inputs": [],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "x": 40,
+   "y": -860,
+   "w": 240,
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "task_input": true,
+    "desc": "大模型层·输入: MES 工单 / 自然语言指令, 或五大作业场景 (flows/scenes_5jobs.json: SCN-01-FW~SCN-05-ATS, 含物体布局+工艺步骤+性能约束)",
+    "source": "src/lerobot/policies/left_right/state_space/planner.py"
+   }
+  },
+  {
+   "id": "ssllm",
+   "type": "model",
+   "name": "🧠 任务规划器 (LLM)",
+   "icon": "🧠",
+   "color": "#a78bfa",
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "x": 600,
+   "y": -860,
+   "w": 280,
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "task_planner": true,
+    "llm": "Qwen3-7B (可插拔, 未配置走规则)",
+    "desc": "任务规划器 TaskPlanner: 指令/场景 → 技能Token序列 (242条原子技能库, 规则校验后) → 下发状态机",
+    "source": "src/lerobot/policies/left_right/state_space/planner.py"
+   }
+  },
+  {
+   "id": "ssreason",
+   "type": "model",
+   "name": "🔍 异常推理器 (LLM)",
+   "icon": "🔍",
+   "color": "#f0883e",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "x": 1760,
+   "y": -860,
+   "w": 260,
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "exception_reasoner": true,
+    "llm": "Qwen3-7B (可插拔)",
+    "desc": "异常推理器 ExceptionReasoner: 连续否决/阶段卡死/未接触 → 异常分类 + 恢复建议",
+    "source": "src/lerobot/policies/left_right/state_space/planner.py"
+   }
+  },
+  {
+   "id": "ssskill",
+   "type": "model",
+   "name": "🛠 技能编排器 (LLM)",
+   "icon": "🛠",
+   "color": "#3fb950",
+   "inputs": [],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "x": 300,
+   "y": -860,
+   "w": 260,
+   "h": 88,
+   "params": {
+    "state_space": true,
+    "skill_composer": true,
+    "llm": "Qwen3-7B (可插拔)",
+    "desc": "技能编排器 SkillComposer: 五大作业场景定义 (steps→技能序列, performance→参数覆盖默认) / 新型号规格 → 技能序列+力阈值/节拍",
+    "source": "src/lerobot/policies/left_right/state_space/planner.py"
+   }
   }
  ],
  "links": [
   {
-   "id": "lks1",
-   "f": "sssensor",
-   "t": "ssobs",
+   "id": "lkllm1",
+   "f": "ssllm_in",
+   "t": "ssllm",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "融合特征"
+   "label": "任务指令"
   },
   {
-   "id": "lks2",
-   "f": "ssobs",
-   "t": "ssff",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "obs 43D"
-  },
-  {
-   "id": "lks3",
-   "f": "ssobs",
-   "t": "ssest",
-   "f_port": "out2",
-   "t_port": "in1",
-   "label": "obs 43D"
-  },
-  {
-   "id": "lks4",
-   "f": "ssff",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "u_ff 建议 (30%)"
-  },
-  {
-   "id": "lks5",
-   "f": "ssest",
-   "t": "sspred",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "潜状态"
-  },
-  {
-   "id": "lks6",
-   "f": "ssest",
-   "t": "ssinnov",
-   "f_port": "out2",
-   "t_port": "in1",
-   "label": "潜状态"
-  },
-  {
-   "id": "lks7",
-   "f": "sspred",
-   "t": "ssinnov",
+   "id": "lkllm5",
+   "f": "ssskill",
+   "t": "ssllm",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "next_obs 预测"
+   "label": "新技能注册"
   },
   {
-   "id": "lks8",
-   "f": "ssinnov",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "contact + 残差"
-  },
-  {
-   "id": "lks9",
+   "id": "lkllm3",
    "f": "sssched",
-   "t": "sslimit",
+   "t": "ssreason",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "阶段切换与动作融合"
+   "label": "异常触发"
   },
   {
-   "id": "lks10",
-   "f": "sslimit",
-   "t": "ssact",
+   "id": "lksd1",
+   "f": "ssdata",
+   "t": "ssyolo",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "物理指令"
-  },
-  {
-   "id": "lks11",
-   "f": "ssact",
-   "t": "ssworld",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "执行结果"
-  },
-  {
-   "id": "lks12",
-   "f": "ssworld",
-   "t": "ssinnov",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "z_k 传感器反馈"
-  },
-  {
-   "id": "lks13",
-   "f": "ssinnov",
-   "t": "sspred",
-   "f_port": "out2",
-   "t_port": "in1",
-   "label": "校正后潜状态"
-  },
-  {
-   "id": "lks14",
-   "f": "ssworld",
-   "t": "ssvideo",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "轨迹"
-  },
-  {
-   "id": "lks15",
-   "f": "ssworld",
-   "t": "ssvideo2",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "轨迹"
+   "label": "图像流"
   },
   {
    "id": "lksy1",
@@ -668,6 +699,30 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "检测框 2D"
+  },
+  {
+   "id": "lksy4",
+   "f": "ssyolo",
+   "t": "ssaoi",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "检测区域"
+  },
+  {
+   "id": "lksd2",
+   "f": "ssdata",
+   "t": "sssensor",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "状态流 39D"
+  },
+  {
+   "id": "lks1",
+   "f": "sssensor",
+   "t": "ssobs",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "融合特征"
   },
   {
    "id": "lksy2",
@@ -686,28 +741,140 @@
    "label": "触觉 4D"
   },
   {
-   "id": "lksy4",
-   "f": "ssyolo",
-   "t": "ssaoi",
+   "id": "lks2",
+   "f": "ssobs",
+   "t": "ssff",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "检测区域"
+   "label": "obs 43D"
   },
   {
-   "id": "lksd1",
-   "f": "ssdata",
-   "t": "ssyolo",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "图像流"
-  },
-  {
-   "id": "lksd2",
-   "f": "ssdata",
-   "t": "sssensor",
+   "id": "lks3",
+   "f": "ssobs",
+   "t": "ssest",
    "f_port": "out2",
    "t_port": "in1",
-   "label": "状态流 39D"
+   "label": "obs 43D"
+  },
+  {
+   "id": "lks5",
+   "f": "ssest",
+   "t": "sspred",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "潜状态"
+  },
+  {
+   "id": "lks13",
+   "f": "ssinnov",
+   "t": "sspred",
+   "f_port": "out2",
+   "t_port": "in2",
+   "label": "校正后潜状态"
+  },
+  {
+   "id": "lks6",
+   "f": "ssest",
+   "t": "ssinnov",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "潜状态"
+  },
+  {
+   "id": "lks7",
+   "f": "sspred",
+   "t": "ssinnov",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "next_obs 预测"
+  },
+  {
+   "id": "lks12",
+   "f": "ssworld",
+   "t": "ssinnov",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "z_k 传感器反馈"
+  },
+  {
+   "id": "lks4",
+   "f": "ssff",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "u_ff 建议 (30%)"
+  },
+  {
+   "id": "lks8",
+   "f": "ssinnov",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "contact + 残差"
+  },
+  {
+   "id": "lkllm2",
+   "f": "ssllm",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "技能Token序列"
+  },
+  {
+   "id": "lkllm4",
+   "f": "ssreason",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in4",
+   "label": "恢复建议"
+  },
+  {
+   "id": "lks27",
+   "f": "ssaoi",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in5",
+   "label": "质量门"
+  },
+  {
+   "id": "lks9",
+   "f": "sssched",
+   "t": "sslimit",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "阶段切换与动作融合"
+  },
+  {
+   "id": "lks15",
+   "f": "ssworld",
+   "t": "ssvideo2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "轨迹"
+  },
+  {
+   "id": "lks10",
+   "f": "sslimit",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "物理指令"
+  },
+  {
+   "id": "lks11",
+   "f": "ssact",
+   "t": "ssworld",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "执行结果"
+  },
+  {
+   "id": "lks14",
+   "f": "ssworld",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "轨迹"
   }
  ]
 }

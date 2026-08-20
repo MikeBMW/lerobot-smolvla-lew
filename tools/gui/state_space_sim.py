@@ -28,6 +28,14 @@ def _load(name):
     return m
 
 
+def _load_planner():
+    """加载大模型层 planner.py (失败返回 None — 慢决策缺席不影响实时回路)"""
+    try:
+        return _load("planner.py")
+    except Exception:
+        return None
+
+
 # 物理世界模型参数 (光模块插拔)
 HOLE_POS = np.array([0.25, 0.0, 0.05])   # 孔位 (销钉目标)
 X0 = np.array([0.10, -0.06, 0.12])       # 末端起始位置
@@ -96,9 +104,19 @@ class StateSpaceSim:
     # ── 主循环 ──
     def run(self, on_step=None):
         """跑完整仿真 (500 步 ≈ 0.1s 纯 numpy)。on_step(node_name, value_str) 每节点回调。"""
+        # 🧠 大模型层 · 慢决策 (2026-08-20 老倪): 任务开始时规划一次, 不进实时回路
+        self.planner = _load_planner()
+        if self.planner is not None:
+            try:
+                tokens = self.planner.TaskPlanner().plan("插入光模块")
+                self.log(f"🧠 任务规划器 (慢决策·回路外): 「插入光模块」 → {' '.join(tokens)}")
+            except Exception as e:
+                self.log(f"⚠️ 任务规划器: {e}")
+        diag_done = False
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
               "u_sat": [], "stage": [], "done": [],
-              "x": [], "gripper": [], "force": []}   # 🎥 2026-08-18: 完整轨迹 (视频渲染用)
+              "x": [], "gripper": [], "force": [],
+              "obs": [], "u_ff_vec": [], "u_sat_vec": []}   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
         done = False
         t = 0.0
         n_steps = int(self.t_end / self.dt)
@@ -175,6 +193,9 @@ class StateSpaceSim:
             tr["x"].append(self.x.copy())
             tr["gripper"].append(self.gripper)
             tr["force"].append(force_norm)
+            tr["obs"].append(obs.copy())
+            tr["u_ff_vec"].append(np.asarray(u_ff, dtype=float).copy())
+            tr["u_sat_vec"].append(np.asarray(u_vec, dtype=float).copy())
             if on_step:
                 on_step("sensor", f"force_z={force[2]:+.3f}N")
                 on_step("obs", f"obs 43D · hand={self.x.round(4)} · gripper={self.gripper:.2f}")
@@ -186,6 +207,17 @@ class StateSpaceSim:
                 on_step("limit", f"u_sat={np.round(u_sat, 3)}")
                 on_step("act", f"v={np.round(self.v, 4)}")
                 on_step("world", f"z_k={np.round(z_k, 3)} · dist={d:.4f}")
+            # 🔍 大模型层 · 异常推理 (慢决策·回路外): 连续否决达上限 → 诊断一次
+            if not diag_done and self.planner is not None and self.sched.veto_count >= self.sched.max_veto:
+                diag_done = True
+                try:
+                    kind, advice = self.planner.ExceptionReasoner().diagnose(
+                        stage=stage, residual=r_scalar, contact_p=contact_p,
+                        dist_h=d, veto_count=self.sched.veto_count,
+                        max_veto=self.sched.max_veto)
+                    self.log(f"🔍 异常推理器 (慢决策·回路外): {kind} — {advice}")
+                except Exception as e:
+                    self.log(f"⚠️ 异常推理器: {e}")
             t += self.dt
             if done:
                 break
@@ -200,6 +232,68 @@ def quick_run():
     print(f"残差峰值 {max(tr['residual']):.4f} · 接触概率峰值 {max(tr['contact_p']):.3f}")
     print(f"阶段序列: {sorted(set(tr['stage']))}")
     return tr
+
+
+# ── 🧮 仿真 → 训练数据集 (2026-08-20 老倪: 状态空间接入训练流程) ──
+_DATASET_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "ss_insert")
+
+
+def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
+    """多轮仿真 (起始扰动+噪声 seed) → 专家演示数据集 npz
+
+    对齐 on_train 训练管道数据包格式:
+      states  (n,39) 39D 视觉结构 obs (当前18+上一18+目标3, 无触觉)
+      actions (n,4)  u_ff 前馈建议 (左脑MLP 学习目标 — 训练学仿真里的前馈)
+      stages  (n,)   阶段标签 (信息, 不参与训练)
+      success (n_ep,) 每轮完成标志
+      task_name "ss_insert" · fps 50 (DT=0.02)
+
+    Returns: (npz路径, 总帧数, 成功轮数/总轮数)
+    """
+    import time as _time
+    out_dir = out_dir or _DATASET_DIR
+    os.makedirs(out_dir, exist_ok=True)
+    if log:
+        log(f"🧮 仿真数据集生成: {n_episodes} 轮 (seed {seed_base}~{seed_base + n_episodes - 1})")
+    all_s, all_a, all_st = [], [], []
+    n_ok = 0
+    for ep in range(n_episodes):
+        sim = StateSpaceSim(log=lambda *a: None)
+        np.random.seed(seed_base + ep)
+        # 起始扰动: 末端位置抖动 ±10mm (真实产线来料偏差)
+        sim.x = X0 + np.array([np.random.uniform(-0.01, 0.01),
+                               np.random.uniform(-0.01, 0.01), 0.0])
+        sim.v = np.zeros(3)
+        sim.gripper = 0.0
+        sim.latent = np.concatenate([sim.x, [0.0]])
+        sim.obs_prev = None
+        tr = sim.run()
+        obs = np.asarray(tr["obs"], dtype=np.float32)
+        u_ff = np.asarray(tr["u_ff_vec"], dtype=np.float32)
+        # 39D = 43D 去触觉 (触觉4D在末尾 [39:43])
+        states = obs[:, :39]
+        all_s.append(states)
+        all_a.append(u_ff)
+        all_st.extend(tr["stage"])
+        ok = bool(tr["done"][-1])
+        n_ok += 1 if ok else 0
+        if log:
+            log(f"   ep{ep + 1}: {len(tr['t'])} 帧 · {'✅ 完成' if ok else '⚠️ 未完成'} "
+                f"({tr['t'][-1]:.1f}s · dist {tr['dist'][-1]:.4f})")
+    S = np.concatenate(all_s)
+    A = np.concatenate(all_a)
+    ts = _time.strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(out_dir, f"ss_insert_{ts}.npz")
+    np.savez_compressed(path, states=S, actions=A,
+                        stages=np.asarray(all_st, dtype=object),
+                        success=np.asarray([1 if i < n_ok else 0 for i in range(len(all_s))]),
+                        task_name="ss_insert", fps=50)
+    if log:
+        log(f"📥 数据集已生成: {path} · 总 {len(S)} 帧 · 成功 {n_ok}/{n_episodes} 轮")
+        log(f"   状态 {S.shape[1]}D · 动作 {A.shape[1]}D · 可训练 (data_source=ss_sim)")
+    return path, len(S), (n_ok, n_episodes)
 
 
 if __name__ == "__main__":

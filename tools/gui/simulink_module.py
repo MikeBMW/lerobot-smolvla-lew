@@ -2384,6 +2384,21 @@ class SimNodeItem(QGraphicsObject):
         self.scene_ref.on_node_activated(self.node)
         e.accept()
 
+    def mousePressEvent(self, e):
+        """📥 导出按钮 (2026-08-20 老倪): 🛠技能编排器 / 🎯YOLO 节点右下角 — 点击导出 Excel;
+        其余区域透传给 scene (拖拽/选中不受影响)"""
+        try:
+            p = self.node.get("params", {})
+            if e.button() == Qt.LeftButton and (p.get("skill_composer") or p.get("detection_targets")):
+                btn = QRectF(self.w - 38, self.h - 22, 34, 18)
+                if btn.contains(e.pos()):
+                    self.scene_ref.on_node_export(self.node)
+                    e.accept()
+                    return
+        except Exception:
+            pass
+        super().mousePressEvent(e)
+
     def boundingRect(self):
         # 🐛 2026-08-12 老倪: 顶部扩 18px — 悬停 ID 浮在节点上方 (y=-18~-2) 需在 boundingRect 内才显示
         return QRectF(0, 0, self.w, self.h).adjusted(-12, -18, 12, 12)
@@ -2768,6 +2783,18 @@ class SimNodeItem(QGraphicsObject):
             painter.setFont(QFont("Consolas", 7))
             painter.drawText(QRectF(12, 36, self.w - 16, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              f"{first[0]}={first[1]}")
+        # 📥 Excel 导出按钮 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点右下角)
+        if params.get("skill_composer") or params.get("detection_targets"):
+            try:
+                btn = QRectF(self.w - 38, self.h - 22, 34, 18)
+                painter.setPen(QPen(QColor("#a371f7"), 1))
+                painter.setBrush(QColor("#2d1b4e"))
+                painter.drawRoundedRect(btn, 4, 4)
+                painter.setPen(QColor("#e6edf3"))
+                painter.setFont(QFont("Arial", 7, QFont.Bold))
+                painter.drawText(btn, Qt.AlignCenter, "📥 导出")
+            except Exception:
+                pass
 
     # ── ⚙️ Z700 内部模块独立绘制 (2026-08-15 老倪: "字还是重叠" 最终方案) ──
     # 完全自包含: 背景/标题/角色/desc/参数/端口 全在本方法, 不依赖通用 paint 路径
@@ -3194,6 +3221,10 @@ class SimCanvas(QGraphicsView):
         #   (任何画布/节点右键都有「打开源代码」, 无映射时点击给明确提示)
         a_src = menu.addAction("打开源代码")
         a_run = menu.addAction("运行节点")
+        # 📥 Excel 导出 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点)
+        a_export = None
+        if item.node.get("params", {}).get("skill_composer") or item.node.get("params", {}).get("detection_targets"):
+            a_export = menu.addAction("导出 Excel (全部任务)")
         # 🎥 操作视频节点右键: 转正/切换 (2026-08-18 老倪: 视频文字反 → 转正; 内容不对 → 切换)
         a_rot = a_next = a_prev = None
         if item.node.get("params", {}).get("state_space_rollout"):
@@ -3212,12 +3243,21 @@ class SimCanvas(QGraphicsView):
             self.module.open_node_source(item.node)
         elif chosen == a_run:
             self.module.on_node_activated(item.node)
+        elif a_export is not None and chosen == a_export:
+            self.module.on_export_tasks(item.node)
         elif a_rot is not None and chosen == a_rot:
             self.module._mlp_rot180()
         elif a_next is not None and chosen == a_next:
             self.module._mlp_next()
         elif a_prev is not None and chosen == a_prev:
             self.module._mlp_prev()
+
+    def on_node_export(self, node):
+        """📥 节点右下角导出按钮 (🛠技能编排器 / 🎯YOLO) → 导出 Excel"""
+        try:
+            self.module.on_export_tasks(node)
+        except Exception:
+            pass
 
     def _poll_hover(self):
         """🐛 2026-08-12 老倪: 150ms 轮询鼠标位置 → 悬停显示 ID (VcXsrv 无按键 mouseMove 不达)"""
@@ -4340,6 +4380,16 @@ class SimulinkModule(QWidget):
                 n = self.add_node(spec.get("type", "system"), spec.get("name", "?"),
                                   spec.get("x", 0), spec.get("y", 0), spec.get("params", {}))
                 id_map[spec["id"]] = n["id"]
+                # 🐛 2026-08-20 老倪: JSON 里的 inputs/outputs 端口声明必须恢复 —
+                #   add_node 只建默认 in1/out1, 声明被丢弃 → 详情面板端口列表永远 in1/out1,
+                #   与画布实际连线顺序不符 ("输入输出顺序乱"根因之一)。
+                #   空列表也要显式生效 (如技能编排器无外部输入 in=[])。
+                if isinstance(spec.get("inputs"), list):
+                    n["inputs"] = [p if isinstance(p, dict) else {"id": p, "label": p, "dtype": "any"}
+                                   for p in spec["inputs"]] if spec["inputs"] else []
+                if isinstance(spec.get("outputs"), list):
+                    n["outputs"] = [p if isinstance(p, dict) else {"id": p, "label": p, "dtype": "any"}
+                                    for p in spec["outputs"]] if spec["outputs"] else []
                 # 🐛 2026-08-15 老倪: w/h 只写 dict 不写 item → SimNodeItem 创建时已固定
                 #   默认值 (w=150/h=50), JSON 里的 w/h 不生效 → 内部模块 UI 重叠。
                 #   必须同步更新 item 几何 (paint 读 self.w/self.h)。
@@ -4359,6 +4409,15 @@ class SimulinkModule(QWidget):
                     ti = self._items.get(t)
                     if fi and ti:
                         self.add_link(fi, ti, spec.get("label"))
+                        # 🐛 2026-08-20 老倪: add_link 硬编码 f_port=out1/t_port=in1 —
+                        #   JSON 里排好的端口顺序 (in1/in2/in3...) 加载后被覆盖成 in1,
+                        #   详情面板与连线语义全乱 ("输入输出顺序乱"根因)。恢复 JSON 端口。
+                        if spec.get("f_port") or spec.get("t_port"):
+                            lk = self.links[-1]
+                            if spec.get("f_port"):
+                                lk["f_port"] = spec["f_port"]
+                            if spec.get("t_port"):
+                                lk["t_port"] = spec["t_port"]
             self._log(f"💾 已加载工作流: {path} ({len(nodes)}节点 {len(links)}连线)")
             self._flow_path = path  # 🐛 2026-08-19: 记录画布文件 — 模式开关写回持久化
         except Exception as e:
@@ -5934,6 +5993,12 @@ class SimulinkModule(QWidget):
     def _log(self, msg):
         self.log_box.append(msg)
         self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
+        # 🐛 2026-08-20 静静诊断: 落盘方便定位 GUI 训练流程 (Model Zoo 终端看不到画布日志)
+        try:
+            with open("/tmp/simulink_log.txt", "a", encoding="utf-8") as _f:
+                _f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+        except Exception:
+            pass
 
     def _safe_log(self, msg):
         """🛡 后台线程安全日志 (2026-08-06: _auto_finalize_work 等 threading.Thread 直接
@@ -6047,16 +6112,30 @@ class SimulinkModule(QWidget):
         """仓库根: tools/gui/simulink_module.py → lerobot-smolvla-lew/"""
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    def _run_cmd(self, cmd, cwd=None, collect=None, line_hook=None):
+    def _run_cmd(self, cmd, cwd=None, collect=None, line_hook=None, timeout=None):
         """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行; line_hook(ln) 每行回调
-        🐛 2026-08-08 老倪: tqdm 用 \\r 刷新不换行 — for line 卡住 → 块读按 \\r/\\n 分行, 实时全量输出"""
+        🐛 2026-08-08 老倪: tqdm 用 \\r 刷新不换行 — for line 卡住 → 块读按 \\r/\\n 分行, 实时全量输出
+        🐛 2026-08-20 静静: 无超时 → 子进程挂起 (docker/SSH/网络) 永久卡 worker 线程 → 防重入
+           拦截后续所有训练 (GUI"点训练没反应")。加 select 非阻塞读 + deadline (默认 3600s), 超时 kill"""
         import subprocess
+        import select as _sel
         try:
             p = subprocess.Popen(cmd, cwd=cwd or self._repo_root(),
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             buf = b""
+            deadline = time.time() + (timeout if timeout else 3600)
             while True:
-                chunk = p.stdout.read(4096)
+                if time.time() > deadline:
+                    self.log_signal.emit(f"❌ 执行超时 ({timeout or 3600}s) 已终止: {cmd[0]}")
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+                    return -1
+                r, _, _ = _sel.select([p.stdout], [], [], 1.0)
+                if not r:
+                    continue
+                chunk = os.read(p.stdout.fileno(), 4096)
                 if not chunk:
                     break
                 buf += chunk
@@ -6532,7 +6611,33 @@ class SimulinkModule(QWidget):
             else os.path.join(root, "data", "metaworld_peg")
 
         # 0. 节点逻辑可修改区强制数据源 (node_logic.py ✏️) — 优先于画布 switch
-        if data_source == "metaworld":
+        if data_source == "ss_sim":
+            # 🧮 状态空间仿真数据集 (2026-08-20 老倪: 状态空间接入训练流程)
+            ss_dir = os.path.join(root, "data", "ss_insert_lerobot")
+            if not os.path.isfile(os.path.join(ss_dir, "meta", "info.json")):
+                self.log_signal.emit("🧮 状态空间数据集不存在 → 自动生成 (仿真 8 轮 + 转换 LeRobot)…")
+                try:
+                    sys.path.insert(0, os.path.join(root, "tools", "gui"))
+                    from state_space_sim import export_dataset
+                    p, n, (ok, ep) = export_dataset(n_episodes=8, seed_base=100, log=lambda m: self.log_signal.emit(f"   {m}"))
+                    self.log_signal.emit(f"📥 仿真数据: {n}帧 · 成功 {ok}/{ep} → {p}")
+                    import subprocess as _sp
+                    _py = os.path.join(root, "gui-venv311", "bin", "python")
+                    if not os.path.exists(_py):
+                        _py = "python3"
+                    r = _sp.run([_py, os.path.join(root, "tools", "build_ss_dataset.py")],
+                                capture_output=True, text=True, timeout=300)
+                    if r.returncode != 0:
+                        self.log_signal.emit(f"❌ 数据集转换失败: {(r.stderr or '')[-200:]}")
+                        return None, None, False
+                except Exception as ex:
+                    self.log_signal.emit(f"❌ 状态空间数据集生成失败: {ex}")
+                    return None, None, False
+            if os.path.isfile(os.path.join(ss_dir, "meta", "info.json")):
+                self.log_signal.emit("🧮 数据源 [状态空间仿真] → 仿真专家演示数据集 (39D/4D, 训练学仿真前馈)")
+                return ss_dir, "状态空间仿真数据集", True
+            self.log_signal.emit("⚠️ 强制 ss_sim 但数据集不可用 → 回退自动选择")
+        elif data_source == "metaworld":
             if os.path.isdir(placeholder):
                 self.log_signal.emit("📦 节点逻辑强制 [metaworld] → 使用占位集 (不拉 relay)")
                 return placeholder, "metaworld 占位集 (节点逻辑)", False
@@ -6633,6 +6738,9 @@ class SimulinkModule(QWidget):
             if not self._train_gate_state():
                 self.log_signal.emit("⏭ 训练开关未打勾 — 跳过训练 (双击 ☑ 训练开关节点可切换)")
                 return True, "训练已跳过 (开关关闭)"
+            # 🧮 2026-08-20 老倪: 状态空间模型 — 数据源强制仿真数据集
+            if policy == "state_space":
+                data_source = "ss_sim"
             data_root, source, real = self._ensure_training_data(data_source=data_source)
             if not data_root:
                 return False, "无训练数据"
@@ -6643,7 +6751,13 @@ class SimulinkModule(QWidget):
             #   base VLA 冻结只训 Interpolant 控制器 — 4060 精简版)
             #   / left_right=双脑 (🧠 2026-08-10 老倪: left_right 工程标准训练, config_left_right.yaml)
             # 各用独立配置模板; ts_dir 前缀区分; 曲线落盘 reports/train_curve_<policy>.json
-            if policy == "left_right":
+            if policy == "state_space":
+                # 🧮 2026-08-20 老倪: 状态空间模型 — 仿真专家数据蒸馏 left_right 前馈 (39D/4D)
+                cfg_path = os.path.join(root, "configs", "policies", "config_left_right.yaml")
+                ts_dir = "state_space_" + time.strftime("%Y%m%d_%H%M%S")
+                pname = "状态空间·仿真蒸馏"
+                data_source = "ss_sim"   # 强制仿真数据集 (不存在自动生成)
+            elif policy == "left_right":
                 # 📁 2026-08-10 老倪: 配置规范位置 configs/policies/ (不再堆工程根, 根目录已有64个历史遗留)
                 cfg_path = os.path.join(root, "configs", "policies", "config_left_right.yaml")
                 ts_dir = "left_right_" + time.strftime("%Y%m%d_%H%M%S")
@@ -6696,6 +6810,17 @@ class SimulinkModule(QWidget):
                 except Exception as ex:
                     self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                     tmp_cfg = cfg_path
+            # 🧮 2026-08-20 静静: state_space 本地直训 — 上面的 root 被改成容器路径 /app/...,
+            #   本机不存在 → 改回相对路径 (与 CLI 闭环一致, 数据在 data/ss_insert_lerobot)
+            if policy == "state_space":
+                try:
+                    with open(tmp_cfg, encoding="utf-8") as f:
+                        _t = f.read()
+                    _t = re.sub(r"(root:\s*).*", f"root: {os.path.relpath(data_root, root)}", _t, count=1)
+                    with open(tmp_cfg, "w", encoding="utf-8") as f:
+                        f.write(_t)
+                except Exception as ex:
+                    self.log_signal.emit(f"❌ state_space root 修正失败: {ex}")
 
             # 📊 Scope 曲线管理 (2026-08-05 调整): 只重置当前 policy 自己的旧曲线,
             #   保留其他模型已完成曲线 — 三Model Zoo时 ACT 训完波形保留, SmolVLA 训练中可见
@@ -6709,8 +6834,10 @@ class SimulinkModule(QWidget):
 
             self.log_signal.emit(f"🚀 启动 {pname} 训练 ({steps or 300}步, 4060 CUDA)…")
             # 🐳 2026-08-08 老倪: Model Engine 容器化 — 远程 GPU 已连接则提交 Docker (zmax-train 镜像)
+            # 🧮 2026-08-20 静静: state_space 除外 — 仿真蒸馏本地 CPU 直训 (lerobot-venv, 无 GPU 依赖)
             me = getattr(self, "_model_engine", None)
-            if me and getattr(me, "gpu_mode", "local") == "remote" and getattr(me, "remote_engine", None):
+            if (me and getattr(me, "gpu_mode", "local") == "remote" and getattr(me, "remote_engine", None)
+                    and policy != "state_space"):
                 r = me.remote_engine
                 import subprocess as _spr
                 self.log_signal.emit(f"🐳 提交 {pname} 训练 → 远程容器 (Docker · {r['host']}) · Model Engine 容器化")
@@ -6850,6 +6977,20 @@ class SimulinkModule(QWidget):
                     cmd += ["--lr", str(lr)]
                 rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
                                    line_hook=lambda ln: _line_hook(ln))
+            elif policy == "state_space":
+                # 🧮 2026-08-20 静静: 状态空间蒸馏 — 本地 CPU 直训 (lerobot-venv)
+                #   GUI 原流程强制 docker (zmax-std:1.0) — 本容器无 docker/GPU → 15s 假完成
+                #   改: 直接调 ~/lerobot-venv 的 lerobot_train (与 CLI 闭环一致, 3000步≈1分钟)
+                py = os.path.expanduser("~/lerobot-venv/bin/python")
+                if not os.path.exists(py):
+                    self.log_signal.emit("❌ 本地 CPU 训练环境缺失 (~/lerobot-venv) — 参考 zmax-state-space-training 技能重建")
+                    rc = 1
+                else:
+                    self.log_signal.emit("🧮 state_space 本地 CPU 直训 (lerobot-venv · 无 docker/GPU 依赖 · 3000步≈1分钟)")
+                    cmd = [py, "-u", "-m", "lerobot.scripts.lerobot_train",
+                           "--config_path", tmp_cfg]
+                    rc = self._run_cmd(cmd, cwd=root, collect=out_lines,
+                                       line_hook=lambda ln: _line_hook(ln))
             else:
                 # 🐳 2026-08-08 老倪: 训练强制容器 (zmax-std:1.0 — 与远程容器环境一致)
                 # 删除旧代码: 不再用本地 .venv 直接训练
@@ -8226,6 +8367,54 @@ class SimulinkModule(QWidget):
         dlg = BlockParamsDialog(node, None)
         self._show_nonmodal(dlg, on_accept=lambda: self._refresh_node(node))
 
+    def on_export_tasks(self, node):
+        """📥 导出 Excel (2026-08-20 老倪): 🛠技能编排器→全部任务 / 🎯YOLO→检测目标清单
+        后台线程 (导出+scp 可能 60s, 卡主线程按钮无反应 — feature_list 同坑) → _safe_log 路径+URL"""
+        p = node.get("params", {})
+        if p.get("skill_composer"):
+            kind, mod_path = "任务", os.path.join(self._repo_root(), "src", "lerobot",
+                                                  "policies", "left_right", "state_space", "planner.py")
+        elif p.get("detection_targets"):
+            kind, mod_path = "检测目标", os.path.join(self._repo_root(), "src", "lerobot",
+                                                     "policies", "yolo_3d", "detection_targets.py")
+        else:
+            return
+        self._safe_log(f"📥 正在导出 {kind} Excel 并上传…")
+        import threading
+
+        def _work():
+            try:
+                import importlib.util as _ilu
+                spec = _ilu.spec_from_file_location("export_mod", mod_path)
+                m = _ilu.module_from_spec(spec)
+                spec.loader.exec_module(m)
+                if kind == "任务":
+                    path, n = m.SkillComposer().export_all_tasks()
+                else:
+                    path, n = m.export_excel()
+                local = f"✅ 已导出 {n} 个{kind} → {path}"
+                # scp 上传 ECS (datadrive.world, 用户可下载)
+                try:
+                    import subprocess as _sp
+                    fname = os.path.basename(path)
+                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no", path,
+                                 f"root@39.102.211.79:/www/wwwroot/datadrive.world/{fname}"],
+                                capture_output=True, text=True, timeout=60)
+                    if r.returncode == 0:
+                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                                 "root@39.102.211.79", f"chmod 644 /www/wwwroot/datadrive.world/{fname}"],
+                                capture_output=True, text=True, timeout=30)
+                        self._safe_log(local)
+                        self._safe_log(f"🔗 http://datadrive.world/{fname}")
+                    else:
+                        self._safe_log(f"{local} (ECS 上传失败: {(r.stderr or '')[-120:]})")
+                except Exception as _e:
+                    self._safe_log(f"{local} (ECS 上传失败: {_e})")
+            except Exception as _e:
+                self._safe_log(f"⚠️ 导出失败: {_e}")
+
+        threading.Thread(target=_work, daemon=True).start()
+
     def on_train_config(self, node):
         """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)
         2026-08-05 修复#2: 模态 exec_ 在 WSLg 下弹窗不可见 → 界面'卡死'(按啥都不好使);
@@ -8858,6 +9047,91 @@ class SimulinkModule(QWidget):
                 f"<tr><td style='color:#ffd700'>输出</td><td>43D 统一状态向量</td><td>obs — 全感知融合 (结构条件叠加)</td></tr>"
                 f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
                 f"📌 43D = 39D 视觉结构 + 触觉 4D (触觉增维) — 时空感知 = 当前帧 + 历史帧时序</p>")
+        elif p.get("detection_targets"):
+            # 🎯 YOLO 目标检测 — 检测目标清单 (2026-08-20 老倪: 需求说明书 → 22 目标 6 类)
+            try:
+                import importlib.util as _ilu
+                _dp = os.path.join(self._repo_root(), "src", "lerobot", "policies", "yolo_3d", "detection_targets.py")
+                spec = _ilu.spec_from_file_location("yolo_3d.detection_targets", _dp)
+                _m = _ilu.module_from_spec(spec)
+                spec.loader.exec_module(_m)
+                _data = _m.load_detection_targets()
+                _rows = []
+                for t in _data.get("targets", []):
+                    _mtr = t.get("metrics", {})
+                    _inf = _mtr.pop("推理时间", None)
+                    _ms = " / ".join(f"{k} {v}" for k, v in _mtr.items())
+                    _rows.append(
+                        f"<tr><td style='color:#FFD700'>{t.get('target_id')}</td>"
+                        f"<td style='color:#e6edf3'>{t.get('target')}</td>"
+                        f"<td>{t.get('category')}</td>"
+                        f"<td style='color:#8b949e'>{'、'.join(t.get('objects', [])[:3])}</td>"
+                        f"<td style='color:#3fb950'>{_ms}</td>"
+                        f"<td>{_inf or '—'}</td></tr>")
+                _baseline = " / ".join(
+                    f"{b.get('variant')} {b.get('infer_orin_ms')}ms(Orin)" for b in _data.get("model_baseline", []))
+                html = (
+                    f"<h3 style='color:#FFD700;margin:4px'>🎯 YOLO 目标检测 — 检测目标清单 "
+                    f"({len(_data.get('targets', []))} 个 · {p.get('model', 'yolov8s')})</h3>"
+                    f"<p style='color:#8b949e;font-size:11px'>来源: 五大作业场景需求说明书 · "
+                    f"指标含 mAP@0.5 / mAP@0.5:0.95 / 准确率 / 位姿误差 / 推理时间</p>"
+                    f"<table border='1' cellspacing='0' cellpadding='3' style='border-color:#30363d;font-size:11px'>"
+                    f"<tr style='color:#e6edf3'><th>ID</th><th>检测目标</th><th>类别</th><th>检出对象</th>"
+                    f"<th>评价指标</th><th>推理时间</th></tr>{''.join(_rows)}</table>"
+                    f"<p style='color:#8b949e;font-size:11px;margin-top:6px'>📥 点节点右下角「导出」按钮 → Excel "
+                    f"(清单+指标定义+模型基线)。模型基线: {_baseline}</p>")
+            except Exception as _e:
+                html = f"<h3 style='color:#FFD700;margin:4px'>🎯 YOLO 目标检测</h3><p style='color:#f85149'>{_e}</p>"
+        elif p.get("task_planner"):
+            html = (
+                f"<h3 style='color:#a78bfa;margin:4px'>🧠 任务规划器 (LLM) — 慢决策 · 回路外</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>大模型管「想」, 小模型管「动」: 任务开始时规划一次, 不进实时控制回路。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
+                f"<tr><td style='color:#00d4aa'>输入</td><td>MES 工单 / 自然语言指令 / 场景ID (五大作业场景)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>输出</td><td>技能Token序列 [SKILL_xxx] → 🧭任务调度器 (规则校验后)</td></tr>"
+                f"<tr><td style='color:#00d4aa'>模型</td><td>Qwen3-7B 可插拔 (llm_url); 未配置走规则拆解 (确定性优先)</td></tr>"
+                f"<tr><td style='color:#ffd700'>技能库</td><td>242 条原子技能 (flows/atomic_skill_tokens.json, 9 大类)</td></tr>"
+                f"<tr><td style='color:#ffd700'>校验</td><td>非法序列拒绝: Token 必须在库 + 阶段顺序合法</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 源码: src/lerobot/policies/left_right/state_space/planner.py · TaskPlanner</p>")
+        elif p.get("exception_reasoner"):
+            html = (
+                f"<h3 style='color:#f0883e;margin:4px'>🔍 异常推理器 (LLM) — 慢决策 · 回路外</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>状态机卡住时诊断异常 + 恢复建议 (触发: 连续否决/阶段卡死/未接触)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:12px'>"
+                f"<tr style='color:#e6edf3'><th>异常分类</th><th>触发条件</th><th>恢复建议</th></tr>"
+                f"<tr><td style='color:#ff6b6b'>力控异常</td><td>连续否决 ≥ max_veto</td><td>减速重试 + 复核力阈值</td></tr>"
+                f"<tr><td style='color:#ff6b6b'>对准失败</td><td>接近停留 &gt;5s 未接触</td><td>视觉复核孔位坐标 + 重新对准</td></tr>"
+                f"<tr><td style='color:#ff6b6b'>插入未到位</td><td>接触但距离超阈值</td><td>复测 + 低力重插</td></tr>"
+                f"<tr><td style='color:#ff6b6b'>未接触</td><td>接触概率 &lt;0.3</td><td>检查末端位置与目标坐标</td></tr>"
+                f"</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                f"📌 源码: planner.py · ExceptionReasoner (规则诊断, LLM 可插拔)</p>")
+        elif p.get("skill_composer"):
+            html = (
+                f"<h3 style='color:#3fb950;margin:4px'>🛠 技能编排器 (LLM) — 场景驱动</h3>"
+                f"<p style='color:#8b949e;font-size:11px'>五大作业场景定义 → 技能序列 + 参数 (performance 覆盖默认)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='3' style='border-color:#30363d;font-size:11px'>"
+                f"<tr style='color:#e6edf3'><th>场景</th><th>技能链</th><th>力限N</th><th>节拍s</th></tr>")
+            try:
+                import importlib.util as _ilu
+                _sp2 = os.path.join(_SS_DIR, "planner.py")
+                spec = _ilu.spec_from_file_location("state_space.planner", _sp2)
+                _pm = _ilu.module_from_spec(spec)
+                spec.loader.exec_module(_pm)
+                _c = _pm.SkillComposer()
+                _nm2 = {s["tokens"]["id"]: s["name"] for s in _c.skills.values()}
+                for _sid in _c.scene_by_id:
+                    _o = _c.compose(_sid)
+                    _pr = _o["params"]
+                    _chain = "→".join(t.replace("[SKILL_", "").replace("]", "") for t in _o["sequence"][:6])
+                    html += (f"<tr><td style='color:#FFD700'>{_sid}</td>"
+                             f"<td style='color:#8b949e'>{_chain}</td>"
+                             f"<td>{_pr.get('force_limit')}</td><td>{_pr.get('tact_time')}</td></tr>")
+            except Exception:
+                pass
+            html += ("</table><p style='color:#8b949e;font-size:11px;margin-top:6px'>"
+                     f"📥 点节点右下角「导出」按钮 → Excel (全部任务)。源码: planner.py · SkillComposer</p>")
         else:
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🧩 {nm}</h3>"

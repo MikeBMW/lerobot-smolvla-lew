@@ -5,6 +5,7 @@ job_name: left_right_std
 
 policy:
   type: left_right
+  device: cuda   # 2026-08-20 静静: 本容器有 RTX 4060 (nvidia-smi 实锤) → 用 GPU 训练
   push_to_hub: false
   repo_id: MikeBMW/zmax-left-right
   n_obs_steps: 1
@@ -15,7 +16,7 @@ policy:
 
 dataset:
   repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
-  root: data/metaworld_peg_long   # 39D 数据集 (2026-08-10: left_right 用 39D, 12集3600帧全量)
+  root: data/ss_insert_lerobot   # 2026-08-20: 状态空间仿真数据集 (39D/4D, 本地生成)
   use_imagenet_stats: false
 
 batch_size: 8

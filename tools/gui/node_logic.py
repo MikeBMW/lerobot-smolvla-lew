@@ -1410,3 +1410,156 @@ _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/
 _reg("ss_world", ["物理世界"], "🌍 物理世界 — 执行结果→传感器反馈 z_k→卡尔曼校正闭环 (源码 execution.py PhysicalWorld)", node_ss_exec)
 _reg("ss_video", ["操作视频"], "🎥 操作视频 — metaworld 训练后 rollout 视频对比窗口 (多模型同步播放, InferenceVideoDialog)", node_ss_video)
 _reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空间仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)", node_ss_scope)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🧠 大模型层 · 云端任务规划 (2026-08-20 老倪: 大模型管"想", 小模型管"动")
+#   真实实现: src/lerobot/policies/left_right/state_space/planner.py
+#   慢决策: 只在任务开始/异常时介入, 不进实时控制回路
+# ════════════════════════════════════════════════════════════════
+_EXTERNAL_LOC["ss_bg5"]    = (os.path.join(_SS_DIR, "planner.py"), 1, "planner.py")
+_EXTERNAL_LOC["ss_llm_in"] = (os.path.join(_SS_DIR, "planner.py"), 75, "class TaskPlanner")
+_EXTERNAL_LOC["ss_llm"]    = (os.path.join(_SS_DIR, "planner.py"), 75, "class TaskPlanner")
+_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 177, "class ExceptionReasoner")
+_EXTERNAL_LOC["ss_skill"]  = (os.path.join(_SS_DIR, "planner.py"), 227, "class SkillComposer")
+
+
+def node_ss_llm(ctx):
+    """🧠 任务规划器 — 指令 → 技能Token序列 → 下发状态机 (慢决策, 回路外; 双击=规划演示)"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        path = os.path.join(_SS_DIR, "planner.py")
+        spec = _ilu.spec_from_file_location("state_space.planner", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        p = m.TaskPlanner()
+        ins = (ctx.get("params") or {}).get("instruction", "插入光模块")
+        tokens = p.plan(ins)
+        names = []
+        for t in tokens:
+            for s in p.skills.values():
+                if s["tokens"]["id"] == t:
+                    names.append(s["name"])
+                    break
+        if log:
+            log(f"🧠 任务规划器: 「{ins}」 → 技能序列 (共 {len(tokens)} 步)")
+            for i, (t, nm) in enumerate(zip(tokens, names), 1):
+                log(f"   {i}. {t}  {nm}")
+            log(f"   📚 Token 序列已下发 🧭任务调度器 (慢决策 · 回路外, 状态机握否决权)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 任务规划器演示失败: {e}")
+        return False
+
+
+def node_ss_reason(ctx):
+    """🔍 异常推理器 — 连续否决/阶段卡死 → 异常分类 + 恢复建议 (双击=诊断演示)"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        path = os.path.join(_SS_DIR, "planner.py")
+        spec = _ilu.spec_from_file_location("state_space.planner", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        r = m.ExceptionReasoner()
+        p = ctx.get("params") or {}
+        kind, advice = r.diagnose(
+            stage=p.get("stage", "接近"),
+            residual=float(p.get("residual", 0.0)),
+            contact_p=float(p.get("contact_p", 0.5)),
+            dist_h=float(p.get("dist_h", 0.05)),
+            dwell_time=float(p.get("dwell_time", 0.0)),
+            veto_count=int(p.get("veto_count", 0)),
+            max_veto=int(p.get("max_veto", 3)))
+        if log:
+            log(f"🔍 异常推理器: 阶段={p.get('stage','接近')} 残差={p.get('residual',0.0)} "
+                f"接触概率={p.get('contact_p',0.5)}")
+            log(f"   → 诊断: {kind or '运行正常'} | {advice}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 异常推理器演示失败: {e}")
+        return False
+
+
+def node_ss_skill(ctx):
+    """🛠 技能编排器 — 新型号规格 → 新技能序列 + 力阈值/节拍 (双击=编排演示)"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        path = os.path.join(_SS_DIR, "planner.py")
+        spec = _ilu.spec_from_file_location("state_space.planner", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        c = m.SkillComposer()
+        spec_text = (ctx.get("params") or {}).get("spec", "新型 OSFP 光模块, 高插入力")
+        out = c.compose(spec_text)
+        if log:
+            log(f"🛠 技能编排器: 规格「{spec_text}」")
+            for i, t in enumerate(out["sequence"], 1):
+                log(f"   {i}. {t}")
+            pr = out["params"]
+            log(f"   ⚙ 参数: 力阈值 {pr.get('force_limit')}N · 节拍 {pr.get('tact_time')}s · "
+                f"插入深度 {pr.get('insert_depth')}m")
+            log(f"   📚 新技能序列已注册进 🧠任务规划器技能库")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 技能编排器演示失败: {e}")
+        return False
+
+
+def node_ss_bg5(ctx):
+    """大模型层背景行 — 云端任务规划 (慢决策 · 回路外)"""
+    _ss_run(ctx, "大模型层 · 云端任务规划", "planner.py")
+
+
+def node_ss_llm_in(ctx):
+    """📝 任务指令 — MES 工单 / 自然语言指令输入"""
+    _ss_run(ctx, "任务指令输入", "planner.py")
+
+
+_reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
+_reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
+_reg("ss_llm",   ["任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
+_reg("ss_reason", ["异常推理器"], "🔍 异常推理器 — 连续否决/阶段卡死→异常分类+恢复建议; 双击=诊断演示 (源码 planner.py ExceptionReasoner)", node_ss_reason)
+_reg("ss_skill", ["技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🎯 YOLO 目标检测 — 检测目标清单 (2026-08-20 老倪: 需求说明书 → 22 目标 6 类)
+#   数据源: flows/detection_targets.json · 导出: yolo_3d/detection_targets.py
+# ════════════════════════════════════════════════════════════════
+_EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")
+
+
+def node_ss_yolo(ctx):
+    """🎯 YOLO 目标检测 — 22 个检测目标 (类别/位姿/方向) + 指标 (mAP/推理时间)
+    双击详情走画布 _show_state_space_detail; 导出走节点右下角按钮/右键菜单"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        path = os.path.join(_YOLO_DIR, "detection_targets.py")
+        spec = _ilu.spec_from_file_location("yolo_3d.detection_targets", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        data = m.load_detection_targets()
+        if log:
+            from collections import Counter
+            c = Counter(t["category"] for t in data["targets"])
+            log(f"🎯 YOLO 目标检测: {len(data['targets'])} 个检测目标 · {data.get('backbone', 'YOLOv8s')}")
+            log("   按类别: " + " · ".join(f"{k}{v}" for k, v in c.items()))
+            log("   指标: mAP@0.5 / mAP@0.5:0.95 / 准确率 / 位姿误差 / 推理时间")
+            log("   📥 点节点右下角「导出」按钮 → Excel (清单+指标定义+模型基线) 并上传 datadrive.world")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ YOLO 检测目标加载失败: {e}")
+        return False
+
+
+_reg("ss_yolo", ["YOLO", "目标检测"],
+     "🎯 YOLO 目标检测 — 22 个检测目标 (类别识别/2D检测/位姿/扫码/缺陷AOI/状态) + mAP/推理时间指标; 双击=清单, 📥按钮=Excel导出 (数据源 flows/detection_targets.json)",
+     node_ss_yolo)
