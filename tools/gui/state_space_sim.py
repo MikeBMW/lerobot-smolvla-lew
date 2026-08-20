@@ -296,5 +296,32 @@ def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
     return path, len(S), (n_ok, n_episodes)
 
 
+def load_trained_left_brain(npz_path):
+    """加载训练模型 numpy 权重 → 返回 ff_forward(obs) 纯 numpy 前馈 (无 torch)
+
+    复现 ss_verify_trained.py 的 torch 推理: 归一化 → 4层 MLP(Linear+ReLU) → 反归一化。
+    Dropout 在 eval 模式关闭 = 推理恒等跳过。夹爪开关量规则控制 (同 torch 版)。
+    """
+    d = np.load(npz_path)
+    W = [d[f"W{i}"] for i in range(4)]
+    b = [d[f"b{i}"] for i in range(4)]
+    sm, ss = d["sm"], d["ss"]
+    am, astd = d["am"], d["astd"]
+
+    def ff_forward(obs):
+        x = (np.asarray(obs[:39], dtype=np.float32) - sm) / ss
+        for i in range(3):
+            x = np.maximum(0.0, W[i] @ x + b[i])   # Linear + ReLU (Dropout eval 关闭跳过)
+        u_norm = W[3] @ x + b[3]                    # 最后一层无 ReLU
+        u_xyz = np.clip(u_norm[:3] * astd[:3] + am[:3], -0.6, 0.6)
+        pos = np.asarray(obs[:3], dtype=float)
+        target = np.asarray(obs[36:39], dtype=float)
+        dist_h = float(np.linalg.norm(pos[:2] - target[:2]))
+        u_grip = 1.0 if dist_h < 0.03 else 0.0
+        return np.concatenate([u_xyz, [u_grip]])
+
+    return ff_forward
+
+
 if __name__ == "__main__":
     quick_run()

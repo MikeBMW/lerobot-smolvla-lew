@@ -9369,6 +9369,15 @@ class SimulinkModule(QWidget):
         self._log("🧮 状态空间真实仿真 — 六层源码引擎: 📡感知→⚡前馈‖🔮估计→📈预测→🧪校正→🧭调度→🛡限幅→🤖执行→🌍物理闭环")
         try:
             sim = StateSpaceSim(log=self._log)
+            # 🧠 训练模型前馈 (2026-08-20 老倪: ▶运行加载训练模型而非手设参数)
+            _npz = os.path.join(self._repo_root(), "models", "ss_left_brain.npz")
+            if os.path.exists(_npz):
+                try:
+                    from state_space_sim import load_trained_left_brain
+                    sim.accel.forward = load_trained_left_brain(_npz)
+                    self._log("🧠 前馈加速器已加载训练模型 (左脑 MLP 39D→4D) 替换手设参数")
+                except Exception as _e:
+                    self._log(f"⚠️ 训练模型加载失败, 回退手设参数: {_e}")
             tr = sim.run()   # 纯 numpy, 500 步 <0.1s
         except Exception as e:
             import traceback
