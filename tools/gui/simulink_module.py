@@ -48,6 +48,21 @@ NODE_TYPES = {
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 DH = 50  # 节点高度 (与 web 一致)
 
+# 🎯 状态空间变量监控 → 画布连线映射 (2026-08-20 老倪: 选中右侧变量高亮对应连线)
+# 键 = state_space_sim.last_io 的模块名, 值 = state_space_obs.json 节点的 name
+# (节点 id 加载时被重生成, name 稳定; 安全限幅/执行器 last_io 与画布 name 有前缀差异)
+SS_MODULE_TO_NAME = {
+    "📡 传感器融合": "📡 传感器融合",
+    "⚡ 前馈加速器": "⚡ 前馈加速器",
+    "🔮 自适应状态估计器": "🔮 自适应状态估计器",
+    "📈 先验动力学预测器": "📈 先验动力学预测器",
+    "🧪 状态校正器": "🧪 状态校正器",
+    "🧭 动作调制器": "🧭 动作调制器",
+    "🛡 安全限幅": "🛡 安全执行边界 (饱和限幅)",
+    "🤖 执行器": "🤖 机器人执行器",
+    "🌍 物理世界": "🌍 物理世界",
+}
+
 # 工作流分区 (对标 MathWorks 解决方案页 6 大功能) → 节点类型映射
 WORKFLOW_TYPES = {
     "data":     "hardware",   # ① 访问·标注数据: Orin/MAC/相机/数据集
@@ -2912,6 +2927,7 @@ class SimLinkItem(QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self._hover = False
         self._flow_offset = 0.0   # 流动动画偏移 (运行中)
+        self._ss_hl = False       # 🎯 状态空间变量监控高亮 (选中右侧变量 → 金色加粗)
         # 🐛 2026-08-15 老倪: "启动狂闪黑条" — 原无条件 start(80) 每 80ms 全画布连线重绘,
         #   VcXsrv 网络合成下闪成黑条。改惰性: 平时不启动, 仅在真正流动时由外部唤醒。
         self._anim_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
@@ -3018,6 +3034,10 @@ class SimLinkItem(QGraphicsObject):
             pen.setColor(color)
         elif self.isSelected():
             pen.setStyle(Qt.DashLine)
+        # 🎯 状态空间变量监控高亮 (2026-08-20 老倪): 选中右侧变量 → 金色加粗实线, 优先级最高
+        if self._ss_hl:
+            pen = QPen(QColor("#ffd700"), 4.2)
+            pen.setStyle(Qt.SolidLine)
         painter.setPen(pen)
         painter.drawPath(path)
         # 🏷 数据流标签 (2026-08-05 老倪: 数据节点三路输出 图像/状态/动作 要标清楚)
@@ -4749,6 +4769,35 @@ class SimulinkModule(QWidget):
                 li.stop_all_flow()
             except Exception:
                 pass
+
+    def highlight_ss_links(self, module_name=None, direction=None):
+        """🎯 状态空间变量监控 → 高亮对应连线 (2026-08-20 老倪: 变量↔连线对应)
+        module_name = last_io 模块名 (如 '⚡ 前馈加速器'); direction = 'in'/'out'/None
+        'in'  → 高亮进入该模块的连线 (输入流); 'out' → 高亮该模块出发的连线 (输出流)
+        None(带模块名) → 高亮该模块所有连线; module_name=None → 清除全部高亮"""
+        # name → 节点 id (id 加载时被重生成, 用稳定的 name 定位)
+        target_id = None
+        target_name = SS_MODULE_TO_NAME.get(module_name) if module_name else None
+        if target_name:
+            for n in self.nodes:
+                if n.get("name") == target_name:
+                    target_id = n.get("id")
+                    break
+        for li in getattr(self, "_link_items", []):
+            hl = False
+            try:
+                f = li.link.get("f")
+                t = li.link.get("t")
+                if target_id and direction == "in":
+                    hl = (t == target_id)
+                elif target_id and direction == "out":
+                    hl = (f == target_id)
+                elif target_id:
+                    hl = (f == target_id or t == target_id)
+            except Exception:
+                hl = False
+            li._ss_hl = hl
+            li.update()
 
     def on_node_moved(self, item):
         # ⚠️ 必须 prepareGeometryChange (2026-08-05 修复): 连线 boundingRect 随节点位置
@@ -9467,6 +9516,13 @@ class SimulinkModule(QWidget):
                   f" · 残差峰值 {r_max:.4f} · 接触概率峰值 {cp_max:.2f}")
         self._log("链路: 📡43D感知 → ⚡前馈建议+🔮卡尔曼估计 → 📈动力学预测 → 🧪残差/接触校正 → 🧭调度融合 → 🛡限幅 → 🤖执行 → 🌍反馈闭环")
         self._refresh_status()
+        # 🎛 刷新右侧变量监控 (2026-08-20 老倪: 仿真完成自动出全量 I/O 变量)
+        try:
+            _mt = getattr(self, "model_tree", None)
+            if _mt is not None and _mt.cmb_view.currentIndex() == 3:
+                _mt._show_state_space()
+        except Exception:
+            pass
         # 🎥 2026-08-18 老倪: 仿真完成自动输出操作视频 → 后台渲染 mp4 + 传 ECS + 打印链接
         tr = getattr(self, "_ss_tr", None)
         if tr and tr.get("x"):

@@ -80,7 +80,11 @@ try:
                 pass
             return False
 
-    _TIMER_TRACE = _TimerTrace()
+    # 🐛 2026-08-20 Segfault 根治: 禁用 _TimerTrace 诊断追踪器 —
+    # eventFilter 在每个 Timer 事件分发前访问接收者 metaObject()/parent()/sip,
+    # 遇到已析构的悬空对象 (NULL receiver) 时 C 层 segfault (Python try 捕获不了)。
+    # 诊断已完成 (根因=孤儿 QObject + activateTimers 批处理碰撞), 生产关闭追踪器。
+    _TIMER_TRACE = None
 except Exception:
     _TIMER_TRACE = None
 
@@ -89,15 +93,37 @@ from PyQt5.QtCore import QObject as _QObjectS  # noqa: E402
 from PyQt5.QtCore import pyqtSignal as _pyqtSignalS  # noqa: E402
 
 
-class _OneshotBridge(_QObjectS):
-    """🔔 _oneshot 跨线程派发桥 (2026-08-19): worker 线程调 _oneshot 时,
-    经此信号 emit → 自动 QueuedConnection 到主线程执行 → 主线程创建 QTimer(parent)"""
-
-    sig = _pyqtSignalS(object, int, object)
+import queue as _queue_mod
+_oneshot_queue = _queue_mod.Queue()  # 跨线程 _oneshot 任务队列 (纯 Python, 零 Qt 跨线程信号)
 
 
-_oneshot_bridge = _OneshotBridge()
-_oneshot_bridge.sig.connect(lambda p, m, f: _oneshot(p, m, f))
+class _OneshotPoller(_QObjectS):
+    """🔔 _oneshot 跨线程派发 (2026-08-20 Segfault 根治):
+    旧 _OneshotBridge.sig.emit(parent,...) 跨线程 emit 信号, parent 是 QObject,
+    信号跨线程参数包装临时 QObject 在 worker 线程 GC 析构 → killTimer cross-thread SIGSEGV。
+    新方案: worker 线程只写纯 Python 队列 (queue.put 线程安全), 主线程 QTimer 轮询消费。"""
+
+    def __init__(self):
+        super().__init__()
+        self._timer = _QTimerS(self)
+        self._timer.setTimerType(Qt.PreciseTimer)
+        self._timer.timeout.connect(self._drain)
+        self._timer.start(50)  # 20Hz 轮询消费队列
+
+    def _drain(self):
+        while True:
+            try:
+                parent, ms, fn = _oneshot_queue.get_nowait()
+            except Exception:
+                break
+            try:
+                _oneshot(parent, ms, fn)  # 主线程执行 → 直接建 QTimer
+            except Exception:
+                pass
+
+
+_oneshot_poller = None  # main() 里 QApplication 创建后实例化
+
 
 def _tq(parent):
     """⏱ 精确 timer (PreciseTimer) — 🐛 2026-08-18: CoarseTimer 默认批处理合并
@@ -110,17 +136,16 @@ def _tq(parent):
 def _oneshot(parent, ms, fn):
     """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
     PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治
-    🐛 2026-08-19: worker 线程调 _oneshot → 跨线程创建 QTimer(parent) 报错
-    (Cannot create children/startTimer — MonitorModule 轮询刷屏 + Segfault 隐患同源)
-    → 跨线程时经桥接信号派发回 parent 所在线程 (主线程) 创建"""
+    🐛 2026-08-20 Segfault 根治: 跨线程时不再 emit 含 QObject 的信号 (临时 QObject 包装
+    在 worker 线程 GC 析构 → killTimer cross-thread), 改纯 Python 队列 + 主线程轮询。"""
     if QThread.currentThread() is parent.thread():
         t = _QTimerS(parent)
         t.setSingleShot(True)
         t.timeout.connect(fn)
         t.start(ms)
         return t
-    # 跨线程: 桥接信号自动 QueuedConnection 到主线程, 主线程再走原路径
-    _oneshot_bridge.sig.emit(parent, ms, fn)
+    # 跨线程: 纯队列, 主线程 _oneshot_poller 轮询消费 (不 emit 含 QObject 的信号)
+    _oneshot_queue.put((parent, ms, fn))
     return None
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -9846,6 +9871,43 @@ class StudioMainWindow(QMainWindow):
                 sim.close()  # 触发 SimulinkModule.closeEvent 清理 _rec_timer/_worker
             except Exception:
                 pass
+        # 🐛 2026-08-20 Segfault 根治: HardwareModule 的 WS 实时通道 (daemon 线程) 未清理 →
+        #   关窗口后 WS 线程仍持有 on_status bound method (反向引用 HardwareModule),
+        #   解释器退出时 WS 线程 GC 析构 QObject → killTimer cross-thread SIGSEGV。
+        #   根治: 遍历 stack 找到持有 _ws 的 widget (HardwareModule, 匿名实例),
+        #   断开回调引用 + stop(关socket中断recv) + join(等线程真正退出) + 停 _ws_poll。
+        try:
+            import time as _t2
+            _dbg = []
+            for _i in range(self.stack.count()):
+                _w = self.stack.widget(_i)
+                _ws = getattr(_w, "_ws", None)
+                _dbg.append(f"[{_i}]{type(_w).__name__}:ws={'Y' if _ws is not None else 'N'}")
+                if _ws is not None:
+                    try:
+                        _ws.on_status = None   # 断反向引用 (关键, 否则 WS 线程 GC 析构 QObject)
+                        _ws.on_event = None
+                        _ws.stop()             # set Event + 关底层 socket 中断阻塞 recv
+                        _t0 = _t2.time()
+                        _ok = _ws.join(3)      # 等线程真正退出 (否则解释器退出强杀 daemon → segfault)
+                        _dbg.append(f"   stop+join: ok={_ok} dt={_t2.time()-_t0:.2f}s alive={_ws._thread.is_alive()}")
+                    except Exception as _e:
+                        _dbg.append(f"   stop+join EXC: {_e!r}")
+                    _w._ws = None
+                    _wp = getattr(_w, "_ws_poll", None)
+                    if _wp is not None:
+                        try:
+                            _wp.stop()
+                        except Exception:
+                            pass
+            with open("/tmp/closeEvent.log", "a") as _f:
+                _f.write(f"{_t2.time():.1f} closeEvent WS清理: " + " | ".join(_dbg) + "\n")
+        except Exception as _e2:
+            try:
+                with open("/tmp/closeEvent.log", "a") as _f:
+                    _f.write(f"{_t2.time():.1f} closeEvent WS清理外层异常: {_e2!r}\n")
+            except Exception:
+                pass
         super().closeEvent(ev)
 
     def _init_simulink(self):
@@ -10785,7 +10847,27 @@ def main():
         gc.disable()
     except Exception:
         pass
+    # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject →
+    #   activateTimers 批处理碰撞 NULL receiver SIGSEGV)。offscreen 无 D-Bus 从不崩,
+    #   真实 xcb 平台连 D-Bus 每 10s 重连 = 孤儿 QObject = 竞态源。
+    try:
+        os.environ["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
+    except Exception:
+        pass
     app = QApplication(sys.argv)
+    # 🐛 2026-08-20 Segfault 根治: 断开 D-Bus session bus (阻止 10s 重连 timer)
+    try:
+        from PyQt5.QtDBus import QDBusConnection
+        QDBusConnection.disconnectFromBus("qt_default_session_bus")
+    except Exception:
+        pass
+    # 🐛 2026-08-20 Segfault 根治: 初始化 _oneshot 跨线程队列轮询器 (主线程 QTimer)
+    # 消费 worker 线程 put 的任务, 不再用跨线程 emit 含 QObject 的信号
+    global _oneshot_poller
+    try:
+        _oneshot_poller = _OneshotPoller()
+    except Exception:
+        pass
     # 🐛 2026-08-18 崩溃根治: QPixmapCache 内部 timer (QPMCache) 无 parent 且高频激活
     # (播放器帧轮播每 66ms 创建/销毁 QPixmap) → activateTimers 批处理碰撞 → NULL receiver
     # SIGSEGV (孤儿 timer 追踪实锤 QPMCache)。禁用缓存 → 该 timer 不再激活。

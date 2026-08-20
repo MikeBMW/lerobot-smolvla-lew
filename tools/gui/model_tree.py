@@ -2534,6 +2534,13 @@ class ModelTreeDock(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.itemDoubleClicked.connect(self._on_item_dbl)
         lay.addWidget(self.tree, 1)
+        # 🎛 状态空间 · 信号监控树 (2026-08-20 老倪: Simulink 风格全量变量监控)
+        self.ss_tree = QTreeWidget()
+        self.ss_tree.setHeaderHidden(True)
+        self.ss_tree.setVisible(False)
+        # 🎯 选中变量 → 高亮画布对应连线 (2026-08-20 老倪: 变量↔连线对应)
+        self.ss_tree.currentItemChanged.connect(self._on_ss_select)
+        lay.addWidget(self.ss_tree, 1)
         # 🎯 2026-08-15: 极点配置写回后刷新树 (树创建后才挂引用)
         self.pole_place.tree = self.tree
         # 📐 2026-08-15: 现场标定写回后刷新树
@@ -2651,9 +2658,10 @@ class ModelTreeDock(QWidget):
         show = math or ss
         self.tree.setVisible(not show and not field and not perf and not scene
                              and not rsum and not eng)
-        self.lbl_math.setVisible(show)
-        self.plot.setVisible(show)
-        self.response.setVisible(show)
+        self.ss_tree.setVisible(ss)
+        self.lbl_math.setVisible(math)
+        self.plot.setVisible(math)
+        self.response.setVisible(math)
         # 🎯 2026-08-15 老倪: 参数标定视图 → 显示极点配置设计器 + 数据字典树
         self.pole_place.setVisible(calib)
         # 📐 2026-08-15 老倪: 现场标定视图 → 三步向导
@@ -2854,130 +2862,102 @@ class ModelTreeDock(QWidget):
 
     # ── 状态空间设计 (2026-08-12 老倪: 经典控制 ↔ 双脑网络同构) ──
     def _show_state_space(self):
-        """把画布 Z700 映射为状态空间: obs=状态x, action=输入u,
-        左脑=反馈控制器 K, 右脑=状态转移 f(x,u) (局部线性化 A,B),
-        感知链=观测模型 C, 状态机=硬约束 (滚动时域控制)"""
+        """🎛 状态空间 · 信号监控 (Simulink 风格全量变量监控)"""
         try:
-            import numpy as _np
-            nodes = self.module.nodes
-            # ── 节点 → 控制角色 ──
-            roles = []
-            for n in nodes:
-                name = n.get("name", "")
-                t = n.get("type", "")
-                if n.get("type") == "row_bg":
-                    continue
-                if "YOLO" in name or "2D→3D" in name or "Adapter" in name or "Marker" in name or "obs" in name:
-                    roles.append((name, "观测模型 y=Cx", "感知链: 状态→观测"))
-                elif "左脑" in name:
-                    roles.append((name, "控制器 u=-Kx", "状态反馈: 生成动作"))
-                elif "右脑" in name:
-                    roles.append((name, "状态转移 x'=f(x,u)", "世界模型: 局部线性化 A,B"))
-                elif "接触判定" in name or name.startswith("➤"):
-                    roles.append((name, "硬约束 x∈X_safe", "状态机: 滚动时域控制"))
-                elif "metaworld" in name or "数据源" in name or t == "hardware":
-                    roles.append((name, "输入 u(t)", "外部输入"))
-                elif "LeftRightPolicy" in name:
-                    roles.append((name, "输出 y(t)", "系统输出"))
-                elif "训练" in name or "推理" in name or "视频" in name or "PDF" in name:
-                    roles.append((name, "监督/交付", "训练调度/报告"))
-                else:
-                    roles.append((name, "中间环节", "信号路由"))
-            # ── 状态空间四元组 (2026-08-15 老倪: 与数学分析二阶模型同源) ──
-            # 几何不变性: 逻辑结构 (可控标准型) 不变, 物理尺度 (m/b/k/Kp/Kd) 随标定变
-            # 闭环传函 G_cl = (Kd·s + (F_gain+Kp)) / (m·s² + (b+Kd)s + (k+Kp))
-            # 可控标准型: A=[[0,1],[-a0,-a1]] B=[[0],[1]] C=[[b0,b1]] D=0
-            fp = None
-            try:
-                from model_tree import analyze_system as _an
-                _res = _an(self.module)
-                fp = _res.get("ff_pd")
-            except Exception:
-                fp = None
-            if fp is not None:
-                m2 = fp["m"]; b2 = fp["b"]; k2 = fp["k"]
-                Kp = fp["Kp"]; Kd = fp["Kd"]; Fg = fp["F_gain"]
-                a0 = (k2 + Kp) / m2
-                a1 = (b2 + Kd) / m2
-                b0 = (Fg + Kp) / m2
-                b1 = Kd / m2
-                A = _np.array([[0.0, 1.0], [-a0, -a1]])
-                B = _np.array([[0.0], [1.0]])
-                C = _np.array([[b0, b1]])
-                D = _np.array([[0.0]])
-                ss_src = f"标定参数: m={m2} b={b2} k={k2} Kp={Kp} Kd={Kd} F_ff={Fg}"
-            else:
-                # 回退: 无前馈PD画布时用通用 1 阶 (右脑延迟近似)
-                T = 0.1
-                A = _np.array([[-1.0 / T]])
-                B = _np.array([[1.0 / T]])
-                C = _np.array([[1.0]])
-                D = _np.array([[0.0]])
-                ss_src = "通用近似: 右脑一阶延迟 T=0.1s"
-            eig = _np.linalg.eigvals(A)
-            rho = float(_np.max(_np.abs(eig)))          # 谱半径
-            n2 = A.shape[0]
-            # 李雅普诺夫: AᵀP + PA = -I  (2阶用 np.linalg.solve 解 Sylvester)
-            I_n = _np.eye(n2)
-            try:
-                _P = _np.linalg.solve(_np.kron(I_n, A.T) + _np.kron(A.T, I_n), -I_n.flatten())
-                P = _P.reshape(n2, n2)
-                lyap_ok = bool(_np.all(_np.linalg.eigvalsh((P + P.T) / 2) > 0))
-            except Exception:
-                P = _np.eye(n2)
-                lyap_ok = False
-            # 可控性: rank([B, AB, ...]); 可观测性: rank([C; CA; ...])
-            def _ctrb(A, B):
-                c = B
-                for i in range(1, A.shape[0]):
-                    c = _np.hstack([c, _np.linalg.matrix_power(A, i) @ B])
-                return _np.linalg.matrix_rank(c) == A.shape[0]
-            def _obsv(A, C):
-                o = C
-                for i in range(1, A.shape[0]):
-                    o = _np.vstack([o, C @ _np.linalg.matrix_power(A, i)])
-                return _np.linalg.matrix_rank(o) == A.shape[0]
-            ctrb_ok = _ctrb(A, B)
-            obsv_ok = _obsv(A, C)
-            lines = []
-            lines.append("🎛 状态空间设计 (经典控制 ↔ 双脑网络)")
-            lines.append("同构映射: obs=状态x · action=输入u · 右脑=转移f(x,u)")
-            lines.append("")
-            lines.append("u(t) ─▶ [感知 C] ─▶ x(t)=obs ─▶ [左脑 K] ─▶ u'(t)")
-            lines.append("                    │")
-            lines.append("                    ▼")
-            lines.append("              [右脑 f(x,u): x'=Ax+Bu]")
-            lines.append("                    │")
-            lines.append("              [状态机: x∈X_safe 硬约束]")
-            lines.append("")
-            lines.append("── 节点 → 控制角色 ──")
-            for name, role, desc in roles[:10]:
-                lines.append(f"  {name[:16]:18} = {role} ({desc})")
-            lines.append("")
-            lines.append("── 状态空间四元组 (可控标准型, 与数学分析同源) ──")
-            lines.append(f"  ẋ = Ax + Bu      A={A.tolist()}  B={B.tolist()}")
-            lines.append(f"  y = Cx + Du      C={C.tolist()}  D={D.tolist()}")
-            lines.append(f"  [{ss_src}]")
-            lines.append(f"  特征值(极点) = {eig.tolist()} · 谱半径 ρ(A) = {rho:.4f}")
-            lines.append("")
-            lines.append("── 稳定性三层次 (李雅普诺夫/BIBO) ──")
-            if rho < 1:
-                lines.append("  ① 纯网络推理 (权重固定): ✅ BIBO 稳定 (Lipschitz 激活, 有界输入→有界输出)")
-            else:
-                lines.append("  ① 纯网络推理 (权重固定): ⚠ 转移增益 ≥1, 存在发散风险")
-            if rho < 1:
-                lines.append("  ② 右脑自回归 (WM 开环预测): ✅ ρ(A)<1 误差收敛")
-            else:
-                lines.append(f"  ② 右脑自回归 (WM 开环预测): ⚠ ρ(A)={rho:.3f}≥1 — 误差滚雪球 (JEPA 核心瓶颈)")
-            lines.append("  ③ 混合确定性 (左脑+状态机): ✅ 工程稳定 — 物理阈值硬约束拉回安全集")
-            lines.append(f"     李雅普诺夫: AᵀP+PA=-I 有正定解 P → {'✅ 渐近稳定' if lyap_ok else '⚠ 检查'}")
-            lines.append(f"     可控性 rank(ctrb)={A.shape[0]} → {'✅ 可控' if ctrb_ok else '❌ 不可控'}")
-            lines.append(f"     可观测性 rank(obsv)={A.shape[0]} → {'✅ 可观测' if obsv_ok else '❌ 不可观测'}")
-            lines.append("")
-            lines.append("结论: 连续推理交给物理规则(状态机), 离散时机判断交给网络(右脑)")
-            lines.append("      — 混合确定性 = 工程最优解 (防潜空间状态失控)")
-            lines.append("      — 几何不变性: 逻辑结构固定, 换场景只标定 m/b/k/Kp/Kd")
-            self.lbl_math.setText("\n".join(lines))
-            self.plot.set_data(eig, [], rho < 1)
+            self.ss_tree.clear()
+            tr = getattr(self.module, "_ss_tr", None)
+            if not tr or not tr.get("io"):
+                self.ss_tree.addTopLevelItem(
+                    QTreeWidgetItem(["⚠️ 暂无仿真数据 — 点「▶ 运行」跑一次状态空间仿真后自动出全量变量"]))
+                return
+            io = tr["io"]
+            done = bool(tr["done"][-1]) if tr.get("done") else False
+            t_end = tr["t"][-1] if tr.get("t") else 0.0
+            dist = tr["dist"][-1] if tr.get("dist") else 0.0
+            contact = max(tr["contact_p"]) if tr.get("contact_p") else 0.0
+            res = max(tr["residual"]) if tr.get("residual") else 0.0
+            stage = tr["stage"][-1] if tr.get("stage") else "?"
+            st = QTreeWidgetItem(["📊 仿真状态"])
+            QTreeWidgetItem(st, [f"结果 = {'✅ 插入完成' if done else '⚠️ 未完成'}"])
+            QTreeWidgetItem(st, [f"用时 = {t_end:.2f}s"])
+            QTreeWidgetItem(st, [f"最终距离 = {dist:.4f}m"])
+            QTreeWidgetItem(st, [f"接触概率峰值 = {contact:.2f}"])
+            QTreeWidgetItem(st, [f"残差峰值 = {res:.4f}"])
+            QTreeWidgetItem(st, [f"阶段 = {stage}"])
+            self.ss_tree.addTopLevelItem(st)
+            for mod, ports in io.items():
+                mroot = QTreeWidgetItem([mod])
+                for dirn in ("in", "out"):
+                    sigs = ports.get(dirn, [])
+                    label = "▶ IN 输入" if dirn == "in" else "◀ OUT 输出"
+                    dnode = QTreeWidgetItem([label])
+                    for name, val in sigs:
+                        dnode.addChild(QTreeWidgetItem([f"{name} [{_sig_shape(val)}] = {_sig_val(val)}"]))
+                    mroot.addChild(dnode)
+                self.ss_tree.addTopLevelItem(mroot)
+            self.ss_tree.expandAll()
         except Exception as ex:
-            self.lbl_math.setText(f"⚠️ 状态空间设计失败: {ex}")
+            self.ss_tree.clear()
+            self.ss_tree.addTopLevelItem(QTreeWidgetItem([f"⚠️ 变量监控失败: {ex}"]))
+
+    def _on_ss_select(self, cur, prev):
+        """🎯 选中右侧变量 → 高亮画布对应连线 (2026-08-20 老倪: 变量↔连线对应)
+        变量树层级: 模块名 → (▶IN输入/◀OUT输出) → 变量。向上找 IN/OUT 方向 + 模块名,
+        再调 SimulinkModule.highlight_ss_links 高亮该模块的输入/输出连线 (金色加粗)。"""
+        try:
+            hl = getattr(self.module, "highlight_ss_links", None)
+            if hl is None:
+                return
+            if cur is None:
+                hl(None, None)   # 空选 → 清除全部高亮
+                return
+            # 向上找 IN/OUT 方向节点
+            node = cur
+            direction = None
+            while node is not None:
+                txt = node.text(0)
+                if "IN 输入" in txt:
+                    direction = "in"
+                    break
+                if "OUT 输出" in txt:
+                    direction = "out"
+                    break
+                node = node.parent()
+            module_name = None
+            if direction and node is not None:
+                mroot = node.parent()
+                if mroot is not None:
+                    module_name = mroot.text(0)
+            hl(module_name, direction)
+        except Exception:
+            pass
+
+
+def _sig_shape(v):
+    """返回变量形状: 标量 / 数组 shape 元组"""
+    import numpy as _np
+    if isinstance(v, str):
+        return "str"
+    a = _np.asarray(v)
+    if a.ndim == 0:
+        return "标量"
+    return str(tuple(a.shape))
+
+
+def _sig_val(v):
+    """返回变量数值: 标量→4位小数, 向量→完整显示所有维度(不省略)"""
+    import numpy as _np
+    if isinstance(v, str):
+        return v
+    if isinstance(v, (bool, _np.bool_)):
+        return "True" if v else "False"
+    a = _np.asarray(v)
+    if a.ndim == 0:
+        return f"{float(a):.4f}"
+    flat = _np.asarray(a, dtype=float).ravel()
+    return "[" + ", ".join(f"{x:.4f}" for x in flat) + "]"
+
+
+def _fmt_sig(v):
+    return _sig_val(v)
+

@@ -20,6 +20,7 @@
 import os
 import time
 import json
+import socket
 import threading
 import logging
 import requests as _rq
@@ -145,6 +146,7 @@ class WSClient:
         self._connected = False
         self._last_event = None
         self._last_status = None
+        self._sock = None             # 底层 socket 引用 (stop 时关闭以中断阻塞 recv)
         if autostart:
             self.start()
 
@@ -159,6 +161,26 @@ class WSClient:
 
     def stop(self):
         self._stop.set()
+        # 🐛 2026-08-20 Segfault 根治: 关闭底层 socket 中断阻塞的 ws.recv() —
+        #   否则 stop 后线程最多卡 10s (recv timeout) 才退出, 解释器退出时
+        #   强制杀 daemon 线程 → killTimer cross-thread SIGSEGV
+        try:
+            sock = getattr(self, "_sock", None)
+            if sock is not None:
+                sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            try:
+                if self._sock is not None:
+                    self._sock.close()
+            except Exception:
+                pass
+
+    def join(self, timeout=None):
+        """等待后台线程退出 (stop 之后调用)。返回是否已退出。"""
+        if self._thread is not None:
+            self._thread.join(timeout)
+            return not self._thread.is_alive()
+        return True
 
     @property
     def connected(self) -> bool:
@@ -176,8 +198,10 @@ class WSClient:
     def _run(self):
         import websocket as _ws
         while not self._stop.is_set():
+            ws = None
             try:
                 ws = _ws.create_connection(self.url, timeout=10)
+                self._sock = getattr(ws, "sock", None)  # stop() 时关闭以中断 recv
                 self._connected = True
                 ws.settimeout(10)
                 while not self._stop.is_set():
@@ -199,10 +223,14 @@ class WSClient:
                 _log.warning("WS 连接失败: %s (5s 后重连)", e)
             finally:
                 self._connected = False
+                self._sock = None
                 try:
-                    ws.close()
+                    if ws is not None:
+                        ws.close()
                 except Exception:
                     pass
+            if self._stop.is_set():
+                break  # stop() 已触发 → 立即退出 (不再重连退避)
             self._stop.wait(5)  # 重连退避
 
 
