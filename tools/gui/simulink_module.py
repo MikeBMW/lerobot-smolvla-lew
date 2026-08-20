@@ -2244,13 +2244,8 @@ class PipelinePanel(QDialog):
         self._worker = None
         # 🛡 远程轮询 worker 清理 (2026-08-05 崩溃修复#8: CICDPanel 的 _remote_worker
         #   1103行创建, closeEvent 漏清 → 远程状态查询中关面板 → QThread destroyed exit 134)
-        rw = getattr(self, "_remote_worker", None)
-        if rw is not None and rw.isRunning():
-            try:
-                rw.wait(3000)
-            except Exception:
-                pass
-        self._remote_worker = None
+        # 🐛 2026-08-20: 远程轮询已改 daemon 纯 Python 线程 (随进程退出), 无需 wait
+        self._remote_polling = False
         # 🛡 录屏定时器清理 (2026-08-05 崩溃修复#2: 用户在录制中关闭窗口 → _rec_timer 还在跑
         #   → QThread: Destroyed while thread is still running exit 134)
         rec_timer = getattr(self, "_rec_timer", None)
@@ -2275,12 +2270,24 @@ class PipelinePanel(QDialog):
         return n_train, n_pkgs
 
     def _poll_remote(self):
-        """后台线程拉 relay/orin 状态 (不卡 UI)"""
-        if getattr(self, "_remote_worker", None) and self._remote_worker.isRunning():
+        """后台线程拉 relay/orin 状态 (不卡 UI) — 🐛 2026-08-20 Segfault 根治:
+        原 CICDWorker(QThread) 每 10s 新建 + 覆盖 _remote_worker → 旧 QThread 在主线程
+        GC 析构 → 内部 timer cross-thread killTimer → 延迟 SIGSEGV。
+        改纯 Python 线程 (零 Qt 接触) + 结果队列桥接主线程消费 (与 WS 队列同款)。"""
+        import threading as _th, queue as _q, json as _json, requests as _rq
+        # 1) 消费上次结果 (主线程更新 UI)
+        q = getattr(self, "_remote_result_queue", None)
+        if q is not None:
+            while not q.empty():
+                try:
+                    self._apply_remote_result(q.get_nowait())
+                except Exception:
+                    pass
+        # 2) 防重入
+        if getattr(self, "_remote_polling", False):
             return
 
         def _work():
-            import requests as _rq
             out = {}
             try:
                 r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
@@ -2308,40 +2315,48 @@ class PipelinePanel(QDialog):
                 out["url"] = r.status_code
             except Exception:
                 out["url"] = None
-            import json as _json
-            return True, _json.dumps(out)
+            return _json.dumps(out)
 
-        def _done(ok, info):
-            import json as _json
+        def _thread_main():
             try:
-                d = _json.loads(info)
+                if not hasattr(self, "_remote_result_queue"):
+                    self._remote_result_queue = _q.Queue()
+                self._remote_result_queue.put(_work())
             except Exception:
-                return
-            pkgs = d.get("pkgs", 0)
-            frm = d.get("frames")
-            if pkgs is not None:
-                extra = f" · 中转{pkgs}包" + (f"·{frm}帧" if frm else "")
-                try:
-                    n_train, _ = self._local_data_frames()
-                    self.lbl_data.setText(f"📥 数据: 训练集{n_train}帧{extra}")
-                except Exception:
-                    self.lbl_data.setText(f"📥 数据: 中转{pkgs}包")
-            online = d.get("online")
-            if online is not None:
-                color = "#3fb950" if online else "#ff4444"
-                self.lbl_orin.setText(f"🤖 Orin: {'●在线' if online else '○离线'} · {d.get('model','?')} · 心跳{d.get('seen','?')}")
-                self.lbl_orin.setStyleSheet(f"color:{color}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
-            if d.get("infer") is not None:
-                ms = d.get("ms")
-                self.lbl_infer.setText(f"⚡ 推理: {d.get('infer')}次" + (f" · {ms}ms" if ms else ""))
-            if d.get("url"):
-                self.lbl_url.setText(f"🔗 URL: {'✅' if d['url'] == 200 else '⚠️' + str(d['url'])} act_cartesian")
+                pass
+            finally:
+                self._remote_polling = False
 
-        worker = CICDWorker(_work)
-        worker.finished_ok.connect(_done)
-        worker.finished.connect(lambda: None)
-        self._remote_worker = worker
-        worker.start()
+        self._remote_polling = True
+        _th.Thread(target=_thread_main, daemon=True, name="zmax-remote-poll").start()
+
+    def _apply_remote_result(self, info):
+        """主线程应用远程状态到 UI (原 _done 逻辑)"""
+        import json as _json
+        try:
+            d = _json.loads(info)
+        except Exception:
+            return
+        pkgs = d.get("pkgs", 0)
+        frm = d.get("frames")
+        if pkgs is not None:
+            extra = f" · 中转{pkgs}包" + (f"·{frm}帧" if frm else "")
+            try:
+                n_train, _ = self._local_data_frames()
+                self.lbl_data.setText(f"📥 数据: 训练集{n_train}帧{extra}")
+            except Exception:
+                self.lbl_data.setText(f"📥 数据: 中转{pkgs}包")
+        online = d.get("online")
+        if online is not None:
+            color = "#3fb950" if online else "#ff4444"
+            self.lbl_orin.setText(f"🤖 Orin: {'●在线' if online else '○离线'} · {d.get('model','?')} · 心跳{d.get('seen','?')}")
+            self.lbl_orin.setStyleSheet(f"color:{color}; font-size:11px; font-family:Consolas; background:transparent; border:none;")
+        if d.get("infer") is not None:
+            ms = d.get("ms")
+            self.lbl_infer.setText(f"⚡ 推理: {d.get('infer')}次" + (f" · {ms}ms" if ms else ""))
+        if d.get("url"):
+            self.lbl_url.setText(f"🔗 URL: {'✅' if d['url'] == 200 else '⚠️' + str(d['url'])} act_cartesian")
+
 
 
 # ════════════════════════════════════════════════════════════════
