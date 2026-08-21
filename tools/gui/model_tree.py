@@ -13,7 +13,7 @@ import math
 import numpy as np
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QComboBox,
+from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
@@ -2489,6 +2489,28 @@ class ModelTreeDock(QWidget):
         hdr.addWidget(self.btn_import)
         lay.addLayout(hdr)
 
+        # 🔗 连线数据横幅 (2026-08-21 老倪: 左键选连线 → 右侧高亮显示数据类型+数值,
+        # 仿 Simulink 信号属性面板 — 金色边框深色卡片, 默认隐藏)
+        self.link_card = QFrame()
+        self.link_card.setFrameShape(QFrame.NoFrame)
+        self.link_card.setStyleSheet(
+            "QFrame{background:#161b22;border:1px solid #d29922;border-radius:6px;}")
+        self.link_card.setVisible(False)
+        _lc = QVBoxLayout(self.link_card)
+        _lc.setContentsMargins(10, 8, 10, 8)
+        _lc.setSpacing(4)
+        self.link_title = QLabel("🔗 连线数据")
+        self.link_title.setStyleSheet("color:#d29922;font-weight:bold;font-size:12px;"
+                                      "background:transparent;border:none;")
+        self.link_body = QLabel("")
+        self.link_body.setStyleSheet("color:#e6edf3;font-size:11px;font-family:Consolas,monospace;"
+                                     "background:transparent;border:none;")
+        self.link_body.setWordWrap(True)
+        self.link_body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        _lc.addWidget(self.link_title)
+        _lc.addWidget(self.link_body)
+        lay.addWidget(self.link_card)
+
         # 📐 2026-08-15 老倪: 现场标定向导 (3步标定法, 只看物理现象)
         self.stage_calib = StageCalibrationWidget(module)
         self.stage_calib._pp_ref = None
@@ -2929,6 +2951,32 @@ class ModelTreeDock(QWidget):
                 if mroot is not None:
                     module_name = mroot.text(0)
             hl(module_name, direction)
+        except Exception:
+            pass
+
+    def show_link_data(self, info):
+        """🔗 选中连线 → 右侧横幅显示连线数据 (Simulink 信号属性风格, 2026-08-21 老倪)
+        数据流 src→dst + 类型 + 标签 + 端口 + 数值 (仿真值 / 默认类型)。"""
+        try:
+            from html import escape
+            lbl = info.get("label", "") or "—"
+            meta = info.get("src_type_cn", "?")
+            f_port = info.get("f_port", "out1")
+            t_port = info.get("t_port", "in1")
+            value = escape(str(info.get("value", "—")))
+            sim = info.get("simulated", False)
+            sim_tag = "📈 仿真值" if sim else "📋 默认类型"
+            html = (
+                f"<b>{escape(str(info.get('src_name', '?')))} → "
+                f"{escape(str(info.get('dst_name', '?')))}</b><br>"
+                f"类型: {escape(str(meta))} &nbsp;·&nbsp; 标签: {escape(str(lbl))} "
+                f"&nbsp;·&nbsp; 端口: {escape(str(f_port))} → {escape(str(t_port))}<br>"
+                f"<span style='color:#58a6ff;'>{sim_tag}</span>: "
+                f"<span style='color:#7ee787;'>{value}</span>"
+            )
+            self.link_body.setText(html)
+            self.link_card.setVisible(True)
+            self.link_card.raise_()
         except Exception:
             pass
 

@@ -3076,8 +3076,15 @@ class SimLinkItem(QGraphicsObject):
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
-            # 点击连线删除 (对标 web: 点击连线中点删除)
-            self.scene_ref.delete_link(self.link)
+            # 🎯 左键 = 选择数据接口 (2026-08-21 老倪: 不再左键删除, 删除改右键菜单)
+            # 选中连线 + 联动右侧数据空间高亮显示该连线承载的数据类型/数值
+            self.setSelected(True)
+            try:
+                mod = getattr(self.scene_ref, "module", None)
+                if mod is not None and hasattr(mod, "_on_link_selected"):
+                    mod._on_link_selected(self)
+            except Exception:
+                pass
             e.accept()
         else:
             super().mousePressEvent(e)
@@ -3193,6 +3200,9 @@ class SimCanvas(QGraphicsView):
             if isinstance(item, SimNodeItem):
                 self._show_node_menu(item, e.pos())
                 return
+            if isinstance(item, SimLinkItem):
+                self._show_link_menu(item, e.pos())
+                return
             super().mousePressEvent(e)
             return
         if e.button() == Qt.LeftButton:
@@ -3286,6 +3296,22 @@ class SimCanvas(QGraphicsView):
             self.module._mlp_next()
         elif a_prev is not None and chosen == a_prev:
             self.module._mlp_prev()
+
+    def _show_link_menu(self, item, view_pos):
+        """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
+        仿节点右键菜单 — 无深色 QSS (VcXsrv 黑屏坑) + 菜单项去 emoji (字体缺字形黑块)"""
+        menu = QMenu()
+        a_data = menu.addAction("查看连线数据")
+        a_del = menu.addAction("删除连线")
+        from PyQt5.QtGui import QCursor
+        chosen = menu.exec_(QCursor.pos())  # 光标真实位置, 多屏不跑偏
+        if chosen == a_data:
+            try:
+                self.module._on_link_selected(item)
+            except Exception:
+                pass
+        elif chosen == a_del:
+            self.module.delete_link(item.link)
 
     def on_node_export(self, node):
         """📥 节点右下角导出按钮 (🛠技能编排器 / 🎯YOLO) → 导出 Excel"""
@@ -4798,6 +4824,50 @@ class SimulinkModule(QWidget):
                 hl = False
             li._ss_hl = hl
             li.update()
+
+    def _on_link_selected(self, link_item):
+        """🎯 左键选中连线 (数据接口) → 解析该连线承载的数据流 → 联动右侧数据空间
+        (2026-08-21 老倪: 左键=选择数据接口, 右侧高亮显示数据类型+数值)
+        数值优先取 _sim_signals (点 ▶运行/单步仿真后), 未仿真则用 _simulate_output 生成默认类型描述。"""
+        try:
+            link = link_item.link
+            src = link_item.src.node
+            dst = link_item.dst.node
+            src_id = src.get("id")
+            # 数值: 已仿真 → 实际输出; 未仿真 → 默认类型描述 (不打印)
+            val = self._sim_signals.get(src_id)
+            if val is None:
+                try:
+                    val = self._simulate_output(src, {}) or "—"
+                except Exception:
+                    val = "—"
+            info = {
+                "label": link.get("label", ""),
+                "src_name": src.get("name", "?"),
+                "dst_name": dst.get("name", "?"),
+                "src_type": src.get("type", "?"),
+                "src_type_cn": NODE_TYPES.get(src.get("type", ""), {}).get("cn", src.get("type", "?")),
+                "f_port": link.get("f_port", "out1"),
+                "t_port": link.get("t_port", "in1"),
+                "value": val,
+                "simulated": src_id in self._sim_signals,
+            }
+            # 联动右侧数据字典 (数据空间)
+            mt = getattr(self, "model_tree", None)
+            if mt is not None and hasattr(mt, "show_link_data"):
+                mt.show_link_data(info)
+            # 高亮该连线 (金色加粗) — 先清其他连线的 _ss_hl 再点亮当前
+            self.highlight_ss_links(None, None)
+            try:
+                link_item._ss_hl = True
+                link_item.update()
+            except Exception:
+                pass
+            self._log(f"🔗 选中连线: {info['src_name']} → {info['dst_name']}"
+                      + (f" · [{info['label']}]" if info["label"] else "")
+                      + f" · {info['value'][:70]}")
+        except Exception:
+            pass
 
     def on_node_moved(self, item):
         # ⚠️ 必须 prepareGeometryChange (2026-08-05 修复): 连线 boundingRect 随节点位置
