@@ -10971,11 +10971,14 @@ def main():
     # 若离屏方案生效, 上面的 raise_/activateWindow 在屏幕外无意义但无害;
     # 归位由 singleShot(1800) 完成 (含 raise_/activateWindow)
     # 🐛 2026-08-18: faulthandler — 卡死/崩溃时 dump 全部线程 Python 栈到 stderr
-    # (dump_traceback_later 用信号定时器, 事件循环卡死也能触发; 排查主线程阻塞根因)
+    # 🐛 2026-08-21: dump_traceback_later(20) 的 SIGALRM 定时器与 Qt 事件循环交互 —
+    #   20s 首次触发后紧跟 killTimer cross-thread SIGSEGV (崩溃日志实锤: Timeout 0:00:20 后立即 Fatal)。
+    #   默认禁用该周期 dump (保留 enable() 崩溃时 dump); 排查卡死时 ZMAX_FAULTHANDLER=1 开启。
     try:
         import faulthandler
         faulthandler.enable()
-        faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
+        if os.environ.get("ZMAX_FAULTHANDLER") == "1":
+            faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
     except Exception:
         pass
     sys.exit(app.exec_())
