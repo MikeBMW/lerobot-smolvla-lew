@@ -487,6 +487,24 @@ def apply_ui_font(window, delta):
             except Exception:
                 return m.group(0)
         wdg.setStyleSheet(_re.sub(r"font-size:(\d+)px", _scale, base))
+    # 🐛 修复 (老倪 2026-08-22: 编辑菜单"小/标准"切换字几乎没变) —
+    #   大量标题/标签/按钮用 QFont setFont(point size) 而非 QSS font-size,
+    #   上面的循环只缩 QSS font-size → 这些 QFont 控件完全不响应 delta。
+    #   独立循环: 首次快照原始 QFont, 之后按 原始pointSize+delta 重建 (防叠加漂移)。
+    if not hasattr(window, "_font_orig"):
+        window._font_orig = {}
+    forig = window._font_orig
+    for wdg in widgets:
+        try:
+            if id(wdg) not in forig:
+                forig[id(wdg)] = QFont(wdg.font())
+            _of = forig[id(wdg)]
+            if _of.pointSize() > 0:
+                _nf = QFont(_of)
+                _nf.setPointSize(max(6, _of.pointSize() + delta))
+                wdg.setFont(_nf)
+        except Exception:
+            pass
     try:
         app = QApplication.instance()
         if app is not None:
@@ -620,7 +638,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.3.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.4.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -690,9 +708,9 @@ class ModuleCard(QFrame):
         self.mid = mid
         self.color = color
         self.veh_id = veh_id  # 🌐 2026-08-09 老倪: VEH-ID (对话用卡片ID)
-        self.setFixedHeight(230)  # 增大：行间距 5→14 后需要更多空间，避免标题白色字显示不全
         self.setMinimumWidth(260)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # 老倪 2026-08-22: 高分屏(192DPI)下标题需~54px/描述需~91px, 固定300会裁 — 弃固定高度按内容自适应, 同行QHBoxLayout自动等高
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.setCursor(Qt.PointingHandCursor)
         self._build(icon, title, subtitle, desc, sys_label)
 
@@ -718,6 +736,7 @@ class ModuleCard(QFrame):
         t = QLabel(title)
         t.setFont(QFont("Arial", 14, QFont.Bold))
         t.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
+        t.setWordWrap(True)  # 老倪 2026-08-22: 高分屏(192DPI)标题 sizeHint=54px, 固定34会裁 — 改自适应换行, 不设死高度
         layout.addWidget(t)
 
         s = QLabel(subtitle)
@@ -728,7 +747,7 @@ class ModuleCard(QFrame):
         d = QLabel(desc)
         d.setFont(QFont("Arial", 9))
         d.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
-        d.setWordWrap(True)
+        d.setWordWrap(True)  # 老倪 2026-08-22: 高分屏下长描述(URL等)需3-4行~91px, 固定40会裁 — 改自适应
         layout.addWidget(d)
 
         layout.addStretch()
@@ -9669,7 +9688,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.3.1 [W-01]")  # v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.4.0 [W-01]")  # v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
