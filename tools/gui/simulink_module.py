@@ -2566,29 +2566,56 @@ class SimNodeItem(QGraphicsObject):
             pen = QPen(QColor("#a371f7"), 2.8)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
-        # 标题 (2026-08-07 老倪: YOLO 3D显示不全 — 字符数截断改像素宽度自适应字号, 不截断)
+        # 标题 (统一 9pt Bold, 超宽拆两行完整显示, 垂直居中 — 不截断/不逐节点降字号)
+        # 🐛 2026-08-22 老倪: 原 9→8→7 逐节点降字号导致"大小不一", elidedText 截断"显示不全",
+        #   固定 y=4 贴顶"不居中" → 统一 9pt + 拆两行 + 垂直居中
         painter.setPen(QColor(pal["title"]))
         name = self.node["name"]
-        f = QFont("Arial", 9, QFont.Bold)
-        painter.setFont(f)
-        fm = painter.fontMetrics()
-        avail = max(40, self.w - 20)
-        for pt in (9, 8, 7):
-            if fm.horizontalAdvance(name) <= avail:
-                break
-            f = QFont("Arial", pt, QFont.Bold)
-            painter.setFont(f)
+        avail = max(40, self.w - 36)  # 右留 36px 给状态徽章
+        # 字号 9→8→7 递减, 依次试 单行→按词拆→按字符拆(中文无空格), 保证完整显示不截断
+        line1, line2 = name, ""
+        for _fs in (9, 8, 7):
+            painter.setFont(QFont("Arial", _fs, QFont.Bold))
             fm = painter.fontMetrics()
-        disp = name
-        if fm.horizontalAdvance(disp) > avail:
-            disp = fm.elidedText(disp, Qt.ElideRight, avail)  # 兜底: 超宽省略号
+            if fm.horizontalAdvance(name) <= avail:
+                line1, line2 = name, ""
+                break
+            # 按空格/符号拆词
+            parts = name.replace("·", " · ").replace("(", " ( ").replace(")", " ) ").split()
+            w1, w2 = "", ""
+            for pt in parts:
+                trial = (w1 + " " + pt).strip()
+                if fm.horizontalAdvance(trial) <= avail or not w1:
+                    w1 = trial
+                else:
+                    w2 = (w2 + " " + pt).strip()
+            if fm.horizontalAdvance(w2) <= avail and fm.horizontalAdvance(w1) <= avail:
+                line1, line2 = w1, w2
+                break
+            # 词拆失败 (中文无空格) → 按字符拆两行
+            c1, c2 = "", ""
+            for ch in name:
+                if fm.horizontalAdvance(c1 + ch) <= avail or not c1:
+                    c1 += ch
+                else:
+                    c2 += ch
+            line1, line2 = c1, c2
+            if fm.horizontalAdvance(c2) <= avail:
+                break
+        disp = (line1 + "\n" + line2) if line2 else line1
         if params.get("video"):
-            # 🎮 视频/推理节点: 名字放节点左下角 (2026-08-07 老倪: 居中仍偏上,
-            #   改为左下角像图片说明), 不显示类型标签
+            # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明)
             painter.setFont(QFont("Arial", 8, QFont.Bold))
-            painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, disp)
+            painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft,
+                             disp.replace("\n", " "))
         else:
-            painter.drawText(QRectF(12, 4, self.w - 16, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
+            _gfx = t in ("yolo_gate", "train_gate", "mode_switch", "switch", "coord_overlay")
+            if _gfx:
+                # 有 checkbox/端口图形: 标题在上部 (下部留给图形)
+                painter.drawText(QRectF(8, 2, self.w - 36, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
+            else:
+                # 普通节点: 标题垂直居中整个方块 (避开右上角徽章)
+                painter.drawText(QRectF(8, 2, self.w - 36, self.h - 4), Qt.AlignVCenter | Qt.AlignLeft, disp)
         # 🎥 2026-08-18: 画布内嵌视频帧 — 操作视频节点 (视频画面画在节点主体内)
         if self.video_pixmap is not None and not self.video_pixmap.isNull():
             try:
@@ -4449,6 +4476,25 @@ class SimulinkModule(QWidget):
                                 lk["f_port"] = spec["f_port"]
                             if spec.get("t_port"):
                                 lk["t_port"] = spec["t_port"]
+            # 🐛 2026-08-22 老倪: 统一左移 row_bg, 模型名区固定 250px 宽 (不遮挡节点列)
+            #   (状态空间/原子条件等 JSON 画布 row_bg x=-20, 节点 x=40~100 → 模型名区仅 112px 被节点盖住)
+            try:
+                _fns = [n for n in self.nodes if n.get("type") != "row_bg"]
+                if _fns:
+                    _minx = min(n.get("x", 0) for n in _fns)
+                    for n in self.nodes:
+                        if n.get("type") == "row_bg":
+                            _oldx = n.get("x", 0)
+                            _newx = _minx - 266
+                            if _newx != _oldx:
+                                n["x"] = _newx
+                                n["w"] = n.get("w", 150) + (_oldx - _newx)  # 右界不变, 宽度左扩
+                                _it = self._items.get(n["id"])
+                                if _it is not None:
+                                    _it.setPos(_newx, n.get("y", 0))
+                                    _it.w = n["w"]
+            except Exception:
+                pass
             self._log(f"💾 已加载工作流: {path} ({len(nodes)}节点 {len(links)}连线)")
             self._flow_path = path  # 🐛 2026-08-19: 记录画布文件 — 模式开关写回持久化
         except Exception as e:
