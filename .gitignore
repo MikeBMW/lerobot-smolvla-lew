@@ -212,3 +212,6 @@ reports/五模型对比技术选型报告_*.pdf
 reports/_mlp_cache_*/
 reports/_mlp_frames*/
 reports/_ss_frames*/
+
+# 状态空间仿真视频(生成产物, 不进代码库)
+reports/state_space_sim.mp4

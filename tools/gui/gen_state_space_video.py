@@ -27,7 +27,15 @@ MARGIN = 70              # 边缘留白
 X0_W, X1_W = 0.04, 0.31
 Y0_W, Y1_W = -0.11, 0.11
 
-_FONT = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"   # 中文 (CJK)
+_FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    "/usr/share/fonts/truetype/arphic/uming.ttc",
+]
+_FONT = next((f for f in _FONT_CANDIDATES if os.path.isfile(f)), _FONT_CANDIDATES[0])
 _FONT_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
 

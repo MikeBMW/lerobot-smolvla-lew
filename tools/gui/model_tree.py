@@ -277,7 +277,7 @@ class StageCalibrationWidget(QWidget):
         ov = QLabel("🎛 LeftRight 新场景标定系统 (5步法)\n"
                     "①感知(眼睛) → ②几何(尺子) → ③辨识(肌肉)\n"
                     "→ ④整定(节奏) → ⑤验证(考官)")
-        ov.setStyleSheet("color:#58a6ff; font-size:11px; font-weight:700; "
+        ov.setStyleSheet("color:#58a6ff; font-size:15px; font-weight:700; "
                          "background:transparent; border:none;")
         ov.setWordWrap(True)
         outer.addWidget(ov)
@@ -286,7 +286,7 @@ class StageCalibrationWidget(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("QTabWidget::pane { border:1px solid #30363d; } "
                                 "QTabBar::tab { background:#161b22; color:#9aa4b2; "
-                                "padding:4px 8px; font-size:10px; } "
+                                "padding:4px 8px; font-size:14px; } "
                                 "QTabBar::tab:selected { background:#1f6feb; color:#fff; }")
         outer.addWidget(self.tabs, 1)
 
@@ -301,7 +301,7 @@ class StageCalibrationWidget(QWidget):
         self.btn_export = QPushButton("📄 导出 scene_config.yaml")
         self.btn_export.setStyleSheet("QPushButton { background:#238636; color:#fff; "
                                       "border:none; border-radius:4px; padding:6px; "
-                                      "font-size:11px; font-weight:700; } "
+                                      "font-size:15px; font-weight:700; } "
                                       "QPushButton:hover { background:#2ea043; }")
         self.btn_export.clicked.connect(self._export_yaml)
         hb.addWidget(self.btn_export)
@@ -315,7 +315,7 @@ class StageCalibrationWidget(QWidget):
             "整定: 2mm 阶跃 · 震荡↑Kd · 爬行↑Kp\n"
             "验证: 力平滑S型 · 无咯噔 · 回正≤1.5次\n"
             "换新场景: 只重做 ②几何 + ⑤验证 (1h内)")
-        card.setStyleSheet("color:#9aa4b2; font-size:9px; font-family:Consolas; "
+        card.setStyleSheet("color:#9aa4b2; font-size:13px; font-family:Consolas; "
                            "background:#0d1117; border:1px solid #30363d; "
                            "border-radius:4px; padding:6px;")
         card.setWordWrap(True)
@@ -349,7 +349,7 @@ class StageCalibrationWidget(QWidget):
     def _btn(self, text, color="#1f6feb"):
         b = QPushButton(text)
         b.setStyleSheet("QPushButton { background:" + color + "; color:#fff; border:none; "
-                        "border-radius:4px; padding:5px 8px; font-size:10px; "
+                        "border-radius:4px; padding:5px 8px; font-size:14px; "
                         "font-weight:700; } QPushButton:hover { background:#388bfd; }")
         return b
 
@@ -867,7 +867,7 @@ class StageCalibrationWidget(QWidget):
 
     def _mk_group(self, title):
         g = QGroupBox(title)
-        g.setStyleSheet("QGroupBox { color:#58a6ff; font-size:11px; font-weight:700; "
+        g.setStyleSheet("QGroupBox { color:#58a6ff; font-size:15px; font-weight:700; "
                         "border:1px solid #30363d; border-radius:6px; margin-top:8px; "
                         "padding-top:6px; } QGroupBox::title { subcontrol-origin: margin; "
                         "left:8px; padding:0 4px; }")
@@ -879,12 +879,12 @@ class StageCalibrationWidget(QWidget):
         cb.setStyleSheet("QComboBox { background:#161b22; color:#e6edf3; "
                          "border:1px solid #30363d; padding:3px; }")
         cb.currentIndexChanged.connect(lambda _: self._diag())
-        lb.setStyleSheet("color:#c9d1d9; font-size:10px; font-family:Consolas; "
+        lb.setStyleSheet("color:#c9d1d9; font-size:14px; font-family:Consolas; "
                          "background:#0d1117; border:1px solid #30363d; "
                          "border-radius:4px; padding:4px;")
         lb.setWordWrap(True)
         bt.setStyleSheet("QPushButton { background:#1f6feb; color:#fff; border:none; "
-                         "border-radius:4px; padding:5px 8px; font-size:10px; "
+                         "border-radius:4px; padding:5px 8px; font-size:14px; "
                          "font-weight:700; } QPushButton:hover { background:#388bfd; }")
         lay.addWidget(cb)
         lay.addWidget(lb)
@@ -918,7 +918,7 @@ class PolePlacementWidget(QWidget):
         lay.setSpacing(6)
 
         gb = QGroupBox("🎯 极点配置 (性能指标 → 增益)")
-        gb.setStyleSheet("QGroupBox { color:#58a6ff; font-size:11px; font-weight:700; border:1px solid #30363d; border-radius:6px; margin-top:8px; padding-top:6px; } QGroupBox::title { subcontrol-origin: margin; left:8px; padding:0 4px; }")
+        gb.setStyleSheet("QGroupBox { color:#58a6ff; font-size:15px; font-weight:700; border:1px solid #30363d; border-radius:6px; margin-top:8px; padding-top:6px; } QGroupBox::title { subcontrol-origin: margin; left:8px; padding:0 4px; }")
         form = QFormLayout(gb)
         form.setLabelAlignment(Qt.AlignRight)
 
@@ -939,7 +939,7 @@ class PolePlacementWidget(QWidget):
             form.addRow(label, sp)
 
         self.lbl_result = QLabel("输入指标 → 点「计算特征解」")
-        self.lbl_result.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; background:#0d1117; border:1px solid #30363d; border-radius:4px; padding:6px;")
+        self.lbl_result.setStyleSheet("color:#c9d1d9; font-size:15px; font-family:Consolas; background:#0d1117; border:1px solid #30363d; border-radius:4px; padding:6px;")
         self.lbl_result.setWordWrap(True)
         form.addRow(self.lbl_result)
 
@@ -949,7 +949,7 @@ class PolePlacementWidget(QWidget):
         self.btn_calc.clicked.connect(self._calc)
         self.btn_write.clicked.connect(self._write_back)
         for b in (self.btn_calc, self.btn_write):
-            b.setStyleSheet("QPushButton { background:#1f6feb; color:#ffffff; border:none; border-radius:4px; padding:6px 10px; font-size:11px; font-weight:700; } QPushButton:hover { background:#388bfd; }")
+            b.setStyleSheet("QPushButton { background:#1f6feb; color:#ffffff; border:none; border-radius:4px; padding:6px 10px; font-size:15px; font-weight:700; } QPushButton:hover { background:#388bfd; }")
         btns.addWidget(self.btn_calc)
         btns.addWidget(self.btn_write)
         form.addRow(btns)
@@ -1104,7 +1104,7 @@ class FreeResponsePlot(QWidget):
         w, h = self.width(), self.height()
         if self.stage is None:
             p.setPen(QColor("#57606a"))
-            p.setFont(QFont("Arial", 8))
+            p.setFont(QFont("Arial", 10))
             p.drawText(20, h // 2, "自由响应曲线 (加载前馈 PD 画布后显示)")
             return
         st = self.stage
@@ -1158,7 +1158,7 @@ class FreeResponsePlot(QWidget):
                 p.drawLine(int(pts_ff[i][0]), int(pts_ff[i][1]),
                            int(pts_ff[i + 1][0]), int(pts_ff[i + 1][1]))
         # 图例 + 标注
-        p.setFont(QFont("Arial", 7))
+        p.setFont(QFont("Arial", 9))
         p.setPen(QColor("#00d4aa"))
         p.drawText(int(X(0)) + 4, int(Y(0.9)), "自由响应 (纯反馈): e^{σt}·cos(ωt)")
         p.setPen(QColor("#6e7681"))
@@ -1227,11 +1227,11 @@ class PoleZeroPlot(QWidget):
         p.drawLine(int(cx), int(cy - r), int(cx), int(cy + r))
         # 标签
         p.setPen(QColor("#9aa4b2"))
-        p.setFont(QFont("Arial", 8))
+        p.setFont(QFont("Arial", 10))
         p.drawText(int(cx + r) - 30, int(cy) + 14, "Re")
         p.drawText(int(cx) + 6, int(cy - r) + 10, "Im")
         p.setPen(QColor(63, 185, 80, 200))
-        p.setFont(QFont("Arial", 7))
+        p.setFont(QFont("Arial", 9))
         p.drawText(int(cx - r) + 4, int(cy - r) + 12, "稳定区 Re<0")
         # ── 增益调度根轨迹 (各阶段极点 + 阶段间连线) ──
         if self.root_locus:
@@ -1251,7 +1251,7 @@ class PoleZeroPlot(QWidget):
                     p.drawLine(x - 5, y + 5, x + 5, y - 5)
                 z0 = st["poles"][0]
                 p.setPen(QColor(col))
-                p.setFont(QFont("Arial", 7))
+                p.setFont(QFont("Arial", 9))
                 p.drawText(X(z0.real) + 7, Y(z0.imag) - 6, st["stage"])
         # 极点 × (红=右半平面不稳定/绿=左半平面稳定)
         for z in self.poles:
@@ -1297,11 +1297,11 @@ class PerformanceWidget(QWidget):
         lay.setSpacing(4)
 
         hd = QLabel("📊 插拔场景性能指标 (动作分解)")
-        hd.setStyleSheet("color:#58a6ff; font-size:12px; font-weight:700;")
+        hd.setStyleSheet("color:#58a6ff; font-size:16px; font-weight:700;")
         lay.addWidget(hd)
         tip = QLabel("按 5 阶段分解 · 时间/速度/加速度/能量/质量要求\n"
                      "数据来自: 特征根 ωₙ/ζ + 物理参数 m/b/k + 几何行程")
-        tip.setStyleSheet("color:#8b949e; font-size:10px;")
+        tip.setStyleSheet("color:#8b949e; font-size:14px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
 
@@ -1315,16 +1315,16 @@ class PerformanceWidget(QWidget):
         self.table.setSelectionMode(QTableWidget.NoSelection)
         self.table.setStyleSheet(
             "QTableWidget { background:#0d1117; color:#e6edf3; border:1px solid #30363d; "
-            "gridline-color:#30363d; font-size:10px; } "
+            "gridline-color:#30363d; font-size:14px; } "
             "QHeaderView::section { background:#161b22; color:#9aa4b2; border:none; "
-            "padding:4px; font-size:10px; }")
+            "padding:4px; font-size:14px; }")
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.verticalHeader().setDefaultSectionSize(30)
         lay.addWidget(self.table, 1)
 
         self.sum_lbl = QLabel("")
-        self.sum_lbl.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; "
+        self.sum_lbl.setStyleSheet("color:#00d4aa; font-size:15px; font-family:Consolas; "
                                    "background:#0d1117; border:1px solid #30363d; "
                                    "border-radius:4px; padding:6px;")
         self.sum_lbl.setWordWrap(True)
@@ -1333,7 +1333,7 @@ class PerformanceWidget(QWidget):
         self.btn_refresh = QPushButton("🔄 重新计算 (读取画布标定)")
         self.btn_refresh.setStyleSheet("QPushButton { background:#1f6feb; color:#fff; "
                                        "border:none; border-radius:4px; padding:6px; "
-                                       "font-size:11px; font-weight:700; } "
+                                       "font-size:15px; font-weight:700; } "
                                        "QPushButton:hover { background:#388bfd; }")
         self.btn_refresh.clicked.connect(self.refresh_metrics)
         lay.addWidget(self.btn_refresh)
@@ -1470,11 +1470,11 @@ class SceneStateWidget(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         hd = QLabel("🎯 场景状态定义 (产品经理视角)")
-        hd.setStyleSheet("color:#58a6ff; font-size:12px; font-weight:700;")
+        hd.setStyleSheet("color:#58a6ff; font-size:16px; font-weight:700;")
         lay.addWidget(hd)
         tip = QLabel("7 状态 = 7 个可验收业务阶段 · 时间预算 11s ≤ 节拍 15s\n"
                      "每个状态落地: 触发 / 时间 / 性能指标 / 验收标准")
-        tip.setStyleSheet("color:#8b949e; font-size:10px;")
+        tip.setStyleSheet("color:#8b949e; font-size:14px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
         from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
@@ -1482,11 +1482,11 @@ class SceneStateWidget(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setStyleSheet(
             "QTreeWidget { background:#0d1117; color:#e6edf3; border:1px solid #30363d; "
-            "font-size:11px; font-family:Consolas,monospace; } "
+            "font-size:15px; font-family:Consolas,monospace; } "
             "QTreeWidget::item { padding:2px; }")
         lay.addWidget(self.tree, 1)
         self.sum_lbl = QLabel("")
-        self.sum_lbl.setStyleSheet("color:#00d4aa; font-size:11px; font-family:Consolas; "
+        self.sum_lbl.setStyleSheet("color:#00d4aa; font-size:15px; font-family:Consolas; "
                                    "background:#0d1117; border:1px solid #30363d; "
                                    "border-radius:4px; padding:6px;")
         self.sum_lbl.setWordWrap(True)
@@ -1494,7 +1494,7 @@ class SceneStateWidget(QWidget):
         self.btn_refresh = QPushButton("🔄 重新计算 (读取画布标定)")
         self.btn_refresh.setStyleSheet("QPushButton { background:#1f6feb; color:#fff; "
                                        "border:none; border-radius:4px; padding:6px; "
-                                       "font-size:11px; font-weight:700; } "
+                                       "font-size:15px; font-weight:700; } "
                                        "QPushButton:hover { background:#388bfd; }")
         self.btn_refresh.clicked.connect(self.refresh_states)
         lay.addWidget(self.btn_refresh)
@@ -1585,23 +1585,23 @@ class EngineeringReqWidget(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         hd = QLabel("📋 工程需求 (系统总输入)")
-        hd.setStyleSheet("color:#ffd700; font-size:12px; font-weight:700;")
+        hd.setStyleSheet("color:#ffd700; font-size:16px; font-weight:700;")
         lay.addWidget(hd)
         tip = QLabel("开发流程: 📋工程需求 → 🧩原子技能 → 🎯场景状态\n"
                      "→ 📊性能指标 → 🧮数学分析 → ✅稳定性报告")
-        tip.setStyleSheet("color:#8b949e; font-size:10px;")
+        tip.setStyleSheet("color:#8b949e; font-size:14px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
         # 🧩 2026-08-15 老倪: 原子技能 (每个动作的口令/要领/约束 — 统一 token)
         sk_hd = QLabel("🧩 原子技能 (动作口诀 → 统一 Token)")
-        sk_hd.setStyleSheet("color:#00d4aa; font-size:11px; font-weight:700;")
+        sk_hd.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
         lay.addWidget(sk_hd)
         from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
         self.skill_tree = QTreeWidget()
         self.skill_tree.setHeaderHidden(True)
         self.skill_tree.setStyleSheet(
             "QTreeWidget { background:#0d1117; color:#e6edf3; border:1px solid #30363d; "
-            "font-size:10px; font-family:Consolas,monospace; } "
+            "font-size:14px; font-family:Consolas,monospace; } "
             "QTreeWidget::item { padding:1px; }")
         lay.addWidget(self.skill_tree)
         self._build_skills()
@@ -1618,19 +1618,19 @@ class EngineeringReqWidget(QWidget):
         lay.addLayout(frm)
         self.btn = QPushButton("💾 保存需求 (写入工程)")
         self.btn.setStyleSheet("QPushButton { background:#238636; color:#fff; border:none; "
-                               "border-radius:4px; padding:6px; font-size:11px; "
+                               "border-radius:4px; padding:6px; font-size:15px; "
                                "font-weight:700; } QPushButton:hover { background:#2ea043; }")
         self.btn.clicked.connect(self.save_req)
         lay.addWidget(self.btn)
         # 📄 2026-08-15 老倪: 导出完整 PDF (需求+状态+指标+数学分析+稳定性报告)
         self.btn_pdf = QPushButton("📄 导出完整 PDF (开发流程报告)")
         self.btn_pdf.setStyleSheet("QPushButton { background:#1f6feb; color:#fff; border:none; "
-                                   "border-radius:4px; padding:6px; font-size:11px; "
+                                   "border-radius:4px; padding:6px; font-size:15px; "
                                    "font-weight:700; } QPushButton:hover { background:#388bfd; }")
         self.btn_pdf.clicked.connect(self.export_pdf)
         lay.addWidget(self.btn_pdf)
         self.out = QLabel("需求未保存 — 点保存后驱动运行汇总验收")
-        self.out.setStyleSheet("color:#9aa4b2; font-size:10px; font-family:Consolas; "
+        self.out.setStyleSheet("color:#9aa4b2; font-size:14px; font-family:Consolas; "
                                "background:#0d1117; border:1px solid #30363d; "
                                "border-radius:4px; padding:6px;")
         self.out.setWordWrap(True)
@@ -2300,17 +2300,17 @@ class RunSummaryWidget(QWidget):
         lay.setSpacing(4)
 
         hd = QLabel("🚀 运行汇总 — 场景状态 → 性能指标 → 稳定性")
-        hd.setStyleSheet("color:#ffd700; font-size:12px; font-weight:700;")
+        hd.setStyleSheet("color:#ffd700; font-size:16px; font-weight:700;")
         lay.addWidget(hd)
         self.lbl = QLabel("点 ▶ 运行 后自动生成 (或点下方刷新)")
-        self.lbl.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; "
+        self.lbl.setStyleSheet("color:#c9d1d9; font-size:15px; font-family:Consolas; "
                                "background:#0d1117; border:1px solid #30363d; "
                                "border-radius:4px; padding:6px;")
         self.lbl.setWordWrap(True)
         lay.addWidget(self.lbl, 1)
         self.btn = QPushButton("🔄 生成运行汇总")
         self.btn.setStyleSheet("QPushButton { background:#1f6feb; color:#fff; border:none; "
-                               "border-radius:4px; padding:6px; font-size:11px; "
+                               "border-radius:4px; padding:6px; font-size:15px; "
                                "font-weight:700; } QPushButton:hover { background:#388bfd; }")
         self.btn.clicked.connect(self.refresh_summary)
         lay.addWidget(self.btn)
@@ -2473,7 +2473,7 @@ class ModelTreeDock(QWidget):
         self.btn_export = QPushButton("导出")
         self.btn_export.setStyleSheet(
             "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
-            "border-radius:4px;padding:3px 10px;font-size:11px;}"
+            "border-radius:4px;padding:3px 10px;font-size:15px;}"
             "QPushButton:hover{background:#30363d;}")
         self.btn_export.setToolTip("导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载")
         self.btn_export.clicked.connect(self._export_feature)
@@ -2482,7 +2482,7 @@ class ModelTreeDock(QWidget):
         self.btn_import = QPushButton("导入")
         self.btn_import.setStyleSheet(
             "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
-            "border-radius:4px;padding:3px 10px;font-size:11px;}"
+            "border-radius:4px;padding:3px 10px;font-size:15px;}"
             "QPushButton:hover{background:#30363d;}")
         self.btn_import.setToolTip("导入第三方模型包 (zip/目录, 标准格式 zmax-model-v1)")
         self.btn_import.clicked.connect(self._import_model)
@@ -2500,10 +2500,10 @@ class ModelTreeDock(QWidget):
         _lc.setContentsMargins(10, 8, 10, 8)
         _lc.setSpacing(4)
         self.link_title = QLabel("🔗 连线数据")
-        self.link_title.setStyleSheet("color:#d29922;font-weight:bold;font-size:12px;"
+        self.link_title.setStyleSheet("color:#d29922;font-weight:bold;font-size:16px;"
                                       "background:transparent;border:none;")
         self.link_body = QLabel("")
-        self.link_body.setStyleSheet("color:#e6edf3;font-size:11px;font-family:Consolas,monospace;"
+        self.link_body.setStyleSheet("color:#e6edf3;font-size:15px;font-family:Consolas,monospace;"
                                      "background:transparent;border:none;")
         self.link_body.setWordWrap(True)
         self.link_body.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -2538,7 +2538,7 @@ class ModelTreeDock(QWidget):
         lay.addWidget(self.eng_req)
 
         self.lbl_hint = QLabel("")
-        self.lbl_hint.setStyleSheet("color:#9aa4b2; font-size:10px; background:transparent; border:none;")
+        self.lbl_hint.setStyleSheet("color:#9aa4b2; font-size:14px; background:transparent; border:none;")
         self.lbl_hint.setWordWrap(True)
         # 🐛 2026-08-19: 链接可选中/可点击 (导出提示)
         self.lbl_hint.setTextInteractionFlags(
@@ -2570,7 +2570,7 @@ class ModelTreeDock(QWidget):
 
         # 数学分析视图控件 (默认隐藏)
         self.lbl_math = QLabel("")
-        self.lbl_math.setStyleSheet("color:#c9d1d9; font-size:11px; font-family:Consolas; background:transparent;")
+        self.lbl_math.setStyleSheet("color:#c9d1d9; font-size:15px; font-family:Consolas; background:transparent;")
         self.lbl_math.setWordWrap(True)
         self.lbl_math.setVisible(False)
         lay.addWidget(self.lbl_math)
@@ -2587,12 +2587,12 @@ class ModelTreeDock(QWidget):
         self.setStyleSheet("""
             ModelTreeDock { background:#0d1117; }
             QTreeWidget { background:#0d1117; color:#e6edf3; border:1px solid #30363d;
-                          font-size:13px; font-family:Consolas,monospace; }
+                          font-size:17px; font-family:Consolas,monospace; }
             QTreeWidget::item { color:#e6edf3; padding:4px; }
             QTreeWidget::item:selected { background:#1f6feb; color:#ffffff; }
             QTreeWidget::branch { background:#0d1117; }
             QComboBox { background:#161b22; color:#e6edf3; border:1px solid #30363d;
-                        padding:3px; font-size:12px; }
+                        padding:3px; font-size:16px; }
             QComboBox QAbstractItemView { background:#161b22; color:#e6edf3;
                                           selection-background-color:#1f6feb; }
             QLabel { color:#e6edf3; }

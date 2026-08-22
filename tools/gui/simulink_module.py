@@ -46,7 +46,7 @@ NODE_TYPES = {
     "scene":     {"cn": "场景", "color": "#ff9f43"},     # 🏭 场景 (2026-08-09 老倪: 插拔/搬运/光学检测 — 点击打开 ECS 链接 + 建场景节点链)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
-DH = 50  # 节点高度 (与 web 一致)
+DH = 84  # 节点高度 (与 web 一致)
 
 # 🎯 状态空间变量监控 → 画布连线映射 (2026-08-20 老倪: 选中右侧变量高亮对应连线)
 # 键 = state_space_sim.last_io 的模块名, 值 = state_space_obs.json 节点的 name
@@ -1583,7 +1583,7 @@ class CICDStageItem(QGraphicsObject):
         self.title = title
         self.desc = desc
         self.state = state
-        self.w, self.h = 150, 88
+        self.w, self.h = 240, 92
         self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.setAcceptHoverEvents(True)
         self.setZValue(10)
@@ -1606,7 +1606,7 @@ class CICDStageItem(QGraphicsObject):
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 8, 8)
         # 标题 (🎨 主题色 — 硬编码 #1f2328 深色主题下黑字黑底看不见)
         painter.setPen(QColor(pal["title"]))
-        painter.setFont(QFont("Arial", 11, QFont.Bold))
+        painter.setFont(QFont("Arial", 13, QFont.Bold))
         # 🐛 2026-08-12 老倪: 训练/推理开关节点 — title 带当前模式 (🔀 训练模式/🔀 推理模式)
         if self.node.get("type") == "switch" and self.node.get("params", {}).get("mode"):
             _m = self.node["params"]["mode"]
@@ -1616,17 +1616,17 @@ class CICDStageItem(QGraphicsObject):
             painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
         # 描述 (🐛 2026-08-22 老倪: 灰色小字太乱且挤不下 — 删除, 只留白色名称+状态徽章)
         painter.setPen(QColor(pal["label"]))
-        painter.setFont(QFont("Arial", 8))
+        painter.setFont(QFont("Arial", 10))
         # 状态徽章
         icon = {1: "● 运行中", 2: "✓ 成功", 3: "✕ 失败", 0: "○ 未开始"}[self.state]
         painter.setPen(c)
-        painter.setFont(QFont("Arial", 9, QFont.Bold))
+        painter.setFont(QFont("Arial", 11, QFont.Bold))
         painter.drawText(QRectF(8, 32, self.w - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, icon)
         # 🌐 2026-08-08 老倪: 节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角小字青色)
         try:
             # 🐛 2026-08-09 老倪: CICD 环节 ID 常显
             painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 7))
+            painter.setFont(QFont("Arial", 10))
             nid = getattr(self, "nid", None) or (
                 f"VEH.5.{lib_seq_of(self.title):03d}" if lib_seq_of(self.title) else
                 f"VEH.5.CICD.{self.sid}")  # 🐛 sid 字符串不能 % 100
@@ -2381,7 +2381,7 @@ class SimNodeItem(QGraphicsObject):
         super().__init__()
         self.node = node
         self.scene_ref = scene_ref
-        self.w = node.get("w", 150)
+        self.w = node.get("w", 240)
         self.h = node.get("h", DH)   # 🎨 row_bg 背景行节点自定义高度 (2026-08-05)
         self.setPos(node["x"], node["y"])
         # 不用 ItemIsMovable: 拖动由 SimCanvas 手动 setPos 接管,
@@ -2439,8 +2439,8 @@ class SimNodeItem(QGraphicsObject):
         if t == "row_bg":
             p = self.node.get("params", {})
             color = QColor(p.get("bg", "#26418f"))
-            w = self.node.get("w", 150)
-            h = self.node.get("h", 214)
+            w = self.node.get("w", 240)
+            h = self.node.get("h", 244)
             painter.setRenderHint(QPainter.Antialiasing)
             # 整行色带: 深色底(alpha 120) + 色相(alpha 90) 叠加 — 深色画布上颜色清晰可见,
             # 不会因 alpha 过低显示成黑色块 (2026-08-05 修复: 原 alpha=40 在 #0a0a0f 画布上≈黑)
@@ -2483,8 +2483,8 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(QColor("#ffffff") if _CUR_THEME != "light" else QColor("#000000"))
             # 自适应字号: 从 9pt(≈36px, 与节点标题同级) 递减到 6pt, 找到能单行放下的
             # 🐛 2026-08-22 老倪: 7pt≈28px 比节点标题(9pt)还小 → 升回 9pt; 15pt在192DPI≈50px太大
-            fs = 9
-            while fs >= 6:
+            fs = 12
+            while fs >= 9:
                 painter.setFont(QFont("Arial", fs, QFont.Bold))
                 fm = painter.fontMetrics()
                 if fm.horizontalAdvance(name) <= avail_w:
@@ -2509,7 +2509,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
-            painter.setFont(QFont("Arial", 7))
+            painter.setFont(QFont("Arial", 10))
             painter.drawText(QRectF(8, 4, 110, 12), Qt.AlignLeft | Qt.AlignTop,
                              "▤ 背景行")
             return
@@ -2574,7 +2574,7 @@ class SimNodeItem(QGraphicsObject):
         avail = max(40, self.w - 36)  # 右留 36px 给状态徽章
         # 字号 9→8→7 递减, 依次试 单行→按词拆→按字符拆(中文无空格), 保证完整显示不截断
         line1, line2 = name, ""
-        for _fs in (9, 8, 7):
+        for _fs in (12, 11, 10):
             painter.setFont(QFont("Arial", _fs, QFont.Bold))
             fm = painter.fontMetrics()
             if fm.horizontalAdvance(name) <= avail:
@@ -2605,7 +2605,7 @@ class SimNodeItem(QGraphicsObject):
         disp = (line1 + "\n" + line2) if line2 else line1
         if params.get("video"):
             # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明)
-            painter.setFont(QFont("Arial", 8, QFont.Bold))
+            painter.setFont(QFont("Arial", 10, QFont.Bold))
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              disp.replace("\n", " "))
         else:
@@ -2631,7 +2631,7 @@ class SimNodeItem(QGraphicsObject):
                                        QRectF(0, 0, pm.width(), pm.height()))
                     if self.video_overlay:
                         painter.setPen(QColor("#8b949e"))
-                        painter.setFont(QFont("Arial", 7))
+                        painter.setFont(QFont("Arial", 10))
                         painter.drawText(QRectF(6, 4, self.w - 12, 12),
                                          Qt.AlignLeft | Qt.AlignTop, self.video_overlay)
             except Exception:
@@ -2642,7 +2642,7 @@ class SimNodeItem(QGraphicsObject):
         if params.get("z700_internal"):
             # ── 第一区: 类型标签 (模块角色) ──
             painter.setPen(QColor(pal["label"]))
-            painter.setFont(QFont("Arial", 7))
+            painter.setFont(QFont("Arial", 10))
             role = {"感知链": "前馈·观测", "双脑": "前馈·预测",
                     "状态机": "串联·P", "动作": "串联·D"}.get(name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
             if role:
@@ -2652,7 +2652,7 @@ class SimNodeItem(QGraphicsObject):
             desc = params.get("desc", "")
             if desc:
                 painter.setPen(QColor("#8b949e"))
-                painter.setFont(QFont("Arial", 7))
+                painter.setFont(QFont("Arial", 10))
                 _fm = painter.fontMetrics()
                 _avail = self.w - 20
                 _d1 = _fm.elidedText(desc, Qt.ElideRight, _avail)
@@ -2673,11 +2673,11 @@ class SimNodeItem(QGraphicsObject):
                     _vs = str(_v)
                 # 变量名 (青色)
                 painter.setPen(QColor("#58a6ff"))
-                painter.setFont(QFont("Consolas", 8, QFont.Bold))
+                painter.setFont(QFont("Consolas", 10, QFont.Bold))
                 painter.drawText(QRectF(12, _py, self.w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
                 # 值 (白色, 右对齐)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Consolas", 8))
+                painter.setFont(QFont("Consolas", 10))
                 painter.drawText(QRectF(12, _py, self.w - 24, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
                 _py += _ph
         # 🤖 2026-08-09 老倪: 场景节点 — 右上角画小机器人图标 (参考半导体产线机器人)
@@ -2711,7 +2711,7 @@ class SimNodeItem(QGraphicsObject):
             if getattr(self, "_hover", False) and self.node.get("type") != "row_bg":
                 # 🐛 2026-08-12 老倪: ID 显示在右下角 (用户要求, 不遮挡标题/desc 主区)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 9, QFont.Bold))
+                painter.setFont(QFont("Arial", 11, QFont.Bold))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
                 painter.drawText(QRectF(8, self.h - 16, self.w - 16, 14), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
@@ -2767,7 +2767,7 @@ class SimNodeItem(QGraphicsObject):
             st_icon = "♻"  # 复用节点 (被两模型共用, 紫框)
         if st_icon:
             painter.setPen(color)
-            painter.setFont(QFont("Arial", 9, QFont.Bold))
+            painter.setFont(QFont("Arial", 11, QFont.Bold))
             painter.drawText(QRectF(self.w - 22, 2, 20, 16), Qt.AlignRight | Qt.AlignVCenter, st_icon)
         # 端口: Switch 双输入 (左上下) + 单输出 (右中); 其他节点单进单出
         if t == "switch":
@@ -2817,7 +2817,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.setBrush(QColor("#2d1b4e"))
                 painter.drawRoundedRect(btn, 4, 4)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 7, QFont.Bold))
+                painter.setFont(QFont("Arial", 10, QFont.Bold))
                 painter.drawText(btn, Qt.AlignCenter, "📥 导出")
             except Exception:
                 pass
@@ -2841,7 +2841,7 @@ class SimNodeItem(QGraphicsObject):
         painter.drawRoundedRect(QRectF(0, 0, w, h), 6, 6)
         # 标题 (顶部, 9px Bold)
         painter.setPen(QColor(pal["title"]))
-        painter.setFont(QFont("Arial", 9, QFont.Bold))
+        painter.setFont(QFont("Arial", 11, QFont.Bold))
         _disp = name
         _fm = painter.fontMetrics()
         if _fm.horizontalAdvance(_disp) > w - 20:
@@ -2852,14 +2852,14 @@ class SimNodeItem(QGraphicsObject):
                 "状态机": "串联·P", "动作": "串联·D"}.get(
             name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
         painter.setPen(QColor("#58a6ff"))
-        painter.setFont(QFont("Arial", 7))
+        painter.setFont(QFont("Arial", 10))
         if role:
             painter.drawText(QRectF(10, 22, w - 20, 13), Qt.AlignVCenter | Qt.AlignLeft, f"▸ {role}")
         # desc (y=38, 7px 灰, 单行省略)
         desc = p.get("desc", "")
         if desc:
             painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 7))
+            painter.setFont(QFont("Arial", 10))
             _fm = painter.fontMetrics()
             painter.drawText(QRectF(10, 37, w - 20, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              _fm.elidedText(desc, Qt.ElideRight, w - 20))
@@ -2879,10 +2879,10 @@ class SimNodeItem(QGraphicsObject):
             else:
                 _vs = str(_v)
             painter.setPen(QColor("#58a6ff"))
-            painter.setFont(QFont("Consolas", 8, QFont.Bold))
+            painter.setFont(QFont("Consolas", 10, QFont.Bold))
             painter.drawText(QRectF(10, _py, w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
             painter.setPen(QColor("#e6edf3"))
-            painter.setFont(QFont("Consolas", 8))
+            painter.setFont(QFont("Consolas", 10))
             painter.drawText(QRectF(10, _py, w - 22, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
             _py += _ph
         # 端口锚点 (in1 左 / out1 右 — 连线依赖, 不能省)
@@ -3041,7 +3041,7 @@ class SimLinkItem(QGraphicsObject):
         lbl = self.link.get("label", "")
         if lbl:
             mid = path.pointAtPercent(0.5)
-            painter.setFont(QFont("Consolas", 8))
+            painter.setFont(QFont("Consolas", 10))
             fm = painter.fontMetrics()
             lw = fm.horizontalAdvance(lbl) + 8
             lh = fm.height() + 2
@@ -3441,11 +3441,12 @@ class SimCanvas(QGraphicsView):
 class LibraryPanel(QFrame):
     # 📚 模块库左侧栏折叠信号 (2026-08-06 老倪: 太占地方, 可缩到左边)
     collapse_requested = pyqtSignal()
+    expand_requested = pyqtSignal()
 
     def __init__(self, module):
         super().__init__()
         self.module = module
-        self.setFixedWidth(280)  # 🐛 2026-08-22 老倪"模块库字体看不见" — 字体改pt放大后加宽面板容纳
+        self.setFixedWidth(360)  # 🐛 2026-08-22 老倪: 360 加宽容纳放大后的字体/模块名
         self.setStyleSheet("background:#f6f8fa; border-right:1px solid #d0d7de;")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -3454,25 +3455,37 @@ class LibraryPanel(QFrame):
         # 标题行: 📚 模块库 + 折叠按钮 ◀ (2026-08-06 老倪: 隐藏左侧栏省地方;
         #   v2 2026-08-06: 按钮加大加醒目 + 双击标题也可折叠)
         head = QHBoxLayout()
-        title = QLabel("📚 模块库")
-        title.setStyleSheet("color:#1f2328; font-size:7.5pt; font-weight:700; padding:4px;")
-        head.addWidget(title)
+        self._title_lbl = QLabel("📚 模块库")
+        self._title_lbl.setStyleSheet("color:#1f2328; font-size:11.5pt; font-weight:700; padding:4px;")
+        head.addWidget(self._title_lbl)
         head.addStretch()
-        btn_collapse = QPushButton("◀ 收起")
-        btn_collapse.setFixedWidth(72)
-        btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
+        self._btn_collapse = QPushButton("◀ 收起")
+        self._btn_collapse.setFixedWidth(72)
+        self._btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
         # 🎨 用浅底样式 (switch_theme 会正确转深色; 之前 #1f6feb 蓝底白字被
         # switch_theme 把白字替换成深色 → 蓝底深字看不清, 老倪反馈找不到)
-        btn_collapse.setStyleSheet("""
+        self._btn_collapse.setStyleSheet("""
             QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
-                        border-radius:4px; font-size:6pt; font-weight:700; padding:4px 8px;}
+                        border-radius:4px; font-size:10pt; font-weight:700; padding:4px 8px;}
             QPushButton:hover{border-color:#1f6feb; background:#dbe9ff;}
         """)
-        btn_collapse.clicked.connect(self.collapse_requested.emit)
-        head.addWidget(btn_collapse)
+        self._btn_collapse.clicked.connect(self.collapse_requested.emit)
+        head.addWidget(self._btn_collapse)
         lay.addLayout(head)
         # 双击「📚 模块库」标题也可折叠 (2026-08-06 v2: 更易发现)
-        title.mousePressEvent = self._title_clicked
+        self._title_lbl.mousePressEvent = self._title_clicked
+
+        # ▶ 展开按钮 (折叠态显示, 2026-08-22 老倪: 去掉独立的 16px 空扩展条, 折叠自收窄)
+        self._btn_expand = QPushButton("▶")
+        self._btn_expand.setToolTip("展开模块库左侧栏")
+        self._btn_expand.setStyleSheet("""
+            QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
+                        border-radius:4px; font-size:10pt; font-weight:700; padding:4px 0;}
+            QPushButton:hover{border-color:#1f6feb; background:#dbe9ff;}
+        """)
+        self._btn_expand.clicked.connect(self.expand_requested.emit)
+        self._btn_expand.hide()
+        lay.addWidget(self._btn_expand)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -3489,9 +3502,9 @@ class LibraryPanel(QFrame):
         self.scroll.setWidget(self.inner)
         lay.addWidget(self.scroll)
 
-        hint = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放")
-        hint.setStyleSheet("color:#57606a; font-size:7pt; padding:4px;")
-        lay.addWidget(hint)
+        self._hint_lbl = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放")
+        self._hint_lbl.setStyleSheet("color:#57606a; font-size:11pt; padding:4px;")
+        lay.addWidget(self._hint_lbl)
 
     def _title_clicked(self, ev):
         """双击标题 → 折叠左侧栏 (2026-08-06 v2: 用户反馈找不到 ◀ 按钮)"""
@@ -3501,6 +3514,24 @@ class LibraryPanel(QFrame):
         self._title_click_ts = now
         if now - last < 0.4:  # 双击
             self.collapse_requested.emit()
+
+    def set_collapsed(self, collapsed):
+        """📚 折叠/展开左侧栏 (2026-08-22 老倪: 去掉独立 16px 空扩展条, 折叠自收窄到 20px)"""
+        self._collapsed = collapsed
+        if collapsed:
+            self._title_lbl.hide()
+            self._btn_collapse.hide()
+            self.scroll.hide()
+            self._hint_lbl.hide()
+            self._btn_expand.show()
+            self.setFixedWidth(20)
+        else:
+            self._btn_expand.hide()
+            self._title_lbl.show()
+            self._btn_collapse.show()
+            self.scroll.show()
+            self._hint_lbl.show()
+            self.setFixedWidth(360)
 
     def _rebuild(self):
         """重建模块库列表 (按工作流过滤)"""
@@ -3523,7 +3554,7 @@ class LibraryPanel(QFrame):
             collapsed = self._group_collapsed.get(gname, False)
             marker = "▸ " if collapsed else "▾ "
             lab = QLabel(f"{marker}{gname}")
-            lab.setStyleSheet(f"color:{COLORS[ntype]}; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
+            lab.setStyleSheet(f"color:{COLORS[ntype]}; font-size:10pt; font-weight:700; padding:6px 2px 2px;")
             lab.setToolTip("点击 折叠/展开 该分组")
             lab.setCursor(Qt.PointingHandCursor)
             # 点击标题 → toggle 该组按钮可见性
@@ -3536,7 +3567,7 @@ class LibraryPanel(QFrame):
                 btn.setToolTip((f"VEH.5.{_seq:03d} — " if _seq else "") + f"{it['name']} (与画布节点 ID 一致)")
                 btn.setStyleSheet(f"""
                     QToolButton {{ background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
-                    border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }}
+                    border-radius:4px; padding:4px 8px; font-size:10pt; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
                 if it.get("params", {}).get("scene_id"):
@@ -3566,14 +3597,14 @@ class LibraryPanel(QFrame):
         _exists = [c for c in _dset_cands if os.path.isdir(os.path.join(root, "data", c[0]))]
         if _exists:
             lab = QLabel(f"▾ 📦 数据集 (已有 {len(_exists)})")
-            lab.setStyleSheet("color:#d29922; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
+            lab.setStyleSheet("color:#d29922; font-size:10pt; font-weight:700; padding:6px 2px 2px;")
             lab.setToolTip("已有训练数据集 (光模块/套环/Orin) — 点击拖入画布作为数据源")
             self.v.addWidget(lab)
             for d, desc, src in _exists:
                 btn = QToolButton()
                 btn.setText(f"📦 {d}")
                 btn.setStyleSheet("QToolButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;"
-                                  " border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }"
+                                  " border-radius:4px; padding:4px 8px; font-size:10pt; text-align:left; }"
                                   "QToolButton:hover { border-color:#d29922; color:#1f2328; }")
                 btn.setToolTip(f"{desc} — 双击画布数据源节点可切换")
                 btn.clicked.connect(lambda _, dd=d, ds=desc, ss=src:
@@ -3591,7 +3622,7 @@ class LibraryPanel(QFrame):
             _scenes = []
         if _scenes:
             lab = QLabel("▾ 🏭 场景 (光模块工厂三大工艺)")
-            lab.setStyleSheet("color:#00d4aa; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
+            lab.setStyleSheet("color:#00d4aa; font-size:10pt; font-weight:700; padding:6px 2px 2px;")
             lab.setToolTip("光模块工厂真实场景 — 点击打开 ECS 可视化链接 + 建场景节点链")
             self.v.addWidget(lab)
             _ICON = {"SCN-01": "🔌", "SCN-02": "🤖", "SCN-03": "🔍"}
@@ -3600,7 +3631,7 @@ class LibraryPanel(QFrame):
                 btn = QToolButton()
                 btn.setText(f"{_ICON.get(s['id'], '🏭')} {s['id']} {s['name'][:14]} · {_perf.get('operation_success_rate', '')}")
                 btn.setStyleSheet("QToolButton { background:#0d1117; color:#e6edf3; border:1px solid #0d3b33;"
-                                  " border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }"
+                                  " border-radius:4px; padding:4px 8px; font-size:10pt; text-align:left; }"
                                   "QToolButton:hover { border-color:#00d4aa; color:#00d4aa; }")
                 btn.setToolTip(f"{s['name']} — 成功率{_perf.get('operation_success_rate','')} · 节拍{_perf.get('cycle_time','')} · 点击打开 ECS 链接 + 建节点链")
                 btn.clicked.connect(lambda _, sid=s["id"]: self.module.open_scene_link(sid))
@@ -3610,13 +3641,13 @@ class LibraryPanel(QFrame):
             _cp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "flows", "cooperation_closed_loop.json")
             if os.path.exists(_cp):
                 lab = QLabel("▾ 🤝 合作闭环 (供应商·数据合规)")
-                lab.setStyleSheet("color:#a371f7; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
+                lab.setStyleSheet("color:#a371f7; font-size:10pt; font-weight:700; padding:6px 2px 2px;")
                 lab.setToolTip("供应商提供底座模型 → 实验室微调专有模型 → 数据闭环不出实验室 (点击加载画布)")
                 self.v.addWidget(lab)
                 btn = QToolButton()
                 btn.setText("🤝 合作数据闭环流程")
                 btn.setStyleSheet("QToolButton { background:#0d1117; color:#e6edf3; border:1px solid #a371f733;"
-                                  " border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }"
+                                  " border-radius:4px; padding:4px 8px; font-size:10pt; text-align:left; }"
                                   "QToolButton:hover { border-color:#a371f7; color:#a371f7; }")
                 btn.setToolTip("加载合作合规数据闭环画布: 供应商底座→SYS2微调→评估→SYS1/SYS0, 数据不出实验室")
                 btn.clicked.connect(lambda _, fl=_cp: self.module.load_flow_file(fl))
@@ -3963,8 +3994,15 @@ class SimulinkModule(QWidget):
 
         # 主体: 库 + MDI 画布子窗口 (2026-08-05 老倪: 对标 MATLAB Simulink / CANoe —
         # 主要操作窗口首次打开嵌在主窗口内部, 子窗口带 最小化/最大化/关闭)
+        # 🐛 2026-08-22 老倪: 模块库右边拖动栏仍残留 — library 是 fixed 宽度,
+        #   QSplitter 仍画一条可拖手柄竖线; 改为 body QHBoxLayout 承载
+        #   [library | split], split 只排 [mdi | model_tree], 库与画布间彻底无手柄
+        body = QWidget()
+        body_lay = QHBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(0)
         split = QSplitter(Qt.Horizontal)
-        self._main_split = split
+        self._main_split = body  # 浮动工作流窗口复用整个 body (library+mdi+model_tree)
         self.canvas = SimCanvas(self)
         self.canvas.flow_changed.connect(lambda: self._sync())
         self.canvas.log.connect(self._log)
@@ -4000,24 +4038,15 @@ class SimulinkModule(QWidget):
         # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
         self._canvas_win.showMaximized()
         self.library = LibraryPanel(self)
-        # 📚 左侧栏折叠/展开 (2026-08-06 老倪: 太占地方可缩到左边)
-        self._lib_expand_bar = QPushButton("▶")
-        self._lib_expand_bar.setFixedWidth(16)
-        self._lib_expand_bar.setToolTip("展开模块库左侧栏")
-        self._lib_expand_bar.setStyleSheet("""
-            QPushButton{background:#e9edf2; color:#1f6feb; border:none;
-                        border-left:1px solid #d0d7de; font-size:6pt; font-weight:700;}
-            QPushButton:hover{background:#d0d7de;}
-        """)
-        self._lib_expand_bar.clicked.connect(self._expand_library)
-        self._lib_expand_bar.setVisible(False)
+        # 📚 左侧栏折叠/展开 (2026-08-22 老倪: 去掉独立 16px 空扩展条 → library 自收窄 20px)
         self.library.collapse_requested.connect(self._collapse_library)
-        split.addWidget(self.library)
-        split.addWidget(self._lib_expand_bar)
+        self.library.expand_requested.connect(self._expand_library)
         split.addWidget(self._mdi)
-        split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 0)
-        split.setStretchFactor(2, 1)
+        split.setStretchFactor(0, 1)  # mdi 占满 (library 移出 splitter, 进 body_lay)
+        # 📚 提前组装 body (library+mdi) — 必须在 switch_theme 之前加入 widget 树,
+        #   否则 findChildren 遍历不到 library, 背景不会被转成暗色 (2026-08-22 老倪)
+        body_lay.addWidget(self.library)
+        body_lay.addWidget(split, 1)
         # 🐛 2026-08-12 老倪: 垂直 splitter — 主体(上) + 日志(下) 可拖手柄调整大小
         # (终端沿边沿向上扩展, 对标 Simulink 诊断窗口可调)
         # 🐛 2026-08-18 老倪: "拖动条只有上半部分移动, 下半残留旧画面" — VcXsrv 下
@@ -4025,7 +4054,7 @@ class SimulinkModule(QWidget):
         # 拖动只画分割线, 松手后完整重绘, 无残影
         self._v_split = QSplitter(Qt.Vertical)
         self._v_split.setOpaqueResize(False)
-        self._v_split.addWidget(split)
+        self._v_split.addWidget(body)
         outer.addWidget(self._v_split, 1)
 
         # 实时状态栏 (节点状态 + 时钟 + 运行状态)
@@ -4451,8 +4480,13 @@ class SimulinkModule(QWidget):
                 # 🐛 2026-08-15 老倪: w/h 只写 dict 不写 item → SimNodeItem 创建时已固定
                 #   默认值 (w=150/h=50), JSON 里的 w/h 不生效 → 内部模块 UI 重叠。
                 #   必须同步更新 item 几何 (paint 读 self.w/self.h)。
-                n["w"] = spec.get("w", 150)
-                n["h"] = spec.get("h", DH)
+                # 🐛 2026-08-22 老倪"字大框小": JSON 固化 w=150/180 → 强制普通节点最小 240×84
+                if spec.get("type") != "row_bg":
+                    n["w"] = max(spec.get("w") or 0, 240)
+                    n["h"] = max(spec.get("h") or 0, DH)
+                else:
+                    n["w"] = spec.get("w", 240)
+                    n["h"] = spec.get("h", DH)
                 _it = self._items.get(n["id"])
                 if _it is not None:
                     _it.w = n["w"]
@@ -4488,7 +4522,7 @@ class SimulinkModule(QWidget):
                             _newx = _minx - 266
                             if _newx != _oldx:
                                 n["x"] = _newx
-                                n["w"] = n.get("w", 150) + (_oldx - _newx)  # 右界不变, 宽度左扩
+                                n["w"] = n.get("w", 240) + (_oldx - _newx)  # 右界不变, 宽度左扩
                                 _it = self._items.get(n["id"])
                                 if _it is not None:
                                     _it.setPos(_newx, n.get("y", 0))
@@ -4546,7 +4580,7 @@ class SimulinkModule(QWidget):
                     for c, nm in enumerate(row):
                         if not nm:
                             continue  # 占位空串, 跳过
-                        pos.setdefault(nm, []).append((base_x + c * 200, base_y + r * 230))
+                        pos.setdefault(nm, []).append((base_x + c * 300, base_y + r * 260))
                 used = set()
                 for i, (ntype, nm, params) in enumerate(node_specs):
                     cands = pos.get(nm, [])
@@ -4555,14 +4589,14 @@ class SimulinkModule(QWidget):
                         continue
                     xy = next((p for p in cands if p not in used), None)
                     if xy is None:
-                        xy = (base_x + i * 200, base_y)  # 兜底单行
+                        xy = (base_x + i * 300, base_y)  # 兜底单行
                     used.add(xy)
                     n = self.add_node(ntype, nm, xy[0], xy[1], params)
                     ids.append(n["id"])
                     index_to_id[i] = n["id"]
             else:
                 for i, (ntype, nm, params) in enumerate(node_specs):
-                    n = self.add_node(ntype, nm, base_x + i * 200, base_y, params)
+                    n = self.add_node(ntype, nm, base_x + i * 300, base_y, params)
                     ids.append(n["id"])
                     index_to_id[i] = n["id"]
             for fi, ti, *label in link_specs:
@@ -4593,8 +4627,8 @@ class SimulinkModule(QWidget):
     # ── 节点操作 ──
     def add_node_at_center(self, ntype, name, params=None):
         c = self.canvas.mapToScene(self.canvas.viewport().rect().center())
-        n = self.add_node(ntype, name, int(c.x() - 75 + random.uniform(-30, 30)),
-                          int(c.y() - 25 + random.uniform(-30, 30)), params)
+        n = self.add_node(ntype, name, int(c.x() - 120 + random.uniform(-30, 30)),
+                          int(c.y() - 42 + random.uniform(-30, 30)), params)
         # 🧠 ACT-Meta 逐步搭建引导: 匹配当前步骤模块则推进
         self._act_build_on_add(name)
         return n
@@ -4604,7 +4638,7 @@ class SimulinkModule(QWidget):
             "id": gen_id(),
             "type": ntype,
             "name": name,
-            "x": int(x), "y": int(y), "w": 150,
+            "x": int(x), "y": int(y), "w": 240,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
                      "train_gate": "☑", "mode_switch": "🔀", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖", "data": "📊",
@@ -6041,7 +6075,16 @@ class SimulinkModule(QWidget):
         self.clear()
         for n in flow.get("nodes", []):
             node = dict(n)
-            node.setdefault("w", 150)
+            # 🐛 2026-08-22 老倪"字大框小": JSON 里固化 w=150/180 旧尺寸, setdefault
+            #   被旧值压制 → 字体已放大但框没变大。强制普通节点最小 240×84 (row_bg 保留自定义)。
+            if node.get("type") != "row_bg":
+                _w = node.get("w") or 0
+                _h = node.get("h") or 0
+                node["w"] = max(_w, 240)
+                node["h"] = max(_h, DH)
+            else:
+                node.setdefault("w", 240)
+                node.setdefault("h", DH)
             node.setdefault("params", {})
             node.setdefault("inputs", [{"id": "in1", "label": "in", "dtype": "any"}])
             node.setdefault("outputs", [{"id": "out1", "label": "out", "dtype": "any"}])
@@ -6063,7 +6106,7 @@ class SimulinkModule(QWidget):
                         _newx = _minx - 266
                         if _newx != _oldx:
                             n["x"] = _newx
-                            n["w"] = n.get("w", 150) + (_oldx - _newx)  # 右界不变, 宽度左扩
+                            n["w"] = n.get("w", 240) + (_oldx - _newx)  # 右界不变, 宽度左扩
                             _it = self._items.get(n["id"])
                             if _it is not None:
                                 _it.setPos(_newx, n.get("y", 0))
@@ -6114,7 +6157,7 @@ class SimulinkModule(QWidget):
                     pass
         self._model_row_items = []
 
-    def _draw_model_rows(self, row_names, row_h=230, col_w=200,
+    def _draw_model_rows(self, row_names, row_h=260, col_w=300,
                          base_x=120, base_y=80, n_cols=10):
         """在画布插入 N 个背景行 row_bg 节点 (真节点, 可右键编辑).
         row_names: 每行模型名 (大字) → 生成 name='🎨 {名}' bg=预设色 的 row_bg 节点,
@@ -8652,15 +8695,13 @@ class SimulinkModule(QWidget):
 
     # ── 📚 左侧模块库栏 折叠/展开 (2026-08-06 老倪: 太占地方可缩到左边) ──
     def _collapse_library(self):
-        """隐藏模块库左侧栏 → 画布占满; 左缘留 16px ▶ 展开条"""
-        self.library.setVisible(False)
-        self._lib_expand_bar.setVisible(True)
+        """隐藏模块库左侧栏 → 画布占满; 左缘留 20px ▶ 展开条 (library 自收窄)"""
+        self.library.set_collapsed(True)
         self._log("📚 模块库已收起 (点左缘 ▶ 展开)")
 
     def _expand_library(self):
         """恢复模块库左侧栏"""
-        self.library.setVisible(True)
-        self._lib_expand_bar.setVisible(False)
+        self.library.set_collapsed(False)
         self._log("📚 模块库已展开")
 
     def _show_nonmodal(self, dlg, on_accept=None):
