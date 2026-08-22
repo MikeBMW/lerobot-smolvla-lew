@@ -638,7 +638,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.4.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.5.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -3740,39 +3740,53 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         _oneshot(self, 3000, self._auto_connect_gpu)
 
     def _auto_connect_gpu(self):
-        """🖥 模型引擎自动连接远程 GPU — 2026-08-08 老倪: 连不上直接报 (不磨蹭不误导)"""
+        """🖥 模型引擎自动连接远程 GPU — 2026-08-08 老倪: 连不上直接报 (不磨蹭不误导)
+        🐛 2026-08-22 老倪"折叠左栏就崩": sshpass ssh 同步阻塞主线程 3-6s → 折叠时事件循环卡死,
+        积压 timer 批量激活撞上跨线程析构 QObject → killTimer cross-thread SIGSEGV. 改子线程探测."""
         try:
             if not os.path.exists(os.path.expanduser("~/.zmax_ssh.json")):
                 return
             if getattr(self, "remote_engine", None) and self.remote_engine.get("connected"):
                 return
             self._log("🖥 模型引擎检测远程 GPU…")
-            # 快速可达性检测 (3s) — 不可达直接报连不上, 不误导
-            try:
-                import subprocess as _sp, json as _json
-                creds = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
-                # 🐛 2026-08-09 老倪: 兼容 嵌套 gpu_4090/gpu_v100 与 旧扁平结构
-                if isinstance(creds, dict) and "host" in creds:
-                    c = creds
-                else:
-                    c = creds.get("gpu_4090") or creds.get("gpu_v100") or {}
-                port = c.get("port", 22)
-                r = _sp.run(
-                    f"sshpass -p '{c.get('pwd', c.get('password', ''))}' ssh -o StrictHostKeyChecking=no "
-                    f"-o ConnectTimeout=3 -o Port={port} {c.get('user', 'root')}@{c.get('host', '')} 'echo OK'",
-                    shell=True, capture_output=True, text=True, timeout=6)
-                if "OK" not in r.stdout:
-                    raise ConnectionError("unreachable")
-            except Exception:
-                self._log("⚠️ 远程 GPU 连不上 (已关机/网络不通) — 使用本地引擎 (4060 容器)")
-                self.gpu_mode = "local"
+            import threading as _th, subprocess as _sp, json as _json
+
+            def _probe():
                 try:
-                    self.radio_local.setChecked(True)
+                    creds = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
+                    if isinstance(creds, dict) and "host" in creds:
+                        c = creds
+                    else:
+                        c = creds.get("gpu_4090") or creds.get("gpu_v100") or {}
+                    port = c.get("port", 22)
+                    r = _sp.run(
+                        f"sshpass -p '{c.get('pwd', c.get('password', ''))}' ssh -o StrictHostKeyChecking=no "
+                        f"-o ConnectTimeout=3 -o Port={port} {c.get('user', 'root')}@{c.get('host', '')} 'echo OK'",
+                        shell=True, capture_output=True, text=True, timeout=6)
+                    return "OK" in r.stdout
                 except Exception:
-                    pass
-                return
-            self._log("✅ 远程 GPU 可达 — 自动连接")
-            self._connect_gpu()
+                    return False
+
+            def _apply(ok):
+                if ok:
+                    self._log("✅ 远程 GPU 可达 — 自动连接")
+                    try:
+                        self._connect_gpu()
+                    except Exception:
+                        pass
+                else:
+                    self._log("⚠️ 远程 GPU 连不上 (已关机/网络不通) — 使用本地引擎 (4060 容器)")
+                    self.gpu_mode = "local"
+                    try:
+                        self.radio_local.setChecked(True)
+                    except Exception:
+                        pass
+
+            def _worker():
+                res = _probe()  # 子线程执行网络探测 (不阻塞主线程)
+                _oneshot(self, 0, lambda: _apply(res))  # 回主线程更新 UI
+
+            _th.Thread(target=_worker, daemon=True).start()
         except Exception:
             pass
 
@@ -8817,6 +8831,19 @@ class InferencePanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        # 🐛 2026-08-22 老倪"折叠左栏就崩"根治: import grpc (inference_client) 在启动时
+        # 拉 grpc C++ 线程池(26线程) → cross-thread 析构 QObject → activateTimers
+        # NULL receiver SIGSEGV. 延迟到用户点"完整启动"时才 import (懒加载).
+        self.server = None
+        self.client = None
+        self._torch_ok = None  # None=未加载, True/False=已加载结果
+        self._import_error = ""
+        self._init_ui()
+
+    def _ensure_imported(self):
+        """懒加载推理服务模块 (import grpc 重量级, 避免启动时拉线程池)"""
+        if self._torch_ok is not None:
+            return self._torch_ok
         try:
             from inference_server import ZmaxInferenceServer
             from inference_client import ZmaxInferenceClient, DataSource
@@ -8828,8 +8855,7 @@ class InferencePanel(QWidget):
             self._import_error = str(e)
             self.server = None
             self.client = None
-        
-        self._init_ui()
+        return self._torch_ok
     
     def _init_ui(self):
         main = QVBoxLayout()
@@ -9057,6 +9083,9 @@ class InferencePanel(QWidget):
         self._log_client(f"📦 已选保存模型: {pm}")
     
     def _server_start(self):
+        if not self._ensure_imported():
+            self._log_client(f"❌ 推理服务模块加载失败: {self._import_error}")
+            return
         ckpt = self.ckpt_edit.text().strip()
         host = self.host_edit.text().strip()
         port = self.port_spin.value()
@@ -9068,6 +9097,8 @@ class InferencePanel(QWidget):
             self.stop_btn.setEnabled(True)
     
     def _server_stop(self):
+        if self.server is None:
+            return
         self.server.stop_server()
         self.server_status.setText("⚪ 未启动")
         self.server_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
@@ -9075,6 +9106,9 @@ class InferencePanel(QWidget):
         self.srv_stop.setEnabled(False)
     
     def _client_connect(self):
+        if not self._ensure_imported():
+            self._log_client(f"❌ 推理服务模块加载失败: {self._import_error}")
+            return
         addr = self.srv_addr_edit.text().strip()
         if self.client.connect(addr):
             self.client_status.setText("🟢 已连接")
@@ -9088,6 +9122,8 @@ class InferencePanel(QWidget):
             self._log_client(f"策略已发送")
     
     def _client_stream(self):
+        if self.client is None:
+            return
         src = self.source_combo.currentText()
         if "Dummy" in src:
             self.client.start_dummy_stream(fps=5, duration_sec=10)
@@ -9107,6 +9143,8 @@ class InferencePanel(QWidget):
         self._stats_timer.start(1000)
     
     def _client_stop(self):
+        if self.client is None:
+            return
         self.client.stop_stream()
         self.cli_stream.setEnabled(True)
         if hasattr(self, '_stats_timer'):
@@ -9117,6 +9155,9 @@ class InferencePanel(QWidget):
         self.stats_label.setText(f"帧:{s['frames_sent']} 动作:{s['actions']}")
     
     def _full_start(self):
+        if not self._ensure_imported():
+            self._log_client(f"❌ 推理服务模块加载失败: {self._import_error}")
+            return
         self._server_start()
         # 等待服务端就绪后自动连接
         from PyQt5.QtCore import QTimer
@@ -9124,6 +9165,8 @@ class InferencePanel(QWidget):
         _oneshot(self, 5000, self._client_stream)
     
     def _full_stop(self):
+        if not self._ensure_imported():
+            return
         self._client_stop()
         self.client.disconnect()
         self._server_stop()
@@ -9688,7 +9731,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.4.0 [W-01]")  # v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.5.0 [W-01]")  # v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
@@ -9773,7 +9816,7 @@ class StudioMainWindow(QMainWindow):
         repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.stack.addWidget(VersionSyncWidget(repo_path))
 
-        # 推理服务面板
+        # 推理服务面板 (grpc import 在 InferencePanel 内部懒加载, 见 _ensure_imported)
         self.stack.addWidget(InferencePanel())
 
         # Simulink 模式 (对标 Simulink 拖拽仿真 · 与 web comfyui.html 同步)
@@ -10014,16 +10057,22 @@ class StudioMainWindow(QMainWindow):
             import threading
 
             def _post():
+                # 🐛 2026-08-22 崩溃根治: worker 线程禁直接 showMessage — QStatusBar 内部
+                # QTimer 是主线程持有, 跨线程 showMessage → cross-thread 析构 QTimer →
+                # activateTimers NULL receiver SIGSEGV (gdb 实锤 #2 QStatusBar::showMessage
+                # #10 thread_run). 改 _oneshot 回主线程更新状态栏.
+                def _sb(msg):
+                    _oneshot(self, 0, lambda m=msg: self.statusBar().showMessage(m))
                 try:
                     import requests
                     url = "https://datadrive.world/api/comfy/task"
                     r = requests.post(url, json=flow, timeout=8)
                     if r.status_code == 200:
-                        self.statusBar().showMessage(f"🔄 Simulink 已同步到 web ({len(flow.get('nodes', []))}节点)")
+                        _sb(f"🔄 Simulink 已同步到 web ({len(flow.get('nodes', []))}节点)")
                     else:
-                        self.statusBar().showMessage(f"⚠️ web同步失败 HTTP {r.status_code}")
+                        _sb(f"⚠️ web同步失败 HTTP {r.status_code}")
                 except Exception as ex:
-                    self.statusBar().showMessage(f"⚠️ web同步不可用: {ex}")
+                    _sb(f"⚠️ web同步不可用: {ex}")
 
             threading.Thread(target=_post, daemon=True).start()
         except Exception:
@@ -10889,12 +10938,11 @@ def main():
     except Exception:
         pass
     app = QApplication(sys.argv)
-    # 🐛 2026-08-20 Segfault 根治: 断开 D-Bus session bus (阻止 10s 重连 timer)
-    try:
-        from PyQt5.QtDBus import QDBusConnection
-        QDBusConnection.disconnectFromBus("qt_default_session_bus")
-    except Exception:
-        pass
+    # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject).
+    # 🐛 2026-08-22 老倪"折叠左栏就崩"实锤修正: 原 disconnectFromBus 需 import QtDBus,
+    #   反而启动 QDBusConnectionManager 常驻线程, 其 qDBusRemoveTimeout timer 跨线程
+    #   析构 QObject (gdb killTimer 调用方含 qDBusRemoveTimeout × 7). 上面已设
+    #   DBUS_SESSION_BUS_ADDRESS=disabled:, 不再 import QtDBus → 该线程不启动.
     # 🐛 2026-08-20 Segfault 根治: 初始化 _oneshot 跨线程队列轮询器 (主线程 QTimer)
     # 消费 worker 线程 put 的任务, 不再用跨线程 emit 含 QObject 的信号
     global _oneshot_poller
@@ -10908,6 +10956,17 @@ def main():
     try:
         from PyQt5.QtGui import QPixmapCache
         QPixmapCache.setCacheLimit(0)
+    except Exception:
+        pass
+    # 🐛 2026-08-22 折叠左栏崩溃根治#3: QThreadPool 全局线程池动态 worker 反复创建/销毁
+    # (gdb 实锤固定栈地址 0x7fff66cdf6c0 = 线程池复用) → worker 线程析构 QObject →
+    # killTimer cross-thread SIGSEGV. 禁用动态扩展 (maxThreadCount=1 + 永不过期),
+    # 消除 worker 反复创建/销毁导致的跨线程析构竞态.
+    try:
+        from PyQt5.QtCore import QThreadPool
+        _qtp = QThreadPool.globalInstance()
+        _qtp.setMaxThreadCount(1)
+        _qtp.setExpiryTimeout(-1)
     except Exception:
         pass
     # 🐛 2026-08-18 崩溃根治#2: QToolTip 全局隐藏 timer (10s 周期孤儿, 无 parent) —
