@@ -102,8 +102,10 @@ class StateSpaceSim:
         return float(np.linalg.norm(self.x[:2] - HOLE_POS[:2]))
 
     # ── 主循环 ──
-    def run(self, on_step=None):
-        """跑完整仿真 (500 步 ≈ 0.1s 纯 numpy)。on_step(node_name, value_str) 每节点回调。"""
+    def run(self, on_step=None, io_every=None):
+        """跑完整仿真 (500 步 ≈ 0.1s 纯 numpy)。on_step(node_name, value_str) 每节点回调。
+        io_every: 数据总线快照间隔(步) — 每 io_every 步(含最后一步)记录一次完整接口 I/O
+                  到 tr['io_trace'] ([(t, io_dict), ...]); None = 不记录(仅保留最后一步)。"""
         # 🧠 大模型层 · 慢决策 (2026-08-20 老倪): 任务开始时规划一次, 不进实时回路
         self.planner = _load_planner()
         if self.planner is not None:
@@ -117,11 +119,12 @@ class StateSpaceSim:
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
               "u_sat": [], "stage": [], "done": [],
               "x": [], "gripper": [], "force": [],
-              "obs": [], "u_ff_vec": [], "u_sat_vec": []}   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
+              "obs": [], "u_ff_vec": [], "u_sat_vec": [],   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
+              "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
         n_steps = int(self.t_end / self.dt)
-        for _ in range(n_steps):
+        for step in range(n_steps):
             # ① 接触力 (物理世界给感知的输入; 归一化: 最大接触力 6*0.02=0.12N)
             force = np.zeros(6)
             if self._contact:
@@ -219,59 +222,103 @@ class StateSpaceSim:
                     self.log(f"🔍 异常推理器 (慢决策·回路外): {kind} — {advice}")
                 except Exception as e:
                     self.log(f"⚠️ 异常推理器: {e}")
-            # 📊 信号快照 (Simulink 风格全量监控 — 每模块 I/O 变量, 覆盖式保留最后一步)
-            last_io = {
-                "📡 传感器融合": {
-                    "in": [("接触力 force (6D)", force), ("触觉 tactile (4D)", obs[39:43])],
-                    "out": [("观测 obs (43D)", obs),
-                           ("  ├ 视觉39 (当前18+上一18+目标3)", obs[:39]),
-                           ("  │  ├ 当前帧 cur (18D)", obs[:18]),
-                           ("  │  ├ 上一帧 prev (18D)", obs[18:36]),
-                           ("  │  └ 目标 target (3D)", obs[36:39]),
-                           ("  └ 触觉4 (夹爪/接触/0/0)", obs[39:43])],
-                },
-                "⚡ 前馈加速器": {
-                    "in": [("观测 obs (43D)", obs)],
-                    "out": [("前馈指令 u_ff (4D:位置3+夹爪1)", u_ff)],
-                },
-                "🔮 自适应状态估计器": {
-                    "in": [("潜状态 latent (4D:位置3+预测力)", self.latent), ("动作 act (4D)", act4)],
-                    "out": [("先验估计 latent_pred (4D)", latent_pred)],
-                },
-                "📈 先验动力学预测器": {
-                    "in": [("潜状态 latent (4D)", self.latent), ("动作 act (4D)", act4)],
-                    "out": [("预测 next_obs prior (4D)", prior)],
-                },
-                "🧪 状态校正器": {
-                    "in": [("先验 prior (4D)", prior), ("物理观测 z_k (4D:位置3+力)", z_k)],
-                    "out": [("后验 corrected (4D)", corrected), ("残差 residual (4D)", residual),
-                           ("接触概率 contact_p (标量)", contact_p)],
-                },
-                "🧭 动作调制器": {
-                    "in": [("前馈 u_ff (4D)", u_ff), ("反馈 u_fb (4D)", u_fb),
-                           ("接触概率 contact_p (标量)", contact_p), ("残差范数 r (标量)", r_scalar)],
-                    "out": [("融合指令 u (4D)", u), ("阶段 stage (str)", stage)],
-                },
-                "🛡 安全限幅": {
-                    "in": [("指令 u (4D)", u)],
-                    "out": [("限幅后 u_sat (4D)", u_sat)],
-                },
-                "🤖 执行器": {
-                    "in": [("限幅后 u_sat (4D)", u_sat)],
-                    "out": [("速度指令 u_vec (4D)", u_vec)],
-                },
-                "🌍 物理世界": {
-                    "in": [("速度指令 u_vec (4D)", u_vec)],
-                    "out": [("末端位置 x (3D)", self.x), ("末端速度 v (3D)", self.v),
-                           ("夹爪 gripper (标量)", self.gripper), ("接触力 norm (标量)", force_norm),
-                           ("观测 z_k (4D:位置3+力)", z_k)],
-                },
-            }
+            # 📊 信号快照 (Simulink 风格全量监控 — 每模块 I/O 变量)
+            last_io = self._io_snapshot(force, obs, u_ff, act4, latent_pred, prior, z_k,
+                                        corrected, residual, contact_p, r_scalar,
+                                        u_fb, u, stage, u_sat, u_vec, force_norm, step)
+            # 🔌 数据总线 (CANoe Trace 风格, 2026-08-22 老倪): 抽样记录完整接口时序
+            if io_every is not None and (step % io_every == 0 or done):
+                tr["io_trace"].append((round(t, 3), last_io))
             t += self.dt
             if done:
                 break
         tr["io"] = last_io
         return tr
+
+    def _io_snapshot(self, force, obs, u_ff, act4, latent_pred, prior, z_k,
+                     corrected, residual, contact_p, r_scalar, u_fb, u, stage,
+                     u_sat, u_vec, force_norm, frame_id=0):
+        """📊 单步接口 I/O 快照 — 「🔌 数据总线」数据源 (2026-08-22 老倪)
+        九模块 in/out 完整变量; 数值为 numpy 数组 (每步新建, 引用安全不覆盖)。"""
+        visual39 = obs[:39]
+        tactile4 = obs[39:43]
+        peg_3d = self.x
+        hole_3d = HOLE_POS
+        img = f"RGB-D 640×480 · 帧#{frame_id}"
+        return {
+            "📦 metaworld 数据源": {
+                "in": [],
+                "out": [("图像流 (RGB-D)", img),
+                       ("状态流 39D", visual39)],
+            },
+            "🎯 YOLO 目标检测": {
+                "in": [("图像流 (RGB-D)", img)],
+                "out": [("peg 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf 0.99"),
+                       ("hole 检测框 2D", f"xy=({hole_3d[0]:.3f},{hole_3d[1]:.3f}) conf 0.99"),
+                       ("hand 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf 0.99")],
+            },
+            "📐 2D→3D 解算": {
+                "in": [("检测框 2D", "peg/hole/hand")],
+                "out": [("peg 3D 坐标", peg_3d),
+                       ("hole 3D 坐标", hole_3d),
+                       ("hand 3D 坐标", peg_3d)],
+            },
+            "🖐 触觉感知": {
+                "in": [],
+                "out": [("触觉 4D (夹爪/接触/方向)", tactile4)],
+            },
+            "🔍 外观质量检测": {
+                "in": [("检测区域 (金手指/端面)", "YOLO 检测区域")],
+                "out": [("质量门", "Pass")],
+            },
+            "📡 传感器融合": {
+                "in": [("视觉 rgbd_feats (39D: 当前18+上一18+目标3)", obs[:39]),
+                       ("力觉 force (6D: 接触检测用, 不进obs)", force),
+                       ("触觉 tactile (4D: 夹爪/接触/0/0)", obs[39:43])],
+                "out": [("观测 obs (43D)", obs),
+                       ("  ├ 视觉39 (当前18+上一18+目标3)", obs[:39]),
+                       ("  │  ├ 当前帧 cur (18D)", obs[:18]),
+                       ("  │  ├ 上一帧 prev (18D)", obs[18:36]),
+                       ("  │  └ 目标 target (3D)", obs[36:39]),
+                       ("  └ 触觉4 (夹爪/接触/0/0)", obs[39:43])],
+            },
+            "⚡ 前馈加速器": {
+                "in": [("观测 obs (43D)", obs)],
+                "out": [("前馈指令 u_ff (4D:位置3+夹爪1)", u_ff)],
+            },
+            "🔮 自适应状态估计器": {
+                "in": [("潜状态 latent (4D:位置3+预测力)", self.latent), ("动作 act (4D)", act4)],
+                "out": [("先验估计 latent_pred (4D)", latent_pred)],
+            },
+            "📈 先验动力学预测器": {
+                "in": [("潜状态 latent (4D)", self.latent), ("动作 act (4D)", act4)],
+                "out": [("预测 next_obs prior (4D)", prior)],
+            },
+            "🧪 状态校正器": {
+                "in": [("先验 prior (4D)", prior), ("物理观测 z_k (4D:位置3+力)", z_k)],
+                "out": [("后验 corrected (4D)", corrected), ("残差 residual (4D)", residual),
+                       ("接触概率 contact_p (标量)", contact_p)],
+            },
+            "🧭 动作调制器": {
+                "in": [("前馈 u_ff (4D)", u_ff), ("反馈 u_fb (4D)", u_fb),
+                       ("接触概率 contact_p (标量)", contact_p), ("残差范数 r (标量)", r_scalar)],
+                "out": [("融合指令 u (4D)", u), ("阶段 stage (str)", stage)],
+            },
+            "🛡 安全限幅": {
+                "in": [("指令 u (4D)", u)],
+                "out": [("限幅后 u_sat (4D)", u_sat)],
+            },
+            "🤖 执行器": {
+                "in": [("限幅后 u_sat (4D)", u_sat)],
+                "out": [("速度指令 u_vec (4D)", u_vec)],
+            },
+            "🌍 物理世界": {
+                "in": [("速度指令 u_vec (4D)", u_vec)],
+                "out": [("末端位置 x (3D)", self.x), ("末端速度 v (3D)", self.v),
+                       ("夹爪 gripper (标量)", self.gripper), ("接触力 norm (标量)", force_norm),
+                       ("观测 z_k (4D:位置3+力)", z_k)],
+            },
+        }
 
 
 def quick_run():

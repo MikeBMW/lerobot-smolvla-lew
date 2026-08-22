@@ -52,6 +52,11 @@ DH = 84  # 节点高度 (与 web 一致)
 # 键 = state_space_sim.last_io 的模块名, 值 = state_space_obs.json 节点的 name
 # (节点 id 加载时被重生成, name 稳定; 安全限幅/执行器 last_io 与画布 name 有前缀差异)
 SS_MODULE_TO_NAME = {
+    "📦 metaworld 数据源": "📦 metaworld 数据源",
+    "🎯 YOLO 目标检测": "🎯 YOLO 目标检测",
+    "📐 2D→3D 解算": "📐 2D→3D 解算",
+    "🖐 触觉感知": "🖐 触觉感知",
+    "🔍 外观质量检测": "🔍 外观质量检测",
     "📡 传感器融合": "📡 传感器融合",
     "⚡ 前馈加速器": "⚡ 前馈加速器",
     "🔮 自适应状态估计器": "🔮 自适应状态估计器",
@@ -9580,7 +9585,7 @@ class SimulinkModule(QWidget):
                     self._log("🧠 前馈加速器已加载训练模型 (左脑 MLP 39D→4D) 替换手设参数")
                 except Exception as _e:
                     self._log(f"⚠️ 训练模型加载失败, 回退手设参数: {_e}")
-            tr = sim.run()   # 纯 numpy, 500 步 <0.1s
+            tr = sim.run(io_every=25)   # 纯 numpy, 500 步 <0.1s; io_every=25 记录数据总线快照
         except Exception as e:
             import traceback
             self._log(f"⚠️ 仿真引擎异常: {e}")
@@ -9600,6 +9605,14 @@ class SimulinkModule(QWidget):
             it = self._items.get(n["id"])
             if it:
                 it.update()
+        # 🔌 数据总线: 运行开始清空表格, 准备逐帧动态追加 (2026-08-22 老倪)
+        try:
+            _mt = getattr(self, "model_tree", None)
+            if _mt is not None and getattr(_mt, "bus", None) is not None \
+                    and _mt.cmb_view.currentIndex() == 9:
+                _mt.bus.begin_stream()
+        except Exception:
+            pass
         self._ss_idx = 0                 # 播放步 (节点序列)
         self._ss_round = 0               # 已播放轮数 (一轮 = 全部节点)
         self.btn_run.setText("⏳ 仿真中…")
@@ -9611,11 +9624,12 @@ class SimulinkModule(QWidget):
         self._log("▶ 仿真开始 · 物理世界: 末端 (0.10, -0.06, 0.12) → 孔位 (0.25, 0, 0.05) · 光模块插拔")
 
     def _ss_tick(self):
-        """播放一帧: 全部节点闪 running(青) → 上一帧 success(绿); 每轮打印抽样真实数值"""
+        """播放一帧: 节点闪 running(青) → success(绿); 数据总线逐帧追加接口数据流 (2026-08-22)"""
         try:
             tr = self._ss_tr
-            n_rounds = min(len(tr["t"]), 20)   # 抽样 20 个时间快照 (3s 播完)
-            # 当前快照索引 (均匀抽样引擎时间序列)
+            io_trace = tr.get("io_trace", [])
+            n_rounds = len(io_trace) if io_trace else min(len(tr["t"]), 20)
+            # 画布节点动画索引 (均匀抽样引擎时间序列)
             idx = int(self._ss_round / max(1, n_rounds - 1) * (len(tr["t"]) - 1)) if n_rounds > 1 else 0
             # 上一帧 → success
             for n in self._ss_order:
@@ -9635,6 +9649,16 @@ class SimulinkModule(QWidget):
             self._log(f"  ⏱ t={tr['t'][idx]:5.2f}s · 距离孔位 {tr['dist'][idx]:.4f}m · "
                       f"前馈|u_ff|={tr['u_ff'][idx]:.3f} · 残差 {tr['residual'][idx]:.4f} · "
                       f"接触概率 {tr['contact_p'][idx]:.2f} · 指令|u|={tr['u_sat'][idx]:.3f} · {stage}")
+            # 🔌 数据总线: 逐帧追加当前快照的接口数据流 (2026-08-22 老倪: 动态生成)
+            if io_trace and self._ss_round < len(io_trace):
+                try:
+                    _mt = getattr(self, "model_tree", None)
+                    if _mt is not None and getattr(_mt, "bus", None) is not None \
+                            and _mt.cmb_view.currentIndex() == 9:
+                        _t_snap, _io = io_trace[self._ss_round]
+                        _mt.bus.feed(_t_snap, _io)
+                except Exception:
+                    pass
             self._ss_round += 1
             if self._ss_round >= n_rounds:
                 self._ss_finish()
@@ -9672,8 +9696,11 @@ class SimulinkModule(QWidget):
         # 🎛 刷新右侧变量监控 (2026-08-20 老倪: 仿真完成自动出全量 I/O 变量)
         try:
             _mt = getattr(self, "model_tree", None)
-            if _mt is not None and _mt.cmb_view.currentIndex() == 3:
-                _mt._show_state_space()
+            if _mt is not None:
+                _idx = _mt.cmb_view.currentIndex()
+                if _idx == 3:
+                    _mt._show_state_space()
+                # 🔌 数据总线 (index 9) 已在 _ss_tick 逐帧 feed, 无需额外刷新
         except Exception:
             pass
         # 🎥 2026-08-18 老倪: 仿真完成自动输出操作视频 → 后台渲染 mp4 + 传 ECS + 打印链接

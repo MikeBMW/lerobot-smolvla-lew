@@ -17,8 +17,10 @@ from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
-                             QScrollArea, QFileDialog)
-from PyQt5.QtGui import QPainter, QColor, QPen, QFont
+                             QScrollArea, QFileDialog,
+                             QTableWidget, QTableWidgetItem, QHeaderView,
+                             QMenu, QDialog)
+from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QImage, QPixmap
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2441,6 +2443,263 @@ class RunSummaryWidget(QWidget):
 
 
 # ════════════════════════════════════════════════════════════════
+# 🔌 数据总线 (CANoe Trace 风格, 2026-08-22 老倪)
+# 状态空间六层节点间流动的所有接口数据, 时间顺序逐行显示:
+#   时间 | 通道(模块) | 接口(信号) | 方向(▶IN/◀OUT) | 数据
+# 双模: 🔁时间顺序(每次传输一行=数据流) / 📌固定格式(每接口一行, 值=最新快照)
+# ════════════════════════════════════════════════════════════════
+class DataBusTrace(QWidget):
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self._fix_map = {}   # 固定格式: (mod, dirn, name) -> 行号
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(4)
+
+        # 控制条: 双模切换 + 计数
+        bar = QHBoxLayout()
+        bar.setSpacing(4)
+        self.cmb_mode = QComboBox()
+        self.cmb_mode.addItems(["🔁 时间顺序", "📌 固定格式"])
+        self.cmb_mode.setToolTip("时间顺序=每次传输一行(数据流); 固定格式=每接口一行(值刷新)")
+        self.cmb_mode.currentIndexChanged.connect(lambda _i: self.refresh())
+        bar.addWidget(self.cmb_mode, 1)
+        self.lbl_cnt = QLabel("")
+        self.lbl_cnt.setStyleSheet("color:#9aa4b2;font-size:15px;background:transparent;border:none;")
+        bar.addWidget(self.lbl_cnt)
+        lay.addLayout(bar)
+
+        # CANoe Trace 表格
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["⏱ 时间", "🔗 通道", "📋 接口", "⬅➡ 方向", "📊 数据"])
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(4, QHeaderView.Interactive)   # 数据列可拖宽看完整向量
+        self.table.setColumnWidth(4, 640)
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(34)   # 🐛 2026-08-22 老倪: 字体17px, 行高须够否则裁字
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setWordWrap(False)
+        self.table.setStyleSheet(
+            "QTableWidget{background:#0d1117;color:#e6edf3;border:1px solid #30363d;"
+            "gridline-color:#21262d;font-size:17px;font-family:Consolas,monospace;}"
+            "QTableWidget::item{padding:2px 4px;}"
+            "QTableWidget::item:selected{background:#1f6feb;color:#ffffff;}"
+            "QHeaderView::section{background:#161b22;color:#9aa4b2;border:none;"
+            "border-bottom:1px solid #30363d;padding:4px;font-size:15px;font-weight:bold;}")
+        self.table.currentCellChanged.connect(self._on_select)
+        # 🎨 右键视觉信号 → 渲染 RGB-D 图片 (2026-08-22 老倪)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_context_menu)
+        lay.addWidget(self.table, 1)
+
+    _IN_C = QColor("#58a6ff")
+    _OUT_C = QColor("#3fb950")
+
+    def _flush(self, rows, note):
+        """一次性填充 rows (每行 (t, mod, name, dirn, val)) — refresh/append 复用"""
+        self.table.clearSpans()
+        self.table.setRowCount(len(rows))
+        for r, (t, mod, name, dirn, val) in enumerate(rows):
+            c0 = QTableWidgetItem(f"{t:.2f}"); c0.setData(Qt.UserRole, t)
+            c0.setForeground(QColor("#9aa4b2"))
+            c1 = QTableWidgetItem(mod)
+            c1.setForeground(QColor("#c9d1d9"))
+            c2 = QTableWidgetItem(name)
+            c2.setForeground(QColor("#c9d1d9"))
+            c3 = QTableWidgetItem("▶IN" if dirn == "in" else "◀OUT")
+            c3.setForeground(self._IN_C if dirn == "in" else self._OUT_C)
+            c4 = QTableWidgetItem(_sig_val(val))
+            c4.setForeground(QColor("#e6edf3"))
+            self.table.setItem(r, 0, c0)
+            self.table.setItem(r, 1, c1)
+            self.table.setItem(r, 2, c2)
+            self.table.setItem(r, 3, c3)
+            self.table.setItem(r, 4, c4)
+        self.lbl_cnt.setText(note)
+
+    def refresh(self):
+        """完整重建 (切视图时加载完整时序 / 固定格式)"""
+        tr = getattr(self.module, "_ss_tr", None)
+        if not tr or not tr.get("io_trace"):
+            self._flush([], "")
+            self.table.clearSpans()
+            self.table.setRowCount(1)
+            self.table.setSpan(0, 0, 1, 5)
+            it = QTableWidgetItem("⚠️ 暂无数据 — 点「▶ 运行」跑一次状态空间仿真后自动出数据总线")
+            it.setForeground(QColor("#9aa4b2"))
+            self.table.setItem(0, 0, it)
+            return
+        time_order = self.cmb_mode.currentIndex() == 0
+        rows = []
+        if time_order:
+            for t, io in tr["io_trace"]:
+                for mod, ports in io.items():
+                    for dirn in ("in", "out"):
+                        for name, val in ports.get(dirn, []):
+                            rows.append((t, mod, name, dirn, val))
+            note = f"{len(rows)} 条接口 · {len(tr['io_trace'])} 个快照"
+        else:
+            t, io = tr["io_trace"][-1]
+            for mod, ports in io.items():
+                for dirn in ("in", "out"):
+                    for name, val in ports.get(dirn, []):
+                        rows.append((t, mod, name, dirn, val))
+            note = f"{len(rows)} 条接口 (最新快照 t={t:.2f}s)"
+        self._flush(rows, note)
+        self.table.scrollToBottom()
+
+    def begin_stream(self):
+        """▶ 运行开始: 清空, 按当前模式准备动态播放 (2026-08-22 老倪)"""
+        self.table.clearSpans()
+        self.table.setRowCount(0)
+        self._fix_map = {}
+        self.lbl_cnt.setText("⏳ 等待数据流…")
+
+    def append_snapshot(self, t, io):
+        """动态追加一个快照的接口行 (时间顺序模式, 不清空) — 运行中逐帧滚动"""
+        if self.cmb_mode.currentIndex() != 0:
+            return   # 固定格式模式不走动态追加
+        rows = []
+        for mod, ports in io.items():
+            for dirn in ("in", "out"):
+                for name, val in ports.get(dirn, []):
+                    rows.append((t, mod, name, dirn, val))
+        start = self.table.rowCount()
+        self.table.clearSpans()
+        self.table.setRowCount(start + len(rows))
+        for i, (t_, mod, name, dirn, val) in enumerate(rows):
+            r = start + i
+            c0 = QTableWidgetItem(f"{t_:.2f}"); c0.setData(Qt.UserRole, t_)
+            c0.setForeground(QColor("#9aa4b2"))
+            c1 = QTableWidgetItem(mod)
+            c1.setForeground(QColor("#c9d1d9"))
+            c2 = QTableWidgetItem(name)
+            c2.setForeground(QColor("#c9d1d9"))
+            c3 = QTableWidgetItem("▶IN" if dirn == "in" else "◀OUT")
+            c3.setForeground(self._IN_C if dirn == "in" else self._OUT_C)
+            c4 = QTableWidgetItem(_sig_val(val))
+            c4.setForeground(QColor("#e6edf3"))
+            self.table.setItem(r, 0, c0)
+            self.table.setItem(r, 1, c1)
+            self.table.setItem(r, 2, c2)
+            self.table.setItem(r, 3, c3)
+            self.table.setItem(r, 4, c4)
+        self.lbl_cnt.setText(f"{self.table.rowCount()} 条接口 · t={t:.2f}s")
+        self.table.scrollToBottom()
+
+    def update_snapshot(self, t, io):
+        """固定格式: 信号固定行不变, 时间/数据实时刷新 (CANoe 固定格式显示, 2026-08-22)"""
+        if self.cmb_mode.currentIndex() != 1:
+            return
+        # 第一次: 建立固定行 (每接口一行, 只含通道/接口/方向)
+        if not self._fix_map:
+            rows = []
+            for mod, ports in io.items():
+                for dirn in ("in", "out"):
+                    for name, val in ports.get(dirn, []):
+                        rows.append((mod, name, dirn))
+            self.table.clearSpans()
+            self.table.setRowCount(len(rows))
+            for r, (mod, name, dirn) in enumerate(rows):
+                c1 = QTableWidgetItem(mod)
+                c1.setForeground(QColor("#c9d1d9"))
+                c2 = QTableWidgetItem(name)
+                c2.setForeground(QColor("#c9d1d9"))
+                c3 = QTableWidgetItem("▶IN" if dirn == "in" else "◀OUT")
+                c3.setForeground(self._IN_C if dirn == "in" else self._OUT_C)
+                self.table.setItem(r, 1, c1)
+                self.table.setItem(r, 2, c2)
+                self.table.setItem(r, 3, c3)
+            self._fix_map = {(mod, dirn, name): i for i, (mod, name, dirn) in enumerate(rows)}
+        # 每帧刷新: 时间列 + 数据列 (行位置不变, 值随时间变)
+        for mod, ports in io.items():
+            for dirn in ("in", "out"):
+                for name, val in ports.get(dirn, []):
+                    r = self._fix_map.get((mod, dirn, name))
+                    if r is None:
+                        continue
+                    c0 = QTableWidgetItem(f"{t:.2f}"); c0.setData(Qt.UserRole, t)
+                    c0.setForeground(QColor("#9aa4b2"))
+                    self.table.setItem(r, 0, c0)
+                    c4 = QTableWidgetItem(_sig_val(val))
+                    c4.setForeground(QColor("#e6edf3"))
+                    self.table.setItem(r, 4, c4)
+        self.lbl_cnt.setText(f"{self.table.rowCount()} 个信号 · t={t:.2f}s")
+
+    def feed(self, t, io):
+        """运行中喂入一个快照: 时间顺序=追加行 / 固定格式=刷新固定行"""
+        if self.cmb_mode.currentIndex() == 0:
+            self.append_snapshot(t, io)
+        else:
+            self.update_snapshot(t, io)
+
+    def _on_context_menu(self, pos):
+        """🎨 右键视觉信号 → 渲染 RGB-D 俯视图 (2026-08-22 老倪)"""
+        row = self.table.rowAt(pos.y())
+        if row < 0:
+            return
+        name_item = self.table.item(row, 2)
+        if name_item is None:
+            return
+        name = name_item.text()
+        if not any(k in name for k in ("RGB-D", "图像流", "视觉", "rgbd", "状态流", "坐标", "检测框")):
+            return
+        menu = QMenu(self)
+        act = menu.addAction("🎨 渲染 RGB-D 图片")
+        act.triggered.connect(lambda checked=False, r=row: self._render_rgbd(r))
+        menu.exec_(self.table.viewport().mapToGlobal(pos))
+
+    def _render_rgbd(self, row):
+        """渲染该行对应时刻的 RGB-D 俯视图 → 弹窗显示"""
+        tr = getattr(self.module, "_ss_tr", None)
+        if not tr or not tr.get("x"):
+            return
+        t_item = self.table.item(row, 0)
+        t = t_item.data(Qt.UserRole) if t_item is not None else None
+        import numpy as np
+        t_arr = np.asarray(tr["t"])
+        idx = int(np.argmin(np.abs(t_arr - t))) if t is not None else len(t_arr) - 1
+        try:
+            img = render_rgbd_frame(tr, idx)
+        except Exception as ex:
+            QMessageBox.warning(self, "渲染失败", str(ex))
+            return
+        img = img.convert("RGB")
+        data = img.tobytes("raw", "RGB")
+        qimg = QImage(data, img.width, img.height, img.width * 3, QImage.Format_RGB888)
+        pm = QPixmap.fromImage(qimg)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"🎨 RGB-D 俯视图 · t={tr['t'][idx]:.2f}s")
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel()
+        lbl.setPixmap(pm)
+        lay.addWidget(lbl)
+        dlg.setMinimumSize(pm.width() + 20, pm.height() + 20)
+        dlg.exec_()
+
+    def _on_select(self, row, col):
+        """选中行 → 高亮画布对应连线 (模块名 + 方向)"""
+        if row < 0:
+            return
+        hl = getattr(self.module, "highlight_ss_links", None)
+        if hl is None:
+            return
+        mod_it = self.table.item(row, 1)
+        dir_it = self.table.item(row, 3)
+        if mod_it is None or dir_it is None:
+            return
+        dirn = "in" if "IN" in dir_it.text() else "out"
+        hl(mod_it.text(), dirn)
+
+
+# ════════════════════════════════════════════════════════════════
 # 右侧数据字典面板
 # ════════════════════════════════════════════════════════════════
 class ModelTreeDock(QWidget):
@@ -2466,7 +2725,8 @@ class ModelTreeDock(QWidget):
         self.cmb_view = QComboBox()
         self.cmb_view.addItems(["📚 数据字典", "⚙️ 参数标定", "🧮 数学分析",
                                 "🎛 状态空间设计", "📐 现场标定", "📊 性能指标",
-                                "🎯 场景状态", "🚀 运行汇总", "📋 工程需求"])
+                                "🎯 场景状态", "🚀 运行汇总", "📋 工程需求",
+                                "🔌 数据总线"])
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         hdr.addWidget(self.cmb_view, 1)
         # 🧩 导出能力库 Excel (2026-08-19 老倪: feature 导出 → datadrive.world 可下载)
@@ -2563,6 +2823,10 @@ class ModelTreeDock(QWidget):
         # 🎯 选中变量 → 高亮画布对应连线 (2026-08-20 老倪: 变量↔连线对应)
         self.ss_tree.currentItemChanged.connect(self._on_ss_select)
         lay.addWidget(self.ss_tree, 1)
+        # 🔌 数据总线 (CANoe Trace 风格, 2026-08-22 老倪: 状态空间接口数据时间顺序监视)
+        self.bus = DataBusTrace(module)
+        self.bus.setVisible(False)
+        lay.addWidget(self.bus, 1)
         # 🎯 2026-08-15: 极点配置写回后刷新树 (树创建后才挂引用)
         self.pole_place.tree = self.tree
         # 📐 2026-08-15: 现场标定写回后刷新树
@@ -2677,10 +2941,12 @@ class ModelTreeDock(QWidget):
         scene = idx == 6          # 🎯 场景状态
         rsum = idx == 7           # 🚀 运行汇总
         eng = idx == 8            # 📋 工程需求
+        bus = idx == 9            # 🔌 数据总线
         show = math or ss
         self.tree.setVisible(not show and not field and not perf and not scene
-                             and not rsum and not eng)
+                             and not rsum and not eng and not bus)
         self.ss_tree.setVisible(ss)
+        self.bus.setVisible(bus)
         self.lbl_math.setVisible(math)
         self.plot.setVisible(math)
         self.response.setVisible(math)
@@ -2704,6 +2970,8 @@ class ModelTreeDock(QWidget):
         self.eng_req.setVisible(eng)
         if ss:
             self._show_state_space()
+        elif bus:
+            self.bus.refresh()
         elif math:
             self._show_math()
         else:
@@ -2990,6 +3258,122 @@ def _sig_shape(v):
     if a.ndim == 0:
         return "标量"
     return str(tuple(a.shape))
+
+
+# ═══ 🎨 RGB-D 俯视图渲染 (2026-08-22 老倪: 数据总线右键 → 渲染成图片) ═══
+_RGBD_FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+]
+
+
+def _rgbd_font(size, mono=False):
+    from PIL import ImageFont
+    mono_path = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    cands = [mono_path] if mono else _RGBD_FONT_CANDIDATES
+    for f in cands:
+        if os.path.isfile(f):
+            try:
+                return ImageFont.truetype(f, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
+def _ss_project(pt, cam, R, f, W, H, cx, cy):
+    """透视投影 3D→2D, 返回 (u, v, depth) 或 (None,None,None)"""
+    import numpy as np
+    pc = R @ (np.asarray(pt, dtype=float) - np.asarray(cam, dtype=float))
+    z = -pc[2]
+    if z < 0.05:
+        return None, None, None
+    u = f * pc[0] / z + cx
+    v = -f * pc[1] / z + cy
+    return u, v, z
+
+
+def _ss_draw_box(d, cam, R, f, W, H, cx, cy, center, size, fill):
+    """透视投影画 3D 长方体 (画家算法: 远面先画)"""
+    x0, y0, z0 = center
+    sx, sy, sz = size
+    verts = [(x0 + dx * sx / 2, y0 + dy * sy / 2, z0 + dz * sz / 2)
+             for dx in (-1, 1) for dy in (-1, 1) for dz in (-1, 1)]
+    faces = [(0, 1, 3, 2), (4, 5, 7, 6), (0, 1, 5, 4),
+             (2, 3, 7, 6), (0, 2, 6, 4), (1, 3, 7, 5)]
+    proj = [_ss_project(v, cam, R, f, W, H, cx, cy) for v in verts]
+    fl = []
+    for fc in faces:
+        pts = [proj[i] for i in fc]
+        if any(p[0] is None for p in pts):
+            continue
+        avgz = sum(p[2] for p in pts) / 4.0
+        fl.append((avgz, [(p[0], p[1]) for p in pts]))
+    fl.sort(key=lambda a: -a[0])
+    for _, pts in fl:
+        d.polygon(pts, fill=fill)
+
+
+def render_rgbd_frame(tr, idx):
+    """渲染 RGB-D 图像: 3D 透视场景 (光模块插拔) + Depth 深度图 并排 (2026-08-22 老倪)"""
+    from PIL import Image, ImageDraw
+    import numpy as np
+    from state_space_sim import HOLE_POS
+    x = np.asarray(tr["x"])[idx]
+    g = float(tr["gripper"][idx])
+    stage = tr["stage"][idx].replace("阶段 ", "")
+    t = tr["t"][idx]
+    W = H = 500
+    # 相机 (斜上方偏左前, 看向工作区)
+    cam = (0.05, -0.55, 0.42)
+    target = (0.22, 0.0, 0.03)
+    up = (0, 0, 1)
+    f = 520
+    cx, cy = W / 2.0, H / 2.0
+    fwd = np.array(target) - np.array(cam)
+    fwd = fwd / np.linalg.norm(fwd)
+    right = np.cross(fwd, up)
+    right = right / np.linalg.norm(right)
+    up2 = np.cross(right, fwd)
+    R = np.array([right, up2, -fwd])
+
+    # ── RGB 图 (3D 透视场景) ──
+    img = Image.new("RGB", (W, H), "#0d1117")
+    d = ImageDraw.Draw(img)
+    # 工作台平面 (z=0)
+    corners = [(-0.05, -0.20, 0.0), (0.42, -0.20, 0.0), (0.42, 0.20, 0.0), (-0.05, 0.20, 0.0)]
+    pc = [_ss_project(c, cam, R, f, W, H, cx, cy) for c in corners]
+    if all(p[0] is not None for p in pc):
+        d.polygon([(p[0], p[1]) for p in pc], fill="#2a3038")
+    # 插座 (孔位, 深红座)
+    _ss_draw_box(d, cam, R, f, W, H, cx, cy, (HOLE_POS[0], HOLE_POS[1], 0.02), (0.08, 0.08, 0.04), "#7a2520")
+    # 光模块 peg (金色金属壳, 随末端移动)
+    _ss_draw_box(d, cam, R, f, W, H, cx, cy, (x[0], x[1], x[2]), (0.055, 0.032, 0.032), "#c9a227")
+    # 末端夹爪 (蓝色, 在光模块上方抓着)
+    _ss_draw_box(d, cam, R, f, W, H, cx, cy, (x[0], x[1], x[2] + 0.038), (0.065, 0.045, 0.02), "#3d7dd8")
+    # 标签
+    f_ = _rgbd_font(15)
+    d.text((12, 8), f"t={t:.2f}s · {stage}", font=f_, fill="#c9d1d9")
+
+    # ── Depth 图 (灰度深度: 近亮远暗) ──
+    dep = Image.new("L", (W, H), 18)
+    dd = ImageDraw.Draw(dep)
+    if all(p[0] is not None for p in pc):
+        dd.polygon([(p[0], p[1]) for p in pc], fill=40)
+    _ss_draw_box(dd, cam, R, f, W, H, cx, cy, (HOLE_POS[0], HOLE_POS[1], 0.02), (0.08, 0.08, 0.04), 150)
+    _ss_draw_box(dd, cam, R, f, W, H, cx, cy, (x[0], x[1], x[2]), (0.055, 0.032, 0.032), 220)
+    _ss_draw_box(dd, cam, R, f, W, H, cx, cy, (x[0], x[1], x[2] + 0.038), (0.065, 0.045, 0.02), 245)
+    dd.text((12, 8), "Depth", font=f_, fill=180)
+    dd.text((12, H - 26), f"peg z={x[2]:.3f}m", font=f_, fill=160)
+
+    # ── 并排合成 RGB + Depth ──
+    gap = 12
+    out = Image.new("RGB", (W * 2 + gap, H), "#0d1117")
+    out.paste(img, (0, 0))
+    out.paste(dep.convert("RGB"), (W + gap, 0))
+    return out
 
 
 def _sig_val(v):
