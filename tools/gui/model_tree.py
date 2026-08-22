@@ -2641,7 +2641,7 @@ class DataBusTrace(QWidget):
             self.update_snapshot(t, io)
 
     def _on_context_menu(self, pos):
-        """🎨 右键视觉信号 → 渲染 RGB-D 俯视图 (2026-08-22 老倪)"""
+        """🎨 右键视觉信号 → 渲染 RGB-D 多视角 (2026-08-22/23 老倪)"""
         row = self.table.rowAt(pos.y())
         if row < 0:
             return
@@ -2652,12 +2652,14 @@ class DataBusTrace(QWidget):
         if not any(k in name for k in ("RGB-D", "图像流", "视觉", "rgbd", "状态流", "坐标", "检测框")):
             return
         menu = QMenu(self)
-        act = menu.addAction("🎨 渲染 RGB-D 图片")
-        act.triggered.connect(lambda checked=False, r=row: self._render_rgbd(r))
+        render_menu = menu.addMenu("🎨 渲染 RGB-D 图片 (选相机视角)")
+        for cam, label in _MW_CAMERAS:
+            act = render_menu.addAction(label)
+            act.triggered.connect(lambda checked=False, r=row, c=cam: self._render_rgbd(r, c))
         menu.exec_(self.table.viewport().mapToGlobal(pos))
 
-    def _render_rgbd(self, row):
-        """渲染该行对应时刻的 RGB-D 俯视图 → 弹窗显示"""
+    def _render_rgbd(self, row, camera_name="corner2"):
+        """渲染该行对应时刻的 RGB-D (真实 metaworld 视角) → 弹窗显示"""
         tr = getattr(self.module, "_ss_tr", None)
         if not tr or not tr.get("x"):
             return
@@ -2667,7 +2669,7 @@ class DataBusTrace(QWidget):
         t_arr = np.asarray(tr["t"])
         idx = int(np.argmin(np.abs(t_arr - t))) if t is not None else len(t_arr) - 1
         try:
-            img = render_rgbd_frame(tr, idx)
+            img = render_rgbd_frame(tr, idx, camera_name)
         except Exception as ex:
             QMessageBox.warning(self, "渲染失败", str(ex))
             return
@@ -2676,7 +2678,7 @@ class DataBusTrace(QWidget):
         qimg = QImage(data, img.width, img.height, img.width * 3, QImage.Format_RGB888)
         pm = QPixmap.fromImage(qimg)
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"🎨 RGB-D 俯视图 · t={tr['t'][idx]:.2f}s")
+        dlg.setWindowTitle(f"🎨 RGB-D · {camera_name} · t={tr['t'][idx]:.2f}s")
         lay = QVBoxLayout(dlg)
         lbl = QLabel()
         lbl.setPixmap(pm)
@@ -3316,12 +3318,92 @@ def _ss_draw_box(d, cam, R, f, W, H, cx, cy, center, size, fill):
         d.polygon(pts, fill=fill)
 
 
-def render_rgbd_frame(tr, idx):
-    """渲染 RGB-D 图像: 3D 透视场景 (光模块插拔) + Depth 深度图 并排 (2026-08-22 老倪)"""
+_MW_RENDER_CACHE = {}  # {camera_name: {"frames":..,"dists":..}} 按相机视角懒加载缓存
+
+# 真实数据有的 7 个相机视角 (2026-08-23 老倪: 右键要能选不同视角)
+_MW_CAMERAS = [
+    ("corner2", "corner2 角落 · 模型训练视角"),
+    ("gripperPOV", "gripperPOV 夹爪第一视角(腕部)"),
+    ("behindGripper", "behindGripper 夹爪后方"),
+    ("topview", "topview 俯视"),
+    ("corner", "corner 角落"),
+    ("corner3", "corner3 角落3"),
+    ("corner4", "corner4 角落4"),
+]
+
+
+def _get_metaworld_view(camera_name="corner2"):
+    """懒加载指定相机视角的 metaworld 环境 + 官方专家策略, 预渲染真实插拔轨迹帧 (2026-08-23 老倪: 真实RGB+多视角)"""
+    global _MW_RENDER_CACHE
+    if camera_name in _MW_RENDER_CACHE:
+        return _MW_RENDER_CACHE[camera_name] or None
+    cache = {}
+    try:
+        import os
+        os.environ.setdefault("MUJOCO_GL", "egl")
+        os.environ.setdefault("DISPLAY", ":0")
+        import numpy as np
+        import metaworld as mw
+        from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
+        mt1 = mw.MT1("peg-insert-side-v3")
+        env = mt1.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name=camera_name)
+        env.set_task(mt1.train_tasks[0])
+        env._freeze_rand_vec = False
+        pol = SawyerPegInsertionSideV3Policy()
+        pid = env.model.site("pegGrasp").id
+        hid = env.model.site("hole").id
+        obs, _info = env.reset(seed=1)
+        obs = np.asarray(obs, dtype=np.float64)
+        frames, dists = [], []
+        for _step in range(150):
+            act = np.asarray(pol.get_action(obs), dtype=np.float64)
+            obs, _r, _term, _trunc, _i = env.step(act)
+            obs = np.asarray(obs, dtype=np.float64)
+            peg = env.data.site_xpos[pid]
+            hole = env.data.site_xpos[hid]
+            dists.append(float(np.linalg.norm(peg[:2] - hole[:2])))
+            frames.append(np.rot90(np.asarray(env.render()), k=2))  # 180°旋转方向修正
+        cache = {"frames": frames, "dists": np.asarray(dists)}
+    except Exception:
+        cache = {}
+    _MW_RENDER_CACHE[camera_name] = cache
+    return cache or None
+
+
+def render_rgbd_frame(tr, idx, camera_name="corner2"):
+    """渲染 RGB-D 图像: 真实 metaworld 渲染 (优先, 可选相机视角) + Depth; 失败退回 3D 透视手绘 (2026-08-22/23 老倪)"""
     from PIL import Image, ImageDraw
     import numpy as np
-    from state_space_sim import HOLE_POS
+    from state_space_sim import HOLE_POS, X0
     x = np.asarray(tr["x"])[idx]
+
+    # ── 🎨 真实 metaworld 渲染 (2026-08-23 老倪: 优先真实RGB, 失败退回手绘) ──
+    mw = _get_metaworld_view(camera_name)
+    if mw and mw.get("frames"):
+        try:
+            _cur = float(np.linalg.norm(x[:2] - HOLE_POS[:2]))
+            _d0 = float(np.linalg.norm(X0[:2] - HOLE_POS[:2]))
+            _prog = float(np.clip(1.0 - _cur / max(_d0, 1e-6), 0.0, 1.0))
+            _mw0 = float(mw["dists"][0])
+            _mwe = float(mw["dists"].min())
+            _target = _mw0 - _prog * (_mw0 - _mwe)
+            _fi = int(np.argmin(np.abs(mw["dists"] - _target)))
+            _frame = mw["frames"][_fi]
+            _rgb = Image.fromarray(_frame)
+            _dep = Image.fromarray(_frame).convert("L")
+            _W, _H = _rgb.size
+            _gap = 12
+            _out = Image.new("RGB", (_W * 2 + _gap, _H), "#0d1117")
+            _out.paste(_rgb, (0, 0))
+            _out.paste(_dep.convert("RGB"), (_W + _gap, 0))
+            _d = ImageDraw.Draw(_out)
+            _f = _rgbd_font(16)
+            _stage = tr["stage"][idx].replace("阶段 ", "")
+            _d.text((12, 8), f"t={tr['t'][idx]:.2f}s · {_stage} · {camera_name}", font=_f, fill="#ffffff")
+            _d.text((12, _H - 24), f"插拔进度 {_prog * 100:.0f}%", font=_f, fill="#ffffff")
+            return _out
+        except Exception:
+            pass
     g = float(tr["gripper"][idx])
     stage = tr["stage"][idx].replace("阶段 ", "")
     t = tr["t"][idx]
