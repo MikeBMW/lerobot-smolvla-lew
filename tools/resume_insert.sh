@@ -51,7 +51,7 @@ print(f"  ✅ {policy}: {len(curve)} 点 尾={curve[-1]}")
 EOF
 }
 
-train_ft act config_act_restore.yaml outputs/train/act_20260807_153646
-train_ft smolvla config_smolvla_restore.yaml outputs/train/smolvla_20260807_153759
-train_ft smolvla_lew config_smolvla_lew_restore.yaml outputs/train/smolvla_lew_20260807_154617
+train_ft act configs/policies/act/config_act_restore.yaml outputs/train/act_20260807_153646
+train_ft smolvla configs/policies/smolvla/config_smolvla_restore.yaml outputs/train/smolvla_20260807_153759
+train_ft smolvla_lew configs/policies/smolvla_lew/config_smolvla_lew_restore.yaml outputs/train/smolvla_lew_20260807_154617
 echo "[$(date +%H:%M)] lerobot 系微调续训完成 (act/smolvla/lew)"

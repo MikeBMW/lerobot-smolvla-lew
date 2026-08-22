@@ -46,7 +46,7 @@ print(f"  ✅ {policy}: {len(uniq)} 点")
 EOF
 }
 
-train_one act config_act_metaworld.yaml
-train_one smolvla config_smolvla_metaworld.yaml
-train_one smolvla_lew config_smolvla_lew_metaworld.yaml
+train_one act configs/policies/act/config_act_metaworld.yaml
+train_one smolvla configs/policies/smolvla/config_smolvla_metaworld.yaml
+train_one smolvla_lew configs/policies/smolvla_lew/config_smolvla_lew_metaworld.yaml
 echo "[$(date +%H:%M)] 曲线恢复全部完成"

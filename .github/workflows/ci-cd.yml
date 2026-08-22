@@ -60,7 +60,7 @@ jobs:
           EOF
       - name: 配置 YAML 可解析
         run: |
-          python3 -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ['config_act_closedloop.yaml','hybrid_train.yaml']]; print('YAML OK')" || echo "YAML check skipped (pyyaml 可选)"
+          python3 -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ['configs/policies/act/config_act_closedloop.yaml','configs/policies/hybrid/hybrid_train.yaml']]; print('YAML OK')" || echo "YAML check skipped (pyyaml 可选)"
 
   # ── [3] 快速测试 (对标 Simulink Test 套件轻量版) ──
   test:

@@ -94,7 +94,7 @@ def trigger_train(data_file):
     subprocess.Popen([
         "bash", "-c",
         f"cd {HOME} && PYTHONPATH=src .venv/bin/python -m lerobot.scripts.lerobot_train "
-        f"--config_path config_act_mw_v111.yaml >> outputs/train/live_train.log 2>&1"
+        f"--config_path configs/policies/act/config_act_mw_v111.yaml >> outputs/train/live_train.log 2>&1"
     ])
     print(f"  ✅ 训练已触发 (log: outputs/train/live_train.log)")
 

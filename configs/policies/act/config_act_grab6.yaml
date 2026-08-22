@@ -1,7 +1,7 @@
 # Z-MAX 数据闭环 · ACT 训练配置 (metaworld 子集 · 静静4060)
-# 用法: .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_act_metaworld.yaml
-output_dir: outputs/train/act_peg_overlay2
-job_name: act_peg_v6
+# 用法: .venv/bin/python -m lerobot.scripts.lerobot_train --config_path configs/policies/act/config_act_metaworld.yaml
+output_dir: outputs/train/act_v100
+job_name: act_metaworld_final
 
 policy:
   type: act
@@ -15,16 +15,17 @@ policy:
   n_heads: 8
   n_encoder_layers: 4
   n_decoder_layers: 4
-  use_vae: true
+  use_vae: false
   latent_dim: 32
 
 dataset:
   repo_id: lerobot/pusht   # 占位 (实际用 root 本地数据)
-  root: data/metaworld_peg_grab5
+  root: data/metaworld_peg_grab6
+  episodes: [0]
   use_imagenet_stats: false
 
 batch_size: 8
-steps: 4000
+steps: 2000
 num_workers: 0
 persistent_workers: false
 log_freq: 5

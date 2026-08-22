@@ -82,7 +82,7 @@ def train(npz: Path):
     """启动 ACT 训练 (SmolVLA-LEW 框架)"""
     cmd = [
         sys.executable, "-m", "lerobot.scripts.train",
-        "--config-path", str(HOME / "lerobot-smolvla-lew" / "config_smolvla_mini.yaml"),
+        "--config-path", str(HOME / "lerobot-smolvla-lew" / "configs/policies/smolvla/config_smolvla_mini.yaml"),
         "--dataset.root", str(npz.parent),
         "--dataset.name", npz.stem,
         "--policy.type", "act",

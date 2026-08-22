@@ -135,7 +135,7 @@ Configurable: `EPOCHS`, `BS`, `LR`, `N` at top of file.
 
 ### Full SmolVLA training (requires dataset)
 ```bash
-PYTHONPATH=src .venv/bin/lerobot-train --config config_smolvla_mini.yaml
+PYTHONPATH=src .venv/bin/lerobot-train --config configs/policies/smolvla/config_smolvla_mini.yaml
 ```
 Datasets available locally: `lerobot/pusht`, `lerobot/metaworld_mt50` (if downloaded).
 
@@ -162,7 +162,7 @@ When tensors are on CPU but model is on MPS: create all tensors on the model's d
 | `train_mini_v2.py` | Minimal self-training (CNN+DiT, no downloads) |
 | `train_synth.py` | SmolVLA-LEW training with synthetic data |
 | `infer_smolvla.py` | Download + inference pretrained SmolVLA |
-| `config_smolvla_mini.yaml` | Training config for lerobot-train CLI |
+| `configs/policies/smolvla/config_smolvla_mini.yaml` | Training config for lerobot-train CLI |
 | `tools/gui/studio.py` | Z-MAX Studio GUI (PyQt5) |
 | `src/lerobot/policies/smolvla/` | Original SmolVLA policy |
 | `src/lerobot/policies/smolvla_lew/` | Custom SmolVLA-LEW policy |

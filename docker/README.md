@@ -41,7 +41,7 @@ docker buildx build --platform linux/amd64,linux/arm64 --target train -t zmax-st
 docker run --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm \
   -v /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1 \
   -v $(pwd):/app \
-  zmax-std:1.0 zmax-train --config_path config_act_peg_novae.yaml
+  zmax-std:1.0 zmax-train --config_path configs/policies/act/config_act_peg_novae.yaml
 ```
 （免 nvidia-container-toolkit — `--device` 直通 + libcuda 挂载，全平台实测可用）
 

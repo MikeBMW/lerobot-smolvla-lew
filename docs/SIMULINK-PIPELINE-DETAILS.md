@@ -40,7 +40,7 @@ Orin(192.168.23.66 采集) → 小芳Mac(192.168.23.1 中转) → ECS(39.102.211
 
 ### ② 训练 (train)
 - **说明**: ACT 训练, 优先 Orin 真实数据 (metaworld 仿真为预训练)
-- **实现**: `on_train` → `lerobot_train --config_path config_act_loop.yaml` (2000步)
+- **实现**: `on_train` → `lerobot_train --config_path configs/policies/act/config_act_loop.yaml` (2000步)
 - **输入**: LeRobotDataset (state6D/action6D 或 state3D/action4D) + 配置 (steps/batch/lr)
 - **输出**: `outputs/train/act_loop/checkpoints/002000/pretrained_model/` (model.safetensors)
 - **数据质量**:

@@ -6900,11 +6900,11 @@ class SimulinkModule(QWidget):
                 ts_dir = "left_right_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "LeftRight"
             elif policy == "smolvla_lew":
-                cfg_path = os.path.join(root, "config_smolvla_lew_metaworld.yaml")
+                cfg_path = os.path.join(root, "configs", "policies", "smolvla_lew", "config_smolvla_lew_metaworld.yaml")
                 ts_dir = "smolvla_lew_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "SmolVLA+LEW"
             elif policy == "smolvla":
-                cfg_path = os.path.join(root, "config_smolvla_metaworld.yaml")
+                cfg_path = os.path.join(root, "configs", "policies", "smolvla", "config_smolvla_metaworld.yaml")
                 ts_dir = "smolvla_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "SmolVLA"
             elif policy == "vla_touch":
@@ -6918,7 +6918,7 @@ class SimulinkModule(QWidget):
                 ts_dir = "awe_zflow_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "AWE-zFlow"
             else:
-                cfg_path = os.path.join(root, "config_act_metaworld.yaml")
+                cfg_path = os.path.join(root, "configs", "policies", "act", "config_act_metaworld.yaml")
                 ts_dir = "act_" + time.strftime("%Y%m%d_%H%M%S")
                 pname = "ACT"
             import re
@@ -6980,18 +6980,20 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit(f"🐳 提交 {pname} 训练 → 远程容器 (Docker · {r['host']}) · Model Engine 容器化")
                 try:
                     cfg_base = os.path.basename(cfg_path or "config_act_metaworld.yaml")
+                    # 📁 2026-08-22 静静: config 已归 configs/policies/<type>/ — 远程 sed/--config_path 用相对路径
+                    cfg_rel = os.path.relpath(cfg_path, root) if cfg_path else cfg_base
                     _odir = cfg_base.replace(".yaml", "") + "_$(date +%Y%m%d_%H%M%S)"
                     out = _spr.check_output(
                         f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o Port={r['port']} "
                         f"{r['user']}@{r['host']} "
                         f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
-                        f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_base} 2>/dev/null; "
-                        f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{_odir}|\" {cfg_base} 2>/dev/null; "
+                        f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_rel} 2>/dev/null; "
+                        f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{_odir}|\" {cfg_rel} 2>/dev/null; "
                         f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
                         f"else docker rm -f zmax_train 2>/dev/null; docker run -d --runtime nvidia --gpus all "
                         f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
-                        f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg_base} "
+                        f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg_rel} "
                         f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'",
                         shell=True, timeout=40).decode().strip()
                     if "BUILDING" in out:

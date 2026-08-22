@@ -1,5 +1,5 @@
 # Z-MAX 数据闭环 · ACT 最小训练配置 (静静4060)
-# 用法: uv run python -m lerobot.scripts.lerobot_train --config_path config_act_closedloop.yaml
+# 用法: uv run python -m lerobot.scripts.lerobot_train --config_path configs/policies/act/config_act_closedloop.yaml
 output_dir: outputs/train/act_closed_loop
 job_name: act_closed_loop
 

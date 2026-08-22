@@ -40,7 +40,7 @@ def compare():
 
 def improve_config(round_num):
     """未达标: 调整超参 (lr 衰减 / batch 增大 / 步数增加)"""
-    cfg = HOME / "config_act_mw_v111.yaml"
+    cfg = HOME / "configs/policies/act/config_act_mw_v111.yaml"
     text = cfg.read_text()
     steps = 2000 + round_num * 1000
     lr = 1e-4 * (0.8 ** round_num)  # lr 逐轮衰减
@@ -63,7 +63,7 @@ def main():
         print("🏋️ 训练增强模型...")
         rr = run("rm -rf outputs/train/act_mw_v111 && "
                  "PYTHONPATH=src .venv/bin/python -m lerobot.scripts.lerobot_train "
-                 "--config_path config_act_mw_v111.yaml 2>&1 | tail -3")
+                 "--config_path configs/policies/act/config_act_mw_v111.yaml 2>&1 | tail -3")
         if rr.returncode != 0:
             print(f"❌ 训练失败: {rr.stderr[-200:]}")
             return 1

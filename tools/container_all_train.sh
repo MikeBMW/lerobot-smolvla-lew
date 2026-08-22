@@ -29,13 +29,13 @@ open('config_${prefix}_ct.yaml', 'w').write(s)
 }
 
 # 1. ACT (grab6 + 无VAE)
-CFG=$(mkcfg config_act_metaworld.yaml act)
+CFG=$(mkcfg configs/policies/act/config_act_metaworld.yaml act)
 run_train "ACT" -u -m lerobot.scripts.lerobot_train --config_path $CFG
 # 2. SmolVLA
-CFG=$(mkcfg config_smolvla_metaworld.yaml smolvla)
+CFG=$(mkcfg configs/policies/smolvla/config_smolvla_metaworld.yaml smolvla)
 run_train "SmolVLA" -u -m lerobot.scripts.lerobot_train --config_path $CFG
 # 3. SmolVLA+LEW
-CFG=$(mkcfg config_smolvla_lew_metaworld.yaml smolvla_lew)
+CFG=$(mkcfg configs/policies/smolvla_lew/config_smolvla_lew_metaworld.yaml smolvla_lew)
 run_train "SmolVLA+LEW" -u -m lerobot.scripts.lerobot_train --config_path $CFG
 # 4. VLA-Touch
 run_train "VLA-Touch" -u /app/tools/train_vla_touch.py --steps 2000 --data-root /app/data/metaworld_peg_grab6

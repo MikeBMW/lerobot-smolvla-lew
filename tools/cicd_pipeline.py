@@ -67,8 +67,8 @@ def _f(x):
 
 def gen_train_cfg(stage: int, data_root: str, steps: int, ts_dir: str,
                   pretrained: str | None = None) -> Path:
-    """基于 config_act_metaworld.yaml 生成 runtime 配置 (stage 专属超参)"""
-    tmpl = REPO / "config_act_metaworld.yaml"
+    """基于 configs/policies/act/config_act_metaworld.yaml 生成 runtime 配置 (stage 专属超参)"""
+    tmpl = REPO / "configs/policies/act/config_act_metaworld.yaml"
     cfg = tmpl.read_text(encoding="utf-8")
     s = STAGES[stage]
     # 1. 顶层字段: 行锚定替换 (避免误匹配 n_obs_steps 等子串)

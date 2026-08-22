@@ -21,6 +21,20 @@ import math  # 离线仿真正弦波
 # 🐛 2026-08-18: 禁用 Qt D-Bus — QDBusConnection 无 parent 孤儿 + 10s 轮询 timer
 # (孤儿 timer 追踪实锤 10s 周期 QObject), 与 activateTimers 批次碰撞 → NULL receiver
 import os as _os
+
+
+# 📁 2026-08-22 静静: 训练 config 已从工程根归入 configs/policies/<type>/ (清理64个历史遗留)
+def _cfg_rel(cfg):
+    """裸 config 名 → 相对工程根的规范路径; 未知类型 (vla_touch/awe/mlp/expert) 原样返回"""
+    if not cfg:
+        return cfg
+    for prefix, sub in (("config_smolvla_lew_", "smolvla_lew"),
+                        ("config_smolvla_", "smolvla"),
+                        ("config_act_", "act"),
+                        ("hybrid_", "hybrid")):
+        if cfg.startswith(prefix):
+            return os.path.join("configs", "policies", sub, cfg)
+    return cfg
 # 🐛 2026-08-18: 曾试 QT_NO_DBUS/QT_NO_GLIB 绕 timer 批处理 — 无改善且可能引入新问题 → 撤
 # 回到 Qt 默认事件循环 (glib 模式 Qt 内部保护最多); 保留 QPixmapCache/ToolTip 禁用 (有实锤)
 
@@ -606,7 +620,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.3.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.3.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:10px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -4311,8 +4325,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }
             import re as _re
             cfg = cfg_map.get(name)
-            if cfg and os.path.exists(os.path.join(root, cfg)):
-                cpath = os.path.join(root, cfg)
+            if cfg and os.path.exists(os.path.join(root, _cfg_rel(cfg))):
+                cpath = os.path.join(root, _cfg_rel(cfg))
                 if os.path.exists(cpath):
                     txt = open(cpath, encoding="utf-8").read()
                     def gv(key):
@@ -4358,6 +4372,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             "官方专家": "config_expert_policy.yaml",
         }
         cfg = cfg_map.get(model, "config_smolvla_peg_long2.yaml")
+        cfg_rel = _cfg_rel(cfg)  # 📁 2026-08-22 静静: 远程 sed/--config_path 用规范相对路径
         self._log(f"🌐 提交远程 GPU 训练 ({r['host']}) · 模型 {model} · config {cfg}")
         self._log(f"   → 远程 V100 执行 (本地 4060 空闲) · 进度每 30s 轮询")
         self.is_training = True
@@ -4370,14 +4385,14 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
                        f"-o Port={r['port']} {r['user']}@{r['host']} "
                        f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
-                       f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg} 2>/dev/null; "
-                       f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{cfg[:-5]}_$(date +%Y%m%d_%H%M%S)|\" {cfg} 2>/dev/null; "
+                       f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_rel} 2>/dev/null; "
+                       f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{cfg[:-5]}_$(date +%Y%m%d_%H%M%S)|\" {cfg_rel} 2>/dev/null; "
                        f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                        f"echo BUILDING; nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & "
                        f"else "
                        f"docker run -d --runtime nvidia --gpus all "
                        f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
-                       f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg} "
+                       f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg_rel} "
                        f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'")
                 out = _sp.check_output(cmd, shell=True, timeout=40).decode().strip()
                 if "BUILDING" in out:
@@ -9654,7 +9669,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.3.0 [W-01]")  # v2.3.0: 连线数据接口(左键选中显示类型+数值,删除改右键)+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.3.1 [W-01]")  # v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
