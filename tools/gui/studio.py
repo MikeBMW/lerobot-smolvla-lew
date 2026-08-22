@@ -734,18 +734,18 @@ class ModuleCard(QFrame):
         layout.addLayout(top)
 
         t = QLabel(title)
-        t.setFont(QFont("Arial", 14, QFont.Bold))
+        t.setFont(QFont("Arial", 8, QFont.Bold))  # 🐛 2026-08-22: 14pt在192DPI=54px过大→8pt(25px)适中
         t.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
         t.setWordWrap(True)  # 老倪 2026-08-22: 高分屏(192DPI)标题 sizeHint=54px, 固定34会裁 — 改自适应换行, 不设死高度
         layout.addWidget(t)
 
         s = QLabel(subtitle)
-        s.setFont(QFont("Arial", 9))
+        s.setFont(QFont("Arial", 6))  # 🐛 2026-08-22: 9pt=35px过大→6pt
         s.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
         layout.addWidget(s)
 
         d = QLabel(desc)
-        d.setFont(QFont("Arial", 9))
+        d.setFont(QFont("Arial", 6))  # 🐛 2026-08-22: 9pt=35px过大→6pt
         d.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
         d.setWordWrap(True)  # 老倪 2026-08-22: 高分屏下长描述(URL等)需3-4行~91px, 固定40会裁 — 改自适应
         layout.addWidget(d)
@@ -762,7 +762,7 @@ class ModuleCard(QFrame):
             bottom.addWidget(veh)
             bottom.addStretch()
         arrow = QLabel("点击进入 →")
-        arrow.setFont(QFont("Arial", 9))
+        arrow.setFont(QFont("Arial", 6))
         arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:0;")
         bottom.addWidget(arrow)
         layout.addLayout(bottom)

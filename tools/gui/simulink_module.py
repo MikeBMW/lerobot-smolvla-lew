@@ -985,15 +985,15 @@ def gen_id():
 # ── 深色对话框 QSS (2026-08-05 老倪: 训练配置对话框黑字看不清 → 统一深底白字) ──
 _DLG_DARK_QSS = """
 QDialog { background:#0d1117; }
-QLabel { color:#e6edf3; font-size:9pt; }
-QLabel#dim { color:#8b949e; font-size:8pt; }
+QLabel { color:#e6edf3; font-size:7pt; }
+QLabel#dim { color:#8b949e; font-size:6pt; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
     background:#010409; color:#e6edf3; border:1px solid #30363d; border-radius:6px;
     padding:4px 8px; min-height:22px; selection-background-color:#1f6feb; }
 QComboBox::drop-down { border:none; width:22px; }
 QComboBox QAbstractItemView { background:#161b22; color:#e6edf3; selection-background-color:#1f6feb; }
 QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px;
-    padding:6px 14px; font-size:9pt; font-weight:600; }
+    padding:6px 14px; font-size:7pt; font-weight:600; }
 QPushButton:hover { border-color:#00d4aa; }
 QDialogButtonBox QPushButton { min-width:72px; }
 """
@@ -1170,7 +1170,7 @@ class MLPRolloutDialog(QDialog):
         lay.setSpacing(6)
         self._lbl_title = QLabel("")
         self._lbl_title.setStyleSheet(
-            "color:#e6edf3; font-size:10pt; font-weight:600; padding:2px 6px;")
+            "color:#e6edf3; font-size:7.5pt; font-weight:600; padding:2px 6px;")
         lay.addWidget(self._lbl_title)
         self._lbl_video = QLabel()
         self._lbl_video.setAlignment(Qt.AlignCenter)
@@ -1193,7 +1193,7 @@ class MLPRolloutDialog(QDialog):
         b_mir.clicked.connect(self._mirror_toggle)
         b_flip.clicked.connect(self._flipv_toggle)
         _BSS = ("QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
-                "border-radius:4px;padding:6px 14px;font-size:9pt;}"
+                "border-radius:4px;padding:6px 14px;font-size:7pt;}"
                 "QPushButton:hover{background:#30363d;}")
         for b in (b_prev, b_tog, b_next, b_rot, b_mir, b_flip):
             b.setStyleSheet(_BSS)
@@ -1395,11 +1395,11 @@ class TrainConfigDialog(QDialog):
         lay.setSpacing(10)
 
         head = QLabel(f"🎛 {node['name']} 训练参数")
-        head.setStyleSheet("font-size:11pt; font-weight:700; color:#e6edf3; padding:2px;")
+        head.setStyleSheet("font-size:8.5pt; font-weight:700; color:#e6edf3; padding:2px;")
         lay.addWidget(head)
 
         note = QLabel("保存后对下次训练生效 (当前 50 步快速验证, 跑通后可加大)")
-        note.setStyleSheet("color:#8b949e; font-size:8pt;")
+        note.setStyleSheet("color:#8b949e; font-size:6pt;")
         lay.addWidget(note)
 
         form = QFormLayout()
@@ -1427,7 +1427,7 @@ class TrainConfigDialog(QDialog):
         tip = QLabel("当前: " + (f"steps={p.get('steps', 10)}" if "steps" in p else "steps=10(默认)") +
                      (f" · batch={p['batch_size']}" if "batch_size" in p else "") +
                      (f" · lr={p['lr']}" if "lr" in p else ""))
-        tip.setStyleSheet("color:#8b949e; font-size:8pt;")
+        tip.setStyleSheet("color:#8b949e; font-size:6pt;")
         lay.addWidget(tip)
         lay.addLayout(form)
 
@@ -1459,7 +1459,7 @@ class BlockParamsDialog(QDialog):
         lay = QVBoxLayout(self)
 
         head = QLabel(f"{NODE_TYPES.get(node['type'], {}).get('cn', node['type'])} · {node['name']}")
-        head.setStyleSheet("font-size:11pt; font-weight:700; color:#e6edf3; padding:4px;")
+        head.setStyleSheet("font-size:8.5pt; font-weight:700; color:#e6edf3; padding:4px;")
         lay.addWidget(head)
 
         form = QFormLayout()
@@ -1474,7 +1474,7 @@ class BlockParamsDialog(QDialog):
         params = node.get("params", {})
         if not params:
             lab = QLabel("(无参数)")
-            lab.setStyleSheet("color:#8b949e; font-size:8pt;")
+            lab.setStyleSheet("color:#8b949e; font-size:6pt;")
             form.addRow("参数", lab)
         for k, v in params.items():
             if isinstance(v, bool):
@@ -1517,7 +1517,7 @@ class BlockParamsDialog(QDialog):
 
         # 端口说明
         info = QLabel(f"输入: {len(node.get('inputs', []))} · 输出: {len(node.get('outputs', []))}")
-        info.setStyleSheet("color:#8b949e; font-size:8pt;")
+        info.setStyleSheet("color:#8b949e; font-size:6pt;")
         lay.addWidget(info)
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1614,15 +1614,14 @@ class CICDStageItem(QGraphicsObject):
                              f"🔀 {'训练' if _m == 'train' else '推理'}模式")
         else:
             painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
-        # 描述
+        # 描述 (🐛 2026-08-22 老倪: 灰色小字太乱且挤不下 — 删除, 只留白色名称+状态徽章)
         painter.setPen(QColor(pal["label"]))
         painter.setFont(QFont("Arial", 8))
-        painter.drawText(QRectF(8, 32, self.w - 16, 34), Qt.AlignTop | Qt.AlignLeft, self.desc)
         # 状态徽章
         icon = {1: "● 运行中", 2: "✓ 成功", 3: "✕ 失败", 0: "○ 未开始"}[self.state]
         painter.setPen(c)
         painter.setFont(QFont("Arial", 9, QFont.Bold))
-        painter.drawText(QRectF(8, 66, self.w - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, icon)
+        painter.drawText(QRectF(8, 32, self.w - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, icon)
         # 🌐 2026-08-08 老倪: 节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角小字青色)
         try:
             # 🐛 2026-08-09 老倪: CICD 环节 ID 常显
@@ -1714,10 +1713,10 @@ class CICDPanel(QDialog):
         lay.setSpacing(10)
         # 标题
         t = QLabel("🔗 CI/CD 全链路流水线 · 采集 → 训练 → 验证 → 集成 → 部署 → 推理")
-        t.setStyleSheet("color:#ffd700; font-size:11pt; font-weight:700; background:transparent; border:none;")
+        t.setStyleSheet("color:#ffd700; font-size:8.5pt; font-weight:700; background:transparent; border:none;")
         lay.addWidget(t)
         tip = QLabel("点击环节节点执行该环节 · ▶ 全流程 = 依次自动流转 · 运行中青色脉冲 · 完成后状态回显")
-        tip.setStyleSheet("color:#57606a; font-size:8pt; background:transparent; border:none;")
+        tip.setStyleSheet("color:#57606a; font-size:6pt; background:transparent; border:none;")
         lay.addWidget(tip)
 
         # 流水线画布 (QGraphicsView)
@@ -1758,7 +1757,7 @@ class CICDPanel(QDialog):
 
         # 日志行 (显示当前环节输出)
         self._stage_log = QLabel("就绪 · 点击环节节点开始")
-        self._stage_log.setStyleSheet("color:#8b949e; font-size:8pt; font-family:Consolas; background:#161b22; border:1px solid #1e2740; border-radius:6px; padding:8px;")
+        self._stage_log.setStyleSheet("color:#8b949e; font-size:6pt; font-family:Consolas; background:#161b22; border:1px solid #1e2740; border-radius:6px; padding:8px;")
         self._stage_log.setWordWrap(True)
         lay.addWidget(self._stage_log)
 
@@ -1767,7 +1766,7 @@ class CICDPanel(QDialog):
         self.btn_full = QPushButton("▶ 全流程 (采集→训练→验证→集成→部署→推理)")
         self.btn_full.setStyleSheet("""
             QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;
-            border-radius:4px; padding:5px 14px; font-size:8pt; font-weight:700; }
+            border-radius:4px; padding:5px 14px; font-size:6pt; font-weight:700; }
             QPushButton:hover { background:#ffd70044; }
         """)
         self.btn_full.clicked.connect(self.module._run_full_flow)
@@ -1776,7 +1775,7 @@ class CICDPanel(QDialog):
         self.btn_save_flow = QPushButton("💾 保存工作流 JSON")
         self.btn_save_flow.setStyleSheet("""
             QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;
-            border-radius:4px; padding:5px 14px; font-size:8pt; font-weight:600; }
+            border-radius:4px; padding:5px 14px; font-size:6pt; font-weight:600; }
             QPushButton:hover { background:#ffd70044; }
         """)
         self.btn_save_flow.clicked.connect(self._save_flow)
@@ -1784,7 +1783,7 @@ class CICDPanel(QDialog):
         self.btn_refresh = QPushButton("🔄 刷新状态")
         self.btn_refresh.setStyleSheet("""
             QPushButton { background:#21262d; color:#c9d1d9; border:1px solid #1e2740;
-            border-radius:4px; padding:5px 14px; font-size:8pt; }
+            border-radius:4px; padding:5px 14px; font-size:6pt; }
             QPushButton:hover { border-color:#ffd700; color:#ffd700; }
         """)
         self.btn_refresh.clicked.connect(self._refresh)
@@ -1901,16 +1900,16 @@ class PipelinePanel(QDialog):
         lay.setSpacing(6)
         h = QHBoxLayout()
         t = QLabel(f"{num}  {title}")
-        t.setStyleSheet("color:#c9d1d9; font-size:10pt; font-weight:700; background:transparent; border:none;")
+        t.setStyleSheet("color:#c9d1d9; font-size:7.5pt; font-weight:700; background:transparent; border:none;")
         h.addWidget(t)
         h.addStretch()
         st = QLabel("○")
-        st.setStyleSheet("color:#57606a; font-size:10pt; font-weight:700; background:transparent; border:none;")
+        st.setStyleSheet("color:#57606a; font-size:7.5pt; font-weight:700; background:transparent; border:none;")
         h.addWidget(st)
         lay.addLayout(h)
         d = QLabel(desc)
         d.setWordWrap(True)
-        d.setStyleSheet("color:#57606a; font-size:8pt; background:transparent; border:none;")
+        d.setStyleSheet("color:#57606a; font-size:6pt; background:transparent; border:none;")
         lay.addWidget(d)
         # steps 配置 (stage2 无)
         if sid in (1, 3):
@@ -1926,10 +1925,10 @@ class PipelinePanel(QDialog):
             self._spin[sid] = sp
         info = QLabel("—")
         info.setWordWrap(True)
-        info.setStyleSheet("color:#58a6ff; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+        info.setStyleSheet("color:#58a6ff; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
         lay.addWidget(info)
         btn = QPushButton("▶ 运行本阶段")
-        btn.setStyleSheet("QPushButton { background:#1a2230; color:#00d4aa; border:1px solid #00d4aa44; border-radius:5px; padding:5px; font-size:8pt; font-weight:600; }"
+        btn.setStyleSheet("QPushButton { background:#1a2230; color:#00d4aa; border:1px solid #00d4aa44; border-radius:5px; padding:5px; font-size:6pt; font-weight:600; }"
                           "QPushButton:hover { border-color:#00d4aa; }")
         btn.clicked.connect(lambda _, s=sid: self._run_stage(s))
         lay.addWidget(btn)
@@ -1941,10 +1940,10 @@ class PipelinePanel(QDialog):
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(10)
         t = QLabel("🎯 数据闭环 CICD 控制台 · 采集 → 训练 → 模型 → 部署 → 推理 → 迭代")
-        t.setStyleSheet("color:#00d4aa; font-size:11pt; font-weight:700; background:transparent; border:none;")
+        t.setStyleSheet("color:#00d4aa; font-size:8.5pt; font-weight:700; background:transparent; border:none;")
         lay.addWidget(t)
         tip = QLabel("三阶段自动流转 · steps 可配置 · 闭环状态每 10s 刷新 (Orin 心跳/推理/数据量)")
-        tip.setStyleSheet("color:#57606a; font-size:8pt; background:transparent; border:none;")
+        tip.setStyleSheet("color:#57606a; font-size:6pt; background:transparent; border:none;")
         lay.addWidget(tip)
 
         # ── 闭环状态栏 (数据/模型/URL/Orin/推理) ──
@@ -1959,7 +1958,7 @@ class PipelinePanel(QDialog):
         self.lbl_orin = QLabel("🤖 Orin: —")
         self.lbl_infer = QLabel("⚡ 推理: —")
         for lb in (self.lbl_data, self.lbl_model, self.lbl_url, self.lbl_orin, self.lbl_infer):
-            lb.setStyleSheet("color:#c9d1d9; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+            lb.setStyleSheet("color:#c9d1d9; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
             bl.addWidget(lb)
         bl.addStretch()
         lay.addWidget(bar)
@@ -1971,22 +1970,22 @@ class PipelinePanel(QDialog):
         ml.setContentsMargins(12, 8, 12, 8)
         ml.setSpacing(10)
         lab = QLabel("🤖 模型")
-        lab.setStyleSheet("color:#00d4aa; font-size:8pt; font-weight:700; background:transparent; border:none;")
+        lab.setStyleSheet("color:#00d4aa; font-size:6pt; font-weight:700; background:transparent; border:none;")
         ml.addWidget(lab)
         self.cmb_model = QComboBox()
         self.cmb_model.setMinimumWidth(240)
-        self.cmb_model.setStyleSheet("QComboBox { background:#21262d; color:#c9d1d9; border:1px solid #1e2740; border-radius:6px; padding:4px 8px; font-size:8pt; }")
+        self.cmb_model.setStyleSheet("QComboBox { background:#21262d; color:#c9d1d9; border:1px solid #1e2740; border-radius:6px; padding:4px 8px; font-size:6pt; }")
         ml.addWidget(self.cmb_model)
         self.lbl_model_attr = QLabel("属性: —")
-        self.lbl_model_attr.setStyleSheet("color:#8b949e; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_model_attr.setStyleSheet("color:#8b949e; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
         self.lbl_model_attr.setMinimumWidth(300)
         ml.addWidget(self.lbl_model_attr)
         ml.addStretch()
         self.btn_sim2real = QPushButton("🎯 Sim-to-Real (S2)")
-        self.btn_sim2real.setStyleSheet("QPushButton { background:#58a6ff22; color:#58a6ff; border:1px solid #58a6ff66; border-radius:6px; padding:5px 12px; font-size:8pt; font-weight:700; }"
+        self.btn_sim2real.setStyleSheet("QPushButton { background:#58a6ff22; color:#58a6ff; border:1px solid #58a6ff66; border-radius:6px; padding:5px 12px; font-size:6pt; font-weight:700; }"
                                         "QPushButton:hover { background:#58a6ff33; }")
         self.btn_stage3 = QPushButton("🚀 Stage 3 真机微调")
-        self.btn_stage3.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:5px 12px; font-size:8pt; font-weight:700; }"
+        self.btn_stage3.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:5px 12px; font-size:6pt; font-weight:700; }"
                                       "QPushButton:hover { background:#00d4aa33; }")
         ml.addWidget(self.btn_sim2real)
         ml.addWidget(self.btn_stage3)
@@ -2010,13 +2009,13 @@ class PipelinePanel(QDialog):
         ]
         for sid, label, fn in pipe_defs:
             b = QPushButton(label)
-            b.setStyleSheet("QPushButton { background:#21262d; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:8pt; font-weight:600; }"
+            b.setStyleSheet("QPushButton { background:#21262d; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:6pt; font-weight:600; }"
                             "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
             b.clicked.connect(lambda _, s=sid, f=fn: (self.module._cicd_state.__setitem__(s, 1), self._refresh(), f()))
             self._pipe_btns[sid] = b
             pipe.addWidget(b)
         self.btn_pipe_full = QPushButton("▶ 流水线全流程")
-        self.btn_pipe_full.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:6px 10px; font-size:8pt; font-weight:700; }"
+        self.btn_pipe_full.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:6px 10px; font-size:6pt; font-weight:700; }"
                                          "QPushButton:hover { background:#00d4aa33; }")
         self.btn_pipe_full.clicked.connect(self.module._run_full_flow)
         pipe.addWidget(self.btn_pipe_full)
@@ -2031,13 +2030,13 @@ class PipelinePanel(QDialog):
 
         bar = QHBoxLayout()
         self.btn_full = QPushButton("▶ 全流程自动运行 (1→2→3)")
-        self.btn_full.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:8px 20px; font-size:10pt; font-weight:700; }"
+        self.btn_full.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa66; border-radius:6px; padding:8px 20px; font-size:7.5pt; font-weight:700; }"
                                     "QPushButton:hover { background:#00d4aa33; }")
         self.btn_full.clicked.connect(self._run_full)
         bar.addWidget(self.btn_full)
         bar.addStretch()
         self.lbl_stage_now = QLabel("当前: 未运行")
-        self.lbl_stage_now.setStyleSheet("color:#57606a; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_stage_now.setStyleSheet("color:#57606a; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
         bar.addWidget(self.lbl_stage_now)
         lay.addLayout(bar)
 
@@ -2128,18 +2127,18 @@ class PipelinePanel(QDialog):
         for sid, b in self._pipe_btns.items():
             s = self.module._cicd_state.get(sid, 0)
             if s == 1:
-                b.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa; border-radius:6px; padding:6px 10px; font-size:8pt; font-weight:700; }")
+                b.setStyleSheet("QPushButton { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa; border-radius:6px; padding:6px 10px; font-size:6pt; font-weight:700; }")
             elif s == 2:
-                b.setStyleSheet("QPushButton { background:#3fb95022; color:#3fb950; border:1px solid #3fb950; border-radius:6px; padding:6px 10px; font-size:8pt; font-weight:700; }")
+                b.setStyleSheet("QPushButton { background:#3fb95022; color:#3fb950; border:1px solid #3fb950; border-radius:6px; padding:6px 10px; font-size:6pt; font-weight:700; }")
             elif s == 3:
-                b.setStyleSheet("QPushButton { background:#ff444422; color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:6px 10px; font-size:8pt; font-weight:700; }")
+                b.setStyleSheet("QPushButton { background:#ff444422; color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:6px 10px; font-size:6pt; font-weight:700; }")
             else:
-                b.setStyleSheet("QPushButton { background:#21262d; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:8pt; font-weight:600; }"
+                b.setStyleSheet("QPushButton { background:#21262d; color:#8b949e; border:1px solid #1e2740; border-radius:6px; padding:6px 10px; font-size:6pt; font-weight:600; }"
                                 "QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }")
         for sid, (card, st_lbl, info) in self._cards.items():
             sid_st = stages.get(str(sid), {}).get("state", "pending")
             st_lbl.setText(self._STATUS_ICON.get(sid_st, "○"))
-            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(sid_st,'#57606a')}; font-size:10pt; font-weight:700; background:transparent; border:none;")
+            st_lbl.setStyleSheet(f"color:{self._STATUS_COLOR.get(sid_st,'#57606a')}; font-size:7.5pt; font-weight:700; background:transparent; border:none;")
             card.setStyleSheet("QFrame#stage%d { background:#161b22; border:2px solid %s; border-radius:10px; }"
                                % (sid, self._STATUS_COLOR.get(sid_st, "#1e2740")))
             sdata = stages.get(str(sid), {})
@@ -2165,7 +2164,7 @@ class PipelinePanel(QDialog):
                 info.setText("✓ 已完成 · " + _ckpt_name(sdata["ckpt"]))
         now = st.get("stage", "?")
         stt = stages.get(str(now), {}).get("state", st.get("state", "pending"))
-        self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#57606a')}; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_stage_now.setStyleSheet(f"color:{self._STATUS_COLOR.get(stt,'#57606a')}; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
 
     def _run_pipeline_cmd(self, cmd):
         if getattr(self, "_worker", None) and self._worker.isRunning():
@@ -2365,7 +2364,7 @@ class PipelinePanel(QDialog):
         if online is not None:
             color = "#3fb950" if online else "#ff4444"
             self.lbl_orin.setText(f"🤖 Orin: {'●在线' if online else '○离线'} · {d.get('model','?')} · 心跳{d.get('seen','?')}")
-            self.lbl_orin.setStyleSheet(f"color:{color}; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+            self.lbl_orin.setStyleSheet(f"color:{color}; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
         if d.get("infer") is not None:
             ms = d.get("ms")
             self.lbl_infer.setText(f"⚡ 推理: {d.get('infer')}次" + (f" · {ms}ms" if ms else ""))
@@ -2469,11 +2468,23 @@ class SimNodeItem(QGraphicsObject):
             name = self.node.get("name", "")
             if name.startswith("🎨 "):
                 name = name[2:]
-            avail_w = 122.0
+            # 🐛 2026-08-22 老倪: 模型名区宽度自适应 = 最左节点x - 本行x - 16 (不遮挡节点列)
+            #   (状态空间节点x=100/row_bg x=-20 → 104px; Model Zoo 节点x=120/row_bg x=-146 → 250px)
+            _minx = getattr(self, "_bg_min_node_x", None)
+            if _minx is None:
+                try:
+                    _minx = min((n.get("x", 0) for n in self.scene_ref.nodes
+                                 if n.get("type") != "row_bg"), default=self.pos().x() + 250)
+                    self._bg_min_node_x = _minx
+                except Exception:
+                    _minx = self.pos().x() + 250
+            avail_w = max(80.0, float(_minx - self.pos().x() - 16))
+            _aw = int(avail_w)
             painter.setPen(QColor("#ffffff") if _CUR_THEME != "light" else QColor("#000000"))
-            # 自适应字号: 从 15px 递减到 9px, 找到能单行放下的
-            fs = 15
-            while fs >= 9:
+            # 自适应字号: 从 9pt(≈36px, 与节点标题同级) 递减到 6pt, 找到能单行放下的
+            # 🐛 2026-08-22 老倪: 7pt≈28px 比节点标题(9pt)还小 → 升回 9pt; 15pt在192DPI≈50px太大
+            fs = 9
+            while fs >= 6:
                 painter.setFont(QFont("Arial", fs, QFont.Bold))
                 fm = painter.fontMetrics()
                 if fm.horizontalAdvance(name) <= avail_w:
@@ -2481,8 +2492,9 @@ class SimNodeItem(QGraphicsObject):
                 fs -= 1
             line1, line2 = name, ""
             if fm.horizontalAdvance(name) > avail_w:
-                # 15→9 仍超 → 按空格/符号拆两行 (每行再自适应)
-                parts = name.replace("(", " ( ").replace(")", " ) ").split()
+                # 9→6 仍超 → 按空格/+/-/符号拆两行 (每行再自适应)
+                parts = (name.replace("(", " ( ").replace(")", " ) ")
+                            .replace("+", " + ").replace("-", " - ").split())
                 line1, line2 = "", ""
                 for pt in parts:
                     trial = (line1 + " " + pt).strip()
@@ -2491,10 +2503,10 @@ class SimNodeItem(QGraphicsObject):
                     else:
                         line2 = (line2 + " " + pt).strip()
             if line1 and line2:
-                painter.drawText(QRectF(8, h / 2 - 24, 126, 24), Qt.AlignVCenter | Qt.AlignLeft, line1)
-                painter.drawText(QRectF(8, h / 2 + 2, 126, 24), Qt.AlignVCenter | Qt.AlignLeft, line2)
+                painter.drawText(QRectF(8, h / 2 - 24, _aw, 24), Qt.AlignVCenter | Qt.AlignLeft, line1)
+                painter.drawText(QRectF(8, h / 2 + 2, _aw, 24), Qt.AlignVCenter | Qt.AlignLeft, line2)
             else:
-                painter.drawText(QRectF(8, 0, 126, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
+                painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
             painter.setFont(QFont("Arial", 7))
@@ -2677,16 +2689,10 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawText(QRectF(8, self.h - 16, self.w - 16, 14), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
             pass
-        # 类型标签 (Switch 显示当前选择: SEL: orin/metaworld) — 浅色主题下用深灰文字
-        painter.setPen(QColor(pal["label"]))
-        painter.setFont(QFont("Arial", 8))
-        if params.get("video"):
-            pass  # 视频节点: 无类型标签 (名字已居中)
-        if t == "switch":
-            painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             f"🔀 SEL: {params.get('switch', 'orin')}")
-        elif t == "yolo_gate":
-            # 🎯 YOLO 感知开关 (2026-08-06 老倪: state 输入 switch, 默认开=39D)
+        # 🐛 2026-08-22 老倪: 删除灰色小字(类型标签/状态文字) — 方块只留白色名称+状态徽章,
+        #   保留 checkbox/圆点/加号等图形状态指示 (switch 数据源看端口颜色, train_gate 看 checkbox)
+        if t == "yolo_gate":
+            # 🎯 YOLO 感知开关 checkbox (勾选=开 39D)
             en = params.get("yolo_enabled", True)
             gate_col = QColor("#d4a800") if en else QColor("#8b949e")
             cb = QRectF(12, 24, 13, 13)
@@ -2697,23 +2703,14 @@ class SimNodeItem(QGraphicsObject):
                 painter.setPen(QPen(gate_col, 1.8))
                 painter.drawLine(QPointF(cb.x()+2, cb.y()+7), QPointF(cb.x()+5, cb.y()+10))
                 painter.drawLine(QPointF(cb.x()+5, cb.y()+10), QPointF(cb.x()+11, cb.y()+3))
-            painter.setPen(QColor(pal["label"]))
-            painter.drawText(QRectF(30, 24, self.w - 34, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             f"YOLO: {'39D 开' if en else '3D 关'}")
         elif t == "coord_overlay":
-            # 🧩 结构条件 (2026-08-08 老倪: 坐标是逻辑主线, 图像是背景 — 叠加进 latent)
-            gate = params.get("overlay_gate", 1.0)
-            sd = params.get("state_dim", 45)
-            # 画 + 号 (叠加标志)
+            # 🧩 结构条件: 画 + 号 (叠加标志)
             px, py = 18, 30
             painter.setPen(QPen(QColor("#58a6ff"), 1.8))
             painter.drawLine(QPointF(px-6, py), QPointF(px+6, py))
             painter.drawLine(QPointF(px, py-6), QPointF(px, py+6))
-            painter.setPen(QColor(pal["label"]))
-            painter.drawText(QRectF(30, 24, self.w - 34, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             f"叠加: latent += state×{gate:.1f} ({sd}D)")
         elif t == "mode_switch":
-            # 🔀 训练/推理模式开关 (2026-08-19 老倪: 数据层运行模式选择)
+            # 🔀 训练/推理模式开关: 圆点指示 (绿=训练 蓝=推理)
             md = params.get("mode", "train")
             md_col = QColor("#3fb950") if md == "train" else QColor("#58a6ff")
             painter.setBrush(QColor("#0d1117"))
@@ -2721,19 +2718,10 @@ class SimNodeItem(QGraphicsObject):
             painter.drawEllipse(QRectF(14, 26, 13, 13))
             painter.setBrush(QColor(md_col))
             painter.drawEllipse(QRectF(17.5, 29.5, 6, 6))
-            painter.setFont(QFont("Arial", 8, QFont.Bold))
-            painter.setPen(QColor("#e6edf3"))
-            painter.drawText(QRectF(33, 22, self.w - 46, 16), Qt.AlignVCenter | Qt.AlignLeft,
-                             "🚀 训练" if md == "train" else "📷 推理")
-            painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 7))
-            painter.drawText(QRectF(33, 38, self.w - 46, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             "双击切换" if md == "train" else "双击切换")
         elif t == "train_gate":
-            # ☑ 训练开关 (2026-08-05 老倪: checkbox 打勾=训练 / 不打=不训练)
+            # ☑ 训练开关 checkbox (勾选=训练)
             en = params.get("train_enabled", True)
             gate_col = QColor("#3fb950") if en else QColor("#f85149")
-            # 绘制 checkbox 方块 + 对号
             cb = QRectF(12, 24, 13, 13)
             painter.setBrush(QColor("#0d1117"))
             painter.setPen(QPen(gate_col, 1.4))
@@ -2744,18 +2732,6 @@ class SimNodeItem(QGraphicsObject):
                                  QPointF(cb.left() + 5.5, cb.top() + 9.5))
                 painter.drawLine(QPointF(cb.left() + 5.5, cb.top() + 9.5),
                                  QPointF(cb.left() + 10.5, cb.top() + 3.5))
-            painter.setFont(QFont("Arial", 8, QFont.Bold))
-            painter.setPen(QColor("#e6edf3") if en else QColor("#f85149"))
-            painter.drawText(QRectF(29, 22, self.w - 40, 16), Qt.AlignVCenter | Qt.AlignLeft,
-                             "训练: 开" if en else "训练: 关")
-        else:
-            if not params.get("video"):
-                # 视频节点名字已居中, 不画类型标签 (2026-08-07 老倪)
-                # 🐛 2026-08-15 老倪: z700_internal 内部模块已有角色标签 (▸ 前馈·观测),
-                #   跳过默认类型标签 ("系统") — 两个标签同一位置重叠看不清
-                if not params.get("z700_internal"):
-                    painter.drawText(QRectF(12, 22, self.w - 16, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                                     NODE_TYPES.get(t, {}).get("cn", t))
         # 状态徽章 (右上角: ● 运行中 / ✓ 成功 / ✕ 失败)
         st_icon = {"running": "●", "success": "✓", "error": "✕"}.get(status, "")
         if is_active_src:
@@ -2805,14 +2781,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.setBrush(color)
                 painter.setPen(QPen(QColor(pal["port_edge"]), 1))
                 painter.drawEllipse(QPointF(self.w, self.h / 2), 6, 6)
-        # 参数摘要
-        params = self.node.get("params", {})
-        if params:
-            first = list(params.items())[0]
-            painter.setPen(QColor(pal["label"]))
-            painter.setFont(QFont("Consolas", 8))
-            painter.drawText(QRectF(12, 36, self.w - 16, 12), Qt.AlignVCenter | Qt.AlignLeft,
-                             f"{first[0]}={first[1]}")
+        # 🐛 2026-08-22 老倪: 删除参数摘要灰色小字 ("steps=4000"/"policy=act" 等) — 方块只留白色名称+状态徽章
         # 📥 Excel 导出按钮 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点右下角)
         if params.get("skill_composer") or params.get("detection_targets"):
             try:
@@ -3136,7 +3105,7 @@ class SimCanvas(QGraphicsView):
         # (timer 回调改 timer 表 → NULL receiver SIGSEGV), 高频 timer 降频减碰撞
         self._hover_timer.start(300)
         self._last_hover_pos = None
-        self._scale = 1.4  # 🐛 2026-08-22 老倪"画布字体太小" — 默认放大40% (3200x2000高分屏下节点150x50+9pt偏小)
+        self._scale = 1.0  # 🐛 2026-08-22 修正: QSS px→pt 已放大字体(随DPI), _scale 再放大40%→双重放大字体过大挤爆节点/方块. 回 1.0 (Ctrl+滚轮可再调)
         self.scale(self._scale, self._scale)  # 应用初始缩放; Ctrl+滚轮仍可再调(0.2~3.0)
         # ↩️ Ctrl+Z 撤销 (2026-08-07 老倪: 挪动背景行回不去上一步)
         # WidgetWithChildrenShortcut: 焦点在画布内才触发, 不抢搜索框/输入框的原生撤销
@@ -3459,7 +3428,7 @@ class LibraryPanel(QFrame):
         #   v2 2026-08-06: 按钮加大加醒目 + 双击标题也可折叠)
         head = QHBoxLayout()
         title = QLabel("📚 模块库")
-        title.setStyleSheet("color:#1f2328; font-size:10pt; font-weight:700; padding:4px;")
+        title.setStyleSheet("color:#1f2328; font-size:7.5pt; font-weight:700; padding:4px;")
         head.addWidget(title)
         head.addStretch()
         btn_collapse = QPushButton("◀ 收起")
@@ -3469,7 +3438,7 @@ class LibraryPanel(QFrame):
         # switch_theme 把白字替换成深色 → 蓝底深字看不清, 老倪反馈找不到)
         btn_collapse.setStyleSheet("""
             QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
-                        border-radius:4px; font-size:8pt; font-weight:700; padding:4px 8px;}
+                        border-radius:4px; font-size:6pt; font-weight:700; padding:4px 8px;}
             QPushButton:hover{border-color:#1f6feb; background:#dbe9ff;}
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
@@ -3527,7 +3496,7 @@ class LibraryPanel(QFrame):
             collapsed = self._group_collapsed.get(gname, False)
             marker = "▸ " if collapsed else "▾ "
             lab = QLabel(f"{marker}{gname}")
-            lab.setStyleSheet(f"color:{COLORS[ntype]}; font-size:8pt; font-weight:700; padding:6px 2px 2px;")
+            lab.setStyleSheet(f"color:{COLORS[ntype]}; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
             lab.setToolTip("点击 折叠/展开 该分组")
             lab.setCursor(Qt.PointingHandCursor)
             # 点击标题 → toggle 该组按钮可见性
@@ -3540,7 +3509,7 @@ class LibraryPanel(QFrame):
                 btn.setToolTip((f"VEH.5.{_seq:03d} — " if _seq else "") + f"{it['name']} (与画布节点 ID 一致)")
                 btn.setStyleSheet(f"""
                     QToolButton {{ background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
-                    border-radius:4px; padding:4px 8px; font-size:8pt; text-align:left; }}
+                    border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
                 if it.get("params", {}).get("scene_id"):
@@ -3570,14 +3539,14 @@ class LibraryPanel(QFrame):
         _exists = [c for c in _dset_cands if os.path.isdir(os.path.join(root, "data", c[0]))]
         if _exists:
             lab = QLabel(f"▾ 📦 数据集 (已有 {len(_exists)})")
-            lab.setStyleSheet("color:#d29922; font-size:8pt; font-weight:700; padding:6px 2px 2px;")
+            lab.setStyleSheet("color:#d29922; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
             lab.setToolTip("已有训练数据集 (光模块/套环/Orin) — 点击拖入画布作为数据源")
             self.v.addWidget(lab)
             for d, desc, src in _exists:
                 btn = QToolButton()
                 btn.setText(f"📦 {d}")
                 btn.setStyleSheet("QToolButton { background:#e9edf2; color:#24292f; border:1px solid #d0d7de;"
-                                  " border-radius:4px; padding:4px 8px; font-size:8pt; text-align:left; }"
+                                  " border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }"
                                   "QToolButton:hover { border-color:#d29922; color:#1f2328; }")
                 btn.setToolTip(f"{desc} — 双击画布数据源节点可切换")
                 btn.clicked.connect(lambda _, dd=d, ds=desc, ss=src:
@@ -3595,7 +3564,7 @@ class LibraryPanel(QFrame):
             _scenes = []
         if _scenes:
             lab = QLabel("▾ 🏭 场景 (光模块工厂三大工艺)")
-            lab.setStyleSheet("color:#00d4aa; font-size:8pt; font-weight:700; padding:6px 2px 2px;")
+            lab.setStyleSheet("color:#00d4aa; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
             lab.setToolTip("光模块工厂真实场景 — 点击打开 ECS 可视化链接 + 建场景节点链")
             self.v.addWidget(lab)
             _ICON = {"SCN-01": "🔌", "SCN-02": "🤖", "SCN-03": "🔍"}
@@ -3604,7 +3573,7 @@ class LibraryPanel(QFrame):
                 btn = QToolButton()
                 btn.setText(f"{_ICON.get(s['id'], '🏭')} {s['id']} {s['name'][:14]} · {_perf.get('operation_success_rate', '')}")
                 btn.setStyleSheet("QToolButton { background:#0d1117; color:#e6edf3; border:1px solid #0d3b33;"
-                                  " border-radius:4px; padding:4px 8px; font-size:8pt; text-align:left; }"
+                                  " border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }"
                                   "QToolButton:hover { border-color:#00d4aa; color:#00d4aa; }")
                 btn.setToolTip(f"{s['name']} — 成功率{_perf.get('operation_success_rate','')} · 节拍{_perf.get('cycle_time','')} · 点击打开 ECS 链接 + 建节点链")
                 btn.clicked.connect(lambda _, sid=s["id"]: self.module.open_scene_link(sid))
@@ -3614,13 +3583,13 @@ class LibraryPanel(QFrame):
             _cp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "flows", "cooperation_closed_loop.json")
             if os.path.exists(_cp):
                 lab = QLabel("▾ 🤝 合作闭环 (供应商·数据合规)")
-                lab.setStyleSheet("color:#a371f7; font-size:8pt; font-weight:700; padding:6px 2px 2px;")
+                lab.setStyleSheet("color:#a371f7; font-size:6pt; font-weight:700; padding:6px 2px 2px;")
                 lab.setToolTip("供应商提供底座模型 → 实验室微调专有模型 → 数据闭环不出实验室 (点击加载画布)")
                 self.v.addWidget(lab)
                 btn = QToolButton()
                 btn.setText("🤝 合作数据闭环流程")
                 btn.setStyleSheet("QToolButton { background:#0d1117; color:#e6edf3; border:1px solid #a371f733;"
-                                  " border-radius:4px; padding:4px 8px; font-size:8pt; text-align:left; }"
+                                  " border-radius:4px; padding:4px 8px; font-size:6pt; text-align:left; }"
                                   "QToolButton:hover { border-color:#a371f7; color:#a371f7; }")
                 btn.setToolTip("加载合作合规数据闭环画布: 供应商底座→SYS2微调→评估→SYS1/SYS0, 数据不出实验室")
                 btn.clicked.connect(lambda _, fl=_cp: self.module.load_flow_file(fl))
@@ -3868,7 +3837,7 @@ class SimulinkModule(QWidget):
             b.setToolTip(tip)
             b.setStyleSheet(f"""
                 QPushButton {{ background:#e9edf2; color:{color}; border:1px solid #d0d7de;
-                border-radius:5px; padding:5px 14px; font-size:9pt; font-weight:600; }}
+                border-radius:5px; padding:5px 14px; font-size:7pt; font-weight:600; }}
                 QPushButton:hover {{ border-color:{color}; background:#dbe9ff; }}
                 QPushButton:disabled {{ color:#555; border-color:#222; }}
             """)
@@ -3984,7 +3953,7 @@ class SimulinkModule(QWidget):
             QMdiArea { background:#eef1f5; }
             QMdiSubWindow { background:#f6f8fa; border:1px solid #d0d7de; }
             QMdiSubWindow::title { background:#ffffff; color:#24292f;
-                                   padding-left:10px; font-size:9pt; font-weight:600; }
+                                   padding-left:10px; font-size:7pt; font-weight:600; }
             QMdiSubWindow::close-button, QMdiSubWindow::minimize-button,
             QMdiSubWindow::maximize-button { background:#e9edf2; border-radius:3px; }
             QMdiSubWindow::close-button:hover { background:#f85149; }
@@ -4010,7 +3979,7 @@ class SimulinkModule(QWidget):
         self._lib_expand_bar.setToolTip("展开模块库左侧栏")
         self._lib_expand_bar.setStyleSheet("""
             QPushButton{background:#e9edf2; color:#1f6feb; border:none;
-                        border-left:1px solid #d0d7de; font-size:8pt; font-weight:700;}
+                        border-left:1px solid #d0d7de; font-size:6pt; font-weight:700;}
             QPushButton:hover{background:#d0d7de;}
         """)
         self._lib_expand_bar.clicked.connect(self._expand_library)
@@ -4040,11 +4009,11 @@ class SimulinkModule(QWidget):
         stl.setContentsMargins(10, 3, 10, 3)
         stl.setSpacing(14)
         self.lbl_sys_state = QLabel("⏸ 待机")
-        self.lbl_sys_state.setStyleSheet("color:#57606a; font-size:8pt; font-weight:600; background:transparent; border:none;")
+        self.lbl_sys_state.setStyleSheet("color:#57606a; font-size:6pt; font-weight:600; background:transparent; border:none;")
         self.lbl_node_status = QLabel("节点: 0 | 成功: 0 | 运行中: 0 | 失败: 0")
-        self.lbl_node_status.setStyleSheet("color:#57606a; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_node_status.setStyleSheet("color:#57606a; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
         self.lbl_rt = QLabel("")
-        self.lbl_rt.setStyleSheet("color:#00d4aa; font-size:8pt; font-family:Consolas; background:transparent; border:none;")
+        self.lbl_rt.setStyleSheet("color:#00d4aa; font-size:6pt; font-family:Consolas; background:transparent; border:none;")
         stl.addWidget(self.lbl_sys_state)
         stl.addWidget(self.lbl_node_status)
         stl.addStretch()
@@ -4059,7 +4028,7 @@ class SimulinkModule(QWidget):
         _lp.setSpacing(0)
         log_head = QHBoxLayout()
         log_title = QLabel("📋 日志")
-        log_title.setStyleSheet("color:#57606a; font-size:8pt; font-weight:700; background:transparent; border:none;")
+        log_title.setStyleSheet("color:#57606a; font-size:6pt; font-weight:700; background:transparent; border:none;")
         log_head.addWidget(log_title)
         log_head.addStretch()
         self.btn_log_toggle = QPushButton("◀ 收起")
@@ -4067,7 +4036,7 @@ class SimulinkModule(QWidget):
         self.btn_log_toggle.setToolTip("隐藏底部日志区")
         self.btn_log_toggle.setStyleSheet("""
             QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
-                        border-radius:4px; font-size:8pt; font-weight:700; padding:2px 8px;}
+                        border-radius:4px; font-size:6pt; font-weight:700; padding:2px 8px;}
             QPushButton:hover{border-color:#1f6feb;}
         """)
         self.btn_log_toggle.clicked.connect(self._toggle_log_box)
@@ -4077,7 +4046,7 @@ class SimulinkModule(QWidget):
         self.log_box.setReadOnly(True)
         # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
         # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
-        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:8pt; font-family:Consolas;")
+        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:6pt; font-family:Consolas;")
         _lp.addWidget(self.log_box)
         # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
         self._v_split.addWidget(self._log_panel)
@@ -4361,7 +4330,7 @@ class SimulinkModule(QWidget):
             bub.setWindowFlags(_Qt.ToolTip | _Qt.WindowStaysOnTopHint | _Qt.FramelessWindowHint)
             pal = self._pal()
             bub.setStyleSheet(f"QLabel {{ background:{pal['panel']}; color:{pal['text']}; border:1px solid #00d4aa;"
-                              "border-radius:6px; padding:10px 14px; font-size:9pt; }")
+                              "border-radius:6px; padding:10px 14px; font-size:7pt; }")
             bub.adjustSize()
             x = global_pos.x() - bub.width() // 2
             y = global_pos.y() + 16
@@ -5240,7 +5209,7 @@ class SimulinkModule(QWidget):
             bg = "#b32424" if self._rec_blink_on else "#7a1a1a"
             self.btn_record.setStyleSheet(
                 f"QPushButton {{ background:{bg}; color:white; border:2px solid #ff5555; "
-                f"border-radius:5px; padding:5px 14px; font-size:9pt; font-weight:800; }}")
+                f"border-radius:5px; padding:5px 14px; font-size:7pt; font-weight:800; }}")
         except Exception:
             pass
 
@@ -5396,13 +5365,13 @@ class SimulinkModule(QWidget):
         dlg.setMinimumWidth(560)
         lay = QVBoxLayout(dlg)
 
-        head = QLabel(f"<span style='font-size:11pt;font-weight:700;color:{color}'>{verdict}</span> "
+        head = QLabel(f"<span style='font-size:8.5pt;font-weight:700;color:{color}'>{verdict}</span> "
                       f"<span style='color:#57606a'> · MSE 提升 {imp:+.1f}%</span>")
         lay.addWidget(head)
 
         table = QTextEdit()
         table.setReadOnly(True)
-        table.setStyleSheet("background:#f6f8fa; color:#24292f; border:1px solid #d0d7de; font-family:Consolas; font-size:9pt;")
+        table.setStyleSheet("background:#f6f8fa; color:#24292f; border:1px solid #d0d7de; font-family:Consolas; font-size:7pt;")
         rows = [
             ("指标", "基础模型", "微调模型", "提升"),
             ("动作 MSE", f"{base['action_mse']:.2f}", f"{cand['action_mse']:.2f}", f"{imp:+.1f}%"),
@@ -5420,7 +5389,7 @@ class SimulinkModule(QWidget):
         table.setPlainText(text)
         lay.addWidget(table)
 
-        note = QLabel(f"<span style='color:#57606a;font-size:8pt'>对比文件: {os.path.basename(jsons[-1])}<br>"
+        note = QLabel(f"<span style='color:#57606a;font-size:6pt'>对比文件: {os.path.basename(jsons[-1])}<br>"
                       f"提升路径: 基础(300步) → 更多数据 → 更长训练 → 超参调优 → 架构升级(SmolVLA)</span>")
         lay.addWidget(note)
 
@@ -5799,10 +5768,10 @@ class SimulinkModule(QWidget):
         self.lbl_node_status.setText(f"节点: {total} | 成功: {ok} | 运行中: {running} | 失败: {err}")
         if self._sim_running:
             self.lbl_sys_state.setText("▶ 仿真运行中")
-            self.lbl_sys_state.setStyleSheet("color:#00d4aa; font-size:8pt; font-weight:700; background:transparent; border:none;")
+            self.lbl_sys_state.setStyleSheet("color:#00d4aa; font-size:6pt; font-weight:700; background:transparent; border:none;")
         else:
             self.lbl_sys_state.setText("⏸ 待机")
-            self.lbl_sys_state.setStyleSheet("color:#57606a; font-size:8pt; font-weight:600; background:transparent; border:none;")
+            self.lbl_sys_state.setStyleSheet("color:#57606a; font-size:6pt; font-weight:600; background:transparent; border:none;")
         self.lbl_rt.setText(f"t = {self._sim_t:.2f}s · dt = {self._sim_dt}s")
 
     def _topo_sort(self):
@@ -5918,7 +5887,7 @@ class SimulinkModule(QWidget):
         tx2 = pal["text2"]
         return f"""
         QFileDialog {{ background:{bg}; color:{tx}; }}
-        QFileDialog QLabel {{ color:{tx}; font-size:9pt; }}
+        QFileDialog QLabel {{ color:{tx}; font-size:7pt; }}
         QFileDialog QLineEdit {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:4px 8px; }}
         QFileDialog QComboBox {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:4px; }}
         QFileDialog QComboBox QAbstractItemView {{ background:{bg}; color:{tx}; selection-background-color:#00d4aa44; }}
@@ -5929,8 +5898,8 @@ class SimulinkModule(QWidget):
         QFileDialog QPushButton {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:5px 14px; }}
         QFileDialog QPushButton:hover {{ border-color:#00d4aa; color:#00d4aa; }}
         QMessageBox {{ background:{bg}; color:{tx}; }}
-        QMessageBox QLabel {{ color:{tx}; font-size:9pt; }}
-        QMessageBox QPushButton {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:6px 18px; font-size:9pt; min-width:70px; }}
+        QMessageBox QLabel {{ color:{tx}; font-size:7pt; }}
+        QMessageBox QPushButton {{ background:{inp}; color:{tx}; border:1px solid {bd}; border-radius:4px; padding:6px 18px; font-size:7pt; min-width:70px; }}
         QMessageBox QPushButton:hover {{ border-color:#00d4aa; color:#00d4aa; }}
         QMessageBox QPushButton:default {{ border-color:#00d4aa; }}
         """
@@ -6036,6 +6005,25 @@ class SimulinkModule(QWidget):
             self.canvas._scene.addItem(item)
         for l in flow.get("links", []):
             self.links.append(dict(l))
+        # 🐛 2026-08-22 老倪: 统一左移 row_bg, 模型名区固定 250px 宽 (不遮挡节点列)
+        #   (状态空间/原子条件等 JSON 画布 row_bg x=-20, 节点 x=100/0 → 模型名区仅 112px 被节点盖住)
+        try:
+            _fns = [n for n in self.nodes if n.get("type") != "row_bg"]
+            if _fns:
+                _minx = min(n.get("x", 0) for n in _fns)
+                for n in self.nodes:
+                    if n.get("type") == "row_bg":
+                        _oldx = n.get("x", 0)
+                        _newx = _minx - 266
+                        if _newx != _oldx:
+                            n["x"] = _newx
+                            n["w"] = n.get("w", 150) + (_oldx - _newx)  # 右界不变, 宽度左扩
+                            _it = self._items.get(n["id"])
+                            if _it is not None:
+                                _it.setPos(_newx, n.get("y", 0))
+                                _it.w = n["w"]
+        except Exception:
+            pass
         self._draw_links()
         self.canvas._scene.update()
         self._update_back_btn()
@@ -6096,8 +6084,7 @@ class SimulinkModule(QWidget):
             "SmolVLA+LEW": "#1f7a4d", "VLA-Touch": "#6a2d8f", "AWE": "#8f2d4d",
             "MLP 蒸馏": "#2d6a8f", "官方专家": "#8f8a3d",  # 🏆 专家=金色(真值锚点)
         }
-        x0 = base_x - 140          # 🎨 大字区让开节点列: 大字绝对右界 = x0+8+126 = -12
-                                   #   < 节点 x=120, 零重叠 (2026-08-05 修复"叠字/重复"观感)
+        x0 = base_x - 266          # 🐛 2026-08-22 老倪: -140→-266, 模型名区固定250px宽(右界=base_x-8=112<120)
         w = (base_x + n_cols * col_w + 120) - x0
         for r, name in enumerate(row_names):
             y0 = base_y + r * row_h - 20
@@ -6114,6 +6101,12 @@ class SimulinkModule(QWidget):
                 it.update()
         self._suspend_undo = old_undo
         self.canvas._scene.update()
+        # 🐛 2026-08-22 老倪: 大字区加宽左移(x0=-140)后, 初始视图滚到最左才能看全模型名
+        try:
+            _sb = self.canvas.horizontalScrollBar()
+            _sb.setValue(_sb.minimum())
+        except Exception:
+            pass
         self._model_row_items = []   # 真节点由 nodes 持有, 无需单独引用
 
     def _sync(self):
@@ -8238,7 +8231,7 @@ class SimulinkModule(QWidget):
                 # 🐛 2026-08-18 老倪: 字体白色 + wqy (kg·m²/σ/≪ 等特殊字符有字形, 不显示 ?)
                 t.setStyleSheet(
                     "QTableWidget { color:#ffffff; background:#0d1117; gridline-color:#30363d; "
-                    "font-family:'WenQuanYi Micro Hei','Microsoft YaHei',sans-serif; font-size:9pt; } "
+                    "font-family:'WenQuanYi Micro Hei','Microsoft YaHei',sans-serif; font-size:7pt; } "
                     "QTableWidget::item { padding:2px 6px; } "
                     "QHeaderView::section { color:#ffffff; background:#161b22; "
                     "border:1px solid #30363d; font-weight:bold; }")
@@ -8282,7 +8275,7 @@ class SimulinkModule(QWidget):
             lay.addWidget(tabs)
             tip = QLabel("广义质量 = 典型位形 (竖直零位) 等效惯量: 对角线=转子惯量×减速比²+臂段负载, "
                          "相邻轴耦合 5% (简化)")
-            tip.setStyleSheet("color:#8b949e; font-size:8pt; padding:4px;")
+            tip.setStyleSheet("color:#8b949e; font-size:6pt; padding:4px;")
             lay.addWidget(tip)
             # 📤 导出到 datadrive 网页 (2026-08-18 老倪)
             from PyQt5.QtWidgets import QPushButton
@@ -8330,7 +8323,7 @@ class SimulinkModule(QWidget):
  th {{ background:#161b22; color:#ffffff; border:1px solid #30363d; padding:6px 10px; text-align:left; }}
  td {{ border:1px solid #30363d; padding:5px 10px; }}
  tr:nth-child(even) td {{ background:#161b22; }}
- .meta {{ color:#8b949e; font-size:9pt; }}
+ .meta {{ color:#8b949e; font-size:7pt; }}
 </style></head><body>
 <h1>🌍 物理世界 · 硬件与动力学参数 (Z700)</h1>
 <p class="meta">总质量 {_pw.total_mass} kg · 7 自由度 (6×旋转关节 + 夹爪) · 生成时间 {time.strftime('%Y-%m-%d %H:%M')}</p>
@@ -8910,9 +8903,9 @@ class SimulinkModule(QWidget):
                     f"<td style='color:#58a6ff'>{st['e_def']}</td>"
                     f"<td style='color:#9aa4b2'>ωₙ={wn:.2f} ζ={zeta:.2f} s={pole}</td></tr>")
             html = (f"<h3 style='color:#58a6ff;margin:4px'>❖ 状态机 — 5 阶段增益调度表</h3>"
-                    f"<p style='color:#8b949e;font-size:8pt'>每个状态 = 一组特征根 (增益调度: "
+                    f"<p style='color:#8b949e;font-size:6pt'>每个状态 = 一组特征根 (增益调度: "
                     f"切换阶段即切换特征方程系数)。标定④写入的 gain_schedule 已并入。</p>"
-                    f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                    f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                     f"<tr style='color:#e6edf3'><th>状态</th><th>Kp</th><th>Kd</th><th>限幅</th>"
                     f"<th>误差定义</th><th>特征根</th></tr>{rows_html}</table>")
         elif "动作" in nm:
@@ -8926,17 +8919,17 @@ class SimulinkModule(QWidget):
                     f"<td style='color:#e6edf3'>{st['act']}</td>"
                     f"<td style='color:#9aa4b2'>Kp={kp_s:.2f} Kd={kd_s:.2f}</td></tr>")
             html = (f"<h3 style='color:#58a6ff;margin:4px'>🎮 动作 — 每阶段动作表</h3>"
-                    f"<p style='color:#8b949e;font-size:8pt'>u(t) = Kp·e + Kd·ė + u_ff "
+                    f"<p style='color:#8b949e;font-size:6pt'>u(t) = Kp·e + Kd·ė + u_ff "
                     f"(u_ff = 左脑前馈预测动作)。夹爪: 抓取闭合 0.6 / 插入保持。</p>"
-                    f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                    f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                     f"<tr style='color:#e6edf3'><th>阶段</th><th>动作指令</th><th>增益</th></tr>{rows_html}</table>")
         elif "双脑" in nm:
             Kff = p.get("K_ff", 0.2)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🧠 双脑 — 前馈链路</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>前馈 = 左脑预测动作, 在偏差产生前先出力 "
+                f"<p style='color:#8b949e;font-size:6pt'>前馈 = 左脑预测动作, 在偏差产生前先出力 "
                 f"(回路外, 不改极点, 只补静差)</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>环节</th><th>角色</th><th>输出</th></tr>"
                 f"<tr><td style='color:#00d4aa'>左脑 MLP</td><td>前馈控制器 u_ff = π(x)</td>"
                 f"<td>action 4D = [dx dy dz gripper] · 547K 参数</td></tr>"
@@ -8946,7 +8939,7 @@ class SimulinkModule(QWidget):
                 f"<td>contact_th={p.get('contact_th', 0.5):.2f} — 状态机切换依据</td></tr>"
                 f"<tr><td style='color:#ffd700'>前馈增益</td><td>K_ff (画布标定)</td>"
                 f"<td>K_ff = {Kff:.3f} → F(s) = K_obs×K_ff 补偿静差</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 前馈物理含义: 即使系统特征解欠阻尼「爱晃」, 前馈给力准/时机好 → 轨迹可无超调 "
                 f"(左脑预测在误差产生前先动)</p>")
         elif p.get("neural_kalman"):
@@ -8954,8 +8947,8 @@ class SimulinkModule(QWidget):
             A = p.get("A", 0.95); K = p.get("K", 0.5)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🔮 右脑 · 非线性卡尔曼滤波器 (世界模型)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>经典卡尔曼 = 预测 + 更新; GRU 就是它的非线性黑盒版。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>经典卡尔曼 = 预测 + 更新; GRU 就是它的非线性黑盒版。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>卡尔曼组件</th><th>GRU/右脑 对应</th><th>物理含义</th></tr>"
                 f"<tr><td style='color:#00d4aa'>状态转移 A</td><td>循环权重 W_hh (隐状态 h_t)</td>"
                 f"<td>记住「世界怎么演」= 系统动力学模型</td></tr>"
@@ -8971,7 +8964,7 @@ class SimulinkModule(QWidget):
                 f"<td>带先验的非线性卡尔曼迭代</td></tr>"
                 f"<tr><td style='color:#ffd700'>标定参数</td><td>A = {A:.2f} · K = {K:.2f}</td>"
                 f"<td>预测强度 / 更新增益</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 输出: out1=状态预测 · out2=contact 概率 — 预测误差大 → 状态机减速/重试</p>")
         elif p.get("neural_cerebellum"):
             # 🧠 左脑 · 小脑 (前馈逆动力学 + 标定参数)
@@ -8979,9 +8972,9 @@ class SimulinkModule(QWidget):
             gt = p.get("gate", 1.0)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🧠 左脑 · 小脑 (前馈逆动力学 + 标定参数)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>小脑 = 前馈控制 + 感觉-运动映射: "
+                f"<p style='color:#8b949e;font-size:6pt'>小脑 = 前馈控制 + 感觉-运动映射: "
                 f"不依赖漫长反馈回路, 根据当前状态直接算「该用什么力」→ 毫秒级无意识纠偏。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>项目</th><th>小脑 (神经科学)</th><th>左脑 MLP (工程实现)</th></tr>"
                 f"<tr><td style='color:#00d4aa'>功能</td><td>前馈控制 Feedforward</td>"
                 f"<td>obs → action 直接映射</td></tr>"
@@ -8995,16 +8988,16 @@ class SimulinkModule(QWidget):
                 f"<td>20-30 条示教 → 4090 微调 5min → 热加载 .pt</td></tr>"
                 f"<tr><td style='color:#ffd700'>LTD 警戒</td><td>gate 突触抑制</td>"
                 f"<td>gate={gt:.2f} — 左脑不准时降 gate (1.0→0.1→0.01)</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 左脑标定 ≠ 调权重: 权重是肌肉记忆 (547K), 标定是数据与执行旋钮 — 见 🔧 左脑标定实验</p>")
         elif p.get("neural_cortex"):
             # 🧭 皮层 · 状态机 (认知决策)
             cth = p.get("contact_th", 0.6); Kp = p.get("Kp", 2.0); th = p.get("thresh", 0.06)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🧭 皮层 · 状态机 (认知决策)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>前额叶 = 规划与决策: "
+                f"<p style='color:#8b949e;font-size:6pt'>前额叶 = 规划与决策: "
                 f"卡尔曼只估计「世界在什么状态」, 不决定「该做什么」; 皮层决定何时切换阶段。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
                 f"<tr><td style='color:#00d4aa'>contact 概率</td><td>右脑卡尔曼 out2</td>"
                 f"<td>感知异常阻力 → 减速/退出重试</td></tr>"
@@ -9014,7 +9007,7 @@ class SimulinkModule(QWidget):
                 f"<td>6 阶段认知规划 (状态机)</td></tr>"
                 f"<tr><td style='color:#ffd700'>标定参数</td><td>contact_th={cth:.2f} · Kp={Kp:.2f} · thresh={th:.3f}m</td>"
                 f"<td>接触判定阈值 / 阶段P增益 / 几何阈值</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 系统 = 物理约束(小脑) + 学习的非线性卡尔曼(世界模型) + 认知规划器(状态机) — "
                 f"不是简单黑箱</p>")
         elif p.get("neural_climbing"):
@@ -9022,8 +9015,8 @@ class SimulinkModule(QWidget):
             gth = p.get("gate_th", 2.0); gmin = p.get("gate_min", 0.1)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🧬 攀缘纤维 · 误差警戒 (生物标定机制)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>人类小脑不用计算角度/力矩, 只用「预测误差」标定自己:</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>人类小脑不用计算角度/力矩, 只用「预测误差」标定自己:</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>生物机制</th><th>LeftRight 对应</th><th>说明</th></tr>"
                 f"<tr><td style='color:#00d4aa'>平行纤维 (上下文)</td><td>左脑 MLP 输出</td>"
                 f"<td>携带「我猜应该这么做」的预设动作指令</td></tr>"
@@ -9035,32 +9028,32 @@ class SimulinkModule(QWidget):
                 f"<td>gate 1.0 → {gmin:.2f} — 压制错误通路贡献</td></tr>"
                 f"<tr><td style='color:#ffd700'>标定参数</td><td>gate_th={gth:.1f}N · gate_min={gmin:.2f}</td>"
                 f"<td>误差阈值 / 最大抑制 (3-5 次试错即学会)</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 小脑实时标定: 不需要睡眠巩固, 误差一出现立即在线修正</p>")
         elif p.get("neural_ltd"):
             # 🛡 gate · 突触抑制 (LTD)
             g = p.get("gate", 1.0); go = p.get("gate_off", 0.1); go2 = p.get("gate_off2", 0.01)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🛡 gate · 突触抑制 (LTD)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>发现左脑预测不准时, 不改 MLP 权重, 瞬间降 gate 强行压制左脑输出影响力:</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>发现左脑预测不准时, 不改 MLP 权重, 瞬间降 gate 强行压制左脑输出影响力:</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>gate 档位</th><th>系数</th><th>语义</th></tr>"
                 f"<tr><td style='color:#00d4aa'>全开</td><td>{g:.2f}</td><td>左脑主导 (肌肉记忆正常发挥)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>压制</td><td>{go:.2f}</td><td>左脑不准 → 控制权移交物理传感器</td></tr>"
                 f"<tr><td style='color:#00d4aa'>完全移交</td><td>{go2:.2f}</td><td>紧急: 完全靠传感器 (物理安全边界)</td></tr>"
                 f"<tr><td style='color:#ffd700'>恢复期</td><td>切阶段后复原</td><td>接触安全位置 → gate 恢复 → 左脑继续主导</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 工程类比: 小脑物理锁定错误动作, 强行走完正确后半程</p>")
         elif p.get("neural_alpha"):
             # ⚖️ α 融合层 (置信度旋钮)
             a = p.get("alpha", 0.5); aa = p.get("alpha_approach", 0.3); ai = p.get("alpha_insert", 0.9)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>⚖️ α 融合层 (置信度旋钮 — 等效卡尔曼增益)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>右脑 GRU 是非线性黑箱, 无法直接改 A 矩阵 → "
+                f"<p style='color:#8b949e;font-size:6pt'>右脑 GRU 是非线性黑箱, 无法直接改 A 矩阵 → "
                 f"在「预测值(GRU输出)」和「观测值(传感器)」之间外挂残差加权器:</p>"
-                f"<p style='color:#e6edf3;font-size:10pt;font-family:Consolas;background:#161b22;padding:8px;border-radius:4px'>"
+                f"<p style='color:#e6edf3;font-size:7.5pt;font-family:Consolas;background:#161b22;padding:8px;border-radius:4px'>"
                 f"fused = (1 − α)·pred + α·meas &nbsp;&nbsp;&nbsp; α ∈ [0,1]</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>α 取值</th><th>含义</th><th>适用场景</th></tr>"
                 f"<tr><td style='color:#00d4aa'>α → 0</td><td>完全信任世界模型 (预测)</td>"
                 f"<td>传感器噪声大 / 瞬态干扰</td></tr>"
@@ -9070,14 +9063,14 @@ class SimulinkModule(QWidget):
                 f"<td>接近 α={aa:.1f} (靠模型) · 插入 α={ai:.1f} (绝对靠反馈)</td></tr>"
                 f"<tr><td style='color:#ffd700'>标定参数</td><td>alpha={a:.2f} (默认)</td>"
                 f"<td>像拧电位器一样调, 不用改 GRU 权重</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 状态机 = 宏观决策 (何时切换阶段) · α = 微观信号融合 (怎么相信传感器) — 完整标定闭环</p>")
         elif p.get("neural_calib"):
             # 🔧 左脑标定实验
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🔧 左脑标定实验 (标定靠数据不靠权重)</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>左脑是固定 .pt 权重文件, 工程师用三个「数据/执行」旋钮标定:</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>左脑是固定 .pt 权重文件, 工程师用三个「数据/执行」旋钮标定:</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>步骤</th><th>操作</th><th>物理含义</th></tr>"
                 f"<tr><td style='color:#00d4aa'>① 感知零偏标定</td>"
                 f"<td>静止记录 obs → 新 x_mean; 满行程 → x_std</td>"
@@ -9090,13 +9083,13 @@ class SimulinkModule(QWidget):
                 f"<td>小脑急性手术: 物理特性剧变时换新肌肉记忆模板</td></tr>"
                 f"<tr><td style='color:#ffd700'>生物对照</td><td>攀缘纤维 → LTD → gate</td>"
                 f"<td>误差信号实时警戒: 左脑不准 → gate 骤降压制 (见 🧬/🛡 节点)</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 产物: reports/cerebellum_calib.json + cerebellum_gate.png (误差尖峰→gate 骤降→恢复)</p>")
         else:  # 感知链
             Kobs = p.get("K_obs", 1.0)
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🎯 感知链 — 观测链全景 (2D 像素 → 39D/45D 状态)</h3>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>环节</th><th>输入</th><th>输出</th></tr>"
                 f"<tr><td style='color:#00d4aa'>YOLO 2D 检测</td><td>相机图像</td>"
                 f"<td>hand/peg/hole 2D 像素框 · conf=0.97/0.99/0.98</td></tr>"
@@ -9108,7 +9101,7 @@ class SimulinkModule(QWidget):
                 f"<td>融合 43D (双帧堆叠) → 45D (+相对向量 2D)</td></tr>"
                 f"<tr><td style='color:#ffd700'>观测模型</td><td>y = C·x</td>"
                 f"<td>K_obs = {Kobs:.2f} (观测增益, 非 PID 组件)</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"39D 结构 = node_logic.node_obs39 · 坐标=逻辑主线, 图像=背景 (结构条件叠加)</p>")
         # 对话框
         dlg = QDialog(self)
@@ -9119,7 +9112,7 @@ class SimulinkModule(QWidget):
         tb = QTextBrowser()
         tb.setHtml(html)
         tb.setStyleSheet("QTextBrowser { background:#0d1117; color:#e6edf3; "
-                         "border:1px solid #30363d; font-size:10pt; }")
+                         "border:1px solid #30363d; font-size:7.5pt; }")
         lay.addWidget(tb)
         b_close = QPushButton("关闭")
         b_close.clicked.connect(dlg.accept)
@@ -9136,86 +9129,86 @@ class SimulinkModule(QWidget):
         if p.get("ff_accel"):
             html = (
                 f"<h3 style='color:#FFD700;margin:4px'>⚡ 前馈加速器 (原左脑 MLP) — 快路径</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>快慢分离中的「快」: 直接映射, 无递归无延迟, 偏差产生前给力。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>快慢分离中的「快」: 直接映射, 无递归无延迟, 偏差产生前给力。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
                 f"<tr><td style='color:#00d4aa'>输入</td><td>obs 43D 统一状态向量</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出</td><td>建议动作 u_ff (权重 30%)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>模型</td><td>MLP 547K 参数 — obs→action 直接映射 (原左脑)</td></tr>"
                 f"<tr><td style='color:#ffd700'>融合权重</td><td>w_ff = {p.get('w_ff', 0.3):.2f} — 调度器按此比例采纳建议动作</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 快慢分离: 快=前馈加速器(毫秒级, 无迭代) · 慢=状态估计器(递归校正) — 快给建议, 慢给置信</p>")
         elif p.get("kalman_estimator"):
             html = (
                 f"<h3 style='color:#87CEEB;margin:4px'>🔮 自适应状态估计器 (原右脑 GRU) — 慢路径</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>慢=递归潜状态 + 卡尔曼预测-校正: 世界模型判断「现在到底在哪」。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>慢=递归潜状态 + 卡尔曼预测-校正: 世界模型判断「现在到底在哪」。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>卡尔曼组件</th><th>GRU 对应</th><th>物理含义</th></tr>"
                 f"<tr><td style='color:#00d4aa'>状态转移 A</td><td>循环权重 W_hh</td><td>记住「世界怎么演」= 系统动力学</td></tr>"
                 f"<tr><td style='color:#00d4aa'>卡尔曼增益 K</td><td>更新门 + 重置门</td><td>自动调节「信预测 vs 信观测」</td></tr>"
                 f"<tr><td style='color:#00d4aa'>先验估计</td><td>(hₜ₋₁, obs, action) → 潜状态</td><td>猜执行动作后世界变成什么样</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出 out1</td><td>潜状态 → 先验动力学预测器</td><td>预测 next_obs</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出 out2</td><td>潜状态 → 状态校正器</td><td>算残差 & 接触概率</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 快慢分离: 慢路径递归校正, 给调度器「置信度」 — 预测误差大 → 降 u_ff 权重, 改信传感器</p>")
         elif p.get("prior_predict"):
             html = (
                 f"<h3 style='color:#87CEEB;margin:4px'>📈 先验动力学预测器 — 预测 next_obs</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>状态空间前向: x̂ₖ₋ = A·x̂ₖ₋₁ + B·uₖ (先验 = 还没看传感器就先猜)。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>状态空间前向: x̂ₖ₋ = A·x̂ₖ₋₁ + B·uₖ (先验 = 还没看传感器就先猜)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
                 f"<tr><td style='color:#00d4aa'>输入</td><td>潜状态 (估计器 out1)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出</td><td>next_obs 预测 → 状态校正器 (残差基准)</td></tr>"
                 f"<tr><td style='color:#ffd700'>状态转移</td><td>A ≈ GRU 循环权重 — 世界模型学到的动力学</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 先验 vs 观测的差 = 残差: 残差大 = 世界出乎意料 → 接触/异常信号</p>")
         elif p.get("state_corrector"):
             html = (
                 f"<h3 style='color:#FF6B6B;margin:4px'>🧪 状态校正器 — 残差 & 接触概率</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>卡尔曼更新核心: 用观测 z_k 校正先验, 残差 r = z_k − ĥ(x̂ₖ₋) (新信息)。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>卡尔曼更新核心: 用观测 z_k 校正先验, 残差 r = z_k − ĥ(x̂ₖ₋) (新信息)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>信号</th><th>来源</th><th>含义</th></tr>"
                 f"<tr><td style='color:#00d4aa'>残差 r</td><td>z_k − ĥ(x̂ₖ₋)</td><td>传感器反馈 vs 先验预测之差</td></tr>"
                 f"<tr><td style='color:#00d4aa'>接触概率</td><td>σ(残差·增益)</td><td>残差大 → 接触/碰撞概率高</td></tr>"
                 f"<tr><td style='color:#ffd700'>校正后潜状态</td><td>x̂ₖ = x̂ₖ₋ + K·r</td><td>反馈闭环: 状态被拉回真实</td></tr>"
                 f"<tr><td style='color:#ffd700'>输出 out1</td><td>contact + 残差 → 认知调度器</td><td>调度器据此刻阶段切换/否决</td></tr>"
                 f"<tr><td style='color:#ffd700'>输出 out2</td><td>校正后潜状态 → 先验预测器</td><td>闭环: 校正结果喂回动力学</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 卡尔曼反馈闭环: 传感器反馈 z_k (物理世界) → 残差 → 校正 → 预测 — 状态空间全程闭环</p>")
         elif p.get("action_modulator"):
             html = (
                 f"<h3 style='color:#FF6B6B;margin:4px'>🧭 动作调制器 (原状态机) — 6阶段状态机 + 否决权</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
                 f"<tr><td style='color:#FFD700'>u_ff 建议动作</td><td>前馈加速器 (权重 30%)</td><td>快路径建议, 可被否决</td></tr>"
                 f"<tr><td style='color:#FF6B6B'>contact 概率 + 残差</td><td>状态校正器</td><td>慢路径证据: 异常 → 否决 u_ff</td></tr>"
                 f"<tr><td style='color:#00d4aa'>阶段切换</td><td>接近→抓取→抬起→转移→插入→完成</td><td>认知规划序列</td></tr>"
                 f"<tr><td style='color:#00d4aa'>动作融合</td><td>u = w_ff·u_ff + (1−w_ff)·u_fb</td><td>建议与反馈加权合成</td></tr>"
                 f"<tr><td style='color:#ffd700'>否决权</td><td>残差 > 阈值 → 强制减速/重试</td><td>认知层最后拍板</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 三层架构: 感知(观测) → 并行(快慢分离) → 决策(否决权) — 状态空间模型的核心认知</p>")
         elif p.get("sat_limit"):
             html = (
                 f"<h3 style='color:#d29922;margin:4px'>🛡 安全执行边界 — 饱和限幅</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>物理安全: 任何融合后的动作先过限幅再下发执行器。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>物理安全: 任何融合后的动作先过限幅再下发执行器。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
                 f"<tr><td style='color:#00d4aa'>输入</td><td>阶段切换与动作融合结果</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出</td><td>物理指令 → 机器人执行器</td></tr>"
                 f"<tr><td style='color:#ffd700'>饱和限幅</td><td>速度/力/位置限幅 — 防过冲防碰撞</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 认知层否决权 + 物理限幅 = 双层安全: 决策层看语义, 执行层卡物理</p>")
         elif "传感器融合" in nm:
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>📡 传感器融合 — 时空感知前端</h3>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>传感器</th><th>维度</th><th>信息</th></tr>"
                 f"<tr><td style='color:#00d4aa'>RGB-D</td><td>视觉</td><td>位置/姿态/深度 (YOLO 2D→3D)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>力觉</td><td>六维力</td><td>接触力/力矩</td></tr>"
                 f"<tr><td style='color:#00d4aa'>触觉</td><td>Marker</td><td>抓取/接触/方向</td></tr>"
                 f"<tr><td style='color:#ffd700'>输出</td><td>43D 统一状态向量</td><td>obs — 全感知融合 (结构条件叠加)</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 43D = 39D 视觉结构 + 触觉 4D (触觉增维) — 时空感知 = 当前帧 + 历史帧时序</p>")
         elif p.get("detection_targets"):
             # 🎯 YOLO 目标检测 — 检测目标清单 (2026-08-20 老倪: 需求说明书 → 22 目标 6 类)
@@ -9243,45 +9236,45 @@ class SimulinkModule(QWidget):
                 html = (
                     f"<h3 style='color:#FFD700;margin:4px'>🎯 YOLO 目标检测 — 检测目标清单 "
                     f"({len(_data.get('targets', []))} 个 · {p.get('model', 'yolov8s')})</h3>"
-                    f"<p style='color:#8b949e;font-size:8pt'>来源: 五大作业场景需求说明书 · "
+                    f"<p style='color:#8b949e;font-size:6pt'>来源: 五大作业场景需求说明书 · "
                     f"指标含 mAP@0.5 / mAP@0.5:0.95 / 准确率 / 位姿误差 / 推理时间</p>"
-                    f"<table border='1' cellspacing='0' cellpadding='3' style='border-color:#30363d;font-size:8pt'>"
+                    f"<table border='1' cellspacing='0' cellpadding='3' style='border-color:#30363d;font-size:6pt'>"
                     f"<tr style='color:#e6edf3'><th>ID</th><th>检测目标</th><th>类别</th><th>检出对象</th>"
                     f"<th>评价指标</th><th>推理时间</th></tr>{''.join(_rows)}</table>"
-                    f"<p style='color:#8b949e;font-size:8pt;margin-top:6px'>📥 点节点右下角「导出」按钮 → Excel "
+                    f"<p style='color:#8b949e;font-size:6pt;margin-top:6px'>📥 点节点右下角「导出」按钮 → Excel "
                     f"(清单+指标定义+模型基线)。模型基线: {_baseline}</p>")
             except Exception as _e:
                 html = f"<h3 style='color:#FFD700;margin:4px'>🎯 YOLO 目标检测</h3><p style='color:#f85149'>{_e}</p>"
         elif p.get("task_planner"):
             html = (
                 f"<h3 style='color:#a78bfa;margin:4px'>🧠 任务规划器 (LLM) — 慢决策 · 回路外</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>大模型管「想」, 小模型管「动」: 任务开始时规划一次, 不进实时控制回路。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>大模型管「想」, 小模型管「动」: 任务开始时规划一次, 不进实时控制回路。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>项</th><th>内容</th></tr>"
                 f"<tr><td style='color:#00d4aa'>输入</td><td>MES 工单 / 自然语言指令 / 场景ID (五大作业场景)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>输出</td><td>技能Token序列 [SKILL_xxx] → 🧭动作调制器 (规则校验后)</td></tr>"
                 f"<tr><td style='color:#00d4aa'>模型</td><td>Qwen3-7B 可插拔 (llm_url); 未配置走规则拆解 (确定性优先)</td></tr>"
                 f"<tr><td style='color:#ffd700'>技能库</td><td>242 条原子技能 (flows/atomic_skill_tokens.json, 9 大类)</td></tr>"
                 f"<tr><td style='color:#ffd700'>校验</td><td>非法序列拒绝: Token 必须在库 + 阶段顺序合法</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 源码: src/lerobot/policies/left_right/state_space/planner.py · TaskPlanner</p>")
         elif p.get("exception_reasoner"):
             html = (
                 f"<h3 style='color:#f0883e;margin:4px'>🔍 异常推理器 (LLM) — 慢决策 · 回路外</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>状态机卡住时诊断异常 + 恢复建议 (触发: 连续否决/阶段卡死/未接触)。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:9pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>状态机卡住时诊断异常 + 恢复建议 (触发: 连续否决/阶段卡死/未接触)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:7pt'>"
                 f"<tr style='color:#e6edf3'><th>异常分类</th><th>触发条件</th><th>恢复建议</th></tr>"
                 f"<tr><td style='color:#ff6b6b'>力控异常</td><td>连续否决 ≥ max_veto</td><td>减速重试 + 复核力阈值</td></tr>"
                 f"<tr><td style='color:#ff6b6b'>对准失败</td><td>接近停留 &gt;5s 未接触</td><td>视觉复核孔位坐标 + 重新对准</td></tr>"
                 f"<tr><td style='color:#ff6b6b'>插入未到位</td><td>接触但距离超阈值</td><td>复测 + 低力重插</td></tr>"
                 f"<tr><td style='color:#ff6b6b'>未接触</td><td>接触概率 &lt;0.3</td><td>检查末端位置与目标坐标</td></tr>"
-                f"</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+                f"</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                 f"📌 源码: planner.py · ExceptionReasoner (规则诊断, LLM 可插拔)</p>")
         elif p.get("skill_composer"):
             html = (
                 f"<h3 style='color:#3fb950;margin:4px'>🛠 技能编排器 (LLM) — 场景驱动</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>五大作业场景定义 → 技能序列 + 参数 (performance 覆盖默认)。</p>"
-                f"<table border='1' cellspacing='0' cellpadding='3' style='border-color:#30363d;font-size:8pt'>"
+                f"<p style='color:#8b949e;font-size:6pt'>五大作业场景定义 → 技能序列 + 参数 (performance 覆盖默认)。</p>"
+                f"<table border='1' cellspacing='0' cellpadding='3' style='border-color:#30363d;font-size:6pt'>"
                 f"<tr style='color:#e6edf3'><th>场景</th><th>技能链</th><th>力限N</th><th>节拍s</th></tr>")
             try:
                 import importlib.util as _ilu
@@ -9300,12 +9293,12 @@ class SimulinkModule(QWidget):
                              f"<td>{_pr.get('force_limit')}</td><td>{_pr.get('tact_time')}</td></tr>")
             except Exception:
                 pass
-            html += ("</table><p style='color:#8b949e;font-size:8pt;margin-top:6px'>"
+            html += ("</table><p style='color:#8b949e;font-size:6pt;margin-top:6px'>"
                      f"📥 点节点右下角「导出」按钮 → Excel (全部任务)。源码: planner.py · SkillComposer</p>")
         else:
             html = (
                 f"<h3 style='color:#58a6ff;margin:4px'>🧩 {nm}</h3>"
-                f"<p style='color:#8b949e;font-size:8pt'>{p.get('desc', '')}</p>")
+                f"<p style='color:#8b949e;font-size:6pt'>{p.get('desc', '')}</p>")
         dlg = QDialog(self)
         dlg.setWindowTitle(f"🧮 {nm}")
         dlg.resize(640, 460)
@@ -9314,7 +9307,7 @@ class SimulinkModule(QWidget):
         tb = QTextBrowser()
         tb.setHtml(html)
         tb.setStyleSheet("QTextBrowser { background:#0d1117; color:#e6edf3; "
-                         "border:1px solid #30363d; font-size:10pt; }")
+                         "border:1px solid #30363d; font-size:7.5pt; }")
         lay.addWidget(tb)
         b_close = QPushButton("关闭")
         b_close.clicked.connect(dlg.accept)
@@ -9334,7 +9327,7 @@ class SimulinkModule(QWidget):
         dlg.setMinimumWidth(460)
         lay = QVBoxLayout(dlg)
         title = QLabel("前馈 PD 参数注入 Z700 内部模块 (标定后写回画布)")
-        title.setStyleSheet("color:#e6edf3; font-size:10pt; font-weight:600;")
+        title.setStyleSheet("color:#e6edf3; font-size:7.5pt; font-weight:600;")
         lay.addWidget(title)
         form = QFormLayout()
         spin_map = {}  # (module_id, key) -> QDoubleSpinBox
@@ -9342,7 +9335,7 @@ class SimulinkModule(QWidget):
             p = n["params"]
             name = n["name"]
             hdr = QLabel(f"▸ {name}")
-            hdr.setStyleSheet("color:#58a6ff; font-size:9pt; font-weight:600; margin-top:6px;")
+            hdr.setStyleSheet("color:#58a6ff; font-size:7pt; font-weight:600; margin-top:6px;")
             form.addRow(hdr)
             keys = [("Kp", 0.1, 10.0), ("K_obs", 0.0, 10.0), ("K_ff", 0.0, 2.0),
                     ("Kd", 0.0, 5.0), ("thresh", 0.001, 0.5)]
@@ -10035,9 +10028,9 @@ class SimulinkModule(QWidget):
         dlg.setMinimumSize(640, 560)
         dlg.setStyleSheet("""
             QDialog { background:#0d1117; }
-            QLabel { color:#e6edf3; font-size:9pt; }
-            QPlainTextEdit { background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; font-family:'Consolas','Menlo',monospace; font-size:8pt; padding:6px; }
-            QLineEdit { background:#161b22; color:#00d4aa; border:1px solid #30363d; border-radius:4px; padding:5px 8px; font-size:8pt; }
+            QLabel { color:#e6edf3; font-size:7pt; }
+            QPlainTextEdit { background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; font-family:'Consolas','Menlo',monospace; font-size:6pt; padding:6px; }
+            QLineEdit { background:#161b22; color:#00d4aa; border:1px solid #30363d; border-radius:4px; padding:5px 8px; font-size:6pt; }
             QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:4px; padding:7px 14px; font-weight:600; }
             QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
         """)
@@ -10047,7 +10040,7 @@ class SimulinkModule(QWidget):
         hdr = QLabel(f"📋 {_scene.get('name', '')}  ({sid} · {_scene.get('category', '')})\n"
                      f"📊 成功率 {_perf.get('operation_success_rate', '')} · 节拍 {_perf.get('cycle_time', '')}")
         hdr.setWordWrap(True)
-        hdr.setStyleSheet("color:#00d4aa; font-weight:700; font-size:10pt;")
+        hdr.setStyleSheet("color:#00d4aa; font-weight:700; font-size:7.5pt;")
         lay.addWidget(hdr)
         # JSON 预览
         lay.addWidget(QLabel("📄 场景描述 JSON (可编辑):"))
@@ -10066,7 +10059,7 @@ class SimulinkModule(QWidget):
         # 结果状态
         status = QLabel("")
         status.setWordWrap(True)
-        status.setStyleSheet("color:#8b949e; font-size:8pt;")
+        status.setStyleSheet("color:#8b949e; font-size:6pt;")
         lay.addWidget(status)
         # 操作按钮
         btn_row = QHBoxLayout()
@@ -10100,7 +10093,7 @@ class SimulinkModule(QWidget):
                 if _rb.get("ok"):
                     _saved = _rb.get("url", "")
                     status.setText(f"✅ 上传成功!\n💾 保存: {_saved}\n(name={_rb.get('name', '')})")
-                    status.setStyleSheet("color:#3fb950; font-size:8pt;")
+                    status.setStyleSheet("color:#3fb950; font-size:6pt;")
                 else:
                     status.setText(f"⚠️ 上传返回: {_rb.get('error', '未知')}")
             except Exception as e:
@@ -10153,7 +10146,7 @@ class SimulinkModule(QWidget):
         lay.addWidget(skill_cb)
         info = QLabel("")
         info.setWordWrap(True)
-        info.setStyleSheet("color:#8b949e; font-size:8pt;")
+        info.setStyleSheet("color:#8b949e; font-size:6pt;")
         lay.addWidget(info)
         def show_info(_):
             c = skill_cb.currentData()
@@ -10282,7 +10275,7 @@ class SimulinkModule(QWidget):
         dlg = QDialog(self.window() or self)
         dlg.setWindowTitle(f"📦 数据源: {node['name']}")
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
-        dlg.setStyleSheet("QDialog{background:#f6f8fa;} QLabel{font-size:9pt;}")
+        dlg.setStyleSheet("QDialog{background:#f6f8fa;} QLabel{font-size:7pt;}")
         lay = QVBoxLayout(dlg)
         act = "✓ 激活" if node["params"].get("active") else "○ 未激活"
         lay.addWidget(QLabel(f"来源: {src} · {act} · {node['params'].get('desc', '')}"))
