@@ -2651,8 +2651,14 @@ class DataBusTrace(QWidget):
         name = name_item.text()
         if not any(k in name for k in ("RGB-D", "图像流", "视觉", "rgbd", "状态流", "坐标", "检测框")):
             return
+        _menu_qss = ("QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
+                     "QMenu::item { color:#e6edf3; padding:6px 22px; } "
+                     "QMenu::item:selected { background:#1f6feb; color:#ffffff; } "
+                     "QMenu::item:disabled { color:#57606a; }")
         menu = QMenu(self)
+        menu.setStyleSheet(_menu_qss)
         render_menu = menu.addMenu("🎨 渲染 RGB-D 图片 (选相机视角)")
+        render_menu.setStyleSheet(_menu_qss)
         for cam, label in _MW_CAMERAS:
             act = render_menu.addAction(label)
             act.triggered.connect(lambda checked=False, r=row, c=cam: self._render_rgbd(r, c))
