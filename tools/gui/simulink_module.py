@@ -8203,7 +8203,8 @@ class SimulinkModule(QWidget):
                 return
             self._mlp_dlg = None
         cands = _glob.glob(os.path.join(root, "reports", "*MLP*.mp4")) + \
-                _glob.glob(os.path.join(root, "reports", "*mlp*.mp4"))
+                _glob.glob(os.path.join(root, "reports", "*mlp*.mp4")) + \
+                _glob.glob(os.path.join(root, "reports", "*insert_success_demo*.mp4"))
         cands = [c for c in cands if os.path.getsize(c) > 1000]
         # 🐛 2026-08-18 老倪: 操作视频 = 机械臂操作动作视频 (MLP rollout), 不含仿真波形动画
         # state_space_sim.mp4 (那是「📊 仿真波形」的内容, 用户明确纠正)
@@ -8214,7 +8215,8 @@ class SimulinkModule(QWidget):
         if not cands:
             self._log("⚠️ 无 MLP 操作视频 (reports/*MLP*.mp4) — 需在 4060/ECS 生成后放回")
             return
-        _PRIORITY = ["mlp_insert_success_final.mp4", "mlp_insert_success.mp4",
+        _PRIORITY = ["insert_success_demo.mp4",
+                     "mlp_insert_success_final.mp4", "mlp_insert_success.mp4",
                      "mlp_best_final.mp4", "mlp_best.mp4"]
         # 🐛 2026-08-18: 排除 rot180/rot 变体 + 伪装副本「发送_MLP插拔成功.mp4」
         #   (字节数与 mlp_insert_success_rot180.mp4 完全相同 = rot180 副本, HUD 文字倒)
