@@ -215,3 +215,8 @@ reports/_ss_frames*/
 
 # 状态空间仿真视频(生成产物, 不进代码库)
 reports/state_space_sim.mp4
+
+# YOLO 训练环境/数据/产物 (2026-08-23 打通真实检测链路)
+yolo-venv/
+runs/
+yolov8n.pt

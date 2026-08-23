@@ -2451,12 +2451,14 @@ class RunSummaryWidget(QWidget):
 class DataBusTrace(QWidget):
     # 后台渲染完成 → 主线程弹窗 (跨线程安全: emit 自动队列投递到主线程)
     _render_done = pyqtSignal(str, float, object, object)  # camera_name, t_val, img(PIL Image), err
+    _bbox_done = pyqtSignal(str, float, object, object)    # 检测框渲染
 
     def __init__(self, module, parent=None):
         super().__init__(parent)
         self.module = module
         self._fix_map = {}   # 固定格式: (mod, dirn, name) -> 行号
         self._render_done.connect(self._show_render_window)
+        self._bbox_done.connect(self._show_bbox_window)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
@@ -2498,6 +2500,8 @@ class DataBusTrace(QWidget):
             "QHeaderView::section{background:#161b22;color:#9aa4b2;border:none;"
             "border-bottom:1px solid #30363d;padding:4px;font-size:15px;font-weight:bold;}")
         self.table.currentCellChanged.connect(self._on_select)
+        self.table.cellClicked.connect(self._on_cell_click)   # 🔬 点击→结构化详情 (2026-08-23)
+        self._struct_dlg = None
         # 🎨 右键视觉信号 → 渲染 RGB-D 图片 (2026-08-22 老倪)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_context_menu)
@@ -2521,6 +2525,7 @@ class DataBusTrace(QWidget):
             c3.setForeground(self._IN_C if dirn == "in" else self._OUT_C)
             c4 = QTableWidgetItem(_sig_val(val))
             c4.setForeground(QColor("#e6edf3"))
+            c4.setData(Qt.UserRole, val)   # 🔬 存原始向量供结构化详情
             self.table.setItem(r, 0, c0)
             self.table.setItem(r, 1, c1)
             self.table.setItem(r, 2, c2)
@@ -2590,6 +2595,7 @@ class DataBusTrace(QWidget):
             c3.setForeground(self._IN_C if dirn == "in" else self._OUT_C)
             c4 = QTableWidgetItem(_sig_val(val))
             c4.setForeground(QColor("#e6edf3"))
+            c4.setData(Qt.UserRole, val)   # 🔬 存原始向量供结构化详情
             self.table.setItem(r, 0, c0)
             self.table.setItem(r, 1, c1)
             self.table.setItem(r, 2, c2)
@@ -2634,6 +2640,7 @@ class DataBusTrace(QWidget):
                     self.table.setItem(r, 0, c0)
                     c4 = QTableWidgetItem(_sig_val(val))
                     c4.setForeground(QColor("#e6edf3"))
+                    c4.setData(Qt.UserRole, val)   # 🔬 存原始向量供结构化详情
                     self.table.setItem(r, 4, c4)
         self.lbl_cnt.setText(f"{self.table.rowCount()} 个信号 · t={t:.2f}s")
 
@@ -2653,7 +2660,9 @@ class DataBusTrace(QWidget):
         if name_item is None:
             return
         name = name_item.text()
-        if not any(k in name for k in ("RGB-D", "图像流", "视觉", "rgbd", "状态流", "坐标", "检测框")):
+        is_bbox = "检测框" in name
+        is_visual = any(k in name for k in ("RGB-D", "图像流", "视觉", "rgbd", "状态流", "坐标"))
+        if not (is_bbox or is_visual):
             return
         _menu_qss = ("QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
                      "QMenu::item { color:#e6edf3; padding:6px 22px; } "
@@ -2661,14 +2670,21 @@ class DataBusTrace(QWidget):
                      "QMenu::item:disabled { color:#57606a; }")
         menu = QMenu(self)
         menu.setStyleSheet(_menu_qss)
-        render_menu = menu.addMenu("🎨 渲染 RGB-D 图片 (选相机视角)")
-        render_menu.setStyleSheet(_menu_qss)
-        for cam, label in _MW_CAMERAS:
-            act = render_menu.addAction(label)
-            act.triggered.connect(lambda checked=False, r=row, c=cam: self._render_rgbd(r, c))
-        render_menu.addSeparator()
-        act_all = render_menu.addAction("🖼 打开全部 7 视角 (并排)")
-        act_all.triggered.connect(lambda checked=False, r=row: self._render_all_views(r))
+        if is_bbox:
+            bbox_menu = menu.addMenu("🖼 渲染检测框 (bounding box · 选视角)")
+            bbox_menu.setStyleSheet(_menu_qss)
+            for cam, label in _MW_CAMERAS:
+                act = bbox_menu.addAction(label)
+                act.triggered.connect(lambda checked=False, r=row, c=cam: self._render_bbox(r, c))
+        else:
+            render_menu = menu.addMenu("🎨 渲染 RGB-D 图片 (选相机视角)")
+            render_menu.setStyleSheet(_menu_qss)
+            for cam, label in _MW_CAMERAS:
+                act = render_menu.addAction(label)
+                act.triggered.connect(lambda checked=False, r=row, c=cam: self._render_rgbd(r, c))
+            render_menu.addSeparator()
+            act_all = render_menu.addAction("🖼 打开全部 7 视角 (并排)")
+            act_all.triggered.connect(lambda checked=False, r=row: self._render_all_views(r))
         menu.exec_(self.table.viewport().mapToGlobal(pos))
 
     def _render_rgbd(self, row, camera_name="corner2"):
@@ -2755,6 +2771,119 @@ class DataBusTrace(QWidget):
         self._render_windows.append(dlg)
         dlg.show()
 
+    def _render_bbox(self, row, camera_name="corner2"):
+        """🖼 后台渲染 YOLO 检测框 (bounding box) → 非模态独立窗口"""
+        tr = getattr(self.module, "_ss_tr", None)
+        if not tr or not tr.get("x"):
+            return
+        t_item = self.table.item(row, 0)
+        t = t_item.data(Qt.UserRole) if t_item is not None else None
+        import numpy as np
+        t_arr = np.asarray(tr["t"])
+        idx = int(np.argmin(np.abs(t_arr - t))) if t is not None else len(t_arr) - 1
+        t_val = float(tr["t"][idx])
+        import threading
+
+        def _work():
+            err = None
+            img = None
+            try:
+                img = render_bbox_frame(idx, camera_name)
+            except Exception as ex:
+                err = str(ex)
+            self._bbox_done.emit(camera_name, t_val, img, err)
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _show_bbox_window(self, camera_name, t_val, img, err=None):
+        """主线程显示检测框渲染窗口 (独立非模态, 可拖动)"""
+        if err is not None or img is None:
+            QMessageBox.warning(self, "渲染失败", err or "渲染结果为空")
+            return
+        img = img.convert("RGB")
+        data = img.tobytes("raw", "RGB")
+        qimg = QImage(data, img.width, img.height, img.width * 3, QImage.Format_RGB888)
+        pm = QPixmap.fromImage(qimg)
+        max_w, max_h = 900, 760
+        if pm.width() > max_w or pm.height() > max_h:
+            pm = pm.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        dlg = QDialog(None)
+        dlg.setWindowTitle(f"🖼 检测框 · {camera_name} · t={t_val:.2f}s")
+        dlg.setWindowModality(Qt.NonModal)
+        dlg.setStyleSheet("QDialog{background:#0d1117;}")
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lbl = QLabel()
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setPixmap(pm)
+        lay.addWidget(lbl)
+        dlg.adjustSize()
+        if not hasattr(self, "_render_windows"):
+            self._render_windows = []
+        self._render_windows = [w for w in self._render_windows if w.isVisible()]
+        self._render_windows.append(dlg)
+        dlg.show()
+
+    def _on_cell_click(self, row, col):
+        """🔬 点击数据行 → 若数据是向量, 结构化显示子结构 (2026-08-23 老倪)"""
+        val_item = self.table.item(row, 4)
+        if val_item is None:
+            return
+        val = val_item.data(Qt.UserRole)
+        if val is None:
+            return
+        name_item = self.table.item(row, 2)
+        name = name_item.text() if name_item is not None else ""
+        groups = _struct_fields(name, val)
+        if not groups:
+            return
+        t_item = self.table.item(row, 0)
+        t = t_item.data(Qt.UserRole) if t_item is not None else 0.0
+        self._show_struct_detail(name, t, groups)
+
+    def _show_struct_detail(self, name, t, groups):
+        """结构化详情面板 (非模态复用, 点击更新内容)"""
+        dlg = getattr(self, "_struct_dlg", None)
+        if dlg is None or not dlg.isVisible():
+            dlg = QDialog(None)
+            dlg.setWindowTitle("🔬 结构化详情")
+            dlg.setStyleSheet(
+                "QDialog{background:#0d1117;}"
+                "QTreeWidget{background:#0d1117;color:#e6edf3;border:1px solid #30363d;"
+                "font-size:15px;font-family:Consolas,monospace;}"
+                "QTreeWidget::item{padding:3px 4px;}"
+                "QTreeWidget::item:selected{background:#1f6feb;}"
+                "QHeaderView::section{background:#161b22;color:#9aa4b2;border:none;"
+                "border-bottom:1px solid #30363d;padding:4px;font-weight:bold;}")
+            lay = QVBoxLayout(dlg)
+            lay.setContentsMargins(8, 8, 8, 8)
+            self._struct_hdr = QLabel()
+            self._struct_hdr.setStyleSheet("color:#58a6ff;font-size:15px;font-weight:bold;"
+                                           "background:transparent;border:none;")
+            self._struct_hdr.setWordWrap(True)
+            lay.addWidget(self._struct_hdr)
+            self._struct_tree = QTreeWidget()
+            self._struct_tree.setHeaderLabels(["字段", "值"])
+            self._struct_tree.setColumnWidth(0, 200)
+            lay.addWidget(self._struct_tree, 1)
+            self._struct_dlg = dlg
+        self._struct_hdr.setText(f"{name}  ·  t={t:.2f}s")
+        tree = self._struct_tree
+        tree.clear()
+        for grp, fields in groups:
+            top = QTreeWidgetItem([grp, f"{len(fields)} 维"])
+            top.setForeground(0, QColor("#d29922"))
+            top.setForeground(1, QColor("#8b949e"))
+            for fname, fval in fields:
+                sub = QTreeWidgetItem([fname, f"{fval:.4f}"])
+                sub.setForeground(0, QColor("#c9d1d9"))
+                sub.setForeground(1, QColor("#e6edf3"))
+                top.addChild(sub)
+            tree.addTopLevelItem(top)
+        tree.expandAll()
+        self._struct_dlg.show()
+        self._struct_dlg.raise_()
+        self._struct_dlg.activateWindow()
+
     def _on_select(self, row, col):
         """选中行 → 高亮画布对应连线 (模块名 + 方向)"""
         if row < 0:
@@ -2768,6 +2897,67 @@ class DataBusTrace(QWidget):
             return
         dirn = "in" if "IN" in dir_it.text() else "out"
         hl(mod_it.text(), dirn)
+
+
+# ════════════════════════════════════════════════════════════════
+# 🔬 结构化字段解析 (2026-08-23 老倪: 39D/43D 一排数 → 点击看子结构)
+# ════════════════════════════════════════════════════════════════
+_FRAME18_GROUPS = [
+    ("末端位置", ["x", "y", "z"]),        # [0:3]
+    ("夹爪开度", ["开度"]),                 # [3]
+    ("末端速度", ["vx", "vy", "vz"]),      # [4:7]
+    ("peg 位置", ["x", "y", "z"]),         # [7:10]
+    ("孔位", ["x", "y", "z"]),             # [10:13]
+    ("孔位姿态", ["rx", "ry", "rz"]),      # [13:16]
+    ("预留", ["r0", "r1"]),                # [16:18]
+]
+_TACTILE4_NAMES = ["夹爪", "接触", "预留0", "预留1"]
+_VEC3_NAMES = ["x", "y", "z"]
+_VEC6_NAMES = ["Fx", "Fy", "Fz", "Tx", "Ty", "Tz"]
+
+
+def _flat_18(v):
+    """18D → [(name, value)] 扁平字段 (按组细分命名)"""
+    out = []
+    off = 0
+    for grp, subs in _FRAME18_GROUPS:
+        for s in subs:
+            out.append((f"{grp}·{s}", float(v[off])))
+            off += 1
+    return out
+
+
+def _struct_fields(name, val):
+    """接口名 + 值 → 结构化分组 [(group, [(name, value), ...]), ...]; 不可结构化返回 None"""
+    if isinstance(val, str) or isinstance(val, (bool, np.bool_)):
+        return None
+    v = np.asarray(val, dtype=float).ravel()
+    n = v.size
+    if n <= 1:
+        return None
+    if n == 39:   # 39D 视觉结构 (当前18 + 上一18 + 目标3)
+        return [
+            ("当前帧 cur (18D)", _flat_18(v[:18])),
+            ("上一帧 prev (18D)", _flat_18(v[18:36])),
+            ("目标 target (3D)", [("x", float(v[36])), ("y", float(v[37])), ("z", float(v[38]))]),
+        ]
+    if n == 43:   # 43D = 39D + 触觉4
+        g = _struct_fields("", v[:39])
+        g.append(("触觉 tactile (4D)", [(nm, float(v[39 + i])) for i, nm in enumerate(_TACTILE4_NAMES)]))
+        return g
+    if n == 18:   # 18D 帧结构
+        return [("帧 (18D)", _flat_18(v))]
+    if n == 4:
+        if "夹爪" in name:
+            return [("指令 u (4D)", [("x", float(v[0])), ("y", float(v[1])), ("z", float(v[2])), ("夹爪", float(v[3]))])]
+        if "预测力" in name or "潜状态" in name or "latent" in name.lower():
+            return [("潜状态 latent (4D)", [("x", float(v[0])), ("y", float(v[1])), ("z", float(v[2])), ("预测力", float(v[3]))])]
+        return [("向量 (4D)", [(f"d{i}", float(v[i])) for i in range(4)])]
+    if n == 3:
+        return [("坐标 (3D)", [(nm, float(v[i])) for i, nm in enumerate(_VEC3_NAMES)])]
+    if n == 6:
+        return [("力觉 (6D)", [(nm, float(v[i])) for i, nm in enumerate(_VEC6_NAMES)])]
+    return [("向量 (%dD)" % n, [(f"d{i}", float(v[i])) for i in range(n)])]
 
 
 # ════════════════════════════════════════════════════════════════
@@ -3424,22 +3614,114 @@ def _get_metaworld_view(camera_name="corner2"):
             pol = SawyerPegInsertionSideV3Policy()
             pid = env.model.site("pegGrasp").id
             hid = env.model.site("hole").id
+            hbid = env.model.body("hand").id
+            cid = env.model.cam(camera_name).id
             obs, _info = env.reset(seed=1)
             obs = np.asarray(obs, dtype=np.float64)
-            frames, dists = [], []
+            cam = {"pos": np.asarray(env.model.cam_pos[cid], dtype=float),
+                   "mat": np.asarray(env.model.cam_mat0[cid], dtype=float).reshape(3, 3).T,
+                   "fovy": float(env.model.cam_fovy[cid])}
+            frames, dists, peg_traj, hole_traj, hand_traj = [], [], [], [], []
             for _step in range(150):
                 act = np.asarray(pol.get_action(obs), dtype=np.float64)
                 obs, _r, _term, _trunc, _i = env.step(act)
                 obs = np.asarray(obs, dtype=np.float64)
                 peg = env.data.site_xpos[pid]
                 hole = env.data.site_xpos[hid]
+                hand = env.data.xpos[hbid]
                 dists.append(float(np.linalg.norm(peg[:2] - hole[:2])))
+                peg_traj.append(peg.copy())
+                hole_traj.append(hole.copy())
+                hand_traj.append(hand.copy())
                 frames.append(np.rot90(np.asarray(env.render()), k=2))  # 180°旋转方向修正
-            cache = {"frames": frames, "dists": np.asarray(dists)}
+            H, W = frames[0].shape[:2]
+            cam["W"], cam["H"] = W, H
+            cache = {"frames": frames, "dists": np.asarray(dists),
+                     "peg": np.asarray(peg_traj), "hole": np.asarray(hole_traj),
+                     "hand": np.asarray(hand_traj), "cam": cam}
         except Exception:
             cache = {}
         _MW_RENDER_CACHE[camera_name] = cache
         return cache or None
+
+
+def _project_3d_to_2d(p, cam):
+    """世界 3D → 相机 2D 像素 (原始未旋转帧坐标; mujoco 相机看向 -z)"""
+    pc = cam["mat"] @ (np.asarray(p, dtype=float) - cam["pos"])
+    d = -pc[2]
+    f = (cam["H"] / 2.0) / np.tan(np.radians(cam["fovy"]) / 2.0)
+    px = cam["W"] / 2.0 + pc[0] * f / d
+    py = cam["H"] / 2.0 - pc[1] * f / d
+    return px, py
+
+
+_YOLO_MODEL = None
+
+
+def _yolo_weights_path():
+    """训练好的 YOLO peg 权重 (best.pt) — 搜索候选路径 (ultralytics runs_dir 可能改)"""
+    import os
+    _root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    _cands = [
+        os.path.join(_root, "runs", "detect", "outputs", "yolo_peg", "peg_v1", "weights", "best.pt"),
+        os.path.join(_root, "outputs", "yolo_peg", "peg_v1", "weights", "best.pt"),
+    ]
+    for c in _cands:
+        if os.path.exists(c):
+            return c
+    return _cands[0]
+
+
+def _get_yolo_model():
+    """懒加载训练好的 YOLO 权重 (全局缓存; 后台线程调用, 首次加载较慢)"""
+    global _YOLO_MODEL
+    if _YOLO_MODEL is None:
+        from ultralytics import YOLO
+        _YOLO_MODEL = YOLO(_yolo_weights_path())
+    return _YOLO_MODEL
+
+
+def _detect_frame(frame, conf=0.25):
+    """真实 YOLO 推理: frame(RGB uint8) → [(cls, conf, x1, y1, x2, y2)]"""
+    import cv2
+    model = _get_yolo_model()
+    img_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # ultralytics 数组必须 BGR
+    res = model.predict(img_bgr, conf=conf, verbose=False)[0]
+    out = []
+    for b in res.boxes:
+        cls = res.names[int(b.cls)]
+        cf = float(b.conf[0])
+        x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
+        out.append((cls, cf, x1, y1, x2, y2))
+    return out
+
+
+def render_bbox_frame(idx, camera_name="corner2"):
+    """🖼 渲染真实 YOLO 检测框: metaworld 相机视角 + YOLO 模型真推理 (框+conf 都是模型输出, 2026-08-23)"""
+    from PIL import Image, ImageDraw
+    mw = _get_metaworld_view(camera_name)
+    if not mw or not mw.get("frames"):
+        return None
+    idx = int(np.clip(idx, 0, len(mw["frames"]) - 1))
+    frame = mw["frames"][idx]
+    img = Image.fromarray(frame).convert("RGB")
+    d = ImageDraw.Draw(img)
+    f = _rgbd_font(14)
+    try:
+        dets = _detect_frame(frame)
+    except Exception as ex:
+        d.text((8, 8), f"YOLO 推理失败: {str(ex)[:60]}", font=_rgbd_font(13), fill="#ff5555")
+        return img
+    if not dets:
+        d.text((8, 8), f"YOLO 无检测 (conf<0.25) · {camera_name} · 帧#{idx}", font=_rgbd_font(15), fill="#ffa500")
+        return img
+    colors = {"hand": "#58a6ff", "peg": "#00d4aa", "hole": "#ffa500"}
+    for cls, cf, x1, y1, x2, y2 in dets:
+        color = colors.get(cls, "#e6edf3")
+        d.rectangle([int(x1), int(y1), int(x2), int(y2)], outline=color, width=3)
+        d.text((int(x1), max(0, int(y1) - 16)), f"{cls} {cf:.2f}", font=f, fill=color)
+    d.text((8, 8), f"YOLO 检测 · {camera_name} · 帧#{idx} · {len(dets)} 目标", font=_rgbd_font(15), fill="#ffffff")
+    return img
 
 
 def render_rgbd_frame(tr, idx, camera_name="corner2"):
