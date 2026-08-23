@@ -293,11 +293,12 @@ def main():
         print(f"💾 帧数: {len(frames)} @ {tmpdir}", flush=True)
         # 🐛 2026-08-12 老倪: 先渲染到临时文件, 成功才替换正式视频 (渲染失败不覆盖好视频)
         raw = _os.path.join(tmpdir, "raw.mp4")
-        out_tmp = _os.path.join(tmpdir, "demo.mp4")
         subprocess.run(["ffmpeg", "-y", "-framerate", "30", "-i", _os.path.join(tmpdir, "f%05d.png"),
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", raw], check=True)
-        # 旋转180° (老倪要求)
-        subprocess.run(["ffmpeg", "-y", "-i", raw, "-vf", "transpose=2,transpose=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", out_tmp], check=True)
+        # 🐛 2026-08-23 静静: 去掉 180°旋转 — env.render() 原始输出已是标准投影方向(正确),
+        #   原 transpose=2,transpose=2 把正确画面转成倒置(需上下+左右翻转才能摆正)。diag_orient.py 验证:
+        #   真值 hand 标准投影(237.6,219.2) = YOLO 在 img 原始方向的检测中心, rot180 后(242.6,260.8)反而错位。
+        out_tmp = raw
         if success and _os.path.exists(out_tmp) and _os.path.getsize(out_tmp) > 0:
             out = _os.path.join(ROOT, "reports", "insert_success_demo.mp4")
             _sh.move(out_tmp, out)
