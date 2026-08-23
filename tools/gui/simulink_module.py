@@ -1154,10 +1154,11 @@ class MLPRolloutDialog(QDialog):
         self._frames = []       # 帧文件名列表
         self._frames_dir = ""
         self._loading = False
-        # 🎯 2026-08-19 老倪确认: 要画面正 (机械臂) → 默认 180°。
-        #   生成端画面本身反 (需 180° 转正), HUD 文字原方向正 (OCR 实锤 08-19) —
-        #   两者矛盾, 播放端以画面为准; 若文字也要正 → 生成端重生成视频
-        self._rot = 180
+        # 🎯 2026-08-23 静静: 播放器不再默认 180° — metaworld render 已输出 top-down 正确方向
+        #   (mujoco renderer.py 第245行 flipud 实证; verify_all_orient.py 验证 4 个视频全是 top-down)。
+        #   原 _rot=180 是 08-19 针对旧 Pillow 手绘 state_space 视频(画面反)的历史遗留,
+        #   现换成 metaworld 渲染视频后反而把正确画面转倒置(用户报"需上下+左右翻转才能摆正")。
+        self._rot = 0
         self._mirror = False
         self._flip_v = False   # 🐛 2026-08-18: 上下翻转 (字体上下颠倒时用, 组合调到字正画面正)
         self._playing = True
