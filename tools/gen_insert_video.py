@@ -32,6 +32,11 @@ _YOLO_WEIGHTS_CANDS = [
     "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt",
     "outputs/yolo_peg/peg_v1/weights/best.pt",
 ]
+# 🎯 深度模型权重候选 (YOLO depth head, 正式训练优先, 冒烟回退)
+_DEPTH_WEIGHTS_CANDS = [
+    "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",
+    "outputs/yolo_peg_depth/peg_depth_smoke/weights/best.pt",
+]
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -162,9 +167,18 @@ def _build_aligner():
         if not w:
             print("⚠️ YOLO 权重未找到, 操作视频回退真值感知")
             return None
+        # 🎯 深度模型权重 (YOLO depth head) — 用真实深度反投影替代写死 z_map
+        #   DEPTH_CKPT 环境变量可指定 (避免与训练写 best.pt 冲突时用快照)
+        depth_w = os.environ.get("DEPTH_CKPT")
+        if depth_w:
+            depth_w = os.path.normpath(depth_w)
+        else:
+            depth_w = next((os.path.join(ROOT, c) for c in _DEPTH_WEIGHTS_CANDS
+                            if os.path.isfile(os.path.join(ROOT, c))), None)
         env0 = make_env(0)  # corner2, 只读静态相机参数 cam_pos/cam_mat0/cam_fovy
-        a = yolo_state_aligner.YoloStateAligner(w, env0)
-        print(f"🎯 YOLO 感知已启用: {os.path.basename(w)} (操作视频吃解算 state, 真机同构)")
+        a = yolo_state_aligner.YoloStateAligner(w, env0, depth_weights=depth_w)
+        tag = f"深度感知: {os.path.basename(depth_w)}" if depth_w else "⚠️深度回退写死z"
+        print(f"🎯 YOLO 感知已启用: {os.path.basename(w)} ({tag})")
         return a
     except Exception as ex:
         print(f"⚠️ YOLO 感知构建失败 ({str(ex)[:60]}), 回退真值感知")
@@ -188,8 +202,9 @@ def main():
                 o_model = aligner.align(o, aligner.detect_3d(env.render())).astype(np.float32)[:39]
             except Exception:
                 pass
-        peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
-        hole = env.data.site_xpos[env.model.site("hole").id]
+        # 🎯 真闭环 (2026-08-23 老倪): 状态机判断/动作调制不再吃 env.data.site_xpos 真值,
+        #   改吃 o_model (YOLO 解算 state)。peg_z0 取 YOLO peg 段 z (写死平面, 非真值)
+        peg_z0 = float(o_model[6])
         state = ST_APPROACH
         frames = []
         states_track = []
@@ -197,8 +212,9 @@ def main():
         last_state = state
         stall = 0
         for step in range(500):
-            hand = env.data.site_xpos[env.model.site("endEffector").id]
-            peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+            hand = o_model[0:3]    # 🎯 真闭环: hand 来自 YOLO 解算 state
+            peg = o_model[4:7]     # 🎯 真闭环: peg 来自 YOLO 解算 state
+            hole = o_model[36:39]  # 🎯 真闭环: hole 来自 YOLO 解算 state
             d_hp = float(np.linalg.norm(hand - peg))
             d_ph = float(np.linalg.norm(peg - hole))
             xin = torch.from_numpy((o_model - xm) / xs).float().to(DEVICE)

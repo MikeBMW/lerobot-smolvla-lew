@@ -35,6 +35,11 @@ _YOLO_WEIGHTS_CANDS = [
     "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt",
     "outputs/yolo_peg/peg_v1/weights/best.pt",
 ]
+# 🎯 深度模型权重候选 (YOLO depth head, 正式训练优先)
+_DEPTH_WEIGHTS_CANDS = [
+    "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",
+    "outputs/yolo_peg_depth/peg_depth_smoke/weights/best.pt",
+]
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HIDDEN = 512
 
@@ -114,9 +119,17 @@ def _build_aligner():
         if not w:
             print("⚠️ YOLO 权重未找到, 训练回退真值 state")
             return None
+        # 🎯 深度模型权重 (YOLO depth head)
+        depth_w = os.environ.get("DEPTH_CKPT")
+        if depth_w:
+            depth_w = os.path.normpath(depth_w)
+        else:
+            depth_w = next((os.path.join(ROOT, c) for c in _DEPTH_WEIGHTS_CANDS
+                            if os.path.isfile(os.path.join(ROOT, c))), None)
         env0 = make_env(0)  # corner2, 只读静态相机参数
-        a = yolo_state_aligner.YoloStateAligner(w, env0)
-        print(f"🎯 YOLO 感知训练已启用: {os.path.basename(w)}")
+        a = yolo_state_aligner.YoloStateAligner(w, env0, depth_weights=depth_w)
+        tag = f"深度感知: {os.path.basename(depth_w)}" if depth_w else "⚠️深度回退写死z"
+        print(f"🎯 YOLO 感知训练已启用: {os.path.basename(w)} ({tag})")
         return a
     except Exception as ex:
         print(f"⚠️ YOLO 感知构建失败 ({str(ex)[:60]}), 回退真值 state")
@@ -226,15 +239,15 @@ def main():
     for seed in range(8):
         env = make_env(seed)
         o = get_obs(env)
-        o_yolo = _yolo_state(env, o, aligner)  # 🎯 YOLO 噪声 state
-        peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
-        hole = env.data.site_xpos[env.model.site("hole").id]
+        o_yolo = _yolo_state(env, o, aligner)  # 🎯 YOLO 解算 state (含深度反投影)
+        peg_z0 = float(o_yolo[6])  # 🎯 真闭环: peg z 来自深度反投影 (非真值)
         state = ST_APPROACH
         grasp_force = -1.0
         peg_lifted = False
         for step in range(500):
-            hand = env.data.site_xpos[env.model.site("endEffector").id]
-            peg = env.data.site_xpos[env.model.site("pegGrasp").id]
+            hand = o_yolo[0:3]    # 🎯 真闭环: hand 来自深度反投影
+            peg = o_yolo[4:7]     # 🎯 真闭环: peg 来自深度反投影
+            hole = o_yolo[36:39]  # 🎯 真闭环: hole 来自深度反投影
             d_hp = float(np.linalg.norm(hand - peg))
             d_ph = float(np.linalg.norm(peg - hole))
             target, pg = grasp_target(env, hand)
