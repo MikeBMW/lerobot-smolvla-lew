@@ -9719,10 +9719,13 @@ class SimulinkModule(QWidget):
         def _worker():
             try:
                 root = self._repo_root()
-                gui_dir = _os.path.join(root, "tools", "gui")
-                out = _os.path.join(root, "reports", "state_space_sim.mp4")
-                r = _sp.run([sys.executable, "gen_state_space_video.py", out],
-                            capture_output=True, text=True, timeout=300, cwd=gui_dir)
+                tools_dir = _os.path.join(root, "tools")
+                # 🎯 2026-08-23 老倪: 操作视频改真实 YOLO 感知 + metaworld 渲染 (left_right 双脑+状态机)
+                #   替换手绘 state_space_sim (Pillow 示意图 + 假检测 conf 0.99)
+                out = _os.path.join(root, "reports", "insert_success_demo.mp4")
+                _env = {**_os.environ, "DISPLAY": ":0", "MUJOCO_GL": "glfw"}
+                r = _sp.run([sys.executable, os.path.join(tools_dir, "gen_insert_video.py")],
+                            capture_output=True, text=True, timeout=600, cwd=tools_dir, env=_env)
                 if r.returncode != 0:
                     self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")
                     return
@@ -9733,9 +9736,9 @@ class SimulinkModule(QWidget):
                     if r2.returncode == 0:
                         _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79",
-                                 "chmod 644 /www/wwwroot/datadrive.world/state_space_sim.mp4"],
+                                 "chmod 644 /www/wwwroot/datadrive.world/insert_success_demo.mp4"],
                                 capture_output=True, timeout=30)
-                        self._safe_log("🎥 操作视频已生成: https://datadrive.world/state_space_sim.mp4")
+                        self._safe_log("🎥 操作视频已生成 (真实YOLO感知): https://datadrive.world/insert_success_demo.mp4")
                     else:
                         self._safe_log(f"🎥 视频已生成 (上传失败): {out}")
                 except Exception as e:
