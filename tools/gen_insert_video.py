@@ -17,7 +17,14 @@ from train_full_pipeline import (make_env, get_obs, LeftBrainMLP,
 # 🐛 2026-08-12 老倪: RightBrainWM 用 modeling_left_right 版 (无 align_head) —
 # 本次训练 model.pt 的 right 权重是 {enc, pred_next, contact_head}, 旧管线版多 align_head 键不匹配
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from lerobot.policies.left_right.modeling_left_right import RightBrainWM
+# 🐛 2026-08-23: 直载文件避开 lerobot 包 __init__ (huggingface_hub 重量级依赖, gui-venv311 无)
+import importlib.util as _ilu, sys as _sys
+_spec_lr = _ilu.spec_from_file_location("modeling_left_right",
+    os.path.join(ROOT, "src", "lerobot", "policies", "left_right", "modeling_left_right.py"))
+_mod_lr = _ilu.module_from_spec(_spec_lr)
+_sys.modules["modeling_left_right"] = _mod_lr  # @dataclass 装饰器需模块在 sys.modules 里
+_spec_lr.loader.exec_module(_mod_lr)
+RightBrainWM = _mod_lr.RightBrainWM
 # 2026-08-23 老倪: 操作视频接 YOLO 感知 (真机同构) — 直载文件避开 lerobot 包 __init__ 重量级依赖
 sys.path.insert(0, os.path.join(ROOT, "src", "lerobot", "policies", "yolo_3d"))
 _YOLO_WEIGHTS_CANDS = [
@@ -104,7 +111,7 @@ def _load_brain():
     """🐛 2026-08-12 老倪: 优先最新 left_right 双脑 checkpoint (本次训练产物),
     归一化从 preprocessor/postprocessor 读; 无则 fallback 旧 full_pipeline.pt"""
     import glob as _g
-    from safetensors import safe_open
+    # 🐛 2026-08-23: safetensors 延迟到 for 内 import (fallback full_pipeline.pt 不需要, gui-venv311 无)
     # 🐛 2026-08-12: 按修改时间排序 (字母序会把 left_right_std 排最前) — 取最新训练
     cands = sorted(_g.glob(os.path.join(ROOT, "outputs", "train", "left_right_*")),
                    key=lambda p: os.path.getmtime(p), reverse=True)
@@ -124,6 +131,7 @@ def _load_brain():
         right = RightBrainWM(sd["obs_dim"], sd["act_dim"]).to(DEVICE)
         right.load_state_dict(sd["right"]); right.eval()
         try:
+            from safetensors import safe_open
             with safe_open(os.path.join(pm, "left_right_preprocessor_step_3_normalizer_processor.safetensors"), framework="np") as f:
                 xm = float(f.get_tensor("observation.state.mean"))
                 xs = float(f.get_tensor("observation.state.std"))
@@ -137,7 +145,10 @@ def _load_brain():
     # fallback 旧 RL 管线
     d = torch.load(os.path.join(ROOT, "outputs", "rl_peg", "full_pipeline.pt"), map_location="cpu", weights_only=False)
     left = LeftBrainMLP(39, 4).to(DEVICE); left.load_state_dict(d["left"]); left.eval()
-    right = RightBrainWM(39, 4).to(DEVICE); right.load_state_dict(d["right"]); right.eval()
+    right = RightBrainWM(39, 4).to(DEVICE)
+    # 🐛 2026-08-23: full_pipeline.pt 的 right 带 align_head (train_full_pipeline 版), 此处 modeling_left_right 版无 → 过滤
+    right_sd = {k: v for k, v in d["right"].items() if not k.startswith("align_head")}
+    right.load_state_dict(right_sd, strict=False); right.eval()
     return left, right, d["xm"], d["xs"], d["ym"], d["ys"]
 
 

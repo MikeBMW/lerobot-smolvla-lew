@@ -28,6 +28,13 @@ os.environ.setdefault("MUJOCO_GL", "glfw")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+# 2026-08-23 老倪: 训练接 YOLO 感知 (真机同构) — 直载文件避开 lerobot 包 __init__
+sys.path.insert(0, os.path.join(ROOT, "src", "lerobot", "policies", "yolo_3d"))
+_YOLO_WEIGHTS_CANDS = [
+    "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+    "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt",
+    "outputs/yolo_peg/peg_v1/weights/best.pt",
+]
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HIDDEN = 512
 
@@ -97,7 +104,37 @@ def grasp_target(env, hand):
         pg = env.data.site_xpos[env.model.site("pegHead").id]
     return pg + np.array([0.0, 0.0, 0.02]), pg
 
-def collect_data(n_eps=60, aug=False):
+def _build_aligner():
+    """🎯 构建 YOLO 感知对齐器 (2026-08-23 老倪: 训练接 YOLO 感知, 真机同构)
+    失败返回 None → 回退真值"""
+    try:
+        import yolo_state_aligner
+        w = next((os.path.join(ROOT, c) for c in _YOLO_WEIGHTS_CANDS
+                  if os.path.isfile(os.path.join(ROOT, c))), None)
+        if not w:
+            print("⚠️ YOLO 权重未找到, 训练回退真值 state")
+            return None
+        env0 = make_env(0)  # corner2, 只读静态相机参数
+        a = yolo_state_aligner.YoloStateAligner(w, env0)
+        print(f"🎯 YOLO 感知训练已启用: {os.path.basename(w)}")
+        return a
+    except Exception as ex:
+        print(f"⚠️ YOLO 感知构建失败 ({str(ex)[:60]}), 回退真值 state")
+        return None
+
+
+def _yolo_state(env, raw_obs, aligner):
+    """YOLO 检测→解算→替换 hand/peg/hole 段 (与 gen_metaworld_data --yolo 同构)"""
+    if aligner is None:
+        return np.asarray(raw_obs, dtype=np.float32).ravel()[:39]
+    try:
+        det = aligner.detect_3d(env.render())
+        return aligner.align(np.asarray(raw_obs, dtype=np.float32).ravel(), det).astype(np.float32)[:39]
+    except Exception:
+        return np.asarray(raw_obs, dtype=np.float32).ravel()[:39]
+
+
+def collect_data(n_eps=60, aug=False, aligner=None):
     """专家轨迹 → (obs, action, next_obs, contact, 抓握点delta)
     2026-08-10: aug=True 时种子随机化 (0-499 大范围), 数据增强降波动"""
     from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
@@ -108,6 +145,7 @@ def collect_data(n_eps=60, aug=False):
         seed = np.random.randint(0, 500) if aug else ep
         env = make_env(seed)
         o = get_obs(env)
+        o_yolo = _yolo_state(env, o, aligner)  # 🎯 YOLO 噪声 state
         for _ in range(300):
             o_expert = np.asarray(env._get_obs(), dtype=np.float64).ravel()
             a = np.asarray(expert.get_action(o_expert), dtype=np.float32)[:4]
@@ -117,9 +155,11 @@ def collect_data(n_eps=60, aug=False):
             contact = 1.0 if d_hp < 0.06 else 0.0
             align = target - hand
             o2, _, term, trunc, _ = env.step(a)
-            obs_l.append(o); act_l.append(a); next_l.append(get_obs(env))
+            next_raw = get_obs(env)
+            next_yolo = _yolo_state(env, next_raw, aligner)  # 🎯 YOLO 噪声 next state
+            obs_l.append(o_yolo); act_l.append(a); next_l.append(next_yolo)
             cont_l.append(contact); align_l.append(align)
-            o = get_obs(env)
+            o = next_raw; o_yolo = next_yolo
             if np.linalg.norm(env.data.site_xpos[env.model.site("pegGrasp").id] - env.data.site_xpos[env.model.site("hole").id]) < 0.05:
                 break
         env.close()
@@ -127,10 +167,18 @@ def collect_data(n_eps=60, aug=False):
             np.array(cont_l, dtype=np.float32), np.stack(align_l))
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--eps", type=int, default=30, help="专家轨迹数 (默认30, CPU+YOLO检测较慢)")
+    ap.add_argument("--epochs", type=int, default=800)
+    ap.add_argument("--no-yolo", action="store_true", help="禁用 YOLO 感知, 用真值 state")
+    args = ap.parse_args()
+
     torch.manual_seed(42)
     np.random.seed(42)
-    print(f"🧠 双脑 + 对位头 + 插入状态机 · {DEVICE}", flush=True)
-    obs_t, act_t, next_t, cont_t, align_t = collect_data(n_eps=120, aug=True)  # 2026-08-10: 数据增强 50→120 eps
+    aligner = None if args.no_yolo else _build_aligner()
+    print(f"🧠 双脑 + 对位头 + 插入状态机 · {DEVICE} · YOLO感知={'关' if args.no_yolo else '开'}", flush=True)
+    obs_t, act_t, next_t, cont_t, align_t = collect_data(n_eps=args.eps, aug=True, aligner=aligner)
     n = len(obs_t)
     print(f"  📦 数据: {n}帧 · contact正例: {cont_t.sum():.0f}", flush=True)
     # 归一化
@@ -150,7 +198,7 @@ def main():
     next_r = torch.from_numpy(next_t).float().to(DEVICE)
     cont_r = torch.from_numpy(cont_t).float().to(DEVICE).unsqueeze(1)
     align_r = torch.from_numpy((align_t - am) / a_s).float().to(DEVICE)
-    for ep in range(800):
+    for ep in range(args.epochs):
         idx = torch.randperm(n, device=DEVICE)[:256]
         pred_a = left(obs_n[idx])
         loss_l = nn.functional.mse_loss(pred_a, act_n[idx])
@@ -178,6 +226,7 @@ def main():
     for seed in range(8):
         env = make_env(seed)
         o = get_obs(env)
+        o_yolo = _yolo_state(env, o, aligner)  # 🎯 YOLO 噪声 state
         peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
         hole = env.data.site_xpos[env.model.site("hole").id]
         state = ST_APPROACH
@@ -190,13 +239,13 @@ def main():
             d_ph = float(np.linalg.norm(peg - hole))
             target, pg = grasp_target(env, hand)
             d_grasp = float(np.linalg.norm(target - hand))
-            # 左脑动作
-            xin = torch.from_numpy((o - xm) / xs).float().to(DEVICE)
+            # 左脑动作 (吃 YOLO 解算 state)
+            xin = torch.from_numpy((o_yolo - xm) / xs).float().to(DEVICE)
             with torch.no_grad():
                 pred = left(xin.unsqueeze(0)).squeeze(0).cpu().numpy()
             act = pred * ys + ym
-            # 右脑 contact
-            o_r = torch.from_numpy(o).float().to(DEVICE)
+            # 右脑 contact (吃 YOLO 解算 state)
+            o_r = torch.from_numpy(o_yolo).float().to(DEVICE)
             a_r = torch.from_numpy(act).float().to(DEVICE)
             with torch.no_grad():
                 _, pred_cont, _ = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
@@ -252,6 +301,7 @@ def main():
             if _mx > 1.0: act = act / _mx
             env.step(np.clip(act, -1, 1))
             o = get_obs(env)
+            o_yolo = _yolo_state(env, o, aligner)  # 🎯 下一轮 YOLO state
             if step >= 499: break
         if peg_lifted: lifts += 1
         env.close()
