@@ -140,7 +140,8 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
     policy_name: 2026-08-08 用于加载对应模型的归一化 stats (每模型不同)"""
     import metaworld
     mt = metaworld.MT1("peg-insert-side-v3", seed=seed)
-    env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array")
+    # 🐛 2026-08-23 静静: 显式 corner2 相机 (默认 topview 与 YOLO 反投影/训练图像不一致 → 检测错位)
+    env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
     env.set_task(mt.train_tasks[0])
     obs, _ = env.reset(seed=seed)
     # state 维度: 从 policy 推断 (ACT/SmolVLA 用 config, 精简模型用属性)
@@ -265,8 +266,36 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
     return {"lifted": lifted, "inserted": inserted, "dist_hole": round(dist_hole, 3),
             "peg_rise": round(float(peg_final[2] - peg_z0), 3)}
 
+def _build_yolo_aligner():
+    """构建 YOLO 感知对齐器 (评估用 YOLO 检测 state, 与训练同构 — 2026-08-23)
+    失败回退 None (真值评估)"""
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "src", "lerobot", "policies", "yolo_3d"))
+        import yolo_state_aligner
+        _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+                  "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt",
+                  "outputs/yolo_peg/peg_v1/weights/best.pt"]
+        WEIGHTS = next((c for c in _cands if os.path.isfile(os.path.join(ROOT, c))), None)
+        if not WEIGHTS:
+            print("⚠️ YOLO 权重未找到, 回退真值评估")
+            return None
+        import metaworld
+        _mt = metaworld.MT1("peg-insert-side-v3")
+        env0 = _mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
+        env0._freeze_rand_vec = False
+        env0.set_task(_mt.train_tasks[0])
+        env0.reset(seed=0)
+        return yolo_state_aligner.YoloStateAligner(WEIGHTS, env0)
+    except Exception as ex:
+        print(f"⚠️ YOLO aligner 构建失败 ({str(ex)[:60]}), 回退真值评估")
+        return None
+
+
 def main():
     print("🔬 插拔成功率评估 · peg-insert-side-v3 · 每模型 10 次")
+    # 2026-08-23: 评估接 YOLO 感知 (与训练同构, 真机一致) — 失败自动回退真值
+    aligner = _build_yolo_aligner()
+    print("🔬 YOLO 感知模式已启用" if aligner is not None else "ℹ️ 真值评估模式 (YOLO 未启用)")
     results = {}
     for p in ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow"]:
         try:
@@ -277,7 +306,7 @@ def main():
         lifts = ins = 0
         dists = []
         for seed in range(10):
-            r = run_episode(policy, seed)
+            r = run_episode(policy, seed, yolo_aligner=aligner)
             lifts += int(r["lifted"]); ins += int(r["inserted"]); dists.append(r["dist_hole"])
         results[p] = {"lift_rate": lifts / 10, "insert_rate": ins / 10,
                       "avg_dist": round(float(np.mean(dists)), 3)}
