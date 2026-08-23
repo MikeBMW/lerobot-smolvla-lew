@@ -49,44 +49,38 @@ class YoloStateAligner:
         import cv2
         if img.dtype != np.uint8:
             img = (img * 255).astype(np.uint8)
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        # 🐛 2026-08-23 静静: 训练数据 gen_yolo_data 存 rot90(k=2) 帧, 推理必须同方向
+        #   否则倒置图检测失效 (只检出 peg); box 中心反投影前转回原始帧坐标
+        img_rot = np.rot90(img, k=2)
+        img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
         res = self.model.predict(img_bgr, conf=conf, verbose=False)[0]
         cam_pos = self.env.model.cam_pos[self.cam_id].copy()
-        # 相机方向: mujoco 相机朝 -z 轴 (cam_quat 旋转)
-        from scipy.spatial.transform import Rotation
-        q = self.env.model.cam_quat[self.cam_id]
-        R = Rotation.from_quat(q).as_matrix()
-        cam_forward = -R[:, 2]  # 相机 z 轴负方向
-        cam_right = R[:, 0]
-        cam_up = R[:, 1]
+        # 🐛 2026-08-23 静静: 用 cam_mat0(列主序 .T) 反投影, 替代原 cam_quat+经验反号(从未验证, x差3m)
+        cam_mat = np.asarray(self.env.model.cam_mat0[self.cam_id]).reshape(3, 3).T
         fovy = self.env.model.cam_fovy[self.cam_id]
         out = {}
         H, W = img.shape[:2]
         f = (H / 2) / np.tan(np.radians(fovy) / 2)
+        z_map = {"hand": 0.155, "peg": 0.03, "hole": 0.129}
         for b in res.boxes:
             cls = res.names[int(b.cls)]
             x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
             u, v = (x1 + x2) / 2, (y1 + y2) / 2
-            # 像素偏移 (2026-08-07: mujoco 渲染 y 轴方向 → ndc_y 取反修正)
+            # 🐛 2026-08-23: rot90 帧坐标 → 原始帧坐标 (反投影相机模型基于原始帧)
+            u, v = W - u, H - v
             ndc_x = (u - W / 2) / f
-            ndc_y = (v - H / 2) / f  # 图像 y 向下, 相机 up 用 cam_up 已含方向
-            dir_ = cam_forward + ndc_x * cam_right + ndc_y * cam_up
-            dir_ = dir_ / np.linalg.norm(dir_)
-            # 2026-08-07: 反投影结果 X/Y 反号 → 测试取反 (mujoco cam 坐标系)
-            # 注: 这是经验修正, 真机用相机标定矩阵替代
-            dir_ = np.array([-dir_[0], -dir_[1], dir_[2]])
-            # 高度: 仿真用真实高度 (2026-08-07: 高度假设误差大 → 仿真直接取真实值; 真机用深度相机)
-            z_map = {"hand": 0.155, "peg": 0.03, "hole": 0.129}
+            ndc_y = (v - H / 2) / f
+            # 相机坐标方向 (看向 -z): pc = d*[ndc_x, -ndc_y, -1] → 世界方向 = cam_mat.T @ pc
+            pc = np.array([ndc_x, -ndc_y, -1.0])
+            dir_w = cam_mat.T @ pc
+            dir_w = dir_w / np.linalg.norm(dir_w)
             plane_z = z_map.get(cls, 0.1)
-            if abs(dir_[2]) < 1e-8:
+            if abs(dir_w[2]) < 1e-8:
                 continue
-            t = (plane_z - cam_pos[2]) / dir_[2]
+            t = (plane_z - cam_pos[2]) / dir_w[2]
             if t < 0:
                 continue
-            pt = cam_pos + t * dir_
-            # 2026-08-07: 标定修正 — peg 中心区偏移小(~0.04), hole 边缘偏大(1.27)
-            # 用线性修正: peg 目标关键, hole 由插入点推断 (真机用相机标定外参)
-            pt = np.array([pt[0] - 0.04, pt[1], pt[2]])
+            pt = cam_pos + t * dir_w
             out[cls] = pt
         return out
 

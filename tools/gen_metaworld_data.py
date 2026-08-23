@@ -36,10 +36,16 @@ def main():
     yolo_mode = getattr(args, "yolo", False)
     yolo_aligner = None
     if yolo_mode:
-        # 🐛 2026-08-12 老倪: yolo_state_aligner 已移入 src/lerobot/policies/yolo_3d/
-        sys.path.insert(0, str(proj / "src"))
-        from lerobot.policies.yolo_3d.yolo_state_aligner import YoloStateAligner
-        WEIGHTS = "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt"
+        # 🐛 2026-08-23 静静: 直接加载 yolo_state_aligner.py 文件, 绕过 lerobot 包 __init__
+        #   (from lerobot.policies.yolo_3d... 会触发 lerobot/utils → huggingface_hub 等重量级依赖)
+        sys.path.insert(0, str(proj / "src" / "lerobot" / "policies" / "yolo_3d"))
+        import yolo_state_aligner
+        YoloStateAligner = yolo_state_aligner.YoloStateAligner
+        # 🐛 2026-08-23 静静: 原指向 peg_full(不存在) → 搜候选路径 (peg_v1 已训练, 2026-08-23 CPU 打通)
+        _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+                  "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt",
+                  "outputs/yolo_peg/peg_v1/weights/best.pt"]
+        WEIGHTS = next((c for c in _cands if os.path.isfile(str(proj / c))), _cands[0])
         import metaworld as _mt
         _mt_env = _mt.MT1("peg-insert-side-v3")
         _env0 = _mt_env.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
