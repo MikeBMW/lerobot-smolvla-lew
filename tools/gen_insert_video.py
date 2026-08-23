@@ -18,6 +18,13 @@ from train_full_pipeline import (make_env, get_obs, LeftBrainMLP,
 # 本次训练 model.pt 的 right 权重是 {enc, pred_next, contact_head}, 旧管线版多 align_head 键不匹配
 sys.path.insert(0, os.path.join(ROOT, "src"))
 from lerobot.policies.left_right.modeling_left_right import RightBrainWM
+# 2026-08-23 老倪: 操作视频接 YOLO 感知 (真机同构) — 直载文件避开 lerobot 包 __init__ 重量级依赖
+sys.path.insert(0, os.path.join(ROOT, "src", "lerobot", "policies", "yolo_3d"))
+_YOLO_WEIGHTS_CANDS = [
+    "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+    "runs/detect/outputs/yolo_peg/peg_full/weights/best.pt",
+    "outputs/yolo_peg/peg_v1/weights/best.pt",
+]
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -134,8 +141,28 @@ def _load_brain():
     return left, right, d["xm"], d["xs"], d["ym"], d["ys"]
 
 
+def _build_aligner():
+    """🎯 构建 YOLO 感知对齐器 (2026-08-23 老倪: 操作视频接 YOLO 感知, 真机同构)
+    失败返回 None → 回退真值感知"""
+    try:
+        import yolo_state_aligner
+        w = next((os.path.join(ROOT, c) for c in _YOLO_WEIGHTS_CANDS
+                  if os.path.isfile(os.path.join(ROOT, c))), None)
+        if not w:
+            print("⚠️ YOLO 权重未找到, 操作视频回退真值感知")
+            return None
+        env0 = make_env(0)  # corner2, 只读静态相机参数 cam_pos/cam_mat0/cam_fovy
+        a = yolo_state_aligner.YoloStateAligner(w, env0)
+        print(f"🎯 YOLO 感知已启用: {os.path.basename(w)} (操作视频吃解算 state, 真机同构)")
+        return a
+    except Exception as ex:
+        print(f"⚠️ YOLO 感知构建失败 ({str(ex)[:60]}), 回退真值感知")
+        return None
+
+
 def main():
     left, right, xm, xs, ym, ys = _load_brain()
+    aligner = _build_aligner()  # 🎯 2026-08-23: 操作视频接 YOLO 感知 (失败回退真值)
 
     # 🐛 2026-08-12 老倪: 渲染失败自动换 seed 重试 (16:49 模型 seed 探测成功但渲染失败 —
     #   mujoco 随机性/轨迹分叉, 单 seed 渲染不稳) — 循环渲染直到成功或全失败
@@ -143,6 +170,13 @@ def main():
     for seed in range(12):
         env = make_env(seed)
         o = get_obs(env)
+        # 🎯 2026-08-23: 模型感知 state — YOLO 检测解算替换 hand/peg/hole 段 (真机同构)
+        o_model = o.copy()
+        if aligner is not None:
+            try:
+                o_model = aligner.align(o, aligner.detect_3d(env.render())).astype(np.float32)[:39]
+            except Exception:
+                pass
         peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
         hole = env.data.site_xpos[env.model.site("hole").id]
         state = ST_APPROACH
@@ -156,11 +190,11 @@ def main():
             peg = env.data.site_xpos[env.model.site("pegGrasp").id]
             d_hp = float(np.linalg.norm(hand - peg))
             d_ph = float(np.linalg.norm(peg - hole))
-            xin = torch.from_numpy((o - xm) / xs).float().to(DEVICE)
+            xin = torch.from_numpy((o_model - xm) / xs).float().to(DEVICE)
             with torch.no_grad():
                 pred = left(xin.unsqueeze(0)).squeeze(0).cpu().numpy()
             act = pred * ys + ym
-            o_r = torch.from_numpy(o).float().to(DEVICE)
+            o_r = torch.from_numpy(o_model).float().to(DEVICE)
             a_r = torch.from_numpy(act).float().to(DEVICE)
             with torch.no_grad():
                 _, pred_cont = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
@@ -209,13 +243,20 @@ def main():
             env.step(np.clip(act, -1, 1))
             o = get_obs(env)
             states_track.append(ST_NAMES[state])
-            # 录帧 (间隔采样, 每2帧录1 → 视频流畅)
+            # 录帧 (间隔采样, 每2帧录1 → 视频流畅) + YOLO 检测解算下一轮感知 state
             try:
                 img = env.render()
-                if img is not None and step % 2 == 0:
-                    frames.append(img)
+                if img is not None:
+                    if step % 2 == 0:
+                        frames.append(img)
+                    if aligner is not None:
+                        o_model = aligner.align(o, aligner.detect_3d(img)).astype(np.float32)[:39]
+                    else:
+                        o_model = o.copy()
+                else:
+                    o_model = o.copy()
             except Exception:
-                pass
+                o_model = o.copy()
             if state == ST_DONE:
                 break
         print(f"✅ 完成状态={ST_NAMES[state]} 成功={success} 步骤={step} 帧数={len(frames)}", flush=True)

@@ -150,7 +150,7 @@ def main():
     print("=" * 60)
     sm, ss, am, asd = load_stats()
     if args.skip_train and os.path.isfile(CKPT):
-        ck = torch.load(CKPT, map_location=DEVICE)
+        ck = torch.load(CKPT, map_location=DEVICE, weights_only=False)
         model = BCMLP().to(DEVICE)
         model.load_state_dict(ck["state_dict"])
         model.eval()
