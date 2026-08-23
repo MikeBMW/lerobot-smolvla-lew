@@ -254,16 +254,25 @@ def main():
             env.step(np.clip(act, -1, 1))
             o = get_obs(env)
             states_track.append(ST_NAMES[state])
-            # 录帧 (间隔采样, 每2帧录1 → 视频流畅) + YOLO 检测解算下一轮感知 state
+            # 录帧 (间隔采样, 每2帧录1 → 视频流畅) + YOLO 检测解算下一轮感知 state + 画面叠检测框
             try:
                 img = env.render()
                 if img is not None:
-                    if step % 2 == 0:
-                        frames.append(img)
                     if aligner is not None:
-                        o_model = aligner.align(o, aligner.detect_3d(img)).astype(np.float32)[:39]
+                        det3d = aligner.detect_3d(img)
+                        o_model = aligner.align(o, det3d).astype(np.float32)[:39]
+                        if step % 2 == 0:
+                            # 🎯 2026-08-23 老倪: 画面叠加 YOLO 检测框 (直观体现感知, 非真值)
+                            import cv2 as _cv2
+                            _rot = np.rot90(img, k=2)
+                            _bgr = _cv2.cvtColor(_rot, _cv2.COLOR_RGB2BGR)
+                            _res = aligner.model.predict(_bgr, conf=0.4, verbose=False)[0]
+                            _vis_rgb = _cv2.cvtColor(np.asarray(_res.plot()), _cv2.COLOR_BGR2RGB)
+                            frames.append(np.rot90(_vis_rgb, k=2))
                     else:
                         o_model = o.copy()
+                        if step % 2 == 0:
+                            frames.append(img)
                 else:
                     o_model = o.copy()
             except Exception:
