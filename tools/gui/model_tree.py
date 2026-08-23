@@ -12,7 +12,7 @@ import os
 import math
 import numpy as np
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
@@ -2449,10 +2449,14 @@ class RunSummaryWidget(QWidget):
 # 双模: 🔁时间顺序(每次传输一行=数据流) / 📌固定格式(每接口一行, 值=最新快照)
 # ════════════════════════════════════════════════════════════════
 class DataBusTrace(QWidget):
+    # 后台渲染完成 → 主线程弹窗 (跨线程安全: emit 自动队列投递到主线程)
+    _render_done = pyqtSignal(str, float, object, object)  # camera_name, t_val, img(PIL Image), err
+
     def __init__(self, module, parent=None):
         super().__init__(parent)
         self.module = module
         self._fix_map = {}   # 固定格式: (mod, dirn, name) -> 行号
+        self._render_done.connect(self._show_render_window)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
@@ -2662,10 +2666,13 @@ class DataBusTrace(QWidget):
         for cam, label in _MW_CAMERAS:
             act = render_menu.addAction(label)
             act.triggered.connect(lambda checked=False, r=row, c=cam: self._render_rgbd(r, c))
+        render_menu.addSeparator()
+        act_all = render_menu.addAction("🖼 打开全部 7 视角 (并排)")
+        act_all.triggered.connect(lambda checked=False, r=row: self._render_all_views(r))
         menu.exec_(self.table.viewport().mapToGlobal(pos))
 
     def _render_rgbd(self, row, camera_name="corner2"):
-        """渲染该行对应时刻的 RGB-D (真实 metaworld 视角) → 弹窗显示"""
+        """后台渲染该行对应时刻的 RGB-D (真实 metaworld 视角) → 非模态独立窗口显示"""
         tr = getattr(self.module, "_ss_tr", None)
         if not tr or not tr.get("x"):
             return
@@ -2674,23 +2681,79 @@ class DataBusTrace(QWidget):
         import numpy as np
         t_arr = np.asarray(tr["t"])
         idx = int(np.argmin(np.abs(t_arr - t))) if t is not None else len(t_arr) - 1
-        try:
-            img = render_rgbd_frame(tr, idx, camera_name)
-        except Exception as ex:
-            QMessageBox.warning(self, "渲染失败", str(ex))
+        t_val = float(tr["t"][idx])
+        self._spawn_render(idx, t_val, camera_name)
+
+    def _spawn_render(self, idx, t_val, camera_name):
+        """后台线程渲染 → 完成回主线程弹窗 (metaworld 渲染慢, 不卡 UI)"""
+        tr = getattr(self.module, "_ss_tr", None)
+        import threading
+
+        def _work():
+            err = None
+            img = None
+            try:
+                img = render_rgbd_frame(tr, idx, camera_name)
+            except Exception as ex:
+                err = str(ex)
+            self._render_done.emit(camera_name, t_val, img, err)
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _render_all_views(self, row):
+        """🖼 打开全部 7 视角窗口 (后台串行渲染, 逐个弹出, 可并排拖动对比)"""
+        tr = getattr(self.module, "_ss_tr", None)
+        if not tr or not tr.get("x"):
+            return
+        t_item = self.table.item(row, 0)
+        t = t_item.data(Qt.UserRole) if t_item is not None else None
+        import numpy as np
+        t_arr = np.asarray(tr["t"])
+        idx = int(np.argmin(np.abs(t_arr - t))) if t is not None else len(t_arr) - 1
+        t_val = float(tr["t"][idx])
+        import threading
+
+        def _work_all():
+            for cam, _label in _MW_CAMERAS:
+                err = None
+                img = None
+                try:
+                    img = render_rgbd_frame(tr, idx, cam)
+                except Exception as ex:
+                    err = str(ex)
+                self._render_done.emit(cam, t_val, img, err)
+        threading.Thread(target=_work_all, daemon=True).start()
+
+    def _show_render_window(self, camera_name, t_val, img, err=None):
+        """主线程显示独立非模态渲染窗口 (可拖动, 可同时开多个)"""
+        if err is not None or img is None:
+            QMessageBox.warning(self, "渲染失败", err or "渲染结果为空")
             return
         img = img.convert("RGB")
         data = img.tobytes("raw", "RGB")
         qimg = QImage(data, img.width, img.height, img.width * 3, QImage.Format_RGB888)
         pm = QPixmap.fromImage(qimg)
-        dlg = QDialog(self)
-        dlg.setWindowTitle(f"🎨 RGB-D · {camera_name} · t={tr['t'][idx]:.2f}s")
+        # 大图/高分屏缩放, 窗口别超出屏幕
+        max_w, max_h = 1280, 820
+        if pm.width() > max_w or pm.height() > max_h:
+            pm = pm.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        # 独立顶层窗口 (无 parent → WM 给独立标题栏, 可自由拖动, 不跟随主窗口)
+        dlg = QDialog(None)
+        dlg.setWindowTitle(f"🎨 RGB-D · {camera_name} · t={t_val:.2f}s")
+        dlg.setWindowModality(Qt.NonModal)
+        dlg.setStyleSheet("QDialog{background:#0d1117;}")
         lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(6, 6, 6, 6)
         lbl = QLabel()
+        lbl.setAlignment(Qt.AlignCenter)
         lbl.setPixmap(pm)
         lay.addWidget(lbl)
-        dlg.setMinimumSize(pm.width() + 20, pm.height() + 20)
-        dlg.exec_()
+        dlg.adjustSize()
+        # 保持引用防 GC (清理已关闭的旧窗口引用)
+        if not hasattr(self, "_render_windows"):
+            self._render_windows = []
+        self._render_windows = [w for w in self._render_windows if w.isVisible()]
+        self._render_windows.append(dlg)
+        dlg.show()
 
     def _on_select(self, row, col):
         """选中行 → 高亮画布对应连线 (模块名 + 方向)"""
@@ -3325,6 +3388,8 @@ def _ss_draw_box(d, cam, R, f, W, H, cx, cy, center, size, fill):
 
 
 _MW_RENDER_CACHE = {}  # {camera_name: {"frames":..,"dists":..}} 按相机视角懒加载缓存
+import threading as _threading_mw
+_MW_RENDER_LOCK = _threading_mw.Lock()  # 并发开多视角时串行化环境创建 (EGL 上下文防冲突)
 
 # 真实数据有的 7 个相机视角 (2026-08-23 老倪: 右键要能选不同视角)
 _MW_CAMERAS = [
@@ -3341,39 +3406,40 @@ _MW_CAMERAS = [
 def _get_metaworld_view(camera_name="corner2"):
     """懒加载指定相机视角的 metaworld 环境 + 官方专家策略, 预渲染真实插拔轨迹帧 (2026-08-23 老倪: 真实RGB+多视角)"""
     global _MW_RENDER_CACHE
-    if camera_name in _MW_RENDER_CACHE:
-        return _MW_RENDER_CACHE[camera_name] or None
-    cache = {}
-    try:
-        import os
-        os.environ.setdefault("MUJOCO_GL", "egl")
-        os.environ.setdefault("DISPLAY", ":0")
-        import numpy as np
-        import metaworld as mw
-        from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
-        mt1 = mw.MT1("peg-insert-side-v3")
-        env = mt1.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name=camera_name)
-        env.set_task(mt1.train_tasks[0])
-        env._freeze_rand_vec = False
-        pol = SawyerPegInsertionSideV3Policy()
-        pid = env.model.site("pegGrasp").id
-        hid = env.model.site("hole").id
-        obs, _info = env.reset(seed=1)
-        obs = np.asarray(obs, dtype=np.float64)
-        frames, dists = [], []
-        for _step in range(150):
-            act = np.asarray(pol.get_action(obs), dtype=np.float64)
-            obs, _r, _term, _trunc, _i = env.step(act)
-            obs = np.asarray(obs, dtype=np.float64)
-            peg = env.data.site_xpos[pid]
-            hole = env.data.site_xpos[hid]
-            dists.append(float(np.linalg.norm(peg[:2] - hole[:2])))
-            frames.append(np.rot90(np.asarray(env.render()), k=2))  # 180°旋转方向修正
-        cache = {"frames": frames, "dists": np.asarray(dists)}
-    except Exception:
+    with _MW_RENDER_LOCK:
+        if camera_name in _MW_RENDER_CACHE:
+            return _MW_RENDER_CACHE[camera_name] or None
         cache = {}
-    _MW_RENDER_CACHE[camera_name] = cache
-    return cache or None
+        try:
+            import os
+            os.environ.setdefault("MUJOCO_GL", "egl")
+            os.environ.setdefault("DISPLAY", ":0")
+            import numpy as np
+            import metaworld as mw
+            from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
+            mt1 = mw.MT1("peg-insert-side-v3")
+            env = mt1.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name=camera_name)
+            env.set_task(mt1.train_tasks[0])
+            env._freeze_rand_vec = False
+            pol = SawyerPegInsertionSideV3Policy()
+            pid = env.model.site("pegGrasp").id
+            hid = env.model.site("hole").id
+            obs, _info = env.reset(seed=1)
+            obs = np.asarray(obs, dtype=np.float64)
+            frames, dists = [], []
+            for _step in range(150):
+                act = np.asarray(pol.get_action(obs), dtype=np.float64)
+                obs, _r, _term, _trunc, _i = env.step(act)
+                obs = np.asarray(obs, dtype=np.float64)
+                peg = env.data.site_xpos[pid]
+                hole = env.data.site_xpos[hid]
+                dists.append(float(np.linalg.norm(peg[:2] - hole[:2])))
+                frames.append(np.rot90(np.asarray(env.render()), k=2))  # 180°旋转方向修正
+            cache = {"frames": frames, "dists": np.asarray(dists)}
+        except Exception:
+            cache = {}
+        _MW_RENDER_CACHE[camera_name] = cache
+        return cache or None
 
 
 def render_rgbd_frame(tr, idx, camera_name="corner2"):
