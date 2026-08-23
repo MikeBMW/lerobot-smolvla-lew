@@ -1,0 +1,10 @@
+{
+ "policy": "bc_yolo",
+ "seeds": 10,
+ "steps": 200,
+ "lift_rate": 0.4,
+ "insert_rate": 0.4,
+ "avg_dist_hole": 0.243,
+ "avg_peg_rise": 0.037,
+ "avg_det_per_frame": 2.97
+}
