@@ -23,32 +23,26 @@ def main():
     args = ap.parse_args()
 
     from ultralytics import YOLO
-    resume = False
+    model_path = args.model
     if args.resume:
         last = os.path.join(ROOT, "outputs", "yolo_peg_depth", args.name, "weights", "last.pt")
         if os.path.isfile(last):
-            print(f"🔁 从 last.pt 续训: {last}")
-            model = YOLO(last)
-            resume = True
+            print(f"🔁 用 last.pt 权重作初始权重 (GPU 重训, 绕开 CPU→GPU scaler 不兼容): {last}")
+            model_path = last
         else:
-            print(f"⚠️ 续训 last.pt 不存在: {last}, 回退从零训练")
-            model = YOLO(args.model)
-    else:
-        model = YOLO(args.model)  # 从零训练 (无 depth 预训练权重)
-    if resume:
-        model.train(resume=True)
-    else:
-        model.train(
-            data=os.path.join(ROOT, args.data, "data.yaml"),
-            epochs=args.epochs,
-            imgsz=args.imgsz,
-            batch=args.batch,
-            device=args.device,
-            project=os.path.join(ROOT, "outputs", "yolo_peg_depth"),
-            name=args.name,
-            workers=2,
-            verbose=True,
-        )
+            print(f"⚠️ last.pt 不存在: {last}, 回退从零训练")
+    model = YOLO(model_path)
+    model.train(
+        data=os.path.join(ROOT, args.data, "data.yaml"),
+        epochs=args.epochs,
+        imgsz=args.imgsz,
+        batch=args.batch,
+        device=args.device,
+        project=os.path.join(ROOT, "outputs", "yolo_peg_depth"),
+        name=args.name,
+        workers=2,
+        verbose=True,
+    )
     print(f"✅ 深度训练完成: outputs/yolo_peg_depth/{args.name}")
 
 
