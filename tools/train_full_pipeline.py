@@ -163,6 +163,10 @@ def collect_data(n_eps=60, aug=False, aligner=None):
         for _ in range(300):
             o_expert = np.asarray(env._get_obs(), dtype=np.float64).ravel()
             a = np.asarray(expert.get_action(o_expert), dtype=np.float32)[:4]
+            # 🐛 2026-08-24 静静: metaworld scripted policy 会输出超 [-1,1] 的动作(靠 env 内部 clip),
+            #   直接存进 act_t → ys 超范围(实测 ys=[3.55,0.76,2.43,0.69]) → 左脑学超范围动作,
+            #   评估时又被 np.clip 到 [-1,1] → 训练/评估动作分布不匹配 → 0/8 卡"接近"
+            a = np.clip(a, -1.0, 1.0)
             hand = env.data.site_xpos[env.model.site("endEffector").id]
             target, pg = grasp_target(env, hand)
             d_hp = float(np.linalg.norm(hand - pg))

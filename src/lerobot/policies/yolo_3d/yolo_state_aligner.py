@@ -64,7 +64,10 @@ class YoloStateAligner:
         depth_map = None
         if self.depth_model is not None:
             try:
-                depth_map = np.asarray(self.depth_model.predict(img_bgr, verbose=False)[0].depth.data).squeeze()
+                _d = self.depth_model.predict(img_bgr, verbose=False)[0].depth.data
+                # 🐛 2026-08-24 静静: GPU 训练后 depth.data 是 cuda tensor, np.asarray 直接转抛
+                #   TypeError 被 except 吞掉 → depth_map=None → 回退写死 z → 评估 0/8 卡"接近"
+                depth_map = np.asarray(_d.detach().cpu().numpy()).squeeze()
                 if depth_map.ndim != 2:
                     depth_map = depth_map[-1] if depth_map.ndim == 3 else None
             except Exception:
