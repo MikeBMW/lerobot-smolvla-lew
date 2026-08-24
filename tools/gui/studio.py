@@ -638,7 +638,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.7.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.7.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -2675,6 +2675,13 @@ class TrainingModule(QWidget):
             ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
             ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "—"}),
             ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器", "YOLO检测": "—"}),
+        ]),
+        ("🛡 安全", [
+            ("安全机制", {"ACT": "Sys0 外部壳", "SmolVLA": "Sys0 外部壳", "SmolVLA+LEW": "Sys0 外部壳", "VLA-Touch": "Sys0 外部壳",
+                       "AWE": "Sys0 外部壳", "MLP 蒸馏": "Sys0 外部壳", "官方专家": "PD力控有界+Sys0", "状态空间": "内置否决+限幅+Sys0", "YOLO检测": "—"}),
+            ("动作限幅", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "✅ 力控闭环", "状态空间": "✅ clip(±0.6~±1)", "YOLO检测": "—"}),
+            ("力限值", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "力控≤5N", "状态空间": "5N(过盈≤2N)", "YOLO检测": "—"}),
+            ("否决重试", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 残差>2.0→减速×3", "YOLO检测": "—"}),
         ]),
         ("⚙️ 训练", [
             ("步数", {"ACT": "4000", "SmolVLA": "4000", "SmolVLA+LEW": "4000", "VLA-Touch": "4000", "AWE": "4000", "MLP 蒸馏": "4000", "官方专家": "基准", "状态空间": "3000", "YOLO检测": "50 epoch"}),
@@ -9734,7 +9741,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.7.4 [W-01]")  # v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.7.5 [W-01]")  # v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         self._build()
