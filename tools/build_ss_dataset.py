@@ -155,6 +155,11 @@ def main():
         "action": {"mean": actions.mean(0).tolist(), "std": actions.std(0).tolist()},
     }
     (OUT / "meta" / "stats.json").write_text(json.dumps(stats))
+    # 🐛 2026-08-25 静静: tasks.parquet 必写! lerobot 0.5.2 的 LeRobotDatasetMetadata._load_metadata
+    #   会 load_tasks(meta/tasks.parquet), 缺 → FileNotFoundError → 误走 get_safe_version(HF Hub)
+    #   报 "Network is unreachable"。state-only 数据集无语言任务, 写单个占位 task 即可。
+    tasks_df = pd.DataFrame({"task_index": [0]}, index=pd.Index(["insert_peg"], name="task"))
+    tasks_df.to_parquet(OUT / "meta" / "tasks.parquet")
     n_ok = sum(1 for e in eps_all if e["ok"])
     print(f"✅ 数据集: {OUT} · {len(eps_all)}ep/{total}帧 · 成功 {n_ok}/{len(eps_all)} · stats.json 已写")
     print("   训练: config_left_right.yaml (root 自动指向本目录) · policy=left_right")
