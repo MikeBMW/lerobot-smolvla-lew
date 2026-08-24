@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
         ver = QLabel("Z-MAX v2.7.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
-        ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:13px; font-weight:600;")
+        ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
         layout.addLayout(logo_row)
@@ -1199,13 +1199,13 @@ class ProductRoadmapWidget(QFrame):
 
         # Description
         desc = QLabel(phase_data["desc"])
-        desc.setStyleSheet(f"color: {C_GRAY}; font-size: 13px; padding: 8px;")
+        desc.setStyleSheet(f"color: {C_GRAY}; font-size:19px; padding: 8px;")
         desc.setWordWrap(True)
         dlg_layout.addWidget(desc)
 
         # Time
         time_lbl = QLabel(f"📅 {phase_data['time']}")
-        time_lbl.setStyleSheet(f"color: {C_DIM}; font-size:14px;")
+        time_lbl.setStyleSheet(f"color: {C_DIM}; font-size:20px;")
         dlg_layout.addWidget(time_lbl)
 
         dlg_layout.addStretch()
@@ -1447,7 +1447,7 @@ class HomeWidget(QWidget):
             tl.setStyleSheet(f"color:{gcol}; background:transparent; border:none;")
             th.addWidget(tl)
             sub = QLabel(gsub)
-            sub.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:12px;")
+            sub.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:18px;")
             th.addWidget(sub)
             th.addStretch()
             fl.addLayout(th)
@@ -1617,7 +1617,7 @@ class HomeWidget(QWidget):
         dl.addWidget(title)
         
         status = QLabel(f"Gateway: {gw_status}")
-        status.setStyleSheet(f"color:{C_GREEN if '运行' in gw_status else C_GRAY}; font-size:14px;")
+        status.setStyleSheet(f"color:{C_GREEN if '运行' in gw_status else C_GRAY}; font-size:20px;")
         status.setAlignment(Qt.AlignCenter)
         dl.addWidget(status)
         
@@ -1632,7 +1632,7 @@ class HomeWidget(QWidget):
             "5. 扫码下方二维码查看详细文档"
         )
         guide.setWordWrap(True)
-        guide.setStyleSheet(f"color:{C_WHITE}; font-size:13px; padding:8px; background:{C_BG2}; border-radius:4px;")
+        guide.setStyleSheet(f"color:{C_WHITE}; font-size:19px; padding:8px; background:{C_BG2}; border-radius:4px;")
         dl.addWidget(guide)
         
         # 二维码
@@ -1642,7 +1642,7 @@ class HomeWidget(QWidget):
         dl.addWidget(qr_label)
         
         qr_hint = QLabel("扫码查看 Hermes Gateway 配置文档")
-        qr_hint.setStyleSheet(f"color:{C_GRAY}; font-size:12px;")
+        qr_hint.setStyleSheet(f"color:{C_GRAY}; font-size:18px;")
         qr_hint.setAlignment(Qt.AlignCenter)
         dl.addWidget(qr_hint)
         
@@ -1806,7 +1806,7 @@ class DatasetModule(SubModuleWidget):
 
         # 🧠 2026-08-08 老倪: 训练结果完全可控 — outputs/train 列表 + 删除
         tr_label = QLabel("🧠 训练结果 (outputs/train)")
-        tr_label.setStyleSheet(f"color:{SYS2_COLOR}; font-size:13px; font-weight:700; background:transparent; border:none; margin-top:6px;")
+        tr_label.setStyleSheet(f"color:{SYS2_COLOR}; font-size:19px; font-weight:700; background:transparent; border:none; margin-top:6px;")
         bl.addWidget(tr_label)
         self._tr_box = QVBoxLayout()
         bl.addLayout(self._tr_box)
@@ -1844,7 +1844,7 @@ class DatasetModule(SubModuleWidget):
             tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
             row = QHBoxLayout()
             lbl = QLabel(f"⚙ {name}  ·  {steps} 步  ·  {sz:.0f}MB  ·  {tm}")
-            lbl.setStyleSheet("color:#c9d1d9; font-size:14px; font-family:Consolas; background:transparent; border:none;")
+            lbl.setStyleSheet("color:#c9d1d9; font-size:20px; font-family:Consolas; background:transparent; border:none;")
             row.addWidget(lbl)
             row.addStretch()
             btn = QPushButton("🗑")
@@ -1999,7 +1999,7 @@ class DatasetModule(SubModuleWidget):
                     border: 1px solid {C_ORANGE}88;
                     border-radius: 6px;
                     padding: 0px 14px;
-                    font-size:14px;
+                    font-size:20px;
                     font-weight: bold;
                     font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
                     min-width: 56px;
@@ -2759,15 +2759,15 @@ class TrainingModule(QWidget):
         eh.setContentsMargins(12, 8, 12, 8)
         eh.setSpacing(10)
         eng_lbl = QLabel("🖥 模型引擎:")  # 2026-08-08 老倪: 训练引擎 → 模型引擎
-        eng_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none; font-size:13px;")
+        eng_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none; font-size:19px;")
         eh.addWidget(eng_lbl)
         # GPU 引擎选择 (Model Engine 中枢 — 所有训练统一走这里)
         self.radio_local = QRadioButton("本地 GPU (RTX 4060)")
         self.radio_local.setChecked(True)
-        self.radio_local.setStyleSheet(f"QRadioButton {{ color:{C_WHITE}; background:transparent; border:none; font-size:13px; font-weight:bold; }}")
+        self.radio_local.setStyleSheet(f"QRadioButton {{ color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:bold; }}")
         self.radio_remote = QRadioButton("远程 GPU (未连接)")
         self.radio_remote.setEnabled(False)
-        self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:13px; }}")
+        self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:19px; }}")
         self.radio_local.toggled.connect(self._on_gpu_mode)
         self.radio_remote.toggled.connect(self._on_gpu_mode)
         eh.addWidget(self.radio_local)
@@ -2806,12 +2806,12 @@ class TrainingModule(QWidget):
         self.btn_ssh.clicked.connect(self._connect_gpu)
         sh.addWidget(self.btn_ssh)
         self.ssh_status = QLabel("未连接")
-        self.ssh_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:14px;")
+        self.ssh_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:20px;")
         sh.addWidget(self.ssh_status)
         sh.addStretch()
         # 🔧 远程环境状态 (2026-08-08 老倪: 终端可见远程环境安装进度)
         self.remote_env_lbl = QLabel("🔧 远程环境: 未连接")
-        self.remote_env_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:13px;")
+        self.remote_env_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:19px;")
         sh.addWidget(self.remote_env_lbl)
         layout.addWidget(ssh_box)
         self.ssh_host.setText("223.109.239.36")
@@ -2850,13 +2850,13 @@ class TrainingModule(QWidget):
         """)
         self.model_combo.currentTextChanged.connect(self._on_model_changed)
         self.model_name = QLabel("")  # 模型属性摘要
-        self.model_name.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:13px;")
+        self.model_name.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:19px;")
         top_bar.addWidget(self.model_name)
 
         # 🗂 2026-08-08 老倪: 模型源标识 (右侧层架 — 配置与训练统一走 Simulink Model Zoo)
         src_lbl = QLabel("🗂 模型源：Simulink Model Zoo")
         src_lbl.setStyleSheet(f"color:#00d4aa; background:#0d2a24; border:1px solid #00d4aa; border-radius:4px;"
-                              f"padding:4px 10px; font-size:14px; font-weight:bold;")
+                              f"padding:4px 10px; font-size:20px; font-weight:bold;")
         top_bar.addWidget(src_lbl)
         
         layout.addLayout(top_bar)
@@ -2916,7 +2916,7 @@ class TrainingModule(QWidget):
         cv = QVBoxLayout(cg)
         cv.setSpacing(6)
         self._ct_status = QLabel("⏳ 容器状态: 检测中…")
-        self._ct_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:14px;")
+        self._ct_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:20px;")
         self._ct_status.setWordWrap(True)
         cv.addWidget(self._ct_status)
         # 三模式卡片 (2026-08-08 老倪: 选中 → 外边框包裹高亮)
@@ -2943,17 +2943,17 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         deploy_row = QHBoxLayout()
         deploy_row.setSpacing(6)
         deploy_lbl = QLabel("📦 部署模型:")
-        deploy_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:14px; font-weight:bold; background:transparent; border:none;")
+        deploy_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:20px; font-weight:bold; background:transparent; border:none;")
         self.deploy_model_combo = QComboBox()
         self.deploy_model_combo.setMinimumWidth(280)
-        self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:14px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
+        self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:20px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
         # 🐛 2026-08-09 老倪: 布局 — 上传容器(29) 最左侧, 推送到Orin(28) 中间, 部署模型下拉(27) 最右侧
         self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
-        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:14px;}} QPushButton:hover{{background:#14564a;}}")
+        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
         self._btn_upload_ct.clicked.connect(self._upload_container)
         deploy_row.addWidget(self._btn_upload_ct)
         self.btn_deploy_orin = QPushButton("📥 推送到 Orin")
-        self.btn_deploy_orin.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:14px;}} QPushButton:hover{{background:#14564a;}}")
+        self.btn_deploy_orin.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
         self.btn_deploy_orin.clicked.connect(self._deploy_model_to_orin)
         self.btn_deploy_orin.setToolTip("将下拉选中的模型推送到 Orin (上传 datadrive.world/models/act_latest.safetensors → Orin 监听器自动下载)")
         self.btn_deploy_orin.setEnabled(False)  # 🐛 2026-08-09: 端侧部署高亮选中后才可点
@@ -3515,7 +3515,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 border-radius: 6px;
                 padding: 12px 32px;
                 margin: 0px;
-                font-size: 14px;
+                font-size:20px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -3549,7 +3549,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                    "state_space": "S-08", "yolo": "S-09"}[key]  # 🐛 ID 渲染
             cb = QCheckBox(f"训练：开 {label} [{sid}]")
             cb.setChecked(True)
-            cb.setStyleSheet(f"QCheckBox{{color:{C_WHITE}; background:transparent; font-size:14px; font-weight:bold;}}"
+            cb.setStyleSheet(f"QCheckBox{{color:{C_WHITE}; background:transparent; font-size:20px; font-weight:bold;}}"
                              f"QCheckBox::indicator{{width:30px; height:16px; border-radius:8px; border:1px solid {C_BORDER}; background:#21262d;}}"
                              f"QCheckBox::indicator:checked{{background:{C_GREEN}; border-color:{C_GREEN};}}")
             self._zoo_sw[key] = cb
@@ -3570,7 +3570,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 border-radius: 6px;
                 padding: 12px 32px;
                 margin: 0px;
-                font-size: 14px;
+                font-size:20px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -3600,7 +3600,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 border-radius: 6px;
                 padding: 12px 32px;
                 margin: 0px;
-                font-size: 14px;
+                font-size:20px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -3669,7 +3669,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
         self.btn_log_collapse.setStyleSheet(f"""
             QPushButton {{ background: {C_CYAN}; color: {C_BG}; border: none;
-                           border-radius: 4px; font-size:14px; font-weight: bold; padding: 4px 8px; }}
+                           border-radius: 4px; font-size:20px; font-weight: bold; padding: 4px 8px; }}
             QPushButton:hover {{ background: {C_CYAN_HOVER if 'C_CYAN_HOVER' in dir() else '#00e6c3'}; }}
         """)
         self.btn_log_collapse.clicked.connect(self._toggle_log_area)
@@ -3693,7 +3693,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 border-radius: 4px;
                 padding: 2px 4px;   /* 🐛 2026-08-09 老倪: 8px→2px 上下留白致光标/行距两倍 */
                 font-family: 'Consolas', 'Courier New', monospace;
-                font-size:14px;
+                font-size:20px;
             }}
             QScrollBar:vertical {{
                 background: {C_BG};
@@ -4210,7 +4210,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         t.setStyleSheet("""
             QTableWidget#zoo_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
-                                     gridline-color:#30363d; font-size:14px; }
+                                     gridline-color:#30363d; font-size:20px; }
             QTableWidget#zoo_table::item { padding:4px 8px; }
         """)
         # 表头: 参数名 + 7 模型
@@ -4823,7 +4823,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").strip()
             if "LEROBOT_OK" in out:
                 self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + lerobot)")
-                self.remote_env_lbl.setStyleSheet(f"color:#3fb950; background:transparent; border:none; font-size:13px; font-weight:bold;")
+                self.remote_env_lbl.setStyleSheet(f"color:#3fb950; background:transparent; border:none; font-size:19px; font-weight:bold;")
                 try:
                     self._env_timer.stop()
                 except Exception:
@@ -4831,7 +4831,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             elif "lerobot-venv" in out or "venv_install" in out or out:
                 last = [l for l in out.splitlines() if l.strip()][-1] if out.splitlines() else ""
                 self.remote_env_lbl.setText(f"🔧 远程环境: 安装中 · {last[:45]}")
-                self.remote_env_lbl.setStyleSheet(f"color:{C_ORANGE}; background:transparent; border:none; font-size:13px;")
+                self.remote_env_lbl.setStyleSheet(f"color:{C_ORANGE}; background:transparent; border:none; font-size:19px;")
             else:
                 self.remote_env_lbl.setText("🔧 远程环境: 未检测到 venv (自动安装中)")
         except Exception:
@@ -5040,7 +5040,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         """🌐 控件左下角小字全局唯一 ID 角标 (2026-08-08 老倪: 统一左下角小字显示, 眼睛可见)"""
         try:
             badge = QLabel(h_id)
-            badge.setStyleSheet(f"color:{C_CYAN}; font-size:13px; font-weight:bold; background:transparent; border:none; padding:0px;")
+            badge.setStyleSheet(f"color:{C_CYAN}; font-size:19px; font-weight:bold; background:transparent; border:none; padding:0px;")
             badge.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             # 方案: 控件外包 QVBoxLayout (控件 + 左下角 ID 小字)
             wrap = QWidget()
@@ -5135,7 +5135,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             lbl = QLabel(h_id, widget)
             # 🐛 2026-08-09 老倪 v4: 灰色贴近背景 (能看清不显眼), 10px 无背景不覆盖
             lbl.setStyleSheet(
-                f"color:{C_GRAY}; font-size:13px; font-weight:bold; "
+                f"color:{C_GRAY}; font-size:19px; font-weight:bold; "
                 "background:transparent; border:none;")
             lbl.adjustSize()
             lbl.move(2, max(0, widget.height() - lbl.height() - 1))  # 左下角
@@ -5465,13 +5465,13 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     if size < 1024: break
                     size /= 1024
                 self.dataset_path_label.setText(f"✅ 已缓存 · {len(valid)}文件 · {size:.1f}{unit}")
-                self.dataset_path_label.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; font-size:13px; padding:4px 8px; background:{C_GREEN}22; border:1px solid {C_GREEN}66; border-radius:4px;")
+                self.dataset_path_label.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; font-size:19px; padding:4px 8px; background:{C_GREEN}22; border:1px solid {C_GREEN}66; border-radius:4px;")
             except Exception as e:
                 self.dataset_path_label.setText(f"⚠️ {e}")
-                self.dataset_path_label.setStyleSheet(f"color:{C_ORANGE}; font-size:12px;")
+                self.dataset_path_label.setStyleSheet(f"color:{C_ORANGE}; font-size:18px;")
         else:
             self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
-            self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:13px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
+            self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:19px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
 
     def _auto_output_dir(self):
         """根据当前数据集自动更新输出目录"""
@@ -5837,7 +5837,7 @@ class EvalModule(SubModuleWidget):
             
             # 详情 + 曲线
             self.eval_info = QLabel()
-            self.eval_info.setStyleSheet(f"color:{C_WHITE}; font-size:14px; padding:4px;")
+            self.eval_info.setStyleSheet(f"color:{C_WHITE}; font-size:20px; padding:4px;")
             tl.addWidget(self.eval_info)
             
             self.eval_svg = QLabel()
@@ -5882,7 +5882,7 @@ class EvalModule(SubModuleWidget):
         
         # 对比结果标签
         self.cmp_result = QLabel("未运行对比")
-        self.cmp_result.setStyleSheet(f"color:{C_GRAY}; font-size:14px; padding:4px;")
+        self.cmp_result.setStyleSheet(f"color:{C_GRAY}; font-size:20px; padding:4px;")
         bl.addWidget(self.cmp_result)
         
         self.log = QTextEdit(); self.log.setReadOnly(True)
@@ -5899,7 +5899,7 @@ class EvalModule(SubModuleWidget):
         jsons = sorted(glob.glob(os.path.join(proj, "docs", "CICD_COMPARE_*.json")))
         if not jsons:
             self.cmp_result.setText("⚠️ 无对比结果 — 先运行 tools/act_compare.py")
-            self.cmp_result.setStyleSheet(f"color:#d29922; font-size:14px; padding:4px;")
+            self.cmp_result.setStyleSheet(f"color:#d29922; font-size:20px; padding:4px;")
             return
         d = json.load(open(jsons[-1]))
         base, cand = d["baseline"], d["candidate"]
@@ -5911,7 +5911,7 @@ class EvalModule(SubModuleWidget):
             f"{verdict} · MSE: 基线 {base['action_mse']:.1f} → 候选 {cand['action_mse']:.1f} "
             f"({imp:+.1f}%) | 成功率: {base['success_rate']*100:.0f}% → {cand['success_rate']*100:.0f}% "
             f"| 延迟: {base['latency_ms']:.1f}→{cand['latency_ms']:.1f}ms")
-        self.cmp_result.setStyleSheet(f"color:{color}; font-size:14px; font-weight:700; padding:4px;")
+        self.cmp_result.setStyleSheet(f"color:{color}; font-size:20px; font-weight:700; padding:4px;")
         self.log.append(f"[{time.strftime('%H:%M:%S')}] 🔬 对比: {jsons[-1]} → {verdict} ({imp:+.1f}%)")
 
     def _show_training_record(self, records):
@@ -6054,7 +6054,7 @@ class HardwareModule(SubModuleWidget):
             QTreeWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px;}}
             QTreeWidget::item{{padding:4px;}}
             QTreeWidget::item:selected{{background:{SYS0_COLOR}33; color:{SYS0_COLOR};}}
-            QHeaderView::section{{background:{C_BG2}; color:{C_GRAY}; border:none; padding:4px; font-size:13px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{C_GRAY}; border:none; padding:4px; font-size:19px;}}
         """)
         self.device_tree.itemClicked.connect(self._on_device_selected)
         self._build_device_tree()
@@ -6089,7 +6089,7 @@ class HardwareModule(SubModuleWidget):
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
-        hw_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:14px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
+        hw_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:20px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
         hw_layout = QVBoxLayout()
         hw_layout.setSpacing(4)
         
@@ -6109,8 +6109,8 @@ class HardwareModule(SubModuleWidget):
         self.hw_table.setMinimumHeight(320)
         self.hw_table.setStyleSheet(f"""
             QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
-            QTableWidget::item{{padding:6px 8px; font-size:13px;}}
-            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:12px; font-weight:bold;}}
+            QTableWidget::item{{padding:6px 8px; font-size:19px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
         """)
         hw_layout.addWidget(self.hw_table)
         hw_group.setLayout(hw_layout)
@@ -6124,18 +6124,18 @@ class HardwareModule(SubModuleWidget):
         # 顶部: 连接按钮 + 状态
         cam_bar = QHBoxLayout()
         self.btn_cam_connect = QPushButton("🔌 连接摄像头")
-        self.btn_cam_connect.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 12px; font-weight:bold; font-size:14px;}} QPushButton:hover{{background:#14564a;}}")
+        self.btn_cam_connect.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 12px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
         self.btn_cam_connect.clicked.connect(self._cam_connect)
         cam_bar.addWidget(self.btn_cam_connect)
         self.cam_status = QLabel("⚪ 未连接 · 快照端点 datadrive.world/api/snapshot/latest")
-        self.cam_status.setStyleSheet(f"color:{C_GRAY}; font-size:13px; background:transparent; border:none;")
+        self.cam_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; background:transparent; border:none;")
         cam_bar.addWidget(self.cam_status, 1)
         cam_layout.addLayout(cam_bar)
         # 画面显示 (QLabel 承载 QPixmap, 固定高度 240)
         self.cam_view = QLabel("📷 点击「连接摄像头」查看实时画面 (Orin 快照)")
         self.cam_view.setFixedHeight(240)
         self.cam_view.setAlignment(Qt.AlignCenter)
-        self.cam_view.setStyleSheet(f"background:#000; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; font-size:14px;")
+        self.cam_view.setStyleSheet(f"background:#000; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; font-size:20px;")
         cam_layout.addWidget(self.cam_view)
         cam_group.setLayout(cam_layout)
         body.addWidget(cam_group)
@@ -6254,7 +6254,7 @@ class HardwareModule(SubModuleWidget):
                 btn_layout.addWidget(read_btn)
             else:
                 ph = QLabel("待接入")
-                ph.setStyleSheet(f"color:{C_GRAY}; font-size:12px;")
+                ph.setStyleSheet(f"color:{C_GRAY}; font-size:18px;")
                 btn_layout.addWidget(ph)
             
             btn_widget.setLayout(btn_layout)
@@ -6291,18 +6291,18 @@ class HardwareModule(SubModuleWidget):
             self.btn_cam_connect.setEnabled(True)
             if err:
                 self.cam_status.setText(f"❌ 连接失败: {err}")
-                self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:13px; background:transparent; border:none;")
+                self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:19px; background:transparent; border:none;")
                 self._log(f"❌ 摄像头连接失败: {err}")
             elif code == 200 and ctype.startswith("image"):
                 self.cam_status.setText("🟢 已连接 · 快照端点正常 · 实时画面轮询中")
-                self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:13px; background:transparent; border:none;")
+                self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:19px; background:transparent; border:none;")
                 self.btn_cam_connect.setText("⏹ 断开摄像头")
                 self._show_cam_frame(content)
                 self._cam_timer.start(1500)  # 1.5s 轮询
                 self._log("📷 摄像头已连接 — 轮询 datadrive.world/api/snapshot/latest (Orin 快照)")
             else:
                 self.cam_status.setText(f"⚠️ 快照端点异常: HTTP {code}")
-                self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:13px; background:transparent; border:none;")
+                self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:19px; background:transparent; border:none;")
                 self._log(f"⚠️ 摄像头连接失败: HTTP {code} (快照端点无图)")
 
         _th.Thread(target=lambda: self._cam_apply_later(_probe, _apply), daemon=True).start()
@@ -6688,8 +6688,8 @@ class HardwareModule(SubModuleWidget):
         self.joint_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.joint_table.setStyleSheet(f"""
             QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
-            QTableWidget::item{{padding:4px 8px; font-size:13px;}}
-            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:12px; font-weight:bold;}}
+            QTableWidget::item{{padding:4px 8px; font-size:19px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
         """)
         l.addWidget(self.joint_table)
         
@@ -6725,8 +6725,8 @@ class HardwareModule(SubModuleWidget):
         self.cam_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.cam_table.setStyleSheet(f"""
             QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
-            QTableWidget::item{{padding:4px 8px; font-size:13px;}}
-            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:12px; font-weight:bold;}}
+            QTableWidget::item{{padding:4px 8px; font-size:19px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
         """)
         l.addWidget(self.cam_table)
         w.setLayout(l)
@@ -6753,7 +6753,7 @@ class HardwareModule(SubModuleWidget):
         l.addLayout(grid)
         
         info = QLabel("力控带宽: 1kHz | 精度: <2N | 量程: ±500N / ±20Nm")
-        info.setStyleSheet(f"color:{C_GRAY}; font-size:13px;")
+        info.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
         l.addWidget(info)
         l.addStretch()
         w.setLayout(l)
@@ -6771,8 +6771,8 @@ class HardwareModule(SubModuleWidget):
         self.io_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.io_table.setStyleSheet(f"""
             QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
-            QTableWidget::item{{padding:6px 10px; font-size:14px;}}
-            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:12px; font-weight:bold;}}
+            QTableWidget::item{{padding:6px 10px; font-size:20px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
         """)
         l.addWidget(self.io_table)
         
@@ -6941,7 +6941,7 @@ class HardwareModule(SubModuleWidget):
             if self._replay_thread:
                 self._replay_thread.pause()
             self.replay_play_btn.setText("▶ 播放")
-            self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+            self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:19px;")
             self._log("⏸ 回放暂停")
         else:
             # 播放
@@ -6954,7 +6954,7 @@ class HardwareModule(SubModuleWidget):
                 self._replay_thread.finished.connect(self._on_replay_finished)
                 self._replay_thread.start()
             self.replay_play_btn.setText("⏸ 暂停")
-            self.replay_play_btn.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+            self.replay_play_btn.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:19px;")
             self._log("▶ 回放开始")
     
     def _replay_stop(self):
@@ -6965,7 +6965,7 @@ class HardwareModule(SubModuleWidget):
             self._replay_thread.wait(500)
         self.replay.current_frame = 0
         self.replay_play_btn.setText("▶ 播放")
-        self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:13px;")
+        self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:19px;")
         self.replay_progress.setValue(0)
         self.replay_info.setText(f"0/{self.replay.total_frames} 帧 | 0.0s")
         self.replay_joint_display.setText("回放已停止")
@@ -7166,7 +7166,7 @@ class ConfigModule(SubModuleWidget):
             QRadioButton {{
                 color: {C_WHITE};
                 spacing: 8px;
-                font-size: 14px;
+                font-size:20px;
             }}
             QRadioButton::indicator {{
                 width: 16px;
@@ -7498,7 +7498,7 @@ class ConfigModule(SubModuleWidget):
         zoo_t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         zoo_t.setStyleSheet("""
             QTableWidget#cfg_std_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
-                                         gridline-color:#30363d; font-size:14px; }
+                                         gridline-color:#30363d; font-size:20px; }
             QTableWidget#cfg_std_table::item { padding:4px 8px; }
         """)
         h = QTableWidgetItem("标准参数")
@@ -7815,7 +7815,7 @@ class MonitorModule(SubModuleWidget):
         src_layout.addWidget(self.src_replay)
         
         self.mon_session_combo = QComboBox()
-        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:3px 6px; font-size:13px;")
+        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:3px 6px; font-size:19px;")
         self._refresh_monitor_sessions()
         src_layout.addWidget(self.mon_session_combo)
         
@@ -7845,7 +7845,7 @@ class MonitorModule(SubModuleWidget):
         src_layout.addWidget(self.src_pusht)
         
         self.src_status = QLabel("回放: 未加载")
-        self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:13px; padding-top:4px;")
+        self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; padding-top:4px;")
         src_layout.addWidget(self.src_status)
         src_group.setLayout(src_layout)
         top_row.addWidget(src_group)
@@ -7869,7 +7869,7 @@ class MonitorModule(SubModuleWidget):
         eng_layout.addWidget(self.mon_rviz_btn)
         
         self.mon_mode_label = QLabel("端口: 9877")
-        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:13px; padding:2px 0;")
+        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:19px; padding:2px 0;")
         eng_layout.addWidget(self.mon_mode_label)
         eng_layout.addStretch()
         eng_group.setLayout(eng_layout)
@@ -7883,20 +7883,20 @@ class MonitorModule(SubModuleWidget):
         orin_lay = QHBoxLayout()
         orin_lay.setSpacing(14)
         self.orin_status_lbl = QLabel("● 未部署")
-        self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:13px; font-weight:700;")
+        self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:19px; font-weight:700;")
         orin_lay.addWidget(self.orin_status_lbl)
         self.orin_model_lbl = QLabel("模型: -")
-        self.orin_model_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:14px;")
+        self.orin_model_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:20px;")
         orin_lay.addWidget(self.orin_model_lbl)
         self.orin_infer_lbl = QLabel("推理: -")
-        self.orin_infer_lbl.setStyleSheet(f"color:{C_CYAN}; font-size:14px;")
+        self.orin_infer_lbl.setStyleSheet(f"color:{C_CYAN}; font-size:20px;")
         orin_lay.addWidget(self.orin_infer_lbl)
         self.orin_lat_lbl = QLabel("延迟: -")
-        self.orin_lat_lbl.setStyleSheet(f"color:{C_DIM}; font-size:14px;")
+        self.orin_lat_lbl.setStyleSheet(f"color:{C_DIM}; font-size:20px;")
         orin_lay.addWidget(self.orin_lat_lbl)
         orin_lay.addStretch()
         ref_btn = QPushButton("刷新")
-        ref_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:13px;")
+        ref_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:19px;")
         ref_btn.clicked.connect(self._refresh_orin_status)
         orin_lay.addWidget(ref_btn)
         orin_bar.setLayout(orin_lay)
@@ -7939,7 +7939,7 @@ class MonitorModule(SubModuleWidget):
         topic_header = QHBoxLayout()
         topic_header.addWidget(QLabel("Topics"))
         self.tn_refresh_btn = QPushButton("刷新")
-        self.tn_refresh_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:13px;")
+        self.tn_refresh_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:19px;")
         self.tn_refresh_btn.clicked.connect(self._refresh_topic_node_list)
         topic_header.addWidget(self.tn_refresh_btn)
         topic_header.addStretch()
@@ -7999,8 +7999,8 @@ class MonitorModule(SubModuleWidget):
     
     def _mode_btn_style(self, color, active):
         if active:
-            return f"background:{color}; color:white; border:none; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:14px;"
-        return f"background:{color}33; color:{color}; border:1px solid {color}44; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:14px;"
+            return f"background:{color}; color:white; border:none; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:20px;"
+        return f"background:{color}33; color:{color}; border:1px solid {color}44; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:20px;"
     
     # ═══ 操作 ═══
     
@@ -8105,7 +8105,7 @@ class MonitorModule(SubModuleWidget):
             online = st.get("online")
             if online:
                 self.orin_status_lbl.setText("● 运行中")
-                self.orin_status_lbl.setStyleSheet(f"color:{C_GREEN}; font-size:13px; font-weight:700;")
+                self.orin_status_lbl.setStyleSheet(f"color:{C_GREEN}; font-size:19px; font-weight:700;")
                 model = st.get("model") or "-"
                 self.orin_model_lbl.setText(f"模型: {model}")
                 self.orin_infer_lbl.setText(f"推理: {st.get('infer_count', 0)}次")
@@ -8113,7 +8113,7 @@ class MonitorModule(SubModuleWidget):
                 self.orin_lat_lbl.setText(f"延迟: {lat}ms" if lat is not None else "延迟: -")
             else:
                 self.orin_status_lbl.setText("● 未部署")
-                self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:13px; font-weight:700;")
+                self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:19px; font-weight:700;")
                 self.orin_model_lbl.setText("模型: -")
                 self.orin_infer_lbl.setText("推理: -")
                 self.orin_lat_lbl.setText("延迟: -")
@@ -8154,13 +8154,13 @@ class MonitorModule(SubModuleWidget):
         self.mon_launch_btn.setEnabled(False)
         self.mon_stop_btn.setEnabled(True)
         self.mon_status.setText("🟢 运行中")
-        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:14px;")
+        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
     
     def _on_rerun_done(self):
         self.mon_launch_btn.setEnabled(True)
         self.mon_stop_btn.setEnabled(False)
         self.mon_status.setText("● 已停止")
-        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:14px;")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
         self._mlog("⏹ Rerun 已停止")
     
     def _launch_rviz(self):
@@ -8187,7 +8187,7 @@ class MonitorModule(SubModuleWidget):
         self.mon_launch_btn.setEnabled(False)
         self.mon_stop_btn.setEnabled(True)
         self.mon_status.setText("🟢 运行中")
-        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:14px;")
+        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
     
     def _mon_stop(self):
         """停止可视化"""
@@ -8209,7 +8209,7 @@ class MonitorModule(SubModuleWidget):
         self.mon_launch_btn.setEnabled(True)
         self.mon_stop_btn.setEnabled(False)
         self.mon_status.setText("● 已停止")
-        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:14px;")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
         self._mlog("⏹ 可视化已停止")
     
     def _mlog(self, msg):
@@ -8473,7 +8473,7 @@ class MonitorModule(SubModuleWidget):
         tl = self._live_data.get("topic_list", [])
         nl = self._live_data.get("node_list", [])
         
-        t_html = "<pre style='color:#39d2c0; font-size:13px; margin:0;'>"
+        t_html = "<pre style='color:#39d2c0; font-size:19px; margin:0;'>"
         t_html += f"<b>Topics ({len(tl)})</b>\n"
         for t in tl[:20]:
             t_html += f"  {t}\n"
@@ -8482,7 +8482,7 @@ class MonitorModule(SubModuleWidget):
         t_html += "</pre>"
         self.topic_list_view.setHtml(t_html)
         
-        n_html = "<pre style='color:#bc8cff; font-size:13px; margin:0;'>"
+        n_html = "<pre style='color:#bc8cff; font-size:19px; margin:0;'>"
         n_html += f"<b>Nodes ({len(nl)})</b>\n"
         for n in nl[:15]:
             n_html += f"  {n}\n"
@@ -8496,7 +8496,7 @@ class MonitorModule(SubModuleWidget):
         d = getattr(self, '_live_data', {})
         now = time.time()
         
-        lines = ["<pre style='color:#3fb950; font-size:13px; margin:0;'>"]
+        lines = ["<pre style='color:#3fb950; font-size:19px; margin:0;'>"]
         lines.append("<b>── 实时信号追踪 ──</b>\n")
         
         topics_data = d.get("topics", {})
@@ -8869,7 +8869,7 @@ class InferencePanel(QWidget):
         main.addWidget(title)
         
         hint = QLabel("本地Server + 本地Client  |  旁路验证预留(Client在Orin远端)")
-        hint.setStyleSheet(f"color:{C_GRAY}; font-size:13px;")
+        hint.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
         main.addWidget(hint)
         
         # ── Server + Client 双栏 ──
@@ -8885,13 +8885,13 @@ class InferencePanel(QWidget):
         
         self.start_btn = QPushButton("▶ 完整启动")
         self.start_btn.clicked.connect(self._full_start)
-        self.start_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:13px; font-weight:bold;")
+        self.start_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:19px; font-weight:bold;")
         ctrl.addWidget(self.start_btn)
         
         self.stop_btn = QPushButton("⏹ 全部停止")
         self.stop_btn.clicked.connect(self._full_stop)
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:13px; font-weight:bold;")
+        self.stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:19px; font-weight:bold;")
         ctrl.addWidget(self.stop_btn)
         
         ctrl.addStretch()
@@ -8904,7 +8904,7 @@ class InferencePanel(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMinimumHeight(250)
-        self.log_text.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:8px; font-family:Consolas; font-size:13px;")
+        self.log_text.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:8px; font-family:Consolas; font-size:19px;")
         ll.addWidget(self.log_text)
         log_g.setLayout(ll)
         main.addWidget(log_g, 1)
@@ -9006,7 +9006,7 @@ class InferencePanel(QWidget):
         
         # 统计
         self.stats_label = QLabel("帧:0 动作:0")
-        self.stats_label.setStyleSheet(f"color:{C_GRAY}; font-size:13px;")
+        self.stats_label.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
         l.addRow("统计:", self.stats_label)
         
         # 独立操作
@@ -9202,7 +9202,7 @@ class ArchitectureModule(QWidget):
         main.addWidget(t)
 
         s = QLabel("Z700F → Z700 三级能力递进  ·  云-边-端三层架构")
-        s.setStyleSheet(f"color:{C_GRAY}; font-size:13px;")
+        s.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
         main.addWidget(s)
 
         # Three columns: L2 | L3 | L4
@@ -9329,7 +9329,7 @@ class ArchitectureModule(QWidget):
     def _arrow_label(self, text):
         l = QLabel(text)
         l.setAlignment(Qt.AlignCenter)
-        l.setStyleSheet(f"color:{C_DIM}; font-size:12px; background:transparent; border:none; padding:0;")
+        l.setStyleSheet(f"color:{C_DIM}; font-size:18px; background:transparent; border:none; padding:0;")
         return l
 
 
@@ -9512,13 +9512,13 @@ class PluggingSceneModule(SubModuleWidget):
         ]:
             row = QHBoxLayout()
             badge = QLabel(level); badge.setFixedSize(30,30)
-            badge.setStyleSheet(f"background:{color}; color:white; border-radius:15px; font-weight:bold; font-size:13px;")
+            badge.setStyleSheet(f"background:{color}; color:white; border-radius:15px; font-weight:bold; font-size:19px;")
             badge.setAlignment(Qt.AlignCenter)
             row.addWidget(badge)
             nl = QLabel(f"<b>{name}</b>")
-            nl.setStyleSheet(f"color:{color}; font-size:14px;"); nl.setFixedWidth(100)
+            nl.setStyleSheet(f"color:{color}; font-size:20px;"); nl.setFixedWidth(100)
             row.addWidget(nl)
-            nd = QLabel(desc); nd.setStyleSheet(f"color:{C_GRAY}; font-size:13px;"); nd.setWordWrap(True)
+            nd = QLabel(desc); nd.setStyleSheet(f"color:{C_GRAY}; font-size:19px;"); nd.setWordWrap(True)
             row.addWidget(nd, 1)
             sl.addLayout(row)
         safe.setLayout(sl); l.addWidget(safe)
@@ -9624,17 +9624,17 @@ class PluggingSceneModule(SubModuleWidget):
                 if status == 'active':
                     brick.setStyleSheet(f"background:{mod_color}; border:3px solid {mod_color}; border-radius:6px; margin:3px 0;")
                     txt = QLabel(f"● {name}")
-                    txt.setStyleSheet("color:white; font-size:14px; font-weight:bold;")
+                    txt.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
                     state = 'active'
                 elif status == 'new':
                     brick.setStyleSheet(f"background:{mod_color}33; border:2px dashed {mod_color}; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"✦ {name}")
-                    txt.setStyleSheet(f"color:{mod_color}; font-size:14px; font-weight:bold;")
+                    txt.setStyleSheet(f"color:{mod_color}; font-size:20px; font-weight:bold;")
                     state = 'new'
                 else:  # keep — 完全无填充，仅文字占位
                     brick.setStyleSheet(f"background:transparent; border:1px solid transparent; border-radius:6px; margin:2px 0;")
                     txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{mod_color}55; font-size:12px;")
+                    txt.setStyleSheet(f"color:{mod_color}55; font-size:18px;")
                     state = 'keep'
                 
                 txt.setAlignment(Qt.AlignCenter)
@@ -9669,7 +9669,7 @@ class PluggingSceneModule(SubModuleWidget):
             if col_idx == tab_idx and state == 'keep':
                 brick.setStyleSheet(f"background:{mod_color}18; border:2px solid {mod_color}88; border-radius:5px;")
                 txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{mod_color}; font-size:13px; font-weight:bold;")
+                if txt: txt.setStyleSheet(f"color:{mod_color}; font-size:19px; font-weight:bold;")
             elif state == 'keep':
                 brick.setStyleSheet(f"background:transparent; border:1px solid transparent; border-radius:5px;")
                 txt = brick.findChild(QLabel)
@@ -9762,7 +9762,7 @@ class StudioMainWindow(QMainWindow):
         self._sb_expand_bar.setToolTip("展开左侧栏 (XSpace Studio)")
         self._sb_expand_bar.setStyleSheet(f"""
             QPushButton {{ background:{C_BG2}; color:{C_BLUE}; border:none;
-                           border-right:1px solid {C_BORDER}; font-size:14px; font-weight:700; }}
+                           border-right:1px solid {C_BORDER}; font-size:20px; font-weight:700; }}
             QPushButton:hover {{ background:{C_CARD}; }}
         """)
         self._sb_expand_bar.clicked.connect(self._expand_sidebar)
@@ -9854,7 +9854,7 @@ class StudioMainWindow(QMainWindow):
         self._engine_combo.setCurrentIndex(0)
         self._engine_combo.setStyleSheet(f"""
             QComboBox {{ background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER};
-            border-radius:4px; padding:4px 10px; font-size:13px; min-width:200px; }}
+            border-radius:4px; padding:4px 10px; font-size:19px; min-width:200px; }}
             QComboBox::drop-down {{ border:none; width:20px; }}
             QComboBox QAbstractItemView {{ background:{C_BG2}; color:{C_WHITE}; selection-background-color:{C_GREEN}22; }}
         """)
@@ -9864,7 +9864,7 @@ class StudioMainWindow(QMainWindow):
         self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
 
         self._latency_label = QLabel("延迟: --")
-        self._latency_label.setStyleSheet(f"color:{C_GRAY}; font-size:14px; padding:0 8px;")
+        self._latency_label.setStyleSheet(f"color:{C_GRAY}; font-size:20px; padding:0 8px;")
 
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
@@ -10032,20 +10032,20 @@ class StudioMainWindow(QMainWindow):
                     self._engine_status.setText("● 4090 已连接")
                     self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
                     self._latency_label.setText(f"延迟: {latency:.0f}ms")
-                    self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:14px; padding:0 8px;")
+                    self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:20px; padding:0 8px;")
                 else:
                     raise Exception("bad status")
             except:
                 self._engine_status.setText("● 4090 断开 → 将回退ACT")
                 self._engine_status.setStyleSheet(f"color:#d29922; font-size:15px; font-weight:600; padding:0 10px;")
                 self._latency_label.setText("延迟: N/A")
-                self._latency_label.setStyleSheet(f"color:#d29922; font-size:14px; padding:0 8px;")
+                self._latency_label.setStyleSheet(f"color:#d29922; font-size:20px; padding:0 8px;")
         else:
             latency = (time.time() - t0) * 1000
             self._engine_status.setText("● 本地就绪")
             self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
             self._latency_label.setText(f"延迟: {latency:.1f}ms")
-            self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:14px; padding:0 8px;")
+            self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:20px; padding:0 8px;")
 
         self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
 
@@ -10389,7 +10389,7 @@ class StudioMainWindow(QMainWindow):
         sl.setSpacing(4)
         # 🏷 品牌标签 (原侧栏大标题提升至此, 白字清晰可见, 不占侧栏空间)
         brand = QLabel("🦾 Z-MAX 具身智能 · Simulink 模式")
-        brand.setStyleSheet("color:#e6edf3; font-size:14px; font-weight:600; background:transparent; border:none; padding:0 8px;")
+        brand.setStyleSheet("color:#e6edf3; font-size:20px; font-weight:600; background:transparent; border:none; padding:0 8px;")
         sl.addWidget(brand)
         
         self._status_lights = {}
