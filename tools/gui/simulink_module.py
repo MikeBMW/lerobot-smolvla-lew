@@ -7286,7 +7286,7 @@ class SimulinkModule(QWidget):
         self._start_worker(_work, f"正在准备 {policy} 训练 (拉取数据源 + 启动训练)", stage="train")
 
     def _train_yolo_detector(self, steps=None):
-        """🎯 YOLO检测训练 (ultralytics yolov8s) — 感知前端, 独立于 lerobot 策略训练
+        """🎯 YOLO检测训练 (ultralytics yolov8n) — 感知前端, 独立于 lerobot 策略训练
         数据: data/yolo_peg (gen_yolo_data.py 仿真自动标注 peg/hole/hand)
         训练: src/lerobot/policies/yolo_3d/train_yolo.py → outputs/yolo_peg/<name>
         """
@@ -7296,7 +7296,7 @@ class SimulinkModule(QWidget):
         data_dir = os.path.join(root, "data", "yolo_peg")
         data_yaml = os.path.join(data_dir, "data.yaml")
         epochs = int(steps) if steps else 50
-        self.log_signal.emit("════ 🎯 YOLO检测训练 (ultralytics yolov8s) ════")
+        self.log_signal.emit("════ 🎯 YOLO检测训练 (ultralytics yolov8n) ════")
         # 1. 环境 + 数据前置检测 (缺则明确根因, 不静默失败)
         if not os.path.exists(py):
             return False, "YOLO检测 训练失败: ~/lerobot-venv 环境缺失 (参考 zmax-state-space-training 技能重建)"
@@ -7307,7 +7307,7 @@ class SimulinkModule(QWidget):
                            "(python src/lerobot/policies/yolo_3d/gen_yolo_data.py --eps 200 --out data/yolo_peg)")
         # 2. 训练
         ts = time.strftime("%Y%m%d_%H%M%S")
-        self.log_signal.emit(f"🚀 YOLO检测 训练启动 (yolov8s · {epochs} epoch · 4060 GPU)...")
+        self.log_signal.emit(f"🚀 YOLO检测 训练启动 (yolov8n · {epochs} epoch · 4060 GPU)...")
         rc = self._run_cmd([py, "-u", train_script, "--data", data_dir, "--epochs", str(epochs),
                             "--imgsz", "480", "--name", f"run_{ts}"], cwd=root)
         if rc == 0:

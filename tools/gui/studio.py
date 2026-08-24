@@ -2667,10 +2667,10 @@ class TrainingModule(QWidget):
     ZOO_SPEC = [
         ("🏗 架构", [
             ("架构", {"ACT": "ResNet18→Transformer", "SmolVLA": "SmolVLM2-500M→DiT-B", "SmolVLA+LEW": "SmolVLM2·LEW→DiT-B·LEW",
-                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律", "状态空间": "MLP 512×3→4D", "YOLO检测": "YOLOv8s 检测器"}),
+                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律", "状态空间": "MLP 512×3→4D", "YOLO检测": "YOLOv8n 检测器"}),
             ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
             ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
-            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "yolov8s"}),
+            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "yolov8n"}),
             ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器", "YOLO检测": "—"}),
         ]),
         ("⚙️ 训练", [
