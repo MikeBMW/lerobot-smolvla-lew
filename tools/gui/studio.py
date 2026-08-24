@@ -3714,7 +3714,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         """)
         # 🐛 2026-08-09 老倪: 显式等宽字体 + 零文档边距 (WSLg 下 Consolas 回退致行高/光标两倍)
         try:
-            _f = QFont("Consolas", 11)
+            _f = QFont("Consolas", 14)
             _f.setStyleHint(QFont.Monospace)
             self.log_text.setFont(_f)
             self.log_text.document().setDocumentMargin(0)
@@ -4210,20 +4210,20 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         t.setStyleSheet("""
             QTableWidget#zoo_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
-                                     gridline-color:#30363d; font-size:11px; }
+                                     gridline-color:#30363d; font-size:14px; }
             QTableWidget#zoo_table::item { padding:4px 8px; }
         """)
         # 表头: 参数名 + 7 模型
         h = QTableWidgetItem("配置项")
         h.setTextAlignment(Qt.AlignCenter)
         h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
-        h.setFont(QFont("Arial", 11, QFont.Bold))
+        h.setFont(QFont("Arial", 13, QFont.Bold))
         t.setItem(0, 0, h)
         for c, nm in enumerate(self.ZOO_MODELS):
             it = QTableWidgetItem(nm)
             it.setTextAlignment(Qt.AlignCenter)
             it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
-            it.setFont(QFont("Arial", 10, QFont.Bold))
+            it.setFont(QFont("Arial", 12, QFont.Bold))
             t.setItem(0, c + 1, it)
         t.setRowHeight(0, 30)
         # 类别分组 + 参数行 (宝马配置表风格)
@@ -4231,7 +4231,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         for cat, items in self.ZOO_SPEC:
             ci = QTableWidgetItem(f"  {cat}")
             ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
-            ci.setFont(QFont("Arial", 10, QFont.Bold))
+            ci.setFont(QFont("Arial", 12, QFont.Bold))
             t.setItem(r, 0, ci)
             t.setSpan(r, 0, 1, n_cols)          # 类别行横跨全宽
             t.setRowHeight(r, 26)
@@ -4239,7 +4239,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             for pname, pvals in items:
                 pi = QTableWidgetItem("  " + pname)
                 pi.setBackground(QColor("#161b22")); pi.setForeground(QColor("#e6edf3"))
-                pi.setFont(QFont("Arial", 10, QFont.Bold))
+                pi.setFont(QFont("Arial", 12, QFont.Bold))
                 t.setItem(r, 0, pi)
                 for c, nm in enumerate(self.ZOO_MODELS):
                     v = pvals.get(nm, "—")
@@ -7498,26 +7498,26 @@ class ConfigModule(SubModuleWidget):
         zoo_t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         zoo_t.setStyleSheet("""
             QTableWidget#cfg_std_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
-                                         gridline-color:#30363d; font-size:11px; }
+                                         gridline-color:#30363d; font-size:14px; }
             QTableWidget#cfg_std_table::item { padding:4px 8px; }
         """)
         h = QTableWidgetItem("标准参数")
         h.setTextAlignment(Qt.AlignCenter)
         h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
-        h.setFont(QFont("Arial", 11, QFont.Bold))
+        h.setFont(QFont("Arial", 13, QFont.Bold))
         zoo_t.setItem(0, 0, h)
         for c, nm in enumerate(cfg_models):
             it = QTableWidgetItem(nm)
             it.setTextAlignment(Qt.AlignCenter)
             it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
-            it.setFont(QFont("Arial", 10, QFont.Bold))
+            it.setFont(QFont("Arial", 12, QFont.Bold))
             zoo_t.setItem(0, c + 1, it)
         zoo_t.setRowHeight(0, 30)
         r = 1
         for cat, items in cfg_spec:
             ci = QTableWidgetItem(f"  {cat}")
             ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
-            ci.setFont(QFont("Arial", 10, QFont.Bold))
+            ci.setFont(QFont("Arial", 12, QFont.Bold))
             zoo_t.setItem(r, 0, ci)
             zoo_t.setSpan(r, 0, 1, n_cols)
             zoo_t.setRowHeight(r, 26)

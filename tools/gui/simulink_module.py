@@ -4108,7 +4108,7 @@ class SimulinkModule(QWidget):
         self.log_box.setReadOnly(True)
         # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
         # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
-        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:6pt; font-family:Consolas;")
+        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:11pt; font-family:Consolas;")
         _lp.addWidget(self.log_box)
         # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
         self._v_split.addWidget(self._log_panel)
