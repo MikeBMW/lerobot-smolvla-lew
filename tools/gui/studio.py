@@ -3714,7 +3714,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         """)
         # 🐛 2026-08-09 老倪: 显式等宽字体 + 零文档边距 (WSLg 下 Consolas 回退致行高/光标两倍)
         try:
-            _f = QFont("Consolas", 42)
+            _f = QFont("Consolas", 60)
             _f.setStyleHint(QFont.Monospace)
             self.log_text.setFont(_f)
             self.log_text.document().setDocumentMargin(0)
