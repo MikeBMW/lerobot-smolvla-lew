@@ -7977,9 +7977,9 @@ class SimulinkModule(QWidget):
                     fc = ("[0:v]scale=320:240[a0];[1:v]scale=320:240[a1];"
                           "[2:v]scale=320:240[a2];[3:v]scale=320:240[a3];"
                           "[4:v]scale=320:240[a4];"
-                          "[a0][a1][a2]xstack=inputs=3:layout=0_0|w_0_0|w_0+w_1_0[v0];"
-                          "[a3][a4]xstack=inputs=2:layout=0_0|w_0_0[v1];"
-                          "[v0][v1]xstack=inputs=2:layout=0_0|0_h_0[v]")
+                          "[a0][a1][a2]xstack=inputs=3:layout=0_0|w0_0|w0+w1_0[v0];"
+                          "[a3][a4]xstack=inputs=2:layout=0_0|w0_0[v1];"
+                          "[v0][v1]xstack=inputs=2:layout=0_0|0_h0[v]")
                     _sp.run(["ffmpeg", "-y"] +
                             sum([["-i", m] for _, m in mp4s], []) +
                             ["-filter_complex", fc, "-map", "[v]", "-c:v", "libx264",
