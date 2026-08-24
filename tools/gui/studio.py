@@ -2671,6 +2671,7 @@ class TrainingModule(QWidget):
             ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
             ("CNN 层", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "8×C2f+SPPF"}),
             ("状态编码", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "39D→512", "官方专家": "—", "状态空间": "39D→512", "YOLO检测": "—"}),
+            ("动作调制", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "8阶段门控融合", "YOLO检测": "—"}),
             ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
             ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "—"}),
             ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器", "YOLO检测": "—"}),
