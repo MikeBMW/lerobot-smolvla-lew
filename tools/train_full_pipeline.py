@@ -37,7 +37,8 @@ _YOLO_WEIGHTS_CANDS = [
 ]
 # 🎯 深度模型权重候选 (YOLO depth head, 正式训练优先)
 _DEPTH_WEIGHTS_CANDS = [
-    "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",
+    "outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt",  # 08-24 GPU warm-start 训练产物(最新)
+    "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",    # 08-23 CPU 训练产物(旧)
     "outputs/yolo_peg_depth/peg_depth_smoke/weights/best.pt",
 ]
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
