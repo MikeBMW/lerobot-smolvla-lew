@@ -9996,6 +9996,7 @@ class StudioMainWindow(QMainWindow):
             self.model_engine.set_simulink(sim)      # 🎛 训练按钮 → Simulink Model Zoo on_train
             # 🐛 simulink 训练日志 → 模型引擎日志区 (本地/远程训练输出可见)
             sim.log_signal.connect(self.model_engine._log)
+            sim.progress_signal.connect(self.model_engine._update_progress)  # 🆕 训练进度→进度条
             self.stack.insertWidget(self._simulink_index, sim)  # 插回原 tab 位
             self.simulink = sim
             # 🎨 2026-08-16 老倪: Simulink 延迟创建 → 补挂当前全局主题/字体

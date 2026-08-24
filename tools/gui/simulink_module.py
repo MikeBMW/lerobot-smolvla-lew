@@ -3741,6 +3741,7 @@ _CUR_THEME = "dark"  # 当前主题 (🎨 switch_theme 切换; 默认深色 — 
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(int)   # 🆕 训练进度% (worker线程→主线程, 更新 Model Engine 进度条)
     _mlp_frames_ready = pyqtSignal(str)   # 🎥 2026-08-18: 后台抽帧完成 → 主线程刷新
     flow_synced = None
 
@@ -7151,6 +7152,19 @@ class SimulinkModule(QWidget):
                 同时解析 loss 行 → 增量更新曲线 → 写盘 (Scope 可见实时波形)"""
                 try:
                     ln_s = ln.rstrip()[:240]  # 完整行 (防超长刷屏仅截 240)
+                    # 🆕 进度: "Training: X%" / "step:N" → Model Engine 进度条 (worker线程→signal→主线程)
+                    try:
+                        _m = re.search(r"Training:\s*(\d+)%", ln)
+                        if _m:
+                            self.progress_signal.emit(int(_m.group(1)))
+                        else:
+                            _m = re.search(r"step:(\d+)", ln)
+                            if _m:
+                                _step = int(_m.group(1))
+                                _total = int(steps) if steps else 3000
+                                self.progress_signal.emit(min(int(_step * 100 / _total), 100))
+                    except Exception:
+                        pass
                     pts = self._parse_loss_curve([ln], prefer_action=True)
                     if pts:
                         step, loss = pts[-1]
@@ -7256,9 +7270,19 @@ class SimulinkModule(QWidget):
                 os.remove(tmp_cfg)
             except Exception:
                 pass
+            # 🆕 训练结束 → 进度条 100% (成功) / 复位 0 (失败)
+            try:
+                self.progress_signal.emit(100 if rc == 0 else 0)
+            except Exception:
+                pass
             return (rc == 0), (f"{pname} 训练完成 · outputs/train/{ts_dir}/checkpoints/" if rc == 0
                                else f"{pname} 训练失败 (见上方日志)")
 
+        # 🆕 训练启动 → 进度条复位 0%
+        try:
+            self.progress_signal.emit(0)
+        except Exception:
+            pass
         self._start_worker(_work, f"正在准备 {policy} 训练 (拉取数据源 + 启动训练)", stage="train")
 
     def _train_yolo_detector(self, steps=None):
