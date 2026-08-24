@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from train_full_pipeline import (make_env, get_obs, LeftBrainMLP,
-                                 ST_APPROACH, ST_GRASP, ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE, ST_NAMES)
+                                 ST_APPROACH, ST_ALIGN, ST_DESCEND, ST_GRASP, ST_LIFT, ST_TRANSFER, ST_INSERT, ST_DONE, ST_NAMES)
 # 🐛 2026-08-12 老倪: RightBrainWM 用 modeling_left_right 版 (无 align_head) —
 # 本次训练 model.pt 的 right 权重是 {enc, pred_next, contact_head}, 旧管线版多 align_head 键不匹配
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -34,7 +34,8 @@ _YOLO_WEIGHTS_CANDS = [
 ]
 # 🎯 深度模型权重候选 (YOLO depth head, 正式训练优先, 冒烟回退)
 _DEPTH_WEIGHTS_CANDS = [
-    "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",
+    "outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt",   # 🎯 GPU自动校准版 (scale 0.978/0.885)
+    "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",      # 旧 CPU 版 (scale 1.685/1.566, 已作废)
     "outputs/yolo_peg_depth/peg_depth_smoke/weights/best.pt",
 ]
 
@@ -236,8 +237,13 @@ def main():
             if stall >= 120:
                 print(f"⚠️ seed{seed} 停滞在 {ST_NAMES[state]} ({stall}步), 换下个 seed…", flush=True)
                 break
+            d_xy = float(np.linalg.norm(hand[:2] - peg[:2]))  # 水平距离 (先对位后下降)
             if state == ST_APPROACH:
-                if d_hp < 0.06 and contact_p > 0.5: state = ST_GRASP
+                if d_xy < 0.06: state = ST_ALIGN
+            elif state == ST_ALIGN:
+                if d_xy < 0.03: state = ST_DESCEND
+            elif state == ST_DESCEND:
+                if contact_p > 0.5: state = ST_GRASP  # 接触即抓取 (检测 d_hp 靠近时失真)
             elif state == ST_GRASP:
                 if peg[2] - peg_z0 > 0.02: state = ST_LIFT
             elif state == ST_LIFT:
@@ -248,8 +254,18 @@ def main():
                 if d_ph < 0.05:
                     state = ST_DONE; success = True
             if state == ST_APPROACH:
-                delta = peg - hand
-                act[:3] = act[:3] * 0.3 + np.clip(delta * 2.0, -1, 1)
+                delta_xy = peg[:2] - hand[:2]
+                act[:2] = np.clip(delta_xy * 2.0, -1, 1)
+                act[2] = 0.0
+                act[3] = -1.0
+            elif state == ST_ALIGN:
+                delta_xy = peg[:2] - hand[:2]
+                act[:2] = np.clip(delta_xy * 3.0, -1, 1)
+                act[2] = 0.0
+                act[3] = -1.0
+            elif state == ST_DESCEND:
+                act[:2] = 0.0
+                act[2] = -0.8
                 act[3] = -1.0
             elif state == ST_GRASP:
                 act[:3] = act[:3] * 0.1; act[3] = 0.6

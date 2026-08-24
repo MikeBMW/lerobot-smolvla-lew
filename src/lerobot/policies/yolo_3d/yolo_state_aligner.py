@@ -45,9 +45,10 @@ class YoloStateAligner:
         # 🎯 2026-08-23 老倪: 深度模型 (YOLO depth head) — 用真实深度反投影替代写死 z_map
         self.depth_model = YOLO(depth_weights) if depth_weights else None
         # 🎯 尺度校准 (SILog scale-invariant → 训练中模型尺度漂移)
-        #   实测: peg/hole scale≈1.685, hand scale≈1.566 (细长机械臂末端, 尺度不同)
-        self._depth_scale = float(os.environ.get("DEPTH_SCALE", "1.0"))
-        self._hand_scale = float(os.environ.get("DEPTH_SCALE_HAND", str(self._depth_scale)))
+        #   实测: peg/hole scale≈0.978, hand scale≈0.885 (peg_depth_v1-2 GPU自动校准, 2026-08-24)
+        #   🐛 旧 1.685/1.566 是 peg_depth_v1 (CPU时代) 的, 已作废; 默认 1.0 是 bug → 反投影坐标错 0.4m
+        self._depth_scale = float(os.environ.get("DEPTH_SCALE", "0.978"))
+        self._hand_scale = float(os.environ.get("DEPTH_SCALE_HAND", "0.885"))
 
     def detect_3d(self, img, conf=0.4):
         """YOLO 检测 → 3D 坐标 {hand, peg, hole} (深度模型反投影, 回退写死 z_map)"""

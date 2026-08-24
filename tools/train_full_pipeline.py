@@ -268,9 +268,14 @@ def main():
             with torch.no_grad():
                 _, pred_cont, _ = right(o_r.unsqueeze(0), a_r.unsqueeze(0))
             contact_p = pred_cont.item()
-            # 状态转移
+            # 状态转移 (2026-08-24 静静: 接近拆 水平对位→垂直下降, 修 hand 卡 z 降不下去)
+            d_xy = float(np.linalg.norm(hand[:2] - peg[:2]))  # 水平距离
             if state == ST_APPROACH:
-                if d_hp < 0.06 and contact_p > 0.5: state = ST_GRASP  # 双脑抓取条件
+                if d_xy < 0.06: state = ST_ALIGN  # 水平接近到 6cm → 精确对位
+            elif state == ST_ALIGN:
+                if d_xy < 0.03: state = ST_DESCEND  # 水平对齐 3cm → 垂直下降
+            elif state == ST_DESCEND:
+                if contact_p > 0.5: state = ST_GRASP  # 接触即抓取 (检测 d_hp 在 hand/peg 靠近时失真, 用 contact 判断)
             elif state == ST_GRASP:
                 if peg[2] - peg_z0 > 0.02:
                     state = ST_LIFT; peg_lifted = True
@@ -281,11 +286,23 @@ def main():
             elif state == ST_INSERT:
                 if d_ph < 0.05:
                     state = ST_DONE; ins += 1; break
-            # 动作执行: 抓取前=双脑逻辑 (5/8验证), 抓取后=状态机 (插入验证)
+            # 动作执行 (2026-08-24 静静: 接近拆 水平对位→垂直下降, z 硬编码绕开左脑朝上偏置)
             if state == ST_APPROACH:
-                # 双脑: MLP 偏置接近
-                delta = peg - hand
-                act[:3] = act[:3] * 0.3 + np.clip(delta * 2.0, -1, 1)
+                # 先水平接近 (z 保持, 不依赖左脑 z 输出)
+                delta_xy = peg[:2] - hand[:2]
+                act[:2] = np.clip(delta_xy * 2.0, -1, 1)
+                act[2] = 0.0
+                act[3] = -1.0
+            elif state == ST_ALIGN:
+                # 精确水平对位 (z 保持)
+                delta_xy = peg[:2] - hand[:2]
+                act[:2] = np.clip(delta_xy * 3.0, -1, 1)
+                act[2] = 0.0
+                act[3] = -1.0
+            elif state == ST_DESCEND:
+                # 垂直下降 (x/y 锁定, z 硬编码下降)
+                act[:2] = 0.0
+                act[2] = -0.8
                 act[3] = -1.0
             elif state == ST_GRASP:
                 # 双脑: contact判断 → 夹持0.6 + 锁定
