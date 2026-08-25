@@ -112,6 +112,7 @@ def run_episode(seed=0, want_video=True, log=print):
     env = make_env(seed)
     m, d = env.model, env.data
     ss = StateSpaceSim(log=lambda *a: None)      # 复用六层真实源码 + 八阶段调度器
+    #   (估计器增益 K=0.2 由 StateSpaceSim 内部设定 — 观测噪声 5mm 下 K=0.5 会抖 7.4 倍)
     # 八阶段调度器: 夹持阈值按 metaworld 实测标定 (夹住实物后开度不可能到 0)
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH)
     ss.sched = sched
@@ -141,6 +142,7 @@ def run_episode(seed=0, want_video=True, log=print):
         f"速度→动作增益 {a_gain:.3f}  episode 上限 {MAX_STEPS} 步 ({MAX_STEPS * ctrl_dt:.1f}s)")
 
     latent = np.concatenate([hand, [0.0]])
+    u_prev = np.zeros(4)      # 上一步实际下发的控制量 (卡尔曼预测输入, 不能用 u_ff)
     prev18 = None
     tr = {k: [] for k in ("t", "x", "peg", "peg_head", "gripper", "stage", "done",
                           "dist", "u_ff", "u_sat", "residual", "contact_p", "force",
@@ -195,7 +197,9 @@ def run_episode(seed=0, want_video=True, log=print):
 
         # ── 六层链路 (与状态空间画布完全一致) ──
         u_ff = ss.accel.forward(obs43)
-        act4 = np.concatenate([u_ff[:3], [0.0]])
+        # 🐛 2026-08-25: 卡尔曼预测输入 = 上一步**真正下发**的控制量 (原来错用 u_ff 前馈建议,
+        #   两者模长差 3.12 倍 → 预测拿没执行的动作外推, 白送预测误差)
+        act4 = np.concatenate([u_prev[:3], [0.0]])
         latent_pred = ss.est.predict(latent, act4)
         prior = ss.dyn.predict(latent, act4)
         z_k = np.concatenate([ss.world.observe(hand), [force_norm]])
@@ -216,6 +220,7 @@ def run_episode(seed=0, want_video=True, log=print):
         u_exec = np.asarray(ss.execr.execute(u_sat), dtype=float)
         if u_exec.ndim == 0:
             u_exec = np.zeros(4)
+        u_prev = u_exec.copy()          # 供下一步卡尔曼预测使用
 
         # ── 动作 → metaworld: 速度指令(m/s) × 控制步长 ÷ 动作缩放(0.01m) = 无量纲 action ──
         action = np.zeros(4)

@@ -1012,7 +1012,7 @@ class DreamView3D(QWidget):
             self._gl_items["yolo_" + cls].setData(pos=np.array(line_pts))
 
         # 状态估计 x̂ (latent = 位置3 + 预测接触力1): 紫线 = 最近 60 帧估计轨迹
-        win = min(i + 1, 60)
+        win = min(i + 1, 30)      # 60→30 帧: 观测噪声下估计轨迹本就抖, 窗口太长视觉更乱
         lat_pts = np.array([np.asarray(tr["latent_vec"][k], dtype=float)[:3]
                             for k in range(i - win + 1, i + 1)])
         if len(lat_pts) < 2:
@@ -1081,6 +1081,9 @@ class DreamView3D(QWidget):
         fg = float(tr["force_grasp"][i]) if tr.get("force_grasp") is not None else float("nan")
         lat3 = np.asarray(lat_pts[-1], dtype=float)
         err = float(np.linalg.norm(lat3 - np.asarray(x, dtype=float))) * 1000
+        # x̂ 逐步抖动 (最近 30 帧平均步长) — 量化"乱"的程度, 观测噪声 5mm 时约 1mm/步
+        jit = (float(np.linalg.norm(np.diff(lat_pts, axis=0), axis=1).mean()) * 1000
+               if len(lat_pts) > 2 else 0.0)
         u_ff_m = float(np.linalg.norm(np.asarray(tr["u_ff_vec"][i], dtype=float)[:3]))
         u_fu_m = float(np.linalg.norm(np.asarray(tr["u_fuse_vec"][i], dtype=float)[:3]))
         u_li_m = float(np.linalg.norm(np.asarray(tr["u_limit_vec"][i], dtype=float)[:3]))
@@ -1093,7 +1096,7 @@ class DreamView3D(QWidget):
             f"插销    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
             f"销头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
             f"估计x̂   {_f(lat3[0])} {_f(lat3[1])} {_f(lat3[2])}\n"
-            f"x̂−末端  {err:6.1f} mm\n"
+            f"x̂−末端  {err:6.1f} mm   抖动 {jit:4.2f} mm/步\n"
             f"────────────────────\n"
             f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
             f"销头→孔 {d_ph * 1000:6.1f} mm\n"

@@ -80,7 +80,13 @@ class StateSpaceSim:
         self.accel = self.parallel.FeedforwardAccelerator()
         # 状态转移匹配物理: A=1.0 (位置保持) + B=dt (速度指令积分) — 默认 A=0.95 每步衰减
         # 会制造虚假残差 → 频繁否决; 物理自洽的预测器残差只来自真实扰动+传感器噪声
-        self.est = self.parallel.AdaptiveStateEstimator(A=1.0, K=0.5, B=dt)
+        # 🐛 2026-08-25 老倪「自适应状态估计的输出为什么这么乱」实测: 观测噪声 5mm/轴,
+        #   K=0.5 等于一半直接跟噪声走 → 估计每步抖 2.17mm 而末端真实每步只走 0.29mm
+        #   (抖动 = 真实运动的 7.4 倍, 画成轨迹线就是乱麻)。离线重放实测:
+        #   K=0.5→误差3.01mm/抖动2.19mm, K=0.3→2.30/1.31, K=0.15→1.68/0.71
+        #   取 K=0.2 折中 (误差≈2.0mm, 抖动≈1.0mm/步, 仍保留对真实运动的跟随)
+        self.est = self.parallel.AdaptiveStateEstimator(A=1.0, K=0.2, B=dt)
+        self.u_prev = np.zeros(4)      # 上一步"实际下发"的控制量 (卡尔曼预测必须用它)
         self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=dt)
         self.sched = self.cognition.ActionModulator()
         self.execr = self.execution.RobotExecutor()
@@ -217,9 +223,12 @@ class StateSpaceSim:
             force_norm = float(np.clip(force[2] / (K_CONTACT * D_CONTACT), 0.0, 1.0))
             # ② 感知 → obs
             obs = self._build_obs(force)
-            # ③ 快通道: 前馈建议
+            # ③ 快通道: 前馈加速器
             u_ff = self.accel.forward(obs)
-            act4 = np.concatenate([u_ff[:3], [0.0]])
+            # 🐛 卡尔曼预测的控制输入必须是**上一步真正下发给执行器的量** (u_exec),
+            #   原来用 u_ff (前馈建议) — 实测两者模长差 3.12 倍 ⇒ 预测拿"没执行的动作"外推,
+            #   凭空制造预测误差 (离线重放: 改用 u_exec 后误差 3.60→3.01mm)
+            act4 = np.concatenate([self.u_prev[:3], [0.0]])
             # ④ 慢通道: 状态估计先验 (4D: 位置 + 预测力)
             latent_pred = self.est.predict(self.latent, act4)
             # ⑤ 先验动力学预测 next_obs (4D)
@@ -253,6 +262,7 @@ class StateSpaceSim:
             u_vec = self.execr.execute(u_sat)
             if np.ndim(u_vec) == 0:
                 u_vec = np.zeros(4)
+            self.u_prev = np.asarray(u_vec, dtype=float).copy()   # 供下一步卡尔曼预测用
             # 🐛 2026-08-25 老倪 (物理层语义 bug): u 是**速度指令** (前馈层 Kp·(target−pos) 限幅 ±0.5 m/s,
             #   状态估计器 predict 也是 latent + dt·u 按速度积分), 但这里原本按**加速度**积分
             #   (v += u·dt) → 双积分无阻尼系统: 位置比例控制必然过冲/发散 (实测末端冲到

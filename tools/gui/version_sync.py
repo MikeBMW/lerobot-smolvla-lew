@@ -313,7 +313,7 @@ class VersionSyncWidget(QWidget):
                             break
 
             # Z-MAX 自定义版本 (从侧边栏版本号)
-            zmax_ver = "3.0.7"
+            zmax_ver = "3.0.8"
 
             # 当前 commit
             commit, _ = _run_git(['rev-parse', '--short', 'HEAD'], self.repo_path)
