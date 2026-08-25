@@ -989,8 +989,21 @@ class DreamView3D(QWidget):
 
     # ── 图层开关 ──
     def _toggle_layer(self, key, checked):
+        """图层开关 → GL 元素可见性 + **重建文字标注**。
+        🐛 2026-08-25 老倪「图像层都关了以后, 文字没有消失; 文字要绑定图层」根因:
+        _toggle_layer 只改 GL 元素 visible, 而文字标注 (LabelOverlay) 只在换帧时重算,
+        且看门狗还在按旧的世界坐标持续重投影 → 图层关了文字仍留在画面上。
+        修: 切完图层立刻按新开关状态重建标注 (每条标注都受其所属图层控制)。"""
         self._layer_on[key] = checked
         self._apply_layer_visibility(key, checked)
+        try:
+            if getattr(self, "_n", 0) > 0:
+                self._update_frame(self._idx)      # 重建标注 (内部按 _layer_on 过滤)
+            else:
+                self._label_world = []
+                self._refresh_label_positions()
+        except Exception:
+            pass
 
     # ── 帧更新 ──
     def _update_frame(self, i):
@@ -1105,7 +1118,7 @@ class DreamView3D(QWidget):
             def _add(world_p, text, rgba, bold=True):
                 ovl.append((np.asarray(world_p, dtype=float), text,
                             QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)), bold))
-            if self._layer_on.get("scene", True):
+            if self._layer_on.get("scene", False):     # 场景层关 → 物体名字标注一并消失
                 _add(np.asarray(x) + [0, 0, 0.03], "末端 hand", (0.55, 0.78, 1.0))
                 _add(np.asarray(peg_grasp) + [0, 0, 0.03], "插销 peg", (1.0, 0.82, 0.25))
                 _add(self._mouth + np.array([0, 0, 0.05]), "孔口 hole", (1.0, 0.45, 0.35))
