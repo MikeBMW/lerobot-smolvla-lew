@@ -9661,6 +9661,9 @@ class SimulinkModule(QWidget):
             self._log(f"🧭 3D 视图数据源: 操作视频同源 episode "
                       f"(metaworld seed={meta.get('seed')} · {meta.get('steps')} 步 · "
                       f"终态 {meta.get('stage_final')} · 相机 corner2 外参精确对齐)")
+            if meta.get("pair_warn"):
+                # 同源自检不通过 → 明说, 不装作一致 (老倪: 功能坏了说根因)
+                self._log(f"⚠️ 同源自检: {meta['pair_warn']}")
         else:
             tr = getattr(self, "_ss_tr", None)
             if not tr or not tr.get("x"):

@@ -71,18 +71,37 @@ def camera_frame(m, name="corner2"):
     return pos, fwd, -right, -up          # rot180 等效基底
 
 
-def contact_force_norm(m, d, body_ids):
-    """MuJoCo 真实接触力 (mj_contactForce) — 只统计涉及给定 body 的接触"""
-    tot = 0.0
+def contact_forces(m, d, peg_ids, hand_ids):
+    """MuJoCo 真实接触力 (mj_contactForce) 分两路返回 (f_env, f_grasp)。
+
+    ⚠️ 2026-08-25 实测教训: 原来把"涉及 peg 或 夹爪的全部接触力"加成一个数 →
+    夹爪夹住插销后夹持力持续 25N 以上, force_norm 饱和 1.0 ⇒ 抬起/转移/插入 三段
+    接触概率恒 1.00、残差恒 1.0001, 「接触」信号彻底失去区分度 (调度器收到的是常量)。
+    正确语义:
+      f_grasp = peg ↔ 夹爪   (夹持力 — 判"夹住了没有")
+      f_env   = peg/夹爪 ↔ 环境(桌面/带孔盒等)  (环境接触力 — 判"碰到孔沿/插进去了")
+    进 obs 触觉 + 残差的是 f_env; f_grasp 单独作为夹持证据。
+    """
+    f_env = 0.0
+    f_grasp = 0.0
     f6 = np.zeros(6, dtype=float)
+    watched = peg_ids | hand_ids
     for i in range(d.ncon):
         c = d.contact[i]
         b1 = int(m.geom_bodyid[c.geom1])
         b2 = int(m.geom_bodyid[c.geom2])
-        if b1 in body_ids or b2 in body_ids:
-            mujoco.mj_contactForce(m, d, i, f6)
-            tot += float(np.linalg.norm(f6[:3]))
-    return tot
+        if b1 not in watched and b2 not in watched:
+            continue
+        mujoco.mj_contactForce(m, d, i, f6)
+        mag = float(np.linalg.norm(f6[:3]))
+        pair = {b1, b2}
+        if pair & peg_ids and pair & hand_ids:
+            f_grasp += mag          # 夹持: peg ↔ 夹爪(指垫)
+        elif pair <= hand_ids:
+            continue                # 夹爪各连杆自碰撞 — 既不是夹持也不是环境, 丢弃
+        else:
+            f_env += mag            # 环境: peg/夹爪 ↔ 桌面/带孔盒
+    return f_env, f_grasp
 
 
 def site(m, d, name):
@@ -105,7 +124,12 @@ def run_episode(seed=0, want_video=True, log=print):
     goal = site(m, d, "goal")
     peg_z0 = float(peg[2])
     peg_body = {int(m.body("peg").id)}
-    hand_bodies = {int(m.body(n).id) for n in ("hand", "rightclaw", "leftclaw")
+    # ⚠️ 2026-08-25 实测 (tools/probe_contacts.py): 真正夹住插销的是**指垫** rightpad/leftpad,
+    #   只列 hand/rightclaw/leftclaw 会把夹持力误判成"环境接触" → f_env 饱和 1.0,
+    #   抬起/转移/插入 接触概率恒 1.00 失去区分度。夹爪 body 必须列全 (含 pad/wrist)。
+    hand_bodies = {int(m.body(n).id) for n in
+                   ("hand", "rightclaw", "leftclaw", "rightpad", "leftpad",
+                    "right_hand", "right_wrist")
                    if _has_body(m, n)}
     watch_bodies = peg_body | hand_bodies
 
@@ -121,7 +145,7 @@ def run_episode(seed=0, want_video=True, log=print):
     prev18 = None
     tr = {k: [] for k in ("t", "x", "peg", "peg_head", "gripper", "stage", "done",
                           "dist", "u_ff", "u_sat", "residual", "contact_p", "force",
-                          "target", "grasped", "obs",
+                          "force_grasp", "target", "grasped", "obs",
                           "u_ff_vec", "u_fb_vec", "u_fuse_vec", "u_limit_vec", "u_exec_vec",
                           "latent_vec", "corrected_vec", "residual_vec", "z_k_vec", "v_vec")}
     frames = []
@@ -138,10 +162,11 @@ def run_episode(seed=0, want_video=True, log=print):
         peg_head = site(m, d, "pegHead")
         grip_open = float(o[3])                    # 1=张开
         gripper = float(np.clip(1.0 - grip_open, 0.0, 1.0))   # 本工程约定: 1=闭合
-        f_real = contact_force_norm(m, d, watch_bodies)
-        force_norm = float(np.clip(f_real / F_REF, 0.0, 1.0))
+        f_env, f_grasp = contact_forces(m, d, peg_body, hand_bodies)
+        force_norm = float(np.clip(f_env / F_REF, 0.0, 1.0))          # 环境接触 → 感知/残差
+        grasp_norm = float(np.clip(f_grasp / F_REF, 0.0, 1.0))        # 夹持力 (单独一路)
         force6 = np.zeros(6)
-        force6[2] = f_real
+        force6[2] = f_env
 
         # ── 阶段子目标 (八阶段) ──
         st = sched.stage()
@@ -210,7 +235,7 @@ def run_episode(seed=0, want_video=True, log=print):
         grasped = grasped or (gripper > 0.5 and lifted > 0.01)
         # 几何证据: 已下到抓握位姿 (水平对准 + 高度到位) → 可以闭爪
         at_pose = bool(d_xy < 0.025
-                       and abs(hand[2] - (peg_now[2] + H_GRASP_POSE)) < 0.008)
+                       and abs(hand[2] - (peg_now[2] + H_GRASP_POSE)) < 0.008) or grasp_norm > 0.02
         sched.advance(contact_p=contact_p, dist_h=dist_h, gripper=gripper,
                       depth=depth, d_xy=d_xy, lifted=lifted, at_grasp_pose=at_pose)
         done = sched.stage() == "完成"
@@ -230,6 +255,7 @@ def run_episode(seed=0, want_video=True, log=print):
         tr["residual"].append(r_scalar)
         tr["contact_p"].append(contact_p)
         tr["force"].append(force_norm)
+        tr["force_grasp"].append(grasp_norm)
         tr["target"].append(np.asarray(target, dtype=float).copy())
         tr["grasped"].append(bool(grasped))
         tr["obs"].append(obs43.copy())
@@ -281,10 +307,20 @@ def save(tr, meta, frames, tag=None):
     npz = os.path.join(rep, f"ss_episode_{tag}.npz")
     arrs = {k: np.asarray(v, dtype=object if k == "stage" else float)
             for k, v in tr.items()}
+    meta = dict(meta)
+    meta["episode_tag"] = tag          # 同源标记: npz 与 mp4 必须同 tag
     np.savez_compressed(npz, meta=np.array([meta], dtype=object), **arrs)
+    out = {"npz": npz}
+    # ⚠️ 2026-08-25: 只有「带视频」的运行才能覆盖 latest —
+    #   --no-video 跑法只产 npz, 若也覆盖 latest 就会出现「npz 与 mp4 不是同一条 episode」,
+    #   3D 视图和操作视频悄悄错位且无人报警 (同源保证被静默破坏)。
+    if not frames:
+        print(f"ℹ️ --no-video 运行: 只写 {os.path.basename(npz)}, 不覆盖 latest "
+              f"(latest 必须 npz+mp4 成对同源)")
+        return out
     latest = os.path.join(rep, "ss_episode_latest.npz")
     np.savez_compressed(latest, meta=np.array([meta], dtype=object), **arrs)
-    out = {"npz": npz, "latest": latest}
+    out["latest"] = latest
     if frames:
         import subprocess
         import tempfile
@@ -326,7 +362,9 @@ def main():
             break
     tr, meta, frames, stages = best
     out = save(tr, meta, frames)
-    print(f"\n✅ trace: {out['latest']}  ({meta['steps']} 步, 终态 {meta['stage_final']})")
+    # --no-video 时 save() 故意不写 latest (保证 latest 的 npz/mp4 成对同源) → 打印用 .get
+    print(f"\n✅ trace: {out.get('latest') or out['npz']}  "
+          f"({meta['steps']} 步, 终态 {meta['stage_final']})")
     if "mp4" in out:
         print(f"🎬 视频: {out['mp4']} ({len(frames)} 帧, 与 trace 同一条 episode)")
     print("阶段推进证据:")

@@ -45,7 +45,11 @@ EPISODE_NPZ = os.path.join(
 
 
 def load_episode(path=EPISODE_NPZ):
-    """读同源 episode trace → (tr dict, meta dict); 文件不存在返回 (None, None)"""
+    """读同源 episode trace → (tr dict, meta dict); 文件不存在返回 (None, None)
+
+    同源自检 (2026-08-25): npz 与同名 mp4 必须是同一次运行的产物 —
+    只写 npz 的跑法 (--no-video) 一旦覆盖 latest, 3D 视图与操作视频就会悄悄错位。
+    这里比对 npz/mp4 的修改时间, 差 >30s 就在 meta 里挂 `pair_warn` 供 GUI 打印警告。"""
     if not os.path.isfile(path):
         return None, None
     try:
@@ -57,6 +61,14 @@ def load_episode(path=EPISODE_NPZ):
                 continue
             arr = z[k]
             tr[k] = [str(s) for s in arr] if k == "stage" else arr
+        mp4 = os.path.splitext(path)[0] + ".mp4"
+        if not os.path.isfile(mp4):
+            meta["pair_warn"] = f"缺少同名视频 {os.path.basename(mp4)} — 无法确认与操作视频同源"
+        else:
+            dt = abs(os.path.getmtime(path) - os.path.getmtime(mp4))
+            if dt > 30:
+                meta["pair_warn"] = (f"npz 与 mp4 修改时间差 {dt:.0f}s (>30s) — "
+                                     f"可能不是同一条 episode, 重跑 gen_ss_metaworld_episode.py")
         tr["_meta"] = meta
         return tr, meta
     except Exception:
@@ -312,7 +324,10 @@ class DreamView3D(QWidget):
             ("ufb",       "🔄 反馈校正 u_fb",           False, "慢通道·卡尔曼残差方向"),
             ("ufuse",     "🧭 融合指令 u (action输出)", True,  "动作调制器输出·主图标"),
             ("ulimit",    "🛡 安全限幅 u_sat",          False, "限幅后的最终指令"),
-            ("latent",    "🔮 状态估计 latent",         False, "潜状态轨迹点"),
+            ("latent",    "🔮 状态估计 x̂ (卡尔曼)",     False,
+             "慢通道 AdaptiveStateEstimator 的后验位置估计 x̂ₖ = 预测 + K·(观测−预测);\n"
+             "紫线 = 最近 60 帧估计轨迹, 大球 = 当前帧估计位置。\n"
+             "与蓝色真实末端轨迹的偏离量 = 残差 (接触/扰动来源), 调度器据此判接触概率"),
             ("contact",   "🧲 残差/接触",               True,  "接触概率热力球"),
         ]
         self._chk = {}
@@ -572,10 +587,14 @@ class DreamView3D(QWidget):
             yolo.append(ln)
         self._gl_items["yolo"] = yolo
 
-        # 状态估计 latent 轨迹点
-        latent = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.85, 0.45, 0.95, 1.0), size=6)
-        self.view.addItem(latent)
-        self._gl_items["latent"] = latent
+        # 状态估计 x̂: 紫线(最近 60 帧估计轨迹) + 当前帧估计位置大球
+        #   2026-08-25 老倪「为什么显示一堆点」→ 原来是每帧一个散点(看不出是轨迹),
+        #   改成连线 + 当前点大球, 一眼看出"卡尔曼估计出来的末端在哪、跟真实轨迹差多少"
+        lat_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.45, 0.95, 0.9), width=3)
+        self.view.addItem(lat_line)
+        lat_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.55, 1.0, 1.0), size=14)
+        self.view.addItem(lat_now)
+        self._gl_items["latent"] = [lat_line, lat_now]
 
         # 接触热力球
         contact = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.4, 0.0, 1.0), size=10)
@@ -678,12 +697,14 @@ class DreamView3D(QWidget):
                 line_pts.append(v[e[1]])
             self._gl_items["yolo_" + cls].setData(pos=np.array(line_pts))
 
-        # 状态估计 latent (位置3 + 预测力)
-        latent = tr["latent_vec"][i][:3]
-        # 画最近 N 步的 latent 轨迹
+        # 状态估计 x̂ (latent = 位置3 + 预测接触力1): 紫线 = 最近 60 帧估计轨迹
         win = min(i + 1, 60)
-        lat_pts = np.array([tr["latent_vec"][k][:3] for k in range(i - win + 1, i + 1)])
-        self._gl_items["latent"].setData(pos=lat_pts)
+        lat_pts = np.array([np.asarray(tr["latent_vec"][k], dtype=float)[:3]
+                            for k in range(i - win + 1, i + 1)])
+        if len(lat_pts) < 2:
+            lat_pts = np.vstack([lat_pts, lat_pts])
+        self._gl_items["latent"][0].setData(pos=lat_pts)
+        self._gl_items["latent"][1].setData(pos=lat_pts[-1:])
 
         # 接触热力球 (接触概率高时在末端亮起大球)
         cp = tr["contact_p"][i]
