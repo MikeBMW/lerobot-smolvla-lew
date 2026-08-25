@@ -180,16 +180,27 @@ def _bbox_lines(center, size):
     return v, edges
 
 
-def _arrow(pos, action, scale=0.08):
-    """由末端位置 pos + 动作向量 action(3D 速度指令) 生成箭头几何:
-    返回 (line_pts 2x3, tip 目标点 3D, length 幅度)
-    方向 = action 归一化, 长度 = clip(幅度, 0, 1) * scale (编码动作幅度)"""
+_U_REF = 0.35     # 箭头满格对应的速度 (m/s) — 实测 u_ff 模长范围 0.031~0.331 m/s
+_L_MAX = 0.10     # 箭头满格长度 (m)
+_L_MIN_FRAC = 0.22   # 最短也画满格的 22% (否则小速度只剩 2mm, 看着就是"一个点")
+
+
+def _arrow(pos, action, scale=None, u_ref=_U_REF, l_max=_L_MAX):
+    """由末端位置 pos + 动作向量 action(3D 速度指令 m/s) 生成箭头几何:
+    返回 (line_pts 2x3, tip 箭头尖 3D, length 长度 m)
+      方向 = action 归一化 (往哪走)
+      长度 = clip(|u|/u_ref, 0.22, 1.0) × l_max  (速度大小 → 箭杆长短)
+
+    🐛 2026-08-25 老倪「为什么是一个绿色圆点和一个绿色线段」根因: 原公式
+    length = clip(|u|,0,1)×0.08m, 而真实 |u_ff| 只有 0.03~0.33 m/s →
+    箭头只有 2.5~26mm 长, 近距时缩到 2mm ⇒ 看起来就剩箭头尖那个点。
+    改成按 u_ref=0.35m/s 归一化 + 最短 22% 保底: 现在 22~100mm, 始终看得见方向。"""
     a = np.asarray(action[:3], dtype=float)
     mag = float(np.linalg.norm(a))
     if mag < 1e-9:
         return None, None, 0.0
     d = a / mag
-    length = float(np.clip(mag, 0.0, 1.0)) * scale
+    length = float(np.clip(mag / max(1e-6, u_ref), _L_MIN_FRAC, 1.0)) * l_max
     tip = np.asarray(pos, dtype=float) + d * length
     return np.array([pos[:3], tip], dtype=float), tip, length
 
@@ -321,10 +332,22 @@ class DreamView3D(QWidget):
             ("scene",     "🏗 场景 (工作台/孔位/夹爪)", True,  "基础几何体, 建议常开"),
             ("yolo",      "🎯 YOLO 检测框",             True,  "hand/peg/hole 3D 框"),
             ("traj",      "📍 末端轨迹",                True,  "末端历史运动轨迹"),
-            ("uff",       "⚡ 前馈建议 u_ff",           True,  "快通道·神经网络原始动作"),
-            ("ufb",       "🔄 反馈校正 u_fb",           False, "慢通道·卡尔曼残差方向"),
-            ("ufuse",     "🧭 融合指令 u (action输出)", True,  "动作调制器输出·主图标"),
-            ("ulimit",    "🛡 安全限幅 u_sat",          False, "限幅后的最终指令"),
+            ("uff",       "⚡ 前馈建议 u_ff",           True,
+             "快通道 (前馈加速器 = 原左脑 MLP 的等效控制律) 每步给出的**速度指令** (m/s):\n"
+             "  绿线 = 建议往哪走 (方向), 线越长 = 建议速度越大 (满格 0.35 m/s = 10cm 长)\n"
+             "  绿点 = 箭杆末端(箭头尖) = 照这个建议走一步会到哪\n"
+             "调度器只采纳 30% (接触/插入阶段 85%) → 和金黄「融合指令 u」比长短就知道被压了多少"),
+            ("ufb",       "🔄 反馈校正 u_fb",           False,
+             "慢通道 (自适应状态估计器) 给的校正量 = 0.5×残差, 数值很小 (实测 0.005 m/s 量级);\n"
+             "蓝线方向 = 观测比预测偏了哪边 → 调度器用它把前馈拉回来"),
+            ("ufuse",     "🧭 融合指令 u (action输出)", True,
+             "动作调制器 (八阶段状态机 + 否决权) 的最终输出 = 真正下发给执行器的动作:\n"
+             "  u = 0.3·u_ff + 0.7·u_fb (接近/对位/下降/抬起/转移)\n"
+             "  u = 0.85·u_ff + 0.15·u_fb (抓取/插入 — 力控阶段前馈推力主导)\n"
+             "  残差超阈值 → 否决, u 直接归零 (强制减速重试)"),
+            ("ulimit",    "🛡 安全限幅 u_sat",          False,
+             "安全层饱和限幅后的指令 (上限 0.6 m/s)。与融合指令重合 = 没触发限幅;\n"
+             "两者分叉 = 安全层出手削掉了超速部分"),
             ("latent",    "🔮 状态估计 x̂ (卡尔曼)",     False,
              "慢通道 AdaptiveStateEstimator 的后验位置估计 x̂ₖ = 预测 + K·(观测−预测);\n"
              "紫线 = 最近 60 帧估计轨迹, 大球 = 当前帧估计位置。\n"
