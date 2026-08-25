@@ -131,7 +131,6 @@ def run_episode(seed=0, want_video=True, log=print):
                    ("hand", "rightclaw", "leftclaw", "rightpad", "leftpad",
                     "right_hand", "right_wrist")
                    if _has_body(m, n)}
-    watch_bodies = peg_body | hand_bodies
 
     ctrl_dt = float(m.opt.timestep) * int(env.frame_skip)
     # action[:3] 单位 = action_scale(0.01m)/步; u 是速度指令(m/s) → 精确换算 u*ctrl_dt/scale
