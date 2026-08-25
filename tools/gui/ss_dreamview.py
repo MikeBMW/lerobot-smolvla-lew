@@ -173,6 +173,8 @@ class DreamView3D(QWidget):
         super().__init__(parent)
         self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
         self.resize(1180, 820)
+        # 🖥 2026-08-25 老倪: 置顶 — 不被「操作视频」窗口(InferenceVideoDialog/MLPRolloutDialog, 经 _show_nonmodal 均置顶)遮挡
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
 
         self.tr = tr

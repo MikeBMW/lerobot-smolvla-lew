@@ -9624,6 +9624,8 @@ class SimulinkModule(QWidget):
         self._ss_3d_windows = [w for w in self._ss_3d_windows if w.isVisible()]
         self._ss_3d_windows.append(dv)
         dv.show()
+        dv.raise_()
+        dv.activateWindow()
         self._log("🧭 已打开 3D 分层视图 (Apollo 风格): 场景/YOLO框/前馈/融合指令u/限幅/状态估计/接触 各层可开关")
 
     def _start_state_space_sim(self):
