@@ -59,8 +59,14 @@ class ActionModulator:
     #   慢通道只贡献 10% 速度却把 0.7 权重的噪声灌进方向 (方向抖动 4.77°→11.28°)。
     #   正规控制架构 = 前馈 + 反馈**相加** (反馈只做修正, 不缩放主项);
     #   "接触前要慢"改用**显式阶段限速**表达 (原来是靠凸组合意外砍出来的, 说不清道不明)。
-    STAGE_V_CAP = {"接近": 0.35, "对位": 0.12, "下降": 0.05, "抓取": 0.04,
-                   "抬起": 0.25, "转移": 0.35, "插入": 0.06, "完成": 0.02}
+    # 📊 2026-08-26 审计驱动调参 (tools/audit_state_machine.py 实测瓶颈):
+    #   下降 2.02s 里 44% 时间贴 cap 0.05 → 抓握位姿是空中动作(夹爪张开跨在销两侧), 放到 0.09
+    #   插入 1.81s 里 51% 贴 cap 0.06 → 力控要慢, 只微放到 0.07
+    #   转移 2.08s 实速仅 0.113 远低于 cap 0.35 → 瓶颈不是 cap 而是比例控制末端磨蹭
+    #     ⇒ 引入 STAGE_V_MIN 最小趋近速度 (证据未达标时给个速度下限, 别在末端磨)
+    STAGE_V_CAP = {"接近": 0.35, "对位": 0.12, "下降": 0.09, "抓取": 0.04,
+                   "抬起": 0.30, "转移": 0.35, "插入": 0.07, "完成": 0.02}
+    STAGE_V_MIN = {"接近": 0.12, "对位": 0.04, "抬起": 0.10, "转移": 0.12}
 
     def __init__(self, w_ff=0.3, contact_th=0.6, veto_th=2.0, k_fb=1.0, v_cap=None,
                  w_contact=0.85, align_th=0.02, insert_depth=0.004, max_veto=3,
@@ -68,6 +74,10 @@ class ActionModulator:
         self.w_ff = w_ff                # (保留兼容: fuse() 仍可用凸组合)
         self.k_fb = float(k_fb)         # 反馈增益 (相加式: u = u_ff + k_fb·u_fb)
         self.v_cap = dict(self.STAGE_V_CAP if v_cap is None else v_cap)   # 阶段限速 m/s
+        self.v_min = dict(self.STAGE_V_MIN)      # 阶段最小趋近速度 (防末端磨蹭)
+        self.confirm_n = 2          # 状态切换需连续 N 帧证据成立 (防噪声抖动误触发)
+        self._pend = {}             # {目标阶段: 连续成立帧数}
+        self._grasp_lost = 0        # 夹持丢失连续帧数 (回退重抓判据)
         self.contact_th = contact_th    # 接触判定阈值 (力觉证据)
         self.veto_th = veto_th          # 否决阈值 (残差异常)
         self.w_contact = w_contact      # 抓取/插入阶段前馈推力权重 (力控)
@@ -103,31 +113,55 @@ class ActionModulator:
         且抓取阶段瞬间跳过 (gripper 早已 1.0)。夹持是状态锁存, 不是比例控制。"""
         return 1.0 if self.stage_idx >= self.GRASP_IDX else 0.0
 
+    def _confirm(self, target_idx, reason):
+        """状态切换需连续 confirm_n 帧证据成立 — 单帧噪声不足以推动状态机
+        (审计: 证据在阈值±10% 带内可能滞留数十帧, 无确认机制则会来回抖)"""
+        self._pend[target_idx] = self._pend.get(target_idx, 0) + 1
+        if self._pend[target_idx] >= self.confirm_n:
+            self._pend.clear()
+            self._goto(target_idx, reason)
+            return True
+        return False
+
     def advance(self, contact_p=None, dist_h=None, gripper=None, depth=None,
-                d_xy=None, lifted=None, at_grasp_pose=None):
+                d_xy=None, lifted=None, at_grasp_pose=False, grasp_force=None,
+                peg_z=None, peg_z_grasp=None):
         """状态机推进 — 感知/几何证据驱动 (每步调用)"""
         st = self.stage()
+        # 🛟 夹持丢失 → 回退重抓 (审计建议的鲁棒性分支; 真机一定会掉件)
+        #   判据: 抬起及之后阶段, 夹持力连续 5 帧 < 0.05 且插销已落回抓握高度附近
+        if self.stage_idx >= 4 and grasp_force is not None:
+            self._grasp_lost = self._grasp_lost + 1 if float(grasp_force) < 0.05 else 0
+            _fell = (peg_z is not None and peg_z_grasp is not None
+                     and float(peg_z) < float(peg_z_grasp) + 0.02)
+            if self._grasp_lost >= 5 and _fell:
+                self._pend.clear()
+                self._grasp_lost = 0
+                self._goto(0, "⚠️ 夹持丢失且插销落回台面 (连续5帧夹持力<0.05) → 回退重抓")
+                return self.stage()
         # d_xy 缺省 (老调用方只喂 dist_h) → 退化用 dist_h 当水平距离证据
         dxy = d_xy if d_xy is not None else dist_h
         if st == "接近" and dxy is not None and dxy < self.align_xy_coarse:
-            self._goto(1, f"粗到位 手-插销水平距离 {dxy:.4f} < {self.align_xy_coarse}")
+            self._confirm(1, f"粗到位 手-插销水平距离 {dxy:.4f} < {self.align_xy_coarse}")
         elif st == "对位" and dxy is not None and dxy < self.align_xy_fine:
-            self._goto(2, f"精对位完成 {dxy:.4f} < {self.align_xy_fine} → 可下降")
+            self._confirm(2, f"精对位完成 {dxy:.4f} < {self.align_xy_fine} → 可下降")
         elif st == "下降" and ((contact_p is not None and contact_p > self.contact_th)
                               or at_grasp_pose):
             # 两类证据任一成立即可闭爪: ①力觉触到插销 ②几何到达抓握位姿
             #   (张开的夹爪下到插销两侧时可能完全不接触 → 只等力觉会永远卡在下降)
-            self._goto(3, (f"触到插销 接触概率 {contact_p:.2f} > {self.contact_th}"
-                           if (contact_p is not None and contact_p > self.contact_th)
-                           else "到达抓握位姿 (几何证据)"))
+            self._confirm(3, (f"触到插销 接触概率 {contact_p:.2f} > {self.contact_th}"
+                              if (contact_p is not None and contact_p > self.contact_th)
+                              else "到达抓握位姿 (几何证据)"))
         elif st == "抓取" and gripper is not None and gripper > self.grasp_th:
-            self._goto(4, f"夹持建立 gripper={gripper:.2f}")
+            self._confirm(4, f"夹持建立 gripper={gripper:.2f}")
         elif st == "抬起" and lifted is not None and lifted > self.lift_h:
-            self._goto(5, f"插销已提起 {lifted:.4f}m > {self.lift_h}m")
+            self._confirm(5, f"插销已提起 {lifted:.4f}m > {self.lift_h}m")
         elif st == "转移" and dist_h is not None and dist_h < self.align_th:
-            self._goto(6, f"对准孔口 dist_h={dist_h:.4f}")
+            self._confirm(6, f"对准孔口 dist_h={dist_h:.4f}")
         elif st == "插入" and depth is not None and depth < self.insert_depth:
-            self._goto(7, f"插入深度达标 depth={depth:.4f}")
+            self._confirm(7, f"插入深度达标 depth={depth:.4f}")
+        else:
+            self._pend.clear()          # 证据不成立 → 清空待确认计数 (必须连续)
         return self.stage()
 
     def decide(self, u_ff, u_fb, contact_p, residual):
@@ -145,10 +179,13 @@ class ActionModulator:
         self.veto_count = 0
         st = self.stage()
         u = np.asarray(u_ff, dtype=float) + self.k_fb * np.asarray(u_fb, dtype=float)
+        n = float(np.linalg.norm(u[:3])) if u.ndim else abs(float(u))
         cap = self.v_cap.get(st)
-        if cap is not None:
-            n = float(np.linalg.norm(u[:3])) if u.ndim else abs(float(u))
-            if n > cap > 0:
-                u = u * (cap / n)          # 等比缩放: 保方向, 只削速度
+        if cap is not None and n > cap > 0:
+            u = u * (cap / n)              # 等比缩放: 保方向, 只削速度
+            n = cap
+        vmin = self.v_min.get(st)
+        if vmin is not None and 1e-6 < n < vmin:
+            u = u * (vmin / n)             # 最小趋近速度: 证据未达标时别在末端磨 (同样保方向)
         tag = " · 接触" if contact_p > self.contact_th else ""
         return u, f"阶段 {st}{tag}"

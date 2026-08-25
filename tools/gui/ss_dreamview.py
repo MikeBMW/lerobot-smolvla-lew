@@ -313,6 +313,7 @@ _LAYER_COLORS = {
     "ufuse":   (1.00, 0.78, 0.12, 1.0),   # 金黄 融合指令 (action 主图标)
     "ulimit":  (1.00, 0.30, 0.30, 1.0),   # 红  安全执行边界
     "prior":   (0.20, 0.90, 0.85, 1.0),   # 青  先验动力学预测器 (纯预测, 无校正)
+    "fsm":     (1.00, 0.85, 0.30, 1.0),   # 琥珀 状态机 (阶段航点/阶梯)
     "yolo_hand": (0.35, 0.65, 1.00, 0.55),
     "yolo_peg":  (0.00, 0.83, 0.66, 0.55),
     "yolo_hole": (1.00, 0.65, 0.00, 0.55),
@@ -334,16 +335,40 @@ class LabelOverlay(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setStyleSheet("background:transparent;")
         self._labels = []      # [(x_px, y_px, text, QColor, bold)]
+        self._panel = []       # 屏幕固定位置面板行 [(text, QColor, bold, indent)]
 
     def set_labels(self, labels):
         self._labels = labels
         self.update()
 
+    def set_panel(self, rows):
+        """屏幕左上角固定面板 (状态机阶梯用) — 不随相机变化"""
+        self._panel = rows
+        self.update()
+
     def paintEvent(self, ev):
         from PyQt5.QtGui import QPainter, QPen, QBrush
-        if not self._labels:
+        if not self._labels and not self._panel:
             return
         p = QPainter(self)
+        if self._panel:      # 🧭 状态机阶梯 (屏幕固定, 不随相机走)
+            p.setRenderHint(QPainter.TextAntialiasing, True)
+            _f = QFont("Arial", 11, QFont.Bold)
+            p.setFont(_f)
+            fm = p.fontMetrics()
+            w = max(fm.horizontalAdvance(r[0]) for r in self._panel) + 22
+            h = len(self._panel) * (fm.height() + 3) + 12
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(13, 17, 23, 215)))
+            p.drawRoundedRect(8, 8, w, h, 6, 6)
+            p.setPen(QPen(QColor(48, 54, 61)))
+            p.drawRoundedRect(8, 8, w, h, 6, 6)
+            y = 8 + fm.height() + 2
+            for text, col, bold, indent in self._panel:
+                p.setFont(QFont("Arial", 11, QFont.Bold if bold else QFont.Normal))
+                p.setPen(QPen(col))
+                p.drawText(16 + indent, y, text)
+                y += fm.height() + 3
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setRenderHint(QPainter.TextAntialiasing, True)
         for x, y, text, col, bold in self._labels:
@@ -467,6 +492,15 @@ class DreamView3D(QWidget):
              "  u = 0.3·u_ff + 0.7·u_fb (接近/对位/下降/抬起/转移)\n"
              "  u = 0.85·u_ff + 0.15·u_fb (抓取/插入 — 力控阶段前馈推力主导)\n"
              "  残差超阈值 → 否决, u 直接归零 (强制减速重试)"),
+            ("fsm",       "⑤ 🧭 动作调制器 · 状态机",     True,
+             "**这就是老倪问的\"状态\"** = 动作调制器 ActionModulator 内部的八阶段状态机\n"
+             "(接近→对位→下降→抓取→抬起→转移→插入→完成), 每次切换都由物理证据触发:\n"
+             "  接近→对位: 手-销水平距离 <60mm   对位→下降: <20mm\n"
+             "  下降→抓取: 接触概率>0.6 或到达抓握位姿   抓取→抬起: 夹持度>0.6\n"
+             "  抬起→转移: 提升>80mm   转移→插入: 销头-孔口 <20mm   插入→完成: 残距<4mm\n"
+             "画面左侧阶梯 = 八阶段进度 (✔已过/▶当前/待执行), 当前阶段下方给\n"
+             "**下一阶段预测**: 证据当前值/阈值 + 进度% + 按变化率外推的预计剩余时间\n"
+             "3D 里还画出各阶段的目标航点 (①~⑧ 带序号), 当前阶段航点高亮"),
             ("ulimit",    "⑥ 🛡 安全执行边界 (饱和限幅)",  False,
              "安全层饱和限幅后的指令 (上限 0.6 m/s)。与⑤重合 = 没触发限幅;\n"
              "两者分叉 = 安全层出手削掉了超速部分"),
@@ -972,6 +1006,15 @@ class DreamView3D(QWidget):
         #     ① 青色粗线 = 预测增量向量 x̂ₖ₋₁ → x̂ₖ⁻ (方向=上一步实际控制量, 放大显示)
         #     ② 青色方块 = 先验位置 x̂ₖ⁻
         #     ③ 灰白细线 = 先验 → 观测 z_k 的差 = **残差** (接触检测的唯一来源)
+        # 🧭 状态机航点: 八阶段各自的目标位置 (常亮小球) + 当前阶段高亮球
+        fsm_wp = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.85, 0.30, 0.55), size=11)
+        fsm_wp.setGLOptions("additive")
+        self.view.addItem(fsm_wp)
+        fsm_cur = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.85, 0.30, 1.0), size=26)
+        fsm_cur.setGLOptions("additive")
+        self.view.addItem(fsm_cur)
+        self._gl_items["fsm"] = [fsm_wp, fsm_cur]
+
         pr_step = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_LAYER_COLORS["prior"], width=4.0)
         pr_step.setGLOptions("additive")
         self.view.addItem(pr_step)
@@ -1212,6 +1255,63 @@ class DreamView3D(QWidget):
             self._prior_now = None
             self._prior_info = None
 
+        # 🧭 状态机: 八阶段航点 + 当前阶段 + 下一阶段预测 (证据/阈值/进度/预计剩余)
+        try:
+            _STG = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+            _cur = str(tr["stage"][i]).replace("阶段 ", "").split(" · ")[0]
+            _ci2 = _STG.index(_cur) if _cur in _STG else 0
+            _pg = np.asarray(peg_grasp, dtype=float)
+            _wps = [_pg + [0, 0, 0.09], _pg + [0, 0, 0.05], _pg + [0, 0, 0.022],
+                    _pg + [0, 0, 0.022], _pg[:2].tolist() + [_pg[2] + 0.15],
+                    self._mouth + np.array([0.13, 0, 0.02]), self._hole + np.array([0.13, 0, 0]),
+                    self._hole]
+            _wps = [np.asarray(w, dtype=float) for w in _wps]
+            self._fsm_wps = _wps
+            self._gl_items["fsm"][0].setData(pos=np.array(_wps))
+            self._gl_items["fsm"][1].setData(pos=np.array([_wps[min(_ci2, 7)]]))
+            # 下一阶段预测: 该阶段的触发证据 + 阈值 + 进度 + 按最近变化率外推剩余帧
+            _ev = None
+            _pegp = np.asarray(tr["peg"][i], dtype=float)
+            _headp = np.asarray(tr["peg_head"][i], dtype=float)
+            _dxy = float(np.linalg.norm(np.asarray(x)[:2] - _pegp[:2]))
+            if _cur == "接近":
+                _ev = ("手-销水平距离", _dxy, 0.06, "<")
+            elif _cur == "对位":
+                _ev = ("精对位距离", _dxy, 0.02, "<")
+            elif _cur == "下降":
+                _ev = ("手高于抓握点", float(np.asarray(x)[2] - _pegp[2] - 0.022), 0.006, "<")
+            elif _cur == "抓取":
+                _ev = ("夹持度", float(tr["gripper"][i]), 0.60, ">")
+            elif _cur == "抬起":
+                _ev = ("提升高度", float(_pegp[2] - np.asarray(tr["peg"][0], dtype=float)[2]), 0.08, ">")
+            elif _cur == "转移":
+                _ev = ("销头-孔口水平", float(np.linalg.norm(_headp[:2] - self._mouth[:2])), 0.02, "<")
+            elif _cur == "插入":
+                _ev = ("销头-终点残距", float(np.linalg.norm(_headp - self._hole)), 0.004, "<")
+            _eta = None
+            if _ev is not None and i > 12:
+                _nm, _val, _th, _op = _ev
+                # 用最近 12 帧该证据的变化率外推 (只在朝阈值方向变化时给预测)
+                _prev_i = max(0, i - 12)
+                _pp = np.asarray(tr["peg"][_prev_i], dtype=float)
+                _hp = np.asarray(tr["peg_head"][_prev_i], dtype=float)
+                _xp = np.asarray(tr["x"][_prev_i], dtype=float)
+                _vmap = {"手-销水平距离": float(np.linalg.norm(_xp[:2] - _pp[:2])),
+                         "精对位距离": float(np.linalg.norm(_xp[:2] - _pp[:2])),
+                         "手高于抓握点": float(_xp[2] - _pp[2] - 0.022),
+                         "夹持度": float(tr["gripper"][_prev_i]),
+                         "提升高度": float(_pp[2] - np.asarray(tr["peg"][0], dtype=float)[2]),
+                         "销头-孔口水平": float(np.linalg.norm(_hp[:2] - self._mouth[:2])),
+                         "销头-终点残距": float(np.linalg.norm(_hp - self._hole))}
+                _v0 = _vmap.get(_nm, _val)
+                _rate = (_val - _v0) / 12.0
+                _need = (_th - _val) if _op == "<" else (_th - _val)
+                if abs(_rate) > 1e-7 and ((_op == "<" and _rate < 0) or (_op == ">" and _rate > 0)):
+                    _eta = max(0.0, _need / _rate) * float(self.tr.get("t", [0, 0.0125])[1] or 0.0125)
+            self._fsm_info = (_ci2, _cur, _ev, _eta)
+        except Exception as _e:
+            self._fsm_info = None
+
         # 🧲 接触指示: 两路 (夹持/环境) 各「核心球+脉冲外环」, 强度按力的归一化值
         _cp_raw = float(tr["contact_p"][i])
         _fe = float(tr["force"][i]) if tr.get("force") is not None else 0.0
@@ -1322,6 +1422,35 @@ class DreamView3D(QWidget):
                 _add(_tip, f"{_NAMES2[_k]} {_mag:.3f} m/s  {_dir_words(_a)}", _c)
             self._label_world = ovl          # [(世界坐标, 文字, 颜色, 粗体)]
             self._refresh_label_positions()
+            # 🧭 状态机阶梯面板 (含下一阶段预测)
+            _rows = []
+            _fi = getattr(self, "_fsm_info", None)
+            if self._layer_on.get("fsm", False) and _fi:
+                _ci2, _cur, _ev, _eta = _fi
+                _STG2 = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+                _rows.append(("🧭 动作调制器 · 八阶段状态机", QColor(255, 217, 77), True, 0))
+                for _k, _nm2 in enumerate(_STG2):
+                    if _k < _ci2:
+                        _rows.append((f"  ✔ {_k + 1}. {_nm2}", QColor(110, 118, 129), False, 0))
+                    elif _k == _ci2:
+                        _rows.append((f"  ▶ {_k + 1}. {_nm2}  ← 当前", QColor(255, 217, 77), True, 0))
+                    else:
+                        _rows.append((f"    {_k + 1}. {_nm2}", QColor(139, 148, 158), False, 0))
+                if _ev is not None and _ci2 < 7:
+                    _nm3, _val3, _th3, _op3 = _ev
+                    _prog = (min(1.0, max(0.0, _th3 / max(_val3, 1e-9))) if _op3 == "<"
+                             else min(1.0, max(0.0, _val3 / max(_th3, 1e-9))))
+                    _bar = "█" * int(round(_prog * 12)) + "░" * (12 - int(round(_prog * 12)))
+                    _rows.append((f"  预测下一阶段: {_STG2[_ci2 + 1]}", QColor(88, 166, 255), True, 0))
+                    _rows.append((f"    证据 {_nm3} = {_val3:.4f} {_op3} {_th3:.4f}",
+                                  QColor(201, 209, 217), False, 0))
+                    _rows.append((f"    {_bar} {_prog * 100:.0f}%"
+                                  + (f"   预计 {_eta:.2f}s 后切换" if _eta is not None and _eta < 30
+                                     else "   (变化率不足, 暂不预测)"),
+                                  QColor(88, 166, 255), False, 0))
+                elif _ci2 >= 7:
+                    _rows.append(("  ✅ 已到终态 完成", QColor(63, 185, 80), True, 0))
+            self._overlay.set_panel(_rows)
         except Exception as _e:
             print(f"⚠️ 标注层更新失败: {_e}")
 

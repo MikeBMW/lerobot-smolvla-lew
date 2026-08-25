@@ -305,7 +305,10 @@ class StateSpaceSim:
             d = self._dist_h()
             self.sched.advance(contact_p=contact_p, dist_h=self._d_hole_h(),
                                gripper=self.gripper, depth=self._insert_depth(),
-                               d_xy=self._d_xy_peg(), lifted=self.peg[2] - PEG_POS0[2])
+                               d_xy=self._d_xy_peg(), lifted=self.peg[2] - PEG_POS0[2],
+                               # 🛟 夹持丢失回退证据 (numpy 引擎无真实力 → 用夹持状态代理)
+                               grasp_force=(1.0 if self.grasped else 0.0),
+                               peg_z=float(self.peg[2]), peg_z_grasp=float(PEG_POS0[2]))
             done = self.sched.stage() == "完成"
             # 记录
             tr["t"].append(round(t, 3))

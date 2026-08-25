@@ -252,7 +252,10 @@ def run_episode(seed=0, want_video=True, log=print):
         at_pose = bool(d_xy < 0.025
                        and abs(hand[2] - (peg_now[2] + H_GRASP_POSE)) < 0.008) or grasp_norm > 0.02
         sched.advance(contact_p=contact_p, dist_h=dist_h, gripper=gripper,
-                      depth=depth, d_xy=d_xy, lifted=lifted, at_grasp_pose=at_pose)
+                      depth=depth, d_xy=d_xy, lifted=lifted, at_grasp_pose=at_pose,
+                      # 🛟 夹持丢失回退证据: MuJoCo 真实夹持力 + 插销高度
+                      grasp_force=float(f_grasp), peg_z=float(peg_now[2]),
+                      peg_z_grasp=float(peg_z0))
         done = sched.stage() == "完成"
         success = success or done
 
