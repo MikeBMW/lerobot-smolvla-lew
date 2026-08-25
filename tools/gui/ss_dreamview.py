@@ -444,10 +444,14 @@ class DreamView3D(QWidget):
             ("ufb",       "④ 🧪 状态校正器 · 残差方向",   False,
              "画布节点「🧪 状态校正器」算出的残差 r = z_k − 先验预测, 这里画 0.5×r 作为校正方向\n"
              "(实测 0.005 m/s 量级): 蓝箭头 = 观测比预测偏了哪边 → 动作调制器据此把前馈拉回来"),
-            ("contact",   "④ 🧪 状态校正器 · 接触概率",   True,
-             "同一节点的第二路输出: 接触概率 = σ(8×|残差|)\n"
-             "橙色热力球画在末端: 球越大越亮 = 接触概率越高 (插入顶到孔沿时最明显);\n"
-             "残差的力觉分量来自 MuJoCo 真实环境接触力 (夹持力单独一路不计入)"),
+            ("contact",   "④ 🧪 状态校正器 · 接触指示",   True,
+             "两路接触各一组「核心球 + 脉冲外环」, 强度直接用 MuJoCo 真实接触力驱动:\n"
+             "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住插销就明显弹出\n"
+             "  🟠 橙球 (画在销头) = 环境接触 销头↔孔沿 / 夹爪↔台面 — 顶到孔才亮\n"
+             "  直径 8px(无接触) → 54px(满接触), 超过 15% 强度加 1.9 倍脉冲外环\n"
+             "为什么不用接触概率驱动大小: σ(8×|残差|) 被 5mm 观测噪声垫到 0.58 基线,\n"
+             "全程只在 0.58~1.0 变 (球直径仅差 10px 看不出) → 概率改在标注里显示\n"
+             "  (给原始值 + 去基线的净值 (cp−0.58)/0.42)"),
             ("ufuse",     "⑤ 🧭 动作调制器 (下发 action)", True,
              "动作调制器 (八阶段状态机 + 否决权) 的最终输出 = 真正下发给执行器的动作:\n"
              "  u = 0.3·u_ff + 0.7·u_fb (接近/对位/下降/抬起/转移)\n"
@@ -961,11 +965,24 @@ class DreamView3D(QWidget):
         self.view.addItem(lat_now)
         self._gl_items["latent"] = [lat_line, lat_now]
 
-        # 接触热力球
-        contact = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.4, 0.0, 1.0), size=12)
-        contact.setGLOptions("additive")
-        self.view.addItem(contact)
-        self._gl_items["contact"] = contact
+        # 🧲 接触指示 (2026-08-25 老倪 重新设计: 原来只有一个球, 大小按被噪声垫高的
+        #   接触概率映射 → 直径只在 16~26px 之间变, 而且"碰到插销"根本不进这个信号)
+        #   新设计: 两路接触各一组「核心球 + 脉冲外环」—
+        #     夹持接触 (peg↔指垫) 青色, 画在夹爪处 → 一夹住就明显弹出
+        #     环境接触 (销头↔孔沿/夹爪↔台面) 橙红, 画在销头 → 顶到孔沿才亮
+        #   强度用力的归一化值直接驱动 (不用 cp, 它有 0.58 噪声基线), 直径 8→54px
+        c_items = []
+        for _col in ((0.20, 0.90, 1.00), (1.00, 0.45, 0.10)):        # 青=夹持, 橙红=环境
+            halo = gl.GLScatterPlotItem(pos=np.zeros((1, 3)),
+                                        color=(_col[0], _col[1], _col[2], 0.22), size=10)
+            halo.setGLOptions("additive")
+            self.view.addItem(halo)
+            core = gl.GLScatterPlotItem(pos=np.zeros((1, 3)),
+                                        color=(_col[0], _col[1], _col[2], 1.0), size=8)
+            core.setGLOptions("additive")
+            self.view.addItem(core)
+            c_items += [halo, core]
+        self._gl_items["contact"] = c_items      # [夹持halo, 夹持core, 环境halo, 环境core]
 
         # 🏷 文字标注统一走 LabelOverlay 自绘层 (GLTextItem 在本机 Mesa 下不渲染, 已弃用)
 
@@ -1129,15 +1146,42 @@ class DreamView3D(QWidget):
         else:
             self._prior_now = None
 
-        # 接触热力球 (接触概率高时在末端亮起大球)
-        cp = tr["contact_p"][i]
-        if cp > 0.3:
-            sz = 6 + 20 * min(1.0, cp)
-            self._gl_items["contact"].setData(pos=np.array([x]), size=sz,
-                                              color=(1.0, 0.4 - 0.3 * cp, 0.0, min(1.0, 0.4 + cp)))
-        else:
-            self._gl_items["contact"].setData(pos=np.array([x]), size=4,
-                                              color=(1.0, 0.4, 0.0, 0.25))
+        # 🧲 接触指示: 两路 (夹持/环境) 各「核心球+脉冲外环」, 强度按力的归一化值
+        _cp_raw = float(tr["contact_p"][i])
+        _fe = float(tr["force"][i]) if tr.get("force") is not None else 0.0
+        _fg = float(tr["force_grasp"][i]) if tr.get("force_grasp") is not None else 0.0
+        # 去掉噪声基线的接触概率 (自由移动时残差含 5mm 观测噪声 → cp 恒 0.58)
+        _cp_norm = float(np.clip((_cp_raw - 0.58) / 0.42, 0.0, 1.0))
+        self._contact_vals = (_fg, _fe, _cp_raw, _cp_norm)
+        _grasp_anchor = np.asarray(ik["wrist"], dtype=float)          # 夹持 → 画在夹爪
+        _env_anchor = (np.asarray(tr["peg_head"][i], dtype=float)     # 环境 → 画在销头
+                       if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
+                       else np.asarray(x, dtype=float))
+        # 预接触: 还没夹住但夹爪已经贴近插销 (几何证据) → 画一圈淡青环提示"即将接触"
+        _grasped_now = bool(np.asarray(tr["grasped"]).astype(bool)[i]) if tr.get("grasped") is not None else False
+        _d_hp = float(np.linalg.norm(np.asarray(x, dtype=float) - np.asarray(peg_grasp, dtype=float)))
+        self._pre_contact = (not _grasped_now) and _d_hp < 0.05      # 5cm 内算贴近
+        self._pre_gap = _d_hp
+        _ci = self._gl_items["contact"]
+        for _k, (_st, _anchor, _col) in enumerate(((_fg, _grasp_anchor, (0.20, 0.90, 1.00)),
+                                                   (_fe, _env_anchor, (1.00, 0.45, 0.10)))):
+            s = float(np.clip(_st, 0.0, 1.0))
+            # 平方根映射 (感知线性): 弱接触也看得见 — 力 0.07 线性只有 11px, 开方后 20px;
+            #   实测夹爪刚合上时夹持力仅 0.071, 线性映射下用户根本看不出"碰到了"
+            sv = float(np.sqrt(s))
+            core_sz = 8.0 + 46.0 * sv             # 无接触 8px → 满接触 54px
+            halo_sz = core_sz * (1.9 if s > 0.02 else 1.0)
+            halo_a = 0.05 + 0.30 * sv
+            core_a = 0.25 + 0.75 * sv
+            _ci[_k * 2].setData(pos=np.array([_anchor]), size=halo_sz,
+                                color=(_col[0], _col[1], _col[2], halo_a))
+            _ci[_k * 2 + 1].setData(pos=np.array([_anchor]), size=core_sz,
+                                    color=(_col[0], _col[1], _col[2], core_a))
+            # 夹持那一路: 未接触但已贴近 → 用淡环提示 (接触前也有反馈, 不是死的 8px)
+            if _k == 0 and s < 0.02 and getattr(self, "_pre_contact", False):
+                _prox = float(np.clip(1.0 - self._pre_gap / 0.05, 0.0, 1.0))   # 越近越亮
+                _ci[0].setData(pos=np.array([_anchor]), size=18.0 + 26.0 * _prox,
+                               color=(0.20, 0.90, 1.00, 0.10 + 0.22 * _prox))
 
         # 🏷 文字标注 (自绘覆盖层 — GLTextItem 在本机不渲染, 见 LabelOverlay 说明)
         try:
@@ -1158,6 +1202,20 @@ class DreamView3D(QWidget):
                 _add(self._hole + np.array([0, 0, -0.05]), "插入终点 goal", (0.35, 0.95, 0.60))
             if self._layer_on.get("latent", False):
                 _add(np.asarray(lat_pts[-1]) + [0, 0, 0.02], "自适应状态估计器 x̂", (0.90, 0.60, 1.0))
+            if self._layer_on.get("contact", False) and getattr(self, "_contact_vals", None):
+                _fg2, _fe2, _cpr, _cpn = self._contact_vals
+                if _fg2 > 0.05:
+                    _add(np.asarray(ik["wrist"], dtype=float) + [0, 0, 0.035],
+                         f"夹持接触 {_fg2:.2f} (peg↔指垫)", (0.20, 0.90, 1.00))
+                elif getattr(self, "_pre_contact", False):
+                    _add(np.asarray(ik["wrist"], dtype=float) + [0, 0, 0.035],
+                         f"即将接触插销 (距 {self._pre_gap * 1000:.0f} mm)", (0.20, 0.90, 1.00))
+                if _fe2 > 0.05:
+                    _ea = (np.asarray(tr["peg_head"][i], dtype=float)
+                           if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
+                           else np.asarray(x, dtype=float))
+                    _add(_ea + [0, 0, 0.035],
+                         f"环境接触 {_fe2:.2f} · 接触概率 {_cpr:.2f}(净 {_cpn:.2f})", (1.00, 0.45, 0.10))
             if self._layer_on.get("prior", False) and getattr(self, "_prior_now", None) is not None:
                 _add(np.asarray(self._prior_now) + [0, 0, 0.02],
                      "先验动力学预测器 x̂⁻ (纯预测)", (0.20, 0.90, 0.85))
@@ -1214,8 +1272,9 @@ class DreamView3D(QWidget):
             f"────────────────────\n"
             f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
             f"销头→孔 {d_ph * 1000:6.1f} mm\n"
-            f"环境接触{fenv:6.3f}   夹持{fg:5.3f}\n"
-            f"状态校正器 残差{res:6.4f} 接触概率{cp:5.2f}\n"
+            f"  环境接触 {fenv:5.3f}  夹持 {fg:5.3f}\n"
+            f"状态校正器 残差{res:6.4f}\n"
+            f"  接触概率 {cp:4.2f} (净 {max(0.0, min(1.0, (cp - 0.58) / 0.42)):4.2f})\n"
             f"────────────────────\n"
             f"前馈加速器  {u_ff_m:5.3f} m/s\n"
             f"动作调制器  {u_fu_m:5.3f} m/s\n"

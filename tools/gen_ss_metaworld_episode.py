@@ -71,7 +71,7 @@ def camera_frame(m, name="corner2"):
     return pos, fwd, -right, -up          # rot180 等效基底
 
 
-def contact_forces(m, d, peg_ids, hand_ids):
+def contact_forces(m, d, peg_ids, hand_ids, table_ids=frozenset()):
     """MuJoCo 真实接触力 (mj_contactForce) 分两路返回 (f_env, f_grasp)。
 
     ⚠️ 2026-08-25 实测教训: 原来把"涉及 peg 或 夹爪的全部接触力"加成一个数 →
@@ -98,9 +98,14 @@ def contact_forces(m, d, peg_ids, hand_ids):
         if pair & peg_ids and pair & hand_ids:
             f_grasp += mag          # 夹持: peg ↔ 夹爪(指垫)
         elif pair <= hand_ids:
-            continue                # 夹爪各连杆自碰撞 — 既不是夹持也不是环境, 丢弃
+            continue                # 夹爪各连杆自碰撞 — 既不是夹持也不是环境
+        elif pair & peg_ids and pair & table_ids:
+            # ⚠️ 2026-08-25 实测: 插销静置在台面上的自重支撑力 ≈1N 被算成"环境接触" →
+            #   自由移动段环境接触恒 0.039 常量底噪, 把真实接触事件(顶孔沿)埋掉。
+            #   自重支撑不是操作接触 → 排除。
+            continue
         else:
-            f_env += mag            # 环境: peg/夹爪 ↔ 桌面/带孔盒
+            f_env += mag            # 环境: peg/夹爪 ↔ 带孔盒(孔沿) / 夹爪 ↔ 台面
     return f_env, f_grasp
 
 
@@ -132,6 +137,8 @@ def run_episode(seed=0, want_video=True, log=print):
                    ("hand", "rightclaw", "leftclaw", "rightpad", "leftpad",
                     "right_hand", "right_wrist")
                    if _has_body(m, n)}
+    table_bodies = {int(m.body(n).id) for n in ("tablelink", "table")
+                    if _has_body(m, n)}
 
     ctrl_dt = float(m.opt.timestep) * int(env.frame_skip)
     # action[:3] 单位 = action_scale(0.01m)/步; u 是速度指令(m/s) → 精确换算 u*ctrl_dt/scale
@@ -164,7 +171,7 @@ def run_episode(seed=0, want_video=True, log=print):
         peg_head = site(m, d, "pegHead")
         grip_open = float(o[3])                    # 1=张开
         gripper = float(np.clip(1.0 - grip_open, 0.0, 1.0))   # 本工程约定: 1=闭合
-        f_env, f_grasp = contact_forces(m, d, peg_body, hand_bodies)
+        f_env, f_grasp = contact_forces(m, d, peg_body, hand_bodies, table_bodies)
         force_norm = float(np.clip(f_env / F_REF, 0.0, 1.0))          # 环境接触 → 感知/残差
         grasp_norm = float(np.clip(f_grasp / F_REF, 0.0, 1.0))        # 夹持力 (单独一路)
         force6 = np.zeros(6)
