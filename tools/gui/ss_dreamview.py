@@ -447,8 +447,13 @@ class DreamView3D(QWidget):
              "   继承抖动 0.901mm/步, 噪声/信号 2.7 倍) — 画出来必然\"没规律\"且无信息量"),
             # ── S3 认知决策层 ──
             ("ufb",       "④ 🧪 状态校正器 · 残差方向",   False,
-             "画布节点「🧪 状态校正器」算出的残差 r = z_k − 先验预测, 这里画 0.5×r 作为校正方向\n"
-             "(实测 0.005 m/s 量级): 蓝箭头 = 观测比预测偏了哪边 → 动作调制器据此把前馈拉回来"),
+             "残差 r = 观测 z_k − 先验 x̂⁻ (校正器的核心量, u_fb = 0.5·r 就是它的一半):\n"
+             "  ▬ 粗蓝箭头 = **20 帧滑动平均的系统性偏差** (6mm 满格 9cm) — 有物理意义的那部分\n"
+             "  ┄ 细半透明线 = 瞬时残差 (12mm 满格 6cm)\n"
+             "⚠️ 为什么瞬时的看着乱: 实测相邻帧方向变化 **88.5°** (纯随机 90°) ⇒ 瞬时残差\n"
+             "   **96% 是 5mm 观测噪声**; 只有多帧平均后剩下的才是真实接触/阻力造成的偏差\n"
+             "标注里的百分比 = 系统占比 |均值| / 平均模长: 实测 下降 8% (自由下落无接触)\n"
+             "   → 插入 42% (销头顶孔沿产生固定方向阻力) — 这个数字升高就是\"真的碰到东西了\""),
             ("contact",   "④ 🧪 状态校正器 · 接触指示",   True,
              "两路接触各一组「核心球 + 脉冲外环」, 强度直接用 MuJoCo 真实接触力驱动:\n"
              "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住插销就明显弹出\n"
@@ -931,6 +936,13 @@ class DreamView3D(QWidget):
             head.setGLOptions("additive")
             self.view.addItem(head)
             self._gl_items[key + "_head"] = head
+            if key == "ufb":
+                # 🌫 瞬时残差 (96% 是观测噪声) 用细半透明线; 主箭头留给 20 帧系统性偏差
+                inst = gl.GLLinePlotItem(pos=np.zeros((2, 3)),
+                                         color=(col[0], col[1], col[2], 0.30), width=1.4)
+                inst.setGLOptions("additive")
+                self.view.addItem(inst)
+                self._gl_items["ufb_inst"] = inst
             # (箭头文字标注由 LabelOverlay 自绘层负责 — GLTextItem 本机不渲染)
 
         # 融合指令目标点大球 (action 主图标 — 明显醒目)
@@ -1020,7 +1032,7 @@ class DreamView3D(QWidget):
         if it0 is not None:
             targets += it0 if isinstance(it0, list) else [it0]
         # 动作箭头族: <key>_line / <key>_tip (+ ufuse 的目标点大球)
-        for suf in ("_line", "_tip", "_head"):
+        for suf in ("_line", "_tip", "_head", "_inst"):
             sub = self._gl_items.get(key + suf)
             if sub is not None:
                 targets += sub if isinstance(sub, list) else [sub]
@@ -1104,10 +1116,36 @@ class DreamView3D(QWidget):
         # 动作箭头 (4 层): 杆 + 锥形箭头头(方向) + 旁边文字标注(名称/速度/方向)
         _NAMES = {"uff": "⚡前馈加速器", "ufb": "🧪状态校正器·残差",
                   "ufuse": "🧭动作调制器", "ulimit": "🛡安全执行边界"}
+        # 🧪 状态校正器·残差方向: 实测瞬时残差相邻帧方向变化 88.5° (纯随机 90°) ⇒ 96% 是
+        #   5mm 观测噪声, 逐帧箭头必然乱。改成主箭头画 **20 帧滑动平均的系统性偏差**
+        #   (接触/阻力才会造成固定方向: 实测插入段系统占比 42%, 下降段仅 8%),
+        #   瞬时残差降级为细半透明线。
+        _RW = 20
+        _lo = max(0, i - _RW + 1)
+        _zk_w = np.asarray(tr["z_k_vec"][_lo:i + 1], dtype=float)[:, :3]
+        _pv_w = (np.asarray(tr["prior_vec"][_lo:i + 1], dtype=float)[:, :3]
+                 if tr.get("prior_vec") is not None else _zk_w)
+        _rr = _zk_w - _pv_w
+        _r_inst = _rr[-1]
+        _r_sys = _rr.mean(axis=0)
+        _inst_mm = float(np.linalg.norm(_r_inst)) * 1000
+        _sys_mm = float(np.linalg.norm(_r_sys)) * 1000
+        _sys_ratio = _sys_mm / max(float(np.linalg.norm(_rr, axis=1).mean()) * 1000, 1e-9)
+        self._res_info = (_inst_mm, _sys_mm, _sys_ratio)
+        _inst_it = self._gl_items.get("ufb_inst")
+        if _inst_it is not None:      # 瞬时残差细线 (mm 级 → 12mm 满格 6cm)
+            _p2, _t2, _ = _arrow(x, _r_inst, u_ref=0.012, l_max=0.06)
+            _inst_it.setData(pos=_p2 if _p2 is not None else np.array([x[:3], x[:3]]))
+
         for key in ("uff", "ufb", "ufuse", "ulimit"):
-            a = np.asarray(tr[self._vec_key(key)][i], dtype=float)
-            mag = float(np.linalg.norm(a[:3]))
-            pts, tip, ln = _arrow(x, a)
+            if key == "ufb":
+                a = np.concatenate([_r_sys, [0.0]])          # 主箭头 = 系统性偏差方向
+                mag = _sys_mm / 1000.0
+                pts, tip, ln = _arrow(x, a, u_ref=0.006, l_max=0.09)   # 6mm 满格 9cm
+            else:
+                a = np.asarray(tr[self._vec_key(key)][i], dtype=float)
+                mag = float(np.linalg.norm(a[:3]))
+                pts, tip, ln = _arrow(x, a)
             head_it = self._gl_items.get(key + "_head")
             if pts is not None:
                 self._gl_items[key + "_line"].setData(pos=pts)
@@ -1265,12 +1303,22 @@ class DreamView3D(QWidget):
             for _k in ("uff", "ufb", "ufuse", "ulimit"):
                 if not self._layer_on.get(_k, False):
                     continue
+                _c = _LAYER_COLORS[_k]
+                if _k == "ufb":
+                    # 残差是位置偏差 (mm), 不是速度 → 单位和文案都要对
+                    _im, _sm, _sr = getattr(self, "_res_info", (0.0, 0.0, 0.0))
+                    _av = np.concatenate([_r_sys, [0.0]])
+                    _pts, _tip, _ = _arrow(x, _av, u_ref=0.006, l_max=0.09)
+                    if _tip is None:
+                        continue
+                    _add(_tip, f"🧪状态校正器 系统偏差 {_sm:.2f}mm ({_sr * 100:.0f}%) "
+                               f"{_dir_words(_av)} · 瞬时 {_im:.1f}mm(噪声主导)", _c)
+                    continue
                 _a = np.asarray(tr[self._vec_key(_k)][i], dtype=float)
                 _mag = float(np.linalg.norm(_a[:3]))
                 _pts, _tip, _ = _arrow(x, _a)
                 if _tip is None:
                     continue
-                _c = _LAYER_COLORS[_k]
                 _add(_tip, f"{_NAMES2[_k]} {_mag:.3f} m/s  {_dir_words(_a)}", _c)
             self._label_world = ovl          # [(世界坐标, 文字, 颜色, 粗体)]
             self._refresh_label_positions()
@@ -1312,6 +1360,8 @@ class DreamView3D(QWidget):
             f"  环境接触 {fenv:5.3f}  夹持 {fg:5.3f}\n"
             f"状态校正器 残差{res:6.4f}\n"
             f"  接触概率 {cp:4.2f} (净 {max(0.0, min(1.0, (cp - 0.58) / 0.42)):4.2f})\n"
+            f"  残差系统偏差 {getattr(self, '_res_info', (0, 0, 0))[1]:5.2f}mm "
+            f"({getattr(self, '_res_info', (0, 0, 0))[2] * 100:3.0f}%)\n"
             f"────────────────────\n"
             f"前馈加速器  {u_ff_m:5.3f} m/s\n"
             f"动作调制器  {u_fu_m:5.3f} m/s\n"
