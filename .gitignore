@@ -206,6 +206,7 @@ config_*_runtime.yaml
 # 推理视频帧/视频产物 — 大文件不进代码库 (2026-08-06 老倪铁律: 视频/权重不提交)
 reports/rollout_*/
 reports/*rollout_*.mp4
+reports/insert_success_demo.mp4
 reports/_*.png
 reports/_*.json
 reports/五模型对比技术选型报告_*.pdf

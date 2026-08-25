@@ -3920,6 +3920,8 @@ class SimulinkModule(QWidget):
         self.btn_ff_pd = mk_btn("⚙️ 前馈 PD", "前馈 PD 顶层系统: 增益调度PID+前馈 = 总系统, Z700 = 子系统 (双击🔬Z700子系统展开)", self.open_ff_pd_top, "#58a6ff")
         # 🧮 状态空间 (2026-08-17 老倪: 状态空间模型画布 — 时空感知→并行认知→决策执行→物理闭环)
         self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: S1时空感知前端(43D obs) → S2并行处理层(前馈加速器+自适应状态估计器) → S3认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)", self.open_state_space, "#87CEEB")
+        # 🧭 3D 视图 (2026-08-25 老倪: Apollo 风格 3D 分层视图 — 实时场景+YOLO框+action目标点+处理层叠加)
+        self.btn_ss_3d = mk_btn("🧭 3D 视图", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
@@ -3927,6 +3929,7 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_z_analysis)
         tl.addWidget(self.btn_ff_pd)
         tl.addWidget(self.btn_state_space)
+        tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -4109,7 +4112,7 @@ class SimulinkModule(QWidget):
         self.log_box.setReadOnly(True)
         # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
         # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
-        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:32pt; font-family:Consolas;")
+        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:12pt; font-family:Consolas;")
         _lp.addWidget(self.log_box)
         # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
         self._v_split.addWidget(self._log_panel)
@@ -9591,6 +9594,38 @@ class SimulinkModule(QWidget):
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         _oneshot(self, 300, self._state_space_hint)
 
+    def open_ss_3d(self):
+        """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)"""
+        tr = getattr(self, "_ss_tr", None)
+        if not tr or not tr.get("x"):
+            # 无仿真数据 → 提示先跑状态空间仿真
+            try:
+                self._qmsg_info("🧭 3D 视图", "还没有仿真数据。请先点「🧮 状态空间」画布里的「▶ 运行」跑一次仿真。")
+            except Exception:
+                pass
+            return
+        try:
+            from ss_dreamview import DreamView3D
+        except Exception as e:
+            try:
+                self._qmsg_info("🧭 3D 视图", f"3D 视图加载失败: {e}")
+            except Exception:
+                pass
+            return
+        # 复用已打开窗口 (避免重复开)
+        for w in getattr(self, "_ss_3d_windows", []):
+            if w.isVisible():
+                w.raise_()
+                w.activateWindow()
+                return
+        dv = DreamView3D(tr)
+        if not hasattr(self, "_ss_3d_windows"):
+            self._ss_3d_windows = []
+        self._ss_3d_windows = [w for w in self._ss_3d_windows if w.isVisible()]
+        self._ss_3d_windows.append(dv)
+        dv.show()
+        self._log("🧭 已打开 3D 分层视图 (Apollo 风格): 场景/YOLO框/前馈/融合指令u/限幅/状态估计/接触 各层可开关")
+
     def _start_state_space_sim(self):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
         引擎 500 步纯 numpy <0.1s 快跑 → 收集时间序列 → QTimer 动画逐节点执行
@@ -9734,6 +9769,8 @@ class SimulinkModule(QWidget):
         tr = getattr(self, "_ss_tr", None)
         if tr and tr.get("x"):
             self._start_video_export(tr)
+            # 🧭 2026-08-25 老倪: 仿真完成自动打开 3D 分层视图 (Apollo 风格)
+            self.open_ss_3d()
 
     def _start_video_export(self, tr):
         """🎥 后台渲染操作视频 → 上传 ECS (datadrive.world) → 打印链接 (不卡 UI)

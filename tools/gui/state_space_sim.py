@@ -120,6 +120,9 @@ class StateSpaceSim:
               "u_sat": [], "stage": [], "done": [],
               "x": [], "gripper": [], "force": [],
               "obs": [], "u_ff_vec": [], "u_sat_vec": [],   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
+              # 🧭 2026-08-25 3D 视图 (Apollo 分层渲染): 每步完整处理层向量
+              "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [], "u_exec_vec": [],
+              "latent_vec": [], "corrected_vec": [], "residual_vec": [], "z_k_vec": [], "v_vec": [],
               "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
@@ -200,6 +203,16 @@ class StateSpaceSim:
             tr["obs"].append(obs.copy())
             tr["u_ff_vec"].append(np.asarray(u_ff, dtype=float).copy())
             tr["u_sat_vec"].append(np.asarray(u_vec, dtype=float).copy())
+            # 🧭 2026-08-25 3D 视图: 每步完整处理层向量 (Apollo 分层渲染数据源)
+            tr["u_fb_vec"].append(np.asarray(u_fb, dtype=float).copy())
+            tr["u_fuse_vec"].append(np.asarray(u, dtype=float).copy())       # 动作调制器输出 (融合指令 u)
+            tr["u_limit_vec"].append(np.asarray(u_sat, dtype=float).copy())  # 安全限幅输出
+            tr["u_exec_vec"].append(np.asarray(u_vec, dtype=float).copy())   # 执行器输出
+            tr["latent_vec"].append(np.asarray(self.latent, dtype=float).copy())
+            tr["corrected_vec"].append(np.asarray(corrected, dtype=float).copy())
+            tr["residual_vec"].append(np.asarray(residual, dtype=float).copy())
+            tr["z_k_vec"].append(np.asarray(z_k, dtype=float).copy())
+            tr["v_vec"].append(np.asarray(self.v, dtype=float).copy())
             if on_step:
                 on_step("sensor", f"force_z={force[2]:+.3f}N")
                 on_step("obs", f"obs 43D · hand={self.x.round(4)} · gripper={self.gripper:.2f}")
