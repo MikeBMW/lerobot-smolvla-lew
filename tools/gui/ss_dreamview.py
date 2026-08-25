@@ -25,7 +25,7 @@ import os
 import numpy as np
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QVector3D
+from PyQt5.QtGui import QFont, QVector3D
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
                              QSlider, QPushButton, QFrame)
 
@@ -137,6 +137,7 @@ _ARM_L1 = _ARM_L2 = 0.42                           # 上臂/前臂 (够到 y=0.6
 # 相机 = 操作视频 metaworld corner2 换算值 (probe_video_view.py 实测):
 #   cam_pos(1.3,-0.2,1.1) 视线(-0.746,0.458,-0.484) → elevation 28.9° / azimuth 328.4°
 #   (视频里 aligner 分支做 np.rot90(k=2), 旋转后世界 +Z 朝屏幕上 = z-up 常规视角)
+_LABEL_PT = 13          # 3D 标签字号 (高分屏 236DPI, 太小看不见)
 _CAM_ELEV = 28.9
 _CAM_AZIM = 328.4
 _CAM_CENTER = QVector3D(-0.07, 0.50, 0.08)
@@ -347,6 +348,15 @@ class DreamView3D(QWidget):
         self.lbl_t.setStyleSheet("color:#8b949e; font-size:11px;")
         pl.addWidget(self.lbl_t)
 
+        # 📟 实时数值面板 (2026-08-25 老倪: "不知道啥意思" → 画面旁边直接给数字)
+        self.lbl_num = QLabel("—")
+        self.lbl_num.setStyleSheet(
+            "color:#c9d1d9; font-size:12px; font-family:Consolas,monospace; "
+            "background:#0d1117; border:1px solid #30363d; border-radius:4px; padding:6px;")
+        self.lbl_num.setMinimumHeight(210)
+        self.lbl_num.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        pl.addWidget(self.lbl_num)
+
         # 右侧 3D 视图
         right = QVBoxLayout()
         right.setSpacing(6)
@@ -379,6 +389,19 @@ class DreamView3D(QWidget):
         self.lbl_frame = QLabel("0 / 0")
         self.lbl_frame.setStyleSheet("color:#8b949e; font-size:12px; min-width:70px;")
         ctrl.addWidget(self.lbl_frame)
+
+        # 🔍 视角三档 (默认自动取景 — 1:1 复刻视频机位时场景只占画面 3%, 看不清)
+        for _txt, _mode, _tip in (("🔍 自动取景", "fit", "朝向与操作视频一致, 距离自动收紧到刚好装下全场景 (推荐)"),
+                                  ("🎥 视频同框", "video", "与操作视频逐像素同机位 (远景, 用于和视频对比)"),
+                                  ("⬇ 俯视", "top", "正上方俯视 (看水平对位)")):
+            b = QPushButton(_txt)
+            b.setToolTip(_tip)
+            b.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:5px 10px; font-size:12px;}"
+                "QPushButton:hover{border-color:#58a6ff; color:#58a6ff;}")
+            b.clicked.connect(lambda _=False, mm=_mode: self._fit_view(mm))
+            ctrl.addWidget(b)
         right.addLayout(ctrl)
 
         root.addWidget(panel)
@@ -401,6 +424,7 @@ class DreamView3D(QWidget):
         self._n = n
         self.slider.setRange(0, max(0, n - 1))
         self._build_scene()
+        self._fit_view("fit")      # 默认自动取景 (视频同框太远, 物体只有几十像素)
         if n > 0:
             self._update_frame(0)
             self.lbl_frame.setText(f"0 / {n - 1}")
@@ -433,9 +457,111 @@ class DreamView3D(QWidget):
                                         distance=max(0.3, t),
                                         rotation=camera_quaternion(cf, cr, cu))
             self._sync_fov()
+            # 记下"与视频 1:1 同框"的机位, 供视角切换用
+            self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
+                                   fwd=cf.copy(), right=cr.copy(), up=cu.copy())
             self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
         except Exception as e:
             print(f"⚠️ 同源 trace meta 应用失败, 退回默认视角: {e}")
+
+    # ── 取景 (2026-08-25 老倪: "还是一堆点, 不知道啥意思") ──
+    #   实测: 严格 1:1 复刻视频机位时 (距离 1.735m/竖直fov60), 926x766 画布上
+    #   96.8% 是空背景, 插销只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
+    #   → 默认改「自动取景」: **朝向保持与视频完全一致**, 只把 center/distance 收紧到
+    #     刚好装下 (末端轨迹 ∪ 插销轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
+    #     要逐像素对比视频时用「视频同框」档切回去。
+    def _fit_view(self, mode=None):
+        mode = mode or getattr(self, "_view_mode", "fit")
+        self._view_mode = mode
+        cam = getattr(self, "_cam_video", None)
+        tr = self.tr or {}
+        try:
+            if mode == "video" and cam:
+                self.view.setCameraPosition(pos=QVector3D(*cam["center"].tolist()),
+                                            distance=cam["dist"],
+                                            rotation=camera_quaternion(cam["fwd"], cam["right"], cam["up"]))
+                self._sync_fov()
+                return
+            pts = []
+            for k in ("x", "peg", "peg_head"):
+                if tr.get(k) is not None and len(tr[k]):
+                    pts.append(np.asarray(tr[k], dtype=float))
+            pts.append(np.asarray([self._mouth, self._hole], dtype=float))
+            P = np.vstack(pts)
+            lo, hi = P.min(axis=0), P.max(axis=0)
+            ctr = (lo + hi) / 2.0
+            radius = float(np.linalg.norm(hi - lo)) / 2.0 + 0.05
+            if mode == "top":       # 俯视档 (正上方看)
+                self.view.opts["rotationMethod"] = "euler"
+                self.view.setCameraPosition(pos=QVector3D(*ctr.tolist()),
+                                            distance=max(0.35, radius * 2.6),
+                                            elevation=88, azimuth=270)
+                self.view.opts["fov"] = 60.0
+                self.view.update()
+                self._refine_distance(P, target=0.72)     # 俯视也按投影收紧距离
+                return
+            # fit 档: 朝向沿用视频机位, 距离按包围盒外接球 + fov 求
+            fwd = cam["fwd"] if cam else np.array([-0.746, 0.458, -0.484])
+            right = cam["right"] if cam else np.array([0.55, 0.833, -0.058])
+            up = cam["up"] if cam else np.array([-0.376, 0.310, 0.873])
+            self._sync_fov()
+            self.view.opts["rotationMethod"] = "quaternion"
+            self._fit_camera_to_points(P, ctr, radius, fwd, right, up)
+        except Exception as e:
+            print(f"⚠️ 取景失败: {e}")
+
+    def _fit_camera_to_points(self, P, ctr, radius, fwd, right, up, target=0.72, iters=14):
+        """按**实际投影**迭代取景 (朝向不动, 只调 center/distance):
+        球形包围盒对扁平作业区太保守 (实测只占屏 44%) → 改成每轮把点云投影出来,
+        按屏幕占比缩放距离 + 把点云包围框居中, 收敛到占屏 ≈ target。"""
+        import math
+        pts = np.asarray(P, dtype=float)
+        if len(pts) > 240:
+            pts = pts[:: max(1, len(pts) // 240)]
+        center = np.asarray(ctr, dtype=float).copy()
+        dist = max(0.25, radius * 2.2)
+        for _ in range(iters):
+            self.view.setCameraPosition(pos=QVector3D(*center.tolist()), distance=float(dist),
+                                        rotation=camera_quaternion(fwd, right, up))
+            s = [project_world(self.view, p) for p in pts]
+            s = np.asarray([v for v in s if v is not None], dtype=float)
+            if len(s) < 3:
+                break
+            xmin, ymin = s.min(axis=0)
+            xmax, ymax = s.max(axis=0)
+            spread = max(xmax - xmin, ymax - ymin)
+            # ① 居中: 把投影框中心拉到画面中心 (沿相机 right/up 平移世界 center)
+            fov_h = math.radians(float(self.view.opts.get("fov", 60.0)))
+            w, h = max(1, self.view.width()), max(1, self.view.height())
+            half_x = math.tan(fov_h / 2.0)
+            half_y = half_x * h / w
+            dx = ((xmin + xmax) / 2.0) - 0.5
+            dy = ((ymin + ymax) / 2.0) - 0.5
+            center = center + right * (dx * 2.0 * half_x * dist) - up * (dy * 2.0 * half_y * dist)
+            # ② 缩放: 占屏 → target
+            if spread > 1e-4:
+                dist *= float(np.clip(spread / target, 0.55, 1.8))
+            dist = float(np.clip(dist, 0.18, 6.0))
+            if abs(spread - target) < 0.03 and abs(dx) < 0.01 and abs(dy) < 0.01:
+                break
+        self.view.update()
+
+    def _refine_distance(self, P, target=0.72, iters=10):
+        """只调距离不动朝向 (俯视档用): 把点云投影占屏收敛到 target"""
+        pts = np.asarray(P, dtype=float)
+        if len(pts) > 240:
+            pts = pts[:: max(1, len(pts) // 240)]
+        for _ in range(iters):
+            s = [project_world(self.view, p) for p in pts]
+            s = np.asarray([v for v in s if v is not None], dtype=float)
+            if len(s) < 3:
+                return
+            spread = max(s[:, 0].max() - s[:, 0].min(), s[:, 1].max() - s[:, 1].min())
+            if abs(spread - target) < 0.03:
+                break
+            self.view.opts["distance"] = float(np.clip(
+                self.view.opts["distance"] * float(np.clip(spread / target, 0.6, 1.7)), 0.18, 6.0))
+            self.view.update()
 
     def _sync_fov(self):
         """把视频的垂直 fovy 换算成 pyqtgraph 的水平 fov (随窗口尺寸变化必须重算)"""
@@ -554,20 +680,25 @@ class DreamView3D(QWidget):
                          "wrist": 5, "jaw_l": 6, "jaw_r": 7, "peg": 8}
 
         # 动态层占位 (创建空 item, 更新时 setData)
-        # 轨迹线
-        traj = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.35, 0.65, 1.0, 1.0), width=2)
+        # 轨迹线 — ⚠️ 2026-08-25 实测: 末端轨迹恰好走在机械臂/夹爪实体位置, 默认深度测试下
+        #   被完全挡住 (画面里只剩 5 个像素) → 数据层统一 setGLOptions('additive')
+        #   穿透遮挡叠加显示 (Apollo Dreamview 覆盖层做法), 线宽 2→3.5
+        traj = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.35, 0.65, 1.0, 1.0), width=3.5)
+        traj.setGLOptions("additive")
         self.view.addItem(traj)
         self._gl_items["traj"] = traj
 
         # 箭头线 (4 层动作)
         for key in ("uff", "ufb", "ufuse", "ulimit"):
             col = _LAYER_COLORS[key]
-            ln = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=col, width=(6 if key == "ufuse" else 3))
+            ln = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=col, width=(7 if key == "ufuse" else 3.5))
+            ln.setGLOptions("additive")          # 动作箭头穿透遮挡 (否则被机械臂挡住)
             self.view.addItem(ln)
             self._gl_items[key + "_line"] = ln
             # 箭头头 (小锥体 / 目标点球)
             tip = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=col,
-                                       size=(14 if key == "ufuse" else 8))
+                                       size=(16 if key == "ufuse" else 10))
+            tip.setGLOptions("additive")
             self.view.addItem(tip)
             self._gl_items[key + "_tip"] = tip
 
@@ -581,7 +712,8 @@ class DreamView3D(QWidget):
         for cls, col in (("hand", _LAYER_COLORS["yolo_hand"]),
                          ("peg", _LAYER_COLORS["yolo_peg"]),
                          ("hole", _LAYER_COLORS["yolo_hole"])):
-            ln = gl.GLLinePlotItem(pos=np.zeros((12, 3)), color=col, width=2, mode='lines')
+            ln = gl.GLLinePlotItem(pos=np.zeros((12, 3)), color=col, width=2.5, mode='lines')
+            ln.setGLOptions("additive")
             self.view.addItem(ln)
             self._gl_items["yolo_" + cls] = ln
             yolo.append(ln)
@@ -590,16 +722,39 @@ class DreamView3D(QWidget):
         # 状态估计 x̂: 紫线(最近 60 帧估计轨迹) + 当前帧估计位置大球
         #   2026-08-25 老倪「为什么显示一堆点」→ 原来是每帧一个散点(看不出是轨迹),
         #   改成连线 + 当前点大球, 一眼看出"卡尔曼估计出来的末端在哪、跟真实轨迹差多少"
-        lat_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.45, 0.95, 0.9), width=3)
+        lat_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.45, 0.95, 0.95), width=3.5)
+        lat_line.setGLOptions("additive")
         self.view.addItem(lat_line)
-        lat_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.55, 1.0, 1.0), size=14)
+        lat_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.55, 1.0, 1.0), size=16)
+        lat_now.setGLOptions("additive")
         self.view.addItem(lat_now)
         self._gl_items["latent"] = [lat_line, lat_now]
 
         # 接触热力球
-        contact = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.4, 0.0, 1.0), size=10)
+        contact = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.4, 0.0, 1.0), size=12)
+        contact.setGLOptions("additive")
         self.view.addItem(contact)
         self._gl_items["contact"] = contact
+
+        # 🏷 3D 文字标签 (2026-08-25 老倪: 光有几何看不出哪个是啥) — 贴在物体旁边
+        labels = {}
+        for key, txt, col in (("hand", "末端 hand", (0.55, 0.78, 1.0, 1.0)),
+                              ("peg", "插销 peg", (1.0, 0.82, 0.25, 1.0)),
+                              ("hole", "孔口 hole", (1.0, 0.45, 0.35, 1.0)),
+                              ("goal", "插入终点 goal", (0.35, 0.95, 0.60, 1.0)),
+                              ("latent", "状态估计 x̂", (0.90, 0.60, 1.0, 1.0))):
+            try:
+                _f = QFont("Arial", _LABEL_PT, QFont.Bold)
+                ti = gl.GLTextItem(pos=np.zeros(3), text=txt, color=col, font=_f)
+                self.view.addItem(ti)
+                labels[key] = ti
+            except Exception:
+                pass
+        self._gl_items["_labels"] = list(labels.values())
+        self._labels = labels
+        for k, p in (("hole", self._mouth), ("goal", self._hole)):
+            if k in labels:
+                labels[k].setData(pos=np.asarray(p, dtype=float) + np.array([0.0, 0.0, 0.055]))
 
         # 应用当前图层开关状态
         for key, on in self._layer_on.items():
@@ -716,10 +871,52 @@ class DreamView3D(QWidget):
             self._gl_items["contact"].setData(pos=np.array([x]), size=4,
                                               color=(1.0, 0.4, 0.0, 0.25))
 
-        # 时间轴标签
+        # 🏷 标签跟随物体 (hand/peg/x̂ 每帧更新; hole/goal 静态已设)
+        lbs = getattr(self, "_labels", {})
+        if "hand" in lbs:
+            lbs["hand"].setData(pos=np.asarray(x, dtype=float) + np.array([0.0, 0.0, 0.05]))
+        if "peg" in lbs:
+            lbs["peg"].setData(pos=np.asarray(peg_grasp, dtype=float) + np.array([0.0, 0.0, 0.045]))
+        if "latent" in lbs:
+            lbs["latent"].setData(pos=np.asarray(lat_pts[-1], dtype=float) + np.array([0.0, 0.0, 0.03]))
+            lbs["latent"].setVisible(bool(self._layer_on.get("latent", False)))
+
+        # 📟 实时数值面板 (每帧滚动 — 老倪: 运行后数据须实时动态滚动, 不要一次性静态填充)
         t = tr["t"][i]
         stage = tr["stage"][i].replace("阶段 ", "")
-        self.lbl_t.setText(f"t={t:.2f}s · 帧 {i}/{self._n - 1}\n阶段 {stage}\n数据源: {self._src}")
+        def _f(v, n=3):
+            return f"{float(v):+.{n}f}"
+        peg_h = (np.asarray(tr["peg_head"][i], dtype=float)
+                 if tr.get("peg_head") is not None and len(tr["peg_head"]) > i else peg_grasp)
+        res = float(np.linalg.norm(np.asarray(tr["residual_vec"][i], dtype=float)))
+        cp = float(tr["contact_p"][i])
+        fenv = float(tr["force"][i]) if tr.get("force") is not None else 0.0
+        fg = float(tr["force_grasp"][i]) if tr.get("force_grasp") is not None else float("nan")
+        lat3 = np.asarray(lat_pts[-1], dtype=float)
+        err = float(np.linalg.norm(lat3 - np.asarray(x, dtype=float))) * 1000
+        u_ff_m = float(np.linalg.norm(np.asarray(tr["u_ff_vec"][i], dtype=float)[:3]))
+        u_fu_m = float(np.linalg.norm(np.asarray(tr["u_fuse_vec"][i], dtype=float)[:3]))
+        u_li_m = float(np.linalg.norm(np.asarray(tr["u_limit_vec"][i], dtype=float)[:3]))
+        d_ph = float(np.linalg.norm(peg_h[:2] - self._mouth[:2]))
+        self.lbl_num.setText(
+            f"阶段    {stage}\n"
+            f"t       {t:6.2f}s   帧 {i}/{self._n - 1}\n"
+            f"────────────────────\n"
+            f"末端    {_f(x[0])} {_f(x[1])} {_f(x[2])}\n"
+            f"插销    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
+            f"销头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
+            f"估计x̂   {_f(lat3[0])} {_f(lat3[1])} {_f(lat3[2])}\n"
+            f"x̂−末端  {err:6.1f} mm\n"
+            f"────────────────────\n"
+            f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
+            f"销头→孔 {d_ph * 1000:6.1f} mm\n"
+            f"环境接触{fenv:6.3f}   夹持{fg:5.3f}\n"
+            f"残差    {res:6.4f}   接触概率{cp:5.2f}\n"
+            f"────────────────────\n"
+            f"u_ff    {u_ff_m:5.3f} m/s (前馈建议)\n"
+            f"u 融合  {u_fu_m:5.3f} m/s (调度输出)\n"
+            f"u_sat   {u_li_m:5.3f} m/s (限幅后)")
+        self.lbl_t.setText(f"数据源: {self._src}")
         self.lbl_frame.setText(f"{i} / {self._n - 1}")
         if not self.slider.isSliderDown():
             self.slider.setValue(i)
