@@ -36,14 +36,31 @@ def _load_planner():
         return None
 
 
-# 物理世界模型参数 (光模块插拔)
-HOLE_POS = np.array([0.25, 0.0, 0.05])   # 孔位 (销钉目标)
-X0 = np.array([0.10, -0.06, 0.12])       # 末端起始位置
-D_CONTACT = 0.02                          # 水平接触距离 (销钉到孔沿)
+# ════════════════════════════════════════════════════════════════
+# 物理世界模型参数 (光模块插拔) — 2026-08-25 老倪: 全部换成 metaworld
+# peg-insert-side-v3 (操作视频 gen_insert_video.py 用的同一个环境) 的真实几何,
+# 实测来源 tools/probe_video_view.py / probe_scene_geom.py (seed 0 复位后):
+#   末端 endEffector (0.0043, 0.6014, 0.1551) / obs 末端 (0.0046,0.6014,0.1951)
+#   插销抓握点 pegGrasp (0.0966, 0.5191, 0.030), 插销头 pegHead (-0.0334, 0.5191, 0.020)
+#   孔口 hole (-0.1685, 0.4623, 0.1309), 插入终点 goal (-0.2345, 0.4623, 0.1309)
+# 原来这里是编造坐标 (孔位 0.25,0,0.05), 与操作视频既不同尺度也不同朝向。
+# ════════════════════════════════════════════════════════════════
+HOLE_POS = np.array([-0.2345, 0.4623, 0.1309])   # 插入终点 (metaworld goal, obs[36:39] 语义)
+HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
+PEG_POS0 = np.array([0.0966, 0.5191, 0.030])      # 插销抓握点初始 (台面上)
+PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 插销头相对抓握点 (peg 沿 X 长 0.2)
+X0 = np.array([0.0046, 0.6014, 0.1951])           # 末端起始位置 (手空着, 未持插销)
+TABLE_Z = 0.005                                   # 台面高度 (插销底面)
+D_CONTACT = 0.02                          # 接触距离 (下降触销 / 销到孔沿)
 D_INSERT = 0.004                          # 插入成功判定
 K_CONTACT = 6.0                           # 接触力增益
 DT = 0.02
-T_END = 10.0
+T_END = 32.0                              # 完整插拔 (接近→对位→下降→抓取→抬起→转移→插入→完成) 需要更长
+# 各阶段末端子目标 (感知层把"当前阶段目标"写进 obs[36:39] — 前馈层就是按它比例引导)
+STAGE_LIFT = 0.16                         # 抬起目标高度 (台面之上)
+STAGE_APPROACH_H = 0.09                   # 接近: 插销上方悬停高度
+STAGE_ALIGN_H = 0.05                      # 对位: 精对位高度
+STAGE_DESCEND_H = 0.004                   # 下降: 贴到抓握点
 
 
 class StateSpaceSim:
@@ -72,8 +89,61 @@ class StateSpaceSim:
         self.x = X0.copy()
         self.v = np.zeros(3)
         self.gripper = 0.0
+        # 🔩 2026-08-25 老倪: 插销是独立物体 (原来 obs 里 peg 位置=末端, 等于"开局就握着销",
+        #   3D 视图因此没有「从初始位置到抓取插销」的过程)。现在插销先躺在台面上,
+        #   抓取阶段夹爪闭合后才随手移动 (self.grasped / self.peg_off)。
+        self.peg = PEG_POS0.copy()      # 插销抓握点世界坐标
+        self.grasped = False            # 是否已夹住
+        self.peg_off = np.zeros(3)      # 夹住瞬间 插销-末端 的相对偏移
         self.latent = np.concatenate([self.x, [0.0]])   # 潜状态 4D: 位置3 + 预测接触力 (无接触=0)
         self.obs_prev = None                 # 上一帧 18D (帧堆叠)
+
+    def _head_off(self):
+        """销头相对末端的真实偏移 — 夹持后由感知给出 (peg 位置 − 末端位置 + 销头偏移)。
+        ⚠️ 不能用名义 PEG_HEAD_OFF: 抓取锁存发生在"手比抓握点高 12mm"时 (接触判据),
+        用名义偏移算插入目标会残留 12mm 高度差 → 永远差最后 4mm 判定不了「完成」。"""
+        if self.grasped:
+            return self.peg_head() - self.x
+        return PEG_HEAD_OFF.copy()
+
+    # ── 阶段子目标 (感知层写进 obs[36:39], 前馈层按它比例引导) ──
+    def _stage_target(self):
+        """当前阶段的末端目标位置 — 八阶段插拔流程:
+        接近(销上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) → 抓取(原地闭合)
+        → 抬起(提到 STAGE_LIFT) → 转移(销头对准孔口上方) → 插入(销头推到 goal) → 完成"""
+        st = self.sched.stage()
+        if st == "接近":
+            return self.peg + np.array([0.0, 0.0, STAGE_APPROACH_H])
+        if st == "对位":
+            return self.peg + np.array([0.0, 0.0, STAGE_ALIGN_H])
+        if st == "下降":
+            return self.peg + np.array([0.0, 0.0, STAGE_DESCEND_H])
+        if st == "抓取":
+            return self.peg.copy()
+        if st == "抬起":
+            return np.array([self.peg[0], self.peg[1], TABLE_Z + STAGE_LIFT])
+        if st == "转移":
+            # 末端目标 = 让"销头"落在孔口正前方上方 2cm (末端 = 孔口 − 真实夹持偏移)
+            return HOLE_MOUTH - self._head_off() + np.array([0.0, 0.0, 0.02])
+        if st == "插入":
+            return HOLE_POS - self._head_off()
+        return HOLE_POS - self._head_off()     # 完成: 保持在插入终点
+
+    def peg_head(self):
+        """插销头世界坐标 (插入端)"""
+        return self.peg + PEG_HEAD_OFF
+
+    def _d_xy_peg(self):
+        """末端-插销抓握点 水平距离 (接近/对位/下降 的推进证据)"""
+        return float(np.linalg.norm(self.x[:2] - self.peg[:2]))
+
+    def _d_hole_h(self):
+        """插销头-孔口 水平距离 (转移→插入 的推进证据)"""
+        return float(np.linalg.norm(self.peg_head()[:2] - HOLE_MOUTH[:2]))
+
+    def _insert_depth(self):
+        """插销头到插入终点距离 (插入→完成 的推进证据)"""
+        return float(np.linalg.norm(self.peg_head() - HOLE_POS))
 
     # ── 感知 ──
     def _build_obs(self, force):
@@ -82,24 +152,28 @@ class StateSpaceSim:
             self.x,                  # [0:3]  末端位置
             [self.gripper],          # [3]    夹爪开度
             self.v,                  # [4:7]  末端速度
-            self.x,                  # [7:10] peg 位置 (末端携带)
-            HOLE_POS,                # [10:13] 孔位
+            self.peg,                # [7:10] 插销位置 (独立物体, 抓取后才随末端)
+            HOLE_POS,                # [10:13] 孔位 (插入终点)
             np.zeros(3),             # [13:16] 孔位姿态 (简化)
             np.zeros(2),             # [16:18] 预留
         ])
         prev = self.obs_prev if self.obs_prev is not None else cur
-        target = HOLE_POS
+        target = self._stage_target()   # [36:39] 当前阶段子目标 (八阶段插拔)
         visual39 = np.concatenate([cur, prev, target])
         tactile4 = np.array([self.gripper, float(self._contact), 0.0, 0.0])
         return self.perception.fuse_sensors(visual39, np.asarray(force, dtype=float), tactile4)
 
     @property
     def _contact(self):
-        """接触判定: 末端-孔位水平距离 < 接触半径"""
-        return float(np.linalg.norm(self.x[:2] - HOLE_POS[:2])) < D_CONTACT
+        """接触判定 (按阶段): 未夹持 = 末端下降触到插销; 已夹持 = 销头触到孔沿"""
+        if not self.grasped:
+            return (self._d_xy_peg() < 0.03
+                    and (self.x[2] - self.peg[2]) < 0.012)
+        return self._d_hole_h() < D_CONTACT
 
     def _dist_h(self):
-        return float(np.linalg.norm(self.x[:2] - HOLE_POS[:2]))
+        """当前"到目标"的水平距离 (Scope 波形 dist 曲线): 未夹持看插销, 已夹持看孔口"""
+        return self._d_xy_peg() if not self.grasped else self._d_hole_h()
 
     # ── 主循环 ──
     def run(self, on_step=None, io_every=None):
@@ -119,6 +193,8 @@ class StateSpaceSim:
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
               "u_sat": [], "stage": [], "done": [],
               "x": [], "gripper": [], "force": [],
+              # 🔩 2026-08-25 完整插拔: 插销独立轨迹 + 每步阶段子目标 (3D 视图渲染用)
+              "peg": [], "peg_head": [], "target": [], "grasped": [],
               "obs": [], "u_ff_vec": [], "u_sat_vec": [],   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
               # 🧭 2026-08-25 3D 视图 (Apollo 分层渲染): 每步完整处理层向量
               "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [], "u_exec_vec": [],
@@ -129,9 +205,15 @@ class StateSpaceSim:
         n_steps = int(self.t_end / self.dt)
         for step in range(n_steps):
             # ① 接触力 (物理世界给感知的输入; 归一化: 最大接触力 6*0.02=0.12N)
+            #   未夹持: 下降触到插销 → 垂直反力 (证据: 可以闭合夹爪了)
+            #   已夹持: 销头触到孔沿 → 插入阻力 (证据: 对上孔了)
             force = np.zeros(6)
             if self._contact:
-                force[2] = K_CONTACT * max(0.0, D_CONTACT - self._dist_h())  # 垂直接触力
+                if not self.grasped:
+                    gap_z = max(0.0, 0.012 - (self.x[2] - self.peg[2]))
+                    force[2] = K_CONTACT * max(gap_z, 0.5 * D_CONTACT)
+                else:
+                    force[2] = K_CONTACT * max(0.0, D_CONTACT - self._d_hole_h())
             force_norm = float(np.clip(force[2] / (K_CONTACT * D_CONTACT), 0.0, 1.0))
             # ② 感知 → obs
             obs = self._build_obs(force)
@@ -161,7 +243,8 @@ class StateSpaceSim:
             if np.ndim(u) == 0:
                 u = np.zeros(4)
             u = np.asarray(u, dtype=float).copy()
-            u[3] = float(u_ff[3])
+            # 夹爪指令 = 调度器夹持保持 (抓取阶段起锁存闭合; 之前听前馈近距闭合)
+            u[3] = self.sched.gripper_cmd(u_ff[3])
             # ⑨ 安全限幅 (位置/速度通道; 夹爪开关量不受限幅)
             u_sat = self.safety.saturate(u, limit=0.6)
             u_sat = np.asarray(u_sat, dtype=float).copy()
@@ -170,23 +253,42 @@ class StateSpaceSim:
             u_vec = self.execr.execute(u_sat)
             if np.ndim(u_vec) == 0:
                 u_vec = np.zeros(4)
-            self.v += u_vec[:3] * self.dt
+            # 🐛 2026-08-25 老倪 (物理层语义 bug): u 是**速度指令** (前馈层 Kp·(target−pos) 限幅 ±0.5 m/s,
+            #   状态估计器 predict 也是 latent + dt·u 按速度积分), 但这里原本按**加速度**积分
+            #   (v += u·dt) → 双积分无阻尼系统: 位置比例控制必然过冲/发散 (实测末端冲到
+            #   x=-0.37 越过孔位 0.13m 停不下来), 同时给估计器制造假残差。
+            #   改为一阶速度伺服 (真实执行器惯性): v ← v + (u − v)·dt/τ, τ=0.08s
+            tau = 0.08
+            self.v += (u_vec[:3] - self.v) * min(1.0, self.dt / tau)
             self.x += self.v * self.dt
-            # 接触阻尼: 孔壁阻挡横向移动 (真实物理 — 预测继续走 vs 观测被挡 = 残差来源)
-            d = self._dist_h()
-            if d < D_INSERT:
-                self.v[:2] *= 0.3          # 插入区横向锁住 (对孔)
-                self.v[2] *= 0.85          # 插入阻力 (防 z 过冲)
-            elif d < D_CONTACT:
-                self.v[:2] *= 0.75         # 孔沿摩擦阻尼
-                self.v[2] *= 0.95
+            # 台面约束: 未夹持时末端不能穿透台面 (真实物理 — 下降到抓握高度就停)
+            if not self.grasped and self.x[2] < self.peg[2] - 0.002:
+                self.x[2] = self.peg[2] - 0.002
+                self.v[2] = max(0.0, self.v[2])
+            # 接触阻尼 (真实物理 — 预测继续走 vs 观测被挡 = 残差来源)
+            if self.grasped:
+                dh = self._d_hole_h()
+                if dh < D_INSERT:
+                    self.v[1] *= 0.3           # 插入区侧向锁住 (对孔, 侧插沿 -X)
+                    self.v[2] *= 0.85
+                elif dh < D_CONTACT:
+                    self.v[1] *= 0.75          # 孔沿摩擦阻尼
+                    self.v[2] *= 0.95
+            # 🔩 夹持锁存: 抓取阶段夹爪闭到 0.5 以上 → 插销被夹住, 之后随末端一起走
             g_cmd = float(u_vec[3])
+            if (not self.grasped) and self.sched.stage() == "抓取" and self.gripper > 0.5:
+                self.grasped = True
+                self.peg_off = self.peg - self.x
+                self.log(f"🔩 插销已夹住 (gripper={self.gripper:.2f}) → 随末端移动")
             self.gripper += (g_cmd - self.gripper) * min(1.0, self.dt * 10.0)
+            if self.grasped:
+                self.peg = self.x + self.peg_off
             self.obs_prev = obs[0:18]
-            # 阶段推进: 调度器状态机 (advance 证据驱动 — 接触概率/距离/夹爪/深度)
+            # 阶段推进: 调度器状态机 (八阶段 · 证据驱动 — 水平距离/接触概率/夹爪/提起高度/插入深度)
             d = self._dist_h()
-            self.sched.advance(contact_p=contact_p, dist_h=d,
-                               gripper=self.gripper, depth=d)
+            self.sched.advance(contact_p=contact_p, dist_h=self._d_hole_h(),
+                               gripper=self.gripper, depth=self._insert_depth(),
+                               d_xy=self._d_xy_peg(), lifted=self.peg[2] - PEG_POS0[2])
             done = self.sched.stage() == "完成"
             # 记录
             tr["t"].append(round(t, 3))
@@ -195,11 +297,18 @@ class StateSpaceSim:
             tr["residual"].append(r_scalar)
             tr["contact_p"].append(contact_p)
             tr["u_sat"].append(float(np.linalg.norm(u_vec[:3])))
-            tr["stage"].append(stage)
+            # 阶段标签取"本步结束时"的状态机阶段 (decide() 的文本是本步开始时的阶段,
+            # 会导致最后一帧显示「插入」而实际已进入「完成」→ 3D 视图/波形看不到完成段)
+            tr["stage"].append(stage if self.sched.stage() in stage
+                               else f"阶段 {self.sched.stage()}")
             tr["done"].append(done)
             tr["x"].append(self.x.copy())
             tr["gripper"].append(self.gripper)
             tr["force"].append(force_norm)
+            tr["peg"].append(self.peg.copy())
+            tr["peg_head"].append(self.peg_head().copy())
+            tr["target"].append(np.asarray(self._stage_target(), dtype=float).copy())
+            tr["grasped"].append(bool(self.grasped))
             tr["obs"].append(obs.copy())
             tr["u_ff_vec"].append(np.asarray(u_ff, dtype=float).copy())
             tr["u_sat_vec"].append(np.asarray(u_vec, dtype=float).copy())

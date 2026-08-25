@@ -24,8 +24,10 @@ from PIL import Image, ImageDraw, ImageFont
 W, H = 960, 640          # 画布
 FPS = 25
 MARGIN = 70              # 边缘留白
-X0_W, X1_W = 0.04, 0.31
-Y0_W, Y1_W = -0.11, 0.11
+# 2026-08-25 老倪: 状态空间仿真几何换成 metaworld 真实坐标 (插销 x≈0.10/y≈0.52,
+# 孔位 x≈-0.23/y≈0.46, 机器人底座原点) → 2D 俯视边界同步放大, 否则画面全部出框
+X0_W, X1_W = -0.40, 0.22
+Y0_W, Y1_W = 0.30, 0.72
 
 _FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",

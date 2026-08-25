@@ -9171,7 +9171,7 @@ class SimulinkModule(QWidget):
                 f"<td>感知异常阻力 → 减速/退出重试</td></tr>"
                 f"<tr><td style='color:#00d4aa'>几何误差</td><td>状态机链路</td>"
                 f"<td>判断任务是否完成 → 阶段切换</td></tr>"
-                f"<tr><td style='color:#00d4aa'>阶段序列</td><td>接近→抓取→抬起→转移→插入→完成</td>"
+                f"<tr><td style='color:#00d4aa'>阶段序列</td><td>接近→对位→下降→抓取→抬起→转移→插入→完成</td>"
                 f"<td>6 阶段认知规划 (状态机)</td></tr>"
                 f"<tr><td style='color:#ffd700'>标定参数</td><td>contact_th={cth:.2f} · Kp={Kp:.2f} · thresh={th:.3f}m</td>"
                 f"<td>接触判定阈值 / 阶段P增益 / 几何阈值</td></tr>"
@@ -9345,13 +9345,13 @@ class SimulinkModule(QWidget):
                 f"📌 卡尔曼反馈闭环: 传感器反馈 z_k (物理世界) → 残差 → 校正 → 预测 — 状态空间全程闭环</p>")
         elif p.get("action_modulator"):
             html = (
-                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 动作调制器 (原状态机) — 6阶段状态机 + 否决权</h3>"
+                f"<h3 style='color:#FF6B6B;margin:4px'>🧭 动作调制器 (原状态机) — 8阶段状态机 + 否决权 + 夹持锁存</h3>"
                 f"<p style='color:#8b949e;font-size:11pt'>决策层: 融合建议与证据, 决定阶段切换与动作 — 快路径无权独自行动。</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:11pt'>"
                 f"<tr style='color:#e6edf3'><th>输入</th><th>来源</th><th>用途</th></tr>"
                 f"<tr><td style='color:#FFD700'>u_ff 建议动作</td><td>前馈加速器 (权重 30%)</td><td>快路径建议, 可被否决</td></tr>"
                 f"<tr><td style='color:#FF6B6B'>contact 概率 + 残差</td><td>状态校正器</td><td>慢路径证据: 异常 → 否决 u_ff</td></tr>"
-                f"<tr><td style='color:#00d4aa'>阶段切换</td><td>接近→抓取→抬起→转移→插入→完成</td><td>认知规划序列</td></tr>"
+                f"<tr><td style='color:#00d4aa'>阶段切换</td><td>接近→对位→下降→抓取→抬起→转移→插入→完成</td><td>认知规划序列</td></tr>"
                 f"<tr><td style='color:#00d4aa'>动作融合</td><td>u = w_ff·u_ff + (1−w_ff)·u_fb</td><td>建议与反馈加权合成</td></tr>"
                 f"<tr><td style='color:#ffd700'>否决权</td><td>残差 > 阈值 → 强制减速/重试</td><td>认知层最后拍板</td></tr>"
                 f"</table><p style='color:#8b949e;font-size:11pt;margin-top:6px'>"
@@ -9636,28 +9636,43 @@ class SimulinkModule(QWidget):
         self._log("S1 时空感知前端: 📡传感器融合 (RGB-D+力觉+触觉) → 🧩43D统一状态向量 obs")
         self._log("S2 并行处理层 (快慢分离): ⚡前馈加速器(原左脑MLP, u_ff权重30%) ‖ 🔮自适应状态估计器(原右脑GRU)")
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
-        self._log("S3 认知决策层 (握有否决权): 🧭动作调制器(原状态机, 6阶段状态机) → 🛡安全执行边界(饱和限幅)")
+        self._log("S3 认知决策层 (握有否决权): 🧭动作调制器(原状态机, 8阶段状态机: 接近→对位→下降→抓取→抬起→转移→插入→完成) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         _oneshot(self, 300, self._state_space_hint)
 
     def open_ss_3d(self):
         """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)"""
-        tr = getattr(self, "_ss_tr", None)
-        if not tr or not tr.get("x"):
-            # 无仿真数据 → 提示先跑状态空间仿真
-            try:
-                self._qmsg_info("🧭 3D 视图", "还没有仿真数据。请先点「🧮 状态空间」画布里的「▶ 运行」跑一次仿真。")
-            except Exception:
-                pass
-            return
         try:
-            from ss_dreamview import DreamView3D
+            from ss_dreamview import DreamView3D, load_episode
         except Exception as e:
             try:
                 self._qmsg_info("🧭 3D 视图", f"3D 视图加载失败: {e}")
             except Exception:
                 pass
             return
+        # 🎯 2026-08-25 老倪 (「3D 视图和操作视频的内容/角度/轨迹都不一样」):
+        #   优先用「与操作视频同源」的 metaworld episode trace —
+        #   tools/gen_ss_metaworld_episode.py 让状态空间六层源码直接驱动 metaworld,
+        #   一次产出同一条 episode 的 轨迹+处理层向量+mp4 → 3D 视图与视频轨迹/视角完全一致。
+        #   没有该 trace 才退回纯 numpy 引擎的 _ss_tr (轨迹与视频不同源, 仅看处理层)。
+        ep, meta = load_episode()
+        if ep is not None:
+            tr = ep
+            self._log(f"🧭 3D 视图数据源: 操作视频同源 episode "
+                      f"(metaworld seed={meta.get('seed')} · {meta.get('steps')} 步 · "
+                      f"终态 {meta.get('stage_final')} · 相机 corner2 外参精确对齐)")
+        else:
+            tr = getattr(self, "_ss_tr", None)
+            if not tr or not tr.get("x"):
+                try:
+                    self._qmsg_info("🧭 3D 视图",
+                                    "还没有轨迹数据。\n\n① 点「🧮 状态空间」画布里的「▶ 运行」跑一次仿真, 或\n"
+                                    "② 跑 tools/gen_ss_metaworld_episode.py 生成与操作视频同源的 episode。")
+                except Exception:
+                    pass
+                return
+            self._log("🧭 3D 视图数据源: 状态空间 numpy 引擎 (未找到同源 episode trace, "
+                      "轨迹与操作视频不同源 — 跑 tools/gen_ss_metaworld_episode.py 可同源)")
         # 复用已打开窗口 (避免重复开)
         for w in getattr(self, "_ss_3d_windows", []):
             if w.isVisible():
@@ -9832,15 +9847,22 @@ class SimulinkModule(QWidget):
             try:
                 root = self._repo_root()
                 tools_dir = _os.path.join(root, "tools")
-                # 🎯 2026-08-23 老倪: 操作视频改真实 YOLO 感知 + metaworld 渲染 (left_right 双脑+状态机)
-                #   替换手绘 state_space_sim (Pillow 示意图 + 假检测 conf 0.99)
-                out = _os.path.join(root, "reports", "insert_success_demo.mp4")
-                _env = {**_os.environ, "DISPLAY": ":0", "MUJOCO_GL": "glfw"}
-                r = _sp.run([sys.executable, os.path.join(tools_dir, "gen_insert_video.py")],
-                            capture_output=True, text=True, timeout=600, cwd=tools_dir, env=_env)
+                # 🎯 2026-08-25 老倪 (「3D 视图和操作视频的内容/角度/轨迹都不一样」):
+                #   操作视频改用「同源 episode」生成器 — 状态空间六层真实源码直接驱动
+                #   metaworld, 一次产出 同一条 episode 的 mp4 + trace(处理层向量);
+                #   3D 视图读同一个 trace → 视频与 3D 视图 轨迹/动作/视角 完全一致。
+                #   (原 gen_insert_video.py 是双脑策略的另一条 episode, 与状态空间不同源)
+                out = _os.path.join(root, "reports", "ss_episode_latest.mp4")
+                _env = {**_os.environ, "MUJOCO_GL": "egl", "MUJOCO_EGL_DEVICE": "0"}
+                r = _sp.run([sys.executable, os.path.join(tools_dir, "gen_ss_metaworld_episode.py"),
+                             "--seed", "0", "--seeds", "3"],
+                            capture_output=True, text=True, timeout=1200, cwd=tools_dir, env=_env)
                 if r.returncode != 0:
                     self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")
                     return
+                for _ln in (r.stdout or "").strip().splitlines()[-9:]:
+                    self._safe_log(f"🎬 {_ln}")
+                self._safe_log("🧭 3D 视图现在与该视频同源 — 点「🧭 3D 视图」看同一条 episode 的分层数据")
                 try:
                     r2 = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
                                   out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
@@ -9848,9 +9870,10 @@ class SimulinkModule(QWidget):
                     if r2.returncode == 0:
                         _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79",
-                                 "chmod 644 /www/wwwroot/datadrive.world/insert_success_demo.mp4"],
+                                 "chmod 644 /www/wwwroot/datadrive.world/ss_episode_latest.mp4"],
                                 capture_output=True, timeout=30)
-                        self._safe_log("🎥 操作视频已生成 (真实YOLO感知): https://datadrive.world/insert_success_demo.mp4")
+                        self._safe_log("🎥 操作视频 (与 3D 视图同源): "
+                                       "https://datadrive.world/ss_episode_latest.mp4")
                     else:
                         self._safe_log(f"🎥 视频已生成 (上传失败): {out}")
                 except Exception as e:

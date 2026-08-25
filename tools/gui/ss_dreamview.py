@@ -31,13 +31,104 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBo
 
 import pyqtgraph.opengl as gl
 
-# 世界坐标边界 (与 gen_state_space_video.py 一致)
-_X0, _X1 = 0.04, 0.31
-_Y0, _Y1 = -0.11, 0.11
-_Z0, _Z1 = 0.0, 0.16
 
-# 场景锚点 (state_space_sim 物理世界)
-_HOLE = np.array([0.25, 0.0, 0.05])   # 孔位插座
+# ════════════════════════════════════════════════════════════════
+# 同源 episode trace 装载 (2026-08-25 老倪: 「3D 视图和操作视频的内容/角度/轨迹都不一样」)
+#   根因: 视频是 metaworld MuJoCo 真实 episode, 3D 视图画的是纯 numpy 引擎的轨迹 →
+#         两套物理必然对不上。真解 = 同源: tools/gen_ss_metaworld_episode.py 让状态空间
+#         六层源码直接驱动 metaworld, 一次跑出 trace(处理层向量全在) + 同一条 episode 的
+#         mp4。3D 视图优先读这个 trace, 相机用 trace 里记录的 corner2 真实外参。
+# ════════════════════════════════════════════════════════════════
+EPISODE_NPZ = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "reports", "ss_episode_latest.npz")
+
+
+def load_episode(path=EPISODE_NPZ):
+    """读同源 episode trace → (tr dict, meta dict); 文件不存在返回 (None, None)"""
+    if not os.path.isfile(path):
+        return None, None
+    try:
+        z = np.load(path, allow_pickle=True)
+        meta = dict(z["meta"][0])
+        tr = {}
+        for k in z.files:
+            if k == "meta":
+                continue
+            arr = z[k]
+            tr[k] = [str(s) for s in arr] if k == "stage" else arr
+        tr["_meta"] = meta
+        return tr, meta
+    except Exception:
+        return None, None
+
+
+def camera_quaternion(fwd, right, up):
+    """由相机基底 (视线/右/上) 构造 pyqtgraph 'quaternion' 模式所需的旋转四元数。
+    pyqtgraph viewMatrix = T(0,0,-d) · R · T(-center) → R 必须把世界偏移映射到
+    相机系 (x=右, y=上, z=-视线) ⇒ R 的行 = [right, up, -fwd]。"""
+    from PyQt5.QtGui import QMatrix4x4, QQuaternion
+    r = np.asarray(right, float) / (np.linalg.norm(right) or 1)
+    u = np.asarray(up, float) / (np.linalg.norm(up) or 1)
+    f = np.asarray(fwd, float) / (np.linalg.norm(fwd) or 1)
+    R = np.vstack([r, u, -f])
+    m = QMatrix4x4(float(R[0, 0]), float(R[0, 1]), float(R[0, 2]), 0.0,
+                   float(R[1, 0]), float(R[1, 1]), float(R[1, 2]), 0.0,
+                   float(R[2, 0]), float(R[2, 1]), float(R[2, 2]), 0.0,
+                   0.0, 0.0, 0.0, 1.0)
+    return QQuaternion.fromRotationMatrix(m.normalMatrix())
+
+
+def fov_h_from_fovy(fovy_deg, w, h):
+    """metaworld 相机给的是**垂直** fovy, 而 pyqtgraph opts['fov'] 是**水平** fov
+    (源码: r = near·tan(fov/2); t = r·h/w) → 必须换算, 否则画幅不是正方形时
+    3D 视图的缩放和视频差一截 (实测非正方形窗口下物体投影偏 60px)。"""
+    import math
+    w = max(1, int(w))
+    h = max(1, int(h))
+    return 2.0 * math.degrees(math.atan(math.tan(math.radians(fovy_deg / 2.0)) * w / h))
+
+
+def project_world(view, p):
+    """世界点 → 归一化屏幕 (0~1, 左上原点) — 与 pyqtgraph 投影约定严格一致。
+    离屏(无 GL 上下文)也能算: 只用 viewMatrix + opts['fov'] 手算透视, 不碰 projectionMatrix。
+    唯一实现, 探针 (probe_view_match / probe_view_render) 全部复用, 防口径分裂。"""
+    import math
+    c = view.viewMatrix().map(QVector3D(float(p[0]), float(p[1]), float(p[2])))
+    depth = -c.z()
+    if depth <= 1e-6:
+        return None
+    w, h = max(1, view.width()), max(1, view.height())
+    r = math.tan(math.radians(float(view.opts.get("fov", 60.0)) / 2.0))
+    t = r * h / w
+    nx = (c.x() / depth) / r
+    ny = (c.y() / depth) / t
+    return (0.5 * (nx + 1.0), 0.5 * (1.0 - ny))
+
+# ════════════════════════════════════════════════════════════════
+# 场景锚点 — 2026-08-25 老倪: 与操作视频 (metaworld peg-insert-side-v3) 同一套真实几何
+# 实测来源 tools/probe_scene_geom.py: 插销 pegGrasp(0.0966,0.5191,0.030) 沿 X 长 0.2,
+# 孔口 hole(-0.1685,0.4623,0.1309), 插入终点 goal(-0.2345,0.4623,0.1309),
+# 带孔盒 box 中心(-0.2645,0.4623,~0.095), 机器人底座 base(0,0,0) 肩高 0.317
+# ════════════════════════════════════════════════════════════════
+_HOLE = np.array([-0.2345, 0.4623, 0.1309])        # 插入终点 (goal)
+_HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
+_BOX_CENTER = np.array([-0.2645, 0.4623, 0.095])   # 带孔盒中心
+_BOX_SIZE = (0.19, 0.20, 0.19)                     # 带孔盒尺寸
+_TABLE_CENTER = np.array([0.0, 0.58, -0.012])      # 台面板中心
+_TABLE_SIZE = (0.92, 0.62, 0.024)
+_PEG_SIZE = (0.20, 0.03, 0.03)                     # 插销 (沿 X 长条)
+_PEG_CENTER_OFF = np.array([-0.030, 0.0, -0.010])  # 插销几何中心相对抓握点
+_ARM_BASE = np.array([0.0, 0.0, 0.0])              # Sawyer 底座 (metaworld base)
+_ARM_H_BASE = 0.317                                # 肩高
+_ARM_L1 = _ARM_L2 = 0.42                           # 上臂/前臂 (够到 y=0.6 工作台)
+# 相机 = 操作视频 metaworld corner2 换算值 (probe_video_view.py 实测):
+#   cam_pos(1.3,-0.2,1.1) 视线(-0.746,0.458,-0.484) → elevation 28.9° / azimuth 328.4°
+#   (视频里 aligner 分支做 np.rot90(k=2), 旋转后世界 +Z 朝屏幕上 = z-up 常规视角)
+_CAM_ELEV = 28.9
+_CAM_AZIM = 328.4
+_CAM_CENTER = QVector3D(-0.07, 0.50, 0.08)
+_CAM_DIST = 1.05
 
 
 # ────────────────────────────────────────────────────────────
@@ -125,14 +216,13 @@ def _sphere_mesh(center, radius, rows=8, cols=12):
     return gl.MeshData(vertexes=verts, faces=md.faces())
 
 
-def _ik_sawyer(target, base, L1=0.16, L2=0.15):
+def _ik_sawyer(target, base, L1=_ARM_L1, L2=_ARM_L2, h_base=_ARM_H_BASE):
     """Sawyer 机械臂 2 连杆 IK: 由末端 target + 底座 base → 肩/肘/腕关节位置
     底座竖直, 肩在 base 上方 H_base, 肘在肩下方弯曲 (Sawyer 肘上翻)
     返回 dict: base(底), shoulder(肩), elbow(肘), wrist(腕=target)"""
     t = np.asarray(target, dtype=float)
     b = np.asarray(base, dtype=float)
-    H_BASE = 0.09          # 底座立柱高度
-    shoulder = b + np.array([0.0, 0.0, H_BASE])
+    shoulder = b + np.array([0.0, 0.0, h_base])
     # 腕 = 末端 target; 求肘 (平面内 2 连杆)
     r = t - shoulder
     d = float(np.linalg.norm(r))
@@ -183,6 +273,15 @@ class DreamView3D(QWidget):
         self._playing = False
         self._gl_items = {}       # layer -> GL item(s)
         self._layer_on = {}       # layer -> bool
+        # 场景锚点 (默认 = metaworld seed0 典型值; 同源 trace 里有 meta 就按 meta 覆盖 —
+        #  metaworld 每个 seed 的插销/孔位是随机化的, 写死会和视频对不上)
+        self._hole = _HOLE.copy()
+        self._mouth = _HOLE_MOUTH.copy()
+        self._box_c = _BOX_CENTER.copy()
+        self._table_c = _TABLE_CENTER.copy()
+        self._peg_center_off = _PEG_CENTER_OFF.copy()
+        self._src = "状态空间 numpy 引擎"
+        self._cam_fovy = 60.0     # 视频相机垂直视场 (metaworld corner2 fovy)
 
         # ── 主布局: 左(图层面板) | 3D 视图 ──
         root = QHBoxLayout(self)
@@ -236,11 +335,13 @@ class DreamView3D(QWidget):
         # 右侧 3D 视图
         right = QVBoxLayout()
         right.setSpacing(6)
-        self.view = gl.GLViewWidget()
-        # 🧭 2026-08-26 老倪: 视角对齐操作视频 — azimuth 180→270(使世界+X→屏幕右/+Y→屏幕上),
-        # center 对准场景(0.11,-0.02)+distance 0.50: 孔位落在屏幕右侧~73%(与操作视频 73.7% 一致),
-        # 机械臂底座(y=-0.2)仍在视野下方可见
-        self.view.setCameraPosition(pos=QVector3D(0.11, -0.02, 0.0), distance=0.50, elevation=88, azimuth=270)
+        # rotationMethod='quaternion': 才能精确设定相机朝向 (含 roll) = 视频相机外参
+        self.view = gl.GLViewWidget(rotationMethod='quaternion')
+        # 🧭 2026-08-25 老倪: 视角对齐操作视频 — 不再是正俯视 (elev 88), 改成 metaworld
+        # corner2 相机的斜视角 (elev 28.9 / azim 328.4, probe_video_view.py 实测换算),
+        # 与视频里看到的方向一致: 世界 +X→屏幕右下 · +Y→右上 · +Z→上
+        self.view.setCameraPosition(pos=_CAM_CENTER, distance=_CAM_DIST,
+                                    elevation=_CAM_ELEV, azimuth=_CAM_AZIM)
         self.view.setBackgroundColor('#0d1117')
         right.addWidget(self.view, 1)
 
@@ -278,6 +379,9 @@ class DreamView3D(QWidget):
     # ── 数据装载 ──
     def set_trajectory(self, tr):
         self.tr = tr
+        meta = tr.get("_meta") if isinstance(tr, dict) else None
+        if meta:
+            self._apply_meta(meta)
         n = len(tr.get("x", []))
         self._n = n
         self.slider.setRange(0, max(0, n - 1))
@@ -285,6 +389,51 @@ class DreamView3D(QWidget):
         if n > 0:
             self._update_frame(0)
             self.lbl_frame.setText(f"0 / {n - 1}")
+
+    # ── 同源 episode: 场景几何 + 相机 全部按 trace 里的真实值 ──
+    def _apply_meta(self, meta):
+        """meta 来自 gen_ss_metaworld_episode.py (与操作视频同一条 episode):
+        真实孔口/插入终点/盒子/台面坐标 + corner2 相机外参 (含 rot180 等效基底)"""
+        try:
+            self._hole = np.asarray(meta.get("goal", self._hole), dtype=float)
+            self._mouth = np.asarray(meta.get("hole_mouth", self._mouth), dtype=float)
+            self._box_c = np.asarray(meta.get("box_center", self._box_c), dtype=float)
+            tc = np.asarray(meta.get("table_center", self._table_c), dtype=float)
+            self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
+            head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
+            self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
+            self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
+                         f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
+            # 相机: 精确对齐视频 corner2 (四元数含 roll), 视距 = 相机到场景锚点的真实距离
+            cp = np.asarray(meta["cam_pos"], dtype=float)
+            cf = np.asarray(meta["cam_fwd"], dtype=float)
+            cr = np.asarray(meta["cam_right"], dtype=float)
+            cu = np.asarray(meta["cam_up"], dtype=float)
+            self._cam_fovy = float(meta.get("cam_fovy", 60.0))
+            anchor = 0.5 * (np.asarray(meta.get("peg0", self._mouth), dtype=float) + self._mouth)
+            t = float(np.dot(anchor - cp, cf / (np.linalg.norm(cf) or 1)))
+            center = cp + cf / (np.linalg.norm(cf) or 1) * t
+            self.view.opts["rotationMethod"] = "quaternion"
+            self.view.setCameraPosition(pos=QVector3D(*center.tolist()),
+                                        distance=max(0.3, t),
+                                        rotation=camera_quaternion(cf, cr, cu))
+            self._sync_fov()
+            self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+        except Exception as e:
+            print(f"⚠️ 同源 trace meta 应用失败, 退回默认视角: {e}")
+
+    def _sync_fov(self):
+        """把视频的垂直 fovy 换算成 pyqtgraph 的水平 fov (随窗口尺寸变化必须重算)"""
+        try:
+            self.view.opts["fov"] = fov_h_from_fovy(self._cam_fovy,
+                                                    self.view.width(), self.view.height())
+            self.view.update()
+        except Exception:
+            pass
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._sync_fov()
 
     # ── 场景构建 ──
     def _build_scene(self):
@@ -296,80 +445,92 @@ class DreamView3D(QWidget):
                 self.view.removeItem(it)
         self._gl_items.clear()
 
-        # 地面网格 (z=0)
+        # 地面网格 (z=0, 覆盖整个工作区: 机器人 y=0 → 工作台 y≈0.6)
         gz = gl.GLGridItem()
-        gz.setSize(0.4, 0.3)
+        gz.setSize(1.1, 1.0)
         gz.setSpacing(0.05, 0.05)
-        gz.translate(0.17, 0.0, 0.0)
+        gz.translate(-0.05, 0.45, 0.0)
         self._gl_items["_grid"] = gz
         self.view.addItem(gz)
 
-        # 坐标轴
+        # 坐标轴 (世界原点 = 机器人底座)
         ax = gl.GLAxisItem()
-        ax.setSize(0.12, 0.12, 0.12)
+        ax.setSize(0.20, 0.20, 0.20)
         self._gl_items["_axis"] = ax
         self.view.addItem(ax)
 
-        # 场景层 (静态几何: 工作台 + 孔位插座; peg/夹爪动态, 见 _update_frame)
+        # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 插销/夹爪动态, 见 _update_frame)
         scene = []
-        # 工作台 (薄板)
-        table = gl.GLMeshItem(meshdata=_box_mesh((0.17, 0.0, -0.015), (0.34, 0.28, 0.03)),
+        # 工作台面板
+        table = gl.GLMeshItem(meshdata=_box_mesh(self._table_c, _TABLE_SIZE),
                               color=(0.16, 0.18, 0.22, 1.0), smooth=False, shader='shaded')
         self.view.addItem(table)
         scene.append(table)
-        # 孔位插座 (红, 醒目) + 深色孔口 (插销目标)
-        # 注意: 插座压矮 (z 0~0.03), 末端插销最低 z=0.048 始终露在插座上方, 俯视可见
-        hole = gl.GLMeshItem(meshdata=_box_mesh((_HOLE[0], _HOLE[1], 0.015), (0.13, 0.13, 0.03)),
-                             color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(hole)
-        scene.append(hole)
-        # 孔口 (深色凹陷, 插销插入位置)
-        hole_mouth = gl.GLMeshItem(meshdata=_box_mesh((_HOLE[0], _HOLE[1], 0.035), (0.06, 0.06, 0.008)),
-                                   color=(0.05, 0.04, 0.03, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(hole_mouth)
-        scene.append(hole_mouth)
+        # 带孔盒 (红, 醒目 — 侧插目标件)
+        box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
+                            color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(box)
+        scene.append(box)
+        # 孔口 (盒子 +X 面上的深色方口 = 插销侧插入口)
+        mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
+                                                 (0.012, 0.05, 0.05)),
+                              color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
+        self.view.addItem(mouth)
+        scene.append(mouth)
+        # 插入终点标记 (goal, 半透明绿点线框)
+        gv, ge = _bbox_lines(self._hole, (0.03, 0.05, 0.05))
+        gpts = []
+        for e in ge:
+            gpts.append(gv[e[0]])
+            gpts.append(gv[e[1]])
+        goal = gl.GLLinePlotItem(pos=np.array(gpts), color=(0.20, 0.95, 0.55, 0.7),
+                                 width=2, mode='lines')
+        self.view.addItem(goal)
+        scene.append(goal)
         self._gl_items["scene"] = scene
 
         # 🤖 Sawyer 机械臂 (2026-08-25 老倪: 形象渲染 — 底座+肩+肘+腕+夹爪)
-        self._arm_base = np.array([0.12, -0.20, 0.0])   # 底座固定在工作区后方
+        self._arm_base = _ARM_BASE.copy()   # metaworld 机器人底座 = 世界原点
         arm = []
         # 底座立柱 (竖直圆柱)
-        arm_base = gl.GLMeshItem(meshdata=_cylinder_mesh(self._arm_base, self._arm_base + [0, 0, 0.09], 0.035),
+        arm_base = gl.GLMeshItem(meshdata=_cylinder_mesh(self._arm_base,
+                                                         self._arm_base + [0, 0, _ARM_H_BASE],
+                                                         0.055),
                                  color=(0.30, 0.32, 0.36, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_base)
         arm.append(arm_base)
         # 肩/肘/腕关节球 + 上臂/前臂圆柱 (动态更新, 先占位)
-        arm_upper = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.022),
+        arm_upper = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.032),
                                   color=(0.85, 0.30, 0.18, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_upper)
         arm.append(arm_upper)
-        arm_fore = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.018),
+        arm_fore = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.026),
                                  color=(0.85, 0.30, 0.18, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_fore)
         arm.append(arm_fore)
-        arm_shoulder = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.030),
+        arm_shoulder = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.042),
                                      color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_shoulder)
         arm.append(arm_shoulder)
-        arm_elbow = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.026),
+        arm_elbow = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.034),
                                   color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_elbow)
         arm.append(arm_elbow)
-        arm_wrist = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.022),
+        arm_wrist = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.026),
                                   color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_wrist)
         arm.append(arm_wrist)
-        # 夹爪两瓣 (动态开合, 青色醒目 — 2026-08-26 老倪: 原灰蓝与关节混淆; shader=None 纯色无光照, 俯视不被压暗)
-        arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.020, 0.075, 0.05)),
+        # 夹爪两瓣 (沿 Y 开合 — 插销是沿 X 的长条, 从 ±Y 两侧夹住; 青色纯色不被光照压暗)
+        arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.05, 0.016, 0.05)),
                                   color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_l)
         arm.append(arm_jaw_l)
-        arm_jaw_r = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.020, 0.075, 0.05)),
+        arm_jaw_r = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.05, 0.016, 0.05)),
                                   color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_r)
         arm.append(arm_jaw_r)
-        # 光模块 peg (金色插销, 被夹爪夹持, 随末端移动)
-        arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.07, 0.05, 0.05)),
+        # 光模块 peg (金色插销 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["peg"])
+        arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], _PEG_SIZE),
                                 color=(0.95, 0.72, 0.10, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_peg)
         arm.append(arm_peg)
@@ -466,21 +627,26 @@ class DreamView3D(QWidget):
         # 🤖 Sawyer 机械臂 IK (末端=peg 位置, 夹爪开合随 gripper)
         ik = _ik_sawyer(x, self._arm_base)
         arm = self._gl_items["arm"]
-        arm[self._arm_idx["upper"]].setMeshData(meshdata=_cylinder_mesh(ik["shoulder"], ik["elbow"], 0.022))
-        arm[self._arm_idx["fore"]].setMeshData(meshdata=_cylinder_mesh(ik["elbow"], ik["wrist"], 0.018))
-        arm[self._arm_idx["shoulder"]].setMeshData(meshdata=_sphere_mesh(ik["shoulder"], 0.030))
-        arm[self._arm_idx["elbow"]].setMeshData(meshdata=_sphere_mesh(ik["elbow"], 0.026))
-        arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.022))
-        # 🖐 夹爪抓取动作 (2026-08-26 老倪: 原沿 y 开合 + 瓣太小, 俯视看不见抓取)
-        # 沿 x 方向(peg 长边 0.07)夹持; 瓣浮在 peg 上方 0.015 (俯视不被机械臂/peg 遮挡)
+        arm[self._arm_idx["upper"]].setMeshData(meshdata=_cylinder_mesh(ik["shoulder"], ik["elbow"], 0.032))
+        arm[self._arm_idx["fore"]].setMeshData(meshdata=_cylinder_mesh(ik["elbow"], ik["wrist"], 0.026))
+        arm[self._arm_idx["shoulder"]].setMeshData(meshdata=_sphere_mesh(ik["shoulder"], 0.042))
+        arm[self._arm_idx["elbow"]].setMeshData(meshdata=_sphere_mesh(ik["elbow"], 0.034))
+        arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.026))
+        # 🖐 夹爪开合 (2026-08-25 老倪: 插销是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
+        #   张开 gap=0.048 (瓣在插销外侧) → 闭合 gap=0.024 (贴住插销 0.03 宽的两侧)
         g = float(tr["gripper"][i])
-        gap = 0.045 + (1.0 - g) * 0.025   # 闭合0.045(贴peg边缘) → 张开0.070(远离)
-        jaw_dir = np.array([1.0, 0.0, 0.0])   # 沿 x 开合 (peg 长边方向)
-        z_lift = np.array([0.0, 0.0, 0.015])
-        arm[self._arm_idx["jaw_l"]].setMeshData(meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap + z_lift, (0.020, 0.075, 0.05)))
-        arm[self._arm_idx["jaw_r"]].setMeshData(meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap + z_lift, (0.020, 0.075, 0.05)))
-        # peg 随末端 (被夹爪夹住)
-        arm[self._arm_idx["peg"]].setMeshData(meshdata=_box_mesh(ik["wrist"], (0.07, 0.05, 0.05)))
+        gap = 0.024 + (1.0 - g) * 0.024
+        jaw_dir = np.array([0.0, 1.0, 0.0])
+        arm[self._arm_idx["jaw_l"]].setMeshData(
+            meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap, (0.05, 0.016, 0.05)))
+        arm[self._arm_idx["jaw_r"]].setMeshData(
+            meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap, (0.05, 0.016, 0.05)))
+        # 🔩 插销: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
+        #   老 tr 没有 "peg" 键 (旧仿真 peg=末端) → 回退到末端, 保持兼容
+        peg_grasp = (np.asarray(tr["peg"][i], dtype=float)
+                     if tr.get("peg") is not None and len(tr["peg"]) > i else x)
+        arm[self._arm_idx["peg"]].setMeshData(
+            meshdata=_box_mesh(peg_grasp + self._peg_center_off, _PEG_SIZE))
 
         # 动作箭头 (4 层)
         for key in ("uff", "ufb", "ufuse", "ulimit"):
@@ -499,11 +665,10 @@ class DreamView3D(QWidget):
         if tip is not None:
             self._gl_items["ufuse_sphere"].setData(pos=np.array([tip]))
 
-        # YOLO 检测框: hand/peg/hole 三个框 (用场景真实 3D 坐标)
-        #   hand ≈ 末端, peg ≈ 末端 (peg 随末端), hole ≈ 孔位
-        boxes = [("hand", x, (0.065, 0.045, 0.02)),
-                 ("peg", x, (0.055, 0.032, 0.032)),
-                 ("hole", _HOLE, (0.08, 0.08, 0.04))]
+        # YOLO 检测框: hand/peg/hole 三个框 (真实 3D 坐标 — peg 用独立插销位置, hole 用孔口)
+        boxes = [("hand", x, (0.07, 0.07, 0.06)),
+                 ("peg", peg_grasp + self._peg_center_off, (0.21, 0.04, 0.04)),
+                 ("hole", self._mouth, (0.05, 0.07, 0.07))]
         for cls, ctr, sz in boxes:
             v, edges = _bbox_lines(ctr, sz)
             # 线框: 每条边 2 顶点 → 12 条边拼成 24 点序列
@@ -533,7 +698,7 @@ class DreamView3D(QWidget):
         # 时间轴标签
         t = tr["t"][i]
         stage = tr["stage"][i].replace("阶段 ", "")
-        self.lbl_t.setText(f"t={t:.2f}s · 帧 {i}/{self._n - 1}\n阶段 {stage}")
+        self.lbl_t.setText(f"t={t:.2f}s · 帧 {i}/{self._n - 1}\n阶段 {stage}\n数据源: {self._src}")
         self.lbl_frame.setText(f"{i} / {self._n - 1}")
         if not self.slider.isSliderDown():
             self.slider.setValue(i)

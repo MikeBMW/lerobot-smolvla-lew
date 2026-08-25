@@ -370,8 +370,8 @@ def node_infer_rollout(ctx):
 def node_eval_state_space(ctx):
     """📊 模型评估 (状态空间) — Z700 双脑稳定性评估 (2026-08-12 老倪)
     指标: ①L2增益(左脑Lipschitz) ②BIBO(有界输入有界输出) ③自回归谱半径ρ(右脑预测误差)
-    ④状态机覆盖(6阶段可达+成功率) ⑤李雅普诺夫势能 ⑥谱范数 ⑦潜空间频谱 ⑧接触分离 ⑨动作平滑度
-    状态空间: X=[X_obs(43D), X_latent(潜), X_sm(6阶段状态机)]
+    ④状态机覆盖(8阶段可达+成功率) ⑤李雅普诺夫势能 ⑥谱范数 ⑦潜空间频谱 ⑧接触分离 ⑨动作平滑度
+    状态空间: X=[X_obs(43D), X_latent(潜), X_sm(8阶段状态机)]
     真实实现: tools/eval_state_space.py → reports/eval_state_space.json + 飞书"""
     log = ctx["log"]
     node = ctx.get("node", {})
@@ -1353,7 +1353,7 @@ def node_ss_dyn(ctx):
 
 
 def node_ss_s3(ctx):
-    """S3 认知决策层 — 动作调制器握否决权 (6阶段状态机 + 按阶段融合) → 安全执行边界 (饱和限幅)"""
+    """S3 认知决策层 — 动作调制器握否决权 (8阶段状态机 + 按阶段融合 + 夹持锁存) → 安全执行边界 (饱和限幅)"""
     _ss_run(ctx, "S3 认知决策层", "cognition.py")
 
 
@@ -1403,7 +1403,7 @@ _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 �
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
 _reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
-_reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 6阶段状态机(接近→抓取→抬起→转移→插入→完成) + 否决权 + 按阶段融合 (源码 cognition.py ActionModulator)", node_ss_s3)
+_reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 8阶段状态机(接近→对位→下降→抓取→抬起→转移→插入→完成, 与操作视频状态机同构) + 否决权 + 夹持锁存 + 按阶段融合 (源码 cognition.py ActionModulator)", node_ss_s3)
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
 _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
