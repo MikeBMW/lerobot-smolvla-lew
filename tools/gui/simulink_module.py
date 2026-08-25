@@ -3448,11 +3448,16 @@ class LibraryPanel(QFrame):
     # 📚 模块库左侧栏折叠信号 (2026-08-06 老倪: 太占地方, 可缩到左边)
     collapse_requested = pyqtSignal()
     expand_requested = pyqtSignal()
+    LIB_W = 560       # 📚 展开宽度 (2026-08-25 老倪: 360→560, 模块名不再被切)
+    LIB_W_COLLAPSED = 20
 
     def __init__(self, module):
         super().__init__()
         self.module = module
-        self.setFixedWidth(360)  # 🐛 2026-08-22 老倪: 360 加宽容纳放大后的字体/模块名
+        # 🐛 2026-08-25 老倪: "模块库太窄了, 里面的字太挤了" — 实测 360px 下 434 个模块
+        #   按钮里 270 个 (62.2%) 文字被切 (模块名+VEH编号 P95=472px);
+        #   加宽到 560px → 被切降到 4 个 (0.9%)。展开/折叠共用 LIB_W 常量。
+        self.setFixedWidth(self.LIB_W)
         self.setStyleSheet("background:#f6f8fa; border-right:1px solid #d0d7de;")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -3462,11 +3467,10 @@ class LibraryPanel(QFrame):
         #   v2 2026-08-06: 按钮加大加醒目 + 双击标题也可折叠)
         head = QHBoxLayout()
         self._title_lbl = QLabel("📚 模块库")
-        self._title_lbl.setStyleSheet("color:#1f2328; font-size:11.5pt; font-weight:700; padding:4px;")
+        self._title_lbl.setStyleSheet("color:#1f2328; font-size:14pt; font-weight:700; padding:4px;")
         head.addWidget(self._title_lbl)
         head.addStretch()
         self._btn_collapse = QPushButton("◀ 收起")
-        self._btn_collapse.setFixedWidth(72)
         self._btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
         # 🎨 用浅底样式 (switch_theme 会正确转深色; 之前 #1f6feb 蓝底白字被
         # switch_theme 把白字替换成深色 → 蓝底深字看不清, 老倪反馈找不到)
@@ -3475,6 +3479,10 @@ class LibraryPanel(QFrame):
                         border-radius:4px; font-size:13pt; font-weight:700; padding:4px 8px;}
             QPushButton:hover{border-color:#1f6feb; background:#dbe9ff;}
         """)
+        # 2026-08-25 老倪: 原 setFixedWidth(72) 装不下 13pt 的「◀ 收起」(字被切) →
+        #   样式生效后按 sizeHint 自适应 (必须在 setStyleSheet 之后算, 否则用的是默认字号)
+        self._btn_collapse.ensurePolished()
+        self._btn_collapse.setMinimumWidth(self._btn_collapse.sizeHint().width() + 6)
         self._btn_collapse.clicked.connect(self.collapse_requested.emit)
         head.addWidget(self._btn_collapse)
         lay.addLayout(head)
@@ -3521,6 +3529,20 @@ class LibraryPanel(QFrame):
         if now - last < 0.4:  # 双击
             self.collapse_requested.emit()
 
+    def _elide_lib_text(self, btn):
+        """✂️ 2026-08-25 老倪: 极少数超长模块名 (>506px, 434 条里 4 条) 仍超出 560px 面板
+        → 中间省略 (ElideMiddle: 保留开头模块名 + 结尾 VEH.5.xxx 编号), 完整名留在 tooltip。
+        必须 ensurePolished() 后取 fontMetrics, 否则拿到的是默认字号不是 QSS 的 13pt。"""
+        try:
+            usable = self.LIB_W - 16 - 14 - 26   # 面板宽 - 边距 - 滚动条 - QToolButton padding
+            btn.ensurePolished()
+            fm = btn.fontMetrics()
+            full = btn.text()
+            if fm.horizontalAdvance(full) > usable:
+                btn.setText(fm.elidedText(full, Qt.ElideMiddle, usable))
+        except Exception:
+            pass
+
     def set_collapsed(self, collapsed):
         """📚 折叠/展开左侧栏 (2026-08-22 老倪: 去掉独立 16px 空扩展条, 折叠自收窄到 20px)"""
         self._collapsed = collapsed
@@ -3530,14 +3552,14 @@ class LibraryPanel(QFrame):
             self.scroll.hide()
             self._hint_lbl.hide()
             self._btn_expand.show()
-            self.setFixedWidth(20)
+            self.setFixedWidth(self.LIB_W_COLLAPSED)
         else:
             self._btn_expand.hide()
             self._title_lbl.show()
             self._btn_collapse.show()
             self.scroll.show()
             self._hint_lbl.show()
-            self.setFixedWidth(360)
+            self.setFixedWidth(self.LIB_W)
 
     def _rebuild(self):
         """重建模块库列表 (按工作流过滤)"""
@@ -3573,7 +3595,7 @@ class LibraryPanel(QFrame):
                 btn.setToolTip((f"VEH.5.{_seq:03d} — " if _seq else "") + f"{it['name']} (与画布节点 ID 一致)")
                 btn.setStyleSheet(f"""
                     QToolButton {{ background:#e9edf2; color:#24292f; border:1px solid #d0d7de;
-                    border-radius:4px; padding:4px 8px; font-size:13pt; text-align:left; }}
+                    border-radius:5px; padding:7px 12px; font-size:13pt; text-align:left; }}
                     QToolButton:hover {{ border-color:{COLORS[ntype]}; color:#1f2328; }}
                 """)
                 if it.get("params", {}).get("scene_id"):
@@ -3594,6 +3616,7 @@ class LibraryPanel(QFrame):
                                         self.module.add_node_at_center(t, nm, ps))
                 self._lib_btns[it["name"]] = btn
                 btn.setVisible(not collapsed)  # 分组折叠时隐藏组内按钮
+                self._elide_lib_text(btn)      # 超长模块名中间省略 (头名字+尾VEH编号都保留)
                 self.v.addWidget(btn)
         # 📦 数据集组 (2026-08-07 老倪: 功能块同步显示已有数据集 — 光模块/套环/Orin)
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else os.path.expanduser("~/lerobot-smolvla-lew")
@@ -3890,19 +3913,30 @@ class SimulinkModule(QWidget):
         # (2026-08-06 老倪: 工作流过滤按钮行「① 访问·标注数据…」白色按钮没用占地方 → 删除;
         #  set_filter/_filter_library 方法保留, 无 UI 入口不影响任何功能)
         # 工具栏 (对标 Simulink 工具条)
-        tb = QFrame()
+        # 🔍 2026-08-25 老倪: "画布上面的按钮太小了, 里面的字都挤在一起了" —
+        #   实测 20 个按钮挤在固定 44px 高单行里: 按钮高 35px / 字高 22px / padding 5x14,
+        #   在 3200x2000 (物理 236DPI) 面板上物理只有 3.8mm 高 → 又小又挤。
+        #   改法: 字 11pt→15pt, padding 5x14→10x20, 最小高 46px, 容器换 FlowBar
+        #   (自动换行 + 高度自适应), 放大后单行放不下自动折第二行, 永不压扁文字。
+        try:
+            from ui_flowlayout import FlowBar
+            tb = FlowBar(margin=(12, 7, 12, 7), h_spacing=10, v_spacing=8)
+            tl = tb.flow()
+        except Exception:      # 兜底: 布局模块缺失退回旧单行
+            tb = QFrame()
+            tb.setFixedHeight(44)
+            tl = QHBoxLayout(tb)
+            tl.setContentsMargins(10, 4, 10, 4)
+            tl.setSpacing(8)
         tb.setStyleSheet("background:#f6f8fa; border-bottom:1px solid #d0d7de;")
-        tb.setFixedHeight(44)
-        tl = QHBoxLayout(tb)
-        tl.setContentsMargins(10, 4, 10, 4)
-        tl.setSpacing(8)
 
         def mk_btn(text, tip, fn, color="#58a6ff"):
             b = QPushButton(text)
             b.setToolTip(tip)
+            b.setMinimumHeight(46)          # 放大: 35px → 46px (物理 ~5mm, 好点)
             b.setStyleSheet(f"""
                 QPushButton {{ background:#e9edf2; color:{color}; border:1px solid #d0d7de;
-                border-radius:5px; padding:5px 14px; font-size:11pt; font-weight:600; }}
+                border-radius:7px; padding:10px 20px; font-size:15pt; font-weight:700; }}
                 QPushButton:hover {{ border-color:{color}; background:#dbe9ff; }}
                 QPushButton:disabled {{ color:#555; border-color:#222; }}
             """)
@@ -3962,7 +3996,7 @@ class SimulinkModule(QWidget):
         # ┃ 分割线: 工具类 | 数据典型应用 (2026-08-06 老倪: 归类, 中间分割线分开)
         sep = QFrame()
         sep.setFrameShape(QFrame.VLine)
-        sep.setFixedHeight(28)
+        sep.setFixedHeight(40)   # 2026-08-25: 按钮放大到 46px → 分割线同步 28→40
         sep.setStyleSheet("color:#b6bdc7; background:#b6bdc7; border:none; width:1px; margin:0 4px;")
         tl.addWidget(sep)
 
@@ -3991,6 +4025,18 @@ class SimulinkModule(QWidget):
 
         tl.addStretch()
         # (2026-08-06 老倪: 右上角 t= 时钟与底部状态栏 t 重复 → 删除; 底部 lbl_rt 已显示)
+
+        # 🔧 2026-08-25 老倪: 按钮放大后 emoji 字形高度不一 (52~66px) → 一行高矮不齐,
+        #   统一取最高 sizeHint 定死, 视觉一条线 (不裁字形)
+        try:
+            _tbtns = [b for b in tb.findChildren(QPushButton)]
+            if _tbtns:
+                _h = max(b.sizeHint().height() for b in _tbtns)
+                for b in _tbtns:
+                    b.setFixedHeight(_h)
+                sep.setFixedHeight(max(28, _h - 14))
+        except Exception:
+            pass
 
         outer.addWidget(tb)
 

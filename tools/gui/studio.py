@@ -638,7 +638,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v2.8.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v2.8.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -9741,9 +9741,18 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v2.8.3 [W-01]")  # v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v2.8.4 [W-01]")  # v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
+        # 🖥 2026-08-25 老倪: UI 重新适配 — 3200x2000 屏上固定 1400x900 只占 27% 面积,
+        #   工具栏被迫折行 + 模块库 560px 挤占画布 → 大屏(宽≥2560)直接最大化启动。
+        try:
+            _ag = QApplication.primaryScreen().availableGeometry()
+            if _ag.width() >= 2560:
+                self.resize(int(_ag.width() * 0.97), int(_ag.height() * 0.95))
+                self.setWindowState(self.windowState() | Qt.WindowMaximized)
+        except Exception:
+            pass
         self._build()
         # 🌐 2026-08-08 老倪: 全控制台所有 Qt 控件 ID 角标 (叠加式 QLabel — 安全不崩, 所有页所有控件)
         try:
@@ -11041,8 +11050,13 @@ def main():
     try:
         from PyQt5.QtGui import QGuiApplication
         scr = QGuiApplication.primaryScreen()
-        if scr:
-            geo = scr.availableGeometry()
+        geo = scr.availableGeometry() if scr else None
+        if geo is not None and geo.width() >= 2560:
+            # 🖥 2026-08-25 老倪 UI 重新适配: 3200x2000 屏上写死 1400x900 只占 27% 面积
+            #   (工具栏被迫折行, 模块库 560px 挤画布) → 大屏直接铺满可用工作区并最大化
+            win.setGeometry(geo.x(), geo.y(), geo.width(), geo.height())
+            win.setWindowState(win.windowState() | Qt.WindowMaximized)
+        elif geo is not None:
             win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
                             1400, 900)
         else:
