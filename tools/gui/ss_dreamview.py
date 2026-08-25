@@ -535,6 +535,16 @@ class DreamView3D(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
 
+        # 🐛 2026-08-25 老倪「3D 空间的文字没有跟着图像走」: 鼠标旋转/缩放视角时投影变了,
+        #   但标注只在换帧时算 → 文字停在原处。事件过滤器在本机 (Mesa/QOpenGLWidget) 实测
+        #   收不到 view 的鼠标事件 (sendEvent 验证过滤器未触发) → 改用相机状态看门狗:
+        #   20Hz 比对相机参数 (center/distance/elevation/azimuth/rotation/fov/尺寸),
+        #   一变就重投影标注。鼠标拖拽、滚轮缩放、程序切档、窗口 resize 全覆盖。
+        self._cam_watch = QTimer(self)
+        self._cam_watch.timeout.connect(self._watch_camera)
+        self._cam_watch.start(50)
+        self._cam_sig = None
+
         if tr is not None:
             self.set_trajectory(tr)
 
@@ -605,6 +615,7 @@ class DreamView3D(QWidget):
                                             distance=cam["dist"],
                                             rotation=camera_quaternion(cam["fwd"], cam["right"], cam["up"]))
                 self._sync_fov()
+                self._refresh_label_positions()
                 return
             pts = []
             for k in ("x", "peg", "peg_head"):
@@ -623,6 +634,7 @@ class DreamView3D(QWidget):
                 self.view.opts["fov"] = 60.0
                 self.view.update()
                 self._refine_distance(P, target=0.72)     # 俯视也按投影收紧距离
+                self._refresh_label_positions()
                 return
             # fit 档: 朝向沿用视频机位, 距离按包围盒外接球 + fov 求
             fwd = cam["fwd"] if cam else np.array([-0.746, 0.458, -0.484])
@@ -669,6 +681,7 @@ class DreamView3D(QWidget):
             if abs(spread - target) < 0.03 and abs(dx) < 0.01 and abs(dy) < 0.01:
                 break
         self.view.update()
+        self._refresh_label_positions()
 
     def _refine_distance(self, P, target=0.72, iters=10):
         """只调距离不动朝向 (俯视档用): 把点云投影占屏收敛到 target"""
@@ -687,6 +700,48 @@ class DreamView3D(QWidget):
                 self.view.opts["distance"] * float(np.clip(spread / target, 0.6, 1.7)), 0.18, 6.0))
             self.view.update()
 
+    def _camera_signature(self):
+        """相机+画布状态指纹 — 任何一项变了就说明投影变了, 标注必须重算"""
+        o = self.view.opts
+        c = o.get("center")
+        rot = o.get("rotation")
+        return (round(float(c.x()), 6), round(float(c.y()), 6), round(float(c.z()), 6),
+                round(float(o.get("distance", 0)), 6),
+                round(float(o.get("elevation", 0) or 0), 4),
+                round(float(o.get("azimuth", 0) or 0), 4),
+                round(float(o.get("fov", 60)), 4),
+                (round(rot.scalar(), 6), round(rot.x(), 6), round(rot.y(), 6), round(rot.z(), 6))
+                if rot is not None else None,
+                self.view.width(), self.view.height())
+
+    def _watch_camera(self):
+        """20Hz: 相机/画布一变就重投影标注 (文字始终跟着图像走)"""
+        try:
+            sig = self._camera_signature()
+            if sig != self._cam_sig:
+                self._cam_sig = sig
+                if self._overlay.width() != self.view.width() or \
+                   self._overlay.height() != self.view.height():
+                    self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+                self._refresh_label_positions()
+        except Exception:
+            pass
+
+    def _refresh_label_positions(self):
+        """把已存的世界坐标标注重新投影到当前视角的屏幕坐标 (文字跟着图像走)。
+        任何改变投影的动作都必须调它: 鼠标旋转/平移/滚轮缩放、取景切换、窗口 resize。"""
+        try:
+            out = []
+            w, h = max(1, self.view.width()), max(1, self.view.height())
+            for wp, text, col, bold in getattr(self, "_label_world", []):
+                s = project_world(self.view, wp)
+                if s is None or not (-0.15 <= s[0] <= 1.15 and -0.15 <= s[1] <= 1.15):
+                    continue          # 转到画面外/相机背后 → 不画 (不留在原地误导)
+                out.append((s[0] * w, s[1] * h, text, col, bold))
+            self._overlay.set_labels(out)
+        except Exception:
+            pass
+
     def _sync_fov(self):
         """把视频的垂直 fovy 换算成 pyqtgraph 的水平 fov (随窗口尺寸变化必须重算)"""
         try:
@@ -699,8 +754,16 @@ class DreamView3D(QWidget):
     def eventFilter(self, obj, ev):
         """3D 画布尺寸变化 → 标注层跟着变 (覆盖层必须与画布严格同尺寸, 否则坐标错位)"""
         try:
-            if obj is self.view and ev.type() == ev.Resize:
-                self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+            if obj is self.view:
+                et = ev.type()
+                if et == ev.Resize:
+                    self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+                    self._sync_fov()
+                    self._refresh_label_positions()
+                elif et in (ev.MouseMove, ev.Wheel, ev.MouseButtonRelease,
+                            ev.MouseButtonPress, ev.MouseButtonDblClick):
+                    # 鼠标旋转/平移/缩放视角 → 立刻重投影标注 (否则文字停在原处)
+                    self._refresh_label_positions()
         except Exception:
             pass
         return super().eventFilter(obj, ev)
@@ -1034,12 +1097,13 @@ class DreamView3D(QWidget):
         try:
             _NAMES2 = {"uff": "⚡前馈加速器", "ufb": "🧪状态校正器·残差",
                        "ufuse": "🧭动作调制器", "ulimit": "🛡安全执行边界"}
+            # 🐛 2026-08-25 老倪「3D 空间的文字没有跟着图像走」: 原来只在换帧时算一次屏幕坐标,
+            #   鼠标旋转/缩放视角后投影变了却不重算 → 文字与物体脱节。
+            #   改成: 这里只存**世界坐标+文字**, 屏幕坐标由 _refresh_label_positions() 每次
+            #   视角变化(鼠标拖拽/滚轮/取景切换/窗口缩放)时重新投影。
             ovl = []
             def _add(world_p, text, rgba, bold=True):
-                s = project_world(self.view, np.asarray(world_p, dtype=float))
-                if s is None or not (-0.2 <= s[0] <= 1.2 and -0.2 <= s[1] <= 1.2):
-                    return
-                ovl.append((s[0] * self.view.width(), s[1] * self.view.height(), text,
+                ovl.append((np.asarray(world_p, dtype=float), text,
                             QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)), bold))
             if self._layer_on.get("scene", True):
                 _add(np.asarray(x) + [0, 0, 0.03], "末端 hand", (0.55, 0.78, 1.0))
@@ -1064,7 +1128,8 @@ class DreamView3D(QWidget):
                     continue
                 _c = _LAYER_COLORS[_k]
                 _add(_tip, f"{_NAMES2[_k]} {_mag:.3f} m/s  {_dir_words(_a)}", _c)
-            self._overlay.set_labels(ovl)
+            self._label_world = ovl          # [(世界坐标, 文字, 颜色, 粗体)]
+            self._refresh_label_positions()
         except Exception as _e:
             print(f"⚠️ 标注层更新失败: {_e}")
 
@@ -1124,6 +1189,17 @@ class DreamView3D(QWidget):
             self._playing = True
             self.btn_play.setText("⏸ 暂停")
             self._timer.start(60)
+
+    def closeEvent(self, ev):
+        """🛡 关闭时停掉所有定时器 (工程铁律: QTimer 不清理 → 析构期回调崩溃)"""
+        for t in ("_timer", "_cam_watch"):
+            try:
+                obj = getattr(self, t, None)
+                if obj is not None:
+                    obj.stop()
+            except Exception:
+                pass
+        super().closeEvent(ev)
 
     def _pause(self):
         self._playing = False
