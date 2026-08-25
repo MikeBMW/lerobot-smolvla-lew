@@ -46,7 +46,13 @@ NODE_TYPES = {
     "scene":     {"cn": "场景", "color": "#ff9f43"},     # 🏭 场景 (2026-08-09 老倪: 插拔/搬运/光学检测 — 点击打开 ECS 链接 + 建场景节点链)
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
-DH = 84  # 节点高度 (与 web 一致)
+# 🔍 2026-08-25 老倪: "画布的方框有些小, 方框里面的字太挤, 重新排布一下"
+#   实测 (tools/probe_canvas_nodes.py): 状态空间 22 节点全是 240x84, 最长名字需要 204px
+#   而可用宽只有 204px (w-36) → 零余量, 两行硬塞; 横向已有节点紧贴 (间隙 0px),
+#   纵向行距 190~280px 却只放 84px 高的框 (大量浪费) →
+#   放大到 280x110 + 每行按新宽度自动重排拉开间距 (_relayout_row_gaps)。
+DH = 110  # 节点高度 (84→110: 标题最多三行 + 上下留白)
+DW = 280  # 节点默认宽度 (240→280: 可用宽 204→228, 字不再贴徽章)
 
 # 🎯 状态空间变量监控 → 画布连线映射 (2026-08-20 老倪: 选中右侧变量高亮对应连线)
 # 键 = state_space_sim.last_io 的模块名, 值 = state_space_obs.json 节点的 name
@@ -2387,7 +2393,7 @@ class SimNodeItem(QGraphicsObject):
         super().__init__()
         self.node = node
         self.scene_ref = scene_ref
-        self.w = node.get("w", 240)
+        self.w = node.get("w", DW)
         self.h = node.get("h", DH)   # 🎨 row_bg 背景行节点自定义高度 (2026-08-05)
         self.setPos(node["x"], node["y"])
         # 不用 ItemIsMovable: 拖动由 SimCanvas 手动 setPos 接管,
@@ -2445,7 +2451,7 @@ class SimNodeItem(QGraphicsObject):
         if t == "row_bg":
             p = self.node.get("params", {})
             color = QColor(p.get("bg", "#26418f"))
-            w = self.node.get("w", 240)
+            w = self.node.get("w", DW)
             h = self.node.get("h", 244)
             painter.setRenderHint(QPainter.Antialiasing)
             # 整行色带: 深色底(alpha 120) + 色相(alpha 90) 叠加 — 深色画布上颜色清晰可见,
@@ -2577,8 +2583,8 @@ class SimNodeItem(QGraphicsObject):
         #   固定 y=4 贴顶"不居中" → 统一 9pt + 拆两行 + 垂直居中
         painter.setPen(QColor(pal["title"]))
         name = self.node["name"]
-        avail = max(40, self.w - 36)  # 右留 36px 给状态徽章
-        # 字号 9→8→7 递减, 依次试 单行→按词拆→按字符拆(中文无空格), 保证完整显示不截断
+        # 2026-08-25 老倪"字太挤": 右留 52px (原 36 → 字贴徽章), 允许拆到三行 (原最多两行硬塞)
+        avail = max(40, self.w - 52)
         line1, line2 = name, ""
         for _fs in (12, 11, 10):
             painter.setFont(QFont("Arial", _fs, QFont.Bold))
@@ -2598,15 +2604,21 @@ class SimNodeItem(QGraphicsObject):
             if fm.horizontalAdvance(w2) <= avail and fm.horizontalAdvance(w1) <= avail:
                 line1, line2 = w1, w2
                 break
-            # 词拆失败 (中文无空格) → 按字符拆两行
-            c1, c2 = "", ""
+            # 词拆失败 (中文无空格) → 按字符逐行填 (最多三行, 原来只有两行 → 长名字硬挤)
+            lines, cur = [], ""
             for ch in name:
-                if fm.horizontalAdvance(c1 + ch) <= avail or not c1:
-                    c1 += ch
+                if fm.horizontalAdvance(cur + ch) <= avail or not cur:
+                    cur += ch
                 else:
-                    c2 += ch
-            line1, line2 = c1, c2
-            if fm.horizontalAdvance(c2) <= avail:
+                    lines.append(cur)
+                    cur = ch
+                    if len(lines) == 3:
+                        break
+            if cur and len(lines) < 3:
+                lines.append(cur)
+            line1 = lines[0] if lines else name
+            line2 = "\n".join(lines[1:]) if len(lines) > 1 else ""
+            if len(lines) <= 3 and all(fm.horizontalAdvance(x) <= avail for x in lines):
                 break
         disp = (line1 + "\n" + line2) if line2 else line1
         if params.get("video"):
@@ -2618,10 +2630,11 @@ class SimNodeItem(QGraphicsObject):
             _gfx = t in ("yolo_gate", "train_gate", "mode_switch", "switch", "coord_overlay")
             if _gfx:
                 # 有 checkbox/端口图形: 标题在上部 (下部留给图形)
-                painter.drawText(QRectF(8, 2, self.w - 36, 20), Qt.AlignVCenter | Qt.AlignLeft, disp)
+                painter.drawText(QRectF(14, 8, self.w - 56, 24), Qt.AlignVCenter | Qt.AlignLeft, disp)
             else:
-                # 普通节点: 标题垂直居中整个方块 (避开右上角徽章)
-                painter.drawText(QRectF(8, 2, self.w - 36, self.h - 4), Qt.AlignVCenter | Qt.AlignLeft, disp)
+                # 普通节点: 标题垂直居中 + 四周留白 (2026-08-25: 原来贴着框边和徽章, 视觉上"挤")
+                painter.drawText(QRectF(14, 10, self.w - 56, self.h - 26),
+                                 Qt.AlignVCenter | Qt.AlignLeft, disp)
         # 🎥 2026-08-18: 画布内嵌视频帧 — 操作视频节点 (视频画面画在节点主体内)
         if self.video_pixmap is not None and not self.video_pixmap.isNull():
             try:
@@ -3933,10 +3946,12 @@ class SimulinkModule(QWidget):
         def mk_btn(text, tip, fn, color="#58a6ff"):
             b = QPushButton(text)
             b.setToolTip(tip)
-            b.setMinimumHeight(46)          # 放大: 35px → 46px (物理 ~5mm, 好点)
+            # 2026-08-25 老倪"按钮和字太大了, 同比例缩小": 66px/15pt → 48px/12pt (×0.73),
+            #   padding 10x20 → 7x14, 圆角 7→6 (整体等比, 不改布局逻辑)
+            b.setMinimumHeight(34)
             b.setStyleSheet(f"""
                 QPushButton {{ background:#e9edf2; color:{color}; border:1px solid #d0d7de;
-                border-radius:7px; padding:10px 20px; font-size:15pt; font-weight:700; }}
+                border-radius:6px; padding:7px 14px; font-size:12pt; font-weight:700; }}
                 QPushButton:hover {{ border-color:{color}; background:#dbe9ff; }}
                 QPushButton:disabled {{ color:#555; border-color:#222; }}
             """)
@@ -4538,10 +4553,10 @@ class SimulinkModule(QWidget):
                 #   必须同步更新 item 几何 (paint 读 self.w/self.h)。
                 # 🐛 2026-08-22 老倪"字大框小": JSON 固化 w=150/180 → 强制普通节点最小 240×84
                 if spec.get("type") != "row_bg":
-                    n["w"] = max(spec.get("w") or 0, 240)
+                    n["w"] = max(spec.get("w") or 0, DW)
                     n["h"] = max(spec.get("h") or 0, DH)
                 else:
-                    n["w"] = spec.get("w", 240)
+                    n["w"] = spec.get("w", DW)
                     n["h"] = spec.get("h", DH)
                 _it = self._items.get(n["id"])
                 if _it is not None:
@@ -4694,7 +4709,7 @@ class SimulinkModule(QWidget):
             "id": gen_id(),
             "type": ntype,
             "name": name,
-            "x": int(x), "y": int(y), "w": 240,
+            "x": int(x), "y": int(y), "w": DW,
             "icon": {"condition": "❖", "model": "◈", "action": "➤",
                      "system": "◉", "hardware": "▣", "switch": "🔀",
                      "train_gate": "☑", "mode_switch": "🔀", "row_bg": "▤", "pdf_report": "📄", "skill": "🧩", "scene": "🤖", "data": "📊",
@@ -9638,6 +9653,7 @@ class SimulinkModule(QWidget):
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
         self._log("S3 认知决策层 (握有否决权): 🧭动作调制器(原状态机, 8阶段状态机: 接近→对位→下降→抓取→抬起→转移→插入→完成) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
+        self._relayout_row_gaps()      # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠
         _oneshot(self, 300, self._state_space_hint)
 
     def open_ss_3d(self):
@@ -9885,6 +9901,47 @@ class SimulinkModule(QWidget):
                 self._safe_log(f"⚠️ 视频生成失败: {e}")
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _relayout_row_gaps(self, min_gap=56):
+        """🧹 2026-08-25 老倪"重新排布": 节点放大 (240x84 → 280x110) 后原坐标会重叠
+        (实测原状态空间画布已有相邻节点间隙 0px) → 按行分组, 每行保持行首 x 不变,
+        从左到右依次把后一个节点推到 前一个右边界 + min_gap; 纵向不动 (行距 190~280 够)。
+        只整理横向, 不改 y, 不改用户手工保存的 JSON 布局 (仅内置画布生成后调用)。"""
+        try:
+            rows = {}
+            for n in self.nodes:
+                if n.get("type") == "row_bg":
+                    continue
+                # 旧 JSON 里存的是 240 宽 (老默认) → 升级到 DW, 否则新排版 (avail=w-52) 更挤
+                if float(n.get("w", DW)) <= 240:
+                    n["w"] = DW
+                if float(n.get("h", DH)) <= 84:
+                    n["h"] = DH
+                key = round(float(n.get("y", 0)) / 60.0)
+                rows.setdefault(key, []).append(n)
+            moved = 0
+            for _k, arr in rows.items():
+                arr.sort(key=lambda n: float(n.get("x", 0)))
+                for i in range(1, len(arr)):
+                    prev, cur = arr[i - 1], arr[i]
+                    right = float(prev.get("x", 0)) + float(prev.get("w", DW))
+                    if float(cur.get("x", 0)) < right + min_gap:
+                        cur["x"] = int(right + min_gap)
+                        moved += 1
+            if moved:
+                for n in self.nodes:
+                    it = self._items.get(n["id"])
+                    if it is not None:
+                        it.w = n.get("w", DW)
+                        it.h = n.get("h", DH)
+                        it.setPos(n["x"], n["y"])
+                        it.prepareGeometryChange()
+                        it.update()
+                self._sync()
+                self.canvas._scene.update()
+                self._log(f"🧹 画布重新排布: {moved} 个节点右移避让 (节点 {DW}×{DH}, 行内最小间距 {min_gap}px)")
+        except Exception as e:
+            self._log(f"⚠️ 画布重排失败: {e}")
 
     def _state_space_hint(self):
         """🧮 状态空间加载后气泡引导: 高亮动作调制器 (握否决权核心)"""

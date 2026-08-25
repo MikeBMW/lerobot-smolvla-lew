@@ -24,7 +24,7 @@ STUDIO = REPO / "tools" / "gui" / "studio.py"
 UPDATER = REPO / "tools" / "gui" / "update_checker.py"
 DOCSYNC = REPO / "tools" / "gui" / "docs_sync.py"
 
-EXPECTED_VERSION = "v3.0.2"
+EXPECTED_VERSION = "v3.0.3"
 
 # 期望的功能卡列表 (与 HomeWidget._modules_grid modules 元组第一列一致)
 EXPECTED_CARDS = [
