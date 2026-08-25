@@ -9103,7 +9103,7 @@ class SimulinkModule(QWidget):
                     f"<td style='color:#9aa4b2'>Kp={kp_s:.2f} Kd={kd_s:.2f}</td></tr>")
             html = (f"<h3 style='color:#58a6ff;margin:4px'>🎮 动作 — 每阶段动作表</h3>"
                     f"<p style='color:#8b949e;font-size:11pt'>u(t) = Kp·e + Kd·ė + u_ff "
-                    f"(u_ff = 左脑前馈预测动作)。夹爪: 抓取闭合 0.6 / 插入保持。</p>"
+                    f"(u_ff = 前馈加速器输出的速度指令)。夹爪: 抓取闭合 0.6 / 插入保持。</p>"
                     f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:11pt'>"
                     f"<tr style='color:#e6edf3'><th>阶段</th><th>动作指令</th><th>增益</th></tr>{rows_html}</table>")
         elif "双脑" in nm:
@@ -9835,7 +9835,7 @@ class SimulinkModule(QWidget):
         self._log("════ 🧮 状态空间仿真完成 ════")
         self._log(f"{'✅ 插入完成' if done else '⚠️ 未完成'} · 用时 {t_end:.2f}s · 最终距离 {d_end:.4f}m"
                   f" · 残差峰值 {r_max:.4f} · 接触概率峰值 {cp_max:.2f}")
-        self._log("链路: 📡43D感知 → ⚡前馈建议+🔮卡尔曼估计 → 📈动力学预测 → 🧪残差/接触校正 → 🧭调度融合 → 🛡限幅 → 🤖执行 → 🌍反馈闭环")
+        self._log("链路: 📡43D感知 → ⚡前馈加速器+🔮状态估计器 → 📈先验动力学预测器 → 🧪状态校正器 → 🧭动作调制器 → 🛡安全执行边界 → 🤖机器人执行器 → 🌍物理世界反馈")
         self._refresh_status()
         # 🎛 刷新右侧变量监控 (2026-08-20 老倪: 仿真完成自动出全量 I/O 变量)
         try:

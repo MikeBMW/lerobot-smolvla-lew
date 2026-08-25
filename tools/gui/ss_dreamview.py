@@ -9,7 +9,7 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
   处理层:
     🎯 YOLO 检测框  — hand/peg/hole 三个 3D 半透明立方体框
     📍 末端轨迹     — 末端历史 3D 轨迹线 (旧→新 渐亮)
-    ⚡ 前馈建议 u_ff — 绿色箭头 (快通道·神经网络原始动作)
+    ⚡ 前馈加速器 — 绿色箭头 (快通道速度指令 u_ff)
     🔄 反馈校正 u_fb — 蓝色箭头 (慢通道·卡尔曼残差方向)
     🧭 融合指令 u    — 金黄大箭头 + 目标点大球 (动作调制器输出, action 主图标)
     🛡 安全限幅 u_sat— 红色箭头 (限幅后指令)
@@ -25,7 +25,7 @@ import os
 import numpy as np
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QVector3D
+from PyQt5.QtGui import QColor, QFont, QVector3D
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
                              QSlider, QPushButton, QFrame)
 
@@ -233,6 +233,43 @@ def _cylinder_mesh(p1, p2, radius, cols=16):
     return gl.MeshData(vertexes=verts, faces=md.faces())
 
 
+def _cone_mesh(p_from, p_to, radius, cols=14):
+    """锥形箭头头 (p_from→p_to 方向, 底半径 radius, 尖端在 p_to) —
+    2026-08-25 老倪「线段表示速度, 那方向呢」: 原来只有线+散点看不出朝向, 加真箭头头。"""
+    p1 = np.asarray(p_from, dtype=float)
+    p2 = np.asarray(p_to, dtype=float)
+    axis = p2 - p1
+    length = float(np.linalg.norm(axis)) or 1e-6
+    d = axis / length
+    z = np.array([0.0, 0.0, 1.0])
+    v = np.cross(z, d)
+    s = float(np.linalg.norm(v))
+    c = float(np.dot(z, d))
+    if s < 1e-9:
+        R = np.eye(3) if c > 0 else np.diag([1.0, 1.0, -1.0])
+    else:
+        K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+        R = np.eye(3) + K + K @ K * ((1 - c) / (s * s))
+    md = gl.MeshData.cylinder(rows=1, cols=cols, radius=[radius, 0.0], length=length)
+    verts = md.vertexes() @ R.T + p1
+    return gl.MeshData(vertexes=verts, faces=md.faces())
+
+
+def _dir_words(vec):
+    """把方向向量翻成人话 (老倪要的"方向"): 取主分量组合, 如 "右下"/"朝孔位/下降" """
+    v = np.asarray(vec[:3], dtype=float)
+    n = float(np.linalg.norm(v)) or 1.0
+    u = v / n
+    parts = []
+    if abs(u[0]) > 0.25:
+        parts.append("−X(朝孔位)" if u[0] < 0 else "+X(离孔位)")
+    if abs(u[1]) > 0.25:
+        parts.append("+Y(朝台面外)" if u[1] > 0 else "−Y(朝台面内)")
+    if abs(u[2]) > 0.25:
+        parts.append("↑抬升" if u[2] > 0 else "↓下压")
+    return " ".join(parts) if parts else "几乎静止"
+
+
 def _sphere_mesh(center, radius, rows=8, cols=12):
     """生成球体 meshdata (中心在 center)"""
     md = gl.MeshData.sphere(rows=rows, cols=cols, radius=radius)
@@ -271,7 +308,7 @@ def _ik_sawyer(target, base, L1=_ARM_L1, L2=_ARM_L2, h_base=_ARM_H_BASE):
 # 图层定义 (Apollo Layer)
 # ────────────────────────────────────────────────────────────
 _LAYER_COLORS = {
-    "uff":     (0.20, 0.85, 0.35, 1.0),   # 绿  前馈建议
+    "uff":     (0.20, 0.85, 0.35, 1.0),   # 绿  前馈加速器
     "ufb":     (0.35, 0.62, 1.00, 1.0),   # 蓝  反馈校正
     "ufuse":   (1.00, 0.78, 0.12, 1.0),   # 金黄 融合指令 (action 主图标)
     "ulimit":  (1.00, 0.30, 0.30, 1.0),   # 红  安全限幅
@@ -279,6 +316,54 @@ _LAYER_COLORS = {
     "yolo_peg":  (0.00, 0.83, 0.66, 0.55),
     "yolo_hole": (1.00, 0.65, 0.00, 0.55),
 }
+
+
+class LabelOverlay(QWidget):
+    """🏷 3D 画布上的透明文字标注层 (2026-08-25 老倪: "你要在旁边标出来")
+
+    ⚠️ 为什么不用 pyqtgraph 的 GLTextItem: 它在 paint() 里 `QPainter(self.view())` 直接画
+    控件表面, 本机 (Mesa 25.2 / GLViewWidget) 实测**完全不渲染** —— 清空文本前后屏幕像素
+    差 0 px (tools/probe_text_labels.py 抓真实窗口验证)。改为自己叠一层透明 QWidget,
+    用 project_world() 算屏幕坐标 + QPainter.drawText 画, 可控且抓图可验证。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setStyleSheet("background:transparent;")
+        self._labels = []      # [(x_px, y_px, text, QColor, bold)]
+
+    def set_labels(self, labels):
+        self._labels = labels
+        self.update()
+
+    def paintEvent(self, ev):
+        from PyQt5.QtGui import QPainter, QPen, QBrush
+        if not self._labels:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        for x, y, text, col, bold in self._labels:
+            f = QFont("Arial", 10, QFont.Bold if bold else QFont.Normal)
+            p.setFont(f)
+            fm = p.fontMetrics()
+            w = fm.horizontalAdvance(text) + 10
+            h = fm.height() + 4
+            bx, by = int(x) + 8, int(y) - h // 2
+            bx = max(2, min(bx, self.width() - w - 2))
+            by = max(2, min(by, self.height() - h - 2))
+            # 半透明深底 (深色画布上文字才看得清; 单色不刺眼 — 老倪不喜大面积彩色高亮)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(13, 17, 23, 205)))
+            p.drawRoundedRect(bx, by, w, h, 4, 4)
+            p.setPen(QPen(col))
+            p.drawText(bx + 5, by + h - fm.descent() - 2, text)
+            # 一条短引线连到目标点
+            p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 150), 1))
+            p.drawLine(int(x), int(y), bx, by + h // 2)
+        p.end()
 
 
 class DreamView3D(QWidget):
@@ -332,23 +417,23 @@ class DreamView3D(QWidget):
             ("scene",     "🏗 场景 (工作台/孔位/夹爪)", True,  "基础几何体, 建议常开"),
             ("yolo",      "🎯 YOLO 检测框",             True,  "hand/peg/hole 3D 框"),
             ("traj",      "📍 末端轨迹",                True,  "末端历史运动轨迹"),
-            ("uff",       "⚡ 前馈建议 u_ff",           True,
+            ("uff",       "⚡ 前馈加速器",              True,
              "快通道 (前馈加速器 = 原左脑 MLP 的等效控制律) 每步给出的**速度指令** (m/s):\n"
              "  绿线 = 建议往哪走 (方向), 线越长 = 建议速度越大 (满格 0.35 m/s = 10cm 长)\n"
              "  绿点 = 箭杆末端(箭头尖) = 照这个建议走一步会到哪\n"
              "调度器只采纳 30% (接触/插入阶段 85%) → 和金黄「融合指令 u」比长短就知道被压了多少"),
-            ("ufb",       "🔄 反馈校正 u_fb",           False,
+            ("ufb",       "🔮 状态估计器校正",          False,
              "慢通道 (自适应状态估计器) 给的校正量 = 0.5×残差, 数值很小 (实测 0.005 m/s 量级);\n"
              "蓝线方向 = 观测比预测偏了哪边 → 调度器用它把前馈拉回来"),
-            ("ufuse",     "🧭 融合指令 u (action输出)", True,
+            ("ufuse",     "🧭 动作调制器输出",          True,
              "动作调制器 (八阶段状态机 + 否决权) 的最终输出 = 真正下发给执行器的动作:\n"
              "  u = 0.3·u_ff + 0.7·u_fb (接近/对位/下降/抬起/转移)\n"
              "  u = 0.85·u_ff + 0.15·u_fb (抓取/插入 — 力控阶段前馈推力主导)\n"
              "  残差超阈值 → 否决, u 直接归零 (强制减速重试)"),
-            ("ulimit",    "🛡 安全限幅 u_sat",          False,
+            ("ulimit",    "🛡 安全执行边界",            False,
              "安全层饱和限幅后的指令 (上限 0.6 m/s)。与融合指令重合 = 没触发限幅;\n"
              "两者分叉 = 安全层出手削掉了超速部分"),
-            ("latent",    "🔮 状态估计 x̂ (卡尔曼)",     False,
+            ("latent",    "🔮 状态估计器 x̂",            False,
              "慢通道 AdaptiveStateEstimator 的后验位置估计 x̂ₖ = 预测 + K·(观测−预测);\n"
              "紫线 = 最近 60 帧估计轨迹, 大球 = 当前帧估计位置。\n"
              "与蓝色真实末端轨迹的偏离量 = 残差 (接触/扰动来源), 调度器据此判接触概率"),
@@ -396,6 +481,10 @@ class DreamView3D(QWidget):
         self.view.setCameraPosition(pos=_CAM_CENTER, distance=_CAM_DIST,
                                     elevation=_CAM_ELEV, azimuth=_CAM_AZIM)
         self.view.setBackgroundColor('#0d1117')
+        self._overlay = LabelOverlay(self.view)     # 🏷 文字标注层 (贴在 3D 画布上)
+        self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        self._overlay.show()
+        self.view.installEventFilter(self)
         right.addWidget(self.view, 1)
 
         # 底部控制条
@@ -600,9 +689,22 @@ class DreamView3D(QWidget):
         except Exception:
             pass
 
+    def eventFilter(self, obj, ev):
+        """3D 画布尺寸变化 → 标注层跟着变 (覆盖层必须与画布严格同尺寸, 否则坐标错位)"""
+        try:
+            if obj is self.view and ev.type() == ev.Resize:
+                self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        except Exception:
+            pass
+        return super().eventFilter(obj, ev)
+
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._sync_fov()
+        try:
+            self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        except Exception:
+            pass
 
     # ── 场景构建 ──
     def _build_scene(self):
@@ -628,19 +730,8 @@ class DreamView3D(QWidget):
         #   看不出是什么。现在纳入图层 (默认关) + 轴端加 X/Y/Z 文字标签。
         ax = gl.GLAxisItem()
         ax.setSize(0.20, 0.20, 0.20)
-        axis_items = [ax]
         self.view.addItem(ax)
-        for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30, 1.0)),
-                           ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35, 1.0)),
-                           ("X", (0.21, 0, 0), (0.45, 0.55, 1.0, 1.0))):
-            try:
-                _ti = gl.GLTextItem(pos=np.asarray(_p, dtype=float), text=_t, color=_c,
-                                    font=QFont("Arial", 11, QFont.Bold))
-                self.view.addItem(_ti)
-                axis_items.append(_ti)
-            except Exception:
-                pass
-        self._gl_items["axis"] = axis_items
+        self._gl_items["axis"] = [ax]      # X/Y/Z 字样由 LabelOverlay 画
 
         # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 插销/夹爪动态, 见 _update_frame)
         scene = []
@@ -743,6 +834,13 @@ class DreamView3D(QWidget):
             tip.setGLOptions("additive")
             self.view.addItem(tip)
             self._gl_items[key + "_tip"] = tip
+            # 🔺 锥形箭头头 (方向) + 🏷 旁边文字标注 (名称/速度/方向) — 2026-08-25 老倪要求
+            head = gl.GLMeshItem(meshdata=_cone_mesh([0, 0, 0], [0, 0, 0.001], 0.004),
+                                 color=col, smooth=True, shader=None)
+            head.setGLOptions("additive")
+            self.view.addItem(head)
+            self._gl_items[key + "_head"] = head
+            # (箭头文字标注由 LabelOverlay 自绘层负责 — GLTextItem 本机不渲染)
 
         # 融合指令目标点大球 (action 主图标 — 明显醒目)
         fuse_sphere = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=_LAYER_COLORS["ufuse"], size=18)
@@ -778,25 +876,7 @@ class DreamView3D(QWidget):
         self.view.addItem(contact)
         self._gl_items["contact"] = contact
 
-        # 🏷 3D 文字标签 (2026-08-25 老倪: 光有几何看不出哪个是啥) — 贴在物体旁边
-        labels = {}
-        for key, txt, col in (("hand", "末端 hand", (0.55, 0.78, 1.0, 1.0)),
-                              ("peg", "插销 peg", (1.0, 0.82, 0.25, 1.0)),
-                              ("hole", "孔口 hole", (1.0, 0.45, 0.35, 1.0)),
-                              ("goal", "插入终点 goal", (0.35, 0.95, 0.60, 1.0)),
-                              ("latent", "状态估计 x̂", (0.90, 0.60, 1.0, 1.0))):
-            try:
-                _f = QFont("Arial", _LABEL_PT, QFont.Bold)
-                ti = gl.GLTextItem(pos=np.zeros(3), text=txt, color=col, font=_f)
-                self.view.addItem(ti)
-                labels[key] = ti
-            except Exception:
-                pass
-        self._gl_items["_labels"] = list(labels.values())
-        self._labels = labels
-        for k, p in (("hole", self._mouth), ("goal", self._hole)):
-            if k in labels:
-                labels[k].setData(pos=np.asarray(p, dtype=float) + np.array([0.0, 0.0, 0.055]))
+        # 🏷 文字标注统一走 LabelOverlay 自绘层 (GLTextItem 在本机 Mesa 下不渲染, 已弃用)
 
         # 应用当前图层开关状态
         for key, on in self._layer_on.items():
@@ -815,7 +895,7 @@ class DreamView3D(QWidget):
         if it0 is not None:
             targets += it0 if isinstance(it0, list) else [it0]
         # 动作箭头族: <key>_line / <key>_tip (+ ufuse 的目标点大球)
-        for suf in ("_line", "_tip"):
+        for suf in ("_line", "_tip", "_head"):
             sub = self._gl_items.get(key + suf)
             if sub is not None:
                 targets += sub if isinstance(sub, list) else [sub]
@@ -883,16 +963,27 @@ class DreamView3D(QWidget):
         arm[self._arm_idx["peg"]].setMeshData(
             meshdata=_box_mesh(peg_grasp + self._peg_center_off, _PEG_SIZE))
 
-        # 动作箭头 (4 层)
+        # 动作箭头 (4 层): 杆 + 锥形箭头头(方向) + 旁边文字标注(名称/速度/方向)
+        _NAMES = {"uff": "⚡前馈加速器", "ufb": "🔮状态估计器校正",
+                  "ufuse": "🧭动作调制器", "ulimit": "🛡安全边界"}
         for key in ("uff", "ufb", "ufuse", "ulimit"):
-            a = tr[self._vec_key(key)][i]
-            pts, tip, _ = _arrow(x, a)
+            a = np.asarray(tr[self._vec_key(key)][i], dtype=float)
+            mag = float(np.linalg.norm(a[:3]))
+            pts, tip, ln = _arrow(x, a)
+            head_it = self._gl_items.get(key + "_head")
             if pts is not None:
                 self._gl_items[key + "_line"].setData(pos=pts)
                 self._gl_items[key + "_tip"].setData(pos=np.array([tip]))
+                d = (tip - np.asarray(x, dtype=float))
+                dn = d / (np.linalg.norm(d) or 1.0)
+                if head_it is not None:      # 锥头: 占箭杆末段 28%, 底半径随杆长
+                    hl = max(0.008, ln * 0.28)
+                    head_it.setMeshData(meshdata=_cone_mesh(tip - dn * hl, tip, max(0.004, hl * 0.42)))
             else:
                 self._gl_items[key + "_line"].setData(pos=np.array([x[:3], x[:3]]))
                 self._gl_items[key + "_tip"].setData(pos=np.array([x[:3]]))
+                if head_it is not None:
+                    head_it.setMeshData(meshdata=_cone_mesh(x, x + np.array([0, 0, 0.001]), 0.002))
 
         # 融合指令目标点大球 (跟随箭头尖端)
         a_fuse = tr["u_fuse_vec"][i]
@@ -932,15 +1023,43 @@ class DreamView3D(QWidget):
             self._gl_items["contact"].setData(pos=np.array([x]), size=4,
                                               color=(1.0, 0.4, 0.0, 0.25))
 
-        # 🏷 标签跟随物体 (hand/peg/x̂ 每帧更新; hole/goal 静态已设)
-        lbs = getattr(self, "_labels", {})
-        if "hand" in lbs:
-            lbs["hand"].setData(pos=np.asarray(x, dtype=float) + np.array([0.0, 0.0, 0.05]))
-        if "peg" in lbs:
-            lbs["peg"].setData(pos=np.asarray(peg_grasp, dtype=float) + np.array([0.0, 0.0, 0.045]))
-        if "latent" in lbs:
-            lbs["latent"].setData(pos=np.asarray(lat_pts[-1], dtype=float) + np.array([0.0, 0.0, 0.03]))
-            lbs["latent"].setVisible(bool(self._layer_on.get("latent", False)))
+        # 🏷 文字标注 (自绘覆盖层 — GLTextItem 在本机不渲染, 见 LabelOverlay 说明)
+        try:
+            _NAMES2 = {"uff": "⚡前馈加速器", "ufb": "🔮状态估计器校正",
+                       "ufuse": "🧭动作调制器", "ulimit": "🛡安全执行边界"}
+            ovl = []
+            def _add(world_p, text, rgba, bold=True):
+                s = project_world(self.view, np.asarray(world_p, dtype=float))
+                if s is None or not (-0.2 <= s[0] <= 1.2 and -0.2 <= s[1] <= 1.2):
+                    return
+                ovl.append((s[0] * self.view.width(), s[1] * self.view.height(), text,
+                            QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)), bold))
+            if self._layer_on.get("scene", True):
+                _add(np.asarray(x) + [0, 0, 0.03], "末端 hand", (0.55, 0.78, 1.0))
+                _add(np.asarray(peg_grasp) + [0, 0, 0.03], "插销 peg", (1.0, 0.82, 0.25))
+                _add(self._mouth + np.array([0, 0, 0.05]), "孔口 hole", (1.0, 0.45, 0.35))
+                _add(self._hole + np.array([0, 0, -0.05]), "插入终点 goal", (0.35, 0.95, 0.60))
+            if self._layer_on.get("latent", False):
+                _add(np.asarray(lat_pts[-1]) + [0, 0, 0.02], "状态估计 x̂", (0.90, 0.60, 1.0))
+            if self._layer_on.get("axis", False):
+                for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30)),
+                                   ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35)),
+                                   ("X", (0.21, 0, 0), (0.45, 0.55, 1.0))):
+                    _add(_p, _t, _c)
+            # 四层动作: 箭尖旁标 名称 + 速度 + 方向
+            for _k in ("uff", "ufb", "ufuse", "ulimit"):
+                if not self._layer_on.get(_k, False):
+                    continue
+                _a = np.asarray(tr[self._vec_key(_k)][i], dtype=float)
+                _mag = float(np.linalg.norm(_a[:3]))
+                _pts, _tip, _ = _arrow(x, _a)
+                if _tip is None:
+                    continue
+                _c = _LAYER_COLORS[_k]
+                _add(_tip, f"{_NAMES2[_k]} {_mag:.3f} m/s  {_dir_words(_a)}", _c)
+            self._overlay.set_labels(ovl)
+        except Exception as _e:
+            print(f"⚠️ 标注层更新失败: {_e}")
 
         # 📟 实时数值面板 (每帧滚动 — 老倪: 运行后数据须实时动态滚动, 不要一次性静态填充)
         t = tr["t"][i]
@@ -974,9 +1093,9 @@ class DreamView3D(QWidget):
             f"环境接触{fenv:6.3f}   夹持{fg:5.3f}\n"
             f"残差    {res:6.4f}   接触概率{cp:5.2f}\n"
             f"────────────────────\n"
-            f"u_ff    {u_ff_m:5.3f} m/s (前馈建议)\n"
-            f"u 融合  {u_fu_m:5.3f} m/s (调度输出)\n"
-            f"u_sat   {u_li_m:5.3f} m/s (限幅后)")
+            f"前馈加速器  {u_ff_m:5.3f} m/s\n"
+            f"动作调制器  {u_fu_m:5.3f} m/s\n"
+            f"安全边界    {u_li_m:5.3f} m/s")
         self.lbl_t.setText(f"数据源: {self._src}")
         self.lbl_frame.setText(f"{i} / {self._n - 1}")
         if not self.slider.isSliderDown():
