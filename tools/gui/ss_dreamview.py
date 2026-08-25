@@ -437,9 +437,14 @@ class DreamView3D(QWidget):
              "紫线 = 最近 30 帧估计轨迹, 大球 = 当前帧估计位置\n"
              "与真实末端的偏离量就是残差来源 (实测误差 ~2.6mm, 抖动 ~0.9mm/步)"),
             ("prior",     "③ 📈 先验动力学预测器",        False,
-             "画布节点「📈 先验动力学预测器」的输出: 只按上一步控制量外推的**先验位置** x̂ₖ⁻\n"
-             "青色虚点链 = 最近 30 帧先验轨迹, 方块 = 当前帧先验位置\n"
-             "它与观测 z_k 之差 = 残差 → 喂给「④ 状态校正器」判接触 (没有校正的\"纯预测\")"),
+             "画布节点「📈 先验动力学预测器」: x̂ₖ⁻ = A·x̂ₖ₋₁ + dt·u_prev (A=1, dt=12.5ms)\n"
+             "画「三点两线」而不是轨迹:\n"
+             "  🟦 青粗线 = 预测增量 dt·u (方向 = 上一步实际下发的控制量; 实测仅 0.36mm/步,\n"
+             "     按原尺寸看不见 → 图示放大 30 倍, 标注里写明真实值)\n"
+             "  ■ 青方块 = 先验位置 x̂ₖ⁻ (纯预测, 还没用本帧观测校正)\n"
+             "  ⚪ 灰点+细线 = 观测 z_k 与先验的差 = **残差** (实测 6.9~9.1mm) → 接触判据\n"
+             "⚠️ 为什么不画先验轨迹: 实测那条线 62% 是观测噪声透传 (确定性增量 0.359mm/步 vs\n"
+             "   继承抖动 0.901mm/步, 噪声/信号 2.7 倍) — 画出来必然\"没规律\"且无信息量"),
             # ── S3 认知决策层 ──
             ("ufb",       "④ 🧪 状态校正器 · 残差方向",   False,
              "画布节点「🧪 状态校正器」算出的残差 r = z_k − 先验预测, 这里画 0.5×r 作为校正方向\n"
@@ -948,14 +953,26 @@ class DreamView3D(QWidget):
         # 状态估计 x̂: 紫线(最近 60 帧估计轨迹) + 当前帧估计位置大球
         #   2026-08-25 老倪「为什么显示一堆点」→ 原来是每帧一个散点(看不出是轨迹),
         #   改成连线 + 当前点大球, 一眼看出"卡尔曼估计出来的末端在哪、跟真实轨迹差多少"
-        # 📈 先验动力学预测器: 青色点链 (纯预测轨迹) + 当前帧先验位置
-        pr_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_LAYER_COLORS["prior"], width=2.5)
-        pr_line.setGLOptions("additive")
-        self.view.addItem(pr_line)
-        pr_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=_LAYER_COLORS["prior"], size=13)
+        # 📈 先验动力学预测器 (2026-08-25 老倪「怎么这么没有规律」重设计):
+        #   原来画最近 30 帧先验轨迹 → 实测那条线 62% 是观测噪声透传 (确定性预测增量
+        #   仅 0.359mm/步, 继承的后验抖动 0.901mm/步, 噪声/信号 2.7 倍) ⇒ 必然看着乱且无信息。
+        #   改画「三点两线」关系图 (这才是先验的物理含义):
+        #     ① 青色粗线 = 预测增量向量 x̂ₖ₋₁ → x̂ₖ⁻ (方向=上一步实际控制量, 放大显示)
+        #     ② 青色方块 = 先验位置 x̂ₖ⁻
+        #     ③ 灰白细线 = 先验 → 观测 z_k 的差 = **残差** (接触检测的唯一来源)
+        pr_step = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_LAYER_COLORS["prior"], width=4.0)
+        pr_step.setGLOptions("additive")
+        self.view.addItem(pr_step)
+        pr_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=_LAYER_COLORS["prior"], size=15)
         pr_now.setGLOptions("additive")
         self.view.addItem(pr_now)
-        self._gl_items["prior"] = [pr_line, pr_now]
+        pr_res = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.88, 0.92, 0.85), width=1.6)
+        pr_res.setGLOptions("additive")
+        self.view.addItem(pr_res)
+        pr_zk = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.85, 0.88, 0.92, 0.95), size=9)
+        pr_zk.setGLOptions("additive")
+        self.view.addItem(pr_zk)
+        self._gl_items["prior"] = [pr_step, pr_now, pr_res, pr_zk]
 
         lat_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.45, 0.95, 0.95), width=3.5)
         lat_line.setGLOptions("additive")
@@ -1135,16 +1152,27 @@ class DreamView3D(QWidget):
         self._gl_items["latent"][1].setData(pos=lat_pts[-1:])
         # 📈 先验动力学预测器 (纯预测, 未经观测校正) — 老 trace 无 prior_vec 时该层留空
         pv = tr.get("prior_vec")
+        _PRIOR_MAG = 30.0            # 预测增量放大倍数 (0.36mm 原尺寸看不见, 标注里注明)
         if pv is not None and len(pv) > i:
-            pr_pts = np.array([np.asarray(pv[k], dtype=float)[:3]
-                               for k in range(max(0, i - win + 1), i + 1)])
-            if len(pr_pts) < 2:
-                pr_pts = np.vstack([pr_pts, pr_pts])
-            self._gl_items["prior"][0].setData(pos=pr_pts)
-            self._gl_items["prior"][1].setData(pos=pr_pts[-1:])
-            self._prior_now = pr_pts[-1]
+            prior3 = np.asarray(pv[i], dtype=float)[:3]
+            prev_post = np.asarray(tr["latent_vec"][max(0, i - 1)], dtype=float)[:3]
+            zk3 = (np.asarray(tr["z_k_vec"][i], dtype=float)[:3]
+                   if tr.get("z_k_vec") is not None and len(tr["z_k_vec"]) > i else prior3)
+            step_vec = prior3 - prev_post                      # dt·u_prev (确定性预测增量)
+            step_mm = float(np.linalg.norm(step_vec)) * 1000.0
+            res_mm = float(np.linalg.norm(zk3 - prior3)) * 1000.0
+            # ① 预测增量向量 (放大绘制, 起点 = 上一帧后验)
+            self._gl_items["prior"][0].setData(
+                pos=np.array([prev_post, prev_post + step_vec * _PRIOR_MAG]))
+            # ② 先验位置 ③ 残差连线 ④ 观测点
+            self._gl_items["prior"][1].setData(pos=np.array([prior3]))
+            self._gl_items["prior"][2].setData(pos=np.array([prior3, zk3]))
+            self._gl_items["prior"][3].setData(pos=np.array([zk3]))
+            self._prior_now = prior3
+            self._prior_info = (step_mm, res_mm, _PRIOR_MAG, zk3)
         else:
             self._prior_now = None
+            self._prior_info = None
 
         # 🧲 接触指示: 两路 (夹持/环境) 各「核心球+脉冲外环」, 强度按力的归一化值
         _cp_raw = float(tr["contact_p"][i])
@@ -1217,8 +1245,17 @@ class DreamView3D(QWidget):
                     _add(_ea + [0, 0, 0.035],
                          f"环境接触 {_fe2:.2f} · 接触概率 {_cpr:.2f}(净 {_cpn:.2f})", (1.00, 0.45, 0.10))
             if self._layer_on.get("prior", False) and getattr(self, "_prior_now", None) is not None:
-                _add(np.asarray(self._prior_now) + [0, 0, 0.02],
-                     "先验动力学预测器 x̂⁻ (纯预测)", (0.20, 0.90, 0.85))
+                _si = getattr(self, "_prior_info", None)
+                if _si:
+                    _step_mm, _res_mm, _mag, _zk3 = _si
+                    _add(np.asarray(self._prior_now) + [0, 0, 0.018],
+                         f"先验 x̂⁻ · 预测增量 {_step_mm:.2f}mm (图示×{_mag:.0f})",
+                         (0.20, 0.90, 0.85))
+                    _add((np.asarray(self._prior_now) + np.asarray(_zk3)) / 2.0 + [0, 0, -0.012],
+                         f"残差 |z_k−x̂⁻| {_res_mm:.1f}mm → 接触判据", (0.85, 0.88, 0.92), False)
+                else:
+                    _add(np.asarray(self._prior_now) + [0, 0, 0.02],
+                         "先验动力学预测器 x̂⁻", (0.20, 0.90, 0.85))
             if self._layer_on.get("axis", False):
                 for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30)),
                                    ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35)),
