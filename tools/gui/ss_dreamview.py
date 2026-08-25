@@ -359,13 +359,13 @@ class DreamView3D(QWidget):
                                   color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_wrist)
         arm.append(arm_wrist)
-        # 夹爪两瓣 (动态开合)
-        arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.012, 0.018, 0.04)),
-                                  color=(0.55, 0.60, 0.68, 1.0), smooth=True, shader='shaded')
+        # 夹爪两瓣 (动态开合, 青色醒目 — 2026-08-26 老倪: 原灰蓝与关节混淆; shader=None 纯色无光照, 俯视不被压暗)
+        arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.020, 0.075, 0.05)),
+                                  color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_l)
         arm.append(arm_jaw_l)
-        arm_jaw_r = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.012, 0.018, 0.04)),
-                                  color=(0.55, 0.60, 0.68, 1.0), smooth=True, shader='shaded')
+        arm_jaw_r = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.020, 0.075, 0.05)),
+                                  color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_r)
         arm.append(arm_jaw_r)
         # 光模块 peg (金色插销, 被夹爪夹持, 随末端移动)
@@ -471,12 +471,14 @@ class DreamView3D(QWidget):
         arm[self._arm_idx["shoulder"]].setMeshData(meshdata=_sphere_mesh(ik["shoulder"], 0.030))
         arm[self._arm_idx["elbow"]].setMeshData(meshdata=_sphere_mesh(ik["elbow"], 0.026))
         arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.022))
-        # 夹爪开合: gripper 0(开)→1(闭), 两瓣间距随开度
+        # 🖐 夹爪抓取动作 (2026-08-26 老倪: 原沿 y 开合 + 瓣太小, 俯视看不见抓取)
+        # 沿 x 方向(peg 长边 0.07)夹持; 瓣浮在 peg 上方 0.015 (俯视不被机械臂/peg 遮挡)
         g = float(tr["gripper"][i])
-        gap = 0.010 + (1.0 - g) * 0.018
-        jaw_dir = np.array([0.0, 1.0, 0.0])   # 沿 y 开合
-        arm[self._arm_idx["jaw_l"]].setMeshData(meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap, (0.012, 0.014, 0.04)))
-        arm[self._arm_idx["jaw_r"]].setMeshData(meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap, (0.012, 0.014, 0.04)))
+        gap = 0.045 + (1.0 - g) * 0.025   # 闭合0.045(贴peg边缘) → 张开0.070(远离)
+        jaw_dir = np.array([1.0, 0.0, 0.0])   # 沿 x 开合 (peg 长边方向)
+        z_lift = np.array([0.0, 0.0, 0.015])
+        arm[self._arm_idx["jaw_l"]].setMeshData(meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap + z_lift, (0.020, 0.075, 0.05)))
+        arm[self._arm_idx["jaw_r"]].setMeshData(meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap + z_lift, (0.020, 0.075, 0.05)))
         # peg 随末端 (被夹爪夹住)
         arm[self._arm_idx["peg"]].setMeshData(meshdata=_box_mesh(ik["wrist"], (0.07, 0.05, 0.05)))
 
