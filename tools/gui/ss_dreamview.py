@@ -330,6 +330,11 @@ class DreamView3D(QWidget):
              "紫线 = 最近 60 帧估计轨迹, 大球 = 当前帧估计位置。\n"
              "与蓝色真实末端轨迹的偏离量 = 残差 (接触/扰动来源), 调度器据此判接触概率"),
             ("contact",   "🧲 残差/接触",               True,  "接触概率热力球"),
+            ("grid",      "▦ 地面网格",                 True,  "z=0 台面参考网格 (5cm 一格)"),
+            ("axis",      "🧭 坐标轴 XYZ",              False,
+             "世界坐标轴指示器 (pyqtgraph GLAxisItem), 画在原点 = 机器人底座:\n"
+             "  绿 = Z 轴 (垂直向上)   黄 = Y 轴 (指向工作台)   蓝 = X 轴\n"
+             "⚠️ 原点在画面外时看不到 (实测: 自动取景/俯视档 0px, 「🎥 视频同框」档可见)"),
         ]
         self._chk = {}
         for key, name, on, tip in self._layers_def:
@@ -591,14 +596,28 @@ class DreamView3D(QWidget):
         gz.setSize(1.1, 1.0)
         gz.setSpacing(0.05, 0.05)
         gz.translate(-0.05, 0.45, 0.0)
-        self._gl_items["_grid"] = gz
+        self._gl_items["grid"] = gz          # 受「▦ 地面网格」图层开关控制
         self.view.addItem(gz)
 
         # 坐标轴 (世界原点 = 机器人底座)
+        # 坐标轴 (pyqtgraph GLAxisItem 固定配色: 绿=Z 黄=Y 蓝=X, 见源码 updateLines)
+        # 2026-08-25 老倪: 原来叫 "_axis" 不在图层字典里 → 全取消勾选后仍留一段绿线+黄线,
+        #   看不出是什么。现在纳入图层 (默认关) + 轴端加 X/Y/Z 文字标签。
         ax = gl.GLAxisItem()
         ax.setSize(0.20, 0.20, 0.20)
-        self._gl_items["_axis"] = ax
+        axis_items = [ax]
         self.view.addItem(ax)
+        for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30, 1.0)),
+                           ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35, 1.0)),
+                           ("X", (0.21, 0, 0), (0.45, 0.55, 1.0, 1.0))):
+            try:
+                _ti = gl.GLTextItem(pos=np.asarray(_p, dtype=float), text=_t, color=_c,
+                                    font=QFont("Arial", 11, QFont.Bold))
+                self.view.addItem(_ti)
+                axis_items.append(_ti)
+            except Exception:
+                pass
+        self._gl_items["axis"] = axis_items
 
         # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 插销/夹爪动态, 见 _update_frame)
         scene = []
@@ -761,20 +780,39 @@ class DreamView3D(QWidget):
             self._apply_layer_visibility(key, on)
 
     def _apply_layer_visibility(self, key, on):
-        items = self._gl_items.get(key)
-        if items is None:
-            return
-        if isinstance(items, list):
-            for it in items:
-                it.setVisible(on)
-        else:
-            items.setVisible(on)
-        # 🤖 机械臂随 scene 层联动开关 (2026-08-25)
+        """图层开关 → GL 元素可见性。
+        🐛 2026-08-25 老倪「所有选项都取消了, 屏幕还有一小段绿线和黄线」根因:
+        四层动作箭头存的 key 是 `<key>_line` / `<key>_tip` (还有 ufuse_sphere),
+        而图层 key ("uff"/"ufb"/"ufuse"/"ulimit") 本身不在 _gl_items 里 →
+        原实现 get(key) 拿到 None 直接 return, **勾选框点了完全没作用**;
+        残留的绿线 = 前馈 u_ff 箭头, 黄线 = 融合指令 u 箭头+大球 (不是坐标轴)。
+        另: 3D 文字标签 _labels 也不受任何图层控制 → 并入 scene 联动。"""
+        targets = []
+        it0 = self._gl_items.get(key)
+        if it0 is not None:
+            targets += it0 if isinstance(it0, list) else [it0]
+        # 动作箭头族: <key>_line / <key>_tip (+ ufuse 的目标点大球)
+        for suf in ("_line", "_tip"):
+            sub = self._gl_items.get(key + suf)
+            if sub is not None:
+                targets += sub if isinstance(sub, list) else [sub]
+        if key == "ufuse":
+            sph = self._gl_items.get("ufuse_sphere")
+            if sph is not None:
+                targets.append(sph)
+        # 场景层联动: 机械臂 + 3D 文字标签
         if key == "scene":
-            arm = self._gl_items.get("arm")
-            if arm:
-                for it in arm:
-                    it.setVisible(on)
+            for extra in ("arm", "_labels"):
+                sub = self._gl_items.get(extra)
+                if sub is not None:
+                    targets += sub if isinstance(sub, list) else [sub]
+        for it in targets:
+            try:
+                it.setVisible(on)
+            except Exception:
+                pass
+        if not targets:
+            return
 
     # ── 图层开关 ──
     def _toggle_layer(self, key, checked):
