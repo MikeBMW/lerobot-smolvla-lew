@@ -248,7 +248,12 @@ class StateSpaceSim:
             # 后验: 潜状态更新 (卡尔曼)
             self.latent = self.est.update(latent_pred, corrected)
             # ⑧ 认知调度: 否决/融合 (慢通道反馈 u_fb = 位置校正方向)
-            u_fb = np.concatenate([np.clip(0.5 * residual[:3], -0.5, 0.5), [0.0]])
+            # 🌫 反馈用**滤波后**的残差: 瞬时残差 96% 是观测噪声 (相邻帧方向变化 88.5°),
+            #   直接反馈等于把噪声注入指令 → EMA (α=0.15, ≈10 步时间常数) 只留系统性偏差
+            self.res_ema = (0.85 * self.res_ema + 0.15 * np.asarray(residual, dtype=float)
+                            if getattr(self, "res_ema", None) is not None
+                            else np.asarray(residual, dtype=float).copy())
+            u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # 夹爪指令直通 (开关量不参与位置加权融合 — 权重稀释会夹不紧)
             if np.ndim(u) == 0:

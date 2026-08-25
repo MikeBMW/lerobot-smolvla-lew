@@ -46,6 +46,10 @@ print(f"同源 trace: {meta['steps']} 步 · seed={meta['seed']} · 终态 {meta
       f"success={meta['success']}\n")
 
 dv = sdv.DreamView3D(tr)
+# 🎥 视角一致性必须在「视频同框」档比对 — v3.0.2 起默认档是"自动取景"(近景放大,
+#   朝向相同但距离/取景不同), 用它比位置会得到 40%+ 偏差, 那是取景差异不是视角错。
+dv.resize(480, 480)
+dv._fit_view("video")
 dv.resize(VW + 250, VH)          # 让 3D 画布 ≈ 视频同分辨率正方形 (左侧图层面板 230px)
 dv.show()
 for _ in range(6):

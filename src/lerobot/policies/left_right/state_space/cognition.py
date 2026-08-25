@@ -53,10 +53,21 @@ class ActionModulator:
     STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
     GRASP_IDX = 3          # 「抓取」阶段序号 (≥ 此阶段夹爪锁存闭合)
 
-    def __init__(self, w_ff=0.3, contact_th=0.6, veto_th=2.0,
+    # 🚦 2026-08-26 老倪「动作调制器的速度总是慢一些」根因修复:
+    #   原凸组合 u = w·u_ff + (1−w)·u_fb 在两向量量级差 21 倍时 (实测 |u_ff| 0.090 vs
+    #   |u_fb| 0.0043 m/s) 退化成"把前馈砍到 w" — 实测 |u_fuse|/|u_ff| 恒 29%,
+    #   慢通道只贡献 10% 速度却把 0.7 权重的噪声灌进方向 (方向抖动 4.77°→11.28°)。
+    #   正规控制架构 = 前馈 + 反馈**相加** (反馈只做修正, 不缩放主项);
+    #   "接触前要慢"改用**显式阶段限速**表达 (原来是靠凸组合意外砍出来的, 说不清道不明)。
+    STAGE_V_CAP = {"接近": 0.35, "对位": 0.12, "下降": 0.05, "抓取": 0.04,
+                   "抬起": 0.25, "转移": 0.35, "插入": 0.06, "完成": 0.02}
+
+    def __init__(self, w_ff=0.3, contact_th=0.6, veto_th=2.0, k_fb=1.0, v_cap=None,
                  w_contact=0.85, align_th=0.02, insert_depth=0.004, max_veto=3,
                  align_xy_coarse=0.06, align_xy_fine=0.02, lift_h=0.08, grasp_th=0.8):
-        self.w_ff = w_ff                # 接近阶段前馈权重 (慢通道主导防碰撞)
+        self.w_ff = w_ff                # (保留兼容: fuse() 仍可用凸组合)
+        self.k_fb = float(k_fb)         # 反馈增益 (相加式: u = u_ff + k_fb·u_fb)
+        self.v_cap = dict(self.STAGE_V_CAP if v_cap is None else v_cap)   # 阶段限速 m/s
         self.contact_th = contact_th    # 接触判定阈值 (力觉证据)
         self.veto_th = veto_th          # 否决阈值 (残差异常)
         self.w_contact = w_contact      # 抓取/插入阶段前馈推力权重 (力控)
@@ -120,18 +131,24 @@ class ActionModulator:
         return self.stage()
 
     def decide(self, u_ff, u_fb, contact_p, residual):
-        """决策: ①否决权 (残差异常) ②按阶段融合 — 力控阶段前馈推力主导"""
+        """决策: ①否决权 (残差异常) ②前馈+反馈**相加** ③按阶段显式限速
+
+        u = u_ff + k_fb·u_fb, 然后按当前阶段的速度上限等比缩放 (只削幅, 不改方向)。
+        为什么不再用凸组合: 见 STAGE_V_CAP 上方注释 (量级差 21 倍 → 凸组合等于砍速度)。
+        """
+        _zero = np.zeros_like(np.asarray(u_ff, dtype=float))
         if residual > self.veto_th:
             self.veto_count += 1
             if self.veto_count >= self.max_veto:
-                return 0.0, f"异常: 连续否决 (残差 {residual:.2f})"
-            return 0.0, f"否决: 减速/重试 (残差 {residual:.2f})"
+                return _zero, f"异常: 连续否决 (残差 {residual:.2f})"
+            return _zero, f"否决: 减速/重试 (残差 {residual:.2f})"
         self.veto_count = 0
         st = self.stage()
-        if st in ("抓取", "插入"):
-            # 力控阶段: 前馈推力主导 (插入靠推力, 不是比例衰减)
-            u = self.w_contact * u_ff + (1.0 - self.w_contact) * u_fb
-        else:
-            u = self.fuse(u_ff, u_fb)     # 接近/抬起/转移: 慢通道校正主导
+        u = np.asarray(u_ff, dtype=float) + self.k_fb * np.asarray(u_fb, dtype=float)
+        cap = self.v_cap.get(st)
+        if cap is not None:
+            n = float(np.linalg.norm(u[:3])) if u.ndim else abs(float(u))
+            if n > cap > 0:
+                u = u * (cap / n)          # 等比缩放: 保方向, 只削速度
         tag = " · 接触" if contact_p > self.contact_th else ""
         return u, f"阶段 {st}{tag}"

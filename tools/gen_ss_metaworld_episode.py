@@ -150,6 +150,7 @@ def run_episode(seed=0, want_video=True, log=print):
 
     latent = np.concatenate([hand, [0.0]])
     u_prev = np.zeros(4)      # 上一步实际下发的控制量 (卡尔曼预测输入, 不能用 u_ff)
+    res_ema = None            # 残差 EMA (反馈前滤波, 去掉观测噪声)
     prev18 = None
     tr = {k: [] for k in ("t", "x", "peg", "peg_head", "gripper", "stage", "done",
                           "dist", "u_ff", "u_sat", "residual", "contact_p", "force",
@@ -217,7 +218,9 @@ def run_episode(seed=0, want_video=True, log=print):
         r_scalar = float(np.linalg.norm(residual))
         contact_p = float(ss.cognition.contact_probability(r_scalar, gain=8.0))
         latent = ss.est.update(latent_pred, corrected)
-        u_fb = np.concatenate([np.clip(0.5 * residual[:3], -0.5, 0.5), [0.0]])
+        # 🌫 反馈用滤波后的残差 (瞬时残差 96% 是 5mm 观测噪声, 直接反馈=注入噪声)
+        res_ema = (0.85 * res_ema + 0.15 * residual) if res_ema is not None else residual.copy()
+        u_fb = np.concatenate([np.clip(0.5 * res_ema[:3], -0.5, 0.5), [0.0]])
         u, stage_txt = sched.decide(u_ff, u_fb, contact_p, r_scalar)
         if np.ndim(u) == 0:
             u = np.zeros(4)
