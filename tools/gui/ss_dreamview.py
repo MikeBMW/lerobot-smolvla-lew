@@ -25,6 +25,7 @@ import os
 import numpy as np
 
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QVector3D
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
                              QSlider, QPushButton, QFrame)
 
@@ -236,7 +237,10 @@ class DreamView3D(QWidget):
         right = QVBoxLayout()
         right.setSpacing(6)
         self.view = gl.GLViewWidget()
-        self.view.setCameraPosition(distance=0.62, elevation=88, azimuth=180)
+        # 🧭 2026-08-26 老倪: 视角对齐操作视频 — azimuth 180→270(使世界+X→屏幕右/+Y→屏幕上),
+        # center 对准场景(0.11,-0.02)+distance 0.50: 孔位落在屏幕右侧~73%(与操作视频 73.7% 一致),
+        # 机械臂底座(y=-0.2)仍在视野下方可见
+        self.view.setCameraPosition(pos=QVector3D(0.11, -0.02, 0.0), distance=0.50, elevation=88, azimuth=270)
         self.view.setBackgroundColor('#0d1117')
         right.addWidget(self.view, 1)
 
