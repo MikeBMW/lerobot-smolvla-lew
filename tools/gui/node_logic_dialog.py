@@ -81,12 +81,12 @@ class NodeLogicDialog(QDialog):
         hl = QVBoxLayout(head)
         hl.setContentsMargins(12, 10, 12, 10)
         t1 = QLabel(f"🔷 {self._node_name}")
-        t1.setStyleSheet(f"color:{_TEXT}; font-size:15px; font-weight:700;")
+        t1.setStyleSheet(f"color:{_TEXT}; font-size:18px; font-weight:700;")
         # 📂 代码位置行 (VSCode 打开用): 路径:行号 · 函数名
         loc_row = QHBoxLayout()
         loc_row.setSpacing(6)
         self.lbl_loc = QLabel("📂 定位中…")
-        self.lbl_loc.setStyleSheet(f"color:{_GOLD}; font-size:11px; font-family:DejaVu Sans Mono;")
+        self.lbl_loc.setStyleSheet(f"color:{_GOLD}; font-size:14px; font-family:DejaVu Sans Mono;")
         self.lbl_loc.setTextInteractionFlags(Qt.TextSelectableByMouse)  # 可选中复制
         self.btn_copy_loc = QPushButton("📋 复制路径")
         self.btn_copy_loc.setStyleSheet(
@@ -99,9 +99,9 @@ class NodeLogicDialog(QDialog):
         loc_row.addWidget(self.btn_copy_loc)
         self.lbl_doc = QLabel("加载中…")
         self.lbl_doc.setWordWrap(True)
-        self.lbl_doc.setStyleSheet(f"color:{_DIM}; font-size:11px;")
+        self.lbl_doc.setStyleSheet(f"color:{_DIM}; font-size:14px;")
         self.lbl_hint = QLabel("🛠 只改金色 ✏️ 可修改区 (保存即生效) · 🔒 框架区勿动")
-        self.lbl_hint.setStyleSheet(f"color:{_GOLD}; font-size:11px; font-weight:600;")
+        self.lbl_hint.setStyleSheet(f"color:{_GOLD}; font-size:14px; font-weight:600;")
         hl.addWidget(t1)
         hl.addLayout(loc_row)
         hl.addWidget(self.lbl_doc)
@@ -113,7 +113,7 @@ class NodeLogicDialog(QDialog):
         self.edit.setStyleSheet(
             f"QPlainTextEdit {{ background:{_PANEL}; color:{_TEXT}; border:1px solid {_BRD};"
             " border-radius:6px; font-family:DejaVu Sans Mono;"
-            " font-size:12px; padding:8px; }}")
+            " font-size:17px; padding:10px; }}")   # 2026-08-25 老倪: 12→17px, 代码要看得清
         self.edit.setReadOnly(True)
         self.edit.setLineWrapMode(QPlainTextEdit.NoWrap)
         root.addWidget(self.edit, 1)
@@ -365,11 +365,11 @@ class SourceViewDialog(QDialog):
         hl = QVBoxLayout(head)
         hl.setContentsMargins(12, 10, 12, 10)
         t1 = QLabel(f"📂 {os.path.basename(self._abs)}")
-        t1.setStyleSheet(f"color:{_TEXT}; font-size:14px; font-weight:700;")
+        t1.setStyleSheet(f"color:{_TEXT}; font-size:18px; font-weight:700;")
         loc_row = QHBoxLayout()
         loc_row.setSpacing(6)
         self.lbl_loc = QLabel(self._abs)
-        self.lbl_loc.setStyleSheet(f"color:{_GOLD}; font-size:11px; font-family:DejaVu Sans Mono;")
+        self.lbl_loc.setStyleSheet(f"color:{_GOLD}; font-size:14px; font-family:DejaVu Sans Mono;")
         self.lbl_loc.setTextInteractionFlags(Qt.TextSelectableByMouse)  # 可选中复制
         self.btn_copy = QPushButton("📋 复制路径")
         self.btn_copy.setStyleSheet(
@@ -388,7 +388,7 @@ class SourceViewDialog(QDialog):
         # setStyleSheet 会报 "Could not parse stylesheet", 故用 QFont+QPalette)
         self.edit = _CodeEditor()
         from PyQt5.QtGui import QFont as _QF, QPalette as _QP
-        _f = _QF("DejaVu Sans Mono", 12)
+        _f = _QF("DejaVu Sans Mono", 17)   # 2026-08-25 老倪: 源码字体 12→17px
         _f.setStyleHint(_QF.Monospace)
         self.edit.setFont(_f)
         _pal = self.edit.palette()

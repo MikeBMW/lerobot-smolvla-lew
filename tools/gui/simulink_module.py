@@ -9295,7 +9295,7 @@ class SimulinkModule(QWidget):
         tb = QTextBrowser()
         tb.setHtml(html)
         tb.setStyleSheet("QTextBrowser { background:#0d1117; color:#e6edf3; "
-                         "border:1px solid #30363d; font-size:7.5pt; }")
+                         "border:1px solid #30363d; font-size:13pt; padding:8px; }")   # 2026-08-25 老倪: 7.5→13pt
         lay.addWidget(tb)
         b_close = QPushButton("关闭")
         b_close.clicked.connect(dlg.accept)
@@ -9490,7 +9490,7 @@ class SimulinkModule(QWidget):
         tb = QTextBrowser()
         tb.setHtml(html)
         tb.setStyleSheet("QTextBrowser { background:#0d1117; color:#e6edf3; "
-                         "border:1px solid #30363d; font-size:7.5pt; }")
+                         "border:1px solid #30363d; font-size:13pt; padding:8px; }")   # 2026-08-25 老倪: 7.5→13pt
         lay.addWidget(tb)
         b_close = QPushButton("关闭")
         b_close.clicked.connect(dlg.accept)

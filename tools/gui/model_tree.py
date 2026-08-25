@@ -317,7 +317,7 @@ class StageCalibrationWidget(QWidget):
             "整定: 2mm 阶跃 · 震荡↑Kd · 爬行↑Kp\n"
             "验证: 力平滑S型 · 无咯噔 · 回正≤1.5次\n"
             "换新场景: 只重做 ②几何 + ⑤验证 (1h内)")
-        card.setStyleSheet("color:#9aa4b2; font-size:13px; font-family:Consolas; "
+        card.setStyleSheet("color:#9aa4b2; font-size:16px; font-family:Consolas; "
                            "background:#0d1117; border:1px solid #30363d; "
                            "border-radius:4px; padding:6px;")
         card.setWordWrap(True)
@@ -881,7 +881,7 @@ class StageCalibrationWidget(QWidget):
         cb.setStyleSheet("QComboBox { background:#161b22; color:#e6edf3; "
                          "border:1px solid #30363d; padding:3px; }")
         cb.currentIndexChanged.connect(lambda _: self._diag())
-        lb.setStyleSheet("color:#c9d1d9; font-size:14px; font-family:Consolas; "
+        lb.setStyleSheet("color:#c9d1d9; font-size:17px; font-family:Consolas; "
                          "background:#0d1117; border:1px solid #30363d; "
                          "border-radius:4px; padding:4px;")
         lb.setWordWrap(True)
@@ -1303,7 +1303,7 @@ class PerformanceWidget(QWidget):
         lay.addWidget(hd)
         tip = QLabel("按 5 阶段分解 · 时间/速度/加速度/能量/质量要求\n"
                      "数据来自: 特征根 ωₙ/ζ + 物理参数 m/b/k + 几何行程")
-        tip.setStyleSheet("color:#8b949e; font-size:14px;")
+        tip.setStyleSheet("color:#8b949e; font-size:17px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
 
@@ -1476,7 +1476,7 @@ class SceneStateWidget(QWidget):
         lay.addWidget(hd)
         tip = QLabel("7 状态 = 7 个可验收业务阶段 · 时间预算 11s ≤ 节拍 15s\n"
                      "每个状态落地: 触发 / 时间 / 性能指标 / 验收标准")
-        tip.setStyleSheet("color:#8b949e; font-size:14px;")
+        tip.setStyleSheet("color:#8b949e; font-size:17px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
         from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
@@ -1591,7 +1591,7 @@ class EngineeringReqWidget(QWidget):
         lay.addWidget(hd)
         tip = QLabel("开发流程: 📋工程需求 → 🧩原子技能 → 🎯场景状态\n"
                      "→ 📊性能指标 → 🧮数学分析 → ✅稳定性报告")
-        tip.setStyleSheet("color:#8b949e; font-size:14px;")
+        tip.setStyleSheet("color:#8b949e; font-size:17px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
         # 🧩 2026-08-15 老倪: 原子技能 (每个动作的口令/要领/约束 — 统一 token)
@@ -2472,7 +2472,7 @@ class DataBusTrace(QWidget):
         self.cmb_mode.currentIndexChanged.connect(lambda _i: self.refresh())
         bar.addWidget(self.cmb_mode, 1)
         self.lbl_cnt = QLabel("")
-        self.lbl_cnt.setStyleSheet("color:#9aa4b2;font-size:15px;background:transparent;border:none;")
+        self.lbl_cnt.setStyleSheet("color:#9aa4b2;font-size:18px;background:transparent;border:none;")
         bar.addWidget(self.lbl_cnt)
         lay.addLayout(bar)
 
@@ -2494,11 +2494,11 @@ class DataBusTrace(QWidget):
         self.table.setWordWrap(False)
         self.table.setStyleSheet(
             "QTableWidget{background:#0d1117;color:#e6edf3;border:1px solid #30363d;"
-            "gridline-color:#21262d;font-size:17px;font-family:Consolas,monospace;}"
+            "gridline-color:#21262d;font-size:20px;font-family:Consolas,monospace;}"
             "QTableWidget::item{padding:2px 4px;}"
             "QTableWidget::item:selected{background:#1f6feb;color:#ffffff;}"
             "QHeaderView::section{background:#161b22;color:#9aa4b2;border:none;"
-            "border-bottom:1px solid #30363d;padding:4px;font-size:15px;font-weight:bold;}")
+            "border-bottom:1px solid #30363d;padding:6px;font-size:18px;font-weight:bold;}")
         self.table.currentCellChanged.connect(self._on_select)
         self.table.cellClicked.connect(self._on_cell_click)   # 🔬 点击→结构化详情 (2026-08-23)
         self._struct_dlg = None

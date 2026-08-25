@@ -205,6 +205,8 @@ class StateSpaceSim:
               # 🧭 2026-08-25 3D 视图 (Apollo 分层渲染): 每步完整处理层向量
               "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [], "u_exec_vec": [],
               "latent_vec": [], "corrected_vec": [], "residual_vec": [], "z_k_vec": [], "v_vec": [],
+              # 📈 先验动力学预测器输出 (2026-08-25 老倪: 六层每层都要能在 3D 视图看到)
+              "prior_vec": [],
               "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
@@ -327,6 +329,7 @@ class StateSpaceSim:
             tr["u_fuse_vec"].append(np.asarray(u, dtype=float).copy())       # 动作调制器输出 (融合指令 u)
             tr["u_limit_vec"].append(np.asarray(u_sat, dtype=float).copy())  # 安全限幅输出
             tr["u_exec_vec"].append(np.asarray(u_vec, dtype=float).copy())   # 执行器输出
+            tr["prior_vec"].append(np.asarray(prior, dtype=float).copy())
             tr["latent_vec"].append(np.asarray(self.latent, dtype=float).copy())
             tr["corrected_vec"].append(np.asarray(corrected, dtype=float).copy())
             tr["residual_vec"].append(np.asarray(residual, dtype=float).copy())

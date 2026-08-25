@@ -148,7 +148,8 @@ def run_episode(seed=0, want_video=True, log=print):
                           "dist", "u_ff", "u_sat", "residual", "contact_p", "force",
                           "force_grasp", "target", "grasped", "obs",
                           "u_ff_vec", "u_fb_vec", "u_fuse_vec", "u_limit_vec", "u_exec_vec",
-                          "latent_vec", "corrected_vec", "residual_vec", "z_k_vec", "v_vec")}
+                          "latent_vec", "corrected_vec", "residual_vec", "z_k_vec", "v_vec",
+                          "prior_vec")}
     frames = []
     v_est = np.zeros(3)
     grasped = False
@@ -268,6 +269,7 @@ def run_episode(seed=0, want_video=True, log=print):
         tr["u_fuse_vec"].append(np.asarray(u, dtype=float).copy())
         tr["u_limit_vec"].append(u_sat.copy())
         tr["u_exec_vec"].append(u_exec.copy())
+        tr["prior_vec"].append(np.asarray(prior, dtype=float).copy())
         tr["latent_vec"].append(np.asarray(latent, dtype=float).copy())
         tr["corrected_vec"].append(np.asarray(corrected, dtype=float).copy())
         tr["residual_vec"].append(residual.copy())

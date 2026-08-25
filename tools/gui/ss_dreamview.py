@@ -311,7 +311,8 @@ _LAYER_COLORS = {
     "uff":     (0.20, 0.85, 0.35, 1.0),   # 绿  前馈加速器
     "ufb":     (0.35, 0.62, 1.00, 1.0),   # 蓝  反馈校正
     "ufuse":   (1.00, 0.78, 0.12, 1.0),   # 金黄 融合指令 (action 主图标)
-    "ulimit":  (1.00, 0.30, 0.30, 1.0),   # 红  安全限幅
+    "ulimit":  (1.00, 0.30, 0.30, 1.0),   # 红  安全执行边界
+    "prior":   (0.20, 0.90, 0.85, 1.0),   # 青  先验动力学预测器 (纯预测, 无校正)
     "yolo_hand": (0.35, 0.65, 1.00, 0.55),
     "yolo_peg":  (0.00, 0.83, 0.66, 0.55),
     "yolo_hole": (1.00, 0.65, 0.00, 0.55),
@@ -413,40 +414,51 @@ class DreamView3D(QWidget):
         pl.addSpacing(6)
 
         # 图层: (key, 中文名, 默认开, 提示)
+        # 🔢 2026-08-25 老倪: 顺序必须照状态空间链路排 —
+        #   感知层数据在最前, 之后 前馈加速器 → 自适应状态估计器 → 先验动力学预测器
+        #   → 状态校正器 → 动作调制器 → 安全执行边界, 最后才是网格/坐标轴等辅助。
         self._layers_def = [
-            ("scene",     "🌍 物理世界 (台面/插销/孔位/夹爪)", True,
-             "画布节点「🌍 物理世界」的真实几何: 台面 / 带孔盒 / 插销 peg / Sawyer 臂+夹爪\n"
-             "(含物体名字标注; 关掉它连机械臂和标注一起隐藏)"),
-            ("yolo",      "🎯 YOLO 目标检测",           True,
+            # ── 感知层 (最前) ──
+            ("scene",     "📡 感知层 · 物理世界几何",     True,
+             "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 插销 peg /\n"
+             "Sawyer 臂 + 夹爪 (含物体名字标注; 关掉它连机械臂和标注一起隐藏)"),
+            ("yolo",      "📡 感知层 · YOLO 目标检测",    True,
              "画布节点「🎯 YOLO 目标检测」的输出: hand / peg / hole 三个 3D 检测框"),
-            ("traj",      "🌍 物理世界 · 末端轨迹",      True,
+            ("traj",      "📡 感知层 · 末端实测轨迹",     True,
              "「🌍 物理世界」每步实测的末端位置连成的历史轨迹 (metaworld MuJoCo 真值)"),
-            ("uff",       "⚡ 前馈加速器",              True,
+            # ── S2 并行处理层 ──
+            ("uff",       "① ⚡ 前馈加速器",             True,
              "快通道 (前馈加速器 = 原左脑 MLP 的等效控制律) 每步给出的**速度指令** (m/s):\n"
-             "  绿线 = 建议往哪走 (方向), 线越长 = 建议速度越大 (满格 0.35 m/s = 10cm 长)\n"
-             "  绿点 = 箭杆末端(箭头尖) = 照这个建议走一步会到哪\n"
-             "调度器只采纳 30% (接触/插入阶段 85%) → 和金黄「融合指令 u」比长短就知道被压了多少"),
-            ("ufb",       "🧪 状态校正器 · 残差方向",    False,
+             "  绿线 = 建议往哪走 (方向), 线越长 = 速度越大 (满格 0.35 m/s = 10cm 长)\n"
+             "  锥形箭头尖 = 照这个建议走一步会到哪; 旁边文字 = 名称 + m/s + 方向\n"
+             "动作调制器只采纳 30% (抓取/插入 85%) → 与「④ 动作调制器」比长短即知被压多少"),
+            ("latent",    "② 🔮 自适应状态估计器 · x̂",   False,
+             "慢通道 AdaptiveStateEstimator 的后验位置估计 x̂ₖ = 预测 + K·(观测−预测), K=0.2\n"
+             "紫线 = 最近 30 帧估计轨迹, 大球 = 当前帧估计位置\n"
+             "与真实末端的偏离量就是残差来源 (实测误差 ~2.6mm, 抖动 ~0.9mm/步)"),
+            ("prior",     "③ 📈 先验动力学预测器",        False,
+             "画布节点「📈 先验动力学预测器」的输出: 只按上一步控制量外推的**先验位置** x̂ₖ⁻\n"
+             "青色虚点链 = 最近 30 帧先验轨迹, 方块 = 当前帧先验位置\n"
+             "它与观测 z_k 之差 = 残差 → 喂给「④ 状态校正器」判接触 (没有校正的\"纯预测\")"),
+            # ── S3 认知决策层 ──
+            ("ufb",       "④ 🧪 状态校正器 · 残差方向",   False,
              "画布节点「🧪 状态校正器」算出的残差 r = z_k − 先验预测, 这里画 0.5×r 作为校正方向\n"
              "(实测 0.005 m/s 量级): 蓝箭头 = 观测比预测偏了哪边 → 动作调制器据此把前馈拉回来"),
-            ("ufuse",     "🧭 动作调制器 (下发 action)", True,
+            ("contact",   "④ 🧪 状态校正器 · 接触概率",   True,
+             "同一节点的第二路输出: 接触概率 = σ(8×|残差|)\n"
+             "橙色热力球画在末端: 球越大越亮 = 接触概率越高 (插入顶到孔沿时最明显);\n"
+             "残差的力觉分量来自 MuJoCo 真实环境接触力 (夹持力单独一路不计入)"),
+            ("ufuse",     "⑤ 🧭 动作调制器 (下发 action)", True,
              "动作调制器 (八阶段状态机 + 否决权) 的最终输出 = 真正下发给执行器的动作:\n"
              "  u = 0.3·u_ff + 0.7·u_fb (接近/对位/下降/抬起/转移)\n"
              "  u = 0.85·u_ff + 0.15·u_fb (抓取/插入 — 力控阶段前馈推力主导)\n"
              "  残差超阈值 → 否决, u 直接归零 (强制减速重试)"),
-            ("ulimit",    "🛡 安全执行边界 (饱和限幅)",  False,
-             "安全层饱和限幅后的指令 (上限 0.6 m/s)。与融合指令重合 = 没触发限幅;\n"
+            ("ulimit",    "⑥ 🛡 安全执行边界 (饱和限幅)",  False,
+             "安全层饱和限幅后的指令 (上限 0.6 m/s)。与⑤重合 = 没触发限幅;\n"
              "两者分叉 = 安全层出手削掉了超速部分"),
-            ("latent",    "🔮 自适应状态估计器 · x̂",     False,
-             "慢通道 AdaptiveStateEstimator 的后验位置估计 x̂ₖ = 预测 + K·(观测−预测);\n"
-             "紫线 = 最近 60 帧估计轨迹, 大球 = 当前帧估计位置。\n"
-             "与蓝色真实末端轨迹的偏离量 = 残差 (接触/扰动来源), 调度器据此判接触概率"),
-            ("contact",   "🧪 状态校正器 · 接触概率",    True,
-             "画布节点「🧪 状态校正器」的第二路输出: 接触概率 = σ(8×|残差|)\n"
-             "橙色热力球画在末端: 球越大越亮 = 接触概率越高 (插入顶到孔沿时最明显);\n"
-             "残差的力觉分量来自 MuJoCo 真实环境接触力 (夹持力单独一路不计入)"),
-            ("grid",      "▦ 地面网格",                 True,  "z=0 台面参考网格 (5cm 一格)"),
-            ("axis",      "🧭 坐标轴 XYZ",              False,
+            # ── 辅助参考 ──
+            ("grid",      "▦ 地面网格 (参考)",           True,  "z=0 台面参考网格 (5cm 一格)"),
+            ("axis",      "🧭 坐标轴 XYZ (参考)",        False,
              "世界坐标轴指示器 (pyqtgraph GLAxisItem), 画在原点 = 机器人底座:\n"
              "  绿 = Z 轴 (垂直向上)   黄 = Y 轴 (指向工作台)   蓝 = X 轴\n"
              "⚠️ 原点在画面外时看不到 (实测: 自动取景/俯视档 0px, 「🎥 视频同框」档可见)"),
@@ -932,6 +944,15 @@ class DreamView3D(QWidget):
         # 状态估计 x̂: 紫线(最近 60 帧估计轨迹) + 当前帧估计位置大球
         #   2026-08-25 老倪「为什么显示一堆点」→ 原来是每帧一个散点(看不出是轨迹),
         #   改成连线 + 当前点大球, 一眼看出"卡尔曼估计出来的末端在哪、跟真实轨迹差多少"
+        # 📈 先验动力学预测器: 青色点链 (纯预测轨迹) + 当前帧先验位置
+        pr_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_LAYER_COLORS["prior"], width=2.5)
+        pr_line.setGLOptions("additive")
+        self.view.addItem(pr_line)
+        pr_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=_LAYER_COLORS["prior"], size=13)
+        pr_now.setGLOptions("additive")
+        self.view.addItem(pr_now)
+        self._gl_items["prior"] = [pr_line, pr_now]
+
         lat_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.45, 0.95, 0.95), width=3.5)
         lat_line.setGLOptions("additive")
         self.view.addItem(lat_line)
@@ -1095,6 +1116,18 @@ class DreamView3D(QWidget):
             lat_pts = np.vstack([lat_pts, lat_pts])
         self._gl_items["latent"][0].setData(pos=lat_pts)
         self._gl_items["latent"][1].setData(pos=lat_pts[-1:])
+        # 📈 先验动力学预测器 (纯预测, 未经观测校正) — 老 trace 无 prior_vec 时该层留空
+        pv = tr.get("prior_vec")
+        if pv is not None and len(pv) > i:
+            pr_pts = np.array([np.asarray(pv[k], dtype=float)[:3]
+                               for k in range(max(0, i - win + 1), i + 1)])
+            if len(pr_pts) < 2:
+                pr_pts = np.vstack([pr_pts, pr_pts])
+            self._gl_items["prior"][0].setData(pos=pr_pts)
+            self._gl_items["prior"][1].setData(pos=pr_pts[-1:])
+            self._prior_now = pr_pts[-1]
+        else:
+            self._prior_now = None
 
         # 接触热力球 (接触概率高时在末端亮起大球)
         cp = tr["contact_p"][i]
@@ -1124,7 +1157,10 @@ class DreamView3D(QWidget):
                 _add(self._mouth + np.array([0, 0, 0.05]), "孔口 hole", (1.0, 0.45, 0.35))
                 _add(self._hole + np.array([0, 0, -0.05]), "插入终点 goal", (0.35, 0.95, 0.60))
             if self._layer_on.get("latent", False):
-                _add(np.asarray(lat_pts[-1]) + [0, 0, 0.02], "状态估计 x̂", (0.90, 0.60, 1.0))
+                _add(np.asarray(lat_pts[-1]) + [0, 0, 0.02], "自适应状态估计器 x̂", (0.90, 0.60, 1.0))
+            if self._layer_on.get("prior", False) and getattr(self, "_prior_now", None) is not None:
+                _add(np.asarray(self._prior_now) + [0, 0, 0.02],
+                     "先验动力学预测器 x̂⁻ (纯预测)", (0.20, 0.90, 0.85))
             if self._layer_on.get("axis", False):
                 for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30)),
                                    ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35)),
