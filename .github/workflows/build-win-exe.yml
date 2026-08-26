@@ -73,7 +73,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "..\flows;flows" studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" studio.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -151,7 +151,7 @@ jobs:
           pyinstaller --windowed --icon logo.icns --name "Z-MAX_Console" \
             --add-data "logo.png:." --add-data "docs_sync.py:." \
             --add-data "ppt_engine.py:." --add-data "update_checker.py:." \
-            --add-data "../flows:flows" \
+            --add-data "$GITHUB_WORKSPACE/flows:flows" \
             studio.py
           ls -la dist/
 
