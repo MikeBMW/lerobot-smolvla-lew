@@ -246,7 +246,7 @@ def node_train(ctx):
     if policy == "expert_mlp":
         import subprocess, sys as _sys, re as _re, json as _json
         log("🎓 专家蒸馏训练: 300 episodes 官方专家数据 → BC 蒸馏 MLP")
-        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # tools/gui → repo 根
+        repo = _REPO_ROOT  # 仓库根 (frozen/env/探测统一, 勿用 dirname×2 — 那指向 tools/)
         r = subprocess.run([_sys.executable, os.path.join(repo, "tools", "distill_expert.py")], capture_output=True, text=True, cwd=repo)
         tail = (r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr.strip()[-100:])
         log(f"  {tail}")
@@ -267,7 +267,7 @@ def node_train(ctx):
         # 📈 落基准数据 (2026-08-07): 让 Scope 对比图表把专家作为真值锚点显示
         try:
             import json as _json
-            repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            repo = _REPO_ROOT
             os.makedirs(os.path.join(repo, "reports"), exist_ok=True)
             with open(os.path.join(repo, "reports", "train_curve_expert_policy.json"), "w", encoding="utf-8") as f:
                 _json.dump({"policy": "expert_policy", "name": "官方专家", "ts": time.strftime("%Y%m%d_%H%M%S"),
@@ -1216,14 +1216,37 @@ _reg("pdf_report",   ["PDF"], "📄 PDF 报告 — 五模型技术选型 (11章)
 # 📂 外部源码位置: 语义key → (绝对路径, 行号, 真实符号名) — 覆盖 node_logic.py 自身位置
 _EXTERNAL_LOC = {}
 # node_logic.py 在 <root>/tools/gui/ → 仓库根 = dirname ×3
-_LR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))), "src", "lerobot", "policies", "left_right")
+# 🐛 2026-08-26: Windows exe/绿色版 __file__ 在 AppData 解压目录 → 上溯三级拼出
+#   C:\Users\Admin\AppData\Local\src\... (不存在)。与 state_space_sim 同款多候选探测:
+#   env ZMAX_REPO_ROOT → frozen _MEIPASS → 上溯三级 → 向上逐级找含 src/lerobot 的仓库根
+import sys as _sys
+
+def _node_repo_root():
+    """仓库根定位 (多候选): env ZMAX_REPO_ROOT → frozen _MEIPASS → __file__ 上溯三级 → 向上逐级探测"""
+    env = os.environ.get("ZMAX_REPO_ROOT")
+    if env and os.path.isdir(env):
+        return env
+    if getattr(_sys, "frozen", False):
+        return getattr(_sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))))
+    _d = os.path.dirname(_LOGIC_FILE)
+    while True:
+        if os.path.isdir(os.path.join(_d, "src", "lerobot")):
+            return _d
+        _p = os.path.dirname(_d)
+        if _p == _d:
+            break
+        _d = _p
+    return os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE)))  # 兜底: 上溯三级
+
+_REPO_ROOT = _node_repo_root()
+_LR_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right")
 _EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 44, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
 _EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 59, "class RightBrainWM")
 _EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 75, "class LeftRightPolicy")
 _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 34, "class LeftRightConfig")  # 🐛 2026-08-12: 原 sym 非符号名定位失败 → 显示整个配置类 (含接触/状态机阈值)
 
 # 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
-_YOLO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))), "src", "lerobot", "policies", "yolo_3d")
+_YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
 _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 11, "def pixel_to_ray")  # 📐 2D→3D 解算: 像素→射线→平面交点 (反投影实现, 非整个类)
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
@@ -1327,8 +1350,7 @@ _reg("obs39",       ["39D obs", "39D"], "📊 39D obs 输入 — metaworld 完�
 #   画布: flows/state_space_obs.json (14 节点: 4 背景行 + 10 功能节点)
 #   映射方式: _EXTERNAL_LOC → NodeLogicDialog 显示真实源码 (只读, 同 left_right 模式)
 # ════════════════════════════════════════════════════════════════
-_SS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_LOGIC_FILE))),
-                       "src", "lerobot", "policies", "left_right", "state_space")
+_SS_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space")
 
 
 def _ss_run(ctx, layer, src):

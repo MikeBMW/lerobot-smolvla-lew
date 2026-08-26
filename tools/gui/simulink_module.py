@@ -9466,7 +9466,7 @@ class SimulinkModule(QWidget):
                 f"<tr style='color:#e6edf3'><th>场景</th><th>技能链</th><th>力限N</th><th>节拍s</th></tr>")
             try:
                 import importlib.util as _ilu
-                _sp2 = os.path.join(_SS_DIR, "planner.py")
+                _sp2 = os.path.join(node_logic._SS_DIR, "planner.py")
                 spec = _ilu.spec_from_file_location("state_space.planner", _sp2)
                 _pm = _ilu.module_from_spec(spec)
                 spec.loader.exec_module(_pm)

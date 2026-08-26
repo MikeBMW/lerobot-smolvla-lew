@@ -1,7 +1,7 @@
 # Z-MAX Console Windows build — PyInstaller cross-compile via Wine
 #
-# Usage:
-#   docker build -f Dockerfile.win -t zmax-console-win tools/gui/
+# Usage (上下文必须从仓库根, 否则 flows/src 打包不进去):
+#   docker build -f tools/gui/Dockerfile.win -t zmax-console-win .
 #   docker run --rm -v /mnt/c/Users:/output zmax-console-win
 #   → Windows 桌面出现 Z-MAX_Console.exe
 
@@ -32,10 +32,15 @@ WORKDIR /src
 COPY . /src/
 
 # Build .exe
+# 🐛 2026-08-26: state_space 六层源码/left_right/yolo_3d 必须 add-data 进 exe —
+#   state_space_sim.py 按文件路径 importlib 加载 (PyInstaller 静态分析收集不到)
 RUN xvfb-run wine pyinstaller --onefile --windowed \
     --name "Z-MAX_Console" \
     --icon /src/logo.ico \
     --add-data "logo.png;." \
+    --add-data "flows;flows" \
+    --add-data "src/lerobot/policies/left_right;src/lerobot/policies/left_right" \
+    --add-data "src/lerobot/policies/yolo_3d;src/lerobot/policies/yolo_3d" \
     /src/studio.py
 
 # Export to /output

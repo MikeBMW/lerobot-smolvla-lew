@@ -15,16 +15,41 @@ import os
 import sys
 import numpy as np
 
-_SS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                       "src", "lerobot", "policies", "left_right", "state_space")
-# 🐛 2026-08-26: Windows exe 运行时 __file__ 在 AppData 解压目录 → 上溯路径错
-# 修正: frozen 用 _MEIPASS; 环境变量 ZMAX_REPO_ROOT 优先 (Linux/跨机部署显式指定)
-if getattr(sys, "frozen", False):
-    _SS_DIR = os.path.join(getattr(sys, "_MEIPASS", _SS_DIR),
-                           "src", "lerobot", "policies", "left_right", "state_space")
-_root_env = os.environ.get("ZMAX_REPO_ROOT")
-if _root_env and os.path.isdir(_root_env):
-    _SS_DIR = os.path.join(_root_env, "src", "lerobot", "policies", "left_right", "state_space")
+
+def _find_ss_dir():
+    """定位 state_space 六层源码目录 — 多候选探测 (env → frozen _MEIPASS → 上溯三级 → 向上逐级找仓库根)
+
+    🐛 2026-08-26: Windows exe / 绿色版运行时 __file__ 在 AppData 解压目录,
+    上溯三级拼出 C:\\Users\\Admin\\AppData\\Local\\src\\... (不存在) → FileNotFoundError。
+    改为逐级向上探测, 找到含 perception.py 的仓库根为止。
+    """
+    rel = os.path.join("src", "lerobot", "policies", "left_right", "state_space")
+    cands = []
+    _root_env = os.environ.get("ZMAX_REPO_ROOT")
+    if _root_env and os.path.isdir(_root_env):
+        cands.append(os.path.join(_root_env, rel))
+    if getattr(sys, "frozen", False):
+        cands.append(os.path.join(getattr(sys, "_MEIPASS", ""), rel))
+    # __file__ 上溯三级 (源码仓库内) — 保底候选
+    cands.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                              "src", "lerobot", "policies", "left_right", "state_space"))
+    # 向上逐级探测仓库根 (tools/gui 被复制到任意位置也能找到 src/ 同级目录)
+    d = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        cands.append(os.path.join(d, rel))
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in cands:
+        if os.path.isfile(os.path.join(c, "perception.py")):
+            return c
+    raise FileNotFoundError(
+        "state_space 六层源码目录未找到 (已探测: " + " ; ".join(dict.fromkeys(cands)) +
+        ")。请设置环境变量 ZMAX_REPO_ROOT 指向仓库根, 或从仓库内运行。")
+
+
+_SS_DIR = _find_ss_dir()
 
 
 def _load(name):
@@ -483,8 +508,10 @@ def quick_run():
 
 
 # ── 🧮 仿真 → 训练数据集 (2026-08-20 老倪: 状态空间接入训练流程) ──
+# 🐛 2026-08-26: 与 _SS_DIR 同源 — 从已探测到的源码目录上溯 5 级到仓库根 (state_space→left_right→policies→lerobot→src→根)
 _DATASET_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.dirname(_SS_DIR))))),
     "data", "ss_insert")
 
 

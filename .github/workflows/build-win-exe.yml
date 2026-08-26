@@ -73,7 +73,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" studio.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -152,6 +152,8 @@ jobs:
             --add-data "logo.png:." --add-data "docs_sync.py:." \
             --add-data "ppt_engine.py:." --add-data "update_checker.py:." \
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
             studio.py
           ls -la dist/
 
