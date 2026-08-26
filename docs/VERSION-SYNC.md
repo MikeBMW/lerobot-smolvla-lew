@@ -14,12 +14,12 @@
 2. 小版本可独立（产品补文档 / 管线修 bug 各自 commit）
 3. 大版本（产品 2.x / 管线 3.x）需三人评审后统一升级
 
-## 当前各工程版本 (2026-08-08)
+## 当前各工程版本 (2026-08-26)
 
 | 工程 | 版本 | 维护 |
 |:---|:---:|:---|
-| GUI (lerobot-smolvla-lew) | **v1.1.0** | xspace (main) / 小芳 (mac) |
-| pipe (zmax-data-pipeline) | **v2.7.0** | 小芳 |
+| GUI (lerobot-smolvla-lew) | **v3.2.0 (Console 双平台发版)** | xspace (main) / 小芳 (mac) |
+| pipe (zmax-data-pipeline) | v2.7.0 | 小芳 |
 | web (zmax-website) | 待确认 | web |
 
 ## 升级流程
