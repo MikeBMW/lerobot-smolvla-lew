@@ -74,8 +74,8 @@ jobs:
         run: |
           mkdir -p reports
           curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
-          python -m zipfile -e mlp_video_pack.zip .
-          ls -la reports/ | head -5
+          python -m zipfile -e mlp_video_pack.zip reports/
+          ls -la reports/ | head -8
           ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
 
       - name: Build .exe with PyInstaller
@@ -159,8 +159,8 @@ jobs:
         run: |
           mkdir -p reports
           curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
-          python -m zipfile -e mlp_video_pack.zip .
-          ls -la reports/ | head -5
+          python -m zipfile -e mlp_video_pack.zip reports/
+          ls -la reports/ | head -8
 
       - name: Build .app with PyInstaller
         run: |
