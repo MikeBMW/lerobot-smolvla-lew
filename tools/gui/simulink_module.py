@@ -9667,7 +9667,15 @@ class SimulinkModule(QWidget):
             from ss_dreamview import DreamView3D, load_episode
         except Exception as e:
             try:
-                self._qmsg_info("🧭 3D 视图", f"3D 视图加载失败: {e}")
+                import sys
+                if getattr(sys, "frozen", False):
+                    # 2026-08-26: exe 旧版没打 pyqtgraph/PyOpenGL (v3.2.3 已修复, 升级即可)
+                    hint = ("当前 exe 是旧版, 缺 3D 渲染组件 (pyqtgraph)。\n"
+                            "请用「关于 → 🔄 检查更新」升级到最新版 exe。")
+                else:
+                    hint = (f"源码模式缺 3D 渲染依赖:\n"
+                            f"pip install pyqtgraph PyOpenGL\n\n({e})")
+                self._qmsg_info("🧭 3D 视图", f"3D 视图加载失败: {hint}")
             except Exception:
                 pass
             return

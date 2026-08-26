@@ -26,7 +26,7 @@ RUN wget -q https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe -O 
     rm /tmp/python-installer.exe
 
 # Install PyInstaller + PyQt5 + deps (Windows Python under Wine)
-RUN xvfb-run wine pip install --no-cache-dir pyinstaller PyQt5 numpy pillow
+RUN xvfb-run wine pip install --no-cache-dir pyinstaller PyQt5 numpy pillow pyqtgraph PyOpenGL
 
 WORKDIR /src
 COPY . /src/
@@ -41,6 +41,7 @@ RUN xvfb-run wine pyinstaller --onefile --windowed \
     --add-data "flows;flows" \
     --add-data "src/lerobot/policies/left_right;src/lerobot/policies/left_right" \
     --add-data "src/lerobot/policies/yolo_3d;src/lerobot/policies/yolo_3d" \
+    --collect-all pyqtgraph --collect-all OpenGL \
     /src/studio.py
 
 # Export to /output

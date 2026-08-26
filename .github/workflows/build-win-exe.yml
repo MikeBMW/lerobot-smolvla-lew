@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
 
       - name: Determine release tag
         id: release_tag
@@ -73,7 +73,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --collect-all pyqtgraph --collect-all OpenGL studio.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -121,7 +121,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller "PyQt5==5.15.11" numpy pillow grpcio protobuf python-pptx
+          pip install pyinstaller "PyQt5==5.15.11" numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
 
       - name: Determine release tag
         id: release_tag
@@ -154,6 +154,7 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
+            --collect-all pyqtgraph --collect-all OpenGL \
             studio.py
           ls -la dist/
 
