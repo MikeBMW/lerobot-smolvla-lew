@@ -67,13 +67,13 @@ jobs:
               VarFileInfo([VarStruct('Translation', [1033, 1200])])]
           )'''
           print(tpl % (ver[0],ver[1],ver[2],ver[3],ver[0],ver[1],ver[2],ver[3]))
-          " > version_info.txt
+          " > tools/gui/version_info.txt
 
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file ..\version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." studio.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -156,6 +156,7 @@ jobs:
 
       - name: Set bundle version (修 PyInstaller 默认 0.0.0 → 真实版本)
         run: |
+          cd tools/gui
           VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/Z-MAX_Console.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VER" dist/Z-MAX_Console.app/Contents/Info.plist
