@@ -893,11 +893,18 @@ LIBRARY = [
 ]
 
 # 🧩 原子技能组件区 (2026-08-09 老倪: W²-VLA Token — 从 atomic_skill_tokens.json 动态加载 9 大类)
+def _repo_root_path():
+    """仓库根 (frozen exe → PyInstaller 解压资源目录 _MEIPASS; 源码 → __file__ 上溯三级)
+    🐛 2026-08-26: Windows exe 画布加载失败 — flows/ 路径在 frozen 下必须指向 _MEIPASS"""
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def _load_skill_library_groups():
     """加载原子技能 token 库 → LIBRARY 分组 (每大类一组, 每条技能一个组件)
     技能组件拖入画布 → 连 🧩结构条件 → 进 SYS1 → 导出 action JSON"""
     import os as _os, json as _j
-    p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "flows", "atomic_skill_tokens.json")
+    p = _os.path.join(_repo_root_path(), "flows", "atomic_skill_tokens.json")
     try:
         data = _j.load(open(p, encoding="utf-8"))
         skills = data.get("skills", [])
@@ -3658,7 +3665,7 @@ class LibraryPanel(QFrame):
         # 🏭 场景分组 (2026-08-09 老倪: 数据集分组下面 — 三场景 node, 点击打开 ECS 链接 + 建节点链)
         try:
             import json as _j
-            _sp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "flows", "scene_skills_3scenarios.json")
+            _sp = os.path.join(_repo_root_path(), "flows", "scene_skills_3scenarios.json")
             _scenes = _j.load(open(_sp, encoding="utf-8")).get("scenes", [])
         except Exception:
             _scenes = []
@@ -3680,7 +3687,7 @@ class LibraryPanel(QFrame):
                 self.v.addWidget(btn)
         # 🤝 合作闭环 (2026-08-09 老倪: 供应商底座→实验室微调→数据不出实验室 — 加载合作JSON画布)
         try:
-            _cp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "flows", "cooperation_closed_loop.json")
+            _cp = os.path.join(_repo_root_path(), "flows", "cooperation_closed_loop.json")
             if os.path.exists(_cp):
                 lab = QLabel("▾ 🤝 合作闭环 (供应商·数据合规)")
                 lab.setStyleSheet("color:#a371f7; font-size:13pt; font-weight:700; padding:6px 2px 2px;")
@@ -6091,8 +6098,7 @@ class SimulinkModule(QWidget):
             return
         from PyQt5.QtWidgets import QFileDialog
         # 默认保存到仓库 flows/ 目录 (与 cicd_workflow.json 同目录), 文件名含时间戳防覆盖
-        flows_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), "flows")
+        flows_dir = os.path.join(_repo_root_path(), "flows")
         os.makedirs(flows_dir, exist_ok=True)
         default_name = f"flow_{time.strftime('%Y%m%d_%H%M%S')}.json"
         dlg = QFileDialog(self, "💾 另存为工作流", os.path.join(flows_dir, default_name), "JSON (*.json)")
@@ -6118,8 +6124,7 @@ class SimulinkModule(QWidget):
 
     def import_flow(self):
         from PyQt5.QtWidgets import QFileDialog
-        flows_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), "flows")
+        flows_dir = os.path.join(_repo_root_path(), "flows")
         os.makedirs(flows_dir, exist_ok=True)
         dlg = QFileDialog(self, "📂 加载工作流", flows_dir, "JSON (*.json)")
         dlg.setAcceptMode(QFileDialog.AcceptOpen)
@@ -6397,8 +6402,8 @@ class SimulinkModule(QWidget):
     # ── 📡 实时采集轮询 (后台线程, 不卡 UI) ──
 
     def _repo_root(self):
-        """仓库根: tools/gui/simulink_module.py → lerobot-smolvla-lew/"""
-        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        """仓库根 (frozen exe → _MEIPASS; 源码 → tools/gui/ 上溯三级)"""
+        return _repo_root_path()
 
     def _run_cmd(self, cmd, cwd=None, collect=None, line_hook=None, timeout=None):
         """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行; line_hook(ln) 每行回调
@@ -10001,7 +10006,7 @@ class SimulinkModule(QWidget):
             "input": {"topic": "/dds/cond/" + (p.get("skill_id", "skill").lower())},
             "output": {"topic": "/dds/action/" + (p.get("skill_id", "skill").lower())},
         }
-        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        repo = _repo_root_path()
         out = _os.path.join(repo, "flows", f"action_{p.get('skill_id', 'skill')}.json")
         _j.dump(act, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         self._log(f"🧩 技能 action 已导出: {out}")
@@ -10032,7 +10037,7 @@ class SimulinkModule(QWidget):
             "count": len(acts),
             "actions": acts,
         }
-        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        repo = _repo_root_path()
         out = _os.path.join(repo, "flows", f"actions_{_t.strftime('%Y%m%d_%H%M%S')}.json")
         _j.dump(flow, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         self._log(f"🧩 已导出 {len(acts)} 个技能 action → {out} (画板可加载)")
@@ -10043,7 +10048,7 @@ class SimulinkModule(QWidget):
         每场景: 场景node → 原子技能序列 → 结构条件
         三场景结构条件 → 汇聚 1 个 SYS1 动作系统 → action 输出节点"""
         import os as _os, json as _j, time as _t
-        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        repo = _repo_root_path()
         sp = _os.path.join(repo, "flows", "scene_skills_3scenarios.json")
         try:
             scenes = _j.load(open(sp, encoding="utf-8")).get("scenes", [])
@@ -10150,7 +10155,7 @@ class SimulinkModule(QWidget):
         数据源: flows/scenes.json — 光模块工厂三大场景 (插拔/搬运/光学检测)
         ECS 链接: https://datadrive.world/scene.html?scene=<scene_id>&json=<base64>"""
         import os as _os, json as _j, base64 as _b64, urllib.parse as _up
-        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        repo = _repo_root_path()
         p = _os.path.join(repo, "flows", "scene_skills_3scenarios.json")
         if not _os.path.exists(p):
             self._log(f"❌ 场景库不存在: {p}")
@@ -10183,7 +10188,7 @@ class SimulinkModule(QWidget):
     def _build_scene_flow(self, scene, scene_node=None):
         """🏭 场景节点链: 场景 → 技能序列 (skill) → 结构条件 (coord_overlay) → SYS1"""
         import os as _os, json as _j, time as _t
-        repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        repo = _repo_root_path()
         tk_p = _os.path.join(repo, "flows", "atomic_skill_tokens.json")
         try:
             tks = {s["skill_id"]: s for s in _j.load(open(tk_p, encoding="utf-8")).get("skills", [])}

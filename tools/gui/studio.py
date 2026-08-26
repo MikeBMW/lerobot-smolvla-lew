@@ -638,7 +638,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v3.2.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v3.2.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1493,7 +1493,7 @@ class HomeWidget(QWidget):
 
     def _sync_to_github(self):  # 新增：同步GUI代码到GitHub的方法
         """将本地 tools/gui/ 目录的代码推送到 GitHub 仓库"""
-        repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 定位到仓库根目录（gui→tools→repo_root）
+        repo_dir = self._repo_root()  # 定位到仓库根目录 (gui→tools→repo_root; frozen exe → _MEIPASS)
 
         try:
             # 第一步：git add
@@ -2187,7 +2187,9 @@ class DatasetModule(SubModuleWidget):
         return os.path.expanduser(f"~/.cache/huggingface/datasets/{repo_slug}")
 
     def _repo_root(self):
-        """项目根目录 (tools/gui/ → 上三级)"""
+        """项目根目录 (frozen exe → PyInstaller _MEIPASS; 源码 → tools/gui/ → 上三级)"""
+        if getattr(sys, "frozen", False):
+            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     def _is_cached(self, repo_id):
@@ -4550,7 +4552,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             # 本地目标: outputs/train/<name>_<ts>/checkpoints/last/pretrained_model (rollout 按此找) 
             import time as _t
             ts = _t.strftime("%Y%m%d_%H%M%S")
-            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            root = self._repo_root()
             train_dir = os.path.join(root, "outputs", "train", f"{name}_{ts}", "checkpoints", "last")
             os.makedirs(train_dir, exist_ok=True)
             self._log(f"   └ 📥 拉回远程模型: {_remote_ck} → {train_dir}/pretrained_model")
@@ -9741,7 +9743,7 @@ def _msg_ask(parent, title, text, kind="warning"):
 class StudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v3.2.0 [W-01]")  # v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除插销自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v3.2.1 [W-01]")  # v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除插销自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         # 🖥 2026-08-25 老倪: UI 重新适配 — 3200x2000 屏上固定 1400x900 只占 27% 面积,
