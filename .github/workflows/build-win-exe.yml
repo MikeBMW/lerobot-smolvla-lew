@@ -36,19 +36,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx
 
-      - name: Build .exe with PyInstaller
-        run: |
-          cd tools\gui
-          python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." studio.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Z-MAX_Console-windows
-          path: tools\gui\dist\Z-MAX_Console.exe
-          compression-level: 0
-
       - name: Determine release tag
         id: release_tag
         shell: bash
@@ -58,6 +45,42 @@ jobs:
           else
             echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Generate version info (exe 文件属性带真实版本, 不再 0.0.0)
+        shell: bash
+        run: |
+          VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
+          python -c "
+          import sys
+          ver = '$VER'.split('.')
+          ver = (ver + ['0','0','0'])[:4]
+          tpl = '''VSVersionInfo(
+            ffi=FixedFileInfo(filevers=(%s,%s,%s,%s), prodvers=(%s,%s,%s,%s), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+            kids=[StringFileInfo([StringTable('040904B0', [
+              StringStruct('CompanyName', 'ZFCY Z-MAX'),
+              StringStruct('FileDescription', 'Z-MAX Console'),
+              StringStruct('FileVersion', '$VER'),
+              StringStruct('InternalName', 'Z-MAX_Console'),
+              StringStruct('OriginalFilename', 'Z-MAX_Console.exe'),
+              StringStruct('ProductName', 'Z-MAX Console'),
+              StringStruct('ProductVersion', '$VER')])]),
+              VarFileInfo([VarStruct('Translation', [1033, 1200])])]
+          )'''
+          print(tpl % (ver[0],ver[1],ver[2],ver[3],ver[0],ver[1],ver[2],ver[3]))
+          " > version_info.txt
+
+      - name: Build .exe with PyInstaller
+        run: |
+          cd tools\gui
+          python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file ..\version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." studio.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Z-MAX_Console-windows
+          path: tools\gui\dist\Z-MAX_Console.exe
+          compression-level: 0
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -100,6 +123,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller "PyQt5==5.15.11" numpy pillow grpcio protobuf python-pptx
 
+      - name: Determine release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Make .icns icon (PyInstaller 在 mac 只认 .icns)
         run: |
           cd tools/gui
@@ -121,6 +154,14 @@ jobs:
             studio.py
           ls -la dist/
 
+      - name: Set bundle version (修 PyInstaller 默认 0.0.0 → 真实版本)
+        run: |
+          VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VER" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.zfcg.zmax.console" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.zfcg.zmax.console" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" dist/Z-MAX_Console.app/Contents/Info.plist
+
       - name: Zip .app (ditto 保留资源分叉/权限, 直接 zip 会丢可执行位)
         run: |
           cd tools/gui/dist
@@ -133,16 +174,6 @@ jobs:
           name: Z-MAX_Console-macos
           path: tools/gui/dist/Z-MAX_Console-macOS.zip
           compression-level: 0
-
-      - name: Determine release tag
-        id: release_tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
