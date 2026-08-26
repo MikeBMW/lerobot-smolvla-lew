@@ -69,11 +69,20 @@ jobs:
           print(tpl % (ver[0],ver[1],ver[2],ver[3],ver[0],ver[1],ver[2],ver[3]))
           " > tools/gui/version_info.txt
 
+      - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频; Windows 无 ffmpeg → 用预抽帧缓存直接播放, 2026-08-27)
+        shell: bash
+        run: |
+          mkdir -p reports
+          curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
+          python -m zipfile -e mlp_video_pack.zip .
+          ls -la reports/ | head -5
+          ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
+
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --collect-all pyqtgraph --collect-all OpenGL studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --collect-all pyqtgraph --collect-all OpenGL studio.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -145,6 +154,14 @@ jobs:
           iconutil -c icns logo.iconset -o logo.icns
           ls -la logo.icns
 
+      - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频, 2026-08-27)
+        shell: bash
+        run: |
+          mkdir -p reports
+          curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
+          python -m zipfile -e mlp_video_pack.zip .
+          ls -la reports/ | head -5
+
       - name: Build .app with PyInstaller
         run: |
           cd tools/gui
@@ -154,6 +171,8 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
+            --add-data "$GITHUB_WORKSPACE/reports/mlp_insert_success_final.mp4:reports" \
+            --add-data "$GITHUB_WORKSPACE/reports/_mlp_cache_mlp_insert_success_final:reports/_mlp_cache_mlp_insert_success_final" \
             --collect-all pyqtgraph --collect-all OpenGL \
             studio.py
           ls -la dist/

@@ -207,6 +207,7 @@ def main():
         #   改吃 o_model (YOLO 解算 state)。peg_z0 取 YOLO peg 段 z (写死平面, 非真值)
         peg_z0 = float(o_model[6])
         state = ST_APPROACH
+        done_at = -1          # 🎥 2026-08-27: 成功后保持画面 (ST_DONE 再录 90 步≈2.7s, 避免视频过短)
         frames = []
         states_track = []
         success = False
@@ -253,6 +254,7 @@ def main():
             elif state == ST_INSERT:
                 if d_ph < 0.05:
                     state = ST_DONE; success = True
+                    done_at = step
             if state == ST_APPROACH:
                 delta_xy = peg[:2] - hand[:2]
                 act[:2] = np.clip(delta_xy * 2.0, -1, 1)
@@ -310,7 +312,8 @@ def main():
             except Exception:
                 o_model = o.copy()
             if state == ST_DONE:
-                break
+                if done_at >= 0 and step - done_at >= 90:
+                    break   # 🎥 成功后保持画面 ~2.7s 再收尾 (2026-08-27)
         print(f"✅ 完成状态={ST_NAMES[state]} 成功={success} 步骤={step} 帧数={len(frames)}", flush=True)
         env.close()
         if not frames:
@@ -334,7 +337,11 @@ def main():
         if success and _os.path.exists(out_tmp) and _os.path.getsize(out_tmp) > 0:
             out = _os.path.join(ROOT, "reports", "insert_success_demo.mp4")
             _sh.move(out_tmp, out)
+            # 🎥 2026-08-27: 同步输出标准 MLP 名 (播放器 _PRIORITY 第二 + reports/*MLP*.mp4 约定,
+            #   Windows/macOS exe 打包从此文件取资源)
+            _sh.copy2(out, _os.path.join(ROOT, "reports", "mlp_insert_success_final.mp4"))
             print(f"🎬 最终: {out} (成功演示, seed={seed})", flush=True)
+            print(f"🎬 同步副本: reports/mlp_insert_success_final.mp4", flush=True)
             _sh.rmtree(tmpdir, ignore_errors=True)
             break
         else:
