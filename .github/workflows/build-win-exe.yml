@@ -158,10 +158,11 @@ jobs:
         run: |
           cd tools/gui
           VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/Z-MAX_Console.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VER" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VER" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VER" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VER" dist/Z-MAX_Console.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.zfcg.zmax.console" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.zfcg.zmax.console" dist/Z-MAX_Console.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" dist/Z-MAX_Console.app/Contents/Info.plist
 
       - name: Zip .app (ditto 保留资源分叉/权限, 直接 zip 会丢可执行位)
         run: |
