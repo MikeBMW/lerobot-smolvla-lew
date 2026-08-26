@@ -17,6 +17,14 @@ import numpy as np
 
 _SS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                        "src", "lerobot", "policies", "left_right", "state_space")
+# 🐛 2026-08-26: Windows exe 运行时 __file__ 在 AppData 解压目录 → 上溯路径错
+# 修正: frozen 用 _MEIPASS; 环境变量 ZMAX_REPO_ROOT 优先 (Linux/跨机部署显式指定)
+if getattr(sys, "frozen", False):
+    _SS_DIR = os.path.join(getattr(sys, "_MEIPASS", _SS_DIR),
+                           "src", "lerobot", "policies", "left_right", "state_space")
+_root_env = os.environ.get("ZMAX_REPO_ROOT")
+if _root_env and os.path.isdir(_root_env):
+    _SS_DIR = os.path.join(_root_env, "src", "lerobot", "policies", "left_right", "state_space")
 
 
 def _load(name):
