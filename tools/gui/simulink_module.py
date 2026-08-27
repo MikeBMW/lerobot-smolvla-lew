@@ -1474,8 +1474,9 @@ class BlockParamsDialog(QDialog):
         self.node = node
         self.setWindowTitle(f"Block Parameters: {node['name']}")
         self.setMinimumWidth(380)
-        # 🐛 2026-08-28 老倪「节点逻辑窗口的最大化按钮, 不要使」: 同 NodeLogicDialog
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        # 🔧 2026-08-28 老倪: 最大化按钮修好 (同 NodeLogicDialog: Qt.Window 类型 + 显式按钮)
+        self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet(_DLG_DARK_QSS)
         lay = QVBoxLayout(self)
 

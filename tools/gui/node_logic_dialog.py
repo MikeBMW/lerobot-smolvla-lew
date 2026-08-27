@@ -64,9 +64,11 @@ class NodeLogicDialog(QDialog):
         self._editing = False
         self.setWindowTitle(f"📖 节点逻辑 — {node_name}")
         self.setMinimumSize(760, 560)
-        # 🐛 2026-08-28 老倪「节点逻辑窗口的最大化按钮, 不要使」:
-        #   X11 窗口管理器会给 Dialog 也画最大化按钮 → 显式去掉 (保留最小化/关闭)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        # 🔧 2026-08-28 老倪: 最大化按钮"不好使"→ 修好 (不是禁用):
+        #   QDialog 默认 Qt.Dialog 类型在 X11 WM 下最大化按钮点了没反应,
+        #   显式转成普通窗口类型 Qt.Window + 最大化/最小化按钮 → WM 正常处理
+        self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
         self._build()
         self._load_source()  # 无条件: 未知节点显示「无独立逻辑」提示
@@ -354,8 +356,9 @@ class SourceViewDialog(QDialog):
         self._abs = abs_path
         self.setWindowTitle(f"📂 {os.path.basename(abs_path)} — {rel_src}")
         self.setMinimumSize(820, 600)
-        # 🐛 2026-08-28 老倪「节点逻辑窗口的最大化按钮, 不要使」: 同 NodeLogicDialog
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        # 🔧 2026-08-28 老倪: 最大化按钮修好 (同 NodeLogicDialog: Qt.Window 类型 + 显式按钮)
+        self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
         self._build()
         self._load()
