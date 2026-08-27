@@ -9728,16 +9728,39 @@ class SimulinkModule(QWidget):
                 return
             self._log("🧭 3D 视图数据源: 状态空间 numpy 引擎 (未找到同源 episode trace, "
                       "轨迹与操作视频不同源 — 跑 tools/gen_ss_metaworld_episode.py 可同源)")
-        # 复用已打开窗口 (避免重复开)
+        # 🔁 复用已打开窗口 — 🐛 2026-08-28 老倪「第二次打开场景背景没了」根因:
+        #   pyqtgraph shader program 全局缓存绑定第一个 GL 上下文, 窗口关闭后新建
+        #   窗口 = 新上下文 + 失效 shader 句柄 → glUseProgram GLError 1281 → 所有
+        #   GL 元素(场景/台面/机械臂/网格)绘制失败, 只剩纯背景色 (实测 531589→0 px)。
+        #   验证: 同一窗口 close→show 非背景像素不变 (531589→531589) → 只复用不新建。
+        #   窗口 close 只是隐藏 (无 WA_DeleteOnClose), 对象与 GL 上下文都还在。
         for w in getattr(self, "_ss_3d_windows", []):
-            if w.isVisible():
+            if w is not None:
+                try:
+                    # 数据源变了 → 重建场景 (同一窗口同一上下文, shader 有效)
+                    if tr is not None and getattr(w, "tr", None) is not tr:
+                        w.set_trajectory(tr)
+                    # 🐛 2026-08-28: close 时停掉的定时器要重启 (否则文字标注不跟随视角)
+                    if getattr(w, "_cam_watch", None) is not None \
+                            and not w._cam_watch.isActive():
+                        w._cam_watch.start(50)
+                except Exception:
+                    pass
+                w.show()
                 w.raise_()
                 w.activateWindow()
                 return
         dv = DreamView3D(tr, on_top=on_top)
         if not hasattr(self, "_ss_3d_windows"):
             self._ss_3d_windows = []
-        self._ss_3d_windows = [w for w in self._ss_3d_windows if w.isVisible()]
+        # 只清理真正被销毁的对象 (isVisible 过滤会误删已关闭但可复用的窗口)
+        import sip
+        def _alive(w):
+            try:
+                return w is not None and not sip.isdeleted(w)
+            except Exception:
+                return True
+        self._ss_3d_windows = [w for w in self._ss_3d_windows if _alive(w)]
         self._ss_3d_windows.append(dv)
         dv.show()
         dv.raise_()

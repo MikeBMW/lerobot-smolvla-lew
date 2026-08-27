@@ -841,12 +841,18 @@ class DreamView3D(QWidget):
 
     # ── 场景构建 ──
     def _build_scene(self):
-        for it in self._gl_items.values():
-            if isinstance(it, list):
-                for x in it:
+        # 🐛 2026-08-28: 同一 item 被多个 key 引用 (yolo 列表 ↔ yolo_hand/peg/hole),
+        #   重建时重复 removeItem → ValueError 中断重建 → 背景丢失。按 id 去重 + 容忍缺失。
+        seen = set()
+        for it in list(self._gl_items.values()):
+            for x in (it if isinstance(it, list) else [it]):
+                if x is None or id(x) in seen:
+                    continue
+                seen.add(id(x))
+                try:
                     self.view.removeItem(x)
-            else:
-                self.view.removeItem(it)
+                except (ValueError, RuntimeError):
+                    pass
         self._gl_items.clear()
 
         # 地面网格 (z=0, 覆盖整个工作区: 机器人 y=0 → 工作台 y≈0.6)
