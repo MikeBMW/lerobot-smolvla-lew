@@ -395,12 +395,15 @@ class LabelOverlay(QWidget):
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
-    def __init__(self, tr=None, parent=None):
+    def __init__(self, tr=None, parent=None, on_top=True):
         super().__init__(parent)
         self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
         self.resize(1180, 820)
         # 🖥 2026-08-25 老倪: 置顶 — 不被「操作视频」窗口(InferenceVideoDialog/MLPRolloutDialog, 经 _show_nonmodal 均置顶)遮挡
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        # 🐛 2026-08-26: 运行完自动弹出 3D 视图若置顶 → 盖住 simulink 画布(看起来黑屏)
+        #   → on_top 参数: 手动点按钮打开=置顶; 运行后自动打开=不置顶(不抢画布)
+        if on_top:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
 
         self.tr = tr

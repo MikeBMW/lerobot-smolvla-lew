@@ -9672,8 +9672,9 @@ class SimulinkModule(QWidget):
         self._relayout_row_gaps()      # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠
         _oneshot(self, 300, self._state_space_hint)
 
-    def open_ss_3d(self):
-        """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)"""
+    def open_ss_3d(self, on_top=True):
+        """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)
+        on_top: True=手动点按钮(置顶防被视频窗遮挡); False=运行后自动弹出(不抢画布, 防画布黑屏)"""
         try:
             from ss_dreamview import DreamView3D, load_episode
         except Exception as e:
@@ -9722,7 +9723,7 @@ class SimulinkModule(QWidget):
                 w.raise_()
                 w.activateWindow()
                 return
-        dv = DreamView3D(tr)
+        dv = DreamView3D(tr, on_top=on_top)
         if not hasattr(self, "_ss_3d_windows"):
             self._ss_3d_windows = []
         self._ss_3d_windows = [w for w in self._ss_3d_windows if w.isVisible()]
@@ -9876,7 +9877,9 @@ class SimulinkModule(QWidget):
         if tr and tr.get("x"):
             self._start_video_export(tr)
             # 🧭 2026-08-25 老倪: 仿真完成自动打开 3D 分层视图 (Apollo 风格)
-            self.open_ss_3d()
+            # 🐛 2026-08-26: 自动打开置顶/抢占 → simulink 画布黑屏 (Mac 实测)
+            #   改为不自动弹, 用户点「🧭 3D 视图」按钮手动打开 (黑屏零风险)
+            # self.open_ss_3d(on_top=False)
 
     def _start_video_export(self, tr):
         """🎥 后台渲染操作视频 → 上传 ECS (datadrive.world) → 打印链接 (不卡 UI)
