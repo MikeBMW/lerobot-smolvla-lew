@@ -7619,6 +7619,14 @@ class SimulinkModule(QWidget):
         🐛 2026-08-12 老倪: force=True 强制重新生成 (训练完成自动触发, 用新模型覆盖旧视频)"""
         root = self._repo_root()
         mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
+        # 🐛 2026-08-26: exe 版打包的视频名是 mlp_insert_success_final.mp4 (不是 insert_success_demo)
+        # 优先找 exe 内置视频 (frozen _MEIPASS/reports/), 再找源码 reports/
+        if getattr(sys, "frozen", False):
+            for _cand in ["mlp_insert_success_final.mp4", "mlp_best_final.mp4", "mlp_insert_rot180.mp4"]:
+                _p = os.path.join(root, "reports", _cand)
+                if os.path.exists(_p) and os.path.getsize(_p) > 0:
+                    mp4 = _p
+                    break
         if os.path.exists(mp4) and os.path.getsize(mp4) > 0 and not force:
             # 🐛 2026-08-12 老倪: 防重复弹出 — 双击重复触发/多次点击会弹好几个播放器
             import time as _t
@@ -7637,6 +7645,9 @@ class SimulinkModule(QWidget):
             import subprocess as _sp
             root = self._repo_root()
             py = os.path.join(root, ".venv", "bin", "python")
+            # 🐛 2026-08-26: exe 版 (frozen) 无 .venv/GPU → 无法本地生成视频
+            if getattr(sys, "frozen", False):
+                return False, "exe 版无法本地生成视频 (需 .venv + GPU 渲染环境) — 请在 4060/ECS 生成 reports/*MLP*.mp4 后放回"
             if not os.path.exists(py):
                 return False, "缺少 .venv/bin/python (视频生成需本地 GPU 渲染环境)"
             r = _sp.run([py, os.path.join(root, "tools", "gen_insert_video.py")],
