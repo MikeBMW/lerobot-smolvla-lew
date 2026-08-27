@@ -3818,7 +3818,18 @@ class SimulinkModule(QWidget):
         self._worker = None
         # CI/CD 环节状态: 0未开始 1运行中 2成功 3失败
         self._cicd_state = {"validate": 0, "train": 0, "integrate": 0, "deploy": 0}
+        # 🐛 2026-08-26: Mac 黑屏诊断打点 (写文件, 定位构造崩溃段)
+        try:
+            with open("/tmp/zmax_simulink_init.log", "a") as _f:
+                _f.write(f"{time.time():.1f} SimulinkModule init: pre-_build\n")
+        except Exception:
+            pass
         self._build()
+        try:
+            with open("/tmp/zmax_simulink_init.log", "a") as _f:
+                _f.write(f"{time.time():.1f} SimulinkModule init: post-_build\n")
+        except Exception:
+            pass
         self._seed_default_flow()
         self._model_engine = None  # 🌐 Model Engine 中枢 (2026-08-08: 训练走 GPU 引擎选择)
 

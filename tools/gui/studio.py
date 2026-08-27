@@ -10010,7 +10010,12 @@ class StudioMainWindow(QMainWindow):
 
     def _init_simulink(self):
         """🚀 延迟创建 SimulinkModule (2026-08-12 老倪: 主窗口先显示, 画布后台建)"""
+        # 🐛 2026-08-26: Mac 黑屏诊断 — 构造阶段打点日志 (写文件, 不依赖 GUI)
+        import time as _td
+        _mk = lambda m: open("/tmp/zmax_simulink_init.log", "a").write(
+            f"{_td.time():.1f} {m}\n")
         try:
+            _mk("START _init_simulink")
             sim = SimulinkModule()
             sim.flow_synced = self.on_flow_sync
             sim.set_model_engine(self.model_engine)  # 🌐 simulink 训练走 Model Engine
