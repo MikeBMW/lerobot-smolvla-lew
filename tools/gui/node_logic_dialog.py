@@ -64,6 +64,9 @@ class NodeLogicDialog(QDialog):
         self._editing = False
         self.setWindowTitle(f"📖 节点逻辑 — {node_name}")
         self.setMinimumSize(760, 560)
+        # 🐛 2026-08-28 老倪「节点逻辑窗口的最大化按钮, 不要使」:
+        #   X11 窗口管理器会给 Dialog 也画最大化按钮 → 显式去掉 (保留最小化/关闭)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
         self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
         self._build()
         self._load_source()  # 无条件: 未知节点显示「无独立逻辑」提示
@@ -351,6 +354,8 @@ class SourceViewDialog(QDialog):
         self._abs = abs_path
         self.setWindowTitle(f"📂 {os.path.basename(abs_path)} — {rel_src}")
         self.setMinimumSize(820, 600)
+        # 🐛 2026-08-28 老倪「节点逻辑窗口的最大化按钮, 不要使」: 同 NodeLogicDialog
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
         self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
         self._build()
         self._load()
