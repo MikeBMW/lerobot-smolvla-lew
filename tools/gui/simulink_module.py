@@ -9875,7 +9875,12 @@ class SimulinkModule(QWidget):
         # 🎥 2026-08-18 老倪: 仿真完成自动输出操作视频 → 后台渲染 mp4 + 传 ECS + 打印链接
         tr = getattr(self, "_ss_tr", None)
         if tr and tr.get("x"):
-            self._start_video_export(tr)
+            # 🐛 2026-08-26: Mac 黑屏根因排查 — 视频导出子进程跑 metaworld 渲染,
+            #   在无 GPU/EGL 的 Mac 上可能卡死/抢占 → 自动导出跳过, 手动点「▶ 生成视频」节点
+            if sys.platform != "darwin":
+                self._start_video_export(tr)
+            else:
+                self._log("🎬 Mac 版跳过自动视频导出 (metaworld 渲染需 GPU/EGL) — 需要时手动触发")
             # 🧭 2026-08-25 老倪: 仿真完成自动打开 3D 分层视图 (Apollo 风格)
             # 🐛 2026-08-26: 自动打开置顶/抢占 → simulink 画布黑屏 (Mac 实测)
             #   改为不自动弹, 用户点「🧭 3D 视图」按钮手动打开 (黑屏零风险)
