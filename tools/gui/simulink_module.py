@@ -2502,8 +2502,9 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(QColor("#ffffff") if _CUR_THEME != "light" else QColor("#000000"))
             # 自适应字号: 从 9pt(≈36px, 与节点标题同级) 递减到 6pt, 找到能单行放下的
             # 🐛 2026-08-22 老倪: 7pt≈28px 比节点标题(9pt)还小 → 升回 9pt; 15pt在192DPI≈50px太大
-            fs = 12
-            while fs >= 9:
+            # 🐛 2026-08-28 老倪"字体大": 12→10 起, 下限 9→8
+            fs = 10
+            while fs >= 8:
                 painter.setFont(QFont("Arial", fs, QFont.Bold))
                 fm = painter.fontMetrics()
                 if fm.horizontalAdvance(name) <= avail_w:
@@ -2528,7 +2529,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
-            painter.setFont(QFont("Arial", 10))
+            painter.setFont(QFont("Arial", 9))
             painter.drawText(QRectF(8, 4, 110, 12), Qt.AlignLeft | Qt.AlignTop,
                              "▤ 背景行")
             return
@@ -2591,9 +2592,10 @@ class SimNodeItem(QGraphicsObject):
         painter.setPen(QColor(pal["title"]))
         name = self.node["name"]
         # 2026-08-25 老倪"字太挤": 右留 52px (原 36 → 字贴徽章), 允许拆到三行 (原最多两行硬塞)
+        # 🐛 2026-08-28 老倪"字体大, 挤": 12/11/10 → 10/9/8 (192DPI 下 32px→27px)
         avail = max(40, self.w - 52)
         line1, line2 = name, ""
-        for _fs in (12, 11, 10):
+        for _fs in (10, 9, 8):
             painter.setFont(QFont("Arial", _fs, QFont.Bold))
             fm = painter.fontMetrics()
             if fm.horizontalAdvance(name) <= avail:
@@ -2630,7 +2632,7 @@ class SimNodeItem(QGraphicsObject):
         disp = (line1 + "\n" + line2) if line2 else line1
         if params.get("video"):
             # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明)
-            painter.setFont(QFont("Arial", 10, QFont.Bold))
+            painter.setFont(QFont("Arial", 9, QFont.Bold))
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft,
                              disp.replace("\n", " "))
         else:
@@ -2657,7 +2659,7 @@ class SimNodeItem(QGraphicsObject):
                                        QRectF(0, 0, pm.width(), pm.height()))
                     if self.video_overlay:
                         painter.setPen(QColor("#8b949e"))
-                        painter.setFont(QFont("Arial", 10))
+                        painter.setFont(QFont("Arial", 9))
                         painter.drawText(QRectF(6, 4, self.w - 12, 12),
                                          Qt.AlignLeft | Qt.AlignTop, self.video_overlay)
             except Exception:
@@ -2668,7 +2670,7 @@ class SimNodeItem(QGraphicsObject):
         if params.get("z700_internal"):
             # ── 第一区: 类型标签 (模块角色) ──
             painter.setPen(QColor(pal["label"]))
-            painter.setFont(QFont("Arial", 10))
+            painter.setFont(QFont("Arial", 9))
             role = {"感知链": "前馈·观测", "双脑": "前馈·预测",
                     "状态机": "串联·P", "动作": "串联·D"}.get(name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
             if role:
@@ -2678,7 +2680,7 @@ class SimNodeItem(QGraphicsObject):
             desc = params.get("desc", "")
             if desc:
                 painter.setPen(QColor("#8b949e"))
-                painter.setFont(QFont("Arial", 10))
+                painter.setFont(QFont("Arial", 9))
                 _fm = painter.fontMetrics()
                 _avail = self.w - 20
                 _d1 = _fm.elidedText(desc, Qt.ElideRight, _avail)
@@ -2699,11 +2701,11 @@ class SimNodeItem(QGraphicsObject):
                     _vs = str(_v)
                 # 变量名 (青色)
                 painter.setPen(QColor("#58a6ff"))
-                painter.setFont(QFont("Consolas", 10, QFont.Bold))
+                painter.setFont(QFont("Consolas", 9, QFont.Bold))
                 painter.drawText(QRectF(12, _py, self.w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
                 # 值 (白色, 右对齐)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Consolas", 10))
+                painter.setFont(QFont("Consolas", 9))
                 painter.drawText(QRectF(12, _py, self.w - 24, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
                 _py += _ph
         # 🤖 2026-08-09 老倪: 场景节点 — 右上角画小机器人图标 (参考半导体产线机器人)
@@ -2737,7 +2739,7 @@ class SimNodeItem(QGraphicsObject):
             if getattr(self, "_hover", False) and self.node.get("type") != "row_bg":
                 # 🐛 2026-08-12 老倪: ID 显示在右下角 (用户要求, 不遮挡标题/desc 主区)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 11, QFont.Bold))
+                painter.setFont(QFont("Arial", 10, QFont.Bold))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
                 painter.drawText(QRectF(8, self.h - 16, self.w - 16, 14), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
@@ -2793,7 +2795,7 @@ class SimNodeItem(QGraphicsObject):
             st_icon = "♻"  # 复用节点 (被两模型共用, 紫框)
         if st_icon:
             painter.setPen(color)
-            painter.setFont(QFont("Arial", 11, QFont.Bold))
+            painter.setFont(QFont("Arial", 10, QFont.Bold))
             painter.drawText(QRectF(self.w - 22, 2, 20, 16), Qt.AlignRight | Qt.AlignVCenter, st_icon)
         # 端口: Switch 双输入 (左上下) + 单输出 (右中); 其他节点单进单出
         if t == "switch":
@@ -2843,7 +2845,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.setBrush(QColor("#2d1b4e"))
                 painter.drawRoundedRect(btn, 4, 4)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 10, QFont.Bold))
+                painter.setFont(QFont("Arial", 9, QFont.Bold))
                 painter.drawText(btn, Qt.AlignCenter, "📥 导出")
             except Exception:
                 pass
@@ -2867,7 +2869,7 @@ class SimNodeItem(QGraphicsObject):
         painter.drawRoundedRect(QRectF(0, 0, w, h), 6, 6)
         # 标题 (顶部, 9px Bold)
         painter.setPen(QColor(pal["title"]))
-        painter.setFont(QFont("Arial", 11, QFont.Bold))
+        painter.setFont(QFont("Arial", 10, QFont.Bold))
         _disp = name
         _fm = painter.fontMetrics()
         if _fm.horizontalAdvance(_disp) > w - 20:
@@ -2878,14 +2880,14 @@ class SimNodeItem(QGraphicsObject):
                 "状态机": "串联·P", "动作": "串联·D"}.get(
             name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
         painter.setPen(QColor("#58a6ff"))
-        painter.setFont(QFont("Arial", 10))
+        painter.setFont(QFont("Arial", 9))
         if role:
             painter.drawText(QRectF(10, 22, w - 20, 13), Qt.AlignVCenter | Qt.AlignLeft, f"▸ {role}")
         # desc (y=38, 7px 灰, 单行省略)
         desc = p.get("desc", "")
         if desc:
             painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 10))
+            painter.setFont(QFont("Arial", 9))
             _fm = painter.fontMetrics()
             painter.drawText(QRectF(10, 37, w - 20, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              _fm.elidedText(desc, Qt.ElideRight, w - 20))
@@ -2905,10 +2907,10 @@ class SimNodeItem(QGraphicsObject):
             else:
                 _vs = str(_v)
             painter.setPen(QColor("#58a6ff"))
-            painter.setFont(QFont("Consolas", 10, QFont.Bold))
+            painter.setFont(QFont("Consolas", 9, QFont.Bold))
             painter.drawText(QRectF(10, _py, w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
             painter.setPen(QColor("#e6edf3"))
-            painter.setFont(QFont("Consolas", 10))
+            painter.setFont(QFont("Consolas", 9))
             painter.drawText(QRectF(10, _py, w - 22, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
             _py += _ph
         # 端口锚点 (in1 左 / out1 右 — 连线依赖, 不能省)
@@ -3067,7 +3069,7 @@ class SimLinkItem(QGraphicsObject):
         lbl = self.link.get("label", "")
         if lbl:
             mid = path.pointAtPercent(0.5)
-            painter.setFont(QFont("Consolas", 10))
+            painter.setFont(QFont("Consolas", 9))
             fm = painter.fontMetrics()
             lw = fm.horizontalAdvance(lbl) + 8
             lh = fm.height() + 2
@@ -3966,10 +3968,12 @@ class SimulinkModule(QWidget):
             b.setToolTip(tip)
             # 2026-08-25 老倪"按钮和字太大了, 同比例缩小": 66px/15pt → 48px/12pt (×0.73),
             #   padding 10x20 → 7x14, 圆角 7→6 (整体等比, 不改布局逻辑)
-            b.setMinimumHeight(34)
+            # 🐛 2026-08-28 老倪"字体还是大, 很挤": 12pt→10pt (192DPI 下 32px→27px),
+            #   minHeight 34→30, padding 7x14→6x12 (同比例 ×0.86)
+            b.setMinimumHeight(30)
             b.setStyleSheet(f"""
                 QPushButton {{ background:#e9edf2; color:{color}; border:1px solid #d0d7de;
-                border-radius:6px; padding:7px 14px; font-size:12pt; font-weight:700; }}
+                border-radius:5px; padding:6px 12px; font-size:10pt; font-weight:700; }}
                 QPushButton:hover {{ border-color:{color}; background:#dbe9ff; }}
                 QPushButton:disabled {{ color:#555; border-color:#222; }}
             """)
@@ -4191,7 +4195,7 @@ class SimulinkModule(QWidget):
         self.log_box.setReadOnly(True)
         # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
         # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
-        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:12pt; font-family:Consolas;")
+        self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:10pt; font-family:Consolas;")
         _lp.addWidget(self.log_box)
         # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
         self._v_split.addWidget(self._log_panel)
