@@ -4,6 +4,7 @@ Z-MAX 训练后端模块
 """
 
 import os
+import sys
 import re
 import subprocess
 import signal
@@ -52,7 +53,9 @@ class TrainingBackend(QObject):
         self.reader_thread = None
 
     def get_repo_root(self):
-        """获取仓库根目录：tools/gui/studio.py → tools/gui → tools → repo_root"""
+        """获取仓库根目录 (frozen exe → PyInstaller _MEIPASS; 源码 → tools/gui → tools → repo_root)"""
+        if getattr(sys, "frozen", False):
+            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
         gui_dir = os.path.dirname(os.path.abspath(__file__))  # tools/gui/
         tools_dir = os.path.dirname(gui_dir)                    # tools/
         repo_root = os.path.dirname(tools_dir)                  # repo_root
@@ -141,7 +144,7 @@ meta = {{"model":"SmolVLA-FlowMatching","dataset":"{dataset_repo_id}","params":i
 with open(f"{{output}}/training_meta.json", "w") as f: json.dump(meta, f, indent=2)
 print(f"DONE: {{pct}}% loss (SmolVLA原生Flow Matching)")
 """
-        script_path = os.path.join(repo_root, "_train_temp.py")
+        script_path = os.path.join(repo_root, "experiments", "train", "_train_temp.py")
         with open(script_path, 'w') as f: f.write(train_script)
         
         try:

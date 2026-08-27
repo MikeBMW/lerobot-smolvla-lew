@@ -1298,7 +1298,7 @@ class HomeWidget(QWidget):
         row.addStretch()
         b = QPushButton("● smolvla_lew")  # 改为按钮，点击打开 GitHub 仓库
         b.setFont(QFont("Arial", 12, QFont.Bold))
-        b.setStyleSheet(f"background:{SYS12_COLOR}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        b.setStyleSheet(f"background:{SYS12_COLOR}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         b.setCursor(Qt.PointingHandCursor)
         b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew.git")))  # 打开GitHub链接
         row.addWidget(b)
@@ -1306,7 +1306,7 @@ class HomeWidget(QWidget):
         # 同步按钮：将本地GUI代码推送到GitHub  # 新增同步按钮
         sync_btn = QPushButton("🔄 同步到GitHub")  # 新增同步按钮
         sync_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         sync_btn.setCursor(Qt.PointingHandCursor)
         sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
         row.addWidget(sync_btn)  # 新增同步按钮
@@ -1314,7 +1314,7 @@ class HomeWidget(QWidget):
         # 升级按钮
         upg_btn = QPushButton("⬆ 升级")
         upg_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         upg_btn.setCursor(Qt.PointingHandCursor)
         upg_btn.clicked.connect(lambda: self.module_clicked.emit("check_updates"))
         row.addWidget(upg_btn)
@@ -1322,7 +1322,7 @@ class HomeWidget(QWidget):
         # 官网按钮
         web_btn = QPushButton("🌐 Z-MAX")
         web_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         web_btn.setCursor(Qt.PointingHandCursor)
         web_btn.setToolTip("datadrive.world")
         web_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world")))
@@ -1331,7 +1331,7 @@ class HomeWidget(QWidget):
         # ====== 版本同步按钮（快速跳转到版本管理页面） ======
         ver_btn = QPushButton("📦 版本同步")
         ver_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         ver_btn.setCursor(Qt.PointingHandCursor)
         ver_btn.setToolTip("检查 LeRobot 上游更新 · 安全同步 · 版本管理")
         ver_btn.clicked.connect(lambda: self.module_clicked.emit("version"))
@@ -1340,7 +1340,7 @@ class HomeWidget(QWidget):
         # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
         doc_btn = QPushButton("📋 解决方案v1.0.4")
         doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         doc_btn.setCursor(Qt.PointingHandCursor)
         doc_btn.setToolTip("打开产品解决方案文档 (Markdown)")
         doc_btn.clicked.connect(self._open_spec_doc)
@@ -1349,7 +1349,7 @@ class HomeWidget(QWidget):
         # ====== 新增：PPT汇报按钮 ======
         doc_btn = QPushButton("📊 PPT汇报")
         doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         doc_btn.setCursor(Qt.PointingHandCursor)
         doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
         doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'BRAND-品牌注册材料.pptx')))
@@ -1358,7 +1358,7 @@ class HomeWidget(QWidget):
         # ====== 分享按钮 ======
         share_btn = QPushButton("📱 分享")
         share_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         share_btn.setCursor(Qt.PointingHandCursor)
         share_btn.setToolTip("生成二维码 · 扫码查看Z-MAX项目")
         share_btn.clicked.connect(self._show_share_qr)
