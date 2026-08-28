@@ -14,7 +14,9 @@ CI/CD 管道第一环: 校验工作流 JSON 的标准合规性
 """
 import json, sys, os
 
-NODE_TYPES = {"condition", "model", "action", "system", "hardware", "switch"}
+NODE_TYPES = {"condition", "data", "model", "action", "system", "hardware", "switch",
+              "train_gate", "mode_switch", "yolo_gate", "coord_overlay", "row_bg",
+              "pdf_report", "skill", "scene"}
 REQUIRED = {"id", "type", "name", "x", "y"}
 
 
@@ -58,6 +60,12 @@ def validate_flow(flow, strict=False):
         seen.add(key)
 
     # DAG 环检测 (拓扑排序)
+    # 🐛 2026-08-28: 状态空间类模板 (含 "状态空间"/"obs"/"前馈加速器" 节点) 是闭环
+    #   反馈系统 (卡尔曼校正环/感知-决策-执行闭环), 环是架构特性不是错误 —
+    #   simulink_module._topo_sort 用「剩余(有环)追加」优雅处理 → 此类环降级为警告。
+    #   普通模板 (训练管线等) 有环仍是硬错误。
+    is_state_space = any("状态空间" in (n.get("name") or "") or "obs" in (n.get("name") or "")
+                         or "前馈加速器" in (n.get("name") or "") for n in nodes)
     if ids:
         adj = {i: [] for i in ids}
         indeg = {i: 0 for i in ids}
@@ -74,8 +82,11 @@ def validate_flow(flow, strict=False):
                 if indeg[m] == 0:
                     q.append(m)
         if cnt != len(ids):
-            cyc = sorted(ids - set(i for i in adj))
-            issues.append(f"存在环 (无法拓扑排序), 涉及节点: {len(ids) - cnt} 个")
+            msg = f"存在环 (无法拓扑排序), 涉及节点: {len(ids) - cnt} 个"
+            if is_state_space:
+                print(f"  ℹ️ {msg} (状态空间闭环反馈, 允许)")
+            else:
+                issues.append(msg)
 
     # 未连接节点 (仅 strict 模式视为错误)
     if nodes:
