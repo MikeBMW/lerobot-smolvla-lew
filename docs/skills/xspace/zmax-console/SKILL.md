@@ -124,6 +124,27 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **ModelCompareDialog/BarCompareWidget 主题化**: paint 用 `_st()` (simulink_scope.CUR_THEME 由 simulink_module.switch_theme 同步); 对话框 QSS 用 `_qss()` 映射 (dark 时浅色值→深色值)。
 - **🔬 三模型对比 (2026-08-05, commit ada65fb1, 老倪: \"增加一个没有leworldmodel的流程, 三个模型对比, 即 ACT, SmolVLA, SmolVLA+Leworldmodel串行\")**: 新模板「🔬 三模型对比」**18节点20连线** = ♻共用2 (📦metaworld数据 / 📊对比评估Scope) + **3 分支行**: ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead·ACT→Ensemble→训练) + SmolVLA 纯动作 4 (SmolVLM2→DiT-B→ActionHead·SmolVLA→训练, **无 LEW**) + SmolVLA+LEW 5 (SmolVLM2·LEW→DiT-B·LEW→🌐LeWorldModel→ActionHead·SmolVLA+LEW→训练)。三训练节点 policy=act / smolvla / smolvla_lew。入口 btn_compare3 \"🔬 三模型对比\" (#d4a800) → open_compare3()。**⚠️ 关键配置坑 (configuration_smolvla_lew.py:125-126 `__post_init__`)**: `freeze_smolvlm: true` 时 **`enable_lew_world_model` 被强制改 False** — 现有 config_smolvla_metaworld.yaml (freeze=true) 训练出的\"SmolVLA\"其实**根本没启用 LEW**! 要真 LEW 必须新建 `config_smolvla_lew_metaworld.yaml` (freeze_smolvlm: **false** + enable_lew_world_model: true + lew_* 参数)。on_train 三策略分支 (smolvla_lew→新配置+ts_dir=smolvla_lew_<ts> / smolvla→旧配置+smolvla_<ts> / else→ACT), 曲线落盘 reports/train_curve_<policy>.json 各写各的。compare_models.py main() 改循环 `policies=[(\"act\",\"ACT\"),(\"smolvla\",\"SmolVLA\"),(\"smolvla_lew\",\"SmolVLA+LEW\")]` 逐个 find_ckpt+eval (缺 checkpoint 跳过不报错); on_compare_scope 改\"有任一产物即可评估\"(不再强制双曲线都在)。ModelCompareDialog._load_data 通用 N 模型 (MODELS 表 + present=[k in m and m[k]]): loss 折线每模型一条 / 表格 N 列+胜出列 / bars.set_data(rows, names=[...]); simulink_scope.COLORS 加 `smolvla_lew: #a371f7` (紫)。**⚠️ BarCompareWidget paintEvent float 坐标崩 (2026-08-05 渲染对话框时暴露, commit 53164e6a)**: 原双模型版 `y0 = i * row_h` 是 float, `p.drawText(8, y0+14, ...)` **PyQt5 严格类型 → TypeError** (隐藏 bug 从未被触发, N 模型改造后测试渲染对话框才崩)。修: y0/yy 全部 `int()`。**教训: 自绘 paint 的 drawText/fillRect 坐标必须 int (同 QPen.setWidth 只收 int 一族); 改完必须真实渲染一遍**。验证 (offscreen EXIT=0): YAML 语义断言 (lew 配置 enable=true+freeze=false) / compare 语法 / 模板 18节点20连线 / Action Head 三行对齐 / ModelCompareDialog 假数据三模型表格含 \"3 模型\" / 画布渲染采样非白。
 
+## simulink 工程完整性检查 (2026-08-28 v3.3.1, 老倪: 全面检查)
+新增 `tools/ci/zmax_integrity_check.py` 一键检查器, 五项全绿:
+1. **NODE_TYPES 三处同步** (simulink_module 15种 = validate_flow = simulink_ci) —
+   曾不同步 (主15/验证6/CI8) → 画布 type=data/scene/row_bg 被验证器误判"非法"。
+   新增节点类型必须三处同步 (老规矩, 检查器自动验证)。
+2. **状态空间/业务闭环豁免**: flow_x.json/cooperation_closed_loop 的环是架构反馈
+   (卡尔曼校正/感知-决策-执行/供应商区-实验室-现场), 非错误 — validate_flow 和
+   simulink_ci 均降级警告。普通模板有环仍 FAIL。
+3. **check_params 语义级校验**: 原只有类型白名单 → "pos":"not-a-list" 误判通过。
+   PARAM_SCHEMA 只收确定类型的控制参数 (Kp/K_ff/Kd 数值; limit 兼容单值/区间;
+   force_res="0.1N"/grid="7x9" 是文本; encoding 是 dict; in_dim/frames 可能是
+   描述文本 '39D obs+4D action' — 实测校准, 不可一刀切)。
+4. **check_ports 隐式端口兼容**: 真实画布节点无 outputs/inputs 字段 → 原代码
+   p["id"] 对字符串索引 TypeError → 无端口列表的画布跳过。
+5. **check_format 降级**: 合作闭环 (zmax-cooperation-closed-loop)/旧格式
+   (hermes-flow) 模板硬判 FAIL 误伤 → warn 尽力校验。
+模板加载验证: offscreen 下 SimulinkModule 构造后 monkeypatch `_qmsg_yes/_qmsg_info`
+(否则第二个模板弹确认框 exec_ 卡死), 逐个 load_reference_app 断言 nodes==items。
+**共享节点设计**: Model Zoo 的「🧩 结构条件」(无·后缀) 在 load_reference_app
+4685 行被显式跳过 (已下放各模型行), 不进 layout 是正确设计 — 检查器要豁免它。
+
 ## QDialog 最大化按钮点了没反应 (2026-08-28, 节点逻辑/参数/源码窗口)
 老倪「最大化按钮不好使, 不是让你禁用, 修复它」— 第一轮误把"不好使"理解成"禁用"
 加了 `~WindowMaximizeButtonHint` (方向错误, 被纠正)。**根因**: QDialog 默认 Qt.Dialog
