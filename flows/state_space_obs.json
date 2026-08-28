@@ -438,7 +438,7 @@
     "tactile_dim": 4,
     "state_space": true,
     "source": "src/lerobot/policies/left_right/state_space/perception.py",
-    "desc": "感知层·B3 触感感知: 六维力觉(0.1N) + 触觉4D (grasp/contact/dir) → 43D 状态向量触觉段"
+    "desc": "夹爪开度+接触力 (metaworld 真值) → 4D 触觉 [grasp/contact/dir]"
    }
   },
   {
@@ -875,6 +875,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "轨迹"
+  },
+  {
+   "id": "lktactile1",
+   "f": "ssdata",
+   "t": "sstactile",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "触觉数据"
   }
  ]
 }
