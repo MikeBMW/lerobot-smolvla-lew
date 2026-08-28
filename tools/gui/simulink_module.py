@@ -5,7 +5,7 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 对标 Simulink 交互: 0帧起手 → 模块库拖拽 → 连线 → 双击参数 → 运行/单步/停止
 与 Web comfyui.html 共用 simulink-spec.md v1.0 节点规范 (JSON 完全一致)
 """
-import json, math, random, time, os, sys, glob
+import json, math, random, time, os, sys, glob, tempfile
 from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPixmap, QTransform,  # 🐛 2026-08-18: 画布内嵌视频帧需要 (原只在 play_mlp_rollout 局部 import → _mlp_show NameError 静默)
@@ -3825,14 +3825,15 @@ class SimulinkModule(QWidget):
         # CI/CD 环节状态: 0未开始 1运行中 2成功 3失败
         self._cicd_state = {"validate": 0, "train": 0, "integrate": 0, "deploy": 0}
         # 🐛 2026-08-26: Mac 黑屏诊断打点 (写文件, 定位构造崩溃段)
+        # 🐛 2026-08-28: Windows exe 无 /tmp → tempfile.gettempdir() (同 studio.py 根因)
         try:
-            with open("/tmp/zmax_simulink_init.log", "a") as _f:
+            with open(os.path.join(tempfile.gettempdir(), "zmax_simulink_init.log"), "a") as _f:
                 _f.write(f"{time.time():.1f} SimulinkModule init: pre-_build\n")
         except Exception:
             pass
         self._build()
         try:
-            with open("/tmp/zmax_simulink_init.log", "a") as _f:
+            with open(os.path.join(tempfile.gettempdir(), "zmax_simulink_init.log"), "a") as _f:
                 _f.write(f"{time.time():.1f} SimulinkModule init: post-_build\n")
         except Exception:
             pass
