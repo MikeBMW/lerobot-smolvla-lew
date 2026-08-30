@@ -145,6 +145,12 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 **共享节点设计**: Model Zoo 的「🧩 结构条件」(无·后缀) 在 load_reference_app
 4685 行被显式跳过 (已下放各模型行), 不进 layout 是正确设计 — 检查器要豁免它。
 
+## Windows exe 画布打不开 = /tmp 打点无保护 (2026-08-28 v3.3.2, 老倪: "3.3.1 3.3.0 无法打开画布, 3.2.4 可以")
+- **症状**: Windows exe 上 simulink 画布 tab 打不开/空白, 状态栏 "⚠️ Simulink 初始化失败: [Errno 2] No such file or directory: '/tmp/...'"; 源码版 Linux 正常 (有 /tmp)。
+- **根因**: 3.3.0 为排查 Mac 黑屏加的 SimulinkModule 构造打点直接 `open("/tmp/zmax_simulink_init.log", "a")` — studio.py `_init_simulink` 里 `_mk` lambda **无 try/except** → Windows 无 /tmp 目录 → FileNotFoundError 抛在 `SimulinkModule()` 之前 → 画布从未创建。simulink_module.py 里同款打点有 try/except 所以不崩 (静默失效)。
+- **铁律**: ①跨平台诊断打点/临时文件一律 `os.path.join(tempfile.gettempdir(), name)` + try/except, 禁止裸 `/tmp` (Windows 没有); ②`_init_simulink` 这类"建画布"路径里任何语句抛异常都会让画布整体消失 — 打点类语句必须自身容错, 不能依赖外层 try 兜底 (外层 catch 后画布也没了); ③验证必须模拟 Windows: monkeypatch `tempfile.gettempdir` → 不存在目录, 再跑 `SimulinkModule()` + `load_flow_file`, 断言 nodes>0。
+- **排查流程**: 3.2.4 正常 → 3.3.0 坏 = 二分 diff `git diff <v3.2.4>..<v3.3.0>`, 找新增的 IO/路径类语句; 用户报"Windows 打包的版本"时优先怀疑平台差异 (路径/权限/编码), 不是 UI 逻辑。
+
 ## QDialog 最大化按钮点了没反应 (2026-08-28, 节点逻辑/参数/源码窗口)
 老倪「最大化按钮不好使, 不是让你禁用, 修复它」— 第一轮误把"不好使"理解成"禁用"
 加了 `~WindowMaximizeButtonHint` (方向错误, 被纠正)。**根因**: QDialog 默认 Qt.Dialog
