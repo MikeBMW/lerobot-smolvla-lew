@@ -104,6 +104,76 @@ def get_node_external_symbol(key):
     return ext[2] if ext else None
 
 
+def explain_node(name, module=None, out=None):
+    """🧩 代码讲解 (2026-08-30 老倪): 运行节点时终端输出 — 从代码角度解释
+    语法/功能/赋值 (可修改区逐行 + 行尾注释), 从全局目标/数据空间角度
+    统一描述数据变化趋势 (画布拓扑位置 + 上下游 + 本步输出).
+    返回多行文本; 未注册逻辑返回 None."""
+    key = match_node(name)
+    if not key:
+        return None
+    info = NODE_LOGIC.get(key, {})
+    fn = info.get("fn")
+    doc = info.get("doc", "")
+    L = [f"🧩 代码讲解 · {name}"]
+    if doc:
+        L.append(f"  功能: {doc}")
+    try:
+        src = inspect.getsource(fn)
+    except (OSError, TypeError):
+        src = ""
+    in_mod = False
+    for raw in src.splitlines():
+        line = raw.strip()
+        if "可修改区 START" in line:
+            in_mod = True
+            continue
+        if "可修改区 END" in line:
+            in_mod = False
+            continue
+        if not line or line.startswith(("def ", '"""', "# ═", "# ─", "# ===")):
+            continue
+        if line.startswith("#"):
+            continue
+        if line.startswith("return"):
+            L.append(f"  框架: {line}   ← 调度/激活动作 (框架区勿改)")
+        elif in_mod:
+            L.append(f"  语法: {line}")
+    # 全局定位 + 数据空间 (画布上下文)
+    if module is not None:
+        try:
+            nodes = getattr(module, "nodes", []) or []
+            n = next((x for x in nodes if x.get("name") == name), None)
+            if n is not None:
+                total = len(nodes)
+                idx = next((i for i, x in enumerate(nodes) if x.get("name") == name), -1) + 1
+                up, dn = [], []
+                for lk in getattr(module, "links", []) or []:
+                    if lk.get("t") == n["id"]:
+                        s = next((x for x in nodes if x.get("id") == lk.get("f")), None)
+                        if s:
+                            up.append(str(s["name"]).lstrip("📦🎯🔌🖐🧠🔮🧪"))
+                    if lk.get("f") == n["id"]:
+                        d = next((x for x in nodes if x.get("id") == lk.get("t")), None)
+                        if d:
+                            dn.append(str(d["name"]).lstrip("📦🎯🔌🖐🧠🔮🧪"))
+                pos = f"画布 {idx}/{total} 节点"
+                if up:
+                    pos += f" · 上游 ← {' / '.join(up[:3])}"
+                if dn:
+                    pos += f" · 下游 → {' / '.join(dn[:3])}"
+                L.append(f"  全局: {pos}")
+                p = n.get("params", {})
+                dims = p.get("dims") or p.get("desc", "")
+                if dims:
+                    L.append(f"  数据: 空间 {dims}")
+                if out is not None:
+                    L.append(f"  趋势: 本步输出「{out}」→ 沿链路向下游传递")
+        except Exception:
+            pass
+    return "\n".join(L)
+
+
 def get_external_source(key):
     """外部真实实现的源码块 (按符号截取, 只读参考) — left_right 等节点
     显示 modeling_left_right.py 的 class LeftBrainMLP 全文, 不是 node_logic 占位函数"""

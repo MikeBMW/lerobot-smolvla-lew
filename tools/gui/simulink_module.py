@@ -5887,6 +5887,18 @@ class SimulinkModule(QWidget):
         except Exception as ex:
             return (False, str(ex))
 
+    def _log_explain(self, node, out=None):
+        """🧩 输出节点代码讲解 (2026-08-30 老倪: 运行节点从代码角度解释
+        语法/功能/赋值 + 全局目标/数据空间/数据变化趋势, 全节点通用)"""
+        try:
+            from node_logic import explain_node
+            txt = explain_node(node.get("name", ""), module=self, out=out)
+            if txt:
+                for ln in txt.splitlines():
+                    self._log(ln)
+        except Exception:
+            pass
+
     def _run_node_single(self, node, label=None, keep_active=True):
         """▶ 统一执行入口 — 单步 ⏭ 与右键「运行节点」共用 (2026-08-30 老倪统一设计)
         语义: 执行单个节点的真实功能, 统一 金色高亮 → 状态色 (running 青 → success 绿 / error 红)
@@ -5904,15 +5916,18 @@ class SimulinkModule(QWidget):
                 fn = getattr(self, meth, None)
                 if fn:
                     self._highlight_node(node, ms=4000)
+                    self._log_explain(node)   # 🧩 代码讲解 (2026-08-30 老倪)
                     self._run_node_stage(node, fn, label or kw)
                 return
         # ② 数据层运行环境 → 按当前模式真实训练/推理 (worker)
         if node.get("params", {}).get("run_env"):
             self._highlight_node(node, ms=4000)
+            self._log_explain(node)   # 🧩 代码讲解 (2026-08-30 老倪)
             self._run_node_stage(node, lambda: self._run_env_wrap(node), label or "数据层")
             return
         # ③ 其他节点 → 节点逻辑 + 数据流模拟 (running→success, keep_active=金色保持)
         self._highlight_node(node, ms=2500)   # 🆕 2026-08-30: 与环节/数据层统一金色高亮反馈
+        self._log_explain(node)   # 🧩 代码讲解 (2026-08-30 老倪, 执行前输出)
         self._sim_node(node, keep_active=keep_active)
 
     def _exec_topological(self):
