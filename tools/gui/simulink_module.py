@@ -5119,7 +5119,24 @@ class SimulinkModule(QWidget):
             return
         path = os.path.join(self._repo_root(), src)
         if not os.path.exists(path):
+            # 🐛 2026-08-30 老倪: source 是数据源标识 (metaworld/orin) 不是代码路径时,
+            # 报\"文件不存在\"误导 — 先查 node_logic 映射, 有则提示真实逻辑位置
             self._log(f"⚠️ 源码不存在: {path}")
+            try:
+                from node_logic import match_node, get_node_location, NODE_LOGIC
+                key = match_node(node.get("name", ""))
+                loc_path, loc_line, _ = get_node_location(key) if key else (None, None, False)
+                if loc_path:
+                    loc = loc_path + (f":{loc_line}" if loc_line else "")
+                    fn = NODE_LOGIC[key]["fn"].__name__ if key and key in NODE_LOGIC else ""
+                    self._qmsg_info("打开源代码",
+                                    f"「{node.get('name', '')}」没有独立源码文件 — "
+                                    f"source={src!r} 是数据源标识, 不是文件路径。\n\n"
+                                    f"该节点的运行逻辑在:\n{loc}" + (f"\n· 函数 {fn}()" if fn else "") +
+                                    "\n\n右键「查看/编辑节点逻辑」可直接查看编辑。")
+                    return
+            except Exception:
+                pass
             self._qmsg_info("打开源代码", f"源码文件不存在:\n{path}")
             return
         import shutil
@@ -8621,7 +8638,10 @@ class SimulinkModule(QWidget):
             self._log(f"📦 数据层 · 🚀 训练模式 → 训练真实模型 (policy={policy}, metaworld 数据)")
             return self.on_train(policy=policy)
         self._log("📦 数据层 · 📷 推理模式 → 加载真实模型 rollout")
-        return self.on_infer()
+        # 🐛 2026-08-30 老倪\"运行节点…也没有运行\": 原调 on_infer 只是查 Orin 状态,
+        # 日志写\"加载真实模型 rollout\"实际没跑 — 与切换模式时的引导文案
+        # (\"双击数据源 → 加载真实模型 rollout\") 对齐, 改走真 rollout
+        return self.on_infer_rollout(node or {})
 
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
