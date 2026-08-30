@@ -3300,6 +3300,8 @@ class SimCanvas(QGraphicsView):
                 and not item.node.get("params", {}).get("insert_report"):
             a_ds = menu.addAction("查看数据集")
         a_run = menu.addAction("运行节点")
+        # 🚀 打开 VSCode 调试 (2026-08-30 老倪: 工程 + 自动虚拟环境, 断点单步)
+        a_vscode = menu.addAction("打开 VSCode 调试")
         # 📥 Excel 导出 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点)
         a_export = None
         if item.node.get("params", {}).get("skill_composer") or item.node.get("params", {}).get("detection_targets"):
@@ -3326,6 +3328,8 @@ class SimCanvas(QGraphicsView):
             # 🆕 2026-08-30 老倪统一设计: 右键「运行节点」与 ⏭ 单步共用 _run_node_single
             # (统一 金色高亮 + 状态色 + 终端输出; keep_active=False=运行完即绿, 不保留金色)
             self.module._run_node_single(item.node, label="右键运行", keep_active=False)
+        elif chosen == a_vscode:
+            self.module.open_in_vscode()
         elif a_export is not None and chosen == a_export:
             self.module.on_export_tasks(item.node)
         elif a_rot is not None and chosen == a_rot:
@@ -10945,6 +10949,55 @@ class SimulinkModule(QWidget):
                 self._toggle_source(n)
                 return (True, f"数据源激活: {n.get('params', {}).get('source', '?')}")
         return (True, f"数据源节点未找到: {name}")
+
+    def open_in_vscode(self):
+        """🚀 打开 VSCode 调试工程 (2026-08-30 老倪: 右键 → VSCode 单步调试)
+        自动配置: .vscode/settings.json 默认解释器=gui-venv311 (Py3.11 GUI 环境);
+        .vscode/launch.json 两个调试配置 (控制台 / 工具脚本 lerobot-venv)"""
+        import subprocess as _sp, shutil as _sh, json as _j
+        root = self._repo_root()
+        vsc = os.path.join(root, ".vscode")
+        os.makedirs(vsc, exist_ok=True)
+        # settings.json: 默认解释器 = gui-venv311 (控制台工程)
+        sj = os.path.join(vsc, "settings.json")
+        try:
+            cur = _j.load(open(sj, encoding="utf-8")) if os.path.exists(sj) else {}
+        except Exception:
+            cur = {}
+        cur["python.defaultInterpreterPath"] = os.path.join(root, "gui-venv311", "bin", "python")
+        cur["python.terminal.activateEnvironment"] = True
+        try:
+            with open(sj, "w", encoding="utf-8") as f:
+                _j.dump(cur, f, ensure_ascii=False, indent=2)
+        except Exception as ex:
+            self._log(f"⚠️ settings.json 写入失败: {ex}")
+        # launch.json: 两个调试配置
+        lj = os.path.join(vsc, "launch.json")
+        cfg = {
+            "version": "0.2.0",
+            "configurations": [
+                {"name": "Z-MAX 控制台 (gui-venv311)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools", "gui", "studio.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "cwd": root, "console": "integratedTerminal"},
+                {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
+                 "program": "${file}",
+                 "python": os.path.expanduser("~/lerobot-venv/bin/python"),
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False},
+            ],
+        }
+        try:
+            with open(lj, "w", encoding="utf-8") as f:
+                _j.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as ex:
+            self._log(f"⚠️ launch.json 写入失败: {ex}")
+        code = _sh.which("code")
+        if not code:
+            self._log("⚠️ 未找到 code 命令 (VSCode 未装或 PATH 无) — 配置已写入 .vscode/")
+            return
+        _sp.Popen([code, root], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        self._log(f"🚀 VSCode 已打开 {root} · 解释器 gui-venv311 已配置 "
+                  f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)")
 
     def show_dataset_info(self, node):
         """📊 查看数据集 (2026-08-30 老倪): 右键数据源节点 → 数据集信息对话框
