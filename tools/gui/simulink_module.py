@@ -3787,6 +3787,27 @@ THEMES = {
 _CUR_THEME = "dark"  # 当前主题 (🎨 switch_theme 切换; 默认深色 — 老倪 2026-08-05: 还是用暗色调风格)
 
 
+class _LogBox(QTextEdit):
+    """终端日志框 — 标准右键菜单 (复制/全选) + 追加「清除输出」 (2026-08-30 老倪)
+    ⚠️ 菜单项不带 emoji (VcXsrv 字体缺字形 → 黑块, 2026-08-12 教训);
+    深色 QSS 与界面统一 (当前 Xorg 环境实测正常)"""
+    _MENU_QSS = ("QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
+                 "QMenu::item { color:#e6edf3; padding:6px 22px; } "
+                 "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
+
+    def contextMenuEvent(self, e):
+        try:
+            menu = self.createStandardContextMenu()
+            menu.setStyleSheet(self._MENU_QSS)
+            menu.addSeparator()
+            act = menu.addAction("清除输出")
+            act.triggered.connect(self.clear)
+            menu.exec_(e.globalPos())
+            menu.deleteLater()
+        except Exception:
+            super().contextMenuEvent(e)
+
+
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
@@ -4196,7 +4217,7 @@ class SimulinkModule(QWidget):
         self.btn_log_toggle.clicked.connect(self._toggle_log_box)
         log_head.addWidget(self.btn_log_toggle)
         _lp.addLayout(log_head)
-        self.log_box = QTextEdit()
+        self.log_box = _LogBox()
         self.log_box.setReadOnly(True)
         # 🐛 2026-08-12 老倪: 去掉固定最大高度 110 — 高度由 splitter 手柄控制 (拖边沿扩大)
         # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
