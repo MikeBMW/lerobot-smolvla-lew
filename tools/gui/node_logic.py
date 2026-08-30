@@ -48,8 +48,64 @@ def match_node(name):
     return best_key
 
 
-def execute_node_logic(module, node, label=None):
-    """双击环节节点 → 执行节点逻辑 (用户可修改版). 未注册返回 None → 框架兜底"""
+def _trace_exec(fn, ctx, log):
+    """🐛 2026-08-30 老倪: debug 式逐行执行 — 每行显示代码 + 输入/输出变量具体数值变化
+    用 sys.settrace 行追踪 (只追踪 fn 自己函数体的行), 赋值/参数变化实时输出"""
+    import sys as _sys
+    src_lines = None
+    try:
+        src_lines = inspect.getsource(fn).splitlines()
+    except (OSError, TypeError):
+        pass
+    base = fn.__code__.co_firstlineno
+    last_locals = {}
+    skip = ("module", "log", "ctx", "p", "info")
+
+    def _fmt(v, maxlen=42):
+        try:
+            s = repr(v)
+        except Exception:
+            s = "<?>"
+        return s if len(s) <= maxlen else s[:maxlen] + "…"
+
+    def tracer(frame, event, arg):
+        if event != "line":
+            return tracer
+        # 只追踪目标函数自身的行 (防递归进子函数/库代码刷屏)
+        if frame.f_code is not fn.__code__:
+            return tracer
+        lineno = frame.f_lineno
+        if src_lines is None or not (base <= lineno < base + len(src_lines)):
+            return tracer
+        line = src_lines[lineno - base].strip()
+        loc = dict(frame.f_locals)
+        # 变化的变量: 新增或值变 (输入→输出数值)
+        changed = {k: loc[k] for k in loc
+                   if k not in last_locals or last_locals[k] != loc[k]}
+        show = []
+        for k, v in changed.items():
+            if k in skip or k.startswith("_"):
+                continue
+            if isinstance(v, (int, float, str, bool)) or v is None:
+                show.append(f"{k}={_fmt(v)}")
+            else:
+                show.append(f"{k}=<{type(v).__name__}>")
+        if log:
+            tail = " → " + "  ".join(show) if show else ""
+            log(f"  ▶ L{lineno - base + 1}: {line[:58]}{tail}")
+        last_locals.update(loc)
+        return tracer
+
+    _sys.settrace(tracer)
+    try:
+        return fn(ctx)
+    finally:
+        _sys.settrace(None)
+
+
+def execute_node_logic(module, node, label=None, trace=None):
+    """双击环节节点 → 执行节点逻辑 (用户可修改版). 未注册返回 None → 框架兜底
+    trace=True → debug 式逐行执行 (每行代码 + 变量数值变化, 2026-08-30 老倪)"""
     name = node.get("name", "")
     key = match_node(name)
     if key is None:
@@ -57,6 +113,10 @@ def execute_node_logic(module, node, label=None):
     info = NODE_LOGIC[key]
     ctx = {"module": module, "params": node.get("params", {}),
            "log": getattr(module, "_log", None), "name": name, "label": label}
+    if trace is None:
+        trace = bool(getattr(module, "_trace_nodes", False))
+    if trace:
+        return _trace_exec(info["fn"], ctx, getattr(module, "_log", None))
     return info["fn"](ctx)
 
 

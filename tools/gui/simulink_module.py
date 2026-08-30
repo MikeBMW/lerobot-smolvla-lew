@@ -6064,6 +6064,17 @@ class SimulinkModule(QWidget):
         if cur is not None and cur.isRunning():
             self._log(self._busy_hint())
             return
+        # 🐛 2026-08-30 老倪: debug 式逐行执行 — 节点逻辑执行期间开行追踪,
+        # 每行输出代码 + 变量数值变化 (execute_node_logic 读 _trace_nodes)
+        was_trace = getattr(self, "_trace_nodes", False)
+        self._trace_nodes = True
+        try:
+            self._dispatch_run_node(node, label, keep_active)
+        finally:
+            self._trace_nodes = was_trace
+
+    def _dispatch_run_node(self, node, label=None, keep_active=True):
+        name = node.get("name", "?")
         # ① 环节节点 → 真实 worker 执行 (异步状态 running→success/error)
         for kw, meth in self.NODE_RUN_ACTIONS:
             if kw in name:
