@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView,
                              QGraphicsScene, QGraphicsItem, QGraphicsObject,
                              QLabel, QPushButton, QToolButton, QFrame, QSpinBox,
                              QDoubleSpinBox, QComboBox, QLineEdit, QDialog,
-                             QFormLayout, QTextEdit, QScrollArea, QMenu,
+                             QFormLayout, QTextEdit, QPlainTextEdit, QScrollArea, QMenu,
                              QMessageBox, QSplitter, QDialogButtonBox,
                              QMdiArea, QMdiSubWindow)
 
@@ -3804,6 +3804,23 @@ class _LogBox(QTextEdit):
             menu.addSeparator()
             act = menu.addAction("清除输出")
             act.triggered.connect(self.clear)
+            menu.exec_(e.globalPos())
+            menu.deleteLater()
+        except Exception:
+            super().contextMenuEvent(e)
+
+
+class _CodeEdit(QPlainTextEdit):
+    """可编辑代码/JSON 框 — 标准右键菜单 + 显式深色 QSS (2026-08-30 老倪:
+    右键菜单全黑 → 与 _LogBox/_CodeEditor 同款深色菜单)"""
+    _MENU_QSS = ("QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
+                 "QMenu::item { color:#e6edf3; padding:6px 22px; } "
+                 "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
+
+    def contextMenuEvent(self, e):
+        try:
+            menu = self.createStandardContextMenu()
+            menu.setStyleSheet(self._MENU_QSS)
             menu.exec_(e.globalPos())
             menu.deleteLater()
         except Exception:
@@ -10549,9 +10566,9 @@ class SimulinkModule(QWidget):
         hdr.setWordWrap(True)
         hdr.setStyleSheet("color:#00d4aa; font-weight:700; font-size:7.5pt;")
         lay.addWidget(hdr)
-        # JSON 预览
+        # JSON 预览 (🆕 2026-08-30: _CodeEdit — 右键菜单显式深色, 修全黑)
         lay.addWidget(QLabel("📄 场景描述 JSON (可编辑):"))
-        editor = QPlainTextEdit(_json_str)
+        editor = _CodeEdit(_json_str)
         editor.setMinimumHeight(240)
         lay.addWidget(editor)
         # 上传链接

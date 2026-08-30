@@ -113,12 +113,13 @@ class NodeLogicDialog(QDialog):
         hl.addWidget(self.lbl_hint)
         root.addWidget(head)
 
-        # 中部: 源码编辑器
-        self.edit = QPlainTextEdit()
+        # 中部: 源码编辑器 (🆕 2026-08-30: 改用 _CodeEditor — 右键菜单显式深色, 修全黑)
+        self.edit = _CodeEditor()
         self.edit.setStyleSheet(
             f"QPlainTextEdit {{ background:{_PANEL}; color:{_TEXT}; border:1px solid {_BRD};"
             " border-radius:6px; font-family:DejaVu Sans Mono;"
-            " font-size:17px; padding:10px; }}")   # 2026-08-25 老倪: 12→17px, 代码要看得清
+            " font-size:17px; padding:10px; }")   # 🐛 2026-08-30: 原结尾 }} (f-string 拼接遗留) → 解析警告
+        # 2026-08-25 老倪: 12→17px, 代码要看得清
         self.edit.setReadOnly(True)
         self.edit.setLineWrapMode(QPlainTextEdit.NoWrap)
         root.addWidget(self.edit, 1)
@@ -300,11 +301,25 @@ class NodeLogicDialog(QDialog):
 
 
 class _CodeEditor(QPlainTextEdit):
-    """带行号边栏的只读编辑器 — resize 时同步行号区几何 (SourceViewDialog 用)"""
+    """带行号边栏的只读编辑器 — resize 时同步行号区几何 (SourceViewDialog 用)
+    🐛 2026-08-30 老倪: 右键菜单背景全黑 (标准菜单无 QSS, 当前 Xorg 渲染黑屏,
+    鼠标滑过才显示文字) → 显式深色 QSS 白字 (与 _LogBox 同款)"""
+    _MENU_QSS = ("QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
+                 "QMenu::item { color:#e6edf3; padding:6px 22px; } "
+                 "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
 
     def __init__(self, ln_area=None):
         super().__init__()
         self._ln_area = ln_area
+
+    def contextMenuEvent(self, e):
+        try:
+            menu = self.createStandardContextMenu()
+            menu.setStyleSheet(self._MENU_QSS)
+            menu.exec_(e.globalPos())
+            menu.deleteLater()
+        except Exception:
+            super().contextMenuEvent(e)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
