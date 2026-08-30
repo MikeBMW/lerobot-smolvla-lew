@@ -8670,6 +8670,11 @@ class SimulinkModule(QWidget):
         if node.get("type") == "train_gate":
             self._toggle_train_gate(node)
             return
+        # 1.6b) 🎯 YOLO 感知开关 (2026-08-30: 与 train_gate 对齐 — 双击切换 checkbox,
+        #   原落默认分支打开参数框, 与画布勾选图形语义不符)
+        if node.get("type") == "yolo_gate":
+            self._toggle_yolo_gate(node)
+            return
         # 1.7) 🧩 结构条件节点 (2026-08-09 老倪: ControlNet 思想 — 双击从原子技能库选条件编码注入)
         if node.get("type") == "coord_overlay":
             self._pick_atomic_condition(node)
@@ -10058,6 +10063,29 @@ class SimulinkModule(QWidget):
         self._log(f"☑ 训练开关: {'打勾 → 训练启用' if en else '不打勾 → 训练跳过'} (双击可再切换)")
         self._sync()
 
+    def _toggle_yolo_gate(self, node):
+        """双击 🎯 YOLO 感知开关: 勾选=开 (state 39D 完整观测) / 取消=关 (3D)
+        🐛 2026-08-30: 原 node_yolo_gate 调 _set_yolo_gate_ctx 不存在 → 开关状态从不落地,
+        与 train_gate 对齐 (checkbox 语义)"""
+        p = node.setdefault("params", {})
+        p["yolo_enabled"] = not p.get("yolo_enabled", True)
+        p["state_dim"] = 39 if p["yolo_enabled"] else 3
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        en = p["yolo_enabled"]
+        self._log(f"🎯 YOLO 感知开关: {'开 → state 39D (YOLO检测产出)' if en else '关 → state 3D (无感知)'} (双击可再切换)")
+        self._sync()
+
+    def _toggle_yolo_gate_ctx(self, name, yolo_enabled):
+        """node_logic 框架动作: 按节点名找到 YOLO 开关节点并切换 (兼容右键逻辑执行)"""
+        for n in self.nodes:
+            if n.get("name") == name:
+                self._toggle_yolo_gate(n)
+                return (True, f"YOLO 开关: {'开 (39D)' if n.get('params', {}).get('yolo_enabled', True) else '关 (3D)'}")
+        return (True, f"YOLO 开关: 状态 {yolo_enabled}")
+
     def _export_skill_action(self, node):
         """🧩 原子技能 → action JSON (2026-08-09 老倪: W²-VLA Token 落地)
         单技能: 双击技能节点 → 生成该技能的 action 定义 JSON"""
@@ -10618,6 +10646,16 @@ class SimulinkModule(QWidget):
         label = "Orin 真实数据 (relay/latest)" if src == "orin" else "metaworld 占位集"
         self._log(f"🔄 训练数据源切换 → {label} · 双击任意数据源节点可再切换")
         self._sync()
+
+    def _toggle_source_ctx(self, name):
+        """node_logic 框架动作: 按节点名找到数据源节点并切换激活
+        🐛 2026-08-30 老倪: node_logic.py 原调 _toggle_source_node (方法从未存在,
+        异常被 _sim_node 吞掉 → 运行流程时数据源\"假激活\") — 参照 _toggle_train_gate_ctx 模式"""
+        for n in self.nodes:
+            if n.get("name") == name:
+                self._toggle_source(n)
+                return (True, f"数据源激活: {n.get('params', {}).get('source', '?')}")
+        return (True, f"数据源节点未找到: {name}")
 
     def _probe_dataset(self, dp):
         """探测数据集属性 (2026-08-07 老倪: 双击数据源看实际路径+属性)"""

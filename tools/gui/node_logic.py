@@ -573,7 +573,7 @@ def node_metaworld_data(ctx):
     # 数据源策略: 想强制某来源训练, 在「训练」节点的 data_source 里改
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: 激活数据源 (勿改)
-    return module._toggle_source_node(ctx["name"])
+    return module._toggle_source_ctx(ctx["name"])
 
 
 # ════════════════════════════════════════════════════════════════
@@ -933,7 +933,7 @@ def node_yolo_gate(ctx):
     # 想自定义判定? 在这里写 (例如: 按相机可用性自动切换)
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: 记录开关状态到节点 (勿改)
-    return module._set_yolo_gate_ctx(ctx["name"], yolo_enabled, state_dim)
+    return module._toggle_yolo_gate_ctx(ctx["name"], yolo_enabled)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1024,7 +1024,7 @@ _reg("hjepa",      ["H-JEPA"], "🧠 H-JEPA 三层潜空间 — z₁/z₂/z₃ �
 _reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜状态", node_zflow)
 _reg("cross_attn", ["交叉注意力"], "🔀 未来决策交叉注意力 — 未来潜状态 K/V 注入", node_cross_attn)
 _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
-_reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
+_reg("yolo_gate", ["YOLO 感知开关", "YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
 
 
 # ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开) ──
