@@ -117,9 +117,13 @@ class NodeLogicDialog(QDialog):
         self.edit = _CodeEditor()
         self.edit.setStyleSheet(
             f"QPlainTextEdit {{ background:{_PANEL}; color:{_TEXT}; border:1px solid {_BRD};"
-            " border-radius:6px; font-family:DejaVu Sans Mono;"
-            " font-size:17px; padding:10px; }")   # 🐛 2026-08-30: 原结尾 }} (f-string 拼接遗留) → 解析警告
-        # 2026-08-25 老倪: 12→17px, 代码要看得清
+            " border-radius:6px; padding:10px; }")
+        # 🆕 2026-08-30 老倪: 字体太小看不清 → 18pt (原 QSS 17px ≈ 12.75pt, 太小;
+        # 与 SourceViewDialog 编程式 QFont 一致并加大, 行号/高亮同步)
+        from PyQt5.QtGui import QFont as _QF
+        _f = _QF("DejaVu Sans Mono", 18)
+        _f.setStyleHint(_QF.Monospace)
+        self.edit.setFont(_f)
         self.edit.setReadOnly(True)
         self.edit.setLineWrapMode(QPlainTextEdit.NoWrap)
         root.addWidget(self.edit, 1)
@@ -411,7 +415,7 @@ class SourceViewDialog(QDialog):
         # setStyleSheet 会报 "Could not parse stylesheet", 故用 QFont+QPalette)
         self.edit = _CodeEditor()
         from PyQt5.QtGui import QFont as _QF, QPalette as _QP
-        _f = _QF("DejaVu Sans Mono", 17)   # 2026-08-25 老倪: 源码字体 12→17px
+        _f = _QF("DejaVu Sans Mono", 18)   # 🆕 2026-08-30 老倪: 17→18pt 加大
         _f.setStyleHint(_QF.Monospace)
         self.edit.setFont(_f)
         _pal = self.edit.palette()
