@@ -104,6 +104,32 @@ def get_node_external_symbol(key):
     return ext[2] if ext else None
 
 
+def _probe_data_root():
+    """🆕 2026-08-30 老倪: 探测本机训练数据仓库 — 返回 '路径 · 帧数/集数 · 特征' 或 None
+    优先级与 _ensure_training_data 一致: Orin真实(closed_loop) → metaworld_peg_long → metaworld_peg → ss_insert_lerobot"""
+    import json as _j, os as _os
+    root = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+    for cand in ("data/closed_loop", "data/metaworld_peg_long", "data/metaworld_peg",
+                 "data/ss_insert_lerobot"):
+        d = _os.path.join(root, cand)
+        ij = _os.path.join(d, "meta", "info.json")
+        if not _os.path.isfile(ij):
+            ij = _os.path.join(d, "info.json")
+        if not _os.path.isfile(ij):
+            continue
+        try:
+            info = _j.load(open(ij, encoding="utf-8"))
+            nf = info.get("total_frames", "?")
+            ne = info.get("total_episodes", "?")
+            feats = list(info.get("features", {}).keys())
+            fstr = ",".join(str(f).replace("observation.", "") for f in feats[:3])
+            src = "Orin真实" if cand == "data/closed_loop" else ("状态空间" if "ss" in cand else "metaworld占位")
+            return f"{cand} · {nf}帧/{ne}集 · {src} · 特征[{fstr}]"
+        except Exception:
+            continue
+    return None
+
+
 def explain_node(name, module=None, out=None):
     """🧩 代码讲解 (2026-08-30 老倪): 运行节点时终端输出 — 从代码角度解释
     语法/功能/赋值 (可修改区逐行 + 行尾注释), 从全局目标/数据空间角度
@@ -123,6 +149,8 @@ def explain_node(name, module=None, out=None):
     except (OSError, TypeError):
         src = ""
     in_mod = False
+    syn_n = 0
+    MAX_SYN = 6   # 🆕 2026-08-30: 语法行上限 (train 等复杂节点不刷屏), 超了提示看编辑器
     for raw in src.splitlines():
         line = raw.strip()
         if "可修改区 START" in line:
@@ -138,7 +166,12 @@ def explain_node(name, module=None, out=None):
         if line.startswith("return"):
             L.append(f"  框架: {line}   ← 调度/激活动作 (框架区勿改)")
         elif in_mod:
-            L.append(f"  语法: {line}")
+            if syn_n < MAX_SYN:
+                L.append(f"  语法: {line}")
+                syn_n += 1
+            elif syn_n == MAX_SYN:
+                L.append(f"  …(共 {sum(1 for r2 in src.splitlines() if r2.strip() and not r2.strip().startswith(('#', 'def ', 'return')))} 行, 其余省略 — 右键「查看/编辑节点逻辑」看全量)")
+                syn_n += 1
     # 全局定位 + 数据空间 (画布上下文)
     if module is not None:
         try:
@@ -167,6 +200,20 @@ def explain_node(name, module=None, out=None):
                 dims = p.get("dims") or p.get("desc", "")
                 if dims:
                     L.append(f"  数据: 空间 {dims}")
+                # 🆕 2026-08-30 老倪: 数据源真实路径 + dataset/dataloader 机制 + 形象比喻
+                if key in ("data",) or (p.get("source") and not p.get("run_env")):
+                    pl = _probe_data_root()
+                    if pl:
+                        L.append(f"  仓库: {pl}")
+                    L.append("  比喻: 📦 数据源 = 原料仓库 — 训练前把仓库里的帧整理成数据集"
+                             "(dataset 分拣台: 逐帧读取 + 算归一化 mean/std), "
+                             "再由 dataloader(传送带) 按 batch 送进训练")
+                elif key == "train":
+                    L.append("  数据链: 仓库 data/ → LeRobotDataset(分拣台: 按帧读取 + "
+                             "归一化统计) → DataLoader(传送带: 每步喂 batch 个样本) → "
+                             "模型参数更新 → checkpoint(成品 outputs/train/)")
+                    L.append("  比喻: 🚀 训练 = 流水线 — 原料(帧)经分拣台(dataset)上"
+                             "传送带(dataloader)进机床(模型反向传播), 产出成品(checkpoint)")
                 if out is not None:
                     L.append(f"  趋势: 本步输出「{out}」→ 沿链路向下游传递")
         except Exception:
