@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThrea
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPixmap, QTransform,  # 🐛 2026-08-18: 画布内嵌视频帧需要 (原只在 play_mlp_rollout 局部 import → _mlp_show NameError 静默)
                          QPolygonF, QLinearGradient, QRadialGradient, QKeySequence)
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView,
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGraphicsView,
                              QGraphicsScene, QGraphicsItem, QGraphicsObject,
                              QLabel, QPushButton, QToolButton, QFrame, QSpinBox,
                              QDoubleSpinBox, QComboBox, QLineEdit, QDialog,
@@ -3294,6 +3294,11 @@ class SimCanvas(QGraphicsView):
         #   2026-08-17 老倪: 状态空间节点 source 也支持 tools/; 菜单项始终显示
         #   (任何画布/节点右键都有「打开源代码」, 无映射时点击给明确提示)
         a_src = menu.addAction("打开源代码")
+        # 📊 查看数据集 (2026-08-30 老倪: 数据源节点右键 → 直接链接真实数据源头)
+        a_ds = None
+        if item.node.get("params", {}).get("source") and not item.node.get("params", {}).get("insert_video") \
+                and not item.node.get("params", {}).get("insert_report"):
+            a_ds = menu.addAction("查看数据集")
         a_run = menu.addAction("运行节点")
         # 📥 Excel 导出 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点)
         a_export = None
@@ -3315,6 +3320,8 @@ class SimCanvas(QGraphicsView):
             self.module.on_train_config(item.node)
         elif a_src is not None and chosen == a_src:
             self.module.open_node_source(item.node)
+        elif a_ds is not None and chosen == a_ds:
+            self.module.show_dataset_info(item.node)
         elif chosen == a_run:
             # 🆕 2026-08-30 老倪统一设计: 右键「运行节点」与 ⏭ 单步共用 _run_node_single
             # (统一 金色高亮 + 状态色 + 终端输出; keep_active=False=运行完即绿, 不保留金色)
@@ -3825,6 +3832,153 @@ class _CodeEdit(QPlainTextEdit):
             menu.deleteLater()
         except Exception:
             super().contextMenuEvent(e)
+
+
+class _DatasetInfoDialog(QDialog):
+    """📊 数据集信息对话框 (2026-08-30 老倪: 右键数据源节点 → 查看数据集)
+    直接链接真实数据源头: 路径/属性表/特征/大小 + 打开目录/浏览内容/跳转数据集管理"""
+
+    def __init__(self, name, dp, info, src_label, parent=None):
+        super().__init__(parent)
+        self._dp = dp
+        self._info = info or {}
+        self.setWindowTitle(f"📊 数据集 · {name}")
+        self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        self.setMinimumSize(620, 560)
+        self.setStyleSheet("QDialog { background:#0d1117; color:#e6edf3; }")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(10)
+        # 标题 + 来源标签
+        head = QHBoxLayout()
+        t = QLabel(f"📊 数据集 · {name}")
+        t.setStyleSheet("color:#e6edf3; font-size:16px; font-weight:700;")
+        head.addWidget(t)
+        tag = QLabel(src_label)
+        tag.setStyleSheet("background:#1f6feb; color:#fff; border-radius:8px; padding:2px 10px; font-size:11px;")
+        head.addWidget(tag)
+        head.addStretch(1)
+        root.addLayout(head)
+        # 路径行 (真实数据源头)
+        path_row = QHBoxLayout()
+        pth = QLabel("📂 路径:")
+        pth.setStyleSheet("color:#8b949e; font-size:12px;")
+        path_row.addWidget(pth)
+        self.lbl_path = QLabel(dp)
+        self.lbl_path.setStyleSheet("color:#58a6ff; font-size:12px; font-family:DejaVu Sans Mono;")
+        self.lbl_path.setWordWrap(True)
+        self.lbl_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        path_row.addWidget(self.lbl_path, 1)
+        btn_copy = QPushButton("📋 复制")
+        btn_copy.setStyleSheet("QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d;"
+                               " border-radius:4px; padding:3px 12px; font-size:11px; }"
+                               "QPushButton:hover { border-color:#58a6ff; }")
+        btn_copy.clicked.connect(lambda: QApplication.clipboard().setText(dp))
+        path_row.addWidget(btn_copy)
+        root.addLayout(path_row)
+        # 属性网格 (特征合并 "特征 xxx" 前缀 key)
+        feat_parts = [f"{k[3:]}: {v}" for k, v in info.items() if k.startswith("特征 ")]
+        feat_str = "; ".join(feat_parts) if feat_parts else info.get("特征", "—")
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        rows = [("总帧数", "总帧数", "帧"), ("episodes", "episodes", "集"),
+                ("fps", "fps", ""), (feat_str, "特征", ""),
+                ("视频文件", "视频文件", "个"), ("npz 文件", "npz 文件", "个"),
+                ("大小", "大小", "MB"), ("修改时间", "修改时间", "")]
+        for i, (v, label, unit) in enumerate(rows):
+            if i == 3:
+                val = v
+            else:
+                val = info.get(v, "—")
+                if v == "大小" and isinstance(val, (int, float)):
+                    val = f"{val:.0f} MB"
+            r, c = divmod(i, 2)
+            l1 = QLabel(f"{label}:")
+            l1.setStyleSheet("color:#8b949e; font-size:12px;")
+            l2 = QLabel(str(val))
+            l2.setStyleSheet("color:#e6edf3; font-size:12px; font-weight:600;")
+            l2.setWordWrap(True)
+            if label == "特征":
+                l2.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            grid.addWidget(l1, r, c * 2)
+            grid.addWidget(l2, r, c * 2 + 1)
+        root.addLayout(grid)
+        # 说明区
+        note = QLabel("💡 该路径就是训练/推理的真实数据源头 — LeRobotDataset 从这里逐帧读取,\n"
+                      "计算归一化 mean/std 后经 DataLoader 按 batch 送进模型。")
+        note.setStyleSheet("color:#57606a; font-size:11px;")
+        note.setWordWrap(True)
+        root.addWidget(note)
+        # 按钮
+        btns = QHBoxLayout()
+        btns.setSpacing(8)
+        self.btn_open = QPushButton("📂 打开数据目录")
+        self.btn_view = QPushButton("🎬 浏览内容")
+        self.btn_goto = QPushButton("🚀 跳转数据集管理")
+        self.btn_refresh = QPushButton("🔄 刷新")
+        for b in (self.btn_open, self.btn_view, self.btn_goto, self.btn_refresh):
+            b.setStyleSheet("QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d;"
+                            " border-radius:4px; padding:6px 14px; font-size:12px; }"
+                            "QPushButton:hover { border-color:#58a6ff; }")
+            btns.addWidget(b)
+        btns.addStretch(1)
+        root.addLayout(btns)
+        self.btn_open.clicked.connect(self._open_dir)
+        self.btn_view.clicked.connect(self._browse)
+        self.btn_goto.clicked.connect(self._goto_manager)
+        self.btn_refresh.clicked.connect(self._refresh)
+
+    def _open_dir(self):
+        """打开数据目录 (环境自适应: WSL explorer / 容器 xdg-open)"""
+        import subprocess as _sp, shutil as _sh
+        try:
+            if _sh.which("explorer.exe") and os.path.isdir("/mnt/c"):
+                _sp.Popen(["explorer.exe", self._dp.replace("/", "\\")],
+                          stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            else:
+                _sp.Popen(["xdg-open", self._dp], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        except Exception as ex:
+            self._log_msg(f"⚠️ 打开目录失败: {ex}")
+
+    def _browse(self):
+        """🎬 DatasetViewer 浏览数据集内容 (episodes/帧/图片/state)"""
+        try:
+            from dataset_viewer import DatasetViewer
+            dlg = DatasetViewer("local", "", self, local_root=self._dp)
+            dlg.show()
+        except Exception as ex:
+            self._log_msg(f"⚠️ 浏览失败: {ex}")
+
+    def _goto_manager(self):
+        """🚀 跳转主窗口「数据集管理」模块页 (module_clicked 信号链)"""
+        try:
+            mw = self.window()
+            home = getattr(mw, "home", None)
+            if home is not None and hasattr(home, "module_clicked"):
+                home.module_clicked.emit("dataset")
+            else:
+                self._log_msg("⚠️ 未找到数据集管理页入口 (主窗口未就绪)")
+        except Exception as ex:
+            self._log_msg(f"⚠️ 跳转失败: {ex}")
+
+    def _refresh(self):
+        """🔄 重新探测数据集属性"""
+        try:
+            if hasattr(self.parent(), "_probe_dataset"):
+                self._info = self.parent()._probe_dataset(self._dp)
+                self.lbl_path.setText(self._dp)
+                self._log_msg("🔄 已刷新")
+        except Exception:
+            pass
+
+    def _log_msg(self, msg):
+        try:
+            mw = self.window()
+            if mw is not None and hasattr(mw, "_log"):
+                mw._log(msg)
+        except Exception:
+            pass
 
 
 class SimulinkModule(QWidget):
@@ -10781,12 +10935,45 @@ class SimulinkModule(QWidget):
                 return (True, f"数据源激活: {n.get('params', {}).get('source', '?')}")
         return (True, f"数据源节点未找到: {name}")
 
+    def show_dataset_info(self, node):
+        """📊 查看数据集 (2026-08-30 老倪): 右键数据源节点 → 数据集信息对话框
+        直接链接真实数据源头: 路径映射 → _probe_dataset 探测属性 → 非模态展示"""
+        p = node.get("params", {})
+        src = p.get("source", "metaworld")
+        root = self._repo_root()
+        # 路径映射 (与 _ensure_training_data 一致)
+        if src == "orin":
+            dp = os.path.join(root, "data", "closed_loop")
+            label = "Orin 真实产线数据"
+        elif src == "ss_sim" or "状态空间" in node.get("name", ""):
+            dp = os.path.join(root, "data", "ss_insert_lerobot")
+            label = "状态空间仿真数据"
+        else:
+            dp = os.path.join(root, "data", "metaworld_peg_long")
+            if not os.path.isdir(dp):
+                dp = os.path.join(root, "data", "metaworld_peg")
+            label = "metaworld 占位集"
+        if os.path.isdir(dp):
+            info = self._probe_dataset(dp)
+            try:
+                info["修改时间"] = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(dp)))
+            except Exception:
+                pass
+        else:
+            info = {"探测错误": "目录不存在", "大小": 0}
+        dlg = _DatasetInfoDialog(node.get("name", "数据集"), dp, info, label, self)
+        self._show_nonmodal(dlg)
+        self._popup_on_main_screen(dlg)
+
     def _probe_dataset(self, dp):
         """探测数据集属性 (2026-08-07 老倪: 双击数据源看实际路径+属性)"""
         import glob as _g
         info = {}
         try:
             ij = os.path.join(dp, "info.json")
+            # 🐛 2026-08-30: LeRobot 标准布局 info.json 在 meta/ 子目录 (data/metaworld_peg/meta/info.json)
+            if not os.path.exists(ij):
+                ij = os.path.join(dp, "meta", "info.json")
             if os.path.exists(ij):
                 with open(ij, encoding="utf-8") as f:
                     d = json.load(f)
