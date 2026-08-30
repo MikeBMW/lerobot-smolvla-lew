@@ -3316,7 +3316,9 @@ class SimCanvas(QGraphicsView):
         elif a_src is not None and chosen == a_src:
             self.module.open_node_source(item.node)
         elif chosen == a_run:
-            self.module.on_node_activated(item.node)
+            # 🆕 2026-08-30 老倪统一设计: 右键「运行节点」与 ⏭ 单步共用 _run_node_single
+            # (统一 金色高亮 + 状态色 + 终端输出; keep_active=False=运行完即绿, 不保留金色)
+            self.module._run_node_single(item.node, label="右键运行", keep_active=False)
         elif a_export is not None and chosen == a_export:
             self.module.on_export_tasks(item.node)
         elif a_rot is not None and chosen == a_rot:
@@ -5844,17 +5846,57 @@ class SimulinkModule(QWidget):
                 _it = self._items.get(nn["id"])
                 if _it:
                     _it.update()
-        # 当前节点: 金色高亮 + 执行 (终端输出)
+        # 当前节点: 金色高亮 + 统一执行 (🆕 2026-08-30: 与右键「运行节点」共用 _run_node_single)
         n["status"] = "step_active"
         it = self._items.get(nid)
         if it:
             it.update()
         self.canvas._scene.update()
         self._log(f"⏭ 单步 [{self._step_idx + 1}/{len(self._step_order)}] {n['name']}")
-        self._sim_node(n, keep_active=True)
+        self._run_node_single(n, label=f"单步 {self._step_idx + 1}/{len(self._step_order)}",
+                              keep_active=True)
         self._step_idx += 1
         self._refresh_status()
         self._tutorial_on_action("step")
+
+    def _run_env_wrap(self, node):
+        """数据层执行包装: 返回 (ok, summary) 供 CICDWorker (2026-08-30 统一入口)
+        on_run_env 内部按当前模式调 on_train / on_infer_rollout (各自启动 worker)"""
+        try:
+            r = self.on_run_env(node)
+            if isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], bool):
+                return r
+            return (True, "数据层执行已启动 (后台)")
+        except Exception as ex:
+            return (False, str(ex))
+
+    def _run_node_single(self, node, label=None, keep_active=True):
+        """▶ 统一执行入口 — 单步 ⏭ 与右键「运行节点」共用 (2026-08-30 老倪统一设计)
+        语义: 执行单个节点的真实功能, 统一 金色高亮 → 状态色 (running 青 → success 绿 / error 红)
+        分派: ① 环节节点 (训练/验证/…) → _run_node_stage (worker 异步, 含节点逻辑)
+              ② run_env 数据层 → _run_env_wrap (worker 异步: 按当前模式训练/推理)
+              ③ 其他节点 → _sim_node (节点逻辑 + 数据流; keep_active=金色保持=单步语义)"""
+        name = node.get("name", "?")
+        cur = getattr(self, "_worker", None)
+        if cur is not None and cur.isRunning():
+            self._log(self._busy_hint())
+            return
+        # ① 环节节点 → 真实 worker 执行 (异步状态 running→success/error)
+        for kw, meth in self.NODE_RUN_ACTIONS:
+            if kw in name:
+                fn = getattr(self, meth, None)
+                if fn:
+                    self._highlight_node(node, ms=4000)
+                    self._run_node_stage(node, fn, label or kw)
+                return
+        # ② 数据层运行环境 → 按当前模式真实训练/推理 (worker)
+        if node.get("params", {}).get("run_env"):
+            self._highlight_node(node, ms=4000)
+            self._run_node_stage(node, lambda: self._run_env_wrap(node), label or "数据层")
+            return
+        # ③ 其他节点 → 节点逻辑 + 数据流模拟 (running→success, keep_active=金色保持)
+        self._highlight_node(node, ms=2500)   # 🆕 2026-08-30: 与环节/数据层统一金色高亮反馈
+        self._sim_node(node, keep_active=keep_active)
 
     def _exec_topological(self):
         order = [nid for nid in self._topo_sort()
@@ -10811,7 +10853,7 @@ class SimulinkModule(QWidget):
         if it:
             it.update()
         self.canvas._scene.update()
-        self._log(f"⏳ 双击运行 [{node['name']}] ({label}) — 后台执行, UI 可继续操作…")
+        self._log(f"⏳ 运行 [{node['name']}] ({label}) — 后台执行, UI 可继续操作…")
 
         def _done(ok, summary):
             node["status"] = "success" if ok else "error"
