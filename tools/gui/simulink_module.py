@@ -5325,13 +5325,11 @@ class SimulinkModule(QWidget):
                 key = match_node(node.get("name", ""))
                 loc_path, loc_line, _ = get_node_location(key) if key else (None, None, False)
                 if loc_path:
-                    loc = loc_path + (f":{loc_line}" if loc_line else "")
-                    fn = NODE_LOGIC[key]["fn"].__name__ if key and key in NODE_LOGIC else ""
-                    self._qmsg_info("打开源代码",
-                                    f"「{node.get('name', '')}」没有独立源码文件 — "
-                                    f"source={src!r} 是数据源标识, 不是文件路径。\n\n"
-                                    f"该节点的运行逻辑在:\n{loc}" + (f"\n· 函数 {fn}()" if fn else "") +
-                                    "\n\n右键「查看/编辑节点逻辑」可直接查看编辑。")
+                    # 🆕 2026-08-30 老倪: 「打开源代码」直接 VSCode 打开运行逻辑
+                    # (原只弹提示框 → 老倪反馈 VSCode 里源代码是空的, 要看到实际源码)
+                    self._log(f"📂 无独立源码文件 → VSCode 打开运行逻辑: "
+                              f"{loc_path}:{loc_line or 1} (函数 {NODE_LOGIC[key]['fn'].__name__}())")
+                    self.open_in_vscode(node)
                     return
             except Exception:
                 pass
