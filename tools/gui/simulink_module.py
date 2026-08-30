@@ -10975,10 +10975,12 @@ class SimulinkModule(QWidget):
         cfg = {
             "version": "0.2.0",
             "configurations": [
-                {"name": "Z-MAX 控制台 (gui-venv311)", "type": "python", "request": "launch",
+                # 🆕 断点自动命中: env ZMAX_DEBUG_BREAK=1 → execute_node_logic 埋点处暂停
+                {"name": "Z-MAX 控制台 断点调试 (gui-venv311)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools", "gui", "studio.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "cwd": root, "console": "integratedTerminal"},
+                 "cwd": root, "console": "integratedTerminal",
+                 "env": {"ZMAX_DEBUG_BREAK": "1"}},
                 {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
                  "program": "${file}",
                  "python": os.path.expanduser("~/lerobot-venv/bin/python"),

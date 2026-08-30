@@ -111,6 +111,14 @@ def execute_node_logic(module, node, label=None, trace=None):
     if key is None:
         return None
     info = NODE_LOGIC[key]
+    # 🐛 2026-08-30 老倪: VSCode 断点调试 — env ZMAX_DEBUG_BREAK=1 (launch.json 自动配) 时
+    # 执行任何节点逻辑先停在此处, F10 单步逐行 (debugpy.breakpoint 非调试时无害)
+    if os.environ.get("ZMAX_DEBUG_BREAK") == "1":
+        try:
+            import debugpy
+            debugpy.breakpoint()
+        except Exception:
+            pass
     ctx = {"module": module, "params": node.get("params", {}),
            "log": getattr(module, "_log", None), "name": name, "label": label}
     if trace is None:
