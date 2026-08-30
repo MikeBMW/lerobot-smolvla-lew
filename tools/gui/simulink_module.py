@@ -9002,9 +9002,14 @@ class SimulinkModule(QWidget):
         def _work():
             import subprocess as _sp
             root = self._repo_root()
-            py = os.path.join(root, ".venv", "bin", "python")
-            if not os.path.exists(py):
-                return False, "缺少 .venv/bin/python (推理需本地 GPU 环境)"
+            # 🐛 2026-08-30 老倪\"缺少 .venv/bin/python\": 项目无 .venv (GUI 用 gui-venv311,
+            # 推理/训练环境在 ~/lerobot-venv, torch 2.7.1+cu128 CUDA 可用) → 多候选探测
+            py = next((c for c in (os.path.join(root, ".venv", "bin", "python"),
+                                   os.path.expanduser("~/lerobot-venv/bin/python"),
+                                   os.path.join(root, "gui-venv311", "bin", "python"))
+                       if os.path.exists(c)), None)
+            if not py:
+                return False, "缺少推理 python 环境 (需 .venv 或 ~/lerobot-venv, 含 torch+CUDA)"
             r = _sp.run([py, os.path.join(root, "tools", "gen_insert_video.py")],
                         capture_output=True, text=True, timeout=600, cwd=root)
             out = (r.stdout or "").strip().splitlines()
@@ -9032,9 +9037,13 @@ class SimulinkModule(QWidget):
         def _work():
             import subprocess as _sp
             root = self._repo_root()
-            py = os.path.join(root, ".venv", "bin", "python")
-            if not os.path.exists(py):
-                return False, "缺少 .venv/bin/python (评估需本地 GPU 环境)"
+            # 🐛 2026-08-30: 与 on_infer_rollout 对齐 — 多候选探测推理/评估 python
+            py = next((c for c in (os.path.join(root, ".venv", "bin", "python"),
+                                   os.path.expanduser("~/lerobot-venv/bin/python"),
+                                   os.path.join(root, "gui-venv311", "bin", "python"))
+                       if os.path.exists(c)), None)
+            if not py:
+                return False, "缺少评估 python 环境 (需 .venv 或 ~/lerobot-venv, 含 torch+CUDA)"
             r = _sp.run([py, os.path.join(root, "tools", "eval_state_space.py"), "0", "1", "2", "3"],
                         capture_output=True, text=True, timeout=600, cwd=root)
             out = (r.stdout or "").strip().splitlines()
