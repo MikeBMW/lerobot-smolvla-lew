@@ -10948,6 +10948,14 @@ def _build_global_qss():
 
 
 def main():
+    # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
+    # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
+    try:
+        import debugpy
+        debugpy.listen(("127.0.0.1", 5678))
+        print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5 选「Attach 现有控制台」可断点单步")
+    except Exception:
+        pass
     # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
     # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
     try:

@@ -10975,12 +10975,15 @@ class SimulinkModule(QWidget):
         cfg = {
             "version": "0.2.0",
             "configurations": [
-                # 🆕 断点自动命中: env ZMAX_DEBUG_BREAK=1 → execute_node_logic 埋点处暂停
+                # 🔌 默认 F5: attach 现有控制台 (不启动新实例, 断点直接生效)
+                {"name": "Attach 现有控制台 (5678)", "type": "python", "request": "attach",
+                 "connect": {"host": "127.0.0.1", "port": 5678},
+                 "justMyCode": False},
+                # 🚀 备用: 启动新控制台实例 (断点调试)
                 {"name": "Z-MAX 控制台 断点调试 (gui-venv311)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools", "gui", "studio.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "cwd": root, "console": "integratedTerminal",
-                 "env": {"ZMAX_DEBUG_BREAK": "1"}},
+                 "cwd": root, "console": "integratedTerminal"},
                 {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
                  "program": "${file}",
                  "python": os.path.expanduser("~/lerobot-venv/bin/python"),
