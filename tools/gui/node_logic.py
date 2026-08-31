@@ -50,7 +50,15 @@ def match_node(name):
 
 def _trace_exec(fn, ctx, log):
     """🐛 2026-08-30 老倪: debug 式逐行执行 — 每行显示代码 + 输入/输出变量具体数值变化
-    用 sys.settrace 行追踪 (只追踪 fn 自己函数体的行), 赋值/参数变化实时输出"""
+    用 sys.settrace 行追踪 (只追踪 fn 自己函数体的行), 赋值/参数变化实时输出
+    🐛 2026-08-31: VSCode attach 调试时禁用 settrace — sys.settrace 会覆盖 debugpy
+    的 tracer → 断点不命中; 调试器已连接时直接执行, 断点交给 VSCode"""
+    try:
+        import debugpy
+        if debugpy.is_client_connected():
+            return fn(ctx)
+    except Exception:
+        pass
     import sys as _sys
     src_lines = None
     try:
