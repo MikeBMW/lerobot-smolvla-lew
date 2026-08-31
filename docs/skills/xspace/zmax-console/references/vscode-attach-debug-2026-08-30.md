@@ -3,6 +3,19 @@
 老倪连续四轮需求: 打开 VSCode 工程 → 打开实际源代码 → 设置断点单步 → 不要启动新控制台。
 最终形态 = **attach 模式**。commit 4862b2f0 / b336959c / 13b7928b / 48845a93。
 
+## 0. ⚠️ 2026-08-31 变更: 默认 F5 = 「🚀 全新调试进程」(commit f16fdae5)
+
+老倪: "找不到 attach 现有控制台 5678 → 增加: 点击 start debugging 后全新开启一个调试进程"。
+**根因**: attach 需控制台已启动且 5678 在监听; 控制台没跑时 F5 attach 直接失败/找不到。
+**落地**: launch.json 三配置重排, **第一位 = launch 全新 studio.py 实例 = 默认 F5**
+(program=tools/gui/studio.py, python=gui-venv311, cwd=root, console=integratedTerminal,
+justMyCode:false); 第二位 = 🔌 Attach 现有控制台 (5678) 保留备用; 第三 = 工具脚本。
+open_in_vscode (simulink_module.py 10951) 生成逻辑同步, 右键重新生成一致。
+studio.py main() 仍 debugpy.listen(5678) 不阻塞 (attach 备用), 提示语更新。
+⚠️ 附带教训: 上次会话改的 .vscode/launch.json + settings.json 一直没 commit
+(HEAD 里还是旧的 "Debug SmolVLA Train" xspace 路径) — VSCode 工程配置改完也要提交。
+控制台无实例在跑时不需要重启 (下次启动即新代码)。
+
 ## 1. 右键「打开 VSCode 调试」= open_in_vscode(node)
 
 - 写 `.vscode/settings.json`: `python.defaultInterpreterPath` = `<root>/gui-venv311/bin/python`
