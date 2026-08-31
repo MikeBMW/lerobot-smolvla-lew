@@ -1,12 +1,14 @@
 {
-    "files.exclude": {
-        "**/.git": true,
-        "**/__pycache__": true,
-        "**/*.pyc": true,
-        "**/.pytest_cache": true,
-        "**/.mypy_cache": true,
-        "**/.ruff_cache": true
-    },
-    "explorer.excludeGitIgnore": false,
-    "explorer.sortOrder": "mixed"
+  "files.exclude": {
+    "**/.git": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true
+  },
+  "explorer.excludeGitIgnore": false,
+  "explorer.sortOrder": "mixed",
+  "python.defaultInterpreterPath": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+  "python.terminal.activateEnvironment": true
 }

@@ -1,37 +1,35 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Debug SmolVLA Train",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "/home/xspace/miniconda3/envs/lerobot/bin/python",
-            // 关键：使用模块启动，而非program文件路径
-            "module": "lerobot.scripts.lerobot_train",
-            "args": [
-                "--policy.type", "smolvla",
-                "--policy.push_to_hub", "false",
-                "--dataset.repo_id", "lerobot/pusht",
-                "--steps", "500",
-                "--batch_size", "5",
-                "--eval_freq", "500",
-                "--save_freq", "100",
-                "--optimizer.lr", "1e-06",
-                "--optimizer.weight_decay", "1e-07",
-                "--scheduler.type", "cosine_decay_with_warmup",
-                "--scheduler.num_warmup_steps", "500",
-                "--scheduler.num_decay_steps", "500",
-                "--scheduler.peak_lr", "1e-06",
-                "--scheduler.decay_lr", "1e-07",
-                "--wandb.enable", "false"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "env": {
-                "PYTHONUNBUFFERED": "1",
-                // 关键：把项目根目录加入Python搜索路径
-                "PYTHONPATH": "${workspaceFolder}"
-            }
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🚀 全新调试进程 (studio.py)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/lerobot-smolvla-lew/tools/gui/studio.py",
+      "python": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/lerobot-smolvla-lew",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "🔌 Attach 现有控制台 (5678)",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "工具脚本 (lerobot-venv)",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "python": "/home/ubuntu/lerobot-venv/bin/python",
+      "cwd": "/home/ubuntu/lerobot-smolvla-lew",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
 }

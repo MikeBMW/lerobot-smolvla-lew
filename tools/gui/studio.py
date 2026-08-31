@@ -10950,10 +10950,12 @@ def _build_global_qss():
 def main():
     # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
     # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
+    # 🐛 2026-08-31 老倪: 找不到 attach → F5 默认「🚀 全新调试进程」新实例断点;
+    # 本进程仍 listen 5678, attach 配置作为第二种方式保留
     try:
         import debugpy
         debugpy.listen(("127.0.0.1", 5678))
-        print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5 选「Attach 现有控制台」可断点单步")
+        print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5: 「🚀 全新调试进程」= 新实例断点, 「🔌 Attach 现有控制台」= 连本进程")
     except Exception:
         pass
     # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)

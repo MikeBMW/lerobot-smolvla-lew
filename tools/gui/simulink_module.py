@@ -10951,8 +10951,10 @@ class SimulinkModule(QWidget):
     def open_in_vscode(self, node=None):
         """🚀 打开 VSCode 调试工程 (2026-08-30 老倪: 右键 → VSCode 单步调试)
         自动配置: .vscode/settings.json 默认解释器=gui-venv311 (Py3.11 GUI 环境);
-        .vscode/launch.json 两个调试配置 (控制台 / 工具脚本 lerobot-venv)
-        🐛 2026-08-30: 打开工程同时 -g 定位当前节点实际源文件 (原只开工程 → 源码空)"""
+        .vscode/launch.json 三个调试配置 (全新调试进程 / attach 现有控制台 / 工具脚本 lerobot-venv)
+        🐛 2026-08-30: 打开工程同时 -g 定位当前节点实际源文件 (原只开工程 → 源码空)
+        🐛 2026-08-31: 「🚀 全新调试进程」提到第一位 = 默认 F5 — attach 需控制台已启动且
+        5678 在监听, 老倪找不到 attach 时直接 F5 全新启动一个调试进程"""
         import subprocess as _sp, shutil as _sh, json as _j
         root = self._repo_root()
         vsc = os.path.join(root, ".vscode")
@@ -10970,20 +10972,21 @@ class SimulinkModule(QWidget):
                 _j.dump(cur, f, ensure_ascii=False, indent=2)
         except Exception as ex:
             self._log(f"⚠️ settings.json 写入失败: {ex}")
-        # launch.json: 两个调试配置
+        # launch.json: 三个调试配置
         lj = os.path.join(vsc, "launch.json")
         cfg = {
             "version": "0.2.0",
             "configurations": [
-                # 🔌 默认 F5: attach 现有控制台 (不启动新实例, 断点直接生效)
-                {"name": "Attach 现有控制台 (5678)", "type": "python", "request": "attach",
-                 "connect": {"host": "127.0.0.1", "port": 5678},
-                 "justMyCode": False},
-                # 🚀 备用: 启动新控制台实例 (断点调试)
-                {"name": "Z-MAX 控制台 断点调试 (gui-venv311)", "type": "python", "request": "launch",
+                # 🚀 默认 F5 (2026-08-31 老倪: attach 找不到 → 全新启动调试进程):
+                # 点 start debugging 直接 launch 新 studio.py 实例, 无需控制台先启动
+                {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools", "gui", "studio.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "cwd": root, "console": "integratedTerminal"},
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False},
+                # 🔌 attach 现有控制台 (需控制台已启动, 5678 在监听)
+                {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
+                 "connect": {"host": "127.0.0.1", "port": 5678},
+                 "justMyCode": False},
                 {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
                  "program": "${file}",
                  "python": os.path.expanduser("~/lerobot-venv/bin/python"),
