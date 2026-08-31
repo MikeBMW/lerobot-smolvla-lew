@@ -145,6 +145,18 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 **共享节点设计**: Model Zoo 的「🧩 结构条件」(无·后缀) 在 load_reference_app
 4685 行被显式跳过 (已下放各模型行), 不进 layout 是正确设计 — 检查器要豁免它。
 
+## 本机推理/仿真环境 (2026-08-30 实测)
+- **推理/评估/出视频的 python = ~/lerobot-venv**(项目无 .venv;GUI 用 gui-venv311 无 torch)。
+  on_infer_rollout/on_eval_state_space 已改多候选探测: `.venv → ~/lerobot-venv → gui-venv311`。
+- **metaworld 3.1.1 + mujoco 3.3.0 + glfw + PyOpenGL + scipy** 已装进 ~/lerobot-venv(2026-08-30)。
+  requirements-macos.txt 锁 metaworld==3.0.0(3.0.0 wheel 从 files.pythonhosted.org 下载不稳/中断,未装成)。
+- **⚠️ pip/uv 装 metaworld 系列会僵死**(resolver 卡,0% CPU 无网络,杀不掉会一直挂着):
+  正解 = `pip download`/curl 拿 wheel → 校验 `unzip -t` → `--no-deps` 安装或直接 unzip 解包进 site-packages → 逐个补缺的 import(glfw/imageio/scipy/PyOpenGL, aliyun 源快)。
+- **gen_insert_video 12/12 seed 卡"转移/下降"诊断**: full_pipeline.pt(08-24 fallback)与新 metaworld 3.1.1 物理不匹配 —
+  contact_head 预测 0.30-0.41 徘徊达不到 0.5 阈值, 降阈值 0.35 会误进转移但 peg 抓空(peg z 不变)。
+  **本机可用 left_right 模型被磁盘红线清光** → 要出视频需训练新模型或从 4090 拉。
+- 历史: left_right_20260813_164959(曾验证成功 seed2)已被磁盘清理删除, 勿再引用。
+
 ## Windows exe 画布打不开 = /tmp 打点无保护 (2026-08-28 v3.3.2, 老倪: "3.3.1 3.3.0 无法打开画布, 3.2.4 可以")
 - **症状**: Windows exe 上 simulink 画布 tab 打不开/空白, 状态栏 "⚠️ Simulink 初始化失败: [Errno 2] No such file or directory: '/tmp/...'"; 源码版 Linux 正常 (有 /tmp)。
 - **根因**: 3.3.0 为排查 Mac 黑屏加的 SimulinkModule 构造打点直接 `open("/tmp/zmax_simulink_init.log", "a")` — studio.py `_init_simulink` 里 `_mk` lambda **无 try/except** → Windows 无 /tmp 目录 → FileNotFoundError 抛在 `SimulinkModule()` 之前 → 画布从未创建。simulink_module.py 里同款打点有 try/except 所以不崩 (静默失效)。

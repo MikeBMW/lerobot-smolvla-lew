@@ -8,7 +8,7 @@ ECS SSH密码=Nix19789(08-22实测有效,08-13"失效"是网络被墙误判); gi
 §
 老倪: 指令最小化(删X=先改名); 画布没用的删干净; 新节点注册node_logic
 §
-磁盘铁律(08-07/08硬性): 不允许增加; 红线80G+disk_redline.sh cron每2h自动清(每目录只留最后ckpt)
+磁盘铁律(硬性): 不允许增加; 红线80G+disk_redline.sh cron每2h清(每目录留最后ckpt)
 §
 安全限值=🛡类别4栏位; 状态空间唯一三层安全(否决+限幅+Sys0)
 §
@@ -20,10 +20,6 @@ GPU: 驱动580.126.09; LiveUSB重启/dev/nvidia*节点丢+nvidia_uvm不加载→
 §
 报告/PDF: 中文字体=wqy-microhei(Noto CFF reportlab不认); GUI转PDF走.venv子进程; TBL全Paragraph; 专家85%锚点不排名
 §
-配置中心: cfg_std_table+Excel导出; 模板=SYS2→部署→SYS1; 新配置→configs/policies/
-§
-simulink工具栏52px/10pt(08-28调小)+库560px+节点280x110+大屏最大化
-§
 modelzoo工程~/lerobot-modelzoo/(七模型configs+scripts容器训练)
 §
 视频生成: 停滞检测(120步换seed); 最新模型全失败自动回退; 训练完自动出视频+飞书+PDF(5s后on_insert_report)
@@ -32,14 +28,16 @@ hermes_core备份:/workspace/hermes-backup/; 恢复流程见hermes-crash-recover
 §
 能力库model_feature.py v4.1: 7域65能力,ID前缀统一; SCENES=8场景46需求
 §
-GUI: gui-venv311(Py3.11); PyQt5枚举错位(传int); Pillow持GIL→子进程; 改完代码必重启studio.py; 禁QT_SCALE_FACTOR
+GUI: gui-venv311(Py3.11); 推理/训练=~/lerobot-venv(uv建无pip→uv pip install --python); 项目无.venv; PyQt5枚举错位(传int); Pillow持GIL→子进程; 改完代码必重启studio.py; 禁QT_SCALE_FACTOR
 §
 GitHub(08-28): 直连已通不走代理(ghproxy证书失效/ghfast作废); Release下载走browser_download_url(asset API带token返400); 凭证~/.git-credentials; 视频/权重不进库
 §
 数据/监视界面偏好: 单色显示勿大面积彩色高亮; 数据须实时滚动非静态填充; 可视化必须自解释(标签+数值面板), 他会追问'这是啥'→答案要给物理含义+实测数字; 信号/图层名用源模块名+按链路排序, 开关须连文字一起绑
 §
-GUI数据总线=DataBusTrace双模式14模块51接口; 右键视觉行=metaworld渲染7视角(非模态独立窗口+一键全视角)
+GUI数据总线=DataBusTrace 14模块51接口; 右键视觉行=metaworld 7视角
 §
 可视化/控制铁律(v3.2.0): 画前先算信噪比(噪声5mm vs 步位移0.35mm→瞬时值必乱,改画多帧均值+系统占比%); 凸组合遇量级差21倍=砍速到29%→前馈+反馈相加+显式阶段限速; 反馈前残差EMA; 详见zmax-console技能
 §
 3D视图=操作视频同源(v3.3.0): 六层直驱metaworld出trace+mp4, 相机corner2四元数(fov水平), 八阶段状态机图层; Release双平台exe+mac; ⚠️pyqtgraph shader全局缓存绑定首GL上下文→3D窗口只复用不新建, 重建场景按id去重removeItem
+§
+控制台启动即debugpy.listen(5678); VSCode F5 attach现有控制台可断点单步(不新开实例); 右键打开VSCode调试写配置+g定位源码
