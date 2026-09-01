@@ -10301,6 +10301,11 @@ class SimulinkModule(QWidget):
             tr = self._ss_tr
             io_trace = tr.get("io_trace", [])
             n_rounds = len(io_trace) if io_trace else min(len(tr["t"]), 20)
+            # 🐛 2026-09-01 老倪: 节点逻辑必须整轮执行 — 引擎快照数(14) < 节点数(21) 时,
+            #   后排节点(📦数据源 17位/LLM 19+)永不执行 → node_metaworld_data 断点进不去
+            #   (GUI 日志: 仿真从📡传感器融合播到📐2D→3D 就完成, 无「📦 数据源:」日志)
+            #   播放轮数 = max(快照数, 节点数), 动画 idx 有 min/边界保护不越界
+            n_rounds = max(n_rounds, len(self._ss_order))
             # 画布节点动画索引 (均匀抽样引擎时间序列)
             idx = int(self._ss_round / max(1, n_rounds - 1) * (len(tr["t"]) - 1)) if n_rounds > 1 else 0
             # 上一帧 → success
