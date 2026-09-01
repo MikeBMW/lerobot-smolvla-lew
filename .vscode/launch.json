@@ -11,7 +11,7 @@
       "console": "integratedTerminal",
       "justMyCode": false,
       "env": {
-        "ZMAX_DEBUG_BREAK": "1"
+        "ZMAX_DEBUG_BREAK": "metaworld"
       }
     },
     {
