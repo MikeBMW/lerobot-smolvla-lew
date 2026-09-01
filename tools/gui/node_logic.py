@@ -775,8 +775,32 @@ def node_metaworld_data(ctx):
     # === ✏️ 可修改区 START ===
     source = p.get("source", "metaworld")   # metaworld(占位集) | orin(真实产线)
     frames = p.get("frames", 696)           # 期望帧数 (展示用)
-    if log:
-        log(f"📦 数据源: {source} · {frames}帧 (画布节点双击可切换)")
+    # 📂 真实数据层 (2026-09-02 老倪: 数据源必须接 lerobot 框架 src/lerobot/datasets/,
+    #   不是控制台模板 — 与传感器融合/前馈节点同构: importlib 加载真实源码,
+    #   右键打开 + VSCode 断点都进 datasets 真实实现)
+    try:
+        import importlib.util as _ilu
+        import sys as _sys
+        _p = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "metaworld_data_source.py")
+        _name = "lerobot.datasets.metaworld_data_source"
+        if _name not in _sys.modules:
+            _spec = _ilu.spec_from_file_location(_name, _p)
+            _m = _ilu.module_from_spec(_spec)
+            _sys.modules[_name] = _m   # sys.modules 注册 (与 _ss_import 同款, 断点绑定)
+            _spec.loader.exec_module(_m)
+        else:
+            _m = _sys.modules[_name]
+        _info = _m.probe_data_source()
+        if log:
+            if _info:
+                log(f"📦 数据源: {source} · 真实仓库 {_info['path']} · "
+                    f"{_info['frames']}帧/{_info['episodes']}集 · {_info['label']} · "
+                    f"特征[{','.join(_info['features'])}]")
+            else:
+                log(f"📦 数据源: {source} · 本机无训练仓库 (仅画布占位) · 期望 {frames}帧")
+    except Exception as _e:
+        if log:
+            log(f"📦 数据源: {source} · 数据层探测失败: {_e}")
     # 数据源策略: 想强制某来源训练, 在「训练」节点的 data_source 里改
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: 激活数据源 (勿改)
@@ -2030,6 +2054,12 @@ _EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def satur
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class PhysicalWorld")
+
+# 📦 metaworld 数据源 (2026-09-02 老倪: 数据源节点必须接 lerobot 框架数据层 —
+#   与感知/决策节点同构: 右键打开 + VSCode 断点进 datasets 真实源码,
+#   不再是 tools/gui/node_logic.py 的控制台模板)
+_EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
+                                      "metaworld_data_source.py"), 54, "def probe_data_source")
 
 _reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
