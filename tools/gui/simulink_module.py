@@ -10246,6 +10246,18 @@ class SimulinkModule(QWidget):
             self._qmsg_info("🧮 状态空间", f"仿真引擎加载失败: {e}")
             return
         self._log("🧮 状态空间真实仿真 — 六层源码引擎: 📡感知→⚡前馈‖🔮估计→📈预测→🧪校正→🧭调度→🛡限幅→🤖执行→🌍物理闭环")
+        # 🐛 2026-09-02 老倪: 数据源节点优先于引擎执行 — 数据流源头语义;
+        #   引擎 run() 同步 500 步, 引擎内部断点(感知/前馈/校正等真实源码)会先命中并
+        #   堵死主线程 → 节点播放永不开始 → probe_data_source 断点"进不去"。
+        #   数据源先执行 → 点运行第 1 个命中的就是数据源节点(断点/ZMAX_DEBUG_BREAK)。
+        try:
+            from node_logic import execute_node_logic
+            for _dn in self.nodes:
+                if _dn.get("type") != "row_bg" and "数据源" in _dn.get("name", ""):
+                    execute_node_logic(self, _dn, label="▶运行-数据源")
+                    break
+        except Exception:
+            pass
         try:
             sim = StateSpaceSim(log=self._log)
             # 🧠 训练模型前馈 (2026-08-20 老倪: ▶运行加载训练模型而非手设参数)
