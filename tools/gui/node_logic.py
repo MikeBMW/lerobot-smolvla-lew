@@ -1573,17 +1573,17 @@ def _node_repo_root():
 
 _REPO_ROOT = _node_repo_root()
 _LR_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right")
-_EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 44, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
-_EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 59, "class RightBrainWM")
-_EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 75, "class LeftRightPolicy")
+_EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 45, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
+_EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 60, "class RightBrainWM")
+_EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 76, "class LeftRightPolicy")
 _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 34, "class LeftRightConfig")  # 🐛 2026-08-12: 原 sym 非符号名定位失败 → 显示整个配置类 (含接触/状态机阈值)
 
 # 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
 _YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
 _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 11, "def pixel_to_ray")  # 📐 2D→3D 解算: 像素→射线→平面交点 (反投影实现, 非整个类)
-_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
-_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 47, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
+_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
+_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 40, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 # 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
 #   State Adapter 是融合节点 (视觉39D+触觉4D=43D), 无独立实现 → 显示 node_state_adapter 自身函数 (可编辑区)
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
@@ -2073,7 +2073,7 @@ _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def f
 _EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
 _EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 34, "class AdaptiveStateEstimator")
+_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 45, "class AdaptiveStateEstimator")  # 🐛 2026-09-02: 行号 34→45 (原指到 FeedforwardAccelerator.forward, VSCode 打开看到错代码)
 _EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
 _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")
@@ -2091,7 +2091,7 @@ _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class 
 # 🐛 2026-09-02: line 必须指向第一行实际代码 (61, root=...), 不是 def 行(54) —
 #   debugpy 对 def/docstring 行断点不命中 (函数第一条语句是 docstring), 踩过
 _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
-                                      "metaworld_data_source.py"), 61, "def probe_data_source")
+                                      "metaworld_data_source.py"), 54, "def probe_data_source")
 
 _reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
@@ -2116,11 +2116,11 @@ _reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空�
 #   真实实现: src/lerobot/policies/left_right/state_space/planner.py
 #   慢决策: 只在任务开始/异常时介入, 不进实时控制回路
 # ════════════════════════════════════════════════════════════════
-_EXTERNAL_LOC["ss_bg5"]    = (os.path.join(_SS_DIR, "planner.py"), 1, "planner.py")
-_EXTERNAL_LOC["ss_llm_in"] = (os.path.join(_SS_DIR, "planner.py"), 75, "class TaskPlanner")
-_EXTERNAL_LOC["ss_llm"]    = (os.path.join(_SS_DIR, "planner.py"), 75, "class TaskPlanner")
-_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 177, "class ExceptionReasoner")
-_EXTERNAL_LOC["ss_skill"]  = (os.path.join(_SS_DIR, "planner.py"), 227, "class SkillComposer")
+_EXTERNAL_LOC["ss_bg5"]    = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")  # 🐛 2026-09-02: sym 误写路径字符串, 非符号
+_EXTERNAL_LOC["ss_llm_in"] = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")
+_EXTERNAL_LOC["ss_llm"]    = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")
+_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 196, "class ExceptionReasoner")
+_EXTERNAL_LOC["ss_skill"]  = (os.path.join(_SS_DIR, "planner.py"), 246, "class SkillComposer")
 
 
 def node_ss_llm(ctx):
