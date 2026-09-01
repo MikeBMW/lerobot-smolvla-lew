@@ -128,6 +128,16 @@ def execute_node_logic(module, node, label=None, trace=None):
         try:
             import debugpy
             if _brk == "1" or _brk in name:
+                # 🐛 2026-09-01 老倪: 暂停前打提示 — 断点命中时主线程冻结, Windows 必弹
+                #   "studio.py is not responding"(正常现象); 用户看到日志知道去 VSCode F5,
+                #   不会误以为卡死去点「关闭程序」(点关闭=杀进程, 断点全丢)
+                try:
+                    _log = getattr(module, "_log", None)
+                    if _log:
+                        _log(f"🔴 调试断点: 暂停「{name}」— 切到 VSCode 按 F5 继续 "
+                             f"(Windows 弹 not responding 属正常, 点「等待」勿点「关闭程序」)")
+                except Exception:
+                    pass
                 debugpy.breakpoint()
         except Exception:
             pass
