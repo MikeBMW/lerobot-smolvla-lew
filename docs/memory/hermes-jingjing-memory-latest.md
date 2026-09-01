@@ -24,7 +24,7 @@ modelzoo工程~/lerobot-modelzoo/(七模型configs+scripts容器训练)
 §
 视频生成: 停滞检测(120步换seed); 最新模型全失败自动回退; 训练完自动出视频+飞书+PDF(5s后on_insert_report)
 §
-hermes_core备份:/workspace/hermes-backup/; 恢复流程见hermes-crash-recovery技能
+hermes_core备份在~/(/workspace已无); 恢复见hermes-crash-recovery技能
 §
 能力库model_feature.py v4.1: 7域65能力,ID前缀统一; SCENES=8场景46需求
 §
