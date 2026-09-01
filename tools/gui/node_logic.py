@@ -1584,6 +1584,14 @@ def node_ss_exec(ctx):
 def node_ss_video(ctx):
     """🎥 操作视频 — 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"""
     module = ctx.get("module")
+    label = ctx.get("label", "")
+    if label == "▶运行":
+        # 🐛 2026-09-01 老倪: ▶运行动画播放中不自动弹窗 — 弹窗置顶(_show_nonmodal) +
+        #   断点暂停时主线程冻结 → 窗口关不掉 + "studio.py is not responding"; 双击才弹
+        log = ctx.get("log")
+        if log:
+            log("🎥 操作视频: 运行模式跳过弹窗 — 双击节点打开")
+        return True
     if module and hasattr(module, "on_infer_video"):
         module.on_infer_video()
     return True
@@ -1592,6 +1600,13 @@ def node_ss_video(ctx):
 def node_ss_scope(ctx):
     """📊 仿真波形 — 双击显示最近一次状态空间仿真波形 (距离/残差/接触概率 + 阶段切换)"""
     module = ctx.get("module")
+    label = ctx.get("label", "")
+    if label == "▶运行":
+        # 🐛 2026-09-01 老倪: 同 node_ss_video — 运行模式不弹窗, 双击节点才打开
+        log = ctx.get("log")
+        if log:
+            log("📊 仿真波形: 运行模式跳过弹窗 — 双击节点查看")
+        return True
     if module and hasattr(module, "show_state_space_scope"):
         module.show_state_space_scope()
     return True
