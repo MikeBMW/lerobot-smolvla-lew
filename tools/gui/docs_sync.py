@@ -194,7 +194,7 @@ def sync(log_callback=print, progress_callback=None):
         "last_sync": time.strftime("%Y-%m-%d %H:%M:%S"),
         "doc_count": success,
         "hash": h,
-        "zmax_version": "v3.3.3",
+        "zmax_version": "v3.3.5",
     }
     with open(_version_file(docs_dir), "w") as f:
         json.dump(ver, f, ensure_ascii=False, indent=2)

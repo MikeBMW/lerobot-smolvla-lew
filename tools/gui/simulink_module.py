@@ -10267,6 +10267,14 @@ class SimulinkModule(QWidget):
             return
         self._ss_tr = tr
         self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+        # 🐛 2026-09-01 老倪: 数据源节点优先执行 — 数据流源头; 且断点调试时点运行第 1 帧
+        #   即命中数据源断点 (原排 17 位, 前面传感器融合/YOLO 真实采样卡 20-40s, 断点"进不去")
+        #   ⚠️ 只按节点名"数据源"匹配 — params.source 是右键源码映射字段, 全画布节点都有
+        _src = [n for n in self._ss_order if "数据源" in n.get("name", "")]
+        _rest = [n for n in self._ss_order if n not in _src]
+        self._ss_order = _src + _rest
+        if _src and getattr(self, "_log", None):
+            self._log(f"⏩ 数据源节点优先: 「{_src[0]['name']}」第 1 帧执行 (断点调试命中快)")
         if not self._ss_order:
             self.btn_run.setText("▶ 运行")
             self.btn_run.setEnabled(True)
