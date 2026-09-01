@@ -625,6 +625,12 @@ class DreamView3D(QWidget):
         if n > 0:
             self._update_frame(0)
             self.lbl_frame.setText(f"0 / {n - 1}")
+            # 🐛 2026-09-02 老倪「3D视图打不开/要看到实际的动作渲染视频」:
+            #   原默认停在静态第 0 帧, 必须手动点「▶ 播放」才有动画 → 加载即自动播放
+            if not self._timer.isActive():
+                self._playing = True
+                self.btn_play.setText("⏸ 暂停")
+                self._timer.start(60)
 
     # ── 同源 episode: 场景几何 + 相机 全部按 trace 里的真实值 ──
     def _apply_meta(self, meta):
