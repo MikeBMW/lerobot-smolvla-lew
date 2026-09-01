@@ -1264,6 +1264,25 @@ _reg("yolo_gate", ["YOLO 感知开关", "YOLO开关"], "🎯 YOLO 感知开关 �
 #   → detect_3d → align(), 断点可进 yolo_state_aligner.py
 _YOLO_ALIGNER = None      # YoloStateAligner 单例 (权重+env 只加载一次, 复用 gen_metaworld_data.py:39 方案)
 _YOLO_CACHE = {}          # 跨节点共享: det3d / obs39 / img (🎯 YOLO 3D → 📐 2D→3D 链路)
+_YOLO_READY = False       # import 链是否已在主线程就绪 (2026-09-02)
+
+
+def _yolo_prepare_imports():
+    """主线程预 import YOLO 依赖链 (yolo_state_aligner + metaworld→gymnasium→cv2 Qt 插件).
+
+    🐛 2026-09-02 老倪: 必须在主线程且 QApplication 创建后执行 — 后台线程 import
+    metaworld 会 QObject::moveToThread 归属错误 + debugpy realpath abort (GUI 启动崩,
+    实测 Fatal Python error: Aborted); import 就绪后构造/推理可放后台线程 (纯计算不碰 Qt).
+    """
+    global _YOLO_READY
+    if _YOLO_READY:
+        return
+    import sys as _sys
+    os.environ.setdefault("MUJOCO_GL", "glfw")
+    _sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d"))
+    import yolo_state_aligner  # noqa: F401
+    import metaworld as _mt   # noqa: F401  Qt 依赖链 — 必须主线程!
+    _YOLO_READY = True
 
 
 def _yolo_ensure_aligner(log):

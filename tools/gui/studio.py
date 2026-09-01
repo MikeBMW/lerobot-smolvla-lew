@@ -10977,21 +10977,6 @@ def main():
         print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5: 「🚀 全新调试进程」= 新实例断点, 「🔌 Attach 现有控制台」= 连本进程")
     except Exception:
         pass
-    # 🐛 2026-09-02 老倪: YOLO 模型后台预热 — 首次播放时主线程同步加载 YOLO 模型
-    # 卡 10-40s → 系统弹 "studio.py is not responding" (用户: 不要跳出来);
-    # 启动即后台预热, 播放时 _YOLO_ALIGNER 已缓存不再卡 (YoloStateAligner 构造
-    # 纯计算不碰 Qt, 后台线程安全)
-    try:
-        import threading as _th
-        def _pw_yolo():
-            try:
-                import node_logic as _nl
-                _nl._yolo_ensure_aligner(None)
-            except Exception:
-                pass
-        _th.Thread(target=_pw_yolo, daemon=True).start()
-    except Exception:
-        pass
     # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
     # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
     try:
@@ -11019,6 +11004,17 @@ def main():
     except Exception:
         pass
     app = QApplication(sys.argv)
+    # 🐛 2026-09-02 老倪: YOLO 预热防 not responding — 首次播放时主线程同步加载 YOLO
+    # 卡 10-40s 弹 "studio.py is not responding"。⚠️ 教训: 后台线程 import metaworld
+    # (gymnasium→cv2 Qt 链) 会 QObject::moveToThread + debugpy abort (GUI 启动崩, 已回滚);
+    # import 链必须在主线程且 QApplication 之后, 模型构造(纯计算)才可放后台线程。
+    try:
+        import threading as _th
+        import node_logic as _nl
+        _nl._yolo_prepare_imports()   # 主线程: import 依赖链 (首次几秒, 之后缓存)
+        _th.Thread(target=lambda: _nl._yolo_ensure_aligner(None), daemon=True).start()
+    except Exception:
+        pass
     # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject).
     # 🐛 2026-08-22 老倪"折叠左栏就崩"实锤修正: 原 disconnectFromBus 需 import QtDBus,
     #   反而启动 QDBusConnectionManager 常驻线程, 其 qDBusRemoveTimeout timer 跨线程
