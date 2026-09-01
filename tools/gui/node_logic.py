@@ -2063,6 +2063,22 @@ _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class 
 _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                       "metaworld_data_source.py"), 61, "def probe_data_source")
 
+# 📂 数据层预加载 (2026-09-02): GUI 启动即把 metaworld_data_source 加载进 sys.modules —
+#   VSCode 断点设置时文件已加载, debugpy 断点稳定绑定; 仅依赖 stdlib 无副作用.
+#   (动态 spec_from_file_location 在断点设置后才加载 → 断点可能未绑定不命中)
+try:
+    import importlib.util as _ilu2
+    import sys as _sys2
+    _ds_name = "lerobot.datasets.metaworld_data_source"
+    if _ds_name not in _sys2.modules:
+        _ds_p = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "metaworld_data_source.py")
+        _ds_spec = _ilu2.spec_from_file_location(_ds_name, _ds_p)
+        _ds_m = _ilu2.module_from_spec(_ds_spec)
+        _sys2.modules[_ds_name] = _ds_m
+        _ds_spec.loader.exec_module(_ds_m)
+except Exception:
+    pass
+
 _reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
 _reg("ss_obs",   ["43D", "统一状态向量"], "🧩 43D 统一状态向量 — 39D 视觉结构 + 触觉 4D (源码 perception.py)", node_ss_s1)
