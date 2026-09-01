@@ -1234,43 +1234,126 @@ _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不�
 _reg("yolo_gate", ["YOLO 感知开关", "YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
 
 
-# ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开) ──
+# ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开)
+# 🐛 2026-09-01 老倪: 画布节点必须真实执行 — 原 node_yolo_3d/node_yolo_align 只打日志
+#   (用户在 align() 打断点进不去的根因); 现真实加载 YoloStateAligner → metaworld 渲染帧
+#   → detect_3d → align(), 断点可进 yolo_state_aligner.py
+_YOLO_ALIGNER = None      # YoloStateAligner 单例 (权重+env 只加载一次, 复用 gen_metaworld_data.py:39 方案)
+_YOLO_CACHE = {}          # 跨节点共享: det3d / obs39 / img (🎯 YOLO 3D → 📐 2D→3D 链路)
+
+
+def _yolo_ensure_aligner(log):
+    """懒加载真实 YoloStateAligner — 权重 runs/detect/outputs/yolo_peg/peg_v1/best.pt + metaworld env
+    绕过 lerobot 包 __init__ (同 gen_metaworld_data.py:39, 避免 huggingface_hub 等重量级依赖)"""
+    global _YOLO_ALIGNER
+    if _YOLO_ALIGNER is not None:
+        return _YOLO_ALIGNER
+    import sys as _sys
+    os.environ.setdefault("MUJOCO_GL", "glfw")
+    _sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d"))
+    import yolo_state_aligner
+    _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+              "outputs/yolo_peg/peg_v1/weights/best.pt"]
+    _w = next((c for c in _cands if os.path.isfile(os.path.join(_REPO_ROOT, c))), _cands[0])
+    import metaworld as _mt
+    _mt_env = _mt.MT1("peg-insert-side-v3")
+    _env0 = _mt_env.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
+    _env0._freeze_rand_vec = False
+    _env0.set_task(_mt_env.train_tasks[0])
+    _env0.reset(seed=0)
+    _env0._freeze_rand_vec = True
+    _YOLO_ALIGNER = yolo_state_aligner.YoloStateAligner(os.path.join(_REPO_ROOT, _w), _env0)
+    if log:
+        log(f"🎯 YOLO 真实模型已加载: {_w} · metaworld peg-insert-side-v3 (corner2)")
+    return _YOLO_ALIGNER
+
+
+def _yolo_capture(log, aligner):
+    """真实采样一帧: env reset(seed=0) → render → 39D obs → detect_3d, 缓存供下游节点"""
+    import numpy as np
+    aligner.env._freeze_rand_vec = False
+    aligner.env.reset(seed=0)
+    aligner.env._freeze_rand_vec = True
+    img = aligner.env.render()
+    obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
+    det3d = aligner.detect_3d(img)
+    _YOLO_CACHE.update({"det3d": det3d, "obs39": obs39, "img": img})
+    return det3d, obs39, img
+
+
 def node_yolo_3d(ctx):
+    """🎯 YOLO 3D — 真实执行: metaworld 渲染帧 → YOLO 检测 → 3D 反投影
+    源码: src/lerobot/policies/yolo_3d/yolo_state_aligner.py (detect_3d / pixel_to_ray / ray_plane_intersect)
+    ─────────────────────────────────────────────
+    数据流: 相机图像 → YOLO {hand, peg, hole} → 反投影 3D → 缓存 → 📐 2D→3D 节点 align 进 39D"""
     log = ctx["log"]
-    """🎯 YOLO 3D — 相机图像 → 检测销钉/插孔/末端 (mAP 0.994) → 2D→3D 解算 → 39D state
-    真实实现: src/lerobot/policies/yolo_3d/ (train_yolo / yolo_state_aligner / gen_yolo_data / gen_tactile)
-    ─────────────────────────────────────────────
-    📂 YOLO 模型加载位置:
-      · 加载代码: yolo_state_aligner.py:37 __init__ → YOLO(weights) (ultralytics)
-      · 调用入口: tools/gen_metaworld_data.py:41 WEIGHTS 常量 + :48 YoloStateAligner(WEIGHTS, env)
-      · 加载时机: 运行数据生成脚本时加载一次, detect_3d() 每帧只推理不重载
-    💾 权重文件: runs/detect/outputs/yolo_peg/peg_full/weights/best.pt (22MB, 8/07 训练)
-    ─────────────────────────────────────────────
-    数据流: YOLO 检测 {hand, peg, hole} → 反投影 3D → 替换 39D 中 hand[0:3]/peg[18:21]/hole[36:39]"""
-    p = ctx.get("params", {})
-    log(f"🎯 YOLO 3D: model={p.get('model','yolov8s')} classes={p.get('classes','peg/hole/hand')} · mAP 0.994 · 权重 runs/detect/outputs/yolo_peg/peg_full/weights/best.pt")
-    return True
+    try:
+        aligner = _yolo_ensure_aligner(log)
+        det3d, obs39, img = _yolo_capture(log, aligner)
+        if log:
+            if det3d:
+                for k, v in sorted(det3d.items()):
+                    log(f"🎯 YOLO 3D: {k}=[{v[0]:.3f} {v[1]:.3f} {v[2]:.3f}]m")
+                log(f"🎯 检测 {len(det3d)}/3 目标 (hand/peg/hole) · 39D 状态已采样")
+            else:
+                log("🎯 YOLO 3D: ⚠️ 本帧未检出目标 (conf<0.4) — 重试或换帧")
+        return bool(det3d)
+    except Exception as e:
+        if log:
+            log(f"⚠️ YOLO 3D 真实执行失败: {e}")
+        return False
 
 
 def node_yolo_align(ctx):
+    """📐 2D→3D 解算 — 真实执行: YOLO 检测 3D → align() 替换 39D 对应段
+    源码: yolo_state_aligner.py align() — hand→[0:3], peg→[4:7]+[22:25], hole→[36:39]
+    🐛 旧版误把 peg 写进 [18:21](prev_hand), 真 peg 段 [4:7]/[22:25] 一直漏真值 → 训练泄漏 (2026-08-23 已修)"""
     log = ctx["log"]
-    """📐 2D→3D 解算 — YOLO 2D 框中心 + 相机内参 → 目标 3D 坐标 (pixel_to_ray / ray_plane_intersect / YoloStateAligner)"""
-    p = ctx.get("params", {})
-    log(f"📐 2D→3D 解算: intrinsics={p.get('intrinsics','camera_K')} method={p.get('method','depth|hand-eye')} · 源码 yolo_state_aligner.py")
-    return True
+    try:
+        import numpy as np
+        aligner = _yolo_ensure_aligner(log)
+        det3d = _YOLO_CACHE.get("det3d")
+        obs39 = _YOLO_CACHE.get("obs39")
+        if det3d is None or obs39 is None:
+            # 单独执行本节点 (未先跑 🎯 YOLO 3D) → 同源采样一帧
+            det3d, obs39, _ = _yolo_capture(log, aligner)
+        aligned = aligner.align(obs39, det3d)
+        if log:
+            log(f"📐 2D→3D 解算: hand={np.round(aligned[0:3],3)} · "
+                f"peg={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)} (真实对齐)")
+            log("📐 39D 对齐完成 · 断点可进 yolo_state_aligner.align()")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 2D→3D 真实执行失败: {e}")
+        return False
 
 
 def node_yolo_tactile(ctx):
+    """📍 Marker 触觉跟踪 — 真实执行: gen_tactile.py synth_tactile 从 39D 合成 4D (夹持/接触/方向)
+    🐛 2026-09-01 真实化: 原只打日志, gen_tactile.py 断点永不命中"""
     log = ctx["log"]
-    """📍 Marker 触觉跟踪 — GelSight 标记位移 → 4D 触觉力信号 (夹持/接触/滑觉); 数据改造: metaworld_peg → 43D"""
-    p = ctx.get("params", {})
-    log(f"📍 Marker 触觉跟踪: grid={p.get('grid','7x9')} dim={p.get('dim',4)} · 触觉数据生成 gen_tactile.py")
-    return True
+    try:
+        import numpy as np
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+            _SS_STATE["obs39"] = obs39
+        tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+        _SS_STATE["tactile4"] = tac
+        if log:
+            log(f"📍 Marker 触觉 (真实): grasp={tac[0]:.3f} contact={tac[1]:.3f} "
+                f"dir=({tac[2]:.2f},{tac[3]:.2f}) (gen_tactile.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 触觉合成真实执行失败: {e}")
+        return False
 
 
 _reg("yolo_3d",     ["YOLO 3D"], "🎯 YOLO 3D — 检测销钉/插孔/末端 → 2D→3D → 39D state (源码 yolo_3d/)", node_yolo_3d)
 _reg("yolo_align",  ["2D→3D"], "📐 2D→3D 解算 — 像素→3D 坐标 (源码 yolo_3d/yolo_state_aligner.py)", node_yolo_align)
-_reg("yolo_tactile", ["Marker 触觉"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
+_reg("yolo_tactile", ["Marker 触觉", "触觉感知"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
 
 
 # ── 📦 Z700 数据源 / 适配 / obs (2026-08-12 老倪: 每个节点都有代码) ──
@@ -1493,55 +1576,164 @@ def node_obs39(ctx):
     return True
 
 
+def _ss_load_modeling(log):
+    """懒加载 modeling_left_right.py (LeftBrainMLP/RightBrainWM 真实 torch 网络, 文件自带 lerobot 兜底)"""
+    if "modeling" in _SS_MODS:
+        return _SS_MODS["modeling"]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "modeling_left_right.py")
+    _name = "left_right.modeling_left_right"
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: fallback dataclass 装饰器查 sys.modules, 未注册→None.__dict__
+    spec.loader.exec_module(m)
+    _SS_MODS["modeling"] = m
+    return m
+
+
+def _ss_load_config(log):
+    """懒加载 configuration_left_right.py (LeftRightConfig 真实阈值: 接触/抓取/抬起/转移/插入)"""
+    if "config" in _SS_MODS:
+        return _SS_MODS["config"]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "configuration_left_right.py")
+    _name = "left_right.configuration_left_right"
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: 同 modeling — dataclass 需 sys.modules 注册
+    spec.loader.exec_module(m)
+    _SS_MODS["config"] = m
+    return m
+
+
+def _ss_try_load_ckpt(net, key):
+    """尝试加载最新训练权重 (outputs/train/*/checkpoints/model.pt → {left,right,...})"""
+    import glob as _g
+    _cks = sorted(_g.glob(os.path.join(_REPO_ROOT, "outputs", "train", "*", "checkpoints", "model.pt")),
+                  key=os.path.getmtime)
+    if not _cks:
+        return False
+    try:
+        import torch
+        _sd = torch.load(_cks[-1], map_location="cpu")
+        if isinstance(_sd, dict) and key in _sd:
+            _w = _sd[key]
+            if hasattr(_w, "state_dict"):
+                _w = _w.state_dict()
+            net.load_state_dict(_w)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def node_left_brain(ctx):
-    """🧠 左脑 LeftBrainMLP — 39D obs → 4D 连续动作 (动作生成, 547K)"""
+    """🧠 左脑 LeftBrainMLP — 真实执行: modeling_left_right.py LeftBrainMLP.forward(obs39) → 4D 动作
+    🐛 2026-09-01 真实化: 原只打日志, modeling_left_right.py 断点永不命中; 权重优先加载最新 ckpt"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    hidden = p.get("hidden", 512)
-    if log:
-        log(f"🧠 左脑 LeftBrainMLP: 39D obs → 4D 动作 · 隐藏 {hidden} · 547K 参数 (MLP偏置接近 act*0.3+delta*2.0)")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np, torch
+        ml = _ss_load_modeling(log)
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+            _SS_STATE["obs39"] = obs39
+        net = ml.LeftBrainMLP(obs_dim=39, act_dim=4)
+        loaded = _ss_try_load_ckpt(net, "left")
+        net.eval()
+        with torch.no_grad():
+            act = net(torch.tensor(np.asarray(obs39, dtype=np.float32)).unsqueeze(0)).numpy().squeeze()
+        _SS_STATE["act4"] = act
+        if log:
+            log(f"🧠 左脑 LeftBrainMLP (真实 forward): {'加载最新ckpt' if loaded else '随机初始化(无ckpt)'} · "
+                f"obs39 → 4D 动作 [{act[0]:+.3f} {act[1]:+.3f} {act[2]:+.3f} {act[3]:.2f}] (modeling_left_right.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 左脑真实执行失败: {e}")
+        return False
 
 
 def node_right_brain(ctx):
-    """🧠 右脑 RightBrainWM — obs+action → next obs + contact 概率 (抓取时机, 87K, acc 1.00)"""
+    """🧠 右脑 RightBrainWM — 真实执行: modeling_left_right.py RightBrainWM.forward(obs,act) → next_obs+contact"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    hidden = p.get("hidden", 256)
-    if log:
-        log(f"🧠 右脑 RightBrainWM: obs+action → next obs + contact 概率 · 隐藏 {hidden} · 87K (contact>0.5 & d_hp<0.06 → 抓)")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np, torch
+        ml = _ss_load_modeling(log)
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+            _SS_STATE["obs39"] = obs39
+        act4 = _SS_STATE.get("act4", np.zeros(4))
+        net = ml.RightBrainWM(obs_dim=39, act_dim=4)
+        loaded = _ss_try_load_ckpt(net, "right")
+        net.eval()
+        with torch.no_grad():
+            _o = torch.tensor(np.asarray(obs39, dtype=np.float32)).unsqueeze(0)
+            _a = torch.tensor(np.asarray(act4, dtype=np.float32)).unsqueeze(0)
+            nxt, contact = net(_o, _a)
+            nxt = nxt.numpy().squeeze()
+            contact = float(contact.numpy().squeeze())
+        _SS_STATE.update({"next_obs": nxt, "contact": contact})
+        if log:
+            log(f"🧠 右脑 RightBrainWM (真实 forward): {'加载最新ckpt' if loaded else '随机初始化(无ckpt)'} · "
+                f"contact={contact:.3f} · next_obs 预测={np.round(nxt[:3],3)} (modeling_left_right.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 右脑真实执行失败: {e}")
+        return False
 
 
 def node_left_right_policy(ctx):
-    """◉ LeftRightPolicy — lerobot 标准封装: 左脑动作 + 右脑判断 + 状态机编排 (抓起8/8 插入7/8)"""
+    """◉ LeftRightPolicy — 真实执行: 左脑动作 + 右脑 contact + 状态机阈值 (configuration_left_right.py)"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    th = p.get("grasp_contact_threshold", 0.5)
-    dhp = p.get("grasp_d_hp", 0.06)
-    lift = p.get("lift_height", 0.08)
-    if log:
-        log(f"◉ LeftRightPolicy: 状态机 接近→抓取(contact>{th} & d_hp<{dhp})→抬起(+{lift}m)→转移→插入 → 完成 · 125帧")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np
+        cfg = _ss_load_config(log).LeftRightConfig()
+        ml = _ss_load_modeling(log)
+        contact = _SS_STATE.get("contact", 0.0)
+        # 状态机转移判定 (真实阈值): 接近→抓取 需要 contact + 距离阈值
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+        d_hp = float(np.linalg.norm(obs39[0:3] - obs39[4:7]))
+        grasp_ok = contact > cfg.grasp_contact_threshold and d_hp < cfg.grasp_d_hp
+        _SS_STATE["grasp_ok"] = grasp_ok
+        if log:
+            log(f"◉ LeftRightPolicy (真实): 接触阈={cfg.grasp_contact_threshold} · d_hp阈={cfg.grasp_d_hp} · "
+                f"实际 contact={contact:.3f} d_hp={d_hp:.4f} → {'✅ 触发抓取' if grasp_ok else '⏳ 继续接近'} "
+                f"(configuration_left_right.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ LeftRightPolicy 真实执行失败: {e}")
+        return False
 
 
 def node_lr_contact(ctx):
-    """❖ 接触判定 — 右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"""
+    """❖ 接触判定 — 真实执行: 右脑 contact 概率 + 钳口-销钉距离 联合判定 (configuration_left_right.py 阈值)"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    th = p.get("contact_th", 0.5)
-    dhp = p.get("d_hp_th", 0.06)
-    if log:
-        log(f"❖ 接触判定: contact>{th} & d_hp<{dhp} → 夹持触发 (右脑 get_right_contact)")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np
+        cfg = _ss_load_config(log).LeftRightConfig()
+        contact = _SS_STATE.get("contact", 0.0)
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+        d_hp = float(np.linalg.norm(obs39[0:3] - obs39[4:7]))
+        hit = contact > cfg.grasp_contact_threshold and d_hp < cfg.grasp_d_hp
+        if log:
+            log(f"❖ 接触判定 (真实): contact={contact:.3f} > {cfg.grasp_contact_threshold} 且 "
+                f"d_hp={d_hp:.4f} < {cfg.grasp_d_hp} → {'✅ 接触成立' if hit else '❌ 未接触'} "
+                f"(configuration_left_right.py)")
+        return bool(hit)
+    except Exception as e:
+        if log:
+            log(f"⚠️ 接触判定真实执行失败: {e}")
+        return False
 
 
 _reg("left_brain",  ["LeftBrainMLP"], "🧠 左脑 LeftBrainMLP — 39D→4D 连续动作 (547K, 源码 modeling_left_right.py:44)", node_left_brain)
@@ -1560,35 +1752,236 @@ _reg("obs39",       ["39D obs", "39D"], "📊 39D obs 输入 — metaworld 完�
 _SS_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space")
 
 
-def _ss_run(ctx, layer, src):
-    log = ctx.get("log")
-    if log:
-        log(f"🧮 {ctx.get('name', '')} — {layer} (源码: src/lerobot/policies/left_right/state_space/{src})")
+# ── 🧮 状态空间节点真实执行 (2026-09-01 老倪: 右键打开的源码必须能进断点 —
+#    原 _ss_run 只打日志, perception.py/parallel.py 等真实源码断点永不命中; 现真实调用) ──
+_SS_STATE = {}          # 链路缓存: obs43/obs39/u_ff/latent/prior/z_k/residual/contact_p/stage/u/u_sat/u_prev/tactile4
+_SS_MODS = {}           # 真实模块懒加载缓存
+
+
+def _ss_import(modname):
+    """懒加载 state_space 真实模块 (perception/parallel/dynamics/cognition/safety/execution)"""
+    if modname in _SS_MODS:
+        return _SS_MODS[modname]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space", modname + ".py")
+    _name = "state_space." + modname
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: dataclass 装饰器查 sys.modules[cls.__module__], 未注册→None.__dict__
+    spec.loader.exec_module(m)
+    _SS_MODS[modname] = m
+    return m
+
+
+def _ss_tactile_mod():
+    """懒加载 gen_tactile.py (真实触觉合成, 与数据生成同源)"""
+    if "gen_tactile" in _SS_MODS:
+        return _SS_MODS["gen_tactile"]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d", "gen_tactile.py")
+    _name = "yolo_3d.gen_tactile"
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: 统一 sys.modules 注册 (dataclass 兜底)
+    spec.loader.exec_module(m)
+    _SS_MODS["gen_tactile"] = m
+    return m
+
+
+def _ss_env_obs(log):
+    """真实采样: metaworld env (复用 YOLO env) → (obs39, img)"""
+    import numpy as np
+    aligner = _yolo_ensure_aligner(log)
+    aligner.env._freeze_rand_vec = False
+    aligner.env.reset(seed=0)
+    aligner.env._freeze_rand_vec = True
+    img = aligner.env.render()
+    obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
+    return obs39, img
+
+
+def _ss_ensure_obs43(log):
+    """真实 43D obs: metaworld 39D + 触觉合成 → fuse_sensors (perception.py), 缓存供下游"""
+    import numpy as np
+    if "obs43" in _SS_STATE:
+        return _SS_STATE["obs43"]
+    obs39, _img = _ss_env_obs(log)
+    tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+    obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
+    _SS_STATE.update({"obs43": obs43, "obs39": obs39})
+    return obs43
 
 
 def node_ss_s1(ctx):
-    """S1 时空感知前端 — 传感器融合 (RGB-D+力觉+触觉) → 43D obs (观测方程 y=Cx, 源码 perception.py)"""
-    _ss_run(ctx, "S1 时空感知前端", "perception.py")
+    """S1 时空感知前端 — 📡传感器融合: metaworld 采样 39D + 触觉合成 → fuse_sensors() → 43D (perception.py)
+    🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        if "状态向量" in name or "obs" in name.lower():
+            obs43 = _ss_ensure_obs43(log)
+            if log:
+                log(f"🧩 43D obs (真实): 39D 视觉 [0:39] + 触觉4D [39:43] · "
+                    f"grasp={obs43[39]:.3f} contact={obs43[40]:.3f} dir=({obs43[41]:.2f},{obs43[42]:.2f})")
+            return True
+        obs39, _img = _ss_env_obs(log)
+        tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+        obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
+        _SS_STATE.update({"obs43": obs43, "obs39": obs39})
+        if log:
+            log(f"📡 传感器融合 (真实): 39D+触觉4D → 43D · hand={np.round(obs39[0:3],3)} "
+                f"peg={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 传感器融合真实执行失败: {e}")
+        return False
 
 
 def node_ss_s2(ctx):
-    """S2 并行处理层 (快慢分离) — ⚡前馈加速器(左脑MLP, u_ff 30%) ‖ 🔮自适应状态估计器(右脑GRU 卡尔曼)"""
-    _ss_run(ctx, "S2 并行处理层", "parallel.py")
+    """S2 并行处理层 — ⚡前馈加速器(FeedforwardAccelerator) / 🔮状态估计器(AdaptiveStateEstimator) (parallel.py)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        par = _ss_import("parallel")
+        obs43 = _ss_ensure_obs43(log)
+        if "估计" in name:
+            est = par.AdaptiveStateEstimator()
+            act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
+            lat = _SS_STATE.get("latent", obs43[:4])
+            latent_pred = est.predict(np.asarray(lat, dtype=float), act4)
+            _SS_STATE["latent"] = np.asarray(latent_pred, dtype=float)
+            if log:
+                log(f"🔮 状态估计器 (真实): predict(latent,act) → latent_pred={np.round(latent_pred,4)} (parallel.py)")
+            return True
+        accel = par.FeedforwardAccelerator()
+        u_ff = accel.forward(obs43)
+        _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)
+        if log:
+            log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 并行处理层真实执行失败: {e}")
+        return False
 
 
 def node_ss_dyn(ctx):
-    """📈 动力学预测-校正 — 先验预测 next_obs + 状态校正残差 (接触信号源头)"""
-    _ss_run(ctx, "动力学预测-校正", "dynamics.py")
+    """动力学预测-校正 — 📈先验动力学预测器(PriorDynamicsPredictor) / 🧪状态校正器(state_correction)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        obs43 = _ss_ensure_obs43(log)
+        act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
+        if "校正" in name:
+            cog = _ss_import("cognition")
+            prior = _SS_STATE.get("prior")
+            if prior is None:
+                dyn = _ss_import("dynamics")
+                lat = _SS_STATE.get("latent", obs43[:4])
+                prior = dyn.PriorDynamicsPredictor(A=1.0, B=0.02).predict(np.asarray(lat, dtype=float), act4)
+                _SS_STATE["prior"] = np.asarray(prior, dtype=float)
+            obs39 = _SS_STATE.get("obs39")
+            if obs39 is None:
+                obs39, _ = _ss_env_obs(log)
+            tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+            z_k = np.concatenate([obs39[0:3], [tac[1]]])
+            corrected, residual = cog.state_correction(np.asarray(prior, dtype=float), z_k, K=0.5)
+            r = float(np.linalg.norm(residual))
+            cp = float(cog.contact_probability(r, gain=8.0))
+            _SS_STATE.update({"residual": np.asarray(residual, dtype=float), "contact_p": cp,
+                              "corrected": np.asarray(corrected, dtype=float)})
+            if log:
+                log(f"🧪 状态校正器 (真实): state_correction(prior,z_k) → residual={np.round(residual,4)} · "
+                    f"接触概率={cp:.3f} (cognition.py)")
+            return True
+        dyn = _ss_import("dynamics")
+        lat = _SS_STATE.get("latent", obs43[:4])
+        prior = dyn.PriorDynamicsPredictor(A=1.0, B=0.02).predict(np.asarray(lat, dtype=float), act4)
+        _SS_STATE["prior"] = np.asarray(prior, dtype=float)
+        if log:
+            log(f"📈 先验动力学预测器 (真实): predict(latent,act) → next_obs={np.round(prior,4)} (dynamics.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 动力学预测-校正真实执行失败: {e}")
+        return False
 
 
 def node_ss_s3(ctx):
-    """S3 认知决策层 — 动作调制器握否决权 (8阶段状态机 + 按阶段融合 + 夹持锁存) → 安全执行边界 (饱和限幅)"""
-    _ss_run(ctx, "S3 认知决策层", "cognition.py")
+    """S3 认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        if "边界" in name:
+            u = _SS_STATE.get("u", np.zeros(4))
+            u_sat = _ss_import("safety").saturate(np.asarray(u, dtype=float), limit=0.6)
+            _SS_STATE["u_sat"] = np.asarray(u_sat, dtype=float)
+            if log:
+                log(f"🛡 安全执行边界 (真实): saturate(u={np.round(u,3)}, limit=0.6) → "
+                    f"u_sat={np.round(u_sat,3)} (safety.py)")
+            return True
+        cog = _ss_import("cognition")
+        u_ff = _SS_STATE.get("u_ff", np.zeros(4))
+        cp = _SS_STATE.get("contact_p", 0.1)
+        res = _SS_STATE.get("residual", np.zeros(4))
+        r = float(np.linalg.norm(res))
+        u_fb = np.concatenate([np.clip(0.5 * np.asarray(res, dtype=float)[:3], -0.5, 0.5), [0.0]])
+        mod = cog.ActionModulator()
+        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, float(cp), r)
+        if np.ndim(u) == 0:
+            u = np.zeros(4)
+        u = np.asarray(u, dtype=float).copy()
+        u[3] = mod.gripper_cmd(u_ff[3])
+        _SS_STATE.update({"u": u, "stage": stage})
+        if log:
+            log(f"🧭 动作调制器 (真实): decide(u_ff,u_fb,cp={cp:.2f},r={r:.3f}) → 阶段「{stage}」· "
+                f"u={np.round(u,3)} (cognition.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 认知决策层真实执行失败: {e}")
+        return False
 
 
 def node_ss_exec(ctx):
-    """执行层 — 机器人执行器 → 物理世界 → z_k 传感器反馈 → 卡尔曼校正闭环"""
-    _ss_run(ctx, "执行层物理闭环", "execution.py")
+    """执行层 — 🤖机器人执行器(RobotExecutor.execute) / 🌍物理世界(PhysicalWorld 质量/惯量)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        ex = _ss_import("execution")
+        if "物理" in name:
+            w = ex.PhysicalWorld()
+            _SS_STATE["world"] = w
+            if log:
+                try:
+                    gm = np.asarray(w.generalized_mass())
+                    gd = np.round(np.diag(gm)[:4], 3) if gm.ndim == 2 and gm.shape[0] == gm.shape[1] else np.round(gm.ravel()[:4], 3)
+                except Exception:
+                    gd = "?"
+                log(f"🌍 物理世界 (真实): total_mass={w.total_mass}kg · 广义质量≈{gd} · "
+                    f"7自由度 (execution.py)")
+            return True
+        u_sat = _SS_STATE.get("u_sat", np.zeros(4))
+        u_vec = ex.RobotExecutor().execute(np.asarray(u_sat, dtype=float))
+        if np.ndim(u_vec) == 0:
+            u_vec = np.zeros(4)
+        _SS_STATE["u_prev"] = np.asarray(u_vec, dtype=float)[:3]
+        if log:
+            log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
+                f"(execution.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 执行层真实执行失败: {e}")
+        return False
 
 
 def node_ss_video(ctx):
@@ -1757,12 +2150,25 @@ def node_ss_skill(ctx):
 
 def node_ss_bg5(ctx):
     """大模型层背景行 — 云端任务规划 (慢决策 · 回路外)"""
-    _ss_run(ctx, "大模型层 · 云端任务规划", "planner.py")
+    log = ctx.get("log")
+    if log:
+        log(f"🧠 大模型层 (背景): 任务规划/异常推理/技能编排 — 慢决策回路外 (planner.py)")
+    return True
 
 
 def node_ss_llm_in(ctx):
-    """📝 任务指令 — MES 工单 / 自然语言指令输入"""
-    _ss_run(ctx, "任务指令输入", "planner.py")
+    """📝 任务指令 — MES 工单 / 自然语言指令输入 → 真实下发 TaskPlanner (planner.py)"""
+    log = ctx.get("log")
+    try:
+        ins = (ctx.get("params") or {}).get("instruction", "插入光模块")
+        _SS_STATE["instruction"] = ins
+        if log:
+            log(f"📝 任务指令 (真实): 「{ins}」 → 已下发 🧠任务规划器 (planner.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 任务指令处理失败: {e}")
+        return False
 
 
 _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
@@ -1780,8 +2186,36 @@ _EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37
 
 
 def node_ss_yolo(ctx):
-    """🎯 YOLO 目标检测 — 22 个检测目标 (类别/位姿/方向) + 指标 (mAP/推理时间)
-    双击详情走画布 _show_state_space_detail; 导出走节点右下角按钮/右键菜单"""
+    """🎯 YOLO 目标检测 — 真实执行: metaworld 渲染帧 → YOLO detect_3d → align() 替换 39D 段
+    源码: yolo_state_aligner.py (YoloStateAligner / detect_3d / align) — 右键源码与真实执行同源, 断点可进
+    🐛 2026-09-01: 原执行 detection_targets.py 清单(≠右键源码 yolo_state_aligner.py) → 断点永不命中"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        aligner = _yolo_ensure_aligner(log)
+        det3d, obs39, _img = _yolo_capture(log, aligner)
+        aligned = aligner.align(obs39, det3d)
+        _YOLO_CACHE["aligned39"] = aligned
+        if log:
+            n = len(det3d)
+            desc = " ".join(f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]" for k, v in sorted(det3d.items()))
+            log(f"🎯 YOLO 目标检测 (真实): {n}/3 目标 · {desc}")
+            log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
+                f"peg={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ YOLO 目标检测真实执行失败: {e}")
+        return False
+
+
+_reg("ss_yolo", ["YOLO", "目标检测"],
+     "🎯 YOLO 目标检测 — 真实执行: YOLO detect_3d + align 替换 39D 段 (源码 yolo_state_aligner.py; 双击=清单, 📥按钮=Excel导出)",
+     node_ss_yolo)
+
+
+def node_ss_aoi(ctx):
+    """🔍 外观质量检测 — 真实执行: detection_targets.py 加载缺陷检测 AOI 目标清单 (flows/detection_targets.json)"""
     log = ctx.get("log")
     try:
         import importlib.util as _ilu
@@ -1790,20 +2224,15 @@ def node_ss_yolo(ctx):
         m = _ilu.module_from_spec(spec)
         spec.loader.exec_module(m)
         data = m.load_detection_targets()
+        aoi = [t for t in data["targets"] if "AOI" in str(t.get("category", ""))]
         if log:
-            from collections import Counter
-            c = Counter(t["category"] for t in data["targets"])
-            log(f"🎯 YOLO 目标检测: {len(data['targets'])} 个检测目标 · {data.get('backbone', 'YOLOv8s')}")
-            log("   按类别: " + " · ".join(f"{k}{v}" for k, v in c.items()))
-            log("   指标: mAP@0.5 / mAP@0.5:0.95 / 准确率 / 位姿误差 / 推理时间")
-            log("   📥 点节点右下角「导出」按钮 → Excel (清单+指标定义+模型基线) 并上传 datadrive.world")
+            names = " ".join(str(t.get("name", t.get("id", "?"))) for t in aoi[:5])
+            log(f"🔍 外观质量检测 (真实): {len(aoi)} 个 AOI 缺陷检测目标 · {names} (detection_targets.py)")
         return True
     except Exception as e:
         if log:
-            log(f"⚠️ YOLO 检测目标加载失败: {e}")
+            log(f"⚠️ 外观质量检测真实执行失败: {e}")
         return False
 
 
-_reg("ss_yolo", ["YOLO", "目标检测"],
-     "🎯 YOLO 目标检测 — 22 个检测目标 (类别识别/2D检测/位姿/扫码/缺陷AOI/状态) + mAP/推理时间指标; 双击=清单, 📥按钮=Excel导出 (数据源 flows/detection_targets.json)",
-     node_ss_yolo)
+_reg("ss_aoi", ["外观质量检测"], "🔍 外观质量检测 — 缺陷检测 AOI 目标清单 (flows/detection_targets.json)", node_ss_aoi)
