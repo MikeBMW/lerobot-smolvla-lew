@@ -1583,6 +1583,7 @@ _YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
 _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 11, "def pixel_to_ray")  # 📐 2D→3D 解算: 像素→射线→平面交点 (反投影实现, 非整个类)
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
+_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 47, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 # 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
 #   State Adapter 是融合节点 (视觉39D+触觉4D=43D), 无独立实现 → 显示 node_state_adapter 自身函数 (可编辑区)
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
@@ -1897,9 +1898,17 @@ def node_ss_s2(ctx):
             act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
             lat = _SS_STATE.get("latent", obs43[:4])
             latent_pred = est.predict(np.asarray(lat, dtype=float), act4)
-            _SS_STATE["latent"] = np.asarray(latent_pred, dtype=float)
+            # 🐛 2026-09-02 老倪: 估计器必须预测+校正闭环 — 原只 predict 没 update,
+            #   "自适应状态估计器"的卡尔曼校正(用观测 z_k 修正先验)根本没执行, 名不副实
+            obs39 = _SS_STATE.get("obs39")
+            if obs39 is None:
+                obs39, _ = _ss_env_obs(log)
+            z_k = np.concatenate([obs39[0:3], [obs39[3]]])   # 观测: 手位置 + 夹爪开度 (与 latent 同维)
+            latent = est.update(np.asarray(latent_pred, dtype=float), np.asarray(z_k, dtype=float))
+            _SS_STATE["latent"] = np.asarray(latent, dtype=float)
             if log:
-                log(f"🔮 状态估计器 (真实): predict(latent,act) → latent_pred={np.round(latent_pred,4)} (parallel.py)")
+                log(f"🔮 状态估计器 (真实): predict→{np.round(latent_pred,4)} · "
+                    f"update(K·(z−x̂₋))→latent={np.round(latent,4)} (parallel.py AdaptiveStateEstimator)")
             return True
         accel = par.FeedforwardAccelerator()
         u_ff = accel.forward(obs43)
@@ -2266,24 +2275,37 @@ _reg("ss_yolo", ["YOLO", "目标检测"],
 
 
 def node_ss_aoi(ctx):
-    """🔍 外观质量检测 — 真实执行: detection_targets.py 加载缺陷检测 AOI 目标清单 (flows/detection_targets.json)"""
+    """🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测
+    源码: yolo_3d/quality_check.py (AOIQualityChecker.check) — 右键源码与真实执行同源, 断点可进
+    🐛 2026-09-02: 原只加载 detection_targets.json 清单 (无实际检测) → 改为真实帧图像处理检测"""
     log = ctx.get("log")
     try:
         import importlib.util as _ilu
-        path = os.path.join(_YOLO_DIR, "detection_targets.py")
-        spec = _ilu.spec_from_file_location("yolo_3d.detection_targets", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        data = m.load_detection_targets()
-        aoi = [t for t in data["targets"] if "AOI" in str(t.get("category", ""))]
+        qc_path = os.path.join(_YOLO_DIR, "quality_check.py")
+        spec = _ilu.spec_from_file_location("yolo_3d.quality_check", qc_path)
+        qc = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(qc)
+        # 目标帧: 优先用 YOLO 节点缓存帧, 无则同源采样一帧 (与 node_ss_yolo 一致)
+        img = _YOLO_CACHE.get("img")
+        if img is None:
+            aligner = _yolo_ensure_aligner(log)
+            _, _, img = _yolo_capture(log, aligner)
+        checker = qc.AOIQualityChecker()
+        res = checker.check(img)
+        _YOLO_CACHE["aoi"] = res
         if log:
-            names = " ".join(str(t.get("name", t.get("id", "?"))) for t in aoi[:5])
-            log(f"🔍 外观质量检测 (真实): {len(aoi)} 个 AOI 缺陷检测目标 · {names} (detection_targets.py)")
-        return True
+            for it in res.get("items", []):
+                v = it["value"] if it["value"] is not None else it.get("note", "—")
+                log(f"🔍 {it['target_id']} {it['defect']}: {v} (判据 {it['threshold']}) → "
+                    f"{'✅' if it['pass'] else '❌'}")
+            log(f"🔍 外观质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
+        return bool(res.get("pass"))
     except Exception as e:
         if log:
             log(f"⚠️ 外观质量检测真实执行失败: {e}")
         return False
 
 
-_reg("ss_aoi", ["外观质量检测"], "🔍 外观质量检测 — 缺陷检测 AOI 目标清单 (flows/detection_targets.json)", node_ss_aoi)
+_reg("ss_aoi", ["外观质量检测"],
+     "🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 (DET-AOI-01~04; 双击=源码, 📥按钮=Excel导出清单)",
+     node_ss_aoi)
