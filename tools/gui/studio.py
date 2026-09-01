@@ -11003,6 +11003,11 @@ def main():
         os.environ["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
     except Exception:
         pass
+    # 🐛 2026-09-02 老倪: opencv(cv2) import 会设置 QT_QPA_PLATFORM_PLUGIN_PATH → cv2/qt/plugins,
+    #   Qt 插件搜索去 cv2 目录找 xcb → libqxcb 加载失败 → "Could not load the Qt platform plugin"
+    #   + Fatal abort (F5 调试模式启动必现; cv2 5.0.0 自带 Qt 插件与 PyQt5 不匹配)。
+    #   QApplication 前强制清除, 恢复 PyQt5 自带插件路径 (对任何来源的污染都有效)。
+    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
     app = QApplication(sys.argv)
     # 🐛 2026-09-02 老倪: YOLO 预热防 not responding — 首次播放时主线程同步加载 YOLO
     # 卡 10-40s 弹 "studio.py is not responding"。⚠️ 教训: 后台线程 import metaworld
