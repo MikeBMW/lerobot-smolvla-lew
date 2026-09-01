@@ -145,6 +145,14 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 **共享节点设计**: Model Zoo 的「🧩 结构条件」(无·后缀) 在 load_reference_app
 4685 行被显式跳过 (已下放各模型行), 不进 layout 是正确设计 — 检查器要豁免它。
 
+## VSCode 断点调试 node_logic 坑 (2026-08-31 老倪: "点运行进不了这个函数的断点")
+- **症状**: 节点逻辑真实执行了(终端出现该函数日志如 "📦 数据源:")但 VSCode 断点不命中。
+- **根因 ①(最常): node_logic 可修改区动态 exec** — 在 GUI「查看/编辑节点逻辑」里保存过 → `save_node_logic` 把 `NODE_LOGIC[key]["fn"]` 替换为 `exec(compile(new_code, "<node:key>"))` 出的函数, co_filename=`<node:data>` **无真实行号 → VSCode 磁盘文件断点永不命中**(函数照常执行)。判定: 断点红点空心/灰 = 未绑定。
+- **解法三选一**: ① 右键节点→查看/编辑节点逻辑→「恢复出厂逻辑」(restore_default 从文件重新 exec, 行号真实) ② 重启 GUI(_SOURCE_CACHE 是内存, 重启即清) ③ `ZMAX_DEBUG_BREAK=1` 启动 GUI — execute_node_logic 开头(node_logic.py:124) `debugpy.breakpoint()` 任何节点逻辑执行前强制停, **不依赖断点绑定**, 调试动态 exec 函数唯一办法。
+- **执行证据判定法**: 状态空间画布点运行 → 终端出现 "📦 数据源:" = node_metaworld_data 执行了; 有日志但断点没停 = 断点绑定问题(不是代码路径问题); 没日志 = 没执行到(画布/路径不对)。
+- **F5 调试端口冲突**: 「🚀 全新调试进程」启动时 debugpy adapter 占 5678(--port 5678 --for-server), studio.py main 里 `debugpy.listen(5678)` 失败被 try/except 吞 → 想用「🔌 Attach 现有控制台(5678)」必须没有 F5 会话; GUI 启动即 listen 5678(main 内, 不阻塞)。
+- **GNOME/Xorg 黑屏 (2026-08-31)**: studio.py main 的 `AA_UseSoftwareOpenGL` 软件 GL 在 Mutter 合成器下窗口内容渲染全黑(该行是 WSLg 假死修复, 已注释) — WSLg 环境才需要, 本机 GNOME 桌面不要开; 症状=窗口在但全黑, 关窗后事件循环 quitOnLastWindowClosed 退出(exit 0)。
+
 ## 本机推理/仿真环境 (2026-08-30 实测)
 - **推理/评估/出视频的 python = ~/lerobot-venv**(项目无 .venv;GUI 用 gui-venv311 无 torch)。
   on_infer_rollout/on_eval_state_space 已改多候选探测: `.venv → ~/lerobot-venv → gui-venv311`。
