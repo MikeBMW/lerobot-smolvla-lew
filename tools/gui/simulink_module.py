@@ -5999,6 +5999,10 @@ class SimulinkModule(QWidget):
         if not self.nodes:
             self._log("⚠️ 画布为空")
             return
+        # 🧮 状态空间画布 → 与 ▶运行同源的引擎单步 (2026-08-31 老倪: 单步/运行逻辑必须一致)
+        if any(n.get("params", {}).get("state_space") for n in self.nodes):
+            self._state_space_step()
+            return
         # 首次 → 拓扑排序 (🐛 2026-08-12: 排除 row_bg 背景行 — 背景不执行)
         if self._step_order is None:
             self._step_order = [nid for nid in self._topo_sort()
@@ -6031,6 +6035,159 @@ class SimulinkModule(QWidget):
         self._step_idx += 1
         self._refresh_status()
         self._tutorial_on_action("step")
+
+    def _state_space_step(self):
+        """🧮 状态空间画布 ⏭单步 = 与 ▶运行同源 (2026-08-31 老倪: 单步/运行逻辑必须一致)
+        首次点击先跑 StateSpaceSim 引擎 (与 _start_state_space_sim 同源, io_every=25),
+        每步从引擎轨迹最新快照取该节点模块的真实 I/O 打印 — 不再走 node_logic /
+        _simulate_output 的写死模拟值 (此前单步=壳逻辑+硬编码数值, 双轨不一致)"""
+        # ⏳ ▶运行动画播放中 → 拦截 (先停止再单步)
+        _tmr = getattr(self, "_ss_timer", None)
+        if _tmr is not None and _tmr.isActive():
+            self._log("⏳ 仿真动画播放中 — 先点 ⏹ 停止, 再 ⏭ 单步")
+            return
+        # 首次 → 跑引擎 + 建步进序
+        if getattr(self, "_ss_step_order", None) is None:
+            self.btn_run.setText("⏳ 运行中…")
+            self.btn_run.setEnabled(False)
+            tr = self._ss_ensure_trace()
+            if tr is None:
+                self.btn_run.setText("▶ 运行")
+                self.btn_run.setEnabled(True)
+                return
+            self._ss_step_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+            self._ss_step_idx = 0
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
+            self._log(f"🧮 单步引擎就绪 · {len(self._ss_step_order)} 节点 · 轨迹 {len(tr['t'])} 步 (与 ▶运行同源)")
+        # 走完 → 完毕提示 + 重置 (再点从 1 重新开始, 重跑引擎)
+        if self._ss_step_idx >= len(self._ss_step_order):
+            self._log(f"✅ 单步执行完毕 ({len(self._ss_step_order)} 节点) — 再点从 1 重新开始 (重跑引擎)")
+            self._ss_step_order = None
+            self._ss_step_idx = 0
+            return
+        n = self._ss_step_order[self._ss_step_idx]
+        # 上一节点: 金 → 绿
+        for nn in self.nodes:
+            if nn.get("status") == "step_active":
+                nn["status"] = "success"
+                _it = self._items.get(nn["id"])
+                if _it:
+                    _it.update()
+        # 当前节点: 金色高亮
+        n["status"] = "step_active"
+        it = self._items.get(n["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        # 从引擎轨迹取该节点模块的真实 I/O (io_trace 键 = 画布节点 name)
+        # 第 i 步 → 第 i 帧快照 (逐步映射: 首步=轨迹起点, 末步=最终帧, 与 _ss_tick 同款)
+        tr = self._ss_step_tr
+        io_trace = tr.get("io_trace", [])
+        _nn = len(self._ss_step_order)
+        _trn = len(io_trace)
+        _snap_i = min(int(self._ss_step_idx / max(1, _nn - 1) * max(0, _trn - 1)), _trn - 1) if _trn else 0
+        snap = io_trace[_snap_i][1] if io_trace else {}
+        self._log(f"⏭ 单步 [{self._ss_step_idx + 1}/{len(self._ss_step_order)}] {n['name']}")
+        # 🐛 2026-08-31 老倪: 节点逻辑真实执行 (断点可进) — 引擎轨迹只提供数值展示,
+        #   节点行为走 execute_node_logic (node_metaworld_data 等注册函数真被调用)
+        try:
+            from node_logic import execute_node_logic
+            execute_node_logic(self, n, label=f"单步 {self._ss_step_idx + 1}/{len(self._ss_step_order)}")
+        except Exception:
+            pass
+        io = snap.get(n.get("name", ""))
+        if io:
+            outs = io.get("out", [])
+            if outs:
+                for label, val in outs:
+                    if isinstance(val, np.ndarray):
+                        val = np.array2string(val, precision=4, suppress_small=True)
+                    self._log(f"  ⮕ {label} = {val}")
+            else:
+                self._log("  ⮕ 引擎无输出端口")
+        else:
+            # 引擎无该模块 I/O (📊波形/🎥视频/📝LLM/🔀模式开关等辅助节点) → 该帧全局量兜底
+            _t = tr["t"][-1]
+            _st = tr.get("stage", ["?"])[-1]
+            self._log(f"  ⮕ (引擎无独立 I/O 快照) t={_t:.2f}s · {_st}")
+        self._ss_step_idx += 1
+        self._refresh_status()
+
+    def _ss_ensure_trace(self, force=False):
+        """🧮 状态空间引擎轨迹: 无缓存/强制 → 跑 StateSpaceSim (与 _start_state_space_sim 同源,
+        io_every=25 数据总线快照 + 训练模型前馈) — 单步/右键运行节点共用 (2026-08-31)"""
+        if not force and getattr(self, "_ss_step_tr", None) is not None:
+            return self._ss_step_tr
+        try:
+            from state_space_sim import StateSpaceSim
+            sim = StateSpaceSim(log=self._log)
+            _npz = os.path.join(self._repo_root(), "models", "ss_left_brain.npz")
+            if os.path.exists(_npz):
+                try:
+                    from state_space_sim import load_trained_left_brain
+                    sim.accel.forward = load_trained_left_brain(_npz)
+                    self._log("🧠 前馈加速器已加载训练模型 (左脑 MLP 39D→4D)")
+                except Exception:
+                    pass
+            tr = sim.run(io_every=25)
+        except Exception as e:
+            import traceback
+            self._log(f"⚠️ 状态空间引擎异常: {e}")
+            traceback.print_exc()
+            return None
+        self._ss_step_tr = tr
+        return tr
+
+    def _state_space_run_node(self, node, keep_active=True):
+        """🧮 状态空间画布 右键「运行节点」 = 引擎同源 (2026-08-31 老倪: 单步/运行/右键三统一)
+        显示该节点在引擎轨迹的真实 I/O — 不再走 node_logic 壳逻辑 + 写死模拟值"""
+        tr = self._ss_ensure_trace()
+        if tr is None:
+            self._log("⚠️ 引擎轨迹不可用 — 右键运行节点中止")
+            return
+        # 节点在画布序中的位置 → 轨迹帧 (与单步逐步映射同款, 同节点右键/单步看到同一帧)
+        order = [n for n in self.nodes if n.get("type") != "row_bg"]
+        try:
+            _pos = order.index(node)
+        except ValueError:
+            _pos = max(0, len(order) - 1)
+        io_trace = tr.get("io_trace", [])
+        _trn = len(io_trace)
+        _snap_i = min(int(_pos / max(1, len(order) - 1) * max(0, _trn - 1)), _trn - 1) if _trn else 0
+        snap = io_trace[_snap_i][1] if io_trace else {}
+        _t = tr["t"][_snap_i if _trn else -1]
+        # 节点动画: running → success / 单步金色保持
+        node["status"] = "running"
+        it = self._items.get(node["id"])
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        self._log(f"▶ 运行节点 [{node['name']}] · 引擎同源 · t={_t:.2f}s")
+        # 🐛 2026-08-31 老倪: 右键运行节点也真实执行节点逻辑 (断点可进, 与单步/▶运行一致)
+        try:
+            from node_logic import execute_node_logic
+            execute_node_logic(self, node, label="运行节点")
+        except Exception:
+            pass
+        io = snap.get(node.get("name", ""))
+        if io:
+            outs = io.get("out", [])
+            if outs:
+                for label, val in outs:
+                    if isinstance(val, np.ndarray):
+                        val = np.array2string(val, precision=4, suppress_small=True)
+                    self._log(f"  ⮕ {label} = {val}")
+            else:
+                self._log("  ⮕ 引擎无输出端口")
+        else:
+            _st = tr.get("stage", ["?"])[_snap_i if _trn else -1]
+            self._log(f"  ⮕ (引擎无独立 I/O 快照) t={_t:.2f}s · {_st}")
+        node["status"] = "step_active" if keep_active else "success"
+        if it:
+            it.update()
+        self.canvas._scene.update()
+        self._refresh_status()
 
     def _run_env_wrap(self, node):
         """数据层执行包装: 返回 (ok, summary) 供 CICDWorker (2026-08-30 统一入口)
@@ -6077,6 +6234,13 @@ class SimulinkModule(QWidget):
 
     def _dispatch_run_node(self, node, label=None, keep_active=True):
         name = node.get("name", "?")
+        # 🧮 状态空间画布 → 引擎同源 (2026-08-31 老倪: 单步/运行/右键三统一 —
+        #   右键「运行节点」也显示引擎轨迹真实 I/O, 不走 node_logic 壳逻辑 + 写死模拟值)
+        if any(n.get("params", {}).get("state_space") for n in self.nodes):
+            self._highlight_node(node, ms=2500)
+            self._log_explain(node)
+            self._state_space_run_node(node, keep_active=keep_active)
+            return
         # ① 环节节点 → 真实 worker 执行 (异步状态 running→success/error)
         for kw, meth in self.NODE_RUN_ACTIONS:
             if kw in name:
@@ -10152,6 +10316,14 @@ class SimulinkModule(QWidget):
                 if it:
                     it.update()
             self.canvas._scene.update()
+            # 🐛 2026-08-31 老倪: 播放时节点逻辑真实执行 (断点可进) — 每帧执行一个节点,
+            #   与 ⏭单步/右键运行节点同源 (引擎轨迹展示数值, execute_node_logic 执行行为)
+            try:
+                _idx_n = min(self._ss_round, len(self._ss_order) - 1)
+                from node_logic import execute_node_logic
+                execute_node_logic(self, self._ss_order[_idx_n], label="▶运行")
+            except Exception:
+                pass
             # 打印该快照真实数值
             stage = tr["stage"][idx].replace("阶段 ", "")
             self._log(f"  ⏱ t={tr['t'][idx]:5.2f}s · 距离孔位 {tr['dist'][idx]:.4f}m · "
