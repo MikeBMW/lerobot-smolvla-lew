@@ -790,6 +790,9 @@ def node_metaworld_data(ctx):
             _spec.loader.exec_module(_m)
         else:
             _m = _sys.modules[_name]
+        # 🔍 2026-09-02 调试诊断: 输出数据层实际加载路径 (确认与 VSCode 断点文件一致)
+        if log:
+            log(f"🔍 数据层模块: {getattr(_m, '__file__', '?')}")
         _info = _m.probe_data_source()
         if log:
             if _info:
