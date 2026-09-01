@@ -11182,8 +11182,10 @@ class SimulinkModule(QWidget):
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
                  # 🐛 2026-09-01 老倪: 右键打开 VSCode 会重写本文件 — env 必须写死在模板里,
                  #   否则 ZMAX_DEBUG_BREAK 被覆盖 → 节点逻辑断点永不触发 (踩过)
-                 #   值=节点名子串: metaworld → 只停数据源节点 (📦 metaworld 数据源)
-                 "env": {"ZMAX_DEBUG_BREAK": "metaworld"}},
+                 # 🐛 2026-09-02 老倪: ZMAX_DEBUG_BREAK 默认移除 — 数据源已接真实数据层
+                 #   (probe_data_source 真实断点可命中), 强制断点反而先停 execute_node_logic
+                 #   造成"没设断点却停了"困惑; 需要时手动加 env: {"ZMAX_DEBUG_BREAK": "metaworld"}
+                 "env": {}},
                 # 🔌 attach 现有控制台 (需控制台已启动, 5678 在监听)
                 {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
                  "connect": {"host": "127.0.0.1", "port": 5678},

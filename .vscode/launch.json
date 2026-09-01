@@ -10,9 +10,7 @@
       "cwd": "/home/ubuntu/lerobot-smolvla-lew",
       "console": "integratedTerminal",
       "justMyCode": false,
-      "env": {
-        "ZMAX_DEBUG_BREAK": "metaworld"
-      }
+      "env": {}
     },
     {
       "name": "🔌 Attach 现有控制台 (5678)",
