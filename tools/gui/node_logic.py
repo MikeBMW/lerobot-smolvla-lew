@@ -2058,8 +2058,10 @@ _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class 
 # 📦 metaworld 数据源 (2026-09-02 老倪: 数据源节点必须接 lerobot 框架数据层 —
 #   与感知/决策节点同构: 右键打开 + VSCode 断点进 datasets 真实源码,
 #   不再是 tools/gui/node_logic.py 的控制台模板)
+# 🐛 2026-09-02: line 必须指向第一行实际代码 (61, root=...), 不是 def 行(54) —
+#   debugpy 对 def/docstring 行断点不命中 (函数第一条语句是 docstring), 踩过
 _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
-                                      "metaworld_data_source.py"), 54, "def probe_data_source")
+                                      "metaworld_data_source.py"), 61, "def probe_data_source")
 
 _reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
