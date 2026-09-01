@@ -1545,6 +1545,18 @@ class DreamView3D(QWidget):
         self.btn_play.setText("▶ 播放")
         self._timer.stop()
 
+    # 🎯 2026-09-02 老倪「3D 视图显示状态要与程序执行状态保持一致」:
+    #   GUI 播放/调试推进到引擎第 i 步时调用 → 3D 显示第 i 步 (暂停自播, 控制权交给外部)
+    def set_frame(self, i, follow=True):
+        if follow:
+            self._pause()
+        self._update_frame(i)
+        try:
+            self.slider.setValue(int(i))
+            self.lbl_frame.setText(f"{int(i)} / {self._n - 1}")
+        except Exception:
+            pass
+
     def _tick(self):
         if self._idx >= self._n - 1:
             self._pause()

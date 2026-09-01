@@ -10171,32 +10171,36 @@ class SimulinkModule(QWidget):
             except Exception:
                 pass
             return
-        # 🎯 2026-08-25 老倪 (「3D 视图和操作视频的内容/角度/轨迹都不一样」):
-        #   优先用「与操作视频同源」的 metaworld episode trace —
-        #   tools/gen_ss_metaworld_episode.py 让状态空间六层源码直接驱动 metaworld,
-        #   一次产出同一条 episode 的 轨迹+处理层向量+mp4 → 3D 视图与视频轨迹/视角完全一致。
-        #   没有该 trace 才退回纯 numpy 引擎的 _ss_tr (轨迹与视频不同源, 仅看处理层)。
-        ep, meta = load_episode()
-        if ep is not None:
-            tr = ep
-            self._log(f"🧭 3D 视图数据源: 操作视频同源 episode "
-                      f"(metaworld seed={meta.get('seed')} · {meta.get('steps')} 步 · "
-                      f"终态 {meta.get('stage_final')} · 相机 corner2 外参精确对齐)")
-            if meta.get("pair_warn"):
-                # 同源自检不通过 → 明说, 不装作一致 (老倪: 功能坏了说根因)
-                self._log(f"⚠️ 同源自检: {meta['pair_warn']}")
+        # 🎯 2026-09-02 老倪「3D 显示状态与程序执行状态一致」: 优先用当前程序执行的轨迹
+        #   (▶运行产生的 sim.run() tr) — 3D 逐帧跟随 GUI 播放, 不再独立播离线 episode。
+        #   没运行过才退回操作视频同源 episode (保持 3D 与视频同源能力)。
+        tr = getattr(self, "_ss_tr", None)
+        if tr is not None and tr.get("x") is not None and len(tr["x"]) > 1:
+            self._log(f"🧭 3D 视图数据源: 程序执行轨迹 (sim.run() {len(tr['x'])} 步 — "
+                      f"播放/调试到哪一步, 3D 显示到哪一步)")
         else:
-            tr = getattr(self, "_ss_tr", None)
-            if not tr or not tr.get("x"):
-                try:
-                    self._qmsg_info("🧭 3D 视图",
-                                    "还没有轨迹数据。\n\n① 点「🧮 状态空间」画布里的「▶ 运行」跑一次仿真, 或\n"
-                                    "② 跑 tools/gen_ss_metaworld_episode.py 生成与操作视频同源的 episode。")
-                except Exception:
-                    pass
-                return
-            self._log("🧭 3D 视图数据源: 状态空间 numpy 引擎 (未找到同源 episode trace, "
-                      "轨迹与操作视频不同源 — 跑 tools/gen_ss_metaworld_episode.py 可同源)")
+            tr = None
+            ep, meta = load_episode()
+            if ep is not None:
+                tr = ep
+                self._log(f"🧭 3D 视图数据源: 操作视频同源 episode "
+                          f"(metaworld seed={meta.get('seed')} · {meta.get('steps')} 步 · "
+                          f"终态 {meta.get('stage_final')} · 相机 corner2 外参精确对齐)")
+                if meta.get("pair_warn"):
+                    # 同源自检不通过 → 明说, 不装作一致 (老倪: 功能坏了说根因)
+                    self._log(f"⚠️ 同源自检: {meta['pair_warn']}")
+            else:
+                tr = getattr(self, "_ss_tr", None)
+                if not tr or not tr.get("x"):
+                    try:
+                        self._qmsg_info("🧭 3D 视图",
+                                        "还没有轨迹数据。\n\n① 点「🧮 状态空间」画布里的「▶ 运行」跑一次仿真, 或\n"
+                                        "② 跑 tools/gen_ss_metaworld_episode.py 生成与操作视频同源的 episode。")
+                    except Exception:
+                        pass
+                    return
+                self._log("🧭 3D 视图数据源: 状态空间 numpy 引擎 (未找到同源 episode trace, "
+                          "轨迹与操作视频不同源 — 跑 tools/gen_ss_metaworld_episode.py 可同源)")
         # 🔁 复用已打开窗口 — 🐛 2026-08-28 老倪「第二次打开场景背景没了」根因:
         #   pyqtgraph shader program 全局缓存绑定第一个 GL 上下文, 窗口关闭后新建
         #   窗口 = 新上下文 + 失效 shader 句柄 → glUseProgram GLError 1281 → 所有
@@ -10354,6 +10358,19 @@ class SimulinkModule(QWidget):
             self._log(f"  ⏱ t={tr['t'][idx]:5.2f}s · 距离孔位 {tr['dist'][idx]:.4f}m · "
                       f"前馈|u_ff|={tr['u_ff'][idx]:.3f} · 残差 {tr['residual'][idx]:.4f} · "
                       f"接触概率 {tr['contact_p'][idx]:.2f} · 指令|u|={tr['u_sat'][idx]:.3f} · {stage}")
+            # 🎯 2026-09-02 老倪「3D 视图显示状态与程序执行状态保持一致」:
+            #   播放推进到引擎第 idx 步 → 3D 视图同步显示第 idx 步 (机械臂/轨迹/处理层向量/数值面板)
+            #   3D 窗口若还挂在旧轨迹 (episode) 上 → 先切换到程序轨迹再驱动
+            try:
+                import sip as _sip
+                for _w in getattr(self, "_ss_3d_windows", []):
+                    if _w is None or _sip.isdeleted(_w) or not _w.isVisible():
+                        continue
+                    if getattr(_w, "tr", None) is not tr:
+                        _w.set_trajectory(tr)
+                    _w.set_frame(idx)
+            except Exception:
+                pass
             # 🔌 数据总线: 逐帧追加当前快照的接口数据流 (2026-08-22 老倪: 动态生成)
             if io_trace and self._ss_round < len(io_trace):
                 try:
