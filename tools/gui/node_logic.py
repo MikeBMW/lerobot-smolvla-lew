@@ -776,24 +776,21 @@ def node_metaworld_data(ctx):
     source = p.get("source", "metaworld")   # metaworld(占位集) | orin(真实产线)
     frames = p.get("frames", 696)           # 期望帧数 (展示用)
     # 📂 真实数据层 (2026-09-02 老倪: 数据源必须接 lerobot 框架 src/lerobot/datasets/,
-    #   不是控制台模板 — 与传感器融合/前馈节点同构: importlib 加载真实源码,
-    #   右键打开 + VSCode 断点都进 datasets 真实实现)
+    #   不是控制台模板 — 与传感器融合/前馈节点同构: 右键打开 + VSCode 断点都进 datasets 真实实现)
+    # 🐛 2026-09-02: 改用 exec(compile(src, 真实路径, "exec")) 加载 — spec_from_file_location
+    #   动态加载的模块 debugpy 不感知 (断点设置时文件未加载 → 绑定不生效, 实测 probe 执行了
+    #   但 62 行断点不命中); compile 带真实 filename → 函数 co_filename 指向真实文件,
+    #   debugpy 按路径查表必定命中 (同引擎 perception/cognition 断点行为)
     try:
-        import importlib.util as _ilu
-        import sys as _sys
         _p = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "metaworld_data_source.py")
-        _name = "lerobot.datasets.metaworld_data_source"
-        if _name not in _sys.modules:
-            _spec = _ilu.spec_from_file_location(_name, _p)
-            _m = _ilu.module_from_spec(_spec)
-            _sys.modules[_name] = _m   # sys.modules 注册 (与 _ss_import 同款, 断点绑定)
-            _spec.loader.exec_module(_m)
-        else:
-            _m = _sys.modules[_name]
-        # 🔍 2026-09-02 调试诊断: 输出数据层实际加载路径 (确认与 VSCode 断点文件一致)
-        if log:
-            log(f"🔍 数据层模块: {getattr(_m, '__file__', '?')}")
-        _info = _m.probe_data_source()
+        _ns = {"__file__": _p, "__name__": "lerobot.datasets.metaworld_data_source"}
+        with open(_p, encoding="utf-8") as _f:
+            _src = _f.read()
+        exec(compile(_src, _p, "exec"), _ns)
+        _probe = _ns.get("probe_data_source")
+        if _probe is None:
+            raise RuntimeError("数据层缺少 probe_data_source")
+        _info = _probe()
         if log:
             if _info:
                 log(f"📦 数据源: {source} · 真实仓库 {_info['path']} · "
@@ -2065,22 +2062,6 @@ _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class 
 #   debugpy 对 def/docstring 行断点不命中 (函数第一条语句是 docstring), 踩过
 _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                       "metaworld_data_source.py"), 61, "def probe_data_source")
-
-# 📂 数据层预加载 (2026-09-02): GUI 启动即把 metaworld_data_source 加载进 sys.modules —
-#   VSCode 断点设置时文件已加载, debugpy 断点稳定绑定; 仅依赖 stdlib 无副作用.
-#   (动态 spec_from_file_location 在断点设置后才加载 → 断点可能未绑定不命中)
-try:
-    import importlib.util as _ilu2
-    import sys as _sys2
-    _ds_name = "lerobot.datasets.metaworld_data_source"
-    if _ds_name not in _sys2.modules:
-        _ds_p = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "metaworld_data_source.py")
-        _ds_spec = _ilu2.spec_from_file_location(_ds_name, _ds_p)
-        _ds_m = _ilu2.module_from_spec(_ds_spec)
-        _sys2.modules[_ds_name] = _ds_m
-        _ds_spec.loader.exec_module(_ds_m)
-except Exception:
-    pass
 
 _reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
