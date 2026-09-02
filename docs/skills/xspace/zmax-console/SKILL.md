@@ -216,14 +216,28 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **根因**: F5 会话主进程退出后 pydevd 子进程残留, 一直占着 5678(studio.py main 里 debugpy.listen(5678) 的 attach 端口)。`pkill -f "[s]tudio.py"` 杀不到 — pydevd 命令行是 `pydevd.py --port ...` 不含 studio.py。
 - **清理**: `ss -tlnp | grep 5678` 看谁占 → `kill <pid>`; 反复 F5 会反复留僵尸, 每次调试会话结束都查一次。attach(5678) 必须无 F5 会话 + 5678 空闲。
 
-## 标定层 (2026-09-02 v3.4.4, 老倪: Drifting Models 引力/斥力二分 + 平衡点)
+## 标定层 (2026-09-02 v3.4.4 → 2026-09-03 v3.4.5 闭环, 老倪: Drifting Models 引力/斥力二分 + 平衡点)
 - **需求**: 参考 arXiv:2602.04770 反称场思想 (Vp,q(x)=−Vq,p(x), q=p⇒V=0), 第一性原理把引擎全部超参数二分: **引力=快速动作** (Kp+STAGE_V_CAP/STAGE_V_MIN 各阶段速度上限/下限), **斥力=状态预测** (K_kalman+残差EMA+接触增益+否决阈值+反馈增益+先验A), 平衡偏差 = 引力势−斥力势 (V≈0 无漂移)。状态/阶段=明确标定量。
-- **代码位置铁律**: 标定层在 `src/lerobot/calibration/`(与 datasets/、policies/ **同级别**), 不在 tools/gui。CalibrationLayer: attr/rep 标定表(数值与引擎同源) + attraction_potential(speed/cap) + repulsion_potential(residual/veto_th, contact_p) + equilibrium_gap + export(json)。
+- **代码位置铁律**: 标定层在 `src/lerobot/calibration/`(与 datasets/、policies/ **同级别**), 不在 tools/gui。CalibrationLayer: attr/rep 标定表 + attraction_potential/repulsion_potential/equilibrium_gap + export(json) + **apply_to_engine/apply_to_file (v3.4.5)**。
+- **🎯 标定闭环 (v3.4.5, 老倪: "标定值直通引擎, 不再手动同步")**: 💾保存 = `layer.apply_to_engine(root)` **精确写回引擎源码字面量** (值无关正则, 只认代码上下文, 锚点命中数 != 预期 → ValueError 不静默):
+  | 标定参数 | 引擎落点 (tools/gui/state_space_sim.py 每次 ▶运行 importlib 重载源码 → 下次运行即生效, 无需重启 GUI) |
+  |---|---|
+  | Kp | parallel.py `Kp = 1.2` |
+  | u_clip | parallel.py forward 两处 `np.clip(..., ±u_clip)` (值无关整行模式) |
+  | stage_v_cap/min | cognition.py `STAGE_V_CAP/MIN = {...}` 类 dict (**整块内逐 key** — 引擎无参实例化 ActionModulator 吃类默认) |
+  | veto_th / k_fb | cognition.py `__init__(..., veto_th=2.0, k_fb=1.0, ...)` 默认参 |
+  | K_kalman / contact_gain / safety_limit / prior_A | state_space_sim.py run() 内联点: `state_correction(prior, z_k, K=)` / `contact_probability(r_scalar, gain=)` / `saturate(u, limit=)` / `PriorDynamicsPredictor(A=)` |
+  | res_ema | state_space_sim.py 系数对 `(0.85 * self.res_ema + 0.15 * ...)` → (1−α, α) **同步写** |
+  `apply_to_file(calib_path)` 写 calibration_layer.py 镜像 (下次打开表格的默认值源)。
+- **⚠️ 镜像/引擎写回必须块内替换**: V_MIN 的 key (接近/对位/抬起/转移) 在 V_CAP 也出现 — 裸 key 正则会把 V_MIN 值**串写进靠前的 V_CAP** (v3.4.5 实测 bug)。stage dict 一律 `re.search(rf'"{dname}": \{{(.*?)\}}')` 块内逐 key。
+- **⚠️ 数值格式**: stage dict 用 `.2f` (引擎 0.30/0.10 带尾零); 标量用 `%.6g` + 整数补 `.0` (2.0/1.0/8.0 引擎风格) — 否则默认值 apply 也会产生 diff。
+- **⚠️ 标定表默认必须 = 引擎真值**: prior_A 曾抄 parallel.py 默认 0.95, 但引擎 est/dyn **显式 A=1.0** (物理自洽: 位置保持 + dt 积分) — v3.4.5 校准为 1.0。改引擎参数时同步校准此表。
+- **生效证明验证法**: apply 后 **importlib 重载引擎** (`spec_from_file_location('tools/gui/state_space_sim.py')` + `StateSpaceSim()`) 断言 `sched.v_cap/veto_th/k_fb/v_min` 吃到新值; 默认值 apply 后 `git diff` 引擎文件必须为空 (表默认=引擎默认的零副作用检查)。
 - **画布**: flows/state_space_obs.json **append** ssbg6(row_bg 🧮标定层) + sscalib 节点(params.calib_layer=true) + link ssworld→sscalib(状态标定量)。只增不改 — 不动任何现有节点/连线/流程。
-- **UI 三入口**: ①双击/右键查看逻辑 → CalibrationDialog(引力组8阶段速度上限表当前阶段高亮+斥力组+平衡条); ②**右键菜单专属项「标定表格 (引力/斥力参数编辑)」→ CalibrationTableDialog**(21 行全参数表, 双击单元格编辑, 保存写回 calibration_layer.py 源码 + 导出 json; 引擎生效需同步 cognition.py 同值, 不改变架构只改标定值); ③节点执行 node_ss_calib 读 module._ss_tr 当前步 stage/speed/residual/contact_p 算势。
+- **UI 三入口**: ①双击/右键查看逻辑 → CalibrationDialog(引力组8阶段速度上限表当前阶段高亮+斥力组+平衡条; **v3.4.5 起 💾应用标定按钮也走 apply_to_engine**, 构造传 calib_path); ②**右键菜单专属项「标定表格 (引力/斥力参数编辑)」→ CalibrationTableDialog**(21 行全参数表, 双击单元格编辑, 保存 = apply_to_engine + apply_to_file + export); ③节点执行 node_ss_calib 读 module._ss_tr 当前步 stage/speed/residual/contact_p 算势。
 - **右键菜单加专属项套路**: `if item.node.get("params",{}).get("calib_layer"): a_calib = menu.addAction("标定表格 ...")` + `elif chosen == a_calib: self.module.on_open_calib_table(item.node)`。菜单项去 emoji(VcXsrv 黑块坑)。
 - **QMessageBox 深色**: calibration_dialog 里静态 QMessageBox.information/warning 会黑字 → 手动构造 mb + setStyleSheet(_DARK) + exec_(AA_DontUseNativeDialogs 下生效)。
-- 验证: 势函数(接近+0.55引力↑/插入+0.08⚖/转移+0.60引力↑)、21行表格编辑 0.07→0.05 保存写回 ✓、模板 31 节点 29 links。
+- 验证 (v3.4.5 13/13): 默认值 apply 引擎零 diff / V_MIN 改值不串 V_CAP (引擎+镜像) / UI 全链路表格改3值 → 引擎文件+实例吃新值, run 正常 / 锚点破坏 → ValueError。
 
 ## pyqtgraph GL 跨上下文 shader 失效 (2026-08-28, 3D 视图二次打开背景丢)
 **症状**: 老倪「3D 视图第二次打开, 场景背景没了」— 首次打开正常, 关窗再开只剩纯背景色。
