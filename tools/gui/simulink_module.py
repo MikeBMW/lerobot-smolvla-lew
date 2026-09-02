@@ -9343,7 +9343,7 @@ class SimulinkModule(QWidget):
                     speed = float(np.linalg.norm(np.asarray(_tr["u_sat"][_idx], dtype=float)[:3]))
                     residual = float(_tr["residual"][_idx])
                     contact_p = float(_tr["contact_p"][_idx])
-                dlg = CalibrationDialog(layer, stage=stage, gap=0.0, parent=self)
+                dlg = CalibrationDialog(layer, stage=stage, gap=0.0, parent=self, calib_path=_cp)
                 self._show_nonmodal(dlg)
                 return
             except Exception as _e:

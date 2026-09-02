@@ -6,10 +6,25 @@
   斥力 (Repulsion)  = 状态预测 — K_kalman + 残差EMA + 接触增益 + 否决阈值
   平衡偏差 = 引力势 − 斥力势 (|偏差|→0 = 无漂移平衡)
 
-回路外元层: 参数可调但只导出建议值 (reports/calibration_*.json),
-引擎仍用源码常量 — 不改变任何现有拓扑/流程/架构。
+应用即生效 (v3.4.5 闭环): 💾保存 = layer.apply_to_engine() 把标定值精确写回引擎
+源码字面量 (parallel.py/cognition.py/state_space_sim.py) — 引擎每次 ▶运行 importlib
+重新加载六层源码 → 下一次运行即用新标定值, 无需重启 GUI。镜像写 calibration_layer.py。
 """
 import os
+
+_REPO_HINT = ("src", "lerobot")
+
+
+def _root_of(path):
+    """从 calibration_layer.py / calibration_dialog.py 上溯定位仓库根 (探测式)"""
+    d = os.path.dirname(os.path.abspath(path))
+    while d != os.path.dirname(d):
+        if os.path.isdir(os.path.join(d, *_REPO_HINT)) and \
+           os.path.isdir(os.path.join(d, "tools", "gui")):
+            return d
+        d = os.path.dirname(d)
+    return d
+
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
@@ -31,9 +46,10 @@ _DARK = ("QDialog { background:#0d1117; color:#e6edf3; } "
 class CalibrationDialog(QDialog):
     """🧮 标定层 — 引力/斥力标定面板 + 平衡点指示"""
 
-    def __init__(self, layer, stage="接近", gap=0.0, parent=None):
+    def __init__(self, layer, stage="接近", gap=0.0, parent=None, calib_path=None):
         super().__init__(parent)
         self.layer = layer
+        self.calib_path = calib_path
         self.setWindowTitle("🧮 标定层 · 引力/斥力平衡 (Drifting Models)")
         self.setStyleSheet(_DARK)
         self.setMinimumWidth(760)
@@ -112,7 +128,7 @@ class CalibrationDialog(QDialog):
 
         # ── 底部按钮 ──
         btns = QHBoxLayout()
-        self.btn_export = QPushButton("💾 导出标定建议 (reports/calibration_*.json)")
+        self.btn_export = QPushButton("💾 应用标定 (写回引擎源码, 下次运行生效)")
         self.btn_export.clicked.connect(self._export)
         self.btn_close = QPushButton("关闭")
         self.btn_close.clicked.connect(self.accept)
@@ -141,21 +157,37 @@ class CalibrationDialog(QDialog):
         self.bar.setValue(int(max(-100, min(100, g * 100))))
 
     def _export(self):
-        """导出标定建议 (回路外: 不改引擎)"""
-        self.layer.attr["Kp"] = self.sp_kp.value()
-        self.layer.attr["u_clip"] = self.sp_clip.value()
-        self.layer.rep["K_kalman"] = self.sp_k.value()
-        self.layer.rep["res_ema"] = self.sp_ema.value()
-        self.layer.rep["contact_gain"] = self.sp_cg.value()
-        self.layer.rep["veto_th"] = self.sp_veto.value()
-        self.layer.rep["k_fb"] = self.sp_kfb.value()
-        path = self.layer.export()
-        mb = QMessageBox(self)
-        mb.setStyleSheet(_DARK)
-        mb.setWindowTitle("🧮 标定层")
-        mb.setText(f"标定建议已导出: {path}\n\n"
-                   "(回路外元层 — 引擎仍用源码常量, 需应用请改 calibration_layer.py 后重启)")
-        mb.exec_()
+        """应用标定: 收集界面值 (含阶段上限表) → 写回引擎源码三文件 + 镜像 + 导出 json"""
+        try:
+            self.layer.attr["Kp"] = self.sp_kp.value()
+            self.layer.attr["u_clip"] = self.sp_clip.value()
+            self.layer.rep["K_kalman"] = self.sp_k.value()
+            self.layer.rep["res_ema"] = self.sp_ema.value()
+            self.layer.rep["contact_gain"] = self.sp_cg.value()
+            self.layer.rep["veto_th"] = self.sp_veto.value()
+            self.layer.rep["k_fb"] = self.sp_kfb.value()
+            # 阶段速度上限表 (双击单元格可编辑 → 一起应用)
+            for i in range(self.tbl.rowCount()):
+                st = self.tbl.item(i, 0).text()
+                self.layer.attr["stage_v_cap"][st] = float(self.tbl.item(i, 1).text())
+            files = self.layer.apply_to_engine(_root_of(self.calib_path or __file__))
+            if self.calib_path:
+                self.layer.apply_to_file(self.calib_path)
+            path = self.layer.export()
+            detail = "\n".join(f"  {f}: {','.join(ps)}" for f, ps in files.items())
+            mb = QMessageBox(self)
+            mb.setStyleSheet(_DARK)
+            mb.setWindowTitle("🧮 标定层")
+            mb.setText(f"✅ 标定已写入引擎源码\n{detail}\n\n"
+                       f"引擎每次 ▶运行 重新加载六层源码 → 下一次运行即用新标定值 (无需重启 GUI)。\n"
+                       f"镜像: {self.calib_path}\n导出: {path}")
+            mb.exec_()
+        except Exception as e:
+            mb = QMessageBox(self)
+            mb.setStyleSheet(_DARK)
+            mb.setWindowTitle("🧮 标定层")
+            mb.setText(f"应用标定失败: {e}")
+            mb.exec_()
 
 
 # ────────────────────────────────────────────────────────────
@@ -164,9 +196,11 @@ class CalibrationDialog(QDialog):
 class CalibrationTableDialog(QDialog):
     """🧮 标定表格 — 全部标定参数一表编辑 (引力/斥力分组, 双击单元格改值)
 
-    保存: 写回 src/lerobot/calibration/calibration_layer.py 常量 + 导出 json。
-    引擎应用: 标定层是这些参数的标定来源, 保存后提示同步 (引擎常量在
-    cognition.py STAGE_V_CAP — 如需立刻生效可同步修改, 不改变架构只改标定值)。
+    保存 (v3.4.5 闭环): layer.apply_to_engine() 把 21 个标定值精确写回引擎源码
+    字面量 (parallel.py Kp/u_clip、cognition.py STAGE_V_CAP/MIN+veto/k_fb、
+    state_space_sim.py 校正K/EMA/接触增益/安全限幅/先验A) + 镜像写
+    calibration_layer.py + 导出 json。引擎每次 ▶运行 importlib 重新加载六层源码 →
+    下一次运行即用新标定值, 无需重启 GUI。
     """
 
     def __init__(self, layer, calib_path, parent=None):
@@ -178,7 +212,7 @@ class CalibrationTableDialog(QDialog):
         self.resize(680, 560)
         lay = QVBoxLayout(self)
 
-        tip = QLabel("双击单元格编辑数值 → 💾 保存 (写回 calibration_layer.py + 导出 reports/calibration_*.json)")
+        tip = QLabel("双击单元格编辑数值 → 💾 保存 (写回引擎源码 → 下次 ▶运行 生效 + 导出 json)")
         tip.setStyleSheet("color:#8b949e; font-size:11px;")
         lay.addWidget(tip)
 
@@ -192,7 +226,7 @@ class CalibrationTableDialog(QDialog):
         lay.addWidget(self.tbl)
 
         btns = QHBoxLayout()
-        self.btn_save = QPushButton("💾 保存 (写回标定层源码 + 导出)")
+        self.btn_save = QPushButton("💾 应用标定 (写回引擎源码, 下次 ▶运行 生效)")
         self.btn_save.clicked.connect(self._save)
         self.btn_close = QPushButton("关闭")
         self.btn_close.clicked.connect(self.accept)
@@ -239,8 +273,7 @@ class CalibrationTableDialog(QDialog):
         self._add_row("prior_A", r["prior_A"], "先验动力学状态转移", "斥力")
 
     def _save(self):
-        """校验 → 更新 layer → 写回 calibration_layer.py 源码 → 导出 json"""
-        import re
+        """校验 → 更新 layer → 写回引擎源码三文件 + calibration_layer.py 镜像 → 导出 json"""
         try:
             for i in range(self.tbl.rowCount()):
                 it = self.tbl.item(i, 1)
@@ -255,30 +288,21 @@ class CalibrationTableDialog(QDialog):
                         self.layer.attr[key] = val
                 else:
                     self.layer.rep[key] = val
-            # 写回 calibration_layer.py (标定层是这些参数的标定来源)
-            src = open(self.calib_path, encoding="utf-8").read()
-            for key, val in self.layer.attr["stage_v_cap"].items():
-                src = re.sub(rf'("{key}": )[\d.]+', rf'\g<1>{val:.2f}', src)
-            for key, val in self.layer.attr["stage_v_min"].items():
-                src = re.sub(rf'("{key}": )[\d.]+', rf'\g<1>{val:.2f}', src)
-            src = re.sub(r'("Kp": )[\d.]+', rf'\g<1>{self.layer.attr["Kp"]:.2f}', src)
-            src = re.sub(r'("u_clip": )[\d.]+', rf'\g<1>{self.layer.attr["u_clip"]:.2f}', src)
-            src = re.sub(r'("safety_limit": )[\d.]+', rf'\g<1>{self.layer.attr["safety_limit"]:.2f}', src)
-            for key in ("K_kalman", "res_ema", "contact_gain", "veto_th", "k_fb", "prior_A"):
-                src = re.sub(rf'("{key}": )[\d.]+', rf'\g<1>{self.layer.rep[key]:.2f}', src)
-            open(self.calib_path, "w", encoding="utf-8").write(src)
+            # 🎯 引擎写回 (真生效) + 镜像 + 导出 — 锚点未命中会抛 ValueError (不静默)
+            files = self.layer.apply_to_engine(_root_of(self.calib_path))
+            self.layer.apply_to_file(self.calib_path)
             path = self.layer.export()
+            detail = "\n".join(f"  {f}: {','.join(ps)}" for f, ps in files.items())
             mb = QMessageBox(self)
             mb.setStyleSheet(_DARK)
             mb.setWindowTitle("🧮 标定表格")
-            mb.setText(f"✅ 已保存 {self.tbl.rowCount()} 个标定参数\n\n"
-                       f"写回: {self.calib_path}\n导出: {path}\n\n"
-                       f"引擎当前仍用 cognition.py 的 STAGE_V_CAP 常量 — 如需让新标定值在"
-                       f"仿真中生效, 同步修改 cognition.py 对应值 (不改变架构, 只改标定值)。")
+            mb.setText(f"✅ 已应用 {self.tbl.rowCount()} 个标定参数到引擎\n\n{detail}\n\n"
+                       f"引擎每次 ▶运行 重新加载六层源码 → 下一次运行即用新标定值 (无需重启 GUI)。\n"
+                       f"当前若在仿真中, 停止后重跑。\n镜像: {self.calib_path}\n导出: {path}")
             mb.exec_()
         except Exception as e:
             mb = QMessageBox(self)
             mb.setStyleSheet(_DARK)
             mb.setWindowTitle("🧮 标定表格")
-            mb.setText(f"保存失败: {e}\n(检查数值格式, 必须为数字)")
+            mb.setText(f"应用标定失败: {e}\n(检查数值格式, 必须为数字; 锚点未命中=引擎源码已改动)")
             mb.exec_()
