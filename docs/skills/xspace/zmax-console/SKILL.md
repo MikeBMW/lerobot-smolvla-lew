@@ -271,6 +271,21 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - ⚠️ _ss_tick 内 execute_node_logic 用 `_ss_order[min(_ss_round, len-1)]` 保底防越界;
   播放完成判定 = `idx >= n-1 or round >= max(_ss_ticks, len(_ss_order))`。
 
+## 3D 世界操作按钮 (2026-09-03 v3.4.7, 老倪: "3D 上也要有运行按钮, 与画布统一; 一点画布运行 3D 就被覆盖")
+- **DreamView3D 绑定画布 module**: 构造签名 `(tr, parent, on_top, module=None)`; open_ss_3d
+  传 module=self, 复用窗口分支也补 `w.module = self`。无 module (命令行自测 __main__) 不建控制区。
+- **左侧「🕹 3D 世界操作」区** (图层列表上方): ▶运行 = module.start_sim() (**画布统一入口**,
+  状态空间画布 → 引擎+逐帧同步 3D), ⏹停止 = module.stop_sim(), 📌窗口置顶 toggle
+  (setWindowFlag(Qt.WindowStaysOnTopHint) + show() 重生效; 手动开置顶 → 画布运行/弹窗不再盖 3D),
+  引擎状态行; **300ms QTimer 轮询** (module._ss_timer.isActive / _sim_running / btn_run.text) →
+  ▶运行/⏹停止 禁用启用联动 (同一引擎同一状态)。
+- **画布 ▶运行开始 raise 可见 3D 窗口** (raise_ + activateWindow) — 修"点画布运行 3D 被画布覆盖";
+  只 raise 不置顶 (置顶会盖画布 = 2026-08-26 黑屏投诉重演), 用户可点 📌 手动置顶。
+- **坑**: PyQt5 枚举比较 `w.windowFlags() & Qt.WindowStaysOnTopHint == 0` 断言挂 (枚举 == int 语义),
+  必须 `int(...)` 包裹; DEBUG bool() 会掩盖该问题 (bool 与 ==0 不等价)。
+- 验证 7/7 offscreen: 控制区创建/▶运行→start_sim/⏹停止→stop_sim/置顶 flag 随 toggle/
+  busy→▶禁用⏹启用/就绪恢复/无 module 不建控制区。
+
 ## pyqtgraph GL 跨上下文 shader 失效 (2026-08-28, 3D 视图二次打开背景丢)
 **症状**: 老倪「3D 视图第二次打开, 场景背景没了」— 首次打开正常, 关窗再开只剩纯背景色。
 **根因**: pyqtgraph `opengl/shaders.py:420 initShaders()` 模块导入时编译一次、全局缓存
