@@ -271,8 +271,7 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - ⚠️ _ss_tick 内 execute_node_logic 用 `_ss_order[min(_ss_round, len-1)]` 保底防越界;
   播放完成判定 = `idx >= n-1 or round >= max(_ss_ticks, len(_ss_order))`。
 
-## 3D 世界操作按钮 (2026-09-03 v3.4.7, 老倪: "3D 上也要有运行按钮, 与画布统一; 一点画布运行 3D 就被覆盖")
-- **DreamView3D 绑定画布 module**: 构造签名 `(tr, parent, on_top, module=None)`; open_ss_3d
+## 3D 世界操作按钮 (2026-09-03 v3.4.7, 老倪: "3D 上也要有运行按钮, 与画布统一; 一点画布运行 3D 就被覆盖")- **DreamView3D 绑定画布 module**: 构造签名 `(tr, parent, on_top, module=None)`; open_ss_3d
   传 module=self, 复用窗口分支也补 `w.module = self`。无 module (命令行自测 __main__) 不建控制区。
 - **左侧「🕹 3D 世界操作」区** (图层列表上方): ▶运行 = module.start_sim() (**画布统一入口**,
   状态空间画布 → 引擎+逐帧同步 3D), ⏹停止 = module.stop_sim(), 📌窗口置顶 toggle
@@ -285,6 +284,27 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
   必须 `int(...)` 包裹; DEBUG bool() 会掩盖该问题 (bool 与 ==0 不等价)。
 - 验证 7/7 offscreen: 控制区创建/▶运行→start_sim/⏹停止→stop_sim/置顶 flag 随 toggle/
   busy→▶禁用⏹启用/就绪恢复/无 module 不建控制区。
+
+## 播放"卡住"根因 = execute 冷加载 + 平滑播放 (2026-09-03 v3.4.8, 老倪: "运行后没有连续动作, 好像卡住了")
+- **真机计时铁证**: 播放 tick 间隔中位 81.6ms 正常但**最大 1632ms** = 📡传感器融合节点
+  execute_node_logic 真跑 → `_yolo_ensure_aligner` **冷加载 1.6s+** (metaworld MT1 env +
+  YOLO 模型构造) 冻结主线程 → GUI "卡住"。判定法: 包 execute 打点计时
+  (`_slow_exec` 包 execute_node_logic, dt>30ms 打印) — 别猜。
+- **execute_node_logic 加 demo 参数 (v3.4.8)**: ▶运行 播放演示 = demo=True 轻量路径
+  `_demo_node_output` — 读 module._dw 当前帧该节点 out (引擎真实算的, 同源不伪造) 打印,
+  **不重跑节点真实函数** (YOLO 采样/LLM/传感器融合重执行又慢又重复 — 引擎 run() 已真执行过)。
+  ⏭单步/右键运行/双击 = demo=False 仍走真实 fn (VSCode 断点可进, 调试链路不变)。
+  **铁律: 播放动画循环里禁止同步执行可能慢的真实节点函数** (YOLO/LLM/env 构造类)。
+- **播放节奏 (v3.4.8)**: 80ms×60tick 大步跳 (60 tick 播 305 步 = 每 80ms 跳 5 引擎步 →
+  视觉一顿一顿"不连续") → **30ms/tick 逐引擎步**: `_ss_tick_ms=30`,
+  `_ss_ticks = max(n_order, min(n_steps, 267))`, idx = round*stride, 结束 idx>=n-1。
+  3D set_frame **每 tick** (连续); 节点动画轮转/execute(demo)/日志(~40行)/总线 feed
+  按抽稀散布 (exec_every = ticks//n_order 等), 不再每 tick 全量刷。
+- **resize 自动取景**: 窗口尺寸变化 >6% 且未手动转视角 (`_user_cam` eventFilter 鼠标旋转
+  标记) → 250ms 防抖后 `_fit_view("fit")` 场景撑满放大视口。诊断结论: 布局本身正常
+  (view 926→2814px = 3 倍, GL 视口自动放大), 用户"没放大"多为最大化错窗口/旧版未重启。
+- 验证: 卡点 1632→70ms (传感器融合节点 0.23ms), e2e 305 tick 播放完成游标=末帧,
+  _update_frame 0.9ms/帧渲染零压力 (真机)。
 
 ## pyqtgraph GL 跨上下文 shader 失效 (2026-08-28, 3D 视图二次打开背景丢)
 **症状**: 老倪「3D 视图第二次打开, 场景背景没了」— 首次打开正常, 关窗再开只剩纯背景色。
