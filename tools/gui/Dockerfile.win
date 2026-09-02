@@ -41,6 +41,9 @@ RUN xvfb-run wine pyinstaller --onefile --windowed \
     --add-data "flows;flows" \
     --add-data "src/lerobot/policies/left_right;src/lerobot/policies/left_right" \
     --add-data "src/lerobot/policies/yolo_3d;src/lerobot/policies/yolo_3d" \
+    --add-data "src/lerobot/calibration;src/lerobot/calibration" \
+    --add-data "src/lerobot/manifold;src/lerobot/manifold" \
+    --add-data "src/lerobot/verification;src/lerobot/verification" \
     --collect-all pyqtgraph --collect-all OpenGL \
     /src/studio.py
 

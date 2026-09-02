@@ -82,7 +82,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --collect-all pyqtgraph --collect-all OpenGL studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --collect-all pyqtgraph --collect-all OpenGL studio.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -171,6 +171,9 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/calibration:src/lerobot/calibration" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/manifold:src/lerobot/manifold" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/verification:src/lerobot/verification" \
             --add-data "$GITHUB_WORKSPACE/reports/mlp_insert_success_final.mp4:reports" \
             --add-data "$GITHUB_WORKSPACE/reports/_mlp_cache_mlp_insert_success_final:reports/_mlp_cache_mlp_insert_success_final" \
             --collect-all pyqtgraph --collect-all OpenGL \

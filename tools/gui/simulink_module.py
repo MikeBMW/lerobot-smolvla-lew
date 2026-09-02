@@ -1089,17 +1089,19 @@ class StateSpaceScopeDialog(QDialog):
             p.end()
             return
         r = self.rect().adjusted(12, 12, -12, -12)
-        # 2x2 子图: 距离孔位 / 前馈指令 / 残差 / 接触概率
+        # 2x3 子图: 距离孔位 / 前馈指令 / 残差 / 接触概率 / 接触流形法向偏离 / 性能流形耦合效率
         plots = [
             ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff"),
             ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922"),
             ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e"),
             ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950"),
+            ("接触流形 · 法向偏离 ‖e⊥‖", np.asarray(self._tr.get("mani_risk", [0])), "#ff7b72"),
+            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", [0])), "#a371f7"),
         ]
-        gw, gh = r.width() / 2, r.height() / 2
+        gw, gh = r.width() / 3, r.height() / 2
         for i, (title, y, color) in enumerate(plots):
-            x0 = r.left() + (i % 2) * gw + 8
-            y0 = r.top() + (i // 2) * gh + 8
+            x0 = r.left() + (i % 3) * gw + 8
+            y0 = r.top() + (i // 3) * gh + 8
             w, h = gw - 16, gh - 16
             # 边框 + 标题
             p.setPen(QColor("#30363d"))
@@ -3312,10 +3314,11 @@ class SimCanvas(QGraphicsView):
             a_rot = menu.addAction("转正 180 度 (文字反)")
             a_next = menu.addAction("下一个视频")
             a_prev = menu.addAction("上一个视频")
-        # 🧮 标定层节点右键 (2026-09-02 老倪: 打开可编辑标定表格, 交互编辑引力/斥力参数)
+        # 🧮 标定层节点右键 (2026-09-02 老倪: 打开可编辑标定表格, 交互编辑引力/斥力参数;
+        #    2026-09-03: 三域 — 含潜空间几何行 latent_dim/force_ch/prior_A)
         a_calib = None
         if item.node.get("params", {}).get("calib_layer"):
-            a_calib = menu.addAction("标定表格 (引力/斥力参数编辑)")
+            a_calib = menu.addAction("标定表格 (引力/斥力/潜空间 编辑)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -6120,6 +6123,25 @@ class SimulinkModule(QWidget):
         self._ss_step_idx += 1
         self._refresh_status()
 
+    def _real_yolo_sense_once(self):
+        """🎯 真实 YOLO 感知采样一次 (2026-09-03 老倪: ▶运行/单步/右键 同源)
+        ss_yolo 节点真实执行 → metaworld 帧 → detect_3d/detect2d → align,
+        detect_3d 断点可进; 真实 conf/3D 缓存 _YOLO_CACHE + 日志输出 (可验证证据)。
+
+        ⚠️ 不注入 io_trace: 引擎是简化世界 (HOLE_POS 等常量, conf 标 --), 真实采样是
+        metaworld seed0 世界 — 两世界坐标不同源, 混进同帧会自相矛盾。真实值留在缓存,
+        播放演示 (_demo_node_output) 与日志展示。失败不打搅, 日志给原因。"""
+        try:
+            from node_logic import execute_node_logic, match_node
+            _yn = next((n for n in self.nodes
+                        if n.get("type") != "row_bg"
+                        and match_node(n.get("name", "")) == "ss_yolo"), None)
+            if _yn is None:
+                return
+            execute_node_logic(self, _yn, label="▶运行-YOLO真实感知")
+        except Exception as _e:
+            self._log(f"⚠️ ▶运行 YOLO 真实采样失败: {_e}")
+
     def _ss_ensure_trace(self, force=False):
         """🧮 状态空间引擎轨迹: 无缓存/强制 → 跑 StateSpaceSim (与 _start_state_space_sim 同源,
         io_every=25 数据总线快照 + 训练模型前馈) — 单步/右键运行节点共用 (2026-08-31)"""
@@ -6137,6 +6159,8 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
             tr = sim.run(io_every=25)
+            # 🎯 2026-09-03: 单步/右键与 ▶运行 同源 — 真实 YOLO 感知采样一次 (detect_3d 断点可进)
+            self._real_yolo_sense_once()
         except Exception as e:
             import traceback
             self._log(f"⚠️ 状态空间引擎异常: {e}")
@@ -9325,7 +9349,8 @@ class SimulinkModule(QWidget):
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
         # 🧮 标定层 (2026-09-02 老倪): 双击/右键 → 标定面板 (引力/斥力 + 平衡点), 不是源码编辑器
-        if "标定层" in node.get("name", ""):
+        # 🧮 潜空间 (2026-09-03 老倪): 同属标定层三域 — 双击同样开标定面板 (含潜空间几何组)
+        if "标定层" in node.get("name", "") or "潜空间" in node.get("name", ""):
             try:
                 from calibration_dialog import CalibrationDialog
                 import importlib.util as _ilu
@@ -9340,7 +9365,9 @@ class SimulinkModule(QWidget):
                 if _tr is not None and _tr.get("x") is not None and len(_tr["x"]) > 0:
                     _idx = int(min(getattr(self, "_ss_round", 0), len(_tr["t"]) - 1))
                     stage = str(_tr["stage"][_idx]).replace("阶段 ", "")
-                    speed = float(np.linalg.norm(np.asarray(_tr["u_sat"][_idx], dtype=float)[:3]))
+                    # 🐛 2026-09-03: tr["u_sat"] 是标量范数 (float), 勿当向量 [:3] 索引
+                    _us = _tr["u_sat"][_idx] if "u_sat" in _tr else _tr.get("u_sat_vec", [0])[_idx]
+                    speed = float(np.linalg.norm(np.asarray(_us, dtype=float)))
                     residual = float(_tr["residual"][_idx])
                     contact_p = float(_tr["contact_p"][_idx])
                 dlg = CalibrationDialog(layer, stage=stage, gap=0.0, parent=self, calib_path=_cp)
@@ -10339,6 +10366,11 @@ class SimulinkModule(QWidget):
             self.btn_run.setEnabled(True)
             return
         self._ss_tr = tr
+        # 🎯 2026-09-03 老倪: ▶运行 真实 YOLO 感知 — 原引擎轨迹里 YOLO/2D→3D 快照是
+        #   state_space_sim._io_snapshot 写死的 conf 0.99 仿真伪装 (detect_3d 从不执行),
+        #   已改为 conf -- (引擎无 YOLO 模型, 不伪装)。这里真实执行一次 ss_yolo 节点:
+        #   detect_3d 断点可进 + 真实 conf/3D 日志 (证据), 供播放演示展示。
+        self._real_yolo_sense_once()
         # 🗺 v3.4.6 DataWorld: 引擎轨迹 → 逐帧全模块信号总成 (io_trace 已逐帧全量)。
         #   画布播放 / 3D 视图 / 数据总线共用一个 dw + 单一游标 → 点击▶运行后
         #   3D 渲染数据与画布实际信号严格同帧 (Dreamview 数据世界语义)。

@@ -118,6 +118,21 @@ def _demo_node_output(module, node, ctx):
     演示不重跑节点函数; 数值取自 dw 帧 = 引擎该步真实输出 (同源不伪造)。"""
     name = node.get("name", "")
     log = ctx.get("log")
+    # 🎯 2026-09-03 老倪: ▶运行 播放轮转到「🎯 YOLO 目标检测」时, 展示真实采样值
+    #   (detect_3d 已由 _real_yolo_sense_once 真执行, conf/3D 模型真输出) — 不用
+    #   引擎帧 conf -- (引擎无 YOLO 模型)。无缓存(采样失败/无节点)才落回 dw 帧。
+    if match_node(name) == "ss_yolo" and _YOLO_CACHE.get("det3d"):
+        try:
+            d3 = _YOLO_CACHE.get("det3d") or {}
+            d2 = _YOLO_CACHE.get("det2d") or {}
+            parts = [f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
+                     + (f" conf={d2[k]['conf']:.2f}" if k in d2 else "")
+                     for k, v in sorted(d3.items())]
+            if log:
+                log(f"⏩ {name} (真实YOLO采样): {len(d3)}/3 目标 · " + " · ".join(parts))
+            return True
+        except Exception:
+            pass
     try:
         import numpy as _np
         dw = getattr(module, "_dw", None)
@@ -1348,6 +1363,27 @@ def _yolo_ensure_aligner(log):
     return _YOLO_ALIGNER
 
 
+def _yolo_detect2d(aligner, img, conf=0.4):
+    """同帧真实 2D 检测 (与 detect_3d 同预处理 rot90+BGR) → {cls: {box, conf, cx, cy}}
+    🐛 2026-09-03 老倪: detect_3d 只返回 3D 坐标不带 conf — ▶运行 注入引擎轨迹
+    需要真实 conf (引擎 _io_snapshot 曾写死 conf 0.99 伪装), 故同帧补一次 2D predict。
+    """
+    import numpy as np
+    import cv2
+    if img.dtype != np.uint8:
+        img = (img * 255).astype(np.uint8)
+    img_rot = np.rot90(img, k=2)
+    img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
+    res = aligner.model.predict(img_bgr, conf=conf, verbose=False)[0]
+    out = {}
+    for b in res.boxes:
+        cls = res.names[int(b.cls)]
+        x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
+        out[cls] = {"box": [x1, y1, x2, y2], "conf": float(b.conf[0]),
+                    "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2}
+    return out
+
+
 def _yolo_capture(log, aligner):
     """真实采样一帧: env reset(seed=0) → render → 39D obs → detect_3d, 缓存供下游节点"""
     import numpy as np
@@ -1357,7 +1393,8 @@ def _yolo_capture(log, aligner):
     img = aligner.env.render()
     obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
     det3d = aligner.detect_3d(img)
-    _YOLO_CACHE.update({"det3d": det3d, "obs39": obs39, "img": img})
+    det2d = _yolo_detect2d(aligner, img)   # 真实 conf/框 (detect_3d 不带 conf)
+    _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img})
     return det3d, obs39, img
 
 
@@ -2124,7 +2161,7 @@ _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class 
 
 # 🧮 标定层 (2026-09-02): 与 datasets/policies 同级别 — src/lerobot/calibration/calibration_layer.py
 _CALIB_DIR_LOC = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
-_EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 51, "class CalibrationLayer")
+_EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 73, "class CalibrationLayer")
 
 # 📦 metaworld 数据源 (2026-09-02 老倪: 数据源节点必须接 lerobot 框架数据层 —
 #   与感知/决策节点同构: 右键打开 + VSCode 断点进 datasets 真实源码,
@@ -2301,7 +2338,11 @@ def node_ss_yolo(ctx):
         _YOLO_CACHE["aligned39"] = aligned
         if log:
             n = len(det3d)
-            desc = " ".join(f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]" for k, v in sorted(det3d.items()))
+            det2d = _YOLO_CACHE.get("det2d", {})
+            desc = " ".join(
+                f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
+                + (f" conf={det2d[k]['conf']:.2f}" if k in det2d else "")
+                for k, v in sorted(det3d.items()))
             log(f"🎯 YOLO 目标检测 (真实): {n}/3 目标 · {desc}")
             log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
                 f"peg={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
@@ -2378,18 +2419,22 @@ def node_ss_calib(ctx):
         if tr is not None and tr.get("x") is not None and len(tr["x"]) > 0:
             idx = int(min(getattr(mod, "_ss_round", 0), len(tr["t"]) - 1))
             stage = str(tr["stage"][idx]).replace("阶段 ", "")
-            speed = float(np.linalg.norm(np.asarray(tr["u_sat"][idx], dtype=float)[:3]))
+            # 🐛 2026-09-03: tr["u_sat"] 存的是标量范数 (float), 不是向量 —
+            #   [:3] 索引 0-d 数组抛 "too many indices" (既有 bug, 被 try 吞)
+            _us = tr["u_sat"][idx] if "u_sat" in tr else tr.get("u_sat_vec", [0])[idx]
+            speed = float(np.linalg.norm(np.asarray(_us, dtype=float)) )
             residual = float(tr["residual"][idx])
             contact_p = float(tr["contact_p"][idx])
         gap = layer.equilibrium_gap(stage, speed, residual, contact_p)
         _SS_STATE["calib"] = {"layer": layer, "stage": stage, "gap": gap,
-                              "attr": layer.attr, "rep": layer.rep}
+                              "attr": layer.attr, "rep": layer.rep, "lat": layer.lat}
         if log:
             log(f"🧮 标定层 (真实): {layer.summarize(stage, speed, residual, contact_p)}")
             log(f"   引力标定 (快速动作): Kp={layer.attr['Kp']} · 当前阶段速度上限 "
                 f"{layer.attr['stage_v_cap'].get(stage, '—')} m/s")
             log(f"   斥力标定 (状态预测): K_kalman={layer.rep['K_kalman']} · 残差EMA={layer.rep['res_ema']} · "
                 f"接触增益={layer.rep['contact_gain']} · 否决阈值={layer.rep['veto_th']}")
+            log(f"   {layer.latent_summary()}")
         return True
     except Exception as e:
         if log:
@@ -2400,3 +2445,214 @@ def node_ss_calib(ctx):
 _reg("ss_calib", ["标定层"],
      "🧮 标定层 — 引力(快速动作: Kp+阶段速度上限/下限) vs 斥力(状态预测: K_kalman+残差EMA+接触增益+否决阈值), 平衡偏差=|引力势−斥力势| (Drifting Models 反称场; 源码 calibration_layer.py)",
      node_ss_calib)
+
+
+def node_ss_lat(ctx):
+    """🧮 潜空间 — 世界模型预测流形的标定 (维度/类别/速度场) + 观测有效维实测
+    源码: src/lerobot/calibration/calibration_layer.py (LATENT_CALIB)
+    地图导航视角: 潜空间=流形地图, 世界模型=导航仪 (沿速度场 prior A·x+B·u 推演);
+    本节点 = 地图的几何标定 + 引擎校验: 对引擎轨迹 39D 观测做 PCA → 95% 方差有效维
+    (数据流形固有维实测) vs 标定 latent_dim; 潜坐标/速度场向量取引擎真实 latent/prior。
+    ⚠️ 维度/类别是引擎结构常数, 本节点只标定+校验, 不写引擎字面量 (改潜维=重构卡尔曼)。"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_CALIB_DIR, "calibration_layer.py")
+        spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        layer = m.CalibrationLayer()
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("⚠️ 潜空间: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源)")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage = str(tr["stage"][idx]).replace("阶段 ", "")
+        # ── 潜坐标 (地图位置) + 速度场 (世界模型一步推演) — 引擎真实量 ──
+        lat = np.asarray(tr.get("corrected_vec", tr["latent_vec"])[idx], dtype=float)
+        lat_pred = np.asarray(tr["latent_vec"][idx], dtype=float)      # 估计器先验
+        prior = np.asarray(tr.get("prior_vec", np.zeros(4))[idx], dtype=float)
+        vel = prior - lat_pred                                          # 地图上速度场向量
+        # ── 观测流形有效维实测: 全轨迹 39D 视觉观测 PCA (95% 累积方差) ──
+        obs_all = np.asarray(tr["obs"], dtype=float)[:, :39]
+        X = obs_all - obs_all.mean(axis=0)
+        _, S, _ = np.linalg.svd(X, full_matrices=False)
+        var = S ** 2 / max(float((S ** 2).sum()), 1e-12)
+        cum = np.cumsum(var)
+        eff_dim = int(np.searchsorted(cum, 0.95) + 1) if len(cum) else 0
+        eff_dim99 = int(np.searchsorted(cum, 0.99) + 1) if len(cum) else 0
+        # ── 校验: 标定陈述 vs 引擎实测 ──
+        checks = []
+        checks.append(f"标定潜维 {layer.lat['latent_dim']}D vs 引擎潜状态实际 {lat.size}D"
+                      + (" ✓" if layer.lat["latent_dim"] == lat.size else " ✗ 标定过期"))
+        checks.append(f"观测流形 {layer.lat['state_dim']}D → 轨迹有效维 {eff_dim}D@95% / "
+                      f"{eff_dim99}D@99% (任务路径低维嵌入: 沿路径推进+夹爪; "
+                      f"孔位/姿态常量维无方差)")
+        _SS_STATE["latent_calib"] = {"idx": idx, "stage": stage, "latent": lat,
+                                     "prior": prior, "vel": vel,
+                                     "eff_dim": eff_dim, "eff_dim99": eff_dim99,
+                                     "lat": dict(layer.lat)}
+        if log:
+            log(f"🧮 潜空间 (真实·t={tr['t'][idx]:.2f}s {stage}): 潜坐标 (位置3+预测力1)="
+                f"{np.round(lat, 4)}")
+            log(f"   速度场 (世界模型一步推演 prior−x̂₋): {np.round(vel, 4)} · "
+                f"A={layer.lat['prior_A']:.1f} 恒速线性流形 ({layer.lat['flow_kind']})")
+            log(f"   PCA 校验: " + " · ".join(checks))
+            log(f"   标定: {layer.latent_summary()}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 潜空间执行失败: {e}")
+        return False
+
+
+_reg("ss_lat", ["潜空间"],
+    "🧮 潜空间 — 世界模型预测流形标定: 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
+    node_ss_lat)
+_EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 58, "LATENT_CALIB")
+
+
+# 🧮 流形层 (2026-09-03 老倪: 光模块精密插拔 = 高维状态空间的低维流形 —
+#   接触流形=插拔安全通道(沿流形推进=测地线, 偏离→引脚弯曲), 性能流形=光耦合
+#   对准代价/效率曲面. 回路外几何分析元层, 与标定层同款: 不参与推理/不加安全通道)
+_MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
+
+
+def node_ss_mani(ctx):
+    """🧮 流形层 — 接触流形 (插拔通道: 切向进度/法向偏离/V) ‖ 性能流形 (对准代价 V_p/η)
+    源码: src/lerobot/manifold/manifold_layer.py (ContactManifold / PerformanceManifold)
+    回路外元层: 从引擎轨迹当前帧取真实量 (obs/peg_head/target/v/stage) 实算,
+    断点可进; 不参与推理, 不新增安全通道 (唯一三层安全=否决+限幅+Sys0)"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_MANIFOLD_DIR, "manifold_layer.py")
+        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_layer", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        name = ctx.get("name", "")
+        # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 node_ss_calib 同映射)
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("⚠️ 流形层: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源)")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage = str(tr["stage"][idx]).replace("阶段 ", "")
+        hand = np.asarray(tr["x"][idx], dtype=float)
+        peg_head = np.asarray(tr["peg_head"][idx], dtype=float)
+        target = np.asarray(tr["target"][idx], dtype=float)
+        v = np.asarray(tr["v_vec"][idx], dtype=float) if tr.get("v_vec") else np.zeros(3)
+        _SS_STATE["mani_frame"] = {"idx": idx, "stage": stage}
+        if "接触" in name:
+            cm = m.ContactManifold()
+            r = cm.decompose(hand, peg_head, target, v, stage)
+            _SS_STATE["contact_mani"] = r
+            if log:
+                log(f"🧮 接触流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {cm.summarize(r)}")
+                if r["axis"] is not None:
+                    log(f"   通道轴 â={np.round(r['axis'],3)} · 切向进度 "
+                        f"‖e∥‖={r['progress']:.4f}m · 法向偏离 ‖e⊥‖={r['risk']:.4f}m "
+                        f"(阈 {r['risk_th']}m) · V̇={r['Vdot']:.3e} (负=沿测地线收敛)")
+                else:
+                    log(f"   自由空间 (转移段无接触约束) · ‖e‖={r['progress']:.4f}m · "
+                        f"V̇={r['Vdot']:.3e}")
+            return True
+        if "性能" in name:
+            pm = m.PerformanceManifold()
+            r = pm.evaluate(peg_head, stage=stage)
+            _SS_STATE["perf_mani"] = r
+            if log:
+                log(f"🧮 性能流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {pm.summarize(r)}")
+                log(f"   修正方向 ∇V_p={np.round(r['grad'],4)} (最优对准 = 沿 −∇ 下山到 δ→0)")
+            return True
+        if log:
+            log("⚠️ 流形层: 节点名未识别接触/性能分派")
+        return False
+    except Exception as e:
+        if log:
+            log(f"⚠️ 流形层执行失败: {e}")
+        return False
+
+
+_reg("ss_mani_c", ["接触流形"],
+    "🧮 接触流形 — 插拔安全通道: 误差 e 沿通道轴分解 → 切向 e∥(测地线进度)/法向 e⊥(离流形漂移, 弯曲风险), V=½‖e‖², V̇=−e·v (源码 manifold_layer.py ContactManifold)",
+    node_ss_mani)
+_reg("ss_mani_p", ["性能流形"],
+    "🧮 性能流形 — 光耦合对准代价: δ=销头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
+    node_ss_mani)
+
+# 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
+_EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 65, "class ContactManifold")
+_EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 138, "class PerformanceManifold")
+
+
+# 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
+#   回路外元层, 与标定层/流形导航层同范式; 真源 src/lerobot/verification/verification_layer.py)
+_VERIF_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "verification")
+
+
+def _verif_mod():
+    """懒加载验证层真源模块 (importlib 直载, 同标定/流形策略)"""
+    import importlib.util as _ilu
+    path = os.path.join(_VERIF_DIR, "verification_layer.py")
+    spec = _ilu.spec_from_file_location("lerobot.verification.verification_layer", path)
+    m = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def node_ss_feature(ctx):
+    """🧩 Feature 功能清单 — 汇总状态空间系统全部 feature (自动/手动标注)
+    源码: src/lerobot/verification/verification_layer.py (FEATURES 注册表)
+    真实执行: 引擎跑一次 + 逐 feature 打印 (含 GUI 手动项提示)"""
+    log = ctx.get("log")
+    try:
+        mod = _verif_mod()
+        v = mod.VerificationLayer()
+        v.list_features()
+        # 引擎快跑一次 (验证层数据真源预热, 断点可进 StateSpaceSim)
+        _ = v.engine()
+        if log:
+            log("🧩 Feature 清单已汇总 (见上方) · 自动项可点「🧪 Test 用例执行」逐个跑")
+        _SS_STATE["verif"] = {"features": mod.FEATURES}
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ Feature 清单执行失败: {e}")
+        return False
+
+
+def node_ss_test(ctx):
+    """🧪 Test 用例执行 — 跑验证层全部自动化 test (PASS/FAIL + 数值证据)
+    源码: src/lerobot/verification/verification_layer.py (t_F_* 断言)
+    单跑: ZMAX_VERIF_ONLY=F-A01 环境变量; 跳过慢 YOLO: ZMAX_VERIF_SKIP_SLOW=1"""
+    log = ctx.get("log")
+    try:
+        v = _verif_mod().VerificationLayer()
+        only = os.environ.get("ZMAX_VERIF_ONLY")
+        skip_slow = os.environ.get("ZMAX_VERIF_SKIP_SLOW") == "1"
+        if only:
+            ok, _d = v.run(only)
+            return bool(ok)
+        ok = v.run_all(skip_slow=skip_slow)
+        return ok
+    except Exception as e:
+        if log:
+            log(f"⚠️ Test 用例执行失败: {e}")
+        return False
+
+
+_reg("ss_feature", ["Feature"],
+    "🧩 Feature 功能清单 — 状态空间系统全部 feature 汇总 (引擎/六层/感知链/规划/元层/画布, 含 GUI 手动项; 源码 verification_layer.py FEATURES)",
+    node_ss_feature)
+_reg("ss_test", ["Test"],
+    "🧪 Test 用例执行 — 验证层自动化 test 套件全跑 (F-A01~F-F04, PASS/FAIL+数值证据; 源码 verification_layer.py t_F_* 断言, 断点可进)",
+    node_ss_test)
+_EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
+_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 97, "class VerificationLayer")

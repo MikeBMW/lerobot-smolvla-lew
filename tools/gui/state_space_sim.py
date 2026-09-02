@@ -52,6 +52,43 @@ def _find_ss_dir():
 _SS_DIR = _find_ss_dir()
 
 
+def _find_mani_file():
+    """定位流形层源码 manifold_layer.py (与六层同探测策略)"""
+    rel = os.path.join("src", "lerobot", "manifold", "manifold_layer.py")
+    cands = []
+    _root_env = os.environ.get("ZMAX_REPO_ROOT")
+    if _root_env and os.path.isdir(_root_env):
+        cands.append(os.path.join(_root_env, rel))
+    if getattr(sys, "frozen", False):
+        cands.append(os.path.join(getattr(sys, "_MEIPASS", ""), rel))
+    d = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        cands.append(os.path.join(d, rel))
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return None   # 无流形层 → 流形 channel 跳过 (不阻塞引擎)
+
+_MANI_FILE = _find_mani_file()
+
+
+def _load_manifold():
+    """直载 manifold_layer (纯 numpy; 失败返回 None 不阻塞引擎)"""
+    if not _MANI_FILE:
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("state_space_mani", _MANI_FILE)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+    except Exception:
+        return None
+
+
 def _load(name):
     """按文件路径加载六层模块 (避开 lerobot 包级 torch 依赖)"""
     path = os.path.join(_SS_DIR, name)
@@ -136,6 +173,11 @@ class StateSpaceSim:
         self.peg_off = np.zeros(3)      # 夹住瞬间 插销-末端 的相对偏移
         self.latent = np.concatenate([self.x, [0.0]])   # 潜状态 4D: 位置3 + 预测接触力 (无接触=0)
         self.obs_prev = None                 # 上一帧 18D (帧堆叠)
+        # 🧮 流形层逐帧发布 (2026-09-03): 接触/性能流形 channel 进数据世界 (缺失不阻塞)
+        self._mani = _load_manifold()
+        self._mani_cm = self._mani.ContactManifold() if self._mani else None
+        self._mani_pm = self._mani.PerformanceManifold() if self._mani else None
+        self._mani_out = None                # 本步流形量 (io_snapshot 发布用)
 
     def _head_off(self):
         """销头相对末端的真实偏移 — 夹持后由感知给出 (peg 位置 − 末端位置 + 销头偏移)。
@@ -240,6 +282,8 @@ class StateSpaceSim:
               "latent_vec": [], "corrected_vec": [], "residual_vec": [], "z_k_vec": [], "v_vec": [],
               # 📈 先验动力学预测器输出 (2026-08-25 老倪: 六层每层都要能在 3D 视图看到)
               "prior_vec": [],
+              # 🧮 2026-09-03 流形层逐帧序列 (Scope 全程曲线/验证层数据源)
+              "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
@@ -355,6 +399,28 @@ class StateSpaceSim:
             tr["stage"].append(stage if self.sched.stage() in stage
                                else f"阶段 {self.sched.stage()}")
             tr["done"].append(done)
+            # 🧮 流形层逐帧发布 (2026-09-03): 接触/性能流形每步实算 → io channel + 全程序列
+            _ms = str(tr["stage"][-1]).replace("阶段 ", "").split("·")[0].strip()
+            if self._mani_cm is not None:
+                try:
+                    _mc = self._mani_cm.decompose(self.x, self.peg_head(),
+                                                  self._stage_target(), self.v, _ms)
+                    _mp = self._mani_pm.evaluate(self.peg_head(), stage=_ms)
+                    self._mani_out = {"cm": _mc, "pm": _mp,
+                                      "lat": np.asarray(self.latent, dtype=float),
+                                      "vel": (np.asarray(prior, dtype=float)
+                                              - np.asarray(latent_pred, dtype=float))}
+                    tr["mani_risk"].append(float(_mc["risk"]))
+                    tr["mani_progress"].append(float(_mc["progress"]))
+                    tr["mani_eta"].append(float(_mp["eta"]))
+                    tr["mani_V"].append(float(_mc["V"]))
+                except Exception:
+                    self._mani_out = None
+                    tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
+                    tr["mani_eta"].append(0.0); tr["mani_V"].append(0.0)
+            else:
+                tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
+                tr["mani_eta"].append(0.0); tr["mani_V"].append(0.0)
             tr["x"].append(self.x.copy())
             tr["gripper"].append(self.gripper)
             tr["force"].append(force_norm)
@@ -418,11 +484,21 @@ class StateSpaceSim:
                      u_sat, u_vec, force_norm, frame_id=0):
         """📊 单步接口 I/O 快照 — 「🔌 数据总线」数据源 (2026-08-22 老倪)
         九模块 in/out 完整变量; 数值为 numpy 数组 (每步新建, 引用安全不覆盖)。"""
+        # 🧮 流形 channel (2026-09-03): 本步流形量 (主循环算好存 self._mani_out)
+        _mo = getattr(self, "_mani_out", None) or {}
+        _mc = _mo.get("cm") or {}
+        _mp = _mo.get("pm") or {}
+        _lat = _mo.get("lat", np.zeros(4))
+        _vel = _mo.get("vel", np.zeros(4))
         visual39 = obs[:39]
         tactile4 = obs[39:43]
-        peg_3d = self.x
+        peg_3d = self.peg            # 🐛 2026-09-03: 独立插销位置 (原误用 self.x 末端)
+        hand_3d = self.x             # 末端执行器 = hand
         hole_3d = HOLE_POS
         img = f"RGB-D 640×480 · 帧#{frame_id}"
+        # 🐛 2026-09-03 老倪: YOLO/2D→3D 快照不再写死 conf 0.99 伪装检测 (老倪红线);
+        #   hand 也不再抄 peg 坐标. 引擎无 YOLO 模型 → conf 标 "--"; ▶运行 后由
+        #   simulink_module 注入真实 detect_3d/detect2d 采样值 (真实 conf/框/3D)。
         return {
             "📦 metaworld 数据源": {
                 "in": [],
@@ -431,15 +507,15 @@ class StateSpaceSim:
             },
             "🎯 YOLO 目标检测": {
                 "in": [("图像流 (RGB-D)", img)],
-                "out": [("peg 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf 0.99"),
-                       ("hole 检测框 2D", f"xy=({hole_3d[0]:.3f},{hole_3d[1]:.3f}) conf 0.99"),
-                       ("hand 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf 0.99")],
+                "out": [("peg 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf --"),
+                       ("hole 检测框 2D", f"xy=({hole_3d[0]:.3f},{hole_3d[1]:.3f}) conf --"),
+                       ("hand 检测框 2D", f"xy=({hand_3d[0]:.3f},{hand_3d[1]:.3f}) conf --")],
             },
             "📐 2D→3D 解算": {
                 "in": [("检测框 2D", "peg/hole/hand")],
                 "out": [("peg 3D 坐标", peg_3d),
                        ("hole 3D 坐标", hole_3d),
-                       ("hand 3D 坐标", peg_3d)],
+                       ("hand 3D 坐标", hand_3d)],
             },
             "🖐 触觉感知": {
                 "in": [],
@@ -495,6 +571,26 @@ class StateSpaceSim:
                 "out": [("末端位置 x (3D)", self.x), ("末端速度 v (3D)", self.v),
                        ("夹爪 gripper (标量)", self.gripper), ("接触力 norm (标量)", force_norm),
                        ("观测 z_k (4D:位置3+力)", z_k)],
+            },
+            # 🧮 2026-09-03 流形层逐帧 channel (引擎每步实算, 画布输出线 → 波形/总线)
+            "🧮 接触流形": {
+                "in": [("几何 (手/销/孔)", "引擎真值")],
+                "out": [("流形进度 e∥ (m)", _mc.get("progress", 0.0)),
+                       ("法向偏离 e⊥ (m)", _mc.get("risk", 0.0)),
+                       ("V=½‖e‖²", _mc.get("V", 0.0)),
+                       ("状态", _mc.get("state", "—"))],
+            },
+            "🧮 性能流形": {
+                "in": [("几何 (销/孔)", "引擎真值")],
+                "out": [("横向错位 δ⊥ (m)", _mp.get("d_perp_norm", 0.0)),
+                       ("插深剩余 (m)", -_mp.get("d_axial", 0.0) if _mp else 0.0),
+                       ("V_p=½δᵀWδ", _mp.get("Vp", 0.0)),
+                       ("耦合效率 η", _mp.get("eta", 0.0))],
+            },
+            "🧮 潜空间": {
+                "in": [("潜状态/先验", "估计器+动力学")],
+                "out": [("潜坐标 (位置3+预测力)", _lat),
+                       ("速度场 prior−x̂₋", _vel)],
             },
         }
 

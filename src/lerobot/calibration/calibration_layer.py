@@ -45,7 +45,25 @@ REPULSION_CALIB = {
     "contact_gain": 8,      # 接触概率增益 (run L280 contact_probability gain=8.0)
     "veto_th": 2,           # 否决阈值 (cognition.py ActionModulator.__init__ 默认 veto_th=2.0)
     "k_fb": 1,              # 反馈增益 (cognition.py decide 相加 k_fb, 默认 1.0)
-    "prior_A": 1,           # 先验动力学状态转移 (run L123 PriorDynamicsPredictor(A=1.0) — 引擎真值)
+    # prior_A (先验动力学状态转移 A=1.0) 2026-09-03 归入潜空间域 — 它是世界模型在
+    # 潜流形上的速度场系数 (ODE 离散化), 不是估计校正旋钮。引擎写回锚点不变。
+}
+
+# ── 潜空间标定 (世界模型预测流形) — 2026-09-03 老倪: 潜空间=流形地图, 世界模型=导航仪
+# 地图的几何标定: 维度 (潜状态维/观测流形源维) + 类别 (潜流形几何/速度场类型) + 通道。
+# 与引擎同源: latent 4D = 末端位置3+预测接触力1 (state_space_sim/parallel.py 潜状态);
+#             速度场系数 prior_A 在本域 (LATENT_CALIB, 引擎写回锚点 PriorDynamicsPredictor(A= 单源)。
+# ⚠️ 维度/类别是引擎结构常数 — 本域标定 = 几何陈述 + 引擎校验 (潜空间节点 PCA 实测
+#    观测有效维 vs latent_dim), 不做源码字面量替换 (改潜维需重构卡尔曼矩阵, 非旋钮)。
+LATENT_CALIB = {
+    "latent_dim": 4,              # 潜空间维度: 引擎潜状态 4D = 末端位置3 + 预测接触力1
+    "state_dim": 39,              # 观测流形维: 39D 视觉结构 (数据流形嵌入的源空间)
+    "manifold_kind": "flat-linear",   # 潜流形类别: 平直欧氏 + 线性速度场 (prior A·x+B·u)
+    "flow_kind": "const-vel",         # 速度场类别: 恒速 (A=1.0); 备选: decay (A<1)
+    "force_ch": 1,                # 力/接触通道进潜状态 (1=进: latent 第4维 = 预测力)
+    "prior_A": 1.0,               # 潜流形速度场系数 (ODE 离散化; state_space_sim.run L123
+                                  # PriorDynamicsPredictor(A=1.0) 引擎真值 — 可写回旋钮)
+    "latent_scale": 1.0,          # 潜坐标尺度归一 (位置 m 与力 N 混维的归一化参考)
 }
 
 # 平衡判定阈值 (|引力势−斥力势| < 此值 = 平衡)
@@ -53,15 +71,22 @@ EQ_BAND = 0.15
 
 
 class CalibrationLayer:
-    """标定层 — 引力/斥力标定参数 + 平衡点计算 (纯数据/计算, 不参与引擎推理)"""
+    """标定层 — 引力(动作)/斥力(状态预测)/潜空间(世界模型流形) 三域标定 + 平衡点计算
 
-    def __init__(self, attraction=None, repulsion=None):
+    地图导航视角 (2026-09-03 老倪): 潜空间 = 承载物理规律的流形地图; 世界模型在
+    潜流形上沿速度场 (prior A·x+B·u) 推演 = 地图导航仪; 引力/斥力 = 该地图上
+    动作与状态预测的标定旋钮。本类纯数据/计算, 不参与引擎推理。"""
+
+    def __init__(self, attraction=None, repulsion=None, latent=None):
         self.attr = dict(ATTRACTION_CALIB)
         if attraction:
             self.attr.update(attraction)
         self.rep = dict(REPULSION_CALIB)
         if repulsion:
             self.rep.update(repulsion)
+        self.lat = dict(LATENT_CALIB)
+        if latent:
+            self.lat.update(latent)
 
     # ── 引力势: 当前速度贴阶段上限的程度 (1.0=满速贴上限, <1=有余量) ──
     def attraction_potential(self, stage, speed):
@@ -90,6 +115,14 @@ class CalibrationLayer:
         return (f"标定层 · {stage}: 引力势 {a:.2f} vs 斥力势 {r:.2f} · "
                 f"平衡偏差 {g:+.2f} → {self.equilibrium_state(g)}")
 
+    # ── 潜空间 (地图几何) 摘要 — 世界模型预测流形的标定陈述 ──
+    def latent_summary(self):
+        return (f"潜空间: dim={self.lat['latent_dim']} (引擎 latent 4D=位置3+预测力1) · "
+                f"观测流形 {self.lat['state_dim']}D · "
+                f"类别 {self.lat['manifold_kind']}/{self.lat['flow_kind']} · "
+                f"力通道={'进' if self.lat['force_ch'] else '不进'}潜状态 · "
+                f"速度场 prior_A={self.lat['prior_A']:.1f} (潜流形上 ODE 离散化)")
+
     # ── 标定表导出 (落盘 json 快照) ──
     def export(self, path=None):
         if path is None:
@@ -97,7 +130,8 @@ class CalibrationLayer:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump({"attraction": self.attr, "repulsion": self.rep,
-                       "eq_band": EQ_BAND}, f, ensure_ascii=False, indent=1)
+                       "latent": self.lat, "eq_band": EQ_BAND},
+                      f, ensure_ascii=False, indent=1)
         return path
 
     # ── 🎯 应用标定 (2026-09-03 v3.4.5 闭环): 写回引擎源码 + 自身镜像 ──
@@ -224,7 +258,13 @@ def apply_calib_to_engine(calib, src_root=None):
                           ("contact_gain", r"(contact_probability\(r_scalar, gain=)"),
                           ("safety_limit", r"(saturate\(u, limit=)"),
                           ("prior_A", r"(PriorDynamicsPredictor\(A=)")):
-        val = attr[param] if param in attr else rep[param]
+        # prior_A 2026-09-03 归潜空间域 (速度场系数); 其余在 attr/rep
+        if param in attr:
+            val = attr[param]
+        elif param in rep:
+            val = rep[param]
+        else:
+            val = layer.lat[param]
         s, n = _sub_n(s, prefix, val)
         if n != 1:
             raise ValueError(f"{param} 锚点命中 {n} 次 (期望 1) — {ENGINE_SIM}")
@@ -249,10 +289,13 @@ def apply_calib_to_file(calib, calib_path):
     layer = calib if isinstance(calib, CalibrationLayer) else None
     attr = layer.attr if layer else calib[0]
     rep = layer.rep if layer else calib[1]
-    # 顶层 scalar (Kp/u_clip/safety_limit + rep 6 项) — 全文件唯一, 直接替换
-    for key, val in list(attr.items()) + list(rep.items()):
+    lat = getattr(layer, "lat", {}) if layer else (calib[2] if len(calib) > 2 else {})
+    # 顶层 scalar (Kp/u_clip/safety_limit + rep 项 + lat 数值项) — 全文件唯一, 直接替换
+    for key, val in list(attr.items()) + list(rep.items()) + list(lat.items()):
         if key in ("stage_v_cap", "stage_v_min"):
             continue
+        if not isinstance(val, (int, float)) or isinstance(val, bool):
+            continue    # 类别字符串 (manifold_kind/flow_kind) 只读, 不镜像写
         src, n = _sub_n(src, rf'("{key}": )', val)
         if n != 1:
             raise ValueError(f"标定表镜像 {key} 锚点命中 {n} 次 (期望 1) — {calib_path}")

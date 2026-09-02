@@ -341,7 +341,10 @@
     "desc": "仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)"
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3",
+    "in4"
    ],
    "outputs": [],
    "actions": []
@@ -661,24 +664,26 @@
   {
    "id": "ssbg6",
    "type": "row_bg",
-   "name": "🧮 标定层 · 引力/斥力平衡 (回路外元层)",
+   "name": "🧮 标定层 · 引力/斥力/潜空间 (地图校准·回路外)",
    "x": -20,
    "y": 800,
-   "w": 900,
+   "w": 1150,
    "h": 130,
    "params": {
     "state_space": true,
-    "desc": "标定层: 引力(快速动作)/斥力(状态预测) 二分超参数 + 平衡点, 参考 Drifting Models 反称场思想; 状态/阶段是明确标定量"
+    "desc": "标定层 (地图校准视角): 引力=动作快路径旋钮, 斥力=状态预测旋钮, 潜空间=世界模型预测流形的几何标定(维度/类别/速度场); 回路外元层不参与推理"
    }
   },
   {
    "id": "sscalib",
    "type": "model",
-   "name": "🧮 标定层 · 引力/斥力",
+   "name": "🧮 标定层 · 引力/斥力/潜空间",
    "icon": "🧮",
    "color": "#58a6ff",
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3"
    ],
    "outputs": [],
    "actions": [],
@@ -689,8 +694,151 @@
    "params": {
     "state_space": true,
     "calib_layer": true,
-    "desc": "标定层 CalibrationLayer: 引力=Kp+阶段速度上限/下限(快速动作), 斥力=K_kalman+残差EMA+接触增益+否决阈值(状态预测), 平衡偏差=|引力势−斥力势|; 双击=标定面板",
+    "desc": "标定层三域: 引力=Kp+阶段速度上限(快速动作), 斥力=K_kalman+EMA+接触增益+否决阈值(状态预测), 潜空间=世界模型流形(维度/类别/prior_A); 双击=标定面板",
     "source": "src/lerobot/calibration/calibration_layer.py"
+   }
+  },
+  {
+   "id": "ssbg7",
+   "type": "row_bg",
+   "name": "🧮 流形导航层 · 测地线地图 (回路外元层)",
+   "x": -20,
+   "y": 1040,
+   "w": 1150,
+   "h": 130,
+   "params": {
+    "state_space": true,
+    "desc": "流形导航层: 流形=承载物理规律的潜空间地图; 接触流形=插拔通道地图(测地线=安全路径, 法向偏离=弯曲风险), 性能流形=光耦合对准代价地图; 节点输出 = 地图上的导航读数 (回路外几何分析, 不参与推理)"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧮",
+   "color": "#58a6ff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 190,
+   "h": 68,
+   "y": 1080,
+   "id": "ssmani_c",
+   "x": 240,
+   "name": "🧮 接触流形 · 插拔通道",
+   "params": {
+    "state_space": true,
+    "mani_layer": true,
+    "desc": "接触流形 ContactManifold: e=T−hand 沿通道轴分解 → 切向 e∥(测地线进度)+法向 e⊥(离流形漂移→弯曲风险), V=½‖e‖², V̇=−e·v; 通道: 垂直(z 对销)/孔轴(x 入孔); 源码 manifold_layer.py",
+    "source": "src/lerobot/manifold/manifold_layer.py"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧮",
+   "color": "#58a6ff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 190,
+   "h": 68,
+   "y": 1080,
+   "id": "ssmani_p",
+   "x": 640,
+   "name": "🧮 性能流形 · 对准代价",
+   "params": {
+    "state_space": true,
+    "mani_layer": true,
+    "desc": "性能流形 PerformanceManifold: δ=销头−孔底 → V_p=½δᵀWδ(横向重权), 估计耦合效率 η=exp(−V_p/σ²) (高斯光束近似), ∇V_p 最优对准方向; 真机接光功率计标定 W/σ; 源码 manifold_layer.py",
+    "source": "src/lerobot/manifold/manifold_layer.py"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧮",
+   "color": "#00d4aa",
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 190,
+   "h": 68,
+   "x": 870,
+   "y": 840,
+   "id": "sslat",
+   "name": "🧮 潜空间 · 世界模型流形标定",
+   "params": {
+    "state_space": true,
+    "calib_layer": true,
+    "desc": "潜空间 LATENT_CALIB: 世界模型预测流形的几何标定 — 维度 latent_dim=4(位置3+预测力1)/类别 flat-linear·const-vel/速度场 prior_A=1.0; PCA 实测 39D 观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 双击=标定表格",
+    "source": "src/lerobot/calibration/calibration_layer.py"
+   }
+  },
+  {
+   "id": "ssbg8",
+   "type": "row_bg",
+   "name": "🧩 验证层 · Feature/Test 质量门 (回路外元层)",
+   "x": -20,
+   "y": 1280,
+   "w": 1150,
+   "h": 130,
+   "params": {
+    "state_space": true,
+    "desc": "验证层: Feature=状态空间系统功能清单汇总, Test=自动化用例套件执行 (PASS/FAIL+数值证据); 真源 src/lerobot/verification/verification_layer.py, 断点可进"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#f0a030",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [],
+   "actions": [],
+   "w": 200,
+   "h": 68,
+   "y": 1320,
+   "id": "ssfeat",
+   "x": 240,
+   "name": "🧩 Feature 功能清单",
+   "params": {
+    "state_space": true,
+    "verif_layer": true,
+    "desc": "Feature 功能清单: 状态空间系统全部 feature 汇总 (A引擎 7/B六层 11/C感知链 4/D规划 3/E元层 5/F画布 4/G手动 10); 源码 verification_layer.py FEATURES",
+    "source": "src/lerobot/verification/verification_layer.py"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#f0a030",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [],
+   "actions": [],
+   "w": 200,
+   "h": 68,
+   "y": 1320,
+   "id": "sstest",
+   "x": 640,
+   "name": "🧪 Test 用例执行",
+   "params": {
+    "state_space": true,
+    "verif_layer": true,
+    "desc": "Test 用例执行: 跑自动化套件 F-A01~F-F04 (引擎/六层/感知/规划/元层/画布映射), PASS/FAIL+数值证据; 单跑 ZMAX_VERIF_ONLY=F-xx; 源码 verification_layer.py t_F_* 断言",
+    "source": "src/lerobot/verification/verification_layer.py"
    }
   }
  ],
@@ -926,6 +1074,94 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "状态标定量"
+  },
+  {
+   "id": "lkc1",
+   "f": "sssched",
+   "t": "sscalib",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "阶段/指令 标定量"
+  },
+  {
+   "id": "lkc2",
+   "f": "ssinnov",
+   "t": "sscalib",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "残差/接触 标定量"
+  },
+  {
+   "id": "lkl1",
+   "f": "ssest",
+   "t": "sslat",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "潜状态"
+  },
+  {
+   "id": "lkl2",
+   "f": "sspred",
+   "t": "sslat",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "先验预测"
+  },
+  {
+   "id": "lkm1",
+   "f": "ss2d3d",
+   "t": "ssmani_c",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "几何 手/销/孔"
+  },
+  {
+   "id": "lkm2",
+   "f": "ss2d3d",
+   "t": "ssmani_p",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "几何 销/孔"
+  },
+  {
+   "id": "lkv1",
+   "f": "ssworld",
+   "t": "ssfeat",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "引擎轨迹 全系统"
+  },
+  {
+   "id": "lkv2",
+   "f": "ssworld",
+   "t": "sstest",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "引擎轨迹 全系统"
+  },
+  {
+   "id": "lko1",
+   "f": "ssmani_c",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "进度/偏离/V"
+  },
+  {
+   "id": "lko2",
+   "f": "ssmani_p",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "δ⊥/η"
+  },
+  {
+   "id": "lko3",
+   "f": "sslat",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in4",
+   "label": "潜坐标/速度场"
   }
  ]
 }

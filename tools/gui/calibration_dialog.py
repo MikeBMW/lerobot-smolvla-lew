@@ -29,13 +29,14 @@ def _root_of(path):
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout,
-                             QDoubleSpinBox, QTableWidget, QTableWidgetItem, QLabel,
+                             QDoubleSpinBox, QSpinBox, QCheckBox, QComboBox,
+                             QTableWidget, QTableWidgetItem, QLabel,
                              QPushButton, QProgressBar, QMessageBox, QHeaderView)
 
 _DARK = ("QDialog { background:#0d1117; color:#e6edf3; } "
          "QLabel { color:#e6edf3; } QGroupBox { color:#00d4aa; border:1px solid #30363d; "
          "border-radius:6px; margin-top:10px; } QGroupBox::title { subcontrol-origin: margin; left:10px; padding:0 4px; } "
-         "QDoubleSpinBox { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:4px; padding:2px 6px; } "
+         "QDoubleSpinBox, QSpinBox, QComboBox { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:4px; padding:2px 6px; } "
          "QTableWidget { background:#161b22; color:#e6edf3; border:1px solid #30363d; gridline-color:#30363d; } "
          "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:4px; } "
          "QPushButton { background:#1f6feb; color:#fff; border:none; border-radius:5px; padding:8px 16px; font-size:13px; } "
@@ -44,20 +45,24 @@ _DARK = ("QDialog { background:#0d1117; color:#e6edf3; } "
 
 
 class CalibrationDialog(QDialog):
-    """🧮 标定层 — 引力/斥力标定面板 + 平衡点指示"""
+    """🧮 标定层 — 引力/斥力/潜空间 三域标定面板 + 平衡点指示
+
+    地图导航视角 (2026-09-03): 潜空间=世界模型预测流形 (地图), 引力/斥力/潜空间
+    是该地图上的三类标定旋钮。"""
 
     def __init__(self, layer, stage="接近", gap=0.0, parent=None, calib_path=None):
         super().__init__(parent)
         self.layer = layer
         self.calib_path = calib_path
-        self.setWindowTitle("🧮 标定层 · 引力/斥力平衡 (Drifting Models)")
+        self.setWindowTitle("🧮 标定层 · 引力/斥力/潜空间 (地图校准)")
         self.setStyleSheet(_DARK)
-        self.setMinimumWidth(760)
+        self.setMinimumWidth(980)
         lay = QVBoxLayout(self)
 
         # ── 顶部说明 ──
         tip = QLabel("引力 = 快速动作 (目标吸引 + 阶段速度标定) · 斥力 = 状态预测 (卡尔曼校正/滤波/接触判定) · "
-                     "平衡偏差 |引力势−斥力势| → 0 = 无漂移 (V≈0)")
+                     "潜空间 = 世界模型预测流形 (维度/类别/速度场 prior_A) · "
+                     "平衡偏差 |引力势−斥力势| → 0 = 无漂移 (V≈0); 潜空间=流形地图, 世界模型=地图导航仪")
         tip.setWordWrap(True)
         tip.setStyleSheet("color:#8b949e; font-size:11px;")
         lay.addWidget(tip)
@@ -104,6 +109,33 @@ class CalibrationDialog(QDialog):
                            styleSheet="color:#00d4aa; font-size:12px; font-weight:bold;")
         fr.addRow("", lbl_stage)
         row.addWidget(g_rep, 2)
+
+        # ── 右: 潜空间标定 (世界模型预测流形 — 地图几何) ──
+        g_lat = QGroupBox("潜空间 Latent — 世界模型预测流形 (地图)")
+        fl = QFormLayout(g_lat)
+        self.sp_ldim = QSpinBox()
+        self.sp_ldim.setRange(1, 16)
+        self.sp_ldim.setValue(int(layer.lat.get("latent_dim", 4)))
+        fl.addRow("潜空间维度 latent_dim", self.sp_ldim)
+        self.cb_force = QCheckBox("力/接触通道进潜状态 (第4维=预测力)")
+        self.cb_force.setChecked(bool(layer.lat.get("force_ch", 1)))
+        fl.addRow("通道", self.cb_force)
+        self.sp_pa = QDoubleSpinBox()
+        self.sp_pa.setRange(0.5, 1.0)
+        self.sp_pa.setSingleStep(0.05)
+        self.sp_pa.setDecimals(2)
+        self.sp_pa.setValue(float(layer.lat.get("prior_A", 1.0)))
+        fl.addRow("速度场系数 prior_A", self.sp_pa)
+        lbl_kind = QLabel(f"类别: {layer.lat.get('manifold_kind', '?')} / "
+                          f"{layer.lat.get('flow_kind', '?')} (结构常数, 只读)")
+        lbl_kind.setWordWrap(True)
+        lbl_kind.setStyleSheet("color:#8b949e; font-size:10px;")
+        fl.addRow("", lbl_kind)
+        lbl_note = QLabel("观测流形 39D → 有效维由「🧮 潜空间」节点 PCA 实测校验")
+        lbl_note.setWordWrap(True)
+        lbl_note.setStyleSheet("color:#8b949e; font-size:10px;")
+        fl.addRow("", lbl_note)
+        row.addWidget(g_lat, 2)
 
         lay.addLayout(row)
 
@@ -166,6 +198,10 @@ class CalibrationDialog(QDialog):
             self.layer.rep["contact_gain"] = self.sp_cg.value()
             self.layer.rep["veto_th"] = self.sp_veto.value()
             self.layer.rep["k_fb"] = self.sp_kfb.value()
+            # 潜空间 (地图几何标定)
+            self.layer.lat["latent_dim"] = int(self.sp_ldim.value())
+            self.layer.lat["force_ch"] = 1 if self.cb_force.isChecked() else 0
+            self.layer.lat["prior_A"] = float(self.sp_pa.value())
             # 阶段速度上限表 (双击单元格可编辑 → 一起应用)
             for i in range(self.tbl.rowCount()):
                 st = self.tbl.item(i, 0).text()
@@ -248,6 +284,8 @@ class CalibrationTableDialog(QDialog):
         it_desc.setFlags(it_desc.flags() & ~Qt.ItemIsEditable)
         if group == "引力":
             it_key.setBackground(QColor("#1f6feb"))
+        elif group == "潜空间":
+            it_key.setBackground(QColor("#00a36c"))
         else:
             it_key.setBackground(QColor("#a371f7"))
         self.tbl.setItem(r, 0, it_key)
@@ -257,7 +295,7 @@ class CalibrationTableDialog(QDialog):
         it_val.setData(Qt.UserRole, (group, key))
 
     def _populate(self):
-        a, r = self.layer.attr, self.layer.rep
+        a, r, l = self.layer.attr, self.layer.rep, self.layer.lat
         self._add_row("Kp", a["Kp"], "比例引导增益 (前馈加速器 Kp·(target−pos))", "引力")
         self._add_row("u_clip", a["u_clip"], "前馈限幅", "引力")
         self._add_row("safety_limit", a["safety_limit"], "安全执行边界限幅", "引力")
@@ -270,7 +308,12 @@ class CalibrationTableDialog(QDialog):
         self._add_row("contact_gain", r["contact_gain"], "接触概率增益", "斥力")
         self._add_row("veto_th", r["veto_th"], "否决阈值 (残差超此值否决)", "斥力")
         self._add_row("k_fb", r["k_fb"], "反馈增益 (前馈+反馈相加)", "斥力")
-        self._add_row("prior_A", r["prior_A"], "先验动力学状态转移", "斥力")
+        # 潜空间 (2026-09-03 地图几何标定: 维度/通道/速度场; 类别 flat-linear·const-vel 只读见面板)
+        self._add_row("latent_dim", l["latent_dim"], "潜空间维度 (引擎 latent 4D=位置3+预测力1; 改潜维=重构卡尔曼, 谨慎)", "潜空间")
+        self._add_row("state_dim", l["state_dim"], "观测流形维 (39D 视觉结构, 数据流形源空间)", "潜空间")
+        self._add_row("force_ch", l["force_ch"], "力/接触通道进潜状态 (1=进)", "潜空间")
+        self._add_row("prior_A", l["prior_A"], "潜流形速度场系数 (ODE 离散化; 写回 state_space_sim PriorDynamicsPredictor A=)", "潜空间")
+        self._add_row("latent_scale", l["latent_scale"], "潜坐标尺度归一 (位置 m 与力 N 混维参考)", "潜空间")
 
     def _save(self):
         """校验 → 更新 layer → 写回引擎源码三文件 + calibration_layer.py 镜像 → 导出 json"""
@@ -286,6 +329,8 @@ class CalibrationTableDialog(QDialog):
                         self.layer.attr["stage_v_min"][key.replace("最小速度·", "")] = val
                     else:
                         self.layer.attr[key] = val
+                elif grp == "潜空间":
+                    self.layer.lat[key] = int(val) if key in ("latent_dim", "state_dim", "force_ch") else val
                 else:
                     self.layer.rep[key] = val
             # 🎯 引擎写回 (真生效) + 镜像 + 导出 — 锚点未命中会抛 ValueError (不静默)
