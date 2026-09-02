@@ -3312,6 +3312,10 @@ class SimCanvas(QGraphicsView):
             a_rot = menu.addAction("转正 180 度 (文字反)")
             a_next = menu.addAction("下一个视频")
             a_prev = menu.addAction("上一个视频")
+        # 🧮 标定层节点右键 (2026-09-02 老倪: 打开可编辑标定表格, 交互编辑引力/斥力参数)
+        a_calib = None
+        if item.node.get("params", {}).get("calib_layer"):
+            a_calib = menu.addAction("标定表格 (引力/斥力参数编辑)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -3338,6 +3342,8 @@ class SimCanvas(QGraphicsView):
             self.module._mlp_next()
         elif a_prev is not None and chosen == a_prev:
             self.module._mlp_prev()
+        elif a_calib is not None and chosen == a_calib:
+            self.module.on_open_calib_table(item.node)
 
     def _show_link_menu(self, item, view_pos):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
@@ -9344,6 +9350,20 @@ class SimulinkModule(QWidget):
                 self._log(f"⚠️ 标定面板打开失败: {_e}")
         dlg = NodeLogicDialog(node.get("name", ""), node.get("type", ""), self)
         self._show_nonmodal(dlg)
+
+    def on_open_calib_table(self, node):
+        """🧮 标定表格 (2026-09-02 老倪): 右键标定层节点 → 可编辑表格, 交互编辑引力/斥力参数"""
+        try:
+            from calibration_dialog import CalibrationTableDialog
+            import importlib.util as _ilu
+            _cp = os.path.join(self._repo_root(), "src", "lerobot", "calibration", "calibration_layer.py")
+            _spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", _cp)
+            _m = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_m)
+            dlg = CalibrationTableDialog(_m.CalibrationLayer(), _cp, parent=self)
+            self._show_nonmodal(dlg)
+        except Exception as _e:
+            self._log(f"⚠️ 标定表格打开失败: {_e}")
 
     def on_node_params(self, node):
         """右键 → 节点参数框"""

@@ -150,5 +150,135 @@ class CalibrationDialog(QDialog):
         self.layer.rep["veto_th"] = self.sp_veto.value()
         self.layer.rep["k_fb"] = self.sp_kfb.value()
         path = self.layer.export()
-        QMessageBox.information(self, "🧮 标定层", f"标定建议已导出: {path}\n\n"
-                                 "(回路外元层 — 引擎仍用源码常量, 需应用请改 calibration_layer.py 后重启)")
+        mb = QMessageBox(self)
+        mb.setStyleSheet(_DARK)
+        mb.setWindowTitle("🧮 标定层")
+        mb.setText(f"标定建议已导出: {path}\n\n"
+                   "(回路外元层 — 引擎仍用源码常量, 需应用请改 calibration_layer.py 后重启)")
+        mb.exec_()
+
+
+# ────────────────────────────────────────────────────────────
+# 📋 标定表格 (2026-09-02 老倪: 标定层节点右键 → 可编辑表格, 交互编辑这些参数)
+# ────────────────────────────────────────────────────────────
+class CalibrationTableDialog(QDialog):
+    """🧮 标定表格 — 全部标定参数一表编辑 (引力/斥力分组, 双击单元格改值)
+
+    保存: 写回 src/lerobot/calibration/calibration_layer.py 常量 + 导出 json。
+    引擎应用: 标定层是这些参数的标定来源, 保存后提示同步 (引擎常量在
+    cognition.py STAGE_V_CAP — 如需立刻生效可同步修改, 不改变架构只改标定值)。
+    """
+
+    def __init__(self, layer, calib_path, parent=None):
+        super().__init__(parent)
+        self.layer = layer
+        self.calib_path = calib_path
+        self.setWindowTitle("🧮 标定表格 · 引力/斥力参数编辑")
+        self.setStyleSheet(_DARK)
+        self.resize(680, 560)
+        lay = QVBoxLayout(self)
+
+        tip = QLabel("双击单元格编辑数值 → 💾 保存 (写回 calibration_layer.py + 导出 reports/calibration_*.json)")
+        tip.setStyleSheet("color:#8b949e; font-size:11px;")
+        lay.addWidget(tip)
+
+        self.tbl = QTableWidget(0, 3)
+        self.tbl.setHorizontalHeaderLabels(["参数", "值", "说明"])
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tbl.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tbl.setEditTriggers(QTableWidget.DoubleClicked | QTableWidget.EditKeyPressed)
+        lay.addWidget(self.tbl)
+
+        btns = QHBoxLayout()
+        self.btn_save = QPushButton("💾 保存 (写回标定层源码 + 导出)")
+        self.btn_save.clicked.connect(self._save)
+        self.btn_close = QPushButton("关闭")
+        self.btn_close.clicked.connect(self.accept)
+        btns.addWidget(self.btn_save)
+        btns.addStretch(1)
+        btns.addWidget(self.btn_close)
+        lay.addLayout(btns)
+
+        self._populate()
+
+    def _add_row(self, key, value, desc, group):
+        r = self.tbl.rowCount()
+        self.tbl.insertRow(r)
+        it_key = QTableWidgetItem(f"{group} · {key}")
+        it_key.setFlags(it_key.flags() & ~Qt.ItemIsEditable)
+        it_val = QTableWidgetItem(f"{value:.3f}" if isinstance(value, float) else str(value))
+        it_val.setTextAlignment(Qt.AlignCenter)
+        it_desc = QTableWidgetItem(desc)
+        it_desc.setFlags(it_desc.flags() & ~Qt.ItemIsEditable)
+        if group == "引力":
+            it_key.setBackground(QColor("#1f6feb"))
+        else:
+            it_key.setBackground(QColor("#a371f7"))
+        self.tbl.setItem(r, 0, it_key)
+        self.tbl.setItem(r, 1, it_val)
+        self.tbl.setItem(r, 2, it_desc)
+        # 存 key 供保存回写
+        it_val.setData(Qt.UserRole, (group, key))
+
+    def _populate(self):
+        a, r = self.layer.attr, self.layer.rep
+        self._add_row("Kp", a["Kp"], "比例引导增益 (前馈加速器 Kp·(target−pos))", "引力")
+        self._add_row("u_clip", a["u_clip"], "前馈限幅", "引力")
+        self._add_row("safety_limit", a["safety_limit"], "安全执行边界限幅", "引力")
+        for st, cap in a["stage_v_cap"].items():
+            self._add_row(f"速度上限·{st}", cap, f"阶段「{st}」速度标定 (STAGE_V_CAP)", "引力")
+        for st, vmin in a.get("stage_v_min", {}).items():
+            self._add_row(f"最小速度·{st}", vmin, f"阶段「{st}」最小趋近速度 (STAGE_V_MIN)", "引力")
+        self._add_row("K_kalman", r["K_kalman"], "状态校正增益 (卡尔曼)", "斥力")
+        self._add_row("res_ema", r["res_ema"], "残差 EMA 滤波系数", "斥力")
+        self._add_row("contact_gain", r["contact_gain"], "接触概率增益", "斥力")
+        self._add_row("veto_th", r["veto_th"], "否决阈值 (残差超此值否决)", "斥力")
+        self._add_row("k_fb", r["k_fb"], "反馈增益 (前馈+反馈相加)", "斥力")
+        self._add_row("prior_A", r["prior_A"], "先验动力学状态转移", "斥力")
+
+    def _save(self):
+        """校验 → 更新 layer → 写回 calibration_layer.py 源码 → 导出 json"""
+        import re
+        try:
+            for i in range(self.tbl.rowCount()):
+                it = self.tbl.item(i, 1)
+                grp, key = it.data(Qt.UserRole)
+                val = float(it.text().strip())
+                if grp == "引力":
+                    if key.startswith("速度上限·"):
+                        self.layer.attr["stage_v_cap"][key.replace("速度上限·", "")] = val
+                    elif key.startswith("最小速度·"):
+                        self.layer.attr["stage_v_min"][key.replace("最小速度·", "")] = val
+                    else:
+                        self.layer.attr[key] = val
+                else:
+                    self.layer.rep[key] = val
+            # 写回 calibration_layer.py (标定层是这些参数的标定来源)
+            src = open(self.calib_path, encoding="utf-8").read()
+            for key, val in self.layer.attr["stage_v_cap"].items():
+                src = re.sub(rf'("{key}": )[\d.]+', rf'\g<1>{val:.2f}', src)
+            for key, val in self.layer.attr["stage_v_min"].items():
+                src = re.sub(rf'("{key}": )[\d.]+', rf'\g<1>{val:.2f}', src)
+            src = re.sub(r'("Kp": )[\d.]+', rf'\g<1>{self.layer.attr["Kp"]:.2f}', src)
+            src = re.sub(r'("u_clip": )[\d.]+', rf'\g<1>{self.layer.attr["u_clip"]:.2f}', src)
+            src = re.sub(r'("safety_limit": )[\d.]+', rf'\g<1>{self.layer.attr["safety_limit"]:.2f}', src)
+            for key in ("K_kalman", "res_ema", "contact_gain", "veto_th", "k_fb", "prior_A"):
+                src = re.sub(rf'("{key}": )[\d.]+', rf'\g<1>{self.layer.rep[key]:.2f}', src)
+            open(self.calib_path, "w", encoding="utf-8").write(src)
+            path = self.layer.export()
+            mb = QMessageBox(self)
+            mb.setStyleSheet(_DARK)
+            mb.setWindowTitle("🧮 标定表格")
+            mb.setText(f"✅ 已保存 {self.tbl.rowCount()} 个标定参数\n\n"
+                       f"写回: {self.calib_path}\n导出: {path}\n\n"
+                       f"引擎当前仍用 cognition.py 的 STAGE_V_CAP 常量 — 如需让新标定值在"
+                       f"仿真中生效, 同步修改 cognition.py 对应值 (不改变架构, 只改标定值)。")
+            mb.exec_()
+        except Exception as e:
+            mb = QMessageBox(self)
+            mb.setStyleSheet(_DARK)
+            mb.setWindowTitle("🧮 标定表格")
+            mb.setText(f"保存失败: {e}\n(检查数值格式, 必须为数字)")
+            mb.exec_()
