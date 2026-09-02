@@ -10326,6 +10326,18 @@ class SimulinkModule(QWidget):
             self.btn_run.setEnabled(True)
             return
         self._ss_tr = tr
+        # 🗺 v3.4.6 DataWorld: 引擎轨迹 → 逐帧全模块信号总成 (io_trace 已逐帧全量)。
+        #   画布播放 / 3D 视图 / 数据总线共用一个 dw + 单一游标 → 点击▶运行后
+        #   3D 渲染数据与画布实际信号严格同帧 (Dreamview 数据世界语义)。
+        try:
+            from data_world import DataWorld
+            self._dw = DataWorld(tr)
+        except Exception as _e:
+            self._dw = None
+            self._log(f"⚠️ DataWorld 构建失败 (3D 同步降级为轨迹直读): {_e}")
+        # 播放总 tick ≈ 6-8s (80ms/tick); 节点动画至少轮完一轮
+        self._ss_ticks = max(60, min(120, int(len(tr["t"]) * 0.006)))
+        self._ss_round = 0
         self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
         # 🐛 2026-09-01 老倪: 数据源节点优先执行 — 数据流源头; 且断点调试时点运行第 1 帧
         #   即命中数据源断点 (原排 17 位, 前面传感器融合/YOLO 真实采样卡 20-40s, 断点"进不去")
@@ -10364,25 +10376,28 @@ class SimulinkModule(QWidget):
         self._log("▶ 仿真开始 · 物理世界: 末端 (0.10, -0.06, 0.12) → 孔位 (0.25, 0, 0.05) · 光模块插拔")
 
     def _ss_tick(self):
-        """播放一帧: 节点闪 running(青) → success(绿); 数据总线逐帧追加接口数据流 (2026-08-22)"""
+        """播放一帧 (v3.4.6 DataWorld 逐帧同步): 引擎步线性推进, 每 tick 推 N 步 —
+        画布节点动画 / execute_node_logic / 3D set_frame / 数据总线 feed 全部消费
+        **同一帧 idx (同一 DataWorld 游标)** → 3D 渲染数据与画布实际信号严格同帧。
+        节点动画: 一帧一个节点轮转 (断点可进); 引擎信号: 每 tick 连续推进 stride 步"""
         try:
             tr = self._ss_tr
+            n_steps = max(1, len(tr["t"]))
             io_trace = tr.get("io_trace", [])
-            n_rounds = len(io_trace) if io_trace else min(len(tr["t"]), 20)
-            # 🐛 2026-09-01 老倪: 节点逻辑必须整轮执行 — 引擎快照数(14) < 节点数(21) 时,
-            #   后排节点(📦数据源 17位/LLM 19+)永不执行 → node_metaworld_data 断点进不去
-            #   (GUI 日志: 仿真从📡传感器融合播到📐2D→3D 就完成, 无「📦 数据源:」日志)
-            #   播放轮数 = max(快照数, 节点数), 动画 idx 有 min/边界保护不越界
-            n_rounds = max(n_rounds, len(self._ss_order))
-            # 画布节点动画索引 (均匀抽样引擎时间序列)
-            idx = int(self._ss_round / max(1, n_rounds - 1) * (len(tr["t"]) - 1)) if n_rounds > 1 else 0
+            dw = getattr(self, "_dw", None)
+            # 🎯 v3.4.6: 播放按引擎步线性推进 (总时长 ≈ _ss_ticks × 80ms ≈ 6-8s)。
+            #   旧逻辑按 io 快照数(25步抽1)均匀抽样 → 3D 每帧跳 ~25 引擎步, 与画布信号"不同步"。
+            stride = max(1, (n_steps - 1) // max(1, self._ss_ticks)) if n_steps > 1 else 1
+            idx = min(self._ss_round * stride, n_steps - 1)
+            if dw is not None:
+                dw.set_cursor(idx)      # 单一游标 — 3D/总线/数值全部从它读
             # 上一帧 → success
             for n in self._ss_order:
                 n["status"] = "success"
                 it = self._items.get(n["id"])
                 if it:
                     it.update()
-            # 当前帧 → running
+            # 当前帧 → running (节点动画轮转 = 模块链路演示)
             for n in self._ss_order:
                 n["status"] = "running"
                 it = self._items.get(n["id"])
@@ -10391,20 +10406,21 @@ class SimulinkModule(QWidget):
             self.canvas._scene.update()
             # 🐛 2026-08-31 老倪: 播放时节点逻辑真实执行 (断点可进) — 每帧执行一个节点,
             #   与 ⏭单步/右键运行节点同源 (引擎轨迹展示数值, execute_node_logic 执行行为)
+            _node = self._ss_order[min(self._ss_round, len(self._ss_order) - 1)]
             try:
-                _idx_n = min(self._ss_round, len(self._ss_order) - 1)
                 from node_logic import execute_node_logic
-                execute_node_logic(self, self._ss_order[_idx_n], label="▶运行")
+                execute_node_logic(self, _node, label="▶运行")
             except Exception:
                 pass
-            # 打印该快照真实数值
+            # 打印该步真实数值 (DataWorld 帧, 逐帧连续)
             stage = tr["stage"][idx].replace("阶段 ", "")
             self._log(f"  ⏱ t={tr['t'][idx]:5.2f}s · 距离孔位 {tr['dist'][idx]:.4f}m · "
                       f"前馈|u_ff|={tr['u_ff'][idx]:.3f} · 残差 {tr['residual'][idx]:.4f} · "
-                      f"接触概率 {tr['contact_p'][idx]:.2f} · 指令|u|={tr['u_sat'][idx]:.3f} · {stage}")
-            # 🎯 2026-09-02 老倪「3D 视图显示状态与程序执行状态保持一致」:
-            #   播放推进到引擎第 idx 步 → 3D 视图同步显示第 idx 步 (机械臂/轨迹/处理层向量/数值面板)
-            #   3D 窗口若还挂在旧轨迹 (episode) 上 → 先切换到程序轨迹再驱动
+                      f"接触概率 {tr['contact_p'][idx]:.2f} · 指令|u|={tr['u_sat'][idx]:.3f} · {stage}"
+                      + (f" · ▶{_node['name']}" if self._ss_round < len(self._ss_order) else ""))
+            # 🎯 2026-09-02 老倪「3D 视图显示状态与程序执行状态保持一致」+
+            #   v3.4.6「与画布实际信号同步」: 推引擎步 idx (渲染) + 画布正在执行的节点
+            #   (active module, 3D 面板显示该节点本帧 out — Dreamview 模块信号语义)
             try:
                 import sip as _sip
                 for _w in getattr(self, "_ss_3d_windows", []):
@@ -10412,33 +10428,50 @@ class SimulinkModule(QWidget):
                         continue
                     if getattr(_w, "tr", None) is not tr:
                         _w.set_trajectory(tr)
+                    if hasattr(_w, "set_active_node"):
+                        _w.set_active_node(_node.get("name", ""), dw)
                     _w.set_frame(idx)
             except Exception:
                 pass
-            # 🔌 数据总线: 逐帧追加当前快照的接口数据流 (2026-08-22 老倪: 动态生成)
-            if io_trace and self._ss_round < len(io_trace):
+            # 🔌 数据总线: 逐帧追加当前步全模块接口数据 (DataWorld 帧, 不再 25 步抽稀)
+            if io_trace and idx < len(io_trace):
                 try:
                     _mt = getattr(self, "model_tree", None)
                     if _mt is not None and getattr(_mt, "bus", None) is not None \
                             and _mt.cmb_view.currentIndex() == 9:
-                        _t_snap, _io = io_trace[self._ss_round]
+                        _t_snap, _io = io_trace[idx]
                         _mt.bus.feed(_t_snap, _io)
                 except Exception:
                     pass
             self._ss_round += 1
-            if self._ss_round >= n_rounds:
+            if idx >= n_steps - 1 or self._ss_round >= max(self._ss_ticks, len(self._ss_order)):
                 self._ss_finish()
         except Exception:
             self._ss_finish()
 
     def _ss_finish(self):
-        """仿真完成: 全绿 + 汇总"""
+        """仿真完成: 全绿 + 汇总 + 3D/DataWorld 推到引擎末帧 (终态对齐)"""
         try:
             if hasattr(self, "_ss_timer") and self._ss_timer is not None:
                 self._ss_timer.stop()
         except Exception:
             pass
         tr = getattr(self, "_ss_tr", {}) or {}
+        # 🎯 v3.4.6: 播放 stride 可能差几引擎步 → 结束后 3D/游标精确落在末帧 (终态一致)
+        try:
+            _n1 = max(0, len(tr.get("t", [])) - 1)
+            _dw = getattr(self, "_dw", None)
+            if _dw is not None:
+                _dw.set_cursor(_n1)
+            import sip as _sip
+            for _w in getattr(self, "_ss_3d_windows", []):
+                if _w is None or _sip.isdeleted(_w):
+                    continue
+                if getattr(_w, "tr", None) is not tr and tr.get("x"):
+                    _w.set_trajectory(tr)
+                _w.set_frame(_n1)
+        except Exception:
+            pass
         for n in self.nodes:
             n["status"] = "success" if n.get("type") != "row_bg" else n.get("status", "idle")
             it = self._items.get(n["id"])

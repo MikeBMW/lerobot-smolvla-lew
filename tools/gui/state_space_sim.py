@@ -402,9 +402,11 @@ class StateSpaceSim:
             last_io = self._io_snapshot(force, obs, u_ff, act4, latent_pred, prior, z_k,
                                         corrected, residual, contact_p, r_scalar,
                                         u_fb, u, stage, u_sat, u_vec, force_norm, step)
-            # 🔌 数据总线 (CANoe Trace 风格, 2026-08-22 老倪): 抽样记录完整接口时序
-            if io_every is not None and (step % io_every == 0 or done):
-                tr["io_trace"].append((round(t, 3), last_io))
+            # 🔌 数据世界 (DataWorld / Dreamview channel 语义, 2026-09-03 v3.4.6):
+            #   每步全量 append — tr["io_trace"] = 逐帧全模块 I/O 历史 (画布节点名=模块 key),
+            #   画布播放/3D视图/数据总线消费同一帧序列 → 严格同帧同步。
+            #   (io_every 参数保留兼容, 已不再抽稀 — 帧全量才支持逐引擎步同步渲染)
+            tr["io_trace"].append((round(t, 3), last_io))
             t += self.dt
             if done:
                 break

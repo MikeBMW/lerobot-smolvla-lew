@@ -2548,12 +2548,21 @@ class DataBusTrace(QWidget):
         time_order = self.cmb_mode.currentIndex() == 0
         rows = []
         if time_order:
-            for t, io in tr["io_trace"]:
+            # 🐛 v3.4.6: io_trace 已逐帧全量 (引擎每步一帧) — 静态视图全量铺 500×60 行会卡,
+            #   抽稀到 ≤150 帧 (运行中动态 feed 仍是逐帧滚动, 不受影响)
+            _trc = tr["io_trace"]
+            _n = len(_trc)
+            _stp = max(1, _n // 150)
+            _sel = _trc[::_stp]
+            if _sel[-1] is not _trc[-1]:
+                _sel = _sel + [_trc[-1]]
+            for t, io in _sel:
                 for mod, ports in io.items():
                     for dirn in ("in", "out"):
                         for name, val in ports.get(dirn, []):
                             rows.append((t, mod, name, dirn, val))
-            note = f"{len(rows)} 条接口 · {len(tr['io_trace'])} 个快照"
+            note = (f"{len(rows)} 条接口 · {_n} 帧"
+                    + (f" (抽稀显示 {len(_sel)} 帧)" if len(_sel) < _n else ""))
         else:
             t, io = tr["io_trace"][-1]
             for mod, ports in io.items():

@@ -531,6 +531,17 @@ class DreamView3D(QWidget):
         self.lbl_t.setStyleSheet("color:#8b949e; font-size:11px;")
         pl.addWidget(self.lbl_t)
 
+        # 🗺 画布信号行 (v3.4.6 老倪: 3D 渲染数据与画布实际信号同步 —
+        #   画布 ▶运行 时正在执行的节点(模块) + 该模块本帧 out, 逐帧推送)
+        self.lbl_mod = QLabel("画布信号: —")
+        self.lbl_mod.setStyleSheet(
+            "color:#00d4aa; font-size:11px; font-family:Consolas,monospace; "
+            "background:#0d1117; border:1px solid #1f6feb; border-radius:4px; padding:4px;")
+        self.lbl_mod.setWordWrap(True)
+        self.lbl_mod.setMinimumHeight(46)
+        pl.addWidget(self.lbl_mod)
+        self._active_node = ""
+
         # 📟 实时数值面板 (2026-08-25 老倪: "不知道啥意思" → 画面旁边直接给数字)
         self.lbl_num = QLabel("—")
         self.lbl_num.setStyleSheet(
@@ -1547,6 +1558,25 @@ class DreamView3D(QWidget):
 
     # 🎯 2026-09-02 老倪「3D 视图显示状态要与程序执行状态保持一致」:
     #   GUI 播放/调试推进到引擎第 i 步时调用 → 3D 显示第 i 步 (暂停自播, 控制权交给外部)
+    def set_active_node(self, node_name, dw=None):
+        """🎯 v3.4.6 (老倪: 3D 与画布实际信号同步): 画布当前执行的节点(模块)名 +
+        该模块本帧 out 摘要 → 面板「画布信号」行。数据源 = 同一 DataWorld → 同帧。"""
+        self._active_node = node_name or ""
+        if not self._active_node:
+            self.lbl_mod.setText("画布信号: —")
+            return
+        try:
+            _sum = ""
+            if dw is not None:
+                _mo = dw.module_out_values(node_name)
+                if _mo:
+                    from data_world import _fmt
+                    _sum = "  ".join(f"{k}={_fmt(v)}" for k, v in list(_mo.items())[:5])
+            self.lbl_mod.setText(f"▶ 画布信号 · {self._active_node}" +
+                                 (f"\n  {_sum}" if _sum else ""))
+        except Exception:
+            self.lbl_mod.setText(f"▶ 画布信号 · {self._active_node}")
+
     def set_frame(self, i, follow=True):
         if follow:
             self._pause()
