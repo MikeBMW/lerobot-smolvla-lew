@@ -395,7 +395,10 @@ class LabelOverlay(QWidget):
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
-    def __init__(self, tr=None, parent=None, on_top=True):
+    def __init__(self, tr=None, parent=None, on_top=True, module=None):
+        """module: 画布 SimulinkModule 引用 — 3D 上的 ▶运行/⏹停止 与画布按钮同一入口
+        (v3.4.7 老倪: 3D 世界操作按钮, 与 simulink 画布运行按钮统一功能)"""
+        self.module = module
         super().__init__(parent)
         self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
         self.resize(1180, 820)
@@ -433,6 +436,52 @@ class DreamView3D(QWidget):
         pl = QVBoxLayout(panel)
         pl.setContentsMargins(12, 12, 12, 12)
         pl.setSpacing(6)
+        # ── 🕹 3D 世界操作 (v3.4.7 老倪: 3D 上也要能运行/停止 — 与画布同一引擎) ──
+        if module is not None:
+            t_w = QLabel("🕹 3D 世界操作")
+            t_w.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
+            pl.addWidget(t_w)
+            hw = QHBoxLayout()
+            hw.setSpacing(4)
+            self.btn_run_w = QPushButton("▶ 运行")
+            self.btn_run_w.setToolTip("与 simulink 画布「▶ 运行」同一功能: 跑状态空间引擎 + 逐帧同步到本 3D 视图")
+            self.btn_run_w.setStyleSheet(
+                "QPushButton{background:#00d4aa; color:#0d1117; font-weight:700; border:none;"
+                "border-radius:4px; padding:7px 0; font-size:13px;}"
+                "QPushButton:hover{background:#33e0b8;} QPushButton:disabled{background:#2a3a36; color:#6b7a76;}")
+            self.btn_run_w.clicked.connect(self._on_run_world)
+            self.btn_stop_w = QPushButton("⏹ 停止")
+            self.btn_stop_w.setToolTip("停止仿真播放 (画布 ⏹ 停止同一功能)")
+            self.btn_stop_w.setStyleSheet(
+                "QPushButton{background:#ff4444; color:#fff; border:none; border-radius:4px;"
+                "padding:7px 0; font-size:13px;}"
+                "QPushButton:hover{background:#ff6666;} QPushButton:disabled{background:#3a2a2a; color:#7a6b6b;}")
+            self.btn_stop_w.clicked.connect(self._on_stop_world)
+            self.btn_stop_w.setEnabled(False)
+            hw.addWidget(self.btn_run_w, 1)
+            hw.addWidget(self.btn_stop_w, 1)
+            pl.addLayout(hw)
+            self.btn_top_w = QPushButton("📌 窗口置顶")
+            self.btn_top_w.setCheckable(True)
+            self.btn_top_w.setChecked(bool(on_top))
+            self.btn_top_w.setToolTip("置顶 = 画布运行/其他窗口不会盖住本 3D 视图")
+            self.btn_top_w.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:4px 0; font-size:11px;}"
+                "QPushButton:checked{background:#1f6feb; color:#fff; border-color:#1f6feb;}")
+            self.btn_top_w.toggled.connect(self._on_top_world)
+            pl.addWidget(self.btn_top_w)
+            self.lbl_state_w = QLabel("⏸ 引擎就绪")
+            self.lbl_state_w.setStyleSheet(
+                "color:#8b949e; font-size:11px; background:#0d1117; border:1px solid #30363d;"
+                "border-radius:4px; padding:3px 6px;")
+            self.lbl_state_w.setWordWrap(True)
+            pl.addWidget(self.lbl_state_w)
+            pl.addSpacing(8)
+            # 引擎状态轮询 (画布播放/停止 → 本窗口按钮同步)
+            self._state_timer = QTimer(self)
+            self._state_timer.timeout.connect(self._sync_engine)
+            self._state_timer.start(300)
         title = QLabel("🗂 图层 (Layers)")
         title.setStyleSheet("color:#58a6ff; font-size:15px; font-weight:700;")
         pl.addWidget(title)
@@ -1558,6 +1607,48 @@ class DreamView3D(QWidget):
 
     # 🎯 2026-09-02 老倪「3D 视图显示状态要与程序执行状态保持一致」:
     #   GUI 播放/调试推进到引擎第 i 步时调用 → 3D 显示第 i 步 (暂停自播, 控制权交给外部)
+    # ── 🕹 3D 世界操作 (v3.4.7) ──
+    def _on_run_world(self):
+        """▶ 运行 = 画布 start_sim 同一入口 (状态空间画布 → 引擎 → 逐帧同步到 3D)"""
+        try:
+            if self.module is not None:
+                self.module.start_sim()
+        except Exception as _e:
+            print(f"⚠️ 3D 运行: {_e}")
+
+    def _on_stop_world(self):
+        try:
+            if self.module is not None:
+                self.module.stop_sim()
+        except Exception as _e:
+            print(f"⚠️ 3D 停止: {_e}")
+
+    def _on_top_world(self, checked):
+        """📌 置顶开关 — 画布运行/弹窗不会盖住 3D (flag 改动需重新 show 生效)"""
+        try:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(checked))
+            self.show()
+        except Exception:
+            pass
+
+    def _sync_engine(self):
+        """引擎状态轮询: 画布播放中 → 本窗口 ▶运行 禁用 / ⏹停止 启用 (同一引擎同一状态)"""
+        try:
+            m = self.module
+            if m is None:
+                return
+            _busy = (bool(getattr(m, "_ss_timer", None) and m._ss_timer.isActive())
+                     or bool(getattr(m, "_sim_running", False)))
+            _brun = getattr(getattr(m, "btn_run", None), "text", lambda: "")()
+            if not _busy and ("仿真中" in _brun or "运行中" in _brun):
+                _busy = True
+            self.btn_run_w.setEnabled(not _busy)
+            self.btn_stop_w.setEnabled(_busy)
+            self.lbl_state_w.setText("⏳ 引擎运行中 — 本视图逐帧同步画布信号…" if _busy
+                                     else "⏸ 引擎就绪 · ▶ 运行 = 画布同引擎")
+        except Exception:
+            pass
+
     def set_active_node(self, node_name, dw=None):
         """🎯 v3.4.6 (老倪: 3D 与画布实际信号同步): 画布当前执行的节点(模块)名 +
         该模块本帧 out 摘要 → 面板「画布信号」行。数据源 = 同一 DataWorld → 同帧。"""

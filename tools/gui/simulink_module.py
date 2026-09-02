@@ -10254,6 +10254,9 @@ class SimulinkModule(QWidget):
         for w in getattr(self, "_ss_3d_windows", []):
             if w is not None:
                 try:
+                    # 🕹 v3.4.7: 窗口绑定画布 module (3D 上的 ▶运行/⏹停止 = 画布同引擎)
+                    if getattr(w, "module", None) is not self:
+                        w.module = self
                     # 数据源变了 → 重建场景 (同一窗口同一上下文, shader 有效)
                     if tr is not None and getattr(w, "tr", None) is not tr:
                         w.set_trajectory(tr)
@@ -10267,7 +10270,7 @@ class SimulinkModule(QWidget):
                 w.raise_()
                 w.activateWindow()
                 return
-        dv = DreamView3D(tr, on_top=on_top)
+        dv = DreamView3D(tr, on_top=on_top, module=self)
         if not hasattr(self, "_ss_3d_windows"):
             self._ss_3d_windows = []
         # 只清理真正被销毁的对象 (isVisible 过滤会误删已关闭但可复用的窗口)
@@ -10288,6 +10291,16 @@ class SimulinkModule(QWidget):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
         引擎 500 步纯 numpy <0.1s 快跑 → 收集时间序列 → QTimer 动画逐节点执行
         + 每轮打印真实数值 (距离/残差/接触概率/阶段), 完成自动汇总"""
+        # 🕹 v3.4.7 老倪: 点画布 ▶运行后 3D 视图被画布覆盖 — 运行开始把可见 3D 窗口拉前,
+        #   3D 逐帧同步画布信号时用户看得见 (窗口仍可被点回, 不置顶不抢画布焦点)
+        try:
+            import sip as _sip
+            for _w in getattr(self, "_ss_3d_windows", []):
+                if _w is not None and not _sip.isdeleted(_w) and _w.isVisible():
+                    _w.raise_()
+                    _w.activateWindow()
+        except Exception:
+            pass
         try:
             from state_space_sim import StateSpaceSim
         except Exception as e:
