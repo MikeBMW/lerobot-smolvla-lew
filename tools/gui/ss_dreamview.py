@@ -590,6 +590,8 @@ class DreamView3D(QWidget):
         self.lbl_mod.setMinimumHeight(46)
         pl.addWidget(self.lbl_mod)
         self._active_node = ""
+        self._user_cam = False        # v3.4.8: 用户手动转视角标记 (resize 自动取景判定)
+        self._last_win = (0, 0)
 
         # 📟 实时数值面板 (2026-08-25 老倪: "不知道啥意思" → 画面旁边直接给数字)
         self.lbl_num = QLabel("—")
@@ -881,6 +883,15 @@ class DreamView3D(QWidget):
             pass
 
     def eventFilter(self, obj, ev):
+        # 🎯 v3.4.8: 用户鼠标旋转/平移视角 → 标记手动 (resize 不再自动重取景, 不打断)
+        try:
+            if obj is self.view and ev is not None and hasattr(ev, "type"):
+                _t = int(ev.type())
+                if _t in (4, 5, 6):      # MouseButtonPress/Move/Release
+                    if _t == 4 or (getattr(ev, "buttons", None) is not None and int(ev.buttons())):
+                        self._user_cam = True
+        except Exception:
+            pass
         """3D 画布尺寸变化 → 标注层跟着变 (覆盖层必须与画布严格同尺寸, 否则坐标错位)"""
         try:
             if obj is self.view:
@@ -902,6 +913,28 @@ class DreamView3D(QWidget):
         self._sync_fov()
         try:
             self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        except Exception:
+            pass
+        # 🎯 v3.4.8 老倪「窗口最大化后图像没跟着放大」: 视口变大但场景/相机未重排 →
+        #   物体仍占原比例 (四周留空)。用户未手动转视角时, 窗口尺寸变化 >6% 自动重取景,
+        #   场景撑满放大后的视口。防抖 250ms (拖动 resize 只收尾一次)。
+        try:
+            _w0, _h0 = getattr(self, "_last_win", (0, 0))
+            _nw, _nh = self.width(), self.height()
+            self._last_win = (_nw, _nh)
+            if (_w0 and _h0 and not getattr(self, "_user_cam", False)
+                    and (abs(_nw - _w0) / max(_w0, 1) > 0.06
+                         or abs(_nh - _h0) / max(_h0, 1) > 0.06)):
+                from PyQt5.QtCore import QTimer as _Qt
+                _Qt.singleShot(250, self._auto_fit_on_resize)
+        except Exception:
+            pass
+
+    def _auto_fit_on_resize(self):
+        """窗口放大后自动取景 (仅用户未手动旋转/平移过视角时 — 避免打断手动视角)"""
+        try:
+            if not getattr(self, "_user_cam", False):
+                self._fit_view("fit")
         except Exception:
             pass
 

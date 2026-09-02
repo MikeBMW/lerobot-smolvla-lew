@@ -111,9 +111,43 @@ def _trace_exec(fn, ctx, log):
         _sys.settrace(None)
 
 
-def execute_node_logic(module, node, label=None, trace=None):
+def _demo_node_output(module, node, ctx):
+    """▶运行 播放演示: 读 DataWorld 当前帧该节点的 out (引擎真实算的), 打印展示。
+    🐛 v3.4.8 老倪「运行后没有连续动作, 好像卡住了」: 播放每帧 execute 真跑
+    📡传感器融合 → YOLO aligner 冷加载/采样 1.6s+ 冻结主线程 → 卡顿。
+    演示不重跑节点函数; 数值取自 dw 帧 = 引擎该步真实输出 (同源不伪造)。"""
+    name = node.get("name", "")
+    log = ctx.get("log")
+    try:
+        import numpy as _np
+        dw = getattr(module, "_dw", None)
+        if dw is not None:
+            mo = dw.module_out_values(name)
+            if mo:
+                parts = []
+                for _k, _v in list(mo.items())[:4]:
+                    if isinstance(_v, _np.ndarray):
+                        parts.append(f"{_k}=" + "[" + ",".join(f"{x:.3f}" for x in _np.asarray(_v).ravel()[:6]) + "]")
+                    elif isinstance(_v, (float, int)):
+                        parts.append(f"{_k}={_v:.4f}")
+                    else:
+                        parts.append(f"{_k}={_v}")
+                if log:
+                    log(f"⏩ {name}: " + " · ".join(parts))
+                return True
+        if log:
+            log(f"⏩ {name}: (演示)")
+        return True
+    except Exception:
+        return True
+
+
+def execute_node_logic(module, node, label=None, trace=None, demo=False):
     """双击环节节点 → 执行节点逻辑 (用户可修改版). 未注册返回 None → 框架兜底
-    trace=True → debug 式逐行执行 (每行代码 + 变量数值变化, 2026-08-30 老倪)"""
+    trace=True → debug 式逐行执行 (每行代码 + 变量数值变化, 2026-08-30 老倪)
+    demo=True → ▶运行 播放演示模式: 不重跑节点真实函数 (传感器融合/YOLO 采样等会
+    冷加载 1.6s+ 卡死播放), 改读 DataWorld 当前帧该节点的引擎真实 out 展示
+    (数值与引擎同源不伪造)。调试 (单步/右键运行/双击) 仍走真实执行 fn。"""
     name = node.get("name", "")
     key = match_node(name)
     if key is None:
@@ -143,6 +177,9 @@ def execute_node_logic(module, node, label=None, trace=None):
             pass
     ctx = {"module": module, "params": node.get("params", {}),
            "log": getattr(module, "_log", None), "name": name, "label": label}
+    # 🎯 v3.4.8: ▶运行 播放演示 = 轻量展示路径 (读 DataWorld 帧, 不重跑重函数)
+    if demo:
+        return _demo_node_output(module, node, ctx)
     if trace is None:
         trace = bool(getattr(module, "_trace_nodes", False))
     if trace:
