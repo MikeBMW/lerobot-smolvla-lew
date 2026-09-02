@@ -198,6 +198,33 @@ self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
 label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第一节点应变为数据源 (因果正确)。
 铁律: 画布每个节点要有真实的数据源连线, 不许有"引擎内部取数但画布孤立"的节点。
 
+## 3D 视图↔程序执行状态映射 (2026-09-02 v3.4.3, 老倪: "3D视图的显示状态要与debug程序代码的执行状态保持一致")
+- **需求**: 点 ▶运行 时 3D 视图要跟程序执行走, 不是独立播离线 episode; 断点停在哪一步 3D 显示哪一步。
+- **实现三件套**: ①`open_ss_3d` 数据源优先 `self._ss_tr`(sim.run() 程序轨迹), 没运行过才退回 episode npz(保持与操作视频同源能力); ②`_ss_tick` 每帧把引擎步 `idx` 推给 3D 窗口: 窗口 tr 不是当前 tr 先 `set_trajectory(tr)` 再 `w.set_frame(idx)`(sip.isdeleted 判活); ③`DreamView3D.set_frame(i)`: `_pause()` 停自播防双驱动 + `_update_frame(i)` + slider/lbl 同步。
+- **断点天然同步**: 引擎断点挂起主线程 → 推送停 → 3D 同步停; F5 放行 → 继续。无需额外逻辑。
+- **配套 (fe2c82af)**: 打开即自动播放 — set_trajectory 末尾 `_timer.start(60)`(原默认静态第 0 帧, 用户以为"打不开")。
+- 验证: sim.run() 322 步 set_frame 0→321 跟随, 0.5s 不被自播抢动。
+
+## _EXTERNAL_LOC 行号铁律 (2026-09-02 v3.4.3, 老倪连续 3 轮 "源码不是这个")
+- **症状**: 双击画布节点编辑器显示正确类, 但「VSCode 打开/复制位置」跳到错误代码 → 用户反复看到"自适应状态估计器源码=forward"(ss_est 映射行号 34, 类实际 45, 34 行正好是 FeedforwardAccelerator.forward 的代码)。
+- **根因**: _EXTERNAL_LOC 的 line 是"兜底行号", 符号名匹配成功时行号不参与截取, 但 VSCode 打开用行号 → 行号错位 = 定位到错代码。文件头加注释/改行 → 全部错位 +1。
+- **铁律**: 新增/修改 _EXTERNAL_LOC 后跑符号名+行号双查脚本(逐行 strip 匹配 `sym`/`sym(`/`sym:` 找真实行), 全量 29 条 0 错位才算完。symbol 必须是真实定义(`def synth_tactile` 不是 `gen_tactile`; 类行号含 `class X:` 冒号)。
+- **配套修复**: ss_est→AdaptiveStateEstimator(45), ss_sched→def decide(167, 动作调制器双击直接看核心决策), ss_aoi→AOIQualityChecker(40), ss_bg5 符号误写路径字符串"planner.py"→class TaskPlanner。
+
+## debugpy 僵尸占 5678 → SystemExit:1 (2026-09-02 v3.4.3)
+- **症状**: VSCode 弹 "Exception has occurred: SystemExit / 1" (debugpy adapter __main__.py sys.exit(1)); F5 调试启动失败/attach 失败。
+- **根因**: F5 会话主进程退出后 pydevd 子进程残留, 一直占着 5678(studio.py main 里 debugpy.listen(5678) 的 attach 端口)。`pkill -f "[s]tudio.py"` 杀不到 — pydevd 命令行是 `pydevd.py --port ...` 不含 studio.py。
+- **清理**: `ss -tlnp | grep 5678` 看谁占 → `kill <pid>`; 反复 F5 会反复留僵尸, 每次调试会话结束都查一次。attach(5678) 必须无 F5 会话 + 5678 空闲。
+
+## 标定层 (2026-09-02 v3.4.4, 老倪: Drifting Models 引力/斥力二分 + 平衡点)
+- **需求**: 参考 arXiv:2602.04770 反称场思想 (Vp,q(x)=−Vq,p(x), q=p⇒V=0), 第一性原理把引擎全部超参数二分: **引力=快速动作** (Kp+STAGE_V_CAP/STAGE_V_MIN 各阶段速度上限/下限), **斥力=状态预测** (K_kalman+残差EMA+接触增益+否决阈值+反馈增益+先验A), 平衡偏差 = 引力势−斥力势 (V≈0 无漂移)。状态/阶段=明确标定量。
+- **代码位置铁律**: 标定层在 `src/lerobot/calibration/`(与 datasets/、policies/ **同级别**), 不在 tools/gui。CalibrationLayer: attr/rep 标定表(数值与引擎同源) + attraction_potential(speed/cap) + repulsion_potential(residual/veto_th, contact_p) + equilibrium_gap + export(json)。
+- **画布**: flows/state_space_obs.json **append** ssbg6(row_bg 🧮标定层) + sscalib 节点(params.calib_layer=true) + link ssworld→sscalib(状态标定量)。只增不改 — 不动任何现有节点/连线/流程。
+- **UI 三入口**: ①双击/右键查看逻辑 → CalibrationDialog(引力组8阶段速度上限表当前阶段高亮+斥力组+平衡条); ②**右键菜单专属项「标定表格 (引力/斥力参数编辑)」→ CalibrationTableDialog**(21 行全参数表, 双击单元格编辑, 保存写回 calibration_layer.py 源码 + 导出 json; 引擎生效需同步 cognition.py 同值, 不改变架构只改标定值); ③节点执行 node_ss_calib 读 module._ss_tr 当前步 stage/speed/residual/contact_p 算势。
+- **右键菜单加专属项套路**: `if item.node.get("params",{}).get("calib_layer"): a_calib = menu.addAction("标定表格 ...")` + `elif chosen == a_calib: self.module.on_open_calib_table(item.node)`。菜单项去 emoji(VcXsrv 黑块坑)。
+- **QMessageBox 深色**: calibration_dialog 里静态 QMessageBox.information/warning 会黑字 → 手动构造 mb + setStyleSheet(_DARK) + exec_(AA_DontUseNativeDialogs 下生效)。
+- 验证: 势函数(接近+0.55引力↑/插入+0.08⚖/转移+0.60引力↑)、21行表格编辑 0.07→0.05 保存写回 ✓、模板 31 节点 29 links。
+
 ## pyqtgraph GL 跨上下文 shader 失效 (2026-08-28, 3D 视图二次打开背景丢)
 **症状**: 老倪「3D 视图第二次打开, 场景背景没了」— 首次打开正常, 关窗再开只剩纯背景色。
 **根因**: pyqtgraph `opengl/shaders.py:420 initShaders()` 模块导入时编译一次、全局缓存
