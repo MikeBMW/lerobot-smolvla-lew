@@ -2085,6 +2085,10 @@ _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class 
 _EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class PhysicalWorld")
 
+# 🧮 标定层 (2026-09-02): 与 datasets/policies 同级别 — src/lerobot/calibration/calibration_layer.py
+_CALIB_DIR_LOC = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
+_EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 51, "class CalibrationLayer")
+
 # 📦 metaworld 数据源 (2026-09-02 老倪: 数据源节点必须接 lerobot 框架数据层 —
 #   与感知/决策节点同构: 右键打开 + VSCode 断点进 datasets 真实源码,
 #   不再是 tools/gui/node_logic.py 的控制台模板)
@@ -2311,3 +2315,51 @@ def node_ss_aoi(ctx):
 _reg("ss_aoi", ["外观质量检测"],
      "🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 (DET-AOI-01~04; 双击=源码, 📥按钮=Excel导出清单)",
      node_ss_aoi)
+
+
+# 🧮 标定层 (2026-09-02 老倪: Drifting Models 思想 — 引力/斥力二分 + 平衡点; 回路外元层)
+_CALIB_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
+
+
+def node_ss_calib(ctx):
+    """🧮 标定层 — 引力(快速动作)/斥力(状态预测) 二分超参数 + 平衡点
+    源码: src/lerobot/calibration/calibration_layer.py (CalibrationLayer) — 与 datasets/policies 同级别
+    回路外元层: 收集/展示标定参数, 不参与引擎推理, 不改变拓扑/流程/架构"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_CALIB_DIR, "calibration_layer.py")
+        spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        layer = m.CalibrationLayer()
+        # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 _ss_tick idx 同映射)
+        mod = ctx.get("module")
+        stage, speed, residual, contact_p = "接近", 0.0, 0.0, 0.0
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is not None and tr.get("x") is not None and len(tr["x"]) > 0:
+            idx = int(min(getattr(mod, "_ss_round", 0), len(tr["t"]) - 1))
+            stage = str(tr["stage"][idx]).replace("阶段 ", "")
+            speed = float(np.linalg.norm(np.asarray(tr["u_sat"][idx], dtype=float)[:3]))
+            residual = float(tr["residual"][idx])
+            contact_p = float(tr["contact_p"][idx])
+        gap = layer.equilibrium_gap(stage, speed, residual, contact_p)
+        _SS_STATE["calib"] = {"layer": layer, "stage": stage, "gap": gap,
+                              "attr": layer.attr, "rep": layer.rep}
+        if log:
+            log(f"🧮 标定层 (真实): {layer.summarize(stage, speed, residual, contact_p)}")
+            log(f"   引力标定 (快速动作): Kp={layer.attr['Kp']} · 当前阶段速度上限 "
+                f"{layer.attr['stage_v_cap'].get(stage, '—')} m/s")
+            log(f"   斥力标定 (状态预测): K_kalman={layer.rep['K_kalman']} · 残差EMA={layer.rep['res_ema']} · "
+                f"接触增益={layer.rep['contact_gain']} · 否决阈值={layer.rep['veto_th']}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 标定层执行失败: {e}")
+        return False
+
+
+_reg("ss_calib", ["标定层"],
+     "🧮 标定层 — 引力(快速动作: Kp+阶段速度上限/下限) vs 斥力(状态预测: K_kalman+残差EMA+接触增益+否决阈值), 平衡偏差=|引力势−斥力势| (Drifting Models 反称场; 源码 calibration_layer.py)",
+     node_ss_calib)

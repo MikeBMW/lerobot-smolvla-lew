@@ -9318,6 +9318,30 @@ class SimulinkModule(QWidget):
 
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
+        # 🧮 标定层 (2026-09-02 老倪): 双击/右键 → 标定面板 (引力/斥力 + 平衡点), 不是源码编辑器
+        if "标定层" in node.get("name", ""):
+            try:
+                from calibration_dialog import CalibrationDialog
+                import importlib.util as _ilu
+                _cp = os.path.join(self._repo_root(), "src", "lerobot", "calibration", "calibration_layer.py")
+                _spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", _cp)
+                _m = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_m)
+                layer = _m.CalibrationLayer()
+                # 当前运行状态 (画布播放中): 从 _ss_tr 取当前步
+                stage, speed, residual, contact_p = "接近", 0.0, 0.0, 0.0
+                _tr = getattr(self, "_ss_tr", None)
+                if _tr is not None and _tr.get("x") is not None and len(_tr["x"]) > 0:
+                    _idx = int(min(getattr(self, "_ss_round", 0), len(_tr["t"]) - 1))
+                    stage = str(_tr["stage"][_idx]).replace("阶段 ", "")
+                    speed = float(np.linalg.norm(np.asarray(_tr["u_sat"][_idx], dtype=float)[:3]))
+                    residual = float(_tr["residual"][_idx])
+                    contact_p = float(_tr["contact_p"][_idx])
+                dlg = CalibrationDialog(layer, stage=stage, gap=0.0, parent=self)
+                self._show_nonmodal(dlg)
+                return
+            except Exception as _e:
+                self._log(f"⚠️ 标定面板打开失败: {_e}")
         dlg = NodeLogicDialog(node.get("name", ""), node.get("type", ""), self)
         self._show_nonmodal(dlg)
 

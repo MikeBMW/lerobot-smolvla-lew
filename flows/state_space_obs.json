@@ -657,6 +657,41 @@
     "desc": "技能编排器 SkillComposer: 五大作业场景定义 (steps→技能序列, performance→参数覆盖默认) / 新型号规格 → 技能序列+力阈值/节拍",
     "source": "src/lerobot/policies/left_right/state_space/planner.py"
    }
+  },
+  {
+   "id": "ssbg6",
+   "type": "row_bg",
+   "name": "🧮 标定层 · 引力/斥力平衡 (回路外元层)",
+   "x": -20,
+   "y": 800,
+   "w": 900,
+   "h": 130,
+   "params": {
+    "state_space": true,
+    "desc": "标定层: 引力(快速动作)/斥力(状态预测) 二分超参数 + 平衡点, 参考 Drifting Models 反称场思想; 状态/阶段是明确标定量"
+   }
+  },
+  {
+   "id": "sscalib",
+   "type": "model",
+   "name": "🧮 标定层 · 引力/斥力",
+   "icon": "🧮",
+   "color": "#58a6ff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [],
+   "actions": [],
+   "x": 589,
+   "y": 840,
+   "w": 170,
+   "h": 68,
+   "params": {
+    "state_space": true,
+    "calib_layer": true,
+    "desc": "标定层 CalibrationLayer: 引力=Kp+阶段速度上限/下限(快速动作), 斥力=K_kalman+残差EMA+接触增益+否决阈值(状态预测), 平衡偏差=|引力势−斥力势|; 双击=标定面板",
+    "source": "src/lerobot/calibration/calibration_layer.py"
+   }
   }
  ],
  "links": [
@@ -883,6 +918,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "触觉数据"
+  },
+  {
+   "id": "lkcalib1",
+   "f": "ssworld",
+   "t": "sscalib",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "状态标定量"
   }
  ]
 }
