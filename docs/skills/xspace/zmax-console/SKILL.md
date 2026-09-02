@@ -239,6 +239,38 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **QMessageBox 深色**: calibration_dialog 里静态 QMessageBox.information/warning 会黑字 → 手动构造 mb + setStyleSheet(_DARK) + exec_(AA_DontUseNativeDialogs 下生效)。
 - 验证 (v3.4.5 13/13): 默认值 apply 引擎零 diff / V_MIN 改值不串 V_CAP (引擎+镜像) / UI 全链路表格改3值 → 引擎文件+实例吃新值, run 正常 / 锚点破坏 → ValueError。
 
+## DataWorld 逐帧同步 — 3D 与画布信号同帧 (2026-09-03 v3.4.6, 老倪: 参考百度 Apollo Dreamview)
+- **架构语义**: 每个画布节点 = 一个算法模块 (channel, io key = 画布节点名); 引擎每步把
+  各模块 in/out 发布到数据世界 → 画布播放 / 3D 视图 / 数据总线消费**同一 DataWorld +
+  单一帧游标** → 点 ▶运行 后 3D 渲染数据与画布实际信号严格同帧 (Dreamview:
+  "模块输出 → 主视图渲染", Layer Menu = 通道显示开关)。
+- **数据源**: `state_space_sim.run()` 的 `tr["io_trace"]` **逐帧全量** (v3.4.6 起每步
+  append — 原来每 25 步抽稀是 3D/总线跳帧的根因)。帧 = `_io_snapshot()` 产物:
+  9 引擎模块/23 画布节点 key, value={"in"/"out": [(label, value)...]}。
+- **tools/gui/data_world.py — DataWorld 类**: 由 tr 构建, frames=io_trace;
+  cursor (set_cursor) = 单一游标; frame(step)/module(name, step)/module_out_values/
+  stage/diff_modules; **module() 前缀匹配回退** (画布节点名带 [W-01] 后缀时按
+  MODULE_ORDER 找包含匹配)。
+- **_ss_tick 播放游标铁律**: 播放按**引擎步线性推进** — `stride = (n-1)//_ss_ticks`,
+  `idx = round*stride`, _ss_ticks = max(60, min(120, n*0.006)) (≈5-7s 播完)。
+  **禁止再按 io 快照数均匀抽样** (n 快照≈25 时 idx 每 80ms 跳 25 步 = 3D 大步跳变,
+  用户感知"3D 与画布信号不同步")。每 tick: dw.set_cursor(idx) → 节点动画轮转 +
+  execute_node_logic → log 该步数值 → 3D set_frame(idx) + set_active_node(节点名, dw)
+  → 总线 feed 当前帧。
+- **3D「▶ 画布信号」面板行** (ss_dreamview.lbl_mod): set_active_node(node_name, dw)
+  显示画布正在执行的节点 + 该模块本帧 out 摘要 (from data_world import _fmt)。
+- **播放结束对齐**: _ss_finish 把 dw cursor + 3D set_frame 精确推到引擎末帧 (stride
+  余数可能差几步, 不补 3D 终态停在末帧前 = 显示不一致)。
+- **数据总线静态视图防卡**: model_tree.refresh 时间序全量铺会 500×60 行卡死 →
+  抽稀 ≤150 帧 (`_trc[::_stp]` + 补末帧); 运行中动态 feed 不受影响 (90 tick × 60 行
+  ≈ 5400 行动态追加可接受)。
+- 验证: 引擎 305 步/305 帧 0.05s 零开销 (io 帧 dict 每步本就构造, 只多 append);
+  端到端 offscreen: SimulinkModule() + load_flow_file(state_space_obs.json) +
+  _start_state_space_sim() → processEvents 推进 → 播放完成游标=末帧; 假 3D 探针
+  (set_trajectory/set_frame/set_active_node 记录) 验证收到连续帧 + 节点广播。
+- ⚠️ _ss_tick 内 execute_node_logic 用 `_ss_order[min(_ss_round, len-1)]` 保底防越界;
+  播放完成判定 = `idx >= n-1 or round >= max(_ss_ticks, len(_ss_order))`。
+
 ## pyqtgraph GL 跨上下文 shader 失效 (2026-08-28, 3D 视图二次打开背景丢)
 **症状**: 老倪「3D 视图第二次打开, 场景背景没了」— 首次打开正常, 关窗再开只剩纯背景色。
 **根因**: pyqtgraph `opengl/shaders.py:420 initShaders()` 模块导入时编译一次、全局缓存
