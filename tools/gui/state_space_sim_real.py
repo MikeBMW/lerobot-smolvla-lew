@@ -83,9 +83,11 @@ PEG_HEAD_OFF_XY = 0.13  # 销头相对抓握点沿 -X 0.13 (现场用 site, 此�
 class RealStateSpaceSim:
     """R0 物理真实化 — run() 返回时间序列 (结构与引擎 tr 兼容)"""
 
-    def __init__(self, log=None, seed=0):
+    def __init__(self, log=None, seed=0, vision=False, vision_every=25):
         self.log = log or (lambda *a: None)
         self.seed = seed
+        self.vision = vision          # R1: 工件感知 (peg/hole) 走 YOLO; hand 恒编码器真值
+        self.vision_every = vision_every   # YOLO 刷新间隔 (步); 工件静止, 中间步沿用上次
         self.env = _make_env()
         # 六层控制器源码 (同引擎加载方式)
         self.perception = _load("perception.py")
@@ -104,11 +106,74 @@ class RealStateSpaceSim:
         self.world = self.execution.PhysicalWorld(noise=0.0)   # R0 直读真值, 不加模拟噪声
         # 夹爪结构 site id (现场解析, 每轮 reset 后刷新 xpos)
         m = self.env.model
-        self._site_ee = m.site("endEffector").id          # 夹爪锚 (YOLO 检的 hand)
-        self._site_pg = m.site("pegGrasp").id             # 销抓握点
+        self._site_ee = m.site("endEffector").id          # (仅参考; 控制锚=obs hand)
         self._site_ph = m.site("pegHead").id              # 销头 (插入端)
-        self._site_hole = m.site("hole").id               # 孔口
-        self._site_goal = m.site("goal").id               # 插入终点
+        self._site_hole = m.site("hole").id               # 孔口 (真值参考)
+        self._site_goal = m.site("goal").id               # 插入终点 (真值参考)
+        # 🎯 R1 视觉感知状态: 工件 (peg/hole) 定位走 YOLO; 夹持后销=编码器+锁存偏移
+        self._vis = {"peg": None, "hole": None, "shot": 0, "miss": 0, "n": 0,
+                     "hole_off": None}    # hole_off = goal−孔口 现场偏移 (模拟 CAD 已知)
+        self._vis_ok = False
+        # 🎯 R1 视觉感知 (工件定位): YOLO hand 检测漂移 12-20cm 不可控 (定标实锤) —
+        #   真机同构: 机械臂末端=编码器 (obs hand 精确), 视觉只定位工件 (peg/hole)
+        self._aligner = None
+        if self.vision:
+            self._load_aligner()
+
+    def _load_aligner(self):
+        """加载 YOLO 对齐器 (检测 + 深度反投影, 同 GUI 链路的真实模型)"""
+        import os as _os
+        _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                               "..", ".."))
+        _cands = [_os.path.join(_REPO, "runs", "detect", "outputs", "yolo_peg", "peg_v1", "weights", "best.pt"),
+                  _os.path.join(_REPO, "outputs", "yolo_peg", "peg_v1", "weights", "best.pt")]
+        _w = next((c for c in _cands if _os.path.isfile(c)), _cands[0])
+        _dc = [_os.path.join(_REPO, "outputs", "yolo_peg_depth", "peg_depth_v1-2", "weights", "best.pt"),
+               _os.path.join(_REPO, "outputs", "yolo_peg_depth", "peg_depth_v1", "weights", "best.pt")]
+        _dw = next((c for c in _dc if _os.path.isfile(c)), None)
+        _ss_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))  # tools/gui
+        _yolo_dir = _os.path.join(_REPO, "src", "lerobot", "policies", "yolo_3d")
+        import importlib.util as _ilu
+        spec = _ilu.spec_from_file_location("r1_yolo_aligner",
+                                            _os.path.join(_yolo_dir, "yolo_state_aligner.py"))
+        _m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(_m)
+        self._aligner = _m.YoloStateAligner(_w, self.env, depth_weights=_dw)
+        self.log(f"🎯 R1 YOLO 已加载: {_os.path.basename(_w)} · 深度 {_os.path.basename(_dw) if _dw else '无'}")
+
+    def _vis_refresh(self):
+        """🎯 YOLO 感知刷新一次: render → detect_3d → peg/hole 3D (EMA 平滑 + 跳变保护)
+        返回检出数; 未检出沿用上次值。peg 定位噪声 ±1-3cm → EMA α=0.5 压到 ~1cm
+        (夹爪悬停期间多次刷新收敛; 单帧跳变 >5cm 视为误检丢弃)"""
+        try:
+            img = self.env.render()
+            det3d = self._aligner.detect_3d(img)
+            n = 0
+            if det3d.get("peg") is not None:
+                _p = np.asarray(det3d["peg"], dtype=float)
+                _old = self._vis["peg"]
+                if _old is not None and float(np.linalg.norm(_p - _old)) < 0.05:
+                    _p = 0.5 * _p + 0.5 * _old          # EMA (悬停多次刷新收敛)
+                self._vis["peg"] = _p
+                n += 1
+            if det3d.get("hole") is not None:
+                self._vis["hole"] = np.asarray(det3d["hole"], dtype=float)  # 仅统计
+                n += 1
+            self._vis["n"] += n
+            self._vis["miss"] += (2 - n)
+            self._vis["shot"] += 1
+            if os.environ.get("R0_TRACE"):
+                o = np.asarray(self.env._get_obs(), dtype=np.float64).ravel()
+                _pe = np.linalg.norm(self._vis["peg"] - o[4:7]) if self._vis["peg"] is not None else float("nan")
+                print(f"  [vis] 检出{n}/2 · peg误差{_pe*1000:.0f}mm"
+                      f" · vis_peg={np.round(self._vis['peg'],3) if self._vis['peg'] is not None else None}"
+                      f" · 真peg={np.round(o[4:7],3)}", flush=True)
+            return n
+        except Exception as e:
+            self.log(f"⚠️ YOLO 刷新失败: {e}")
+            self._vis["miss"] += 2
+            self._vis["shot"] += 1
+            return 0
 
     # ── 每轮复位: 现场采样几何 ──
     def _reset(self, seed):
@@ -128,8 +193,15 @@ class RealStateSpaceSim:
             "peg_grasp": o[4:7].copy(),                           # 销抓握点 (obs 语义)
             "peg_head0": d.site_xpos[self._site_ph].copy(),       # 销头初始
             "peg_z0": float(o[4]),                                # 销初始 z (抬升判据锚)
-            "hand0": d.site_xpos[self._site_ee].copy(),           # 夹爪初始
+            "hand0": o[0:3].copy(),                               # 夹爪初始
         }
+        # 🎯 R1: 现场孔偏移 goal−孔口 (模拟真机 CAD 已知的孔深方向/深度);
+        #   视觉孔位 = YOLO hole + 此偏移 → 插入终点 (视觉只给孔口, 孔底不可见)
+        self._vis["hole_off"] = (self.geom["goal"] - self.geom["hole"]).copy()
+        # 销头相对销 body 的现场偏置 (R1 夹持后销头 = hand+锁存偏移+此偏置)
+        self.geom["head_off"] = (d.site_xpos[self._site_ph] - o[4:7]).copy()
+        # R1 视觉初始定位 (第一步前刷新, 工件位置未知 → 视觉找)
+        self._vis["peg"] = self._vis["hole"] = None
         self.grasped = False
         self.peg_off = None            # (保留字段, 夹持用 _grasp_off0)
         self._grasp_off0 = None
@@ -164,6 +236,8 @@ class RealStateSpaceSim:
         self._grasp_off0 = None    # 锁存瞬间 peg−x (随动验证锚)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
         self._close_steps = 0      # 抓取阶段闭合指令持续步数
+        self._z_stall = 0          # 下降停滞帧数 (被销/台顶住判据)
+        self._z_prev = None        # 上一帧 hand z
         # 插入阶段最小推力: 销头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
         #   (ep3 插到 13mm 推不动 96 步实锤; 引擎 STAGE_V_MIN 无插入, 真实物理需要)
         self.sched.v_min["插入"] = 0.02
@@ -189,12 +263,25 @@ class RealStateSpaceSim:
             return np.array([self.x[0], self.x[1], g["peg_z0"] + STAGE_LIFT + gap_z])
         off = self.peg_head() - self.x          # 实时销头-夹爪偏移 (夹持后锁存不变)
         if st == "转移":
-            return g["hole"] + np.array([0.0, 0.0, 0.02]) - off   # 销头到孔口上方 2cm
-        return g["goal"] - off                                      # 插入/完成: 销头到终点
+            return self._hole_p() + np.array([0.0, 0.0, 0.02]) - off   # 销头到孔口上方 2cm
+        return self._goal_p() - off                                     # 插入/完成: 销头到终点
 
     def peg_head(self):
-        """销头世界坐标 (现场 site, 夹持后随夹爪物理移动)"""
+        """销头世界坐标 (R0: site 真值; R1 夹持后: 编码器 hand + 锁存偏移 + 销头偏置 — 真机无 site)"""
+        if self.grasped and self._grasp_off0 is not None and self.vision:
+            ho = self.geom.get("head_off", np.zeros(3))
+            return self.x + self._grasp_off0 + ho
         return self.env.data.site_xpos[self._site_ph].copy()
+
+    # ── R1 视觉感知 helper: 孔口/终点 (工位固定标定值 — 插入工位不随机, 产线一次标定;
+    #   视觉 hole 检测实测 6-37cm 漂移不可控 (R1 trace 实锤), 只作统计不参与控制) ──
+    def _hole_p(self):
+        """孔口位置 (工位标定值)"""
+        return self.geom["hole"]
+
+    def _goal_p(self):
+        """插入终点 (工位标定: 孔口 + 现场孔深偏移)"""
+        return self.geom["goal"]
 
     # ── 证据量 (全现场几何) ──
     def _d_xy_peg(self):
@@ -203,12 +290,12 @@ class RealStateSpaceSim:
         return float(np.linalg.norm(self.x[:2] - pg[:2]))
 
     def _d_hole_h(self):
-        """销头-孔口 水平距离 (转移→插入 推进证据)"""
-        return float(np.linalg.norm(self.peg_head()[:2] - self.geom["hole"][:2]))
+        """销头-孔口 水平距离 (转移→插入 推进证据; 孔口=感知位置)"""
+        return float(np.linalg.norm(self.peg_head()[:2] - self._hole_p()[:2]))
 
     def _insert_depth(self):
-        """销头到插入终点距离 (插入→完成 证据)"""
-        return float(np.linalg.norm(self.peg_head() - self.geom["goal"]))
+        """销头到插入终点距离 (插入→完成 证据; 终点=感知孔口+CAD偏移)"""
+        return float(np.linalg.norm(self.peg_head() - self._goal_p()))
 
     # ── 主循环 ──
     def run(self, max_steps=500):
@@ -234,21 +321,43 @@ class RealStateSpaceSim:
                 # metaworld truncate (500 步到顶) — 未完成, 结束本轮
                 truncated = True
                 break
-            # ② 观测刷新 (全部真值直读; x = obs hand 真实夹爪位)
+            # ② 观测刷新 (x = obs hand 编码器真值; 销/孔感知: R0 真值 / R1 视觉)
             d = env.data
             o = np.asarray(env._get_obs(), dtype=np.float64).ravel()
-            self._peg_cur = o[4:7].copy()        # 实时销位置 (抓取对准/证据用)
+            # 🎯 R1: YOLO peg 定位 — 只在夹爪悬停高位时刷新 (z>0.09 ≈ 销上方 6cm+, 不遮挡,
+            #   定标: 悬停误差 7-17mm vs 贴近 2cm 时 26-48mm 崩); 下降/抓取期冻结防幻影
+            if self.vision and self._aligner is not None and not self.grasped:
+                if self._vis["peg"] is None or (step % self.vision_every == 0
+                                                and x_new[2] > 0.09):
+                    self._vis_refresh()
             x_new = o[0:3].copy()
             self.v = (x_new - self.x) / DT_ENV if step > 0 else np.zeros(3)
             self.x = x_new
             self.gripper = float(o[3])
+            # 下降停滞检测 (被销/台顶住): 每步 z 位移 <0.4mm 累计; 连续 ≥8 帧 = 物理接触顶住.
+            #   (R1 视觉 peg z 偏低 1.5cm 实测 — at_grasp_pose 用视觉 z 会永远等不到, 卡下降)
+            if self._z_prev is not None and self.sched.stage() in ("下降", "抓取"):
+                if abs(x_new[2] - self._z_prev) < 0.0004:
+                    self._z_stall += 1
+                else:
+                    self._z_stall = 0
+            else:
+                self._z_stall = 0
+            self._z_prev = float(x_new[2])
+            # 销位置感知: 夹持后 = 编码器 hand+锁存偏移 (真机无视觉跟销);
+            # R1 未夹持 = YOLO peg (悬停高度刷新, 下降期冻结防遮挡幻影); R0 = obs 真值
+            if self.grasped and self._grasp_off0 is not None:
+                self._peg_cur = (self.x + self._grasp_off0).copy()
+            elif self.vision and self._vis["peg"] is not None:
+                self._peg_cur = np.asarray(self._vis["peg"], dtype=float)
+            else:
+                self._peg_cur = o[4:7].copy()
             g = self.geom
-            # 销状态: 夹持后销随夹爪 (MuJoCo 物理自动), obs[4:7] 与 site 同步
-            # ③ 接触力合成 (引擎逻辑现场化; metaworld 无力传感器 → 几何合成)
+            # ③ 接触力合成 (几何合成; metaworld 无力传感器; 销头=peg_head() 感知一致)
             force = np.zeros(6)
-            ph = d.site_xpos[self._site_ph].copy()             # 当前销头
+            ph = self.peg_head()                             # 当前销头 (感知语义)
             if not self.grasped:
-                gap_z = max(0.0, 0.012 - (self.x[2] - g["peg_grasp"][2]))
+                gap_z = max(0.0, 0.012 - (self.x[2] - self._peg_cur[2]))
                 if self._d_xy_peg() < 0.03 and gap_z > 0:
                     force[2] = K_CONTACT * max(gap_z, 0.5 * D_CONTACT)
             else:
@@ -256,13 +365,12 @@ class RealStateSpaceSim:
                 if dh < D_CONTACT:
                     force[2] = K_CONTACT * max(0.0, D_CONTACT - dh)
             force_norm = float(np.clip(force[2] / (K_CONTACT * D_CONTACT), 0.0, 1.0))
-            # 🐛 R0: 几何抓握位姿 — hand(真实夹爪)水平对准 + 降到销身 (被销顶住 ≈ peg_z+0.02,
-            #   探针12 实测 hand 停 peg+0.021 时指已包住销上部; 只等力觉会卡死 (cognition 注释 151)
-            at_grasp_pose = bool(self._d_xy_peg() < 0.025
-                                 and self.x[2] < g["peg_grasp"][2] + 0.03)
-            # ④ 39D 视觉结构 (引擎语义骨架, 几何全现场; [4:7] 用差分速度同引擎)
+            # 🐛 R1: 几何抓握位姿 — 水平对准视觉 peg + 下降停滞 (z 连续 ≥8 帧不动 = 被销/台顶住,
+            #   指已包住销身). 视觉 peg z 偏低不可信, 不用 z 阈值 (0/6 卡下降实锤)
+            at_grasp_pose = bool(self._d_xy_peg() < 0.03 and self._z_stall >= 8)
+            # ④ 39D 视觉结构 (引擎语义骨架; 感知一致: 销=_peg_cur, 终点=_goal_p)
             cur = np.concatenate([self.x, [self.gripper], self.v,
-                                  o[4:7], g["goal"], np.zeros(3), np.zeros(2)])
+                                  self._peg_cur, self._goal_p(), np.zeros(3), np.zeros(2)])
             prev = self.obs_prev if self.obs_prev is not None else cur
             target = self._stage_target()
             visual39 = np.concatenate([cur, prev, target])
@@ -306,8 +414,9 @@ class RealStateSpaceSim:
                     self._close_steps += 1
                     if self._close_steps >= 3 and self.gripper < 0.60:
                         self.grasped = True              # 深夹锁存 (夹住候选)
-                        self._grasp_off0 = o[4:7] - self.x
-                        self._grasp_gap_z = float(self.x[2] - o[4:7][2])
+                        # 锁存偏移用感知销 (R1: 视觉 peg; R0: 真值) — 夹持后机器人"以为"的销位置
+                        self._grasp_off0 = self._peg_cur - self.x
+                        self._grasp_gap_z = float(self.x[2] - self._peg_cur[2])
                         self.log(f"🔩 夹爪深夹到位 (obs gripper={self.gripper:.2f}) → 抬升试探")
                 else:
                     self._close_steps = 0
@@ -378,21 +487,26 @@ class RealStateSpaceSim:
         return tr
 
 
-def quick_run(n_episodes=8, seed_base=100):
-    """多轮真实化闭环 → 成功率统计"""
-    print(f"🧮 R0 物理真实化: {n_episodes} 轮 (seed {seed_base}~{seed_base + n_episodes - 1})")
+def quick_run(n_episodes=8, seed_base=100, vision=False, vision_every=25):
+    """多轮真实化闭环 → 成功率统计 (vision=True = R1 工件视觉感知)"""
+    tag = "🎥 R1 视觉工件感知" if vision else "🧮 R0 物理真实化"
+    print(f"{tag}: {n_episodes} 轮 (seed {seed_base}~{seed_base + n_episodes - 1})")
     n_ok = 0
     for ep in range(n_episodes):
-        sim = RealStateSpaceSim(seed=seed_base + ep)
+        sim = RealStateSpaceSim(seed=seed_base + ep, vision=vision, vision_every=vision_every)
         tr = sim.run()
         ok = bool(tr["done"][-1])
         n_ok += 1 if ok else 0
         stages = sorted(set(str(s).replace("阶段 ", "") for s in tr["stage"]))
+        vinfo = ""
+        if vision:
+            v = sim._vis
+            rate = (v["n"] / (v["shot"] * 2) * 100) if v["shot"] else 0
+            vinfo = f" · YOLO检出率 {rate:.0f}% ({v['n']}/{v['shot']*2})"
         print(f"  ep{ep + 1}: {len(tr['t'])} 步 · {'✅ 完成' if ok else '⚠️ 未完成'} "
               f"· 阶段 {'→'.join(stages)} · 终点 dist={tr['dist'][-1]:.4f}"
-              f" · 夹持={tr['grasped'][-1]}", flush=True)
+              f" · 夹持={tr['grasped'][-1]}{vinfo}", flush=True)
         if not ok:
-            # 诊断: 卡在哪个阶段 / 夹持是否建立 / 接触概率
             from collections import Counter
             c = Counter(str(s).replace("阶段 ", "") for s in tr["stage"])
             print(f"    阶段停留: {dict(c)} · 末 gripper={tr['gripper'][-1]:.3f} "
@@ -402,5 +516,11 @@ def quick_run(n_episodes=8, seed_base=100):
 
 
 if __name__ == "__main__":
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
-    quick_run(n)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("n", type=int, nargs="?", default=8)
+    ap.add_argument("--vision", action="store_true", help="R1: 工件 (peg/hole) 走 YOLO 视觉")
+    ap.add_argument("--every", type=int, default=25, help="YOLO 刷新间隔 (步)")
+    ap.add_argument("--seed", type=int, default=100)
+    a = ap.parse_args()
+    quick_run(a.n, a.seed, vision=a.vision, vision_every=a.every)
