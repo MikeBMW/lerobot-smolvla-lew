@@ -49,6 +49,8 @@ class YoloStateAligner:
         #   🐛 旧 1.685/1.566 是 peg_depth_v1 (CPU时代) 的, 已作废; 默认 1.0 是 bug → 反投影坐标错 0.4m
         self._depth_scale = float(os.environ.get("DEPTH_SCALE", "0.978"))
         self._hand_scale = float(os.environ.get("DEPTH_SCALE_HAND", "0.885"))
+        self._last_res = None         # 最近一帧检测结果缓存 (可视化画框用)
+        self._last_img_rot = None
 
     def detect_3d(self, img, conf=0.4):
         """YOLO 检测 → 3D 坐标 {hand, peg, hole} (深度模型反投影, 回退写死 z_map)"""
@@ -61,6 +63,8 @@ class YoloStateAligner:
         img_rot = np.rot90(img, k=2)
         img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
         res = self.model.predict(img_bgr, conf=conf, verbose=False)[0]
+        self._last_res = res          # 🐛 2026-09-04: 缓存本帧检测 (可视化画框用, 免二次 predict)
+        self._last_img_rot = img_rot  # 同步缓存 rot90 帧 (画框坐标系一致)
         # 🎯 深度图 (米, 与 img_bgr 像素对齐)
         depth_map = None
         if self.depth_model is not None:

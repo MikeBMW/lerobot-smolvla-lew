@@ -112,7 +112,7 @@ class RealStateSpaceSim:
         self._site_goal = m.site("goal").id               # 插入终点 (真值参考)
         # 🎯 R1 视觉感知状态: 工件 (peg/hole) 定位走 YOLO; 夹持后销=编码器+锁存偏移
         self._vis = {"peg": None, "hole": None, "shot": 0, "miss": 0, "n": 0,
-                     "hole_off": None}    # hole_off = goal−孔口 现场偏移 (模拟 CAD 已知)
+                     "hole_off": None, "det3d": {}}    # hole_off = goal−孔口 现场偏移 (模拟 CAD 已知)
         self._vis_ok = False
         # 🎯 R1 视觉感知 (工件定位): YOLO hand 检测漂移 12-20cm 不可控 (定标实锤) —
         #   真机同构: 机械臂末端=编码器 (obs hand 精确), 视觉只定位工件 (peg/hole)
@@ -162,6 +162,10 @@ class RealStateSpaceSim:
             self._vis["n"] += n
             self._vis["miss"] += (2 - n)
             self._vis["shot"] += 1
+            self._vis["det3d"] = {k: np.asarray(v, dtype=float) for k, v in det3d.items()}
+            # 可视化消费 (真实感知视频): 本帧渲染图 + 2D 检测框 (detect_3d 内 predict 的缓存)
+            self._vis["img"] = img
+            self._vis["boxes"] = getattr(self._aligner, "_last_res", None)
             if os.environ.get("R0_TRACE"):
                 o = np.asarray(self.env._get_obs(), dtype=np.float64).ravel()
                 _pe = np.linalg.norm(self._vis["peg"] - o[4:7]) if self._vis["peg"] is not None else float("nan")
@@ -324,12 +328,13 @@ class RealStateSpaceSim:
             # ② 观测刷新 (x = obs hand 编码器真值; 销/孔感知: R0 真值 / R1 视觉)
             d = env.data
             o = np.asarray(env._get_obs(), dtype=np.float64).ravel()
-            # 🎯 R1: YOLO peg 定位 — 只在夹爪悬停高位时刷新 (z>0.09 ≈ 销上方 6cm+, 不遮挡,
-            #   定标: 悬停误差 7-17mm vs 贴近 2cm 时 26-48mm 崩); 下降/抓取期冻结防幻影
-            if self.vision and self._aligner is not None and not self.grasped:
-                if self._vis["peg"] is None or (step % self.vision_every == 0
-                                                and x_new[2] > 0.09):
-                    self._vis_refresh()
+            # 🎯 R1 真实视觉: **每帧渲染 + detect_3d** (老倪红线: 不能造假 — 禁用节流/冻结/
+            #   复用旧值). 每步 env.step 后 render() → YOLO 检测 → 本帧真值.
+            #   ⚠️ 成本: ~0.5-1s/步 × 500 步 ≈ 4-9 分钟/轮 (真流程的代价, 接受)
+            #   ⚠️ 物理事实: 固定相机下夹爪贴近工件会遮挡 → peg 检测崩 (真实感知退化,
+            #      不掩盖 — 这正是 RealityGap 要暴露的; 真机用 eye-in-hand 相机解决)
+            if self.vision and self._aligner is not None:
+                self._vis_refresh()
             x_new = o[0:3].copy()
             self.v = (x_new - self.x) / DT_ENV if step > 0 else np.zeros(3)
             self.x = x_new
@@ -480,11 +485,69 @@ class RealStateSpaceSim:
             tr["u_exec_vec"].append(self._u_vec.copy())
             tr["v_vec"].append(self.v.copy())
             tr["z_k_vec"].append(z_k.copy())
-            tr["io_trace"].append((round(step * DT_ENV, 3), {"step": step}))
+            # 🔌 真实 io 快照 (画布节点名 key, 与引擎 _io_snapshot 同构 → 播放/3D/总线复用)
+            tr["io_trace"].append((round(step * DT_ENV, 3), self._io_snapshot(
+                o, obs, force_norm, u_ff, latent_pred, prior, z_k, corrected, residual,
+                contact_p, u_fb, u, stage, u_sat, self._u_vec, step, at_grasp_pose)))
             if done:
                 break
         tr["io"] = tr["io_trace"][-1][1] if tr["io_trace"] else {}
         return tr
+
+    # ── 🔌 真实 io 快照 (画布节点名 key — YOLO/2D→3D 用真实检测, 非引擎几何) ──
+    def _io_snapshot(self, o, obs, force_norm, u_ff, latent_pred, prior, z_k,
+                     corrected, residual, contact_p, u_fb, u, stage, u_sat,
+                     u_vec, frame_id, at_grasp_pose):
+        """每帧真实模块 I/O — 与引擎 _io_snapshot 同构 (画布播放/3D/总线消费同一 key)
+        🎯 YOLO/📐2D→3D = 本帧真实检测 (detect_3d 输出或最近刷新缓存), 不再写引擎几何"""
+        _v3 = self._vis["peg"] if (self.vision and self._vis["peg"] is not None) else o[4:7]
+        _vh = self._vis["hole"] if (self.vision and self._vis["hole"] is not None) else self.geom["hole"]
+        _conf = "🎥" if self.vision else "--"
+        return {
+            "📦 metaworld 数据源": {
+                "in": [], "out": [("图像流 (真实渲染帧)", f"帧#{frame_id}"),
+                                  ("状态流 39D (编码器+视觉)", obs[:39])]},
+            "🎯 YOLO 目标检测": {
+                "in": [("图像流", f"帧#{frame_id}")],
+                "out": [("peg 3D (detect_3d)", _v3),
+                        ("hole 3D (detect_3d)", _vh),
+                        ("hand 3D (视觉, 不参与控制)",
+                         (self._vis.get("det3d", {}).get("hand")
+                          if (self.vision and self._vis.get("det3d", {}).get("hand") is not None)
+                          else self.x)),
+                        ("检测源", _conf)]},
+            "📐 2D→3D 解算": {
+                "in": [("检测框 2D", "真实反投影")],
+                "out": [("peg 3D", _v3), ("hole 3D", _vh),
+                        ("hand 3D", self.x)]},   # hand=编码器 (真机同构)
+            "🖐 触觉感知": {
+                "in": [], "out": [("触觉 4D", obs[39:43])]},
+            "📡 传感器融合": {
+                "in": [("视觉 39D", obs[:39]), ("触觉 4D", obs[39:43])],
+                "out": [("obs 43D", obs)]},
+            "⚡ 前馈加速器": {
+                "in": [("obs 43D", obs)], "out": [("u_ff 4D", u_ff)]},
+            "🔮 自适应状态估计器": {
+                "in": [("潜状态", self.latent)], "out": [("latent_pred 4D", latent_pred)]},
+            "📈 先验动力学预测器": {
+                "in": [("潜状态", self.latent)], "out": [("prior 4D", prior)]},
+            "🧪 状态校正器": {
+                "in": [("prior", prior), ("z_k", z_k)],
+                "out": [("corrected", corrected), ("residual", residual),
+                        ("contact_p", contact_p)]},
+            "🧭 动作调制器": {
+                "in": [("u_ff", u_ff), ("u_fb", u_fb), ("contact_p", contact_p)],
+                "out": [("u 融合", u), ("stage", stage)]},
+            "🛡 安全限幅": {
+                "in": [("u", u)], "out": [("u_sat", u_sat)]},
+            "🤖 执行器": {
+                "in": [("u_sat", u_sat)], "out": [("u_vec 下发", u_vec)]},
+            "🌍 物理世界": {
+                "in": [("u_vec", u_vec)],
+                "out": [("末端 hand", self.x), ("销 peg", self._peg_cur),
+                        ("夹爪", self.gripper), ("力 norm", force_norm),
+                        ("抓握位姿", at_grasp_pose)]},
+        }
 
 
 def quick_run(n_episodes=8, seed_base=100, vision=False, vision_every=25):
