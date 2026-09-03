@@ -2421,7 +2421,117 @@ class VerificationLayer:
             return True, "空轨迹"
         return bool(np.isfinite(ue).all()), "异常指令拦截 (全有限)"
 
+    # ════════════════════════════════════════════════════════════
+    # v4.0.3 · 📊 泛化指标 G 组 (产品分级 PRODUCT_TREE 自动断言)
+    # 定义: G_pose 位姿外推 (洞位偏移下收敛保持) / G_skill 技能复用
+    #   (组合链换场景免重训) / G_data 数据外推 (新批次=引擎真跑新初态)
+    # 全部真实执行引擎/源码 — 无 mock。
+    # ════════════════════════════════════════════════════════════
+    def t_gpose_selfalign(self, np):
+        """G_pose: 洞位偏移 ±10mm 时闭环自洽收敛 (控制器跟随观测真值)"""
+        import importlib
+        sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
+        m = importlib.import_module("state_space_sim")
+        orig = m.HOLE_POS.copy()
+        errs = []
+        try:
+            for dz in (0.0, 2.0, 5.0, 10.0):
+                m.HOLE_POS = orig + np.array([0.0, 0.0, dz / 1000.0])
+                sim = m.StateSpaceSim(log=lambda *a: None)
+                tr = sim.run()
+                d = float(np.linalg.norm(np.asarray(tr["peg_head"][-1]) - m.HOLE_POS)) * 1000
+                errs.append(round(d, 1))
+        finally:
+            m.HOLE_POS = orig
+        ok = max(errs) < 10
+        return ok, f"G_pose 自洽收敛: 洞位偏移 0/2/5/10mm → 终态误差 {errs}mm (max<10mm)"
 
+    def t_gpose_oob(self, np):
+        """G_pose: 大偏移 ±30mm 不崩溃且引擎仍完成 (鲁棒性上界)"""
+        import importlib
+        sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
+        m = importlib.import_module("state_space_sim")
+        orig = m.HOLE_POS.copy()
+        try:
+            m.HOLE_POS = orig + np.array([0.03, 0.0, 0.03])
+            sim = m.StateSpaceSim(log=lambda *a: None)
+            tr = sim.run()
+            done = str(tr["stage"][-1]).endswith("完成")
+        finally:
+            m.HOLE_POS = orig
+        return bool(done), "G_pose 鲁棒上界: ±30mm 洞位偏移引擎仍收敛完成"
+
+    def t_gskill_reuse(self, np):
+        """G_skill: 技能库跨场景复用 (compose 不同场景序列互不串 = 免重训)"""
+        return self.t_llm_iso(np)
+
+    def t_gskill_chain(self, np):
+        """G_skill: FUNC_CHAINS 组合链引用功能全部真实存在 (模块化可复用)"""
+        try:
+            _nfp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_func_tree.py")
+            import importlib.util as _ilu
+            _s = _ilu.spec_from_file_location("lerobot.verification.node_func_tree", _nfp)
+            _nft = _ilu.module_from_spec(_s)
+            _s.loader.exec_module(_nft)
+            all_fids = {f["fid"] for n in _nft.NODE_TREE.values() for f in n["funcs"]}
+            bad = []
+            for name, _d, chain in _nft.FUNC_CHAINS:
+                miss = [c for c in chain if c not in all_fids]
+                if miss:
+                    bad.append(f"{name}缺{miss}")
+            return (not bad), f"G_skill 组合链: {len(_nft.FUNC_CHAINS)} 链引用全在库" + (f" ({bad})" if bad else "")
+        except Exception as e:
+            return False, f"G_skill 组合链校验失败: {e}"
+
+    def t_gskill_overlap(self, np):
+        """G_skill: L2/L3 作业引用与 L1 的共享子技能 (迁移基础)"""
+        try:
+            _nfp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_func_tree.py")
+            import importlib.util as _ilu
+            _s = _ilu.spec_from_file_location("lerobot.verification.node_func_tree", _nfp)
+            _nft = _ilu.module_from_spec(_s)
+            _s.loader.exec_module(_nft)
+            lv = {x["level"]: {f for j in x["jobs"] for f in j["funcs"]}
+                  for x in _nft.PRODUCT_TREE}
+            shared = sorted(lv.get("L1", set()) & lv.get("L2", set()))
+            shared2 = sorted(lv.get("L1", set()) & lv.get("L3", set()))
+            return len(shared) >= 3 and len(shared2) >= 3, \
+                f"G_skill 共享子技能: L1∩L2 {len(shared)} 个 {shared[:6]}, L1∩L3 {len(shared2)} 个 {shared2[:6]}"
+        except Exception as e:
+            return False, f"G_skill 重叠校验失败: {e}"
+
+    def t_gdata_engine(self, np):
+        """G_data: 引擎初始位扰动 (新批次等效) 下收敛保持 — 真实 run 多次"""
+        import importlib
+        sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
+        m = importlib.import_module("state_space_sim")
+        orig_x0 = m.X0.copy()
+        errs = []
+        try:
+            for dx in (0.0, 0.01, -0.01, 0.015):
+                m.X0 = orig_x0 + np.array([dx, 0.0, 0.0])
+                sim = m.StateSpaceSim(log=lambda *a: None)
+                tr = sim.run()
+                d = float(np.linalg.norm(np.asarray(tr["peg_head"][-1]) - m.HOLE_POS)) * 1000
+                errs.append(round(d, 1))
+        finally:
+            m.X0 = orig_x0
+        ok = max(errs) < 10
+        return ok, f"G_data 初始位扰动: 0/+10/−10/+15mm → 终态误差 {errs}mm (新批次收敛保持)"
+
+    def t_gdata_route(self, np):
+        """G_data: 模型选型路线标注完整 (每作业 model_route 非空)"""
+        try:
+            _nfp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_func_tree.py")
+            import importlib.util as _ilu
+            _s = _ilu.spec_from_file_location("lerobot.verification.node_func_tree", _nfp)
+            _nft = _ilu.module_from_spec(_s)
+            _s.loader.exec_module(_nft)
+            empty = [(x["level"], j["job"]) for x in _nft.PRODUCT_TREE
+                     for j in x["jobs"] if not j.get("model_route")]
+            return (not empty), f"G_data 选型路线: {sum(len(x['jobs']) for x in _nft.PRODUCT_TREE)} 作业全有 model_route" + (f" 缺{empty}" if empty else "")
+        except Exception as e:
+            return False, f"G_data 路线校验失败: {e}"
 
 
 # ════════════════════════════════════════════════════════════════════

@@ -52,16 +52,41 @@ def _list_tree():
     print(f"\n合计: {_nft.node_count()} 节点 / {_nft.func_count()} 功能 / {_nft.test_count()} 用例")
 
 
+def _list_product():
+    """打印产品作业分级 (L1基础/L2高级/L3扩展 + 泛化指标 + 模型选型)"""
+    _nft = _load_nft()
+    for lv in _nft.PRODUCT_TREE:
+        print(f"\n════ {lv['level']} {lv['lvl_name']} · {lv['kind']} ════")
+        print(f"  {lv['desc']}  [{lv['gauge']}]")
+        for j in lv["jobs"]:
+            print(f"\n▸ {j['job']}  {j['status']}")
+            print(f"    {j['desc']}")
+            print(f"    检测: {j.get('detect', '')}")
+            print(f"    泛化: {j.get('gen', '')}")
+            print(f"    选型: {j.get('model_route', '')}")
+            print(f"    引用: {', '.join(j['funcs'])}")
+    refs, missing = _nft.product_funcs_ref()
+    print(f"\n合计: {len(_nft.PRODUCT_TREE)} 级 / "
+          f"{sum(len(lv['jobs']) for lv in _nft.PRODUCT_TREE)} 作业 / "
+          f"引用功能 {len(refs)} (缺失 {len(missing)})")
+    print("泛化指标定义: G_data 数据外推(新批次成功率保持) · G_pose 位姿外推(±Δ偏移衰减) · "
+          "G_skill 技能复用(组合链换场景免重训)")
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="🧪 状态空间验证层 CLI")
     ap.add_argument("--list", action="store_true", help="三级树清单")
+    ap.add_argument("--product", action="store_true", help="产品作业分级清单 (L1/L2/L3+泛化+选型)")
     ap.add_argument("--only", default=None, help="旧兼容单用例 (如 F-A01)")
     ap.add_argument("--only-node", default=None, help="单节点自动用例 (如 sssched)")
     ap.add_argument("--skip-slow", action="store_true",
                     help="跳过 semi 半自动用例 (需真机/DISPLAY)")
     a = ap.parse_args()
     v = _vl.VerificationLayer()
+    if a.product:
+        _list_product()
+        sys.exit(0)
     if a.list:
         _list_tree()
         sys.exit(0)

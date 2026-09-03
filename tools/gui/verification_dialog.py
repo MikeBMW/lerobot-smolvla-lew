@@ -137,6 +137,22 @@ def export_verif_excel(path=None, tree=None, results=None):
         for i, w in enumerate((24, 10, 12, 10, 80), start=1):
             ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
+    # ── Sheet5 产品作业分级 (基础/高级/扩展 + 泛化指标 + 模型选型) ──
+    ws5 = wb.create_sheet("产品作业分级")
+    ws5.append(["级别", "功能分类", "产品作业", "作业说明", "实现状态", "模型选型路线",
+                "泛化指标(G)", "配套检测", "引用功能数", "规范场层"])
+    for c in ws5[1]:
+        c.fill, c.font = _HDR, _HF
+    for lv in tree.PRODUCT_TREE:
+        for j in lv["jobs"]:
+            ws5.append([f"{lv['level']} {lv['lvl_name']}", lv["kind"], j["job"],
+                        j["desc"], j["status"], j.get("model_route", ""),
+                        j.get("gen", ""), j.get("detect", ""),
+                        len(j["funcs"]), lv.get("gauge", "")])
+    for i, w in enumerate((14, 14, 18, 44, 20, 40, 46, 30, 10, 22), start=1):
+        ws5.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws5.freeze_panes = "A2"
+
     wb.save(path)
     return path
 
@@ -167,11 +183,19 @@ class VerificationDialog(QDialog):
             f"规范场三层: {_g_txt}\n"
             f"{_n} 节点 × {_f} 功能 (名 5~10 字) × 5 用例 · 自动 {_k.get('auto', 0)} · "
             f"半自动 {_k.get('semi', 0)} · 手动 {_k.get('manual', 0)} · "
-            f"模块化组合链 {len(self._tree.FUNC_CHAINS)} 条")
+            f"模块化组合链 {len(self._tree.FUNC_CHAINS)} 条 · 产品作业分级 {sum(len(lv['jobs']) for lv in self._tree.PRODUCT_TREE)} 项")
         self.lbl_sum.setStyleSheet("color:#8b949e; font-size:12px; padding:2px;")
         lay.addWidget(self.lbl_sum)
 
-        # 树: 节点 → 功能 → 用例
+        # 双 Tab: Tab1 规范场三层技术树 (节点→功能→用例) | Tab2 产品作业分级 (L1/L2/L3)
+        from PyQt5.QtWidgets import QTabWidget
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabWidget::pane { border:1px solid #30363d; } "
+                                "QTabBar::tab { background:#21262d; color:#e6edf3; padding:6px 14px; } "
+                                "QTabBar::tab:selected { background:#1f6feb; }")
+        lay.addWidget(self.tabs, 1)
+
+        # ── Tab1 技术树 ──
         self.tr = QTreeWidget()
         self.tr.setStyleSheet(_DARK + "QTreeWidget::item { padding:2px; }")
         self.tr.setColumnCount(4)
@@ -184,8 +208,24 @@ class VerificationDialog(QDialog):
         hdr.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(3, QHeaderView.Stretch)
-        lay.addWidget(self.tr, 1)
+        self.tabs.addTab(self.tr, "① 技术树 · 三层→节点→功能→用例")
+
+        # ── Tab2 产品作业分级 (客户视角: 基础/高级/扩展 + 泛化指标 + 模型选型) ──
+        self.trp = QTreeWidget()
+        self.trp.setStyleSheet(_DARK + "QTreeWidget::item { padding:2px; }")
+        self.trp.setColumnCount(4)
+        self.trp.setHeaderLabels(["产品作业", "分级", "模型路线", "说明/泛化指标/检测"])
+        self.trp.setRootIsDecorated(True)
+        self.trp.setAlternatingRowColors(True)
+        self.trp.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        hdrp = self.trp.header()
+        hdrp.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdrp.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hdrp.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hdrp.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tabs.addTab(self.trp, "② 产品分级 · 基础/高级/扩展 + 泛化指标 + 模型选型")
         self._populate()
+        self._populate_product()
 
         h = QHBoxLayout()
         self.lbl_res = QLabel("")
@@ -209,7 +249,7 @@ class VerificationDialog(QDialog):
         h.addWidget(b_close)
         lay.addLayout(h)
         self.export_done.connect(self.lbl_res.setText)
-        self.lbl_res.setText("三级清单就绪 — ▶ 运行自动用例 或 导出 Excel")
+        self.lbl_res.setText("双视图就绪: ①技术树(三层) ②产品分级(L1基础刚体/L2高级柔性/L3扩展性能调节) — ▶ 运行自动用例 或 导出 Excel")
 
     # ── 树填充 (规范场三层 → 节点 → 功能 → 用例) ──
     def _populate(self):
@@ -250,6 +290,30 @@ class VerificationDialog(QDialog):
                                                  "manual": Qt.gray}.get(kind))
                         f_item.addChild(t_item)
             g_item.setExpanded(True)
+
+    # ── Tab2 产品作业分级填充 (L1基础刚体/L2高级柔性/L3扩展性能调节) ──
+    def _populate_product(self):
+        self.trp.clear()
+        _FID_NAME = {f["fid"]: f["name"]
+                     for n in self._tree.NODE_TREE.values() for f in n["funcs"]}
+        _COL = {"L1": "#3fb950", "L2": "#d29922", "L3": "#a371f7"}
+        for lv in self._tree.PRODUCT_TREE:
+            l_item = QTreeWidgetItem(
+                [f"{lv['level']} {lv['lvl_name']} · {lv['kind']}", lv["level"], "",
+                 f"{lv['desc']} · {len(lv['jobs'])} 作业"])
+            l_item.setForeground(1, Qt.white)
+            self.trp.addTopLevelItem(l_item)
+            for j in lv["jobs"]:
+                fs = " · ".join(f"{_FID_NAME.get(f, f)}" for f in j["funcs"])
+                route = j.get("model_route", "")
+                gen = j.get("gen", "")
+                detect = j.get("detect", "")
+                j_item = QTreeWidgetItem(
+                    [f"  ▸ {j['job']}", lv["level"], route.split("(")[0].strip(),
+                     f"{j['desc']}\n      {detect}\n      泛化: {gen}\n      实现: {j['status']}\n      引用功能: {fs}"])
+                j_item.setForeground(0, Qt.cyan)
+                l_item.addChild(j_item)
+            l_item.setExpanded(True)
 
     # ── 后台跑测试 (不冻结 GUI) ──
     def _run_tests(self):

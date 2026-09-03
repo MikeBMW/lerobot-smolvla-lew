@@ -1121,3 +1121,126 @@ def check_contract():
                     errs.append(f"{nk}/{f['fid']}: 用例重复 {t[0]}")
                 seen_t.add(key)
     return errs
+
+
+# ════════════════════════════════════════════════════════════════════
+# 产品作业分级 PRODUCT_TREE (2026-09-04 老倪: 基础/高级/扩展 + 泛化指标
+#   + 模型选型 分段式 vs 端到端) — 客户视角「机器人能做什么作业」
+#
+# 物理判据 (刚体→柔性→性能调节, 数学骨架 = 工艺纤维丛/规范场):
+#   L1 基础 · 刚体接触插拔类  — 接触面刚体(光模块/金手指), 运动学+摩擦可精确建模,
+#       状态空间低维可观测, 位置控制为主 + 力保护 → 分段式(解析控制+状态机)可解
+#   L2 高级 · 柔性物体插拔类  — 被操作物柔性(光纤/尾纤), 形变随接触历史变化,
+#       无法用刚体运动学精确建模 → 需感知形变+柔顺控制, 分段式需强感知, 端到端
+#       学接触策略, 或分段感知 + 端到端技能头 (VLA 插拔头)
+#   L3 扩展 · 性能调节类      — 目标不是"到位"而是"性能极值" (耦合效率/光功率),
+#       在连续动作流形上搜索最优 + 环境(温度/批次)漂移补偿 → 需要世界模型 +
+#       优化/搜索 (主动对准), 端到端模仿难学"搜索行为", 分段式搜索+模型指引
+# 泛化指标定义 (G 泛化度, 指导模型选型 — 都可用成功率/误差实测):
+#   G_data  数据外推: 训练分布外 (新批次/新工位/新公差带) 成功率保持
+#   G_pose  位姿外推: 目标位姿偏移 ±Δ 下成功率衰减 (状态空间覆盖度)
+#   G_skill 技能复用: 组合链换场景 (FUNC_CHAINS 重排) 无需重训练的比例
+#   选型判据: 物理可建模性高 + 任务可分解 → 分段式; 形变/接触难建模 + 数据充分
+#   → 端到端; 目标=性能极值 + 需搜索 → 世界模型+优化; 三者混合 = 分层(如 VLA
+#   规划头 + 解析安全尾)
+# ════════════════════════════════════════════════════════════════════
+PRODUCT_TREE = [
+    # ── L1 基础 · 刚体接触插拔类 (光模块插拔+检测) ──
+    {"level": "L1", "lvl_name": "基础功能", "kind": "刚体接触插拔类",
+     "desc": "光模块插拔及配套检测 — 刚体几何接触, 运动学/摩擦精确可建模",
+     "gauge": "G2 协变操作",
+     "jobs": [
+         {"job": "光模块插拔", "desc": "金手指/导轨刚体插拔: 接近→对位→插入→锁扣, 力保护防划伤",
+          "status": "✅ 已实现(仿真+真机同构)",
+          "funcs": ["FNdata02", "FNsens01", "FNobs01", "FNff01", "FNest01",
+                    "FNpred01", "FNinn02", "FNsched01", "FNlim01", "FNact01",
+                    "FNworld01", "FNtac01", "FNmc01", "FNcal01"],
+          "detect": "✅ AOI 外观检测 + 触觉接触判定",
+          "model_route": "分段式(解析控制+八阶段状态机) — 已交付; 备选 VLA 端到端头",
+          "gen": "G_data: 新批次插拔成功率 ≥ 基线90% (无重训); G_pose: ±2mm 内衰减 ≤5%"},
+         {"job": "刚体取放搬运", "desc": "料盘/模块刚性取放, 夹持力控制防损伤",
+          "status": "✅ 已实现(夹持锁存+随动检测)",
+          "funcs": ["FNact02", "FNact03", "FNtac05", "FNworld02", "FNlim02"],
+          "detect": "✅ 抓握质量估计",
+          "model_route": "分段式(力阈值+状态锁存) — 已交付",
+          "gen": "G_skill: 换料盘尺寸不重训 (夹持自适应)"},
+         {"job": "精密视觉定位", "desc": "模块/插槽目标检出+3D 解算, 引导插拔对准",
+          "status": "✅ 已实现(YOLO+2D→3D)",
+          "funcs": ["FNyolo01", "FNyolo02", "FN2d01", "FN2d03", "FNobs02"],
+          "detect": "✅ 检出置信真实 (conf 0.4 阈值)",
+          "model_route": "分段式感知(检测模型独立标定) — 已交付",
+          "gen": "G_pose: 摆放姿态 ±30° 检出率保持 ≥95%"},
+     ]},
+    # ── L2 高级 · 柔性物体插拔类 (光纤插拔+检测) ──
+    {"level": "L2", "lvl_name": "高级功能", "kind": "柔性物体插拔类",
+     "desc": "光纤/尾纤插拔及配套检测 — 柔性形变, 接触状态高维随动",
+     "gauge": "G2 协变操作 + G3 对称认知",
+     "jobs": [
+         {"job": "光纤接头插拔", "desc": "光纤跳线/接头插拔: 柔性尾纤形变补偿, 微力插拔防纤芯损伤",
+          "status": "🔶 规划中 (需柔性形变感知)",
+          "funcs": ["FNsens01", "FNobs01", "FNpred01", "FNinn03", "FNsched01",
+                    "FNlim01", "FNact01", "FNtac02", "FNcal01"],
+          "detect": "🔶 需端面检测(FA/APC 划痕微米级)",
+          "model_route": "端到端(VLA 插拔头学柔性接触策略) 或 分段感知+柔顺导纳尾; 分段式解析难建柔性模型",
+          "gen": "G_data: 新纤型/新盘成功率 ≥ 基线85% (需≥2000 demo); G_pose: 尾纤弯折 0~180° 衰减 ≤15%"},
+         {"job": "柔性线缆整理", "desc": "光纤尾纤避让/理线, 防弯折半径超限",
+          "status": "🔶 规划中",
+          "funcs": ["FNobs03", "FNpred02", "FNsched02", "FNtac04", "FNmp02"],
+          "detect": "🔶 弯折半径监测 (曲率估计)",
+          "model_route": "端到端(轨迹学习) + 曲率约束硬限幅; 分段式需光纤曲率传感",
+          "gen": "G_pose: 出线方向 ±90° 弯折半径保持 ≥ 规格 (无重训)"},
+         {"job": "柔性接触力控", "desc": "微力(亚牛顿级)插拔控制, 力反馈随形变自适应",
+          "status": "🔶 规划中 (现有力控 ≤2N 级)",
+          "funcs": ["FNinn03", "FNtac02", "FNtac04", "FNlim01", "FNcal02"],
+          "detect": "🔶 微力传感 (亚牛顿分辨率)",
+          "model_route": "端到端力控策略头(RL/示范) 或 自适应导纳(变阻抗); 解析需精确柔性模型",
+          "gen": "G_skill: 模块插拔→光纤插拔技能迁移率 ≥60% (共同子技能)"},
+     ]},
+    # ── L3 扩展 · 性能调节类 (光耦合) ──
+    {"level": "L3", "lvl_name": "扩展功能", "kind": "性能调节类",
+     "desc": "光耦合对准及功率调节 — 目标=性能极值(耦合效率/光功率)非到位",
+     "gauge": "G1 场感知 + G2 协变操作",
+     "jobs": [
+         {"job": "光耦合主动对准", "desc": "六轴微调搜索耦合效率峰值 (Active Alignment)",
+          "status": "🔶 设计验证中 (性能流形 η 已建模)",
+          "funcs": ["FNmp01", "FNmp02", "FNmp03", "FNest01", "FNpred01",
+                    "FNff01", "FNcal04", "FNlat03"],
+          "detect": "✅ 性能流形 η (Vp→η) 已发布; 🔶 需光功率计实测标定 σ/W",
+          "model_route": "世界模型+优化搜索(梯度/寻峰) — 分段式感知+搜索控制器; 端到端模仿难学搜索行为",
+          "gen": "G_data: 新器件批次寻峰成功率 ≥ 基线90%; 搜索收敛 ≤5s (从 200μm 初偏)"},
+         {"job": "耦合质量闭环", "desc": "耦合后光功率保持/漂移补偿 (温度/批次)",
+          "status": "🔶 设计验证中",
+          "funcs": ["FNmp04", "FNinn03", "FNest03", "FNcal05", "FNrsn02"],
+          "detect": "✅ 性能退化监测 η; 🔶 需真实光功率回读",
+          "model_route": "世界模型预测漂移 + 分段式补偿; 端到端需大量退化样本(难)",
+          "gen": "G_skill: 插拔→耦合流程拼接成功率 ≥ 基线 (组合链复用)"},
+     ]},
+]
+
+# 便捷: job 覆盖功能引用去重统计
+def product_stats():
+    """分级汇总: 每级作业数/引用功能数/实现状态"""
+    from collections import Counter
+    out = []
+    for lv in PRODUCT_TREE:
+        funcs = set()
+        for j in lv["jobs"]:
+            funcs.update(j["funcs"])
+        done = sum(1 for j in lv["jobs"] if j["status"].startswith("✅"))
+        out.append({"level": lv["level"], "lvl_name": lv["lvl_name"],
+                    "kind": lv["kind"], "jobs": len(lv["jobs"]),
+                    "funcs": len(funcs), "done": done,
+                    "route": [j["model_route"].split("(")[0].strip()
+                              for j in lv["jobs"]]})
+    return out
+
+
+def product_funcs_ref():
+    """产品分级引用的全部功能 fid (校验: 必须在 NODE_TREE 存在)"""
+    refs = set()
+    for lv in PRODUCT_TREE:
+        for j in lv["jobs"]:
+            refs.update(j["funcs"])
+    all_fids = {f["fid"] for n in NODE_TREE.values() for f in n["funcs"]}
+    return sorted(refs), sorted(refs - all_fids)
+
