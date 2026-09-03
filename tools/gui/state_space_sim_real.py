@@ -113,6 +113,10 @@ class RealStateSpaceSim:
     # ── 每轮复位: 现场采样几何 ──
     def _reset(self, seed):
         env = self.env
+        # 🐛 2026-09-04: freeze 必须在 reset 采样**之后** — 若先 freeze 再 reset,
+        #   布局锁死在第一次的值, 后续 seed 全同 (8 轮同一轨迹实锤).
+        #   先解冻 → reset(seed) 采样该 seed 的新布局 → 再冻结防 step 扰动
+        env._freeze_rand_vec = False
         env.reset(seed=seed)
         env._freeze_rand_vec = True
         d = env.data
@@ -148,10 +152,11 @@ class RealStateSpaceSim:
         # → 夹紧度: 夹住=0.30, 空夹=0.71。阈值取 0.25 (obs<0.75, 闭合足够深才开始抬;
         #   夹住与否由抬起阶段 peg 随动验证决定, 见 grasp_force)
         self.sched = self.cognition.ActionModulator(
-            grasp_th=0.28,      # 夹紧度 1−obs>0.28 (obs<0.72 ≈ 夹住销饱和 0.70) 才推进抬起 —
-                                # 给夹爪 ~10 步闭合到位; 夹住与否由抬起 peg 随动验证 (gf)
+            grasp_th=0.40,      # 夹紧度 1−obs>0.40 (obs<0.60 深夹) 才推进抬起 — 与锁存同步
+                                # (浅夹 0.72 就抬滑脱率高; 深夹到 0.60 以下夹持力才足)
             align_th=0.025,     # 转移→插入 孔位对准 (销头-孔口水平, 视觉精度余量)
-            insert_depth=D_INSERT,
+            insert_depth=0.006,  # 插入→完成: 销头离终点 6mm 内算完成 (metaworld 插入物理
+                                 #   精度余量; 引擎 0.004 在真实物理下差 0.1mm 磨死 — ep5 实锤)
             lift_h=0.08,        # 抬起→转移: 销升 8cm (孔口高 0.13, 销初始 0.03 — 升够才平移防撞台)
             max_veto=5,
         )
@@ -159,23 +164,28 @@ class RealStateSpaceSim:
         self._grasp_off0 = None    # 锁存瞬间 peg−x (随动验证锚)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
         self._close_steps = 0      # 抓取阶段闭合指令持续步数
+        # 插入阶段最小推力: 销头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
+        #   (ep3 插到 13mm 推不动 96 步实锤; 引擎 STAGE_V_MIN 无插入, 真实物理需要)
+        self.sched.v_min["插入"] = 0.02
 
     # ── 阶段子目标 (八阶段, 几何全现场, 锚 = 夹爪) ──
-    # 夹持前 (接近→抓取): 目标 = 销抓握点上方 (夹爪锚)
+    # 夹持前 (接近→抓取): 目标 = 销抓握点上方 — ⚠️ 用**实时销位置** self._peg_cur
+    #   (回退重抓时销可能被首次下降碰移, 静态采样坐标会空夹 — ep3-5 失败实锤)
     # 夹持后 (抬起→插入): 目标由"销头当前位置 + 实时夹爪偏移"驱动 —
     #   销头相对夹爪的方向/距离锁存后不变, 把销头送到孔口/终点即得夹爪目标
     def _stage_target(self):
         g = self.geom
         st = self.sched.stage()
+        pg = getattr(self, "_peg_cur", g["peg_grasp"])     # 实时销位置 (obs[4:7])
         if st == "接近":
-            return g["peg_grasp"] + np.array([0.0, 0.0, STAGE_APPROACH_H])
+            return pg + np.array([0.0, 0.0, STAGE_APPROACH_H])
         if st == "对位":
-            return g["peg_grasp"] + np.array([0.0, 0.0, STAGE_ALIGN_H])
+            return pg + np.array([0.0, 0.0, STAGE_ALIGN_H])
         if st in ("下降", "抓取"):
-            return g["peg_grasp"] + np.array([0.0, 0.0, STAGE_DESCEND_H])
+            return pg + np.array([0.0, 0.0, STAGE_DESCEND_H])
         if st == "抬起":
             # 垂直抬升: xy 保持当前, z 抬到销离台 STAGE_LIFT (保持锁存时夹爪-销高度差)
-            gap_z = getattr(self, "_grasp_gap_z", 0.015)
+            gap_z = getattr(self, "_grasp_gap_z", 0.02)
             return np.array([self.x[0], self.x[1], g["peg_z0"] + STAGE_LIFT + gap_z])
         off = self.peg_head() - self.x          # 实时销头-夹爪偏移 (夹持后锁存不变)
         if st == "转移":
@@ -188,8 +198,9 @@ class RealStateSpaceSim:
 
     # ── 证据量 (全现场几何) ──
     def _d_xy_peg(self):
-        """夹爪-销抓握点 水平距离 (接近/对位/下降推进证据)"""
-        return float(np.linalg.norm(self.x[:2] - self.geom["peg_grasp"][:2]))
+        """夹爪-销抓握点 水平距离 (接近/对位/下降推进证据; 实时销位置)"""
+        pg = getattr(self, "_peg_cur", self.geom["peg_grasp"])
+        return float(np.linalg.norm(self.x[:2] - pg[:2]))
 
     def _d_hole_h(self):
         """销头-孔口 水平距离 (转移→插入 推进证据)"""
@@ -226,6 +237,7 @@ class RealStateSpaceSim:
             # ② 观测刷新 (全部真值直读; x = obs hand 真实夹爪位)
             d = env.data
             o = np.asarray(env._get_obs(), dtype=np.float64).ravel()
+            self._peg_cur = o[4:7].copy()        # 实时销位置 (抓取对准/证据用)
             x_new = o[0:3].copy()
             self.v = (x_new - self.x) / DT_ENV if step > 0 else np.zeros(3)
             self.x = x_new
@@ -285,19 +297,18 @@ class RealStateSpaceSim:
                 u_vec = np.zeros(4)
             self._u_vec = np.asarray(u_vec, dtype=float).copy()
             self.u_prev = self._u_vec.copy()
-            # ⑥ 夹持锁存与随动验证 (R0 语义: 夹爪闭合到 obs<0.75 锁存"闭合到位",
-            #   真夹住与否由抬起阶段 peg 随动判定 — MuJoCo 物理: 夹住则 peg 跟夹爪升)
-            g_close = float(1.0 - self.gripper)          # 夹紧度 (1=紧; 夹住销≈0.30, 空夹→0.71)
+            # ⑥ 夹持锁存与随动验证 (R0 语义: 深夹到 grp<0.60 锁存 — 探针12 成功夹持时
+            #   grp 0.66 接触建立 → 0.28 深夹; 浅夹(0.78)就抬滑脱率高 (ep3-5 失败实锤).
+            #   真夹住与否由抬起阶段 peg 随动判定 (MuJoCo: 夹住则 peg 跟夹爪升)
+            g_close = float(1.0 - self.gripper)          # 夹紧度 (1=紧; 夹住销深夹≈0.7+)
             if not self.grasped and self.sched.stage() == "抓取":
                 if self.gripper < 0.82:                  # obs gripper 开始闭合 (<0.82)
                     self._close_steps += 1
-                    # 闭合 ≥3 步先锁存"闭合候选" (advance 阈值 obs<0.72 会给足 ~10 步闭合;
-                    #   真夹住与否由抬起阶段 peg 随动 gf 验证, 滑脱自动回退重抓)
-                    if self._close_steps >= 3 and self.gripper < 0.78:
-                        self.grasped = True              # 闭合到位锁存 (夹住候选)
+                    if self._close_steps >= 3 and self.gripper < 0.60:
+                        self.grasped = True              # 深夹锁存 (夹住候选)
                         self._grasp_off0 = o[4:7] - self.x
                         self._grasp_gap_z = float(self.x[2] - o[4:7][2])
-                        self.log(f"🔩 夹爪闭合到位 (obs gripper={self.gripper:.2f}) → 抬升试探")
+                        self.log(f"🔩 夹爪深夹到位 (obs gripper={self.gripper:.2f}) → 抬升试探")
                 else:
                     self._close_steps = 0
             elif self.grasped:
@@ -306,7 +317,14 @@ class RealStateSpaceSim:
                 if float(np.linalg.norm(_off - self._grasp_off0)) > 0.035:
                     self.grasped = False                  # 掉了 → grasp_force 0 → 调度器回退重抓
                     self._grasp_off0 = None
-                    self.log("⚠️ 插销滑脱 (peg 未随夹爪) → 交调度器回退重抓")
+                    # 🐛 强制回退到接近: 滑脱时 peg 可能半挂在夹爪上 (z 未落回台面),
+                    #   advance 的"落回台面"回退判据不触发 → 卡死在转移/插入 (ep1/2/4 350步实锤)
+                    try:
+                        if self.sched.stage_idx >= 4:
+                            self.sched._goto(0, "⚠️ 插销滑脱 (peg 未随夹爪) → 强制回退重抓")
+                            self.log("⚠️ 插销滑脱 → 强制回退接近重抓")
+                    except Exception:
+                        pass
             # ⑦ 阶段推进 (证据全现场)
             self.obs_prev = obs[0:18]
             d_xy = self._d_xy_peg()
