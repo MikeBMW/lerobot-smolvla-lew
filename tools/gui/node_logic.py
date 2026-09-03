@@ -1350,6 +1350,13 @@ def _yolo_ensure_aligner(log):
     _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
               "outputs/yolo_peg/peg_v1/weights/best.pt"]
     _w = next((c for c in _cands if os.path.isfile(os.path.join(_REPO_ROOT, c))), _cands[0])
+    # 🎯 深度模型权重候选 (YOLO depth head) — 🐛 2026-09-03 老倪: 原构造漏传
+    #   depth_weights → depth_model=None → detect_3d 全程走「写死 z 平面」回退
+    #   (断点停在 118 行). 候选与 gen_insert_video.py:36 同款, GPU 自动校准版优先.
+    _d_cands = ["outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt",   # GPU自动校准版 (scale 0.978/0.885)
+                "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",      # 旧 CPU 版 (已作废, 回退用)
+                "outputs/yolo_peg_depth/peg_depth_smoke/weights/best.pt"]
+    _dw = next((c for c in _d_cands if os.path.isfile(os.path.join(_REPO_ROOT, c))), None)
     import metaworld as _mt
     _mt_env = _mt.MT1("peg-insert-side-v3")
     _env0 = _mt_env.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
@@ -1357,9 +1364,11 @@ def _yolo_ensure_aligner(log):
     _env0.set_task(_mt_env.train_tasks[0])
     _env0.reset(seed=0)
     _env0._freeze_rand_vec = True
-    _YOLO_ALIGNER = yolo_state_aligner.YoloStateAligner(os.path.join(_REPO_ROOT, _w), _env0)
+    _YOLO_ALIGNER = yolo_state_aligner.YoloStateAligner(os.path.join(_REPO_ROOT, _w), _env0,
+                                                        depth_weights=(os.path.join(_REPO_ROOT, _dw) if _dw else None))
     if log:
-        log(f"🎯 YOLO 真实模型已加载: {_w} · metaworld peg-insert-side-v3 (corner2)")
+        log(f"🎯 YOLO 真实模型已加载: {_w} · metaworld peg-insert-side-v3 (corner2)"
+            + (f" · 深度 {_dw}" if _dw else " · ⚠️ 无深度权重 → detect_3d 走写死 z 回退"))
     return _YOLO_ALIGNER
 
 
@@ -1400,7 +1409,7 @@ def _yolo_capture(log, aligner):
 
 def node_yolo_3d(ctx):
     """🎯 YOLO 3D — 真实执行: metaworld 渲染帧 → YOLO 检测 → 3D 反投影
-    源码: src/lerobot/policies/yolo_3d/yolo_state_aligner.py (detect_3d / pixel_to_ray / ray_plane_intersect)
+    源码: src/lerobot/policies/yolo_3d/yolo_state_aligner.py (detect_3d / align)
     ─────────────────────────────────────────────
     数据流: 相机图像 → YOLO {hand, peg, hole} → 反投影 3D → 缓存 → 📐 2D→3D 节点 align 进 39D"""
     log = ctx["log"]
@@ -1655,7 +1664,9 @@ _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.
 # 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
 _YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
-_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 11, "def pixel_to_ray")  # 📐 2D→3D 解算: 像素→射线→平面交点 (反投影实现, 非整个类)
+# 🐛 2026-09-04 静静: 原映射指向 pixel_to_ray(11行) — 2026-08-23 改 cam_mat0 矩阵反投影后已成死代码,
+#   全仓库零执行调用 → 查看源码/断点永不命中 (老倪断点停在 detect_3d 126 才发现). 改指真实反投影 detect_3d.
+_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 53, "def detect_3d")  # 📐 2D→3D 解算: YOLO 框→cam_mat0 反投影→3D (深度优先/写死z回退) — 断点打 104-110 行
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
 _EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 40, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 # 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
