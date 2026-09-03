@@ -3319,12 +3319,19 @@ class SimCanvas(QGraphicsView):
         a_calib = None
         if item.node.get("params", {}).get("calib_layer"):
             a_calib = menu.addAction("标定表格 (引力/斥力/潜空间 编辑)")
-        # 🧩 验证层 Feature/Test 节点右键 (2026-09-04 老倪: 清单/结果 + 导出 Excel)
+        # 🧩 验证层 Feature/Test 节点右键 (2026-09-04 老倪: 清单/结果 + 导出 Excel;
+        #    2026-09-04 v2: 右键同时可开「功能清单」「需求规格书 RFP」— 同一个对话框
+        #    不同初始 Tab, 由 name 判定)
         a_verif = None
+        a_rfp = None
+        a_auto = None
         if item.node.get("params", {}).get("verif_layer"):
             _is_test = "Test" in item.node.get("name", "") or "用例" in item.node.get("name", "")
             a_verif = menu.addAction("Test 用例结果 (含导出)" if _is_test
-                                     else "Feature 功能清单 (含导出)")
+                                     else "功能清单 (技术树/产品分级/用例/导出)")
+            a_rfp = menu.addAction("需求规格书 RFP (客户指标→作业→功能)")
+            if _is_test:
+                a_auto = menu.addAction("⚡ 一键自动测试 (环境→用例→报告 PDF/Excel)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -3353,8 +3360,12 @@ class SimCanvas(QGraphicsView):
             self.module._mlp_prev()
         elif a_calib is not None and chosen == a_calib:
             self.module.on_open_calib_table(item.node)
+        elif a_auto is not None and chosen == a_auto:
+            self.module._run_auto_test(item.node)
         elif a_verif is not None and chosen == a_verif:
             self.module._open_verif_dialog(item.node)
+        elif a_rfp is not None and chosen == a_rfp:
+            self.module._open_verif_dialog(item.node, tab="rfp")
 
     def _show_link_menu(self, item, view_pos):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
@@ -9328,6 +9339,8 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint |
+                           Qt.WindowMinimizeButtonHint)
         dlg.raise_()
         dlg.activateWindow()
 
@@ -9363,6 +9376,8 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint |
+                           Qt.WindowMinimizeButtonHint)
         dlg.raise_()
         dlg.activateWindow()
 
@@ -9384,16 +9399,58 @@ class SimulinkModule(QWidget):
         dlg.finished.connect(_done)
         dlg.show()
 
-    def _open_verif_dialog(self, node):
-        """🧩 验证层 Feature/Test 节点 (2026-09-04 老倪: 清单/结果对话框 + 导出 Excel)"""
+    def _open_verif_dialog(self, node, tab=None):
+        """🧩 验证层 Feature/Test 节点 (2026-09-04 老倪: 清单/结果对话框 + 导出 Excel)
+        tab: None=默认首Tab, 'rfp'=直接切到需求规格书 RFP"""
         try:
             from verification_dialog import VerificationDialog
             nm = node.get("name", "")
             mode = "test" if ("Test" in nm or "用例" in nm) else "feature"
             dlg = VerificationDialog(mode=mode, parent=self, log=self._log)
+            if tab == "rfp":
+                dlg.tabs.setCurrentIndex(2)
             self._show_nonmodal(dlg)
         except Exception as _e:
             self._log(f"⚠️ 验证层对话框打开失败: {_e}")
+
+    def _run_auto_test(self, node):
+        """⚡ Test 节点一键自动测试 (2026-09-04 老倪): 自动搭测试环境 → 自动执行
+        全部用例 → 自动出报告 PDF/Excel → scp 上传 datadrive.world
+        子进程跑 gen_verif_auto_report.py (reportlab 在子进程, 防 worker 线程卡 GUI)"""
+        self._log("⚡ 一键自动测试启动: ①环境自检 ②执行用例 ③生成报告 (后台 ~20s)…")
+        import threading
+        import subprocess as _sp
+
+        def _work():
+            try:
+                rp = os.path.join(self._repo_root(), "tools", "gen_verif_auto_report.py")
+                py = os.path.join(self._repo_root(), "gui-venv311", "bin", "python")
+                r = _sp.run([py, rp], capture_output=True, text=True, timeout=240)
+                out = (r.stdout or "") + (r.stderr or "")
+                pdf = next((l.split("=", 1)[1].strip() for l in out.splitlines()
+                            if l.startswith("REPORT_PDF=")), None)
+                xlsx = next((l.split("=", 1)[1].strip() for l in out.splitlines()
+                             if l.startswith("EXCEL=")), None)
+                if r.returncode != 0 or not pdf:
+                    self._safe_log(f"⚠️ 自动测试失败: {out[-300:]}")
+                    return
+                self._safe_log(f"✅ 自动测试完成: {out.splitlines()[0] if out else ''}")
+                # 上传 datadrive.world
+                for f, tag in ((pdf, "报告 PDF"), (xlsx, "Excel")):
+                    try:
+                        _r = _sp.run(
+                            ["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                             "-o", "ConnectTimeout=15", f,
+                             f"root@39.102.211.79:/www/wwwroot/datadrive.world/{os.path.basename(f)}"],
+                            capture_output=True, text=True, timeout=60)
+                        if _r.returncode == 0:
+                            self._safe_log(f"🔗 {tag}: http://datadrive.world/{os.path.basename(f)}")
+                    except Exception as _e:
+                        self._safe_log(f"⚠️ {tag} 上传失败: {_e}")
+            except Exception as _e:
+                self._safe_log(f"⚠️ 一键自动测试异常: {_e}")
+
+        threading.Thread(target=_work, daemon=True).start()
 
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""

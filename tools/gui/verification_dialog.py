@@ -153,6 +153,25 @@ def export_verif_excel(path=None, tree=None, results=None):
         ws5.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
     ws5.freeze_panes = "A2"
 
+    # ── Sheet6 需求规格书 RFP (客户量化指标 → 产品作业/功能 验收锚点) ──
+    ws6 = wb.create_sheet("需求规格书RFP")
+    ws6.append(["标题", "RFP 版本", "指标类型", "需求指标", "量化要求", "否决项",
+                "关联产品作业", "支撑功能"])
+    for c in ws6[1]:
+        c.fill, c.font = _HDR, _HF
+    _FID = {f["fid"]: f["name"] for n in tree.NODE_TREE.values() for f in n["funcs"]}
+    for name, q, veto, job, funcs in tree.RFP_SPEC["key_items"]:
+        ws6.append([tree.RFP_SPEC["title"], "", "★否决项" if veto else "普通项",
+                    name, q, "★" if veto else "",
+                    job, " · ".join(f"{_FID.get(f, f)}" for f in funcs)])
+    ws6.append(["", "", "", "", "", "", "", ""])
+    ws6.append(["交付要求", "", "响应要求", tree.RFP_SPEC["delivery"].get("响应要求", "")])
+    ws6.append(["", "", "交付周期", tree.RFP_SPEC["delivery"].get("交付周期", "")])
+    ws6.append(["", "", "售后保障", tree.RFP_SPEC["delivery"].get("售后保障", "")])
+    for i, w in enumerate((20, 10, 10, 24, 40, 8, 16, 60), start=1):
+        ws6.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws6.freeze_panes = "A2"
+
     wb.save(path)
     return path
 
@@ -168,9 +187,13 @@ class VerificationDialog(QDialog):
         self._log = log or (lambda *a: None)
         self._tree = _load_tree()
         self._results = None
-        self.setWindowTitle("🧩 功能清单 · 规范场三层 → 节点 → 功能 → 用例" if mode == "feature"
-                            else "🧪 用例执行 · 规范场三层 → 节点 → 功能 → 用例")
+        self.setWindowTitle("🧩 功能清单 · 技术树 / 产品分级 / 需求规格书" if mode == "feature"
+                            else "🧪 用例执行 · 技术树 / 产品分级 / 需求规格书")
         self.setStyleSheet(_DARK)
+        # 🐛 2026-09-04 老倪: 最大化按钮点了没反应 — QDialog 默认 flags 无 MaximizeButtonHint
+        # 需显式补 Window 类型 + Maximize/MinimizeHint (QDialog 构造默认只有 Dialog 边框无最大最小)
+        _f = self.windowFlags()
+        self.setWindowFlags(_f | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
         self.setMinimumSize(1000, 560)
         self.resize(1280, 720)
         lay = QVBoxLayout(self)
@@ -197,7 +220,12 @@ class VerificationDialog(QDialog):
 
         # ── Tab1 技术树 ──
         self.tr = QTreeWidget()
-        self.tr.setStyleSheet(_DARK + "QTreeWidget::item { padding:2px; }")
+        self.tr.setStyleSheet(
+            "QTreeWidget { background:#161b22; color:#e6edf3; alternate-background-color:#1c2128; "
+            "border:1px solid #30363d; outline:none; selection-background-color:#1f6feb; } "
+            "QTreeWidget::item { padding:2px; color:#e6edf3; } "
+            "QTreeWidget::item:selected { background:#1f6feb; } "
+            "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:4px; }")
         self.tr.setColumnCount(4)
         self.tr.setHeaderLabels(["名称", "分类", "类型", "说明/证据"])
         self.tr.setRootIsDecorated(True)
@@ -212,7 +240,12 @@ class VerificationDialog(QDialog):
 
         # ── Tab2 产品作业分级 (客户视角: 基础/高级/扩展 + 泛化指标 + 模型选型) ──
         self.trp = QTreeWidget()
-        self.trp.setStyleSheet(_DARK + "QTreeWidget::item { padding:2px; }")
+        self.trp.setStyleSheet(
+            "QTreeWidget { background:#161b22; color:#e6edf3; alternate-background-color:#1c2128; "
+            "border:1px solid #30363d; outline:none; selection-background-color:#1f6feb; } "
+            "QTreeWidget::item { padding:2px; color:#e6edf3; } "
+            "QTreeWidget::item:selected { background:#1f6feb; } "
+            "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:4px; }")
         self.trp.setColumnCount(4)
         self.trp.setHeaderLabels(["产品作业", "分级", "模型路线", "说明/泛化指标/检测"])
         self.trp.setRootIsDecorated(True)
@@ -224,8 +257,29 @@ class VerificationDialog(QDialog):
         hdrp.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hdrp.setSectionResizeMode(3, QHeaderView.Stretch)
         self.tabs.addTab(self.trp, "② 产品分级 · 基础/高级/扩展 + 泛化指标 + 模型选型")
+
+        # ── Tab3 需求规格书 (RFP: 客户量化指标 → 产品作业 → 功能 验收锚点) ──
+        self.trr = QTreeWidget()
+        self.trr.setStyleSheet(
+            "QTreeWidget { background:#161b22; color:#e6edf3; alternate-background-color:#1c2128; "
+            "border:1px solid #30363d; outline:none; selection-background-color:#1f6feb; } "
+            "QTreeWidget::item { padding:2px; color:#e6edf3; } "
+            "QTreeWidget::item:selected { background:#1f6feb; } "
+            "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:4px; }")
+        self.trr.setColumnCount(4)
+        self.trr.setHeaderLabels(["需求指标", "量化要求", "否决", "关联作业/功能"])
+        self.trr.setRootIsDecorated(True)
+        self.trr.setAlternatingRowColors(True)
+        self.trr.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        hdrr = self.trr.header()
+        hdrr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdrr.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hdrr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hdrr.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tabs.addTab(self.trr, "③ 需求规格书 · RFP 指标 → 产品作业")
         self._populate()
         self._populate_product()
+        self._populate_rfp()
 
         h = QHBoxLayout()
         self.lbl_res = QLabel("")
@@ -314,6 +368,36 @@ class VerificationDialog(QDialog):
                 j_item.setForeground(0, Qt.cyan)
                 l_item.addChild(j_item)
             l_item.setExpanded(True)
+
+    # ── Tab3 需求规格书填充 (RFP 量化指标 → 产品作业 → 功能) ──
+    def _populate_rfp(self):
+        self.trr.clear()
+        _FID_NAME = {f["fid"]: f["name"]
+                     for n in self._tree.NODE_TREE.values() for f in n["funcs"]}
+        # 项目概述
+        ov = QTreeWidgetItem(["📋 项目概述", "", "", self._tree.RFP_SPEC.get("overview", "")])
+        ov.setForeground(0, Qt.yellow)
+        self.trr.addTopLevelItem(ov)
+        # 交付要求
+        for k, v in self._tree.RFP_SPEC.get("delivery", {}).items():
+            self.trr.addTopLevelItem(QTreeWidgetItem([f"📦 {k}", "", "", v]))
+        # 量化指标 (★ 否决项置顶分组)
+        _items = self._tree.RFP_SPEC["key_items"]
+        _nv = sum(1 for it in _items if it[2])
+        kw = QTreeWidgetItem([f"★ 关键否决项 ({_nv})", "★", "", ""])
+        kw.setForeground(0, Qt.red)
+        self.trr.addTopLevelItem(kw)
+        ow = QTreeWidgetItem([f"普通指标 ({len(_items) - _nv})", "", "", ""])
+        ow.setForeground(0, Qt.cyan)
+        self.trr.addTopLevelItem(ow)
+        for name, q, veto, job, funcs in _items:
+            fn = " · ".join(f"{_FID_NAME.get(f, f)}" for f in funcs)
+            it = QTreeWidgetItem([f"  {name}", q, "★否决" if veto else "",
+                                  f"关联作业: {job}\n      支撑功能: {fn}"])
+            it.setForeground(1, Qt.red if veto else Qt.green)
+            (kw if veto else ow).addChild(it)
+        kw.setExpanded(True)
+        ow.setExpanded(True)
 
     # ── 后台跑测试 (不冻结 GUI) ──
     def _run_tests(self):
