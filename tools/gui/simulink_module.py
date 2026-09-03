@@ -6137,6 +6137,9 @@ class SimulinkModule(QWidget):
                         if n.get("type") != "row_bg"
                         and match_node(n.get("name", "")) == "ss_yolo"), None)
             if _yn is None:
+                # 🐛 2026-09-04 静静: 原静默 return → 老倪 detect_3d 断点"进不去"无从查起.
+                #   画布无 ss_yolo 节点是头号原因, 显式日志让运行一次即可定位.
+                self._log("⚠️ ▶运行: 当前画布无「🎯 YOLO 目标检测」节点 → detect_3d 不执行 (断点进不去先查这条)")
                 return
             execute_node_logic(self, _yn, label="▶运行-YOLO真实感知")
         except Exception as _e:
