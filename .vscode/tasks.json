@@ -2,6 +2,15 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "🧹 清 debugpy 僵尸 (5678)",
+            "type": "shell",
+            "command": "lsof -ti:5678 | xargs -r kill 2>/dev/null; true",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent"
+            }
+        },
+        {
             "label": "🚀 启动 Z-MAX Studio",
             "type": "shell",
             "command": "bash start.sh",
