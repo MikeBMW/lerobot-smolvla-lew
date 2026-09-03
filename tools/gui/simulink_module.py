@@ -10353,18 +10353,22 @@ class SimulinkModule(QWidget):
         self._real_tr = None
 
         def _work():
+            _logs = []
             try:
                 from state_space_sim_real import RealStateSpaceSim
-                sim = RealStateSpaceSim(seed=100, vision=True, vision_every=1)
+                # log=线程安全收集器 (worker 线程禁 QObject 方法 — 崩溃铁律)
+                sim = RealStateSpaceSim(seed=100, vision=True, vision_every=1,
+                                        log=lambda *a: _logs.append(
+                                            " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
                 tr = sim.run()
                 v = sim._vis
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
-                self._real_tr = ("ok", tr, sim, rate)
+                self._real_tr = ("ok", tr, sim, rate, list(_logs))
             except Exception as _e:
                 import traceback
                 traceback.print_exc()
-                self._real_tr = ("err", str(_e), None, 0.0)
+                self._real_tr = ("err", str(_e), None, 0.0, list(_logs))
 
         threading.Thread(target=_work, daemon=True).start()
         t = _tq(self)
@@ -10386,13 +10390,17 @@ class SimulinkModule(QWidget):
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         if r[0] == "ok":
-            tr, sim, rate = r[1], r[2], r[3]
+            tr, sim, rate, logs = r[1], r[2], r[3], r[4]
+            for _l in logs:
+                self._log(_l)
             ok = bool(tr.get("done", [False])[-1]) if tr.get("done") else False
             self._log(f"🎥 真实化运行完成: {len(tr['t'])} 步 · "
                       f"{'✅ 插拔完成' if ok else '⚠️ 未完成 (真实感知下的真实结果)'}"
                       f" · YOLO 检出 {rate:.0f}%")
             self._real_finish(tr)
         else:
+            for _l in r[4]:
+                self._log(_l)
             self._log(f"⚠️ 真实化运行失败: {r[1]}")
 
     def _real_finish(self, tr):

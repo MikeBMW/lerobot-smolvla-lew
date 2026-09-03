@@ -174,6 +174,9 @@ class RealStateSpaceSim:
                       f" · 真peg={np.round(o[4:7],3)}", flush=True)
             return n
         except Exception as e:
+            # 🐛 2026-09-04: 异常必须显性 (GUI 里 log 可能是 no-op, 吞掉 = 断点进不去还找不到原因)
+            import traceback as _tb
+            _tb.print_exc()
             self.log(f"⚠️ YOLO 刷新失败: {e}")
             self._vis["miss"] += 2
             self._vis["shot"] += 1
