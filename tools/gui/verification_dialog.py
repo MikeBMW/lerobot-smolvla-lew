@@ -172,6 +172,20 @@ def export_verif_excel(path=None, tree=None, results=None):
         ws6.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
     ws6.freeze_panes = "A2"
 
+    # ── Sheet7 技术规格书 (供应商 3 组 12 项规格 → 产品作业/功能) ──
+    ws7 = wb.create_sheet("技术规格书")
+    ws7.append(["规格组", "规格项", "量化要求", "关联产品作业", "支撑功能"])
+    for c in ws7[1]:
+        c.fill, c.font = _HDR, _HF
+    for g in tree.TECH_SPECS:
+        for it in g["items"]:
+            ws7.append([f"{g['group']} {g['g_name']} ({g['g_en']})", it["spec"],
+                        it["req"], it["job"],
+                        " · ".join(f"{_FID.get(f, f)}" for f in it["funcs"])])
+    for i, w in enumerate((30, 16, 70, 16, 60), start=1):
+        ws7.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws7.freeze_panes = "A2"
+
     wb.save(path)
     return path
 
@@ -277,9 +291,30 @@ class VerificationDialog(QDialog):
         hdrr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hdrr.setSectionResizeMode(3, QHeaderView.Stretch)
         self.tabs.addTab(self.trr, "③ 需求规格书 · RFP 指标 → 产品作业")
+
+        # ── Tab4 技术规格 (供应商规格书: 3 组 12 项 → 产品作业/功能) ──
+        self.trs = QTreeWidget()
+        self.trs.setStyleSheet(
+            "QTreeWidget { background:#161b22; color:#e6edf3; alternate-background-color:#1c2128; "
+            "border:1px solid #30363d; outline:none; selection-background-color:#1f6feb; } "
+            "QTreeWidget::item { padding:2px; color:#e6edf3; } "
+            "QTreeWidget::item:selected { background:#1f6feb; } "
+            "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:4px; }")
+        self.trs.setColumnCount(4)
+        self.trs.setHeaderLabels(["规格项", "量化要求", "关联作业", "支撑功能"])
+        self.trs.setRootIsDecorated(True)
+        self.trs.setAlternatingRowColors(True)
+        self.trs.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        hdrs = self.trs.header()
+        hdrs.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdrs.setSectionResizeMode(1, QHeaderView.Stretch)
+        hdrs.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hdrs.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tabs.addTab(self.trs, "④ 技术规格书 · 3组12项 精密/流转/认知")
         self._populate()
         self._populate_product()
         self._populate_rfp()
+        self._populate_specs()
 
         h = QHBoxLayout()
         self.lbl_res = QLabel("")
@@ -398,6 +433,27 @@ class VerificationDialog(QDialog):
             (kw if veto else ow).addChild(it)
         kw.setExpanded(True)
         ow.setExpanded(True)
+
+    # ── Tab4 技术规格填充 (供应商 3 组 12 项规格 → 产品作业/功能) ──
+    def _populate_specs(self):
+        self.trs.clear()
+        _FID_NAME = {f["fid"]: f["name"]
+                     for n in self._tree.NODE_TREE.values() for f in n["funcs"]}
+        _GC = {"1": "#3fb950", "2": "#58a6ff", "3": "#a371f7"}
+        for g in self._tree.TECH_SPECS:
+            gi = QTreeWidgetItem(
+                [f"{g['group']} {g['g_name']}  ({g['g_en']})", "",
+                 f"{len(g['items'])} 项规格",
+                 g["g_desc"]])
+            gi.setForeground(0, Qt.yellow)
+            self.trs.addTopLevelItem(gi)
+            for it in g["items"]:
+                fn = " · ".join(f"{_FID_NAME.get(f, f)}" for f in it["funcs"])
+                ii = QTreeWidgetItem(
+                    [f"  ▸ {it['spec']}", it["req"], it["job"], fn])
+                ii.setForeground(0, Qt.cyan)
+                gi.addChild(ii)
+            gi.setExpanded(True)
 
     # ── 后台跑测试 (不冻结 GUI) ──
     def _run_tests(self):

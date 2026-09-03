@@ -175,6 +175,15 @@ def make_pdf(env, results, v, nft, ts):
         rows.append(["★" if veto else "", name, q, job])
     TBL(rows, [24, 130, 220, 90])
     story.append(Spacer(1, 6))
+    # 5b 技术规格
+    P("5b. 技术规格书 (供应商 3 组 12 项 → 产品作业)", "h1")
+    for g in nft.TECH_SPECS:
+        P(f"{g['group']} {g['g_name']} ({g['g_en']}) — {g['g_desc']}", "h2")
+        rows = [["规格项", "量化要求", "关联作业"]]
+        for it in g["items"]:
+            rows.append([it["spec"], it["req"], it["job"]])
+        TBL(rows, [110, 250, 90])
+        story.append(Spacer(1, 5))
     # 6 泛化指标
     P("6. 泛化指标基线 (G 组断言实测)", "h1")
     import numpy as np

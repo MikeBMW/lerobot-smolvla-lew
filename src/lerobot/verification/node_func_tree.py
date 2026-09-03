@@ -1289,3 +1289,73 @@ def rfp_jobs():
     return sorted(jobs), sorted(jobs - have)
 
 
+# ════════════════════════════════════════════════════════════════════
+# 技术规格 TECH_SPECS (2026-09-04 老倪: 供应商技术规格书 — 三组规格全写入清单)
+#   1 核心本体与运动控制规格 (Gauge Covariant Operations) — 光耦合/光纤插拔/模块插拔
+#   2 复合移动与柔性流转规格 (Locomotion & Flexibility) — 上下料/跨工位/分拣
+#   3 智能认知与系统集成规格 (Gauge Symmetry & Invariance) — 大模型/换产/追溯
+# 每规格: 量化要求 → 关联产品作业 + 支撑功能 fid (与 PRODUCT_TREE/RFP_SPEC 同源)
+# ════════════════════════════════════════════════════════════════════
+TECH_SPECS = [
+    # ── 组1 核心本体与运动控制 (精密工位) ──
+    {"group": "1", "g_name": "核心本体与运动控制", "g_en": "Gauge Covariant Operations",
+     "g_desc": "适用于光耦合、ATS 光纤插拔、模块插拔等精密工位",
+     "items": [
+         {"spec": "极致定位精度",
+          "req": "重复定位精度 ≤±0.02mm (精密装配/贴装); 光耦合工位纳米级运动平台, 单模对准 ≤50nm, 多模 ≤100nm",
+          "job": "光模块插拔", "funcs": ["FNcal04", "FNff01", "FNinn02", "FNest01", "FNmp01"]},
+         {"spec": "六维精密力控",
+          "req": "标配内嵌式高精度六维力/力矩传感器; 力控分辨率亚牛顿级; 测量精度 ≤全量程 0.5%; 支持 1-2N 极小外力拖拽; 插拔贴合无应力过冲/引脚隐裂",
+          "job": "柔性接触力控", "funcs": ["FNtac02", "FNtac04", "FNinn03", "FNlim01", "FNcal02"]},
+         {"spec": "高动态与平滑性",
+          "req": "支持 EtherCAT 等高频工业总线; 全关节 1kHz 协同控制; 高速贴装/耦合寻优轨迹无抖动, 避免光学性能衰减",
+          "job": "光耦合主动对准", "funcs": ["FNmp01", "FNmp03", "FNff02", "FNest03", "FNcal05"]},
+         {"spec": "紧凑与高刚性",
+          "req": "适配高密度光模块 (1.6T OSFP); 落地/壁挂/倒装多角度安装; 高刚性结构, 负载状态末端抖动极小",
+          "job": "刚体取放搬运", "funcs": ["FNact01", "FNworld04", "FNlim02", "FNcal01"]},
+     ]},
+    # ── 组2 复合移动与柔性流转 ──
+    {"group": "2", "g_name": "复合移动与柔性流转", "g_en": "Locomotion & Flexibility",
+     "g_desc": "适用于自动上下料、跨工位 (老化箱/热海箱) 物料流转、不规则来料分拣",
+     "items": [
+         {"spec": "全向移动底盘",
+          "req": "四轮/多轮独立驱动; 原地回转/横向蟹行/斜向移动; 适应狭窄通道与密集机柜; 导航精度 ≤±10mm",
+          "job": "精密视觉定位", "funcs": ["FNyolo01", "FN2d01", "FNobs02", "FNcal03", "FNworld04"]},
+         {"spec": "移动-操作解耦与驻停",
+          "req": "抗倾覆+全身协同; 精密抓取/插拔前底盘自主锁定稳定支撑; 移动抓取综合误差毫米级",
+          "job": "光模块插拔", "funcs": ["FNact03", "FNworld01", "FNlim04", "FNest01"]},
+         {"spec": "大工作范围与双臂协同",
+          "req": "工业级升降腰结构覆盖 0-2.5m; 双臂协同负载 ≥10kg; 深距取放; 双孔同时对准角度 ≤0.3°",
+          "job": "刚体取放搬运", "funcs": ["FNact02", "FNact03", "FNworld03", "FNobs01", "FNcal03"]},
+         {"spec": "多模态感知与避障",
+          "req": "集成 3D 激光雷达/RGB-D 深度相机/超声波雷达; 自动绕行避障; 多机协作安全; 24h 无人化流转",
+          "job": "精密视觉定位", "funcs": ["FNyolo01", "FN2d01", "FNobs05", "FNlim03", "FNworld05"]},
+     ]},
+    # ── 组3 智能认知与系统集成 ──
+    {"group": "3", "g_name": "智能认知与系统集成", "g_en": "Gauge Symmetry & Invariance",
+     "g_desc": "适用于具身大模型工艺规划、柔性换产、全流程追溯",
+     "items": [
+         {"spec": "具身智能与自进化",
+          "req": "视觉-语言-动作大模型与实时力矩感知融合; 一机多能/快速上岗/自我学习; 场景导入到验收上线压缩至周级/天级",
+          "job": "光纤接头插拔", "funcs": ["FNllm01", "FNllm02", "FNskill01", "FNrsn02", "FNest03"]},
+         {"spec": "高节拍与柔性产能",
+          "req": "整线 UPH ≥400; 不停机换料; 模块化执行单元快速切换; 400G/800G/1.6T 多规格混线",
+          "job": "刚体取放搬运", "funcs": ["FNsched01", "FNskill02", "FNdata05", "FNact01"]},
+         {"spec": "高良率与过程管控",
+          "req": "CPK ≥1.67; 全流程智能化管控; AOI 0 漏杀检测; 远程运维; 良率 ≥99%; 抛料率 ≤1%",
+          "job": "耦合质量闭环", "funcs": ["FNmp04", "FNaoi01", "FNaoi02", "FNrsn01", "FNdata04"]},
+         {"spec": "通讯与防护标准",
+          "req": "兼容 EtherCAT/Profinet/Modbus TCP; 对接 PLC/视觉系统/MES; 电子车间 ESD 防静电; 特殊环境 IP65+",
+          "job": "耦合质量闭环", "funcs": ["FNdata04", "FNworld05", "FNaoi05", "FNskill03"]},
+     ]},
+]
+
+
+def techspec_jobs():
+    """技术规格关联的产品作业集合 (校验: 必须在 PRODUCT_TREE 存在)"""
+    jobs = {it["job"] for g in TECH_SPECS for it in g["items"]}
+    have = {j["job"] for lv in PRODUCT_TREE for j in lv["jobs"]}
+    return sorted(jobs), sorted(jobs - have)
+
+
+
