@@ -130,10 +130,23 @@ class VerificationLayer:
     # ════════════════════════════════════════════════════════
     def list_features(self, domain=None):
         self.log(f"🧩 状态空间系统 Feature 清单 ({len(FEATURES)} 项)")
+        _by_kind = {}
+        _by_role = {}
         for fid, dom, name, loc, how, _ in FEATURES:
             if domain and dom != domain:
                 continue
+            _k, _r, _sp = FEATURE_META.get(fid, ("", "", ""))
+            _by_kind[_k] = _by_kind.get(_k, 0) + 1
+            _by_role[_r] = _by_role.get(_r, 0) + 1
             self.log(f"  {fid} [{dom}] {name}  ({loc} · {how})")
+        self.log(f"   └ 分类: 基本 {_by_kind.get('基本功能', 0)} / 泛化 {_by_kind.get('泛化功能', 0)}"
+                 f" · 角色: " + " ".join(f"{k} {v}" for k, v in sorted(_by_role.items())))
+        # 详细表 (含元数据列) — 供 GUI 对话框/导出复用
+        return [{"id": f[0], "dom": f[1], "name": f[2], "loc": f[3], "how": f[4],
+                 "test": f[5], "kind": FEATURE_META.get(f[0], ("", "", ""))[0],
+                 "role": FEATURE_META.get(f[0], ("", "", ""))[1],
+                 "spec": FEATURE_META.get(f[0], ("", "", ""))[2]}
+                for f in FEATURES if not domain or f[1] == domain]
 
     # ════════════════════════════════════════════════════════
     # Test 套件
@@ -523,6 +536,71 @@ class VerificationLayer:
         import data_world as dw
         miss = [k for k in dw.MODULE_ORDER if k not in io0]
         return not miss, f"io_trace 覆盖 {len(io0)} 模块键 = DataWorld MODULE_ORDER {len(dw.MODULE_ORDER)} (缺 {miss or '无'})"
+
+
+# ════════════════════════════════════════════════════════════════════
+# Feature 元数据 (2026-09-04 老倪: function list 要区分基本/泛化 + 感知/世界模型 + 模型特点)
+#   kind = 基本功能 | 泛化功能    基本=确定性规则/固定链路(引擎/状态机/安全/画布),
+#                                 泛化=模型驱动可迁移新场景(感知模型/世界模型/规划)
+#   role = 感知模型 | 世界模型 | 决策控制 | 规划推理 | 安全机制 |
+#          | 引擎 | 数据平台 | 标定工具 | GUI工具
+#   spec = 模型特点 (实现/参数/输入输出一句话, 全部按源码事实)
+# 用途: GUI 双击 Feature/Test 节点 → 清单/导出 Excel 的列; node_ss_feature 汇总日志
+# ════════════════════════════════════════════════════════════════════
+FEATURE_META = {
+    # ── A 引擎 (确定性闭环 → 基本功能 / 引擎) ──
+    "F-A01": ("基本功能", "引擎", "StateSpaceSim: 纯 numpy 数值引擎 <0.1s/500步, 无图像无模型"),
+    "F-A02": ("基本功能", "引擎", "D_INSERT=0.004m 收敛阈值; 引擎轨迹 peg_head 终态距孔底 <4mm"),
+    "F-A03": ("基本功能", "引擎", "tr 契约: 20+ 序列键 + 逐帧 io_trace (数据总线/3D/画布同源)"),
+    "F-A04": ("基本功能", "引擎", "一阶速度伺服 τ=0.08s, max‖v‖≤0.5m/s 有界不发散"),
+    "F-A05": ("基本功能", "引擎", "台面几何约束: 未夹持末端不穿透台面 (确定性规则)"),
+    "F-A06": ("基本功能", "引擎", "夹持锁存: grasped 后 peg=x+peg_off 随动 (确定性规则)"),
+    "F-A07": ("基本功能", "引擎", "接触力→接触概率: K_CONTACT 增益, 接触段 contact_p>0.6"),
+    "F-A08": ("基本功能", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列"),
+    # ── B 六层 (S1感知→S2并行→S3认知, 教学解析式 — 真权重见 model_feature) ──
+    "F-B01": ("基本功能", "感知模型", "perception.py fuse_sensors: 39D 视觉+触觉4D → 43D 融合 (前端感知)"),
+    "F-B02": ("泛化功能", "决策控制", "parallel.py FeedforwardAccelerator: 前馈快路径, 比例引导+近距闭合+±0.5限幅"),
+    "F-B03": ("泛化功能", "世界模型", "AdaptiveStateEstimator: 卡尔曼 predict/update (A/K/B 可标定), 潜状态递归 — 世界模型"),
+    "F-B04": ("泛化功能", "世界模型", "PriorDynamicsPredictor: 先验预测 A=1.0 恒速 + B·u, 潜空间速度场 — 世界模型"),
+    "F-B05": ("泛化功能", "世界模型", "cognition.state_correction: 残差=z−x̂₋ / 校正=+K·r — 卡尔曼更新"),
+    "F-B06": ("泛化功能", "世界模型", "contact_probability: σ(residual·gain) — 预测偏差→接触概率 (世界模型判据)"),
+    "F-B07": ("基本功能", "决策控制", "ActionModulator 八阶段状态机: 顺序推进+连续2帧防抖 (确定性调度)"),
+    "F-B08": ("基本功能", "决策控制", "夹持丢失 5 帧 + 落回台面 → 回退重抓 (确定性规则)"),
+    "F-B09": ("基本功能", "安全机制", "否决权: 残差>veto_th → 强制减速 u=0 (安全)"),
+    "F-B10": ("基本功能", "决策控制", "动作融合: 前馈+反馈相加 + 阶段限速 + V_MIN 防磨蹭"),
+    "F-B11": ("基本功能", "安全机制", "safety.saturate ±0.6 饱和限幅 (唯一三层安全之一)"),
+    # ── C 感知链 (YOLO/触觉/AOI → 感知模型) ──
+    "F-C01": ("泛化功能", "感知模型", "YOLO detect_3d: best.pt + 深度反投影, 真实 conf (hand/peg/hole 3类)"),
+    "F-C02": ("泛化功能", "感知模型", "align 段位: hand→[0:3] peg→[4:7]+[22:25] hole→[36:39]"),
+    "F-C03": ("泛化功能", "感知模型", "gen_tactile: 触觉 4D (grasp/contact 0-1 语义)"),
+    "F-C04": ("泛化功能", "感知模型", "AOIQualityChecker: 外观质量真实图像处理 (items/pass)"),
+    # ── D 大模型层 (规则/LLM → 规划推理) ──
+    "F-D01": ("泛化功能", "规划推理", "TaskPlanner: 指令→技能Token 规则链+validate (LLM 可插拔)"),
+    "F-D02": ("泛化功能", "规划推理", "ExceptionReasoner: 异常 diagnose 分类 (连续否决/卡死)"),
+    "F-D03": ("泛化功能", "规划推理", "SkillComposer: 场景→技能序列 (8 场景)"),
+    # ── E 标定/流形/元层 (工具+模型) ──
+    "F-E01": ("基本功能", "标定工具", "CalibrationLayer: 三域标定 引力/斥力/潜空间 + 平衡势"),
+    "F-E02": ("泛化功能", "世界模型", "潜空间: PCA 有效维实测 vs latent_dim (世界模型低维流形)"),
+    "F-E03": ("泛化功能", "世界模型", "ContactManifold: 接触流形 通道轴分解/法向偏离/状态判据"),
+    "F-E04": ("泛化功能", "世界模型", "PerformanceManifold: 性能流形 η=exp(−V_p/σ²) 完成态高/未插≈0"),
+    "F-E05": ("基本功能", "数据平台", "node_logic 分派: 标定/潜空间/接触/性能/Feature/Test 全命中"),
+    # ── F 画布/数据世界 (数据平台) ──
+    "F-F01": ("基本功能", "数据平台", "state_space_obs.json: 38 节点 10 层, type 合法"),
+    "F-F02": ("基本功能", "数据平台", "节点注册覆盖: 全部非 row_bg 节点名可 match"),
+    "F-F03": ("基本功能", "数据平台", "_EXTERNAL_LOC: 源码映射 路径存在 + 行号含符号"),
+    "F-F04": ("基本功能", "数据平台", "io_trace 覆盖 DataWorld 全部模块键"),
+    # ── G GUI 手动 (GUI 验收项) ──
+    "F-G01": ("基本功能", "GUI工具", "▶ 运行: 引擎轨迹动画播放 + 节点轮转 demo"),
+    "F-G02": ("泛化功能", "感知模型", "▶ 运行: 真实 YOLO 感知采样日志 (detect_3d 断点可进)"),
+    "F-G03": ("基本功能", "GUI工具", "⏭ 单步 / 右键运行节点 = 引擎同源真实执行"),
+    "F-G04": ("基本功能", "GUI工具", "3D 视图: 与引擎轨迹逐帧同步 (DataWorld 游标)"),
+    "F-G05": ("基本功能", "GUI工具", "数据总线: 逐帧 feed 14 模块 51 接口滚动"),
+    "F-G06": ("基本功能", "GUI工具", "Scope 波形: 距离/前馈/残差/接触概率 + 阶段标注"),
+    "F-G07": ("基本功能", "标定工具", "双击标定节点→面板; 右键→表格 (三域可编辑)"),
+    "F-G08": ("基本功能", "标定工具", "标定保存 = 写回引擎源码字面量, 下次 ▶运行生效"),
+    "F-G09": ("基本功能", "GUI工具", "右键源码 → VSCode 断点进真实源码 (ZMAX_DEBUG_BREAK)"),
+    "F-G10": ("基本功能", "GUI工具", "双击 Feature/Test 节点 → 本验证层输出"),
+}
 
 
 def main():

@@ -464,6 +464,17 @@ class RealStateSpaceSim:
                       f"x={np.round(self.x,3)} tgt={np.round(target,3)} "
                       f"r={r_scalar:.3f} cp={contact_p:.2f} u={np.round(self._u_vec,3)} "
                       f"grp={self.gripper:.2f} grasped={self.grasped} gf={_gf}", flush=True)
+            # 🆕 2026-09-04 静静: 周期进度日志 (GUI 真实化运行 5-9 分钟必须看得见在动 —
+            #   每 25 步 log 一次: 步骤/阶段/YOLO 检出, 轮询增量 flush 到控制台;
+            #   否则长时间静默 = 用户以为卡死 (老倪报两次"卡死,只能鼠标动"的背景))
+            if step % 25 == 0:
+                _v = self._vis
+                _vs = (f"YOLO 检出率 {_v['n']}/{_v['shot']*2}"
+                       f" ({(_v['n']/(_v['shot']*2)*100) if _v['shot'] else 0:.0f}%)"
+                       if _v.get("shot") else "YOLO 未启动")
+                self.log(f"[{step}/{int(max_steps)}] 阶段={self.sched.stage()} "
+                         f"残差={r_scalar:.3f} 接触p={contact_p:.2f} "
+                         f"grp={self.gripper:.2f} grasped={self.grasped} · {_vs}")
             tr["t"].append(round(step * DT_ENV, 3))
             tr["dist"].append(d_xy if not self.grasped else dh)
             tr["u_ff"].append(float(np.linalg.norm(u_ff[:3])))
@@ -502,10 +513,19 @@ class RealStateSpaceSim:
                      corrected, residual, contact_p, u_fb, u, stage, u_sat,
                      u_vec, frame_id, at_grasp_pose):
         """每帧真实模块 I/O — 与引擎 _io_snapshot 同构 (画布播放/3D/总线消费同一 key)
-        🎯 YOLO/📐2D→3D = 本帧真实检测 (detect_3d 输出或最近刷新缓存), 不再写引擎几何"""
-        _v3 = self._vis["peg"] if (self.vision and self._vis["peg"] is not None) else o[4:7]
-        _vh = self._vis["hole"] if (self.vision and self._vis["hole"] is not None) else self.geom["hole"]
+        🎯 YOLO/📐2D→3D = 本帧真实检测 (detect_3d 输出或最近刷新缓存), 不再写引擎几何
+        🆕 2026-09-04 老倪红线: 未检出 = 诚实标 None, **禁止回退引擎真值 o[4:7] 冒充检测**
+          (vision 模式下 YOLO 节点显示 = 视觉说了算: 检出→检测值, 未检出→None 明确标注)"""
         _conf = "🎥" if self.vision else "--"
+        # 检测真值: vision 且本帧有检出 → 检测值; 未检出 → None (诚实, 不顶替)
+        _peg_d = self._vis["peg"] if (self.vision and self._vis["peg"] is not None) else None
+        _hole_d = self._vis["hole"] if (self.vision and self._vis["hole"] is not None) else None
+        _v3 = _peg_d if _peg_d is not None else ("未检出" if self.vision else o[4:7])
+        _vh = _hole_d if _hole_d is not None else ("未检出" if self.vision else self.geom["hole"])
+        _vhand = (self._vis.get("det3d", {}).get("hand")
+                  if (self.vision and self._vis.get("det3d", {}).get("hand") is not None)
+                  else self.x)                       # hand=编码器 (真机同构, 恒真值)
+        _miss_mark = (" [未检出→None]" if self.vision and _peg_d is None else "")
         return {
             "📦 metaworld 数据源": {
                 "in": [], "out": [("图像流 (真实渲染帧)", f"帧#{frame_id}"),
@@ -514,11 +534,8 @@ class RealStateSpaceSim:
                 "in": [("图像流", f"帧#{frame_id}")],
                 "out": [("peg 3D (detect_3d)", _v3),
                         ("hole 3D (detect_3d)", _vh),
-                        ("hand 3D (视觉, 不参与控制)",
-                         (self._vis.get("det3d", {}).get("hand")
-                          if (self.vision and self._vis.get("det3d", {}).get("hand") is not None)
-                          else self.x)),
-                        ("检测源", _conf)]},
+                        ("hand 3D (编码器, 不参与工件定位)", _vhand),
+                        ("检测源", _conf + _miss_mark)]},
             "📐 2D→3D 解算": {
                 "in": [("检测框 2D", "真实反投影")],
                 "out": [("peg 3D", _v3), ("hole 3D", _vh),

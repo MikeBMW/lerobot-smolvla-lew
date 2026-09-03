@@ -3319,6 +3319,12 @@ class SimCanvas(QGraphicsView):
         a_calib = None
         if item.node.get("params", {}).get("calib_layer"):
             a_calib = menu.addAction("标定表格 (引力/斥力/潜空间 编辑)")
+        # 🧩 验证层 Feature/Test 节点右键 (2026-09-04 老倪: 清单/结果 + 导出 Excel)
+        a_verif = None
+        if item.node.get("params", {}).get("verif_layer"):
+            _is_test = "Test" in item.node.get("name", "") or "用例" in item.node.get("name", "")
+            a_verif = menu.addAction("Test 用例结果 (含导出)" if _is_test
+                                     else "Feature 功能清单 (含导出)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -3347,6 +3353,8 @@ class SimCanvas(QGraphicsView):
             self.module._mlp_prev()
         elif a_calib is not None and chosen == a_calib:
             self.module.on_open_calib_table(item.node)
+        elif a_verif is not None and chosen == a_verif:
+            self.module._open_verif_dialog(item.node)
 
     def _show_link_menu(self, item, view_pos):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
@@ -9126,6 +9134,11 @@ class SimulinkModule(QWidget):
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 0.0) 🧩 验证层 Feature/Test 节点 (2026-09-04 老倪: 双击 → 清单/结果对话框 + 导出 Excel)
+        #   ⚠️ 必须放最前 — ssfeat/sstest 带 source 字段, 会被下方"数据源切换"分支抢先拦截
+        if params.get("verif_layer"):
+            self._open_verif_dialog(node)
+            return
         # 🌍 物理世界节点 → 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)
         if params.get("state_space") and "物理世界" in node.get("name", ""):
             self.show_physical_hardware()
@@ -9229,6 +9242,7 @@ class SimulinkModule(QWidget):
             self._show_internal_detail(node)
             return
         # 1.81) 🧮 状态空间模型 (2026-08-17 老倪: 状态空间画布 — 双击看各层详情)
+        #   (verif_layer 节点已在 0.0 分支拦截, 不会走到这)
         if params.get("state_space"):
             self._show_state_space_detail(node)
             return
@@ -9369,6 +9383,17 @@ class SimulinkModule(QWidget):
 
         dlg.finished.connect(_done)
         dlg.show()
+
+    def _open_verif_dialog(self, node):
+        """🧩 验证层 Feature/Test 节点 (2026-09-04 老倪: 清单/结果对话框 + 导出 Excel)"""
+        try:
+            from verification_dialog import VerificationDialog
+            nm = node.get("name", "")
+            mode = "test" if ("Test" in nm or "用例" in nm) else "feature"
+            dlg = VerificationDialog(mode=mode, parent=self, log=self._log)
+            self._show_nonmodal(dlg)
+        except Exception as _e:
+            self._log(f"⚠️ 验证层对话框打开失败: {_e}")
 
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
@@ -10349,11 +10374,38 @@ class SimulinkModule(QWidget):
         self._log("🎥 真实化运行: metaworld 物理闭环 + 每帧 render → YOLO detect_3d")
         self._log("   ├ detect_3d / fuse_sensors 断点每步命中 (真流程)")
         self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示")
+        # 🆕 2026-09-04 老倪两次报"卡死,只能鼠标动": F5 调试会话中, 断点命中
+        #   (detect_3d/fuse_sensors/引擎源码) → pydevd/debugpy 默认挂起**整个进程所有线程**
+        #   (VSCode 线程面板全部变暂停), GUI 主线程也被挂 → 表现=只能鼠标动(X server 画的
+        #   鼠标还在动), 窗口/日志全停 — 不是 bug, 是调试器断点暂停。提示用户:
+        try:
+            import sys as _sys
+            _dbg = False
+            # 优先: debugpy 客户端已连接 (F5 launch / attach) — listen 未附加不算
+            try:
+                import debugpy as _dbgpy
+                _dbg = bool(_dbgpy.is_client_connected())
+            except Exception:
+                _dbg = False
+            if not _dbg and _sys.gettrace() is not None:
+                _dbg = True
+            if _dbg:
+                self._log("⚠️ 检测到 VSCode 调试会话 (F5): 源码断点命中会挂起整个 GUI —")
+                self._log("   表现\"卡死,只能鼠标动\"= 断点暂停, 不是故障。处理:")
+                self._log("   ① VSCode 按 F5/继续 放行 (每帧都停 → 逐次放行) ② 删掉引擎源码断点,"
+                          "只留想看的那一行 ③ 想全程无停 → 取消 F5 调试直接跑")
+                self._show_bubble(self.rect().center(),
+                                  "F5 调试中: 断点命中=整个 GUI 暂停(像卡死), 去 VSCode 按 F5 放行",
+                                  8000)
+        except Exception:
+            pass
         import threading
         self._real_tr = None
 
         def _work():
             _logs = []
+            self._real_logs = _logs          # 共享引用 → 轮询增量 flush
+            self._real_log_ix = 0
             try:
                 from state_space_sim_real import RealStateSpaceSim
                 # log=线程安全收集器 (worker 线程禁 QObject 方法 — 崩溃铁律)
@@ -10378,7 +10430,19 @@ class SimulinkModule(QWidget):
         t.start()
 
     def _on_real_poll(self):
-        """QTimer 轮询真实化线程结果 (SimulinkModule 无类级 signal → 轮询最简可靠)"""
+        """QTimer 轮询真实化线程结果 (SimulinkModule 无类级 signal → 轮询最简可靠)
+        🆕 2026-09-04: 运行中增量 flush worker 日志 (进度可见, 防"5-9分钟静默=像卡死")"""
+        # 运行中: 增量 flush 周期进度日志 (线程安全: 只读已 append 的部分)
+        _logs = getattr(self, "_real_logs", None)
+        if _logs:
+            _ix = getattr(self, "_real_log_ix", 0)
+            while _ix < len(_logs):
+                try:
+                    self._log(_logs[_ix])
+                except Exception:
+                    pass
+                _ix += 1
+            self._real_log_ix = _ix
         r = getattr(self, "_real_tr", None)
         if r is None:
             return
