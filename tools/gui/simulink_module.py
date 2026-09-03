@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGr
                              QLabel, QPushButton, QToolButton, QFrame, QSpinBox,
                              QDoubleSpinBox, QComboBox, QLineEdit, QDialog,
                              QFormLayout, QTextEdit, QPlainTextEdit, QScrollArea, QMenu,
-                             QMessageBox, QSplitter, QDialogButtonBox,
+                             QMessageBox, QSplitter, QDialogButtonBox, QCheckBox,
                              QMdiArea, QMdiSubWindow)
 
 # 🆕 节点逻辑库 (node_logic.py — 每个节点背后的可编辑逻辑, ✏️ 可修改区)
@@ -4208,6 +4208,13 @@ class SimulinkModule(QWidget):
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
+        # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
+        #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
+        self.chk_engine_demo = QCheckBox("⚡引擎快演")
+        self.chk_engine_demo.setToolTip("勾选 = 引擎简化世界快速演示 (<0.1s, YOLO 仅末尾采样一次, 非逐帧);\n"
+                                        "不勾 (默认) = 🎥 真实化运行: metaworld 物理 + 每帧渲染 → YOLO detect_3d\n"
+                                        "(约 5-9 分钟/轮, detect_3d 断点每步可进, 不造假)")
+        tl.addWidget(self.chk_engine_demo)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_z_analysis)
         tl.addWidget(self.btn_ff_pd)
@@ -5822,7 +5829,14 @@ class SimulinkModule(QWidget):
             return
         # 🧮 状态空间画布 → 真实仿真引擎 (2026-08-18 老倪: 六层源码闭环, 非占位观察模式)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
-            self._start_state_space_sim()
+            # 🎥 2026-09-04 老倪「YOLO 还是假的?」: ▶运行 默认 = 真实化流程
+            #   (metaworld 物理 + 每帧渲染→detect_3d, 断点每步可进); 勾选 ⚡引擎快演
+            #   才走引擎简化世界 (0.1s 快演示, YOLO 仅末尾 1 次采样)
+            if getattr(self, "chk_engine_demo", None) is not None \
+                    and self.chk_engine_demo.isChecked():
+                self._start_state_space_sim()
+            else:
+                self._start_real_sim()
             return
         # 🧠 2026-08-10 老倪: ▶ 运行 = left_right 工程画布 → 自动启动标准训练 (优先于环节节点
         #   — 画布含「📄 PDF 报告」节点会命中 NODE_RUN_ACTIONS 的 on_pdf_report, 必须放最前)
@@ -6480,6 +6494,13 @@ class SimulinkModule(QWidget):
         self.stop_sim()
 
     def stop_sim(self):
+        # 🎥 真实化运行中 (2026-09-04): 停轮询 — daemon 线程跑完即弃 (run 内无 QObject, 安全)
+        _pt = getattr(self, "_real_poll_timer", None)
+        if _pt is not None:
+            try:
+                _pt.stop()
+            except Exception:
+                pass
         self._sim_running = False
         self._timer.stop()
         # 🧮 状态空间仿真播放中 → 立即结束 (2026-08-18)
@@ -10316,6 +10337,101 @@ class SimulinkModule(QWidget):
         dv.raise_()
         dv.activateWindow()
         self._log("🧭 已打开 3D 分层视图 (Apollo 风格): 场景/YOLO框/前馈/融合指令u/限幅/状态估计/接触 各层可开关")
+
+    def _start_real_sim(self):
+        """🎥 真实化运行 (2026-09-04 老倪: YOLO 断点每步可进, 不造假)
+        metaworld 真实物理 + 每帧 render→YOLO detect_3d (RealStateSpaceSim vision)
+        每帧 ~0.5-1s → 后台线程跑 (主线程不冻结), QTimer 轮询完成 → 播放真实轨迹
+        断点注意: VSCode F5 调试时断点命中在后台线程 → pydevd 同进程挂起该线程, GUI 不冻"""
+        self.btn_run.setText("🎥 真实运行中… (每帧 YOLO)")
+        self.btn_run.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self._log("🎥 真实化运行: metaworld 物理闭环 + 每帧 render → YOLO detect_3d")
+        self._log("   ├ detect_3d / fuse_sensors 断点每步命中 (真流程)")
+        self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示")
+        import threading
+        self._real_tr = None
+
+        def _work():
+            try:
+                from state_space_sim_real import RealStateSpaceSim
+                sim = RealStateSpaceSim(seed=100, vision=True, vision_every=1)
+                self._real_sim_ref = sim          # 调试期引用 (防 GC)
+                tr = sim.run()
+                v = sim._vis
+                rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
+                self._real_tr = ("ok", tr, sim, rate)
+            except Exception as _e:
+                import traceback
+                traceback.print_exc()
+                self._real_tr = ("err", str(_e), None, 0.0)
+
+        threading.Thread(target=_work, daemon=True).start()
+        t = _tq(self)
+        t.setInterval(400)
+        t.timeout.connect(self._on_real_poll)
+        self._real_poll_timer = t
+        t.start()
+
+    def _on_real_poll(self):
+        """QTimer 轮询真实化线程结果 (SimulinkModule 无类级 signal → 轮询最简可靠)"""
+        r = getattr(self, "_real_tr", None)
+        if r is None:
+            return
+        try:
+            self._real_poll_timer.stop()
+        except Exception:
+            pass
+        self.btn_run.setText("▶ 运行")
+        self.btn_run.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        if r[0] == "ok":
+            tr, sim, rate = r[1], r[2], r[3]
+            ok = bool(tr.get("done", [False])[-1]) if tr.get("done") else False
+            self._log(f"🎥 真实化运行完成: {len(tr['t'])} 步 · "
+                      f"{'✅ 插拔完成' if ok else '⚠️ 未完成 (真实感知下的真实结果)'}"
+                      f" · YOLO 检出 {rate:.0f}%")
+            self._real_finish(tr)
+        else:
+            self._log(f"⚠️ 真实化运行失败: {r[1]}")
+
+    def _real_finish(self, tr):
+        """🎥 真实轨迹 → 播放/3D/总线 (io_trace 与引擎同构 13 模块, dw 复用)"""
+        self._ss_tr = tr
+        try:
+            from data_world import DataWorld
+            self._dw = DataWorld(tr)
+        except Exception as _e:
+            self._dw = None
+            self._log(f"⚠️ DataWorld 构建失败 (播放降级): {_e}")
+        self._ss_round = 0
+        self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+        _src = [n for n in self._ss_order if "数据源" in n.get("name", "")]
+        _rest = [n for n in self._ss_order if n not in _src]
+        self._ss_order = _src + _rest
+        for n in self.nodes:
+            n["status"] = "idle"
+            it = self._items.get(n["id"])
+            if it:
+                it.update()
+        try:
+            _mt = getattr(self, "model_tree", None)
+            if _mt is not None and getattr(_mt, "bus", None) is not None \
+                    and _mt.cmb_view.currentIndex() == 9:
+                _mt.bus.begin_stream()
+        except Exception:
+            pass
+        self._ss_tick_ms = 30
+        self._ss_ticks = max(len(self._ss_order), min(len(tr["t"]), 267))
+        self._ss_idx = 0
+        self._ss_round = 0
+        self.btn_run.setText("⏳ 播放真实轨迹…")
+        self.btn_run.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self._ss_timer = _tq(self)
+        self._ss_timer.timeout.connect(self._ss_tick)
+        self._ss_timer.start(getattr(self, "_ss_tick_ms", 30))
+        self._log("▶ 真实轨迹播放中: 画布/3D/总线逐帧展示真实检测与控制 (单帧~1s 物理)")
 
     def _start_state_space_sim(self):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
