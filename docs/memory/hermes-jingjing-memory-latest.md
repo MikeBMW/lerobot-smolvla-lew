@@ -24,7 +24,7 @@ GPU(580.126.09): LiveUSB重启dev/nvidia*丢+nvidia_uvm不载→CUDA unknown err
 §
 能力库model_feature.py v4.1: 7域65能力; SCENES=8场景46需求
 §
-GUI: gui-venv311(Py3.11); 推理/训练=~/lerobot-venv(uv建无pip→uv pip install --python); 项目无.venv; PyQt5枚举错位(传int); Pillow持GIL→子进程; 改完代码必重启studio.py; 禁QT_SCALE_FACTOR
+GUI: gui-venv311在仓库内(Py3.11); 推理/训练=~/lerobot-venv(uv pip装); 项目无.venv; PyQt5枚举错位(传int); Pillow持GIL→子进程; 改完代码必重启studio.py; 禁QT_SCALE_FACTOR
 §
 GitHub(08-28): 直连不走代理; Release下载走browser_download_url(asset API带token返400); 凭证~/.git-credentials; 视频/权重不进库
 §
