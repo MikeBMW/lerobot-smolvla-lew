@@ -1358,4 +1358,217 @@ def techspec_jobs():
     return sorted(jobs), sorted(jobs - have)
 
 
+# ════════════════════════════════════════════════════════════════════
+# 功能编号体系 FUNC_DOMAINS (2026-09-04 老倪统稿: 三字母域缩写 + 域内序号)
+#   编号格式 <域码>-<两位序号>, 例 VIS-01 = 视觉感知第一个功能 (YOLO 目标检出)
+#   域码=业务功能族三字母, 域内序号=功能在族内的工艺/逻辑顺序 (funcs 数组序)
+#   全库唯一, 稳定可扩展; 与 fid (FN<node><NN> 工程码) 一一对应并存
+# ════════════════════════════════════════════════════════════════════
+FUNC_DOMAINS = [
+    # (域码, 中文域名, 英文名, 模型角色, 覆盖节点 keys)
+    ("DAT", "数据与样本链路", "Data Pipeline",      "工程数据", ["ssdata"]),
+    ("VIS", "视觉感知与解算", "Vision Perception",  "感知模型", ["ssyolo", "ss2d3d"]),
+    ("TAC", "触觉与力觉感知", "Tactile Perception", "感知模型", ["sstactile"]),
+    ("SEN", "多源传感融合",   "Sensor Fusion",      "感知模型", ["sssensor"]),
+    ("OBS", "统一状态编码",   "Observation Coding", "状态表征", ["ssobs"]),
+    ("WLD", "物理世界推进",   "World Physics",      "引擎仿真", ["ssworld"]),
+    ("LAT", "潜空间结构",     "Latent Structure",   "世界模型", ["sslat"]),
+    ("PRD", "先验动力学预测", "Prior Prediction",   "世界模型", ["sspred"]),
+    ("EST", "自适应状态估计", "State Estimation",   "世界模型", ["ssest"]),
+    ("COR", "残差校正新息",   "Correction",          "世界模型", ["ssinnov"]),
+    ("FFW", "前馈引导快路径", "FeedForward",         "快路径控制", ["ssff"]),
+    ("SCH", "作业调度状态机", "Scheduler / FSM",     "决策规划", ["sssched"]),
+    ("SAF", "安全执行边界",   "Safety Boundary",     "安全冗余", ["sslimit"]),
+    ("ACT", "机器人执行驱动", "Actuation",           "执行机构", ["ssact"]),
+    ("CAL", "标定与参数写回", "Calibration",         "工程标定", ["sscalib"]),
+    ("MAN", "接触流形监测",   "Contact Manifold",    "质量监测", ["ssmani_c"]),
+    ("PER", "性能流形评估",   "Performance Manifold","质量监测", ["ssmani_p"]),
+    ("AOI", "外观质量检测",   "AOI Inspection",      "感知模型", ["ssaoi"]),
+    ("LLM", "任务规划与意图", "Task Planning",       "认知模型", ["ssllm"]),
+    ("RSN", "异常诊断与恢复", "Diagnosis",           "认知模型", ["ssreason"]),
+    ("SKL", "技能编排与注入", "Skill Orchestration", "认知模型", ["ssskill"]),
+]
+
+DOMAIN_OF_NODE = {nk: dom for dom, _zh, _en, _role, nks in FUNC_DOMAINS for nk in nks}
+
+
+def _inject_func_codes():
+    """按 FUNC_DOMAINS 给每条功能注入 code (域码-域内序号), 幂等可重复执行。
+
+    域内序号 = 该域内按 NODE_TREE 迭代顺序累计 (01 起, VIS 两节点共 10 条)。
+    注入后功能 dict 同时带 'code' (业务编号) 与 'dom' (域码), 供网页/Excel/GUI 使用。
+    """
+    n_in_dom = {}
+    for nk, n in NODE_TREE.items():
+        dom = DOMAIN_OF_NODE.get(nk)
+        if dom is None:
+            continue  # 未注册节点保持无 code (不静默编造)
+        for f in n["funcs"]:
+            n_in_dom[dom] = n_in_dom.get(dom, 0) + 1
+            f["code"] = f"{dom}-{n_in_dom[dom]:02d}"
+            f["dom"] = dom
+    return n_in_dom
+
+
+_FUNC_DOM_COUNT = _inject_func_codes()
+
+
+def func_code(fid):
+    """fid → 业务编号 code (查不到返回 fid 原样, 不抛错)"""
+    for n in NODE_TREE.values():
+        for f in n["funcs"]:
+            if f["fid"] == fid:
+                return f.get("code", fid)
+    return fid
+
+
+def dom_stats():
+    """每域: 节点数/功能数 (图例表用)"""
+    out = []
+    for dom, zh, en, role, nks in FUNC_DOMAINS:
+        nf = sum(len(NODE_TREE[k]["funcs"]) for k in nks if k in NODE_TREE)
+        if nf:
+            out.append((dom, zh, en, role, len(nks), nf))
+    return out
+
+
+def check_codes():
+    """编号契约: 110 功能全部有 code / 域码合法 / code 全局唯一"""
+    errs = []
+    seen = {}
+    valid = {d[0] for d in FUNC_DOMAINS}
+    for nk, n in NODE_TREE.items():
+        for f in n["funcs"]:
+            code = f.get("code")
+            if not code:
+                errs.append(f"{f['fid']}: 缺 code")
+                continue
+            if code in seen:
+                errs.append(f"code {code} 重复 ({seen[code]} vs {f['fid']})")
+            seen[code] = f["fid"]
+            dom = code.rsplit("-", 1)[0]
+            if dom not in valid:
+                errs.append(f"{f['fid']}: 域码 {dom} 不在 FUNC_DOMAINS")
+    return errs
+
+
+# ════════════════════════════════════════════════════════════════════
+# 应用场景注册表 SCENES (2026-09-04 老倪统稿: 光模块工厂 5 大客户场景)
+#   场景 = 客户现场工位级作业故事线 (一个场景含多道产品作业)
+#   funcs = 该场景实际用到的功能 (全部在 NODE_TREE, 可校验; 与
+#           PRODUCT_TREE 产品作业引用同源, 反查即得"功能→支撑场景")
+#   量化目标全部取自 RFP_SPEC / TECH_SPECS 真实规格, 不另造数字
+# ════════════════════════════════════════════════════════════════════
+SCENES = [
+    {
+        "code": "SC-01", "name": "FW Loading · 光模块金手指插拔",
+        "station": "固件烧录工位 (产线烧录段)",
+        "story": ("机器人从来料托盘抓取光模块 (400G/800G/1.6T OSFP 高密度), 扫码识别型号后按需翻转定向, "
+                  "将模块金手指精确插入 FW Loading 烧录治具插座完成固件写入, 拔出后对金手指做 AOI 外观检测, "
+                  "按结果分盘流转。全程刚体几何接触: 模块壳体/金手指/导轨均为刚性件, 运动学与摩擦可精确建模, "
+                  "属 L1 刚体接触插拔类作业, 由解析控制 + 八阶段状态机执行。"),
+        "object": "光模块 × FW Loading 烧录治具 (金手指插槽)",
+        "env": "高密度模块小间距排布; 金手指零划痕要求; 电子车间 ESD 防护",
+        "targets": ["对位重复定位 ≤±0.02mm (精密装配工位)",
+                    "插拔力控保护 ≤2N 级, 力控分辨率亚牛顿 (金手指防划伤)",
+                    "烧录/插拔节拍 ≤6s 级 (整线 UPH≥400 分摊)",
+                    "AOI 金手指检测 0 漏杀"],
+        "status": "✅ 已实现链路 (仿真+真机同构)",
+        "funcs": ["FNyolo01", "FNyolo02", "FN2d01", "FN2d03", "FNobs02",
+                  "FNsched01", "FNff01", "FNest01", "FNpred01", "FNinn02",
+                  "FNtac01", "FNtac02", "FNtac05", "FNlim01", "FNlim02",
+                  "FNact01", "FNact02", "FNmc01", "FNmc02", "FNaoi01",
+                  "FNskill02"],
+    },
+    {
+        "code": "SC-02", "name": "ATS 测试 · 光纤连接插拔",
+        "station": "自动测试工位 (ATS, 光/电性能测试段)",
+        "story": ("机器人将光模块插入 ATS 测试座 (电口连接), 再执行光纤连接器插拔 — 把跳线/光口接头对准接入 "
+                  "模块光口并锁紧, 测试完成后解耦拔线、取出模块。光纤/尾纤为柔性件, 形变随接触历史变化, "
+                  "无法用刚体运动学精确建模, 属 L2 柔性物体插拔类作业: 需要形变感知 + 微力柔顺控制, "
+                  "插拔全程防纤芯损伤与端面污染。"),
+        "object": "光模块 × ATS 测试座 + 光纤跳线/光口接头 (柔性)",
+        "env": "光纤端面微米级划痕容忍; 柔性尾纤弯折半径限制; 测试座高密度排布",
+        "targets": ["柔性接触力控: 六维力亚牛顿级分辨率, 精度 ≤ 全量程 0.5%",
+                    "双孔对准角度 ≤0.3° (双工接口)",
+                    "端面检测 FA/APC 划痕微米级 (0 漏杀)",
+                    "新纤型/新盘成功率 ≥ 基线 85% (G_data, 需 ≥2000 demo)"],
+        "status": "🔶 规划中 (需柔性形变感知; 现力控 ≤2N 级)",
+        "funcs": ["FNyolo01", "FN2d01", "FNobs02", "FNsens01", "FNobs01",
+                  "FNsched01", "FNff01", "FNpred01", "FNinn03", "FNtac02",
+                  "FNtac04", "FNlim01", "FNact01", "FNmp03", "FNcal02",
+                  "FNrsn01", "FNskill01"],
+    },
+    {
+        "code": "SC-03", "name": "老化墙 · 批量光模块插拔",
+        "station": "老化测试段 (Burn-in 老化墙/老化箱)",
+        "story": ("机器人把完成初测的光模块逐颗插入老化墙/老化箱槽位 (高温长时间老化), 老化结束后拔出下料回盘; "
+                  "支持多层柜体 (0-2.5m 举升覆盖) 与跨工位流转。批量插拔属长时序重复作业: 槽位小间距、高层作业, "
+                  "对位依赖视觉引导, 夹持必须可靠 (老化中掉落 = 整盘报废), 全程 24h 无人化连续运行。"),
+        "object": "批量光模块 × 老化墙槽位矩阵 (多层柜体)",
+        "env": "高温老化环境; 槽位小间距; 24h 连续无人化; 举升高度 0-2.5m",
+        "targets": ["高层槽位视觉引导对位, 移动-操作解耦驻停后抓取毫米级",
+                    "夹持可靠: 抓握质量实时估计, 夹持丢失 5 帧自动回退重抓",
+                    "老化过程数据逐颗上报 MES 可追溯",
+                    "全向底盘流转, 导航精度 ≤±10mm"],
+        "status": "✅ 已实现链路 (插拔/取放) · 老化长时序配方迭代中",
+        "funcs": ["FNyolo01", "FN2d01", "FNobs02", "FNsched01", "FNskill02",
+                  "FNact01", "FNact02", "FNtac01", "FNtac05", "FNlim01",
+                  "FNlim02", "FNff02", "FNest03", "FNmc02", "FNworld04",
+                  "FNworld05", "FNdata04", "FNcal01"],
+    },
+    {
+        "code": "SC-04", "name": "上下料 · 跨工位流转与分拣",
+        "station": "产线首尾与工位间 (自动上下料/流转段)",
+        "story": ("机器人执行整盘上下料与跨工位流转: 将料盘/料盒从缓存区搬运至各工位并精准对接, 逐颗取放光模块, "
+                  "按测试/检测结果分拣判级回盘; 多规格 (400G/800G/1.6T) 混线时不停机切换工艺配方。"
+                  "刚体取放搬运属 L1 作业, 叠加移动流转: 移动-操作解耦, 底盘驻停锁定后执行精密抓取。"),
+        "object": "料盘/料盒/托盘 × 光模块 (多规格混料, 含不规则来料)",
+        "env": "多工位循环流转; 混线不停机换配方; 与 MES/产线设备协同",
+        "targets": ["抛料率 ≤1% (夹持损伤零容忍)",
+                    "换料盘/换规格不重训 (G_skill 技能复用)",
+                    "移动抓取综合误差毫米级; 双臂协同负载 ≥10kg",
+                    "取放节拍支撑整线 UPH≥400"],
+        "status": "✅ 已实现链路 (夹持锁存+随动检测)",
+        "funcs": ["FNyolo01", "FN2d01", "FNobs02", "FNact01", "FNact02",
+                  "FNact03", "FNtac05", "FNworld01", "FNworld02", "FNworld03",
+                  "FNworld04", "FNlim02", "FNsched01", "FNskill02", "FNdata05",
+                  "FNest01", "FNcal03"],
+    },
+    {
+        "code": "SC-05", "name": "光耦合 · 主动对准与光功率调节",
+        "station": "光耦合精密工位 (光学耦合段)",
+        "story": ("机器人对光学组件执行 Active Alignment 主动对准: 以六轴微调在连续动作流形上搜索耦合效率 η "
+                  "的峰值 (实时光功率反馈), 收敛后锁紧/固定, 并对温度/批次引起的功率漂移做补偿与再校准。"
+                  "目标不是「到位」而是「性能极值」, 属 L3 性能调节类作业: 需要世界模型 (性能流形 η) "
+                  "指引寻峰搜索, 而非端到端模仿固定轨迹。"),
+        "object": "光组件/光纤阵列 × 耦合平台 (纳米级运动平台 + 光功率计)",
+        "env": "精密光学环境 (防尘防振); 温度漂移; 单模/多模器件混产",
+        "targets": ["单模对准 ≤50nm / 多模 ≤100nm (纳米级运动平台)",
+                    "寻峰收敛 ≤5s (自 200μm 初始偏差起)",
+                    "解耦/重耦功率重复定位方差达标; 耦合寻优轨迹平滑无抖",
+                    "新器件批次寻峰成功率 ≥ 基线 90% (G_data)"],
+        "status": "🔶 设计验证中 (性能流形 η 已建模发布; 需光功率计实测标定 σ/W)",
+        "funcs": ["FNmp01", "FNmp02", "FNmp03", "FNmp04", "FNlat01", "FNlat03",
+                  "FNest01", "FNest03", "FNpred01", "FNff01", "FNff02",
+                  "FNinn03", "FNcal04", "FNcal05", "FNtac04", "FNlim01",
+                  "FNrsn02"],
+    },
+]
+
+
+def scene_funcs_ref():
+    """场景引用功能全集 (校验: 全部在 NODE_TREE 存在)"""
+    refs = set()
+    for sc in SCENES:
+        refs.update(sc["funcs"])
+    all_fids = {f["fid"] for n in NODE_TREE.values() for f in n["funcs"]}
+    return sorted(refs), sorted(refs - all_fids)
+
+
+def scenes_of_func(fid):
+    """功能 fid → 支撑场景 code 列表 (场景-功能双向对应的反查)"""
+    return [sc["code"] for sc in SCENES if fid in sc["funcs"]]
+
+
 
