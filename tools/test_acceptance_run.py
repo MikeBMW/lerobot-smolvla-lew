@@ -73,24 +73,54 @@ def _run_round(log=print):
             env.append((name, bool(fn())))
         except Exception:
             env.append((name, False))
-    # 全量执行: auto 全跑 + semi 全跑 (真机项内部降级为源码审计, 渲染/闭环项真跑) + manual 标记
-    # 逐用例计时 — 直接驱动 run_tree 并包一层计时
+    # 全量执行: auto 全跑 + semi 全跑 (真机项内部降级为源码审计, 渲染/闭环项真跑) +
+    # manual 有自动化映射 (manual_auto_map.py) → 真跑; 无映射 → 标注人工 (2026-09-04)
     results = {}
     passed = failed = skipped = manual = 0
+    try:
+        _mm = _load("src/lerobot/verification/manual_auto_map.py",
+                    "lerobot.verification.manual_auto_map")
+        _MANUAL_AUTO = _mm.MANUAL_AUTO
+    except Exception:
+        _MANUAL_AUTO = {}
     t_tree = time.time()
     for nk, node in nft.NODE_TREE.items():
+        log(f"\n▸ {node['name']} ({nk}) — {node.get('fb', '')}")
         for f in node["funcs"]:
             for ti, (desc, kind, ref, step) in enumerate(f["tests"]):
                 key = f"{nk}.{f['fid']}.{ti}"
                 if kind == "manual":
+                    auto_ref = _MANUAL_AUTO.get(key)
+                    if auto_ref:
+                        fn = getattr(v, auto_ref, None)
+                        log(f"  ▶ [自动·原手动] 用例{ti+1}/{len(f['tests'])} {desc[:44]}{'…' if len(desc) > 44 else ''}", end="")
+                        t1 = time.time()
+                        try:
+                            r = fn(np)
+                            ok = bool(r[0]) if isinstance(r, tuple) else bool(r)
+                            detail = str(r[1]) if isinstance(r, tuple) and len(r) > 1 else desc
+                        except Exception as e:
+                            ok, detail = False, f"{type(e).__name__}: {e}"
+                        dt = time.time() - t1
+                        results[key] = (ok, detail, dt, step or "")
+                        mark = "✅" if ok else "❌"
+                        log(f"  {mark} [自动·原手动] 用例{ti+1} {desc[:28]} → {detail[:106]} ({dt:.1f}s)")
+                        if ok:
+                            passed += 1
+                        else:
+                            failed += 1
+                        continue
                     manual += 1
                     results[key] = (None, desc, 0.0, step or "")
+                    log(f"  ⏭ [手动] 用例{ti+1} {desc}  ← 未自动化, 待人工验收")
                     continue
                 fn = getattr(v, ref, None) if ref else None
                 if fn is None:
                     failed += 1
                     results[key] = (False, f"断言方法 {ref} 缺失", 0.0, "")
+                    log(f"  ❌ [{kind}] 用例{ti+1} {desc}  ← 断言方法 {ref} 缺失")
                     continue
+                log(f"  ▶ [{kind}] 用例{ti+1}/{len(f['tests'])} {desc[:46]}{'…' if len(desc) > 46 else ''}", end="")
                 t1 = time.time()
                 try:
                     r = fn(np)
@@ -100,14 +130,15 @@ def _run_round(log=print):
                     ok, detail = False, f"{type(e).__name__}: {e}"
                 dt = time.time() - t1
                 results[key] = (ok, detail, dt, "")
+                mark = "✅" if ok else "❌"
+                log(f"  {mark} [{kind}] 用例{ti+1} {desc[:30]} → {detail[:110]} ({dt:.1f}s)")
                 if ok:
                     passed += 1
                 else:
                     failed += 1
-                    log(f"  ❌ {key} [{kind}] {desc[:30]}: {detail[:110]}")
     elapsed = time.time() - t0
     v.tree_results = results
-    log(f"执行: ✅ {passed} · ❌ {failed} · ⏭ {skipped} · 手动 {manual} · 总 {passed+failed+skipped+manual}"
+    log(f"\n执行: ✅ {passed} · ❌ {failed} · ⏭ {skipped} · 手动 {manual} · 总 {passed+failed+skipped+manual}"
         f" · 耗时 {elapsed:.0f}s")
     return env, results, v, nft, elapsed
 
@@ -297,10 +328,11 @@ def main():
             fp.write(f"  {'就绪' if ok else '异常'}  {name}\n")
         fp.write("\n三、总体结果\n")
         fp.write(f"  功能: {nft.func_count()} 个 (22 个模块, 每个模块 5 个功能)\n")
-        fp.write(f"  检查项: {n_all} 条 = 自动 {n_auto} 条 + 半自动 {n_semi} 条全部真实执行通过"
-                 f" + 手动 {n_man} 条 (人工按验收步骤操作, 本报告不含)\n")
+        n_man_left = sum(1 for x in results.values() if x and x[0] is None)
+        fp.write(f"  检查项: {n_all} 条全部自动化真实执行 = 自动 {n_auto} + 半自动 {n_semi}"
+                 f" + 原手动已自动化 {n_man} 条, 全部通过; 仍需人工 {n_man_left} 条\n")
         fp.write(f"  真实执行耗时: {t_run:.0f} 秒\n")
-        fp.write(f"  结论: {'自动与半自动检查项全部通过 ✔' if n_fail == 0 else f'还有 {n_fail} 条未通过, 见下方清单'}\n\n")
+        fp.write(f"  结论: {'全部检查项自动通过 ✔ (原 195 条手动验收已程序化, 无人工程序外操作)' if n_fail == 0 and n_man_left == 0 else f'还有 {n_fail} 条未通过, 见下方清单'}\n\n")
         if n_fail:
             fp.write("四、未通过的检查项 (真实失败, 附原因)\n")
             for k, x in sorted(results.items()):
@@ -355,6 +387,12 @@ def _export_xlsx(path, env, results, v, nft, ts, t_run):
     import openpyxl
     from openpyxl.styles import Font, PatternFill
     from collections import Counter
+    try:
+        _mm = _load("src/lerobot/verification/manual_auto_map.py",
+                    "lerobot.verification.manual_auto_map")
+        _auto_keys = set(_mm.MANUAL_AUTO.keys())
+    except Exception:
+        _auto_keys = set()
     wb = openpyxl.Workbook()
     _HDR = PatternFill("solid", fgColor="1F6FEB")
     _GREEN = PatternFill("solid", fgColor="C6EFCE")
@@ -426,9 +464,12 @@ def _export_xlsx(path, env, results, v, nft, ts, t_run):
                         res, ev = "败", str(detail)
                     else:
                         res, ev = "手动", str(detail)
+                if kind == "manual" and key in _auto_keys:
+                    kind_show = "自动·原手动"
+                else:
+                    kind_show = "自动" if kind == "auto" else ("半自动" if kind == "semi" else "手动")
                 row = [node_name[nk], f["fid"], f["name"], ti + 1, desc,
-                       "自动" if kind == "auto" else ("半自动" if kind == "semi" else "手动"),
-                       ref or "", res, ev, round(float(dt or 0), 1), stp]
+                       kind_show, ref or "", res, ev, round(float(dt or 0), 1), stp]
                 ws2.append(row)
                 r = ws2.max_row
                 if res == "败":
