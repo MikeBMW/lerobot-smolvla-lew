@@ -239,8 +239,102 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **QMessageBox 深色**: calibration_dialog 里静态 QMessageBox.information/warning 会黑字 → 手动构造 mb + setStyleSheet(_DARK) + exec_(AA_DontUseNativeDialogs 下生效)。
 - 验证 (v3.4.5 13/13): 默认值 apply 引擎零 diff / V_MIN 改值不串 V_CAP (引擎+镜像) / UI 全链路表格改3值 → 引擎文件+实例吃新值, run 正常 / 锚点破坏 → ValueError。
 
-## DataWorld 逐帧同步 — 3D 与画布信号同帧 (2026-09-03 v3.4.6, 老倪: 参考百度 Apollo Dreamview)
-- **架构语义**: 每个画布节点 = 一个算法模块 (channel, io key = 画布节点名); 引擎每步把
+## 📋 技术规格书 TECH_SPECS + RFP (v4.1.0, 2026-09-04 老倪: 供应商规格全写入清单)
+- node_func_tree.py TECH_SPECS 3组12项规格 → 量化映射产品作业+功能 fid:
+  组1 核心本体·运动控制 (Gauge Covariant Operations, 光耦合/光纤·模块插拔工位):
+  极致定位±0.02mm+单模50nm多模100nm · 六维力亚牛顿0.5% 1-2N拖拽 · EtherCAT
+  1kHz无抖 · 紧凑高刚性1.6T OSFP多角度安装
+  组2 复合移动·柔性流转 (Locomotion & Flexibility, 上下料/跨工位/分拣): 全向底盘
+  ±10mm蟹行 · 移动-操作解耦驻停毫米级 · 双臂10kg 0-2.5m 双孔0.3° · 多模态避障
+  组3 智能认知·系统集成 (Gauge Symmetry & Invariance): VLA自进化 · UPH400不停机
+  换料 · CPK1.67 良率99% AOI 0漏杀 · EtherCAT/Profinet/Modbus TCP + ESD/IP65
+- RFP_SPEC (客户需求) 与 TECH_SPECS (供应商规格) 双注册表并存, 均 → 产品作业 →
+  功能 fid 同源映射; GUI 对话框 Tab3 RFP / Tab4 技术规格书, Excel Sheet6/7。
+- 版本中迭代 v4.1.0 同步五处: studio.py(窗口标题/QLabel/changelog注释前缀) +
+  update_checker.py CURRENT_VERSION + version_sync.py zmax_ver + docs_sync.py
+  ("version" + "zmax_version" 两键)。漏一处 → exe 标题旧版。changelog 巨长注释
+  用 Python 脚本前缀插入 (锚点 '# v4.0.2:' 现为 '# v4.1.0:')。
+
+## 📊 产品作业分级 PRODUCT_TREE + RFP + 一键自动测试 (v4.0.3/v4.0.4, 2026-09-04)
+- **PRODUCT_TREE** (node_func_tree.py 尾部): 客户视角作业分级, 物理判据 刚体→柔性→
+  性能极值: L1 基础功能·刚体接触插拔类 (光模块插拔/刚体取放/视觉定位, 全已实现,
+  路线=分段式解析控制+状态机) · L2 高级功能·柔性物体插拔类 (光纤接头插拔/线缆整理/
+  微力控, 规划中, 路线=端到端 VLA 插拔头/柔顺导纳 — 解析难建柔性模型) · L3 扩展功能·
+  性能调节类 (光耦合主动对准/耦合质量闭环, 路线=世界模型+优化搜索, 端到端模仿难学
+  搜索行为)。每 job: funcs 引用技术树 fid + model_route + gen 泛化指标 + detect + status。
+- **泛化指标 G 组** (VerificationLayer t_g*_ 断言, 全真实引擎跑): G_data 数据外推
+  (引擎 X0 初始扰动 ±10/±15mm 真跑), G_pose 位姿外推 (模块级 HOLE_POS monkeypatch
+  偏移 2~10mm 真跑, **跑完 finally 恢复原常量**), G_skill 技能复用 (FUNC_CHAINS 引用
+  校验 + L1∩L2 共享子技能 ≥3)。引擎模块 monkeypatch 法: importlib.import_module +
+  改 m.HOLE_POS/m.X0 再 StateSpaceSim().run(), 引擎控制器自洽跟随观测真值 (偏移
+  10mm 终态误差仍 ~3mm = 自洽收敛)。
+- **RFP_SPEC**: 光模块 RFP 9 量化指标 (★否决 5 项: ±0.02mm 重复定位/50nm 耦合/亚牛
+  顿力控/UPH400·CPK1.67·良率99%/…) → 关联产品作业 + 支撑功能 fid。
+- **一键自动测试** tools/gen_verif_auto_report.py (gui-venv311, reportlab 5.0.1 已装):
+  环境自检 5 项 → run_tree 全部 auto → PDF 7 章报告 (摘要/环境/按节点 PASS 表/
+  产品分级/RFP 映射/G 组实测/结论) + Excel 6 sheet。GUI: ss_test 节点右键
+  「⚡ 一键自动测试」→ _run_auto_test 子进程跑 (reportlab 在子进程防卡 GUI) →
+  解析 stdout REPORT_PDF=/EXCEL= → scp 上传 datadrive.world 弹 URL。
+- **⚠️ reportlab 中文**: 本机无 wqy 字体! 回退链 wqy-microhei→wqy-zenhei→
+  arphic/uming.ttc→DroidSansFallbackFull.ttf; Noto CJK 是 CFF reportlab 不认。
+- **GUI 对话框深色坑**: 全局 app.setStyleSheet (studio _build_global_qss) 存在时,
+  子 QDialog 靠级联 QSS 不可靠 — 每个 QTreeWidget 必须**控件级显式 setStyleSheet**
+  (QTreeWidget{background:#161b22; color:#e6edf3...}), 否则树区白底灰字。
+- **QDialog 最大化坑**: QDialog 默认 flags 无 MaximizeButtonHint → 右上角最大化
+  按钮点了没反应; 需 setWindowFlags(flags | Qt.WindowMaximizeButtonHint |
+  Qt.WindowMinimizeButtonHint), 在 _show_nonmodal (simulink_module.py) 统一补。
+- VerificationDialog 3 Tab: ①技术树(G1/G2/G3→节点→功能→用例) ②产品分级
+  (L1/L2/L3+泛化+选型+检测) ③需求规格书 RFP (★否决项分组→作业→功能);
+  右键 a_verif/a_rfp/a_auto 三分支; _open_verif_dialog(node, tab="rfp") 初始切 Tab3。
+
+## 🧩 验证层 = 规范场三层三级树 (v4.0.2, 2026-09-04 老倪 Gauge Theory 重构)
+- **主真源 = src/lerobot/verification/node_func_tree.py** (新注册表 550 用例):
+  规范场三层 → 节点 → 功能 → 用例: G1 场感知 (9节点/45功能/225用例) · G2 协变操作
+  (10/50/250) · G3 对称认知 (3/15/75); 22 节点 × 5 功能 (名 5~10 字, check_contract 强制)
+  × 5 用例 (auto 339 / semi 16 / manual 195); FUNC_CHAINS 模块化组合链 (截面合成)。
+- **VerificationLayer.run_tree(skip_slow, only_node, log_fn)** 三级执行器: auto 全真实断言
+  (引擎/六层源码/标定/流形/planner 规则/源码审计 _audit); semi 需真机/DISPLAY 默认跳过;
+  manual 永不自动跑 (清单展示)。**零空转铁律**: 自动用例禁止 `return True, "说明"` —
+  纯文字断言一律改 _audit(文件, needles) 真实读源码, 或真算数值/委托 t_F_*。
+- CLI tools/ss_feature_tests.py: --list 三级清单 / --only-node <key> / 全量 auto (semi 跳过)。
+- GUI verification_dialog.py: 树按三层分组 → 节点 → 功能 → 用例, ▶运行自动用例后台线程
+  → 结果 ✅/❌/⏭ 注入树; 导出 Excel 4sheet (功能清单含规范场列/功能用例/分类统计/测试明细)。
+- ⚠️ CLI 直接执行坑: `python tools/ss_feature_tests.py` 时 sys.path 无仓库根 →
+  `import tools.*` ModuleNotFoundError → VerificationLayer.__init__ 已把 root+tools/gui 入 path。
+- 旧 45 项 FEATURES/FEATURE_META (v4.0.1) 保留兼容 (旧入口/run_all 不破坏), 不双轨展示。
+- 规范场映射: G1=底空间观测(YOLO/2D3D/触觉/融合/obs/data/world/AOI/lat), G2=联络动作+流形
+  (ff/est/pred/innov/sched/limit/act/calib/mani_c/mani_p), G3=规划编排诊断 (llm/reason/skill)。
+- 画布 ssfeat/sstest 双击/右键 → _open_verif_dialog (0.0 分支最前, 防 source 字段抢先)。
+
+## 断点挂起"卡死" = debugpy 暂停全进程 (v4.0.1, 2026-09-04 老倪两次"只能鼠标动,其它程序都不动")
+- **认知修正**: 之前 real-run-gui-integration reference 写"断点命中在后台线程 → GUI 不冻"是**错的** —
+  pydevd/debugpy 断点命中默认挂起**整个进程所有线程** (VSCode 线程面板全变暂停)。真实化 run() 虽在
+  daemon 线程, detect_3d/fuse_sensors 断点命中一样冻 GUI 主线程 → 表现"只能鼠标动"(X server 画的
+  鼠标还在动), 窗口/日志全停。F5 调试 + 引擎/感知源码断点 + ▶运行 是四次同款卡死的共同组合。
+- **防御 (v4.0.1 代码)**: `_start_real_sim` 开头检测 `debugpy.is_client_connected()` (listen 未附加不算,
+  比 sys.gettrace 可靠) → 日志+气泡醒目提示: 断点命中=GUI 暂停非故障, 处理 = ①F5 放行(逐次)
+  ②删引擎断点只留目标行 ③取消 F5 直接跑。**判定法不变**: 卡死先 `sudo py-spy dump --pid <gui>`
+  主线程栈 `do_wait_suspend` = 断点冻结 (删断点即恢复, 无需重启)。
+- **真实化运行进度可见 (v4.0.1)**: RealStateSpaceSim.run() 每 25 步 self.log 周期进度
+  ([step] 阶段/残差/接触p/grp/YOLO检出率) + simulink `_real_logs/_real_log_ix` 共享引用 →
+  `_on_real_poll` 每 400ms 增量 flush 到 GUI 日志 — 修 5-9 分钟静默 = 用户误判"卡死" (两次报告背景)。
+  新改动后重启 GUI 必给日志三连证据。
+
+## 🧩 验证层 Feature/Test 节点 = VerificationDialog (v4.0.1, 2026-09-04 老倪: 按钮导出 Excel + 分类)
+- 画布 ssfeat/sstest 双击/右键 → `_open_verif_dialog` → tools/gui/verification_dialog.py:
+  45 项表格 (ID/域/类别/模型角色/功能名称/模型特点/层/验证方式) + 分类统计行; feature 模式有
+  「▶ 运行全部测试」后台跑 (skip_slow, 结果列 ✅/❌/⏭); 「导出 Excel」= openpyxl 3 sheet
+  (功能清单/分类统计/测试明细) → scp 上传 datadrive.world → URL。
+- **数据源**: FEATURES 6 元组不动, 新增并行 `FEATURE_META {fid: (基本功能|泛化功能, 角色, 特点)}`
+  45 条 (基本29/泛化16; 角色: 感知模型6/世界模型7/决策4/规划3/安全2/引擎8/平台5/标定3/GUI7) —
+  加在文件末尾 main() 前 (放 FEATURES 后会错位 _EXTERNAL_LOC 行号锚点 47/97!)。list_features 返回
+  dict 列表 (GUI/导出复用), 打印带分类统计。基本=确定性规则(引擎/状态机/安全/画布), 泛化=模型驱动
+  (感知/世界模型/规划) — 感知模型=把传感器变状态(YOLO/触觉/AOI/融合), 世界模型=预测演化
+  (估计器/动力学/校正/潜空间/流形)。
+- **⚠️ 分支顺序坑**: ssfeat/sstest 节点带 `source` 字段 → 双击会被更早的"数据源切换"分支拦截,
+  verif 分支必须放 on_node_activated **最顶部** (0.0), 不能放 state_space 分支附近。
+
+## DataWorld 逐帧同步 — 3D 与画布信号同帧 (2026-09-03 v3.4.6, 老倪: 参考百度 Apollo Dreamview)- **架构语义**: 每个画布节点 = 一个算法模块 (channel, io key = 画布节点名); 引擎每步把
   各模块 in/out 发布到数据世界 → 画布播放 / 3D 视图 / 数据总线消费**同一 DataWorld +
   单一帧游标** → 点 ▶运行 后 3D 渲染数据与画布实际信号严格同帧 (Dreamview:
   "模块输出 → 主视图渲染", Layer Menu = 通道显示开关)。

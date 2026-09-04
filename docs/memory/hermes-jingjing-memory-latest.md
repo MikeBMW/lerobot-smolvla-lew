@@ -12,7 +12,7 @@ ECS SSH密码=Nix19789(08-22实测有效); git push不自动部署; 网页新功
 §
 安全限值=🛡类别4栏位; 状态空间唯一三层安全(否决+限幅+Sys0)
 §
-GPU: 驱动580.126.09; LiveUSB重启/dev/nvidia*节点丢+nvidia_uvm不加载→CUDA unknown error; 服务nvidia-device-nodes+nvidia-uvm-nodes持久化; torch2.7.1+cu128 cufile/cusparselt→ldconfig; swap防御详见技能
+GPU(580.126.09): LiveUSB重启dev/nvidia*丢+nvidia_uvm不载→CUDA unknown error, nvidia-device-nodes服务持久化; cufile/cusparselt→ldconfig; swap见技能
 §
 模型引擎=容器框架: 三模式(远程/本地/端侧); Start/Stop=清队列+kill; 本地=强制容器(config root转/app/data/)
 §
@@ -36,8 +36,8 @@ GUI数据总线=DataBusTrace 14模块51接口
 §
 3D视图=程序执行映射(09-02): 运行后优先sim.run()轨迹,_ss_tick每帧set_frame推idx,断点停=3D停; 无运行才退episode; shader绑首GL→窗口只复用不新建; 打开即自动播放
 §
-引擎断点挂起=假卡死→py-spy查do_wait_suspend; debugpy僵尸pydevd占5678→attach SystemExit:1(ss查kill)
+引擎断点挂起=假卡死→py-spy查do_wait_suspend; debugpy僵尸占5678→SystemExit:1已根治, launch preLaunchTask F5自动清lsof:5678
 §
-状态空间: target=obs[36:39]感知层写(仿真HOLE_POS/真机YOLO)非世界模型; parallel.py=画布解析式,源码_EXTERNAL_LOC映射; ss_ff/ss_est共用node_ss_s2
+状态空间: GUI ▶运行默认真实化=state_space_sim_real.py(每帧render→YOLO, detect_3d断点每步进); ⚡引擎快演=退回0.1s演示; 锚=obs hand(site虚拟点低4cm); 老倪红线: 每帧渲染, 节流/冻结/复用旧值=造假
 §
 标定层v3.4.5闭环: 保存=apply_to_engine写回引擎源码字面量(parallel Kp/u_clip, cognition V_CAP/MIN+veto/k_fb, sim校正K/接触增益/安全限幅/先验A/EMA系数对); 引擎importlib每次运行重载→下次▶运行生效; stage dict写回须块内(防V_MIN串V_CAP); prior_A=1.0=引擎真值
