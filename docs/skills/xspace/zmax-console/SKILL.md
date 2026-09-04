@@ -239,6 +239,29 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **QMessageBox 深色**: calibration_dialog 里静态 QMessageBox.information/warning 会黑字 → 手动构造 mb + setStyleSheet(_DARK) + exec_(AA_DontUseNativeDialogs 下生效)。
 - 验证 (v3.4.5 13/13): 默认值 apply 引擎零 diff / V_MIN 改值不串 V_CAP (引擎+镜像) / UI 全链路表格改3值 → 引擎文件+实例吃新值, run 正常 / 锚点破坏 → ValueError。
 
+## 🧩 功能清单网页统稿 (v4.2.0, 2026-09-04 老倪: VIS-01 编号 + 场景 + HDM 几何分类)
+- **node_func_tree.py 三组新注册表 (全 110 功能向后兼容注入, 旧消费端无感)**:
+  - `FUNC_DOMAINS` 21 域三字母编号 → 每功能注入 `code` (VIS-01 格式: 域码-域内序)
+    + `dom`; VIS 域 = ssyolo(01-05)+ss2d3d(06-10), VIS-01=YOLO 目标检出 (老倪锚点)。
+    校验 check_codes() 全绿 (110 唯一)。
+  - `SCENES` 5 大客户场景 (SC-01 FW Loading 金手指插拔/SC-02 ATS 光纤连接/
+    SC-03 老化墙批量插拔/SC-04 上下料流转/SC-05 光耦合主动对准): 每场景
+    story 作业故事线 + object/env/targets(量化目标**必须取自 RFP/TECH 真值**,
+    禁造数字)/status(诚实标 ✅/🔶)/funcs。校验 scene_funcs_ref()。
+  - `GEOM_CLASSES` 几何三分类 (纤维丛): LFP 局部精细感知(30, 本体无关仅重标定外参)
+    /LFO 局部精细操作(35, 绑定运动学换本体旧联络失效)/HDM 全局高维流形泛化
+    (45, 跨本体微调即新截面)。每功能注入 geom; hdm_funcs_of_scene 汇总跨本体泛化。
+    校验 check_geoms()。
+- **gen_web_feature_pages.py 五章节**: 几何总纲+HDM 汇总 → 场景详述(功能表) →
+  编号图例 → 组合链 → 三层总表 (110 主行 + 550 用例子行 code-T1~T5 全展开,
+  验证方法列 = VerificationLayer.<ref>() 原样去重, 手动用例子行带步骤全文)。
+- **上传通道 (实测)**: datadrive.world = ECS 39.102.211.79 nginx,
+  **站点根 = /www/wwwroot/datadrive.world/** (宝塔路径, /var/www/html 是默认页不算);
+  zmax-website 仓库在 ECS /root/zmax-website。上传:
+  `sshpass -p '<ECS密码>' scp reports/web/*.html root@39.102.211.79:/www/wwwroot/datadrive.world/`
+  → curl https://datadrive.world/function-list.html 验证 (grep 新章节锚点)。
+- 版本中迭代 v4.2.0 同步点同 v4.1.0 五处 + VERSION.md 历史表两行 (v4.2.0+v4.1.0 补录)。
+
 ## 📋 技术规格书 TECH_SPECS + RFP (v4.1.0, 2026-09-04 老倪: 供应商规格全写入清单)
 - node_func_tree.py TECH_SPECS 3组12项规格 → 量化映射产品作业+功能 fid:
   组1 核心本体·运动控制 (Gauge Covariant Operations, 光耦合/光纤·模块插拔工位):
