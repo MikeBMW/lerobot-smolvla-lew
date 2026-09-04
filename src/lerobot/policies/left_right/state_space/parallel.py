@@ -32,7 +32,7 @@ class FeedforwardAccelerator:
         obs = np.asarray(obs, dtype=float)
         pos = obs[0:3]
         target = obs[36:39] if obs.shape[-1] >= 39 else pos
-        Kp = 1.2                                   # 比例增益 (等效训练后增益)
+        Kp = 1.2                                   # 比例增益 (等效训练后增益; 2026-09-04 tools/align_ff_kp.py 反推: 全样本 1.227, 远/中层 1.18-1.19, z 维全程≈1.19 → 校验通过)
         u_xy = np.clip(Kp * (target - pos), -0.5, 0.5)
         dist_h = float(np.linalg.norm(pos[:2] - target[:2]))
         if dist_h < 0.03 and dist_h > 1e-6:
