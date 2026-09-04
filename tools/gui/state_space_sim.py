@@ -613,7 +613,7 @@ _DATASET_DIR = os.path.join(
     "data", "ss_insert")
 
 
-def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
+def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None, perturb=0.01):
     """多轮仿真 (起始扰动+噪声 seed) → 专家演示数据集 npz
 
     对齐 on_train 训练管道数据包格式:
@@ -622,6 +622,8 @@ def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
       stages  (n,)   阶段标签 (信息, 不参与训练)
       success (n_ep,) 每轮完成标志
       task_name "ss_insert" · fps 50 (DT=0.02)
+    perturb: 起始位置扰动半径 (m)。2026-09-04: 训练域 = 扰动决定 —
+      蒸馏 MLP 只覆盖数据域, 域外闭环发散 (实证 ±3cm 即失败) → 扩域重训加 perturb。
 
     Returns: (npz路径, 总帧数, 成功轮数/总轮数)
     """
@@ -634,10 +636,14 @@ def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
     n_ok = 0
     for ep in range(n_episodes):
         sim = StateSpaceSim(log=lambda *a: None)
+        # 🧠 2026-09-04 静静: 数据管道固定用解析律当教师 (teacher) — 与推理主执行器解耦。
+        #   蒸馏范式: 教师(解析, 全局稳定)生成演示 → 学生(左脑MLP)蒸馏。
+        #   MLP 不能当教师: 域外无稳定保证, 自举生成发散轨迹 (实测 hand 飞到 9m)。
+        sim.accel.forward = sim.accel.analytic_forward
         np.random.seed(seed_base + ep)
-        # 起始扰动: 末端位置抖动 ±10mm (真实产线来料偏差)
-        sim.x = X0 + np.array([np.random.uniform(-0.01, 0.01),
-                               np.random.uniform(-0.01, 0.01), 0.0])
+        # 起始扰动: 末端位置抖动 ±perturb (真实产线来料偏差; perturb 定义训练域)
+        sim.x = X0 + np.array([np.random.uniform(-perturb, perturb),
+                               np.random.uniform(-perturb, perturb), 0.0])
         sim.v = np.zeros(3)
         sim.gripper = 0.0
         sim.latent = np.concatenate([sim.x, [0.0]])
