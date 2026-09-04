@@ -45,6 +45,8 @@ def _load(rel, name):
 
 def _run_round(log=print):
     """真实执行一轮: 返回 (env, results, v, nft, elapsed) — results 为 case_key→(ok,detail,secs)"""
+    log(f"🧪 全量测试开始: 引擎真实跑 + 逐条断言, 共 550 条"
+        f" (自动 339 + 半自动 16 + 原手动已自动化 195)…")
     vl = _load("src/lerobot/verification/verification_layer.py", "lerobot.verification.verification_layer")
     v = vl.VerificationLayer(log=lambda *a: None)
     nft = _load("src/lerobot/verification/node_func_tree.py", "lerobot.verification.node_func_tree")
@@ -93,7 +95,7 @@ def _run_round(log=print):
                     auto_ref = _MANUAL_AUTO.get(key)
                     if auto_ref:
                         fn = getattr(v, auto_ref, None)
-                        log(f"  ▶ [自动·原手动] 用例{ti+1}/{len(f['tests'])} {desc[:44]}{'…' if len(desc) > 44 else ''}", end="")
+                        log(f"  ▶ [自动·原手动] 用例{ti+1}/{len(f['tests'])} {desc[:44]}{'…' if len(desc) > 44 else ''}")
                         t1 = time.time()
                         try:
                             r = fn(np)
@@ -104,7 +106,7 @@ def _run_round(log=print):
                         dt = time.time() - t1
                         results[key] = (ok, detail, dt, step or "")
                         mark = "✅" if ok else "❌"
-                        log(f"  {mark} [自动·原手动] 用例{ti+1} {desc[:28]} → {detail[:106]} ({dt:.1f}s)")
+                        log(f"     {mark} → {detail[:106]} ({dt:.1f}s)")
                         if ok:
                             passed += 1
                         else:
@@ -120,7 +122,7 @@ def _run_round(log=print):
                     results[key] = (False, f"断言方法 {ref} 缺失", 0.0, "")
                     log(f"  ❌ [{kind}] 用例{ti+1} {desc}  ← 断言方法 {ref} 缺失")
                     continue
-                log(f"  ▶ [{kind}] 用例{ti+1}/{len(f['tests'])} {desc[:46]}{'…' if len(desc) > 46 else ''}", end="")
+                log(f"  ▶ [{kind}] 用例{ti+1}/{len(f['tests'])} {desc[:46]}{'…' if len(desc) > 46 else ''}")
                 t1 = time.time()
                 try:
                     r = fn(np)
@@ -131,7 +133,7 @@ def _run_round(log=print):
                 dt = time.time() - t1
                 results[key] = (ok, detail, dt, "")
                 mark = "✅" if ok else "❌"
-                log(f"  {mark} [{kind}] 用例{ti+1} {desc[:30]} → {detail[:110]} ({dt:.1f}s)")
+                log(f"     {mark} → {detail[:110]} ({dt:.1f}s)")
                 if ok:
                     passed += 1
                 else:
@@ -291,7 +293,9 @@ def main():
     os.makedirs(REPORTS, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
 
-    log = print
+    def log(*a, **kw):  # 实时输出: 每次立即刷屏, 终端可见逐条 (2026-09-04 老倪)
+        kw["flush"] = True
+        print(*a, **kw)
     env, results, v, nft, t_run = _run_round(log=log)
     round_no = 1
     while round_no < a.fix_rounds:
@@ -411,7 +415,7 @@ def _export_xlsx(path, env, results, v, nft, ts, t_run):
         c.fill, c.font = _HDR, _HF
     for nk, node in nft.NODE_TREE.items():
         for f in node["funcs"]:
-            row = [node_name[nk], f["fid"], f["name"],
+            row = [node_name[nk], f.get("code", f["fid"]), f["name"],
                    geom_name.get(f.get("geom", ""), "")]
             n_ok = n_bad = n_man = 0
             for ti in range(5):
@@ -468,7 +472,7 @@ def _export_xlsx(path, env, results, v, nft, ts, t_run):
                     kind_show = "自动·原手动"
                 else:
                     kind_show = "自动" if kind == "auto" else ("半自动" if kind == "semi" else "手动")
-                row = [node_name[nk], f["fid"], f["name"], ti + 1, desc,
+                row = [node_name[nk], f.get("code", f["fid"]), f["name"], ti + 1, desc,
                        kind_show, ref or "", res, ev, round(float(dt or 0), 1), stp]
                 ws2.append(row)
                 r = ws2.max_row
@@ -496,7 +500,7 @@ def _export_xlsx(path, env, results, v, nft, ts, t_run):
                 continue
             kinds = [t[1] for t in f["tests"]]
             ws3.append([f"精细操作·{lv['level']}", j["job"], j["desc"], j["status"],
-                        f["fid"], f["name"], _plain(f["desc"]), len(f["tests"]),
+                        f.get("code", f["fid"]), f["name"], _plain(f["desc"]), len(f["tests"]),
                         kinds.count("auto"), kinds.count("semi"), kinds.count("manual")])
     ws3.append([])
     ws3.append(["对照: 普通动作 (大范围搬运/取放, 不做接触对准)", "", "", "", "", "", "", "", "", "", ""])
@@ -507,7 +511,7 @@ def _export_xlsx(path, env, results, v, nft, ts, t_run):
                 continue
             kinds = [t[1] for t in f["tests"]]
             ws3.append([f"普通动作·{lv['level']}", j["job"], j["desc"], j["status"],
-                        f["fid"], f["name"], _plain(f["desc"]), len(f["tests"]),
+                        f.get("code", f["fid"]), f["name"], _plain(f["desc"]), len(f["tests"]),
                         kinds.count("auto"), kinds.count("semi"), kinds.count("manual")])
     ws3.append([])
     ws3.append(["精细操作的独特检查 (普通动作没有的)", "", "", "", "", "", "", "", "", "", ""])
