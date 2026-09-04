@@ -1571,4 +1571,93 @@ def scenes_of_func(fid):
     return [sc["code"] for sc in SCENES if fid in sc["funcs"]]
 
 
+# ════════════════════════════════════════════════════════════════════
+# 几何能力分类 GEOM_CLASSES (2026-09-04 老倪统稿: 纤维丛视角 三段式→VLM 端到端)
+#   分类判据 = 功能在纤维丛上工作的「几何层级」:
+#   LFP 局部精细感知 — 对底空间(作业状态)局部场的高分辨率采样 (chart)。
+#       感知通道本体无关 (相机/力传感装在任何本体产出同一目标清单), 换本体
+#       只需重标定外参, 无需重训 → 跨本体友好。
+#   LFO 局部精细操作 — 在低维物理动作空间构造局部截面 + 联络 (平行移动)。
+#       绑定本体运动学; 换本体 = 旧联络在新几何空间失效 (奇点/曲率爆炸),
+#       需 CAL 标定层重新对齐 — 这正是"分段式跨本体崩溃"的几何根源。
+#   HDM 全局高维流形泛化 — 在高维语义-动作联合流形 (共享 Token/潜空间) 上
+#       学习全局拓扑映射。语义 Token 与本体无关状态方程不绑定任何特定电机/
+#       连杆 → 跨本体/跨规格微调即得新截面, 无致命奇点 (拓扑不变性)。
+#       双系统映射: LLM/SKL 任务分解 = System2 在流形上标 waypoints;
+#       LAT/PRD/EST/COR/DAT/WLD = 流形本身 (高维表征 + 本体无关动力学内核
+#       + 数据飞轮采样 + 仿真锚点); Z-MAX 左脑动作+右脑世界模型即此双系统。
+#   每功能 geom 由域映射注入; 110 功能全覆盖, check_geoms 契约校验。
+# ════════════════════════════════════════════════════════════════════
+GEOM_CLASSES = [
+    # (类码, 中文类名, 英文名, 纤维丛语义, 覆盖域码)
+    ("LFP", "局部精细感知类", "Local Fine-grained Perception",
+     "底空间局部场的高分辨率采样 (chart): 视觉检出/3D解算/触觉/融合/状态编码/外观质检 — 本体无关, 换本体仅重标定外参",
+     ["VIS", "TAC", "SEN", "OBS", "AOI"]),
+    ("LFO", "局部精细操作类", "Local Fine-grained Operation",
+     "低维物理动作空间的局部截面+联络 (平行移动): 前馈引导/状态机调度/安全限幅/执行驱动/标定对齐/接触·性能流形监测 — 绑定本体运动学, 换本体旧联络失效需重标定",
+     ["FFW", "SCH", "SAF", "ACT", "CAL", "MAN", "PER"]),
+    ("HDM", "全局高维流形泛化类", "Global High-Dimensional Manifold Generalization",
+     "高维语义-动作联合流形上的全局拓扑映射: 任务规划(S2 waypoints)/技能编排/异常诊断/潜空间表征/状态空间世界模型(本体无关动力学内核)/数据飞轮/仿真锚点 — 跨本体微调即新截面, 无致命奇点",
+     ["LLM", "SKL", "RSN", "LAT", "PRD", "EST", "COR", "DAT", "WLD"]),
+]
+
+GEOM_OF_DOM = {dom: gid for gid, _z, _e, _s, doms in GEOM_CLASSES for dom in doms}
+
+
+def _inject_geom():
+    """按域映射给每条功能注入 geom (类码), 幂等。"""
+    for nk, n in NODE_TREE.items():
+        dom = DOMAIN_OF_NODE.get(nk)
+        gid = GEOM_OF_DOM.get(dom)
+        for f in n["funcs"]:
+            f["geom"] = gid
+
+
+_inject_geom()
+
+
+def geom_stats():
+    """每类: 域数/功能数/用例数 (总纲表用)"""
+    out = []
+    for gid, zh, en, sem, doms in GEOM_CLASSES:
+        nf = sum(1 for n in NODE_TREE.values() for f in n["funcs"]
+                 if f.get("geom") == gid)
+        nt = sum(len(f["tests"]) for n in NODE_TREE.values() for f in n["funcs"]
+                 if f.get("geom") == gid)
+        nd = len(doms)
+        out.append((gid, zh, en, sem, nd, nf, nt))
+    return out
+
+
+def check_geoms():
+    """几何分类契约: 110 功能全部有 geom / 类码合法"""
+    errs = []
+    valid = {g[0] for g in GEOM_CLASSES}
+    for nk, n in NODE_TREE.items():
+        for f in n["funcs"]:
+            if not f.get("geom") or f["geom"] not in valid:
+                errs.append(f"{f['fid']}: geom={f.get('geom')} 非法/缺失")
+    return errs
+
+
+def hdm_funcs_of_scene(sc_code):
+    """场景内「跨本体泛化 (HDM)」功能子集 — 光模块插拔/光纤连接/光耦合
+    的泛化功能统一经此汇总 (老倪 2026-09-04: 用 HDM 汇总跨本体泛化)"""
+    sc = next((s for s in SCENES if s["code"] == sc_code), None)
+    if not sc:
+        return []
+    F = {f["fid"]: f for n in NODE_TREE.values() for f in n["funcs"]}
+    return [F[fid] for fid in sc["funcs"]
+            if fid in F and F[fid].get("geom") == "HDM"]
+
+
+def hdm_jobs_overview():
+    """三大精密作业 (插拔/光纤连接/光耦合) 的 HDM 泛化功能汇总"""
+    out = []
+    for code in ("SC-01", "SC-02", "SC-05"):
+        hdm = hdm_funcs_of_scene(code)
+        out.append((code, [f["fid"] for f in hdm]))
+    return out
+
+
 
