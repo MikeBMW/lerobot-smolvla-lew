@@ -1738,10 +1738,16 @@ def _ss_load_config(log):
 
 
 def _ss_try_load_ckpt(net, key):
-    """尝试加载最新训练权重 (outputs/train/*/checkpoints/model.pt → {left,right,...})"""
+    """尝试加载最新训练权重 (outputs/train/*/checkpoints/…/model.pt → {left,right,...})
+    🐛 2026-09-04: glob 原为 outputs/train/*/checkpoints/model.pt, 实际产物在
+    checkpoints/003000/pretrained_model/model.pt (多两级) → 命中 0, 画布左/右脑节点
+    一直跑随机初始化权重 (日志显示"随机初始化(无ckpt)")。现两种层级都匹配。"""
     import glob as _g
-    _cks = sorted(_g.glob(os.path.join(_REPO_ROOT, "outputs", "train", "*", "checkpoints", "model.pt")),
-                  key=os.path.getmtime)
+    _cks = sorted(
+        _g.glob(os.path.join(_REPO_ROOT, "outputs", "train", "*", "checkpoints", "model.pt"))
+        + _g.glob(os.path.join(_REPO_ROOT, "outputs", "train", "*", "checkpoints", "*",
+                               "pretrained_model", "model.pt")),
+        key=os.path.getmtime)
     if not _cks:
         return False
     try:
