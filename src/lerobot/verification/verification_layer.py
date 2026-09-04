@@ -769,15 +769,23 @@ class VerificationLayer:
         return obs.shape == (43,) and bool(np.isfinite(obs).all()), "零输入不崩且有限"
 
     def t_sssensor_real(self, np):
+        # 2026-09-04 静静: 原拼接 33D ≠ fuse_sensors 要求 39D → AssertionError (一直没真跑过)。
+        # 照 state_space_sim_real.py 主循环 L379-386 的真实构造: cur18+prev18+target3=39D。
         try:
             from tools.gui.state_space_sim_real import RealStateSpaceSim
             sim = RealStateSpaceSim(seed=0, vision=False)
             sim._reset(0)
             o = np.asarray(sim.env._get_obs(), dtype=np.float64).ravel()
-            obs = sim.perception.fuse_sensors(
-                np.concatenate([o[:3], [o[3]], np.zeros(3), o[4:7], np.zeros(6), np.zeros(2), o[:3], o[4:7], np.zeros(9)]),
-                np.zeros(6), np.array([0.1, 0.1, 0, 0]))
-            return obs.shape == (43,) and bool(np.isfinite(obs).all()),                 f"真实帧融合 43D 有限"
+            x = o[0:3].copy()
+            g = float(o[3])
+            peg = o[4:7].copy()
+            cur = np.concatenate([x, [g], np.zeros(3), peg, sim._goal_p(),
+                                  np.zeros(3), np.zeros(2)])
+            visual39 = np.concatenate([cur, cur, sim._stage_target()])
+            tactile4 = np.array([g, 0.0, 0.0, 0.0])
+            obs = sim.perception.fuse_sensors(visual39, np.zeros(6), tactile4)
+            return obs.shape == (43,) and bool(np.isfinite(obs).all()), \
+                f"真实帧融合: hand={np.round(x,3)} gripper={g:.2f} peg={np.round(peg,3)} → 43D 有限"
         except Exception as e:
             return False, f"真实融合失败: {type(e).__name__}: {e}"
 
@@ -1172,9 +1180,19 @@ class VerificationLayer:
         return bool(np.isfinite(corr).all()), f"校正轨迹 {len(corr)} 帧有限 (拉回真值)"
 
     def t_pred_default(self, np):
-        dyn = self.ss("dynamics")
-        pr = dyn.PriorDynamicsPredictor()
-        return bool(getattr(pr, "A", None) == 1.0 or True), f"默认 A={getattr(pr,'A','1.0(源码)')} B={getattr(pr,'B','0.02(源码)')}"
+        # 2026-09-04 静静: 原断言 `A==1.0 or True` 永远过 (摆设)。类默认 A=0.95 是
+        # 未标定兜底; 引擎真值 = 所有实例化点显式 A=1.0 (标定层 prior_A=1.0 写回锚)。
+        import re
+        bad = []
+        for rel in ("tools/gui/state_space_sim.py", "tools/gui/state_space_sim_real.py",
+                    "tools/gui/node_logic.py"):
+            txt = open(os.path.join(self.root, rel), encoding="utf-8").read()
+            for m in re.finditer(r"PriorDynamicsPredictor\(([^)]*)\)", txt):
+                args = m.group(1)
+                if "A=" not in args or not re.search(r"A\s*=\s*1\.0", args):
+                    bad.append(f"{rel}:({args.strip()[:44]})")
+        return not bad, ("动力学锚点: 引擎/真实化/画布全部 A=1.0 (prior_A 写回真值)"
+                         if not bad else f"✗ 锚点异常: {bad[:3]}")
 
     def t_pred_writeback(self, np):
         return self._audit([["tools/gui/state_space_sim.py", ["PriorDynamicsPredictor(A="], "预测器锚点"]], np)
@@ -1355,9 +1373,20 @@ class VerificationLayer:
         return a is not None, "真实 conf 输出 (detect_3d 每帧真值, 非写死)"
 
     def t_yolo_nofake(self, np):
+        # 2026-09-04 静静: 原断言 `... or True` 永远过 (摆设)。真检查:
+        # _io_snapshot 方法体 (去注释) 不得含写死 0.99, 且 conf 诚实标 "--"。
+        import re
         src = open(os.path.join(self.root, "tools", "gui", "state_space_sim.py"),
                    encoding="utf-8").read()
-        return "0.99" not in src.split("_io_snapshot")[1].split("def ")[0] or True,             "引擎 io_snapshot 无写死 conf 0.99 (已改 '--')"
+        m = re.search(r"def _io_snapshot\(.*?\n(.*?)(?=\n    def |\Z)", src, re.S)
+        body = m.group(1) if m else src
+        code = "\n".join(ln for ln in body.splitlines()
+                         if ln.strip() and not ln.strip().startswith("#"))
+        fake = "0.99" in code
+        honest = "conf --" in body
+        return (not fake and honest), \
+            ("引擎 io_snapshot 无写死 conf: conf 标 '--' 由真实采样注入" if not fake and honest
+             else f"✗ 写死 {fake} / 诚实标注 {honest}")
 
     def t_yolo_th(self, np):
         return self._audit([["src/lerobot/policies/yolo_3d/yolo_state_aligner.py", ["def detect_3d(self, img, conf=0.4)"], "conf 阈值参数"]], np)
@@ -1577,11 +1606,13 @@ class VerificationLayer:
         return len(tokens) >= 3, f"指令→{len(tokens)} token (意图解析)"
 
     def t_llm_unknown(self, np):
+        # 2026-09-04 静静: 原 `len(tokens)>=1 or True` 永远过 (摆设)。
+        # 真断言: 未知指令不崩溃 (外层 except), 且回退默认主链 ≤50 合法 token。
         pl = self._planner()
         tp = pl.TaskPlanner()
         try:
             tokens = tp.plan("随便说点什么")
-            return len(tokens) >= 1 or True, f"未知指令容错: {len(tokens)} token"
+            return 0 <= len(tokens) <= 50, f"未知指令容错: {len(tokens)} token (回退默认主链, 不崩溃)"
         except Exception as e:
             return False, f"未知指令崩溃: {e}"
 
@@ -1706,11 +1737,13 @@ class VerificationLayer:
         return bool(kind), f"卡死/对准失败识别: {kind}"
 
     def t_rsn_count(self, np):
+        # 2026-09-04 静静: 原 `k_lo != k_hi or True` 永远过 (摆设)。
+        # 真断言: 连续否决次数越过上限 (6≥5) 必须改变诊断, 未越 (2<5) 不得误报力控异常。
         pl = self._planner()
         er = pl.ExceptionReasoner()
         k_lo, _ = er.diagnose(stage="插入", residual=2.0, contact_p=0.9, veto_count=2, max_veto=5)
         k_hi, _ = er.diagnose(stage="插入", residual=2.0, contact_p=0.9, veto_count=6, max_veto=5)
-        return k_lo != k_hi or True, f"计数影响诊断: {k_lo} vs {k_hi}"
+        return k_lo != k_hi, f"计数影响诊断: 2 次否决→{k_lo} vs 6 次(超上限5)→{k_hi}"
 
     def t_rsn_real(self, np):
         return self._audit([["src/lerobot/policies/left_right/state_space/planner.py", ["class ExceptionReasoner"], "异常推理器"]], np)
@@ -2185,11 +2218,24 @@ class VerificationLayer:
         return len(stages) >= 3, f"阶段序列: {'→'.join(stages)[:60]}"
 
     def t_sched_real(self, np):
+        # 2026-09-04 静静: 原 `import 成功即 return True` 假过 (基线 6/12 是历史数据,
+        # 本断言没真跑)。真断言: R0 物理真实化 quick_run 真跑 (渲染+env.step),
+        # 布局已确定化 (seed 决定布局, 复现实锤见 state_space_sim_real._reset 注释)。
+        # 单集必完成不是稳定契约 (seed100 布局 = 控制器难例, 500 步插不进, 基线 6/12
+        # 的布局敏感性) → 2 集 ≥1 完成 = 真实化闭环可重复跑通。
+        import io
+        import contextlib
         try:
             from tools.gui.state_space_sim_real import quick_run
-            return True, "真实化 12 轮基线 6/12 (半自动: CLI 单独跑)"
-        except Exception:
-            return False, "真实化模块不可用"
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                n_ok = quick_run(n_episodes=2, vision=False)
+            out = buf.getvalue()
+            eps = [ln for ln in out.splitlines() if ln.startswith("  ep")]
+            tail = eps[-1][:80] if eps else ""
+            return n_ok >= 1, f"R0 真实化闭环 2 集完成 {n_ok}/2 (布局 seed 决定·确定性) · {tail}"
+        except Exception as e:
+            return False, f"真实化失败: {type(e).__name__}: {e}"
 
     def t_sched_fuse(self, np):
         cog = self._cog()

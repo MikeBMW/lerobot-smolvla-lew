@@ -185,10 +185,16 @@ class RealStateSpaceSim:
     # ── 每轮复位: 现场采样几何 ──
     def _reset(self, seed):
         env = self.env
-        # 🐛 2026-09-04: freeze 必须在 reset 采样**之后** — 若先 freeze 再 reset,
-        #   布局锁死在第一次的值, 后续 seed 全同 (8 轮同一轨迹实锤).
-        #   先解冻 → reset(seed) 采样该 seed 的新布局 → 再冻结防 step 扰动
+        # 🐛 2026-09-04 静静 (测试顺序耦合实锤): metaworld reset(seed=…) **忽略 seed**
+        #   (sawyer_xyz_env.py: seed param "Ignored, use seed() instead") — 解冻后
+        #   _get_state_rand_vec 走 **全局 np.random.uniform**, 布局由进程全局随机状态
+        #   决定 → 同一 seed 在不同用例序列后给出不同销位置 (复现: seed100 销头初位
+        #   [0.0283,0.5398] vs 污染后 [0.0345,0.6169]), 500 步插不进孔 (基线 6/12 根源)。
+        #   修复: 采样前固定全局 np.random, 让 seed 真正决定布局 (可复现, 非造假 —
+        #   不同 seed 仍给出不同布局, 同 seed 恒同布局)。
+        import numpy as _npg
         env._freeze_rand_vec = False
+        _npg.random.seed(seed * 7919 + 13)
         env.reset(seed=seed)
         env._freeze_rand_vec = True
         d = env.data
