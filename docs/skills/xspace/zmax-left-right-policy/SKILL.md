@@ -53,6 +53,22 @@ DISPLAY=:0 MUJOCO_GL=glfw .venv/bin/python -u tools/train_full_pipeline.py
 - 7/8 vs 4/8 差异 = 随机波动非代码差异 (已逐帧+3次重复验证)
 - 插入 4-6/8 vs 手写 7/8 同分布; 转移卡顿=物理碰撞非控制参数
 
+## Kp 等效值对齐 (2026-09-04)
+- tools/align_ff_kp.py: 解析版 FeedforwardAccelerator (parallel.py Kp=1.2 写死) vs 训练左脑反推校验
+  - ✅ 正确靶子 = outputs/train/state_space_*/checkpoints/*/pretrained_model/model.pt (ss_insert_lerobot 39D 场景训练, norm 从 parquet 重算同 ss_verify_trained.py)
+  - ❌ full_pipeline.pt 不可用: metaworld 抓取+转移+插入全流程, 39D [36:39]≠hole site (实测 x 偏 0.066) → 拟合 Kp≈14万爆表
+  - 实测: 全样本反推 Kp=1.227 (写死 1.2 差 2.3% 校验通过); 远≥8cm/中 3-8cm Kp≈1.18-1.19 corr≈1.0; 近<3cm xy 模型更激进(拟合 3.34)由 0.03 推力机制覆盖, z 独立拟合 1.187 全程稳定; 解析律完整复刻 MAE 0.0009; 夹爪近距 100% 闭合 vs 远距 0% 与开关规则一致
+- 跑法: ~/lerobot-venv/bin/python tools/align_ff_kp.py (自动选最新 state_space 产物 + 量纲自检防爆表)
+
+## 前馈加速器真实化 (2026-09-04, 模型搬进类)
+- parallel.py FeedforwardAccelerator.__init__ 加载 models/ss_left_brain.npz (547K 蒸馏, 纯 numpy 4层, GUI 无 torch 可跑; export_ss_left_brain.py 从最新 ckpt 导出), forward 主执行 = MLP
+- 解析律 analytic_forward 降级为: 域外守卫 + 标定层 Kp 字面量对象 + 诊断基准 (verification F-B02 审计 target/Kp 字面量仍在)
+- **稳定性守卫 D_GUARD=0.25** (hand→目标 3D 距离): 蒸馏 MLP 只覆盖训练域, 域外闭环发散 (实证 ±3cm 即 1/3 失败, hand 恒速飞出 9m; 解析全局稳定 ≤±20cm 全收敛); 域外由解析教师兜底。self.loaded/n_mlp/n_guard 可查真实执行
+- **数据管道铁律**: export_dataset (state_space_sim.py) 固定 `sim.accel.forward = sim.accel.analytic_forward` 解析教师 — MLP 不能当教师 (自举生成发散轨迹); perturb 参数定义训练域 (±1cm 标称 / ±15cm 压力)
+- **训练产物级联坑**: 训练产物 checkpoints/ 下 last → 00X000 (steps 决定: 3000→003000, 8000→008000), 对比/导出必须走 last 或对应档, 别写死 003000
+- 2026-09-04 重训: 80 轮 ±12/±15cm → 8000 步 (loss 0.027) → 验收: 标称±1cm 5/5, 角落 4/4, ±12cm 随机 7/8 (vs 解析 8/8); npz==torch 前向 6e-8
+- **sim 几何漂移坑**: 训练数据/模型是旧 sim 世界系的化石 — 引擎改几何后必须重跑数据管道 (export→build_ss_dataset→lerobot_train→export_ss_left_brain→验闭环), 否则加载真模型照样发散
+
 ## P3 指标上报 (大屏监督)
 - select_action 内 `_measure_metrics`: 8 阶段量测 → self.metrics (实时) + self.action_log (留痕)
 - bridge: `python tools/p3_metrics_bridge.py --local` (回环) / `--api URL` (上报)
