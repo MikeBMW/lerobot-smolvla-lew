@@ -348,6 +348,17 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
   精细操作专项 (插拔·耦合·对准类独特断言 vs 普通取放搬运对照) / 执行环境统计
   ⑤朴素报告 txt (不用缩略语: metaworld→物理仿真环境、43D→43 个数值、公式转白
   话, _plain() 替换表)。产物在 reports/ 不入库 (交付件)。
+- **195 条手动全自动化 (2026-09-04 老倪「全部测试都要自动」)**: 原 manual 用例
+  本质=GUI 目测/交互确认 → 每条映射到**背后数据真源断言**:
+  src/lerobot/verification/manual_auto_map.py 注册表 {case_key: ref} + 17 个
+  t_auto_* 集成断言 (源码映射全有效/io_trace 总线覆盖/序列等长逐帧/序列非平凡/
+  阶段推进≥6/Scope 曲线引擎实测/引擎源码热载/标定写回锚点/验收记录文件在位
+  (docs/test-reports+references, 缺即 FAIL 不造假)/YOLO 权重+真实渲染检出/AOI
+  真实图判级/组合编排/多轮恢复/LLM 离线/权重缺失显性报错/锚=obs hand/同 seed
+  布局可复现/急停出口)。run_tree + test_acceptance_run.py 共用映射 (manual 有
+  映射即按 auto 真跑, GUI/CLI 一致); 逐用例实时打印 ▶→✅/❌+实测证据+耗时。
+  结果: 550/550 全绿, 手动 0。**映射原则**: 可视化类→数据真源 (不依赖人眼),
+  真机类→验收记录在位 (记录缺=FAIL, 严禁造记录)。
 - 旧 45 项 FEATURES/FEATURE_META (v4.0.1) 保留兼容 (旧入口/run_all 不破坏), 不双轨展示。
 - 规范场映射: G1=底空间观测(YOLO/2D3D/触觉/融合/obs/data/world/AOI/lat), G2=联络动作+流形
   (ff/est/pred/innov/sched/limit/act/calib/mani_c/mani_p), G3=规划编排诊断 (llm/reason/skill)。
