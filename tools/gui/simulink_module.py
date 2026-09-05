@@ -9233,7 +9233,7 @@ class SimulinkModule(QWidget):
                 from ff_attrib_view import FFAttribView
                 win = getattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", None)
                 if win is None:
-                    win = (FFHistView() if kind == "hist" else FFAttribView())
+                    win = (FFHistView(self) if kind == "hist" else FFAttribView(self))
                     setattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", win)
                     self._ensure_ff_bridge()   # 🔭 probe 桥: 运行中窗口实时刷新
                 # 末帧探针 (引擎刚跑完或上次运行留下的真实数据; 播放中请用 ⏭单步 逐帧采集)
@@ -9241,9 +9241,13 @@ class SimulinkModule(QWidget):
                 probe = getattr(getattr(sim, "accel", None), "probe", None)
                 if probe and probe.get("act_raw"):
                     win.push(probe)
-                win.show()
-                win.raise_()
-                win.activateWindow()
+                # 🐛 2026-09-05: 直接 show() 在 WSLg/多屏下弹屏外=看似没反应 →
+                #   统一 _show_nonmodal (module 窗口管理) + 主屏定位
+                self._show_nonmodal(win)
+                try:
+                    self._popup_on_main_screen(win)
+                except Exception:
+                    pass
                 self._log(f"🔭 {'🧠 前馈激活直方图' if kind == 'hist' else '🎯 归因·分工'} 已打开"
                           f"{' (含末帧探针)' if probe and probe.get('act_raw') else ' — 运行 ▶/⏭ 后自动累积数据'}")
                 return
@@ -9290,6 +9294,7 @@ class SimulinkModule(QWidget):
         # 🔭 可视化层观察器 (2026-09-04 老倪: 直方图/归因/仿真波形/3D/操作视频 双击 → 开显示窗口;
         #   必须放 source 分支前 — 这些节点带 source 字段会被"数据源切换"抢先)
         if params.get("viz_kind"):
+            self._log(f"🔭 双击可视化节点「{node.get('name', '')}」→ 打开 {params['viz_kind']} 窗口")
             self._open_viz_node(params.get("viz_kind"))
             return
         # 🌍 物理世界节点 → 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)
