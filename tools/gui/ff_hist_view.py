@@ -181,21 +181,23 @@ class FFHistView(QDialog):
         p.setPen(QPen(QColor("#30363d"), 1))
         p.drawLine(int(info_w + 8), int(y0 + 2), int(info_w + 8), int(y0 + row_h - 18))
 
-        # ── 右侧: 大直方图 ──
+        # ── 右侧: 大直方图 (非零激活分布; 0/休眠率在左侧面板, 不占柱) ──
         hx0 = info_w + 32
         hx1 = W - 24
         # 图标题 (顶)
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
-        p.drawText(hx0, int(y0 + 24), f"512 个神经元输出分布 (最近 {N_FRAMES} 帧累积)")
+        p.drawText(int(hx0), int(y0 + 24),
+                   f"激活神经元输出分布 (最近 {N_FRAMES} 帧 · 0值休眠 {float((np.concatenate(self.buf[li]) == 0).mean()) * 100 if self.buf[li] else 0:.0f}% 见左侧)")
         # 图区 (标题下)
         y_top = int(y0 + 40)
         y_bot = int(y0 + row_h - 46)   # 底部留轴标空间
         buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
-        if buf.size >= 8:
-            vmax = float(np.percentile(buf, 99.5))
+        pos = buf[buf > 0]              # 只统计非零 (0=休眠, 已分离)
+        if pos.size >= 8:
+            vmax = float(np.percentile(pos, 99.5))
             vmax = max(vmax, 0.05)
-            hist, _ = np.histogram(buf, bins=N_BINS, range=(0.0, vmax))
+            hist, _ = np.histogram(pos, bins=N_BINS, range=(0.0, vmax))
             hmax = max(float(hist.max()), 1.0)
             bw = (hx1 - hx0) / N_BINS
             # 网格
@@ -210,24 +212,26 @@ class FFHistView(QDialog):
                 hh = (y_bot - y_top) * hist[bi] / hmax
                 if hh > 0.5:
                     p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh), max(int(bw) - 2, 1), int(hh))
-            # 最近一帧 (朱红折线叠加)
+            # 最近一帧 (朱红亮点列, 非连线 — 直方图不要画成波形)
             if self.cur[li] is not None:
-                ch, _ = np.histogram(self.cur[li], bins=N_BINS, range=(0.0, vmax))
-                p.setPen(QPen(_CURVE_LIVE, 2.5))
-                prev = None
-                for bi in range(N_BINS):
-                    hh = (y_bot - y_top) * ch[bi] / max(float(ch.max()), 1e-6)
-                    xx = int(hx0 + bw * bi + bw / 2)
-                    yy2 = int(y_bot - hh)
-                    if prev is not None:
-                        p.drawLine(prev[0], prev[1], xx, yy2)
-                    prev = (xx, yy2)
-        # x=0 ReLU 截断虚线 (图左缘, 说明在顶部状态条第2行图例)
-        zx = hx0
+                cc = self.cur[li]
+                cpos = cc[cc > 0]
+                if cpos.size >= 2:
+                    ch, _ = np.histogram(cpos, bins=N_BINS, range=(0.0, vmax))
+                    p.setBrush(_CURVE_LIVE)
+                    p.setPen(Qt.NoPen)
+                    for bi in range(N_BINS):
+                        if ch[bi] <= 0:
+                            continue
+                        xx = int(hx0 + bw * bi + bw / 2)
+                        yy2 = int(y_bot - (y_bot - y_top) * ch[bi] / max(float(ch.max()), 1e-6))
+                        p.drawRect(xx - 2, yy2 - 2, 5, 5)
+        # x=0 ReLU 截断虚线 (图左缘)
         p.setPen(QPen(_ZERO, 1, Qt.DashLine))
-        p.drawLine(int(zx), y_top, int(zx), y_bot)
+        p.drawLine(int(hx0), y_top, int(hx0), y_bot)
         # 轴标 (底部独立行, 不与图贴)
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
         p.drawText(int(hx0), int(y_bot + 20), "0")
-        p.drawText(int(hx1 - 260), int(y_bot + 20), f"激活值 →  (横轴峰值 {np.percentile(buf, 99.5) if buf.size else 0:.2f})")
+        p.drawText(int(hx1 - 300), int(y_bot + 20),
+                   f"激活值 →  (横轴峰值 {np.percentile(pos, 99.5) if pos.size else 0:.2f})")
