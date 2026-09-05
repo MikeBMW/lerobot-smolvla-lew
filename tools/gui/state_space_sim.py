@@ -306,14 +306,7 @@ class StateSpaceSim:
             obs = self._build_obs(force)
             # ③ 快通道: 前馈加速器
             u_ff = self.accel.forward(obs)
-            # 🔭 2026-09-05 老倪(信号同步严查): 每步前馈探针快照存全序列 —
-            #   GUI 播放逐帧 push 直方图/归因 (运行过程每一帧都看得到, 非末帧静态)
-            try:
-                _pr = getattr(self.accel, "probe", None)
-                if _pr is not None and _pr.get("act_raw") is not None:
-                    tr["probe_seq"].append(dict(_pr))   # act_raw 数组引用持有该步激活
-            except Exception:
-                pass
+            # ④ 反馈校正/调度 (stage 先于探针快照, 让直方图窗口拿到每帧阶段)
             # 🐛 卡尔曼预测的控制输入必须是**上一步真正下发给执行器的量** (u_exec),
             #   原来用 u_ff (前馈建议) — 实测两者模长差 3.12 倍 ⇒ 预测拿"没执行的动作"外推,
             #   凭空制造预测误差 (离线重放: 改用 u_exec 后误差 3.60→3.01mm)
@@ -342,6 +335,15 @@ class StateSpaceSim:
                             else np.asarray(residual, dtype=float).copy())
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
+            # 🔭 2026-09-05: 探针快照存全序列(含阶段) — GUI 播放逐帧同步直方图/归因/阶段色带
+            try:
+                _pr = getattr(self.accel, "probe", None)
+                if _pr is not None and _pr.get("act_raw") is not None:
+                    _snap = dict(_pr)
+                    _snap["stage"] = stage
+                    tr["probe_seq"].append(_snap)
+            except Exception:
+                pass
             # 夹爪指令直通 (开关量不参与位置加权融合 — 权重稀释会夹不紧)
             if np.ndim(u) == 0:
                 u = np.zeros(4)

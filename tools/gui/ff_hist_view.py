@@ -22,7 +22,21 @@ _TEXT2 = QColor("#9da7b3")
 _ZERO = QColor("#7d8590")
 LAYER_COLORS = ["#58a6ff", "#00d4aa", "#ffb454"]   # 层1 蓝 / 层2 青 / 层3 橙金
 LAYER_NAMES = ["第 1 层 · 输入编码", "第 2 层 · 特征组合", "第 3 层 · 决策输出"]
-N_FRAMES = 300      # 滚动窗口帧数 (~6s @50Hz, 覆盖整个插拔过程)
+N_FRAMES = 600      # 滚动窗口帧数 (~12s @50Hz, 覆盖整个插拔流程全程)
+
+# 🎯 2026-09-05 老倪: 阶段 → 色带 (横轴分段, 每段波形类型不同)
+STAGE_ORDER = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+STAGE_COLORS = ["#58a6ff", "#8250df", "#7ee787", "#ffd02e", "#f0883e", "#a371f7", "#ff5555", "#00d4aa"]
+
+
+def _map_stage(name):
+    """阶段名归一: '插入 · 接触' → '插入' (引擎接触子态并入主阶段)"""
+    if not name:
+        return None
+    for s in STAGE_ORDER:
+        if s in name:
+            return s
+    return None
 
 
 class FFHistView(QDialog):
@@ -40,6 +54,7 @@ class FFHistView(QDialog):
         self.ener = [[], [], []]            # 每层每帧能量 E=Σx²
         self.prev = [None, None, None]      # 上一帧 (算帧间变化)
         self.dlt = [[], [], []]             # 每层每帧激活变化范数 ‖Δx‖₂ (事件波形)
+        self.stages = []                    # 每帧阶段 (探针带 stage)
         self.info = {}
         self.view = "wave"                  # "wave" 波动 / "hist" 直方图
         self._dirty = True
@@ -114,8 +129,12 @@ class FFHistView(QDialog):
                 if len(self.dlt[i]) > N_FRAMES:
                     self.dlt[i].pop(0)
             self.prev[i] = a
+        st = probe.get("stage")
+        self.stages.append(str(st) if st else "?")
+        if len(self.stages) > N_FRAMES:
+            self.stages.pop(0)
         self.info = {"obs": probe.get("obs", {}), "u_ff": probe.get("u_ff", []),
-                     "layers": probe.get("layers", [])}
+                     "layers": probe.get("layers", []), "stage": st}
         try:
             n = len(self.buf[0])
             u = self.info.get("u_ff", [])
@@ -123,10 +142,11 @@ class FFHistView(QDialog):
                      if u else "u_ff=—")
             ob = self.info.get("obs", {})
             d_txt = f"手到目标 d={ob.get('d_h', 0):.2f}m" if ob and ob.get("d_h") is not None else ""
-            e1, e2, e3 = (self.ener[k][-1] if self.ener[k] else 0.0 for k in range(3))
+            stg = str(self.info.get("stage") or "").replace("阶段 ", "").replace("阶段:", "")
+            s_txt = f"· 阶段: {stg}" if stg and stg != "?" else ""
             self._cap_text = (
-                f"🧠 第 {n} 帧 · {u_txt} · {d_txt} · 三层能量 E=[{e1:.0f} {e2:.0f} {e3:.0f}]\n"
-                f"波形 = 每层能量 E=Σx² 随时间 (同一时间轴, 轮廓从层1传向层3) · 远段大动作高能量 · 插入精调回落")
+                f"🧠 第 {n} 帧 {s_txt} · {u_txt} · {d_txt}\n"
+                f"横轴=完整插拔流程时间 · 色带=动作阶段 · 每层波形=激活变化事件 (启动/抓取/接触/插入有尖峰) · 金底=插拔成功")
         except Exception:
             pass
         self._dirty = True
@@ -182,77 +202,147 @@ class FFHistView(QDialog):
             except Exception:
                 pass
 
-    # ── 〰 波动视图: 三层能量 E(t), 同轴对齐, 波传递轮廓 ──
+    # ── 〰 波动视图 v4: 全程分阶段波形 (2026-09-05 老倪: 每层横轴=阶段, 不同类型波形对应不同阶段,
+    #   体现整个插拔流程, 尤其插拔成功) ──
     def _draw_wave(self, p, r):
         W, H = r.width(), r.height()
         top = 92
-        row_h = (H - top - 10) / 3.0
-        n = len(self.ener[0])
+        row_h = (H - top - 12) / 3.0
+        n = len(self.dlt[0]) if self.dlt[0] else 0
+        # 全局时间轴 (帧→s, 引擎 dt=0.02)
+        T = n * 0.02
+        x0 = 16
+        x1 = W - 16
         for li in range(3):
             y0 = top + li * row_h
-            # 行标题: 层名 + 本帧能量 + 峰值
-            en = self.ener[li]
-            cur_e = en[-1] if en else 0.0
-            pk = max(en) if en else 0.0
+            dl = self.dlt[li]
+            sts = self.stages
+            m = min(len(dl), len(sts))
+            # 行标题 (层名, 大字不换行风险低)
             p.setPen(_TEXT)
             p.setFont(QFont("Sans", 12, QFont.Bold))
-            p.drawText(QRect(16, int(y0) + 2, W - 32, 26), Qt.TextWordWrap,
-                       f"{LAYER_NAMES[li]}  (激活变化事件波形 ‖Δx‖)")
-            p.setPen(QColor(LAYER_COLORS[li]))
-            p.setFont(QFont("Sans", 12, QFont.Bold))
-            p.drawText(QRect(W - 300, int(y0) + 2, 284, 24), Qt.AlignRight | Qt.AlignVCenter,
-                       f"当前 E={cur_e:.0f}")
+            p.drawText(QRect(16, int(y0) + 2, W - 300, 24), Qt.TextWordWrap,
+                       f"{LAYER_NAMES[li]} · 激活变化事件 ‖Δx‖")
+            # 阶段色带 (行内顶部 18px): 每帧阶段 → 色块
+            band_y0 = int(y0) + 30
+            band_y1 = band_y0 + 16
+            # 阶段边界列表
+            if m >= 2:
+                st_clean = [str(s).replace("阶段 ", "").replace("阶段:", "") for s in sts[:m]]
+                seg = []   # (name, i0, i1)
+                for i in range(m):
+                    if not seg or st_clean[i] != seg[-1][0]:
+                        seg.append([st_clean[i], i, i])
+                    else:
+                        seg[-1][2] = i
+                # 色带块 + 段名 (放得下才写, 字体不遮波形区)
+                for name, i0, i1 in seg:
+                    if name in ("?", "None"):
+                        continue
+                    xa = int(x0 + (x1 - x0) * i0 / max(m - 1, 1))
+                    xb = int(x0 + (x1 - x0) * max(i1, i0 + 1) / max(m - 1, 1))
+                    base = _map_stage(name)
+                    ci = STAGE_ORDER.index(base) if base else -1
+                    col = QColor(STAGE_COLORS[ci]) if ci >= 0 else QColor("#57606a")
+                    col.setAlpha(90)
+                    p.setPen(Qt.NoPen)
+                    p.setBrush(col)
+                    p.drawRect(xa, band_y0, max(xb - xa, 1), band_y1 - band_y0)
+                    # 段名 (归一后主阶段名; 白字小, 宽度够才写 → 不重叠)
+                    disp = base or name
+                    if ci >= 0:
+                        p.setFont(QFont("Sans", 9))
+                        tw = p.fontMetrics().horizontalAdvance(disp)
+                        if xb - xa >= tw + 10:
+                            p.setPen(QColor("#e6edf3"))
+                            p.drawText(int(xa + (xb - xa - tw) / 2), band_y1 - 4, disp)
             # 波形区
-            x0 = 70
-            x1 = W - 20
-            y_top = int(y0) + 34
-            y_bot = int(y0 + row_h) - 24
-            dl = self.dlt[li]
-            if len(dl) >= 2 and max(dl) > 1e-4:
-                # 🧠 事件波形: 帧间激活变化 ‖Δx‖₂ (去基线放大) —
-                #   平滑段细微波动, 启动/抓取/接触/插入 = 事件尖峰 (真实神经事件)
-                ymin_ = float(min(dl)) * 0.9
-                ymax_ = float(max(dl)) * 1.1
-                if ymax_ - ymin_ < 1e-6:
-                    ymax_ = ymin_ + 1.0
-                p.setPen(QPen(QColor("#21262d"), 1))
-                p.drawLine(x0, y_bot, x1, y_bot)
+            w_y0 = band_y1 + 8
+            w_y1 = int(y0 + row_h) - 34
+            # 底部时间轴
+            p.setPen(QColor("#8b949e"))
+            p.setFont(QFont("Sans", 9))
+            axh = p.fontMetrics().height()
+            t_y = int(y0 + row_h) - axh - 6
+            if m >= 2:
+                dl_arr = np.asarray(dl[:m], dtype=float)
+                # 波形 y: 去基线放大 + 大尖峰截顶 (峰顶标真实值)
+                pc = float(np.percentile(dl_arr, 96))
+                pc = max(pc, 1e-4)
+                mn = float(dl_arr.min()) * 0.9
+                mx = pc * 1.15
+                if mx - mn < 1e-6:
+                    mx = mn + 1.0
+                def Y(v):
+                    return int(w_y1 - (w_y1 - w_y0) * (v - mn) / (mx - mn))
+                # 网格
+                p.setPen(QPen(QColor("#1e2740"), 1))
                 for gy in range(3):
-                    yy2 = y_top + (y_bot - y_top) * gy / 2
-                    p.drawLine(x0, int(yy2), x1, int(yy2))
-                n = len(dl)
-                xs = np.linspace(x1 - (n - 1) * (x1 - x0) / max(N_FRAMES - 1, 1),
-                                 x1, n)
-                # 面积 (淡)
+                    yy = w_y0 + (w_y1 - w_y0) * gy / 2
+                    p.drawLine(x0, int(yy), x1, int(yy))
+                # 完成段 (插拔成功) 金色底纹
+                done_at = None
+                for i in range(m):
+                    if str(sts[i]).replace("阶段 ", "").replace("阶段:", "") in ("完成", "插入"):
+                        done_at = i
+                        if "完成" in str(sts[i]):
+                            break
+                if done_at is not None and done_at > 0:
+                    xd = int(x0 + (x1 - x0) * done_at / max(m - 1, 1))
+                    p.fillRect(xd, w_y0, x1 - xd, w_y1 - w_y0, QColor(255, 213, 0, 26))
+                # 面积 + 线
+                xs = x0 + (x1 - x0) * np.arange(m) / max(m - 1, 1)
                 col = QColor(LAYER_COLORS[li])
                 col.setAlpha(45)
                 p.setPen(Qt.NoPen)
                 p.setBrush(col)
-                poly = [QPointF(float(xs[0]), float(y_bot))]
-                for xx, v in zip(xs, dl):
-                    yy2 = y_bot - (y_bot - y_top) * (float(v) - ymin_) / (ymax_ - ymin_)
-                    poly.append(QPointF(float(xx), float(yy2)))
-                poly.append(QPointF(float(xs[-1]), float(y_bot)))
+                poly = [QPointF(float(xs[0]), float(w_y1))]
+                yclip_prev = None
+                for xx, v in zip(xs, dl_arr):
+                    yv = Y(v)
+                    poly.append(QPointF(float(xx), float(max(yv, w_y0))))
+                poly.append(QPointF(float(xs[-1]), float(w_y1)))
                 p.drawPolygon(QPolygonF(poly))
-                # 波形线 (亮)
                 p.setPen(QPen(QColor(LAYER_COLORS[li]), 2))
-                for j in range(1, n):
-                    y1 = y_bot - (y_bot - y_top) * (float(dl[j - 1]) - ymin_) / (ymax_ - ymin_)
-                    y2 = y_bot - (y_bot - y_top) * (float(dl[j]) - ymin_) / (ymax_ - ymin_)
-                    p.drawLine(int(xs[j - 1]), int(y1), int(xs[j]), int(y2))
-                # 标注
-                p.setPen(_TEXT2)
+                for j in range(1, m):
+                    y1 = Y(float(dl_arr[j - 1]))
+                    y2 = Y(float(dl_arr[j]))
+                    p.drawLine(int(xs[j - 1]), y1, int(xs[j]), y2)
+                # 超顶尖峰 (插入/事件) 标注真实峰值
+                im = int(np.argmax(dl_arr))
+                if dl_arr[im] > mx:
+                    p.setPen(QColor("#ff5555"))
+                    p.setFont(QFont("Sans", 9, QFont.Bold))
+                    p.drawText(int(xs[im]) - 20, w_y0 + 12, f"▲{dl_arr[im]:.1f}")
+                # 底部信息: 范围 + 阶段读法
+                p.setPen(QColor("#8b949e"))
                 p.setFont(QFont("Sans", 9))
-                p.drawText(int(x0), int(y_bot + 14),
-                           f"激活变化事件 ‖Δx‖ 范围[{min(dl):.2f},{max(dl):.2f}] · 尖峰=启动/抓取/接触/插入 · 平=表征稳定")
+                p.drawText(int(x0), t_y,
+                           f"峰值{max(dl_arr):.1f} · 平稳段细波=匀速移动 尖峰=抓取/接触/插入 · 波形↑=该层在改写表征")
+                p.drawText(int(x1) - 150, t_y, "0s")
+                p.drawText(int(x1) - 40, t_y, f"{T:.1f}s")
             else:
-                p.setPen(_TEXT2)
+                p.setPen(QColor("#8b949e"))
                 p.setFont(QFont("Sans", 10))
-                p.drawText(QRect(x0, y_top, x1 - x0, 60), Qt.TextWordWrap,
-                           "累积中… (需 ≥2 帧算变化; 波形滚动窗口最多 300 帧 ≈6s)")
+                p.drawText(QRect(x0, w_y0, x1 - x0, 50), Qt.TextWordWrap, "累积中… (≥2 帧画波形)")
             # 行分隔
             p.setPen(QPen(QColor("#21262d"), 1))
             p.drawLine(16, int(y0 + row_h) - 1, W - 16, int(y0 + row_h) - 1)
+        # 全窗底部: 流程总结 (插拔成功环节 — 引擎 done=插入到底, 末段为 插入/完成 即成功)
+        try:
+            if not self.stages:
+                return
+            last_base = _map_stage(str(self.stages[-1])) or ""
+            reached_insert = any(_map_stage(str(s)) == "插入" for s in self.stages)
+            ok_done = reached_insert and (last_base in ("插入", "完成"))
+            verdict = "✅ 插拔成功 (已走完 接近→对位→下降→抓取→抬起→转移→插入)" if ok_done else "▶ 流程进行中…"
+            col = QColor("#00d4aa") if ok_done else QColor("#8b949e")
+            p.setPen(col)
+            p.setFont(QFont("Sans", 13, QFont.Bold))
+            p.drawText(QRect(16, H - 34, W - 32, 26), Qt.TextWordWrap,
+                       f"{verdict} · 已播 {n} 帧/{T:.1f}s · 色带=阶段 · 金底=插拔收尾段")
+        except Exception:
+            pass
 
     # ── 📊 直方图视图: 本帧 512 实际激活值 (真实计数) ──
     def _draw_hist_rows(self, p, r):

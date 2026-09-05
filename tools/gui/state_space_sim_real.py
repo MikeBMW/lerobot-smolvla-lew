@@ -393,13 +393,6 @@ class RealStateSpaceSim:
             obs = self.perception.fuse_sensors(visual39, force, tactile4)
             # ⑤ 六层控制器 (同引擎: 前馈→估计→预测→校正→调度→限幅→执行)
             u_ff = self.accel.forward(obs)
-            # 🔭 2026-09-05 老倪(信号同步): 真实化每步探针快照 (播放逐帧同步直方图/归因)
-            try:
-                _pr = getattr(self.accel, "probe", None)
-                if _pr is not None and _pr.get("act_raw") is not None:
-                    tr["probe_seq"].append(dict(_pr))
-            except Exception:
-                pass
             act4 = np.concatenate([self.u_prev[:3], [0.0]])
             latent_pred = self.est.predict(self.latent, act4)
             prior = self.dyn.predict(self.latent, act4)
@@ -415,6 +408,15 @@ class RealStateSpaceSim:
                             else np.asarray(residual, dtype=float).copy())
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
+            # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
+            try:
+                _pr = getattr(self.accel, "probe", None)
+                if _pr is not None and _pr.get("act_raw") is not None:
+                    _snap = dict(_pr)
+                    _snap["stage"] = stage
+                    tr["probe_seq"].append(_snap)
+            except Exception:
+                pass
             if np.ndim(u) == 0:
                 u = np.zeros(4)
             u = np.asarray(u, dtype=float).copy()
