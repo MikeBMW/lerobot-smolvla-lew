@@ -77,6 +77,18 @@ class FFHistView(QDialog):
             self.cur[i] = a
         self.info = {"obs": probe.get("obs", {}), "u_ff": probe.get("u_ff", []),
                      "layers": probe.get("layers", [])}
+        # 🔭 2026-09-05: 状态行随帧更新 — 窗口"活着"可感知 + 帧数/数值自解释
+        try:
+            n = len(self.buf[0])
+            ob = self.info.get("obs", {})
+            u = self.info.get("u_ff", [])
+            u_txt = f"u_ff=[{u[0]:+.2f} {u[1]:+.2f} {u[2]:+.2f} g{u[3]:.0f}]" if u else "u_ff=—"
+            d_txt = f"d={ob.get('d_h', 0):.3f}m" if ob else ""
+            self._cap.setText(
+                f"🧠 三层 512 激活分布 · 累积 {n} 帧 · {u_txt} {d_txt}"
+                f" · 0 处高峰=休眠单元, 长尾=正在工作的特征")
+        except Exception:
+            pass
         self._dirty = True
 
     def _throttled(self):

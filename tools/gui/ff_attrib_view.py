@@ -95,6 +95,22 @@ class FFAttribView(QDialog):
         self.contrib.append([float(np.abs(self.W3[d] * x3).sum()) for d in range(4)])
         if len(self.contrib) > N_FRAMES:
             self.contrib.pop(0)
+        # 🔭 2026-09-05: 满 10 帧自动 PCA (散点不用等手动按钮; 数据不足时下方提示)
+        if len(self.x3_buf) == 10 and self.pts2d is None and self.pts_tsne is None:
+            try:
+                self._project("pca")
+            except Exception:
+                pass
+        # 状态行随帧更新 (自解释 + 可见在动)
+        try:
+            mode = "t-SNE" if self.use_tsne else ("PCA ✓" if self.pts2d is not None else "未投影")
+            dom = int(np.argmax(self.contrib[-1]))
+            self._lab.setText(
+                f"累积 {len(self.x3_buf)} 帧 · 当前主导输出维: {DIM_NAMES[dom]} · "
+                f"散点 {mode} · 色块: {DIM_NAMES[0]}/{DIM_NAMES[1]}/{DIM_NAMES[2]}/{DIM_NAMES[3]} "
+                f"= 该单元在指挥哪个输出维 (同类成簇=功能分群)")
+        except Exception:
+            pass
         self.update()
 
     # ── 投影 ──

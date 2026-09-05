@@ -319,7 +319,8 @@ class RealStateSpaceSim:
               "stage": [], "done": [], "x": [], "gripper": [], "force": [], "peg": [],
               "peg_head": [], "target": [], "grasped": [], "obs": [], "u_ff_vec": [],
               "u_sat_vec": [], "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [],
-              "u_exec_vec": [], "v_vec": [], "z_k_vec": [], "io_trace": []}
+              "u_exec_vec": [], "v_vec": [], "z_k_vec": [], "io_trace": [],
+              "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
         truncated = False
         for step in range(int(max_steps)):
@@ -392,6 +393,13 @@ class RealStateSpaceSim:
             obs = self.perception.fuse_sensors(visual39, force, tactile4)
             # ⑤ 六层控制器 (同引擎: 前馈→估计→预测→校正→调度→限幅→执行)
             u_ff = self.accel.forward(obs)
+            # 🔭 2026-09-05 老倪(信号同步): 真实化每步探针快照 (播放逐帧同步直方图/归因)
+            try:
+                _pr = getattr(self.accel, "probe", None)
+                if _pr is not None and _pr.get("act_raw") is not None:
+                    tr["probe_seq"].append(dict(_pr))
+            except Exception:
+                pass
             act4 = np.concatenate([self.u_prev[:3], [0.0]])
             latent_pred = self.est.predict(self.latent, act4)
             prior = self.dyn.predict(self.latent, act4)
