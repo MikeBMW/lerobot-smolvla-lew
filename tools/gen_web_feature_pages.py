@@ -109,13 +109,20 @@ def _scene_badge(codes):
 def build_function_list():
     F = _fid_map()
     kc = nft.kind_count()
-    h = [_HEAD.format(title="🧩 功能清单 · 几何分类(LFP/LFO/HDM) · 五大场景 · 110功能×550用例"),
+    # 🎯 2026-09-05 数据一致性: 标题/总数全部派生自 node_func_tree 实时统计 (111 功能/553 用例)
+    _NF = sum(len(n["funcs"]) for n in nft.NODE_TREE.values())
+    _NT = sum(len(f.get("tests", [])) for n in nft.NODE_TREE.values() for f in n["funcs"])
+    _gc = {}
+    for n in nft.NODE_TREE.values():
+        for f in n["funcs"]:
+            _gc[f.get("geom")] = _gc.get(f.get("geom"), 0) + 1
+    h = [_HEAD.format(title=f"🧩 功能清单 · 几何分类(LFP/LFO/HDM) · 五大场景 · {_NF}功能×{_NT}用例"),
          "<h1>🧩 功能清单 — 几何能力分类 → 应用场景 → 编号功能 → 验证用例</h1>",
-         f'<div class="note">110 功能按纤维丛几何语义分三类 (LFP 30 / LFO 35 / '
-         f'<b style="color:#a371f7">HDM 45</b>) · 五大客户场景 · 22 节点 × 110 功能 '
-         f'(三字母编号, 如 VIS-01=视觉第一功能) × 550 用例 (自动 {kc.get("auto",0)} · '
+         f'<div class="note">{_NF} 功能按纤维丛几何语义分三类 (LFP {_gc.get("LFP", 0)} / LFO {_gc.get("LFO", 0)} / '
+         f'<b style="color:#a371f7">HDM {_gc.get("HDM", 0)}</b>) · 五大客户场景 · 22 节点 × {_NF} 功能 '
+         f'(三字母编号, 如 VIS-01=视觉第一功能) × {_NT} 用例 (自动 {kc.get("auto",0)} · '
          f'半自动 {kc.get("semi",0)} · 手动 {kc.get("manual",0)}) · '
-         f'每功能: 详细说明 + 验证方法 + 5 条用例逐条对应 · 数据源 node_func_tree.py</div>']
+         f'每功能: 详细说明 + 验证方法 + 5 条用例逐条对应 · 数据源 node_func_tree.py (单一事实源, 网页/Excel/报告数字同源派生)</div>']
 
     # ── §1 几何能力分类总纲 (纤维丛视角) ──
     h.append("<h2>📐 一、几何能力分类总纲 (分段式局部截面 → VLM 端到端全局流形)</h2>")
@@ -202,7 +209,7 @@ def build_function_list():
     h.append("<h2>🔤 三、功能编号体系 (三字母域缩写 + 域内序号 + 几何类)</h2>")
     h.append('<div class="note">编号格式 <span class="code">域码-NN</span>: '
              '域码 = 业务功能族三字母缩写, NN = 族内工艺顺序。例 <span class="code">VIS-01</span> = '
-             '视觉感知第一功能 (YOLO 目标类别检出)。全库 110 功能唯一编号, 与工程码 fid 并存可互换。</div>')
+             '视觉感知第一功能 (YOLO 目标类别检出)。全库功能唯一编号, 与工程码 fid 并存可互换。</div>')
     h.append("<table><tr><th>域码</th><th>功能族</th><th>英文</th><th>模型角色</th>"
              "<th>几何类</th><th>覆盖画布节点</th><th>功能数</th></tr>")
     nk_name = {k: n["name"] for k, n in nft.NODE_TREE.items()}

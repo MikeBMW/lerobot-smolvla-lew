@@ -25,7 +25,7 @@
   "desc": "🧠 直方图: 三层 512 激活分布窗口打开且有数据",
   "pass": true,
   "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_hist.png",
-  "detail": "buf=[150, 150, 150] 内容比=0.059"
+  "detail": "buf=[151, 151, 151] 内容比=0.216"
  },
  {
   "case": "viz_attrib",
@@ -46,7 +46,7 @@
   "desc": "🧭 3D 视图: 分层视图窗口渲染",
   "pass": true,
   "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_3d.png",
-  "detail": "内容比=0.099"
+  "detail": "内容比=0.100"
  },
  {
   "case": "viz_video",
