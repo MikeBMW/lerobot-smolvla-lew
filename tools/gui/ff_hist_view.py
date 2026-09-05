@@ -201,9 +201,13 @@ class FFHistView(QDialog):
             y_top = int(y0) + 34
             y_bot = int(y0 + row_h) - 24
             if len(en) >= 2:
-                ym = max(pk, 1e-6) * 1.15
-                # 网格 + 0 线
-                p.setPen(QPen(QColor("#1e2740"), 1))
+                # 🧠 2026-09-05 老倪(脑机接口式): 去基线放大 — y 范围取本窗口
+                #   [min*0.85, max*1.15], 小波动也显示成明显起伏 (能量平段不再压成直线)
+                ymin_ = float(min(en)) * 0.85
+                ymax_ = float(max(en)) * 1.15
+                if ymax_ - ymin_ < 1e-6:
+                    ymax_ = ymin_ + 1.0
+                p.setPen(QPen(QColor("#21262d"), 1))
                 p.drawLine(x0, y_bot, x1, y_bot)
                 for gy in range(3):
                     yy2 = y_top + (y_bot - y_top) * gy / 2
@@ -217,20 +221,21 @@ class FFHistView(QDialog):
                 p.setBrush(col)
                 poly = [QPointF(float(xs[0]), float(y_bot))]
                 for xx, e in zip(xs, en):
-                    yy2 = y_bot - (y_bot - y_top) * float(e) / ym
+                    yy2 = y_bot - (y_bot - y_top) * (float(e) - ymin_) / (ymax_ - ymin_)
                     poly.append(QPointF(float(xx), float(yy2)))
                 poly.append(QPointF(float(xs[-1]), float(y_bot)))
                 p.drawPolygon(QPolygonF(poly))
                 # 曲线线
                 p.setPen(QPen(QColor(LAYER_COLORS[li]), 2))
                 for j in range(1, n):
-                    y1 = y_bot - (y_bot - y_top) * float(en[j - 1]) / ym
-                    y2 = y_bot - (y_bot - y_top) * float(en[j]) / ym
+                    y1 = y_bot - (y_bot - y_top) * (float(en[j - 1]) - ymin_) / (ymax_ - ymin_)
+                    y2 = y_bot - (y_bot - y_top) * (float(en[j]) - ymin_) / (ymax_ - ymin_)
                     p.drawLine(int(xs[j - 1]), int(y1), int(xs[j]), int(y2))
-                # 峰值标注
+                # 标注: 放大范围 (min/max), 波形读法
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 9))
-                p.drawText(x0, int(y_top + 12), f"峰值 E={pk:.0f}")
+                p.drawText(int(x0), int(y_bot + 14),
+                           f"E∈[{min(en):.0f}, {max(en):.0f}] 去基线放大 · 起伏=神经元活动 · 顶部陡升=插入段")
             else:
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 10))
