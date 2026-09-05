@@ -1350,10 +1350,14 @@ class DreamView3D(QWidget):
 
         # 状态估计 x̂ (latent = 位置3 + 预测接触力1): 紫线 = 最近 60 帧估计轨迹
         win = min(i + 1, 30)      # 60→30 帧: 观测噪声下估计轨迹本就抖, 窗口太长视觉更乱
-        lat_pts = np.array([np.asarray(tr["latent_vec"][k], dtype=float)[:3]
-                            for k in range(i - win + 1, i + 1)])
-        if len(lat_pts) < 2:
-            lat_pts = np.vstack([lat_pts, lat_pts])
+        lv = tr.get("latent_vec")
+        if lv is not None and len(lv) > 0:   # 🐛 2026-09-05: 老 trace 无 latent_vec → KeyError 崩 3D
+            lat_pts = np.array([np.asarray(lv[k], dtype=float)[:3]
+                                for k in range(i - win + 1, i + 1)])
+            if len(lat_pts) < 2:
+                lat_pts = np.vstack([lat_pts, lat_pts])
+        else:
+            lat_pts = np.zeros((1, 3))
         self._gl_items["latent"][0].setData(pos=lat_pts)
         self._gl_items["latent"][1].setData(pos=lat_pts[-1:])
         # 📈 先验动力学预测器 (纯预测, 未经观测校正) — 老 trace 无 prior_vec 时该层留空
