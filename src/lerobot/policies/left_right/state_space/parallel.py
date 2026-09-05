@@ -40,22 +40,50 @@ def load_npz_weights(npz_path):
     return _NPZ_CACHE[npz_path]
 
 
-def mlp_ff_forward(npz_path):
+def mlp_ff_forward(npz_path, probe=None):
     """蒸馏 MLP 前馈闭包 (与 state_space_sim.load_trained_left_brain 同款纯 numpy 实现,
-    2026-09-04 收敛到此, sim 版保留为薄兼容层)"""
+    2026-09-04 收敛到此, sim 版保留为薄兼容层)
+    probe: 可选 dict — 每 tick 写入隐层激活探针 (层能量/稀疏度/top活跃单元/输出归因),
+    用于 GUI 展示"前馈加速器在想什么"。None = 零开销。"""
     W, b, sm, ss, am, astd = load_npz_weights(npz_path)
 
+    def _layer_stat(a):
+        """单层激活摘要: 能量(L2) / 稀疏度(ReLU 后零占比) / top3 活跃单元"""
+        nz = int((a > 0).sum())
+        top = np.argsort(a)[-3:][::-1]
+        return {"act_l2": float(np.linalg.norm(a)),
+                "active": nz, "dim": int(a.shape[0]),
+                "top3": [(int(j), float(a[j])) for j in top]}
+
     def ff_forward(obs):
-        x = (np.asarray(obs[:39], dtype=np.float32) - sm) / ss
-        for i in range(3):
-            x = np.maximum(0.0, W[i] @ x + b[i])     # Linear + ReLU (Dropout eval 关闭跳过)
-        u_norm = W[3] @ x + b[3]                      # 末层无 ReLU
-        u_xyz = np.clip(u_norm[:3] * astd[:3] + am[:3], -0.6, 0.6)   # 反归一化 + 限幅
+        o = np.asarray(obs, dtype=float)
+        x = (np.asarray(o[:39], dtype=np.float32) - sm) / ss
+        x1 = np.maximum(0.0, W[0] @ x + b[0])
+        x2 = np.maximum(0.0, W[1] @ x1 + b[1])
+        x3 = np.maximum(0.0, W[2] @ x2 + b[2])
+        u_norm = W[3] @ x3 + b[3]
+        u_xyz = np.clip(u_norm[:3] * astd[:3] + am[:3], -0.6, 0.6)
         # 夹爪 0/1 跳变回归学不好 → 规则控制 (同 ss_verify_trained.py)
-        pos = np.asarray(obs[:3], dtype=float)
-        target = np.asarray(obs[36:39], dtype=float)
+        pos = o[0:3]
+        target = o[36:39] if o.shape[-1] >= 39 else o[0:3]
         dist_h = float(np.linalg.norm(pos[:2] - target[:2]))
         u_grip = 1.0 if dist_h < 0.03 else 0.0
+        if probe is not None:
+            # 🧠 探针: 每层在想什么 (激活能量/稀疏度/top 活跃单元) + 输出归因
+            probe["obs"] = {"hand": [round(v, 4) for v in pos],
+                            "target": [round(v, 4) for v in target],
+                            "d_h": round(float(np.linalg.norm(pos - target)), 4),
+                            "d_xy": round(dist_h, 4),
+                            "gripper": round(float(o[3]), 3)}
+            probe["layers"] = [_layer_stat(a) for a in (x1, x2, x3)]
+            # 输出归因: u 每维 = W3 行 · x3 → 找贡献最大的隐单元 (它在"指挥"动作)
+            contrib = np.abs(W[3]) * x3[None, :]          # (4, 512)
+            probe["out_contrib"] = []
+            for d in range(3):
+                j3 = np.argsort(contrib[d])[-3:][::-1]
+                probe["out_contrib"].append(
+                    [(int(j), float(W[3][d, j] * x3[j])) for j in j3])
+            probe["u_ff"] = [round(v, 4) for v in (u_xyz[0], u_xyz[1], u_xyz[2], u_grip)]
         return np.concatenate([u_xyz, [u_grip]])
 
     return ff_forward
@@ -83,8 +111,9 @@ class FeedforwardAccelerator:
         self.loaded = False         # True = MLP 已加载 (forward 主执行)
         self.n_mlp = 0              # 域内 MLP 调用计数 (可查: 真实执行占比)
         self.n_guard = 0            # 域外守卫调用计数
+        self.probe = {}             # 🧠 隐层激活探针 (每 tick 更新, 展示"在想什么")
         try:
-            self._ff = mlp_ff_forward(self.npz_path)
+            self._ff = mlp_ff_forward(self.npz_path, self.probe)
             self.loaded = True
         except Exception as e:
             # 不静默: 打印明确警告 (真实执行可追溯), forward 走 analytic_forward

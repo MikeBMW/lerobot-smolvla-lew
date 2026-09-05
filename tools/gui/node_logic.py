@@ -2019,7 +2019,19 @@ def node_ss_s2(ctx):
         u_ff = accel.forward(obs43)
         _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)
         if log:
-            log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
+            # 🧠 探针 (2026-09-04): 展示 MLP 在想什么 — 层活跃/能量 + 输出归因 top 单元
+            _p = accel.probe
+            if _p and "layers" in _p:
+                _ls = _p["layers"]
+                _act = " · ".join(f"L{i+1}:{l['active']}/{l['dim']}活 E={l['act_l2']:.1f}"
+                                  for i, l in enumerate(_ls))
+                _top = " · ".join(
+                    f"u{d+1}←单元{j}({c:+.3f})" for d in range(3)
+                    for j, c in _p["out_contrib"][d][:1])
+                log(f"⚡ 前馈加速器 (真实): u_ff={np.round(u_ff,3)} · 🧠[{_act}] · 归因 {_top} "
+                    f"(parallel.py; obs: 手{_p['obs']['hand']}→目标{_p['obs']['target']} d={_p['obs']['d_h']})")
+            else:
+                log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
         return True
     except Exception as e:
         if log:
