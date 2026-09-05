@@ -38,7 +38,7 @@ def check_new_data():
         meta = d.get("latest_meta") or {}
         n = d.get("packages", 0)
         src = meta.get("source", "")
-        if latest and src != "orin_snapshot" and "snapshot" not in str(meta.get("type", "")):
+        if latest and src not in ("orin_snapshot", "orin_shadow") and "snapshot" not in str(meta.get("type", "")):
             return latest, meta, n
         return None, {}, n
     except Exception:
@@ -66,7 +66,7 @@ def train():
     r = subprocess.run([
         "bash", "-c",
         f"cd {HOME} && rm -rf outputs/train/act_loop && "
-        f"PYTHONPATH=src .venv/bin/python -m lerobot.scripts.lerobot_train "
+        f"PYTHONPATH=src {os.path.expanduser('~/lerobot-venv')}/bin/python -m lerobot.scripts.lerobot_train "
         f"--config_path {CFG} >> outputs/train/loop_train.log 2>&1"
     ], timeout=600)
     ckpts = sorted(glob.glob(str(HOME / "outputs/train/act_loop/checkpoints/*")))
@@ -118,6 +118,9 @@ def process_new_data():
                         log("❌ 数据集构建失败")
                 finally:
                     LOCK.unlink(missing_ok=True)
+        else:
+            # 帧数不达标/非采集包 → 记入 SEEN, 避免每轮轮询重复刷日志
+            SEEN.add(latest)
 
 
 def ws_listener():
