@@ -1,4 +1,4 @@
-# 20260807 数据集管理命名/列表迭代 + 光模块数据链路
+# 20260807 数据集管理命名/列表迭代 + 插销数据链路
 
 老倪(08-07)数据集管理页连续整改记录 — 全部细节，避免下次重踩。
 
@@ -6,7 +6,7 @@
 
 - **本地目录名 ≠ 官方任务名**：
   - `data/metaworld_act` = 官方 **nut-on-peg**（套环，MT50 task 0，696 帧）
-  - `data/metaworld_peg_lerobot` = 官方 **peg-insert-side-v3**（光模块插拔，24 eps / 4800 帧）
+  - `data/metaworld_peg_lerobot` = 官方 **peg-insert-side-v3**（插销插拔，24 eps / 4800 帧）
   - `data/metaworld_peg_v2` = peg 数据 npz 原始源（30 eps / 5850 帧，中间产物，列表隐藏）
   - `data/orin_live` = CICD 采集包（114 个 auto_*.json，meta 标 relay=ECS）
   - `data/orin_real_v1` = 真机 v1（parquet+mp4，**64×64 低清 21 帧**）
@@ -33,7 +33,7 @@
 - 打开自动加载首帧（`QTimer.singleShot(0, self._load_video_frame)`）——frame_slider maximum 初始 0，手动点"加载帧"才更新导致"下一帧点不了"
 - 低清图放大加 `Qt.SmoothTransformation`
 
-## 光模块数据生成链路（gen_peg_data.py）
+## 插销数据生成链路（gen_peg_data.py）
 
 - 官方专家策略 `SawyerPegInsertionSideV3Policy`（metaworld/policies/sawyer_peg_insertion_side_v3_policy.py）采样成功轨迹
 - 参数：`--eps 30 --camera corner2`（与视频同视角）；失败轨迹 150 步提前终止（渲染慢）

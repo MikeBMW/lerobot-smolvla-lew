@@ -45,14 +45,14 @@
   (老倪会问"重启了么/没关过" — WSLg 窗口无缝重开看起来像没重启)。
 - closeEvent pkill 只匹配 lerobot_train / cicd_pipeline — kill -9 可保独立训练进程。
 
-## 光模块数据链路 (2026-08-07 完整打通)
+## 插销数据链路 (2026-08-07 完整打通)
 
 - **gen_peg_data.py**: metaworld 官方专家 `SawyerPegInsertionSideV3Policy` 采样 peg-insert-side-v3,
   只留插入成功轨迹 (peg 抬升 0.05 + 距 hole < 0.05), 图像 128x128 corner2 视角 (与视频一致)。
   失败轨迹提前终止 (150 步) 提速。输出 data/metaworld_peg_v2/train.npz (30 eps / 5850 帧 / 39D state / 4D act)。
 - **npz_to_lerobot.py** 转 data/metaworld_peg_lerobot (24 eps / 4800 帧 parquet, fps 10, episode-frames 200)。
 - config root 指向 peg_lerobot → lerobot_train 1000 步 → act_pegdata_1000 ckpt → rollout 动作均值 0.564
-  (旧数据模型 0.18 的 3 倍)。**光模块训练是独立赛道, 曲线单独文件 train_curve_act_peg.json** (不与套环曲线合并)。
+  (旧数据模型 0.18 的 3 倍)。**插销训练是独立赛道, 曲线单独文件 train_curve_act_peg.json** (不与套环曲线合并)。
 - rollout_peg_check.py: 插入检测评估 (多次 rollout, 统计抬起/插入/最小孔距) — 0/5 时先查训练不足。
 - 数据集管理/DATASETS 列表按老倪要求**只留 metaworld** (删 pusht/xarm/aloha 等 11 个 HF 条目 + orin 本地条目,
   磁盘数据保留)。

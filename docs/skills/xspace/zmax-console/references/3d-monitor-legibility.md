@@ -52,7 +52,7 @@ self._overlay = LabelOverlay(self.view)          # 子控件, WA_TransparentForM
 self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
 # paintEvent: 深底圆角(13,17,23,205) + 彩色文字 + 一条引线连到目标点
 ```
-实测有效: 屏幕文字像素 11257 px (光模块 598 / 孔口 737 / goal 868 / 前馈加速器 4316 / 动作调制器 4705)
+实测有效: 屏幕文字像素 11257 px (插销 598 / 孔口 737 / goal 868 / 前馈加速器 4316 / 动作调制器 4705)
 
 ## 铁律 5: 标注必须跟着视角走 — 存世界坐标 + 相机指纹看门狗
 老倪:「3D空间的文字, 没有跟着图像走, 需要同步位置」

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """AWE vs VLA-Touch 区分性实验 — 证明"预测中决策"优势 (2026-08-06)
-场景: peg-insert-side-v3 光模块 (多阶段: 接近→对准→插入)
+场景: peg-insert-side-v3 插销 (多阶段: 接近→对准→插入)
 变量: 触觉信号质量 (zero/real/noise/delay)
 假设: VLA-Touch 触觉反应式 → 触觉质量差退化; AWE 世界模型预见式 → 抗退化
 指标: 末端→hole 距离收敛 / 动作幅度 / 平滑度 / 成功率(距离<0.12)
 用法: .venv/bin/python tools/compare_awe_vlat.py  →  reports/awe_vs_vlat.json
-依赖: 需先训练 vla_touch + awe_zflow (光模块 数据), reports/train_curve_*.json 指向产物
+依赖: 需先训练 vla_touch + awe_zflow (peg 数据), reports/train_curve_*.json 指向产物
 """
 import os, sys, json, glob, time
 import numpy as np

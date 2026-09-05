@@ -44,9 +44,9 @@ if _env_proj and st.shape[0] >= 3 + _env_proj:
 
 ## 调试技巧
 - rollout 的 except 块加 `traceback.print_exc(limit=3)` 定位 (异常消息本身常是误导, "39 vs 3" 可能是 numpy 广播也可能是 torch 维度)。
-- 动作验证: `np.abs(np.load(actions.npy)).mean()` — 正常学习模型 0.15-0.3; 光模块模型 (peg 数据) 0.56; 推理异常 ≈0.0001。帧间均差 (`np.abs(frame0-frame59).mean()`) >1.5 才算"动"。
+- 动作验证: `np.abs(np.load(actions.npy)).mean()` — 正常学习模型 0.15-0.3; 插销模型 (peg 数据) 0.56; 推理异常 ≈0.0001。帧间均差 (`np.abs(frame0-frame59).mean()`) >1.5 才算"动"。
 - `rollout_video.py` 的 `load_policy` 返回 **tuple** `(policy, label)` — 取 `[0]`。
-- metaworld 相机: 光模块场景必须 `--camera corner2` (默认 corner 看不到插槽); 旋转用 `--rotate-ccw` (k=2 = 180°)。MLP/专家旧视频是 corner2+rotate 生成, 重新生成必须同参数否则视角不一致。
+- metaworld 相机: 插销场景必须 `--camera corner2` (默认 corner 看不到插槽); 旋转用 `--rotate-ccw` (k=2 = 180°)。MLP/专家旧视频是 corner2+rotate 生成, 重新生成必须同参数否则视角不一致。
 
 ## 插入成功检测 (tools/rollout_peg_check.py)
 ```python
@@ -57,7 +57,7 @@ hole = env.data.site_xpos[env.model.site("hole").id]
 ```
 多 seed 跑 N 次统计成功率。官方专家基线 85%。
 
-## 光模块数据集生成 (tools/gen_peg_data.py)
+## 插销数据集生成 (tools/gen_peg_data.py)
 - 官方专家: `from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy`
 - 采样成功轨迹 (含图像 128² + env._get_obs() 39D state + 4D action) → train/val.npz
 - 失败轨迹提前终止 (150 步) 加速; 实测 30 成功 eps / 41 尝试 (73%), 5850 帧

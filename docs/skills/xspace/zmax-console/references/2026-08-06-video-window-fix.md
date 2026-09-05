@@ -82,7 +82,7 @@ _run_rollouts 子进程参数:
  "--camera", "corner2", "--rotate-ccw",
  "--out", os.path.join(root, "reports", f"rollout_final_{policy}")]
 ```
-peg-insert 光模块场景 corner2 视角 + 逆时针旋转90° → 插孔可见方向正立 (昨晚飞书端验证结论)。
+peg-insert 插销场景 corner2 视角 + 逆时针旋转90° → 插孔可见方向正立 (昨晚飞书端验证结论)。
 ⚠️ 2026-08-06 晚最终确认: corner2 视角实际需 **k=2 (旋转180°)** 方向才正 (rollout_video.py
 rotate_ccw 分支 `np.rot90(rgb, k=2)`, commit b73ed5a7)。
 

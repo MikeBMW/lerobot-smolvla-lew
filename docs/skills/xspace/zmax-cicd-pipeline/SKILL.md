@@ -105,10 +105,10 @@ PYTHONPATH=src .venv/bin/python tools/act_compare.py \
 - **模型名标题飘到上面窗口**: 标题在视频框上方视觉归属上一行。修: QGridLayout 同 cell 叠加到视频框左下角 + 半透明底。
 - **on_infer_video 触发前检查漏 expert 目录映射**: expert_mlp/expert_policy 的帧在 rollout_mlp/rollout_expert_full → 触发检查必须带同款 `_dir_map`, 否则误判无帧 → 重新生成失败 → "视频没了"。
 
-## 光模块训练: MLP 蒸馏 > ACT 长训 (2026-08-08 实测, 老倪"要能插入")
-- ACT 光模块数据 4000 步: loss 64→0.585 收敛但 rollout **0/5** (销钉没抬起 — 长程动作链没学会)
+## 插销训练: MLP 蒸馏 > ACT 长训 (2026-08-08 实测, 老倪"要能插入")
+- ACT 插销数据 4000 步: loss 64→0.585 收敛但 rollout **0/5** (销钉没抬起 — 长程动作链没学会)
 - **MLP 蒸馏** (distill_expert.py: 官方专家 300 eps 采样 + 15 epochs, loss 0.507): 插入 **2/5 (40%)**, 最小孔距 **0.011m**, 5/5 全抬起
-- **教训**: 长程精确操作 (光模块) 数据不足时, **从专家策略蒸馏小模型 (纯 39D state→4D action) 立竿见影, 远胜长训大模型** — 光模块任务优先方案: 蒸馏 > 多训
+- **教训**: 长程精确操作 (插销) 数据不足时, **从专家策略蒸馏小模型 (纯 39D state→4D action) 立竿见影, 远胜长训大模型** — 插销任务优先方案: 蒸馏 > 多训
 - **ExpertMLP 加载链 3 坑** (rollout_video.py + rollout_peg_check.py 两处都要):
   1. 曲线 ckpt 指向 `.pt` 单文件**非目录** → isdir False → FileNotFoundError; 修: `if policy=="expert_mlp" and os.path.isfile(base_dir)` 特判 + importlib 加载 distill_expert.py → ExpertMLP(obs_dim, act_dim) → load_state_dict(data["model"])
   2. **必须 `pol.state_dim = pol.obs_dim`** — 否则 st_dim 推断 `getattr(policy,"state_dim",2)`=2 → forward 1x2 vs 39x512 崩 → 动作 0.0

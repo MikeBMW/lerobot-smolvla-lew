@@ -57,7 +57,7 @@ def check_image(im, label="frame"):
     print(f"\n🏆 字正方向: rot{rot} mir{'L' if mir else '-'} (score={results[0][0]})")
     print(f"    OCR: {text[:130]}")
     # ⚠️ 重要判据: 分数接近时 (差<10) 必须人工看完整文本 —
-    #    识别出真实词组 (TREND peg->hole inserted / hand->光模块) 的方向才是真的正
+    #    识别出真实词组 (TREND peg->hole inserted / hand->peg) 的方向才是真的正
     return rot, mir
 
 def main():

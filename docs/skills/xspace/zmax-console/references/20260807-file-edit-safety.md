@@ -59,4 +59,4 @@ or QApplication(sys.argv)` 再创建 QFontMetrics。
 
 DATASETS 12 条 HF 条目 → 只留 `lerobot/metaworld_mt50`; `_local_datasets()` cands
 只留 4 个 metaworld (peg_lerobot/peg_v2/act/mt50), 删 orin 4 项 (磁盘数据保留,
-仅列表移除)。表格 = local_rows + DATASETS, 首行本地光模块。信息按钮本地分支跳过 HF API。
+仅列表移除)。表格 = local_rows + DATASETS, 首行本地插销。信息按钮本地分支跳过 HF API。

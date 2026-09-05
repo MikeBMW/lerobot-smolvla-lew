@@ -27,9 +27,9 @@ InferenceVideoDialog 打开时 `_check_newer_ckpt()`: 任一 train_curve json �
 - **WSLg 弹窗零容忍**: `viewer.exec_()` → `viewer.show()` 非模态 (exec_ 假死)。
 - **翻帧**: `_on_frame_changed` 只改 label 不加载图 → 加 `self._load_video_frame()` 触发; npz 用 `self._npz_cache` 缓存 (避免拖动每次 np.load 28MB)。
 - **本地状态"未下载"错误**: metaworld_mt50 数据在项目 `data/` 不在 HF 缓存 → `_is_cached` 加 repo 特判; 信息弹窗加"📁 本地实际数据"块 (从 parquet 探测真实 episodes/帧数/任务, 与云端声明区分)。
-- **当前训练数据集卡片**: `_current_dataset_html()` 从最近 config_*.yaml 的 `^\s*root:\s*(data/\S+)` (注意 **2 空格缩进**, 必须 `^\s*root:`) 探测 → 显示路径 + 光模块/套环标签 + 帧数。
+- **当前训练数据集卡片**: `_current_dataset_html()` 从最近 config_*.yaml 的 `^\s*root:\s*(data/\S+)` (注意 **2 空格缩进**, 必须 `^\s*root:`) 探测 → 显示路径 + 插销/套环标签 + 帧数。
 
 ## 数据源与任务语义 (nut-on-peg vs peg-insert)
-- `data/metaworld_act` (696 帧) = MT50 task 0 **nut-on-peg 套环** (非光模块!); `data/metaworld_mt50` 只下载了 chunk-000 2 片 (879 帧/10 ep/1 任务, success 帧在 episode 尾部 0.99 = 全部成功轨迹, 不是 1.1% 失败)。
-- 光模块任务数据: `data/metaworld_peg_v2` (30 成功 eps/5850 帧含图) + `data/metaworld_peg_lerobot` (npz_to_lerobot 转换)。
-- GUI 训练 placeholder 硬编码 data/metaworld_act — 要切光模块数据需改 `_ensure_training_data` 或数据源切换。
+- `data/metaworld_act` (696 帧) = MT50 task 0 **nut-on-peg 套环** (非插销!); `data/metaworld_mt50` 只下载了 chunk-000 2 片 (879 帧/10 ep/1 任务, success 帧在 episode 尾部 0.99 = 全部成功轨迹, 不是 1.1% 失败)。
+- 插销任务数据: `data/metaworld_peg_v2` (30 成功 eps/5850 帧含图) + `data/metaworld_peg_lerobot` (npz_to_lerobot 转换)。
+- GUI 训练 placeholder 硬编码 data/metaworld_act — 要切插销数据需改 `_ensure_training_data` 或数据源切换。

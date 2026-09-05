@@ -11,7 +11,7 @@
 - 教训: 多模型曲线配色必须全量映射, 别用 if-else 链默认值
 
 ## 数据集管理 (DatasetModule) 最终规范
-- **本地行两行命名**: `name = f"📁 {中文名}\n{官方任务名}"` (上行光模块插拔/下行 peg-insert-side-v3) — 老倪"命名两行, 上面中文名/下面官方任务名"
+- **本地行两行命名**: `name = f"📁 {中文名}\n{官方任务名}"` (上行插销插拔/下行 peg-insert-side-v3) — 老倪"命名两行, 上面中文名/下面官方任务名"
 - **任务数列**: 本地单一任务演示集 → "—" (别填帧数! 老倪:"为什么显示任务数4800个"); HF 云端多任务才显示真实任务数
 - **eps 语义**: episodes = 演示次数 (一次完整操作轨迹); 帧数 = 这些演示总图像数
 - **本地 vs 云端**: 本地行恒 "✅ 本地", 不查 HF 缓存; 下载按钮: orin 本地行 → "📥 CICD" 打开 https://datadrive.world/cicd.html (真机数据网页采集下载, 不是 HF!); 其他本地行 → 禁用 "本地"; 仅 HF 云端行走 HF 下载
@@ -28,4 +28,4 @@
 - metaworld_act 视频 AV1 编码 cv2 解不了 → "帧 0 超出范围" → 有 npz 时 npz 优先
 - NpzFile (savez_compressed) 数组访问 lazy 解压 → 每帧 1.5s → `_np.array(npz["observations"])` 提取到内存一次 → 翻帧 1ms
 - 打开查看器自动加载第一帧 (QTimer.singleShot(0, ...)) — 否则 frame_slider maximum=0 "下一帧点不了"
-- 图像方向: 光模块数据 (peg_v2/peg_lerobot, 与视频同源) 需 rot90 k=2; metaworld_act (MT50 官方) 方向本来正确不转 — 按路径含 "peg" 条件旋转
+- 图像方向: 插销数据 (peg_v2/peg_lerobot, 与视频同源) 需 rot90 k=2; metaworld_act (MT50 官方) 方向本来正确不转 — 按路径含 "peg" 条件旋转

@@ -350,7 +350,7 @@ encoder_in_tokens = [latent_embed]              # state 不再占独立 token
 - 官方专家 `SawyerPegInsertionSideV3Policy` 状态机假设手在标准起点 (0,0.6,0.16) 附近, 远移后不拉回 → 远起点数据生成必须用手写多阶段专家 (Phase1-5, 任意起点可用)
 
 ## Rollout 推理 (rollout_video.py) 三根因修复
-obs dict 解包 (V3 obs 是 dict → state 全零) / stats 39D-3D 广播 (np.pad 补零防 NaN) / ACT robot+env 39D 拆分; 光模块数据集生成 (官方专家采样) + 插入成功检测: `references/rollout-inference-fixes.md`
+obs dict 解包 (V3 obs 是 dict → state 全零) / stats 39D-3D 广播 (np.pad 补零防 NaN) / ACT robot+env 39D 拆分; 插销数据集生成 (官方专家采样) + 插入成功检测: `references/rollout-inference-fixes.md`
 
 ## 自定义 policy 工程化 (left_right 双脑, 2026-08-10 全流程踩坑)
 把自定义模型封装成 lerobot 标准 policy 并用 `lerobot_train` 训练 — 完整踩坑清单 (全部实测):

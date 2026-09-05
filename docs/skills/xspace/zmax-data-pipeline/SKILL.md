@@ -216,10 +216,10 @@ rollout 视频全黑 (var=0.0, 60帧全零) 的根因:
 - ECS logrotate: `/etc/logrotate.d/datadrive` (datadrive.world.log/error.log daily 100M 3份) + `/etc/logrotate.d/zmax-relay` (relay.log/ws_relay.log daily 50M 2份) — relay.log 曾涨到 274M 撑爆 40G 盘
 - ECS 40G 盘 80% 时清: `truncate -s 0 /www/wwwlogs/*.log /root/zmax-relay/*.log` + `rm archive/snap_*.jpg` + 重复模型(relay/models 与网站 models 双份)
 
-### 光模块数据训练 + MLP 蒸馏插入成功 (2026-08-07 实测, "要能插入"达成)
-- **光模块数据生成**: `tools/gen_peg_data.py --eps 30 --out data/metaworld_peg_v2` — 用官方专家 `SawyerPegInsertionSideV3Policy` 采样成功轨迹 (30 eps/5850帧/图像128/corner2视角与视频一致), 只留 inserted 轨迹; 失败轨迹 150 步提前终止省渲染时间。→ `npz_to_lerobot.py` 转训练格式 (`data/metaworld_peg_lerobot`)。
+### 插销数据训练 + MLP 蒸馏插入成功 (2026-08-07 实测, "要能插入"达成)
+- **插销数据生成**: `tools/gen_peg_data.py --eps 30 --out data/metaworld_peg_v2` — 用官方专家 `SawyerPegInsertionSideV3Policy` 采样成功轨迹 (30 eps/5850帧/图像128/corner2视角与视频一致), 只留 inserted 轨迹; 失败轨迹 150 步提前终止省渲染时间。→ `npz_to_lerobot.py` 转训练格式 (`data/metaworld_peg_lerobot`)。
 - **插入检测**: `tools/rollout_peg_check.py --policy <p> --n 5` — metaworld 环境 rollout N 次, 判定: peg 抬升 >0.05 (相对初始 z) + 孔距 <0.05 = 插入成功。输出 "✅ 插入成功/🟡已抬起未插入/❌没抬起" + 成功率。
-- **ACT 光模块 4000 步 loss 0.585 但插入 0/5** (没抬起) — loss 收敛≠行为成功, 24 eps 数据对长程插拔不够/ACT 架构局限。**别只看 loss 就交付, 必须跑插入检测**。
+- **ACT 插销 4000 步 loss 0.585 但插入 0/5** (没抬起) — loss 收敛≠行为成功, 24 eps 数据对长程插拔不够/ACT 架构局限。**别只看 loss 就交付, 必须跑插入检测**。
 - **MLP 蒸馏 = 最快插入成功路径**: `tools/distill_expert.py` (collect_expert_data 专家采样 300 eps + 15 epochs MLP 39D→4D) → **2/5 插入成功 (最小孔距 0.011m), 5/5 抬起**。简单模型从专家动作直接学, 比大模型长训更快见效。老倪"至少一次插拔成功"硬指标靠它达成。
 - **ExpertMLP 加载三连坑** (rollout_video.py load_policy):
   1. ckpt 是 `.pt` 文件非目录 → 须特判 `if policy == "expert_mlp" and os.path.isfile(base_dir)` + `importlib.util.spec_from_file_location` 读 distill_expert.py 的 ExpertMLP 类 + `torch.load(base_dir)["model"]` (键是 `"model"` 不是 `"state_dict"`)
@@ -309,4 +309,4 @@ curl https://datadrive.world/api/relay/latest   # → {"error":"no data yet"} 40
 
 详细部署记录: `references/ecs-relay-deploy.md`
 全局数据空间 (dds.db) 更新流程 + 数据闭环统一口径: `references/dds-data-space-update.md`
-metaworld 数据源真相 (MT50 截取/nut-on-peg vs 光模块) + 光模块数据生成 (gen_peg_data.py) + rollout 推理修复 (obs dict/stats pad/corner2): `references/metaworld-data-source-and-peg-data.md`
+metaworld 数据源真相 (MT50 截取/nut-on-peg vs 插销) + 插销数据生成 (gen_peg_data.py) + rollout 推理修复 (obs dict/stats pad/corner2): `references/metaworld-data-source-and-peg-data.md`

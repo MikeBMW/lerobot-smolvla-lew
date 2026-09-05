@@ -59,7 +59,7 @@
 - **npz 压缩格式慢**: savez_compressed 的 npz, `d["observations"]` 每次访问**重新解压** (1.5s/帧) — 缓存 NpzFile 不够, 首次 load 后**提取数组到内存** (`self._npz_obs = d["observations"]`) → 翻帧 0-1ms (提速 1500x)
 - **AV1 编码 mp4 cv2 解码失败** (如 metaworld 数据集 videos/) → "帧 0 超出范围" — **有 train.npz 时优先走 npz** (numpy 可靠路径), 视频/parquet 兜底
 - **frame_slider 初始 maximum=0** → "下一帧点不了" — 打开查看器 `QTimer.singleShot(0, self._load_video_frame)` **自动加载第一帧** (maximum 就位)
-- **图像 180° 旋转按数据集类型区分**: 光模块数据 (peg*) 与视频同源需 rot90(k=2), metaworld_act 官方数据方向本来就对**不转** — 无条件旋转会转反 (老倪: "图像反了, 要旋转 180 度" 后又报 act 反了)
+- **图像 180° 旋转按数据集类型区分**: 插销数据 (peg*) 与视频同源需 rot90(k=2), metaworld_act 官方数据方向本来就对**不转** — 无条件旋转会转反 (老倪: "图像反了, 要旋转 180 度" 后又报 act 反了)
 - orin 采集包 (json, 无图像) → `_load_json_package` 显示包 meta + 帧 state/action 文本 (查看器加 json 分支)
 
 ## 📚 LIBRARY 全覆盖模式 (老倪: "所有模块都要来源于左侧") — 可复用

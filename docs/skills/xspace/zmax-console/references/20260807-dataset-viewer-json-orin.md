@@ -13,7 +13,7 @@ GUI 用**系统 python3**（有 PyQt5/numpy/PIL/cv2 5.0.0；**无 pandas/pyarrow
 - **NpzFile lazy 解压**：`np.load(压缩npz)` 后 `d["observations"]` **每次访问重新解压** → 翻帧 1.5s/帧！
   修：首次 load 时 `self._npz_obs = np.array(d["observations"])` 提取到内存 → 翻帧 1ms。
 - **AV1 mp4 解码失败**（metaworld_act 的 videos 是 AV1）→ "帧 0 超出范围" → 有 npz 时 npz 优先。
-- **180° 旋转按数据集区分**：光模块数据（路径含 "peg"）与视频同源需 `rot90(k=2)`；metaworld_act（MT50 官方数据）原始方向正确**不转** → 条件 `if "peg" in local_npz`。
+- **180° 旋转按数据集区分**：插销数据（路径含 "peg"）与视频同源需 `rot90(k=2)`；metaworld_act（MT50 官方数据）原始方向正确**不转** → 条件 `if "peg" in local_npz`。
 - **打开即自动加载第一帧**：`QTimer.singleShot(0, self._load_video_frame)` — 否则 frame_slider maximum=0，"下一帧点不了"。
 - **json 采集包**（orin_live: auto_*.json，meta{frames:150,n_joint:6} + frames[{observation.state, action}]，**无图像**）：`_load_json_package` 显示包名/meta/当前帧 state/action 文本；ep_slider 切包、frame_slider 切帧。
 

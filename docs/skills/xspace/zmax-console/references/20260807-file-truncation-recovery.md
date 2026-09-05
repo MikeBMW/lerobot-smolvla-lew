@@ -80,5 +80,5 @@ len 与像素无关)。
 ## 相关
 - 曲线 ts 必须写真实训练时间 (防 _check_newer_ckpt 误触发白屏): lerobot-act-training
   的"训练曲线 json 是易失资产"节
-- stats 39D-3D 广播补零 / obs dict 解包 / 光模块数据集: lerobot-act-training
+- stats 39D-3D 广播补零 / obs dict 解包 / 插销数据集: lerobot-act-training
   `references/rollout-inference-fixes.md`

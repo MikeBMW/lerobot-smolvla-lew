@@ -1,4 +1,4 @@
-# metaworld 数据源真相 + 光模块数据生成 + rollout 推理修复 (2026-08-07)
+# metaworld 数据源真相 + 插销数据生成 + rollout 推理修复 (2026-08-07)
 
 ## 数据源真相 (老倪追问"696帧怎么来的/成功率1.1%/任务数50"的完整答案)
 - `data/metaworld_mt50` = Meta-World MT50 基准 (49/50 任务), info.json **声明**
@@ -10,11 +10,11 @@
 - `data/metaworld_act/train.npz` (696帧) + val.npz (183) = prepare_metaworld.py
   转换上面 879 帧 (20% 按 episode 划验证, 图像缩 128×128, state 4D 来自
   observation.state)。**训练数据是 nut-on-peg, 而 rollout 评估用 peg-insert-side-v3
-  (光模块) — 任务不匹配 + 样本极少 (10 演示) = 插拔成功率瓶颈** (MLP 55%)。
+  (插销) — 任务不匹配 + 样本极少 (10 演示) = 插拔成功率瓶颈** (MLP 55%)。
 - `data/metaworld_peg` (08-06 生成) 只有 state+action, **无 observation.image 列**
   → VLA 不能用, 别指向它。
 
-## 光模块数据集生成 (gen_peg_data.py, 2026-08-07)
+## 插销数据集生成 (gen_peg_data.py, 2026-08-07)
 ```bash
 ./.venv/bin/python tools/gen_peg_data.py --eps 30 --out data/metaworld_peg_v2
 ```

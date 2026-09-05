@@ -219,7 +219,7 @@ tbl_rows = [[Paragraph(c, st) if isinstance(c, str) else c for c in row] for row
 - **完整清单见 `references/metaworld-dataset-generation.md`** — tasks.parquet / episodes 标准列 / 视频合并 / stats.json 三件套, 缺一即加载/训练失败
 - **场景选择与 AWE 优势**: push-v3 单段短程不突出 AWE; peg-insert (对准→插入→力反馈, 多阶段接触演化) 才是 AWE 世界模型的主场 — 老倪要"突出AWE优势"时选此类任务
 - **朴素专家策略产生恒定 action (2026-08-06 实测)**: 生成器默认"朝 goal 直线移动"在 peg-insert 上 action std≈0 (环境把末端速度衰减~1/7, 150步只移动0.15) → 数据无训练价值。**修复: 多阶段专家策略** (Phase1 水平快速接近 hole 上方 → Phase2 垂直缓慢插入+夹爪闭合 → Phase3 保持), 生成后 `action.std()` 应 >0.01 且夹爪维有多个离散值 (0/-0.5/-1)
-- **抓取类任务 (peg) 手写专家策略必然失败 (2026-08-06 终极修复, 老倪: "为什么桌子上的绿色长条物体(光模块)都没有拿起来")**: 手写 5 阶段 (接近→下降抓取→抬起→移孔→插入) 无论怎么调 gripper 指令 (-0.8/-1.0)、抓握点 (pegHead vs pegGrasp) 都抓不起 peg — peg_z 恒定 0.025。metaworld 抓取靠**末端精确接触+物理摩擦**, 不是夹爪指令。**正确解法: 用 metaworld 官方专家策略**:
+- **抓取类任务 (peg) 手写专家策略必然失败 (2026-08-06 终极修复, 老倪: "为什么桌子上的绿色长条物体(插销)都没有拿起来")**: 手写 5 阶段 (接近→下降抓取→抬起→移孔→插入) 无论怎么调 gripper 指令 (-0.8/-1.0)、抓握点 (pegHead vs pegGrasp) 都抓不起 peg — peg_z 恒定 0.025。metaworld 抓取靠**末端精确接触+物理摩擦**, 不是夹爪指令。**正确解法: 用 metaworld 官方专家策略**:
 ```python
 from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
 expert = SawyerPegInsertionSideV3Policy()   # get_action(obs) → 4D (delta_pos速度 + grab_effort)
@@ -243,7 +243,7 @@ obs, _, _, _, _ = env.step(a4[:4])          # ① 官方动作直接 step (别�
 ## 相机视角切换 (2026-08-06 老倪: "渲染角度换一下, 旋转90度, 从侧面看")
 - **`camera_name` 必须在 env 构造时传**: `env_cls(render_mode="rgb_array", camera_name="corner")` — 事后设 `env.camera_name = "corner"` 会被 gym 包装忽略 (渲染结果像素差异 0.0), `env.render(camera_name=...)` / `renderer.render('rgb_array', camera_id=N)` 都报 `unexpected keyword argument`
 - metaworld V3 有 7 相机: `topview`(默认, 俯视)/`corner`(斜侧45°)/`corner2/3/4`/`behindGripper`/`gripperPOV`
-- **默认俯视视角下 peg-insert 与 push 画面几乎一样** (mean 152 vs 154) → 老倪误判"还是原来的视频, 没有光模块"。斜侧 `corner` 才能看到光模块/孔立体结构
+- **默认俯视视角下 peg-insert 与 push 画面几乎一样** (mean 152 vs 154) → 老倪误判"还是原来的视频, 没有插销"。斜侧 `corner` 才能看到插销/孔立体结构
 - **验证视角真切换**: 新旧帧 `np.abs(a-b).mean()` 应 >50 (实测 corner vs topview = 77.3); 等于 0 = camera 设置被忽略
 - rollout_video.py 已加 `--camera corner` 参数 (透传到 env_cls 构造)
 
@@ -251,7 +251,7 @@ obs, _, _, _, _ = env.step(a4[:4])          # ① 官方动作直接 step (别�
 **corner 视角仍不合格** — 画面倒置 + 插孔被机械臂挡。三个候选方案实测结论:
 1. **改 cam_pos 无效**: `env.model.cam_pos[cid] = 旋转后坐标` 渲染 mean 不变 (103.0) — mujoco 相机看向固定 target, 改 pos 不生效, 放弃
 2. **纯帧旋转 (np.rot90) 解决"方向"但解决不了"看不到插孔"** — 插孔若本来在画面外, 旋转后还是看不到
-3. **换相机 + 帧旋转 = 正确组合**: 视角选择用**工作区纹理标准差** (中心 60% 区域 std 越高 = 光模块结构越清晰): corner2=54.5 / corner4=50.5 最高, corner=40.7 (被挡)。**corner2 (相机位置 1.3,-0.2, 恰是 corner(-1.1,-0.4) 逆时针绕原点转90° 的方向) + 帧 np.rot90(k=1) 逆时针** = 老倪要的效果
+3. **换相机 + 帧旋转 = 正确组合**: 视角选择用**工作区纹理标准差** (中心 60% 区域 std 越高 = 插销结构越清晰): corner2=54.5 / corner4=50.5 最高, corner=40.7 (被挡)。**corner2 (相机位置 1.3,-0.2, 恰是 corner(-1.1,-0.4) 逆时针绕原点转90° 的方向) + 帧 np.rot90(k=1) 逆时针** = 老倪要的效果
 ```bash
 # rollout_video.py 已加 --rotate-ccw 参数 (帧级 np.rot90, 在存帧前)
 .venv/bin/python tools/rollout_video.py --policy act --steps 60 --task peg-insert-side-v3 --camera corner2 --rotate-ccw --out reports/rollout_peg_act
@@ -441,10 +441,10 @@ DISPLAY=:0 MUJOCO_GL=glfw .venv/bin/python -u tools/distill_expert.py  # → out
 DISPLAY=:0 MUJOCO_GL=glfw .venv/bin/python -u tools/eval_distill.py    # → 抓起18/20 插入11/20
 ```
 - 数据收集: `env._get_obs()` 39D + 专家 `get_action()` 直接 step (不缩放), 300 episodes × 300 步 ≈ 5-8 分钟
-- **光模块专用数据 (peg_lerobot 24 eps) 再验 (2026-08-07)**: ACT 用光模块数据 4000 步 loss 64→0.585 (大幅收敛) 但 rollout_peg_check 仍 **0/5 没抬起** (最近孔距 0.245m) — 收敛 ≠ 行为对, 24 eps 对长程插拔链仍不足。**光模块数据 (npz→lerobot) 训练用 config_act_pegdata.yaml 派生 (root=data/metaworld_peg_lerobot) + save_freq:500 控 ckpt 数 (4000 步 8 个 ×1.4G 可控, 默认会存 25 个爆盘)**; 训练完先改 train_curve_act.json 的 ckpt 指向新目录再检测 (曲线是旧 ft 套环 403 点, 覆盖为光模块曲线: 日志 `loss[:=]\s*([\d.eE+-]+)` 解析 + K 展开 + 去重)
+- **插销专用数据 (peg_lerobot 24 eps) 再验 (2026-08-07)**: ACT 用插销数据 4000 步 loss 64→0.585 (大幅收敛) 但 rollout_peg_check 仍 **0/5 没抬起** (最近孔距 0.245m) — 收敛 ≠ 行为对, 24 eps 对长程插拔链仍不足。**插销数据 (npz→lerobot) 训练用 config_act_pegdata.yaml 派生 (root=data/metaworld_peg_lerobot) + save_freq:500 控 ckpt 数 (4000 步 8 个 ×1.4G 可控, 默认会存 25 个爆盘)**; 训练完先改 train_curve_act.json 的 ckpt 指向新目录再检测 (曲线是旧 ft 套环 403 点, 覆盖为插销曲线: 日志 `loss[:=]\s*([\d.eE+-]+)` 解析 + K 展开 + 去重)
 - **MLP 蒸馏路径坑 (2026-08-07)**: distill_expert.py 保存 `outputs/rl_peg/expert_mlp.pt`, 但 `rollout_peg_check.py --policy expert_mlp` 走 rollout_video.load_policy 找曲线 ckpt — 必须先改 train_curve_expert_mlp.json 的 ckpt 指向 `outputs/rl_peg/expert_mlp.pt` (或 load_policy 加 .pt 路径支持), 否则 FileNotFoundError: checkpoint 不存在。评估用 eval_distill.py (直接加载 .pt) 不走此坑
-- **rollout_video.py 的 expert_mlp 支持链 (2026-08-08 实测落地, 三连坑)**: 用 rollout_video/rollout_peg_check 评估蒸馏 MLP 时 load_policy 报 `checkpoint 不存在: outputs/rl_peg/expert_mlp.pt` — ①**load_policy 加 `.pt 文件特判`** (在 `if not os.path.isdir(base_dir)` 兜底前): `if policy == "expert_mlp" and os.path.isfile(base_dir):` → `spec_from_file_location("distill_expert", tools/distill_expert.py)` → `mod.ExpertMLP(obs_dim, act_dim)` → `load_state_dict(data["model"])` (distill 保存的键是 **"model" 不是 "state_dict"**, 格式 {"model": sd, "obs_dim": 39, "act_dim": 4}) ②**ExpertMLP 无 select_action → rollout_video.run_rollout 和 rollout_peg_check 的推理分支都要加 forward 分支** (`elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"): pred = policy(batch["observation.state"])` — 别让它落 awe 的 4 参 forward 分支报错) ③**st_dim 默认 2 坑**: ExpertMLP 无 state_dim 属性 → run_rollout 的 st_dim 推断 `getattr(policy, "state_dim", 2)` = 2 → 喂 2 维 → forward 崩 `mat1 (1x2) and mat2 (39x512)` → 动作恒 0。**加载后必须 `pol.state_dim = pol.obs_dim`** (39)。④`--policy choices` 加 expert_mlp/expert_policy (原只 5 模型)。修完验证: 动作均值 0→1.09 (真光模块动作)
-- **光模块数据蒸馏 MLP 首次插入成功 (2026-08-08 实测, 老倪"要能插入"达成)**: ACT 光模块 4000 步 (loss 64→0.585 收敛) 仍 0/5 没抬起 (最近孔距 0.245m) — **MLP 蒸馏 peg_lerobot 数据 (distill_expert.py 300 eps 专家采样) 一次成功 2/5 插入 (40%, 最小孔距 0.011m), 5/5 全部抬起**。结论强化: 插拔学不会不是架构是输入信息 (39D 完整 obs) — MLP 蒸馏 (39D 条件反射) > ACT 长训 (7 步 chunk 回归平均化)。**老倪要"能插入"时先跑 MLP 蒸馏 (~5 分钟: 300 eps 采样 + 15 epochs), 别先长训 ACT**
+- **rollout_video.py 的 expert_mlp 支持链 (2026-08-08 实测落地, 三连坑)**: 用 rollout_video/rollout_peg_check 评估蒸馏 MLP 时 load_policy 报 `checkpoint 不存在: outputs/rl_peg/expert_mlp.pt` — ①**load_policy 加 `.pt 文件特判`** (在 `if not os.path.isdir(base_dir)` 兜底前): `if policy == "expert_mlp" and os.path.isfile(base_dir):` → `spec_from_file_location("distill_expert", tools/distill_expert.py)` → `mod.ExpertMLP(obs_dim, act_dim)` → `load_state_dict(data["model"])` (distill 保存的键是 **"model" 不是 "state_dict"**, 格式 {"model": sd, "obs_dim": 39, "act_dim": 4}) ②**ExpertMLP 无 select_action → rollout_video.run_rollout 和 rollout_peg_check 的推理分支都要加 forward 分支** (`elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"): pred = policy(batch["observation.state"])` — 别让它落 awe 的 4 参 forward 分支报错) ③**st_dim 默认 2 坑**: ExpertMLP 无 state_dim 属性 → run_rollout 的 st_dim 推断 `getattr(policy, "state_dim", 2)` = 2 → 喂 2 维 → forward 崩 `mat1 (1x2) and mat2 (39x512)` → 动作恒 0。**加载后必须 `pol.state_dim = pol.obs_dim`** (39)。④`--policy choices` 加 expert_mlp/expert_policy (原只 5 模型)。修完验证: 动作均值 0→1.09 (真插销动作)
+- **插销数据蒸馏 MLP 首次插入成功 (2026-08-08 实测, 老倪"要能插入"达成)**: ACT 插销 4000 步 (loss 64→0.585 收敛) 仍 0/5 没抬起 (最近孔距 0.245m) — **MLP 蒸馏 peg_lerobot 数据 (distill_expert.py 300 eps 专家采样) 一次成功 2/5 插入 (40%, 最小孔距 0.011m), 5/5 全部抬起**。结论强化: 插拔学不会不是架构是输入信息 (39D 完整 obs) — MLP 蒸馏 (39D 条件反射) > ACT 长训 (7 步 chunk 回归平均化)。**老倪要"能插入"时先跑 MLP 蒸馏 (~5 分钟: 300 eps 采样 + 15 epochs), 别先长训 ACT**
 - **录屏交付 (2026-08-07 老倪: "先给飞书发个消息, 把录屏发过来, 我看看")**: WSLg 录控制台 = `ffmpeg -y -f x11grab -video_size 1400x900 -i :0 -t 15 -r 10 -c:v libx264 -pix_fmt yuv420p /tmp/console_rec.mp4` (DISPLAY=:0); 发飞书走 file_type=stream 上传 + msg_type=file (同 20260806-feishu-delivery.md); 静止画面会压缩到 ~10KB (正常, 画面动起来才大)
 - 评估环境必配: `camera_name="corner2"` + `_freeze_rand_vec=False` (同专家评估)
 - 成功率提升方向: 数据 300→600 episodes + MLP 容量加大; 或蒸馏后 PPO 微调 (理论可到 85%+)

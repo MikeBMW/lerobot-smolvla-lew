@@ -174,9 +174,9 @@ idxs = list(range(0, n, step))[:max_frames]
 **判别数据是否够学**: 插拔是长程任务, 10 episodes 不够; 要看 episode 数 × 每轨迹帧数,
 不是 info.json 的声明数。
 
-### 20. 下载数据任务不匹配 → 用官方专家策略生成任务专用数据 (2026-08-07 光模块)
-**症状**: 训练数据是 nut-on-peg (套环), 但评估/目标是 peg-insert-side (光模块) — 老倪:
-"不是光模块的数据"。mt50 下载只含 task 0, 无光模块轨迹。
+### 20. 下载数据任务不匹配 → 用官方专家策略生成任务专用数据 (2026-08-07 插销)
+**症状**: 训练数据是 nut-on-peg (套环), 但评估/目标是 peg-insert-side (插销) — 老倪:
+"不是插销的数据"。mt50 下载只含 task 0, 无插销轨迹。
 **方案**: 用 metaworld 官方专家策略采样目标任务的成功轨迹 (distill_expert.py 已有范式):
 ```python
 from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
@@ -229,7 +229,7 @@ if \"peg\" in (self.local_npz or \"\"):
 ```
 **教训: 数据集来源不同 (自采 corner2 vs 官方下载) 方向基准不同 — 旋转/方向处理先确认数据源, 别假设全局一致。**
 
-**坑8 — 数据集管理重复行删减原则 (2026-08-07 老倪连删)**: ①同一批数据两种格式 (peg_v2 npz 源 / peg_lerobot lerobot 训练格式) 显示两行 → 老倪\"这俩有啥区别\" → **只留训练用的那行** (peg_lerobot), npz 中间产物不显示 ②本地 metaworld_mt50 行与 HF 云端条目重复 → 删本地行留 HF ③4 个 orin 子目录 (同一台 Orin 分阶段) → 老倪\"就一个orin,不都一样么\" → **合并一行** ④数据集管理\"任务数\"列误填帧数 (4800/696) → 本地单任务数据任务数列填 \"—\"。**原则: 一数据源/一任务只显示一行, 中间产物/旧版本不显示; 名称两行 = 中文名(上)+官方任务名(下)** (如 `📁 光模块插拔\\npeg-insert-side-v3`)。
+**坑8 — 数据集管理重复行删减原则 (2026-08-07 老倪连删)**: ①同一批数据两种格式 (peg_v2 npz 源 / peg_lerobot lerobot 训练格式) 显示两行 → 老倪\"这俩有啥区别\" → **只留训练用的那行** (peg_lerobot), npz 中间产物不显示 ②本地 metaworld_mt50 行与 HF 云端条目重复 → 删本地行留 HF ③4 个 orin 子目录 (同一台 Orin 分阶段) → 老倪\"就一个orin,不都一样么\" → **合并一行** ④数据集管理\"任务数\"列误填帧数 (4800/696) → 本地单任务数据任务数列填 \"—\"。**原则: 一数据源/一任务只显示一行, 中间产物/旧版本不显示; 名称两行 = 中文名(上)+官方任务名(下)** (如 `📁 插销插拔\\npeg-insert-side-v3`)。
 
 ### 26. --tactile/--rel-vec 生成路径: 丢轨迹后三处元数据不重编号 (2026-08-09 触觉49D数据 Invalid key: 44 out of 44)
 **症状**: `gen_metaworld_data.py --eps 50 --tactile` 生成"4500帧/30轨迹"后, VLA-Touch/AWE 训练

@@ -20,10 +20,10 @@
    修: `elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"): pred = policy(batch["observation.state"])` (39D 直出动作) — **rollout_video.py 和 rollout_peg_check.py 两处都要加**
 3. **--policy choices**: argparse choices 须含 expert_mlp/expert_policy (原只 5 模型)
 
-## MLP 蒸馏 > ACT 长训 (光模块插入)
-- ACT 光模块数据 4000 步: loss 64→0.585 收敛, 但 rollout 0/5 (销钉没抬起 — 动作链没学会)
+## MLP 蒸馏 > ACT 长训 (插销插入)
+- ACT 插销数据 4000 步: loss 64→0.585 收敛, 但 rollout 0/5 (销钉没抬起 — 动作链没学会)
 - **MLP 蒸馏 (distill_expert.py, 专家 300 eps 采样 + 15 epochs, loss 0.507): 插入 2/5 (40%), 最小孔距 0.011m** — 5/5 全抬起
-- 教训: 长程精确操作 (光模块) 数据不足时, **从专家策略蒸馏小模型 (纯 state→action) 立竿见影**, 远胜长训大模型
+- 教训: 长程精确操作 (插销) 数据不足时, **从专家策略蒸馏小模型 (纯 state→action) 立竿见影**, 远胜长训大模型
 - 曲线更新: act 曲线 ts/ckpt 指向新训练目录后, Scope 显示新 loss; 解析日志正则先展开 `step:1K`
 
 ## 数据闭环控制台模型选择器 (PipelinePanel)
