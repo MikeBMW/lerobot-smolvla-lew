@@ -4219,8 +4219,8 @@ class SimulinkModule(QWidget):
         #  on_z_analysis 保留 (9232 自动流程仍走), open_ff_pd_top 保留 (方法)
         # 🧮 状态空间 (2026-08-17 老倪: 状态空间模型画布 — 时空感知→并行认知→决策执行→物理闭环)
         self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: S1时空感知前端(43D obs) → S2并行处理层(前馈加速器+自适应状态估计器) → S3认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)", self.open_state_space, "#87CEEB")
-        # 🧭 3D 视图 (2026-08-25 老倪: Apollo 风格 3D 分层视图 — 实时场景+YOLO框+action目标点+处理层叠加)
-        self.btn_ss_3d = mk_btn("🧭 3D 视图", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
+        # (🗑 2026-09-04 老倪: 工具栏「🧭 3D 视图」按钮删除 — 入口移到状态空间画布
+        #  「🔭 可视化层」🧭 3D 视图 节点 (open_ss_3d 方法保留, 节点执行调它)
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
@@ -4233,7 +4233,6 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.chk_engine_demo)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_state_space)
-        tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)

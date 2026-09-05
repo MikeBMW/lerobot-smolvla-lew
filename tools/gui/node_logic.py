@@ -2233,6 +2233,26 @@ def node_ss_video(ctx):
     return True
 
 
+def node_ss_3d_view(ctx):
+    """🧭 3D 视图 — 打开 Apollo 风格 3D 分层视图 (可视化层观察器, 源=物理世界)
+    ▶运行 模式跳过弹窗 (同操作视频); 双击/右键运行 → 打开/置顶 3D 窗口"""
+    module = ctx.get("module")
+    label = ctx.get("label", "")
+    log = ctx.get("log")
+    if label == "▶运行":
+        if log:
+            log("🧭 3D 视图: 运行模式跳过弹窗 — 双击节点打开 (防断点冻结关不掉)")
+        return True
+    if module and hasattr(module, "open_ss_3d"):
+        module.open_ss_3d()
+        if log:
+            log("🧭 3D 视图: 已打开 (Apollo 风格分层视图, 与引擎/画布同源)")
+        return True
+    if log:
+        log("⚠️ 3D 视图: 无 module 上下文 (仅画布内双击/右键运行可用)")
+    return False
+
+
 def node_ss_scope(ctx):
     """📊 仿真波形 — 双击显示最近一次状态空间仿真波形 (距离/残差/接触概率 + 阶段切换)"""
     module = ctx.get("module")
@@ -2296,6 +2316,7 @@ _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/
 _reg("ss_world", ["物理世界"], "🌍 物理世界 — 执行结果→传感器反馈 z_k→卡尔曼校正闭环 (源码 execution.py PhysicalWorld)", node_ss_exec)
 _reg("ss_video", ["操作视频"], "🎥 操作视频 — metaworld 训练后 rollout 视频对比窗口 (多模型同步播放, InferenceVideoDialog)", node_ss_video)
 _reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空间仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)", node_ss_scope)
+_reg("ss_3d_view", ["3D 视图"], "🧭 3D 视图 — Apollo 风格 3D 分层视图 (与引擎/画布同源, 可视化层观察器; 源=物理世界)", node_ss_3d_view)
 
 
 # ════════════════════════════════════════════════════════════════
