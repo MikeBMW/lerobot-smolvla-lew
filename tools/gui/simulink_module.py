@@ -1062,6 +1062,15 @@ class StateSpaceScopeDialog(QDialog):
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stages = tr.get("stage", [])
         self._t = np.asarray(tr.get("t", []), dtype=float)
+        self._cursor = None   # 🔭 2026-09-05: 播放光标 (set_cursor 推进, 波形随运行增长)
+
+    def set_cursor(self, idx):
+        """🔭 播放光标: 只画到第 idx 步 (与 3D/画布同一游标, 波形逐帧增长)"""
+        try:
+            self._cursor = int(idx)
+            self.update()
+        except Exception:
+            pass
 
     def paintEvent(self, ev):
         # 🐛 2026-08-18: paintEvent 必须 try — PyQt5 虚函数重写里 Python 异常
@@ -1089,25 +1098,32 @@ class StateSpaceScopeDialog(QDialog):
             p.end()
             return
         r = self.rect().adjusted(12, 12, -12, -40)
+        # 🔭 2026-09-05 播放光标: set_cursor(idx) → 只画到该步 (波形随运行增长, 与 3D/画布同帧)
+        _cursor = getattr(self, "_cursor", None)
+        _k = len(self._t)
+        if _cursor is not None:
+            _k = min(max(1, int(_cursor) + 1), _k)
+        _tv = self._t[:_k]
+        _playing = _cursor is not None and _k < len(self._t)
         # 🎯 2026-09-04 老倪(0.5mm/0.5s 验收): 插深剩余/横向错位 波形 + 底部验收摘要
-        _rem = np.asarray(self._tr.get("mani_rem", []), dtype=float)
-        _dperp = np.asarray(self._tr.get("mani_dperp", []), dtype=float)
-        # 插入段窗口: 插深剩余首次 <20mm → 末帧
+        _rem = np.asarray(self._tr.get("mani_rem", []), dtype=float)[:_k]
+        _dperp = np.asarray(self._tr.get("mani_dperp", []), dtype=float)[:_k]
+        # 插入段窗口: 插深剩余首次 <20mm → 当前帧
         _i0 = int(np.argmax(_rem < 0.020)) if _rem.size and np.any(_rem < 0.020) else 0
-        _T_ins = float(self._t[-1] - self._t[_i0]) if _rem.size else 0.0
+        _T_ins = float(_tv[-1] - _tv[_i0]) if _rem.size else 0.0
         _dperp_end = float(_dperp[-1] * 1000) if _dperp.size else float("nan")
         _rem_end = float(_rem[-1] * 1000) if _rem.size else float("nan")
         _pass_t = _T_ins < 0.5
         _pass_p = (_dperp_end < 0.5) if np.isfinite(_dperp_end) else False
-        _done = bool(self._tr.get("done", [False])[-1])
+        _done = bool((self._tr.get("done") or [False])[_k - 1]) if _k else False
         # 2x4 子图: 距离/前馈/残差/接触 + 法向偏离/η + 插深剩余(mm)/横向错位(mm)
         plots = [
-            ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff", {}),
-            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922", {}),
-            ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e", {}),
-            ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950", {}),
-            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", [0])), "#ff7b72", {}),
-            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", [0])), "#a371f7", {}),
+            ("距离孔位 (m)", np.asarray(self._tr["dist"])[:_k], "#58a6ff", {}),
+            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"])[:_k], "#d29922", {}),
+            ("残差 |r|", np.asarray(self._tr["residual"])[:_k], "#f0883e", {}),
+            ("接触概率", np.asarray(self._tr["contact_p"])[:_k], "#3fb950", {}),
+            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", [0]))[:_k], "#ff7b72", {}),
+            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", [0]))[:_k], "#a371f7", {}),
             ("插深剩余 (mm) · 阈 0.5", _rem, "#00d4aa", {"mm": True, "thr": 0.0005, "ins": True}),
             ("横向错位 (mm) · 阈 0.5", _dperp, "#ffd700", {"mm": True, "thr": 0.0005, "ins": True}),
         ]
@@ -1123,8 +1139,8 @@ class StateSpaceScopeDialog(QDialog):
             f = QFont("WenQuanYi Micro Hei", 14); f.setBold(True)
             p.setFont(f)
             p.drawText(int(x0 + 8), int(y0 + 20), title)
-            # 数据窗口: 插入段放大格只画 插入段
-            _t = self._t
+            # 数据窗口: 插入段放大格只画 插入段 (到播放光标)
+            _t = _tv
             _y = y
             if opt.get("ins") and _rem.size and _i0 > 0:
                 _sl = slice(int(max(0, _i0 - 8)), len(_t))
@@ -1158,13 +1174,13 @@ class StateSpaceScopeDialog(QDialog):
             p.drawText(int(x0 + w - 46), int(y0 + h - 4), "t (s)")
             # 阈值线 (0.5mm, 红虚线 + 标注)
             if opt.get("thr"):
-                _tv = float(opt["thr"]) * 1000.0
-                if ymin <= _tv <= ymax:
+                _thr_v = float(opt["thr"]) * 1000.0
+                if ymin <= _thr_v <= ymax:
                     p.setPen(QPen(QColor("#ff4444"), 1.5, Qt.DashLine))
-                    p.drawLine(int(X(t0)), int(Y(_tv)), int(X(t1)), int(Y(_tv)))
+                    p.drawLine(int(X(t0)), int(Y(_thr_v)), int(X(t1)), int(Y(_thr_v)))
                     p.setPen(QColor("#ff4444"))
                     p.setFont(QFont("WenQuanYi Micro Hei", 11))
-                    p.drawText(int(x0 + 8), int(Y(_tv) - 4), "0.5mm 验收线")
+                    p.drawText(int(x0 + 8), int(Y(_thr_v) - 4), "0.5mm 验收线")
             # 曲线
             pen = QPen(QColor(color), 2.5)
             p.setPen(pen)
@@ -1179,11 +1195,11 @@ class StateSpaceScopeDialog(QDialog):
                 p.setFont(QFont("WenQuanYi Micro Hei", 12, QFont.Bold))
                 p.drawText(int(x0 + w - 170), int(y0 + 20),
                            f"插入段 {_T_ins:.2f}s (<0.5s: {'✅' if _pass_t else '❌'})")
-            # 阶段切换竖线 + 标签 (第一子图画)
+            # 阶段切换竖线 + 标签 (第一子图画, 只画已播放区间)
             if i == 0:
                 p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
                 last = None
-                for j, st in enumerate(self._stages):
+                for j, st in enumerate(self._stages[:_k]):
                     s = st.replace("阶段 ", "")
                     if s != last:
                         last = s
@@ -1193,12 +1209,18 @@ class StateSpaceScopeDialog(QDialog):
                         p.drawText(int(X(self._t[j]) + 3), int(y0 + 14), s[:2])
                         p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
         # 🏆 底部验收摘要 (2026-09-04 老倪: 只看一件事 — 能不能插入 + 时间<0.5s + 偏差<0.5mm)
-        _verdict = "✅ 插入成功" if (_done and _pass_t and _pass_p) else "❌ 未达标"
-        p.setPen(QColor("#00d4aa") if "✅" in _verdict else QColor("#ff4444"))
-        p.setFont(QFont("WenQuanYi Micro Hei", 15, QFont.Bold))
-        _sum = (f"{_verdict} · 总用时 {self._t[-1]:.2f}s · 插入段 {_T_ins:.2f}s (<0.5s) · "
-                f"末横向错位 {_dperp_end:.2f}mm (<0.5mm) · 插深剩余 {_rem_end:.2f}mm")
-        p.drawText(int(r.left() + 16), int(r.bottom() + 30), _sum)
+        if _playing:
+            p.setPen(QColor("#58a6ff"))
+            p.setFont(QFont("WenQuanYi Micro Hei", 15, QFont.Bold))
+            p.drawText(int(r.left() + 16), int(r.bottom() + 30),
+                       f"▶ 运行播放中 t={_tv[-1]:.2f}s · 波形随引擎真实逐帧增长 (同一游标与 3D/画布同步)")
+        else:
+            _verdict = "✅ 插入成功" if (_done and _pass_t and _pass_p) else "❌ 未达标"
+            p.setPen(QColor("#00d4aa") if "✅" in _verdict else QColor("#ff4444"))
+            p.setFont(QFont("WenQuanYi Micro Hei", 15, QFont.Bold))
+            _sum = (f"{_verdict} · 总用时 {_tv[-1]:.2f}s · 插入段 {_T_ins:.2f}s (<0.5s) · "
+                    f"末横向错位 {_dperp_end:.2f}mm (<0.5mm) · 插深剩余 {_rem_end:.2f}mm")
+            p.drawText(int(r.left() + 16), int(r.bottom() + 30), _sum)
         p.end()
 
 
@@ -9187,10 +9209,13 @@ class SimulinkModule(QWidget):
             return
         try:
             dlg = StateSpaceScopeDialog(tr, parent=self)
+            self._ss_scope_wins = [w for w in getattr(self, "_ss_scope_wins", [])
+                                   if w is not None]   # 🔭 播放光标推送登记
+            self._ss_scope_wins.append(dlg)
             self._show_nonmodal(dlg)
             # 🎯 show 之后才定位 — move 在 show 前会被 Qt 居中父窗口覆盖
             self._popup_on_main_screen(dlg)
-            self._log("📊 仿真波形: 距离/前馈/残差/接触概率 曲线 (阶段切换已标注)")
+            self._log("📊 仿真波形: 距离/前馈/残差/接触概率 曲线 (阶段切换已标注, 播放中随引擎逐帧增长)")
         except Exception as e:
             self._log(f"⚠️ Scope 打开失败: {e}")
 
@@ -11021,6 +11046,27 @@ class SimulinkModule(QWidget):
                     if getattr(_w, "tr", None) is not tr:
                         _w.set_trajectory(tr)
                     _w.set_frame(idx)
+            except Exception:
+                pass
+            # 🔭 2026-09-05 老倪(信号同步严查): 直方图/归因/Scope 接同一播放帧流 —
+            #   每 2 tick 从 probe_seq[idx] push (运行过程逐帧动态), Scope 光标到 idx (波形增长)
+            try:
+                ps = tr.get("probe_seq") or []
+                if ps and idx < len(ps):
+                    _wh = getattr(self, "_ff_hist_win", None)
+                    _wa = getattr(self, "_ff_attr_win", None)
+                    if (_wh is not None or _wa is not None) and self._ss_round % 2 == 0:
+                        _p = ps[idx]
+                        if _wh is not None:
+                            _wh.push(_p)
+                        if _wa is not None:
+                            _wa.push(_p)
+                import sip as _sip
+                for _w in getattr(self, "_ss_scope_wins", []):
+                    if _w is None or _sip.isdeleted(_w) or not _w.isVisible():
+                        continue
+                    if hasattr(_w, "set_cursor"):
+                        _w.set_cursor(idx)
             except Exception:
                 pass
             # 🔌 数据总线: 抽稀 feed (每 ~5 tick 一次快照, 动态滚动不刷爆)

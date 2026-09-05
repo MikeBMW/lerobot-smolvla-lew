@@ -285,6 +285,7 @@ class StateSpaceSim:
               # 🧮 2026-09-03 流形层逐帧序列 (Scope 全程曲线/验证层数据源)
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "mani_rem": [], "mani_dperp": [],   # 🎯 2026-09-04: 插深剩余/横向错位 (0.5mm 验收)
+              "probe_seq": [],                    # 🔭 2026-09-05: 每步前馈探针快照 (播放逐帧同步直方图/归因)
               "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
@@ -305,6 +306,14 @@ class StateSpaceSim:
             obs = self._build_obs(force)
             # ③ 快通道: 前馈加速器
             u_ff = self.accel.forward(obs)
+            # 🔭 2026-09-05 老倪(信号同步严查): 每步前馈探针快照存全序列 —
+            #   GUI 播放逐帧 push 直方图/归因 (运行过程每一帧都看得到, 非末帧静态)
+            try:
+                _pr = getattr(self.accel, "probe", None)
+                if _pr is not None and _pr.get("act_raw") is not None:
+                    tr["probe_seq"].append(dict(_pr))   # act_raw 数组引用持有该步激活
+            except Exception:
+                pass
             # 🐛 卡尔曼预测的控制输入必须是**上一步真正下发给执行器的量** (u_exec),
             #   原来用 u_ff (前馈建议) — 实测两者模长差 3.12 倍 ⇒ 预测拿"没执行的动作"外推,
             #   凭空制造预测误差 (离线重放: 改用 u_exec 后误差 3.60→3.01mm)
