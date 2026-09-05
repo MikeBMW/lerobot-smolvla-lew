@@ -338,7 +338,8 @@
    "params": {
     "state_space": true,
     "state_space_scope": true,
-    "desc": "仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)"
+    "desc": "仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)",
+    "viz_kind": "scope"
    },
    "inputs": [
     "in1",
@@ -362,7 +363,8 @@
    "params": {
     "state_space": true,
     "state_space_rollout": true,
-    "desc": "操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"
+    "desc": "操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)",
+    "viz_kind": "video"
    },
    "inputs": [
     "in1"
@@ -854,7 +856,8 @@
    "params": {
     "state_space": true,
     "desc": "前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断)",
-    "source": "tools/gui/node_logic.py · node_ss_ff_hist"
+    "source": "tools/gui/node_logic.py · node_ss_ff_hist",
+    "viz_kind": "hist"
    }
   },
   {
@@ -870,7 +873,8 @@
    "params": {
     "state_space": true,
     "desc": "归因·分工 — 512单元按输出维分工: 堆叠图(谁在指挥)+散点(PCA/t-SNE)",
-    "source": "tools/gui/node_logic.py · node_ss_ff_attrib"
+    "source": "tools/gui/node_logic.py · node_ss_ff_attrib",
+    "viz_kind": "attrib"
    }
   },
   {
@@ -886,7 +890,8 @@
    "params": {
     "state_space": true,
     "desc": "3D 分层视图 — Apollo 风格 (YOLO框/末端轨迹/处理层叠加, 每层可开关)",
-    "source": "tools/gui/node_logic.py · node_ss_3d_view"
+    "source": "tools/gui/node_logic.py · node_ss_3d_view",
+    "viz_kind": "3d"
    }
   },
   {

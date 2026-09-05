@@ -4219,8 +4219,9 @@ class SimulinkModule(QWidget):
         #  on_z_analysis 保留 (9232 自动流程仍走), open_ff_pd_top 保留 (方法)
         # 🧮 状态空间 (2026-08-17 老倪: 状态空间模型画布 — 时空感知→并行认知→决策执行→物理闭环)
         self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: S1时空感知前端(43D obs) → S2并行处理层(前馈加速器+自适应状态估计器) → S3认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)", self.open_state_space, "#87CEEB")
-        # (🗑 2026-09-04 老倪: 工具栏「🧭 3D 视图」按钮删除 — 入口移到状态空间画布
-        #  「🔭 可视化层」🧭 3D 视图 节点 (open_ss_3d 方法保留, 节点执行调它)
+        # (🗑 2026-09-04 老倪: 工具栏「🧭 3D 视图」按钮曾删除 → 恢复 (用户要求保留工具栏入口;
+        #   画布 🔭可视化层 也有 🧭 3D 视图 节点, 双入口同开 open_ss_3d)
+        self.btn_ss_3d = mk_btn("🧭 3D 视图", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
@@ -4233,6 +4234,7 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.chk_engine_demo)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_state_space)
+        tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -6180,14 +6182,9 @@ class SimulinkModule(QWidget):
         try:
             from state_space_sim import StateSpaceSim
             sim = StateSpaceSim(log=self._log)
-            _npz = os.path.join(self._repo_root(), "models", "ss_left_brain.npz")
-            if os.path.exists(_npz):
-                try:
-                    from state_space_sim import load_trained_left_brain
-                    sim.accel.forward = load_trained_left_brain(_npz)
-                    self._log("🧠 前馈加速器已加载训练模型 (左脑 MLP 39D→4D)")
-                except Exception:
-                    pass
+            # 🧠 2026-09-04: parallel.FeedforwardAccelerator 已内置 npz 加载+守卫+探针
+            #   (旧: 这里用 load_trained_left_brain 覆盖 forward → 探针停更+无守卫, 已废弃)
+            self._ss_last_sim = sim      # 🔭 可视化层取末帧探针 (直方图/归因窗口)
             tr = sim.run(io_every=25)
             # 🎯 2026-09-03: 单步/右键与 ▶运行 同源 — 真实 YOLO 感知采样一次 (detect_3d 断点可进)
             self._real_yolo_sense_once()
@@ -9108,6 +9105,41 @@ class SimulinkModule(QWidget):
         except Exception as e:
             self._log(f"⚠️ Scope 打开失败: {e}")
 
+    def _open_viz_node(self, kind):
+        """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
+        hist/attrib: 窗口单例 + 有引擎末帧探针则填入 (真实数据, 无则不造假只提示)"""
+        try:
+            if kind == "scope":
+                self.show_state_space_scope()
+                return
+            if kind == "video":
+                self.on_infer_video()
+                return
+            if kind == "3d":
+                self.open_ss_3d()
+                return
+            if kind in ("hist", "attrib"):
+                from ff_hist_view import FFHistView
+                from ff_attrib_view import FFAttribView
+                win = getattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", None)
+                if win is None:
+                    win = (FFHistView() if kind == "hist" else FFAttribView())
+                    setattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", win)
+                # 末帧探针 (引擎刚跑完或上次运行留下的真实数据; 播放中请用 ⏭单步 逐帧采集)
+                sim = getattr(self, "_ss_last_sim", None)
+                probe = getattr(getattr(sim, "accel", None), "probe", None)
+                if probe and probe.get("act_raw"):
+                    win.push(probe)
+                win.show()
+                win.raise_()
+                win.activateWindow()
+                self._log(f"🔭 {'🧠 前馈激活直方图' if kind == 'hist' else '🎯 归因·分工'} 已打开"
+                          f"{' (含末帧探针)' if probe and probe.get('act_raw') else ' — 运行 ▶/⏭ 后自动累积数据'}")
+                return
+            self._log(f"🔭 未知可视化类型: {kind}")
+        except Exception as e:
+            self._log(f"⚠️ 可视化窗口打开失败: {e}")
+
     def on_scope(self, **kw):
         """📊 Scope 示波器: 显示最近训练 loss 曲线 (Simulink Scope 对标)"""
         try:
@@ -9143,6 +9175,11 @@ class SimulinkModule(QWidget):
         #   ⚠️ 必须放最前 — ssfeat/sstest 带 source 字段, 会被下方"数据源切换"分支抢先拦截
         if params.get("verif_layer"):
             self._open_verif_dialog(node)
+            return
+        # 🔭 可视化层观察器 (2026-09-04 老倪: 直方图/归因/仿真波形/3D/操作视频 双击 → 开显示窗口;
+        #   必须放 source 分支前 — 这些节点带 source 字段会被"数据源切换"抢先)
+        if params.get("viz_kind"):
+            self._open_viz_node(params.get("viz_kind"))
             return
         # 🌍 物理世界节点 → 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)
         if params.get("state_space") and "物理世界" in node.get("name", ""):

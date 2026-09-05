@@ -2055,14 +2055,23 @@ def node_ss_ff_hist(ctx):
                 log("🧠 前馈激活: 无探针数据 — 先运行 ⚡前馈加速器节点 (▶运行或单步)")
             return False
         global _FF_HIST_WIN
-        if _FF_HIST_WIN is None:
-            from ff_hist_view import FFHistView   # 同目录, 延迟 import (Qt 依赖)
-            _FF_HIST_WIN = FFHistView()
-        _FF_HIST_WIN.push(probe)
-        if not _FF_HIST_WIN.isVisible():
-            _FF_HIST_WIN.show()
-        _FF_HIST_WIN.raise_()
-        _FF_HIST_WIN.activateWindow()
+        _win = getattr(ctx.get("module"), "_ff_hist_win", None)   # 优先 module 侧单例 (双击同窗)
+        if _win is None:
+            if _FF_HIST_WIN is None:
+                from ff_hist_view import FFHistView   # 同目录, 延迟 import (Qt 依赖)
+                _FF_HIST_WIN = FFHistView()
+            _win = _FF_HIST_WIN
+            if ctx.get("module") is not None:
+                try:
+                    ctx["module"]._ff_hist_win = _win
+                except Exception:
+                    pass
+        _FF_HIST_WIN = _win
+        _win.push(probe)
+        if not _win.isVisible():
+            _win.show()
+        _win.raise_()
+        _win.activateWindow()
         if log:
             ls = probe.get("layers") or []
             _act = " · ".join(f"L{i+1}:{l.get('active', 0)}/512" for i, l in enumerate(ls))
@@ -2086,14 +2095,23 @@ def node_ss_ff_attrib(ctx):
                 log("🎯 归因分工: 无探针数据 — 先运行 ⚡前馈加速器节点")
             return False
         global _FF_ATTR_WIN
-        if _FF_ATTR_WIN is None:
-            from ff_attrib_view import FFAttribView   # 延迟 import (Qt 依赖)
-            _FF_ATTR_WIN = FFAttribView()
-        _FF_ATTR_WIN.push(probe)
-        if not _FF_ATTR_WIN.isVisible():
-            _FF_ATTR_WIN.show()
-        _FF_ATTR_WIN.raise_()
-        _FF_ATTR_WIN.activateWindow()
+        _win = getattr(ctx.get("module"), "_ff_attr_win", None)   # 优先 module 侧单例 (双击同窗)
+        if _win is None:
+            if _FF_ATTR_WIN is None:
+                from ff_attrib_view import FFAttribView   # 延迟 import (Qt 依赖)
+                _FF_ATTR_WIN = FFAttribView()
+            _win = _FF_ATTR_WIN
+            if ctx.get("module") is not None:
+                try:
+                    ctx["module"]._ff_attr_win = _win
+                except Exception:
+                    pass
+        _FF_ATTR_WIN = _win
+        _win.push(probe)
+        if not _win.isVisible():
+            _win.show()
+        _win.raise_()
+        _win.activateWindow()
         if log:
             log("🎯 归因分工: 已更新 (堆叠=4维驱动能量 · 散点: 点 PCA 或 t-SNE 生成)")
         return True
