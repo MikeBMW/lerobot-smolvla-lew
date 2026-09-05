@@ -1,0 +1,58 @@
+[
+ {
+  "case": "viz_env",
+  "desc": "打开环境: 状态空间画布加载 (42 节点含🔭可视化层)",
+  "pass": true,
+  "evidence": "",
+  "detail": "nodes=42"
+ },
+ {
+  "case": "viz_engine",
+  "desc": "引擎仿真: 轨迹生成 (可视化数据源)",
+  "pass": true,
+  "evidence": "",
+  "detail": "轨迹 330 步"
+ },
+ {
+  "case": "viz_feed",
+  "desc": "激活采集: 真实 obs 150 帧回放 (MLP 真实前向)",
+  "pass": true,
+  "evidence": "",
+  "detail": "150 帧"
+ },
+ {
+  "case": "viz_hist",
+  "desc": "🧠 直方图: 三层 512 激活分布窗口打开且有数据",
+  "pass": true,
+  "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_hist.png",
+  "detail": "buf=[150, 150, 150] 内容比=0.059"
+ },
+ {
+  "case": "viz_attrib",
+  "desc": "🎯 归因: 堆叠图 + 512 单元 PCA 散点 (4 输出维分工)",
+  "pass": true,
+  "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_attrib.png",
+  "detail": "帧=120 PCA=(512, 2) 内容比=0.168"
+ },
+ {
+  "case": "viz_scope",
+  "desc": "📊 仿真波形: 距离/前馈/残差/接触 曲线",
+  "pass": true,
+  "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_scope.png",
+  "detail": "轨迹 330 步 内容比=0.108"
+ },
+ {
+  "case": "viz_3d",
+  "desc": "🧭 3D 视图: 分层视图窗口渲染",
+  "pass": true,
+  "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_3d.png",
+  "detail": "内容比=0.099"
+ },
+ {
+  "case": "viz_video",
+  "desc": "🎥 操作视频: 播放窗口",
+  "pass": true,
+  "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_video.png",
+  "detail": "内容比=0.472"
+ }
+]
