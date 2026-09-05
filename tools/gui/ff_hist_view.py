@@ -14,9 +14,9 @@
   win = FFHistView(); win.push(probe); win.show()
 """
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QRect
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel
+from PyQt5.QtWidgets import QDialog
 
 # 🎨 深色面板 (数据视图风格, 单色系克制)
 _BG_TOP = QColor("#0d1117")
@@ -83,12 +83,12 @@ class FFHistView(QDialog):
             n = len(self.buf[0])
             ob = self.info.get("obs", {})
             u = self.info.get("u_ff", [])
-            u_txt = (f"输出 u_ff=[{u[0]:+.2f} {u[1]:+.2f} {u[2]:+.2f} m/s · 夹爪{'闭合' if u[3] else '张开'}]"
+            u_txt = (f"输出 u_ff=[{u[0]:+.2f} {u[1]:+.2f} {u[2]:+.2f} · 夹爪{'闭合' if u[3] else '张开'}]"
                      if u else "输出 u_ff=—")
             d_txt = f"手到目标 d={ob.get('d_h', 0):.2f}m" if ob and ob.get("d_h") is not None else ""
             self._cap_text = (
                 f"🧠 累积 {n}/150 帧 · {u_txt} · {d_txt}\n"
-                f"白柱=近150帧激活分布 · 朱红=最近一帧 · 0处高峰=休眠单元 · 右尾=正在工作的特征")
+                f"白柱=近150帧分布 · 红点=最近帧 · 0=休眠 · 右尾=正在工作")
         except Exception:
             pass
         self._dirty = True
@@ -104,19 +104,26 @@ class FFHistView(QDialog):
             p = QPainter(self)
             r = self.rect()
             p.fillRect(r, _BG_TOP)
-            # 顶部状态条 (QPainter 自绘, 流式行距, 无布局依赖)
-            p.fillRect(0, 0, r.width(), 78, QColor("#161b22"))
+            # 顶部状态条: 画在矩形内自动换行 (任何 DPI/文字长度不重叠)
+            sb = QRect(16, 10, r.width() - 32, 76)
+            p.fillRect(0, 0, r.width(), 86, QColor("#161b22"))
             lines = str(self._cap_text).split("\n")
             p.setPen(_TEXT)
-            p.setFont(QFont("Sans", 13, QFont.Bold))
-            fh1 = p.fontMetrics().height()
-            p.drawText(16, 14 + fh1, lines[0])
-            yy = 14 + fh1 + 8
+            p.setFont(QFont("Sans", 12, QFont.Bold))
+            fm = p.fontMetrics()
+            h1 = fm.boundingRect(QRect(0, 0, sb.width(), 2000),
+                                 Qt.TextWordWrap, lines[0]).height() + 4
+            p.drawText(QRect(sb.x(), sb.y(), sb.width(), h1),
+                       Qt.TextWordWrap | Qt.AlignVCenter, lines[0])
             if len(lines) > 1:
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 10))
-                p.drawText(16, yy + p.fontMetrics().height(), lines[1])
-            top = 84
+                fm = p.fontMetrics()
+                h2 = fm.boundingRect(QRect(0, 0, sb.width(), 2000),
+                                     Qt.TextWordWrap, lines[1]).height()
+                p.drawText(QRect(sb.x(), sb.y() + h1 + 4, sb.width(), h2),
+                           Qt.TextWordWrap | Qt.AlignVCenter, lines[1])
+            top = 92
             if not any(self.buf):
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 13))
@@ -141,81 +148,93 @@ class FFHistView(QDialog):
                 pass
 
     def _draw_row(self, p, li, W, y0, row_h):
-        """一行 = 左侧语义面板 + 右侧大直方图 (流式布局: 行距=字高自适应, 高DPI不重叠)"""
-        # ── 左侧: 层信息 (垂直流式, 行距按 fontMetrics 实际字高; 坐标全 int) ──
-        lx = 22
+        """一行 = 左侧语义面板 + 右侧大直方图.
+        全部文字用矩形自动换行 (TextWordWrap), 行高=字体实际高度流式累加 — 任何 DPI/文字长度不重叠"""
         info_w = 330
-        yy = int(y0) + 6
+        # ── 左侧列 (wrap 流式) ──
+        lx = 20
+        col_w = info_w - 36
+        yy = int(y0) + 4
         p.setPen(_TEXT)
-        p.setFont(QFont("Sans", 13, QFont.Bold))
-        fh = p.fontMetrics().height()
-        p.drawText(lx, int(yy + fh), LAYER_NAMES[li])
-        yy += fh + 8
+        p.setFont(QFont("Sans", 12, QFont.Bold))
+        fm = p.fontMetrics()
+        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
+                            LAYER_NAMES[li]).height()
+        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap, LAYER_NAMES[li])
+        yy += h + 6
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        fh = p.fontMetrics().height()
-        p.drawText(lx, int(yy + fh), LAYER_DESC[li])
-        yy += fh + 10
+        fm = p.fontMetrics()
+        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
+                            LAYER_DESC[li]).height()
+        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap, LAYER_DESC[li])
+        yy += h + 8
         # 活跃度条
         ls = (self.info.get("layers") or [{}] * 3)[li]
         act = ls.get("active", 0)
         e = ls.get("act_l2", 0.0)
-        bar_y = int(yy)
         p.setPen(QPen(_ZERO, 1))
-        p.drawRect(lx, bar_y, 210, 16)
+        p.drawRect(lx, int(yy), 210, 16)
         if act:
-            p.fillRect(lx + 1, bar_y + 1, int(208 * act / 512), 14, _CURVE)
-        yy += 26
-        # 数字 (大字, 流式)
+            p.fillRect(lx + 1, int(yy) + 1, int(208 * act / 512), 14, _CURVE)
+        yy += 28
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
-        fh = p.fontMetrics().height()
-        p.drawText(lx, int(yy + fh), f"活跃 {act}/512 神经元")
-        yy += fh + 6
+        fm = p.fontMetrics()
+        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
+                            f"活跃 {act}/512").height()
+        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap, f"活跃 {act}/512 神经元")
+        yy += h + 6
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        fh = p.fontMetrics().height()
-        p.drawText(lx, int(yy + fh), f"能量 E={e:.1f} · 休眠率 {(512 - act) / 512 * 100:.0f}%")
-        yy += fh + 6
-        # 分隔线 (左侧与直方图之间)
+        fm = p.fontMetrics()
+        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
+                            f"能量 E={e:.1f} · 休眠率 {(512 - act) / 512 * 100:.0f}%").height()
+        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap,
+                   f"能量 E={e:.1f} · 休眠率 {(512 - act) / 512 * 100:.0f}%")
+        # 分隔线
         p.setPen(QPen(QColor("#30363d"), 1))
-        p.drawLine(int(info_w + 8), int(y0 + 2), int(info_w + 8), int(y0 + row_h - 18))
+        p.drawLine(int(info_w + 4), int(y0 + 2), int(info_w + 4), int(y0 + row_h - 16))
 
-        # ── 右侧: 大直方图 (非零激活分布; 0/休眠率在左侧面板, 不占柱) ──
-        hx0 = info_w + 32
-        hx1 = W - 24
-        # 图标题 (顶)
+        # ── 右侧: 大直方图 (非零激活分布) ──
+        hx0 = info_w + 30
+        hx1 = W - 20
+        buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
+        pos = buf[buf > 0]
+        # 图标题 (wrap, 高度动态)
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
-        p.drawText(int(hx0), int(y0 + 24),
-                   f"激活神经元输出分布 (最近 {N_FRAMES} 帧 · 0值休眠 {float((np.concatenate(self.buf[li]) == 0).mean()) * 100 if self.buf[li] else 0:.0f}% 见左侧)")
-        # 图区 (标题下)
-        y_top = int(y0 + 40)
-        y_bot = int(y0 + row_h - 46)   # 底部留轴标空间
-        buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
-        pos = buf[buf > 0]              # 只统计非零 (0=休眠, 已分离)
+        fm = p.fontMetrics()
+        zr = float((buf == 0).mean()) * 100 if buf.size else 0.0
+        ttl = f"激活分布 (最近{N_FRAMES}帧 · 0值休眠{zr:.0f}%)"
+        th = fm.boundingRect(QRect(0, 0, hx1 - hx0, 2000), Qt.TextWordWrap, ttl).height()
+        p.drawText(QRect(hx0, int(y0) + 2, hx1 - hx0, th), Qt.TextWordWrap, ttl)
+        y_top = int(y0) + 2 + th + 10
+        # 轴标行高 (底部)
+        p.setPen(_TEXT2)
+        p.setFont(QFont("Sans", 10))
+        axh = p.fontMetrics().height()
+        y_bot = int(y0 + row_h) - 8 - axh
         if pos.size >= 8:
             vmax = float(np.percentile(pos, 99.5))
             vmax = max(vmax, 0.05)
             hist, _ = np.histogram(pos, bins=N_BINS, range=(0.0, vmax))
             hmax = max(float(hist.max()), 1.0)
             bw = (hx1 - hx0) / N_BINS
-            # 网格
             p.setPen(QPen(QColor("#1e2740"), 1))
             for gy in range(5):
                 yy2 = y_top + (y_bot - y_top) * gy / 4
                 p.drawLine(int(hx0), int(yy2), int(hx1), int(yy2))
-            # 直方图主体 (白柱)
+            # 白柱
             p.setPen(Qt.NoPen)
             p.setBrush(_CURVE)
             for bi in range(N_BINS):
                 hh = (y_bot - y_top) * hist[bi] / hmax
                 if hh > 0.5:
                     p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh), max(int(bw) - 2, 1), int(hh))
-            # 最近一帧 (朱红亮点列, 非连线 — 直方图不要画成波形)
+            # 最近一帧 (朱红亮点)
             if self.cur[li] is not None:
-                cc = self.cur[li]
-                cpos = cc[cc > 0]
+                cpos = self.cur[li][self.cur[li] > 0]
                 if cpos.size >= 2:
                     ch, _ = np.histogram(cpos, bins=N_BINS, range=(0.0, vmax))
                     p.setBrush(_CURVE_LIVE)
@@ -226,12 +245,11 @@ class FFHistView(QDialog):
                         xx = int(hx0 + bw * bi + bw / 2)
                         yy2 = int(y_bot - (y_bot - y_top) * ch[bi] / max(float(ch.max()), 1e-6))
                         p.drawRect(xx - 2, yy2 - 2, 5, 5)
-        # x=0 ReLU 截断虚线 (图左缘)
+        # x=0 虚线 + 轴标
         p.setPen(QPen(_ZERO, 1, Qt.DashLine))
         p.drawLine(int(hx0), y_top, int(hx0), y_bot)
-        # 轴标 (底部独立行, 不与图贴)
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        p.drawText(int(hx0), int(y_bot + 20), "0")
-        p.drawText(int(hx1 - 300), int(y_bot + 20),
-                   f"激活值 →  (横轴峰值 {np.percentile(pos, 99.5) if pos.size else 0:.2f})")
+        p.drawText(int(hx0), int(y_bot + axh - 4), "0 截断")
+        pk = float(np.percentile(pos, 99.5)) if pos.size else 0.0
+        p.drawText(int(hx1 - 220), int(y_bot + axh - 4), f"激活值→ (峰值 {pk:.2f})")
