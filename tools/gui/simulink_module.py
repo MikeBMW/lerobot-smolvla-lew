@@ -9211,8 +9211,9 @@ class SimulinkModule(QWidget):
             return
         try:
             dlg = StateSpaceScopeDialog(tr, parent=self)
+            import sip as _sip
             self._ss_scope_wins = [w for w in getattr(self, "_ss_scope_wins", [])
-                                   if w is not None]   # 🔭 播放光标推送登记
+                                   if w is not None and not _sip.isdeleted(w)]   # 🔭 播放光标推送登记
             self._ss_scope_wins.append(dlg)
             self._show_nonmodal(dlg)
             # 🎯 show 之后才定位 — move 在 show 前会被 Qt 居中父窗口覆盖
@@ -9241,12 +9242,27 @@ class SimulinkModule(QWidget):
         if getattr(self, "_ff_bridge_last_seq", -1) == seq:
             return
         self._ff_bridge_last_seq = seq
-        w = getattr(self, "_ff_hist_win", None)
-        w2 = getattr(self, "_ff_attr_win", None)
+        w = self._viz_win("hist")
+        w2 = self._viz_win("attrib")
         if w is not None:
             w.push(probe)
         if w2 is not None:
             w2.push(probe)
+
+    def _viz_win(self, kind):
+        """🔭 返回有效可视化窗口或 None — 关窗后 C++ 对象已删 (wrapper 悬垂),
+        单例引用须先 sip.isdeleted 检查, 否则 push/show 报 deleted (2026-09-05 老倪)"""
+        attr = "_ff_hist_win" if kind == "hist" else "_ff_attr_win"
+        w = getattr(self, attr, None)
+        if w is not None:
+            try:
+                import sip as _sip
+                if _sip.isdeleted(w):
+                    w = None
+                    setattr(self, attr, None)
+            except Exception:
+                pass
+        return w
 
     def _open_viz_node(self, kind):
         """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
@@ -9264,7 +9280,7 @@ class SimulinkModule(QWidget):
             if kind in ("hist", "attrib"):
                 from ff_hist_view import FFHistView
                 from ff_attrib_view import FFAttribView
-                win = getattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", None)
+                win = self._viz_win(kind)   # 🐛 关窗后 C++ 已删 → None 重建
                 if win is None:
                     win = (FFHistView(self) if kind == "hist" else FFAttribView(self))
                     setattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", win)
@@ -11056,8 +11072,8 @@ class SimulinkModule(QWidget):
             try:
                 ps = tr.get("probe_seq") or []
                 if ps and idx < len(ps):
-                    _wh = getattr(self, "_ff_hist_win", None)
-                    _wa = getattr(self, "_ff_attr_win", None)
+                    _wh = self._viz_win("hist")
+                    _wa = self._viz_win("attrib")
                     if (_wh is not None or _wa is not None) and self._ss_round % 2 == 0:
                         _p = ps[idx]
                         if _wh is not None:
