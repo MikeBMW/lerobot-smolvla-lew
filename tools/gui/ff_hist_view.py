@@ -58,6 +58,7 @@ class FFHistView(QDialog):
         self.info = {}
         self.view = "wave"                  # "wave" 波动 / "hist" 直方图
         self._dirty = True
+        self._last_seq = 0      # 🔭 去重: 同一轮仿真帧只收一次 (播放/桥/灌全程不重复)
         self._cap_text = "🧠 等待激活数据 — 点「⚡引擎快演 ▶运行」或「⏭单步」后逐帧累积 (波动视图: 三层能量随时间, 轮廓传递=信息流动)"
         # 右上视图切换按钮
         self.btn_hist = QPushButton("📊 分布直方图", self)
@@ -109,10 +110,28 @@ class FFHistView(QDialog):
             pass
 
     # ── 数据 ──
+    def reset(self):
+        """新一轮仿真开始: 清缓冲与去重序号 (旧轮帧不再接收)"""
+        for k in range(3):
+            self.buf[k].clear()
+            self.cur[k] = None
+            self.ener[k].clear()
+            self.dlt[k].clear()
+            self.prev[k] = None
+        self.stages.clear()
+        self._last_seq = 0
+        self._dirty = True
+
     def push(self, probe):
         raw = probe.get("act_raw")
         if not raw:
             return
+        # 🔭 同一轮仿真帧去重 (打开窗口灌全程后, 播放/桥不再重复累积)
+        sq = int(probe.get("_seq") or 0)
+        if sq > 0 and self._last_seq > 0 and sq <= self._last_seq:
+            return
+        if sq > 0:
+            self._last_seq = sq
         for i in range(3):
             a = np.asarray(raw[i], dtype=np.float32).ravel()
             if a.shape[0] != 512:

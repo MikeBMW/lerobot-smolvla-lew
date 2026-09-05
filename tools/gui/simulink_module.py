@@ -9273,6 +9273,16 @@ class SimulinkModule(QWidget):
                 pass
         return w
 
+    def _ff_reset_wins(self):
+        """新一轮仿真开始: 直方图/归因窗口清缓冲+去重序号 (旧轮帧不再累积)"""
+        for _k in ("hist", "attrib"):
+            _w = self._viz_win(_k)
+            if _w is not None:
+                try:
+                    _w.reset()
+                except Exception:
+                    pass
+
     def _open_viz_node(self, kind):
         """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
         hist/attrib: 窗口单例 + 有引擎末帧探针则填入 (真实数据, 无则不造假只提示)"""
@@ -9294,6 +9304,19 @@ class SimulinkModule(QWidget):
                     win = (FFHistView(self) if kind == "hist" else FFAttribView(self))
                     setattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", win)
                     self._ensure_ff_bridge()   # 🔭 probe 桥: 运行中窗口实时刷新
+                # 🎯 2026-09-05 老倪「怎么只有接近」: 打开即灌入最近一次完整仿真全程
+                #   (330 帧/8 阶段全在横轴上), 窗口去重保证播放/桥不重复累积
+                if kind == "hist" and not win.stages:
+                    try:
+                        _tr0 = getattr(self, "_ss_tr", None)
+                        _ps0 = (_tr0 or {}).get("probe_seq") or []
+                        if len(_ps0) > 5:
+                            for _p in _ps0:
+                                win.push(_p)
+                            win._dirty = True
+                            self._log(f"🧠 直方图已载入最近一次仿真全程 {len(_ps0)} 帧 (完整 8 阶段波形)")
+                    except Exception as _e:
+                        self._log(f"⚠️ 直方图灌全程失败: {_e}")
                 # 末帧探针 (引擎刚跑完或上次运行留下的真实数据; 播放中请用 ⏭单步 逐帧采集)
                 sim = getattr(self, "_ss_last_sim", None)
                 probe = getattr(getattr(sim, "accel", None), "probe", None)
@@ -10767,6 +10790,7 @@ class SimulinkModule(QWidget):
         metaworld 真实物理 + 每帧 render→YOLO detect_3d (RealStateSpaceSim vision)
         每帧 ~0.5-1s → 后台线程跑 (主线程不冻结), QTimer 轮询完成 → 播放真实轨迹
         断点注意: VSCode F5 调试时断点命中在后台线程 → pydevd 同进程挂起该线程, GUI 不冻"""
+        self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
         self.btn_run.setText("🎥 真实运行中… (每帧 YOLO)")
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -10911,6 +10935,7 @@ class SimulinkModule(QWidget):
         + 每轮打印真实数值 (距离/残差/接触概率/阶段), 完成自动汇总"""
         # 🕹 v3.4.7 老倪: 点画布 ▶运行后 3D 视图被画布覆盖 — 运行开始把可见 3D 窗口拉前,
         #   3D 逐帧同步画布信号时用户看得见 (窗口仍可被点回, 不置顶不抢画布焦点)
+        self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
         try:
             import sip as _sip
             for _w in getattr(self, "_ss_3d_windows", []):
@@ -11083,7 +11108,7 @@ class SimulinkModule(QWidget):
                 if ps and idx < len(ps):
                     _wh = self._viz_win("hist")
                     _wa = self._viz_win("attrib")
-                    if (_wh is not None or _wa is not None) and self._ss_round % 2 == 0:
+                    if _wh is not None or _wa is not None:
                         _p = ps[idx]
                         if _wh is not None:
                             _wh.push(_p)
