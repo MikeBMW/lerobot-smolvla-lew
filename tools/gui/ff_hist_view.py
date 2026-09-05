@@ -1,70 +1,98 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ff_hist_view.py — 🧠 前馈加速器隐层激活直方图 (2026-09-04 老倪, v3 重设计)
+"""ff_hist_view.py — 🧠 前馈加速器激活可视化 (2026-09-04→09-05 老倪多次迭代)
 
-消费 ⚡前馈加速器探针 (parallel.py probe.act_raw: 每层 512 全量 ReLU 激活)
-→ 三层激活分布直方图 + 实时数值面板。
+默认「〰 波动视图」: 三层能量 E=Σx² 随时间的滚动波形 (同一时间轴对齐) —
+  远段粗动作整体高能量, 插入精调整体回落; 三层轮廓相似=信息沿网络传递,
+  看得到"波"从层1流到层3 (层间相关+时延=传递轮廓)。
 
-怎么读 (窗口内也有图例文字):
-  - 直方图横轴 = 神经元输出值; 0 处竖虚线 = ReLU 截断 — 落在 0 的 = 休眠单元
-  - 白色柱 = 近 150 帧累积分布 (哪些单元经常工作); 朱红线 = 最近一帧 (此刻谁在响应)
-  - 右侧长尾 = "正在工作"的特征单元; 层活跃数随任务阶段变化
+右上可切「📊 分布直方图」: 本帧 512 神经元实际激活值直方图 (真实计数, 不平均)。
 
-用法 (由 node_logic.py 🧠前馈激活 节点实例化, 主线程):
-  win = FFHistView(); win.push(probe); win.show()
+数据: ⚡前馈加速器探针 probe.act_raw (每层 512) + layers (能量/活跃)
+用法: win = FFHistView(); win.push(probe); win.show()
 """
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer, QRect
-from PyQt5.QtGui import QPainter, QColor, QPen, QFont
-from PyQt5.QtWidgets import QDialog
+from PyQt5.QtCore import Qt, QTimer, QRect, QPointF
+from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QPolygonF
+from PyQt5.QtWidgets import QDialog, QPushButton
 
-# 🎨 深色面板 (数据视图风格, 单色系克制)
 _BG_TOP = QColor("#0d1117")
-_GRID = QColor("#1e2740")
-_CURVE = QColor("#e6edf3")       # 直方图 (白灰)
-_CURVE_LIVE = QColor("#ff5555")  # 最近一帧叠加 (朱红)
 _TEXT = QColor("#e6edf3")
 _TEXT2 = QColor("#9da7b3")
-_ZERO = QColor("#7d8590")        # ReLU 0 截断虚线
-
-LAYER_NAMES = [
-    "第 1 层 · 输入编码",
-    "第 2 层 · 特征组合",
-    "第 3 层 · 决策输出",
-]
-LAYER_DESC = [
-    "W0: 39D 观测 → 512 特征 (读出手/目标/速度关系)",
-    "W1: 512 → 512 特征交互 (非线性组合)",
-    "W2: 512 → 512 决策特征 (解码成动作前最后一跳)",
-]
-N_FRAMES = 150     # FIFO 累积帧数 (直方图统计窗口)
-N_BINS = 60
+_ZERO = QColor("#7d8590")
+LAYER_COLORS = ["#58a6ff", "#00d4aa", "#ffb454"]   # 层1 蓝 / 层2 青 / 层3 橙金
+LAYER_NAMES = ["第 1 层 · 输入编码", "第 2 层 · 特征组合", "第 3 层 · 决策输出"]
+N_FRAMES = 300      # 滚动窗口帧数 (~6s @50Hz, 覆盖整个插拔过程)
 
 
 class FFHistView(QDialog):
-    """三层激活直方图窗口。push(probe) 每帧喂入, 内部 FIFO + 节流重绘。"""
+    """前馈激活窗口: 默认三层能量波动视图 (波传递), 可切本帧直方图"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("🧠 前馈加速器 · 隐层激活直方图 — 它在想什么")
+        self.setWindowTitle("🧠 前馈加速器 · 三层激活波动 (能量随时间 · 波传递轮廓)")
         self.resize(1200, 840)
         self.setMinimumSize(960, 680)
-        # 🔧 2026-09-05 老倪: 最小化/最大化按钮无效 — 显式顶级窗口类型 + 按钮
         self.setWindowFlags(Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint
                             | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
-        self.buf = [[] for _ in range(3)]   # 每层 FIFO: 帧列表 (各 512 float32)
-        self.cur = [None, None, None]       # 最近一帧 (叠加朱红)
-        self.info = {}                      # 当前帧语义 (obs/u_ff)
+        self.buf = [[] for _ in range(3)]   # 每层 FIFO 帧 (512 float32)
+        self.cur = [None, None, None]       # 最近一帧
+        self.ener = [[], [], []]            # 每层每帧能量 E=Σx²
+        self.info = {}
+        self.view = "wave"                  # "wave" 波动 / "hist" 直方图
         self._dirty = True
-        self._cap_text = "🧠 等待激活数据 — 点「⚡引擎快演 ▶运行」或「⏭单步」后逐帧累积 (直方图=本帧 512 神经元实际激活值)"
-        # 节流重绘 (≤10Hz, 避免每 tick 全量重绘卡 GUI)
+        self._cap_text = "🧠 等待激活数据 — 点「⚡引擎快演 ▶运行」或「⏭单步」后逐帧累积 (波动视图: 三层能量随时间, 轮廓传递=信息流动)"
+        # 右上视图切换按钮
+        self.btn_hist = QPushButton("📊 分布直方图", self)
+        self.btn_wave = QPushButton("〰 波动视图", self)
+        for b in (self.btn_hist, self.btn_wave):
+            b.setStyleSheet("QPushButton{color:#e6edf3;background:#21262d;border:1px solid #30363d;"
+                            "padding:3px 10px;font-size:12px;} QPushButton:hover{background:#30363d;}")
+            b.hide()
+        self.btn_hist.clicked.connect(lambda: self._set_view("hist"))
+        self.btn_wave.clicked.connect(lambda: self._set_view("wave"))
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._throttled)
         self._timer.start(100)
 
-    # ── 数据入口 ──
+    def _set_view(self, v):
+        self.view = v
+        self.btn_hist.setVisible(v == "wave")
+        self.btn_wave.setVisible(v == "hist")
+        self._sync_btns()
+        self.update()
+
+    def _sync_btns(self):
+        # 放右上 (cap 条右侧)
+        try:
+            ww = self.width()
+            self.btn_hist.setGeometry(ww - 300, 26, 130, 30)
+            self.btn_wave.setGeometry(ww - 162, 26, 130, 30)
+        except Exception:
+            pass
+
+    def resizeEvent(self, ev):
+        try:
+            super().resizeEvent(ev)
+            self._sync_btns()
+            self._show_btns_by_view()
+        except Exception:
+            pass
+
+    def _show_btns_by_view(self):
+        self.btn_hist.setVisible(self.view == "wave")
+        self.btn_wave.setVisible(self.view == "hist")
+
+    def showEvent(self, ev):
+        try:
+            super().showEvent(ev)
+            self._show_btns_by_view()
+            self._sync_btns()
+        except Exception:
+            pass
+
+    # ── 数据 ──
     def push(self, probe):
-        """喂一帧探针: act_raw=[x1,x2,x3] 每层 512"""
         raw = probe.get("act_raw")
         if not raw:
             return
@@ -76,19 +104,22 @@ class FFHistView(QDialog):
             if len(self.buf[i]) > N_FRAMES:
                 self.buf[i].pop(0)
             self.cur[i] = a
+            self.ener[i].append(float((a ** 2).sum()))
+            if len(self.ener[i]) > N_FRAMES:
+                self.ener[i].pop(0)
         self.info = {"obs": probe.get("obs", {}), "u_ff": probe.get("u_ff", []),
                      "layers": probe.get("layers", [])}
-        # 状态行随帧更新 (自解释)
         try:
             n = len(self.buf[0])
-            ob = self.info.get("obs", {})
             u = self.info.get("u_ff", [])
-            u_txt = (f"输出 u_ff=[{u[0]:+.2f} {u[1]:+.2f} {u[2]:+.2f} · 夹爪{'闭合' if u[3] else '张开'}]"
-                     if u else "输出 u_ff=—")
+            u_txt = (f"u_ff=[{u[0]:+.2f} {u[1]:+.2f} {u[2]:+.2f} · 夹爪{'闭合' if u[3] else '张开'}]"
+                     if u else "u_ff=—")
+            ob = self.info.get("obs", {})
             d_txt = f"手到目标 d={ob.get('d_h', 0):.2f}m" if ob and ob.get("d_h") is not None else ""
+            e1, e2, e3 = (self.ener[k][-1] if self.ener[k] else 0.0 for k in range(3))
             self._cap_text = (
-                f"🧠 累积 {n}/150 帧用于定轴 · 本帧 {u_txt} · {d_txt}\n"
-                f"直方图 = 本帧 512 个神经元的实际激活值 (真实计数, 不做平均) · 0值单列标注")
+                f"🧠 第 {n} 帧 · {u_txt} · {d_txt} · 三层能量 E=[{e1:.0f} {e2:.0f} {e3:.0f}]\n"
+                f"波形 = 每层能量 E=Σx² 随时间 (同一时间轴, 轮廓从层1传向层3) · 远段大动作高能量 · 插入精调回落")
         except Exception:
             pass
         self._dirty = True
@@ -104,38 +135,35 @@ class FFHistView(QDialog):
             p = QPainter(self)
             r = self.rect()
             p.fillRect(r, _BG_TOP)
-            # 顶部状态条: 画在矩形内自动换行 (任何 DPI/文字长度不重叠)
-            sb = QRect(16, 10, r.width() - 32, 76)
             p.fillRect(0, 0, r.width(), 86, QColor("#161b22"))
             lines = str(self._cap_text).split("\n")
             p.setPen(_TEXT)
             p.setFont(QFont("Sans", 12, QFont.Bold))
             fm = p.fontMetrics()
-            h1 = fm.boundingRect(QRect(0, 0, sb.width(), 2000),
-                                 Qt.TextWordWrap, lines[0]).height() + 4
-            p.drawText(QRect(sb.x(), sb.y(), sb.width(), h1),
-                       Qt.TextWordWrap | Qt.AlignVCenter, lines[0])
+            h1 = fm.boundingRect(QRect(16, 0, r.width() - 340, 2000), Qt.TextWordWrap,
+                                 lines[0]).height() + 4
+            p.drawText(QRect(16, 10, r.width() - 340, h1), Qt.TextWordWrap | Qt.AlignVCenter,
+                       lines[0])
             if len(lines) > 1:
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 10))
-                fm = p.fontMetrics()
-                h2 = fm.boundingRect(QRect(0, 0, sb.width(), 2000),
-                                     Qt.TextWordWrap, lines[1]).height()
-                p.drawText(QRect(sb.x(), sb.y() + h1 + 4, sb.width(), h2),
+                h2 = p.fontMetrics().boundingRect(QRect(16, 0, r.width() - 340, 2000),
+                                                  Qt.TextWordWrap, lines[1]).height()
+                p.drawText(QRect(16, 10 + h1 + 2, r.width() - 340, h2),
                            Qt.TextWordWrap | Qt.AlignVCenter, lines[1])
-            top = 92
             if not any(self.buf):
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 13))
-                p.drawText(r.adjusted(20, top, -20, -20), Qt.AlignCenter,
-                           "等待激活数据…\n\n先点「⚡引擎快演 ▶运行」或「⏭单步」, 每帧的 512 个神经元激活会自动进来")
+                p.drawText(r.adjusted(20, 100, -20, -20), Qt.AlignCenter,
+                           "等待激活数据…\n\n先点「⚡引擎快演 ▶运行」或「⏭单步」, 每帧 512 个神经元激活自动进来\n\n"
+                           "窗口默认 = 三层能量波动视图: 每一层一条波形, 同一时间轴 —\n"
+                           "看到波形起伏(远段大动作能量高, 插入精调回落), 三层轮廓相似 = 信息沿网络传递")
                 p.end()
                 return
-            W, H = r.width(), r.height()
-            row_h = (H - top - 14) / 3.0
-            for i in range(3):
-                y0 = top + i * row_h
-                self._draw_row(p, i, W, y0, row_h)
+            if self.view == "wave":
+                self._draw_wave(p, r)
+            else:
+                self._draw_hist_rows(p, r)
             p.end()
         except Exception:
             try:
@@ -147,119 +175,142 @@ class FFHistView(QDialog):
             except Exception:
                 pass
 
-    def _draw_row(self, p, li, W, y0, row_h):
-        """一行 = 左侧语义面板 + 右侧大直方图.
-        全部文字用矩形自动换行 (TextWordWrap), 行高=字体实际高度流式累加 — 任何 DPI/文字长度不重叠"""
-        info_w = 330
-        # ── 左侧列 (wrap 流式) ──
-        lx = 20
-        col_w = info_w - 36
-        yy = int(y0) + 4
-        p.setPen(_TEXT)
-        p.setFont(QFont("Sans", 12, QFont.Bold))
-        fm = p.fontMetrics()
-        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
-                            LAYER_NAMES[li]).height()
-        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap, LAYER_NAMES[li])
-        yy += h + 6
-        p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 10))
-        fm = p.fontMetrics()
-        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
-                            LAYER_DESC[li]).height()
-        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap, LAYER_DESC[li])
-        yy += h + 8
-        # 活跃度条
-        ls = (self.info.get("layers") or [{}] * 3)[li]
-        act = ls.get("active", 0)
-        e = ls.get("act_l2", 0.0)
-        p.setPen(QPen(_ZERO, 1))
-        p.drawRect(lx, int(yy), 210, 16)
-        if act:
-            p.fillRect(lx + 1, int(yy) + 1, int(208 * act / 512), 14, _CURVE)
-        yy += 28
-        p.setPen(_TEXT)
-        p.setFont(QFont("Sans", 12, QFont.Bold))
-        fm = p.fontMetrics()
-        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
-                            f"活跃 {act}/512").height()
-        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap, f"活跃 {act}/512 神经元")
-        yy += h + 6
-        p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 10))
-        fm = p.fontMetrics()
-        h = fm.boundingRect(QRect(0, 0, col_w, 2000), Qt.TextWordWrap,
-                            f"能量 E={e:.1f} · 休眠率 {(512 - act) / 512 * 100:.0f}%").height()
-        p.drawText(QRect(lx, yy, col_w, h), Qt.TextWordWrap,
-                   f"能量 E={e:.1f} · 休眠率 {(512 - act) / 512 * 100:.0f}%")
-        # 分隔线
-        p.setPen(QPen(QColor("#30363d"), 1))
-        p.drawLine(int(info_w + 4), int(y0 + 2), int(info_w + 4), int(y0 + row_h - 16))
+    # ── 〰 波动视图: 三层能量 E(t), 同轴对齐, 波传递轮廓 ──
+    def _draw_wave(self, p, r):
+        W, H = r.width(), r.height()
+        top = 92
+        row_h = (H - top - 10) / 3.0
+        n = len(self.ener[0])
+        for li in range(3):
+            y0 = top + li * row_h
+            # 行标题: 层名 + 本帧能量 + 峰值
+            en = self.ener[li]
+            cur_e = en[-1] if en else 0.0
+            pk = max(en) if en else 0.0
+            p.setPen(_TEXT)
+            p.setFont(QFont("Sans", 12, QFont.Bold))
+            p.drawText(QRect(16, int(y0) + 2, W - 32, 26), Qt.TextWordWrap,
+                       f"{LAYER_NAMES[li]}  (能量波动 E=Σx²)")
+            p.setPen(QColor(LAYER_COLORS[li]))
+            p.setFont(QFont("Sans", 12, QFont.Bold))
+            p.drawText(QRect(W - 300, int(y0) + 2, 284, 24), Qt.AlignRight | Qt.AlignVCenter,
+                       f"当前 E={cur_e:.0f}")
+            # 波形区
+            x0 = 70
+            x1 = W - 20
+            y_top = int(y0) + 34
+            y_bot = int(y0 + row_h) - 24
+            if len(en) >= 2:
+                ym = max(pk, 1e-6) * 1.15
+                # 网格 + 0 线
+                p.setPen(QPen(QColor("#1e2740"), 1))
+                p.drawLine(x0, y_bot, x1, y_bot)
+                for gy in range(3):
+                    yy2 = y_top + (y_bot - y_top) * gy / 2
+                    p.drawLine(x0, int(yy2), x1, int(yy2))
+                # 能量曲线 (面积填充 → 波形感)
+                xs = np.linspace(x1 - (n - 1) * (x1 - x0) / max(N_FRAMES - 1, 1),
+                                 x1, n)
+                col = QColor(LAYER_COLORS[li])
+                col.setAlpha(40)
+                p.setPen(Qt.NoPen)
+                p.setBrush(col)
+                poly = [QPointF(float(xs[0]), float(y_bot))]
+                for xx, e in zip(xs, en):
+                    yy2 = y_bot - (y_bot - y_top) * float(e) / ym
+                    poly.append(QPointF(float(xx), float(yy2)))
+                poly.append(QPointF(float(xs[-1]), float(y_bot)))
+                p.drawPolygon(QPolygonF(poly))
+                # 曲线线
+                p.setPen(QPen(QColor(LAYER_COLORS[li]), 2))
+                for j in range(1, n):
+                    y1 = y_bot - (y_bot - y_top) * float(en[j - 1]) / ym
+                    y2 = y_bot - (y_bot - y_top) * float(en[j]) / ym
+                    p.drawLine(int(xs[j - 1]), int(y1), int(xs[j]), int(y2))
+                # 峰值标注
+                p.setPen(_TEXT2)
+                p.setFont(QFont("Sans", 9))
+                p.drawText(x0, int(y_top + 12), f"峰值 E={pk:.0f}")
+            else:
+                p.setPen(_TEXT2)
+                p.setFont(QFont("Sans", 10))
+                p.drawText(QRect(x0, y_top, x1 - x0, 40), Qt.TextWordWrap,
+                           "累积中… 波形滚动窗口最多覆盖 N_FRAMES 帧 (≈6s)")
+            # 行分隔
+            p.setPen(QPen(QColor("#21262d"), 1))
+            p.drawLine(16, int(y0 + row_h) - 1, W - 16, int(y0 + row_h) - 1)
 
-        # ── 右侧: 大直方图 (非零激活分布) ──
-        hx0 = info_w + 30
-        hx1 = W - 20
-        buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
-        pos = buf[buf > 0]
-        # ── 右侧: 本帧实际激活直方图 (真实计数, 不累积平均 — 2026-09-05 老倪) ──
-        hx0 = info_w + 52          # 左留 y 轴刻度
-        hx1 = W - 20
-        buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
-        cur0 = self.cur[li]
-        # 横轴范围固定 (用累积 p99, 防单帧极值让轴每帧乱跳)
-        AX = max(float(np.percentile(buf[buf > 0], 99)) if (buf > 0).any() else 0.15, 0.15)
-        # 标题: 本帧真实数字 (0 值个数/非零均值/能量)
-        nz = int((cur0 == 0).sum()) if cur0 is not None and cur0.size else 0
-        ppos = cur0[cur0 > 0] if cur0 is not None else np.zeros(0)
-        mc = float(ppos.mean()) if ppos.size else 0.0
-        ec = float((cur0 ** 2).sum()) if cur0 is not None and cur0.size else 0.0
-        p.setPen(_TEXT)
-        p.setFont(QFont("Sans", 12, QFont.Bold))
-        fm = p.fontMetrics()
-        ttl = f"本帧实际激活分布: 512 神经元中 0 值 {nz} 个 · 非零均值 {mc:.2f} · 能量 {ec:.1f}"
-        th = fm.boundingRect(QRect(0, 0, hx1 - hx0 + 40, 2000), Qt.TextWordWrap, ttl).height()
-        p.drawText(QRect(hx0 - 40, int(y0) + 2, hx1 - hx0 + 40, th), Qt.TextWordWrap, ttl)
-        y_top = int(y0) + 2 + th + 6
-        p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 10))
-        axh = p.fontMetrics().height()
-        y_bot = int(y0 + row_h) - 8 - axh
-        if cur0 is not None and ppos.size >= 2:
-            # 只统计非零值 (0 已单列数字); 柱高=该区间实际神经元个数
-            hist, _ = np.histogram(ppos, bins=N_BINS, range=(0.0, AX))
-            hmax = max(float(hist.max()), 1.0)
-            bw = (hx1 - hx0) / N_BINS
-            # y 轴刻度 (实际整数个数)
-            p.setPen(_TEXT2)
-            p.setFont(QFont("Sans", 9))
-            for _f, _lbl in ((0.0, "0"), (0.5, f"{int(hmax / 2)}"), (1.0, f"{int(hmax)}")):
-                yy2 = int(y_bot - (y_bot - y_top) * _f)
-                p.drawLine(int(hx0 - 6), yy2, int(hx0 - 2), yy2)
-                p.drawText(int(hx0 - 46), int(yy2 + 4), f"{_lbl}个")
-            # 网格
-            p.setPen(QPen(QColor("#1e2740"), 1))
-            for gy in range(5):
-                yy2 = y_top + (y_bot - y_top) * gy / 4
-                p.drawLine(int(hx0), int(yy2), int(hx1), int(yy2))
-            # 白柱 = 本帧真实计数
-            p.setPen(Qt.NoPen)
-            p.setBrush(_CURVE)
-            for bi in range(N_BINS):
-                hh = (y_bot - y_top) * hist[bi] / hmax
-                if hh > 0.5:
-                    p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh), max(int(bw) - 2, 1), int(hh))
-            # 0 值标注 (虚线 + 个数, 不占柱)
-            p.setPen(QPen(_CURVE_LIVE, 1.5, Qt.DashLine))
-            p.drawLine(int(hx0), y_top, int(hx0), y_bot)
-            p.setPen(_CURVE_LIVE)
-            p.setFont(QFont("Sans", 9))
-            p.drawText(int(hx0 + 4), int(y_top + 14), f"0值 ×{nz}")
-        else:
+    # ── 📊 直方图视图: 本帧 512 实际激活值 (真实计数) ──
+    def _draw_hist_rows(self, p, r):
+        W, H = r.width(), r.height()
+        top = 92
+        row_h = (H - top - 10) / 3.0
+        info_w = 330
+        for li in range(3):
+            y0 = top + li * row_h
+            buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
+            cur0 = self.cur[li]
+            AX = max(float(np.percentile(buf[buf > 0], 99)) if (buf > 0).any() else 0.15, 0.15)
+            nz = int((cur0 == 0).sum()) if cur0 is not None and cur0.size else 0
+            ppos = cur0[cur0 > 0] if cur0 is not None else np.zeros(0)
+            mc = float(ppos.mean()) if ppos.size else 0.0
+            ec = float((cur0 ** 2).sum()) if cur0 is not None and cur0.size else 0.0
+            # 左列
+            p.setPen(_TEXT)
+            p.setFont(QFont("Sans", 12, QFont.Bold))
+            fm = p.fontMetrics()
+            h = fm.boundingRect(QRect(0, 0, info_w - 36, 2000), Qt.TextWordWrap,
+                                LAYER_NAMES[li]).height()
+            p.drawText(QRect(16, int(y0) + 4, info_w - 36, h), Qt.TextWordWrap, LAYER_NAMES[li])
+            yy = int(y0) + 4 + h + 6
             p.setPen(_TEXT2)
             p.setFont(QFont("Sans", 10))
-            p.drawText(QRect(hx0, y_top, hx1 - hx0, 60), Qt.TextWordWrap, "本帧无激活(全部休眠)")
-        # 轴标
-        p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 10))
-        p.drawText(int(hx0), int(y_bot + axh - 4), "0")
-        p.drawText(int(hx1 - 210), int(y_bot + axh - 4), f"激活值 → (横轴 0~{AX:.2f})")
+            p.drawText(QRect(16, yy, info_w - 36, 30), Qt.TextWordWrap,
+                       f"0值 {nz}/512 · 非零均值 {mc:.2f}")
+            yy += 34
+            p.setPen(_TEXT)
+            p.setFont(QFont("Sans", 12, QFont.Bold))
+            p.drawText(QRect(16, yy, info_w - 36, 24), Qt.TextWordWrap, f"能量 E={ec:.0f}")
+            # 右直方图
+            hx0 = info_w + 8
+            hx1 = W - 20
+            y_top = int(y0) + 30
+            y_bot = int(y0 + row_h) - 24
+            p.setPen(_TEXT2)
+            p.setFont(QFont("Sans", 9))
+            axh = p.fontMetrics().height()
+            y_bot = int(y0 + row_h) - 8 - axh
+            if cur0 is not None and ppos.size >= 2:
+                hist, _ = np.histogram(ppos, bins=60, range=(0.0, AX))
+                hmax = max(float(hist.max()), 1.0)
+                bw = (hx1 - hx0) / 60
+                p.setPen(_TEXT2)
+                p.setFont(QFont("Sans", 9))
+                for _f, _lbl in ((0.0, "0"), (0.5, f"{int(hmax / 2)}"), (1.0, f"{int(hmax)}")):
+                    yy2 = int(y_bot - (y_bot - y_top) * _f)
+                    p.drawLine(int(hx0 - 6), yy2, int(hx0 - 2), yy2)
+                    p.drawText(int(hx0 - 46), int(yy2 + 4), f"{_lbl}个")
+                p.setPen(QPen(QColor("#1e2740"), 1))
+                for gy in range(5):
+                    yy2 = y_top + (y_bot - y_top) * gy / 4
+                    p.drawLine(int(hx0), int(yy2), int(hx1), int(yy2))
+                p.setPen(Qt.NoPen)
+                p.setBrush(_TEXT)
+                for bi in range(60):
+                    hh = (y_bot - y_top) * hist[bi] / hmax
+                    if hh > 0.5:
+                        p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh),
+                                   max(int(bw) - 2, 1), int(hh))
+                p.setPen(QPen(QColor("#ff5555"), 1.5, Qt.DashLine))
+                p.drawLine(int(hx0), y_top, int(hx0), y_bot)
+                p.setPen(QColor("#ff5555"))
+                p.setFont(QFont("Sans", 9))
+                p.drawText(int(hx0 + 4), int(y_top + 14), f"0值 ×{nz}")
+            else:
+                p.setPen(_TEXT2)
+                p.setFont(QFont("Sans", 10))
+                p.drawText(QRect(hx0, y_top, hx1 - hx0, 40), Qt.TextWordWrap, "本帧无激活")
+            p.setPen(_TEXT2)
+            p.setFont(QFont("Sans", 9))
+            p.drawText(int(hx0), int(y_bot + axh - 4), "0")
+            p.drawText(int(hx1 - 200), int(y_bot + axh - 4), f"激活值 → (0~{AX:.2f})")
