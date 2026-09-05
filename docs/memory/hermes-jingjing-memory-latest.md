@@ -4,11 +4,11 @@ web=4090训练+ComfyUI+前端+ECS部署+PM，总工(4060/GitHub/GUI)，小芳=�
 §
 ECS SSH密码=Nix19789(08-22实测有效); git push不自动部署; 网页新功能放分页不动主页
 §
-架构: 坐标=逻辑主线,图像=背景; state叠进latent; 🧩结构条件; 45D=39+相对向量; 58D=45+触觉4+CoT9
+架构: 坐标=逻辑主线,图像=背景; state叠进latent; 45D=39+相对; 58D=45+触觉4+CoT9
 §
 老倪: 指令最小化(删X=先改名); 画布没用的删干净; 新节点注册node_logic
 §
-磁盘铁律(硬性): 不允许增加; 红线80G+disk_redline.sh cron每2h清(每目录留最后ckpt)
+磁盘铁律: 红线80G+disk_redline.sh cron每2h清(每目录留最后ckpt)
 §
 安全限值=🛡类别4栏位; 状态空间唯一三层安全(否决+限幅+Sys0)
 §
@@ -22,7 +22,7 @@ GPU: LiveUSB重启丢dev/nvidia*+uvm不载→CUDA unknown; nvidia-device-nodes�
 §
 GUI: gui-venv311在仓库内(Py3.11,无torch); 推理/训练=~/lerobot-venv; 项目无.venv; PyQt5枚举错位(传int); Pillow持GIL→子进程; 改码必重启studio.py; 禁QT_SCALE_FACTOR
 §
-GitHub: 直连不走代理; Release下载走browser_download_url(asset带token返400); 凭证~/.git-credentials
+GitHub: 直连超时→ghproxy.net代理+sslVerify=false; Release下载走browser_download_url; 凭证~/.git-credentials
 §
 数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是啥'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
 §
