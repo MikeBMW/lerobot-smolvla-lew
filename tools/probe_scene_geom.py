@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """📐 挖 metaworld peg-insert-side-v3 真实场景几何 (给 3D 视图 1:1 复刻)
 
-输出: 机器人底座/桌面/插销/孔位盒 的世界坐标与尺寸
+输出: 机器人底座/桌面/光模块/孔位盒 的世界坐标与尺寸
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/probe_scene_geom.py
 """
 import os

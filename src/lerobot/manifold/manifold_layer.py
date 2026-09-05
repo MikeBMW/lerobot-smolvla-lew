@@ -24,7 +24,7 @@ import numpy as np
 # ── 与 tools/gui/state_space_sim.py 同源 (metaworld peg-insert-side-v3 实测几何) ──
 HOLE_POS = np.array([-0.2345, 0.4623, 0.1309])    # 插入终点/孔底 (metaworld goal)
 HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
-PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 插销头相对抓握点 (peg 沿 X 长 0.2)
+PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 光模块头相对抓握点 (光模块 沿 X 长 0.2)
 # 孔轴单位向量 (孔口 → 孔底): 水平 −x 方向
 AXIS_HOLE = HOLE_POS - HOLE_MOUTH
 AXIS_HOLE = AXIS_HOLE / np.linalg.norm(AXIS_HOLE)  # ≈ (−1, 0, 0)
@@ -32,10 +32,10 @@ AXIS_HOLE = AXIS_HOLE / np.linalg.norm(AXIS_HOLE)  # ≈ (−1, 0, 0)
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 
 # 通道分组 (哪个子任务受哪条几何通道约束):
-#   垂直通道 (z): 手贴身垂直操作 (下降触销/抓取锁存/抬起持销) — 约束 = xy 对中
-#   工艺通道:    插入 = 销头沿工艺斜线 (孔口上方悬高 2cm → 孔底, engine 转移/插入
+#   垂直通道 (z): 手贴身垂直操作 (下降触光模块/抓取锁存/抬起持光模块) — 约束 = xy 对中
+#   工艺通道:    插入 = 光模块头沿工艺斜线 (孔口上方悬高 2cm → 孔底, engine 转移/插入
 #                子目标同源) 压入; 完成 = 贴孔底 (孔轴 x)
-#   自由空间:    空中长距离移动 (接近=飞向销上方, 对位=水平对中, 转移=销料位→孔口),
+#   自由空间:    空中长距离移动 (接近=飞向光模块上方, 对位=水平对中, 转移=光模块料位→孔口),
 #                未接触无弯曲风险源, 只报距离收敛 (progress=‖e‖)
 CHANNEL_Z = ("下降", "抓取", "抬起")
 CHANNEL_INS = ("插入",)
@@ -65,7 +65,7 @@ def _stage_name(stage):
 class ContactManifold:
     """接触流形 — 插拔安全通道的几何诊断 (切向进度 / 法向偏离 / 李雅普诺夫势)
 
-    输入 = 引擎轨迹当前帧真实量: hand(末端), peg_head(销头), target(阶段子目标,
+    输入 = 引擎轨迹当前帧真实量: hand(末端), peg_head(光模块头), target(阶段子目标,
     obs[36:39] 感知层真值), v(末端速度), stage。
     分解: 误差 e 沿通道轴投影 → 切向 e∥ (沿流形推进, 测地线进度);
           法向 e⊥ (离流形漂移, 风险源: 对位歪/插斜都在这)。
@@ -94,7 +94,7 @@ class ContactManifold:
     # ── 当前受控体误差: 谁在逼近谁 ──
     def _error(self, hand, peg_head, target, stage):
         if stage in CHANNEL_INS or stage in CHANNEL_DONE:
-            return np.asarray(peg_head, float) - self.hole_pos   # 销头对孔底 (完成→0)
+            return np.asarray(peg_head, float) - self.hole_pos   # 光模块头对孔底 (完成→0)
         return np.asarray(target, float) - np.asarray(hand, float)  # 末端对阶段目标
 
     def decompose(self, hand, peg_head, target, v, stage):
@@ -138,7 +138,7 @@ class ContactManifold:
 class PerformanceManifold:
     """性能流形 — 光耦合对准代价与估计耦合效率 (高斯光束近似, 非实测)
 
-    对准误差 δ = 销头 − 孔底 (插到底 δ→0 → 耦合最优):
+    对准误差 δ = 光模块头 − 孔底 (插到底 δ→0 → 耦合最优):
       轴向 x 剩余 = 插深不足; 横向 yz = 模场错位 (耦合损耗主因)。
     性能势 V_p = ½ δᵀWδ (W: 轴向轻权 0.4, 横向 1.0 — 横向 1mm 错位比轴向
     1mm 未插深更伤耦合); 估计耦合效率 η = exp(−V_p/σ²) (单模模场重叠近似)。
@@ -153,7 +153,7 @@ class PerformanceManifold:
         self.sigma = sigma
 
     def evaluate(self, peg_head, stage=None):
-        """销头几何 → 对准代价 V_p / 估计耦合效率 η / 梯度 ∇V_p (修正方向)"""
+        """光模块头几何 → 对准代价 V_p / 估计耦合效率 η / 梯度 ∇V_p (修正方向)"""
         stage = _stage_name(stage) if stage is not None else None
         d = np.asarray(peg_head, float) - self.hole_pos
         d_ax = float(d @ AXIS_HOLE)                    # 沿孔轴剩余 (插深; 负=未到底)
@@ -167,7 +167,7 @@ class PerformanceManifold:
         elif stage == "转移":
             note = "接近孔口 (未入孔)"
         else:
-            note = "非插入段 (销未对孔)"
+            note = "非插入段 (光模块未对孔)"
         return {"delta": d, "d_axial": d_ax, "d_perp_norm": float(np.linalg.norm(d_perp)),
                 "Vp": Vp, "eta": eta, "grad": grad, "stage": stage, "note": note}
 

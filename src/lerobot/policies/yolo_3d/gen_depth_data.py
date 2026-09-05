@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """深度估计训练数据生成器 — peg-insert 场景 (RGB + 深度图对齐)
-2026-08-23 老倪: YOLO 加 depth head → 训练深度估计模型, 让 hand/peg/hole 的 z 用真实深度(非写死 z_map)
+2026-08-23 老倪: YOLO 加 depth head → 训练深度估计模型, 让 hand/光模块/hole 的 z 用真实深度(非写死 z_map)
 
 流程: metaworld 渲染 rgbd_tuple(RGB+depth buffer) → depth buffer 反推米制深度 → 存 16-bit PNG
 深度反推: depth = A - B/z  (mujoco 透视深度归一化, 实测拟合 A=1.0034 B=0.0290, 残差<0.0005)

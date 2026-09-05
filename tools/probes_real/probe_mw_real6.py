@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """探针6: R0 式抓取流程几何 — 悬停→水平对准→垂直下降→闭合→抬升
-回答: 夹爪指端降到多深能包住销身? 闭合后 peg 是否随动?
+回答: 夹爪指端降到多深能包住销身? 闭合后 光模块 是否随动?
 """
 import os
 os.environ.setdefault("DISPLAY", ":0")
@@ -61,7 +61,7 @@ for k in range(30):
         print(f"[p6] 闭{k+1} grp={o[3]:.3f} 指L={np.round(P('leftEndEffector'),4)} "
               f"指R={np.round(P('rightEndEffector'),4)} peg={np.round(P('pegGrasp'),4)}", flush=True)
 
-# ④ 抬升 25 步 — peg 随动?
+# ④ 抬升 25 步 — 光模块 随动?
 pg = P("pegGrasp").copy()
 for k in range(25):
     e.step(np.array([0.0, 0.0, 0.05, 0.6]))

@@ -4,7 +4,7 @@
 
 API:
   GET  /health   → 模型加载状态
-  POST /detect   → YOLO 检测: {image: base64} → {hand, peg, hole} 3D
+  POST /detect   → YOLO 检测: {image: base64} → {hand, 光模块, hole} 3D
   POST /predict  → 双脑推理: {obs: [43D]} → {action: [4D], stage}
 """
 import os, json, time, base64, io
@@ -99,7 +99,7 @@ class DetectReq(BaseModel):
 
 @app.post("/detect")
 def detect(req: DetectReq):
-    """YOLO 检测 → 3D 坐标 {hand, peg, hole} (2D 框中心反投影, 仿真标定)"""
+    """YOLO 检测 → 3D 坐标 {hand, 光模块, hole} (2D 框中心反投影, 仿真标定)"""
     m = get_models()
     if m.yolo is None:
         raise HTTPException(400, "YOLO 未加载")

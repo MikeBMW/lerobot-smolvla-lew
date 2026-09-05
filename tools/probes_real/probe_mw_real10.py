@@ -52,7 +52,7 @@ for k in range(30):
         break
 o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
 peg_b = o[4:7].copy()
-# 抬升 10 步, 每步看接触与 peg
+# 抬升 10 步, 每步看接触与 光模块
 for k in range(10):
     e.step(np.array([0.0, 0.0, 0.06, 0.8]))
     o = np.asarray(e._get_obs(), dtype=np.float64).ravel()

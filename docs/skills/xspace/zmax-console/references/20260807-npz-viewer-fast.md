@@ -6,7 +6,7 @@
 - 系统 python3 有: PyQt5 / numpy / PIL / cv2 5.0.0 (cv2 曾漏装, 老倪质问"怎么不提前安装" — 环境依赖一次配齐)
 - 系统 python3 没有: pandas / pyarrow → **parquet 内嵌图像读不了** → 本地数据必须走 npz 路径 (numpy)
 
-### 本地数据格式差异 (数据集管理里两个插销数据集的区别)
+### 本地数据格式差异 (数据集管理里两个光模块数据集的区别)
 - `metaworld_peg_v2` = 原始采集 npz (30 eps / 5850 帧) — 查看/数据源用
 - `metaworld_peg_lerobot` = npz_to_lerobot 转出的 parquet (24 eps / 4800 帧) — 训练管道用
 - 两者同源; peg_lerobot 无 train.npz → 查看器无图 → **cp peg_v2/train.npz 过去即可** (同数据)
@@ -19,13 +19,13 @@
    **有 local_npz 时 npz 优先于视频** (`_load_video_frame` 开头先判 npz)
 5. **frame_slider 初始 maximum=0** → 必须先点"加载帧"才能翻 → **打开查看器 QTimer.singleShot(0, _load_video_frame) 自动加载第一帧** (maximum 就位)
 6. **滑块变化只改数字不换图** → `_on_frame_changed` 里触发 `_load_video_frame()`
-7. **图像反了 → 180° 旋转 (⚠️ 后修正为条件旋转)**: 插销数据 (peg_v2/peg_lerobot, corner2 采集与视频同源) 需 `np.rot90(rgb, k=2)` 与视频一致; **metaworld_act 是 MT50 官方数据 (方向本来就正确) → 无条件旋转反而转反** (老倪: "套环图像反了")。最终: `if "peg" in (self.local_npz or ""): rgb = np.rot90(rgb, k=2)` — 按数据集来源条件旋转, 别一刀切
+7. **图像反了 → 180° 旋转 (⚠️ 后修正为条件旋转)**: 光模块数据 (peg_v2/peg_lerobot, corner2 采集与视频同源) 需 `np.rot90(rgb, k=2)` 与视频一致; **metaworld_act 是 MT50 官方数据 (方向本来就正确) → 无条件旋转反而转反** (老倪: "套环图像反了")。最终: `if "peg" in (self.local_npz or ""): rgb = np.rot90(rgb, k=2)` — 按数据集来源条件旋转, 别一刀切
 8. **翻帧 1.5s/帧 (慢!)** → 根因: **压缩 npz 的 NpzFile 数组访问是 lazy 解压**, 每帧 `d["observations"]` 都重新解压 →
    首次 load 时 `_np.array(d["observations"])` 提取到内存 ndarray → **翻帧 0-1ms** (提速 1500 倍)
    (注意: 压缩 npz 首次解压 ~1-2s/900MB, 属正常; 缓存 NpzFile 不够, 必须提取数组)
 9. **缓存状态显示"—"** (metaworld_mt50) → `_is_cached` 的 glob 需**递归** (`**/*.parquet`, parquet 在 chunk-000/ 子目录)
 10. **任务数列误填帧数 (老倪: "为什么显示 4800个/696个")**: 本地数据集是**单一任务演示集** (无"任务数"概念), `_local_datasets` 的 `tasks` 字段曾填 `frames` → 任务数列显示 4800/696 荒谬 → 改 `"tasks": "—"` (帧数/eps 在描述列); HF 云端多任务条目 (MetaWorld MT50) 才填真任务数 50
-11. **peg_v2 vs peg_lerobot 重复 (老倪问两次区别)**: 同源插销数据两格式 (v2=原始 npz 30eps/5850帧, lerobot=训练 parquet 24eps/4800帧) — 数据集管理**只留训练用的 peg_lerobot**, v2 是中间产物不显示 (老倪: 重复直接删); 解释口径: eps=演示次数 (24 次成功插拔示范), 帧=总图像张数
+11. **peg_v2 vs peg_lerobot 重复 (老倪问两次区别)**: 同源光模块数据两格式 (v2=原始 npz 30eps/5850帧, lerobot=训练 parquet 24eps/4800帧) — 数据集管理**只留训练用的 peg_lerobot**, v2 是中间产物不显示 (老倪: 重复直接删); 解释口径: eps=演示次数 (24 次成功插拔示范), 帧=总图像张数
 12. **GUI 重启必须精确 PID kill**: `pkill -f 'studio.py'` 的命令行自身含 "studio.py" → **自匹配自杀 (exit -15) 且可能没杀到 GUI** → 旧实例还在跑新代码没加载 (多轮踩坑: 改了代码老倪看不到效果)。可靠流程: `ps aux | grep '[s]tudio.py'` 拿 PID → `kill -9 <PID>` → 确认 `ps` 无残留 → `terminal(background=true)` 重启 → sleep 14 后确认新 PID + 磁盘
 
 ### 验证手法

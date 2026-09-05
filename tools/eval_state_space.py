@@ -137,7 +137,7 @@ def state_machine_coverage(left, right, xm, xs, ym, ys, seeds=(0, 1, 2, 3)):
             contact = pred_cont.item()
             # 轨迹收集
             if state == ST_APPROACH:
-                lyap["approach"].append(d_hp * d_hp)          # V = ||hand-peg||²
+                lyap["approach"].append(d_hp * d_hp)          # V = ||hand-光模块||²
                 contacts.append((0, contact))
             elif state == ST_GRASP:
                 lyap["grasp"].append(float(peg[2] - peg_z0))
@@ -212,7 +212,7 @@ def state_machine_coverage(left, right, xm, xs, ym, ys, seeds=(0, 1, 2, 3)):
 
 def lyapunov_potential(lyap):
     """⑤ 李雅普诺夫直接法: 各阶段势能 V 单调下降率 (2026-08-12 老倪指标)
-    接近 V=||hand-peg||² · 转移 V=||peg-hole||² · 插入 V=d_ph · 抬起 V=peg_z
+    接近 V=||hand-光模块||² · 转移 V=||peg-hole||² · 插入 V=d_ph · 抬起 V=peg_z
     下降率 = V 末端 < V 首端*0.5 的阶段占比 (渐近稳定判据)"""
     out = {}
     for k, seq in lyap.items():

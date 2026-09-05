@@ -8,7 +8,7 @@
   `meta/info.json` (total_frames/total_episodes) 或 `train.npz` (`len(d["observations"])`, eps="npz") 探测。
   每行带 `local_root` / `local_npz` / `local: True` 字段。
 - **显示原则 (老倪多轮纠正, 08-07 晚)**:
-  - **名称列两行命名 (最终版)**: `📁 插销插拔\npeg-insert-side-v3` — 上行中文名 / 下行**官方任务名**。
+  - **名称列两行命名 (最终版)**: `📁 光模块插拔\npeg-insert-side-v3` — 上行中文名 / 下行**官方任务名**。
     `_local_datasets` cands 结构 `(dir, 中文名, 官方名, tag, robot)` → `name = f"📁 {cn}\n{official}"`,
     行高 60 够两行。官方名是 metaworld 任务名 (peg-insert-side-v3 / nut-on-peg), 本地目录名
     (metaworld_act/peg_lerobot) 只是磁盘代号, 官方仓库 GitHub Farama-Foundation/MetaWorld policies/
@@ -37,7 +37,7 @@
 - **信息按钮本地分支**: `_show_dataset_info` 里 `ds.get("local")` → 不查 HF API (local:// 会 404),
   直接 `_msg_ok` 显示路径/类型/状态。
 - **📌 当前训练数据集卡片** (顶部, 绿框): `_current_dataset_html()` 从**最近 mtime 的
-  config_*.yaml** 的 root 字段探测 (即最近训练用的数据) + 类型判定 (路径含 "peg" = 插销绿标,
+  config_*.yaml** 的 root 字段探测 (即最近训练用的数据) + 类型判定 (路径含 "peg" = 光模块绿标,
   否则 nut-on-peg 套环黄标) + 帧数/eps/state 维。🔄 按钮刷新。
 - **坑**: config 的 root 行是**缩进的** (`  root: data/...`) — regex 必须 `^\s*root:\s*(data/\S+)`
   (漏 `\s*` 会探测失败回退兜底路径, 显示旧数据)。
@@ -67,9 +67,9 @@
 - 启动: `cd tools/gui && ZMAX_AUTO_RUN=1 DISPLAY=:0 bash run_studio.sh` (auto_run 自动回 simulink 页)。
 - 无训练进程时 auto_run 不触发训练 (ZMAX_AUTO_TRAIN=1 才训练) — 重启安全。
 
-## 4. 数据统一插销终态 (老倪: "simulink 的数据，应该是插销数据" → 全链路只留插销)
+## 4. 数据统一光模块终态 (老倪: "simulink 的数据，应该是光模块数据" → 全链路只留光模块)
 
-- **simulink 画布数据源 = 插销**: 模板全部 `"📦 metaworld_peg_lerobot 数据"` (replace_all,
+- **simulink 画布数据源 = 光模块**: 模板全部 `"📦 metaworld_peg_lerobot 数据"` (replace_all,
   25 处含节点名/连线/引导文案) + `_ensure_training_data` 的 placeholder 改
   `data/metaworld_peg_lerobot` (原 `metaworld_act` 硬编码)。desc 帧数 696→4800,
   日志文案同步 (data/metaworld_act 不存在 → peg_lerobot)。
@@ -79,10 +79,10 @@
   metaworld_mt50 特判 (local_npz)、closed_loop json 采集统计 (1510 行)、orin 候选。
   **验证**: `grep -rn "metaworld_act" tools/gui/` 应只剩注释。
 - **data/ 清理终态 (老倪 "没用的都删掉" + 手动删 orin/closed_loop 后检查)**: 只剩
-  `metaworld_peg_lerobot` (插销训练) + `yolo_peg_full` (YOLO 检测数据)。删除原则:
+  `metaworld_peg_lerobot` (光模块训练) + `yolo_peg_full` (YOLO 检测数据)。删除原则:
   旧版本目录 (peg_v2~v7/joint/cartesian)、中间产物 (mt50 原始 parquet——act 已转 npz、
   npz→lerobot 后的源 npz)、无图像旧数据全删; 训练中目录不碰。
-- **数据集管理终态 1 行**: 本地行只剩 `📁 插销插拔\npeg-insert-side-v3` (两行命名)。
+- **数据集管理终态 1 行**: 本地行只剩 `📁 光模块插拔\npeg-insert-side-v3` (两行命名)。
 - **⚠️ 大段删除纪律 (execute_code 截断事故)**: 用 Python 字符串索引 (`src.index/meta_item+src[i+len(seg):]`)
   删大段时索引错位会**静默截断文件** (studio.py 8057 行 → 1266 行, 丢 TrainingModule 等全部)。
   恢复 = `git checkout tools/gui/studio.py` (HEAD 含当天大部分改动) + **重新应用 HEAD 之后的

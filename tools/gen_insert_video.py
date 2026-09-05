@@ -196,7 +196,7 @@ def main():
     for seed in range(12):
         env = make_env(seed)
         o = get_obs(env)
-        # 🎯 2026-08-23: 模型感知 state — YOLO 检测解算替换 hand/peg/hole 段 (真机同构)
+        # 🎯 2026-08-23: 模型感知 state — YOLO 检测解算替换 hand/光模块/hole 段 (真机同构)
         o_model = o.copy()
         if aligner is not None:
             try:
@@ -204,7 +204,7 @@ def main():
             except Exception:
                 pass
         # 🎯 真闭环 (2026-08-23 老倪): 状态机判断/动作调制不再吃 env.data.site_xpos 真值,
-        #   改吃 o_model (YOLO 解算 state)。peg_z0 取 YOLO peg 段 z (写死平面, 非真值)
+        #   改吃 o_model (YOLO 解算 state)。peg_z0 取 YOLO 光模块 段 z (写死平面, 非真值)
         peg_z0 = float(o_model[6])
         state = ST_APPROACH
         done_at = -1          # 🎥 2026-08-27: 成功后保持画面 (ST_DONE 再录 90 步≈2.7s, 避免视频过短)
@@ -215,7 +215,7 @@ def main():
         stall = 0
         for step in range(500):
             hand = o_model[0:3]    # 🎯 真闭环: hand 来自 YOLO 解算 state
-            peg = o_model[4:7]     # 🎯 真闭环: peg 来自 YOLO 解算 state
+            peg = o_model[4:7]     # 🎯 真闭环: 光模块 来自 YOLO 解算 state
             hole = o_model[36:39]  # 🎯 真闭环: hole 来自 YOLO 解算 state
             d_hp = float(np.linalg.norm(hand - peg))
             d_ph = float(np.linalg.norm(peg - hole))

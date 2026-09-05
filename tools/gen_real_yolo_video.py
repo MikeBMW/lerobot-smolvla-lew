@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """真实 YOLO 感知视频 — 六层控制器真闭环逐帧渲染 + detect_3d (2026-09-04 老倪: 要看真实感知效果)
-每帧: metaworld render 原图 + YOLO 2D 框 (hand/peg/hole + conf) + det3d 3D 坐标 + 状态条
+每帧: metaworld render 原图 + YOLO 2D 框 (hand/光模块/hole + conf) + det3d 3D 坐标 + 状态条
 驱动: RealStateSpaceSim(vision=True) — 每帧真实渲染检测, 不节流不冻结不造假
 用法: gui-venv311/bin/python tools/gen_real_yolo_video.py [seed] [max_steps]
 输出: data/real_yolo_perception_<seed>.mp4
@@ -47,7 +47,7 @@ def draw_frame(img_rgb, sim, step, st_snap):
     bar = (f"step {step} | {st_snap['stage']} | grasped={int(st_snap['grasped'])} "
            f"grp={st_snap['gripper']:.2f}")
     cv2.putText(frame, bar, (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1, cv2.LINE_AA)
-    # 底部 3D 汇总 (控制用值: hand 编码器 / peg 视觉 / hole 视觉)
+    # 底部 3D 汇总 (控制用值: hand 编码器 / 光模块 视觉 / hole 视觉)
     hp = st_snap["x"]
     pp = vis.get("peg")
     hh = vis.get("hole")
@@ -90,7 +90,7 @@ def main():
     for i, (stp, img, vs, st_snap) in enumerate(sel):
         if img is None:
             continue
-        sim._vis = vs                      # 恢复该帧 vis (含 boxes/det3d/peg/hole)
+        sim._vis = vs                      # 恢复该帧 vis (含 boxes/det3d/光模块/hole)
         fr = draw_frame(img, sim, stp, st_snap)
         cv2.imwrite(os.path.join(tmpdir, f"f{i:05d}.png"), fr)
         if i % 60 == 0:

@@ -70,7 +70,7 @@ def plot_gru_poles(right, out_png):
 
 
 def _rollout_error_curve(left, right, xm, xs, ym, ys, gain, seed=1, max_steps=200):
-    """跑一次插拔, 记录接近阶段误差 e=||hand-peg|| 序列 (状态机增益可调)"""
+    """跑一次插拔, 记录接近阶段误差 e=||hand-光模块|| 序列 (状态机增益可调)"""
     dev = next(left.parameters()).device
     env = make_env(seed)
     o = get_obs(env)

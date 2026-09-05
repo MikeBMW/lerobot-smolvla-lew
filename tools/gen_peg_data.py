@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Z-MAX 插销数据集生成器 · peg-insert-side-v3 官方专家采样 (2026-08-07 老倪: 不是插销的数据)
+"""Z-MAX 光模块数据集生成器 · peg-insert-side-v3 官方专家采样 (2026-08-07 老倪: 不是光模块的数据)
 用 metaworld 官方专家策略 SawyerPegInsertionSideV3Policy 采样成功轨迹,
 输出: data/metaworld_peg/train.npz + val.npz (图像 128x128 + state 39D + action 4D)
 用法: ./.venv/bin/python tools/gen_peg_data.py --eps 60 --out data/metaworld_peg
@@ -98,7 +98,7 @@ def main():
     meta = {"task": "peg-insert-side-v3", "success_eps": ok, "n_eps_total": ep_idx,
             "camera": args.camera, "img_size": args.img, "generated": __import__("time").strftime("%Y-%m-%d %H:%M")}
     json.dump(meta, open(os.path.join(args.out, "meta.json"), "w"), ensure_ascii=False, indent=2)
-    print(f"🎯 插销数据集完成: {args.out}/  (meta.json: {meta})")
+    print(f"🎯 光模块数据集完成: {args.out}/  (meta.json: {meta})")
 
 if __name__ == "__main__":
     main()

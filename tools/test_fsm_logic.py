@@ -6,7 +6,7 @@
   1. 单帧证据成立**不应**切换 (confirm_n=2 连续确认)
   2. 证据抖动 (成立→不成立→成立) 不应切换
   3. 连续 2 帧成立才切换
-  4. 抬起阶段夹持力连续 5 帧丢失 + 插销落回台面 → 回退「接近」重抓
+  4. 抬起阶段夹持力连续 5 帧丢失 + 光模块落回台面 → 回退「接近」重抓
   5. 夹持力正常时不误触发回退
 """
 import importlib.util as ilu
@@ -54,14 +54,14 @@ check("已推进到抬起阶段", am2.stage() == "抬起", f"当前 {am2.stage()
 for _ in range(8):
     am2.advance(grasp_force=1.0, peg_z=0.14, peg_z_grasp=0.03, lifted=0.05)
 check("夹持正常不误触发回退", am2.stage() == "抬起", f"当前 {am2.stage()}")
-# 夹持丢失但插销还在高处 (被别的东西托住?) → 不该回退
+# 夹持丢失但光模块还在高处 (被别的东西托住?) → 不该回退
 for _ in range(8):
     am2.advance(grasp_force=0.0, peg_z=0.14, peg_z_grasp=0.03, lifted=0.05)
-check("仅夹持丢失但插销未落回 → 不回退", am2.stage() == "抬起", f"当前 {am2.stage()}")
-# 夹持丢失 + 插销落回台面 → 回退
+check("仅夹持丢失但光模块未落回 → 不回退", am2.stage() == "抬起", f"当前 {am2.stage()}")
+# 夹持丢失 + 光模块落回台面 → 回退
 for _ in range(5):
     am2.advance(grasp_force=0.0, peg_z=0.032, peg_z_grasp=0.03, lifted=0.0)
-check("夹持丢失且插销落回 → 回退接近重抓", am2.stage() == "接近", f"当前 {am2.stage()}")
+check("夹持丢失且光模块落回 → 回退接近重抓", am2.stage() == "接近", f"当前 {am2.stage()}")
 _last = am2.history[-1][1] if am2.history else ""
 check("回退原因已记录", "夹持丢失" in _last, _last)
 

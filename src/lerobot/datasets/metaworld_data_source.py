@@ -19,7 +19,7 @@ import json
 import os
 
 # ── 数据仓库优先级 (与 node_logic._probe_data_root / _ensure_training_data 同源) ──
-#   (源类型, 相对路径, 中文标签) — Orin 真实产线 → 长轨迹 → 标准 peg → 状态空间 insert
+#   (源类型, 相对路径, 中文标签) — Orin 真实产线 → 长轨迹 → 标准 光模块 → 状态空间 insert
 DATA_ROOTS = (
     ("orin",      "data/closed_loop",        "Orin 真实产线"),
     ("metaworld", "data/metaworld_peg_long", "metaworld 长轨迹"),

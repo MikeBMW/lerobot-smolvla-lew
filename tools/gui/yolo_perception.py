@@ -9,7 +9,7 @@
 真机同构原则 (2026-08-07 老倪): 真机只有 YOLO 2D 检测, 没有模拟器直接给的 39D。
 本模块不依赖 metaworld/mujoco — 相机参数由配置提供, 仿真/真机统一走同一链路。
 
-加载: YOLO(weights) 实际加载 (yolov8s.pt / yolo26n.pt / 训练过的 peg 权重)
+加载: YOLO(weights) 实际加载 (yolov8s.pt / yolo26n.pt / 训练过的 光模块 权重)
 输出: 检测框 → 3D 位姿 → 替换 39D 观测对应段 → 43D 状态空间观测
 """
 import os
@@ -20,7 +20,7 @@ _DEF_CAM = {"cam_pos": np.array([0.0, -0.25, 0.9]),
             "cam_forward": np.array([0.0, 0.0, -1.0]),
             "fovy": 45.0, "H": 480, "W": 480}
 
-# 39D 结构: [0:3]=hand, [18:21]=peg, [36:39]=hole/goal (与 yolo_state_aligner 一致)
+# 39D 结构: [0:3]=hand, [18:21]=光模块, [36:39]=hole/goal (与 yolo_state_aligner 一致)
 _SEG = {"hand": (0, 3), "peg": (18, 21), "hole": (36, 39)}
 # 平面高度假设 (m) — 真机用深度相机/标定替代
 _PLANE_Z = {"hand": 0.155, "peg": 0.03, "hole": 0.129}

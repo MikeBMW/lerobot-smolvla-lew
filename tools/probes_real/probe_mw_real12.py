@@ -17,7 +17,7 @@ o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
 peg = o[4:7].copy()
 print(f"[p12] hand0={np.round(o[0:3],4)} peg={np.round(peg,4)}", flush=True)
 
-# hand 悬停到 peg 上方 8cm (hand=obs[0:3] 为锚)
+# hand 悬停到 光模块 上方 8cm (hand=obs[0:3] 为锚)
 for k in range(100):
     o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
     h = o[0:3]
@@ -31,7 +31,7 @@ for k in range(100):
 o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
 print(f"[p12] 悬停 hand={np.round(o[0:3],4)}", flush=True)
 
-# hand 垂直下降到 peg 身 (z 目标 = peg z + 0.002)
+# hand 垂直下降到 光模块 身 (z 目标 = 光模块 z + 0.002)
 for k in range(60):
     o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
     h = o[0:3]

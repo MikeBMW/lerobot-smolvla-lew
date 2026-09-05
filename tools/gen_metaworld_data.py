@@ -56,7 +56,7 @@ def main():
 
     import metaworld
     from PIL import Image
-    # 官方专家策略 (保证真正抓取-插入, 2026-08-06 v3 修复: 手写 5 阶段夹不住 peg)
+    # 官方专家策略 (保证真正抓取-插入, 2026-08-06 v3 修复: 手写 5 阶段夹不住 光模块)
     # 2026-08-07: --far 远起点用多阶段专家 (官方专家假设标准起点, 远移后状态机失效)
     try:
         from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy
@@ -91,14 +91,14 @@ def main():
         # 远起点模式 (2026-08-07 老倪: 长接近轨迹) — 先移手到远处再记录
         if getattr(args, "far", False):
             ee_site = env.model.site("endEffector").id
-            tgt = np.array([-0.05, 0.3, 0.25])  # 远处起点 (远离 peg)
+            tgt = np.array([-0.05, 0.3, 0.25])  # 远处起点 (远离 光模块)
             for _ in range(40):
                 cur = env.data.site_xpos[ee_site]
                 delta = (tgt - cur) * 0.3
                 env.step(np.concatenate([delta, [0.0]]))
             # 远移后重新获取 obs (专家要用最新状态)
             obs, _, _, _, _ = env.step(np.zeros(4))
-        # 记录轨迹开始时 peg 高度 (成功判定基准, 2026-08-06)
+        # 记录轨迹开始时 光模块 高度 (成功判定基准, 2026-08-06)
         try:
             peg_z0 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
         except Exception:
@@ -106,7 +106,7 @@ def main():
         ep_imgs = []
         grabbed_frames = 0  # 2026-08-08: 分段数据 — 抓起后保持 N 帧即停 (方向一致, 无转移反转)
         for i in range(args.steps):
-            # 2026-08-08: 分段数据 — 官方专家抓起 peg 后保持 30 帧即停止记录
+            # 2026-08-08: 分段数据 — 官方专家抓起 光模块 后保持 30 帧即停止记录
             if getattr(args, "stop_after_grab", False) and grabbed_frames >= 30:
                 break
             # 渲染真实图像 (480x480 → 128x128) — 🐛 2026-08-19: --no-img 跳过 (headless osmesa 渲染失败)
@@ -134,7 +134,7 @@ def main():
                     state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D
                 except Exception:
                     state = ee.astype(np.float32).copy()  # 兜底 3D
-            # 2026-08-08 ③目标条件化: state 加相对向量 (hand→peg, peg→hole) — MLP 成功的核心
+            # 2026-08-08 ③目标条件化: state 加相对向量 (hand→光模块, 光模块→hole) — MLP 成功的核心
             if getattr(args, "rel_vec", False) and state.size >= 39:
                 try:
                     hand_pos = env.data.site_xpos[env.model.site("endEffector").id].astype(np.float32)
@@ -225,10 +225,10 @@ def main():
                 if getattr(args, "stop_after_grab", False) and grabbed_frames >= 30:
                     break
                 continue
-            # 专家动作: 完整插销流程 5 阶段 (2026-08-06 v3, 老倪要求"拿起插销")
-            # Phase 1: 接近 peg (绿色长条) 上方
-            # Phase 2: 下降抓取 peg (夹爪闭合)
-            # Phase 3: 抬起 peg (升高到孔高度)
+            # 专家动作: 完整光模块流程 5 阶段 (2026-08-06 v3, 老倪要求"拿起光模块")
+            # Phase 1: 接近 光模块 (绿色长条) 上方
+            # Phase 2: 下降抓取 光模块 (夹爪闭合)
+            # Phase 3: 抬起 光模块 (升高到孔高度)
             # Phase 4: 水平移到 hole 上方
             # Phase 5: 下降插入 + 保持
             try:
@@ -237,7 +237,7 @@ def main():
             except Exception:
                 hole = None
             try:
-                pid = env.model.site("pegGrasp").id  # 正确抓握点 (peg 中段)
+                pid = env.model.site("pegGrasp").id  # 正确抓握点 (光模块 中段)
                 peg = env.data.site_xpos[pid]
             except Exception:
                 try:
@@ -251,7 +251,7 @@ def main():
             except Exception:
                 goal = None
             target_hole = hole if hole is not None else goal
-            # 抓取点: peg 上方 3cm (抓握高度) — 2026-08-08 修复: 每步重新获取 peg 位置 (循环内 peg 会动)
+            # 抓取点: 光模块 上方 3cm (抓握高度) — 2026-08-08 修复: 每步重新获取 光模块 位置 (循环内 光模块 会动)
             pid_use = pid if 'pid' in dir() else env.model.site("pegGrasp").id
             peg_cur = env.data.site_xpos[pid_use]
             grasp_pt = np.array([peg_cur[0], peg_cur[1], peg_cur[2] + 0.03]) if peg_cur is not None else None
@@ -259,12 +259,12 @@ def main():
                 d_peg = np.linalg.norm(ee - grasp_pt)          # 到抓取点距离
                 d_peg_xy = np.linalg.norm((ee - grasp_pt)[:2]) # 水平距离
                 d_hole = np.linalg.norm(ee - target_hole)      # 到孔距离
-                # 2026-08-08 修复: lifted 用 peg 是否被抓起 (手初始 z 就高, 用手的 z 判断永远 True → 跳过抓取)
+                # 2026-08-08 修复: lifted 用 光模块 是否被抓起 (手初始 z 就高, 用手的 z 判断永远 True → 跳过抓取)
                 pid_use = pid if 'pid' in dir() else env.model.site("pegGrasp").id
                 peg_now = env.data.site_xpos[pid_use]
-                lifted = peg_now[2] > peg_z0 + 0.04            # peg 相对初始升高 4cm = 已抓起
+                lifted = peg_now[2] > peg_z0 + 0.04            # 光模块 相对初始升高 4cm = 已抓起
                 if d_peg > 0.06:
-                    # Phase 1: 接近 peg 上方 (水平 + 升到抓取高度)
+                    # Phase 1: 接近 光模块 上方 (水平 + 升到抓取高度)
                     dv = grasp_pt - ee
                     horiz = np.array([dv[0], dv[1], dv[2] * 0.5])
                     # 2026-08-08 grab-only: 接近加速 (防轨迹全在接近段), 0.3太快抓取失误→0.18
@@ -277,7 +277,7 @@ def main():
                     vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.05
                     gripper = -0.8  # 闭合抓取
                 elif not lifted:
-                    # Phase 3: 抬起 peg 到孔高度
+                    # Phase 3: 抬起 光模块 到孔高度
                     lift_pt = np.array([ee[0], ee[1], target_hole[2] + 0.02])
                     dv = lift_pt - ee
                     vel = dv / max(np.linalg.norm(dv), 1e-6) * 0.08
@@ -304,14 +304,14 @@ def main():
             else:
                 action = np.zeros(4)
             env.step(action)
-            # 2026-08-08: 分段数据 — 检测 peg 是否被抓起 (升高 3cm, 锁存后每帧+1)
+            # 2026-08-08: 分段数据 — 检测 光模块 是否被抓起 (升高 3cm, 锁存后每帧+1)
             if getattr(args, "stop_after_grab", False):
                 try:
                     peg_z_now = env.data.site_xpos[env.model.site("pegGrasp").id][2]
                     if peg_z_now > peg_z0 + 0.03:
                         grabbed_frames = max(grabbed_frames, 1)  # 锁存
                     if grabbed_frames >= 1:
-                        grabbed_frames += 1  # 锁存后每帧累加 (无论 peg 是否保持)
+                        grabbed_frames += 1  # 锁存后每帧累加 (无论 光模块 是否保持)
                 except Exception:
                     pass
             all_frames.append({
@@ -322,7 +322,7 @@ def main():
                 "timestamp": i / 30.0,
             })
             total += 1
-        # 成功过滤 (2026-08-06: 只保留抓起 peg 的轨迹, 失败轨迹污染训练)
+        # 成功过滤 (2026-08-06: 只保留抓起 光模块 的轨迹, 失败轨迹污染训练)
         try:
             peg_z1 = env.data.site_xpos[env.model.site("pegGrasp").id][2]
         except Exception:

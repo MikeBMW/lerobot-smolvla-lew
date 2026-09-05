@@ -1,4 +1,4 @@
-# 20260807 插销数据生成链路 (peg-insert-side-v3)
+# 20260807 光模块数据生成链路 (peg-insert-side-v3)
 
 官方专家策略采样成功轨迹 → npz → npz_to_lerobot 转训练格式。生成任意 metaworld 任务数据同法。
 

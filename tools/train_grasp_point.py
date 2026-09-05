@@ -7,7 +7,7 @@
      d_grasp > 0.03  → 张开, 向抓握点移动 (MLP 精确对位)
      d_grasp < 0.03  → 减速接近 (力控)
      d_grasp < 0.015 → 夹持力递增 0.3→0.6 (轻触→稳夹)
-     peg 跟随 (z升高) → 锁定位置 + 保持 0.6
+     光模块 跟随 (z升高) → 锁定位置 + 保持 0.6
 """
 import os, sys, json, time
 import numpy as np
@@ -145,7 +145,7 @@ def main():
                 h_delta = np.array([delta[0], delta[1], 0.0])  # 水平分量
                 h_dist = np.linalg.norm(h_delta)
                 if h_dist > 0.02:
-                    # 水平还没对齐 (容差 2cm, peg 直径级): 只动水平
+                    # 水平还没对齐 (容差 2cm, 光模块 直径级): 只动水平
                     act[:3] = np.clip((h_delta / max(h_dist, 1e-4)) * 0.4, -1, 1)
                 else:
                     # 水平对齐: 垂直下降 (缓慢, 防压peg)

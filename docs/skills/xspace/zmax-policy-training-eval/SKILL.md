@@ -922,7 +922,7 @@ def _feat_to_dict(feats):
 
 **6 大场景映射** (全来自 factory-3d.html 真实工位): 1 WB金线键合连板上料 (I152·Z700F) /
 2 DA芯片贴装上下料 (I136/140/145·Z100L) / 3 LD Lens AA耦合 (I171·Z700, ±1μm) /
-4 PEI Cover组装 (I155·Z700F, 插销式最接近 peg-insert) / 5 隔离器贴装 (I159·Z700F, Pick&Place力控) /
+4 PEI Cover组装 (I155·Z700F, 光模块式最接近 peg-insert) / 5 隔离器贴装 (I159·Z700F, Pick&Place力控) /
 6 COC绑定/共晶 (I113/115·Z700, ±1μm+280°C)。每个场景 = 状态机映射表 + 调制动作指标
 (节拍/良率/成功率/对位精度/力控阈值)。
 

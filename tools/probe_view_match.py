@@ -5,8 +5,8 @@
 同时产出 ss_episode_latest.mp4)。检查:
   1. 视角: 3D 视图相机 vs 视频 corner2 相机, 世界轴屏幕方向角差 + 关键物体屏幕位置差
      (3D 视图临时设成与视频同分辨率的正方形, 消除画幅差)
-  2. 内容: 八阶段是否齐全 + 抓取前后插销是否真的从台面到手上
-  3. 轨迹: 3D 视图与视频用的是不是同一串 hand/peg 序列 (同源 = 逐帧完全相同)
+  2. 内容: 八阶段是否齐全 + 抓取前后光模块是否真的从台面到手上
+  3. 轨迹: 3D 视图与视频用的是不是同一串 hand/光模块 序列 (同源 = 逐帧完全相同)
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/probe_view_match.py
 """
 import os
@@ -103,7 +103,7 @@ for nm, ax in (("+X", [1., 0, 0]), ("+Y", [0, 1., 0]), ("+Z", [0, 0, 1.])):
 print(f"→ 三轴角差 ≤2°: {'✅ 视角一致' if ok_axes else '❌'}")
 
 print("\n═══ 1b) 关键物体屏幕位置 (归一化 %) ═══")
-pts = [("插销起点", np.asarray(meta["peg0"], float)),
+pts = [("光模块起点", np.asarray(meta["peg0"], float)),
        ("孔口", np.asarray(meta["hole_mouth"], float)),
        ("插入终点", np.asarray(meta["goal"], float)),
        ("末端起点", np.asarray(tr["x"][0], float)),
@@ -123,21 +123,21 @@ want = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "�
 cnt = {w: stages.count(w) for w in want}
 print("  " + "  ".join(f"{w}={cnt[w]}" for w in want))
 # 阶段推进链 (调度器 history) — 某阶段 0 帧是合法的: 该 seed 初始就满足推进证据,
-# 状态机第一帧即跃过 (例: 手一开始就在插销上方 4.7cm < 6cm 粗到位阈值 → 接近 0 帧)
+# 状态机第一帧即跃过 (例: 手一开始就在光模块上方 4.7cm < 6cm 粗到位阈值 → 接近 0 帧)
 hist = list(meta.get("history", []))
 print("  推进链: " + " | ".join(hist))
 gi = next((i for i, g in enumerate(np.asarray(tr["grasped"]).astype(bool)) if g), None)
 peg = np.asarray(tr["peg"], float)
-print(f"  插销 z: 台面 {peg[0, 2]:.4f} → 最高 {peg[:, 2].max():.4f} "
+print(f"  光模块 z: 台面 {peg[0, 2]:.4f} → 最高 {peg[:, 2].max():.4f} "
       f"(提起 {peg[:, 2].max() - peg[0, 2]:.3f}m)   夹住帧 {gi}/{len(stages)}")
 ok_chain = len(hist) >= 7 and "完成" in stages
 ok_grasp = gi is not None and (peg[:, 2].max() - peg[0, 2]) > 0.08
 pre_frames = gi or 0
 ok_content = ok_chain and ok_grasp and pre_frames > 50
 print(f"→ 阶段链完整 (7 次推进 → 完成): {'✅' if ok_chain else '❌'}")
-print(f"→ 插销真被抓起 (>8cm): {'✅' if ok_grasp else '❌'}")
-print(f"→ 有「从初始位置到抓取插销」过程: "
-      f"{'✅ 前 %d 帧 (%.1fs) 手空着去够插销' % (pre_frames, pre_frames * float(meta['ctrl_dt'])) if pre_frames > 50 else '❌'}")
+print(f"→ 光模块真被抓起 (>8cm): {'✅' if ok_grasp else '❌'}")
+print(f"→ 有「从初始位置到抓取光模块」过程: "
+      f"{'✅ 前 %d 帧 (%.1fs) 手空着去够光模块' % (pre_frames, pre_frames * float(meta['ctrl_dt'])) if pre_frames > 50 else '❌'}")
 
 print("\n═══ 3) 轨迹同源 ═══")
 print(f"  3D 视图轨迹 = trace 里的 hand 序列 ({len(tr['x'])} 帧, 来自 metaworld MuJoCo)")

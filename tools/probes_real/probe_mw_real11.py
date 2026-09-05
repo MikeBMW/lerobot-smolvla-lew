@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """探针11: 决定性 — 两指闭合中心漂移补偿 × 抬升节奏, 找能夹起 peg 的组合
-全程逐帧: ee/指L/指R site y + peg y + grp
+全程逐帧: ee/指L/指R site y + 光模块 y + grp
 """
 import os
 os.environ.setdefault("DISPLAY", ":0")
@@ -19,7 +19,7 @@ def trial(y_off_mm, lift_mode, label):
     e.reset(seed=0); e._freeze_rand_vec = True
     o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
     peg_tgt = o[4:7].copy() + np.array([0.0, y_off_mm, 0.0])   # y 补偿目标
-    # 悬停水平逼近 (z=peg+0.08)
+    # 悬停水平逼近 (z=光模块+0.08)
     for k in range(90):
         o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
         ee = P("endEffector")
@@ -30,7 +30,7 @@ def trial(y_off_mm, lift_mode, label):
         e.step(dv)
         if np.linalg.norm(ee[:2] - peg_tgt[:2]) < 0.003 and abs(ee[2] - peg_tgt[2] - 0.08) < 0.006:
             break
-    # 垂直下降 (到位 = ee z ≈ peg z + 0.003)
+    # 垂直下降 (到位 = ee z ≈ 光模块 z + 0.003)
     for k in range(70):
         o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
         ee = P("endEffector")

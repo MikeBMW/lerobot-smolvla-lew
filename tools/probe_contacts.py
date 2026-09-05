@@ -19,7 +19,7 @@ from train_full_pipeline import make_env, get_obs  # noqa: E402
 env = make_env(0)
 m, d = env.model, env.data
 env.max_path_length = 3000
-print("=== 与夹爪/插销相关的 body 名 ===")
+print("=== 与夹爪/光模块相关的 body 名 ===")
 for i in range(m.nbody):
     nm = m.body(i).name
     if any(k in nm.lower() for k in ("hand", "claw", "peg", "box", "table", "gripper", "finger")):
@@ -29,7 +29,7 @@ peg_id = int(m.body("peg").id)
 o = get_obs(env)
 peg_z0 = float(d.site_xpos[m.site("pegGrasp").id][2])
 
-# 简易脚本策略: 对位 → 下降 → 闭爪 → 抬起 (只为造出"夹着插销悬空"的状态)
+# 简易脚本策略: 对位 → 下降 → 闭爪 → 抬起 (只为造出"夹着光模块悬空"的状态)
 pair_force = defaultdict(float)
 pair_cnt = defaultdict(int)
 phase_log = []
@@ -76,7 +76,7 @@ print(f"\n=== 抽样阶段 (step, 相位, 提起高度, 接触数) ===")
 for s, ph, lf, nc in phase_log[:12]:
     print(f"  step {s:<5} {ph:<8} lifted={lf:+.4f}m  ncon={nc}")
 
-print(f"\n=== 夹着插销之后的接触对 (按累计力排序) ===")
+print(f"\n=== 夹着光模块之后的接触对 (按累计力排序) ===")
 print(f"{'body 对':<44} {'累计力N':>10} {'出现次数':>8}")
 for k, v in sorted(pair_force.items(), key=lambda kv: -kv[1])[:12]:
     tag = "  ← 含 peg" if "peg" in k else ""

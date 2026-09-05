@@ -142,7 +142,7 @@ def main():
         d_hp_prev = 1.0
         for step in range(300):
             stage = compute_stage(env, peg_z0, hole)
-            # 抓取阶段卡死处理: 夹爪闭合 d_hp<0.08 持续 30 帧 → 强制转抬起 (peg 已抓)
+            # 抓取阶段卡死处理: 夹爪闭合 d_hp<0.08 持续 30 帧 → 强制转抬起 (光模块 已抓)
             if stage == 1 and stage_hold > 30 and d_hp_prev < 0.08:
                 stage = 2
             if stage == stage_prev:
@@ -151,7 +151,7 @@ def main():
                 stage_hold = 1
             stage_prev = stage
             if stage == 0:
-                # 2026-08-10: 接近阶段用解析控制器 (hand→peg 直接移动, 比学专家轨迹可靠)
+                # 2026-08-10: 接近阶段用解析控制器 (hand→光模块 直接移动, 比学专家轨迹可靠)
                 hand = env.data.site_xpos[env.model.site("endEffector").id]
                 peg = env.data.site_xpos[env.model.site("pegGrasp").id]
                 delta = peg - hand

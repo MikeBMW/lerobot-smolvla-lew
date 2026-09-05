@@ -486,7 +486,7 @@ class DatasetViewer(QDialog):
             if arr.ndim == 4 and arr.shape[0] == 1:
                 arr = arr[0]
             rgb = (arr.transpose(1, 2, 0) * 255).astype(_np.uint8) if arr.shape[0] == 3 else arr
-            # 2026-08-07 老倪: 插销数据(peg_v2/peg_lerobot)与视频同源需 180° 旋转;
+            # 2026-08-07 老倪: 光模块数据(peg_v2/peg_lerobot)与视频同源需 180° 旋转;
             #   metaworld_act 是 MT50 官方数据(方向本来正确) → 不转
             if "peg" in (self.local_npz or ""):
                 rgb = _np.rot90(rgb, k=2)

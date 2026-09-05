@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """诊断: 深度反投影 3D vs 真值 (评估 0/8 卡"接近"的根因)
-真实执行, 打印 hand/peg/hole 的深度反投影坐标 vs 真值 + 深度模型原始输出范围
+真实执行, 打印 hand/光模块/hole 的深度反投影坐标 vs 真值 + 深度模型原始输出范围
 """
 import os, sys, glob, numpy as np
 ROOT = "/home/ubuntu/lerobot-smolvla-lew"
@@ -52,17 +52,17 @@ for k in ["hand", "peg", "hole"]:
         print(f"{k}: 未检出!")
 
 print("\n=== z 值对比 (深度 vs 真值) ===")
-for k, idx in [("hand", 2), ("peg", 6), ("hole", 38)]:
+for k, idx in [("hand", 2), ("光模块", 6), ("hole", 38)]:
     truth = obs[idx]
     d = det.get(k)
     dz = d[2] if d is not None else float('nan')
     print(f"{k}: 真值 z={truth:.4f}  深度 z={dz:.4f}  差={dz-truth:+.4f}")
 
-if "hand" in det and "peg" in det:
-    d_hp = float(np.linalg.norm(np.asarray(det["hand"]) - np.asarray(det["peg"])))
-    print(f"\n=== hand-peg 距离 (深度) = {d_hp:.4f} m (抓取阈 <0.06) ===")
+if "hand" in det and "光模块" in det:
+    d_hp = float(np.linalg.norm(np.asarray(det["hand"]) - np.asarray(det["光模块"])))
+    print(f"\n=== hand-光模块 距离 (深度) = {d_hp:.4f} m (抓取阈 <0.06) ===")
     t_hp = float(np.linalg.norm(obs[0:3] - obs[4:7]))
-    print(f"hand-peg 距离 (真值) = {t_hp:.4f} m")
+    print(f"hand-光模块 距离 (真值) = {t_hp:.4f} m")
 
 print("\n=== 深度模型原始输出范围 (判断自动校准 b=0.604 是否已应用) ===")
 import cv2

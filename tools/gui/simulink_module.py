@@ -7892,7 +7892,7 @@ class SimulinkModule(QWidget):
 
     def _train_yolo_detector(self, steps=None):
         """🎯 YOLO检测训练 (ultralytics yolov8n) — 感知前端, 独立于 lerobot 策略训练
-        数据: data/yolo_peg (gen_yolo_data.py 仿真自动标注 peg/hole/hand)
+        数据: data/yolo_peg (gen_yolo_data.py 仿真自动标注 光模块/hole/hand)
         训练: src/lerobot/policies/yolo_3d/train_yolo.py → outputs/yolo_peg/<name>
         """
         root = self._repo_root()

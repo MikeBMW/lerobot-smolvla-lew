@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """YOLO 训练数据自动标注生成器 — peg-insert 场景
 2026-08-07 老倪: 开启 YOLO 训练 (感知前端, 真机必需)
-流程: metaworld 渲染图像 + 模拟器已知 3D 位置 → 相机投影到 2D → 生成 YOLO 标注 (peg/hole/hand)
+流程: metaworld 渲染图像 + 模拟器已知 3D 位置 → 相机投影到 2D → 生成 YOLO 标注 (光模块/hole/hand)
 零人工标注: 仿真自动产出 (类别+bbox) → 训练 YOLO → 真机部署检测销钉/孔
 """
 import os, sys, json, numpy as np
@@ -76,7 +76,7 @@ def main():
                 # hand (末端)
                 ee = env.data.site_xpos[env.model.site("endEffector").id]
                 objs.append(("hand", ee))
-                # peg (销钉) — pegGrasp site
+                # 光模块 (销钉) — pegGrasp site
                 try:
                     pg = env.data.site_xpos[env.model.site("pegGrasp").id]
                     objs.append(("peg", pg))
@@ -97,6 +97,8 @@ def main():
                     if 0 <= u < 480 and 0 <= v < 480:
                         xc, yc = u / 480, v / 480
                         bw, bh = w / 480, h / 480
+                        # 类 id 顺序与已训权重绑定 (hand=0, peg=1, hole=2); peg 类在推理层
+                        # 显示为"光模块" (yolo_state_aligner 覆写 names), 这里勿改 id
                         cls_id = {"hand": 0, "peg": 1, "hole": 2}[cls]
                         line += f"{cls_id} {xc:.4f} {yc:.4f} {bw:.4f} {bh:.4f}\n"
                 if line:

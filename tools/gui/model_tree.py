@@ -3668,7 +3668,7 @@ _YOLO_MODEL = None
 
 
 def _yolo_weights_path():
-    """训练好的 YOLO peg 权重 (best.pt) — 搜索候选路径 (ultralytics runs_dir 可能改)"""
+    """训练好的 YOLO 光模块 权重 (best.pt) — 搜索候选路径 (ultralytics runs_dir 可能改)"""
     import os
     _root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     _cands = [
@@ -3724,7 +3724,7 @@ def render_bbox_frame(idx, camera_name="corner2"):
     if not dets:
         d.text((8, 8), f"YOLO 无检测 (conf<0.25) · {camera_name} · 帧#{idx}", font=_rgbd_font(15), fill="#ffa500")
         return img
-    colors = {"hand": "#58a6ff", "peg": "#00d4aa", "hole": "#ffa500"}
+    colors = {"hand": "#58a6ff", "光模块": "#00d4aa", "hole": "#ffa500"}
     for cls, cf, x1, y1, x2, y2 in dets:
         color = colors.get(cls, "#e6edf3")
         d.rectangle([int(x1), int(y1), int(x2), int(y2)], outline=color, width=3)
@@ -3794,7 +3794,7 @@ def render_rgbd_frame(tr, idx, camera_name="corner2"):
         d.polygon([(p[0], p[1]) for p in pc], fill="#2a3038")
     # 插座 (孔位, 深红座)
     _ss_draw_box(d, cam, R, f, W, H, cx, cy, (HOLE_POS[0], HOLE_POS[1], 0.02), (0.08, 0.08, 0.04), "#7a2520")
-    # 光模块 peg (金色金属壳, 随末端移动)
+    # 光模块 光模块 (金色金属壳, 随末端移动)
     _ss_draw_box(d, cam, R, f, W, H, cx, cy, (x[0], x[1], x[2]), (0.055, 0.032, 0.032), "#c9a227")
     # 末端夹爪 (蓝色, 在光模块上方抓着)
     _ss_draw_box(d, cam, R, f, W, H, cx, cy, (x[0], x[1], x[2] + 0.038), (0.065, 0.045, 0.02), "#3d7dd8")

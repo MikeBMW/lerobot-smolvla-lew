@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """⚙️ 前馈 PD 分析 — Z700 等效 PID 控制器分析 (2026-08-14 老倪)
 思想: 系统 = 带前馈(Feedforward)的增益调度(Gain-Scheduling) PID
-  状态机 = 强力 P 控制 (e×Kp: delta=peg−hand, act+=delta*2.0)
+  状态机 = 强力 P 控制 (e×Kp: delta=光模块−hand, act+=delta*2.0)
   物理限幅 = 隐性 D 与饱和 (死区/限幅=非线性阻尼, 放弃 I 避免积分饱和)
   左脑 MLP = 前馈控制器 (直接预测动作, 偏差产生前给力)
   右脑 WM = 预测器 (预判接触, 提前减速避免猛刹滞后)

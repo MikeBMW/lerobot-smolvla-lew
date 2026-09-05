@@ -6,7 +6,7 @@
   1. 持续时长、触发下一阶段的证据值 vs 阈值、余量 (margin)
   2. 证据在阈值附近是否震荡 (误触发风险)
   3. 阶段限速 cap 是否生效/是否过度限制
-  4. 夹持稳定性、插销高度回退 (滑落风险)
+  4. 夹持稳定性、光模块高度回退 (滑落风险)
 """
 import os
 import sys
@@ -75,8 +75,8 @@ EV = {
     "下降": ("接触概率|到位", cp, am.contact_th, ">"),
     "抓取": ("gripper(夹持度)", grip, am.grasp_th, ">"),
     "抬起": ("lifted(提升高度)", lifted, am.lift_h, ">"),
-    "转移": ("dist_h(销头-孔口)", dist_h, am.align_th, "<"),
-    "插入": ("depth(销头-终点)", depth, am.insert_depth, "<"),
+    "转移": ("dist_h(光模块头-孔口)", dist_h, am.align_th, "<"),
+    "插入": ("depth(光模块头-终点)", depth, am.insert_depth, "<"),
 }
 
 print("① 逐状态: 时长 / 触发证据 / 阈值 / 余量 / 限速生效情况")
@@ -126,7 +126,7 @@ for name, a, b in segs:
         issues.append(f"⚠️ 「{name}」证据在触发前越界 {cross} 次 — 需要滞回 (hysteresis) 或连续 N 帧确认")
 
 # ③ 夹持稳定性 / 滑落检测
-print("\n③ 夹持与插销状态")
+print("\n③ 夹持与光模块状态")
 gi = st.index("抓取") if "抓取" in st else 0
 after = slice(gi, n)
 # 🐛 原来从"抓取阶段起点"统计, 会把夹爪还没合上的那十几帧算成"夹持丢失", 把销还在台面
@@ -138,12 +138,12 @@ _pz = peg[_lift_i:, 2]
 _drawdown = 1000 * float(np.max(np.maximum.accumulate(_pz) - _pz))   # 最大回撤 (峰值→之后最低)
 print(f"  夹持建立后(抬起起) 夹持力 均值 {fg[after].mean():.3f}  最小 {fg[after].min():.3f}  "
       f"丢失帧数 {_lost}")
-print(f"  插销高度 峰值 {peg[:, 2].max():.4f}m   最大回撤 {_drawdown:.1f}mm (>15mm 视为滑落)")
+print(f"  光模块高度 峰值 {peg[:, 2].max():.4f}m   最大回撤 {_drawdown:.1f}mm (>15mm 视为滑落)")
 print(f"  最终插入残距 {1000 * depth[-1]:.2f}mm (阈值 {1000 * am.insert_depth:.1f}mm)")
-# 🐛 回撤>15mm 单独不构成滑落: 插入阶段本身就要把插销压进孔里 (实测回撤 21mm 而夹持力
+# 🐛 回撤>15mm 单独不构成滑落: 插入阶段本身就要把光模块压进孔里 (实测回撤 21mm 而夹持力
 #   从未丢失 0 帧) → 必须**夹持丢失 且 回撤**同时成立才算滑落
 if _lost > 5 and _drawdown > 15:
-    issues.append(f"⚠️ 夹持建立后丢失 {_lost} 帧 / 插销回撤 {_drawdown:.1f}mm — 需要 "
+    issues.append(f"⚠️ 夹持建立后丢失 {_lost} 帧 / 光模块回撤 {_drawdown:.1f}mm — 需要 "
                   f"「夹持丢失 → 回退重抓」状态机分支")
 
 # ④ 安全层是否介入

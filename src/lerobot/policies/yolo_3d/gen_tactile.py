@@ -3,7 +3,7 @@
 2026-08-12 老倪: Marker 触觉跟踪需要输入数据 — metaworld 无 GelSight, 从 39D state 改造合成触觉 4D:
 
   tactile[0] 夹持力   = 1 - gripper  (夹爪闭合=1, 张开=0)
-  tactile[1] 接触力   = 1/(1+5d)     (d=|peg−hole| 距离, 越近力越大)
+  tactile[1] 接触力   = 1/(1+5d)     (d=|光模块−hole| 距离, 越近力越大)
   tactile[2] 接触方向x = (peg_x−hole_x)/d
   tactile[3] 接触方向z = (peg_z−hole_z)/d
 

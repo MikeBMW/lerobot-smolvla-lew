@@ -8,7 +8,7 @@
 与引擎 state_space_sim.py 差异:
   - 物理推进: 引擎自积分 → env.step (真实 MuJoCo)
   - 几何: 引擎写死常量 → 每轮现场采样 (探针证实 metaworld 跨进程漂移 >10cm)
-  - 状态: x/peg/gripper 全部从 env 观测刷新, 不做引擎积分
+  - 状态: x/光模块/gripper 全部从 env 观测刷新, 不做引擎积分
   - 夹持: 引擎锁存 → 闭合指令 + gripper 收敛判夹持 (metaworld 夹住销饱和 ~0.70, 空夹 ~0.29)
   - 前馈: 解析律 u=Kp(target−pos) (不挂引擎训练 MLP — 引擎语义 39D 与真实世界错位)
   - 步频: 引擎 dt=0.02 (50Hz) → env step (~10Hz), 控制器时间常数按新步频
@@ -77,7 +77,7 @@ STAGE_LIFT = 0.16       # 抬起目标 (夹爪锚, 台面之上; 同引擎语义
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
-PEG_HEAD_OFF_XY = 0.13  # 销头相对抓握点沿 -X 0.13 (现场用 site, 此值仅兜底)
+PEG_HEAD_OFF_XY = 0.13  # 光模块头相对抓握点沿 -X 0.13 (现场用 site, 此值仅兜底)
 
 
 class RealStateSpaceSim:
@@ -86,7 +86,7 @@ class RealStateSpaceSim:
     def __init__(self, log=None, seed=0, vision=False, vision_every=25):
         self.log = log or (lambda *a: None)
         self.seed = seed
-        self.vision = vision          # R1: 工件感知 (peg/hole) 走 YOLO; hand 恒编码器真值
+        self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
         self.vision_every = vision_every   # YOLO 刷新间隔 (步); 工件静止, 中间步沿用上次
         self.env = _make_env()
         # 六层控制器源码 (同引擎加载方式)
@@ -107,15 +107,15 @@ class RealStateSpaceSim:
         # 夹爪结构 site id (现场解析, 每轮 reset 后刷新 xpos)
         m = self.env.model
         self._site_ee = m.site("endEffector").id          # (仅参考; 控制锚=obs hand)
-        self._site_ph = m.site("pegHead").id              # 销头 (插入端)
+        self._site_ph = m.site("pegHead").id              # 光模块头 (插入端)
         self._site_hole = m.site("hole").id               # 孔口 (真值参考)
         self._site_goal = m.site("goal").id               # 插入终点 (真值参考)
-        # 🎯 R1 视觉感知状态: 工件 (peg/hole) 定位走 YOLO; 夹持后销=编码器+锁存偏移
+        # 🎯 R1 视觉感知状态: 工件 (光模块/hole) 定位走 YOLO; 夹持后销=编码器+锁存偏移
         self._vis = {"peg": None, "hole": None, "shot": 0, "miss": 0, "n": 0,
                      "hole_off": None, "det3d": {}}    # hole_off = goal−孔口 现场偏移 (模拟 CAD 已知)
         self._vis_ok = False
         # 🎯 R1 视觉感知 (工件定位): YOLO hand 检测漂移 12-20cm 不可控 (定标实锤) —
-        #   真机同构: 机械臂末端=编码器 (obs hand 精确), 视觉只定位工件 (peg/hole)
+        #   真机同构: 机械臂末端=编码器 (obs hand 精确), 视觉只定位工件 (光模块/hole)
         self._aligner = None
         if self.vision:
             self._load_aligner()
@@ -143,14 +143,14 @@ class RealStateSpaceSim:
 
     def _vis_refresh(self):
         """🎯 YOLO 感知刷新一次: render → detect_3d → peg/hole 3D (EMA 平滑 + 跳变保护)
-        返回检出数; 未检出沿用上次值。peg 定位噪声 ±1-3cm → EMA α=0.5 压到 ~1cm
+        返回检出数; 未检出沿用上次值。光模块 定位噪声 ±1-3cm → EMA α=0.5 压到 ~1cm
         (夹爪悬停期间多次刷新收敛; 单帧跳变 >5cm 视为误检丢弃)"""
         try:
             img = self.env.render()
             det3d = self._aligner.detect_3d(img)
             n = 0
-            if det3d.get("peg") is not None:
-                _p = np.asarray(det3d["peg"], dtype=float)
+            if det3d.get("光模块") is not None:
+                _p = np.asarray(det3d["光模块"], dtype=float)
                 _old = self._vis["peg"]
                 if _old is not None and float(np.linalg.norm(_p - _old)) < 0.05:
                     _p = 0.5 * _p + 0.5 * _old          # EMA (悬停多次刷新收敛)
@@ -188,7 +188,7 @@ class RealStateSpaceSim:
         # 🐛 2026-09-04 静静 (测试顺序耦合实锤): metaworld reset(seed=…) **忽略 seed**
         #   (sawyer_xyz_env.py: seed param "Ignored, use seed() instead") — 解冻后
         #   _get_state_rand_vec 走 **全局 np.random.uniform**, 布局由进程全局随机状态
-        #   决定 → 同一 seed 在不同用例序列后给出不同销位置 (复现: seed100 销头初位
+        #   决定 → 同一 seed 在不同用例序列后给出不同光模块位置 (复现: seed100 光模块头初位
         #   [0.0283,0.5398] vs 污染后 [0.0345,0.6169]), 500 步插不进孔 (基线 6/12 根源)。
         #   修复: 采样前固定全局 np.random, 让 seed 真正决定布局 (可复现, 非造假 —
         #   不同 seed 仍给出不同布局, 同 seed 恒同布局)。
@@ -204,14 +204,14 @@ class RealStateSpaceSim:
             "goal": d.site_xpos[self._site_goal].copy(),          # 插入终点
             "hole": d.site_xpos[self._site_hole].copy(),          # 孔口
             "peg_grasp": o[4:7].copy(),                           # 销抓握点 (obs 语义)
-            "peg_head0": d.site_xpos[self._site_ph].copy(),       # 销头初始
+            "peg_head0": d.site_xpos[self._site_ph].copy(),       # 光模块头初始
             "peg_z0": float(o[4]),                                # 销初始 z (抬升判据锚)
             "hand0": o[0:3].copy(),                               # 夹爪初始
         }
         # 🎯 R1: 现场孔偏移 goal−孔口 (模拟真机 CAD 已知的孔深方向/深度);
         #   视觉孔位 = YOLO hole + 此偏移 → 插入终点 (视觉只给孔口, 孔底不可见)
         self._vis["hole_off"] = (self.geom["goal"] - self.geom["hole"]).copy()
-        # 销头相对销 body 的现场偏置 (R1 夹持后销头 = hand+锁存偏移+此偏置)
+        # 光模块头相对销 body 的现场偏置 (R1 夹持后光模块头 = hand+锁存偏移+此偏置)
         self.geom["head_off"] = (d.site_xpos[self._site_ph] - o[4:7]).copy()
         # R1 视觉初始定位 (第一步前刷新, 工件位置未知 → 视觉找)
         self._vis["peg"] = self._vis["hole"] = None
@@ -221,9 +221,9 @@ class RealStateSpaceSim:
         self._grasp_gap_z = 0.015
         self._close_steps = 0
         # 🐛 2026-09-04 静静 (探针12 实锤): 控制锚必须用 obs[0:3] hand (腕部=真实夹爪 claw),
-        #   不能用 endEffector site — site 是腕下 4cm 的虚拟视觉点, 降到 peg 高度时真实夹爪
-        #   还悬空 2-3.5cm → 空夹 (接触实验里 'peg 接触' 实为 peg 贴桌面, 误读成夹持).
-        #   探针12: hand 降到 peg 身 (hand_z≈peg_z+0.02 被销顶住) 闭合 grp~0.66 夹住, 抬升随动.
+        #   不能用 endEffector site — site 是腕下 4cm 的虚拟视觉点, 降到 光模块 高度时真实夹爪
+        #   还悬空 2-3.5cm → 空夹 (接触实验里 '光模块 接触' 实为 光模块 贴桌面, 误读成夹持).
+        #   探针12: hand 降到 光模块 身 (hand_z≈peg_z+0.02 被销顶住) 闭合 grp~0.66 夹住, 抬升随动.
         self.x = o[0:3].copy()         # 夹爪真实位置 (obs hand 语义)
         self.v = np.zeros(3)
         self.gripper = float(o[3])
@@ -235,35 +235,35 @@ class RealStateSpaceSim:
         # gripper 语义: 喂 advance 的 gripper = 夹紧度 1−obs_mw (1=紧)。
         # metaworld obs gripper: 1=全开, 夹住 0.03m 销饱和 ~0.70 (空夹收敛 ~0.29)
         # → 夹紧度: 夹住=0.30, 空夹=0.71。阈值取 0.25 (obs<0.75, 闭合足够深才开始抬;
-        #   夹住与否由抬起阶段 peg 随动验证决定, 见 grasp_force)
+        #   夹住与否由抬起阶段 光模块 随动验证决定, 见 grasp_force)
         self.sched = self.cognition.ActionModulator(
             grasp_th=0.40,      # 夹紧度 1−obs>0.40 (obs<0.60 深夹) 才推进抬起 — 与锁存同步
                                 # (浅夹 0.72 就抬滑脱率高; 深夹到 0.60 以下夹持力才足)
-            align_th=0.025,     # 转移→插入 孔位对准 (销头-孔口水平, 视觉精度余量)
-            insert_depth=0.006,  # 插入→完成: 销头离终点 6mm 内算完成 (metaworld 插入物理
+            align_th=0.025,     # 转移→插入 孔位对准 (光模块头-孔口水平, 视觉精度余量)
+            insert_depth=0.006,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
                                  #   精度余量; 引擎 0.004 在真实物理下差 0.1mm 磨死 — ep5 实锤)
             lift_h=0.08,        # 抬起→转移: 销升 8cm (孔口高 0.13, 销初始 0.03 — 升够才平移防撞台)
             max_veto=5,
         )
         self.stage_hist = []
-        self._grasp_off0 = None    # 锁存瞬间 peg−x (随动验证锚)
+        self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
         self._close_steps = 0      # 抓取阶段闭合指令持续步数
         self._z_stall = 0          # 下降停滞帧数 (被销/台顶住判据)
         self._z_prev = None        # 上一帧 hand z
-        # 插入阶段最小推力: 销头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
+        # 插入阶段最小推力: 光模块头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
         #   (ep3 插到 13mm 推不动 96 步实锤; 引擎 STAGE_V_MIN 无插入, 真实物理需要)
         self.sched.v_min["插入"] = 0.02
 
     # ── 阶段子目标 (八阶段, 几何全现场, 锚 = 夹爪) ──
-    # 夹持前 (接近→抓取): 目标 = 销抓握点上方 — ⚠️ 用**实时销位置** self._peg_cur
+    # 夹持前 (接近→抓取): 目标 = 销抓握点上方 — ⚠️ 用**实时光模块位置** self._peg_cur
     #   (回退重抓时销可能被首次下降碰移, 静态采样坐标会空夹 — ep3-5 失败实锤)
-    # 夹持后 (抬起→插入): 目标由"销头当前位置 + 实时夹爪偏移"驱动 —
-    #   销头相对夹爪的方向/距离锁存后不变, 把销头送到孔口/终点即得夹爪目标
+    # 夹持后 (抬起→插入): 目标由"光模块头当前位置 + 实时夹爪偏移"驱动 —
+    #   光模块头相对夹爪的方向/距离锁存后不变, 把光模块头送到孔口/终点即得夹爪目标
     def _stage_target(self):
         g = self.geom
         st = self.sched.stage()
-        pg = getattr(self, "_peg_cur", g["peg_grasp"])     # 实时销位置 (obs[4:7])
+        pg = getattr(self, "_peg_cur", g["peg_grasp"])     # 实时光模块位置 (obs[4:7])
         if st == "接近":
             return pg + np.array([0.0, 0.0, STAGE_APPROACH_H])
         if st == "对位":
@@ -274,13 +274,13 @@ class RealStateSpaceSim:
             # 垂直抬升: xy 保持当前, z 抬到销离台 STAGE_LIFT (保持锁存时夹爪-销高度差)
             gap_z = getattr(self, "_grasp_gap_z", 0.02)
             return np.array([self.x[0], self.x[1], g["peg_z0"] + STAGE_LIFT + gap_z])
-        off = self.peg_head() - self.x          # 实时销头-夹爪偏移 (夹持后锁存不变)
+        off = self.peg_head() - self.x          # 实时光模块头-夹爪偏移 (夹持后锁存不变)
         if st == "转移":
-            return self._hole_p() + np.array([0.0, 0.0, 0.02]) - off   # 销头到孔口上方 2cm
-        return self._goal_p() - off                                     # 插入/完成: 销头到终点
+            return self._hole_p() + np.array([0.0, 0.0, 0.02]) - off   # 光模块头到孔口上方 2cm
+        return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
 
     def peg_head(self):
-        """销头世界坐标 (R0: site 真值; R1 夹持后: 编码器 hand + 锁存偏移 + 销头偏置 — 真机无 site)"""
+        """光模块头世界坐标 (R0: site 真值; R1 夹持后: 编码器 hand + 锁存偏移 + 光模块头偏置 — 真机无 site)"""
         if self.grasped and self._grasp_off0 is not None and self.vision:
             ho = self.geom.get("head_off", np.zeros(3))
             return self.x + self._grasp_off0 + ho
@@ -298,16 +298,16 @@ class RealStateSpaceSim:
 
     # ── 证据量 (全现场几何) ──
     def _d_xy_peg(self):
-        """夹爪-销抓握点 水平距离 (接近/对位/下降推进证据; 实时销位置)"""
+        """夹爪-销抓握点 水平距离 (接近/对位/下降推进证据; 实时光模块位置)"""
         pg = getattr(self, "_peg_cur", self.geom["peg_grasp"])
         return float(np.linalg.norm(self.x[:2] - pg[:2]))
 
     def _d_hole_h(self):
-        """销头-孔口 水平距离 (转移→插入 推进证据; 孔口=感知位置)"""
+        """光模块头-孔口 水平距离 (转移→插入 推进证据; 孔口=感知位置)"""
         return float(np.linalg.norm(self.peg_head()[:2] - self._hole_p()[:2]))
 
     def _insert_depth(self):
-        """销头到插入终点距离 (插入→完成 证据; 终点=感知孔口+CAD偏移)"""
+        """光模块头到插入终点距离 (插入→完成 证据; 终点=感知孔口+CAD偏移)"""
         return float(np.linalg.norm(self.peg_head() - self._goal_p()))
 
     # ── 主循环 ──
@@ -340,7 +340,7 @@ class RealStateSpaceSim:
             # 🎯 R1 真实视觉: **每帧渲染 + detect_3d** (老倪红线: 不能造假 — 禁用节流/冻结/
             #   复用旧值). 每步 env.step 后 render() → YOLO 检测 → 本帧真值.
             #   ⚠️ 成本: ~0.5-1s/步 × 500 步 ≈ 4-9 分钟/轮 (真流程的代价, 接受)
-            #   ⚠️ 物理事实: 固定相机下夹爪贴近工件会遮挡 → peg 检测崩 (真实感知退化,
+            #   ⚠️ 物理事实: 固定相机下夹爪贴近工件会遮挡 → 光模块 检测崩 (真实感知退化,
             #      不掩盖 — 这正是 RealityGap 要暴露的; 真机用 eye-in-hand 相机解决)
             if self.vision and self._aligner is not None:
                 self._vis_refresh()
@@ -349,7 +349,7 @@ class RealStateSpaceSim:
             self.x = x_new
             self.gripper = float(o[3])
             # 下降停滞检测 (被销/台顶住): 每步 z 位移 <0.4mm 累计; 连续 ≥8 帧 = 物理接触顶住.
-            #   (R1 视觉 peg z 偏低 1.5cm 实测 — at_grasp_pose 用视觉 z 会永远等不到, 卡下降)
+            #   (R1 视觉 光模块 z 偏低 1.5cm 实测 — at_grasp_pose 用视觉 z 会永远等不到, 卡下降)
             if self._z_prev is not None and self.sched.stage() in ("下降", "抓取"):
                 if abs(x_new[2] - self._z_prev) < 0.0004:
                     self._z_stall += 1
@@ -358,8 +358,8 @@ class RealStateSpaceSim:
             else:
                 self._z_stall = 0
             self._z_prev = float(x_new[2])
-            # 销位置感知: 夹持后 = 编码器 hand+锁存偏移 (真机无视觉跟销);
-            # R1 未夹持 = YOLO peg (悬停高度刷新, 下降期冻结防遮挡幻影); R0 = obs 真值
+            # 光模块位置感知: 夹持后 = 编码器 hand+锁存偏移 (真机无视觉跟销);
+            # R1 未夹持 = YOLO 光模块 (悬停高度刷新, 下降期冻结防遮挡幻影); R0 = obs 真值
             if self.grasped and self._grasp_off0 is not None:
                 self._peg_cur = (self.x + self._grasp_off0).copy()
             elif self.vision and self._vis["peg"] is not None:
@@ -367,9 +367,9 @@ class RealStateSpaceSim:
             else:
                 self._peg_cur = o[4:7].copy()
             g = self.geom
-            # ③ 接触力合成 (几何合成; metaworld 无力传感器; 销头=peg_head() 感知一致)
+            # ③ 接触力合成 (几何合成; metaworld 无力传感器; 光模块头=peg_head() 感知一致)
             force = np.zeros(6)
-            ph = self.peg_head()                             # 当前销头 (感知语义)
+            ph = self.peg_head()                             # 当前光模块头 (感知语义)
             if not self.grasped:
                 gap_z = max(0.0, 0.012 - (self.x[2] - self._peg_cur[2]))
                 if self._d_xy_peg() < 0.03 and gap_z > 0:
@@ -379,8 +379,8 @@ class RealStateSpaceSim:
                 if dh < D_CONTACT:
                     force[2] = K_CONTACT * max(0.0, D_CONTACT - dh)
             force_norm = float(np.clip(force[2] / (K_CONTACT * D_CONTACT), 0.0, 1.0))
-            # 🐛 R1: 几何抓握位姿 — 水平对准视觉 peg + 下降停滞 (z 连续 ≥8 帧不动 = 被销/台顶住,
-            #   指已包住销身). 视觉 peg z 偏低不可信, 不用 z 阈值 (0/6 卡下降实锤)
+            # 🐛 R1: 几何抓握位姿 — 水平对准视觉 光模块 + 下降停滞 (z 连续 ≥8 帧不动 = 被销/台顶住,
+            #   指已包住销身). 视觉 光模块 z 偏低不可信, 不用 z 阈值 (0/6 卡下降实锤)
             at_grasp_pose = bool(self._d_xy_peg() < 0.03 and self._z_stall >= 8)
             # ④ 39D 视觉结构 (引擎语义骨架; 感知一致: 销=_peg_cur, 终点=_goal_p)
             cur = np.concatenate([self.x, [self.gripper], self.v,
@@ -421,31 +421,31 @@ class RealStateSpaceSim:
             self.u_prev = self._u_vec.copy()
             # ⑥ 夹持锁存与随动验证 (R0 语义: 深夹到 grp<0.60 锁存 — 探针12 成功夹持时
             #   grp 0.66 接触建立 → 0.28 深夹; 浅夹(0.78)就抬滑脱率高 (ep3-5 失败实锤).
-            #   真夹住与否由抬起阶段 peg 随动判定 (MuJoCo: 夹住则 peg 跟夹爪升)
+            #   真夹住与否由抬起阶段 光模块 随动判定 (MuJoCo: 夹住则 光模块 跟夹爪升)
             g_close = float(1.0 - self.gripper)          # 夹紧度 (1=紧; 夹住销深夹≈0.7+)
             if not self.grasped and self.sched.stage() == "抓取":
                 if self.gripper < 0.82:                  # obs gripper 开始闭合 (<0.82)
                     self._close_steps += 1
                     if self._close_steps >= 3 and self.gripper < 0.60:
                         self.grasped = True              # 深夹锁存 (夹住候选)
-                        # 锁存偏移用感知销 (R1: 视觉 peg; R0: 真值) — 夹持后机器人"以为"的销位置
+                        # 锁存偏移用感知销 (R1: 视觉 光模块; R0: 真值) — 夹持后机器人"以为"的光模块位置
                         self._grasp_off0 = self._peg_cur - self.x
                         self._grasp_gap_z = float(self.x[2] - self._peg_cur[2])
                         self.log(f"🔩 夹爪深夹到位 (obs gripper={self.gripper:.2f}) → 抬升试探")
                 else:
                     self._close_steps = 0
             elif self.grasped:
-                # 随动验证: 夹爪移动时 peg 相对偏移保持 = 真夹住; 滑脱/空夹 → 偏移漂移
+                # 随动验证: 夹爪移动时 光模块 相对偏移保持 = 真夹住; 滑脱/空夹 → 偏移漂移
                 _off = o[4:7] - self.x
                 if float(np.linalg.norm(_off - self._grasp_off0)) > 0.035:
                     self.grasped = False                  # 掉了 → grasp_force 0 → 调度器回退重抓
                     self._grasp_off0 = None
-                    # 🐛 强制回退到接近: 滑脱时 peg 可能半挂在夹爪上 (z 未落回台面),
+                    # 🐛 强制回退到接近: 滑脱时 光模块 可能半挂在夹爪上 (z 未落回台面),
                     #   advance 的"落回台面"回退判据不触发 → 卡死在转移/插入 (ep1/2/4 350步实锤)
                     try:
                         if self.sched.stage_idx >= 4:
-                            self.sched._goto(0, "⚠️ 插销滑脱 (peg 未随夹爪) → 强制回退重抓")
-                            self.log("⚠️ 插销滑脱 → 强制回退接近重抓")
+                            self.sched._goto(0, "⚠️ 光模块滑脱 (peg 未随夹爪) → 强制回退重抓")
+                            self.log("⚠️ 光模块滑脱 → 强制回退接近重抓")
                     except Exception:
                         pass
             # ⑦ 阶段推进 (证据全现场)
@@ -454,7 +454,7 @@ class RealStateSpaceSim:
             dh = self._d_hole_h()
             depth = self._insert_depth()
             lifted = float(ph[2]) - g["peg_z0"]
-            # grasp_force = 夹持质量: 夹住且 peg 随动 → 1; 掉件/空夹 → 0 (调度器回退判据)
+            # grasp_force = 夹持质量: 夹住且 光模块 随动 → 1; 掉件/空夹 → 0 (调度器回退判据)
             _gf = 1.0 if (self.grasped and self._grasp_off0 is not None
                           and float(np.linalg.norm(o[4:7] - self.x - self._grasp_off0)) < 0.02) else 0.0
             self.sched.advance(contact_p=contact_p, dist_h=dh,

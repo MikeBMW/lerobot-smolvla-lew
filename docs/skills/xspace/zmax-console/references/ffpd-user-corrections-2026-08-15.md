@@ -19,9 +19,9 @@ EngineeringReqWidget.FIELDS 拆成:
 用户原话: "还要考虑插拔工序的上料, 料盘上下料, 分出插拔类和搬运类, 搬运类不小于5Kg"。
 搬运类负载显著改变 m → 动力学辨识 m/b/k 按档位标定。
 
-## ③ 全局业务对象 = 光模块, 不是插销
+## ③ 全局业务对象 = 光模块, 不是光模块
 
-"销钉/插销" 全量替换 "光模块": model_tree.py 18 处 + simulink_module.py 11 处
+"销钉/光模块" 全量替换 "光模块": model_tree.py 18 处 + simulink_module.py 11 处
 + flows/*.json 16 文件。GUI 代码与 flows JSON 都要替换且零残留。
 **peg/hole 数据字段名保留** (内部 YOLO 类名/坐标键, 不是业务语义)。
 替换后验证: json.load 全部 flows 语法完整 + grep 零 "销钉"。

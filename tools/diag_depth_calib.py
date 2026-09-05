@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """标定 DEPTH_SCALE: 实测 depth_m (模型输出) vs 真实沿光轴深度, 算每类 scale 修正
-真实执行多 seed, 输出 hand/peg/hole 各自需要的 scale (用于 DEPTH_SCALE / DEPTH_SCALE_HAND)
+真实执行多 seed, 输出 hand/光模块/hole 各自需要的 scale (用于 DEPTH_SCALE / DEPTH_SCALE_HAND)
 """
 import os, sys, glob, numpy as np
 ROOT = "/home/ubuntu/lerobot-smolvla-lew"
@@ -31,7 +31,7 @@ print(f"cam_pos={cam_pos}, forward={forward}")
 
 import cv2
 # 真值坐标 (从 _get_obs 的 39D state 取)
-# hand[0:3], peg[4:7], hole[36:39]
+# hand[0:3], 光模块[4:7], hole[36:39]
 TRUTH_IDX = {"hand": (0, 3), "peg": (4, 7), "hole": (36, 39)}
 
 scales = {"hand": [], "peg": [], "hole": []}

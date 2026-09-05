@@ -7,7 +7,7 @@
 本脚本 = 唯一真解: 让状态空间六层真实源码 (perception/parallel/dynamics/cognition/
 safety/execution) 直接算 action 去 step metaworld, obs 全部来自 env 真实状态,
 接触力用 MuJoCo 真实接触力 (mj_contactForce, 不是估算代理)。一次运行同时产出:
-  · trace npz  — 每步真实 hand/peg/销头/孔位 + 八阶段 + 全部处理层向量 (3D 视图数据源)
+  · trace npz  — 每步真实 hand/光模块/光模块头/孔位 + 八阶段 + 全部处理层向量 (3D 视图数据源)
   · mp4 视频   — 同一条 episode 的 corner2 相机画面 (操作视频)
   · 相机外参   — corner2 的 pos/forward/right/up (3D 视图相机精确对齐, 含 roll)
 → 3D 视图与操作视频 同一条轨迹 · 同一套动作 · 同一个视角。
@@ -43,10 +43,10 @@ F_REF = 25.0         # 接触力归一化参考 (N)
 MAX_STEPS = 2600
 RENDER_EVERY = 4     # 录帧间隔 (2600/4 = 650 帧 ≈ 26s @25fps)
 # 阶段子目标高度。⚠️ 2026-08-25 实测: metaworld 的 endEffector site 在两指之间但指尖
-#   还往下伸 ~2cm → 手要停在 pegGrasp **上方 0.022m** 两指才正好夹住插销 (train_full_pipeline
-#   的 grasp_target() 同样是 pegGrasp+2cm); 再往下压只会把插销压到台面 (接触力饱和 25N)。
+#   还往下伸 ~2cm → 手要停在 pegGrasp **上方 0.022m** 两指才正好夹住光模块 (train_full_pipeline
+#   的 grasp_target() 同样是 pegGrasp+2cm); 再往下压只会把光模块压到台面 (接触力饱和 25N)。
 H_APPROACH, H_ALIGN, H_GRASP_POSE, H_LIFT = 0.10, 0.055, 0.022, 0.16
-# 夹持建立阈值: 实测夹住 0.03m 插销时闭合度饱和 0.70 (夹爪合不到底) → 0.60
+# 夹持建立阈值: 实测夹住 0.03m 光模块时闭合度饱和 0.70 (夹爪合不到底) → 0.60
 GRASP_TH = 0.60
 
 
@@ -74,12 +74,12 @@ def camera_frame(m, name="corner2"):
 def contact_forces(m, d, peg_ids, hand_ids, table_ids=frozenset()):
     """MuJoCo 真实接触力 (mj_contactForce) 分两路返回 (f_env, f_grasp)。
 
-    ⚠️ 2026-08-25 实测教训: 原来把"涉及 peg 或 夹爪的全部接触力"加成一个数 →
-    夹爪夹住插销后夹持力持续 25N 以上, force_norm 饱和 1.0 ⇒ 抬起/转移/插入 三段
+    ⚠️ 2026-08-25 实测教训: 原来把"涉及 光模块 或 夹爪的全部接触力"加成一个数 →
+    夹爪夹住光模块后夹持力持续 25N 以上, force_norm 饱和 1.0 ⇒ 抬起/转移/插入 三段
     接触概率恒 1.00、残差恒 1.0001, 「接触」信号彻底失去区分度 (调度器收到的是常量)。
     正确语义:
-      f_grasp = peg ↔ 夹爪   (夹持力 — 判"夹住了没有")
-      f_env   = peg/夹爪 ↔ 环境(桌面/带孔盒等)  (环境接触力 — 判"碰到孔沿/插进去了")
+      f_grasp = 光模块 ↔ 夹爪   (夹持力 — 判"夹住了没有")
+      f_env   = 光模块/夹爪 ↔ 环境(桌面/带孔盒等)  (环境接触力 — 判"碰到孔沿/插进去了")
     进 obs 触觉 + 残差的是 f_env; f_grasp 单独作为夹持证据。
     """
     f_env = 0.0
@@ -96,16 +96,16 @@ def contact_forces(m, d, peg_ids, hand_ids, table_ids=frozenset()):
         mag = float(np.linalg.norm(f6[:3]))
         pair = {b1, b2}
         if pair & peg_ids and pair & hand_ids:
-            f_grasp += mag          # 夹持: peg ↔ 夹爪(指垫)
+            f_grasp += mag          # 夹持: 光模块 ↔ 夹爪(指垫)
         elif pair <= hand_ids:
             continue                # 夹爪各连杆自碰撞 — 既不是夹持也不是环境
         elif pair & peg_ids and pair & table_ids:
-            # ⚠️ 2026-08-25 实测: 插销静置在台面上的自重支撑力 ≈1N 被算成"环境接触" →
+            # ⚠️ 2026-08-25 实测: 光模块静置在台面上的自重支撑力 ≈1N 被算成"环境接触" →
             #   自由移动段环境接触恒 0.039 常量底噪, 把真实接触事件(顶孔沿)埋掉。
             #   自重支撑不是操作接触 → 排除。
             continue
         else:
-            f_env += mag            # 环境: peg/夹爪 ↔ 带孔盒(孔沿) / 夹爪 ↔ 台面
+            f_env += mag            # 环境: 光模块/夹爪 ↔ 带孔盒(孔沿) / 夹爪 ↔ 台面
     return f_env, f_grasp
 
 
@@ -130,7 +130,7 @@ def run_episode(seed=0, want_video=True, log=print):
     goal = site(m, d, "goal")
     peg_z0 = float(peg[2])
     peg_body = {int(m.body("peg").id)}
-    # ⚠️ 2026-08-25 实测 (tools/probe_contacts.py): 真正夹住插销的是**指垫** rightpad/leftpad,
+    # ⚠️ 2026-08-25 实测 (tools/probe_contacts.py): 真正夹住光模块的是**指垫** rightpad/leftpad,
     #   只列 hand/rightclaw/leftclaw 会把夹持力误判成"环境接触" → f_env 饱和 1.0,
     #   抬起/转移/插入 接触概率恒 1.00 失去区分度。夹爪 body 必须列全 (含 pad/wrist)。
     hand_bodies = {int(m.body(n).id) for n in
@@ -186,7 +186,7 @@ def run_episode(seed=0, want_video=True, log=print):
         elif st == "对位":
             target = peg + np.array([0, 0, H_ALIGN])
         elif st == "下降":
-            target = peg + np.array([0, 0, H_GRASP_POSE])      # 下到抓握位姿 (两指夹住插销)
+            target = peg + np.array([0, 0, H_GRASP_POSE])      # 下到抓握位姿 (两指夹住光模块)
         elif st == "抓取":
             target = peg + np.array([0, 0, H_GRASP_POSE])      # 原位保持, 只闭夹爪
         elif st == "抬起":
@@ -253,7 +253,7 @@ def run_episode(seed=0, want_video=True, log=print):
                        and abs(hand[2] - (peg_now[2] + H_GRASP_POSE)) < 0.008) or grasp_norm > 0.02
         sched.advance(contact_p=contact_p, dist_h=dist_h, gripper=gripper,
                       depth=depth, d_xy=d_xy, lifted=lifted, at_grasp_pose=at_pose,
-                      # 🛟 夹持丢失回退证据: MuJoCo 真实夹持力 + 插销高度
+                      # 🛟 夹持丢失回退证据: MuJoCo 真实夹持力 + 光模块高度
                       grasp_force=float(f_grasp), peg_z=float(peg_now[2]),
                       peg_z_grasp=float(peg_z0))
         done = sched.stage() == "完成"

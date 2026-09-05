@@ -31,15 +31,15 @@ class ActionModulator:
     """🧭 动作调制器 (原状态机, 握有否决权) — 8阶段状态机 + 按阶段动作融合
 
     阶段: 接近 → 对位 → 下降 → 抓取 → 抬起 → 转移 → 插入 → 完成
-    (2026-08-25 老倪: 原 6 阶段从"手里已拿着插销"开始, 缺「从初始位置到抓取插销」的
+    (2026-08-25 老倪: 原 6 阶段从"手里已拿着光模块"开始, 缺「从初始位置到抓取光模块」的
      接近/对位/下降 三段 → 与操作视频 gen_insert_video 的八段状态机不同构。现补齐,
      状态空间模型与真机/仿真视频同一套阶段语义。)
     推进证据 (每步 advance 喂入, 真实调度不靠外部硬推):
-      手-插销水平距离 < 0.06      → 对位   (粗到位)
-      手-插销水平距离 < 0.02      → 下降   (精对位完成, 可垂直下刀)
+      手-光模块水平距离 < 0.06      → 对位   (粗到位)
+      手-光模块水平距离 < 0.02      → 下降   (精对位完成, 可垂直下刀)
       接触概率 > contact_th 或到达抓握位姿 → 抓取 (力觉/几何双证据)
       夹持建立 (gripper>0.8)     → 抬起   (夹爪已闭合)
-      提起高度 > lift_h          → 转移   (插销离台面)
+      提起高度 > lift_h          → 转移   (光模块离台面)
       到位 (dist_h < align_th)   → 插入
       插入深度达标 (depth<阈值)   → 完成
     否决权: 残差 > veto_th → 强制减速重试; 连续 max_veto 次 → 异常上报
@@ -47,7 +47,7 @@ class ActionModulator:
       接近/对位/下降/抬起/转移 = 慢通道主导 (w_ff=0.3, 防碰撞)
       抓取/插入      = 前馈推力主导 (w_contact=0.85, 力控插入)
     夹持保持 (gripper latch): 抓取及之后阶段夹爪指令恒 1.0 — 否则抬起/转移阶段
-      前馈层按"目标远→张开"输出 0, 插销会掉 (真实系统夹持是状态锁存不是比例控制)。
+      前馈层按"目标远→张开"输出 0, 光模块会掉 (真实系统夹持是状态锁存不是比例控制)。
     """
 
     STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
@@ -60,7 +60,7 @@ class ActionModulator:
     #   正规控制架构 = 前馈 + 反馈**相加** (反馈只做修正, 不缩放主项);
     #   "接触前要慢"改用**显式阶段限速**表达 (原来是靠凸组合意外砍出来的, 说不清道不明)。
     # 📊 2026-08-26 审计驱动调参 (tools/audit_state_machine.py 实测瓶颈):
-    #   下降 2.02s 里 44% 时间贴 cap 0.05 → 抓握位姿是空中动作(夹爪张开跨在销两侧), 放到 0.09
+    #   下降 2.02s 里 44% 时间贴 cap 0.05 → 抓握位姿是空中动作(夹爪张开跨在光模块两侧), 放到 0.09
     #   插入 1.81s 里 51% 贴 cap 0.06 → 力控要慢, 只微放到 0.07
     #   转移 2.08s 实速仅 0.113 远低于 cap 0.35 → 瓶颈不是 cap 而是比例控制末端磨蹭
     #     ⇒ 引入 STAGE_V_MIN 最小趋近速度 (证据未达标时给个速度下限, 别在末端磨)
@@ -84,11 +84,11 @@ class ActionModulator:
         self.align_th = align_th        # 孔位对准阈值 (转移→插入)
         self.insert_depth = insert_depth  # 插入深度达标 (插入→完成)
         self.max_veto = max_veto        # 连续否决上限 → 异常上报
-        self.align_xy_coarse = align_xy_coarse  # 接近→对位 (手-插销水平距离)
+        self.align_xy_coarse = align_xy_coarse  # 接近→对位 (手-光模块水平距离)
         self.align_xy_fine = align_xy_fine      # 对位→下降 (精对位)
-        self.lift_h = lift_h                    # 抬起→转移 (插销离台面高度)
+        self.lift_h = lift_h                    # 抬起→转移 (光模块离台面高度)
         # 抓取→抬起 的夹持建立阈值 (夹爪闭合度 1=全闭)。⚠️ 真机/MuJoCo 里夹爪夹住实物后
-        # 开度不可能到 0: 实测 metaworld 夹住 0.03m 插销时闭合度饱和在 0.70 → 阈值必须
+        # 开度不可能到 0: 实测 metaworld 夹住 0.03m 光模块时闭合度饱和在 0.70 → 阈值必须
         # 按被夹物体尺寸标定, 写死 0.8 会永远等不到"夹持建立"而卡在抓取阶段。
         self.grasp_th = grasp_th
         self.stage_idx = 0
@@ -108,7 +108,7 @@ class ActionModulator:
 
     def gripper_cmd(self, u_ff_g=0.0):
         """夹爪指令归状态机 (与操作视频状态机一致: 接近/对位/下降 张开, 抓取起闭合并保持)
-        ⚠️ 不能听前馈层的"近距即闭合"启发: 对位/下降阶段手已经离插销 <3cm, 前馈会提前
+        ⚠️ 不能听前馈层的"近距即闭合"启发: 对位/下降阶段手已经离光模块 <3cm, 前馈会提前
         把夹爪闭上 → 还没到抓取阶段夹爪就关了 (3D 视图里看不到"张开→夹紧"的抓取动作),
         且抓取阶段瞬间跳过 (gripper 早已 1.0)。夹持是状态锁存, 不是比例控制。"""
         return 1.0 if self.stage_idx >= self.GRASP_IDX else 0.0
@@ -129,7 +129,7 @@ class ActionModulator:
         """状态机推进 — 感知/几何证据驱动 (每步调用)"""
         st = self.stage()
         # 🛟 夹持丢失 → 回退重抓 (审计建议的鲁棒性分支; 真机一定会掉件)
-        #   判据: 抬起及之后阶段, 夹持力连续 5 帧 < 0.05 且插销已落回抓握高度附近
+        #   判据: 抬起及之后阶段, 夹持力连续 5 帧 < 0.05 且光模块已落回抓握高度附近
         if self.stage_idx >= 4 and grasp_force is not None:
             self._grasp_lost = self._grasp_lost + 1 if float(grasp_force) < 0.05 else 0
             _fell = (peg_z is not None and peg_z_grasp is not None
@@ -137,25 +137,25 @@ class ActionModulator:
             if self._grasp_lost >= 5 and _fell:
                 self._pend.clear()
                 self._grasp_lost = 0
-                self._goto(0, "⚠️ 夹持丢失且插销落回台面 (连续5帧夹持力<0.05) → 回退重抓")
+                self._goto(0, "⚠️ 夹持丢失且光模块落回台面 (连续5帧夹持力<0.05) → 回退重抓")
                 return self.stage()
         # d_xy 缺省 (老调用方只喂 dist_h) → 退化用 dist_h 当水平距离证据
         dxy = d_xy if d_xy is not None else dist_h
         if st == "接近" and dxy is not None and dxy < self.align_xy_coarse:
-            self._confirm(1, f"粗到位 手-插销水平距离 {dxy:.4f} < {self.align_xy_coarse}")
+            self._confirm(1, f"粗到位 手-光模块水平距离 {dxy:.4f} < {self.align_xy_coarse}")
         elif st == "对位" and dxy is not None and dxy < self.align_xy_fine:
             self._confirm(2, f"精对位完成 {dxy:.4f} < {self.align_xy_fine} → 可下降")
         elif st == "下降" and ((contact_p is not None and contact_p > self.contact_th)
                               or at_grasp_pose):
-            # 两类证据任一成立即可闭爪: ①力觉触到插销 ②几何到达抓握位姿
-            #   (张开的夹爪下到插销两侧时可能完全不接触 → 只等力觉会永远卡在下降)
-            self._confirm(3, (f"触到插销 接触概率 {contact_p:.2f} > {self.contact_th}"
+            # 两类证据任一成立即可闭爪: ①力觉触到光模块 ②几何到达抓握位姿
+            #   (张开的夹爪下到光模块两侧时可能完全不接触 → 只等力觉会永远卡在下降)
+            self._confirm(3, (f"触到光模块 接触概率 {contact_p:.2f} > {self.contact_th}"
                               if (contact_p is not None and contact_p > self.contact_th)
                               else "到达抓握位姿 (几何证据)"))
         elif st == "抓取" and gripper is not None and gripper > self.grasp_th:
             self._confirm(4, f"夹持建立 gripper={gripper:.2f}")
         elif st == "抬起" and lifted is not None and lifted > self.lift_h:
-            self._confirm(5, f"插销已提起 {lifted:.4f}m > {self.lift_h}m")
+            self._confirm(5, f"光模块已提起 {lifted:.4f}m > {self.lift_h}m")
         elif st == "转移" and dist_h is not None and dist_h < self.align_th:
             self._confirm(6, f"对准孔口 dist_h={dist_h:.4f}")
         elif st == "插入" and depth is not None and depth < self.insert_depth:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """YOLO 输出 → 39D 对齐器 (2026-08-07 老倪: YOLO输出跟39D对齐)
-把 YOLO 检测的 2D 框 (hand/peg/hole) → 相机反投影 → 3D 坐标 → 替换 39D obs 中对应段
+把 YOLO 检测的 2D 框 (hand/光模块/hole) → 相机反投影 → 3D 坐标 → 替换 39D obs 中对应段
 这样仿真与真机同构: 真机也只有 YOLO 2D 检测, 没有模拟器直接给的 39D
 """
 import os, sys, numpy as np
@@ -40,12 +40,19 @@ class YoloStateAligner:
     def __init__(self, weights, env, depth_weights=None):
         from ultralytics import YOLO
         self.model = YOLO(weights)
+        # 🏷️ 2026-09-04 老倪: YOLO 检测类别名业务化 — peg(插销, 训练类名遗留) → 光模块。
+        #   覆写底层 model.names (顶层 .names 赋值不生效, 实测) 后, 检测结果 res.names/cls、
+        #   det3d 键、GUI 画框标签 (state_space_sim_real _vis["boxes"]) 全走业务名。
+        #   注意: 类 id 顺序不变 (训练数据 gen_yolo_data.py 的 {hand:0, peg:1, hole:2} 绑定, 勿改 id)
+        for _cid, _nm in list(self.model.model.names.items()):
+            if _nm == "peg":
+                self.model.model.names[_cid] = "光模块"
         self.env = env
         self.cam_id = env.model.camera("corner2").id
         # 🎯 2026-08-23 老倪: 深度模型 (YOLO depth head) — 用真实深度反投影替代写死 z_map
         self.depth_model = YOLO(depth_weights) if depth_weights else None
         # 🎯 尺度校准 (SILog scale-invariant → 训练中模型尺度漂移)
-        #   实测: peg/hole scale≈0.978, hand scale≈0.885 (peg_depth_v1-2 GPU自动校准, 2026-08-24)
+        #   实测: 光模块/hole scale≈0.978, hand scale≈0.885 (peg_depth_v1-2 GPU自动校准, 2026-08-24)
         #   🐛 旧 1.685/1.566 是 peg_depth_v1 (CPU时代) 的, 已作废; 默认 1.0 是 bug → 反投影坐标错 0.4m
         self._depth_scale = float(os.environ.get("DEPTH_SCALE", "0.978"))
         self._hand_scale = float(os.environ.get("DEPTH_SCALE_HAND", "0.885"))
@@ -53,13 +60,13 @@ class YoloStateAligner:
         self._last_img_rot = None
 
     def detect_3d(self, img, conf=0.4):
-        """YOLO 检测 → 3D 坐标 {hand, peg, hole} (深度模型反投影, 回退写死 z_map)"""
+        """YOLO 检测 → 3D 坐标 {hand, 光模块, hole} (深度模型反投影, 回退写死 z_map)"""
         # 2026-08-07: ultralytics 内部用 BGR — RGB 数组检测失败, BGR 数组成功 (内存方式快 100 倍)
         import cv2
         if img.dtype != np.uint8:
             img = (img * 255).astype(np.uint8)
         # 🐛 2026-08-23 静静: 训练数据 gen_yolo_data 存 rot90(k=2) 帧, 推理必须同方向
-        #   否则倒置图检测失效 (只检出 peg); box 中心反投影前转回原始帧坐标
+        #   否则倒置图检测失效 (只检出 光模块); box 中心反投影前转回原始帧坐标
         img_rot = np.rot90(img, k=2)
         img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
         res = self.model.predict(img_bgr, conf=conf, verbose=False)[0]
@@ -84,7 +91,7 @@ class YoloStateAligner:
         out = {}
         H, W = img.shape[:2]
         f = (H / 2) / np.tan(np.radians(fovy) / 2)
-        z_map = {"hand": 0.155, "peg": 0.03, "hole": 0.129}
+        z_map = {"hand": 0.155, "光模块": 0.03, "hole": 0.129}
         # 光轴方向 (相机看向 -z) → 世界坐标单位向量
         forward = cam_mat.T @ np.array([0.0, 0.0, -1.0])
         forward = forward / np.linalg.norm(forward)
@@ -130,16 +137,16 @@ class YoloStateAligner:
         return out
 
     def align(self, obs39, det3d):
-        """YOLO 3D 检测替换 39D 中对应段 (hand→0:3, peg→4:7+22:25, hole→36:39)"""
+        """YOLO 3D 检测替换 39D 中对应段 (hand→0:3, 光模块→4:7+22:25, hole→36:39)"""
         aligned = np.asarray(obs39, dtype=np.float64).copy()
-        # 39D 结构 (node_logic.node_obs39 实测确认, 2026-08-23 静静修正 peg 段):
-        #   [0:3]=hand, [4:7]=peg, [7:11]=peg_quat, [18:21]=prev_hand, [22:25]=prev_peg, [36:39]=hole
-        #   🐛 旧版误把 peg 写进 [18:21](prev_hand), 真 peg 段 [4:7]/[22:25] 一直漏真值 → 训练泄漏
+        # 39D 结构 (node_logic.node_obs39 实测确认, 2026-08-23 静静修正 光模块 段):
+        #   [0:3]=hand, [4:7]=光模块, [7:11]=peg_quat, [18:21]=prev_hand, [22:25]=prev_peg, [36:39]=hole
+        #   🐛 旧版误把 光模块 写进 [18:21](prev_hand), 真 光模块 段 [4:7]/[22:25] 一直漏真值 → 训练泄漏
         if "hand" in det3d:
             aligned[0:3] = det3d["hand"]
-        if "peg" in det3d:
-            aligned[4:7] = det3d["peg"]
-            aligned[22:25] = det3d["peg"]
+        if "光模块" in det3d:
+            aligned[4:7] = det3d["光模块"]
+            aligned[22:25] = det3d["光模块"]
         if "hole" in det3d:
             aligned[36:39] = det3d["hole"]
         return aligned

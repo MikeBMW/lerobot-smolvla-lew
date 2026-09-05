@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """YOLO 感知操作视频 — BC policy + 真实 YOLO 检测 (2026-08-23 老倪)
-视频画面叠加 YOLO 检测框 (hand/peg/hole), state 用 detect_3d 解算喂 BC → 真机同构操作视频
+视频画面叠加 YOLO 检测框 (hand/光模块/hole), state 用 detect_3d 解算喂 BC → 真机同构操作视频
 与训练(data/metaworld_peg --yolo)、评估(eval_yolo_bc.py)同一套 YOLO 感知链
 用法:
   DISPLAY=:0 MUJOCO_GL=glfw gui-venv311/bin/python tools/gen_yolo_op_video.py --seed 0

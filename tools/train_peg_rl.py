@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """仿真强化学习 (PPO) — peg-insert-side-v3 插拔
 2026-08-06 老倪要求: 仿真强化, 必须能插拔, 完不成不停
-关键: 用 39 维完整 obs (含 hand/peg/hole 位置) — BC 模型只有 3D 末端位置所以学不会
+关键: 用 39 维完整 obs (含 hand/光模块/hole 位置) — BC 模型只有 3D 末端位置所以学不会
 Reward 设计:
-  - 接近 peg: -dist(hand, pegGrasp)
-  - 抓起: peg z 升高 > 5cm → +10 (一次性)
-  - 插入: peg 距 hole < 5cm → +50 (一次性)
+  - 接近 光模块: -dist(hand, pegGrasp)
+  - 抓起: 光模块 z 升高 > 5cm → +10 (一次性)
+  - 插入: 光模块 距 hole < 5cm → +50 (一次性)
   - 步数惩罚 -0.01
 """
 import os, sys, time, json
@@ -63,13 +63,13 @@ def make_env(seed=0):
     return env, mt
 
 def get_obs(env):
-    """39 维 obs (官方策略同款, 含 hand/peg/hole)"""
+    """39 维 obs (官方策略同款, 含 hand/光模块/hole)"""
     o = np.asarray(env._get_obs(), dtype=np.float32).ravel()
     return o
 
 def compute_reward(env, prev_peg_z, prev_dist_hand_peg, prev_dist_peg_hole,
                    prev_peg_dist_hand_xy, info):
-    """塑形 reward: 接近 peg + 抓取 + 插入"""
+    """塑形 reward: 接近 光模块 + 抓取 + 插入"""
     try:
         hand = env.data.site_xpos[env.model.site("endEffector").id].copy()
         peg = env.data.site_xpos[env.model.site("pegGrasp").id].copy()
@@ -78,13 +78,13 @@ def compute_reward(env, prev_peg_z, prev_dist_hand_peg, prev_dist_peg_hole,
     except Exception:
         return 0.0, info
     r = 0.0
-    # 1) 接近 peg (水平为主, 有增益)
+    # 1) 接近 光模块 (水平为主, 有增益)
     d_hp = np.linalg.norm(hand - peg)
     r += -0.02 * d_hp
-    # 2) 高度匹配 (末端到 peg 抓取高度)
+    # 2) 高度匹配 (末端到 光模块 抓取高度)
     h_err = abs(hand[2] - peg[2] - 0.03)
     r += -0.05 * h_err
-    # 2.5) 抓取就位: xy 对准 peg + 高度匹配 → 鼓励夹爪闭合
+    # 2.5) 抓取就位: xy 对准 光模块 + 高度匹配 → 鼓励夹爪闭合
     d_xy = np.linalg.norm(hand[:2] - peg[:2])
     if d_xy < 0.03 and h_err < 0.02:
         r += 2.0  # 就位奖励
@@ -93,7 +93,7 @@ def compute_reward(env, prev_peg_z, prev_dist_hand_peg, prev_dist_peg_hole,
         info["gripper_closed"] = bool(info.get("gripper_cmd", 0) < 0)
         if info.get("gripper_closed"):
             r += 3.0  # 就位 + 闭合 → 大奖励
-    # 3) 抓起 peg: z 升高 > 5cm
+    # 3) 抓起 光模块: z 升高 > 5cm
     peg_rise = peg[2] - peg_z0
     if not info.get("grasped") and peg_rise > 0.05:
         r += 10.0

@@ -62,7 +62,7 @@ GUI 用 /usr/bin/python3 (有 PyQt5/numpy/PIL/cv2 5.0.0, **无 pandas/pyarrow**)
   (peg_lerobot ← peg_v2/train.npz)
 - 新装库后记入记忆 (环境依赖一次配齐)
 
-## 插销数据集链路速查 (本会话打通)
+## 光模块数据集链路速查 (本会话打通)
 
 1. `tools/gen_peg_data.py --eps 30` (官方专家 SawyerPegInsertionSideV3Policy 采样,
    只留成功轨迹, corner2 视角, 128px, 失败轨迹 150 步提前终止)

@@ -10,8 +10,7 @@
       "cwd": "/home/ubuntu/lerobot-smolvla-lew",
       "console": "integratedTerminal",
       "justMyCode": false,
-      "env": {},
-      "preLaunchTask": "🧹 清 debugpy 僵尸 (5678)"
+      "env": {}
     },
     {
       "name": "🔌 Attach 现有控制台 (5678)",

@@ -2,7 +2,7 @@
 """YOLO 同构评估 — BC policy + 真实 YOLO 感知插拔评估 (2026-08-23 老倪)
 完整同构闭环:
   训练: data/metaworld_peg (gen_metaworld_data --yolo 生成, YOLO检测→解算→39D带噪声state)
-  评估: 真实 YOLO 权重 best.pt 检测 → 2D→3D 解算 → 替换 hand/peg/hole 段 → 39D state → BC policy
+  评估: 真实 YOLO 权重 best.pt 检测 → 2D→3D 解算 → 替换 hand/光模块/hole 段 → 39D state → BC policy
 指标: ①peg抬起率(>5cm) ②插入率(peg距hole<5cm) ③平均距孔
 用法:
   DISPLAY=:0 MUJOCO_GL=glfw gui-venv311/bin/python tools/eval_yolo_bc.py --epochs 400 --seeds 10
@@ -117,7 +117,7 @@ def run_episode(model, sm, ss, am, asd, aligner, seed, steps=200):
         if peg[2] - peg_z0 > 0.05:
             lifted = True
         st_raw = np.asarray(obs, dtype=np.float32)[:39]
-        # 真实 YOLO 检测 → 2D→3D 解算 → 替换 hand/peg/hole 段 (与训练 gen_metaworld_data --yolo 同构)
+        # 真实 YOLO 检测 → 2D→3D 解算 → 替换 hand/光模块/hole 段 (与训练 gen_metaworld_data --yolo 同构)
         det3d = aligner.detect_3d(np.asarray(env.render()))
         st = aligner.align(st_raw, det3d).astype(np.float32)[:39]
         det_hist.append(len(det3d))

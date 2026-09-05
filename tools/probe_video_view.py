@@ -4,7 +4,7 @@
 输出:
   1. corner2 相机 world 位姿 (pos/quat/fovy) + 视线方向 → 换算成 pyqtgraph 相机 (elevation/azimuth/distance)
   2. 世界 +X/+Y/+Z 在画面里的方向 (含视频 np.rot90(k=2) 180° 旋转后的方向)
-  3. 复位后真实几何: 末端/插销/孔位 世界坐标 (给状态空间仿真对齐用)
+  3. 复位后真实几何: 末端/光模块/孔位 世界坐标 (给状态空间仿真对齐用)
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/probe_video_view.py
 """
 import os
@@ -84,9 +84,9 @@ for nm, p in sites.items():
     print(f"  {nm:<12} = {p.round(4)}")
 print(f"  obs[0:3] 末端  = {o[0:3].round(4)}")
 print(f"  obs[3]  夹爪  = {o[3]:.4f}")
-print(f"  obs[4:7] 插销  = {o[4:7].round(4)}")
+print(f"  obs[4:7] 光模块  = {o[4:7].round(4)}")
 print(f"  obs[36:39] 孔位= {o[36:39].round(4)}")
 hand, peg, hole = o[0:3], o[4:7], o[36:39]
-print(f"  末端→插销 距离 = {np.linalg.norm(hand - peg):.4f}m   "
-      f"插销→孔位 距离 = {np.linalg.norm(peg - hole):.4f}m")
+print(f"  末端→光模块 距离 = {np.linalg.norm(hand - peg):.4f}m   "
+      f"光模块→孔位 距离 = {np.linalg.norm(peg - hole):.4f}m")
 env.close()

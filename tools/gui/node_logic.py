@@ -694,7 +694,7 @@ def node_eval_report_pdf(ctx):
 def node_ff_pd_control(ctx):
     """⚙️ 前馈 PD 控制器 — 顶层控制模型 (2026-08-14 老倪)
     思想: 系统 = 带前馈的增益调度 PID
-      状态机 = 强力 P (e×Kp: delta=peg−hand, act+=delta*2.0)
+      状态机 = 强力 P (e×Kp: delta=光模块−hand, act+=delta*2.0)
       物理限幅 = 隐性 D 与饱和 (死区/限幅=非线性阻尼, 放弃 I 避免积分饱和)
       左脑 MLP = 前馈控制器 (直接预测动作, 偏差产生前给力)
       右脑 WM = 预测器 (预判接触提前减速)
@@ -1425,7 +1425,7 @@ def node_yolo_3d(ctx):
     """🎯 YOLO 3D — 真实执行: metaworld 渲染帧 → YOLO 检测 → 3D 反投影
     源码: src/lerobot/policies/yolo_3d/yolo_state_aligner.py (detect_3d / align)
     ─────────────────────────────────────────────
-    数据流: 相机图像 → YOLO {hand, peg, hole} → 反投影 3D → 缓存 → 📐 2D→3D 节点 align 进 39D"""
+    数据流: 相机图像 → YOLO {hand, 光模块, hole} → 反投影 3D → 缓存 → 📐 2D→3D 节点 align 进 39D"""
     log = ctx["log"]
     try:
         aligner = _yolo_ensure_aligner(log)
@@ -1446,8 +1446,8 @@ def node_yolo_3d(ctx):
 
 def node_yolo_align(ctx):
     """📐 2D→3D 解算 — 真实执行: YOLO 检测 3D → align() 替换 39D 对应段
-    源码: yolo_state_aligner.py align() — hand→[0:3], peg→[4:7]+[22:25], hole→[36:39]
-    🐛 旧版误把 peg 写进 [18:21](prev_hand), 真 peg 段 [4:7]/[22:25] 一直漏真值 → 训练泄漏 (2026-08-23 已修)"""
+    源码: yolo_state_aligner.py align() — hand→[0:3], 光模块→[4:7]+[22:25], hole→[36:39]
+    🐛 旧版误把 光模块 写进 [18:21](prev_hand), 真 光模块 段 [4:7]/[22:25] 一直漏真值 → 训练泄漏 (2026-08-23 已修)"""
     log = ctx["log"]
     try:
         import numpy as np
@@ -1460,7 +1460,7 @@ def node_yolo_align(ctx):
         aligned = aligner.align(obs39, det3d)
         if log:
             log(f"📐 2D→3D 解算: hand={np.round(aligned[0:3],3)} · "
-                f"peg={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)} (真实对齐)")
+                f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)} (真实对齐)")
             log("📐 39D 对齐完成 · 断点可进 yolo_state_aligner.align()")
         return True
     except Exception as e:
@@ -1536,7 +1536,7 @@ def node_obs43(ctx):
     ─────────────────────────────────────────────
     触觉 4D (Marker 触觉跟踪, gen_tactile.py 从 39D state 合成):
     [39]     grasp_force   夹持力   = 1 − gripper   (夹爪闭合=1, 张开=0)
-    [40]     contact_force 接触力   = 1/(1+5d)      (d=|peg−hole|, 越近越大)
+    [40]     contact_force 接触力   = 1/(1+5d)      (d=|光模块−hole|, 越近越大)
     [41]     contact_dir_x 接触方向x = (peg_x−hole_x)/d
     [42]     contact_dir_z 接触方向z = (peg_z−hole_z)/d
     ─────────────────────────────────────────────
@@ -1586,7 +1586,7 @@ def node_stage_lift(ctx):
 def node_stage_transfer(ctx):
     log = ctx["log"]
     p = ctx.get("params", {})
-    log(f"➤ 转移: tolerance={p.get('tolerance', 0.05)}m · peg 有导向")
+    log(f"➤ 转移: tolerance={p.get('tolerance', 0.05)}m · 光模块 有导向")
     return True
 
 
@@ -1706,7 +1706,7 @@ def node_obs39(ctx):
     [36:39]  hole_pos      插孔目标位置 xyz      单位: 米(m) (goal)
     ─────────────────────────────────────────────
     说明: peg-insertion 观测 = 末端+夹爪+销钉(位姿) 双帧堆叠 + 目标孔位。
-    45D 版本 = 39D + 6D 相对向量 (peg-hand, hole-peg); 49D 加触觉; 58D 加 W2-CoT。
+    45D 版本 = 39D + 6D 相对向量 (peg-hand, hole-光模块); 49D 加触觉; 58D 加 W2-CoT。
     left_right 工程用 39D (无相对向量)。
     """
     log = ctx["log"]
@@ -1982,7 +1982,7 @@ def node_ss_s1(ctx):
         _SS_STATE.update({"obs43": obs43, "obs39": obs39})
         if log:
             log(f"📡 传感器融合 (真实): 39D+触觉4D → 43D · hand={np.round(obs39[0:3],3)} "
-                f"peg={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
+                f"光模块={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
         return True
     except Exception as e:
         if log:
@@ -2376,7 +2376,7 @@ def node_ss_yolo(ctx):
                 for k, v in sorted(det3d.items()))
             log(f"🎯 YOLO 目标检测 (真实): {n}/3 目标 · {desc}")
             log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
-                f"peg={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
+                f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
         return True
     except Exception as e:
         if log:
@@ -2615,7 +2615,7 @@ _reg("ss_mani_c", ["接触流形"],
     "🧮 接触流形 — 插拔安全通道: 误差 e 沿通道轴分解 → 切向 e∥(测地线进度)/法向 e⊥(离流形漂移, 弯曲风险), V=½‖e‖², V̇=−e·v (源码 manifold_layer.py ContactManifold)",
     node_ss_mani)
 _reg("ss_mani_p", ["性能流形"],
-    "🧮 性能流形 — 光耦合对准代价: δ=销头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
+    "🧮 性能流形 — 光耦合对准代价: δ=光模块头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
     node_ss_mani)
 
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)

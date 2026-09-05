@@ -111,24 +111,24 @@ def _load_planner():
 # peg-insert-side-v3 (操作视频 gen_insert_video.py 用的同一个环境) 的真实几何,
 # 实测来源 tools/probe_video_view.py / probe_scene_geom.py (seed 0 复位后):
 #   末端 endEffector (0.0043, 0.6014, 0.1551) / obs 末端 (0.0046,0.6014,0.1951)
-#   插销抓握点 pegGrasp (0.0966, 0.5191, 0.030), 插销头 pegHead (-0.0334, 0.5191, 0.020)
+#   光模块抓握点 pegGrasp (0.0966, 0.5191, 0.030), 光模块头 pegHead (-0.0334, 0.5191, 0.020)
 #   孔口 hole (-0.1685, 0.4623, 0.1309), 插入终点 goal (-0.2345, 0.4623, 0.1309)
 # 原来这里是编造坐标 (孔位 0.25,0,0.05), 与操作视频既不同尺度也不同朝向。
 # ════════════════════════════════════════════════════════════════
 HOLE_POS = np.array([-0.2345, 0.4623, 0.1309])   # 插入终点 (metaworld goal, obs[36:39] 语义)
 HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
-PEG_POS0 = np.array([0.0966, 0.5191, 0.030])      # 插销抓握点初始 (台面上)
-PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 插销头相对抓握点 (peg 沿 X 长 0.2)
-X0 = np.array([0.0046, 0.6014, 0.1951])           # 末端起始位置 (手空着, 未持插销)
-TABLE_Z = 0.005                                   # 台面高度 (插销底面)
-D_CONTACT = 0.02                          # 接触距离 (下降触销 / 销到孔沿)
+PEG_POS0 = np.array([0.0966, 0.5191, 0.030])      # 光模块抓握点初始 (台面上)
+PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 光模块头相对抓握点 (光模块 沿 X 长 0.2)
+X0 = np.array([0.0046, 0.6014, 0.1951])           # 末端起始位置 (手空着, 未持光模块)
+TABLE_Z = 0.005                                   # 台面高度 (光模块底面)
+D_CONTACT = 0.02                          # 接触距离 (下降触光模块 / 光模块到孔沿)
 D_INSERT = 0.004                          # 插入成功判定
 K_CONTACT = 6.0                           # 接触力增益
 DT = 0.02
 T_END = 32.0                              # 完整插拔 (接近→对位→下降→抓取→抬起→转移→插入→完成) 需要更长
 # 各阶段末端子目标 (感知层把"当前阶段目标"写进 obs[36:39] — 前馈层就是按它比例引导)
 STAGE_LIFT = 0.16                         # 抬起目标高度 (台面之上)
-STAGE_APPROACH_H = 0.09                   # 接近: 插销上方悬停高度
+STAGE_APPROACH_H = 0.09                   # 接近: 光模块上方悬停高度
 STAGE_ALIGN_H = 0.05                      # 对位: 精对位高度
 STAGE_DESCEND_H = 0.004                   # 下降: 贴到抓握点
 
@@ -165,12 +165,12 @@ class StateSpaceSim:
         self.x = X0.copy()
         self.v = np.zeros(3)
         self.gripper = 0.0
-        # 🔩 2026-08-25 老倪: 插销是独立物体 (原来 obs 里 peg 位置=末端, 等于"开局就握着销",
-        #   3D 视图因此没有「从初始位置到抓取插销」的过程)。现在插销先躺在台面上,
+        # 🔩 2026-08-25 老倪: 光模块是独立物体 (原来 obs 里 光模块 位置=末端, 等于"开局就握着光模块",
+        #   3D 视图因此没有「从初始位置到抓取光模块」的过程)。现在光模块先躺在台面上,
         #   抓取阶段夹爪闭合后才随手移动 (self.grasped / self.peg_off)。
-        self.peg = PEG_POS0.copy()      # 插销抓握点世界坐标
+        self.peg = PEG_POS0.copy()      # 光模块抓握点世界坐标
         self.grasped = False            # 是否已夹住
-        self.peg_off = np.zeros(3)      # 夹住瞬间 插销-末端 的相对偏移
+        self.peg_off = np.zeros(3)      # 夹住瞬间 光模块-末端 的相对偏移
         self.latent = np.concatenate([self.x, [0.0]])   # 潜状态 4D: 位置3 + 预测接触力 (无接触=0)
         self.obs_prev = None                 # 上一帧 18D (帧堆叠)
         # 🧮 流形层逐帧发布 (2026-09-03): 接触/性能流形 channel 进数据世界 (缺失不阻塞)
@@ -180,7 +180,7 @@ class StateSpaceSim:
         self._mani_out = None                # 本步流形量 (io_snapshot 发布用)
 
     def _head_off(self):
-        """销头相对末端的真实偏移 — 夹持后由感知给出 (peg 位置 − 末端位置 + 销头偏移)。
+        """光模块头相对末端的真实偏移 — 夹持后由感知给出 (peg 位置 − 末端位置 + 光模块头偏移)。
         ⚠️ 不能用名义 PEG_HEAD_OFF: 抓取锁存发生在"手比抓握点高 12mm"时 (接触判据),
         用名义偏移算插入目标会残留 12mm 高度差 → 永远差最后 4mm 判定不了「完成」。"""
         if self.grasped:
@@ -190,8 +190,8 @@ class StateSpaceSim:
     # ── 阶段子目标 (感知层写进 obs[36:39], 前馈层按它比例引导) ──
     def _stage_target(self):
         """当前阶段的末端目标位置 — 八阶段插拔流程:
-        接近(销上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) → 抓取(原地闭合)
-        → 抬起(提到 STAGE_LIFT) → 转移(销头对准孔口上方) → 插入(销头推到 goal) → 完成"""
+        接近(光模块上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) → 抓取(原地闭合)
+        → 抬起(提到 STAGE_LIFT) → 转移(光模块头对准孔口上方) → 插入(光模块头推到 goal) → 完成"""
         st = self.sched.stage()
         if st == "接近":
             return self.peg + np.array([0.0, 0.0, STAGE_APPROACH_H])
@@ -204,26 +204,26 @@ class StateSpaceSim:
         if st == "抬起":
             return np.array([self.peg[0], self.peg[1], TABLE_Z + STAGE_LIFT])
         if st == "转移":
-            # 末端目标 = 让"销头"落在孔口正前方上方 2cm (末端 = 孔口 − 真实夹持偏移)
+            # 末端目标 = 让"光模块头"落在孔口正前方上方 2cm (末端 = 孔口 − 真实夹持偏移)
             return HOLE_MOUTH - self._head_off() + np.array([0.0, 0.0, 0.02])
         if st == "插入":
             return HOLE_POS - self._head_off()
         return HOLE_POS - self._head_off()     # 完成: 保持在插入终点
 
     def peg_head(self):
-        """插销头世界坐标 (插入端)"""
+        """光模块头世界坐标 (插入端)"""
         return self.peg + PEG_HEAD_OFF
 
     def _d_xy_peg(self):
-        """末端-插销抓握点 水平距离 (接近/对位/下降 的推进证据)"""
+        """末端-光模块抓握点 水平距离 (接近/对位/下降 的推进证据)"""
         return float(np.linalg.norm(self.x[:2] - self.peg[:2]))
 
     def _d_hole_h(self):
-        """插销头-孔口 水平距离 (转移→插入 的推进证据)"""
+        """光模块头-孔口 水平距离 (转移→插入 的推进证据)"""
         return float(np.linalg.norm(self.peg_head()[:2] - HOLE_MOUTH[:2]))
 
     def _insert_depth(self):
-        """插销头到插入终点距离 (插入→完成 的推进证据)"""
+        """光模块头到插入终点距离 (插入→完成 的推进证据)"""
         return float(np.linalg.norm(self.peg_head() - HOLE_POS))
 
     # ── 感知 ──
@@ -233,7 +233,7 @@ class StateSpaceSim:
             self.x,                  # [0:3]  末端位置
             [self.gripper],          # [3]    夹爪开度
             self.v,                  # [4:7]  末端速度
-            self.peg,                # [7:10] 插销位置 (独立物体, 抓取后才随末端)
+            self.peg,                # [7:10] 光模块位置 (独立物体, 抓取后才随末端)
             HOLE_POS,                # [10:13] 孔位 (插入终点)
             np.zeros(3),             # [13:16] 孔位姿态 (简化)
             np.zeros(2),             # [16:18] 预留
@@ -246,14 +246,14 @@ class StateSpaceSim:
 
     @property
     def _contact(self):
-        """接触判定 (按阶段): 未夹持 = 末端下降触到插销; 已夹持 = 销头触到孔沿"""
+        """接触判定 (按阶段): 未夹持 = 末端下降触到光模块; 已夹持 = 光模块头触到孔沿"""
         if not self.grasped:
             return (self._d_xy_peg() < 0.03
                     and (self.x[2] - self.peg[2]) < 0.012)
         return self._d_hole_h() < D_CONTACT
 
     def _dist_h(self):
-        """当前"到目标"的水平距离 (Scope 波形 dist 曲线): 未夹持看插销, 已夹持看孔口"""
+        """当前"到目标"的水平距离 (Scope 波形 dist 曲线): 未夹持看光模块, 已夹持看孔口"""
         return self._d_xy_peg() if not self.grasped else self._d_hole_h()
 
     # ── 主循环 ──
@@ -274,7 +274,7 @@ class StateSpaceSim:
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
               "u_sat": [], "stage": [], "done": [],
               "x": [], "gripper": [], "force": [],
-              # 🔩 2026-08-25 完整插拔: 插销独立轨迹 + 每步阶段子目标 (3D 视图渲染用)
+              # 🔩 2026-08-25 完整插拔: 光模块独立轨迹 + 每步阶段子目标 (3D 视图渲染用)
               "peg": [], "peg_head": [], "target": [], "grasped": [],
               "obs": [], "u_ff_vec": [], "u_sat_vec": [],   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
               # 🧭 2026-08-25 3D 视图 (Apollo 分层渲染): 每步完整处理层向量
@@ -290,8 +290,8 @@ class StateSpaceSim:
         n_steps = int(self.t_end / self.dt)
         for step in range(n_steps):
             # ① 接触力 (物理世界给感知的输入; 归一化: 最大接触力 6*0.02=0.12N)
-            #   未夹持: 下降触到插销 → 垂直反力 (证据: 可以闭合夹爪了)
-            #   已夹持: 销头触到孔沿 → 插入阻力 (证据: 对上孔了)
+            #   未夹持: 下降触到光模块 → 垂直反力 (证据: 可以闭合夹爪了)
+            #   已夹持: 光模块头触到孔沿 → 插入阻力 (证据: 对上孔了)
             force = np.zeros(6)
             if self._contact:
                 if not self.grasped:
@@ -368,12 +368,12 @@ class StateSpaceSim:
                 elif dh < D_CONTACT:
                     self.v[1] *= 0.75          # 孔沿摩擦阻尼
                     self.v[2] *= 0.95
-            # 🔩 夹持锁存: 抓取阶段夹爪闭到 0.5 以上 → 插销被夹住, 之后随末端一起走
+            # 🔩 夹持锁存: 抓取阶段夹爪闭到 0.5 以上 → 光模块被夹住, 之后随末端一起走
             g_cmd = float(u_vec[3])
             if (not self.grasped) and self.sched.stage() == "抓取" and self.gripper > 0.5:
                 self.grasped = True
                 self.peg_off = self.peg - self.x
-                self.log(f"🔩 插销已夹住 (gripper={self.gripper:.2f}) → 随末端移动")
+                self.log(f"🔩 光模块已夹住 (gripper={self.gripper:.2f}) → 随末端移动")
             self.gripper += (g_cmd - self.gripper) * min(1.0, self.dt * 10.0)
             if self.grasped:
                 self.peg = self.x + self.peg_off
@@ -492,12 +492,12 @@ class StateSpaceSim:
         _vel = _mo.get("vel", np.zeros(4))
         visual39 = obs[:39]
         tactile4 = obs[39:43]
-        peg_3d = self.peg            # 🐛 2026-09-03: 独立插销位置 (原误用 self.x 末端)
+        peg_3d = self.peg            # 🐛 2026-09-03: 独立光模块位置 (原误用 self.x 末端)
         hand_3d = self.x             # 末端执行器 = hand
         hole_3d = HOLE_POS
         img = f"RGB-D 640×480 · 帧#{frame_id}"
         # 🐛 2026-09-03 老倪: YOLO/2D→3D 快照不再写死 conf 0.99 伪装检测 (老倪红线);
-        #   hand 也不再抄 peg 坐标. 引擎无 YOLO 模型 → conf 标 "--"; ▶运行 后由
+        #   hand 也不再抄 光模块 坐标. 引擎无 YOLO 模型 → conf 标 "--"; ▶运行 后由
         #   simulink_module 注入真实 detect_3d/detect2d 采样值 (真实 conf/框/3D)。
         return {
             "📦 metaworld 数据源": {

@@ -18,7 +18,7 @@ def P(n): return d.site_xpos[ids[n]].copy()
 def trial(z_target_mm, y_off_mm, label):
     e.reset(seed=0); e._freeze_rand_vec = True
     o = np.asarray(e._get_obs(), dtype=np.float64).ravel()
-    peg = o[4:7].copy()                      # 实时销位置 (obs)
+    peg = o[4:7].copy()                      # 实时光模块位置 (obs)
     # 悬停 (z=销+0.09, 水平对准+侧偏)
     tgt_xy = np.array([peg[0], peg[1] + y_off_mm])
     for k in range(80):

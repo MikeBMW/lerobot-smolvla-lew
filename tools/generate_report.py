@@ -865,7 +865,7 @@ def build_pdf(flow, curves, rollout_have, out_path):
                         ["动作退化", f"{v['amp_drop']:+.3f}", f"{a['amp_drop']:+.3f}",
                          "AWE" if a["amp_drop"] > v["amp_drop"] else "VLA-Touch"]]
                 E.append(TBL(rows, widths=[42 * mm, 42 * mm, 42 * mm, 30 * mm], fs=8))
-                E.append(_P("实验: peg-insert-side-v3 插销, 前30帧真触觉→30帧后触觉传感器中断。"
+                E.append(_P("实验: peg-insert-side-v3 光模块, 前30帧真触觉→30帧后触觉传感器中断。"
                                    "结论: VLA-Touch (触觉反应式) 中断后原地踏步, AWE (世界模型预见式) "
                                    "靠潜空间预测接触演化继续接近 — 预测中决策优势。", small))
                 E.append(Spacer(1, 3 * mm))

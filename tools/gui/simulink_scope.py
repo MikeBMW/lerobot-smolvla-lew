@@ -1068,7 +1068,7 @@ class InferenceVideoDialog(QDialog):
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else "."
         min_len = None
         dirs = {}
-        # 候选目录优先级: rollout_final_<p> (昨晚 peg 最终版) > rollout_peg_<p> > rollout_<p>
+        # 候选目录优先级: rollout_final_<p> (昨晚 光模块 最终版) > rollout_peg_<p> > rollout_<p>
         # (2026-08-06 老倪: 视频打开不动 — 昨晚生成在 rollout_peg_*, 旧逻辑只找 rollout_*)
         # (2026-08-07: expert_mlp/expert_policy 无 rollout_final_* — 现成成功视频在
         #   rollout_mlp/ rollout_expert_full/, 按 policy 走专用候选目录)
@@ -1155,7 +1155,7 @@ class InferenceVideoDialog(QDialog):
             out = {}
             for policy, name, _c in self.POLICIES:
                 try:
-                    # 昨晚验证的方向正确配置 (2026-08-06): peg-insert 插销场景 + corner2 视角
+                    # 昨晚验证的方向正确配置 (2026-08-06): peg-insert 光模块场景 + corner2 视角
                     # + 逆时针旋转90° → 插孔可见方向正立; 输出 rollout_final_<p>
                     r = subprocess.run([os.path.join(root, ".venv", "bin", "python"),
                                         os.path.join(root, "tools", "rollout_video.py"),

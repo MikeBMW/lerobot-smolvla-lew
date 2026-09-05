@@ -5,9 +5,9 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
 在同一个 3D 空间 (与操作视频 gen_state_space_video.py 的物理世界坐标一致) 里,
 叠加渲染状态空间仿真的所有处理层数据, 每层可独立开关 (Apollo Layer 风格):
 
-  坐标世界: 工作台平面 + 孔位插座(红) + 光模块 peg(金) + 末端夹爪(蓝)
+  坐标世界: 工作台平面 + 孔位插座(红) + 光模块 光模块(金) + 末端夹爪(蓝)
   处理层:
-    🎯 YOLO 检测框  — hand/peg/hole 三个 3D 半透明立方体框
+    🎯 YOLO 检测框  — hand/光模块/hole 三个 3D 半透明立方体框
     📍 末端轨迹     — 末端历史 3D 轨迹线 (旧→新 渐亮)
     ⚡ 前馈加速器 — 绿色箭头 (快通道速度指令 u_ff)
     🔄 反馈校正 u_fb — 蓝色箭头 (慢通道·卡尔曼残差方向)
@@ -119,7 +119,7 @@ def project_world(view, p):
 
 # ════════════════════════════════════════════════════════════════
 # 场景锚点 — 2026-08-25 老倪: 与操作视频 (metaworld peg-insert-side-v3) 同一套真实几何
-# 实测来源 tools/probe_scene_geom.py: 插销 pegGrasp(0.0966,0.5191,0.030) 沿 X 长 0.2,
+# 实测来源 tools/probe_scene_geom.py: 光模块 pegGrasp(0.0966,0.5191,0.030) 沿 X 长 0.2,
 # 孔口 hole(-0.1685,0.4623,0.1309), 插入终点 goal(-0.2345,0.4623,0.1309),
 # 带孔盒 box 中心(-0.2645,0.4623,~0.095), 机器人底座 base(0,0,0) 肩高 0.317
 # ════════════════════════════════════════════════════════════════
@@ -129,8 +129,8 @@ _BOX_CENTER = np.array([-0.2645, 0.4623, 0.095])   # 带孔盒中心
 _BOX_SIZE = (0.19, 0.20, 0.19)                     # 带孔盒尺寸
 _TABLE_CENTER = np.array([0.0, 0.58, -0.012])      # 台面板中心
 _TABLE_SIZE = (0.92, 0.62, 0.024)
-_PEG_SIZE = (0.20, 0.03, 0.03)                     # 插销 (沿 X 长条)
-_PEG_CENTER_OFF = np.array([-0.030, 0.0, -0.010])  # 插销几何中心相对抓握点
+_PEG_SIZE = (0.20, 0.03, 0.03)                     # 光模块 (沿 X 长条)
+_PEG_CENTER_OFF = np.array([-0.030, 0.0, -0.010])  # 光模块几何中心相对抓握点
 _ARM_BASE = np.array([0.0, 0.0, 0.0])              # Sawyer 底座 (metaworld base)
 _ARM_H_BASE = 0.317                                # 肩高
 _ARM_L1 = _ARM_L2 = 0.42                           # 上臂/前臂 (够到 y=0.6 工作台)
@@ -415,7 +415,7 @@ class DreamView3D(QWidget):
         self._gl_items = {}       # layer -> GL item(s)
         self._layer_on = {}       # layer -> bool
         # 场景锚点 (默认 = metaworld seed0 典型值; 同源 trace 里有 meta 就按 meta 覆盖 —
-        #  metaworld 每个 seed 的插销/孔位是随机化的, 写死会和视频对不上)
+        #  metaworld 每个 seed 的光模块/孔位是随机化的, 写死会和视频对不上)
         self._hole = _HOLE.copy()
         self._mouth = _HOLE_MOUTH.copy()
         self._box_c = _BOX_CENTER.copy()
@@ -497,10 +497,10 @@ class DreamView3D(QWidget):
         self._layers_def = [
             # ── 感知层 (最前) ──
             ("scene",     "📡 感知层 · 物理世界几何",     True,
-             "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 插销 peg /\n"
+             "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 光模块 /\n"
              "Sawyer 臂 + 夹爪 (含物体名字标注; 关掉它连机械臂和标注一起隐藏)"),
             ("yolo",      "📡 感知层 · YOLO 目标检测",    True,
-             "画布节点「🎯 YOLO 目标检测」的输出: hand / peg / hole 三个 3D 检测框"),
+             "画布节点「🎯 YOLO 目标检测」的输出: hand / 光模块 / hole 三个 3D 检测框"),
             ("traj",      "📡 感知层 · 末端实测轨迹",     True,
              "「🌍 物理世界」每步实测的末端位置连成的历史轨迹 (metaworld MuJoCo 真值)"),
             # ── S2 并行处理层 ──
@@ -530,11 +530,11 @@ class DreamView3D(QWidget):
              "⚠️ 为什么瞬时的看着乱: 实测相邻帧方向变化 **88.5°** (纯随机 90°) ⇒ 瞬时残差\n"
              "   **96% 是 5mm 观测噪声**; 只有多帧平均后剩下的才是真实接触/阻力造成的偏差\n"
              "标注里的百分比 = 系统占比 |均值| / 平均模长: 实测 下降 8% (自由下落无接触)\n"
-             "   → 插入 42% (销头顶孔沿产生固定方向阻力) — 这个数字升高就是\"真的碰到东西了\""),
+             "   → 插入 42% (光模块头顶孔沿产生固定方向阻力) — 这个数字升高就是\"真的碰到东西了\""),
             ("contact",   "④ 🧪 状态校正器 · 接触指示",   True,
              "两路接触各一组「核心球 + 脉冲外环」, 强度直接用 MuJoCo 真实接触力驱动:\n"
-             "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住插销就明显弹出\n"
-             "  🟠 橙球 (画在销头) = 环境接触 销头↔孔沿 / 夹爪↔台面 — 顶到孔才亮\n"
+             "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住光模块就明显弹出\n"
+             "  🟠 橙球 (画在光模块头) = 环境接触 光模块头↔孔沿 / 夹爪↔台面 — 顶到孔才亮\n"
              "  直径 8px(无接触) → 54px(满接触), 超过 15% 强度加 1.9 倍脉冲外环\n"
              "为什么不用接触概率驱动大小: σ(8×|残差|) 被 5mm 观测噪声垫到 0.58 基线,\n"
              "全程只在 0.58~1.0 变 (球直径仅差 10px 看不出) → 概率改在标注里显示\n"
@@ -549,7 +549,7 @@ class DreamView3D(QWidget):
              "(接近→对位→下降→抓取→抬起→转移→插入→完成), 每次切换都由物理证据触发:\n"
              "  接近→对位: 手-销水平距离 <60mm   对位→下降: <20mm\n"
              "  下降→抓取: 接触概率>0.6 或到达抓握位姿   抓取→抬起: 夹持度>0.6\n"
-             "  抬起→转移: 提升>80mm   转移→插入: 销头-孔口 <20mm   插入→完成: 残距<4mm\n"
+             "  抬起→转移: 提升>80mm   转移→插入: 光模块头-孔口 <20mm   插入→完成: 残距<4mm\n"
              "画面左侧阶梯 = 八阶段进度 (✔已过/▶当前/待执行), 当前阶段下方给\n"
              "**下一阶段预测**: 证据当前值/阈值 + 进度% + 按变化率外推的预计剩余时间\n"
              "3D 里还画出各阶段的目标航点 (①~⑧ 带序号), 当前阶段航点高亮"),
@@ -731,9 +731,9 @@ class DreamView3D(QWidget):
 
     # ── 取景 (2026-08-25 老倪: "还是一堆点, 不知道啥意思") ──
     #   实测: 严格 1:1 复刻视频机位时 (距离 1.735m/竖直fov60), 926x766 画布上
-    #   96.8% 是空背景, 插销只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
+    #   96.8% 是空背景, 光模块只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
     #   → 默认改「自动取景」: **朝向保持与视频完全一致**, 只把 center/distance 收紧到
-    #     刚好装下 (末端轨迹 ∪ 插销轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
+    #     刚好装下 (末端轨迹 ∪ 光模块轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
     #     要逐像素对比视频时用「视频同框」档切回去。
     def _fit_view(self, mode=None):
         mode = mode or getattr(self, "_view_mode", "fit")
@@ -940,7 +940,7 @@ class DreamView3D(QWidget):
 
     # ── 场景构建 ──
     def _build_scene(self):
-        # 🐛 2026-08-28: 同一 item 被多个 key 引用 (yolo 列表 ↔ yolo_hand/peg/hole),
+        # 🐛 2026-08-28: 同一 item 被多个 key 引用 (yolo 列表 ↔ yolo_hand/光模块/hole),
         #   重建时重复 removeItem → ValueError 中断重建 → 背景丢失。按 id 去重 + 容忍缺失。
         seen = set()
         for it in list(self._gl_items.values()):
@@ -971,7 +971,7 @@ class DreamView3D(QWidget):
         self.view.addItem(ax)
         self._gl_items["axis"] = [ax]      # X/Y/Z 字样由 LabelOverlay 画
 
-        # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 插销/夹爪动态, 见 _update_frame)
+        # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 光模块/夹爪动态, 见 _update_frame)
         scene = []
         # 工作台面板
         table = gl.GLMeshItem(meshdata=_box_mesh(self._table_c, _TABLE_SIZE),
@@ -983,7 +983,7 @@ class DreamView3D(QWidget):
                             color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
         self.view.addItem(box)
         scene.append(box)
-        # 孔口 (盒子 +X 面上的深色方口 = 插销侧插入口)
+        # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
         mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
                                                  (0.012, 0.05, 0.05)),
                               color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
@@ -1032,7 +1032,7 @@ class DreamView3D(QWidget):
                                   color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_wrist)
         arm.append(arm_wrist)
-        # 夹爪两瓣 (沿 Y 开合 — 插销是沿 X 的长条, 从 ±Y 两侧夹住; 青色纯色不被光照压暗)
+        # 夹爪两瓣 (沿 Y 开合 — 光模块是沿 X 的长条, 从 ±Y 两侧夹住; 青色纯色不被光照压暗)
         arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.05, 0.016, 0.05)),
                                   color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_l)
@@ -1041,7 +1041,7 @@ class DreamView3D(QWidget):
                                   color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_r)
         arm.append(arm_jaw_r)
-        # 光模块 peg (金色插销 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["peg"])
+        # 光模块 光模块 (金色光模块 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["光模块"])
         arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], _PEG_SIZE),
                                 color=(0.95, 0.72, 0.10, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_peg)
@@ -1146,10 +1146,10 @@ class DreamView3D(QWidget):
         self._gl_items["latent"] = [lat_line, lat_now]
 
         # 🧲 接触指示 (2026-08-25 老倪 重新设计: 原来只有一个球, 大小按被噪声垫高的
-        #   接触概率映射 → 直径只在 16~26px 之间变, 而且"碰到插销"根本不进这个信号)
+        #   接触概率映射 → 直径只在 16~26px 之间变, 而且"碰到光模块"根本不进这个信号)
         #   新设计: 两路接触各一组「核心球 + 脉冲外环」—
-        #     夹持接触 (peg↔指垫) 青色, 画在夹爪处 → 一夹住就明显弹出
-        #     环境接触 (销头↔孔沿/夹爪↔台面) 橙红, 画在销头 → 顶到孔沿才亮
+        #     夹持接触 (光模块↔指垫) 青色, 画在夹爪处 → 一夹住就明显弹出
+        #     环境接触 (光模块头↔孔沿/夹爪↔台面) 橙红, 画在光模块头 → 顶到孔沿才亮
         #   强度用力的归一化值直接驱动 (不用 cp, 它有 0.58 噪声基线), 直径 8→54px
         c_items = []
         for _col in ((0.20, 0.90, 1.00), (1.00, 0.45, 0.10)):        # 青=夹持, 橙红=环境
@@ -1240,7 +1240,7 @@ class DreamView3D(QWidget):
             traj_pts = np.array([x, x])
         self._gl_items["traj"].setData(pos=traj_pts)
 
-        # 🤖 Sawyer 机械臂 IK (末端=peg 位置, 夹爪开合随 gripper)
+        # 🤖 Sawyer 机械臂 IK (末端=光模块 位置, 夹爪开合随 gripper)
         ik = _ik_sawyer(x, self._arm_base)
         arm = self._gl_items["arm"]
         arm[self._arm_idx["upper"]].setMeshData(meshdata=_cylinder_mesh(ik["shoulder"], ik["elbow"], 0.032))
@@ -1248,8 +1248,8 @@ class DreamView3D(QWidget):
         arm[self._arm_idx["shoulder"]].setMeshData(meshdata=_sphere_mesh(ik["shoulder"], 0.042))
         arm[self._arm_idx["elbow"]].setMeshData(meshdata=_sphere_mesh(ik["elbow"], 0.034))
         arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.026))
-        # 🖐 夹爪开合 (2026-08-25 老倪: 插销是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
-        #   张开 gap=0.048 (瓣在插销外侧) → 闭合 gap=0.024 (贴住插销 0.03 宽的两侧)
+        # 🖐 夹爪开合 (2026-08-25 老倪: 光模块是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
+        #   张开 gap=0.048 (瓣在光模块外侧) → 闭合 gap=0.024 (贴住光模块 0.03 宽的两侧)
         g = float(tr["gripper"][i])
         gap = 0.024 + (1.0 - g) * 0.024
         jaw_dir = np.array([0.0, 1.0, 0.0])
@@ -1257,8 +1257,8 @@ class DreamView3D(QWidget):
             meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap, (0.05, 0.016, 0.05)))
         arm[self._arm_idx["jaw_r"]].setMeshData(
             meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap, (0.05, 0.016, 0.05)))
-        # 🔩 插销: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
-        #   老 tr 没有 "peg" 键 (旧仿真 peg=末端) → 回退到末端, 保持兼容
+        # 🔩 光模块: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["光模块"])
+        #   老 tr 没有 "光模块" 键 (旧仿真 光模块=末端) → 回退到末端, 保持兼容
         peg_grasp = (np.asarray(tr["peg"][i], dtype=float)
                      if tr.get("peg") is not None and len(tr["peg"]) > i else x)
         arm[self._arm_idx["peg"]].setMeshData(
@@ -1318,7 +1318,7 @@ class DreamView3D(QWidget):
         if tip is not None:
             self._gl_items["ufuse_sphere"].setData(pos=np.array([tip]))
 
-        # YOLO 检测框: hand/peg/hole 三个框 (真实 3D 坐标 — peg 用独立插销位置, hole 用孔口)
+        # YOLO 检测框: hand/光模块/hole 三个框 (真实 3D 坐标 — 光模块 用独立光模块位置, hole 用孔口)
         boxes = [("hand", x, (0.07, 0.07, 0.06)),
                  ("peg", peg_grasp + self._peg_center_off, (0.21, 0.04, 0.04)),
                  ("hole", self._mouth, (0.05, 0.07, 0.07))]
@@ -1393,9 +1393,9 @@ class DreamView3D(QWidget):
             elif _cur == "抬起":
                 _ev = ("提升高度", float(_pegp[2] - np.asarray(tr["peg"][0], dtype=float)[2]), 0.08, ">")
             elif _cur == "转移":
-                _ev = ("销头-孔口水平", float(np.linalg.norm(_headp[:2] - self._mouth[:2])), 0.02, "<")
+                _ev = ("光模块头-孔口水平", float(np.linalg.norm(_headp[:2] - self._mouth[:2])), 0.02, "<")
             elif _cur == "插入":
-                _ev = ("销头-终点残距", float(np.linalg.norm(_headp - self._hole)), 0.004, "<")
+                _ev = ("光模块头-终点残距", float(np.linalg.norm(_headp - self._hole)), 0.004, "<")
             _eta = None
             if _ev is not None and i > 12:
                 _nm, _val, _th, _op = _ev
@@ -1409,8 +1409,8 @@ class DreamView3D(QWidget):
                          "手高于抓握点": float(_xp[2] - _pp[2] - 0.022),
                          "夹持度": float(tr["gripper"][_prev_i]),
                          "提升高度": float(_pp[2] - np.asarray(tr["peg"][0], dtype=float)[2]),
-                         "销头-孔口水平": float(np.linalg.norm(_hp[:2] - self._mouth[:2])),
-                         "销头-终点残距": float(np.linalg.norm(_hp - self._hole))}
+                         "光模块头-孔口水平": float(np.linalg.norm(_hp[:2] - self._mouth[:2])),
+                         "光模块头-终点残距": float(np.linalg.norm(_hp - self._hole))}
                 _v0 = _vmap.get(_nm, _val)
                 _rate = (_val - _v0) / 12.0
                 _need = (_th - _val) if _op == "<" else (_th - _val)
@@ -1428,10 +1428,10 @@ class DreamView3D(QWidget):
         _cp_norm = float(np.clip((_cp_raw - 0.58) / 0.42, 0.0, 1.0))
         self._contact_vals = (_fg, _fe, _cp_raw, _cp_norm)
         _grasp_anchor = np.asarray(ik["wrist"], dtype=float)          # 夹持 → 画在夹爪
-        _env_anchor = (np.asarray(tr["peg_head"][i], dtype=float)     # 环境 → 画在销头
+        _env_anchor = (np.asarray(tr["peg_head"][i], dtype=float)     # 环境 → 画在光模块头
                        if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
                        else np.asarray(x, dtype=float))
-        # 预接触: 还没夹住但夹爪已经贴近插销 (几何证据) → 画一圈淡青环提示"即将接触"
+        # 预接触: 还没夹住但夹爪已经贴近光模块 (几何证据) → 画一圈淡青环提示"即将接触"
         _grasped_now = bool(np.asarray(tr["grasped"]).astype(bool)[i]) if tr.get("grasped") is not None else False
         _d_hp = float(np.linalg.norm(np.asarray(x, dtype=float) - np.asarray(peg_grasp, dtype=float)))
         self._pre_contact = (not _grasped_now) and _d_hp < 0.05      # 5cm 内算贴近
@@ -1471,7 +1471,7 @@ class DreamView3D(QWidget):
                             QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)), bold))
             if self._layer_on.get("scene", False):     # 场景层关 → 物体名字标注一并消失
                 _add(np.asarray(x) + [0, 0, 0.03], "末端 hand", (0.55, 0.78, 1.0))
-                _add(np.asarray(peg_grasp) + [0, 0, 0.03], "插销 peg", (1.0, 0.82, 0.25))
+                _add(np.asarray(peg_grasp) + [0, 0, 0.03], "光模块 peg", (1.0, 0.82, 0.25))
                 _add(self._mouth + np.array([0, 0, 0.05]), "孔口 hole", (1.0, 0.45, 0.35))
                 _add(self._hole + np.array([0, 0, -0.05]), "插入终点 goal", (0.35, 0.95, 0.60))
             if self._layer_on.get("latent", False):
@@ -1483,7 +1483,7 @@ class DreamView3D(QWidget):
                          f"夹持接触 {_fg2:.2f} (peg↔指垫)", (0.20, 0.90, 1.00))
                 elif getattr(self, "_pre_contact", False):
                     _add(np.asarray(ik["wrist"], dtype=float) + [0, 0, 0.035],
-                         f"即将接触插销 (距 {self._pre_gap * 1000:.0f} mm)", (0.20, 0.90, 1.00))
+                         f"即将接触光模块 (距 {self._pre_gap * 1000:.0f} mm)", (0.20, 0.90, 1.00))
                 if _fe2 > 0.05:
                     _ea = (np.asarray(tr["peg_head"][i], dtype=float)
                            if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
@@ -1587,13 +1587,13 @@ class DreamView3D(QWidget):
             f"t       {t:6.2f}s   帧 {i}/{self._n - 1}\n"
             f"────────────────────\n"
             f"末端    {_f(x[0])} {_f(x[1])} {_f(x[2])}\n"
-            f"插销    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
-            f"销头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
+            f"光模块    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
+            f"光模块头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
             f"估计x̂   {_f(lat3[0])} {_f(lat3[1])} {_f(lat3[2])}\n"
             f"x̂−末端  {err:6.1f} mm   抖动 {jit:4.2f} mm/步\n"
             f"────────────────────\n"
             f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
-            f"销头→孔 {d_ph * 1000:6.1f} mm\n"
+            f"光模块头→孔 {d_ph * 1000:6.1f} mm\n"
             f"  环境接触 {fenv:5.3f}  夹持 {fg:5.3f}\n"
             f"状态校正器 残差{res:6.4f}\n"
             f"  接触概率 {cp:4.2f} (净 {max(0.0, min(1.0, (cp - 0.58) / 0.42)):4.2f})\n"

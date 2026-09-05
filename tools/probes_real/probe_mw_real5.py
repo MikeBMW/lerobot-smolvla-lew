@@ -23,7 +23,7 @@ print(f"[p5] 初始 left={np.round(P('leftEndEffector'),4)} right={np.round(P('r
 print(f"[p5] 初始 pegGrasp={np.round(P('pegGrasp'),4)} pegHead={np.round(P('pegHead'),4)} pegEnd={np.round(P('pegEnd'),4)}", flush=True)
 print(f"[p5] obs peg={np.round(o[4:7],4)} obs hand={np.round(o[0:3],4)}", flush=True)
 
-# 移到 peg 正上方 (夹爪 xy=pegGrasp xy, z 保持悬停), 再降到物理下限
+# 移到 光模块 正上方 (夹爪 xy=pegGrasp xy, z 保持悬停), 再降到物理下限
 tgt = P('pegGrasp') + np.array([0.0, 0.0, 0.005])   # 直接瞄准抓握点上方 5mm
 for k in range(120):
     dv = tgt - P('endEffector')
@@ -42,7 +42,7 @@ for k in range(40):
         print(f"[p5] 闭{k+1} grp={o[3]:.3f} left={np.round(P('leftEndEffector'),4)} "
               f"right={np.round(P('rightEndEffector'),4)} ee={np.round(P('endEffector'),4)} "
               f"peg={np.round(P('pegGrasp'),4)}", flush=True)
-# 抬升试探: 夹爪升 5cm, peg 跟不跟?
+# 抬升试探: 夹爪升 5cm, 光模块 跟不跟?
 peg_before = P('pegGrasp').copy()
 for k in range(20):
     e.step(np.array([0.0, 0.0, 0.05, 0.6]))

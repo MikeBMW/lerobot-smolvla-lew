@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AWE vs VLA-Touch 区分性实验 — 证明"预测中决策"优势
 实验设计 (2026-08-06 老倪要求: 怎么体现 AWE 比 VLA-Touch 好):
-  场景: peg-insert-side-v3 插销 (多阶段: 接近→对准→插入)
+  场景: peg-insert-side-v3 光模块 (多阶段: 接近→对准→插入)
   变量: 触觉信号质量 (0=无触觉 / 1=真触觉 / 2=噪声触觉 / 3=延迟触觉)
   假设: VLA-Touch 是触觉反应式 → 触觉质量差时退化;
         AWE 是世界模型预见式 → 用潜空间预测补偿, 抗触觉退化。
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def load_models():
-    """加载 vla_touch + awe_zflow (peg v2 训练)"""
+    """加载 vla_touch + awe_zflow (光模块 v2 训练)"""
     from importlib import util
     models = {}
     for key, mod_name, cls_name in [("vla_touch", "train_vla_touch", "InterpolantPolicy"),

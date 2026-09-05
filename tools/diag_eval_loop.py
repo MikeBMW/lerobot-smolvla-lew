@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""模拟评估循环: 打印 hand/peg/d_hp/act_z/contact, 判断左脑是否驱动 hand 接近 peg 或 act_z 爆炸"""
+"""模拟评估循环: 打印 hand/光模块/d_hp/act_z/contact, 判断左脑是否驱动 hand 接近 光模块 或 act_z 爆炸"""
 import os, sys, numpy as np, torch
 ROOT = "/home/ubuntu/lerobot-smolvla-lew"
 os.chdir(ROOT)

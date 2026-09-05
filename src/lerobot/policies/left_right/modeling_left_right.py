@@ -285,7 +285,7 @@ class LeftRightPolicy(PreTrainedPolicy):
         self._t_stage = {}
 
     def set_peg_z0(self, peg_z0):
-        """记录初始 peg 高度 (episode 开始, 供抬起判定)"""
+        """记录初始 光模块 高度 (episode 开始, 供抬起判定)"""
         self.peg_z0 = float(peg_z0)
 
     def set_env(self, env):
@@ -295,7 +295,7 @@ class LeftRightPolicy(PreTrainedPolicy):
 
     def _get_pose(self, obs):
         """从 obs 或 env 真值提取 hand/peg/hole 位置
-        2026-08-10: 39D obs 无 peg 段 ([18:21] 是 hand 重复) → 有 env 用真值, 无则退化 obs"""
+        2026-08-10: 39D obs 无 光模块 段 ([18:21] 是 hand 重复) → 有 env 用真值, 无则退化 obs"""
         env = getattr(self, "_env", None)
         if env is not None:
             try:

@@ -150,7 +150,7 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
     import metaworld
     from PIL import Image
     os.makedirs(out_dir, exist_ok=True)
-    # metaworld V3: task 环境 + 指定相机视角 (corner=斜侧看插销)
+    # metaworld V3: task 环境 + 指定相机视角 (corner=斜侧看光模块)
     from metaworld.env_dict import ALL_V3_ENVIRONMENTS
     env_cls = ALL_V3_ENVIRONMENTS[task_name]
     env = env_cls(render_mode="rgb_array", camera_name=camera)  # camera_name 必须构造时传入!

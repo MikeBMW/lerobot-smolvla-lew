@@ -47,11 +47,11 @@ def _load(rel):
 FEATURES = [
     # (id, 域, 名称, 层/位置, 验证方式, 自动用例id 或 None)
     ("F-A01", "引擎", "八阶段完整跑通 (接近→对位→下降→抓取→抬起→转移→插入→完成)", "StateSpaceSim", "自动", "F-A01"),
-    ("F-A02", "引擎", "收敛精度: 销头到孔底 <4mm (D_INSERT)", "StateSpaceSim", "自动", "F-A02"),
+    ("F-A02", "引擎", "收敛精度: 光模块头到孔底 <4mm (D_INSERT)", "StateSpaceSim", "自动", "F-A02"),
     ("F-A03", "引擎", "轨迹契约: 20+ 序列键 + 逐帧 io_trace (数据总线源)", "StateSpaceSim", "自动", "F-A03"),
     ("F-A04", "引擎", "一阶速度伺服有界不发散 (τ=0.08s, max‖v‖≤0.5m/s)", "StateSpaceSim", "自动", "F-A04"),
     ("F-A05", "引擎", "台面约束: 未夹持末端不穿透台面", "StateSpaceSim", "自动", "F-A05"),
-    ("F-A06", "引擎", "夹持锁存 + 插销随末端移动 (grasped 后 peg=x+peg_off)", "StateSpaceSim", "自动", "F-A06"),
+    ("F-A06", "引擎", "夹持锁存 + 光模块随末端移动 (grasped 后 peg=x+peg_off)", "StateSpaceSim", "自动", "F-A06"),
     ("F-A07", "引擎", "接触力→接触概率真实联动 (接触段 contact_p>0.6)", "StateSpaceSim", "自动", "F-A07"),
     ("F-A08", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列", "StateSpaceSim", "自动", "F-A08"),
     ("F-B01", "S1", "传感器融合: 39D 视觉 + 触觉4D → 43D (fuse_sensors)", "perception.py", "自动", "F-B01"),
@@ -305,7 +305,7 @@ class VerificationLayer:
     def t_F_A02(self, np):
         tr = self.engine()
         d = float(np.linalg.norm(np.asarray(tr["peg_head"][-1]) - np.array([-0.2345, 0.4623, 0.1309])))
-        return d < 0.004, f"终态销头-孔底距离 {d*1000:.2f}mm (<4mm)"
+        return d < 0.004, f"终态光模块头-孔底距离 {d*1000:.2f}mm (<4mm)"
 
     def t_F_A03(self, np):
         tr = self.engine()
@@ -340,7 +340,7 @@ class VerificationLayer:
         i0 = int(np.argmax(g))
         ok = bool(g[i0:].all())
         err = float(np.max(np.abs(np.asarray(tr["peg"])[i0:] - (np.asarray(tr["x"])[i0:] + np.asarray(tr["peg"])[i0] - np.asarray(tr["x"])[i0]))))
-        # peg 随动: 抓取后 peg−x 恒等于锁存偏移
+        # 光模块 随动: 抓取后 光模块−x 恒等于锁存偏移
         off = np.asarray(tr["peg"])[i0:] - np.asarray(tr["x"])[i0:]
         drift = float(np.max(np.linalg.norm(off - off[0], axis=1)))
         return ok and drift < 1e-9, f"夹持于步{i0}, 锁存后 peg−x 漂移 {drift:.1e} m"
@@ -1118,9 +1118,9 @@ class VerificationLayer:
 
     def t_est_err(self, np):
         tr = self.engine()
-        # 收敛判据 = 销头距孔底 (F-A02 常量), 非 target[-1] (阶段目标点)
+        # 收敛判据 = 光模块头距孔底 (F-A02 常量), 非 target[-1] (阶段目标点)
         d = float(np.linalg.norm(np.asarray(tr["peg_head"][-1]) - np.array([-0.2345, 0.4623, 0.1309])))
-        return d < 0.01, f"终态销头距孔底 {d*1000:.2f}mm (<10mm 收敛)"
+        return d < 0.01, f"终态光模块头距孔底 {d*1000:.2f}mm (<10mm 收敛)"
 
     def t_est_loop(self, np):
         tr = self.engine()
@@ -2214,7 +2214,7 @@ class VerificationLayer:
     def t_inn_close(self, np):
         tr = self.engine()
         d = float(np.linalg.norm(np.asarray(tr["peg_head"][-1]) - np.array([-0.2345, 0.4623, 0.1309])))
-        return d < 0.01, f"闭环收敛: 销头距孔底 {d*1000:.2f}mm"
+        return d < 0.01, f"闭环收敛: 光模块头距孔底 {d*1000:.2f}mm"
 
     def t_inn_isomorph(self, np):
         tr = self.engine()
@@ -2786,7 +2786,7 @@ class VerificationLayer:
             sim._reset(77)
             p2 = sim.env.data.site_xpos[sim._site_ph].copy()
             same = bool(np.allclose(p1, p2))
-            return same, f"同 seed=77 两次布局销头 {np.round(p1,4)} 一致={same} (可复现)"
+            return same, f"同 seed=77 两次布局光模块头 {np.round(p1,4)} 一致={same} (可复现)"
         except Exception as e:
             return False, f"复现验证失败: {type(e).__name__}: {e}"
 

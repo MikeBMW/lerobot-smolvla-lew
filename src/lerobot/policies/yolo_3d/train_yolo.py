@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """YOLO peg-insert 检测训练 — 感知前端 (2026-08-07 老倪: 开启 YOLO 训练)
-数据: data/yolo_peg (真值投影自动标注, 3类: hand/peg/hole)
+数据: data/yolo_peg (真值投影自动标注, 3类: hand/光模块/hole)
 用法: python train_yolo.py [--data data/yolo_peg] [--epochs 25] [--device cpu] [--model yolov8n.pt]
 2026-08-23: 加 --device/--model 参数, CPU 可训 (无 GPU 环境), 默认 yolov8n
 """

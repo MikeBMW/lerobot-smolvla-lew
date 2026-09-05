@@ -136,7 +136,7 @@ def _load_stats(policy_hint=None):
 
 def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, policy_name=None):
     """单次插拔尝试: 返回 peg 是否抬起 + 是否插入
-    grip_assist=True: 夹爪辅助 (接近 peg 强制闭合 — 2026-08-07 老倪: ACT 方向性已学会, 差夹爪决策)
+    grip_assist=True: 夹爪辅助 (接近 光模块 强制闭合 — 2026-08-07 老倪: ACT 方向性已学会, 差夹爪决策)
     policy_name: 2026-08-08 用于加载对应模型的归一化 stats (每模型不同)"""
     import metaworld
     mt = metaworld.MT1("peg-insert-side-v3", seed=seed)
@@ -246,7 +246,7 @@ def run_episode(policy, seed, steps=200, yolo_aligner=None, grip_assist=False, p
                     _mean = np.array(_st.get("a_mean", _st.get("action", {}).get("mean", np.zeros(4))), dtype=np.float32)[:4]
                     act = act * _std + _mean
         a4 = np.zeros(4); a4[:min(4, len(act))] = act[:min(4, len(act))]
-        # 2026-08-07: 夹爪辅助 (grip_assist) — 接近 peg 强制闭合 (ACT 方向性已学会, 差夹爪决策)
+        # 2026-08-07: 夹爪辅助 (grip_assist) — 接近 光模块 强制闭合 (ACT 方向性已学会, 差夹爪决策)
         if grip_assist:
             hand_pos = env.data.site_xpos[env.model.site("endEffector").id]
             d_peg_now = np.linalg.norm(hand_pos - peg)
