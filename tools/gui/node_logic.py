@@ -229,7 +229,21 @@ def get_node_location(key):
     # 📂 外部源码映射优先 (left_right 等真实实现不在 node_logic.py, 2026-08-10)
     ext = globals().get("_EXTERNAL_LOC", {}).get(key)
     if ext:
-        return ext[0], ext[1], False
+        line = ext[1]
+        # 🐛 2026-09-04 静静: 手写行号随源码改动漂移 (parallel.py 重写后 class
+        #   FeedforwardAccelerator 21→71, 右键跳到 import 区=看起来"没跳") →
+        #   有符号名时按文件现搜, 动态定位一劳永逸; 搜不到回退手写行号。
+        if len(ext) > 2 and ext[2]:
+            try:
+                _sym = ext[2]
+                with open(ext[0], encoding="utf-8", errors="ignore") as _f:
+                    for _i, _ln in enumerate(_f, 1):
+                        if _ln.lstrip().startswith(_sym):
+                            line = _i
+                            break
+            except Exception:
+                pass
+        return ext[0], line, False
     fn = info["fn"]
     modified = key in _SOURCE_CACHE
     path = getattr(fn.__code__, "co_filename", None)
@@ -2162,9 +2176,9 @@ def node_ss_scope(ctx):
 _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
-_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 45, "class AdaptiveStateEstimator")  # 🐛 2026-09-02: 行号 34→45 (原指到 FeedforwardAccelerator.forward, VSCode 打开看到错代码)
+_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 71, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
+_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 71, "class FeedforwardAccelerator")
+_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 128, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128 (重写后漂移; 现按符号动态定位)
 _EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
 _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")
