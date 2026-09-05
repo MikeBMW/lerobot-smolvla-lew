@@ -1680,7 +1680,7 @@ _YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
 # 🐛 2026-09-04 静静: 原映射指向 pixel_to_ray(11行) — 2026-08-23 改 cam_mat0 矩阵反投影后已成死代码,
 #   全仓库零执行调用 → 查看源码/断点永不命中 (老倪断点停在 detect_3d 126 才发现). 改指真实反投影 detect_3d.
-_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 53, "def detect_3d")  # 📐 2D→3D 解算: YOLO 框→cam_mat0 反投影→3D (深度优先/写死z回退) — 断点打 104-110 行
+_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 62, "def detect_3d")  # 📐 2D→3D 解算: YOLO 框→cam_mat0 反投影→3D (深度优先/写死z回退) — 断点打 104-110 行
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
 _EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 40, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 # 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
@@ -2290,9 +2290,9 @@ def node_ss_scope(ctx):
 _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
-_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 71, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
-_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 71, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 128, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128 (重写后漂移; 现按符号动态定位)
+_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 100, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
+_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 100, "class FeedforwardAccelerator")
+_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 158, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128→158 (重写后漂移; 现按符号动态定位)
 _EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
 _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")

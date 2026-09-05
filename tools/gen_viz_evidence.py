@@ -22,6 +22,14 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 if not os.environ.get("DISPLAY"):
     os.environ["QT_QPA_PLATFORM"] = "offscreen"   # 无 X 回退离屏 (3D GL 会失败, 诚实记录)
+else:
+    # 🐛 cv2 自带 Qt 平台插件 (cv2/qt/plugins, 缺系统依赖) 会污染加载路径 → 显式指向
+    #   PyQt5 真实插件目录 (必须早于 QApplication 创建; cv2 可能已被报告侧 import)
+    for _sp in sys.path:
+        _pp = os.path.join(_sp, "PyQt5", "Qt5", "plugins")
+        if os.path.isdir(os.path.join(_pp, "platforms")):
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = _pp
+            break
 OUT = os.path.join(ROOT, "reports", "viz_evidence")
 os.makedirs(OUT, exist_ok=True)
 
