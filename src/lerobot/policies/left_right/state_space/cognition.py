@@ -65,12 +65,14 @@ class ActionModulator:
     #   转移 2.08s 实速仅 0.113 远低于 cap 0.35 → 瓶颈不是 cap 而是比例控制末端磨蹭
     #     ⇒ 引入 STAGE_V_MIN 最小趋近速度 (证据未达标时给个速度下限, 别在末端磨)
     STAGE_V_CAP = {"接近": 0.35, "对位": 0.12, "下降": 0.09, "抓取": 0.04,
-                   "抬起": 0.30, "转移": 0.35, "插入": 0.07, "完成": 0.02}
+                   "抬起": 0.30, "转移": 0.35, "插入": 0.085, "完成": 0.02}
     STAGE_V_MIN = {"接近": 0.12, "对位": 0.04, "抬起": 0.10, "转移": 0.12}
 
     def __init__(self, w_ff=0.3, contact_th=0.6, veto_th=2.0, k_fb=1.0, v_cap=None,
-                 w_contact=0.85, align_th=0.02, insert_depth=0.004, max_veto=3,
+                 w_contact=0.85, align_th=0.02, insert_depth=0.0005, max_veto=3,
                  align_xy_coarse=0.06, align_xy_fine=0.02, lift_h=0.08, grasp_th=0.8):
+        # 🎯 2026-09-04 老倪(验收精度 0.5mm): insert_depth 4mm → 0.5mm (3D 到孔底;
+        #   配合引擎孔壁 yz 对中, 插到底才判完成; 插入段时长仍 <0.5s 实测)
         self.w_ff = w_ff                # (保留兼容: fuse() 仍可用凸组合)
         self.k_fb = float(k_fb)         # 反馈增益 (相加式: u = u_ff + k_fb·u_fb)
         self.v_cap = dict(self.STAGE_V_CAP if v_cap is None else v_cap)   # 阶段限速 m/s

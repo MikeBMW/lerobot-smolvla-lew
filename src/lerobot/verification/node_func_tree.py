@@ -517,6 +517,12 @@ NODE_TREE = {
                  ("设计文档一致", "manual", None, "对照 docs/closed_loop_realization_design.md 常量表"),
                  ("跨进程可复现", "manual", None, "同 seed 两次运行初始布局一致"),
              ]},
+            {"fid": "FNaccept01", "name": "插入验收·最终指标", "desc": "🎯 能否插入: done + 插入段<0.5s + 末横向错位<0.5mm (12 扰动集; 波形见 📊仿真波形 插深剩余/横向错位格 + 底部验收摘要)",
+             "tests": [
+                 ("插入成功 12/12", "auto", "t_accept_insert", "done + 插入段<0.5s + δ⊥<0.5mm + 插深剩余<0.5mm"),
+                 ("波形可见数值", "manual", None, "📊仿真波形: 插深剩余/横向错位曲线过 0.5mm 红虚线, 底部「✅ 插入成功 · 插入段 0.44s · 末横向错位 0.04mm」"),
+                 ("多次运行稳定", "manual", None, "▶运行 3 次: 每次底部摘要均 ✅ 且插入段 <0.5s"),
+             ]},
         ],
     },
     "ssyolo": {

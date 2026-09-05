@@ -1088,54 +1088,97 @@ class StateSpaceScopeDialog(QDialog):
                        "暂无仿真数据 — 先点「▶ 运行」跑一次状态空间仿真")
             p.end()
             return
-        r = self.rect().adjusted(12, 12, -12, -12)
-        # 2x3 子图: 距离孔位 / 前馈指令 / 残差 / 接触概率 / 接触流形法向偏离 / 性能流形耦合效率
+        r = self.rect().adjusted(12, 12, -12, -40)
+        # 🎯 2026-09-04 老倪(0.5mm/0.5s 验收): 插深剩余/横向错位 波形 + 底部验收摘要
+        _rem = np.asarray(self._tr.get("mani_rem", []), dtype=float)
+        _dperp = np.asarray(self._tr.get("mani_dperp", []), dtype=float)
+        # 插入段窗口: 插深剩余首次 <20mm → 末帧
+        _i0 = int(np.argmax(_rem < 0.020)) if _rem.size and np.any(_rem < 0.020) else 0
+        _T_ins = float(self._t[-1] - self._t[_i0]) if _rem.size else 0.0
+        _dperp_end = float(_dperp[-1] * 1000) if _dperp.size else float("nan")
+        _rem_end = float(_rem[-1] * 1000) if _rem.size else float("nan")
+        _pass_t = _T_ins < 0.5
+        _pass_p = (_dperp_end < 0.5) if np.isfinite(_dperp_end) else False
+        _done = bool(self._tr.get("done", [False])[-1])
+        # 2x4 子图: 距离/前馈/残差/接触 + 法向偏离/η + 插深剩余(mm)/横向错位(mm)
         plots = [
-            ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff"),
-            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922"),
-            ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e"),
-            ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950"),
-            ("接触流形 · 法向偏离 ‖e⊥‖", np.asarray(self._tr.get("mani_risk", [0])), "#ff7b72"),
-            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", [0])), "#a371f7"),
+            ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff", {}),
+            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922", {}),
+            ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e", {}),
+            ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950", {}),
+            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", [0])), "#ff7b72", {}),
+            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", [0])), "#a371f7", {}),
+            ("插深剩余 (mm) · 阈 0.5", _rem, "#00d4aa", {"mm": True, "thr": 0.0005, "ins": True}),
+            ("横向错位 (mm) · 阈 0.5", _dperp, "#ffd700", {"mm": True, "thr": 0.0005, "ins": True}),
         ]
-        gw, gh = r.width() / 3, r.height() / 2
-        for i, (title, y, color) in enumerate(plots):
-            x0 = r.left() + (i % 3) * gw + 8
-            y0 = r.top() + (i // 3) * gh + 8
+        gw, gh = r.width() / 4, r.height() / 2
+        for i, (title, y, color, opt) in enumerate(plots):
+            x0 = r.left() + (i % 4) * gw + 8
+            y0 = r.top() + (i // 4) * gh + 8
             w, h = gw - 16, gh - 16
             # 边框 + 标题
             p.setPen(QColor("#30363d"))
             p.drawRect(int(x0), int(y0), int(w), int(h))
             p.setPen(QColor("#e6edf3"))
-            # 🐛 2026-08-18: 中文模糊 — 默认字体 fallback 差; 显式 wqy (fc-list 已注册) + 加大字号
             f = QFont("WenQuanYi Micro Hei", 14); f.setBold(True)
             p.setFont(f)
             p.drawText(int(x0 + 8), int(y0 + 20), title)
-            # 坐标变换: t → x, y → 画布
-            t0, t1 = self._t[0], self._t[-1]
-            ymin, ymax = float(np.min(y)), float(np.max(y))
-            if ymax - ymin < 1e-9:
-                ymax = ymin + 1.0
+            # 数据窗口: 插入段放大格只画 插入段
+            _t = self._t
+            _y = y
+            if opt.get("ins") and _rem.size and _i0 > 0:
+                _sl = slice(int(max(0, _i0 - 8)), len(_t))
+                _t = _t[_sl]
+                _y = _y[_sl]
+            if len(_t) < 2:
+                continue
+            # 坐标变换
+            t0, t1 = float(_t[0]), float(_t[-1])
+            ymin, ymax = float(np.min(_y)), float(np.max(_y))
+            if opt.get("mm"):
+                ymin = 0.0
+                ymax = max(float(np.percentile(_y, 100)) * 1000 * 1.2, 2.0)  # mm, 至少 2mm 视窗
+                _y = _y * 1000.0
+            else:
+                if ymax - ymin < 1e-9:
+                    ymax = ymin + 1.0
             def X(t): return x0 + 8 + (t - t0) / (t1 - t0) * (w - 16)
             def Y(v): return y0 + h - 16 - (v - ymin) / (ymax - ymin) * (h - 28)
-            # 网格 + y 轴范围
+            # 网格
             p.setPen(QColor("#1e2740"))
             for gy in range(3):
                 v = ymin + (ymax - ymin) * gy / 2
                 p.drawLine(int(X(t0)), int(Y(v)), int(X(t1)), int(Y(v)))
             p.setPen(QColor("#8b949e"))
-            p.drawText(int(x0 + 8), int(y0 + h - 4), f"{ymin:.3f} — {ymax:.3f}")
-            # 📐 2026-08-18 老倪: 图表要有横轴说明 — 右下角标 "t (s)" (纵轴单位在标题里)
-            p.drawText(int(x0 + w - 40), int(y0 + h - 4), "t (s)")
-            # 曲线 — 🐛 2026-08-18: 逐点 drawLine (2000 次) 在 resize 重绘时卡顿
-            # → QPainterPath 一次性批量绘制, 500 点 path < 5ms
+            p.setFont(QFont("WenQuanYi Micro Hei", 12))
+            if opt.get("mm"):
+                p.drawText(int(x0 + 8), int(y0 + h - 4), f"0 — {ymax:.1f} mm")
+            else:
+                p.drawText(int(x0 + 8), int(y0 + h - 4), f"{ymin:.3f} — {ymax:.3f}")
+            p.drawText(int(x0 + w - 46), int(y0 + h - 4), "t (s)")
+            # 阈值线 (0.5mm, 红虚线 + 标注)
+            if opt.get("thr"):
+                _tv = float(opt["thr"]) * 1000.0
+                if ymin <= _tv <= ymax:
+                    p.setPen(QPen(QColor("#ff4444"), 1.5, Qt.DashLine))
+                    p.drawLine(int(X(t0)), int(Y(_tv)), int(X(t1)), int(Y(_tv)))
+                    p.setPen(QColor("#ff4444"))
+                    p.setFont(QFont("WenQuanYi Micro Hei", 11))
+                    p.drawText(int(x0 + 8), int(Y(_tv) - 4), "0.5mm 验收线")
+            # 曲线
             pen = QPen(QColor(color), 2.5)
             p.setPen(pen)
             path = QPainterPath()
-            path.moveTo(X(self._t[0]), Y(y[0]))
-            for tt, vv in zip(self._t[1:], y[1:]):
-                path.lineTo(X(tt), Y(vv))
+            path.moveTo(X(t0), Y(float(_y[0])))
+            for tt, vv in zip(_t[1:], _y[1:]):
+                path.lineTo(X(float(tt)), Y(float(vv)))
             p.drawPath(path)
+            # 插入段时长标注 (插深格)
+            if opt.get("ins") and i == 6:
+                p.setPen(QColor("#00d4aa"))
+                p.setFont(QFont("WenQuanYi Micro Hei", 12, QFont.Bold))
+                p.drawText(int(x0 + w - 170), int(y0 + 20),
+                           f"插入段 {_T_ins:.2f}s (<0.5s: {'✅' if _pass_t else '❌'})")
             # 阶段切换竖线 + 标签 (第一子图画)
             if i == 0:
                 p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
@@ -1149,6 +1192,13 @@ class StateSpaceScopeDialog(QDialog):
                         p.setPen(QColor("#d29922"))
                         p.drawText(int(X(self._t[j]) + 3), int(y0 + 14), s[:2])
                         p.setPen(QPen(QColor("#ffd700"), 1, Qt.DashLine))
+        # 🏆 底部验收摘要 (2026-09-04 老倪: 只看一件事 — 能不能插入 + 时间<0.5s + 偏差<0.5mm)
+        _verdict = "✅ 插入成功" if (_done and _pass_t and _pass_p) else "❌ 未达标"
+        p.setPen(QColor("#00d4aa") if "✅" in _verdict else QColor("#ff4444"))
+        p.setFont(QFont("WenQuanYi Micro Hei", 15, QFont.Bold))
+        _sum = (f"{_verdict} · 总用时 {self._t[-1]:.2f}s · 插入段 {_T_ins:.2f}s (<0.5s) · "
+                f"末横向错位 {_dperp_end:.2f}mm (<0.5mm) · 插深剩余 {_rem_end:.2f}mm")
+        p.drawText(int(r.left() + 16), int(r.bottom() + 30), _sum)
         p.end()
 
 
@@ -9116,8 +9166,16 @@ class SimulinkModule(QWidget):
 
     def show_state_space_scope(self):
         """📊 状态空间仿真 Scope — 显示最近一次仿真的波形 (距离/前馈/残差/接触概率 + 阶段切换)
-        2026-08-18 老倪: 「操作视频」节点内容改为 Scope (曲线), 真视频 = metaworld rollout"""
+        2026-08-18 老倪: 「操作视频」节点内容改为 Scope (曲线), 真视频 = metaworld rollout
+        🎯 2026-09-04: 无仿真数据时自动先跑引擎 (3s) 再开窗 — 双击必出波形 (含验收摘要)"""
         tr = getattr(self, "_ss_tr", None)
+        if not tr or len(tr.get("t", [])) < 2:
+            self._log("📊 暂无仿真数据 — 自动先跑一次引擎 (≈3s)…")
+            try:
+                tr = self._ss_ensure_trace(force=True)
+            except Exception as e:
+                self._log(f"⚠️ 引擎自动运行失败: {e}")
+                return
         if not tr or len(tr.get("t", [])) < 2:
             self._log("⚠️ 暂无仿真数据 — 先点「▶ 运行」跑一次状态空间仿真 (完成后自动出波形)")
             return

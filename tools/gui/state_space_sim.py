@@ -284,6 +284,7 @@ class StateSpaceSim:
               "prior_vec": [],
               # 🧮 2026-09-03 流形层逐帧序列 (Scope 全程曲线/验证层数据源)
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
+              "mani_rem": [], "mani_dperp": [],   # 🎯 2026-09-04: 插深剩余/横向错位 (0.5mm 验收)
               "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
@@ -377,6 +378,24 @@ class StateSpaceSim:
             self.gripper += (g_cmd - self.gripper) * min(1.0, self.dt * 10.0)
             if self.grasped:
                 self.peg = self.x + self.peg_off
+            # 🎯 2026-09-04 老倪(验收精度 0.5mm): 光模块头已进孔口后, 孔壁横向约束 —
+            #   真实物理: 头进孔后 y 横向被孔壁对中 (孔间隙→peg 滑入孔轴);
+            #   原只有 v[1]*=0.3 阻尼 → 末帧横向错位 2.77mm 不达标。
+            #   入孔判定: 头 x 已过孔口 (HOLE_MOUTH.x), 插深由控制推进, 横向主动归轴。
+            if self.grasped and self.peg_head()[0] < HOLE_MOUTH[0] + 0.001:
+                # 孔壁横向约束 yz 双轴 (侧插孔: 孔壁限 y 与 z, 只留轴向 x 由控制推进)
+                y_target = HOLE_POS[1] - self.peg_off[1] - PEG_HEAD_OFF[1]
+                z_target = HOLE_POS[2] - self.peg_off[2] - PEG_HEAD_OFF[2]
+                self.x[1] += (y_target - self.x[1]) * min(1.0, self.dt * 25.0)
+                self.x[2] += (z_target - self.x[2]) * min(1.0, self.dt * 25.0)
+                self.v[1] *= 0.3
+                self.v[2] *= 0.3
+                # 🎯 2026-09-04: 孔底物理止动 — 头触孔底(head_x 沿 -X 插到 HOLE_POS.x)后不能再推
+                #   (原无止动: 0.5mm 完成阈 < 单帧步长 1.4mm, 单帧越过永不触发 → 冲出 18cm)
+                if self.peg_head()[0] <= HOLE_POS[0]:
+                    self.x[0] = HOLE_POS[0] - self.peg_off[0] - PEG_HEAD_OFF[0]
+                    self.v[0] = 0.0
+                self.peg = self.x + self.peg_off   # x 已改 → 同步 peg (peg−x 恒等锁存偏移)
             self.obs_prev = obs[0:18]
             # 阶段推进: 调度器状态机 (八阶段 · 证据驱动 — 水平距离/接触概率/夹爪/提起高度/插入深度)
             d = self._dist_h()
@@ -414,13 +433,18 @@ class StateSpaceSim:
                     tr["mani_progress"].append(float(_mc["progress"]))
                     tr["mani_eta"].append(float(_mp["eta"]))
                     tr["mani_V"].append(float(_mc["V"]))
+                    # 🎯 2026-09-04 老倪(0.5mm 验收): 插深剩余/横向错位 全程序列 → Scope 波形
+                    tr["mani_rem"].append(float(-_mp["d_axial"]))
+                    tr["mani_dperp"].append(float(_mp["d_perp_norm"]))
                 except Exception:
                     self._mani_out = None
                     tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
                     tr["mani_eta"].append(0.0); tr["mani_V"].append(0.0)
+                    tr["mani_rem"].append(0.0); tr["mani_dperp"].append(0.0)
             else:
                 tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
                 tr["mani_eta"].append(0.0); tr["mani_V"].append(0.0)
+                tr["mani_rem"].append(0.0); tr["mani_dperp"].append(0.0)
             tr["x"].append(self.x.copy())
             tr["gripper"].append(self.gripper)
             tr["force"].append(force_norm)

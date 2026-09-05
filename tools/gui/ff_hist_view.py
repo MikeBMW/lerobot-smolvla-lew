@@ -92,13 +92,14 @@ class FFHistView(QDialog):
         if not any(self.buf):
             p.setPen(_TEXT2)
             p.setFont(QFont("Sans", 12))
-            p.drawText(r, Qt.AlignCenter, "⚡ 前馈加速器运行后, 本节点自动累积激活分布…")
+            p.drawText(r, Qt.AlignCenter,
+                       "等待激活数据… 先点 ▶运行 (引擎快演) 或 ⏭单步, 数据进入后本窗口自动累积三层分布")
             p.end()
             return
 
         W, H = r.width(), r.height()
-        top = 34
-        row_h = (H - top - 26) / 3.0
+        top = 36
+        row_h = (H - top - 30) / 3.0
         # 统计窗口: 累积激活值 + 单帧
         for i in range(3):
             y0 = top + i * row_h
@@ -106,18 +107,18 @@ class FFHistView(QDialog):
         p.end()
 
     def _draw_row(self, p, li, W, y0, row_h):
-        hist_h = row_h - 34
+        hist_h = row_h - 44
         x0, x1 = 96, W - 16
-        yb = int(y0 + 18 + hist_h)          # 直方图底
-        # 标题
+        yb = int(y0 + 22 + hist_h)          # 直方图底
+        # 标题 (高分屏字号小档: 8pt, 防重叠)
         p.setPen(_TEXT)
-        p.setFont(QFont("Sans", 10, QFont.Bold))
-        p.drawText(14, int(y0 + 16), LAYER_NAMES[li])
+        p.setFont(QFont("Sans", 8, QFont.Bold))
+        p.drawText(14, int(y0 + 12), LAYER_NAMES[li])
         ls = (self.info.get("layers") or [{}] * 3)[li]
         if ls:
             p.setPen(_TEXT2)
-            p.setFont(QFont("Sans", 9))
-            p.drawText(14, int(y0 + 32),
+            p.setFont(QFont("Sans", 7))
+            p.drawText(14, int(y0 + 26),
                        f"活跃 {ls.get('active', 0)}/512 · 能量 E={ls.get('act_l2', 0):.1f}")
         # 数据
         buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
@@ -132,7 +133,7 @@ class FFHistView(QDialog):
         p.setPen(QPen(_GRID, 1))
         for gx in range(5):
             xx = x0 + (x1 - x0) * gx / 4
-            p.drawLine(int(xx), int(y0 + 18), int(xx), yb)
+            p.drawLine(int(xx), int(y0 + 22), int(xx), yb)
         # 直方图主体
         p.setPen(Qt.NoPen)
         p.setBrush(_CURVE)
@@ -142,12 +143,12 @@ class FFHistView(QDialog):
         # x=0 ReLU 截断线 (分布左边界)
         zx = x0 + (0.0 / vmax) * (x1 - x0)
         p.setPen(QPen(_ZERO, 1, Qt.DashLine))
-        p.drawLine(int(zx), int(y0 + 18), int(zx), yb)
+        p.drawLine(int(zx), int(y0 + 22), int(zx), yb)
         # 轴刻度
         p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 8))
-        p.drawText(int(x0), yb + 14, "0")
-        p.drawText(int(x1 - 30), yb + 14, f"{vmax:.1f}")
+        p.setFont(QFont("Sans", 7))
+        p.drawText(int(x0), yb + 12, "0")
+        p.drawText(int(x1 - 30), yb + 12, f"{vmax:.1f}")
         # 最近一帧叠加 (朱红细线, 即时响应)
         if self.cur[li] is not None:
             c = self.cur[li]
@@ -166,13 +167,13 @@ class FFHistView(QDialog):
         u = self.info.get("u_ff") or []
         if u:
             p.setPen(_CURVE_LIVE)
-            p.setFont(QFont("Sans", 9, QFont.Bold))
-            p.drawText(W - 200, int(y0 + 16), f"u_ff=[{u[0]:+.3f} {u[1]:+.3f} {u[2]:+.3f} g{u[3]:.0f}]")
+            p.setFont(QFont("Sans", 8, QFont.Bold))
+            p.drawText(W - 210, int(y0 + 12), f"u_ff=[{u[0]:+.3f} {u[1]:+.3f} {u[2]:+.3f} g{u[3]:.0f}]")
         # obs 摘要 (当前帧)
         ob = self.info.get("obs") or {}
         if ob and li == 0:
             p.setPen(_TEXT2)
-            p.setFont(QFont("Sans", 9))
-            p.drawText(int(x0), int(y0 + 16),
+            p.setFont(QFont("Sans", 7))
+            p.drawText(int(x0), int(y0 + 12),
                        f"手{ob.get('hand', [])} → 目标{ob.get('target', [])} · "
                        f"d={ob.get('d_h', 0):.3f} 夹爪={ob.get('gripper', 0):.2f}")

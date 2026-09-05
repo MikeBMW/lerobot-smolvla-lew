@@ -1177,6 +1177,46 @@ class VerificationLayer:
         return mf > mn * 1.5, f"远距(>15cm)中位 |u|={mf:.3f} > 近距(<3cm) {mn:.3f}×1.5 (误差大→动作大)"
 
     # ════════════════════════════════════════════════════════════
+    # 🎯 2026-09-04 老倪: 最终验收只看一件事 — 能否插入 + 插入时间<0.5s + 偏差<0.5mm
+    # ════════════════════════════════════════════════════════════
+    def t_accept_insert(self, np):
+        """🎯 插入验收 (最终指标): 12 扰动集 (初始末端 ±5cm/±1.5cm) —
+        done 12/12 · 插入段(插深剩余 20mm→0) <0.5s · 末横向错位 <0.5mm · 插深剩余 <0.5mm。
+        数值波形见 📊仿真波形: 插深剩余/横向错位 格 (0.5mm 红虚线) + 底部验收摘要。"""
+        import importlib.util as _ilu
+        _p = os.path.join(self.root, "tools", "gui", "state_space_sim.py")
+        _sp = _ilu.spec_from_file_location("ssim_acc", _p)
+        _ssim = _ilu.module_from_spec(_sp)
+        _sp.loader.exec_module(_ssim)
+        rng = np.random.default_rng(42)
+        n_done = n_time = n_prec = 0
+        times, perps = [], []
+        n_ep = 12
+        for _ in range(n_ep):
+            sim = _ssim.StateSpaceSim(log=lambda *a: None)
+            d = rng.uniform(-0.05, 0.05, 3) * np.array([1.0, 1.0, 0.3])
+            sim.x = _ssim.X0.copy() + d
+            tr = sim.run(io_every=200)
+            done = bool(tr["done"][-1])
+            rem = np.asarray(tr.get("mani_rem", []), float)
+            perp = np.asarray(tr.get("mani_dperp", []), float)
+            n_done += done
+            if done and rem.size:
+                t_ins = float(tr["t"][-1] - tr["t"][int(np.argmax(rem < 0.020))]) \
+                    if np.any(rem < 0.020) else 0.0
+                times.append(t_ins)
+                n_time += t_ins < 0.5
+                ok_p = float(perp[-1]) < 0.0005 and float(rem[-1]) < 0.0005
+                n_prec += ok_p
+                perps.append(float(perp[-1]) * 1000)
+        ok = (n_done == n_ep and n_time == n_ep and n_prec == n_ep)
+        tmax = f"{max(times):.3f}" if times else "-"
+        pmax = f"{max(perps):.3f}" if perps else "-"
+        return ok, (f"{n_ep} 扰动集: 插入成功 {n_done}/{n_ep} · 插入段<0.5s {n_time}/{n_ep} "
+                    f"(max {tmax}s) · 偏差<0.5mm {n_prec}/{n_ep} (δ⊥ max {pmax}mm) "
+                    f"— 波形见 📊仿真波形 插深剩余/横向错位格+底部验收摘要")
+
+    # ════════════════════════════════════════════════════════════
     # v4.0.1 节点功能断言 · 🔮 ssest 自适应状态估计器
     # ════════════════════════════════════════════════════════════
     def _est(self):
