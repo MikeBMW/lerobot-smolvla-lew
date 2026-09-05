@@ -1119,13 +1119,14 @@ class StateSpaceScopeDialog(QDialog):
         _pass_p = (_dperp_end < 0.5) if np.isfinite(_dperp_end) else False
         _done = bool((self._tr.get("done") or [False])[_k - 1]) if _k else False
         # 2x4 子图: 距离/前馈/残差/接触 + 法向偏离/η + 插深剩余(mm)/横向错位(mm)
+        # 🐛 2026-09-05: 真实化轨迹无 mani_* 信号 → 空数组会让 np.min 崩 "绘图异常" → 空则格内提示
         plots = [
             ("距离孔位 (m)", np.asarray(self._tr["dist"])[:_k], "#58a6ff", {}),
             ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"])[:_k], "#d29922", {}),
             ("残差 |r|", np.asarray(self._tr["residual"])[:_k], "#f0883e", {}),
             ("接触概率", np.asarray(self._tr["contact_p"])[:_k], "#3fb950", {}),
-            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", [0]))[:_k], "#ff7b72", {}),
-            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", [0]))[:_k], "#a371f7", {}),
+            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", []), dtype=float)[:_k], "#ff7b72", {}),
+            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", []), dtype=float)[:_k], "#a371f7", {}),
             ("插深剩余 (mm) · 阈 0.5", _rem, "#00d4aa", {"mm": True, "thr": 0.0005, "ins": True}),
             ("横向错位 (mm) · 阈 0.5", _dperp, "#ffd700", {"mm": True, "thr": 0.0005, "ins": True}),
         ]
@@ -1152,6 +1153,11 @@ class StateSpaceScopeDialog(QDialog):
                 continue
             # 坐标变换
             t0, t1 = float(_t[0]), float(_t[-1])
+            if y.size == 0:      # 🐛 2026-09-05: 真实化轨迹无流形信号 → 格内提示而非 np.min 崩溃
+                p.setPen(QColor("#8b949e"))
+                p.setFont(QFont("WenQuanYi Micro Hei", 12))
+                p.drawText(int(x0), int(y0 + 46), "该轨迹未采集此信号")
+                continue
             ymin, ymax = float(np.min(_y)), float(np.max(_y))
             if opt.get("mm"):
                 ymin = 0.0
@@ -1220,8 +1226,11 @@ class StateSpaceScopeDialog(QDialog):
             _verdict = "✅ 插入成功" if (_done and _pass_t and _pass_p) else "❌ 未达标"
             p.setPen(QColor("#00d4aa") if "✅" in _verdict else QColor("#ff4444"))
             p.setFont(QFont("WenQuanYi Micro Hei", 15, QFont.Bold))
-            _sum = (f"{_verdict} · 总用时 {_tv[-1]:.2f}s · 插入段 {_T_ins:.2f}s (<0.5s) · "
-                    f"末横向错位 {_dperp_end:.2f}mm (<0.5mm) · 插深剩余 {_rem_end:.2f}mm")
+            if not _rem.size:
+                _sum = f"{_verdict} · 该轨迹未采集插深/错位信号 (真实化轨迹仅引擎快演含流形格)"
+            else:
+                _sum = (f"{_verdict} · 总用时 {_tv[-1]:.2f}s · 插入段 {_T_ins:.2f}s (<0.5s) · "
+                        f"末横向错位 {_dperp_end:.2f}mm (<0.5mm) · 插深剩余 {_rem_end:.2f}mm")
             p.drawText(int(r.left() + 16), int(r.bottom() + 30), _sum)
         p.end()
 
