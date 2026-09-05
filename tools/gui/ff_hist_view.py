@@ -201,16 +201,29 @@ class FFHistView(QDialog):
         hx1 = W - 20
         buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
         pos = buf[buf > 0]
-        # 图标题 (wrap, 高度动态) — 每层统计不同, 一眼区分层间差异
+        # 图标题: 行1 累积统计(稳定) + 行2 本帧实时统计(随阶段跳变, 2026-09-05 老倪)
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
         fm = p.fontMetrics()
         zr = float((buf == 0).mean()) * 100 if buf.size else 0.0
         nm = float(pos.mean()) if pos.size else 0.0
-        ttl = f"激活分布 · {N_FRAMES}帧 · 0占比{zr:.0f}% · 非零均值{nm:.2f}"
+        ttl = f"激活分布 (150帧累积: 0占比{zr:.0f}% · 非零均值{nm:.2f})"
+        # 本帧统计 (cur 单帧)
+        cur0 = self.cur[li]
+        cpos0 = cur0[cur0 > 0] if cur0 is not None else np.zeros(0)
+        zc = float((cur0 == 0).mean()) * 100 if cur0 is not None and cur0.size else 0.0
+        mc = float(cpos0.mean()) if cpos0.size else 0.0
+        ec = float((cur0 ** 2).sum()) if cur0 is not None and cur0.size else 0.0
+        ttl2 = f"本帧: 0占比{zc:.0f}% · 非零均值{mc:.2f} · 能量{ec:.1f}  ← 随阶段跳变"
         th = fm.boundingRect(QRect(0, 0, hx1 - hx0, 2000), Qt.TextWordWrap, ttl).height()
         p.drawText(QRect(hx0, int(y0) + 2, hx1 - hx0, th), Qt.TextWordWrap, ttl)
-        y_top = int(y0) + 2 + th + 10
+        yy_t = int(y0) + 2 + th + 2
+        p.setPen(_TEXT2)
+        p.setFont(QFont("Sans", 10))
+        fm2 = p.fontMetrics()
+        th2 = fm2.boundingRect(QRect(0, 0, hx1 - hx0, 2000), Qt.TextWordWrap, ttl2).height()
+        p.drawText(QRect(hx0, yy_t, hx1 - hx0, th2), Qt.TextWordWrap, ttl2)
+        y_top = yy_t + th2 + 8
         # 轴标行高 (底部)
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
