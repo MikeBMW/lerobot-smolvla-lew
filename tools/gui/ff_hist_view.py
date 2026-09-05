@@ -104,17 +104,19 @@ class FFHistView(QDialog):
             p = QPainter(self)
             r = self.rect()
             p.fillRect(r, _BG_TOP)
-            # 顶部状态条 (QPainter 自绘, 无布局依赖)
-            p.fillRect(0, 0, r.width(), 60, QColor("#161b22"))
+            # 顶部状态条 (QPainter 自绘, 流式行距, 无布局依赖)
+            p.fillRect(0, 0, r.width(), 78, QColor("#161b22"))
             lines = str(self._cap_text).split("\n")
             p.setPen(_TEXT)
             p.setFont(QFont("Sans", 13, QFont.Bold))
-            p.drawText(16, 22, lines[0])
+            fh1 = p.fontMetrics().height()
+            p.drawText(16, 14 + fh1, lines[0])
+            yy = 14 + fh1 + 8
             if len(lines) > 1:
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 10))
-                p.drawText(16, 44, lines[1])
-            top = 68
+                p.drawText(16, yy + p.fontMetrics().height(), lines[1])
+            top = 84
             if not any(self.buf):
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 13))
@@ -139,98 +141,93 @@ class FFHistView(QDialog):
                 pass
 
     def _draw_row(self, p, li, W, y0, row_h):
-        """一行 = 左侧语义面板 + 右侧大直方图"""
-        # ── 左侧: 层信息 (固定宽 300) ──
-        lx = 24
-        info_w = 300
+        """一行 = 左侧语义面板 + 右侧大直方图 (流式布局: 行距=字高自适应, 高DPI不重叠)"""
+        # ── 左侧: 层信息 (垂直流式, 行距按 fontMetrics 实际字高; 坐标全 int) ──
+        lx = 22
+        info_w = 330
+        yy = int(y0) + 6
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 13, QFont.Bold))
-        p.drawText(lx, int(y0 + 26), LAYER_NAMES[li])
+        fh = p.fontMetrics().height()
+        p.drawText(lx, int(yy + fh), LAYER_NAMES[li])
+        yy += fh + 8
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        p.drawText(lx, int(y0 + 46), LAYER_DESC[li])
-        # 活跃度条 + 数字 (大字)
+        fh = p.fontMetrics().height()
+        p.drawText(lx, int(yy + fh), LAYER_DESC[li])
+        yy += fh + 10
+        # 活跃度条
         ls = (self.info.get("layers") or [{}] * 3)[li]
         act = ls.get("active", 0)
         e = ls.get("act_l2", 0.0)
-        bar_y = int(y0 + 58)
+        bar_y = int(yy)
         p.setPen(QPen(_ZERO, 1))
-        p.drawRect(lx, bar_y, 200, 14)
+        p.drawRect(lx, bar_y, 210, 16)
         if act:
-            p.fillRect(lx + 1, bar_y + 1, int(198 * act / 512), 12, _CURVE)
+            p.fillRect(lx + 1, bar_y + 1, int(208 * act / 512), 14, _CURVE)
+        yy += 26
+        # 数字 (大字, 流式)
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
-        p.drawText(lx, int(y0 + 94), f"活跃 {act}/512 神经元")
+        fh = p.fontMetrics().height()
+        p.drawText(lx, int(yy + fh), f"活跃 {act}/512 神经元")
+        yy += fh + 6
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        p.drawText(lx, int(y0 + 112), f"能量(Σ激活²) E={e:.1f}")
-        p.drawText(lx, int(y0 + 130), f"休眠率 {(512-act)/512*100:.0f}% (0=截断)")
-        # 分隔线
-        p.setPen(QPen(_GRID, 1))
-        p.drawLine(int(info_w + 12), int(y0 + 4), int(info_w + 12), int(y0 + row_h - 12))
+        fh = p.fontMetrics().height()
+        p.drawText(lx, int(yy + fh), f"能量 E={e:.1f} · 休眠率 {(512 - act) / 512 * 100:.0f}%")
+        yy += fh + 6
+        # 分隔线 (左侧与直方图之间)
+        p.setPen(QPen(QColor("#30363d"), 1))
+        p.drawLine(int(info_w + 8), int(y0 + 2), int(info_w + 8), int(y0 + row_h - 18))
 
-        # ── 右侧: 直方图 (大字轴标) ──
-        hx0 = info_w + 34
+        # ── 右侧: 大直方图 ──
+        hx0 = info_w + 32
         hx1 = W - 24
-        y_top = int(y0 + 24)
-        y_bot = int(y0 + row_h - 26)
+        # 图标题 (顶)
+        p.setPen(_TEXT)
+        p.setFont(QFont("Sans", 12, QFont.Bold))
+        p.drawText(hx0, int(y0 + 24), f"512 个神经元输出分布 (最近 {N_FRAMES} 帧累积)")
+        # 图区 (标题下)
+        y_top = int(y0 + 40)
+        y_bot = int(y0 + row_h - 46)   # 底部留轴标空间
         buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
-        if buf.size < 8:
-            return
-        vmax = float(np.percentile(buf, 99.5))
-        vmax = max(vmax, 0.05)
-        hist, _ = np.histogram(buf, bins=N_BINS, range=(0.0, vmax))
-        hmax = max(float(hist.max()), 1.0)
-        bw = (hx1 - hx0) / N_BINS
-        # 网格 (横向 4 条)
-        p.setPen(QPen(_GRID, 1))
-        for gy in range(5):
-            yy = y_top + (y_bot - y_top) * gy / 4
-            p.drawLine(hx0, int(yy), hx1, int(yy))
-        # 直方图主体 (白柱)
-        p.setPen(Qt.NoPen)
-        p.setBrush(_CURVE)
-        for bi in range(N_BINS):
-            hh = (y_bot - y_top) * hist[bi] / hmax
-            if hh > 0.5:
-                p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh), max(int(bw) - 2, 1), int(hh))
-        # x=0 ReLU 截断线 (虚线 + 标注)
+        if buf.size >= 8:
+            vmax = float(np.percentile(buf, 99.5))
+            vmax = max(vmax, 0.05)
+            hist, _ = np.histogram(buf, bins=N_BINS, range=(0.0, vmax))
+            hmax = max(float(hist.max()), 1.0)
+            bw = (hx1 - hx0) / N_BINS
+            # 网格
+            p.setPen(QPen(QColor("#1e2740"), 1))
+            for gy in range(5):
+                yy2 = y_top + (y_bot - y_top) * gy / 4
+                p.drawLine(int(hx0), int(yy2), int(hx1), int(yy2))
+            # 直方图主体 (白柱)
+            p.setPen(Qt.NoPen)
+            p.setBrush(_CURVE)
+            for bi in range(N_BINS):
+                hh = (y_bot - y_top) * hist[bi] / hmax
+                if hh > 0.5:
+                    p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh), max(int(bw) - 2, 1), int(hh))
+            # 最近一帧 (朱红折线叠加)
+            if self.cur[li] is not None:
+                ch, _ = np.histogram(self.cur[li], bins=N_BINS, range=(0.0, vmax))
+                p.setPen(QPen(_CURVE_LIVE, 2.5))
+                prev = None
+                for bi in range(N_BINS):
+                    hh = (y_bot - y_top) * ch[bi] / max(float(ch.max()), 1e-6)
+                    xx = int(hx0 + bw * bi + bw / 2)
+                    yy2 = int(y_bot - hh)
+                    if prev is not None:
+                        p.drawLine(prev[0], prev[1], xx, yy2)
+                    prev = (xx, yy2)
+        # x=0 ReLU 截断虚线 (图左缘, 说明在顶部状态条第2行图例)
         zx = hx0
         p.setPen(QPen(_ZERO, 1, Qt.DashLine))
         p.drawLine(int(zx), y_top, int(zx), y_bot)
-        p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 9))
-        p.drawText(int(zx) + 6, int(y_bot - 10), "x=0 (ReLU 截断: 此处高峰=休眠)")
-        # 最近一帧叠加 (朱红, 只看分布走向: 用细线勾出单帧直方图)
-        if self.cur[li] is not None:
-            c = self.cur[li]
-            ch, _ = np.histogram(c, bins=N_BINS, range=(0.0, vmax))
-            pen = QPen(_CURVE_LIVE, 2.5)
-            p.setPen(pen)
-            prev = None
-            for bi in range(N_BINS):
-                hh = (y_bot - y_top) * ch[bi] / max(float(ch.max()), 1e-6)
-                xx = int(hx0 + bw * bi + bw / 2)
-                yy = int(y_bot - hh)
-                if prev is not None:
-                    p.drawLine(prev[0], prev[1], xx, yy)
-                prev = (xx, yy)
-        # 轴说明 (横轴)
+        # 轴标 (底部独立行, 不与图贴)
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        p.drawText(hx0, int(y_bot + 18), "0")
-        p.drawText(int(hx1 - 90), int(y_bot + 18), f"激活值 → (峰值 {vmax:.2f})")
-        p.setPen(_TEXT)
-        p.setFont(QFont("Sans", 10, QFont.Bold))
-        p.drawText(hx0, int(y_top - 8), f"512 个神经元输出分布 ({N_FRAMES} 帧累积)")
-
-        # ── 右侧数值: 该层近期 u_ff 参考 ──
-        u = self.info.get("u_ff") or []
-        if u and li == 2:
-            p.setPen(_CURVE_LIVE)
-            p.setFont(QFont("Sans", 12, QFont.Bold))
-            p.drawText(W - 300, int(y0 + 40), f"当前输出 u_ff=[{u[0]:+.2f}, {u[1]:+.2f}, {u[2]:+.2f}]")
-            p.setPen(_TEXT2)
-            p.setFont(QFont("Sans", 10))
-            p.drawText(W - 300, int(y0 + 60),
-                       f"夹爪指令 {'1 闭合 (近距)' if u[3] else '0 张开 (远距)'} · 单位 m/s")
+        p.drawText(int(hx0), int(y_bot + 20), "0")
+        p.drawText(int(hx1 - 260), int(y_bot + 20), f"激活值 →  (横轴峰值 {np.percentile(buf, 99.5) if buf.size else 0:.2f})")
