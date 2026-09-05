@@ -4225,6 +4225,10 @@ class SimulinkModule(QWidget):
         self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
+        # 🔄 重启 (2026-09-04 老倪: 运行/单步之间加大空隙不好看 → 插入重启, 三键连排)
+        self.btn_restart = mk_btn("🔄 重启", "停止当前仿真 → 清引擎缓存 → 立即从头重新仿真 (与 ▶运行 同源, 状态空间会重跑引擎)", self.restart_sim, "#f0883e")
+        tl.addWidget(self.btn_restart)
+        tl.addWidget(self.btn_step)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -4232,7 +4236,6 @@ class SimulinkModule(QWidget):
                                         "不勾 (默认) = 🎥 真实化运行: metaworld 物理 + 每帧渲染 → YOLO detect_3d\n"
                                         "(约 5-9 分钟/轮, detect_3d 断点每步可进, 不造假)")
         tl.addWidget(self.chk_engine_demo)
-        tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -6555,6 +6558,28 @@ class SimulinkModule(QWidget):
         self._log(f"⏹ 仿真停止 · t = {self._sim_t:.2f}s")
         self._refresh_status()
         self._tutorial_on_action("stop")
+
+    def restart_sim(self):
+        """🔄 重启 (2026-09-04 老倪): 停止 → 清状态空间/仿真缓存 → 立即重新仿真 (与 ▶运行 同源)。
+        清缓存后 start_sim 会强制重跑引擎 (状态空间: 清 _ss_step_tr 缓存 → _ss_ensure_trace 重跑)"""
+        self._log("🔄 重启: 停止当前仿真…")
+        try:
+            self.stop_sim()
+        except Exception as _e:
+            self._log(f"⚠️ 重启: 停止阶段异常 {_e}")
+        # 清引擎/播放/单步缓存 (start 时强制重跑)
+        for _a in ("_ss_step_tr", "_ss_step_order", "_ss_last_sim", "_ss_trace", "_sim_tr", "_ss_timer"):
+            if hasattr(self, _a):
+                setattr(self, _a, None)
+        self._ss_step_idx = 0
+        for _n in self.nodes:
+            _n.pop("status", None)
+        try:
+            self.canvas._scene.update()
+        except Exception:
+            pass
+        self._log("🔄 重启: 缓存已复位 → 重新仿真…")
+        self.start_sim()
 
     def _by_id(self, nid):
         for n in self.nodes:
