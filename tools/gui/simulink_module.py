@@ -3375,6 +3375,7 @@ class SimCanvas(QGraphicsView):
         a_verif = None
         a_rfp = None
         a_auto = None
+        a_viz = None
         if item.node.get("params", {}).get("verif_layer"):
             _is_test = "Test" in item.node.get("name", "") or "用例" in item.node.get("name", "")
             a_verif = menu.addAction("Test 用例结果 (含导出)" if _is_test
@@ -3382,6 +3383,9 @@ class SimCanvas(QGraphicsView):
             a_rfp = menu.addAction("需求规格书 RFP (客户指标→作业→功能)")
             if _is_test:
                 a_auto = menu.addAction("⚡ 一键自动测试 (环境→用例→报告 PDF/Excel)")
+        # 🔭 可视化层节点右键 (2026-09-05 老倪: 双击依赖时序/位置, 右键是可靠入口)
+        if item.node.get("params", {}).get("viz_kind"):
+            a_viz = menu.addAction("🔭 打开显示窗口 (波形/直方图/视图)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
         if chosen == a_logic:
@@ -3412,6 +3416,8 @@ class SimCanvas(QGraphicsView):
             self.module.on_open_calib_table(item.node)
         elif a_auto is not None and chosen == a_auto:
             self.module._run_auto_test(item.node)
+        elif a_viz is not None and chosen == a_viz:
+            self.module.on_node_activated(item.node)
         elif a_verif is not None and chosen == a_verif:
             self.module._open_verif_dialog(item.node)
         elif a_rfp is not None and chosen == a_rfp:
