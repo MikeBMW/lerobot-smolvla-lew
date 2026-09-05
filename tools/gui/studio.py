@@ -9916,6 +9916,52 @@ class StudioMainWindow(QMainWindow):
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
         if os.environ.get("ZMAX_AUTO_RUN") == "1":
             _oneshot(self, 2500, self._auto_run_compare5)
+        # 🧮 2026-09-05 自动测试: ZMAX_AUTO_SS=1 → 启动后自动打开状态空间画布
+        if os.environ.get("ZMAX_AUTO_SS") == "1":
+            _oneshot(self, 3000, self._auto_open_state_space)
+            # 🚀 再等 2s 让画布就绪, 自动点 ▶运行 (状态空间仿真)
+            if os.environ.get("ZMAX_AUTO_SS_RUN") == "1":
+                _oneshot(self, 5500, self._auto_run_state_space)
+
+    def _auto_run_state_space(self):
+        """▶ 自动运行状态空间仿真 (ZMAX_AUTO_SS_RUN=1, 2026-09-05 自动测试)"""
+        try:
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            self.simulink.start_sim()
+            self.simulink._log("✅ [自动测试] 状态空间仿真已启动")
+            # 🧭 仿真约 500 步×80ms≈40s, 完成后自动开 3D 视图截图
+            if os.environ.get("ZMAX_AUTO_SS_3D") == "1":
+                _oneshot(self, 60000, self._auto_open_ss_3d)
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ [自动测试] 仿真启动失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 仿真启动失败: {e!r}")
+
+    def _auto_open_ss_3d(self):
+        """🧭 仿真完成后自动打开 3D 分层视图 (ZMAX_AUTO_SS_3D=1)"""
+        try:
+            self.simulink.open_ss_3d(on_top=False)
+            self.simulink._log("✅ [自动测试] 3D 分层视图已打开")
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ [自动测试] 3D 打开失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 3D 打开失败: {e!r}")
+
+    def _auto_open_state_space(self):
+        """🧮 自动打开状态空间画布 (ZMAX_AUTO_SS=1, 2026-09-05 自动测试用)"""
+        try:
+            self.stack.setCurrentWidget(self.simulink)
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            self.simulink.open_state_space()
+            self.simulink._log("✅ [自动测试] 状态空间画布已打开")
+        except Exception as e:
+            # 🐛 2026-09-05: StudioMainWindow 无 _log — 用 simulink._log, 且异常内不再二次崩溃
+            try:
+                self.simulink._log(f"❌ [自动测试] 状态空间打开失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 状态空间打开失败: {e!r}")
 
     def _auto_run_compare5(self):
         """🔬 自动加载五模型对比模板并启动运行 (ZMAX_AUTO_RUN=1 时启动后触发)"""
