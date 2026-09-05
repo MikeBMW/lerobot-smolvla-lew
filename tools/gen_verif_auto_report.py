@@ -71,7 +71,7 @@ def run_all_tests():
     return env, results, v, nft
 
 
-def make_pdf(env, results, v, nft, ts):
+def make_pdf(env, results, v, nft, ts, viz=None):
     """reportlab PDF — 全中文 TBL 用 Paragraph, 中文字体 wqy"""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
@@ -80,7 +80,7 @@ def make_pdf(env, results, v, nft, ts):
     from reportlab.lib import colors as _C
     from reportlab.lib.pagesizes import A4
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                    Table, TableStyle)
+                                    Table, TableStyle, Image)
     wqy = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
     if not os.path.exists(wqy):
         wqy = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
@@ -206,6 +206,27 @@ def make_pdf(env, results, v, nft, ts):
           "进入规划 — L2 走端到端 VLA 插拔头/柔顺导纳, L3 走世界模型+优化搜索。")
     else:
         P(f"存在 {failed} 项失败 — 修复后重跑本报告 (gui-venv311/bin/python tools/gen_verif_auto_report.py)")
+    # 8 可视化层证据 (GUI 实测, 2026-09-04 老倪: 测试结果从图表/波形/视图可见)
+    if viz:
+        P("8. 🔭 可视化层证据 (GUI 自动取证 — 真实打开图表窗口渲染截图)", "h1")
+        P("测试工程师自动化: 打开状态空间画布 → 跑引擎 → 操作全部可视化窗口 "
+          "(直方图/归因/仿真波形/3D/操作视频) → 截图证据 + 内容断言。场景: 光模块插拔。")
+        vp = sum(1 for r in viz if r["pass"])
+        P(f"可视化验证 {vp}/{len(viz)} PASS", "h2")
+        TBL([["用例", "验证内容", "结果", "实测证据"]] +
+            [[r["case"], r["desc"], "✅" if r["pass"] else "❌", r.get("detail", "")[:120]]
+             for r in viz], [70, 220, 40, 240])
+        story.append(Spacer(1, 6))
+        _ev = os.path.join(REPORTS, "viz_evidence")
+        for r in viz:
+            img = r.get("evidence", "")
+            if img and os.path.exists(img):
+                P(f"{r['case']} — {r['desc']} ({'PASS' if r['pass'] else 'FAIL'})", "h2")
+                try:
+                    story.append(Image(img, width=430, height=280))
+                    story.append(Spacer(1, 4))
+                except Exception:
+                    pass
     doc.build(story)
     return os.path.join(REPORTS, f"状态空间自动测试报告_{ts}.pdf")
 
@@ -214,14 +235,23 @@ def main():
     os.makedirs(REPORTS, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
     env, results, v, nft = run_all_tests()
-    pdf = make_pdf(env, results, v, nft, ts)
+    # 🔭 可视化层 GUI 取证 (测试工程师自动化: 开环境→跑引擎→操作图表窗口→截图断言)
+    viz = None
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import gen_viz_evidence
+        viz = gen_viz_evidence.run_viz()
+    except Exception as e:
+        print(f"⚠️ 可视化取证跳过: {e}")
+    pdf = make_pdf(env, results, v, nft, ts, viz=viz)
     # Excel (复用 verification_dialog.export_verif_excel)
     sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
     from verification_dialog import export_verif_excel
-    xlsx = export_verif_excel(tree=nft, results=results)
+    xlsx = export_verif_excel(tree=nft, results=results, viz=viz)
     print(f"✅ 自动测试: 环境 {sum(1 for _, ok in env if ok)}/{len(env)} · "
           f"PASS {sum(1 for x in results.values() if x and x[0] is True)} / "
-          f"FAIL {sum(1 for x in results.values() if x and x[0] is False)}")
+          f"FAIL {sum(1 for x in results.values() if x and x[0] is False)}"
+          + (f" · 🔭可视化 {sum(1 for r in viz if r['pass'])}/{len(viz)}" if viz else ""))
     print(f"REPORT_PDF={pdf}")
     print(f"EXCEL={xlsx}")
     return 0

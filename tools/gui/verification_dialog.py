@@ -57,9 +57,10 @@ def _load_tree():
     return m
 
 
-def export_verif_excel(path=None, tree=None, results=None):
+def export_verif_excel(path=None, tree=None, results=None, viz=None):
     """三级树 → Excel (4 sheets: 节点功能清单/功能用例/分类统计/测试明细)
-    tree: node_func_tree 模块; results: run_tree() 的 {case_key: (ok, detail)}"""
+    tree: node_func_tree 模块; results: run_tree() 的 {case_key: (ok, detail)};
+    viz: gen_viz_evidence 的可视化取证结果 list (可选 → 加 🔭可视化验证 sheet)"""
     import openpyxl
     from openpyxl.styles import Font, PatternFill
     if tree is None:
@@ -185,6 +186,19 @@ def export_verif_excel(path=None, tree=None, results=None):
     for i, w in enumerate((30, 16, 70, 16, 60), start=1):
         ws7.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
     ws7.freeze_panes = "A2"
+
+    # ── Sheet8 🔭 可视化验证 (GUI 取证: 图表/波形/视图实截 + 断言) ──
+    if viz:
+        ws8 = wb.create_sheet("可视化验证")
+        ws8.append(["用例ID", "验证内容", "结果", "实测证据", "证据文件"])
+        for c in ws8[1]:
+            c.fill, c.font = _HDR, _HF
+        for r in viz:
+            ws8.append([r["case"], r["desc"], "PASS" if r["pass"] else "FAIL",
+                        r.get("detail", ""), r.get("evidence", "")])
+        for i, w in enumerate((12, 52, 10, 60, 60), start=1):
+            ws8.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+        ws8.freeze_panes = "A2"
 
     wb.save(path)
     return path

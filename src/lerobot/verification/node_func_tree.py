@@ -522,7 +522,7 @@ NODE_TREE = {
     "ssyolo": {
         "name": "🎯 YOLO 目标检测", "fb": "底空间·状态观测(感知)",
         "funcs": [
-            {"fid": "FNyolo01", "name": "目标类别检出", "desc": "hand/peg/hole 三类目标检出",
+            {"fid": "FNyolo01", "name": "目标类别检出", "desc": "hand/光模块/hole 三类目标检出",
              "tests": [
                  ("三类真实检出", "auto", "t_F_C01", ""),
                  ("类别名映射正确", "auto", "t_yolo_cls", ""),
@@ -536,7 +536,7 @@ NODE_TREE = {
                  ("无写死高置信", "auto", "t_yolo_nofake", ""),
                  ("低置信可过滤", "auto", "t_yolo_th", ""),
                  ("总线显示真实 conf", "manual", None, "数据总线 YOLO 行 conf 为检测真值非 0.99"),
-                 ("遮挡时 conf 下降", "manual", None, "夹爪遮挡 peg→conf 真实下降/未检出"),
+                 ("遮挡时 conf 下降", "manual", None, "夹爪遮挡光模块→conf 真实下降/未检出"),
              ]},
             {"fid": "FNyolo03", "name": "模型热载缓存", "desc": "YOLO 权重首次加载缓存 (防播放卡顿)",
              "tests": [
@@ -552,7 +552,7 @@ NODE_TREE = {
                  ("不顶替引擎真值", "auto", "t_yolo_honest", ""),
                  ("退化统计可查", "auto", "t_yolo_stat", ""),
                  ("退化真实呈现", "manual", None, "任务失败视频也交付, 遮挡段检出崩如实可见"),
-                 ("RealityGap 量化", "manual", None, "报告含视觉 peg 误差/检出率实测量"),
+                 ("RealityGap 量化", "manual", None, "报告含视觉 光模块 误差/检出率实测量"),
              ]},
             {"fid": "FNyolo05", "name": "感知实时性", "desc": "单帧 detect_3d 耗时在真实化节奏内",
              "tests": [
@@ -597,7 +597,7 @@ NODE_TREE = {
                  ("误差带统计", "auto", "t_2d3d_errband", ""),
                  ("深度模型漂移检测", "auto", "t_2d3d_drift", ""),
                  ("定标探针报告", "manual", None, "YOLO hand 漂移 12-20cm 定标实锤报告可查"),
-                 ("误差进日志", "manual", None, "真实化 R0_TRACE 每帧 peg 误差打印"),
+                 ("误差进日志", "manual", None, "真实化 R0_TRACE 每帧 光模块 误差打印"),
              ]},
             {"fid": "FN2d05", "name": "解算链路同构", "desc": "真机/仿真同一解算链路 (不双轨)",
              "tests": [
