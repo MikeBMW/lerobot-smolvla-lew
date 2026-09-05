@@ -250,6 +250,13 @@ def build_function_list():
             node = nft.NODE_TREE[nk]
             h.append(f"<h3>{node['name']} <span class='tag tb'>{nk}</span> "
                      f"<span class='tag tg'>{node['fb']}</span></h3>")
+            # 🔗 2026-09-05 老倪: 功能 × 硬件域(感知📷摄像头/动作🦾珞石臂) × 波形验证通道
+            _hw, _vz = nft.NODE_HW_VIZ.get(nk, ("", ""))
+            if _hw:
+                h.append(f'<div class="note" style="margin:2px 0 8px">'
+                         f'🔗 <b>{_esc(_hw)}</b> · 📊 <span class="tno">波形验证: {_esc(_vz)}</span>'
+                         f'<br>🧠 波形=脑机接口式统一验证面: 引擎轨迹逐帧驱动可视化层, '
+                         f'本节点所有功能/用例在该通道可见可测 → 测试可溯源到实际硬件 (摄像头/珞石臂)</div>')
             h.append("<table><tr><th>编号</th><th>功能 (详细说明)</th><th>几何类</th>"
                      "<th>验证方法</th><th>应用场景</th></tr>")
             for f in node["funcs"]:
