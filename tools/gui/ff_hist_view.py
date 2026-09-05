@@ -56,7 +56,7 @@ class FFHistView(QDialog):
         self.cur = [None, None, None]       # 最近一帧 (叠加朱红)
         self.info = {}                      # 当前帧语义 (obs/u_ff)
         self._dirty = True
-        self._cap_text = "🧠 等待激活数据 — 点「⚡引擎快演 ▶运行」或「⏭单步」后自动累积 (白柱=近150帧分布 · 朱红线=最近一帧)"
+        self._cap_text = "🧠 等待激活数据 — 点「⚡引擎快演 ▶运行」或「⏭单步」后逐帧累积 (直方图=本帧 512 神经元实际激活值)"
         # 节流重绘 (≤10Hz, 避免每 tick 全量重绘卡 GUI)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._throttled)
@@ -87,8 +87,8 @@ class FFHistView(QDialog):
                      if u else "输出 u_ff=—")
             d_txt = f"手到目标 d={ob.get('d_h', 0):.2f}m" if ob and ob.get("d_h") is not None else ""
             self._cap_text = (
-                f"🧠 累积 {n}/150 帧 · {u_txt} · {d_txt}\n"
-                f"白柱=近150帧分布 · 红点=最近帧 · 0=休眠 · 右尾=正在工作")
+                f"🧠 累积 {n}/150 帧用于定轴 · 本帧 {u_txt} · {d_txt}\n"
+                f"直方图 = 本帧 512 个神经元的实际激活值 (真实计数, 不做平均) · 0值单列标注")
         except Exception:
             pass
         self._dirty = True
@@ -201,69 +201,65 @@ class FFHistView(QDialog):
         hx1 = W - 20
         buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
         pos = buf[buf > 0]
-        # 图标题: 行1 累积统计(稳定) + 行2 本帧实时统计(随阶段跳变, 2026-09-05 老倪)
+        # ── 右侧: 本帧实际激活直方图 (真实计数, 不累积平均 — 2026-09-05 老倪) ──
+        hx0 = info_w + 52          # 左留 y 轴刻度
+        hx1 = W - 20
+        buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
+        cur0 = self.cur[li]
+        # 横轴范围固定 (用累积 p99, 防单帧极值让轴每帧乱跳)
+        AX = max(float(np.percentile(buf[buf > 0], 99)) if (buf > 0).any() else 0.15, 0.15)
+        # 标题: 本帧真实数字 (0 值个数/非零均值/能量)
+        nz = int((cur0 == 0).sum()) if cur0 is not None and cur0.size else 0
+        ppos = cur0[cur0 > 0] if cur0 is not None else np.zeros(0)
+        mc = float(ppos.mean()) if ppos.size else 0.0
+        ec = float((cur0 ** 2).sum()) if cur0 is not None and cur0.size else 0.0
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
         fm = p.fontMetrics()
-        zr = float((buf == 0).mean()) * 100 if buf.size else 0.0
-        nm = float(pos.mean()) if pos.size else 0.0
-        ttl = f"激活分布 (150帧累积: 0占比{zr:.0f}% · 非零均值{nm:.2f})"
-        # 本帧统计 (cur 单帧)
-        cur0 = self.cur[li]
-        cpos0 = cur0[cur0 > 0] if cur0 is not None else np.zeros(0)
-        zc = float((cur0 == 0).mean()) * 100 if cur0 is not None and cur0.size else 0.0
-        mc = float(cpos0.mean()) if cpos0.size else 0.0
-        ec = float((cur0 ** 2).sum()) if cur0 is not None and cur0.size else 0.0
-        ttl2 = f"本帧: 0占比{zc:.0f}% · 非零均值{mc:.2f} · 能量{ec:.1f}  ← 随阶段跳变"
-        th = fm.boundingRect(QRect(0, 0, hx1 - hx0, 2000), Qt.TextWordWrap, ttl).height()
-        p.drawText(QRect(hx0, int(y0) + 2, hx1 - hx0, th), Qt.TextWordWrap, ttl)
-        yy_t = int(y0) + 2 + th + 2
-        p.setPen(_TEXT2)
-        p.setFont(QFont("Sans", 10))
-        fm2 = p.fontMetrics()
-        th2 = fm2.boundingRect(QRect(0, 0, hx1 - hx0, 2000), Qt.TextWordWrap, ttl2).height()
-        p.drawText(QRect(hx0, yy_t, hx1 - hx0, th2), Qt.TextWordWrap, ttl2)
-        y_top = yy_t + th2 + 8
-        # 轴标行高 (底部)
+        ttl = f"本帧实际激活分布: 512 神经元中 0 值 {nz} 个 · 非零均值 {mc:.2f} · 能量 {ec:.1f}"
+        th = fm.boundingRect(QRect(0, 0, hx1 - hx0 + 40, 2000), Qt.TextWordWrap, ttl).height()
+        p.drawText(QRect(hx0 - 40, int(y0) + 2, hx1 - hx0 + 40, th), Qt.TextWordWrap, ttl)
+        y_top = int(y0) + 2 + th + 6
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
         axh = p.fontMetrics().height()
         y_bot = int(y0 + row_h) - 8 - axh
-        if pos.size >= 8:
-            vmax = float(np.percentile(pos, 99.5))
-            vmax = max(vmax, 0.05)
-            hist, _ = np.histogram(pos, bins=N_BINS, range=(0.0, vmax))
+        if cur0 is not None and ppos.size >= 2:
+            # 只统计非零值 (0 已单列数字); 柱高=该区间实际神经元个数
+            hist, _ = np.histogram(ppos, bins=N_BINS, range=(0.0, AX))
             hmax = max(float(hist.max()), 1.0)
             bw = (hx1 - hx0) / N_BINS
+            # y 轴刻度 (实际整数个数)
+            p.setPen(_TEXT2)
+            p.setFont(QFont("Sans", 9))
+            for _f, _lbl in ((0.0, "0"), (0.5, f"{int(hmax / 2)}"), (1.0, f"{int(hmax)}")):
+                yy2 = int(y_bot - (y_bot - y_top) * _f)
+                p.drawLine(int(hx0 - 6), yy2, int(hx0 - 2), yy2)
+                p.drawText(int(hx0 - 46), int(yy2 + 4), f"{_lbl}个")
+            # 网格
             p.setPen(QPen(QColor("#1e2740"), 1))
             for gy in range(5):
                 yy2 = y_top + (y_bot - y_top) * gy / 4
                 p.drawLine(int(hx0), int(yy2), int(hx1), int(yy2))
-            # 白柱
+            # 白柱 = 本帧真实计数
             p.setPen(Qt.NoPen)
             p.setBrush(_CURVE)
             for bi in range(N_BINS):
                 hh = (y_bot - y_top) * hist[bi] / hmax
                 if hh > 0.5:
                     p.drawRect(int(hx0 + bw * bi) + 1, int(y_bot - hh), max(int(bw) - 2, 1), int(hh))
-            # 最近一帧 (朱红亮点)
-            if self.cur[li] is not None:
-                cpos = self.cur[li][self.cur[li] > 0]
-                if cpos.size >= 2:
-                    ch, _ = np.histogram(cpos, bins=N_BINS, range=(0.0, vmax))
-                    p.setBrush(_CURVE_LIVE)
-                    p.setPen(Qt.NoPen)
-                    for bi in range(N_BINS):
-                        if ch[bi] <= 0:
-                            continue
-                        xx = int(hx0 + bw * bi + bw / 2)
-                        yy2 = int(y_bot - (y_bot - y_top) * ch[bi] / max(float(ch.max()), 1e-6))
-                        p.drawRect(xx - 2, yy2 - 2, 5, 5)
-        # x=0 虚线 + 轴标
-        p.setPen(QPen(_ZERO, 1, Qt.DashLine))
-        p.drawLine(int(hx0), y_top, int(hx0), y_bot)
+            # 0 值标注 (虚线 + 个数, 不占柱)
+            p.setPen(QPen(_CURVE_LIVE, 1.5, Qt.DashLine))
+            p.drawLine(int(hx0), y_top, int(hx0), y_bot)
+            p.setPen(_CURVE_LIVE)
+            p.setFont(QFont("Sans", 9))
+            p.drawText(int(hx0 + 4), int(y_top + 14), f"0值 ×{nz}")
+        else:
+            p.setPen(_TEXT2)
+            p.setFont(QFont("Sans", 10))
+            p.drawText(QRect(hx0, y_top, hx1 - hx0, 60), Qt.TextWordWrap, "本帧无激活(全部休眠)")
+        # 轴标
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 10))
-        p.drawText(int(hx0), int(y_bot + axh - 4), "0 截断")
-        pk = float(np.percentile(pos, 99.5)) if pos.size else 0.0
-        p.drawText(int(hx1 - 220), int(y_bot + axh - 4), f"激活值→ (峰值 {pk:.2f})")
+        p.drawText(int(hx0), int(y_bot + axh - 4), "0")
+        p.drawText(int(hx1 - 210), int(y_bot + axh - 4), f"激活值 → (横轴 0~{AX:.2f})")
