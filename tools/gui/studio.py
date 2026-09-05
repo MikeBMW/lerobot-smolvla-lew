@@ -9922,6 +9922,21 @@ class StudioMainWindow(QMainWindow):
             # 🚀 再等 2s 让画布就绪, 自动点 ▶运行 (状态空间仿真)
             if os.environ.get("ZMAX_AUTO_SS_RUN") == "1":
                 _oneshot(self, 5500, self._auto_run_state_space)
+        # 🧪 2026-09-05 完整自动测试套件: ZMAX_AUTO_TEST=1 → 每用例截图断言
+        if os.environ.get("ZMAX_AUTO_TEST") == "1":
+            _oneshot(self, 5000, self._start_auto_test_suite)
+
+    def _start_auto_test_suite(self):
+        """🧪 启动状态空间自动测试套件 (每用例截图)"""
+        try:
+            import auto_test_suite
+            self._auto_test = auto_test_suite.StateSpaceAutoTest(self, self.simulink)
+            self.simulink._log("🧪 自动测试套件已启动 (7 用例, 每个截图)")
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ 自动测试套件启动失败: {e!r}")
+            except Exception:
+                print(f"自动测试套件启动失败: {e!r}")
 
     def _auto_run_state_space(self):
         """▶ 自动运行状态空间仿真 (ZMAX_AUTO_SS_RUN=1, 2026-09-05 自动测试)
