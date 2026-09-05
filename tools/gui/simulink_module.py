@@ -4215,11 +4215,8 @@ class SimulinkModule(QWidget):
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
-        # 🔍 Z 分析 (2026-08-12 老倪: 全面评价 Z700 模型稳定性 — 状态空间九指标)
-        self.btn_z_analysis = mk_btn("🔍 Z 分析", "全面评价 Z700 模型稳定性 (状态空间九指标 + 飞书报告)",
-                                      self.on_z_analysis, "#d29922")
-        # ⚙️ 前馈 PD (2026-08-14 老倪: 顶层系统视角 — 前馈PD=顶层总系统, Z700=子系统)
-        self.btn_ff_pd = mk_btn("⚙️ 前馈 PD", "前馈 PD 顶层系统: 增益调度PID+前馈 = 总系统, Z700 = 子系统 (双击🔬Z700子系统展开)", self.open_ff_pd_top, "#58a6ff")
+        # (2026-09-04 老倪: 「🔍 Z 分析」「⚙️ 前馈 PD」工具栏按钮没用 → 删除;
+        #  on_z_analysis 保留 (9232 自动流程仍走), open_ff_pd_top 保留 (方法)
         # 🧮 状态空间 (2026-08-17 老倪: 状态空间模型画布 — 时空感知→并行认知→决策执行→物理闭环)
         self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: S1时空感知前端(43D obs) → S2并行处理层(前馈加速器+自适应状态估计器) → S3认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)", self.open_state_space, "#87CEEB")
         # 🧭 3D 视图 (2026-08-25 老倪: Apollo 风格 3D 分层视图 — 实时场景+YOLO框+action目标点+处理层叠加)
@@ -4235,8 +4232,6 @@ class SimulinkModule(QWidget):
                                         "(约 5-9 分钟/轮, detect_3d 断点每步可进, 不造假)")
         tl.addWidget(self.chk_engine_demo)
         tl.addWidget(self.btn_step)
-        tl.addWidget(self.btn_z_analysis)
-        tl.addWidget(self.btn_ff_pd)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)

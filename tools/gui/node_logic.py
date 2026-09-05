@@ -2041,6 +2041,7 @@ def node_ss_s2(ctx):
 
 
 _FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线程)
+_FF_ATTR_WIN = None  # 🎯 归因分工窗口 (全局单实例)
 
 
 def node_ss_ff_hist(ctx):
@@ -2071,6 +2072,34 @@ def node_ss_ff_hist(ctx):
     except Exception as e:
         if log:
             log(f"⚠️ 前馈激活直方图失败: {e}")
+        return False
+
+
+def node_ss_ff_attrib(ctx):
+    """🎯 归因·分工 — ⚡前馈探针 → 归因堆叠图 (谁在指挥) + 512单元功能散点 (PCA/t-SNE)
+    引线: ⚡前馈加速器 → 本节点"""
+    log = ctx.get("log")
+    try:
+        probe = _SS_STATE.get("ff_probe")
+        if not probe or "act_raw" not in probe:
+            if log:
+                log("🎯 归因分工: 无探针数据 — 先运行 ⚡前馈加速器节点")
+            return False
+        global _FF_ATTR_WIN
+        if _FF_ATTR_WIN is None:
+            from ff_attrib_view import FFAttribView   # 延迟 import (Qt 依赖)
+            _FF_ATTR_WIN = FFAttribView()
+        _FF_ATTR_WIN.push(probe)
+        if not _FF_ATTR_WIN.isVisible():
+            _FF_ATTR_WIN.show()
+        _FF_ATTR_WIN.raise_()
+        _FF_ATTR_WIN.activateWindow()
+        if log:
+            log("🎯 归因分工: 已更新 (堆叠=4维驱动能量 · 散点: 点 PCA 或 t-SNE 生成)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 归因分工失败: {e}")
         return False
 
 
@@ -2256,6 +2285,7 @@ _reg("ss_bg2",   ["并行处理层"], "S2 并行处理层 — 快慢分离 (源�
 _reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
 _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
 _reg("ss_ff_hist", ["前馈激活", "激活直方图"], "🧠 前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断, 引线 S2→本节点)", node_ss_ff_hist)
+_reg("ss_ff_attrib", ["归因", "分工", "堆叠", "t-SNE"], "🎯 归因·分工 — 512单元按输出维分工: 归因堆叠图(谁在指挥)+单元功能散点(PCA/t-SNE, 引线 S2→本节点)", node_ss_ff_attrib)
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
 _reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)

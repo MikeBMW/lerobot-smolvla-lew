@@ -840,6 +840,38 @@
     "desc": "Test 用例执行: 跑自动化套件 F-A01~F-F04 (引擎/六层/感知/规划/元层/画布映射), PASS/FAIL+数值证据; 单跑 ZMAX_VERIF_ONLY=F-xx; 源码 verification_layer.py t_F_* 断言",
     "source": "src/lerobot/verification/verification_layer.py"
    }
+  },
+  {
+   "id": "ssff_hist",
+   "type": "model",
+   "name": "🧠 前馈激活直方图",
+   "x": 1150,
+   "y": 190,
+   "w": 210,
+   "h": 68,
+   "icon": "🧠",
+   "color": "#00d4aa",
+   "params": {
+    "state_space": true,
+    "desc": "前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断)",
+    "source": "tools/gui/node_logic.py · node_ss_ff_hist"
+   }
+  },
+  {
+   "id": "ssff_attr",
+   "type": "model",
+   "name": "🎯 归因·分工",
+   "x": 1150,
+   "y": 310,
+   "w": 210,
+   "h": 68,
+   "icon": "🎯",
+   "color": "#00d4aa",
+   "params": {
+    "state_space": true,
+    "desc": "归因·分工 — 512单元按输出维分工: 堆叠图(谁在指挥)+散点(PCA/t-SNE)",
+    "source": "tools/gui/node_logic.py · node_ss_ff_attrib"
+   }
   }
  ],
  "links": [
@@ -1162,6 +1194,22 @@
    "f_port": "out1",
    "t_port": "in4",
    "label": "潜坐标/速度场"
+  },
+  {
+   "id": "lkffh1",
+   "f": "ssff",
+   "t": "ssff_hist",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "激活探针"
+  },
+  {
+   "id": "lkffa1",
+   "f": "ssff",
+   "t": "ssff_attr",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "激活探针"
   }
  ]
 }
