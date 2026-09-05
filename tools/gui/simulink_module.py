@@ -10667,19 +10667,20 @@ class SimulinkModule(QWidget):
         #   没运行过才退回操作视频同源 episode (保持 3D 与视频同源能力)。
         tr = getattr(self, "_ss_tr", None)
         if tr is not None and tr.get("x") is not None and len(tr["x"]) > 1:
+            tr = dict(tr)                    # 复制后打源标记, 不污染引擎轨迹
+            tr["_viz_src"] = "run"
             self._log(f"🧭 3D 视图数据源: 程序执行轨迹 (sim.run() {len(tr['x'])} 步 — "
                       f"播放/调试到哪一步, 3D 显示到哪一步)")
         else:
             tr = None
             ep, meta = load_episode()
             if ep is not None:
-                tr = ep
+                tr = dict(ep)
+                tr["_viz_src"] = "episode"
                 self._log(f"🧭 3D 视图数据源: 操作视频同源 episode "
                           f"(metaworld seed={meta.get('seed')} · {meta.get('steps')} 步 · "
-                          f"终态 {meta.get('stage_final')} · 相机 corner2 外参精确对齐)")
-                if meta.get("pair_warn"):
-                    # 同源自检不通过 → 明说, 不装作一致 (老倪: 功能坏了说根因)
-                    self._log(f"⚠️ 同源自检: {meta['pair_warn']}")
+                          f"终态 {meta.get('stage_final')} · 相机 corner2 外参精确对齐 — "
+                          f"⚠️ EPISODE 回放(预录); 先 ▶运行 后 3D 转本次程序轨迹同步)")
             else:
                 tr = getattr(self, "_ss_tr", None)
                 if not tr or not tr.get("x"):

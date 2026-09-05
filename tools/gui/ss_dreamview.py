@@ -676,6 +676,23 @@ class DreamView3D(QWidget):
     # ── 数据装载 ──
     def set_trajectory(self, tr):
         self.tr = tr
+        # 🔭 2026-09-05 老倪(信号同步严查): 标题标注数据源 — 程序执行轨迹=与画布同步
+        #   vs episode 回放=预录 (打开即自动播放, 不随画布); 一眼可辨不混淆
+        try:
+            _src = tr.get("_viz_src") if isinstance(tr, dict) else None
+            if _src is None and getattr(self, "module", None) is not None:
+                # ▶运行播放 tick 直接喂引擎轨迹 (无标记) → 依 module 引用识别为程序同步
+                try:
+                    if getattr(self.module, "_ss_tr", None) is tr:
+                        _src = "run"
+                except Exception:
+                    pass
+            if _src == "run":
+                self.setWindowTitle("🧭 3D 视图 · 程序执行同步 (▶运行/⏭到哪步, 3D 到哪步)")
+            elif _src == "episode":
+                self.setWindowTitle("🧭 3D 视图 · EPISODE 回放 (预录, 非本次运行 — 先 ▶运行 转同步)")
+        except Exception:
+            pass
         meta = tr.get("_meta") if isinstance(tr, dict) else None
         if meta:
             self._apply_meta(meta)
