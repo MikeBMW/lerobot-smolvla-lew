@@ -9924,14 +9924,21 @@ class StudioMainWindow(QMainWindow):
                 _oneshot(self, 5500, self._auto_run_state_space)
 
     def _auto_run_state_space(self):
-        """▶ 自动运行状态空间仿真 (ZMAX_AUTO_SS_RUN=1, 2026-09-05 自动测试)"""
+        """▶ 自动运行状态空间仿真 (ZMAX_AUTO_SS_RUN=1, 2026-09-05 自动测试)
+        自动勾选 ⚡引擎快演 → 走 _start_state_space_sim (0.1s 引擎, trace 完整),
+        不勾则走 _start_real_sim (metaworld+YOLO 每帧~1s, 5-9分钟/轮)"""
         try:
             self.simulink._qmsg_yes = lambda *a, **k: True
+            # ⚡ 引擎快演勾选 (真实化流程 5-9 分钟不适合自动测试)
+            chk = getattr(self.simulink, "chk_engine_demo", None)
+            if chk is not None:
+                chk.setChecked(True)
+                self.simulink._log("✅ [自动测试] 已勾选 ⚡引擎快演")
             self.simulink.start_sim()
-            self.simulink._log("✅ [自动测试] 状态空间仿真已启动")
-            # 🧭 仿真约 500 步×80ms≈40s, 完成后自动开 3D 视图截图
+            self.simulink._log("✅ [自动测试] 状态空间仿真已启动 (引擎快演)")
+            # 🧭 引擎快演 500 步 ≈ 几秒完成; 20s 后开 3D 视图截图
             if os.environ.get("ZMAX_AUTO_SS_3D") == "1":
-                _oneshot(self, 60000, self._auto_open_ss_3d)
+                _oneshot(self, 20000, self._auto_open_ss_3d)
         except Exception as e:
             try:
                 self.simulink._log(f"❌ [自动测试] 仿真启动失败: {e!r}")
