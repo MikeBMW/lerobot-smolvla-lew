@@ -69,6 +69,7 @@ def mlp_ff_forward(npz_path, probe=None):
         dist_h = float(np.linalg.norm(pos[:2] - target[:2]))
         u_grip = 1.0 if dist_h < 0.03 else 0.0
         if probe is not None:
+            probe["_seq"] = probe.get("_seq", 0) + 1   # 🔭 帧序号 (窗口桥接去重)
             # 🧠 探针: 每层在想什么 (激活能量/稀疏度/top 活跃单元) + 输出归因
             probe["obs"] = {"hand": [round(v, 4) for v in pos],
                             "target": [round(v, 4) for v in target],

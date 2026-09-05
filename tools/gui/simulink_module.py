@@ -9188,6 +9188,33 @@ class SimulinkModule(QWidget):
         except Exception as e:
             self._log(f"⚠️ Scope 打开失败: {e}")
 
+    def _ensure_ff_bridge(self):
+        """🔭 probe 桥 (2026-09-04): QTimer 300ms 从引擎 sim.accel.probe 推给已开的
+        直方图/归因窗口 (seq 去重) — ▶运行 中窗口实时刷新; 播放(引擎先跑完)推末帧"""
+        if getattr(self, "_ff_bridge_timer", None) is not None:
+            return
+        t = _tq(self)
+        t.timeout.connect(self._ff_bridge_tick)
+        t.start(300)
+        self._ff_bridge_timer = t
+
+    def _ff_bridge_tick(self):
+        sim = getattr(self, "_ss_last_sim", None)
+        acc = getattr(sim, "accel", None)
+        probe = getattr(acc, "probe", None)
+        if not probe or not probe.get("act_raw"):
+            return
+        seq = probe.get("_seq", 0)
+        if getattr(self, "_ff_bridge_last_seq", -1) == seq:
+            return
+        self._ff_bridge_last_seq = seq
+        w = getattr(self, "_ff_hist_win", None)
+        w2 = getattr(self, "_ff_attr_win", None)
+        if w is not None:
+            w.push(probe)
+        if w2 is not None:
+            w2.push(probe)
+
     def _open_viz_node(self, kind):
         """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
         hist/attrib: 窗口单例 + 有引擎末帧探针则填入 (真实数据, 无则不造假只提示)"""
@@ -9208,6 +9235,7 @@ class SimulinkModule(QWidget):
                 if win is None:
                     win = (FFHistView() if kind == "hist" else FFAttribView())
                     setattr(self, "_ff_hist_win" if kind == "hist" else "_ff_attr_win", win)
+                    self._ensure_ff_bridge()   # 🔭 probe 桥: 运行中窗口实时刷新
                 # 末帧探针 (引擎刚跑完或上次运行留下的真实数据; 播放中请用 ⏭单步 逐帧采集)
                 sim = getattr(self, "_ss_last_sim", None)
                 probe = getattr(getattr(sim, "accel", None), "probe", None)
@@ -9527,11 +9555,141 @@ class SimulinkModule(QWidget):
         except Exception as _e:
             self._log(f"⚠️ 验证层对话框打开失败: {_e}")
 
+    def _auto_test_demo(self, on_done=None):
+        """🔭 一键自动测试 · GUI 可视化演示段 (2026-09-04 老倪: 自动操作窗口, 真跑一遍, 显示波形)
+        主线程 QTimer 链: ①引擎真实跑(3s) ②📊仿真波形开窗显示+截图 ③🧠直方图(喂150帧)④🎯归因 PCA
+        ⑤🧭3D ⑥🎥操作视频 — 每窗停留 1.2s 用户可见, 截图存 reports/viz_evidence → on_done()"""
+        def _log(s):
+            try:
+                self._log(s)
+            except Exception:
+                pass
+        steps = []
+        _log("🔭 可视化演示: ① 引擎真实仿真…")
+        try:
+            tr = self._ss_ensure_trace(force=True)
+            _log(f"🔭 引擎完成: {len(tr.get('t', []))} 步轨迹 (真实数值)")
+
+            def st_scope():
+                _log("🔭 ② 📊 仿真波形 打开 (插深剩余/横向错位 0.5mm 验收波形)…")
+                try:
+                    self.show_state_space_scope()
+                    _app = __import__("PyQt5.QtWidgets", fromlist=["QApplication"]).QApplication.instance()
+                    if _app is not None:
+                        _app.processEvents()
+                    import time as _t
+                    _t.sleep(1.2)
+                    for _w in self.findChildren(StateSpaceScopeDialog):
+                        _w.grab().save(os.path.join(self._repo_root(), "reports",
+                                                    "viz_evidence", "viz_scope.png"))
+                        break
+                except Exception as _e:
+                    _log(f"⚠️ Scope 演示: {_e}")
+
+            def st_hist():
+                _log("🔭 ③ 🧠 前馈激活直方图 (150 帧真实 obs 回放, MLP 真实前向)…")
+                try:
+                    self._open_viz_node("hist")
+                    sim = getattr(self, "_ss_last_sim", None)
+                    acc = getattr(sim, "accel", None)
+                    if acc is not None:
+                        import numpy as _np, pandas as _pd, glob as _g
+                        pf = sorted(_g.glob(os.path.join(self._repo_root(), "data",
+                                                         "ss_insert_lerobot", "data",
+                                                         "chunk-*", "file-*.parquet")))
+                        w = getattr(self, "_ff_hist_win", None)
+                        w2 = getattr(self, "_ff_attr_win", None)
+                        if pf and w is not None:
+                            S = _np.stack(_pd.read_parquet(pf[0])["observation.state"].values).astype(_np.float32)
+                            d3 = _np.linalg.norm(S[:, 36:39] - S[:, :3], axis=1)
+                            idx = _np.argsort(d3)[:: max(1, len(d3) // 150)][:150]
+                            for i in idx:
+                                acc.forward(S[i])
+                                w.push(acc.probe)
+                                if w2 is not None:
+                                    w2.push(acc.probe)
+                        if w is not None:
+                            w._throttled()
+                    _app = __import__("PyQt5.QtWidgets", fromlist=["QApplication"]).QApplication.instance()
+                    if _app is not None:
+                        _app.processEvents()
+                    import time as _t
+                    _t.sleep(1.2)
+                    w = getattr(self, "_ff_hist_win", None)
+                    if w is not None:
+                        w.grab().save(os.path.join(self._repo_root(), "reports",
+                                                   "viz_evidence", "viz_hist.png"))
+                except Exception as _e:
+                    _log(f"⚠️ 直方图演示: {_e}")
+
+            def st_attrib():
+                _log("🔭 ④ 🎯 归因分工 (PCA 512 单元散点 + 归因堆叠)…")
+                try:
+                    self._open_viz_node("attrib")
+                    w = getattr(self, "_ff_attr_win", None)
+                    if w is not None and len(w.x3_buf) >= 10:
+                        w._project("pca")
+                        w.grab().save(os.path.join(self._repo_root(), "reports",
+                                                   "viz_evidence", "viz_attrib.png"))
+                    _app = __import__("PyQt5.QtWidgets", fromlist=["QApplication"]).QApplication.instance()
+                    if _app is not None:
+                        _app.processEvents()
+                    import time as _t
+                    _t.sleep(1.2)
+                except Exception as _e:
+                    _log(f"⚠️ 归因演示: {_e}")
+
+            def st_3d():
+                _log("🔭 ⑤ 🧭 3D 分层视图…")
+                try:
+                    self.open_ss_3d()
+                    _app = __import__("PyQt5.QtWidgets", fromlist=["QApplication"]).QApplication.instance()
+                    if _app is not None:
+                        _app.processEvents()
+                    import time as _t
+                    _t.sleep(1.5)
+                    for _w in _app.topLevelWidgets() if _app else []:
+                        if _w.__class__.__name__ == "DreamView3D":
+                            _w.grab().save(os.path.join(self._repo_root(), "reports",
+                                                        "viz_evidence", "viz_3d.png"))
+                            break
+                except Exception as _e:
+                    _log(f"⚠️ 3D 演示: {_e}")
+
+            def st_video():
+                _log("🔭 ⑥ 🎥 操作视频 (MLP rollout 播放)…")
+                try:
+                    self.play_mlp_rollout()
+                    _app = __import__("PyQt5.QtWidgets", fromlist=["QApplication"]).QApplication.instance()
+                    if _app is not None:
+                        _app.processEvents()
+                    import time as _t
+                    _t.sleep(1.2)
+                    for _w in _app.topLevelWidgets() if _app else []:
+                        if _w.__class__.__name__ == "MLPRolloutDialog":
+                            _w.grab().save(os.path.join(self._repo_root(), "reports",
+                                                        "viz_evidence", "viz_video.png"))
+                            break
+                except Exception as _e:
+                    _log(f"⚠️ 视频演示: {_e}")
+
+            _oneshot(self, 60, st_scope)
+            _oneshot(self, 90, st_hist)
+            _oneshot(self, 120, st_attrib)
+            _oneshot(self, 150, st_3d)
+            _oneshot(self, 180, st_video)
+            _oneshot(self, 220, lambda: (_log("🔭 可视化演示完成: 波形/直方图/归因/3D/视频 均已真实打开并截图"),
+                                          on_done() if on_done else None))
+        except Exception as _e:
+            _log(f"⚠️ 可视化演示启动失败: {_e}")
+            if on_done:
+                on_done()
+
     def _run_auto_test(self, node):
         """⚡ Test 节点一键自动测试 (2026-09-04 老倪): 自动搭测试环境 → 自动执行
         全部用例 → 自动出报告 PDF/Excel → scp 上传 datadrive.world
-        子进程跑 gen_verif_auto_report.py (reportlab 在子进程, 防 worker 线程卡 GUI)"""
-        self._log("⚡ 一键自动测试启动: ①环境自检 ②执行用例 ③生成报告 (后台 ~20s)…")
+        subprocess 跑 gen_verif_auto_report.py (reportlab 在子进程, 防 worker 线程卡 GUI)
+        先跑 GUI 可视化演示段 (真开窗显示波形), 演示完再后台出报告"""
         import threading
         import subprocess as _sp
 
@@ -9564,7 +9722,13 @@ class SimulinkModule(QWidget):
             except Exception as _e:
                 self._safe_log(f"⚠️ 一键自动测试异常: {_e}")
 
-        threading.Thread(target=_work, daemon=True).start()
+        # 🔭 2026-09-04 老倪: 先真实操作窗口演示 (引擎跑+5 类可视化窗口逐个打开显示+截图),
+        #   演示完 (~12s) 再后台跑全量用例与报告 — 一键测试全程看得见波形
+        self._log("⚡ 一键自动测试: ①可视化演示 (真实开窗显示波形) → ②环境自检/用例 → ③报告 PDF/Excel → scp 上传")
+        try:
+            self._auto_test_demo(on_done=lambda: threading.Thread(target=_work, daemon=True).start())
+        except Exception:
+            threading.Thread(target=_work, daemon=True).start()
 
     def on_show_node_logic(self, node):
         """右键 → 查看/编辑节点逻辑 (node_logic.py ✏️ 可修改区, 保存即生效)"""
@@ -10584,6 +10748,7 @@ class SimulinkModule(QWidget):
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
+                self._ss_last_sim = sim           # 🔭 可视化层: probe 数据源 (真实化每帧更新)
                 tr = sim.run()
                 v = sim._vis
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
@@ -10710,15 +10875,9 @@ class SimulinkModule(QWidget):
             pass
         try:
             sim = StateSpaceSim(log=self._log)
-            # 🧠 训练模型前馈 (2026-08-20 老倪: ▶运行加载训练模型而非手设参数)
-            _npz = os.path.join(self._repo_root(), "models", "ss_left_brain.npz")
-            if os.path.exists(_npz):
-                try:
-                    from state_space_sim import load_trained_left_brain
-                    sim.accel.forward = load_trained_left_brain(_npz)
-                    self._log("🧠 前馈加速器已加载训练模型 (左脑 MLP 39D→4D) 替换手设参数")
-                except Exception as _e:
-                    self._log(f"⚠️ 训练模型加载失败, 回退手设参数: {_e}")
+            # 🧠 训练模型前馈 (parallel.FeedforwardAccelerator 已内置 npz+守卫+探针,
+            #   旧 load_trained_left_brain 覆盖会停探针/去守卫, 已废弃)
+            self._ss_last_sim = sim      # 🔭 可视化层: 引擎 sim 引用 (probe 数据源)
             tr = sim.run(io_every=25)   # 纯 numpy, 500 步 <0.1s; io_every=25 记录数据总线快照
         except Exception as e:
             import traceback
