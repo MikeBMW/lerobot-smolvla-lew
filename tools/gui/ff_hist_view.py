@@ -201,12 +201,13 @@ class FFHistView(QDialog):
         hx1 = W - 20
         buf = np.concatenate(self.buf[li]) if self.buf[li] else np.zeros(1)
         pos = buf[buf > 0]
-        # 图标题 (wrap, 高度动态)
+        # 图标题 (wrap, 高度动态) — 每层统计不同, 一眼区分层间差异
         p.setPen(_TEXT)
         p.setFont(QFont("Sans", 12, QFont.Bold))
         fm = p.fontMetrics()
         zr = float((buf == 0).mean()) * 100 if buf.size else 0.0
-        ttl = f"激活分布 (最近{N_FRAMES}帧 · 0值休眠{zr:.0f}%)"
+        nm = float(pos.mean()) if pos.size else 0.0
+        ttl = f"激活分布 · {N_FRAMES}帧 · 0占比{zr:.0f}% · 非零均值{nm:.2f}"
         th = fm.boundingRect(QRect(0, 0, hx1 - hx0, 2000), Qt.TextWordWrap, ttl).height()
         p.drawText(QRect(hx0, int(y0) + 2, hx1 - hx0, th), Qt.TextWordWrap, ttl)
         y_top = int(y0) + 2 + th + 10
