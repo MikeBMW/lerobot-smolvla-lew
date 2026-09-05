@@ -40,6 +40,10 @@ class FFHistView(QDialog):
         self.setWindowTitle("🧠 前馈加速器 · 隐层激活直方图 (512×3)")
         self.resize(880, 620)
         self.setMinimumSize(640, 480)
+        # 🔧 2026-09-05 老倪: 最小化/最大化按钮无效 — 带 parent 的 QDialog 默认 Qt.Dialog
+        #   类型被 WM 当对话框 (无 min/max); 显式顶级窗口类型 + 按钮
+        self.setWindowFlags(Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint
+                            | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
         self.buf = [[] for _ in range(3)]   # 每层 FIFO: 帧列表 (各 512 float32)
         self.cur = [None, None, None]       # 最近一帧 (叠加朱红)
         self.info = {}                      # 当前帧语义 (obs/u_ff)

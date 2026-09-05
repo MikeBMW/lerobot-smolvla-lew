@@ -1062,6 +1062,8 @@ class StateSpaceScopeDialog(QDialog):
         self.setStyleSheet("QDialog { background:#0d1117; }")
         self._stages = tr.get("stage", [])
         self._t = np.asarray(tr.get("t", []), dtype=float)
+        self.setWindowFlags(Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint
+                            | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
         self._cursor = None   # 🔭 2026-09-05: 播放光标 (set_cursor 推进, 波形随运行增长)
 
     def set_cursor(self, idx):

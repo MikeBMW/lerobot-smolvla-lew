@@ -37,6 +37,9 @@ class FFAttribView(QDialog):
         self.setWindowTitle("🎯 前馈加速器 · 归因与单元分工")
         self.resize(920, 760)
         self.setMinimumSize(720, 600)
+        # 🔧 2026-09-05 老倪: 最小化/最大化按钮无效 — 显式顶级窗口类型 + 按钮
+        self.setWindowFlags(Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint
+                            | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
         self.x3_buf = []          # 每帧层3激活 (512,)
         self.contrib = []         # 每帧 4 维驱动能量
         self.pts2d = None         # PCA 投影 (512,2)
