@@ -4285,8 +4285,8 @@ class SimulinkModule(QWidget):
         self.btn_atomic = mk_btn("🧩 原子", "打开原子技能库 (242条, W²-VLA Token) → 选技能 → 自动建节点链: 技能→结构条件→SYS1→action JSON", self.open_atomic_skill_flow, "#00d4aa")
         tl.addWidget(self.btn_atomic)
         # (🗑 2026-08-14 老倪: 工具栏「🧿 AWE」按钮已删 — 画布 AWE 入口保留在 Model Zoo)
-        self.btn_topsys = mk_btn("🎛 总系统", "顶层系统: 数据→总系统块→评估Scope · 双击总系统块展开 ACT/SmolVLA/SmolVLA+LEW 三条训练线 (Simulink Subsystem)", self.open_topsys, "#a371f7")
-        tl.addWidget(self.btn_topsys)
+        # (🗑 2026-09-04 老倪: 工具栏「🎛 总系统」按钮没用 → 删除; open_topsys 保留
+        #  (总系统 flow 双击块展开仍走), btn_back「⬅返回总系统」保留 (默认隐藏, 子系统内导航)
         # 🗑 2026-08-10 老倪: 工具栏「🧠 左脑/🧠 右脑」按钮已删 (left_right 入口在模块库「🧠 双脑 (left_right)」)
         # 🎛 子系统返回 (2026-08-05 老倪: 顶层总系统双击展开内部三线, 返回恢复顶层)
         self.btn_back = mk_btn("⬅ 返回总系统", "从子系统内部返回上一层 (Simulink Subsystem 语义)", self.back_to_subsystem, "#3fb950")
