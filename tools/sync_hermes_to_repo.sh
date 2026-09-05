@@ -127,9 +127,25 @@ else
     echo "  → push..."
     # 🐛 2026-08-28: 同步包大 (214+ 文件) 时 ghproxy 默认 postBuffer 断连 "hung up"
     #   → postBuffer 提到 512MB; 失败自动重试一次
-    timeout 300 git -c http.sslVerify=false -c http.postBuffer=524288000 push origin main 2>&1 | tail -2 \
-      || timeout 300 git -c http.sslVerify=false -c http.postBuffer=524288000 push origin main 2>&1 | tail -2
-    echo "  ✅ push 完成"
+    # 🐛 2026-09-06: 原 `git push | tail` 管道让 tail 退出码 0 掩盖 push 失败 (假成功)
+    #   → 改用显式 if 判断; 直连失败自动换 ghproxy 代理
+    PUSH_LOG=$(mktemp)
+    _do_push() {
+      local url="$1"
+      if timeout 300 git -c http.sslVerify=false -c http.postBuffer=524288000 push "$url" main >"$PUSH_LOG" 2>&1; then
+        return 0
+      fi
+      tail -2 "$PUSH_LOG"
+      return 1
+    }
+    if _do_push origin; then
+      echo "  ✅ push 完成"
+    elif _do_push https://ghproxy.net/https://github.com/MikeBMW/lerobot-smolvla-lew.git; then
+      echo "  ✅ push 完成 (经 ghproxy)"
+    else
+      echo "  ❌ push 失败 (直连+ghproxy 均不通) — 本地 commit 已留, 下次 cron 再推"
+    fi
+    rm -f "$PUSH_LOG"
   else
     echo "  ⏸ --no-push, 跳过推送"
   fi
