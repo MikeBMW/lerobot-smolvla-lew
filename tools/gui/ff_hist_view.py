@@ -38,6 +38,8 @@ class FFHistView(QDialog):
         self.buf = [[] for _ in range(3)]   # 每层 FIFO 帧 (512 float32)
         self.cur = [None, None, None]       # 最近一帧
         self.ener = [[], [], []]            # 每层每帧能量 E=Σx²
+        self.prev = [None, None, None]      # 上一帧 (算帧间变化)
+        self.dlt = [[], [], []]             # 每层每帧激活变化范数 ‖Δx‖₂ (事件波形)
         self.info = {}
         self.view = "wave"                  # "wave" 波动 / "hist" 直方图
         self._dirty = True
@@ -107,6 +109,11 @@ class FFHistView(QDialog):
             self.ener[i].append(float((a ** 2).sum()))
             if len(self.ener[i]) > N_FRAMES:
                 self.ener[i].pop(0)
+            if self.prev[i] is not None:
+                self.dlt[i].append(float(np.linalg.norm(a - self.prev[i])))
+                if len(self.dlt[i]) > N_FRAMES:
+                    self.dlt[i].pop(0)
+            self.prev[i] = a
         self.info = {"obs": probe.get("obs", {}), "u_ff": probe.get("u_ff", []),
                      "layers": probe.get("layers", [])}
         try:
@@ -190,7 +197,7 @@ class FFHistView(QDialog):
             p.setPen(_TEXT)
             p.setFont(QFont("Sans", 12, QFont.Bold))
             p.drawText(QRect(16, int(y0) + 2, W - 32, 26), Qt.TextWordWrap,
-                       f"{LAYER_NAMES[li]}  (能量波动 E=Σx²)")
+                       f"{LAYER_NAMES[li]}  (激活变化事件波形 ‖Δx‖)")
             p.setPen(QColor(LAYER_COLORS[li]))
             p.setFont(QFont("Sans", 12, QFont.Bold))
             p.drawText(QRect(W - 300, int(y0) + 2, 284, 24), Qt.AlignRight | Qt.AlignVCenter,
@@ -200,11 +207,12 @@ class FFHistView(QDialog):
             x1 = W - 20
             y_top = int(y0) + 34
             y_bot = int(y0 + row_h) - 24
-            if len(en) >= 2:
-                # 🧠 2026-09-05 老倪(脑机接口式): 去基线放大 — y 范围取本窗口
-                #   [min*0.85, max*1.15], 小波动也显示成明显起伏 (能量平段不再压成直线)
-                ymin_ = float(min(en)) * 0.85
-                ymax_ = float(max(en)) * 1.15
+            dl = self.dlt[li]
+            if len(dl) >= 2 and max(dl) > 1e-4:
+                # 🧠 事件波形: 帧间激活变化 ‖Δx‖₂ (去基线放大) —
+                #   平滑段细微波动, 启动/抓取/接触/插入 = 事件尖峰 (真实神经事件)
+                ymin_ = float(min(dl)) * 0.9
+                ymax_ = float(max(dl)) * 1.1
                 if ymax_ - ymin_ < 1e-6:
                     ymax_ = ymin_ + 1.0
                 p.setPen(QPen(QColor("#21262d"), 1))
@@ -212,35 +220,36 @@ class FFHistView(QDialog):
                 for gy in range(3):
                     yy2 = y_top + (y_bot - y_top) * gy / 2
                     p.drawLine(x0, int(yy2), x1, int(yy2))
-                # 能量曲线 (面积填充 → 波形感)
+                n = len(dl)
                 xs = np.linspace(x1 - (n - 1) * (x1 - x0) / max(N_FRAMES - 1, 1),
                                  x1, n)
+                # 面积 (淡)
                 col = QColor(LAYER_COLORS[li])
-                col.setAlpha(40)
+                col.setAlpha(45)
                 p.setPen(Qt.NoPen)
                 p.setBrush(col)
                 poly = [QPointF(float(xs[0]), float(y_bot))]
-                for xx, e in zip(xs, en):
-                    yy2 = y_bot - (y_bot - y_top) * (float(e) - ymin_) / (ymax_ - ymin_)
+                for xx, v in zip(xs, dl):
+                    yy2 = y_bot - (y_bot - y_top) * (float(v) - ymin_) / (ymax_ - ymin_)
                     poly.append(QPointF(float(xx), float(yy2)))
                 poly.append(QPointF(float(xs[-1]), float(y_bot)))
                 p.drawPolygon(QPolygonF(poly))
-                # 曲线线
+                # 波形线 (亮)
                 p.setPen(QPen(QColor(LAYER_COLORS[li]), 2))
                 for j in range(1, n):
-                    y1 = y_bot - (y_bot - y_top) * (float(en[j - 1]) - ymin_) / (ymax_ - ymin_)
-                    y2 = y_bot - (y_bot - y_top) * (float(en[j]) - ymin_) / (ymax_ - ymin_)
+                    y1 = y_bot - (y_bot - y_top) * (float(dl[j - 1]) - ymin_) / (ymax_ - ymin_)
+                    y2 = y_bot - (y_bot - y_top) * (float(dl[j]) - ymin_) / (ymax_ - ymin_)
                     p.drawLine(int(xs[j - 1]), int(y1), int(xs[j]), int(y2))
-                # 标注: 放大范围 (min/max), 波形读法
+                # 标注
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 9))
                 p.drawText(int(x0), int(y_bot + 14),
-                           f"E∈[{min(en):.0f}, {max(en):.0f}] 去基线放大 · 起伏=神经元活动 · 顶部陡升=插入段")
+                           f"激活变化事件 ‖Δx‖ 范围[{min(dl):.2f},{max(dl):.2f}] · 尖峰=启动/抓取/接触/插入 · 平=表征稳定")
             else:
                 p.setPen(_TEXT2)
                 p.setFont(QFont("Sans", 10))
-                p.drawText(QRect(x0, y_top, x1 - x0, 40), Qt.TextWordWrap,
-                           "累积中… 波形滚动窗口最多覆盖 N_FRAMES 帧 (≈6s)")
+                p.drawText(QRect(x0, y_top, x1 - x0, 60), Qt.TextWordWrap,
+                           "累积中… (需 ≥2 帧算变化; 波形滚动窗口最多 300 帧 ≈6s)")
             # 行分隔
             p.setPen(QPen(QColor("#21262d"), 1))
             p.drawLine(16, int(y0 + row_h) - 1, W - 16, int(y0 + row_h) - 1)
