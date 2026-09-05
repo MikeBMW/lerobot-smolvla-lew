@@ -2018,6 +2018,7 @@ def node_ss_s2(ctx):
         accel = par.FeedforwardAccelerator()
         u_ff = accel.forward(obs43)
         _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)
+        _SS_STATE["ff_probe"] = accel.probe   # 🧠 探针缓存 (前馈激活直方图节点消费)
         if log:
             # 🧠 探针 (2026-09-04): 展示 MLP 在想什么 — 层活跃/能量 + 输出归因 top 单元
             _p = accel.probe
@@ -2036,6 +2037,40 @@ def node_ss_s2(ctx):
     except Exception as e:
         if log:
             log(f"⚠️ 并行处理层真实执行失败: {e}")
+        return False
+
+
+_FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线程)
+
+
+def node_ss_ff_hist(ctx):
+    """🧠 前馈激活直方图 — 读 ⚡前馈加速器探针 (ff_probe) → 三层 512 激活分布直方图
+    引线: ⚡前馈加速器 → 本节点 (数据经 _SS_STATE['ff_probe'] 流通)"""
+    log = ctx.get("log")
+    try:
+        probe = _SS_STATE.get("ff_probe")
+        if not probe or "act_raw" not in probe:
+            if log:
+                log("🧠 前馈激活: 无探针数据 — 先运行 ⚡前馈加速器节点 (▶运行或单步)")
+            return False
+        global _FF_HIST_WIN
+        if _FF_HIST_WIN is None:
+            from ff_hist_view import FFHistView   # 同目录, 延迟 import (Qt 依赖)
+            _FF_HIST_WIN = FFHistView()
+        _FF_HIST_WIN.push(probe)
+        if not _FF_HIST_WIN.isVisible():
+            _FF_HIST_WIN.show()
+        _FF_HIST_WIN.raise_()
+        _FF_HIST_WIN.activateWindow()
+        if log:
+            ls = probe.get("layers") or []
+            _act = " · ".join(f"L{i+1}:{l.get('active', 0)}/512" for i, l in enumerate(ls))
+            log(f"🧠 前馈激活直方图: 已更新 [{_act}] · u_ff={np.round(probe.get('u_ff', []), 3)} "
+                f"(窗口: 三层激活分布, 0=ReLU截断)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 前馈激活直方图失败: {e}")
         return False
 
 
@@ -2220,6 +2255,7 @@ _reg("ss_obs",   ["43D", "统一状态向量"], "🧩 43D 统一状态向量 —
 _reg("ss_bg2",   ["并行处理层"], "S2 并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
 _reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
 _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
+_reg("ss_ff_hist", ["前馈激活", "激活直方图"], "🧠 前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断, 引线 S2→本节点)", node_ss_ff_hist)
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
 _reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)

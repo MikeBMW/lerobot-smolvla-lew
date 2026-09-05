@@ -84,6 +84,7 @@ def mlp_ff_forward(npz_path, probe=None):
                 probe["out_contrib"].append(
                     [(int(j), float(W[3][d, j] * x3[j])) for j in j3])
             probe["u_ff"] = [round(v, 4) for v in (u_xyz[0], u_xyz[1], u_xyz[2], u_grip)]
+            probe["act_raw"] = [x1, x2, x3]   # 全量激活 (每层512, 供直方图/分布可视化)
         return np.concatenate([u_xyz, [u_grip]])
 
     return ff_forward
