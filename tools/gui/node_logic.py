@@ -663,12 +663,13 @@ def node_spectral_norm(ctx):
 
 
 def node_gru_gate(ctx):
-    """🧮 GRU 门控机制 — 右脑潜空间门控收缩分析 (2026-08-12 老倪)
-    原理: 重置门 r=σ(W_hr·h) · 更新门 z=σ(W_hz·h); ρ(W_hz)<1 → 潜状态指数收敛防爆炸
-    数据来自: 右脑 GRU 权重谱半径 (eval_state_space.py gru_gate_analysis)
+    """🧮 谱收缩分析 — 右脑 WorldModel 权重谱半径收缩 (2026-08-12 老倪, 2026-09-06 叙事修正)
+    右脑 = 前向 MLP 世界模型 (非 GRU, 无门控结构) → 实际分析: 全网络权重谱半径乘积
+    (Lipschitz 收缩上界; 若未来换真 GRU 递归估计器则分析门控 ρ(W_hz)<1 防爆炸)
+    数据来自: 右脑权重谱 (eval_state_space.py gru_gate_analysis)
     双击 → 全面 Z 分析 (含本模块计算结果)"""
     log = ctx["log"]
-    log("🧮 GRU 门控: 右脑潜空间 ρ(W) 收缩分析 (双击已触发 Z 分析)")
+    log("🧮 谱收缩: 右脑 WorldModel ρ(W) 收缩分析 (双击已触发 Z 分析)")
     return True
 
 
@@ -732,16 +733,18 @@ def node_z700_internal(ctx):
 
 
 def node_neural_kalman(ctx):
-    """🔮 右脑 · 非线性卡尔曼滤波器 — 世界模型 (2026-08-16 老倪: 脑科学映射)
-    卡尔曼滤波两件事 = GRU 黑盒版:
-      预测 Predict: 状态转移 A ≈ GRU 循环权重 W_hh (记住"世界怎么演")
+    """🔮 右脑 · 世界模型导航仪 — 脑科学映射 (2026-08-16 老倪; 2026-09-06 叙事修正)
+    训练右脑 RightBrainWM = 前向世界模型 (obs+act→next_obs+contact, MLP 非 GRU)。
+    卡尔曼滤波对照 (教学类比, 卡尔曼 vs 递归网络结构对照):
+      预测 Predict: 状态转移 A ≈ 循环权重 W_hh (记住"世界怎么演")
                    + 控制输入 B ≈ action 输入 (动作如何改变状态)
-      更新 Update: 卡尔曼增益 K ≈ GRU 更新门/重置门 (自动调节相信预测 vs 相信观测)
+      更新 Update: 卡尔曼增益 K ≈ 更新门/重置门 (自动调节相信预测 vs 相信观测)
+    实际链路: 右脑真权重接入 dynamics.py 先验动力学预测器 (contact_of/next 位置预测);
+    est (自适应状态估计器) 为教学卡尔曼 (A/K/B 标定)。
     先验注入: ctx_proj (VLM 高层语义) 初始化 h0 ≈ 带先验的卡尔曼迭代
-    输出: out1=状态预测, out2=contact 概率 (预测误差 → 状态机触发减速/重试)
     双击 → 标定 A/K (预测强度 / 更新增益)"""
     log = ctx["log"]
-    log("🔮 右脑·非线性卡尔曼: 预测(A≈循环权重) + 更新(K≈门控) → 状态估计+contact 概率")
+    log("🔮 右脑·世界模型: 预测(next_obs) + contact 判断 → 先验/残差基准 (真权重见先验动力学预测器)")
     return True
 
 
@@ -1273,15 +1276,15 @@ _reg("mode_switch", ["训练/推理", "模式开关"], "🔀 训练/推理模式
 _reg("infer_rollout", ["推理 (rollout)", "rollout"], "📷 推理 (rollout) — 最新模型仿真插拔评估+视频", node_infer_rollout)
 _reg("eval_state_space", ["模型评估 (状态空间)", "状态空间评估"], "📊 状态空间稳定性评估 — L2/BIBO/谱半径/状态机覆盖", node_eval_state_space)
 _reg("spectral_norm", ["谱归一化"], "🧮 谱归一化 — 左脑逐层 σ_max → Lipschitz 上界", node_spectral_norm)
-_reg("gru_gate", ["GRU 门控"], "🧮 GRU 门控机制 — 右脑潜空间 ρ(W) 收缩", node_gru_gate)
+_reg("gru_gate", ["GRU 门控"], "🧮 谱收缩 — 右脑 WorldModel ρ(W) 收缩 (2026-09-06: 右脑为前向MLP非GRU, 节点名保留历史)", node_gru_gate)
 _reg("force_limit", ["力幅值限幅"], "🧮 力幅值限幅 — 插入阶段饱和 → 临界阻尼 ζ", node_force_limit)
 _reg("eval_report_pdf", ["稳定性评估 PDF"], "📄 稳定性评估汇总 PDF — 公式+图+数据+结论 → 飞书", node_eval_report_pdf)
 _reg("ff_pd_control", ["前馈 PD"], "⚙️ 前馈 PD 控制器 — 顶层增益调度PID+前馈, Z700=底层", node_ff_pd_control)
 _reg("ff_ref_input", ["参考输入"], "📡 参考输入 u(t) — 前馈PD顶层输入", node_ff_ref_input)
 _reg("ff_scope", ["输出 Scope"], "🖥 输出 Scope — 前馈PD顶层输出响应", node_ff_scope)
 _reg("z700_internal", ["Z700 内部"], "🔬 Z700 内部模块 (顶层只读展示)", node_z700_internal)
-# 🧠 神经同构行 (2026-08-16 老倪: 左脑MLP≈小脑 / 右脑GRU≈非线性卡尔曼 / 状态机≈皮层)
-_reg("neural_kalman", ["右脑 · 非线性卡尔曼", "非线性卡尔曼"], "🔮 右脑·非线性卡尔曼 — 世界模型: 预测(状态转移A)+更新(门控K)", node_neural_kalman)
+# 🧠 神经同构行 (2026-08-16 老倪; 2026-09-06 修正: 右脑=前向WM非GRU: 左脑MLP≈小脑 / 右脑WM≈世界模型先验 / 状态机≈皮层)
+_reg("neural_kalman", ["右脑 · 世界模型", "世界模型"], "🔮 右脑·世界模型 — 前向预测 next_obs+contact (真权重在先验动力学预测器; 教学卡尔曼对照)", node_neural_kalman)
 _reg("neural_alpha", ["α 融合层", "置信度旋钮"], "⚖️ α融合层 — fused=(1−α)·预测+α·观测, α≈等效卡尔曼增益", node_neural_alpha)
 _reg("neural_calib", ["左脑标定实验", "标定实验"], "🔧 左脑标定 — 感知零偏/执行力act_gain·err_gain/现场微调 三件套", node_neural_calib)
 _reg("neural_climbing", ["攀缘纤维"], "🧬 攀缘纤维 — 力传感器vs右脑预测→复杂脉冲→LTD gate 抑制", node_neural_climbing)

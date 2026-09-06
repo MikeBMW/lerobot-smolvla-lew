@@ -38,7 +38,7 @@
    "params": {
     "bg": "#1a1030",
     "model": "state_space",
-    "desc": "S2 并行处理层: 快 = 前馈加速器 (左脑MLP) · 慢 = 自适应状态估计器 (右脑GRU 卡尔曼校正)",
+    "desc": "S2 并行处理层: 快 = 前馈加速器 (左脑MLP) · 慢 = 自适应状态估计器 (教学卡尔曼; 训练右脑=前向世界模型, 接入先验动力学预测器)",
     "source": "src/lerobot/policies/left_right/state_space/parallel.py"
    }
   },
@@ -163,7 +163,7 @@
    "params": {
     "state_space": true,
     "kalman_estimator": true,
-    "desc": "自适应状态估计器 (原右脑 GRU): 慢路径 — 递归潜状态 + 卡尔曼预测-校正",
+    "desc": "自适应状态估计器 (教学卡尔曼, A/K/B 标定; 2026-09-06 修正: 非右脑 — 训练右脑=前向世界模型, 真权重在📈先验动力学预测器)",
     "source": "src/lerobot/policies/left_right/state_space/parallel.py"
    },
    "inputs": [
@@ -188,7 +188,7 @@
    "params": {
     "state_space": true,
     "prior_predict": true,
-    "desc": "先验动力学预测器: 预测 next_obs — 状态转移 A ≈ GRU 循环权重",
+    "desc": "先验动力学预测器: 预测 next_obs — 训练右脑 WorldModel 真权重接入点 (contact_of/next位置, models/ss_right_brain.npz); 线性 A·x+B·u 为守卫回退",
     "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
    },
    "inputs": [
