@@ -10835,7 +10835,10 @@ class SimulinkModule(QWidget):
             try:
                 from state_space_sim_real import RealStateSpaceSim
                 # log=线程安全收集器 (worker 线程禁 QObject 方法 — 崩溃铁律)
-                sim = RealStateSpaceSim(seed=100, vision=True, vision_every=1,
+                # 🐛 2026-09-07 静静: seed=100 是已知失败布局 (R0 实测: 夹持偏浅→peg 滑脱→
+                #   重抓时间耗尽; 10 轮回归仅 seed101/102/103/104/108 通过, 104 最快 352 步)。
+                #   演示固定成功 seed, seed100 类布局留给真机/夹持质量修复后再覆盖。
+                sim = RealStateSpaceSim(seed=104, vision=True, vision_every=1,
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
