@@ -73,6 +73,7 @@ class PriorDynamicsPredictor:
         self.loaded = False
         self.n_wm = 0      # 真权重主执行计数
         self.n_linear = 0  # 线性回退计数
+        self.last_contact = None  # 最近一次右脑 contact (供融合)
         if use_wm:
             try:
                 self.wm = rb_ff_forward(npz_path)
@@ -83,23 +84,43 @@ class PriorDynamicsPredictor:
                       f"tools/export_ss_right_brain.py")
                 self.wm = None
 
+    def _in_domain(self, obs):
+        """右脑训练域检查 (逐通道归一化 ≤4σ; 零方差通道跳过)。域外 → 不用 wm"""
+        if self.wm is None or obs is None or self.wm.sm is None:
+            return False
+        o = np.asarray(obs, dtype=np.float32)[:39]
+        sm, ss = self.wm.sm, self.wm.ss
+        xn = (o - sm) / np.where(ss > 1e-4, ss, 1.0)
+        if np.any(np.abs(np.where(ss > 1e-4, xn, np.float32(0.0))) > DOMAIN_SIGMA):
+            return False
+        return True
+
     def predict(self, latent, action, obs=None):
-        """先验预测: 右脑 WorldModel (obs+act → next_obs 位置) 主执行; 线性守卫回退"""
-        use_wm = self.wm is not None and obs is not None
-        if use_wm and self.wm.sm is not None:
-            o = np.asarray(obs, dtype=np.float32)[:39]
-            sm, ss = self.wm.sm, self.wm.ss
-            xn = (o - sm) / np.where(ss > 1e-4, ss, 1.0)
-            if np.any(np.abs(np.where(ss > 1e-4, xn, np.float32(0.0))) > DOMAIN_SIGMA):
-                use_wm = False
+        """先验预测: 右脑 WorldModel (obs+act → next_obs 位置) 主执行; 线性守卫回退
+        ⚠️ 2026-09-06 实测: 引擎纯积分动力学下线性先验即最优 (u→位移精确), 右脑 1cm
+        级实时误差反而加噪 → 引擎默认不传 obs 走线性; real sim 布局域外亦线性。"""
+        use_wm = self._in_domain(obs)
         if use_wm:
             try:
                 nxt, contact = self.wm(np.asarray(obs, dtype=np.float32)[:39],
                                        np.asarray(action, dtype=np.float32))
                 self.n_wm += 1
+                self.last_contact = float(contact)   # 右脑接触判断 (供融合; acc 1.00 重训后)
                 lat = np.asarray(latent, dtype=float)
                 return np.concatenate([nxt[:3], [self.A * float(lat[3]) if lat.size > 3 else 0.0]])
             except Exception:
                 use_wm = False
+        self.last_contact = None
         self.n_linear += 1
         return self.A * np.asarray(latent, dtype=float) + self.B * np.asarray(action, dtype=float)
+
+    def contact_of(self, obs, action):
+        """右脑接触判断 (训练模型, acc 1.00): obs+act → contact ∈[0,1]; 域外/无权重 → None"""
+        if not self._in_domain(obs):
+            return None
+        try:
+            _, c = self.wm(np.asarray(obs, dtype=np.float32)[:39],
+                           np.asarray(action, dtype=np.float32))
+            return float(c)
+        except Exception:
+            return None

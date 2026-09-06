@@ -314,8 +314,8 @@ class StateSpaceSim:
             # ④ 慢通道: 状态估计先验 (4D: 位置 + 预测力)
             latent_pred = self.est.predict(self.latent, act4)
             # ⑤ 先验动力学预测 next_obs (4D)
-            # ⚠️ 2026-09-06 实测: 右脑 pred_next 未训好 (引擎残差 0.23 vs 线性 0.05, 4.6x) →
-            #    不传 obs 走线性 (引擎动力学 u→位移 线性最优); 右脑重训 next 后启用 wm
+            # ⚠️ 2026-09-06 实测: 引擎纯积分动力学下线性先验即最优 (u→位移精确), 右脑
+            #    1cm 级实时误差反而加噪 (残差 0.108 vs 0.0485) → 位置先验不传 obs 走线性
             prior = self.dyn.predict(self.latent, act4)
             # ⑥ 物理世界观测 z_k (位置带噪声 + 力觉 — 接触力是残差真实来源)
             z_k = np.concatenate([self.world.observe(self.x), [force_norm]])
@@ -327,6 +327,11 @@ class StateSpaceSim:
             residual[3] = force_norm
             r_scalar = float(np.linalg.norm(residual))
             contact_p = float(self.cognition.contact_probability(r_scalar, gain=8.0))
+            # 🧠 右脑 contact 融合 (2026-09-06 重训 acc 1.00): 训练模型判断"手已到光模块
+            #    抓取距离"作闭爪证据, 与经验残差公式取 max (真权重主执行, 教学公式兜底)
+            _cw = self.dyn.contact_of(obs[:39] if obs is not None else None, act4)
+            if _cw is not None:
+                contact_p = max(contact_p, _cw)
             # 后验: 潜状态更新 (卡尔曼)
             self.latent = self.est.update(latent_pred, corrected)
             # ⑧ 认知调度: 否决/融合 (慢通道反馈 u_fb = 位置校正方向)
