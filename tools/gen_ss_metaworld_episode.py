@@ -113,14 +113,20 @@ def site(m, d, name):
     return np.array(d.site_xpos[m.site(name).id], dtype=float)
 
 
-def run_episode(seed=0, want_video=True, log=print):
+def run_episode(seed=0, want_video=True, log=print, analytic=False):
     env = make_env(seed)
     m, d = env.model, env.data
     ss = StateSpaceSim(log=lambda *a: None)      # 复用六层真实源码 + 八阶段调度器
     #   (估计器增益 K=0.2 由 StateSpaceSim 内部设定 — 观测噪声 5mm 下 K=0.5 会抖 7.4 倍)
     # 八阶段调度器: 夹持阈值按 metaworld 实测标定 (夹住实物后开度不可能到 0)
+    # ⚠️ 2026-09-06 实测: align_th 收紧到 0.008 会破坏前段推进 (教师 97%→0/6, 疑与
+    #   状态机耦合) — 保持默认 0.02, 插入对准问题改由转移段预对准子状态解决
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH)
     ss.sched = sched
+    # 🧠 教师/学生模式 (2026-09-06 静静): analytic=True = 解析律教师 (域外全局稳定,
+    #   蒸馏范式教师, 与 sim_real R0 同思路); 默认 False = 蒸馏 MLP 学生主执行 (训练域内)
+    if analytic:
+        ss.accel.forward = ss.accel.analytic_forward
 
     o = get_obs(env)
     hand = o[0:3].astype(float)
@@ -193,6 +199,14 @@ def run_episode(seed=0, want_video=True, log=print):
             target = np.array([peg[0], peg[1], peg_z0 + H_LIFT])
         elif st == "转移":
             target = hole_mouth - head_off + np.array([0, 0, 0.03])
+        elif st == "插入":
+            # 🐛 2026-09-06 静静 (与 sim_real 同修): 两段式插入 — ①peg 头垂直对齐孔口
+            #   中心高度 (z_err≤4mm) ②沿孔轴水平推入终点。原单段直线是斜插: peg 端面
+            #   无倒角 (mujoco 刚体) → 端面下缘顶孔口上缘 → z 卡孔口下方磨死 (实测实锤)。
+            if abs(float(peg_head[2] - hole_mouth[2])) > 0.004:
+                target = np.array([peg_head[0], peg_head[1], hole_mouth[2]]) - head_off
+            else:
+                target = goal - head_off
         else:
             target = goal - head_off
 
@@ -205,7 +219,13 @@ def run_episode(seed=0, want_video=True, log=print):
         prev18 = cur18
 
         # ── 六层链路 (与状态空间画布完全一致) ──
-        u_ff = ss.accel.forward(obs43)
+        # 🧠 2026-09-06 分层伺服 (真实插拔架构, 与真机同构): 神经网络 = 粗轨迹/规划
+        #   (接近→转移, 无接触段, 容差大); 插入段 = 毫米级接触操作, MLP 输出底噪
+        #   (0.4cm/s 实测) 无法定点悬停 → 解析伺服精插 (同 sim_real R0 强制解析的
+        #   物理依据: 无噪声解析律才能对准孔口; 学生训练数据插入段 u_ff 本就来自
+        #   解析教师 → 训练/推理同构, 无需重采)。
+        st_now = sched.stage()
+        u_ff = ss.accel.analytic_forward(obs43) if st_now == "插入" else ss.accel.forward(obs43)
         # 🐛 2026-08-25: 卡尔曼预测输入 = 上一步**真正下发**的控制量 (原来错用 u_ff 前馈建议,
         #   两者模长差 3.12 倍 → 预测拿没执行的动作外推, 白送预测误差)
         act4 = np.concatenate([u_prev[:3], [0.0]])
@@ -217,6 +237,11 @@ def run_episode(seed=0, want_video=True, log=print):
         residual[3] = force_norm
         r_scalar = float(np.linalg.norm(residual))
         contact_p = float(ss.cognition.contact_probability(r_scalar, gain=8.0))
+        # 🧠 右脑 contact 融合 (2026-09-06 重训 acc 1.00, 与引擎 run 同构): 训练 WM
+        #   判断闭爪时机作证据, 与经验残差公式取 max — 域外返回 None → 公式兜底 (n_wm 可查)
+        _cw = ss.dyn.contact_of(obs43[:39], act4)
+        if _cw is not None:
+            contact_p = max(contact_p, _cw)
         latent = ss.est.update(latent_pred, corrected)
         # 🌫 反馈用滤波后的残差 (瞬时残差 96% 是 5mm 观测噪声, 直接反馈=注入噪声)
         res_ema = (0.85 * res_ema + 0.15 * residual) if res_ema is not None else residual.copy()
@@ -254,8 +279,9 @@ def run_episode(seed=0, want_video=True, log=print):
         sched.advance(contact_p=contact_p, dist_h=dist_h, gripper=gripper,
                       depth=depth, d_xy=d_xy, lifted=lifted, at_grasp_pose=at_pose,
                       # 🛟 夹持丢失回退证据: MuJoCo 真实夹持力 + 光模块高度
-                      grasp_force=float(f_grasp), peg_z=float(peg_now[2]),
-                      peg_z_grasp=float(peg_z0))
+                      grasp_force=float(f_grasp), peg_z=float(head_now[2]),
+                      peg_z_grasp=float(peg_z0),
+                      hole_z=float(hole_mouth[2]))  # 🐛 2026-09-06: 转移→插入 z 条件 (peg_z=peg头, 同 sim_real)
         done = sched.stage() == "完成"
         success = success or done
 
@@ -298,6 +324,7 @@ def run_episode(seed=0, want_video=True, log=print):
 
     cam_pos, cam_fwd, cam_right, cam_up = camera_frame(m, "corner2")
     meta = dict(seed=seed, ctrl_dt=ctrl_dt, success=bool(success),
+                analytic=bool(analytic),
                 stage_final=sched.stage(), steps=len(tr["t"]),
                 cam_pos=cam_pos, cam_fwd=cam_fwd, cam_right=cam_right, cam_up=cam_up,
                 cam_fovy=float(m.cam_fovy[m.camera("corner2").id]),
@@ -363,11 +390,12 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--seeds", type=int, default=6, help="失败自动换 seed 的最大尝试数")
     ap.add_argument("--no-video", action="store_true")
+    ap.add_argument("--analytic", action="store_true", help="解析律教师模式 (域外稳定, 蒸馏数据用)")
     a = ap.parse_args()
     best = None
     for k in range(a.seeds):
         seed = a.seed + k
-        tr, meta, frames = run_episode(seed, not a.no_video)
+        tr, meta, frames = run_episode(seed, not a.no_video, analytic=a.analytic)
         stages = [s.replace("阶段 ", "").split(" · ")[0] for s in tr["stage"]]
         uniq = []
         for s in stages:

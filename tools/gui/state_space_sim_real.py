@@ -97,19 +97,23 @@ class RealStateSpaceSim:
         self.safety = _load("safety.py")
         self.execution = _load("execution.py")
         self.accel = self.parallel.FeedforwardAccelerator()
-        # 🐛 2026-09-06 静静 (R0 全 seed 失败根因收尾): R0 真实化布局每进程随机漂移
-        #   (>10cm, metaworld 契约), 蒸馏 MLP 训练自引擎单布局 → 转移/搬运段 target 通道
-        #   域外 → 输出 z 与目标相悖 (peg 头被压低撞孔下夹具)。逐通道域守卫只能救单通道
-        #   域外, 救不了联合分布偏移。真实化强制解析 (09-04 R0 基线 62% 即解析; 引擎
-        #   快演单布局=训练域, 仍 MLP 主执行)。多布局重蒸馏后解除 (tools 管道 export→train)。
-        self.accel.forward = self.accel.analytic_forward
+        # 🧠 2026-09-06 静静 (晚, 多布局重训完成): 多布局学生 (models/ss_left_brain.npz,
+        #   71ep×49765帧真实 metaworld 教师蒸馏 30K 步) 在 gen 采集管道实测 47/48=97.9%
+        #   追平教师; 引擎快演全 MLP 主执行完成。sim_real 默认仍解析 (seed100 固定布局
+        #   的 hand-peg 相对方位在训练分布边缘 → MLP 接近段输出反向, 绝对坐标 4σ 守卫
+        #   盲区 — 已知问题), SS_USE_MLP=1 启用分层学生 (插入段恒解析伺服)。
+        if os.environ.get("SS_USE_MLP") == "1":
+            print("🧠 SS_USE_MLP=1: 分层伺服 (前段蒸馏 MLP 主执行 + 插入段解析)")
+        else:
+            self.accel.forward = self.accel.analytic_forward
         # B = 每步实际位移/速度指令 — 实测标定: metaworld act=u/0.5 伺服稳态 ~9mm/步@act1,
         #   位移 ≈ u × 0.018s (引擎 dt=0.02 巧合同量级); 原 B=0.1 预测过冲 5 倍 →
         #   残差 0.5 级爆发 → contact_p 误判接触 (夹爪离销 20cm 空闭合) → 卡死循环
         self.est = self.parallel.AdaptiveStateEstimator(A=1.0, K=0.2, B=0.02)
-        self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=0.02, use_wm=False)
-        # use_wm=False: R0 布局随机漂移 >10cm, 右脑(单布局训练)域外 — 同 accel 强制解析理由
-        #   (2026-09-06); 引擎快演单布局=训练域 → 右脑 WorldModel 真权重主执行
+        self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=0.02, use_wm=True)
+        # use_wm=True (2026-09-06 晚): 右脑已多布局重训 (models/ss_right_brain.npz,
+        #   真实 mj_contactForce 力标签 acc 0.998) → R0 布局域内 → contact 融合主执行;
+        #   位置先验仍默认线性 (predict 不传 obs, 引擎纯积分下线性即最优, 09-06 实测)
         self.execr = self.execution.RobotExecutor()
         self.world = self.execution.PhysicalWorld(noise=0.0)   # R0 直读真值, 不加模拟噪声
         # 夹爪结构 site id (现场解析, 每轮 reset 后刷新 xpos)
@@ -412,7 +416,11 @@ class RealStateSpaceSim:
             tactile4 = np.array([self.gripper, float(self.grasped), 0.0, 0.0])
             obs = self.perception.fuse_sensors(visual39, force, tactile4)
             # ⑤ 六层控制器 (同引擎: 前馈→估计→预测→校正→调度→限幅→执行)
-            u_ff = self.accel.forward(obs)
+            # 🧠 分层伺服 (2026-09-06 晚, 同 gen 采集管道): 前段 = 蒸馏 MLP 真实主执行
+            #   (多布局重训, 域守卫兜底); 插入段 = 毫米级接触 → 解析伺服精插
+            st_now = self.sched.stage()
+            u_ff = (self.accel.analytic_forward(obs) if st_now == "插入"
+                    else self.accel.forward(obs))
             act4 = np.concatenate([self.u_prev[:3], [0.0]])
             latent_pred = self.est.predict(self.latent, act4)
             prior = self.dyn.predict(self.latent, act4)
@@ -422,6 +430,11 @@ class RealStateSpaceSim:
             residual[3] = force_norm
             r_scalar = float(np.linalg.norm(residual))
             contact_p = float(self.cognition.contact_probability(r_scalar, gain=8.0))
+            # 🧠 右脑 contact 融合 (2026-09-06 晚, 多布局重训 acc 0.998): 训练 WM 判闭爪
+            #   时机作证据, 与经验残差公式取 max — 域外返回 None → 公式兜底
+            _cw = self.dyn.contact_of(np.asarray(obs, dtype=np.float32)[:39], act4)
+            if _cw is not None:
+                contact_p = max(contact_p, _cw)
             self.latent = self.est.update(latent_pred, corrected)
             self.res_ema = (0.85 * self.res_ema + 0.15 * np.asarray(residual, dtype=float)
                             if self.res_ema is not None

@@ -42,7 +42,7 @@ def rb_ff_forward(npz_path=None, probe=None):
             nxt_n = W["W_p"] @ h + W["b_p"]
             nxt = nxt_n if next_raw else (nxt_n * ss + sm)
             c = (W["W_c"] @ h + W["b_c"]).reshape(-1)   # W_c (1,256) → (1,) → 标量
-            contact = float(1.0 / (1.0 + np.exp(-c[0])))
+            contact = float(1.0 / (1.0 + np.exp(-float(np.clip(c[0], -50.0, 50.0)))))
             return nxt, contact
         # 批量 (n, 39)/(n, 4)
         x = np.concatenate([o, a], axis=-1)

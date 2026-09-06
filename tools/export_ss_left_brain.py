@@ -51,16 +51,29 @@ def main(ckpt_dir=None):
     if len(W) != 4:
         print(f"❌ 期望 4 层 Linear, 实际 {len(W)} 层")
         return 1
-    # 归一化参数重算 (同 ss_verify_trained.py, 训练用 dataset.stats)
-    import pandas as pd
-    parquet = os.path.join(ROOT, "data", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
-    df = pd.read_parquet(parquet)
-    S = np.stack(df["observation.state"].values).astype(np.float32)
-    A = np.stack(df["action"].values).astype(np.float32)
-    sm = S.mean(0).astype(np.float32)
-    ss = S.std(0).astype(np.float32) + np.float32(1e-8)
-    am = A.mean(0).astype(np.float32)
-    astd = A.std(0).astype(np.float32) + np.float32(1e-8)
+    # 归一化参数: 默认读训练数据集 stats.json (标准 LeRobot meta/stats.json);
+    #   兼容旧行为: 无 stats.json 时从 parquet 重算 (引擎域默认 data/ss_insert_lerobot)
+    #   🐛 2026-09-06 静静: 旧版硬编码引擎域 parquet → 多布局 ckpt 导出配错归一化 → 摸底失真
+    import json
+    stats_root = os.environ.get("SS_STATS_ROOT", os.path.join(ROOT, "data", "ss_insert_lerobot"))
+    stats_json = os.path.join(stats_root, "meta", "stats.json")
+    if os.path.isfile(stats_json):
+        st = json.load(open(stats_json, encoding="utf-8"))
+        sm = np.array(st["observation.state"]["mean"], dtype=np.float32)
+        ss = np.array(st["observation.state"]["std"], dtype=np.float32) + np.float32(1e-8)
+        am = np.array(st["action"]["mean"], dtype=np.float32)
+        astd = np.array(st["action"]["std"], dtype=np.float32) + np.float32(1e-8)
+        print(f"   stats: {stats_root}/meta/stats.json")
+    else:
+        import pandas as pd
+        parquet = os.path.join(ROOT, "data", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
+        df = pd.read_parquet(parquet)
+        S = np.stack(df["observation.state"].values).astype(np.float32)
+        A = np.stack(df["action"].values).astype(np.float32)
+        sm = S.mean(0).astype(np.float32)
+        ss = S.std(0).astype(np.float32) + np.float32(1e-8)
+        am = A.mean(0).astype(np.float32)
+        astd = A.std(0).astype(np.float32) + np.float32(1e-8)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     np.savez(OUT,
              **{f"W{i}": W[i] for i in range(4)},
