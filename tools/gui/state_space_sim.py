@@ -314,6 +314,8 @@ class StateSpaceSim:
             # ④ 慢通道: 状态估计先验 (4D: 位置 + 预测力)
             latent_pred = self.est.predict(self.latent, act4)
             # ⑤ 先验动力学预测 next_obs (4D)
+            # ⚠️ 2026-09-06 实测: 右脑 pred_next 未训好 (引擎残差 0.23 vs 线性 0.05, 4.6x) →
+            #    不传 obs 走线性 (引擎动力学 u→位移 线性最优); 右脑重训 next 后启用 wm
             prior = self.dyn.predict(self.latent, act4)
             # ⑥ 物理世界观测 z_k (位置带噪声 + 力觉 — 接触力是残差真实来源)
             z_k = np.concatenate([self.world.observe(self.x), [force_norm]])

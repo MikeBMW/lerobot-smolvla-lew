@@ -107,7 +107,9 @@ class RealStateSpaceSim:
         #   位移 ≈ u × 0.018s (引擎 dt=0.02 巧合同量级); 原 B=0.1 预测过冲 5 倍 →
         #   残差 0.5 级爆发 → contact_p 误判接触 (夹爪离销 20cm 空闭合) → 卡死循环
         self.est = self.parallel.AdaptiveStateEstimator(A=1.0, K=0.2, B=0.02)
-        self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=0.02)
+        self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=0.02, use_wm=False)
+        # use_wm=False: R0 布局随机漂移 >10cm, 右脑(单布局训练)域外 — 同 accel 强制解析理由
+        #   (2026-09-06); 引擎快演单布局=训练域 → 右脑 WorldModel 真权重主执行
         self.execr = self.execution.RobotExecutor()
         self.world = self.execution.PhysicalWorld(noise=0.0)   # R0 直读真值, 不加模拟噪声
         # 夹爪结构 site id (现场解析, 每轮 reset 后刷新 xpos)
