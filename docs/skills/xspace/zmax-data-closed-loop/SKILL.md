@@ -77,6 +77,15 @@ curl -s https://datadrive.world/api/relay/orin/status  # infer_count > 0 = 推�
 - ECS zmax_relay: /upload成功→notify(:8766)→广播; ws_relay 8766通知口
 - 单测6/6: 事件触发/非事件忽略/快照过滤/frames阈值/全链路/并发锁
 
+## auto_loop 守护运维 (2026-09-06 静静自检修复)
+- 启动: `cd ~/lerobot-smolvla-lew && ~/lerobot-venv/bin/python tools/auto_loop.py` — **必须用 ~/lerobot-venv**(项目无 .venv; train() 已修成 expanduser ~/lerobot-venv)
+- 依赖: ~/lerobot-venv 需 `requests` + `websocket-client`(缺 websocket → WS 线程直接异常退化成轮询; pip install websocket-client 补)
+- 开机自启: crontab @reboot sleep 20 → auto_loop.py >> outputs/auto_loop.log (已配, 重启不丢守护)
+- **orin_shadow/shadow_report 包**(frames=0 影子报告)已过滤 — auto_loop 只关心采集数据包; 队列里积压 85 个 shadow_report 是历史垃圾不弹栈, 不影响新数据检测(latest 变新包即触发)
+- frames<20 的包记入 SEEN 防每轮刷日志
+- 守护空闲特征: 日志 "⏳ 队列空, 等小芳采集数据..." 每 60s 一条 = 正常
+- 重启后恢复检查: pgrep -f auto_loop.py; 链路巡检 chain_health.py auto_loop=OK
+
 ## 里程碑 (2026-08-02)
 - v1: 笛卡尔模型 state3D→action4D, 真实推理 1051ms (TCP位姿输入)
 - **v2: 6D关节模型 state6D→action6D, 真实推理 479ms** (比v1快2.2倍), 动作值合理
