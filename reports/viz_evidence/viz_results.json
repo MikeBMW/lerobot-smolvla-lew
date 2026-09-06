@@ -46,7 +46,7 @@
   "desc": "🧭 3D 视图: 分层视图窗口渲染",
   "pass": true,
   "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/viz_evidence/viz_3d.png",
-  "detail": "内容比=0.100"
+  "detail": "内容比=0.121"
  },
  {
   "case": "viz_video",

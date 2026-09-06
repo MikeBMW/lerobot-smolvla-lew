@@ -25,6 +25,9 @@ if _GUI_DIR not in sys.path:
 import node_logic
 from node_logic_dialog import NodeLogicDialog
 
+import os as _os_mod
+_ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
+
 # ════════════════════════════════════════════════════════════════
 # 规范常量 (与 simulink-spec.md / web comfyui.html 完全一致)
 # ════════════════════════════════════════════════════════════════
@@ -9185,11 +9188,11 @@ class SimulinkModule(QWidget):
             def _upload():
                 try:
                     import subprocess as _sp
-                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                    r = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
                                  out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
                                 capture_output=True, timeout=60)
                     if r.returncode == 0:
-                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                        _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79",
                                  "chmod 644 /www/wwwroot/datadrive.world/physical_world_params.html"],
                                 capture_output=True, timeout=30)
@@ -9539,11 +9542,11 @@ class SimulinkModule(QWidget):
                 try:
                     import subprocess as _sp
                     fname = os.path.basename(path)
-                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no", path,
+                    r = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no", path,
                                  f"root@39.102.211.79:/www/wwwroot/datadrive.world/{fname}"],
                                 capture_output=True, text=True, timeout=60)
                     if r.returncode == 0:
-                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                        _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79", f"chmod 644 /www/wwwroot/datadrive.world/{fname}"],
                                 capture_output=True, text=True, timeout=30)
                         self._safe_log(local)
@@ -9797,7 +9800,7 @@ class SimulinkModule(QWidget):
                 for f, tag in ((pdf, "报告 PDF"), (xlsx, "Excel")):
                     try:
                         _r = _sp.run(
-                            ["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                            ["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
                              "-o", "ConnectTimeout=15", f,
                              f"root@39.102.211.79:/www/wwwroot/datadrive.world/{os.path.basename(f)}"],
                             capture_output=True, text=True, timeout=60)
@@ -10990,6 +10993,18 @@ class SimulinkModule(QWidget):
         except Exception as _e:
             self._dw = None
             self._log(f"⚠️ DataWorld 构建失败 (3D 同步降级为轨迹直读): {_e}")
+        # 🧭 2026-09-06 手机3D 实况同步 (老倪: 手机版3D要与状态空间模型运行同步):
+        #   ▶运行 → 全轨迹上传 datadrive.world + 播放期逐心跳 (失败软降级, 零影响播放)
+        self._ss_live = None
+        if os.environ.get("ZMAX_SS3D_LIVE", "1") != "0":
+            try:
+                from ss3d_live import SS3DLive
+                self._ss_live = SS3DLive(log=self._log)
+                self._ss_live.publish_run(tr)
+                self._log("🧭 手机3D实况: 轨迹上传中 — state-3d.html 将随本运行同步 (无网络/断连自动降级)")
+            except Exception as _e:
+                self._ss_live = None
+                self._log(f"⚠️ 手机3D实况发布不可用 (播放不受影响): {_e}")
         self._ss_round = 0
         self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
         # 🐛 2026-09-01 老倪: 数据源节点优先执行 — 数据流源头; 且断点调试时点运行第 1 帧
@@ -11047,6 +11062,13 @@ class SimulinkModule(QWidget):
             idx = min(self._ss_round * stride, n_steps - 1)
             if dw is not None:
                 dw.set_cursor(idx)      # 单一游标 — 3D/总线/数值全部从它读
+            # 🧭 2026-09-06 手机3D实况: 播放心跳 (内部 ≥120ms 节流, 失败自禁用)
+            _lv = getattr(self, "_ss_live", None)
+            if _lv is not None:
+                try:
+                    _lv.push_engine(idx)
+                except Exception:
+                    pass
             n_order = len(self._ss_order)
             # 节点演示轮: 抽稀散布全程 (每 exec_every tick 轮转一个节点)
             exec_every = max(1, self._ss_ticks // max(1, n_order))
@@ -11176,6 +11198,14 @@ class SimulinkModule(QWidget):
         d_end = tr["dist"][-1] if tr.get("dist") else 0
         r_max = max(tr["residual"]) if tr.get("residual") else 0
         cp_max = max(tr["contact_p"]) if tr.get("contact_p") else 0
+        # 🧭 2026-09-06 手机3D实况: 收尾心跳 (终态 + 结果横幅触发)
+        _lv = getattr(self, "_ss_live", None)
+        if _lv is not None:
+            try:
+                _lv.finish(done=done, dist=round(float(d_end), 4))
+            except Exception:
+                pass
+            self._ss_live = None
         self._log("════ 🧮 状态空间仿真完成 ════")
         self._log(f"{'✅ 插入完成' if done else '⚠️ 未完成'} · 用时 {t_end:.2f}s · 最终距离 {d_end:.4f}m"
                   f" · 残差峰值 {r_max:.4f} · 接触概率峰值 {cp_max:.2f}")
@@ -11234,11 +11264,11 @@ class SimulinkModule(QWidget):
                     self._safe_log(f"🎬 {_ln}")
                 self._safe_log("🧭 3D 视图现在与该视频同源 — 点「🧭 3D 视图」看同一条 episode 的分层数据")
                 try:
-                    r2 = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                    r2 = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
                                   out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
                                  capture_output=True, timeout=60)
                     if r2.returncode == 0:
-                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                        _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79",
                                  "chmod 644 /www/wwwroot/datadrive.world/ss_episode_latest.mp4"],
                                 capture_output=True, timeout=30)

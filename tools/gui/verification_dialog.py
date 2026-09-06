@@ -509,12 +509,12 @@ class VerificationDialog(QDialog):
                 fname = os.path.basename(path)
                 msg = f"✅ 已导出: {path}"
                 try:
-                    r = _sp.run(["sshpass", "-p", "Nix19789", "scp", "-o", "StrictHostKeyChecking=no",
+                    r = _sp.run(["sshpass", "-p", (_os_ecs.environ.get("ZMAX_ECS_PW", "") if "_os_ecs" in dir() else __import__("os").environ.get("ZMAX_ECS_PW","")), "scp", "-o", "StrictHostKeyChecking=no",
                                  "-o", "ConnectTimeout=15", path,
                                  f"root@39.102.211.79:/www/wwwroot/datadrive.world/{fname}"],
                                 capture_output=True, timeout=60)
                     if r.returncode == 0:
-                        _sp.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+                        _sp.run(["sshpass", "-p", (_os_ecs.environ.get("ZMAX_ECS_PW", "") if "_os_ecs" in dir() else __import__("os").environ.get("ZMAX_ECS_PW","")), "ssh", "-o", "StrictHostKeyChecking=no",
                                  "-o", "ConnectTimeout=15", "root@39.102.211.79",
                                  f"chmod 644 /www/wwwroot/datadrive.world/{fname}"],
                                 capture_output=True, timeout=30)

@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v4.2.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v4.3.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -5547,7 +5547,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 import requests as _rq
                 ts = _t.strftime("%Y%m%d_%H%M%S")
                 ecs = "root@39.102.211.79"
-                ecs_pwd = "Nix19789"
+                ecs_pwd = _os.environ.get("ZMAX_ECS_PW", "")
                 models_dir = "/www/wwwroot/datadrive.world/models"
                 ver_name = f"act_{ts}.safetensors"
                 w_size = _os.path.getsize(w_path)
@@ -9752,7 +9752,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v4.2.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v4.3.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -9760,7 +9760,7 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v4.2.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v4.3.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
         _QTimer.singleShot(2000, self._maybe_warn)  # v4.2.1: 测试验收全自动化(550/550 全绿 — 原 195 条手动验收全部程序化: manual_auto_map.py 映射注册表 + 17 个 t_auto_* 集成真断言, 可视化类验数据真源/真机类验验收记录在位(缺即FAIL不造假); 终端逐条实时打印 ▶→✅/❌+实测证据+耗时; Excel/网页编号改域码 VIS-01 风格; 修 metaworld reset(seed) 被忽略致同 seed 布局漂移(实锤复现)+ 5 处 or True 摆设断言) | # v4.2.0: 功能清单网页场景化+几何分类统稿(node_func_tree.py 增强向后兼容: FUNC_DOMAINS 21域三字母编号 VIS-01 全110功能注入 + SCENES 5大客户场景注册表(SC-01 FW Loading金手指插拔/SC-02 ATS光纤连接/SC-03老化墙/SC-04上下料/SC-05光耦合主动对准, 量化目标全取自RFP/TECH真值) + GEOM_CLASSES 几何能力三分类 纤维丛框架(LFP局部精细感知30/LFO局部精细操作35/HDM全局高维流形泛化45, hdm_funcs_of_scene 汇总跨本体泛化); gen_web_feature_pages.py 重写五章节(几何总纲/场景↔功能/编号图例/组合链/总表 每功能详细说明+验证方法+5用例逐条展开) 已上线 datadrive.world | # v4.1.0: 技术规格书入库(node_func_tree.py TECH_SPECS 3组12项: ①核心本体·运动控制 Gauge Covariant(极致定位±0.02mm/单模50nm 六维力控亚牛顿 六维力0.5% EtherCAT 1kHz 紧凑高刚性1.6T OSFP) ②复合移动·柔性流转 Locomotion(全向底盘±10mm 移动-操作解耦驻停 双臂10kg·0-2.5m·双孔0.3° 多模态避障) ③智能认知·系统集成 Gauge Symmetry(VLA自进化 周级上线 UPH400·CPK1.67·良率99% EtherCAT/Profinet/Modbus+ESD/IP65) → 量化映射产品作业+支撑功能; GUI Tab4 技术规格书+Excel Sheet7+自动测试报告5b节) + 一键自动测试(Test节点右键⚡: 环境自检→全用例→PDF7章+Excel→scp上传) + RFP需求规格书(Tab3/Sheet6/★否决5项) + 产品作业分级L1刚体基础/L2柔性高级/L3性能扩展+泛化指标G组7断言 + 对话框深色/最大化修复 | v4.0.2: 功能清单按规范场论重构(三层 G1场感知/G2协变操作/G3对称认知 → 22节点 → 110功能(名5~10字) → 550用例; 每功能5用例 auto/semi/manual; 339自动全真实断言 引擎/六层/源码审计 零空转; 模块化组合链 FUNC_CHAINS; 新真源 src/lerobot/verification/node_func_tree.py 注册表+run_tree执行器; CLI --only-node/--list 三级; GUI 树按三层分组+Excel 4sheet 含规范场列; 旧45项FEATURES保留兼容) | v4.0.1: 验证层 Feature/Test 节点交互升级(双击/右键 → 清单对话框: 45项功能分类列 基本29/泛化16 + 模型角色 感知6/世界7/决策4/规划3/安全2/引擎8/平台5/标定3/GUI7, 每项含模型特点; 按钮导出 Excel 含分类统计+测试结果, scp 上传 datadrive.world) + 真实化运行进度可见(每25步周期日志+QTimer轮询增量flush, 修5-9分钟静默误判卡死) + F5调试断点挂起全进程检测提示(只能鼠标动=pydevd断点暂停非故障, 指引放行/删断点) + io_snapshot YOLO未检出诚实标None禁引擎真值顶替(老倪红线) | v4.0.0 大版本: 状态空间三新层+验证体系+真实化(①🧩验证层: src/lerobot/verification 45项feature/35自动化用例, 画布底部 Feature/Test 节点+CLI ss_feature_tests.py; ②标定层三域 引力/斥力/潜空间 LATENT_CALIB(维度/类别/速度场prior_A), 🧮潜空间节点 PCA 实测观测有效维; ③流形导航层(原流形层): 接触流形=插拔测地线通道(切向进度/法向偏离/V), 性能流形=光耦合对准代价(η), 引擎逐帧发布 3 channel → Scope 2x3/总线17模块/元层数据连线; ④▶运行 YOLO 真实采样 detect_3d 断点可进+conf 去 0.99 写死伪装; ⑤标定节点改名 引力/斥力/潜空间; ⑥打包补 calibration/manifold/verification) | v3.4.8: 播放平滑修复(▶运行"卡住"根因: 📡传感器融合节点 execute_node_logic 真跑 YOLO aligner 冷加载 1.6s+ 冻结主线程 → execute_node_logic 加 demo 轻量路径(▶运行播放读 DataWorld 帧展示不重跑重函数, 单步/右键/双击调试仍真实执行断点可进); 播放节奏 80ms×60大步跳 → 30ms/tick 逐引擎步 (305步=305tick≈9s 平滑连续), 节点动画/log/总线按抽稀散布; resize 自动重取景(窗口变化>6% 且用户未手动转视角 → fit 场景撑满放大视口)) | v3.4.7: 3D 世界操作按钮(DreamView3D 绑定画布 module: 左侧「🕹3D世界操作」▶运行=module.start_sim(画布统一入口)/⏹停止/📌窗口置顶toggle/引擎状态轮询300ms按钮联动; 画布▶运行开始把可见3D窗口 raise+activate — 不再被画布覆盖; 无 module 兼容命令行自测) | v3.4.6: DataWorld 逐帧同步(引擎 io_trace 每步全量发布 9模块/23画布节点 I/O → tr逐帧帧序列; ▶运行播放改引擎步线性推进(旧按io快照25步抽1跳帧→3D与画布信号不同步), 3D/数据总线/画布 log 消费同一 DataWorld 游标严格同帧; _ss_tick 每帧广播画布正在执行节点 → 3D「▶画布信号」面板行(set_active_node, Dreamview 模块信号语义); 数据总线静态视图抽稀≤150帧防3万行卡; 播放结束 3D/游标精确落引擎末帧) | v3.4.5: 标定闭环(右键标定表格/标定面板💾保存 = CalibrationLayer.apply_to_engine 精确写回引擎源码字面量: parallel.py Kp/u_clip、cognition.py STAGE_V_CAP/MIN+veto_th/k_fb、state_space_sim.py 校正K/EMA/接触增益/安全限幅/先验A; 引擎 importlib 每次运行重载源码 → 下次▶运行即生效无需重启; 锚点值无关+命中数校验不静默; 镜像写 calibration_layer.py 块约束防 V_MIN key 串写 V_CAP; 修标定表 prior_A 0.95→1.0 与引擎真值对齐) | v3.4.4: 标定层(Drifting Models引力/斥力二分+平衡点, src/lerobot/calibration与datasets/policies同级别, 画布最下层, 右键标定表格21参数可编辑, 回路外不改架构) | v3.4.3: 3D视图↔程序执行状态映射(打开即自动播放 + _ss_tick逐帧推送set_frame, 断点冻结=3D同步停) + 外观质量检测真实化(yolo_3d/quality_check.py AOI图像处理, ss_aoi接真实帧) + _EXTERNAL_LOC全量行号校正(29条0错位: ss_est→AdaptiveStateEstimator类/ss_sched→decide/ss_aoi→AOIQualityChecker双击显示真实源码) + node_ss_s2估计分支补卡尔曼update闭环(原只predict) + debugpy僵尸pydevd占5678→SystemExit:1诊断清理 | v3.4.2: LiveUSB swap 防御落地(overlay 直接 swapon Invalid argument → losetup loop 设备方案, 8G swapfile 实测挂载 + systemd oneshot 开机自启, 禁 ExecStop/swapoff -a 会误杀) | v3.4.1: 卡死诊断经验沉淀(疑似"整机卡死"先 py-spy 判定: GUI 主线程 do_wait_suspend=引擎断点挂起非系统死, 鼠标能动界面全死=断点冻结特征; LiveUSB 无 swap 内存顶满直接冻结, 加 swapfile 防御) | v3.3.5: 画布节点真实执行(VSCode断点三根因: ①open_in_vscode右键重写launch.json覆盖ZMAX_DEBUG_BREAK env→模板写死env+节点名子串过滤 ②状态空间播放帧数<节点数→后排节点永不执行→_ss_tick n_rounds=max ③运行模式自动弹波形/视频置顶窗+断点冻结→关不掉+not responding→运行不弹窗双击才弹) + 节点真实执行(状态空间9节点/双脑/YOLO align/触觉接真实源码, 右键打开源码断点必进, importlib sys.modules注册) | v3.3.4: 状态空间画布三路统一(▶运行/⏭单步/右键运行节点 = 引擎轨迹真实数值 + 节点逻辑真实执行, node_metaworld_data 等注册函数断点可进; step_sim 状态空间分流→_state_space_step, _ss_ensure_trace 公共引擎轨迹, _ss_tick 播放每帧 execute_node_logic)+GNOME/Xorg 黑屏修复(AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下窗口渲染全黑, 该行仅 WSLg 需要已注释) | v3.3.3: VSCode 调试默认 F5=🚀全新调试进程(launch 新实例断点, attach 5678 备用, launch.json 三配置重排+open_in_vscode 生成同步, 补提交 .vscode 配置) | v3.3.1: simulink 工程全面检查(NODE_TYPES三处同步+状态空间闭环豁免+参数语义校验+端口兼容+完整性检查器zmax_integrity_check.py) | v3.3.0: 3D视图二次打开背景丢失修复(pyqtgraph shader全局缓存跨GL上下文失效→只复用不新建+重建去重removeItem)+simulink字体调小一档(192DPI下12pt=32px: 工具栏/终端/画布节点)+节点逻辑/参数/源码窗口最大化按钮修好(Qt.Dialog→Qt.Window类型)+状态空间画布触觉感知补metaworld数据源连线(因果修正) | v3.2.4: exe 内置 MLP 操作视频(mlp_insert_success_final.mp4 + 预抽帧缓存, CI 从 datadrive.world/models/mlp_video_pack.zip 下载后 --add-data 打包; Windows 无 ffmpeg → 播放器直接用预抽帧缓存); gen_insert_video.py 成功后保持画面90步+双输出名 | v3.2.3: Windows/macOS exe 3D 视图打包修复(缺 pyqtgraph/PyOpenGL → CI+Dockerfile.win pip 依赖补 pyqtgraph PyOpenGL + pyinstaller --collect-all pyqtgraph --collect-all OpenGL, 修 3D 视图 No module named 'pyqtgraph'; open_ss_3d 报错分 exe旧版/源码缺依赖) | v3.2.2: 状态空间六层源码打包修复(Windows exe 无 src/ → --add-data 打包 left_right/yolo_3d 源码 + _SS_DIR/_LR_DIR/_YOLO_DIR 多候选探测 env→_MEIPASS→上溯→逐级, 修 AppData\Local\src\... FileNotFoundError) | v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除光模块自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
@@ -9768,11 +9768,12 @@ class StudioMainWindow(QMainWindow):
         self.resize(1400, 900)
         # 🖥 2026-08-25 老倪: UI 重新适配 — 3200x2000 屏上固定 1400x900 只占 27% 面积,
         #   工具栏被迫折行 + 模块库 560px 挤占画布 → 大屏(宽≥2560)直接最大化启动。
+        # 🐛 2026-09-06: show 前 setWindowState(Maximized) → Mutter map 异常窗口 Iconic/Unmapped
+        #   (XCB 日志: MAP→CLIENT_MESSAGE→UNMAP)。最大化延迟到 main() _show_ready show 后设置。
         try:
             _ag = QApplication.primaryScreen().availableGeometry()
-            if _ag.width() >= 2560:
-                self.resize(int(_ag.width() * 0.97), int(_ag.height() * 0.95))
-                self.setWindowState(self.windowState() | Qt.WindowMaximized)
+            if _ag.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
+                self.resize(int(_ag.width() * 0.95), int(_ag.height() * 0.94))
         except Exception:
             pass
         self._build()
@@ -11039,12 +11040,15 @@ def main():
     # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
     # 🐛 2026-08-31 老倪: 找不到 attach → F5 默认「🚀 全新调试进程」新实例断点;
     # 本进程仍 listen 5678, attach 配置作为第二种方式保留
-    try:
-        import debugpy
-        debugpy.listen(("127.0.0.1", 5678))
-        print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5: 「🚀 全新调试进程」= 新实例断点, 「🔌 Attach 现有控制台」= 连本进程")
-    except Exception:
-        pass
+    # 🐛 2026-09-06: 桌面启动窗口不显示 (IsUnMapped) — debugpy.listen 无 attach 时
+    #   可能阻塞 Qt 主线程 map; 改环境变量 ZMAX_DEBUG=1 才 listen (桌面启动默认不开)
+    if os.environ.get("ZMAX_DEBUG") == "1":
+        try:
+            import debugpy
+            debugpy.listen(("127.0.0.1", 5678))
+            print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5: 「🚀 全新调试进程」= 新实例断点, 「🔌 Attach 现有控制台」= 连本进程")
+        except Exception:
+            pass
     # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
     # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
     try:
@@ -11149,43 +11153,57 @@ def main():
     # 🐛 2026-08-17: splash 提前到 win 构建前 — 重量级加载期(数秒)即有稳定纯色占位,
     #   全程无黑条; 同尺寸同位纯色, 主窗口 show 时无缝覆盖 (1x1 splash 会成左上角黑条)
     _splash = None
-    try:
-        from PyQt5.QtGui import QPixmap, QColor as _QC2
-        from PyQt5.QtWidgets import QSplashScreen
-        from PyQt5.QtCore import QTimer as _QTM2
-        from PyQt5.QtWidgets import QApplication as _QA2
-        from PyQt5.QtGui import QGuiApplication as _QGA2
-        _gx, _gy, _gw, _gh = 60, 40, 1400, 900
-        try:
-            _scr = _QGA2.primaryScreen()
-            if _scr:
-                _ag = _scr.availableGeometry()
-                _gx = max(0, min(60, _ag.width() - 300))
-                _gy = max(0, min(40, _ag.height() - 200))
-                _gw = min(1400, _ag.width())
-                _gh = min(900, _ag.height())
-        except Exception:
-            pass
-        _splash_pm = QPixmap(_gw, _gh)
-        _splash_pm.fill(_QC2(C_BG))
-        _splash = QSplashScreen(_splash_pm)
-        _splash.setGeometry(_gx, _gy, _gw, _gh)
-        _splash.show()
-        _QA2.processEvents()
-    except Exception:
+    # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug 排查 — splash 显示后主窗口被锁最小化?
+    #   ZMAX_NO_SPLASH=1 跳过 splash (诊断用); 默认保留
+    from PyQt5.QtWidgets import QApplication as _QA2  # 兜底: splash 分支外也要可用
+    if os.environ.get("ZMAX_NO_SPLASH") == "1":
         _splash = None
+    else:
+        try:
+            from PyQt5.QtGui import QPixmap, QColor as _QC2
+            from PyQt5.QtWidgets import QSplashScreen
+            from PyQt5.QtCore import QTimer as _QTM2
+            from PyQt5.QtWidgets import QApplication as _QA2
+            from PyQt5.QtGui import QGuiApplication as _QGA2
+            _gx, _gy, _gw, _gh = 60, 40, 1400, 900
+            try:
+                _scr = _QGA2.primaryScreen()
+                if _scr:
+                    _ag = _scr.availableGeometry()
+                    _gx = max(0, min(60, _ag.width() - 300))
+                    _gy = max(0, min(40, _ag.height() - 200))
+                    _gw = min(1400, _ag.width())
+                    _gh = min(900, _ag.height())
+            except Exception:
+                pass
+            _splash_pm = QPixmap(_gw, _gh)
+            _splash_pm.fill(_QC2(C_BG))
+            _splash = QSplashScreen(_splash_pm)
+            _splash.setGeometry(_gx, _gy, _gw, _gh)
+            _splash.show()
+            _QA2.processEvents()
+        except Exception:
+            _splash = None
 
     win = StudioMainWindow()
+    _want_max = False  # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (Mutter Iconic bug)
     # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)
     try:
         from PyQt5.QtGui import QGuiApplication
         scr = QGuiApplication.primaryScreen()
         geo = scr.availableGeometry() if scr else None
-        if geo is not None and geo.width() >= 2560:
+        if geo is not None and geo.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
             # 🖥 2026-08-25 老倪 UI 重新适配: 3200x2000 屏上写死 1400x900 只占 27% 面积
             #   (工具栏被迫折行, 模块库 560px 挤画布) → 大屏直接铺满可用工作区并最大化
-            win.setGeometry(geo.x(), geo.y(), geo.width(), geo.height())
-            win.setWindowState(win.windowState() | Qt.WindowMaximized)
+            # 🐛 2026-09-06: setGeometry 精确铺满可用区(3068x1936) + show → Mutter 误判最小化
+            #   (state=1 WindowMinimized 实锤)。改为: resize 96% (留边不贴满) + show 后最大化
+            win.resize(int(geo.width() * 0.96), int(geo.height() * 0.96))
+            win.move(geo.x() + 10, geo.y() + 10)
+            # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug — setWindowState(Maximized)
+            #   在 show() 前调用 → Mutter map 时先给 Iconic 再忽略 Maximized (矛盾状态)
+            #   → 最大化移到 _show_ready 内 show() 之后设置 (正确时序)
+            # win.setWindowState(win.windowState() | Qt.WindowMaximized)
+            _want_max = True
         elif geo is not None:
             win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
                             1400, 900)
@@ -11197,16 +11215,90 @@ def main():
     #   此处只做 2s 延迟 show + 平滑移交焦点)
     try:
         def _show_ready():
+            # 🐛 2026-09-06 诊断: 窗口不显示 (IsUnMapped) — 记录 show 调用与可见性
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} _show_ready called, splash={_splash is not None}\n")
+            except Exception:
+                pass
+            # 🐛 2026-09-06: winId() 强制创建原生 X 窗口 (Qt 延迟创建 native window
+            #   可能是 Mutter map 失败根因) — show 前先确保 native handle 存在
+            try:
+                _ = win.winId()
+                _wh = win.windowHandle()
+                if _wh is not None:
+                    _wh.create()  # 确保 QWindow native 创建
+            except Exception:
+                pass
             win.show()
             win.raise_()
             win.activateWindow()
+            # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (show 前 setWindowState → Mutter Iconic)
+            #   注: show 后立即 setWindowState 也可能触发 UNMAP — 用 QTimer 延后到 800ms 稳定后
+            if _want_max:
+                def _do_max():
+                    try:
+                        win.setWindowState(win.windowState() | Qt.WindowMaximized)
+                        _QA2.processEvents()
+                    except Exception:
+                        pass
+                _oneshot(win, 800, _do_max)
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} after show: visible={win.isVisible()} minimized={win.isMinimized()} state={int(win.windowState())}\n")
+            except Exception:
+                pass
             if _splash is not None:
                 try:
                     _splash.finish(win)  # 平滑移交焦点, splash 消失
                 except Exception:
                     _splash.close()
             _QA2.processEvents()
-        _oneshot(win, 2000, _show_ready)
+            # 🐛 2026-09-06 静静实测: 本机 GNOME/Mutter 环境任何 Qt 窗口 show 即被最小化
+            # (WM_STATE=Iconic; 最小复现: QLabel show 后 isMinimized=True, 与 maximize/splash 无关)
+            # 主动恢复: 300/800/1500ms 三次探测, 被最小化就清 WindowMinimized 位 + 置前
+            # 🐛 2026-09-06 v2: 无条件 show/raise 反而触发 Mutter UNMAP (XCB_CLIENT_MESSAGE)
+            #   → 改为: 仅当 Qt 明确 isMinimized 才恢复; 正常窗口绝不动 (防 UNMAP)
+            # 🐛 2026-09-06 v3: Qt isMinimized 状态滞后 (show 后立即读=False, 200ms 后=True)
+            #   → 延时探测 + 一旦 True 就恢复, 重复直到稳定 (实测 v3 可恢复 min→normal)
+            def _unminimize():
+                try:
+                    if win.isMinimized():
+                        win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
+                        win.show()
+                        win.raise_()
+                        win.activateWindow()
+                        _QA2.processEvents()
+                        return True  # 已恢复, 继续探测确认稳定
+                    return False
+                except Exception:
+                    return False
+            def _unminimize_loop():
+                # 多次探测直到窗口不再被 Mutter 最小化 (实测: 恢复后需持续确认)
+                try:
+                    if os.environ.get("ZMAX_DIAG_UNMIN"):
+                        with open("/tmp/studio_show_diag.log", "a") as _df:
+                            _df.write(f"{time.time():.1f} unmin_loop: min={win.isMinimized()} vis={win.isVisible()} state={int(win.windowState())}\n")
+                    if win.isMinimized():
+                        win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
+                        win.show()
+                        win.raise_()
+                        win.activateWindow()
+                        _QA2.processEvents()
+                    # 无论是否刚恢复, 持续探测 (每 400ms, 最多 10 次) 直到稳定
+                    _n = getattr(win, "_unmin_attempts", 0) + 1
+                    setattr(win, "_unmin_attempts", _n)
+                    if _n < 10:
+                        _oneshot(win, 400, _unminimize_loop)
+                    else:
+                        setattr(win, "_unmin_attempts", 0)
+                except Exception:
+                    pass
+            for _ms in (1200, 1800, 2600, 3600):
+                _oneshot(win, _ms, _unminimize_loop)
+        # 🐛 2026-09-06: 2s 延迟 show 期间 Mutter 可能把未显示窗口标记异常 —
+        #   改为立即 show (500ms, 等窗口构造完即可); splash 由 show 后 finish 接管
+        _oneshot(win, 500, _show_ready)
     except Exception:
         win.show()
     # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住

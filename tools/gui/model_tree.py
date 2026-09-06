@@ -2248,7 +2248,7 @@ class EngineeringReqWidget(QWidget):
         import subprocess as _sp
         import shlex as _sh
         ECS = "root@39.102.211.79"
-        PASS = "Nix19789"
+        PASS = (_os_ecs.environ.get("ZMAX_ECS_PW", "") if "_os_ecs" in dir() else __import__("os").environ.get("ZMAX_ECS_PW",""))
         REMOTE_DIR = "/www/wwwroot/datadrive.world/reports"
         try:
             r = _sp.run(["sshpass", "-p", PASS, "ssh", "-o", "StrictHostKeyChecking=no",
