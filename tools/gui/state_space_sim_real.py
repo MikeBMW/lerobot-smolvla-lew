@@ -97,6 +97,12 @@ class RealStateSpaceSim:
         self.safety = _load("safety.py")
         self.execution = _load("execution.py")
         self.accel = self.parallel.FeedforwardAccelerator()
+        # 🐛 2026-09-06 静静 (R0 全 seed 失败根因收尾): R0 真实化布局每进程随机漂移
+        #   (>10cm, metaworld 契约), 蒸馏 MLP 训练自引擎单布局 → 转移/搬运段 target 通道
+        #   域外 → 输出 z 与目标相悖 (peg 头被压低撞孔下夹具)。逐通道域守卫只能救单通道
+        #   域外, 救不了联合分布偏移。真实化强制解析 (09-04 R0 基线 62% 即解析; 引擎
+        #   快演单布局=训练域, 仍 MLP 主执行)。多布局重蒸馏后解除 (tools 管道 export→train)。
+        self.accel.forward = self.accel.analytic_forward
         # B = 每步实际位移/速度指令 — 实测标定: metaworld act=u/0.5 伺服稳态 ~9mm/步@act1,
         #   位移 ≈ u × 0.018s (引擎 dt=0.02 巧合同量级); 原 B=0.1 预测过冲 5 倍 →
         #   残差 0.5 级爆发 → contact_p 误判接触 (夹爪离销 20cm 空闭合) → 卡死循环
@@ -472,7 +478,8 @@ class RealStateSpaceSim:
                                d_xy=d_xy, lifted=lifted,
                                at_grasp_pose=at_grasp_pose,
                                grasp_force=_gf,
-                               peg_z=float(ph[2]), peg_z_grasp=g["peg_z0"])
+                               peg_z=float(ph[2]), peg_z_grasp=g["peg_z0"],
+                               hole_z=float(g["hole"][2]))  # 🐛 2026-09-06: 转移→插入 z 条件
             done = self.sched.stage() == "完成"
             # ⑧ 记录 (引擎 tr 兼容集)
             if os.environ.get("R0_TRACE") and step % 25 == 0:

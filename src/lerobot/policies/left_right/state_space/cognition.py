@@ -96,6 +96,11 @@ class ActionModulator:
         self.stage_idx = 0
         self.veto_count = 0
         self.history = []               # 阶段切换历史 [(stage, reason)]
+        # 🐛 2026-09-06 静静: 转移→插入只看水平 dh, 会切在 peg 头低于孔口时 → 斜插顶孔沿
+        #   插不进, 夹爪硬推把 peg 从夹爪里挤滑 (off 逐帧缩短) → 滑脱回退。切换须等
+        #   peg 头悬在孔口上方 INSERT_HOVER±容差 (转移目标同款几何)。
+        self.INSERT_HOVER = 0.02        # 转移目标: peg 头悬孔口上方高度 (m)
+        self.INSERT_Z_TOL = 0.012       # 切换 z 容差 (太高压根进不了, 太低顶孔沿)
 
     def stage(self):
         return self.STAGES[self.stage_idx]
@@ -127,7 +132,7 @@ class ActionModulator:
 
     def advance(self, contact_p=None, dist_h=None, gripper=None, depth=None,
                 d_xy=None, lifted=None, at_grasp_pose=False, grasp_force=None,
-                peg_z=None, peg_z_grasp=None):
+                peg_z=None, peg_z_grasp=None, hole_z=None):
         """状态机推进 — 感知/几何证据驱动 (每步调用)"""
         st = self.stage()
         # 🛟 夹持丢失 → 回退重抓 (审计建议的鲁棒性分支; 真机一定会掉件)
@@ -158,8 +163,13 @@ class ActionModulator:
             self._confirm(4, f"夹持建立 gripper={gripper:.2f}")
         elif st == "抬起" and lifted is not None and lifted > self.lift_h:
             self._confirm(5, f"光模块已提起 {lifted:.4f}m > {self.lift_h}m")
-        elif st == "转移" and dist_h is not None and dist_h < self.align_th:
-            self._confirm(6, f"对准孔口 dist_h={dist_h:.4f}")
+        elif st == "转移" and dist_h is not None and dist_h < self.align_th and (
+                hole_z is None or (peg_z is not None and
+                                   abs(peg_z - hole_z - self.INSERT_HOVER) <= self.INSERT_Z_TOL)):
+            # 🐛 2026-09-06: z 条件 (hole_z 传入时启用) — peg 头须悬孔口上方 2cm±1.2cm,
+            #   防止 dh 先到位但 peg 头还低于孔口时切插入 (必顶孔沿 → 挤滑脱)
+            self._confirm(6, f"对准孔口 dist_h={dist_h:.4f}" + (
+                f" peg悬高={peg_z - hole_z:.4f}m" if (hole_z is not None and peg_z is not None) else ""))
         elif st == "插入" and depth is not None and depth < self.insert_depth:
             self._confirm(7, f"插入深度达标 depth={depth:.4f}")
         else:
