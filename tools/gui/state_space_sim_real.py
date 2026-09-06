@@ -283,11 +283,23 @@ class RealStateSpaceSim:
         off = self.peg_head() - self.x          # 实时光模块头-夹爪偏移 (夹持后锁存不变)
         if st == "转移":
             return self._hole_p() + np.array([0.0, 0.0, 0.02]) - off   # 光模块头到孔口上方 2cm
+        if st == "插入":
+            # 🐛 2026-09-06 静静: 两段式插入 — ①peg 头垂直对齐孔口中心高度 (z_err≤4mm)
+            #   ②沿孔轴水平推入孔底。原单段直线(悬高2cm→孔底)是斜插: peg 头圆柱端面
+            #   无倒角 (mujoco 刚体) → 端面下缘顶孔口上缘 → z 卡在孔口上方 5-10mm 磨死
+            #   (seed109 实锤: z孔偏+0.010 depth 6.3cm 卡 56 步后滑脱)。
+            hp = self._hole_p()
+            ph_now = self.peg_head()
+            if abs(float(ph_now[2] - hp[2])) > 0.004:
+                # 段① 垂直降: xy 保持 (转移已对准), z 降到孔口中心
+                return np.array([ph_now[0], ph_now[1], hp[2]]) - off
+            return self._goal_p() - off          # 段② 水平推入 (z 已同轴)
         return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
 
     def peg_head(self):
-        """光模块头世界坐标 (R0: site 真值; R1 夹持后: 编码器 hand + 锁存偏移 + 光模块头偏置 — 真机无 site)"""
-        if self.grasped and self._grasp_off0 is not None and self.vision:
+        """光模块头世界坐标 (夹持后=编码器 hand+锁存偏移+头偏置 — 真机同构, 无 site 依赖,
+        off 锁死不追滑脱; 滑脱由随动验证回退。未夹持: R0=site 真值 / R1=视觉)"""
+        if self.grasped and self._grasp_off0 is not None:
             ho = self.geom.get("head_off", np.zeros(3))
             return self.x + self._grasp_off0 + ho
         return self.env.data.site_xpos[self._site_ph].copy()
