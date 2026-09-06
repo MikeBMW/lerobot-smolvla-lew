@@ -723,7 +723,10 @@ def load_trained_left_brain(npz_path):
     am, astd = d["am"], d["astd"]
 
     def ff_forward(obs):
-        x = (np.asarray(obs[:39], dtype=np.float32) - sm) / ss
+        # 🐛 2026-09-06 静静: 零方差通道除零炸弹 (与 parallel.py mlp_ff_forward 同修) —
+        #   蒸馏数据单布局 goal 零方差, ss≈1e-8; 现场采样孔位偏离 → 归一化爆炸 → 饱和。
+        x = (np.asarray(obs[:39], dtype=np.float32) - sm) / np.where(ss > 1e-4, ss, 1.0)
+        x = np.where(ss > 1e-4, x, np.float32(0.0))
         for i in range(3):
             x = np.maximum(0.0, W[i] @ x + b[i])   # Linear + ReLU (Dropout eval 关闭跳过)
         u_norm = W[3] @ x + b[3]                    # 最后一层无 ReLU

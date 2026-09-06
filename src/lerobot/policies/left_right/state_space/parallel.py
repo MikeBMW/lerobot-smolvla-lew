@@ -57,7 +57,12 @@ def mlp_ff_forward(npz_path, probe=None):
 
     def ff_forward(obs):
         o = np.asarray(obs, dtype=float)
-        x = (np.asarray(o[:39], dtype=np.float32) - sm) / ss
+        # 🐛 2026-09-06 静静: 零方差通道除零炸弹 — 蒸馏数据单布局 → goal 通道 std≈0,
+        #   导出 ss=std+1e-8 → 推理现场采样孔位(真实化)偏离训练常量 0.04m → 归一化
+        #   ±6000σ → MLP 输出恒饱和 ±0.6 → R0 接近阶段全 seed 失败。修复: 零方差通道
+        #   置 0 (训练时该通道输入恒 (x−sm)/ss≈0, 网络权重已学成忽略, 置 0 与之等价)。
+        x = (np.asarray(o[:39], dtype=np.float32) - sm) / np.where(ss > 1e-4, ss, 1.0)
+        x = np.where(ss > 1e-4, x, np.float32(0.0))
         x1 = np.maximum(0.0, W[0] @ x + b[0])
         x2 = np.maximum(0.0, W[1] @ x1 + b[1])
         x3 = np.maximum(0.0, W[2] @ x2 + b[2])
@@ -88,6 +93,9 @@ def mlp_ff_forward(npz_path, probe=None):
             probe["act_raw"] = [x1, x2, x3]   # 全量激活 (每层512, 供直方图/分布可视化)
         return np.concatenate([u_xyz, [u_grip]])
 
+    # 供 FeedforwardAccelerator.forward 做逐通道域检查 (归一化参数挂闭包)
+    ff_forward.sm = sm
+    ff_forward.ss = ss
     return ff_forward
 
 
@@ -95,6 +103,11 @@ D_GUARD = 0.25   # 稳定性守卫域: hand→目标 3D 距离 (2026-09-04 扩�
 # 2026-09-04 实证 (勿删): 蒸馏 MLP 只在训练域内闭环收敛 (±1cm 扰动 done=True);
 #   域外发散 (±3cm 扰动 1/3 seed 失败, ±5cm+ 全失败 → hand 恒速飞出 9m)。
 #   解析比例律全局稳定 (全扰动 ≤±20cm done=True)。故域外由解析教师兜底。
+# 🐛 2026-09-06 静静: D_GUARD 只看 hand→target 3D 距离, 漏掉 target 通道自身在训练域外
+#   的情况 — 真实化现场采样布局 peg/goal 偏离蒸馏单布局 >10cm → target 归一化 4-5σ,
+#   MLP 输出弱/反 → R0 卡接近/对位 (全 seed)。升级: 归一化逐通道 |x| ≤ DOMAIN_SIGMA
+#   才放行 MLP, 任一通道域外 → 解析守卫兜底 (解析全局稳定, 09-04 基线 62% 即解析)。
+DOMAIN_SIGMA = 4.0   # 逐通道训练域上限 (正态 4σ ≈ 训练数据 99.99% 覆盖)
 #   训练域由 export_dataset(perturb=0.12) 决定; 扩域 → 重训 (tools 管道: export→build→lerobot_train→export_ss_left_brain)。
 
 
@@ -126,14 +139,25 @@ class FeedforwardAccelerator:
 
     def forward(self, obs):
         """逆动力学建议 u_ff = π_ff(obs)。主路径 = 蒸馏 MLP (训练左脑 547K 行为);
-        状态出训练域 (d>D_GUARD, 实证 MLP 域外发散) → 解析守卫兜底 (全局稳定, 同教师)。
+        状态出训练域 → 解析守卫兜底 (全局稳定, 同教师)。域判定 (2026-09-06 升级):
+        (a) hand→target 3D 距离 d_guard ≤ D_GUARD;
+        (b) 归一化逐通道 |x| ≤ DOMAIN_SIGMA (target 通道自身域外 = 布局偏离蒸馏数据,
+            仅看 3D 距离会漏 — 真实化现场采样布局 >10cm 偏移即此, MLP 输出弱/反)。
         权重缺失时整体回退解析 (见 __init__ 警告与 self.loaded)。"""
         obs = np.asarray(obs, dtype=float)
         if self._ff is None:
             return self.analytic_forward(obs)
         target = obs[36:39] if obs.shape[-1] >= 39 else obs[0:3]
         d_guard = float(np.linalg.norm(obs[0:3] - target))
-        if d_guard <= D_GUARD:
+        in_domain = d_guard <= D_GUARD
+        _sm = getattr(self._ff, "sm", None)
+        if in_domain and _sm is not None:
+            _ss = self._ff.ss
+            xn = (obs[:39].astype(np.float32) - _sm) / np.where(_ss > 1e-4, _ss, 1.0)
+            xn = np.where(_ss > 1e-4, xn, np.float32(0.0))
+            if np.any(np.abs(xn) > DOMAIN_SIGMA):
+                in_domain = False
+        if in_domain:
             self.n_mlp += 1
             return self._ff(obs)
         self.n_guard += 1
