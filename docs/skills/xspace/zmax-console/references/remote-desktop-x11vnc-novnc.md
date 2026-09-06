@@ -7,10 +7,9 @@
 ## 全链路 (本机 GNOME :0, 公网可达 = 交付给老倪)
 ```bash
 # 1. 本机: x11vnc 直接共享真实 :0 (不要 -localhost, 隧道入口在 ECS 侧才需要 localhost)
-# ⚠️ 密码写法: -storepasswd 第一参数 = 明文密码本身! 禁止管道 + /dev/stdin (会把字面量 '/dev/stdi' 存成密码 → 永远 password check failed)
-mkdir -p ~/.vnc && x11vnc -storepasswd zmax2026 ~/.vnc/zmax.pass
+mkdir -p ~/.vnc && printf 'zmax2026' | x11vnc -storepasswd /dev/stdin ~/.vnc/zmax.pass
 x11vnc -display :0 -rfbauth ~/.vnc/zmax.pass -forever -shared -noxdamage -ncache 10 -bg -o /tmp/x11vnc.log
-# 验证: ss -tln | grep 5900; 改密码后必须重启 x11vnc 才生效 (密码启动时读入内存)
+# 验证: ss -tln | grep 5900
 
 # 2. ECS 侧 (datadrive.world, 密码见记忆 ECS条目): websockify + noVNC 目录已常驻
 #    websockify --web=/www/wwwroot/datadrive.world/novnc 127.0.0.1:6080 127.0.0.1:5900
@@ -23,11 +22,6 @@ sshpass -p '<ECS密码>' ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=
 ```
 
 ## 坑 (2026-09-06 实测)
-- **`x11vnc -storepasswd /dev/stdin file` 会把字面量 `/dev/stdi`(前8字符) 存成密码** (2026-09-06 16:15 实锤):
-  noVNC 连上后永远 "password check failed", x11vnc 日志同刻有 `rfbAuthProcessClientMessage: password check failed`。
-  正确写法: `x11vnc -storepasswd zmax2026 ~/.vnc/zmax.pass` (明文作第一参数)。
-  系统无 vncpasswd 时别用管道假想 — 直接明文参数最稳。改完**必须重启 x11vnc**。
-  认证实测脚本: 无 vncpasswd 也可用 python3 + pycryptodome 走 RFB 3.8 挑战应答验密码 (见本会话 /tmp/rfb_auth_test.py 思路)。
 - **ECS 5900 被僵尸 sshd 占用 → 隧道起不来** ("remote port forwarding failed for listen port 5900")。
   清理: 登录 ECS `ss -tlnp | grep ':5900 '` 找 pid (是 sshd 的转发监听) → kill → 再建隧道。
 - 隧道建好验证: ECS `ss -tln | grep 5900` 有监听 = 隧道活; 本机隧道进程日志无 Error。
