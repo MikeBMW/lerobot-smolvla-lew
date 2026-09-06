@@ -2,7 +2,7 @@ web=4090训练+ComfyUI+前端+ECS部署+PM，总工(4060/GitHub/GUI)，小芳=�
 §
 链路: Orin→Mac→ECS→4060; WSL↔Orin直连不通→relay_middleware(HTTP+WS datadrive.world/ws)+Mac守护; scp>100MB断→base64+echo写文件; 模型chmod644
 §
-系统09迁移完成(2026-09-06): 克隆→E盘p5(ext4 ubuntu-e 62G); Boot0001置前(C/D零接触); U盘保留回退; disk_redline.sh已改v3去WSL标签(原生Ubuntu非WSL)
+系统=09-06克隆迁移→E盘p5(ubuntu-e 62G), 原生Ubuntu非WSL, Boot0001置前C/D零接触, 双系统RTC勿动adjtime; gateway开机时钟超前8h→cron时间戳+8h显示(间隔正常), 自然重启归位
 §
 架构: 坐标=逻辑主线,图像=背景; state叠进latent; 45D=39+相对; 58D=45+触觉4+CoT9
 §
