@@ -75,12 +75,12 @@ K_CONTACT = 6.0         # 接触力增益 (同引擎)
 MAX_STEPS = 2000        # 单轮步数上限 (metaworld ~10Hz, 引擎 500 步 @50Hz = 1000 步 @10Hz, 余量)
 STAGE_LIFT = 0.16       # 抬起目标 (夹爪锚, 台面之上; 同引擎语义)
 # 🛡 插入遇阻保护参数 (2026-09-07, seed100 滑脱实锤 — peg 头顶孔沿无倒角刚体,
-#   depth 停滞但指令硬推 → peg 被挤出夹爪 gf→0 → 回退重抓 500 步耗尽)
+#   推力>夹持保持 → peg 被逐次压滑出夹爪 (site真值-推算差 12→15mm 递增))
 INSERT_STALL_FRAMES = 5     # 推而不进连续帧数 → 确认遇阻 (5 帧 ≈ 0.5s @10Hz)
-INSERT_JIGGLE_FRAMES = 9    # 遇阻窗口: 回撤(3) + y/z 微调(3) + 观察(3)
+INSERT_JIGGLE_FRAMES = 12   # 回撤窗口帧数 (0.08m/s × 12帧 ≈ 15mm 脱离孔口, 解除应力)
 INSERT_BACKOFF_U = 0.08     # 回撤速度 (沿孔轴反向, 松开顶住应力)
-INSERT_JIGGLE_U = 0.05      # 微调速度 (y/z 轴 ±, ≈1mm/帧 扫掠寻孔)
-INSERT_STALL_EVENTS_MAX = 4 # 单轮插入连续遇阻次数上限 → 回退转移重新对孔
+GRASP_SLIP_MM = 0.020       # 夹持随动验证: peg 相对夹爪漂移阈值 (原3.5cm→2cm 折中, 早发现)
+GRASP_SLIP_GRACE = 20       # 锁存后宽限帧数 (深夹过程 peg 被挤向根部属正常, 期间阈值放宽 20mm)
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
@@ -244,8 +244,10 @@ class RealStateSpaceSim:
         self._stall = 0            # 推而不进连续帧数
         self._stall_events = 0     # 本阶段遇阻事件计数
         self._jiggle = 0           # 遇阻窗口剩余帧 (0=不在窗口)
-        self._jiggle_axis = 2      # 微调轴: 先 z 后 y 交替
-        self._jiggle_dir = 1.0     # 微调方向 (±)
+        self._jiggle_axis = 2      # 微调轴: 先 z 后 y 交替 (保留兼容)
+        self._jiggle_dir = 1.0     # 微调方向 (±) (保留兼容)
+        self._retreat_then = None  # 回撤窗口结束后回退的目标阶段 (5=转移, 0=接近; None=不回退)
+        self._grasp_age = 0        # 夹持锁存后帧数 (随动验证宽限期)
         # 🐛 2026-09-04 静静 (探针12 实锤): 控制锚必须用 obs[0:3] hand (腕部=真实夹爪 claw),
         #   不能用 endEffector site — site 是腕下 4cm 的虚拟视觉点, 降到 光模块 高度时真实夹爪
         #   还悬空 2-3.5cm → 空夹 (接触实验里 '光模块 接触' 实为 光模块 贴桌面, 误读成夹持).
@@ -263,7 +265,8 @@ class RealStateSpaceSim:
         # → 夹紧度: 夹住=0.30, 空夹=0.71。阈值取 0.25 (obs<0.75, 闭合足够深才开始抬;
         #   夹住与否由抬起阶段 光模块 随动验证决定, 见 grasp_force)
         self.sched = self.cognition.ActionModulator(
-            grasp_th=0.40,      # 夹紧度 1−obs>0.40 (obs<0.60 深夹) 才推进抬起 — 与锁存同步
+            grasp_th=0.50,      # 夹紧度 1−obs>0.50 (obs<0.50) 才推进抬起 — 深夹到位再抬,
+                                # 防浅夹 (obs 0.5x) 锁存即抬 → peg 未压稳滑脱 (seed100 实锤)
                                 # (浅夹 0.72 就抬滑脱率高; 深夹到 0.60 以下夹持力才足)
             align_th=0.025,     # 转移→插入 孔位对准 (光模块头-孔口水平, 视觉精度余量)
             insert_depth=0.006,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
@@ -475,10 +478,12 @@ class RealStateSpaceSim:
             u_sat = np.asarray(u_sat, dtype=float).copy()
             u_sat[3] = float(u[3])
             # 🛡 插入遇阻保护 (2026-09-07 静静, seed100 滑脱实锤修复):
-            #   段②水平推入 peg 头顶孔沿 (无倒角刚体, y/z 残留 mm 级偏差) → depth 停滞但
-            #   指令硬推 → peg 被挤出夹爪 (随动验证 gf→0 → 回退重抓, 500 步耗尽未完成)。
-            #   真机同构: 力控 peg-in-hole 遇阻 = 停推回撤松应力 + 微小平移寻位;
-            #   连续遇阻多次 → 回退转移重新对孔 (不硬推, 保夹持不脱手)。
+            #   遇阻机制 (实测): peg 头顶孔沿时推力 > 夹持保持 → peg 在夹爪内逐次受压
+            #   滑动 (site真值-编码器推算差 12→15mm 递增) → 推算"假对准" → 微调按错目标
+            #   瞎调无效; 回退转移时 peg 仍卡孔沿 → 拉扯脱出。
+            #   策略: 遇阻确认 → 充分回撤脱离 (12帧≈15mm, 解除应力, peg 不再累积滑动)
+            #   → 分级回退: 第1-2次回退转移重新对孔 (z对齐已收紧1.2mm), 第3次回退接近
+            #   重抓 (peg 已滑 → 刷新锁存偏移)。真机同构: 插孔遇阻先退再对, 不硬顶。
             if st_now == "插入" and self.grasped:
                 _dnow = float(self._insert_depth())
                 _adv = self._depth_prev - _dnow          # >0 = peg 头在向孔底推进
@@ -486,61 +491,42 @@ class RealStateSpaceSim:
                 if _adv > 0.0008:                        # 恢复推进 → 清除遇阻状态
                     self._stall = 0
                     self._stall_events = 0
-                elif self._jiggle <= 0:                  # 不在遇阻窗口才累计顶住帧
+                elif self._jiggle <= 0:                  # 不在回撤窗口才累计顶住帧
                     if float(np.linalg.norm(u_sat[:2])) > 0.03:   # 指令仍在水平推
                         self._stall += 1
                         if self._stall >= INSERT_STALL_FRAMES:
                             self._stall = 0
                             self._stall_events += 1
-                            if self._stall_events >= INSERT_STALL_EVENTS_MAX:
+                            self._jiggle = INSERT_JIGGLE_FRAMES    # 回撤窗口
+                            if self._stall_events >= 3:
                                 self._stall_events = 0
-                                try:
-                                    if self.sched.stage_idx >= 5:
-                                        self.sched._goto(5, "🛡 插入连续遇阻 4 次 → 回退转移重新对孔")
-                                        self.log("🛡 插入遇阻 4 次 → 回退转移重新对孔")
-                                except Exception:
-                                    pass
+                                self._retreat_then = 0              # 回接近重抓 (刷新锁存)
+                                self.log("🛡 插入遇阻 3 次 → 回撤脱离后回退接近重抓 (刷新锁存)")
                             else:
-                                self._jiggle = INSERT_JIGGLE_FRAMES
-                                self._jiggle_axis = 2 if self._jiggle_axis == 1 else 1   # y↔z 交替
-                                if self._stall_events % 2 == 0:
-                                    self._jiggle_dir = -self._jiggle_dir                # 方向交替
-                                self.log(f"🛡 插入遇阻#{self._stall_events} → 回撤+"
-                                         f"{'y' if self._jiggle_axis == 1 else 'z'}轴微调寻孔"
-                                         f" [peg头-孔口 y_err={float(self.peg_head()[1]-self._hole_p()[1])*1000:.1f}mm "
-                                         f"z_err={float(self.peg_head()[2]-self._hole_p()[2])*1000:.1f}mm "
-                                         f"depth={_dnow*1000:.1f}mm "
-                                         f"ph=({self.peg_head()[0]:.3f},{self.peg_head()[1]:.3f},{self.peg_head()[2]:.3f}) "
-                                         f"hole=({self._hole_p()[0]:.3f},{self._hole_p()[1]:.3f},{self._hole_p()[2]:.3f}) "
-                                         f"goal=({self._goal_p()[0]:.3f},{self._goal_p()[1]:.3f},{self._goal_p()[2]:.3f}) "
-                                         f"x=({self.x[0]:.3f},{self.x[1]:.3f},{self.x[2]:.3f}) "
-                                         f"SITE真值=({self.env.data.site_xpos[self._site_ph][0]:.3f},"
-                                         f"{self.env.data.site_xpos[self._site_ph][1]:.3f},"
-                                         f"{self.env.data.site_xpos[self._site_ph][2]:.3f}) "
-                                         f"site-推算差={np.linalg.norm(self.env.data.site_xpos[self._site_ph]-self.peg_head())*1000:.1f}mm]")
+                                self._retreat_then = 5              # 回转移重新对孔
+                                self.log(f"🛡 插入遇阻#{self._stall_events} → 回撤脱离后回退"
+                                         f"{'转移重新对孔' if self._retreat_then == 5 else '接近重抓'}"
+                                         f" [site-推算差="
+                                         f"{np.linalg.norm(self.env.data.site_xpos[self._site_ph]-self.peg_head())*1000:.1f}mm"
+                                         f" depth={_dnow*1000:.1f}mm]")
                     else:
                         self._stall = 0
             else:
                 self._stall = 0
                 self._stall_events = 0
-            if self._jiggle > 0:                         # 遇阻窗口内接管水平指令 (夹爪不动)
+            if self._jiggle > 0:                         # 回撤窗口: 沿孔轴反向满速, 脱离接触
                 self._jiggle -= 1
-                _jz = INSERT_JIGGLE_FRAMES
-                if self._jiggle >= _jz - 3:              # 前 3 帧: 沿孔轴反向回撤 (松顶住应力)
-                    u_sat[0] = -float(np.sign(u_sat[0]) if abs(u_sat[0]) > 1e-6 else 1.0) * INSERT_BACKOFF_U
-                    u_sat[1] = u_sat[2] = 0.0
-                elif self._jiggle >= _jz - 5:            # 2 帧: 微调轴 +方向 (毫米级扫掠)
-                    u_sat[0] = 0.0
-                    u_sat[1] = u_sat[2] = 0.0
-                    u_sat[self._jiggle_axis] = self._jiggle_dir * INSERT_JIGGLE_U
-                elif self._jiggle >= _jz - 6:            # 1 帧: 停 (换向防冲)
-                    u_sat[0] = u_sat[1] = u_sat[2] = 0.0
-                elif self._jiggle >= _jz - 8:            # 2 帧: 微调轴 −方向 (抖扫)
-                    u_sat[0] = 0.0
-                    u_sat[1] = u_sat[2] = 0.0
-                    u_sat[self._jiggle_axis] = -self._jiggle_dir * INSERT_JIGGLE_U
-                else:                                    # 末段: 停推观察 (等 depth 恢复检测)
-                    u_sat[0] = u_sat[1] = u_sat[2] = 0.0
+                u_sat[1] = u_sat[2] = 0.0
+                u_sat[0] = -float(np.sign(u_sat[0]) if abs(u_sat[0]) > 1e-6 else 1.0) * INSERT_BACKOFF_U
+                if self._jiggle == 0 and getattr(self, "_retreat_then", None) is not None:
+                    try:
+                        if self.sched.stage_idx >= self._retreat_then:
+                            self.sched._goto(self._retreat_then,
+                                             f"🛡 插入遇阻回撤脱离 → 回退{'转移' if self._retreat_then == 5 else '接近'}重试")
+                            self.log(f"🛡 回撤完成 → 回退{'转移重新对孔' if self._retreat_then == 5 else '接近重抓'}")
+                    except Exception:
+                        pass
+                    self._retreat_then = None
             u_vec = self.execr.execute(u_sat)
             if np.ndim(u_vec) == 0:
                 u_vec = np.zeros(4)
@@ -555,6 +541,7 @@ class RealStateSpaceSim:
                     self._close_steps += 1
                     if self._close_steps >= 3 and self.gripper < 0.60:
                         self.grasped = True              # 深夹锁存 (夹住候选)
+                        self._grasp_age = 0              # 随动验证宽限期起点
                         # 锁存偏移用感知销 (R1: 视觉 光模块; R0: 真值) — 夹持后机器人"以为"的光模块位置
                         self._grasp_off0 = self._peg_cur - self.x
                         self._grasp_gap_z = float(self.x[2] - self._peg_cur[2])
@@ -562,9 +549,13 @@ class RealStateSpaceSim:
                 else:
                     self._close_steps = 0
             elif self.grasped:
+                self._grasp_age += 1
                 # 随动验证: 夹爪移动时 光模块 相对偏移保持 = 真夹住; 滑脱/空夹 → 偏移漂移
+                # 🐛 2026-09-07: 阈值 3.5cm → 8mm (宽限期 20 帧 20mm — 深夹期 peg 被挤向
+                #   根部属正常, 过后 peg 漂移>8mm 即夹持失效, 早发现早重抓, 别等插入被顶脱)
                 _off = o[4:7] - self.x
-                if float(np.linalg.norm(_off - self._grasp_off0)) > 0.035:
+                _slip_th = 0.020 if self._grasp_age < GRASP_SLIP_GRACE else GRASP_SLIP_MM
+                if float(np.linalg.norm(_off - self._grasp_off0)) > _slip_th:
                     self.grasped = False                  # 掉了 → grasp_force 0 → 调度器回退重抓
                     self._grasp_off0 = None
                     # 🐛 强制回退到接近: 滑脱时 光模块 可能半挂在夹爪上 (z 未落回台面),
