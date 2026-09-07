@@ -2887,6 +2887,7 @@ class VerificationLayer:
         """AOI 真实图像验证/批量统计: 真实图像喂质检器"""
         import glob as _g
         imgs = _g.glob(os.path.join(self.root, "outputs", "yolo_peg_depth", "*", "train", "images", "*.jpg"))[:3] or \
+               _g.glob(os.path.join(self.root, "data", "yolo_peg_depth", "images", "*.png"))[:3] or \
                _g.glob(os.path.join(self.root, "data", "**", "*.jpg"), recursive=True)[:3]
         q = _load(os.path.join("src", "lerobot", "policies", "yolo_3d", "quality_check.py"))
         if not imgs:
