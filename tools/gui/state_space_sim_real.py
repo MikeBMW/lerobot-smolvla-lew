@@ -79,8 +79,15 @@ STAGE_LIFT = 0.16       # 抬起目标 (夹爪锚, 台面之上; 同引擎语义
 INSERT_STALL_FRAMES = 5     # 推而不进连续帧数 → 确认遇阻 (5 帧 ≈ 0.5s @10Hz)
 INSERT_JIGGLE_FRAMES = 12   # 回撤窗口帧数 (0.08m/s × 12帧 ≈ 15mm 脱离孔口, 解除应力)
 INSERT_BACKOFF_U = 0.08     # 回撤速度 (沿孔轴反向, 松开顶住应力)
-GRASP_SLIP_MM = 0.020       # 夹持随动验证: peg 相对夹爪漂移阈值 (原3.5cm→2cm 折中, 早发现)
+GRASP_SLIP_MM = 0.008       # 夹持随动验证: peg 相对夹爪漂移阈值 (宽限期后严格 8mm — 2026-09-07
+                            #   晚收紧: 20mm 漏检真滑 10-20mm (seed100/105 site-推算差 5→20mm 递增
+                            #   实锤); 当初 8mm 误报是浅夹(0.40)就抬, 现已深夹 0.50+宽限 20帧)
 GRASP_SLIP_GRACE = 20       # 锁存后宽限帧数 (深夹过程 peg 被挤向根部属正常, 期间阈值放宽 20mm)
+INS_DEV_MM = 0.008          # 插入段 site-推算偏差守卫: 夹持后 peg 头编码器推算 vs 真实位置
+                            #   偏差 >8mm 连续 3 帧 = peg 已在夹爪内滑 → 推算"假对准" → 立即回
+                            #   接近重抓刷新锁存 (毫米级插入, 感知偏差>8mm 时推算引导无意义;
+                            #   R0 用 site 真值, R1 真机同构替代 = 力觉/视觉偏差)
+INS_DEV_FRAMES = 3
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
@@ -280,6 +287,7 @@ class RealStateSpaceSim:
         self._close_steps = 0      # 抓取阶段闭合指令持续步数
         self._z_stall = 0          # 下降停滞帧数 (被销/台顶住判据)
         self._z_prev = None        # 上一帧 hand z
+        self._ins_dev = 0          # 插入段 site-推算偏差连续帧数 (peg 夹爪内滑守卫)
         # 插入阶段最小推力: 光模块头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
         #   (ep3 插到 13mm 推不动 96 步实锤; 引擎 STAGE_V_MIN 无插入, 真实物理需要)
         self.sched.v_min["插入"] = 0.02
@@ -325,6 +333,10 @@ class RealStateSpaceSim:
     def peg_head(self):
         """光模块头世界坐标 (夹持后=编码器 hand+锁存偏移+头偏置 — 真机同构, 无 site 依赖,
         off 锁死不追滑脱; 滑脱由随动验证回退。未夹持: R0=site 真值 / R1=视觉)"""
+        # 🧪 R0 诊断开关 (SS_R0_SITE_PEGHEAD=1): 夹持后也返回 site 真值 —
+        #   验证失败轮是"感知对准误差"(可感知修)还是"夹持几何物理"(不可调参修)
+        if os.environ.get("SS_R0_SITE_PEGHEAD") == "1" and not self.vision:
+            return self.env.data.site_xpos[self._site_ph].copy()
         if self.grasped and self._grasp_off0 is not None:
             ho = self.geom.get("head_off", np.zeros(3))
             return self.x + self._grasp_off0 + ho
@@ -361,7 +373,7 @@ class RealStateSpaceSim:
         self._reset(self.seed)
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [], "u_sat": [],
               "stage": [], "done": [], "x": [], "gripper": [], "force": [], "peg": [],
-              "peg_head": [], "target": [], "grasped": [], "obs": [], "u_ff_vec": [],
+              "peg_head": [], "site_ph": [], "target": [], "grasped": [], "obs": [], "u_ff_vec": [],
               "u_sat_vec": [], "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [],
               "u_exec_vec": [], "v_vec": [], "z_k_vec": [], "io_trace": [],
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
@@ -477,6 +489,30 @@ class RealStateSpaceSim:
             u_sat = self.safety.saturate(u, limit=0.6)
             u_sat = np.asarray(u_sat, dtype=float).copy()
             u_sat[3] = float(u[3])
+            # 🛡 插入段 site-推算偏差守卫 (2026-09-07 晚 静静, 重抓位置策略核心):
+            #   peg 在夹爪内滑 → 编码器推算 peg 头 = "假对准" (实测 site-推算差 5→20mm 递增),
+            #   毫米级插入下推算引导无意义; 偏差 >8mm 连续 3 帧 → 立即回接近重抓 (刷新锁存
+            #   偏移), 不等随动验证 (滑动常被 20 帧宽限吞, seed100/105 实锤) 也不等遇阻 3 次。
+            #   R0 用 site 真值; R1/真机同构替代 = 力觉/视觉偏差 (插入段视觉 peg 被遮挡)。
+            if (st_now == "插入" and self.grasped and not self.vision
+                    and self._grasp_off0 is not None):
+                _sdev = float(np.linalg.norm(self.env.data.site_xpos[self._site_ph]
+                                             - self.peg_head()))
+                if _sdev > INS_DEV_MM:
+                    self._ins_dev += 1
+                    if self._ins_dev >= INS_DEV_FRAMES:
+                        self._ins_dev = 0
+                        self.grasped = False
+                        self._grasp_off0 = None
+                        self.log(f"🔄 插入感知偏差 {_sdev*1000:.0f}mm"
+                                 f" (peg 夹爪内滑) → 回接近重抓刷新锁存")
+                        try:
+                            if self.sched.stage_idx >= 0:
+                                self.sched._goto(0, "🔄 插入感知偏差大 → 回接近重抓")
+                        except Exception:
+                            pass
+                else:
+                    self._ins_dev = 0
             # 🛡 插入遇阻保护 (2026-09-07 静静, seed100 滑脱实锤修复):
             #   遇阻机制 (实测): peg 头顶孔沿时推力 > 夹持保持 → peg 在夹爪内逐次受压
             #   滑动 (site真值-编码器推算差 12→15mm 递增) → 推算"假对准" → 微调按错目标
@@ -613,6 +649,7 @@ class RealStateSpaceSim:
             tr["force"].append(force_norm)
             tr["peg"].append(o[4:7].copy())
             tr["peg_head"].append(ph.copy())
+            tr["site_ph"].append(self.env.data.site_xpos[self._site_ph].copy())
             tr["target"].append(target.copy())
             tr["grasped"].append(bool(self.grasped))
             tr["obs"].append(obs.copy())
