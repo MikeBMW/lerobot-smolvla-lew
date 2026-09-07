@@ -48,39 +48,6 @@ def project_3d_to_2d(env, xyz):
     return W - px, H - py
 
 
-def quat_rotmat(q):
-    """wxyz 四元数 → 旋转矩阵"""
-    w, x, y, z = q
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
-
-
-def bbox3d_rot90(env, center, half_world, pad_px=2.0):
-    """3D 物体 (中心+世界半尺寸) → rot90 帧 bbox (cx,cy,w,h 像素), 8 角点投影包络
-    🐛 2026-09-07 静静: 原固定 60×40 框 (26cm×17cm@1.8m) 远大于 peg 实际投影
-    (24cm×3cm), 框内大部分是背景 → 深度提取/框语义差。真实尺寸标注:
-    YOLO 学到贴合长条的框 → 框内中位数深度 ≈ peg 表面, 幻影更少。"""
-    q = None
-    # 角点 (局部尺寸 → 世界)
-    corners = []
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            for sz in (-1, 1):
-                corners.append(center + np.array([sx, sy, sz]) * half_world)
-    us, vs = [], []
-    for c in corners:
-        p = project_3d_to_2d(env, c)
-        if p is None:
-            return None
-        us.append(p[0]); vs.append(p[1])
-    u0, u1 = min(us), max(us)
-    v0, v1 = min(vs), max(vs)
-    u0 -= pad_px; v0 -= pad_px; u1 += pad_px; v1 += pad_px
-    return (u0 + u1) / 2, (v0 + v1) / 2, (u1 - u0), (v1 - v0)
-
-
 def main():
     eps = int(sys.argv[sys.argv.index("--eps") + 1]) if "--eps" in sys.argv else 200
     out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(ROOT, "data", "yolo_peg")
@@ -95,10 +62,6 @@ def main():
         env, mt = make_env(seed=ep)
         obs, _ = env.reset()
         env._freeze_rand_vec = True
-        # 🐛 2026-09-07 静静: peg 真实尺寸标注 — 现场 geom 中心+朝向 (peg 会被碰移/旋转)
-        _peg_gid = env.model.geom("peg").id
-        _R = quat_rotmat(env.model.geom_quat[_peg_gid])
-        _peg_half = _R @ np.asarray(env.model.geom_size[_peg_gid], dtype=float)
         for step in range(150):
             obs_vec = np.asarray(obs, dtype=np.float64).ravel()
             act = expert.get_action(obs_vec)
@@ -107,46 +70,33 @@ def main():
                 n_imgs += 1
                 img_path = f"{out}/images/ep{ep:03d}_s{step:03d}.png"
                 Image.fromarray(np.rot90(img, k=2)).save(img_path)  # rot90 与 model_tree 渲染一致
-                # 物体 3D 位置 → 2D bbox (peg=真实尺寸角点包络; hand/hole=中心+适度框)
+                # 物体 3D 位置 → 2D bbox (用投影点 + 固定框尺寸)
+                h = 60; w = 40
                 objs = []
-                # hand (末端) — 视觉点中心, 适度固定框 (控制锚=编码器, 框语义不重要)
+                # hand (末端)
                 ee = env.data.site_xpos[env.model.site("endEffector").id]
-                _hp = project_3d_to_2d(env, ee)
-                if _hp is not None:
-                    objs.append(("hand", None, (_hp[0], _hp[1], 60.0, 40.0)))
-                # 光模块 (销钉) — 🔴 真实尺寸 bbox (长 24cm 沿 x 长条)
+                objs.append(("hand", ee))
+                # 光模块 (销钉) — pegGrasp site
                 try:
-                    pg = env.data.geom_xpos[_peg_gid].copy()
-                    bb = bbox3d_rot90(env, pg, np.abs(_peg_half))
-                    if bb is not None:
-                        objs.append(("peg", None, bb))
+                    pg = env.data.site_xpos[env.model.site("pegGrasp").id]
+                    objs.append(("peg", pg))
                 except Exception:
                     pass
-                # hole (孔) — 中心+适度框 (孔口几何不在 geom, 不参与控制仅统计)
+                # hole (孔)
                 try:
                     hole = env.data.site_xpos[env.model.site("hole").id]
-                    _hp2 = project_3d_to_2d(env, hole)
-                    if _hp2 is not None:
-                        objs.append(("hole", None, (_hp2[0], _hp2[1], 48.0, 48.0)))
+                    objs.append(("hole", hole))
                 except Exception:
                     pass
                 line = ""
-                for item in objs:
-                    cls, xyz, bb = item
-                    if bb is not None:
-                        cx, cy, bw_px, bh_px = bb
-                    else:
-                        # 兼容: 无 bbox → 中心投影 + 固定框 (不应发生, 除 hand/hole 显式给框)
-                        p = project_3d_to_2d(env, xyz)
-                        if p is None:
-                            continue
-                        cx, cy = p
-                        bw_px, bh_px = 60.0, 40.0
-                    # 尺寸下限 (像素): 太小 YOLO 难学, 保底 8px
-                    bw_px = max(bw_px, 8.0); bh_px = max(bh_px, 8.0)
-                    xc, yc = cx / 480, cy / 480
-                    bw, bh = bw_px / 480, bh_px / 480
-                    if 0 <= cx < 480 and 0 <= cy < 480:
+                for cls, xyz in objs:
+                    p = project_3d_to_2d(env, xyz)
+                    if p is None:
+                        continue
+                    u, v = p
+                    if 0 <= u < 480 and 0 <= v < 480:
+                        xc, yc = u / 480, v / 480
+                        bw, bh = w / 480, h / 480
                         # 类 id 顺序与已训权重绑定 (hand=0, peg=1, hole=2); peg 类在推理层
                         # 显示为"光模块" (yolo_state_aligner 覆写 names), 这里勿改 id
                         cls_id = {"hand": 0, "peg": 1, "hole": 2}[cls]
