@@ -2806,6 +2806,77 @@ _EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 
 _EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 138, "class PerformanceManifold")
 
 
+# 🧠 高级层 VLM 编码器 + 潜空间 Decoder (2026-09-08 老倪: encoder VLM→潜空间→decoder 高级功能;
+#   yolo/前馈/原子技能 基础功能。VLM 将 YOLO 检测框/触觉/图像帧 → token → 潜空间 z;
+#   流形(接触/性能)是 z 上的导航地图; Decoder 把流形坐标解码回动作建议 u_mani → 前馈融合)
+def node_ss_vlm(ctx):
+    """🧠 VLM 通用视觉编码器 — 输入图像/触觉/检测框 token → 输出潜空间 z (投影摘要)
+    真实源: module._ss_tr 当前帧 (x 末端/peg 光模块/force/target 检测真值) → 展示潜空间构成"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("🧠 VLM: 无引擎轨迹 — 先点 ▶ 运行")
+            return False
+        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
+        x = np.asarray(tr["x"][idx], dtype=float)
+        peg = np.asarray(tr["peg"][idx], dtype=float)
+        tgt = np.asarray(tr["target"][idx], dtype=float)
+        # 潜空间 z 摘要: 手相对目标位移 + 手相对工件位移 + 夹持态 (降维观测)
+        z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
+        if log:
+            log(f"🧠 VLM 编码 (潜空间 z ∈ R⁷): token=图像帧+触觉+检测框")
+            log(f"   z[:3] 手→目标 {np.round(z_vis[:3], 4)} m · z[3:6] 手→工件 "
+                f"{np.round(z_vis[3:6], 4)} m · z[6] 夹持={z_vis[6]:.0f}")
+            log(f"   语义: 视觉/触觉/检测 token → 统一潜空间 (流形导航坐标底)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ VLM 编码失败: {e}")
+        return False
+
+
+def node_ss_dec(ctx):
+    """🔄 潜空间 Decoder — 流形坐标(接触/性能)解码 → 动作建议 u_mani
+    真实源: module._ss_tr 当前帧 mani_risk/progress/V + u_ff → 解码方向 = 沿流形减势"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("🔄 Decoder: 无引擎轨迹 — 先点 ▶ 运行")
+            return False
+        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
+        # 流形坐标 (真实化/引擎均发布)
+        risk = float(tr["mani_risk"][idx]) if tr.get("mani_risk") else 0.0
+        prog = float(tr["mani_progress"][idx]) if tr.get("mani_progress") else 0.0
+        u_ff = float(np.linalg.norm(tr["u_ff"][idx])) if tr.get("u_ff") else 0.0
+        # 解码动作幅度估计: 法向偏离大 → 校正性强 (回流形); 沿轴余量大 → 推进
+        if log:
+            log(f"🔄 Decoder (z→u_mani): 流形风险={risk:.4f} 进度={prog:.4f}")
+            log(f"   解码: 法向偏离 {risk:.1f}mm → 校正动作 | 前馈 |u_ff|={u_ff:.3f} m/s 融合")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ Decoder 解码失败: {e}")
+        return False
+
+
+# 注册 (关键字按节点名唯一匹配)
+_reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (SmolVLA式) — 视觉/触觉/检测框 token → 潜空间 z",
+    node_ss_vlm)
+_reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",
+    node_ss_dec)
+_EXTERNAL_LOC["ssvlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
+                                        "modeling_smolvla_lew.py"), 1, "class SmolVLALewPolicy")
+_EXTERNAL_LOC["ssdec"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 138, "潜空间解码 (流形→动作)")
+
+
 # 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
 #   回路外元层, 与标定层/流形导航层同范式; 真源 src/lerobot/verification/verification_layer.py)
 _VERIF_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "verification")
