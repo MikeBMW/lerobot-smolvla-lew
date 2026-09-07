@@ -24,12 +24,34 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
 import os
 import numpy as np
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor, QFont, QVector3D
+from PyQt5.QtCore import Qt, QTimer, QPointF
+from PyQt5.QtGui import QColor, QFont, QVector3D, QPainter, QPen, QPixmap, QBrush, QPolygonF
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
                              QSlider, QPushButton, QFrame)
 
 import pyqtgraph.opengl as gl
+
+# ── 🧮 流形层探测 (接触/性能流形几何 — 2026-09-07 老倪: 流形是拓扑, 要有形状可看) ──
+def _load_manifold_layer():
+    """定位并 import manifold_layer.py (与 simulink_module 同探测策略; 失败返回 None)"""
+    try:
+        import sys as _sys, os as _os
+        root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        for cand in (root, _os.path.join(root, "src", "lerobot", "manifold"),
+                     getattr(_sys, "_MEIPASS", "")):
+            p = _os.path.join(cand, "manifold_layer.py")
+            if _os.path.isfile(p):
+                import importlib.util as _ilu
+                _m = _ilu.spec_from_file_location("_mani3d", p)
+                if _m is not None:
+                    _mod = _ilu.module_from_spec(_m)
+                    _m.loader.exec_module(_mod)
+                    return _mod
+    except Exception:
+        pass
+    return None
+
+_MANI = _load_manifold_layer()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -471,6 +493,18 @@ class DreamView3D(QWidget):
                 "QPushButton:checked{background:#1f6feb; color:#fff; border-color:#1f6feb;}")
             self.btn_top_w.toggled.connect(self._on_top_world)
             pl.addWidget(self.btn_top_w)
+            # 📉 性能流形曲面窗 (2026-09-07 老倪: 流形要有形状 — η 代价碗独立 3D 曲面)
+            self.btn_mani_bowl = QPushButton("📉 性能流形曲面")
+            self.btn_mani_bowl.setToolTip(
+                "性能流形 = 光耦合对准代价曲面: 横轴 = 光模块头横向错位 (±16mm, 孔口局部系),\n"
+                "竖轴 = 估计耦合效率 η (0→1)。曲面 = η 高斯碗 (σ=4mm 标定); 金色点 = 当前位置\n"
+                "落碗位置, 底部细线 = 错位轨迹历史 — 看它怎么滑进碗底 (对准)")
+            self.btn_mani_bowl.setStyleSheet(
+                "QPushButton{background:#21262d; color:#e6edf3; border:1px solid #58a6ff;"
+                "border-radius:4px; padding:5px 0; font-size:12px;}"
+                "QPushButton:hover{background:#1f6feb; color:#fff;}")
+            self.btn_mani_bowl.clicked.connect(self._open_mani_bowl)
+            pl.addWidget(self.btn_mani_bowl)
             self.lbl_state_w = QLabel("⏸ 引擎就绪")
             self.lbl_state_w.setStyleSheet(
                 "color:#8b949e; font-size:11px; background:#0d1117; border:1px solid #30363d;"
@@ -556,6 +590,18 @@ class DreamView3D(QWidget):
             ("ulimit",    "⑥ 🛡 安全执行边界 (饱和限幅)",  False,
              "安全层饱和限幅后的指令 (上限 0.6 m/s)。与⑤重合 = 没触发限幅;\n"
              "两者分叉 = 安全层出手削掉了超速部分"),
+            # ── 🧮 流形导航层 (回路外几何监测元层, 2026-09-07 老倪: 流形是拓扑要有形状) ──
+            ("mani",      "🧮 流形导航层 · 接触通道曲面", True,
+             "接触流形 = 插拔安全通道 (1D 测地线 × 容差半径 → 管状 2D 曲面嵌入 3D):\n"
+             "  青色线框管 = 当前阶段的**安全通道** (半径 = 该阶段法向容差):\n"
+             "    下降/抓取/抬起: 光模块上方垂直通道 (容差 30mm, 粗管)\n"
+             "    插入: 孔口悬高→孔底 工艺斜线通道 (容差 6mm, 细管)\n"
+             "    完成: 孔轴水平通道 (容差 4mm, 最细) — 越接近成功通道越窄\n"
+             "  中心白线 = 通道轴 (测地线/最优路径)\n"
+             "  金色小球 = 光模块头当前位置; 状态线 = 头到通道轴的垂直偏离:\n"
+             "    绿 = 在流形上 (偏离<半容差) · 黄 = 贴边缘 (漂移中) · 红 = 离流形 (弯曲/报废风险)\n"
+             "  自由空间阶段 (接近/对位/转移) 无接触约束 → 不画管, 只画手→目标的灰进度线\n"
+             "关掉本层 = 只看控制, 不看流形几何"),
             # ── 辅助参考 ──
             ("grid",      "▦ 地面网格 (参考)",           True,  "z=0 台面参考网格 (5cm 一格)"),
             ("axis",      "🧭 坐标轴 XYZ (参考)",        False,
@@ -696,6 +742,15 @@ class DreamView3D(QWidget):
         meta = tr.get("_meta") if isinstance(tr, dict) else None
         if meta:
             self._apply_meta(meta)
+        # 📉 性能流形碗窗同源更新 (现场孔位 meta 优先)
+        try:
+            w = getattr(self, "_bowl", None)
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.set_trajectory(tr, hole=self._hole.copy())
+        except Exception:
+            pass
         n = len(tr.get("x", []))
         self._n = n
         self.slider.setRange(0, max(0, n - 1))
@@ -1076,6 +1131,24 @@ class DreamView3D(QWidget):
         self.view.addItem(traj)
         self._gl_items["traj"] = traj
 
+        # 🧮 接触流形几何 (2026-09-07 老倪: 流形是拓扑要有形状): 通道管线框 = 5 环 + 3 母线
+        #   多 GLLinePlotItem (各自闭合/短段, 无 NaN 断线兼容问题); 后跟 [通道轴, peg头球, 偏离线]
+        _MANI_TC = (0.25, 0.85, 0.75, 0.55)
+        mani_tube = []
+        for _ti in range(8):
+            _ln = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_MANI_TC, width=1.2)
+            _ln.setGLOptions("additive")
+            self.view.addItem(_ln)
+            mani_tube.append(_ln)
+        mani_ax = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.95, 0.95, 0.95, 0.9), width=2.2)
+        self.view.addItem(mani_ax)
+        mani_ball = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.72, 0.10, 1.0), size=9)
+        self.view.addItem(mani_ball)
+        mani_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.2, 1.0, 0.4, 1.0), width=2.5)
+        self.view.addItem(mani_line)
+        self._gl_items["mani"] = mani_tube + [mani_ax, mani_ball, mani_line]
+        self._mani_ix = {"tube": mani_tube, "ax": mani_ax, "ball": mani_ball, "line": mani_line}
+
         # 箭头线 (4 层动作)
         for key in ("uff", "ufb", "ufuse", "ulimit"):
             col = _LAYER_COLORS[key]
@@ -1240,6 +1313,112 @@ class DreamView3D(QWidget):
         except Exception:
             pass
 
+    # ── 🧮 接触流形几何绘制 (2026-09-07 老倪: 流形是拓扑要有形状可看) ──
+    #   流形 = 插拔安全通道: 1D 测地线(通道轴) × 该阶段法向容差(半径) → 管状 2D 曲面。
+    #   每帧按当前阶段画对应通道管 + 光模块头位置 + 到通道轴的状态偏离线。
+    def _update_manifold(self, i, x):
+        ix = getattr(self, "_mani_ix", None)
+        mod = _MANI
+        if ix is None or mod is None:
+            return
+        tr = self.tr
+        stg = ""
+        if tr.get("stage") and i < len(tr["stage"]):
+            stg = str(tr["stage"][i]).replace("阶段 ", "").split("·")[0].strip()
+        hole = np.asarray(self._hole, float)
+        mouth = np.asarray(self._mouth, float)
+        # 光模块头 (插入的"主角"): tr peg_head → 头 site; 退化用 peg(抓握点)
+        ph = None
+        if tr.get("peg_head") is not None and i < len(tr["peg_head"]):
+            ph = np.asarray(tr["peg_head"][i], float)
+        elif tr.get("peg") is not None and i < len(tr["peg"]):
+            ph = np.asarray(tr["peg"][i], float) + getattr(self, "_peg_center_off", np.zeros(3))
+        xs_all = np.asarray(tr["x"], float)
+        dt = 0.0125
+        v = (x - xs_all[i - 1]) / dt if i > 0 else np.zeros(3)
+        tgt = None
+        if tr.get("target") is not None and i < len(tr["target"]):
+            tgt = np.asarray(tr["target"][i], float)
+        cm = mod.ContactManifold(hole_pos=hole, hole_mouth=mouth)
+        r = cm.decompose(np.asarray(x, float), ph if ph is not None else x,
+                         tgt if tgt is not None else x, v, stg)
+        # ── 通道几何 (世界系中心线) ──
+        c0 = c1 = None
+        R = 0.0
+        free = stg in ("接近", "对位", "转移")
+        if not free:
+            if stg in ("下降", "抓取", "抬起"):
+                pg = np.asarray(x, float)
+                if tr.get("peg") is not None and i < len(tr["peg"]):
+                    pg = np.asarray(tr["peg"][i], float)
+                c0 = np.array([pg[0], pg[1], pg[2] + 0.050])
+                c1 = np.array([pg[0], pg[1], pg[2] + 0.002])
+                R = 0.030
+            elif stg == "插入":
+                c0 = mouth + np.array([0.0, 0.0, 0.02])   # 孔口上方悬高 (工艺起点)
+                c1 = hole                                  # 孔底
+                R = 0.006
+            elif stg == "完成":
+                c0 = mouth
+                c1 = hole
+                R = 0.004
+        # ── 通道管 (5 环 + 3 母线) ──
+        tube = ix["tube"]
+        if c0 is None or c1 is None or R <= 0:
+            for ln in tube:
+                ln.setData(pos=np.zeros((2, 3)))
+            ix["ax"].setData(pos=np.zeros((2, 3)))
+        else:
+            axv = np.asarray(c1, float) - np.asarray(c0, float)
+            L = float(np.linalg.norm(axv))
+            if L < 1e-6:
+                axv = np.array([1.0, 0.0, 0.0]); L = 1.0
+            u = axv / L
+            ref = np.array([0.0, 0.0, 1.0]) if abs(u[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+            e1 = np.cross(u, ref); e1 /= (np.linalg.norm(e1) or 1.0)
+            e2 = np.cross(u, e1)
+            n_ring, n_pt = 5, 12
+            for k in range(n_ring):
+                t = k / max(1, n_ring - 1)
+                c = np.asarray(c0, float) + u * (t * L)
+                ring = [c + R * (np.cos(th) * e1 + np.sin(th) * e2)
+                        for th in np.linspace(0, 2 * np.pi, n_pt, endpoint=False)]
+                tube[k].setData(pos=np.asarray(ring + [ring[0]], float))
+            for k in range(3):
+                th = k * 2 * np.pi / 3
+                d = np.cos(th) * e1 + np.sin(th) * e2
+                tube[n_ring + k].setData(pos=np.asarray([c0 + R * d, c1 + R * d], float))
+            ix["ax"].setData(pos=np.asarray([c0, c1], float))
+        # ── 状态偏离 / 进度线 ──
+        line = ix["line"]
+        ball = ix["ball"]
+        if ph is not None:
+            ball.setData(pos=np.asarray([ph], float))
+        else:
+            ball.setData(pos=np.zeros((1, 3)))
+        if free or r.get("axis") is None:
+            # 自由空间: 无接触约束 → 灰线 = 手到目标的剩余进度
+            if tgt is not None and r.get("e") is not None:
+                line.setData(pos=np.asarray([x, np.asarray(x, float) + r["e"]], float))
+                line.setColor((0.62, 0.66, 0.72, 0.55))
+            else:
+                line.setData(pos=np.zeros((2, 3)))
+            return
+        ep = np.asarray(r.get("e_perp", np.zeros(3)), float)
+        base = ph if (stg in ("插入", "完成")) else np.asarray(x, float)
+        if np.linalg.norm(ep) > 1e-6:
+            line.setData(pos=np.asarray([base, base - ep], float))
+        else:
+            line.setData(pos=np.asarray([base, base], float))
+        st = str(r.get("state", ""))
+        if "在流形" in st:
+            col = (0.35, 1.0, 0.45, 1.0)
+        elif "贴" in st:
+            col = (1.0, 0.85, 0.20, 1.0)
+        else:
+            col = (1.0, 0.30, 0.30, 1.0)
+        line.setColor(col)
+
     # ── 帧更新 ──
     def _update_frame(self, i):
         tr = self.tr
@@ -1256,6 +1435,11 @@ class DreamView3D(QWidget):
         else:
             traj_pts = np.array([x, x])
         self._gl_items["traj"].setData(pos=traj_pts)
+        # 🧮 流形几何 (接触通道曲面 + 偏离状态) — 每帧, 纯 numpy 轻量
+        try:
+            self._update_manifold(i, x)
+        except Exception:
+            pass
 
         # 🤖 Sawyer 机械臂 IK (末端=光模块 位置, 夹爪开合随 gripper)
         ik = _ik_sawyer(x, self._arm_base)
@@ -1731,6 +1915,15 @@ class DreamView3D(QWidget):
             self.lbl_frame.setText(f"{int(i)} / {self._n - 1}")
         except Exception:
             pass
+        # 📉 性能流形碗窗同步 (同源 tr + 现场孔位)
+        try:
+            w = getattr(self, "_bowl", None)
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.set_frame(i)
+        except Exception:
+            pass
 
     def _tick(self):
         if self._idx >= self._n - 1:
@@ -1741,8 +1934,234 @@ class DreamView3D(QWidget):
     def _on_slider(self, val):
         self._update_frame(val)
 
+    # ── 📉 性能流形曲面窗 (2026-09-07 老倪: 流形是拓扑要有形状) ──
+    def _open_mani_bowl(self):
+        w = getattr(self, "_bowl", None)
+        try:
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.raise_()
+                    w.activateWindow()
+                    return
+        except Exception:
+            pass
+        hole = np.asarray(self._hole, float)
+        w = ManifoldBowlWidget(self.tr, hole=hole)
+        w.setWindowTitle("📉 性能流形 · 光耦合代价曲面 (η 碗 — 横向错位 vs 估计耦合效率)")
+        w.resize(620, 580)
+        w.show()
+        self._bowl = w
+        if self._n > 0:
+            w.set_frame(self._idx)
+
 
 # ────────────────────────────────────────────────────────────
+# 📉 性能流形曲面 (2026-09-07 老倪: 流形要有形状 — η 高斯碗)
+#   坐标: 横 = 光模块头横向错位 dy/dz (孔底为原点, mm); 竖 = 估计耦合效率 η (×16mm 视觉放大)
+#   几何 = PerformanceManifold 的 η=exp(−Vp/σ²) (σ=4mm 标定, 高斯光束近似非实测)
+# ────────────────────────────────────────────────────────────
+class ManifoldBowlWidget(QWidget):
+    """性能流形曲面 — η(横向错位) 高斯碗 (2026-09-07 老倪: 流形要有形状)
+
+    为什么不用 pyqtgraph GL: 碗窗 = 第二个 GLViewWidget = 新 GL 上下文, 而 pyqtgraph
+    shader 全局缓存绑**第一个**上下文 → 第二窗口所有 GL item 绘制崩 (3.3.0 同款坑,
+    GLError glGetAttribLocation 实锤)。改用 QPainter 自绘 2.5D 正交投影, 零 GL 依赖:
+    静态碗网格预渲染 QPixmap (resize 重画), 每帧只投影动态点/轨迹/竖线。
+
+    坐标系: 孔底为原点, 横 = 光模块头横向错位 dy/dz (mm); 竖 = 估计耦合效率 η (×16mm
+    视觉放大 → 碗高 0~16mm)。几何 = PerformanceManifold η=exp(−Vp/σ²), σ=4mm 标定
+    (高斯光束近似, 非实测 — 真机光功率计标定后替换 σ)。"""
+
+    def __init__(self, tr=None, hole=None, parent=None):
+        super().__init__(parent)
+        self.tr = tr or {}
+        self._hole = np.asarray(hole, float) if hole is not None else _HOLE.copy()
+        self._i = 0
+        self._pix = None          # 静态碗渲染缓存
+        self._m = 16.0            # ±16mm
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        self.canvas = _BowlCanvas(self)
+        self.canvas.setStyleSheet("background:#0d1117;")
+        self.canvas.setMinimumHeight(360)
+        lay.addWidget(self.canvas, 1)
+        self.lbl = QLabel("η = 估计耦合效率 · 竖轴×16 视觉放大")
+        self.lbl.setStyleSheet("color:#8b949e; font-size:12px; background:#0d1117;"
+                               "border:1px solid #30363d; border-radius:4px; padding:4px 8px;")
+        self.lbl.setWordWrap(True)
+        lay.addWidget(self.lbl)
+        self.canvas.set_bowl(self._m, n=21)
+
+    def set_trajectory(self, tr, hole=None):
+        self.tr = tr or {}
+        if hole is not None:
+            self._hole = np.asarray(hole, float)
+        if self.tr.get("x") is not None and len(self.tr["x"]) > 0:
+            self.set_frame(0)
+
+    def _ph(self, i):
+        tr = self.tr
+        if tr.get("peg_head") is not None and i < len(tr["peg_head"]):
+            return np.asarray(tr["peg_head"][i], float)
+        if tr.get("peg") is not None and i < len(tr["peg"]):
+            return np.asarray(tr["peg"][i], float)
+        return None
+
+    def set_frame(self, i):
+        self._i = int(i)
+        tr = self.tr
+        n = len(tr.get("x", []))
+        if n == 0:
+            return
+        i = int(np.clip(i, 0, n - 1))
+        mod = _MANI
+        ph = self._ph(i)
+        if ph is None or mod is None:
+            return
+        pm = mod.PerformanceManifold(hole_pos=self._hole)
+        ev = pm.evaluate(ph)
+        d = ev["delta"]
+        dy = float(d[1]) * 1000.0
+        dz = float(d[2]) * 1000.0
+        eta = float(ev["eta"])
+        # 轨迹历史 (横向错位, z=0)
+        hist = []
+        for j in range(max(0, i - 120), i + 1):
+            pj = self._ph(j)
+            if pj is None:
+                continue
+            dj = np.asarray(pj, float) - self._hole
+            hist.append([float(dj[1]) * 1000.0, float(dj[2]) * 1000.0])
+        self.canvas.set_state(dy, dz, eta, hist)
+        self.lbl.setText(
+            f"光模块头横向错位 δ⊥={ev['d_perp_norm'] * 1000:.2f} mm  "
+            f"(dy={dy:+.1f}, dz={dz:+.1f}) · η≈{eta:.3f} · V_p={ev['Vp']:.3e}\n"
+            f"碗底 = 对准最优 (η→1, 竖轴×16 视觉放大); σ=4mm 高斯碗 (估计耦合效率模型, 非实测) · "
+            f"横轴 ±16mm 错位; 底部橙线 = 最近 120 步错位历史")
+
+    def set_trajectory_hole(self, tr, hole):
+        self.set_trajectory(tr, hole)
+
+
+class _BowlCanvas(QWidget):
+    """QPainter 2.5D 正交投影渲染碗曲面 (静态缓存) + 动态点/轨迹。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._m = 16.0
+        self._n = 21
+        self._state = None
+        self._hist = []
+
+    def set_bowl(self, m_mm, n=25):
+        self._m = float(m_mm)
+        self._n = n
+        self._pix = None
+
+    def set_state(self, dy, dz, eta, hist):
+        self._state = (float(dy), float(dz), float(eta))
+        self._hist = [np.asarray(h, float) for h in hist]
+        self.update()
+
+    # ── 正交相机 (固定视角: 俯 30°/ 偏 24°, 距离 75mm) ──
+    def _cam(self):
+        import math
+        az, el, dist = math.radians(24), math.radians(30), 75.0
+        eye = np.array([dist * math.cos(el) * math.sin(az),
+                        dist * math.cos(el) * math.cos(az),
+                        dist * math.sin(el)], float)
+        fwd = -eye / np.linalg.norm(eye)
+        right = np.cross(fwd, np.array([0.0, 0.0, 1.0]))
+        right /= (np.linalg.norm(right) or 1.0)
+        upv = np.cross(right, fwd)
+        return eye, right, upv, fwd
+
+    def _proj(self, pt, eye, right, upv, fwd, s, cx, cy):
+        d = np.asarray(pt, float) - eye
+        return (float(np.dot(d, right)) * s + cx, cy - float(np.dot(d, upv)) * s),                float(np.dot(d, fwd))
+
+    def _build_pix(self, W, H):
+        m, n = self._m, self._n
+        # η 碗网格 (z = η*16mm)
+        ys = np.linspace(-m, m, n)
+        zs = np.linspace(-m, m, n)
+        YY, ZZ = np.meshgrid(ys, zs)
+        eta = np.exp(-0.5 * (YY ** 2 + ZZ ** 2) / 16.0) * 16.0
+        eye, right, upv, fwd = self._cam()
+        s = 11.0
+        cx, cy = W / 2.0, H * 0.47
+        pix = QPixmap(W, H)
+        pix.fill(QColor(13, 17, 23))
+        p = QPainter(pix)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(QColor(60, 180, 160, 90), 0.6)
+        brush = QColor(30, 140, 120, 16)
+        # 所有 quad (中心 depth 排序, 远→近)
+        quads = []
+        for j in range(n - 1):
+            for i in range(n - 1):
+                # 四边形 (i,j)→(i+1,j)→(i+1,j+1)→(i,j+1), 中心深度远→近排序
+                q4 = [np.array([ys[ii], zs[jj], eta[jj, ii]])
+                      for (ii, jj) in ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1))]
+                sc = [self._proj(q, eye, right, upv, fwd, s, cx, cy) for q in q4]
+                dep = sum(dd for _, dd in sc) / 4.0
+                quads.append((dep, sc))
+        quads.sort(key=lambda t: -t[0])           # 远 → 近
+        for dep, sc in quads:
+            poly = QPolygonF([QPointF(x, y) for (x, y), _ in sc])
+            p.setBrush(brush)
+            p.setPen(pen)
+            p.drawPolygon(poly)
+        # 参考环 r=4/8/12/16 (z=0 底部)
+        import math
+        p.setPen(QPen(QColor(70, 90, 110, 130), 1.0))
+        p.setBrush(Qt.NoBrush)
+        for r_mm in (4, 8, 12, 16):
+            pts = [self._proj(np.array([r_mm * math.cos(t), r_mm * math.sin(t), 0.0]),
+                              eye, right, upv, fwd, s, cx, cy)[0]
+                   for t in np.linspace(0, 2 * math.pi, 72)]
+            p.drawPolyline(QPolygonF([QPointF(x, y) for x, y in pts]))
+        # 十字轴线 (dy=0 / dz=0)
+        p.drawLine(QPointF(*self._proj(np.array([-m, 0, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]),
+                   QPointF(*self._proj(np.array([m, 0, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]))
+        p.drawLine(QPointF(*self._proj(np.array([0, -m, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]),
+                   QPointF(*self._proj(np.array([0, m, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]))
+        p.end()
+        return pix
+
+    def paintEvent(self, ev):
+        W, H = self.width(), self.height()
+        if W < 20 or H < 20:
+            return
+        if self._pix is None or self._pix.size().width() != W or self._pix.size().height() != H:
+            self._pix = self._build_pix(W, H)
+        p = QPainter(self)
+        p.drawPixmap(0, 0, self._pix)
+        eye, right, upv, fwd = self._cam()
+        s = 11.0
+        cx, cy = W / 2.0, H * 0.47
+        # 动态: 轨迹(底平面) / 竖线 / 当前点
+        if self._hist:
+            pts = [self._proj(np.array([h[0], h[1], 0.0]), eye, right, upv, fwd, s, cx, cy)[0]
+                   for h in self._hist]
+            pp = QPen(QColor(220, 140, 50, 200), 1.6)
+            p.setPen(pp)
+            for i in range(len(pts) - 1):
+                p.drawLine(QPointF(*pts[i]), QPointF(*pts[i + 1]))
+        if self._state is not None:
+            dy, dz, eta = self._state
+            top = np.array([dy, dz, eta * 16.0])
+            (tx, ty), _ = self._proj(top, eye, right, upv, fwd, s, cx, cy)
+            (bx, by), _ = self._proj(np.array([dy, dz, 0.0]), eye, right, upv, fwd, s, cx, cy)
+            p.setPen(QPen(QColor(245, 185, 30, 160), 1.2))
+            p.drawLine(QPointF(bx, by), QPointF(tx, ty))
+            p.setBrush(QColor(240, 185, 25, 255))
+            p.setPen(Qt.NoPen)
+            r = 5.0
+            p.drawEllipse(QPointF(tx, ty), r, r)
+        p.end()
+
 # 命令行自测
 # ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
