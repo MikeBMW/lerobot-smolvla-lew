@@ -477,6 +477,10 @@ class RealStateSpaceSim:
               "u_sat_vec": [], "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [],
               "u_exec_vec": [], "v_vec": [], "z_k_vec": [], "io_trace": [],
               "latent_vec": [], "prior_vec": [], "corrected_vec": [], "residual_vec": [],
+              # 🧮 2026-09-07: 流形层全程序列 (对齐引擎 tr keys — Scope 流形格/波形消费顶层
+              #   mani_*, 非 io_trace; 真实化轨迹此前无 → Scope 流形格空 = 老倪"流形没输出")
+              "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
+              "mani_rem": [], "mani_dperp": [],
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
         truncated = False
@@ -812,8 +816,17 @@ class RealStateSpaceSim:
                                       "lat": np.asarray(latent_pred, dtype=float),
                                       "vel": (np.asarray(prior, dtype=float)
                                               - np.asarray(latent_pred, dtype=float))}
+                    tr["mani_risk"].append(float(_mc2["risk"]))
+                    tr["mani_progress"].append(float(_mc2["progress"]))
+                    tr["mani_V"].append(float(_mc2["V"]))
+                    tr["mani_eta"].append(float(_mp2["eta"]))
+                    tr["mani_rem"].append(float(-_mp2["d_axial"]))
+                    tr["mani_dperp"].append(float(_mp2["d_perp_norm"]))
             except Exception:
                 self._mani_out = None
+                tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
+                tr["mani_V"].append(0.0); tr["mani_eta"].append(0.0)
+                tr["mani_rem"].append(0.0); tr["mani_dperp"].append(0.0)
             # 🔌 真实 io 快照 (画布节点名 key, 与引擎 _io_snapshot 同构 → 播放/3D/总线复用)
             tr["io_trace"].append((round(step * DT_ENV, 3), self._io_snapshot(
                 o, obs, force_norm, u_ff, latent_pred, prior, z_k, corrected, residual,
