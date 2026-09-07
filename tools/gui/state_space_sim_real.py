@@ -745,7 +745,11 @@ class RealStateSpaceSim:
             tr["stage"].append(stage if self.sched.stage() in stage else f"阶段 {self.sched.stage()}")
             tr["done"].append(done)
             tr["x"].append(self.x.copy())
-            tr["gripper"].append(self.gripper)
+            # 🐛 2026-09-07 静静 (老倪目检实锤): metaworld obs gripper 语义 1=张开 0=闭合,
+            #   与引擎快演 gripper (0=张开 1=夹紧) 相反 → 3D 视图 (gap 公式按 1=夹紧) 显示
+            #   真实化轨迹时反相: 初始真张开显示闭合, 夹紧真闭合显示张开。
+            #   统一: tr 输出**夹紧度** 1−obs (0=张开 1=夹紧, 同引擎), 3D/Scope 语义一致。
+            tr["gripper"].append(float(1.0 - self.gripper))
             tr["force"].append(force_norm)
             tr["peg"].append(o[4:7].copy())
             tr["peg_head"].append(ph.copy())
