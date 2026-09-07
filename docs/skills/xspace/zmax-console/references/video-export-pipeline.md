@@ -23,6 +23,7 @@ sshpass -p Nix19789 ssh root@39.102.211.79 "chmod 644 /www/wwwroot/datadrive.wor
 公网验证：`curl -I https://datadrive.world/state_space_sim.mp4` → 200。
 
 ⚠️ **ECS 密码 Nix19789 有效**（08-22 实测 AUTH_OK）。08-13 曾误判"失效"——实为网络被墙，
+🐛 **2026-09-07 坑**: GUI 上传读环境变量 `ZMAX_ECS_PW`(simulink_module.py:29),系统重启后该变量丢失 → 网页 ss_episode_latest.mp4 静默停在旧失败视频(用户看到"没成功的操作"实为旧版)。已根治: ~/.config/environment.d/zmax-ecs.conf(600)+ systemctl --user set-environment; 排查信号 = 网页视频 Last-Modified 陈旧。改环境后需下次登录才全量注入。
 认证握手超时被当成密码错误。**结论凭据失效前，先确认网络连通再下结论**（网络好了先 curl
 github.com / baidu 探测，再试 ssh）。
 
