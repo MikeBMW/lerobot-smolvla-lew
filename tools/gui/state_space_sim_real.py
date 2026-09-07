@@ -168,6 +168,26 @@ class RealStateSpaceSim:
         self._aligner = None
         if self.vision:
             self._load_aligner()
+        # 🧠 2026-09-07 老倪: 原子技能肌肉记忆 (仿小脑) — 每次运行观察技能段轨迹,
+        #   连续成功稳定后固化标杆, 命中时快通道给目标 (越练越顺); 失败不固化。
+        #   开关: SS_MUSCLE=0 可关; 默认开 (引擎级自动积累, 无侵入 GUI)
+        if os.environ.get("SS_MUSCLE") != "0":
+            try:
+                from muscle_memory import get_memory
+                self.muscle = get_memory()
+                self._mm_on = True
+            except Exception:
+                self.muscle = None
+                self._mm_on = False
+        else:
+            self.muscle = None
+            self._mm_on = False
+        self._mm_stage = ""       # 当前记录阶段
+        self._mm_step = 0         # 阶段内步计数
+        self._mm_hits = 0         # 快通道命中帧数 (统计/展示)
+        self._mm_seg = ""         # 当前重放段名
+        self._mm_u = None         # 当前段标杆 u_exec 序列
+        self._mm_i = 0            # 段内重放帧索引
 
     def _load_aligner(self):
         """加载 YOLO 对齐器 (检测 + 深度反投影, 同 GUI 链路的真实模型)"""
@@ -274,6 +294,8 @@ class RealStateSpaceSim:
             # 可视化消费 (真实感知视频): 本帧渲染图 + 2D 检测框 (detect_3d 内 predict 的缓存)
             self._vis["img"] = img
             self._vis["boxes"] = getattr(self._aligner, "_last_res", None)
+            # 🧩 2026-09-07: 当前阶段写入 _vis (线程安全共享) → GUI 轮询读到 → 原子技能 SK 节点高亮
+            self._vis["stage"] = st or ""
             if os.environ.get("R0_TRACE"):
                 o = np.asarray(self.env._get_obs(), dtype=np.float64).ravel()
                 _pe = np.linalg.norm(self._vis["peg"] - o[4:7]) if self._vis["peg"] is not None else float("nan")
@@ -471,6 +493,12 @@ class RealStateSpaceSim:
         """R0 主循环 — metaworld 单轮硬上限 500 步 (max_path_length), 截断即未完成"""
         env = self.env
         self._reset(self.seed)
+        # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)
+        if getattr(self, "_mm_on", False) and self.muscle is not None:
+            try:
+                self.muscle.begin_episode(self.seed)
+            except Exception:
+                pass
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [], "u_sat": [],
               "stage": [], "done": [], "x": [], "gripper": [], "force": [], "peg": [],
               "peg_head": [], "site_ph": [], "target": [], "grasped": [], "obs": [], "u_ff_vec": [],
@@ -554,6 +582,23 @@ class RealStateSpaceSim:
                                   self._peg_cur, self._goal_p(), np.zeros(3), np.zeros(2)])
             prev = self.obs_prev if self.obs_prev is not None else cur
             target = self._stage_target()
+            # 🧠 2026-09-07 肌肉记忆 (仿小脑): ①观察 — 每帧记录 (stage, x, u_exec);
+            #   ②快通道 — 固化标杆后整段 u_exec 重放 (跳过 MLP 精算, "练熟的动作
+            #   小脑直接给力"); 安全链 (decide/反馈/饱和限幅) 全保留。
+            if getattr(self, "_mm_on", False) and self.muscle is not None:
+                try:
+                    _stg = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
+                    if _stg != self._mm_stage:          # 阶段切换 → 段步计数重置
+                        self._mm_stage = _stg
+                        self._mm_step = 0
+                    # 观察 (每帧喂 u_exec 待算 → 用上帧值; 段切换首帧用当前 u)
+                    _u_obs = getattr(self, "_u_vec", np.zeros(4))
+                    self.muscle.feed(_stg, self.x, _u_obs)
+                    # 快通道整段重放: run() 开头已预取标杆 (_mm_mode="replay")
+                    # → 每帧 u_ff 在下方 ⑤ 段被 _mm_u 接管 (见 u_ff 替换)
+                    self._mm_step += 1
+                except Exception:
+                    pass
             visual39 = np.concatenate([cur, prev, target])
             tactile4 = np.array([self.gripper, float(self.grasped), 0.0, 0.0])
             obs = self.perception.fuse_sensors(visual39, force, tactile4)
@@ -563,6 +608,28 @@ class RealStateSpaceSim:
             st_now = self.sched.stage()
             u_ff = (self.accel.analytic_forward(obs) if st_now == "插入"
                     else self.accel.forward(obs))
+            # 🧠 2026-09-07 肌肉记忆快通道 (仿小脑): 固化标杆后整段 u_exec 直接重放 —
+            #   "动作练熟, 小脑自动执行": 前馈 u_ff = 标杆序列同帧值 (跳过 MLP 精算);
+            #   安全链 (decide/反馈/饱和限幅) 全保留 — 若环境异常偏离, 残差/接触反馈
+            #   仍会让 decide 修正, 不会瞎冲。插入段(毫米级)仍走解析伺服精插。
+            _stn = str(st_now).replace("阶段 ", "").split("·")[0].strip()
+            if (getattr(self, "_mm_on", False) and self.muscle is not None):
+                # 阶段切换 → 预取该段标杆
+                if _stn != getattr(self, "_mm_seg", ""):
+                    self._mm_seg = _stn
+                    self._mm_i = 0
+                    if _stn in ("接近", "对位", "下降", "抓取", "抬起"):
+                        _cu, _cx = self.muscle.get_champ(self.seed, _stn)
+                        self._mm_u = _cu
+                    else:
+                        self._mm_u = None   # 转移/插入/完成: 实时决策 (毫米级)
+                # 重放: 有标杆且未耗尽 → 前馈用标杆
+                if self._mm_u is not None and self._mm_i < len(self._mm_u):
+                    u_ff = self._mm_u[self._mm_i]
+                    if self._mm_hits == 0:
+                        self.log(f"🧠 肌肉记忆快通道: {_stn} 段标杆 u_exec 重放 (小脑接管前馈)")
+                    self._mm_hits += 1
+                    self._mm_i += 1
             act4 = np.concatenate([self.u_prev[:3], [0.0]])
             latent_pred = self.est.predict(self.latent, act4)
             prior = self.dyn.predict(self.latent, act4)
@@ -846,7 +913,29 @@ class RealStateSpaceSim:
             "stage_final": str(tr["stage"][-1]).replace("阶段 ", "") if tr["stage"] else "",
             "vision": bool(self.vision),
             "done": bool(tr["done"][-1]) if tr["done"] else False,
+            "mm_hits": int(getattr(self, "_mm_hits", 0)),
         }
+        # 🧠 2026-09-07 肌肉记忆: 本轮结束 — 成功轮提交段轨迹供固化/精进, 失败轮不固化
+        if getattr(self, "_mm_on", False) and self.muscle is not None:
+            try:
+                _ok = bool(tr["done"][-1]) if tr["done"] else False
+                _r = self.muscle.end_episode(_ok)
+                if _r and _r.get("learned"):
+                    self.log(f"🧠 肌肉记忆: {_r['msg']}")
+                elif not _ok:
+                    self.log("🧠 肌肉记忆: 本轮未完成 — 失败轮不固化 (继续练习)")
+                # 固化状态汇总 (每轮结束展示一次)
+                try:
+                    _st = self.muscle.status()
+                    if _st:
+                        _parts = []
+                        for _s, _sk in _st.items():
+                            _parts.append(f"场景{_s}: {','.join(_sk)}")
+                        self.log(f"🧠 肌肉记忆库: {'; '.join(_parts)}")
+                except Exception:
+                    pass
+            except Exception:
+                pass
         if g.get("box_center") is not None:
             tr["_meta"]["box_center"] = g["box_center"].copy()
         return tr

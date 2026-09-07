@@ -10861,7 +10861,17 @@ class SimulinkModule(QWidget):
 
     def _on_real_poll(self):
         """QTimer 轮询真实化线程结果 (SimulinkModule 无类级 signal → 轮询最简可靠)
-        🆕 2026-09-04: 运行中增量 flush worker 日志 (进度可见, 防"5-9分钟静默=像卡死")"""
+        🆕 2026-09-04: 运行中增量 flush worker 日志 (进度可见, 防"5-9分钟静默=像卡死")
+        🆕 2026-09-07: 运行中按 worker 当前阶段高亮原子技能 SK01-08 (老倪: 技能节点要随阶段亮)"""
+        # 🧩 运行中阶段 → 原子技能 SK 高亮 (读 sim._vis["stage"], 线程安全共享)
+        try:
+            _sim = getattr(self, "_real_sim_ref", None) or getattr(self, "_ss_last_sim", None)
+            if _sim is not None:
+                _st = (getattr(_sim, "_vis", {}) or {}).get("stage", "")
+                if _st:
+                    self._highlight_sk_for_stage(str(_st))
+        except Exception:
+            pass
         # 运行中: 增量 flush 周期进度日志 (线程安全: 只读已 append 的部分)
         _logs = getattr(self, "_real_logs", None)
         if _logs:
@@ -10934,6 +10944,37 @@ class SimulinkModule(QWidget):
         self._ss_timer.timeout.connect(self._ss_tick)
         self._ss_timer.start(getattr(self, "_ss_tick_ms", 30))
         self._log("▶ 真实轨迹播放中: 画布/3D/总线逐帧展示真实检测与控制 (单帧~1s 物理)")
+
+    def _highlight_sk_for_stage(self, stage_text):
+        """🧩 按引擎当前阶段高亮原子技能 SK01-08 (运行中+播放共用)
+        stage_text: 阶段名 (可含"阶段 "前缀/·后缀), 如 "接近" / "阶段 插入" / "插入·SK07"
+        对应 sssk1-8 节点: 当前阶段 → running, 其余 → success (节点状态驱动金色/绿色高亮)"""
+        try:
+            _st = str(stage_text).replace("阶段 ", "").split("·")[0].strip()
+            _MAP = {"接近": "sssk1", "对位": "sssk2", "下降": "sssk3",
+                    "抓取": "sssk4", "抬起": "sssk5", "转移": "sssk6",
+                    "插入": "sssk7", "完成": "sssk8"}
+            _sk_id = _MAP.get(_st)
+            if _sk_id is None:
+                return
+            _changed = False
+            _order = getattr(self, "_ss_order", None) or (self.nodes if hasattr(self, "nodes") else []) or []
+            for n in _order:
+                if str(n.get("id", "")).startswith("sssk"):
+                    _want = "running" if n.get("id") == _sk_id else "success"
+                    if n.get("status") != _want:
+                        n["status"] = _want
+                        _it = (getattr(self, "_items", {}) or {}).get(n["id"])
+                        if _it:
+                            _it.update()
+                        _changed = True
+            if _changed:
+                try:
+                    self.canvas._scene.update()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _start_state_space_sim(self):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
@@ -11114,6 +11155,29 @@ class SimulinkModule(QWidget):
                 self._log(f"  ⏱ t={tr['t'][idx]:5.2f}s · 距离孔位 {tr['dist'][idx]:.4f}m · "
                           f"前馈|u_ff|={tr['u_ff'][idx]:.3f} · 残差 {tr['residual'][idx]:.4f} · "
                           f"接触概率 {tr['contact_p'][idx]:.2f} · 指令|u|={tr['u_sat'][idx]:.3f} · {stage}")
+            # 🧩 2026-09-07 老倪: 原子技能层 SK01-08 按引擎当前阶段逐个高亮 —
+            #   运行到哪一阶段(接近→…→完成), 对应 sssk1-8 节点就 running, 其余 success。
+            try:
+                _st_now = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
+                _SK_MAP = {"接近": "sssk1", "对位": "sssk2", "下降": "sssk3",
+                           "抓取": "sssk4", "抬起": "sssk5", "转移": "sssk6",
+                           "插入": "sssk7", "完成": "sssk8"}
+                _sk_id = _SK_MAP.get(_st_now)
+                if _sk_id is not None:
+                    _changed = False
+                    for n in getattr(self, "_ss_order", []) or []:
+                        if str(n.get("id", "")).startswith("sssk"):
+                            _want = "running" if n.get("id") == _sk_id else "success"
+                            if n.get("status") != _want:
+                                n["status"] = _want
+                                _it = self._items.get(n["id"])
+                                if _it:
+                                    _it.update()
+                                _changed = True
+                    if _changed:
+                        self.canvas._scene.update()
+            except Exception:
+                pass
             # 🎯 2026-09-02 老倪「3D 视图显示状态与程序执行状态保持一致」:
             #   推引擎步 idx — **每 tick** (30ms/帧 → 3D 动作连续, 不再大步跳)
             try:
