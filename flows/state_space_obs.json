@@ -64,7 +64,7 @@
    "type": "row_bg",
    "name": "执行层 · 物理闭环",
    "x": -20,
-   "y": 550,
+   "y": 750,
    "w": 3000,
    "icon": "🤖",
    "color": "#1f2937",
@@ -284,7 +284,7 @@
    "type": "hardware",
    "name": "🤖 机器人执行器",
    "x": 2100,
-   "y": 590,
+   "y": 790,
    "w": 160,
    "icon": "🤖",
    "color": "#3fb950",
@@ -307,7 +307,7 @@
    "type": "hardware",
    "name": "🌍 物理世界",
    "x": 2420,
-   "y": 590,
+   "y": 790,
    "w": 160,
    "icon": "🌍",
    "color": "#3fb950",
@@ -330,7 +330,7 @@
    "type": "model",
    "name": "📊 仿真波形",
    "x": 1880,
-   "y": 1560,
+   "y": 1760,
    "w": 160,
    "icon": "📊",
    "color": "#1f6feb",
@@ -355,7 +355,7 @@
    "type": "model",
    "name": "🎥 操作视频",
    "x": 2480,
-   "y": 1560,
+   "y": 1760,
    "w": 160,
    "icon": "🎥",
    "color": "#d29922",
@@ -668,7 +668,7 @@
    "type": "row_bg",
    "name": "🧮 标定层 · 引力/斥力/潜空间 (地图校准·回路外)",
    "x": -20,
-   "y": 800,
+   "y": 1000,
    "w": 1150,
    "h": 130,
    "params": {
@@ -690,7 +690,7 @@
    "outputs": [],
    "actions": [],
    "x": 589,
-   "y": 840,
+   "y": 1040,
    "w": 170,
    "h": 68,
    "params": {
@@ -705,7 +705,7 @@
    "type": "row_bg",
    "name": "🧮 流形导航层 · 测地线地图 (回路外元层)",
    "x": -20,
-   "y": 1040,
+   "y": 1240,
    "w": 1150,
    "h": 130,
    "params": {
@@ -726,7 +726,7 @@
    "actions": [],
    "w": 190,
    "h": 68,
-   "y": 1080,
+   "y": 1280,
    "id": "ssmani_c",
    "x": 240,
    "name": "🧮 接触流形 · 插拔通道",
@@ -750,7 +750,7 @@
    "actions": [],
    "w": 190,
    "h": 68,
-   "y": 1080,
+   "y": 1280,
    "id": "ssmani_p",
    "x": 640,
    "name": "🧮 性能流形 · 对准代价",
@@ -776,7 +776,7 @@
    "w": 190,
    "h": 68,
    "x": 870,
-   "y": 840,
+   "y": 1040,
    "id": "sslat",
    "name": "🧮 潜空间 · 世界模型流形标定",
    "params": {
@@ -791,7 +791,7 @@
    "type": "row_bg",
    "name": "🧩 验证层 · Feature/Test 质量门 (回路外元层)",
    "x": -20,
-   "y": 1280,
+   "y": 1480,
    "w": 1150,
    "h": 130,
    "params": {
@@ -810,7 +810,7 @@
    "actions": [],
    "w": 200,
    "h": 68,
-   "y": 1320,
+   "y": 1520,
    "id": "ssfeat",
    "x": 240,
    "name": "🧩 Feature 功能清单",
@@ -832,7 +832,7 @@
    "actions": [],
    "w": 200,
    "h": 68,
-   "y": 1320,
+   "y": 1520,
    "id": "sstest",
    "x": 640,
    "name": "🧪 Test 用例执行",
@@ -848,7 +848,7 @@
    "type": "model",
    "name": "🧠 前馈激活直方图",
    "x": 1150,
-   "y": 1560,
+   "y": 1760,
    "w": 210,
    "h": 68,
    "icon": "🧠",
@@ -865,7 +865,7 @@
    "type": "model",
    "name": "🎯 归因·分工",
    "x": 1410,
-   "y": 1560,
+   "y": 1760,
    "w": 210,
    "h": 68,
    "icon": "🎯",
@@ -882,7 +882,7 @@
    "type": "model",
    "name": "🧭 3D 视图",
    "x": 2170,
-   "y": 1560,
+   "y": 1760,
    "w": 200,
    "h": 68,
    "icon": "🧭",
@@ -899,10 +899,251 @@
    "type": "row_bg",
    "name": "🔭 可视化层 · 观察器 (回路外, 不参与控制)",
    "x": -20,
-   "y": 1520,
+   "y": 1720,
    "w": 3000,
    "h": 170,
    "color": "#1f2937"
+  },
+  {
+   "id": "ssbg_skill",
+   "type": "row_bg",
+   "name": "🧩 原子技能层 · 固定轨迹模板库 (决策赋值 → 复制 → 快速执行)",
+   "x": -20,
+   "y": 540,
+   "w": 3000,
+   "icon": "🧩",
+   "color": "#1f2937",
+   "h": 190,
+   "params": {
+    "bg": "#2d2350",
+    "model": "state_space",
+    "desc": "原子技能层 (8 技能 = 八阶段模板 SK01-08): 接近/对位/下降/抓取/抬起/转移/插入/完成 — 基于固定轨迹模板; 决策层(动作调制器经安全边界)明确选定技能并实时赋值轨迹(目标/速度) → 复制模板实例化 → 快速执行 → 直接输出实际执行指令给 🤖执行器 (不改变原引擎运行)",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 1420,
+   "y": 590,
+   "id": "sssk1",
+   "name": "① 接近 · SK01",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK01",
+     "stage": "接近"
+    },
+    "desc": "原子技能 ① 接近 (SK01): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 1595,
+   "y": 590,
+   "id": "sssk2",
+   "name": "② 对位 · SK02",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK02",
+     "stage": "对位"
+    },
+    "desc": "原子技能 ② 对位 (SK02): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 1770,
+   "y": 590,
+   "id": "sssk3",
+   "name": "③ 下降 · SK03",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK03",
+     "stage": "下降"
+    },
+    "desc": "原子技能 ③ 下降 (SK03): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 1945,
+   "y": 590,
+   "id": "sssk4",
+   "name": "④ 抓取 · SK04",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK04",
+     "stage": "抓取"
+    },
+    "desc": "原子技能 ④ 抓取 (SK04): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 2120,
+   "y": 590,
+   "id": "sssk5",
+   "name": "⑤ 抬起 · SK05",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK05",
+     "stage": "抬起"
+    },
+    "desc": "原子技能 ⑤ 抬起 (SK05): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 2295,
+   "y": 590,
+   "id": "sssk6",
+   "name": "⑥ 转移 · SK06",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK06",
+     "stage": "转移"
+    },
+    "desc": "原子技能 ⑥ 转移 (SK06): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 2470,
+   "y": 590,
+   "id": "sssk7",
+   "name": "⑦ 插入 · SK07",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK07",
+     "stage": "插入"
+    },
+    "desc": "原子技能 ⑦ 插入 (SK07): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#b98cff",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 170,
+   "h": 68,
+   "x": 2645,
+   "y": 590,
+   "id": "sssk8",
+   "name": "⑧ 完成 · SK08",
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "skill": {
+     "template": "SK08",
+     "stage": "完成"
+    },
+    "desc": "原子技能 ⑧ 完成 (SK08): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+    "source": "tools/gui/node_logic.py node_ss_skill"
+   }
   }
  ],
  "links": [
@@ -1099,14 +1340,6 @@
    "label": "轨迹"
   },
   {
-   "id": "lks10",
-   "f": "sslimit",
-   "t": "ssact",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "物理指令"
-  },
-  {
    "id": "lks11",
    "f": "ssact",
    "t": "ssworld",
@@ -1249,6 +1482,134 @@
    "f_port": "out1",
    "t_port": "in4",
    "label": "性能流形 (δ⊥错位/插深/η)"
+  },
+  {
+   "id": "lkssk01",
+   "f": "sslimit",
+   "t": "sssk1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk09",
+   "f": "sssk1",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk02",
+   "f": "sslimit",
+   "t": "sssk2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk10",
+   "f": "sssk2",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk03",
+   "f": "sslimit",
+   "t": "sssk3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk11",
+   "f": "sssk3",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk04",
+   "f": "sslimit",
+   "t": "sssk4",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk12",
+   "f": "sssk4",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk05",
+   "f": "sslimit",
+   "t": "sssk5",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk13",
+   "f": "sssk5",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk06",
+   "f": "sslimit",
+   "t": "sssk6",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk14",
+   "f": "sssk6",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk07",
+   "f": "sslimit",
+   "t": "sssk7",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk15",
+   "f": "sssk7",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk08",
+   "f": "sslimit",
+   "t": "sssk8",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "安全 action (决策赋值)"
+  },
+  {
+   "id": "lkssk16",
+   "f": "sssk8",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
   }
  ]
 }

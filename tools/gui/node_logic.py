@@ -118,6 +118,12 @@ def _demo_node_output(module, node, ctx):
     演示不重跑节点函数; 数值取自 dw 帧 = 引擎该步真实输出 (同源不伪造)。"""
     name = node.get("name", "")
     log = ctx.get("log")
+    # 🧩 原子技能节点 (2026-09-07 老倪: 技能层 demo 也要真实数值 — 轻量读 tr, 无副作用)
+    try:
+        if (match_node(name) or "").startswith("sssk"):
+            return node_ss_skill(ctx)
+    except Exception:
+        pass
     # 🎯 2026-09-03 老倪: ▶运行 播放轮转到「🎯 YOLO 目标检测」时, 展示真实采样值
     #   (detect_3d 已由 _real_yolo_sense_once 真执行, conf/3D 模型真输出) — 不用
     #   引擎帧 conf -- (引擎无 YOLO 模型)。无缓存(采样失败/无节点)才落回 dw 帧。
@@ -2672,6 +2678,45 @@ _EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"),
 _MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
 
 
+def node_ss_skill(ctx):
+    """🧩 原子技能层 (2026-09-07 老倪: 决策层与执行层之间加技能模板层)
+    机制: 8 个原子技能 (①接近②对位③下降④抓取⑤抬起⑥转移⑦插入⑧完成) = 固定轨迹
+    模板 (SK01-08); 决策层 (动作调制器状态机经安全边界) 明确选定当前技能并**实时赋值**
+    (阶段目标/速度), 技能模板被复制实例化 → 快速执行 → 直接输出执行指令给 🤖执行器。
+    数据真源 = module._ss_tr 当前帧 (stage=当前技能 / target=决策赋值目标 /
+    u_exec_vec=实际下发速度); 播放 demo 也走本函数 (轻量无副作用, 特判见 _demo_node_output)。"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        p = ctx.get("params", {}) or {}
+        sk = p.get("skill") or {}
+        tpl = str(sk.get("template", "SK--"))
+        stg = str(sk.get("stage", ""))
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log(f"🧩 原子技能 {name} · {tpl}: 无引擎轨迹 — 先点 ▶ 运行状态空间")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage_now = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
+        tgt = np.asarray(tr["target"][idx], dtype=float) if tr.get("target") else np.zeros(3)
+        u = np.asarray(tr["u_exec_vec"][idx], dtype=float) if tr.get("u_exec_vec") else np.zeros(4)
+        act = bool(stg and stage_now == stg)
+        if log:
+            if act:
+                log(f"🧩 原子技能 ▶ {name} 激活 · 模板{tpl} (决策层选定「{stg}」→ 模板实例化快速执行) · "
+                    f"决策实时赋值: 目标 {np.round(tgt[:3], 3)} · 执行速度 u={np.round(u[:3], 3)} m/s")
+            else:
+                log(f"🧩 原子技能 {name} 待命 · 模板{tpl} (当前阶段 {stage_now or '—'}, 未调用)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 原子技能层执行失败: {e}")
+        return False
+
+
 def node_ss_mani(ctx):
     """🧮 流形层 — 接触流形 (插拔通道: 切向进度/法向偏离/V) ‖ 性能流形 (对准代价 V_p/η)
     源码: src/lerobot/manifold/manifold_layer.py (ContactManifold / PerformanceManifold)
@@ -2737,6 +2782,24 @@ _reg("ss_mani_c", ["接触流形"],
 _reg("ss_mani_p", ["性能流形"],
     "🧮 性能流形 — 光耦合对准代价: δ=光模块头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
     node_ss_mani)
+
+# 🧩 原子技能层 (2026-09-07 老倪: 决策层↔执行层之间; 8 技能 = 八阶段模板 SK01-08;
+#   决策层实时赋值轨迹 → 复制模板快速执行 → 直接输出执行指令给执行器; 播放 demo 特判见上)
+_SKILLS = [
+    ("sssk1", "① 接近", "接近", "SK01"),
+    ("sssk2", "② 对位", "对位", "SK02"),
+    ("sssk3", "③ 下降", "下降", "SK03"),
+    ("sssk4", "④ 抓取", "抓取", "SK04"),
+    ("sssk5", "⑤ 抬起", "抬起", "SK05"),
+    ("sssk6", "⑥ 转移", "转移", "SK06"),
+    ("sssk7", "⑦ 插入", "插入", "SK07"),
+    ("sssk8", "⑧ 完成", "完成", "SK08"),
+]
+for _skid, _sktag, _skstage, _sktpl in _SKILLS:
+    _reg(_skid, [_sktag],
+         f"🧩 原子技能 {_sktag} · {_sktpl}: 固定轨迹模板 — 决策层选定本技能时实时赋值 "
+         f"(阶段目标/速度) → 模板复制实例化快速执行 → 输出执行指令给 🤖执行器 (真实源=引擎轨迹当前帧)",
+         node_ss_skill)
 
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
 _EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 65, "class ContactManifold")
