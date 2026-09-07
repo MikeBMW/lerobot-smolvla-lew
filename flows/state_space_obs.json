@@ -1233,6 +1233,22 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "引擎状态/帧"
+  },
+  {
+   "id": "lkmani_c1",
+   "f": "ssmani_c",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "接触流形 (e∥进度/e⊥偏离/V)"
+  },
+  {
+   "id": "lkmani_p1",
+   "f": "ssmani_p",
+   "t": "ssvideo",
+   "f_port": "out1",
+   "t_port": "in4",
+   "label": "性能流形 (δ⊥错位/插深/η)"
   }
  ]
 }
