@@ -296,6 +296,13 @@ class RealStateSpaceSim:
             #   修后必须 R0 回归 + R1 幻影免疫才真正生效
             "hand0": o[0:3].copy(),                               # 夹爪初始
         }
+        # 🐛 2026-09-07 静静: 带孔盒中心现场采样 (metaworld 盒随布局漂移, 3D 场景要画对
+        #   box 才能让孔口/插入点落在盒上 — 老倪"插入位置偏了"实锤: 写死 mouth y=0.462
+        #   vs seed104 现场 0.424 偏 3.8cm)
+        try:
+            self.geom["box_center"] = d.xpos[env.model.body("box").id].copy()
+        except Exception:
+            self.geom["box_center"] = None
         # 🎯 R1: 现场孔偏移 goal−孔口 (模拟真机 CAD 已知的孔深方向/深度);
         #   视觉孔位 = YOLO hole + 此偏移 → 插入终点 (视觉只给孔口, 孔底不可见)
         self._vis["hole_off"] = (self.geom["goal"] - self.geom["hole"]).copy()
@@ -772,6 +779,21 @@ class RealStateSpaceSim:
             if done:
                 break
         tr["io"] = tr["io_trace"][-1][1] if tr["io_trace"] else {}
+        # 🐛 2026-09-07 静静 (老倪"插入位置偏了"实锤): 3D 场景孔/盒必须用**本轮现场几何**
+        #   (metaworld 布局每进程漂移: seed104 孔口 y=0.424 vs 3D 写死 0.462 偏 3.8cm)。
+        #   set_trajectory 见 tr["_meta"] 自动 _apply_meta → 场景孔口/盒/peg0 与轨迹对齐。
+        g = self.geom
+        tr["_meta"] = {
+            "goal": g["goal"].copy(), "hole_mouth": g["hole"].copy(),
+            "peg0": g["peg_grasp"].copy(),
+            "seed": int(self.seed),
+            "steps": len(tr["t"]),
+            "stage_final": str(tr["stage"][-1]).replace("阶段 ", "") if tr["stage"] else "",
+            "vision": bool(self.vision),
+            "done": bool(tr["done"][-1]) if tr["done"] else False,
+        }
+        if g.get("box_center") is not None:
+            tr["_meta"]["box_center"] = g["box_center"].copy()
         return tr
 
     # ── 🔌 真实 io 快照 (画布节点名 key — YOLO/2D→3D 用真实检测, 非引擎几何) ──
