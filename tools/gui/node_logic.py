@@ -1967,7 +1967,7 @@ def _ss_ensure_obs43(log):
 
 
 def node_ss_s1(ctx):
-    """S1 时空感知前端 — 📡传感器融合: metaworld 采样 39D + 触觉合成 → fuse_sensors() → 43D (perception.py)
+    """时空感知前端 — 📡传感器融合: metaworld 采样 39D + 触觉合成 → fuse_sensors() → 43D (perception.py)
     🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
     log = ctx.get("log")
     try:
@@ -1994,7 +1994,7 @@ def node_ss_s1(ctx):
 
 
 def node_ss_s2(ctx):
-    """S2 并行处理层 — ⚡前馈加速器(FeedforwardAccelerator) / 🔮状态估计器(AdaptiveStateEstimator) (parallel.py)"""
+    """并行处理层 — ⚡前馈加速器(FeedforwardAccelerator) / 🔮状态估计器(AdaptiveStateEstimator) (parallel.py)"""
     log = ctx.get("log")
     try:
         import numpy as np
@@ -2168,7 +2168,7 @@ def node_ss_dyn(ctx):
 
 
 def node_ss_s3(ctx):
-    """S3 认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate)"""
+    """认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate)"""
     log = ctx.get("log")
     try:
         import numpy as np
@@ -2319,17 +2319,17 @@ _EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"
 _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                       "metaworld_data_source.py"), 54, "def probe_data_source")
 
-_reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
+_reg("ss_bg1",   ["时空感知前端"], "时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
 _reg("ss_obs",   ["43D", "统一状态向量"], "🧩 43D 统一状态向量 — 39D 视觉结构 + 触觉 4D (源码 perception.py)", node_ss_s1)
-_reg("ss_bg2",   ["并行处理层"], "S2 并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
+_reg("ss_bg2",   ["并行处理层"], "并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
 _reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
 _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
 _reg("ss_ff_hist", ["前馈激活", "激活直方图"], "🧠 前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断, 引线 S2→本节点)", node_ss_ff_hist)
 _reg("ss_ff_attrib", ["归因", "分工", "堆叠", "t-SNE"], "🎯 归因·分工 — 512单元按输出维分工: 归因堆叠图(谁在指挥)+单元功能散点(PCA/t-SNE, 引线 S2→本节点)", node_ss_ff_attrib)
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
-_reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
+_reg("ss_bg3",   ["认知决策层"], "认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
 _reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 8阶段状态机(接近→对位→下降→抓取→抬起→转移→插入→完成, 与操作视频状态机同构) + 否决权 + 夹持锁存 + 按阶段融合 (源码 cognition.py ActionModulator)", node_ss_s3)
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)

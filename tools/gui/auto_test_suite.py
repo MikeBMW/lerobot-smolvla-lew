@@ -124,7 +124,7 @@ class StateSpaceAutoTest:
             names = [x.get("name", "") for x in self.sim.nodes]
             has_s1 = any("S1" in str(x.get("name", "")) or "感知" in str(x.get("name", "")) for x in self.sim.nodes)
             # 截图 = 画布控件 (状态空间 S1-S4 分层)
-            return n > 10, f"节点数={n}, 含S1感知={'是' if has_s1 else '否'}", self.sim.canvas
+            return n > 10, f"节点数={n}, 含感知={'是' if has_s1 else '否'}", self.sim.canvas
         return ("TC01_打开状态空间画布", "open_state_space → 加载 state_space_obs.json", fn)
 
     def tc02_engine_sim(self):
@@ -298,16 +298,16 @@ class StateSpaceAutoTest:
             self.tc05_databus(),
             self.tc06_open_3d(),
             self.tc07_3d_layers(),
-            # 🧩 2026-09-06 按状态空间功能块顺序: S1感知 → S2并行 → S3认知 → 执行闭环
-            self.tc09_perception(),      # S1 时空感知前端
-            self.tc10_parallel(),        # S2 并行处理层 (快慢分离)
-            self.tc11_cognition(),       # S3 认知决策层 (握否决权)
+            # 🧩 2026-09-06 按状态空间功能块顺序: 感知 → 并行 → 认知 → 执行闭环
+            self.tc09_perception(),      #  时空感知前端
+            self.tc10_parallel(),        #  并行处理层 (快慢分离)
+            self.tc11_cognition(),       #  认知决策层 (握否决权)
             self.tc12_execution(),       # 执行层 → 物理闭环
         ]
         if only:
             self.steps = [s for s in self.steps if s[0].startswith(only)]
 
-    # ── TC09: S1 感知层 (📡传感器融合 → 🧩43D obs) ──
+    # ── TC09:  感知层 (📡传感器融合 → 🧩43D obs) ──
     def tc09_perception(self):
         def fn():
             sim = getattr(self.sim, "_ss_sim", None) or getattr(self.sim, "_sim", None)
@@ -317,18 +317,18 @@ class StateSpaceAutoTest:
                 import os, sys
                 # 直接构造最小感知验证
                 import numpy as np
-                # 读画布节点: S1 感知前端是否含 传感器融合/43D obs
+                # 读画布节点:  感知前端是否含 传感器融合/43D obs
                 names = [x.get("name", "") for x in self.sim.nodes]
                 has_sensor = any("传感器" in n or "感知" in n for n in names)
                 has_obs = any("43D" in n or "obs" in n.lower() or "状态向量" in n for n in names)
                 return (has_sensor and has_obs,
-                        f"S1感知节点: 传感器融合={'有' if has_sensor else '无'}, 43D obs={'有' if has_obs else '无'}",
+                        f"感知节点: 传感器融合={'有' if has_sensor else '无'}, 43D obs={'有' if has_obs else '无'}",
                         self.sim.canvas)
             except Exception as e:
                 return False, f"感知层验证异常: {e!r}", self.sim.canvas
-        return ("TC09_S1感知层", "📡传感器融合 → 🧩43D状态向量 (画布节点)", fn)
+        return ("TC09_感知层", "📡传感器融合 → 🧩43D状态向量 (画布节点)", fn)
 
-    # ── TC10: S2 并行处理层 (⚡前馈加速器 ‖ 🔮状态估计器 → 📈预测 → 🧪校正) ──
+    # ── TC10:  并行处理层 (⚡前馈加速器 ‖ 🔮状态估计器 → 📈预测 → 🧪校正) ──
     def tc10_parallel(self):
         def fn():
             names = [x.get("name", "") for x in self.sim.nodes]
@@ -337,19 +337,19 @@ class StateSpaceAutoTest:
             has_dyn = any("预测" in n or "动力学" in n for n in names)
             has_corr = any("校正" in n or "残差" in n for n in names)
             n_ok = sum([has_ff, has_est, has_dyn, has_corr])
-            return n_ok >= 3, f"S2并行层: 前馈={'有' if has_ff else '无'} 估计={'有' if has_est else '无'} 预测={'有' if has_dyn else '无'} 校正={'有' if has_corr else '无'}", self.sim.canvas
-        return ("TC10_S2并行层", "⚡前馈‖🔮估计→📈预测→🧪校正 (画布节点)", fn)
+            return n_ok >= 3, f"并行层: 前馈={'有' if has_ff else '无'} 估计={'有' if has_est else '无'} 预测={'有' if has_dyn else '无'} 校正={'有' if has_corr else '无'}", self.sim.canvas
+        return ("TC10_并行层", "⚡前馈‖🔮估计→📈预测→🧪校正 (画布节点)", fn)
 
-    # ── TC11: S3 认知决策层 (🧭动作调制器 + 🛡安全执行边界) ──
+    # ── TC11:  认知决策层 (🧭动作调制器 + 🛡安全执行边界) ──
     def tc11_cognition(self):
         def fn():
             names = [x.get("name", "") for x in self.sim.nodes]
             has_mod = any("调制" in n or "调度" in n or "状态机" in n for n in names)
             has_safe = any("安全" in n or "限幅" in n or "边界" in n for n in names)
             return (has_mod and has_safe,
-                    f"S3认知层: 调制器={'有' if has_mod else '无'} 安全边界={'有' if has_safe else '无'}",
+                    f"认知层: 调制器={'有' if has_mod else '无'} 安全边界={'有' if has_safe else '无'}",
                     self.sim.canvas)
-        return ("TC11_S3认知层", "🧭动作调制器(8状态机) + 🛡安全执行边界", fn)
+        return ("TC11_认知层", "🧭动作调制器(8状态机) + 🛡安全执行边界", fn)
 
     # ── TC12: 执行层 → 物理闭环 (🤖执行器 → 🌍物理世界 → z_k反馈) ──
     def tc12_execution(self):
