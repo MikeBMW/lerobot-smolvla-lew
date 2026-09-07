@@ -376,6 +376,7 @@ class RealStateSpaceSim:
               "peg_head": [], "site_ph": [], "target": [], "grasped": [], "obs": [], "u_ff_vec": [],
               "u_sat_vec": [], "u_fb_vec": [], "u_fuse_vec": [], "u_limit_vec": [],
               "u_exec_vec": [], "v_vec": [], "z_k_vec": [], "io_trace": [],
+              "latent_vec": [], "prior_vec": [], "corrected_vec": [], "residual_vec": [],
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
         truncated = False
@@ -468,6 +469,12 @@ class RealStateSpaceSim:
             if _cw is not None:
                 contact_p = max(contact_p, _cw)
             self.latent = self.est.update(latent_pred, corrected)
+            # 🧭 3D 视图向量通道 (对齐引擎 tr 格式 — 2026-09-07 老倪: sim.run 轨迹喂
+            #   DreamView3D 缺 residual_vec KeyError 崩; 引擎同款: prior/latent/corrected/residual)
+            tr["prior_vec"].append(np.asarray(prior, dtype=float).copy())
+            tr["latent_vec"].append(np.asarray(self.latent, dtype=float).copy())
+            tr["corrected_vec"].append(np.asarray(corrected, dtype=float).copy())
+            tr["residual_vec"].append(np.asarray(residual, dtype=float).copy())
             self.res_ema = (0.85 * self.res_ema + 0.15 * np.asarray(residual, dtype=float)
                             if self.res_ema is not None
                             else np.asarray(residual, dtype=float).copy())
