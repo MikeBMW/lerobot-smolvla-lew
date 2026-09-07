@@ -11,7 +11,7 @@
   {
    "id": "ssbg1",
    "type": "row_bg",
-   "name": "S1 · 时空感知前端",
+   "name": "时空感知前端",
    "x": -20,
    "y": -190,
    "w": 3000,
@@ -21,14 +21,14 @@
    "params": {
     "bg": "#12263f",
     "model": "state_space",
-    "desc": "S1 时空感知前端: 传感器融合 (RGB-D + 力觉 + 触觉) → 43D 统一状态向量 obs",
+    "desc": " 时空感知前端: 传感器融合 (RGB-D + 力觉 + 触觉) → 43D 统一状态向量 obs",
     "source": "src/lerobot/policies/left_right/state_space/perception.py"
    }
   },
   {
    "id": "ssbg2",
    "type": "row_bg",
-   "name": "S2 · 并行处理层 (快慢分离)",
+   "name": "并行处理层 (快慢分离)",
    "x": -20,
    "y": 40,
    "w": 3000,
@@ -38,14 +38,14 @@
    "params": {
     "bg": "#1a1030",
     "model": "state_space",
-    "desc": "S2 并行处理层: 快 = 前馈加速器 (左脑MLP) · 慢 = 自适应状态估计器 (教学卡尔曼; 训练右脑=前向世界模型, 接入先验动力学预测器)",
+    "desc": " 并行处理层: 快 = 前馈加速器 (左脑MLP) · 慢 = 自适应状态估计器 (教学卡尔曼; 训练右脑=前向世界模型, 接入先验动力学预测器)",
     "source": "src/lerobot/policies/left_right/state_space/parallel.py"
    }
   },
   {
    "id": "ssbg3",
    "type": "row_bg",
-   "name": "S3 · 认知决策层 (握有否决权)",
+   "name": "认知决策层 (握有否决权)",
    "x": -20,
    "y": 320,
    "w": 3000,
@@ -55,7 +55,7 @@
    "params": {
     "bg": "#3a1015",
     "model": "state_space",
-    "desc": "S3 认知决策层: 动作调制器 (原状态机) 握有否决权 — 6阶段状态机 + 接触/残差证据 → 安全执行边界",
+    "desc": " 认知决策层: 动作调制器 (原状态机) 握有否决权 — 6阶段状态机 + 接触/残差证据 → 安全执行边界",
     "source": "src/lerobot/policies/left_right/state_space/cognition.py"
    }
   },
