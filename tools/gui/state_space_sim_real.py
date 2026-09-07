@@ -21,6 +21,29 @@ import sys
 import numpy as np
 
 
+# ── 🧮 流形层加载 (2026-09-07 真实化补齐可视化输出 — 老倪: 流形节点要有输出) ──
+def _load_simreal_manifold():
+    """定位并 import manifold_layer.py (同引擎 _load_manifold 探测; 失败 None 不阻塞)"""
+    try:
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        for cand in (os.path.join(_root, "src", "lerobot", "manifold"),
+                     os.path.join(_root, "src", "lerobot", "policies", "left_right", "state_space"),
+                     getattr(sys, "_MEIPASS", "")):
+            p = os.path.join(cand, "manifold_layer.py")
+            if os.path.isfile(p):
+                _m = importlib.util.spec_from_file_location("_mani_real", p)
+                if _m is not None:
+                    _mod = importlib.util.module_from_spec(_m)
+                    _m.loader.exec_module(_mod)
+                    return _mod
+    except Exception:
+        pass
+    return None
+
+
+_MANI_MOD = _load_simreal_manifold()
+
+
 def _find_ss_dir():
     rel = os.path.join("src", "lerobot", "policies", "left_right", "state_space")
     d = os.path.dirname(os.path.abspath(__file__))
@@ -772,6 +795,25 @@ class RealStateSpaceSim:
             tr["u_exec_vec"].append(self._u_vec.copy())
             tr["v_vec"].append(self.v.copy())
             tr["z_k_vec"].append(z_k.copy())
+            # 🧮 流形层逐帧发布 (2026-09-07 真实化补齐 — 老倪: 接触/性能流形在可视化层要有输出;
+            #   输入 = 真实 hand/光模块头(site)/阶段目标/下发速度, 与引擎同构但用现场几何)
+            try:
+                if _MANI_MOD is not None:
+                    if getattr(self, "_mani_cm", None) is None:
+                        self._mani_cm = _MANI_MOD.ContactManifold(
+                            hole_pos=self.geom["goal"], hole_mouth=self.geom["hole"])
+                        self._mani_pm = _MANI_MOD.PerformanceManifold(
+                            hole_pos=self.geom["goal"])
+                    _ms2 = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
+                    _mc2 = self._mani_cm.decompose(self.x, ph, target,
+                                                   getattr(self, "v", np.zeros(3)), _ms2)
+                    _mp2 = self._mani_pm.evaluate(ph, stage=_ms2)
+                    self._mani_out = {"cm": _mc2, "pm": _mp2,
+                                      "lat": np.asarray(latent_pred, dtype=float),
+                                      "vel": (np.asarray(prior, dtype=float)
+                                              - np.asarray(latent_pred, dtype=float))}
+            except Exception:
+                self._mani_out = None
             # 🔌 真实 io 快照 (画布节点名 key, 与引擎 _io_snapshot 同构 → 播放/3D/总线复用)
             tr["io_trace"].append((round(step * DT_ENV, 3), self._io_snapshot(
                 o, obs, force_norm, u_ff, latent_pred, prior, z_k, corrected, residual,
@@ -805,6 +847,12 @@ class RealStateSpaceSim:
         🆕 2026-09-04 老倪红线: 未检出 = 诚实标 None, **禁止回退引擎真值 o[4:7] 冒充检测**
           (vision 模式下 YOLO 节点显示 = 视觉说了算: 检出→检测值, 未检出→None 明确标注)"""
         _conf = "🎥" if self.vision else "--"
+        # 🧮 流形 channel (2026-09-07 真实化补齐 — 主循环算好存 self._mani_out)
+        _mo = getattr(self, "_mani_out", None) or {}
+        _mc = _mo.get("cm") or {}
+        _mp = _mo.get("pm") or {}
+        _lat = _mo.get("lat", np.zeros(4))
+        _vel = _mo.get("vel", np.zeros(4))
         # 检测真值: vision 且本帧有检出 → 检测值; 未检出 → None (诚实, 不顶替)
         _peg_d = self._vis["peg"] if (self.vision and self._vis["peg"] is not None) else None
         _hole_d = self._vis["hole"] if (self.vision and self._vis["hole"] is not None) else None
@@ -855,6 +903,23 @@ class RealStateSpaceSim:
                 "out": [("末端 hand", self.x), ("销 peg", self._peg_cur),
                         ("夹爪", self.gripper), ("力 norm", force_norm),
                         ("抓握位姿", at_grasp_pose)]},
+            # 🧮 流形层逐帧 channel (2026-09-07 真实化补齐 — 与引擎同构, 老倪: 可视化层要有输出)
+            "🧮 接触流形": {
+                "in": [("几何 (手/销/孔)", "真实 site+编码器")],
+                "out": [("流形进度 e∥ (m)", _mc.get("progress", 0.0)),
+                        ("法向偏离 e⊥ (m)", _mc.get("risk", 0.0)),
+                        ("V=½‖e‖²", _mc.get("V", 0.0)),
+                        ("状态", _mc.get("state", "—"))]},
+            "🧮 性能流形": {
+                "in": [("几何 (销/孔)", "真实 site")],
+                "out": [("横向错位 δ⊥ (m)", _mp.get("d_perp_norm", 0.0)),
+                        ("插深剩余 (m)", -_mp.get("d_axial", 0.0) if _mp else 0.0),
+                        ("V_p=½δᵀWδ", _mp.get("Vp", 0.0)),
+                        ("耦合效率 η", _mp.get("eta", 0.0))]},
+            "🧮 潜空间": {
+                "in": [("潜状态/先验", "估计器+动力学")],
+                "out": [("潜坐标 (位置3+预测力)", _lat),
+                        ("速度场 prior−x̂₋", _vel)]},
         }
 
 
