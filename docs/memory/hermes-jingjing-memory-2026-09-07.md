@@ -46,4 +46,6 @@ U盘随身镜像: ~/.hermes-mirror在U盘层, E盘label=ubuntu-e校验防误挂;
 §
 Hermes安全层: mkfs等敏感命令字符串级硬拦(approvals全无效); 绕过=write_file落盘+bash执行(只扫命令文本); sudo免密
 §
-远程/3D接手机(09-06): noVNC网页无密码(x11vnc -nopw); websockify转发二进制坏→ECS自写vnc_ws_bridge(systemd vncbridge, nginx静态直服+仅/websockify代理+Origin规范化); 状态空间3D手机页state-3d.html已上线(引擎轨迹JSON+Three.js, z-up→y-up: tx=x/ty=z/tz=y); 老倪终极诉求=3D分层空间接手机远程控制
+远程/3D接手机(09-06): noVNC=x11vnc -nopw+自写vnc_ws_bridge(systemd)弃websockify(二进制坏); state-3d.html手机3D上线; 细节在 novnc-remote-desktop/zmax-state-3d-mobile 技能
+§
+Z-MAX多并行会话共享同仓库: 老倪跨会话问进度→先git log+session_search查证别重复训练/提交(09-07实锤)

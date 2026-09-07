@@ -171,8 +171,22 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
   **本机可用 left_right 模型被磁盘红线清光** → 要出视频需训练新模型或从 4090 拉。
 - 历史: left_right_20260813_164959(曾验证成功 seed2)已被磁盘清理删除, 勿再引用。
 
-## Windows exe 画布打不开 = /tmp 打点无保护 (2026-08-28 v3.3.2, 老倪: "3.3.1 3.3.0 无法打开画布, 3.2.4 可以")
-- **症状**: Windows exe 上 simulink 画布 tab 打不开/空白, 状态栏 "⚠️ Simulink 初始化失败: [Errno 2] No such file or directory: '/tmp/...'"; 源码版 Linux 正常 (有 /tmp)。
+## ⚠️ Windows/macOS exe 3D 无法渲染 = AA_UseSoftwareOpenGL 平台条件 (2026-09-07 v5.0.0, 老倪: "3.2.4 能启动并渲染3D, 之后版本不能")
+- **症状**: Windows exe (及 macOS app) 从 v3.3.4 起 3D 视图 (GLViewWidget/pyqtgraph) 无法渲染;
+  v3.2.4 及之前 (全平台无条件 `AA_UseSoftwareOpenGL, True`) 正常。
+- **根因**: v3.3.4 为修 Linux GNOME/Mutter 黑屏 (软件 GL 在合成器下全黑) 把
+  `AA_UseSoftwareOpenGL` **整行注释** → Windows/macOS 无硬件 GL 环境 (虚拟机/远程/无独显驱动)
+  3D 无兜底 → 渲染失败。软件 GL 对 Linux GNOME 是毒药, 对 Windows/macOS 打包版是救生圈 —
+  平台 GL 策略不同, 不能一刀切。
+- **修 (v5.0.0)**: 平台条件启用 — `if sys.platform in ("win32", "darwin"): setAttribute(AA_UseSoftwareOpenGL, True)`;
+  Linux 源码版不启用 (GNOME 黑屏修复保留)。studio.py main() QApplication 创建前。
+- **铁律**: 跨平台 GL/渲染设置改动 (AA_UseSoftwareOpenGL/AA_UseDesktopOpenGL 等) 必须按
+  sys.platform 分叉, 禁止无条件开/关; 打包版 (win/darwin) 优先可用性 (软件 GL 兜底),
+  源码 Linux 版优先合成器兼容。老倪验收口径 = 每个发布版都要在**无独显 Windows 环境**
+  实测 3D 渲染, 不能只在 Linux 源码版验证。回归判据: 3.2.4 (正常基线) vs 新版本 diff
+  里找平台性设置变化。
+
+## Windows exe 画布打不开 = /tmp 打点无保护 (2026-08-28 v3.3.2, 老倪: "3.3.1 3.3.0 无法打开画布, 3.2.4 可以")- **症状**: Windows exe 上 simulink 画布 tab 打不开/空白, 状态栏 "⚠️ Simulink 初始化失败: [Errno 2] No such file or directory: '/tmp/...'"; 源码版 Linux 正常 (有 /tmp)。
 - **根因**: 3.3.0 为排查 Mac 黑屏加的 SimulinkModule 构造打点直接 `open("/tmp/zmax_simulink_init.log", "a")` — studio.py `_init_simulink` 里 `_mk` lambda **无 try/except** → Windows 无 /tmp 目录 → FileNotFoundError 抛在 `SimulinkModule()` 之前 → 画布从未创建。simulink_module.py 里同款打点有 try/except 所以不崩 (静默失效)。
 - **铁律**: ①跨平台诊断打点/临时文件一律 `os.path.join(tempfile.gettempdir(), name)` + try/except, 禁止裸 `/tmp` (Windows 没有); ②`_init_simulink` 这类"建画布"路径里任何语句抛异常都会让画布整体消失 — 打点类语句必须自身容错, 不能依赖外层 try 兜底 (外层 catch 后画布也没了); ③验证必须模拟 Windows: monkeypatch `tempfile.gettempdir` → 不存在目录, 再跑 `SimulinkModule()` + `load_flow_file`, 断言 nodes>0。
 - **排查流程**: 3.2.4 正常 → 3.3.0 坏 = 二分 diff `git diff <v3.2.4>..<v3.3.0>`, 找新增的 IO/路径类语句; 用户报"Windows 打包的版本"时优先怀疑平台差异 (路径/权限/编码), 不是 UI 逻辑。
@@ -204,6 +218,7 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **断点天然同步**: 引擎断点挂起主线程 → 推送停 → 3D 同步停; F5 放行 → 继续。无需额外逻辑。
 - **配套 (fe2c82af)**: 打开即自动播放 — set_trajectory 末尾 `_timer.start(60)`(原默认静态第 0 帧, 用户以为"打不开")。
 - 验证: sim.run() 322 步 set_frame 0→321 跟随, 0.5s 不被自播抢动。
+- **🐛 real sim.run 轨迹喂 3D 缺 residual_vec KeyError → 窗口打不开 (2026-09-07 v4.4.0 实锤, 老倪"3D视图无法打开")**: open_ss_3d 优先用 _ss_tr (真实化 sim.run 轨迹) 时, ss_dreamview._update_frame 直读 `tr["residual_vec"]` (无 .get 容错, 引擎轨迹才有该 key) → KeyError 崩在 10774 构造行, 日志停在"3D 视图数据源: 程序执行轨迹"无后续。修: sim_real run() 补 latent_vec/prior_vec/corrected_vec/residual_vec 四个顶层向量通道 (对齐引擎 tr 格式, 数据每帧已有: prior/latent/corrected/residual)。排查: GUI stderr (studio_launch.log) 见 KeyError; 3D 打开后日志缺"✅ 已打开 3D 分层视图"行。**铁律: 任何新轨迹源 (sim_real/gen/episode) 喂 DreamView3D 前, 对照 ss_dreamview 引用的 18 个 tr key 全量补齐**。
 
 ## _EXTERNAL_LOC 行号铁律 (2026-09-02 v3.4.3, 老倪连续 3 轮 "源码不是这个")
 - **症状**: 双击画布节点编辑器显示正确类, 但「VSCode 打开/复制位置」跳到错误代码 → 用户反复看到"自适应状态估计器源码=forward"(ss_est 映射行号 34, 类实际 45, 34 行正好是 FeedforwardAccelerator.forward 的代码)。
