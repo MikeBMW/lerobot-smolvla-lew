@@ -1180,7 +1180,7 @@
     "desc": "[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py",
     "decoder": true,
     "state_space": true,
-    "source": "src/lerobot/policies/smolvla_lew/state_space_action_head.py"
+    "source": "src/lerobot/policies/smolvla_lew/action_head.py"
    }
   },
   {
@@ -1202,7 +1202,7 @@
   {
    "id": "ssmani_exp",
    "type": "model",
-   "name": "🧮 流形专家层 (接入预留)",
+   "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
    "x": 1040,
    "y": -855,
    "w": 280,
@@ -1210,9 +1210,10 @@
    "icon": "🧮",
    "color": "#8957e5",
    "params": {
-    "desc": "[专家·世界模型] 专家层入口 (老倪: VLM+ActionHead 开发完后接入): VLM 潜空间 z → 流形专家层修正 → ActionHead",
+    "desc": "[专家·世界模型 L4] JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/policies/smolvla_lew/state_space_predictor.py",
     "expert": true,
-    "state_space": true
+    "state_space": true,
+    "source": "src/lerobot/policies/smolvla_lew/state_space_predictor.py"
    }
   }
  ],
