@@ -53,7 +53,11 @@ FEATURES = [
     ("F-A05", "引擎", "台面约束: 未夹持末端不穿透台面", "StateSpaceSim", "自动", "F-A05"),
     ("F-A06", "引擎", "夹持锁存 + 光模块随末端移动 (grasped 后 peg=x+peg_off)", "StateSpaceSim", "自动", "F-A06"),
     ("F-A07", "引擎", "接触力→接触概率真实联动 (接触段 contact_p>0.6)", "StateSpaceSim", "自动", "F-A07"),
-    ("F-A08", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列", "StateSpaceSim", "自动", "F-A08"),
+    ("F-A08", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列", "state_space_sim_real.py", "自动", "F-A08"),
+    ("F-A09", "引擎", "13 段全链闭环 (mode=full: 插→拔→AOI→回放→完成, 顺序+末帧完成)", "state_space_sim_real.py", "自动", "F-A09"),
+    ("F-A10", "引擎", "AOI 检测报告 PASS (真实过程指标: 插深<8mm & 力峰<1 & 无回抓)", "state_space_sim_real.py", "自动", "F-A10"),
+    ("F-A11", "引擎", "全链后光模块放回台面误差 <15mm (闭环完整)", "state_space_sim_real.py", "自动", "F-A11"),
+    ("F-A12", "引擎", "insert 模式回归: seed104 ≤380 步完成 (零破坏)", "state_space_sim_real.py", "自动", "F-A12"),
     ("F-B01", "S1", "传感器融合: 39D 视觉 + 触觉4D → 43D (fuse_sensors)", "perception.py", "自动", "F-B01"),
     ("F-B02", "S2", "前馈加速器: 比例引导向目标 + 近距闭合 + ±0.5 限幅", "parallel.py", "自动", "F-B02"),
     ("F-B03", "S2", "自适应状态估计器: predict/update 卡尔曼数值 (A/K/B)", "parallel.py", "自动", "F-B03"),
@@ -361,6 +365,123 @@ class VerificationLayer:
         risk_max = float(max(tr["mani_risk"]))
         return ok_len and ok_io and eta_end > 0.5, \
             f"序列 {len(tr.get('mani_risk', []))}/{n} 帧 · io 3 channel 齐={ok_io} · η 终态 {eta_end:.3f} · 偏离峰值 {risk_max*1000:.1f}mm"
+
+    # ════════════════════════════════════════════════════════
+    # 🚀 2026-09-08 L3 扩展断言组: chain(13段链) / vlm(教学) / dec(教学) / muscle
+    # ════════════════════════════════════════════════════════
+    def _chain(self, mode):
+        """跑真实化 R0 (无视觉) 指定模式 — full 链 ~877 步 ≈ 1-2s"""
+        sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
+        from state_space_sim_real import RealStateSpaceSim
+        sim = RealStateSpaceSim(seed=104, vision=False, mode=mode, log=lambda *a: None)
+        return sim.run(max_steps=1600)
+
+    def t_chain_full(self, np):
+        tr = self._chain("full")
+        want = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入",
+                "拔出", "AOI转移", "AOI检测", "回程", "放下", "完成"]
+        seq = [str(s).replace("阶段 ", "").split("·")[0].strip() for s in tr["stage"]]
+        pos, got = 0, []
+        for s in seq:
+            if pos < len(want) and s == want[pos]:
+                got.append(s)
+                pos += 1
+        ok = pos == len(want) and seq[-1] == "完成" and bool(tr["done"][-1])
+        return ok, f"13 段全链顺序出现 {got} · 末帧完成 · {len(seq)} 步"
+
+    def t_chain_aoi(self, np):
+        tr = self._chain("full")
+        ar = (tr.get("_meta") or {}).get("aoi_report") or {}
+        ok = (bool(ar.get("ok")) and ar.get("insert_depth_min_mm", 9.9) < 8.0
+              and ar.get("force_peak", 9.9) < 1.0 and not ar.get("went_back_grasp"))
+        return ok, f"AOI 报告 PASS: 插深 {ar.get('insert_depth_min_mm')}mm · 力峰 {ar.get('force_peak')} · 无回抓"
+
+    def t_chain_place(self, np):
+        tr = self._chain("full")
+        peg = np.asarray(tr["peg"])
+        err = float(np.linalg.norm(peg[-1] - peg[0]))
+        return err < 0.015, f"全链后光模块放回位姿误差 {err*1000:.1f}mm (<15mm)"
+
+    def t_chain_regress(self, np):
+        tr = self._chain("insert")
+        n = len(tr["t"])
+        return bool(tr["done"][-1]) and n <= 380, f"insert 回归: {n} 步完成 (参考 343 步零回归)"
+
+    # FEATURES F-A09..12 桥接 (run(fid) → t_<fid> 命名约定)
+    def t_F_A09(self, np):
+        return self.t_chain_full(np)
+
+    def t_F_A10(self, np):
+        return self.t_chain_aoi(np)
+
+    def t_F_A11(self, np):
+        return self.t_chain_place(np)
+
+    def t_F_A12(self, np):
+        return self.t_chain_regress(np)
+
+    def _teach_node(self, node_fn, tr):
+        """教学层节点真实执行 (stub module 喂 tr, 收集日志)"""
+        import importlib.util as _ilu
+        _p = os.path.join(self.root, "tools", "gui", "node_logic.py")
+        _s = _ilu.spec_from_file_location("ss_node_logic_teach", _p)
+        _m = _ilu.module_from_spec(_s)
+        _s.loader.exec_module(_m)
+        stub = type("M", (), {"_ss_tr": tr, "_ss_round": 0})()
+        logs = []
+        ok = bool(node_fn({"module": stub, "log": logs.append, "name": "测试",
+                           "params": {}, "module_obj": None}))
+        return ok, " | ".join(logs)[:150]
+
+    def t_vlm_teach(self, np):
+        tr = self.engine()   # 简化引擎轨迹 (教学层数据源契约)
+        return self._teach_node(self._ss_teach_vlm, tr)
+
+    def t_dec_teach(self, np):
+        tr = self.engine()
+        return self._teach_node(self._ss_teach_dec, tr)
+
+    def _ss_teach_vlm(self, ctx):
+        import importlib.util as _ilu
+        _p = os.path.join(self.root, "tools", "gui", "node_logic.py")
+        _s = _ilu.spec_from_file_location("ss_nl2", _p)
+        _m = _ilu.module_from_spec(_s)
+        _s.loader.exec_module(_m)
+        return _m.node_ss_vlm(ctx)
+
+    def _ss_teach_dec(self, ctx):
+        import importlib.util as _ilu
+        _p = os.path.join(self.root, "tools", "gui", "node_logic.py")
+        _s = _ilu.spec_from_file_location("ss_nl3", _p)
+        _m = _ilu.module_from_spec(_s)
+        _s.loader.exec_module(_m)
+        return _m.node_ss_dec(ctx)
+
+    def t_muscle_cfg(self, np):
+        import json as _json
+        p = os.path.join(self.root, "data", "muscle_memory.json")
+        try:
+            d = _json.load(open(p, encoding="utf-8"))
+            n = len(d) if isinstance(d, (dict, list)) else -1
+            return n > 0, f"肌肉记忆库 {os.path.basename(p)} 条目 {n} (引擎默认加载, SS_MUSCLE=0 关)"
+        except Exception as e:
+            return False, f"muscle_memory.json 不可用: {e}"
+
+    def t_muscle_gate(self, np):
+        sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
+        _old = os.environ.get("SS_MUSCLE")
+        os.environ["SS_MUSCLE"] = "1"   # 强制开 (本测试验证挂载; 环境可关)
+        try:
+            from state_space_sim_real import RealStateSpaceSim
+            sim = RealStateSpaceSim(seed=104, vision=False, mode="insert", log=lambda *a: None)
+            has = getattr(sim, "muscle", None) is not None
+            on = getattr(sim, "_mm_on", False)
+            return has and on, f"引擎肌肉记忆挂载: muscle={'有' if has else '无'} · _mm_on={on}"
+        finally:
+            if _old is None:
+                os.environ.pop("SS_MUSCLE", None)
+            else:
+                os.environ["SS_MUSCLE"] = _old
 
     # ════════════════════════════════════════════════════════
     # B 六层单元
@@ -2984,6 +3105,10 @@ FEATURE_META = {
     "F-A06": ("基本功能", "引擎", "夹持锁存: grasped 后 peg=x+peg_off 随动 (确定性规则)"),
     "F-A07": ("基本功能", "引擎", "接触力→接触概率: K_CONTACT 增益, 接触段 contact_p>0.6"),
     "F-A08": ("基本功能", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列"),
+    "F-A09": ("泛化功能", "引擎", "RealStateSpaceSim mode=full: 13 段链 (插→拔→AOI→回放), R0 seed104 顺序校验"),
+    "F-A10": ("泛化功能", "引擎", "AOI 报告 = 真实过程指标 (插深最小/力峰/回抓) → PASS/FAIL"),
+    "F-A11": ("泛化功能", "引擎", "放回: 光模块 body 终位 vs 初始 <15mm (闭环完整性)"),
+    "F-A12": ("基本功能", "引擎", "insert 回归: seed104 343±37 步完成 (mode 默认保旧行为)"),
     # ── B 六层 (S1感知→S2并行→S3认知, 教学解析式 — 真权重见 model_feature) ──
     "F-B01": ("基本功能", "感知模型", "perception.py fuse_sensors: 39D 视觉+触觉4D → 43D 融合 (前端感知)"),
     "F-B02": ("泛化功能", "决策控制", "parallel.py FeedforwardAccelerator: 前馈快路径, 比例引导+近距闭合+±0.5限幅"),
