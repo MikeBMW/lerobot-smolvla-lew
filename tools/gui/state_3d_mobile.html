@@ -130,17 +130,50 @@ const dirl2 = new THREE.DirectionalLight(0x88aaff, .6); dirl2.position.set(-0.5,
 // ── 坐标映射: 引擎 (x, y, z↑) → Three (x, z→y, y→z)  (z-up→y-up)
 function P(v){ return v ? new THREE.Vector3(v[0], v[2], v[1]) : null; }
 // 引擎几何常量 (与 state_space_sim.py 同源): 水平侧插, 插入轴 = 引擎 x
-const HP = new THREE.Vector3(-0.2345, 0.1309, 0.4623);   // 孔底 (插入终点 HOLE_POS)
-const HM = new THREE.Vector3(-0.1685, 0.1309, 0.4623);   // 孔口 (HOLE_MOUTH)
+// 🎯 2026-09-08: 仅作默认值 — 轨迹 meta (现场几何) 加载后 applyMeta() 动态对齐
+//   (metaworld 布局每进程漂移, 写死旧常量偏 3.8cm = 老倪目检"插口位置不对")
+let GEOM = {
+  goal:     [-0.2345, 0.4623, 0.1309],  // 孔底 (插入终点)
+  hole_mouth: [-0.1685, 0.4623, 0.1309], // 孔口
+  box_center: [-0.2645, 0.4623, 0.095], // 带孔盒中心
+  aoi_focus: [0.12, 0.62, 0.10],         // AOI 检测焦点
+  peg0: [0.0585, 0.5224, 0.03],          // 光模块初始抓握点
+};
+function applyMeta(){
+  const m = (traj && traj.meta) || {};
+  if(m.hole_mouth) GEOM.hole_mouth = m.hole_mouth;
+  if(m.goal) GEOM.goal = m.goal;
+  if(m.box_center) GEOM.box_center = m.box_center;
+  if(m.aoi_focus) GEOM.aoi_focus = m.aoi_focus;
+  if(m.peg0) GEOM.peg0 = m.peg0;
+  // 重定位: 盒/孔口/槽/红环/孔底/AOI 设备/初始光模块
+  const bc = P(GEOM.box_center);
+  if(bc){ box.position.copy(bc); boxEdge.position.copy(bc); }
+  const mp = P(GEOM.hole_mouth);
+  if(mp){
+    mouthPos.copy(mp);
+    slot.position.set(mp.x + 0.03, mp.y, mp.z);
+    mouthRing.position.copy(mp);
+    inArrow.position.copy(mp);
+  }
+  const gp = P(GEOM.goal);
+  if(gp) holeEnd.position.copy(gp);
+  const af = P(GEOM.aoi_focus);
+  if(af){
+    aoiBase.position.set(af.x, af.y - 0.045, af.z);
+    aoiLens.position.set(af.x, af.y, af.z);
+    aoiRing.position.copy(af);
+  }
+}
 
 // 台面
 const table = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.02, 0.9),
   new THREE.MeshStandardMaterial({color:0x2d333b, roughness:.9}));
 table.position.set(0.0, 0.01, 0.05); scene.add(table);
 
-// 带孔盒 (接收光模块的插座/母口; 真实几何: 中心(-0.2645,0.4623,0.095) 尺寸0.19×0.20×0.19)
+// 带孔盒 (接收光模块的插座/母口; 真实几何随布局漂移 → GEOM.box_center)
 // 引擎(x,y,z↑) → Three(x, z↑→y, y→z): 盒 Three 尺寸 = 0.19(x) × 0.19(引擎Z→y) × 0.20(引擎Y→z)
-const boxCenter = P([-0.2645, 0.4623, 0.095]);
+const boxCenter = P(GEOM.box_center);
 const box = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.19, 0.20),
   new THREE.MeshStandardMaterial({color:0x57606a, roughness:.7, metalness:.15}));
 box.position.copy(boxCenter); scene.add(box);
@@ -149,9 +182,9 @@ const boxEdge = new THREE.LineSegments(
   new THREE.EdgesGeometry(new THREE.BoxGeometry(0.191, 0.191, 0.201)),
   new THREE.LineBasicMaterial({color:0x8b949e}));
 boxEdge.position.copy(boxCenter); scene.add(boxEdge);
-// 孔口 (插槽入口): 盒子 +x 侧面, 开口朝 +x; 引擎 HOLE_MOUTH(-0.1685,0.4623,0.1309)
+// 孔口 (插槽入口): 盒子 +x 侧面, 开口朝 +x; 随布局漂移 → GEOM.hole_mouth
 // 用深色凹槽贴面表示插口 + 红框描边
-const mouthPos = P([-0.1685, 0.4623, 0.1309]);   // 孔口中心 (Three)
+const mouthPos = P(GEOM.hole_mouth);   // 孔口中心 (Three)
 // 插槽凹口: 半透明深色盒, 从孔口向盒内凹 0.05, 高略大于光模块
 const slotW = 0.035, slotH = 0.045;               // 槽口尺寸 (稍大于光模块 0.03 截面)
 const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, slotH, slotW),
@@ -168,7 +201,25 @@ scene.add(inArrow);
 // 孔内终点标记 (HOLE_POS 深点, 半透明红点)
 const holeEnd = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 8),
   new THREE.MeshBasicMaterial({color:0xff5555, transparent:true, opacity:.5}));
-holeEnd.position.copy(P([-0.2345, 0.4623, 0.1309])); scene.add(holeEnd);
+holeEnd.position.copy(P(GEOM.goal)); scene.add(holeEnd);
+
+// 🔬 AOI 检测设备 (2026-09-08: 全链拔出→检测段, 设备在台面 aoi_focus 处 —
+//   AOI 转移=光模块头送到对焦点上方悬停, AOI 检测=镜头对焦检测)
+const aoiBase = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.09),
+  new THREE.MeshStandardMaterial({color:0x3a3f47, roughness:.8}));
+aoiBase.position.set(0.12, 0.075, 0.62); scene.add(aoiBase);   // 底座 (af.y-0.045 三雏 y=0.1-0.045≈0.055? 台面 z=0.05 → 取中)
+// 立柱
+const aoiPost = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 8),
+  new THREE.MeshStandardMaterial({color:0x57606a}));
+aoiPost.position.set(0.12, 0.09, 0.62); scene.add(aoiPost);
+// 镜头 (光学对焦点处, 指向下方检测位)
+const aoiLens = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.028, 0.035, 16),
+  new THREE.MeshStandardMaterial({color:0x2f6feb, roughness:.3, metalness:.5}));
+aoiLens.position.set(0.12, 0.10, 0.62); scene.add(aoiLens);    // af 高度
+// 镜头光环 (对焦点指示)
+const aoiRing = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.002, 8, 24),
+  new THREE.MeshBasicMaterial({color:0x3fb950, transparent:true, opacity:.6}));
+aoiRing.position.set(0.12, 0.10, 0.62); aoiRing.rotation.x = Math.PI/2; scene.add(aoiRing);
 
 // 光模块 (真实几何: 长0.20沿引擎X, 抓握点peg距销头端0.13 → 本体范围 peg-0.13~peg+0.07)
 // 引擎(x,y,z↑) → Three(x, z↑→y, y→z): 引擎X→Three.x 保持
@@ -407,13 +458,16 @@ function buildLines(){
 async function loadTraj(bust){
   traj = await fetchJ(TRAJ_URL + (bust? "?r="+bust : ""));
   slider.max = traj.n-1;
+  applyMeta();   // 🎯 2026-09-08: 现场几何动态对齐 (孔口/盒/AOI 随布局漂移)
   buildLines();
-  // 镜头框住工作区 (末端/销头/孔并集)
+  // 镜头框住工作区 (末端/销头/孔/AOI 设备并集)
   const all=[];
   traj.frames.forEach(f=>{ const a=P(f.x),b=P(f.peg_head); if(a)all.push(a); if(b)all.push(b); });
+  const hm=P(GEOM.hole_mouth), hl=P(GEOM.goal), af=P(GEOM.aoi_focus);
+  if(hm) all.push(hm); if(hl) all.push(hl); if(af) all.push(af);
   if(all.length){
-    const bb=new THREE.Box3().setFromPoints(all); bb.expandByPoint(HM); bb.expandByPoint(HP);
-    const c=bb.getCenter(new THREE.Vector3()); const s=bb.getSize(new THREE.Vector3()).length();
+    const bb=new THREE.Box3().setFromPoints(all); const c=bb.getCenter(new THREE.Vector3());
+    const s=bb.getSize(new THREE.Vector3()).length();
     controls.target.copy(c);
     const dir=new THREE.Vector3(0.6,0.55,1).normalize();
     camera.position.copy(c.clone().add(dir.multiplyScalar(Math.max(s*1.9,0.55))));
