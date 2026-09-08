@@ -23,6 +23,7 @@ Z-MAX 节点逻辑库 (Node Logic) — 每个节点的可编辑逻辑
 import importlib
 import inspect
 import os
+import sys  # 🐛 2026-09-09: 记忆节点 _mem_store 用 sys.path
 import threading
 import time
 
@@ -3159,7 +3160,22 @@ def node_ss_dec(ctx):
         return False
 
 
-# 注册 (关键字按节点名唯一匹配)
+# 🧠 记忆节点注册 (2026-09-09 老倪红线: 实现真源 src/lerobot/memory/mem_nodes.py — def 不进 GUI)
+#   画布/引擎/CLI 共享 data/shared_memory.json; 此处仅 import 转发 + 关键词绑定
+try:
+    if os.path.join(_REPO_ROOT, "src") not in sys.path:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
+    from lerobot.memory.mem_nodes import (node_ss_mem_l2, node_ss_mem_l3,
+                                          node_ss_mem_l4, node_ss_mem_share)
+except Exception as _me:
+    _mem_err = f"⚠️ 记忆节点实现未加载 (真源 src/lerobot/memory/mem_nodes.py): {_me}"
+    node_ss_mem_l2 = node_ss_mem_l3 = node_ss_mem_l4 = node_ss_mem_share = (
+        lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
+
+_reg("ss_mem_l2", ["L2 记忆 · 肌肉记忆"], "🔧 L2 记忆 · 肌肉记忆 — 固化标杆库 (muscle_memory)", node_ss_mem_l2)
+_reg("ss_mem_l3", ["L3 记忆 · 长程规划"], "🚀 L3 记忆 · 长程规划 — 跨段技能序列流程经验", node_ss_mem_l3)
+_reg("ss_mem_l4", ["L4 记忆 · 筹划"], "🏆 L4 记忆 · 筹划 — 世界模型预测质量/恢复策略", node_ss_mem_l4)
+_reg("ss_mem_share", ["总装记忆中枢", "共享记忆中枢"], "🧠 总装记忆中枢 — 三层记忆汇总总装 (大模型层)", node_ss_mem_share)
 _reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (SmolVLA式) — 视觉/触觉/检测框 token → 潜空间 z",
     node_ss_vlm)
 _reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",

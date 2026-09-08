@@ -1213,7 +1213,61 @@ class RealStateSpaceSim:
                 pass
         if g.get("box_center") is not None:
             tr["_meta"]["box_center"] = g["box_center"].copy()
+        # 🧠 2026-09-09 分层记忆: 本轮结果入共享库 (L3 流程经验 + L4 预测质量 + meta)
+        try:
+            self._write_shared_memory(tr)
+        except Exception:
+            pass
         return tr
+
+    def _write_shared_memory(self, tr):
+        """🧠 分层记忆入库 (真源 src/lerobot/memory/memory_store.py → data/shared_memory.json):
+        L3.flows 长程流程经验 (段路径/成败/步数) · L4.predict 筹划 (mani 预测残差) · meta"""
+        import sys as _s, os as _o
+        _rp = _o.path.dirname(_o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
+        _rp_src = _o.path.join(_rp, "src")
+        if _rp_src not in _s.path:
+            _s.path.insert(0, _rp_src)
+        try:
+            from lerobot.memory import memory_store as _ms
+        except Exception:
+            return
+        try:
+            stg = []
+            for s in (tr.get("stage") or []):
+                s2 = str(s).replace("阶段 ", "")
+                if not stg or s2 != stg[-1]:
+                    stg.append(s2)
+            n = len(tr.get("t", []))
+            done = bool(tr["done"][-1]) if tr.get("done") else False
+            # L4: mani 预测残差 (mani_pred vs 真值 6 维均值)
+            mae = None
+            if tr.get("mani_pred") and len(tr["mani_pred"]) == len(tr.get("mani_progress", [])) and n > 0:
+                try:
+                    import numpy as _np
+                    pr = _np.asarray(tr["mani_pred"], float)
+                    if pr.shape[1] == 6:
+                        gt = _np.stack([_np.asarray(tr[f"mani_{k}"], float) for k in
+                                        ("progress", "risk", "V", "eta", "rem", "dperp")], axis=1)
+                        mae = [round(float(v), 4) for v in _np.abs(pr - gt).mean(0)]
+                except Exception:
+                    mae = None
+            _ms.put("l3", "flows", {
+                "seed": int(self.seed), "mode": self.mode,
+                "cap": str(getattr(self, "_cap", "") or ""),
+                "done": done, "steps": n, "stages": stg,
+                "mani_mae": mae, "t": __import__("time").strftime("%m-%d %H:%M"),
+            }, cap=40)
+            if mae:
+                _ms.put("l4", "predict", {
+                    "seed": int(self.seed), "mode": self.mode, "done": done,
+                    "steps": n, "mae": mae,
+                    "t": __import__("time").strftime("%m-%d %H:%M"),
+                }, cap=40)
+            _ms.put("meta", "task", "光模块插拔 (insert/full)")
+            _ms.put("meta", "cap", str(getattr(self, "_cap", "") or "L2"))
+        except Exception:
+            pass
 
     # ── 🔌 真实 io 快照 (画布节点名 key — YOLO/2D→3D 用真实检测, 非引擎几何) ──
     def _io_snapshot(self, o, obs, force_norm, u_ff, latent_pred, prior, z_k,
