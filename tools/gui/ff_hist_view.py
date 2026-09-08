@@ -165,7 +165,8 @@ class FFHistView(QDialog):
             s_txt = f"· 阶段: {stg}" if stg and stg != "?" else ""
             self._cap_text = (
                 f"🧠 第 {n} 帧 {s_txt} · {u_txt} · {d_txt}\n"
-                f"横轴=完整插拔流程时间 · 色带=动作阶段 · 每层波形=激活变化事件 (启动/抓取/接触/插入有尖峰) · 金底=插拔成功")
+                f"每层波形=激活变化 ‖Δx‖ (网络内部重排幅度) · 尖峰=阶段切换/接触瞬间把 512 单元从上一动作模式"
+                f"扭到新模式 (切换越干脆尖峰越高, 正常) · L3 最高=输出前层承担动作模式转换 · 色带=动作阶段 · 金底=插拔成功")
         except Exception:
             pass
         self._dirty = True

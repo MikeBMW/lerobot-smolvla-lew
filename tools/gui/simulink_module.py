@@ -26,7 +26,13 @@ import node_logic
 from node_logic_dialog import NodeLogicDialog
 
 import os as _os_mod
+import concurrent.futures as _cfutures   # 🐛 2026-09-09: 真实化单线程池 (env 渲染线程亲和)
 _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
+
+# 🐛 2026-09-09: 真实化引擎单线程池 — mujoco renderer 绑定创建线程 (metaworld env 进程级
+#   单例 _ENV 跨轮复用): 每轮新建 worker 线程渲染 → 黑帧 → YOLO 0% 检出实锤 (probe 复现:
+#   thread-A 100% → thread-B 复用同 env 0%; glfw/egl 同)。单线程池 = env 首建线程 = 永久渲染线程。
+_REAL_SIM_EXECUTOR = _cfutures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="real-sim")
 
 # ════════════════════════════════════════════════════════════════
 # 规范常量 (与 simulink-spec.md / web comfyui.html 完全一致)
@@ -6707,20 +6713,20 @@ class SimulinkModule(QWidget):
                 _rs._abort = True
             except Exception:
                 pass
-        _rt = getattr(self, "_real_thread", None)
-        if _rt is not None:
+        _fut = getattr(self, "_real_future", None)
+        if _fut is not None:
             try:
                 from PyQt5.QtWidgets import QApplication as _QA2
                 _app2 = _QA2.instance()
                 for _i in range(200):          # ≤10s 轮询 (UI 不冻结, 同 worker 停止模式)
-                    if not _rt.is_alive():
+                    if _fut.done():
                         break
                     if _app2 is not None:
                         _app2.processEvents()
                     time.sleep(0.05)
             except Exception:
                 pass
-            self._real_thread = None
+            self._real_future = None
         # 🎥 真实化运行中 (2026-09-04): 停轮询 — daemon 线程已被置 abort 并 join 完成
         _pt = getattr(self, "_real_poll_timer", None)
         if _pt is not None:
@@ -11035,11 +11041,17 @@ class SimulinkModule(QWidget):
                 import traceback
                 traceback.print_exc()
                 self._real_tr = ("err", str(_e), None, 0.0, list(_logs))
+            # ⚠️ 勿加 env.close(): _make_env 是进程级单例 _ENV, 跨轮复用 (reset 重 seed);
+            #   close 单例 → 下轮复用已关 env → 渲染黑 → YOLO 0% → 手飞 9.9m (09-09 自引入回归实锤)
 
-        # 🐛 2026-09-09: 真实化引擎线程 — 保存句柄供 ⏹停止/🔄重启 join (mujoco 双 env 并发 segfault 实锤)
-        _th = threading.Thread(target=_work, daemon=True)
-        self._real_thread = _th
-        _th.start()
+        # 🐛 2026-09-09: 真实化引擎任务 — 全部提交到进程级单线程池 (mujoco renderer 绑定
+        #   创建线程: 每轮新 worker 线程复用 env → 渲染黑帧 → YOLO 0% 检出 → 手飞 9.9m 实锤;
+        #   单线程池 = 首轮建 env 的线程永远渲染, abort/join 语义不变 (future.done 轮询))
+        _prev = getattr(self, "_real_future", None)
+        if _prev is not None and not _prev.done():
+            self._log("⏳ 上一轮真实化仍在收尾 (单线程池) — 先 ⏹ 停止, 再点 ▶ 运行")
+            return
+        self._real_future = _REAL_SIM_EXECUTOR.submit(_work)
         t = _tq(self)
         t.setInterval(400)
         t.timeout.connect(self._on_real_poll)

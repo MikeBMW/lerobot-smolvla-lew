@@ -614,6 +614,7 @@ class RealStateSpaceSim:
               #   mani_*, 非 io_trace; 真实化轨迹此前无 → Scope 流形格空 = 老倪"流形没输出")
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "mani_rem": [], "mani_dperp": [], "mani_pred": [],   # 🧠 2026-09-08: JEPA 预测流形 (旁路 6 维)
+              "z7_vec": [],   # 🧠 2026-09-09: 旁路 z R7 (夹持后 x→光模块头) 供 predictor 训练同构采集
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
         truncated = False
@@ -673,7 +674,15 @@ class RealStateSpaceSim:
                 # 🐛 2026-09-07 静静: R1 视觉未检出/冻结 → 保持上次估值 —
                 #   禁止回退 obs 真值 o[4:7] 冒充检测 (老倪红线; 原 else 分支泄漏真值)
                 if self._vis["peg"] is not None:
-                    self._peg_cur = np.asarray(self._vis["peg"], dtype=float)
+                    _pv = np.asarray(self._vis["peg"], dtype=float).ravel()
+                    # 🐛 2026-09-09: 形状守卫 — F5 调试下偶现 0D/异常形状检测值
+                    #   (concat dims 崩 698 实锤), 丢弃保持旧估值 (同幻影免疫哲学)
+                    if _pv.size == 3:
+                        self._peg_cur = _pv
+                    elif getattr(self, "_peg_shape_warned", 0) < 3:
+                        self._peg_shape_warned = getattr(self, "_peg_shape_warned", 0) + 1
+                        self.log(f"⚠️ 防御: 视觉 peg 形状异常 {np.asarray(self._vis['peg']).shape} "
+                                 f"→ 丢弃保旧估值 (来源 detect_3d 输出)")
                 # else: 保持 self._peg_cur (None → _stage_target 原地等待定位)
             else:
                 self._peg_cur = o[4:7].copy()
@@ -695,8 +704,17 @@ class RealStateSpaceSim:
             #   指已包住销身). 视觉 光模块 z 偏低不可信, 不用 z 阈值 (0/6 卡下降实锤)
             at_grasp_pose = bool(self._d_xy_peg() < 0.03 and self._z_stall >= 8)
             # ④ 39D 视觉结构 (引擎语义骨架; 感知一致: 销=_peg_cur, 终点=_goal_p)
+            _pc = self._peg_cur
+            if _pc is None:
+                _pc = np.zeros(3)                     # 未定位 → 视觉零占位 (控制语义仍走 _peg_cur=None 等待)
+            elif np.asarray(_pc).ndim != 1 or np.asarray(_pc).size != 3:
+                # 🐛 2026-09-09 兜底: _peg_cur 形状异常 (0D/2D) → 置零占位不崩 (根因守卫见 676)
+                if getattr(self, "_peg_shape_warned", 0) < 3:
+                    self._peg_shape_warned = getattr(self, "_peg_shape_warned", 0) + 1
+                    self.log(f"⚠️ 防御: _peg_cur 形状 {np.asarray(_pc).shape} → concat 置零占位")
+                _pc = np.zeros(3)
             cur = np.concatenate([self.x, [self.gripper], self.v,
-                                  self._peg_cur, self._goal_p(), np.zeros(3), np.zeros(2)])
+                                  _pc, self._goal_p(), np.zeros(3), np.zeros(2)])
             prev = self.obs_prev if self.obs_prev is not None else cur
             target = self._stage_target()
             # 🧠 2026-09-07 肌肉记忆 (仿小脑): ①观察 — 每帧记录 (stage, x, u_exec);
@@ -1098,13 +1116,22 @@ class RealStateSpaceSim:
                                                    getattr(self, "v", np.zeros(3)), _ms2)
                     _mp2 = self._mani_pm.evaluate(ph, stage=_ms2)
                     # 🧠 JEPA 预测流形 (旁路对照): 几何潜空间 z R⁷ + 当前动作 → 预测流形坐标
+                    # 🐛 2026-09-09: 夹持后 x→光模块头 (x+grasp_off0+head_off) — rem(头到孔底)
+                    #   才可辨识 (插入段夹爪 x 几乎不动, 原 z7 无头位置 → rem 预测上限受限)
                     _mpred = None
+                    try:
+                        import torch
+                        _hx = self.x
+                        if self.grasped and self._grasp_off0 is not None:
+                            _hx = self.x + self._grasp_off0 + self.geom.get("head_off", np.zeros(3))
+                        _z7 = np.concatenate([_hx - np.asarray(target, float),
+                                              _hx - np.asarray(o[4:7], float),
+                                              [1.0 if self.grasped else 0.0]])
+                        tr["z7_vec"].append(_z7.copy())
+                    except Exception:
+                        tr["z7_vec"].append(np.zeros(7))
                     if self._mani_cm.predictor is not None:
                         try:
-                            import torch
-                            _z7 = np.concatenate([self.x - np.asarray(target, float),
-                                                  self.x - np.asarray(o[4:7], float),
-                                                  [1.0 if self.grasped else 0.0]])
                             _a4 = np.asarray(self._u_vec, dtype=float).ravel()[:4]
                             if _a4.size < 4:
                                 _a4 = np.zeros(4)
