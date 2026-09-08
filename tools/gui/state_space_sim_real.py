@@ -41,7 +41,26 @@ def _load_simreal_manifold():
     return None
 
 
+def _load_simreal_predictor():
+    """定位并 import manifold/predictor_layer.py (JEPA predictor; 失败 None 不阻塞)"""
+    try:
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        for cand in (os.path.join(_root, "src", "lerobot", "manifold"),
+                     getattr(sys, "_MEIPASS", "")):
+            p = os.path.join(cand, "predictor_layer.py")
+            if os.path.isfile(p):
+                _m = importlib.util.spec_from_file_location("_mani_pred_real", p)
+                if _m is not None:
+                    _mod = importlib.util.module_from_spec(_m)
+                    _m.loader.exec_module(_mod)
+                    return _mod
+    except Exception:
+        pass
+    return None
+
+
 _MANI_MOD = _load_simreal_manifold()
+_PRED_MOD = _load_simreal_predictor()
 
 
 def _find_ss_dir():
@@ -591,7 +610,7 @@ class RealStateSpaceSim:
               # 🧮 2026-09-07: 流形层全程序列 (对齐引擎 tr keys — Scope 流形格/波形消费顶层
               #   mani_*, 非 io_trace; 真实化轨迹此前无 → Scope 流形格空 = 老倪"流形没输出")
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
-              "mani_rem": [], "mani_dperp": [],
+              "mani_rem": [], "mani_dperp": [], "mani_pred": [],   # 🧠 2026-09-08: JEPA 预测流形 (旁路 6 维)
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
         truncated = False
@@ -1049,15 +1068,46 @@ class RealStateSpaceSim:
             try:
                 if _MANI_MOD is not None:
                     if getattr(self, "_mani_cm", None) is None:
+                        # 🧠 2026-09-08 JEPA predictor 注入 (旁路): WorldModelPredictor 几何 R7 实例 —
+                        #   LatentPredictor(z+a→z') + ManifoldReadout(→流形坐标); 每帧真调用
+                        #   (断点可进), 随机权重 → 预测列诚实标注 trained=False (待训练)。
+                        _pred = None
+                        if _PRED_MOD is not None:
+                            try:
+                                _pred = _PRED_MOD.WorldModelPredictor(z_dim=7)
+                                self.log("🧠 JEPA 预测流形旁路已接: LatentPredictor→ManifoldReadout "
+                                         "(每帧真调用; 随机权重待训练, 预测列=trained:False 对照)")
+                            except Exception as _pe:
+                                _pred = None
+                                self.log(f"⚠️ predictor 注入失败(旁路跳过): {_pe}")
                         self._mani_cm = _MANI_MOD.ContactManifold(
-                            hole_pos=self.geom["goal"], hole_mouth=self.geom["hole"])
+                            hole_pos=self.geom["goal"], hole_mouth=self.geom["hole"],
+                            predictor=_pred)
                         self._mani_pm = _MANI_MOD.PerformanceManifold(
-                            hole_pos=self.geom["goal"])
+                            hole_pos=self.geom["goal"], predictor=_pred)
                     _ms2 = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
                     _mc2 = self._mani_cm.decompose(self.x, ph, target,
                                                    getattr(self, "v", np.zeros(3)), _ms2)
                     _mp2 = self._mani_pm.evaluate(ph, stage=_ms2)
+                    # 🧠 JEPA 预测流形 (旁路对照): 几何潜空间 z R⁷ + 当前动作 → 预测流形坐标
+                    _mpred = None
+                    if self._mani_cm.predictor is not None:
+                        try:
+                            import torch
+                            _z7 = np.concatenate([self.x - np.asarray(target, float),
+                                                  self.x - np.asarray(o[4:7], float),
+                                                  [1.0 if self.grasped else 0.0]])
+                            _a4 = np.asarray(self._u_vec, dtype=float).ravel()[:4]
+                            if _a4.size < 4:
+                                _a4 = np.zeros(4)
+                            with torch.no_grad():
+                                _mpred = self._mani_cm.predict_manifold(
+                                    torch.from_numpy(_z7.astype(np.float32)).unsqueeze(0),
+                                    torch.from_numpy(_a4.astype(np.float32)).unsqueeze(0))
+                        except Exception:
+                            _mpred = None
                     self._mani_out = {"cm": _mc2, "pm": _mp2,
+                                      "pred": _mpred,
                                       "lat": np.asarray(latent_pred, dtype=float),
                                       "vel": (np.asarray(prior, dtype=float)
                                               - np.asarray(latent_pred, dtype=float))}
@@ -1067,11 +1117,16 @@ class RealStateSpaceSim:
                     tr["mani_eta"].append(float(_mp2["eta"]))
                     tr["mani_rem"].append(float(-_mp2["d_axial"]))
                     tr["mani_dperp"].append(float(_mp2["d_perp_norm"]))
+                    if _mpred is not None:
+                        tr["mani_pred"].append(_mpred["manifold"][0].float().cpu().numpy())
+                    else:
+                        tr["mani_pred"].append(np.zeros(6))
             except Exception:
                 self._mani_out = None
                 tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
                 tr["mani_V"].append(0.0); tr["mani_eta"].append(0.0)
                 tr["mani_rem"].append(0.0); tr["mani_dperp"].append(0.0)
+                tr["mani_pred"].append(np.zeros(6))
             # 🔌 真实 io 快照 (画布节点名 key, 与引擎 _io_snapshot 同构 → 播放/3D/总线复用)
             tr["io_trace"].append((round(step * DT_ENV, 3), self._io_snapshot(
                 o, obs, force_norm, u_ff, latent_pred, prior, z_k, corrected, residual,

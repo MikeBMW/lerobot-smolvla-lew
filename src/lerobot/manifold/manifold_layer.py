@@ -71,7 +71,7 @@ class ContactManifold:
           法向 e⊥ (离流形漂移, 风险源: 对位歪/插斜都在这)。
     """
 
-    def __init__(self, hole_pos=None, hole_mouth=None, risk_th=None):
+    def __init__(self, hole_pos=None, hole_mouth=None, risk_th=None, predictor=None):
         self.hole_pos = HOLE_POS if hole_pos is None else np.asarray(hole_pos, float)
         self.hole_mouth = HOLE_MOUTH if hole_mouth is None else np.asarray(hole_mouth, float)
         self.axis = self.hole_pos - self.hole_mouth
@@ -80,6 +80,22 @@ class ContactManifold:
         self.risk_th = dict(RISK_TH)
         if risk_th:
             self.risk_th.update(risk_th)
+        # 🧠 2026-09-08 JEPA predictor 注入 (可选): 预测未来流形坐标 (旁路对照,
+        #   不替代解析 decompose — 解析=几何真值, 预测=世界模型, 训练后对齐/前视)
+        self.predictor = predictor
+
+    def predict_manifold(self, z, a=None):
+        """🧠 JEPA predictor → 预测流形坐标 (旁路; predictor 未注入返回 None)
+
+        z: 潜空间 (几何 R7 / VLM R960), a: 动作 (4D)。返回 predictor 输出 dict
+        (z_pred/manifold) + trained 标志; 未训练时输出随机 = 对照列, 诚实标注。
+        """
+        if self.predictor is None:
+            return None
+        out = self.predictor(z, a)
+        out = dict(out)
+        out["trained"] = bool(getattr(self.predictor, "trained", False))
+        return out
 
     # ── 通道轴 (单位向量) ──
     def channel_axis(self, stage):
@@ -146,11 +162,21 @@ class PerformanceManifold:
     真机用光功率计 IL/RL 标定 W/σ — 本模块输出是模型不是实测)。
     """
 
-    def __init__(self, hole_pos=None, w=None, sigma=0.004):
+    def __init__(self, hole_pos=None, w=None, sigma=0.004, predictor=None):
         self.hole_pos = HOLE_POS if hole_pos is None else np.asarray(hole_pos, float)
         # W 对角 (x=轴向插深, y/z=横向对中): 顺序与 δ 分量对应
         self.W = np.diag([0.4, 1.0, 1.0]) if w is None else np.asarray(w, float)
         self.sigma = sigma
+        # 🧠 2026-09-08 JEPA predictor 注入 (可选): 预测性能流形坐标 (旁路对照)
+        self.predictor = predictor
+
+    def predict_manifold(self, z, a=None):
+        """🧠 JEPA predictor → 预测性能流形 (旁路; predictor 未注入返回 None)"""
+        if self.predictor is None:
+            return None
+        out = dict(self.predictor(z, a))
+        out["trained"] = bool(getattr(self.predictor, "trained", False))
+        return out
 
     def evaluate(self, peg_head, stage=None):
         """光模块头几何 → 对准代价 V_p / 估计耦合效率 η / 梯度 ∇V_p (修正方向)"""
