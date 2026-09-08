@@ -1,12 +1,18 @@
 """🧠 VLM 真实视觉编码器 — SmolVLM2-500M-Video-Instruct 单例懒加载
 
-node_ss_vlm 真实路径: 图像帧 → 真实 VLM 多模态前向 → hidden_states[-1] mean-pool 潜空间 z
-(仿 smolvla_lew._get_multimodal_embeds 全前向通道; 教学演示层退役为几何对照)
+位置: src/lerobot/policies/smolvla_lew/ (框架层真实算法 — 老倪: 真实算法在 src,
+GUI 只做调用壳; node_ss_vlm 通过 exec(compile(真实路径)) 加载本模块 → 断点可进)
 
-- 首次加载 ~15s (权重 1GB fp16), 显存峰值 ~1.4GB (4060 无压力) — 后台线程加载不卡 GUI
-- encode() 仅在 ready 后可用; 未就绪返回 {"status": "loading/error", ...} 不抛异常 (GUI 铁律)
-- 模型实例进程级单例 (多节点共用, 只加载一次; 勿 clear/重建)
-- 2026-09-08 静静: 真实感知侧接入第一步 (老倪: 感知侧先真实化)
+SmolVLM2 视觉骨干 = smolvla_lew 策略的通用视觉编码器 (VLM→潜空间 z 高级功能)。
+node_ss_vlm 真实路径: 图像帧 → processor → 模型全前向 → hidden_states[-1]
+mean-pool → z ∈ R⁹⁶⁰ (仿 _get_multimodal_embeds 通道)。
+
+- 首次加载 ~15s (权重 1GB fp16), 显存峰值 ~1.4GB (4060 无压力) — 后台加载不卡 GUI
+- encode() 仅在 ready 后可用; 未就绪返回 {"status": "loading/error"} 不抛异常
+- 模型实例进程级单例 (只加载一次)
+- 无 GUI 依赖 (torch/transformers/PIL/numpy only) — 框架层纯净
+
+2026-09-08 静静: 真实感知侧接入第一步 (老倪: 感知侧先真实化; 算法层归位 src)
 """
 import os
 import threading
@@ -64,7 +70,7 @@ class SmolVLMEncoder:
             self.model.eval()
             self.load_ms = (time.time() - t0) * 1000
             self.status = "ready"
-        except Exception as e:          # GUI 铁律: 任何异常不得外泄炸主程序
+        except Exception as e:          # 任何异常不得外泄炸调用方
             self.status = "error"
             self.error = repr(e)[:300]
 
@@ -119,24 +125,17 @@ class SmolVLMEncoder:
             return {"status": "error", "msg": repr(e)[:300]}
 
 
-# ── CLI 自测: 单帧真实编码 ──
 if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui"))
+    # CLI 自测 (无 GUI 依赖): 合成图走一遍真实前向
     import numpy as np
     from PIL import Image
-    from state_space_sim_real import RealStateSpaceSim
-
     enc = get_encoder()
     enc.ensure_loaded_async()
     print("加载中...", flush=True)
     ok = enc.wait_loaded(120)
     if not ok:
-        print("❌ 加载失败:", enc.error); sys.exit(1)
+        print("❌ 加载失败:", enc.error); raise SystemExit(1)
     print(f"✅ 加载完成 {enc.load_ms:.0f}ms")
-    sim = RealStateSpaceSim(seed=104, vision=False, mode="insert")
-    sim._reset(104)
-    img = Image.fromarray(np.asarray(sim.env.render()))
+    img = Image.fromarray(np.zeros((480, 480, 3), dtype=np.uint8))
     res = enc.encode(img)
     print("编码结果:", {k: v for k, v in res.items() if k != "top5"})

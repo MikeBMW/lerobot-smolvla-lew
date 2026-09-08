@@ -23,6 +23,7 @@ Z-MAX 节点逻辑库 (Node Logic) — 每个节点的可编辑逻辑
 import importlib
 import inspect
 import os
+import threading
 import time
 
 _LOGIC_FILE = os.path.abspath(__file__)
@@ -957,7 +958,11 @@ def node_decoder(ctx):
 # 🎯 Action Head 4D — 官方 action_head (线性映射到动作空间)
 # ════════════════════════════════════════════════════════════════
 def node_action_head(ctx):
-    """🎯 Action Head — 解码特征 → 关节动作 (维度=数据动作维度)"""
+    """🎯 Action Head — 解码特征 → 关节动作 (维度=数据动作维度)
+
+    🐛 2026-09-08 老倪 (标准算法归位): 真实实现全在 src/lerobot/policies/smolvla_lew/ —
+    官方 DiT 流匹配头 action_head.py SmolVLALewActionHead (VLM token→动作块) + 新增
+    状态空间变体 state_space_action_head.py StateSpaceActionHead (潜空间 z R⁷/R⁹⁶⁰ → 4D 块)"""
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
@@ -965,9 +970,13 @@ def node_action_head(ctx):
     chunk_size = p.get("chunk_size", 7)      # 每次预测的动作步数
     if log:
         log(f"🎯 ActionHead: action_dim={action_dim} · chunk={chunk_size} (真机Orin为6D)")
-    # 官方源码: self.action_head = nn.Linear(dim_model, action_dim)
-    #   输出维度自动取自数据特征, 训练数据决定, 改这里仅影响说明
     # === ✏️ 可修改区 END ===
+    if log:
+        # 🔒 真实算法位置 (标准 lerobot 结构, 右键进源码):
+        log("   真实实现 (src/lerobot/policies/smolvla_lew/):")
+        log("   ① action_head.py → SmolVLALewActionHead (官方 DiT 流匹配, VLM 条件 → 动作块)")
+        log("   ② state_space_action_head.py → StateSpaceActionHead "
+            f"(状态空间: 潜空间 z → {action_dim}D × chunk={chunk_size}, 本工程新增变体)")
     # 🔒 结构节点 (勿改)
     return (True, f"ActionHead 配置: {action_dim}D chunk={chunk_size}")
 
@@ -2839,6 +2848,56 @@ _EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 
 # 🧠 高级层 VLM 编码器 + 潜空间 Decoder (2026-09-08 老倪: encoder VLM→潜空间→decoder 高级功能;
 #   yolo/前馈/原子技能 基础功能。VLM 将 YOLO 检测框/触觉/图像帧 → token → 潜空间 z;
 #   流形(接触/性能)是 z 上的导航地图; Decoder 把流形坐标解码回动作建议 u_mani → 前馈融合)
+# 🧠 VLM 真实编码器加载 (2026-09-08 架构归位 — 老倪: 真实算法在 src/lerobot, GUI 只做壳)
+#   复用 node_metaworld_data 模式: exec(compile(真实文件绝对路径)) → co_filename 真实 →
+#   VSCode 右键/断点进 src/lerobot/policies/smolvla_lew/vlm_encoder.py (非 GUI 文件)。
+#   模块级缓存 ns → get_encoder() 单例跨节点执行保持 (模型只加载一次)。
+_VLM_ENC_NS = None
+_VLM_ENC_LOCK = threading.Lock()
+
+
+def _vlm_encoder_ns():
+    """加载并缓存 smolvla_lew.vlm_encoder 命名空间 (线程安全, 单例实例在 ns 内)"""
+    global _VLM_ENC_NS
+    if _VLM_ENC_NS is not None:
+        return _VLM_ENC_NS
+    with _VLM_ENC_LOCK:
+        if _VLM_ENC_NS is None:
+            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies",
+                              "smolvla_lew", "vlm_encoder.py")
+            _ns = {"__file__": _p, "__name__": "lerobot.policies.smolvla_lew.vlm_encoder"}
+            with open(_p, encoding="utf-8") as _f:
+                exec(compile(_f.read(), _p, "exec"), _ns)
+            if "get_encoder" not in _ns:
+                raise RuntimeError("smolvla_lew.vlm_encoder 缺少 get_encoder")
+            _VLM_ENC_NS = _ns
+        return _VLM_ENC_NS
+
+
+# 🎯 状态空间 ActionHead 加载 (2026-09-08 老倪: 解码侧也归位标准 smolvla 算法 —
+#   src/lerobot/policies/smolvla_lew/state_space_action_head.py, 纯 torch 可 exec)
+_SSAH_NS = None
+_SSAH_LOCK = threading.Lock()
+
+
+def _ssah_ns():
+    """加载并缓存 state_space_action_head 命名空间 (类定义, 轻量无副作用)"""
+    global _SSAH_NS
+    if _SSAH_NS is not None:
+        return _SSAH_NS
+    with _SSAH_LOCK:
+        if _SSAH_NS is None:
+            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies",
+                              "smolvla_lew", "state_space_action_head.py")
+            _ns = {"__file__": _p, "__name__": "lerobot.policies.smolvla_lew.state_space_action_head"}
+            with open(_p, encoding="utf-8") as _f:
+                exec(compile(_f.read(), _p, "exec"), _ns)
+            if "StateSpaceActionHead" not in _ns:
+                raise RuntimeError("state_space_action_head 缺少 StateSpaceActionHead")
+            _SSAH_NS = _ns
+        return _SSAH_NS
+
+
 def node_ss_vlm(ctx):
     """🧠 VLM 通用视觉编码器 — 真实 SmolVLM2 权重推理 (感知侧真实化, 2026-09-08)
 
@@ -2870,8 +2929,7 @@ def node_ss_vlm(ctx):
             log(f"🧠 VLM 通用视觉编码器 [当前阶段={stage}]: token=图像帧+触觉+检测框")
         if kf and stage in kf:
             try:
-                from vlm_encoder import get_encoder
-                enc = get_encoder()
+                enc = _vlm_encoder_ns()["get_encoder"]()
                 if enc.status == "idle":
                     enc.ensure_loaded_async()
                     if log:
@@ -2939,8 +2997,12 @@ def node_ss_vlm(ctx):
 
 
 def node_ss_dec(ctx):
-    """🔄 潜空间 Decoder — 流形坐标(接触/性能)解码 → 动作建议 u_mani
-    真实源: module._ss_tr 当前帧 mani_risk/progress/V + u_ff → 解码方向 = 沿流形减势"""
+    """🔄 潜空间 Decoder — 状态空间 ActionHead 真实结构 (标准 smolvla 算法, 2026-09-08)
+
+    真实路径 (双击/单步): 加载 src/lerobot/policies/smolvla_lew/state_space_action_head.py
+    (StateSpaceActionHead, 官方 action_decoder 同构 MLP: 潜空间 z → 4D 动作块) —
+    用当前帧几何 z (R⁷) 做一次真实前向维度自检 (随机权重, 诚实标注训练后启用)。
+    流形坐标 (接触/性能) 语义保留为教学对照。真实 DiT 主链权重 = smolvla_lew 训练后。"""
     log = ctx.get("log")
     try:
         import numpy as np
@@ -2951,24 +3013,47 @@ def node_ss_dec(ctx):
                 log("🔄 Decoder: 无引擎轨迹 — 先点 ▶ 运行")
             return False
         idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
-        # 流形坐标 (真实化/引擎均发布)
+        # 流形坐标 (真实化/引擎均发布) — 教学对照: 解码方向 = 沿流形减势
         risk = float(tr["mani_risk"][idx]) if tr.get("mani_risk") else 0.0
         prog = float(tr["mani_progress"][idx]) if tr.get("mani_progress") else 0.0
         u_ff = float(np.linalg.norm(tr["u_ff"][idx])) if tr.get("u_ff") else 0.0
-        # 解码动作幅度估计: 法向偏离大 → 校正性强 (回流形); 沿轴余量大 → 推进
         if log:
-            log(f"🔄 Decoder (z→action): 流形风险={risk:.4f} 进度={prog:.4f}")
-            log(f"   解码: 法向偏离 {risk:.1f}mm → 校正动作 | 前馈 |u_ff|={u_ff:.3f} m/s 融合")
-            # 🚀 2026-09-08 L3 扩展: DiT action 双下行通路 (画布连线 lkdc_ff/lkdc_act)
-            log(f"   双通路: ①action→前馈层 (ssff, 练熟固化=肌肉记忆快通道) "
-                f"②action→执行端直通 (ssact, 端到端快路径)")
+            log("🔄 潜空间 Decoder (z→action): 状态空间 ActionHead 真实结构 (标准 smolvla 算法)")
+        # ── ① 真实 StateSpaceActionHead: 结构 + 前向维度自检 ──
+        try:
+            import torch
+            _ns = _ssah_ns()
+            AH = _ns["StateSpaceActionHead"]
+            x = np.asarray(tr["x"][idx], dtype=float)
+            peg = np.asarray(tr["peg"][idx], dtype=float)
+            tgt = np.asarray(tr["target"][idx], dtype=float)
+            z7 = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
+            head = AH(input_dim=7, action_dim=4, chunk_size=7)   # 几何潜空间 R⁷ 实例
+            n_params = sum(p.numel() for p in head.parameters())
+            zt = torch.from_numpy(z7.astype(np.float32)).unsqueeze(0)
+            with torch.no_grad():
+                out = head(zt)
+            if log:
+                log(f"   ✅ StateSpaceActionHead 真实类: {n_params:,} 参数 "
+                    f"(src/lerobot/policies/smolvla_lew/state_space_action_head.py)")
+                log(f"      前向自检: 几何 z R⁷ → [1, chunk=7, action=4]={tuple(out.shape)} "
+                    f"(随机初始化 — 权重需 smolvla_lew 训练/蒸馏后启用)")
+                log(f"      VLM z R⁹⁶⁰ 融合可用: AH(input_dim=967) — 感知侧真实编码已就位")
+        except Exception as _e:
+            if log:
+                log(f"   ⚠️ ActionHead 自检失败: {_e}")
+        # ── ② 流形坐标语义 (教学对照) ──
+        if log:
+            log(f"   流形坐标 (对照): 风险={risk:.4f} 进度={prog:.4f} | 前馈 |u_ff|={u_ff:.3f} m/s")
+            log(f"   双通路: ①action→前馈层 (ssff) ②action→执行端直通 (ssact)")
             meta = tr.get("_meta") or {}
             if meta.get("aoi_report"):
                 _ar = meta["aoi_report"]
                 log(f"   直通链实例: 全链闭环 (插→拔→AOI) 完成, AOI "
                     f"{'PASS ✅' if _ar.get('ok') else 'FAIL ❌'} "
                     f"(残余深度 {_ar.get('insert_depth_min_mm')}mm)")
-            log(f"   ⚠️ 教学演示层 — 真实 DiT 权重 (action_head) 推理接入点: smolvla_lew 容器/远程")
+            log("   ⚙️ 真实 ActionHead 结构已接入 (标准 smolvla 算法); "
+                "真实权重 = smolvla_lew 训练后 (DiT 主链 / 本头蒸馏)")
         return True
     except Exception as e:
         if log:
@@ -2982,9 +3067,9 @@ _reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (Smol
 _reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",
     node_ss_dec)
 _EXTERNAL_LOC["ssvlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                        "modeling_smolvla_lew.py"), 312, "class SmolVLALewPolicy")
+                                        "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (架构归位 src)
 _EXTERNAL_LOC["ssdec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                        "action_head.py"), 205, "class SmolVLALewActionHead")
+                                        "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (架构归位 src)
 
 
 # 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
