@@ -2030,8 +2030,7 @@ def node_ss_s2(ctx):
         #   补一次真 MLP 前向仅填探针 (诊断通道, 不参与控制) — 直方图展示真实 MLP 激活。
         if not (accel.probe or {}).get("act_raw") and getattr(accel, "_ff", None) is not None:
             try:
-                accel.probe.clear()   # ⚠️ clear 而非重赋值: _ff 闭包绑定 __init__ 时的 dict
-                accel._ff(np.asarray(obs43[:39], dtype=np.float32))
+                accel._ff(np.asarray(obs43[:39], dtype=np.float32))  # 覆盖探针 key+_seq 自增
             except Exception:
                 pass
         _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)

@@ -714,8 +714,8 @@ class RealStateSpaceSim:
                 if _acc is not None and getattr(_acc, "_ff", None) is not None:
                     # 每步重算诊断前向 → probe_seq 逐帧真实 MLP 激活
                     # (MLP 主路径时 = 与 forward 同一次前向, 多算一次仅 0.1ms 级)
-                    # ⚠️ clear() 而非重新赋值: _ff 闭包绑定 __init__ 时的 probe dict
-                    _acc.probe.clear()
+                    # ⚠️ 勿 clear(): _ff 覆盖全部探针 key 且 _seq 自增 — clear 会把 _seq
+                    #   重置为恒 1, 直方图窗口按 _seq 去重 → 灌入帧全被当重复丢弃 (08-22 实锤)
                     _acc._ff(np.asarray(obs[:39], dtype=np.float32))
                 _pr = _acc.probe
                 if _pr is not None and _pr.get("act_raw") is not None:
