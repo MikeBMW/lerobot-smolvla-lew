@@ -1160,10 +1160,10 @@
    "icon": "🧠",
    "color": "#a371f7",
    "params": {
-    "desc": "[高级·端到端模仿学习] 高级·Encoder (SmolVLA): SmolVLM 视觉骨干 SigLIP — 图像/视频帧/触觉/YOLO检测框 → token → 视觉语言潜空间; 源码 src/lerobot/policies/smolvla_lew/modeling_smolvla_lew.py",
+    "desc": "[高级·端到端模仿学习] 高级·Encoder (SmolVLA): 真实 SmolVLM2 视觉编码 — 图像帧 → 潜空间 z R960 (encode_stage); 源码 src/lerobot/policies/smolvla_lew/vlm_encoder.py",
     "vlm": true,
     "state_space": true,
-    "source": "src/lerobot/policies/smolvla_lew/modeling_smolvla_lew.py"
+    "source": "src/lerobot/policies/smolvla_lew/vlm_encoder.py"
    }
   },
   {
@@ -1177,9 +1177,10 @@
    "icon": "🔄",
    "color": "#f0883e",
    "params": {
-    "desc": "[高级·端到端模仿学习] 高级·Decoder (SmolVLA Sys-11): DiT flow-matching action head — 从潜空间 z 去噪解码动作块 (chunk); 双下行通路: ①action→前馈层(L2, 练熟固化=肌肉记忆快通道) ②action→执行端直通(端到端快路径); 源码 src/lerobot/policies/smolvla_lew/action_head.py class SmolVLALewActionHead",
+    "desc": "[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py",
     "decoder": true,
-    "state_space": true
+    "state_space": true,
+    "source": "src/lerobot/policies/smolvla_lew/state_space_action_head.py"
    }
   },
   {

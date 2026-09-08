@@ -3040,10 +3040,10 @@ _reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (Smol
     node_ss_vlm)
 _reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",
     node_ss_dec)
-_EXTERNAL_LOC["ssvlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                        "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (架构归位 src)
-_EXTERNAL_LOC["ssdec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                        "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (架构归位 src)
+_EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
+                                         "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
+_EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
+                                         "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (键对齐注册 ss_dec; 架构归位 src)
 
 
 # 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
