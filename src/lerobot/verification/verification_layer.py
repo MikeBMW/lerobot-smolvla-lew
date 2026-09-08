@@ -45,57 +45,66 @@ def _load(rel):
 # Feature 注册表 — 全部功能点 (自动/手动), 与画布/引擎/UI 一一对应
 # ════════════════════════════════════════════════════════════════════
 FEATURES = [
-    # (id, 域, 名称, 层/位置, 验证方式, 自动用例id 或 None)
-    ("F-A01", "引擎", "八阶段完整跑通 (接近→对位→下降→抓取→抬起→转移→插入→完成)", "StateSpaceSim", "自动", "F-A01"),
-    ("F-A02", "引擎", "收敛精度: 光模块头到孔底 <4mm (D_INSERT)", "StateSpaceSim", "自动", "F-A02"),
-    ("F-A03", "引擎", "轨迹契约: 20+ 序列键 + 逐帧 io_trace (数据总线源)", "StateSpaceSim", "自动", "F-A03"),
-    ("F-A04", "引擎", "一阶速度伺服有界不发散 (τ=0.08s, max‖v‖≤0.5m/s)", "StateSpaceSim", "自动", "F-A04"),
-    ("F-A05", "引擎", "台面约束: 未夹持末端不穿透台面", "StateSpaceSim", "自动", "F-A05"),
-    ("F-A06", "引擎", "夹持锁存 + 光模块随末端移动 (grasped 后 peg=x+peg_off)", "StateSpaceSim", "自动", "F-A06"),
-    ("F-A07", "引擎", "接触力→接触概率真实联动 (接触段 contact_p>0.6)", "StateSpaceSim", "自动", "F-A07"),
-    ("F-A08", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列", "state_space_sim_real.py", "自动", "F-A08"),
-    ("F-A09", "引擎", "13 段全链闭环 (mode=full: 插→拔→AOI→回放→完成, 顺序+末帧完成)", "state_space_sim_real.py", "自动", "F-A09"),
-    ("F-A10", "引擎", "AOI 检测报告 PASS (真实过程指标: 插深<8mm & 力峰<1 & 无回抓)", "state_space_sim_real.py", "自动", "F-A10"),
-    ("F-A11", "引擎", "全链后光模块放回台面误差 <15mm (闭环完整)", "state_space_sim_real.py", "自动", "F-A11"),
-    ("F-A12", "引擎", "insert 模式回归: seed104 ≤380 步完成 (零破坏)", "state_space_sim_real.py", "自动", "F-A12"),
-    ("F-B01", "S1", "传感器融合: 39D 视觉 + 触觉4D → 43D (fuse_sensors)", "perception.py", "自动", "F-B01"),
-    ("F-B02", "S2", "前馈加速器: 比例引导向目标 + 近距闭合 + ±0.5 限幅", "parallel.py", "自动", "F-B02"),
-    ("F-B03", "S2", "自适应状态估计器: predict/update 卡尔曼数值 (A/K/B)", "parallel.py", "自动", "F-B03"),
-    ("F-B04", "动力学", "先验动力学预测器: A=1.0 恒速 (潜空间速度场)", "dynamics.py", "自动", "F-B04"),
-    ("F-B05", "S3", "状态校正器: 残差=z−x̂₋ / 校正=+K·r 手算核对", "cognition.py", "自动", "F-B05"),
-    ("F-B06", "S3", "接触概率 σ(residual·gain) 单调", "cognition.py", "自动", "F-B06"),
-    ("F-B07", "S3", "八阶段状态机: 顺序推进 + 连续 2 帧确认防抖", "cognition.py", "自动", "F-B07"),
-    ("F-B08", "S3", "夹持丢失 5 帧 + 落回台面 → 回退重抓", "cognition.py", "自动", "F-B08"),
-    ("F-B09", "S3", "否决权: 残差>veto_th → 强制减速 (u=0)", "cognition.py", "自动", "F-B09"),
-    ("F-B10", "S3", "动作融合: 前馈+反馈相加 + 阶段限速 + V_MIN 防磨蹭", "cognition.py", "自动", "F-B10"),
-    ("F-B11", "安全", "饱和限幅 saturate ±0.6 (唯一三层安全之一)", "safety.py", "自动", "F-B11"),
-    ("F-C01", "感知链", "YOLO 真实检测 3/3 (hand/peg/hole, conf 真值)", "yolo_state_aligner", "自动 [慢~2s]", "F-C01"),
-    ("F-C02", "感知链", "align 段位: hand→[0:3] peg→[4:7]+[22:25] hole→[36:39]", "yolo_state_aligner", "自动 [慢~2s]", "F-C02"),
-    ("F-C03", "感知链", "触觉合成 4D (grasp/contact 0-1 语义)", "gen_tactile.py", "自动", "F-C03"),
-    ("F-C04", "感知链", "AOI 外观质量检测真实图像处理", "quality_check.py", "自动", "F-C04"),
-    ("F-D01", "大模型层", "任务规划器: 指令→技能Token 规则链 + validate (离线)", "planner.py", "自动", "F-D01"),
-    ("F-D02", "大模型层", "异常推理器: diagnose 分类输出 (连续否决/卡死)", "planner.py", "自动", "F-D02"),
-    ("F-D03", "大模型层", "技能编排器: 场景→技能序列", "planner.py", "自动", "F-D03"),
-    ("F-E01", "标定层", "三域标定: 引力/斥力/潜空间数据 + 平衡势", "calibration_layer.py", "自动", "F-E01"),
-    ("F-E02", "标定层", "潜空间: PCA 有效维实测 vs latent_dim 校验", "calibration_layer.py", "自动", "F-E02"),
-    ("F-E03", "流形导航层", "接触流形: 通道轴分解/法向偏离/状态判据", "manifold_layer.py", "自动", "F-E03"),
-    ("F-E04", "流形导航层", "性能流形: 完成态 η 高 / 未插入 η≈0", "manifold_layer.py", "自动", "F-E04"),
-    ("F-E05", "元层", "画布节点分派: 标定/潜空间/接触/性能/Feature/Test 全命中", "node_logic.py", "自动", "F-E05"),
-    ("F-F01", "画布", "flow JSON 结构: 35 节点 9 层, type 合法", "state_space_obs.json", "自动", "F-F01"),
-    ("F-F02", "画布", "节点注册覆盖: 全部非 row_bg 节点名可 match", "node_logic.py", "自动", "F-F02"),
-    ("F-F03", "画布", "源码映射: _EXTERNAL_LOC 路径存在 + 行号含符号", "node_logic.py", "自动", "F-F03"),
-    ("F-F04", "数据世界", "io_trace 覆盖 DataWorld 全部模块键", "data_world.py", "自动", "F-F04"),
+    # (id, 域, 名称, 层/位置, 验证方式, 自动用例id 或 None, L2/L3/L4 分级)
+    # 🎯 2026-09-09 老倪: 按实际状态空间模型分级 — L2基础辅助(分段小模型) /
+    #    L3高级自动(端到端模仿学习: 规划/VLM) / L4专家自主(世界模型: 估计/预测/流形/标定)
+    ("F-A01", "引擎", "八阶段完整跑通 (接近→对位→下降→抓取→抬起→转移→插入→完成)", "StateSpaceSim", "自动", "F-A01", "L2"),
+    ("F-A02", "引擎", "收敛精度: 光模块头到孔底 <4mm (D_INSERT)", "StateSpaceSim", "自动", "F-A02", "L2"),
+    ("F-A03", "引擎", "轨迹契约: 20+ 序列键 + 逐帧 io_trace (数据总线源)", "StateSpaceSim", "自动", "F-A03", "L2"),
+    ("F-A04", "引擎", "一阶速度伺服有界不发散 (τ=0.08s, max‖v‖≤0.5m/s)", "StateSpaceSim", "自动", "F-A04", "L2"),
+    ("F-A05", "引擎", "台面约束: 未夹持末端不穿透台面", "StateSpaceSim", "自动", "F-A05", "L2"),
+    ("F-A06", "引擎", "夹持锁存 + 光模块随末端移动 (grasped 后 peg=x+peg_off)", "StateSpaceSim", "自动", "F-A06", "L2"),
+    ("F-A07", "引擎", "接触力→接触概率真实联动 (接触段 contact_p>0.6)", "StateSpaceSim", "自动", "F-A07", "L2"),
+    ("F-A08", "引擎", "流形量逐帧发布: 接触/性能 channel 进 io_trace + 全程序列", "state_space_sim_real.py", "自动", "F-A08", "L2"),
+    ("F-A09", "引擎", "13 段全链闭环 (mode=full: 插→拔→AOI→回放→完成, 顺序+末帧完成)", "state_space_sim_real.py", "自动", "F-A09", "L2"),
+    ("F-A10", "引擎", "AOI 检测报告 PASS (真实过程指标: 插深<8mm & 力峰<1 & 无回抓)", "state_space_sim_real.py", "自动", "F-A10", "L2"),
+    ("F-A11", "引擎", "全链后光模块放回台面误差 <15mm (闭环完整)", "state_space_sim_real.py", "自动", "F-A11", "L2"),
+    ("F-A12", "引擎", "insert 模式回归: seed104 ≤380 步完成 (零破坏)", "state_space_sim_real.py", "自动", "F-A12", "L2"),
+    ("F-B01", "S1", "传感器融合: 39D 视觉 + 触觉4D → 43D (fuse_sensors)", "perception.py", "自动", "F-B01", "L2"),
+    ("F-B02", "S2", "前馈加速器: 比例引导向目标 + 近距闭合 + ±0.5 限幅", "parallel.py", "自动", "F-B02", "L2"),
+    ("F-B03", "S2", "自适应状态估计器: predict/update 卡尔曼数值 (A/K/B)", "parallel.py", "自动", "F-B03", "L2"),
+    ("F-B04", "动力学", "先验动力学预测器: A=1.0 恒速 (潜空间速度场)", "dynamics.py", "自动", "F-B04", "L4"),
+    ("F-B05", "S3", "状态校正器: 残差=z−x̂₋ / 校正=+K·r 手算核对", "cognition.py", "自动", "F-B05", "L4"),
+    ("F-B06", "S3", "接触概率 σ(residual·gain) 单调", "cognition.py", "自动", "F-B06", "L4"),
+    ("F-B07", "S3", "八阶段状态机: 顺序推进 + 连续 2 帧确认防抖", "cognition.py", "自动", "F-B07", "L2"),
+    ("F-B08", "S3", "夹持丢失 5 帧 + 落回台面 → 回退重抓", "cognition.py", "自动", "F-B08", "L2"),
+    ("F-B09", "S3", "否决权: 残差>veto_th → 强制减速 (u=0)", "cognition.py", "自动", "F-B09", "L2"),
+    ("F-B10", "S3", "动作融合: 前馈+反馈相加 + 阶段限速 + V_MIN 防磨蹭", "cognition.py", "自动", "F-B10", "L2"),
+    ("F-B11", "安全", "饱和限幅 saturate ±0.6 (唯一三层安全之一)", "safety.py", "自动", "F-B11", "L2"),
+    ("F-C01", "感知链", "YOLO 真实检测 3/3 (hand/peg/hole, conf 真值)", "yolo_state_aligner", "自动 [慢~2s]", "F-C01", "L2"),
+    ("F-C02", "感知链", "align 段位: hand→[0:3] peg→[4:7]+[22:25] hole→[36:39]", "yolo_state_aligner", "自动 [慢~2s]", "F-C02", "L2"),
+    ("F-C03", "感知链", "触觉合成 4D (grasp/contact 0-1 语义)", "gen_tactile.py", "自动", "F-C03", "L2"),
+    ("F-C04", "感知链", "AOI 外观质量检测真实图像处理", "quality_check.py", "自动", "F-C04", "L2"),
+    ("F-D01", "大模型层", "任务规划器: 指令→技能Token 规则链 + validate (离线)", "planner.py", "自动", "F-D01", "L3"),
+    ("F-D02", "大模型层", "异常推理器: diagnose 分类输出 (连续否决/卡死)", "planner.py", "自动", "F-D02", "L3"),
+    ("F-D03", "大模型层", "技能编排器: 场景→技能序列", "planner.py", "自动", "F-D03", "L3"),
+    ("F-E01", "标定层", "三域标定: 引力/斥力/潜空间数据 + 平衡势", "calibration_layer.py", "自动", "F-E01", "L4"),
+    ("F-E02", "标定层", "潜空间: PCA 有效维实测 vs latent_dim 校验", "calibration_layer.py", "自动", "F-E02", "L4"),
+    ("F-E03", "流形导航层", "接触流形: 通道轴分解/法向偏离/状态判据", "manifold_layer.py", "自动", "F-E03", "L4"),
+    ("F-E04", "流形导航层", "性能流形: 完成态 η 高 / 未插入 η≈0", "manifold_layer.py", "自动", "F-E04", "L4"),
+    ("F-E05", "元层", "画布节点分派: 标定/潜空间/接触/性能/Feature/Test 全命中", "node_logic.py", "自动", "F-E05", "L4"),
+    ("F-F01", "画布", "flow JSON 结构: 35 节点 9 层, type 合法", "state_space_obs.json", "自动", "F-F01", "L2"),
+    ("F-F02", "画布", "节点注册覆盖: 全部非 row_bg 节点名可 match", "node_logic.py", "自动", "F-F02", "L2"),
+    ("F-F03", "画布", "源码映射: _EXTERNAL_LOC 路径存在 + 行号含符号", "node_logic.py", "自动", "F-F03", "L2"),
+    ("F-F04", "数据世界", "io_trace 覆盖 DataWorld 全部模块键", "data_world.py", "自动", "F-F04", "L2"),
+    # ── L3 高级自动 (端到端模仿学习: VLM/DiT/规划) — 2026-09-09 按实际模型补入
+    ("F-H01", "L3·VLM", "SmolVLM2-500M 真实视觉编码: 图像→潜空间 z960 (单帧 625ms)", "vlm_encoder.py", "自动", "F-H01", "L3"),
+    ("F-H02", "L3·VLM", "触觉/检测框多模态输入兼容 (processor 通道)", "smolvla_lew/processor", "自动", "F-H02", "L3"),
+    ("F-H03", "L3·DiT", "Flow-Matching ActionHead: z→动作块 (DiT-B 推理)", "smolvla_lew/action_head.py", "自动", "F-H03", "L3"),
+    ("F-H04", "L3·DiT", "v8 微调训练产物可加载 (checkpoint last/pretrained_model)", "smolvla_lew", "自动", "F-H04", "L3"),
+    ("F-H05", "L3·执行", "端到端动作驱动 metaworld 真实步进 (select_action→env.step)", "v8_rollout", "自动", "F-H05", "L3"),
+    ("F-H06", "L4·肌肉记忆", "同动作多次→固化标杆→快通道重放 (越练越顺)", "muscle_memory.py", "自动", "F-H06", "L4"),
     # ── 手动 (GUI 交互, 无头不可测) ──
-    ("F-G01", "GUI", "▶ 运行: 引擎轨迹动画播放 + 节点轮转 demo 展示", "simulink_module", "手动", None),
-    ("F-G02", "GUI", "▶ 运行: 真实 YOLO 感知采样日志 (detect_3d 断点可进)", "simulink_module", "手动", None),
-    ("F-G03", "GUI", "⏭ 单步 / 右键运行节点 = 引擎同源真实执行", "simulink_module", "手动", None),
-    ("F-G04", "GUI", "3D 视图: 与引擎轨迹逐帧同步 (同一 DataWorld 游标)", "3D view", "手动", None),
-    ("F-G05", "GUI", "数据总线: 逐帧 feed 14 模块 51 接口滚动", "model_tree", "手动", None),
-    ("F-G06", "GUI", "Scope 波形: 距离/前馈/残差/接触概率 + 阶段标注", "simulink_scope", "手动", None),
-    ("F-G07", "GUI", "双击标定节点 → 面板; 右键 → 表格 (三域可编辑)", "calibration_dialog", "手动", None),
-    ("F-G08", "GUI", "标定保存 = 写回引擎源码字面量, 下次 ▶运行生效", "calibration_layer", "手动", None),
-    ("F-G09", "GUI", "右键源码 → VSCode 断点进真实源码 (ZMAX_DEBUG_BREAK)", "node_logic_dialog", "手动", None),
-    ("F-G10", "GUI", "双击 Feature/Test 节点 → 本验证层输出", "verification_layer", "手动", None),
+    ("F-G01", "GUI", "▶ 运行: 引擎轨迹动画播放 + 节点轮转 demo 展示", "simulink_module", "手动", None, "L2"),
+    ("F-G02", "GUI", "▶ 运行: 真实 YOLO 感知采样日志 (detect_3d 断点可进)", "simulink_module", "手动", None, "L2"),
+    ("F-G03", "GUI", "⏭ 单步 / 右键运行节点 = 引擎同源真实执行", "simulink_module", "手动", None, "L2"),
+    ("F-G04", "GUI", "3D 视图: 与引擎轨迹逐帧同步 (同一 DataWorld 游标)", "3D view", "手动", None, "L2"),
+    ("F-G05", "GUI", "数据总线: 逐帧 feed 14 模块 51 接口滚动", "model_tree", "手动", None, "L2"),
+    ("F-G06", "GUI", "Scope 波形: 距离/前馈/残差/接触概率 + 阶段标注", "simulink_scope", "手动", None, "L2"),
+    ("F-G07", "GUI", "双击标定节点 → 面板; 右键 → 表格 (三域可编辑)", "calibration_dialog", "手动", None, "L4"),
+    ("F-G08", "GUI", "标定保存 = 写回引擎源码字面量, 下次 ▶运行生效", "calibration_layer", "手动", None, "L4"),
+    ("F-G09", "GUI", "右键源码 → VSCode 断点进真实源码 (ZMAX_DEBUG_BREAK)", "node_logic_dialog", "手动", None, "L2"),
+    ("F-G10", "GUI", "双击 Feature/Test 节点 → 本验证层输出", "verification_layer", "手动", None, "L2"),
 ]
 
 
@@ -152,21 +161,31 @@ class VerificationLayer:
     # Feature 清单
     # ════════════════════════════════════════════════════════
     def list_features(self, domain=None):
-        self.log(f"🧩 状态空间系统 Feature 清单 ({len(FEATURES)} 项)")
-        _by_kind = {}
-        _by_role = {}
-        for fid, dom, name, loc, how, _ in FEATURES:
-            if domain and dom != domain:
+        # 🎯 2026-09-09 老倪: 按 L2/L3/L4 三级分组展示 (FEATURES 第7字段=level)
+        LEVELS = {"L2": "🔧 L2 基础辅助功能 (分段式小模型 · 人在环)",
+                  "L3": "🚀 L3 高级自动功能 (端到端模仿学习 · 整任务自主)",
+                  "L4": "🏆 L4 专家自主功能 (世界模型技术 · 自主恢复)"}
+        rows = list(FEATURES)
+        if domain:
+            rows = [f for f in rows if f[1] == domain]
+        self.log(f"🧩 状态空间系统 Feature 清单 ({len(rows)} 项 · L2/L3/L4 分级)")
+        for lv in ("L2", "L3", "L4"):
+            lv_rows = [f for f in rows if len(f) > 6 and f[6] == lv]
+            if not lv_rows:
                 continue
-            _k, _r, _sp = FEATURE_META.get(fid, ("", "", ""))
-            _by_kind[_k] = _by_kind.get(_k, 0) + 1
-            _by_role[_r] = _by_role.get(_r, 0) + 1
-            self.log(f"  {fid} [{dom}] {name}  ({loc} · {how})")
-        self.log(f"   └ 分类: 基本 {_by_kind.get('基本功能', 0)} / 泛化 {_by_kind.get('泛化功能', 0)}"
-                 f" · 角色: " + " ".join(f"{k} {v}" for k, v in sorted(_by_role.items())))
+            self.log(f"\n{LEVELS[lv]} — {len(lv_rows)} 项")
+            for fid, dom, name, loc, how, _, _ in lv_rows:
+                self.log(f"  {fid} [{dom}] {name}  ({loc} · {how})")
+        # 未分级兜底
+        no_lv = [f for f in rows if len(f) <= 6]
+        if no_lv:
+            self.log(f"\n📋 未分级 {len(no_lv)} 项")
+            for f in no_lv:
+                self.log(f"  {f[0]} [{f[1]}] {f[2]}")
         # 详细表 (含元数据列) — 供 GUI 对话框/导出复用
         return [{"id": f[0], "dom": f[1], "name": f[2], "loc": f[3], "how": f[4],
-                 "test": f[5], "kind": FEATURE_META.get(f[0], ("", "", ""))[0],
+                 "test": f[5], "level": f[6] if len(f) > 6 else "L2",
+                 "kind": FEATURE_META.get(f[0], ("", "", ""))[0],
                  "role": FEATURE_META.get(f[0], ("", "", ""))[1],
                  "spec": FEATURE_META.get(f[0], ("", "", ""))[2]}
                 for f in FEATURES if not domain or f[1] == domain]

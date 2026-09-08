@@ -3241,4 +3241,4 @@ _reg("ss_test", ["Test"],
     "🧪 Test 用例执行 — 验证层自动化 test 套件全跑 (F-A01~F-F04, PASS/FAIL+数值证据; 源码 verification_layer.py t_F_* 断言, 断点可进)",
     node_ss_test)
 _EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
-_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 102, "class VerificationLayer")
+_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 111, "class VerificationLayer")
