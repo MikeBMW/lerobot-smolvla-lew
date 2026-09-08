@@ -125,6 +125,39 @@ class SmolVLMEncoder:
             return {"status": "error", "msg": repr(e)[:300]}
 
 
+def encode_stage(pil_image, stage=None, cache=None, seed=None):
+    """🧠 VLM 通用视觉编码器节点 — 完整执行逻辑 (标准 smolvla 算法层, 2026-09-08)
+
+    老倪: 节点算法归位 src, GUI node_ss_vlm 只做取帧+转发薄壳。
+    输入: 状态空间某阶段真实渲染帧 (sim_real key_frames) + 阶段名
+    流程: 首次调用触发后台加载 (~15s) → ready 后真实前向 → 960 维潜空间 z 池化
+    cache: 可选 dict, key=f"{stage}|{seed}" 命中直接返回 (会话级缓存由 GUI 持有)
+    Returns: 展示 dict (status/loading/error/ok + 数值), 不抛异常
+    """
+    enc = get_encoder()
+    key = f"{stage}|{seed}" if stage is not None else None
+    if cache is not None and key is not None and key in cache:
+        r = dict(cache[key])
+        r["cached"] = True
+        return r
+    if enc.status == "idle":
+        enc.ensure_loaded_async()
+        return {"status": "loading", "stage": stage,
+                "msg": "首次调用 → 后台加载 SmolVLM2-500M 权重 (~15s), 稍后再次执行本节点出真实编码"}
+    if enc.status == "loading":
+        return {"status": "loading", "stage": stage,
+                "msg": "SmolVLM2 权重加载中 (~15s) — 稍后再执行本节点"}
+    if enc.status != "ready":
+        return {"status": "error", "stage": stage, "msg": enc.error or "VLM 不可用"}
+    r = enc.encode(pil_image)
+    if r.get("status") == "ok":
+        r["stage"] = stage
+        r["real"] = True
+        if cache is not None and key is not None:
+            cache[key] = r
+    return r
+
+
 if __name__ == "__main__":
     # CLI 自测 (无 GUI 依赖): 合成图走一遍真实前向
     import numpy as np

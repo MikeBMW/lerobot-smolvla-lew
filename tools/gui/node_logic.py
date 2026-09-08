@@ -2899,17 +2899,14 @@ def _ssah_ns():
 
 
 def node_ss_vlm(ctx):
-    """🧠 VLM 通用视觉编码器 — 真实 SmolVLM2 权重推理 (感知侧真实化, 2026-09-08)
+    """🧠 VLM 通用视觉编码器 — GUI 薄壳 (算法全在 src, 老倪 2026-09-08)
 
-    真实路径 (双击/单步/右键运行节点时执行, 非播放 demo): 取真实化轨迹当前阶段的
-    **真实渲染帧** (sim_real key_frames) → SmolVLM2-500M-Video-Instruct 真实前向 →
-    hidden[-1] mean-pool → 潜空间 z ∈ R⁹⁶⁰。首次触发后台加载权重 (~15s)。
-    几何潜空间 z∈R⁷ (手→目标/手→工件/夹持) 保留为教学对照 — 与 VLM 特征的关系
-    由下游 (世界模型/流形) 学习, 不冒充。老倪红线: 播放动画不跑模型 (demo 走缓存),"""
+    真实算法: src/lerobot/policies/smolvla_lew/vlm_encoder.py encode_stage() —
+    帧 → SmolVLM2 真实前向 → 潜空间 z ∈ R⁹⁶⁰ (首次触发后台加载 ~15s)。
+    本壳职责: 取当前阶段真实帧 → 转发 encode_stage → 呈现结果。播放 demo 不跑 (铁律)。"""
     log = ctx.get("log")
     try:
         import numpy as np
-        import time as _time
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
         if tr is None or not tr.get("t"):
@@ -2918,67 +2915,45 @@ def node_ss_vlm(ctx):
             return False
         idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
         stage = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
+        meta = tr.get("_meta") or {}
         x = np.asarray(tr["x"][idx], dtype=float)
         peg = np.asarray(tr["peg"][idx], dtype=float)
         tgt = np.asarray(tr["target"][idx], dtype=float)
-        # ── ① 真实 VLM 编码 (SmolVLM2 真实权重; 需要该阶段的真实渲染帧) ──
-        kf = tr.get("key_frames") or {}
-        meta = tr.get("_meta") or {}
-        z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
         if log:
             log(f"🧠 VLM 通用视觉编码器 [当前阶段={stage}]: token=图像帧+触觉+检测框")
+        # ① 真实编码 (算法在 src): 当前阶段真实帧 → encode_stage
+        kf = tr.get("key_frames") or {}
         if kf and stage in kf:
             try:
-                enc = _vlm_encoder_ns()["get_encoder"]()
-                if enc.status == "idle":
-                    enc.ensure_loaded_async()
+                from PIL import Image
+                _ns = _vlm_encoder_ns()
+                cache = getattr(mod, "_vlm_cache", None)
+                if cache is None:
+                    cache = mod._vlm_cache = {}
+                r = _ns["encode_stage"](Image.fromarray(np.asarray(kf[stage])),
+                                        stage, cache, meta.get("seed", "?"))
+                if r.get("status") == "ok":
                     if log:
-                        log("   ⏳ 首次调用 → 后台加载 SmolVLM2-500M 权重 (~15s), 稍后再次执行本节点出真实编码")
-                elif enc.status == "loading":
-                    if log:
-                        log("   ⏳ SmolVLM2 权重加载中 (~15s) — 稍后再执行本节点")
-                elif enc.status == "ready":
-                    cache = getattr(mod, "_vlm_cache", None)
-                    if cache is None:
-                        cache = mod._vlm_cache = {}
-                    key = f"{stage}|{meta.get('seed', '?')}"
-                    if key in cache:
-                        r = cache[key]
-                        if log:
-                            log(f"   ✅ VLM 真实编码 (缓存) [阶段={stage}]: {r['model']} · "
-                                f"{r['tokens']} token → z∈R{r['dim']} · "
-                                f"|z|={r['z_norm']:.1f} mean={r['z_mean']:.3f} std={r['z_std']:.3f} · "
-                                f"top活跃 {r['top5']} · {r['ms']}ms")
-                    else:
-                        from PIL import Image
-                        pil = Image.fromarray(np.asarray(kf[stage]))
-                        r = enc.encode(pil)
-                        if r.get("status") == "ok":
-                            cache[key] = r
-                            if log:
-                                log(f"   ✅ VLM 真实编码 [阶段={stage}] (真实前向, 非演示): "
-                                    f"{r['model']} · 帧 {np.asarray(kf[stage]).shape[1]}x{np.asarray(kf[stage]).shape[0]} "
-                                    f"→ {r['tokens']} token → z∈R{r['dim']} · "
-                                    f"|z|={r['z_norm']:.1f} mean={r['z_mean']:.3f} std={r['z_std']:.3f} · "
-                                    f"top活跃通道 {r['top5']} · 推理 {r['ms']}ms")
-                                log(f"   语义: 真实视觉特征 (预训练 SmolVLM 通用编码, 未微调) — "
-                                    f"与几何潜空间关系由下游世界模型学习")
-                        else:
-                            if log:
-                                log(f"   ⚠️ VLM 编码失败: {r.get('msg', r.get('status'))}")
-                else:
-                    if log:
-                        log(f"   ⚠️ VLM 不可用: {enc.error}")
+                        tag = " (缓存)" if r.get("cached") else " (真实前向, 非演示)"
+                        log(f"   ✅ VLM 真实编码 [阶段={stage}]{tag}: {r['model']} · "
+                            f"帧 {np.asarray(kf[stage]).shape[1]}x{np.asarray(kf[stage]).shape[0]} "
+                            f"→ {r['tokens']} token → z∈R{r['dim']} · "
+                            f"|z|={r['z_norm']:.1f} mean={r['z_mean']:.3f} std={r['z_std']:.3f} · "
+                            f"top活跃 {r['top5']} · {r['ms']}ms")
+                        log(f"   语义: 真实视觉特征 (预训练 SmolVLM 通用编码, 未微调) — "
+                            f"与几何潜空间关系由下游世界模型学习")
+                elif log:
+                    log(f"   ⏳ {r.get('msg', r.get('status'))}")
             except Exception as _e:
                 if log:
                     log(f"   ⚠️ VLM 编码异常: {_e}")
         elif log:
-            log("   帧源: 本轮轨迹无真实帧 (key_frames 空) — 需 🎥真实化 R1 视觉运行 (每阶段存真实渲染帧); 引擎快演无帧")
-        # ── ② 几何潜空间摘要 (教学对照: 降维观测, 与真实 VLM 特征并存) ──
+            log("   帧源: 本轮轨迹无真实帧 (key_frames 空) — 需 🎥真实化 R1 视觉运行; 引擎快演无帧")
+        # ② 几何潜空间对照 (教学注解, GUI 演示层)
         if log:
+            z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
             log(f"   几何 z∈R⁷ (对照): 手→目标 {np.round(z_vis[:3], 4)} m · 手→工件 "
                 f"{np.round(z_vis[3:6], 4)} m · 夹持={z_vis[6]:.0f}")
-            # 🚀 2026-09-08 L3 扩展: 场景目标识别 — AOI 检测设备 (mode=full 轨迹)
             if meta.get("mode") == "full" or any("AOI" in str(s) for s in tr.get("stage", [])):
                 af = np.asarray(meta.get("aoi_focus", [0.12, 0.62, 0.10]), dtype=float)
                 log(f"   🔍 场景目标识别: 光模块/插孔 + AOI 光学检测设备 (镜头工位 "
@@ -2987,8 +2962,7 @@ def node_ss_vlm(ctx):
                 _ar = meta["aoi_report"]
                 log(f"   📷 AOI 检测报告: {'PASS' if _ar.get('ok') else 'FAIL'} "
                     f"(残余深度 {_ar.get('insert_depth_min_mm')}mm · 力峰 {_ar.get('force_peak')})")
-            log("   ⚙️ 真实 VLM 权重推理已接入 (SmolVLM2-500M 本地 GPU); "
-                "DiT ActionHead 真实权重接入点为 smolvla_lew 训练后 (下一步)")
+            log("   ⚙️ 真实实现: src/lerobot/policies/smolvla_lew/vlm_encoder.py (encode_stage)")
         return True
     except Exception as e:
         if log:
