@@ -2687,19 +2687,27 @@ _MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
 
 def node_ss_skill(ctx):
     """🧩 原子技能层 (2026-09-07 老倪: 决策层与执行层之间加技能模板层)
-    机制: 8 个原子技能 (①接近②对位③下降④抓取⑤抬起⑥转移⑦插入⑧完成) = 固定轨迹
-    模板 (SK01-08); 决策层 (动作调制器状态机经安全边界) 明确选定当前技能并**实时赋值**
-    (阶段目标/速度), 技能模板被复制实例化 → 快速执行 → 直接输出执行指令给 🤖执行器。
-    数据真源 = module._ss_tr 当前帧 (stage=当前技能 / target=决策赋值目标 /
-    u_exec_vec=实际下发速度); 播放 demo 也走本函数 (轻量无副作用, 特判见 _demo_node_output)。"""
+    机制: 8 个原子技能 (SK01-08) = 固定轨迹模板; 决策层 (动作调制器状态机经安全边界)
+    明确选定当前技能并**实时赋值** (阶段目标/速度), 技能模板被复制实例化 → 快速执行 →
+    直接输出执行指令给 🤖执行器。
+    模板权威源 = src/lerobot/.../state_space/skills/atomic_skills.py (SKILL_BY_CODE,
+    右键本节点看真实源码); 数据真源 = module._ss_tr 当前帧 (stage=当前技能 / target=
+    决策赋值目标 / u_exec_vec=实际下发速度)。"""
     log = ctx.get("log")
     try:
+        import importlib.util as _ilu
         import numpy as np
+        # 🧩 模板真源: skills/atomic_skills.py (2026-09-08 集中到 src/lerobot)
+        _p = os.path.join(_SS_DIR, "skills", "atomic_skills.py")
+        _spec = _ilu.spec_from_file_location("ss_atomic_skills", _p)
+        _m = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_m)
         name = ctx.get("name", "")
         p = ctx.get("params", {}) or {}
         sk = p.get("skill") or {}
         tpl = str(sk.get("template", "SK--"))
         stg = str(sk.get("stage", ""))
+        _tpl = _m.SKILL_BY_CODE.get(tpl) or _m.SKILL_BY_STAGE.get(stg)
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
         if tr is None or not tr.get("t"):
@@ -2712,6 +2720,9 @@ def node_ss_skill(ctx):
         u = np.asarray(tr["u_exec_vec"][idx], dtype=float) if tr.get("u_exec_vec") else np.zeros(4)
         act = bool(stg and stage_now == stg)
         if log:
+            if _tpl is not None:
+                log(f"🧩 模板 {tpl} {_tpl.name}: {_tpl.desc}")
+                log(f"   目标 {_tpl.goal} · 参数 {_tpl.params} · 推进 {_tpl.evidence}")
             if act:
                 log(f"🧩 原子技能 ▶ {name} 激活 · 模板{tpl} (决策层选定「{stg}」→ 模板实例化快速执行) · "
                     f"决策实时赋值: 目标 {np.round(tgt[:3], 3)} · 执行速度 u={np.round(u[:3], 3)} m/s")
@@ -2805,8 +2816,20 @@ _SKILLS = [
 for _skid, _sktag, _skstage, _sktpl in _SKILLS:
     _reg(_skid, [_sktag],
          f"🧩 原子技能 {_sktag} · {_sktpl}: 固定轨迹模板 — 决策层选定本技能时实时赋值 "
-         f"(阶段目标/速度) → 模板复制实例化快速执行 → 输出执行指令给 🤖执行器 (真实源=引擎轨迹当前帧)",
+         f"(阶段目标/速度) → 模板复制实例化快速执行 → 输出执行指令给 🤖执行器 "
+         f"(模板源码 skills/atomic_skills.py, 真实源=引擎轨迹当前帧)",
          node_ss_skill)
+
+# 🔗 2026-09-08 老倪: 原子技能源码集中到 src/lerobot/.../state_space/skills/atomic_skills.py —
+#   右键每个 SK 节点看对应技能类 (独立符号, 防"两节点显示同一段"坑)
+_SK_EXT_LOC = [
+    ("sssk1", 46, "class SK01Approach"), ("sssk2", 59, "class SK02Align"),
+    ("sssk3", 72, "class SK03Descend"), ("sssk4", 86, "class SK04Grasp"),
+    ("sssk5", 100, "class SK05Lift"), ("sssk6", 113, "class SK06Transfer"),
+    ("sssk7", 127, "class SK07Insert"), ("sssk8", 142, "class SK08Complete"),
+]
+for _skid, _ln, _sym in _SK_EXT_LOC:
+    _EXTERNAL_LOC[_skid] = (os.path.join(_SS_DIR, "skills", "atomic_skills.py"), _ln, _sym)
 
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
 _EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 65, "class ContactManifold")
