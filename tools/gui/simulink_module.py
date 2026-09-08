@@ -10839,10 +10839,16 @@ class SimulinkModule(QWidget):
         断点注意: VSCode F5 调试时断点命中在后台线程 → pydevd 同进程挂起该线程, GUI 不冻"""
         self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
         # 🚀 2026-09-08 L3 接入: 任务链模式 (主线程读 checkbox → worker 用属性, 禁 QObject 跨线程)
-        self._l3_mode = ("full" if (getattr(self, "chk_l3_full", None) is not None
-                                    and self.chk_l3_full.isChecked()) else None)
-        _mdesc = ("🚀 L3 全链 full: 插→拔→AOI检测→放回 (13段)" if self._l3_mode == "full"
-                  else "插装即完成 (8段, 原演示)")
+        # 🧭 2026-09-08 能力档位 (数据源层节点双击切换): L2→insert / L3·L4→full; 优先于 chk 勾选
+        _cap = getattr(self, "_cap_level", None)
+        self._l3_mode = ("full" if _cap in ("L3", "L4") else
+                         ("full" if (getattr(self, "chk_l3_full", None) is not None
+                                     and self.chk_l3_full.isChecked()) else None))
+        _mdesc = {
+            "L2": "基础 L2: 插装光模块 (insert 8 段)",
+            "L3": "🚀 L3 全链: 插→拔→AOI检测→放回 (13段, smolvla)",
+            "L4": "🏆 L4 自主恢复: L3 全链 + 失败自愈直到完成 (恢复预算×2)",
+        }.get(_cap, "插装即完成 (8段, 原演示)" if self._l3_mode is None else "🚀 L3 全链 full: 插→拔→AOI检测→放回 (13段)")
         self.btn_run.setText("🎥 真实运行中… (每帧 YOLO)")
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -10895,7 +10901,7 @@ class SimulinkModule(QWidget):
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
                 self._ss_last_sim = sim           # 🔭 可视化层: probe 数据源 (真实化每帧更新)
-                tr = sim.run()
+                tr = sim.run(cap=getattr(self, "_cap_level", None))
                 v = sim._vis
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
                 self._real_tr = ("ok", tr, sim, rate, list(_logs))

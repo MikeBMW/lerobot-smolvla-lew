@@ -1215,6 +1215,22 @@
     "state_space": true,
     "source": "src/lerobot/manifold/predictor_layer.py"
    }
+  },
+  {
+   "type": "model",
+   "w": 280,
+   "h": 110,
+   "color": "#8957e5",
+   "id": "sscap",
+   "name": "🧭 能力档位 (L2插 / L3插拔+AOI / L4自主恢复)",
+   "x": 560,
+   "y": -409,
+   "icon": "🧭",
+   "params": {
+    "desc": "[数据源层·能力档位] 双击循环切换: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成)。档位驱动 ▶运行任务链配置。",
+    "state_space": true,
+    "cap_level": "L2"
+   }
   }
  ],
  "links": [

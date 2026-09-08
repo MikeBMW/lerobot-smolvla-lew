@@ -559,14 +559,21 @@ class RealStateSpaceSim:
         return float(np.linalg.norm(self.peg_head() - self._goal_p()))
 
     # ── 主循环 ──
-    def run(self, max_steps=None):
+    def run(self, max_steps=None, cap=None):
         """R0 主循环 — metaworld 单轮硬上限 (insert 默认 500 步 / full 全链 2000 步)。
 
         🐛 2026-09-08 静静: 原默认 500 步 — mode=full (插拔+AOI 13 段) 实测需 850-1000 步,
         默认 500 必截断未完成 (45ce9453 GUI 接线漏传 max_steps → GUI 勾 L3 全链同样截断,
-        09-08 实锤)。显式传 max_steps 仍可覆盖。"""
+        09-08 实锤)。显式传 max_steps 仍可覆盖。
+        🚀 2026-09-08 L4 档 (cap="l4"): 自主恢复 — 失败回退/重抓不放弃, 预算 ×2
+        (full 4000 / insert 1000), 直到最终完成任务或真死局 (物理不可恢复); 引擎分级
+        回退 (遇阻/空夹/滑脱→重对孔/重抓) 即恢复执行体, L4 只给足恢复预算 + 标注。"""
+        self._cap = cap
+        if cap == "l4":
+            self.log(f"🏆 L4 自主恢复档: 失败回退不放弃 (预算 ×2) — 直到任务最终完成或物理死局")
         if max_steps is None:
-            max_steps = MAX_STEPS if self.mode == "full" else 500
+            max_steps = (MAX_STEPS * 2 if cap == "l4" else MAX_STEPS) if self.mode == "full" \
+                else (1000 if cap == "l4" else 500)
         env = self.env
         self._reset(self.seed)
         # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)

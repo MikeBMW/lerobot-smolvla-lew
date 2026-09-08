@@ -3057,6 +3057,33 @@ def node_ss_pred(ctx):
         return False
 
 
+def node_ss_cap(ctx):
+    """🧭 能力档位 (数据源层) — L2 / L3 / L4 三档循环开关 (2026-09-08 老倪)
+
+    双击节点 = 切换档位 (L2 → L3 → L4 → L2…), 档位写 module._cap_level, ▶运行 按档位
+    配置任务链:
+      L2 基础: 插装成功光模块 (mode=insert 8 段, 解析+MLP 小模型)
+      L3 +smolvla: 插→拔→AOI 检测→放回 全链 (mode=full 13 段; VLM 真实编码在链)
+      L4 +流形预测世界模型: 失败自主恢复直到最终完成任务 (cap=l4 恢复预算 ×2,
+        引擎分级回退=恢复执行体; predictor 世界模型 = 流形专家预测器节点, 训练后给恢复方向)
+    """
+    log = ctx.get("log")
+    mod = ctx.get("module")
+    cur = getattr(mod, "_cap_level", "L2") if mod is not None else "L2"
+    nxt = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
+    if mod is not None:
+        mod._cap_level = nxt
+    desc = {
+        "L2": "基础: 插装成功光模块 (insert 8 段)",
+        "L3": "+smolvla: 插→拔→AOI 检测→放回 全链 (full 13 段)",
+        "L4": "+世界模型: 失败自主恢复直到最终完成任务 (恢复预算×2)",
+    }
+    if log:
+        log(f"🧭 能力档位: {cur} → **{nxt}** [{desc[nxt]}]")
+        log(f"   下次 ▶运行 生效 (L4 需 🎥真实化; 引擎分级回退=恢复执行体, predictor 待训练给恢复方向)")
+    return (True, f"能力档位: {nxt} ({desc[nxt]})")
+
+
 def node_ss_dec(ctx):
     """🔄 潜空间 Decoder — 状态空间 ActionHead 真实结构 (标准 smolvla 算法, 2026-09-08)
 
@@ -3129,6 +3156,8 @@ _reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 �
     node_ss_dec)
 _reg("ss_pred", ["流形专家", "JEPA", "潜空间预测"], "🧠 世界模型预测器 (JEPA: 潜空间→接触/性能流形→decoder 动作)",
     node_ss_pred)
+_reg("ss_cap", ["能力档位", "L4自主", "档位"], "🧭 能力档位 (数据源层) — L2 插 / L3 插拔+AOI / L4 自主恢复, 双击循环切换",
+    node_ss_cap)
 _EXTERNAL_LOC["action_head"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                               "action_head.py"), 205, "class SmolVLALewActionHead")  # 🐛 2026-09-08: Action Head 节点右键 → 官方 Flow-Matching DiT 头 (src)
 _EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
