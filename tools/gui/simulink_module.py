@@ -4369,7 +4369,7 @@ class SimulinkModule(QWidget):
         self.chk_l3_full = QCheckBox("🚀 L3 全链(插拔+AOI)")
         self.chk_l3_full.setToolTip(
             "勾选 = 🎥 真实化运行完整任务链: 插入光模块 → 拔出 → AOI 光学检测 → 放回\n"
-            "(mode=full 13 段, 约 15-25 分钟/轮; 3D 视图可见 AOI 检测设备与全部后续动作)\n"
+            "(mode=full 13 段, 本机实测 ~20-40s/轮 — GPU YOLO 快; 3D 视图可见 AOI 设备与全部后续动作)\n"
             "不勾 (默认) = 插装即完成 (8 段演示, 回归保底)")
         tl.addWidget(self.chk_l3_full)
         tl.addWidget(self.btn_state_space)
@@ -10850,7 +10850,7 @@ class SimulinkModule(QWidget):
         self._log("   ├ detect_3d / fuse_sensors 断点每步命中 (真流程)")
         self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示"
                   if self._l3_mode != "full" else
-                  "   └ 约 15-25 分钟/轮 (L3 全链 13 段 ~900-1000 步) — 完整动作链的代价")
+                  "   └ 本机实测 ~20-40s/轮 (L3 全链 13 段 ~880 步, GPU YOLO) — 完整动作链实时可见")
         # 🆕 2026-09-04 老倪两次报"卡死,只能鼠标动": F5 调试会话中, 断点命中
         #   (detect_3d/fuse_sensors/引擎源码) → pydevd/debugpy 默认挂起**整个进程所有线程**
         #   (VSCode 线程面板全部变暂停), GUI 主线程也被挂 → 表现=只能鼠标动(X server 画的
