@@ -160,9 +160,17 @@ function applyMeta(){
   if(gp) holeEnd.position.copy(gp);
   const af = P(GEOM.aoi_focus);
   if(af){
-    aoiBase.position.set(af.x, af.y - 0.045, af.z);
-    aoiLens.position.set(af.x, af.y, af.z);
-    aoiRing.position.copy(af);
+    const lt = af.y + CAM_GAP + 0.075 + 0.01;   // 镜头顶端 (同创建时 LENS_TOP)
+    // 支架在 y 远侧 (Three z 正向 +0.16), 避开光模块移动路径 (光模块沿引擎 x 长 0.2,
+    // 本体 x∈[af.x-0.07, af.x+0.13] — 支架若在同 x 会撞, 老倪目检"重合/干涉"实锤)
+    aoiBase.position.set(af.x, 0.045, af.z + 0.16);
+    aoiPost.position.set(af.x, (lt + 0.03) / 2, af.z + 0.16);
+    aoiArm.position.set(af.x, lt, af.z + 0.08);   // 横臂从支架伸向检测位上方 (z-0.08 到检测位)
+    aoiLens.position.set(af.x, lt - 0.0375, af.z);   // 镜头在检测位正上方 (光模块头落点 af 正上方)
+    aoiObj.position.set(af.x, lt - 0.075 - 0.004, af.z);
+    aoiLight.position.set(af.x + 0.03, lt - 0.02, af.z + 0.02);
+    aoiLight.target.position.set(af.x, af.y - 0.01, af.z);
+    aoiRing.position.set(af.x, af.y - 0.006, af.z);
   }
 }
 
@@ -203,23 +211,46 @@ const holeEnd = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 8),
   new THREE.MeshBasicMaterial({color:0xff5555, transparent:true, opacity:.5}));
 holeEnd.position.copy(P(GEOM.goal)); scene.add(holeEnd);
 
-// 🔬 AOI 检测设备 (2026-09-08: 全链拔出→检测段, 设备在台面 aoi_focus 处 —
-//   AOI 转移=光模块头送到对焦点上方悬停, AOI 检测=镜头对焦检测)
-const aoiBase = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.09),
+// 🔬 AOI 检测设备 (2026-09-08: 全链拔出→检测段 — 老倪工艺: 镜头从支架**伸出来**
+//   悬在检测位上方朝下; 夹爪拿着光模块放到镜头底下 (光模块在镜头正下方保持间隙);
+//   定向光源照下方防刺眼)
+// 布局: 底座(侧面) + 立柱 + 横臂**伸到检测位上方** + 镜头垂直下垂(显微镜头朝下)
+const CAM_GAP = 0.055;   // 镜头下端到光模块头顶的安全间隙
+const af = P(GEOM.aoi_focus);   // 光模块头悬停检测位 (引擎 aoi_focus)
+// 底座 (侧面台面, 不挡检测位)
+const aoiBase = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.018, 0.09),
   new THREE.MeshStandardMaterial({color:0x3a3f47, roughness:.8}));
-aoiBase.position.set(0.12, 0.075, 0.62); scene.add(aoiBase);   // 底座 (af.y-0.045 三雏 y=0.1-0.045≈0.055? 台面 z=0.05 → 取中)
-// 立柱
-const aoiPost = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 8),
+aoiBase.position.set(af.x, 0.045, af.z + 0.16); scene.add(aoiBase);   // 底座在 y 远侧
+// 镜头顶端高 (光模块上方; af.y≈引擎z) — 必须先定义 (aoiPost/aoiArm 用)
+const LENS_TOP = af.y + CAM_GAP + 0.075 + 0.01;   // 镜头顶端高 (光模块上方)
+// 立柱 (从底座升高到镜头支架高度 — 高随 LENS_TOP 动态伸缩)
+const aoiPost = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.19, 10),
   new THREE.MeshStandardMaterial({color:0x57606a}));
-aoiPost.position.set(0.12, 0.09, 0.62); scene.add(aoiPost);
-// 镜头 (光学对焦点处, 指向下方检测位)
-const aoiLens = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.028, 0.035, 16),
-  new THREE.MeshStandardMaterial({color:0x2f6feb, roughness:.3, metalness:.5}));
-aoiLens.position.set(0.12, 0.10, 0.62); scene.add(aoiLens);    // af 高度
-// 镜头光环 (对焦点指示)
-const aoiRing = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.002, 8, 24),
+aoiPost.scale.y = 2.2;   // 0.19 → ~0.42 覆盖 LENS_TOP 高度 (af.y≈0.13 时镜头顶 0.27+)
+aoiPost.position.set(af.x, 0.20, af.z + 0.16);  // 立柱中心抬高 (底 0.05 → 顶 ~0.42)
+scene.add(aoiPost);
+// 横臂 (从立柱顶水平伸向检测位上方 — 沿 Three z 轴长 0.16, 支架 z+0.16 → 镜头 z)
+const aoiArm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.016, 0.16),
+  new THREE.MeshStandardMaterial({color:0x57606a, roughness:.6}));
+aoiArm.position.set(af.x, LENS_TOP, af.z + 0.08);                 // 横臂中点在支架与镜头中间
+scene.add(aoiArm);
+// 镜头筒 (从横臂端垂直向下伸出, 显微镜头朝下 — 下端距光模块头顶 CAM_GAP 安全间隙)
+const aoiLens = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.075, 16),
+  new THREE.MeshStandardMaterial({color:0x58a6ff, roughness:.25, metalness:.55}));
+scene.add(aoiLens);
+aoiLens.position.set(af.x, LENS_TOP - 0.0375, af.z);              // 镜头筒 (顶端下垂 0.075)
+const aoiObj = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.024, 0.008, 16),
+  new THREE.MeshStandardMaterial({color:0x1f3a5f, roughness:.2, metalness:.7}));
+scene.add(aoiObj);
+aoiObj.position.set(af.x, LENS_TOP - 0.075 - 0.004, af.z);        // 物镜圈 (镜头下端)
+const aoiLight = new THREE.SpotLight(0xffffff, 0.9, 0.35, 0.55, 0.5);
+aoiLight.position.set(af.x + 0.03, LENS_TOP - 0.02, af.z + 0.02); // 光源在镜头旁向下
+aoiLight.target.position.set(af.x, af.y - 0.01, af.z);
+scene.add(aoiLight.target); scene.add(aoiLight);
+// 检测位光环 (光模块头落点指示, 绿色 — 夹爪把光模块放这)
+const aoiRing = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.002, 8, 24),
   new THREE.MeshBasicMaterial({color:0x3fb950, transparent:true, opacity:.6}));
-aoiRing.position.set(0.12, 0.10, 0.62); aoiRing.rotation.x = Math.PI/2; scene.add(aoiRing);
+aoiRing.position.set(af.x, af.y - 0.006, af.z); aoiRing.rotation.x = Math.PI/2; scene.add(aoiRing);
 
 // 光模块 (真实几何: 长0.20沿引擎X, 抓握点peg距销头端0.13 → 本体范围 peg-0.13~peg+0.07)
 // 引擎(x,y,z↑) → Three(x, z↑→y, y→z): 引擎X→Three.x 保持
@@ -485,6 +516,15 @@ function goto(i){
   // 光模块在抓取前躺台面 (无取向变化), 抓取后随末端; 简化: 位置=peg, 不旋转 (水平侧插 z 同高)
   const gp = P(f.peg);
   if(gp){ modGrp.position.copy(gp); modGrp.visible=true; } else modGrp.visible=false;
+  // 🔄 AOI 检测转面 (2026-09-08 老倪工艺: 相机俯拍, 光模块在镜头下转面展示多角度检测):
+  //   检测段光模块绕自身长轴(引擎X→Three x)旋转 90°, 让相机看到另一面
+  const stg = (f.stage||"").toString();
+  if(stg.startsWith("AOI检测")){
+    const prog = (i % 60) / 60;           // 检测保持帧内平滑转 90° (绕长轴=x)
+    modGrp.rotation.x = prog * Math.PI/2;
+  } else {
+    modGrp.rotation.x = 0; modGrp.rotation.z = 0;
+  }
   // 销头指向孔: 光模块长轴从 peg 指向 peg_head (孔方向) — 仅抓取后有意义, 保持静态水平
   // 分层箭头
   VEC_LAYERS.forEach(L=>{
