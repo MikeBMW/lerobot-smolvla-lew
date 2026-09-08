@@ -1103,7 +1103,9 @@ class StateSpaceScopeDialog(QDialog):
             p.end()
             return
         r = self.rect().adjusted(12, 12, -12, -40)
-        # 🔭 2026-09-05 播放光标: set_cursor(idx) → 只画到该步 (波形随运行增长, 与 3D/画布同帧)
+        # 🔭 2026-09-05 播放光标: set_cursor(idx) → 波形随运行增长 (与 3D/画布同帧)
+        # 🚀 2026-09-08 老倪: 时间轴光标 — 通用格改全量时间轴: 已播亮 / 未播暗 + 播放头竖线
+        #   (播放/暂停/结束时一眼看到当前时间在总时间线上的位置与阶段)
         _cursor = getattr(self, "_cursor", None)
         _k = len(self._t)
         if _cursor is not None:
@@ -1111,8 +1113,10 @@ class StateSpaceScopeDialog(QDialog):
         _tv = self._t[:_k]
         _playing = _cursor is not None and _k < len(self._t)
         # 🎯 2026-09-04 老倪(0.5mm/0.5s 验收): 插深剩余/横向错位 波形 + 底部验收摘要
-        _rem = np.asarray(self._tr.get("mani_rem", []), dtype=float)[:_k]
-        _dperp = np.asarray(self._tr.get("mani_dperp", []), dtype=float)[:_k]
+        _rem_all = np.asarray(self._tr.get("mani_rem", []), dtype=float)
+        _dp_all = np.asarray(self._tr.get("mani_dperp", []), dtype=float)
+        _rem = _rem_all[:_k]
+        _dperp = _dp_all[:_k]
         # 插入段窗口: 插深剩余首次 <20mm → 当前帧
         _i0 = int(np.argmax(_rem < 0.020)) if _rem.size and np.any(_rem < 0.020) else 0
         _T_ins = float(_tv[-1] - _tv[_i0]) if _rem.size else 0.0
@@ -1123,13 +1127,15 @@ class StateSpaceScopeDialog(QDialog):
         _done = bool((self._tr.get("done") or [False])[_k - 1]) if _k else False
         # 2x4 子图: 距离/前馈/残差/接触 + 法向偏离/η + 插深剩余(mm)/横向错位(mm)
         # 🐛 2026-09-05: 真实化轨迹无 mani_* 信号 → 空数组会让 np.min 崩 "绘图异常" → 空则格内提示
+        # 🚀 09-08: 前 6 格传**全量**信号 (时间轴光标用); 后 2 格 (插深放大) 仍截断到播放帧
+        _t_all = self._t
         plots = [
-            ("距离孔位 (m)", np.asarray(self._tr["dist"])[:_k], "#58a6ff", {}),
-            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"])[:_k], "#d29922", {}),
-            ("残差 |r|", np.asarray(self._tr["residual"])[:_k], "#f0883e", {}),
-            ("接触概率", np.asarray(self._tr["contact_p"])[:_k], "#3fb950", {}),
-            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", []), dtype=float)[:_k], "#ff7b72", {}),
-            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", []), dtype=float)[:_k], "#a371f7", {}),
+            ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff", {}),
+            ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922", {}),
+            ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e", {}),
+            ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950", {}),
+            ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", []), dtype=float), "#ff7b72", {}),
+            ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", []), dtype=float), "#a371f7", {}),
             ("插深剩余 (mm) · 阈 0.5", _rem, "#00d4aa", {"mm": True, "thr": 0.0005, "ins": True}),
             ("横向错位 (mm) · 阈 0.5", _dperp, "#ffd700", {"mm": True, "thr": 0.0005, "ins": True}),
         ]
@@ -1145,17 +1151,21 @@ class StateSpaceScopeDialog(QDialog):
             f = QFont("WenQuanYi Micro Hei", 14); f.setBold(True)
             p.setFont(f)
             p.drawText(int(x0 + 8), int(y0 + 20), title)
-            # 数据窗口: 插入段放大格只画 插入段 (到播放光标)
-            _t = _tv
-            _y = y
-            if opt.get("ins") and _rem.size and _i0 > 0:
-                _sl = slice(int(max(0, _i0 - 8)), len(_t))
-                _t = _t[_sl]
-                _y = _y[_sl]
-            if len(_t) < 2:
-                continue
-            # 坐标变换
-            t0, t1 = float(_t[0]), float(_t[-1])
+            _ins = bool(opt.get("ins"))
+            if _ins:
+                # ── 插深/错位放大格 (老逻辑): 播放前缀内 插段局部窗 ──
+                _t, _y = _tv, y
+                if _rem.size and _i0 > 0:
+                    _sl = slice(int(max(0, _i0 - 8)), len(_t))
+                    _t = _t[_sl]
+                    _y = _y[_sl]
+                if len(_t) < 2:
+                    continue
+                t0, t1 = float(_t[0]), float(_t[-1])
+            else:
+                # ── 通用格 (09-08): 全量时间轴, 已播亮/未播暗 + 播放头竖线 ──
+                _t, _y = _t_all, y
+                t0, t1 = float(_t[0]), float(_t[-1])
             if y.size == 0:      # 🐛 2026-09-05: 真实化轨迹无流形信号 → 格内提示而非 np.min 崩溃
                 p.setPen(QColor("#8b949e"))
                 p.setFont(QFont("WenQuanYi Micro Hei", 12))
@@ -1192,14 +1202,40 @@ class StateSpaceScopeDialog(QDialog):
                     p.setPen(QColor("#ff4444"))
                     p.setFont(QFont("WenQuanYi Micro Hei", 11))
                     p.drawText(int(x0 + 8), int(Y(_thr_v) - 4), "0.5mm 验收线")
-            # 曲线
+            # ── 播放头: 全量轴时已播亮/未播暗 + 当前时间竖线; 插深格无全量轴 → 竖线在窗右端 ──
+            _kk = min(_k, len(_y)) if not _ins else len(_y)
+            if not _ins and _cursor is not None and len(_y) > 1:
+                # 未播段 (暗色细线) — 时间轴光标让"现在走到哪"一目了然
+                if _kk < len(_y):
+                    pen_tail = QPen(QColor(color), 1.2)
+                    pen_tail.setStyle(Qt.DashLine)
+                    _c_tail = QColor(color); _c_tail.setAlpha(90)
+                    pen_tail.setColor(_c_tail)
+                    p.setPen(pen_tail)
+                    _path_t = QPainterPath()
+                    _j0 = int(max(1, _kk))
+                    _path_t.moveTo(X(float(_t[_j0 - 1])), Y(float(_y[_j0 - 1])))
+                    for tt, vv in zip(_t[_j0:], _y[_j0:]):
+                        _path_t.lineTo(X(float(tt)), Y(float(vv)))
+                    p.drawPath(_path_t)
+                # 当前时间竖线 (播放头)
+                _xc = X(float(_t[min(int(_kk), len(_t) - 1)]))
+                p.setPen(QPen(QColor("#00d4aa"), 2))
+                p.drawLine(int(_xc), int(y0 + 16), int(_xc), int(y0 + h - 16))
+                p.setPen(QColor("#00d4aa"))
+                p.setFont(QFont("WenQuanYi Micro Hei", 11, QFont.Bold))
+                p.drawText(int(_xc - 8), int(y0 + 14),
+                           f"t={_t[min(int(_kk), len(_t) - 1)]:.2f}s")
+            # 曲线 (已播段: 亮色; 插深格: 播放前缀)
             pen = QPen(QColor(color), 2.5)
             p.setPen(pen)
             path = QPainterPath()
-            path.moveTo(X(t0), Y(float(_y[0])))
-            for tt, vv in zip(_t[1:], _y[1:]):
-                path.lineTo(X(float(tt)), Y(float(vv)))
-            p.drawPath(path)
+            _j0 = 1 if _kk >= 1 else 0
+            if _kk >= 1:
+                path.moveTo(X(float(_t[0])), Y(float(_y[0])))
+                for tt, vv in zip(_t[_j0:_kk], _y[_j0:_kk]):
+                    path.lineTo(X(float(tt)), Y(float(vv)))
+                p.drawPath(path)
             # 插入段时长标注 (插深格)
             if opt.get("ins") and i == 6:
                 p.setPen(QColor("#00d4aa"))
