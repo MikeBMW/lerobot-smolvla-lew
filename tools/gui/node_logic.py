@@ -2026,6 +2026,14 @@ def node_ss_s2(ctx):
             return True
         accel = par.FeedforwardAccelerator()
         u_ff = accel.forward(obs43)
+        # 🧠 2026-09-08 老倪目检实锤: 域外布局 forward 走解析守卫 → probe 空 → 直方图无数据。
+        #   补一次真 MLP 前向仅填探针 (诊断通道, 不参与控制) — 直方图展示真实 MLP 激活。
+        if not (accel.probe or {}).get("act_raw") and getattr(accel, "_ff", None) is not None:
+            try:
+                accel.probe.clear()   # ⚠️ clear 而非重赋值: _ff 闭包绑定 __init__ 时的 dict
+                accel._ff(np.asarray(obs43[:39], dtype=np.float32))
+            except Exception:
+                pass
         _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)
         _SS_STATE["ff_probe"] = accel.probe   # 🧠 探针缓存 (前馈激活直方图节点消费)
         if log:

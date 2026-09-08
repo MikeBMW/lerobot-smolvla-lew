@@ -705,8 +705,19 @@ class RealStateSpaceSim:
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
+            # 🧠 前馈探针 (真实 MLP 激活, 诊断通道): 2026-09-08 老倪目检实锤 — 真实化主路径
+            #   是解析伺服 (09-06 决策, 布局域外 MLP 输出反向), accel.probe 恒空 → 前馈激活
+            #   直方图/归因窗口无数据。修复: 每步补一次真 MLP 前向**仅填探针, 不参与控制**,
+            #   直方图展示的是真实 MLP 在想什么 (若主路径为 MLP 则本就是同一次前向)。
             try:
-                _pr = getattr(self.accel, "probe", None)
+                _acc = self.accel
+                if _acc is not None and getattr(_acc, "_ff", None) is not None:
+                    # 每步重算诊断前向 → probe_seq 逐帧真实 MLP 激活
+                    # (MLP 主路径时 = 与 forward 同一次前向, 多算一次仅 0.1ms 级)
+                    # ⚠️ clear() 而非重新赋值: _ff 闭包绑定 __init__ 时的 probe dict
+                    _acc.probe.clear()
+                    _acc._ff(np.asarray(obs[:39], dtype=np.float32))
+                _pr = _acc.probe
                 if _pr is not None and _pr.get("act_raw") is not None:
                     _snap = dict(_pr)
                     _snap["stage"] = stage
