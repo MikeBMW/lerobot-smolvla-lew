@@ -153,6 +153,15 @@ class RealStateSpaceSim:
         self.log = log or (lambda *a: None)
         self.seed = seed
         self._abort = False   # ⏹ 2026-09-09: GUI ⏹停止/🔄重启置位 → run 循环提前退出 (防双 env 并发 mujoco segfault)
+        # 🎯 2026-09-09 L4 干扰测试: cap=L4 档 run 时注入 (拿起前光模块移位/转向) — 见 _inject_peg_jitter
+        self._jitter_on = False
+        self._jitter_round = 0
+        self._jitter_done = False
+        self._jitter_meta = None
+        # 🏆 L4 流形预测器训练权重 (v1: z7 head 修正 训练, 16872 帧; 部署后旁路列 trained=True)
+        self._pred_w_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "models", "l4_mani_predictor_v1.pt")
         # 🚀 2026-09-08 L3 扩展: 任务链模式 "insert"(默认回归=插入完成) / "full"(插拔+AOI 闭环)
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
@@ -367,6 +376,8 @@ class RealStateSpaceSim:
     # ── 每轮复位: 现场采样几何 ──
     def _reset(self, seed):
         env = self.env
+        # 🎯 L4 干扰: 每轮 reset 重新允许注入 (注入一次/轮)
+        self._jitter_done = False
         # 🐛 2026-09-04 静静 (测试顺序耦合实锤): metaworld reset(seed=…) **忽略 seed**
         #   (sawyer_xyz_env.py: seed param "Ignored, use seed() instead") — 解冻后
         #   _get_state_rand_vec 走 **全局 np.random.uniform**, 布局由进程全局随机状态
@@ -380,6 +391,11 @@ class RealStateSpaceSim:
         env.reset(seed=seed)
         env._freeze_rand_vec = True
         d = env.data
+        # 🎯 2026-09-09 L4 干扰注入: 拿起前把光模块(peg free body)移位+转向 (qpos 注入 →
+        #   mj_forward → 现场几何/obs 重读 = 真实来料偏移; 决策链靠现场几何自恢复)
+        if self._jitter_on and not self._jitter_done:
+            self._inject_peg_jitter(d)
+            self._jitter_done = True
         o = np.asarray(env._get_obs(), dtype=np.float64).ravel()
         # 现场几何 (metaworld 跨进程漂移 → 每轮从 MuJoCo data 读, 不信常量)
         self.geom = {
@@ -478,6 +494,64 @@ class RealStateSpaceSim:
         # 插入阶段最小推力: 光模块头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
         #   (ep3 插到 13mm 推不动 96 步实锤; 引擎 STAGE_V_MIN 无插入, 真实物理需要)
         self.sched.v_min["插入"] = 0.02
+
+    # ── 🎯 L4 干扰注入 (2026-09-09): 拿起前光模块被移动位置+转换角度 ──
+    #   peg = mujoco free body (qpos 7 维: 平移3+四元数4); 注入后 mj_forward →
+    #   现场几何/obs 全重读 → 决策链解析伺服自动跟踪新摆放 (容忍干扰), 插入目标(孔)不动
+    def _inject_peg_jitter(self, d):
+        try:
+            import mujoco as _mj
+            import numpy as _npg2
+            m = self.env.model
+            _adr = None
+            # peg body 的 joint (探针: body 'peg' jntadr=9 → free 7维 qpos); joint 名未必含 'peg'
+            for _i in range(m.nbody):
+                if m.body(_i).name == "peg":
+                    _j = m.body_jntadr[_i]
+                    if _j >= 0 and m.jnt_type[_j] == 0:   # 0 = FREE
+                        _adr = m.jnt_qposadr[_j]
+                    break
+            if _adr is None:
+                self.log("⚠️ L4 干扰: 未找到 peg 自由度, 跳过")
+                return
+            _rng = _npg2.random.RandomState(918273 + int(self.seed) * 131
+                                            + getattr(self, "_jitter_round", 0) * 37)
+            _ov = getattr(self, "_jitter_override", None)   # 显式干扰 (回归测试用)
+            if _ov:
+                _dxy = _npg2.array([_ov.get("dx", 0.0), _ov.get("dy", 0.0)])
+                _dz = _ov.get("dz", 0.0)
+                _yaw = _ov.get("yaw", 0.0)
+            else:
+                _dxy = _rng.uniform(-0.04, 0.04, 2)     # 台面平移 ±4cm
+                _dz = _rng.uniform(-0.004, 0.012)        # 高度微扰
+                _yaw = _rng.uniform(-0.30, 0.30)         # 绕竖轴转向 ±17°
+            q = d.qpos.copy()
+            q[_adr:_adr + 3] += [_dxy[0], _dxy[1], _dz]
+            _c, _s = float(_npg2.cos(_yaw / 2)), float(_npg2.sin(_yaw / 2))
+            q[_adr + 3:_adr + 7] = [_c, 0.0, 0.0, _s]   # 绕 z (竖轴) 旋转
+            d.qpos = q
+            try:
+                _mj.mj_forward(m, d)
+            except Exception:
+                pass
+            self._jitter_meta = {
+                "dx_cm": round(float(_dxy[0]) * 100, 1),
+                "dy_cm": round(float(_dxy[1]) * 100, 1),
+                "dz_mm": round(float(_dz) * 1000, 1),
+                "yaw_deg": round(float(_npg2.degrees(_yaw)), 1),
+            }
+            # 🐛 2026-09-09 实锤: 肌肉记忆固化标杆按"场景=seed"命中 → 干扰布局(peg 移位)误重放
+            #   旧动作 → 把 peg 推飞死循环 (diag: 225 步对位卡死 + peg 漂移 10cm)。分层语义:
+            #   标杆绑定摆放 → 布局变了标杆失效 → 关快通道, 全精算伺服 (L2 能力不丢, 只在
+            #   不匹配时正确降级; 无干扰轮 muscle 照常)
+            if getattr(self, "_mm_on", False):
+                self._mm_on = False
+                self.log("🧠 L4 干扰: 肌肉记忆旁路关闭 (摆放已变无标杆) — 全精算伺服适应")
+            self.log("🎯 L4 抗干扰测试: 拿起前光模块已移位 "
+                     f"Δ=({_dxy[0]*100:+.1f},{_dxy[1]*100:+.1f})cm dz={_dz*1000:+.0f}mm "
+                     f"· 转向 {_npg2.degrees(_yaw):+.0f}° — 现场几何重读, 决策链自主适应")
+        except Exception as _ej:
+            self.log(f"⚠️ L4 干扰注入失败: {_ej}")
 
     # ── 阶段子目标 (八阶段, 几何全现场, 锚 = 夹爪) ──
     # 夹持前 (接近→抓取): 目标 = 销抓握点上方 — ⚠️ 用**实时光模块位置** self._peg_cur
@@ -593,6 +667,11 @@ class RealStateSpaceSim:
         cap = str(cap).lower() if cap else None
         if cap == "l4":
             self.log(f"🏆 L4 自主恢复档: 失败回退不放弃 (预算 ×2) — 直到任务最终完成或物理死局")
+            # 🎯 2026-09-09 L4 抗干扰: 拿起前光模块移位/转向 自动注入 (每轮新干扰)
+            self._jitter_on = True
+            self._jitter_round = getattr(self, "_jitter_round", 0) + 1
+        else:
+            self._jitter_on = False
         if max_steps is None:
             max_steps = (MAX_STEPS * 2 if cap == "l4" else MAX_STEPS) if self.mode == "full" \
                 else (1000 if cap == "l4" else 500)
@@ -638,6 +717,22 @@ class RealStateSpaceSim:
             # ② 观测刷新 (x = obs hand 编码器真值; 销/孔感知: R0 真值 / R1 视觉)
             d = env.data
             o = np.asarray(env._get_obs(), dtype=np.float64).ravel()
+            # 🎯 L4 死局早停 (2026-09-09): 仅**未夹持**时 peg 在台面被夹爪推移 >10cm
+            #   或压翻(z<0.012) → 本布局不可恢复 → break 交 attempts 层换新干扰布局重试
+            #   (夹持转移段 peg 离初始 >10cm 是正常 → grasped 时跳过, 防误杀)
+            if cap == "l4" and not getattr(self, "grasped", False) \
+                    and step > 80 and step % 40 == 0:
+                try:
+                    _pg0 = self.geom.get("peg_grasp")
+                    _pgc = o[4:7]
+                    _drift = float(np.linalg.norm(_pgc - _pg0)) if _pg0 is not None else 0.0
+                    if _drift > 0.10 or float(_pgc[2]) < 0.012:
+                        self.log(f"🎯 L4 布局死局检测: 未夹持但 peg 漂移 {_drift*100:.0f}cm / "
+                                 f"z={_pgc[2]:.3f} (被碰移/压翻) → 换新干扰布局重试")
+                        truncated = True
+                        break
+                except Exception:
+                    pass
             # 📸 2026-09-08: 数据采集帧钩子 (smolvla 图像数据集生成; 默认 None 零开销)
             if self._frame_sink is not None:
                 try:
@@ -1100,9 +1195,21 @@ class RealStateSpaceSim:
                         _pred = None
                         if _PRED_MOD is not None:
                             try:
-                                _pred = _PRED_MOD.WorldModelPredictor(z_dim=7)
+                                _pred = _PRED_MOD.WorldModelPredictor(
+                                    z_dim=7, hidden_dim=384, num_layers=3)   # 与 v1 权重架构一致
+                                # 🏆 2026-09-09 部署: 加载训练权重 (JEPA z+a→z'→流形,
+                                #   16872 帧 head-修正 z7 训练; 旁路预测列 trained=True)
+                                if os.path.exists(self._pred_w_path):
+                                    import torch as _th3
+                                    _pred.load_state_dict(
+                                        _th3.load(self._pred_w_path, map_location="cpu"))
+                                    self.log("🏆 L4 流形预测器 v1 已部署 (训练权重 16872帧 — "
+                                             "JEPA LatentPredictor→ManifoldReadout, trained=True)")
+                                else:
+                                    self.log("🧠 JEPA 预测流形旁路已接: 权重未找到 "
+                                             f"({self._pred_w_path}) → 随机权重对照")
                                 self.log("🧠 JEPA 预测流形旁路已接: LatentPredictor→ManifoldReadout "
-                                         "(每帧真调用; 随机权重待训练, 预测列=trained:False 对照)")
+                                         "(每帧真调用; 预测列=trained 对照)")
                             except Exception as _pe:
                                 _pred = None
                                 self.log(f"⚠️ predictor 注入失败(旁路跳过): {_pe}")

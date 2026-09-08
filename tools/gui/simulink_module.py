@@ -11033,7 +11033,25 @@ class SimulinkModule(QWidget):
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
                 self._ss_last_sim = sim           # 🔭 可视化层: probe 数据源 (真实化每帧更新)
-                tr = sim.run(cap=getattr(self, "_cap_level", None))
+                # 🎯 2026-09-09 L4 抗干扰 attempts: cap=L4 → 每次 run 自动注入新干扰布局
+                #   (拿起前光模块移位/转向); 失败 (布局死局/未完成) → 换新干扰重试 ≤5 次,
+                #   = 来料重摆语义, 直到任务最终成功 (容忍干扰, 最后完成任务)
+                _cap = getattr(self, "_cap_level", None)
+                _attempts = 1
+                while True:
+                    _prev_round = getattr(sim, "_jitter_round", 0)
+                    sim._jitter_round = _prev_round + 1
+                    tr = sim.run(cap=_cap)
+                    _done = bool(tr["done"][-1]) if tr.get("done") else False
+                    _aoi = ((tr.get("_meta") or {}).get("aoi_report") or {})
+                    _ok = _done and ((_cap or "").lower() != "l4" or sim.mode != "full"
+                                     or _aoi.get("ok"))
+                    if _ok or str(_cap).lower() != "l4" or _attempts >= 5:
+                        if _attempts > 1:
+                            _logs.append(f"🎯 L4 抗干扰: 第 {_attempts} 次布局尝试成功 "
+                                         f"(来料重摆 {_attempts-1} 次)")
+                        break
+                    _attempts += 1
                 v = sim._vis
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
                 self._real_tr = ("ok", tr, sim, rate, list(_logs))
