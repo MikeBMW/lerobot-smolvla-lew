@@ -1,0 +1,7 @@
+{
+  "model": "act_7motor",
+  "frames": 55,
+  "action_mse": 0.0,
+  "success_rate": 1.0,
+  "latency_ms": 6.86
+}
