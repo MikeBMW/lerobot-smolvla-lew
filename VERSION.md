@@ -2,10 +2,12 @@
 
 > 语义化版本: `主.次.补丁` — 主(架构重构) · 次(功能模块) · 补丁(修复/小优化)
 
-## 版本号位置 (改版本必同步三处)
-1. `tools/gui/studio.py` — `ver = QLabel("Z-MAX vX.Y.Z")` (品牌版本小字)
-2. `tools/gui/studio.py` — `setWindowTitle("... vX.Y.Z [W-01]")` (窗口标题 + 变更摘要)
-3. `git tag vX.Y.Z` — 打 tag 并 push
+## 版本号位置 (改版本必同步)
+1. `tools/gui/studio.py` — `ver = QLabel("Z-MAX vX.Y.Z")` (品牌版本小字) + `setWindowTitle(... vX.Y.Z ...)` (窗口标题, 两处) + changelog 注释前缀
+2. `tools/gui/update_checker.py` — `CURRENT_VERSION = "vX.Y.Z"`
+3. `tools/gui/version_sync.py` — `zmax_ver = "X.Y.Z"`
+4. `tools/gui/docs_sync.py` — `"version"` + `"zmax_version"` 两键
+5. `git tag vX.Y.Z` — 打 tag 并 push
 
 ## 变更摘要规范
 - 窗口标题注释里按 `vX.Y.Z: 变更点1+变更点2` 追加最新版本摘要到最前。
@@ -15,6 +17,7 @@
 
 | 版本 | 日期 | 内容 |
 |------|------|------|
+| **v5.3.0** | 09-08 | **L3 全链接入 GUI + 功能清单 v2 分级 + smolvla 数据管道**: ①🚀L3 全链(插拔+AOI)GUI 接入 — ▶运行 加勾选 mode=full 13 段 (插→拔→AOI→放回), R1 视觉 seed104 877 步闭环 + AOI PASS, 每轮 ~20-40s (GPU YOLO); 13 段状态机 + DiT 双通路接入; ②功能清单 v2 — L2🔧基础分段小模型 / L3🚀端到端 VLM+FM-ActionHead / L4🏆专家世界模型, capability_levels.py 分级 + 测试用例对应 + ECS 网页导出; ③sim_real 教师图像数据集采集器 (collect_simreal_vla_data.py + _frame_sink 钩子, 3/3 验证通) = smolvla VLA 数据管道; ④标定层布局收编: 引力-斥力-动作(收 DiT) + 潜空间节点改 潜空-流形(收 L4 流形); ⑤原子技能源码集中 src/lerobot skills 文件夹; ⑥修复: 直方图/归因 probe.clear() 重置 _seq 恒 1 致按 _seq 去重全丢弃 (08-22 实锤), 仿真波形时间轴播放光标; ⑦版本号补同步 5.1.0→5.3.0 (v5.2.0 发布漏同步 GUI 内版本) |
 | **v5.2.0** | 09-08 | **画布三级能力架构 (老倪: 专家=世界模型 / 高级=端到端模仿学习 / 基础=分段式小模型; 整体模块化可分可合按场景配置)**: ①**三级能力分层重排** state_space_obs.json (56 节点 67 连线): 🏆专家功能·世界模型技术 (y-820: 潜空间预测+接触/性能流形导航地图 = z 上的导航专家, 标定层含潜空间; 最强能力) · 🚀高级功能·端到端模仿学习 (y-1050: VLM 通用视觉编码器 SmolVLA式 [图像/视频帧/触觉/YOLO检测框→token→潜空间] + y-610: Flow-Matching Action Head DiT decoder [潜空间 z→动作块], 参考 src/lerobot/policies/smolvla_lew) · 🔧基础功能·分段式小模型 (数据/感知 YOLO/融合/前馈MLP/状态机/原子技能SK01-08/执行器, 全部带 [基础·分段小模型] 标记; 单独能跑=现有插拔链路零改动, ✅插入完成 35.10s 实测); ②**VLM 潜空间编码 + Decoder 节点逻辑**注册 node_logic.py (node_ss_vlm: 引擎轨迹→z R⁷ 展示 手→目标/手→工件/夹持; node_ss_dec: 流形坐标→解码动作幅度; 右键源码映射 smolvla_lew/modeling + manifold_layer); ③连线: YOLO框/触觉/图像帧→VLM→[流形专家层预留]→ActionHead→前馈加速器融合 (流形与 ActionHead 间专家接入 = 后续迭代); ④**修复画布崩溃**: flow JSON 新节点 w/h/x/y 字符串未转 int → SimNodeItem.boundingRect QRectF(0,0,"110","110") TypeError Fatal Abort → 75 处全转 int |
 | **v5.1.0** | 09-08 | **原子技能肌肉记忆 (仿人类小脑, 老倪: 同动作多次→固化标杆→快速直通, 越练越顺)**: ①新 `muscle_memory.py` (模块级单例+持久化 data/muscle_memory.json): 观察期逐帧记录 (stage, x, u_exec) 实际决策层输出 → 同场景同技能连续成功≥3次固化 → 标杆=最近成功轮 u_exec 序列 (整段小脑重放); 成功轮持续指数融合 (α=0.3 平滑去噪, 数据增强=多轮平均); ②`state_space_sim_real.py` 集成 (SS_MUSCLE=0 可关): begin_episode/feed/end_episode + 快通道 (接近/对位/下降/抓取/抬起 段固化后 u_ff 由标杆接管, 跳过 MLP 精算 = 练熟的动作小脑直接给力; 转移/插入/完成 段保持实时决策=毫米级对准+插拔安全; decide/反馈/饱和限幅链全保留); ③测试 (R0 seed104 6轮): ep1-3 学习 σ0.00087 → ep3 全 7 技能段固化 → ep4-6 快通道命中 180/182/183 帧全部成功 (跳过决策精算依然完成) σ0.00086; 失败轮不固化 (诚实); ④GUI: 运行结束终端打印固化库状态 (🧠 肌肉记忆库: 场景104: 接近(练N次)...); ⑤画布 SK01-08 运行高亮随阶段 + 命令文件触发 (zmax_nav_cmd: simulink/ss_canvas/ss_run) |
 | **v5.0.0** | 09-07 | **双平台大版本 — Windows/macOS 3D 渲染回归修复 + R1 视觉闭环打通 + 全模型训练** (老倪: "大版本升级, 发布 windows 和 mac 版本; 3.2.4 能渲染3D 之后版本不能"): ①**3D 渲染回归 (Windows/macOS exe)**: v3.3.4 为修 GNOME 黑屏注释 AA_UseSoftwareOpenGL 软件 GL → Windows/macOS 无硬件 GL 环境 3D 无法渲染 (3.2.4 全启用正常) → **平台条件启用** win32/darwin 软件 GL 兜底, Linux GNOME 黑屏修复保留; ②**R1 视觉"抓不起光模块"根因链 5 修复** (state_space_sim_real/yolo_state_aligner, 全部数值探针实锤): 深度 scale 0.978→0.9616 (10 布局标定) / geom peg_z0 取 x 当 z (obs[4:7]=xyz) / 视觉未检出禁回退模拟器真值 (红线) / 幻影免疫+定位状态机 (夹爪靠近检测框锁夹爪, 首轮高位定位锁存+回退重定位+z 窗±2cm+大跳变 2 帧确认) / 夹持真值锚定 (随动验证 15 帧稳定后 off0=实测, 视觉残差不污染转移插入) → **seed104 (GUI 演示) 视觉闭环 500 步失败→352 步完整插入 3/3 稳定**; ③**3D 显示两修复** (老倪目检): gripper 语义统一夹紧度 (metaworld obs 1=开 vs 引擎 1=夹紧 → 3D 夹爪反相) + tr 携带现场几何 _meta (孔口/盒随布局漂移, 3D 写死坐标偏 3.8cm → 场景孔口与插入点对齐); ④**全模型训练**: 左脑 150ep/9.2万帧 (教师 40 新布局全成功) 30K 步 loss 收敛 / 右脑 147+ 布局真实力标签 contact acc 0.999 / YOLO 真实尺寸标注实验证伪 (标注中心=geom≠pegGrasp 控制锚, revert 保 v1); ⑤评估: R0 10 轮 5/10, R1 视觉 10 轮 3/10 (102/104/108; 101/103 视觉残差临界, 105-109 物理难布局同 R0) — 难布局=无倒角刚体物理极限留真机; GUI 演示布局 100%; 修复+训练+发布全链路 commit/push/飞书通知/技能沉淀 |
