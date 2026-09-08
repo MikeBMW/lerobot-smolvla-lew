@@ -370,11 +370,21 @@ class VerificationLayer:
     # 🚀 2026-09-08 L3 扩展断言组: chain(13段链) / vlm(教学) / dec(教学) / muscle
     # ════════════════════════════════════════════════════════
     def _chain(self, mode):
-        """跑真实化 R0 (无视觉) 指定模式 — full 链 ~877 步 ≈ 1-2s"""
+        """跑真实化 R0 (无视觉) 指定模式 — full 链 ~877 步 ≈ 1-2s
+        🧠 2026-09-08: 回归测的是决策层性能基线 → 临时关肌肉记忆 (SS_MUSCLE=0),
+        避免固化标杆重放 (412-469步) 干扰 343 步基线判定; muscle 组单独验记忆"""
         sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
-        from state_space_sim_real import RealStateSpaceSim
-        sim = RealStateSpaceSim(seed=104, vision=False, mode=mode, log=lambda *a: None)
-        return sim.run(max_steps=1600)
+        _old = os.environ.get("SS_MUSCLE")
+        os.environ["SS_MUSCLE"] = "0"
+        try:
+            from state_space_sim_real import RealStateSpaceSim
+            sim = RealStateSpaceSim(seed=104, vision=False, mode=mode, log=lambda *a: None)
+            return sim.run(max_steps=1600)
+        finally:
+            if _old is None:
+                os.environ.pop("SS_MUSCLE", None)
+            else:
+                os.environ["SS_MUSCLE"] = _old
 
     def t_chain_full(self, np):
         tr = self._chain("full")

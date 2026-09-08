@@ -2324,7 +2324,7 @@ _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def s
 _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")
 # 🐛 2026-09-02 老倪: 动作调制器节点双击 → 直接显示 decide 方法本体 (否决权+前馈反馈相加+阶段限速),
 #   不是整个类 (原映射 class 行号 27 也不准, 实际 30)
-_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 179, "def decide")
+_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 216, "def decide")
 _EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
@@ -2843,7 +2843,7 @@ for _skid, _ln, _sym in _SK_EXT_LOC:
 
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
 _EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 65, "class ContactManifold")
-_EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 138, "class PerformanceManifold")
+_EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 154, "class PerformanceManifold")
 
 
 # 🧠 高级层 VLM 编码器 + 潜空间 Decoder (2026-09-08 老倪: encoder VLM→潜空间→decoder 高级功能;
@@ -3173,7 +3173,7 @@ _EXTERNAL_LOC["action_head"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "poli
 _EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
 _EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
-                                         "predictor_layer.py"), 75, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src)
+                                         "predictor_layer.py"), 78, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src)
 _EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (键对齐注册 ss_dec; 架构归位 src)
 
@@ -3241,4 +3241,4 @@ _reg("ss_test", ["Test"],
     "🧪 Test 用例执行 — 验证层自动化 test 套件全跑 (F-A01~F-F04, PASS/FAIL+数值证据; 源码 verification_layer.py t_F_* 断言, 断点可进)",
     node_ss_test)
 _EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
-_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 97, "class VerificationLayer")
+_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 102, "class VerificationLayer")
