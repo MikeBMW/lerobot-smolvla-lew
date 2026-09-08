@@ -429,6 +429,8 @@ class RealStateSpaceSim:
         self.stage_hist = []
         self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
+        self._off_prev = None      # 上一帧 光模块−夹爪 (真值随动跟踪, 锚定判据 v2)
+        self._x_prev = None        # 上一帧 夹爪位置 (判夹爪是否在动 — 抬升试探锚定)
         self._close_steps = 0      # 抓取阶段闭合指令持续步数
         self._z_stall = 0          # 下降停滞帧数 (被销/台顶住判据)
         self._z_prev = None        # 上一帧 hand z
@@ -537,8 +539,14 @@ class RealStateSpaceSim:
         return float(np.linalg.norm(self.peg_head() - self._goal_p()))
 
     # ── 主循环 ──
-    def run(self, max_steps=500):
-        """R0 主循环 — metaworld 单轮硬上限 500 步 (max_path_length), 截断即未完成"""
+    def run(self, max_steps=None):
+        """R0 主循环 — metaworld 单轮硬上限 (insert 默认 500 步 / full 全链 2000 步)。
+
+        🐛 2026-09-08 静静: 原默认 500 步 — mode=full (插拔+AOI 13 段) 实测需 850-1000 步,
+        默认 500 必截断未完成 (45ce9453 GUI 接线漏传 max_steps → GUI 勾 L3 全链同样截断,
+        09-08 实锤)。显式传 max_steps 仍可覆盖。"""
+        if max_steps is None:
+            max_steps = MAX_STEPS if self.mode == "full" else 500
         env = self.env
         self._reset(self.seed)
         # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)
@@ -847,19 +855,28 @@ class RealStateSpaceSim:
                 #   根部属正常, 过后 peg 漂移>8mm 即夹持失效, 早发现早重抓, 别等插入被顶脱)
                 _off = o[4:7] - self.x
                 _slip_th = 0.020 if self._grasp_age < GRASP_SLIP_GRACE else GRASP_SLIP_MM
-                # 🐛 2026-09-07 静静 (R1 视觉残差消除): 随动验证通过 (夹持建立, peg 随夹爪
-                #   稳定 ≥10 帧且偏差<5mm) 后, off0 锚定为**实测真值** o[4:7]−x —
-                #   视觉 peg 定位残差 (~2.5mm) 不再污染转移/插入 (peg 头擦孔沿滑脱根因)。
-                #   语义真机同构: 夹爪确认夹持后工件位置由夹爪机械定位保证 (编码器精度),
-                #   视觉只负责"找到并接近工件", 不负责毫米级插入对准。
-                if (self._grasp_off0 is not None and self._grasp_age >= 15
-                        and float(np.linalg.norm(_off - self._grasp_off0)) < GRASP_SLIP_MM
-                        and not getattr(self, "_off0_anchored", False)):
-                    self._grasp_off0 = _off.copy()
-                    self._grasp_gap_z = float(self.x[2] - o[4:7][2])
-                    self._off0_anchored = True
-                    self.log(f"🎯 夹持真值锚定: off0={np.round(self._grasp_off0,4)} "
-                             f"(视觉残差+夹爪内轴向滑移已消除, 转移/插入走编码器)")
+                # 🐛 2026-09-08 静静 (R1 误判滑脱实锤修复): 旧锚定要求 |off−off0|<8mm 才换真值 —
+                #   锁存瞬间视觉残差恰 >8mm (seed104 R1 实测 8.3mm) → 永不锚定 → 宽限期后
+                #   判据偏差 (恒=视觉残差 8.3mm) > 8mm → **真夹住 (peg 真值全程随动, 几何与
+                #   R0 成功轮相同) 也被判"滑脱"强制回退** → 回退碰移 peg → 反复夹不起 (09-08
+                #   老倪目击)。正解: 锚定判据 = 抬升试探物理事实 — 夹爪在动 (Δx>1mm) 而 peg
+                #   真值跟随 (off 帧间漂移<3mm) 即夹住, 立即锚定当前真值 off。视觉残差从此
+                #   不参与夹持后判定 (真机同构: 机械夹持后工件位置由夹爪/编码器保证, 09-07 语义)。
+                if (not getattr(self, "_off0_anchored", False)
+                        and self._grasp_off0 is not None and self._grasp_age >= 3):
+                    _dx = (float(np.linalg.norm(self.x - self._x_prev))
+                           if self._x_prev is not None else 0.0)
+                    _doff = (float(np.linalg.norm(_off - self._off_prev))
+                             if self._off_prev is not None else 9e9)
+                    if (_dx > 0.001 and _doff < 0.003) or (
+                            self._grasp_age >= 15
+                            and float(np.linalg.norm(_off - self._grasp_off0)) < GRASP_SLIP_MM):
+                        self._grasp_off0 = _off.copy()
+                        self._grasp_gap_z = float(self.x[2] - o[4:7][2])
+                        self._off0_anchored = True
+                        self.log(f"🎯 夹持真值锚定 (抬升试探 peg 跟手): off0="
+                                 f"{np.round(self._grasp_off0,4)} "
+                                 f"(视觉残差不再影响滑脱判定, 转移/插入走编码器)")
                 if float(np.linalg.norm(_off - self._grasp_off0)) > _slip_th:
                     self.grasped = False                  # 掉了 → grasp_force 0 → 调度器回退重抓
                     self._grasp_off0 = None
@@ -874,6 +891,9 @@ class RealStateSpaceSim:
                             self.log("⚠️ 光模块滑脱 → 强制回退接近重抓")
                     except Exception:
                         pass
+                # 真值随动跟踪 (锚定判据 v2 用: 夹爪移动量 + peg 相对漂移)
+                self._x_prev = self.x.copy()
+                self._off_prev = _off.copy()
             # ⑦ 阶段推进 (证据全现场)
             # 🚀 2026-09-08 L3 扩展 (mode=full): AOI/放回 流程事件 + 过程指标统计
             _stg = self.sched.stage()
