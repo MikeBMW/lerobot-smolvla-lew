@@ -136,6 +136,7 @@ class RealStateSpaceSim:
         # 🚀 2026-09-08 L3 扩展: 任务链模式 "insert"(默认回归=插入完成) / "full"(插拔+AOI 闭环)
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
+        self._frame_sink = None    # 📸 2026-09-08: 帧采集钩子 (smolvla 图像数据; None=关)
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -574,6 +575,12 @@ class RealStateSpaceSim:
             # ② 观测刷新 (x = obs hand 编码器真值; 销/孔感知: R0 真值 / R1 视觉)
             d = env.data
             o = np.asarray(env._get_obs(), dtype=np.float64).ravel()
+            # 📸 2026-09-08: 数据采集帧钩子 (smolvla 图像数据集生成; 默认 None 零开销)
+            if self._frame_sink is not None:
+                try:
+                    self._frame_sink(self, act, o)
+                except Exception:
+                    pass
             # 🎯 R1 真实视觉: **每帧渲染 + detect_3d** (老倪红线: 不能造假 — 禁用节流/冻结/
             #   复用旧值). 每步 env.step 后 render() → YOLO 检测 → 本帧真值.
             #   ⚠️ 成本: ~0.5-1s/步 × 500 步 ≈ 4-9 分钟/轮 (真流程的代价, 接受)
