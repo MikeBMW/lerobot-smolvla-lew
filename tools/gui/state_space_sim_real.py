@@ -187,7 +187,13 @@ class RealStateSpaceSim:
         # 🧠 2026-09-07 老倪: 原子技能肌肉记忆 (仿小脑) — 每次运行观察技能段轨迹,
         #   连续成功稳定后固化标杆, 命中时快通道给目标 (越练越顺); 失败不固化。
         #   开关: SS_MUSCLE=0 可关; 默认开 (引擎级自动积累, 无侵入 GUI)
-        if os.environ.get("SS_MUSCLE") != "0":
+        # 🐛 2026-09-08 静静 (R1 视觉 9/9 失败实锤): 肌肉记忆仅限 R0/确定性环境 —
+        #   快通道用历史轮标杆 u_exec 开环重放接近/对位/下降/抓取段, R1 视觉/接触有
+        #   随机性 (布局微漂+peg 被碰史不同) → 标杆与新状态失配 → 下降按旧轨迹落点偏 →
+        #   空夹循环 (SS_MUSCLE=0 同轮 352 步成功 vs =1 失败 500 步); 且 R1 成功轮会
+        #   把标杆库混入不同代码版本轨迹 (污染)。R0 确定性仿真标杆可重复 (09-07 老倪
+        #   验收场景 6 轮), 不受影响。GUI ▶运行 = R1 视觉 → 小脑自动关闭, 走实时感知。
+        if os.environ.get("SS_MUSCLE") != "0" and not self.vision:
             try:
                 from muscle_memory import get_memory
                 self.muscle = get_memory()
@@ -312,6 +318,16 @@ class RealStateSpaceSim:
             self._vis["boxes"] = getattr(self._aligner, "_last_res", None)
             # 🧩 2026-09-07: 当前阶段写入 _vis (线程安全共享) → GUI 轮询读到 → 原子技能 SK 节点高亮
             self._vis["stage"] = st or ""
+            # 📸 2026-09-08: VLM 真实编码关键帧 — 每阶段第 6 帧存一张 (画面稳定后),
+            #   供 node_ss_vlm 真实编码 (SmolVLM 吃真实渲染图, 不造假); 回退重进同阶段会覆盖
+            if img is not None and st:
+                if st != self._kf_stage_prev:
+                    self._kf_stage_prev = st
+                    self._kf_cnt = 0
+                else:
+                    self._kf_cnt += 1
+                if st not in self._key_frames and self._kf_cnt >= 6:
+                    self._key_frames[st] = np.asarray(img).copy()
             if os.environ.get("R0_TRACE"):
                 o = np.asarray(self.env._get_obs(), dtype=np.float64).ravel()
                 _pe = np.linalg.norm(self._vis["peg"] - o[4:7]) if self._vis["peg"] is not None else float("nan")
@@ -375,6 +391,10 @@ class RealStateSpaceSim:
         # R1 视觉初始定位 (第一步前刷新, 工件位置未知 → 视觉找)
         self._vis["peg"] = self._vis["hole"] = None
         self._reloc = True            # 🐛 2026-09-07: 首轮需视觉定位; 滑脱回接近时再置 True
+        # 📸 2026-09-08: VLM 真实编码关键帧缓存 (每阶段存一帧真实渲染图; R1 vision 才有)
+        self._key_frames = {}
+        self._kf_stage_prev = None
+        self._kf_cnt = 0
         self._peg_cur = None          # 视觉 peg 控制估值 (None=尚未定位)
         self.grasped = False
         self.peg_off = None            # (保留字段, 夹持用 _grasp_off0)
@@ -1070,6 +1090,9 @@ class RealStateSpaceSim:
             "done": bool(tr["done"][-1]) if tr["done"] else False,
             "mm_hits": int(getattr(self, "_mm_hits", 0)),
         }
+        # 📸 2026-09-08: VLM 关键帧随轨迹走 (node_ss_vlm 播放/双击取当前阶段真实帧编码)
+        if getattr(self, "_key_frames", None):
+            tr["key_frames"] = {k: np.asarray(v).copy() for k, v in self._key_frames.items()}
         # 🧠 2026-09-07 肌肉记忆: 本轮结束 — 成功轮提交段轨迹供固化/精进, 失败轮不固化
         if getattr(self, "_mm_on", False) and self.muscle is not None:
             try:
