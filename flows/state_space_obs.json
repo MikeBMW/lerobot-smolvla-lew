@@ -545,7 +545,7 @@
    "actions": [],
    "color": "#3fb950",
    "params": {
-    "mode": "infer",
+    "mode": "train",
     "state_space": true,
     "desc": "[基础·分段小模型] 运行模式选择: 🚀训练=训练真实模型 / 📷推理=加载真实模型rollout · 双击切换"
    }
@@ -681,7 +681,7 @@
   {
    "id": "sscalib",
    "type": "model",
-   "name": "🧮 标定层 · 引力/斥力/潜空间",
+   "name": "🧮 标定层 · 引力-斥力-动作",
    "icon": "🧮",
    "color": "#58a6ff",
    "inputs": [
@@ -698,7 +698,7 @@
    "params": {
     "state_space": true,
     "calib_layer": true,
-    "desc": "[专家·世界模型] 标定层三域: 引力=Kp+阶段速度上限(快速动作), 斥力=K_kalman+EMA+接触增益+否决阈值(状态预测), 潜空间=世界模型流形(维度/类别/prior_A); 双击=标定面板",
+    "desc": "[L4 标定·地图校准 回路外] 引力(快速动作标定: Kp+阶段限速) — 斥力(状态预测标定: 卡尔曼/接触/否决) — 动作(新: DiT action 输出标定量, 输入见 ssdec 连线); 潜空间域已独立至「🧮 潜空-流形」节点 (L4 流形输入); 源码 calibration_layer.py",
     "source": "src/lerobot/calibration/calibration_layer.py"
    }
   },
@@ -782,11 +782,11 @@
    "x": 870,
    "y": -1055,
    "id": "sslat",
-   "name": "🧮 潜空间 · 世界模型流形标定",
+   "name": "🧮 潜空-流形",
    "params": {
     "state_space": true,
     "calib_layer": true,
-    "desc": "[专家·世界模型] 潜空间 LATENT_CALIB: 世界模型预测流形的几何标定 — 维度 latent_dim=4(位置3+预测力1)/类别 flat-linear·const-vel/速度场 prior_A=1.0; PCA 实测 39D 观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 双击=标定表格",
+    "desc": "[L4 潜空间/世界模型流形标定] 潜空间=世界模型预测流形 (地图几何标定: 维度/类别/速度场 prior_A) + 轨迹观测 PCA 有效维实测; 输入: L4 流形(接触/性能) + 潜状态/先验预测; 源码 calibration_layer.py LATENT_CALIB",
     "source": "src/lerobot/calibration/calibration_layer.py"
    }
   },
@@ -1759,6 +1759,30 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "action 直通执行端 (端到端快路径)"
+  },
+  {
+   "id": "lkdc_cal",
+   "f": "ssdec",
+   "t": "sscalib",
+   "f_port": "out1",
+   "t_port": "in4",
+   "label": "DiT action (动作域标定量)"
+  },
+  {
+   "id": "lkmc_lat",
+   "f": "ssmani_c",
+   "t": "sslat",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "接触流形 e∥/e⊥ (L4 流形)"
+  },
+  {
+   "id": "lkmp_lat",
+   "f": "ssmani_p",
+   "t": "sslat",
+   "f_port": "out2",
+   "t_port": "in4",
+   "label": "性能流形 V_p/η (L4 流形)"
   }
  ]
 }

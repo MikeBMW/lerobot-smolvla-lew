@@ -54,14 +54,15 @@ class CalibrationDialog(QDialog):
         super().__init__(parent)
         self.layer = layer
         self.calib_path = calib_path
-        self.setWindowTitle("🧮 标定层 · 引力/斥力/潜空间 (地图校准)")
+        self.setWindowTitle("🧮 标定层 · 引力-斥力-动作 / 潜空-流形 (地图校准)")
         self.setStyleSheet(_DARK)
         self.setMinimumWidth(980)
         lay = QVBoxLayout(self)
 
         # ── 顶部说明 ──
         tip = QLabel("引力 = 快速动作 (目标吸引 + 阶段速度标定) · 斥力 = 状态预测 (卡尔曼校正/滤波/接触判定) · "
-                     "潜空间 = 世界模型预测流形 (维度/类别/速度场 prior_A) · "
+                     "动作 = DiT action 输出标定量 (L3→L4, 画布连线) · "
+                     "潜空间域 → 独立节点「🧮 潜空-流形」(输入 L4 接触/性能流形; 维度/速度场 prior_A) · "
                      "平衡偏差 |引力势−斥力势| → 0 = 无漂移 (V≈0); 潜空间=流形地图, 世界模型=地图导航仪")
         tip.setWordWrap(True)
         tip.setStyleSheet("color:#8b949e; font-size:11px;")

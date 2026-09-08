@@ -2673,8 +2673,8 @@ def node_ss_lat(ctx):
         return False
 
 
-_reg("ss_lat", ["潜空间"],
-    "🧮 潜空间 — 世界模型预测流形标定: 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
+_reg("ss_lat", ["潜空间", "潜空", "潜空-流形"],
+    "🧮 潜空-流形 — 潜空间/世界模型流形标定 (原「潜空间 · 世界模型流形标定」): 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 输入含 L4 流形(接触/性能)连线 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
     node_ss_lat)
 _EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 58, "LATENT_CALIB")
 
