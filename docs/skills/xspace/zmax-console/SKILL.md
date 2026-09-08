@@ -219,6 +219,7 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **配套 (fe2c82af)**: 打开即自动播放 — set_trajectory 末尾 `_timer.start(60)`(原默认静态第 0 帧, 用户以为"打不开")。
 - 验证: sim.run() 322 步 set_frame 0→321 跟随, 0.5s 不被自播抢动。
 - **🐛 real sim.run 轨迹喂 3D 缺 residual_vec KeyError → 窗口打不开 (2026-09-07 v4.4.0 实锤, 老倪"3D视图无法打开")**: open_ss_3d 优先用 _ss_tr (真实化 sim.run 轨迹) 时, ss_dreamview._update_frame 直读 `tr["residual_vec"]` (无 .get 容错, 引擎轨迹才有该 key) → KeyError 崩在 10774 构造行, 日志停在"3D 视图数据源: 程序执行轨迹"无后续。修: sim_real run() 补 latent_vec/prior_vec/corrected_vec/residual_vec 四个顶层向量通道 (对齐引擎 tr 格式, 数据每帧已有: prior/latent/corrected/residual)。排查: GUI stderr (studio_launch.log) 见 KeyError; 3D 打开后日志缺"✅ 已打开 3D 分层视图"行。**铁律: 任何新轨迹源 (sim_real/gen/episode) 喂 DreamView3D 前, 对照 ss_dreamview 引用的 18 个 tr key 全量补齐**。
+- **📌 真实化闭环 3 坑定稿 (v5.4.0, 2026-09-08)**: 夹持锚定判据 v2(抬升试探物理事实, 视觉残差不参与夹持后判定 — "反复夹不起光模块"真根因) + 肌肉记忆仅限 R0(快通道标杆 × R1 视觉随机性 = 9/9 失败实锤) + 节点算法归位 src 三件套/右键映射键对齐(ssvlm≠ss_vlm 查不到; params.source 优先指真实实现)。完整排查链与验证数字见 `references/real-closed-loop-3pits-2026-09-08.md`。
 
 ## _EXTERNAL_LOC 行号铁律 (2026-09-02 v3.4.3, 老倪连续 3 轮 "源码不是这个")
 - **症状**: 双击画布节点编辑器显示正确类, 但「VSCode 打开/复制位置」跳到错误代码 → 用户反复看到"自适应状态估计器源码=forward"(ss_est 映射行号 34, 类实际 45, 34 行正好是 FeedforwardAccelerator.forward 的代码)。
