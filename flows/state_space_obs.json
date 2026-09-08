@@ -45,7 +45,7 @@
   {
    "id": "ssbg3",
    "type": "row_bg",
-   "name": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制器 · 8阶段, 握否决权)",
+   "name": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制器 · 13阶段(插拔+AOI闭环), 握否决权)",
    "x": -20,
    "y": 275,
    "w": 3000,
@@ -1171,13 +1171,13 @@
    "type": "model",
    "name": "🎯 Flow-Matching Action Head (DiT)",
    "x": 700,
-   "y": -195,
+   "y": -610,
    "w": 280,
    "h": 110,
    "icon": "🔄",
    "color": "#f0883e",
    "params": {
-    "desc": "[高级·端到端模仿学习] 高级·Decoder (SmolVLA Sys-11): DiT flow-matching action head — 从潜空间 z 去噪解码动作块 (chunk); 源码 src/lerobot/policies/smolvla_lew/action_head.py class SmolVLALewActionHead",
+    "desc": "[高级·端到端模仿学习] 高级·Decoder (SmolVLA Sys-11): DiT flow-matching action head — 从潜空间 z 去噪解码动作块 (chunk); 双下行通路: ①action→前馈层(L2, 练熟固化=肌肉记忆快通道) ②action→执行端直通(端到端快路径); 源码 src/lerobot/policies/smolvla_lew/action_head.py class SmolVLALewActionHead",
     "decoder": true,
     "state_space": true
    }
@@ -1725,7 +1725,7 @@
    "f": "ssmani_c",
    "t": "ssdec",
    "f_port": "out1",
-   "t_port": "in1",
+   "t_port": "in3",
    "label": "接触流形坐标"
   },
   {
@@ -1742,7 +1742,7 @@
    "t": "ssff",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "u_mani 解码建议"
+   "label": "action→前馈层 (练熟固化=肌肉记忆快通道)"
   },
   {
    "id": "lkvlm_ah",
@@ -1751,6 +1751,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "潜空间 z"
+  },
+  {
+   "id": "lkdc_act",
+   "f": "ssdec",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "action 直通执行端 (端到端快路径)"
   }
  ]
 }

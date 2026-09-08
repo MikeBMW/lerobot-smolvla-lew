@@ -83,6 +83,11 @@ def _make_env():
     mt = _mt.MT1("peg-insert-side-v3")
     env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
     env.set_task(mt.train_tasks[0])
+    # 🚀 2026-09-08 L3 扩展: 全链 (插→拔→AOI→回放) 需 >500 步 — 放行环境硬上限
+    try:
+        env.max_path_length = 3000
+    except Exception:
+        pass
     _ENV = env
     return env
 
@@ -114,15 +119,25 @@ INS_DEV_FRAMES = 3
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
+# 🚀 2026-09-08 L3 扩展 (插拔+AOI 闭环, mode=full): AOI 检测工位 — 台面固定标定设备
+#   (真机=产线一次标定, 同 hole 语义; 3D 视图画镜头设备, 引擎只伺服到对焦点)
+AOI_FOCUS = np.array([0.12, 0.62, 0.10])   # 镜头光学对焦点 (光模块头悬停检测位)
+AOI_HOVER = 0.08                            # AOI转移: 对焦点上方悬停高度 (m)
+PULL_BACK = 0.16                            # 拔出: 光模块头拉出孔口沿孔轴反方向距离 (m)
 PEG_HEAD_OFF_XY = 0.13  # 光模块头相对抓握点沿 -X 0.13 (现场用 site, 此值仅兜底)
 
 
 class RealStateSpaceSim:
     """R0 物理真实化 — run() 返回时间序列 (结构与引擎 tr 兼容)"""
 
-    def __init__(self, log=None, seed=0, vision=False, vision_every=25):
+    def __init__(self, log=None, seed=0, vision=False, vision_every=25, mode=None):
         self.log = log or (lambda *a: None)
         self.seed = seed
+        # 🚀 2026-09-08 L3 扩展: 任务链模式 "insert"(默认回归=插入完成) / "full"(插拔+AOI 闭环)
+        #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
+        self.mode = mode or os.environ.get("SS_MODE", "insert")
+        if self.mode not in ("insert", "full"):
+            raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
         self.vision_every = vision_every   # YOLO 刷新间隔 (步); 工件静止, 中间步沿用上次
         self.env = _make_env()
@@ -340,6 +355,9 @@ class RealStateSpaceSim:
             #   o[6]=0.03 才是 z) → 抬升锚/幻影免疫全错位。R0 曾靠抬升目标补偿巧合能跑,
             #   修后必须 R0 回归 + R1 幻影免疫才真正生效
             "hand0": o[0:3].copy(),                               # 夹爪初始
+            # 🚀 2026-09-08 L3 扩展: AOI 检测工位 (固定标定设备, 同 hole 语义非随机)
+            "aoi_focus": AOI_FOCUS.copy(),
+            "peg0_place": o[4:7].copy(),                          # 放回目标 (body 初始位, 全链闭环)
         }
         # 🐛 2026-09-07 静静: 带孔盒中心现场采样 (metaworld 盒随布局漂移, 3D 场景要画对
         #   box 才能让孔口/插入点落在盒上 — 老倪"插入位置偏了"实锤: 写死 mouth y=0.462
@@ -394,10 +412,19 @@ class RealStateSpaceSim:
                                 # (浅夹 0.72 就抬滑脱率高; 深夹到 0.60 以下夹持力才足)
             align_th=0.025,     # 转移→插入 孔位对准 (光模块头-孔口水平, 视觉精度余量)
             insert_depth=0.006,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
-                                 #   精度余量; 引擎 0.004 在真实物理下差 0.1mm 磨死 — ep5 实锤)
+                                #   精度余量; 引擎 0.004 在真实物理下差 0.1mm 磨死 — ep5 实锤)
             lift_h=0.08,        # 抬起→转移: 销升 8cm (孔口高 0.13, 销初始 0.03 — 升够才平移防撞台)
             max_veto=5,
+            mode=self.mode,     # 🚀 2026-09-08: insert / full (插拔+AOI 闭环)
         )
+        # 🚀 2026-09-08 L3 扩展 (mode=full): AOI/放回 流程状态 (每轮重置)
+        self._aoi_hold = 0          # AOI检测 对焦保持帧数 (到位后累计 = 采图时长)
+        self._drop_ready = False    # 放下: 到位触台 → 开爪标志
+        self._drop_released = False # 放下: 开爪完成 (观测夹爪已开) → 可判完成
+        self._f_max = 0.0           # 全轮接触力峰值 (AOI 报告过程指标)
+        self._depth_min = 9.9       # 插入段最小残余深度 (离孔底, AOI 报告)
+        self._aoi_report = None     # AOI 检测报告 (PASS/FAIL + 真实过程指标)
+        self._went_back_0 = False   # 是否曾回接近重抓 (AOI 报告过程指标)
         self.stage_hist = []
         self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
@@ -448,6 +475,26 @@ class RealStateSpaceSim:
                 # 段① 垂直降: xy 保持 (转移已对准), z 降到孔口中心
                 return np.array([ph_now[0], ph_now[1], hp[2]]) - off
             return self._goal_p() - off          # 段② 水平推入 (z 已同轴)
+        # 🚀 2026-09-08 L3 扩展 (mode=full): 拔出/AOI/回程/放下 目标 (全头语义 ph→目标点, 锚=夹爪)
+        if st == "拔出":
+            # 两段式: ①沿孔轴反方向拉出 (头到孔外 PULL_BACK, 同孔高) ②垂直抬离
+            #   (头高于孔口 0.10 — 平移不刮盒沿); _insert_depth() 与 advance 同判据
+            axis = (g["goal"] - g["hole"])
+            axis = axis / (float(np.linalg.norm(axis)) or 1.0)
+            exit_pt = g["hole"] - axis * PULL_BACK          # 孔外拉出点 (孔高)
+            if self._insert_depth() <= getattr(self.sched, "pull_out_m", 0.045):
+                ph_t = np.array([exit_pt[0], exit_pt[1], g["hole"][2]])
+            else:
+                ph_t = np.array([exit_pt[0], exit_pt[1], g["hole"][2] + 0.10])
+            return ph_t - off
+        if st == "AOI转移":
+            return g["aoi_focus"] + np.array([0.0, 0.0, AOI_HOVER]) - off
+        if st == "AOI检测":
+            return g["aoi_focus"] - off          # 光模块头到镜头对焦点 (悬停检测位)
+        if st == "回程":
+            return g["peg_head0"] + np.array([0.0, 0.0, 0.05]) - off
+        if st == "放下":
+            return g["peg_head0"] - off          # 光模块头落回初始位 (放件, 随后开爪)
         return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
 
     def peg_head(self):
@@ -540,7 +587,8 @@ class RealStateSpaceSim:
             self.gripper = float(o[3])
             # 下降停滞检测 (被销/台顶住): 每步 z 位移 <0.4mm 累计; 连续 ≥8 帧 = 物理接触顶住.
             #   (R1 视觉 光模块 z 偏低 1.5cm 实测 — at_grasp_pose 用视觉 z 会永远等不到, 卡下降)
-            if self._z_prev is not None and self.sched.stage() in ("下降", "抓取"):
+            #   🚀 2026-09-08: 放下段也统计 (放件触台判据 _z_stall>=6 → 开爪)
+            if self._z_prev is not None and self.sched.stage() in ("下降", "抓取", "放下"):
                 if abs(x_new[2] - self._z_prev) < 0.0004:
                     self._z_stall += 1
                 else:
@@ -672,6 +720,10 @@ class RealStateSpaceSim:
             u_sat = self.safety.saturate(u, limit=0.6)
             u_sat = np.asarray(u_sat, dtype=float).copy()
             u_sat[3] = float(u[3])
+            # 🚀 2026-09-08 L3 扩展: 放下放件 — 到位后开爪指令直接覆盖 (状态机保持
+            #   "抓取起锁存闭合", 放件属引擎执行细节: 先松爪, 爪开观测后判完成)
+            if getattr(self, "_drop_ready", False) and not getattr(self, "_drop_released", False):
+                u_sat[3] = 0.0
             # 🛡 插入段 site-推算偏差守卫 (2026-09-07 晚 静静, 重抓位置策略核心):
             #   peg 在夹爪内滑 → 编码器推算 peg 头 = "假对准" (实测 site-推算差 5→20mm 递增),
             #   毫米级插入下推算引导无意义; 偏差 >8mm 连续 3 帧 → 立即回接近重抓 (刷新锁存
@@ -797,28 +849,89 @@ class RealStateSpaceSim:
                     # 🐛 强制回退到接近: 滑脱时 光模块 可能半挂在夹爪上 (z 未落回台面),
                     #   advance 的"落回台面"回退判据不触发 → 卡死在转移/插入 (ep1/2/4 350步实锤)
                     try:
-                        if self.sched.stage_idx >= 4:
+                        if (self.sched.RETREAT_LO <= self.sched.stage_idx <= self.sched.RETREAT_HI):
+                            self._went_back_0 = True    # 🚀 AOI 报告过程指标: 曾回抓
                             self.sched._goto(0, "⚠️ 光模块滑脱 (peg 未随夹爪) → 强制回退重抓")
                             self._reloc = True     # 回接近 → 视觉重定位被碰移的销
                             self.log("⚠️ 光模块滑脱 → 强制回退接近重抓")
                     except Exception:
                         pass
             # ⑦ 阶段推进 (证据全现场)
+            # 🚀 2026-09-08 L3 扩展 (mode=full): AOI/放回 流程事件 + 过程指标统计
+            _stg = self.sched.stage()
+            self._f_max = max(self._f_max, force_norm)          # 接触力峰值 (全轮)
+            if _stg == "插入":
+                self._depth_min = min(self._depth_min, depth)   # 插入残余深度最小 (离孔底)
+            if self.mode == "full":
+                dist_aoi = float(np.linalg.norm(ph - g["aoi_focus"]))
+                if _stg == "AOI检测" and dist_aoi < 0.008:      # 对焦到位 → 采图保持
+                    self._aoi_hold += 1
+                    if self._aoi_hold >= self.sched.aoi_hold:
+                        ok = bool(self._depth_min < 0.008 and self._f_max < 1.0
+                                  and not getattr(self, "_went_back_0", False))
+                        self._aoi_report = {
+                            "ok": ok,
+                            "insert_depth_min_mm": round(float(self._depth_min) * 1000, 2),
+                            "force_peak": round(float(self._f_max), 3),
+                            "insert_stall_events": int(getattr(self, "_stall_events", 0)),
+                            "went_back_grasp": bool(getattr(self, "_went_back_0", False)),
+                        }
+                        self.log(f"📷 AOI 检测完成: {'PASS ✅' if ok else 'FAIL ❌'} "
+                                 f"插入残余深度 {self._aoi_report['insert_depth_min_mm']}mm "
+                                 f"接触力峰 {self._aoi_report['force_peak']} "
+                                 f"(过程指标: 深度<8mm & 力峰<1.0 & 无回抓)")
+                        self.sched._goto(self.sched.STAGES.index("回程"),
+                                         "📷 AOI 检测完成 → 回程放件")
+                elif _stg == "AOI检测":
+                    self._aoi_hold = 0
+                if _stg == "AOI转移":
+                    # 到位 = 头到 hover 点 (focus 上方 AOI_HOVER), 容差 2cm — 判据目标
+                    #   是悬停点不是对焦点 (advance 用 dist_aoi 永远等不到, 09-08 实锤)
+                    _hover_pt = g["aoi_focus"] + np.array([0.0, 0.0, AOI_HOVER])
+                    if float(np.linalg.norm(ph - _hover_pt)) < 0.02:
+                        self.sched._goto(self.sched.STAGES.index("AOI检测"),
+                                         f"已到 AOI 镜头上方 (头悬停位) → 对焦检测")
+                if _stg == "回程":
+                    # 回到初始位上方 (头 xy 到位且离台>2cm) → 放下
+                    if (float(np.linalg.norm(ph[:2] - g["peg_head0"][:2])) < 0.02
+                            and ph[2] > g["peg_head0"][2] + 0.02):
+                        self.sched._goto(self.sched.STAGES.index("放下"), "回程到位 → 放下放件")
+                if _stg == "放下":
+                    # 放件: body 真值回初始位且下降停滞 (触台) → 开爪 → 爪开观测 → 判完成
+                    _body_err = float(np.linalg.norm(o[4:7] - g["peg0_place"]))
+                    if not self._drop_ready and _body_err < 0.012 and self._z_stall >= 6:
+                        self._drop_ready = True
+                        self.grasped = False          # 放件语义: 松爪 (peg 留台)
+                        self._grasp_off0 = None
+                        self.log(f"📦 放下到位 (body 偏差 {_body_err*1000:.0f}mm) → 开爪放件")
+                    if self._drop_ready and not self._drop_released:
+                        if float(1.0 - self.gripper) < 0.30:    # 观测夹爪已开 (夹紧度<0.3)
+                            self._drop_released = True
+                            self.log("🤖 夹爪已张开 — 光模块放回初始位完成")
+            else:
+                dist_aoi = 9.9
             self.obs_prev = obs[0:18]
             d_xy = self._d_xy_peg()
             dh = self._d_hole_h()
             depth = self._insert_depth()
             lifted = float(ph[2]) - g["peg_z0"]
             # grasp_force = 夹持质量: 夹住且 光模块 随动 → 1; 掉件/空夹 → 0 (调度器回退判据)
-            _gf = 1.0 if (self.grasped and self._grasp_off0 is not None
-                          and float(np.linalg.norm(o[4:7] - self.x - self._grasp_off0)) < 0.02) else 0.0
+            #   (放下放件中 _drop_released 后恒 0 — 该段不在调度器回退范围, 正常)
+            _gf = (0.0 if getattr(self, "_drop_ready", False) else
+                   1.0 if (self.grasped and self._grasp_off0 is not None
+                           and float(np.linalg.norm(o[4:7] - self.x - self._grasp_off0)) < 0.02)
+                   else 0.0)
             self.sched.advance(contact_p=contact_p, dist_h=dh,
                                gripper=float(1.0 - self.gripper), depth=depth,
                                d_xy=d_xy, lifted=lifted,
                                at_grasp_pose=at_grasp_pose,
                                grasp_force=_gf,
                                peg_z=float(ph[2]), peg_z_grasp=g["peg_z0"],
-                               hole_z=float(g["hole"][2]))  # 🐛 2026-09-06: 转移→插入 z 条件
+                               hole_z=float(g["hole"][2]),  # 🐛 2026-09-06: 转移→插入 z 条件
+                               dist_aoi=dist_aoi,
+                               placed=bool(getattr(self, "_drop_released", False)
+                                           and float(np.linalg.norm(
+                                               o[4:7] - g["peg0_place"])) < 0.015))
             done = self.sched.stage() == "完成"
             # ⑧ 记录 (引擎 tr 兼容集)
             if os.environ.get("R0_TRACE") and step % 25 == 0:
@@ -908,6 +1021,10 @@ class RealStateSpaceSim:
         tr["_meta"] = {
             "goal": g["goal"].copy(), "hole_mouth": g["hole"].copy(),
             "peg0": g["peg_grasp"].copy(),
+            # 🚀 2026-09-08 L3 扩展: AOI 工位/报告/模式 (3D 视图据此画检测设备)
+            "aoi_focus": g["aoi_focus"].copy(),
+            "mode": self.mode,
+            "aoi_report": dict(self._aoi_report) if self._aoi_report else None,
             "seed": int(self.seed),
             "steps": len(tr["t"]),
             "stage_final": str(tr["stage"][-1]).replace("阶段 ", "") if tr["stage"] else "",

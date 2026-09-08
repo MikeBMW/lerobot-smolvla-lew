@@ -2832,6 +2832,17 @@ def node_ss_vlm(ctx):
             log(f"   z[:3] 手→目标 {np.round(z_vis[:3], 4)} m · z[3:6] 手→工件 "
                 f"{np.round(z_vis[3:6], 4)} m · z[6] 夹持={z_vis[6]:.0f}")
             log(f"   语义: 视觉/触觉/检测 token → 统一潜空间 (流形导航坐标底)")
+            # 🚀 2026-09-08 L3 扩展: 场景目标识别 — AOI 检测设备 (mode=full 轨迹)
+            meta = tr.get("_meta") or {}
+            if meta.get("mode") == "full" or any("AOI" in str(s) for s in tr.get("stage", [])):
+                af = np.asarray(meta.get("aoi_focus", [0.12, 0.62, 0.10]), dtype=float)
+                log(f"   🔍 场景目标识别: 光模块/插孔 + AOI 光学检测设备 (镜头工位 "
+                    f"{np.round(af, 2)}) — 插拔循环后对焦检测")
+            if meta.get("aoi_report"):
+                _ar = meta["aoi_report"]
+                log(f"   📷 AOI 检测报告: {'PASS' if _ar.get('ok') else 'FAIL'} "
+                    f"(残余深度 {_ar.get('insert_depth_min_mm')}mm · 力峰 {_ar.get('force_peak')})")
+            log(f"   ⚠️ 教学演示层 — 真实 VLM 权重推理接入点: smolvla_lew 容器/远程 (模型引擎三模式)")
         return True
     except Exception as e:
         if log:
@@ -2858,8 +2869,18 @@ def node_ss_dec(ctx):
         u_ff = float(np.linalg.norm(tr["u_ff"][idx])) if tr.get("u_ff") else 0.0
         # 解码动作幅度估计: 法向偏离大 → 校正性强 (回流形); 沿轴余量大 → 推进
         if log:
-            log(f"🔄 Decoder (z→u_mani): 流形风险={risk:.4f} 进度={prog:.4f}")
+            log(f"🔄 Decoder (z→action): 流形风险={risk:.4f} 进度={prog:.4f}")
             log(f"   解码: 法向偏离 {risk:.1f}mm → 校正动作 | 前馈 |u_ff|={u_ff:.3f} m/s 融合")
+            # 🚀 2026-09-08 L3 扩展: DiT action 双下行通路 (画布连线 lkdc_ff/lkdc_act)
+            log(f"   双通路: ①action→前馈层 (ssff, 练熟固化=肌肉记忆快通道) "
+                f"②action→执行端直通 (ssact, 端到端快路径)")
+            meta = tr.get("_meta") or {}
+            if meta.get("aoi_report"):
+                _ar = meta["aoi_report"]
+                log(f"   直通链实例: 全链闭环 (插→拔→AOI) 完成, AOI "
+                    f"{'PASS ✅' if _ar.get('ok') else 'FAIL ❌'} "
+                    f"(残余深度 {_ar.get('insert_depth_min_mm')}mm)")
+            log(f"   ⚠️ 教学演示层 — 真实 DiT 权重 (action_head) 推理接入点: smolvla_lew 容器/远程")
         return True
     except Exception as e:
         if log:

@@ -149,6 +149,9 @@ _HOLE = np.array([-0.2345, 0.4623, 0.1309])        # 插入终点 (goal)
 _HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
 _BOX_CENTER = np.array([-0.2645, 0.4623, 0.095])   # 带孔盒中心
 _BOX_SIZE = (0.19, 0.20, 0.19)                     # 带孔盒尺寸
+# 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 — 与引擎 state_space_sim_real.AOI_FOCUS
+#   同源常量 (勿改单边): 镜头对焦点 = 光模块头悬停检测位; 设备本体画在对焦点后侧
+_AOI_FOCUS = np.array([0.12, 0.62, 0.10])  # 镜头对焦点 (光模块头悬停检测位)
 _TABLE_CENTER = np.array([0.0, 0.58, -0.012])      # 台面板中心
 _TABLE_SIZE = (0.92, 0.62, 0.024)
 _PEG_SIZE = (0.20, 0.03, 0.03)                     # 光模块 (沿 X 长条)
@@ -441,6 +444,7 @@ class DreamView3D(QWidget):
         self._hole = _HOLE.copy()
         self._mouth = _HOLE_MOUTH.copy()
         self._box_c = _BOX_CENTER.copy()
+        self._aoi_c = _AOI_FOCUS.copy()   # 🚀 2026-09-08: AOI 对焦点 (meta 覆盖)
         self._table_c = _TABLE_CENTER.copy()
         self._peg_center_off = _PEG_CENTER_OFF.copy()
         self._src = "状态空间 numpy 引擎"
@@ -774,6 +778,7 @@ class DreamView3D(QWidget):
             self._hole = np.asarray(meta.get("goal", self._hole), dtype=float)
             self._mouth = np.asarray(meta.get("hole_mouth", self._mouth), dtype=float)
             self._box_c = np.asarray(meta.get("box_center", self._box_c), dtype=float)
+            self._aoi_c = np.asarray(meta.get("aoi_focus", self._aoi_c), dtype=float)  # 🚀 AOI
             tc = np.asarray(meta.get("table_center", self._table_c), dtype=float)
             self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
             head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
@@ -825,6 +830,9 @@ class DreamView3D(QWidget):
                 if tr.get(k) is not None and len(tr[k]):
                     pts.append(np.asarray(tr[k], dtype=float))
             pts.append(np.asarray([self._mouth, self._hole], dtype=float))
+            # 🚀 2026-09-08: AOI 设备纳入取景 (full 模式检测工位可见)
+            pts.append(np.asarray([self._aoi_c + np.array([0, 0, 0.08]),
+                                   self._aoi_c + np.array([0, 0.06, -0.02])], dtype=float))
             P = np.vstack(pts)
             lo, hi = P.min(axis=0), P.max(axis=0)
             ctr = (lo + hi) / 2.0
@@ -1055,6 +1063,29 @@ class DreamView3D(QWidget):
                             color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
         self.view.addItem(box)
         scene.append(box)
+        # 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 (底座+立柱+横臂+镜头筒, 亮青)
+        #   镜头筒口朝下, 光模块头悬停在筒口下对焦点 (_aoi_c) 检测
+        _ax, _ay = float(self._aoi_c[0]), float(self._aoi_c[1])
+        aoi_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.015]),
+                                                   (0.22, 0.14, 0.03)),
+                                 color=(0.25, 0.30, 0.36, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_base)
+        scene.append(aoi_base)
+        aoi_post = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.10]),
+                                                    (0.05, 0.05, 0.13)),
+                                 color=(0.20, 0.26, 0.32, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_post)
+        scene.append(aoi_post)
+        aoi_arm = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.01, 0.15]),
+                                                   (0.05, 0.04, 0.05)),
+                                color=(0.30, 0.55, 0.65, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_arm)
+        scene.append(aoi_arm)
+        aoi_lens = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay, 0.1375]),
+                                                    (0.09, 0.05, 0.045)),
+                                 color=(0.15, 0.85, 0.95, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_lens)
+        scene.append(aoi_lens)
         # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
         mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
                                                  (0.012, 0.05, 0.05)),
