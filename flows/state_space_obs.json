@@ -1210,10 +1210,10 @@
    "icon": "🧮",
    "color": "#8957e5",
    "params": {
-    "desc": "[专家·世界模型 L4] JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/policies/smolvla_lew/state_space_predictor.py",
+    "desc": "[专家·世界模型 L4] JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/manifold/predictor_layer.py",
     "expert": true,
     "state_space": true,
-    "source": "src/lerobot/policies/smolvla_lew/state_space_predictor.py"
+    "source": "src/lerobot/manifold/predictor_layer.py"
    }
   }
  ],

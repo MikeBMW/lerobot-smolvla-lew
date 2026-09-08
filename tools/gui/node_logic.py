@@ -2976,19 +2976,19 @@ _PRED_LOCK = threading.Lock()
 
 
 def _pred_ns():
-    """加载并缓存 state_space_predictor 命名空间 (WorldModelPredictor/LatentPredictor/ManifoldReadout)"""
+    """加载并缓存 manifold.predictor_layer 命名空间 (WorldModelPredictor/LatentPredictor/ManifoldReadout)"""
     global _PRED_NS
     if _PRED_NS is not None:
         return _PRED_NS
     with _PRED_LOCK:
         if _PRED_NS is None:
-            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies",
-                              "smolvla_lew", "state_space_predictor.py")
-            _ns = {"__file__": _p, "__name__": "lerobot.policies.smolvla_lew.state_space_predictor"}
+            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
+                              "predictor_layer.py")
+            _ns = {"__file__": _p, "__name__": "lerobot.manifold.predictor_layer"}
             with open(_p, encoding="utf-8") as _f:
                 exec(compile(_f.read(), _p, "exec"), _ns)
             if "WorldModelPredictor" not in _ns:
-                raise RuntimeError("state_space_predictor 缺少 WorldModelPredictor")
+                raise RuntimeError("predictor_layer 缺少 WorldModelPredictor")
             _PRED_NS = _ns
         return _PRED_NS
 
@@ -2996,7 +2996,7 @@ def _pred_ns():
 def node_ss_pred(ctx):
     """🧠 世界模型预测器 (JEPA: 潜空间 → 流形 → 动作) — GUI 薄壳 (算法在 src)
 
-    真实算法: src/lerobot/policies/smolvla_lew/state_space_predictor.py —
+    真实算法: src/lerobot/manifold/predictor_layer.py —
     LatentPredictor (z_t+a_t→z') → ManifoldReadout (z'→接触/性能流形坐标 6 维,
     与引擎真值列对齐可监督训练) → decoder = StateSpaceActionHead (流形→4D 动作块)。"""
     log = ctx.get("log")
@@ -3034,7 +3034,7 @@ def node_ss_pred(ctx):
                 acts = head(out["manifold"])
             if log:
                 log(f"   ✅ WorldModelPredictor 真实类: {n_params:,} 参数 "
-                    f"(src/lerobot/policies/smolvla_lew/state_space_predictor.py)")
+                    f"(src/lerobot/manifold/predictor_layer.py)")
                 log(f"      JEPA 链路自检: z R⁷+a⁴ → z'→流形 {tuple(out['manifold'].shape)} "
                     f"→ decoder → 动作块 {tuple(acts.shape)} (随机初始化, 训练后启用)")
                 log(f"      VLM z R⁹⁶⁰ 实例: 699,846 参数 (encode_stage 真实 z 接入后同构)")
@@ -3048,7 +3048,7 @@ def node_ss_pred(ctx):
             eta = float(tr["mani_eta"][idx]) if tr.get("mani_eta") else float("nan")
             log(f"   流形真值 (监督列): 接触 [进度={prog:.4f} 风险={risk:.4f} V] · "
                 f"性能 [η={eta:.3f} rem d_perp] — readout 对齐 6 维回归")
-            log("   ⚙️ 真实实现: src/lerobot/policies/smolvla_lew/state_space_predictor.py "
+            log("   ⚙️ 真实实现: src/lerobot/manifold/predictor_layer.py "
                 "(LatentPredictor→ManifoldReadout)")
         return True
     except Exception as e:
@@ -3133,8 +3133,8 @@ _EXTERNAL_LOC["action_head"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "poli
                                               "action_head.py"), 205, "class SmolVLALewActionHead")  # 🐛 2026-09-08: Action Head 节点右键 → 官方 Flow-Matching DiT 头 (src)
 _EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
-_EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                         "state_space_predictor.py"), 75, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src)
+_EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
+                                         "predictor_layer.py"), 75, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src)
 _EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (键对齐注册 ss_dec; 架构归位 src)
 

@@ -1,21 +1,24 @@
-"""🧠 WorldModelPredictor — JEPA 潜空间预测器链路 (smolvla_lew 标准算法包, 2026-09-08)
+"""🧠 predictor_layer.py — JEPA 潜空间预测器 (流形层, 与 Contact/PerformanceManifold 同域)
 
-老倪 (L4 专家模型架构): encoder(VLM z) → **predictor 预测流形** → decoder 动作。
-JEPA 架构里 predictor = 世界模型: 不吃像素, 在潜空间预测未来。本文件把该链路落成
-标准可训练模块 (纯 torch, 无 GUI 依赖; 真值源 = sim_real 引擎逐帧发布):
+位置: src/lerobot/manifold/ (与 manifold_layer.py 同目录, 同 calibration/datasets/
+policies 平级) — 老倪: predictor 预测的是接触/性能流形, 属于流形域, 不在 policies。
+接触流形/性能流形 = 潜空间上的导航地图 (manifold_layer.py, 解析几何层);
+本文件 = JEPA predictor (世界模型): 根据潜空间 z + 动作 a 预测**未来流形坐标**,
+decoder 按预测流形解动作 (状态空间 ActionHead)。
 
+链路 (2026-09-08 老倪 L4 专家模型架构):
     z_t ──┐                        ┌─> ManifoldReadout ─> 接触流形 [progress, risk, V]
           ├─ LatentPredictor ─ z'_t+1                      └─> 性能流形 [eta, rem, d_perp]
     a_t ──┘   (z+a → z')
 
   · LatentPredictor:  JEPA predictor — 动作条件预测未来潜状态 z' (轻量 MLP;
-    完整大版本 = world_model_le.py LeWorldModel.ARPredictor, AdaLN Transformer)
+    完整大版本 = smolvla_lew/world_model_le.py LeWorldModel.ARPredictor, AdaLN Transformer)
   · ManifoldReadout:  z' → 流形坐标 (6 维, 与引擎真值列一一对齐可监督训练:
     mani_progress / mani_risk / mani_V / mani_eta / mani_rem / mani_dperp)
-  · 下游 decoder = state_space_action_head.py StateSpaceActionHead (流形坐标 → 4D 动作块)
+  · 下游 decoder = smolvla_lew/state_space_action_head.py StateSpaceActionHead
 
-训练态: 标准 nn.Module 随机初始化; 真实推理需 smolvla_lew 训练 (数据管道已通:
-sim_real 每帧有 z/动作/流形真值)。GUI node 经 exec(compile(真实路径)) 加载 (断点可进)。
+训练态: 标准 nn.Module 随机初始化; 真实推理需训练 (数据管道已通: sim_real 每帧有
+z/动作/流形真值)。GUI node 经 exec(compile(真实路径)) 加载 (断点可进)。
 """
 from __future__ import annotations
 
@@ -108,9 +111,12 @@ if __name__ == "__main__":
             out = wm(z, a)
         print(f"  [{tag}] 参数 {n:,} | z{z.shape} + a{a.shape} → "
               f"z_pred{tuple(out['z_pred'].shape)} → 流形{tuple(out['manifold'].shape)} ✓")
-    # decoder 拼接自检: 流形坐标(6) → StateSpaceActionHead → 4D 动作块
-    sys_path = __import__("os").path.dirname(__import__("os").path.abspath(__file__))
-    __import__("sys").path.insert(0, sys_path)
+    # decoder 拼接自检: 流形坐标(6) → StateSpaceActionHead (smolvla_lew 包) → 4D 动作块
+    import os as _os, sys as _sys
+    _lew = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                         "policies", "smolvla_lew")
+    if _lew not in _sys.path:
+        _sys.path.insert(0, _lew)
     from state_space_action_head import StateSpaceActionHead
     head = StateSpaceActionHead(input_dim=6, action_dim=4, chunk_size=7)
     wm = WorldModelPredictor(z_dim=7)
