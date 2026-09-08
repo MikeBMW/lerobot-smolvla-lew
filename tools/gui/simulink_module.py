@@ -2631,8 +2631,9 @@ class SimNodeItem(QGraphicsObject):
             # 自适应字号: 从 9pt(≈36px, 与节点标题同级) 递减到 6pt, 找到能单行放下的
             # 🐛 2026-08-22 老倪: 7pt≈28px 比节点标题(9pt)还小 → 升回 9pt; 15pt在192DPI≈50px太大
             # 🐛 2026-08-28 老倪"字体大": 12→10 起, 下限 9→8
-            fs = 10
-            while fs >= 8:
+            # 🐛 2026-09-09 老倪"还是大, 挤": 10→9 起, 下限 8→7
+            fs = 9
+            while fs >= 7:
                 painter.setFont(QFont("Arial", fs, QFont.Bold))
                 fm = painter.fontMetrics()
                 if fm.horizontalAdvance(name) <= avail_w:
@@ -2657,7 +2658,7 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
-            painter.setFont(QFont("Arial", 9))
+            painter.setFont(QFont("Arial", 8))
             painter.drawText(QRectF(8, 4, 110, 12), Qt.AlignLeft | Qt.AlignTop,
                              "▤ 背景行")
             return
@@ -2714,6 +2715,42 @@ class SimNodeItem(QGraphicsObject):
             pen = QPen(QColor("#a371f7"), 2.8)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
+        # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
+        #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
+        if params.get("cap_switch"):
+            _cap_cur = params.get("cap_level", "L2")
+            painter.setPen(QColor(pal["title"]))
+            painter.setFont(QFont("Arial", 9, QFont.Bold))
+            painter.drawText(QRectF(12, 6, self.w - 24, 18), Qt.AlignVCenter | Qt.AlignLeft,
+                             "🧭 能力档位 (数据源层)")
+            _caps = [("L2", "插装"), ("L3", "插拔+AOI"), ("L4", "自主恢复")]
+            _cw = (self.w - 24) / 3.0
+            for _i, (_k, _kd) in enumerate(_caps):
+                _on = (_k == _cap_cur)
+                _cc = QColor("#ffd700") if _on else QColor("#57606a")
+                _cx = 12 + _i * _cw
+                # radio 圆钮
+                painter.setBrush(QColor("#ffd700") if _on else QColor("#0d1117"))
+                painter.setPen(QPen(_cc, 1.4))
+                painter.drawEllipse(QPointF(_cx + 8, 37), 7, 7)
+                if _on:
+                    painter.setBrush(QColor("#ffd700"))
+                    painter.drawEllipse(QPointF(_cx + 8, 37), 2.8, 2.8)
+                painter.setPen(QColor("#e6edf3") if _on else QColor("#8b949e"))
+                painter.setFont(QFont("Arial", 9, QFont.Bold if _on else QFont.Normal))
+                painter.drawText(QRectF(_cx + 20, 28, _cw - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, _k)
+                painter.setFont(QFont("Arial", 8))
+                painter.setPen(QColor("#8b949e"))
+                painter.drawText(QRectF(_cx + 20, 44, _cw - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, _kd)
+            # desc (当前档说明, 底部小字)
+            painter.setFont(QFont("Arial", 8))
+            painter.setPen(QColor("#8b949e"))
+            _capdesc = {"L2": "基础: 插装即完成 (insert 8段)",
+                        "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
+                        "L4": "L4 自主恢复: +失败自愈直到完成 (预算×2)"}.get(_cap_cur, "")
+            painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16),
+                             Qt.AlignVCenter | Qt.AlignLeft, _capdesc)
+            return
         # 标题 (统一 9pt Bold, 超宽拆两行完整显示, 垂直居中 — 不截断/不逐节点降字号)
         # 🐛 2026-08-22 老倪: 原 9→8→7 逐节点降字号导致"大小不一", elidedText 截断"显示不全",
         #   固定 y=4 贴顶"不居中" → 统一 9pt + 拆两行 + 垂直居中
@@ -2721,9 +2758,10 @@ class SimNodeItem(QGraphicsObject):
         name = self.node["name"]
         # 2026-08-25 老倪"字太挤": 右留 52px (原 36 → 字贴徽章), 允许拆到三行 (原最多两行硬塞)
         # 🐛 2026-08-28 老倪"字体大, 挤": 12/11/10 → 10/9/8 (192DPI 下 32px→27px)
+        # 🐛 2026-09-09 老倪"还是大, 挤": 10/9/8 → 9/8/7 (27px→24px)
         avail = max(40, self.w - 52)
         line1, line2 = name, ""
-        for _fs in (10, 9, 8):
+        for _fs in (9, 8, 7):
             painter.setFont(QFont("Arial", _fs, QFont.Bold))
             fm = painter.fontMetrics()
             if fm.horizontalAdvance(name) <= avail:
@@ -2867,7 +2905,7 @@ class SimNodeItem(QGraphicsObject):
             if getattr(self, "_hover", False) and self.node.get("type") != "row_bg":
                 # 🐛 2026-08-12 老倪: ID 显示在右下角 (用户要求, 不遮挡标题/desc 主区)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 10, QFont.Bold))
+                painter.setFont(QFont("Arial", 9, QFont.Bold))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
                 painter.drawText(QRectF(8, self.h - 16, self.w - 16, 14), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
@@ -2923,7 +2961,7 @@ class SimNodeItem(QGraphicsObject):
             st_icon = "♻"  # 复用节点 (被两模型共用, 紫框)
         if st_icon:
             painter.setPen(color)
-            painter.setFont(QFont("Arial", 10, QFont.Bold))
+            painter.setFont(QFont("Arial", 9, QFont.Bold))
             painter.drawText(QRectF(self.w - 22, 2, 20, 16), Qt.AlignRight | Qt.AlignVCenter, st_icon)
         # 端口: Switch 双输入 (左上下) + 单输出 (右中); 其他节点单进单出
         if t == "switch":
@@ -3373,6 +3411,16 @@ class SimCanvas(QGraphicsView):
                     self._tmp_line = self._scene.addLine(0, 0, 0, 0,
                         QPen(QColor(COLORS.get(n.node["type"], "#58a6ff")), 2, Qt.DashLine))
                     return
+                # 🧭 能力档位 radio: 单击圆钮直选 L2/L3/L4 (2026-09-09 老倪: 要有开关可选择)
+                if n.node.get("params", {}).get("cap_switch"):
+                    rp = n.scenePos()
+                    _cw = (n.w - 24) / 3.0
+                    for _i, _k in enumerate(("L2", "L3", "L4")):
+                        _cx = rp.x() + 12 + _i * _cw + 8
+                        _cy = rp.y() + 37
+                        if abs(p.x() - _cx) < 14 and abs(p.y() - _cy) < 14:
+                            self.module._toggle_cap(n.node, _k)
+                            return
                 # 节点主体 → 手动拖动 (只移动它, 绕开 scene 多选联动)
                 # 🐛 2026-08-12 老倪: 双击检测 — 本分支 return 拦截 press, item 收不到
                 # 双击事件 (SimNodeItem.mouseDoubleClickEvent 永不触发) → 手动检测
@@ -4354,7 +4402,7 @@ class SimulinkModule(QWidget):
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
         # 🔄 重启 (2026-09-04 老倪: 运行/单步之间加大空隙不好看 → 插入重启, 三键连排)
-        self.btn_restart = mk_btn("🔄 重启", "停止当前仿真 → 清引擎缓存 → 立即从头重新仿真 (与 ▶运行 同源, 状态空间会重跑引擎)", self.restart_sim, "#f0883e")
+        self.btn_restart = mk_btn("🔄 重启", "停止当前仿真 → 清引擎缓存 → 复位待命 (不自动运行; 点 ▶ 运行 开始新仿真)", self.restart_sim, "#f0883e")
         tl.addWidget(self.btn_restart)
         tl.addWidget(self.btn_step)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
@@ -6232,7 +6280,12 @@ class SimulinkModule(QWidget):
                 self.btn_run.setText("▶ 运行")
                 self.btn_run.setEnabled(True)
                 return
-            self._ss_step_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+            # 🐛 2026-09-09: 排除开关类节点 (能力档位 radio) — 单步执行它 = 触发切档副作用
+            # 🐛 2026-09-09: 按能力档位过滤 — L2 档单步只走 L2 行功能, L4 行不高亮 (老倪实锤)
+            _cnum = self._ss_cap_num()
+            self._ss_step_order = [n for n in self.nodes if n.get("type") != "row_bg"
+                                   and not n.get("params", {}).get("cap_switch")
+                                   and self._ss_node_cap_level(n) <= _cnum]
             self._ss_step_idx = 0
             self.btn_run.setText("▶ 运行")
             self.btn_run.setEnabled(True)
@@ -6643,7 +6696,30 @@ class SimulinkModule(QWidget):
         self.stop_sim()
 
     def stop_sim(self):
-        # 🎥 真实化运行中 (2026-09-04): 停轮询 — daemon 线程跑完即弃 (run 内无 QObject, 安全)
+        # 🐛 2026-09-09 🔄重启崩溃根因修复: 真实化引擎 daemon 线程必须真停 —
+        #   置 _abort → run 循环退出 → 轮询 join (≤10s), 否则 🔄重启立即开新引擎 =
+        #   双 metaworld env 并发 mujoco C segfault (崩溃日志: reset_model segfault 实锤)
+        _rs = getattr(self, "_real_sim_ref", None) or getattr(self, "_ss_last_sim", None)
+        if _rs is not None:
+            try:
+                _rs._abort = True
+            except Exception:
+                pass
+        _rt = getattr(self, "_real_thread", None)
+        if _rt is not None:
+            try:
+                from PyQt5.QtWidgets import QApplication as _QA2
+                _app2 = _QA2.instance()
+                for _i in range(200):          # ≤10s 轮询 (UI 不冻结, 同 worker 停止模式)
+                    if not _rt.is_alive():
+                        break
+                    if _app2 is not None:
+                        _app2.processEvents()
+                    time.sleep(0.05)
+            except Exception:
+                pass
+            self._real_thread = None
+        # 🎥 真实化运行中 (2026-09-04): 停轮询 — daemon 线程已被置 abort 并 join 完成
         _pt = getattr(self, "_real_poll_timer", None)
         if _pt is not None:
             try:
@@ -6696,8 +6772,9 @@ class SimulinkModule(QWidget):
         self._tutorial_on_action("stop")
 
     def restart_sim(self):
-        """🔄 重启 (2026-09-04 老倪): 停止 → 清状态空间/仿真缓存 → 立即重新仿真 (与 ▶运行 同源)。
-        清缓存后 start_sim 会强制重跑引擎 (状态空间: 清 _ss_step_tr 缓存 → _ss_ensure_trace 重跑)"""
+        """🔄 重启 (2026-09-09 老倪两次纠正 "一点重启又跳到运行"): 停止 → 清状态空间/
+        仿真缓存 → 复位待命。**永不自动运行** — 要跑请点 ▶ 运行 (▶ 在停止态即从头重跑;
+        重启增量价值 = 清缓存强制引擎重跑, 不用时点 ▶ 会复用旧轨迹)"""
         self._log("🔄 重启: 停止当前仿真…")
         try:
             self.stop_sim()
@@ -6714,8 +6791,33 @@ class SimulinkModule(QWidget):
             self.canvas._scene.update()
         except Exception:
             pass
-        self._log("🔄 重启: 缓存已复位 → 重新仿真…")
-        self.start_sim()
+        self._log("🔄 重启: 已复位待命 (点 ▶ 运行 开始新仿真)")
+
+    def _ss_node_cap_level(self, node):
+        """节点所属功能层级 (按所在 row_bg 色带): L4行=4 / L3行=3 / L2行=2 /
+        基础·回路外行(数据源/大模型/验证/可视化)=0 恒包含 (2026-09-09 档位过滤单步/播放链)"""
+        y = node.get("y", 0)
+        try:
+            for b in self.nodes:
+                if b.get("type") != "row_bg":
+                    continue
+                by = b.get("y", 0)
+                if by <= y < by + b.get("h", 0):
+                    nm = b.get("name", "")
+                    if "L4" in nm:
+                        return 4
+                    if "L3" in nm:
+                        return 3
+                    if "L2" in nm:
+                        return 2
+                    return 0
+        except Exception:
+            pass
+        return 0
+
+    def _ss_cap_num(self):
+        """当前能力档位 → 数值 (L2=2/L3=3/L4=4; 未设置默认 2=插装)"""
+        return {"L2": 2, "L3": 3, "L4": 4}.get(getattr(self, "_cap_level", None), 2)
 
     def _by_id(self, nid):
         for n in self.nodes:
@@ -9474,6 +9576,10 @@ class SimulinkModule(QWidget):
         if node.get("type") == "yolo_gate":
             self._toggle_yolo_gate(node)
             return
+        # 1.6c) 🧭 能力档位三档开关 (2026-09-09 老倪: 数据源层, 双击循环切换档位)
+        if params.get("cap_switch"):
+            self._toggle_cap(node)
+            return
         # 1.7) 🧩 结构条件节点 (2026-08-09 老倪: ControlNet 思想 — 双击从原子技能库选条件编码注入)
         if node.get("type") == "coord_overlay":
             self._pick_atomic_condition(node)
@@ -10840,7 +10946,17 @@ class SimulinkModule(QWidget):
         self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
         # 🚀 2026-09-08 L3 接入: 任务链模式 (主线程读 checkbox → worker 用属性, 禁 QObject 跨线程)
         # 🧭 2026-09-08 能力档位 (数据源层节点双击切换): L2→insert / L3·L4→full; 优先于 chk 勾选
-        _cap = getattr(self, "_cap_level", None)
+        # 🐛 2026-09-09: 档位以画布节点 params.cap_level 为准 (radio 持久/重启不丢), 兜底内存
+        _cap = None
+        try:
+            for _n in self.nodes:
+                if _n.get("params", {}).get("cap_switch"):
+                    _cap = _n["params"].get("cap_level") or _cap
+        except Exception:
+            pass
+        _cap = _cap or getattr(self, "_cap_level", None)
+        if _cap is not None:
+            self._cap_level = _cap
         self._l3_mode = ("full" if _cap in ("L3", "L4") else
                          ("full" if (getattr(self, "chk_l3_full", None) is not None
                                      and self.chk_l3_full.isChecked()) else None))
@@ -10910,7 +11026,10 @@ class SimulinkModule(QWidget):
                 traceback.print_exc()
                 self._real_tr = ("err", str(_e), None, 0.0, list(_logs))
 
-        threading.Thread(target=_work, daemon=True).start()
+        # 🐛 2026-09-09: 真实化引擎线程 — 保存句柄供 ⏹停止/🔄重启 join (mujoco 双 env 并发 segfault 实锤)
+        _th = threading.Thread(target=_work, daemon=True)
+        self._real_thread = _th
+        _th.start()
         t = _tq(self)
         t.setInterval(400)
         t.timeout.connect(self._on_real_poll)
@@ -10975,7 +11094,12 @@ class SimulinkModule(QWidget):
             self._dw = None
             self._log(f"⚠️ DataWorld 构建失败 (播放降级): {_e}")
         self._ss_round = 0
-        self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+        # 🐛 2026-09-09: 排除开关类节点 (能力档位 radio) — 播放执行它 = 触发切档副作用 (L4→L2 实锤)
+        # 🐛 2026-09-09: 按能力档位过滤执行链 — L2 档播放不高亮 L3/L4 行 (老倪实锤)
+        _cnum = self._ss_cap_num()
+        self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"
+                          and not n.get("params", {}).get("cap_switch")
+                          and self._ss_node_cap_level(n) <= _cnum]
         _src = [n for n in self._ss_order if "数据源" in n.get("name", "")]
         _rest = [n for n in self._ss_order if n not in _src]
         self._ss_order = _src + _rest
@@ -11108,7 +11232,12 @@ class SimulinkModule(QWidget):
                 self._ss_live = None
                 self._log(f"⚠️ 手机3D实况发布不可用 (播放不受影响): {_e}")
         self._ss_round = 0
-        self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"]
+        # 🐛 2026-09-09: 排除开关类节点 (能力档位 radio) — 播放执行它 = 触发切档副作用 (L4→L2 实锤)
+        # 🐛 2026-09-09: 按能力档位过滤执行链 — L2 档播放不高亮 L3/L4 行 (老倪实锤)
+        _cnum = self._ss_cap_num()
+        self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"
+                          and not n.get("params", {}).get("cap_switch")
+                          and self._ss_node_cap_level(n) <= _cnum]
         # 🐛 2026-09-01 老倪: 数据源节点优先执行 — 数据流源头; 且断点调试时点运行第 1 帧
         #   即命中数据源断点 (原排 17 位, 前面传感器融合/YOLO 真实采样卡 20-40s, 断点"进不去")
         #   ⚠️ 只按节点名"数据源"匹配 — params.source 是右键源码映射字段, 全画布节点都有
@@ -11511,6 +11640,40 @@ class SimulinkModule(QWidget):
                 self._toggle_yolo_gate(n)
                 return (True, f"YOLO 开关: {'开 (39D)' if n.get('params', {}).get('yolo_enabled', True) else '关 (3D)'}")
         return (True, f"YOLO 开关: 状态 {yolo_enabled}")
+
+    def _toggle_cap(self, node, level=None):
+        """🧭 能力档位三档 radio 开关 (2026-09-09 重新设计): level=None → 循环下一档
+        (双击); 指定 L2/L3/L4 → 单击圆钮直选。档位写 node.params.cap_level (画布重绘)
+        + self._cap_level (▶运行消费), ▶运行 按档位配置任务链"""
+        p = node.setdefault("params", {})
+        cur = p.get("cap_level") or getattr(self, "_cap_level", None) or "L2"
+        if level is None:
+            level = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
+        p["cap_level"] = level
+        self._cap_level = level
+        # 🐛 2026-09-09: 切档后重置单步/播放序 — 旧序按上一档位过滤 (L2 35节点),
+        #   不重置则切 L3 后单步仍走 L2 序, 永远进不了 VLM/Flow-Matching (老倪实锤)
+        _tmr = getattr(self, "_ss_timer", None)
+        _playing = _tmr is not None and getattr(_tmr, "isActive", lambda: False)()
+        for _a in ("_ss_step_order", "_step_order"):
+            if hasattr(self, _a):
+                setattr(self, _a, None)
+        if not _playing and hasattr(self, "_ss_order"):
+            setattr(self, "_ss_order", None)   # 播放中不动播放序 (tick 正用), 下轮重建
+        self._ss_step_idx = 0
+        it = self._items.get(node["id"])
+        if it is not None:
+            it.update()
+        self.canvas._scene.update()
+        desc = {"L2": "基础: 插装即完成 (insert 8段)",
+                "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
+                "L4": "L4 自主恢复: +失败自愈直到完成 (预算×2)"}.get(level, level)
+        self._log(f"🧭 能力档位 → **{level}** [{desc}] (下次 ▶运行生效)")
+        try:
+            self._sync()
+        except Exception:
+            pass
+        return (True, f"能力档位: {level} ({desc})")
 
     def _export_skill_action(self, node):
         """🧩 原子技能 → action JSON (2026-08-09 老倪: W²-VLA Token 落地)

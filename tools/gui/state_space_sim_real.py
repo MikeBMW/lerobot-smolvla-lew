@@ -152,6 +152,7 @@ class RealStateSpaceSim:
     def __init__(self, log=None, seed=0, vision=False, vision_every=25, mode=None):
         self.log = log or (lambda *a: None)
         self.seed = seed
+        self._abort = False   # ⏹ 2026-09-09: GUI ⏹停止/🔄重启置位 → run 循环提前退出 (防双 env 并发 mujoco segfault)
         # 🚀 2026-09-08 L3 扩展: 任务链模式 "insert"(默认回归=插入完成) / "full"(插拔+AOI 闭环)
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
@@ -588,6 +589,8 @@ class RealStateSpaceSim:
         (full 4000 / insert 1000), 直到最终完成任务或真死局 (物理不可恢复); 引擎分级
         回退 (遇阻/空夹/滑脱→重对孔/重抓) 即恢复执行体, L4 只给足恢复预算 + 标注。"""
         self._cap = cap
+        # 🐛 2026-09-09: GUI 档位是大写 "L4", 引擎判小写 "l4" → 预算×2 从未生效 (静态核实)
+        cap = str(cap).lower() if cap else None
         if cap == "l4":
             self.log(f"🏆 L4 自主恢复档: 失败回退不放弃 (预算 ×2) — 直到任务最终完成或物理死局")
         if max_steps is None:
@@ -615,6 +618,11 @@ class RealStateSpaceSim:
         done = False
         truncated = False
         for step in range(int(max_steps)):
+            # ⏹ 2026-09-09: 停止请求 (GUI ⏹停止/🔄重启先置 _abort=True → 本步末退出,
+            #   线程 join 后才允许开新引擎 — 双 metaworld env 并发 mujoco C segfault 实锤)
+            if getattr(self, "_abort", False):
+                self.log("⏹ 收到停止请求 — 本轮提前结束 (引擎线程退出中)")
+                break
             # ① 上一拍控制器指令 → metaworld 动作 → 真实物理
             u_vec = getattr(self, "_u_vec", np.zeros(4))
             act = np.zeros(4)
@@ -1195,6 +1203,16 @@ class RealStateSpaceSim:
         _mp = _mo.get("pm") or {}
         _lat = _mo.get("lat", np.zeros(4))
         _vel = _mo.get("vel", np.zeros(4))
+        # 🧠 2026-09-09: JEPA 预测流形旁路 (引擎每帧真调 predict_manifold → _mani_out["pred"])
+        _mpd = _mo.get("pred") or {}
+        _mpr6 = _mpd.get("manifold")
+        if _mpr6 is not None:
+            try:
+                _mpred6 = np.round(_mpr6[0].float().cpu().numpy(), 5)
+            except Exception:
+                _mpred6 = "(不可用)"
+        else:
+            _mpred6 = "(无 predictor)"
         # 检测真值: vision 且本帧有检出 → 检测值; 未检出 → None (诚实, 不顶替)
         _peg_d = self._vis["peg"] if (self.vision and self._vis["peg"] is not None) else None
         _hole_d = self._vis["hole"] if (self.vision and self._vis["hole"] is not None) else None
@@ -1262,6 +1280,13 @@ class RealStateSpaceSim:
                 "in": [("潜状态/先验", "估计器+动力学")],
                 "out": [("潜坐标 (位置3+预测力)", _lat),
                         ("速度场 prior−x̂₋", _vel)]},
+            # 🧠 流形专家预测器 channel (2026-09-09 补 — 老倪: 预测器节点要有输入输出;
+            #   引擎每帧真调 predict_manifold 的旁路结果发布到数据总线, 画布播放同源展示)
+            "🧠 流形专家预测器": {
+                "in": [("潜空间 z (几何 R7)", "相对目标/销 + 夹持位"),
+                       ("动作 a R4", "执行下发 u_vec")],
+                "out": [("预测流形 6D (JEPA)", _mpred6),
+                        ("权重", "随机 (trained=False)")]},
         }
 
 

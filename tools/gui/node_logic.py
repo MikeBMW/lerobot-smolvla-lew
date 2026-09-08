@@ -2074,6 +2074,7 @@ def node_ss_ff_hist(ctx):
     引线: ⚡前馈加速器 → 本节点 (数据经 _SS_STATE['ff_probe'] 流通)"""
     log = ctx.get("log")
     try:
+        import numpy as np   # 🐛 2026-09-09: 漏 import → 单步报 name 'np' is not defined
         probe = _SS_STATE.get("ff_probe")
         if not probe or "act_raw" not in probe:
             if log:
@@ -3069,6 +3070,15 @@ def node_ss_cap(ctx):
     """
     log = ctx.get("log")
     mod = ctx.get("module")
+    # 🐛 2026-09-09: 统一走 module._toggle_cap (写 node.params.cap_level + 画布重绘),
+    #   与单击 radio/双击节点同一条路径 — 避免只切内存档位而画布开关视觉不更新
+    if mod is not None and hasattr(mod, "_toggle_cap"):
+        try:
+            for _n in mod.nodes:
+                if _n.get("name") == ctx.get("name"):
+                    return mod._toggle_cap(_n)
+        except Exception:
+            pass
     cur = getattr(mod, "_cap_level", "L2") if mod is not None else "L2"
     nxt = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
     if mod is not None:
