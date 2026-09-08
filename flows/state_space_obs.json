@@ -865,23 +865,6 @@
    }
   },
   {
-   "id": "ssff_attr",
-   "type": "model",
-   "name": "🎯 归因·分工",
-   "x": 1410,
-   "y": 1145,
-   "w": 210,
-   "h": 68,
-   "icon": "🎯",
-   "color": "#00d4aa",
-   "params": {
-    "state_space": true,
-    "desc": "归因·分工 — 512单元按输出维分工: 堆叠图(谁在指挥)+散点(PCA/t-SNE)",
-    "source": "tools/gui/node_logic.py · node_ss_ff_attrib",
-    "viz_kind": "attrib"
-   }
-  },
-  {
    "id": "ss3d_view",
    "type": "model",
    "name": "🧭 3D 视图",
@@ -1519,14 +1502,6 @@
    "id": "lkffh1",
    "f": "ssff",
    "t": "ssff_hist",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "激活探针"
-  },
-  {
-   "id": "lkffa1",
-   "f": "ssff",
-   "t": "ssff_attr",
    "f_port": "out1",
    "t_port": "in1",
    "label": "激活探针"

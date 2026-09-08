@@ -6282,9 +6282,11 @@ class SimulinkModule(QWidget):
                 return
             # 🐛 2026-09-09: 排除开关类节点 (能力档位 radio) — 单步执行它 = 触发切档副作用
             # 🐛 2026-09-09: 按能力档位过滤 — L2 档单步只走 L2 行功能, L4 行不高亮 (老倪实锤)
+            # 🐛 2026-09-09: 排除观察器/质量门 (viz_kind/verif_layer) — 单步执行=弹窗轰炸
             _cnum = self._ss_cap_num()
             self._ss_step_order = [n for n in self.nodes if n.get("type") != "row_bg"
                                    and not n.get("params", {}).get("cap_switch")
+                                   and not self._ss_is_observer(n)
                                    and self._ss_node_cap_level(n) <= _cnum]
             self._ss_step_idx = 0
             self.btn_run.setText("▶ 运行")
@@ -6792,6 +6794,14 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
         self._log("🔄 重启: 已复位待命 (点 ▶ 运行 开始新仿真)")
+
+    def _ss_is_observer(self, node):
+        """🔭 观察器/质量门节点 (回路外): 单步/播放链排除 — 执行它们 = 自动弹窗
+        (直方图/归因/3D/操作视频/波形) 或自动跑用例 (Test) → GUI 卡顿窗口轰炸
+        (2026-09-09 老倪实锤: 单步走到观察器 4 窗叠开 studio.py not responding);
+        观察器语义 = 用户手动双击才打开"""
+        p = node.get("params", {})
+        return bool(p.get("viz_kind") or p.get("verif_layer"))
 
     def _ss_node_cap_level(self, node):
         """节点所属功能层级 (按所在 row_bg 色带): L4行=4 / L3行=3 / L2行=2 /
@@ -11096,9 +11106,11 @@ class SimulinkModule(QWidget):
         self._ss_round = 0
         # 🐛 2026-09-09: 排除开关类节点 (能力档位 radio) — 播放执行它 = 触发切档副作用 (L4→L2 实锤)
         # 🐛 2026-09-09: 按能力档位过滤执行链 — L2 档播放不高亮 L3/L4 行 (老倪实锤)
+        # 🐛 2026-09-09: 排除观察器/质量门 (viz_kind/verif_layer) — 播放不自动弹窗/跑用例
         _cnum = self._ss_cap_num()
         self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"
                           and not n.get("params", {}).get("cap_switch")
+                          and not self._ss_is_observer(n)
                           and self._ss_node_cap_level(n) <= _cnum]
         _src = [n for n in self._ss_order if "数据源" in n.get("name", "")]
         _rest = [n for n in self._ss_order if n not in _src]
@@ -11234,9 +11246,11 @@ class SimulinkModule(QWidget):
         self._ss_round = 0
         # 🐛 2026-09-09: 排除开关类节点 (能力档位 radio) — 播放执行它 = 触发切档副作用 (L4→L2 实锤)
         # 🐛 2026-09-09: 按能力档位过滤执行链 — L2 档播放不高亮 L3/L4 行 (老倪实锤)
+        # 🐛 2026-09-09: 排除观察器/质量门 (viz_kind/verif_layer) — 播放不自动弹窗/跑用例
         _cnum = self._ss_cap_num()
         self._ss_order = [n for n in self.nodes if n.get("type") != "row_bg"
                           and not n.get("params", {}).get("cap_switch")
+                          and not self._ss_is_observer(n)
                           and self._ss_node_cap_level(n) <= _cnum]
         # 🐛 2026-09-01 老倪: 数据源节点优先执行 — 数据流源头; 且断点调试时点运行第 1 帧
         #   即命中数据源断点 (原排 17 位, 前面传感器融合/YOLO 真实采样卡 20-40s, 断点"进不去")
