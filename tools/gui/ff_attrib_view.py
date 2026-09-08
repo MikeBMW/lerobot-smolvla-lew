@@ -45,6 +45,7 @@ class FFAttribView(QDialog):
         self.pts2d = None         # PCA 投影 (512,2)
         self.pts_tsne = None
         self.use_tsne = False
+        self._npush = 0           # 🔭 2026-09-08: push 计数 (滚动 PCA 重算节流)
         self._load_static()
         # UI
         lay = QVBoxLayout(self)
@@ -101,6 +102,16 @@ class FFAttribView(QDialog):
                 self._project("pca")
             except Exception:
                 pass
+        # 🚀 2026-09-08 老倪("散点都是一个样子"实锤): PCA 只在最早 10 帧算一次 → 播放中
+        #   静止。改滚动重算: 每 20 帧用当前 150 帧窗口重投影 → 播放到不同任务阶段,
+        #   散点分群随激活 profile 演化 (单元"分工重组"可见: 接近段活跃群 vs 插入段活跃群)
+        elif self.pts2d is not None and not self.use_tsne:
+            self._npush += 1
+            if self._npush % 20 == 0:
+                try:
+                    self._project("pca")
+                except Exception:
+                    pass
         # 状态行随帧更新 (自解释 + 可见在动)
         try:
             mode = "t-SNE" if self.use_tsne else ("PCA ✓" if self.pts2d is not None else "未投影")
@@ -275,6 +286,22 @@ class FFAttribView(QDialog):
             p.setBrush(DIM_COLORS[self.cls[j]])
             p.setPen(Qt.NoPen)
             p.drawEllipse(int(xs[j] - rad), int(ys[j] - rad), int(rad * 2), int(rad * 2))
+        # 🚀 2026-09-08: 当前帧 top 活跃单元白圈跳动 (播放时看见"此刻谁在发令") —
+        #   白圈在散点上移动 = 不同阶段不同单元群被点亮 (分工随任务切换)
+        try:
+            _xcur = np.asarray(self.x3_buf[-1], dtype=np.float32)
+            _top = np.argsort(_xcur)[-8:][::-1]
+            p.setPen(QPen(QColor("#ffffff"), 1.2))
+            p.setBrush(Qt.NoBrush)
+            for j in _top:
+                if self.cls_strong[j]:
+                    p.drawEllipse(int(xs[j] - 4), int(ys[j] - 4), 8, 8)
+            p.setPen(_TEXT2)
+            p.setFont(QFont("Sans", 9))
+            p.drawText(14, y0 + 40,
+                       f"⚪ 白圈 = 当前帧最活跃 8 单元 (播放时随阶段跳动: 谁在干活一目了然)")
+        except Exception:
+            pass
         # 类统计
         p.setPen(_TEXT2)
         p.setFont(QFont("Sans", 9))
