@@ -4364,6 +4364,14 @@ class SimulinkModule(QWidget):
                                         "不勾 (默认) = 🎥 真实化运行: metaworld 物理 + 每帧渲染 → YOLO detect_3d\n"
                                         "(约 5-9 分钟/轮, detect_3d 断点每步可进, 不造假)")
         tl.addWidget(self.chk_engine_demo)
+        # 🚀 2026-09-08 L3 扩展: 「L3 全链」勾选 → 真实化跑 full 模式 (插→拔→AOI检测→放回
+        #   13 段闭环, 3D 视图可见完整后续动作); 不勾=插装即完成 (原演示, 回归保底)
+        self.chk_l3_full = QCheckBox("🚀 L3 全链(插拔+AOI)")
+        self.chk_l3_full.setToolTip(
+            "勾选 = 🎥 真实化运行完整任务链: 插入光模块 → 拔出 → AOI 光学检测 → 放回\n"
+            "(mode=full 13 段, 约 15-25 分钟/轮; 3D 视图可见 AOI 检测设备与全部后续动作)\n"
+            "不勾 (默认) = 插装即完成 (8 段演示, 回归保底)")
+        tl.addWidget(self.chk_l3_full)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -10830,12 +10838,19 @@ class SimulinkModule(QWidget):
         每帧 ~0.5-1s → 后台线程跑 (主线程不冻结), QTimer 轮询完成 → 播放真实轨迹
         断点注意: VSCode F5 调试时断点命中在后台线程 → pydevd 同进程挂起该线程, GUI 不冻"""
         self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
+        # 🚀 2026-09-08 L3 接入: 任务链模式 (主线程读 checkbox → worker 用属性, 禁 QObject 跨线程)
+        self._l3_mode = ("full" if (getattr(self, "chk_l3_full", None) is not None
+                                    and self.chk_l3_full.isChecked()) else None)
+        _mdesc = ("🚀 L3 全链 full: 插→拔→AOI检测→放回 (13段)" if self._l3_mode == "full"
+                  else "插装即完成 (8段, 原演示)")
         self.btn_run.setText("🎥 真实运行中… (每帧 YOLO)")
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
-        self._log("🎥 真实化运行: metaworld 物理闭环 + 每帧 render → YOLO detect_3d")
+        self._log(f"🎥 真实化运行 [{_mdesc}]: metaworld 物理闭环 + 每帧 render → YOLO detect_3d")
         self._log("   ├ detect_3d / fuse_sensors 断点每步命中 (真流程)")
-        self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示")
+        self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示"
+                  if self._l3_mode != "full" else
+                  "   └ 约 15-25 分钟/轮 (L3 全链 13 段 ~900-1000 步) — 完整动作链的代价")
         # 🆕 2026-09-04 老倪两次报"卡死,只能鼠标动": F5 调试会话中, 断点命中
         #   (detect_3d/fuse_sensors/引擎源码) → pydevd/debugpy 默认挂起**整个进程所有线程**
         #   (VSCode 线程面板全部变暂停), GUI 主线程也被挂 → 表现=只能鼠标动(X server 画的
@@ -10875,6 +10890,7 @@ class SimulinkModule(QWidget):
                 #   重抓时间耗尽; 10 轮回归仅 seed101/102/103/104/108 通过, 104 最快 352 步)。
                 #   演示固定成功 seed, seed100 类布局留给真机/夹持质量修复后再覆盖。
                 sim = RealStateSpaceSim(seed=104, vision=True, vision_every=1,
+                                        mode=getattr(self, "_l3_mode", None),
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
