@@ -8425,6 +8425,47 @@ class SimulinkModule(QWidget):
         🐛 2026-08-12 老倪: force=True 强制重新生成 (训练完成自动触发, 用新模型覆盖旧视频)"""
         root = self._repo_root()
         mp4 = os.path.join(root, "reports", "insert_success_demo.mp4")
+        # 🎯 2026-09-09 (老倪: L4 档要有被干扰的外力操作 90° 渲染): 档位=L4 → 演示入口,
+        #   生成 L4 演示全链视频 (来料转台把光模块水平旋转90° → 夹爪绕z回正抓取 → 光耦合 η),
+        #   覆盖 ss_episode_latest.mp4; L2/L3 档保持原插拔演示视频 (原逻辑不回退)
+        _cap_l4 = str(getattr(self, "_cap_level", "") or "").upper() == "L4"
+        if _cap_l4:
+            mp4 = os.path.join(root, "reports", "ss_episode_latest.mp4")
+            if os.path.exists(mp4) and os.path.getsize(mp4) > 0 and not force:
+                self._log(f"🎬 L4 演示视频已存在 ({os.path.getsize(mp4)//1024}KB: 转台90°干扰+夹爪绕z回正"
+                          f"+光耦合η, 直接打开)")
+                self._open_video_for_user(mp4)
+                self._send_video_to_feishu_async(mp4)
+                return
+            self._log("▶ L4 演示全链生成中 (来料转台 90° 外力干扰 → 夹爪绕z姿态适配抓取 → 回正 "
+                      "→ 对接 → AOI → 光耦合精密操作 η 收敛, 约 1-2 分钟)…")
+
+            def _work_l4():
+                import subprocess as _sp
+                root = self._repo_root()
+                py = os.path.join(root, "gui-venv311", "bin", "python")
+                if not os.path.exists(py):
+                    return False, "缺少 gui-venv311 (视频渲染环境)"
+                r = _sp.run([py, os.path.join(root, "tools", "gen_l4_demo_video.py"),
+                             "--also-latest"], capture_output=True, text=True, timeout=1200,
+                            cwd=os.path.join(root, "tools"), env={**os.environ, "MUJOCO_GL": "egl"})
+                out = (r.stdout or "").strip().splitlines()
+                last = out[-1] if out else "?"
+                mp4 = os.path.join(root, "reports", "ss_episode_latest.mp4")
+                if r.returncode == 0 and os.path.exists(mp4):
+                    self._send_video_to_feishu_async(mp4)
+                    if not force:
+                        try:
+                            self._open_video_for_user(mp4)
+                        except Exception as _ex:
+                            self._log(f"🎬 L4 演示视频已生成 (自动打开失败: {str(_ex)[:50]})")
+                    else:
+                        self._log("🎬 L4 演示视频已生成 (后台) — 双击 ▶ 生成插拔视频 节点秒开")
+                    return True, f"🎬 L4 演示视频已生成: reports/ss_episode_latest.mp4"
+                return False, f"L4 演示视频生成失败: {last}"
+
+            self._start_worker(_work_l4, "正在生成 L4 演示全链视频…", stage="insert_video")
+            return
         # 🐛 2026-08-26: exe 版打包的视频名是 mlp_insert_success_final.mp4 (不是 insert_success_demo)
         # 优先找 exe 内置视频 (frozen _MEIPASS/reports/), 再找源码 reports/
         if getattr(sys, "frozen", False):
@@ -11552,8 +11593,19 @@ class SimulinkModule(QWidget):
                 #   (原 gen_insert_video.py 是双脑策略的另一条 episode, 与状态空间不同源)
                 out = _os.path.join(root, "reports", "ss_episode_latest.mp4")
                 _env = {**_os.environ, "MUJOCO_GL": "egl", "MUJOCO_EGL_DEVICE": "0"}
-                r = _sp.run([sys.executable, os.path.join(tools_dir, "gen_ss_metaworld_episode.py"),
-                             "--seed", "0", "--seeds", "3"],
+                # 🎯 2026-09-09 (老倪: L4 档 3D 视频必须看到"外力把光模块旋转90°"): L4 档自动导出
+                #   切到 L4 演示全链生成器 (来料转台 90° 外力干扰 → 夹爪绕z回正抓取 → 对接 →
+                #   AOI → 光耦合精密操作 η 收敛), 覆盖同一条 ss_episode_latest.mp4 链接;
+                #   非 L4 档保持原同源 episode 生成器 (回归/演示两不相扰)
+                _cap_l4 = str(getattr(self, "_cap_level", "") or "").lower() == "l4"
+                if _cap_l4:
+                    _gen = os.path.join(tools_dir, "gen_l4_demo_video.py")
+                    self._safe_log("🎬 L4 档自动导出: 演示全链 (来料转台把光模块水平旋转90° 外力干扰 "
+                                   "+ 夹爪绕z姿态适配 + 光耦合精密操作) — 渲染约 1-2 分钟")
+                else:
+                    _gen = os.path.join(tools_dir, "gen_ss_metaworld_episode.py")
+                r = _sp.run([sys.executable, _gen, "--also-latest"] if _cap_l4
+                            else [sys.executable, _gen, "--seed", "0", "--seeds", "3"],
                             capture_output=True, text=True, timeout=1200, cwd=tools_dir, env=_env)
                 if r.returncode != 0:
                     self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")

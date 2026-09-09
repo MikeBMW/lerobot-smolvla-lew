@@ -379,7 +379,20 @@ class L4Demo:
         return report
 
 
+def ensure_scene():
+    """演示场景 XML 用真实 peg 惯量生成 (引擎默认 XML 不受影响)"""
+    import subprocess as _sp
+    _sp.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          "gen_l4_demo_scene.py"), "--peg-real-inertia"],
+            capture_output=True, timeout=60)
+
 def main():
+    ensure_scene()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--also-latest", action="store_true",
+                    help="额外覆盖 reports/ss_episode_latest.mp4 (GUI L4 档自动导出用同链接)")
+    a = ap.parse_args()
     t0 = time.time()
     demo = L4Demo(seed=0)
     log = demo.log
@@ -408,6 +421,10 @@ def main():
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-loglevel", "error", mp4],
                    check=True)
     shutil.rmtree(tmp, ignore_errors=True)
+    if a.also_latest:
+        latest_mp4 = os.path.join(REP, "ss_episode_latest.mp4")
+        shutil.copyfile(mp4, latest_mp4)
+        log(f"   📺 已覆盖 ss_episode_latest.mp4 (GUI L4 档同链接, 视频内容=本演示全链)")
     log(f"\n✅ L4 演示全链完成: success={ok_all} · {demo.steps} 步 · {time.time()-t0:.0f}s")
     log(f"   trace: {npz}")
     log(f"   🎬 视频: {mp4} ({len(demo.frames)} 帧)")

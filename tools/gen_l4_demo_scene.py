@@ -60,11 +60,15 @@ def main():
     s = open(SRC, encoding="utf-8").read()
     assert "<worldbody>" in s and "</worldbody>" in s
     assert "turntable" not in s, "目标 XML 已存在注入?"
-    # peg 防滚大惯量 (100000) 使"夹持旋转回正"物理不可行 (τ=I·α 差4个数量级实锤) —
-    # 演示场景用真实盒惯量: 0.24×0.03×0.03m 质量0.1 → Ix=1.5e-5, Iy=Iz=4.9e-4 (长轴x)
-    # 仅 L4 演示 env 生效; 回归/训练 env 用原 XML 不受影响
-    s = s.replace('<inertial pos="0 0 0" mass="0.1" diaginertia="100000 100000 100000"/>',
-                  '<inertial pos="0 0 0" mass="0.1" diaginertia="0.000015 0.00049 0.00049"/>', 1)
+    # peg 惯量双模式: --peg-real-inertia (演示出片: 夹持旋转需真实惯量, 大惯量下刚性锁相位错乱实锤)
+    #   默认 100000 原值 (引擎插拔/回归链依赖防滚大惯量, 不回退红线; 引擎场景 90° 段用治具钉)
+    import argparse as _ap
+    _ap2 = _ap.ArgumentParser()
+    _ap2.add_argument("--peg-real-inertia", action="store_true", help="peg 用真实盒惯量 (演示出片用)")
+    _a2 = _ap2.parse_args()
+    if _a2.peg_real_inertia:
+        s = s.replace('<inertial pos="0 0 0" mass="0.1" diaginertia="100000 100000 100000"/>',
+                      '<inertial pos="0 0 0" mass="0.1" diaginertia="0.000015 0.00049 0.00049"/>', 1)
     # 压电载物台惯性锁位 (100kg: 等效压电闭环刚度, 接触力推不动; 自由轻台被 peg 接触推开实锤;
     # 不用 actuator — 会破坏 metaworld nu=2 假设 do_simulation 校验实锤)
     # 夹持旋转回正需要高切向摩擦 (原 1.0 下滑脱实锤): peg 表面摩擦 5.0 (演示场景专用)
