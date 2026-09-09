@@ -70,8 +70,9 @@ def make_env(seed=0):
 class L4Demo:
     """L4 全链演示控制器: 每段真实伺服 + 阶段日志/指标"""
 
-    def __init__(self, seed=0, log=print):
+    def __init__(self, seed=0, log=print, record=True):
         self.log = log
+        self._record = bool(record)
         self.env = make_env(seed)
         self.m, self.d = self.env.model, self.env.data
         mujoco.mj_forward(self.m, self.d)
@@ -85,6 +86,14 @@ class L4Demo:
         self.frames = []
         self.steps = 0
         self.history = []
+        # tr 轨迹记录 (与引擎 run() tr keys 全集对齐 — GUI Scope/3D 消费; 演示填充核心段)
+        self.tr = {k: [] for k in (
+            "t", "dist", "u_ff", "residual", "contact_p", "u_sat", "stage", "done",
+            "x", "gripper", "force", "peg", "peg_head", "site_ph", "target", "grasped",
+            "obs", "u_ff_vec", "u_sat_vec", "u_fb_vec", "u_fuse_vec", "u_limit_vec",
+            "u_exec_vec", "v_vec", "z_k_vec", "io_trace", "latent_vec", "prior_vec",
+            "corrected_vec", "residual_vec", "mani_risk", "mani_progress", "mani_eta",
+            "mani_V", "mani_rem", "mani_dperp", "mani_pred", "z7_vec", "probe_seq")}
         self._grab = False          # 治具钉 peg (True=peg 由治具/台携带)
         self._grab_center = None    # 治具携带时 peg 中心 (世界)
         self._grip_lock = False     # 刚性夹持 (True=peg 每帧钉到手爪位姿 — 仿真摩擦夹持长距离滑脱实锤,
@@ -111,13 +120,32 @@ class L4Demo:
         return self.site("pegHead")
 
     def step(self, act, rec=True):
-        """env 单步 + 治具钉 peg + 选帧录制"""
+        """env 单步 + 治具钉 peg + 选帧录制 + tr 轨迹"""
         if self._grab and self._grab_center is not None:
             q = self.d.qpos.copy()
             q[self.adr:self.adr+3] = self._grab_center
             q[self.adr+3:self.adr+7] = [1, 0, 0, 0]
             self.d.qpos = q
         self.env.step(act)
+        # tr 轨迹记录 (演示链真实数据)
+        _peg = self.peg_center()
+        _ph = self.peg_head()
+        tr = self.tr
+        tr["t"].append(self.steps * 0.02)
+        tr["stage"].append("阶段 " + (self._stage or "准备"))
+        tr["done"].append(0.0)
+        tr["x"].append(self.hand().copy())
+        tr["peg"].append(_peg.copy())
+        tr["peg_head"].append(_ph.copy())
+        tr["gripper"].append(float(act[3]) if len(act) > 3 else 0.0)
+        tr["u_exec_vec"].append(np.asarray(act, dtype=float))
+        tr["u_ff_vec"].append(np.zeros(4))
+        tr["u_fb_vec"].append(np.zeros(4))
+        tr["u_fuse_vec"].append(np.asarray(act, dtype=float))
+        tr["u_limit_vec"].append(np.asarray(act, dtype=float))
+        tr["u_sat_vec"].append(np.asarray(act, dtype=float))
+        tr["v_vec"].append(np.zeros(3))
+        tr["z_k_vec"].append(np.zeros(7))
         # 刚性夹持: env.step 后 peg 精确钉回手爪位姿 (抵消单帧漂移)
         if self._grip_lock and self._lock_rel is not None:
             hq = self.d.xquat[self.hand_id].copy()
@@ -129,7 +157,7 @@ class L4Demo:
             q[self.adr+3:self.adr+7] = qmul(hq, rel_q)
             self.d.qpos = q
         self.steps += 1
-        if rec and self.steps % RENDER_EVERY == 0:
+        if rec and self._record and self.steps % RENDER_EVERY == 0:
             self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
         return self.env
 
@@ -203,7 +231,7 @@ class L4Demo:
             self.d.qpos = q
             mujoco.mj_step(self.m, self.d)
             self.steps += 1
-            if self.steps % RENDER_EVERY == 0:
+            if self._record and self.steps % RENDER_EVERY == 0:
                 self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
         # 治具保持钉 peg 直到夹爪闭合 (释放自由落 → 180° 相位随机实锤; 钉住 = 真空/定位销)
         self._grab = True
@@ -377,6 +405,29 @@ class L4Demo:
         self.history.append(f"⑥ 光耦合: {report}")
         self.log(f"   ✅ η={eta:.4f} (δ={delta[0]:+.3f},{delta[1]:+.3f}mm · 台位 {sx*1000:+.2f},{sy*1000:+.2f}mm · {len(dlog)}轮)")
         return report
+
+    def run_all(self):
+        """L4 演示全链六段 (GUI 引擎 demo 模式委托入口): 返回 (success, meta)"""
+        ok_all = True
+        ok_all &= self.stage_turntable90() is not None
+        ok_all &= self.stage_adapt_grasp()
+        ok_all &= self.stage_yaw_back()
+        ok_all &= self.stage_insert()
+        ok_all &= self.stage_aoi()
+        cpl = self.stage_couple()
+        ok_all &= cpl["ok"]
+        for _k in self.tr:
+            if _k in ("stage", "io_trace", "probe_seq"):
+                self.tr[_k] = np.asarray(self.tr[_k], dtype=object)
+            else:
+                self.tr[_k] = np.asarray(self.tr[_k], dtype=float)
+        if len(self.tr["done"]):
+            self.tr["done"][-1] = 1.0 if ok_all else 0.0
+        meta = dict(seed=0, success=ok_all, steps=self.steps,
+                    stage_final="全链完成" if ok_all else "未完成",
+                    demo="L4 演示: 转台90°外力干扰 + 姿态适配抓取 + 光耦合精密操作",
+                    history=self.history, couple=cpl, env="sawyer_peg_insertion_side_l4")
+        return ok_all, meta
 
 
 def ensure_scene():

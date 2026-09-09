@@ -149,7 +149,11 @@ PEG_HEAD_OFF_XY = 0.13  # 光模块头相对抓握点沿 -X 0.13 (现场用 site
 class RealStateSpaceSim:
     """R0 物理真实化 — run() 返回时间序列 (结构与引擎 tr 兼容)"""
 
-    def __init__(self, log=None, seed=0, vision=False, vision_every=25, mode=None):
+    def __init__(self, log=None, seed=0, vision=False, vision_every=25, mode=None,
+                 demo_l4=False):
+        """demo_l4=True → 「L4 演示」档: run() 委托 L4 演示全链控制器 (90°外力干扰 +
+        姿态适配抓取 + 光耦合精密操作), 产 tr 与引擎兼容; 默认 False 引擎原逻辑零改动"""
+        self._demo_l4 = bool(demo_l4)
         self.log = log or (lambda *a: None)
         self.seed = seed
         self._abort = False   # ⏹ 2026-09-09: GUI ⏹停止/🔄重启置位 → run 循环提前退出 (防双 env 并发 mujoco segfault)
@@ -676,6 +680,36 @@ class RealStateSpaceSim:
         """光模块头到插入终点距离 (插入→完成 证据; 终点=感知孔口+CAD偏移)"""
         return float(np.linalg.norm(self.peg_head() - self._goal_p()))
 
+    def _run_demo(self, cap=None):
+        """🎬 L4 演示档: 委托 tools/gen_l4_demo_video.py 的 L4Demo 控制器跑 90° 全链
+        (来料转台把光模块水平旋转90° → 夹爪绕z转90°姿态适配抓取 → 回正 → 对接 → AOI →
+        光耦合精密操作 η 收敛), 全真物理; 返回 tr (keys 与引擎 run() 兼容, GUI 消费安全)。
+        引擎默认路径/能力零改动 (仅 demo_l4 构造时走此分支)"""
+        import importlib.util
+        _tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _spec = importlib.util.spec_from_file_location(
+            "_l4demo_gen", os.path.join(_tools, "gen_l4_demo_video.py"))
+        _g = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_g)
+        self.log("🏆 L4 演示档: 来料转台把光模块水平旋转 90° (外力干扰) → 夹爪绕z姿态适配抓取 "
+                 "→ 回正 → 对接 → AOI → 光耦合精密操作 (全真物理, 无动画造假)")
+        _demo = _g.L4Demo(seed=0, log=self.log, record=False)
+        try:
+            ok, meta = _demo.run_all()
+        finally:
+            try:
+                _demo.env.close()
+            except Exception:
+                pass
+        meta["cap"] = cap
+        tr = dict(_demo.tr)
+        tr["_meta"] = meta
+        for _h in meta.get("history", []):
+            self.log(f"  → {_h}")
+        self.log(f"✅ L4 演示全链: success={ok} · {meta['steps']} 步 · "
+                 f"光耦合 η={meta.get('couple', {}).get('eta')}")
+        return tr
+
     # ── 主循环 ──
     def run(self, max_steps=None, cap=None):
         """R0 主循环 — metaworld 单轮硬上限 (insert 默认 500 步 / full 全链 2000 步)。
@@ -687,6 +721,10 @@ class RealStateSpaceSim:
         (full 4000 / insert 1000), 直到最终完成任务或真死局 (物理不可恢复); 引擎分级
         回退 (遇阻/空夹/滑脱→重对孔/重抓) 即恢复执行体, L4 只给足恢复预算 + 标注。"""
         self._cap = cap
+        # 🎬 2026-09-09 「L4 演示」档 (demo_l4): 委托 L4 演示全链控制器 — 90° 外力干扰 +
+        #   夹爪绕z姿态适配抓取 + 光耦合精密操作, 全真物理; 返回 tr (keys 与引擎兼容)
+        if getattr(self, "_demo_l4", False):
+            return self._run_demo(cap)
         # 🐛 2026-09-09: GUI 档位是大写 "L4", 引擎判小写 "l4" → 预算×2 从未生效 (静态核实)
         cap = str(cap).lower() if cap else None
         if cap == "l4":

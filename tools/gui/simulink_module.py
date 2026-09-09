@@ -2729,8 +2729,9 @@ class SimNodeItem(QGraphicsObject):
             painter.setFont(QFont("Arial", 9, QFont.Bold))
             painter.drawText(QRectF(12, 6, self.w - 24, 18), Qt.AlignVCenter | Qt.AlignLeft,
                              "🧭 能力档位 (数据源层)")
-            _caps = [("L2", "插装"), ("L3", "插拔+AOI"), ("L4", "自主恢复")]
-            _cw = (self.w - 24) / 3.0
+            # 🎬 2026-09-09: 第四档 L4D = L4 演示 (90°外力干扰+光耦合全链; 原 L4 自主恢复保留)
+            _caps = [("L2", "插装"), ("L3", "插拔+AOI"), ("L4", "自主恢复"), ("L4D", "L4演示")]
+            _cw = (self.w - 24) / 4.0
             for _i, (_k, _kd) in enumerate(_caps):
                 _on = (_k == _cap_cur)
                 _cc = QColor("#ffd700") if _on else QColor("#57606a")
@@ -8428,7 +8429,7 @@ class SimulinkModule(QWidget):
         # 🎯 2026-09-09 (老倪: L4 档要有被干扰的外力操作 90° 渲染): 档位=L4 → 演示入口,
         #   生成 L4 演示全链视频 (来料转台把光模块水平旋转90° → 夹爪绕z回正抓取 → 光耦合 η),
         #   覆盖 ss_episode_latest.mp4; L2/L3 档保持原插拔演示视频 (原逻辑不回退)
-        _cap_l4 = str(getattr(self, "_cap_level", "") or "").upper() == "L4"
+        _cap_l4 = str(getattr(self, "_cap_level", "") or "").upper() in ("L4", "L4D")
         if _cap_l4:
             mp4 = os.path.join(root, "reports", "ss_episode_latest.mp4")
             if os.path.exists(mp4) and os.path.getsize(mp4) > 0 and not force:
@@ -11068,8 +11069,14 @@ class SimulinkModule(QWidget):
                 # 🐛 2026-09-07 静静: seed=100 是已知失败布局 (R0 实测: 夹持偏浅→peg 滑脱→
                 #   重抓时间耗尽; 10 轮回归仅 seed101/102/103/104/108 通过, 104 最快 352 步)。
                 #   演示固定成功 seed, seed100 类布局留给真机/夹持质量修复后再覆盖。
-                sim = RealStateSpaceSim(seed=104, vision=True, vision_every=1,
+                # 🎬 2026-09-09 「L4 演示」档 (L4D): demo_l4=True → 引擎委托 90° 演示全链
+                #   (来料转台90°外力干扰+夹爪绕z回正抓取+光耦合), 不走 YOLO/attempts
+                _cap = getattr(self, "_cap_level", None)
+                _is_l4d = str(_cap or "").upper() == "L4D"
+                sim = RealStateSpaceSim(seed=104,
+                                        vision=not _is_l4d, vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
+                                        demo_l4=_is_l4d,
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
@@ -11077,7 +11084,6 @@ class SimulinkModule(QWidget):
                 # 🎯 2026-09-09 L4 抗干扰 attempts: cap=L4 → 每次 run 自动注入新干扰布局
                 #   (拿起前光模块移位/转向); 失败 (布局死局/未完成) → 换新干扰重试 ≤5 次,
                 #   = 来料重摆语义, 直到任务最终成功 (容忍干扰, 最后完成任务)
-                _cap = getattr(self, "_cap_level", None)
                 _attempts = 1
                 while True:
                     _prev_round = getattr(sim, "_jitter_round", 0)
@@ -11597,7 +11603,7 @@ class SimulinkModule(QWidget):
                 #   切到 L4 演示全链生成器 (来料转台 90° 外力干扰 → 夹爪绕z回正抓取 → 对接 →
                 #   AOI → 光耦合精密操作 η 收敛), 覆盖同一条 ss_episode_latest.mp4 链接;
                 #   非 L4 档保持原同源 episode 生成器 (回归/演示两不相扰)
-                _cap_l4 = str(getattr(self, "_cap_level", "") or "").lower() == "l4"
+                _cap_l4 = str(getattr(self, "_cap_level", "") or "").lower() in ("l4", "l4d")
                 if _cap_l4:
                     _gen = os.path.join(tools_dir, "gen_l4_demo_video.py")
                     self._safe_log("🎬 L4 档自动导出: 演示全链 (来料转台把光模块水平旋转90° 外力干扰 "
@@ -11744,7 +11750,7 @@ class SimulinkModule(QWidget):
         p = node.setdefault("params", {})
         cur = p.get("cap_level") or getattr(self, "_cap_level", None) or "L2"
         if level is None:
-            level = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
+            level = {"L2": "L3", "L3": "L4", "L4": "L4D", "L4D": "L2"}.get(cur, "L2")
         p["cap_level"] = level
         self._cap_level = level
         # 🐛 2026-09-09: 切档后重置单步/播放序 — 旧序按上一档位过滤 (L2 35节点),
@@ -11763,7 +11769,8 @@ class SimulinkModule(QWidget):
         self.canvas._scene.update()
         desc = {"L2": "基础: 插装即完成 (insert 8段)",
                 "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
-                "L4": "L4 自主恢复: +失败自愈直到完成 (预算×2)"}.get(level, level)
+                "L4": "L4 自主恢复: +失败自愈直到完成 (预算×2)",
+                "L4D": "L4 演示: 来料转台90°外力干扰+夹爪绕z回正抓取+光耦合精密操作 (全真物理)"}.get(level, level)
         self._log(f"🧭 能力档位 → **{level}** [{desc}] (下次 ▶运行生效)")
         try:
             self._sync()
