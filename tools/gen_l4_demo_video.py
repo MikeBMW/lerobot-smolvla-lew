@@ -270,8 +270,8 @@ class L4Demo:
         for _ in range(30):
             self.step(np.zeros(4))
         y0 = self.peg_yaw_deg()
-        # 手退高位避让
-        self.servo(np.array([0.0, 0.6, 0.34]), tol=0.008, max_steps=300)
+        # 手退高位避让 (转台转动区外; 高度够离桌面即可, 勿上天 — 老倪: 机械臂自己抬升观感)
+        self.servo(np.array([0.0, 0.6, 0.20]), tol=0.008, max_steps=300)
         # 转台 0→90°: 盘转 + peg 治具同步 (peg 相对盘不动 = 定位销/真空吸附)
         N, tot = 100, math.pi/2
         t0 = float(self.d.qpos[self.ttq])
@@ -302,13 +302,15 @@ class L4Demo:
     def stage_adapt_grasp(self):
         self._stage = "② 姿态适配抓取"
         self.log("── ② 抗干扰: 夹爪绕z转90° 对正横放光模块 → 抓质心 → 抬起 (6轴末端回正语义) ──")
-        # 转 yaw 前先抬高并渐进转 (peg 已转 90°, 两指须转 90° 才夹得住)
+        # 转 yaw 前先降到模块正上方 15cm (抓取预备位, z≈0.175) 再转 — 🐛 2026-09-10 老倪:
+        #   "末端执行器自己转, 机械臂自己抬升" = 原在 ① 避让高位 0.36m 空转 90°+悬停
+        #   (开场 7s 手在天上转, 观感失控) → 改为贴任务转: 在横放模块正上方转 90° 对准,
+        #   动作目的一目了然 (爪扫掠 r≈0.073 < 与模块顶间隙 0.11, 安全)
         pc = self.peg_center()
-        # 渐进转 yaw 至 90° (空载, 快)
         self.env._grip_yaw = 0.0
+        self.servo(pc + np.array([0, 0, 0.15]), tol=0.006, max_steps=600)
         self.ramp_yaw(math.pi/2, step_rad=0.03, hold=None, g=0.0, max_steps=400)
-        # 伺服到质心上方 (peg 仍治具钉位 → 相位精确 90°)
-        self.servo(pc + np.array([0, 0, 0.12]), tol=0.006, max_steps=600)
+        # 下降闭夹 (0.175 → 0.047, peg 仍治具钉位 → 相位精确 90°)
         self.servo(pc + np.array([0, 0, 0.022]), tol=0.003, max_steps=400)
         # 夹爪到位后、闭夹前解除治具 (peg 原位坐盘被夹 — 无自由滚动期, 相位保持; 
         #   钉着闭夹 pad 夹不住实锤 vs 释放后抓 180° 相位随机实锤)
@@ -357,8 +359,8 @@ class L4Demo:
         self._grab_center = np.array([ttx, tty, tt_z])
         for _ in range(20):
             self.step(np.zeros(4))
-        # 3) 抬爪 (高位)
-        self.servo(np.array([ttx, tty, 0.36]), tol=0.008, max_steps=300)
+        # 3) 抬爪离开盘面 (z=0.20: 爪底 0.175 > peg 扫掠顶 ~0.033, 足够; 勿上 0.36 天)
+        self.servo(np.array([ttx, tty, 0.20]), tol=0.008, max_steps=300)
         # 4) 盘转回 0° (peg 治具随盘, 绕世界 z 精确 — 与 ① 同机制反向)
         N = 100
         t0 = float(self.d.qpos[self.ttq])
@@ -375,8 +377,8 @@ class L4Demo:
             if self._record and self.steps % RENDER_EVERY == 0:
                 self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
         self._grab_center = np.array([ttx, tty, tt_z])
-        # 5) 空爪回 0° (高位, 无 peg 拖累; 供标准抓取)
-        self.ramp_yaw(0.0, step_rad=0.03, hold=np.array([ttx, tty, 0.36]), g=0.0, max_steps=400)
+        # 5) 空爪回 0° (盘面之上, 无 peg 拖累; 供标准抓取)
+        self.ramp_yaw(0.0, step_rad=0.03, hold=np.array([ttx, tty, 0.20]), g=0.0, max_steps=400)
         y = self.peg_yaw_deg()
         ok = y < 10 or abs(y - 360) < 10 or abs(y - 180) < 10
         self.history.append(f"③ 治具校直: 转台盘转回 → peg yaw {y:.0f}° (治具精确绕世界z)")
@@ -460,8 +462,10 @@ class L4Demo:
             self.log(f"   peg 头朝向反 ({self.peg_yaw_deg():.0f}°), 夹持中旋转 180° 矫正")
             self.ramp_yaw(self.env._grip_yaw + math.pi, step_rad=0.008, hold=self.hand(), max_steps=900)
         # 高位转移 → peg 头送达孔口中心 (孔口 = hole site; 孔轴沿 -x 指向盒内)
+        # 🎯 转移抬升封顶 0.32m (老倪: 机械臂自己抬升观感 — 抬过障碍即可, 勿上天)
         ph = self.peg_head()
-        self.servo_head(ph + np.array([0, 0, 0.20]), tol=0.006, max_steps=300)
+        _des = ph + np.array([0, 0, 0.20]); _des[2] = min(_des[2], 0.32)
+        self.servo_head(_des, tol=0.006, max_steps=300)
         ph = self.peg_head()
         self.servo_head(np.array([hole[0], hole[1], ph[2]]), tol=0.008, max_steps=900)
         self.servo_head(hole, tol=0.006, max_steps=500)
@@ -520,8 +524,10 @@ class L4Demo:
             self.servo_head(ph + np.array([0.002, 0, 0]), tol=0.0015, max_steps=60)
         ph = self.peg_head()
         ok = ph[0] >= hole[0] - 0.005                  # 头已离开孔口
-        # 抬升 (高位, 供后续段转移)
-        self.servo_head(ph + np.array([0, 0, 0.18]), tol=0.008, max_steps=300)
+        # 抬升 (高位, 供后续段转移) — 高度封顶 0.32 (勿上天)
+        ph = self.peg_head()
+        _des = ph + np.array([0, 0, 0.18]); _des[2] = min(_des[2], 0.32)
+        self.servo_head(_des, tol=0.008, max_steps=300)
         out = float(self.peg_head()[0] - hole[0])
         self.history.append(f"⑥ 拔出: 头退出孔口外 {max(out,0)*1000:.0f}mm {'成功' if ok else '未完全退出'}")
         self.log(f"   {'✅' if ok else '❌'} 拔出完成, 头在孔口外 {max(out,0)*1000:.0f}mm")
@@ -532,8 +538,10 @@ class L4Demo:
         self._stage = "⑦ AOI"
         self.log("── ⑦ AOI 检查: 光模块头送达光学检测设备镜头对焦点悬停采图 (真实设备位, 引擎同源) ──")
         # 高位 → 水平转移到镜头对焦点上方 → 下降到对焦点 (避免扫桌面设备)
+        #   抬升封顶 0.32 (⑥ 已抬至 ~0.31, 勿再叠加上天)
         ph = self.peg_head()
-        self.servo_head(ph + np.array([0, 0, 0.12]), tol=0.006, max_steps=300)
+        _des = ph + np.array([0, 0, 0.12]); _des[2] = min(_des[2], 0.32)
+        self.servo_head(_des, tol=0.006, max_steps=300)
         ph = self.peg_head()
         self.servo_head(np.array([AOI_FOCUS[0], AOI_FOCUS[1], ph[2]]), tol=0.008, max_steps=1000)
         self.servo_head(AOI_FOCUS, tol=0.004, max_steps=400)
