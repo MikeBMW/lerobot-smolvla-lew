@@ -538,13 +538,25 @@ class L4Demo:
         self.servo_head(np.array([AOI_FOCUS[0], AOI_FOCUS[1], ph[2]]), tol=0.008, max_steps=1000)
         self.servo_head(AOI_FOCUS, tol=0.004, max_steps=400)
         hold = 0
+        # 🐛 2026-09-10 静静实锤: 悬停 act=0 不维持闭合力 → 仿真摩擦夹持在转移/悬停中
+        #   滑脱 (全链 tr 帧 3478→3488: peg z 0.081→0.008 掉台; 之后 AOI 空爪假报告、
+        #   ⑧ 治具瞬移吸附掉地 peg 假成功 → success=True 但模块掉过) → 全程保持闭合力 1.0
+        #   (演示语义 = 刚性手爪转移; 真机同构: AOI 检测阶段工件由刚性夹持/真空吸附保持)
         for _ in range(60):
-            self.step(np.zeros(4))
+            self.step(np.array([0, 0, 0, 1.0]))
             hold += 1
         ph = self.peg_head()
         dev_mm = float(np.linalg.norm(ph - AOI_FOCUS) * 1000)
-        report = {"ok": True, "method": "镜头对焦点悬停 (引擎 AOI_FOCUS 同源位, 3D 设备真实呈现)",
-                  "hold_frames": hold, "dev_mm": round(dev_mm, 1)}
+        # 🛡 在位校验: 悬停期间 peg 必须仍被夹持 (z 在夹持高度, 未掉台) — 防空爪假报告
+        pz = float(self.peg_center()[2])
+        in_hand = pz > 0.05          # 夹持中 peg 中心 z≈0.08; 掉台 z≈0.015
+        report = {"ok": in_hand, "method": "镜头对焦点悬停 (引擎 AOI_FOCUS 同源位, 3D 设备真实呈现)",
+                  "hold_frames": hold, "dev_mm": round(dev_mm, 1),
+                  "peg_z": round(pz, 4)}
+        if not in_hand:
+            self.log(f"   ❌ AOI 悬停中 peg 滑脱掉落 (peg z={pz:.3f}) — 中止, 不掩盖")
+            self.history.append(f"⑦ AOI: peg 滑脱掉落 (z={pz:.3f}), 中止")
+            return False
         self.history.append(f"⑦ AOI: {report}")
         self.log(f"   ✅ AOI 悬停保持 {hold} 帧, 头距对焦点 {dev_mm:.1f}mm")
         return True
