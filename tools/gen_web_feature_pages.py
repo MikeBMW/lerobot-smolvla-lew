@@ -124,6 +124,32 @@ def build_function_list():
          f'半自动 {kc.get("semi",0)} · 手动 {kc.get("manual",0)}) · '
          f'每功能: 详细说明 + 验证方法 + 5 条用例逐条对应 · 数据源 node_func_tree.py (单一事实源, 网页/Excel/报告数字同源派生)</div>']
 
+    # ── §0 能力档位分级 (画布三级 L2🔧/L3🚀/L4🏆 — capability_levels.py 权威) ──
+    try:
+        import importlib.util as _ilu0
+        _cap_p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "src", "lerobot", "verification", "capability_levels.py")
+        _cs = _ilu0.spec_from_file_location("cap_levels_web", _cap_p)
+        _cm = _ilu0.module_from_spec(_cs)
+        _cs.loader.exec_module(_cm)
+        h.append("<h2>🔧🚀🏆 能力档位分级 (L2 基础辅助 / L3 高级自动 / L4 专家自主)</h2>")
+        h.append('<div class="note">画布三档能力 — 数据源 capability_levels.py (每档功能与真实测试组绑定, 分级可分可合)</div>')
+        _icos = {"L2": "🔧", "L3": "🚀", "L4": "🏆"}
+        _cols = {"L2": "#3fb950", "L3": "#d29922", "L4": "#a371f7"}
+        for _lv in ("L2", "L3", "L4"):
+            _d = _cm.CAPABILITY_LEVELS[_lv]
+            h.append(f"<h3 style='color:{_cols[_lv]}'>{_icos[_lv]} L{_lv[1]} · {_d['name']} "
+                     f"({len(_d['funcs'])} 项功能)</h3>")
+            h.append(f"<p class='note' style='margin:4px 0'><b>技术载体</b>: {_esc(_d['tech'])}<br>"
+                     f"<b>分级定义</b>: {_esc(_d['auto_ref'])}</p>")
+            h.append("<table><tr><th>编号</th><th>功能</th><th>说明</th></tr>")
+            for _f in _d["funcs"]:
+                h.append(f"<tr><td class='tno'>{_f['fid']}</td><td><b>{_esc(_f['name'])}</b></td>"
+                         f"<td>{_esc(_f['desc'])}</td></tr>")
+            h.append("</table>")
+    except Exception as _ce:
+        h.append(f"<h2>🔧🚀🏆 能力档位分级</h2><p class='note'>⚠️ 加载失败: {_esc(str(_ce))}</p>")
+
     # ── §1 几何能力分类总纲 (纤维丛视角) ──
     h.append("<h2>📐 一、几何能力分类总纲 (分段式局部截面 → VLM 端到端全局流形)</h2>")
     h.append('<div class="note"><b>框架</b>: 传统分段式 = 在低维物理空间手工铺设'

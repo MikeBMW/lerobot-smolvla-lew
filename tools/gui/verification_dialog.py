@@ -12,6 +12,7 @@
 import os
 
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QTreeWidget, QTreeWidgetItem, QPushButton,
                              QHeaderView, QAbstractItemView, QMessageBox)
@@ -52,6 +53,16 @@ def _load_tree():
     import importlib.util as _ilu
     path = os.path.join(_repo_root(), "src", "lerobot", "verification", "node_func_tree.py")
     spec = _ilu.spec_from_file_location("lerobot.verification.node_func_tree", path)
+    m = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _load_cap():
+    """加载画布三级能力清单 (capability_levels.py — L2🔧/L3🚀/L4🏆 权威)"""
+    import importlib.util as _ilu
+    path = os.path.join(_repo_root(), "src", "lerobot", "verification", "capability_levels.py")
+    spec = _ilu.spec_from_file_location("lerobot.verification.capability_levels", path)
     m = _ilu.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
@@ -325,10 +336,33 @@ class VerificationDialog(QDialog):
         hdrs.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hdrs.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.tabs.addTab(self.trs, "④ 技术规格书 · 3组12项 精密/流转/认知")
+
+        # ── Tab5 能力档位 (画布三级: L2🔧 基础辅助 / L3🚀 高级自动 / L4🏆 专家自主) ──
+        #   (2026-09-09 老倪: 功能清单节点按 L2/L3/L4 区分 — 数据源 capability_levels.py 权威)
+        self.trcap = QTreeWidget()
+        self.trcap.setStyleSheet(
+            "QTreeWidget { background:#161b22; color:#e6edf3; alternate-background-color:#1c2128; "
+            "border:1px solid #30363d; outline:none; selection-background-color:#1f6feb; } "
+            "QTreeWidget::item { padding:2px; color:#e6edf3; } "
+            "QTreeWidget::item:selected { background:#1f6feb; } "
+            "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:4px; }")
+        self.trcap.setColumnCount(3)
+        self.trcap.setHeaderLabels(["档位 / 功能", "编号", "说明 (技术载体 / 验收证据)"])
+        self.trcap.setRootIsDecorated(True)
+        self.trcap.setAlternatingRowColors(True)
+        self.trcap.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        hdrc = self.trcap.header()
+        hdrc.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdrc.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hdrc.setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tabs.addTab(self.trcap, "⑤ 能力档位 · L2🔧基础 / L3🚀高级 / L4🏆专家")
         self._populate()
         self._populate_product()
         self._populate_rfp()
         self._populate_specs()
+        self._populate_cap()
+        if mode == "feature":
+            self.tabs.setCurrentIndex(4)   # 功能清单节点 → 直接看 L2/L3/L4 档位
 
         h = QHBoxLayout()
         self.lbl_res = QLabel("")
@@ -393,6 +427,31 @@ class VerificationDialog(QDialog):
                                                  "manual": Qt.gray}.get(kind))
                         f_item.addChild(t_item)
             g_item.setExpanded(True)
+
+    # ── Tab5 能力档位填充 (L2🔧/L3🚀/L4🏆 — capability_levels.py 权威) ──
+    def _populate_cap(self):
+        self.trcap.clear()
+        try:
+            cap = _load_cap()
+            _cap_ss = {"L2": "#3fb950", "L3": "#d29922", "L4": "#a371f7"}
+            for lv in ("L2", "L3", "L4"):
+                d = cap.CAPABILITY_LEVELS[lv]
+                _ico = {"L2": "🔧", "L3": "🚀", "L4": "🏆"}[lv]
+                head = QTreeWidgetItem(
+                    [f"{_ico} L{lv[1]} · {d['name']}",
+                     f"{len(d['funcs'])} 项",
+                     f"{d['tech']}  —  {d['summary'][:110]}…"])
+                head.setForeground(0, QColor(_cap_ss[lv]))
+                self.trcap.addTopLevelItem(head)
+                for f in d["funcs"]:
+                    f_item = QTreeWidgetItem(
+                        [f"   {f['name']}", f"{f['fid']}", f"{f['desc']}"])
+                    f_item.setForeground(0, QColor("#7ee787"))
+                    head.addChild(f_item)
+                head.setExpanded(True)
+        except Exception as _e:
+            it = QTreeWidgetItem([f"⚠️ 能力档位清单加载失败: {_e}", "", ""])
+            self.trcap.addTopLevelItem(it)
 
     # ── Tab2 产品作业分级填充 (L1基础刚体/L2高级柔性/L3扩展性能调节) ──
     def _populate_product(self):

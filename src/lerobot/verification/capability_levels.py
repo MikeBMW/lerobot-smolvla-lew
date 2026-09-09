@@ -104,6 +104,15 @@ CAPABILITY_LEVELS = {
              "groups": ["muscle", "ff"]},
             {"fid": "L4-C08", "name": "真实化运行", "desc": "R1 视觉闭环 (逐帧 YOLO 真感知; 真实化断言组)",
              "groups": ["sched_real", "chain"]},
+            {"fid": "L4-C09", "name": "抗干扰作业", "desc": "拿起前来料摆放干扰注入 (移位±3.5cm/转向±15°, 真实物理) + "
+             "多布局 attempts 兜底 — L4 档自动触发, 容忍干扰必达成功 (v5.5.1 实测 867 步全链+AOI PASS)",
+             "groups": ["sched_real", "chain"]},
+            {"fid": "L4-C10", "name": "流形预测器", "desc": "JEPA 世界模型预测流形 (z+a→z'→流形6D): 训练 v1→v5 "
+             "(CY 等距正则修复版, 抗干扰 64.6%/clean 43.3%, detach bug 消融实锤), 引擎每帧毫秒级真调, "
+             "权重 models/l4_mani_predictor_v5.pt", "groups": ["mc", "sched_real"]},
+            {"fid": "L4-C11", "name": "记忆分层 · BLMA", "desc": "三层记忆带 (小脑肌肉/海马情景/额叶筹划) + 总装记忆中枢: "
+             "引擎每轮真实化自动写库 (流程经验/预测质量), 真源 src/lerobot/memory, 总装上下文喂 LLM",
+             "groups": ["muscle", "sched_real"]},
         ],
     },
 }
