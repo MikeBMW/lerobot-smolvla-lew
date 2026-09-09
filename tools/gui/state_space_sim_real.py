@@ -158,11 +158,11 @@ class RealStateSpaceSim:
         self._jitter_round = 0
         self._jitter_done = False
         self._jitter_meta = None
-        # 🏆 L4 流形预测器训练权重 — v3 优先 (clean+jitter+CY 几何先验; 抗干扰 0.9→29.5%,
-        #   clean 16.4→33.6%); v1/v2 兜底 (同架构 hidden384/l3 直接加载)
+        # 🏆 L4 流形预测器训练权重 — v4 优先 (512/4层: clean+jitter+CY+分维加权;
+        #   clean 45.7% / 抗干扰 57.4% 双高); v2 同架构兜底 (v1/v3 为 384/3 架构不兼容)
         _md = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self._pred_w_path = None
-        for _w in ("l4_mani_predictor_v3.pt", "l4_mani_predictor_v2.pt", "l4_mani_predictor_v1.pt"):
+        for _w in ("l4_mani_predictor_v4.pt", "l4_mani_predictor_v2.pt"):
             _p = os.path.join(_md, "models", _w)
             if os.path.exists(_p):
                 self._pred_w_path = _p
@@ -1220,13 +1220,13 @@ class RealStateSpaceSim:
                             try:
                                 _pred = _PRED_MOD.WorldModelPredictor(
                                     z_dim=7, hidden_dim=512, num_layers=4)   # v2 架构 (23193帧)
-                                # 🏆 2026-09-09 部署 v2: 加载训练权重 (JEPA z+a→z'→流形,
-                                #   23193 帧 head-修正 z7 训练; test seed7/9 泛化 39.3%)
+                                # 🏆 2026-09-09 部署: 加载训练权重 (v4 优先 512/4层 — clean 45.7% /
+                                #   抗干扰 57.4%; v2 同架构兜底), JEPA z+a→z'→流形 每帧真调
                                 if os.path.exists(self._pred_w_path):
                                     import torch as _th3
                                     _pred.load_state_dict(
                                         _th3.load(self._pred_w_path, map_location="cpu"))
-                                    self.log("🏆 L4 流形预测器 v2 已部署 (训练权重 23193帧 — "
+                                    self.log(f"🏆 L4 流形预测器已部署 ({os.path.basename(self._pred_w_path)} — "
                                              "JEPA LatentPredictor→ManifoldReadout, trained=True)")
                                 else:
                                     self.log("🧠 JEPA 预测流形旁路已接: 权重未找到 "
