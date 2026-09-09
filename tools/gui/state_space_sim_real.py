@@ -526,15 +526,32 @@ class RealStateSpaceSim:
                 _dxy = _npg2.array([_ov.get("dx", 0.0), _ov.get("dy", 0.0)])
                 _dz = _ov.get("dz", 0.0)
                 _yaw = _ov.get("yaw", 0.0)
+                _shell90 = _ov.get("shell90", True)
             else:
-                _dxy = _rng.uniform(-0.04, 0.04, 2)     # 台面平移 ±4cm
-                _dz = _rng.uniform(-0.004, 0.012)        # 高度微扰
-                _yaw = _rng.uniform(-0.30, 0.30)         # 绕竖轴转向 ±17°
+                _dxy = _rng.uniform(-0.035, 0.035, 2)     # 台面平移 ±3.5cm
+                _dz = _rng.uniform(-0.004, 0.010)         # 高度微扰
+                # 🧩 2026-09-09 (C1b): peg 物理转角 ±15° 可成功域; 光模块体壳 = 刚性贴体
+                #   装饰 (hinge 铰接破坏抓取动力学实锤 → 无独立 90° 旋转; 90° 干扰动作由
+                #   视频动画层表达, 真机 6 轴末端回正)
+                _yaw = _rng.uniform(-0.26, 0.26)          # ±15° (物理可成功域)
+                _shell90 = False
             q = d.qpos.copy()
             q[_adr:_adr + 3] += [_dxy[0], _dxy[1], _dz]
             _c, _s = float(_npg2.cos(_yaw / 2)), float(_npg2.sin(_yaw / 2))
             q[_adr + 3:_adr + 7] = [_c, 0.0, 0.0, _s]   # 绕 z (竖轴) 旋转
             d.qpos = q
+            # 🧩 2026-09-09 (C1): 光模块体壳水平旋转 90° (shell hinge) — 视觉干扰表达;
+            #   peg 物理本体只转可成功域小角 (长条盒 90° 无绕z DOF 夹不起实锤)
+            try:
+                if _shell90:
+                    for _j2 in range(m.njnt):
+                        if m.jnt(_j2).name == "shell_yaw":
+                            _qa = d.qpos.copy()
+                            _qa[m.jnt_qposadr[_j2]] = float(_npg2.pi / 2)
+                            d.qpos = _qa
+                            break
+            except Exception:
+                pass
             try:
                 _mj.mj_forward(m, d)
             except Exception:
@@ -544,6 +561,7 @@ class RealStateSpaceSim:
                 "dy_cm": round(float(_dxy[1]) * 100, 1),
                 "dz_mm": round(float(_dz) * 1000, 1),
                 "yaw_deg": round(float(_npg2.degrees(_yaw)), 1),
+                "shell90": bool(_shell90),   # 🧩 光模块体壳水平转 90° (视觉)
             }
             # 🐛 2026-09-09 实锤: 肌肉记忆固化标杆按"场景=seed"命中 → 干扰布局(peg 移位)误重放
             #   旧动作 → 把 peg 推飞死循环 (diag: 225 步对位卡死 + peg 漂移 10cm)。分层语义:
