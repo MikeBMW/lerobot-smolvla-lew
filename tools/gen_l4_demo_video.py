@@ -155,7 +155,10 @@ class L4Demo:
         _ax = _pm[:, 0].copy(); _ax[2] = 0.0
         tr["peg_yaw"].append(math.degrees(math.atan2(_ax[1], _ax[0])) if np.linalg.norm(_ax) > 1e-9 else 0.0)
         _hm = self.d.xmat[self.hand_id].reshape(3, 3)
-        _ha = _hm[:, 0].copy(); _ha[2] = 0.0
+        # 🐛 2026-09-10 实锤: 夹爪角度必须用局部 Z 轴 (col2, yaw0 时≈世界+X, 随绕z指令
+        #   线性变化 θ); 原用局部 X 轴 (col0≈世界−Z = 旋转轴自身) → XY 投影≈0 → atan2
+        #   纯噪声 ±180° 跳变 (用户: 夹爪乱动; 实测单帧 169°→−176° 143 处, 物理无此运动)
+        _ha = _hm[:, 2].copy(); _ha[2] = 0.0
         tr["hand_yaw"].append(math.degrees(math.atan2(_ha[1], _ha[0])) if np.linalg.norm(_ha) > 1e-9 else 0.0)
         tr["tt_yaw"].append(float(self.d.qpos[self.ttq]) if self.ttq >= 0 else 0.0)
         tr["gripper"].append(float(act[3]) if len(act) > 3 else 0.0)
