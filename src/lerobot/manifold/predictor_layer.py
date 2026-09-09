@@ -91,11 +91,45 @@ class WorldModelPredictor(nn.Module):
         self.readout = ManifoldReadout(z_dim, manifold_dim, max(128, hidden_dim // 2))
         self.manifold_dim = int(manifold_dim)
 
-    def forward(self, z: torch.Tensor, a: torch.Tensor) -> dict[str, torch.Tensor]:
-        """→ {"z_pred": [B, z_dim], "manifold": [B, manifold_dim]}"""
+    def forward(self, z, a):
         z_pred = self.predictor(z, a)
         manifold = self.readout(z_pred)
         return {"z_pred": z_pred, "manifold": manifold}
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🌌 Calabi-Yau 几何先验 (2026-09-09 静静: 卡拉比-丘流形思想落地 — v3 训练)
+# ═══════════════════════════════════════════════════════════════
+# 几何映射 (工程先验, 非完整 CY 数值解 — 对 7D 预测器做数值 Monge-Ampère
+# 属过度武器化且不可验证物理增益; 取方案中可验证的三条):
+#   · 里奇平坦 (自由空间平滑)   → 空载/自由帧预测一致性 (等距正则主体)
+#   · 全纯变换 (接触无突变)     → 干扰(摆放偏移)前后同任务流形预测有界:
+#                                ||f(z_a,a)-f(z_b,a)|| <= L*||z_a-z_b|| + slack
+#   · SU(3) 相位锁相 (轴向/横向) → (rem,dperp) 轴向-横向对 Lipschitz 解耦
+# 工程落地 = 推理结构不变 (零开销) + 训练期 CyConsistencyLoss 正则 + 干扰分布
+# 数据增强 → 布局漂移下预测不发散 (抗干扰, 可验证提升).
+
+def cy_consistency_loss(z_a, a, m_a, z_b, m_b, lip=8.0):
+    """CY 等距一致性正则: 同任务近邻状态(来料偏移对)流形预测有界
+    ||m_a-m_b|| <= lip*||z_a-z_b|| + slack — 摆放被移动 1cm, 预测流形只动 <=lip*|d|, 不跳变."""
+    dz = torch.norm(z_a - z_b, dim=1, keepdim=True)
+    dm = torch.norm(m_a - m_b, dim=1, keepdim=True)
+    slack = 0.02 + 0.5 * dz
+    viol = (dm - lip * dz - slack).clamp(min=0.0)
+    return viol.mean()
+
+
+def cy_complex_features(z):
+    """全纯复特征 (v3 编码增强, 可选): (dx_i, dy_i) 配成复数 c=dx+i*dy,
+    输出 幅度/相位 — 保角特征: 转向扰动下幅度不变/相位线性变, 敏感度结构化.
+    z: [B,7] 前6=两个3D差, 第7=grasped → [B,6]."""
+    x, y = z[:, 0], z[:, 1]
+    u, v = z[:, 3], z[:, 4]
+    amp1 = torch.sqrt(x * x + y * y + 1e-8)
+    ph1 = torch.atan2(y, x)
+    amp2 = torch.sqrt(u * u + v * v + 1e-8)
+    ph2 = torch.atan2(v, u)
+    return torch.stack([amp1, ph1, amp2, ph2, z[:, 2], z[:, 5]], dim=1)
 
 
 if __name__ == "__main__":

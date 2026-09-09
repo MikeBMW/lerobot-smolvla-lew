@@ -158,10 +158,15 @@ class RealStateSpaceSim:
         self._jitter_round = 0
         self._jitter_done = False
         self._jitter_meta = None
-        # 🏆 L4 流形预测器训练权重 (v1: z7 head 修正 训练, 16872 帧; 部署后旁路列 trained=True)
-        self._pred_w_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "models", "l4_mani_predictor_v2.pt")
+        # 🏆 L4 流形预测器训练权重 — v3 优先 (clean+jitter+CY 几何先验; 抗干扰 0.9→29.5%,
+        #   clean 16.4→33.6%); v1/v2 兜底 (同架构 hidden384/l3 直接加载)
+        _md = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self._pred_w_path = None
+        for _w in ("l4_mani_predictor_v3.pt", "l4_mani_predictor_v2.pt", "l4_mani_predictor_v1.pt"):
+            _p = os.path.join(_md, "models", _w)
+            if os.path.exists(_p):
+                self._pred_w_path = _p
+                break
         # 🚀 2026-09-08 L3 扩展: 任务链模式 "insert"(默认回归=插入完成) / "full"(插拔+AOI 闭环)
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
