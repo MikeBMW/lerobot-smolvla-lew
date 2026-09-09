@@ -158,11 +158,12 @@ class RealStateSpaceSim:
         self._jitter_round = 0
         self._jitter_done = False
         self._jitter_meta = None
+        self._grasp_th = 0.50   # 🧩 可调深夹阈值 (90° 干扰抓取实验)
         # 🏆 L4 流形预测器训练权重 — v4 优先 (512/4层: clean+jitter+CY+分维加权;
-        #   clean 45.7% / 抗干扰 57.4% 双高); v2 同架构兜底 (v1/v3 为 384/3 架构不兼容)
+        #   v5 CY修复 抗干扰64.6%; v4/v2 兜底)
         _md = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self._pred_w_path = None
-        for _w in ("l4_mani_predictor_v4.pt", "l4_mani_predictor_v2.pt"):
+        for _w in ("l4_mani_predictor_v5.pt", "l4_mani_predictor_v4.pt", "l4_mani_predictor_v2.pt"):
             _p = os.path.join(_md, "models", _w)
             if os.path.exists(_p):
                 self._pred_w_path = _p
@@ -469,7 +470,7 @@ class RealStateSpaceSim:
         # → 夹紧度: 夹住=0.30, 空夹=0.71。阈值取 0.25 (obs<0.75, 闭合足够深才开始抬;
         #   夹住与否由抬起阶段 光模块 随动验证决定, 见 grasp_force)
         self.sched = self.cognition.ActionModulator(
-            grasp_th=0.50,      # 夹紧度 1−obs>0.50 (obs<0.50) 才推进抬起 — 深夹到位再抬,
+            grasp_th=self._grasp_th,  # 夹紧度阈值 (可调; 原 0.50)
                                 # 防浅夹 (obs 0.5x) 锁存即抬 → peg 未压稳滑脱 (seed100 实锤)
                                 # (浅夹 0.72 就抬滑脱率高; 深夹到 0.60 以下夹持力才足)
             align_th=0.025,     # 转移→插入 孔位对准 (光模块头-孔口水平, 视觉精度余量)
@@ -803,7 +804,7 @@ class RealStateSpaceSim:
                                  f"→ 丢弃保旧估值 (来源 detect_3d 输出)")
                 # else: 保持 self._peg_cur (None → _stage_target 原地等待定位)
             else:
-                self._peg_cur = o[4:7].copy()
+                self._peg_cur = o[4:7].copy()   # 🧩 2026-09-09: 中心抓实验失败还原 (90° 指缝物理夹不住)
             g = self.geom
             # ③ 接触力合成 (几何合成; metaworld 无力传感器; 光模块头=peg_head() 感知一致)
             force = np.zeros(6)
