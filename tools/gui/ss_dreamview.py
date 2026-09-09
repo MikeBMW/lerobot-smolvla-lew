@@ -1631,7 +1631,8 @@ class DreamView3D(QWidget):
         _lo = max(0, i - _RW + 1)
         _zk_w = np.asarray(tr["z_k_vec"][_lo:i + 1], dtype=float)[:, :3]
         _pv_w = (np.asarray(tr["prior_vec"][_lo:i + 1], dtype=float)[:, :3]
-                 if tr.get("prior_vec") is not None else _zk_w)
+                 if tr.get("prior_vec") is not None and len(tr["prior_vec"]) > i
+                 else _zk_w)
         _rr = _zk_w - _pv_w
         _r_inst = _rr[-1]
         _r_sys = _rr.mean(axis=0)

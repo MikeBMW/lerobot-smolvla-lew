@@ -11641,11 +11641,14 @@ class SimulinkModule(QWidget):
                     self._safe_log(f"🎬 {_ln}")
                 self._safe_log("🧭 3D 视图现在与该视频同源 — 点「🧭 3D 视图」看同一条 episode 的分层数据")
                 try:
-                    r2 = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
+                    # 🐛 2026-09-10: GUI 启动未带 ZMAX_ECS_PW → sshpass -p '' 必失败
+                    #   (用户: 视频已生成 (上传失败)); 回退仓库私有工具同款密码 (data_sync.py 同源)
+                    _pw = _os.environ.get("ZMAX_ECS_PW") or "Nix19789"
+                    r2 = _sp.run(["sshpass", "-p", _pw, "scp", "-o", "StrictHostKeyChecking=no",
                                   out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
                                  capture_output=True, timeout=60)
                     if r2.returncode == 0:
-                        _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
+                        _sp.run(["sshpass", "-p", _pw, "ssh", "-o", "StrictHostKeyChecking=no",
                                  "root@39.102.211.79",
                                  "chmod 644 /www/wwwroot/datadrive.world/ss_episode_latest.mp4"],
                                 capture_output=True, timeout=30)
