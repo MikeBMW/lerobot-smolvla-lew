@@ -1584,12 +1584,14 @@ class DreamView3D(QWidget):
         gap = 0.024 + (1.0 - g) * 0.024
         _hvy = float(tr["hand_yaw"][i]) if (tr.get("hand_yaw") is not None
                                             and len(tr["hand_yaw"]) > i) else 0.0
-        _th = math.radians(_hvy)
-        _cc, _ss = math.cos(_th), math.sin(_th)
-        jaw_dir = np.array([-_ss, _cc, 0.0])     # 单位 (0,1,0) 绕 z 转 yaw
         _wrist = np.asarray(ik["wrist"], dtype=float)
-        _jaw_lc = _wrist + jaw_dir * gap
-        _jaw_rc = _wrist - jaw_dir * gap
+        # 🐛 2026-09-10 静静实锤 (数学): 爪瓣位置双重旋转 — 旧代码 jaw_lc = wrist + jaw_dir·gap
+        #   (jaw_dir 已含 yaw) 且 _box_mesh_yaw(rot_center=_wrist) 又把 box 绕 wrist 转 yaw →
+        #   位置实际绕 wrist 转 2×yaw: yaw=90° 时爪瓣转 180° 画半圆弧回对侧 (动画=夹爪自己绕
+        #   腕转圈/螺旋; 静止位错对不上横放模块 → 观感没夹住)。修复: 位置用未旋转 ±y 基准,
+        #   box 统一绕 wrist 单次转 yaw (位置 Rz·(0,±1)·gap ✓ 朝向 Rz·x̂ ✓ 同时正确)。
+        _jaw_lc = _wrist + np.array([0.0, gap, 0.0])
+        _jaw_rc = _wrist - np.array([0.0, gap, 0.0])
         arm[self._arm_idx["jaw_l"]].setMeshData(
             meshdata=_box_mesh_yaw(_jaw_lc, (0.05, 0.016, 0.05), _hvy, _wrist))
         arm[self._arm_idx["jaw_r"]].setMeshData(
