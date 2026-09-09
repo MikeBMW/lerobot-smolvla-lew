@@ -201,10 +201,11 @@ class L4Demo:
             q = self.d.qpos.copy()
             if getattr(self, "_pin_world", False):
                 # 🐛 2026-09-10: rel_pos 是世界系偏移; hx@rel 遇手基座 −90°Y 旋转会搅乱 z
-                #   (④ 试抓 peg 被钉穿盘面 Δz=-0.011 实锤) → 世界系钉回保持闭夹位姿
+                #   (④ 试抓 peg 被钉穿盘面 Δz=-0.011 实锤; ② 段 peg 被钉到爪侧 y−3.4cm 实锤)
+                #   → 世界系钉回保持闭夹位姿 (② 段 2026-09-10 起同设 _pin_world=True)
                 q[self.adr:self.adr+3] = self.d.xpos[self.hand_id] + rel_pos
             else:
-                # ②③ 历史路径 (yaw≈90° 工作正常, 不改)
+                # 早期路径 (yaw=0 平动夹持, hx≈单位阵时等价) — 新段一律 _pin_world=True
                 hx = np.array(self.d.xmat[self.hand_id].reshape(3, 3))
                 q[self.adr:self.adr+3] = self.d.xpos[self.hand_id] + hx @ rel_pos
             q[self.adr+3:self.adr+7] = qmul(hq, rel_q)
@@ -331,6 +332,12 @@ class L4Demo:
         hw, hx_, hy, hz = hq
         conj_hq = np.array([hw, -hx_, -hy, -hz])
         self._lock_rel = (rel_pos, qmul(conj_hq, pq))
+        # 🐛 2026-09-10 静静实锤: 必须世界系钉回! 原 ② 漏设 _pin_world → step() 用
+        #   hx@rel_pos 钉 peg, 而手基座含 −90°Y 旋转 (yaw90° 时局部轴≠世界) → 世界系
+        #   下方 3.7cm 偏移被转成爪侧偏移 (rel 从 (0,0,−37mm) 突跳 (−2,−34,+5)mm) →
+        #   光模块瞬移悬在爪侧面外跟着飞 (用户: 一跳一跳/像没夹住/轨迹横偏螺旋)。
+        #   ④ 段同坑早已 _pin_world=True 修复 (2026-09-10 注释), ② 漏设 — 同修。
+        self._pin_world = True
         self._grip_lock = True
         z0 = self.peg_center()[2]
         # 抬起 (peg 刚性跟手)
