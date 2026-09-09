@@ -22,6 +22,7 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
   dv.show()
 """
 import os
+import math
 import numpy as np
 
 from PyQt5.QtCore import Qt, QTimer, QPointF
@@ -188,6 +189,22 @@ def _box_mesh(center, size):
         [1, 5, 7], [1, 7, 3],   # 右 x+
     ], dtype=int)
     return gl.MeshData(vertexes=v, faces=faces)
+
+
+def _box_mesh_yaw(center, size, yaw_deg, rot_center=None):
+    """长方体 mesh 绕 rot_center (默认 center) 的竖直轴 (z) 旋转 yaw_deg —
+    🎯 2026-09-09 L4 演示: peg 横放(绕z 90°)与夹爪绕z 姿态在 3D 必须可见 (原只画位置无朝向)"""
+    md = _box_mesh(center, size)
+    v = md.vertexes().copy()
+    if yaw_deg:
+        rc = np.asarray(center if rot_center is None else rot_center, dtype=float)
+        th = math.radians(float(yaw_deg))
+        c, s = math.cos(th), math.sin(th)
+        x = v[:, 0] - rc[0]
+        y = v[:, 1] - rc[1]
+        v[:, 0] = rc[0] + x * c - y * s
+        v[:, 1] = rc[1] + x * s + y * c
+    return gl.MeshData(vertexes=v, faces=md.faces())
 
 
 def _bbox_lines(center, size):
@@ -449,6 +466,8 @@ class DreamView3D(QWidget):
         self._peg_center_off = _PEG_CENTER_OFF.copy()
         self._src = "状态空间 numpy 引擎"
         self._cam_fovy = 60.0     # 视频相机垂直视场 (metaworld corner2 fovy)
+        # 🎯 2026-09-09 L4 演示场景设备 (转台/压电耦合台) — meta.demo_geom 驱动, 3D 按此绘制
+        self._demo_geom = None
 
         # ── 主布局: 左(图层面板) | 3D 视图 ──
         root = QHBoxLayout(self)
@@ -781,28 +800,39 @@ class DreamView3D(QWidget):
             self._aoi_c = np.asarray(meta.get("aoi_focus", self._aoi_c), dtype=float)  # 🚀 AOI
             tc = np.asarray(meta.get("table_center", self._table_c), dtype=float)
             self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
-            head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
-            self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
-            self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
-                         f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
+            # 🎯 2026-09-09 L4 演示 (L4Demo npz/meta): 演示场景注入设备 (转台/压电耦合台)
+            #   3D 视图按 demo_geom 绘制 — 物理场景真实存在的设备, 视觉必须同呈现
+            if meta.get("demo"):
+                self._demo_geom = meta.get("demo_geom") or {}
+                self._peg_center_off = np.zeros(3)   # 演示 tr["peg"]=真 peg 中心, 无抓握点补偿
+                self._src = ("L4 演示全链 (seed=%s, %s 步, 终态 %s)"
+                             % (meta.get('seed'), meta.get('steps'), meta.get('stage_final')))
+            else:
+                head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
+                self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
+                self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
+                             f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
             # 相机: 精确对齐视频 corner2 (四元数含 roll), 视距 = 相机到场景锚点的真实距离
-            cp = np.asarray(meta["cam_pos"], dtype=float)
-            cf = np.asarray(meta["cam_fwd"], dtype=float)
-            cr = np.asarray(meta["cam_right"], dtype=float)
-            cu = np.asarray(meta["cam_up"], dtype=float)
-            self._cam_fovy = float(meta.get("cam_fovy", 60.0))
-            anchor = 0.5 * (np.asarray(meta.get("peg0", self._mouth), dtype=float) + self._mouth)
-            t = float(np.dot(anchor - cp, cf / (np.linalg.norm(cf) or 1)))
-            center = cp + cf / (np.linalg.norm(cf) or 1) * t
-            self.view.opts["rotationMethod"] = "quaternion"
-            self.view.setCameraPosition(pos=QVector3D(*center.tolist()),
-                                        distance=max(0.3, t),
-                                        rotation=camera_quaternion(cf, cr, cu))
-            self._sync_fov()
-            # 记下"与视频 1:1 同框"的机位, 供视角切换用
-            self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
-                                   fwd=cf.copy(), right=cr.copy(), up=cu.copy())
-            self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+            try:
+                cp = np.asarray(meta["cam_pos"], dtype=float)
+                cf = np.asarray(meta["cam_fwd"], dtype=float)
+                cr = np.asarray(meta["cam_right"], dtype=float)
+                cu = np.asarray(meta["cam_up"], dtype=float)
+                self._cam_fovy = float(meta.get("cam_fovy", 60.0))
+                anchor = 0.5 * (np.asarray(meta.get("peg0", self._mouth), dtype=float) + self._mouth)
+                t = float(np.dot(anchor - cp, cf / (np.linalg.norm(cf) or 1)))
+                center = cp + cf / (np.linalg.norm(cf) or 1) * t
+                self.view.opts["rotationMethod"] = "quaternion"
+                self.view.setCameraPosition(pos=QVector3D(*center.tolist()),
+                                            distance=max(0.3, t),
+                                            rotation=camera_quaternion(cf, cr, cu))
+                self._sync_fov()
+                # 记下"与视频 1:1 同框"的机位, 供视角切换用
+                self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
+                                       fwd=cf.copy(), right=cr.copy(), up=cu.copy())
+                self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+            except Exception:
+                pass   # demo/引擎 npz 无相机外参 → 保持默认视角 (几何覆盖已生效)
         except Exception as e:
             print(f"⚠️ 同源 trace meta 应用失败, 退回默认视角: {e}")
 
@@ -833,6 +863,13 @@ class DreamView3D(QWidget):
             # 🚀 2026-09-08: AOI 设备纳入取景 (full 模式检测工位可见)
             pts.append(np.asarray([self._aoi_c + np.array([0, 0, 0.08]),
                                    self._aoi_c + np.array([0, 0.06, -0.02])], dtype=float))
+            # 🎯 2026-09-09: L4 演示注入设备 (转台/压电耦合台) 纳入取景 — 全景可见
+            for _dev in (self._demo_geom or {}).values():
+                _dp = _dev.get("pos")
+                if _dp:
+                    pts.append(np.asarray([[float(_dp[0]) - 0.12, float(_dp[1]) - 0.08, 0.0],
+                                           [float(_dp[0]) + 0.12, float(_dp[1]) + 0.08, 0.17]],
+                                          dtype=float))
             P = np.vstack(pts)
             lo, hi = P.min(axis=0), P.max(axis=0)
             ctr = (lo + hi) / 2.0
@@ -1054,7 +1091,12 @@ class DreamView3D(QWidget):
         # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 光模块/夹爪动态, 见 _update_frame)
         scene = []
         # 工作台面板
-        table = gl.GLMeshItem(meshdata=_box_mesh(self._table_c, _TABLE_SIZE),
+        # 🎯 2026-09-09 L4 演示: 桌面加宽 (注入设备在右前 0.55,0.42, 原渲染台 x 右缘 0.46 放不下)
+        _tw, _tc = _TABLE_SIZE, self._table_c
+        if self._demo_geom:
+            _tw = (1.40, 0.62, 0.024)
+            _tc = np.array([0.10, 0.58, -0.012])
+        table = gl.GLMeshItem(meshdata=_box_mesh(_tc, _tw),
                               color=(0.16, 0.18, 0.22, 1.0), smooth=False, shader='shaded')
         self.view.addItem(table)
         scene.append(table)
@@ -1102,6 +1144,61 @@ class DreamView3D(QWidget):
                                  width=2, mode='lines')
         self.view.addItem(goal)
         scene.append(goal)
+
+        # 🎯 2026-09-09 L4 演示场景设备 (物理 XML 注入, 3D 必须同呈现 — 老倪: 看不到转台/光耦合台):
+        dg = self._demo_geom or {}
+        if dg.get("turntable"):
+            _tt = dg["turntable"]
+            _tx, _ty = float(_tt["pos"][0]), float(_tt["pos"][1])
+            _tr = float(_tt.get("r", 0.075))
+            # 转台盘 (深灰短圆柱) + 白色十字刻度线 (随 tt_yaw 旋转, 转角肉眼可见)
+            tt_disc = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_tx, _ty, 0.000]),
+                                                            np.array([_tx, _ty, 0.010]), _tr),
+                                    color=(0.30, 0.32, 0.38, 1.0), smooth=True, shader='shaded')
+            self.view.addItem(tt_disc)
+            scene.append(tt_disc)
+            tt_ring = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_tx, _ty, 0.010]),
+                                                            np.array([_tx, _ty, 0.012]), _tr * 1.0),
+                                    color=(0.55, 0.58, 0.65, 0.35), smooth=True, shader=None)
+            self.view.addItem(tt_ring)
+            scene.append(tt_ring)
+            # 十字刻度线 ×2 (横/竖, 随 tt_yaw 旋转 — 本机 GLLinePlotItem NaN 断线不兼容, 分两条)
+            tt_cross = [gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.92, 0.94, 0.97, 0.95),
+                                          width=2.5, mode='lines'),
+                        gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.92, 0.94, 0.97, 0.95),
+                                          width=2.5, mode='lines')]
+            for _ln in tt_cross:
+                self.view.addItem(_ln)
+            scene += tt_cross
+            self._gl_items["tt_cross"] = tt_cross
+            self._tt_c = np.array([_tx, _ty, 0.0115])
+            self._tt_r = 0.062
+        if dg.get("coupler"):
+            _cp = dg["coupler"]
+            _cx, _cy = float(_cp["pos"][0]), float(_cp["pos"][1])
+            # 金属底座 (深灰) + 黄色压电叠堆 ×2 (参照芯明天) + 载物台面 + 光纤头基准 (亮柱)
+            cp_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx, _cy, 0.010]),
+                                                       (0.34, 0.11, 0.020)),
+                                    color=(0.42, 0.44, 0.50, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(cp_base)
+            scene.append(cp_base)
+            for _sx in (-0.07, 0.07):
+                pzt = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx + _sx, _cy, 0.032]),
+                                                       (0.12, 0.016, 0.020)),
+                                    color=(0.82, 0.70, 0.15, 1.0), smooth=False, shader='shaded')
+                self.view.addItem(pzt)
+                scene.append(pzt)
+            cp_stage = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx, _cy, 0.052]),
+                                                        (0.34, 0.11, 0.010)),
+                                     color=(0.22, 0.25, 0.32, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(cp_stage)
+            scene.append(cp_stage)
+            # 光纤头基准 (水平细亮柱, 指向台上光模块头)
+            fb = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_cx - 0.146, _cy, 0.067]),
+                                                       np.array([_cx - 0.114, _cy, 0.067]), 0.004),
+                               color=(0.85, 0.87, 0.92, 1.0), smooth=True, shader='shaded')
+            self.view.addItem(fb)
+            scene.append(fb)
         self._gl_items["scene"] = scene
 
         # 🤖 Sawyer 机械臂 (2026-08-25 老倪: 形象渲染 — 底座+肩+肘+腕+夹爪)
@@ -1482,19 +1579,46 @@ class DreamView3D(QWidget):
         arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.026))
         # 🖐 夹爪开合 (2026-08-25 老倪: 光模块是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
         #   张开 gap=0.048 (瓣在光模块外侧) → 闭合 gap=0.024 (贴住光模块 0.03 宽的两侧)
+        #   🎯 2026-09-09: 夹爪绕 z 姿态 (hand_yaw) — 90° 抓横放光模块时两瓣须转 90°, 3D 可见
         g = float(tr["gripper"][i])
         gap = 0.024 + (1.0 - g) * 0.024
-        jaw_dir = np.array([0.0, 1.0, 0.0])
+        _hvy = float(tr["hand_yaw"][i]) if (tr.get("hand_yaw") is not None
+                                            and len(tr["hand_yaw"]) > i) else 0.0
+        _th = math.radians(_hvy)
+        _cc, _ss = math.cos(_th), math.sin(_th)
+        jaw_dir = np.array([-_ss, _cc, 0.0])     # 单位 (0,1,0) 绕 z 转 yaw
+        _wrist = np.asarray(ik["wrist"], dtype=float)
+        _jaw_lc = _wrist + jaw_dir * gap
+        _jaw_rc = _wrist - jaw_dir * gap
         arm[self._arm_idx["jaw_l"]].setMeshData(
-            meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap, (0.05, 0.016, 0.05)))
+            meshdata=_box_mesh_yaw(_jaw_lc, (0.05, 0.016, 0.05), _hvy, _wrist))
         arm[self._arm_idx["jaw_r"]].setMeshData(
-            meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap, (0.05, 0.016, 0.05)))
-        # 🔩 光模块: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["光模块"])
-        #   老 tr 没有 "光模块" 键 (旧仿真 光模块=末端) → 回退到末端, 保持兼容
+            meshdata=_box_mesh_yaw(_jaw_rc, (0.05, 0.016, 0.05), _hvy, _wrist))
+        # 🔩 光模块: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
+        #   🎯 2026-09-09: peg 绕 z 朝向 (peg_yaw) — 来料被外力转 90° 的旋转过程 3D 可见
         peg_grasp = (np.asarray(tr["peg"][i], dtype=float)
                      if tr.get("peg") is not None and len(tr["peg"]) > i else x)
+        _pyv = float(tr["peg_yaw"][i]) if (tr.get("peg_yaw") is not None
+                                           and len(tr["peg_yaw"]) > i) else 0.0
+        _pc2 = np.asarray(peg_grasp, dtype=float) + np.asarray(self._peg_center_off, dtype=float)
         arm[self._arm_idx["peg"]].setMeshData(
-            meshdata=_box_mesh(peg_grasp + self._peg_center_off, _PEG_SIZE))
+            meshdata=_box_mesh_yaw(_pc2, _PEG_SIZE, _pyv))
+
+        # 🎯 2026-09-09 转台盘十字刻度随 tt_yaw 旋转 (来料旋转的机构证据可见)
+        _ttc = self._gl_items.get("tt_cross")
+        if _ttc is not None and getattr(self, "_tt_c", None) is not None:
+            _tty = float(tr["tt_yaw"][i]) if (tr.get("tt_yaw") is not None
+                                              and len(tr["tt_yaw"]) > i) else 0.0
+            _th2 = math.radians(_tty)
+            _c2, _s2 = math.cos(_th2), math.sin(_th2)
+            _cx2, _cy2, _cz2 = self._tt_c
+            _r2 = self._tt_r
+            _hpts = np.array([[_cx2 - _r2 * _c2, _cy2 - _r2 * _s2, _cz2],
+                              [_cx2 + _r2 * _c2, _cy2 + _r2 * _s2, _cz2]], dtype=float)
+            _vpts = np.array([[_cx2 + _r2 * _s2, _cy2 - _r2 * _c2, _cz2],
+                              [_cx2 - _r2 * _s2, _cy2 + _r2 * _c2, _cz2]], dtype=float)
+            _ttc[0].setData(pos=_hpts)
+            _ttc[1].setData(pos=_vpts)
 
         # 动作箭头 (4 层): 杆 + 锥形箭头头(方向) + 旁边文字标注(名称/速度/方向)
         _NAMES = {"uff": "⚡前馈加速器", "ufb": "🧪状态校正器·残差",

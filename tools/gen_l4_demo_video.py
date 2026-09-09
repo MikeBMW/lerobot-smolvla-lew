@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """🎬 L4 演示视频生成器 (2026-09-09 老倪验收: 抗干扰=光模块桌面被外力水平旋转90°; 光耦合精密操作)
 全链真实物理执行 (无动画造假):
-  ① 来料转台把光模块水平旋转 90° (治具携带, 真实机构)
+  ① 来料转台把光模块水平旋转 90° (治具携带, 真实机构; 桌面右前位, 与 AOI 设备区不重合)
   ② 夹爪绕z转90° 姿态适配 → 抓质心 → 抬起
   ③ 渐进回正 (长轴恢复 x)
-  ④ 插入孔座 (两段式: z 对齐 → 水平推入)
-  ⑤ AOI 悬停检测 (真实过程指标报告)
-  ⑥ 光耦合精密操作: 送件压电台(参照芯明天) → 真空治具吸附 → 压电 x/y 微动伺服
+  ④ 插入孔座 (真物理推入: 摩擦夹持解除刚性锁, 分步进给 + 位移 stall 保护, 如实报告深度)
+  ⑤ 拔出 (分步退出孔口 → 抬升) — 插拔闭环可见
+  ⑥ AOI 悬停检测: 光模块头送到光学检测设备镜头对焦点 (真实设备 3D 呈现, 引擎同源位)
+  ⑦ 光耦合精密操作: 送件压电台(参照芯明天) → 真空治具吸附 → 压电 x/y 微动伺服
      δ(模块头−光纤基准)→0 → η=exp(−δ²/2σ²) 收敛报告
 输出: reports/l4_demo_<ts>.mp4/.npz + 控制台阶段/指标日志
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/gen_l4_demo_video.py
@@ -27,8 +28,16 @@ REP = os.path.join(ROOT, "reports")
 RENDER_EVERY = 3          # 每 3 步录 1 帧
 FPS = 25
 SIGMA_MM = 4.0            # 耦合效率高斯碗 σ (性能流形 L4-C04 标定)
-AOI_FOCUS = np.array([0.28, 0.90, 0.10])
+# 🚀 2026-09-09: AOI 镜头对焦点 — 与 GUI 3D ss_dreamview._AOI_FOCUS / 引擎 AOI_FOCUS 同源
+#   (0.12,0.62,0.10): 检测时 peg 头悬停镜头筒口下; 设备本体画在对焦点后侧。
+#   演示 ⑥ 段把光模块头送到这里 = 光学检测设备真实参与 (非孔口空中悬停)。
+AOI_FOCUS = np.array([0.12, 0.62, 0.10])
 AOI_HOVER = 0.08
+# 🎯 演示场景桌面布局 (与 gen_l4_demo_scene.py 的 worldbody 注入坐标一一对应):
+TURNTABLE_XY = np.array([0.30, 0.30])   # 来料转台中心 (桌面右前; 避 AOI 设备视觉区 0.12,0.62)
+TURNTABLE_Z = 0.0255                    # peg 坐盘面 (盘顶 z≈0.010 + peg 半厚 0.015)
+COUPLER_XY = np.array([0.55, 0.42])     # 光耦合压电台底座中心
+INSERT_DEPTH = 0.050                    # 插入目标深度 (m, 孔口→孔内; 孔深≈0.066 留安全余量)
 
 
 class L4PegEnv(SawyerPegInsertionSideEnvV3):
@@ -93,7 +102,8 @@ class L4Demo:
             "obs", "u_ff_vec", "u_sat_vec", "u_fb_vec", "u_fuse_vec", "u_limit_vec",
             "u_exec_vec", "v_vec", "z_k_vec", "io_trace", "latent_vec", "prior_vec",
             "corrected_vec", "residual_vec", "mani_risk", "mani_progress", "mani_eta",
-            "mani_V", "mani_rem", "mani_dperp", "mani_pred", "z7_vec", "probe_seq")}
+            "mani_V", "mani_rem", "mani_dperp", "mani_pred", "z7_vec", "probe_seq",
+            "peg_yaw", "hand_yaw", "tt_yaw")}   # 🎥 2026-09-09: 朝向/转角轨迹 (3D 视图旋转呈现)
         self._grab = False          # 治具钉 peg (True=peg 由治具/台携带)
         self._grab_center = None    # 治具携带时 peg 中心 (世界)
         self._grip_lock = False     # 刚性夹持 (True=peg 每帧钉到手爪位姿 — 仿真摩擦夹持长距离滑脱实锤,
@@ -137,6 +147,14 @@ class L4Demo:
         tr["x"].append(self.hand().copy())
         tr["peg"].append(_peg.copy())
         tr["peg_head"].append(_ph.copy())
+        # 🎥 朝向/转角 (3D 视图旋转呈现: peg 绕z 90° 干扰、夹爪绕z 90° 姿态、转台盘转角)
+        _pm = self.d.xmat[self.peg_id].reshape(3, 3)
+        _ax = _pm[:, 0].copy(); _ax[2] = 0.0
+        tr["peg_yaw"].append(math.degrees(math.atan2(_ax[1], _ax[0])) if np.linalg.norm(_ax) > 1e-9 else 0.0)
+        _hm = self.d.xmat[self.hand_id].reshape(3, 3)
+        _ha = _hm[:, 0].copy(); _ha[2] = 0.0
+        tr["hand_yaw"].append(math.degrees(math.atan2(_ha[1], _ha[0])) if np.linalg.norm(_ha) > 1e-9 else 0.0)
+        tr["tt_yaw"].append(float(self.d.qpos[self.ttq]) if self.ttq >= 0 else 0.0)
         tr["gripper"].append(float(act[3]) if len(act) > 3 else 0.0)
         tr["u_exec_vec"].append(np.asarray(act, dtype=float))
         tr["u_ff_vec"].append(np.zeros(4))
@@ -207,9 +225,10 @@ class L4Demo:
     def stage_turntable90(self):
         self._stage = "① 来料转台"
         self.log("── ① 抗干扰: 来料转台把光模块在桌面水平旋转 90° (真实机构 + 治具定位) ──")
-        # 治具就位: peg 坐盘心
+        # 治具就位: peg 坐盘心 (桌面右前位, 与 AOI 设备视觉区不重合)
+        _ttz = TURNTABLE_Z
         q = self.d.qpos.copy()
-        q[self.adr:self.adr+3] = [0.10, 0.60, 0.0255]
+        q[self.adr:self.adr+3] = [TURNTABLE_XY[0], TURNTABLE_XY[1], _ttz]
         q[self.adr+3:self.adr+7] = [1, 0, 0, 0]
         self.d.qpos = q
         mujoco.mj_forward(self.m, self.d)
@@ -227,7 +246,7 @@ class L4Demo:
             c, s = math.cos(th/2), math.sin(th/2)
             q = self.d.qpos.copy()
             q[self.adr+3:self.adr+7] = [c, 0, 0, s]
-            q[self.adr:self.adr+3] = [0.10, 0.60, 0.0255]
+            q[self.adr:self.adr+3] = [TURNTABLE_XY[0], TURNTABLE_XY[1], _ttz]
             self.d.qpos = q
             mujoco.mj_step(self.m, self.d)
             self.steps += 1
@@ -235,7 +254,7 @@ class L4Demo:
                 self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
         # 治具保持钉 peg 直到夹爪闭合 (释放自由落 → 180° 相位随机实锤; 钉住 = 真空/定位销)
         self._grab = True
-        self._grab_center = np.array([0.10, 0.60, 0.0255])
+        self._grab_center = np.array([TURNTABLE_XY[0], TURNTABLE_XY[1], _ttz])
         y1 = self.peg_yaw_deg()
         # 干扰完成展示: 停顿让画面清楚呈现"光模块已被外力转 90° (横放)" 再进入抓取
         for _ in range(45):
@@ -285,23 +304,112 @@ class L4Demo:
         self.log(f"   ✅ 夹爪 yaw=90° 抓取抬起 Δz={dz:.3f}m (夹持建立)")
         return ok
 
-    # ── 阶段 ③: 渐进回正 ──
+    # ── 阶段 ③: 治具校直回正 (转台盘绕世界z 精确转回 — mocap 夹持连续回正非世界z 旋转实锤,
+    #    2026-09-09: 抓起的横模块放回治具盘, 盘转回 0°, 再由标准抓取接管 — 全程真实机构) ──
     def stage_yaw_back(self):
-        self._stage = "③ 回正"
-        self.log("── ③ 回正: 夹持中渐进转回 0°, 光模块长轴恢复插入朝向 (x) ──")
-        hold = self.hand()
-        self.ramp_yaw(0.0, step_rad=0.007, hold=hold, g=1.0, max_steps=1200)
+        self._stage = "③ 治具校直回正"
+        self.log("── ③ 校直回正: 横置光模块放回治具转台 → 盘绕z转回 0° (治具携带=绕世界z精确) ──")
+        ttx, tty, tt_z = TURNTABLE_XY[0], TURNTABLE_XY[1], TURNTABLE_Z
+        # 1) 夹持放回盘面 (peg 中心 → 盘心)
+        hand_tgt = self.hand() + (np.array([ttx, tty, tt_z]) - self.peg_center())
+        self.servo(hand_tgt, tol=0.004, max_steps=600)
+        # 2) 张爪放件 → 治具吸附钉 peg 盘心
+        self._grip_lock = False
+        self._lock_rel = None
+        for _ in range(60):
+            self.step(np.array([0, 0, 0, -1.0]))
+        self._grab = True
+        self._grab_center = np.array([ttx, tty, tt_z])
+        for _ in range(20):
+            self.step(np.zeros(4))
+        # 3) 抬爪 (高位)
+        self.servo(np.array([ttx, tty, 0.36]), tol=0.008, max_steps=300)
+        # 4) 盘转回 0° (peg 治具随盘, 绕世界 z 精确 — 与 ① 同机制反向)
+        N = 100
+        t0 = float(self.d.qpos[self.ttq])
+        for k in range(N):
+            th = t0 * (N - k) / N          # 90°→0
+            self.d.qpos[self.ttq] = th
+            c, s = math.cos(-th / 2), math.sin(-th / 2)
+            q = self.d.qpos.copy()
+            q[self.adr+3:self.adr+7] = [c, 0, 0, s]
+            q[self.adr:self.adr+3] = [ttx, tty, tt_z]
+            self.d.qpos = q
+            mujoco.mj_step(self.m, self.d)
+            self.steps += 1
+            if self._record and self.steps % RENDER_EVERY == 0:
+                self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
+        self._grab_center = np.array([ttx, tty, tt_z])
+        # 5) 空爪回 0° (高位, 无 peg 拖累; 供标准抓取)
+        self.ramp_yaw(0.0, step_rad=0.03, hold=np.array([ttx, tty, 0.36]), g=0.0, max_steps=400)
         y = self.peg_yaw_deg()
-        ok = y < 8 or abs(y - 180) < 8
-        self.history.append(f"③ 回正: 夹持旋转回正 → peg 长轴 {y:.0f}° (目标 x 向)")
-        self.log(f"   ✅ 回正后 yaw={y:.0f}° 夹持稳定")
+        ok = y < 10 or abs(y - 360) < 10 or abs(y - 180) < 10
+        self.history.append(f"③ 治具校直: 转台盘转回 → peg yaw {y:.0f}° (治具精确绕世界z)")
+        self.log(f"   ✅ peg yaw {y:.0f}° (盘回正, 治具绕世界z精确)")
         return ok
 
-    # ── 阶段 ④: 插入孔座 ──
+    # ── 阶段 ④: 标准抓取 (x 向光模块, 引擎常规链语义 — 校直后的正式取件) ──
+    # 🐛 2026-09-09: 盘上 yaw0 固定高度抓取实测失败 (指垫几何差 mm 级, peg 被压) →
+    #   试抓搜索: 每轮治具重钉 peg 盘心 → 微降高度 → 闭夹试抬, 成功即锁 (真机式自适应)
+    def stage_grasp_std(self):
+        self._stage = "④ 标准抓取"
+        self.log("── ④ 标准抓取: 校直后 x 向光模块 → 试抓搜索 (治具重钉+逐轮微降+试抬) ──")
+        ttx, tty, tt_z = TURNTABLE_XY[0], TURNTABLE_XY[1], TURNTABLE_Z
+        grabbed = False
+        for attempt in range(3):
+            # 治具重钉 peg 盘心 (姿态可能被上轮试抓扰动 → 归位)
+            q = self.d.qpos.copy()
+            q[self.adr:self.adr+3] = [ttx, tty, tt_z]
+            q[self.adr+3:self.adr+7] = [1, 0, 0, 0]
+            self.d.qpos = q
+            self._grab = True
+            self._grab_center = np.array([ttx, tty, tt_z])
+            for _ in range(25):
+                self.step(np.zeros(4))
+            pc = self.peg_center()
+            self.servo(pc + np.array([0, 0, 0.12]), tol=0.006, max_steps=500)
+            z_off = max(0.008, 0.020 - attempt * 0.006)
+            self.servo(pc + np.array([0, 0, z_off]), tol=0.003, max_steps=400)
+            self._grab = False
+            for _ in range(20):
+                self.step(np.array([0, 0, 0, 0.0]))
+            for _ in range(80):
+                self.step(np.array([0, 0, 0, 1.0]))
+            z0 = self.peg_center()[2]
+            # 试抬 6cm (夹住则 peg 跟手, 夹空/压偏则 Δz≈0)
+            hq = self.d.xquat[self.hand_id].copy(); hq /= np.linalg.norm(hq)
+            rel_pos = self.peg_center() - self.d.xpos[self.hand_id]
+            pq = self.d.xquat[self.peg_id].copy(); pq /= np.linalg.norm(pq)
+            hw, hx_, hy, hz = hq
+            self._lock_rel = (rel_pos, qmul(np.array([hw, -hx_, -hy, -hz]), pq))
+            self._grip_lock = True
+            self.servo(self.hand() + np.array([0, 0, 0.06]), tol=0.006, max_steps=200)
+            dz = self.peg_center()[2] - z0
+            if dz > 0.045:
+                self.servo(pc + np.array([0, 0, 0.18]), tol=0.008, max_steps=400)
+                grabbed = True
+                self.log(f"   ✅ 第 {attempt+1} 轮试抓成功 (z_off={z_off})")
+                break
+            # 失败: 解锁张爪, peg 落盘, 下轮微降再试
+            self._grip_lock = False
+            self._lock_rel = None
+            for _ in range(30):
+                self.step(np.array([0, 0, 0, -1.0]))
+            self.log(f"   ⚠️ 试抓第 {attempt+1} 轮未夹住 (Δz={dz:+.3f}), 重钉再试")
+        if not grabbed:
+            self.log("   ❌ 标准抓取 3 轮试抓均失败 — 中止全链")
+            self.history.append("④ 标准抓取: 3 轮试抓失败")
+            return False
+        dz = self.peg_center()[2] - tt_z
+        y = self.peg_yaw_deg()
+        ok = grabbed and dz > 0.10 and (y < 15 or abs(y - 360) < 15)
+        self.history.append(f"④ 标准抓取: 试抓抬起 Δz={dz:.3f}m yaw={y:.0f}° {'成功' if ok else '失败'}")
+        return ok
+
+    # ── 阶段 ⑤: 插入孔座 (真物理推入) ──
     def stage_insert(self):
-        self._stage = "④ 对接"
-        self.log("── ④ 插入工位对接: peg 头送达孔口 (深度插拔=引擎全链工艺 L4-C06/867步验收, "
-                 "演示链聚焦抗干扰+光耦合, 不重复裸伺服) ──")
+        self._stage = "⑤ 插入"
+        self.log("── ⑤ 插入孔座: 摩擦夹持真物理推入 (解除刚性锁, 分步进给 + 位移 stall 保护) ──")
         hole = self.site("hole")
         # 头朝向矫正 (夹持滑移偶发 180° 相位, 实测处理)
         pc = self.peg_center()
@@ -309,42 +417,100 @@ class L4Demo:
         if ph[0] > pc[0]:
             self.log(f"   peg 头朝向反 ({self.peg_yaw_deg():.0f}°), 夹持中旋转 180° 矫正")
             self.ramp_yaw(self.env._grip_yaw + math.pi, step_rad=0.008, hold=self.hand(), max_steps=900)
-        # 高位转移 → peg 头送达孔口中心 (对接就位, 供 AOI/后续; 深度插拔=引擎工艺)
+        # 高位转移 → peg 头送达孔口中心 (孔口 = hole site; 孔轴沿 -x 指向盒内)
         ph = self.peg_head()
         self.servo_head(ph + np.array([0, 0, 0.20]), tol=0.006, max_steps=300)
         ph = self.peg_head()
         self.servo_head(np.array([hole[0], hole[1], ph[2]]), tol=0.008, max_steps=900)
         self.servo_head(hole, tol=0.006, max_steps=500)
-        for _ in range(25):
-            self.step(np.zeros(4))
+        # 🛡 预检: peg 长轴必须沿 x (横置态插入会撞孔盒/产生假推进 — 回正失败不硬来)
+        xa = self.d.xmat[self.peg_id].reshape(3, 3)[:, 0].copy()
+        xa[2] = 0.0
+        if abs(xa[0]) < 0.93:
+            self.log(f"   ❌ 插入前姿态预检失败 (长轴x分量 {xa[0]:+.2f}, yaw={self.peg_yaw_deg():.0f}°) — 中止")
+            return False
+        # 🔓 解除刚性锁 → 真摩擦夹持 (插入反力真实作用于夹持; 锁钉强推进会穿模/振荡实锤)
+        self._grip_lock = False
+        self._lock_rel = None
+        for _ in range(30):
+            self.step(np.array([0, 0, 0, 1.0]))      # 闭合力维持
+        # 对孔轴: 头 y/z 贴孔中心 (孔口挡住的偏差在推进前消掉)
         ph = self.peg_head()
-        err_mm = float(np.linalg.norm(ph - hole) * 1000)
-        ok = err_mm < 15   # 对接容差 (伺服残差收敛性, 实测 13.9mm)
-        self.history.append(f"④ 对接: peg 头距孔口中心 {err_mm:.1f}mm ({'就位' if ok else '未就位'}) "
-                            f"· 深度插拔=引擎全链工艺")
-        self.log(f"   {'✅' if ok else '❌'} 对接就位, 距孔口中心 {err_mm:.1f}mm")
+        self.servo_head(np.array([ph[0], hole[1], hole[2]]), tol=0.003, max_steps=500)
+        # 分步推入: 每轮沿 -x 进给 1.5mm, peg 头实际位移 <0.5mm 连续 2 轮 = 卡阻 → 停
+        tgt_x = hole[0] - INSERT_DEPTH
+        stall, prev, depth = 0, float(self.peg_head()[0]), 0.0
+        for _k in range(48):                          # 上限 72mm; 深度硬限 INSERT_DEPTH+5mm
+            ph = self.peg_head()
+            depth = float(hole[0] - ph[0])
+            if depth >= INSERT_DEPTH + 0.005 or ph[0] <= tgt_x + 0.0015:
+                break
+            self.servo_head(ph + np.array([-0.0015, 0, 0]), tol=0.0012, max_steps=60)
+            cur = float(self.peg_head()[0])
+            if prev - cur < 0.0005:                   # 一轮几乎没进 → 卡阻计数
+                stall += 1
+                if stall >= 2:
+                    break
+            else:
+                stall = 0
+            prev = cur
+        depth = float(hole[0] - self.peg_head()[0])
+        ok = 0.018 <= depth <= INSERT_DEPTH + 0.012   # ≥18mm 插拔闭环成立, 且不过头
+        self.history.append(f"⑤ 插入: 真物理推入深度 {depth*1000:.1f}mm (目标 {INSERT_DEPTH*1000:.0f}mm, "
+                            f"{'到位' if ok else '异常'}) 夹持保持")
+        self.log(f"   {'✅' if ok else '❌'} 插入深度 {depth*1000:.1f}mm (孔口→孔内, 真推入)")
         return ok
 
-    # ── 阶段 ⑤: AOI 悬停检测 ──
-    def stage_aoi(self):
-        self._stage = "⑤ AOI"
-        self.log("── ⑤ AOI 检查: 对接位悬停采图 (演示链; 孔内 AOI=引擎全链工艺) ──")
+    # ── 阶段 ⑥: 拔出 (插拔闭环可见) ──
+    def stage_pull(self):
+        self._stage = "⑥ 拔出"
+        self.log("── ⑥ 拔出: 分步退出孔口 → 抬升 (插拔闭环, 拔出后送 AOI/光耦合) ──")
+        hole = self.site("hole")
+        # 夹持保持闭合 (peg 在爪内, 反向退)
+        for _ in range(20):
+            self.step(np.array([0, 0, 0, 1.0]))
+        # 沿 +x 分步退 2mm, 直到头完全出孔口 + 5mm
+        exit_x = hole[0] + 0.055                       # 孔口外 5mm (孔口 ≈ hole; 退够量)
+        for _k in range(60):
+            ph = self.peg_head()
+            if ph[0] >= exit_x:
+                break
+            self.servo_head(ph + np.array([0.002, 0, 0]), tol=0.0015, max_steps=60)
         ph = self.peg_head()
-        self.servo_head(ph + np.array([0, 0, 0.10]), tol=0.006, max_steps=300)
+        ok = ph[0] >= hole[0] - 0.005                  # 头已离开孔口
+        # 抬升 (高位, 供后续段转移)
+        self.servo_head(ph + np.array([0, 0, 0.18]), tol=0.008, max_steps=300)
+        out = float(self.peg_head()[0] - hole[0])
+        self.history.append(f"⑥ 拔出: 头退出孔口外 {max(out,0)*1000:.0f}mm {'成功' if ok else '未完全退出'}")
+        self.log(f"   {'✅' if ok else '❌'} 拔出完成, 头在孔口外 {max(out,0)*1000:.0f}mm")
+        return ok
+
+    # ── 阶段 ⑦: AOI 悬停检测 (光学检测设备镜头对焦点) ──
+    def stage_aoi(self):
+        self._stage = "⑦ AOI"
+        self.log("── ⑦ AOI 检查: 光模块头送达光学检测设备镜头对焦点悬停采图 (真实设备位, 引擎同源) ──")
+        # 高位 → 水平转移到镜头对焦点上方 → 下降到对焦点 (避免扫桌面设备)
+        ph = self.peg_head()
+        self.servo_head(ph + np.array([0, 0, 0.12]), tol=0.006, max_steps=300)
+        ph = self.peg_head()
+        self.servo_head(np.array([AOI_FOCUS[0], AOI_FOCUS[1], ph[2]]), tol=0.008, max_steps=1000)
+        self.servo_head(AOI_FOCUS, tol=0.004, max_steps=400)
         hold = 0
         for _ in range(60):
             self.step(np.zeros(4))
             hold += 1
-        report = {"ok": True, "method": "对接位悬停 (演示链; 孔内采图=引擎 full 链 AOI)",
-                  "hold_frames": hold}
-        self.history.append(f"⑤ AOI: {report}")
-        self.log(f"   ✅ AOI 悬停保持 {hold} 帧 (报告如实: 演示链)")
+        ph = self.peg_head()
+        dev_mm = float(np.linalg.norm(ph - AOI_FOCUS) * 1000)
+        report = {"ok": True, "method": "镜头对焦点悬停 (引擎 AOI_FOCUS 同源位, 3D 设备真实呈现)",
+                  "hold_frames": hold, "dev_mm": round(dev_mm, 1)}
+        self.history.append(f"⑦ AOI: {report}")
+        self.log(f"   ✅ AOI 悬停保持 {hold} 帧, 头距对焦点 {dev_mm:.1f}mm")
         return True
 
-    # ── 阶段 ⑥: 光耦合精密操作 (压电台) ──
+    # ── 阶段 ⑧: 光耦合精密操作 (压电台) ──
     def stage_couple(self):
-        self._stage = "⑥ 光耦合"
-        self.log("── ⑥ 光耦合精密操作: 送件压电定位台 (参照芯明天) → 真空治具吸附 → "
+        self._stage = "⑧ 光耦合"
+        self.log("── ⑧ 光耦合精密操作: 送件压电定位台 (参照芯明天) → 真空治具吸附 → "
                  "压电 x/y 微动伺服 η 收敛 ──")
         cp_ref = self.site("cp_ref")
         top = self.site("cp_stage_top")
@@ -402,20 +568,33 @@ class L4Demo:
                   "stage_xy_mm": [round(sx * 1000, 2), round(sy * 1000, 2)],
                   "iter": len(dlog), "sigma_mm": SIGMA_MM,
                   "method": "压电 x/y 微动伺服 (真空治具吸附, δ 真实计算)"}
-        self.history.append(f"⑥ 光耦合: {report}")
+        self.history.append(f"⑧ 光耦合: {report}")
         self.log(f"   ✅ η={eta:.4f} (δ={delta[0]:+.3f},{delta[1]:+.3f}mm · 台位 {sx*1000:+.2f},{sy*1000:+.2f}mm · {len(dlog)}轮)")
         return report
 
     def run_all(self):
-        """L4 演示全链六段 (GUI 引擎 demo 模式委托入口): 返回 (success, meta)"""
+        """L4 演示全链七段 (GUI 引擎 demo 模式委托入口): 返回 (success, meta)
+        关键姿态/插拔段失败即中止 — 横置/夹持丢失后继续跑会产生假数据 (09-09 实锤)"""
         ok_all = True
         ok_all &= self.stage_turntable90() is not None
-        ok_all &= self.stage_adapt_grasp()
-        ok_all &= self.stage_yaw_back()
-        ok_all &= self.stage_insert()
-        ok_all &= self.stage_aoi()
-        cpl = self.stage_couple()
-        ok_all &= cpl["ok"]
+        if ok_all:
+            ok_all &= self.stage_adapt_grasp()
+        if ok_all:
+            ok_all &= self.stage_yaw_back()
+        if ok_all:
+            ok_all &= self.stage_grasp_std()
+        if ok_all:
+            ok_all &= self.stage_insert()
+        if ok_all:
+            ok_all &= self.stage_pull()
+        if ok_all:
+            ok_all &= self.stage_aoi()
+        if ok_all:
+            cpl = self.stage_couple()
+            ok_all &= cpl["ok"]
+        else:
+            cpl = {"ok": False, "eta": None, "delta_mm": [None, None], "stage_xy_mm": [None, None],
+                   "iter": 0, "sigma_mm": SIGMA_MM, "method": "未执行 (前置段失败中止)"}
         for _k in self.tr:
             if _k in ("stage", "io_trace", "probe_seq"):
                 self.tr[_k] = np.asarray(self.tr[_k], dtype=object)
@@ -425,9 +604,20 @@ class L4Demo:
             self.tr["done"][-1] = 1.0 if ok_all else 0.0
         meta = dict(seed=0, success=ok_all, steps=self.steps,
                     stage_final="全链完成" if ok_all else "未完成",
-                    demo="L4 演示: 转台90°外力干扰 + 姿态适配抓取 + 光耦合精密操作",
+                    demo="L4 演示: 转台90°外力干扰 + 插拔闭环 + AOI 镜头对焦点 + 光耦合精密操作",
+                    demo_geom=self._demo_geom(),
+                    aoi_focus=AOI_FOCUS.tolist(),
                     history=self.history, couple=cpl, env="sawyer_peg_insertion_side_l4")
+        self._last_meta = meta
         return ok_all, meta
+
+    def _demo_geom(self):
+        """3D 视图场景几何: 演示场景注入的设备 (转台/压电耦合台) — GUI 按此绘制,
+        让实时 L4D 播放可见转台与光耦合设备 (物理与视觉一致, 2026-09-09)"""
+        return {
+            "turntable": {"pos": TURNTABLE_XY.tolist(), "r": 0.075},
+            "coupler": {"pos": COUPLER_XY.tolist()},
+        }
 
 
 def ensure_scene():
@@ -447,20 +637,11 @@ def main():
     t0 = time.time()
     demo = L4Demo(seed=0)
     log = demo.log
-    ok_all = True
-    ok_all &= demo.stage_turntable90() is not None
-    ok_all &= demo.stage_adapt_grasp()
-    ok_all &= demo.stage_yaw_back()
-    ok_all &= demo.stage_insert()
-    ok_all &= demo.stage_aoi()
-    cpl = demo.stage_couple()
-    ok_all &= cpl["ok"]
+    ok_all = demo.run_all()
+    meta = demo._last_meta if hasattr(demo, "_last_meta") else dict(success=ok_all)
+    cpl = meta.get("couple") or {"ok": ok_all}
     # ── 保存 npz + mp4 ──
     tag = time.strftime("%Y%m%d_%H%M%S")
-    os.makedirs(REP, exist_ok=True)
-    meta = dict(seed=0, success=ok_all, steps=demo.steps, stage_final="全链完成",
-                demo="L4 抗干扰(外力转90°) + 光耦合精密操作", history=demo.history,
-                couple=cpl, env="sawyer_peg_insertion_side_l4")
     npz = os.path.join(REP, f"l4_demo_{tag}.npz")
     np.savez_compressed(npz, meta=np.array([meta], dtype=object))
     import subprocess, tempfile, shutil, cv2

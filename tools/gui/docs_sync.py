@@ -60,7 +60,12 @@ def get_docs_dir():
         return candidate
     # 开发环境
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return os.path.join(repo, "静界")
+    jingjie = os.path.join(repo, "静界")
+    # 🐛 2026-09-09 帮助文档"找不到"(L1 战略层等): 本机无「静界」同步目录时菜单全挂
+    #   → 回退仓库 docs/ (git 内维护的真实文档目录, 帮助菜单引用文件都在其中)
+    if os.path.isdir(jingjie):
+        return jingjie
+    return os.path.join(repo, "docs")
 
 
 def classify(filename):
