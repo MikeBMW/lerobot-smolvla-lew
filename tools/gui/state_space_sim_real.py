@@ -161,7 +161,7 @@ class RealStateSpaceSim:
         # 🏆 L4 流形预测器训练权重 (v1: z7 head 修正 训练, 16872 帧; 部署后旁路列 trained=True)
         self._pred_w_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "models", "l4_mani_predictor_v1.pt")
+            "models", "l4_mani_predictor_v2.pt")
         # 🚀 2026-09-08 L3 扩展: 任务链模式 "insert"(默认回归=插入完成) / "full"(插拔+AOI 闭环)
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
@@ -1196,14 +1196,14 @@ class RealStateSpaceSim:
                         if _PRED_MOD is not None:
                             try:
                                 _pred = _PRED_MOD.WorldModelPredictor(
-                                    z_dim=7, hidden_dim=384, num_layers=3)   # 与 v1 权重架构一致
-                                # 🏆 2026-09-09 部署: 加载训练权重 (JEPA z+a→z'→流形,
-                                #   16872 帧 head-修正 z7 训练; 旁路预测列 trained=True)
+                                    z_dim=7, hidden_dim=512, num_layers=4)   # v2 架构 (23193帧)
+                                # 🏆 2026-09-09 部署 v2: 加载训练权重 (JEPA z+a→z'→流形,
+                                #   23193 帧 head-修正 z7 训练; test seed7/9 泛化 39.3%)
                                 if os.path.exists(self._pred_w_path):
                                     import torch as _th3
                                     _pred.load_state_dict(
                                         _th3.load(self._pred_w_path, map_location="cpu"))
-                                    self.log("🏆 L4 流形预测器 v1 已部署 (训练权重 16872帧 — "
+                                    self.log("🏆 L4 流形预测器 v2 已部署 (训练权重 23193帧 — "
                                              "JEPA LatentPredictor→ManifoldReadout, trained=True)")
                                 else:
                                     self.log("🧠 JEPA 预测流形旁路已接: 权重未找到 "
