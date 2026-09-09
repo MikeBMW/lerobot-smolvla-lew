@@ -490,27 +490,42 @@ class L4Demo:
         # 对孔轴: 头 y/z 贴孔中心 (孔口挡住的偏差在推进前消掉)
         ph = self.peg_head()
         self.servo_head(np.array([ph[0], hole[1], hole[2]]), tol=0.003, max_steps=500)
-        # 分步推入: 每轮沿 -x 进给 1.5mm, peg 头实际位移 <0.5mm 连续 2 轮 = 卡阻 → 停
+        # 分步推入: 每轮沿 -x 进给 1.5mm, peg 头实际位移 <0.5mm 连续 2 轮 = 卡阻
+        # 🐛 2026-09-10 静静: metaworld reset 物理微扰 (同 seed 不同进程/实例结果波动实锤,
+        #   渲染版偶发卡 11.7mm 中止) → 卡阻自恢复: 退 3mm + y/z 交替微调 1mm 重对孔再推
+        #   (真机插拔同款: 遇阻回退重插, 防演示随机失败)
         tgt_x = hole[0] - INSERT_DEPTH
-        stall, prev, depth = 0, float(self.peg_head()[0]), 0.0
-        for _k in range(48):                          # 上限 72mm; 深度硬限 INSERT_DEPTH+5mm
+        depth = 0.0
+        for attempt in range(3):
             ph = self.peg_head()
-            depth = float(hole[0] - ph[0])
-            if depth >= INSERT_DEPTH + 0.005 or ph[0] <= tgt_x + 0.0015:
-                break
-            self.servo_head(ph + np.array([-0.0015, 0, 0]), tol=0.0012, max_steps=60)
-            cur = float(self.peg_head()[0])
-            if prev - cur < 0.0005:                   # 一轮几乎没进 → 卡阻计数
-                stall += 1
-                if stall >= 2:
+            stall, prev = 0, float(ph[0])
+            for _k in range(48):                      # 上限 72mm; 深度硬限 INSERT_DEPTH+5mm
+                ph = self.peg_head()
+                depth = float(hole[0] - ph[0])
+                if depth >= INSERT_DEPTH + 0.005 or ph[0] <= tgt_x + 0.0015:
                     break
-            else:
-                stall = 0
-            prev = cur
-        depth = float(hole[0] - self.peg_head()[0])
-        ok = 0.018 <= depth <= INSERT_DEPTH + 0.012   # ≥18mm 插拔闭环成立, 且不过头
+                self.servo_head(ph + np.array([-0.0015, 0, 0]), tol=0.0012, max_steps=60)
+                cur = float(self.peg_head()[0])
+                if prev - cur < 0.0005:               # 一轮几乎没进 → 卡阻计数
+                    stall += 1
+                    if stall >= 2:
+                        break
+                else:
+                    stall = 0
+                prev = cur
+            depth = float(hole[0] - self.peg_head()[0])
+            if depth >= 0.018:                        # ≥18mm 插拔闭环成立
+                break
+            if attempt < 2:
+                self.log(f"   ⚠️ 第 {attempt+1} 轮推入卡阻 ({depth*1000:.1f}mm) — 退 3mm 微调重试")
+                self.servo_head(self.peg_head() + np.array([0.003, 0, 0]), tol=0.002, max_steps=60)
+                ph = self.peg_head()
+                _dy = (0.001, -0.001, 0.0)[attempt]
+                _dz = (0.0, 0.0, 0.001)[attempt]
+                self.servo_head(np.array([ph[0], hole[1] + _dy, hole[2] + _dz]), tol=0.002, max_steps=120)
+        ok = 0.018 <= depth <= INSERT_DEPTH + 0.012   # 且不过头
         self.history.append(f"⑤ 插入: 真物理推入深度 {depth*1000:.1f}mm (目标 {INSERT_DEPTH*1000:.0f}mm, "
-                            f"{'到位' if ok else '异常'}) 夹持保持")
+                            f"{'到位' if ok else '异常'}{'· 卡阻重试' if attempt else ''}) 夹持保持")
         self.log(f"   {'✅' if ok else '❌'} 插入深度 {depth*1000:.1f}mm (孔口→孔内, 真推入)")
         return ok
 
