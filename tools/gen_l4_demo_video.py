@@ -34,7 +34,8 @@ SIGMA_MM = 4.0            # 耦合效率高斯碗 σ (性能流形 L4-C04 标定
 AOI_FOCUS = np.array([0.12, 0.62, 0.10])
 AOI_HOVER = 0.08
 # 🎯 演示场景桌面布局 (与 gen_l4_demo_scene.py 的 worldbody 注入坐标一一对应):
-TURNTABLE_XY = np.array([0.30, 0.30])   # 来料转台中心 (桌面右前; 避 AOI 设备视觉区 0.12,0.62)
+TURNTABLE_XY = np.array([0.42, 0.60])   # 来料转台中心 — 🐛 2026-09-10: (0.30,0.30) 实测在 Sawyer 臂
+#   可达区外 (palm 卡 y≈0.40, 残差100mm → ④ 试抓全败根因); (0.42,0.60) 可达 (残差3mm) 且避 AOI 视觉区 0.12,0.62
 TURNTABLE_Z = 0.0255                    # peg 坐盘面 (盘顶 z≈0.010 + peg 半厚 0.015)
 COUPLER_XY = np.array([0.55, 0.42])     # 光耦合压电台底座中心
 INSERT_DEPTH = 0.050                    # 插入目标深度 (m, 孔口→孔内; 孔深≈0.066 留安全余量)
@@ -108,6 +109,7 @@ class L4Demo:
         self._grab_center = None    # 治具携带时 peg 中心 (世界)
         self._grip_lock = False     # 刚性夹持 (True=peg 每帧钉到手爪位姿 — 仿真摩擦夹持长距离滑脱实锤,
         self._lock_rel = None       #   等效真机刚性手爪; peg 永不掉/无滑移/相位精确)
+        self._pin_world = False     # True=钉回用世界系偏移 (④ 段, 见 step() — 手基座 −90°Y 旋转实锤)
         self._stage = ""
 
     # ── 基础工具 ──
@@ -169,9 +171,15 @@ class L4Demo:
             hq = self.d.xquat[self.hand_id].copy()
             hq /= np.linalg.norm(hq)
             rel_pos, rel_q = self._lock_rel
-            hx = np.array(self.d.xmat[self.hand_id].reshape(3, 3))
             q = self.d.qpos.copy()
-            q[self.adr:self.adr+3] = self.d.xpos[self.hand_id] + hx @ rel_pos
+            if getattr(self, "_pin_world", False):
+                # 🐛 2026-09-10: rel_pos 是世界系偏移; hx@rel 遇手基座 −90°Y 旋转会搅乱 z
+                #   (④ 试抓 peg 被钉穿盘面 Δz=-0.011 实锤) → 世界系钉回保持闭夹位姿
+                q[self.adr:self.adr+3] = self.d.xpos[self.hand_id] + rel_pos
+            else:
+                # ②③ 历史路径 (yaw≈90° 工作正常, 不改)
+                hx = np.array(self.d.xmat[self.hand_id].reshape(3, 3))
+                q[self.adr:self.adr+3] = self.d.xpos[self.hand_id] + hx @ rel_pos
             q[self.adr+3:self.adr+7] = qmul(hq, rel_q)
             self.d.qpos = q
         self.steps += 1
@@ -367,9 +375,15 @@ class L4Demo:
             for _ in range(25):
                 self.step(np.zeros(4))
             pc = self.peg_center()
-            self.servo(pc + np.array([0, 0, 0.12]), tol=0.006, max_steps=500)
+            # 🐛 2026-09-10: 指垫中心 ≠ 手掌原点 (垫在掌 +Y≈0.105) — 伺服到 pc 时指缝落模块外
+            #   10.5cm (闭夹 ncon 无 pad↔peg) → 目标改为「指缝中点」落在抓握点 (真机同构对中)
+            _pid = [self.m.geom(_i).id for _i in range(self.m.ngeom)
+                    if self.m.geom(_i).name in ("rightpad_geom", "leftpad_geom")]
+            _off = (np.mean([self.d.geom_xpos[_i] for _i in _pid], axis=0)
+                    - self.d.xpos[self.hand_id]) if len(_pid) >= 2 else np.zeros(3)
+            self.servo(pc - _off + np.array([0, 0, 0.12]), tol=0.006, max_steps=500)
             z_off = max(0.008, 0.020 - attempt * 0.006)
-            self.servo(pc + np.array([0, 0, z_off]), tol=0.003, max_steps=400)
+            self.servo(pc - _off + np.array([0, 0, z_off]), tol=0.003, max_steps=400)
             self._grab = False
             for _ in range(20):
                 self.step(np.array([0, 0, 0, 0.0]))
@@ -382,6 +396,7 @@ class L4Demo:
             pq = self.d.xquat[self.peg_id].copy(); pq /= np.linalg.norm(pq)
             hw, hx_, hy, hz = hq
             self._lock_rel = (rel_pos, qmul(np.array([hw, -hx_, -hy, -hz]), pq))
+            self._pin_world = True      # 世界系钉回 (见 step())
             self._grip_lock = True
             self.servo(self.hand() + np.array([0, 0, 0.06]), tol=0.006, max_steps=200)
             dz = self.peg_center()[2] - z0
@@ -637,8 +652,8 @@ def main():
     t0 = time.time()
     demo = L4Demo(seed=0)
     log = demo.log
-    ok_all = demo.run_all()
-    meta = demo._last_meta if hasattr(demo, "_last_meta") else dict(success=ok_all)
+    ok_all, _meta = demo.run_all()          # run_all 返回 (success, meta)
+    meta = demo._last_meta if hasattr(demo, "_last_meta") else (_meta or dict(success=ok_all))
     cpl = meta.get("couple") or {"ok": ok_all}
     # ── 保存 npz + mp4 ──
     tag = time.strftime("%Y%m%d_%H%M%S")

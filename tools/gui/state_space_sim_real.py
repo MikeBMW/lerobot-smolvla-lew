@@ -682,17 +682,24 @@ class RealStateSpaceSim:
 
     def _run_demo(self, cap=None):
         """🎬 L4 演示档: 委托 tools/gen_l4_demo_video.py 的 L4Demo 控制器跑 90° 全链
-        (来料转台把光模块水平旋转90° → 夹爪绕z转90°姿态适配抓取 → 回正 → 对接 → AOI →
-        光耦合精密操作 η 收敛), 全真物理; 返回 tr (keys 与引擎 run() 兼容, GUI 消费安全)。
-        引擎默认路径/能力零改动 (仅 demo_l4 构造时走此分支)"""
+        (来料转台把光模块水平旋转90° → 夹爪绕z转90°姿态适配抓取 → 回正 → 插入孔座 →
+        拔出 → AOI 镜头对焦点检测 → 光耦合精密操作 η 收敛), 全真物理; 返回 tr (keys 与引擎
+        run() 兼容, GUI 消费安全)。引擎默认路径/能力零改动 (仅 demo_l4 构造时走此分支)"""
         import importlib.util
         _tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         _spec = importlib.util.spec_from_file_location(
             "_l4demo_gen", os.path.join(_tools, "gen_l4_demo_video.py"))
         _g = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_g)
+        # 🛡 2026-09-10: 演示前重生成场景 XML (真实 peg 惯量) — GUI/引擎委托路径保确定性;
+        #   XML 若为旧/缺 → ④ 标准抓取确定性失败 (npz 15:52-17:59 实锤); 冻结 exe 无 tools
+        #   子进程时静默跳过 (用现有 XML)
+        try:
+            _g.ensure_scene()
+        except Exception:
+            pass
         self.log("🏆 L4 演示档: 来料转台把光模块水平旋转 90° (外力干扰) → 夹爪绕z姿态适配抓取 "
-                 "→ 回正 → 对接 → AOI → 光耦合精密操作 (全真物理, 无动画造假)")
+                 "→ 回正 → 插入 → 拔出 → AOI 镜头对焦点 → 光耦合精密操作 (全真物理, 无动画造假)")
         _demo = _g.L4Demo(seed=0, log=self.log, record=False)
         try:
             ok, meta = _demo.run_all()

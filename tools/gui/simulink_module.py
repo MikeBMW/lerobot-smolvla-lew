@@ -2724,14 +2724,18 @@ class SimNodeItem(QGraphicsObject):
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
         if params.get("cap_switch"):
-            _cap_cur = params.get("cap_level", "L2")
+            _cap_cur = str(params.get("cap_level", "L2") or "L2").upper()
+            # 🎯 2026-09-10: L4D 档并入 L4 (90° 抗干扰演示); 只保留三档
+            _cap_cur = {"L4D": "L4"}.get(_cap_cur, _cap_cur if _cap_cur in ("L2", "L3", "L4") else "L2")
             painter.setPen(QColor(pal["title"]))
             painter.setFont(QFont("Arial", 9, QFont.Bold))
             painter.drawText(QRectF(12, 6, self.w - 24, 18), Qt.AlignVCenter | Qt.AlignLeft,
                              "🧭 能力档位 (数据源层)")
-            # 🎬 2026-09-09: 第四档 L4D = L4 演示 (90°外力干扰+光耦合全链; 原 L4 自主恢复保留)
-            _caps = [("L2", "插装"), ("L3", "插拔+AOI"), ("L4", "自主恢复"), ("L4D", "L4演示")]
-            _cw = (self.w - 24) / 4.0
+            # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (老倪: 点 L4 要看到来料转台把光模块
+            #   水平转90°→绕z抓横→治具回正→插入→AOI→光耦合; 原 L4D 演示并入, 原 L4 自主恢复
+            #   真实链 (±15° 干扰重试) 由 CLI/测试可达)
+            _caps = [("L2", "插装"), ("L3", "插拔+AOI"), ("L4", "抗干扰90°")]
+            _cw = (self.w - 24) / 3.0
             for _i, (_k, _kd) in enumerate(_caps):
                 _on = (_k == _cap_cur)
                 _cc = QColor("#ffd700") if _on else QColor("#57606a")
@@ -2754,7 +2758,7 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(QColor("#8b949e"))
             _capdesc = {"L2": "基础: 插装即完成 (insert 8段)",
                         "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
-                        "L4": "L4 自主恢复: +失败自愈直到完成 (预算×2)"}.get(_cap_cur, "")
+                        "L4": "L4 抗干扰 90°: 来料转90°→绕z抓横→回正→插拔→AOI→光耦合 (全真物理)"}.get(_cap_cur, "")
             painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16),
                              Qt.AlignVCenter | Qt.AlignLeft, _capdesc)
             return
@@ -6833,8 +6837,10 @@ class SimulinkModule(QWidget):
         return 0
 
     def _ss_cap_num(self):
-        """当前能力档位 → 数值 (L2=2/L3=3/L4=4; 未设置默认 2=插装)"""
-        return {"L2": 2, "L3": 3, "L4": 4}.get(getattr(self, "_cap_level", None), 2)
+        """当前能力档位 → 数值 (L2=2/L3=3/L4=4; L4D 已并入 L4; 默认 2=插装)"""
+        _cl = str(getattr(self, "_cap_level", "") or "").upper()
+        _cl = {"L4D": "L4"}.get(_cl, _cl)
+        return {"L2": 2, "L3": 3, "L4": 4}.get(_cl, 2)
 
     def _by_id(self, nid):
         for n in self.nodes:
@@ -11015,22 +11021,32 @@ class SimulinkModule(QWidget):
         _cap = _cap or getattr(self, "_cap_level", None)
         if _cap is not None:
             self._cap_level = _cap
+        # 🎯 2026-09-10: 档位归一 L2/L3/L4 (旧 L4D 并入 L4 = 90° 抗干扰演示)
+        _cap = str(_cap or "L2").upper()
+        _cap = {"L4D": "L4"}.get(_cap, _cap if _cap in ("L2", "L3", "L4") else "L2")
+        self._cap_level = _cap
+        _demo_cap = (_cap == "L4")
         self._l3_mode = ("full" if _cap in ("L3", "L4") else
                          ("full" if (getattr(self, "chk_l3_full", None) is not None
                                      and self.chk_l3_full.isChecked()) else None))
         _mdesc = {
             "L2": "基础 L2: 插装光模块 (insert 8 段)",
             "L3": "🚀 L3 全链: 插→拔→AOI检测→放回 (13段, smolvla)",
-            "L4": "🏆 L4 自主恢复: L3 全链 + 失败自愈直到完成 (恢复预算×2)",
+            "L4": "🎬 L4 抗干扰 90° 演示: 来料转台90°→绕z抓横→治具回正→插拔闭环→AOI→光耦合 (全真物理)",
         }.get(_cap, "插装即完成 (8段, 原演示)" if self._l3_mode is None else "🚀 L3 全链 full: 插→拔→AOI检测→放回 (13段)")
-        self.btn_run.setText("🎥 真实运行中… (每帧 YOLO)")
+        self.btn_run.setText("🎬 L4 演示运行中… (90°全链, ~2-4分钟)" if _demo_cap else "🎥 真实运行中… (每帧 YOLO)")
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
-        self._log(f"🎥 真实化运行 [{_mdesc}]: metaworld 物理闭环 + 每帧 render → YOLO detect_3d")
-        self._log("   ├ detect_3d / fuse_sensors 断点每步命中 (真流程)")
-        self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示"
-                  if self._l3_mode != "full" else
-                  "   └ 本机实测 ~20-40s/轮 (L3 全链 13 段 ~880 步, GPU YOLO) — 完整动作链实时可见")
+        if _demo_cap:
+            self._log(f"🎬 抗干扰 90° 演示档: 来料转台把光模块水平旋转90° → 绕z抓横 → 治具回正 "
+                      f"→ 标准抓取 → 插入 → 拔出 → AOI镜头 → 光耦合 η (全真物理)")
+            self._log("   └ 演示链数据源 gen_l4_demo_video.L4Demo; 3D 可见转台/peg 朝向动画")
+        else:
+            self._log(f"🎥 真实化运行 [{_mdesc}]: metaworld 物理闭环 + 每帧 render → YOLO detect_3d")
+            self._log("   ├ detect_3d / fuse_sensors 断点每步命中 (真流程)")
+            self._log("   └ 约 5-9 分钟/轮 (500 步 × ~1s) — 真流程的代价, ⚡引擎快演可退回 0.1s 演示"
+                      if self._l3_mode != "full" else
+                      "   └ 本机实测 ~20-40s/轮 (L3 全链 13 段 ~880 步, GPU YOLO) — 完整动作链实时可见")
         # 🆕 2026-09-04 老倪两次报"卡死,只能鼠标动": F5 调试会话中, 断点命中
         #   (detect_3d/fuse_sensors/引擎源码) → pydevd/debugpy 默认挂起**整个进程所有线程**
         #   (VSCode 线程面板全部变暂停), GUI 主线程也被挂 → 表现=只能鼠标动(X server 画的
@@ -11069,14 +11085,14 @@ class SimulinkModule(QWidget):
                 # 🐛 2026-09-07 静静: seed=100 是已知失败布局 (R0 实测: 夹持偏浅→peg 滑脱→
                 #   重抓时间耗尽; 10 轮回归仅 seed101/102/103/104/108 通过, 104 最快 352 步)。
                 #   演示固定成功 seed, seed100 类布局留给真机/夹持质量修复后再覆盖。
-                # 🎬 2026-09-09 「L4 演示」档 (L4D): demo_l4=True → 引擎委托 90° 演示全链
-                #   (来料转台90°外力干扰+夹爪绕z回正抓取+光耦合), 不走 YOLO/attempts
                 _cap = getattr(self, "_cap_level", None)
-                _is_l4d = str(_cap or "").upper() == "L4D"
+                # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (demo_l4 → 引擎委托 L4Demo 控制器:
+                #   来料转台90°外力干扰+绕z抓横+治具回正+插拔闭环+AOI+光耦合; 不走 YOLO/attempts)
+                _demo_cap = str(_cap or "").upper() == "L4"
                 sim = RealStateSpaceSim(seed=104,
-                                        vision=not _is_l4d, vision_every=1,
+                                        vision=not _demo_cap, vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
-                                        demo_l4=_is_l4d,
+                                        demo_l4=_demo_cap,
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
@@ -11093,7 +11109,7 @@ class SimulinkModule(QWidget):
                     _aoi = ((tr.get("_meta") or {}).get("aoi_report") or {})
                     _ok = _done and ((_cap or "").lower() != "l4" or sim.mode != "full"
                                      or _aoi.get("ok"))
-                    if _ok or str(_cap).lower() != "l4" or _attempts >= 5:
+                    if _ok or _demo_cap or str(_cap).lower() != "l4" or _attempts >= 5:
                         if _attempts > 1:
                             _logs.append(f"🎯 L4 抗干扰: 第 {_attempts} 次布局尝试成功 "
                                          f"(来料重摆 {_attempts-1} 次)")
@@ -11748,9 +11764,14 @@ class SimulinkModule(QWidget):
         (双击); 指定 L2/L3/L4 → 单击圆钮直选。档位写 node.params.cap_level (画布重绘)
         + self._cap_level (▶运行消费), ▶运行 按档位配置任务链"""
         p = node.setdefault("params", {})
-        cur = p.get("cap_level") or getattr(self, "_cap_level", None) or "L2"
+        cur = str(p.get("cap_level") or getattr(self, "_cap_level", None) or "L2").upper()
+        # 🎯 2026-09-10: L4D 并入 L4
+        cur = {"L4D": "L4"}.get(cur, cur if cur in ("L2", "L3", "L4") else "L2")
         if level is None:
-            level = {"L2": "L3", "L3": "L4", "L4": "L4D", "L4D": "L2"}.get(cur, "L2")
+            level = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
+        else:
+            level = str(level).upper()
+            level = {"L4D": "L4"}.get(level, level if level in ("L2", "L3", "L4") else "L2")
         p["cap_level"] = level
         self._cap_level = level
         # 🐛 2026-09-09: 切档后重置单步/播放序 — 旧序按上一档位过滤 (L2 35节点),
@@ -11769,8 +11790,7 @@ class SimulinkModule(QWidget):
         self.canvas._scene.update()
         desc = {"L2": "基础: 插装即完成 (insert 8段)",
                 "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
-                "L4": "L4 自主恢复: +失败自愈直到完成 (预算×2)",
-                "L4D": "L4 演示: 来料转台90°外力干扰+夹爪绕z回正抓取+光耦合精密操作 (全真物理)"}.get(level, level)
+                "L4": "L4 抗干扰 90°: 来料转台90°外力干扰+绕z抓横回正+插拔闭环+AOI镜头对焦点+光耦合η (全真物理)"}.get(level, level)
         self._log(f"🧭 能力档位 → **{level}** [{desc}] (下次 ▶运行生效)")
         try:
             self._sync()

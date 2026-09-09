@@ -17,7 +17,7 @@ EXTRA = """
           ② 光耦合压电定位台 coupler — 参照芯明天压电陶瓷: 金属底座 + 黄色压电叠堆 +
           x/y 压电微动载物台 (slide ±2mm) + 光纤头基准 (cp_ref)。放桌面空白(右前),
           承载面摩擦 5 可稳定携带光模块微动; 光模块头(pegHead) 对准光纤头 = 耦合基准。 -->
-          <body name="turntable" pos="0.30 0.30 0">
+          <body name="turntable" pos="0.42 0.60 0">
     <joint name="tt_yaw" type="hinge" axis="0 0 1" limited="false" damping="0.02"/>
     <inertial pos="0 0 0.005" mass="0.35" diaginertia="0.0005 0.0005 0.001"/>
     <geom name="tt_disc" type="cylinder" size="0.075 0.005" pos="0 0 0.005" rgba="0.30 0.32 0.38 1"
