@@ -211,6 +211,34 @@ def export_verif_excel(path=None, tree=None, results=None, viz=None):
             ws8.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
         ws8.freeze_panes = "A2"
 
+    # ── Sheet 能力档位 (L2🔧/L3🚀/L4🏆 — 与功能清单节点第⑤Tab 同源 capability_levels.py,
+    #   默认活动 sheet: 打开 Excel 首先看到) ──
+    try:
+        _cap = _load_cap()
+        _ws0 = wb.create_sheet("能力档位 L2-L3-L4")
+        _ws0.append(["档位", "编号", "功能", "说明 (技术载体 / 分级定义 / 验收证据)"])
+        for _c in _ws0[1]:
+            _c.fill, _c.font = _HDR, _HF
+        _icos = {"L2": "🔧", "L3": "🚀", "L4": "🏆"}
+        _LVFILL = {"L2": PatternFill("solid", fgColor="238636"),
+                   "L3": PatternFill("solid", fgColor="9E6A03"),
+                   "L4": PatternFill("solid", fgColor="6E40C9")}
+        for _lv in ("L2", "L3", "L4"):
+            _d = _cap.CAPABILITY_LEVELS[_lv]
+            _ws0.append([f"{_icos[_lv]} L{_lv[1]} · {_d['name']} ({len(_d['funcs'])} 项功能)",
+                         "", "", f"{_d['tech']} — {_d['auto_ref']}"])
+            for _c in _ws0[_ws0.max_row]:
+                _c.fill = _LVFILL[_lv]
+                _c.font = Font(bold=True, color="FFFFFF", size=11)
+            for _f in _d["funcs"]:
+                _ws0.append([f"L{_lv[1]}", _f["fid"], _f["name"], _f["desc"]])
+        for _i, _w in enumerate((24, 10, 24, 90), start=1):
+            _ws0.column_dimensions[openpyxl.utils.get_column_letter(_i)].width = _w
+        _ws0.freeze_panes = "A2"
+        wb.active = _ws0   # 默认打开第一个看到能力档位
+    except Exception:
+        pass   # 能力档位 sheet 加载失败不阻塞主导出
+
     wb.save(path)
     return path
 
