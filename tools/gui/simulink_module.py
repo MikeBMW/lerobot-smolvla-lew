@@ -11105,7 +11105,9 @@ class SimulinkModule(QWidget):
                     _prev_round = getattr(sim, "_jitter_round", 0)
                     sim._jitter_round = _prev_round + 1
                     tr = sim.run(cap=_cap)
-                    _done = bool(tr["done"][-1]) if tr.get("done") else False
+                    # 🐛 2026-09-10: 判真防 ndarray (L4Demo np 列曾致 ValueError 崩 worker)
+                    _dl = tr.get("done")
+                    _done = bool(_dl[-1]) if (_dl is not None and len(_dl)) else False
                     _aoi = ((tr.get("_meta") or {}).get("aoi_report") or {})
                     _ok = _done and ((_cap or "").lower() != "l4" or sim.mode != "full"
                                      or _aoi.get("ok"))
@@ -11177,7 +11179,10 @@ class SimulinkModule(QWidget):
             tr, sim, rate, logs = r[1], r[2], r[3], r[4]
             for _l in logs:
                 self._log(_l)
-            ok = bool(tr.get("done", [False])[-1]) if tr.get("done") else False
+            ok = False
+            _dl = tr.get("done", [])
+            if _dl is not None and len(_dl):
+                ok = bool(_dl[-1])
             self._log(f"🎥 真实化运行完成: {len(tr['t'])} 步 · "
                       f"{'✅ 插拔完成' if ok else '⚠️ 未完成 (真实感知下的真实结果)'}"
                       f" · YOLO 检出 {rate:.0f}%")

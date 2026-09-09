@@ -709,7 +709,13 @@ class RealStateSpaceSim:
             except Exception:
                 pass
         meta["cap"] = cap
-        tr = dict(_demo.tr)
+        # 🐛 2026-09-10 实锤: L4Demo.run_all 把 tr 各列转成 np.ndarray → GUI worker
+        #   `_done = bool(...) if tr.get("done") else False` 对 ndarray 判真抛
+        #   ValueError (gui_v555.log 11108 行) → L4 演示跑完必崩, 画面永远不进回放
+        #   (用户: L4 与 L2 一样 = 根本没播)。还原为 list = 与真实引擎 tr 同构,
+        #   DataWorld/播放/总线/3D 全链路按既有 list 语义消费。
+        tr = {k: (v.tolist() if isinstance(v, np.ndarray) else v)
+              for k, v in dict(_demo.tr).items()}
         tr["_meta"] = meta
         for _h in meta.get("history", []):
             self.log(f"  → {_h}")
