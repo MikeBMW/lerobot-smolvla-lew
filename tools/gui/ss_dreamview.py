@@ -2085,7 +2085,13 @@ class DreamView3D(QWidget):
         if self._idx >= self._n - 1:
             self._pause()
             return
-        self._update_frame(self._idx + 1)
+        # 🎯 2026-09-10 静静: 跳帧(÷800→5×)致 L4 长轨迹快进乱跳 — 老倪: 夹爪"自己转一圈"
+        #   (90° 旋转 0.7s 一闪而过)、轨迹跳着走、插拔段 2s 快闪"没看到插拔"; L2/L3 短轨迹
+        #   (<800帧)不跳帧所以平滑 → 播放速度恒定 ~1× 物理: 4704 步 ≈ 94s 播完 (真实速度,
+        #   平滑且每段动作可看清); 短轨迹仍逐帧 (0.33× 慢放, 平滑)
+        _n = int(getattr(self, "_n", 0))
+        step = max(1, int(round(_n / 1500.0)))
+        self._update_frame(min(self._idx + step, self._n - 1))
 
     def _on_slider(self, val):
         self._update_frame(val)
