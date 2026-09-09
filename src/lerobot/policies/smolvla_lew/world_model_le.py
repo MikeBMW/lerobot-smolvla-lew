@@ -177,11 +177,13 @@ class Transformer(nn.Module):
         mlp_dim,
         dropout=0.0,
         attn_mode="adaln",
+        mamba_mode=None,   # 🧠 2026-09-09 Mamba 消融: None | "interleave" | "hybrid" | "full"
     ):
         super().__init__()
         self.norm = nn.LayerNorm(hidden_dim)
         self.layers = nn.ModuleList([])
         self.attn_mode = attn_mode  # "adaln" | "cross"
+        self.mamba_mode = mamba_mode
 
         self.input_proj = (
             nn.Linear(input_dim, hidden_dim)
@@ -202,10 +204,22 @@ class Transformer(nn.Module):
         )
 
         block_cls = CrossConditionalBlock if attn_mode == "cross" else ConditionalBlock
-        for _ in range(depth):
-            self.layers.append(
-                block_cls(hidden_dim, heads, dim_head, mlp_dim, dropout)
+        self.mamba_mode = mamba_mode  # None | "full" | "interleave" | "hybrid"
+        for i in range(depth):
+            use_mamba = (
+                (mamba_mode == "full")
+                or (mamba_mode == "interleave" and i % 2 == 1)
+                or (mamba_mode == "hybrid" and i % 3 == 2)
             )
+            if use_mamba:
+                # 🧠 2026-09-09 Mamba SSM 增强 (消融): 自实现选择性状态空间层
+                from lerobot.policies.smolvla_lew.mamba_ssm import HybridTransformerBlock
+                self.layers.append(HybridTransformerBlock(
+                    hidden_dim, heads, dim_head, mlp_dim, dropout))
+            else:
+                self.layers.append(
+                    block_cls(hidden_dim, heads, dim_head, mlp_dim, dropout)
+                )
 
     def forward(self, x, c=None):
         if hasattr(self, "input_proj"):
@@ -270,6 +284,7 @@ class ARPredictor(nn.Module):
         dropout=0.0,
         emb_dropout=0.0,
         attn_mode="adaln",
+        mamba_mode=None,   # 🧠 2026-09-09 Mamba 消融 (透传到 Transformer)
     ):
         super().__init__()
         self.pos_embedding = nn.Parameter(torch.randn(1, num_frames, input_dim))
@@ -284,6 +299,7 @@ class ARPredictor(nn.Module):
             mlp_dim,
             dropout,
             attn_mode=attn_mode,
+            mamba_mode=mamba_mode,
         )
 
     def forward(self, x, c):
