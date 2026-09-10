@@ -1,0 +1,221 @@
+name: Build Desktop (Windows .exe + macOS .app)
+
+# 2026-08-25 老倪: 大版本发布要同时出 Windows 和 Mac 版 → 一次 tag 推送并行构建两个平台,
+# 各自把产物挂到同一个 Release 上 (svenstaro/upload-release-action, overwrite=true)。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v3.0.0)'
+        required: false
+        default: 'dev-snapshot'
+
+jobs:
+  # ────────────────────────── Windows ──────────────────────────
+  build:
+    name: Windows .exe
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
+          # 🐛 09-10: Windows 真实化运行同样需要 metaworld (老倪: Windows 版要测)
+          pip install mujoco metaworld
+          python -c "import metaworld, mujoco; from importlib.metadata import version as _v; print('metaworld', _v('metaworld'), '| mujoco', mujoco.__version__)"
+
+      - name: Determine release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate version info (exe 文件属性带真实版本, 不再 0.0.0)
+        shell: bash
+        run: |
+          VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
+          python -c "
+          import sys
+          ver = '$VER'.split('.')
+          ver = (ver + ['0','0','0'])[:4]
+          tpl = '''VSVersionInfo(
+            ffi=FixedFileInfo(filevers=(%s,%s,%s,%s), prodvers=(%s,%s,%s,%s), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+            kids=[StringFileInfo([StringTable('040904B0', [
+              StringStruct('CompanyName', 'ZFCY Z-MAX'),
+              StringStruct('FileDescription', 'Z-MAX Console'),
+              StringStruct('FileVersion', '$VER'),
+              StringStruct('InternalName', 'Z-MAX_Console'),
+              StringStruct('OriginalFilename', 'Z-MAX_Console.exe'),
+              StringStruct('ProductName', 'Z-MAX Console'),
+              StringStruct('ProductVersion', '$VER')])]),
+              VarFileInfo([VarStruct('Translation', [1033, 1200])])]
+          )'''
+          print(tpl % (ver[0],ver[1],ver[2],ver[3],ver[0],ver[1],ver[2],ver[3]))
+          " > tools/gui/version_info.txt
+
+      - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频; Windows 无 ffmpeg → 用预抽帧缓存直接播放, 2026-08-27)
+        shell: bash
+        run: |
+          mkdir -p reports
+          curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
+          python -m zipfile -e mlp_video_pack.zip reports/
+          ls -la reports/ | head -8
+          ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
+
+      - name: Build .exe with PyInstaller
+        run: |
+          cd tools\gui
+          python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --collect-all pyqtgraph --collect-all OpenGL studio.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Z-MAX_Console-windows
+          path: tools\gui\dist\Z-MAX_Console.exe
+          compression-level: 0
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: tools\gui\dist\Z-MAX_Console.exe
+          asset_name: Z-MAX_Console.exe
+          tag: ${{ steps.release_tag.outputs.tag }}
+          overwrite: true
+          body: |
+            ## Z-MAX Console ${{ steps.release_tag.outputs.tag }}
+
+            桌面版下载 (双平台):
+            - **Windows**: `Z-MAX_Console.exe` — 单文件免安装, 双击即用
+            - **macOS**: `Z-MAX_Console-macOS.zip` — 解压得到 `Z-MAX_Console.app`
+              (未签名 → 首次打开: 右键 → 打开, 或 系统设置 → 隐私与安全性 → 仍要打开)
+
+            > macOS 版为 Apple Silicon (arm64) 构建; Intel Mac 请用 Windows 版或源码运行。
+
+  # ────────────────────────── macOS ──────────────────────────
+  build-mac:
+    name: macOS .app
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller "PyQt5==5.15.11" numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
+          # 🐛 09-10 老倪: mac 真实化运行 No module named 'metaworld' → 补引擎依赖
+          pip install mujoco metaworld
+          python -c "import metaworld, mujoco; from importlib.metadata import version as _v; print('metaworld', _v('metaworld'), '| mujoco', mujoco.__version__)"
+
+      - name: Determine release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Make .icns icon (PyInstaller 在 mac 只认 .icns)
+        run: |
+          cd tools/gui
+          mkdir -p logo.iconset
+          for s in 16 32 64 128 256 512; do
+            sips -z $s $s logo.png --out logo.iconset/icon_${s}x${s}.png >/dev/null
+            d=$((s*2))
+            sips -z $d $d logo.png --out logo.iconset/icon_${s}x${s}@2x.png >/dev/null
+          done
+          iconutil -c icns logo.iconset -o logo.icns
+          ls -la logo.icns
+
+      - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频, 2026-08-27)
+        shell: bash
+        run: |
+          mkdir -p reports
+          curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
+          python -m zipfile -e mlp_video_pack.zip reports/
+          ls -la reports/ | head -8
+
+      - name: Build .app with PyInstaller
+        run: |
+          cd tools/gui
+          pyinstaller --windowed --icon logo.icns --name "Z-MAX_Console" \
+            --add-data "logo.png:." --add-data "docs_sync.py:." \
+            --add-data "ppt_engine.py:." --add-data "update_checker.py:." \
+            --add-data "$GITHUB_WORKSPACE/flows:flows" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/calibration:src/lerobot/calibration" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/manifold:src/lerobot/manifold" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/verification:src/lerobot/verification" \
+            --add-data "$GITHUB_WORKSPACE/reports/mlp_insert_success_final.mp4:reports" \
+            --add-data "$GITHUB_WORKSPACE/reports/_mlp_cache_mlp_insert_success_final:reports/_mlp_cache_mlp_insert_success_final" \
+            --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco \
+            --collect-all pyqtgraph --collect-all OpenGL \
+            studio.py
+          ls -la dist/
+
+      - name: Set bundle version (修 PyInstaller 默认 0.0.0 → 真实版本)
+        run: |
+          cd tools/gui
+          VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VER" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VER" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VER" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.zfcg.zmax.console" dist/Z-MAX_Console.app/Contents/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.zfcg.zmax.console" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" dist/Z-MAX_Console.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" dist/Z-MAX_Console.app/Contents/Info.plist
+
+      - name: Zip .app (ditto 保留资源分叉/权限, 直接 zip 会丢可执行位)
+        run: |
+          cd tools/gui/dist
+          ditto -c -k --sequesterRsrc --keepParent "Z-MAX_Console.app" "Z-MAX_Console-macOS.zip"
+          ls -la Z-MAX_Console-macOS.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Z-MAX_Console-macos
+          path: tools/gui/dist/Z-MAX_Console-macOS.zip
+          compression-level: 0
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: tools/gui/dist/Z-MAX_Console-macOS.zip
+          asset_name: Z-MAX_Console-macOS.zip
+          tag: ${{ steps.release_tag.outputs.tag }}
+          overwrite: true
