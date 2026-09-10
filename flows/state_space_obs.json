@@ -13,9 +13,9 @@
    "name": "📦 数据源 (metaworld 环境 — 独立于分级, 供给全部层级)",
    "type": "row_bg",
    "icon": "🔧",
-   "x": -20,
+   "x": -420,
    "y": -1500,
-   "w": 6200,
+   "w": 6900,
    "h": 200,
    "color": "#2e8b57",
    "params": {
@@ -31,7 +31,7 @@
    "name": "大模型层 · 总装记忆中枢 (任务规划 / 技能编排 / 三层总装 · 回路外)",
    "x": -20,
    "y": -1280,
-   "w": 6200,
+   "w": 6900,
    "h": 150,
    "icon": "🧠",
    "color": "#26418f",
@@ -48,7 +48,7 @@
    "name": "🏆 L4 记忆 · 筹划 (世界模型预测 / 恢复策略 入库)",
    "x": 0,
    "y": -1115,
-   "w": 6200,
+   "w": 6900,
    "h": 110,
    "params": {
     "row_bg": true,
@@ -91,7 +91,7 @@
    "name": "🚀 L3 记忆 · 长程规划 (跨段技能序列 / 流程经验 入库)",
    "x": 0,
    "y": -665,
-   "w": 6200,
+   "w": 6900,
    "h": 110,
    "params": {
     "row_bg": true,
@@ -104,7 +104,7 @@
    "name": "🚀 L3 高级自动功能 · 端到端模仿学习 (VLM 编码 + Flow-Matching DiT Action Head)",
    "x": -20,
    "y": -545,
-   "w": 6200,
+   "w": 6900,
    "h": 170,
    "icon": "🚀",
    "color": "#a371f7",
@@ -120,7 +120,7 @@
    "name": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通 入库)",
    "x": 0,
    "y": -365,
-   "w": 6200,
+   "w": 6900,
    "h": 110,
    "params": {
     "row_bg": true,
@@ -134,7 +134,7 @@
    "icon": "🔧",
    "x": -20,
    "y": -245,
-   "w": 6200,
+   "w": 6900,
    "h": 180,
    "color": "#2e8b57",
    "params": {
@@ -150,7 +150,7 @@
    "name": "🔧 L2 基础辅助功能 · 感知融合 (传感器融合 → 43D 状态)",
    "x": -20,
    "y": -45,
-   "w": 6200,
+   "w": 6900,
    "icon": "🔧",
    "color": "#2e8b57",
    "h": 170,
@@ -167,7 +167,7 @@
    "name": "🔧 L2 基础辅助功能 · 分段控制小模型 (前馈MLP/估计/预测/校正)",
    "x": -20,
    "y": 145,
-   "w": 6200,
+   "w": 6900,
    "icon": "🔧",
    "color": "#2e8b57",
    "h": 240,
@@ -184,7 +184,7 @@
    "name": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制器 · 13阶段(插拔+AOI闭环), 握否决权)",
    "x": -20,
    "y": 405,
-   "w": 6200,
+   "w": 6900,
    "icon": "🔧",
    "color": "#2e8b57",
    "h": 190,
@@ -201,7 +201,7 @@
    "name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 (分段动作模板 → 快速执行)",
    "x": -20,
    "y": 615,
-   "w": 6200,
+   "w": 6900,
    "icon": "🔧",
    "color": "#2e8b57",
    "h": 190,
@@ -218,7 +218,7 @@
    "name": "🔧 L2 基础辅助功能 · 执行层 (机器人执行器 → 物理闭环)",
    "x": -20,
    "y": 825,
-   "w": 6200,
+   "w": 6900,
    "icon": "🔧",
    "color": "#2e8b57",
    "h": 150,
@@ -248,7 +248,7 @@
    "name": "🔭 可视化层 · 观察器 (回路外, 不参与控制)",
    "x": -20,
    "y": 1145,
-   "w": 6200,
+   "w": 6900,
    "h": 170,
    "color": "#1f2937"
   },
@@ -407,7 +407,7 @@
    "id": "sssched",
    "type": "system",
    "name": "🧭 动作调制器",
-   "x": 1420,
+   "x": 2200,
    "y": 445,
    "w": 160,
    "icon": "🧭",
@@ -435,7 +435,7 @@
    "id": "sslimit",
    "type": "system",
    "name": "🛡 安全执行边界 (饱和限幅)",
-   "x": 1760,
+   "x": 2540,
    "y": 445,
    "w": 202,
    "icon": "🛡",
@@ -650,7 +650,7 @@
    "name": "📦 metaworld 数据源",
    "type": "hardware",
    "icon": "📦",
-   "x": 40,
+   "x": -340,
    "y": -1450,
    "w": 167,
    "h": 68,
@@ -678,7 +678,7 @@
    "name": "🔀 训练/推理",
    "type": "mode_switch",
    "icon": "🔀",
-   "x": 380,
+   "x": -100,
    "y": -1450,
    "w": 160,
    "h": 68,
@@ -1225,7 +1225,7 @@
    "id": "ssmani_exp",
    "type": "model",
    "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
-   "x": 40,
+   "x": 340,
    "y": -815,
    "w": 280,
    "h": 110,
@@ -1245,7 +1245,7 @@
    "color": "#8957e5",
    "id": "sscap",
    "name": "🧭 能力档位",
-   "x": 600,
+   "x": 200,
    "y": -1450,
    "icon": "🧭",
    "params": {
@@ -1295,8 +1295,8 @@
    "id": "ss_mem_share",
    "type": "model",
    "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
-   "x": 2360,
-   "y": -1230,
+   "x": -340,
+   "y": -1240,
    "w": 280,
    "h": 60,
    "params": {
@@ -1466,14 +1466,6 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "新技能注册"
-  },
-  {
-   "id": "lkllm3",
-   "f": "sssched",
-   "t": "ssreason",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "异常触发"
   },
   {
    "id": "lksd1",
@@ -1657,7 +1649,7 @@
    "t": "ssmani_c",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "几何 手/销/孔"
+   "label": "⬆ 几何 手/销/孔"
   },
   {
    "id": "lkm2",
@@ -1665,7 +1657,7 @@
    "t": "ssmani_p",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "几何 销/孔"
+   "label": "⬆ 几何 销/孔"
   },
   {
    "id": "lkv1",
@@ -1809,7 +1801,7 @@
    "t": "ssmani_c",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "潜空间 z"
+   "label": "⬆ 潜空间 z"
   },
   {
    "id": "lkvlm_mp",
@@ -1817,7 +1809,7 @@
    "t": "ssmani_p",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "潜空间 z"
+   "label": "⬆ 潜空间 z"
   },
   {
    "id": "lkmc_dc",
@@ -1865,7 +1857,7 @@
    "t": "ssmani_exp",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "潜空间 z (VLM)"
+   "label": "⬆ 潜空间 z (VLM)"
   },
   {
    "id": "lk23_jepa",
@@ -1873,7 +1865,7 @@
    "t": "ssmani_exp",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "几何 手/销/孔 (z R7)"
+   "label": "⬆ 几何 手/销/孔 (z R7)"
   },
   {
    "id": "lkjepa_c",
@@ -1893,27 +1885,27 @@
   },
   {
    "id": "lk_mem101",
-   "f": "ss_mem_l4",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ss_mem_l4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "筹划 → 总装汇总"
+   "label": "总装下发 → L4 筹划"
   },
   {
    "id": "lk_mem102",
-   "f": "ss_mem_l3",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ss_mem_l3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "流程经验 → 总装汇总"
+   "label": "总装下发 → L3 流程"
   },
   {
    "id": "lk_mem103",
-   "f": "ss_mem_l2",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ss_mem_l2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "肌肉记忆 → 总装汇总"
+   "label": "总装下发 → L2 肌肉记忆"
   },
   {
    "id": "lk_mem104",
@@ -1940,20 +1932,12 @@
    "label": "标杆 u_ff 快通道"
   },
   {
-   "id": "lk_mem202",
-   "f": "ss_mem_l3",
-   "t": "ssllm",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "流程经验 → 规划检索"
-  },
-  {
    "id": "lk_mem203",
-   "f": "ssmani_exp",
-   "t": "ss_mem_l4",
+   "f": "ss_mem_l4",
+   "t": "ssmani_exp",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "预测流形 → 筹划入库"
+   "label": "筹划 → 预测流形参考"
   },
   {
    "id": "lk_mem204",
@@ -1973,43 +1957,43 @@
   },
   {
    "id": "lk_mem206",
-   "f": "ss_mem_l2",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ss_mem_l2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "肌肉摘要 ↑"
+   "label": "总装下发 → L2 肌肉记忆"
   },
   {
    "id": "lk_mem207",
-   "f": "ss_mem_l3",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ss_mem_l3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "流程摘要 ↑"
+   "label": "总装下发 → L3 流程"
   },
   {
    "id": "lk_mem208",
-   "f": "ss_mem_l4",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ss_mem_l4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "筹划摘要 ↑"
+   "label": "总装下发 → L4 筹划"
   },
   {
    "id": "lk_mem209",
-   "f": "ssllm",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ssllm",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "规划结果 → 总装"
+   "label": "总装上下文 → 任务规划"
   },
   {
    "id": "lk_mem210",
-   "f": "ssreason",
-   "t": "ss_mem_share",
+   "f": "ss_mem_share",
+   "t": "ssreason",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "异常诊断 → 总装"
+   "label": "总装上下文 → 异常推理"
   },
   {
    "id": "lk_l4_abc",
