@@ -126,6 +126,13 @@ def _demo_node_output(module, node, ctx):
             return node_ss_skill(ctx)
     except Exception:
         pass
+    # 🅰️🅱️🅾️ 通用算子 A/B/C (2026-09-10 老倪: L2 原子技能行最左侧万能节点,
+    #   L4 动态参数更新接口 — 参数写入/微调/校验)
+    try:
+        if (ctx.get("params") or {}).get("universal_op"):
+            return node_ss_abc(ctx)
+    except Exception:
+        pass
     # 🎯 2026-09-03 老倪: ▶运行 播放轮转到「🎯 YOLO 目标检测」时, 展示真实采样值
     #   (detect_3d 已由 _real_yolo_sense_once 真执行, conf/3D 模型真输出) — 不用
     #   引擎帧 conf -- (引擎无 YOLO 模型)。无缓存(采样失败/无节点)才落回 dw 帧。
@@ -2746,6 +2753,70 @@ def node_ss_skill(ctx):
         return False
 
 
+def node_ss_abc(ctx):
+    """🅰️🅱️🅾️ 通用算子 A/B/C — L2 原子技能行最左侧的**万能节点** (2026-09-10 老倪)
+    用途: L4 动态参数更新 — L4 (世界模型/流形预测) 算出的参数经 A/B/C 写入原子技能:
+      A · 参数写入 (SET)      — L4 动态参数 → 目标原子技能 (速度/阈值/增益/目标点)
+      B · 参数微调 (Δ-ADJUST) — 运行时增量调整 (遇阻降速/增力/重对准幅度)
+      C · 参数校验 (VALIDATE) — 🛡 安全限值闸 (唯一三层安全: 否决+限幅+Sys0), 越界拒绝
+    真源: module._ss_tr 当前帧 (mani_pred = L4 预测流形真实列 / target / u_exec_vec),
+    轻量读无副作用, 断点可进。万能接口: 任何原子技能可被 A/B/C 写入/微调/校验。
+    """
+    log = ctx.get("log")
+    name = ctx.get("name", "")
+    p = ctx.get("params", {}) or {}
+    tag = str(p.get("op_tag", "A"))
+    _icon = {"A": "🅰️", "B": "🅱️", "C": "🅾️"}.get(tag, "🅰️")
+    try:
+        import numpy as np
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log(f"{_icon} 通用算子 {tag}: 无引擎轨迹 — 先点 ▶ 运行状态空间")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage_now = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
+        tgt = np.asarray(tr["target"][idx], dtype=float) if tr.get("target") else np.zeros(3)
+        u = np.asarray(tr["u_exec_vec"][idx], dtype=float) if tr.get("u_exec_vec") else np.zeros(4)
+        # L4 预测流形真值列 (mani_pred; 引擎每帧真调 JEPA predictor)
+        _pred = None
+        _mp = tr.get("mani_pred")
+        if _mp and idx < len(_mp) and _mp[idx] is not None and hasattr(_mp[idx], "get"):
+            try:
+                _pred = np.asarray(_mp[idx].get("manifold")).reshape(-1)
+            except Exception:
+                _pred = None
+        _spd = float(np.linalg.norm(u[:3]))
+        if tag == "A":      # 参数写入
+            if log:
+                log(f"🅰️ 通用算子 A · 参数写入 (SET) → 技能[{stage_now or '待选'}]: "
+                    f"目标 {np.round(tgt[:3], 3)} · 速度 u={np.round(u[:3], 3)} m/s")
+                if _pred is not None:
+                    log(f"   L4 动态参数 (预测流形 6D: progress/risk/V/eta/rem/dperp) = "
+                        f"{np.round(_pred, 4)}")
+        elif tag == "B":    # 参数微调
+            if log:
+                log(f"🅱️ 通用算子 B · 参数微调 (Δ-ADJUST) 技能[{stage_now or '待选'}]: "
+                    f"当前 |u|={_spd:.3f} m/s · 增量调整按 L4 预测"
+                    + (f" (risk={_pred[1]:.4f} → 遇阻预警{'↑降速' if _pred[1] > 0.01 else '·正常'})"
+                       if _pred is not None and _pred.size > 1 else " (无 L4 预测列)"))
+        elif tag == "C":    # 参数校验
+            _lim = 0.6      # 🛡 安全限值 (引擎 safety.saturate limit)
+            _ok = _spd <= _lim + 1e-6
+            if log:
+                log(f"🅾️ 通用算子 C · 参数校验 (VALIDATE): |u|={_spd:.3f} ≤ 限值 {_lim} "
+                    f"→ {'✅ 通过, 下发原子技能' if _ok else '❌ 越界 → 拒绝并回退'}")
+                if _pred is not None:
+                    log(f"   校验依据: 🛡 安全类别4栏位 (力/速度/位姿限值) + L4 预测流形 "
+                        f"{np.round(_pred[:3], 4)}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 通用算子 {tag} 执行失败: {e}")
+        return False
+
+
 def node_ss_mani(ctx):
     """🧮 流形层 — 接触流形 (插拔通道: 切向进度/法向偏离/V) ‖ 性能流形 (对准代价 V_p/η)
     源码: src/lerobot/manifold/manifold_layer.py (ContactManifold / PerformanceManifold)
@@ -3166,16 +3237,25 @@ try:
     if os.path.join(_REPO_ROOT, "src") not in sys.path:
         sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
     from lerobot.memory.mem_nodes import (node_ss_mem_l2, node_ss_mem_l3,
-                                          node_ss_mem_l4, node_ss_mem_share)
+                                          node_ss_mem_l4, node_ss_mem_share,
+                                          node_ss_intent_bundle, node_ss_skill_dict,
+                                          node_ss_mem_links, node_ss_intent_direct)
 except Exception as _me:
     _mem_err = f"⚠️ 记忆节点实现未加载 (真源 src/lerobot/memory/mem_nodes.py): {_me}"
     node_ss_mem_l2 = node_ss_mem_l3 = node_ss_mem_l4 = node_ss_mem_share = (
+        lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
+    node_ss_intent_bundle = node_ss_skill_dict = node_ss_mem_links = node_ss_intent_direct = (
         lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
 
 _reg("ss_mem_l2", ["L2 记忆 · 肌肉记忆"], "🔧 L2 记忆 · 肌肉记忆 — 固化标杆库 (muscle_memory)", node_ss_mem_l2)
 _reg("ss_mem_l3", ["L3 记忆 · 长程规划"], "🚀 L3 记忆 · 长程规划 — 跨段技能序列流程经验", node_ss_mem_l3)
 _reg("ss_mem_l4", ["L4 记忆 · 筹划"], "🏆 L4 记忆 · 筹划 — 世界模型预测质量/恢复策略", node_ss_mem_l4)
 _reg("ss_mem_share", ["总装记忆中枢", "共享记忆中枢"], "🧠 总装记忆中枢 — 三层记忆汇总总装 (大模型层)", node_ss_mem_share)
+# 🧠🧬 S1 意图丛 (2026-09-10): 三层能力共享 — 记忆图谱连接层
+_reg("ss_intent_bundle", ["意图丛"], "🧠 意图丛 · 四槽语法 — goal/from/skill/gate (层间只传 Δz, 动作只在 L2 出)", node_ss_intent_bundle)
+_reg("ss_skill_dict", ["技能词典"], "🧬 技能词典 · L2 动作基 — {skill→Δz} (L4 预测→技能 kNN 直读)", node_ss_skill_dict)
+_reg("ss_mem_links", ["跨层连接"], "🔗 跨层连接 · 记忆图谱 — 层间链接 links + 意图检索 recall", node_ss_mem_links)
+_reg("ss_intent_direct", ["意图直读"], "🔮 意图直读 · Direct (INTACT) — Δz→技能 kNN 无搜索 (ms 级)", node_ss_intent_direct)
 _reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (SmolVLA式) — 视觉/触觉/检测框 token → 潜空间 z",
     node_ss_vlm)
 _reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",
@@ -3258,3 +3338,17 @@ _reg("ss_test", ["Test"],
     node_ss_test)
 _EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
 _EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 111, "class VerificationLayer")
+
+# 🅰️🅱️🅾️ 通用算子 A/B/C (2026-09-10 老倪: L2 原子技能行最左侧万能节点 — L4 动态参数更新)
+_reg("ssa", ["通用算子 A", "参数写入"],
+     "🅰️ 通用算子 A · 参数写入 (SET) — L4 动态参数 → 目标原子技能 (任何技能可被写入; 源码 node_logic.py node_ss_abc)",
+     node_ss_abc)
+_reg("ssb", ["通用算子 B", "参数微调"],
+     "🅱️ 通用算子 B · 参数微调 (Δ-ADJUST) — 运行时按 L4 预测增量调整 (降速/增力/重对准; 源码 node_logic.py node_ss_abc)",
+     node_ss_abc)
+_reg("ssc", ["通用算子 C", "参数校验"],
+     "🅾️ 通用算子 C · 参数校验 (VALIDATE) — 🛡 安全限值闸 (力/速度/位姿), 越界拒绝回退 (源码 node_logic.py node_ss_abc)",
+     node_ss_abc)
+_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")

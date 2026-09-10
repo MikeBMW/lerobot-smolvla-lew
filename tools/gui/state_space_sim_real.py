@@ -1511,6 +1511,15 @@ class RealStateSpaceSim:
                 }, cap=40)
             _ms.put("meta", "task", "光模块插拔 (insert/full)")
             _ms.put("meta", "cap", str(getattr(self, "_cap", "") or "L2"))
+            # 🧬 S1 记忆图谱 (2026-09-10 影子写, 不改控制路径): 层间链接 + L2 技能摘要同步
+            try:
+                from lerobot.memory import memory_graph as _mg
+                _mg.link({"seed": int(self.seed), "mode": self.mode,
+                          "cap": str(getattr(self, "_cap", "") or ""), "steps": n},
+                         _mg.stages_to_skills(stg), cause="run", l4_mae=mae)
+                _mg.sync_l2_from_muscle()
+            except Exception:
+                pass
         except Exception:
             pass
 
