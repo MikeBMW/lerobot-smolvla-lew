@@ -1262,7 +1262,18 @@ class RealStateSpaceSim:
             if np.ndim(u) == 0:
                 u = np.zeros(4)
             u = np.asarray(u, dtype=float).copy()
-            u[3] = self.sched.gripper_cmd(u_ff[3])
+            # 🦾 2026-09-10 (老倪直攻滑脱): 回退重抓期间**保持闭合**。
+            #   死循环的爆点是"滑移 → 回退到抓取之前 → gripper_cmd()=0 → 张爪 → 件真掉 → 再抓再滑"。
+            #   只要工件仍在夹爪范围内(未落回台面), 就不许张爪; 确实脱落才允许松开重抓。
+            _keep_closed = False
+            if not getattr(self, "_drop_ready", False) and self._peg_cur is not None:
+                try:
+                    _off_now = float(np.linalg.norm(np.asarray(self._peg_cur, float)[:3] - self.x))
+                    _peg_low = float(np.asarray(self._peg_cur, float)[2]) < 0.060   # 落回台面高度
+                    _keep_closed = bool(_off_now < 0.045 and not _peg_low)
+                except Exception:
+                    _keep_closed = False
+            u[3] = self.sched.gripper_cmd(u_ff[3], keep_closed=_keep_closed)
             u_sat = self.safety.saturate(u, limit=float(os.environ.get("SS_LIMIT", "0.6")))
             u_sat = np.asarray(u_sat, dtype=float).copy()
             u_sat[3] = float(u[3])

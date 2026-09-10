@@ -133,13 +133,20 @@ class ActionModulator:
         self.stage_idx = idx
         self.history.append((self.STAGES[idx], reason))
 
-    def gripper_cmd(self, u_ff_g=0.0):
+    def gripper_cmd(self, u_ff_g=0.0, keep_closed=False):
         """夹爪指令归状态机 (与操作视频状态机一致: 接近/对位/下降 张开, 抓取起闭合并保持)
         ⚠️ 不能听前馈层的"近距即闭合"启发: 对位/下降阶段手已经离光模块 <3cm, 前馈会提前
         把夹爪闭上 → 还没到抓取阶段夹爪就关了 (3D 视图里看不到"张开→夹紧"的抓取动作),
-        且抓取阶段瞬间跳过 (gripper 早已 1.0)。夹持是状态锁存, 不是比例控制。"""
+        且抓取阶段瞬间跳过 (gripper 早已 1.0)。夹持是状态锁存, 不是比例控制。
+
+        keep_closed (2026-09-10 老倪直攻滑脱): 引擎在"回退重抓但光模块可能还在夹爪里"时置 True。
+          🎯 死循环根源: 滑移 → 回退到抓取之前 → 本函数返回 0 = 张爪 → **主动把件扔掉** → 再抓再滑。
+          只要工件仍在夹爪范围内, 回退期间也必须保持闭合 (工件没掉就别扔), 这才打断死循环。
+        """
         # (完成段开爪由引擎放件流程驱动 — 见 state_space_sim_real.run 放下段,
         #  状态机保持"抓取起锁存闭合"语义不变)
+        if keep_closed:
+            return 1.0
         return 1.0 if self.stage_idx >= self.GRASP_IDX else 0.0
 
     def _confirm(self, target_idx, reason):
