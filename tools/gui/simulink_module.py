@@ -11102,7 +11102,11 @@ class SimulinkModule(QWidget):
                 else:
                     os.environ.pop("SS_L3", None)
                 sim = RealStateSpaceSim(seed=104,
-                                        vision=not _demo_cap, vision_every=1,
+                                        # 🧠 模型执行时用 R0 真值观测 (与验证口径一致 —
+                                        #   tools/eval_takeover.py / 865步全链视频都是 R0;
+                                        #   走 R1 视觉会引入另一层变量, 无法归因)
+                                        vision=(not _demo_cap) and (not _model_exec),
+                                        vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
                                         demo_l4=_demo_cap,
                                         log=lambda *a: _logs.append(
