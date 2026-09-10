@@ -997,6 +997,9 @@ class RealStateSpaceSim:
               #   mani_*, 非 io_trace; 真实化轨迹此前无 → Scope 流形格空 = 老倪"流形没输出")
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "mani_rem": [], "mani_dperp": [], "mani_pred": [],   # 🧠 2026-09-08: JEPA 预测流形 (旁路 6 维)
+              # 🧠 2026-09-11 INTACT 二态意图 (L4升级): m_local(接触流形切向) / m_goal(性能流形梯度)
+              #   + 同构核验 cos (两态方向一致度: 自由空间应≈1, 接触约束下分工)
+              "m_local": [], "m_goal": [], "intent_iso": [],
               "z7_vec": [],   # 🧠 2026-09-09: 旁路 z R7 (夹持后 x→光模块头) 供 predictor 训练同构采集
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
@@ -1828,10 +1831,38 @@ class RealStateSpaceSim:
                             predictor=_pred)
                         self._mani_pm = _MANI_MOD.PerformanceManifold(
                             hole_pos=self.geom["goal"], predictor=_pred)
+                        # 🧠 2026-09-11 L4 升级: INTACT 二态意图层 (流形实现, **保留流形**)
+                        #   流形 = 物理接地; 意图层 = 规划能力。二者正交互补, 不替换。
+                        #   m_local ≡ −e_par (接触流形切向, attached 全梯度) 
+                        #   m_goal  ≡ −∇V_p (性能流形梯度, stop-gradient 锚)
+                        #   两态同语法(Δz∈R³)由同一个 SharedIntentEncoder 消费 (共享参数)。
+                        try:
+                            from lerobot.manifold.intent_pair import (
+                                ManifoldIntentPair, SharedIntentEncoder)
+                            self._intent_pair = ManifoldIntentPair(self._mani_cm, self._mani_pm)
+                            self._intent_enc = SharedIntentEncoder(gain=1.0)
+                            self.log("🧠 L4 二态意图层已接 (INTACT): m_local(接触流形切向) / "
+                                     "m_goal(性能流形梯度) · 共享算子 + 非对称梯度 · 保留流形")
+                        except Exception as _ie:
+                            self._intent_pair = None
+                            self.log(f"⚠️ L4 意图层未接: {_ie}")
                     _ms2 = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
                     _mc2 = self._mani_cm.decompose(self.x, ph, target,
                                                    getattr(self, "v", np.zeros(3)), _ms2)
                     _mp2 = self._mani_pm.evaluate(ph, stage=_ms2)
+                    # 🧠 2026-09-11 L4 二态意图 (INTACT): 每帧真算两态 + 同构核验
+                    #   (两态走同一语法; cos≈1 = 自由空间两态平行, 明显<1 = 接触约束下分工)
+                    if getattr(self, "_intent_pair", None) is not None:
+                        try:
+                            _ml, _il = self._intent_pair.local(
+                                self.x, ph, target, getattr(self, "v", np.zeros(3)), _ms2)
+                            _mg, _ig = self._intent_pair.goal(ph, stage=_ms2)
+                            tr["m_local"].append(np.asarray(_ml, float).ravel()[:3].copy())
+                            tr["m_goal"].append(np.asarray(_mg, float).ravel()[:3].copy())
+                            tr["intent_iso"].append(float(
+                                self._intent_pair.isomorph(_ml, _mg)["cos_sim"]))
+                        except Exception:
+                            pass
                     # 🧠 JEPA 预测流形 (旁路对照): 几何潜空间 z R⁷ + 当前动作 → 预测流形坐标
                     # 🐛 2026-09-09: 夹持后 x→光模块头 (x+grasp_off0+head_off) — rem(头到孔底)
                     #   才可辨识 (插入段夹爪 x 几乎不动, 原 z7 无头位置 → rem 预测上限受限)
