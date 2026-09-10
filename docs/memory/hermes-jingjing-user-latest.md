@@ -1,6 +1,6 @@
 GitHub token已配(MikeBMW)
 §
-反复只发"静静"=催回复→立即最简现状+行动选项; clarify无法送达按最稳默认行动不停等
+反复只发"静静"=催回复→立即最简现状+行动选项; clarify无法送达按最稳默认行动不停等; 指标不夸大(真实均值+波动区间,非模型成绩标注)
 §
 CICD: 全自动流程+基线对比+版本升级+Release; 迭代升级不重写; 功能验收后=保存数据+更新代码+共享技能(commit+push+技能沉淀)
 §
@@ -8,17 +8,17 @@ Z-MAX: 具身智能机器人平台(光模块工厂精细操作); Z700=L4全自�
 §
 两个仓库：lerobot-smolvla-lew (GUI工程, 我维护), zmax-website (datadrive.world网站, web维护)
 §
-飞书群 dataworld 已接入, 机器人 xspace (cli_a87851ffe46b500d); 静界群已接入(v3.2.0公告cron每10min同步)
+飞书: dataworld群+静界群已接入, 机器人xspace(cli_a87851ffe46b500d)
 §
 CEO大倪偏好：首页不提技术参数，链接纯文本，回复简洁，工具按钮要好使，迭代不超2轮，功能坏了说根因，手机可操控
 §
-无限调试要止损; 破坏性操作先留旧环境验证
+无限调试要止损(老倪授权:循环调试不请示/反复尝试只要结果;并行长训练不停); 破坏性操作先留旧环境验证
 §
 PPT: 严格匹配模板(白底横线,不发明配色); 手绘结构精确复制不发挥; 右上角「V 静」=该页画Z-MAX三层架构(每页一条指令); 架构三行横排: SYS2云端(顶)→SYS1含SYS11 VLA-T+SYS12 Z-Flow(中)→SYS0硬件+原子功能红底(底)
 §
 Git精简: 大文件(zip/pdf/pptx/rosbag/模型权重)不进代码库, 交付件放网盘/数据服务器
 §
-用户ACT训练策略: 三阶段渐进式(仿真快速验证→真机保守微调) — S1 metaworld backbone冻结; S2零样本测RealityGap; S3真机微调低lr+backbone更低+ensemble必开
+ACT训练三阶段: S1 metaworld冻结→S2零样本测RealityGap→S3真机低lr微调+ensemble必开
 §
 VSCode: GUI/对话框显示代码绝对路径+行号(📋复制路径按钮), 不命令行开编辑器
 §

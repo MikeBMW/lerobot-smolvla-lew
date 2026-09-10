@@ -4,7 +4,7 @@ web=4090训练+ComfyUI+前端+ECS部署+PM，总工(4060/GitHub/GUI)，小芳=�
 §
 系统=E盘p5原生Ubuntu非WSL(09-06克隆迁移); 双系统RTC勿动adjtime
 §
-画布三级能力(09-08): 🏆L4专家自主=世界模型技术(流形+JEPA预测) 🚀L3高级自动=端到端模仿学习(VLM+FM-ActionHead,smolvla_lew) 🔧L2基础辅助=分段式小模型(YOLO+前馈MLP+原子技能独跑保插拔); 三级自动测试=tools/ss_level_tests.py+capability_levels.py(L2 186/L3 76/L4 103 断言)
+画布三级: L4=世界模型(流形JEPA+LEW AdaLN Transformer/Mamba SSM自研) / L3=VLM+DiT(smolvla_lew, 二值gripper回归学不准→模型执行SS_L3=1默认关, 生产用解析链, DAgger迭代中) / L2=原子技能SK01-08+行左A/B/C通用算子(L4动态参数写/微调/校验); capability_levels.py开头自动回退顶部
 §
 老倪: 指令最小化(删X=先改名); 画布没用的删干净; 新节点注册node_logic
 §
@@ -12,7 +12,7 @@ web=4090训练+ComfyUI+前端+ECS部署+PM，总工(4060/GitHub/GUI)，小芳=�
 §
 崩溃铁律: worker线程禁QObject→pyqtSignal回主线程; GUI改码必重启
 §
-GUI: gui-venv311在仓库内(Py3.11含torch可训练); 改码必重启; 取证QWidget.grab; flows/*.json坐标必须int(字符串→QRectF崩GUI); 命令触发/tmp/zmax_nav_cmd; 启动须完整路径(根/gui-venv311/bin/python tools/gui/studio.py), 相对cwd启动→venv失效→No metaworld
+GUI: gui-venv311在仓库内(含torch可训练); 改码必重启; flows/*.json坐标须int; 命令触发/tmp/zmax_nav_cmd; 启动须cd仓库根+完整路径studio.py; 画布编辑铁律: GUI运行中切档会写回state_space_obs.json覆盖编辑→先停全部studio再改再重启, 杀studio用ps -eo pid,args|awk '$2~/gui-venv311\/python$/'+kill(pkill -f studio.py会自匹配自杀); 连线布局须左上→右下, 反向仅反馈回路标↩; 打包--add-data须含全部src子目录(漏memory/skills则画布加载失败)
 §
 GitHub: 直连超时→ghproxy.net代理+sslVerify=false; Release下载走browser_download_url; 凭证~/.git-credentials
 §
@@ -22,16 +22,18 @@ Hermes安全层: mkfs等敏感命令字符串级硬拦(approvals全无效); 绕�
 §
 Z-MAX多并行会话共享同仓库: 老倪跨会话问进度→先git log+session_search查证别重复训练/提交(09-07实锤)
 §
-网络: corp guest对deepseek首连8s超时后忽通(~0.15s稳), 飞书/github通; 热点Mike备选。Hermes: CLI≠gateway进程(gateway=systemd服务, 判据cat /proc/pid/cgroup); 飞书99991663=进程内tenant token 2h过期不自刷→需重启gateway
+网络: corp guest对deepseek首连8s超时后忽通; 热点Mike备选。Hermes: CLI≠gateway进程(gateway=systemd服务, 判据cat /proc/pid/cgroup); 飞书99991663=进程内tenant token 2h过期不自刷→重启gateway
 §
-smolvla/VLM(09-09): gui-venv311可直跑lerobot_train(已补diffusers等); 编码=vlm_encoder.py z960~0.6s/帧; VLM数据每4步1帧→数据集ts按视频帧对齐(i//4)/25, 需tasks.parquet+stats含min/max; resume: --config_path=带=号指train_config.json且resume=true; HF走hf-mirror; docker已修(nvidia-toolkit, sudo)
+smolvla/VLM: gui-venv311直跑lerobot_train; 编码=vlm_encoder.py z960~0.6s/帧; VLM数据每4步1帧→ts按视频帧对齐(i//4)/25, 需tasks.parquet+stats含min/max; HF走hf-mirror
 §
-磁盘红线200G(09-09老倪改disk_redline.sh); 回归/chain基线须SS_MUSCLE=0隔离(固化库致insert 343→412步假回归)
+磁盘红线200G
 §
-3D网页/复刻(09-08): metaworld布局每进程漂移→网页场景几何(孔口/盒/AOI)必须读轨迹meta动态对齐禁写死常量; AOI相机=镜头从支架伸出+光模块放镜头下留间隙+检测绕长轴转90°+光源向下
+3D网页/复刻: metaworld布局每进程漂移→场景几何须读轨迹meta动态对齐禁写死; AOI=镜头伸出+模块在镜头下留间隙+绕长轴转90°+光源向下
 §
-画布记忆分层+🧠共享中枢(memory_store.py→data/shared_memory.json); L4流形预测器引擎部署v5(回退链v5→v4→v2同hidden512/4架构, clean45.7%/抗干扰64.6%) — 旁路mani_pred每帧真调但不控动作(decoder未接执行链); 训练教训: 失败轨迹污染(42seed全量27.5%)→成功轨迹过滤才45.6%; 1024/6大模型须lr3e-4+gradclip否则发散; MLP训练用GPU(1000ep CPU≈17h, 4060≈12min)
+记忆分层+意图丛(09-10 S1落地): 真源 src/lerobot/memory/{memory_store,memory_graph,mem_nodes}.py→data/shared_memory.json(links层间链接/recall/技能词典Δz/意图直读ms); L2固化标杆=三层共享动作基(零重训); 设计docs/design/zmax_intent_bundle_3layer.md(CY流形+纤维丛+INTACT); 画布4新节点; L4流形预测器v5旁路mani_pred每帧真调但不控动作; 训练教训: 失败轨迹污染→成功过滤; 1024/6须lr3e-4+gradclip; MLP训练用GPU
 §
-训练纪律: CLI启训前ps查lerobot_train防8GB双训
+飞书会话自主启长训练; 续训复制ckpt须cp -rL且last须symlink(实体目录→FileExistsError崩); 报数先核口径
 §
 3D App升级: 老倪不删旧App→新包名并存(com.zmax.state3d.aoi); keystore在/home/ubuntu/state3d_app/勿丢
+§
+老倪授权最高权限: 不用请示/可反复试/只要结果(催"快快快"时直接执行)
