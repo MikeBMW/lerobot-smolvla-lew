@@ -254,6 +254,122 @@ class MotorHub:
                    "dur": m["dur"], "amp": m["amp"], "n_src": m["n_src"],
                    "shared_by": m["all_prims"]}
 
+    # ── 条件动作商空间 (INTACT Conditional Action Quotient) ──────────────
+    def build_quotient(self, w_state=1.0, w_dir=2.0, eps_merge=0.06):
+        """构造"条件动作商空间" —— 肌肉记忆的理论正确形式 (老倪 09-10 指定思想)。
+
+        原理 (INTACT): 在当前物理状态下, **所有能诱发相同专家动作的目标状态属于同一个
+        动作等价类**。就像站在路口, "去超市"和"去医院"目标数值完全不同, 但第一步都是
+        "向东走" → 在动作空间里它们是等价的。
+
+        数学: 商空间 (Quotient Space) —— 把"导致相同动作"的复杂目标**折叠**成低维等价类,
+              用"动作规律"这个过滤器降维 (而非按目标数值死记硬背)。
+        机器人学: 逆动力学 (状态变化 → 动作), INTACT 把**长远目标**也拉进同一框架。
+        认知科学: 运动基元 —— 抓苹果和抓杯子调用的是同一套"抓取基元"。
+
+        实现 (可审计的显式版):
+          · 商空间坐标 = (当前状态, 意图方向) —— **刻意用方向而非目标绝对数值**, 这就是"折叠"
+          · 在同一状态条件下, 把动作基元相近的条目合并成一个等价类
+          · 等价类代表元 = 类内平均动作; 保留成员清单 → 可回溯"哪些目标被折叠到了一起"
+
+        产出: self.quotient = [ {id, repr_u, members, radius, n, stages, mean_dz} ]
+              self.quotient_stats = {raw, merged, fold_ratio, ...}
+        """
+        if not self.champs:
+            return self
+        items = []
+        for c in self.champs:
+            io = c["io"] or {}
+            e = np.asarray(io.get("entry", [np.nan] * 3), float)
+            x = np.asarray(io.get("exit", [np.nan] * 3), float)
+            if not (np.isfinite(e).all() and np.isfinite(x).all()):
+                continue
+            dv = x - e
+            nd = float(np.linalg.norm(dv))
+            items.append(dict(stage=c["stage"], seed=c["seed"], entry=e, exit=x, dv=dv,
+                              unit=(dv / nd if nd > 1e-9 else np.zeros(3)),
+                              u=_resample(c["u"]), key=f"{c['seed']}|{c['stage']}"))
+        if not items:
+            return self
+        # 两两"商距离": 状态越像 + 意图方向越像 → 越应折叠为同一动作类
+        n = len(items)
+        assigned = [-1] * n
+        classes = []
+        for i in range(n):
+            if assigned[i] >= 0:
+                continue
+            ci = len(classes)
+            members = [i]
+            assigned[i] = ci
+            for j in range(i + 1, n):
+                if assigned[j] >= 0:
+                    continue
+                ds = float(np.linalg.norm(items[i]["entry"] - items[j]["entry"]))
+                dd = float(1.0 - float(np.dot(items[i]["unit"], items[j]["unit"])))
+                dq = w_state * ds + w_dir * dd
+                if dq < eps_merge:
+                    members.append(j)
+                    assigned[j] = ci
+            classes.append(members)
+        self.quotient = []
+        for ci, mem in enumerate(classes):
+            U = np.stack([items[i]["u"] for i in mem])
+            repr_u = U.mean(0)
+            rad = float(np.mean([np.abs(U[k] - repr_u).max() for k in range(len(mem))]))
+            self.quotient.append(dict(
+                id=ci, n=len(mem), repr_u=np.round(repr_u, 5).tolist(),
+                radius=round(rad, 5),
+                members=[items[i]["key"] for i in mem],
+                stages=sorted({items[i]["stage"] for i in mem}),
+                mean_dz=np.round(np.stack([items[i]["dv"] for i in mem]).mean(0), 4).tolist(),
+                mean_entry=np.round(np.stack([items[i]["entry"] for i in mem]).mean(0), 4).tolist(),
+                dup_targets=len({tuple(np.round(items[i]["exit"], 3)) for i in mem}),
+            ))
+        raw = n
+        self.quotient_stats = dict(
+            raw=raw, merged=len(classes),
+            fold_ratio=round(1.0 - len(classes) / max(raw, 1), 3),
+            mean_class_size=round(raw / max(len(classes), 1), 2),
+            eps_merge=eps_merge, w_state=w_state, w_dir=w_dir,
+            note="等价类 = 同一状态下诱发相同动作的目标集合 (目标数值不同但动作相同 → 折叠)",
+        )
+        return self
+
+    def query_quotient(self, state, goal, k=1):
+        """条件动作商查询: 给 (当前状态, 目标) → 直接给动作, **不区分目标的绝对数值差异**。
+
+        判据只用: 状态相似 + **意图方向**一致(这正是等价类的判据 —— 方向一致即同类)。
+        返回 (动作序列, meta), meta 含所属等价类与"折叠了哪些目标"。
+        """
+        if not getattr(self, "quotient", None):
+            self.build_quotient()
+        st = np.asarray(state, float).ravel()[:3]
+        g = np.asarray(goal, float).ravel()[:3]
+        dv = g - st
+        nd = float(np.linalg.norm(dv))
+        if nd < 1e-9:
+            return None, {"hit": False, "reason": "zero_intent"}
+        unit = dv / nd
+        best, bi = 1e9, None
+        for cl in self.quotient:
+            # 商距离 = 状态相似(条件) + **意图方向**一致(等价类判据)
+            #   —— 刻意不比目标的绝对数值: 方向一致即视为同一动作等价类 (INTACT 折叠)
+            ds = float(np.linalg.norm(st - np.asarray(cl.get("mean_entry", st), float)))
+            mz = np.asarray(cl["mean_dz"], float)
+            mnd = float(np.linalg.norm(mz))
+            mu = (mz / mnd) if mnd > 1e-9 else np.zeros(3)
+            dd = float(1.0 - float(np.dot(mu, unit)))
+            dq = 1.0 * ds + 2.0 * dd
+            if dq < best:
+                best, bi = dq, cl
+        if bi is None:
+            return None, {"hit": False, "reason": "no_class"}
+        return (np.asarray(bi["repr_u"], float),
+                {"hit": True, "class": bi["id"], "dist": round(best, 4),
+                 "n_member": bi["n"], "stages": bi["stages"],
+                 "folded_targets": bi["dup_targets"], "radius": bi["radius"],
+                 "intent_dir": np.round(unit, 3).tolist()})
+
     # ── 该段的平均几何 (调制用) ─────────────────────────────
     def _stage_geom(self, stage):
         st = _norm_stage(stage)
