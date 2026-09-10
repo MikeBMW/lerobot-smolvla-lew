@@ -232,23 +232,35 @@ class RealStateSpaceSim:
         #   空夹循环 (SS_MUSCLE=0 同轮 352 步成功 vs =1 失败 500 步); 且 R1 成功轮会
         #   把标杆库混入不同代码版本轨迹 (污染)。R0 确定性仿真标杆可重复 (09-07 老倪
         #   验收场景 6 轮), 不受影响。GUI ▶运行 = R1 视觉 → 小脑自动关闭, 走实时感知。
-        if os.environ.get("SS_MUSCLE") != "0" and not self.vision:
+        # 🔮 2026-09-10 S3 影子模式: muscle 库对象**总是加载** (影子对比需读标杆),
+        #   快通道单独由 SS_MUSCLE 控制 (SS_MUSCLE=0 → 纯实时决策, 影子仍可对比)
+        self.muscle = None
+        self._mm_on = False
+        self._mm_obs = False          # 观察/io 采集开关 (独立于快通道: SS_OBSERVE=0 可关)
+        if not self.vision:
             try:
                 from muscle_memory import get_memory
                 self.muscle = get_memory()
-                self._mm_on = True
+                self._mm_on = (os.environ.get("SS_MUSCLE") != "0")
+                self._mm_obs = (os.environ.get("SS_OBSERVE") != "0")
             except Exception:
                 self.muscle = None
                 self._mm_on = False
-        else:
-            self.muscle = None
-            self._mm_on = False
+                self._mm_obs = False
         self._mm_stage = ""       # 当前记录阶段
         self._mm_step = 0         # 阶段内步计数
         self._mm_hits = 0         # 快通道命中帧数 (统计/展示)
         self._mm_seg = ""         # 当前重放段名
         self._mm_u = None         # 当前段标杆 u_exec 序列
         self._mm_i = 0            # 段内重放帧索引
+        # 🔮 S3 影子模式 (2026-09-10): 所有段 (含插入/完成) 都取标杆与实际决策同帧对比,
+        #   只记录不接管 — 为 S3 正式启用提供数据 (L2 标杆在各段可用性/gate 判定)。SS_SHADOW=0 可关。
+        self._shadow_on = (os.environ.get("SS_SHADOW") != "0")
+        self._sh_seg = ""
+        self._sh_i = 0
+        self._sh_u = None
+        self._sh_x = None
+        self._sh_acc = {}         # 段 → {n, du, du_max, dx, dx_max}
 
     def _load_aligner(self):
         """加载 YOLO 对齐器 (检测 + 深度反投影, 同 GUI 链路的真实模型)"""
@@ -755,7 +767,7 @@ class RealStateSpaceSim:
         env = self.env
         self._reset(self.seed)
         # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)
-        if getattr(self, "_mm_on", False) and self.muscle is not None:
+        if getattr(self, "_mm_obs", False) and self.muscle is not None:
             try:
                 self.muscle.begin_episode(self.seed)
             except Exception:
@@ -892,7 +904,7 @@ class RealStateSpaceSim:
             # 🧠 2026-09-07 肌肉记忆 (仿小脑): ①观察 — 每帧记录 (stage, x, u_exec);
             #   ②快通道 — 固化标杆后整段 u_exec 重放 (跳过 MLP 精算, "练熟的动作
             #   小脑直接给力"); 安全链 (decide/反馈/饱和限幅) 全保留。
-            if getattr(self, "_mm_on", False) and self.muscle is not None:
+            if getattr(self, "_mm_obs", False) and self.muscle is not None:
                 try:
                     _stg = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
                     if _stg != self._mm_stage:          # 阶段切换 → 段步计数重置
@@ -937,6 +949,39 @@ class RealStateSpaceSim:
                         self.log(f"🧠 肌肉记忆快通道: {_stn} 段标杆 u_exec 重放 (小脑接管前馈)")
                     self._mm_hits += 1
                     self._mm_i += 1
+            # 🔮 S3 影子模式 (2026-09-10): 全段 (含插入/完成) 标杆 vs 实际决策 同帧对比 —
+            #   只记录不接管。产出: du (动作差, L2 先验与实时决策的差距) / dx (同帧位置差,
+            #   "若用标杆会不会跑偏") → 段末给 gate_ok(2mm) 判定该段标杆可用性。
+            if getattr(self, "_shadow_on", False) and self.muscle is not None:
+                try:
+                    if _stn != getattr(self, "_sh_seg", ""):
+                        self._sh_seg = _stn
+                        self._sh_i = 0
+                        _su, _sx = self.muscle.get_champ(self.seed, _stn)
+                        self._sh_u, self._sh_x = _su, _sx
+                    if self._sh_u is not None and self._sh_i < len(self._sh_u):
+                        _acc = self._sh_acc.setdefault(_stn, {"n": 0, "du": 0.0, "du_max": 0.0,
+                                                              "dx": 0.0, "dx_max": 0.0})
+                        _acc["n"] += 1
+                        try:
+                            _du = float(np.linalg.norm(np.asarray(self._sh_u[self._sh_i], float)
+                                                       - np.asarray(u_ff, float)))
+                        except Exception:
+                            _du = 0.0
+                        _acc["du"] += _du
+                        _acc["du_max"] = max(_acc["du_max"], _du)
+                        if self._sh_x is not None and self._sh_i < len(self._sh_x):
+                            try:
+                                _dx = float(np.linalg.norm(
+                                    np.asarray(self._sh_x[self._sh_i], float)[:3]
+                                    - np.asarray(self.x, float)[:3]))
+                                _acc["dx"] += _dx
+                                _acc["dx_max"] = max(_acc["dx_max"], _dx)
+                            except Exception:
+                                pass
+                        self._sh_i += 1
+                except Exception:
+                    pass
             act4 = np.concatenate([self.u_prev[:3], [0.0]])
             latent_pred = self.est.predict(self.latent, act4)
             prior = self.dyn.predict(self.latent, act4)
@@ -1436,7 +1481,7 @@ class RealStateSpaceSim:
         if getattr(self, "_key_frames", None):
             tr["key_frames"] = {k: np.asarray(v).copy() for k, v in self._key_frames.items()}
         # 🧠 2026-09-07 肌肉记忆: 本轮结束 — 成功轮提交段轨迹供固化/精进, 失败轮不固化
-        if getattr(self, "_mm_on", False) and self.muscle is not None:
+        if getattr(self, "_mm_obs", False) and self.muscle is not None:
             try:
                 _ok = bool(tr["done"][-1]) if tr["done"] else False
                 _r = self.muscle.end_episode(_ok)
@@ -1460,6 +1505,19 @@ class RealStateSpaceSim:
             tr["_meta"]["box_center"] = g["box_center"].copy()
         # 🧠 2026-09-09 分层记忆: 本轮结果入共享库 (L3 流程经验 + L4 预测质量 + meta)
         try:
+            # 🔮 S3 影子汇总 (2026-09-10, 只记录不接管): 全段 标杆 vs 实际决策 差异 + gate 判定
+            if getattr(self, "_sh_acc", None):
+                tr["shadow"] = {k: {"n": v["n"],
+                                    "du_mean": round(v["du"] / max(v["n"], 1), 5),
+                                    "du_max": round(v["du_max"], 5),
+                                    "dx_mean": round(v["dx"] / max(v["n"], 1), 5),
+                                    "dx_max": round(v["dx_max"], 5),
+                                    "gate_ok": bool(v["dx_max"] < 0.002)}
+                                for k, v in self._sh_acc.items()}
+                for _k, _v in tr["shadow"].items():
+                    self.log(f"🔮 S3 影子[{_k}]: du均值 {_v['du_mean']} max {_v['du_max']} | "
+                             f"dx均值 {_v['dx_mean']} max {_v['dx_max']} | "
+                             f"gate {'✅ 可用' if _v['gate_ok'] else '❌ 偏差大'}")
             self._write_shared_memory(tr)
         except Exception:
             pass
@@ -1509,6 +1567,10 @@ class RealStateSpaceSim:
                     "steps": n, "mae": mae,
                     "t": __import__("time").strftime("%m-%d %H:%M"),
                 }, cap=40)
+            if tr.get("shadow"):
+                _ms.put("l3", "shadow", {"seed": int(self.seed), "mode": self.mode,
+                                         "shadow": tr["shadow"],
+                                         "t": __import__("time").strftime("%m-%d %H:%M")}, cap=40)
             _ms.put("meta", "task", "光模块插拔 (insert/full)")
             _ms.put("meta", "cap", str(getattr(self, "_cap", "") or "L2"))
             # 🧬 S1 记忆图谱 (2026-09-10 影子写, 不改控制路径): 层间链接 + L2 技能摘要同步

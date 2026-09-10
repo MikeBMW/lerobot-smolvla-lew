@@ -53,7 +53,8 @@ class MuscleMemory:
                              "champ_u": (np.asarray(v["champ_u"], dtype=float)
                                          if v.get("champ_u") else None),
                              "champ_x": (np.asarray(v["champ_x"], dtype=float)
-                                         if v.get("champ_x") else None)}
+                                         if v.get("champ_x") else None),
+                             "io": v.get("io")}     # 🧬 S2 io 契约 (entry/exit 状态+相位)
                     self.db[(int(seed), stg)] = entry
         except Exception:
             pass
@@ -67,6 +68,7 @@ class MuscleMemory:
                     "n_ok": e["n_ok"],
                     "champ_u": (e["champ_u"].tolist() if e["champ_u"] is not None else None),
                     "champ_x": (e["champ_x"].tolist() if e["champ_x"] is not None else None),
+                    "io": e.get("io"),     # 🧬 S2 io 契约
                 }
             with open(self.path, "w") as f:
                 json.dump(raw, f, ensure_ascii=False, indent=1)
@@ -75,7 +77,7 @@ class MuscleMemory:
 
     # ── 本轮记录 ──
     def begin_episode(self, seed):
-        self._cur = {"seed": int(seed), "seg_u": {}, "seg_x": {}, "done": False}
+        self._cur = {"seed": int(seed), "seg_u": {}, "seg_x": {}, "seg_io": {}, "done": False}
 
     def feed(self, stage, x, u_exec):
         """每帧喂当前阶段 + 手位置 + 实际下发 u_exec → 累积该段轨迹"""
@@ -89,6 +91,14 @@ class MuscleMemory:
         if len(seg_u) < 500:
             seg_u.append([round(float(v), 6) for v in np.asarray(u_exec).ravel()[:4]])
             seg_x.append([round(float(v), 6) for v in np.asarray(x).ravel()[:3]])
+        # 🧬 S2 io 契约 (2026-09-10): 段入口(首帧)/出口(末帧) 状态 + 动作 — L3/L4 组合调用的接力条件
+        _io = self._cur["seg_io"].setdefault(st, {})
+        _xs = [round(float(v), 6) for v in np.asarray(x).ravel()[:3]]
+        _us = [round(float(v), 6) for v in np.asarray(u_exec).ravel()[:4]]
+        if "entry" not in _io:
+            _io["entry"], _io["entry_u"] = _xs, _us
+        _io["exit"], _io["exit_u"] = _xs, _us
+        _io["frames"] = len(seg_u)
 
     def end_episode(self, success):
         """本轮结束 → 成功轮把完整段提交 (固化/精进); 失败轮不固化"""
@@ -97,6 +107,7 @@ class MuscleMemory:
         seed = self._cur["seed"]
         seg_u = self._cur["seg_u"]
         seg_x = self._cur["seg_x"]
+        seg_io = self._cur.get("seg_io") or {}      # 🧬 S2 io 契约
         self._cur = None
         if not success:
             return {"seed": seed, "learned": 0, "msg": "本轮未完成 — 失败不固化"}
@@ -108,8 +119,10 @@ class MuscleMemory:
             u = np.asarray(seg_u[st], dtype=float)
             x = np.asarray(seg_x[st], dtype=float)
             key = (seed, st)
-            e = self.db.setdefault(key, {"n_ok": 0, "champ_u": None, "champ_x": None})
+            e = self.db.setdefault(key, {"n_ok": 0, "champ_u": None, "champ_x": None, "io": None})
             e["n_ok"] += 1
+            if seg_io.get(st):
+                e["io"] = seg_io[st]        # 🧬 S2: 记录该段 entry/exit 契约 (最近成功轮)
             if e["champ_u"] is None:
                 if e["n_ok"] >= MIN_OK_RUNS:
                     # 只存最近一次 (固化基准) — 真实化多轮物理微差, 用最近成功轮作标杆
