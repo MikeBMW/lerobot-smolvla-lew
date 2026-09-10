@@ -113,7 +113,9 @@ def _make_env():
 
 DT_ENV = 0.1            # metaworld 1 step ≈ 0.1s 物理 (标定值, audit 可调)
 K_ACT = 0.5             # 引擎速度指令 m/s → act ±1 的标定: act = clip(u[:3]/K_ACT)
-GRIP_CLOSE = 0.6        # metaworld 夹爪闭合动作值 (gen_insert_video 同款, 防夹死)
+GRIP_CLOSE = float(os.environ.get("SS_GRIP_CLOSE", "0.6"))   # metaworld 夹爪闭合动作值
+#   ↑ 2026-09-10 攻抓取鲁棒性: 参数化以便做夹持力实验 (seed11/12 滑脱诊断: 引擎 grasped 是
+#     "夹爪闭合 3 步"的乐观推断, 非物理判据 → 试着加大闭合量看能否夹牢。
 GRIP_OPEN = -1.0        # 张开动作
 GRASP_SAT = 0.70        # 夹住销后的 gripper 饱和 (~0.70, cognition.py 注释; 空夹收敛 ~0.29)
 D_CONTACT = 0.02        # 接触距离 (同引擎)
@@ -524,6 +526,9 @@ class RealStateSpaceSim:
         self._jiggle_dir = 1.0     # 微调方向 (±) (保留兼容)
         self._retreat_then = None  # 回撤窗口结束后回退的目标阶段 (5=转移, 0=接近; None=不回退)
         self._grasp_age = 0        # 夹持锁存后帧数 (随动验证宽限期)
+        self._slip_run = 0         # 🎯 2026-09-10 滑脱判据: 相对滑动连续帧计数
+        self._regrip = 0           # 🎯 2026-09-10 重夹窗口帧数 (滑移时先重夹, 不急着回退)
+        self._regrip_tries = 0     # 🎯 本轮已重夹次数 (上限, 防无限循环)
         # 🐛 2026-09-04 静静 (探针12 实锤): 控制锚必须用 obs[0:3] hand (腕部=真实夹爪 claw),
         #   不能用 endEffector site — site 是腕下 4cm 的虚拟视觉点, 降到 光模块 高度时真实夹爪
         #   还悬空 2-3.5cm → 空夹 (接触实验里 '光模块 接触' 实为 光模块 贴桌面, 误读成夹持).
@@ -916,7 +921,16 @@ class RealStateSpaceSim:
             u_vec = getattr(self, "_u_vec", np.zeros(4))
             act = np.zeros(4)
             act[:3] = np.clip(u_vec[:3] / K_ACT, -1.0, 1.0)
-            act[3] = GRIP_CLOSE if u_vec[3] > 0.5 else GRIP_OPEN
+            # 🎯 2026-09-10 重夹窗口 (老倪攻抓取鲁棒性): 滑移时**先重夹**而不是回退。
+            #   起因: 回退(→抓取之前)会让 gripper_cmd() 返回 0 = 张爪 → 真掉件 → 死循环。
+            #   这里在检测到"peg 在夹爪内缓慢下滑"时, 强制闭合 N 帧让夹爪再咬一次。
+            if getattr(self, "_regrip", 0) > 0:
+                act[3] = GRIP_CLOSE
+                self._regrip -= 1
+                if self._regrip == 0:
+                    self.log("🦾 重夹窗口结束 → 继续任务 (不走回退)")
+            else:
+                act[3] = GRIP_CLOSE if u_vec[3] > 0.5 else GRIP_OPEN
             try:
                 env.step(act)
             except ValueError:
@@ -1249,7 +1263,7 @@ class RealStateSpaceSim:
                 u = np.zeros(4)
             u = np.asarray(u, dtype=float).copy()
             u[3] = self.sched.gripper_cmd(u_ff[3])
-            u_sat = self.safety.saturate(u, limit=0.6)
+            u_sat = self.safety.saturate(u, limit=float(os.environ.get("SS_LIMIT", "0.6")))
             u_sat = np.asarray(u_sat, dtype=float).copy()
             u_sat[3] = float(u[3])
             # 🚀 2026-09-08 L3 扩展: 放下放件 — 到位后开爪指令直接覆盖 (状态机保持
@@ -1452,10 +1466,39 @@ class RealStateSpaceSim:
                         self.log(f"🎯 夹持真值锚定 (抬升试探 peg 跟手): off0="
                                  f"{np.round(self._grasp_off0,4)} "
                                  f"(视觉残差不再影响滑脱判定, 转移/插入走编码器)")
-                if float(np.linalg.norm(_off - self._grasp_off0)) > _slip_th:
-                    self.grasped = False                  # 掉了 → grasp_force 0 → 调度器回退重抓
-                    self._grasp_off0 = None
-                    self._off0_anchored = False
+                # 🎯 2026-09-10 滑脱判据改进 (seed11/12 边界误判实锤, 老倪攻抓取鲁棒性):
+                #   旧判据 |_off−_grasp_off0| > 8mm 会把"深夹后 peg 稳定停在 9mm 相对位移"
+                #   误判为滑脱 —— 实测 seed12 七次掉落全在 9.0~9.8mm (刚好越线), 而 seed7
+                #   (成功)几何相同却 0 次 → 这不是物理滑脱, 是**判据卡太死** → 反复回退重抓
+                #   → 死循环 (1500 步跑不完)。
+                #   新判据看**相对运动**(peg 在夹爪内滑动)而非相对位置:
+                #     · 连续 N 帧帧间偏移 > 4mm → 真滑脱 (物理上在滑)
+                #     · off 稳定(哪怕偏离 9mm) → 深夹正常状态, 不判
+                #     · 累计偏差放宽到 15mm 作保守兜底
+                _doff_now = (float(np.linalg.norm(_off - self._off_prev))
+                             if self._off_prev is not None else 0.0)
+                self._slip_run = self._slip_run + 1 if _doff_now > 0.004 else 0
+                _cum = float(np.linalg.norm(_off - self._grasp_off0))
+                _give_up = False
+                if self._slip_run >= 5 or _cum > 0.015:
+                    if getattr(self, "_regrip_tries", 0) < 3:
+                        # 🦾 先重夹 (2026-09-10 老倪攻抓取鲁棒性): 滑移 ≠ 必须回退。
+                        #   回退会走到"抓取之前" → gripper_cmd()=0 → 张爪 → **真掉件** → 死循环。
+                        #   先强制闭合 15 帧让夹爪再咬一次; 重夹后 off 会回到锁存附近 → 继续任务。
+                        self._regrip_tries += 1
+                        self._regrip = 15
+                        self._slip_run = 0
+                        self.log(f"🦾 滑移 {_cum*1000:.0f}mm (第{self._regrip_tries}次) → 重夹窗口, 不回退")
+                    else:
+                        self.grasped = False              # 重夹 3 次仍滑 → 认输回退重抓
+                        self._grasp_off0 = None
+                        self._off0_anchored = False
+                        self._slip_run = 0
+                        self._regrip_tries = 0
+                        _give_up = True
+                        self.log(f"🔄 滑脱(累计{_cum*1000:.0f}mm, 重夹无效) → 回退重抓")
+
+                if _give_up:
                     # 🐛 强制回退到接近: 滑脱时 光模块 可能半挂在夹爪上 (z 未落回台面),
                     #   advance 的"落回台面"回退判据不触发 → 卡死在转移/插入 (ep1/2/4 350步实锤)
                     try:
