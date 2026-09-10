@@ -253,6 +253,38 @@ class RealStateSpaceSim:
         self._mm_seg = ""         # 当前重放段名
         self._mm_u = None         # 当前段标杆 u_exec 序列
         self._mm_i = 0            # 段内重放帧索引
+        # 🎯 S3' 意图直读 decoder (2026-09-10): 前馈槽位来源 "按 seed 查" → "按意图查"
+        #   旧: muscle.get_champ(seed, stage) = 记死场景 (换 seed 即失效);
+        #   新: (阶段, 段入口状态) 最近邻 = 跨场景共享 (意图泛化)。
+        #   默认关 (SS_INTENT=1 开), 与 _mm_on 互斥 → 不改变既有行为。
+        self._intent_dec = None
+        self._intent_on = (os.environ.get("SS_INTENT") == "1")
+        if self._intent_on:
+            try:
+                from lerobot.memory.intent_decoder import IntentDecoder
+                self._intent_dec = IntentDecoder(
+                    path=os.path.join(os.getcwd(), "data", "muscle_memory.json"))
+            except Exception:
+                self._intent_dec = None
+                self._intent_on = False
+        self._int_seg = ""
+        self._int_i = 0
+        self._int_u = None
+        self._int_hits = 0
+        self._int_src = None
+        # 🎯 S3' target-decoder v1 (2026-09-10): 意图(阶段+现场几何) → target → ⚡前馈加速器。
+        #   decoder 只出"往哪去"(粗), µm 级精度由 L2 闭环保证; 规则版 _stage_target() 始终兜底。
+        #   默认关 (SS_TDEC=1 开), SS_TDEC_HEAD=target|next 选头。
+        self._tdec = None
+        self._tdec_on = (os.environ.get("SS_TDEC") == "1")
+        self._tdec_hits = 0
+        if self._tdec_on:
+            try:
+                from lerobot.memory.target_decoder import TargetDecoder
+                self._tdec = TargetDecoder(head=os.environ.get("SS_TDEC_HEAD", "next"))
+            except Exception:
+                self._tdec = None
+                self._tdec_on = False
         # 🔮 S3 影子模式 (2026-09-10): 所有段 (含插入/完成) 都取标杆与实际决策同帧对比,
         #   只记录不接管 — 为 S3 正式启用提供数据 (L2 标杆在各段可用性/gate 判定)。SS_SHADOW=0 可关。
         self._shadow_on = (os.environ.get("SS_SHADOW") != "0")
@@ -671,8 +703,10 @@ class RealStateSpaceSim:
                     _s.path.insert(0, _src)
                 from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
                 from lerobot.policies.factory import make_pre_post_processors
-                _ck = os.path.join(_repo, "outputs", "train", "smolvla_lew_v8",
-                                   "checkpoints", "last", "pretrained_model")
+                _ck = os.environ.get(
+                    "SS_L3_CK", "outputs/train/smolvla_lew_v8/checkpoints/030000/pretrained_model")
+                if not os.path.isabs(_ck):
+                    _ck = os.path.join(_repo, _ck)
                 _pol = SmolVLALewPolicy.from_pretrained(_ck)
                 _pol.eval()
                 self._l3_dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -682,11 +716,20 @@ class RealStateSpaceSim:
                 self.log("🏆 L3 真执行接入: SmolVLA-Lew (30000步) — 模型输出 xyz, "
                          "gripper 由状态机管 (二值回归不准的务实处理)")
             img = np.ascontiguousarray(self.env.render())
+            # 🐛 2026-09-10 口径同源: 训练数据图像是 128×128 (采集时 PIL LANCZOS 缩放后编码),
+            #   推理必须同样缩放 — 否则 480 原图与训练分布不一致 (=图像没真正接上)
+            try:
+                from PIL import Image as _PImg
+                img = np.asarray(_PImg.fromarray(img).resize((128, 128), _PImg.LANCZOS))
+            except Exception:
+                pass
             it = torch.from_numpy(img).permute(2, 0, 1).float().unsqueeze(0) / 255.0
             st = torch.from_numpy(np.asarray(visual39, dtype=np.float32)).unsqueeze(0)
             batch = {"observation.image": it.to(self._l3_dev),
                      "observation.state": st.to(self._l3_dev),
-                     "task": "metaworld 光模块插拔"}
+                     # 🗣 语言指令: 训练数据集 tasks.parquet 的 task_index=0 = "peg-insert-side-v3"
+                     #   (原写 "metaworld 光模块插拔" = 训练没见过的串 → VLM 条件分布错)
+                     "task": os.environ.get("SS_L3_TASK", "peg-insert-side-v3")}
             batch = self._l3_pre(batch)
             with torch.no_grad():
                 act = self._l3_pol.select_action(batch)
@@ -942,6 +985,19 @@ class RealStateSpaceSim:
                                   _pc, self._goal_p(), np.zeros(3), np.zeros(2)])
             prev = self.obs_prev if self.obs_prev is not None else cur
             target = self._stage_target()
+            # 🎯 S3' decoder v1 (SS_TDEC=1): 上述规则 target 换成 "意图(阶段+现场几何) → target"
+            #   的学习版; 默认关 → 行为与既有完全一致。规则版永远是兜底 (decoder 载入失败/关闭)。
+            if getattr(self, "_tdec_on", False) and self._tdec is not None:
+                try:
+                    # 🐛 2026-09-10: 第4特征必须是 geom["goal"] (=site('goal'), 插入终点) —
+                    #   训练数据用 site('goal'); 原写 _hole_p()=site('hole') 差一个孔深偏移 → 全崩 0/8 实锤
+                    target = self._tdec.predict(
+                        self.sched.stage(), self.x,
+                        getattr(self, "_peg_cur", self.geom["peg_grasp"]), self._goal_p())
+                    self._tdec_hits += 1
+                except Exception as _te:
+                    self._tdec_on = False
+                    self.log(f"⚠️ target-decoder 失效 → 回退规则 target: {_te}")
             # 🧠 2026-09-07 肌肉记忆 (仿小脑): ①观察 — 每帧记录 (stage, x, u_exec);
             #   ②快通道 — 固化标杆后整段 u_exec 重放 (跳过 MLP 精算, "练熟的动作
             #   小脑直接给力"); 安全链 (decide/反馈/饱和限幅) 全保留。
@@ -1024,6 +1080,27 @@ class RealStateSpaceSim:
                         self.log(f"🧠 肌肉记忆快通道: {_stn} 段标杆 u_exec 重放 (小脑接管前馈)")
                     self._mm_hits += 1
                     self._mm_i += 1
+            # 🎯 S3' 意图直读 (2026-09-10): 与快通道同一 u_ff 槽位, 来源换成"按意图查表"
+            #   (阶段 + 段入口状态) → 动作基, 跨场景共享。默认关 (SS_INTENT=1 开),
+            #   与 _mm_on 互斥 → 既有行为零改变。下游 L2 三件套 (前馈/估计/预测) 全不动。
+            if (getattr(self, "_intent_on", False) and self._intent_dec is not None
+                    and not getattr(self, "_mm_on", False)):
+                if _stn != getattr(self, "_int_seg", ""):
+                    self._int_seg = _stn
+                    self._int_i = 0
+                    if _stn in ("接近", "对位", "下降", "抓取", "抬起"):
+                        _iu, _im = self._intent_dec.query(_stn, self.peg_head())
+                        self._int_u = _iu
+                        self._int_src = _im
+                        if _iu is not None and self._int_hits == 0:
+                            self.log(f"🎯 意图直读: {_stn} 段 ← 意图最近邻 seed{_im.get('src_seed')} "
+                                     f"(d={_im.get('dist')}m, {_im.get('frames')}帧) 接管前馈")
+                    else:
+                        self._int_u = None   # 转移/插入/完成: 实时决策 (毫米级, 同快通道口径)
+                if self._int_u is not None and self._int_i < len(self._int_u):
+                    u_ff = self._int_u[self._int_i]
+                    self._int_hits += 1
+                    self._int_i += 1
             # 🔮 S3 影子模式 (2026-09-10): 全段 (含插入/完成) 标杆 vs 实际决策 同帧对比 —
             #   只记录不接管。产出: du (动作差, L2 先验与实时决策的差距) / dx (同帧位置差,
             #   "若用标杆会不会跑偏") → 段末给 gate_ok(2mm) 判定该段标杆可用性。
