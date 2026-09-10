@@ -1106,6 +1106,7 @@ class RealStateSpaceSim:
                                         self._lew_off = np.clip(
                                             _dz[:2] / max(_dn, 1e-6), -1, 1) * 0.10
                                         self._lew_corr = 8   # 8 帧微调窗口
+                                        self._lew_d0 = float(self._insert_depth())  # 🐛 窗口起点深度 (结束校验用)
                                         self._jiggle = 0
                                         self._lew_ok = True
                                         self.log(f"🧠 LEW 前视遇阻修正: peg偏移预测"
@@ -1166,8 +1167,24 @@ class RealStateSpaceSim:
                 if off is not None and st_now == "插入" and self.grasped:
                     u_sat[0] += float(off[0])
                     u_sat[1] += float(off[1])
-                    if self._lew_corr == 0:
-                        self.log("🧠 LEW 微调结束 → 恢复推进")
+                if self._lew_corr == 0:
+                    # 🐛 2026-09-10 静静: 修正窗口结束必须**校验是否见效并计入遇阻次数**。
+                    #   原实现: 修正期间不计 stall、_stall_events 不增长 → "遇阻→修正→再遇阻→
+                    #   修正"无限循环, 永不触发回退 → seed1 实测 3/3 成功降到 1/3 (900 步耗尽)。
+                    #   修复: 无效 → _stall_events+1 (最多 2 次修正, 第 3 次走回退, 与 SS_LEW 关闭时一致)
+                    try:
+                        _d1 = float(self._insert_depth())
+                        if abs(_d1 - float(getattr(self, "_lew_d0", _d1))) < 0.0005:
+                            self._stall_events += 1
+                            self._stall = 0
+                            self.log(f"🧠 LEW 微调无改善 → 计入遇阻({self._stall_events}/3)")
+                        else:
+                            self._stall_events = 0
+                            self._stall = 0
+                            self.log("🧠 LEW 微调见效 → 继续推进")
+                    except Exception:
+                        pass
+                    self.log("🧠 LEW 微调结束 → 恢复推进")
             u_vec = self.execr.execute(u_sat)
             if np.ndim(u_vec) == 0:
                 u_vec = np.zeros(4)
