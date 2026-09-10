@@ -837,7 +837,14 @@ class RealStateSpaceSim:
         try:
             if _sys.platform == "darwin" and os.environ.get("SS_MAC_RENDER") != "1":
                 return np.zeros((h, w, 3), np.uint8)
-            return self._render_frame()
+            # 🐛 2026-09-10 修复致命 bug (接管失败真根因): 这里原写作 `return self._render_frame()`
+            #   = **调用自身无限递归** → RecursionError 被下面 except 吞掉 → 永远返回全黑帧!
+            #   → L3 模型拿到黑图 → 输出与真实场景无关 → 接管必挂 (实测卡"转移"2318帧)。
+            #   正确做法: 真渲染 (env.render 与采集脚本 _frame_sink 同源)。
+            _rf = getattr(self.env, "render", None)
+            if _rf is not None:
+                return np.asarray(_rf())
+            return np.zeros((h, w, 3), np.uint8)
         except Exception:
             return np.zeros((h, w, 3), np.uint8)
 
