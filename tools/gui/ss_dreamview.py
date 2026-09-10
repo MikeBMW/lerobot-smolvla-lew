@@ -521,10 +521,13 @@ class DreamView3D(QWidget):
             #   不勾 → 原来的 L4Demo 固定演示 (90° 转台)。同一个档位, 当场对比。
             self.btn_model_w = QPushButton("🧠 模型执行")
             self.btn_model_w.setCheckable(True)
-            self.btn_model_w.setChecked(False)
+            # 🎯 2026-09-11 老倪: "打开的窗口动画一直是老样子" → 默认**开**,
+            #   这样点开 L4 档看到的就是"引擎 + 模型接管", 与固定演示明显不同;
+            #   想看原演示(90°转台)时取消勾选即可 — 关/开即对比。
+            self.btn_model_w.setChecked(True)
             self.btn_model_w.setToolTip(
-                "勾上 = L4 档改走引擎 + L3 模型接管 (SmolVLA-Lew · 默认 ckpt)\n"
-                "不勾 = 原来的 L4Demo 固定演示 (90° 转台)\n"
+                "勾上(默认) = L4 档走引擎 + L3 模型接管 (SmolVLA-Lew · 默认 ckpt) + 二态意图\n"
+                "取消勾选   = 原来的 L4Demo 固定演示 (90° 转台)\n"
                 "→ 同一个 L4 档, 一眼看出「固定演示」与「模型真在干活」的区别")
             self.btn_model_w.setStyleSheet(
                 "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
@@ -532,6 +535,8 @@ class DreamView3D(QWidget):
                 "QPushButton:checked{background:#8957e5; color:#fff; border-color:#8957e5;}")
             self.btn_model_w.toggled.connect(self._on_model_exec)
             pl.addWidget(self.btn_model_w)
+            # ⚠️ setChecked 在 connect 之前不触发信号 → 默认值必须主动同步给 module
+            self._on_model_exec(True)
             # 📉 性能流形曲面窗 (2026-09-07 老倪: 流形要有形状 — η 代价碗独立 3D 曲面)
             self.btn_mani_bowl = QPushButton("📉 性能流形曲面")
             self.btn_mani_bowl.setToolTip(

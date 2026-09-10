@@ -11094,7 +11094,7 @@ class SimulinkModule(QWidget):
                 #   开       → **不走 L4Demo**, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图
                 #              → 同一个 L4 档, 一眼看出"固定演示"与"模型在干活"的区别
                 #   注: L3 档不受影响 (老倪: L3 档是正常的, 不用改)
-                _model_exec = bool(getattr(self, "_model_exec", False))
+                _model_exec = bool(getattr(self, "_model_exec", True))   # 默认开 (老倪: 动画要能看出区别)
                 if _model_exec:
                     os.environ["SS_L3"] = "1"
                     _demo_cap = False
