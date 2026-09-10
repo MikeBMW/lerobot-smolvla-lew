@@ -713,8 +713,22 @@ class RealStateSpaceSim:
                 _pol.to(self._l3_dev)
                 _pre, _ = make_pre_post_processors(_pol.config, pretrained_path=_ck)
                 self._l3_pol, self._l3_pre = _pol, _pre
-                self.log("🏆 L3 真执行接入: SmolVLA-Lew (30000步) — 模型输出 xyz, "
-                         "gripper 由状态机管 (二值回归不准的务实处理)")
+                # 🗣 语言指令必须用**数据集 tasks.parquet 里的原串** (2026-09-10 实测纠正:
+                #   v8 / v8_d1 都是 "metaworld 光模块插拔"; 采集脚本代码里写别的串但实际数据不是
+                #   → 硬编码易错, 改为动态读)。SS_L3_TASK 可覆盖 (将来接 L4 自然语言指令用)。
+                _t = ""
+                try:
+                    import pandas as _pd
+                    for _dp in (os.path.join(_repo, "data", "smolvla_peg_v8_d1", "meta", "tasks.parquet"),
+                                os.path.join(_repo, "data", "smolvla_peg_v8", "meta", "tasks.parquet")):
+                        if os.path.exists(_dp):
+                            _t = str(_pd.read_parquet(_dp)["task"].iloc[0])
+                            break
+                except Exception:
+                    _t = ""
+                self._l3_task_str = _t or "metaworld 光模块插拔"
+                self.log("🏆 L3 真执行接入: SmolVLA-Lew — 模型输出 xyz, "
+                         f"gripper 由状态机管 · 🗣 语言指令 (数据集原串) {self._l3_task_str!r}")
             img = np.ascontiguousarray(self.env.render())
             # 🐛 2026-09-10 口径同源: 训练数据图像是 128×128 (采集时 PIL LANCZOS 缩放后编码),
             #   推理必须同样缩放 — 否则 480 原图与训练分布不一致 (=图像没真正接上)
@@ -727,9 +741,10 @@ class RealStateSpaceSim:
             st = torch.from_numpy(np.asarray(visual39, dtype=np.float32)).unsqueeze(0)
             batch = {"observation.image": it.to(self._l3_dev),
                      "observation.state": st.to(self._l3_dev),
-                     # 🗣 语言指令: 训练数据集 tasks.parquet 的 task_index=0 = "peg-insert-side-v3"
-                     #   (原写 "metaworld 光模块插拔" = 训练没见过的串 → VLM 条件分布错)
-                     "task": os.environ.get("SS_L3_TASK", "peg-insert-side-v3")}
+                     # 🗣 语言指令: 默认 = 数据集 tasks.parquet 原串 (载入时读, 实测 "metaworld 光模块插拔");
+                     #   SS_L3_TASK 可覆盖 → 将来 L4 用自然语言下达任务时走这里。
+                     #   (2026-09-10 教训: 硬编码串 = VLM 条件分布错; 必须与训练数据同一字面串)
+                     "task": os.environ.get("SS_L3_TASK", getattr(self, "_l3_task_str", "metaworld 光模块插拔"))}
             batch = self._l3_pre(batch)
             with torch.no_grad():
                 act = self._l3_pol.select_action(batch)

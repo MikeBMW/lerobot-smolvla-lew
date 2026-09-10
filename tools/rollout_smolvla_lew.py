@@ -32,9 +32,16 @@ print(f"② 官方 pipeline: pre={[type(s).__name__ for s in pre.steps]}")
 print(f"   post={[type(s).__name__ for s in post.steps]}")
 
 seeds = [int(s) for s in sys.argv[1:] if s.isdigit()] or [104, 101, 102, 103]
-# 🗣 语言指令: 训练时数据集 tasks.parquet 定义 task_index=0 → "peg-insert-side-v3"!
-#   推理不传 → modeling 里兜底 "push red block to target" → VLM 条件分布被换掉 (2026-09-10 实锤)。
-TASK = next((s for s in sys.argv[1:] if not s.isdigit()), 'peg-insert-side-v3')
+# 🗣 语言指令: 必须用**数据集 tasks.parquet 的真实原串**!
+#   2026-09-10 实测纠正: v8 / v8_d1 都是 "metaworld 光模块插拔" (采集脚本代码里写的是别的串,
+#   但实际落盘的 parquet 不是 → 硬编码易错, 改成动态读)。
+def _task_from_data():
+    import pandas as pd
+    for _p in ('data/smolvla_peg_v8_d1/meta/tasks.parquet', 'data/smolvla_peg_v8/meta/tasks.parquet'):
+        if os.path.exists(_p):
+            return str(pd.read_parquet(_p)['task'].iloc[0])
+    return 'metaworld 光模块插拔'
+TASK = next((s for s in sys.argv[1:] if not s.isdigit()), _task_from_data())
 print(f"③ 任务指令 (task): {TASK!r}")
 MAX = 400
 rows = []

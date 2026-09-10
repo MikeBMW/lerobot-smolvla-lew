@@ -36,7 +36,19 @@ from lerobot.policies import make_pre_post_processors   # noqa: E402
 os.environ.update({"SS_MUSCLE": "0", "SS_INTENT": "0", "SS_TDEC": "0",
                    "SS_OBSERVE": "0", "SS_SHADOW": "0", "SS_L3": "0"})
 CK = os.environ.get('SS_L3_CK', 'outputs/train/smolvla_lew_v8/checkpoints/030000/pretrained_model')
-TASK = os.environ.get('SS_L3_TASK', 'peg-insert-side-v3')
+
+
+def _task_from_data():
+    """🗣 语言指令 = 数据集 tasks.parquet 真实原串 (2026-09-10 实测: v8/v8_d1 均为
+    'metaworld 光模块插拔'; 硬编码易错 → 动态读)。"""
+    import pandas as pd
+    for _p in ('data/smolvla_peg_v8_d1/meta/tasks.parquet', 'data/smolvla_peg_v8/meta/tasks.parquet'):
+        if os.path.exists(_p):
+            return str(pd.read_parquet(_p)['task'].iloc[0])
+    return 'metaworld 光模块插拔'
+
+
+TASK = os.environ.get('SS_L3_TASK') or _task_from_data()
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 104
 EVERY = int(sys.argv[2]) if len(sys.argv) > 2 else 4
 

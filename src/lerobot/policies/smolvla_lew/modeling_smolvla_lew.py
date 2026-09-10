@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 #   (L4 将来下的自然语言指令)。第一项必须是数据集原串 = 分布锚点, 保底不回退。
 #   训练开: SS_INSTR_AUG=1 (默认关, 推理不受影响)。
 _INSTR_POOL = [
-    "peg-insert-side-v3",                                  # 数据集 tasks.parquet 原串 (锚点)
+    "metaworld 光模块插拔",                                 # 数据集 tasks.parquet 实际原串 (锚点! 实测值)
     "insert the peg into the side hole",
     "put the peg into the hole on the side",
     "pick up the optical module and insert it into the hole",
