@@ -7692,7 +7692,7 @@ class SimulinkModule(QWidget):
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(flow, f, ensure_ascii=False, indent=2)
             root = self._repo_root()
-            cmd = [sys.executable, os.path.join(root, "tools", "ci", "validate_flow.py"), tmp]
+            cmd = [_resolve_python(), os.path.join(root, "tools", "ci", "validate_flow.py"), tmp]
             if strict:
                 cmd.append("--strict")
             rc = self._run_cmd(cmd)
@@ -7728,7 +7728,7 @@ class SimulinkModule(QWidget):
                     p, n, (ok, ep) = export_dataset(n_episodes=8, seed_base=100, log=lambda m: self.log_signal.emit(f"   {m}"))
                     self.log_signal.emit(f"📥 仿真数据: {n}帧 · 成功 {ok}/{ep} → {p}")
                     import subprocess as _sp
-                    _py = os.path.join(root, "gui-venv311", "bin", "python")
+                    _py = _resolve_python()   # 🐛 打包环境禁 venv 硬编码路径
                     if not os.path.exists(_py):
                         _py = "python3"
                     r = _sp.run([_py, os.path.join(root, "tools", "build_ss_dataset.py")],
@@ -8217,7 +8217,7 @@ class SimulinkModule(QWidget):
 
         def _work():
             root = self._repo_root()
-            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "push"],
+            rc = self._run_cmd([_resolve_python(), os.path.join(root, "tools", "cicd_deploy.py"), "push"],
                                cwd=root)
             return (rc == 0), ("部署包已上传 ECS, 可进入部署" if rc == 0 else "集成失败 (见上方日志)")
 
@@ -8229,7 +8229,7 @@ class SimulinkModule(QWidget):
 
         def _work():
             root = self._repo_root()
-            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "status"],
+            rc = self._run_cmd([_resolve_python(), os.path.join(root, "tools", "cicd_deploy.py"), "status"],
                                cwd=root)
             return (rc == 0), ("部署状态已拉取 · 心跳正常" if rc == 0 else "部署状态检查失败")
 
@@ -8450,7 +8450,7 @@ class SimulinkModule(QWidget):
             def _work_l4():
                 import subprocess as _sp
                 root = self._repo_root()
-                py = os.path.join(root, "gui-venv311", "bin", "python")
+                py = _resolve_python()   # 🐛 打包环境禁 venv 硬编码路径
                 if not os.path.exists(py):
                     return False, "缺少 gui-venv311 (视频渲染环境)"
                 r = _sp.run([py, os.path.join(root, "tools", "gen_l4_demo_video.py"),
@@ -11631,8 +11631,8 @@ class SimulinkModule(QWidget):
                                    "+ 夹爪绕z姿态适配 + 光耦合精密操作) — 渲染约 1-2 分钟")
                 else:
                     _gen = os.path.join(tools_dir, "gen_ss_metaworld_episode.py")
-                r = _sp.run([sys.executable, _gen, "--also-latest"] if _cap_l4
-                            else [sys.executable, _gen, "--seed", "0", "--seeds", "3"],
+                r = _sp.run([_resolve_python(), _gen, "--also-latest"] if _cap_l4
+                            else [_resolve_python(), _gen, "--seed", "0", "--seeds", "3"],
                             capture_output=True, text=True, timeout=1200, cwd=tools_dir, env=_env)
                 if r.returncode != 0:
                     self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")
@@ -12640,3 +12640,18 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
+def _resolve_python():
+    """源码: 当前解释器; 打包: 找真 python (禁 app 二进制, 否则启动新 app 实例)"""
+    import os as _o2, shutil as _sh2, sys as _s2
+    if not getattr(_s2, "frozen", False):
+        return _s2.executable
+    p = _sh2.which("python3")
+    if p:
+        return p
+    for _c in ("/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"):
+        if _o2.path.exists(_c):
+            return _c
+    return "python3"

@@ -23,6 +23,7 @@ Z-MAX 节点逻辑库 (Node Logic) — 每个节点的可编辑逻辑
 import importlib
 import inspect
 import os
+
 import sys  # 🐛 2026-09-09: 记忆节点 _mem_store 用 sys.path
 import threading
 import time
@@ -535,7 +536,7 @@ def node_train(ctx):
         import subprocess, sys as _sys, re as _re, json as _json
         log("🎓 专家蒸馏训练: 300 episodes 官方专家数据 → BC 蒸馏 MLP")
         repo = _REPO_ROOT  # 仓库根 (frozen/env/探测统一, 勿用 dirname×2 — 那指向 tools/)
-        r = subprocess.run([_sys.executable, os.path.join(repo, "tools", "distill_expert.py")], capture_output=True, text=True, cwd=repo)
+        r = subprocess.run([_resolve_python(), os.path.join(repo, "tools", "distill_expert.py")], capture_output=True, text=True, cwd=repo)
         tail = (r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr.strip()[-100:])
         log(f"  {tail}")
         # 📈 落曲线 (2026-08-07): epoch loss → Scope 对比图表可见 MLP 蒸馏进度
@@ -1370,8 +1371,8 @@ def _yolo_prepare_imports():
     if _YOLO_READY:
         return
     import sys as _sys
-        try:
-        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+    try:
+        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应
         _setup_gl("glfw")
     except Exception:
         os.environ.setdefault("MUJOCO_GL", "glfw")
@@ -1388,8 +1389,8 @@ def _yolo_ensure_aligner(log):
     if _YOLO_ALIGNER is not None:
         return _YOLO_ALIGNER
     import sys as _sys
-        try:
-        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+    try:
+        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应
         _setup_gl("glfw")
     except Exception:
         os.environ.setdefault("MUJOCO_GL", "glfw")
@@ -1447,7 +1448,7 @@ def _yolo_capture(log, aligner):
     aligner.env._freeze_rand_vec = False
     aligner.env.reset(seed=0)
     aligner.env._freeze_rand_vec = True
-    img = aligner.env.render()
+    img = (np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else aligner.env.render())
     obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
     det3d = aligner.detect_3d(img)
     det2d = _yolo_detect2d(aligner, img)   # 真实 conf/框 (detect_3d 不带 conf)
@@ -1980,7 +1981,7 @@ def _ss_env_obs(log):
     aligner.env._freeze_rand_vec = False
     aligner.env.reset(seed=0)
     aligner.env._freeze_rand_vec = True
-    img = aligner.env.render()
+    img = (np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else aligner.env.render())
     obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
     return obs39, img
 
@@ -3369,3 +3370,18 @@ _reg("ssc", ["通用算子 C", "参数校验"],
 _EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
 _EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
 _EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
+
+
+# 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
+def _resolve_python():
+    """源码: 当前解释器; 打包: 找真 python (禁 app 二进制, 否则启动新 app 实例)"""
+    import os as _o2, shutil as _sh2, sys as _s2
+    if not getattr(_s2, "frozen", False):
+        return _s2.executable
+    p = _sh2.which("python3")
+    if p:
+        return p
+    for _c in ("/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"):
+        if _o2.path.exists(_c):
+            return _c
+    return "python3"

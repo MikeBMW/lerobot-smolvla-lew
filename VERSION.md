@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.15** | 09-10 | **mac app 反复重启根治 (sys.executable=app二进制) + 打包依赖补全**: ①根因确诊 (mac 实测): PyInstaller 打包后 sys.executable = **app 二进制本身**, GUI 用它启动 python 子进程 (gen_l4_demo_video/cicd_deploy/validate_flow) → 每次点运行 实际启动新 app 实例 = 表现为"反复重启"; PYZ 内代码优先于外部 .py 故本地热修无效 ②修复: 新增 tools/gui/runtime_env.py resolve_python() (frozen 时找真 python3, 禁 app 二进制) + 替换 6 处调用 (simulink_module×5/node_logic×1) + 去掉 gui-venv311 硬编码路径 ③mac 渲染后端按诊断改 glfw (配合打包 glfw 库) + 保留安全渲染保护 ④打包补 --collect-all glfw/gymnasium/imageio (GL 库文件+数据) |
 | **v5.5.14** | 09-10 | **修复 v5.5.13 引入的 model_tree 缩进错误 (语法崩)**: v5.5.13 批量替换 MUJOCO_GL 时 model_tree.py 的 try 块缩进被写成 24 空格 (应为 12) → IndentationError → GUI 启动即崩, 必须热修 → 已修正; v5.5.13 的 mac 渲染保护 + 夹持态回退守卫逻辑全部保留 |
 | **v5.5.13** | 09-10 | **mac 点运行即崩修复 (CGL 上下文线程限制) + 夹持态回退守卫**: ①根因: macOS CGL 离屏 GL 上下文只能主线程创建, 引擎在 worker 线程调 env.render() → native segfault → app 崩溃重启 (老倪 mac 实测) → 新增 _render_frame() 安全渲染 (darwin 返回黑帧占位, 保护 4 处引擎调用 + gen_l4_demo_video 3 处 + node_logic 2 处 + model_tree 1 处; SS_MAC_RENDER=1 可强制真渲染调试) — R0 演示/轨迹/3D 不受影响, mac R1 视觉模式为已知限制 ②插入成功率: 夹持态回退守卫 (已夹持禁回对位, 防追漂移目标死循环 — seed80 夹爪匀速漂走 0.3m/629帧实锤) |
 | **v5.5.12** | 09-10 | **L4 演示档 gen_l4_demo_video.py 未打包修复**: ①根因: L4 演示档委托 tools/gen_l4_demo_video.py 的 L4Demo (mac 报 No such file: Contents/gen_l4_demo_video.py), CI 打包清单漏了它 (引擎 _tools=包根 → frozen 下找 Contents/gen_l4_demo_video.py) ②修复: 双平台 --add-data tools/gen_l4_demo_video.py→包根 (它只依赖 mujoco/metaworld, 均已打包) |

@@ -19,7 +19,7 @@ def pick_mujoco_gl(default_linux: str = "glfw") -> str:
     if cur:
         return cur
     if sys.platform == "darwin":
-        return "cgl"
+        return "glfw"   # 诊断确认: mac 用 glfw (打包 glfw 库)
     if sys.platform == "win32":
         return "wgl"
     return default_linux
