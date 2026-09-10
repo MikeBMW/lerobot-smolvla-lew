@@ -30,8 +30,8 @@ smolvla/VLM(09-09): gui-venv311可直跑lerobot_train(已补diffusers等); 编�
 §
 3D网页/复刻(09-08): metaworld布局每进程漂移→网页场景几何(孔口/盒/AOI)必须读轨迹meta动态对齐禁写死常量; AOI相机=镜头从支架伸出+光模块放镜头下留间隙+检测绕长轴转90°+光源向下
 §
-画布记忆分层(09-09): 三层记忆L2肌肉/L3长程/L4筹划+🧠共享中枢(src/lerobot/memory/memory_store.py→data/shared_memory.json); L4流形预测器v2已部署(models/l4_mani_predictor_v2.pt, hidden512/4层须引擎同架构加载; test seed7/9泛化39.3% vs v1 16.4%); v3=83806帧/42seed GPU 1000ep训中
+画布记忆分层+🧠共享中枢(memory_store.py→data/shared_memory.json); L4流形预测器引擎部署v5(回退链v5→v4→v2同hidden512/4架构, clean45.7%/抗干扰64.6%) — 旁路mani_pred每帧真调但不控动作(decoder未接执行链); 训练教训: 失败轨迹污染(42seed全量27.5%)→成功轨迹过滤才45.6%; 1024/6大模型须lr3e-4+gradclip否则发散; MLP训练用GPU(1000ep CPU≈17h, 4060≈12min)
 §
-训练纪律(09-09): 飞书xspace会话自主启长训练(smolvla_lew_v8 1万步); CLI启训前ps查lerobot_train防8GB双训
+训练纪律: CLI启训前ps查lerobot_train防8GB双训
 §
 3D App升级: 老倪不删旧App→新包名并存(com.zmax.state3d.aoi); keystore在/home/ubuntu/state3d_app/勿丢
