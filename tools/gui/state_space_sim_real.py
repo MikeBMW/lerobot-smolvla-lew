@@ -363,7 +363,7 @@ class RealStateSpaceSim:
         - 大跳变 (>5cm) 单帧视为误检; 连续 2 帧同位置确认才采信 (滑脱回退后 peg 真被
           碰移的场景 — 否则永远抓旧位)"""
         try:
-            img = self.env.render()
+            img = self._render_frame()
             det3d = self._aligner.detect_3d(img)
             n = 0
             st = ""
@@ -771,8 +771,8 @@ class RealStateSpaceSim:
                 _pol.eval()
                 self._l3_dev = "cuda" if torch.cuda.is_available() else "cpu"
                 _pol.to(self._l3_dev)
-                _pre, _ = make_pre_post_processors(_pol.config, pretrained_path=_ck)
-                self._l3_pol, self._l3_pre = _pol, _pre
+                _pre, _post = make_pre_post_processors(_pol.config, pretrained_path=_ck)
+                self._l3_pol, self._l3_pre, self._l3_post = _pol, _pre, _post
                 # 🗣 语言指令必须用**数据集 tasks.parquet 里的原串** (2026-09-10 实测纠正:
                 #   v8 / v8_d1 都是 "metaworld 光模块插拔"; 采集脚本代码里写别的串但实际数据不是
                 #   → 硬编码易错, 改为动态读)。SS_L3_TASK 可覆盖 (将来接 L4 自然语言指令用)。
@@ -789,12 +789,17 @@ class RealStateSpaceSim:
                 self._l3_task_str = _t or "metaworld 光模块插拔"
                 self.log("🏆 L3 真执行接入: SmolVLA-Lew — 模型输出 xyz, "
                          f"gripper 由状态机管 · 🗣 语言指令 (数据集原串) {self._l3_task_str!r}")
-            img = np.ascontiguousarray(self.env.render())
+            img = self._render_frame()
             # 🐛 2026-09-10 口径同源: 训练数据图像是 128×128 (采集时 PIL LANCZOS 缩放后编码),
             #   推理必须同样缩放 — 否则 480 原图与训练分布不一致 (=图像没真正接上)
             try:
                 from PIL import Image as _PImg
-                img = np.asarray(_PImg.fromarray(img).resize((128, 128), _PImg.LANCZOS))
+                # 🖼 2026-09-10 口径校正 (以实证为准): rollout_smolvla_lew.py 用 **128×128** 实测
+                #   模型闭环 5/6 追平解析链 → 128 是**验证过的正确值**。
+                #   (曾按 policy 配置 resize_images_to=[64,64] 推断成 64 → 接管实测卡死"转移"2318帧,
+                #    证明 64 是错的: 训练侧数据管线实际按 128 编码。) SS_L3_IMGSZ 可覆盖。
+                _l3_sz = int(os.environ.get("SS_L3_IMGSZ", "128"))
+                img = np.asarray(_PImg.fromarray(img).resize((_l3_sz, _l3_sz), _PImg.LANCZOS))
             except Exception:
                 pass
             it = torch.from_numpy(img).permute(2, 0, 1).float().unsqueeze(0) / 255.0
@@ -807,13 +812,34 @@ class RealStateSpaceSim:
                      "task": os.environ.get("SS_L3_TASK", getattr(self, "_l3_task_str", "metaworld 光模块插拔"))}
             batch = self._l3_pre(batch)
             with torch.no_grad():
-                act = self._l3_pol.select_action(batch)
-            return np.asarray(act.cpu().numpy()).reshape(-1)[:4]
+                _pred = self._l3_pol.select_action(batch)
+                # 🎯 2026-09-10 关键修正 (接管卡死"转移2318帧"的真根因):
+                #   模型输出在**归一化空间** (policy 配置 ACTION=MIN_MAX), 必须用
+                #   post-processor 反归一化才能当真实动作执行。缺这一步 → 归一化值(-1~1)
+                #   被当成 m/s 使用 → 动作全错 → 接管必卡死。
+                #   参照实现: tools/rollout_smolvla_lew.py 的 `act = post(pred)`。
+                _post = getattr(self, "_l3_post", None)
+                act = _post(_pred) if _post is not None else _pred
+            return np.asarray(act.detach().cpu().float()).reshape(-1)[:4]
         except Exception as _e:
             if not getattr(self, "_l3_warned", False):
                 self._l3_warned = True
                 self.log(f"⚠️ L3 推理失败: {_e}")
             return None
+
+    def _render_frame(self, h=480, w=480):
+        """🛡 2026-09-10 安全渲染 (mac 点运行即崩根因): macOS 的 CGL 离屏 GL 上下文
+        只能在主线程创建; 引擎在 worker 线程调用 env.render() → native segfault →
+        整个 app 崩溃重启 (老倪 mac 实测)。mac 上返回黑帧占位 (R0 演示/轨迹/3D 全不受影响,
+        仅"渲染图像"不可用 — R1 视觉模式在 mac 上因此不可用, 属已知限制)。
+        SS_MAC_RENDER=1 可强制走真渲染 (调试用)。"""
+        import sys as _sys
+        try:
+            if _sys.platform == "darwin" and os.environ.get("SS_MAC_RENDER") != "1":
+                return np.zeros((h, w, 3), np.uint8)
+            return self._render_frame()
+        except Exception:
+            return np.zeros((h, w, 3), np.uint8)
 
     def peg_head(self):
         """光模块头世界坐标 (夹持后=编码器 hand+锁存偏移+头偏置 — 真机同构, 无 site 依赖,
@@ -1116,7 +1142,12 @@ class RealStateSpaceSim:
                     _l3n = int(os.environ.get("SS_L3_EVERY", "4"))
                     _expert = np.asarray(u_ff, dtype=float).copy()   # 🎓 DAgger 专家标签 (解析链动作)
                     if getattr(self, "_l3_cache", None) is None or (step % _l3n == 0):
-                        _u3 = self._l3_forward(visual39)
+                        # 🎯 2026-09-10 真根因修正 (接管卡死"转移2318帧"):
+                        #   训练数据 state = **env._get_obs()** (采集脚本/rollout 同款口径), 而引擎
+                        #   自构造的 visual39 = concat([cur,prev,target]) 与之**不同源** (实测仅 15/39
+                        #   维相同, 全维最大差 1.24m) → 模型读到"另一个分布" → 动作全错 → 接管必卡死。
+                        #   传 env 原生观测 o 才是与训练同分布。rollout_smolvla_lew.py 正是这么做的。
+                        _u3 = self._l3_forward(o)
                         if _u3 is not None:
                             self._l3_cache = _u3
                     if getattr(self, "_l3_cache", None) is not None:
@@ -1134,8 +1165,12 @@ class RealStateSpaceSim:
                             if step % max(1, _l3n) == 0:
                                 self._l3_shadow.append((str(st_now), _d3))
                         else:
-                            u_ff = np.concatenate([np.clip(_model_act[:3], -0.5, 0.5),
-                                                   [u_ff[3]]])
+                            # 🎯 2026-09-10 语义修正 (接管卡死第三处根因): 模型输出的是
+                            #   **metaworld act (±1)**, 而引擎的 u_ff 语义是"速度指令 (m/s)",
+                            #   下游 act = u_ff / K_ACT → 必须做反变换 u_ff = act × K_ACT。
+                            #   否则模型动作被放大 1/K_ACT = 2 倍 (0.5 → 满速) → 冲过头 → 卡死。
+                            _m3 = np.clip(_model_act[:3], -1.0, 1.0) * K_ACT
+                            u_ff = np.concatenate([_m3, [u_ff[3]]])
                         # 🎓 DAgger 记录 (SS_DAGGER=1): 模型所处状态 + 专家动作 + 模型动作
                         if os.environ.get("SS_DAGGER") == "1":
                             if getattr(self, "_dagger_buf", None) is None:
@@ -1143,7 +1178,7 @@ class RealStateSpaceSim:
                                                     "model": [], "stage": [], "t": []}
                             if step % _l3n == 0:   # 与推理同频存帧 (控内存)
                                 try:
-                                    _f = np.ascontiguousarray(self.env.render())
+                                    _f = self._render_frame()
                                 except Exception:
                                     _f = np.zeros((480, 480, 3), np.uint8)
                                 self._dagger_buf["frame"].append(_f)
@@ -1446,6 +1481,15 @@ class RealStateSpaceSim:
                                          f" [site-推算差="
                                          f"{np.linalg.norm(self.env.data.site_xpos[self._site_ph]-self.peg_head())*1000:.1f}mm"
                                          f" depth={_dnow*1000:.1f}mm]")
+                            # 🐛 2026-09-10 (静静) 夹持态回退守卫: 已夹着 peg 却回退到"接近/对位"
+                            #   → 接近/对位目标是 pg(实时光模块位置)+悬停高, 夹持时 pg 随夹爪动 =
+                            #   追不上的漂移目标 → 无限横向漂移死循环 (seed80 实测: 夹爪匀速漂走
+                            #   0.3m, 水平距离恒 94.5mm, 629 帧不动)。已夹持只能回"转移"(有孔口
+                            #   绝对目标), 不能回抓取前阶段。
+                            if self.grasped and self._retreat_then == 0:
+                                self._retreat_then = 5
+                                self.log("🛡 已夹持 → 回退强制改「转移重新对孔」"
+                                         " (防夹持态回对位追漂移目标死循环)")
                             if _spiral_started:
                                 # 🌀 螺旋优先: 撤销上面安排的"回撤/回退" (等螺旋搜索完成)
                                 self._retreat_then = None
