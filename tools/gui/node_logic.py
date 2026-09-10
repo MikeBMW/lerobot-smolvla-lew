@@ -1370,7 +1370,11 @@ def _yolo_prepare_imports():
     if _YOLO_READY:
         return
     import sys as _sys
-    os.environ.setdefault("MUJOCO_GL", "glfw")
+        try:
+        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+        _setup_gl("glfw")
+    except Exception:
+        os.environ.setdefault("MUJOCO_GL", "glfw")
     _sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d"))
     import yolo_state_aligner  # noqa: F401
     import metaworld as _mt   # noqa: F401  Qt 依赖链 — 必须主线程!
@@ -1384,7 +1388,11 @@ def _yolo_ensure_aligner(log):
     if _YOLO_ALIGNER is not None:
         return _YOLO_ALIGNER
     import sys as _sys
-    os.environ.setdefault("MUJOCO_GL", "glfw")
+        try:
+        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+        _setup_gl("glfw")
+    except Exception:
+        os.environ.setdefault("MUJOCO_GL", "glfw")
     _sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d"))
     import yolo_state_aligner
     _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",

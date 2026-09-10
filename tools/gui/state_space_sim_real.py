@@ -97,7 +97,11 @@ def _make_env():
     if _ENV is not None:
         return _ENV
     os.environ.setdefault("DISPLAY", ":0")
-    os.environ.setdefault("MUJOCO_GL", "glfw")
+    try:
+        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+        _setup_gl("glfw")
+    except Exception:
+        os.environ.setdefault("MUJOCO_GL", "glfw")
     import metaworld as _mt
     mt = _mt.MT1("peg-insert-side-v3")
     env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
@@ -137,6 +141,17 @@ INS_DEV_MM = 0.008          # 插入段 site-推算偏差守卫: 夹持后 peg �
                             #   接近重抓刷新锁存 (毫米级插入, 感知偏差>8mm 时推算引导无意义;
                             #   R0 用 site 真值, R1 真机同构替代 = 力觉/视觉偏差)
 INS_DEV_FRAMES = 3
+# 🌀 螺旋搜索参数 (2026-09-10 老倪直攻插入鲁棒性 — peg-in-hole 工业标准解法)
+#   起因: 实测引擎对孔能力上限 3~5mm (align_th 收紧到 3mm 时永远达不成, 卡在更早阶段),
+#   而插孔需要 1~2mm (孔间隙仅 1~2mm) → 差 2~3mm → 端面顶住孔口上缘 → 遇阻回撤循环,
+#   而"回撤后重对"是**重试**不是**搜索**, 同样的偏差必然再次顶住 → 永远出不来。
+#   螺旋搜索: 遇阻时 peg 头在孔口上方走半径 1→4mm 递增的螺旋, 孔间隙 1~2mm 下 1~2 圈即入孔。
+SPIRAL_ENABLE = (os.environ.get("SS_SPIRAL", "1") != "0")   # 默认开 (只在遇阻时生效, 成功路径零影响)
+SPIRAL_FRAMES = 70          # 单次螺旋窗口帧数 (10Hz → 7s)
+SPIRAL_R0 = 0.0012          # 起始半径 1.2mm (≈孔间隙量级)
+SPIRAL_DR = 0.000045        # 每帧半径增量 (70 帧 → +3.2mm, 峰值 ~4.4mm)
+SPIRAL_RMAX = 0.0045        # 半径上限 4.5mm
+SPIRAL_OMEGA = 0.55         # 每帧角增量 (rad) → 70 帧约 6 圈
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
@@ -519,6 +534,9 @@ class RealStateSpaceSim:
         self._depth_prev = float(self._insert_depth())
         self._stall = 0            # 推而不进连续帧数
         self._stall_events = 0     # 本阶段遇阻事件计数
+        self._spiral = 0           # 🌀 螺旋搜索窗口剩余帧 (0=不在搜索)
+        self._spiral_t = 0         # 🌀 螺旋相位 (帧)
+        self._spiral_tries = 0     # 🌀 本段已螺旋次数
         self._jiggle = 0           # 遇阻窗口剩余帧 (0=不在窗口)
         self._z7_hist = []         # 🧠 2026-09-10 LEW 前视: 最近 z7 序列 (遇阻修正用)
         self._lew_corr = 0         # LEW 修正剩余帧 (0=不在修正窗口)
@@ -688,6 +706,19 @@ class RealStateSpaceSim:
             #   (seed109 实锤: z孔偏+0.010 depth 6.3cm 卡 56 步后滑脱)。
             hp = self._hole_p()
             ph_now = self.peg_head()
+            # 🌀 2026-09-10 螺旋搜索 (老倪: 直攻插入鲁棒性 = peg-in-hole 工业标准解法)
+            #   引擎对孔能力上限 3~5mm vs 插孔需求 1~2mm → 端面顶住孔口上缘 → 推而不进 → 遇阻。
+            #   遇阻时 peg 头在孔口平面走**半径 1.2→4.5mm 递增的螺旋** (0.55rad/帧), 孔间隙 1~2mm
+            #   下偏差必然落入扫掠环带 → 物理滑入孔口 → 深度重新减少 → 退出螺旋走常规插入。
+            if getattr(self, "_spiral", 0) > 0 and SPIRAL_ENABLE:
+                self._spiral -= 1
+                _t = int(getattr(self, "_spiral_t", 0))
+                self._spiral_t = _t + 1
+                _r = min(SPIRAL_R0 + SPIRAL_DR * _t, SPIRAL_RMAX)
+                _th = SPIRAL_OMEGA * _t
+                return np.array([hp[0] + _r * np.cos(_th),
+                                 hp[1] + _r * np.sin(_th),
+                                 hp[2]]) - off
             # 🐛 2026-09-07 静静 (seed100 遇阻实锤): z 对齐判据 4mm → 1.2mm —
             #   孔间隙仅 1-2mm (peg 半径 15mm 无倒角刚体), 残留 z_err 2.6mm 水平推必顶
             #   孔口上沿 (遇阻#1 实测 z_err=+2.6mm 卡死; z 校到 0.6mm 即推进 1.5mm)。
@@ -1342,6 +1373,18 @@ class RealStateSpaceSim:
                         if self._stall >= INSERT_STALL_FRAMES:
                             self._stall = 0
                             self._stall_events += 1
+                            # 🌀 螺旋搜索优先 (老倪 2026-09-10 直攻插入鲁棒性): 遇阻先"搜"不先"退"。
+                            #   "回撤后重对"是重试, 同样偏差必然再顶住; 螺旋是主动搜索, 能真正找到孔。
+                            _spiral_started = False
+                            if (SPIRAL_ENABLE and getattr(self, "_spiral", 0) <= 0
+                                    and getattr(self, "_spiral_tries", 0) < 3):
+                                self._spiral_tries += 1
+                                self._spiral = SPIRAL_FRAMES
+                                self._spiral_t = 0
+                                _spiral_started = True
+                                self.log(f"🌀 遇阻#{self._stall_events} → 螺旋搜索 (第"
+                                         f"{self._spiral_tries}次, 半径 {SPIRAL_R0*1000:.1f}→"
+                                         f"{SPIRAL_RMAX*1000:.1f}mm, {SPIRAL_FRAMES}帧)")
                             # 🧠 2026-09-10 LEW 前视修正 (SS_LEW=transformer|mamba):
                             #   遇阻第 1-2 次先试 LEW 预测对心微调 (不盲目回退); 3 次才回退
                             _lew_ok = False
@@ -1372,8 +1415,13 @@ class RealStateSpaceSim:
                                                  f" (SS_LEW={_lew_tag})")
                                 except Exception as _le:
                                     self.log(f"⚠️ LEW 修正失败: {_le}")
-                            if not _lew_ok:
+                            if not _lew_ok and not _spiral_started:
                                 self._jiggle = INSERT_JIGGLE_FRAMES    # 回撤窗口
+                            if _spiral_started:
+                                # 🌀 螺旋进行中: 既不回撤也不回退 (等搜索完成 — 孔间隙 1~2mm,
+                                #   半径 1.2→4.5mm 扫掠环带必覆盖真实孔位)
+                                self._jiggle = 0
+                                self._retreat_then = None
                             # 🐛 09-10 滑脱治本: 遇阻后 site-推算差 >5mm = peg 已滑 → 回接近
                             #   重抓刷新锁存 (原恒回转移 = 旧锁存对不准反复顶沿, seed1 实锤 7.4mm)
                             if self._stall_events >= 3:
@@ -1398,6 +1446,11 @@ class RealStateSpaceSim:
                                          f" [site-推算差="
                                          f"{np.linalg.norm(self.env.data.site_xpos[self._site_ph]-self.peg_head())*1000:.1f}mm"
                                          f" depth={_dnow*1000:.1f}mm]")
+                            if _spiral_started:
+                                # 🌀 螺旋优先: 撤销上面安排的"回撤/回退" (等螺旋搜索完成)
+                                self._retreat_then = None
+                                self._jiggle = 0
+                                self._stall_events = 0
                     else:
                         self._stall = 0
             else:

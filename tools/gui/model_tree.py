@@ -3611,7 +3611,11 @@ def _get_metaworld_view(camera_name="corner2"):
         cache = {}
         try:
             import os
-            os.environ.setdefault("MUJOCO_GL", "egl")
+                        try:
+                from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+                _setup_gl("egl")
+            except Exception:
+                os.environ.setdefault("MUJOCO_GL", "egl")
             os.environ.setdefault("DISPLAY", ":0")
             import numpy as np
             import metaworld as mw
