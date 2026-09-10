@@ -11089,6 +11089,18 @@ class SimulinkModule(QWidget):
                 # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (demo_l4 → 引擎委托 L4Demo 控制器:
                 #   来料转台90°外力干扰+绕z抓横+治具回正+插拔闭环+AOI+光耦合; 不走 YOLO/attempts)
                 _demo_cap = str(_cap or "").upper() == "L4"
+                # 🧠 2026-09-11 老倪: "我要看到 L4 档位的区别" —— 加「模型执行」开关:
+                #   关(默认) → 原来的 L4Demo 演示 (保留 90° 转台特色)
+                #   开       → **不走 L4Demo**, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图
+                #              → 同一个 L4 档, 一眼看出"固定演示"与"模型在干活"的区别
+                #   注: L3 档不受影响 (老倪: L3 档是正常的, 不用改)
+                _model_exec = bool(getattr(self, "_model_exec", False))
+                if _model_exec:
+                    os.environ["SS_L3"] = "1"
+                    _demo_cap = False
+                    _logs.append("🧠 模型执行已开: L3 模型接管 (默认 ckpt) — 与固定演示对比用")
+                else:
+                    os.environ.pop("SS_L3", None)
                 sim = RealStateSpaceSim(seed=104,
                                         vision=not _demo_cap, vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
