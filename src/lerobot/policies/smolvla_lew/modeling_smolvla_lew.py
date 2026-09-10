@@ -165,10 +165,20 @@ class SmolVLALewModel(nn.Module):
             image_tokens = "<image>" * num_images
             full_text = f"{image_tokens}{text}"
             
+            # 🖼 图像 token 数控制 (2026-09-10 老倪问"什么参数那么多"的答案):
+            #   max_image_size 的 longest_edge 语义 = **patch 边长** (值越小 → patch 越多 → token 越多)。
+            #   默认 512 → 17 patch → 1141 token/样本: 64×64 源图被"先缩到64再放大到512"再切块, 纯浪费。
+            #   实测: 1024→5 patch/347 token; 2048→1 patch/81 token。
+            #   SS_IMG_MAXEDGE 统一控制训练/推理 (必须一致, 否则 VLM 输入分布错 → 模型失效)。
+            _mkw = {}
+            _me = os.environ.get("SS_IMG_MAXEDGE")
+            if _me:
+                _mkw["max_image_size"] = {"longest_edge": int(_me)}
             proc_out = processor(
                 images=sample_imgs,
                 text=full_text,
-                return_tensors="pt"
+                return_tensors="pt",
+                **_mkw
             )
             
             all_pixel_values.append(proc_out["pixel_values"])
