@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,6 +28,23 @@ from torch import Tensor, nn
 
 # 初始化logger
 logger = logging.getLogger(__name__)
+
+# 🗣 C1 指令增广池 (2026-09-10) — 同一语义的多种表述 (中英混合)。
+#   理论: "同一批轨迹 × 多种说法" → 语言在训练里变成随机变量而非常量,
+#   模型才无法把它当噪声忽略, 并借助 VLM 文本编码器的语义平滑性泛化到未见表述
+#   (L4 将来下的自然语言指令)。第一项必须是数据集原串 = 分布锚点, 保底不回退。
+#   训练开: SS_INSTR_AUG=1 (默认关, 推理不受影响)。
+_INSTR_POOL = [
+    "peg-insert-side-v3",                                  # 数据集 tasks.parquet 原串 (锚点)
+    "insert the peg into the side hole",
+    "put the peg into the hole on the side",
+    "pick up the optical module and insert it into the hole",
+    "align the peg with the hole and insert it",
+    "把光模块插入孔位",
+    "将光模块插入侧孔",
+    "光模块插装作业",
+    "对准孔位并插入光模块",
+]
 
 from lerobot.policies.pretrained import PreTrainedPolicy, T
 from lerobot.policies.utils import populate_queues
@@ -158,12 +176,35 @@ class SmolVLALewModel(nn.Module):
         
         device = next(self.smolvlm.parameters()).device
         pixel_values = torch.cat(all_pixel_values, dim=0).to(device)
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        
+        # 🐛 2026-09-10 变长指令批处理 (A: batch>1 的前提): 逐样本 processor 输出的 input_ids
+        #   长度随指令文本变化 → 直接 cat 会 "Sizes of tensors must match" 崩
+        #   (这就是原实现只能 batch=1 的原因)。修: 右 pad 到批内最大长度 + attention_mask;
+        #   causal 注意力下 pad 在序列末尾, 不会污染有效 token 的表示。batch=1 零开销、行为不变。
+        _lens = {int(t.shape[1]) for t in all_input_ids}
+        if len(_lens) > 1:
+            _tok = getattr(processor, "tokenizer", None)
+            _pid = getattr(_tok, "pad_token_id", None)
+            if _pid is None:
+                _pid = getattr(_tok, "eos_token_id", None) or 0
+            _max = max(_lens)
+            _ids, _msk = [], []
+            for _t in all_input_ids:
+                _n = _max - int(_t.shape[1])
+                _ids.append(_t if _n == 0 else torch.cat(
+                    [_t, torch.full((_t.shape[0], _n), int(_pid), dtype=_t.dtype)], dim=1))
+                _msk.append(torch.cat(
+                    [torch.ones_like(_t), torch.zeros((_t.shape[0], _n), dtype=_t.dtype)], dim=1))
+            input_ids = torch.cat(_ids, dim=0).to(device)
+            attention_mask = torch.cat(_msk, dim=0).to(device)
+        else:
+            input_ids = torch.cat(all_input_ids, dim=0).to(device)
+            attention_mask = None
+
         # 直接调用 vlm 模型
         vlm_out = self.smolvlm.vlm(
             pixel_values=pixel_values,
             input_ids=input_ids,
+            attention_mask=attention_mask,
             output_hidden_states=True,
             return_dict=True
         )
@@ -380,6 +421,12 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         for idx in range(len(instructions)):
             if not instructions[idx] or len(instructions[idx].strip()) == 0:
                 instructions[idx] = "push red block to target"
+
+        # 🗣 C1 指令增广 (训练开关 SS_INSTR_AUG=1, 默认关 → 推理/既有行为零影响)
+        #   每步随机换一种说法 → 语言成为随机变量, 模型必须把它编码进条件而非忽略。
+        if os.environ.get("SS_INSTR_AUG", "0") == "1":
+            import random as _rnd
+            instructions = [_INSTR_POOL[_rnd.randrange(len(_INSTR_POOL))] for _ in instructions]
 
         actions_list = None
         action_is_pad_list = None
