@@ -453,6 +453,8 @@ class RealStateSpaceSim:
         self._stall = 0            # 推而不进连续帧数
         self._stall_events = 0     # 本阶段遇阻事件计数
         self._jiggle = 0           # 遇阻窗口剩余帧 (0=不在窗口)
+        self._z7_hist = []         # 🧠 2026-09-10 LEW 前视: 最近 z7 序列 (遇阻修正用)
+        self._lew_corr = 0         # LEW 修正剩余帧 (0=不在修正窗口)
         self._jiggle_axis = 2      # 微调轴: 先 z 后 y 交替 (保留兼容)
         self._jiggle_dir = 1.0     # 微调方向 (±) (保留兼容)
         self._retreat_then = None  # 回撤窗口结束后回退的目标阶段 (5=转移, 0=接近; None=不回退)
@@ -749,7 +751,7 @@ class RealStateSpaceSim:
             self._jitter_on = False
         if max_steps is None:
             max_steps = (MAX_STEPS * 2 if cap == "l4" else MAX_STEPS) if self.mode == "full" \
-                else (1000 if cap == "l4" else 500)
+                else (1000 if cap == "l4" else 1000)   # 🐛 09-10: insert 500→1000 (深孔布局重抓余量)
         env = self.env
         self._reset(self.seed)
         # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)
@@ -1031,19 +1033,62 @@ class RealStateSpaceSim:
                 if _adv > 0.0008:                        # 恢复推进 → 清除遇阻状态
                     self._stall = 0
                     self._stall_events = 0
-                elif self._jiggle <= 0:                  # 不在回撤窗口才累计顶住帧
+                elif self._jiggle <= 0 and self._lew_corr <= 0:   # 不在回撤/修正窗口才累计
                     if float(np.linalg.norm(u_sat[:2])) > 0.03:   # 指令仍在水平推
                         self._stall += 1
                         if self._stall >= INSERT_STALL_FRAMES:
                             self._stall = 0
                             self._stall_events += 1
-                            self._jiggle = INSERT_JIGGLE_FRAMES    # 回撤窗口
+                            # 🧠 2026-09-10 LEW 前视修正 (SS_LEW=transformer|mamba):
+                            #   遇阻第 1-2 次先试 LEW 预测对心微调 (不盲目回退); 3 次才回退
+                            _lew_ok = False
+                            _lew_tag = os.environ.get("SS_LEW", "")
+                            if (self._stall_events < 3
+                                    and len(self._z7_hist) >= 2
+                                    and _lew_tag in ("transformer", "mamba_interleave")):
+                                try:
+                                    import importlib.util as _ilu2
+                                    _lp = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                       "ss_lew_plugin.py")
+                                    _spec2 = _ilu2.spec_from_file_location("_lew_plug", _lp)
+                                    _lg = _ilu2.module_from_spec(_spec2)
+                                    _spec2.loader.exec_module(_lg)
+                                    _zn = _lg.predict_next_z(self._z7_hist, _lew_tag)
+                                    # z7 前3维 = hx-target: 预测位移方向 (实测 seed1 成功 345步)
+                                    _dz = _zn[:3] - np.asarray(self._z7_hist[-1])[:3]
+                                    _dn = float(np.linalg.norm(_dz[:2]))
+                                    if _dn > 0.0005:   # 预测有明显横向位移 → 对心微调
+                                        self._lew_off = np.clip(
+                                            _dz[:2] / max(_dn, 1e-6), -1, 1) * 0.10
+                                        self._lew_corr = 8   # 8 帧微调窗口
+                                        self._jiggle = 0
+                                        self._lew_ok = True
+                                        self.log(f"🧠 LEW 前视遇阻修正: peg偏移预测"
+                                                 f" {_dz[:2].round(4)} → 反向补偿微调"
+                                                 f" (SS_LEW={_lew_tag})")
+                                except Exception as _le:
+                                    self.log(f"⚠️ LEW 修正失败: {_le}")
+                            if not _lew_ok:
+                                self._jiggle = INSERT_JIGGLE_FRAMES    # 回撤窗口
+                            # 🐛 09-10 滑脱治本: 遇阻后 site-推算差 >5mm = peg 已滑 → 回接近
+                            #   重抓刷新锁存 (原恒回转移 = 旧锁存对不准反复顶沿, seed1 实锤 7.4mm)
                             if self._stall_events >= 3:
                                 self._stall_events = 0
                                 self._retreat_then = 0              # 回接近重抓 (刷新锁存)
                                 self.log("🛡 插入遇阻 3 次 → 回撤脱离后回退接近重抓 (刷新锁存)")
                             else:
-                                self._retreat_then = 5              # 回转移重新对孔
+                                try:
+                                    _sdev_now = float(np.linalg.norm(
+                                        self.env.data.site_xpos[self._site_ph]
+                                        - self.peg_head()))
+                                except Exception:
+                                    _sdev_now = 0.0
+                                if _sdev_now > 0.005:
+                                    self._retreat_then = 0          # 滑了 → 接近重抓刷新
+                                    self.log(f"🛡 遇阻后 site-推算差 {_sdev_now*1000:.1f}mm"
+                                             f" (>5mm 已滑) → 回接近重抓刷新锁存")
+                                else:
+                                    self._retreat_then = 5          # 没滑 → 转移重新对孔
                                 self.log(f"🛡 插入遇阻#{self._stall_events} → 回撤脱离后回退"
                                          f"{'转移重新对孔' if self._retreat_then == 5 else '接近重抓'}"
                                          f" [site-推算差="
@@ -1069,6 +1114,15 @@ class RealStateSpaceSim:
                     except Exception:
                         pass
                     self._retreat_then = None
+            # 🧠 2026-09-10 LEW 前视对心微调窗口 (遇阻修正: 横向微调而非盲目回退)
+            if self._lew_corr > 0:
+                self._lew_corr -= 1
+                off = getattr(self, "_lew_off", None)
+                if off is not None and st_now == "插入" and self.grasped:
+                    u_sat[0] += float(off[0])
+                    u_sat[1] += float(off[1])
+                    if self._lew_corr == 0:
+                        self.log("🧠 LEW 微调结束 → 恢复推进")
             u_vec = self.execr.execute(u_sat)
             if np.ndim(u_vec) == 0:
                 u_vec = np.zeros(4)
@@ -1200,7 +1254,12 @@ class RealStateSpaceSim:
             _gf = (0.0 if getattr(self, "_drop_ready", False) else
                    1.0 if (self.grasped and self._grasp_off0 is not None
                            and float(np.linalg.norm(o[4:7] - self.x - self._grasp_off0)) < 0.02)
-                   else 0.0)
+                   # 🐛 09-10 插入深处防误判: peg 顶孔壁相对夹爪位移可 >2cm 但真没掉 —
+                   #   此时 _gf=0 会触发"夹持丢失回退"把插好的拔出来 (seed1 插到 0.4mm 反弹实锤)
+                   #   → 插入段且深度在缩小 (正在插) 时强制 1
+                   else (1.0 if (self.grasped and str(self.sched.stage()).startswith("插入")
+                                 and depth is not None and depth < 0.03)
+                         else 0.0))
             self.sched.advance(contact_p=contact_p, dist_h=dh,
                                gripper=float(1.0 - self.gripper), depth=depth,
                                d_xy=d_xy, lifted=lifted,
@@ -1310,6 +1369,10 @@ class RealStateSpaceSim:
                                               _hx - np.asarray(o[4:7], float),
                                               [1.0 if self.grasped else 0.0]])
                         tr["z7_vec"].append(_z7.copy())
+                        # 🧠 2026-09-10 LEW 前视: 维护历史序列 (遇阻修正用, 最近 3)
+                        self._z7_hist.append(_z7.copy())
+                        if len(self._z7_hist) > 3:
+                            self._z7_hist.pop(0)
                     except Exception:
                         tr["z7_vec"].append(np.zeros(7))
                     if self._mani_cm.predictor is not None:
