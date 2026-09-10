@@ -315,3 +315,64 @@ def node_ss_intent_direct(ctx):
         if log:
             log(f"⚠️ 意图直读失败: {e}")
         return False
+
+
+def node_ss_motor_hub(ctx):
+    """🦾 运动基元库 — L2 肌肉记忆的共享抽象 (发力/速度/加速度/时长 → 全局基元)
+
+    老倪 09-10: "L2 原子技能都是肌肉记忆, 应该都知道怎么发力、速度、加速度, 怎么更快更稳更准
+    — 把这个信息共享给总装记忆。" 本节点展示从标杆提取出的共享基元库。
+    """
+    log = ctx.get("log")
+    try:
+        import json as _j
+        import os as _o
+        _root = _o.environ.get("ZMAX_ROOT", "/home/ubuntu/lerobot-smolvla-lew")
+        _sh = _j.load(open(_o.path.join(_root, "data", "shared_memory.json")))
+        m = _sh.get("motor") or {}
+        prim = m.get("primitives") or []
+        s = m.get("sharing") or {}
+        if not prim:
+            if log:
+                log("🦾 运动基元库: 空 (先运行 src/lerobot/memory/motor_hub.py 提取)")
+            return True
+        if log:
+            log(f"🦾 运动基元库: {s.get('n_prim')} 个共享基元 / {s.get('n_seg')} 条标杆 · "
+                f"参数压缩 {s.get('compression')}× · {s.get('n_multi_stage')} 个基元被多技能共用")
+            for p in prim:
+                f = (p.get("feat") or [0] * 11)
+                log(f"   #{p.get('id')} {p.get('name')}: {'/'.join(p.get('stages') or [])}")
+                log(f"      速度峰 {f[5]:.4f} · 加速峰 {f[7]:.4f} · 发力峰 {f[8]:.3f} · "
+                    f"{f[0]:.0f}帧 · 离散度 {p.get('spread')}")
+            mp = m.get("mapping") or {}
+            if mp:
+                log("   阶段→基元: " + " · ".join(f"{k}→#{v.get('primitive')}" for k, v in mp.items()))
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 运动基元库读取失败: {e}")
+        return False
+
+
+def node_ss_global_mem(ctx):
+    """🧠 全局记忆中枢 — L4 物理规律 / L3 流程 / L2 肌肉 三层联合体检 + 一次性就位
+
+    参考 INTACT Fig.1: 共享编码器 + 图同构二态意图语法(attached 局部 / detached 目标),
+    公共键 = (阶段, Δz); 判定基于证据(L3 成功率 / L4 可行率), 不做无根据的乐观结论。
+    """
+    log = ctx.get("log")
+    try:
+        from lerobot.memory.global_memory import GlobalMemory
+        gm = GlobalMemory()
+        if log:
+            for line in gm.report().split("\n"):
+                log("   " + line)
+            q = gm.query("插入")
+            log("   二态意图语法: attached z_t+1−z_t (肌肉记忆) | detached z_g−z_t (流程/物理)")
+            log(f"   插入段体检: 基元={(q['l2'] or {}).get('name')} · "
+                f"L3成功率={(q['l3'] or {}).get('done_rate')} → {q['consistency']['verdict']}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 全局记忆中枢失败: {e}")
+        return False
