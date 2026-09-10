@@ -3611,7 +3611,7 @@ def _get_metaworld_view(camera_name="corner2"):
         cache = {}
         try:
             import os
-                        try:
+            try:
                 from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
                 _setup_gl("egl")
             except Exception:
@@ -3646,7 +3646,7 @@ def _get_metaworld_view(camera_name="corner2"):
                 peg_traj.append(peg.copy())
                 hole_traj.append(hole.copy())
                 hand_traj.append(hand.copy())
-                frames.append(np.rot90(np.asarray(env.render()), k=2))  # 180°旋转方向修正
+                frames.append(np.rot90((np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else np.asarray(env.render())), k=2))  # 180°旋转方向修正
             H, W = frames[0].shape[:2]
             cam["W"], cam["H"] = W, H
             cache = {"frames": frames, "dists": np.asarray(dists),
