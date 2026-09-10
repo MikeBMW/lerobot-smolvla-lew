@@ -1090,8 +1090,21 @@ class RealStateSpaceSim:
                             self._l3_cache = _u3
                     if getattr(self, "_l3_cache", None) is not None:
                         _model_act = np.asarray(self._l3_cache, dtype=float)[:4]
-                        u_ff = np.concatenate([np.clip(_model_act[:3], -0.5, 0.5),
-                                               [u_ff[3]]])
+                        self._l3_calls = getattr(self, "_l3_calls", 0) + 1
+                        # 🧠 2026-09-10 (老倪: 集成新模型到状态空间 + 不回退红线):
+                        #   SS_L3_SHADOW=1 → **影子集成**: L3 模型真推理、真记录 (建议 vs 解析链实际),
+                        #   但**不接管**执行 → L2 解析链保证成功率, 集成零回退风险。
+                        #   理由: v10_fast 新模型 xyz 平均|相关| 仅 0.032 (旧 v9 0.182, 阈值 0.5);
+                        #   直接接管必然把成功率打下去 → 违反"新模型接入不得回退"的红线。
+                        if os.environ.get("SS_L3_SHADOW") == "1":
+                            _d3 = float(np.linalg.norm(_model_act[:3] - np.asarray(u_ff, float)[:3]))
+                            if getattr(self, "_l3_shadow", None) is None:
+                                self._l3_shadow = []
+                            if step % max(1, _l3n) == 0:
+                                self._l3_shadow.append((str(st_now), _d3))
+                        else:
+                            u_ff = np.concatenate([np.clip(_model_act[:3], -0.5, 0.5),
+                                                   [u_ff[3]]])
                         # 🎓 DAgger 记录 (SS_DAGGER=1): 模型所处状态 + 专家动作 + 模型动作
                         if os.environ.get("SS_DAGGER") == "1":
                             if getattr(self, "_dagger_buf", None) is None:
