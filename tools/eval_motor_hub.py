@@ -28,8 +28,8 @@ from state_space_sim_real import RealStateSpaceSim  # noqa: E402
 
 SEEDS = [int(x) for x in sys.argv[1:]] or [7, 9, 11, 12, 104]
 MODES = [("base", {"SS_MUSCLE": "0", "SS_MOTOR_HUB": "0"}),
-         ("mm", {"SS_MUSCLE": "1", "SS_MOTOR_HUB": "0"}),
-         ("mhub", {"SS_MUSCLE": "0", "SS_MOTOR_HUB": "1"})]
+         ("mhubA", {"SS_MUSCLE": "0", "SS_MOTOR_HUB": "1"}),
+         ("mhubB", {"SS_MUSCLE": "0", "SS_MOTOR_HUB": "2"})]
 FIXED = {"SS_INTENT": "0", "SS_TDEC": "0", "SS_OBSERVE": "0", "SS_SHADOW": "0"}
 
 out = {}

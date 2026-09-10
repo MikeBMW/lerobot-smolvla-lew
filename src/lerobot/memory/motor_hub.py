@@ -94,6 +94,19 @@ def extract_feats(u, x, io):
     ], float)
 
 
+def _rot_between(a, b):
+    """罗德里格斯公式: 把向量 a 旋到向量 b 的最小旋转矩阵 (3×3)。"""
+    a = np.asarray(a, float) / (np.linalg.norm(a) + 1e-12)
+    b = np.asarray(b, float) / (np.linalg.norm(b) + 1e-12)
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    s = float(np.linalg.norm(v))
+    if s < 1e-9:
+        return np.eye(3) if c > 0 else -np.eye(3)
+    K = np.array([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+    return np.eye(3) + K + (K @ K) * ((1.0 - c) / (s * s))
+
+
 def _kmeans(X, k, iters=200, seed=0):
     rng = np.random.RandomState(seed)
     k = max(1, min(k, len(X)))
@@ -240,6 +253,53 @@ class MotorHub:
         return U, {"hit": True, "stage": st, "primitive": p["id"], "name": p["name"],
                    "dur": m["dur"], "amp": m["amp"], "n_src": m["n_src"],
                    "shared_by": m["all_prims"]}
+
+    # ── 该段的平均几何 (调制用) ─────────────────────────────
+    def _stage_geom(self, stage):
+        st = _norm_stage(stage)
+        E, X = [], []
+        for c in self.champs:
+            if c["stage"] != st:
+                continue
+            io = c["io"] or {}
+            e = np.asarray(io.get("entry", [np.nan] * 3), float)
+            x = np.asarray(io.get("exit", [np.nan] * 3), float)
+            if np.isfinite(e).all() and np.isfinite(x).all():
+                E.append(e)
+                X.append(x)
+        if not E:
+            return None
+        return {"entry": np.stack(E).mean(0), "exit": np.stack(X).mean(0), "n": len(E)}
+
+    # ── 版本 B: 基元 + 现场几何调制 (更准更快) ───────────────
+    def query_modulated(self, stage, cur_pos, goal_pos, amp_scale=True, clip=(0.5, 2.0)):
+        """🦾 基元模板 + 现场几何调制。
+
+        纯模板重放只有"发力形状", 换场景会走弯路 (实测 seed7 346→510 帧)。
+        调制 = 把模板按**现场目标**重新投影:
+          ① 方向对齐: R = 把该段"模板位移方向"旋到"当前期望位移方向" (罗德里格斯)
+          ② 幅值缩放: s = clip(|目标−当前| / |模板位移|)
+        即: "怎么发力(形状)照旧, 往哪发/发多大按现场解算" → 更快更稳更准。
+        """
+        U, meta = self.query(stage)
+        if U is None:
+            return None, meta
+        g = self._stage_geom(stage)
+        if g is None:
+            return U, dict(meta, mod="none(no_geom)")
+        d_tpl = g["exit"] - g["entry"]
+        d_now = (np.asarray(goal_pos, float).ravel()[:3]
+                 - np.asarray(cur_pos, float).ravel()[:3])
+        nt, nn = float(np.linalg.norm(d_tpl)), float(np.linalg.norm(d_now))
+        if nt < 1e-9 or nn < 1e-9:
+            return U, dict(meta, mod="none(degenerate)")
+        R = _rot_between(d_tpl, d_now)
+        s = float(np.clip(nn / nt, clip[0], clip[1])) if amp_scale else 1.0
+        Um = np.asarray(U, float).copy()
+        Um[:, :3] = (Um[:, :3] @ R.T) * s
+        ang = float(np.degrees(np.arccos(np.clip(np.dot(d_tpl / nt, d_now / nn), -1, 1))))
+        return Um, dict(meta, mod="dir+amp", rot_deg=round(ang, 1), scale=round(s, 3),
+                        d_tpl=np.round(d_tpl, 4).tolist(), d_now=np.round(d_now, 4).tolist())
 
     # ── 写入全局共享记忆 ────────────────────────────────────
     def save(self):

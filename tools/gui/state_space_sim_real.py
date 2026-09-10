@@ -291,7 +291,7 @@ class RealStateSpaceSim:
         #   后端伺服残差 u_fb 照旧修正 → "基元给方向, 伺服保精度"(更快更稳更准)。
         #   默认关 (SS_MOTOR_HUB=1 开)。
         self._mhub = None
-        self._mhub_on = (os.environ.get("SS_MOTOR_HUB") == "1")
+        self._mhub_on = os.environ.get("SS_MOTOR_HUB") in ("1", "2")   # 1=纯模板 2=基元+几何调制
         self._mh_seg = ""
         self._mh_i = 0
         self._mh_u = None
@@ -1149,7 +1149,13 @@ class RealStateSpaceSim:
                     #   转移/插入/完成 = 毫米级接触/精插 → 必须实时决策(解析伺服),
                     #   用"多 seed 平均模板"插一定崩 (09-10 实测: 全段套用 → 0/5 回退!)
                     if _stn in ("接近", "对位", "下降", "抓取", "抬起"):
-                        _mhu, _mhm = self._mhub.query(_stn)
+                        # SS_MOTOR_HUB=2 → 版本 B: 基元 + 现场几何调制(方向/幅值按现场解算)
+                        # SS_MOTOR_HUB=1 → 版本 A: 纯模板重放
+                        if os.environ.get("SS_MOTOR_HUB") == "2":
+                            _mhu, _mhm = self._mhub.query_modulated(
+                                _stn, self.peg_head(), self._stage_target())
+                        else:
+                            _mhu, _mhm = self._mhub.query(_stn)
                         self._mh_u, self._mh_meta = _mhu, _mhm
                         if _mhu is not None and self._mh_hits == 0:
                             self.log(f"🦾 运动基元: {_stn} 段 ← 共享基元#{_mhm.get('primitive')} "
