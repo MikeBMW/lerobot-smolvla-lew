@@ -755,6 +755,13 @@ class RealStateSpaceSim:
         """
         try:
             import torch
+            # 🚀 2026-09-10 类级缓存 (多 seed/多实例评估提速): 模型只加载一次, 后续实例直接复用。
+            #   原来每 new 一个 RealStateSpaceSim 就重载一次 625M 模型 → 多 seed 评估慢 N 倍。
+            _cls = type(self)
+            if getattr(_cls, "_L3_CACHE", None) is not None:
+                self._l3_pol, self._l3_pre, self._l3_post = _cls._L3_CACHE
+                self._l3_dev = getattr(_cls, "_L3_DEV", "cuda")
+                self._l3_task_str = getattr(_cls, "_L3_TASK", "metaworld 光模块插拔")
             if getattr(self, "_l3_pol", None) is None:
                 import sys as _s
                 _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -773,6 +780,9 @@ class RealStateSpaceSim:
                 _pol.to(self._l3_dev)
                 _pre, _post = make_pre_post_processors(_pol.config, pretrained_path=_ck)
                 self._l3_pol, self._l3_pre, self._l3_post = _pol, _pre, _post
+                # 🚀 写回类级缓存 → 后续实例零加载开销
+                _cls._L3_CACHE = (self._l3_pol, self._l3_pre, self._l3_post)
+                _cls._L3_DEV = self._l3_dev
                 # 🗣 语言指令必须用**数据集 tasks.parquet 里的原串** (2026-09-10 实测纠正:
                 #   v8 / v8_d1 都是 "metaworld 光模块插拔"; 采集脚本代码里写别的串但实际数据不是
                 #   → 硬编码易错, 改为动态读)。SS_L3_TASK 可覆盖 (将来接 L4 自然语言指令用)。
@@ -787,6 +797,7 @@ class RealStateSpaceSim:
                 except Exception:
                     _t = ""
                 self._l3_task_str = _t or "metaworld 光模块插拔"
+                _cls._L3_TASK = self._l3_task_str     # 🚀 一并缓存 (缓存命中时复用)
                 self.log("🏆 L3 真执行接入: SmolVLA-Lew — 模型输出 xyz, "
                          f"gripper 由状态机管 · 🗣 语言指令 (数据集原串) {self._l3_task_str!r}")
             img = self._render_frame()
