@@ -7,8 +7,8 @@
   ALIGN     水平对位 (抓握点, 水平差>0.02)
   DESCEND   垂直下降 (到抓握点, d_grasp<0.03)
   GRASP     夹持 (力控 0.3→0.6, d_grasp<0.015)
-  LIFT      抬起 (peg z升高>0.02 → 升到孔高)
-  TRANSFER  水平转移 (peg→hole 上方)
+  LIFT      抬起 (光模块 z升高>0.02 → 升到孔高)
+  TRANSFER  水平转移 (光模块→hole 上方)
   INSERT    垂直插入 (下降, d_ph<0.05)
   DONE      完成
 
@@ -138,7 +138,7 @@ def _build_aligner():
 
 
 def _yolo_state(env, raw_obs, aligner):
-    """YOLO 检测→解算→替换 hand/peg/hole 段 (与 gen_metaworld_data --yolo 同构)"""
+    """YOLO 检测→解算→替换 hand/光模块/hole 段 (与 gen_metaworld_data --yolo 同构)"""
     if aligner is None:
         return np.asarray(raw_obs, dtype=np.float32).ravel()[:39]
     try:
@@ -245,13 +245,13 @@ def main():
         env = make_env(seed)
         o = get_obs(env)
         o_yolo = _yolo_state(env, o, aligner)  # 🎯 YOLO 解算 state (含深度反投影)
-        peg_z0 = float(o_yolo[6])  # 🎯 真闭环: peg z 来自深度反投影 (非真值)
+        peg_z0 = float(o_yolo[6])  # 🎯 真闭环: 光模块 z 来自深度反投影 (非真值)
         state = ST_APPROACH
         grasp_force = -1.0
         peg_lifted = False
         for step in range(500):
             hand = o_yolo[0:3]    # 🎯 真闭环: hand 来自深度反投影
-            peg = o_yolo[4:7]     # 🎯 真闭环: peg 来自深度反投影
+            peg = o_yolo[4:7]     # 🎯 真闭环: 光模块 来自深度反投影
             hole = o_yolo[36:39]  # 🎯 真闭环: hole 来自深度反投影
             d_hp = float(np.linalg.norm(hand - peg))
             d_ph = float(np.linalg.norm(peg - hole))
@@ -275,7 +275,7 @@ def main():
             elif state == ST_ALIGN:
                 if d_xy < 0.03: state = ST_DESCEND  # 水平对齐 3cm → 垂直下降
             elif state == ST_DESCEND:
-                if contact_p > 0.5: state = ST_GRASP  # 接触即抓取 (检测 d_hp 在 hand/peg 靠近时失真, 用 contact 判断)
+                if contact_p > 0.5: state = ST_GRASP  # 接触即抓取 (检测 d_hp 在 hand/光模块 靠近时失真, 用 contact 判断)
             elif state == ST_GRASP:
                 if peg[2] - peg_z0 > 0.02:
                     state = ST_LIFT; peg_lifted = True

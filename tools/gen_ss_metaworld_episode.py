@@ -7,7 +7,7 @@
 本脚本 = 唯一真解: 让状态空间六层真实源码 (perception/parallel/dynamics/cognition/
 safety/execution) 直接算 action 去 step metaworld, obs 全部来自 env 真实状态,
 接触力用 MuJoCo 真实接触力 (mj_contactForce, 不是估算代理)。一次运行同时产出:
-  · trace npz  — 每步真实 hand/peg/销头/孔位 + 八阶段 + 全部处理层向量 (3D 视图数据源)
+  · trace npz  — 每步真实 hand/光模块/光模块头/孔位 + 八阶段 + 全部处理层向量 (3D 视图数据源)
   · mp4 视频   — 同一条 episode 的 corner2 相机画面 (操作视频)
   · 相机外参   — corner2 的 pos/forward/right/up (3D 视图相机精确对齐, 含 roll)
 → 3D 视图与操作视频 同一条轨迹 · 同一套动作 · 同一个视角。
@@ -43,10 +43,10 @@ F_REF = 25.0         # 接触力归一化参考 (N)
 MAX_STEPS = 2600
 RENDER_EVERY = 4     # 录帧间隔 (2600/4 = 650 帧 ≈ 26s @25fps)
 # 阶段子目标高度。⚠️ 2026-08-25 实测: metaworld 的 endEffector site 在两指之间但指尖
-#   还往下伸 ~2cm → 手要停在 pegGrasp **上方 0.022m** 两指才正好夹住插销 (train_full_pipeline
-#   的 grasp_target() 同样是 pegGrasp+2cm); 再往下压只会把插销压到台面 (接触力饱和 25N)。
+#   还往下伸 ~2cm → 手要停在 pegGrasp **上方 0.022m** 两指才正好夹住光模块 (train_full_pipeline
+#   的 grasp_target() 同样是 pegGrasp+2cm); 再往下压只会把光模块压到台面 (接触力饱和 25N)。
 H_APPROACH, H_ALIGN, H_GRASP_POSE, H_LIFT = 0.10, 0.055, 0.022, 0.16
-# 夹持建立阈值: 实测夹住 0.03m 插销时闭合度饱和 0.70 (夹爪合不到底) → 0.60
+# 夹持建立阈值: 实测夹住 0.03m 光模块时闭合度饱和 0.70 (夹爪合不到底) → 0.60
 GRASP_TH = 0.60
 
 
@@ -74,12 +74,12 @@ def camera_frame(m, name="corner2"):
 def contact_forces(m, d, peg_ids, hand_ids, table_ids=frozenset()):
     """MuJoCo 真实接触力 (mj_contactForce) 分两路返回 (f_env, f_grasp)。
 
-    ⚠️ 2026-08-25 实测教训: 原来把"涉及 peg 或 夹爪的全部接触力"加成一个数 →
-    夹爪夹住插销后夹持力持续 25N 以上, force_norm 饱和 1.0 ⇒ 抬起/转移/插入 三段
+    ⚠️ 2026-08-25 实测教训: 原来把"涉及 光模块 或 夹爪的全部接触力"加成一个数 →
+    夹爪夹住光模块后夹持力持续 25N 以上, force_norm 饱和 1.0 ⇒ 抬起/转移/插入 三段
     接触概率恒 1.00、残差恒 1.0001, 「接触」信号彻底失去区分度 (调度器收到的是常量)。
     正确语义:
-      f_grasp = peg ↔ 夹爪   (夹持力 — 判"夹住了没有")
-      f_env   = peg/夹爪 ↔ 环境(桌面/带孔盒等)  (环境接触力 — 判"碰到孔沿/插进去了")
+      f_grasp = 光模块 ↔ 夹爪   (夹持力 — 判"夹住了没有")
+      f_env   = 光模块/夹爪 ↔ 环境(桌面/带孔盒等)  (环境接触力 — 判"碰到孔沿/插进去了")
     进 obs 触觉 + 残差的是 f_env; f_grasp 单独作为夹持证据。
     """
     f_env = 0.0
@@ -96,16 +96,16 @@ def contact_forces(m, d, peg_ids, hand_ids, table_ids=frozenset()):
         mag = float(np.linalg.norm(f6[:3]))
         pair = {b1, b2}
         if pair & peg_ids and pair & hand_ids:
-            f_grasp += mag          # 夹持: peg ↔ 夹爪(指垫)
+            f_grasp += mag          # 夹持: 光模块 ↔ 夹爪(指垫)
         elif pair <= hand_ids:
             continue                # 夹爪各连杆自碰撞 — 既不是夹持也不是环境
         elif pair & peg_ids and pair & table_ids:
-            # ⚠️ 2026-08-25 实测: 插销静置在台面上的自重支撑力 ≈1N 被算成"环境接触" →
+            # ⚠️ 2026-08-25 实测: 光模块静置在台面上的自重支撑力 ≈1N 被算成"环境接触" →
             #   自由移动段环境接触恒 0.039 常量底噪, 把真实接触事件(顶孔沿)埋掉。
             #   自重支撑不是操作接触 → 排除。
             continue
         else:
-            f_env += mag            # 环境: peg/夹爪 ↔ 带孔盒(孔沿) / 夹爪 ↔ 台面
+            f_env += mag            # 环境: 光模块/夹爪 ↔ 带孔盒(孔沿) / 夹爪 ↔ 台面
     return f_env, f_grasp
 
 
@@ -113,14 +113,20 @@ def site(m, d, name):
     return np.array(d.site_xpos[m.site(name).id], dtype=float)
 
 
-def run_episode(seed=0, want_video=True, log=print):
+def run_episode(seed=0, want_video=True, log=print, analytic=False):
     env = make_env(seed)
     m, d = env.model, env.data
     ss = StateSpaceSim(log=lambda *a: None)      # 复用六层真实源码 + 八阶段调度器
     #   (估计器增益 K=0.2 由 StateSpaceSim 内部设定 — 观测噪声 5mm 下 K=0.5 会抖 7.4 倍)
     # 八阶段调度器: 夹持阈值按 metaworld 实测标定 (夹住实物后开度不可能到 0)
+    # ⚠️ 2026-09-06 实测: align_th 收紧到 0.008 会破坏前段推进 (教师 97%→0/6, 疑与
+    #   状态机耦合) — 保持默认 0.02, 插入对准问题改由转移段预对准子状态解决
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH)
     ss.sched = sched
+    # 🧠 教师/学生模式 (2026-09-06 静静): analytic=True = 解析律教师 (域外全局稳定,
+    #   蒸馏范式教师, 与 sim_real R0 同思路); 默认 False = 蒸馏 MLP 学生主执行 (训练域内)
+    if analytic:
+        ss.accel.forward = ss.accel.analytic_forward
 
     o = get_obs(env)
     hand = o[0:3].astype(float)
@@ -130,7 +136,7 @@ def run_episode(seed=0, want_video=True, log=print):
     goal = site(m, d, "goal")
     peg_z0 = float(peg[2])
     peg_body = {int(m.body("peg").id)}
-    # ⚠️ 2026-08-25 实测 (tools/probe_contacts.py): 真正夹住插销的是**指垫** rightpad/leftpad,
+    # ⚠️ 2026-08-25 实测 (tools/probe_contacts.py): 真正夹住光模块的是**指垫** rightpad/leftpad,
     #   只列 hand/rightclaw/leftclaw 会把夹持力误判成"环境接触" → f_env 饱和 1.0,
     #   抬起/转移/插入 接触概率恒 1.00 失去区分度。夹爪 body 必须列全 (含 pad/wrist)。
     hand_bodies = {int(m.body(n).id) for n in
@@ -186,13 +192,21 @@ def run_episode(seed=0, want_video=True, log=print):
         elif st == "对位":
             target = peg + np.array([0, 0, H_ALIGN])
         elif st == "下降":
-            target = peg + np.array([0, 0, H_GRASP_POSE])      # 下到抓握位姿 (两指夹住插销)
+            target = peg + np.array([0, 0, H_GRASP_POSE])      # 下到抓握位姿 (两指夹住光模块)
         elif st == "抓取":
             target = peg + np.array([0, 0, H_GRASP_POSE])      # 原位保持, 只闭夹爪
         elif st == "抬起":
             target = np.array([peg[0], peg[1], peg_z0 + H_LIFT])
         elif st == "转移":
             target = hole_mouth - head_off + np.array([0, 0, 0.03])
+        elif st == "插入":
+            # 🐛 2026-09-06 静静 (与 sim_real 同修): 两段式插入 — ①peg 头垂直对齐孔口
+            #   中心高度 (z_err≤4mm) ②沿孔轴水平推入终点。原单段直线是斜插: peg 端面
+            #   无倒角 (mujoco 刚体) → 端面下缘顶孔口上缘 → z 卡孔口下方磨死 (实测实锤)。
+            if abs(float(peg_head[2] - hole_mouth[2])) > 0.004:
+                target = np.array([peg_head[0], peg_head[1], hole_mouth[2]]) - head_off
+            else:
+                target = goal - head_off
         else:
             target = goal - head_off
 
@@ -205,7 +219,13 @@ def run_episode(seed=0, want_video=True, log=print):
         prev18 = cur18
 
         # ── 六层链路 (与状态空间画布完全一致) ──
-        u_ff = ss.accel.forward(obs43)
+        # 🧠 2026-09-06 分层伺服 (真实插拔架构, 与真机同构): 神经网络 = 粗轨迹/规划
+        #   (接近→转移, 无接触段, 容差大); 插入段 = 毫米级接触操作, MLP 输出底噪
+        #   (0.4cm/s 实测) 无法定点悬停 → 解析伺服精插 (同 sim_real R0 强制解析的
+        #   物理依据: 无噪声解析律才能对准孔口; 学生训练数据插入段 u_ff 本就来自
+        #   解析教师 → 训练/推理同构, 无需重采)。
+        st_now = sched.stage()
+        u_ff = ss.accel.analytic_forward(obs43) if st_now == "插入" else ss.accel.forward(obs43)
         # 🐛 2026-08-25: 卡尔曼预测输入 = 上一步**真正下发**的控制量 (原来错用 u_ff 前馈建议,
         #   两者模长差 3.12 倍 → 预测拿没执行的动作外推, 白送预测误差)
         act4 = np.concatenate([u_prev[:3], [0.0]])
@@ -217,6 +237,11 @@ def run_episode(seed=0, want_video=True, log=print):
         residual[3] = force_norm
         r_scalar = float(np.linalg.norm(residual))
         contact_p = float(ss.cognition.contact_probability(r_scalar, gain=8.0))
+        # 🧠 右脑 contact 融合 (2026-09-06 重训 acc 1.00, 与引擎 run 同构): 训练 WM
+        #   判断闭爪时机作证据, 与经验残差公式取 max — 域外返回 None → 公式兜底 (n_wm 可查)
+        _cw = ss.dyn.contact_of(obs43[:39], act4)
+        if _cw is not None:
+            contact_p = max(contact_p, _cw)
         latent = ss.est.update(latent_pred, corrected)
         # 🌫 反馈用滤波后的残差 (瞬时残差 96% 是 5mm 观测噪声, 直接反馈=注入噪声)
         res_ema = (0.85 * res_ema + 0.15 * residual) if res_ema is not None else residual.copy()
@@ -253,9 +278,10 @@ def run_episode(seed=0, want_video=True, log=print):
                        and abs(hand[2] - (peg_now[2] + H_GRASP_POSE)) < 0.008) or grasp_norm > 0.02
         sched.advance(contact_p=contact_p, dist_h=dist_h, gripper=gripper,
                       depth=depth, d_xy=d_xy, lifted=lifted, at_grasp_pose=at_pose,
-                      # 🛟 夹持丢失回退证据: MuJoCo 真实夹持力 + 插销高度
-                      grasp_force=float(f_grasp), peg_z=float(peg_now[2]),
-                      peg_z_grasp=float(peg_z0))
+                      # 🛟 夹持丢失回退证据: MuJoCo 真实夹持力 + 光模块高度
+                      grasp_force=float(f_grasp), peg_z=float(head_now[2]),
+                      peg_z_grasp=float(peg_z0),
+                      hole_z=float(hole_mouth[2]))  # 🐛 2026-09-06: 转移→插入 z 条件 (peg_z=peg头, 同 sim_real)
         done = sched.stage() == "完成"
         success = success or done
 
@@ -298,6 +324,7 @@ def run_episode(seed=0, want_video=True, log=print):
 
     cam_pos, cam_fwd, cam_right, cam_up = camera_frame(m, "corner2")
     meta = dict(seed=seed, ctrl_dt=ctrl_dt, success=bool(success),
+                analytic=bool(analytic),
                 stage_final=sched.stage(), steps=len(tr["t"]),
                 cam_pos=cam_pos, cam_fwd=cam_fwd, cam_right=cam_right, cam_up=cam_up,
                 cam_fovy=float(m.cam_fovy[m.camera("corner2").id]),
@@ -363,11 +390,12 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--seeds", type=int, default=6, help="失败自动换 seed 的最大尝试数")
     ap.add_argument("--no-video", action="store_true")
+    ap.add_argument("--analytic", action="store_true", help="解析律教师模式 (域外稳定, 蒸馏数据用)")
     a = ap.parse_args()
     best = None
     for k in range(a.seeds):
         seed = a.seed + k
-        tr, meta, frames = run_episode(seed, not a.no_video)
+        tr, meta, frames = run_episode(seed, not a.no_video, analytic=a.analytic)
         stages = [s.replace("阶段 ", "").split(" · ")[0] for s in tr["stage"]]
         uniq = []
         for s in stages:

@@ -17,7 +17,9 @@ import json, sys, os, time, random, html
 from pathlib import Path
 
 # ── 规范 (与 simulink-spec.md v1.0 / simulink_module.py 完全一致) ──
-NODE_TYPES = {"condition", "model", "action", "system", "hardware", "switch", "train_gate", "yolo_gate"}
+NODE_TYPES = {"condition", "data", "model", "action", "system", "hardware", "switch",
+              "train_gate", "mode_switch", "yolo_gate", "coord_overlay", "row_bg",
+              "pdf_report", "skill", "scene"}
 REQUIRED_NODE_KEYS = {"id", "type", "name", "x", "y"}
 FORMAT = "zmax-simulink"
 VERSION = "1.0"
@@ -76,9 +78,12 @@ td{{border:1px solid #30363d;padding:8px 12px;font-size:13px}}
 # 检查项 (对标 Model Advisor 检查 + Simulink Test)
 # ════════════════════════════════════════════════════════════
 def check_format(flow, rep):
+    """格式检查: format=zmax-simulink
+    🐛 2026-08-28: 仓库有多种业务模板 (zmax-cooperation-closed-loop 合作闭环/
+    hermes-flow 旧格式), 硬判 FAIL 会误伤 — 格式不匹配降级警告, 其余检查尽力而为。"""
     ok = flow.get("format") == FORMAT
-    rep.add("格式检查 (format=zmax-simulink)", "pass" if ok else "fail",
-            f"format={flow.get('format', '缺失')}")
+    rep.add("格式检查 (format=zmax-simulink)", "pass" if ok else "warn",
+            f"format={flow.get('format', '缺失')}" + ("" if ok else " (其他业务模板, 尽力校验)"))
     return ok
 
 
@@ -129,12 +134,14 @@ def check_links(flow, rep):
 
 
 def check_topology_dag(flow, rep):
-    """DAG 拓扑排序: 无环则全节点有序"""
+    """DAG 拓扑排序: 无环则全节点有序
+    🐛 2026-08-28: 状态空间类模板是闭环反馈系统 (卡尔曼校正/感知-决策-执行闭环),
+    环是架构特性 → 此类环降级警告 (同 validate_flow), 普通模板有环仍 FAIL。"""
     nodes, links = flow.get("nodes", []), flow.get("links", [])
     adj = {n["id"]: [] for n in nodes}
     indeg = {n["id"]: 0 for n in nodes}
     for l in links:
-        if l["f"] in adj and l["t"] in adj:
+        if isinstance(l, dict) and l.get("f") in adj and l.get("t") in adj:
             adj[l["f"]].append(l["t"])
             indeg[l["t"]] += 1
     q = [nid for nid, d in indeg.items() if d == 0]
@@ -147,6 +154,15 @@ def check_topology_dag(flow, rep):
             if indeg[m] == 0:
                 q.append(m)
     cyclic = [n for n in nodes if n["id"] not in order]
+    # 闭环豁免: 状态空间反馈闭环 / 业务闭环模板 (供应商区-实验室-现场 合作闭环)
+    names_all = " ".join(n.get("name") or "" for n in nodes)
+    is_closed_loop = ("状态空间" in names_all or "obs" in names_all
+                      or "前馈加速器" in names_all
+                      or "供应商区" in names_all or "实验室闭环区" in names_all)
+    if cyclic and is_closed_loop:
+        rep.add("拓扑 DAG 检查 (无环)", "warn",
+                f"排序{len(order)}/{len(nodes)}节点 ⚠️ 业务/状态空间闭环反馈, 环含: {[n['name'] for n in cyclic[:4]]}")
+        return True
     rep.add("拓扑 DAG 检查 (无环)", "pass" if not cyclic else "fail",
             f"排序{len(order)}/{len(nodes)}节点 " +
             ("✅ 无环" if not cyclic else f"⚠️ 环含: {[n['name'] for n in cyclic]}"))
@@ -154,35 +170,78 @@ def check_topology_dag(flow, rep):
 
 
 def check_ports(flow, rep):
-    """端口匹配: 连线 f_port/t_port 必须在源/目标节点端口集合内"""
+    """端口匹配: 连线 f_port/t_port 必须在源/目标节点端口集合内
+    🐛 2026-08-28: 真实画布节点 (state_space_obs/dual_brain 等) 无 outputs/inputs 字段
+    (端口隐式, 连线只标 out1/in1 字符串) → 原代码 p["id"] 对字符串索引崩 TypeError。
+    兼容: 节点有显式端口列表才校验; 无端口列表的画布跳过 (隐式端口规则)。"""
     nodes = flow.get("nodes", [])
     links = flow.get("links", [])
     by_id = {n["id"]: n for n in nodes}
     bad = []
+    skipped = 0
     for l in links:
         src, dst = by_id.get(l["f"]), by_id.get(l["t"])
         if not src or not dst:
             continue
-        outs = {p["id"] for p in src.get("outputs", [])}
-        ins = {p["id"] for p in dst.get("inputs", [])}
-        if l.get("f_port") and l["f_port"] not in outs:
+        outs = src.get("outputs") or []
+        ins = dst.get("inputs") or []
+        if not outs and not ins:
+            skipped += 1  # 隐式端口画布 (主流) — 跳过
+            continue
+        outs = {p["id"] for p in outs if isinstance(p, dict)}
+        ins = {p["id"] for p in ins if isinstance(p, dict)}
+        if l.get("f_port") and outs and l["f_port"] not in outs:
             bad.append(f"{l.get('id')}: 源端口{l.get('f_port')}不存在")
-        if l.get("t_port") and l["t_port"] not in ins:
+        if l.get("t_port") and ins and l["t_port"] not in ins:
             bad.append(f"{l.get('id')}: 目标端口{l.get('t_port')}不存在")
     rep.add("端口匹配检查", "pass" if not bad else "fail",
-            "✅" if not bad else "; ".join(bad[:5]))
+            ("✅" if not bad else "; ".join(bad[:5])) +
+            (f" ({skipped}条隐式端口跳过)" if skipped else ""))
     return not bad
 
 
+# 已知参数语义类型 (语义级校验: 画布节点参数名 → 期望类型)
+# 🐛 2026-08-28: 原 check_params 只查类型白名单, "pos": "not-a-list" (str 在白名单)
+#   误判通过 → 补语义表。⚠️ 语义表只收「确定该是数值/布尔/列表」的参数:
+#   实测 in_dim/frames/force_res/grid 等画布上可能存描述文本 ('39D obs+4D action'),
+#   不可一刀切 (dual_brain_peg 误报教训) — 数值强校验只对控制参数类。
+PARAM_SCHEMA = {
+    # 数值型 (int/float) — 控制参数, 画布确认存数值
+    "Kp": (int, float), "K_ff": (int, float), "Kd": (int, float),
+    "thresh": (int, float), "act_gain": (int, float),
+    "err_gain": (int, float), "K_obs": (int, float),
+    # limit 兼容: 单值 (int/float) 或 限幅区间 [min,max] (list) — ff_pd_top 实测
+    "limit": (int, float, list, tuple),
+    # 布尔型
+    "active": (bool,), "run_env": (bool,), "normalize": (bool,),
+    "state_space": (bool,), "keep_active": (bool,),
+    # 列表型
+    "pos": (list, tuple), "color": (list, tuple), "size": (list, tuple),
+    # 字符串型
+    "source": (str,), "task": (str,), "policy": (str,), "desc": (str,),
+    "switch": (str,), "mode": (str,), "spec": (str,), "stage": (str,),
+    "force_res": (str,), "grid": (str,),
+    # 字典型 (原子技能传感编码)
+    "encoding": (dict,),
+}
+
+
 def check_params(flow, rep):
-    """参数类型检查: bool/int/float/str/list 合法"""
+    """参数类型检查: 语义级 (已知参数名按期望类型) + 类型白名单兜底"""
     nodes = flow.get("nodes", [])
     bad = []
     for n in nodes:
         for k, v in n.get("params", {}).items():
-            if v is None or isinstance(v, (bool, int, float, str, list)):
+            if v is None:
                 continue
-            bad.append(f"{n['name']}.{k}: 非法类型 {type(v).__name__}")
+            # ① 语义表强校验 (已知参数名)
+            if k in PARAM_SCHEMA:
+                if not isinstance(v, PARAM_SCHEMA[k]):
+                    bad.append(f"{n['name']}.{k}: 期望 {'/'.join(t.__name__ for t in PARAM_SCHEMA[k])}, 实际 {type(v).__name__}")
+                continue
+            # ② 白名单兜底 (未知参数名)
+            if not isinstance(v, (bool, int, float, str, list)):
+                bad.append(f"{n['name']}.{k}: 非法类型 {type(v).__name__}")
     rep.add("参数类型检查", "pass" if not bad else "fail",
             "✅" if not bad else "; ".join(bad[:5]))
     return not bad

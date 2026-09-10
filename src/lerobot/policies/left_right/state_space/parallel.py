@@ -1,38 +1,179 @@
 """parallel.py — S2 并行处理层 (快慢分离, 状态空间模型画布)
 
-快通道 (前馈加速器, 原左脑 MLP):  obs → 建议动作 u_ff (权重 30%)
+快通道 (前馈加速器 = 左脑 MLP):  obs → 建议动作 u_ff (权重 30%)
   - 直接映射, 无递归无延迟, 毫秒级 (~5ms)
-  - 学习过的逆动力学模型: u_ff = π_ff(x)
+  - 🧠 2026-09-04 老倪拍板: forward 主路径 = 训练左脑 MLP (547K) 蒸馏权重
+    models/ss_left_brain.npz (tools/export_ss_left_brain.py 导出, 纯 numpy 4层 Linear,
+    GUI gui-venv311 无 torch 也能跑)。解析比例律降级为 analytic_forward:
+    权重缺失时的显式回退 + 标定层/功能审计的 Kp 字面量对象 (verification F-B02)。
+  - obs 约定: 39D/43D 皆可 — [0:3]=末端, [3]=夹爪开度, [36:39]=目标(孔位);
+    43D = 39D + 4D 触觉尾巴, MLP 只吃 [:39]。
 
-慢通道 (自适应状态估计器, 原右脑 GRU): obs → 递归潜状态 + 卡尔曼预测-校正
-  - 状态转移 A ≈ GRU 循环权重 W_hh (世界动力学)
-  - 卡尔曼增益 K ≈ 更新门/重置门 (信预测 vs 信观测)
+慢通道 (自适应状态估计器): obs → 递归潜状态 (4D) + 卡尔曼预测-校正
+  - ⚠️ 2026-09-06 叙事修正: 本类是**教学卡尔曼估计器** (A/K/B 标定, 无训练权重)。
+    训练右脑 RightBrainWM = 前向世界模型 (obs+act→next_obs+contact, 非 GRU),
+    对应链路位置 = dynamics.py 先验动力学预测器 (残差基准), 真权重接入见该文件。
+  - 状态转移 A ≈ GRU 循环权重 W_hh 仅为教学类比 (卡尔曼 vs 递归网络的结构对照)
+  - 卡尔曼增益 K ≈ 更新门/重置门 (信预测 vs 信观测) — 同上, 教学对照
   - ~15ms, 产生修正信号 + contact 概率
 
 输出汇合到 S3 认知决策层: 调度器 u = w_ff·u_ff + (1−w_ff)·u_fb
 """
+import os
+
 import numpy as np
 
 W_FF = 0.3            # 前馈加速器建议权重 (认知调度器采纳比例)
 LATENCY_FAST_MS = 5   # 快通道时耗
 LATENCY_SLOW_MS = 15  # 慢通道时耗
 
+# 仓库根 = parallel.py 上溯 6 级 (文件→state_space→left_right→policies→lerobot→src→根)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+NPZ_DEFAULT = os.path.join(_REPO_ROOT, "models", "ss_left_brain.npz")
+_NPZ_CACHE = {}       # npz 路径 → (W, b, sm, ss, am, astd); 实例化复用, 避免每 tick np.load 2.1MB
+
+
+def load_npz_weights(npz_path):
+    """加载蒸馏 MLP 权重 npz → (W[4], b[4], sm, ss, am, astd); 结果模块级缓存"""
+    if npz_path not in _NPZ_CACHE:
+        d = np.load(npz_path)
+        _NPZ_CACHE[npz_path] = ([d[f"W{i}"] for i in range(4)], [d[f"b{i}"] for i in range(4)],
+                                d["sm"], d["ss"], d["am"], d["astd"])
+    return _NPZ_CACHE[npz_path]
+
+
+def mlp_ff_forward(npz_path, probe=None):
+    """蒸馏 MLP 前馈闭包 (与 state_space_sim.load_trained_left_brain 同款纯 numpy 实现,
+    2026-09-04 收敛到此, sim 版保留为薄兼容层)
+    probe: 可选 dict — 每 tick 写入隐层激活探针 (层能量/稀疏度/top活跃单元/输出归因),
+    用于 GUI 展示"前馈加速器在想什么"。None = 零开销。"""
+    W, b, sm, ss, am, astd = load_npz_weights(npz_path)
+
+    def _layer_stat(a):
+        """单层激活摘要: 能量(L2) / 稀疏度(ReLU 后零占比) / top3 活跃单元"""
+        nz = int((a > 0).sum())
+        top = np.argsort(a)[-3:][::-1]
+        return {"act_l2": float(np.linalg.norm(a)),
+                "active": nz, "dim": int(a.shape[0]),
+                "top3": [(int(j), float(a[j])) for j in top]}
+
+    def ff_forward(obs):
+        o = np.asarray(obs, dtype=float)
+        # 🐛 2026-09-06 静静: 零方差通道除零炸弹 — 蒸馏数据单布局 → goal 通道 std≈0,
+        #   导出 ss=std+1e-8 → 推理现场采样孔位(真实化)偏离训练常量 0.04m → 归一化
+        #   ±6000σ → MLP 输出恒饱和 ±0.6 → R0 接近阶段全 seed 失败。修复: 零方差通道
+        #   置 0 (训练时该通道输入恒 (x−sm)/ss≈0, 网络权重已学成忽略, 置 0 与之等价)。
+        x = (np.asarray(o[:39], dtype=np.float32) - sm) / np.where(ss > 1e-4, ss, 1.0)
+        x = np.where(ss > 1e-4, x, np.float32(0.0))
+        x1 = np.maximum(0.0, W[0] @ x + b[0])
+        x2 = np.maximum(0.0, W[1] @ x1 + b[1])
+        x3 = np.maximum(0.0, W[2] @ x2 + b[2])
+        u_norm = W[3] @ x3 + b[3]
+        u_xyz = np.clip(u_norm[:3] * astd[:3] + am[:3], -0.6, 0.6)
+        # 夹爪 0/1 跳变回归学不好 → 规则控制 (同 ss_verify_trained.py)
+        pos = o[0:3]
+        target = o[36:39] if o.shape[-1] >= 39 else o[0:3]
+        dist_h = float(np.linalg.norm(pos[:2] - target[:2]))
+        u_grip = 1.0 if dist_h < 0.03 else 0.0
+        if probe is not None:
+            probe["_seq"] = probe.get("_seq", 0) + 1   # 🔭 帧序号 (窗口桥接去重)
+            # 🧠 探针: 每层在想什么 (激活能量/稀疏度/top 活跃单元) + 输出归因
+            probe["obs"] = {"hand": [round(v, 4) for v in pos],
+                            "target": [round(v, 4) for v in target],
+                            "d_h": round(float(np.linalg.norm(pos - target)), 4),
+                            "d_xy": round(dist_h, 4),
+                            "gripper": round(float(o[3]), 3)}
+            probe["layers"] = [_layer_stat(a) for a in (x1, x2, x3)]
+            # 输出归因: u 每维 = W3 行 · x3 → 找贡献最大的隐单元 (它在"指挥"动作)
+            contrib = np.abs(W[3]) * x3[None, :]          # (4, 512)
+            probe["out_contrib"] = []
+            for d in range(3):
+                j3 = np.argsort(contrib[d])[-3:][::-1]
+                probe["out_contrib"].append(
+                    [(int(j), float(W[3][d, j] * x3[j])) for j in j3])
+            probe["u_ff"] = [round(v, 4) for v in (u_xyz[0], u_xyz[1], u_xyz[2], u_grip)]
+            probe["act_raw"] = [x1, x2, x3]   # 全量激活 (每层512, 供直方图/分布可视化)
+        return np.concatenate([u_xyz, [u_grip]])
+
+    # 供 FeedforwardAccelerator.forward 做逐通道域检查 (归一化参数挂闭包)
+    ff_forward.sm = sm
+    ff_forward.ss = ss
+    return ff_forward
+
+
+D_GUARD = 0.25   # 稳定性守卫域: hand→目标 3D 距离 (2026-09-04 扩域数据 p99.9=0.25, max 0.263)
+# 2026-09-04 实证 (勿删): 蒸馏 MLP 只在训练域内闭环收敛 (±1cm 扰动 done=True);
+#   域外发散 (±3cm 扰动 1/3 seed 失败, ±5cm+ 全失败 → hand 恒速飞出 9m)。
+#   解析比例律全局稳定 (全扰动 ≤±20cm done=True)。故域外由解析教师兜底。
+# 🐛 2026-09-06 静静: D_GUARD 只看 hand→target 3D 距离, 漏掉 target 通道自身在训练域外
+#   的情况 — 真实化现场采样布局 peg/goal 偏离蒸馏单布局 >10cm → target 归一化 4-5σ,
+#   MLP 输出弱/反 → R0 卡接近/对位 (全 seed)。升级: 归一化逐通道 |x| ≤ DOMAIN_SIGMA
+#   才放行 MLP, 任一通道域外 → 解析守卫兜底 (解析全局稳定, 09-04 基线 62% 即解析)。
+DOMAIN_SIGMA = 4.0   # 逐通道训练域上限 (正态 4σ ≈ 训练数据 99.99% 覆盖)
+#   训练域由 export_dataset(perturb=0.12) 决定; 扩域 → 重训 (tools 管道: export→build→lerobot_train→export_ss_left_brain)。
+
 
 class FeedforwardAccelerator:
-    """⚡ 前馈加速器 — 快路径: obs → u_ff 建议动作 (4D: dx dy dz gripper)"""
+    """⚡ 前馈加速器 — 快路径: obs → u_ff 建议动作 (4D: dx dy dz gripper)
 
-    def __init__(self, w_ff=W_FF):
-        self.w_ff = w_ff  # 建议权重 (调度器按此比例采纳)
+    🧠 2026-09-04 老倪拍板: __init__ 加载训练左脑 MLP (547K) 蒸馏权重
+    (models/ss_left_brain.npz, 纯 numpy 4层 Linear), forward 跑真模型前向 —
+    解析比例律退役为主路径, 降级为: 稳定性守卫 (域外兜底) + 标定层 Kp 字面量对象
+    + 对比诊断 (analytic_forward)。self.loaded / self.n_mlp / self.n_guard 可查实际模式。
+    """
+
+    def __init__(self, w_ff=W_FF, npz_path=None):
+        self.w_ff = w_ff            # 建议权重 (调度器按此比例采纳)
+        self.npz_path = npz_path or NPZ_DEFAULT
+        self.loaded = False         # True = MLP 已加载 (forward 主执行)
+        self.n_mlp = 0              # 域内 MLP 调用计数 (可查: 真实执行占比)
+        self.n_guard = 0            # 域外守卫调用计数
+        self.probe = {}             # 🧠 隐层激活探针 (每 tick 更新, 展示"在想什么")
+        try:
+            self._ff = mlp_ff_forward(self.npz_path, self.probe)
+            self.loaded = True
+        except Exception as e:
+            # 不静默: 打印明确警告 (真实执行可追溯), forward 走 analytic_forward
+            print(f"⚠️ FeedforwardAccelerator: MLP 权重加载失败 ({self.npz_path}): {str(e)[:80]}"
+                  f"\n   → 解析回退 analytic_forward (Kp={1.2}); 重新导出: "
+                  f"~/lerobot-venv/bin/python tools/export_ss_left_brain.py")
+            self._ff = None
 
     def forward(self, obs):
-        """逆动力学建议 u_ff = π_ff(obs)。实际工程 = LeftBrainMLP (547K) 训练后学到的
-        等价解析控制律: 比例引导向目标 (Kp·(target−pos) 限幅) + 夹爪近距闭合指令。
-        近距 (<0.03) 叠加最小趋近推力 — 插入阶段比例项→0 时仍前进 (真实力控插入)。
-        obs 43D 约定: [0:3]=末端位置, [3]=夹爪开度, [36:39]=目标位置 (孔位)。"""
+        """逆动力学建议 u_ff = π_ff(obs)。主路径 = 蒸馏 MLP (训练左脑 547K 行为);
+        状态出训练域 → 解析守卫兜底 (全局稳定, 同教师)。域判定 (2026-09-06 升级):
+        (a) hand→target 3D 距离 d_guard ≤ D_GUARD;
+        (b) 归一化逐通道 |x| ≤ DOMAIN_SIGMA (target 通道自身域外 = 布局偏离蒸馏数据,
+            仅看 3D 距离会漏 — 真实化现场采样布局 >10cm 偏移即此, MLP 输出弱/反)。
+        权重缺失时整体回退解析 (见 __init__ 警告与 self.loaded)。"""
+        obs = np.asarray(obs, dtype=float)
+        if self._ff is None:
+            return self.analytic_forward(obs)
+        target = obs[36:39] if obs.shape[-1] >= 39 else obs[0:3]
+        d_guard = float(np.linalg.norm(obs[0:3] - target))
+        in_domain = d_guard <= D_GUARD
+        _sm = getattr(self._ff, "sm", None)
+        if in_domain and _sm is not None:
+            _ss = self._ff.ss
+            xn = (obs[:39].astype(np.float32) - _sm) / np.where(_ss > 1e-4, _ss, 1.0)
+            xn = np.where(_ss > 1e-4, xn, np.float32(0.0))
+            if np.any(np.abs(xn) > DOMAIN_SIGMA):
+                in_domain = False
+        if in_domain:
+            self.n_mlp += 1
+            return self._ff(obs)
+        self.n_guard += 1
+        return self.analytic_forward(obs)
+
+    def analytic_forward(self, obs):
+        """解析比例律 (2026-09-04 前的 forward, 保留: 权重缺失回退 / 标定层写回对象 /
+        与蒸馏 MLP 的对比诊断基准)。实际工程已由 MLP 蒸馏承担 (tools/align_ff_kp.py
+        2026-09-04 校验: 蒸馏 MAE 0.0009, Kp 等效 1.227 vs 1.2)。"""
         obs = np.asarray(obs, dtype=float)
         pos = obs[0:3]
         target = obs[36:39] if obs.shape[-1] >= 39 else pos
-        Kp = 1.2                                   # 比例增益 (等效训练后增益)
+        Kp = 1.2                                   # 比例增益 (等效训练后增益; 2026-09-04 tools/align_ff_kp.py 反推: 全样本 1.227, 远/中层 1.18-1.19, z 维全程≈1.19 → 校验通过)
         u_xy = np.clip(Kp * (target - pos), -0.5, 0.5)
         dist_h = float(np.linalg.norm(pos[:2] - target[:2]))
         if dist_h < 0.03 and dist_h > 1e-6:
@@ -45,7 +186,7 @@ class FeedforwardAccelerator:
 class AdaptiveStateEstimator:
     """🔮 自适应状态估计器 — 慢路径: obs → 潜状态 (递归 + 卡尔曼校正)
 
-    卡尔曼组件对照:
+    卡尔曼组件对照 (⚠️ 教学类比 — 训练右脑为前向 WorldModel 非 GRU, 见文件头):
       状态转移 A      ≈ GRU 循环权重 W_hh      (世界动力学)
       控制输入 B      ≈ action 输入             (动作如何改变世界)
       先验估计        ≈ (h_{t-1}, obs, action)  (猜下一步)

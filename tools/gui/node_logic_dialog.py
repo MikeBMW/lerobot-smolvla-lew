@@ -64,6 +64,11 @@ class NodeLogicDialog(QDialog):
         self._editing = False
         self.setWindowTitle(f"📖 节点逻辑 — {node_name}")
         self.setMinimumSize(760, 560)
+        # 🔧 2026-08-28 老倪: 最大化按钮"不好使"→ 修好 (不是禁用):
+        #   QDialog 默认 Qt.Dialog 类型在 X11 WM 下最大化按钮点了没反应,
+        #   显式转成普通窗口类型 Qt.Window + 最大化/最小化按钮 → WM 正常处理
+        self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
         self._build()
         self._load_source()  # 无条件: 未知节点显示「无独立逻辑」提示
@@ -108,12 +113,17 @@ class NodeLogicDialog(QDialog):
         hl.addWidget(self.lbl_hint)
         root.addWidget(head)
 
-        # 中部: 源码编辑器
-        self.edit = QPlainTextEdit()
+        # 中部: 源码编辑器 (🆕 2026-08-30: 改用 _CodeEditor — 右键菜单显式深色, 修全黑)
+        self.edit = _CodeEditor()
         self.edit.setStyleSheet(
             f"QPlainTextEdit {{ background:{_PANEL}; color:{_TEXT}; border:1px solid {_BRD};"
-            " border-radius:6px; font-family:DejaVu Sans Mono;"
-            " font-size:17px; padding:10px; }}")   # 2026-08-25 老倪: 12→17px, 代码要看得清
+            " border-radius:6px; padding:10px; }")
+        # 🆕 2026-08-30 老倪: 字体太小看不清 → 18pt (原 QSS 17px ≈ 12.75pt, 太小;
+        # 与 SourceViewDialog 编程式 QFont 一致并加大, 行号/高亮同步)
+        from PyQt5.QtGui import QFont as _QF
+        _f = _QF("DejaVu Sans Mono", 18)
+        _f.setStyleHint(_QF.Monospace)
+        self.edit.setFont(_f)
         self.edit.setReadOnly(True)
         self.edit.setLineWrapMode(QPlainTextEdit.NoWrap)
         root.addWidget(self.edit, 1)
@@ -295,11 +305,25 @@ class NodeLogicDialog(QDialog):
 
 
 class _CodeEditor(QPlainTextEdit):
-    """带行号边栏的只读编辑器 — resize 时同步行号区几何 (SourceViewDialog 用)"""
+    """带行号边栏的只读编辑器 — resize 时同步行号区几何 (SourceViewDialog 用)
+    🐛 2026-08-30 老倪: 右键菜单背景全黑 (标准菜单无 QSS, 当前 Xorg 渲染黑屏,
+    鼠标滑过才显示文字) → 显式深色 QSS 白字 (与 _LogBox 同款)"""
+    _MENU_QSS = ("QMenu { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
+                 "QMenu::item { color:#e6edf3; padding:6px 22px; } "
+                 "QMenu::item:selected { background:#1f6feb; color:#ffffff; }")
 
     def __init__(self, ln_area=None):
         super().__init__()
         self._ln_area = ln_area
+
+    def contextMenuEvent(self, e):
+        try:
+            menu = self.createStandardContextMenu()
+            menu.setStyleSheet(self._MENU_QSS)
+            menu.exec_(e.globalPos())
+            menu.deleteLater()
+        except Exception:
+            super().contextMenuEvent(e)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -351,6 +375,9 @@ class SourceViewDialog(QDialog):
         self._abs = abs_path
         self.setWindowTitle(f"📂 {os.path.basename(abs_path)} — {rel_src}")
         self.setMinimumSize(820, 600)
+        # 🔧 2026-08-28 老倪: 最大化按钮修好 (同 NodeLogicDialog: Qt.Window 类型 + 显式按钮)
+        self.setWindowFlags(Qt.Window | Qt.WindowMaximizeButtonHint
+                            | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet(f"QDialog {{ background:{_BG}; }}")
         self._build()
         self._load()
@@ -388,7 +415,7 @@ class SourceViewDialog(QDialog):
         # setStyleSheet 会报 "Could not parse stylesheet", 故用 QFont+QPalette)
         self.edit = _CodeEditor()
         from PyQt5.QtGui import QFont as _QF, QPalette as _QP
-        _f = _QF("DejaVu Sans Mono", 17)   # 2026-08-25 老倪: 源码字体 12→17px
+        _f = _QF("DejaVu Sans Mono", 18)   # 🆕 2026-08-30 老倪: 17→18pt 加大
         _f.setStyleHint(_QF.Monospace)
         self.edit.setFont(_f)
         _pal = self.edit.palette()

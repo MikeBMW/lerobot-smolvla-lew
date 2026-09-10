@@ -42,7 +42,7 @@ def main():
         hole = env.data.site_xpos[env.model.site("hole").id]
         policy.reset()
         policy.set_peg_z0(peg_z0)
-        policy.set_env(env)  # 2026-08-10: 状态机用 env 真值 (39D obs 无 peg 段)
+        policy.set_env(env)  # 2026-08-10: 状态机用 env 真值 (39D obs 无 光模块 段)
         for step in range(500):
             batch = {"observation.state": torch.from_numpy(o).float().unsqueeze(0).unsqueeze(0)}
             act = policy.select_action(batch).squeeze(0).cpu().numpy()

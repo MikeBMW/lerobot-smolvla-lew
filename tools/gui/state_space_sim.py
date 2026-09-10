@@ -15,8 +15,78 @@ import os
 import sys
 import numpy as np
 
-_SS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                       "src", "lerobot", "policies", "left_right", "state_space")
+
+def _find_ss_dir():
+    """定位 state_space 六层源码目录 — 多候选探测 (env → frozen _MEIPASS → 上溯三级 → 向上逐级找仓库根)
+
+    🐛 2026-08-26: Windows exe / 绿色版运行时 __file__ 在 AppData 解压目录,
+    上溯三级拼出 C:\\Users\\Admin\\AppData\\Local\\src\\... (不存在) → FileNotFoundError。
+    改为逐级向上探测, 找到含 perception.py 的仓库根为止。
+    """
+    rel = os.path.join("src", "lerobot", "policies", "left_right", "state_space")
+    cands = []
+    _root_env = os.environ.get("ZMAX_REPO_ROOT")
+    if _root_env and os.path.isdir(_root_env):
+        cands.append(os.path.join(_root_env, rel))
+    if getattr(sys, "frozen", False):
+        cands.append(os.path.join(getattr(sys, "_MEIPASS", ""), rel))
+    # __file__ 上溯三级 (源码仓库内) — 保底候选
+    cands.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                              "src", "lerobot", "policies", "left_right", "state_space"))
+    # 向上逐级探测仓库根 (tools/gui 被复制到任意位置也能找到 src/ 同级目录)
+    d = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        cands.append(os.path.join(d, rel))
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in cands:
+        if os.path.isfile(os.path.join(c, "perception.py")):
+            return c
+    raise FileNotFoundError(
+        "state_space 六层源码目录未找到 (已探测: " + " ; ".join(dict.fromkeys(cands)) +
+        ")。请设置环境变量 ZMAX_REPO_ROOT 指向仓库根, 或从仓库内运行。")
+
+
+_SS_DIR = _find_ss_dir()
+
+
+def _find_mani_file():
+    """定位流形层源码 manifold_layer.py (与六层同探测策略)"""
+    rel = os.path.join("src", "lerobot", "manifold", "manifold_layer.py")
+    cands = []
+    _root_env = os.environ.get("ZMAX_REPO_ROOT")
+    if _root_env and os.path.isdir(_root_env):
+        cands.append(os.path.join(_root_env, rel))
+    if getattr(sys, "frozen", False):
+        cands.append(os.path.join(getattr(sys, "_MEIPASS", ""), rel))
+    d = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        cands.append(os.path.join(d, rel))
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return None   # 无流形层 → 流形 channel 跳过 (不阻塞引擎)
+
+_MANI_FILE = _find_mani_file()
+
+
+def _load_manifold():
+    """直载 manifold_layer (纯 numpy; 失败返回 None 不阻塞引擎)"""
+    if not _MANI_FILE:
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("state_space_mani", _MANI_FILE)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+    except Exception:
+        return None
 
 
 def _load(name):
@@ -41,24 +111,24 @@ def _load_planner():
 # peg-insert-side-v3 (操作视频 gen_insert_video.py 用的同一个环境) 的真实几何,
 # 实测来源 tools/probe_video_view.py / probe_scene_geom.py (seed 0 复位后):
 #   末端 endEffector (0.0043, 0.6014, 0.1551) / obs 末端 (0.0046,0.6014,0.1951)
-#   插销抓握点 pegGrasp (0.0966, 0.5191, 0.030), 插销头 pegHead (-0.0334, 0.5191, 0.020)
+#   光模块抓握点 pegGrasp (0.0966, 0.5191, 0.030), 光模块头 pegHead (-0.0334, 0.5191, 0.020)
 #   孔口 hole (-0.1685, 0.4623, 0.1309), 插入终点 goal (-0.2345, 0.4623, 0.1309)
 # 原来这里是编造坐标 (孔位 0.25,0,0.05), 与操作视频既不同尺度也不同朝向。
 # ════════════════════════════════════════════════════════════════
 HOLE_POS = np.array([-0.2345, 0.4623, 0.1309])   # 插入终点 (metaworld goal, obs[36:39] 语义)
 HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
-PEG_POS0 = np.array([0.0966, 0.5191, 0.030])      # 插销抓握点初始 (台面上)
-PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 插销头相对抓握点 (peg 沿 X 长 0.2)
-X0 = np.array([0.0046, 0.6014, 0.1951])           # 末端起始位置 (手空着, 未持插销)
-TABLE_Z = 0.005                                   # 台面高度 (插销底面)
-D_CONTACT = 0.02                          # 接触距离 (下降触销 / 销到孔沿)
+PEG_POS0 = np.array([0.0966, 0.5191, 0.030])      # 光模块抓握点初始 (台面上)
+PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 光模块头相对抓握点 (光模块 沿 X 长 0.2)
+X0 = np.array([0.0046, 0.6014, 0.1951])           # 末端起始位置 (手空着, 未持光模块)
+TABLE_Z = 0.005                                   # 台面高度 (光模块底面)
+D_CONTACT = 0.02                          # 接触距离 (下降触光模块 / 光模块到孔沿)
 D_INSERT = 0.004                          # 插入成功判定
 K_CONTACT = 6.0                           # 接触力增益
 DT = 0.02
 T_END = 32.0                              # 完整插拔 (接近→对位→下降→抓取→抬起→转移→插入→完成) 需要更长
 # 各阶段末端子目标 (感知层把"当前阶段目标"写进 obs[36:39] — 前馈层就是按它比例引导)
 STAGE_LIFT = 0.16                         # 抬起目标高度 (台面之上)
-STAGE_APPROACH_H = 0.09                   # 接近: 插销上方悬停高度
+STAGE_APPROACH_H = 0.09                   # 接近: 光模块上方悬停高度
 STAGE_ALIGN_H = 0.05                      # 对位: 精对位高度
 STAGE_DESCEND_H = 0.004                   # 下降: 贴到抓握点
 
@@ -95,17 +165,22 @@ class StateSpaceSim:
         self.x = X0.copy()
         self.v = np.zeros(3)
         self.gripper = 0.0
-        # 🔩 2026-08-25 老倪: 插销是独立物体 (原来 obs 里 peg 位置=末端, 等于"开局就握着销",
-        #   3D 视图因此没有「从初始位置到抓取插销」的过程)。现在插销先躺在台面上,
+        # 🔩 2026-08-25 老倪: 光模块是独立物体 (原来 obs 里 光模块 位置=末端, 等于"开局就握着光模块",
+        #   3D 视图因此没有「从初始位置到抓取光模块」的过程)。现在光模块先躺在台面上,
         #   抓取阶段夹爪闭合后才随手移动 (self.grasped / self.peg_off)。
-        self.peg = PEG_POS0.copy()      # 插销抓握点世界坐标
+        self.peg = PEG_POS0.copy()      # 光模块抓握点世界坐标
         self.grasped = False            # 是否已夹住
-        self.peg_off = np.zeros(3)      # 夹住瞬间 插销-末端 的相对偏移
+        self.peg_off = np.zeros(3)      # 夹住瞬间 光模块-末端 的相对偏移
         self.latent = np.concatenate([self.x, [0.0]])   # 潜状态 4D: 位置3 + 预测接触力 (无接触=0)
         self.obs_prev = None                 # 上一帧 18D (帧堆叠)
+        # 🧮 流形层逐帧发布 (2026-09-03): 接触/性能流形 channel 进数据世界 (缺失不阻塞)
+        self._mani = _load_manifold()
+        self._mani_cm = self._mani.ContactManifold() if self._mani else None
+        self._mani_pm = self._mani.PerformanceManifold() if self._mani else None
+        self._mani_out = None                # 本步流形量 (io_snapshot 发布用)
 
     def _head_off(self):
-        """销头相对末端的真实偏移 — 夹持后由感知给出 (peg 位置 − 末端位置 + 销头偏移)。
+        """光模块头相对末端的真实偏移 — 夹持后由感知给出 (peg 位置 − 末端位置 + 光模块头偏移)。
         ⚠️ 不能用名义 PEG_HEAD_OFF: 抓取锁存发生在"手比抓握点高 12mm"时 (接触判据),
         用名义偏移算插入目标会残留 12mm 高度差 → 永远差最后 4mm 判定不了「完成」。"""
         if self.grasped:
@@ -115,8 +190,8 @@ class StateSpaceSim:
     # ── 阶段子目标 (感知层写进 obs[36:39], 前馈层按它比例引导) ──
     def _stage_target(self):
         """当前阶段的末端目标位置 — 八阶段插拔流程:
-        接近(销上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) → 抓取(原地闭合)
-        → 抬起(提到 STAGE_LIFT) → 转移(销头对准孔口上方) → 插入(销头推到 goal) → 完成"""
+        接近(光模块上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) → 抓取(原地闭合)
+        → 抬起(提到 STAGE_LIFT) → 转移(光模块头对准孔口上方) → 插入(光模块头推到 goal) → 完成"""
         st = self.sched.stage()
         if st == "接近":
             return self.peg + np.array([0.0, 0.0, STAGE_APPROACH_H])
@@ -129,26 +204,26 @@ class StateSpaceSim:
         if st == "抬起":
             return np.array([self.peg[0], self.peg[1], TABLE_Z + STAGE_LIFT])
         if st == "转移":
-            # 末端目标 = 让"销头"落在孔口正前方上方 2cm (末端 = 孔口 − 真实夹持偏移)
+            # 末端目标 = 让"光模块头"落在孔口正前方上方 2cm (末端 = 孔口 − 真实夹持偏移)
             return HOLE_MOUTH - self._head_off() + np.array([0.0, 0.0, 0.02])
         if st == "插入":
             return HOLE_POS - self._head_off()
         return HOLE_POS - self._head_off()     # 完成: 保持在插入终点
 
     def peg_head(self):
-        """插销头世界坐标 (插入端)"""
+        """光模块头世界坐标 (插入端)"""
         return self.peg + PEG_HEAD_OFF
 
     def _d_xy_peg(self):
-        """末端-插销抓握点 水平距离 (接近/对位/下降 的推进证据)"""
+        """末端-光模块抓握点 水平距离 (接近/对位/下降 的推进证据)"""
         return float(np.linalg.norm(self.x[:2] - self.peg[:2]))
 
     def _d_hole_h(self):
-        """插销头-孔口 水平距离 (转移→插入 的推进证据)"""
+        """光模块头-孔口 水平距离 (转移→插入 的推进证据)"""
         return float(np.linalg.norm(self.peg_head()[:2] - HOLE_MOUTH[:2]))
 
     def _insert_depth(self):
-        """插销头到插入终点距离 (插入→完成 的推进证据)"""
+        """光模块头到插入终点距离 (插入→完成 的推进证据)"""
         return float(np.linalg.norm(self.peg_head() - HOLE_POS))
 
     # ── 感知 ──
@@ -158,7 +233,7 @@ class StateSpaceSim:
             self.x,                  # [0:3]  末端位置
             [self.gripper],          # [3]    夹爪开度
             self.v,                  # [4:7]  末端速度
-            self.peg,                # [7:10] 插销位置 (独立物体, 抓取后才随末端)
+            self.peg,                # [7:10] 光模块位置 (独立物体, 抓取后才随末端)
             HOLE_POS,                # [10:13] 孔位 (插入终点)
             np.zeros(3),             # [13:16] 孔位姿态 (简化)
             np.zeros(2),             # [16:18] 预留
@@ -171,14 +246,14 @@ class StateSpaceSim:
 
     @property
     def _contact(self):
-        """接触判定 (按阶段): 未夹持 = 末端下降触到插销; 已夹持 = 销头触到孔沿"""
+        """接触判定 (按阶段): 未夹持 = 末端下降触到光模块; 已夹持 = 光模块头触到孔沿"""
         if not self.grasped:
             return (self._d_xy_peg() < 0.03
                     and (self.x[2] - self.peg[2]) < 0.012)
         return self._d_hole_h() < D_CONTACT
 
     def _dist_h(self):
-        """当前"到目标"的水平距离 (Scope 波形 dist 曲线): 未夹持看插销, 已夹持看孔口"""
+        """当前"到目标"的水平距离 (Scope 波形 dist 曲线): 未夹持看光模块, 已夹持看孔口"""
         return self._d_xy_peg() if not self.grasped else self._d_hole_h()
 
     # ── 主循环 ──
@@ -199,7 +274,7 @@ class StateSpaceSim:
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
               "u_sat": [], "stage": [], "done": [],
               "x": [], "gripper": [], "force": [],
-              # 🔩 2026-08-25 完整插拔: 插销独立轨迹 + 每步阶段子目标 (3D 视图渲染用)
+              # 🔩 2026-08-25 完整插拔: 光模块独立轨迹 + 每步阶段子目标 (3D 视图渲染用)
               "peg": [], "peg_head": [], "target": [], "grasped": [],
               "obs": [], "u_ff_vec": [], "u_sat_vec": [],   # 🎥 2026-08-18 完整轨迹 (视频); 2026-08-20 训练数据 (obs/u向量)
               # 🧭 2026-08-25 3D 视图 (Apollo 分层渲染): 每步完整处理层向量
@@ -207,14 +282,18 @@ class StateSpaceSim:
               "latent_vec": [], "corrected_vec": [], "residual_vec": [], "z_k_vec": [], "v_vec": [],
               # 📈 先验动力学预测器输出 (2026-08-25 老倪: 六层每层都要能在 3D 视图看到)
               "prior_vec": [],
+              # 🧮 2026-09-03 流形层逐帧序列 (Scope 全程曲线/验证层数据源)
+              "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
+              "mani_rem": [], "mani_dperp": [],   # 🎯 2026-09-04: 插深剩余/横向错位 (0.5mm 验收)
+              "probe_seq": [],                    # 🔭 2026-09-05: 每步前馈探针快照 (播放逐帧同步直方图/归因)
               "io_trace": []}   # 🔌 2026-08-22 数据总线快照序列 [(t, io_dict), ...] (CANoe Trace 风格)
         done = False
         t = 0.0
         n_steps = int(self.t_end / self.dt)
         for step in range(n_steps):
             # ① 接触力 (物理世界给感知的输入; 归一化: 最大接触力 6*0.02=0.12N)
-            #   未夹持: 下降触到插销 → 垂直反力 (证据: 可以闭合夹爪了)
-            #   已夹持: 销头触到孔沿 → 插入阻力 (证据: 对上孔了)
+            #   未夹持: 下降触到光模块 → 垂直反力 (证据: 可以闭合夹爪了)
+            #   已夹持: 光模块头触到孔沿 → 插入阻力 (证据: 对上孔了)
             force = np.zeros(6)
             if self._contact:
                 if not self.grasped:
@@ -227,6 +306,7 @@ class StateSpaceSim:
             obs = self._build_obs(force)
             # ③ 快通道: 前馈加速器
             u_ff = self.accel.forward(obs)
+            # ④ 反馈校正/调度 (stage 先于探针快照, 让直方图窗口拿到每帧阶段)
             # 🐛 卡尔曼预测的控制输入必须是**上一步真正下发给执行器的量** (u_exec),
             #   原来用 u_ff (前馈建议) — 实测两者模长差 3.12 倍 ⇒ 预测拿"没执行的动作"外推,
             #   凭空制造预测误差 (离线重放: 改用 u_exec 后误差 3.60→3.01mm)
@@ -234,6 +314,8 @@ class StateSpaceSim:
             # ④ 慢通道: 状态估计先验 (4D: 位置 + 预测力)
             latent_pred = self.est.predict(self.latent, act4)
             # ⑤ 先验动力学预测 next_obs (4D)
+            # ⚠️ 2026-09-06 实测: 引擎纯积分动力学下线性先验即最优 (u→位移精确), 右脑
+            #    1cm 级实时误差反而加噪 (残差 0.108 vs 0.0485) → 位置先验不传 obs 走线性
             prior = self.dyn.predict(self.latent, act4)
             # ⑥ 物理世界观测 z_k (位置带噪声 + 力觉 — 接触力是残差真实来源)
             z_k = np.concatenate([self.world.observe(self.x), [force_norm]])
@@ -245,6 +327,11 @@ class StateSpaceSim:
             residual[3] = force_norm
             r_scalar = float(np.linalg.norm(residual))
             contact_p = float(self.cognition.contact_probability(r_scalar, gain=8.0))
+            # 🧠 右脑 contact 融合 (2026-09-06 重训 acc 1.00): 训练模型判断"手已到光模块
+            #    抓取距离"作闭爪证据, 与经验残差公式取 max (真权重主执行, 教学公式兜底)
+            _cw = self.dyn.contact_of(obs[:39] if obs is not None else None, act4)
+            if _cw is not None:
+                contact_p = max(contact_p, _cw)
             # 后验: 潜状态更新 (卡尔曼)
             self.latent = self.est.update(latent_pred, corrected)
             # ⑧ 认知调度: 否决/融合 (慢通道反馈 u_fb = 位置校正方向)
@@ -255,6 +342,15 @@ class StateSpaceSim:
                             else np.asarray(residual, dtype=float).copy())
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
+            # 🔭 2026-09-05: 探针快照存全序列(含阶段) — GUI 播放逐帧同步直方图/归因/阶段色带
+            try:
+                _pr = getattr(self.accel, "probe", None)
+                if _pr is not None and _pr.get("act_raw") is not None:
+                    _snap = dict(_pr)
+                    _snap["stage"] = stage
+                    tr["probe_seq"].append(_snap)
+            except Exception:
+                pass
             # 夹爪指令直通 (开关量不参与位置加权融合 — 权重稀释会夹不紧)
             if np.ndim(u) == 0:
                 u = np.zeros(4)
@@ -291,15 +387,33 @@ class StateSpaceSim:
                 elif dh < D_CONTACT:
                     self.v[1] *= 0.75          # 孔沿摩擦阻尼
                     self.v[2] *= 0.95
-            # 🔩 夹持锁存: 抓取阶段夹爪闭到 0.5 以上 → 插销被夹住, 之后随末端一起走
+            # 🔩 夹持锁存: 抓取阶段夹爪闭到 0.5 以上 → 光模块被夹住, 之后随末端一起走
             g_cmd = float(u_vec[3])
             if (not self.grasped) and self.sched.stage() == "抓取" and self.gripper > 0.5:
                 self.grasped = True
                 self.peg_off = self.peg - self.x
-                self.log(f"🔩 插销已夹住 (gripper={self.gripper:.2f}) → 随末端移动")
+                self.log(f"🔩 光模块已夹住 (gripper={self.gripper:.2f}) → 随末端移动")
             self.gripper += (g_cmd - self.gripper) * min(1.0, self.dt * 10.0)
             if self.grasped:
                 self.peg = self.x + self.peg_off
+            # 🎯 2026-09-04 老倪(验收精度 0.5mm): 光模块头已进孔口后, 孔壁横向约束 —
+            #   真实物理: 头进孔后 y 横向被孔壁对中 (孔间隙→peg 滑入孔轴);
+            #   原只有 v[1]*=0.3 阻尼 → 末帧横向错位 2.77mm 不达标。
+            #   入孔判定: 头 x 已过孔口 (HOLE_MOUTH.x), 插深由控制推进, 横向主动归轴。
+            if self.grasped and self.peg_head()[0] < HOLE_MOUTH[0] + 0.001:
+                # 孔壁横向约束 yz 双轴 (侧插孔: 孔壁限 y 与 z, 只留轴向 x 由控制推进)
+                y_target = HOLE_POS[1] - self.peg_off[1] - PEG_HEAD_OFF[1]
+                z_target = HOLE_POS[2] - self.peg_off[2] - PEG_HEAD_OFF[2]
+                self.x[1] += (y_target - self.x[1]) * min(1.0, self.dt * 25.0)
+                self.x[2] += (z_target - self.x[2]) * min(1.0, self.dt * 25.0)
+                self.v[1] *= 0.3
+                self.v[2] *= 0.3
+                # 🎯 2026-09-04: 孔底物理止动 — 头触孔底(head_x 沿 -X 插到 HOLE_POS.x)后不能再推
+                #   (原无止动: 0.5mm 完成阈 < 单帧步长 1.4mm, 单帧越过永不触发 → 冲出 18cm)
+                if self.peg_head()[0] <= HOLE_POS[0]:
+                    self.x[0] = HOLE_POS[0] - self.peg_off[0] - PEG_HEAD_OFF[0]
+                    self.v[0] = 0.0
+                self.peg = self.x + self.peg_off   # x 已改 → 同步 peg (peg−x 恒等锁存偏移)
             self.obs_prev = obs[0:18]
             # 阶段推进: 调度器状态机 (八阶段 · 证据驱动 — 水平距离/接触概率/夹爪/提起高度/插入深度)
             d = self._dist_h()
@@ -322,6 +436,33 @@ class StateSpaceSim:
             tr["stage"].append(stage if self.sched.stage() in stage
                                else f"阶段 {self.sched.stage()}")
             tr["done"].append(done)
+            # 🧮 流形层逐帧发布 (2026-09-03): 接触/性能流形每步实算 → io channel + 全程序列
+            _ms = str(tr["stage"][-1]).replace("阶段 ", "").split("·")[0].strip()
+            if self._mani_cm is not None:
+                try:
+                    _mc = self._mani_cm.decompose(self.x, self.peg_head(),
+                                                  self._stage_target(), self.v, _ms)
+                    _mp = self._mani_pm.evaluate(self.peg_head(), stage=_ms)
+                    self._mani_out = {"cm": _mc, "pm": _mp,
+                                      "lat": np.asarray(self.latent, dtype=float),
+                                      "vel": (np.asarray(prior, dtype=float)
+                                              - np.asarray(latent_pred, dtype=float))}
+                    tr["mani_risk"].append(float(_mc["risk"]))
+                    tr["mani_progress"].append(float(_mc["progress"]))
+                    tr["mani_eta"].append(float(_mp["eta"]))
+                    tr["mani_V"].append(float(_mc["V"]))
+                    # 🎯 2026-09-04 老倪(0.5mm 验收): 插深剩余/横向错位 全程序列 → Scope 波形
+                    tr["mani_rem"].append(float(-_mp["d_axial"]))
+                    tr["mani_dperp"].append(float(_mp["d_perp_norm"]))
+                except Exception:
+                    self._mani_out = None
+                    tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
+                    tr["mani_eta"].append(0.0); tr["mani_V"].append(0.0)
+                    tr["mani_rem"].append(0.0); tr["mani_dperp"].append(0.0)
+            else:
+                tr["mani_risk"].append(0.0); tr["mani_progress"].append(0.0)
+                tr["mani_eta"].append(0.0); tr["mani_V"].append(0.0)
+                tr["mani_rem"].append(0.0); tr["mani_dperp"].append(0.0)
             tr["x"].append(self.x.copy())
             tr["gripper"].append(self.gripper)
             tr["force"].append(force_norm)
@@ -369,9 +510,11 @@ class StateSpaceSim:
             last_io = self._io_snapshot(force, obs, u_ff, act4, latent_pred, prior, z_k,
                                         corrected, residual, contact_p, r_scalar,
                                         u_fb, u, stage, u_sat, u_vec, force_norm, step)
-            # 🔌 数据总线 (CANoe Trace 风格, 2026-08-22 老倪): 抽样记录完整接口时序
-            if io_every is not None and (step % io_every == 0 or done):
-                tr["io_trace"].append((round(t, 3), last_io))
+            # 🔌 数据世界 (DataWorld / Dreamview channel 语义, 2026-09-03 v3.4.6):
+            #   每步全量 append — tr["io_trace"] = 逐帧全模块 I/O 历史 (画布节点名=模块 key),
+            #   画布播放/3D视图/数据总线消费同一帧序列 → 严格同帧同步。
+            #   (io_every 参数保留兼容, 已不再抽稀 — 帧全量才支持逐引擎步同步渲染)
+            tr["io_trace"].append((round(t, 3), last_io))
             t += self.dt
             if done:
                 break
@@ -383,11 +526,21 @@ class StateSpaceSim:
                      u_sat, u_vec, force_norm, frame_id=0):
         """📊 单步接口 I/O 快照 — 「🔌 数据总线」数据源 (2026-08-22 老倪)
         九模块 in/out 完整变量; 数值为 numpy 数组 (每步新建, 引用安全不覆盖)。"""
+        # 🧮 流形 channel (2026-09-03): 本步流形量 (主循环算好存 self._mani_out)
+        _mo = getattr(self, "_mani_out", None) or {}
+        _mc = _mo.get("cm") or {}
+        _mp = _mo.get("pm") or {}
+        _lat = _mo.get("lat", np.zeros(4))
+        _vel = _mo.get("vel", np.zeros(4))
         visual39 = obs[:39]
         tactile4 = obs[39:43]
-        peg_3d = self.x
+        peg_3d = self.peg            # 🐛 2026-09-03: 独立光模块位置 (原误用 self.x 末端)
+        hand_3d = self.x             # 末端执行器 = hand
         hole_3d = HOLE_POS
         img = f"RGB-D 640×480 · 帧#{frame_id}"
+        # 🐛 2026-09-03 老倪: YOLO/2D→3D 快照不再写死 conf 0.99 伪装检测 (老倪红线);
+        #   hand 也不再抄 光模块 坐标. 引擎无 YOLO 模型 → conf 标 "--"; ▶运行 后由
+        #   simulink_module 注入真实 detect_3d/detect2d 采样值 (真实 conf/框/3D)。
         return {
             "📦 metaworld 数据源": {
                 "in": [],
@@ -396,15 +549,15 @@ class StateSpaceSim:
             },
             "🎯 YOLO 目标检测": {
                 "in": [("图像流 (RGB-D)", img)],
-                "out": [("peg 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf 0.99"),
-                       ("hole 检测框 2D", f"xy=({hole_3d[0]:.3f},{hole_3d[1]:.3f}) conf 0.99"),
-                       ("hand 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf 0.99")],
+                "out": [("peg 检测框 2D", f"xy=({peg_3d[0]:.3f},{peg_3d[1]:.3f}) conf --"),
+                       ("hole 检测框 2D", f"xy=({hole_3d[0]:.3f},{hole_3d[1]:.3f}) conf --"),
+                       ("hand 检测框 2D", f"xy=({hand_3d[0]:.3f},{hand_3d[1]:.3f}) conf --")],
             },
             "📐 2D→3D 解算": {
                 "in": [("检测框 2D", "peg/hole/hand")],
                 "out": [("peg 3D 坐标", peg_3d),
                        ("hole 3D 坐标", hole_3d),
-                       ("hand 3D 坐标", peg_3d)],
+                       ("hand 3D 坐标", hand_3d)],
             },
             "🖐 触觉感知": {
                 "in": [],
@@ -461,6 +614,26 @@ class StateSpaceSim:
                        ("夹爪 gripper (标量)", self.gripper), ("接触力 norm (标量)", force_norm),
                        ("观测 z_k (4D:位置3+力)", z_k)],
             },
+            # 🧮 2026-09-03 流形层逐帧 channel (引擎每步实算, 画布输出线 → 波形/总线)
+            "🧮 接触流形": {
+                "in": [("几何 (手/销/孔)", "引擎真值")],
+                "out": [("流形进度 e∥ (m)", _mc.get("progress", 0.0)),
+                       ("法向偏离 e⊥ (m)", _mc.get("risk", 0.0)),
+                       ("V=½‖e‖²", _mc.get("V", 0.0)),
+                       ("状态", _mc.get("state", "—"))],
+            },
+            "🧮 性能流形": {
+                "in": [("几何 (销/孔)", "引擎真值")],
+                "out": [("横向错位 δ⊥ (m)", _mp.get("d_perp_norm", 0.0)),
+                       ("插深剩余 (m)", -_mp.get("d_axial", 0.0) if _mp else 0.0),
+                       ("V_p=½δᵀWδ", _mp.get("Vp", 0.0)),
+                       ("耦合效率 η", _mp.get("eta", 0.0))],
+            },
+            "🧮 潜空间": {
+                "in": [("潜状态/先验", "估计器+动力学")],
+                "out": [("潜坐标 (位置3+预测力)", _lat),
+                       ("速度场 prior−x̂₋", _vel)],
+            },
         }
 
 
@@ -475,12 +648,14 @@ def quick_run():
 
 
 # ── 🧮 仿真 → 训练数据集 (2026-08-20 老倪: 状态空间接入训练流程) ──
+# 🐛 2026-08-26: 与 _SS_DIR 同源 — 从已探测到的源码目录上溯 5 级到仓库根 (state_space→left_right→policies→lerobot→src→根)
 _DATASET_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.dirname(_SS_DIR))))),
     "data", "ss_insert")
 
 
-def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
+def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None, perturb=0.01):
     """多轮仿真 (起始扰动+噪声 seed) → 专家演示数据集 npz
 
     对齐 on_train 训练管道数据包格式:
@@ -489,6 +664,8 @@ def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
       stages  (n,)   阶段标签 (信息, 不参与训练)
       success (n_ep,) 每轮完成标志
       task_name "ss_insert" · fps 50 (DT=0.02)
+    perturb: 起始位置扰动半径 (m)。2026-09-04: 训练域 = 扰动决定 —
+      蒸馏 MLP 只覆盖数据域, 域外闭环发散 (实证 ±3cm 即失败) → 扩域重训加 perturb。
 
     Returns: (npz路径, 总帧数, 成功轮数/总轮数)
     """
@@ -501,10 +678,14 @@ def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None):
     n_ok = 0
     for ep in range(n_episodes):
         sim = StateSpaceSim(log=lambda *a: None)
+        # 🧠 2026-09-04 静静: 数据管道固定用解析律当教师 (teacher) — 与推理主执行器解耦。
+        #   蒸馏范式: 教师(解析, 全局稳定)生成演示 → 学生(左脑MLP)蒸馏。
+        #   MLP 不能当教师: 域外无稳定保证, 自举生成发散轨迹 (实测 hand 飞到 9m)。
+        sim.accel.forward = sim.accel.analytic_forward
         np.random.seed(seed_base + ep)
-        # 起始扰动: 末端位置抖动 ±10mm (真实产线来料偏差)
-        sim.x = X0 + np.array([np.random.uniform(-0.01, 0.01),
-                               np.random.uniform(-0.01, 0.01), 0.0])
+        # 起始扰动: 末端位置抖动 ±perturb (真实产线来料偏差; perturb 定义训练域)
+        sim.x = X0 + np.array([np.random.uniform(-perturb, perturb),
+                               np.random.uniform(-perturb, perturb), 0.0])
         sim.v = np.zeros(3)
         sim.gripper = 0.0
         sim.latent = np.concatenate([sim.x, [0.0]])
@@ -549,7 +730,10 @@ def load_trained_left_brain(npz_path):
     am, astd = d["am"], d["astd"]
 
     def ff_forward(obs):
-        x = (np.asarray(obs[:39], dtype=np.float32) - sm) / ss
+        # 🐛 2026-09-06 静静: 零方差通道除零炸弹 (与 parallel.py mlp_ff_forward 同修) —
+        #   蒸馏数据单布局 goal 零方差, ss≈1e-8; 现场采样孔位偏离 → 归一化爆炸 → 饱和。
+        x = (np.asarray(obs[:39], dtype=np.float32) - sm) / np.where(ss > 1e-4, ss, 1.0)
+        x = np.where(ss > 1e-4, x, np.float32(0.0))
         for i in range(3):
             x = np.maximum(0.0, W[i] @ x + b[i])   # Linear + ReLU (Dropout eval 关闭跳过)
         u_norm = W[3] @ x + b[3]                    # 最后一层无 ReLU

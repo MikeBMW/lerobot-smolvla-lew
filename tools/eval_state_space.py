@@ -137,7 +137,7 @@ def state_machine_coverage(left, right, xm, xs, ym, ys, seeds=(0, 1, 2, 3)):
             contact = pred_cont.item()
             # 轨迹收集
             if state == ST_APPROACH:
-                lyap["approach"].append(d_hp * d_hp)          # V = ||hand-peg||²
+                lyap["approach"].append(d_hp * d_hp)          # V = ||hand-光模块||²
                 contacts.append((0, contact))
             elif state == ST_GRASP:
                 lyap["grasp"].append(float(peg[2] - peg_z0))
@@ -212,7 +212,7 @@ def state_machine_coverage(left, right, xm, xs, ym, ys, seeds=(0, 1, 2, 3)):
 
 def lyapunov_potential(lyap):
     """⑤ 李雅普诺夫直接法: 各阶段势能 V 单调下降率 (2026-08-12 老倪指标)
-    接近 V=||hand-peg||² · 转移 V=||peg-hole||² · 插入 V=d_ph · 抬起 V=peg_z
+    接近 V=||hand-光模块||² · 转移 V=||peg-hole||² · 插入 V=d_ph · 抬起 V=peg_z
     下降率 = V 末端 < V 首端*0.5 的阶段占比 (渐近稳定判据)"""
     out = {}
     for k, seq in lyap.items():
@@ -263,9 +263,10 @@ def spectral_norm_analysis(left):
 
 
 def gru_gate_analysis(right):
-    """🧮 GRU 门控机制模块: 右脑潜空间门控 → 谱半径收缩分析 — 2026-08-12 老倪
-    GRU: 重置门 r=σ(W_ir x + b_ir + W_hr h) · 更新门 z=σ(W_iz x + b_iz + W_hz h)
-    收缩性: 更新门权重谱半径 ρ(W_hz) < 1 → 潜状态指数收敛 (防爆炸)"""
+    """🧮 谱收缩分析模块: 右脑 WorldModel 权重谱半径 → 收缩性/Lipschitz 上界
+    (2026-08-12 老倪; 2026-09-06 叙事修正: 右脑为前向 MLP 无 GRU 门控 — 原"重置门/更新门"
+    公式不适用, 兜底分支 (全网络谱半径乘积) 即实际分析; 若未来换真 GRU 递归估计器,
+    再启用 更新门权重谱 ρ(W_hz)<1 → 潜状态指数收敛 (防爆炸))"""
     gates = {}
     for name, m in right.named_modules():
         if "gate" in name.lower() or "gru" in name.lower():

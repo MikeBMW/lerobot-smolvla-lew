@@ -23,6 +23,8 @@ Z-MAX 节点逻辑库 (Node Logic) — 每个节点的可编辑逻辑
 import importlib
 import inspect
 import os
+import sys  # 🐛 2026-09-09: 记忆节点 _mem_store 用 sys.path
+import threading
 import time
 
 _LOGIC_FILE = os.path.abspath(__file__)
@@ -48,15 +50,163 @@ def match_node(name):
     return best_key
 
 
-def execute_node_logic(module, node, label=None):
-    """双击环节节点 → 执行节点逻辑 (用户可修改版). 未注册返回 None → 框架兜底"""
+def _trace_exec(fn, ctx, log):
+    """🐛 2026-08-30 老倪: debug 式逐行执行 — 每行显示代码 + 输入/输出变量具体数值变化
+    用 sys.settrace 行追踪 (只追踪 fn 自己函数体的行), 赋值/参数变化实时输出
+    🐛 2026-08-31: VSCode attach 调试时禁用 settrace — sys.settrace 会覆盖 debugpy
+    的 tracer → 断点不命中; 调试器已连接时直接执行, 断点交给 VSCode"""
+    try:
+        import debugpy
+        if debugpy.is_client_connected():
+            return fn(ctx)
+    except Exception:
+        pass
+    import sys as _sys
+    src_lines = None
+    try:
+        src_lines = inspect.getsource(fn).splitlines()
+    except (OSError, TypeError):
+        pass
+    base = fn.__code__.co_firstlineno
+    last_locals = {}
+    skip = ("module", "log", "ctx", "p", "info")
+
+    def _fmt(v, maxlen=42):
+        try:
+            s = repr(v)
+        except Exception:
+            s = "<?>"
+        return s if len(s) <= maxlen else s[:maxlen] + "…"
+
+    def tracer(frame, event, arg):
+        if event != "line":
+            return tracer
+        # 只追踪目标函数自身的行 (防递归进子函数/库代码刷屏)
+        if frame.f_code is not fn.__code__:
+            return tracer
+        lineno = frame.f_lineno
+        if src_lines is None or not (base <= lineno < base + len(src_lines)):
+            return tracer
+        line = src_lines[lineno - base].strip()
+        loc = dict(frame.f_locals)
+        # 变化的变量: 新增或值变 (输入→输出数值)
+        changed = {k: loc[k] for k in loc
+                   if k not in last_locals or last_locals[k] != loc[k]}
+        show = []
+        for k, v in changed.items():
+            if k in skip or k.startswith("_"):
+                continue
+            if isinstance(v, (int, float, str, bool)) or v is None:
+                show.append(f"{k}={_fmt(v)}")
+            else:
+                show.append(f"{k}=<{type(v).__name__}>")
+        if log:
+            tail = " → " + "  ".join(show) if show else ""
+            log(f"  ▶ L{lineno - base + 1}: {line[:58]}{tail}")
+        last_locals.update(loc)
+        return tracer
+
+    _sys.settrace(tracer)
+    try:
+        return fn(ctx)
+    finally:
+        _sys.settrace(None)
+
+
+def _demo_node_output(module, node, ctx):
+    """▶运行 播放演示: 读 DataWorld 当前帧该节点的 out (引擎真实算的), 打印展示。
+    🐛 v3.4.8 老倪「运行后没有连续动作, 好像卡住了」: 播放每帧 execute 真跑
+    📡传感器融合 → YOLO aligner 冷加载/采样 1.6s+ 冻结主线程 → 卡顿。
+    演示不重跑节点函数; 数值取自 dw 帧 = 引擎该步真实输出 (同源不伪造)。"""
+    name = node.get("name", "")
+    log = ctx.get("log")
+    # 🧩 原子技能节点 (2026-09-07 老倪: 技能层 demo 也要真实数值 — 轻量读 tr, 无副作用)
+    try:
+        if (match_node(name) or "").startswith("sssk"):
+            return node_ss_skill(ctx)
+    except Exception:
+        pass
+    # 🎯 2026-09-03 老倪: ▶运行 播放轮转到「🎯 YOLO 目标检测」时, 展示真实采样值
+    #   (detect_3d 已由 _real_yolo_sense_once 真执行, conf/3D 模型真输出) — 不用
+    #   引擎帧 conf -- (引擎无 YOLO 模型)。无缓存(采样失败/无节点)才落回 dw 帧。
+    if match_node(name) == "ss_yolo" and _YOLO_CACHE.get("det3d"):
+        try:
+            d3 = _YOLO_CACHE.get("det3d") or {}
+            d2 = _YOLO_CACHE.get("det2d") or {}
+            parts = [f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
+                     + (f" conf={d2[k]['conf']:.2f}" if k in d2 else "")
+                     for k, v in sorted(d3.items())]
+            if log:
+                log(f"⏩ {name} (真实YOLO采样): {len(d3)}/3 目标 · " + " · ".join(parts))
+            return True
+        except Exception:
+            pass
+    try:
+        import numpy as _np
+        dw = getattr(module, "_dw", None)
+        if dw is not None:
+            mo = dw.module_out_values(name)
+            if mo:
+                parts = []
+                for _k, _v in list(mo.items())[:4]:
+                    if isinstance(_v, _np.ndarray):
+                        parts.append(f"{_k}=" + "[" + ",".join(f"{x:.3f}" for x in _np.asarray(_v).ravel()[:6]) + "]")
+                    elif isinstance(_v, (float, int)):
+                        parts.append(f"{_k}={_v:.4f}")
+                    else:
+                        parts.append(f"{_k}={_v}")
+                if log:
+                    log(f"⏩ {name}: " + " · ".join(parts))
+                return True
+        if log:
+            log(f"⏩ {name}: (演示)")
+        return True
+    except Exception:
+        return True
+
+
+def execute_node_logic(module, node, label=None, trace=None, demo=False):
+    """双击环节节点 → 执行节点逻辑 (用户可修改版). 未注册返回 None → 框架兜底
+    trace=True → debug 式逐行执行 (每行代码 + 变量数值变化, 2026-08-30 老倪)
+    demo=True → ▶运行 播放演示模式: 不重跑节点真实函数 (传感器融合/YOLO 采样等会
+    冷加载 1.6s+ 卡死播放), 改读 DataWorld 当前帧该节点的引擎真实 out 展示
+    (数值与引擎同源不伪造)。调试 (单步/右键运行/双击) 仍走真实执行 fn。"""
     name = node.get("name", "")
     key = match_node(name)
     if key is None:
         return None
     info = NODE_LOGIC[key]
+    # 🐛 2026-08-30 老倪: VSCode 断点调试 — env ZMAX_DEBUG_BREAK (launch.json 自动配) 时
+    # 执行节点逻辑先停在此处, F10 单步逐行 (debugpy.breakpoint 非调试时无害)
+    # 🐛 2026-09-01: 支持子串过滤 — ZMAX_DEBUG_BREAK=metaworld 只停数据源节点,
+    #   免逐节点 F5 (根因: open_in_vscode 每次右键重写 launch.json 覆盖掉 env → 断点永不触发)
+    _brk = os.environ.get("ZMAX_DEBUG_BREAK")
+    if _brk:
+        try:
+            import debugpy
+            if _brk == "1" or _brk in name:
+                # 🐛 2026-09-01 老倪: 暂停前打提示 — 断点命中时主线程冻结, Windows 必弹
+                #   "studio.py is not responding"(正常现象); 用户看到日志知道去 VSCode F5,
+                #   不会误以为卡死去点「关闭程序」(点关闭=杀进程, 断点全丢)
+                try:
+                    _log = getattr(module, "_log", None)
+                    if _log:
+                        _log(f"🔴 调试断点: 暂停「{name}」— 切到 VSCode 按 F5 继续 "
+                             f"(Windows 弹 not responding 属正常, 点「等待」勿点「关闭程序」)")
+                except Exception:
+                    pass
+                debugpy.breakpoint()
+        except Exception:
+            pass
     ctx = {"module": module, "params": node.get("params", {}),
            "log": getattr(module, "_log", None), "name": name, "label": label}
+    # 🎯 v3.4.8: ▶运行 播放演示 = 轻量展示路径 (读 DataWorld 帧, 不重跑重函数)
+    if demo:
+        return _demo_node_output(module, node, ctx)
+    if trace is None:
+        trace = bool(getattr(module, "_trace_nodes", False))
+    if trace:
+        return _trace_exec(info["fn"], ctx, getattr(module, "_log", None))
     return info["fn"](ctx)
 
 
@@ -87,7 +237,21 @@ def get_node_location(key):
     # 📂 外部源码映射优先 (left_right 等真实实现不在 node_logic.py, 2026-08-10)
     ext = globals().get("_EXTERNAL_LOC", {}).get(key)
     if ext:
-        return ext[0], ext[1], False
+        line = ext[1]
+        # 🐛 2026-09-04 静静: 手写行号随源码改动漂移 (parallel.py 重写后 class
+        #   FeedforwardAccelerator 21→71, 右键跳到 import 区=看起来"没跳") →
+        #   有符号名时按文件现搜, 动态定位一劳永逸; 搜不到回退手写行号。
+        if len(ext) > 2 and ext[2]:
+            try:
+                _sym = ext[2]
+                with open(ext[0], encoding="utf-8", errors="ignore") as _f:
+                    for _i, _ln in enumerate(_f, 1):
+                        if _ln.lstrip().startswith(_sym):
+                            line = _i
+                            break
+            except Exception:
+                pass
+        return ext[0], line, False
     fn = info["fn"]
     modified = key in _SOURCE_CACHE
     path = getattr(fn.__code__, "co_filename", None)
@@ -102,6 +266,123 @@ def get_node_external_symbol(key):
     """外部源码映射的真实符号名 (VSCode 定位显示用) — 无映射返回 None"""
     ext = globals().get("_EXTERNAL_LOC", {}).get(key)
     return ext[2] if ext else None
+
+
+def _probe_data_root():
+    """🆕 2026-08-30 老倪: 探测本机训练数据仓库 — 返回 '路径 · 帧数/集数 · 特征' 或 None
+    优先级与 _ensure_training_data 一致: Orin真实(closed_loop) → metaworld_peg_long → metaworld_peg → ss_insert_lerobot"""
+    import json as _j, os as _os
+    root = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+    for cand in ("data/closed_loop", "data/metaworld_peg_long", "data/metaworld_peg",
+                 "data/ss_insert_lerobot"):
+        d = _os.path.join(root, cand)
+        ij = _os.path.join(d, "meta", "info.json")
+        if not _os.path.isfile(ij):
+            ij = _os.path.join(d, "info.json")
+        if not _os.path.isfile(ij):
+            continue
+        try:
+            info = _j.load(open(ij, encoding="utf-8"))
+            nf = info.get("total_frames", "?")
+            ne = info.get("total_episodes", "?")
+            feats = list(info.get("features", {}).keys())
+            fstr = ",".join(str(f).replace("observation.", "") for f in feats[:3])
+            src = "Orin真实" if cand == "data/closed_loop" else ("状态空间" if "ss" in cand else "metaworld占位")
+            return f"{cand} · {nf}帧/{ne}集 · {src} · 特征[{fstr}]"
+        except Exception:
+            continue
+    return None
+
+
+def explain_node(name, module=None, out=None):
+    """🧩 代码讲解 (2026-08-30 老倪): 运行节点时终端输出 — 从代码角度解释
+    语法/功能/赋值 (可修改区逐行 + 行尾注释), 从全局目标/数据空间角度
+    统一描述数据变化趋势 (画布拓扑位置 + 上下游 + 本步输出).
+    返回多行文本; 未注册逻辑返回 None."""
+    key = match_node(name)
+    if not key:
+        return None
+    info = NODE_LOGIC.get(key, {})
+    fn = info.get("fn")
+    doc = info.get("doc", "")
+    L = [f"🧩 代码讲解 · {name}"]
+    if doc:
+        L.append(f"  功能: {doc}")
+    try:
+        src = inspect.getsource(fn)
+    except (OSError, TypeError):
+        src = ""
+    in_mod = False
+    syn_n = 0
+    MAX_SYN = 6   # 🆕 2026-08-30: 语法行上限 (train 等复杂节点不刷屏), 超了提示看编辑器
+    for raw in src.splitlines():
+        line = raw.strip()
+        if "可修改区 START" in line:
+            in_mod = True
+            continue
+        if "可修改区 END" in line:
+            in_mod = False
+            continue
+        if not line or line.startswith(("def ", '"""', "# ═", "# ─", "# ===")):
+            continue
+        if line.startswith("#"):
+            continue
+        if line.startswith("return"):
+            L.append(f"  框架: {line}   ← 调度/激活动作 (框架区勿改)")
+        elif in_mod:
+            if syn_n < MAX_SYN:
+                L.append(f"  语法: {line}")
+                syn_n += 1
+            elif syn_n == MAX_SYN:
+                L.append(f"  …(共 {sum(1 for r2 in src.splitlines() if r2.strip() and not r2.strip().startswith(('#', 'def ', 'return')))} 行, 其余省略 — 右键「查看/编辑节点逻辑」看全量)")
+                syn_n += 1
+    # 全局定位 + 数据空间 (画布上下文)
+    if module is not None:
+        try:
+            nodes = getattr(module, "nodes", []) or []
+            n = next((x for x in nodes if x.get("name") == name), None)
+            if n is not None:
+                total = len(nodes)
+                idx = next((i for i, x in enumerate(nodes) if x.get("name") == name), -1) + 1
+                up, dn = [], []
+                for lk in getattr(module, "links", []) or []:
+                    if lk.get("t") == n["id"]:
+                        s = next((x for x in nodes if x.get("id") == lk.get("f")), None)
+                        if s:
+                            up.append(str(s["name"]).lstrip("📦🎯🔌🖐🧠🔮🧪"))
+                    if lk.get("f") == n["id"]:
+                        d = next((x for x in nodes if x.get("id") == lk.get("t")), None)
+                        if d:
+                            dn.append(str(d["name"]).lstrip("📦🎯🔌🖐🧠🔮🧪"))
+                pos = f"画布 {idx}/{total} 节点"
+                if up:
+                    pos += f" · 上游 ← {' / '.join(up[:3])}"
+                if dn:
+                    pos += f" · 下游 → {' / '.join(dn[:3])}"
+                L.append(f"  全局: {pos}")
+                p = n.get("params", {})
+                dims = p.get("dims") or p.get("desc", "")
+                if dims:
+                    L.append(f"  数据: 空间 {dims}")
+                # 🆕 2026-08-30 老倪: 数据源真实路径 + dataset/dataloader 机制 + 形象比喻
+                if key in ("data",) or (p.get("source") and not p.get("run_env")):
+                    pl = _probe_data_root()
+                    if pl:
+                        L.append(f"  仓库: {pl}")
+                    L.append("  比喻: 📦 数据源 = 原料仓库 — 训练前把仓库里的帧整理成数据集"
+                             "(dataset 分拣台: 逐帧读取 + 算归一化 mean/std), "
+                             "再由 dataloader(传送带) 按 batch 送进训练")
+                elif key == "train":
+                    L.append("  数据链: 仓库 data/ → LeRobotDataset(分拣台: 按帧读取 + "
+                             "归一化统计) → DataLoader(传送带: 每步喂 batch 个样本) → "
+                             "模型参数更新 → checkpoint(成品 outputs/train/)")
+                    L.append("  比喻: 🚀 训练 = 流水线 — 原料(帧)经分拣台(dataset)上"
+                             "传送带(dataloader)进机床(模型反向传播), 产出成品(checkpoint)")
+                if out is not None:
+                    L.append(f"  趋势: 本步输出「{out}」→ 沿链路向下游传递")
+        except Exception:
+            pass
+    return "\n".join(L)
 
 
 def get_external_source(key):
@@ -390,12 +671,13 @@ def node_spectral_norm(ctx):
 
 
 def node_gru_gate(ctx):
-    """🧮 GRU 门控机制 — 右脑潜空间门控收缩分析 (2026-08-12 老倪)
-    原理: 重置门 r=σ(W_hr·h) · 更新门 z=σ(W_hz·h); ρ(W_hz)<1 → 潜状态指数收敛防爆炸
-    数据来自: 右脑 GRU 权重谱半径 (eval_state_space.py gru_gate_analysis)
+    """🧮 谱收缩分析 — 右脑 WorldModel 权重谱半径收缩 (2026-08-12 老倪, 2026-09-06 叙事修正)
+    右脑 = 前向 MLP 世界模型 (非 GRU, 无门控结构) → 实际分析: 全网络权重谱半径乘积
+    (Lipschitz 收缩上界; 若未来换真 GRU 递归估计器则分析门控 ρ(W_hz)<1 防爆炸)
+    数据来自: 右脑权重谱 (eval_state_space.py gru_gate_analysis)
     双击 → 全面 Z 分析 (含本模块计算结果)"""
     log = ctx["log"]
-    log("🧮 GRU 门控: 右脑潜空间 ρ(W) 收缩分析 (双击已触发 Z 分析)")
+    log("🧮 谱收缩: 右脑 WorldModel ρ(W) 收缩分析 (双击已触发 Z 分析)")
     return True
 
 
@@ -421,7 +703,7 @@ def node_eval_report_pdf(ctx):
 def node_ff_pd_control(ctx):
     """⚙️ 前馈 PD 控制器 — 顶层控制模型 (2026-08-14 老倪)
     思想: 系统 = 带前馈的增益调度 PID
-      状态机 = 强力 P (e×Kp: delta=peg−hand, act+=delta*2.0)
+      状态机 = 强力 P (e×Kp: delta=光模块−hand, act+=delta*2.0)
       物理限幅 = 隐性 D 与饱和 (死区/限幅=非线性阻尼, 放弃 I 避免积分饱和)
       左脑 MLP = 前馈控制器 (直接预测动作, 偏差产生前给力)
       右脑 WM = 预测器 (预判接触提前减速)
@@ -459,16 +741,18 @@ def node_z700_internal(ctx):
 
 
 def node_neural_kalman(ctx):
-    """🔮 右脑 · 非线性卡尔曼滤波器 — 世界模型 (2026-08-16 老倪: 脑科学映射)
-    卡尔曼滤波两件事 = GRU 黑盒版:
-      预测 Predict: 状态转移 A ≈ GRU 循环权重 W_hh (记住"世界怎么演")
+    """🔮 右脑 · 世界模型导航仪 — 脑科学映射 (2026-08-16 老倪; 2026-09-06 叙事修正)
+    训练右脑 RightBrainWM = 前向世界模型 (obs+act→next_obs+contact, MLP 非 GRU)。
+    卡尔曼滤波对照 (教学类比, 卡尔曼 vs 递归网络结构对照):
+      预测 Predict: 状态转移 A ≈ 循环权重 W_hh (记住"世界怎么演")
                    + 控制输入 B ≈ action 输入 (动作如何改变状态)
-      更新 Update: 卡尔曼增益 K ≈ GRU 更新门/重置门 (自动调节相信预测 vs 相信观测)
+      更新 Update: 卡尔曼增益 K ≈ 更新门/重置门 (自动调节相信预测 vs 相信观测)
+    实际链路: 右脑真权重接入 dynamics.py 先验动力学预测器 (contact_of/next 位置预测);
+    est (自适应状态估计器) 为教学卡尔曼 (A/K/B 标定)。
     先验注入: ctx_proj (VLM 高层语义) 初始化 h0 ≈ 带先验的卡尔曼迭代
-    输出: out1=状态预测, out2=contact 概率 (预测误差 → 状态机触发减速/重试)
     双击 → 标定 A/K (预测强度 / 更新增益)"""
     log = ctx["log"]
-    log("🔮 右脑·非线性卡尔曼: 预测(A≈循环权重) + 更新(K≈门控) → 状态估计+contact 概率")
+    log("🔮 右脑·世界模型: 预测(next_obs) + contact 判断 → 先验/残差基准 (真权重见先验动力学预测器)")
     return True
 
 
@@ -568,12 +852,36 @@ def node_metaworld_data(ctx):
     # === ✏️ 可修改区 START ===
     source = p.get("source", "metaworld")   # metaworld(占位集) | orin(真实产线)
     frames = p.get("frames", 696)           # 期望帧数 (展示用)
-    if log:
-        log(f"📦 数据源: {source} · {frames}帧 (画布节点双击可切换)")
+    # 📂 真实数据层 (2026-09-02 老倪: 数据源必须接 lerobot 框架 src/lerobot/datasets/,
+    #   不是控制台模板 — 与传感器融合/前馈节点同构: 右键打开 + VSCode 断点都进 datasets 真实实现)
+    # 🐛 2026-09-02: 改用 exec(compile(src, 真实路径, "exec")) 加载 — spec_from_file_location
+    #   动态加载的模块 debugpy 不感知 (断点设置时文件未加载 → 绑定不生效, 实测 probe 执行了
+    #   但 62 行断点不命中); compile 带真实 filename → 函数 co_filename 指向真实文件,
+    #   debugpy 按路径查表必定命中 (同引擎 perception/cognition 断点行为)
+    try:
+        _p = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "metaworld_data_source.py")
+        _ns = {"__file__": _p, "__name__": "lerobot.datasets.metaworld_data_source"}
+        with open(_p, encoding="utf-8") as _f:
+            _src = _f.read()
+        exec(compile(_src, _p, "exec"), _ns)
+        _probe = _ns.get("probe_data_source")
+        if _probe is None:
+            raise RuntimeError("数据层缺少 probe_data_source")
+        _info = _probe()
+        if log:
+            if _info:
+                log(f"📦 数据源: {source} · 真实仓库 {_info['path']} · "
+                    f"{_info['frames']}帧/{_info['episodes']}集 · {_info['label']} · "
+                    f"特征[{','.join(_info['features'])}]")
+            else:
+                log(f"📦 数据源: {source} · 本机无训练仓库 (仅画布占位) · 期望 {frames}帧")
+    except Exception as _e:
+        if log:
+            log(f"📦 数据源: {source} · 数据层探测失败: {_e}")
     # 数据源策略: 想强制某来源训练, 在「训练」节点的 data_source 里改
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: 激活数据源 (勿改)
-    return module._toggle_source_node(ctx["name"])
+    return module._toggle_source_ctx(ctx["name"])
 
 
 # ════════════════════════════════════════════════════════════════
@@ -651,7 +959,11 @@ def node_decoder(ctx):
 # 🎯 Action Head 4D — 官方 action_head (线性映射到动作空间)
 # ════════════════════════════════════════════════════════════════
 def node_action_head(ctx):
-    """🎯 Action Head — 解码特征 → 关节动作 (维度=数据动作维度)"""
+    """🎯 Action Head — 解码特征 → 关节动作 (维度=数据动作维度)
+
+    🐛 2026-09-08 老倪 (标准算法归位): 真实实现全在 src/lerobot/policies/smolvla_lew/ —
+    官方 DiT 流匹配头 action_head.py SmolVLALewActionHead (VLM token→动作块) + 新增
+    状态空间变体 state_space_action_head.py StateSpaceActionHead (潜空间 z R⁷/R⁹⁶⁰ → 4D 块)"""
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
@@ -659,9 +971,13 @@ def node_action_head(ctx):
     chunk_size = p.get("chunk_size", 7)      # 每次预测的动作步数
     if log:
         log(f"🎯 ActionHead: action_dim={action_dim} · chunk={chunk_size} (真机Orin为6D)")
-    # 官方源码: self.action_head = nn.Linear(dim_model, action_dim)
-    #   输出维度自动取自数据特征, 训练数据决定, 改这里仅影响说明
     # === ✏️ 可修改区 END ===
+    if log:
+        # 🔒 真实算法位置 (标准 lerobot 结构, 右键进源码):
+        log("   真实实现 (src/lerobot/policies/smolvla_lew/):")
+        log("   ① action_head.py → SmolVLALewActionHead (官方 DiT 流匹配, VLM 条件 → 动作块)")
+        log("   ② state_space_action_head.py → StateSpaceActionHead "
+            f"(状态空间: 潜空间 z → {action_dim}D × chunk={chunk_size}, 本工程新增变体)")
     # 🔒 结构节点 (勿改)
     return (True, f"ActionHead 配置: {action_dim}D chunk={chunk_size}")
 
@@ -933,7 +1249,7 @@ def node_yolo_gate(ctx):
     # 想自定义判定? 在这里写 (例如: 按相机可用性自动切换)
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: 记录开关状态到节点 (勿改)
-    return module._set_yolo_gate_ctx(ctx["name"], yolo_enabled, state_dim)
+    return module._toggle_yolo_gate_ctx(ctx["name"], yolo_enabled)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -976,15 +1292,15 @@ _reg("mode_switch", ["训练/推理", "模式开关"], "🔀 训练/推理模式
 _reg("infer_rollout", ["推理 (rollout)", "rollout"], "📷 推理 (rollout) — 最新模型仿真插拔评估+视频", node_infer_rollout)
 _reg("eval_state_space", ["模型评估 (状态空间)", "状态空间评估"], "📊 状态空间稳定性评估 — L2/BIBO/谱半径/状态机覆盖", node_eval_state_space)
 _reg("spectral_norm", ["谱归一化"], "🧮 谱归一化 — 左脑逐层 σ_max → Lipschitz 上界", node_spectral_norm)
-_reg("gru_gate", ["GRU 门控"], "🧮 GRU 门控机制 — 右脑潜空间 ρ(W) 收缩", node_gru_gate)
+_reg("gru_gate", ["GRU 门控"], "🧮 谱收缩 — 右脑 WorldModel ρ(W) 收缩 (2026-09-06: 右脑为前向MLP非GRU, 节点名保留历史)", node_gru_gate)
 _reg("force_limit", ["力幅值限幅"], "🧮 力幅值限幅 — 插入阶段饱和 → 临界阻尼 ζ", node_force_limit)
 _reg("eval_report_pdf", ["稳定性评估 PDF"], "📄 稳定性评估汇总 PDF — 公式+图+数据+结论 → 飞书", node_eval_report_pdf)
 _reg("ff_pd_control", ["前馈 PD"], "⚙️ 前馈 PD 控制器 — 顶层增益调度PID+前馈, Z700=底层", node_ff_pd_control)
 _reg("ff_ref_input", ["参考输入"], "📡 参考输入 u(t) — 前馈PD顶层输入", node_ff_ref_input)
 _reg("ff_scope", ["输出 Scope"], "🖥 输出 Scope — 前馈PD顶层输出响应", node_ff_scope)
 _reg("z700_internal", ["Z700 内部"], "🔬 Z700 内部模块 (顶层只读展示)", node_z700_internal)
-# 🧠 神经同构行 (2026-08-16 老倪: 左脑MLP≈小脑 / 右脑GRU≈非线性卡尔曼 / 状态机≈皮层)
-_reg("neural_kalman", ["右脑 · 非线性卡尔曼", "非线性卡尔曼"], "🔮 右脑·非线性卡尔曼 — 世界模型: 预测(状态转移A)+更新(门控K)", node_neural_kalman)
+# 🧠 神经同构行 (2026-08-16 老倪; 2026-09-06 修正: 右脑=前向WM非GRU: 左脑MLP≈小脑 / 右脑WM≈世界模型先验 / 状态机≈皮层)
+_reg("neural_kalman", ["右脑 · 世界模型", "世界模型"], "🔮 右脑·世界模型 — 前向预测 next_obs+contact (真权重在先验动力学预测器; 教学卡尔曼对照)", node_neural_kalman)
 _reg("neural_alpha", ["α 融合层", "置信度旋钮"], "⚖️ α融合层 — fused=(1−α)·预测+α·观测, α≈等效卡尔曼增益", node_neural_alpha)
 _reg("neural_calib", ["左脑标定实验", "标定实验"], "🔧 左脑标定 — 感知零偏/执行力act_gain·err_gain/现场微调 三件套", node_neural_calib)
 _reg("neural_climbing", ["攀缘纤维"], "🧬 攀缘纤维 — 力传感器vs右脑预测→复杂脉冲→LTD gate 抑制", node_neural_climbing)
@@ -1024,46 +1340,179 @@ _reg("hjepa",      ["H-JEPA"], "🧠 H-JEPA 三层潜空间 — z₁/z₂/z₃ �
 _reg("zflow",      ["zFlow"], "🌊 zFlow 世界引擎 — GRU 预测未来潜状态", node_zflow)
 _reg("cross_attn", ["交叉注意力"], "🔀 未来决策交叉注意力 — 未来潜状态 K/V 注入", node_cross_attn)
 _reg("train_gate", ["训练开关"], "☑ 训练开关 — 打勾=训练 / 不打=不训练", node_train_gate)
-_reg("yolo_gate", ["YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
+_reg("yolo_gate", ["YOLO 感知开关", "YOLO开关"], "🎯 YOLO 感知开关 — 开=39D(有YOLO) / 关=3D(无YOLO), 默认开", node_yolo_gate)
 
 
-# ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开) ──
+# ── 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 源码显示 yolo_3d/, 右键菜单也可打开)
+# 🐛 2026-09-01 老倪: 画布节点必须真实执行 — 原 node_yolo_3d/node_yolo_align 只打日志
+#   (用户在 align() 打断点进不去的根因); 现真实加载 YoloStateAligner → metaworld 渲染帧
+#   → detect_3d → align(), 断点可进 yolo_state_aligner.py
+_YOLO_ALIGNER = None      # YoloStateAligner 单例 (权重+env 只加载一次, 复用 gen_metaworld_data.py:39 方案)
+_YOLO_CACHE = {}          # 跨节点共享: det3d / obs39 / img (🎯 YOLO 3D → 📐 2D→3D 链路)
+_YOLO_READY = False       # import 链是否已在主线程就绪 (2026-09-02)
+
+
+def _yolo_prepare_imports():
+    """主线程预 import YOLO 依赖链 (yolo_state_aligner + metaworld→gymnasium→cv2 Qt 插件).
+
+    🐛 2026-09-02 老倪: 必须在主线程且 QApplication 创建后执行 — 后台线程 import
+    metaworld 会 QObject::moveToThread 归属错误 + debugpy realpath abort (GUI 启动崩,
+    实测 Fatal Python error: Aborted); import 就绪后构造/推理可放后台线程 (纯计算不碰 Qt).
+    """
+    global _YOLO_READY
+    if _YOLO_READY:
+        return
+    import sys as _sys
+    os.environ.setdefault("MUJOCO_GL", "glfw")
+    _sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d"))
+    import yolo_state_aligner  # noqa: F401
+    import metaworld as _mt   # noqa: F401  Qt 依赖链 — 必须主线程!
+    _YOLO_READY = True
+
+
+def _yolo_ensure_aligner(log):
+    """懒加载真实 YoloStateAligner — 权重 runs/detect/outputs/yolo_peg/peg_v1/best.pt + metaworld env
+    绕过 lerobot 包 __init__ (同 gen_metaworld_data.py:39, 避免 huggingface_hub 等重量级依赖)"""
+    global _YOLO_ALIGNER
+    if _YOLO_ALIGNER is not None:
+        return _YOLO_ALIGNER
+    import sys as _sys
+    os.environ.setdefault("MUJOCO_GL", "glfw")
+    _sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d"))
+    import yolo_state_aligner
+    _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+              "outputs/yolo_peg/peg_v1/weights/best.pt"]
+    _w = next((c for c in _cands if os.path.isfile(os.path.join(_REPO_ROOT, c))), _cands[0])
+    # 🎯 深度模型权重候选 (YOLO depth head) — 🐛 2026-09-03 老倪: 原构造漏传
+    #   depth_weights → depth_model=None → detect_3d 全程走「写死 z 平面」回退
+    #   (断点停在 118 行). 候选与 gen_insert_video.py:36 同款, GPU 自动校准版优先.
+    _d_cands = ["outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt",   # GPU自动校准版 (scale 0.978/0.885)
+                "outputs/yolo_peg_depth/peg_depth_v1/weights/best.pt",      # 旧 CPU 版 (已作废, 回退用)
+                "outputs/yolo_peg_depth/peg_depth_smoke/weights/best.pt"]
+    _dw = next((c for c in _d_cands if os.path.isfile(os.path.join(_REPO_ROOT, c))), None)
+    import metaworld as _mt
+    _mt_env = _mt.MT1("peg-insert-side-v3")
+    _env0 = _mt_env.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
+    _env0._freeze_rand_vec = False
+    _env0.set_task(_mt_env.train_tasks[0])
+    _env0.reset(seed=0)
+    _env0._freeze_rand_vec = True
+    _YOLO_ALIGNER = yolo_state_aligner.YoloStateAligner(os.path.join(_REPO_ROOT, _w), _env0,
+                                                        depth_weights=(os.path.join(_REPO_ROOT, _dw) if _dw else None))
+    if log:
+        log(f"🎯 YOLO 真实模型已加载: {_w} · metaworld peg-insert-side-v3 (corner2)"
+            + (f" · 深度 {_dw}" if _dw else " · ⚠️ 无深度权重 → detect_3d 走写死 z 回退"))
+    return _YOLO_ALIGNER
+
+
+def _yolo_detect2d(aligner, img, conf=0.4):
+    """同帧真实 2D 检测 (与 detect_3d 同预处理 rot90+BGR) → {cls: {box, conf, cx, cy}}
+    🐛 2026-09-03 老倪: detect_3d 只返回 3D 坐标不带 conf — ▶运行 注入引擎轨迹
+    需要真实 conf (引擎 _io_snapshot 曾写死 conf 0.99 伪装), 故同帧补一次 2D predict。
+    """
+    import numpy as np
+    import cv2
+    if img.dtype != np.uint8:
+        img = (img * 255).astype(np.uint8)
+    img_rot = np.rot90(img, k=2)
+    img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
+    res = aligner.model.predict(img_bgr, conf=conf, verbose=False)[0]
+    out = {}
+    for b in res.boxes:
+        cls = res.names[int(b.cls)]
+        x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
+        out[cls] = {"box": [x1, y1, x2, y2], "conf": float(b.conf[0]),
+                    "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2}
+    return out
+
+
+def _yolo_capture(log, aligner):
+    """真实采样一帧: env reset(seed=0) → render → 39D obs → detect_3d, 缓存供下游节点"""
+    import numpy as np
+    aligner.env._freeze_rand_vec = False
+    aligner.env.reset(seed=0)
+    aligner.env._freeze_rand_vec = True
+    img = aligner.env.render()
+    obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
+    det3d = aligner.detect_3d(img)
+    det2d = _yolo_detect2d(aligner, img)   # 真实 conf/框 (detect_3d 不带 conf)
+    _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img})
+    return det3d, obs39, img
+
+
 def node_yolo_3d(ctx):
+    """🎯 YOLO 3D — 真实执行: metaworld 渲染帧 → YOLO 检测 → 3D 反投影
+    源码: src/lerobot/policies/yolo_3d/yolo_state_aligner.py (detect_3d / align)
+    ─────────────────────────────────────────────
+    数据流: 相机图像 → YOLO {hand, 光模块, hole} → 反投影 3D → 缓存 → 📐 2D→3D 节点 align 进 39D"""
     log = ctx["log"]
-    """🎯 YOLO 3D — 相机图像 → 检测销钉/插孔/末端 (mAP 0.994) → 2D→3D 解算 → 39D state
-    真实实现: src/lerobot/policies/yolo_3d/ (train_yolo / yolo_state_aligner / gen_yolo_data / gen_tactile)
-    ─────────────────────────────────────────────
-    📂 YOLO 模型加载位置:
-      · 加载代码: yolo_state_aligner.py:37 __init__ → YOLO(weights) (ultralytics)
-      · 调用入口: tools/gen_metaworld_data.py:41 WEIGHTS 常量 + :48 YoloStateAligner(WEIGHTS, env)
-      · 加载时机: 运行数据生成脚本时加载一次, detect_3d() 每帧只推理不重载
-    💾 权重文件: runs/detect/outputs/yolo_peg/peg_full/weights/best.pt (22MB, 8/07 训练)
-    ─────────────────────────────────────────────
-    数据流: YOLO 检测 {hand, peg, hole} → 反投影 3D → 替换 39D 中 hand[0:3]/peg[18:21]/hole[36:39]"""
-    p = ctx.get("params", {})
-    log(f"🎯 YOLO 3D: model={p.get('model','yolov8s')} classes={p.get('classes','peg/hole/hand')} · mAP 0.994 · 权重 runs/detect/outputs/yolo_peg/peg_full/weights/best.pt")
-    return True
+    try:
+        aligner = _yolo_ensure_aligner(log)
+        det3d, obs39, img = _yolo_capture(log, aligner)
+        if log:
+            if det3d:
+                for k, v in sorted(det3d.items()):
+                    log(f"🎯 YOLO 3D: {k}=[{v[0]:.3f} {v[1]:.3f} {v[2]:.3f}]m")
+                log(f"🎯 检测 {len(det3d)}/3 目标 (hand/peg/hole) · 39D 状态已采样")
+            else:
+                log("🎯 YOLO 3D: ⚠️ 本帧未检出目标 (conf<0.4) — 重试或换帧")
+        return bool(det3d)
+    except Exception as e:
+        if log:
+            log(f"⚠️ YOLO 3D 真实执行失败: {e}")
+        return False
 
 
 def node_yolo_align(ctx):
+    """📐 2D→3D 解算 — 真实执行: YOLO 检测 3D → align() 替换 39D 对应段
+    源码: yolo_state_aligner.py align() — hand→[0:3], 光模块→[4:7]+[22:25], hole→[36:39]
+    🐛 旧版误把 光模块 写进 [18:21](prev_hand), 真 光模块 段 [4:7]/[22:25] 一直漏真值 → 训练泄漏 (2026-08-23 已修)"""
     log = ctx["log"]
-    """📐 2D→3D 解算 — YOLO 2D 框中心 + 相机内参 → 目标 3D 坐标 (pixel_to_ray / ray_plane_intersect / YoloStateAligner)"""
-    p = ctx.get("params", {})
-    log(f"📐 2D→3D 解算: intrinsics={p.get('intrinsics','camera_K')} method={p.get('method','depth|hand-eye')} · 源码 yolo_state_aligner.py")
-    return True
+    try:
+        import numpy as np
+        aligner = _yolo_ensure_aligner(log)
+        det3d = _YOLO_CACHE.get("det3d")
+        obs39 = _YOLO_CACHE.get("obs39")
+        if det3d is None or obs39 is None:
+            # 单独执行本节点 (未先跑 🎯 YOLO 3D) → 同源采样一帧
+            det3d, obs39, _ = _yolo_capture(log, aligner)
+        aligned = aligner.align(obs39, det3d)
+        if log:
+            log(f"📐 2D→3D 解算: hand={np.round(aligned[0:3],3)} · "
+                f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)} (真实对齐)")
+            log("📐 39D 对齐完成 · 断点可进 yolo_state_aligner.align()")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 2D→3D 真实执行失败: {e}")
+        return False
 
 
 def node_yolo_tactile(ctx):
+    """📍 Marker 触觉跟踪 — 真实执行: gen_tactile.py synth_tactile 从 39D 合成 4D (夹持/接触/方向)
+    🐛 2026-09-01 真实化: 原只打日志, gen_tactile.py 断点永不命中"""
     log = ctx["log"]
-    """📍 Marker 触觉跟踪 — GelSight 标记位移 → 4D 触觉力信号 (夹持/接触/滑觉); 数据改造: metaworld_peg → 43D"""
-    p = ctx.get("params", {})
-    log(f"📍 Marker 触觉跟踪: grid={p.get('grid','7x9')} dim={p.get('dim',4)} · 触觉数据生成 gen_tactile.py")
-    return True
+    try:
+        import numpy as np
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+            _SS_STATE["obs39"] = obs39
+        tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+        _SS_STATE["tactile4"] = tac
+        if log:
+            log(f"📍 Marker 触觉 (真实): grasp={tac[0]:.3f} contact={tac[1]:.3f} "
+                f"dir=({tac[2]:.2f},{tac[3]:.2f}) (gen_tactile.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 触觉合成真实执行失败: {e}")
+        return False
 
 
 _reg("yolo_3d",     ["YOLO 3D"], "🎯 YOLO 3D — 检测销钉/插孔/末端 → 2D→3D → 39D state (源码 yolo_3d/)", node_yolo_3d)
 _reg("yolo_align",  ["2D→3D"], "📐 2D→3D 解算 — 像素→3D 坐标 (源码 yolo_3d/yolo_state_aligner.py)", node_yolo_align)
-_reg("yolo_tactile", ["Marker 触觉"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
+_reg("yolo_tactile", ["Marker 触觉", "触觉感知"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
 
 
 # ── 📦 Z700 数据源 / 适配 / obs (2026-08-12 老倪: 每个节点都有代码) ──
@@ -1106,7 +1555,7 @@ def node_obs43(ctx):
     ─────────────────────────────────────────────
     触觉 4D (Marker 触觉跟踪, gen_tactile.py 从 39D state 合成):
     [39]     grasp_force   夹持力   = 1 − gripper   (夹爪闭合=1, 张开=0)
-    [40]     contact_force 接触力   = 1/(1+5d)      (d=|peg−hole|, 越近越大)
+    [40]     contact_force 接触力   = 1/(1+5d)      (d=|光模块−hole|, 越近越大)
     [41]     contact_dir_x 接触方向x = (peg_x−hole_x)/d
     [42]     contact_dir_z 接触方向z = (peg_z−hole_z)/d
     ─────────────────────────────────────────────
@@ -1156,7 +1605,7 @@ def node_stage_lift(ctx):
 def node_stage_transfer(ctx):
     log = ctx["log"]
     p = ctx.get("params", {})
-    log(f"➤ 转移: tolerance={p.get('tolerance', 0.05)}m · peg 有导向")
+    log(f"➤ 转移: tolerance={p.get('tolerance', 0.05)}m · 光模块 有导向")
     return True
 
 
@@ -1240,16 +1689,19 @@ def _node_repo_root():
 
 _REPO_ROOT = _node_repo_root()
 _LR_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right")
-_EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 44, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
-_EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 59, "class RightBrainWM")
-_EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 75, "class LeftRightPolicy")
+_EXTERNAL_LOC["left_brain"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 45, "class LeftBrainMLP")   # 🐛 2026-08-10: 显示真实符号名, 不是 node_logic 函数名
+_EXTERNAL_LOC["right_brain"] = (os.path.join(_LR_DIR, "modeling_left_right.py"), 60, "class RightBrainWM")
+_EXTERNAL_LOC["left_right"]  = (os.path.join(_LR_DIR, "modeling_left_right.py"), 76, "class LeftRightPolicy")
 _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.py"), 34, "class LeftRightConfig")  # 🐛 2026-08-12: 原 sym 非符号名定位失败 → 显示整个配置类 (含接触/状态机阈值)
 
 # 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
 _YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
 _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
-_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 11, "def pixel_to_ray")  # 📐 2D→3D 解算: 像素→射线→平面交点 (反投影实现, 非整个类)
-_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 1, "gen_tactile")                  # 📍 Marker 触觉跟踪 (触觉数据生成)
+# 🐛 2026-09-04 静静: 原映射指向 pixel_to_ray(11行) — 2026-08-23 改 cam_mat0 矩阵反投影后已成死代码,
+#   全仓库零执行调用 → 查看源码/断点永不命中 (老倪断点停在 detect_3d 126 才发现). 改指真实反投影 detect_3d.
+_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 65, "def detect_3d")  # 📐 2D→3D 解算: YOLO 框→cam_mat0 反投影→3D (深度优先/写死z回退) — 断点打 104-110 行
+_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
+_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 40, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 # 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
 #   State Adapter 是融合节点 (视觉39D+触觉4D=43D), 无独立实现 → 显示 node_state_adapter 自身函数 (可编辑区)
 # 注: obs39 不注册外部映射 — 用户要的是结构说明 (node_obs39 函数体), 不是 metaworld 内部源码
@@ -1273,7 +1725,7 @@ def node_obs39(ctx):
     [36:39]  hole_pos      插孔目标位置 xyz      单位: 米(m) (goal)
     ─────────────────────────────────────────────
     说明: peg-insertion 观测 = 末端+夹爪+销钉(位姿) 双帧堆叠 + 目标孔位。
-    45D 版本 = 39D + 6D 相对向量 (peg-hand, hole-peg); 49D 加触觉; 58D 加 W2-CoT。
+    45D 版本 = 39D + 6D 相对向量 (peg-hand, hole-光模块); 49D 加触觉; 58D 加 W2-CoT。
     left_right 工程用 39D (无相对向量)。
     """
     log = ctx["log"]
@@ -1286,55 +1738,170 @@ def node_obs39(ctx):
     return True
 
 
+def _ss_load_modeling(log):
+    """懒加载 modeling_left_right.py (LeftBrainMLP/RightBrainWM 真实 torch 网络, 文件自带 lerobot 兜底)"""
+    if "modeling" in _SS_MODS:
+        return _SS_MODS["modeling"]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "modeling_left_right.py")
+    _name = "left_right.modeling_left_right"
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: fallback dataclass 装饰器查 sys.modules, 未注册→None.__dict__
+    spec.loader.exec_module(m)
+    _SS_MODS["modeling"] = m
+    return m
+
+
+def _ss_load_config(log):
+    """懒加载 configuration_left_right.py (LeftRightConfig 真实阈值: 接触/抓取/抬起/转移/插入)"""
+    if "config" in _SS_MODS:
+        return _SS_MODS["config"]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "configuration_left_right.py")
+    _name = "left_right.configuration_left_right"
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: 同 modeling — dataclass 需 sys.modules 注册
+    spec.loader.exec_module(m)
+    _SS_MODS["config"] = m
+    return m
+
+
+def _ss_try_load_ckpt(net, key):
+    """尝试加载最新训练权重 (outputs/train/*/checkpoints/…/model.pt → {left,right,...})
+    🐛 2026-09-04: glob 原为 outputs/train/*/checkpoints/model.pt, 实际产物在
+    checkpoints/003000/pretrained_model/model.pt (多两级) → 命中 0, 画布左/右脑节点
+    一直跑随机初始化权重 (日志显示"随机初始化(无ckpt)")。现两种层级都匹配。"""
+    import glob as _g
+    _cks = sorted(
+        _g.glob(os.path.join(_REPO_ROOT, "outputs", "train", "*", "checkpoints", "model.pt"))
+        + _g.glob(os.path.join(_REPO_ROOT, "outputs", "train", "*", "checkpoints", "*",
+                               "pretrained_model", "model.pt")),
+        key=os.path.getmtime)
+    if not _cks:
+        return False
+    try:
+        import torch
+        _sd = torch.load(_cks[-1], map_location="cpu")
+        if isinstance(_sd, dict) and key in _sd:
+            _w = _sd[key]
+            if hasattr(_w, "state_dict"):
+                _w = _w.state_dict()
+            net.load_state_dict(_w)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def node_left_brain(ctx):
-    """🧠 左脑 LeftBrainMLP — 39D obs → 4D 连续动作 (动作生成, 547K)"""
+    """🧠 左脑 LeftBrainMLP — 真实执行: modeling_left_right.py LeftBrainMLP.forward(obs39) → 4D 动作
+    🐛 2026-09-01 真实化: 原只打日志, modeling_left_right.py 断点永不命中; 权重优先加载最新 ckpt"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    hidden = p.get("hidden", 512)
-    if log:
-        log(f"🧠 左脑 LeftBrainMLP: 39D obs → 4D 动作 · 隐藏 {hidden} · 547K 参数 (MLP偏置接近 act*0.3+delta*2.0)")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np, torch
+        ml = _ss_load_modeling(log)
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+            _SS_STATE["obs39"] = obs39
+        net = ml.LeftBrainMLP(obs_dim=39, act_dim=4)
+        loaded = _ss_try_load_ckpt(net, "left")
+        net.eval()
+        with torch.no_grad():
+            act = net(torch.tensor(np.asarray(obs39, dtype=np.float32)).unsqueeze(0)).numpy().squeeze()
+        _SS_STATE["act4"] = act
+        if log:
+            log(f"🧠 左脑 LeftBrainMLP (真实 forward): {'加载最新ckpt' if loaded else '随机初始化(无ckpt)'} · "
+                f"obs39 → 4D 动作 [{act[0]:+.3f} {act[1]:+.3f} {act[2]:+.3f} {act[3]:.2f}] (modeling_left_right.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 左脑真实执行失败: {e}")
+        return False
 
 
 def node_right_brain(ctx):
-    """🧠 右脑 RightBrainWM — obs+action → next obs + contact 概率 (抓取时机, 87K, acc 1.00)"""
+    """🧠 右脑 RightBrainWM — 真实执行: modeling_left_right.py RightBrainWM.forward(obs,act) → next_obs+contact"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    hidden = p.get("hidden", 256)
-    if log:
-        log(f"🧠 右脑 RightBrainWM: obs+action → next obs + contact 概率 · 隐藏 {hidden} · 87K (contact>0.5 & d_hp<0.06 → 抓)")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np, torch
+        ml = _ss_load_modeling(log)
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+            _SS_STATE["obs39"] = obs39
+        act4 = _SS_STATE.get("act4", np.zeros(4))
+        net = ml.RightBrainWM(obs_dim=39, act_dim=4)
+        loaded = _ss_try_load_ckpt(net, "right")
+        net.eval()
+        with torch.no_grad():
+            _o = torch.tensor(np.asarray(obs39, dtype=np.float32)).unsqueeze(0)
+            _a = torch.tensor(np.asarray(act4, dtype=np.float32)).unsqueeze(0)
+            nxt, contact = net(_o, _a)
+            nxt = nxt.numpy().squeeze()
+            contact = float(contact.numpy().squeeze())
+        _SS_STATE.update({"next_obs": nxt, "contact": contact})
+        if log:
+            log(f"🧠 右脑 RightBrainWM (真实 forward): {'加载最新ckpt' if loaded else '随机初始化(无ckpt)'} · "
+                f"contact={contact:.3f} · next_obs 预测={np.round(nxt[:3],3)} (modeling_left_right.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 右脑真实执行失败: {e}")
+        return False
 
 
 def node_left_right_policy(ctx):
-    """◉ LeftRightPolicy — lerobot 标准封装: 左脑动作 + 右脑判断 + 状态机编排 (抓起8/8 插入7/8)"""
+    """◉ LeftRightPolicy — 真实执行: 左脑动作 + 右脑 contact + 状态机阈值 (configuration_left_right.py)"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    th = p.get("grasp_contact_threshold", 0.5)
-    dhp = p.get("grasp_d_hp", 0.06)
-    lift = p.get("lift_height", 0.08)
-    if log:
-        log(f"◉ LeftRightPolicy: 状态机 接近→抓取(contact>{th} & d_hp<{dhp})→抬起(+{lift}m)→转移→插入 → 完成 · 125帧")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np
+        cfg = _ss_load_config(log).LeftRightConfig()
+        ml = _ss_load_modeling(log)
+        contact = _SS_STATE.get("contact", 0.0)
+        # 状态机转移判定 (真实阈值): 接近→抓取 需要 contact + 距离阈值
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+        d_hp = float(np.linalg.norm(obs39[0:3] - obs39[4:7]))
+        grasp_ok = contact > cfg.grasp_contact_threshold and d_hp < cfg.grasp_d_hp
+        _SS_STATE["grasp_ok"] = grasp_ok
+        if log:
+            log(f"◉ LeftRightPolicy (真实): 接触阈={cfg.grasp_contact_threshold} · d_hp阈={cfg.grasp_d_hp} · "
+                f"实际 contact={contact:.3f} d_hp={d_hp:.4f} → {'✅ 触发抓取' if grasp_ok else '⏳ 继续接近'} "
+                f"(configuration_left_right.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ LeftRightPolicy 真实执行失败: {e}")
+        return False
 
 
 def node_lr_contact(ctx):
-    """❖ 接触判定 — 右脑 contact 概率 + 钳口-销钉距离 联合判定 → 夹持触发"""
+    """❖ 接触判定 — 真实执行: 右脑 contact 概率 + 钳口-销钉距离 联合判定 (configuration_left_right.py 阈值)"""
     log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    th = p.get("contact_th", 0.5)
-    dhp = p.get("d_hp_th", 0.06)
-    if log:
-        log(f"❖ 接触判定: contact>{th} & d_hp<{dhp} → 夹持触发 (右脑 get_right_contact)")
-    # === ✏️ 可修改区 END ===
-    return True
+    try:
+        import numpy as np
+        cfg = _ss_load_config(log).LeftRightConfig()
+        contact = _SS_STATE.get("contact", 0.0)
+        obs39 = _SS_STATE.get("obs39")
+        if obs39 is None:
+            obs39, _ = _ss_env_obs(log)
+        d_hp = float(np.linalg.norm(obs39[0:3] - obs39[4:7]))
+        hit = contact > cfg.grasp_contact_threshold and d_hp < cfg.grasp_d_hp
+        if log:
+            log(f"❖ 接触判定 (真实): contact={contact:.3f} > {cfg.grasp_contact_threshold} 且 "
+                f"d_hp={d_hp:.4f} < {cfg.grasp_d_hp} → {'✅ 接触成立' if hit else '❌ 未接触'} "
+                f"(configuration_left_right.py)")
+        return bool(hit)
+    except Exception as e:
+        if log:
+            log(f"⚠️ 接触判定真实执行失败: {e}")
+        return False
 
 
 _reg("left_brain",  ["LeftBrainMLP"], "🧠 左脑 LeftBrainMLP — 39D→4D 连续动作 (547K, 源码 modeling_left_right.py:44)", node_left_brain)
@@ -1353,48 +1920,394 @@ _reg("obs39",       ["39D obs", "39D"], "📊 39D obs 输入 — metaworld 完�
 _SS_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space")
 
 
-def _ss_run(ctx, layer, src):
-    log = ctx.get("log")
-    if log:
-        log(f"🧮 {ctx.get('name', '')} — {layer} (源码: src/lerobot/policies/left_right/state_space/{src})")
+# ── 🧮 状态空间节点真实执行 (2026-09-01 老倪: 右键打开的源码必须能进断点 —
+#    原 _ss_run 只打日志, perception.py/parallel.py 等真实源码断点永不命中; 现真实调用) ──
+_SS_STATE = {}          # 链路缓存: obs43/obs39/u_ff/latent/prior/z_k/residual/contact_p/stage/u/u_sat/u_prev/tactile4
+_SS_MODS = {}           # 真实模块懒加载缓存
+
+
+def _ss_import(modname):
+    """懒加载 state_space 真实模块 (perception/parallel/dynamics/cognition/safety/execution)"""
+    if modname in _SS_MODS:
+        return _SS_MODS[modname]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space", modname + ".py")
+    _name = "state_space." + modname
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: dataclass 装饰器查 sys.modules[cls.__module__], 未注册→None.__dict__
+    spec.loader.exec_module(m)
+    _SS_MODS[modname] = m
+    return m
+
+
+def _ss_tactile_mod():
+    """懒加载 gen_tactile.py (真实触觉合成, 与数据生成同源)"""
+    if "gen_tactile" in _SS_MODS:
+        return _SS_MODS["gen_tactile"]
+    import importlib.util as _ilu
+    import sys as _sys
+    _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d", "gen_tactile.py")
+    _name = "yolo_3d.gen_tactile"
+    spec = _ilu.spec_from_file_location(_name, _p)
+    m = _ilu.module_from_spec(spec)
+    _sys.modules[_name] = m   # 🐛 2026-09-01: 统一 sys.modules 注册 (dataclass 兜底)
+    spec.loader.exec_module(m)
+    _SS_MODS["gen_tactile"] = m
+    return m
+
+
+def _ss_env_obs(log):
+    """真实采样: metaworld env (复用 YOLO env) → (obs39, img)"""
+    import numpy as np
+    aligner = _yolo_ensure_aligner(log)
+    aligner.env._freeze_rand_vec = False
+    aligner.env.reset(seed=0)
+    aligner.env._freeze_rand_vec = True
+    img = aligner.env.render()
+    obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
+    return obs39, img
+
+
+def _ss_ensure_obs43(log):
+    """真实 43D obs: metaworld 39D + 触觉合成 → fuse_sensors (perception.py), 缓存供下游"""
+    import numpy as np
+    if "obs43" in _SS_STATE:
+        return _SS_STATE["obs43"]
+    obs39, _img = _ss_env_obs(log)
+    tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+    obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
+    _SS_STATE.update({"obs43": obs43, "obs39": obs39})
+    return obs43
 
 
 def node_ss_s1(ctx):
-    """S1 时空感知前端 — 传感器融合 (RGB-D+力觉+触觉) → 43D obs (观测方程 y=Cx, 源码 perception.py)"""
-    _ss_run(ctx, "S1 时空感知前端", "perception.py")
+    """时空感知前端 — 📡传感器融合: metaworld 采样 39D + 触觉合成 → fuse_sensors() → 43D (perception.py)
+    🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        if "状态向量" in name or "obs" in name.lower():
+            obs43 = _ss_ensure_obs43(log)
+            if log:
+                log(f"🧩 43D obs (真实): 39D 视觉 [0:39] + 触觉4D [39:43] · "
+                    f"grasp={obs43[39]:.3f} contact={obs43[40]:.3f} dir=({obs43[41]:.2f},{obs43[42]:.2f})")
+            return True
+        obs39, _img = _ss_env_obs(log)
+        tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+        obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
+        _SS_STATE.update({"obs43": obs43, "obs39": obs39})
+        if log:
+            log(f"📡 传感器融合 (真实): 39D+触觉4D → 43D · hand={np.round(obs39[0:3],3)} "
+                f"光模块={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 传感器融合真实执行失败: {e}")
+        return False
 
 
 def node_ss_s2(ctx):
-    """S2 并行处理层 (快慢分离) — ⚡前馈加速器(左脑MLP, u_ff 30%) ‖ 🔮自适应状态估计器(右脑GRU 卡尔曼)"""
-    _ss_run(ctx, "S2 并行处理层", "parallel.py")
+    """并行处理层 — ⚡前馈加速器(FeedforwardAccelerator) / 🔮状态估计器(AdaptiveStateEstimator) (parallel.py)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        par = _ss_import("parallel")
+        obs43 = _ss_ensure_obs43(log)
+        if "估计" in name:
+            est = par.AdaptiveStateEstimator()
+            act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
+            lat = _SS_STATE.get("latent", obs43[:4])
+            latent_pred = est.predict(np.asarray(lat, dtype=float), act4)
+            # 🐛 2026-09-02 老倪: 估计器必须预测+校正闭环 — 原只 predict 没 update,
+            #   "自适应状态估计器"的卡尔曼校正(用观测 z_k 修正先验)根本没执行, 名不副实
+            obs39 = _SS_STATE.get("obs39")
+            if obs39 is None:
+                obs39, _ = _ss_env_obs(log)
+            z_k = np.concatenate([obs39[0:3], [obs39[3]]])   # 观测: 手位置 + 夹爪开度 (与 latent 同维)
+            latent = est.update(np.asarray(latent_pred, dtype=float), np.asarray(z_k, dtype=float))
+            _SS_STATE["latent"] = np.asarray(latent, dtype=float)
+            if log:
+                log(f"🔮 状态估计器 (真实): predict→{np.round(latent_pred,4)} · "
+                    f"update(K·(z−x̂₋))→latent={np.round(latent,4)} (parallel.py AdaptiveStateEstimator)")
+            return True
+        accel = par.FeedforwardAccelerator()
+        u_ff = accel.forward(obs43)
+        # 🧠 2026-09-08 老倪目检实锤: 域外布局 forward 走解析守卫 → probe 空 → 直方图无数据。
+        #   补一次真 MLP 前向仅填探针 (诊断通道, 不参与控制) — 直方图展示真实 MLP 激活。
+        if not (accel.probe or {}).get("act_raw") and getattr(accel, "_ff", None) is not None:
+            try:
+                accel._ff(np.asarray(obs43[:39], dtype=np.float32))  # 覆盖探针 key+_seq 自增
+            except Exception:
+                pass
+        _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)
+        _SS_STATE["ff_probe"] = accel.probe   # 🧠 探针缓存 (前馈激活直方图节点消费)
+        if log:
+            # 🧠 探针 (2026-09-04): 展示 MLP 在想什么 — 层活跃/能量 + 输出归因 top 单元
+            _p = accel.probe
+            if _p and "layers" in _p:
+                _ls = _p["layers"]
+                _act = " · ".join(f"L{i+1}:{l['active']}/{l['dim']}活 E={l['act_l2']:.1f}"
+                                  for i, l in enumerate(_ls))
+                _top = " · ".join(
+                    f"u{d+1}←单元{j}({c:+.3f})" for d in range(3)
+                    for j, c in _p["out_contrib"][d][:1])
+                log(f"⚡ 前馈加速器 (真实): u_ff={np.round(u_ff,3)} · 🧠[{_act}] · 归因 {_top} "
+                    f"(parallel.py; obs: 手{_p['obs']['hand']}→目标{_p['obs']['target']} d={_p['obs']['d_h']})")
+            else:
+                log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 并行处理层真实执行失败: {e}")
+        return False
+
+
+_FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线程)
+_FF_ATTR_WIN = None  # 🎯 归因分工窗口 (全局单实例)
+
+
+def node_ss_ff_hist(ctx):
+    """🧠 前馈激活直方图 — 读 ⚡前馈加速器探针 (ff_probe) → 三层 512 激活分布直方图
+    引线: ⚡前馈加速器 → 本节点 (数据经 _SS_STATE['ff_probe'] 流通)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np   # 🐛 2026-09-09: 漏 import → 单步报 name 'np' is not defined
+        probe = _SS_STATE.get("ff_probe")
+        if not probe or "act_raw" not in probe:
+            if log:
+                log("🧠 前馈激活: 无探针数据 — 先运行 ⚡前馈加速器节点 (▶运行或单步)")
+            return False
+        global _FF_HIST_WIN
+        _win = getattr(ctx.get("module"), "_ff_hist_win", None)   # 优先 module 侧单例 (双击同窗)
+        if _win is None:
+            if _FF_HIST_WIN is None:
+                from ff_hist_view import FFHistView   # 同目录, 延迟 import (Qt 依赖)
+                _FF_HIST_WIN = FFHistView()
+            _win = _FF_HIST_WIN
+            if ctx.get("module") is not None:
+                try:
+                    ctx["module"]._ff_hist_win = _win
+                except Exception:
+                    pass
+        _FF_HIST_WIN = _win
+        _win.push(probe)
+        if not _win.isVisible():
+            _win.show()
+        _win.raise_()
+        _win.activateWindow()
+        if log:
+            ls = probe.get("layers") or []
+            _act = " · ".join(f"L{i+1}:{l.get('active', 0)}/512" for i, l in enumerate(ls))
+            log(f"🧠 前馈激活直方图: 已更新 [{_act}] · u_ff={np.round(probe.get('u_ff', []), 3)} "
+                f"(窗口: 三层激活分布, 0=ReLU截断)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 前馈激活直方图失败: {e}")
+        return False
+
+
+def node_ss_ff_attrib(ctx):
+    """🎯 归因·分工 — ⚡前馈探针 → 归因堆叠图 (谁在指挥) + 512单元功能散点 (PCA/t-SNE)
+    引线: ⚡前馈加速器 → 本节点"""
+    log = ctx.get("log")
+    try:
+        probe = _SS_STATE.get("ff_probe")
+        if not probe or "act_raw" not in probe:
+            if log:
+                log("🎯 归因分工: 无探针数据 — 先运行 ⚡前馈加速器节点")
+            return False
+        global _FF_ATTR_WIN
+        _win = getattr(ctx.get("module"), "_ff_attr_win", None)   # 优先 module 侧单例 (双击同窗)
+        if _win is None:
+            if _FF_ATTR_WIN is None:
+                from ff_attrib_view import FFAttribView   # 延迟 import (Qt 依赖)
+                _FF_ATTR_WIN = FFAttribView()
+            _win = _FF_ATTR_WIN
+            if ctx.get("module") is not None:
+                try:
+                    ctx["module"]._ff_attr_win = _win
+                except Exception:
+                    pass
+        _FF_ATTR_WIN = _win
+        _win.push(probe)
+        if not _win.isVisible():
+            _win.show()
+        _win.raise_()
+        _win.activateWindow()
+        if log:
+            log("🎯 归因分工: 已更新 (堆叠=4维驱动能量 · 散点: 点 PCA 或 t-SNE 生成)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 归因分工失败: {e}")
+        return False
 
 
 def node_ss_dyn(ctx):
-    """📈 动力学预测-校正 — 先验预测 next_obs + 状态校正残差 (接触信号源头)"""
-    _ss_run(ctx, "动力学预测-校正", "dynamics.py")
+    """动力学预测-校正 — 📈先验动力学预测器(PriorDynamicsPredictor) / 🧪状态校正器(state_correction)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        obs43 = _ss_ensure_obs43(log)
+        act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
+        if "校正" in name:
+            cog = _ss_import("cognition")
+            prior = _SS_STATE.get("prior")
+            if prior is None:
+                dyn = _ss_import("dynamics")
+                lat = _SS_STATE.get("latent", obs43[:4])
+                prior = dyn.PriorDynamicsPredictor(A=1.0, B=0.02).predict(np.asarray(lat, dtype=float), act4)
+                _SS_STATE["prior"] = np.asarray(prior, dtype=float)
+            obs39 = _SS_STATE.get("obs39")
+            if obs39 is None:
+                obs39, _ = _ss_env_obs(log)
+            tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+            z_k = np.concatenate([obs39[0:3], [tac[1]]])
+            corrected, residual = cog.state_correction(np.asarray(prior, dtype=float), z_k, K=0.5)
+            r = float(np.linalg.norm(residual))
+            cp = float(cog.contact_probability(r, gain=8.0))
+            _SS_STATE.update({"residual": np.asarray(residual, dtype=float), "contact_p": cp,
+                              "corrected": np.asarray(corrected, dtype=float)})
+            if log:
+                log(f"🧪 状态校正器 (真实): state_correction(prior,z_k) → residual={np.round(residual,4)} · "
+                    f"接触概率={cp:.3f} (cognition.py)")
+            return True
+        dyn = _ss_import("dynamics")
+        lat = _SS_STATE.get("latent", obs43[:4])
+        prior = dyn.PriorDynamicsPredictor(A=1.0, B=0.02).predict(np.asarray(lat, dtype=float), act4)
+        _SS_STATE["prior"] = np.asarray(prior, dtype=float)
+        if log:
+            log(f"📈 先验动力学预测器 (真实): predict(latent,act) → next_obs={np.round(prior,4)} (dynamics.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 动力学预测-校正真实执行失败: {e}")
+        return False
 
 
 def node_ss_s3(ctx):
-    """S3 认知决策层 — 动作调制器握否决权 (8阶段状态机 + 按阶段融合 + 夹持锁存) → 安全执行边界 (饱和限幅)"""
-    _ss_run(ctx, "S3 认知决策层", "cognition.py")
+    """认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        if "边界" in name:
+            u = _SS_STATE.get("u", np.zeros(4))
+            u_sat = _ss_import("safety").saturate(np.asarray(u, dtype=float), limit=0.6)
+            _SS_STATE["u_sat"] = np.asarray(u_sat, dtype=float)
+            if log:
+                log(f"🛡 安全执行边界 (真实): saturate(u={np.round(u,3)}, limit=0.6) → "
+                    f"u_sat={np.round(u_sat,3)} (safety.py)")
+            return True
+        cog = _ss_import("cognition")
+        u_ff = _SS_STATE.get("u_ff", np.zeros(4))
+        cp = _SS_STATE.get("contact_p", 0.1)
+        res = _SS_STATE.get("residual", np.zeros(4))
+        r = float(np.linalg.norm(res))
+        u_fb = np.concatenate([np.clip(0.5 * np.asarray(res, dtype=float)[:3], -0.5, 0.5), [0.0]])
+        mod = cog.ActionModulator()
+        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, float(cp), r)
+        if np.ndim(u) == 0:
+            u = np.zeros(4)
+        u = np.asarray(u, dtype=float).copy()
+        u[3] = mod.gripper_cmd(u_ff[3])
+        _SS_STATE.update({"u": u, "stage": stage})
+        if log:
+            log(f"🧭 动作调制器 (真实): decide(u_ff,u_fb,cp={cp:.2f},r={r:.3f}) → 阶段「{stage}」· "
+                f"u={np.round(u,3)} (cognition.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 认知决策层真实执行失败: {e}")
+        return False
 
 
 def node_ss_exec(ctx):
-    """执行层 — 机器人执行器 → 物理世界 → z_k 传感器反馈 → 卡尔曼校正闭环"""
-    _ss_run(ctx, "执行层物理闭环", "execution.py")
+    """执行层 — 🤖机器人执行器(RobotExecutor.execute) / 🌍物理世界(PhysicalWorld 质量/惯量)"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        name = ctx.get("name", "")
+        ex = _ss_import("execution")
+        if "物理" in name:
+            w = ex.PhysicalWorld()
+            _SS_STATE["world"] = w
+            if log:
+                try:
+                    gm = np.asarray(w.generalized_mass())
+                    gd = np.round(np.diag(gm)[:4], 3) if gm.ndim == 2 and gm.shape[0] == gm.shape[1] else np.round(gm.ravel()[:4], 3)
+                except Exception:
+                    gd = "?"
+                log(f"🌍 物理世界 (真实): total_mass={w.total_mass}kg · 广义质量≈{gd} · "
+                    f"7自由度 (execution.py)")
+            return True
+        u_sat = _SS_STATE.get("u_sat", np.zeros(4))
+        u_vec = ex.RobotExecutor().execute(np.asarray(u_sat, dtype=float))
+        if np.ndim(u_vec) == 0:
+            u_vec = np.zeros(4)
+        _SS_STATE["u_prev"] = np.asarray(u_vec, dtype=float)[:3]
+        if log:
+            log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
+                f"(execution.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 执行层真实执行失败: {e}")
+        return False
 
 
 def node_ss_video(ctx):
     """🎥 操作视频 — 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"""
     module = ctx.get("module")
+    label = ctx.get("label", "")
+    if label == "▶运行":
+        # 🐛 2026-09-01 老倪: ▶运行动画播放中不自动弹窗 — 弹窗置顶(_show_nonmodal) +
+        #   断点暂停时主线程冻结 → 窗口关不掉 + "studio.py is not responding"; 双击才弹
+        log = ctx.get("log")
+        if log:
+            log("🎥 操作视频: 运行模式跳过弹窗 — 双击节点打开")
+        return True
     if module and hasattr(module, "on_infer_video"):
         module.on_infer_video()
     return True
 
 
+def node_ss_3d_view(ctx):
+    """🧭 3D 视图 — 打开 Apollo 风格 3D 分层视图 (可视化层观察器, 源=物理世界)
+    ▶运行 模式跳过弹窗 (同操作视频); 双击/右键运行 → 打开/置顶 3D 窗口"""
+    module = ctx.get("module")
+    label = ctx.get("label", "")
+    log = ctx.get("log")
+    if label == "▶运行":
+        if log:
+            log("🧭 3D 视图: 运行模式跳过弹窗 — 双击节点打开 (防断点冻结关不掉)")
+        return True
+    if module and hasattr(module, "open_ss_3d"):
+        module.open_ss_3d()
+        if log:
+            log("🧭 3D 视图: 已打开 (Apollo 风格分层视图, 与引擎/画布同源)")
+        return True
+    if log:
+        log("⚠️ 3D 视图: 无 module 上下文 (仅画布内双击/右键运行可用)")
+    return False
+
+
 def node_ss_scope(ctx):
     """📊 仿真波形 — 双击显示最近一次状态空间仿真波形 (距离/残差/接触概率 + 阶段切换)"""
     module = ctx.get("module")
+    label = ctx.get("label", "")
+    if label == "▶运行":
+        # 🐛 2026-09-01 老倪: 同 node_ss_video — 运行模式不弹窗, 双击节点才打开
+        log = ctx.get("log")
+        if log:
+            log("📊 仿真波形: 运行模式跳过弹窗 — 双击节点查看")
+        return True
     if module and hasattr(module, "show_state_space_scope"):
         module.show_state_space_scope()
     return True
@@ -1404,27 +2317,43 @@ def node_ss_scope(ctx):
 _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
-_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 21, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 34, "class AdaptiveStateEstimator")
-_EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 14, "class PriorDynamicsPredictor")
+_EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
+_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")
+_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 186, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128→158 (重写后漂移; 现按符号动态定位)
+_EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 62, "class PriorDynamicsPredictor")
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
-_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 27, "class ActionModulator")
-_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 27, "class ActionModulator")
+_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")
+# 🐛 2026-09-02 老倪: 动作调制器节点双击 → 直接显示 decide 方法本体 (否决权+前馈反馈相加+阶段限速),
+#   不是整个类 (原映射 class 行号 27 也不准, 实际 30)
+_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 216, "def decide")
 _EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class PhysicalWorld")
 
-_reg("ss_bg1",   ["时空感知前端"], "S1 时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
+# 🧮 标定层 (2026-09-02): 与 datasets/policies 同级别 — src/lerobot/calibration/calibration_layer.py
+_CALIB_DIR_LOC = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
+_EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 73, "class CalibrationLayer")
+
+# 📦 metaworld 数据源 (2026-09-02 老倪: 数据源节点必须接 lerobot 框架数据层 —
+#   与感知/决策节点同构: 右键打开 + VSCode 断点进 datasets 真实源码,
+#   不再是 tools/gui/node_logic.py 的控制台模板)
+# 🐛 2026-09-02: line 必须指向第一行实际代码 (61, root=...), 不是 def 行(54) —
+#   debugpy 对 def/docstring 行断点不命中 (函数第一条语句是 docstring), 踩过
+_EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
+                                      "metaworld_data_source.py"), 54, "def probe_data_source")
+
+_reg("ss_bg1",   ["时空感知前端"], "时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
 _reg("ss_obs",   ["43D", "统一状态向量"], "🧩 43D 统一状态向量 — 39D 视觉结构 + 触觉 4D (源码 perception.py)", node_ss_s1)
-_reg("ss_bg2",   ["并行处理层"], "S2 并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
+_reg("ss_bg2",   ["并行处理层"], "并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
 _reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
 _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
+_reg("ss_ff_hist", ["前馈激活", "激活直方图"], "🧠 前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断, 引线 S2→本节点)", node_ss_ff_hist)
+_reg("ss_ff_attrib", ["归因", "分工", "堆叠", "t-SNE"], "🎯 归因·分工 — 512单元按输出维分工: 归因堆叠图(谁在指挥)+单元功能散点(PCA/t-SNE, 引线 S2→本节点)", node_ss_ff_attrib)
 _reg("ss_pred",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ₋=A·x̂ₖ₋₁+B·uₖ 预测 next_obs (源码 dynamics.py)", node_ss_dyn)
 _reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
-_reg("ss_bg3",   ["认知决策层"], "S3 认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
+_reg("ss_bg3",   ["认知决策层"], "认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
 _reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 8阶段状态机(接近→对位→下降→抓取→抬起→转移→插入→完成, 与操作视频状态机同构) + 否决权 + 夹持锁存 + 按阶段融合 (源码 cognition.py ActionModulator)", node_ss_s3)
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
@@ -1432,6 +2361,7 @@ _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/
 _reg("ss_world", ["物理世界"], "🌍 物理世界 — 执行结果→传感器反馈 z_k→卡尔曼校正闭环 (源码 execution.py PhysicalWorld)", node_ss_exec)
 _reg("ss_video", ["操作视频"], "🎥 操作视频 — metaworld 训练后 rollout 视频对比窗口 (多模型同步播放, InferenceVideoDialog)", node_ss_video)
 _reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空间仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)", node_ss_scope)
+_reg("ss_3d_view", ["3D 视图"], "🧭 3D 视图 — Apollo 风格 3D 分层视图 (与引擎/画布同源, 可视化层观察器; 源=物理世界)", node_ss_3d_view)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1439,11 +2369,11 @@ _reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空�
 #   真实实现: src/lerobot/policies/left_right/state_space/planner.py
 #   慢决策: 只在任务开始/异常时介入, 不进实时控制回路
 # ════════════════════════════════════════════════════════════════
-_EXTERNAL_LOC["ss_bg5"]    = (os.path.join(_SS_DIR, "planner.py"), 1, "planner.py")
-_EXTERNAL_LOC["ss_llm_in"] = (os.path.join(_SS_DIR, "planner.py"), 75, "class TaskPlanner")
-_EXTERNAL_LOC["ss_llm"]    = (os.path.join(_SS_DIR, "planner.py"), 75, "class TaskPlanner")
-_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 177, "class ExceptionReasoner")
-_EXTERNAL_LOC["ss_skill"]  = (os.path.join(_SS_DIR, "planner.py"), 227, "class SkillComposer")
+_EXTERNAL_LOC["ss_bg5"]    = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")  # 🐛 2026-09-02: sym 误写路径字符串, 非符号
+_EXTERNAL_LOC["ss_llm_in"] = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")
+_EXTERNAL_LOC["ss_llm"]    = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")
+_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 196, "class ExceptionReasoner")
+_EXTERNAL_LOC["ss_skill"]  = (os.path.join(_SS_DIR, "planner.py"), 246, "class SkillComposer")
 
 
 def node_ss_llm(ctx):
@@ -1535,12 +2465,25 @@ def node_ss_skill(ctx):
 
 def node_ss_bg5(ctx):
     """大模型层背景行 — 云端任务规划 (慢决策 · 回路外)"""
-    _ss_run(ctx, "大模型层 · 云端任务规划", "planner.py")
+    log = ctx.get("log")
+    if log:
+        log(f"🧠 大模型层 (背景): 任务规划/异常推理/技能编排 — 慢决策回路外 (planner.py)")
+    return True
 
 
 def node_ss_llm_in(ctx):
-    """📝 任务指令 — MES 工单 / 自然语言指令输入"""
-    _ss_run(ctx, "任务指令输入", "planner.py")
+    """📝 任务指令 — MES 工单 / 自然语言指令输入 → 真实下发 TaskPlanner (planner.py)"""
+    log = ctx.get("log")
+    try:
+        ins = (ctx.get("params") or {}).get("instruction", "插入光模块")
+        _SS_STATE["instruction"] = ins
+        if log:
+            log(f"📝 任务指令 (真实): 「{ins}」 → 已下发 🧠任务规划器 (planner.py)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 任务指令处理失败: {e}")
+        return False
 
 
 _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
@@ -1558,30 +2501,760 @@ _EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37
 
 
 def node_ss_yolo(ctx):
-    """🎯 YOLO 目标检测 — 22 个检测目标 (类别/位姿/方向) + 指标 (mAP/推理时间)
-    双击详情走画布 _show_state_space_detail; 导出走节点右下角按钮/右键菜单"""
+    """🎯 YOLO 目标检测 — 真实执行: metaworld 渲染帧 → YOLO detect_3d → align() 替换 39D 段
+    源码: yolo_state_aligner.py (YoloStateAligner / detect_3d / align) — 右键源码与真实执行同源, 断点可进
+    🐛 2026-09-01: 原执行 detection_targets.py 清单(≠右键源码 yolo_state_aligner.py) → 断点永不命中"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
-        path = os.path.join(_YOLO_DIR, "detection_targets.py")
-        spec = _ilu.spec_from_file_location("yolo_3d.detection_targets", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        data = m.load_detection_targets()
+        import numpy as np
+        aligner = _yolo_ensure_aligner(log)
+        det3d, obs39, _img = _yolo_capture(log, aligner)
+        aligned = aligner.align(obs39, det3d)
+        _YOLO_CACHE["aligned39"] = aligned
         if log:
-            from collections import Counter
-            c = Counter(t["category"] for t in data["targets"])
-            log(f"🎯 YOLO 目标检测: {len(data['targets'])} 个检测目标 · {data.get('backbone', 'YOLOv8s')}")
-            log("   按类别: " + " · ".join(f"{k}{v}" for k, v in c.items()))
-            log("   指标: mAP@0.5 / mAP@0.5:0.95 / 准确率 / 位姿误差 / 推理时间")
-            log("   📥 点节点右下角「导出」按钮 → Excel (清单+指标定义+模型基线) 并上传 datadrive.world")
+            n = len(det3d)
+            det2d = _YOLO_CACHE.get("det2d", {})
+            desc = " ".join(
+                f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
+                + (f" conf={det2d[k]['conf']:.2f}" if k in det2d else "")
+                for k, v in sorted(det3d.items()))
+            log(f"🎯 YOLO 目标检测 (真实): {n}/3 目标 · {desc}")
+            log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
+                f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
         return True
     except Exception as e:
         if log:
-            log(f"⚠️ YOLO 检测目标加载失败: {e}")
+            log(f"⚠️ YOLO 目标检测真实执行失败: {e}")
         return False
 
 
 _reg("ss_yolo", ["YOLO", "目标检测"],
-     "🎯 YOLO 目标检测 — 22 个检测目标 (类别识别/2D检测/位姿/扫码/缺陷AOI/状态) + mAP/推理时间指标; 双击=清单, 📥按钮=Excel导出 (数据源 flows/detection_targets.json)",
+     "🎯 YOLO 目标检测 — 真实执行: YOLO detect_3d + align 替换 39D 段 (源码 yolo_state_aligner.py; 双击=清单, 📥按钮=Excel导出)",
      node_ss_yolo)
+
+
+def node_ss_aoi(ctx):
+    """🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测
+    源码: yolo_3d/quality_check.py (AOIQualityChecker.check) — 右键源码与真实执行同源, 断点可进
+    🐛 2026-09-02: 原只加载 detection_targets.json 清单 (无实际检测) → 改为真实帧图像处理检测"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        qc_path = os.path.join(_YOLO_DIR, "quality_check.py")
+        spec = _ilu.spec_from_file_location("yolo_3d.quality_check", qc_path)
+        qc = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(qc)
+        # 目标帧: 优先用 YOLO 节点缓存帧, 无则同源采样一帧 (与 node_ss_yolo 一致)
+        img = _YOLO_CACHE.get("img")
+        if img is None:
+            aligner = _yolo_ensure_aligner(log)
+            _, _, img = _yolo_capture(log, aligner)
+        checker = qc.AOIQualityChecker()
+        res = checker.check(img)
+        _YOLO_CACHE["aoi"] = res
+        if log:
+            for it in res.get("items", []):
+                v = it["value"] if it["value"] is not None else it.get("note", "—")
+                log(f"🔍 {it['target_id']} {it['defect']}: {v} (判据 {it['threshold']}) → "
+                    f"{'✅' if it['pass'] else '❌'}")
+            log(f"🔍 外观质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
+        return bool(res.get("pass"))
+    except Exception as e:
+        if log:
+            log(f"⚠️ 外观质量检测真实执行失败: {e}")
+        return False
+
+
+_reg("ss_aoi", ["外观质量检测"],
+     "🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 (DET-AOI-01~04; 双击=源码, 📥按钮=Excel导出清单)",
+     node_ss_aoi)
+
+
+# 🧮 标定层 (2026-09-02 老倪: Drifting Models 思想 — 引力/斥力二分 + 平衡点; 回路外元层)
+_CALIB_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
+
+
+def node_ss_calib(ctx):
+    """🧮 标定层 — 引力(快速动作)/斥力(状态预测) 二分超参数 + 平衡点
+    源码: src/lerobot/calibration/calibration_layer.py (CalibrationLayer) — 与 datasets/policies 同级别
+    回路外元层: 收集/展示标定参数, 不参与引擎推理, 不改变拓扑/流程/架构"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_CALIB_DIR, "calibration_layer.py")
+        spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        layer = m.CalibrationLayer()
+        # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 _ss_tick idx 同映射)
+        mod = ctx.get("module")
+        stage, speed, residual, contact_p = "接近", 0.0, 0.0, 0.0
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is not None and tr.get("x") is not None and len(tr["x"]) > 0:
+            idx = int(min(getattr(mod, "_ss_round", 0), len(tr["t"]) - 1))
+            stage = str(tr["stage"][idx]).replace("阶段 ", "")
+            # 🐛 2026-09-03: tr["u_sat"] 存的是标量范数 (float), 不是向量 —
+            #   [:3] 索引 0-d 数组抛 "too many indices" (既有 bug, 被 try 吞)
+            _us = tr["u_sat"][idx] if "u_sat" in tr else tr.get("u_sat_vec", [0])[idx]
+            speed = float(np.linalg.norm(np.asarray(_us, dtype=float)) )
+            residual = float(tr["residual"][idx])
+            contact_p = float(tr["contact_p"][idx])
+        gap = layer.equilibrium_gap(stage, speed, residual, contact_p)
+        _SS_STATE["calib"] = {"layer": layer, "stage": stage, "gap": gap,
+                              "attr": layer.attr, "rep": layer.rep, "lat": layer.lat}
+        if log:
+            log(f"🧮 标定层 (真实): {layer.summarize(stage, speed, residual, contact_p)}")
+            log(f"   引力标定 (快速动作): Kp={layer.attr['Kp']} · 当前阶段速度上限 "
+                f"{layer.attr['stage_v_cap'].get(stage, '—')} m/s")
+            log(f"   斥力标定 (状态预测): K_kalman={layer.rep['K_kalman']} · 残差EMA={layer.rep['res_ema']} · "
+                f"接触增益={layer.rep['contact_gain']} · 否决阈值={layer.rep['veto_th']}")
+            log(f"   {layer.latent_summary()}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 标定层执行失败: {e}")
+        return False
+
+
+_reg("ss_calib", ["标定层"],
+     "🧮 标定层 — 引力(快速动作: Kp+阶段速度上限/下限) vs 斥力(状态预测: K_kalman+残差EMA+接触增益+否决阈值), 平衡偏差=|引力势−斥力势| (Drifting Models 反称场; 源码 calibration_layer.py)",
+     node_ss_calib)
+
+
+def node_ss_lat(ctx):
+    """🧮 潜空间 — 世界模型预测流形的标定 (维度/类别/速度场) + 观测有效维实测
+    源码: src/lerobot/calibration/calibration_layer.py (LATENT_CALIB)
+    地图导航视角: 潜空间=流形地图, 世界模型=导航仪 (沿速度场 prior A·x+B·u 推演);
+    本节点 = 地图的几何标定 + 引擎校验: 对引擎轨迹 39D 观测做 PCA → 95% 方差有效维
+    (数据流形固有维实测) vs 标定 latent_dim; 潜坐标/速度场向量取引擎真实 latent/prior。
+    ⚠️ 维度/类别是引擎结构常数, 本节点只标定+校验, 不写引擎字面量 (改潜维=重构卡尔曼)。"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_CALIB_DIR, "calibration_layer.py")
+        spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        layer = m.CalibrationLayer()
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("⚠️ 潜空间: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源)")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage = str(tr["stage"][idx]).replace("阶段 ", "")
+        # ── 潜坐标 (地图位置) + 速度场 (世界模型一步推演) — 引擎真实量 ──
+        lat = np.asarray(tr.get("corrected_vec", tr["latent_vec"])[idx], dtype=float)
+        lat_pred = np.asarray(tr["latent_vec"][idx], dtype=float)      # 估计器先验
+        prior = np.asarray(tr.get("prior_vec", np.zeros(4))[idx], dtype=float)
+        vel = prior - lat_pred                                          # 地图上速度场向量
+        # ── 观测流形有效维实测: 全轨迹 39D 视觉观测 PCA (95% 累积方差) ──
+        obs_all = np.asarray(tr["obs"], dtype=float)[:, :39]
+        X = obs_all - obs_all.mean(axis=0)
+        _, S, _ = np.linalg.svd(X, full_matrices=False)
+        var = S ** 2 / max(float((S ** 2).sum()), 1e-12)
+        cum = np.cumsum(var)
+        eff_dim = int(np.searchsorted(cum, 0.95) + 1) if len(cum) else 0
+        eff_dim99 = int(np.searchsorted(cum, 0.99) + 1) if len(cum) else 0
+        # ── 校验: 标定陈述 vs 引擎实测 ──
+        checks = []
+        checks.append(f"标定潜维 {layer.lat['latent_dim']}D vs 引擎潜状态实际 {lat.size}D"
+                      + (" ✓" if layer.lat["latent_dim"] == lat.size else " ✗ 标定过期"))
+        checks.append(f"观测流形 {layer.lat['state_dim']}D → 轨迹有效维 {eff_dim}D@95% / "
+                      f"{eff_dim99}D@99% (任务路径低维嵌入: 沿路径推进+夹爪; "
+                      f"孔位/姿态常量维无方差)")
+        _SS_STATE["latent_calib"] = {"idx": idx, "stage": stage, "latent": lat,
+                                     "prior": prior, "vel": vel,
+                                     "eff_dim": eff_dim, "eff_dim99": eff_dim99,
+                                     "lat": dict(layer.lat)}
+        if log:
+            log(f"🧮 潜空间 (真实·t={tr['t'][idx]:.2f}s {stage}): 潜坐标 (位置3+预测力1)="
+                f"{np.round(lat, 4)}")
+            log(f"   速度场 (世界模型一步推演 prior−x̂₋): {np.round(vel, 4)} · "
+                f"A={layer.lat['prior_A']:.1f} 恒速线性流形 ({layer.lat['flow_kind']})")
+            log(f"   PCA 校验: " + " · ".join(checks))
+            log(f"   标定: {layer.latent_summary()}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 潜空间执行失败: {e}")
+        return False
+
+
+_reg("ss_lat", ["潜空间", "潜空", "潜空-流形"],
+    "🧮 潜空-流形 — 潜空间/世界模型流形标定 (原「潜空间 · 世界模型流形标定」): 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 输入含 L4 流形(接触/性能)连线 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
+    node_ss_lat)
+_EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 58, "LATENT_CALIB")
+
+
+# 🧮 流形层 (2026-09-03 老倪: 光模块精密插拔 = 高维状态空间的低维流形 —
+#   接触流形=插拔安全通道(沿流形推进=测地线, 偏离→引脚弯曲), 性能流形=光耦合
+#   对准代价/效率曲面. 回路外几何分析元层, 与标定层同款: 不参与推理/不加安全通道)
+_MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
+
+
+def node_ss_skill(ctx):
+    """🧩 原子技能层 (2026-09-07 老倪: 决策层与执行层之间加技能模板层)
+    机制: 8 个原子技能 (SK01-08) = 固定轨迹模板; 决策层 (动作调制器状态机经安全边界)
+    明确选定当前技能并**实时赋值** (阶段目标/速度), 技能模板被复制实例化 → 快速执行 →
+    直接输出执行指令给 🤖执行器。
+    模板权威源 = src/lerobot/.../state_space/skills/atomic_skills.py (SKILL_BY_CODE,
+    右键本节点看真实源码); 数据真源 = module._ss_tr 当前帧 (stage=当前技能 / target=
+    决策赋值目标 / u_exec_vec=实际下发速度)。"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        # 🧩 模板真源: skills/atomic_skills.py (2026-09-08 集中到 src/lerobot)
+        _p = os.path.join(_SS_DIR, "skills", "atomic_skills.py")
+        _spec = _ilu.spec_from_file_location("ss_atomic_skills", _p)
+        _m = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_m)
+        name = ctx.get("name", "")
+        p = ctx.get("params", {}) or {}
+        sk = p.get("skill") or {}
+        tpl = str(sk.get("template", "SK--"))
+        stg = str(sk.get("stage", ""))
+        _tpl = _m.SKILL_BY_CODE.get(tpl) or _m.SKILL_BY_STAGE.get(stg)
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log(f"🧩 原子技能 {name} · {tpl}: 无引擎轨迹 — 先点 ▶ 运行状态空间")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage_now = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
+        tgt = np.asarray(tr["target"][idx], dtype=float) if tr.get("target") else np.zeros(3)
+        u = np.asarray(tr["u_exec_vec"][idx], dtype=float) if tr.get("u_exec_vec") else np.zeros(4)
+        act = bool(stg and stage_now == stg)
+        if log:
+            if _tpl is not None:
+                log(f"🧩 模板 {tpl} {_tpl.name}: {_tpl.desc}")
+                log(f"   目标 {_tpl.goal} · 参数 {_tpl.params} · 推进 {_tpl.evidence}")
+            if act:
+                log(f"🧩 原子技能 ▶ {name} 激活 · 模板{tpl} (决策层选定「{stg}」→ 模板实例化快速执行) · "
+                    f"决策实时赋值: 目标 {np.round(tgt[:3], 3)} · 执行速度 u={np.round(u[:3], 3)} m/s")
+            else:
+                log(f"🧩 原子技能 {name} 待命 · 模板{tpl} (当前阶段 {stage_now or '—'}, 未调用)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 原子技能层执行失败: {e}")
+        return False
+
+
+def node_ss_mani(ctx):
+    """🧮 流形层 — 接触流形 (插拔通道: 切向进度/法向偏离/V) ‖ 性能流形 (对准代价 V_p/η)
+    源码: src/lerobot/manifold/manifold_layer.py (ContactManifold / PerformanceManifold)
+    回路外元层: 从引擎轨迹当前帧取真实量 (obs/peg_head/target/v/stage) 实算,
+    断点可进; 不参与推理, 不新增安全通道 (唯一三层安全=否决+限幅+Sys0)"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_MANIFOLD_DIR, "manifold_layer.py")
+        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_layer", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        name = ctx.get("name", "")
+        # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 node_ss_calib 同映射)
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("⚠️ 流形层: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源)")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        stage = str(tr["stage"][idx]).replace("阶段 ", "")
+        hand = np.asarray(tr["x"][idx], dtype=float)
+        peg_head = np.asarray(tr["peg_head"][idx], dtype=float)
+        target = np.asarray(tr["target"][idx], dtype=float)
+        v = np.asarray(tr["v_vec"][idx], dtype=float) if tr.get("v_vec") else np.zeros(3)
+        _SS_STATE["mani_frame"] = {"idx": idx, "stage": stage}
+        if "接触" in name:
+            cm = m.ContactManifold()
+            r = cm.decompose(hand, peg_head, target, v, stage)
+            _SS_STATE["contact_mani"] = r
+            if log:
+                log(f"🧮 接触流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {cm.summarize(r)}")
+                if r["axis"] is not None:
+                    log(f"   通道轴 â={np.round(r['axis'],3)} · 切向进度 "
+                        f"‖e∥‖={r['progress']:.4f}m · 法向偏离 ‖e⊥‖={r['risk']:.4f}m "
+                        f"(阈 {r['risk_th']}m) · V̇={r['Vdot']:.3e} (负=沿测地线收敛)")
+                else:
+                    log(f"   自由空间 (转移段无接触约束) · ‖e‖={r['progress']:.4f}m · "
+                        f"V̇={r['Vdot']:.3e}")
+            return True
+        if "性能" in name:
+            pm = m.PerformanceManifold()
+            r = pm.evaluate(peg_head, stage=stage)
+            _SS_STATE["perf_mani"] = r
+            if log:
+                log(f"🧮 性能流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {pm.summarize(r)}")
+                log(f"   修正方向 ∇V_p={np.round(r['grad'],4)} (最优对准 = 沿 −∇ 下山到 δ→0)")
+            return True
+        if log:
+            log("⚠️ 流形层: 节点名未识别接触/性能分派")
+        return False
+    except Exception as e:
+        if log:
+            log(f"⚠️ 流形层执行失败: {e}")
+        return False
+
+
+_reg("ss_mani_c", ["接触流形"],
+    "🧮 接触流形 — 插拔安全通道: 误差 e 沿通道轴分解 → 切向 e∥(测地线进度)/法向 e⊥(离流形漂移, 弯曲风险), V=½‖e‖², V̇=−e·v (源码 manifold_layer.py ContactManifold)",
+    node_ss_mani)
+_reg("ss_mani_p", ["性能流形"],
+    "🧮 性能流形 — 光耦合对准代价: δ=光模块头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
+    node_ss_mani)
+
+# 🧩 原子技能层 (2026-09-07 老倪: 决策层↔执行层之间; 8 技能 = 八阶段模板 SK01-08;
+#   决策层实时赋值轨迹 → 复制模板快速执行 → 直接输出执行指令给执行器; 播放 demo 特判见上)
+_SKILLS = [
+    ("sssk1", "① 接近", "接近", "SK01"),
+    ("sssk2", "② 对位", "对位", "SK02"),
+    ("sssk3", "③ 下降", "下降", "SK03"),
+    ("sssk4", "④ 抓取", "抓取", "SK04"),
+    ("sssk5", "⑤ 抬起", "抬起", "SK05"),
+    ("sssk6", "⑥ 转移", "转移", "SK06"),
+    ("sssk7", "⑦ 插入", "插入", "SK07"),
+    ("sssk8", "⑧ 完成", "完成", "SK08"),
+]
+for _skid, _sktag, _skstage, _sktpl in _SKILLS:
+    _reg(_skid, [_sktag],
+         f"🧩 原子技能 {_sktag} · {_sktpl}: 固定轨迹模板 — 决策层选定本技能时实时赋值 "
+         f"(阶段目标/速度) → 模板复制实例化快速执行 → 输出执行指令给 🤖执行器 "
+         f"(模板源码 skills/atomic_skills.py, 真实源=引擎轨迹当前帧)",
+         node_ss_skill)
+
+# 🔗 2026-09-08 老倪: 原子技能源码集中到 src/lerobot/.../state_space/skills/atomic_skills.py —
+#   右键每个 SK 节点看对应技能类 (独立符号, 防"两节点显示同一段"坑)
+_SK_EXT_LOC = [
+    ("sssk1", 46, "class SK01Approach"), ("sssk2", 59, "class SK02Align"),
+    ("sssk3", 72, "class SK03Descend"), ("sssk4", 86, "class SK04Grasp"),
+    ("sssk5", 100, "class SK05Lift"), ("sssk6", 113, "class SK06Transfer"),
+    ("sssk7", 127, "class SK07Insert"), ("sssk8", 142, "class SK08Complete"),
+]
+for _skid, _ln, _sym in _SK_EXT_LOC:
+    _EXTERNAL_LOC[_skid] = (os.path.join(_SS_DIR, "skills", "atomic_skills.py"), _ln, _sym)
+
+# 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
+_EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 65, "class ContactManifold")
+_EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 154, "class PerformanceManifold")
+
+
+# 🧠 高级层 VLM 编码器 + 潜空间 Decoder (2026-09-08 老倪: encoder VLM→潜空间→decoder 高级功能;
+#   yolo/前馈/原子技能 基础功能。VLM 将 YOLO 检测框/触觉/图像帧 → token → 潜空间 z;
+#   流形(接触/性能)是 z 上的导航地图; Decoder 把流形坐标解码回动作建议 u_mani → 前馈融合)
+# 🧠 VLM 真实编码器加载 (2026-09-08 架构归位 — 老倪: 真实算法在 src/lerobot, GUI 只做壳)
+#   复用 node_metaworld_data 模式: exec(compile(真实文件绝对路径)) → co_filename 真实 →
+#   VSCode 右键/断点进 src/lerobot/policies/smolvla_lew/vlm_encoder.py (非 GUI 文件)。
+#   模块级缓存 ns → get_encoder() 单例跨节点执行保持 (模型只加载一次)。
+_VLM_ENC_NS = None
+_VLM_ENC_LOCK = threading.Lock()
+
+
+def _vlm_encoder_ns():
+    """加载并缓存 smolvla_lew.vlm_encoder 命名空间 (线程安全, 单例实例在 ns 内)"""
+    global _VLM_ENC_NS
+    if _VLM_ENC_NS is not None:
+        return _VLM_ENC_NS
+    with _VLM_ENC_LOCK:
+        if _VLM_ENC_NS is None:
+            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies",
+                              "smolvla_lew", "vlm_encoder.py")
+            _ns = {"__file__": _p, "__name__": "lerobot.policies.smolvla_lew.vlm_encoder"}
+            with open(_p, encoding="utf-8") as _f:
+                exec(compile(_f.read(), _p, "exec"), _ns)
+            if "get_encoder" not in _ns:
+                raise RuntimeError("smolvla_lew.vlm_encoder 缺少 get_encoder")
+            _VLM_ENC_NS = _ns
+        return _VLM_ENC_NS
+
+
+# 🎯 状态空间 ActionHead 加载 (2026-09-08 老倪: 解码侧也归位标准 smolvla 算法 —
+#   src/lerobot/policies/smolvla_lew/state_space_action_head.py, 纯 torch 可 exec)
+_SSAH_NS = None
+_SSAH_LOCK = threading.Lock()
+
+
+def _ssah_ns():
+    """加载并缓存 state_space_action_head 命名空间 (类定义, 轻量无副作用)"""
+    global _SSAH_NS
+    if _SSAH_NS is not None:
+        return _SSAH_NS
+    with _SSAH_LOCK:
+        if _SSAH_NS is None:
+            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies",
+                              "smolvla_lew", "state_space_action_head.py")
+            _ns = {"__file__": _p, "__name__": "lerobot.policies.smolvla_lew.state_space_action_head"}
+            with open(_p, encoding="utf-8") as _f:
+                exec(compile(_f.read(), _p, "exec"), _ns)
+            if "StateSpaceActionHead" not in _ns:
+                raise RuntimeError("state_space_action_head 缺少 StateSpaceActionHead")
+            _SSAH_NS = _ns
+        return _SSAH_NS
+
+
+def node_ss_vlm(ctx):
+    """🧠 VLM 通用视觉编码器 — GUI 薄壳 (算法全在 src, 老倪 2026-09-08)
+
+    真实算法: src/lerobot/policies/smolvla_lew/vlm_encoder.py encode_stage() —
+    帧 → SmolVLM2 真实前向 → 潜空间 z ∈ R⁹⁶⁰ (首次触发后台加载 ~15s)。
+    本壳职责: 取当前阶段真实帧 → 转发 encode_stage → 呈现结果。播放 demo 不跑 (铁律)。"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("🧠 VLM: 无引擎轨迹 — 先点 ▶ 运行 (🎥真实化, 每阶段出真实帧)")
+            return False
+        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
+        stage = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
+        meta = tr.get("_meta") or {}
+        x = np.asarray(tr["x"][idx], dtype=float)
+        peg = np.asarray(tr["peg"][idx], dtype=float)
+        tgt = np.asarray(tr["target"][idx], dtype=float)
+        if log:
+            log(f"🧠 VLM 通用视觉编码器 [当前阶段={stage}]: token=图像帧+触觉+检测框")
+        # ① 真实编码 (算法在 src): 当前阶段真实帧 → encode_stage
+        kf = tr.get("key_frames") or {}
+        if kf and stage in kf:
+            try:
+                from PIL import Image
+                _ns = _vlm_encoder_ns()
+                cache = getattr(mod, "_vlm_cache", None)
+                if cache is None:
+                    cache = mod._vlm_cache = {}
+                r = _ns["encode_stage"](Image.fromarray(np.asarray(kf[stage])),
+                                        stage, cache, meta.get("seed", "?"))
+                if r.get("status") == "ok":
+                    if log:
+                        tag = " (缓存)" if r.get("cached") else " (真实前向, 非演示)"
+                        log(f"   ✅ VLM 真实编码 [阶段={stage}]{tag}: {r['model']} · "
+                            f"帧 {np.asarray(kf[stage]).shape[1]}x{np.asarray(kf[stage]).shape[0]} "
+                            f"→ {r['tokens']} token → z∈R{r['dim']} · "
+                            f"|z|={r['z_norm']:.1f} mean={r['z_mean']:.3f} std={r['z_std']:.3f} · "
+                            f"top活跃 {r['top5']} · {r['ms']}ms")
+                        log(f"   语义: 真实视觉特征 (预训练 SmolVLM 通用编码, 未微调) — "
+                            f"与几何潜空间关系由下游世界模型学习")
+                elif log:
+                    log(f"   ⏳ {r.get('msg', r.get('status'))}")
+            except Exception as _e:
+                if log:
+                    log(f"   ⚠️ VLM 编码异常: {_e}")
+        elif log:
+            log("   帧源: 本轮轨迹无真实帧 (key_frames 空) — 需 🎥真实化 R1 视觉运行; 引擎快演无帧")
+        # ② 几何潜空间对照 (教学注解, GUI 演示层)
+        if log:
+            z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
+            log(f"   几何 z∈R⁷ (对照): 手→目标 {np.round(z_vis[:3], 4)} m · 手→工件 "
+                f"{np.round(z_vis[3:6], 4)} m · 夹持={z_vis[6]:.0f}")
+            if meta.get("mode") == "full" or any("AOI" in str(s) for s in tr.get("stage", [])):
+                af = np.asarray(meta.get("aoi_focus", [0.12, 0.62, 0.10]), dtype=float)
+                log(f"   🔍 场景目标识别: 光模块/插孔 + AOI 光学检测设备 (镜头工位 "
+                    f"{np.round(af, 2)}) — 插拔循环后对焦检测")
+            if meta.get("aoi_report"):
+                _ar = meta["aoi_report"]
+                log(f"   📷 AOI 检测报告: {'PASS' if _ar.get('ok') else 'FAIL'} "
+                    f"(残余深度 {_ar.get('insert_depth_min_mm')}mm · 力峰 {_ar.get('force_peak')})")
+            log("   ⚙️ 真实实现: src/lerobot/policies/smolvla_lew/vlm_encoder.py (encode_stage)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ VLM 编码失败: {e}")
+        return False
+
+
+# 🧠 JEPA 世界模型预测器加载 (2026-09-08 老倪 L4: predictor 链路归位 src)
+_PRED_NS = None
+_PRED_LOCK = threading.Lock()
+
+
+def _pred_ns():
+    """加载并缓存 manifold.predictor_layer 命名空间 (WorldModelPredictor/LatentPredictor/ManifoldReadout)"""
+    global _PRED_NS
+    if _PRED_NS is not None:
+        return _PRED_NS
+    with _PRED_LOCK:
+        if _PRED_NS is None:
+            _p = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
+                              "predictor_layer.py")
+            _ns = {"__file__": _p, "__name__": "lerobot.manifold.predictor_layer"}
+            with open(_p, encoding="utf-8") as _f:
+                exec(compile(_f.read(), _p, "exec"), _ns)
+            if "WorldModelPredictor" not in _ns:
+                raise RuntimeError("predictor_layer 缺少 WorldModelPredictor")
+            _PRED_NS = _ns
+        return _PRED_NS
+
+
+def node_ss_pred(ctx):
+    """🧠 世界模型预测器 (JEPA: 潜空间 → 流形 → 动作) — GUI 薄壳 (算法在 src)
+
+    真实算法: src/lerobot/manifold/predictor_layer.py —
+    LatentPredictor (z_t+a_t→z') → ManifoldReadout (z'→接触/性能流形坐标 6 维,
+    与引擎真值列对齐可监督训练) → decoder = StateSpaceActionHead (流形→4D 动作块)。"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        import torch
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("🧠 世界模型预测器: 无引擎轨迹 — 先点 ▶ 运行 (真实化)")
+            return False
+        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
+        if log:
+            log("🧠 JEPA 世界模型预测器 [当前步]: encoder(z) → predictor → 接触/性能流形 → decoder 动作")
+        # ── ① 真实 WorldModelPredictor 结构 + 前向维度自检 (几何 z R⁷ 对照实例) ──
+        try:
+            _ns = _pred_ns()
+            WM = _ns["WorldModelPredictor"]
+            wm = WM(z_dim=7)
+            n_params = sum(p.numel() for p in wm.parameters())
+            x = np.asarray(tr["x"][idx], dtype=float)
+            peg = np.asarray(tr["peg"][idx], dtype=float)
+            tgt = np.asarray(tr["target"][idx], dtype=float)
+            z7 = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
+            u = np.asarray(tr["u_ff"][idx], dtype=float).ravel()
+            a4 = u[:4] if u.size >= 4 else np.zeros(4)
+            zt = torch.from_numpy(z7.astype(np.float32)).unsqueeze(0)
+            at = torch.from_numpy(a4.astype(np.float32)).unsqueeze(0)
+            with torch.no_grad():
+                out = wm(zt, at)
+                # decoder 拼接 (真实 StateSpaceActionHead, 流形坐标 → 动作块)
+                AH = _ssah_ns()["StateSpaceActionHead"]
+                head = AH(input_dim=out["manifold"].shape[-1], action_dim=4, chunk_size=7)
+                acts = head(out["manifold"])
+            if log:
+                log(f"   ✅ WorldModelPredictor 真实类: {n_params:,} 参数 "
+                    f"(src/lerobot/manifold/predictor_layer.py)")
+                log(f"      JEPA 链路自检: z R⁷+a⁴ → z'→流形 {tuple(out['manifold'].shape)} "
+                    f"→ decoder → 动作块 {tuple(acts.shape)} (随机初始化, 训练后启用)")
+                log(f"      VLM z R⁹⁶⁰ 实例: 699,846 参数 (encode_stage 真实 z 接入后同构)")
+        except Exception as _e:
+            if log:
+                log(f"   ⚠️ Predictor 自检失败: {_e}")
+        # ── ② 当前帧流形真值 (引擎发布 — readout 监督真值列) ──
+        if log:
+            risk = float(tr["mani_risk"][idx]) if tr.get("mani_risk") else float("nan")
+            prog = float(tr["mani_progress"][idx]) if tr.get("mani_progress") else float("nan")
+            eta = float(tr["mani_eta"][idx]) if tr.get("mani_eta") else float("nan")
+            log(f"   流形真值 (监督列): 接触 [进度={prog:.4f} 风险={risk:.4f} V] · "
+                f"性能 [η={eta:.3f} rem d_perp] — readout 对齐 6 维回归")
+            log("   ⚙️ 真实实现: src/lerobot/manifold/predictor_layer.py "
+                "(LatentPredictor→ManifoldReadout)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ Predictor 执行失败: {e}")
+        return False
+
+
+def node_ss_cap(ctx):
+    """🧭 能力档位 (数据源层) — L2 / L3 / L4 三档循环开关 (2026-09-08 老倪)
+
+    双击节点 = 切换档位 (L2 → L3 → L4 → L2…), 档位写 module._cap_level, ▶运行 按档位
+    配置任务链:
+      L2 基础: 插装成功光模块 (mode=insert 8 段, 解析+MLP 小模型)
+      L3 +smolvla: 插→拔→AOI 检测→放回 全链 (mode=full 13 段; VLM 真实编码在链)
+      L4 +流形预测世界模型: 失败自主恢复直到最终完成任务 (cap=l4 恢复预算 ×2,
+        引擎分级回退=恢复执行体; predictor 世界模型 = 流形专家预测器节点, 训练后给恢复方向)
+    """
+    log = ctx.get("log")
+    mod = ctx.get("module")
+    # 🐛 2026-09-09: 统一走 module._toggle_cap (写 node.params.cap_level + 画布重绘),
+    #   与单击 radio/双击节点同一条路径 — 避免只切内存档位而画布开关视觉不更新
+    if mod is not None and hasattr(mod, "_toggle_cap"):
+        try:
+            for _n in mod.nodes:
+                if _n.get("name") == ctx.get("name"):
+                    return mod._toggle_cap(_n)
+        except Exception:
+            pass
+    cur = getattr(mod, "_cap_level", "L2") if mod is not None else "L2"
+    nxt = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
+    if mod is not None:
+        mod._cap_level = nxt
+    desc = {
+        "L2": "基础: 插装成功光模块 (insert 8 段)",
+        "L3": "+smolvla: 插→拔→AOI 检测→放回 全链 (full 13 段)",
+        "L4": "+世界模型: 失败自主恢复直到最终完成任务 (恢复预算×2)",
+    }
+    if log:
+        log(f"🧭 能力档位: {cur} → **{nxt}** [{desc[nxt]}]")
+        log(f"   下次 ▶运行 生效 (L4 需 🎥真实化; 引擎分级回退=恢复执行体, predictor 待训练给恢复方向)")
+    return (True, f"能力档位: {nxt} ({desc[nxt]})")
+
+
+def node_ss_dec(ctx):
+    """🔄 潜空间 Decoder — 状态空间 ActionHead 真实结构 (标准 smolvla 算法, 2026-09-08)
+
+    真实路径 (双击/单步): 加载 src/lerobot/policies/smolvla_lew/state_space_action_head.py
+    (StateSpaceActionHead, 官方 action_decoder 同构 MLP: 潜空间 z → 4D 动作块) —
+    用当前帧几何 z (R⁷) 做一次真实前向维度自检 (随机权重, 诚实标注训练后启用)。
+    流形坐标 (接触/性能) 语义保留为教学对照。真实 DiT 主链权重 = smolvla_lew 训练后。"""
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("🔄 Decoder: 无引擎轨迹 — 先点 ▶ 运行")
+            return False
+        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
+        # 流形坐标 (真实化/引擎均发布) — 教学对照: 解码方向 = 沿流形减势
+        risk = float(tr["mani_risk"][idx]) if tr.get("mani_risk") else 0.0
+        prog = float(tr["mani_progress"][idx]) if tr.get("mani_progress") else 0.0
+        u_ff = float(np.linalg.norm(tr["u_ff"][idx])) if tr.get("u_ff") else 0.0
+        if log:
+            log("🔄 潜空间 Decoder (z→action): 状态空间 ActionHead 真实结构 (标准 smolvla 算法)")
+        # ── ① 真实 StateSpaceActionHead: 结构 + 前向维度自检 ──
+        try:
+            import torch
+            _ns = _ssah_ns()
+            AH = _ns["StateSpaceActionHead"]
+            x = np.asarray(tr["x"][idx], dtype=float)
+            peg = np.asarray(tr["peg"][idx], dtype=float)
+            tgt = np.asarray(tr["target"][idx], dtype=float)
+            z7 = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
+            head = AH(input_dim=7, action_dim=4, chunk_size=7)   # 几何潜空间 R⁷ 实例
+            n_params = sum(p.numel() for p in head.parameters())
+            zt = torch.from_numpy(z7.astype(np.float32)).unsqueeze(0)
+            with torch.no_grad():
+                out = head(zt)
+            if log:
+                log(f"   ✅ StateSpaceActionHead 真实类: {n_params:,} 参数 "
+                    f"(src/lerobot/policies/smolvla_lew/state_space_action_head.py)")
+                log(f"      前向自检: 几何 z R⁷ → [1, chunk=7, action=4]={tuple(out.shape)} "
+                    f"(随机初始化 — 权重需 smolvla_lew 训练/蒸馏后启用)")
+                log(f"      VLM z R⁹⁶⁰ 融合可用: AH(input_dim=967) — 感知侧真实编码已就位")
+        except Exception as _e:
+            if log:
+                log(f"   ⚠️ ActionHead 自检失败: {_e}")
+        # ── ② 流形坐标语义 (教学对照) ──
+        if log:
+            log(f"   流形坐标 (对照): 风险={risk:.4f} 进度={prog:.4f} | 前馈 |u_ff|={u_ff:.3f} m/s")
+            log(f"   双通路: ①action→前馈层 (ssff) ②action→执行端直通 (ssact)")
+            meta = tr.get("_meta") or {}
+            if meta.get("aoi_report"):
+                _ar = meta["aoi_report"]
+                log(f"   直通链实例: 全链闭环 (插→拔→AOI) 完成, AOI "
+                    f"{'PASS ✅' if _ar.get('ok') else 'FAIL ❌'} "
+                    f"(残余深度 {_ar.get('insert_depth_min_mm')}mm)")
+            log("   ⚙️ 真实 ActionHead 结构已接入 (标准 smolvla 算法); "
+                "真实权重 = smolvla_lew 训练后 (DiT 主链 / 本头蒸馏)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ Decoder 解码失败: {e}")
+        return False
+
+
+# 🧠 记忆节点注册 (2026-09-09 老倪红线: 实现真源 src/lerobot/memory/mem_nodes.py — def 不进 GUI)
+#   画布/引擎/CLI 共享 data/shared_memory.json; 此处仅 import 转发 + 关键词绑定
+try:
+    if os.path.join(_REPO_ROOT, "src") not in sys.path:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
+    from lerobot.memory.mem_nodes import (node_ss_mem_l2, node_ss_mem_l3,
+                                          node_ss_mem_l4, node_ss_mem_share)
+except Exception as _me:
+    _mem_err = f"⚠️ 记忆节点实现未加载 (真源 src/lerobot/memory/mem_nodes.py): {_me}"
+    node_ss_mem_l2 = node_ss_mem_l3 = node_ss_mem_l4 = node_ss_mem_share = (
+        lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
+
+_reg("ss_mem_l2", ["L2 记忆 · 肌肉记忆"], "🔧 L2 记忆 · 肌肉记忆 — 固化标杆库 (muscle_memory)", node_ss_mem_l2)
+_reg("ss_mem_l3", ["L3 记忆 · 长程规划"], "🚀 L3 记忆 · 长程规划 — 跨段技能序列流程经验", node_ss_mem_l3)
+_reg("ss_mem_l4", ["L4 记忆 · 筹划"], "🏆 L4 记忆 · 筹划 — 世界模型预测质量/恢复策略", node_ss_mem_l4)
+_reg("ss_mem_share", ["总装记忆中枢", "共享记忆中枢"], "🧠 总装记忆中枢 — 三层记忆汇总总装 (大模型层)", node_ss_mem_share)
+_reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (SmolVLA式) — 视觉/触觉/检测框 token → 潜空间 z",
+    node_ss_vlm)
+_reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",
+    node_ss_dec)
+_reg("ss_pred", ["流形专家", "JEPA", "潜空间预测"], "🧠 世界模型预测器 (JEPA: 潜空间→接触/性能流形→decoder 动作)",
+    node_ss_pred)
+_reg("ss_cap", ["能力档位", "L4自主", "档位"], "🧭 能力档位 (数据源层) — L2 插 / L3 插拔+AOI / L4 自主恢复, 双击循环切换",
+    node_ss_cap)
+_EXTERNAL_LOC["action_head"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
+                                              "action_head.py"), 205, "class SmolVLALewActionHead")  # 🐛 2026-09-08: Action Head 节点右键 → 官方 Flow-Matching DiT 头 (src)
+_EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
+                                         "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
+_EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
+                                         "predictor_layer.py"), 78, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src)
+_EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
+                                         "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (键对齐注册 ss_dec; 架构归位 src)
+
+
+# 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
+#   回路外元层, 与标定层/流形导航层同范式; 真源 src/lerobot/verification/verification_layer.py)
+_VERIF_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "verification")
+
+
+def _verif_mod():
+    """懒加载验证层真源模块 (importlib 直载, 同标定/流形策略)"""
+    import importlib.util as _ilu
+    path = os.path.join(_VERIF_DIR, "verification_layer.py")
+    spec = _ilu.spec_from_file_location("lerobot.verification.verification_layer", path)
+    m = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def node_ss_feature(ctx):
+    """🧩 Feature 功能清单 — 汇总状态空间系统全部 feature (自动/手动标注)
+    源码: src/lerobot/verification/verification_layer.py (FEATURES 注册表)
+    真实执行: 引擎跑一次 + 逐 feature 打印 (含 GUI 手动项提示)"""
+    log = ctx.get("log")
+    try:
+        mod = _verif_mod()
+        v = mod.VerificationLayer()
+        v.list_features()
+        # 引擎快跑一次 (验证层数据真源预热, 断点可进 StateSpaceSim)
+        _ = v.engine()
+        if log:
+            log("🧩 Feature 清单已汇总 (见上方) · 自动项可点「🧪 Test 用例执行」逐个跑")
+        _SS_STATE["verif"] = {"features": mod.FEATURES}
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ Feature 清单执行失败: {e}")
+        return False
+
+
+def node_ss_test(ctx):
+    """🧪 Test 用例执行 — 跑验证层全部自动化 test (PASS/FAIL + 数值证据)
+    源码: src/lerobot/verification/verification_layer.py (t_F_* 断言)
+    单跑: ZMAX_VERIF_ONLY=F-A01 环境变量; 跳过慢 YOLO: ZMAX_VERIF_SKIP_SLOW=1"""
+    log = ctx.get("log")
+    try:
+        v = _verif_mod().VerificationLayer()
+        only = os.environ.get("ZMAX_VERIF_ONLY")
+        skip_slow = os.environ.get("ZMAX_VERIF_SKIP_SLOW") == "1"
+        if only:
+            ok, _d = v.run(only)
+            return bool(ok)
+        ok = v.run_all(skip_slow=skip_slow)
+        return ok
+    except Exception as e:
+        if log:
+            log(f"⚠️ Test 用例执行失败: {e}")
+        return False
+
+
+_reg("ss_feature", ["Feature"],
+    "🧩 Feature 功能清单 — 状态空间系统全部 feature 汇总 (引擎/六层/感知链/规划/元层/画布, 含 GUI 手动项; 源码 verification_layer.py FEATURES)",
+    node_ss_feature)
+_reg("ss_test", ["Test"],
+    "🧪 Test 用例执行 — 验证层自动化 test 套件全跑 (F-A01~F-F04, PASS/FAIL+数值证据; 源码 verification_layer.py t_F_* 断言, 断点可进)",
+    node_ss_test)
+_EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
+_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 111, "class VerificationLayer")

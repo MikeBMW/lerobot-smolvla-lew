@@ -5,9 +5,9 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
 在同一个 3D 空间 (与操作视频 gen_state_space_video.py 的物理世界坐标一致) 里,
 叠加渲染状态空间仿真的所有处理层数据, 每层可独立开关 (Apollo Layer 风格):
 
-  坐标世界: 工作台平面 + 孔位插座(红) + 光模块 peg(金) + 末端夹爪(蓝)
+  坐标世界: 工作台平面 + 孔位插座(红) + 光模块 光模块(金) + 末端夹爪(蓝)
   处理层:
-    🎯 YOLO 检测框  — hand/peg/hole 三个 3D 半透明立方体框
+    🎯 YOLO 检测框  — hand/光模块/hole 三个 3D 半透明立方体框
     📍 末端轨迹     — 末端历史 3D 轨迹线 (旧→新 渐亮)
     ⚡ 前馈加速器 — 绿色箭头 (快通道速度指令 u_ff)
     🔄 反馈校正 u_fb — 蓝色箭头 (慢通道·卡尔曼残差方向)
@@ -22,14 +22,37 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
   dv.show()
 """
 import os
+import math
 import numpy as np
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor, QFont, QVector3D
+from PyQt5.QtCore import Qt, QTimer, QPointF
+from PyQt5.QtGui import QColor, QFont, QVector3D, QPainter, QPen, QPixmap, QBrush, QPolygonF
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
                              QSlider, QPushButton, QFrame)
 
 import pyqtgraph.opengl as gl
+
+# ── 🧮 流形层探测 (接触/性能流形几何 — 2026-09-07 老倪: 流形是拓扑, 要有形状可看) ──
+def _load_manifold_layer():
+    """定位并 import manifold_layer.py (与 simulink_module 同探测策略; 失败返回 None)"""
+    try:
+        import sys as _sys, os as _os
+        root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        for cand in (root, _os.path.join(root, "src", "lerobot", "manifold"),
+                     getattr(_sys, "_MEIPASS", "")):
+            p = _os.path.join(cand, "manifold_layer.py")
+            if _os.path.isfile(p):
+                import importlib.util as _ilu
+                _m = _ilu.spec_from_file_location("_mani3d", p)
+                if _m is not None:
+                    _mod = _ilu.module_from_spec(_m)
+                    _m.loader.exec_module(_mod)
+                    return _mod
+    except Exception:
+        pass
+    return None
+
+_MANI = _load_manifold_layer()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -119,7 +142,7 @@ def project_world(view, p):
 
 # ════════════════════════════════════════════════════════════════
 # 场景锚点 — 2026-08-25 老倪: 与操作视频 (metaworld peg-insert-side-v3) 同一套真实几何
-# 实测来源 tools/probe_scene_geom.py: 插销 pegGrasp(0.0966,0.5191,0.030) 沿 X 长 0.2,
+# 实测来源 tools/probe_scene_geom.py: 光模块 pegGrasp(0.0966,0.5191,0.030) 沿 X 长 0.2,
 # 孔口 hole(-0.1685,0.4623,0.1309), 插入终点 goal(-0.2345,0.4623,0.1309),
 # 带孔盒 box 中心(-0.2645,0.4623,~0.095), 机器人底座 base(0,0,0) 肩高 0.317
 # ════════════════════════════════════════════════════════════════
@@ -127,10 +150,13 @@ _HOLE = np.array([-0.2345, 0.4623, 0.1309])        # 插入终点 (goal)
 _HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
 _BOX_CENTER = np.array([-0.2645, 0.4623, 0.095])   # 带孔盒中心
 _BOX_SIZE = (0.19, 0.20, 0.19)                     # 带孔盒尺寸
+# 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 — 与引擎 state_space_sim_real.AOI_FOCUS
+#   同源常量 (勿改单边): 镜头对焦点 = 光模块头悬停检测位; 设备本体画在对焦点后侧
+_AOI_FOCUS = np.array([0.12, 0.62, 0.10])  # 镜头对焦点 (光模块头悬停检测位)
 _TABLE_CENTER = np.array([0.0, 0.58, -0.012])      # 台面板中心
 _TABLE_SIZE = (0.92, 0.62, 0.024)
-_PEG_SIZE = (0.20, 0.03, 0.03)                     # 插销 (沿 X 长条)
-_PEG_CENTER_OFF = np.array([-0.030, 0.0, -0.010])  # 插销几何中心相对抓握点
+_PEG_SIZE = (0.20, 0.03, 0.03)                     # 光模块 (沿 X 长条)
+_PEG_CENTER_OFF = np.array([-0.030, 0.0, -0.010])  # 光模块几何中心相对抓握点
 _ARM_BASE = np.array([0.0, 0.0, 0.0])              # Sawyer 底座 (metaworld base)
 _ARM_H_BASE = 0.317                                # 肩高
 _ARM_L1 = _ARM_L2 = 0.42                           # 上臂/前臂 (够到 y=0.6 工作台)
@@ -163,6 +189,22 @@ def _box_mesh(center, size):
         [1, 5, 7], [1, 7, 3],   # 右 x+
     ], dtype=int)
     return gl.MeshData(vertexes=v, faces=faces)
+
+
+def _box_mesh_yaw(center, size, yaw_deg, rot_center=None):
+    """长方体 mesh 绕 rot_center (默认 center) 的竖直轴 (z) 旋转 yaw_deg —
+    🎯 2026-09-09 L4 演示: peg 横放(绕z 90°)与夹爪绕z 姿态在 3D 必须可见 (原只画位置无朝向)"""
+    md = _box_mesh(center, size)
+    v = md.vertexes().copy()
+    if yaw_deg:
+        rc = np.asarray(center if rot_center is None else rot_center, dtype=float)
+        th = math.radians(float(yaw_deg))
+        c, s = math.cos(th), math.sin(th)
+        x = v[:, 0] - rc[0]
+        y = v[:, 1] - rc[1]
+        v[:, 0] = rc[0] + x * c - y * s
+        v[:, 1] = rc[1] + x * s + y * c
+    return gl.MeshData(vertexes=v, faces=md.faces())
 
 
 def _bbox_lines(center, size):
@@ -395,12 +437,18 @@ class LabelOverlay(QWidget):
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
-    def __init__(self, tr=None, parent=None):
+    def __init__(self, tr=None, parent=None, on_top=True, module=None):
+        """module: 画布 SimulinkModule 引用 — 3D 上的 ▶运行/⏹停止 与画布按钮同一入口
+        (v3.4.7 老倪: 3D 世界操作按钮, 与 simulink 画布运行按钮统一功能)"""
+        self.module = module
         super().__init__(parent)
         self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
         self.resize(1180, 820)
         # 🖥 2026-08-25 老倪: 置顶 — 不被「操作视频」窗口(InferenceVideoDialog/MLPRolloutDialog, 经 _show_nonmodal 均置顶)遮挡
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        # 🐛 2026-08-26: 运行完自动弹出 3D 视图若置顶 → 盖住 simulink 画布(看起来黑屏)
+        #   → on_top 参数: 手动点按钮打开=置顶; 运行后自动打开=不置顶(不抢画布)
+        if on_top:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
 
         self.tr = tr
@@ -409,14 +457,17 @@ class DreamView3D(QWidget):
         self._gl_items = {}       # layer -> GL item(s)
         self._layer_on = {}       # layer -> bool
         # 场景锚点 (默认 = metaworld seed0 典型值; 同源 trace 里有 meta 就按 meta 覆盖 —
-        #  metaworld 每个 seed 的插销/孔位是随机化的, 写死会和视频对不上)
+        #  metaworld 每个 seed 的光模块/孔位是随机化的, 写死会和视频对不上)
         self._hole = _HOLE.copy()
         self._mouth = _HOLE_MOUTH.copy()
         self._box_c = _BOX_CENTER.copy()
+        self._aoi_c = _AOI_FOCUS.copy()   # 🚀 2026-09-08: AOI 对焦点 (meta 覆盖)
         self._table_c = _TABLE_CENTER.copy()
         self._peg_center_off = _PEG_CENTER_OFF.copy()
         self._src = "状态空间 numpy 引擎"
         self._cam_fovy = 60.0     # 视频相机垂直视场 (metaworld corner2 fovy)
+        # 🎯 2026-09-09 L4 演示场景设备 (转台/压电耦合台) — meta.demo_geom 驱动, 3D 按此绘制
+        self._demo_geom = None
 
         # ── 主布局: 左(图层面板) | 3D 视图 ──
         root = QHBoxLayout(self)
@@ -430,6 +481,64 @@ class DreamView3D(QWidget):
         pl = QVBoxLayout(panel)
         pl.setContentsMargins(12, 12, 12, 12)
         pl.setSpacing(6)
+        # ── 🕹 3D 世界操作 (v3.4.7 老倪: 3D 上也要能运行/停止 — 与画布同一引擎) ──
+        if module is not None:
+            t_w = QLabel("🕹 3D 世界操作")
+            t_w.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
+            pl.addWidget(t_w)
+            hw = QHBoxLayout()
+            hw.setSpacing(4)
+            self.btn_run_w = QPushButton("▶ 运行")
+            self.btn_run_w.setToolTip("与 simulink 画布「▶ 运行」同一功能: 跑状态空间引擎 + 逐帧同步到本 3D 视图")
+            self.btn_run_w.setStyleSheet(
+                "QPushButton{background:#00d4aa; color:#0d1117; font-weight:700; border:none;"
+                "border-radius:4px; padding:7px 0; font-size:13px;}"
+                "QPushButton:hover{background:#33e0b8;} QPushButton:disabled{background:#2a3a36; color:#6b7a76;}")
+            self.btn_run_w.clicked.connect(self._on_run_world)
+            self.btn_stop_w = QPushButton("⏹ 停止")
+            self.btn_stop_w.setToolTip("停止仿真播放 (画布 ⏹ 停止同一功能)")
+            self.btn_stop_w.setStyleSheet(
+                "QPushButton{background:#ff4444; color:#fff; border:none; border-radius:4px;"
+                "padding:7px 0; font-size:13px;}"
+                "QPushButton:hover{background:#ff6666;} QPushButton:disabled{background:#3a2a2a; color:#7a6b6b;}")
+            self.btn_stop_w.clicked.connect(self._on_stop_world)
+            self.btn_stop_w.setEnabled(False)
+            hw.addWidget(self.btn_run_w, 1)
+            hw.addWidget(self.btn_stop_w, 1)
+            pl.addLayout(hw)
+            self.btn_top_w = QPushButton("📌 窗口置顶")
+            self.btn_top_w.setCheckable(True)
+            self.btn_top_w.setChecked(bool(on_top))
+            self.btn_top_w.setToolTip("置顶 = 画布运行/其他窗口不会盖住本 3D 视图")
+            self.btn_top_w.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:4px 0; font-size:11px;}"
+                "QPushButton:checked{background:#1f6feb; color:#fff; border-color:#1f6feb;}")
+            self.btn_top_w.toggled.connect(self._on_top_world)
+            pl.addWidget(self.btn_top_w)
+            # 📉 性能流形曲面窗 (2026-09-07 老倪: 流形要有形状 — η 代价碗独立 3D 曲面)
+            self.btn_mani_bowl = QPushButton("📉 性能流形曲面")
+            self.btn_mani_bowl.setToolTip(
+                "性能流形 = 光耦合对准代价曲面: 横轴 = 光模块头横向错位 (±16mm, 孔口局部系),\n"
+                "竖轴 = 估计耦合效率 η (0→1)。曲面 = η 高斯碗 (σ=4mm 标定); 金色点 = 当前位置\n"
+                "落碗位置, 底部细线 = 错位轨迹历史 — 看它怎么滑进碗底 (对准)")
+            self.btn_mani_bowl.setStyleSheet(
+                "QPushButton{background:#21262d; color:#e6edf3; border:1px solid #58a6ff;"
+                "border-radius:4px; padding:5px 0; font-size:12px;}"
+                "QPushButton:hover{background:#1f6feb; color:#fff;}")
+            self.btn_mani_bowl.clicked.connect(self._open_mani_bowl)
+            pl.addWidget(self.btn_mani_bowl)
+            self.lbl_state_w = QLabel("⏸ 引擎就绪")
+            self.lbl_state_w.setStyleSheet(
+                "color:#8b949e; font-size:11px; background:#0d1117; border:1px solid #30363d;"
+                "border-radius:4px; padding:3px 6px;")
+            self.lbl_state_w.setWordWrap(True)
+            pl.addWidget(self.lbl_state_w)
+            pl.addSpacing(8)
+            # 引擎状态轮询 (画布播放/停止 → 本窗口按钮同步)
+            self._state_timer = QTimer(self)
+            self._state_timer.timeout.connect(self._sync_engine)
+            self._state_timer.start(300)
         title = QLabel("🗂 图层 (Layers)")
         title.setStyleSheet("color:#58a6ff; font-size:15px; font-weight:700;")
         pl.addWidget(title)
@@ -445,13 +554,13 @@ class DreamView3D(QWidget):
         self._layers_def = [
             # ── 感知层 (最前) ──
             ("scene",     "📡 感知层 · 物理世界几何",     True,
-             "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 插销 peg /\n"
+             "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 光模块 /\n"
              "Sawyer 臂 + 夹爪 (含物体名字标注; 关掉它连机械臂和标注一起隐藏)"),
             ("yolo",      "📡 感知层 · YOLO 目标检测",    True,
-             "画布节点「🎯 YOLO 目标检测」的输出: hand / peg / hole 三个 3D 检测框"),
+             "画布节点「🎯 YOLO 目标检测」的输出: hand / 光模块 / hole 三个 3D 检测框"),
             ("traj",      "📡 感知层 · 末端实测轨迹",     True,
              "「🌍 物理世界」每步实测的末端位置连成的历史轨迹 (metaworld MuJoCo 真值)"),
-            # ── S2 并行处理层 ──
+            # ──  并行处理层 ──
             ("uff",       "① ⚡ 前馈加速器",             True,
              "快通道 (前馈加速器 = 原左脑 MLP 的等效控制律) 每步给出的**速度指令** (m/s):\n"
              "  绿线 = 建议往哪走 (方向), 线越长 = 速度越大 (满格 0.35 m/s = 10cm 长)\n"
@@ -470,7 +579,7 @@ class DreamView3D(QWidget):
              "  ⚪ 灰点+细线 = 观测 z_k 与先验的差 = **残差** (实测 6.9~9.1mm) → 接触判据\n"
              "⚠️ 为什么不画先验轨迹: 实测那条线 62% 是观测噪声透传 (确定性增量 0.359mm/步 vs\n"
              "   继承抖动 0.901mm/步, 噪声/信号 2.7 倍) — 画出来必然\"没规律\"且无信息量"),
-            # ── S3 认知决策层 ──
+            # ──  认知决策层 ──
             ("ufb",       "④ 🧪 状态校正器 · 残差方向",   False,
              "残差 r = 观测 z_k − 先验 x̂⁻ (校正器的核心量, u_fb = 0.5·r 就是它的一半):\n"
              "  ▬ 粗蓝箭头 = **20 帧滑动平均的系统性偏差** (6mm 满格 9cm) — 有物理意义的那部分\n"
@@ -478,11 +587,11 @@ class DreamView3D(QWidget):
              "⚠️ 为什么瞬时的看着乱: 实测相邻帧方向变化 **88.5°** (纯随机 90°) ⇒ 瞬时残差\n"
              "   **96% 是 5mm 观测噪声**; 只有多帧平均后剩下的才是真实接触/阻力造成的偏差\n"
              "标注里的百分比 = 系统占比 |均值| / 平均模长: 实测 下降 8% (自由下落无接触)\n"
-             "   → 插入 42% (销头顶孔沿产生固定方向阻力) — 这个数字升高就是\"真的碰到东西了\""),
+             "   → 插入 42% (光模块头顶孔沿产生固定方向阻力) — 这个数字升高就是\"真的碰到东西了\""),
             ("contact",   "④ 🧪 状态校正器 · 接触指示",   True,
              "两路接触各一组「核心球 + 脉冲外环」, 强度直接用 MuJoCo 真实接触力驱动:\n"
-             "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住插销就明显弹出\n"
-             "  🟠 橙球 (画在销头) = 环境接触 销头↔孔沿 / 夹爪↔台面 — 顶到孔才亮\n"
+             "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住光模块就明显弹出\n"
+             "  🟠 橙球 (画在光模块头) = 环境接触 光模块头↔孔沿 / 夹爪↔台面 — 顶到孔才亮\n"
              "  直径 8px(无接触) → 54px(满接触), 超过 15% 强度加 1.9 倍脉冲外环\n"
              "为什么不用接触概率驱动大小: σ(8×|残差|) 被 5mm 观测噪声垫到 0.58 基线,\n"
              "全程只在 0.58~1.0 变 (球直径仅差 10px 看不出) → 概率改在标注里显示\n"
@@ -497,13 +606,25 @@ class DreamView3D(QWidget):
              "(接近→对位→下降→抓取→抬起→转移→插入→完成), 每次切换都由物理证据触发:\n"
              "  接近→对位: 手-销水平距离 <60mm   对位→下降: <20mm\n"
              "  下降→抓取: 接触概率>0.6 或到达抓握位姿   抓取→抬起: 夹持度>0.6\n"
-             "  抬起→转移: 提升>80mm   转移→插入: 销头-孔口 <20mm   插入→完成: 残距<4mm\n"
+             "  抬起→转移: 提升>80mm   转移→插入: 光模块头-孔口 <20mm   插入→完成: 残距<4mm\n"
              "画面左侧阶梯 = 八阶段进度 (✔已过/▶当前/待执行), 当前阶段下方给\n"
              "**下一阶段预测**: 证据当前值/阈值 + 进度% + 按变化率外推的预计剩余时间\n"
              "3D 里还画出各阶段的目标航点 (①~⑧ 带序号), 当前阶段航点高亮"),
             ("ulimit",    "⑥ 🛡 安全执行边界 (饱和限幅)",  False,
              "安全层饱和限幅后的指令 (上限 0.6 m/s)。与⑤重合 = 没触发限幅;\n"
              "两者分叉 = 安全层出手削掉了超速部分"),
+            # ── 🧮 流形导航层 (回路外几何监测元层, 2026-09-07 老倪: 流形是拓扑要有形状) ──
+            ("mani",      "🧮 流形导航层 · 接触通道曲面", True,
+             "接触流形 = 插拔安全通道 (1D 测地线 × 容差半径 → 管状 2D 曲面嵌入 3D):\n"
+             "  青色线框管 = 当前阶段的**安全通道** (半径 = 该阶段法向容差):\n"
+             "    下降/抓取/抬起: 光模块上方垂直通道 (容差 30mm, 粗管)\n"
+             "    插入: 孔口悬高→孔底 工艺斜线通道 (容差 6mm, 细管)\n"
+             "    完成: 孔轴水平通道 (容差 4mm, 最细) — 越接近成功通道越窄\n"
+             "  中心白线 = 通道轴 (测地线/最优路径)\n"
+             "  金色小球 = 光模块头当前位置; 状态线 = 头到通道轴的垂直偏离:\n"
+             "    绿 = 在流形上 (偏离<半容差) · 黄 = 贴边缘 (漂移中) · 红 = 离流形 (弯曲/报废风险)\n"
+             "  自由空间阶段 (接近/对位/转移) 无接触约束 → 不画管, 只画手→目标的灰进度线\n"
+             "关掉本层 = 只看控制, 不看流形几何"),
             # ── 辅助参考 ──
             ("grid",      "▦ 地面网格 (参考)",           True,  "z=0 台面参考网格 (5cm 一格)"),
             ("axis",      "🧭 坐标轴 XYZ (参考)",        False,
@@ -527,6 +648,19 @@ class DreamView3D(QWidget):
         self.lbl_t = QLabel("t=0.00s · 帧 0/0")
         self.lbl_t.setStyleSheet("color:#8b949e; font-size:11px;")
         pl.addWidget(self.lbl_t)
+
+        # 🗺 画布信号行 (v3.4.6 老倪: 3D 渲染数据与画布实际信号同步 —
+        #   画布 ▶运行 时正在执行的节点(模块) + 该模块本帧 out, 逐帧推送)
+        self.lbl_mod = QLabel("画布信号: —")
+        self.lbl_mod.setStyleSheet(
+            "color:#00d4aa; font-size:11px; font-family:Consolas,monospace; "
+            "background:#0d1117; border:1px solid #1f6feb; border-radius:4px; padding:4px;")
+        self.lbl_mod.setWordWrap(True)
+        self.lbl_mod.setMinimumHeight(46)
+        pl.addWidget(self.lbl_mod)
+        self._active_node = ""
+        self._user_cam = False        # v3.4.8: 用户手动转视角标记 (resize 自动取景判定)
+        self._last_win = (0, 0)
 
         # 📟 实时数值面板 (2026-08-25 老倪: "不知道啥意思" → 画面旁边直接给数字)
         self.lbl_num = QLabel("—")
@@ -611,9 +745,35 @@ class DreamView3D(QWidget):
     # ── 数据装载 ──
     def set_trajectory(self, tr):
         self.tr = tr
+        # 🔭 2026-09-05 老倪(信号同步严查): 标题标注数据源 — 程序执行轨迹=与画布同步
+        #   vs episode 回放=预录 (打开即自动播放, 不随画布); 一眼可辨不混淆
+        try:
+            _src = tr.get("_viz_src") if isinstance(tr, dict) else None
+            if _src is None and getattr(self, "module", None) is not None:
+                # ▶运行播放 tick 直接喂引擎轨迹 (无标记) → 依 module 引用识别为程序同步
+                try:
+                    if getattr(self.module, "_ss_tr", None) is tr:
+                        _src = "run"
+                except Exception:
+                    pass
+            if _src == "run":
+                self.setWindowTitle("🧭 3D 视图 · 程序执行同步 (▶运行/⏭到哪步, 3D 到哪步)")
+            elif _src == "episode":
+                self.setWindowTitle("🧭 3D 视图 · EPISODE 回放 (预录, 非本次运行 — 先 ▶运行 转同步)")
+        except Exception:
+            pass
         meta = tr.get("_meta") if isinstance(tr, dict) else None
         if meta:
             self._apply_meta(meta)
+        # 📉 性能流形碗窗同源更新 (现场孔位 meta 优先)
+        try:
+            w = getattr(self, "_bowl", None)
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.set_trajectory(tr, hole=self._hole.copy())
+        except Exception:
+            pass
         n = len(tr.get("x", []))
         self._n = n
         self.slider.setRange(0, max(0, n - 1))
@@ -622,6 +782,12 @@ class DreamView3D(QWidget):
         if n > 0:
             self._update_frame(0)
             self.lbl_frame.setText(f"0 / {n - 1}")
+            # 🐛 2026-09-02 老倪「3D视图打不开/要看到实际的动作渲染视频」:
+            #   原默认停在静态第 0 帧, 必须手动点「▶ 播放」才有动画 → 加载即自动播放
+            if not self._timer.isActive():
+                self._playing = True
+                self.btn_play.setText("⏸ 暂停")
+                self._timer.start(60)
 
     # ── 同源 episode: 场景几何 + 相机 全部按 trace 里的真实值 ──
     def _apply_meta(self, meta):
@@ -631,38 +797,50 @@ class DreamView3D(QWidget):
             self._hole = np.asarray(meta.get("goal", self._hole), dtype=float)
             self._mouth = np.asarray(meta.get("hole_mouth", self._mouth), dtype=float)
             self._box_c = np.asarray(meta.get("box_center", self._box_c), dtype=float)
+            self._aoi_c = np.asarray(meta.get("aoi_focus", self._aoi_c), dtype=float)  # 🚀 AOI
             tc = np.asarray(meta.get("table_center", self._table_c), dtype=float)
             self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
-            head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
-            self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
-            self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
-                         f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
+            # 🎯 2026-09-09 L4 演示 (L4Demo npz/meta): 演示场景注入设备 (转台/压电耦合台)
+            #   3D 视图按 demo_geom 绘制 — 物理场景真实存在的设备, 视觉必须同呈现
+            if meta.get("demo"):
+                self._demo_geom = meta.get("demo_geom") or {}
+                self._peg_center_off = np.zeros(3)   # 演示 tr["peg"]=真 peg 中心, 无抓握点补偿
+                self._src = ("L4 演示全链 (seed=%s, %s 步, 终态 %s)"
+                             % (meta.get('seed'), meta.get('steps'), meta.get('stage_final')))
+            else:
+                head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
+                self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
+                self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
+                             f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
             # 相机: 精确对齐视频 corner2 (四元数含 roll), 视距 = 相机到场景锚点的真实距离
-            cp = np.asarray(meta["cam_pos"], dtype=float)
-            cf = np.asarray(meta["cam_fwd"], dtype=float)
-            cr = np.asarray(meta["cam_right"], dtype=float)
-            cu = np.asarray(meta["cam_up"], dtype=float)
-            self._cam_fovy = float(meta.get("cam_fovy", 60.0))
-            anchor = 0.5 * (np.asarray(meta.get("peg0", self._mouth), dtype=float) + self._mouth)
-            t = float(np.dot(anchor - cp, cf / (np.linalg.norm(cf) or 1)))
-            center = cp + cf / (np.linalg.norm(cf) or 1) * t
-            self.view.opts["rotationMethod"] = "quaternion"
-            self.view.setCameraPosition(pos=QVector3D(*center.tolist()),
-                                        distance=max(0.3, t),
-                                        rotation=camera_quaternion(cf, cr, cu))
-            self._sync_fov()
-            # 记下"与视频 1:1 同框"的机位, 供视角切换用
-            self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
-                                   fwd=cf.copy(), right=cr.copy(), up=cu.copy())
-            self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+            try:
+                cp = np.asarray(meta["cam_pos"], dtype=float)
+                cf = np.asarray(meta["cam_fwd"], dtype=float)
+                cr = np.asarray(meta["cam_right"], dtype=float)
+                cu = np.asarray(meta["cam_up"], dtype=float)
+                self._cam_fovy = float(meta.get("cam_fovy", 60.0))
+                anchor = 0.5 * (np.asarray(meta.get("peg0", self._mouth), dtype=float) + self._mouth)
+                t = float(np.dot(anchor - cp, cf / (np.linalg.norm(cf) or 1)))
+                center = cp + cf / (np.linalg.norm(cf) or 1) * t
+                self.view.opts["rotationMethod"] = "quaternion"
+                self.view.setCameraPosition(pos=QVector3D(*center.tolist()),
+                                            distance=max(0.3, t),
+                                            rotation=camera_quaternion(cf, cr, cu))
+                self._sync_fov()
+                # 记下"与视频 1:1 同框"的机位, 供视角切换用
+                self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
+                                       fwd=cf.copy(), right=cr.copy(), up=cu.copy())
+                self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+            except Exception:
+                pass   # demo/引擎 npz 无相机外参 → 保持默认视角 (几何覆盖已生效)
         except Exception as e:
             print(f"⚠️ 同源 trace meta 应用失败, 退回默认视角: {e}")
 
     # ── 取景 (2026-08-25 老倪: "还是一堆点, 不知道啥意思") ──
     #   实测: 严格 1:1 复刻视频机位时 (距离 1.735m/竖直fov60), 926x766 画布上
-    #   96.8% 是空背景, 插销只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
+    #   96.8% 是空背景, 光模块只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
     #   → 默认改「自动取景」: **朝向保持与视频完全一致**, 只把 center/distance 收紧到
-    #     刚好装下 (末端轨迹 ∪ 插销轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
+    #     刚好装下 (末端轨迹 ∪ 光模块轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
     #     要逐像素对比视频时用「视频同框」档切回去。
     def _fit_view(self, mode=None):
         mode = mode or getattr(self, "_view_mode", "fit")
@@ -682,6 +860,16 @@ class DreamView3D(QWidget):
                 if tr.get(k) is not None and len(tr[k]):
                     pts.append(np.asarray(tr[k], dtype=float))
             pts.append(np.asarray([self._mouth, self._hole], dtype=float))
+            # 🚀 2026-09-08: AOI 设备纳入取景 (full 模式检测工位可见)
+            pts.append(np.asarray([self._aoi_c + np.array([0, 0, 0.08]),
+                                   self._aoi_c + np.array([0, 0.06, -0.02])], dtype=float))
+            # 🎯 2026-09-09: L4 演示注入设备 (转台/压电耦合台) 纳入取景 — 全景可见
+            for _dev in (self._demo_geom or {}).values():
+                _dp = _dev.get("pos")
+                if _dp:
+                    pts.append(np.asarray([[float(_dp[0]) - 0.12, float(_dp[1]) - 0.08, 0.0],
+                                           [float(_dp[0]) + 0.12, float(_dp[1]) + 0.08, 0.17]],
+                                          dtype=float))
             P = np.vstack(pts)
             lo, hi = P.min(axis=0), P.max(axis=0)
             ctr = (lo + hi) / 2.0
@@ -812,6 +1000,15 @@ class DreamView3D(QWidget):
             pass
 
     def eventFilter(self, obj, ev):
+        # 🎯 v3.4.8: 用户鼠标旋转/平移视角 → 标记手动 (resize 不再自动重取景, 不打断)
+        try:
+            if obj is self.view and ev is not None and hasattr(ev, "type"):
+                _t = int(ev.type())
+                if _t in (4, 5, 6):      # MouseButtonPress/Move/Release
+                    if _t == 4 or (getattr(ev, "buttons", None) is not None and int(ev.buttons())):
+                        self._user_cam = True
+        except Exception:
+            pass
         """3D 画布尺寸变化 → 标注层跟着变 (覆盖层必须与画布严格同尺寸, 否则坐标错位)"""
         try:
             if obj is self.view:
@@ -835,15 +1032,43 @@ class DreamView3D(QWidget):
             self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
         except Exception:
             pass
+        # 🎯 v3.4.8 老倪「窗口最大化后图像没跟着放大」: 视口变大但场景/相机未重排 →
+        #   物体仍占原比例 (四周留空)。用户未手动转视角时, 窗口尺寸变化 >6% 自动重取景,
+        #   场景撑满放大后的视口。防抖 250ms (拖动 resize 只收尾一次)。
+        try:
+            _w0, _h0 = getattr(self, "_last_win", (0, 0))
+            _nw, _nh = self.width(), self.height()
+            self._last_win = (_nw, _nh)
+            if (_w0 and _h0 and not getattr(self, "_user_cam", False)
+                    and (abs(_nw - _w0) / max(_w0, 1) > 0.06
+                         or abs(_nh - _h0) / max(_h0, 1) > 0.06)):
+                from PyQt5.QtCore import QTimer as _Qt
+                _Qt.singleShot(250, self._auto_fit_on_resize)
+        except Exception:
+            pass
+
+    def _auto_fit_on_resize(self):
+        """窗口放大后自动取景 (仅用户未手动旋转/平移过视角时 — 避免打断手动视角)"""
+        try:
+            if not getattr(self, "_user_cam", False):
+                self._fit_view("fit")
+        except Exception:
+            pass
 
     # ── 场景构建 ──
     def _build_scene(self):
-        for it in self._gl_items.values():
-            if isinstance(it, list):
-                for x in it:
+        # 🐛 2026-08-28: 同一 item 被多个 key 引用 (yolo 列表 ↔ yolo_hand/光模块/hole),
+        #   重建时重复 removeItem → ValueError 中断重建 → 背景丢失。按 id 去重 + 容忍缺失。
+        seen = set()
+        for it in list(self._gl_items.values()):
+            for x in (it if isinstance(it, list) else [it]):
+                if x is None or id(x) in seen:
+                    continue
+                seen.add(id(x))
+                try:
                     self.view.removeItem(x)
-            else:
-                self.view.removeItem(it)
+                except (ValueError, RuntimeError):
+                    pass
         self._gl_items.clear()
 
         # 地面网格 (z=0, 覆盖整个工作区: 机器人 y=0 → 工作台 y≈0.6)
@@ -863,10 +1088,15 @@ class DreamView3D(QWidget):
         self.view.addItem(ax)
         self._gl_items["axis"] = [ax]      # X/Y/Z 字样由 LabelOverlay 画
 
-        # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 插销/夹爪动态, 见 _update_frame)
+        # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 光模块/夹爪动态, 见 _update_frame)
         scene = []
         # 工作台面板
-        table = gl.GLMeshItem(meshdata=_box_mesh(self._table_c, _TABLE_SIZE),
+        # 🎯 2026-09-09 L4 演示: 桌面加宽 (注入设备在右前 0.55,0.42, 原渲染台 x 右缘 0.46 放不下)
+        _tw, _tc = _TABLE_SIZE, self._table_c
+        if self._demo_geom:
+            _tw = (1.40, 0.62, 0.024)
+            _tc = np.array([0.10, 0.58, -0.012])
+        table = gl.GLMeshItem(meshdata=_box_mesh(_tc, _tw),
                               color=(0.16, 0.18, 0.22, 1.0), smooth=False, shader='shaded')
         self.view.addItem(table)
         scene.append(table)
@@ -875,7 +1105,30 @@ class DreamView3D(QWidget):
                             color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
         self.view.addItem(box)
         scene.append(box)
-        # 孔口 (盒子 +X 面上的深色方口 = 插销侧插入口)
+        # 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 (底座+立柱+横臂+镜头筒, 亮青)
+        #   镜头筒口朝下, 光模块头悬停在筒口下对焦点 (_aoi_c) 检测
+        _ax, _ay = float(self._aoi_c[0]), float(self._aoi_c[1])
+        aoi_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.015]),
+                                                   (0.22, 0.14, 0.03)),
+                                 color=(0.25, 0.30, 0.36, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_base)
+        scene.append(aoi_base)
+        aoi_post = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.10]),
+                                                    (0.05, 0.05, 0.13)),
+                                 color=(0.20, 0.26, 0.32, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_post)
+        scene.append(aoi_post)
+        aoi_arm = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.01, 0.15]),
+                                                   (0.05, 0.04, 0.05)),
+                                color=(0.30, 0.55, 0.65, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_arm)
+        scene.append(aoi_arm)
+        aoi_lens = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay, 0.1375]),
+                                                    (0.09, 0.05, 0.045)),
+                                 color=(0.15, 0.85, 0.95, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_lens)
+        scene.append(aoi_lens)
+        # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
         mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
                                                  (0.012, 0.05, 0.05)),
                               color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
@@ -891,6 +1144,61 @@ class DreamView3D(QWidget):
                                  width=2, mode='lines')
         self.view.addItem(goal)
         scene.append(goal)
+
+        # 🎯 2026-09-09 L4 演示场景设备 (物理 XML 注入, 3D 必须同呈现 — 老倪: 看不到转台/光耦合台):
+        dg = self._demo_geom or {}
+        if dg.get("turntable"):
+            _tt = dg["turntable"]
+            _tx, _ty = float(_tt["pos"][0]), float(_tt["pos"][1])
+            _tr = float(_tt.get("r", 0.075))
+            # 转台盘 (深灰短圆柱) + 白色十字刻度线 (随 tt_yaw 旋转, 转角肉眼可见)
+            tt_disc = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_tx, _ty, 0.000]),
+                                                            np.array([_tx, _ty, 0.010]), _tr),
+                                    color=(0.30, 0.32, 0.38, 1.0), smooth=True, shader='shaded')
+            self.view.addItem(tt_disc)
+            scene.append(tt_disc)
+            tt_ring = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_tx, _ty, 0.010]),
+                                                            np.array([_tx, _ty, 0.012]), _tr * 1.0),
+                                    color=(0.55, 0.58, 0.65, 0.35), smooth=True, shader=None)
+            self.view.addItem(tt_ring)
+            scene.append(tt_ring)
+            # 十字刻度线 ×2 (横/竖, 随 tt_yaw 旋转 — 本机 GLLinePlotItem NaN 断线不兼容, 分两条)
+            tt_cross = [gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.92, 0.94, 0.97, 0.95),
+                                          width=2.5, mode='lines'),
+                        gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.92, 0.94, 0.97, 0.95),
+                                          width=2.5, mode='lines')]
+            for _ln in tt_cross:
+                self.view.addItem(_ln)
+            scene += tt_cross
+            self._gl_items["tt_cross"] = tt_cross
+            self._tt_c = np.array([_tx, _ty, 0.0115])
+            self._tt_r = 0.062
+        if dg.get("coupler"):
+            _cp = dg["coupler"]
+            _cx, _cy = float(_cp["pos"][0]), float(_cp["pos"][1])
+            # 金属底座 (深灰) + 黄色压电叠堆 ×2 (参照芯明天) + 载物台面 + 光纤头基准 (亮柱)
+            cp_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx, _cy, 0.010]),
+                                                       (0.34, 0.11, 0.020)),
+                                    color=(0.42, 0.44, 0.50, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(cp_base)
+            scene.append(cp_base)
+            for _sx in (-0.07, 0.07):
+                pzt = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx + _sx, _cy, 0.032]),
+                                                       (0.12, 0.016, 0.020)),
+                                    color=(0.82, 0.70, 0.15, 1.0), smooth=False, shader='shaded')
+                self.view.addItem(pzt)
+                scene.append(pzt)
+            cp_stage = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx, _cy, 0.052]),
+                                                        (0.34, 0.11, 0.010)),
+                                     color=(0.22, 0.25, 0.32, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(cp_stage)
+            scene.append(cp_stage)
+            # 光纤头基准 (水平细亮柱, 指向台上光模块头)
+            fb = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_cx - 0.146, _cy, 0.067]),
+                                                       np.array([_cx - 0.114, _cy, 0.067]), 0.004),
+                               color=(0.85, 0.87, 0.92, 1.0), smooth=True, shader='shaded')
+            self.view.addItem(fb)
+            scene.append(fb)
         self._gl_items["scene"] = scene
 
         # 🤖 Sawyer 机械臂 (2026-08-25 老倪: 形象渲染 — 底座+肩+肘+腕+夹爪)
@@ -924,7 +1232,7 @@ class DreamView3D(QWidget):
                                   color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_wrist)
         arm.append(arm_wrist)
-        # 夹爪两瓣 (沿 Y 开合 — 插销是沿 X 的长条, 从 ±Y 两侧夹住; 青色纯色不被光照压暗)
+        # 夹爪两瓣 (沿 Y 开合 — 光模块是沿 X 的长条, 从 ±Y 两侧夹住; 青色纯色不被光照压暗)
         arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.05, 0.016, 0.05)),
                                   color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_l)
@@ -933,7 +1241,7 @@ class DreamView3D(QWidget):
                                   color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
         self.view.addItem(arm_jaw_r)
         arm.append(arm_jaw_r)
-        # 光模块 peg (金色插销 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["peg"])
+        # 光模块 光模块 (金色光模块 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["光模块"])
         arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], _PEG_SIZE),
                                 color=(0.95, 0.72, 0.10, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_peg)
@@ -950,6 +1258,24 @@ class DreamView3D(QWidget):
         traj.setGLOptions("additive")
         self.view.addItem(traj)
         self._gl_items["traj"] = traj
+
+        # 🧮 接触流形几何 (2026-09-07 老倪: 流形是拓扑要有形状): 通道管线框 = 5 环 + 3 母线
+        #   多 GLLinePlotItem (各自闭合/短段, 无 NaN 断线兼容问题); 后跟 [通道轴, peg头球, 偏离线]
+        _MANI_TC = (0.25, 0.85, 0.75, 0.55)
+        mani_tube = []
+        for _ti in range(8):
+            _ln = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_MANI_TC, width=1.2)
+            _ln.setGLOptions("additive")
+            self.view.addItem(_ln)
+            mani_tube.append(_ln)
+        mani_ax = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.95, 0.95, 0.95, 0.9), width=2.2)
+        self.view.addItem(mani_ax)
+        mani_ball = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.72, 0.10, 1.0), size=9)
+        self.view.addItem(mani_ball)
+        mani_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.2, 1.0, 0.4, 1.0), width=2.5)
+        self.view.addItem(mani_line)
+        self._gl_items["mani"] = mani_tube + [mani_ax, mani_ball, mani_line]
+        self._mani_ix = {"tube": mani_tube, "ax": mani_ax, "ball": mani_ball, "line": mani_line}
 
         # 箭头线 (4 层动作)
         for key in ("uff", "ufb", "ufuse", "ulimit"):
@@ -1038,10 +1364,10 @@ class DreamView3D(QWidget):
         self._gl_items["latent"] = [lat_line, lat_now]
 
         # 🧲 接触指示 (2026-08-25 老倪 重新设计: 原来只有一个球, 大小按被噪声垫高的
-        #   接触概率映射 → 直径只在 16~26px 之间变, 而且"碰到插销"根本不进这个信号)
+        #   接触概率映射 → 直径只在 16~26px 之间变, 而且"碰到光模块"根本不进这个信号)
         #   新设计: 两路接触各一组「核心球 + 脉冲外环」—
-        #     夹持接触 (peg↔指垫) 青色, 画在夹爪处 → 一夹住就明显弹出
-        #     环境接触 (销头↔孔沿/夹爪↔台面) 橙红, 画在销头 → 顶到孔沿才亮
+        #     夹持接触 (光模块↔指垫) 青色, 画在夹爪处 → 一夹住就明显弹出
+        #     环境接触 (光模块头↔孔沿/夹爪↔台面) 橙红, 画在光模块头 → 顶到孔沿才亮
         #   强度用力的归一化值直接驱动 (不用 cp, 它有 0.58 噪声基线), 直径 8→54px
         c_items = []
         for _col in ((0.20, 0.90, 1.00), (1.00, 0.45, 0.10)):        # 青=夹持, 橙红=环境
@@ -1115,6 +1441,112 @@ class DreamView3D(QWidget):
         except Exception:
             pass
 
+    # ── 🧮 接触流形几何绘制 (2026-09-07 老倪: 流形是拓扑要有形状可看) ──
+    #   流形 = 插拔安全通道: 1D 测地线(通道轴) × 该阶段法向容差(半径) → 管状 2D 曲面。
+    #   每帧按当前阶段画对应通道管 + 光模块头位置 + 到通道轴的状态偏离线。
+    def _update_manifold(self, i, x):
+        ix = getattr(self, "_mani_ix", None)
+        mod = _MANI
+        if ix is None or mod is None:
+            return
+        tr = self.tr
+        stg = ""
+        if tr.get("stage") and i < len(tr["stage"]):
+            stg = str(tr["stage"][i]).replace("阶段 ", "").split("·")[0].strip()
+        hole = np.asarray(self._hole, float)
+        mouth = np.asarray(self._mouth, float)
+        # 光模块头 (插入的"主角"): tr peg_head → 头 site; 退化用 peg(抓握点)
+        ph = None
+        if tr.get("peg_head") is not None and i < len(tr["peg_head"]):
+            ph = np.asarray(tr["peg_head"][i], float)
+        elif tr.get("peg") is not None and i < len(tr["peg"]):
+            ph = np.asarray(tr["peg"][i], float) + getattr(self, "_peg_center_off", np.zeros(3))
+        xs_all = np.asarray(tr["x"], float)
+        dt = 0.0125
+        v = (x - xs_all[i - 1]) / dt if i > 0 else np.zeros(3)
+        tgt = None
+        if tr.get("target") is not None and i < len(tr["target"]):
+            tgt = np.asarray(tr["target"][i], float)
+        cm = mod.ContactManifold(hole_pos=hole, hole_mouth=mouth)
+        r = cm.decompose(np.asarray(x, float), ph if ph is not None else x,
+                         tgt if tgt is not None else x, v, stg)
+        # ── 通道几何 (世界系中心线) ──
+        c0 = c1 = None
+        R = 0.0
+        free = stg in ("接近", "对位", "转移")
+        if not free:
+            if stg in ("下降", "抓取", "抬起"):
+                pg = np.asarray(x, float)
+                if tr.get("peg") is not None and i < len(tr["peg"]):
+                    pg = np.asarray(tr["peg"][i], float)
+                c0 = np.array([pg[0], pg[1], pg[2] + 0.050])
+                c1 = np.array([pg[0], pg[1], pg[2] + 0.002])
+                R = 0.030
+            elif stg == "插入":
+                c0 = mouth + np.array([0.0, 0.0, 0.02])   # 孔口上方悬高 (工艺起点)
+                c1 = hole                                  # 孔底
+                R = 0.006
+            elif stg == "完成":
+                c0 = mouth
+                c1 = hole
+                R = 0.004
+        # ── 通道管 (5 环 + 3 母线) ──
+        tube = ix["tube"]
+        if c0 is None or c1 is None or R <= 0:
+            for ln in tube:
+                ln.setData(pos=np.zeros((2, 3)))
+            ix["ax"].setData(pos=np.zeros((2, 3)))
+        else:
+            axv = np.asarray(c1, float) - np.asarray(c0, float)
+            L = float(np.linalg.norm(axv))
+            if L < 1e-6:
+                axv = np.array([1.0, 0.0, 0.0]); L = 1.0
+            u = axv / L
+            ref = np.array([0.0, 0.0, 1.0]) if abs(u[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+            e1 = np.cross(u, ref); e1 /= (np.linalg.norm(e1) or 1.0)
+            e2 = np.cross(u, e1)
+            n_ring, n_pt = 5, 12
+            for k in range(n_ring):
+                t = k / max(1, n_ring - 1)
+                c = np.asarray(c0, float) + u * (t * L)
+                ring = [c + R * (np.cos(th) * e1 + np.sin(th) * e2)
+                        for th in np.linspace(0, 2 * np.pi, n_pt, endpoint=False)]
+                tube[k].setData(pos=np.asarray(ring + [ring[0]], float))
+            for k in range(3):
+                th = k * 2 * np.pi / 3
+                d = np.cos(th) * e1 + np.sin(th) * e2
+                tube[n_ring + k].setData(pos=np.asarray([c0 + R * d, c1 + R * d], float))
+            ix["ax"].setData(pos=np.asarray([c0, c1], float))
+        # ── 状态偏离 / 进度线 ──
+        line = ix["line"]
+        ball = ix["ball"]
+        if ph is not None:
+            ball.setData(pos=np.asarray([ph], float))
+        else:
+            ball.setData(pos=np.zeros((1, 3)))
+        if free or r.get("axis") is None:
+            # 自由空间: 无接触约束 → 灰线 = 手到目标的剩余进度
+            if tgt is not None and r.get("e") is not None:
+                line.setData(pos=np.asarray([x, np.asarray(x, float) + r["e"]], float))
+                line.setColor((0.62, 0.66, 0.72, 0.55))
+            else:
+                line.setData(pos=np.zeros((2, 3)))
+            return
+        ep = np.asarray(r.get("e_perp", np.zeros(3)), float)
+        base = ph if (stg in ("插入", "完成")) else np.asarray(x, float)
+        if np.linalg.norm(ep) > 1e-6:
+            line.setData(pos=np.asarray([base, base - ep], float))
+        else:
+            line.setData(pos=np.asarray([base, base], float))
+        st = str(r.get("state", ""))
+        if "在流形" in st:
+            col = (0.35, 1.0, 0.45, 1.0)
+        elif "贴" in st:
+            col = (1.0, 0.85, 0.20, 1.0)
+        else:
+            col = (1.0, 0.30, 0.30, 1.0)
+        line.setColor(col)
+
     # ── 帧更新 ──
     def _update_frame(self, i):
         tr = self.tr
@@ -1131,8 +1563,13 @@ class DreamView3D(QWidget):
         else:
             traj_pts = np.array([x, x])
         self._gl_items["traj"].setData(pos=traj_pts)
+        # 🧮 流形几何 (接触通道曲面 + 偏离状态) — 每帧, 纯 numpy 轻量
+        try:
+            self._update_manifold(i, x)
+        except Exception:
+            pass
 
-        # 🤖 Sawyer 机械臂 IK (末端=peg 位置, 夹爪开合随 gripper)
+        # 🤖 Sawyer 机械臂 IK (末端=光模块 位置, 夹爪开合随 gripper)
         ik = _ik_sawyer(x, self._arm_base)
         arm = self._gl_items["arm"]
         arm[self._arm_idx["upper"]].setMeshData(meshdata=_cylinder_mesh(ik["shoulder"], ik["elbow"], 0.032))
@@ -1140,21 +1577,50 @@ class DreamView3D(QWidget):
         arm[self._arm_idx["shoulder"]].setMeshData(meshdata=_sphere_mesh(ik["shoulder"], 0.042))
         arm[self._arm_idx["elbow"]].setMeshData(meshdata=_sphere_mesh(ik["elbow"], 0.034))
         arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.026))
-        # 🖐 夹爪开合 (2026-08-25 老倪: 插销是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
-        #   张开 gap=0.048 (瓣在插销外侧) → 闭合 gap=0.024 (贴住插销 0.03 宽的两侧)
+        # 🖐 夹爪开合 (2026-08-25 老倪: 光模块是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
+        #   张开 gap=0.048 (瓣在光模块外侧) → 闭合 gap=0.024 (贴住光模块 0.03 宽的两侧)
+        #   🎯 2026-09-09: 夹爪绕 z 姿态 (hand_yaw) — 90° 抓横放光模块时两瓣须转 90°, 3D 可见
         g = float(tr["gripper"][i])
         gap = 0.024 + (1.0 - g) * 0.024
-        jaw_dir = np.array([0.0, 1.0, 0.0])
+        _hvy = float(tr["hand_yaw"][i]) if (tr.get("hand_yaw") is not None
+                                            and len(tr["hand_yaw"]) > i) else 0.0
+        _wrist = np.asarray(ik["wrist"], dtype=float)
+        # 🐛 2026-09-10 静静实锤 (数学): 爪瓣位置双重旋转 — 旧代码 jaw_lc = wrist + jaw_dir·gap
+        #   (jaw_dir 已含 yaw) 且 _box_mesh_yaw(rot_center=_wrist) 又把 box 绕 wrist 转 yaw →
+        #   位置实际绕 wrist 转 2×yaw: yaw=90° 时爪瓣转 180° 画半圆弧回对侧 (动画=夹爪自己绕
+        #   腕转圈/螺旋; 静止位错对不上横放模块 → 观感没夹住)。修复: 位置用未旋转 ±y 基准,
+        #   box 统一绕 wrist 单次转 yaw (位置 Rz·(0,±1)·gap ✓ 朝向 Rz·x̂ ✓ 同时正确)。
+        _jaw_lc = _wrist + np.array([0.0, gap, 0.0])
+        _jaw_rc = _wrist - np.array([0.0, gap, 0.0])
         arm[self._arm_idx["jaw_l"]].setMeshData(
-            meshdata=_box_mesh(ik["wrist"] + jaw_dir * gap, (0.05, 0.016, 0.05)))
+            meshdata=_box_mesh_yaw(_jaw_lc, (0.05, 0.016, 0.05), _hvy, _wrist))
         arm[self._arm_idx["jaw_r"]].setMeshData(
-            meshdata=_box_mesh(ik["wrist"] - jaw_dir * gap, (0.05, 0.016, 0.05)))
-        # 🔩 插销: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
-        #   老 tr 没有 "peg" 键 (旧仿真 peg=末端) → 回退到末端, 保持兼容
+            meshdata=_box_mesh_yaw(_jaw_rc, (0.05, 0.016, 0.05), _hvy, _wrist))
+        # 🔩 光模块: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
+        #   🎯 2026-09-09: peg 绕 z 朝向 (peg_yaw) — 来料被外力转 90° 的旋转过程 3D 可见
         peg_grasp = (np.asarray(tr["peg"][i], dtype=float)
                      if tr.get("peg") is not None and len(tr["peg"]) > i else x)
+        _pyv = float(tr["peg_yaw"][i]) if (tr.get("peg_yaw") is not None
+                                           and len(tr["peg_yaw"]) > i) else 0.0
+        _pc2 = np.asarray(peg_grasp, dtype=float) + np.asarray(self._peg_center_off, dtype=float)
         arm[self._arm_idx["peg"]].setMeshData(
-            meshdata=_box_mesh(peg_grasp + self._peg_center_off, _PEG_SIZE))
+            meshdata=_box_mesh_yaw(_pc2, _PEG_SIZE, _pyv))
+
+        # 🎯 2026-09-09 转台盘十字刻度随 tt_yaw 旋转 (来料旋转的机构证据可见)
+        _ttc = self._gl_items.get("tt_cross")
+        if _ttc is not None and getattr(self, "_tt_c", None) is not None:
+            _tty = float(tr["tt_yaw"][i]) if (tr.get("tt_yaw") is not None
+                                              and len(tr["tt_yaw"]) > i) else 0.0
+            _th2 = math.radians(_tty)
+            _c2, _s2 = math.cos(_th2), math.sin(_th2)
+            _cx2, _cy2, _cz2 = self._tt_c
+            _r2 = self._tt_r
+            _hpts = np.array([[_cx2 - _r2 * _c2, _cy2 - _r2 * _s2, _cz2],
+                              [_cx2 + _r2 * _c2, _cy2 + _r2 * _s2, _cz2]], dtype=float)
+            _vpts = np.array([[_cx2 + _r2 * _s2, _cy2 - _r2 * _c2, _cz2],
+                              [_cx2 - _r2 * _s2, _cy2 + _r2 * _c2, _cz2]], dtype=float)
+            _ttc[0].setData(pos=_hpts)
+            _ttc[1].setData(pos=_vpts)
 
         # 动作箭头 (4 层): 杆 + 锥形箭头头(方向) + 旁边文字标注(名称/速度/方向)
         _NAMES = {"uff": "⚡前馈加速器", "ufb": "🧪状态校正器·残差",
@@ -1167,7 +1633,8 @@ class DreamView3D(QWidget):
         _lo = max(0, i - _RW + 1)
         _zk_w = np.asarray(tr["z_k_vec"][_lo:i + 1], dtype=float)[:, :3]
         _pv_w = (np.asarray(tr["prior_vec"][_lo:i + 1], dtype=float)[:, :3]
-                 if tr.get("prior_vec") is not None else _zk_w)
+                 if tr.get("prior_vec") is not None and len(tr["prior_vec"]) > i
+                 else _zk_w)
         _rr = _zk_w - _pv_w
         _r_inst = _rr[-1]
         _r_sys = _rr.mean(axis=0)
@@ -1210,7 +1677,7 @@ class DreamView3D(QWidget):
         if tip is not None:
             self._gl_items["ufuse_sphere"].setData(pos=np.array([tip]))
 
-        # YOLO 检测框: hand/peg/hole 三个框 (真实 3D 坐标 — peg 用独立插销位置, hole 用孔口)
+        # YOLO 检测框: hand/光模块/hole 三个框 (真实 3D 坐标 — 光模块 用独立光模块位置, hole 用孔口)
         boxes = [("hand", x, (0.07, 0.07, 0.06)),
                  ("peg", peg_grasp + self._peg_center_off, (0.21, 0.04, 0.04)),
                  ("hole", self._mouth, (0.05, 0.07, 0.07))]
@@ -1225,10 +1692,14 @@ class DreamView3D(QWidget):
 
         # 状态估计 x̂ (latent = 位置3 + 预测接触力1): 紫线 = 最近 60 帧估计轨迹
         win = min(i + 1, 30)      # 60→30 帧: 观测噪声下估计轨迹本就抖, 窗口太长视觉更乱
-        lat_pts = np.array([np.asarray(tr["latent_vec"][k], dtype=float)[:3]
-                            for k in range(i - win + 1, i + 1)])
-        if len(lat_pts) < 2:
-            lat_pts = np.vstack([lat_pts, lat_pts])
+        lv = tr.get("latent_vec")
+        if lv is not None and len(lv) > 0:   # 🐛 2026-09-05: 老 trace 无 latent_vec → KeyError 崩 3D
+            lat_pts = np.array([np.asarray(lv[k], dtype=float)[:3]
+                                for k in range(i - win + 1, i + 1)])
+            if len(lat_pts) < 2:
+                lat_pts = np.vstack([lat_pts, lat_pts])
+        else:
+            lat_pts = np.zeros((1, 3))
         self._gl_items["latent"][0].setData(pos=lat_pts)
         self._gl_items["latent"][1].setData(pos=lat_pts[-1:])
         # 📈 先验动力学预测器 (纯预测, 未经观测校正) — 老 trace 无 prior_vec 时该层留空
@@ -1285,9 +1756,9 @@ class DreamView3D(QWidget):
             elif _cur == "抬起":
                 _ev = ("提升高度", float(_pegp[2] - np.asarray(tr["peg"][0], dtype=float)[2]), 0.08, ">")
             elif _cur == "转移":
-                _ev = ("销头-孔口水平", float(np.linalg.norm(_headp[:2] - self._mouth[:2])), 0.02, "<")
+                _ev = ("光模块头-孔口水平", float(np.linalg.norm(_headp[:2] - self._mouth[:2])), 0.02, "<")
             elif _cur == "插入":
-                _ev = ("销头-终点残距", float(np.linalg.norm(_headp - self._hole)), 0.004, "<")
+                _ev = ("光模块头-终点残距", float(np.linalg.norm(_headp - self._hole)), 0.004, "<")
             _eta = None
             if _ev is not None and i > 12:
                 _nm, _val, _th, _op = _ev
@@ -1301,8 +1772,8 @@ class DreamView3D(QWidget):
                          "手高于抓握点": float(_xp[2] - _pp[2] - 0.022),
                          "夹持度": float(tr["gripper"][_prev_i]),
                          "提升高度": float(_pp[2] - np.asarray(tr["peg"][0], dtype=float)[2]),
-                         "销头-孔口水平": float(np.linalg.norm(_hp[:2] - self._mouth[:2])),
-                         "销头-终点残距": float(np.linalg.norm(_hp - self._hole))}
+                         "光模块头-孔口水平": float(np.linalg.norm(_hp[:2] - self._mouth[:2])),
+                         "光模块头-终点残距": float(np.linalg.norm(_hp - self._hole))}
                 _v0 = _vmap.get(_nm, _val)
                 _rate = (_val - _v0) / 12.0
                 _need = (_th - _val) if _op == "<" else (_th - _val)
@@ -1320,10 +1791,10 @@ class DreamView3D(QWidget):
         _cp_norm = float(np.clip((_cp_raw - 0.58) / 0.42, 0.0, 1.0))
         self._contact_vals = (_fg, _fe, _cp_raw, _cp_norm)
         _grasp_anchor = np.asarray(ik["wrist"], dtype=float)          # 夹持 → 画在夹爪
-        _env_anchor = (np.asarray(tr["peg_head"][i], dtype=float)     # 环境 → 画在销头
+        _env_anchor = (np.asarray(tr["peg_head"][i], dtype=float)     # 环境 → 画在光模块头
                        if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
                        else np.asarray(x, dtype=float))
-        # 预接触: 还没夹住但夹爪已经贴近插销 (几何证据) → 画一圈淡青环提示"即将接触"
+        # 预接触: 还没夹住但夹爪已经贴近光模块 (几何证据) → 画一圈淡青环提示"即将接触"
         _grasped_now = bool(np.asarray(tr["grasped"]).astype(bool)[i]) if tr.get("grasped") is not None else False
         _d_hp = float(np.linalg.norm(np.asarray(x, dtype=float) - np.asarray(peg_grasp, dtype=float)))
         self._pre_contact = (not _grasped_now) and _d_hp < 0.05      # 5cm 内算贴近
@@ -1363,7 +1834,7 @@ class DreamView3D(QWidget):
                             QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)), bold))
             if self._layer_on.get("scene", False):     # 场景层关 → 物体名字标注一并消失
                 _add(np.asarray(x) + [0, 0, 0.03], "末端 hand", (0.55, 0.78, 1.0))
-                _add(np.asarray(peg_grasp) + [0, 0, 0.03], "插销 peg", (1.0, 0.82, 0.25))
+                _add(np.asarray(peg_grasp) + [0, 0, 0.03], "光模块 peg", (1.0, 0.82, 0.25))
                 _add(self._mouth + np.array([0, 0, 0.05]), "孔口 hole", (1.0, 0.45, 0.35))
                 _add(self._hole + np.array([0, 0, -0.05]), "插入终点 goal", (0.35, 0.95, 0.60))
             if self._layer_on.get("latent", False):
@@ -1375,7 +1846,7 @@ class DreamView3D(QWidget):
                          f"夹持接触 {_fg2:.2f} (peg↔指垫)", (0.20, 0.90, 1.00))
                 elif getattr(self, "_pre_contact", False):
                     _add(np.asarray(ik["wrist"], dtype=float) + [0, 0, 0.035],
-                         f"即将接触插销 (距 {self._pre_gap * 1000:.0f} mm)", (0.20, 0.90, 1.00))
+                         f"即将接触光模块 (距 {self._pre_gap * 1000:.0f} mm)", (0.20, 0.90, 1.00))
                 if _fe2 > 0.05:
                     _ea = (np.asarray(tr["peg_head"][i], dtype=float)
                            if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
@@ -1479,13 +1950,13 @@ class DreamView3D(QWidget):
             f"t       {t:6.2f}s   帧 {i}/{self._n - 1}\n"
             f"────────────────────\n"
             f"末端    {_f(x[0])} {_f(x[1])} {_f(x[2])}\n"
-            f"插销    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
-            f"销头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
+            f"光模块    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
+            f"光模块头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
             f"估计x̂   {_f(lat3[0])} {_f(lat3[1])} {_f(lat3[2])}\n"
             f"x̂−末端  {err:6.1f} mm   抖动 {jit:4.2f} mm/步\n"
             f"────────────────────\n"
             f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
-            f"销头→孔 {d_ph * 1000:6.1f} mm\n"
+            f"光模块头→孔 {d_ph * 1000:6.1f} mm\n"
             f"  环境接触 {fenv:5.3f}  夹持 {fg:5.3f}\n"
             f"状态校正器 残差{res:6.4f}\n"
             f"  接触概率 {cp:4.2f} (净 {max(0.0, min(1.0, (cp - 0.58) / 0.42)):4.2f})\n"
@@ -1530,17 +2001,331 @@ class DreamView3D(QWidget):
         self.btn_play.setText("▶ 播放")
         self._timer.stop()
 
+    # 🎯 2026-09-02 老倪「3D 视图显示状态要与程序执行状态保持一致」:
+    #   GUI 播放/调试推进到引擎第 i 步时调用 → 3D 显示第 i 步 (暂停自播, 控制权交给外部)
+    # ── 🕹 3D 世界操作 (v3.4.7) ──
+    def _on_run_world(self):
+        """▶ 运行 = 画布 start_sim 同一入口 (状态空间画布 → 引擎 → 逐帧同步到 3D)"""
+        try:
+            if self.module is not None:
+                self.module.start_sim()
+        except Exception as _e:
+            print(f"⚠️ 3D 运行: {_e}")
+
+    def _on_stop_world(self):
+        try:
+            if self.module is not None:
+                self.module.stop_sim()
+        except Exception as _e:
+            print(f"⚠️ 3D 停止: {_e}")
+
+    def _on_top_world(self, checked):
+        """📌 置顶开关 — 画布运行/弹窗不会盖住 3D (flag 改动需重新 show 生效)"""
+        try:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(checked))
+            self.show()
+        except Exception:
+            pass
+
+    def _sync_engine(self):
+        """引擎状态轮询: 画布播放中 → 本窗口 ▶运行 禁用 / ⏹停止 启用 (同一引擎同一状态)"""
+        try:
+            m = self.module
+            if m is None:
+                return
+            _busy = (bool(getattr(m, "_ss_timer", None) and m._ss_timer.isActive())
+                     or bool(getattr(m, "_sim_running", False)))
+            _brun = getattr(getattr(m, "btn_run", None), "text", lambda: "")()
+            if not _busy and ("仿真中" in _brun or "运行中" in _brun):
+                _busy = True
+            self.btn_run_w.setEnabled(not _busy)
+            self.btn_stop_w.setEnabled(_busy)
+            self.lbl_state_w.setText("⏳ 引擎运行中 — 本视图逐帧同步画布信号…" if _busy
+                                     else "⏸ 引擎就绪 · ▶ 运行 = 画布同引擎")
+        except Exception:
+            pass
+
+    def set_active_node(self, node_name, dw=None):
+        """🎯 v3.4.6 (老倪: 3D 与画布实际信号同步): 画布当前执行的节点(模块)名 +
+        该模块本帧 out 摘要 → 面板「画布信号」行。数据源 = 同一 DataWorld → 同帧。"""
+        self._active_node = node_name or ""
+        if not self._active_node:
+            self.lbl_mod.setText("画布信号: —")
+            return
+        try:
+            _sum = ""
+            if dw is not None:
+                _mo = dw.module_out_values(node_name)
+                if _mo:
+                    from data_world import _fmt
+                    _sum = "  ".join(f"{k}={_fmt(v)}" for k, v in list(_mo.items())[:5])
+            self.lbl_mod.setText(f"▶ 画布信号 · {self._active_node}" +
+                                 (f"\n  {_sum}" if _sum else ""))
+        except Exception:
+            self.lbl_mod.setText(f"▶ 画布信号 · {self._active_node}")
+
+    def set_frame(self, i, follow=True):
+        if follow:
+            self._pause()
+        self._update_frame(i)
+        try:
+            self.slider.setValue(int(i))
+            self.lbl_frame.setText(f"{int(i)} / {self._n - 1}")
+        except Exception:
+            pass
+        # 📉 性能流形碗窗同步 (同源 tr + 现场孔位)
+        try:
+            w = getattr(self, "_bowl", None)
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.set_frame(i)
+        except Exception:
+            pass
+
     def _tick(self):
         if self._idx >= self._n - 1:
             self._pause()
             return
-        self._update_frame(self._idx + 1)
+        # 🎯 2026-09-10 静静: 跳帧(÷800→5×)致 L4 长轨迹快进乱跳 — 老倪: 夹爪"自己转一圈"
+        #   (90° 旋转 0.7s 一闪而过)、轨迹跳着走、插拔段 2s 快闪"没看到插拔"; L2/L3 短轨迹
+        #   (<800帧)不跳帧所以平滑 → 播放速度恒定 ~1× 物理: 4704 步 ≈ 94s 播完 (真实速度,
+        #   平滑且每段动作可看清); 短轨迹仍逐帧 (0.33× 慢放, 平滑)
+        _n = int(getattr(self, "_n", 0))
+        step = max(1, int(round(_n / 1500.0)))
+        self._update_frame(min(self._idx + step, self._n - 1))
 
     def _on_slider(self, val):
         self._update_frame(val)
 
+    # ── 📉 性能流形曲面窗 (2026-09-07 老倪: 流形是拓扑要有形状) ──
+    def _open_mani_bowl(self):
+        w = getattr(self, "_bowl", None)
+        try:
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.raise_()
+                    w.activateWindow()
+                    return
+        except Exception:
+            pass
+        hole = np.asarray(self._hole, float)
+        w = ManifoldBowlWidget(self.tr, hole=hole)
+        w.setWindowTitle("📉 性能流形 · 光耦合代价曲面 (η 碗 — 横向错位 vs 估计耦合效率)")
+        w.resize(620, 580)
+        w.show()
+        self._bowl = w
+        if self._n > 0:
+            w.set_frame(self._idx)
+
 
 # ────────────────────────────────────────────────────────────
+# 📉 性能流形曲面 (2026-09-07 老倪: 流形要有形状 — η 高斯碗)
+#   坐标: 横 = 光模块头横向错位 dy/dz (孔底为原点, mm); 竖 = 估计耦合效率 η (×16mm 视觉放大)
+#   几何 = PerformanceManifold 的 η=exp(−Vp/σ²) (σ=4mm 标定, 高斯光束近似非实测)
+# ────────────────────────────────────────────────────────────
+class ManifoldBowlWidget(QWidget):
+    """性能流形曲面 — η(横向错位) 高斯碗 (2026-09-07 老倪: 流形要有形状)
+
+    为什么不用 pyqtgraph GL: 碗窗 = 第二个 GLViewWidget = 新 GL 上下文, 而 pyqtgraph
+    shader 全局缓存绑**第一个**上下文 → 第二窗口所有 GL item 绘制崩 (3.3.0 同款坑,
+    GLError glGetAttribLocation 实锤)。改用 QPainter 自绘 2.5D 正交投影, 零 GL 依赖:
+    静态碗网格预渲染 QPixmap (resize 重画), 每帧只投影动态点/轨迹/竖线。
+
+    坐标系: 孔底为原点, 横 = 光模块头横向错位 dy/dz (mm); 竖 = 估计耦合效率 η (×16mm
+    视觉放大 → 碗高 0~16mm)。几何 = PerformanceManifold η=exp(−Vp/σ²), σ=4mm 标定
+    (高斯光束近似, 非实测 — 真机光功率计标定后替换 σ)。"""
+
+    def __init__(self, tr=None, hole=None, parent=None):
+        super().__init__(parent)
+        self.tr = tr or {}
+        self._hole = np.asarray(hole, float) if hole is not None else _HOLE.copy()
+        self._i = 0
+        self._pix = None          # 静态碗渲染缓存
+        self._m = 16.0            # ±16mm
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        self.canvas = _BowlCanvas(self)
+        self.canvas.setStyleSheet("background:#0d1117;")
+        self.canvas.setMinimumHeight(360)
+        lay.addWidget(self.canvas, 1)
+        self.lbl = QLabel("η = 估计耦合效率 · 竖轴×16 视觉放大")
+        self.lbl.setStyleSheet("color:#8b949e; font-size:12px; background:#0d1117;"
+                               "border:1px solid #30363d; border-radius:4px; padding:4px 8px;")
+        self.lbl.setWordWrap(True)
+        lay.addWidget(self.lbl)
+        self.canvas.set_bowl(self._m, n=21)
+
+    def set_trajectory(self, tr, hole=None):
+        self.tr = tr or {}
+        if hole is not None:
+            self._hole = np.asarray(hole, float)
+        if self.tr.get("x") is not None and len(self.tr["x"]) > 0:
+            self.set_frame(0)
+
+    def _ph(self, i):
+        tr = self.tr
+        if tr.get("peg_head") is not None and i < len(tr["peg_head"]):
+            return np.asarray(tr["peg_head"][i], float)
+        if tr.get("peg") is not None and i < len(tr["peg"]):
+            return np.asarray(tr["peg"][i], float)
+        return None
+
+    def set_frame(self, i):
+        self._i = int(i)
+        tr = self.tr
+        n = len(tr.get("x", []))
+        if n == 0:
+            return
+        i = int(np.clip(i, 0, n - 1))
+        mod = _MANI
+        ph = self._ph(i)
+        if ph is None or mod is None:
+            return
+        pm = mod.PerformanceManifold(hole_pos=self._hole)
+        ev = pm.evaluate(ph)
+        d = ev["delta"]
+        dy = float(d[1]) * 1000.0
+        dz = float(d[2]) * 1000.0
+        eta = float(ev["eta"])
+        # 轨迹历史 (横向错位, z=0)
+        hist = []
+        for j in range(max(0, i - 120), i + 1):
+            pj = self._ph(j)
+            if pj is None:
+                continue
+            dj = np.asarray(pj, float) - self._hole
+            hist.append([float(dj[1]) * 1000.0, float(dj[2]) * 1000.0])
+        self.canvas.set_state(dy, dz, eta, hist)
+        self.lbl.setText(
+            f"光模块头横向错位 δ⊥={ev['d_perp_norm'] * 1000:.2f} mm  "
+            f"(dy={dy:+.1f}, dz={dz:+.1f}) · η≈{eta:.3f} · V_p={ev['Vp']:.3e}\n"
+            f"碗底 = 对准最优 (η→1, 竖轴×16 视觉放大); σ=4mm 高斯碗 (估计耦合效率模型, 非实测) · "
+            f"横轴 ±16mm 错位; 底部橙线 = 最近 120 步错位历史")
+
+    def set_trajectory_hole(self, tr, hole):
+        self.set_trajectory(tr, hole)
+
+
+class _BowlCanvas(QWidget):
+    """QPainter 2.5D 正交投影渲染碗曲面 (静态缓存) + 动态点/轨迹。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._m = 16.0
+        self._n = 21
+        self._state = None
+        self._hist = []
+
+    def set_bowl(self, m_mm, n=25):
+        self._m = float(m_mm)
+        self._n = n
+        self._pix = None
+
+    def set_state(self, dy, dz, eta, hist):
+        self._state = (float(dy), float(dz), float(eta))
+        self._hist = [np.asarray(h, float) for h in hist]
+        self.update()
+
+    # ── 正交相机 (固定视角: 俯 30°/ 偏 24°, 距离 75mm) ──
+    def _cam(self):
+        import math
+        az, el, dist = math.radians(24), math.radians(30), 75.0
+        eye = np.array([dist * math.cos(el) * math.sin(az),
+                        dist * math.cos(el) * math.cos(az),
+                        dist * math.sin(el)], float)
+        fwd = -eye / np.linalg.norm(eye)
+        right = np.cross(fwd, np.array([0.0, 0.0, 1.0]))
+        right /= (np.linalg.norm(right) or 1.0)
+        upv = np.cross(right, fwd)
+        return eye, right, upv, fwd
+
+    def _proj(self, pt, eye, right, upv, fwd, s, cx, cy):
+        d = np.asarray(pt, float) - eye
+        return (float(np.dot(d, right)) * s + cx, cy - float(np.dot(d, upv)) * s),                float(np.dot(d, fwd))
+
+    def _build_pix(self, W, H):
+        m, n = self._m, self._n
+        # η 碗网格 (z = η*16mm)
+        ys = np.linspace(-m, m, n)
+        zs = np.linspace(-m, m, n)
+        YY, ZZ = np.meshgrid(ys, zs)
+        eta = np.exp(-0.5 * (YY ** 2 + ZZ ** 2) / 16.0) * 16.0
+        eye, right, upv, fwd = self._cam()
+        s = 11.0
+        cx, cy = W / 2.0, H * 0.47
+        pix = QPixmap(W, H)
+        pix.fill(QColor(13, 17, 23))
+        p = QPainter(pix)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(QColor(60, 180, 160, 90), 0.6)
+        brush = QColor(30, 140, 120, 16)
+        # 所有 quad (中心 depth 排序, 远→近)
+        quads = []
+        for j in range(n - 1):
+            for i in range(n - 1):
+                # 四边形 (i,j)→(i+1,j)→(i+1,j+1)→(i,j+1), 中心深度远→近排序
+                q4 = [np.array([ys[ii], zs[jj], eta[jj, ii]])
+                      for (ii, jj) in ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1))]
+                sc = [self._proj(q, eye, right, upv, fwd, s, cx, cy) for q in q4]
+                dep = sum(dd for _, dd in sc) / 4.0
+                quads.append((dep, sc))
+        quads.sort(key=lambda t: -t[0])           # 远 → 近
+        for dep, sc in quads:
+            poly = QPolygonF([QPointF(x, y) for (x, y), _ in sc])
+            p.setBrush(brush)
+            p.setPen(pen)
+            p.drawPolygon(poly)
+        # 参考环 r=4/8/12/16 (z=0 底部)
+        import math
+        p.setPen(QPen(QColor(70, 90, 110, 130), 1.0))
+        p.setBrush(Qt.NoBrush)
+        for r_mm in (4, 8, 12, 16):
+            pts = [self._proj(np.array([r_mm * math.cos(t), r_mm * math.sin(t), 0.0]),
+                              eye, right, upv, fwd, s, cx, cy)[0]
+                   for t in np.linspace(0, 2 * math.pi, 72)]
+            p.drawPolyline(QPolygonF([QPointF(x, y) for x, y in pts]))
+        # 十字轴线 (dy=0 / dz=0)
+        p.drawLine(QPointF(*self._proj(np.array([-m, 0, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]),
+                   QPointF(*self._proj(np.array([m, 0, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]))
+        p.drawLine(QPointF(*self._proj(np.array([0, -m, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]),
+                   QPointF(*self._proj(np.array([0, m, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]))
+        p.end()
+        return pix
+
+    def paintEvent(self, ev):
+        W, H = self.width(), self.height()
+        if W < 20 or H < 20:
+            return
+        if self._pix is None or self._pix.size().width() != W or self._pix.size().height() != H:
+            self._pix = self._build_pix(W, H)
+        p = QPainter(self)
+        p.drawPixmap(0, 0, self._pix)
+        eye, right, upv, fwd = self._cam()
+        s = 11.0
+        cx, cy = W / 2.0, H * 0.47
+        # 动态: 轨迹(底平面) / 竖线 / 当前点
+        if self._hist:
+            pts = [self._proj(np.array([h[0], h[1], 0.0]), eye, right, upv, fwd, s, cx, cy)[0]
+                   for h in self._hist]
+            pp = QPen(QColor(220, 140, 50, 200), 1.6)
+            p.setPen(pp)
+            for i in range(len(pts) - 1):
+                p.drawLine(QPointF(*pts[i]), QPointF(*pts[i + 1]))
+        if self._state is not None:
+            dy, dz, eta = self._state
+            top = np.array([dy, dz, eta * 16.0])
+            (tx, ty), _ = self._proj(top, eye, right, upv, fwd, s, cx, cy)
+            (bx, by), _ = self._proj(np.array([dy, dz, 0.0]), eye, right, upv, fwd, s, cx, cy)
+            p.setPen(QPen(QColor(245, 185, 30, 160), 1.2))
+            p.drawLine(QPointF(bx, by), QPointF(tx, ty))
+            p.setBrush(QColor(240, 185, 25, 255))
+            p.setPen(Qt.NoPen)
+            r = 5.0
+            p.drawEllipse(QPointF(tx, ty), r, r)
+        p.end()
+
 # 命令行自测
 # ────────────────────────────────────────────────────────────
 if __name__ == "__main__":

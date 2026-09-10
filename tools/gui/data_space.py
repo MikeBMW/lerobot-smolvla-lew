@@ -4,7 +4,7 @@
 控制台所有相关数据对象统一注册表 + simulink node 映射 + 数据一致性。
 
 数据对象五类 (全息信息):
-  DATASETS  数据集    (data/ 扫描: 插销/套环/Orin, 帧数/eps/维度)
+  DATASETS  数据集    (data/ 扫描: 光模块/套环/Orin, 帧数/eps/维度)
   CURVES    训练曲线  (reports/train_curve_*.json)
   MODELS    模型产物  (outputs/train/*/checkpoints 最后 ckpt)
   ROLLOUTS  推理视频  (reports/rollout_*/frame_*.png)
@@ -66,8 +66,8 @@ class GlobalDataSpace:
     def _scan_datasets(self):
         self.datasets = []
         cands = [
-            ("metaworld_peg", "插销插拔 (lerobot)", "peg"),
-            ("metaworld_peg_v2", "插销插拔 (npz)", "peg"),
+            ("metaworld_peg", "光模块插拔 (lerobot)", "peg"),
+            ("metaworld_peg_v2", "光模块插拔 (npz)", "peg"),
             ("metaworld_act", "套环 nut-on-peg", "act"),
             ("metaworld_mt50", "MT50 套环 (task0)", "mt50"),
             ("closed_loop", "Orin 闭环采集", "orin"),

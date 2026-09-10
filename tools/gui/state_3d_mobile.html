@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<title>状态空间 3D 分层空间 · Z-MAX (实况同步)</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; overflow:hidden; background:#0d1117; color:#e6edf3;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; }
+#c { display:block; width:100%; height:100%; touch-action:none; }
+/* 顶部 HUD */
+#hud { position:fixed; top:8px; left:0; right:0; display:flex; justify-content:space-between;
+  align-items:center; padding:0 10px; pointer-events:none; z-index:10; }
+#hud .l { display:flex; flex-direction:column; }
+#hud .t { font-size:13px; font-weight:600; color:#58a6ff; text-shadow:0 1px 3px #000; }
+#hud .leg { font-size:9px; color:#8b949e; text-shadow:0 1px 2px #000; margin-top:1px; }
+#hud .stage { font-size:13px; font-weight:700; padding:2px 8px; border-radius:12px;
+  background:rgba(13,17,23,.7); }
+/* 实况徽标 */
+#liveChip { position:fixed; top:36px; left:10px; z-index:10; font-size:10px; padding:2px 8px;
+  border-radius:10px; background:rgba(35,134,54,.18); color:#3fb950; border:1px solid #238636;
+  pointer-events:none; white-space:nowrap; }
+#liveChip .dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+  background:#3fb950; margin-right:4px; animation:blink 1s infinite; }
+#liveChip.off { background:rgba(110,118,129,.12); color:#8b949e; border-color:#30363d; }
+#liveChip.off .dot { background:#8b949e; animation:none; }
+@keyframes blink { 50% { opacity:.25; } }
+/* 结果横幅 */
+#resultChip { position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:11;
+  font-size:12px; font-weight:700; padding:4px 14px; border-radius:14px; display:none;
+  background:rgba(13,17,23,.85); border:1px solid #238636; color:#3fb950; }
+#resultChip.warn { border-color:#d29922; color:#d29922; }
+/* 底部控制条 */
+#ctrl { position:fixed; bottom:0; left:0; right:0; background:rgba(13,17,23,.88);
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom)); z-index:10; }
+#ctrl .row { display:flex; align-items:center; gap:8px; }
+#play { flex:0 0 auto; width:46px; height:46px; border-radius:50%; border:none; cursor:pointer;
+  font-size:18px; background:#238636; color:#fff; }
+#play.paused { background:#1f6feb; }
+#btnRun { flex:0 0 auto; height:40px; padding:0 12px; border:none; border-radius:20px;
+  cursor:pointer; font-size:13px; background:#8957e5; color:#fff; white-space:nowrap; }
+#btnRun:disabled { background:#57606a; color:#8b949e; }
+#slider { flex:1; height:34px; accent-color:#1f6feb; }
+#info { flex:0 0 auto; font-size:11px; color:#8b949e; text-align:right; line-height:1.3; }
+/* 图层开关 */
+#layers { position:fixed; top:70px; right:8px; z-index:10; display:flex; flex-direction:column; gap:4px;
+  max-height:55%; overflow-y:auto; }
+#layers button { text-align:left; font-size:10px; padding:2px 7px; border-radius:6px; border:1px solid #30363d;
+  background:rgba(13,17,23,.8); color:#c9d1d9; cursor:pointer; white-space:nowrap; }
+#layers button.on { border-color:#238636; color:#3fb950; background:rgba(35,134,54,.15); }
+#layers button .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:4px; }
+#stageBar { position:fixed; bottom:72px; left:10px; right:10px; height:4px; background:#21262d;
+  border-radius:2px; z-index:9; }
+#stageBar .fill { height:100%; width:0; background:linear-gradient(90deg,#1f6feb,#238636); border-radius:2px; }
+/* 错误浮层: 拒绝静默黑屏 */
+#errBox { position:fixed; left:12px; right:12px; top:40%; z-index:99; display:none;
+  background:rgba(88,30,30,.92); border:1px solid #f85149; color:#ffdcd7;
+  padding:12px 14px; border-radius:10px; font-size:12px; line-height:1.5; white-space:pre-wrap; }
+#errBox b { color:#ffa198; }
+/* 跟随按钮 */
+#btnFollow { position:fixed; left:10px; bottom:118px; z-index:10; font-size:11px; padding:6px 10px;
+  border-radius:8px; border:1px solid #30363d; background:rgba(13,17,23,.85); color:#c9d1d9; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="l">
+    <div class="t">🧭 状态空间 3D 分层空间 · 插光模块</div>
+    <div class="leg">🟦末端(蓝) · 🟨光模块(黄,抓握点→销头) · 🔴孔口 · ⚪台面</div>
+  </div>
+  <div class="stage" id="stageTag">—</div>
+</div>
+<div id="liveChip" class="off"><span class="dot"></span><span id="liveTxt">装载中…</span></div>
+<div id="resultChip"></div>
+<div id="errBox"></div>
+<div id="layers"></div>
+<div id="btnFollow" style="display:none">🎯 跟随末端</div>
+<div id="stageBar"><div class="fill" id="stageFill"></div></div>
+<div id="ctrl">
+  <div class="row">
+    <button id="play" class="paused">▶</button>
+    <button id="btnRun" title="请求引擎真实跑一次新仿真">🔄 新仿真</button>
+    <input type="range" id="slider" min="0" max="100" value="0">
+    <div id="info">0/0<br><span style="color:#58a6ff" id="distInfo">—</span></div>
+  </div>
+</div>
+
+<script src="/lib/three/three.min.js?v=20260906b"></script>
+<script src="/lib/three/OrbitControls.js?v=20260906b"></script>
+<script>
+// ═══════ 状态空间 3D 分层空间 手机版 v2 (2026-09-06)
+// 实况同步: 轮询 /ss3d_live.json → run_id 变化装载 /ss_traj_full.json 新轨迹 →
+//   逐心跳 goto(i) — 与画布 ▶运行 同一条 tr 同帧跟随 (非独立重放)。
+// 可视修正: 孔口竖环(侧插) + 光模块实体(抓握点→销头) + 大号末端标记 + 镜头跟随
+window.onerror = function(m, src, ln){ showErr("脚本错误: " + m + "\n@" + (src||"").split("/").pop() + ":" + ln); };
+const TRAJ_URL = "ss_traj_full.json";
+const LIVE_URL = "ss3d_live.json";
+const STAGES = ["接近","对位","下降","抓取","抬起","转移","插入","完成"];
+const STAGE_COLOR = { "接近":"#f0883e","对位":"#e3b341","下降":"#f47067","抓取":"#238636",
+  "抬起":"#3fb950","转移":"#58a6ff","插入":"#d2a8ff","完成":"#3fb950" };
+
+// ── 场景 ──
+const canvas = document.getElementById("c");
+let renderer=null, scene, camera, controls;
+try{
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+}catch(e){
+  showErr("浏览器无法创建 WebGL 画面 (开启 WebGL / 换系统浏览器再试)。\n" + e);
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1117);
+camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.01, 10);
+controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.target.set(0, 0.14, 0.52);
+controls.minDistance = 0.12; controls.maxDistance = 2.5;
+
+scene.add(new THREE.AmbientLight(0x404060, 1.2));
+const dirl = new THREE.DirectionalLight(0xffffff, 1.6); dirl.position.set(0.5,1,0.3); scene.add(dirl);
+const dirl2 = new THREE.DirectionalLight(0x88aaff, .6); dirl2.position.set(-0.5,0.8,-0.5); scene.add(dirl2);
+
+// ── 坐标映射: 引擎 (x, y, z↑) → Three (x, z→y, y→z)  (z-up→y-up)
+function P(v){ return v ? new THREE.Vector3(v[0], v[2], v[1]) : null; }
+// 引擎几何常量 (与 state_space_sim.py 同源): 水平侧插, 插入轴 = 引擎 x
+// 🎯 2026-09-08: 仅作默认值 — 轨迹 meta (现场几何) 加载后 applyMeta() 动态对齐
+//   (metaworld 布局每进程漂移, 写死旧常量偏 3.8cm = 老倪目检"插口位置不对")
+let GEOM = {
+  goal:     [-0.2345, 0.4623, 0.1309],  // 孔底 (插入终点)
+  hole_mouth: [-0.1685, 0.4623, 0.1309], // 孔口
+  box_center: [-0.2645, 0.4623, 0.095], // 带孔盒中心
+  aoi_focus: [0.12, 0.62, 0.10],         // AOI 检测焦点
+  peg0: [0.0585, 0.5224, 0.03],          // 光模块初始抓握点
+};
+function applyMeta(){
+  const m = (traj && traj.meta) || {};
+  if(m.hole_mouth) GEOM.hole_mouth = m.hole_mouth;
+  if(m.goal) GEOM.goal = m.goal;
+  if(m.box_center) GEOM.box_center = m.box_center;
+  if(m.aoi_focus) GEOM.aoi_focus = m.aoi_focus;
+  if(m.peg0) GEOM.peg0 = m.peg0;
+  // 重定位: 盒/孔口/槽/红环/孔底/AOI 设备/初始光模块
+  const bc = P(GEOM.box_center);
+  if(bc){ box.position.copy(bc); boxEdge.position.copy(bc); }
+  const mp = P(GEOM.hole_mouth);
+  if(mp){
+    mouthPos.copy(mp);
+    slot.position.set(mp.x + 0.03, mp.y, mp.z);
+    mouthRing.position.copy(mp);
+    inArrow.position.copy(mp);
+  }
+  const gp = P(GEOM.goal);
+  if(gp) holeEnd.position.copy(gp);
+  const af = P(GEOM.aoi_focus);
+  if(af){
+    const lt = af.y + CAM_GAP + 0.075 + 0.01;   // 镜头顶端 (同创建时 LENS_TOP)
+    // 支架在 y 远侧 (Three z 正向 +0.16), 避开光模块移动路径 (光模块沿引擎 x 长 0.2,
+    // 本体 x∈[af.x-0.07, af.x+0.13] — 支架若在同 x 会撞, 老倪目检"重合/干涉"实锤)
+    aoiBase.position.set(af.x, 0.045, af.z + 0.16);
+    aoiPost.position.set(af.x, (lt + 0.03) / 2, af.z + 0.16);
+    aoiArm.position.set(af.x, lt, af.z + 0.08);   // 横臂从支架伸向检测位上方 (z-0.08 到检测位)
+    aoiLens.position.set(af.x, lt - 0.0375, af.z);   // 镜头在检测位正上方 (光模块头落点 af 正上方)
+    aoiObj.position.set(af.x, lt - 0.075 - 0.004, af.z);
+    aoiLight.position.set(af.x + 0.03, lt - 0.02, af.z + 0.02);
+    aoiLight.target.position.set(af.x, af.y - 0.01, af.z);
+    aoiRing.position.set(af.x, af.y - 0.006, af.z);
+  }
+}
+
+// 台面
+const table = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.02, 0.9),
+  new THREE.MeshStandardMaterial({color:0x2d333b, roughness:.9}));
+table.position.set(0.0, 0.01, 0.05); scene.add(table);
+
+// 带孔盒 (接收光模块的插座/母口; 真实几何随布局漂移 → GEOM.box_center)
+// 引擎(x,y,z↑) → Three(x, z↑→y, y→z): 盒 Three 尺寸 = 0.19(x) × 0.19(引擎Z→y) × 0.20(引擎Y→z)
+const boxCenter = P(GEOM.box_center);
+const box = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.19, 0.20),
+  new THREE.MeshStandardMaterial({color:0x57606a, roughness:.7, metalness:.15}));
+box.position.copy(boxCenter); scene.add(box);
+// 盒顶面边框线 (醒目)
+const boxEdge = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(0.191, 0.191, 0.201)),
+  new THREE.LineBasicMaterial({color:0x8b949e}));
+boxEdge.position.copy(boxCenter); scene.add(boxEdge);
+// 孔口 (插槽入口): 盒子 +x 侧面, 开口朝 +x; 随布局漂移 → GEOM.hole_mouth
+// 用深色凹槽贴面表示插口 + 红框描边
+const mouthPos = P(GEOM.hole_mouth);   // 孔口中心 (Three)
+// 插槽凹口: 半透明深色盒, 从孔口向盒内凹 0.05, 高略大于光模块
+const slotW = 0.035, slotH = 0.045;               // 槽口尺寸 (稍大于光模块 0.03 截面)
+const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, slotH, slotW),
+  new THREE.MeshStandardMaterial({color:0x1a1f26, roughness:.9}));
+slot.position.set(mouthPos.x + 0.03, mouthPos.y, mouthPos.z);
+scene.add(slot);
+// 孔口红框 (清晰标记入口)
+const mouthRing = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.003, 8, 24),
+  new THREE.MeshBasicMaterial({color:0xff5555}));
+mouthRing.position.copy(mouthPos); mouthRing.rotation.y = Math.PI/2; scene.add(mouthRing);
+// 插入方向指示 (从孔口向 +x 短箭头线, 表示光模块插入路径)
+const inArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), mouthPos, 0.06, 0xff5555, 0.012, 0.008);
+scene.add(inArrow);
+// 孔内终点标记 (HOLE_POS 深点, 半透明红点)
+const holeEnd = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 8),
+  new THREE.MeshBasicMaterial({color:0xff5555, transparent:true, opacity:.5}));
+holeEnd.position.copy(P(GEOM.goal)); scene.add(holeEnd);
+
+// 🔬 AOI 检测设备 (2026-09-08: 全链拔出→检测段 — 老倪工艺: 镜头从支架**伸出来**
+//   悬在检测位上方朝下; 夹爪拿着光模块放到镜头底下 (光模块在镜头正下方保持间隙);
+//   定向光源照下方防刺眼)
+// 布局: 底座(侧面) + 立柱 + 横臂**伸到检测位上方** + 镜头垂直下垂(显微镜头朝下)
+const CAM_GAP = 0.055;   // 镜头下端到光模块头顶的安全间隙
+const af = P(GEOM.aoi_focus);   // 光模块头悬停检测位 (引擎 aoi_focus)
+// 底座 (侧面台面, 不挡检测位)
+const aoiBase = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.018, 0.09),
+  new THREE.MeshStandardMaterial({color:0x3a3f47, roughness:.8}));
+aoiBase.position.set(af.x, 0.045, af.z + 0.16); scene.add(aoiBase);   // 底座在 y 远侧
+// 镜头顶端高 (光模块上方; af.y≈引擎z) — 必须先定义 (aoiPost/aoiArm 用)
+const LENS_TOP = af.y + CAM_GAP + 0.075 + 0.01;   // 镜头顶端高 (光模块上方)
+// 立柱 (从底座升高到镜头支架高度 — 高随 LENS_TOP 动态伸缩)
+const aoiPost = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.19, 10),
+  new THREE.MeshStandardMaterial({color:0x57606a}));
+aoiPost.scale.y = 2.2;   // 0.19 → ~0.42 覆盖 LENS_TOP 高度 (af.y≈0.13 时镜头顶 0.27+)
+aoiPost.position.set(af.x, 0.20, af.z + 0.16);  // 立柱中心抬高 (底 0.05 → 顶 ~0.42)
+scene.add(aoiPost);
+// 横臂 (从立柱顶水平伸向检测位上方 — 沿 Three z 轴长 0.16, 支架 z+0.16 → 镜头 z)
+const aoiArm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.016, 0.16),
+  new THREE.MeshStandardMaterial({color:0x57606a, roughness:.6}));
+aoiArm.position.set(af.x, LENS_TOP, af.z + 0.08);                 // 横臂中点在支架与镜头中间
+scene.add(aoiArm);
+// 镜头筒 (从横臂端垂直向下伸出, 显微镜头朝下 — 下端距光模块头顶 CAM_GAP 安全间隙)
+const aoiLens = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.075, 16),
+  new THREE.MeshStandardMaterial({color:0x58a6ff, roughness:.25, metalness:.55}));
+scene.add(aoiLens);
+aoiLens.position.set(af.x, LENS_TOP - 0.0375, af.z);              // 镜头筒 (顶端下垂 0.075)
+const aoiObj = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.024, 0.008, 16),
+  new THREE.MeshStandardMaterial({color:0x1f3a5f, roughness:.2, metalness:.7}));
+scene.add(aoiObj);
+aoiObj.position.set(af.x, LENS_TOP - 0.075 - 0.004, af.z);        // 物镜圈 (镜头下端)
+const aoiLight = new THREE.SpotLight(0xffffff, 0.9, 0.35, 0.55, 0.5);
+aoiLight.position.set(af.x + 0.03, LENS_TOP - 0.02, af.z + 0.02); // 光源在镜头旁向下
+aoiLight.target.position.set(af.x, af.y - 0.01, af.z);
+scene.add(aoiLight.target); scene.add(aoiLight);
+// 检测位光环 (光模块头落点指示, 绿色 — 夹爪把光模块放这)
+const aoiRing = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.002, 8, 24),
+  new THREE.MeshBasicMaterial({color:0x3fb950, transparent:true, opacity:.6}));
+aoiRing.position.set(af.x, af.y - 0.006, af.z); aoiRing.rotation.x = Math.PI/2; scene.add(aoiRing);
+
+// 光模块 (真实几何: 长0.20沿引擎X, 抓握点peg距销头端0.13 → 本体范围 peg-0.13~peg+0.07)
+// 引擎(x,y,z↑) → Three(x, z↑→y, y→z): 引擎X→Three.x 保持
+const modGrp = new THREE.Group();
+const modBody = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.03, 0.03),
+  new THREE.MeshStandardMaterial({color:0xd29922, roughness:.4, metalness:.3}));
+// 几何中心 = peg - 0.03(X) (销头端 peg-0.13, 尾端 peg+0.07, 中点在 peg-0.03)
+modBody.position.x = -0.03; modGrp.add(modBody);
+// 销头 (插入端, 金色圆头): 在 peg-0.13 处
+const modTip = new THREE.Mesh(new THREE.SphereGeometry(0.013, 10, 10),
+  new THREE.MeshStandardMaterial({color:0xf0b429, emissive:0x8a5a00}));
+modTip.position.x = -0.13; modGrp.add(modTip);
+// 尾端标记 (抓握点 peg 侧, 深金块)
+const modTail = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.034, 0.034),
+  new THREE.MeshStandardMaterial({color:0x9e6a03}));
+modTail.position.x = 0.06; modGrp.add(modTail);
+scene.add(modGrp);
+
+// 🦾 机械臂: 真实 metaworld Sawyer — 底座=世界原点(0,0,0), 肩高0.317, 上臂=前臂=0.42
+// 与 ss_dreamview.py _ARM_BASE/_ARM_H_BASE/_ARM_L1/_ARM_L2/_ik_sawyer 同源
+// 引擎(x,y,z↑) → Three(x, z↑→y, y→z): 底座原点映射后仍在原点 (0,0,0)
+const BASE_E = new THREE.Vector3(0, 0, 0);       // 引擎底座 (Three 同 0,0,0)
+const H_BASE = 0.317;                            // 肩高 (引擎Z → Three y)
+const L1 = 0.42, L2 = 0.42;                      // 上臂/前臂长
+// 引擎坐标常量 (供 ikSawyer 用)
+const H_BASE_ENG = H_BASE, L1_ENG = L1, L2_ENG = L2;
+
+// 底座柱 (从台面到肩高; 台面 Three y≈0, 柱高到肩)
+const baseCol = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, H_BASE, 14),
+  new THREE.MeshStandardMaterial({color:0x484f58, roughness:.6}));
+baseCol.position.y = H_BASE/2; scene.add(baseCol);
+// 肩球
+const SHOULDER_P = new THREE.Vector3(0, H_BASE, 0);
+const jShoulder = makeSphere(0.045, 0x8b949e); jShoulder.position.copy(SHOULDER_P); scene.add(jShoulder);
+// 连杆/关节 (每帧 updateArm 重定位, 长度固定=真实臂长)
+const linkUpper = makeCyl(0.032, 0x8b949e); linkUpper.frustumCulled=false; scene.add(linkUpper); // 上臂 0.42
+const linkFore  = makeCyl(0.026, 0x58a6ff); linkFore.frustumCulled=false; scene.add(linkFore);  // 前臂 0.42
+const jElbow = makeSphere(0.036, 0x9ecbff); scene.add(jElbow);   // 肘
+const jWrist = makeSphere(0.028, 0x79c0ff); scene.add(jWrist);   // 腕 (轨迹点 = 腕, 引擎x)
+
+// 连杆/关节工具 (圆柱两端对齐 + 球)
+function makeCyl(r, color){ return new THREE.Mesh(
+  new THREE.CylinderGeometry(r, r, 1, 10),
+  new THREE.MeshStandardMaterial({color, roughness:.55})); }
+function makeSphere(r, color){ return new THREE.Mesh(
+  new THREE.SphereGeometry(r, 10, 10),
+  new THREE.MeshStandardMaterial({color, roughness:.45})); }
+function placeSeg(mesh, a, b){
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  const dir = b.clone().sub(a); const len = dir.length();
+  mesh.position.copy(mid); mesh.scale.set(1, len, 1);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
+  mesh.visible = len > 0.01;
+}
+// 夹爪: 真实 _box_mesh(腕+gap*Y, (0.05,0.016,0.05)) = X长0.05 Y厚0.016 Z高0.05
+// 映射 Three: 引擎X→x, 引擎Y→z(厚), 引擎Z→y — 爪分列光模块Y两侧(Three z)
+// 视觉修正 (老倪): 垂直方向(y)加长如手指, 沿光模块轴向(x)收窄
+const jawMat = new THREE.MeshStandardMaterial({color:0x9ecbff, roughness:.35, metalness:.2});
+const jawGeoSpec = {x: 0.055, y: 0.085, z: 0.016};
+const jawL = new THREE.Mesh(new THREE.BoxGeometry(jawGeoSpec.x, jawGeoSpec.y, jawGeoSpec.z), jawMat); scene.add(jawL);
+const jawR = new THREE.Mesh(new THREE.BoxGeometry(jawGeoSpec.x, jawGeoSpec.y, jawGeoSpec.z), jawMat); scene.add(jawR);
+// 爪尖咬合条 (内侧深色, 视觉上"指肚")
+const jawTipMat = new THREE.MeshStandardMaterial({color:0x79c0ff, roughness:.3});
+const jawTipL = new THREE.Mesh(new THREE.BoxGeometry(jawGeoSpec.x-0.004, jawGeoSpec.y-0.02, 0.005), jawTipMat); scene.add(jawTipL);
+const jawTipR = new THREE.Mesh(new THREE.BoxGeometry(jawGeoSpec.x-0.004, jawGeoSpec.y-0.02, 0.005), jawTipMat); scene.add(jawTipR);
+function placeSegment(mesh, a, b){
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  const dir = b.clone().sub(a); const len = dir.length();
+  mesh.position.copy(mid); mesh.scale.set(1, len, 1);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
+  mesh.visible = len > 0.01;
+}
+// 末端跟随组 (腕中心 = 轨迹 x)
+const hand = new THREE.Group();
+scene.add(hand);
+let jawGap = 0.030;   // 夹爪开合量 (引擎语义, updateArm 读)
+
+// ── Sawyer 2连杆 IK (移植 ss_dreamview._ik_sawyer: 引擎坐标) ──
+function ikSawyer(tx, ty, tz){
+  // 输入引擎坐标 target(x,y,z↑), 返回引擎肩/肘/腕
+  const bx=0, by=0, bz=0;
+  const sx=bx, sy=by, sz=bz+H_BASE_ENG;   // 肩
+  const r = [tx-sx, ty-sy, tz-sz];
+  let d = Math.hypot(r[0],r[1],r[2]);
+  d = Math.max(Math.abs(L1_ENG-L2_ENG)+1e-4, Math.min(d, L1_ENG+L2_ENG-1e-4));
+  const a = (L1_ENG*L1_ENG - L2_ENG*L2_ENG + d*d)/(2*d);
+  const h = Math.sqrt(Math.max(0, L1_ENG*L1_ENG - a*a));
+  let ux=r[0]/d, uy=r[1]/d, uz=r[2]/d;
+  if(!isFinite(ux)){ ux=1; uy=0; uz=0; }
+  // 弯曲方向: 朝 +z (肘上翻)
+  let bx2=0, by2=0, bz2=1;
+  const dot = bx2*ux+by2*uy+bz2*uz;
+  bx2-=dot*ux; by2-=dot*uy; bz2-=dot*uz;
+  let bn = Math.hypot(bx2,by2,bz2);
+  if(bn<1e-6){ bx2=0; by2=1; bz2=0;
+    const d2 = by2*uy; bx2-=0; by2-=d2*uy; bz2-=d2*uz; bn=Math.hypot(bx2,by2,bz2); }
+  bx2/=bn; by2/=bn; bz2/=bn;
+  const ex = sx + a*ux + h*bx2;
+  const ey = sy + a*uy + h*by2;
+  const ez = sz + a*uz + h*bz2;
+  return {shoulder:[sx,sy,sz], elbow:[ex,ey,ez], wrist:[tx,ty,tz]};
+}
+
+function updateArm(){
+  const w = hand.position;   // Three (引擎x, z↑→y, y→z 已由 P() 处理)
+  // 轨迹 x(Three) = 引擎(x, 高→w.y? ) — P(): (x, z_eng→y, y_eng→z), 但手位置直接是 Three 坐标
+  // 反映射回引擎做 IK: 引擎 x=w.x, 引擎 y=w.z, 引擎 z=w.y
+  const ik = ikSawyer(w.x, w.z, w.y);
+  // 引擎→Three: 肩(x,y_eng→z, z_eng→y), 肘同
+  const S = new THREE.Vector3(ik.shoulder[0], ik.shoulder[2], ik.shoulder[1]);
+  const E = new THREE.Vector3(ik.elbow[0], ik.elbow[2], ik.elbow[1]);
+  const W = new THREE.Vector3(ik.wrist[0], ik.wrist[2], ik.wrist[1]);
+  placeSeg(linkUpper, S, E);
+  placeSeg(linkFore, E, W);
+  jShoulder.position.copy(S); jElbow.position.copy(E); jWrist.position.copy(W);
+  // 夹爪: 真实爪盒中心≈腕点, 分列光模块Y两侧(Three z), 爪身沿光模块长轴(X)从腕向夹持点延伸
+  const g = jawGap;
+  const jx = W.x + 0.015;          // 爪中心略前伸 (覆盖抓握段)
+  const jy = W.y - 0.015;          // 爪略低于腕, 抱住光模块 (光模块截面高0.03)
+  jawL.position.set(jx, jy, W.z + g);
+  jawR.position.set(jx, jy, W.z - g);
+  jawTipL.position.set(jx, jy, W.z + g + (g>0.028? -0.002 : 0.008));
+  jawTipR.position.set(jx, jy, W.z - g - (g>0.028? -0.002 : 0.008));
+}
+
+// 轨迹线: 蓝=末端(wrist) / 金=销头(head, 插入路径)
+function makeLine(color){ const g=new THREE.BufferGeometry(); const m=new THREE.LineBasicMaterial({color});
+  const l=new THREE.Line(g,m); l.visible=true; l.frustumCulled=false; scene.add(l); return l; }
+const trajLine = makeLine(0x3fb950);
+const headLine = makeLine(0xf0b429);
+
+// 分层向量箭头
+const VEC_LAYERS = [
+  {key:"u_ff",   name:"⚡前馈",     color:0x3fb950},
+  {key:"latent", name:"🔮估计x̂",    color:0xbf8700},
+  {key:"prior",  name:"📈先验",     color:0x00c8ff},
+  {key:"corrected",name:"🧪校正",   color:0xffa657},
+  {key:"u_fb",   name:"反馈",       color:0xf778ba},
+  {key:"u_fuse", name:"融合",       color:0xd2a8ff},
+  {key:"u_limit",name:"安全限幅",   color:0xf47067},
+  {key:"u_exec", name:"执行",       color:0xffffff},
+];
+const arrowGrp = new THREE.Group(); scene.add(arrowGrp);
+const arrowObjs = {};
+VEC_LAYERS.forEach(L => {
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.007,0.024,6),
+    new THREE.MeshBasicMaterial({color:L.color}));
+  cone.visible=false; arrowGrp.add(cone);
+  arrowObjs[L.key] = cone;
+});
+const layerBtn = {};
+document.getElementById("layers").appendChild(Object.assign(document.createElement("button"),
+  {innerHTML:'<span class="dot" style="background:#888"></span>轨迹', className:"on",
+   onclick:function(){ this.classList.toggle("on"); trajLine.visible=headLine.visible=this.classList.contains("on"); }}));
+layerBtn["_traj"]=document.getElementById("layers").lastChild;
+VEC_LAYERS.forEach(L=>{
+  const b = document.createElement("button");
+  b.innerHTML = `<span class="dot" style="background:#${L.color.toString(16).padStart(6,'0')}"></span>${L.name}`;
+  b.classList.add("on");
+  b.onclick = ()=>{ b.classList.toggle("on"); arrowObjs[L.key].visible = b.classList.contains("on"); };
+  document.getElementById("layers").appendChild(b);
+  layerBtn[L.key]=b;
+});
+
+// ── 状态 & DOM ──
+let traj=null, idx=0, playing=false, timer=null;
+let liveRunId=null, livePlaying=false, liveMode=false, lastBeatTs=0, liveN=0;
+let follow=false, followDist=0, followDir=null, followTarget=null;
+const slider=document.getElementById("slider"), playBtn=document.getElementById("play"),
+      info=document.getElementById("info"), stageTag=document.getElementById("stageTag"),
+      stageFill=document.getElementById("stageFill"),
+      liveChip=document.getElementById("liveChip"), liveTxt=document.getElementById("liveTxt"),
+      errBox=document.getElementById("errBox"), resultChip=document.getElementById("resultChip"),
+      btnFollow=document.getElementById("btnFollow");
+
+function showErr(t){ errBox.style.display="block"; errBox.innerHTML = "<b>⚠️ 出错了</b><br>" + t; }
+function setLive(txt,on){ liveChip.classList.toggle("off",!on); liveTxt.textContent=txt; }
+function showResult(ok, dist, extra){
+  resultChip.style.display="block";
+  resultChip.classList.toggle("warn", !ok);
+  resultChip.textContent = (ok?"✅ 插入完成":"⚠️ 未完成") + (dist!=null?" · 终距孔 "+dist.toFixed(3)+"m":"") + (extra?" · "+extra:"");
+  clearTimeout(resultChip._h); resultChip._h = setTimeout(()=>{ resultChip.style.display="none"; }, 10000);
+}
+
+// ── 镜头跟随 (末端) ──
+function setFollow(on, instant){
+  follow = on; btnFollow.style.display = on ? "none" : "block";
+  if(on){
+    const hp = hand.position.clone();
+    followTarget = hp.clone();
+    followDir = camera.position.clone().sub(controls.target).normalize();
+    followDist = camera.position.distanceTo(controls.target);
+    if(instant){ controls.target.copy(hp); camera.position.copy(hp.clone().add(followDir.multiplyScalar(followDist))); }
+  }
+}
+btnFollow.onclick = ()=>{ autoJoin=true; setPlaying(false); setFollow(true, true); };
+controls.addEventListener("start", ()=>{ setFollow(false); });
+
+// ── 🔄 请求引擎真实跑新仿真 (方案A: 手机触发 → ECS 命令端点 → 本机引擎 → 轨迹回传) ──
+const btnRun = document.getElementById("btnRun");
+btnRun.onclick = async ()=>{
+  if(btnRun.disabled) return;
+  btnRun.disabled = true; btnRun.textContent = "⏳ 请求中…";
+  try{
+    const r = await fetch("ss3d_cmd.php?cmd=run", {cache:"no-store"});
+    const j = await r.json();
+    if(j.ok){
+      setLive("⏳ 已请求 · 引擎执行中…", true);
+      btnRun.textContent = "⏳ 执行中…";
+      // 轮询 pollLive 会自动检测 run_id 变化并装载 (心跳逻辑已就绪)
+      setTimeout(()=>{ btnRun.disabled=false; btnRun.textContent="🔄 新仿真"; }, 20000);
+    } else {
+      btnRun.disabled=false; btnRun.textContent="🔄 新仿真";
+      showErr("请求失败: " + (j.msg||"未知"));
+    }
+  }catch(e){
+    btnRun.disabled=false; btnRun.textContent="🔄 新仿真";
+    showErr("无法连接引擎服务: " + e);
+  }
+};
+
+// ── 数据装载 ──
+async function fetchJ(u){ const r = await fetch(u, {cache:"no-store"}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }
+
+function buildLines(){
+  if(!traj) return;
+  function fill(line, key){
+    const pts = traj.frames.map(f=>P(f[key])).filter(Boolean);
+    const arr = new Float32Array(pts.length*3);
+    pts.forEach((p,i)=>{arr[i*3]=p.x; arr[i*3+1]=p.y; arr[i*3+2]=p.z;});
+    line.geometry.setAttribute('position', new THREE.BufferAttribute(arr,3));
+    line.geometry.computeBoundingSphere();
+  }
+  fill(trajLine,"x"); fill(headLine,"peg_head");
+}
+async function loadTraj(bust){
+  traj = await fetchJ(TRAJ_URL + (bust? "?r="+bust : ""));
+  slider.max = traj.n-1;
+  applyMeta();   // 🎯 2026-09-08: 现场几何动态对齐 (孔口/盒/AOI 随布局漂移)
+  buildLines();
+  // 镜头框住工作区 (末端/销头/孔/AOI 设备并集)
+  const all=[];
+  traj.frames.forEach(f=>{ const a=P(f.x),b=P(f.peg_head); if(a)all.push(a); if(b)all.push(b); });
+  const hm=P(GEOM.hole_mouth), hl=P(GEOM.goal), af=P(GEOM.aoi_focus);
+  if(hm) all.push(hm); if(hl) all.push(hl); if(af) all.push(af);
+  if(all.length){
+    const bb=new THREE.Box3().setFromPoints(all); const c=bb.getCenter(new THREE.Vector3());
+    const s=bb.getSize(new THREE.Vector3()).length();
+    controls.target.copy(c);
+    const dir=new THREE.Vector3(0.6,0.55,1).normalize();
+    camera.position.copy(c.clone().add(dir.multiplyScalar(Math.max(s*1.9,0.55))));
+  }
+}
+function goto(i){
+  if(!traj) return;
+  i = Math.max(0, Math.min(traj.n-1, Math.round(i)));
+  const f = traj.frames[i];
+  const xp = P(f.x);
+  if(xp){ hand.position.copy(xp); hand.visible=true; }
+  // 夹爪开合 (真实: gap 0.024 闭 ~ 0.048 张; grasped 时夹住光模块)
+  jawGap = f.grasped ? 0.024 : 0.030;
+  // 光模块: 固定几何 — 抓握点 peg 即位置, 本体沿引擎-X 0.20 (销头 peg-0.13X 朝孔)
+  // 光模块在抓取前躺台面 (无取向变化), 抓取后随末端; 简化: 位置=peg, 不旋转 (水平侧插 z 同高)
+  const gp = P(f.peg);
+  if(gp){ modGrp.position.copy(gp); modGrp.visible=true; } else modGrp.visible=false;
+  // 🔄 AOI 检测转面 (2026-09-08 老倪工艺: 相机俯拍, 光模块在镜头下转面展示多角度检测):
+  //   检测段光模块绕自身长轴(引擎X→Three x)旋转 90°, 让相机看到另一面
+  const stg = (f.stage||"").toString();
+  if(stg.startsWith("AOI检测")){
+    const prog = (i % 60) / 60;           // 检测保持帧内平滑转 90° (绕长轴=x)
+    modGrp.rotation.x = prog * Math.PI/2;
+  } else {
+    modGrp.rotation.x = 0; modGrp.rotation.z = 0;
+  }
+  // 销头指向孔: 光模块长轴从 peg 指向 peg_head (孔方向) — 仅抓取后有意义, 保持静态水平
+  // 分层箭头
+  VEC_LAYERS.forEach(L=>{
+    const v = f[L.key], cone = arrowObjs[L.key];
+    if(v && xp){
+      const vec = new THREE.Vector3(v[0], v[2], v[1]); const len = vec.length();
+      if(len>0.0008){
+        cone.visible = layerBtn[L.key].classList.contains("on");
+        const end = xp.clone().add(vec);
+        cone.position.copy(end);
+        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), vec.clone().normalize());
+      } else cone.visible=false;
+    } else cone.visible=false;
+  });
+  // HUD
+  stageTag.textContent = f.stage||"—";
+  stageTag.style.color = STAGE_COLOR[f.stage]||"#fff";
+  slider.value = i; idx=i;
+  const pct = traj.n>1 ? Math.round(i/(traj.n-1)*100) : 0;
+  stageFill.style.width = pct+"%";
+  info.innerHTML = `${i}/${traj.n-1}<br>${f.dist!=null?'距孔 '+f.dist.toFixed(3)+'m':''}`;
+  // 跟随
+  if(follow && followTarget){
+    followTarget.lerp(xp||followTarget, 0.12);
+    controls.target.lerp(followTarget, 0.12);
+    if(followDir) camera.position.copy(controls.target.clone().add(followDir.clone().multiplyScalar(followDist)));
+  }
+}
+
+// ── 本地重放 (兜底/空闲回放) ──
+let autoJoin = true;   // 实况自动跟随开关 (用户拖拽/本地播放时暂停, 新运行/🎯恢复)
+function tick(){ if(playing && traj){ if(idx>=traj.n-1){ setPlaying(false);} else goto(idx+1);} }
+function setPlaying(on){
+  playing=on; playBtn.textContent = on?"⏸":"▶";
+  playBtn.classList.toggle("paused", !on);
+  if(on){ clearInterval(timer); timer=setInterval(tick, 55); } else clearInterval(timer);
+}
+playBtn.onclick=()=>{ autoJoin=false; setPlaying(!playing); if(playing) setFollow(true); };
+let scrubT=null;
+slider.oninput=()=>{ setPlaying(false); setFollow(false); autoJoin=false; goto(parseInt(slider.value));
+  clearTimeout(scrubT); scrubT=setTimeout(()=>{ if(livePlaying && liveMode) autoJoin=true; }, 2500); };
+
+// ── 实况同步轮询 ──
+let bootReplay=false, busy=false, finishedRunId=null;
+async function pollLive(){
+  if(busy) return; busy=true;
+  try{
+    const lv = await fetchJ(LIVE_URL);
+    if(!lv || !lv.run_id){ // 无实况服务 → 空闲回放
+      if(!liveRunId && traj && !bootReplay){ bootReplay=true; setLive("无实况 · 回放上次运行", false); setPlaying(true); }
+      return;
+    }
+    lastBeatTs = Date.now();
+    if(lv.run_id !== liveRunId){
+      liveRunId = lv.run_id; liveMode=true; bootReplay=true; finishedRunId=null;
+      setPlaying(false); autoJoin=true;
+      setLive("实况加载…", true); liveN = lv.n||0;
+      try{ await loadTraj(liveRunId); }
+      catch(e){ showErr("新运行轨迹加载失败: "+e+"\n将重试…"); return; }
+      setFollow(true);
+    }
+    livePlaying = !!lv.playing;
+    if(livePlaying){
+      setLive("实况 · 与模型运行同步", true);
+      if(lv.i!=null && traj && autoJoin) goto(lv.i);
+    } else {
+      livePlaying=false;
+      // 运行结束: 一次性落到终态 + 结果横幅 (之后让用户自由拖拽/回放)
+      if(traj && lv.i!=null && finishedRunId!==lv.run_id){ goto(lv.i); }
+      if(finishedRunId!==lv.run_id){
+        finishedRunId=lv.run_id; autoJoin=false;
+        setLive("上次运行 (实况结束) · 可回放", false);
+        if(lv.done!=null) showResult(!!lv.done, lv.dist);
+      }
+    }
+  }catch(e){ /* 网络抖动忽略 */ if(!liveRunId && traj && !bootReplay){ bootReplay=true; setPlaying(true);} }
+  finally{ busy=false; }
+}
+// 心跳 4s 中断 → 实况判定结束
+setInterval(()=>{
+  if(liveMode && livePlaying && Date.now()-lastBeatTs>4000){
+    livePlaying=false; autoJoin=false; finishedRunId=liveRunId;
+    setLive("实况中断 · 可回放", false);
+  }
+}, 1000);
+
+// ── 主循环 ──
+window.addEventListener("resize", ()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+(function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  try{ updateArm(); }catch(e){}
+  renderer.render(scene,camera);
+})();
+(async function init(){
+  try{
+    // 先探实况; 失败 → 直接回放现有轨迹
+    let lv=null;
+    try{ lv = await fetchJ(LIVE_URL); }catch(e){}
+    if(lv && lv.run_id){
+      liveRunId = lv.run_id; liveMode=true; liveN=lv.n||0;
+      if(lv.playing) setLive("实况加载…", true); else setLive("上次运行 · 回放", false);
+      await loadTraj(liveRunId);
+      setFollow(true);
+      if(lv.playing){ livePlaying=true; goto(lv.i||0); }
+      else { goto(lv.i!=null? lv.i : traj.n-1); if(lv.done!=null) showResult(!!lv.done, lv.dist); bootReplay=true; }
+    } else {
+      await loadTraj(); // 无实况 → 回放现有轨迹
+      setLive("回放模式", false);
+      bootReplay=true; setPlaying(true); setFollow(true);
+    }
+  }catch(e){
+    showErr("轨迹加载失败: "+e+"\n提示: 先在控制台状态空间点「▶ 运行」再刷新本页");
+  }
+  setInterval(pollLive, 250);
+})();
+</script>
+</body>
+</html>

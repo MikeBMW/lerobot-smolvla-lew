@@ -13,6 +13,7 @@ Z-MAX 多模态动作专家 · Sys-0 / Sys-11 / Sys-12 / System 2
 import sys
 import subprocess  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
+import tempfile  # 🐛 2026-08-28: Windows exe 无 /tmp → 打点日志改 tempfile.gettempdir()
 import json
 import glob
 import time  # 硬件工具箱日志时间戳
@@ -638,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v3.2.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1298,7 +1299,7 @@ class HomeWidget(QWidget):
         row.addStretch()
         b = QPushButton("● smolvla_lew")  # 改为按钮，点击打开 GitHub 仓库
         b.setFont(QFont("Arial", 12, QFont.Bold))
-        b.setStyleSheet(f"background:{SYS12_COLOR}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        b.setStyleSheet(f"background:{SYS12_COLOR}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         b.setCursor(Qt.PointingHandCursor)
         b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew.git")))  # 打开GitHub链接
         row.addWidget(b)
@@ -1306,7 +1307,7 @@ class HomeWidget(QWidget):
         # 同步按钮：将本地GUI代码推送到GitHub  # 新增同步按钮
         sync_btn = QPushButton("🔄 同步到GitHub")  # 新增同步按钮
         sync_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         sync_btn.setCursor(Qt.PointingHandCursor)
         sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
         row.addWidget(sync_btn)  # 新增同步按钮
@@ -1314,7 +1315,7 @@ class HomeWidget(QWidget):
         # 升级按钮
         upg_btn = QPushButton("⬆ 升级")
         upg_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         upg_btn.setCursor(Qt.PointingHandCursor)
         upg_btn.clicked.connect(lambda: self.module_clicked.emit("check_updates"))
         row.addWidget(upg_btn)
@@ -1322,7 +1323,7 @@ class HomeWidget(QWidget):
         # 官网按钮
         web_btn = QPushButton("🌐 Z-MAX")
         web_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         web_btn.setCursor(Qt.PointingHandCursor)
         web_btn.setToolTip("datadrive.world")
         web_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world")))
@@ -1331,7 +1332,7 @@ class HomeWidget(QWidget):
         # ====== 版本同步按钮（快速跳转到版本管理页面） ======
         ver_btn = QPushButton("📦 版本同步")
         ver_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         ver_btn.setCursor(Qt.PointingHandCursor)
         ver_btn.setToolTip("检查 LeRobot 上游更新 · 安全同步 · 版本管理")
         ver_btn.clicked.connect(lambda: self.module_clicked.emit("version"))
@@ -1340,7 +1341,7 @@ class HomeWidget(QWidget):
         # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
         doc_btn = QPushButton("📋 解决方案v1.0.4")
         doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         doc_btn.setCursor(Qt.PointingHandCursor)
         doc_btn.setToolTip("打开产品解决方案文档 (Markdown)")
         doc_btn.clicked.connect(self._open_spec_doc)
@@ -1349,7 +1350,7 @@ class HomeWidget(QWidget):
         # ====== 新增：PPT汇报按钮 ======
         doc_btn = QPushButton("📊 PPT汇报")
         doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         doc_btn.setCursor(Qt.PointingHandCursor)
         doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
         doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'BRAND-品牌注册材料.pptx')))
@@ -1358,7 +1359,7 @@ class HomeWidget(QWidget):
         # ====== 分享按钮 ======
         share_btn = QPushButton("📱 分享")
         share_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
+        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
         share_btn.setCursor(Qt.PointingHandCursor)
         share_btn.setToolTip("生成二维码 · 扫码查看Z-MAX项目")
         share_btn.clicked.connect(self._show_share_qr)
@@ -2096,7 +2097,7 @@ class DatasetModule(SubModuleWidget):
                     eps = "npz"
             except Exception:
                 pass
-            kind = "插销插拔 (peg-insert)" if "peg" in cur else "nut-on-peg 套环"
+            kind = "光模块插拔 (peg-insert)" if "peg" in cur else "nut-on-peg 套环"
             color = C_GREEN if "peg" in cur else "#d29922"
             return (f"📌 当前训练数据集: <b>{cur}</b> · <font color='{color}'>{kind}</font>"
                     f" · {frames} 帧 · {eps} eps · state {state_d}D"
@@ -2105,18 +2106,18 @@ class DatasetModule(SubModuleWidget):
             return f"📌 当前训练数据集: <b>检测失败</b> ({e})"
 
     def _local_datasets(self):
-        """📁 本地训练数据集探测 (2026-08-07 老倪: 数据集只留 metaworld, 插销/套环)"""
+        """📁 本地训练数据集探测 (2026-08-07 老倪: 数据集只留 metaworld, 光模块/套环)"""
         rows = []
         root = self._repo_root()
         import os as _os
         cands = [
-            ("metaworld_peg", "插销插拔", "peg-insert-side-v3", "peg", "Sawyer (metaworld)"),
+            ("metaworld_peg", "光模块插拔", "peg-insert-side-v3", "peg", "Sawyer (metaworld)"),
             # 2026-08-08 老倪: 训练用的 peg_long/peg_far (long2 训练在读) — 探测存在性加入
-            ("metaworld_peg_long", "插销插拔 (长程)", "peg-insert-side-v3 (long)", "peg", "Sawyer (metaworld)"),
-            ("metaworld_peg_far", "插销插拔 (远端)", "peg-insert-side-v3 (far)", "peg", "Sawyer (metaworld)"),
+            ("metaworld_peg_long", "光模块插拔 (长程)", "peg-insert-side-v3 (long)", "peg", "Sawyer (metaworld)"),
+            ("metaworld_peg_far", "光模块插拔 (远端)", "peg-insert-side-v3 (far)", "peg", "Sawyer (metaworld)"),
             # 2026-08-08 老倪: 全能看到 — YOLO 检测数据也显示
-            ("yolo_peg_full", "YOLO 插销检测", "yolo (peg)", "yolo", "YOLOv8"),
-            # 2026-08-07 老倪: 只留插销数据 — metaworld_act(套环) 已删; orin 行已删
+            ("yolo_peg_full", "YOLO 光模块检测", "yolo (peg)", "yolo", "YOLOv8"),
+            # 2026-08-07 老倪: 只留光模块数据 — metaworld_act(套环) 已删; orin 行已删
         ]
         for d, cn, official, tag, robot in cands:
             dp = _os.path.join(root, "data", d)
@@ -4409,7 +4410,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
     def _start_remote_training(self):
         r = self.remote_engine
         model = self.model_combo.currentText()
-        # 当前模型 → 远程 config (SmolVLA = config_smolvla_peg_long2.yaml 插销数据)
+        # 当前模型 → 远程 config (SmolVLA = config_smolvla_peg_long2.yaml 光模块数据)
         cfg_map = {
             "ACT": "config_act_pegdata.yaml", "SmolVLA": "config_smolvla_peg_long2.yaml",
             "SmolVLA+LEW": "config_smolvla_lew_ft.yaml", "VLA-Touch": "config_vla_touch_ft.yaml",
@@ -5546,7 +5547,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 import requests as _rq
                 ts = _t.strftime("%Y%m%d_%H%M%S")
                 ecs = "root@39.102.211.79"
-                ecs_pwd = "Nix19789"
+                ecs_pwd = _os.environ.get("ZMAX_ECS_PW", "")
                 models_dir = "/www/wwwroot/datadrive.world/models"
                 ver_name = f"act_{ts}.safetensors"
                 w_size = _os.path.getsize(w_path)
@@ -9741,18 +9742,38 @@ def _msg_ask(parent, title, text, kind="warning"):
 
 
 class StudioMainWindow(QMainWindow):
+    def _maybe_warn(self):
+        """🐛 2026-09-01 老倪: 非调试模式警告 — 直接 python studio.py 启动时 debugpy 无连接,
+        VSCode 断点永不生效 (用户"断点进不去"根因); F5 启动 2s 后握手已完成, 不误判"""
+        try:
+            import debugpy
+            _ok = debugpy.is_client_connected()
+        except Exception:
+            _ok = False
+        if not _ok:
+            try:
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.7 [W-01] ⚠️非调试模式")
+                self.statusBar().showMessage(
+                    "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
+            except Exception:
+                pass
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v3.2.4 [W-01]")  # v3.2.4: exe 内置 MLP 操作视频(mlp_insert_success_final.mp4 + 预抽帧缓存, CI 从 datadrive.world/models/mlp_video_pack.zip 下载后 --add-data 打包; Windows 无 ffmpeg → 播放器直接用预抽帧缓存); gen_insert_video.py 成功后保持画面90步+双输出名 | v3.2.3: Windows/macOS exe 3D 视图打包修复(缺 pyqtgraph/PyOpenGL → CI+Dockerfile.win pip 依赖补 pyqtgraph PyOpenGL + pyinstaller --collect-all pyqtgraph --collect-all OpenGL, 修 3D 视图 No module named 'pyqtgraph'; open_ss_3d 报错分 exe旧版/源码缺依赖) | v3.2.2: 状态空间六层源码打包修复(Windows exe 无 src/ → --add-data 打包 left_right/yolo_3d 源码 + _SS_DIR/_LR_DIR/_YOLO_DIR 多候选探测 env→_MEIPASS→上溯→逐级, 修 AppData\Local\src\... FileNotFoundError) | v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除插销自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.7 [W-01]")
+        # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
+        from PyQt5.QtCore import QTimer as _QTimer
+        _QTimer.singleShot(2000, self._maybe_warn)  # v5.5.7: 3D播放1x物理速度修复(÷800跳帧=5x: 90°旋转0.7s一闪→观感夹爪自己转圈, 插拔段2s快闪不可见; 改÷1500≈真实速度平滑可看清) + 3D夹爪双重旋转修复(jaw位置含yaw又绕wrist再转yaw=位置转2×yaw, 90°时画半圆乱转+静止位错对不上横放模块; 位置改未转±y基准单次转) | # v5.5.6: L4演示收尾崩溃修复(L4Demo np数组判真ValueError→tr还原list, worker防ndarray判真; 用户"L4与L2一样"=演示跑完未进回放实锤) | v5.5.5: L4档位=90°抗干扰演示全链(点L4即见来料转台把光模块转90°) — 插拔闭环修复(转台(0.30,0.30)在Sawyer臂可达区外=④全败根因→(0.42,0.60); 指缝中心对正抓握点; 钉夹改世界系偏移; ①转台90°→②绕z抓横→③治具回正→④标准抓取→⑤插入49mm→⑥拔出→⑦AOI→⑧光耦合η 3/3全绿success) + L4D档并入L4(旧L4D归一) | v5.5.4: 帮助文档修复(静界目录不存在回退docs + L1/L2文件名版本同步 + README断链重建) + L4D演示3D场景设备呈现(转台/压电耦合台按meta绘制, peg/夹爪绕z朝向动画, 转台盘十字刻度随转) + L4演示布局修正(转台0.10,0.60→0.30,0.30 避AOI设备视觉区) | L4 演示场景 抗干扰90°外力旋转+光耦合精密操作 | # v5.5.2: 功能清单 L2/L3/L4 能力档位分级(节点⑤Tab+Excel sheet+网页§0, 数据源 capability_levels.py; L4 增 C09抗干扰/C10流形预测器/C11记忆分层) | # v5.5.1: 记忆分层 BLMA(小脑/海马/额叶三层记忆带+总装记忆中枢+src归位 mem_nodes.py) + L4 抗干扰(拿起前 peg 摆放移位±3.5cm/转向±15° 注入, 多布局 attempts 兜底必达成功) + 流形预测器 v1→v5 训练部署(v5=CY等距正则修复版: 抗干扰 64.6%/clean 43.3%; detach bug 消融实锤) + INTACT 意图直读 0.5ms + L2/L3/L4 三档功能视频 | # v5.5.0: 能力档位radio三档开关(数据源层单击直选/双击循环,档位持久) + 单步/播放按档位过滤执行链(L2不高亮L3/L4行; 开关节点排除执行链不再被单步自动切档) + 流形专家预测器接线前置L4行首(VLM/几何→预测器→接触/性能流形, 引擎io发布预测流形channel) + 🔄重启崩溃修复(真实化引擎abort+线程join, 防mujoco双env并发segfault) + 重启只复位不自动跑 + 引擎cap大小写归一(L4预算×2生效) + 切档重置执行序(L3单步进VLM/ActionHead) + 画布节点字体缩小一档(标题9pt起) + 直方图np漏import修复 | # v5.4.1: JEPA predictor 真实接入流形 (老倪: 写了必须接 — LatentPredictor 原仅节点自检, ContactManifual/PerformanceManifold 不调用): 两流形类注入 predictor + predict_manifold(z,a) (旁路); 真实化引擎每帧真调 LatentPredictor→ManifoldReadout (几何 z R7+动作 → 预测流形 6 维), tr['mani_pred'] 旁路列, trained=False 诚实标注 (随机权重待训练); 验证 R1 seed104 352 步 done 红线不破, mani_pred 352 帧=每帧真调, F5 断点每帧可进 | # v5.4.0: 3D夹取锚定判据v2(抬升试探: 夹爪动+peg真值随动即锚定, 视觉残差不参与夹持后判定 — 09-08 反复夹不起光模块根因; R1 insert 352步×2/full 876步+AOI PASS 确定性恢复) + 肌肉记忆R1视觉禁用(标杆开环重放与视觉随机失配 9/9 失败实锤, SS_MUSCLE=0 同轮 352 成功; R0 确定性保留) + 🧠VLM真实视觉编码(SmolVLM2-500M 本地GPU: 真实渲染帧→960维潜空间z, 节点双击真实前向, 算法归位 smolvla_lew/vlm_encoder.py) + 状态空间 ActionHead(潜空间→4D动作块) + JEPA predictor 入流形域 predictor_layer(LatentPredictor z+a→z' + ManifoldReadout→接触/性能流形6维真值对齐可训练, decoder 拼 ActionHead) + 右键源码映射修复(键对齐+source 全落src, 断点可进) + 流形专家预测器节点(JEPA链路自检) | # v5.3.0: L3全链插拔+AOI闭环接入GUI + 功能清单v2分级 (🚀L3全链13段模式: 插→拔→AOI→放回, R1视觉877步闭环/AOI PASS, ▶运行勾选~20-40s/轮; 功能清单v2: L2🔧/L3🚀/L4🏆 capability_levels 分级+测试对应+ECS网页导出; sim_real教师图像数据集采集器 = smolvla VLA 数据管道; 标定层布局收DiT(引力-斥力-动作)+潜空-流形收L4流形; 原子技能源码集中 src/lerobot/skills; 直方图/归因按probe._seq递增去重修复(probe.clear重置恒1)+仿真波形播放时间轴光标; GUI版本号补同步 5.1.0→5.3.0) | # v5.1.0: 原子技能肌肉记忆(仿小脑) — Windows/macOS 3D 渲染回归修复+真实化视觉闭环打通+全模型训练(①3D渲染回归: v3.3.4 注释 AA_UseSoftwareOpenGL 致 Windows/macOS exe 3D 无法渲染(无硬件GL环境; 3.2.4 全启用正常) → 平台条件启用 win32/darwin 软件GL兜底, Linux GNOME 黑屏修复保留; ②R1视觉"抓不起光模块"根因链5修复: 深度scale 0.978→0.9616(10布局标定)/geom peg_z0取x当z/视觉未检出禁回退真值/幻影免疫+定位状态机(夹爪遮挡锁夹爪)/夹持真值锚定(夹稳后编码器) → seed104 视觉闭环 500步失败→352步 3/3稳定; ③3D显示修复: gripper语义统一夹紧度(metaworld 1=开vs引擎1=闭双源打架→反相) + tr携带现场几何meta(孔口/盒随布局漂移, 3D写死坐标偏3.8cm→插入点对齐); ④全模型训练: 左脑 150ep/9.2万帧(教师40新布局全成功)30K步 / 右脑 147+布局 contact acc0.999 / YOLO真实尺寸标注实验证伪(中心=geom≠pegGrasp控制锚, revert保v1); R0 5/10·R1视觉 3/10 多布局评估, 难布局=物理极限留真机) | # v4.4.0: 真实化重抓策略+固定布局蒸馏管道+3D修复(sim_real 重抓位置策略: 随动验证收紧8mm(20mm漏检真滑10-20mm)+插入段site-推算偏差守卫(>8mm连续3帧=peg夹爪内滑→回接近重抓刷新锁存); R0 site真值实验钉死失败布局=夹持几何物理(真值对齐也插不进: peg头横向偏孔口15.6mm vs 孔间隙2mm, 无倒角刚体); 3D修复: sim.run轨迹补 latent/prior/corrected/residual_vec 向量通道(真实化轨迹喂DreamView3D缺residual_vec KeyError→3D打不开); 蒸馏管道: collect_simreal_teacher_data.py固定布局教师采集→融合110ep→mw4/mw4w 30K重训→学生固定布局 0/8→4/8 追平解析教师(解除R0强解析, 模型真实执行; s102×8加权)) | # v4.3.1: 真实化插入遇阻保护+GUI演示修(3D视图"显示不成功"全链路: GUI真实化写死seed100=已知失败布局→换seed104; 遇阻保护=充分回撤脱离+分级回退(1-2次回转移重新对孔/3次回接近重抓), z对齐收紧4mm→1.2mm, 随动验证3.5cm→2cm, 深夹到位grasp_th0.50才抬; seed100类夹持物理问题3次调参无突破边际收益递减, 101-104稳定) | # v4.2.1: 测试验收全自动化(550/550 全绿 — 原 195 条手动验收全部程序化: manual_auto_map.py 映射注册表 + 17 个 t_auto_* 集成真断言, 可视化类验数据真源/真机类验验收记录在位(缺即FAIL不造假); 终端逐条实时打印 ▶→✅/❌+实测证据+耗时; Excel/网页编号改域码 VIS-01 风格; 修 metaworld reset(seed) 被忽略致同 seed 布局漂移(实锤复现)+ 5 处 or True 摆设断言) | # v4.2.0: 功能清单网页场景化+几何分类统稿(node_func_tree.py 增强向后兼容: FUNC_DOMAINS 21域三字母编号 VIS-01 全110功能注入 + SCENES 5大客户场景注册表(SC-01 FW Loading金手指插拔/SC-02 ATS光纤连接/SC-03老化墙/SC-04上下料/SC-05光耦合主动对准, 量化目标全取自RFP/TECH真值) + GEOM_CLASSES 几何能力三分类 纤维丛框架(LFP局部精细感知30/LFO局部精细操作35/HDM全局高维流形泛化45, hdm_funcs_of_scene 汇总跨本体泛化); gen_web_feature_pages.py 重写五章节(几何总纲/场景↔功能/编号图例/组合链/总表 每功能详细说明+验证方法+5用例逐条展开) 已上线 datadrive.world | # v4.1.0: 技术规格书入库(node_func_tree.py TECH_SPECS 3组12项: ①核心本体·运动控制 Gauge Covariant(极致定位±0.02mm/单模50nm 六维力控亚牛顿 六维力0.5% EtherCAT 1kHz 紧凑高刚性1.6T OSFP) ②复合移动·柔性流转 Locomotion(全向底盘±10mm 移动-操作解耦驻停 双臂10kg·0-2.5m·双孔0.3° 多模态避障) ③智能认知·系统集成 Gauge Symmetry(VLA自进化 周级上线 UPH400·CPK1.67·良率99% EtherCAT/Profinet/Modbus+ESD/IP65) → 量化映射产品作业+支撑功能; GUI Tab4 技术规格书+Excel Sheet7+自动测试报告5b节) + 一键自动测试(Test节点右键⚡: 环境自检→全用例→PDF7章+Excel→scp上传) + RFP需求规格书(Tab3/Sheet6/★否决5项) + 产品作业分级L1刚体基础/L2柔性高级/L3性能扩展+泛化指标G组7断言 + 对话框深色/最大化修复 | v4.0.2: 功能清单按规范场论重构(三层 G1场感知/G2协变操作/G3对称认知 → 22节点 → 110功能(名5~10字) → 550用例; 每功能5用例 auto/semi/manual; 339自动全真实断言 引擎/六层/源码审计 零空转; 模块化组合链 FUNC_CHAINS; 新真源 src/lerobot/verification/node_func_tree.py 注册表+run_tree执行器; CLI --only-node/--list 三级; GUI 树按三层分组+Excel 4sheet 含规范场列; 旧45项FEATURES保留兼容) | v4.0.1: 验证层 Feature/Test 节点交互升级(双击/右键 → 清单对话框: 45项功能分类列 基本29/泛化16 + 模型角色 感知6/世界7/决策4/规划3/安全2/引擎8/平台5/标定3/GUI7, 每项含模型特点; 按钮导出 Excel 含分类统计+测试结果, scp 上传 datadrive.world) + 真实化运行进度可见(每25步周期日志+QTimer轮询增量flush, 修5-9分钟静默误判卡死) + F5调试断点挂起全进程检测提示(只能鼠标动=pydevd断点暂停非故障, 指引放行/删断点) + io_snapshot YOLO未检出诚实标None禁引擎真值顶替(老倪红线) | v4.0.0 大版本: 状态空间三新层+验证体系+真实化(①🧩验证层: src/lerobot/verification 45项feature/35自动化用例, 画布底部 Feature/Test 节点+CLI ss_feature_tests.py; ②标定层三域 引力/斥力/潜空间 LATENT_CALIB(维度/类别/速度场prior_A), 🧮潜空间节点 PCA 实测观测有效维; ③流形导航层(原流形层): 接触流形=插拔测地线通道(切向进度/法向偏离/V), 性能流形=光耦合对准代价(η), 引擎逐帧发布 3 channel → Scope 2x3/总线17模块/元层数据连线; ④▶运行 YOLO 真实采样 detect_3d 断点可进+conf 去 0.99 写死伪装; ⑤标定节点改名 引力/斥力/潜空间; ⑥打包补 calibration/manifold/verification) | v3.4.8: 播放平滑修复(▶运行"卡住"根因: 📡传感器融合节点 execute_node_logic 真跑 YOLO aligner 冷加载 1.6s+ 冻结主线程 → execute_node_logic 加 demo 轻量路径(▶运行播放读 DataWorld 帧展示不重跑重函数, 单步/右键/双击调试仍真实执行断点可进); 播放节奏 80ms×60大步跳 → 30ms/tick 逐引擎步 (305步=305tick≈9s 平滑连续), 节点动画/log/总线按抽稀散布; resize 自动重取景(窗口变化>6% 且用户未手动转视角 → fit 场景撑满放大视口)) | v3.4.7: 3D 世界操作按钮(DreamView3D 绑定画布 module: 左侧「🕹3D世界操作」▶运行=module.start_sim(画布统一入口)/⏹停止/📌窗口置顶toggle/引擎状态轮询300ms按钮联动; 画布▶运行开始把可见3D窗口 raise+activate — 不再被画布覆盖; 无 module 兼容命令行自测) | v3.4.6: DataWorld 逐帧同步(引擎 io_trace 每步全量发布 9模块/23画布节点 I/O → tr逐帧帧序列; ▶运行播放改引擎步线性推进(旧按io快照25步抽1跳帧→3D与画布信号不同步), 3D/数据总线/画布 log 消费同一 DataWorld 游标严格同帧; _ss_tick 每帧广播画布正在执行节点 → 3D「▶画布信号」面板行(set_active_node, Dreamview 模块信号语义); 数据总线静态视图抽稀≤150帧防3万行卡; 播放结束 3D/游标精确落引擎末帧) | v3.4.5: 标定闭环(右键标定表格/标定面板💾保存 = CalibrationLayer.apply_to_engine 精确写回引擎源码字面量: parallel.py Kp/u_clip、cognition.py STAGE_V_CAP/MIN+veto_th/k_fb、state_space_sim.py 校正K/EMA/接触增益/安全限幅/先验A; 引擎 importlib 每次运行重载源码 → 下次▶运行即生效无需重启; 锚点值无关+命中数校验不静默; 镜像写 calibration_layer.py 块约束防 V_MIN key 串写 V_CAP; 修标定表 prior_A 0.95→1.0 与引擎真值对齐) | v3.4.4: 标定层(Drifting Models引力/斥力二分+平衡点, src/lerobot/calibration与datasets/policies同级别, 画布最下层, 右键标定表格21参数可编辑, 回路外不改架构) | v3.4.3: 3D视图↔程序执行状态映射(打开即自动播放 + _ss_tick逐帧推送set_frame, 断点冻结=3D同步停) + 外观质量检测真实化(yolo_3d/quality_check.py AOI图像处理, ss_aoi接真实帧) + _EXTERNAL_LOC全量行号校正(29条0错位: ss_est→AdaptiveStateEstimator类/ss_sched→decide/ss_aoi→AOIQualityChecker双击显示真实源码) + node_ss_s2估计分支补卡尔曼update闭环(原只predict) + debugpy僵尸pydevd占5678→SystemExit:1诊断清理 | v3.4.2: LiveUSB swap 防御落地(overlay 直接 swapon Invalid argument → losetup loop 设备方案, 8G swapfile 实测挂载 + systemd oneshot 开机自启, 禁 ExecStop/swapoff -a 会误杀) | v3.4.1: 卡死诊断经验沉淀(疑似"整机卡死"先 py-spy 判定: GUI 主线程 do_wait_suspend=引擎断点挂起非系统死, 鼠标能动界面全死=断点冻结特征; LiveUSB 无 swap 内存顶满直接冻结, 加 swapfile 防御) | v3.3.5: 画布节点真实执行(VSCode断点三根因: ①open_in_vscode右键重写launch.json覆盖ZMAX_DEBUG_BREAK env→模板写死env+节点名子串过滤 ②状态空间播放帧数<节点数→后排节点永不执行→_ss_tick n_rounds=max ③运行模式自动弹波形/视频置顶窗+断点冻结→关不掉+not responding→运行不弹窗双击才弹) + 节点真实执行(状态空间9节点/双脑/YOLO align/触觉接真实源码, 右键打开源码断点必进, importlib sys.modules注册) | v3.3.4: 状态空间画布三路统一(▶运行/⏭单步/右键运行节点 = 引擎轨迹真实数值 + 节点逻辑真实执行, node_metaworld_data 等注册函数断点可进; step_sim 状态空间分流→_state_space_step, _ss_ensure_trace 公共引擎轨迹, _ss_tick 播放每帧 execute_node_logic)+GNOME/Xorg 黑屏修复(AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下窗口渲染全黑, 该行仅 WSLg 需要已注释) | v3.3.3: VSCode 调试默认 F5=🚀全新调试进程(launch 新实例断点, attach 5678 备用, launch.json 三配置重排+open_in_vscode 生成同步, 补提交 .vscode 配置) | v3.3.1: simulink 工程全面检查(NODE_TYPES三处同步+状态空间闭环豁免+参数语义校验+端口兼容+完整性检查器zmax_integrity_check.py) | v3.3.0: 3D视图二次打开背景丢失修复(pyqtgraph shader全局缓存跨GL上下文失效→只复用不新建+重建去重removeItem)+simulink字体调小一档(192DPI下12pt=32px: 工具栏/终端/画布节点)+节点逻辑/参数/源码窗口最大化按钮修好(Qt.Dialog→Qt.Window类型)+状态空间画布触觉感知补metaworld数据源连线(因果修正) | v3.2.4: exe 内置 MLP 操作视频(mlp_insert_success_final.mp4 + 预抽帧缓存, CI 从 datadrive.world/models/mlp_video_pack.zip 下载后 --add-data 打包; Windows 无 ffmpeg → 播放器直接用预抽帧缓存); gen_insert_video.py 成功后保持画面90步+双输出名 | v3.2.3: Windows/macOS exe 3D 视图打包修复(缺 pyqtgraph/PyOpenGL → CI+Dockerfile.win pip 依赖补 pyqtgraph PyOpenGL + pyinstaller --collect-all pyqtgraph --collect-all OpenGL, 修 3D 视图 No module named 'pyqtgraph'; open_ss_3d 报错分 exe旧版/源码缺依赖) | v3.2.2: 状态空间六层源码打包修复(Windows exe 无 src/ → --add-data 打包 left_right/yolo_3d 源码 + _SS_DIR/_LR_DIR/_YOLO_DIR 多候选探测 env→_MEIPASS→上溯→逐级, 修 AppData\Local\src\... FileNotFoundError) | v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除光模块自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         # 🖥 2026-08-25 老倪: UI 重新适配 — 3200x2000 屏上固定 1400x900 只占 27% 面积,
         #   工具栏被迫折行 + 模块库 560px 挤占画布 → 大屏(宽≥2560)直接最大化启动。
+        # 🐛 2026-09-06: show 前 setWindowState(Maximized) → Mutter map 异常窗口 Iconic/Unmapped
+        #   (XCB 日志: MAP→CLIENT_MESSAGE→UNMAP)。最大化延迟到 main() _show_ready show 后设置。
         try:
             _ag = QApplication.primaryScreen().availableGeometry()
-            if _ag.width() >= 2560:
-                self.resize(int(_ag.width() * 0.97), int(_ag.height() * 0.95))
-                self.setWindowState(self.windowState() | Qt.WindowMaximized)
+            if _ag.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
+                self.resize(int(_ag.width() * 0.95), int(_ag.height() * 0.94))
         except Exception:
             pass
         self._build()
@@ -9896,6 +9917,130 @@ class StudioMainWindow(QMainWindow):
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
         if os.environ.get("ZMAX_AUTO_RUN") == "1":
             _oneshot(self, 2500, self._auto_run_compare5)
+        # 🧮 2026-09-05 自动测试: ZMAX_AUTO_SS=1 → 启动后自动打开状态空间画布
+        if os.environ.get("ZMAX_AUTO_SS") == "1":
+            _oneshot(self, 3000, self._auto_open_state_space)
+            # 🚀 再等 2s 让画布就绪, 自动点 ▶运行 (状态空间仿真)
+            if os.environ.get("ZMAX_AUTO_SS_RUN") == "1":
+                _oneshot(self, 5500, self._auto_run_state_space)
+        # 🧪 2026-09-05 完整自动测试套件: ZMAX_AUTO_TEST=1 → 每用例截图断言
+        if os.environ.get("ZMAX_AUTO_TEST") == "1":
+            _oneshot(self, 5000, self._start_auto_test_suite)
+        # 📡 2026-09-07 外部命令文件触发 (静静: 老倪要"直接打开 simulink 模式"不盲点):
+        #   监控 /tmp/zmax_nav_cmd — 写入一行命令即执行, 如:
+        #     simulink   → 切到 Simulink 页 (_on_nav)
+        #     ss_canvas  → 打开状态空间画布 (simulink.open_state_space)
+        #     ss_3d      → 打开 3D 视图
+        #     home/dataset/training/... → _on_nav(target)
+        #   处理完删除文件 (幂等, 可重复写入)
+        self._nav_cmd_timer = QTimer(self)
+        self._nav_cmd_timer.timeout.connect(self._poll_nav_cmd)
+        self._nav_cmd_timer.start(300)
+        self._nav_cmd_seen = set()   # 已处理命令去重 (防重复执行同内容)
+
+    def _poll_nav_cmd(self):
+        """📡 轮询外部命令文件 /tmp/zmax_nav_cmd (一行=一个命令)"""
+        try:
+            p = "/tmp/zmax_nav_cmd"
+            if not os.path.isfile(p):
+                return
+            with open(p) as f:
+                lines = [l.strip() for l in f if l.strip()]
+            os.remove(p)   # 先删防重复
+            for line in lines:
+                # 🔄 2026-09-07: ss_run 等动作命令可重复触发 (不去重);
+                #   导航类命令 (simulink/ss_canvas/首页) 也允许重复 (幂等跳转, 无害)
+                #   → 去掉 seen 去重, 每次写入都执行 (老倪: 点了没反应 → 命令要每次生效)
+                try:
+                    if line == "simulink":
+                        self._on_nav("simulink")
+                    elif line == "ss_canvas":
+                        _oneshot(self, 600, self._open_ss_canvas_cmd)
+                    elif line == "ss_3d":
+                        _oneshot(self, 1200, self._open_ss_3d_cmd)
+                    elif line == "ss_run":
+                        _oneshot(self, 300, self._run_ss_cmd)
+                    elif line in self.modules:
+                        self._on_nav(line)
+                    else:
+                        self.statusBar().showMessage(f"📡 未知命令: {line}", 2500)
+                except Exception as _e:
+                    self.statusBar().showMessage(f"📡 命令失败 {line}: {_e}", 3000)
+        except Exception:
+            pass
+
+    def _open_ss_canvas_cmd(self):
+        if getattr(self, "simulink", None) is not None:
+            self.simulink.open_state_space()
+
+    def _open_ss_3d_cmd(self):
+        if getattr(self, "simulink", None) is not None:
+            self.simulink.open_ss_3d(on_top=False)
+
+    def _run_ss_cmd(self):
+        """▶ 运行状态空间仿真 (命令文件触发)"""
+        if getattr(self, "simulink", None) is not None:
+            self.simulink.start_sim()
+            self.statusBar().showMessage("▶ 状态空间仿真已启动 (命令触发)", 2000)
+
+    def _start_auto_test_suite(self):
+        """🧪 启动状态空间自动测试套件 (每用例截图)"""
+        try:
+            import auto_test_suite
+            self._auto_test = auto_test_suite.StateSpaceAutoTest(self, self.simulink)
+            self.simulink._log("🧪 自动测试套件已启动 (7 用例, 每个截图)")
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ 自动测试套件启动失败: {e!r}")
+            except Exception:
+                print(f"自动测试套件启动失败: {e!r}")
+
+    def _auto_run_state_space(self):
+        """▶ 自动运行状态空间仿真 (ZMAX_AUTO_SS_RUN=1, 2026-09-05 自动测试)
+        自动勾选 ⚡引擎快演 → 走 _start_state_space_sim (0.1s 引擎, trace 完整),
+        不勾则走 _start_real_sim (metaworld+YOLO 每帧~1s, 5-9分钟/轮)"""
+        try:
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            # ⚡ 引擎快演勾选 (真实化流程 5-9 分钟不适合自动测试)
+            chk = getattr(self.simulink, "chk_engine_demo", None)
+            if chk is not None:
+                chk.setChecked(True)
+                self.simulink._log("✅ [自动测试] 已勾选 ⚡引擎快演")
+            self.simulink.start_sim()
+            self.simulink._log("✅ [自动测试] 状态空间仿真已启动 (引擎快演)")
+            # 🧭 引擎快演 500 步 ≈ 几秒完成; 20s 后开 3D 视图截图
+            if os.environ.get("ZMAX_AUTO_SS_3D") == "1":
+                _oneshot(self, 20000, self._auto_open_ss_3d)
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ [自动测试] 仿真启动失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 仿真启动失败: {e!r}")
+
+    def _auto_open_ss_3d(self):
+        """🧭 仿真完成后自动打开 3D 分层视图 (ZMAX_AUTO_SS_3D=1)"""
+        try:
+            self.simulink.open_ss_3d(on_top=False)
+            self.simulink._log("✅ [自动测试] 3D 分层视图已打开")
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ [自动测试] 3D 打开失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 3D 打开失败: {e!r}")
+
+    def _auto_open_state_space(self):
+        """🧮 自动打开状态空间画布 (ZMAX_AUTO_SS=1, 2026-09-05 自动测试用)"""
+        try:
+            self.stack.setCurrentWidget(self.simulink)
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            self.simulink.open_state_space()
+            self.simulink._log("✅ [自动测试] 状态空间画布已打开")
+        except Exception as e:
+            # 🐛 2026-09-05: StudioMainWindow 无 _log — 用 simulink._log, 且异常内不再二次崩溃
+            try:
+                self.simulink._log(f"❌ [自动测试] 状态空间打开失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 状态空间打开失败: {e!r}")
 
     def _auto_run_compare5(self):
         """🔬 自动加载五模型对比模板并启动运行 (ZMAX_AUTO_RUN=1 时启动后触发)"""
@@ -10010,7 +10155,19 @@ class StudioMainWindow(QMainWindow):
 
     def _init_simulink(self):
         """🚀 延迟创建 SimulinkModule (2026-08-12 老倪: 主窗口先显示, 画布后台建)"""
+        # 🐛 2026-08-26: Mac 黑屏诊断 — 构造阶段打点日志 (写文件, 不依赖 GUI)
+        # 🐛 2026-08-28: Windows exe 无 /tmp 目录 → 修复打点路径 (tempfile.gettempdir())
+        #   根因: 3.3.0 起此处 open("/tmp/...") 在 Windows 抛 FileNotFoundError,
+        #   SimulinkModule() 从未执行 → 画布打不开 (3.2.4 无打点正常)
+        import time as _td
+        def _mk(m):
+            try:
+                with open(os.path.join(tempfile.gettempdir(), "zmax_simulink_init.log"), "a") as _f:
+                    _f.write(f"{_td.time():.1f} {m}\n")
+            except Exception:
+                pass
         try:
+            _mk("START _init_simulink")
             sim = SimulinkModule()
             sim.flow_synced = self.on_flow_sync
             sim.set_model_engine(self.model_engine)  # 🌐 simulink 训练走 Model Engine
@@ -10312,13 +10469,13 @@ class StudioMainWindow(QMainWindow):
         # L1 - 战略层
         m_l1 = m_doc.addMenu("L1 · 战略层文档")
         m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品发布 PPT (v1.0.4)",
-            (["L1-Z-MAX产品发布-v1.0.0.pptx"], "libreoffice")))
+            (["L1-Z-MAX产品发布-v1.0.4.pptx"], "libreoffice")))
 
         # L2 - 方案层
         m_doc.addSeparator()
         m_l2 = m_doc.addMenu("L2 · 方案层文档")
-        m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.4)",
-            (["L2-Z-MAX解决方案-v1.0.4.md"], "xdg-open")))
+        m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.6)",
+            (["L2-Z-MAX解决方案-v1.0.6.md", "L2-Z-MAX解决方案-v1.0.5.md"], "xdg-open")))
 
         # L3 - 技术层
         m_l3 = m_doc.addMenu("L3 · 技术层文档")
@@ -10935,13 +11092,34 @@ def _build_global_qss():
 
 
 def main():
+    # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
+    # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
+    # 🐛 2026-08-31 老倪: 找不到 attach → F5 默认「🚀 全新调试进程」新实例断点;
+    # 本进程仍 listen 5678, attach 配置作为第二种方式保留
+    # 🐛 2026-09-06: 桌面启动窗口不显示 (IsUnMapped) — debugpy.listen 无 attach 时
+    #   可能阻塞 Qt 主线程 map; 改环境变量 ZMAX_DEBUG=1 才 listen (桌面启动默认不开)
+    if os.environ.get("ZMAX_DEBUG") == "1":
+        try:
+            import debugpy
+            debugpy.listen(("127.0.0.1", 5678))
+            print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5: 「🚀 全新调试进程」= 新实例断点, 「🔌 Attach 现有控制台」= 连本进程")
+        except Exception:
+            pass
     # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
     # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
     try:
         from PyQt5.QtCore import Qt as _Qt
         from PyQt5.QtWidgets import QApplication as _QA
         _QA.setAttribute(_Qt.AA_DisableWindowManagerEffects, True)
-        _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
+        # 🐛 2026-08-31 GNOME/Xorg 黑屏: AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下
+        # 窗口内容渲染全黑 (WSLg 假死修复专用, 本机 GNOME 桌面不要开)
+        # 🐛 2026-09-07 老倪 (大版本发布前回归实锤): v3.3.4 注释掉 AA_UseSoftwareOpenGL 后
+        #   Windows/macOS exe 无法渲染 3D (GLViewWidget/pyqtgraph 无硬件 GL 兜底 — 3.2.4
+        #   及之前全启用, Windows 3D 正常; 3.3.4 起全注释 → 无独显/远程/虚拟机环境 3D 挂)。
+        #   修复: 按平台条件启用 — Windows/macOS 打包版启用软件 GL 兜底 (3.2.4 行为),
+        #   Linux 源码版不启用 (GNOME/Mutter 软件 GL 黑屏, 2026-08-31 修复保留)。
+        if sys.platform in ("win32", "darwin"):
+            _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
         _QA.setAttribute(_Qt.AA_UseHighDpiPixmaps, False)
     except Exception:
         pass
@@ -10959,7 +11137,23 @@ def main():
         os.environ["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
     except Exception:
         pass
+    # 🐛 2026-09-02 老倪: opencv(cv2) import 会设置 QT_QPA_PLATFORM_PLUGIN_PATH → cv2/qt/plugins,
+    #   Qt 插件搜索去 cv2 目录找 xcb → libqxcb 加载失败 → "Could not load the Qt platform plugin"
+    #   + Fatal abort (F5 调试模式启动必现; cv2 5.0.0 自带 Qt 插件与 PyQt5 不匹配)。
+    #   QApplication 前强制清除, 恢复 PyQt5 自带插件路径 (对任何来源的污染都有效)。
+    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
     app = QApplication(sys.argv)
+    # 🐛 2026-09-02 老倪: YOLO 预热防 not responding — 首次播放时主线程同步加载 YOLO
+    # 卡 10-40s 弹 "studio.py is not responding"。⚠️ 教训: 后台线程 import metaworld
+    # (gymnasium→cv2 Qt 链) 会 QObject::moveToThread + debugpy abort (GUI 启动崩, 已回滚);
+    # import 链必须在主线程且 QApplication 之后, 模型构造(纯计算)才可放后台线程。
+    try:
+        import threading as _th
+        import node_logic as _nl
+        _nl._yolo_prepare_imports()   # 主线程: import 依赖链 (首次几秒, 之后缓存)
+        _th.Thread(target=lambda: _nl._yolo_ensure_aligner(None), daemon=True).start()
+    except Exception:
+        pass
     # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject).
     # 🐛 2026-08-22 老倪"折叠左栏就崩"实锤修正: 原 disconnectFromBus 需 import QtDBus,
     #   反而启动 QDBusConnectionManager 常驻线程, 其 qDBusRemoveTimeout timer 跨线程
@@ -11021,43 +11215,57 @@ def main():
     # 🐛 2026-08-17: splash 提前到 win 构建前 — 重量级加载期(数秒)即有稳定纯色占位,
     #   全程无黑条; 同尺寸同位纯色, 主窗口 show 时无缝覆盖 (1x1 splash 会成左上角黑条)
     _splash = None
-    try:
-        from PyQt5.QtGui import QPixmap, QColor as _QC2
-        from PyQt5.QtWidgets import QSplashScreen
-        from PyQt5.QtCore import QTimer as _QTM2
-        from PyQt5.QtWidgets import QApplication as _QA2
-        from PyQt5.QtGui import QGuiApplication as _QGA2
-        _gx, _gy, _gw, _gh = 60, 40, 1400, 900
-        try:
-            _scr = _QGA2.primaryScreen()
-            if _scr:
-                _ag = _scr.availableGeometry()
-                _gx = max(0, min(60, _ag.width() - 300))
-                _gy = max(0, min(40, _ag.height() - 200))
-                _gw = min(1400, _ag.width())
-                _gh = min(900, _ag.height())
-        except Exception:
-            pass
-        _splash_pm = QPixmap(_gw, _gh)
-        _splash_pm.fill(_QC2(C_BG))
-        _splash = QSplashScreen(_splash_pm)
-        _splash.setGeometry(_gx, _gy, _gw, _gh)
-        _splash.show()
-        _QA2.processEvents()
-    except Exception:
+    # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug 排查 — splash 显示后主窗口被锁最小化?
+    #   ZMAX_NO_SPLASH=1 跳过 splash (诊断用); 默认保留
+    from PyQt5.QtWidgets import QApplication as _QA2  # 兜底: splash 分支外也要可用
+    if os.environ.get("ZMAX_NO_SPLASH") == "1":
         _splash = None
+    else:
+        try:
+            from PyQt5.QtGui import QPixmap, QColor as _QC2
+            from PyQt5.QtWidgets import QSplashScreen
+            from PyQt5.QtCore import QTimer as _QTM2
+            from PyQt5.QtWidgets import QApplication as _QA2
+            from PyQt5.QtGui import QGuiApplication as _QGA2
+            _gx, _gy, _gw, _gh = 60, 40, 1400, 900
+            try:
+                _scr = _QGA2.primaryScreen()
+                if _scr:
+                    _ag = _scr.availableGeometry()
+                    _gx = max(0, min(60, _ag.width() - 300))
+                    _gy = max(0, min(40, _ag.height() - 200))
+                    _gw = min(1400, _ag.width())
+                    _gh = min(900, _ag.height())
+            except Exception:
+                pass
+            _splash_pm = QPixmap(_gw, _gh)
+            _splash_pm.fill(_QC2(C_BG))
+            _splash = QSplashScreen(_splash_pm)
+            _splash.setGeometry(_gx, _gy, _gw, _gh)
+            _splash.show()
+            _QA2.processEvents()
+        except Exception:
+            _splash = None
 
     win = StudioMainWindow()
+    _want_max = False  # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (Mutter Iconic bug)
     # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)
     try:
         from PyQt5.QtGui import QGuiApplication
         scr = QGuiApplication.primaryScreen()
         geo = scr.availableGeometry() if scr else None
-        if geo is not None and geo.width() >= 2560:
+        if geo is not None and geo.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
             # 🖥 2026-08-25 老倪 UI 重新适配: 3200x2000 屏上写死 1400x900 只占 27% 面积
             #   (工具栏被迫折行, 模块库 560px 挤画布) → 大屏直接铺满可用工作区并最大化
-            win.setGeometry(geo.x(), geo.y(), geo.width(), geo.height())
-            win.setWindowState(win.windowState() | Qt.WindowMaximized)
+            # 🐛 2026-09-06: setGeometry 精确铺满可用区(3068x1936) + show → Mutter 误判最小化
+            #   (state=1 WindowMinimized 实锤)。改为: resize 96% (留边不贴满) + show 后最大化
+            win.resize(int(geo.width() * 0.96), int(geo.height() * 0.96))
+            win.move(geo.x() + 10, geo.y() + 10)
+            # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug — setWindowState(Maximized)
+            #   在 show() 前调用 → Mutter map 时先给 Iconic 再忽略 Maximized (矛盾状态)
+            #   → 最大化移到 _show_ready 内 show() 之后设置 (正确时序)
+            # win.setWindowState(win.windowState() | Qt.WindowMaximized)
+            _want_max = True
         elif geo is not None:
             win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
                             1400, 900)
@@ -11069,16 +11277,90 @@ def main():
     #   此处只做 2s 延迟 show + 平滑移交焦点)
     try:
         def _show_ready():
+            # 🐛 2026-09-06 诊断: 窗口不显示 (IsUnMapped) — 记录 show 调用与可见性
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} _show_ready called, splash={_splash is not None}\n")
+            except Exception:
+                pass
+            # 🐛 2026-09-06: winId() 强制创建原生 X 窗口 (Qt 延迟创建 native window
+            #   可能是 Mutter map 失败根因) — show 前先确保 native handle 存在
+            try:
+                _ = win.winId()
+                _wh = win.windowHandle()
+                if _wh is not None:
+                    _wh.create()  # 确保 QWindow native 创建
+            except Exception:
+                pass
             win.show()
             win.raise_()
             win.activateWindow()
+            # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (show 前 setWindowState → Mutter Iconic)
+            #   注: show 后立即 setWindowState 也可能触发 UNMAP — 用 QTimer 延后到 800ms 稳定后
+            if _want_max:
+                def _do_max():
+                    try:
+                        win.setWindowState(win.windowState() | Qt.WindowMaximized)
+                        _QA2.processEvents()
+                    except Exception:
+                        pass
+                _oneshot(win, 800, _do_max)
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} after show: visible={win.isVisible()} minimized={win.isMinimized()} state={int(win.windowState())}\n")
+            except Exception:
+                pass
             if _splash is not None:
                 try:
                     _splash.finish(win)  # 平滑移交焦点, splash 消失
                 except Exception:
                     _splash.close()
             _QA2.processEvents()
-        _oneshot(win, 2000, _show_ready)
+            # 🐛 2026-09-06 静静实测: 本机 GNOME/Mutter 环境任何 Qt 窗口 show 即被最小化
+            # (WM_STATE=Iconic; 最小复现: QLabel show 后 isMinimized=True, 与 maximize/splash 无关)
+            # 主动恢复: 300/800/1500ms 三次探测, 被最小化就清 WindowMinimized 位 + 置前
+            # 🐛 2026-09-06 v2: 无条件 show/raise 反而触发 Mutter UNMAP (XCB_CLIENT_MESSAGE)
+            #   → 改为: 仅当 Qt 明确 isMinimized 才恢复; 正常窗口绝不动 (防 UNMAP)
+            # 🐛 2026-09-06 v3: Qt isMinimized 状态滞后 (show 后立即读=False, 200ms 后=True)
+            #   → 延时探测 + 一旦 True 就恢复, 重复直到稳定 (实测 v3 可恢复 min→normal)
+            def _unminimize():
+                try:
+                    if win.isMinimized():
+                        win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
+                        win.show()
+                        win.raise_()
+                        win.activateWindow()
+                        _QA2.processEvents()
+                        return True  # 已恢复, 继续探测确认稳定
+                    return False
+                except Exception:
+                    return False
+            def _unminimize_loop():
+                # 多次探测直到窗口不再被 Mutter 最小化 (实测: 恢复后需持续确认)
+                try:
+                    if os.environ.get("ZMAX_DIAG_UNMIN"):
+                        with open("/tmp/studio_show_diag.log", "a") as _df:
+                            _df.write(f"{time.time():.1f} unmin_loop: min={win.isMinimized()} vis={win.isVisible()} state={int(win.windowState())}\n")
+                    if win.isMinimized():
+                        win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
+                        win.show()
+                        win.raise_()
+                        win.activateWindow()
+                        _QA2.processEvents()
+                    # 无论是否刚恢复, 持续探测 (每 400ms, 最多 10 次) 直到稳定
+                    _n = getattr(win, "_unmin_attempts", 0) + 1
+                    setattr(win, "_unmin_attempts", _n)
+                    if _n < 10:
+                        _oneshot(win, 400, _unminimize_loop)
+                    else:
+                        setattr(win, "_unmin_attempts", 0)
+                except Exception:
+                    pass
+            for _ms in (1200, 1800, 2600, 3600):
+                _oneshot(win, _ms, _unminimize_loop)
+        # 🐛 2026-09-06: 2s 延迟 show 期间 Mutter 可能把未显示窗口标记异常 —
+        #   改为立即 show (500ms, 等窗口构造完即可); splash 由 show 后 finish 接管
+        _oneshot(win, 500, _show_ready)
     except Exception:
         win.show()
     # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住
