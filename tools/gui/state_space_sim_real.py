@@ -285,6 +285,27 @@ class RealStateSpaceSim:
             except Exception:
                 self._tdec = None
                 self._tdec_on = False
+        # 🦾 S4 运动基元快通道 (2026-09-10): L2 共享肌肉记忆接管 ⚡前馈槽位。
+        #   与 _mm_on/_intent_on 同一槽位(u_ff), 三选一; 来源 = MotorHub 的**共享基元**
+        #   (多 seed 平均模板 → 跨场景泛化, 不像"按 seed 查标杆"换个布局就失效)。
+        #   后端伺服残差 u_fb 照旧修正 → "基元给方向, 伺服保精度"(更快更稳更准)。
+        #   默认关 (SS_MOTOR_HUB=1 开)。
+        self._mhub = None
+        self._mhub_on = (os.environ.get("SS_MOTOR_HUB") == "1")
+        self._mh_seg = ""
+        self._mh_i = 0
+        self._mh_u = None
+        self._mh_meta = None
+        self._mh_hits = 0
+        if self._mhub_on:
+            try:
+                from lerobot.memory.motor_hub import MotorHub
+                self._mhub = MotorHub().load()
+                if not self._mhub.primitives:
+                    self._mhub.build(k=int(os.environ.get("SS_MOTOR_K", "4")))
+            except Exception:
+                self._mhub = None
+                self._mhub_on = False
         # 🔮 S3 影子模式 (2026-09-10): 所有段 (含插入/完成) 都取标杆与实际决策同帧对比,
         #   只记录不接管 — 为 S3 正式启用提供数据 (L2 标杆在各段可用性/gate 判定)。SS_SHADOW=0 可关。
         self._shadow_on = (os.environ.get("SS_SHADOW") != "0")
@@ -1116,6 +1137,29 @@ class RealStateSpaceSim:
                     u_ff = self._int_u[self._int_i]
                     self._int_hits += 1
                     self._int_i += 1
+            # 🦾 S4 运动基元快通道 (2026-09-10): 与 _mm_on/_intent_on 同槽位, 三选一。
+            #   来源 = MotorHub 共享基元(多 seed 平均模板) → 跨场景泛化;
+            #   下游 ⚡前馈加速器/🔮估计器/📈预测器 一律不动, 伺服残差照旧修正。
+            if (getattr(self, "_mhub_on", False) and self._mhub is not None
+                    and not getattr(self, "_mm_on", False) and not getattr(self, "_intent_on", False)):
+                if _stn != getattr(self, "_mh_seg", ""):
+                    self._mh_seg = _stn
+                    self._mh_i = 0
+                    # 🛑 口径同 _mm 快通道: **只在 5 个前段用共享基元**;
+                    #   转移/插入/完成 = 毫米级接触/精插 → 必须实时决策(解析伺服),
+                    #   用"多 seed 平均模板"插一定崩 (09-10 实测: 全段套用 → 0/5 回退!)
+                    if _stn in ("接近", "对位", "下降", "抓取", "抬起"):
+                        _mhu, _mhm = self._mhub.query(_stn)
+                        self._mh_u, self._mh_meta = _mhu, _mhm
+                        if _mhu is not None and self._mh_hits == 0:
+                            self.log(f"🦾 运动基元: {_stn} 段 ← 共享基元#{_mhm.get('primitive')} "
+                                     f"{_mhm.get('name')} ({_mhm.get('dur'):.0f}帧/{_mhm.get('n_src')}源) 接管前馈")
+                    else:
+                        self._mh_u = None
+                if self._mh_u is not None and self._mh_i < len(self._mh_u):
+                    u_ff = self._mh_u[self._mh_i]
+                    self._mh_hits += 1
+                    self._mh_i += 1
             # 🔮 S3 影子模式 (2026-09-10): 全段 (含插入/完成) 标杆 vs 实际决策 同帧对比 —
             #   只记录不接管。产出: du (动作差, L2 先验与实时决策的差距) / dx (同帧位置差,
             #   "若用标杆会不会跑偏") → 段末给 gate_ok(2mm) 判定该段标杆可用性。
