@@ -28,11 +28,18 @@ from lerobot.utils.constants import ACTION, OBS_STATE
 from lerobot.utils.import_utils import _transformers_available, require_package
 
 if TYPE_CHECKING or _transformers_available:
-    from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import (
-        Qwen2_5_VLConfig,
-        Qwen2_5_VLTextConfig,
-        Qwen2_5_VLVisionConfig,
-    )
+    try:
+        from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import (
+            Qwen2_5_VLConfig,
+            Qwen2_5_VLTextConfig,  # 🐛 4.x 无此名 — 降级用 VLConfig
+            Qwen2_5_VLVisionConfig,
+        )
+    except ImportError:
+        Qwen2_5_VLTextConfig = None
+        from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import (
+            Qwen2_5_VLConfig,
+            Qwen2_5_VLVisionConfig,
+        )
 else:
     Qwen2_5_VLConfig = None
     Qwen2_5_VLTextConfig = None

@@ -16,6 +16,9 @@
 from collections import deque
 from collections.abc import Callable, Generator, Iterable, Iterator
 from pathlib import Path
+from typing import TypeVar  # 🐛 2026-08-08: Backtrackable 去PEP695泛型后补传统 TypeVar (Py3.10)
+
+T = TypeVar("T")  # Backtrackable 泛型参数 (兼容 3.10: class Backtrackable[T] → class Backtrackable)
 
 import datasets
 import numpy as np
@@ -55,7 +58,7 @@ class LookAheadError(Exception):
     pass
 
 
-class Backtrackable[T]:
+class Backtrackable:  # 🐛 去PEP695泛型(Py3.10)
     """
     Wrap any iterator/iterable so you can step back up to `history` items
     and look ahead up to `lookahead` items.
@@ -102,7 +105,7 @@ class Backtrackable[T]:
         self._history = history
         self._lookahead = lookahead
 
-    def __iter__(self) -> "Backtrackable[T]":
+    def __iter__(self) -> "Backtrackable":
         return self
 
     def __next__(self) -> T:

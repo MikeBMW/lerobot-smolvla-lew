@@ -353,9 +353,8 @@ class ACT(nn.Module):
                 backbone_model.fc.in_features, config.dim_model, kernel_size=1
             )
         # Transformer encoder positional embeddings.
-        n_1d_tokens = 1  # for the latent
-        if self.config.robot_state_feature:
-            n_1d_tokens += 1
+        # 2026-08-08 叠加架构: state 叠加进 latent, 不占独立 token → n_1d_tokens=1
+        n_1d_tokens = 1  # for the latent (state 已叠加)
         if self.config.env_state_feature:
             n_1d_tokens += 1
         self.encoder_1d_feature_pos_embed = nn.Embedding(n_1d_tokens, config.dim_model)
@@ -458,15 +457,15 @@ class ACT(nn.Module):
             )
 
         # Prepare transformer encoder inputs.
-        encoder_in_tokens = [self.encoder_latent_input_proj(latent_sample)]
-        encoder_in_pos_embed = list(self.encoder_1d_feature_pos_embed.weight.unsqueeze(1))
-        # Robot state token.
+        # 2026-08-08 老倪架构: 坐标是逻辑主线, 图像是背景 — 坐标叠加到 latent, 不混合进 token 序列
+        latent_embed = self.encoder_latent_input_proj(latent_sample)
         if self.config.robot_state_feature:
-            encoder_in_tokens.append(self.encoder_robot_state_input_proj(batch[OBS_STATE]))
-        # Environment state token.
-        if self.config.env_state_feature:
-            encoder_in_tokens.append(self.encoder_env_state_input_proj(batch[OBS_ENV_STATE]))
-
+            state_embed = self.encoder_robot_state_input_proj(batch[OBS_STATE])
+            # 坐标叠加到 latent (逻辑主线): latent += 坐标投影 (gate=1.0)
+            latent_embed = latent_embed + state_embed
+        encoder_in_tokens = [latent_embed]
+        encoder_in_pos_embed = list(self.encoder_1d_feature_pos_embed.weight.unsqueeze(1))
+        # 图像作为背景 token (旁路, 不覆盖坐标逻辑)
         if self.config.image_features:
             # For a list of images, the H and W may vary but H*W is constant.
             # NOTE: If modifying this section, verify on MPS devices that

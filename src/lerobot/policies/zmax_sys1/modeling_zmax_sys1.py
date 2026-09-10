@@ -45,7 +45,7 @@ class ZmaxSys1Policy(PreTrainedPolicy):
         self._load_local_engine()
 
         # ━━━ gRPC客户端 (4090) ━━━
-        self._grpc_host = getattr(config, 'grpc_host', '106.75.239.80')
+        self._grpc_host = getattr(config, 'grpc_host', 'datadrive.world')
         self._grpc_port = getattr(config, 'grpc_port', 50051)
 
         # ━━━ 动作适配器 ━━━

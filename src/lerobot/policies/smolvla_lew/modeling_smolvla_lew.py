@@ -94,8 +94,10 @@ class SmolVLALewModel(nn.Module):
         if config.enable_lew_world_model:
             # 获取SigLIP视觉编码器
             vision_encoder = self.smolvlm.vlm.model.vision_model
-            # 获取视觉编码器输出维度
-            vision_hidden_size = vision_encoder.config.vision_config.hidden_size
+            # 获取视觉编码器输出维度 (2026-08-05 修复: SmolVLMVisionConfig 无嵌套 vision_config,
+            #   直接取 config.hidden_size — 之前 freeze=true 强制关 LEW 从未走到此路径, 共存后暴露)
+            vc = getattr(vision_encoder.config, "vision_config", None)
+            vision_hidden_size = getattr(vc, "hidden_size", None) or getattr(vision_encoder.config, "hidden_size", 1152)
             
             # 初始化LeWorldModel
             self.le_world_model = LeWorldModel(
@@ -109,8 +111,9 @@ class SmolVLALewModel(nn.Module):
                 mlp_dim=config.lew_hidden_dim * 4,
                 num_frames=config.num_video_frames,
                 dropout=0.1,
+                attn_mode=getattr(config, "lew_attn_mode", "adaln"),
             )
-            print(f"✓ LeWorldModel initialized: hidden_dim={config.lew_hidden_dim}, layers={config.lew_num_layers}")
+            print(f"✓ LeWorldModel initialized: hidden_dim={config.lew_hidden_dim}, layers={config.lew_num_layers}, attn_mode={getattr(config, 'lew_attn_mode', 'adaln')}")
 
         # 冻结VLM主干
         if config.freeze_smolvlm:
@@ -201,20 +204,25 @@ class SmolVLALewModel(nn.Module):
         )
 
         batch_videos = np.stack(batch_videos)
-        batch_videos = batch_videos.transpose(0, 1, 2, 5, 3, 4)
+        # 2026-08-05 修复: 删除错误的 transpose(0,1,2,5,3,4) — videos 构造时已是 CHW
+        # [B,V,T,C,H,W] (351-363行 t.permute(0,3,1,2)), 再 transpose 会打乱成 [B,V,T,W,C,H]
+        # → encode_frame 喂 SigLIP 布局错 (报 96 channels, SmolVLA+LEW 训练必失败)
         lew_loss = torch.tensor(0.0, device=next(self.parameters()).device)
         
         # ====== 新增：LeWorldModel世界模型损失计算 ======
         if self.le_world_model is not None and has_action:
-            # 将视频数据转换为tensor
+            # 将视频数据转换为tensor (float32; autocast 内自动转 bf16, 兼容 LEW 内部
+            # vision_encoder bf16 + predictor float32 混合权重 — 2026-08-05 修复)
             videos_tensor = torch.from_numpy(batch_videos).float().to(next(self.parameters()).device)
             
             # 准备动作数据 [B, T, action_dim]
             actions_np = np.array(actions)  # [B, T_chunk, action_dim]
             actions_tensor_wm = torch.from_numpy(actions_np).float().to(videos_tensor.device)
             
-            # 计算LeWorldModel损失
-            lew_loss = self.le_world_model(videos_tensor, actions_tensor_wm)
+            # 计算LeWorldModel损失 (2026-08-05 修复: autocast bf16 包裹, 消除
+            # mat1/mat2 dtype 不匹配 — LEW 内部权重 dtype 混合)
+            with torch.autocast(device_type=videos_tensor.device.type, dtype=torch.bfloat16):
+                lew_loss = self.le_world_model(videos_tensor, actions_tensor_wm)
             lew_loss = lew_loss * self.config.lew_loss_weight
 
         device_type = next(self.parameters()).device.type
@@ -352,7 +360,9 @@ class SmolVLALewPolicy(PreTrainedPolicy):
                 t = batch[k][b]
                 if t.ndim == 3:
                     t = t.unsqueeze(0)
-                t_np = t.permute(0, 3, 1, 2).detach().cpu().float().numpy()
+                # 2026-08-05 修复: t 已是 [T,C,H,W] (lerobot tensor CHW), 原 permute(0,3,1,2)
+                # 打乱成 [T,W,C,H] → SigLIP 报 '96 channels' (SmolVLA+LEW 训练必失败)
+                t_np = t.detach().cpu().float().numpy()
                 if t_np.max() <= 1.0:
                     t_np = t_np * 255.0
                 t_np = np.rint(t_np.clip(0, 255)).astype(np.uint8)
@@ -456,7 +466,8 @@ class SmolVLALewPolicy(PreTrainedPolicy):
 
     @classmethod
     def _load_as_safetensor(cls, model: T, model_file: str, map_location: str, strict: bool) -> T:
-        reinit_prefixes = model.config.reinit_modules
+        # 2026-08-05 实测: SmolVLALewConfig 无 reinit_modules 字段 (config.json 不含), 直接读会 AttributeError
+        reinit_prefixes = getattr(model.config, "reinit_modules", None) or []
         if not reinit_prefixes:
             return super()._load_as_safetensor(model, model_file, map_location, strict)
 

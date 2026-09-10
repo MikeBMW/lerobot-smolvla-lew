@@ -13,7 +13,7 @@ from transformers.cache_utils import (
     DynamicCache,
     StaticCache,
 )
-from transformers.generation import GenerationMixin
+from transformers.generation.utils import GenerationMixin  # 🐛 5.x兼容
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_outputs import BaseModelOutputWithPast, ModelOutput
 from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS

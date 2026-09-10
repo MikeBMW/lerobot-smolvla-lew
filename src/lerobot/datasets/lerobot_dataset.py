@@ -613,15 +613,21 @@ class LeRobotDataset(torch.utils.data.Dataset):
             )
         else:
             self._requested_root.mkdir(exist_ok=True, parents=True)
-            snapshot_download(
-                self.repo_id,
-                repo_type="dataset",
-                revision=self.revision,
-                local_dir=self._requested_root,
-                allow_patterns=files,
-                ignore_patterns=ignore_patterns,
-            )
-            self.meta.root = self._requested_root
+            # Z-MAX 修复: 本地 root 已含数据集时跳过 hub 下载 (避免覆盖本地数据)
+            local_info = self._requested_root / "meta" / "info.json"
+            if local_info.exists():
+                print(f"📂 使用本地数据集: {self._requested_root} (跳过 hub 下载)")
+                self.meta.root = self._requested_root
+            else:
+                snapshot_download(
+                    self.repo_id,
+                    repo_type="dataset",
+                    revision=self.revision,
+                    local_dir=self._requested_root,
+                    allow_patterns=files,
+                    ignore_patterns=ignore_patterns,
+                )
+                self.meta.root = self._requested_root
 
         # Propagate resolved root from metadata (single source of truth)
         self.root = self.meta.root

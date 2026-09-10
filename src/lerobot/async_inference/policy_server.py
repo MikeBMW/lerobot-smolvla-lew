@@ -85,8 +85,8 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         self.lerobot_features = None
         self.actions_per_chunk = None
         self.policy = None
-        self.preprocessor: PolicyProcessorPipeline[dict[str, Any], dict[str, Any]] | None = None
-        self.postprocessor: PolicyProcessorPipeline[PolicyAction, PolicyAction] | None = None
+        self.preprocessor: PolicyProcessorPipeline | None = None
+        self.postprocessor: PolicyProcessorPipeline | None = None
 
     @property
     def running(self):

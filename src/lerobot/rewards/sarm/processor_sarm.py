@@ -518,12 +518,12 @@ def make_sarm_pre_post_processors(
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
     dataset_meta=None,
 ) -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """Create pre-processor and post-processor pipelines for SARM."""
     return (
-        PolicyProcessorPipeline[dict[str, Any], dict[str, Any]](
+        PolicyProcessorPipeline(
             steps=[
                 AddBatchDimensionProcessorStep(),
                 RenameObservationsProcessorStep(rename_map={}),
@@ -539,7 +539,7 @@ def make_sarm_pre_post_processors(
             ],
             name=POLICY_PREPROCESSOR_DEFAULT_NAME,
         ),
-        PolicyProcessorPipeline[PolicyAction, PolicyAction](
+        PolicyProcessorPipeline(
             steps=[DeviceProcessorStep(device="cpu")],
             name=POLICY_POSTPROCESSOR_DEFAULT_NAME,
             to_transition=policy_action_to_transition,

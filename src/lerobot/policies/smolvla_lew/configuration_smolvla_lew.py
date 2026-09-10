@@ -84,6 +84,7 @@ class SmolVLALewConfig(PreTrainedConfig):
     # ========== Sys-12 参数: LeWorldModel 世界模型 ==========
     # [可配置] 当架构模式 = Sys-11+Sys-12 混合时生效；Sys-11 纯动作模式下强制为 False
     enable_lew_world_model: bool = False
+    lew_attn_mode: str = "adaln"                            # [可配置] "adaln"=AdaLN-zero调制 | "cross"=真·交叉注意力(action K/V 注入每层潜在空间, 2026-08-05 老倪)
     lew_loss_weight: float = 0.1                            # [可配置] 世界模型 loss 权重 (0.01-1.0)
     lew_hidden_dim: int = 192                               # [可配置] ARPredictor 隐藏层维度 (64-512)
     lew_num_layers: int = 6                                 # [可配置] ARPredictor Transformer 层数 (1-12)
@@ -122,8 +123,9 @@ class SmolVLALewConfig(PreTrainedConfig):
     def __post_init__(self) -> None:
         super().__post_init__()
         # 逻辑替换：原freeze_qwen + enable_world_model → freeze_smolvlm + enable_lew_world_model
-        if self.freeze_smolvlm and self.enable_lew_world_model:
-            self.enable_lew_world_model = False
+        # 2026-08-05 老倪修正: 允许 freeze_smolvlm=true + enable_lew_world_model=true 共存 —
+        #   LeWorldModel.encode_frame 用 with torch.no_grad() (冻结 SigLIP 提特征, 不依赖 VLM 梯度),
+        #   LEW 的 predictor/action_encoder 独立训练; VLM 冻结省显存+加速 (4060)
         if self.n_action_steps > self.chunk_size:
             raise ValueError("`n_action_steps` must be <= `chunk_size`.")
         # LeWorldModel 最低帧数校验，替换原jepa tubelet判断

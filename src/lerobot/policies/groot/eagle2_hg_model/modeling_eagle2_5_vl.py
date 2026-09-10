@@ -12,7 +12,7 @@ from peft import LoraConfig, get_peft_model
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers import GenerationConfig
-from transformers.generation import GenerationMixin
+from transformers.generation.utils import GenerationMixin  # 🐛 5.x兼容
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.llama.modeling_llama import LlamaForCausalLM

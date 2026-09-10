@@ -139,8 +139,8 @@ def make_reward_pre_post_processors(
     reward_cfg: RewardModelConfig,
     **kwargs,
 ) -> tuple[
-    PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    PolicyProcessorPipeline,
+    PolicyProcessorPipeline,
 ]:
     """
     Create pre- and post-processor pipelines for a given reward model.
