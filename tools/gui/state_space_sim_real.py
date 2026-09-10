@@ -656,6 +656,47 @@ class RealStateSpaceSim:
             return g["peg_head0"] - off          # 光模块头落回初始位 (放件, 随后开爪)
         return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
 
+    def _l3_forward(self, visual39):
+        """🧠 2026-09-10 L3 真执行 (老倪: 模型当执行者) — SmolVLA-Lew 策略真实前向
+        输入: 渲染帧 (480×480, 与训练同源) + 39D 视觉状态 → 输出 4D 动作
+        用: 引擎 SS_L3=1 时 xyz 由模型出 (gripper 仍由状态机管 — 模型二值回归不准)
+        """
+        try:
+            import torch
+            if getattr(self, "_l3_pol", None) is None:
+                import sys as _s
+                _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                _src = os.path.join(_repo, "src")
+                if _src not in _s.path:
+                    _s.path.insert(0, _src)
+                from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
+                from lerobot.policies.factory import make_pre_post_processors
+                _ck = os.path.join(_repo, "outputs", "train", "smolvla_lew_v8",
+                                   "checkpoints", "last", "pretrained_model")
+                _pol = SmolVLALewPolicy.from_pretrained(_ck)
+                _pol.eval()
+                self._l3_dev = "cuda" if torch.cuda.is_available() else "cpu"
+                _pol.to(self._l3_dev)
+                _pre, _ = make_pre_post_processors(_pol.config, pretrained_path=_ck)
+                self._l3_pol, self._l3_pre = _pol, _pre
+                self.log("🏆 L3 真执行接入: SmolVLA-Lew (30000步) — 模型输出 xyz, "
+                         "gripper 由状态机管 (二值回归不准的务实处理)")
+            img = np.ascontiguousarray(self.env.render())
+            it = torch.from_numpy(img).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+            st = torch.from_numpy(np.asarray(visual39, dtype=np.float32)).unsqueeze(0)
+            batch = {"observation.image": it.to(self._l3_dev),
+                     "observation.state": st.to(self._l3_dev),
+                     "task": "metaworld 光模块插拔"}
+            batch = self._l3_pre(batch)
+            with torch.no_grad():
+                act = self._l3_pol.select_action(batch)
+            return np.asarray(act.cpu().numpy()).reshape(-1)[:4]
+        except Exception as _e:
+            if not getattr(self, "_l3_warned", False):
+                self._l3_warned = True
+                self.log(f"⚠️ L3 推理失败: {_e}")
+            return None
+
     def peg_head(self):
         """光模块头世界坐标 (夹持后=编码器 hand+锁存偏移+头偏置 — 真机同构, 无 site 依赖,
         off 锁死不追滑脱; 滑脱由随动验证回退。未夹持: R0=site 真值 / R1=视觉)"""
@@ -927,6 +968,40 @@ class RealStateSpaceSim:
             st_now = self.sched.stage()
             u_ff = (self.accel.analytic_forward(obs) if st_now == "插入"
                     else self.accel.forward(obs))
+            # 🧠 2026-09-10 L3 真执行 (SS_L3=1 老倪: 模型当执行者): xyz 由 SmolVLA-Lew
+            #   模型输出 (gripper 保持状态机 — 模型二值回归不准); 每 4 步推理一次 (对齐训练帧率)
+            #   ⚠️ 生产默认关闭 (SS_L3 不设 = 解析链, 46.4%); 本开关用于 DAgger 迭代实验
+            if os.environ.get("SS_L3") == "1":
+                try:
+                    _l3n = int(os.environ.get("SS_L3_EVERY", "4"))
+                    _expert = np.asarray(u_ff, dtype=float).copy()   # 🎓 DAgger 专家标签 (解析链动作)
+                    if getattr(self, "_l3_cache", None) is None or (step % _l3n == 0):
+                        _u3 = self._l3_forward(visual39)
+                        if _u3 is not None:
+                            self._l3_cache = _u3
+                    if getattr(self, "_l3_cache", None) is not None:
+                        _model_act = np.asarray(self._l3_cache, dtype=float)[:4]
+                        u_ff = np.concatenate([np.clip(_model_act[:3], -0.5, 0.5),
+                                               [u_ff[3]]])
+                        # 🎓 DAgger 记录 (SS_DAGGER=1): 模型所处状态 + 专家动作 + 模型动作
+                        if os.environ.get("SS_DAGGER") == "1":
+                            if getattr(self, "_dagger_buf", None) is None:
+                                self._dagger_buf = {"frame": [], "state": [], "expert": [],
+                                                    "model": [], "stage": [], "t": []}
+                            if step % _l3n == 0:   # 与推理同频存帧 (控内存)
+                                try:
+                                    _f = np.ascontiguousarray(self.env.render())
+                                except Exception:
+                                    _f = np.zeros((480, 480, 3), np.uint8)
+                                self._dagger_buf["frame"].append(_f)
+                                self._dagger_buf["state"].append(
+                                    np.asarray(visual39, dtype=np.float32).copy())
+                                self._dagger_buf["expert"].append(_expert.copy())
+                                self._dagger_buf["model"].append(_model_act.copy())
+                                self._dagger_buf["stage"].append(str(st_now))
+                                self._dagger_buf["t"].append(float(step))
+                except Exception:
+                    pass
             # 🧠 2026-09-07 肌肉记忆快通道 (仿小脑): 固化标杆后整段 u_exec 直接重放 —
             #   "动作练熟, 小脑自动执行": 前馈 u_ff = 标杆序列同帧值 (跳过 MLP 精算);
             #   安全链 (decide/反馈/饱和限幅) 全保留 — 若环境异常偏离, 残差/接触反馈
