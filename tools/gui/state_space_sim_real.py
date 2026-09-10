@@ -770,8 +770,13 @@ class RealStateSpaceSim:
                     _s.path.insert(0, _src)
                 from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
                 from lerobot.policies.factory import make_pre_post_processors
+                # 🎯 2026-09-11 默认 ckpt 校正 (老倪问"这是真正的运行时模型么"暴露的问题):
+                #   原来默认指向 **v8/030000** (旧模型) → GUI 里开 SS_L3 时跑的是旧模型,
+                #   与"已验证跑通的新模型"不是同一个 → 成绩无法归因。
+                #   现改为**已实测验证过接管全链的模型** (v10_1h/004000: insert 341步 / full 865步
+                #   + AOI PASS, 有视频存证)。换模型请改这里或传 SS_L3_CK, 并保证验证口径一致。
                 _ck = os.environ.get(
-                    "SS_L3_CK", "outputs/train/smolvla_lew_v8/checkpoints/030000/pretrained_model")
+                    "SS_L3_CK", "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model")
                 if not os.path.isabs(_ck):
                     _ck = os.path.join(_repo, _ck)
                 _pol = SmolVLALewPolicy.from_pretrained(_ck)
@@ -798,8 +803,15 @@ class RealStateSpaceSim:
                     _t = ""
                 self._l3_task_str = _t or "metaworld 光模块插拔"
                 _cls._L3_TASK = self._l3_task_str     # 🚀 一并缓存 (缓存命中时复用)
-                self.log("🏆 L3 真执行接入: SmolVLA-Lew — 模型输出 xyz, "
-                         f"gripper 由状态机管 · 🗣 语言指令 (数据集原串) {self._l3_task_str!r}")
+                # 📌 必须打印实际加载的 ckpt 路径 — 让"跑通的模型"和"产品里跑的模型"可核对
+                #    (老倪 2026-09-11 追问"这是真正的运行时模型么"暴露: 原先不打印, 无法归因)
+                try:
+                    _ck_rel = os.path.relpath(_ck, _repo)
+                except Exception:
+                    _ck_rel = _ck
+                self._l3_ck_used = _ck_rel
+                self.log(f"🏆 L3 真执行接入: SmolVLA-Lew · 模型 ckpt = {_ck_rel} — "
+                         f"xyz 由模型出, gripper 由状态机管 · 🗣 语言 {self._l3_task_str!r}")
             img = self._render_frame()
             # 🐛 2026-09-10 口径同源: 训练数据图像是 128×128 (采集时 PIL LANCZOS 缩放后编码),
             #   推理必须同样缩放 — 否则 480 原图与训练分布不一致 (=图像没真正接上)
