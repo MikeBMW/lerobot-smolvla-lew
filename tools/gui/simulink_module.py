@@ -11673,7 +11673,7 @@ class SimulinkModule(QWidget):
                 #   3D 视图读同一个 trace → 视频与 3D 视图 轨迹/动作/视角 完全一致。
                 #   (原 gen_insert_video.py 是双脑策略的另一条 episode, 与状态空间不同源)
                 out = _os.path.join(root, "reports", "ss_episode_latest.mp4")
-                _env = {**_os.environ, "MUJOCO_GL": (os.environ.get("MUJOCO_GL") or ("cgl" if sys.platform == "darwin" else "wgl" if sys.platform == "win32" else "egl")), "MUJOCO_EGL_DEVICE": "0"}
+                _env = {**_os.environ, "MUJOCO_GL": (os.environ.get("MUJOCO_GL") or ("cgl" if sys.platform == "darwin" else "wgl" if sys.platform == "win32" else "egl")), "MUJOCO_EGL_DEVICE": "0", "PYTHONIOENCODING": "utf-8"}
                 # 🎯 2026-09-09 (老倪: L4 档 3D 视频必须看到"外力把光模块旋转90°"): L4 档自动导出
                 #   切到 L4 演示全链生成器 (来料转台 90° 外力干扰 → 夹爪绕z回正抓取 → 对接 →
                 #   AOI → 光耦合精密操作 η 收敛), 覆盖同一条 ss_episode_latest.mp4 链接;

@@ -13,6 +13,13 @@
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/gen_l4_demo_video.py
 """
 import os, sys, time, math
+# 🐛 2026-09-11 (Windows CI/EXE): 控制台 cp1252 → 表情/中文 print 抛 UnicodeEncodeError
+#   (GUI 子进程捕获输出时表现为"视频生成失败") → 统一 UTF-8, 降级 replace。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 os.environ.setdefault("MUJOCO_GL", "egl")
 # 🐛 2026-09-11 打包版: frozen 下 __file__ 在 _MEIPASS → 上溯两级 = 临时目录父级 (写不进去/找不到);
 #   由 GUI 传 ZMAX_L4_ROOT (仓库根/_MEIPASS) 统一输出根; 源码模式保持原语义。

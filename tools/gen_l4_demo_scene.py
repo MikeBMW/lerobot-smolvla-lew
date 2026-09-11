@@ -5,6 +5,15 @@
 """
 import os, sys, shutil
 
+# 🐛 2026-09-11 (Windows CI/EXE 实测): Windows 控制台默认 cp1252 → print("✅ 写入: ...")
+#   抛 UnicodeEncodeError 直接 exit 1 (CI「Generate L4 demo scene XML」步骤实测失败); GUI
+#   子进程捕获输出同理。统一 UTF-8, 不可用则 replace 降级 — 绝不因日志编码崩掉任务。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def _mw_assets_dir():
     """metaworld 包 assets 目录多候选探测 — 🐛 2026-09-11 根因修复:
