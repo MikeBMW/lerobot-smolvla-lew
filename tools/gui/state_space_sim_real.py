@@ -665,6 +665,18 @@ class RealStateSpaceSim:
                 "yaw_deg": round(float(_npg2.degrees(_yaw)), 1),
                 "shell90": bool(_shell90),   # 🧩 光模块体壳水平转 90° (视觉)
             }
+            # 🎯 2026-09-11 老倪: "没看到 L4 光模块旋转角度" →
+            #   3D 转台绘制只认 meta.demo_geom["turntable"] + tr["tt_yaw"]
+            #   (原先只有 L4Demo 那条路提供) → 引擎路径补上: 3D 会自动画转台盘 +
+            #   十字刻度并随 yaw 旋转 = 干扰"看得见"的机构证据。
+            try:
+                _pxy = self.env.data.site_xpos[self._site_ph][:2]
+                self._l4_tt = {"turntable": {"pos": [float(_pxy[0]), float(_pxy[1])], "r": 0.075}}
+                # 视觉转角: shell90 → 90°; 否则用物理 yaw (度)
+                self._l4_tt_yaw = (90.0 if _shell90 else float(_npg2.degrees(_yaw)))
+            except Exception:
+                self._l4_tt = None
+                self._l4_tt_yaw = 0.0
             # 🐛 2026-09-09 实锤: 肌肉记忆固化标杆按"场景=seed"命中 → 干扰布局(peg 移位)误重放
             #   旧动作 → 把 peg 推飞死循环 (diag: 225 步对位卡死 + peg 漂移 10cm)。分层语义:
             #   标杆绑定摆放 → 布局变了标杆失效 → 关快通道, 全精算伺服 (L2 能力不丢, 只在
@@ -1004,6 +1016,8 @@ class RealStateSpaceSim:
               # 🧠 2026-09-11 INTACT 二态意图 (L4升级): m_local(接触流形切向) / m_goal(性能流形梯度)
               #   + 同构核验 cos (两态方向一致度: 自由空间应≈1, 接触约束下分工)
               "m_local": [], "m_goal": [], "intent_iso": [],
+              # 🎯 2026-09-11 L4 干扰可视: 转台 yaw (3D 转台盘十字刻度随它旋转 — 干扰的机构证据)
+              "tt_yaw": [],
               "z7_vec": [],   # 🧠 2026-09-09: 旁路 z R7 (夹持后 x→光模块头) 供 predictor 训练同构采集
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
@@ -1867,6 +1881,11 @@ class RealStateSpaceSim:
                                 self._intent_pair.isomorph(_ml, _mg)["cos_sim"]))
                         except Exception:
                             pass
+                    # 🎯 2026-09-11 L4 干扰可视: 转台 yaw (3D 十字刻度随它转 = 干扰的机构证据)
+                    try:
+                        tr["tt_yaw"].append(float(getattr(self, "_l4_tt_yaw", 0.0)))
+                    except Exception:
+                        pass
                     # 🧠 JEPA 预测流形 (旁路对照): 几何潜空间 z R⁷ + 当前动作 → 预测流形坐标
                     # 🐛 2026-09-09: 夹持后 x→光模块头 (x+grasp_off0+head_off) — rem(头到孔底)
                     #   才可辨识 (插入段夹爪 x 几乎不动, 原 z7 无头位置 → rem 预测上限受限)
@@ -1942,6 +1961,11 @@ class RealStateSpaceSim:
             "vision": bool(self.vision),
             "done": bool(tr["done"][-1]) if tr["done"] else False,
             "mm_hits": int(getattr(self, "_mm_hits", 0)),
+            # 🎯 2026-09-11 L4 干扰可视 (老倪: "没看到 L4 光模块旋转角度"):
+            #   3D 的转台绘制(转台盘+十字刻度)只认 meta.demo_geom["turntable"] 与 tr["tt_yaw"],
+            #   原先仅 L4Demo 提供 → 引擎路径补上, 3D 即自动呈现"来料被转 90°"的机构证据。
+            "demo_geom": (getattr(self, "_l4_tt", None) or {}),
+            "jitter": dict(self._jitter_meta) if getattr(self, "_jitter_meta", None) else None,
         }
         # 📸 2026-09-08: VLM 关键帧随轨迹走 (node_ss_vlm 播放/双击取当前阶段真实帧编码)
         if getattr(self, "_key_frames", None):
