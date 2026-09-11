@@ -21,12 +21,11 @@ import numpy as np  # noqa: E402
 import gen_l4_demo_video as G  # noqa: E402
 
 
-def probe_one(seed, phi_deg, log=None):
+def probe_one(seed, phi_deg, tt_deg=90.0):
     """单次试抓: 返回 dict (真实物理判定, 无刚性锁)"""
     demo = G.L4Demo(seed=seed, record=False, mani_yaw=False)
-    log = log or (lambda *a: None)
     try:
-        demo.stage_turntable90()                       # ① 抗干扰: 90° 横放
+        demo.stage_turntable90(target_deg=float(tt_deg))   # ① 抗干扰: tt_deg 横放 (可随机化)
         pc = demo.peg_center()
         demo.env._grip_yaw = 0.0
         demo.servo(pc + np.array([0, 0, 0.15]), tol=0.006, max_steps=600)
@@ -55,6 +54,7 @@ def probe_one(seed, phi_deg, log=None):
         follow = float(np.linalg.norm(demo.peg_center() - pc - np.array([0, 0, dz])))
         yaw_end = float(np.degrees(demo.env._grip_yaw))
         return {"seed": seed, "phi_deg": float(phi_deg), "yaw_end_deg": round(yaw_end, 1),
+                "tt_deg": float(tt_deg),
                 "ok": bool(dz > 0.08), "dz_m": round(dz, 4), "follow_mm": round(follow * 1000, 1),
                 "steps": int(demo.steps),
                 # 🧠 训练特征 (yaw 决策时刻): z7 潜向量 + 模块朝向 + 候选角
@@ -73,32 +73,38 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="0")
     ap.add_argument("--phis", default="-90,-75,-60,-45,-30,-15,0,15,30,45,60,75,90")
+    ap.add_argument("--tts", default="90", help="① 来料转台角 (deg, 逗号分隔) — 泛化测试用 60~120")
     ap.add_argument("--reps", type=int, default=1)
     ap.add_argument("--out", default="")
     a = ap.parse_args()
     seeds = [int(s) for s in a.seeds.split(",") if s.strip()]
     phis = [float(p) for p in a.phis.split(",") if p.strip()]
+    tts = [float(t) for t in a.tts.split(",") if t.strip()]
     rows, t0 = [], time.time()
     for seed in seeds:
-        for phi in phis:
-            for rep in range(a.reps):
-                r = probe_one(seed, phi)
-                r["rep"] = rep
-                rows.append(r)
-                print(f"  seed={seed} φ={phi:+.0f}° → ok={r['ok']} Δz={r['dz_m']*1000:6.1f}mm "
-                      f"随动={r['follow_mm']:5.1f}mm yaw实际={r['yaw_end_deg']:+.1f}°", flush=True)
+        for tt in tts:
+            for phi in phis:
+                for rep in range(a.reps):
+                    r = probe_one(seed, phi, tt)
+                    r["rep"] = rep
+                    rows.append(r)
+                    print(f"  seed={seed} tt={tt:+.0f}° φ={phi:+.0f}° → ok={r['ok']} "
+                          f"Δz={r['dz_m']*1000:6.1f}mm 随动={r['follow_mm']:5.1f}mm "
+                          f"yaw实际={r['yaw_end_deg']:+.1f}°", flush=True)
     ok_n = sum(1 for r in rows if r["ok"])
     print(f"\n试抓成功 {ok_n}/{len(rows)} · 用时 {time.time()-t0:.0f}s")
-    by_phi = {}
-    for r in rows:
-        by_phi.setdefault(r["phi_deg"], []).append(r["ok"])
-    print("按候选角统计 (成功率):")
-    for phi in sorted(by_phi):
-        v = by_phi[phi]
-        print(f"   φ={phi:+6.1f}°  {sum(v)}/{len(v)}")
+    for tt in tts:
+        by_phi = {}
+        for r in rows:
+            if r["tt_deg"] == tt:
+                by_phi.setdefault(r["phi_deg"], []).append(r["ok"])
+        print(f"① 来料角 {tt:+.0f}° 按候选角成功率:")
+        for phi in sorted(by_phi):
+            v = by_phi[phi]
+            print(f"   φ={phi:+6.1f}°  {sum(v)}/{len(v)}")
     out = a.out or os.path.join(G.REP, f"yaw_probe_{time.strftime('%Y%m%d_%H%M%S')}.json")
     with open(out, "w", encoding="utf-8") as f:
-        json.dump({"meta": {"seeds": seeds, "phis": phis, "reps": a.reps,
+        json.dump({"meta": {"seeds": seeds, "phis": phis, "tts": tts, "reps": a.reps,
                             "elapsed_s": round(time.time() - t0, 1)}, "rows": rows}, f,
                   ensure_ascii=False, indent=2)
     print(" → JSON:", out)

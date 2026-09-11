@@ -85,11 +85,14 @@ class ManifoldYawActuator:
         import torch
         if self.grasp_head is not None and self.scorer in ("auto", "head", "grasp_head"):
             # 🎯 试抓头打分 (含 yaw 维): 用真实试抓训练 → 分数有对准信息
+            #   裁决规则 = **P(成功) 为主 + 预测 Δz 为辅**: 留一角度验证实测
+            #   argmax P(成功) 5/5 落在可夹住角, argmax 预测Δz 只 3/5 (60°/75° 选错) → 以此为准
             dz_hat, p_ok = self.grasp_head.score(np.asarray(z7, dtype=float).ravel()[:7],
                                                  np.asarray(a4, dtype=float).ravel()[:4], phi_deg)
             self.n_calls += 1
-            return (-float(dz_hat) - 0.25 * float(p_ok)), {
-                "dz_hat": float(dz_hat), "p_ok": float(p_ok), "scorer": "grasp_head"}
+            return (-float(p_ok) - 0.25 * float(dz_hat)), {
+                "dz_hat": float(dz_hat), "p_ok": float(p_ok),
+                "rule": "argmax P(成功) + 0.25·预测Δz", "scorer": "grasp_head"}
         dphi = math.radians(phi_ref_deg - phi_deg)     # 残余姿态失配 (对准 → 0)
         z = np.asarray(z7, dtype=float).copy().ravel()
         if z.size >= 3:

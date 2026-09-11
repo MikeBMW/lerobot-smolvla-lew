@@ -117,7 +117,8 @@ def _load_yaw_head():
         _mod = _iu.module_from_spec(_spec)
         _spec.loader.exec_module(_mod)
         head = _mod.YawGraspHead(z_dim=7, act_dim=4, hidden=256, num_layers=2)
-        for _nm in ("l4_yaw_head_insert_depth_v1.pt", "l4_yaw_head_grasp_dz_v1.pt"):
+        for _nm in ("l4_yaw_head_grasp_dz_v2.pt", "l4_yaw_head_insert_depth_v2.pt",
+                    "l4_yaw_head_grasp_dz_v1.pt", "l4_yaw_head_insert_depth_v1.pt"):
             _wp = os.path.join(ROOT, "models", _nm)
             if os.path.isfile(_wp):
                 import torch as _th
@@ -501,10 +502,15 @@ class L4Demo:
             n += 1
         return n
 
-    # ── 阶段 ①: 来料转台 90° (治具携带 = 真空/定位销, 产线真实) ──
-    def stage_turntable90(self):
+    # ── 阶段 ①: 来料转台旋转 (默认 90°; 可配 → 泛化测试用 60~120° 随机) ──
+    def stage_turntable90(self, target_deg=None):
+        """target_deg=None → 取 env SS_L4_TT_DEG (默认 90)。返回实际旋转角 (deg)。"""
+        if target_deg is None:
+            target_deg = float(os.environ.get("SS_L4_TT_DEG", "90"))
         self._stage = "① 来料转台"
-        self.log("── ① 抗干扰: 来料转台把光模块在桌面水平旋转 90° (真实机构 + 治具定位) ──")
+        self._tt_deg = float(target_deg)
+        self.log(f"── ① 抗干扰: 来料转台把光模块在桌面水平旋转 {target_deg:.0f}° "
+                 f"(真实机构 + 治具定位) ──")
         # 治具就位: peg 坐盘心 (桌面右前位, 与 AOI 设备视觉区不重合)
         _ttz = TURNTABLE_Z
         q = self.d.qpos.copy()
@@ -518,7 +524,7 @@ class L4Demo:
         # 手退高位避让 (转台转动区外; 高度够离桌面即可, 勿上天 — 老倪: 机械臂自己抬升观感)
         self.servo(np.array([0.0, 0.6, 0.20]), tol=0.008, max_steps=300)
         # 转台 0→90°: 盘转 + peg 治具同步 (peg 相对盘不动 = 定位销/真空吸附)
-        N, tot = 100, math.pi/2
+        N, tot = 100, math.radians(float(target_deg))
         t0 = float(self.d.qpos[self.ttq])
         for k in range(N):
             th = tot * (k + 1) / N
@@ -1021,11 +1027,15 @@ def main():
     ap.add_argument("--also-latest", action="store_true",
                     help="额外覆盖 reports/ss_episode_latest.mp4 (GUI L4 档自动导出用同链接)")
     ap.add_argument("--seed", type=int, default=0, help="场景/任务 seed (布局)")
+    ap.add_argument("--tt-deg", type=float, default=None,
+                    help="① 来料转台旋转角 (deg, 默认 90) — 泛化测试用 60~120 (未见角度)")
     ap.add_argument("--mani-yaw", action="store_true", default=True,
                     help="🎯 默认: ② 段夹爪 yaw 由 yaw 试抓头/流形预测器逐帧决策 (真实试抓监督)")
     ap.add_argument("--no-mani-yaw", dest="mani_yaw", action="store_false",
                     help="对照回退: ② 段脚本开环固定角 (矩形截面件下物理夹不住 — A/B 基线)")
     a = ap.parse_args()
+    if a.tt_deg is not None:
+        os.environ["SS_L4_TT_DEG"] = str(float(a.tt_deg))
     t0 = time.time()
     demo = L4Demo(seed=a.seed, mani_yaw=a.mani_yaw)
     log = demo.log

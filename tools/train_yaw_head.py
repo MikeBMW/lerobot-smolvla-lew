@@ -82,7 +82,16 @@ def fit(tr_rows, kind, epochs, seed=0):
     return head, float(loss.item())
 
 
-def evaluate(head, te_rows, kind):
+def gid(r, key):
+    """分组 id (留一验证用): seed / tt (来料角) / tt_seed"""
+    if key == "tt":
+        return r.get("tt_deg", 0.0)
+    if key == "tt_seed":
+        return f"{r.get('tt_deg', 0.0)}_{r.get('seed', 0)}"
+    return r.get("seed", 0)
+
+
+def evaluate(head, te_rows, kind, gkey="seed"):
     """诚实指标: 回归 MSE/MAE + 成败 ACC + 逐组"预测最优 δ 命中经验最优 δ" """
     if not te_rows:
         return {}
@@ -95,7 +104,8 @@ def evaluate(head, te_rows, kind):
     ok = np.array([targets(r, kind)[1] for r in te_rows])
     groups, hits, rows_out = {}, 0, []
     for r, p, po in zip(te_rows, p_dz, p_ok):
-        groups.setdefault(r.get("seed", 0), []).append((float(r.get("delta_deg", r.get("phi_deg", 0))), y[len(rows_out)], p, po))
+        groups.setdefault(gid(r, gkey), []).append(
+            (float(r.get("delta_deg", r.get("phi_deg", 0))), y[len(rows_out)], p, po))
         rows_out.append(r)
     for g, arr in groups.items():
         emp_best = max(arr, key=lambda t: t[1])[0]
@@ -104,7 +114,7 @@ def evaluate(head, te_rows, kind):
     return {"mse": float(np.mean((p_dz - y) ** 2)), "mae": float(np.mean(np.abs(p_dz - y))),
             "ok_acc": float(np.mean((p_ok > 0.5) == (ok > 0.5))),
             "group_argmax_hit": f"{hits}/{len(groups)}",
-            "groups": {int(k): sorted([(float(a), round(float(b), 3), round(float(c), 3),
+            "groups": {str(k): sorted([(float(a), round(float(b), 3), round(float(c), 3),
                                         round(float(d), 3)) for a, b, c, d in v])
                        for k, v in groups.items()}}
 
@@ -114,31 +124,32 @@ def main():
     ap.add_argument("--data", default="reports/yaw_insert_probe_*.json")
     ap.add_argument("--target", default="insert_depth", choices=["insert_depth", "grasp_dz"])
     ap.add_argument("--epochs", type=int, default=3000)
+    ap.add_argument("--group-key", default="seed", choices=["seed", "tt", "tt_seed"],
+                    help="留一验证的分组键: seed(布局) / tt(**来料角, 泛化验证**) / tt_seed")
     ap.add_argument("--out", default="")
+    ap.add_argument("--out-name", default="", help="权重文件名 (默认 l4_yaw_head_<target>_v1.pt)")
     a = ap.parse_args()
     rows = load_rows(a.data)
-    seeds = sorted({r.get("seed", 0) for r in rows})
-    print(f"数据 {len(rows)} 行 · seeds={seeds} · target={a.target}")
+    keys = sorted({gid(r, a.group_key) for r in rows}, key=str)
+    print(f"数据 {len(rows)} 行 · 分组({a.group_key})={keys} · target={a.target}")
     if len(rows) < 12:
         print("⚠️ 数据太少 (<12), 先跑探针")
         return
     modes = [("全部训练", rows, rows)]
-    if len(seeds) >= 2:
-        for s in seeds[:4]:                       # 留一 seed 交叉验证
-            modes.append((f"留出 seed={s}", [r for r in rows if r.get("seed") != s],
-                          [r for r in rows if r.get("seed") == s]))
-    else:
-        te = [r for i, r in enumerate(rows) if i % 3 == 0]
-        tr = [r for i, r in enumerate(rows) if i % 3 != 0]
-        modes.append(("留出 δ 每3取1", tr, te))
-    report = {"data": a.data, "target": a.target, "n_rows": len(rows), "seeds": seeds, "folds": []}
+    for k in keys[:6]:                            # 留一 (布局 或 来料角)
+        modes.append((f"留出 {a.group_key}={k}",
+                      [r for r in rows if gid(r, a.group_key) != k],
+                      [r for r in rows if gid(r, a.group_key) == k]))
+    report = {"data": a.data, "target": a.target, "n_rows": len(rows),
+              "group_key": a.group_key, "groups": [str(k) for k in keys], "folds": []}
     for tag, tr, te in modes:
         head, loss = fit(tr, a.target, a.epochs)
-        ev = evaluate(head, te, a.target)
-        print(f"[{tag}] loss={loss:.4f} {ev}")
+        ev = evaluate(head, te, a.target, a.group_key)
+        print(f"[{tag}] loss={loss:.4f} {ev['ok_acc']:.3f} acc · argmax {ev['group_argmax_hit']}")
         report["folds"].append({"fold": tag, "loss": loss, "eval": ev})
         if tag == "全部训练":
-            out = a.out or os.path.join(ROOT, "models", f"l4_yaw_head_{a.target}_v1.pt")
+            out = a.out or os.path.join(ROOT, "models",
+                                        a.out_name or f"l4_yaw_head_{a.target}_v1.pt")
             torch.save(head.state_dict(), out)
             print(" → 权重:", out)
     mp = os.path.join(ROOT, "reports", f"yaw_head_metrics_{time.strftime('%Y%m%d_%H%M%S')}.json")
