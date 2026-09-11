@@ -632,7 +632,11 @@ class RealStateSpaceSim:
                 #   装饰 (hinge 铰接破坏抓取动力学实锤 → 无独立 90° 旋转; 90° 干扰动作由
                 #   视频动画层表达, 真机 6 轴末端回正)
                 _yaw = _rng.uniform(-0.26, 0.26)          # ±15° (物理可成功域)
-                _shell90 = False
+                # 🎯 2026-09-11 老倪: "L4 没有干扰, 跟 L3 一样" → 干扰的**视觉表达**(90°转台)
+                #   原先被显式关掉了 (_shell90=False) → 画面上看不出与 L3 的区别。
+                #   shell_yaw 是纯视觉装饰关节 (不影响抓取动力学, 见上注释) →
+                #   开它 = 3D 里看得见"来料被转 90°" + peg 物理仍只转可成功域小角 (任务仍可完成)。
+                _shell90 = True
             q = d.qpos.copy()
             q[_adr:_adr + 3] += [_dxy[0], _dxy[1], _dz]
             _c, _s = float(_npg2.cos(_yaw / 2)), float(_npg2.sin(_yaw / 2))
