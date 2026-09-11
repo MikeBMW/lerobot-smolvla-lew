@@ -30,11 +30,22 @@ def log(*a):
     print("[intact-worker]", *a, file=sys.stderr, flush=True)
 
 
+_PROTO = None
+
+
+def say(obj: dict) -> None:
+    """把 JSON 写到私有协议口 (stdout 副本), 不与其他库的输出混流。"""
+    import json as _j
+    ( _PROTO or sys.stdout ).write(_j.dumps(obj) + "\n")
+    ( _PROTO or sys.stdout ).flush()
+
+
 class Runtime:
     """封装 INTACT 模型加载与推理 (官方代码路径, 不重写算法)。"""
 
     def __init__(self, repo: str, ckpt: str | None, task: str, hf_repo: str, hf_rev: str,
-                 device: str = "cuda", policy: str = "direct"):
+                 device: str = "cuda", policy: str = "direct", policy_name: str | None = None,
+                 runtime_kind: str | None = None):
         self.repo = os.path.abspath(repo)
         self.ckpt = ckpt
         self.task = task
@@ -43,6 +54,13 @@ class Runtime:
         self.policy = policy
         # 论文 revision 的规范训练 seed (manifest: 0 / 42 / 3072); 资产包名含 seed
         self.hf_rev_seed = int(os.environ.get("INTACT_SEED", "3072"))
+        # 官方 load_pretrained 用的 policy 名 = 缓存 checkpoints/ 下的权重目录名
+        self.policy_name = policy_name or os.environ.get(
+            "INTACT_POLICY", f"recovery_delta_full_{task}_s{self.hf_rev_seed}")
+        # 运行时选择: paper = 官方 paper_runtime (论文权重专用, 参数字布局不同);
+        # root = 根运行时 (本仓库自己训练的 checkpoint)。论文 revision 默认 paper。
+        self.runtime_kind = runtime_kind or os.environ.get(
+            "INTACT_RUNTIME", "paper" if str(hf_rev).startswith("paper-") else "root")
         self.model = None
         self.solver = None
         self.trained = False
@@ -52,7 +70,18 @@ class Runtime:
     # ── 加载 (官方路径: hydra instantiate + load_state_dict(strict=True) / load_pretrained) ──
     def load(self) -> None:
         sys.path.insert(0, self.repo)
-        os.chdir(self.repo)
+        if self.runtime_kind == "paper":
+            # 论文运行时优先 (其 jepa/module 里才有 InverseTransitionActor, 根运行时参数布局不同)
+            pr = os.path.join(self.repo, "paper_runtime")
+            sys.path.insert(0, pr)
+            os.chdir(pr)
+            try:
+                import sitecustomize          # noqa: F401,PLC0415  确定性 Math-SDPA + CUBLAS_WORKSPACE_CONFIG
+                log("paper_runtime 已加载 (sitecustomize 确定性 Math-SDPA)")
+            except Exception as e:
+                log("⚠️ sitecustomize 未加载:", type(e).__name__, e)
+        else:
+            os.chdir(self.repo)
         try:
             import torch                                     # noqa: PLC0415
             import hydra                                      # noqa: F401,PLC0415
@@ -69,27 +98,34 @@ class Runtime:
             log(self.reason)
             return
 
-        # 2) 模型: 官方 config → hydra instantiate → load_state_dict(strict=True)
+        # 2) 模型: 官方加载路径 (与仓库 eval.py:135 完全一致) ——
+        #    swm.wm.utils.load_pretrained(<policy 名/路径>) → eval() → interpolate_pos_encoding=True
+        #    → set_actor_warmstart(True) (Direct 需要 actor 参与, 否则 get_action 返回零)
         try:
-            cfg_path = os.path.join(self.repo, "config", "train", f"intact_goal.yaml")
-            cfg = OmegaConf.load(cfg_path)
-            model = hydra.utils.instantiate(cfg.model)
-            state = torch.load(ckpt_path, map_location="cpu")
-            state = state.get("state_dict", state) if isinstance(state, dict) else state
-            model.load_state_dict(state, strict=True)
-            model.eval()
-            model.to(self.device)
+            import stable_worldmodel as swm                  # noqa: PLC0415
+            import torch                                     # noqa: PLC0415
+            policy = os.environ.get("INTACT_POLICY", self.policy_name)
+            model = swm.wm.utils.load_pretrained(policy)
+            model = model.to(self.device)
+            model = model.eval()
+            model.requires_grad_(False)
+            model.interpolate_pos_encoding = True
+            if hasattr(model, "set_actor_warmstart"):
+                model.set_actor_warmstart(True)
+            elif hasattr(model, "actor_warmstart"):
+                model.actor_warmstart = True
             self.model = model
             self.dims = {"embed_dim": int(getattr(model, "embed_dim", 0) or 0),
                          "action_dim": int(model.get_action_dim(None) or 0),
                          "history_size": int(model.predictor.pos_embedding.size(1)),
                          "img_size": 224}
             self.trained = True
-            log(f"模型就绪: action_dim={self.dims['action_dim']} history={self.dims['history_size']}")
+            log(f"模型就绪 (官方 load_pretrained): policy={policy} "
+                f"action_dim={self.dims['action_dim']} history={self.dims['history_size']}")
         except Exception as e:
             self.reason = (f"模型构建/加载失败: {type(e).__name__}: {e} "
-                           f"(官方路径: config/train/intact_goal.yaml → hydrate instantiate → "
-                           f"load_state_dict(strict=True); 见仓库 eval.py:135/279)")
+                           f"(官方路径: swm.wm.utils.load_pretrained(policy) + set_actor_warmstart(True), "
+                           f"见仓库 eval.py:135-146)")
             log(self.reason)
             log(traceback.format_exc(limit=3))
 
@@ -159,6 +195,13 @@ class Runtime:
 
 
 def main() -> int:
+    # ── 协议通道隔离 (必须最先做): 库日志 (loguru/JAX/httpx 等) 会往 stdout 打,
+    #    污染行式 JSON → 节点侧解析失败。做法: 复制真 stdout 作私有协议口, 再把
+    #    sys.stdout 指到 stderr —— 之后所有库输出进 stderr, JSON 只走协议口。
+    global _PROTO
+    _PROTO = os.fdopen(os.dup(1), "w", buffering=1)
+    sys.stdout = sys.stderr
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA"))
     ap.add_argument("--ckpt", default=None)
@@ -167,9 +210,14 @@ def main() -> int:
     ap.add_argument("--hf-rev", default="paper-e5-goal-v1")
     ap.add_argument("--device", default=os.environ.get("INTACT_DEVICE", "cuda"))
     ap.add_argument("--policy", default="direct")
+    ap.add_argument("--policy-name", default=None,
+                    help="官方 load_pretrained 的 policy 名 (默认 recovery_delta_full_<task>_s<seed>)")
+    ap.add_argument("--runtime", default=None, choices=[None, "root", "paper"],
+                    help="论文权重必须 paper (官方 paper_runtime; 根运行时布局不同)")
     a = ap.parse_args()
 
-    rt = Runtime(a.repo, a.ckpt, a.task, a.hf_repo, a.hf_rev, a.device, a.policy)
+    rt = Runtime(a.repo, a.ckpt, a.task, a.hf_repo, a.hf_rev, a.device, a.policy,
+                 a.policy_name, a.runtime)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -177,26 +225,26 @@ def main() -> int:
         try:
             req = json.loads(line)
         except Exception:
-            print(json.dumps({"ok": False, "reason": "bad json"}), flush=True)
+            say({"ok": False, "reason": "bad json"})
             continue
         cmd = req.get("cmd")
         try:
             if cmd == "hello":
                 if rt.model is None and not rt.trained:
                     rt.load()                      # 懒加载 (hello 时完成)
-                print(json.dumps({"ok": True, **rt.info()}), flush=True)
+                say({"ok": True, **rt.info()})
             elif cmd == "act":
                 r = rt.act(req["in"], req["out"], int(req.get("horizon", 8)))
-                print(json.dumps({"ok": True, **r}), flush=True)
+                say({"ok": True, **r})
             elif cmd == "reset":
-                print(json.dumps({"ok": True}), flush=True)
+                say({"ok": True})
             elif cmd in ("bye", "exit"):
-                print(json.dumps({"ok": True}), flush=True)
+                say({"ok": True})
                 return 0
             else:
-                print(json.dumps({"ok": False, "reason": f"unknown cmd {cmd}"}), flush=True)
+                say({"ok": False, "reason": f"unknown cmd {cmd}"})
         except Exception as e:
-            print(json.dumps({"ok": False, "reason": f"{type(e).__name__}: {e}"}), flush=True)
+            say({"ok": False, "reason": f"{type(e).__name__}: {e}"})
     return 0
 
 

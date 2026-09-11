@@ -26,12 +26,15 @@ class IntactRuntime:
     def __init__(self, repo: str | None = None, venv_python: str | None = None,
                  ckpt: str | None = None, task: str = "pusht",
                  hf_repo: str = "INTACT-JEPA/INTACT", hf_rev: str = "paper-e5-goal-v1",
-                 device: str = "cuda", policy: str = "direct", autostart: bool = True):
+                 device: str = "cuda", policy: str = "direct", autostart: bool = True,
+                 policy_name: str | None = None):
         self.repo = repo or DEFAULT_REPO
         self.venv_python = venv_python or os.path.join(self.repo, ".venv", "bin", "python")
         self.ckpt, self.task = ckpt, task
         self.hf_repo, self.hf_rev = hf_repo, hf_rev
         self.device, self.policy = device, policy
+        self.policy_name = policy_name or os.environ.get(
+            "INTACT_POLICY", f"recovery_delta_full_{task}_s{os.environ.get('INTACT_SEED', '3072')}")
         self.proc: subprocess.Popen | None = None
         self.trained = False
         self.reason: str | None = None
@@ -63,7 +66,8 @@ class IntactRuntime:
             script = "/home/ubuntu/lerobot-smolvla-lew/tools/intact_worker.py"
         cmd = [self.venv_python, script, "--repo", self.repo, "--task", self.task,
                "--hf-repo", self.hf_repo, "--hf-rev", self.hf_rev,
-               "--device", self.device, "--policy", self.policy]
+               "--device", self.device, "--policy", self.policy,
+               "--policy-name", self.policy_name]
         if self.ckpt:
             cmd += ["--ckpt", self.ckpt]
         env = {**os.environ, "PYTHONUNBUFFERED": "1",
