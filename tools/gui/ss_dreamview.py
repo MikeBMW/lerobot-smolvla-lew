@@ -1958,7 +1958,9 @@ class DreamView3D(QWidget):
                     _src3 = "引擎解析链 (metaworld 4D 动作空间, 无 yaw 维)"
                     _c3 = QColor(139, 148, 158)
                 elif _arm_s == "mani_yaw":
-                    _src3 = "🧠 流形预测器决策 (每帧真调 φ* → 下发角)"
+                    _src3 = "🎯 yaw 试抓头决策 (真实试抓监督)" if _meta_d.get("mani") and \
+                        (_meta_d.get("mani") or {}).get("scorer", "").startswith("yaw 试抓头") \
+                        else "🧠 流形预测器决策 (每帧真调 φ* → 下发角)"
                     _c3 = QColor(0, 212, 170)
                 else:
                     _src3 = "脚本开环 Arm A (固定计划角, 预测器不参与动作)"

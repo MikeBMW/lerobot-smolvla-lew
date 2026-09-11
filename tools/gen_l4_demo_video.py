@@ -103,6 +103,35 @@ def _load_mani_predictor():
         return None, info
 
 
+def _load_yaw_head():
+    """🎯 加载 yaw 条件"试抓头" (真实试抓/插入成败监督, 含 yaw 维 act_dim 4→5)。
+
+    权重按优先级: models/l4_yaw_head_insert_depth_v1.pt → ..._grasp_dz_v1.pt
+    返回 (head|None, info)。head._weights_path 供执行器/日志溯源 (诚实标注)。
+    """
+    info = {"weights": None, "trained": False, "error": None}
+    try:
+        import importlib.util as _iu
+        _p = os.path.join(_manifold_dir(), "yaw_head.py")
+        _spec = _iu.spec_from_file_location("_l4_yaw_head", _p)
+        _mod = _iu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        head = _mod.YawGraspHead(z_dim=7, act_dim=4, hidden=256, num_layers=2)
+        for _nm in ("l4_yaw_head_insert_depth_v1.pt", "l4_yaw_head_grasp_dz_v1.pt"):
+            _wp = os.path.join(ROOT, "models", _nm)
+            if os.path.isfile(_wp):
+                import torch as _th
+                head.load_state_dict(_th.load(_wp, map_location="cpu"))
+                head.eval()
+                head._weights_path = _wp
+                info.update(weights=_wp, trained=True)
+                break
+        return head, info
+    except Exception as _e:
+        info["error"] = str(_e)
+        return None, info
+
+
 def _load_yaw_actuator(predictor, log=None):
     """🧠 流形 yaw 执行器 (src/lerobot/manifold/yaw_actuator.py, 断点可进)"""
     try:
@@ -111,9 +140,18 @@ def _load_yaw_actuator(predictor, log=None):
         _spec = _iu.spec_from_file_location("_l4_yaw_act", _p)
         _mod = _iu.module_from_spec(_spec)
         _spec.loader.exec_module(_mod)
+        # 🎯 有 yaw 试抓头就用它打分 (输入的 yaw 维来自真实试抓监督) → φ* 有对准信息
+        _head, _hi = _load_yaw_head()
+        if log and _hi.get("trained"):
+            log(f"🎯 yaw 试抓头已加载: {os.path.basename(_hi['weights'])} "
+                f"(真实试抓监督, 含 yaw 维) → 候选角打分用它")
+        elif log:
+            log(f"⚠️ yaw 试抓头不可用 ({_hi.get('error') or '权重缺失'}) → 回退流形预测器打分")
         return _mod.ManifoldYawActuator(
             predictor,
-            cand_span_deg=float(os.environ.get("SS_MANI_YAW_SPAN", "45")),
+            grasp_head=_head,
+            scorer=os.environ.get("SS_MANI_YAW_SCORER", "auto"),
+            cand_span_deg=float(os.environ.get("SS_MANI_YAW_SPAN", "90")),
             cand_step_deg=float(os.environ.get("SS_MANI_YAW_STEP", "15")),
             w_risk=float(os.environ.get("SS_MANI_YAW_W_RISK", "1.0")),
             w_perp=float(os.environ.get("SS_MANI_YAW_W_PERP", "1.0")),
@@ -181,7 +219,9 @@ def make_env(seed=0):
 class L4Demo:
     """L4 全链演示控制器: 每段真实伺服 + 阶段日志/指标"""
 
-    def __init__(self, seed=0, log=print, record=True, mani_yaw=False):
+    def __init__(self, seed=0, log=print, record=True, mani_yaw=True):
+        """mani_yaw: True(默认) = ② 段 yaw 由预测器/yaw 试抓头决策 (矩形截面件下必须决策,
+        脚本固定角 +90° 物理夹不住); False = 脚本开环 (对照/回退)"""
         self.log = log
         self._record = bool(record)
         # 🧠 2026-09-11 老倪: 「流形预测器发旋转指令」A/B 开关
@@ -410,9 +450,13 @@ class L4Demo:
             self.step(np.array([0.0, 0.0, 0.0, 0.0]))
             if abs(math.radians(phi) - yaw) < 1e-3:
                 break
+        _sc = ("yaw 试抓头" if getattr(act, "grasp_head", None) is not None
+               and getattr(act, "scorer", "auto") in ("auto", "head", "grasp_head") else "流形预测器")
+        _wn = os.path.basename(getattr(act, "head_weights", "") or "")
         self.history.append(
-            f"② 姿态适配(流形预测器决策): yaw 指令 {math.degrees(yaw):.1f}° "
-            f"(决策 {act.n_decide} 次 / 预测器前向 {act.n_calls} 次 / trained={act.trained})")
+            f"② 姿态适配({_sc}决策): yaw 指令 {math.degrees(yaw):.1f}° "
+            f"(决策 {act.n_decide} 次 / {_sc}前向 {act.n_calls} 次 / trained={act.trained}"
+            + (f" / 权重 {_wn}" if _wn else "") + ")")
         return float(math.degrees(yaw))
 
     def servo(self, tgt, g=0.0, tol=0.004, max_steps=800, yaw=None, stage=""):
@@ -526,6 +570,26 @@ class L4Demo:
         # 闭夹 (长保持建立可靠夹持)
         for _ in range(80):
             self.step(np.array([0, 0, 0, 1.0]))
+        # 🎯 2026-09-11 老倪: **真实夹持判据 (锁之前!)** —— 抬 12mm 看模块是否真随动。
+        #   原逻辑闭夹后无条件建立刚性锁再抬升 → 锁使 peg 刚性跟手 → "成功"恒真 (假成功实锤)。
+        #   矩形截面件下, 指间闭合轴不对 → 开口不够 → 模块不随动 = 真失败 (必须暴露出来)。
+        if os.environ.get("SS_L4_GRASP_VERIFY", "1") == "1":
+            _z0 = float(self.peg_center()[2])
+            _h0 = self.hand().copy()
+            for _ in range(40):
+                _a = np.clip(((_h0 + np.array([0, 0, 0.012])) - self.hand()) * 25.0, -1, 1)
+                self.step(np.concatenate([_a, [1.0]]))
+            _dzp = float(self.peg_center()[2] - _z0)
+            _real = bool(_dzp > 0.006)          # 抬 12mm, 模块至少随动 6mm 才算夹住
+            self._grasp_probe_dz = _dzp
+            _ydeg0 = float(np.degrees(self.env._grip_yaw))
+            self.log(f"   {'✅' if _real else '❌'} 夹持验证 (刚性锁之前 · 真实抬升试探): "
+                     f"模块随动 Δz={_dzp*1000:.1f}mm / 指令 12mm (yaw={_ydeg0:.1f}°) "
+                     f"{'→ 真夹持建立' if _real else '→ 未夹住(指间开口不足/角度不对)'}")
+            if not _real:
+                self.history.append(f"② 抓取失败: 抬升试探模块未随动 (Δz={_dzp*1000:.1f}mm @ "
+                                    f"yaw={_ydeg0:.1f}°) — 真实物理失败, 不建立刚性锁")
+                return False
         # 刚性夹持建立: 记录 peg 相对手爪位姿 (闭夹时刻), 此后 peg 与手刚性连接
         hq = self.d.xquat[self.hand_id].copy()
         hq /= np.linalg.norm(hq)
@@ -555,7 +619,8 @@ class L4Demo:
         _arm = "Arm B 流形预测器决策" if getattr(self, "_mani_yaw", False) else "Arm A 脚本开环"
         self.history.append(f"② 姿态适配抓取: 夹爪绕z转 {_ydeg:.1f}° 抓横放光模块 → "
                             f"抬起 Δz={dz:.3f}m {'成功' if ok else '失败'} [{_arm}]")
-        self.log(f"   ✅ 夹爪 yaw={_ydeg:.1f}° 抓取抬起 Δz={dz:.3f}m (夹持建立) [{_arm}]")
+        self.log(f"   {'✅' if ok else '❌'} 夹爪 yaw={_ydeg:.1f}° 抓取抬起 Δz={dz:.3f}m "
+                 f"[{_arm}] · 真实夹持验证 Δz={getattr(self, '_grasp_probe_dz', float('nan'))*1000:.1f}mm")
         return ok
 
     # ── 阶段 ③: 治具校直回正 (转台盘绕世界z 精确转回 — mocap 夹持连续回正非世界z 旋转实锤,
@@ -906,9 +971,12 @@ class L4Demo:
                     arm=("mani_yaw" if getattr(self, "_mani_yaw", False) else "scripted"),
                     yaw_cmd_deg=getattr(self, "_yaw_cmd_deg", None),
                     # 🧭 3D 面板「yaw 指令来源」标注用 (人话 + 可核对)
-                    yaw_src=("🧠 流形预测器决策 (每帧真调, φ*→下发角)"
-                             if getattr(self, "_mani_yaw", False) else
-                             "脚本开环 Arm A (固定 90° 计划, 预测器不参与动作)"),
+                    yaw_src=("🎯 yaw 试抓头决策 (真实试抓监督, 含 yaw 维 act_dim 4→5)"
+                             if (getattr(self, "_mani_act", None) is not None
+                                 and getattr(self._mani_act, "grasp_head", None) is not None)
+                             else ("🧠 流形预测器决策 (每帧真调, φ*→下发角)"
+                                   if getattr(self, "_mani_yaw", False) else
+                                   "脚本开环 Arm A (固定 90° 计划, 预测器不参与动作)")),
                     mani_pred_channel=bool(getattr(self, "_pred", None) is not None),
                     mani=(self._mani_act.summary() if getattr(self, "_mani_act", None) else None),
                     pred_info={k: v for k, v in (getattr(self, "_pred_info", {}) or {}).items()})
@@ -953,8 +1021,10 @@ def main():
     ap.add_argument("--also-latest", action="store_true",
                     help="额外覆盖 reports/ss_episode_latest.mp4 (GUI L4 档自动导出用同链接)")
     ap.add_argument("--seed", type=int, default=0, help="场景/任务 seed (布局)")
-    ap.add_argument("--mani-yaw", action="store_true",
-                    help="🧠 Arm B: ② 段夹爪 yaw 由流形预测器逐帧决策 (默认=脚本开环 Arm A)")
+    ap.add_argument("--mani-yaw", action="store_true", default=True,
+                    help="🎯 默认: ② 段夹爪 yaw 由 yaw 试抓头/流形预测器逐帧决策 (真实试抓监督)")
+    ap.add_argument("--no-mani-yaw", dest="mani_yaw", action="store_false",
+                    help="对照回退: ② 段脚本开环固定角 (矩形截面件下物理夹不住 — A/B 基线)")
     a = ap.parse_args()
     t0 = time.time()
     demo = L4Demo(seed=a.seed, mani_yaw=a.mani_yaw)

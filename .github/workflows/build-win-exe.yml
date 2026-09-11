@@ -81,12 +81,14 @@ jobs:
           ls -la reports/ | head -8
           ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
 
-      - name: "Download manifold predictor weights (流形预测通道/流形 yaw 执行要真权重 — 权重不进代码库, 走 ECS 静态)"
+      - name: "Download manifold predictor + yaw 试抓头 weights (流形 yaw/试抓头要真权重 — 权重不进代码库, 走 ECS 静态)"
         shell: bash
         run: |
           mkdir -p models
           curl -fsSL -o models/l4_mani_predictor_v5.pt https://datadrive.world/models/l4_mani_predictor_v5.pt
-          python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('weights md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
+          curl -fsSL -o models/l4_yaw_head_grasp_dz_v1.pt https://datadrive.world/models/l4_yaw_head_grasp_dz_v1.pt
+          python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('mani md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
+          python -c "import hashlib; h=hashlib.md5(open('models/l4_yaw_head_grasp_dz_v1.pt','rb').read()).hexdigest(); print('yaw head md5:', h); assert h=='0dd140eb64f0b7147ef1fec5aa3061c3', h"
 
       - name: "Generate L4 demo scene XML (L4 干扰机构 来料转台/光耦合台 注入 metaworld 资产, 随 --collect-all 进 exe)"
         shell: bash
@@ -98,7 +100,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v1.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -109,9 +111,10 @@ jobs:
           N4=$(grep -c "sawyer_peg_insertion_side_l4.xml" listing.txt || true)
           NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
           NW=$(grep -c "l4_mani_predictor_v5.pt" listing.txt || true)
-          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW"
+          NH=$(grep -c "l4_yaw_head_grasp_dz_v1.pt" listing.txt || true)
+          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW · yaw 试抓头: $NH"
           grep -m3 "sawyer_peg_insertion_side" listing.txt || true
-          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ]; then
+          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ]; then
             echo "::error::metaworld assets 未打进 exe (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
             exit 1
           fi
@@ -207,11 +210,13 @@ jobs:
           python tools/gen_l4_demo_scene.py --peg-real-inertia
           python -c "import metaworld,os; p=os.path.join(os.path.dirname(metaworld.__file__),'assets','sawyer_xyz','sawyer_peg_insertion_side_l4.xml'); print('L4 XML:', p, os.path.isfile(p)); assert os.path.isfile(p)"
 
-      - name: "Download manifold predictor weights (流形预测通道/流形 yaw 执行要真权重 — 权重不进代码库, 走 ECS 静态)"
+      - name: "Download manifold predictor + yaw 试抓头 weights (流形 yaw/试抓头要真权重 — 权重不进代码库, 走 ECS 静态)"
         run: |
           mkdir -p models
           curl -fsSL -o models/l4_mani_predictor_v5.pt https://datadrive.world/models/l4_mani_predictor_v5.pt
-          python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('weights md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
+          curl -fsSL -o models/l4_yaw_head_grasp_dz_v1.pt https://datadrive.world/models/l4_yaw_head_grasp_dz_v1.pt
+          python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('mani md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
+          python -c "import hashlib; h=hashlib.md5(open('models/l4_yaw_head_grasp_dz_v1.pt','rb').read()).hexdigest(); print('yaw head md5:', h); assert h=='0dd140eb64f0b7147ef1fec5aa3061c3', h"
       - name: Build .app with PyInstaller
         run: |
           cd tools/gui
@@ -229,6 +234,7 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/reports/mlp_insert_success_final.mp4:reports" \
             --add-data "$GITHUB_WORKSPACE/reports/_mlp_cache_mlp_insert_success_final:reports/_mlp_cache_mlp_insert_success_final" \
             --add-data "$GITHUB_WORKSPACE/models/l4_mani_predictor_v5.pt:models" \
+            --add-data "$GITHUB_WORKSPACE/models/l4_yaw_head_grasp_dz_v1.pt:models" \
             --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco \
             --collect-all pyqtgraph --collect-all OpenGL \
             --add-data "$MW_ASSETS:metaworld/assets" \
@@ -242,8 +248,9 @@ jobs:
           N4=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side_l4.xml" | wc -l)
           NG=$(find tools/gui/dist/Z-MAX_Console.app -name "gen_l4_demo_video.py" | wc -l)
           NW=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_mani_predictor_v5.pt" | wc -l)
-          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW"
-          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ]; then
+          NH=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_yaw_head_grasp_dz_v1.pt" | wc -l)
+          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW · yaw 试抓头: $NH"
+          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ]; then
             echo "::error::metaworld assets 未打进 .app (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
             exit 1
           fi

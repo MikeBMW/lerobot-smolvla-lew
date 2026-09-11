@@ -101,6 +101,9 @@ def main():
     import argparse as _ap
     _ap2 = _ap.ArgumentParser()
     _ap2.add_argument("--peg-real-inertia", action="store_true", help="peg 用真实盒惯量 (演示出片用)")
+    _ap2.add_argument("--peg-stock-section", action="store_true",
+                      help="peg 用 stock 30×30mm 方截面 (旧行为); 默认 = 40×16mm 矩形 (真实光模块截面, "
+                           "yaw 有最优对准角 — 实测方截面任意 yaw 都能夹住/插进 = 无最优角)")
     _a2 = _ap2.parse_args()
     if _a2.peg_real_inertia:
         s = s.replace('<inertial pos="0 0 0" mass="0.1" diaginertia="100000 100000 100000"/>',
@@ -108,8 +111,19 @@ def main():
     # 压电载物台惯性锁位 (100kg: 等效压电闭环刚度, 接触力推不动; 自由轻台被 peg 接触推开实锤;
     # 不用 actuator — 会破坏 metaworld nu=2 假设 do_simulation 校验实锤)
     # 夹持旋转回正需要高切向摩擦 (原 1.0 下滑脱实锤): peg 表面摩擦 5.0 (演示场景专用)
-    s = s.replace('<geom name="peg" euler="0 1.57 0" size="0.015 0.015 0.12" type="box" mass=".1" rgba="0.3 1 0.3 1" conaffinity="1" contype="1" group="1"/>',
-                  '<geom name="peg" euler="0 1.57 0" size="0.015 0.015 0.12" type="box" mass=".1" rgba="0.3 1 0.3 1" conaffinity="1" contype="1" group="1" friction="5 0.02 0.002"/>', 1)
+    # 🎯 2026-09-11 老倪: 截面改矩形 40×16mm (= 真实光模块长条截面) → yaw 才有最优对准角。
+    #   实测 (tools/rect_sweep.py): 方截面 30×30 抓0/90°都成功+插0/90°都成功 = 无最优角;
+    #   40×16 → 抓 0° 成功(Δz105mm) / 90° **物理失败**(开口不够) 而插入 0/90° 均成功 → 不回退。
+    _sec = "0.015 0.015 0.12" if _a2.peg_stock_section else "0.020 0.008 0.12"
+    # ⚠️ 搜索侧必须用 **stock 尺寸** (SRC 是 stock XML); 替换侧才用目标截面
+    s = s.replace('<geom name="peg" euler="0 1.57 0" size="0.015 0.015 0.12" type="box" mass=".1" '
+                  'rgba="0.3 1 0.3 1" conaffinity="1" contype="1" group="1"/>',
+                  f'<geom name="peg" euler="0 1.57 0" size="{_sec}" type="box" mass=".1" '
+                  'rgba="0.3 1 0.3 1" conaffinity="1" contype="1" group="1" '
+                  'friction="5 0.02 0.002"/>', 1)
+    assert f'size="{_sec}"' in s, "peg 截面注入失败 (stock 行未匹配)"
+    print(f"🎯 peg 截面 = {'stock 方 30×30mm' if _a2.peg_stock_section else '矩形 40×16mm'} "
+          f"(真实光模块截面 → yaw 有最优对准角)")
     # 转台/压电台注入到 peg/box 定义之后 (worldbody 尾部、goal site 之前/后皆可)
     s = s.replace("</worldbody>", EXTRA + "\n    </worldbody>", 1)
     # 加 site 到 site 段? cp 已在 worldbody; goal site 不变

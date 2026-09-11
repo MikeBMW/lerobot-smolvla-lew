@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 
@@ -52,8 +53,13 @@ class ManifoldYawActuator:
 
     def __init__(self, predictor, cand_span_deg=45.0, cand_step_deg=15.0,
                  w_risk=1.0, w_perp=1.0, w_prog=0.25, lam_prior=0.02,
-                 clip_deg=90.0, log=None):
+                 clip_deg=90.0, log=None, grasp_head=None, scorer="auto"):
         self.predictor = predictor
+        # 🎯 yaw 条件"试抓头" (act_dim 4→5, 真实试抓成败监督) — 有它则优先用它打分:
+        #    候选 φ → 预测 Δz/深度 + P(成功) → φ* = argmax 预测结果 = 真正的最优对准角
+        self.grasp_head = grasp_head
+        self.scorer = scorer
+        self.head_weights = getattr(grasp_head, "_weights_path", None)
         self.cand_span = float(cand_span_deg)
         self.cand_step = float(cand_step_deg)
         self.w_risk = float(w_risk)
@@ -77,6 +83,13 @@ class ManifoldYawActuator:
     # ── 单候选代价 (真调预测器) ──
     def _cost(self, z7, a4, phi_deg, phi_ref_deg):
         import torch
+        if self.grasp_head is not None and self.scorer in ("auto", "head", "grasp_head"):
+            # 🎯 试抓头打分 (含 yaw 维): 用真实试抓训练 → 分数有对准信息
+            dz_hat, p_ok = self.grasp_head.score(np.asarray(z7, dtype=float).ravel()[:7],
+                                                 np.asarray(a4, dtype=float).ravel()[:4], phi_deg)
+            self.n_calls += 1
+            return (-float(dz_hat) - 0.25 * float(p_ok)), {
+                "dz_hat": float(dz_hat), "p_ok": float(p_ok), "scorer": "grasp_head"}
         dphi = math.radians(phi_ref_deg - phi_deg)     # 残余姿态失配 (对准 → 0)
         z = np.asarray(z7, dtype=float).copy().ravel()
         if z.size >= 3:
@@ -114,6 +127,9 @@ class ManifoldYawActuator:
         info = {"phi_ref": float(phi_ref_deg), "phi_star": float(best[0]), "best_cost": float(best[1]),
                 "costs": [(float(p), float(c), d) for p, c, d in costs],
                 "trained": self.trained, "n_calls": self.n_calls,
+                "scorer": ("yaw 试抓头 (含 yaw 维, 真实试抓监督)" if (self.grasp_head is not None
+                           and self.scorer in ("auto", "head", "grasp_head"))
+                           else "流形预测器 v5 (无 yaw 维)"),
                 "encoding": "残余姿态失配 δφ=(来料朝向−φ) 绕z旋转相对几何 (工程假设)"}
         self.last_info = info
         self.history.append((info["phi_ref"], info["phi_star"], info["best_cost"]))
@@ -122,5 +138,8 @@ class ManifoldYawActuator:
     def summary(self):
         return {"trained": self.trained, "n_calls": self.n_calls, "n_decide": self.n_decide,
                 "cand_span_deg": self.cand_span, "cand_step_deg": self.cand_step,
+                "scorer": ("yaw 试抓头" if (self.grasp_head is not None
+                           and self.scorer in ("auto", "head", "grasp_head")) else "流形预测器 v5"),
+                "head_weights": (os.path.basename(self.head_weights) if self.head_weights else None),
                 "weights": {"risk": self.w_risk, "perp": self.w_perp, "prog": self.w_prog,
                             "prior": self.lam_prior}}
