@@ -34,12 +34,24 @@ done
 
 say() { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
 
+# 结果文件名 (各任务不同! 来源: paper_runtime/config/eval/<task>.yaml 的 output.filename)
+#   实测踩坑: 用 <task>_results.txt 猜 → reacher 实际写 dmc_results.txt, 导致"未产出结果"误报
+result_file() {
+  case "$1" in
+    pusht)   echo "pusht_results.txt";;
+    cube)    echo "ogb_cube_results.txt";;
+    reacher) echo "dmc_results.txt";;
+    tworoom) echo "tworoom_results.txt";;
+    *)       echo "results.txt";;
+  esac
+}
+
 # 任务元数据: repo|资产文件|解压后目标(相对 $DS)|解压方式|权重目录名|评测任务名
 task_meta() {
   case "$1" in
     pusht)   echo "quentinll/lewm-pusht|pusht_expert_train.h5.zst|pusht_expert_train.h5|zst|recovery_delta_full_pusht_s3072|pusht";;
     cube)    echo "quentinll/lewm-cube|cube_single_expert.tar.zst|ogbench/cube_single_expert.h5|tarzst|recovery_delta_full_cube_s3072|cube";;
-    reacher) echo "quentinll/lewm-reacher|reacher.tar.zst|reacher.h5|tarzst|recovery_delta_full_reacher_s3072|reacher";;
+    reacher) echo "quentinll/lewm-reacher|reacher.tar.zst|dmc/reacher_random.h5|tarzst|recovery_delta_full_reacher_s3072|reacher";;
     tworoom) echo "quentinll/lewm-tworooms|tworoom.tar.zst|tworoom.h5|tarzst|recovery_delta_full_tworoom_s3072|tworoom";;
     *) echo ";;";;
   esac
@@ -83,6 +95,17 @@ for T in $TASKS; do
   if [ -f "$DS/$TARGET" ]; then
     say "  ⏭ 数据集已在位: $DS/$TARGET"
   else
+    # 1a) 布局别名: 归档内容与评测期望路径名不一致时用符号链接接上 (不复制 GB 级数据)
+    #     实测: reacher.tar.zst 解出 datasets/reacher.h5, 而 eval 配置 dataset_name=dmc/reacher_random
+    case "$T" in
+      reacher) if [ -f "$DS/reacher.h5" ]; then
+                 mkdir -p "$DS/dmc"; ln -sfn ../reacher.h5 "$DS/dmc/reacher_random.h5"
+                 say "  🔗 布局别名: dmc/reacher_random.h5 -> ../reacher.h5"; fi;;
+    esac
+  fi
+  if [ -f "$DS/$TARGET" ]; then
+    say "  ⏭ 数据集已在位: $DS/$TARGET"
+  else
     read -r ASIZE ASHA < <(python3 "$ASSET" meta "$REPO" "$FILE")
     if [ -z "${ASIZE:-}" ] || [ "$ASIZE" = "NOT_FOUND" ] || [ "$ASIZE" = "NO_HASH" ]; then
       say "  ❌ 取不到资产元数据 ($REPO/$FILE) → 跳过"; continue
@@ -121,13 +144,23 @@ for T in $TASKS; do
     say "  ── $T seed=$S: 官方 Direct 评测 (PriorOnlySolver 零搜索)"
     ( cd "$PR" && python eval.py --config-name="$ETASK" solver=prior_only policy="$POLICY" \
         seed="$S" eval.num_eval="$NUM" ) > "$OUT/eval_${T}_seed${S}.log" 2>&1
-    if [ -f "$CACHE/${ETASK}_results.txt.json" ]; then
-      cp -f "$CACHE/${ETASK}_results.txt.json" "$OUT/${T}_seed${S}.json"
+    RF=$(result_file "$ETASK")
+    if [ -f "$CACHE/${RF}.json" ]; then
+      cp -f "$CACHE/${RF}.json" "$OUT/${T}_seed${S}.json"
       say "  ✅ $T seed$S → $OUT/${T}_seed${S}.json"
     else
       say "  ❌ $T seed$S 未产出结果:"; tail -4 "$OUT/eval_${T}_seed${S}.log" | tee -a "$LOG"
     fi
   done
+  # 3) 结果齐 → 回收该任务大数据集 (幂等: 需要重跑时流水线会自动重新下载+双核校验)
+  DONE2=1; for S in $SEEDS; do [ -f "$OUT/${T}_seed${S}.json" ] || DONE2=0; done
+  if [ "$DONE2" = "1" ] && [ "${KEEP_DATA:-0}" != "1" ]; then
+    if [ -f "$DS/$TARGET" ] && [ ! -L "$DS/$TARGET" ]; then
+      SZ=$(stat -c%s "$DS/$TARGET")
+      rm -f "$DS/$TARGET"; rm -f "$DS/$FILE"
+      say "  ♻️ 结果已齐 → 回收数据集 $TARGET ($(( SZ/1000000000 ))GB) 与归档; 磁盘 $(df --output=avail -BG /home | tail -1 | tr -dc '0-9')GB 可用"
+    fi
+  fi
 done
 
 say "═══ 汇总 ═══"
