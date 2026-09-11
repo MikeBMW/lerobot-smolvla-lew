@@ -23,13 +23,6 @@ jobs:
       actions: read
 
     steps:
-      - name: Resolve metaworld assets path
-        shell: pwsh
-        run: |
-          $p = python -c "import metaworld,os;print(os.path.join(os.path.dirname(metaworld.__file__),'assets'))"
-          echo "MW_ASSETS=$p" >> $env:GITHUB_ENV
-          Write-Host "metaworld assets: $p"
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -88,23 +81,31 @@ jobs:
           ls -la reports/ | head -8
           ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
 
+      - name: "Generate L4 demo scene XML (L4 干扰机构 来料转台/光耦合台 注入 metaworld 资产, 随 --collect-all 进 exe)"
+        shell: bash
+        run: |
+          python tools/gen_l4_demo_scene.py --peg-real-inertia
+          python -c "import metaworld,os; p=os.path.join(os.path.dirname(metaworld.__file__),'assets','sawyer_xyz','sawyer_peg_insertion_side_l4.xml'); print('L4 XML:', p, os.path.isfile(p)); assert os.path.isfile(p)"
+
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
           pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio studio.py
 
-      - name: Verify engine assets bundled (metaworld XML 必须进 exe, 否则真实化运行报 does not exist)
+      - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
         run: |
-          python -m PyInstaller.utils.cliutils.archive_viewer -r tools\\gui\\dist\\Z-MAX_Console.exe > listing.txt 2>&1 || true
-          N=$(grep -c "sawyer_peg_insertion_side.xml" listing.txt || true)
-          echo "metaworld peg XML entries in exe bundle: $N"
-          if [ "$N" -lt 1 ]; then
-            echo "::error::metaworld assets 未打进 exe (--collect-all metaworld 缺失?)"
+          python -m PyInstaller.utils.cliutils.archive_viewer -r -b tools/gui/dist/Z-MAX_Console.exe > listing.txt 2>&1 || true
+          N=$(grep -c "assets/sawyer_xyz/sawyer_peg_insertion_side.xml" listing.txt || true)
+          N4=$(grep -c "assets/sawyer_xyz/sawyer_peg_insertion_side_l4.xml" listing.txt || true)
+          echo "exe 内 metaworld stock XML 条目: $N · L4 场景 XML 条目: $N4"
+          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ]; then
+            echo "::error::metaworld assets 未打进 exe (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
+            grep -m5 "metaworld/assets" listing.txt || true
             exit 1
           fi
-          ls -la tools\\gui\\dist\\Z-MAX_Console.exe
+          ls -la tools/gui/dist/Z-MAX_Console.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -190,6 +191,11 @@ jobs:
       - name: Resolve metaworld assets path
         run: |
           echo "MW_ASSETS=$(python -c "import metaworld,os;print(os.path.join(os.path.dirname(metaworld.__file__),'assets'))")" >> $GITHUB_ENV
+
+      - name: "Generate L4 demo scene XML (L4 干扰机构 来料转台/光耦合台 注入 metaworld 资产, 随 --collect-all 进 app)"
+        run: |
+          python tools/gen_l4_demo_scene.py --peg-real-inertia
+          python -c "import metaworld,os; p=os.path.join(os.path.dirname(metaworld.__file__),'assets','sawyer_xyz','sawyer_peg_insertion_side_l4.xml'); print('L4 XML:', p, os.path.isfile(p)); assert os.path.isfile(p)"
       - name: Build .app with PyInstaller
         run: |
           cd tools/gui
@@ -212,6 +218,16 @@ jobs:
             --collect-all glfw --collect-all gymnasium --collect-all imageio \
             studio.py
           ls -la dist/
+
+      - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 .app 内)"
+        run: |
+          N=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side.xml" | wc -l)
+          N4=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side_l4.xml" | wc -l)
+          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4"
+          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ]; then
+            echo "::error::metaworld assets 未打进 .app (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
+            exit 1
+          fi
 
       - name: Set bundle version (修 PyInstaller 默认 0.0.0 → 真实版本)
         run: |

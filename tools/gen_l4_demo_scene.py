@@ -5,7 +5,33 @@
 """
 import os, sys, shutil
 
-MW_ASSETS = os.path.expanduser("~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/metaworld/assets")
+
+def _mw_assets_dir():
+    """metaworld 包 assets 目录多候选探测 — 🐛 2026-09-11 根因修复:
+    原硬编码 ~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/...
+    → CI (mac/win runner) 与 PyInstaller frozen 环境一律找不到该路径 →
+    L4 场景 XML 生成失败 (静默) = 打包版 L4 没有转台/耦合台设备 = 开机就没有干扰机构,
+    与"L4 看不到干扰旋转"直接相关。改为按 metaworld 包实际位置解析。"""
+    cands = []
+    try:
+        import metaworld as _mw
+        cands.append(os.path.join(os.path.dirname(os.path.abspath(_mw.__file__)), "assets"))
+    except Exception:
+        pass
+    _mp = getattr(sys, "_MEIPASS", None)          # frozen: metaworld 在 _MEIPASS/metaworld
+    if _mp:
+        cands.append(os.path.join(_mp, "metaworld", "assets"))
+    cands.append(os.path.expanduser(
+        "~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
+    cands.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
+    for c in cands:
+        if os.path.isfile(os.path.join(c, "sawyer_xyz", "sawyer_peg_insertion_side.xml")):
+            return c
+    return cands[0]
+
+
+MW_ASSETS = _mw_assets_dir()
 SRC = os.path.join(MW_ASSETS, "sawyer_xyz", "sawyer_peg_insertion_side.xml")
 DST = os.path.join(MW_ASSETS, "sawyer_xyz", "sawyer_peg_insertion_side_l4.xml")
 

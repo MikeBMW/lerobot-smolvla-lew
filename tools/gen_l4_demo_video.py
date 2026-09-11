@@ -21,9 +21,29 @@ import mujoco
 import metaworld
 from metaworld.envs.sawyer_peg_insertion_side_v3 import SawyerPegInsertionSideEnvV3
 
-L4_XML = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                      "gui-venv311/lib/python3.11/site-packages/metaworld/assets/sawyer_xyz",
-                      "sawyer_peg_insertion_side_l4.xml")
+def _mw_assets_sawyer():
+    """metaworld 包 assets/sawyer_xyz 目录多候选探测 — 🐛 2026-09-11 根因修复:
+    原硬编码 ~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/... →
+    Windows/macOS 打包版与 frozen 环境一律找不到 (L4 演示 env 建不起来 = 打包版 L4 无干扰可见)。"""
+    cands = []
+    try:
+        import metaworld as _mw
+        cands.append(os.path.join(os.path.dirname(os.path.abspath(_mw.__file__)), "assets"))
+    except Exception:
+        pass
+    _mp = getattr(sys, "_MEIPASS", None)          # frozen: metaworld 在 _MEIPASS/metaworld
+    if _mp:
+        cands.append(os.path.join(_mp, "metaworld", "assets"))
+    cands.append(os.path.expanduser(
+        "~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
+    cands.append(os.path.join(ROOT, "gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
+    for c in cands:
+        if os.path.isfile(os.path.join(c, "sawyer_xyz", "sawyer_peg_insertion_side.xml")):
+            return os.path.join(c, "sawyer_xyz")
+    return os.path.join(cands[0], "sawyer_xyz")
+
+
+L4_XML = os.path.join(_mw_assets_sawyer(), "sawyer_peg_insertion_side_l4.xml")
 REP = os.path.join(ROOT, "reports")
 RENDER_EVERY = 3          # 每 3 步录 1 帧
 FPS = 25
@@ -705,10 +725,25 @@ class L4Demo:
 
 
 def ensure_scene():
-    """演示场景 XML 用真实 peg 惯量生成 (引擎默认 XML 不受影响)"""
+    """演示场景 XML 用真实 peg 惯量生成 (引擎默认 XML 不受影响)
+
+    🐛 2026-09-11 打包版修复: frozen 时 **直接跳过** —
+      sys.executable 在 PyInstaller 下 = app 二进制本身, 用它起子进程 = 反复启动新 app
+      (v5.5.15 实锤); 且 frozen 无 repo/tools。打包版由 CI 预生成 L4 场景 XML 并随
+      --collect-all metaworld 进包 (metaworld/assets/sawyer_xyz/sawyer_peg_insertion_side_l4.xml)。
+    """
+    if getattr(sys, "frozen", False):
+        return
     import subprocess as _sp
-    _sp.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                          "gen_l4_demo_scene.py"), "--peg-real-inertia"],
+    _py = sys.executable
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from runtime_env import resolve_python as _rp
+        _py = _rp() or _py
+    except Exception:
+        pass
+    _sp.run([_py, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "gen_l4_demo_scene.py"), "--peg-real-inertia"],
             capture_output=True, timeout=60)
 
 def main():
