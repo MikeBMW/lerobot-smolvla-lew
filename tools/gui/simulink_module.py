@@ -11089,13 +11089,26 @@ class SimulinkModule(QWidget):
                 _cap = getattr(self, "_cap_level", None)
                 # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (demo_l4 → 引擎委托 L4Demo 控制器:
                 #   来料转台90°外力干扰+绕z抓横+治具回正+插拔闭环+AOI+光耦合; 不走 YOLO/attempts)
-                _demo_cap = str(_cap or "").upper() == "L4"
+                # 🎯 2026-09-11 老倪两条反馈合并修正:
+                #   ① "L4 档怎么没有拔出光模块" → 因为走 L4Demo 时跑的是演示链;
+                #   ② "打开的窗口动画一直是老样子" → L4Demo 轨迹写死, 每次必然一样。
+                #   → 结论: L4 档改走**引擎真链路** (mode=full 13段: 插→拔→AOI检测→放回,
+                #     含 L4 干扰注入 = 拿起前光模块被移位/转向, 引擎自主适应)。
+                #   这样既能看到完整的拔出/AOI, 又能看到"每轮干扰不同"带来的真实差异。
+                #   L4Demo 90° 演示链代码保留 (_demo_cap 显式置 True 可回到旧演示)。
+                _demo_cap = False
                 # 🧠 2026-09-11 老倪: "我要看到 L4 档位的区别" —— 加「模型执行」开关:
                 #   关(默认) → 原来的 L4Demo 演示 (保留 90° 转台特色)
                 #   开       → **不走 L4Demo**, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图
                 #              → 同一个 L4 档, 一眼看出"固定演示"与"模型在干活"的区别
                 #   注: L3 档不受影响 (老倪: L3 档是正常的, 不用改)
-                _model_exec = bool(getattr(self, "_model_exec", True))   # 默认开 (老倪: 动画要能看出区别)
+                # 🎯 2026-09-11 实测结论 (老倪: "L4 档怎么没有拔出光模块"):
+                #   L4=干扰布局(光模块被移位/转向) + 模型接管 → **卡在插入之前**, 走不到拔出
+                #     (模型在无干扰固定布局上训练, 没见过干扰后的布局 → 动作不适用)
+                #   同一干扰下 **解析链能跑完整 13 段**(862步 · 拔出164 · AOI PASS) ✓
+                #   → 所以默认走解析链(保证"看得到拔出/AOI"), 模型执行改为**可选展示**开关。
+                #   要用模型: 勾「🧠 模型执行」(注意: 干扰布局下可能卡, 属数据覆盖问题非代码问题)
+                _model_exec = bool(getattr(self, "_model_exec", False))
                 if _model_exec:
                     os.environ["SS_L3"] = "1"
                     _demo_cap = False
@@ -11103,10 +11116,10 @@ class SimulinkModule(QWidget):
                 else:
                     os.environ.pop("SS_L3", None)
                 sim = RealStateSpaceSim(seed=104,
-                                        # 🧠 模型执行时用 R0 真值观测 (与验证口径一致 —
-                                        #   tools/eval_takeover.py / 865步全链视频都是 R0;
-                                        #   走 R1 视觉会引入另一层变量, 无法归因)
-                                        vision=(not _demo_cap) and (not _model_exec),
+                                        # 🎯 L3 档用 R1 视觉(原样, 老倪明确不动); 
+                                        #   L4 改为引擎链路后用 R0 真值 — R1 每帧 YOLO 要 5-9 分钟/轮,
+                                        #   太慢看不清完整"插→拔→AOI"链 (老倪要看全链动作)
+                                        vision=(str(_cap or "").upper() == "L3") and (not _model_exec),
                                         vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
                                         demo_l4=_demo_cap,
