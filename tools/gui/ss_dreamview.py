@@ -823,8 +823,12 @@ class DreamView3D(QWidget):
             self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
             # 🎯 2026-09-09 L4 演示 (L4Demo npz/meta): 演示场景注入设备 (转台/压电耦合台)
             #   3D 视图按 demo_geom 绘制 — 物理场景真实存在的设备, 视觉必须同呈现
-            if meta.get("demo"):
+            # 🎯 2026-09-11 老倪: "没看到转台盘/十字刻度" → 设备几何(转台/光耦合台)的读取
+            #   原先被包在 meta["demo"] 分支里 (那是 L4Demo 专属标记) — 引擎路径(L4 档新链路)
+            #   不带该标记 → _demo_geom 永远 None → 3D 不画转台。拆开: 几何呈现独立于"演示模式"。
+            if meta.get("demo_geom"):
                 self._demo_geom = meta.get("demo_geom") or {}
+            if meta.get("demo"):
                 self._peg_center_off = np.zeros(3)   # 演示 tr["peg"]=真 peg 中心, 无抓握点补偿
                 self._src = ("L4 演示全链 (seed=%s, %s 步, 终态 %s)"
                              % (meta.get('seed'), meta.get('steps'), meta.get('stage_final')))
