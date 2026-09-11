@@ -4451,16 +4451,19 @@ class SimulinkModule(QWidget):
             "不勾 (默认) = 插装即完成 (8 段演示, 回归保底)")
         tl.addWidget(self.chk_l3_full)
         # 🧠 2026-09-11 老倪 (A): L4 演示档的夹爪 yaw 指令改由**流形预测器**决策
-        #   勾选 = Arm B (预测器每帧真调 φ* → 下发角, 3D 面板标注来源);
-        #   不勾 = Arm A 脚本开环 (默认, 实测两臂任务结果无差异 → 不做性能声明, 默认不动)
+        #   勾选 (默认) = Arm B (预测器每帧真调 φ* → 下发角, 3D 面板标注来源);
+        #   取消勾选 = Arm A 脚本开环 (仅作对照回退)
         self.chk_mani_yaw = QCheckBox("🧠 流形 yaw 执行")
+        # 🎯 2026-09-11 老倪: "必须用真实的流形预测的指令" → **默认勾选** (L4 档 yaw 由流形预测器发)
+        self.chk_mani_yaw.setChecked(True)
         self.chk_mani_yaw.setToolTip(
-            "L4 演示档 ② 段夹爪偏航角由流形预测器逐帧决策 (Arm B):\n"
+            "【默认勾选】L4 演示档 ② 段夹爪偏航角由**流形预测器逐帧决策** (Arm B):\n"
             "  每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选角打分取代价最小者下发\n"
-            "  (slew 0.03 rad/步; 权重 models/l4_mani_predictor_v5.pt, trained 会标注)\n"
-            "不勾 (默认) = 脚本开环 Arm A (固定 90° 计划角, 预测器不参与动作)\n"
-            "⚠️ 实测 (3 seed×2 重复): 两臂任务结果相同 (6/6 成功) — 只作\"指令来源可见\"展示,\n"
-            "   不声称性能增益; 3D 面板会显示「yaw 指令来源 + 下发角 + φ* + 预测器前向次数」")
+            "  (slew 0.03 rad/步; 权重 models/l4_mani_predictor_v5.pt, 打包版已随包)\n"
+            "取消勾选 = 脚本开环 Arm A (固定 90° 计划角) — 仅作对照回退\n"
+            "⚠️ 现状诚实说明 (v5.5.21 实测): v5 预测器在候选编码下代价单调退化 (argmin 落候选边界),\n"
+            "   且 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽) → 两臂任务结果相同 (6/6);\n"
+            "   3D 面板显示「yaw 指令来源 + 下发角 + φ* + 前向次数 + trained」逐帧可核对")
         tl.addWidget(self.chk_mani_yaw)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
@@ -11715,7 +11718,10 @@ class SimulinkModule(QWidget):
                 #   (ZMAX_L4_ROOT) — 否则 frozen 下生成器写到临时目录父级, GUI scp 找不到文件
                 _cwd = _os.path.dirname(_gen) or tools_dir
                 _env = {**_env, "ZMAX_L4_ROOT": root}
-                r = _sp.run([_resolve_python(), _gen, "--also-latest"] if _cap_l4
+                # 🧠 2026-09-11 老倪: L4 视频必须同用流形预测指令 → 勾了「流形 yaw 执行」时
+                #   导出子进程也带 --mani-yaw (否则视频还是脚本开环, 与 3D 不一致)
+                _mani_flag = ["--mani-yaw"] if bool(getattr(self, "_mani_yaw_exec", False)) else []
+                r = _sp.run(([_resolve_python(), _gen, "--also-latest"] + _mani_flag) if _cap_l4
                             else [_resolve_python(), _gen, "--seed", "0", "--seeds", "3"],
                             capture_output=True, text=True, timeout=1200, cwd=_cwd, env=_env)
                 if r.returncode != 0:
