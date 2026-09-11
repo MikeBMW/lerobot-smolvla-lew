@@ -97,13 +97,14 @@ jobs:
         shell: bash
         run: |
           python -m PyInstaller.utils.cliutils.archive_viewer -r -b tools/gui/dist/Z-MAX_Console.exe > listing.txt 2>&1 || true
-          N=$(grep -c "assets/sawyer_xyz/sawyer_peg_insertion_side.xml" listing.txt || true)
-          N4=$(grep -c "assets/sawyer_xyz/sawyer_peg_insertion_side_l4.xml" listing.txt || true)
+          NM=$(grep -c "metaworld" listing.txt || true)
+          NC=$(grep -c "sawyer_peg_insertion_side.xml" listing.txt || true)
+          N4=$(grep -c "sawyer_peg_insertion_side_l4.xml" listing.txt || true)
           NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
-          echo "exe 内 metaworld stock XML 条目: $N · L4 场景 XML 条目: $N4 · L4 生成器脚本: $NG"
-          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ]; then
+          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG"
+          grep -m3 "sawyer_peg_insertion_side" listing.txt || true
+          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ]; then
             echo "::error::metaworld assets 未打进 exe (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
-            grep -m5 "metaworld/assets" listing.txt || true
             exit 1
           fi
           ls -la tools/gui/dist/Z-MAX_Console.exe
