@@ -1289,7 +1289,55 @@ def node_pdf_report(ctx):
     return module.on_pdf_report()
 
 
+# ── 🎯 INTACT 节点 (2026-09-11 老倪: L4 层加 INTACT 节点, 输出直连机器人硬件) ──
+_INTACT_NODE_CACHE = {}
+
+
+def _intact_get_node(root: str):
+    """取/建 INTACT 节点单例 (懒加载; 找不到工程根/依赖时抛错由调用方诚实上报)"""
+    import importlib
+    import sys as _sys
+    src = os.path.join(root, "src")
+    if src not in _sys.path:
+        _sys.path.insert(0, src)
+    if "node" not in _INTACT_NODE_CACHE:
+        _m = importlib.import_module("lerobot.manifold.intact_node")
+        _INTACT_NODE_CACHE["node"] = _m.IntactNode(horizon=8, action_dim=4)
+    return _INTACT_NODE_CACHE["node"]
+
+
+def node_intact(ctx):
+    """🎯 INTACT 意图-动作 — 零搜索 意图→动作 (封装 zju3dv/INTACT-JEPA, MIT)
+
+    输入: 数据源层 (官方数据 / 本仓库 L4 episode, 数据可再下载)
+    输出: RobotIO → 机器人硬件 (**预留接口**, 未接硬件时只允许 SimRobotIO)
+    一步 = obs 滑窗 + goal 意图 → 共享动作律直接出 action chunk (无候选搜索)
+    双击 → 真跑一步并打印诊断; 模型未就绪诚实标 trained=False (绝不返回假动作冒称成功)
+    设计: docs/design/zmax_intact_node.md · 封装: src/lerobot/manifold/intact_node/
+    """
+    log = ctx["log"]
+    root = ctx.get("root") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    try:
+        node = _intact_get_node(root)
+        if node.source is None:
+            node.set_data_source("l4_episode")
+        out = node.step()
+        d = node.diagnostics()
+        log(f"🎯 INTACT: action chunk{out.chunk.shape} · 策略={out.policy}(零搜索) · "
+            f"candidate_sequences={d['candidate_sequences']:.0f} · 延迟 {d['latency_ms']:.1f}ms · "
+            f"数据源={out.source} · 输出={node.robot.name}")
+        if not out.trained:
+            log(f"   ⚠️ 模型未就绪 (trained=False) — 原因: {node.runtime.reason}; "
+                f"S1 调试: bash scripts/install.sh cu124 → eval_official.sh direct pusht")
+        return True
+    except Exception as e:
+        log(f"❌ INTACT 节点执行失败: {type(e).__name__}: {e}")
+        return False
+
+
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
+_reg("intact",     ["INTACT 意图-动作", "INTACT"],
+     "🎯 INTACT — 零搜索 意图→动作 (数据源→RobotIO, 硬件预留)", node_intact)
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)
 _reg("train",      ["训练", "全新训练"], "② 训练 — ACT 策略训练 (含 metaworld 全新训练)", node_train)
 _reg("validate",   ["验证"],        "③ 验证 — 流程拓扑合规检查 (validate_flow)", node_validate)

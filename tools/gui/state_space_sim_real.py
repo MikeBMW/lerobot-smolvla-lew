@@ -20,6 +20,35 @@ import os
 import sys
 import numpy as np
 
+# ── 🎯 INTACT 节点就绪度 (2026-09-11): 引擎每帧调用, 必须廉价 (静态检查 + 结果缓存) ──
+_INTACT_READY_CACHE: dict = {}
+
+
+def _intact_ready() -> str:
+    """INTACT (zju3dv/INTACT-JEPA) 就绪度: 'True' / 'False(原因)'。
+
+    只做静态探测 (仓库/venv/依赖), **不 spawn 推理进程** —— 真调路径是画布节点
+    (node_logic.node_intact) 或 docs/design/zmax_intact_node.md 的 S3 适配。
+    """
+    if "v" in _INTACT_READY_CACHE:
+        return _INTACT_READY_CACHE["v"]
+    repo = os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA")
+    venv = os.path.join(repo, ".venv", "bin", "python")
+    if not os.path.isdir(repo):
+        v = "False(仓库缺失)"
+    elif not os.path.isfile(venv):
+        v = "False(venv 未建)"
+    else:
+        try:
+            import subprocess as _sp
+            r = _sp.run([venv, "-c", "import hydra, stable_worldmodel"],
+                        capture_output=True, timeout=90)
+            v = "True" if r.returncode == 0 else "False(依赖未装全)"
+        except Exception as _e:
+            v = f"False({type(_e).__name__})"
+    _INTACT_READY_CACHE["v"] = v
+    return v
+
 
 # ── 🧮 流形层加载 (2026-09-07 真实化补齐可视化输出 — 老倪: 流形节点要有输出) ──
 def _load_simreal_manifold():
@@ -2206,6 +2235,16 @@ class RealStateSpaceSim:
                 "in": [("潜状态/先验", "估计器+动力学")],
                 "out": [("潜坐标 (位置3+预测力)", _lat),
                         ("速度场 prior−x̂₋", _vel)]},
+            # 🎯 INTACT 意图-动作 channel (2026-09-11 — 老倪: L4 加 INTACT 节点, 输出直连机器人硬件;
+            #   零搜索: candidate_sequences 恒 0。真调路径 = 画布节点双击 (node_logic.node_intact),
+            #   引擎侧在 S3 适配前**诚实标未接入**, 不写假 chunk)
+            "🧠 INTACT 意图-动作": {
+                "in": [("观测帧序列 (pixels T×224×224)", "3 帧滑窗 (history_size)"),
+                       ("目标意图 (goal 帧 / waypoint)", "数据源层"),
+                       ("动作历史 a_history", "raw 零 reset → 真实下发")],
+                "out": [("action chunk [H,D] (零搜索)", "(S3 前未接入引擎; 双击节点真调)"),
+                        ("策略/就绪", f"{os.environ.get('SS_INTACT_POLICY', 'direct')}(零搜索) · "
+                                     f"trained={_intact_ready()}")]},
             # 🧠 流形专家预测器 channel (2026-09-09 补 — 老倪: 预测器节点要有输入输出;
             #   引擎每帧真调 predict_manifold 的旁路结果发布到数据总线, 画布播放同源展示)
             "🧠 流形专家预测器": {

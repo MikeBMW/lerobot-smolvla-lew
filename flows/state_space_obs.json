@@ -1222,6 +1222,24 @@
    }
   },
   {
+   "id": "ssintact",
+   "type": "model",
+   "name": "🧠 INTACT 意图-动作 (L4: 零搜索 意图→动作)",
+   "x": 660,
+   "y": -815,
+   "w": 300,
+   "h": 120,
+   "icon": "🎯",
+   "color": "#1f6feb",
+   "params": {
+    "desc": "[L4 意图-动作] INTACT (zju3dv/INTACT-JEPA, MIT): 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 直接出 action chunk (**零候选搜索**, 无 CEM); 输入走数据源层 (官方数据/本仓库 L4 episode, 可再下载), 输出经 RobotIO 直连机器人硬件 (预留接口); 封装 src/lerobot/manifold/intact_node/ · 设计 docs/design/zmax_intact_node.md",
+    "expert": true,
+    "state_space": true,
+    "intact": true,
+    "source": "src/lerobot/manifold/intact_node/node.py"
+   }
+  },
+  {
    "id": "ssmani_exp",
    "type": "model",
    "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
