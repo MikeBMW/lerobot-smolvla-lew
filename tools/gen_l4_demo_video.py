@@ -212,7 +212,7 @@ class L4Demo:
             self.d.qpos = q
         self.steps += 1
         if rec and self._record and self.steps % RENDER_EVERY == 0:
-            self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
+            self.frames.append((np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else np.asarray(self.env.render(), dtype=np.uint8)))
         return self.env
 
     def servo(self, tgt, g=0.0, tol=0.004, max_steps=800, yaw=None, stage=""):
@@ -287,7 +287,7 @@ class L4Demo:
             mujoco.mj_step(self.m, self.d)
             self.steps += 1
             if self._record and self.steps % RENDER_EVERY == 0:
-                self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
+                self.frames.append((np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else np.asarray(self.env.render(), dtype=np.uint8)))
         # 治具保持钉 peg 直到夹爪闭合 (释放自由落 → 180° 相位随机实锤; 钉住 = 真空/定位销)
         self._grab = True
         self._grab_center = np.array([TURNTABLE_XY[0], TURNTABLE_XY[1], _ttz])
@@ -382,7 +382,7 @@ class L4Demo:
             mujoco.mj_step(self.m, self.d)
             self.steps += 1
             if self._record and self.steps % RENDER_EVERY == 0:
-                self.frames.append(np.asarray(self.env.render(), dtype=np.uint8))
+                self.frames.append((np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else np.asarray(self.env.render(), dtype=np.uint8)))
         self._grab_center = np.array([ttx, tty, tt_z])
         # 5) 空爪回 0° (盘面之上, 无 peg 拖累; 供标准抓取)
         self.ramp_yaw(0.0, step_rad=0.03, hold=np.array([ttx, tty, 0.20]), g=0.0, max_steps=400)
