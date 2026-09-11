@@ -99,8 +99,9 @@ jobs:
           python -m PyInstaller.utils.cliutils.archive_viewer -r -b tools/gui/dist/Z-MAX_Console.exe > listing.txt 2>&1 || true
           N=$(grep -c "assets/sawyer_xyz/sawyer_peg_insertion_side.xml" listing.txt || true)
           N4=$(grep -c "assets/sawyer_xyz/sawyer_peg_insertion_side_l4.xml" listing.txt || true)
-          echo "exe 内 metaworld stock XML 条目: $N · L4 场景 XML 条目: $N4"
-          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ]; then
+          NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
+          echo "exe 内 metaworld stock XML 条目: $N · L4 场景 XML 条目: $N4 · L4 生成器脚本: $NG"
+          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ]; then
             echo "::error::metaworld assets 未打进 exe (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
             grep -m5 "metaworld/assets" listing.txt || true
             exit 1
@@ -223,8 +224,9 @@ jobs:
         run: |
           N=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side.xml" | wc -l)
           N4=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side_l4.xml" | wc -l)
-          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4"
-          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ]; then
+          NG=$(find tools/gui/dist/Z-MAX_Console.app -name "gen_l4_demo_video.py" | wc -l)
+          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4 · L4 生成器脚本: $NG"
+          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ]; then
             echo "::error::metaworld assets 未打进 .app (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
             exit 1
           fi

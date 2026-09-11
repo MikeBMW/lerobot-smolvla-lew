@@ -80,6 +80,30 @@ def _find_ss_dir():
 _SS_DIR = _find_ss_dir()
 
 
+def _tool_path(name):
+    """定位仓库 tools/ 下的脚本 (frozen 多候选: _MEIPASS 根 / _MEIPASS/tools / 源码 tools/)。
+
+    🐛 2026-09-11 打包版 L4 演示根因: 原写法 `dirname(dirname(abspath(__file__)))/name` —
+      PyInstaller 下本模块在 PYZ 里, __file__ = _MEIPASS/xxx.pyc → 上溯两级 = _MEIPASS 的
+      **父目录** (系统临时目录) → 永远找不到 gen_l4_demo_video.py → L4 演示档在 exe 里
+      直接抛 FileNotFoundError = 发布版 L4 永远没有干扰动作 (只有源码版能看到 90° 转台)。
+    """
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _mp = getattr(sys, "_MEIPASS", "") or ""
+    cands = [
+        os.path.join(_mp, name) if _mp else "",
+        os.path.join(_mp, "tools", name) if _mp else "",
+        os.path.join(_here, name),
+        os.path.join(_here, os.pardir, os.pardir, "tools", name),
+        os.path.join(_here, os.pardir, os.pardir, name),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_here))), "tools", name),
+    ]
+    for c in cands:
+        if c and os.path.isfile(c):
+            return os.path.abspath(c)
+    return ""
+
+
 def _load(name):
     path = os.path.join(_SS_DIR, name)
     spec = importlib.util.spec_from_file_location(f"ss_real.{name[:-3]}", path)
@@ -931,9 +955,14 @@ class RealStateSpaceSim:
         拔出 → AOI 镜头对焦点检测 → 光耦合精密操作 η 收敛), 全真物理; 返回 tr (keys 与引擎
         run() 兼容, GUI 消费安全)。引擎默认路径/能力零改动 (仅 demo_l4 构造时走此分支)"""
         import importlib.util
-        _tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _spec = importlib.util.spec_from_file_location(
-            "_l4demo_gen", os.path.join(_tools, "gen_l4_demo_video.py"))
+        # 🐛 2026-09-11: frozen 下必须走多候选探测 (原 dirname(dirname(__file__)) 在 exe 里
+        #   指向临时目录父级 → 找不到脚本 → 打包版 L4 演示直接失败 = 无干扰动作)
+        _gen_py = _tool_path("gen_l4_demo_video.py")
+        if not _gen_py:
+            raise RuntimeError(
+                "L4 演示脚本 gen_l4_demo_video.py 未找到 (打包缺 --add-data? 已探测 "
+                "_MEIPASS 根/_MEIPASS/tools/源码 tools)")
+        _spec = importlib.util.spec_from_file_location("_l4demo_gen", _gen_py)
         _g = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_g)
         # 🛡 2026-09-10: 演示前重生成场景 XML (真实 peg 惯量) — GUI/引擎委托路径保确定性;

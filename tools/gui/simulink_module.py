@@ -910,6 +910,25 @@ def _repo_root_path():
         return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+def _tool_script(name):
+    """tools/ 脚本多候选定位 (frozen: _MEIPASS 根 / _MEIPASS/tools; 源码: 仓库 tools/)。
+
+    🐛 2026-09-11 打包版 L4 视频导出修复: CI 把 tools/*.py 用 --add-data 放在**包根**,
+      而原代码找 `_MEIPASS/tools/` → 打包版找不到生成器脚本 → L4 操作视频导出静默失败
+      (用户侧表现: "L4 没有干扰视频")。
+    """
+    _root = _repo_root_path()
+    _mp = getattr(sys, "_MEIPASS", "") or ""
+    cands = [os.path.join(_root, "tools", name),
+             os.path.join(_root, name),
+             os.path.join(_mp, name) if _mp else "",
+             os.path.join(_mp, "tools", name) if _mp else ""]
+    for _c in cands:
+        if _c and os.path.isfile(_c):
+            return os.path.abspath(_c)
+    return os.path.join(_root, "tools", name)
+
+
 def _load_skill_library_groups():
     """加载原子技能 token 库 → LIBRARY 分组 (每大类一组, 每条技能一个组件)
     技能组件拖入画布 → 连 🧩结构条件 → 进 SYS1 → 导出 action JSON"""
@@ -11661,14 +11680,18 @@ class SimulinkModule(QWidget):
                 #   非 L4 档保持原同源 episode 生成器 (回归/演示两不相扰)
                 _cap_l4 = str(getattr(self, "_cap_level", "") or "").lower() in ("l4", "l4d")
                 if _cap_l4:
-                    _gen = os.path.join(tools_dir, "gen_l4_demo_video.py")
+                    _gen = _tool_script("gen_l4_demo_video.py")   # 🐛 09-11: frozen 多候选
                     self._safe_log("🎬 L4 档自动导出: 演示全链 (来料转台把光模块水平旋转90° 外力干扰 "
                                    "+ 夹爪绕z姿态适配 + 光耦合精密操作) — 渲染约 1-2 分钟")
                 else:
-                    _gen = os.path.join(tools_dir, "gen_ss_metaworld_episode.py")
+                    _gen = _tool_script("gen_ss_metaworld_episode.py")
+                # 🐛 09-11: cwd 用脚本所在目录 (frozen 包根不是 tools/); 并把输出根交给生成器
+                #   (ZMAX_L4_ROOT) — 否则 frozen 下生成器写到临时目录父级, GUI scp 找不到文件
+                _cwd = _os.path.dirname(_gen) or tools_dir
+                _env = {**_env, "ZMAX_L4_ROOT": root}
                 r = _sp.run([_resolve_python(), _gen, "--also-latest"] if _cap_l4
                             else [_resolve_python(), _gen, "--seed", "0", "--seeds", "3"],
-                            capture_output=True, text=True, timeout=1200, cwd=tools_dir, env=_env)
+                            capture_output=True, text=True, timeout=1200, cwd=_cwd, env=_env)
                 if r.returncode != 0:
                     self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")
                     return

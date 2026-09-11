@@ -14,7 +14,11 @@
 """
 import os, sys, time, math
 os.environ.setdefault("MUJOCO_GL", "egl")
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 🐛 2026-09-11 打包版: frozen 下 __file__ 在 _MEIPASS → 上溯两级 = 临时目录父级 (写不进去/找不到);
+#   由 GUI 传 ZMAX_L4_ROOT (仓库根/_MEIPASS) 统一输出根; 源码模式保持原语义。
+ROOT = (os.environ.get("ZMAX_L4_ROOT")
+        or getattr(sys, "_MEIPASS", "")
+        or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import numpy as np
 import mujoco
@@ -45,6 +49,10 @@ def _mw_assets_sawyer():
 
 L4_XML = os.path.join(_mw_assets_sawyer(), "sawyer_peg_insertion_side_l4.xml")
 REP = os.path.join(ROOT, "reports")
+try:
+    os.makedirs(REP, exist_ok=True)     # 🐛 09-11: frozen 输出根可能无 reports 子目录
+except Exception:
+    pass
 RENDER_EVERY = 3          # 每 3 步录 1 帧
 FPS = 25
 SIGMA_MM = 4.0            # 耦合效率高斯碗 σ (性能流形 L4-C04 标定)
