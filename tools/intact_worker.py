@@ -41,6 +41,8 @@ class Runtime:
         self.hf_repo, self.hf_rev = hf_repo, hf_rev
         self.device = device
         self.policy = policy
+        # 论文 revision 的规范训练 seed (manifest: 0 / 42 / 3072); 资产包名含 seed
+        self.hf_rev_seed = int(os.environ.get("INTACT_SEED", "3072"))
         self.model = None
         self.solver = None
         self.trained = False
@@ -61,18 +63,11 @@ class Runtime:
             log(self.reason)
             return
 
-        # 1) 权重: 本地 .pt 或 HF (paper-e5-goal-v1)
-        ckpt_path = self.ckpt
+        # 1) 权重: 显式路径 → 已解出的 swm 缓存 → HF 资产包 (tar.gz) 解包
+        ckpt_path = self._resolve_weights()
         if not ckpt_path:
-            try:
-                from huggingface_hub import hf_hub_download     # noqa: PLC0415
-                ckpt_path = hf_hub_download(repo_id=self.hf_repo, revision=self.hf_rev,
-                                            filename=self._hf_filename(), repo_type="model")
-                log("HF 权重:", ckpt_path)
-            except Exception as e:
-                self.reason = f"权重不可用 (本地/HF 均失败): {type(e).__name__}: {e}"
-                log(self.reason)
-                return
+            log(self.reason)
+            return
 
         # 2) 模型: 官方 config → hydra instantiate → load_state_dict(strict=True)
         try:
@@ -98,22 +93,48 @@ class Runtime:
             log(self.reason)
             log(traceback.format_exc(limit=3))
 
-    def _hf_filename(self) -> str:
-        """HF 仓库里的权重文件名 (manifest 定义); 默认按论文 revision 命名。"""
-        import json as _j
-        p = os.path.join(self.repo, "checkpoints", "PAPER_E5_GOAL_MANIFEST.json")
-        if os.path.isfile(p):
-            d = _j.load(open(p, encoding="utf-8"))
-            for k in ("filename", "weights", "path", "file"):
-                if isinstance(d.get(k), str):
-                    return d[k]
-            # manifest 里可能有 cells/shards 列表
-            for v in d.values():
-                if isinstance(v, list) and v and isinstance(v[0], dict):
-                    for k in ("filename", "weights", "path"):
-                        if isinstance(v[0].get(k), str):
-                            return v[0][k]
-        return f"intact_goal_{self.task}_s3072_e1/weights_epoch_1.pt"
+    def _cache_root(self) -> str:
+        return os.environ.get("STABLEWM_HOME") or os.environ.get("LOCAL_DATASET_DIR") \
+            or os.path.join(self.repo, ".cache")
+
+    def _resolve_weights(self) -> str | None:
+        """权重解析 (跨会话共用同一缓存, 不重复下载):
+           1) --ckpt / $INTACT_WEIGHTS  (显式)
+           2) $STABLEWM_HOME/checkpoints/recovery_delta_full_<task>_s<seed>/weights_epoch_5.pt (已解包)
+           3) HF 资产包 intact-goal-e5-seed<seed>.tar.gz → 下载+解包 → 回到 (2)
+        真实布局依据 checkpoints/PAPER_E5_GOAL_MANIFEST.json + HF 仓库树实测 (tar.gz ~315MB/包)。
+        """
+        expl = self.ckpt or os.environ.get("INTACT_WEIGHTS")
+        if expl and os.path.isfile(expl):
+            log("权重 (显式):", expl)
+            return expl
+        seed = self.hf_rev_seed
+        wpath = os.path.join(self._cache_root(), "checkpoints",
+                             f"recovery_delta_full_{self.task}_s{seed}", "weights_epoch_5.pt")
+        if os.path.isfile(wpath):
+            log("权重 (缓存):", wpath)
+            return wpath
+        try:
+            from huggingface_hub import hf_hub_download      # noqa: PLC0415
+            # 国内网络: 未显式设 HF_ENDPOINT 时走 hf-mirror (与另一会话下载数据同一镜像)
+            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+            asset = os.environ.get("INTACT_ASSET", f"intact-goal-e5-seed{seed}.tar.gz")
+            pkg = hf_hub_download(repo_id=self.hf_repo, revision=self.hf_rev,
+                                  filename=asset, repo_type="model")
+            log("资产包:", pkg, "→ 解包到", self._cache_root())
+            import tarfile                                    # noqa: PLC0415
+            with tarfile.open(pkg) as tf:
+                tf.extractall(self._cache_root())
+        except Exception as e:
+            self.reason = (f"权重不可用: {type(e).__name__}: {e} "
+                           f"(可用 INTACT_WEIGHTS=/path/weights_epoch_5.pt 直指, 或先解包 "
+                           f"HF {self.hf_repo}@{self.hf_rev} 的 intact-goal-e5-seed{seed}.tar.gz "
+                           f"到 $STABLEWM_HOME/checkpoints/)")
+            return None
+        if os.path.isfile(wpath):
+            return wpath
+        self.reason = f"解包后仍找不到 {wpath} (检查资产包内路径)"
+        return None
 
     def act(self, info_path: str, out_path: str, horizon: int) -> dict:
         import numpy as np                                    # noqa: PLC0415
