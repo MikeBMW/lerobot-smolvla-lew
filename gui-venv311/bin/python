@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /Users/mikeni/lerobot-smolvla-lew/.venv/bin/python "$@"
