@@ -87,6 +87,11 @@ def build_info_dict(inp: IntactInput, intent_mode: str = "goal_displacement",
             g = g[None]
         if g.max() > 1.5:
             g = g / 255.0
+        # ★ goal 必须是 5 维 [B,T,C,H,W]: 模型内部 goal["pixels"]=goal 直接进 ViT 编码器,
+        #   编码器按 (b t) c h w 展平 → 传 4 维会炸
+        #   "batch_size, num_channels, height, width = pixel_values.shape (expected 4, got 3)"
+        if g.ndim == 4:
+            g = g[:, None]
         info["goal"] = torch.from_numpy(g).to(device)
 
     if inp.action_history is not None:

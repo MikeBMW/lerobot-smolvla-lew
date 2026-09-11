@@ -43,6 +43,9 @@ class IntactNode:
         self.policy = policy
         self.log = log
         self.runtime = runtime or IntactRuntime(repo=repo, policy=policy)
+        # 单步前置: 真模型的动作维/上下文长度以 runtime 实测为准 (paper pusht 模型 action_dim=10,
+        # 而节点默认 4 → 动作历史维度不符会直接报错; 这里自动对齐, 保证"单步"可跑)
+        self._sync_from_runtime()
         self.source: IntactDataSource | None = None
         self.goal: np.ndarray | None = None
         self.waypoint: np.ndarray | None = None
@@ -53,6 +56,19 @@ class IntactNode:
                  f"trained={self.runtime.trained}")
 
     # ── 接口 1: 数据源层 ──
+    def _sync_from_runtime(self) -> None:
+        """把 runtime 实测维数同步到节点 (单步要用真实维度构造动作历史)。"""
+        d = getattr(self.runtime, "dims", None) or {}
+        ad = int(d.get("action_dim") or 0)
+        if ad and ad != self.action_dim:
+            self.log(f"{NODE_NAME}: 动作维对齐 {self.action_dim} → {ad} (来自模型实测)")
+            self.action_dim = ad
+        hs = int(d.get("history_size") or 0)
+        if hs:
+            self.hist_size = hs
+        else:
+            self.hist_size = HISTORY_SIZE
+
     def set_data_source(self, src: str | IntactDataSource, **kw) -> IntactDataSource:
         self.source = registry.create(src, **kw) if isinstance(src, str) else src
         self.log(f"{NODE_NAME}: 数据源 = {self.source.name} {self.source.info()}")
@@ -84,12 +100,20 @@ class IntactNode:
 
     # ── 接口 4: 一步 ──
     def step(self, obs_frame: np.ndarray | None = None) -> IntactOutput:
-        """obs_frame=None → 从数据源取; 否则用给定帧构造输入。"""
+        """obs_frame=None → 从数据源取; 否则用给定帧构造输入。
+
+        单步语义: 一次调用 = **一次真实前向** (obs 滑窗 → 模型 get_action → action chunk),
+        无候选搜索; 断点可进 (runtime.get_action → 子进程桥 → 模型 forward)。
+        """
         t0 = time.perf_counter()
+        self._sync_from_runtime()          # 懒启动的 runtime 首步也会补上真实维数
         if obs_frame is None:
             if self.source is None:
                 raise RuntimeError("未设置数据源 (set_data_source)")
             inp = self.source.next_input(action_dim=self.action_dim, seq_len=HISTORY_SIZE)
+            # ★ 动作历史由**节点**持有并滚动 (数据源每次给的是 raw 零 = reset 语义);
+            #   不注入的话每步都看到零历史 → 输出不随动作历史变化 (实测踩坑)
+            inp.action_history = self.action_hist.copy()
         else:
             fr = np.asarray(obs_frame, dtype=np.float32)
             self.obs_buf.append(fr)
@@ -101,6 +125,17 @@ class IntactNode:
 
         info = build_info_dict(inp, intent_mode=self.intent_mode)
         actions, diag = self.runtime.get_action(info, horizon=self.horizon)
+        # ★ 防"假成功"硬闸: adapter 在 act 失败时会返回零动作并标 act_failed/trained=0,
+        #   这里必须显式报错 —— 否则"形状对+全零"会被当成成功 (实测踩坑: 零回退冒充真推理)
+        if float(diag.get("act_failed") or 0.0) > 0 or float(diag.get("trained", 1.0)) == 0.0:
+            self.last = None
+            raise RuntimeError(f"INTACT 推理失败/未训练, 拒绝返回零动作: {self.runtime.reason}")
+        # 模型返回可能带 batch 维 [1,H,D] → 统一成 [H,D] (节点对外契约)
+        actions = np.asarray(actions, dtype=np.float32)
+        if actions.ndim == 3:
+            actions = actions[0]
+        elif actions.ndim == 1:
+            actions = actions[None]
         self.robot.send_chunk(actions)                              # 唯一硬件出口
         # 动作历史滚动 (重置语义: 初始 raw 零, 之后为真实下发动作)
         self.action_hist = np.concatenate([self.action_hist, actions], axis=0)[-HISTORY_SIZE:]

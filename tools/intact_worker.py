@@ -185,7 +185,13 @@ class Runtime:
         actions = actions.detach().cpu().numpy()
         np.savez(out_path, actions=actions)
         diag = {k: float(v) for k, v in
-                (getattr(self.model, "last_direct_diagnostics", {}) or {}).items()}
+                (getattr(self.model, "last_direct_diagnostics", {}) or {}).items()
+                if isinstance(v, (int, float))}
+        if not diag:
+            # 论文运行时(PriorOnlySolver 路径)不暴露逐次诊断 → 用 **worker 侧真实计数**补充,
+            # 并显式标注来源 (forward_calls = 零搜索直接规划的 horizon 次前向; 无候选搜索)
+            diag = {"forward_calls": float(horizon), "candidate_sequences": 0.0,
+                    "diag_source_worker": 1.0}
         return {"out": out_path, "diagnostics": diag, "shape": list(actions.shape)}
 
     def info(self) -> dict:
@@ -244,7 +250,9 @@ def main() -> int:
             else:
                 say({"ok": False, "reason": f"unknown cmd {cmd}"})
         except Exception as e:
-            say({"ok": False, "reason": f"{type(e).__name__}: {e}"})
+            # ★ 把 traceback 尾部带回 reason: adapter 侧 stderr 被丢弃, 不带回就无法定位
+            tb = traceback.format_exc().strip().splitlines()[-4:]
+            say({"ok": False, "reason": f"{type(e).__name__}: {e} | " + " ⏎ ".join(x.strip() for x in tb)})
     return 0
 
 

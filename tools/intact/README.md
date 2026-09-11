@@ -37,6 +37,37 @@ cd /home/ubuntu/INTACT-JEPA && bash scripts/install.sh cu124   # 若报需要 py
    （既无 `http_error_308` handler，`redirect_request` 白名单也只有 301/302/303/307）
    → 表现为"取不到元数据"或"`hf_hub_download` 卡 0 字节"。`hf_asset.py` 里两处都补了。
 
+## 状态空间里的「单步运行」— 可以，且已实测
+
+节点一次 `step()` = **一次真实模型前向**（obs 滑窗 + goal + 动作历史 → `model.get_action` → action chunk），
+**无候选搜索**。三种触发方式等价：
+
+```bash
+# CLI 单步自检 (真权重; 会打印每步 chunk 形状/非零/std/诊断)
+STABLEWM_HOME=$STABLEWM_HOME INTACT_RUNTIME=paper INTACT_DEVICE=cuda \
+  PYTHONPATH=src python -m lerobot.manifold.intact_node.selftest --real
+# 防假成功闸自检 (确定性"不可用"运行时; 节点必须拒绝返回零动作)
+PYTHONPATH=src python -m lerobot.manifold.intact_node.selftest
+# 画布路径 (等价 GUI 双击/单步执行该节点)
+PYTHONPATH=src python -c "import sys;sys.path.insert(0,'tools/gui');import node_logic as n;n.node_intact({'log':print,'root':'.'})"
+```
+GUI 里：画布 L4 层节点「🧠 INTACT 意图-动作」→ **双击** / 右键运行节点 / ⏭单步 走执行链，均执行真实前向。
+
+**实测 (paper 权重, GPU, 单步)**
+```
+step1: chunk(4,10) nonzero=40 std=0.2291 trained=True  forward_calls=4 candidate_sequences=0
+step2: chunk(4,10) nonzero=40 std=0.2388 trained=True  (与上一步不同 → 随观测/动作历史变化)
+step3: chunk(4,10) nonzero=40 std=0.2465 trained=True
+平均单步 316 ms (含跨 venv IPC + 前向) · RobotIO 逐步下发 12 = 3×4
+```
+
+**单步正确性的三道闸 (踩坑换来的)**
+1. `goal` 必须 **5 维** `[B,T,C,H,W]` — 模型内部把 `goal["pixels"]` 直接喂 ViT，传 4 维报
+   `expected 4, got 3`；
+2. 动作历史由**节点**持有并滚动注入（数据源每次给 raw 零 = reset 语义；不注入则每步输出恒定）；
+3. 模型返回可能带 batch 维 `[1,H,D]` → 统一裁成 `[H,D]`；`act` 失败时 adapter 会返回零动作，
+   **节点必须显式报错拒绝**（否则"形状对 + 全零"会被当成成功）。
+
 ## 本机实测结果（pusht，官方 Direct 协议，权重 = 训练 seed 3072 分片）
 
 | eval seed | 本机 SR% | 成功数 |

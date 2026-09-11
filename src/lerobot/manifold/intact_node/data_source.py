@@ -84,6 +84,12 @@ class L4EpisodeSource(IntactDataSource):
         d = np.load(path, allow_pickle=True)
         self.trace = {k: d[k] for k in d.files}
         self.frames = self.trace.get("frames")
+        # L4 demo npz 里只有 meta (object 数组, 长度 1) → 取出 dict 供合成观测用
+        _m = self.trace.get("meta")
+        if _m is not None and getattr(_m, "dtype", None) == object and _m.size == 1:
+            _m = _m.reshape(-1)[0]
+        self.meta = _m if isinstance(_m, dict) else {}
+        self.n_anim_frames = int(os.environ.get("INTACT_ANIM_FRAMES", "24"))   # 合成观测推进帧数
         if obs_mode == "auto":
             obs_mode = "frames" if self.frames is not None and len(self.frames) else "synthetic_from_trace"
         self.obs_mode = obs_mode
@@ -108,21 +114,34 @@ class L4EpisodeSource(IntactDataSource):
         return cand[-1]
 
     def _obs(self, k: int) -> np.ndarray:
-        """取第 k 帧观测 [C,H,W]。"""
+        """取第 k 帧观测 [C,H,W]。合成模式 = 语义运动序列 (诚实标注: 非相机图)。"""
         if self.obs_mode == "frames":
             fr = np.asarray(self.frames[k], dtype=np.float32)
             if fr.max() > 1.5:
                 fr = fr / 255.0
             return np.transpose(fr, (2, 0, 1))
-        # 合成: 把末端/光模块相对位置画进一张 IMG_SIZE² 灰度图 (仅链路自检用)
+        # ── 合成运动观测: 依据 meta 几何 (来料转台 → 耦合台) 画一个随时间推进的目标 ──
+        #    目的: 让"单步"演示有真实的时间变化 (obs 变 → 动作 chunk 变), 证明每帧真推理
+        geo = (self.meta.get("demo_geom") or {}) if isinstance(self.meta, dict) else {}
+        tt = (geo.get("turntable") or {}).get("pos", [0.42, 0.60])
+        cp = (geo.get("coupler") or {}).get("pos", [0.55, 0.42])
+        u = min(1.0, max(0.0, k / max(1, self.n_anim_frames)))          # 进度 0→1
+        px = tt[0] + (cp[0] - tt[0]) * u
+        py = tt[1] + (cp[1] - tt[1]) * u
+
+        def to_pix(x, y):
+            xn = (float(x) - 0.25) / 0.60
+            yn = (float(y) - 0.25) / 0.60
+            return (int(np.clip(yn, 0, 1) * (IMG_SIZE - 1)),
+                    int(np.clip(xn, 0, 1) * (IMG_SIZE - 1)))
+
         out = np.zeros((IMG_SIZE, IMG_SIZE), dtype=np.float32)
-        for key, val in (("hand", 1.0), ("peg_grasp", 0.7)):
-            if key in self.trace:
-                arr = np.asarray(self.trace[key], dtype=np.float32)
-                if arr.ndim == 2 and k < len(arr):
-                    xy = np.clip((arr[k][:2] - 0.3) / 0.5, 0, 1) * (IMG_SIZE - 1)
-                    y, x = int(xy[1]), int(xy[0])
-                    out[max(0, y - 3):y + 4, max(0, x - 3):x + 4] = val
+        gy, gx = to_pix(*cp)                                            # 目标位 (耦合台)
+        out[max(0, gy - 4):gy + 5, max(0, gx - 4):gx + 5] = 0.55
+        my, mx = to_pix(px, py)                                         # 运动件 (光模块)
+        out[max(0, my - 3):my + 4, max(0, mx - 3):mx + 4] = 1.0
+        ty, tx = to_pix(*tt)                                            # 来料转台位
+        out[max(0, ty - 2):ty + 3, max(0, tx - 2):tx + 3] = 0.3
         return np.stack([out * 0.6, out, out * 1.2], axis=0)
 
     def next_input(self, action_dim: int = 4, seq_len: int | None = None) -> IntactInput:
