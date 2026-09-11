@@ -11032,7 +11032,8 @@ class SimulinkModule(QWidget):
         _mdesc = {
             "L2": "基础 L2: 插装光模块 (insert 8 段)",
             "L3": "🚀 L3 全链: 插→拔→AOI检测→放回 (13段, smolvla)",
-            "L4": "🎬 L4 抗干扰 90° 演示: 来料转台90°→绕z抓横→治具回正→插拔闭环→AOI→光耦合 (全真物理)",
+            "L4": "L4: 默认「🧠 模型执行」= 引擎真链路 + SmolVLA-Lew 接管 + 二态意图 "
+                  "(full 13段: 插→拔→AOI检测→放回); 取消勾选 = 原 90° 抗干扰演示",
         }.get(_cap, "插装即完成 (8段, 原演示)" if self._l3_mode is None else "🚀 L3 全链 full: 插→拔→AOI检测→放回 (13段)")
         self.btn_run.setText("🎬 L4 演示运行中… (90°全链, ~2-4分钟)" if _demo_cap else "🎥 真实运行中… (每帧 YOLO)")
         self.btn_run.setEnabled(False)
