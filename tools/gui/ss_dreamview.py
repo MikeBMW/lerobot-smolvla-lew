@@ -1946,6 +1946,33 @@ class DreamView3D(QWidget):
                                   QColor(88, 166, 255), False, 0))
                 elif _ci2 >= 7:
                     _rows.append(("  ✅ 已到终态 完成", QColor(63, 185, 80), True, 0))
+            # 🧠 2026-09-11 老倪: 3D 里必须看得见「yaw 指令是谁发的」(来源 + φ* + 取证计数)
+            try:
+                _meta_d = tr.get("_meta") or {}
+                _yaw_now = (float(tr["mani_yaw"][i]) if (tr.get("mani_yaw") is not None
+                                                         and len(tr["mani_yaw"]) > i) else None)
+                _phi_now = (float(tr["mani_phi"][i]) if (tr.get("mani_phi") is not None
+                                                         and len(tr["mani_phi"]) > i) else None)
+                _arm_s = str(_meta_d.get("arm") or "").strip()
+                if _yaw_now is None:
+                    _src3 = "引擎解析链 (metaworld 4D 动作空间, 无 yaw 维)"
+                    _c3 = QColor(139, 148, 158)
+                elif _arm_s == "mani_yaw":
+                    _src3 = "🧠 流形预测器决策 (每帧真调 φ* → 下发角)"
+                    _c3 = QColor(0, 212, 170)
+                else:
+                    _src3 = "脚本开环 Arm A (固定计划角, 预测器不参与动作)"
+                    _c3 = QColor(139, 148, 158)
+                _rows.append((f"🧠 yaw 指令来源: {_src3}", _c3, True, 0))
+                _txt3 = (f"   下发 yaw {_yaw_now:+.1f}°" if _yaw_now is not None else "   下发 yaw —")
+                if _phi_now is not None and _phi_now == _phi_now:      # NaN 安全
+                    _txt3 += f"   φ*(预测器) {_phi_now:+.1f}°"
+                _mi3 = _meta_d.get("mani") or {}
+                if _mi3:
+                    _txt3 += f"   前向 {_mi3.get('n_calls')} 次 trained={_mi3.get('trained')}"
+                _rows.append((_txt3, QColor(139, 148, 158), False, 0))
+            except Exception:
+                pass
             self._overlay.set_panel(_rows)
         except Exception as _e:
             print(f"⚠️ 标注层更新失败: {_e}")

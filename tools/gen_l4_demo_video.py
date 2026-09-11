@@ -191,7 +191,7 @@ class L4Demo:
         self._mani_act = None
         self._pred = None
         self._pred_info = {"weights": None, "trained": False, "error": None}
-        if self._mani_yaw or os.environ.get("SS_MANI_PRED") == "1":
+        if self._mani_yaw or os.environ.get("SS_MANI_PRED", "1") == "1":
             # 预测器真实加载 (真权重 v5) — Arm A 也加载: mani_pred 通道出真数 (旁路观察)
             self._pred, self._pred_info = _load_mani_predictor()
             if self._mani_yaw:
@@ -200,6 +200,13 @@ class L4Demo:
             _w = self._pred_info.get("weights")
             log(f"🧠 L4 yaw 由流形预测器决策: 权重={os.path.basename(_w) if _w else '无(随机对照)'}"
                 f" · trained={self._pred_info['trained']} · 执行器={'OK' if self._mani_act else 'FAIL'}")
+        elif self._pred is not None:
+            _w = self._pred_info.get("weights")
+            log(f"🧠 流形预测通道已开 (旁路观察, 不影响动作): 权重="
+                f"{os.path.basename(_w) if _w else '无(随机对照)'} · trained={self._pred_info['trained']}"
+                f" — yaw 指令仍是脚本开环 (Arm A)")
+        else:
+            log("⚠️ 流形预测器未加载 (SS_MANI_PRED=0 或无 torch): mani_pred 通道为 0 占位")
         self.env = make_env(seed)
         self.m, self.d = self.env.model, self.env.data
         mujoco.mj_forward(self.m, self.d)
@@ -222,7 +229,7 @@ class L4Demo:
             "corrected_vec", "residual_vec", "mani_risk", "mani_progress", "mani_eta",
             "mani_V", "mani_rem", "mani_dperp", "mani_pred", "z7_vec", "probe_seq",
             "force_grasp",     # 3D 接触指示 (见 step 填充)
-            "peg_yaw", "hand_yaw", "tt_yaw", "mani_yaw")}   # 🧠 mani_yaw: 下发的夹爪偏航角 (deg, 两臂都记)
+            "peg_yaw", "hand_yaw", "tt_yaw", "mani_yaw", "mani_phi")}   # 🧠 mani_yaw=下发角 / mani_phi=预测器决策角 φ* (deg)
         self._grab = False          # 治具钉 peg (True=peg 由治具/台携带)
         self._grab_center = None    # 治具携带时 peg 中心 (世界)
         self._grip_lock = False     # 刚性夹持 (True=peg 每帧钉到手爪位姿 — 仿真摩擦夹持长距离滑脱实锤,
@@ -328,6 +335,9 @@ class L4Demo:
         tr["mani_dperp"].append(0.0)
         tr["mani_pred"].append(_mp6)
         tr["mani_yaw"].append(float(np.degrees(getattr(self.env, "_grip_yaw", 0.0))))
+        # 🧠 2026-09-11: 预测器决策角 φ* (Arm B; 未决策=NaN) — 3D 面板「指令来源」标注的数据源
+        _li = getattr(self, "_last_mani_info", None)
+        tr["mani_phi"].append(float(_li["phi_star"]) if _li else float("nan"))
         tr["u_exec_vec"].append(np.asarray(act, dtype=float))
         tr["u_ff_vec"].append(np.zeros(4))
         tr["u_fb_vec"].append(np.zeros(4))
@@ -895,6 +905,11 @@ class L4Demo:
                     # 🧠 2026-09-11 A/B: 臂别 + 流形 yaw 执行器取证 (预测器前向次数/权重/trained)
                     arm=("mani_yaw" if getattr(self, "_mani_yaw", False) else "scripted"),
                     yaw_cmd_deg=getattr(self, "_yaw_cmd_deg", None),
+                    # 🧭 3D 面板「yaw 指令来源」标注用 (人话 + 可核对)
+                    yaw_src=("🧠 流形预测器决策 (每帧真调, φ*→下发角)"
+                             if getattr(self, "_mani_yaw", False) else
+                             "脚本开环 Arm A (固定 90° 计划, 预测器不参与动作)"),
+                    mani_pred_channel=bool(getattr(self, "_pred", None) is not None),
                     mani=(self._mani_act.summary() if getattr(self, "_mani_act", None) else None),
                     pred_info={k: v for k, v in (getattr(self, "_pred_info", {}) or {}).items()})
         self._last_meta = meta

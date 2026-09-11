@@ -191,10 +191,13 @@ class RealStateSpaceSim:
     """R0 物理真实化 — run() 返回时间序列 (结构与引擎 tr 兼容)"""
 
     def __init__(self, log=None, seed=0, vision=False, vision_every=25, mode=None,
-                 demo_l4=False):
+                 demo_l4=False, mani_yaw=False):
         """demo_l4=True → 「L4 演示」档: run() 委托 L4 演示全链控制器 (90°外力干扰 +
         姿态适配抓取 + 光耦合精密操作), 产 tr 与引擎兼容; 默认 False 引擎原逻辑零改动"""
         self._demo_l4 = bool(demo_l4)
+        # 🧠 2026-09-11 (A): L4 演示档 ② 段 yaw 指令来源开关
+        #   False(默认) = 脚本开环 Arm A; True = 流形预测器逐帧决策 (Arm B)
+        self._mani_yaw_exec = bool(mani_yaw)
         self.log = log or (lambda *a: None)
         self.seed = seed
         self._abort = False   # ⏹ 2026-09-09: GUI ⏹停止/🔄重启置位 → run 循环提前退出 (防双 env 并发 mujoco segfault)
@@ -974,7 +977,14 @@ class RealStateSpaceSim:
             pass
         self.log("🏆 L4 演示档: 来料转台把光模块水平旋转 90° (外力干扰) → 夹爪绕z姿态适配抓取 "
                  "→ 回正 → 插入 → 拔出 → AOI 镜头对焦点 → 光耦合精密操作 (全真物理, 无动画造假)")
-        _demo = _g.L4Demo(seed=0, log=self.log, record=False)
+        _demo = _g.L4Demo(seed=0, log=self.log, record=False,
+                          mani_yaw=bool(getattr(self, "_mani_yaw_exec", False)))
+        if getattr(self, "_mani_yaw_exec", False):
+            self.log("🧠 L4 演示档 · 夹爪 yaw 指令来源 = **流形预测器** (Arm B): "
+                     "② 段每帧真调预测器 (候选角打分 → φ* → 下发角); 3D 面板会标注来源/φ*/前向次数")
+        else:
+            self.log("🧭 L4 演示档 · 夹爪 yaw 指令来源 = 脚本开环 (Arm A, 固定 90° 计划角); "
+                     "流形预测器仅旁路出数 (钩「🧠 流形 yaw 执行」可切成预测器决策)")
         try:
             ok, meta = _demo.run_all()
         finally:

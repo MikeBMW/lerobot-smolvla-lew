@@ -4450,6 +4450,18 @@ class SimulinkModule(QWidget):
             "(mode=full 13 段, 本机实测 ~20-40s/轮 — GPU YOLO 快; 3D 视图可见 AOI 设备与全部后续动作)\n"
             "不勾 (默认) = 插装即完成 (8 段演示, 回归保底)")
         tl.addWidget(self.chk_l3_full)
+        # 🧠 2026-09-11 老倪 (A): L4 演示档的夹爪 yaw 指令改由**流形预测器**决策
+        #   勾选 = Arm B (预测器每帧真调 φ* → 下发角, 3D 面板标注来源);
+        #   不勾 = Arm A 脚本开环 (默认, 实测两臂任务结果无差异 → 不做性能声明, 默认不动)
+        self.chk_mani_yaw = QCheckBox("🧠 流形 yaw 执行")
+        self.chk_mani_yaw.setToolTip(
+            "L4 演示档 ② 段夹爪偏航角由流形预测器逐帧决策 (Arm B):\n"
+            "  每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选角打分取代价最小者下发\n"
+            "  (slew 0.03 rad/步; 权重 models/l4_mani_predictor_v5.pt, trained 会标注)\n"
+            "不勾 (默认) = 脚本开环 Arm A (固定 90° 计划角, 预测器不参与动作)\n"
+            "⚠️ 实测 (3 seed×2 重复): 两臂任务结果相同 (6/6 成功) — 只作\"指令来源可见\"展示,\n"
+            "   不声称性能增益; 3D 面板会显示「yaw 指令来源 + 下发角 + φ* + 预测器前向次数」")
+        tl.addWidget(self.chk_mani_yaw)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -11121,6 +11133,19 @@ class SimulinkModule(QWidget):
                 #   「🧠 模型执行」勾选 = 引擎解析链 (插→拔→AOI; 干扰仅姿态级, 无 90° 旋转)。
                 #   ⚠️ L3 档完全不受影响 (vision=True 引擎路径原样)。
                 _demo_cap = (str(_cap or "").upper() == "L4")
+                # 🧠 2026-09-11 (A) 主线程读控件 (worker 线程禁碰 QObject — 崩溃铁律):
+                #   勾「🧠 流形 yaw 执行」= L4 演示档 ② 段 yaw 由流形预测器决策 (Arm B)
+                try:
+                    _ckm = getattr(self, "chk_mani_yaw", None)
+                    self._mani_yaw_exec = bool(_ckm is not None and _ckm.isChecked())
+                except Exception:
+                    self._mani_yaw_exec = False
+                # 流形预测通道默认开 (旁路数据真出: mani_pred/mani_yaw/mani_phi 逐帧真值;
+                #   打包版无权重的场合会诚实标 trained=False, 不冒称)
+                try:
+                    os.environ["SS_MANI_PRED"] = "1"
+                except Exception:
+                    pass
                 # 🧠 2026-09-11 老倪: "我要看到 L4 档位的区别" —— 加「模型执行」开关:
                 #   关(默认) → 原来的 L4Demo 演示 (保留 90° 转台特色)
                 #   开       → **不走 L4Demo**, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图
@@ -11147,6 +11172,7 @@ class SimulinkModule(QWidget):
                                         vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
                                         demo_l4=_demo_cap,
+                                        mani_yaw=bool(getattr(self, "_mani_yaw_exec", False)),
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
