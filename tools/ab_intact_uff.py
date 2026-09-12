@@ -51,10 +51,7 @@ def _goal_frame(seed, max_steps):
     sim = RealStateSpaceSim(seed=seed, vision=False, mode="insert", log=lambda *a: None)
     sim._frame_sink = lambda s, a, o: frames.append(np.asarray(s.env.render()))
     sim.run(max_steps=max_steps)
-    try:
-        sim.env.close()
-    except Exception:
-        pass
+    # ★ 不 close: 引擎 _make_env() 是进程级单例 → close 会让后续渲染全黑 (实测踩坑)
     return frames[-1] if frames else None
 
 
@@ -84,14 +81,13 @@ def one(arm, seed, rep, max_steps, device, goal=None):
            "shadow_uncalibrated": stats.get("shadow_uncalibrated", 0),
            "chunk_norm_mean": (round(float(np.mean(stats["chunk_norm"])), 4)
                                if stats.get("chunk_norm") else None),
+           "frame_std_mean": (round(float(np.mean(stats["frame_std"])), 1)
+                              if stats.get("frame_std") else None),
            "err": stats.get("err"),
            "shift_mean": (round(float(np.mean(stats["shift"])), 5) if stats.get("shift") else None),
            "u_ff_src": stats.get("u_ff_src"),
            "insert_mm": (round(float(tr["dist"][-1]) * 1000, 1) if tr.get("dist") else None)}
-    try:
-        sim.env.close()
-    except Exception:
-        pass
+    # ★ 不 close env (进程级单例; close 后后续渲染全黑)
     return row
 
 
@@ -134,12 +130,16 @@ def main():
                      "shadow_uncalibrated_total": sum(r.get("shadow_uncalibrated") or 0 for r in rs),
                      "chunk_norm_mean": (round(st.mean([r["chunk_norm_mean"] for r in rs
                                                         if r.get("chunk_norm_mean")]), 4)
-                                         if any(r.get("chunk_norm_mean") for r in rs) else None)}
+                                         if any(r.get("chunk_norm_mean") for r in rs) else None),
+                     "frame_std_mean": (round(st.mean([r["frame_std_mean"] for r in rs
+                                                       if r.get("frame_std_mean")]), 1)
+                                        if any(r.get("frame_std_mean") for r in rs) else None)}
         print(f"  {arm:10s}: success {succ}/{len(rs)} · 步数均值 {summ[arm]['steps_mean']} · "
               f"INTACT 真推理均值 {summ[arm]['intact_calls_mean']} · "
               f"拒绝映射 {summ[arm]['refused_map_total']} · "
               f"影子未标定 {summ[arm]['shadow_uncalibrated_total']} · "
-              f"|chunk|={summ[arm]['chunk_norm_mean']}")
+              f"|chunk|={summ[arm]['chunk_norm_mean']} · 帧std={summ[arm]['frame_std_mean']} "
+              f"(>5 才算真图)")
     A = summ.get("A_analytic", {}).get("success", 0)
     C = summ.get("C_intact", {})
     _calls = (C or {}).get("intact_calls_mean", 0) or 0

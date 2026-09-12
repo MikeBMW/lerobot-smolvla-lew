@@ -964,6 +964,7 @@ class RealStateSpaceSim:
                 import cv2
                 fr = cv2.resize(np.asarray(self._render_frame()), (224, 224),
                                 interpolation=cv2.INTER_AREA).transpose(2, 0, 1).astype(np.float32)
+                st.setdefault("frame_std", []).append(float(np.asarray(fr).std()))
                 out = self._intact_node.step(fr, obs_source="engine_render")
             except Exception as e:
                 st["err"] = f"{type(e).__name__}: {e}"
