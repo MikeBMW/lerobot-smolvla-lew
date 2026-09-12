@@ -86,9 +86,10 @@ for T in $TASKS; do
   TARGET=${R2%%|*}; R3=${R2#*|}; XMODE=${R3%%|*}; R4=${R3#*|}
   POLICY=${R4%%|*}; ETASK=${R4#*|}
 
-  # 已全部 seed 完毕 → 跳过
+  # 已全部 seed 完毕 → 只补数据, 不重跑评测
+  #   ★ 踩坑: 曾经在这里直接 continue → 结果齐时想用 --seeds 0 补数据集, 结果连数据也没下
   DONE=1; for S in $SEEDS; do [ -f "$OUT/${T}_seed${S}.json" ] || DONE=0; done
-  if [ "$DONE" = "1" ]; then say "══ ⏭ $T 已完成全部 seed ($SEEDS), 跳过"; continue; fi
+  [ "$DONE" = "1" ] && say "  ℹ️ $T 评测结果已齐 → 仅做数据就位 (不重跑评测)"
   say "══════ 任务 $T (repo=$REPO file=$FILE) ══════"
 
   # 1) 数据集
@@ -101,6 +102,11 @@ for T in $TASKS; do
       reacher) if [ -f "$DS/reacher.h5" ]; then
                  mkdir -p "$DS/dmc"; ln -sfn ../reacher.h5 "$DS/dmc/reacher_random.h5"
                  say "  🔗 布局别名: dmc/reacher_random.h5 -> ../reacher.h5"; fi;;
+      # ★ 2026-09-12 实测: cube_single_expert.tar.zst 解出的 h5 在 datasets/ 根, 而评测期望
+      #   datasets/ogbench/cube_single_expert.h5 → 上一轮"解压后未见"导致 101GB 数据白解+归档没删
+      cube) if [ -f "$DS/cube_single_expert.h5" ]; then
+              mkdir -p "$DS/ogbench"; ln -sfn ../cube_single_expert.h5 "$DS/ogbench/cube_single_expert.h5"
+              say "  🔗 布局别名: ogbench/cube_single_expert.h5 -> ../cube_single_expert.h5"; fi;;
     esac
   fi
   if [ -f "$DS/$TARGET" ]; then
@@ -136,7 +142,10 @@ for T in $TASKS; do
     rm -f "$DS/$FILE"
   fi
 
-  # 2) 每 seed 评测
+  # 2) 每 seed 评测 (结果齐则整段跳过; 数据已在上一步就位)
+  if [ "$DONE" = "1" ]; then
+    say "  ⏭ 跳过评测 (结果已齐); 数据集保留以便 VSCode 手动调试"
+  else
   for S in $SEEDS; do
     if [ -f "$OUT/${T}_seed${S}.json" ]; then say "  ⏭ $T seed$S 已有结果"; continue; fi
     say "  ── $T seed=$S: preflight"
@@ -152,9 +161,10 @@ for T in $TASKS; do
       say "  ❌ $T seed$S 未产出结果:"; tail -4 "$OUT/eval_${T}_seed${S}.log" | tee -a "$LOG"
     fi
   done
-  # 3) 结果齐 → 回收该任务大数据集 (幂等: 需要重跑时流水线会自动重新下载+双核校验)
+  fi
+  # 3) 结果齐 → 回收该任务大数据集 (★ 改为**显式** RECLAIM=1 才回收: 默认保留, 便于 VSCode 手动调试)
   DONE2=1; for S in $SEEDS; do [ -f "$OUT/${T}_seed${S}.json" ] || DONE2=0; done
-  if [ "$DONE2" = "1" ] && [ "${KEEP_DATA:-0}" != "1" ]; then
+  if [ "$DONE2" = "1" ] && [ "${RECLAIM:-0}" = "1" ]; then
     if [ -f "$DS/$TARGET" ] && [ ! -L "$DS/$TARGET" ]; then
       SZ=$(stat -c%s "$DS/$TARGET")
       rm -f "$DS/$TARGET"; rm -f "$DS/$FILE"
