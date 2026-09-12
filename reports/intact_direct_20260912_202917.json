@@ -1,0 +1,129 @@
+{
+ "meta": {
+  "seeds": [
+   0,
+   1
+  ],
+  "mode": "insert",
+  "max_steps": 600,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 1,
+  "device": "cpu",
+  "policy": "intact_goal_zmax_v2_s3072/weights_epoch_1.pt",
+  "runtime": "root",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "n_finite": 18635,
+   "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+   "mean": [
+    -0.007139332597068512,
+    -0.007183539539160135,
+    -0.002103688130771039,
+    0.120300526487178
+   ],
+   "std": [
+    0.15305849460395074,
+    0.07153241744890618,
+    0.11256259314790976,
+    0.7331005658196346
+   ]
+  },
+  "ts": "2026-09-12 20:29:17"
+ },
+ "rows": [
+  {
+   "seed": 0,
+   "analytic": {
+    "done": true,
+    "steps": 388,
+    "frames": 388,
+    "video": "reports/intact_direct_video/insert_解析链对照_seed0_20260912_195528.mp4",
+    "insert_mm": 65.1
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 0,
+    "done": false,
+    "steps": 600,
+    "insert_mm": 76.9,
+    "model_calls": 600,
+    "err": null,
+    "sec": 867.5,
+    "act_mean": [
+     0.03579999879002571,
+     0.001500000013038516,
+     0.10260000079870224,
+     0.6087999939918518
+    ],
+    "act_std": [
+     0.0044999998062849045,
+     0.000699999975040555,
+     0.006800000090152025,
+     0.0006000000284984708
+    ],
+    "act_absmax": [
+     0.04399999976158142,
+     0.007000000216066837,
+     0.11800000071525574,
+     0.6100000143051147
+    ],
+    "stages": {
+     "阶段 对位": 278,
+     "阶段 对位 · 接触": 4,
+     "阶段 接近": 94,
+     "阶段 接近 · 接触": 224
+    }
+   },
+   "video_analytic": "reports/intact_direct_video/insert_解析链对照_seed0_20260912_195528.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 1,
+   "analytic": {
+    "done": false,
+    "steps": 600,
+    "frames": 600,
+    "video": "reports/intact_direct_video/insert_解析链对照_seed1_20260912_195528.mp4",
+    "insert_mm": 18.2
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 1,
+    "done": false,
+    "steps": 600,
+    "insert_mm": 171.0,
+    "model_calls": 600,
+    "err": null,
+    "sec": 1134.2,
+    "act_mean": [
+     0.0357000008225441,
+     0.0017000000225380063,
+     0.125,
+     0.6087999939918518
+    ],
+    "act_std": [
+     0.0032999999821186066,
+     0.0010999999940395355,
+     0.0032999999821186066,
+     0.0005000000237487257
+    ],
+    "act_absmax": [
+     0.04399999976158142,
+     0.003000000026077032,
+     0.13300000131130219,
+     0.6110000014305115
+    ],
+    "stages": {
+     "阶段 接近": 85,
+     "阶段 接近 · 接触": 515
+    }
+   },
+   "video_analytic": "reports/intact_direct_video/insert_解析链对照_seed1_20260912_195528.mp4",
+   "video_direct": null
+  }
+ ]
+}

@@ -12,10 +12,10 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QListWidget, QTabWidget, QFrame, QScrollArea,
     QListWidgetItem, QGroupBox, QMessageBox, QWidget,
-    QTextEdit, QComboBox, QCheckBox
+    QTextEdit, QComboBox, QCheckBox, QSizePolicy, QApplication
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QPixmap, QImage
+from PyQt5.QtGui import QFont, QPixmap, QImage, QTransform
 
 # 颜色定义 (与 studio.py 一致 — 🎨 2026-08-16 老倪铁律: 从 studio 导入, 浅色主题自动跟随)
 try:
@@ -36,9 +36,35 @@ class DatasetViewer(QDialog):
         self.local_root = local_root  # 2026-08-07 老倪: metaworld_mt50 本地实际数据在 data/, 不在 HF 缓存
         self.local_npz = local_npz    # 2026-08-07: metaworld_act/train.npz (系统 python3 无 pandas, numpy 直接读)
         self.repo_cache = self._get_repo_cache_dir(repo_id, cache_dir)
+        # 🧠 2026-09-12 老倪: 支持 stable-wm-cache 的 h5 数据集查看 (翻帧/看真图)
+        #   gui-venv311 没装 h5py → 通过 tools/h5_frame_reader.py (INTACT venv) 子进程读
+        self.h5_path = None
+        for _c in (local_root, local_npz, cache_dir):
+            if isinstance(_c, str) and _c.lower().endswith((".h5", ".hdf5")) and os.path.isfile(_c):
+                self.h5_path = _c
+                break
+        # 🐛 2026-09-12: 数据源节点传进来的是**目录** (data/xxx) → 目录里若有 h5 也要能看
+        if self.h5_path is None:
+            for _c in (local_root, cache_dir):
+                if isinstance(_c, str) and os.path.isdir(_c):
+                    _hs = sorted(glob.glob(os.path.join(_c, "*.h5")) +
+                                 glob.glob(os.path.join(_c, "*", "*.h5")))
+                    if _hs:
+                        self.h5_path = _hs[0]
+                        self.repo_id = f"{self.repo_id} ← {os.path.basename(self.h5_path)}"
+                        break
+        self._flip_v = False   # ↕ 上下翻转 (对齐metaworld/mujoco 朝向差异; 一键切换)
+        self._pix_cache = {}   # (ep, frame) → QPixmap (连点翻帧不再等子进程)
+        self._h5 = {}          # h5 info 缓存 (含每回合真实帧数)
+        self._h5_vec = {}      # 当前帧 action/observation (真实值)
+        self._pix_orig = None  # 原图 QPixmap (窗口缩放时重采样用)
 
         self.setWindowTitle(f"📊 数据集查看器 — {repo_id}")
-        self.setFixedSize(1100, 700)
+        # 🐛 2026-09-12 老倪: 原来 setFixedSize(1100,700) 装不下 640×480 图 + 滑块 + 两行按钮
+        #   → 底部按钮被裁掉/遮挡, 且不能拉大。改成可缩放大小的窗口 + 最小尺寸。
+        self.resize(1180, 880)
+        self.setMinimumSize(980, 740)
+        self.setSizeGripEnabled(True)
         self.setStyleSheet(f"QDialog{{background:{C_BG}; border:2px solid {C_BLUE};}}")
 
         self.info_dict = {}
@@ -175,9 +201,11 @@ class DatasetViewer(QDialog):
         frame_row.addWidget(self.frame_label)
         layout.addLayout(frame_row)
 
-        # 图片显示区
+        # 图片显示区 (2026-09-12: 固定 640×480 会把按钮挤出窗口 → 改成可伸缩, 缩放显示)
         self.lbl_image = QLabel("点击 '加载帧' 按钮查看图像")
-        self.lbl_image.setFixedSize(640, 480)
+        self.lbl_image.setMinimumSize(520, 380)
+        self.lbl_image.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.lbl_image.setScaledContents(False)
         self.lbl_image.setAlignment(Qt.AlignCenter)
         self.lbl_image.setStyleSheet(f"background:{C_BG2}; color:{C_DIM}; border:1px solid {C_BORDER}; border-radius:4px; font-size:12px;")
         layout.addWidget(self.lbl_image, alignment=Qt.AlignCenter)
@@ -197,7 +225,20 @@ class DatasetViewer(QDialog):
         next_btn.clicked.connect(lambda: self.frame_slider.setValue(min(self.frame_slider.maximum(), self.frame_slider.value() + 1)))
         btn_row.addWidget(prev_btn)
         btn_row.addWidget(next_btn)
+        # ↕ 朝向切换 (2026-09-12 老倪: 图上下颠倒时一键摆正) + 帧状态显示
+        self.flip_btn = QPushButton("↕ 上下翻转")
+        self.flip_btn.setToolTip("切换图像上下方向 (数据源与渲染朝向不一致时用; 不影响数据本身)")
+        self.flip_btn.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 12px;")
+        self.flip_btn.clicked.connect(self._toggle_flip)
+        btn_row.addWidget(self.flip_btn)
+        self.lbl_status = QLabel("")
+        self.lbl_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
+        self.lbl_status.setFont(QFont("Consolas", 9))
+        btn_row.addWidget(self.lbl_status)
+        btn_row.addStretch()
         layout.addLayout(btn_row)
+        # ⌨ ←/→ 也能翻帧 (2026-09-12: 连点按钮没反馈时的备用路子)
+        self.setFocusPolicy(Qt.StrongFocus)
 
         tab.setLayout(layout)
         self.tabs.addTab(tab, "🖼️ 图片")
@@ -263,6 +304,30 @@ class DatasetViewer(QDialog):
     def _load_dataset_info(self):
         """加载数据集信息"""
         try:
+            # 🧠 2026-09-12 老倪: h5 数据集 (stable-wm-cache) — 读真信息; 其它分支对 h5 不适用
+            if self.h5_path:
+                info = self._h5_info()
+                if not info.get("ok"):
+                    self.lbl_summary.setText(f"⚠️ h5 读取失败: {info.get('error', '未知')}")
+                    return
+                eps = int(info.get("episodes") or 0)
+                lens = info.get("ep_len") or [0]
+                self.lbl_summary.setText(
+                    f"🧠 h5 数据集: {os.path.basename(self.h5_path)}   ({self.h5_path})\n"
+                    f"  Episodes: {eps}  |  Frames: {info.get('frames')}  |  "
+                    f"action {info.get('action_dim')}D  |  obs {info.get('obs_dim')}D  |  "
+                    f"pixels {info.get('pixels_shape')}\n"
+                    f"  翻帧范围 = 该回合**真实**帧数 (首回合 {lens[0] if lens else 0} 帧); "
+                    f"帧图与 action/observation 均为数据集真值")
+                mt = info.get("meta")
+                self.meta_text.setPlainText(
+                    json.dumps(mt, indent=2, ensure_ascii=False) if mt
+                    else json.dumps({k: v for k, v in info.items() if k != "ep_len"},
+                                    indent=2, ensure_ascii=False))
+                self.ep_slider.setMaximum(max(0, eps - 1))
+                self.ep_slider.setValue(0)
+                self._on_episode_changed(0)
+                return
             # 查找 info.json
             info_path = self._find_file_in_cache("info.json")
             if info_path and os.path.exists(info_path):
@@ -342,26 +407,147 @@ class DatasetViewer(QDialog):
                         results.append(os.path.join(root, f))
         return sorted(results)
 
+    # ── 🧠 h5 支持 (2026-09-12 老倪: 查看器要能翻 stable-wm-cache 的 h5) ──
+    _INTACT_PY = "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
+
+    def _h5_info(self) -> dict:
+        """读 h5 信息 (每回合**真实**帧数等); 进程内缓存一次。"""
+        if self._h5.get("ok") or not self.h5_path:
+            return self._h5
+        try:
+            import subprocess                                  # noqa: PLC0415
+            r = subprocess.run([self._INTACT_PY, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                              "..", "h5_frame_reader.py"),
+                                "--h5", self.h5_path, "--info"],
+                               capture_output=True, text=True, timeout=120)
+            self._h5 = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else \
+                {"ok": False, "error": (r.stderr or "无输出")[-200:]}
+        except Exception as e:
+            self._h5 = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        return self._h5
+
+    def _h5_load(self, ep: int, fr: int):
+        """取 h5 某回合第 fr 帧真图 → 显示 (子进程: gui-venv 无 h5py)。
+
+        2026-09-12 老倪反馈"点下一帧没反应" → 现在: ① 立刻显示「帧 k/N 加载中」状态
+        ② 命中缓存直接出图 (连点秒翻) ③ 失败把错误写在画面上 (不再静默)。
+        """
+        key = (int(ep), int(fr))
+        c = self._pix_cache.get(key)
+        if c is not None:                                   # 缓存命中 → 零延迟
+            pm, vec = c
+            self._pix_orig, self._h5_vec = pm, vec
+            self._show_pix()
+            self._h5_status(vec)
+            return
+        n_ep = self._h5.get("ep_len", [None])[int(ep)] if self._h5.get("ep_len") else None
+        self.lbl_status.setText(f"帧 {fr}" + (f"/{int(n_ep)-1}" if n_ep else "") + " 加载中…")
+        QApplication.processEvents()                        # 让状态立刻可见 (不阻塞界面)
+        import subprocess                                   # noqa: PLC0415
+        png = os.path.join("/tmp", f"zmax_dsview_{abs(hash(self.h5_path)) % 99999}.png")
+        try:
+            r = subprocess.run([self._INTACT_PY, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                              "..", "h5_frame_reader.py"),
+                                "--h5", self.h5_path, "--ep", str(int(ep)), "--frame", str(int(fr)),
+                                "--out", png, "--vec"],
+                               capture_output=True, text=True, timeout=180)
+            d = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
+        except Exception as e:
+            d = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if not d.get("ok"):
+            self.lbl_image.setText(f"⚠️ h5 读帧失败: {d.get('error', '未知')}")
+            self.lbl_status.setText("失败")
+            return
+        pm = QPixmap(png)
+        if pm.isNull():
+            self.lbl_image.setText("⚠️ 图像解码失败")
+            self.lbl_status.setText("解码失败")
+            return
+        if len(self._pix_cache) > 64:                       # 有界缓存 (防翻久了吃内存)
+            self._pix_cache.clear()
+        self._pix_cache[key] = (pm, d)
+        self._pix_orig, self._h5_vec = pm, d
+        self._show_pix()
+        self._h5_status(d)
+
+    def _h5_status(self, d: dict):
+        """状态行: 回合/帧/该回合总帧 + 帧std 真图判据 (真实值, 不编)。"""
+        std = d.get("frame_std")
+        ok = (std is None) or (std > 5.0)
+        self.lbl_status.setText(
+            f"回合 {d.get('ep')} · 帧 {d.get('frame')}/{max(int(d.get('ep_len') or 1) - 1, 0)} · "
+            f"帧std={std} {'真图✓' if ok else '黑帧✗'}"
+            + ("  ·  已翻转" if self._flip_v else ""))
+        self.lbl_image.setToolTip(
+            f"{os.path.basename(self.h5_path)} · 回合 {d.get('ep')} / 帧 {d.get('frame')}"
+            f" (该回合共 {d.get('ep_len')} 帧) · 帧std={std} {'真图✓' if ok else '黑帧✗'}\n"
+            f"action={d.get('action')}")
+
+    def _toggle_flip(self):
+        """↕ 上下翻转 (只影响显示, 不改数据)。"""
+        self._flip_v = not self._flip_v
+        self.flip_btn.setText("↕ 上下翻转 ✓" if self._flip_v else "↕ 上下翻转")
+        self._show_pix()
+        if self._h5_vec:
+            self._h5_status(self._h5_vec)
+
+    def _show_pix(self):
+        """按标签当前尺寸等比缩放显示 (窗口拉大图跟着变大, 不裁切; 支持上下翻转显示)。"""
+        if self._pix_orig is None or self._pix_orig.isNull():
+            return
+        w = max(self.lbl_image.width() - 8, 120)
+        h = max(self.lbl_image.height() - 8, 120)
+        pm = self._pix_orig
+        if self._flip_v:
+            pm = pm.transformed(QTransform().scale(1, -1))   # 显示用翻转 (数据不动)
+        self.lbl_image.setPixmap(pm.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def keyPressEvent(self, ev):                            # noqa: N802
+        """← / → 翻帧 (与按钮同一条链路)。"""
+        if ev.key() in (Qt.Key_Left, Qt.Key_Right):
+            d = -1 if ev.key() == Qt.Key_Left else 1
+            self.frame_slider.setValue(max(0, min(self.frame_slider.maximum(),
+                                                  self.frame_slider.value() + d)))
+            return
+        super().keyPressEvent(ev)
+
+    def resizeEvent(self, ev):                                  # noqa: N802
+        super().resizeEvent(ev)
+        self._show_pix()
+
     def _on_episode_changed(self, val):
         self.current_episode = val
         self.ep_label.setText(str(val))
-        # 重置帧滑块
-        features = self.info_dict.get("features", {})
-        image_shapes = [f.get("shape", [0])[-1] for k, f in features.items() if 'image' in k.lower() or 'video' in k.lower()]
-        if image_shapes:
-            max_frames = 300  # 默认
-        else:
-            max_frames = 100
-        self.frame_slider.setMaximum(max_frames - 1)
+        n = None
+        if self.h5_path:                                        # 🧠 真实每回合帧数 (不再写死 300/100)
+            info = self._h5_info()
+            lens = info.get("ep_len") or []
+            if 0 <= val < len(lens):
+                n = int(lens[val])
+        if n is None:
+            # 非 h5: 旧逻辑 (无真实信息时按默认值给上限, 并在提示里说明)
+            features = self.info_dict.get("features", {})
+            image_shapes = [f.get("shape", [0])[-1] for k, f in features.items()
+                            if 'image' in k.lower() or 'video' in k.lower()]
+            n = 300 if image_shapes else 100
+        self.frame_slider.setMaximum(max(0, n - 1))
+        self.frame_slider.setValue(0)
+        if self.h5_path:
+            self._h5_load(self.current_episode, 0)
 
     def _on_frame_changed(self, val):
         self.current_frame = val
         self.frame_label.setText(str(val))
         # 🐛 2026-08-07 老倪: 点不了下一帧 — 滑块变化只改数字不加载图 → 触发重新加载
-        if self.video_files or self.parquet_files or self.local_npz:
+        # 🧠 2026-09-12: h5 也必须走这条路 (原来 h5 不在条件里 → 点下一帧没反应)
+        if self.h5_path or self.video_files or self.parquet_files or self.local_npz:
             self._load_video_frame()
 
     def _load_video_frame(self):
+        # 🧠 2026-09-12: h5 分支 (stable-wm-cache 数据集) — 真图 + 真实 action/obs
+        if self.h5_path:
+            self._h5_load(self.current_episode, self.current_frame)
+            return
         """从视频文件/parquet/npz/json 采集包中解码指定帧
         (2026-08-07 老倪: orin_live 是 json 采集包(无图像) → 显示包 meta + 帧状态/动作)"""
         if self.local_npz and os.path.exists(self.local_npz):

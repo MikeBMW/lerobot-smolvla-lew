@@ -132,6 +132,9 @@ def main():
         meta=np.array([{"seed": a.seed, "mode": a.mode, "steps": len(tr["t"]), "frames": n,
                         "stride": a.stride, "done": done, "device": a.device, "task": a.task,
                         "obs_source": "engine_render 480²→224²(CHW)",
+                        "policy": os.environ.get("INTACT_POLICY",
+                                                 f"recovery_delta_full_{a.task}_s3072"),
+                        "runtime": os.environ.get("INTACT_RUNTIME", "paper"),
                         "mani_keys": keys6, "ts": time.strftime("%F %T")}], dtype=object))
     print(f"\n   → {out}")
     print(f"   样本 {len(idxs)} 条 · 引擎 done={done} · 阶段覆盖 "

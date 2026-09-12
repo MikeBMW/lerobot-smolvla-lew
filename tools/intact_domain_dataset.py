@@ -45,6 +45,9 @@ def main():
     ap.add_argument("--out-name", default="zmax_insert")
     ap.add_argument("--dest", default=os.path.join(_CACHE, "datasets"))
     ap.add_argument("--vis-every", type=int, default=1)
+    ap.add_argument("--part-frames", type=int, default=20000,
+                    help="内存闸: 累计帧数到阈值就先落一个 part npz (300 回合≈15万帧 "
+                         "= 22GB 内存, 一次性 concat 会被 OOM 杀 — 实测踩坑)")
     a = ap.parse_args()
 
     import cv2                                             # noqa: PLC0415
@@ -59,7 +62,48 @@ def main():
 
     ep_pix, ep_act, ep_obs, ep_len = [], [], [], []
     done_flags = []
+    parts: list[str] = []          # 已落盘的 part npz (内存闸分块, 防 OOM)
+    _done_buf: list = []           # 本 part 内各回合 done (用于 part meta 的 done_rate)
     t0 = time.time()
+
+    def _flush_part(_final=False):
+        """把已攒的回合落成一个 part npz 并清空内存 (每 part 自包含 ep_len/ep_offset)。"""
+        if not ep_len:
+            return
+        L_ = np.asarray(ep_len, dtype=np.int64)
+        off_ = np.concatenate([[0], np.cumsum(L_)[:-1]]).astype(np.int64)
+        px_ = np.concatenate(ep_pix, axis=0)
+        ep_std_ = []
+        for i, n in enumerate(L_):
+            s = int(off_[i])
+            ep_std_.append(float(np.mean([px_[s + j].std()
+                                          for j in np.linspace(0, n - 1, 8).astype(int)])))
+        bad_ = [i for i, v in enumerate(ep_std_) if v <= 5.0]
+        if bad_:
+            print(f"❌ part{len(parts):02d} 有 {len(bad_)} 个黑帧回合 (idx {bad_[:6]}) → 不落盘")
+            return
+        p = os.path.join(ROOT, "reports", f"{a.out_name}_part{len(parts):02d}.npz")
+        np.savez_compressed(
+            p, pixels=px_, action=np.concatenate(ep_act, axis=0).astype(np.float32),
+            observation=np.concatenate(ep_obs, axis=0).astype(np.float32),
+            ep_len=L_, ep_offset=off_,
+            ep_idx=np.concatenate([np.full(n, i, dtype=np.int32) for i, n in enumerate(L_)]),
+            step_idx=np.concatenate([np.arange(n, dtype=np.int64) for n in L_]),
+            meta=np.array([{
+                "source": "Z-MAX 六层引擎 RealStateSpaceSim 真链路 (metaworld insert)",
+                "pixels": f"env.render() 真实渲染 → {a.img}² RGB (与 INTACT 原生分辨率一致)",
+                "action": "sink 实收 env 级动作 act = [dx,dy,dz,gripper] (±1, 因果: 它造成该转移)",
+                "observation": "env 原生 o[:39] (与引擎/L3 同源口径)",
+                "mode": a.mode, "max_steps": a.max_steps,
+                "episodes": len(L_), "frames": int(L_.sum()),
+                "done_rate": (round(float(np.mean(_done_buf)), 4) if _done_buf else None),
+                "ep_frame_std": [round(v, 2) for v in ep_std_],
+                "ts": time.strftime("%F %T")}], dtype=object))
+        parts.append(p)
+        print(f"   💾 part{len(parts)-1:02d}: 回合 {len(L_)} · 帧 {int(L_.sum())} · "
+              f"{os.path.getsize(p)/1e6:.0f}MB → {os.path.basename(p)}", flush=True)
+        ep_pix.clear(); ep_act.clear(); ep_obs.clear(); ep_len.clear(); _done_buf.clear()
+
     for si, seed in enumerate(seeds):
         px, ac, ob = [], [], []
 
@@ -84,52 +128,30 @@ def main():
                   f"(不许拿黑图训世界模型 — 蒙眼=假结论)", flush=True)
             return 4
         ep_pix.append(np.stack(px)); ep_act.append(np.stack(ac)); ep_obs.append(np.stack(ob))
-        ep_len.append(len(px)); done_flags.append(done)
+        ep_len.append(len(px)); done_flags.append(done); _done_buf.append(bool(done))
         print(f"  seed{seed}: {len(px)} 帧 · done={done} · 帧std={_std:.1f} · "
-              f"(累计 {sum(ep_len)} 帧, {time.time()-t0:.0f}s)", flush=True)
+              f"(累计 {sum(ep_len) + sum(int(np.load(p, allow_pickle=True)['ep_len'].sum()) for p in parts)} 帧, "
+              f"{time.time()-t0:.0f}s)", flush=True)
+        if sum(ep_len) >= a.part_frames:            # 💾 内存闸: 攒够就落盘清空
+            _flush_part()
 
-    if not ep_len:
-        print("❌ 一帧都没采到 → 中止")
+    _flush_part(_final=True)
+    if not parts:
+        print("❌ 没有任何有效 part → 中止")
         return 2
-
-    E = len(ep_len)
-    L = np.asarray(ep_len, dtype=np.int64)
-    off = np.concatenate([[0], np.cumsum(L)[:-1]]).astype(np.int64)
-    pixels = np.concatenate(ep_pix, axis=0)          # [N,img,img,3] uint8
-    action = np.concatenate(ep_act, axis=0).astype(np.float32)
-    obs = np.concatenate(ep_obs, axis=0).astype(np.float32)
-    ep_idx = np.concatenate([np.full(n, i, dtype=np.int32) for i, n in enumerate(L)])
-    step_idx = np.concatenate([np.arange(n, dtype=np.int64) for n in L])
-    # ★ 保存前最后一次"蒙眼"检查: 每个回合抽 8 帧看 std, 任何回合黑帧 → 不落盘
-    ep_std = []
-    for i, n in enumerate(L):
-        s = int(off[i])
-        ep_std.append(float(np.mean([pixels[s + j].std() for j in np.linspace(0, n - 1, 8).astype(int)])))
-    bad = [i for i, v in enumerate(ep_std) if v <= 5.0]
-    if bad:
-        print(f"❌ 有 {len(bad)} 个回合是黑帧 (idx {bad[:8]}) → 不落盘 (数据无效)")
-        return 4
-    print(f"   帧有效性: 每回合帧std {min(ep_std):.1f}~{max(ep_std):.1f} (全部 > 5 ✓)")
-
-    # 落 .npz (可由 INTACT venv 转 h5); pixels 单独存以控制内存
-    out_path = os.path.join(ROOT, "reports", f"{a.out_name}_raw.npz")
-    np.savez_compressed(
-        out_path, pixels=pixels, action=action, observation=obs,
-        ep_len=L, ep_offset=off, ep_idx=ep_idx, step_idx=step_idx,
-        meta=np.array([{
-            "source": "Z-MAX 六层引擎 RealStateSpaceSim 真链路 (metaworld insert)",
-            "pixels": f"env.render() 真实渲染 → {a.img}² RGB (与 INTACT 原生分辨率一致)",
-            "action": "sink 实收 env 级动作 act = [dx,dy,dz,gripper] (±1, 因果: 它造成该转移)",
-            "observation": "env 原生 o[:39] (与引擎/L3 同源口径)",
-            "mode": a.mode, "max_steps": a.max_steps, "seeds": seeds,
-            "episodes": E, "frames": int(L.sum()), "done_rate": float(np.mean(done_flags)),
-            "ts": time.strftime("%F %T")}], dtype=object))
-    sz = os.path.getsize(out_path)
-    print(f"\n✅ {out_path}\n   回合 {E} · 帧 {int(L.sum())} · 动作维 {action.shape[1]} · "
-          f"观测维 {obs.shape[1]} · done_rate={np.mean(done_flags):.2f} · 文件 {sz/1e6:.1f}MB · "
+    tot = 0
+    for p in parts:
+        tot += int(np.load(p, allow_pickle=True)["ep_len"].sum())
+    dr = float(np.mean(done_flags)) if done_flags else float("nan")
+    print(f"\n✅ 分块落盘 {len(parts)} 个 part (内存闸 {a.part_frames} 帧/块, 防 22GB OOM)")
+    for p in parts:
+        print(f"   {p}")
+    print(f"   合计 回合 {len(done_flags)} · 帧 {tot} · done_rate={dr:.2f} · "
           f"用时 {time.time()-t0:.0f}s")
-    print(f"   下一步: /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_domain_to_h5.py "
-          f"--npz {out_path} --out-name {a.out_name}")
+    print(f"   下一步: 合并转 h5 → "
+          f"/home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
+          f"--parts 'reports/{a.out_name}_part*.npz' --out-name {a.out_name} "
+          f"--dest {a.dest}")
     return 0
 
 

@@ -176,6 +176,16 @@ class OfficialIntactSource(IntactDataSource):
     def _open(self):
         if self._h5 is None:
             import h5py                                    # noqa: PLC0415
+            try:                                           # 官方数据用 HDF5 插件压缩
+                import hdf5plugin                          # noqa: F401,PLC0415
+            except ImportError:
+                pass
+            if not os.environ.get("HDF5_PLUGIN_PATH"):
+                try:
+                    import hdf5plugin as _hp          # noqa: PLC0415
+                    os.environ.setdefault("HDF5_PLUGIN_PATH", _hp.PLUGIN_PATH)
+                except ImportError:
+                    pass
             rel = OFFICIAL_DATASETS[self.task].split()[0]
             p = os.path.join(self.root, "datasets", rel)
             if not os.path.isfile(p):
@@ -189,12 +199,23 @@ class OfficialIntactSource(IntactDataSource):
         seq_len = int(seq_len or HISTORY_SIZE)
         f = self._open()
         # 官方 h5 结构: obs / action 两组 (LeWM 约定); 找不到就诚实报错, 不猜结构
-        obs_key = next((k for k in f.keys() if "obs" in k.lower() or "pixels" in k.lower()), None)
+        obs_key = next((k for k in f.keys() if "pixel" in k.lower()), None) \
+            or next((k for k in f.keys() if "obs" in k.lower()), None)
         if obs_key is None:
             raise KeyError(f"{self.task}: h5 里找不到观测组, 键={list(f.keys())}")
         grp = f[obs_key]
         ep = int(self.rng.integers(len(grp)))
-        arr = np.asarray(grp[str(ep) if str(ep) in grp else list(grp)[ep]], dtype=np.float32)
+        if hasattr(grp, "keys"):                           # Group: 每 episode 一个 dataset
+            _keys = list(grp.keys())
+            _key = str(ep) if str(ep) in _keys else _keys[ep]
+            arr = np.asarray(grp[_key], dtype=np.float32)
+        elif {"ep_offset", "ep_len"} <= set(f.keys()):      # ★ 官方扁平存储
+            _off = np.asarray(f["ep_offset"]); _len = np.asarray(f["ep_len"])
+            _e = int(self.rng.integers(len(_len)))
+            _o, _l = int(_off[_e]), int(_len[_e])
+            arr = np.asarray(grp[_o:_o + _l], dtype=np.float32)   # [T,H,W,C]
+        else:                                               # 单块 Dataset
+            arr = np.asarray(grp[ep], dtype=np.float32)
         if arr.ndim != 4:                                  # [T,H,W,C] → [T,C,H,W]
             arr = np.moveaxis(arr, -1, 1)
         arr = arr / 255.0 if arr.max() > 1.5 else arr

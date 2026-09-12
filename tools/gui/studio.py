@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.25")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.26")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1777,6 +1777,33 @@ class DatasetModule(SubModuleWidget):
         cur_card.setLayout(cur_lay)
         bl.addWidget(cur_card)
 
+        # 🧠 2026-09-12 老倪: INTACT/域内 h5 数据集台账卡片 (原来的页看不到 stable-wm-cache 下的数据)
+        #   数据源 = tools/zmax_ds_meta.py 生成的 zmax_datasets.json (gui-venv 无 h5py, 只读 json)
+        ds_card = QFrame()
+        ds_card.setStyleSheet(f"background:{C_CARD}; border:1px solid {SYS2_COLOR}66; border-radius:8px;")
+        ds_lay = QHBoxLayout()
+        ds_lay.setContentsMargins(14, 10, 14, 10)
+        self._intact_ds_lbl = QLabel()
+        self._intact_ds_lbl.setTextFormat(Qt.RichText)
+        self._intact_ds_lbl.setFont(QFont("Arial", 10))
+        self._intact_ds_lbl.setText(self._intact_ds_html())
+        ds_lay.addWidget(self._intact_ds_lbl)
+        ds_lay.addStretch()
+        refresh_ds = QPushButton("🔄")
+        refresh_ds.setFixedSize(32, 32)
+        refresh_ds.setToolTip("刷新 INTACT/域内数据集台账")
+        refresh_ds.setStyleSheet(f"background:{C_CARD}; color:{SYS2_COLOR}; border:1px solid {SYS2_COLOR}66; border-radius:4px;")
+        refresh_ds.clicked.connect(lambda: self._intact_ds_lbl.setText(self._intact_ds_html()))
+        ds_lay.addWidget(refresh_ds)
+        view_ds = QPushButton("🎬 浏览数据集")
+        view_ds.setToolTip("打开数据集查看器 (翻帧看真图 + 真实 action/observation)")
+        view_ds.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                              f" border-radius:4px; padding:6px 12px;")
+        view_ds.clicked.connect(self._open_intact_ds_viewer)
+        ds_lay.addWidget(view_ds)
+        ds_card.setLayout(ds_lay)
+        bl.addWidget(ds_card)
+
         # === 数据集列表 ===
         list_label = QLabel(f"开源机器人数据集 ({len(self.DATASETS)}个)")
         list_label.setFont(QFont("Arial", 11, QFont.Bold))
@@ -1805,69 +1832,258 @@ class DatasetModule(SubModuleWidget):
         self._populate_table()
         bl.addWidget(self._table)
 
-        # 🧠 2026-08-08 老倪: 训练结果完全可控 — outputs/train 列表 + 删除
-        tr_label = QLabel("🧠 训练结果 (outputs/train)")
-        tr_label.setStyleSheet(f"color:{SYS2_COLOR}; font-size:19px; font-weight:700; background:transparent; border:none; margin-top:6px;")
-        bl.addWidget(tr_label)
-        self._tr_box = QVBoxLayout()
-        bl.addLayout(self._tr_box)
-        self._refresh_train_results()
+        # 🧹 2026-09-12 老倪: 数据集页**只放数据相关的东西** ——「🧠 训练结果 (outputs/train)」已搬到
+        #   训练台 (Model Engine) 页; 这里换成三块纯数据内容:
+        #     ① 本地数据总表 (stable-wm-cache 的 h5 + 仓库 data/ 下的本地数据集, 全部出真实统计)
+        #     ② 选中行详情 (路径/用途/回合/帧/维度/真图校验/大小/时间)
+        #     ③ 数据操作日志 (只记数据集相关动作, 不混训练输出)
+        dhead = QHBoxLayout()
+        dlab = QLabel("📚 本地数据总表 (真实统计 · 真图校验)")
+        dlab.setFont(QFont("Arial", 13, QFont.Bold))
+        dlab.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none; margin-top:6px;")
+        dhead.addWidget(dlab)
+        dhead.addStretch()
+        drefresh = QPushButton("🔄 刷新数据表")
+        drefresh.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                               f" border-radius:4px; padding:4px 12px;")
+        drefresh.clicked.connect(self._refresh_data_tab)
+        dhead.addWidget(drefresh)
+        bl.addLayout(dhead)
+
+        self._data_table = QTableWidget()
+        self._data_table.setColumnCount(8)
+        self._data_table.setHorizontalHeaderLabels(
+            ["名称", "来源", "回合", "帧", "动作/观测", "帧std(真图)", "大小", "修改时间"])
+        self._data_table.verticalHeader().setVisible(False)
+        self._data_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._data_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._data_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._data_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._data_table.setMinimumHeight(200)
+        self._data_table.setStyleSheet(f"""
+            QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}
+            QTableWidget::item {{ padding:4px 6px; }}
+            QTableWidget::item:selected {{ background:{C_GREEN}33; }}
+            QHeaderView::section {{ background:{C_BG2}; color:{C_GREEN}; border:1px solid {C_BORDER}; padding:5px; font-weight:bold; }}
+        """)
+        self._data_table.itemSelectionChanged.connect(self._on_data_row)
+        self._data_table.doubleClicked.connect(lambda *_: self._open_selected_data())
+        bl.addWidget(self._data_table)
+
+        # ② 选中行详情 + 操作
+        self._data_detail = QLabel("选中一行查看详情 (双击 = 打开查看器)")
+        self._data_detail.setTextFormat(Qt.RichText)
+        self._data_detail.setWordWrap(True)
+        self._data_detail.setFont(QFont("Arial", 10))
+        self._data_detail.setStyleSheet(f"background:{C_BG2}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                                        f" border-radius:6px; padding:8px;")
+        bl.addWidget(self._data_detail)
+        dops = QHBoxLayout()
+        for txt, tip, fn in (("🎬 浏览内容", "打开数据集查看器 (翻真图 + 真实 action/observation)", self._open_selected_data),
+                             ("📂 打开目录", "在文件管理器里打开所在目录", self._open_selected_dir),
+                             ("📋 复制路径", "复制数据集真实路径到剪贴板", self._copy_selected_path),
+                             ("📇 重建台账", "用 INTACT venv 重扫所有 h5 生成 zmax_datasets.json", self._rebuild_ledger)):
+            b = QPushButton(txt)
+            b.setToolTip(tip)
+            b.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                            f" border-radius:4px; padding:6px 14px;")
+            b.clicked.connect(fn)
+            dops.addWidget(b)
+        dops.addStretch()
+        bl.addLayout(dops)
+
+        # ③ 数据操作日志 (只记数据动作)
+        self._data_log = QTextEdit()
+        self._data_log.setReadOnly(True)
+        self._data_log.setMaximumHeight(90)
+        self._data_log.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border:1px solid {C_BORDER};"
+                                     f" border-radius:6px; font-family:Consolas; font-size:11px;")
+        bl.addWidget(self._data_log)
+        self._refresh_data_tab()
+        self._data_log_msg("数据集页已就绪: 数据总表 = stable-wm-cache h5 + 仓库 data/ 本地集")
 
         body.setLayout(bl)
         self._build_shell(body)
 
-    def _refresh_train_results(self):
-        """🧠 列出 outputs/train 全部训练目录 (名字/步数/大小/时间 + 🗑 删除) — 完全可控"""
-        from PyQt5.QtWidgets import QHBoxLayout
-        import glob as _g
-        while self._tr_box.count():
-            it = self._tr_box.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-        root = self._repo_root()
-        dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", "*")), key=os.path.getmtime, reverse=True)
-        for d in dirs[:20]:
-            name = os.path.basename(d)
-            ck = os.path.join(d, "checkpoints")
-            # 🐛 2026-08-09: 空数字列表 (仅 last/ 的远程拉回目录) → 回退 0, 不崩
-            try:
-                _nums = [int(b) for b in os.listdir(ck) if b.isdigit()]
-                steps = max(_nums) if _nums else 0
-            except Exception:
-                steps = 0
-            # 🐛 2026-08-12 老倪: 遍历加容错 — docker root 产物权限异常(600)时
-            # os.path.getsize 抛 PermissionError → 整个 GUI 启动崩溃; 跳过不可读文件
-            sz = 0.0
-            try:
-                sz = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(d) for f in fs) / 1e6
-            except Exception:
-                sz = 0.0
-            tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
-            row = QHBoxLayout()
-            lbl = QLabel(f"⚙ {name}  ·  {steps} 步  ·  {sz:.0f}MB  ·  {tm}")
-            lbl.setStyleSheet("color:#c9d1d9; font-size:20px; font-family:Consolas; background:transparent; border:none;")
-            row.addWidget(lbl)
-            row.addStretch()
-            btn = QPushButton("🗑")
-            btn.setFixedSize(30, 24)
-            btn.setToolTip(f"删除 {name} (训练中不可删)")
-            btn.setStyleSheet(f"QPushButton {{ background:{C_BG2}; color:#ff6b6b; border:1px solid {C_BORDER}; border-radius:4px; }}")
-            btn.clicked.connect(lambda _, dd=d: self._delete_train_dir(dd))
-            row.addWidget(btn)
-            self._tr_box.addLayout(row)
+    # ── 🧹 2026-09-12 数据页重构: 纯数据 UI (总表 / 详情 / 数据日志) ──
+    def _data_log_msg(self, msg):
+        if hasattr(self, "_data_log"):
+            self._data_log.append(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
-    def _delete_train_dir(self, d):
-        """🗑 删除训练目录 (确认后 rm -rf)"""
-        import subprocess as _sp
-        _running = bool(_sp.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5).stdout.strip())
-        if _running:
-            self.log_signal.emit("⚠️ 训练进行中, 不删除训练目录")
+    @staticmethod
+    def _dir_stats(path):
+        """目录真实统计: 大小MB / 文件数 / 含 parquet|npz|json|h5 """ 
+        n = 0
+        sz = 0
+        kinds = set()
+        for r, _d, fs in os.walk(path):
+            for f in fs:
+                n += 1
+                try:
+                    sz += os.path.getsize(os.path.join(r, f))
+                except Exception:
+                    pass
+                ext = os.path.splitext(f)[1].lower()
+                if ext:
+                    kinds.add(ext)
+        return round(sz / 1e6, 1), n, " ".join(sorted(kinds)[:4])
+
+    def _local_data_rows(self):
+        """扫两类数据源 (全部真实统计, 读不到就写"—"): ① stable-wm-cache/datasets 的 h5 台账
+        ② 仓库 data/ 下的本地数据集目录。"""
+        rows = []
+        cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
+                 os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+        for c in cands:
+            if not c:
+                continue
+            ds_dir = os.path.join(os.path.expanduser(c), "datasets")
+            jp = os.path.join(ds_dir, "zmax_datasets.json")
+            if not os.path.isfile(jp):
+                continue
+            try:
+                d = json.load(open(jp, encoding="utf-8"))
+            except Exception:
+                continue
+            for r in d.get("datasets", []):
+                rows.append({"name": r.get("name"), "src": r.get("purpose") or "stable-wm cache",
+                             "eps": r.get("episodes"), "frames": r.get("frames"),
+                             "dims": (f"act {r.get('action_dim')}D / obs {r.get('obs_dim')}D"
+                                      if r.get("readable") else "—"),
+                             "std": (f"{r.get('frame_std_min')}~{r.get('frame_std_max')} "
+                                     f"{'✓' if r.get('frames_real') else '✗'}"
+                                     if r.get("readable") else "读不了"),
+                             "size_gb": r.get("size_gb"), "mtime": r.get("mtime"),
+                             "path": r.get("path"), "kind": "h5", "readable": r.get("readable")})
+            break
+        # 仓库 data/ 本地集 (LeRobot 目录 / npz / 视频)
+        root = self._repo_root()
+        ddir = os.path.join(root, "data")
+        if os.path.isdir(ddir):
+            for name in sorted(os.listdir(ddir)):
+                p = os.path.join(ddir, name)
+                if not os.path.isdir(p):
+                    continue
+                mb, nf, kinds = self._dir_stats(p)
+                ij = os.path.join(p, "meta", "info.json")
+                eps = frames = "—"
+                if os.path.isfile(ij):
+                    try:
+                        m = json.load(open(ij, encoding="utf-8"))
+                        eps, frames = m.get("total_episodes", "—"), m.get("total_frames", "—")
+                    except Exception:
+                        pass
+                rows.append({"name": name, "src": "仓库 data/ (本地)", "eps": eps, "frames": frames,
+                             "dims": kinds or "—", "std": "—", "size_gb": round(mb / 1000, 3),
+                             "mtime": time.strftime("%F %T", time.localtime(os.path.getmtime(p))),
+                             "path": p, "kind": "dir", "readable": True, "files": nf})
+        return rows
+
+    def _refresh_data_tab(self):
+        if not hasattr(self, "_data_table"):
             return
-        name = os.path.basename(d)
-        self.log_signal.emit(f"🗑 删除训练结果: {name}")
-        import shutil
-        shutil.rmtree(d, ignore_errors=True)
-        self._refresh_train_results()
+        rows = self._local_data_rows()
+        self._data_rows = rows
+        t = self._data_table
+        t.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            cells = [str(r["name"]), str(r["src"]), str(r["eps"]), str(r["frames"]), str(r["dims"]),
+                     str(r["std"]), f"{r['size_gb']}G" if r["size_gb"] is not None else "—",
+                     str(r["mtime"])]
+            for j, v in enumerate(cells):
+                from PyQt5.QtWidgets import QTableWidgetItem as _IT
+                it = _IT(v)
+                if not r.get("readable") and j == 5:
+                    it.setForeground(Qt.red)
+                t.setItem(i, j, it)
+        self._data_log_msg(f"数据表已刷新: {len(rows)} 项 "
+                           f"(h5 {sum(1 for r in rows if r['kind'] == 'h5')} · "
+                           f"本地目录 {sum(1 for r in rows if r['kind'] == 'dir')})")
+
+    def _selected_data(self):
+        t = getattr(self, "_data_table", None)
+        if t is None or not t.selectionModel() or not t.selectionModel().selectedRows():
+            return None
+        i = t.selectionModel().selectedRows()[0].row()
+        rows = getattr(self, "_data_rows", [])
+        return rows[i] if 0 <= i < len(rows) else None
+
+    def _on_data_row(self):
+        r = self._selected_data()
+        if not r:
+            return
+        extra = f" · 文件数 {r.get('files')}" if r.get("files") else ""
+        self._data_detail.setText(
+            f"<b>{r['name']}</b> <font color='{C_GRAY}'>({r['kind']})</font> · 来源: {r['src']}{extra}<br>"
+            f"路径: <font color='{SYS2_COLOR}'>{r['path']}</font><br>"
+            f"回合 {r['eps']} · 帧 {r['frames']} · 维度 {r['dims']} · "
+            f"帧std {r['std']} · 大小 {r['size_gb']}G · 修改 {r['mtime']}")
+
+    def _open_selected_data(self):
+        r = self._selected_data()
+        if not r:
+            self._data_log_msg("⚠️ 先选中一行数据"); return
+        path = r["path"]
+        if r["kind"] == "h5" or os.path.isfile(path):
+            try:
+                from dataset_viewer import DatasetViewer
+                dlg = DatasetViewer(os.path.basename(path), "", self, local_root=path)
+                dlg.show()
+                self._data_log_msg(f"🎬 打开查看器: {os.path.basename(path)}")
+            except Exception as e:
+                self._data_log_msg(f"❌ 打开失败: {type(e).__name__}: {e}")
+            return
+        # 本地目录: 目录里若有 h5/npz 则交给查看器, 否则开目录
+        import glob as _g
+        hs = _g.glob(os.path.join(path, "*.h5")) + _g.glob(os.path.join(path, "*", "*.h5"))
+        if hs:
+            try:
+                from dataset_viewer import DatasetViewer
+                DatasetViewer(os.path.basename(hs[0]), "", self, local_root=hs[0]).show()
+                self._data_log_msg(f"🎬 打开查看器: {os.path.basename(hs[0])}")
+                return
+            except Exception as e:
+                self._data_log_msg(f"❌ 打开失败: {e}")
+        self._open_selected_dir()
+
+    def _open_selected_dir(self):
+        r = self._selected_data()
+        if not r:
+            self._data_log_msg("⚠️ 先选中一行数据"); return
+        import subprocess as _sp
+        p = r["path"] if r["kind"] == "dir" else os.path.dirname(r["path"])
+        try:
+            _sp.Popen(["xdg-open", p], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            self._data_log_msg(f"📂 打开目录: {p}")
+        except Exception as e:
+            self._data_log_msg(f"❌ 打开目录失败: {e}")
+
+    def _copy_selected_path(self):
+        r = self._selected_data()
+        if not r:
+            self._data_log_msg("⚠️ 先选中一行数据"); return
+        try:
+            from PyQt5.QtWidgets import QApplication as _QA
+            _QA.clipboard().setText(r["path"])
+            self._data_log_msg(f"📋 已复制路径: {r['path']}")
+        except Exception as e:
+            self._data_log_msg(f"❌ 复制失败: {e}")
+
+    def _rebuild_ledger(self):
+        """📇 重建台账: 用 INTACT venv (有 h5py) 跑 tools/zmax_ds_meta.py → 刷新表格。"""
+        import subprocess as _sp
+        py = "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
+        if not os.path.isfile(py):
+            self._data_log_msg(f"⚠️ 找不到 INTACT venv ({py}) → 台账需手动重建"); return
+        try:
+            r = _sp.run([py, os.path.join(self._repo_root(), "tools", "zmax_ds_meta.py")],
+                        capture_output=True, text=True, timeout=900)
+            self._data_log_msg("📇 台账重建完成: " + (r.stdout.strip().splitlines() or ["(无输出)"])[-1])
+            self._refresh_data_tab()
+            if hasattr(self, "_intact_ds_lbl"):
+                self._intact_ds_lbl.setText(self._intact_ds_html())
+        except Exception as e:
+            self._data_log_msg(f"❌ 台账重建失败: {type(e).__name__}: {e}")
 
     def _populate_table(self):
         """填充数据集表格 (2026-08-07 老倪: 控制台全管 — 本地 metaworld 数据集并入)"""
@@ -2180,6 +2396,98 @@ class DatasetModule(SubModuleWidget):
                         "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
                     })
         return rows
+
+    def _open_intact_ds_viewer(self):
+        """🎬 打开数据集查看器: 优先"正在训练"的那个 h5, 否则台账里最新的一个。"""
+        try:
+            import glob as _g3
+            from dataset_viewer import DatasetViewer
+            cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
+                     os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+            target = None
+            for c in cands:
+                if not c:
+                    continue
+                ds_dir = os.path.join(os.path.expanduser(c), "datasets")
+                if not os.path.isdir(ds_dir):
+                    continue
+                hs = sorted(_g3.glob(os.path.join(ds_dir, "zmax_insert*.h5")),
+                            key=os.path.getmtime, reverse=True)
+                if hs:
+                    target = hs[0]
+                    break
+            if target is None:
+                QMessageBox.information(self, "数据集查看器", "没找到 h5 数据集 (需要先跑 tools/zmax_ds_meta.py 所在缓存)")
+                return
+            dlg = DatasetViewer(os.path.basename(target), "", self, local_root=target)
+            dlg.show()
+        except Exception as e:
+            QMessageBox.warning(self, "数据集查看器", f"打开失败: {type(e).__name__}: {e}")
+
+    def _intact_ds_html(self):
+        """🧠 INTACT/域内 h5 数据集台账 (读 zmax_datasets.json; 含真实统计与真图校验)
+
+        兼容 stable_worldmodel 缓存: 依次找 $STABLEWM_HOME → $LOCAL_DATASET_DIR →
+        ~/.stable_worldmodel (swm 官方默认) → ~/stable-wm-cache, 谁的 datasets/ 里有台账就读谁。
+        """
+        try:
+            import glob as _g2
+            import json as _j
+            cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
+                     os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+            jp = cache = None
+            for c in cands:
+                if not c:
+                    continue
+                p = os.path.join(os.path.expanduser(c), "datasets", "zmax_datasets.json")
+                if os.path.exists(p):
+                    jp, cache = p, os.path.expanduser(c)
+                    break
+            if jp is None:
+                return (f"🧠 <b>INTACT / 域内数据集</b>: <font color='{C_YELLOW}'>台账未生成</font>"
+                        f"<br><font color='{C_GRAY}' size='2'>先跑: "
+                        f"/home/ubuntu/INTACT-JEPA/.venv/bin/python tools/zmax_ds_meta.py "
+                        f"(gui-venv 无 h5py, 由 INTACT venv 读 h5 → 写 json; 兼容 "
+                        f"$STABLEWM_HOME / ~/.stable_worldmodel)</font>")
+            d = _j.load(open(jp, encoding="utf-8"))
+            cur_name = ""
+            try:                                  # 当前正在训的数据集 = 最新 ckpt 的 train_config.yaml
+                ck = os.path.join(cache, "checkpoints")
+                cfgs = sorted(_g2.glob(os.path.join(ck, "*", "train_config.yaml")),
+                              key=os.path.getmtime, reverse=True)
+                if cfgs:
+                    txt = open(cfgs[0], encoding="utf-8").read()
+                    import re as _re
+                    m = _re.search(r"name:\s*(\S+\.h5)", txt)
+                    cur_name = (m.group(1).rsplit(".", 1)[0] if m else "")
+            except Exception:
+                pass
+            caches = d.get("caches") or [d.get("cache", cache)]
+            out = [f"🧠 <b>INTACT / 域内数据集</b> "
+                   f"<font color='{C_GRAY}' size='2'>({d.get('count', 0)} 个 · "
+                   f"台账 {d.get('generated', '?')} · 缓存 "
+                   f"{', '.join(os.path.basename(c) for c in caches if c)})</font>"]
+            for r in d.get("datasets", []):
+                if not r.get("readable"):
+                    out.append(f"<font color='{C_GRAY}'>· {r['name']} · {r.get('size_gb')}GB · "
+                               f"⚠️ 读不了 {str(r.get('error', ''))[:60]}</font>")
+                    continue
+                real = r.get("frames_real")
+                okc = C_GREEN if real else C_RED
+                star = " ⬅ 正在训练" if r["name"] == cur_name else ""
+                out.append(
+                    f"· <b>{r['name']}</b>{star} · {r.get('size_gb')}GB · "
+                    f"回合 {r.get('episodes')} · 帧 {r.get('frames')} · "
+                    f"act {r.get('action_dim')}D / obs {r.get('obs_dim')}D · "
+                    f"done {r.get('done_rate') if r.get('done_rate') is not None else '—'} · "
+                    f"帧std {r.get('frame_std_min')}~{r.get('frame_std_max')} "
+                    f"<font color='{okc}'>{'真图✓' if real else '黑帧✗'}</font> · "
+                    f"<font color='{C_GRAY}'>{r.get('purpose', '?')} · {r.get('mtime', '')}</font>")
+            out.append(f"<font color='{C_GRAY}' size='2'>台账路径 {jp} · "
+                       f"由 tools/zmax_ds_meta.py 生成, 点 🔄 重读</font>")
+            return "<br>".join(out)
+        except Exception as e:
+            return f"🧠 INTACT / 域内数据集: <b>读取失败</b> ({e})"
 
     def _get_cache_dir_for_repo(self, repo_id):
         """获取数据集本地缓存路径 (LeRobot/HuggingFace datasets 格式)"""
@@ -3738,6 +4046,16 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         layout.addWidget(log_group, 1)  # stretch=1 让 log 占据大部分空间
         
         # Set content widget in scroll area and add to main layout
+        # 🧠 2026-09-12 老倪: 「训练结果」从数据集管理页**搬到训练台** —— 数据集页只显示数据相关的东西,
+        #   训练产物属于这里。功能保留: 名字/步数/大小/时间 + 🗑 删除 (训练中不可删, 完全可控)。
+        tr_label = QLabel("🧠 训练结果 (outputs/train)")
+        tr_label.setStyleSheet(f"color:{C_CYAN}; font-size:17px; font-weight:700; background:transparent;"
+                               f" border:none; margin-top:10px;")
+        layout.addWidget(tr_label)
+        self._tr_box = QVBoxLayout()
+        layout.addLayout(self._tr_box)
+        self._refresh_train_results()
+
         content_widget.setLayout(layout)
         scroll_area.setWidget(content_widget)
         main_layout.addWidget(scroll_area)
@@ -5164,6 +5482,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             # 跟随控件移动/缩放: 轻量 QTimer 全局同步 (不 monkey-patch 控件事件, 安全)
             try:
                 from PyQt5.QtCore import QTimer as _QTimer
+        # v5.5.26: 🤖 INTACT→L4 继承 + 数据页/画布 数据源层 重构 (2026-09-12) — ①**L4 档新增「🤖 L4 用 INTACT 节点执行」(默认勾选)**: 选 L4 运行时把控制权交给 INTACT 节点 (IntactRuntime+IntactNode → install_direct_act 直驱: 模型动作→env.step, 唯一变换 a_raw=z·std+mean), 日志打印真推理次数/ckpt 真实路径/最后下发动作; 实测 150/150 帧真推理·动作真下发·任务未完成 (与离线判闸一致 MAE≈常数基线·预测std小16倍 ⇒ **模型能力问题非接线问题**, 面板/日志诚实标注; 取消勾选回 L4Demo 90° 全链; L3/L2 档不受影响) ②新增 tools/make_intact_goal_frame.py (目标帧=解析链**真跑成功回合末帧**: done=True 387步/65.1mm/帧std 55.7) + install_direct_act 抽为公用装配器 (GUI 与 CLI 同一代码路径, 防两套实现不一致) ③**数据集页重构为纯数据 UI**: 删「🧠 训练结果 (outputs/train)」段并搬到训练台 Model Engine (功能保留) → 新增「📚 本地数据总表」(stable-wm-cache h5 台账 + 仓库 data/ 本地集, 真实统计/真图校验/来源/大小) + 选中行详情 + 数据操作日志 (只记数据动作) + 浏览/打开目录/复制路径/重建台账 按钮 ④**数据集查看器修复**: 传目录时自适应找 h5 · 帧滑块上限改**真实每回合帧数**(原写死 300/100 = 假值) · 「下一帧」真加载 (含帧缓存/←→键/加载中状态) · 窗口可缩放不裁按钮 (原 setFixedSize 挤掉按钮) · ↕ 上下翻转显示开关 (只改显示, 状态行标注) ⑤**INTACT 标准机器人切换 (数据源层)**: tools/intact_native_robot.py (4 个原生机器人 reacher/pusht/cube/tworoom, paper_runtime + prior_only 口径, 注册表含就位状态) + tools/gui/intact_robot_panel.py (切换面板 + 实况窗: 10fps 帧流/状态条/▶跑一轮) + 画布节点类型 intact_robot/robot_switch (双击开面板) + 工具栏「🤖 INTACT机器人」入口; 选机器人=写 data/intact_robot_state.json (切换节点的当前值) ⑥数据工具: zmax_ds_meta.py 台账 (兼容 swm 缓存路径序 STABLEWM_HOME→LOCAL_DATASET_DIR→~/.stable_worldmodel→~/stable-wm-cache) · h5_frame_reader.py (跨 venv 读真帧, gui-venv 无 h5py) · make_h5_subset.py (流式切 N 回合子集, 实测 36→8 回合结构正确) · intact_parts_to_h5.py (分块合并) · intact_native_worker.py (逐帧实况, 待数据集到齐后校准) ⑦**论文权重评测口径钉死** (实测踩坑记录): 必须在 paper_runtime/ 下跑 (根运行时报 module.InverseTransitionActor 找不到) + 零搜索求解器叫 prior_only (根仓库 direct_solver 与论文 actor 命名不兼容) ⇒ tworoom 100%(6/6) / cube 83.3%(5/6) 零搜索复现 (get_cost_calls=0), 视频存 reports/intact_official/ ⑧域内微调 v2 收尾 (诚实结论): 151,671 帧/3 epoch (动作头权重 1.0/1.0) → 离线判闸 MAE 0.1122→0.0968→0.0974 (常数基线 0.0993), 预测std 始终小 ~16 倍 ⇒ **仍塌在均值附近, 不上闭环**
                 if not getattr(self, "_holo_sync_timer", None):
                     t = __tq(self)
                     t.timeout.connect(self._holo_sync_badges)
@@ -5807,6 +6126,93 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
     def _update_progress(self, value):
         """Update progress bar"""
         self.progress_bar.setValue(value)
+
+
+    # ── 🧠 训练结果 (outputs/train) 管理: 2026-09-12 从数据集管理页搬到训练台 ──
+    def _tr_repo_root(self):
+        if getattr(sys, "frozen", False):
+            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def _tr_log(self, msg):
+        """训练台的日志口 (没有 log_signal 就退化为 print, 不静默丢消息)。"""
+        lg = getattr(self, "log_signal", None)
+        if lg is not None:
+            try:
+                lg.emit(msg)
+                return
+            except Exception:
+                pass
+        print(msg)
+
+    def _refresh_train_results(self):
+        """🧠 列出 outputs/train 全部训练目录 (名字/步数/大小/时间 + 🗑 删除) — 完全可控"""
+        import glob as _g
+        if not hasattr(self, "_tr_box"):
+            return
+        while self._tr_box.count():
+            it = self._tr_box.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+            elif it.layout():
+                sub = it.layout()
+                while sub.count():
+                    s2 = sub.takeAt(0)
+                    if s2.widget():
+                        s2.widget().deleteLater()
+        root = self._tr_repo_root()
+        dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", "*")),
+                      key=os.path.getmtime, reverse=True)
+        if not dirs:
+            lbl0 = QLabel("(outputs/train 下暂无训练产物)")
+            lbl0.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+            self._tr_box.addWidget(lbl0)
+            return
+        for d in dirs[:20]:
+            name = os.path.basename(d)
+            ck = os.path.join(d, "checkpoints")
+            try:
+                _nums = [int(b) for b in os.listdir(ck) if b.isdigit()]
+                steps = max(_nums) if _nums else 0
+            except Exception:
+                steps = 0
+            try:      # docker root 产物权限异常时 getsize 会抛 → 跳过错目录不崩
+                sz = sum(os.path.getsize(os.path.join(r, f))
+                         for r, _, fs in os.walk(d) for f in fs) / 1e6
+            except Exception:
+                sz = 0.0
+            tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
+            row = QHBoxLayout()
+            lbl = QLabel(f"⚙ {name}  ·  {steps} 步  ·  {sz:.0f}MB  ·  {tm}")
+            lbl.setStyleSheet("color:#c9d1d9; font-size:15px; font-family:Consolas;"
+                              " background:transparent; border:none;")
+            row.addWidget(lbl)
+            row.addStretch()
+            btn = QPushButton("🗑")
+            btn.setFixedSize(30, 24)
+            btn.setToolTip(f"删除 {name} (训练中不可删)")
+            btn.setStyleSheet(f"QPushButton {{ background:{C_BG2}; color:#ff6b6b;"
+                              f" border:1px solid {C_BORDER}; border-radius:4px; }}")
+            btn.clicked.connect(lambda _, dd=d: self._delete_train_dir(dd))
+            row.addWidget(btn)
+            self._tr_box.addLayout(row)
+
+    def _delete_train_dir(self, d):
+        """🗑 删除训练目录 (确认后 rm -rf; 训练在跑时拒绝)"""
+        import subprocess as _sp
+        import shutil
+        try:
+            _running = bool(_sp.run(["pgrep", "-f", "lerobot_train"], capture_output=True,
+                                    text=True, timeout=5).stdout.strip())
+        except Exception:
+            _running = False
+        if _running:
+            self._tr_log("⚠️ 训练进行中, 不删除训练目录")
+            return
+        name = os.path.basename(d)
+        self._tr_log(f"🗑 删除训练结果: {name}")
+        shutil.rmtree(d, ignore_errors=True)
+        self._refresh_train_results()
 
 
 class EvalModule(SubModuleWidget):
@@ -9752,7 +10158,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.25 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.26 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -9760,10 +10166,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.25 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.26 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        _QTimer.singleShot(2000, self._maybe_warn)  # v5.5.25: 🎯 ① 来料角随机化 (60~120°) + 试抓头泛化验证 (含诚实边界) — ①`stage_turntable90(target_deg)` + `SS_L4_TT_DEG` + `--tt-deg` (来料角可配) ②探针扩到多来料角 (5 角 × 13 候选 × 2 布局 = 130 次真实试抓): **正确角随来料角移动** (60°→成功区 -90~-15°; 90~105°→-60~0°; +90° 恒败) ③留一角度交叉验证 (`--group-key tt`): 精确最优角命中 1/5, 但**操作性判据 (预测角在实测里真能夹住): argmax P(成功) 5/5 ✅ / argmax 预测Δz 仅 3/5** → 裁决规则改「P(成功) 为主 + 0.25·预测Δz」 ④端到端未见角 tt=72°/108°: ② 试抓头 φ*=-45.3° (27 决策/351 前向/权重 v2) → 真实夹持 Δz≈12mm → 全链 success=True ×2 ⑤**诚实边界**: φ=-45° 在全部 12 个测试来料角下都可行 → 固定 -45° 也能过 ⇒ 现有证据**不足以声称"自适应"** (头 v2 输出恒为 -45.3°, 区分不出"学到万能角"与"学到自适应") — 下一验证条件已明确 (-45 不可行的工况: 更极端长宽比 / 来料姿态+位置组合偏移 / 决策移到插入相位) ⑥新增 `tools/eval_yaw_head_ops.py` (操作性判据核算); 权重 v2 随包 | # v5.5.24: 🎯 yaw 试抓头 (act_dim 4→5, 真实试抓监督) 让 φ* 成为真正最优对准角 + L4 零件改**矩形截面 40×16mm** (真实光模块) — ①根因实测: metaworld 原 30×30mm 方截面件 → 抓/插对 yaw 免疫 (28 次真实试验全成功) = 无最优角; 截面扫描 (tools/rect_sweep.py) 定 40×16mm (抓0°成功 Δz105mm / 抓90° **物理失败**开口不足 / 插入0/90°均成功 → 有区分度且不回退) ② ② 段夹持判据改**真实抬升试探** (原闭夹后无条件建刚性锁→成功恒真=假成功; 现锁之前抬 12mm, 模块随动>6mm 才建锁, 否则真失败中止) ③探针数据集 (tools/yaw_grasp_probe.py, 3布局×13角=39次真实试抓) 成功 12/39, 最优区 φ≈0 (3/3), φ=±90 全败 ④新增 src/lerobot/manifold/yaw_head.py (z7+4D动作+**候选角** = act_dim 4→5) + tools/train_yaw_head.py (留一布局验证: ok_acc 0.949/留一 0.92/0.92/0.85, **预测最优角 3/3 命中实测最优角**) ⑤默认链实测 (seed 0/2/5/7): ② yaw 指令 -0.3° (试抓头决策 13 前向/权重溯源) → 真实夹持 Δz≈12mm → 抬起 0.12m → ③④⑤⑥⑦⑧ 全绿; **脚本固定 +90° 基线 ② 物理失败中止** (角度已 load-bearing) ⑥权重随包 (CI 从 ECS 下载+md5+校验门) | # v5.5.23: 🧠 **L4 默认改用流形预测指令** (老倪: "3D 显示脚本开环 Arm A 不能接受, 必须用真实的流形预测指令") — ①「🧠 流形 yaw 执行」**默认勾选**: L4 演示档 ② 段夹爪偏航角逐帧由流形预测器决策 (每帧真调 WorldModelPredictor(z7+a4→z'→流形6维) → 候选角打分 → φ* → 下发), 3D 面板来源行显示「🧠 yaw 指令来源: 🧠 流形预测器决策」+ φ*/前向次数/trained ②L4 自动视频导出同步带 `--mani-yaw` (视频与 3D 同源, 不再出现"脚本开环"视频) ③脚本开环 Arm A 仅保留为**取消勾选时的对照回退** ④诚实标注保留: v5 预测器在候选编码下代价单调退化 (argmin 落边界) + ② 段 yaw 不 load-bearing (两臂任务结果相同 6/6) — 面板/tooltip 明示, 修打分退化需下阶段 (yaw 入预测器输入) | # v5.5.22: 🧭 (A) 3D 里「yaw 指令来源」可见 — ①画布加「🧠 流形 yaw 执行」勾选 ②3D 面板新增两行: 「yaw 指令来源: 流形预测器决策 / 脚本开环 Arm A / 引擎解析链(无 yaw 维)」+ 下发 yaw xx° · φ*(预测器) xx° · 前向 N 次 trained=xx ③流形预测通道默认开 (SS_MANI_PRED=1): mani_pred 由 0 占位改为真实前向输出, tr 新增 mani_yaw/mani_phi 逐帧真值 ④打包版带真权重 (CI 从 ECS 下载 md5 校验 → --add-data models/ + 校验门) | # v5.5.21: 🧠 L4 夹爪 yaw 指令改由流形预测器决策 (A/B 接线, 默认仍脚本开环) — ①新增 src/lerobot/manifold/yaw_actuator.py: 每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选偏航角打分取代价最小者 (候选-姿态假设编码=残余失配绕z旋转相对几何, 权重重 env SS_MANI_YAW_W_*), 带 slew 限幅; ②gen_l4_demo_video.py 加 --mani-yaw 开关 (Arm B) + 预测器真实加载(权重 models/l4_mani_predictor_v5.pt, trained 标注) + tr 新增 mani_yaw 列 + mani_pred 由 0 占位改为**真实前向输出**; ③tools/ab_mani_yaw.py 同口径 A/B 回归脚本 (3 seed×2 重复); ④实测 A/B: 两臂 **6/6 全成功**, Arm A yaw=+89.4°固定 / Arm B yaw=-44.7°(预测器决策, 前向182次/轮, trained=True), 插入 49.1 vs 49.4mm, η 均 1.0 → **差异仅在 yaw 指令本身, 不在任务结果**; ⑤诚实结论: 该链路 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽), 且 v5 预测器在候选编码下代价单调退化 (实测 +45.3°→-44.7° 代价 0.168→0.0955 单调降 → argmin 恒落边界), 故**不声明增益, 默认档保持脚本开环**; 后续需 (a) yaw 纳入预测器输入/单独训打分头 (b) 决策移到 load-bearing 位置(④试抓/插入相位) ⑥日志证据纠偏: ② 段原写死 "yaw=90°" → 改打印实际下发角+臂别 | # v5.5.20: L4 档干扰动作可见修复 (老倪最高优先级: "L4 没有干扰旋转, 必须渲染出来") — ①根因: L4 档 09-11 改走引擎真链路, 而 metaworld stock XML **无 shell_yaw 关节** → _inject_peg_jitter 的"体壳转90°"是静默 no-op, 物理只转可成功域 ±15° 且发生在第 0 帧之前 = 画面上没有任何旋转动作 (与 L3 无差别) ②修复: L4 档回到 L4Demo 真机构链 (来料转台 tt_yaw 关节 100 帧 0→90° 连续转动 + 光模块随治具同步转 90° + 夹爪绕z姿态适配抓横放模块 + 治具回正 + 标准抓取 + 插入49mm + 拔出56mm + AOI + 光耦合η), 渲染帧与 3D 双可见 (实测 success=True 1641帧 本机复现) ③打包根因: gen_l4_demo_video.py L4_XML / gen_l4_demo_scene.py MW_ASSETS **硬编码 ~/...gui-venv311 路径** → Windows/macOS 打包版一律找不到 L4 场景 XML (无转台/耦合台 = 无干扰机构) → 改 metaworld 包实际位置解析 (frozen _MEIPASS 兼容) ④CI 双平台构建前预生成 L4 场景 XML + 构建后校验 exe/app 内 metaworld assets XML 与 L4 XML 在位 (缺即 fail, 防回归) ⑤ensure_scene frozen 跳过 (sys.executable=app 二进制起新实例坑) ⑥L3 档零改动 | # v5.5.19: Windows/Mac 修复 metaworld XML 资产未打包 (点运行报 does not exist + 无轨迹): --collect-all metaworld/mujoco (原 macOS 生效, Windows 仅在 pip 装包未打进 exe) | # v5.5.8: 3D播放1x物理速度修复(÷800跳帧=5x: 90°旋转0.7s一闪→观感夹爪自己转圈, 插拔段2s快闪不可见; 改÷1500≈真实速度平滑可看清) + 3D夹爪双重旋转修复(jaw位置含yaw又绕wrist再转yaw=位置转2×yaw, 90°时画半圆乱转+静止位错对不上横放模块; 位置改未转±y基准单次转) | # v5.5.6: L4演示收尾崩溃修复(L4Demo np数组判真ValueError→tr还原list, worker防ndarray判真; 用户"L4与L2一样"=演示跑完未进回放实锤) | v5.5.5: L4档位=90°抗干扰演示全链(点L4即见来料转台把光模块转90°) — 插拔闭环修复(转台(0.30,0.30)在Sawyer臂可达区外=④全败根因→(0.42,0.60); 指缝中心对正抓握点; 钉夹改世界系偏移; ①转台90°→②绕z抓横→③治具回正→④标准抓取→⑤插入49mm→⑥拔出→⑦AOI→⑧光耦合η 3/3全绿success) + L4D档并入L4(旧L4D归一) | v5.5.4: 帮助文档修复(静界目录不存在回退docs + L1/L2文件名版本同步 + README断链重建) + L4D演示3D场景设备呈现(转台/压电耦合台按meta绘制, peg/夹爪绕z朝向动画, 转台盘十字刻度随转) + L4演示布局修正(转台0.10,0.60→0.30,0.30 避AOI设备视觉区) | L4 演示场景 抗干扰90°外力旋转+光耦合精密操作 | # v5.5.2: 功能清单 L2/L3/L4 能力档位分级(节点⑤Tab+Excel sheet+网页§0, 数据源 capability_levels.py; L4 增 C09抗干扰/C10流形预测器/C11记忆分层) | # v5.5.1: 记忆分层 BLMA(小脑/海马/额叶三层记忆带+总装记忆中枢+src归位 mem_nodes.py) + L4 抗干扰(拿起前 peg 摆放移位±3.5cm/转向±15° 注入, 多布局 attempts 兜底必达成功) + 流形预测器 v1→v5 训练部署(v5=CY等距正则修复版: 抗干扰 64.6%/clean 43.3%; detach bug 消融实锤) + INTACT 意图直读 0.5ms + L2/L3/L4 三档功能视频 | # v5.5.0: 能力档位radio三档开关(数据源层单击直选/双击循环,档位持久) + 单步/播放按档位过滤执行链(L2不高亮L3/L4行; 开关节点排除执行链不再被单步自动切档) + 流形专家预测器接线前置L4行首(VLM/几何→预测器→接触/性能流形, 引擎io发布预测流形channel) + 🔄重启崩溃修复(真实化引擎abort+线程join, 防mujoco双env并发segfault) + 重启只复位不自动跑 + 引擎cap大小写归一(L4预算×2生效) + 切档重置执行序(L3单步进VLM/ActionHead) + 画布节点字体缩小一档(标题9pt起) + 直方图np漏import修复 | # v5.4.1: JEPA predictor 真实接入流形 (老倪: 写了必须接 — LatentPredictor 原仅节点自检, ContactManifual/PerformanceManifold 不调用): 两流形类注入 predictor + predict_manifold(z,a) (旁路); 真实化引擎每帧真调 LatentPredictor→ManifoldReadout (几何 z R7+动作 → 预测流形 6 维), tr['mani_pred'] 旁路列, trained=False 诚实标注 (随机权重待训练); 验证 R1 seed104 352 步 done 红线不破, mani_pred 352 帧=每帧真调, F5 断点每帧可进 | # v5.4.0: 3D夹取锚定判据v2(抬升试探: 夹爪动+peg真值随动即锚定, 视觉残差不参与夹持后判定 — 09-08 反复夹不起光模块根因; R1 insert 352步×2/full 876步+AOI PASS 确定性恢复) + 肌肉记忆R1视觉禁用(标杆开环重放与视觉随机失配 9/9 失败实锤, SS_MUSCLE=0 同轮 352 成功; R0 确定性保留) + 🧠VLM真实视觉编码(SmolVLM2-500M 本地GPU: 真实渲染帧→960维潜空间z, 节点双击真实前向, 算法归位 smolvla_lew/vlm_encoder.py) + 状态空间 ActionHead(潜空间→4D动作块) + JEPA predictor 入流形域 predictor_layer(LatentPredictor z+a→z' + ManifoldReadout→接触/性能流形6维真值对齐可训练, decoder 拼 ActionHead) + 右键源码映射修复(键对齐+source 全落src, 断点可进) + 流形专家预测器节点(JEPA链路自检) | # v5.3.0: L3全链插拔+AOI闭环接入GUI + 功能清单v2分级 (🚀L3全链13段模式: 插→拔→AOI→放回, R1视觉877步闭环/AOI PASS, ▶运行勾选~20-40s/轮; 功能清单v2: L2🔧/L3🚀/L4🏆 capability_levels 分级+测试对应+ECS网页导出; sim_real教师图像数据集采集器 = smolvla VLA 数据管道; 标定层布局收DiT(引力-斥力-动作)+潜空-流形收L4流形; 原子技能源码集中 src/lerobot/skills; 直方图/归因按probe._seq递增去重修复(probe.clear重置恒1)+仿真波形播放时间轴光标; GUI版本号补同步 5.1.0→5.3.0) | # v5.1.0: 原子技能肌肉记忆(仿小脑) — Windows/macOS 3D 渲染回归修复+真实化视觉闭环打通+全模型训练(①3D渲染回归: v3.3.4 注释 AA_UseSoftwareOpenGL 致 Windows/macOS exe 3D 无法渲染(无硬件GL环境; 3.2.4 全启用正常) → 平台条件启用 win32/darwin 软件GL兜底, Linux GNOME 黑屏修复保留; ②R1视觉"抓不起光模块"根因链5修复: 深度scale 0.978→0.9616(10布局标定)/geom peg_z0取x当z/视觉未检出禁回退真值/幻影免疫+定位状态机(夹爪遮挡锁夹爪)/夹持真值锚定(夹稳后编码器) → seed104 视觉闭环 500步失败→352步 3/3稳定; ③3D显示修复: gripper语义统一夹紧度(metaworld 1=开vs引擎1=闭双源打架→反相) + tr携带现场几何meta(孔口/盒随布局漂移, 3D写死坐标偏3.8cm→插入点对齐); ④全模型训练: 左脑 150ep/9.2万帧(教师40新布局全成功)30K步 / 右脑 147+布局 contact acc0.999 / YOLO真实尺寸标注实验证伪(中心=geom≠pegGrasp控制锚, revert保v1); R0 5/10·R1视觉 3/10 多布局评估, 难布局=物理极限留真机) | # v4.4.0: 真实化重抓策略+固定布局蒸馏管道+3D修复(sim_real 重抓位置策略: 随动验证收紧8mm(20mm漏检真滑10-20mm)+插入段site-推算偏差守卫(>8mm连续3帧=peg夹爪内滑→回接近重抓刷新锁存); R0 site真值实验钉死失败布局=夹持几何物理(真值对齐也插不进: peg头横向偏孔口15.6mm vs 孔间隙2mm, 无倒角刚体); 3D修复: sim.run轨迹补 latent/prior/corrected/residual_vec 向量通道(真实化轨迹喂DreamView3D缺residual_vec KeyError→3D打不开); 蒸馏管道: collect_simreal_teacher_data.py固定布局教师采集→融合110ep→mw4/mw4w 30K重训→学生固定布局 0/8→4/8 追平解析教师(解除R0强解析, 模型真实执行; s102×8加权)) | # v4.3.1: 真实化插入遇阻保护+GUI演示修(3D视图"显示不成功"全链路: GUI真实化写死seed100=已知失败布局→换seed104; 遇阻保护=充分回撤脱离+分级回退(1-2次回转移重新对孔/3次回接近重抓), z对齐收紧4mm→1.2mm, 随动验证3.5cm→2cm, 深夹到位grasp_th0.50才抬; seed100类夹持物理问题3次调参无突破边际收益递减, 101-104稳定) | # v4.2.1: 测试验收全自动化(550/550 全绿 — 原 195 条手动验收全部程序化: manual_auto_map.py 映射注册表 + 17 个 t_auto_* 集成真断言, 可视化类验数据真源/真机类验验收记录在位(缺即FAIL不造假); 终端逐条实时打印 ▶→✅/❌+实测证据+耗时; Excel/网页编号改域码 VIS-01 风格; 修 metaworld reset(seed) 被忽略致同 seed 布局漂移(实锤复现)+ 5 处 or True 摆设断言) | # v4.2.0: 功能清单网页场景化+几何分类统稿(node_func_tree.py 增强向后兼容: FUNC_DOMAINS 21域三字母编号 VIS-01 全110功能注入 + SCENES 5大客户场景注册表(SC-01 FW Loading金手指插拔/SC-02 ATS光纤连接/SC-03老化墙/SC-04上下料/SC-05光耦合主动对准, 量化目标全取自RFP/TECH真值) + GEOM_CLASSES 几何能力三分类 纤维丛框架(LFP局部精细感知30/LFO局部精细操作35/HDM全局高维流形泛化45, hdm_funcs_of_scene 汇总跨本体泛化); gen_web_feature_pages.py 重写五章节(几何总纲/场景↔功能/编号图例/组合链/总表 每功能详细说明+验证方法+5用例逐条展开) 已上线 datadrive.world | # v4.1.0: 技术规格书入库(node_func_tree.py TECH_SPECS 3组12项: ①核心本体·运动控制 Gauge Covariant(极致定位±0.02mm/单模50nm 六维力控亚牛顿 六维力0.5% EtherCAT 1kHz 紧凑高刚性1.6T OSFP) ②复合移动·柔性流转 Locomotion(全向底盘±10mm 移动-操作解耦驻停 双臂10kg·0-2.5m·双孔0.3° 多模态避障) ③智能认知·系统集成 Gauge Symmetry(VLA自进化 周级上线 UPH400·CPK1.67·良率99% EtherCAT/Profinet/Modbus+ESD/IP65) → 量化映射产品作业+支撑功能; GUI Tab4 技术规格书+Excel Sheet7+自动测试报告5b节) + 一键自动测试(Test节点右键⚡: 环境自检→全用例→PDF7章+Excel→scp上传) + RFP需求规格书(Tab3/Sheet6/★否决5项) + 产品作业分级L1刚体基础/L2柔性高级/L3性能扩展+泛化指标G组7断言 + 对话框深色/最大化修复 | v4.0.2: 功能清单按规范场论重构(三层 G1场感知/G2协变操作/G3对称认知 → 22节点 → 110功能(名5~10字) → 550用例; 每功能5用例 auto/semi/manual; 339自动全真实断言 引擎/六层/源码审计 零空转; 模块化组合链 FUNC_CHAINS; 新真源 src/lerobot/verification/node_func_tree.py 注册表+run_tree执行器; CLI --only-node/--list 三级; GUI 树按三层分组+Excel 4sheet 含规范场列; 旧45项FEATURES保留兼容) | v4.0.1: 验证层 Feature/Test 节点交互升级(双击/右键 → 清单对话框: 45项功能分类列 基本29/泛化16 + 模型角色 感知6/世界7/决策4/规划3/安全2/引擎8/平台5/标定3/GUI7, 每项含模型特点; 按钮导出 Excel 含分类统计+测试结果, scp 上传 datadrive.world) + 真实化运行进度可见(每25步周期日志+QTimer轮询增量flush, 修5-9分钟静默误判卡死) + F5调试断点挂起全进程检测提示(只能鼠标动=pydevd断点暂停非故障, 指引放行/删断点) + io_snapshot YOLO未检出诚实标None禁引擎真值顶替(老倪红线) | v4.0.0 大版本: 状态空间三新层+验证体系+真实化(①🧩验证层: src/lerobot/verification 45项feature/35自动化用例, 画布底部 Feature/Test 节点+CLI ss_feature_tests.py; ②标定层三域 引力/斥力/潜空间 LATENT_CALIB(维度/类别/速度场prior_A), 🧮潜空间节点 PCA 实测观测有效维; ③流形导航层(原流形层): 接触流形=插拔测地线通道(切向进度/法向偏离/V), 性能流形=光耦合对准代价(η), 引擎逐帧发布 3 channel → Scope 2x3/总线17模块/元层数据连线; ④▶运行 YOLO 真实采样 detect_3d 断点可进+conf 去 0.99 写死伪装; ⑤标定节点改名 引力/斥力/潜空间; ⑥打包补 calibration/manifold/verification) | v3.4.8: 播放平滑修复(▶运行"卡住"根因: 📡传感器融合节点 execute_node_logic 真跑 YOLO aligner 冷加载 1.6s+ 冻结主线程 → execute_node_logic 加 demo 轻量路径(▶运行播放读 DataWorld 帧展示不重跑重函数, 单步/右键/双击调试仍真实执行断点可进); 播放节奏 80ms×60大步跳 → 30ms/tick 逐引擎步 (305步=305tick≈9s 平滑连续), 节点动画/log/总线按抽稀散布; resize 自动重取景(窗口变化>6% 且用户未手动转视角 → fit 场景撑满放大视口)) | v3.4.7: 3D 世界操作按钮(DreamView3D 绑定画布 module: 左侧「🕹3D世界操作」▶运行=module.start_sim(画布统一入口)/⏹停止/📌窗口置顶toggle/引擎状态轮询300ms按钮联动; 画布▶运行开始把可见3D窗口 raise+activate — 不再被画布覆盖; 无 module 兼容命令行自测) | v3.4.6: DataWorld 逐帧同步(引擎 io_trace 每步全量发布 9模块/23画布节点 I/O → tr逐帧帧序列; ▶运行播放改引擎步线性推进(旧按io快照25步抽1跳帧→3D与画布信号不同步), 3D/数据总线/画布 log 消费同一 DataWorld 游标严格同帧; _ss_tick 每帧广播画布正在执行节点 → 3D「▶画布信号」面板行(set_active_node, Dreamview 模块信号语义); 数据总线静态视图抽稀≤150帧防3万行卡; 播放结束 3D/游标精确落引擎末帧) | v3.4.5: 标定闭环(右键标定表格/标定面板💾保存 = CalibrationLayer.apply_to_engine 精确写回引擎源码字面量: parallel.py Kp/u_clip、cognition.py STAGE_V_CAP/MIN+veto_th/k_fb、state_space_sim.py 校正K/EMA/接触增益/安全限幅/先验A; 引擎 importlib 每次运行重载源码 → 下次▶运行即生效无需重启; 锚点值无关+命中数校验不静默; 镜像写 calibration_layer.py 块约束防 V_MIN key 串写 V_CAP; 修标定表 prior_A 0.95→1.0 与引擎真值对齐) | v3.4.4: 标定层(Drifting Models引力/斥力二分+平衡点, src/lerobot/calibration与datasets/policies同级别, 画布最下层, 右键标定表格21参数可编辑, 回路外不改架构) | v3.4.3: 3D视图↔程序执行状态映射(打开即自动播放 + _ss_tick逐帧推送set_frame, 断点冻结=3D同步停) + 外观质量检测真实化(yolo_3d/quality_check.py AOI图像处理, ss_aoi接真实帧) + _EXTERNAL_LOC全量行号校正(29条0错位: ss_est→AdaptiveStateEstimator类/ss_sched→decide/ss_aoi→AOIQualityChecker双击显示真实源码) + node_ss_s2估计分支补卡尔曼update闭环(原只predict) + debugpy僵尸pydevd占5678→SystemExit:1诊断清理 | v3.4.2: LiveUSB swap 防御落地(overlay 直接 swapon Invalid argument → losetup loop 设备方案, 8G swapfile 实测挂载 + systemd oneshot 开机自启, 禁 ExecStop/swapoff -a 会误杀) | v3.4.1: 卡死诊断经验沉淀(疑似"整机卡死"先 py-spy 判定: GUI 主线程 do_wait_suspend=引擎断点挂起非系统死, 鼠标能动界面全死=断点冻结特征; LiveUSB 无 swap 内存顶满直接冻结, 加 swapfile 防御) | v3.3.5: 画布节点真实执行(VSCode断点三根因: ①open_in_vscode右键重写launch.json覆盖ZMAX_DEBUG_BREAK env→模板写死env+节点名子串过滤 ②状态空间播放帧数<节点数→后排节点永不执行→_ss_tick n_rounds=max ③运行模式自动弹波形/视频置顶窗+断点冻结→关不掉+not responding→运行不弹窗双击才弹) + 节点真实执行(状态空间9节点/双脑/YOLO align/触觉接真实源码, 右键打开源码断点必进, importlib sys.modules注册) | v3.3.4: 状态空间画布三路统一(▶运行/⏭单步/右键运行节点 = 引擎轨迹真实数值 + 节点逻辑真实执行, node_metaworld_data 等注册函数断点可进; step_sim 状态空间分流→_state_space_step, _ss_ensure_trace 公共引擎轨迹, _ss_tick 播放每帧 execute_node_logic)+GNOME/Xorg 黑屏修复(AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下窗口渲染全黑, 该行仅 WSLg 需要已注释) | v3.3.3: VSCode 调试默认 F5=🚀全新调试进程(launch 新实例断点, attach 5678 备用, launch.json 三配置重排+open_in_vscode 生成同步, 补提交 .vscode 配置) | v3.3.1: simulink 工程全面检查(NODE_TYPES三处同步+状态空间闭环豁免+参数语义校验+端口兼容+完整性检查器zmax_integrity_check.py) | v3.3.0: 3D视图二次打开背景丢失修复(pyqtgraph shader全局缓存跨GL上下文失效→只复用不新建+重建去重removeItem)+simulink字体调小一档(192DPI下12pt=32px: 工具栏/终端/画布节点)+节点逻辑/参数/源码窗口最大化按钮修好(Qt.Dialog→Qt.Window类型)+状态空间画布触觉感知补metaworld数据源连线(因果修正) | v3.2.4: exe 内置 MLP 操作视频(mlp_insert_success_final.mp4 + 预抽帧缓存, CI 从 datadrive.world/models/mlp_video_pack.zip 下载后 --add-data 打包; Windows 无 ffmpeg → 播放器直接用预抽帧缓存); gen_insert_video.py 成功后保持画面90步+双输出名 | v3.2.3: Windows/macOS exe 3D 视图打包修复(缺 pyqtgraph/PyOpenGL → CI+Dockerfile.win pip 依赖补 pyqtgraph PyOpenGL + pyinstaller --collect-all pyqtgraph --collect-all OpenGL, 修 3D 视图 No module named 'pyqtgraph'; open_ss_3d 报错分 exe旧版/源码缺依赖) | v3.2.2: 状态空间六层源码打包修复(Windows exe 无 src/ → --add-data 打包 left_right/yolo_3d 源码 + _SS_DIR/_LR_DIR/_YOLO_DIR 多候选探测 env→_MEIPASS→上溯→逐级, 修 AppData\Local\src\... FileNotFoundError) | v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除光模块自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        _QTimer.singleShot(2000, self._maybe_warn)  # v5.5.26: 🎯 ① 来料角随机化 (60~120°) + 试抓头泛化验证 (含诚实边界) — ①`stage_turntable90(target_deg)` + `SS_L4_TT_DEG` + `--tt-deg` (来料角可配) ②探针扩到多来料角 (5 角 × 13 候选 × 2 布局 = 130 次真实试抓): **正确角随来料角移动** (60°→成功区 -90~-15°; 90~105°→-60~0°; +90° 恒败) ③留一角度交叉验证 (`--group-key tt`): 精确最优角命中 1/5, 但**操作性判据 (预测角在实测里真能夹住): argmax P(成功) 5/5 ✅ / argmax 预测Δz 仅 3/5** → 裁决规则改「P(成功) 为主 + 0.25·预测Δz」 ④端到端未见角 tt=72°/108°: ② 试抓头 φ*=-45.3° (27 决策/351 前向/权重 v2) → 真实夹持 Δz≈12mm → 全链 success=True ×2 ⑤**诚实边界**: φ=-45° 在全部 12 个测试来料角下都可行 → 固定 -45° 也能过 ⇒ 现有证据**不足以声称"自适应"** (头 v2 输出恒为 -45.3°, 区分不出"学到万能角"与"学到自适应") — 下一验证条件已明确 (-45 不可行的工况: 更极端长宽比 / 来料姿态+位置组合偏移 / 决策移到插入相位) ⑥新增 `tools/eval_yaw_head_ops.py` (操作性判据核算); 权重 v2 随包 | # v5.5.24: 🎯 yaw 试抓头 (act_dim 4→5, 真实试抓监督) 让 φ* 成为真正最优对准角 + L4 零件改**矩形截面 40×16mm** (真实光模块) — ①根因实测: metaworld 原 30×30mm 方截面件 → 抓/插对 yaw 免疫 (28 次真实试验全成功) = 无最优角; 截面扫描 (tools/rect_sweep.py) 定 40×16mm (抓0°成功 Δz105mm / 抓90° **物理失败**开口不足 / 插入0/90°均成功 → 有区分度且不回退) ② ② 段夹持判据改**真实抬升试探** (原闭夹后无条件建刚性锁→成功恒真=假成功; 现锁之前抬 12mm, 模块随动>6mm 才建锁, 否则真失败中止) ③探针数据集 (tools/yaw_grasp_probe.py, 3布局×13角=39次真实试抓) 成功 12/39, 最优区 φ≈0 (3/3), φ=±90 全败 ④新增 src/lerobot/manifold/yaw_head.py (z7+4D动作+**候选角** = act_dim 4→5) + tools/train_yaw_head.py (留一布局验证: ok_acc 0.949/留一 0.92/0.92/0.85, **预测最优角 3/3 命中实测最优角**) ⑤默认链实测 (seed 0/2/5/7): ② yaw 指令 -0.3° (试抓头决策 13 前向/权重溯源) → 真实夹持 Δz≈12mm → 抬起 0.12m → ③④⑤⑥⑦⑧ 全绿; **脚本固定 +90° 基线 ② 物理失败中止** (角度已 load-bearing) ⑥权重随包 (CI 从 ECS 下载+md5+校验门) | # v5.5.23: 🧠 **L4 默认改用流形预测指令** (老倪: "3D 显示脚本开环 Arm A 不能接受, 必须用真实的流形预测指令") — ①「🧠 流形 yaw 执行」**默认勾选**: L4 演示档 ② 段夹爪偏航角逐帧由流形预测器决策 (每帧真调 WorldModelPredictor(z7+a4→z'→流形6维) → 候选角打分 → φ* → 下发), 3D 面板来源行显示「🧠 yaw 指令来源: 🧠 流形预测器决策」+ φ*/前向次数/trained ②L4 自动视频导出同步带 `--mani-yaw` (视频与 3D 同源, 不再出现"脚本开环"视频) ③脚本开环 Arm A 仅保留为**取消勾选时的对照回退** ④诚实标注保留: v5 预测器在候选编码下代价单调退化 (argmin 落边界) + ② 段 yaw 不 load-bearing (两臂任务结果相同 6/6) — 面板/tooltip 明示, 修打分退化需下阶段 (yaw 入预测器输入) | # v5.5.22: 🧭 (A) 3D 里「yaw 指令来源」可见 — ①画布加「🧠 流形 yaw 执行」勾选 ②3D 面板新增两行: 「yaw 指令来源: 流形预测器决策 / 脚本开环 Arm A / 引擎解析链(无 yaw 维)」+ 下发 yaw xx° · φ*(预测器) xx° · 前向 N 次 trained=xx ③流形预测通道默认开 (SS_MANI_PRED=1): mani_pred 由 0 占位改为真实前向输出, tr 新增 mani_yaw/mani_phi 逐帧真值 ④打包版带真权重 (CI 从 ECS 下载 md5 校验 → --add-data models/ + 校验门) | # v5.5.21: 🧠 L4 夹爪 yaw 指令改由流形预测器决策 (A/B 接线, 默认仍脚本开环) — ①新增 src/lerobot/manifold/yaw_actuator.py: 每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选偏航角打分取代价最小者 (候选-姿态假设编码=残余失配绕z旋转相对几何, 权重重 env SS_MANI_YAW_W_*), 带 slew 限幅; ②gen_l4_demo_video.py 加 --mani-yaw 开关 (Arm B) + 预测器真实加载(权重 models/l4_mani_predictor_v5.pt, trained 标注) + tr 新增 mani_yaw 列 + mani_pred 由 0 占位改为**真实前向输出**; ③tools/ab_mani_yaw.py 同口径 A/B 回归脚本 (3 seed×2 重复); ④实测 A/B: 两臂 **6/6 全成功**, Arm A yaw=+89.4°固定 / Arm B yaw=-44.7°(预测器决策, 前向182次/轮, trained=True), 插入 49.1 vs 49.4mm, η 均 1.0 → **差异仅在 yaw 指令本身, 不在任务结果**; ⑤诚实结论: 该链路 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽), 且 v5 预测器在候选编码下代价单调退化 (实测 +45.3°→-44.7° 代价 0.168→0.0955 单调降 → argmin 恒落边界), 故**不声明增益, 默认档保持脚本开环**; 后续需 (a) yaw 纳入预测器输入/单独训打分头 (b) 决策移到 load-bearing 位置(④试抓/插入相位) ⑥日志证据纠偏: ② 段原写死 "yaw=90°" → 改打印实际下发角+臂别 | # v5.5.20: L4 档干扰动作可见修复 (老倪最高优先级: "L4 没有干扰旋转, 必须渲染出来") — ①根因: L4 档 09-11 改走引擎真链路, 而 metaworld stock XML **无 shell_yaw 关节** → _inject_peg_jitter 的"体壳转90°"是静默 no-op, 物理只转可成功域 ±15° 且发生在第 0 帧之前 = 画面上没有任何旋转动作 (与 L3 无差别) ②修复: L4 档回到 L4Demo 真机构链 (来料转台 tt_yaw 关节 100 帧 0→90° 连续转动 + 光模块随治具同步转 90° + 夹爪绕z姿态适配抓横放模块 + 治具回正 + 标准抓取 + 插入49mm + 拔出56mm + AOI + 光耦合η), 渲染帧与 3D 双可见 (实测 success=True 1641帧 本机复现) ③打包根因: gen_l4_demo_video.py L4_XML / gen_l4_demo_scene.py MW_ASSETS **硬编码 ~/...gui-venv311 路径** → Windows/macOS 打包版一律找不到 L4 场景 XML (无转台/耦合台 = 无干扰机构) → 改 metaworld 包实际位置解析 (frozen _MEIPASS 兼容) ④CI 双平台构建前预生成 L4 场景 XML + 构建后校验 exe/app 内 metaworld assets XML 与 L4 XML 在位 (缺即 fail, 防回归) ⑤ensure_scene frozen 跳过 (sys.executable=app 二进制起新实例坑) ⑥L3 档零改动 | # v5.5.19: Windows/Mac 修复 metaworld XML 资产未打包 (点运行报 does not exist + 无轨迹): --collect-all metaworld/mujoco (原 macOS 生效, Windows 仅在 pip 装包未打进 exe) | # v5.5.8: 3D播放1x物理速度修复(÷800跳帧=5x: 90°旋转0.7s一闪→观感夹爪自己转圈, 插拔段2s快闪不可见; 改÷1500≈真实速度平滑可看清) + 3D夹爪双重旋转修复(jaw位置含yaw又绕wrist再转yaw=位置转2×yaw, 90°时画半圆乱转+静止位错对不上横放模块; 位置改未转±y基准单次转) | # v5.5.6: L4演示收尾崩溃修复(L4Demo np数组判真ValueError→tr还原list, worker防ndarray判真; 用户"L4与L2一样"=演示跑完未进回放实锤) | v5.5.5: L4档位=90°抗干扰演示全链(点L4即见来料转台把光模块转90°) — 插拔闭环修复(转台(0.30,0.30)在Sawyer臂可达区外=④全败根因→(0.42,0.60); 指缝中心对正抓握点; 钉夹改世界系偏移; ①转台90°→②绕z抓横→③治具回正→④标准抓取→⑤插入49mm→⑥拔出→⑦AOI→⑧光耦合η 3/3全绿success) + L4D档并入L4(旧L4D归一) | v5.5.4: 帮助文档修复(静界目录不存在回退docs + L1/L2文件名版本同步 + README断链重建) + L4D演示3D场景设备呈现(转台/压电耦合台按meta绘制, peg/夹爪绕z朝向动画, 转台盘十字刻度随转) + L4演示布局修正(转台0.10,0.60→0.30,0.30 避AOI设备视觉区) | L4 演示场景 抗干扰90°外力旋转+光耦合精密操作 | # v5.5.2: 功能清单 L2/L3/L4 能力档位分级(节点⑤Tab+Excel sheet+网页§0, 数据源 capability_levels.py; L4 增 C09抗干扰/C10流形预测器/C11记忆分层) | # v5.5.1: 记忆分层 BLMA(小脑/海马/额叶三层记忆带+总装记忆中枢+src归位 mem_nodes.py) + L4 抗干扰(拿起前 peg 摆放移位±3.5cm/转向±15° 注入, 多布局 attempts 兜底必达成功) + 流形预测器 v1→v5 训练部署(v5=CY等距正则修复版: 抗干扰 64.6%/clean 43.3%; detach bug 消融实锤) + INTACT 意图直读 0.5ms + L2/L3/L4 三档功能视频 | # v5.5.0: 能力档位radio三档开关(数据源层单击直选/双击循环,档位持久) + 单步/播放按档位过滤执行链(L2不高亮L3/L4行; 开关节点排除执行链不再被单步自动切档) + 流形专家预测器接线前置L4行首(VLM/几何→预测器→接触/性能流形, 引擎io发布预测流形channel) + 🔄重启崩溃修复(真实化引擎abort+线程join, 防mujoco双env并发segfault) + 重启只复位不自动跑 + 引擎cap大小写归一(L4预算×2生效) + 切档重置执行序(L3单步进VLM/ActionHead) + 画布节点字体缩小一档(标题9pt起) + 直方图np漏import修复 | # v5.4.1: JEPA predictor 真实接入流形 (老倪: 写了必须接 — LatentPredictor 原仅节点自检, ContactManifual/PerformanceManifold 不调用): 两流形类注入 predictor + predict_manifold(z,a) (旁路); 真实化引擎每帧真调 LatentPredictor→ManifoldReadout (几何 z R7+动作 → 预测流形 6 维), tr['mani_pred'] 旁路列, trained=False 诚实标注 (随机权重待训练); 验证 R1 seed104 352 步 done 红线不破, mani_pred 352 帧=每帧真调, F5 断点每帧可进 | # v5.4.0: 3D夹取锚定判据v2(抬升试探: 夹爪动+peg真值随动即锚定, 视觉残差不参与夹持后判定 — 09-08 反复夹不起光模块根因; R1 insert 352步×2/full 876步+AOI PASS 确定性恢复) + 肌肉记忆R1视觉禁用(标杆开环重放与视觉随机失配 9/9 失败实锤, SS_MUSCLE=0 同轮 352 成功; R0 确定性保留) + 🧠VLM真实视觉编码(SmolVLM2-500M 本地GPU: 真实渲染帧→960维潜空间z, 节点双击真实前向, 算法归位 smolvla_lew/vlm_encoder.py) + 状态空间 ActionHead(潜空间→4D动作块) + JEPA predictor 入流形域 predictor_layer(LatentPredictor z+a→z' + ManifoldReadout→接触/性能流形6维真值对齐可训练, decoder 拼 ActionHead) + 右键源码映射修复(键对齐+source 全落src, 断点可进) + 流形专家预测器节点(JEPA链路自检) | # v5.3.0: L3全链插拔+AOI闭环接入GUI + 功能清单v2分级 (🚀L3全链13段模式: 插→拔→AOI→放回, R1视觉877步闭环/AOI PASS, ▶运行勾选~20-40s/轮; 功能清单v2: L2🔧/L3🚀/L4🏆 capability_levels 分级+测试对应+ECS网页导出; sim_real教师图像数据集采集器 = smolvla VLA 数据管道; 标定层布局收DiT(引力-斥力-动作)+潜空-流形收L4流形; 原子技能源码集中 src/lerobot/skills; 直方图/归因按probe._seq递增去重修复(probe.clear重置恒1)+仿真波形播放时间轴光标; GUI版本号补同步 5.1.0→5.3.0) | # v5.1.0: 原子技能肌肉记忆(仿小脑) — Windows/macOS 3D 渲染回归修复+真实化视觉闭环打通+全模型训练(①3D渲染回归: v3.3.4 注释 AA_UseSoftwareOpenGL 致 Windows/macOS exe 3D 无法渲染(无硬件GL环境; 3.2.4 全启用正常) → 平台条件启用 win32/darwin 软件GL兜底, Linux GNOME 黑屏修复保留; ②R1视觉"抓不起光模块"根因链5修复: 深度scale 0.978→0.9616(10布局标定)/geom peg_z0取x当z/视觉未检出禁回退真值/幻影免疫+定位状态机(夹爪遮挡锁夹爪)/夹持真值锚定(夹稳后编码器) → seed104 视觉闭环 500步失败→352步 3/3稳定; ③3D显示修复: gripper语义统一夹紧度(metaworld 1=开vs引擎1=闭双源打架→反相) + tr携带现场几何meta(孔口/盒随布局漂移, 3D写死坐标偏3.8cm→插入点对齐); ④全模型训练: 左脑 150ep/9.2万帧(教师40新布局全成功)30K步 / 右脑 147+布局 contact acc0.999 / YOLO真实尺寸标注实验证伪(中心=geom≠pegGrasp控制锚, revert保v1); R0 5/10·R1视觉 3/10 多布局评估, 难布局=物理极限留真机) | # v4.4.0: 真实化重抓策略+固定布局蒸馏管道+3D修复(sim_real 重抓位置策略: 随动验证收紧8mm(20mm漏检真滑10-20mm)+插入段site-推算偏差守卫(>8mm连续3帧=peg夹爪内滑→回接近重抓刷新锁存); R0 site真值实验钉死失败布局=夹持几何物理(真值对齐也插不进: peg头横向偏孔口15.6mm vs 孔间隙2mm, 无倒角刚体); 3D修复: sim.run轨迹补 latent/prior/corrected/residual_vec 向量通道(真实化轨迹喂DreamView3D缺residual_vec KeyError→3D打不开); 蒸馏管道: collect_simreal_teacher_data.py固定布局教师采集→融合110ep→mw4/mw4w 30K重训→学生固定布局 0/8→4/8 追平解析教师(解除R0强解析, 模型真实执行; s102×8加权)) | # v4.3.1: 真实化插入遇阻保护+GUI演示修(3D视图"显示不成功"全链路: GUI真实化写死seed100=已知失败布局→换seed104; 遇阻保护=充分回撤脱离+分级回退(1-2次回转移重新对孔/3次回接近重抓), z对齐收紧4mm→1.2mm, 随动验证3.5cm→2cm, 深夹到位grasp_th0.50才抬; seed100类夹持物理问题3次调参无突破边际收益递减, 101-104稳定) | # v4.2.1: 测试验收全自动化(550/550 全绿 — 原 195 条手动验收全部程序化: manual_auto_map.py 映射注册表 + 17 个 t_auto_* 集成真断言, 可视化类验数据真源/真机类验验收记录在位(缺即FAIL不造假); 终端逐条实时打印 ▶→✅/❌+实测证据+耗时; Excel/网页编号改域码 VIS-01 风格; 修 metaworld reset(seed) 被忽略致同 seed 布局漂移(实锤复现)+ 5 处 or True 摆设断言) | # v4.2.0: 功能清单网页场景化+几何分类统稿(node_func_tree.py 增强向后兼容: FUNC_DOMAINS 21域三字母编号 VIS-01 全110功能注入 + SCENES 5大客户场景注册表(SC-01 FW Loading金手指插拔/SC-02 ATS光纤连接/SC-03老化墙/SC-04上下料/SC-05光耦合主动对准, 量化目标全取自RFP/TECH真值) + GEOM_CLASSES 几何能力三分类 纤维丛框架(LFP局部精细感知30/LFO局部精细操作35/HDM全局高维流形泛化45, hdm_funcs_of_scene 汇总跨本体泛化); gen_web_feature_pages.py 重写五章节(几何总纲/场景↔功能/编号图例/组合链/总表 每功能详细说明+验证方法+5用例逐条展开) 已上线 datadrive.world | # v4.1.0: 技术规格书入库(node_func_tree.py TECH_SPECS 3组12项: ①核心本体·运动控制 Gauge Covariant(极致定位±0.02mm/单模50nm 六维力控亚牛顿 六维力0.5% EtherCAT 1kHz 紧凑高刚性1.6T OSFP) ②复合移动·柔性流转 Locomotion(全向底盘±10mm 移动-操作解耦驻停 双臂10kg·0-2.5m·双孔0.3° 多模态避障) ③智能认知·系统集成 Gauge Symmetry(VLA自进化 周级上线 UPH400·CPK1.67·良率99% EtherCAT/Profinet/Modbus+ESD/IP65) → 量化映射产品作业+支撑功能; GUI Tab4 技术规格书+Excel Sheet7+自动测试报告5b节) + 一键自动测试(Test节点右键⚡: 环境自检→全用例→PDF7章+Excel→scp上传) + RFP需求规格书(Tab3/Sheet6/★否决5项) + 产品作业分级L1刚体基础/L2柔性高级/L3性能扩展+泛化指标G组7断言 + 对话框深色/最大化修复 | v4.0.2: 功能清单按规范场论重构(三层 G1场感知/G2协变操作/G3对称认知 → 22节点 → 110功能(名5~10字) → 550用例; 每功能5用例 auto/semi/manual; 339自动全真实断言 引擎/六层/源码审计 零空转; 模块化组合链 FUNC_CHAINS; 新真源 src/lerobot/verification/node_func_tree.py 注册表+run_tree执行器; CLI --only-node/--list 三级; GUI 树按三层分组+Excel 4sheet 含规范场列; 旧45项FEATURES保留兼容) | v4.0.1: 验证层 Feature/Test 节点交互升级(双击/右键 → 清单对话框: 45项功能分类列 基本29/泛化16 + 模型角色 感知6/世界7/决策4/规划3/安全2/引擎8/平台5/标定3/GUI7, 每项含模型特点; 按钮导出 Excel 含分类统计+测试结果, scp 上传 datadrive.world) + 真实化运行进度可见(每25步周期日志+QTimer轮询增量flush, 修5-9分钟静默误判卡死) + F5调试断点挂起全进程检测提示(只能鼠标动=pydevd断点暂停非故障, 指引放行/删断点) + io_snapshot YOLO未检出诚实标None禁引擎真值顶替(老倪红线) | v4.0.0 大版本: 状态空间三新层+验证体系+真实化(①🧩验证层: src/lerobot/verification 45项feature/35自动化用例, 画布底部 Feature/Test 节点+CLI ss_feature_tests.py; ②标定层三域 引力/斥力/潜空间 LATENT_CALIB(维度/类别/速度场prior_A), 🧮潜空间节点 PCA 实测观测有效维; ③流形导航层(原流形层): 接触流形=插拔测地线通道(切向进度/法向偏离/V), 性能流形=光耦合对准代价(η), 引擎逐帧发布 3 channel → Scope 2x3/总线17模块/元层数据连线; ④▶运行 YOLO 真实采样 detect_3d 断点可进+conf 去 0.99 写死伪装; ⑤标定节点改名 引力/斥力/潜空间; ⑥打包补 calibration/manifold/verification) | v3.4.8: 播放平滑修复(▶运行"卡住"根因: 📡传感器融合节点 execute_node_logic 真跑 YOLO aligner 冷加载 1.6s+ 冻结主线程 → execute_node_logic 加 demo 轻量路径(▶运行播放读 DataWorld 帧展示不重跑重函数, 单步/右键/双击调试仍真实执行断点可进); 播放节奏 80ms×60大步跳 → 30ms/tick 逐引擎步 (305步=305tick≈9s 平滑连续), 节点动画/log/总线按抽稀散布; resize 自动重取景(窗口变化>6% 且用户未手动转视角 → fit 场景撑满放大视口)) | v3.4.7: 3D 世界操作按钮(DreamView3D 绑定画布 module: 左侧「🕹3D世界操作」▶运行=module.start_sim(画布统一入口)/⏹停止/📌窗口置顶toggle/引擎状态轮询300ms按钮联动; 画布▶运行开始把可见3D窗口 raise+activate — 不再被画布覆盖; 无 module 兼容命令行自测) | v3.4.6: DataWorld 逐帧同步(引擎 io_trace 每步全量发布 9模块/23画布节点 I/O → tr逐帧帧序列; ▶运行播放改引擎步线性推进(旧按io快照25步抽1跳帧→3D与画布信号不同步), 3D/数据总线/画布 log 消费同一 DataWorld 游标严格同帧; _ss_tick 每帧广播画布正在执行节点 → 3D「▶画布信号」面板行(set_active_node, Dreamview 模块信号语义); 数据总线静态视图抽稀≤150帧防3万行卡; 播放结束 3D/游标精确落引擎末帧) | v3.4.5: 标定闭环(右键标定表格/标定面板💾保存 = CalibrationLayer.apply_to_engine 精确写回引擎源码字面量: parallel.py Kp/u_clip、cognition.py STAGE_V_CAP/MIN+veto_th/k_fb、state_space_sim.py 校正K/EMA/接触增益/安全限幅/先验A; 引擎 importlib 每次运行重载源码 → 下次▶运行即生效无需重启; 锚点值无关+命中数校验不静默; 镜像写 calibration_layer.py 块约束防 V_MIN key 串写 V_CAP; 修标定表 prior_A 0.95→1.0 与引擎真值对齐) | v3.4.4: 标定层(Drifting Models引力/斥力二分+平衡点, src/lerobot/calibration与datasets/policies同级别, 画布最下层, 右键标定表格21参数可编辑, 回路外不改架构) | v3.4.3: 3D视图↔程序执行状态映射(打开即自动播放 + _ss_tick逐帧推送set_frame, 断点冻结=3D同步停) + 外观质量检测真实化(yolo_3d/quality_check.py AOI图像处理, ss_aoi接真实帧) + _EXTERNAL_LOC全量行号校正(29条0错位: ss_est→AdaptiveStateEstimator类/ss_sched→decide/ss_aoi→AOIQualityChecker双击显示真实源码) + node_ss_s2估计分支补卡尔曼update闭环(原只predict) + debugpy僵尸pydevd占5678→SystemExit:1诊断清理 | v3.4.2: LiveUSB swap 防御落地(overlay 直接 swapon Invalid argument → losetup loop 设备方案, 8G swapfile 实测挂载 + systemd oneshot 开机自启, 禁 ExecStop/swapoff -a 会误杀) | v3.4.1: 卡死诊断经验沉淀(疑似"整机卡死"先 py-spy 判定: GUI 主线程 do_wait_suspend=引擎断点挂起非系统死, 鼠标能动界面全死=断点冻结特征; LiveUSB 无 swap 内存顶满直接冻结, 加 swapfile 防御) | v3.3.5: 画布节点真实执行(VSCode断点三根因: ①open_in_vscode右键重写launch.json覆盖ZMAX_DEBUG_BREAK env→模板写死env+节点名子串过滤 ②状态空间播放帧数<节点数→后排节点永不执行→_ss_tick n_rounds=max ③运行模式自动弹波形/视频置顶窗+断点冻结→关不掉+not responding→运行不弹窗双击才弹) + 节点真实执行(状态空间9节点/双脑/YOLO align/触觉接真实源码, 右键打开源码断点必进, importlib sys.modules注册) | v3.3.4: 状态空间画布三路统一(▶运行/⏭单步/右键运行节点 = 引擎轨迹真实数值 + 节点逻辑真实执行, node_metaworld_data 等注册函数断点可进; step_sim 状态空间分流→_state_space_step, _ss_ensure_trace 公共引擎轨迹, _ss_tick 播放每帧 execute_node_logic)+GNOME/Xorg 黑屏修复(AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下窗口渲染全黑, 该行仅 WSLg 需要已注释) | v3.3.3: VSCode 调试默认 F5=🚀全新调试进程(launch 新实例断点, attach 5678 备用, launch.json 三配置重排+open_in_vscode 生成同步, 补提交 .vscode 配置) | v3.3.1: simulink 工程全面检查(NODE_TYPES三处同步+状态空间闭环豁免+参数语义校验+端口兼容+完整性检查器zmax_integrity_check.py) | v3.3.0: 3D视图二次打开背景丢失修复(pyqtgraph shader全局缓存跨GL上下文失效→只复用不新建+重建去重removeItem)+simulink字体调小一档(192DPI下12pt=32px: 工具栏/终端/画布节点)+节点逻辑/参数/源码窗口最大化按钮修好(Qt.Dialog→Qt.Window类型)+状态空间画布触觉感知补metaworld数据源连线(因果修正) | v3.2.4: exe 内置 MLP 操作视频(mlp_insert_success_final.mp4 + 预抽帧缓存, CI 从 datadrive.world/models/mlp_video_pack.zip 下载后 --add-data 打包; Windows 无 ffmpeg → 播放器直接用预抽帧缓存); gen_insert_video.py 成功后保持画面90步+双输出名 | v3.2.3: Windows/macOS exe 3D 视图打包修复(缺 pyqtgraph/PyOpenGL → CI+Dockerfile.win pip 依赖补 pyqtgraph PyOpenGL + pyinstaller --collect-all pyqtgraph --collect-all OpenGL, 修 3D 视图 No module named 'pyqtgraph'; open_ss_3d 报错分 exe旧版/源码缺依赖) | v3.2.2: 状态空间六层源码打包修复(Windows exe 无 src/ → --add-data 打包 left_right/yolo_3d 源码 + _SS_DIR/_LR_DIR/_YOLO_DIR 多候选探测 env→_MEIPASS→上溯→逐级, 修 AppData\Local\src\... FileNotFoundError) | v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除光模块自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
         self.setMinimumSize(1280, 820)
         self.resize(1400, 900)
         # 🖥 2026-08-25 老倪: UI 重新适配 — 3200x2000 屏上固定 1400x900 只占 27% 面积,

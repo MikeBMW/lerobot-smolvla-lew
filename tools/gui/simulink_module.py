@@ -53,6 +53,9 @@ NODE_TYPES = {
     "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 Model Zoo技术选型报告生成 (2026-08-05 老倪)
     "skill":     {"cn": "原子技能", "color": "#00d4aa"},  # 🧩 原子技能 (2026-08-09 老倪: W²-VLA Token — 拖入画布→连结构条件→SYS1→action)
     "scene":     {"cn": "场景", "color": "#ff9f43"},     # 🏭 场景 (2026-08-09 老倪: 插拔/搬运/光学检测 — 点击打开 ECS 链接 + 建场景节点链)
+    # 🤖 2026-09-12 老倪: INTACT 标准机器人 (数据源层) + 机器人切换节点
+    "intact_robot": {"cn": "INTACT机器人", "color": "#00b4d8"},
+    "robot_switch": {"cn": "机器人切换", "color": "#f0a030"},
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 # 🔍 2026-08-25 老倪: "画布的方框有些小, 方框里面的字太挤, 重新排布一下"
@@ -4456,6 +4459,20 @@ class SimulinkModule(QWidget):
         self.chk_mani_yaw = QCheckBox("🧠 流形 yaw 执行")
         # 🎯 2026-09-11 老倪: "必须用真实的流形预测的指令" → **默认勾选** (L4 档 yaw 由流形预测器发)
         self.chk_mani_yaw.setChecked(True)
+        # 🤖 2026-09-12 老倪: "现在选择 L4 后, 应该切换到 INTACT 节点工作"
+        #   勾选(默认) = L4 档执行交给 **INTACT 节点**: 引擎 SS_INTACT=1 → INTACT 真推理填 u_ff 槽位
+        #   (每 SS_INTACT_EVERY=8 步一次真推理); 不用固定演示。
+        #   诚实标注: 当前域内微调 ckpt 离线判闸**未过** (xyz MAE 0.097 ≈ 常数 0.099 ·
+        #   预测 std 比教师小 ~16 倍 = 动作头仍塌在均值) → 本档大概率跑不完, 属模型能力问题;
+        #   要稳定演示请取消勾选 (回到 L4Demo 90° 全链)。日志打印权重的真实路径以便溯源。
+        self.chk_intact_exec = QCheckBox("🤖 L4 用 INTACT 节点执行")
+        self.chk_intact_exec.setChecked(True)
+        self.chk_intact_exec.setToolTip(
+            "【默认勾选】L4 档把控制权交给 INTACT 节点 (引擎 SS_INTACT=1: INTACT 真推理 → u_ff 槽位,\n"
+            "每 8 步一次真推理; 不再走 L4Demo 固定演示)。\n"
+            "诚实边界: INTACT 域内微调目前未过离线判闸 (MAE≈常数基线, 预测std 小 16 倍) → 本档可能失败,\n"
+            "那是模型能力问题不是接线问题; 取消勾选 = 回到 L4Demo 90° 抗干扰全链。\n"
+            "运行日志会打印「L4 = INTACT 节点工作 · 真推理 N 次 · 权重 <路径>」供溯源。")
         self.chk_mani_yaw.setToolTip(
             "【默认勾选】L4 演示档 ② 段夹爪偏航角由**流形预测器逐帧决策** (Arm B):\n"
             "  每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选角打分取代价最小者下发\n"
@@ -4465,6 +4482,7 @@ class SimulinkModule(QWidget):
             "   且 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽) → 两臂任务结果相同 (6/6);\n"
             "   3D 面板显示「yaw 指令来源 + 下发角 + φ* + 前向次数 + trained」逐帧可核对")
         tl.addWidget(self.chk_mani_yaw)
+        tl.addWidget(self.chk_intact_exec)      # 🤖 2026-09-12: L4 → INTACT 节点执行 (默认勾选)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -4486,6 +4504,15 @@ class SimulinkModule(QWidget):
         self.btn_load = btn_load
         tl.addWidget(btn_save)
         tl.addWidget(btn_load)
+
+        # 🤖 2026-09-12 老倪: 数据源层「机器人切换」入口 — 原项目原生机器人 + 原项目权重 (零搜索)
+        self.btn_intact_robot = mk_btn(
+            "🤖 INTACT机器人",
+            "机器人切换面板: reacher / pusht / cube / tworoom 四个原项目原生机器人 (原项目权重直接驱动, "
+            "零搜索)。切换后写 data/intact_robot_state.json — 画布上的「🤖 INTACT机器人」/「🔀 机器人切换」"
+            "节点双击也会打开本面板",
+            self._open_intact_robot_panel, "#00b4d8")
+        tl.addWidget(self.btn_intact_robot)
 
         # 🎥 录屏 + 💾 保存模型 (工具类, 2026-08-06 老倪: 归类一行)
         self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
@@ -9543,6 +9570,9 @@ class SimulinkModule(QWidget):
             if kind == "3d":
                 self.open_ss_3d()
                 return
+            if kind == "intact_robot_live":        # 🤖 2026-09-12 老倪: INTACT 机器人实况窗
+                self._open_intact_robot_live()
+                return
             if kind in ("hist", "attrib"):
                 from ff_hist_view import FFHistView
                 from ff_attrib_view import FFAttribView
@@ -9611,6 +9641,32 @@ class SimulinkModule(QWidget):
         # (\"双击数据源 → 加载真实模型 rollout\") 对齐, 改走真 rollout
         return self.on_infer_rollout(node or {})
 
+    def _open_intact_robot_live(self):
+        """🖥 画布上的 INTACT 机器人实况窗 (当前机器人 = data/intact_robot_state.json)。
+        真帧来源: 常驻 worker 的实时帧 / 本面板刚跑的 rollout / 官方评测视频。"""
+        try:
+            from intact_robot_panel import LiveViewWindow, read_state
+            rb = read_state().get("robot") or "tworoom"
+            win = LiveViewWindow(rb, self)
+            win.setAttribute(Qt.WA_DeleteOnClose, True)
+            win.show()
+            self._intact_live_win = win
+            self._log(f"🖥 打开 INTACT 机器人实况窗: {rb} (原项目权重 · 原生环境)")
+        except Exception as e:
+            self._log(f"❌ 实况窗打开失败: {type(e).__name__}: {e}")
+
+    def _open_intact_robot_panel(self):
+        """🤖 INTACT 标准机器人切换面板 (数据源层)。非模态, 来自 tools/gui/intact_robot_panel.py。"""
+        try:
+            from intact_robot_panel import IntactRobotPanel
+            dlg = IntactRobotPanel(self)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+            dlg.show()
+            self._intact_robot_dlg = dlg          # 持有引用, 防被 GC
+            self._log("🤖 打开 INTACT 标准机器人切换面板 (原项目权重 · 原生环境 · 零搜索)")
+        except Exception as e:
+            self._log(f"❌ 机器人切换面板打开失败: {type(e).__name__}: {e}")
+
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
@@ -9624,6 +9680,12 @@ class SimulinkModule(QWidget):
         if params.get("viz_kind"):
             self._log(f"🔭 双击可视化节点「{node.get('name', '')}」→ 打开 {params['viz_kind']} 窗口")
             self._open_viz_node(params.get("viz_kind"))
+            return
+        # 🤖 2026-09-12 老倪: INTACT 标准机器人 / 机器人切换节点 → 打开「机器人切换」面板
+        #   (数据源层: 选原项目原生机器人 → 写 data/intact_robot_state.json → 下游节点按它取数据)
+        if node.get("type") in ("intact_robot", "robot_switch") \
+                or "INTACT机器人" in node.get("name", "") or "机器人切换" in node.get("name", ""):
+            self._open_intact_robot_panel()
             return
         # 🌍 物理世界节点 → 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)
         if params.get("state_space") and "物理世界" in node.get("name", ""):
@@ -11167,6 +11229,36 @@ class SimulinkModule(QWidget):
                     _logs.append("🧠 模型执行已开: L3 模型接管 (默认 ckpt) — 与固定演示对比用")
                 else:
                     os.environ.pop("SS_L3", None)
+                # 🤖 2026-09-12 老倪: "现在选择 L4 后, 应该切换到 INTACT 节点工作"
+                #   勾「🤖 L4 用 INTACT 节点执行」(默认) → L4 档不用固定演示, 把控制权交给 INTACT 节点:
+                #   引擎三档 (state_space_sim_real.py:1526) —— SS_INTACT=1 接管 u_ff / SHADOW=1 影子 /
+                #   不设 = 解析链。这里设 SS_INTACT=1 并清 SHADOW, 每 SS_INTACT_EVERY 步一次真推理。
+                #   诚实标注: 域内微调 ckpt 离线判闸未过 (MAE≈常数基线 · 预测std小16倍) → 本档可能失败,
+                #   属模型能力问题; 取消勾选 = 回到 L4Demo 90° 全链 (稳定演示保底)。
+                try:
+                    _cki = getattr(self, "chk_intact_exec", None)
+                    _intact_exec = bool(_cki is not None and _cki.isChecked())
+                except Exception:
+                    _intact_exec = False
+                self._intact_exec_on = _intact_exec      # 供下方装配块读取 (worker 线程不碰 QObject)
+                if _demo_cap and _intact_exec:
+                    os.environ["SS_INTACT"] = "1"
+                    os.environ.pop("SS_INTACT_SHADOW", None)
+                    os.environ.setdefault("SS_INTACT_EVERY", "8")
+                    os.environ.setdefault("INTACT_RUNTIME", "root")
+                    _ckp = os.environ.get("INTACT_POLICY",
+                                          "intact_goal_zmax_v2_s3072/weights_epoch_3.pt")
+                    os.environ["INTACT_POLICY"] = _ckp
+                    os.environ.pop("SS_L3", None)
+                    _demo_cap = False       # 不走固定演示 → INTACT 节点真干活
+                    _logs.append(f"🤖 L4 = INTACT 节点工作: u_ff 槽位由 INTACT 真推理接管 "
+                                 f"(每 {os.environ.get('SS_INTACT_EVERY')} 步一次真推理)")
+                    _logs.append(f"   ├ 权重: {_ckp} · runtime={os.environ.get('INTACT_RUNTIME')} "
+                                 f"· 节点 src/lerobot/manifold/intact_node")
+                    _logs.append("   └ 诚实标注: 该 ckpt 离线判闸未过 (xyz MAE 0.097 ≈ 常数 0.099 · "
+                                 "预测 std 比教师小 ~16 倍) → 本档可能跑不完, 属模型能力问题非接线问题")
+                elif not _demo_cap:
+                    os.environ.pop("SS_INTACT", None)   # 非 L4 档: 清掉, 不影响解析链/L3
                 sim = RealStateSpaceSim(seed=104,
                                         # 🎯 L3 档用 R1 视觉(原样, 老倪明确不动); 
                                         #   L4 改为引擎链路后用 R0 真值 — R1 每帧 YOLO 要 5-9 分钟/轮,
@@ -11180,6 +11272,51 @@ class SimulinkModule(QWidget):
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
                 self._ss_last_sim = sim           # 🔭 可视化层: probe 数据源 (真实化每帧更新)
+                # 🤖 2026-09-12 老倪: "现在选择 L4 后, 应该切换到 INTACT 节点工作"
+                #   真把控制权交给 INTACT 节点: 用**原项目逻辑**直驱 (模型动作 → env.step,
+                #   唯一变换=训练归一化逆变换), 目标帧取解析链完成态 (reports/intact_goal_frame.npy)。
+                #   装配器与 tools/intact_direct_rollout.py 共用 (install_direct_act) — 同一份代码路径,
+                #   不在 GUI 里另写一套 (防"两套实现结果不一致")。
+                _intact_ok = False
+                if str(_cap or "").upper() == "L4" and bool(getattr(self, "_intact_exec_on", False)):
+                    try:
+                        _root = self._repo_root()
+                        _tp = os.path.join(_root, "tools")
+                        if _tp not in sys.path:
+                            sys.path.insert(0, _tp)
+                        import intact_direct_rollout as _idr                      # noqa: PLC0415
+                        from lerobot.manifold.intact_node import (IntactNode,   # noqa: PLC0415
+                                                                  IntactRuntime)
+                        # ⚠️ task 名是原项目运行时的**注册表名**, 不是我们的任务名: 我们的域内 ckpt
+                        #   由 INTACT_POLICY 显式指定 + runtime=root; 用 task="insert" 会被解析成
+                        #   论文的 recovery_delta_full_insert_s3072 (不存在) → trained=False, 零动作。
+                        #   实测可用配置 = 与 tools/intact_direct_rollout.py 一致 (task="pusht")。
+                        _rti = IntactRuntime(task="pusht", device="cpu")             # CPU: 不与训练抢 GPU
+                        _nd = IntactNode(horizon=8, runtime=_rti)
+                        if not getattr(_nd.runtime, "trained", False):
+                            _logs.append(f"❌ INTACT 未就绪 ({getattr(_nd.runtime, 'reason', '?')}) → 保持解析链")
+                        else:
+                            _gf = os.path.join(_root, "reports", "intact_goal_frame.npy")
+                            _stf = os.path.join(_root, "reports", "zmax_action_stats.json")
+                            if not (os.path.isfile(_gf) and os.path.isfile(_stf)):
+                                _logs.append(f"❌ 缺目标帧/归一化统计 "
+                                             f"({os.path.basename(_gf)} / {os.path.basename(_stf)}) → 保持解析链")
+                            else:
+                                _nd.set_goal(np.load(_gf))
+                                _am, _as, _m = _idr.load_stats(_stf)
+                                _rec, _stt = _idr.install_direct_act(sim, _nd, _am, _as, infer_every=1)
+                                sim.attach_intact(_nd, None)
+                                sim._intact_drive = {"node": _nd, "rec": _rec, "state": _stt}
+                                _intact_ok = True
+                                _logs.append("🤖 L4 = INTACT 节点直驱: 每帧「模型动作 → env.step」(无解析控制器)")
+                                _logs.append(f"   ├ 权重 {os.environ.get('INTACT_POLICY')} · "
+                                             f"目标帧 {os.path.basename(_gf)} · 变换 a_raw=z·std+mean (唯一变换)")
+                                _logs.append("   └ 诚实标注: 该 ckpt 离线判闸未过 (MAE≈常数·预测std小16倍) "
+                                             "→ 本档大概率跑不完, 属模型能力问题不是接线问题")
+                    except Exception as _ei:
+                        import traceback
+                        traceback.print_exc()
+                        _logs.append(f"❌ INTACT 直驱装配失败: {type(_ei).__name__}: {_ei} → 保持解析链")
                 # 🎯 2026-09-09 L4 抗干扰 attempts: cap=L4 → 每次 run 自动注入新干扰布局
                 #   (拿起前光模块移位/转向); 失败 (布局死局/未完成) → 换新干扰重试 ≤5 次,
                 #   = 来料重摆语义, 直到任务最终成功 (容忍干扰, 最后完成任务)
@@ -11194,13 +11331,29 @@ class SimulinkModule(QWidget):
                     _aoi = ((tr.get("_meta") or {}).get("aoi_report") or {})
                     _ok = _done and ((_cap or "").lower() != "l4" or sim.mode != "full"
                                      or _aoi.get("ok"))
-                    if _ok or _demo_cap or str(_cap).lower() != "l4" or _attempts >= 5:
+                    if _ok or _demo_cap or _intact_ok or str(_cap).lower() != "l4" or _attempts >= 5:
+                        # 🤖 _intact_ok: INTACT 直驱不做"换干扰重试" (它不是抗干扰演示; 重试 5 次
+                        #   × 600 步 CPU 推理 ≈ 1 小时 → 无意义), 跑一轮就出结果/出结论。
                         if _attempts > 1:
                             _logs.append(f"🎯 L4 抗干扰: 第 {_attempts} 次布局尝试成功 "
                                          f"(来料重摆 {_attempts-1} 次)")
                         break
                     _attempts += 1
                 v = sim._vis
+                # 🤖 INTACT 直驱溯源: 真推理次数 / 错误 / 最终动作 (老倪: 日志须能看出"实际在跑什么")
+                if getattr(sim, "_intact_drive", None):
+                    _std_ = sim._intact_drive["state"]
+                    _da = getattr(sim, "_direct_act", None)
+                    _logs.append(f"🤖 INTACT 直驱统计: 真推理 {_std_['calls']} 次 · "
+                                 f"错误 {_std_['err'] or '无'} · 最后下发动作 "
+                                 f"{np.round(_da, 3).tolist() if _da is not None else '无'}")
+                    _logs.append(f"   └ 插入深度 {round(float(tr['dist'][-1]) * 1000, 1) if tr.get('dist') else '?'}mm "
+                                 f"· done={bool(tr['done'][-1]) if tr.get('done') else None} "
+                                 f"(解析链同种子对照: 成功时 65.1mm/387 步)")
+                    try:
+                        sim._intact_drive["node"].close()
+                    except Exception:
+                        pass
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
                 self._real_tr = ("ok", tr, sim, rate, list(_logs))
             except Exception as _e:

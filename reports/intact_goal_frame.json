@@ -1,0 +1,15 @@
+{
+ "mode": "analytic",
+ "seed": 0,
+ "done": true,
+ "steps": 387,
+ "insert_mm": 65.1,
+ "frame_std": 55.7,
+ "shape": [
+  3,
+  224,
+  224
+ ],
+ "out": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_goal_frame.npy",
+ "why": "解析链跑到任务完成态的末帧 (语义=目标观测), 与直驱脚本同口径"
+}

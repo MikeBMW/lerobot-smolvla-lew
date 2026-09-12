@@ -1172,11 +1172,21 @@ class RealStateSpaceSim:
             # ① 上一拍控制器指令 → metaworld 动作 → 真实物理
             u_vec = getattr(self, "_u_vec", np.zeros(4))
             act = np.zeros(4)
-            act[:3] = np.clip(u_vec[:3] / K_ACT, -1.0, 1.0)
+            # 🎯 2026-09-12 Step 1「模型直驱」: _direct_act 非 None 时, 该值**就是 env 级动作**
+            #   (dx,dy,dz,gripper; ±1 量纲) → 直接 env.step, 不再经 u/K_ACT 换算与夹爪阈值化。
+            #   与原生项目一致: 模型输出 action → env.step(action), 中间没有别的控制器。
+            #   默认 None = 既有行为零改变 (解析链/MLP 路径不受影响)。
+            _dact = getattr(self, "_direct_act", None)
+            if _dact is not None:
+                act = np.clip(np.asarray(_dact, dtype=float).ravel()[:4], -1.0, 1.0)
+            else:
+                act[:3] = np.clip(u_vec[:3] / K_ACT, -1.0, 1.0)
             # 🎯 2026-09-10 重夹窗口 (老倪攻抓取鲁棒性): 滑移时**先重夹**而不是回退。
             #   起因: 回退(→抓取之前)会让 gripper_cmd() 返回 0 = 张爪 → 真掉件 → 死循环。
             #   这里在检测到"peg 在夹爪内缓慢下滑"时, 强制闭合 N 帧让夹爪再咬一次。
-            if getattr(self, "_regrip", 0) > 0:
+            if _dact is not None:
+                pass                       # 直驱: 夹爪值已由模型给出 (act[3] 已赋值, 不再阈值化/重夹)
+            elif getattr(self, "_regrip", 0) > 0:
                 act[3] = GRIP_CLOSE
                 self._regrip -= 1
                 if self._regrip == 0:

@@ -1,0 +1,18 @@
+{
+ "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+ "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+ "n_finite": 18635,
+ "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+ "mean": [
+  -0.007139332597068512,
+  -0.007183539539160135,
+  -0.002103688130771039,
+  0.120300526487178
+ ],
+ "std": [
+  0.15305849460395074,
+  0.07153241744890618,
+  0.11256259314790976,
+  0.7331005658196346
+ ]
+}
