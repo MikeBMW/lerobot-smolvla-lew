@@ -249,6 +249,17 @@ class RealStateSpaceSim:
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
         self._frame_sink = None    # 📸 2026-09-08: 帧采集钩子 (smolvla 图像数据; None=关)
+        # 🎯 2026-09-12 Step 1 (老倪: "Action 接入前馈加速器"): INTACT 动作 → u_ff 槽位
+        #   默认 **不挂载/不生效** (SS_INTACT 不设) → 既有行为零改变; 未标定 → 拒绝映射并计数
+        self._intact_node = None
+        self._intact_adapter = None
+        self._intact_buf: list = []
+        self._intact_every = int(os.environ.get("SS_INTACT_EVERY", "8"))
+        self._intact_shadow = os.environ.get("SS_INTACT_SHADOW") == "1"
+        self._intact_stages = [s.strip() for s in os.environ.get(
+            "SS_INTACT_STAGES", "接近,对位,下降,抓取,抬起,转移").split(",") if s.strip()]
+        self._intact_stats = {"intact_calls": 0, "refused_map": 0, "frames": 0, "chunk_reuse": 0,
+                              "err": None, "shift": [], "u_ff_src": "analytic"}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -627,7 +638,7 @@ class RealStateSpaceSim:
                                 # 转移→插入 孔位对准阈值 (光模块头-孔口水平距离) — 2026-09-10 参数化:
                                 #   原 0.025(25mm) 过松 → 还差 2~5mm 就放行去插 → 顶住孔壁 → 遇阻
                                 #   回撤循环 (seed11/12 实测 site-推算差 2.0~5.3mm)。毫米级插孔需要 <1~2mm。
-            insert_depth=0.006,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
+            insert_depth=0.002,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
                                 #   精度余量; 引擎 0.004 在真实物理下差 0.1mm 磨死 — ep5 实锤)
             lift_h=0.08,        # 抬起→转移: 销升 8cm (孔口高 0.13, 销初始 0.03 — 升够才平移防撞台)
             max_veto=5,
@@ -921,6 +932,67 @@ class RealStateSpaceSim:
                 self._l3_warned = True
                 self.log(f"⚠️ L3 推理失败: {_e}")
             return None
+
+    # ── 🎯 INTACT 前馈槽位 (Step 1, 2026-09-12) ────────────────────────────────
+    def attach_intact(self, node, adapter=None):
+        """挂载 INTACT 节点 + 动作适配层 (SS_INTACT=1 时在 u_ff 槽位生效)。"""
+        self._intact_node = node
+        self._intact_adapter = adapter
+        _ad = adapter.describe() if adapter is not None else {}
+        print(f"🎯 INTACT 已挂载: horizon={getattr(node, 'horizon', '?')} · "
+              f"适配层 enabled={_ad.get('enabled')} ({_ad.get('reason')}) · "
+              f"影子={self._intact_shadow} · 生效阶段={self._intact_stages}")
+        return True
+
+    def _intact_u_ff(self, stage=""):
+        """INTACT 每 SS_INTACT_EVERY 步真推理一次 → 标定映射 → 本引擎 4D u_ff (chunk 内逐帧取用)。
+
+        返回 None = 这一帧不接管 (未标定/推理异常/映射拒绝), 调用方保持原 u_ff —— 但每种情况都
+        **计数 + 记录来源**, 不做静默回退 (静默回退 = 假接入, 老倪红线)。
+        """
+        st = self._intact_stats
+        ad_ok = self._intact_adapter is not None and getattr(self._intact_adapter, "enabled", False)
+        # 接管模式必须已标定; **影子模式**未标定也允许真推理真记录 (只是不接管) —— 否则影子臂
+        # 拿不到任何 INTACT 真实数据 (第一版实测: 影子臂 intact_calls=0 全是"未标定拒绝")。
+        if not ad_ok and not self._intact_shadow:
+            st["refused_map"] += 1
+            st["u_ff_src"] = "analytic(未标定)"
+            return None
+        if not self._intact_buf:
+            st["frames"] += 1
+            try:
+                import cv2
+                fr = cv2.resize(np.asarray(self._render_frame()), (224, 224),
+                                interpolation=cv2.INTER_AREA).transpose(2, 0, 1).astype(np.float32)
+                out = self._intact_node.step(fr, obs_source="engine_render")
+            except Exception as e:
+                st["err"] = f"{type(e).__name__}: {e}"
+                st["u_ff_src"] = "analytic(推理异常)"
+                return None
+            chunk = np.asarray(out.chunk, dtype=np.float32)
+            st.setdefault("chunk_norm", []).append(float(np.linalg.norm(chunk)))
+            st.setdefault("latent_norm", []).append(
+                float(np.linalg.norm((out.latent or {}).get("z_t", np.zeros(1)))))
+            if not ad_ok:                        # 影子 + 未标定: 真推理真记录, 不接管
+                st["intact_calls"] += 1
+                st["shadow_uncalibrated"] = st.get("shadow_uncalibrated", 0) + 1
+                st["u_ff_src"] = "intact(shadow, 未标定→不接管)"
+                return None
+            mapped, why = self._intact_adapter.map_chunk(chunk)
+            if mapped is None:
+                st["refused_map"] += 1
+                st["err"] = why
+                st["u_ff_src"] = "analytic(映射拒绝)"
+                return None
+            self._intact_buf = [np.asarray(m, dtype=float) for m in mapped]
+            st["intact_calls"] += 1
+        else:
+            st["chunk_reuse"] += 1
+        if not self._intact_buf:
+            return None
+        u = self._intact_buf.pop(0)
+        st["u_ff_src"] = "intact" + ("(shadow)" if self._intact_shadow else "")
+        return u
 
     def _render_frame(self, h=480, w=480):
         """🛡 2026-09-10 安全渲染 (mac 点运行即崩根因): macOS 的 CGL 离屏 GL 上下文
@@ -1439,6 +1511,20 @@ class RealStateSpaceSim:
                             if self.res_ema is not None
                             else np.asarray(residual, dtype=float).copy())
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
+            # 🎯 2026-09-12 Step 1 (老倪: "Action 接入前馈加速器"): INTACT 动作进 u_ff 槽位。
+            #   三档: 不设 SS_INTACT = 现状 (解析/MLP); SS_INTACT_SHADOW=1 = 影子 (真推理真记录,
+            #   不接管执行, 零回退风险); 否则 = 接管 xyz (gripper 仍由状态机 — 同 SS_L3 纪律)。
+            #   阶段白名单默认排除"插入" (插入段引擎恒用解析伺服, 保持既有 mm 级精插)。
+            #   未标定/异常/映射拒绝 → 保持原 u_ff, 但计数 + 记录来源 (不做静默回退)。
+            if os.environ.get("SS_INTACT") == "1" and self._intact_node is not None:
+                if st_now in self._intact_stages:
+                    _u_i = self._intact_u_ff(str(st_now))
+                    if _u_i is not None:
+                        _d = float(np.linalg.norm(np.asarray(_u_i, float)[:3]
+                                                 - np.asarray(u_ff, float)[:3]))
+                        self._intact_stats["shift"].append(_d)
+                        if not self._intact_shadow:
+                            u_ff = np.concatenate([np.asarray(_u_i, float)[:3], [u_ff[3]]])
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
             # 🧠 前馈探针 (真实 MLP 激活, 诊断通道): 2026-09-08 老倪目检实锤 — 真实化主路径

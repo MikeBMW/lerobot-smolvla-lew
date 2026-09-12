@@ -1,0 +1,191 @@
+{
+  "meta": {
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "reps": 1,
+    "max_steps": 600,
+    "device": "cpu",
+    "elapsed_s": 189.8,
+    "arms": {
+      "A_analytic": {},
+      "B_shadow": {
+        "SS_INTACT": "1",
+        "SS_INTACT_SHADOW": "1"
+      },
+      "C_intact": {
+        "SS_INTACT": "1"
+      }
+    },
+    "verdict": "⚠️ C 臂**未真正接管** (INTACT 调用 0 次 · 拒绝映射 1172 次) → 本轮只证明「管线通 + 守卫生效」, **不构成「接管不回退」的证据** (接管前提=标定通过)",
+    "note": "INTACT 走 engine_render 真渲染帧; 零搜索 candidate_sequences=0; gripper 仍由状态机 (同 SS_L3 纪律)"
+  },
+  "summary": {
+    "A_analytic": {
+      "success": 1,
+      "n": 3,
+      "steps_mean": 526.3,
+      "intact_calls_mean": 0,
+      "refused_map_total": 0,
+      "shadow_uncalibrated_total": 0,
+      "chunk_norm_mean": null
+    },
+    "B_shadow": {
+      "success": 1,
+      "n": 3,
+      "steps_mean": 527,
+      "intact_calls_mean": 390.7,
+      "refused_map_total": 0,
+      "shadow_uncalibrated_total": 1172,
+      "chunk_norm_mean": 2.5583
+    },
+    "C_intact": {
+      "success": 1,
+      "n": 3,
+      "steps_mean": 527,
+      "intact_calls_mean": 0,
+      "refused_map_total": 1172,
+      "shadow_uncalibrated_total": 0,
+      "chunk_norm_mean": null
+    }
+  },
+  "rows": [
+    {
+      "arm": "A_analytic",
+      "seed": 0,
+      "rep": 0,
+      "done": true,
+      "steps": 379,
+      "intact_calls": 0,
+      "refused_map": 0,
+      "shadow_uncalibrated": 0,
+      "chunk_norm_mean": null,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "analytic",
+      "insert_mm": 65.3
+    },
+    {
+      "arm": "A_analytic",
+      "seed": 1,
+      "rep": 0,
+      "done": false,
+      "steps": 600,
+      "intact_calls": 0,
+      "refused_map": 0,
+      "shadow_uncalibrated": 0,
+      "chunk_norm_mean": null,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "analytic",
+      "insert_mm": 7.8
+    },
+    {
+      "arm": "A_analytic",
+      "seed": 2,
+      "rep": 0,
+      "done": false,
+      "steps": 600,
+      "intact_calls": 0,
+      "refused_map": 0,
+      "shadow_uncalibrated": 0,
+      "chunk_norm_mean": null,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "analytic",
+      "insert_mm": 23.4
+    },
+    {
+      "arm": "B_shadow",
+      "seed": 0,
+      "rep": 0,
+      "done": true,
+      "steps": 381,
+      "intact_calls": 263,
+      "refused_map": 0,
+      "shadow_uncalibrated": 263,
+      "chunk_norm_mean": 3.6114,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "intact(shadow, 未标定→不接管)",
+      "insert_mm": 65.2
+    },
+    {
+      "arm": "B_shadow",
+      "seed": 1,
+      "rep": 0,
+      "done": false,
+      "steps": 600,
+      "intact_calls": 312,
+      "refused_map": 0,
+      "shadow_uncalibrated": 312,
+      "chunk_norm_mean": 2.0307,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "intact(shadow, 未标定→不接管)",
+      "insert_mm": 7.8
+    },
+    {
+      "arm": "B_shadow",
+      "seed": 2,
+      "rep": 0,
+      "done": false,
+      "steps": 600,
+      "intact_calls": 597,
+      "refused_map": 0,
+      "shadow_uncalibrated": 597,
+      "chunk_norm_mean": 2.0329,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "intact(shadow, 未标定→不接管)",
+      "insert_mm": 23.4
+    },
+    {
+      "arm": "C_intact",
+      "seed": 0,
+      "rep": 0,
+      "done": true,
+      "steps": 381,
+      "intact_calls": 0,
+      "refused_map": 263,
+      "shadow_uncalibrated": 0,
+      "chunk_norm_mean": null,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "analytic(未标定)",
+      "insert_mm": 65.2
+    },
+    {
+      "arm": "C_intact",
+      "seed": 1,
+      "rep": 0,
+      "done": false,
+      "steps": 600,
+      "intact_calls": 0,
+      "refused_map": 312,
+      "shadow_uncalibrated": 0,
+      "chunk_norm_mean": null,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "analytic(未标定)",
+      "insert_mm": 7.8
+    },
+    {
+      "arm": "C_intact",
+      "seed": 2,
+      "rep": 0,
+      "done": false,
+      "steps": 600,
+      "intact_calls": 0,
+      "refused_map": 597,
+      "shadow_uncalibrated": 0,
+      "chunk_norm_mean": null,
+      "err": null,
+      "shift_mean": null,
+      "u_ff_src": "analytic(未标定)",
+      "insert_mm": 23.4
+    }
+  ]
+}
