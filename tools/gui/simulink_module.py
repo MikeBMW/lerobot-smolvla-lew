@@ -65,6 +65,98 @@ COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 #   放大到 280x110 + 每行按新宽度自动重排拉开间距 (_relayout_row_gaps)。
 DH = 110  # 节点高度 (84→110: 标题最多三行 + 上下留白)
 DW = 280  # 节点默认宽度 (240→280: 可用宽 204→228, 字不再贴徽章)
+# 🎨 2026-09-12 老倪: 「整个状态空间的节点 UI 统一优化 (字号/字数/不挤不裁)」——
+#   实测根因: 所有节点文字都写 QFont("Arial", ...), 而本机 Arial **不存在** → Qt 解析成
+#   Liberation Sans (只有西文字形) → 中文逐字回退到别的字体 ⇒ 同一行里中西文粗细/行高不一致,
+#   加上标题 9→8→7 逐节点自适应降字号 ⇒ 观感"大小不一/挤/显示不全"。
+#   统一规格 (全画布一致, 不再逐节点变): 统一字体族 + 固定字号 + 固定行数 + 超出省略号(+悬停显示全名)
+NODE_FONT = "Noto Sans CJK SC"   # 统一字体族 (实测本机可用, 中英度量一致; 缺则 Qt 回退系统默认)
+NODE_TITLE_PT = 9                # 标题固定 9pt Bold (取消 9/8/7 自适应)
+NODE_SUB_PT = 8                  # 次要文字固定 8pt
+NODE_PAD_L = 14                  # 标题左内边距
+NODE_PAD_R = 56                  # 标题右内边距 (给状态徽章留位)
+NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行省略号, 悬停看全名) 
+
+
+def _node_font(pt, bold=False):
+    """统一节点字体 (族名固定; 装不上时回退系统默认, 不再出现"Arial→Liberation"错配)。"""
+    f = QFont(NODE_FONT, pt)
+    f.setBold(bool(bold))
+    return f
+
+
+def _wrap_title(text, fm, avail, max_lines=NODE_TITLE_LINES):
+    """标题统一折行: 先按空格/·/()/符号断词, 再按字符填; 超出 max_lines →
+    返回 (lines, True) 由调用方给最后一行加省略号 (不再静默裁掉尾部字)。
+    返回值: (lines: list[str], truncated: bool)
+    """
+    text = str(text or "")
+    if avail <= 20 or not text:
+        return [text], False
+    if fm.horizontalAdvance(text) <= avail:
+        return [text], False
+    parts = (text.replace("·", " · ").replace("(", " ( ").replace(")", " ) ")
+                 .replace("+", " + ").replace("-", " - ").replace("/", " / ")
+                 .replace("：", " ： ").replace("，", " ， ")).split()
+    lines, cur = [], ""
+    for pt in (parts or [text]):
+        trial = (cur + " " + pt).strip()
+        if fm.horizontalAdvance(trial) <= avail or not cur:
+            cur = trial
+            continue
+        lines.append(cur)
+        cur = pt
+        if len(lines) >= max_lines:
+            break
+    if cur:
+        lines.append(cur)
+    if len(lines) <= max_lines and all(fm.horizontalAdvance(x) <= avail for x in lines):
+        return lines, False
+    # 按字符重排 (中文无空格) — 仍然只保留 max_lines 行
+    lines, cur = [], ""
+    for ch in text:
+        if fm.horizontalAdvance(cur + ch) <= avail or not cur:
+            cur += ch
+        else:
+            lines.append(cur)
+            cur = ch
+            if len(lines) >= max_lines:
+                break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    truncated = "".join(lines) != text
+    if truncated:
+        last = fm.elidedText(text[len("".join(lines[:-1])):], Qt.ElideRight,
+                             avail) if lines else fm.elidedText(text, Qt.ElideRight, avail)
+        lines = lines[:-1] + [last] if lines else [last]
+    return lines[:max_lines], truncated
+
+def autofit_node_width(node, max_w=380):
+    """🎨 2026-09-12 老倪「不裁字」: 按统一字号把节点宽度撑到"名字放得下"。
+
+    规则 (与绘制同一套度量, 所以撑过的框一定装得下):
+      · 单行放得下 → 不动; 需要更宽但 ≤max_w → 直接撑到单行宽 (最整齐)
+      · 单行超 max_w → 撑到"两行放得下"的宽度 (两行是标题上限)
+    返回 True = 改过宽度 (调用方用于统计/日志)。
+    """
+    try:
+        from PyQt5.QtGui import QFontMetrics as _FM
+        fm = _FM(_node_font(NODE_TITLE_PT, True))
+    except Exception:
+        return False
+    name = str(node.get("name") or "")
+    if not name or node.get("type") == "row_bg":
+        return False
+    w = int(node.get("w") or DW)
+    need1 = fm.horizontalAdvance(name) + NODE_PAD_L + NODE_PAD_R
+    if need1 <= w:
+        return False
+    if need1 <= max_w:
+        node["w"] = int(max(DW, need1))
+    else:
+        node["w"] = int(max(DW, min(max_w, need1 // 2 + NODE_PAD_L + NODE_PAD_R + 24)))
+    return True
+
 
 # 🎯 状态空间变量监控 → 画布连线映射 (2026-08-20 老倪: 选中右侧变量高亮对应连线)
 # 键 = state_space_sim.last_io 的模块名, 值 = state_space_obs.json 节点的 name
@@ -2660,30 +2752,24 @@ class SimNodeItem(QGraphicsObject):
             # 🐛 2026-08-22 老倪: 7pt≈28px 比节点标题(9pt)还小 → 升回 9pt; 15pt在192DPI≈50px太大
             # 🐛 2026-08-28 老倪"字体大": 12→10 起, 下限 9→8
             # 🐛 2026-09-09 老倪"还是大, 挤": 10→9 起, 下限 8→7
-            fs = 9
-            while fs >= 7:
-                painter.setFont(QFont("Arial", fs, QFont.Bold))
-                fm = painter.fontMetrics()
-                if fm.horizontalAdvance(name) <= avail_w:
-                    break
-                fs -= 1
-            line1, line2 = name, ""
-            if fm.horizontalAdvance(name) > avail_w:
-                # 9→6 仍超 → 按空格/+/-/符号拆两行 (每行再自适应)
-                parts = (name.replace("(", " ( ").replace(")", " ) ")
-                            .replace("+", " + ").replace("-", " - ").split())
-                line1, line2 = "", ""
-                for pt in parts:
-                    trial = (line1 + " " + pt).strip()
-                    if fm.horizontalAdvance(trial) <= avail_w or not line1:
-                        line1 = trial
-                    else:
-                        line2 = (line2 + " " + pt).strip()
-            if line1 and line2:
-                painter.drawText(QRectF(8, h / 2 - 24, _aw, 24), Qt.AlignVCenter | Qt.AlignLeft, line1)
-                painter.drawText(QRectF(8, h / 2 + 2, _aw, 24), Qt.AlignVCenter | Qt.AlignLeft, line2)
+            # 🎨 2026-09-12 老倪: 统一规格 — 固定 9pt Bold + 最多两行 + 省略号 (原 9→7 自适应 = 大小不一)
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            fm = painter.fontMetrics()
+            _bg_lines, _bg_trunc = _wrap_title(name, fm, avail_w)
+            try:
+                if _bg_trunc:
+                    self.setToolTip(f"{name}\n(背景行放不下, 显示已省略)")
+            except Exception:
+                pass
+            if len(_bg_lines) > 1:
+                _lh = fm.height() + 1
+                _yy = h / 2 - _lh
+                for _i, _ln in enumerate(_bg_lines):
+                    painter.drawText(QRectF(8, _yy + _i * _lh, _aw, _lh),
+                                     Qt.AlignVCenter | Qt.AlignLeft, _ln)
             else:
-                painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
+                painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft,
+                                 (_bg_lines or [name])[0])
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
             painter.setFont(QFont("Arial", 8))
@@ -2770,19 +2856,20 @@ class SimNodeItem(QGraphicsObject):
                     painter.setBrush(QColor("#ffd700"))
                     painter.drawEllipse(QPointF(_cx + 8, 37), 2.8, 2.8)
                 painter.setPen(QColor("#e6edf3") if _on else QColor("#8b949e"))
-                painter.setFont(QFont("Arial", 9, QFont.Bold if _on else QFont.Normal))
+                painter.setFont(_node_font(NODE_TITLE_PT, bold=bool(_on)))
                 painter.drawText(QRectF(_cx + 20, 28, _cw - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, _k)
-                painter.setFont(QFont("Arial", 8))
+                painter.setFont(_node_font(NODE_SUB_PT))
                 painter.setPen(QColor("#8b949e"))
                 painter.drawText(QRectF(_cx + 20, 44, _cw - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, _kd)
-            # desc (当前档说明, 底部小字)
-            painter.setFont(QFont("Arial", 8))
+            # desc (当前档说明, 底部小字) — 统一 8pt + 省略号 (不越框)
+            painter.setFont(_node_font(NODE_SUB_PT))
             painter.setPen(QColor("#8b949e"))
             _capdesc = {"L2": "基础: 插装即完成 (insert 8段)",
                         "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
                         "L4": "L4 抗干扰 90°: 来料转90°→绕z抓横→回正→插拔→AOI→光耦合 (全真物理)"}.get(_cap_cur, "")
-            painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16),
-                             Qt.AlignVCenter | Qt.AlignLeft, _capdesc)
+            _cfm = painter.fontMetrics()
+            painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16), Qt.AlignVCenter | Qt.AlignLeft,
+                             _cfm.elidedText(_capdesc, Qt.ElideRight, self.w - 24))
             return
         # 标题 (统一 9pt Bold, 超宽拆两行完整显示, 垂直居中 — 不截断/不逐节点降字号)
         # 🐛 2026-08-22 老倪: 原 9→8→7 逐节点降字号导致"大小不一", elidedText 截断"显示不全",
@@ -2792,57 +2879,40 @@ class SimNodeItem(QGraphicsObject):
         # 2026-08-25 老倪"字太挤": 右留 52px (原 36 → 字贴徽章), 允许拆到三行 (原最多两行硬塞)
         # 🐛 2026-08-28 老倪"字体大, 挤": 12/11/10 → 10/9/8 (192DPI 下 32px→27px)
         # 🐛 2026-09-09 老倪"还是大, 挤": 10/9/8 → 9/8/7 (27px→24px)
-        avail = max(40, self.w - 52)
-        line1, line2 = name, ""
-        for _fs in (9, 8, 7):
-            painter.setFont(QFont("Arial", _fs, QFont.Bold))
-            fm = painter.fontMetrics()
-            if fm.horizontalAdvance(name) <= avail:
-                line1, line2 = name, ""
-                break
-            # 按空格/符号拆词
-            parts = name.replace("·", " · ").replace("(", " ( ").replace(")", " ) ").split()
-            w1, w2 = "", ""
-            for pt in parts:
-                trial = (w1 + " " + pt).strip()
-                if fm.horizontalAdvance(trial) <= avail or not w1:
-                    w1 = trial
-                else:
-                    w2 = (w2 + " " + pt).strip()
-            if fm.horizontalAdvance(w2) <= avail and fm.horizontalAdvance(w1) <= avail:
-                line1, line2 = w1, w2
-                break
-            # 词拆失败 (中文无空格) → 按字符逐行填 (最多三行, 原来只有两行 → 长名字硬挤)
-            lines, cur = [], ""
-            for ch in name:
-                if fm.horizontalAdvance(cur + ch) <= avail or not cur:
-                    cur += ch
-                else:
-                    lines.append(cur)
-                    cur = ch
-                    if len(lines) == 3:
-                        break
-            if cur and len(lines) < 3:
-                lines.append(cur)
-            line1 = lines[0] if lines else name
-            line2 = "\n".join(lines[1:]) if len(lines) > 1 else ""
-            if len(lines) <= 3 and all(fm.horizontalAdvance(x) <= avail for x in lines):
-                break
-        disp = (line1 + "\n" + line2) if line2 else line1
+        # 🎨 2026-09-12 老倪: 标题统一规格 —— 固定 9pt Bold + 最多两行 + 超出省略号 + 悬停看全名
+        #   (原实现: 逐节点 9→8→7 自适应降字号 → 大小不一; 无省略号 → 尾部字被静默裁掉=显示不全)
+        avail = max(40, self.w - NODE_PAD_R)
+        painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+        _fm = painter.fontMetrics()
+        _lines, _trunc = _wrap_title(name, _fm, avail)
+        disp = "\n".join(_lines)
+        try:      # 省略号时用 tooltip 补全 (鼠标悬停即可看到完整节点名)
+            if _trunc:
+                self.setToolTip(f"{name}\n(节点框放不下, 显示已省略)")
+            elif str(self.toolTip() or "").startswith(name):
+                self.setToolTip("")
+        except Exception:
+            pass
+        _draw_lines = _lines if _lines else [name]
         if params.get("video"):
-            # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明)
-            painter.setFont(QFont("Arial", 9, QFont.Bold))
+            # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明) — 统一 9pt + 省略号, 不压到画面
+            painter.setPen(QColor(pal["title"]))
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            _fm2 = painter.fontMetrics()
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             disp.replace("\n", " "))
+                             _fm2.elidedText(name, Qt.ElideRight, self.w - 12))
         else:
             _gfx = t in ("yolo_gate", "train_gate", "mode_switch", "switch", "coord_overlay")
-            if _gfx:
-                # 有 checkbox/端口图形: 标题在上部 (下部留给图形)
-                painter.drawText(QRectF(14, 8, self.w - 56, 24), Qt.AlignVCenter | Qt.AlignLeft, disp)
-            else:
-                # 普通节点: 标题垂直居中 + 四周留白 (2026-08-25: 原来贴着框边和徽章, 视觉上"挤")
-                painter.drawText(QRectF(14, 10, self.w - 56, self.h - 26),
-                                 Qt.AlignVCenter | Qt.AlignLeft, disp)
+            painter.setPen(QColor(pal["title"]))
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            _fm2 = painter.fontMetrics()
+            _lh = _fm2.height() + 1                     # 固定行高 (字号固定 → 行距一致, 不再挤)
+            _top, _box_h = (8.0, self.h - 16.0) if _gfx else (10.0, self.h - 26.0)
+            _n = len(_draw_lines)
+            _y0 = _top + max(0.0, (_box_h - _n * _lh) / 2.0)     # 多行也垂直居中
+            for _i, _ln in enumerate(_draw_lines):
+                painter.drawText(QRectF(NODE_PAD_L, _y0 + _i * _lh, self.w - NODE_PAD_R, _lh),
+                                 Qt.AlignVCenter | Qt.AlignLeft, _ln)
         # 🎥 2026-08-18: 画布内嵌视频帧 — 操作视频节点 (视频画面画在节点主体内)
         if self.video_pixmap is not None and not self.video_pixmap.isNull():
             try:
@@ -5236,6 +5306,10 @@ class SimulinkModule(QWidget):
             "actions": [],
         }
         self.nodes.append(node)
+        try:      # 🎨 2026-09-12: 新节点也按统一字号撑到不裁字
+            autofit_node_width(node)
+        except Exception:
+            pass
         item = SimNodeItem(node, self)
         self._items[node["id"]] = item
         self.canvas._scene.addItem(item)
@@ -7030,8 +7104,19 @@ class SimulinkModule(QWidget):
             if node.get("type") != "row_bg":
                 _w = node.get("w") or 0
                 _h = node.get("h") or 0
-                node["w"] = max(_w, 240)
+                node["w"] = max(_w, DW)      # 🎨 2026-09-12: 240→DW(280), 与统一字号配套
                 node["h"] = max(_h, DH)
+                # 🎨 2026-09-12 老倪「不裁字」: 名字放不下就按统一字号把框撑到放得下 (≤380px)
+                try:
+                    _before = node["w"]
+                    if autofit_node_width(node):
+                        _fit_n = getattr(self, "_autofit_n", 0) + 1
+                        self._autofit_n = _fit_n
+                        self._autofit_log = getattr(self, "_autofit_log", [])
+                        if len(self._autofit_log) < 6:
+                            self._autofit_log.append(f"{node.get('name','')[:16]}: {_before}→{node['w']}px")
+                except Exception:
+                    pass
             else:
                 node.setdefault("w", 240)
                 node.setdefault("h", DH)
