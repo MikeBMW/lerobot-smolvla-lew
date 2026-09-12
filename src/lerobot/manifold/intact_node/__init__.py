@@ -6,6 +6,7 @@
 """
 from .contracts import (DEFAULT_FEATURE_LAYOUT, FEATURE_LAYOUTS, HISTORY_SIZE, IMG_SIZE,
                         IntactInput, IntactOutput, build_info_dict, zero_action_history)
+from .action_adapter import IntactActionAdapter
 from .data_source import (L4EpisodeSource, OfficialIntactSource, download_intact_dataset,
                           registry)
 from .model_adapter import IntactRuntime
@@ -18,4 +19,5 @@ __all__ = [
     "registry", "L4EpisodeSource", "OfficialIntactSource", "download_intact_dataset",
     "IntactInput", "IntactOutput", "build_info_dict", "zero_action_history",
     "HISTORY_SIZE", "IMG_SIZE", "FEATURE_LAYOUTS", "DEFAULT_FEATURE_LAYOUT",
+    "IntactActionAdapter",
 ]

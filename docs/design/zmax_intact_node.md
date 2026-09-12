@@ -73,3 +73,36 @@
   直接迁移到我们的 metaworld 插拔场景 **不可能零样本成功** → S3 必须重训/微调 (其代码支持 `--task` 单任务训练与多任务共享编码器训练)。
 - 节点在权重缺失时**必须**标 `trained=False` 并给直通/零动作, 不许冒充已训练 (与仓库既有纪律一致)。
 - 真机输出接口在未接硬件前**只**允许接 `SimRobotIO`; 任何写死的"成功"一律视为不合格。
+
+## 7. Step 0 实施记录 (2026-09-12, 老倪拍板顺序: ①先出 action 屏蔽流形 ②再接流形)
+
+**目标**: 把"潜空间接出来"做成事实, 并解决**真实性前置**——引擎真实渲染帧喂节点 (原来
+`l4_episode` 数据源的观测是"依 meta 合成的运动序列", 该 npz 无渲染帧, 拿合成观测喂模型 = 蒙眼)。
+
+**落地**:
+1. `tools/intact_worker.py::act` — **截获**模型 `get_action` 内部两次 `self.encode()` 的输出
+   (`jepa.py:688` obs / `:700` goal), 落盘 `z_t` / `z_goal` / `delta` 到同一个 npz (键名向后兼容)。
+   截获而非重新推导 ⇒ 与动作律实际吃到的潜变量逐位一致。诊断增 `latent_norm/intent_norm/
+   latent_encode_calls/latent_dim`。
+2. `model_adapter.get_action` — 读回潜空间到 `runtime.last_latent` (缺失不报错, 兼容旧 worker)。
+3. `contracts.IntactOutput` — 增 `latent` + `obs_source`; `build_info_dict` 增 HWC→CHW 防御。
+4. `node.step(obs_frame, obs_source=...)` — 传帧默认标 `engine_render`; 数据源路径取数据源自报
+   `obs_mode` (如 `synthetic_from_trace`) ⇒ **观测来源逐帧可溯源**, 面板/报告必须显示。
+5. `action_adapter.IntactActionAdapter` (新) — 官方 10 维 → 本工程 4D 的**标定契约**: 未标定
+   (`models/intact_action_map.json` 不存在) 时 `map_chunk()` **拒绝返回数值** (只给 reason)。默认不进引擎。
+6. `tools/intact_render_probe.py` (新) — 旁路探针: 引擎全链真渲染帧 480²→224²(CHW) → 节点逐帧真前向
+   → 五道闸 (G1 chunk 真值 / G2 潜空间 192 导出 / G3 |Δ| 随进度下降 / G4 观测=engine_render / G5 零搜索)。
+
+**实测 (seed=0, paper 权重, **CPU** 推理避免抢 v10 训练显存; 引擎链 success=True 4892 步 1630 渲染帧)**:
+```
+20 帧真渲染 → INTACT: chunk[8,10] 每帧 nonzero=80 · std 0.32~0.46 (随观测变) · |z|≈6.88 (192维)
+|Δ|=|z_goal−z_t| 逐帧 0.0~1.34 · candidate_sequences=0 (零搜索) · 单步 ~330ms(CPU)
+五道闸 5/5 通过; |Δ| vs 进度 Spearman ρ=−0.109 (剔除末点) · −0.236 (含末点)
+诚实边界: ρ 只是弱负相关 (非单调) —— ⑤插入段 |Δ| 反而偏大 (1.34), 末点 |Δ|=0 是构造性的
+(goal 帧=末帧); 因此**不能**声称"|Δ| 随相位单调下降", 只能说方向为负。
+另: 帧数 1630 vs 步记录 4692 → 阶段名按比例映射 (估算, 非逐帧对齐), 已在报告里标注。
+```
+
+**未做 (下一步)**: u_ff 注入 (Step 1, 需先标定 10→4 映射) · 流形接入 (Step 2, 需先做 z→流形真值
+可解码性探针) · 真机 RobotIO。
+

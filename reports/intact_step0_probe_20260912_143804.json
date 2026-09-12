@@ -1,0 +1,398 @@
+{
+  "meta": {
+    "ts": "2026-09-12 14:38:04",
+    "seed": 0,
+    "samples": 20,
+    "device": "cpu",
+    "task": "pusht",
+    "horizon": 8,
+    "engine_success": true,
+    "engine_steps": 5119,
+    "frames": 1706,
+    "frame_stage_aligned": false,
+    "obs_source": "engine_render (corner2 真实渲染 480²→224²)",
+    "bypass": "未接 u_ff / 未接流形 (Step 0 只做旁路取证)",
+    "note": "z_t/z_goal = 模型 get_action 内部 encode 原值截获 (非重新推导)"
+  },
+  "gates": {
+    "G1_chunk_real": true,
+    "G2_latent_exported_192": true,
+    "G3_intent_decreasing": true,
+    "G4_obs_engine_render": true,
+    "G5_zero_search": true
+  },
+  "spearman_progress_vs_intent": -0.1088,
+  "spearman_with_last_degenerate_point": -0.2361,
+  "stage_intent": {
+    "阶段 ① 来料转台": {
+      "n": 1,
+      "intent_norm_mean": 0.4503
+    },
+    "阶段 ② 姿态适配抓取": {
+      "n": 2,
+      "intent_norm_mean": 0.2897
+    },
+    "阶段 ③ 治具校直回正": {
+      "n": 2,
+      "intent_norm_mean": 0.3132
+    },
+    "阶段 ④ 标准抓取": {
+      "n": 2,
+      "intent_norm_mean": 0.2823
+    },
+    "阶段 ⑤ 插入": {
+      "n": 4,
+      "intent_norm_mean": 0.6435
+    },
+    "阶段 ⑦ AOI": {
+      "n": 2,
+      "intent_norm_mean": 0.5206
+    },
+    "阶段 ⑧ 光耦合": {
+      "n": 7,
+      "intent_norm_mean": 0.1555
+    }
+  },
+  "rows": [
+    {
+      "i": 0,
+      "stage": "阶段 ① 来料转台",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.35435,
+      "latent_ok": true,
+      "z_norm": 6.9302,
+      "intent_norm": 0.4503,
+      "latency_ms": 704.1,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 90,
+      "stage": "阶段 ② 姿态适配抓取",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.32655,
+      "latent_ok": true,
+      "z_norm": 6.8328,
+      "intent_norm": 0.2877,
+      "latency_ms": 1252.5,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 179,
+      "stage": "阶段 ② 姿态适配抓取",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.42684,
+      "latent_ok": true,
+      "z_norm": 6.8316,
+      "intent_norm": 0.2917,
+      "latency_ms": 272.7,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 269,
+      "stage": "阶段 ③ 治具校直回正",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.47197,
+      "latent_ok": true,
+      "z_norm": 6.8905,
+      "intent_norm": 0.2822,
+      "latency_ms": 1017.4,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 359,
+      "stage": "阶段 ③ 治具校直回正",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.43621,
+      "latent_ok": true,
+      "z_norm": 6.8725,
+      "intent_norm": 0.3441,
+      "latency_ms": 128.7,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 449,
+      "stage": "阶段 ④ 标准抓取",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.43716,
+      "latent_ok": true,
+      "z_norm": 6.8388,
+      "intent_norm": 0.2642,
+      "latency_ms": 936.2,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 538,
+      "stage": "阶段 ④ 标准抓取",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.45113,
+      "latent_ok": true,
+      "z_norm": 6.827,
+      "intent_norm": 0.3003,
+      "latency_ms": 689.8,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 628,
+      "stage": "阶段 ⑤ 插入",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.45019,
+      "latent_ok": true,
+      "z_norm": 6.8269,
+      "intent_norm": 0.2996,
+      "latency_ms": 443.6,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 718,
+      "stage": "阶段 ⑤ 插入",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.43805,
+      "latent_ok": true,
+      "z_norm": 7.3219,
+      "intent_norm": 1.3442,
+      "latency_ms": 652.7,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 808,
+      "stage": "阶段 ⑤ 插入",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44502,
+      "latent_ok": true,
+      "z_norm": 6.9582,
+      "intent_norm": 0.4751,
+      "latency_ms": 673.7,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 897,
+      "stage": "阶段 ⑤ 插入",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.45505,
+      "latent_ok": true,
+      "z_norm": 6.9457,
+      "intent_norm": 0.455,
+      "latency_ms": 188.0,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 987,
+      "stage": "阶段 ⑦ AOI",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44886,
+      "latent_ok": true,
+      "z_norm": 6.9095,
+      "intent_norm": 0.4922,
+      "latency_ms": 425.5,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1077,
+      "stage": "阶段 ⑦ AOI",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.45335,
+      "latent_ok": true,
+      "z_norm": 6.9989,
+      "intent_norm": 0.5489,
+      "latency_ms": 474.8,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1167,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44938,
+      "latent_ok": true,
+      "z_norm": 6.8863,
+      "intent_norm": 0.0939,
+      "latency_ms": 144.0,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1256,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44666,
+      "latent_ok": true,
+      "z_norm": 6.8895,
+      "intent_norm": 0.0873,
+      "latency_ms": 133.2,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1346,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44648,
+      "latent_ok": true,
+      "z_norm": 6.8904,
+      "intent_norm": 0.0862,
+      "latency_ms": 701.5,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1436,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44745,
+      "latent_ok": true,
+      "z_norm": 6.8142,
+      "intent_norm": 0.3645,
+      "latency_ms": 218.4,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1526,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.45133,
+      "latent_ok": true,
+      "z_norm": 6.8149,
+      "intent_norm": 0.3614,
+      "latency_ms": 330.4,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1615,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44986,
+      "latent_ok": true,
+      "z_norm": 6.8972,
+      "intent_norm": 0.0955,
+      "latency_ms": 122.3,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    },
+    {
+      "i": 1705,
+      "stage": "阶段 ⑧ 光耦合",
+      "chunk_shape": [
+        8,
+        10
+      ],
+      "chunk_nonzero": 80,
+      "chunk_std": 0.44352,
+      "latent_ok": true,
+      "z_norm": 6.8879,
+      "intent_norm": 0.0,
+      "latency_ms": 137.8,
+      "cand_seq": 0.0,
+      "obs_source": "engine_render",
+      "trained": true
+    }
+  ]
+}

@@ -92,18 +92,24 @@ class IntactNode:
         self.n_steps = 0
         self.last: IntactOutput | None = None
         self.stats = {"n": 0, "t_ms": [], "intent_norm": [], "terminal_latent_error": [],
-                      "forward_calls": [], "candidate_sequences": []}
+                      "forward_calls": [], "candidate_sequences": [],
+                      "latent_norm": [], "latent_dim": [], "obs_source": []}
         if self.source is not None:
             self.source.reset()
         if self.robot is not None:
             self.robot.reset()
 
     # ── 接口 4: 一步 ──
-    def step(self, obs_frame: np.ndarray | None = None) -> IntactOutput:
+    def step(self, obs_frame: np.ndarray | None = None,
+             obs_source: str | None = None) -> IntactOutput:
         """obs_frame=None → 从数据源取; 否则用给定帧构造输入。
 
         单步语义: 一次调用 = **一次真实前向** (obs 滑窗 → 模型 get_action → action chunk),
         无候选搜索; 断点可进 (runtime.get_action → 子进程桥 → 模型 forward)。
+
+        obs_source: 观测来源标注 (Step 0 真实性红线) —— 传 obs_frame 时默认 "engine_render"
+        (引擎真实渲染帧); 从数据源取时取数据源自报的 obs_mode (如 synthetic_from_trace = 合成)。
+        输出里逐帧带上, 面板/报告必须显示, 禁止拿合成观测冒充真实相机图。
         """
         t0 = time.perf_counter()
         self._sync_from_runtime()          # 懒启动的 runtime 首步也会补上真实维数
@@ -114,7 +120,9 @@ class IntactNode:
             # ★ 动作历史由**节点**持有并滚动 (数据源每次给的是 raw 零 = reset 语义);
             #   不注入的话每步都看到零历史 → 输出不随动作历史变化 (实测踩坑)
             inp.action_history = self.action_hist.copy()
+            _osrc = obs_source or str((self.source.info() or {}).get("obs_mode") or "source")
         else:
+            _osrc = obs_source or "engine_render"
             fr = np.asarray(obs_frame, dtype=np.float32)
             self.obs_buf.append(fr)
             self.obs_buf = self.obs_buf[-HISTORY_SIZE:]
@@ -144,12 +152,16 @@ class IntactNode:
         out = IntactOutput(chunk=actions, horizon=self.horizon, action_dim=self.action_dim,
                            diagnostics=diag, policy=self.policy,
                            trained=bool(self.runtime.trained),
-                           source=(self.source.name if self.source else ""))
+                           source=(self.source.name if self.source else ""),
+                           latent=(getattr(self.runtime, "last_latent", None) or None),
+                           obs_source=_osrc)
         self.last = out
         dt = (time.perf_counter() - t0) * 1000.0
         self.stats["n"] += 1
         self.stats["t_ms"].append(dt)
-        for k in ("intent_norm", "terminal_latent_error", "forward_calls", "candidate_sequences"):
+        self.stats["obs_source"] = [_osrc]
+        for k in ("intent_norm", "terminal_latent_error", "forward_calls", "candidate_sequences",
+                  "latent_norm", "latent_dim"):
             if k in diag:
                 self.stats[k].append(float(diag[k]))
         return out
@@ -165,6 +177,9 @@ class IntactNode:
             "forward_calls": round(mean(s["forward_calls"]), 2),
             "candidate_sequences": round(mean(s["candidate_sequences"]), 2),
             "trained": bool(self.runtime.trained), "policy": self.policy,
+            # ── Step 0: 潜空间 + 观测来源 (真实性溯源) ──
+            "latent_dim": int(mean(s["latent_dim"])), "latent_norm": round(mean(s["latent_norm"]), 4),
+            "latent_exported": bool(s["latent_norm"]), "obs_source": (s["obs_source"] or [""])[0],
         }
 
     def describe(self) -> dict:

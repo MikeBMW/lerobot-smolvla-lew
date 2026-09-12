@@ -173,6 +173,16 @@ class Runtime:
         return None
 
     def act(self, info_path: str, out_path: str, horizon: int) -> dict:
+        """一次真实前向: obs 滑窗 + goal + 动作历史 → action chunk (零搜索)。
+
+        ★ Step 0 (2026-09-12): 同时**导出潜空间** —— 不是重新推导, 而是**截获模型自己
+          在 get_action 内部两次 self.encode() 的输出** (jepa.py:688 obs 编码 / :700 goal 编码),
+          所以 z_t / z_goal 与动作律实际吃到的潜变量逐位一致:
+            · z_t    = encode(obs 滑窗) 的最后一个时间步 emb   [B,192]
+            · z_goal = encode(goal 帧)   的 emb                 [B,192]
+            · delta  = z_goal − z_t  (goal_displacement 意图, 即四槽语法里的 m_t 通道)
+          落盘 (与 actions 同一个 npz, 键名向后兼容): actions / z_t / z_goal / delta
+        """
         import numpy as np                                    # noqa: PLC0415
         import torch                                          # noqa: PLC0415
         if not self.trained:
@@ -180,10 +190,39 @@ class Runtime:
         d = np.load(info_path, allow_pickle=True)
         info = {k: torch.from_numpy(d[k]).to(self.device) for k in d.files
                 if d[k].dtype != object}
-        with torch.inference_mode():
-            actions = self.model.get_action(info, horizon=int(horizon))
+        # ── 潜空间截获 (只读: 不改模型任何参数/行为) ──
+        _rec: list = []
+        _orig_encode = self.model.encode
+
+        def _spy(inf):
+            out = _orig_encode(inf)
+            e = out.get("emb") if isinstance(out, dict) else None
+            if torch.is_tensor(e):
+                _rec.append(e.detach())
+            return out
+
+        self.model.encode = _spy                              # 实例属性遮蔽方法 (仅本次调用)
+        try:
+            with torch.inference_mode():
+                actions = self.model.get_action(info, horizon=int(horizon))
+        finally:
+            try:
+                del self.model.encode
+            except AttributeError:
+                pass
         actions = actions.detach().cpu().numpy()
-        np.savez(out_path, actions=actions)
+        lat: dict = {}
+        try:
+            if len(_rec) >= 1:
+                lat["z_t"] = _rec[0][:, -1].float().cpu().numpy()
+            if len(_rec) >= 2:
+                lat["z_goal"] = _rec[1][:, -1].float().cpu().numpy()
+            if "z_t" in lat and "z_goal" in lat:
+                lat["delta"] = lat["z_goal"] - lat["z_t"]
+        except Exception as e:                                # 潜空间导出失败不许影响动作路径
+            log("⚠️ 潜空间导出失败 (动作不受影响):", type(e).__name__, e)
+            lat = {}
+        np.savez(out_path, actions=actions, **lat)
         diag = {k: float(v) for k, v in
                 (getattr(self.model, "last_direct_diagnostics", {}) or {}).items()
                 if isinstance(v, (int, float))}
@@ -192,7 +231,17 @@ class Runtime:
             # 并显式标注来源 (forward_calls = 零搜索直接规划的 horizon 次前向; 无候选搜索)
             diag = {"forward_calls": float(horizon), "candidate_sequences": 0.0,
                     "diag_source_worker": 1.0}
-        return {"out": out_path, "diagnostics": diag, "shape": list(actions.shape)}
+        if lat:
+            _z = lat["z_t"].reshape(-1)
+            _dl = lat.get("delta", np.zeros_like(_z)).reshape(-1)
+            diag.update({"latent_norm": float(np.linalg.norm(_z)),
+                         "intent_norm": float(np.linalg.norm(_dl)),
+                         "latent_encode_calls": float(len(_rec)),
+                         "latent_dim": float(_z.shape[0])})
+        return {"out": out_path, "diagnostics": diag, "shape": list(actions.shape),
+                "latent_keys": sorted(lat.keys()),
+                "latent_path": out_path,
+                "target_mode": os.environ.get("INVERSE_DIRECT_TARGET_MODE", "query")}
 
     def info(self) -> dict:
         return {"trained": bool(self.trained), "reason": self.reason, "dims": self.dims,

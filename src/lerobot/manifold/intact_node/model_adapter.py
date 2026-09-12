@@ -39,6 +39,8 @@ class IntactRuntime:
         self.trained = False
         self.reason: str | None = None
         self.dims: dict = {}
+        # Step 0: 最近一次推理截获的潜空间 (z_t / z_goal / delta, 各 [B,192]); 无则空 dict
+        self.last_latent: dict = {}
         self._lock = threading.Lock()
         if autostart:
             self.start()
@@ -131,7 +133,18 @@ class IntactRuntime:
                 return (np.zeros((int(horizon), int(d)), dtype=np.float32),
                         {"trained": 0.0, "act_failed": 1.0})
             actions = np.load(fout)["actions"]
-            return actions, {**dict(resp.get("diagnostics") or {}), "trained": 1.0}
+            # ── Step 0: 潜空间随同返回 (worker 截获的 z_t/z_goal/delta; 缺失=空 dict 不报错) ──
+            lat: dict = {}
+            try:
+                with np.load(fout) as _z:
+                    lat = {k: _z[k] for k in ("z_t", "z_goal", "delta") if k in _z.files}
+            except Exception:
+                lat = {}
+            self.last_latent = lat
+            diag = {**dict(resp.get("diagnostics") or {}), "trained": 1.0}
+            if lat:
+                diag["latent_exported"] = 1.0
+            return actions, diag
 
     def close(self) -> None:
         if self.proc is not None and self.proc.poll() is None:

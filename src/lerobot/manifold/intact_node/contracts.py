@@ -53,6 +53,9 @@ class IntactOutput:
     policy: str = "direct"
     trained: bool = False            # ⚠️ 权重缺失时必须为 False (诚实标注)
     source: str = ""                 # 数据源名 (溯源)
+    # ── Step 0 (2026-09-12) ──
+    latent: dict | None = None       # 截获的潜空间: z_t / z_goal / delta, 各 [B,192] (模型 encode 原值)
+    obs_source: str = ""             # 观测来源: engine_render(引擎真实渲染) / synthetic(合成 — 必须诚实标注)
 
 
 def build_info_dict(inp: IntactInput, intent_mode: str = "goal_displacement",
@@ -68,6 +71,10 @@ def build_info_dict(inp: IntactInput, intent_mode: str = "goal_displacement",
     px = np.asarray(inp.pixels, dtype=np.float32)
     if px.ndim == 4:                      # [T,C,H,W]
         px = px[None]
+    # 防御 (Step 0 踩坑): 引擎渲染帧是 HWC → 序列 [T,H,W,C] 会被 ViT 当成 224 通道
+    #   ("Expected 3 but got 224")。这里显式纠成 [T,C,H,W]。
+    if px.ndim == 5 and px.shape[-1] in (1, 3, 4) and px.shape[2] not in (1, 3, 4):
+        px = px.transpose(0, 1, 4, 2, 3)
     if px.dtype != np.float32:
         px = px.astype(np.float32)
     if px.max() > 1.5:                    # uint8 域 → [0,1]
@@ -85,6 +92,8 @@ def build_info_dict(inp: IntactInput, intent_mode: str = "goal_displacement",
         g = np.asarray(inp.goal, dtype=np.float32)
         if g.ndim == 3:
             g = g[None]
+        if g.ndim == 4 and g.shape[-1] in (1, 3, 4) and g.shape[1] not in (1, 3, 4):
+            g = g.transpose(0, 3, 1, 2)              # HWC → CHW (同 px 防御)
         if g.max() > 1.5:
             g = g / 255.0
         # ★ goal 必须是 5 维 [B,T,C,H,W]: 模型内部 goal["pixels"]=goal 直接进 ViT 编码器,
