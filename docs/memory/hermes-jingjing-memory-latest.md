@@ -38,4 +38,4 @@ Hermes安全层: 敏感命令硬拦且扫引用脚本→脚本内变量拼接绕
 §
 L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选(预测器逐帧发指令φ*); 老倪红线: 真模型/预测器必须默认生效, 面板/日志出现脚本开环即不合格
 §
-INTACT(09-11): 权重须paper_runtime(E1 3slot=576 vs 根代码4slot=768); ckpt需config.json(hydra取model,顶层_target_=jepa.JEPA; action_dim=10/action_emb_dim=0); 官方direct本机70%(论文80.22); HF大文件aria2c -x16 -c; 读h5须import hdf5plugin(pixels=blosc); L4接入: 引擎accel自带域外解析兑底(替换即丢=闭环失败根因), u=w_ff·u_ff+(1-w_ff)·u_fb; 守卫TOL=0.15→100%+模型参与21-34%(跨进程6/6),>50%必崩
+INTACT(09-11/09-12): 权重须paper_runtime(E1=576非根768); ckpt需config.json(hydra取model,顶层_target_=jepa.JEPA; action_dim=10/emb192); 官方direct本机70%(论文80.22); HF大文件aria2c -x16 -c; 读h5须import hdf5plugin(pixels=blosc); Step0(09-12): z_t/z_goal(192)靠spy encode截获, 10维→4D须标定adapter(未标定拒答), 探针5/5闸; L4接入: 引擎accel自带域外解析兑底(替换即丢=闭环失败根因), u=w_ff·u_ff+(1-w_ff)·u_fb; 守卫TOL=0.15→100%+模型参与21-34%(跨进程6/6),>50%必崩
