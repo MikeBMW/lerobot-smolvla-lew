@@ -1,0 +1,44 @@
+{
+ "meta": {
+  "h5": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+  "n": 60,
+  "stride": 300,
+  "slot": 0,
+  "policy": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_zmax_v2_s3072/weights_epoch_1.pt",
+  "runtime": "root",
+  "obs": "数据集真帧 (与训练同源)",
+  "ts": "2026-09-12 19:46:04"
+ },
+ "per_axis": {
+  "dx": {
+   "mae": 0.15639962255954742,
+   "pearson": 0.08096157014369965,
+   "spearman": 0.21733814948596836,
+   "teacher_std": 0.21206802129745483,
+   "pred_std": 0.007404588628560305
+  },
+  "dy": {
+   "mae": 0.056575994938611984,
+   "pearson": -0.08324378728866577,
+   "spearman": -0.07340928035565437,
+   "teacher_std": 0.08799722790718079,
+   "pred_std": 0.0028399962466210127
+  },
+  "dz": {
+   "mae": 0.12360378354787827,
+   "pearson": -0.3421626389026642,
+   "spearman": -0.3712697971658795,
+   "teacher_std": 0.1036602035164833,
+   "pred_std": 0.013531547039747238
+  },
+  "grip": {
+   "mae": 0.43354880809783936,
+   "pearson": 0.19453109800815582,
+   "spearman": 0.17410183844604937,
+   "teacher_std": 0.7075466513633728,
+   "pred_std": 0.009854602627456188
+  }
+ },
+ "model_xyz_mae": 0.11219312995672226,
+ "const_xyz_mae": 0.09926270693540573
+}
