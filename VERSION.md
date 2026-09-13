@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.29** | 09-13 | 🐛 修「启动状态空间即崩」: 背景行标题省略号传给 QFontMetrics.elidedText 的宽度是 float → paint() 内 TypeError → Qt Abort 整个 GUI; `_wrap_title` 入口 int(avail) + paint 传 _aw; 单元对照 int/float + 背景行真实 paint + 整画布 render 三重验证 |
 | **v5.5.28** | 09-13 | 🌍 L4 · SW 仿真世界引擎链 — 独立链条 4 节点 (数据源渲染图 → INTACT策略·cube → stable-world 引擎 → SW渲染视频) + L4 色带自动触发 (只增不改, L2/L3 零影响) + 跨 venv 子进程桥 tools/intact_sw_bridge.py (与 ②debug 同源, 逐帧流式: 52 帧 std=30.26 · 动作真下发 env.step · 模型真调用 52 次零搜索 · 官方 save_panel_videos 3 面板视频) |
 | **v5.5.27** | 09-12 | 🎨 画布节点 UI 统一优化 (老倪: 字号/字数/不挤不裁) — 根因 `QFont("Arial")` 在本机解析成 Liberation Sans (无中文字形→逐字回退) + 标题 9/8/7 自适应 = 大小不一; 统一为 Noto Sans CJK SC + 固定 9pt Bold/8pt + 最多两行 + 超出省略号(悬停看全名) + 自动撑宽 (state_space_obs.json 70 节点实测: 撑宽后单行 70/70 · 两行 0 · 省略 0) |
 | **v5.5.26** | 09-12 | 🤖 INTACT→L4 继承: L4 档把控制权交给 INTACT 节点 (install_direct_act 直驱 · 真推理真下发 · 任务未完成属模型能力不足, 诚实标注) + 数据集页重构 (纯数据 UI: 本地数据总表/详情/数据日志; 训练结果搬到训练台) + 数据集查看器修复 (h5 真帧 · 真实回合帧数 · 翻帧 · 可缩放 · 翻转开关) + INTACT 标准机器人切换 (reacher/pusht/cube/tworoom · paper_runtime+prior_only 口径; tworoom 100% / cube 83.3%) |

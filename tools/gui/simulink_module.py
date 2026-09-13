@@ -91,6 +91,11 @@ def _wrap_title(text, fm, avail, max_lines=NODE_TITLE_LINES):
     返回值: (lines: list[str], truncated: bool)
     """
     text = str(text or "")
+    # 🐛 2026-09-13 崩溃修复: QFontMetrics.elidedText 宽度**必须 int** —
+    #   背景行 paint 里 avail_w 是 float (max(80.0, float(...))) → 标题需要省略号时
+    #   抛 TypeError: argument 3 has unexpected type 'float' → paint() 内异常 → Qt
+    #   Fatal Python error: Aborted 整个 GUI 直接崩 (实测: 新增长标题 L4 背景行触发)
+    avail = int(avail)
     if avail <= 20 or not text:
         return [text], False
     if fm.horizontalAdvance(text) <= avail:
@@ -2755,7 +2760,7 @@ class SimNodeItem(QGraphicsObject):
             # 🎨 2026-09-12 老倪: 统一规格 — 固定 9pt Bold + 最多两行 + 省略号 (原 9→7 自适应 = 大小不一)
             painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
             fm = painter.fontMetrics()
-            _bg_lines, _bg_trunc = _wrap_title(name, fm, avail_w)
+            _bg_lines, _bg_trunc = _wrap_title(name, fm, _aw)
             try:
                 if _bg_trunc:
                     self.setToolTip(f"{name}\n(背景行放不下, 显示已省略)")
