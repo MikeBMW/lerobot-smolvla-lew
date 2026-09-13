@@ -165,6 +165,10 @@ def main():
     ap.add_argument("--slot", type=int, default=0, help="8维=frameskip2×4维: 0=第t拍, 1=第t+1拍")
     ap.add_argument("--baseline-full", type=int, default=1,
                     help="1 = 同 seed 另跑一轮解析链 full (插→拔→AOI) 作全链证据视频")
+    ap.add_argument("--cap", default="l4", choices=["l2", "l3", "l4"],
+                    help="能力档位 (引擎 run(cap=…)): l4 = 抗干扰档 —— 引擎真注入来料移位/转向 "
+                         "(±3.5cm/±15°物理/90°转台视觉) + 恢复预算×2; l3 = 无干扰对照档 "
+                         "(同 seed 同权重, 只差是否注入干扰 → 抗干扰的**同口径**对照)")
     ap.add_argument("--model-episodes", type=int, default=0, help="0 = 全部 seed 都做模型直驱")
     ap.add_argument("--goal-npy", default=os.path.join(ROOT, "reports", "intact_goal_frame_optical.npy"))
     a = ap.parse_args()
@@ -192,6 +196,7 @@ def main():
 
     st = {"ok": False, "stage": "boot", "task": a.task, "env": "metaworld/peg-insert-side-v3",
           "sim": "RealStateSpaceSim (Z-MAX 六层引擎)", "mode": a.mode, "seeds": seeds,
+          "cap": a.cap,                       # l4 = 抗干扰档 (引擎真注入干扰) / l3 = 无干扰对照
           "spool": a.spool, "action_space": action_space,
           "stats": os.path.basename(a.stats) if a.stats else "",
           "ckpt": os.environ.get("INTACT_POLICY", ""), "zero_search": True}
@@ -275,7 +280,7 @@ def main():
 
         sim = RealStateSpaceSim(seed=seed, vision=False, mode=mode, log=lambda *x: None)
         sim._frame_sink = _sink
-        tr = sim.run(max_steps=a.max_steps)
+        tr = sim.run(max_steps=a.max_steps, cap=a.cap)
         if wr is not None:
             wr.release()
         _d = tr.get("done")
@@ -285,7 +290,8 @@ def main():
         if fr:
             goal = cv2.resize(fr[-1], (IMG, IMG), interpolation=cv2.INTER_AREA) \
                 .transpose(2, 0, 1).astype(np.float32)
-        return ({"seed": seed, "mode": mode, "done": done, "steps": len(tr.get("t") or []),
+        return ({"seed": seed, "mode": mode, "cap": a.cap, "disturb": getattr(sim, "_jitter_meta", None),
+                 "done": done, "steps": len(tr.get("t") or []),
                  "insert_mm": round(float(tr["dist"][-1]) * 1000, 2) if tr.get("dist") else None,
                  "aoi_ok": ((meta.get("aoi_report") or {}).get("ok")),
                  "video": video_path, "frames": len(fr),
@@ -392,14 +398,15 @@ def main():
         sim._frame_sink = _sink
         sim._direct_act = np.array([0.0, 0.0, 0.0, GRIP_OPEN])   # 首步=静止保持 (非专家动作)
         t0 = time.time()
-        tr = sim.run(max_steps=a.max_steps)
+        tr = sim.run(max_steps=a.max_steps, cap=a.cap)
         if wr is not None:
             wr.release()
         _d = tr.get("done")
         done = bool(_d[-1]) if (_d is not None and len(_d)) else False
         meta = tr.get("_meta") or {}
         act = np.asarray(rec["act"], np.float32) if rec["act"] else np.zeros((0, 4), np.float32)
-        return {"seed": seed, "mode": a.mode, "done": done, "steps": len(tr.get("t") or []),
+        return {"seed": seed, "mode": a.mode, "cap": a.cap, "disturb": getattr(sim, "_jitter_meta", None),
+                "done": done, "steps": len(tr.get("t") or []),
                 "insert_mm": round(float(tr["dist"][-1]) * 1000, 2) if tr.get("dist") else None,
                 "aoi_ok": ((meta.get("aoi_report") or {}).get("ok")),
                 "model_calls": state["calls"], "err": state["err"], "video": video_path,
