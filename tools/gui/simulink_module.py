@@ -6182,16 +6182,32 @@ class SimulinkModule(QWidget):
             return None
 
     def _auto_sw_live_window(self):
-        """L4 档 ▶运行 → 自动弹出 SW 实况独立窗口; L2/L3 档完全不动 (保持原有行为)"""
+        """L4 档 ▶运行 → 自动弹出 SW 实况窗口 **并把 SW 引擎链桥真启动**
+        (2026-09-13 修: 只弹窗口不启动桥 → 窗口只有上次跑的旧帧, 看起来"视频不动")。
+        L2/L3 档完全不动 (返回 None, 保持原有行为)。"""
         try:
             if self._ss_cap_num() < 4:
                 return None
         except Exception:
             return None
         w = self.open_sw_live_window()
-        if w is not None:
-            self._log("🎬 L4 档: 已自动弹出「SW 实况」独立窗口 "
-                      "(stable-world 逐帧渲染真图 · 数据源 reports/intact_sw/frames)")
+        # 🎬 关键: 让画面动起来 = 真跑 L4「SW 引擎链」(逐帧渲染 → status.json/frames 逐帧更新)
+        try:
+            import node_logic as _nl
+            root = _repo_root_path()
+            already = _nl._sw_alive()
+            ok, _st, _fr, _vd = _nl._sw_start(root, self._log)
+            if ok:
+                if already:
+                    self._log("🎬 L4 档: SW 引擎链已在跑 — 复用 (实况窗口继续跟随真帧)")
+                else:
+                    self._log("🎬 L4 档: SW 引擎链已随 ▶运行 启动 "
+                              "(stable-world 逐帧渲染真图 → 实况窗口逐帧刷新, 约 14s / 3 回合 / 52 帧)")
+        except Exception as e:                  # noqa: BLE001
+            try:
+                self._log(f"⚠️ SW 引擎链启动失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
         return w
 
     def start_sim(self):
