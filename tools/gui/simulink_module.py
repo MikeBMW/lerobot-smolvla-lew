@@ -11140,9 +11140,10 @@ class SimulinkModule(QWidget):
         self._relayout_row_gaps()      # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠
         _oneshot(self, 300, self._state_space_hint)
 
-    def open_ss_3d(self, on_top=True):
+    def open_ss_3d(self, on_top=True, level=None):
         """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)
-        on_top: True=手动点按钮(置顶防被视频窗遮挡); False=运行后自动弹出(不抢画布, 防画布黑屏)"""
+        on_top: True=手动点按钮(置顶防被视频窗遮挡); False=运行后自动弹出(不抢画布, 防画布黑屏)
+        level: 'L2'/'L3'/'L4' → 按档位预设图层 + 标题标注 (2026-09-13 老倪: 三个档位各一个 dreamview 窗口)"""
         try:
             from ss_dreamview import DreamView3D, load_episode
         except Exception as e:
@@ -11215,7 +11216,7 @@ class SimulinkModule(QWidget):
                 w.raise_()
                 w.activateWindow()
                 return
-        dv = DreamView3D(tr, on_top=on_top, module=self)
+        dv = DreamView3D(tr, on_top=on_top, module=self, level=level)   # 🧭 level=L2/L3/L4 → 档位预设+标题
         if not hasattr(self, "_ss_3d_windows"):
             self._ss_3d_windows = []
         # 只清理真正被销毁的对象 (isVisible 过滤会误删已关闭但可复用的窗口)

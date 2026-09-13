@@ -650,10 +650,11 @@ class SWLiveWindow(QWidget):
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
-    def __init__(self, tr=None, parent=None, on_top=True, module=None):
+    def __init__(self, tr=None, parent=None, on_top=True, module=None, level=None):
         """module: 画布 SimulinkModule 引用 — 3D 上的 ▶运行/⏹停止 与画布按钮同一入口
         (v3.4.7 老倪: 3D 世界操作按钮, 与 simulink 画布运行按钮统一功能)"""
         self.module = module
+        self._level = str(level).upper() if level else None    # 🧭 L2/L3/L4 dreamview 档位
         super().__init__(parent)
         self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
         self.resize(1180, 820)
@@ -779,17 +780,23 @@ class DreamView3D(QWidget):
         hint = QLabel("勾选要观察的处理层")
         hint.setStyleSheet("color:#8b949e; font-size:11px;")
         pl.addWidget(hint)
-        # 🎬 2026-09-13 老倪: SW 实况小窗太小 → 独立成正常窗口 (可拉伸/倍率/置顶/暂停)
-        self.btn_sw_win = QPushButton("🎬 SW 实况窗口 (独立·放大看)")
-        self.btn_sw_win.setToolTip("单独开一个正常窗口显示 stable-world 逐帧渲染真图\n"
-                                   "(数据源与 3D 角落小窗相同: reports/intact_sw/frames)\n"
-                                   "可拉伸 · 倍率 ×1~×4 · ⏸暂停 · 📌置顶 · 📂视频目录")
-        self.btn_sw_win.setStyleSheet(
-            "QPushButton{background:#00d4aa; color:#0d1117; font-weight:700; border:none;"
-            "border-radius:4px; padding:6px 0; font-size:12px;}"
-            "QPushButton:hover{background:#33e0b8;}")
-        self.btn_sw_win.clicked.connect(self.open_sw_window)
-        pl.addWidget(self.btn_sw_win)
+        # 🧭 2026-09-13 老倪: 3D 视图不要画中画 —— 三个 dreamview 窗口 (L2 / L3 / L4·stable-world),
+        #   点哪个开哪个 (各自独立窗口, 与 DreamView3D 同款交互: 时间轴/图层开关/拖帧看信号)
+        _row_lv = QHBoxLayout()
+        _row_lv.setSpacing(4)
+        for _lvl, _txt, _tip, _col in (
+            ("L2", "🧭 L2 DreamView", "L2 档 3D 分层视图 (感知层 + 末端轨迹)", "#2e8b57"),
+            ("L3", "🧭 L3 DreamView", "L3 档 3D 分层视图 (加 前馈/状态估计/预测 层)", "#1f6feb"),
+            ("L4", "🌍 L4·SW DreamView", "L4·stable-world 实况 (逐帧真渲染 + 拖帧看信号)", "#8957e5"),
+        ):
+            _b = QPushButton(_txt)
+            _b.setToolTip(_tip + "\n(独立窗口, 可同时开; 不再有画中画)")
+            _b.setStyleSheet(f"QPushButton{{background:{_col};color:#ffffff;font-weight:700;"
+                             f"border:none;border-radius:4px;padding:6px 4px;font-size:11px;}}"
+                             f"QPushButton:hover{{background:#33e0b8;color:#0d1117;}}")
+            _b.clicked.connect(lambda _=False, lv=_lvl: self._open_level(lv))
+            _row_lv.addWidget(_b)
+        pl.addLayout(_row_lv)
         pl.addSpacing(6)
 
         # 图层: (key, 中文名, 默认开, 提示)
@@ -797,14 +804,6 @@ class DreamView3D(QWidget):
         #   感知层数据在最前, 之后 前馈加速器 → 自适应状态估计器 → 先验动力学预测器
         #   → 状态校正器 → 动作调制器 → 安全执行边界, 最后才是网格/坐标轴等辅助。
         self._layers_def = [
-            # ── 🎬 SW 实况 (2026-09-13 老倪 A: 把 stable-world 渲染帧贴进 3D 视图本体) ──
-            ("sw_live",   "🎬 SW 实况 · stable-world 渲染帧", True,
-             "L4「🌍 SW 仿真世界引擎链」的**逐帧渲染真图** (INTACT 标准机器人 cube,\n"
-             "环境 swm/OGBCube-v0 + MUJOCO_GL=egl 离屏渲染 224×224, 由跨 venv 桥\n"
-             "tools/intact_sw_bridge.py 写 reports/intact_sw/frames/*.jpg + status.json)\n"
-             "本层是浮在 3D 画面右上角的实况小窗 (画中画), 不是 GL 图层:\n"
-             "只控制它显示/隐藏, 关掉不影响 3D 场景与其它图层\n"
-             "真图判据: 面板上 std>5 才是真渲染帧 (实测 ~30)"),
             # ── 感知层 (最前) ──
             ("scene",     "📡 感知层 · 物理世界几何",     True,
              "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 光模块 /\n"
@@ -937,15 +936,18 @@ class DreamView3D(QWidget):
         self.view.setBackgroundColor('#0d1117')
         self._overlay = LabelOverlay(self.view)     # 🏷 文字标注层 (贴在 3D 画布上)
         self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        if self._level:                      # 按档位预设开关图层 + 标题标注
+            try:
+                self.setWindowTitle(f"🧭 状态空间 {self._level} DreamView (3D 分层)")
+                self.apply_level_preset(self._level)
+            except Exception:
+                pass
         self._overlay.show()
-        # 🎬 2026-09-13 老倪 A: stable-world 渲染帧实况小窗 (self.view 的子控件 → 画中画)
+        # 🗑 2026-09-13 老倪改口径: **不要画中画** —— stable-world 实况改为独立 dreamview 窗口
+        #   (原来的画中画小窗已移除; 需要看 L4 实况时点左侧「🌍 L4·stable-world DreamView」按钮)
         self._sw_last = None
-        self._sw_panel = self._build_sw_panel()
-        self._sw_panel.show()
-        self._place_sw_panel()
-        self._sw_timer = QTimer(self)
-        self._sw_timer.timeout.connect(self._sw_poll)
-        self._sw_timer.start(150)
+        self._sw_panel = None
+        self._sw_timer = None
         self.view.installEventFilter(self)
         right.addWidget(self.view, 1)
 
@@ -1770,6 +1772,62 @@ class DreamView3D(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
         except Exception:
             pass
+
+    # ── 🧭 三个 dreamview 窗口 (2026-09-13 老倪: L2 / L3 / L4·stable-world, 不要画中画) ──
+    LEVEL_PRESETS = {
+        "L2": ["scene", "traj"],                                  # L2: 感知层 + 末端实测轨迹
+        "L3": ["scene", "traj", "uff", "latent", "prior"],        # L3: 再加 前馈/状态估计/预测
+        "L4": ["scene", "traj", "uff", "latent", "prior"],        # L4: 引擎真链全部执行层
+    }
+
+    def apply_level_preset(self, level: str):
+        """按档位开关图层 (L2 只留基础感知/轨迹; L3/L4 打开执行层) —— 找不到的键跳过, 不报错"""
+        keys = [k for k, *_ in self._layers_def]
+        want = set(self.LEVEL_PRESETS.get(str(level).upper(), keys))
+        for k in keys:
+            try:
+                on = k in want
+                cb = self._chk.get(k)
+                if cb is not None and cb.isChecked() != on:
+                    cb.setChecked(on)          # 触发 _toggle_layer → 真开关图层
+                else:
+                    self._toggle_layer(k, on)
+            except Exception:
+                pass
+        return want
+
+    def _open_level(self, level: str):
+        """开对应档位的 dreamview 窗口: L4 → stable-world 逐帧实况 (含拖帧看信号); L2/L3 → 3D 分层视图"""
+        lv = str(level).upper()
+        if lv == "L4":
+            try:
+                import intact_signal_viewer as _iv
+                d, _fr, _vd, _st = sw_dirs()
+                w = _iv.open_signal_viewer(d)
+                if w is not None:
+                    w.setWindowTitle("🌍 L4 · stable-world DreamView (拖帧看信号)")
+                    w.rescan(d)
+                return w
+            except Exception as e:
+                try:
+                    print(f"[L4 SW DreamView] 打开失败: {type(e).__name__}: {e}")
+                except Exception:
+                    pass
+                return None
+        mod = getattr(self, "_module", None) or getattr(self, "module", None)
+        try:
+            w = mod.open_ss_3d(level=lv) if mod is not None and hasattr(mod, "open_ss_3d") else None
+            if w is None:
+                w = DreamView3D(tr=getattr(self, "_tr", None), module=mod, level=lv)
+                w.show()
+            self.apply_level_preset(lv)
+            return w
+        except Exception as e:
+            try:
+                print(f"[{lv} DreamView] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
 
     def open_sw_window(self):
         """🎬 独立「SW 实况」窗口 (2026-09-13 老倪: 角落小窗太小 → 正常窗口放大看)
