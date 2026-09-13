@@ -1,0 +1,27 @@
+{
+ "stage": "",
+ "w": 0.3,
+ "u_ff": [
+  -0.045818,
+  0.26832,
+  0.266039,
+  1.0
+ ],
+ "u_ff_source": "intact(chunk×K_ACT=0.5)",
+ "l3_cond": null,
+ "l3_cond_source": "拒绝(未标定)",
+ "reason": "",
+ "decoder": {
+  "decoder": "intact_l3_decoder",
+  "cond_dim": 6,
+  "excluded_stages": [
+   "插入"
+  ],
+  "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)",
+  "l3_cond_ready": false,
+  "l3_cond_map": "models/intact_l3_map.json",
+  "trained": false,
+  "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
+ },
+ "ts": "2026-09-13 22:07:57"
+}

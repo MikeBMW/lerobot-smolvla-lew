@@ -1301,26 +1301,32 @@ def _intact_get_node(root: str):
     if src not in _sys.path:
         _sys.path.insert(0, src)
     if "node" not in _INTACT_NODE_CACHE:
-        _m = importlib.import_module("lerobot.manifold.intact_node")
+        # 🔀 2026-09-13 老倪: INTACT 代码已迁移到 src/lerobot/policies/intact (旧路径留兼容转发)
+        _m = importlib.import_module("lerobot.policies.intact.runtime")
         _INTACT_NODE_CACHE["node"] = _m.IntactNode(horizon=8, action_dim=4)
     return _INTACT_NODE_CACHE["node"]
 
 
 def node_intact(ctx):
-    """🎯 INTACT 意图-动作 — 零搜索 意图→动作 (封装 zju3dv/INTACT-JEPA, MIT)
+    """🎯 INTACT 策略 (L4) — 零搜索 意图→动作 (**数据源直接接入 metaworld**)
 
-    输入: 数据源层 (官方数据 / 本仓库 L4 episode, 数据可再下载)
-    输出: RobotIO → 机器人硬件 (**预留接口**, 未接硬件时只允许 SimRobotIO)
-    一步 = obs 滑窗 + goal 意图 → 共享动作律直接出 action chunk (无候选搜索)
-    双击 → 真跑一步并打印诊断; 模型未就绪诚实标 trained=False (绝不返回假动作冒称成功)
-    设计: docs/design/zmax_intact_node.md · 封装: src/lerobot/manifold/intact_node/
+    老倪 2026-09-13: "将 INTACT 接入到 L4 层 … INTACT 代码迁移到 src/lerobot 的 policies 文件夹 …
+    数据源直接接入 metaworld, 输出接一个 decoder, 再进 L3"。
+      · 策略实现 = src/lerobot/policies/intact/ (modeling_intact.py · IntactPolicy)
+      · 数据源   = metaworld 真环境 (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读)
+      · 输出     = ① action chunk (±1) ② 潜空间 ③ 诊断 → 交下游 decoder (ssintact_dec)
+    双击 → 真跑一步并打印诊断; 模型未就绪诚实标 trained=False (绝不返回假动作冒称成功)。
     """
     log = ctx["log"]
     root = ctx.get("root") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     try:
         node = _intact_get_node(root)
         if node.source is None:
-            node.set_data_source("l4_episode")
+            try:                                   # 📥 数据源直接接入 metaworld
+                node.set_data_source("metaworld", seed=0)
+            except Exception as _e:                # metaworld 不可用 → 如实说明并退回本仓 episode
+                log(f"   ⚠️ metaworld 数据源不可用 ({type(_e).__name__}: {_e}) → 退回 l4_episode")
+                node.set_data_source("l4_episode")
         out = node.step()
         d = node.diagnostics()
         log(f"🎯 INTACT: action chunk{out.chunk.shape} · 策略={out.policy}(零搜索) · "
@@ -1332,6 +1338,86 @@ def node_intact(ctx):
         return True
     except Exception as e:
         log(f"❌ INTACT 节点执行失败: {type(e).__name__}: {e}")
+        return False
+
+
+# ── 🎯 INTACT 意图解码器 (L4 → L3, 2026-09-13 老倪: "输出接一个 decoder, 再进 L3") ──
+_INTACT_DEC_CACHE = {}
+
+
+def _intact_decoder(root: str, cond_dim: int = 6):
+    """取/建解码器单例 (无参, 未标定也照建 —— 未标定只影响 L3 条件通道, u_ff 先验仍可用)。"""
+    import importlib
+    import sys as _sys
+    src = os.path.join(root, "src")
+    if src not in _sys.path:
+        _sys.path.insert(0, src)
+    if "dec" not in _INTACT_DEC_CACHE:
+        _d = importlib.import_module("lerobot.policies.intact.decoder")
+        _INTACT_DEC_CACHE["dec"] = _d.IntactIntentDecoder(cond_dim=cond_dim)
+    return _INTACT_DEC_CACHE["dec"]
+
+
+def node_intact_dec(ctx):
+    """🎯 INTACT 意图解码器 (L4 → L3) — 把 L4 的意图/潜空间解码成 L3 能吃的条件。
+
+    老倪 2026-09-13 架构: metaworld 数据源 → INTACT 策略 (ssintact) → **本解码器** → L3。
+    两路输出 (每路都带来源标注, 失败不给假值):
+      A) u_ff 先验 (4D, 引擎 u 空间) —— 量纲逆运算 act×K_ACT (K_ACT 现读引擎源码), 无需标定
+      B) L3 条件向量 (流形坐标)     —— 需要标定映射 models/intact_l3_map.json;
+                                      未标定 → 拒绝返回并计数 (不写死映射 = 不假接入)
+    L3 侧消费: 引擎 SS_L4_INTACT=1 时按权重 w 注入 (w=0 / 未设 = 与现状**逐位相同**)。
+    """
+    import numpy as np                                    # noqa: PLC0415
+    log = ctx["log"]
+    mod = ctx.get("module")
+    root = ctx.get("root") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    try:
+        node = _intact_get_node(root)
+        if node.source is None:
+            try:
+                node.set_data_source("metaworld", seed=0)
+            except Exception as _e:                       # noqa: BLE001
+                log(f"   ⚠️ metaworld 数据源不可用 ({type(_e).__name__}: {_e}) → 退回 l4_episode")
+                node.set_data_source("l4_episode")
+        stage = str(ctx.get("stage") or (node.source.info().get("stage", "") if node.source else ""))
+        dec = _intact_decoder(root)
+        out = node.step()                                  # 真推理 (未就绪会 raise, 不返回零动作)
+        d = dec.decode(out, stage=stage)
+        log(f"🎯 INTACT 意图解码器 [L4 → L3] · 阶段={stage or '(未标注)'} · 权重 w={d.weight:.2f}")
+        log(f"   ① u_ff 先验 {np.round(d.u_ff, 4).tolist()} ← {d.u_ff_source} "
+            f"(下发口径与引擎 state_space_sim_real.py 同源)")
+        if d.l3_cond is None:
+            log(f"   ② L3 条件: **不注入** — {d.l3_cond_source} · 原因: {dec.describe()['reason']}")
+            log("      (L3 仍走 VLM+DiT 原链路 → 零回退; 标定后本通道自动生效)")
+        else:
+            log(f"   ② L3 条件 {np.round(d.l3_cond, 4).tolist()} ← {d.l3_cond_source}")
+        if d.reason:
+            log(f"   ⚠️ {d.reason}")
+        # 证据落盘 (供 L3/引擎/报告读; 未就绪时也如实写)
+        try:
+            import json as _json
+            p = os.path.join(root, "reports", "intact_l3_cond.json")
+            with open(p, "w", encoding="utf-8") as f:
+                _json.dump({"stage": stage, "w": d.weight,
+                            "u_ff": None if d.u_ff is None else np.round(d.u_ff, 6).tolist(),
+                            "u_ff_source": d.u_ff_source,
+                            "l3_cond": None if d.l3_cond is None else np.round(d.l3_cond, 6).tolist(),
+                            "l3_cond_source": d.l3_cond_source,
+                            "reason": d.reason, "decoder": dec.describe(),
+                            "ts": __import__("time").strftime("%F %T")}, f, ensure_ascii=False, indent=1)
+            log(f"   → 证据: reports/intact_l3_cond.json")
+        except Exception as _e:                            # noqa: BLE001
+            log(f"   (证据落盘失败: {type(_e).__name__}: {_e})")
+        if mod is not None:
+            try:
+                mod._intact_dec = {"stage": stage, "u_ff": d.u_ff, "l3_cond": d.l3_cond,
+                                   "w": d.weight, "src": d.u_ff_source}
+            except Exception:
+                pass
+        return True
+    except Exception as e:                                 # noqa: BLE001
+        log(f"❌ INTACT 解码器执行失败: {type(e).__name__}: {e}")
         return False
 
 
@@ -1782,8 +1868,12 @@ def node_flight(ctx):
         return False
 
 
-_reg("intact",     ["INTACT 意图-动作", "INTACT"],
-     "🎯 INTACT — 零搜索 意图→动作 (数据源→RobotIO, 硬件预留)", node_intact)
+_reg("intact",     ["INTACT 意图-动作", "INTACT 策略", "INTACT"],
+     "🎯 INTACT 策略 (L4) — 零搜索 意图→动作 · 数据源=metaworld 真渲染 · "
+     "实现 src/lerobot/policies/intact/modeling_intact.py", node_intact)
+_reg("intact_dec", ["INTACT 意图解码器", "INTACT 解码", "意图解码器"],
+     "🎯 INTACT 意图解码器 (L4→L3) — 意图/潜空间 → u_ff 先验 + L3 流形条件 "
+     "(未标定则诚实拒绝) · src/lerobot/policies/intact/decoder.py", node_intact_dec)
 _reg("flight",    ["飞行", "标架转换", "Frenet"], 
      "🛩 飞行 — 标架转换 (Frenet/端口系/笛卡尔): 沿端口轴前进 + 端面微调", node_flight)
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)

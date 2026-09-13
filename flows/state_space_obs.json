@@ -1224,7 +1224,7 @@
   {
    "id": "ssintact",
    "type": "model",
-   "name": "🧠 INTACT 意图-动作 (L4: 零搜索 意图→动作)",
+   "name": "🎯 INTACT 策略 (L4: metaworld → 零搜索 意图→动作)",
    "x": 660,
    "y": -815,
    "w": 300,
@@ -1232,11 +1232,31 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 意图-动作] INTACT (zju3dv/INTACT-JEPA, MIT): 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 直接出 action chunk (**零候选搜索**, 无 CEM); 输入走数据源层 (官方数据/本仓库 L4 episode, 可再下载), 输出经 RobotIO 直连机器人硬件 (预留接口); 封装 src/lerobot/manifold/intact_node/ · 设计 docs/design/zmax_intact_node.md",
+    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md",
     "expert": true,
     "state_space": true,
     "intact": true,
-    "source": "src/lerobot/manifold/intact_node/node.py"
+    "data_source": "metaworld",
+    "decoder": "ssintact_dec",
+    "source": "src/lerobot/policies/intact/modeling_intact.py"
+   }
+  },
+  {
+   "id": "ssintact_dec",
+   "type": "model",
+   "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "x": 1000,
+   "y": -815,
+   "w": 300,
+   "h": 120,
+   "icon": "🎯",
+   "color": "#1f6feb",
+   "params": {
+    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变",
+    "expert": true,
+    "state_space": true,
+    "decoder": true,
+    "source": "src/lerobot/policies/intact/decoder.py"
    }
   },
   {
@@ -1526,12 +1546,12 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 中间策略] INTACT-JEPA 本域微调权重 (u 口径数据集 optical_insert_v4 训练, 从官方 pusht 权重初始化): 渲染图像+目标帧(解析链成功末帧)+动作历史 → 一次前向出动作块 (零候选搜索 candidate_action_steps=0) → 唯一变换=训练归一化逆运算 a_raw=z·std+mean → 按引擎 u→act 约定下发 (act[:3]=clip(u/K_ACT) · act[3]=CLOSE if u[3]>0.5); 封装 src/lerobot/manifold/intact_node/ · 桥 tools/intact_sw_optical_bridge.py",
+    "desc": "[L4 中间策略] INTACT-JEPA 本域微调权重 (u 口径数据集 optical_insert_v4 训练, 从官方 pusht 权重初始化): 渲染图像+目标帧(解析链成功末帧)+动作历史 → 一次前向出动作块 (零候选搜索 candidate_action_steps=0) → 唯一变换=训练归一化逆运算 a_raw=z·std+mean → 按引擎 u→act 约定下发 (act[:3]=clip(u/K_ACT) · act[3]=CLOSE if u[3]>0.5); 封装 src/lerobot/policies/intact/ · 桥 tools/intact_sw_optical_bridge.py",
     "intact": true,
     "sw_bridge": true,
     "task": "optical_insert",
     "policy": "intact_goal_optical_insert_v4_s3072 (自动挑最新 epoch)",
-    "source": "src/lerobot/manifold/intact_node/node.py"
+    "source": "src/lerobot/policies/intact/runtime/node.py"
    }
   },
   {
@@ -2209,6 +2229,30 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "意图 −∇Φ → 调度"
+  },
+  {
+   "id": "lkild1",
+   "f": "ssdata",
+   "t": "ssintact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "metaworld 真渲染帧 224² + 39D (数据源直接接入)"
+  },
+  {
+   "id": "lkild2",
+   "f": "ssintact",
+   "t": "ssintact_dec",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "意图/潜空间/动作块 (零搜索)"
+  },
+  {
+   "id": "lkild3",
+   "f": "ssintact_dec",
+   "t": "ssdec",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "L4 条件 → L3 DiT (未标定则不注入)"
   }
  ]
 }

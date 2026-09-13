@@ -1,0 +1,324 @@
+{
+ "ts": "2026-09-13 22:10:22",
+ "seeds": [
+  0,
+  1
+ ],
+ "max_steps": 700,
+ "cap": "l4",
+ "arms": {
+  "A_off": {
+   "success": 0,
+   "n": 2,
+   "dist_mean": 0.2039,
+   "l4_calls_mean": 0.0,
+   "blend_mean": 0.0,
+   "w": 0.0,
+   "frame_std_mean": null,
+   "l3_cond_ready": false,
+   "l3_cond_src": "未标定",
+   "u_ff_src": "analytic",
+   "rows": [
+    {
+     "seed": 0,
+     "arm_l4": false,
+     "shadow": false,
+     "done": false,
+     "steps": 700,
+     "dist_final": 0.0186,
+     "stage_end": "阶段 插入 · 接触",
+     "l4": {
+      "enabled": false,
+      "shadow": false,
+      "stages": [
+       "接近",
+       "对位",
+       "下降",
+       "抓取",
+       "抬起",
+       "转移"
+      ],
+      "calls": 0,
+      "reuse": 0,
+      "refused": 0,
+      "blend": 0,
+      "w_zero": 0,
+      "w": 0.0,
+      "u_ff_src": "analytic",
+      "goal_src": "(未设置)",
+      "l3_cond_ready": false,
+      "l3_cond_src": "未标定",
+      "frame_std_mean": null,
+      "shift_mean_m": 0.0,
+      "err": null,
+      "decoder": null
+     },
+     "elapsed_s": 6.4
+    },
+    {
+     "seed": 1,
+     "arm_l4": false,
+     "shadow": false,
+     "done": false,
+     "steps": 700,
+     "dist_final": 0.3891,
+     "stage_end": "阶段 AOI检测",
+     "l4": {
+      "enabled": false,
+      "shadow": false,
+      "stages": [
+       "接近",
+       "对位",
+       "下降",
+       "抓取",
+       "抬起",
+       "转移"
+      ],
+      "calls": 0,
+      "reuse": 0,
+      "refused": 0,
+      "blend": 0,
+      "w_zero": 0,
+      "w": 0.0,
+      "u_ff_src": "analytic",
+      "goal_src": "(未设置)",
+      "l3_cond_ready": false,
+      "l3_cond_src": "未标定",
+      "frame_std_mean": null,
+      "shift_mean_m": 0.0,
+      "err": null,
+      "decoder": null
+     },
+     "elapsed_s": 7.4
+    }
+   ]
+  },
+  "B_shadow": {
+   "success": 0,
+   "n": 2,
+   "dist_mean": 0.2039,
+   "l4_calls_mean": 39.0,
+   "blend_mean": 0.0,
+   "w": 0.3,
+   "frame_std_mean": 55.92,
+   "l3_cond_ready": false,
+   "l3_cond_src": "拒绝(未标定)",
+   "u_ff_src": "intact(chunk×K_ACT=0.5)",
+   "rows": [
+    {
+     "seed": 0,
+     "arm_l4": true,
+     "shadow": true,
+     "done": false,
+     "steps": 700,
+     "dist_final": 0.0186,
+     "stage_end": "阶段 插入 · 接触",
+     "l4": {
+      "enabled": true,
+      "shadow": true,
+      "stages": [
+       "接近",
+       "对位",
+       "下降",
+       "抓取",
+       "抬起",
+       "转移"
+      ],
+      "calls": 49,
+      "reuse": 336,
+      "refused": 0,
+      "blend": 0,
+      "w_zero": 0,
+      "w": 0.3,
+      "u_ff_src": "intact(chunk×K_ACT=0.5)",
+      "goal_src": "默认目标帧(intact_goal_frame_optical.npy)",
+      "l3_cond_ready": false,
+      "l3_cond_src": "拒绝(未标定)",
+      "frame_std_mean": 55.92,
+      "shift_mean_m": 0.0,
+      "err": null,
+      "decoder": {
+       "decoder": "intact_l3_decoder",
+       "cond_dim": 6,
+       "excluded_stages": [
+        "插入"
+       ],
+       "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)",
+       "l3_cond_ready": false,
+       "l3_cond_map": "models/intact_l3_map.json",
+       "trained": false,
+       "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
+      }
+     },
+     "elapsed_s": 29.2
+    },
+    {
+     "seed": 1,
+     "arm_l4": true,
+     "shadow": true,
+     "done": false,
+     "steps": 700,
+     "dist_final": 0.3891,
+     "stage_end": "阶段 AOI检测",
+     "l4": {
+      "enabled": true,
+      "shadow": true,
+      "stages": [
+       "接近",
+       "对位",
+       "下降",
+       "抓取",
+       "抬起",
+       "转移"
+      ],
+      "calls": 29,
+      "reuse": 197,
+      "refused": 0,
+      "blend": 0,
+      "w_zero": 0,
+      "w": 0.3,
+      "u_ff_src": "intact(chunk×K_ACT=0.5)",
+      "goal_src": "默认目标帧(intact_goal_frame_optical.npy)",
+      "l3_cond_ready": false,
+      "l3_cond_src": "拒绝(未标定)",
+      "frame_std_mean": 55.87,
+      "shift_mean_m": 0.0,
+      "err": null,
+      "decoder": {
+       "decoder": "intact_l3_decoder",
+       "cond_dim": 6,
+       "excluded_stages": [
+        "插入"
+       ],
+       "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)",
+       "l3_cond_ready": false,
+       "l3_cond_map": "models/intact_l3_map.json",
+       "trained": false,
+       "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
+      }
+     },
+     "elapsed_s": 23.1
+    }
+   ]
+  },
+  "C_on": {
+   "success": 0,
+   "n": 2,
+   "dist_mean": 0.124,
+   "l4_calls_mean": 88.0,
+   "blend_mean": 700.0,
+   "w": 0.3,
+   "frame_std_mean": 55.47,
+   "l3_cond_ready": false,
+   "l3_cond_src": "拒绝(未标定)",
+   "u_ff_src": "intact(chunk×K_ACT=0.5)",
+   "rows": [
+    {
+     "seed": 0,
+     "arm_l4": true,
+     "shadow": false,
+     "done": false,
+     "steps": 700,
+     "dist_final": 0.126,
+     "stage_end": "阶段 接近",
+     "l4": {
+      "enabled": true,
+      "shadow": false,
+      "stages": [
+       "接近",
+       "对位",
+       "下降",
+       "抓取",
+       "抬起",
+       "转移"
+      ],
+      "calls": 88,
+      "reuse": 612,
+      "refused": 0,
+      "blend": 700,
+      "w_zero": 0,
+      "w": 0.3,
+      "u_ff_src": "intact(chunk×K_ACT=0.5)",
+      "goal_src": "默认目标帧(intact_goal_frame_optical.npy)",
+      "l3_cond_ready": false,
+      "l3_cond_src": "拒绝(未标定)",
+      "frame_std_mean": 55.47,
+      "shift_mean_m": 0.6041,
+      "err": null,
+      "decoder": {
+       "decoder": "intact_l3_decoder",
+       "cond_dim": 6,
+       "excluded_stages": [
+        "插入"
+       ],
+       "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)",
+       "l3_cond_ready": false,
+       "l3_cond_map": "models/intact_l3_map.json",
+       "trained": false,
+       "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
+      }
+     },
+     "elapsed_s": 38.8
+    },
+    {
+     "seed": 1,
+     "arm_l4": true,
+     "shadow": false,
+     "done": false,
+     "steps": 700,
+     "dist_final": 0.1221,
+     "stage_end": "阶段 对位",
+     "l4": {
+      "enabled": true,
+      "shadow": false,
+      "stages": [
+       "接近",
+       "对位",
+       "下降",
+       "抓取",
+       "抬起",
+       "转移"
+      ],
+      "calls": 88,
+      "reuse": 612,
+      "refused": 0,
+      "blend": 700,
+      "w_zero": 0,
+      "w": 0.3,
+      "u_ff_src": "intact(chunk×K_ACT=0.5)",
+      "goal_src": "默认目标帧(intact_goal_frame_optical.npy)",
+      "l3_cond_ready": false,
+      "l3_cond_src": "拒绝(未标定)",
+      "frame_std_mean": 55.74,
+      "shift_mean_m": 0.5943,
+      "err": null,
+      "decoder": {
+       "decoder": "intact_l3_decoder",
+       "cond_dim": 6,
+       "excluded_stages": [
+        "插入"
+       ],
+       "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)",
+       "l3_cond_ready": false,
+       "l3_cond_map": "models/intact_l3_map.json",
+       "trained": false,
+       "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
+      }
+     },
+     "elapsed_s": 44.3
+    }
+   ]
+  }
+ },
+ "env": {
+  "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+  "INTACT_RUNTIME": "root",
+  "INTACT_DEVICE": "cpu"
+ },
+ "verdict": {
+  "零回退(基线可用)": "A_off success 0/2 · dist 0.2039",
+  "真接入(真推理真融合)": "C_on calls 88.0 · blend 700.0 · src=intact(chunk×K_ACT=0.5)",
+  "L3条件通道": "未标定 → 不注入 (拒绝 + 计数, 未写死映射)",
+  "是否提升": "C 臂未超过 A 臂 → **无提升证据** (只证明接入通路真在跑)"
+ }
+}

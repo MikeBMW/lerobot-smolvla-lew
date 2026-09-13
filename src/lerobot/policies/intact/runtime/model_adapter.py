@@ -72,9 +72,15 @@ class IntactRuntime:
                "--policy-name", self.policy_name]
         if self.ckpt:
             cmd += ["--ckpt", self.ckpt]
+        # 🐛 2026-09-13 迁移实测踩到: 未设 STABLEWM_HOME 时旧代码退回 <repo>/.cache → 本工程权重
+        #   (stable-wm-cache/checkpoints/*) 全部找不到 (FileNotFoundError: Checkpoint not found)。
+        #   修正: 优先用**共享权重缓存** (与引擎/桥同一处), 只有它不存在才退回 repo/.cache。
+        _shared = os.environ.get("INTACT_STABLEWM_HOME") or "/home/ubuntu/stable-wm-cache"
+        _home = (os.environ.get("STABLEWM_HOME")
+                 or (_shared if os.path.isdir(_shared) else os.path.join(self.repo, ".cache")))
         env = {**os.environ, "PYTHONUNBUFFERED": "1",
-               "STABLEWM_HOME": os.environ.get("STABLEWM_HOME", os.path.join(self.repo, ".cache")),
-               "LOCAL_DATASET_DIR": os.environ.get("LOCAL_DATASET_DIR", os.path.join(self.repo, ".cache")),
+               "STABLEWM_HOME": _home,
+               "LOCAL_DATASET_DIR": os.environ.get("LOCAL_DATASET_DIR", _home),
                "MUJOCO_GL": os.environ.get("MUJOCO_GL", "egl")}
         try:
             self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,

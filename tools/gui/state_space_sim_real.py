@@ -260,6 +260,19 @@ class RealStateSpaceSim:
             "SS_INTACT_STAGES", "接近,对位,下降,抓取,抬起,转移").split(",") if s.strip()]
         self._intact_stats = {"intact_calls": 0, "refused_map": 0, "frames": 0, "chunk_reuse": 0,
                               "err": None, "shift": [], "u_ff_src": "analytic"}
+        # 🎯 2026-09-13 老倪: L4 INTACT → 意图解码器 → L3 (metaworld → policies/intact → decoder)
+        #   与 _intact_* 同一 u_ff 槽位, 但走 decoder 的**量纲逆运算** (act×K_ACT) → **无需标定**;
+        #   L3 条件向量通道仍需标定。默认不生效 (SS_L4_INTACT 不设 = 与现状逐位相同)。
+        self._l4_dec = None
+        self._l4_buf: list = []
+        self._l4_cond = None
+        self._l4_last_u = None
+        self._l4_shadow = os.environ.get("SS_L4_INTACT_SHADOW") == "1"
+        self._l4_stages = [s.strip() for s in os.environ.get(
+            "SS_L4_INTACT_STAGES", ",".join(self._intact_stages)).split(",") if s.strip()]
+        self._l4_stats = {"calls": 0, "reuse": 0, "refused": 0, "blend": 0, "w_zero": 0,
+                          "cond_ready": 0, "frame_std": [], "shift": [], "err": None,
+                          "src": "analytic", "w": 0.0, "cond_src": "未标定", "goal_src": ""}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -995,6 +1008,82 @@ class RealStateSpaceSim:
         st["u_ff_src"] = "intact" + ("(shadow)" if self._intact_shadow else "")
         return u
 
+    # ── 🎯 INTACT 意图解码器 → L3 (2026-09-13 老倪: metaworld 数据源 → INTACT → decoder → L3) ──
+    def _l4_intact_u_ff(self, stage=""):
+        """L4 一路: 每 receding chunk 真推理一次 → **意图解码器** → u_ff (引擎 u 空间) + L3 条件。
+
+        与 SS_INTACT (标定映射 → 接管) 的差别:
+          · 本路径用 decoder 的**量纲逆运算** (act×K_ACT, 与引擎 state_space_sim_real.py:1183
+            自有约定同源) → **不需要标定文件**即可生效;
+          · L3 条件向量通道仍需标定 (models/intact_l3_map.json) → 未标定拒绝 + 计数, 不写死映射。
+        返回 (u_4d, w) 或 None (None = 本帧不接管, 调用方保持原 u_ff; 每种情况计数 + 记来源)。
+        """
+        st = self._l4_stats
+        if self._l4_dec is None:
+            try:
+                from lerobot.policies.intact.decoder import IntactIntentDecoder  # noqa: PLC0415
+                self._l4_dec = IntactIntentDecoder(cond_dim=6)
+            except Exception as e:                                          # noqa: BLE001
+                st["err"] = f"decoder 加载失败 {type(e).__name__}: {e}"
+                st["src"] = "analytic(decoder 不可用)"
+                return None
+        if not self._l4_buf:
+            st["calls"] += 1
+            try:
+                import cv2                                                  # noqa: PLC0415
+                fr = cv2.resize(np.asarray(self._render_frame()), (224, 224),
+                                interpolation=cv2.INTER_AREA).transpose(2, 0, 1).astype(np.float32)
+                st["frame_std"].append(float(np.asarray(fr).std()))
+                # 📥 数据源直接接入 metaworld: 引擎帧即渲染帧, 标 engine_render (可溯源)
+                out = self._intact_node.step(fr, obs_source="engine_render")
+                st["goal_src"] = getattr(self._intact_node, "goal_src", "") or "(未设置)"
+            except Exception as e:                                          # noqa: BLE001
+                st["err"] = f"{type(e).__name__}: {e}"
+                st["src"] = "analytic(L4 推理异常)"
+                return None
+            d = self._l4_dec.decode(out, stage=stage)
+            self._l4_cond = d.l3_cond
+            st["cond_src"] = d.l3_cond_source
+            st["cond_ready"] = 1 if d.l3_cond is not None else 0
+            if d.u_ff is None:
+                st["refused"] += 1
+                st["src"] = d.u_ff_source
+                return None
+            st["src"] = d.u_ff_source
+            st["w"] = float(d.weight)
+            chunk = np.asarray(out.chunk, dtype=float)
+            if chunk.ndim == 1:
+                chunk = chunk[None]
+            ka = float(getattr(self._l4_dec, "k_act", 0.5))
+            self._l4_buf = [np.concatenate([np.clip(np.asarray(c, float)[:3], -1, 1) * ka,
+                                            [1.0 if float(c[3]) > 0.5 else -1.0]]) for c in chunk]
+        else:
+            st["reuse"] += 1
+        if not self._l4_buf:
+            return None
+        u = self._l4_buf.pop(0)
+        self._l4_last_u = np.asarray(u, dtype=float).copy()
+        if self._l4_shadow:            # 影子档: 真推理真解码真记录, 但不接管
+            return None
+        return u, float(st.get("w") or 0.0)
+
+    def l4_intact_summary(self) -> dict:
+        """L4 接入的取证摘要 (给 A/B 对照工具/报告; 数字全部来自实测计数, 不做修饰)。"""
+        s = self._l4_stats
+        fstd = s.get("frame_std") or []
+        shift = s.get("shift") or []
+        mean = (lambda v: round(sum(v) / len(v), 4)) if shift else (lambda v: 0.0)
+        return {"enabled": os.environ.get("SS_L4_INTACT") == "1",
+                "shadow": bool(self._l4_shadow), "stages": self._l4_stages,
+                "calls": s["calls"], "reuse": s["reuse"], "refused": s["refused"],
+                "blend": s["blend"], "w_zero": s["w_zero"],
+                "w": s["w"], "u_ff_src": s["src"],
+                "goal_src": s.get("goal_src") or "(未设置)",
+                "l3_cond_ready": bool(s["cond_ready"]), "l3_cond_src": s["cond_src"],
+                "frame_std_mean": (round(sum(fstd) / len(fstd), 2) if fstd else None),
+                "shift_mean_m": mean(shift), "err": s["err"],
+                "decoder": (self._l4_dec.describe() if self._l4_dec is not None else None)}
+
     def _render_frame(self, h=480, w=480):
         """🛡 2026-09-10 安全渲染 (mac 点运行即崩根因): macOS 的 CGL 离屏 GL 上下文
         只能在主线程创建; 引擎在 worker 线程调用 env.render() → native segfault →
@@ -1536,6 +1625,31 @@ class RealStateSpaceSim:
                         self._intact_stats["shift"].append(_d)
                         if not self._intact_shadow:
                             u_ff = np.concatenate([np.asarray(_u_i, float)[:3], [u_ff[3]]])
+            # 🎯 2026-09-13 老倪 (L4 → decoder → L3): metaworld 数据源 → INTACT 策略 → 意图解码器 →
+            #   本 u_ff 槽位 (与 L3 的 ssdec→ssff 同一融合点) + L3 条件向量 (标定后生效)。
+            #   三档同 SS_INTACT 纪律: 不设 SS_L4_INTACT = **逐位零变化** / _SHADOW=1 = 影子真记录不接管 /
+            #   =1 = 接管 (按解码器置信度 w 融合: u_ff = (1−w)·analytic + w·L4, w=0 → 原值不变)。
+            #   与 SS_INTACT 的差别: 走 decoder 量纲逆运算, **不需要标定文件**; 未就绪/异常 → 计数 + 记来源。
+            if os.environ.get("SS_L4_INTACT") == "1" and self._intact_node is not None:
+                if st_now in self._l4_stages:
+                    _r4 = self._l4_intact_u_ff(str(st_now))
+                    if _r4 is not None:
+                        _u4, _w4 = _r4
+                        self._l4_stats["shift"].append(float(np.linalg.norm(
+                            np.asarray(_u4, float)[:3] - np.asarray(u_ff, float)[:3])))
+                        if _w4 > 0:
+                            _b = ((1.0 - _w4) * np.asarray(u_ff, float)[:3]
+                                  + _w4 * np.asarray(_u4, float)[:3])
+                            u_ff = np.concatenate([_b, [u_ff[3]]])
+                            self._l4_stats["blend"] += 1
+                        else:
+                            self._l4_stats["w_zero"] += 1
+                    tr.setdefault("l4_w", []).append(float(self._l4_stats.get("w") or 0.0))
+                    tr.setdefault("l4_u_ff_vec", []).append(
+                        None if self._l4_last_u is None else
+                        np.asarray(self._l4_last_u, float).copy())
+                    tr.setdefault("l4_cond_vec", []).append(
+                        None if self._l4_cond is None else np.asarray(self._l4_cond, float).copy())
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
             # 🧠 前馈探针 (真实 MLP 激活, 诊断通道): 2026-09-08 老倪目检实锤 — 真实化主路径

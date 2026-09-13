@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import os
 import time
 
 import numpy as np
@@ -23,6 +24,25 @@ from .robot_io import RobotIO, SimRobotIO
 
 NODE_NAME = "🧠 INTACT 意图-动作"
 NODE_LAYER = "L4"
+
+# 🐛 2026-09-13 迁移实测踩到 (技能 cross-venv-model-canvas-node §8.6 "两个必踩的坑"):
+#   goal_displacement 意图**必须**有 goal 帧 —— 用 obs_frame 直接喂节点 (`step(fr)`) 时没人设 goal
+#   → 引擎每帧抛 `ValueError: goal_displacement 模式需要 goal 帧` (A/B 影子臂 60/60 次全失败)。
+#   这里给节点补上"目标帧兜底": 已设 > 数据源自报 > 本域真实目标帧文件。
+DEFAULT_GOAL_CANDIDATES = (
+    "reports/intact_goal_frame_optical.npy",     # 解析链末帧 = 任务完成态 (v5.5.37 起)
+    "reports/intact_goal_frame.npy",
+)
+
+
+def repo_root() -> str:
+    """向上找含 reports/ 的仓库根 (比数 dirname 层数稳)。"""
+    d = os.path.dirname(os.path.abspath(__file__))
+    while d != os.path.dirname(d):
+        if os.path.isdir(os.path.join(d, "reports")):
+            return d
+        d = os.path.dirname(d)
+    return os.getcwd()
 
 
 class IntactNode:
@@ -79,6 +99,38 @@ class IntactNode:
         self.goal = None if goal is None else np.asarray(goal, dtype=np.float32)
         self.waypoint = None if waypoint is None else np.asarray(waypoint, dtype=np.float32)
         self.intent_mode = "waypoint" if waypoint is not None else "goal_displacement"
+        self.goal_src = "set_goal(显式)" if (goal is not None or waypoint is not None) else ""
+
+    def ensure_goal(self, path: str | None = None) -> bool:
+        """确保 goal 帧可用 (goal_displacement 模式硬需求)。返回是否可用。
+
+        来源优先级 (每一级都标注在 self.goal_src, 供面板/日志显示, 不静默):
+          ① 已显式 set_goal  → 不动
+          ② 数据源自报 goal  → metaworld 源内置"本域真实目标帧" (解析链末帧)
+          ③ 默认目标帧文件   → reports/intact_goal_frame_optical.npy
+        """
+        if self.goal is not None or self.waypoint is not None:
+            return True
+        g = getattr(self.source, "goal", None) if self.source is not None else None
+        if g is not None:
+            self.goal = np.asarray(g, dtype=np.float32)
+            self.goal_src = f"data_source({getattr(self.source, 'name', '?')})"
+            return True
+        root = repo_root()
+        for cand in ((path,) if path else ()) + DEFAULT_GOAL_CANDIDATES:
+            p = cand if os.path.isabs(cand) else os.path.join(root, cand)
+            try:
+                if os.path.isfile(p):
+                    arr = np.asarray(np.load(p), dtype=np.float32)
+                    if arr.ndim == 3 and arr.shape[0] not in (1, 3, 4):     # HWC → CHW
+                        arr = np.transpose(arr, (2, 0, 1))
+                    self.goal = arr
+                    self.goal_src = f"默认目标帧({os.path.basename(p)})"
+                    return True
+            except Exception:
+                continue
+        self.goal_src = ""
+        return False
 
     # ── 接口 3: 机器人输出 (硬件预留) ──
     def attach_robot(self, io: RobotIO) -> None:
@@ -91,6 +143,7 @@ class IntactNode:
         self.action_hist = zero_action_history(HISTORY_SIZE, self.action_dim)   # raw 零 (官方语义)
         self.n_steps = 0
         self.last: IntactOutput | None = None
+        self.goal_src = self.goal_src if getattr(self, "goal_src", "") else ""
         self.stats = {"n": 0, "t_ms": [], "intent_norm": [], "terminal_latent_error": [],
                       "forward_calls": [], "candidate_sequences": [],
                       "latent_norm": [], "latent_dim": [], "obs_source": []}
@@ -123,6 +176,13 @@ class IntactNode:
             _osrc = obs_source or str((self.source.info() or {}).get("obs_mode") or "source")
         else:
             _osrc = obs_source or "engine_render"
+            # 🐛 goal 帧兜底 (2026-09-13 实测: 引擎直喂帧时无人设 goal → 每帧抛错)
+            if self.intent_mode == "goal_displacement" and self.goal is None:
+                if not self.ensure_goal():
+                    raise RuntimeError(
+                        "goal_displacement 模式需要 goal 帧, 但既未 set_goal、数据源也没自报、"
+                        "默认目标帧文件也不存在 → 先 node.set_goal(goal_frame) 或放 "
+                        "reports/intact_goal_frame_optical.npy")
             fr = np.asarray(obs_frame, dtype=np.float32)
             self.obs_buf.append(fr)
             self.obs_buf = self.obs_buf[-HISTORY_SIZE:]
@@ -180,6 +240,7 @@ class IntactNode:
             # ── Step 0: 潜空间 + 观测来源 (真实性溯源) ──
             "latent_dim": int(mean(s["latent_dim"])), "latent_norm": round(mean(s["latent_norm"]), 4),
             "latent_exported": bool(s["latent_norm"]), "obs_source": (s["obs_source"] or [""])[0],
+            "goal_src": self.goal_src or "(未设置)",
         }
 
     def describe(self) -> dict:
