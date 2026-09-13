@@ -1466,6 +1466,93 @@
     "source": "src/lerobot/memory/mem_nodes.py · node_ss_intent_direct",
     "bundle": true
    }
+  },  {
+   "id": "swbg_l4sw",
+   "name": "🌍 L4 · SW仿真世界引擎链 (INTACT 标准机器人 cube · stable-world 渲染)",
+   "type": "row_bg",
+   "icon": "🌍",
+   "x": -420,
+   "y": -1720,
+   "w": 2400,
+   "h": 170,
+   "color": "#8957e5",
+   "params": {
+    "bg": "#1a2332",
+    "model": "stable-world",
+    "source": "intact_sw",
+    "desc": "L4 档专属 · 独立链条 (老倪 2026-09-13): 数据源=INTACT 环境渲染图像 → 中间=INTACT 策略(cube 论文权重 零搜索) → 硬件层=stable-world 仿真世界引擎(动作真下发 env.step + 官方渲染视频); 整链只在 L4 档执行, 不动 L2/L3"
+   }
+  },
+  {
+   "id": "swds",
+   "type": "data",
+   "name": "🧪 SW环境渲染图像源 (stable-world 逐帧渲染)",
+   "x": -340,
+   "y": -1690,
+   "w": 330,
+   "h": 120,
+   "icon": "🧪",
+   "color": "#2e8b57",
+   "params": {
+    "desc": "[L4 数据源] stable-world 环境逐帧渲染真图 (224×224 RGB, 来自 swm/OGBCube-v0 + MUJOCO_GL=egl 离屏渲染), 由 tools/intact_sw_bridge.py 写 spool/*.jpg + status.json; 真图判据 frame_std>5 (实测 ~30)",
+    "sw_bridge": true,
+    "kind": "render_frames",
+    "source": "tools/intact_sw_bridge.py --spool"
+   }
+  },
+  {
+   "id": "swintact",
+   "type": "model",
+   "name": "🎯 INTACT策略 · cube (论文权重 · 零搜索)",
+   "x": 60,
+   "y": -1690,
+   "w": 330,
+   "h": 120,
+   "icon": "🎯",
+   "color": "#1f6feb",
+   "params": {
+    "desc": "[L4 中间策略] 与 ② debug 任务同口径: paper_runtime + PriorOnlySolver(零搜索) + recovery_delta_full_cube_s3072 · 输入=渲染图像+目标帧+动作历史 → 一次前向出 5 步动作块 (candidate_action_steps=0); 封装 src/lerobot/manifold/intact_node/ · 桥 tools/intact_sw_bridge.py",
+    "intact": true,
+    "sw_bridge": true,
+    "task": "cube",
+    "policy": "recovery_delta_full_cube_s3072",
+    "source": "src/lerobot/manifold/intact_node/node.py"
+   }
+  },
+  {
+   "id": "swworld",
+   "type": "hardware",
+   "name": "🌍 SW仿真世界引擎 (stable-world · 动作真下发)",
+   "x": 460,
+   "y": -1690,
+   "w": 330,
+   "h": 120,
+   "icon": "🌍",
+   "color": "#8957e5",
+   "params": {
+    "desc": "[L4 硬件层] stable-world 模拟器接口: 接收动作块 → env.step 真下发 (每 receding_horizon=5 步重规划) → 回渲染帧给数据源; 出官方渲染视频 save_panel_videos(agent|dataset|goal) 存 reports/intact_sw/*.mp4",
+    "sw_bridge": true,
+    "sim": true,
+    "env": "swm/OGBCube-v0",
+    "source": "tools/intact_sw_bridge.py"
+   }
+  },
+  {
+   "id": "swvideo",
+   "type": "data",
+   "name": "🎬 SW渲染视频 (3D · 从 stable world 取出)",
+   "x": 860,
+   "y": -1690,
+   "w": 330,
+   "h": 120,
+   "icon": "🎬",
+   "color": "#d29922",
+   "params": {
+    "desc": "[L4 可视化·回路外观察器] 从 stable-world 取出的渲染视频 (3 面板 agent|dataset|goal, 15fps) + 逐帧实况窗; 双击打开 (不参与自动运行链)",
+    "viz_kind": "sw_video",
+    "sw_bridge": true,
+    "source": "tools/intact_sw_bridge.py --video-dir"
+   }
   }
  ],
  "links": [
@@ -2044,6 +2131,37 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "校验通过 → 原子技能参数"
+  },  {
+   "id": "lksw1",
+   "f": "swds",
+   "t": "swintact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "环境渲染图像 224×224"
+  },
+  {
+   "id": "lksw2",
+   "f": "swintact",
+   "t": "swworld",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "动作块 (零搜索)"
+  },
+  {
+   "id": "lksw3",
+   "f": "swworld",
+   "t": "swds",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "渲染回流 (闭环)"
+  },
+  {
+   "id": "lksw4",
+   "f": "swworld",
+   "t": "swvideo",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "SW 渲染视频 (3D)"
   }
  ]
 }

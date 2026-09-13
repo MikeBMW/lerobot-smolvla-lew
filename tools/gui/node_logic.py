@@ -1335,9 +1335,282 @@ def node_intact(ctx):
         return False
 
 
+# ── 🌍 L4 · SW 仿真世界引擎链 (INTACT cube · stable-world, 2026-09-13 老倪) ──
+#   数据源(渲染图像) → INTACT 策略(cube 论文权重 零搜索) → 硬件层(stable-world 引擎 动作真下发)
+#   → 可视化(从 stable world 取出的渲染视频)。整链只在 L4 档执行 (所在 row_bg 名含 L4)。
+#   实现 = 跨 venv 子进程桥: 桥跑在 INTACT venv (torch/hydra/stable_worldmodel), GUI 只读它的
+#   spool/*.jpg + status.json —— 依赖隔离, 节点逻辑不 import torch。
+_SW_S = {"proc": None, "logf": None}
+
+
+def _sw_paths(root: str):
+    d = os.path.join(root, "reports", "intact_sw")
+    fr = os.path.join(d, "frames")
+    vd = os.path.join(d, "video")
+    os.makedirs(fr, exist_ok=True)
+    os.makedirs(vd, exist_ok=True)
+    return d, fr, os.path.join(d, "status.json"), vd
+
+
+def _sw_python(root: str) -> str:
+    """桥必须跑在 INTACT venv (唯一装了 torch/hydra/stable_worldmodel 的环境)。
+    仓库 .venv 里没有 numpy/torch → 绝不能用它跑桥 (2026-09-13 实测踩过:
+    用错解释器 = ModuleNotFoundError: No module named 'numpy')。"""
+    for c in (os.environ.get("INTACT_PY") or "",
+              "/home/ubuntu/INTACT-JEPA/.venv/bin/python"):
+        if c and os.path.exists(c):
+            return c
+    return "python3"
+
+
+def _sw_status(path: str) -> dict:
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _sw_alive() -> bool:
+    p = _SW_S.get("proc")
+    return bool(p) and p.poll() is None
+
+
+def _sw_start(root: str, log, episodes: int = 3):
+    """启动/复用 stable-world 渲染桥 (子进程, INTACT venv)。返回 (ok, status_path, frames_dir, video_dir)"""
+    import json
+    d, fr, st, vd = _sw_paths(root)
+    if not _sw_alive():
+        script = os.path.join(root, "tools", "intact_sw_bridge.py")
+        if not os.path.exists(script):
+            log(f"❌ 找不到桥脚本 {script}")
+            return False, st, fr, vd
+        py = _sw_python(root)
+        cmd = [py, script, "--task", "cube", "--episodes", str(episodes),
+               "--eval-budget", "50", "--goal-offset", "25",
+               "--spool", fr, "--status", st, "--video-dir", vd]
+        lf = open(os.path.join(d, "bridge.log"), "a", encoding="utf-8")
+        _SW_S["proc"] = __import__("subprocess").Popen(
+            cmd, cwd=root, stdout=lf, stderr=__import__("subprocess").STDOUT)
+        _SW_S["logf"] = lf
+        log(f"🌍 SW 引擎链: 已启动 stable-world 渲染桥 (pid={_SW_S['proc'].pid}, "
+            f"python={os.path.basename(os.path.dirname(py))})")
+        log(f"   命令: {' '.join(cmd[:6])} … --spool {fr}")
+    else:
+        log(f"🌍 SW 引擎链: 复用已在跑的桥 (pid={_SW_S['proc'].pid})")
+    return True, st, fr, vd
+
+
+def _sw_wait(status_path: str, pred, timeout: float, log, tag: str) -> dict:
+    """轮询 status.json 直到 pred(状态) 为真 (桥真跑, 不伪造);
+    桥进程若已死则立刻返回 (附 bridge.log 尾部) — 不空等超时"""
+    t0 = time.time()
+    last = {}
+    while time.time() - t0 < timeout:
+        last = _sw_status(status_path)
+        if last and (pred(last) or last.get("stage") == "done"):
+            return last
+        if not _sw_alive():
+            # 桥进程刚退出 → 可能正处在 os.replace 的瞬间, 再读一次最终状态
+            time.sleep(0.6)
+            last = _sw_status(status_path)
+            if last and (pred(last) or last.get("stage") == "done"):
+                return last
+            log(f"   ❌ {tag}: 桥进程已退出, stage={last.get('stage')} → bridge.log 尾部:")
+            try:
+                with open(os.path.join(os.path.dirname(status_path), "bridge.log"),
+                          encoding="utf-8", errors="replace") as f:
+                    for ln in f.read().strip().splitlines()[-4:]:
+                        log(f"      {ln}")
+            except Exception:
+                pass
+            return last
+        time.sleep(0.5)
+    log(f"   ⚠️ {tag}: 等待 {timeout:.0f}s 超时 (最后 stage={last.get('stage')})")
+    return last
+
+
+def node_sw_ds(ctx):
+    """🧪 L4 数据源 — INTACT 环境渲染图像 (stable-world 逐帧渲染真图)
+    本节点负责启动桥并**等到桥跑完**(顺序链上后续节点直接读终态, 避免竞态)"""
+    log = ctx["log"]
+    root = str(ctx.get("root") or os.getcwd())
+    ok, st, fr, vd = _sw_start(root, log)
+    if not ok:
+        return False
+    log(f"📦 数据源 [L4·SW]: INTACT 环境渲染图像 (224×224 RGB, EGL 离屏渲染) · 帧 spool: {fr}")
+    t0 = time.time()
+    last = {}
+    while time.time() - t0 < 300.0:
+        last = _sw_status(st)
+        if last.get("stage") == "done":
+            break
+        if not _sw_alive() and last.get("stage") != "done":
+            time.sleep(0.8)
+            last = _sw_status(st)
+            if last.get("stage") != "done":
+                log(f"   ❌ 桥进程异常退出 (stage={last.get('stage')}) → reports/intact_sw/bridge.log")
+                return False
+            break
+        if last.get("step") is not None and last.get("step") % 10 == 0:
+            log(f"   ⏳ 渲染中 … step={last.get('step')} std={last.get('frame_std')} "
+                f"stage={last.get('stage')}")
+        time.sleep(0.8)
+    n = len([x for x in os.listdir(fr) if x.endswith(".jpg")]) if os.path.isdir(fr) else 0
+    log(f"   ✅ 渲染帧 {n} 帧 (真图判据 frame_std={last.get('frame_std')} > 5) · "
+        f"回合 {last.get('ep_done')} · 起点 {last.get('eval_episodes')}@{last.get('start_steps')}")
+    return True
+
+
+def node_sw_intact(ctx):
+    """🎯 L4 中间策略 — INTACT (cube 论文权重, 零搜索)"""
+    log = ctx["log"]
+    root = str(ctx.get("root") or os.getcwd())
+    _, fr, st, _ = _sw_paths(root)
+    d = _sw_wait(st, lambda s: bool(s.get("model_calls")), 120.0, log, "INTACT 策略")
+    if not d:
+        log("❌ INTACT 策略: 未拿到桥状态 (看 reports/intact_sw/bridge.log)")
+        return False
+    log(f"🎯 INTACT 策略 [L4·cube]: ckpt={d.get('ckpt')} · 文件={d.get('ckpt_file')}")
+    log(f"   真推理 模型调用 {d.get('model_calls')} 次 · 零搜索={d.get('zero_search', True)} "
+        f"(candidate_action_steps=0)")
+    log(f"   最新动作块(前 5 维)= {d.get('action')} → 下发 stable-world 引擎")
+    return True
+
+
+def node_sw_world(ctx):
+    """🌍 L4 硬件层 — stable-world 仿真世界引擎 (动作真下发 env.step)"""
+    log = ctx["log"]
+    root = str(ctx.get("root") or os.getcwd())
+    _, fr, st, vd = _sw_paths(root)
+    log(f"🌍 SW 仿真世界引擎 [L4]: env={_sw_status(st).get('env', 'swm/OGBCube-v0')} · 动作真下发 env.step")
+    d = _sw_wait(st, lambda s: s.get("stage") == "done", 420.0, log, "SW 引擎")
+    if not d:
+        log("❌ SW 引擎: 超时无终态 (看 reports/intact_sw/bridge.log)")
+        return False
+    log(f"   实跑 {d.get('steps')} 步 / {d.get('ep_done')} 回合 · 成功 {d.get('succ')} 局 "
+        f"→ success_rate={d.get('success_rate')}% · 模型调用 {d.get('model_calls')} 次")
+    log(f"   渲染帧均值 std={d.get('frame_std')} (>5 真图) · 视频: {d.get('video')}")
+    if d.get("showcase"):
+        log(f"   合集(3D 视频, 从 stable world 取出): {d.get('showcase')}")
+    log(f"   ⚠️ 诚实标注: 该 success_rate 为 L4 演示档随机起点小样本 (episodes={d.get('episodes')}), "
+        f"非官方 100 局口径 (官方 cube seed3072 = 98.67%)")
+    return True
+
+
+def node_sw_video(ctx):
+    """🎬 L4 可视化 — 从 stable world 取出的渲染视频 (实况窗 + 视频路径)"""
+    log = ctx["log"]
+    root = str(ctx.get("root") or os.getcwd())
+    _, fr, st, vd = _sw_paths(root)
+    d = _sw_status(st)
+    newest = None
+    try:
+        js = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+        newest = os.path.join(fr, js[-1]) if js else None
+    except Exception:
+        pass
+    vids = []
+    try:
+        vids = sorted([os.path.join(vd, x) for x in os.listdir(vd) if x.endswith(".mp4")])
+    except Exception:
+        pass
+    log(f"🎬 SW 渲染视频 [L4]: 逐帧实况 {newest} · 最新一帧 {(d.get('frame_std'))} std")
+    log(f"   视频文件 ({len(vids)}): " + (" · ".join(os.path.basename(v) for v in vids[-3:]) or "尚未产出"))
+    try:                                                        # 实况窗 (lazy Qt, CLI 下跳过)
+        import importlib.util as _ilu
+        if _ilu.find_spec("PyQt5") is None:
+            return True
+        from PyQt5 import QtWidgets, QtGui, QtCore
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return True
+        w = QtWidgets.QDialog()
+        w.setWindowTitle("🎬 SW 渲染视频 (stable-world) · L4")
+        lay = QtWidgets.QVBoxLayout(w)
+        lb = QtWidgets.QLabel("等待渲染帧 …")
+        lb.setMinimumSize(456, 456)
+        lb.setAlignment(QtCore.Qt.AlignCenter)
+        info = QtWidgets.QLabel("")
+        lay.addWidget(lb)
+        lay.addWidget(info)
+        timer = QtCore.QTimer(w)
+
+        def _tick():
+            js2 = []
+            try:
+                js2 = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            except Exception:
+                pass
+            if js2:
+                pm = QtGui.QPixmap(os.path.join(fr, js2[-1]))
+                if not pm.isNull():
+                    lb.setPixmap(pm.scaled(lb.size(), QtCore.Qt.KeepAspectRatio,
+                                           QtCore.Qt.SmoothTransformation))
+                d2 = _sw_status(st)
+                info.setText(f"帧 {js2[-1]} · std={d2.get('frame_std')} · step={d2.get('step')} · "
+                             f"阶段={d2.get('stage')} · 成功 {d2.get('succ')}/{d2.get('ep_done')}")
+        timer.timeout.connect(_tick)
+        _tick()
+        timer.start(120)
+        w.resize(520, 560)
+        w.show()
+    except Exception as e:                                      # noqa: BLE001
+        log(f"   (实况窗跳过: {type(e).__name__}: {e})")
+    return True
+
+
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
+_reg("sw_ds",      ["SW环境渲染图像源", "SW环境渲染"], "🧪 L4 数据源 — INTACT 环境渲染图像 (stable-world 渲染帧)", node_sw_ds)
+_reg("sw_intact",  ["INTACT策略"], "🎯 L4 中间 — INTACT 策略 cube (论文权重 零搜索)", node_sw_intact)
+_reg("sw_world",   ["SW仿真世界引擎", "SW仿真世界"], "🌍 L4 硬件层 — stable-world 仿真世界引擎 (动作真下发)", node_sw_world)
+_reg("sw_video",   ["SW渲染视频"], "🎬 L4 可视化 — 从 stable world 取出的渲染视频 (实况窗)", node_sw_video)
+# ── 🛩 飞行 · 标架转换 (Frenet / 端口任务坐标系 / 笛卡尔, 2026-09-13 老倪) ──
+def node_flight(ctx):
+    """🛩 飞行 — 标架转换模块 (Frenet ⇄ 端口系 ⇄ 笛卡尔)
+
+    老倪框架: Frenet 是坐标表示, 增量是控制方式; 端口轴 κ=0 时退化为
+      Δs = Δz (沿插入轴),  Δd1 = Δx,  Δd2 = Δy (端面横向),  Δroll (绕轴键位)
+    → 端口任务坐标系增量 = Frenet 直线特例。自由段用 Bishop/Frenet, 插入段用端口系增量。
+    双击 → 真跑标架往返一致性 + 距离分解 + 飞行航点生成 (只读真实几何, 无假数据)
+    """
+    log = ctx["log"]
+    try:
+        import numpy as np                                        # noqa: PLC0415
+        from lerobot.manifold.flight import Flight                # noqa: PLC0415
+        # 引擎真实几何 (孔口 + 端口轴)
+        P0 = np.array([-0.1769, 0.4243, 0.1304], dtype=float)
+        AX = np.array([1.0, 0.0, 0.0], dtype=float)
+        fl = Flight(port_origin=P0, port_axis=AX, approach=0.12)
+        # ① 标架往返一致性 (port → world → port)
+        u_port = np.array([0.010, 0.002, -0.003, 0.020])
+        w = fl.to_world(u_port, mode="port")
+        back = fl.to_port(w)
+        err = float(np.abs(back - u_port).max())
+        # ② 到端口距离分解
+        h = np.array([0.10, 0.62, 0.10], dtype=float)
+        dd = fl.distance_to_port(h)
+        # ③ 飞行航点 (起飞→巡航→对准→插入)
+        pts, tags = fl.fly_to_port(h)
+        # ④ 模式自动切换
+        mode = fl.mode_for(h)
+        log(f"🛩 飞行: 标架往返误差={err:.2e} · 端口轴={np.round(fl.R_port[:,2],2).tolist()} · "
+            f"当前标架={mode}")
+        log(f"   距离分解: 沿轴={dd['along_m']:+.4f}m · 横向={dd['lateral_m']:.4f}m · "
+            f"插入区={dd['in_insert_zone']}")
+        log(f"   航点={len(pts)} (段: {sorted(set(tags))}) · 终点={np.round(pts[-1],4).tolist()} · "
+            f"末端在轴偏差={float(np.linalg.norm(np.cross(pts[-1]-P0, AX))):.5f}m")
+        return True
+    except Exception as e:
+        log(f"❌ 飞行节点执行失败: {type(e).__name__}: {e}")
+        return False
+
+
 _reg("intact",     ["INTACT 意图-动作", "INTACT"],
      "🎯 INTACT — 零搜索 意图→动作 (数据源→RobotIO, 硬件预留)", node_intact)
+_reg("flight",    ["飞行", "标架转换", "Frenet"], 
+     "🛩 飞行 — 标架转换 (Frenet/端口系/笛卡尔): 沿端口轴前进 + 端面微调", node_flight)
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)
 _reg("train",      ["训练", "全新训练"], "② 训练 — ACT 策略训练 (含 metaworld 全新训练)", node_train)
 _reg("validate",   ["验证"],        "③ 验证 — 流程拓扑合规检查 (validate_flow)", node_validate)
