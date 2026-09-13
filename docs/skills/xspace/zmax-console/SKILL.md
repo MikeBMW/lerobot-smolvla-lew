@@ -124,6 +124,32 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **ModelCompareDialog/BarCompareWidget 主题化**: paint 用 `_st()` (simulink_scope.CUR_THEME 由 simulink_module.switch_theme 同步); 对话框 QSS 用 `_qss()` 映射 (dark 时浅色值→深色值)。
 - **🔬 三模型对比 (2026-08-05, commit ada65fb1, 老倪: \"增加一个没有leworldmodel的流程, 三个模型对比, 即 ACT, SmolVLA, SmolVLA+Leworldmodel串行\")**: 新模板「🔬 三模型对比」**18节点20连线** = ♻共用2 (📦metaworld数据 / 📊对比评估Scope) + **3 分支行**: ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead·ACT→Ensemble→训练) + SmolVLA 纯动作 4 (SmolVLM2→DiT-B→ActionHead·SmolVLA→训练, **无 LEW**) + SmolVLA+LEW 5 (SmolVLM2·LEW→DiT-B·LEW→🌐LeWorldModel→ActionHead·SmolVLA+LEW→训练)。三训练节点 policy=act / smolvla / smolvla_lew。入口 btn_compare3 \"🔬 三模型对比\" (#d4a800) → open_compare3()。**⚠️ 关键配置坑 (configuration_smolvla_lew.py:125-126 `__post_init__`)**: `freeze_smolvlm: true` 时 **`enable_lew_world_model` 被强制改 False** — 现有 config_smolvla_metaworld.yaml (freeze=true) 训练出的\"SmolVLA\"其实**根本没启用 LEW**! 要真 LEW 必须新建 `config_smolvla_lew_metaworld.yaml` (freeze_smolvlm: **false** + enable_lew_world_model: true + lew_* 参数)。on_train 三策略分支 (smolvla_lew→新配置+ts_dir=smolvla_lew_<ts> / smolvla→旧配置+smolvla_<ts> / else→ACT), 曲线落盘 reports/train_curve_<policy>.json 各写各的。compare_models.py main() 改循环 `policies=[(\"act\",\"ACT\"),(\"smolvla\",\"SmolVLA\"),(\"smolvla_lew\",\"SmolVLA+LEW\")]` 逐个 find_ckpt+eval (缺 checkpoint 跳过不报错); on_compare_scope 改\"有任一产物即可评估\"(不再强制双曲线都在)。ModelCompareDialog._load_data 通用 N 模型 (MODELS 表 + present=[k in m and m[k]]): loss 折线每模型一条 / 表格 N 列+胜出列 / bars.set_data(rows, names=[...]); simulink_scope.COLORS 加 `smolvla_lew: #a371f7` (紫)。**⚠️ BarCompareWidget paintEvent float 坐标崩 (2026-08-05 渲染对话框时暴露, commit 53164e6a)**: 原双模型版 `y0 = i * row_h` 是 float, `p.drawText(8, y0+14, ...)` **PyQt5 严格类型 → TypeError** (隐藏 bug 从未被触发, N 模型改造后测试渲染对话框才崩)。修: y0/yy 全部 `int()`。**教训: 自绘 paint 的 drawText/fillRect 坐标必须 int (同 QPen.setWidth 只收 int 一族); 改完必须真实渲染一遍**。验证 (offscreen EXIT=0): YAML 语义断言 (lew 配置 enable=true+freeze=false) / compare 语法 / 模板 18节点20连线 / Action Head 三行对齐 / ModelCompareDialog 假数据三模型表格含 \"3 模型\" / 画布渲染采样非白。
 
+## 🌍 L4 · SW 仿真世界引擎链 (v5.5.28, 2026-09-13 — INTACT cube 集成进状态空间)
+老倪: "把独立的 INTACT 运行环境集成到状态空间中, 点击运行就能跑 INTACT, 触发开关是 L4"
+- **链条 (独立, 只增不改)**: 🧪 SW环境渲染图像源(数据源) → 🎯 INTACT策略·cube(中间) →
+  🌍 SW仿真世界引擎(硬件层) → 🎬 SW渲染视频(可视化) = 4 节点 + 1 个 row_bg + 4 连线
+  (flows/state_space_obs.json 文本级插入, 保持原缩进; 原有 70 节点/72 连线一字未动)
+- **L4 触发开关 = 复用既有档位机制**: 节点落在名字含 "L4" 的 row_bg 色带内 →
+  `_ss_node_cap_level()` 直接返回 4 → 只有 L4 档的单步/播放链执行它。**不需要新代码分支**,
+  L2/L3 档零影响 (offscreen 实测 L2/L3 节点全在)
+- **桥 = tools/intact_sw_bridge.py (跑在 INTACT venv, 跨 venv 子进程)**: 与 paper_runtime
+  eval 逐行同源 (同 World / load_pretrained / PriorOnlySolver 零搜索 / _extract_init_goal +
+  _apply_callables / img_transform + StandardScaler); 唯一区别 = **逐帧流式**
+  (spool/*.jpg + status.json) + 末尾官方 `save_panel_videos` 出 3 面板 (agent|dataset|goal) mp4
+  + concat 合集 = 「从 stable world 取出的 3D 视频」
+- **⚠️ 三个实测坑 (都踩过)**:
+  ① 桥**必须**用 INTACT venv 解释器 (`/home/ubuntu/INTACT-JEPA/.venv/bin/python`); 仓库 `.venv`
+     没有 numpy/torch → `ModuleNotFoundError: No module named 'numpy'` (症状: bridge.log 尾部报错,
+     status.json 永不出现)
+  ② `_sw_paths()` 返回序是 **(dir, frames, status, video)**; 解包错位 (`_, st, fr, vd = ...`)
+     会静默把 frames 当 status → 三个节点同时报 "桥进程已退出, stage=None" 却查不出原因
+  ③ 桥跑完会**退出进程**, 此刻 status 可能正处 `os.replace` 瞬间 → 读到 `{}`。正确姿势:
+     节点顺序链里**第一个节点负责启动桥并等到 `stage=='done'`**, 后续节点只读终态;
+     `_sw_wait` 里加"进程死亡 → 再读一次终态 → 才判定失败"并打印 bridge.log 尾部
+- **验证脚本**: offscreen 画布载入必须**按节点名匹配** (载入器会重生成 node id,
+  用插入时的 id 查不到); 端到端真跑实测 13.6s / 52 帧 / frame_std 30.26 (>5 真图) /
+  模型真调用 52 次 / candidate_action_steps=0 / 4 个视频文件
+
 ## simulink 工程完整性检查 (2026-08-28 v3.3.1, 老倪: 全面检查)
 新增 `tools/ci/zmax_integrity_check.py` 一键检查器, 五项全绿:
 1. **NODE_TYPES 三处同步** (simulink_module 15种 = validate_flow = simulink_ci) —
