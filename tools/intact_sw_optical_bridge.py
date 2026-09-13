@@ -329,7 +329,13 @@ def main():
             # 🧲 记忆层介入 (逐层开关; 全关 → u 原样返回, 等价于原链路)
             if mem_br is not None and mem_br.any_on():
                 try:
-                    _x = np.asarray(s.peg_head(), float).ravel()[:3]
+                    # 🐛 2026-09-14 坐标系错配实锤: 冠军轨迹/引擎肌肉记忆用的是**夹爪真实位置**
+                    #   (引擎 self.x = obs[0:3], state_space_sim_real.py:634 「夹爪真实位置 obs hand 语义」),
+                    #   而这里原来喂 peg_head() —— 同一个 seed 下两者差 (0.017, 0.054, 0.176)m,
+                    #   等于让势场在**自己坐标系之外**的点上求梯度 → 意图变噪声。
+                    #   实测 (tools/mem_field_probe.py 纯场驱动): 用 peg_head 时 tr[dist] 157→431mm 越走越远;
+                    #   改用观测前三维后, 场才有意义 (tr[x] 首点本来就和冠军轨迹 P[0] 逐位相同 = 同源)。
+                    _x = np.asarray(o, float).ravel()[:3]
                     # 相位由状态定 (t=None): 模型直驱时"时钟进度"与实际所在相位不同步
                     _u2, _binfo = mem_br.blend_action(s._direct_act, _x, None, w_max=0.5, k_act=K_ACT)
                     if _binfo.get("applied"):

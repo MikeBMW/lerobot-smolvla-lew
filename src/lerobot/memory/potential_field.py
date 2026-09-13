@@ -86,6 +86,19 @@ def polyline_length(P):
     return float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
 
 
+def _resample_like(P, U, n):
+    """按 **P 的弧长** 等距重采样 U (U 的列与 P 同步; 不能拿 U 自己的弧长 —— 动作空间里没意义)"""
+    P = np.asarray(P, float)
+    U = np.asarray(U, float)
+    L = polyline_length(P)
+    if L <= 1e-12 or n < 2 or U.shape[0] != P.shape[0]:
+        return U.copy()
+    seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+    cs = np.concatenate([[0.0], np.cumsum(seg)])
+    s = np.linspace(0.0, L, int(n))
+    return np.stack([np.interp(s, cs, U[:, j]) for j in range(U.shape[1])], axis=1)
+
+
 def resample_polyline(P, n):
     """按弧长等距重采样 (势场用均匀点, 免得密集段主导)"""
     P = np.asarray(P, float)
@@ -107,11 +120,21 @@ class SkillPotentialField:
 
     def __init__(self, code, stage, points, exit=None, entry=None, sigma=None,
                  lam=None, k_att=None, n_ok=0, v_cap=None, v_min=None,
-                 name="", desc="", evidence="", source="", meta=None):
+                 name="", desc="", evidence="", source="", meta=None, u_points=None):
         P = np.asarray(points, float).reshape(-1, 3)
         if P.shape[0] < 2:
             raise ValueError(f"{code}: 轨迹点太少 ({P.shape[0]})")
-        P = resample_polyline(P, min(64, max(8, P.shape[0])))
+        # 🎯 2026-09-14 抓取通道 (实测暴露): 势场原来只管 u[:3] (XYZ), **夹爪 u[3] 完全不管** →
+        #   纯场驱动时夹爪永不闭合 → 光模块根本没被抓起 (探针 1000 步 peg 位置一动不动)。
+        #   冠军轨迹里本来就有 champ_u (每步 4 维, 含夹爪) → 存下来, 场就能给夹爪指令。
+        U0 = None
+        if u_points is not None:
+            _U = np.asarray(u_points, float)
+            if _U.ndim == 2 and _U.shape[1] >= 4 and _U.shape[0] == np.asarray(points, float).shape[0]:
+                U0 = _U
+        _n_rs = min(64, max(8, P.shape[0]))
+        P = resample_polyline(P, _n_rs)
+        self.U = _resample_like(np.asarray(points, float).reshape(-1, 3), U0, _n_rs) if U0 is not None else None
         self.code, self.stage = code, stage
         self.P = P
         self.x_0 = np.asarray(entry, float).ravel()[:3] if entry is not None else P[0].copy()
@@ -221,6 +244,15 @@ class SkillPotentialField:
         d_goal = float(np.linalg.norm(np.asarray(x, float).ravel()[:3] - self.x_g))
         return f, d_goal
 
+    def grip_at(self, x):
+        """当前弧长位置上的**冠军夹爪指令** (u[3] ∈ [-1,1]); 没有 champ_u → None (不编)。"""
+        if getattr(self, "U", None) is None:
+            return None
+        _, _, s_arc, _ = project_polyline(np.asarray(x, float).ravel()[:3], self.P)
+        n = int(self.U.shape[0])
+        idx = int(np.clip(round((s_arc / max(self.L, 1e-9)) * (n - 1)), 0, n - 1))
+        return float(self.U[idx, 3])
+
     def diagnostics(self, x):
         c, d, s, _ = project_polyline(x, self.P)
         return {"skill": self.code, "stage": self.stage, "d_perp_m": round(d, 6),
@@ -252,7 +284,7 @@ class SkillPotentialField:
         io = rec.get("io") or {}
         m = sk_meta or {}
         return cls(code=code, stage=stage, points=X, exit=io.get("exit"), entry=io.get("entry"),
-                   sigma=sigma, n_ok=rec.get("n_ok", 0),
+                   sigma=sigma, n_ok=rec.get("n_ok", 0), u_points=rec.get("champ_u"),
                    v_cap=(m.get("ctrl") or {}).get("v_cap"), v_min=(m.get("ctrl") or {}).get("v_min"),
                    name=m.get("name", ""), desc=m.get("desc", ""), evidence=m.get("evidence", ""),
                    source="data/muscle_memory.json champ_x (真机真跑冠军轨迹) + io.exit/goal",
@@ -713,14 +745,18 @@ class MemoryLayerBridge:
         diag = act.diagnostics(x)
         conf = float(np.exp(-(diag["d_perp_m"] ** 2) / (2.0 * (3.0 * act.sigma) ** 2)))
         spd = float(v_cap if v_cap is not None else (act.v_cap or 0.2))
-        return {"active": True, "dir": [float(v) for v in (-g)],
+        try:
+            _grip = act.grip_at(x)
+        except Exception:                                              # noqa: BLE001
+            _grip = None
+        return {"active": True, "dir": [float(v) for v in (-g)], "grip": _grip,
                 "step_m": round(spd, 5), "skill": act.code, "stage": act.stage,
                 "conf": round(conf, 4), "d_perp_m": diag["d_perp_m"],
                 "d_goal_m": diag["d_goal_m"], "phase_from": ("clock" if t is not None else "state"),
                 "gates": self.gates()}
 
     def blend_action(self, u_model, x, t=None, w_max=0.5, k_act=0.5, w_floor=0.2, d_max=0.5,
-                     w_far=0.85, d_near_m=0.03, d_far_m=0.15):
+                     w_far=0.85, d_near_m=0.03, d_far_m=0.15, blend_grip=True):
         """执行钩子 (逐步打开): u = (1−w)·u_model + w·u_field, w = w_max·max(conf, w_floor)。
         层全关 → w=0, 恒等返回 (可断言零回退)。
         w_floor = **恢复下限**: 出轨迹管时 (conf→0) 仍留一部分场权, 把状态拉回管里 (L4 的
@@ -758,9 +794,18 @@ class MemoryLayerBridge:
                        "skill": it["skill"], "conf": conf, "d_perp_m": it["d_perp_m"]}
         uf = np.asarray(it["dir"], float) * float(it["step_m"]) / max(k_act, 1e-6)  # → env ±1 量纲
         u[:3] = np.clip((1.0 - w) * u[:3] + w * np.clip(uf, -1, 1), -1.0, 1.0)
+        # 🎯 2026-09-14 夹爪通道: 场上权重时夹爪也交给**冠军轨迹当拍指令** (原来 u[3] 永远来自模型
+        #   → 纯场/远场救援时夹爪不闭合 → 光模块根本没抓起来; 探针实锤 1000 步 peg 一动不动)。
+        #   仍是同一个 w → 管内 (模型主导) 夹爪照旧听模型的, 不回退。
+        _gsrc = "model"
+        if bool(blend_grip) and it.get("grip") is not None:
+            u[3] = float(np.clip((1.0 - w) * float(u[3]) + w * np.clip(float(it["grip"]), -1.0, 1.0),
+                                 -1.0, 1.0))
+            _gsrc = f"champion(skill={it.get('skill')},grip={round(float(it['grip']), 3)})"
         return u, {"w": round(w, 4), "applied": True, "skill": it["skill"], "conf": conf,
                    "d_perp_m": it["d_perp_m"], "d_goal_m": it["d_goal_m"],
                    "far": round(far, 3), "w_far_gain": round(float(w_far) * far, 4),
+                   "grip_src": _gsrc, "u_out_grip": round(float(u[3]), 4),
                    "phase_from": it["phase_from"], "u_model": [round(float(v), 4) for v in u_model],
                    "u_field": [round(float(v), 4) for v in uf],
                    "u_out": [round(float(v), 4) for v in u]}
