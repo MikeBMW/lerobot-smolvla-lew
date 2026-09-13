@@ -124,6 +124,31 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **ModelCompareDialog/BarCompareWidget 主题化**: paint 用 `_st()` (simulink_scope.CUR_THEME 由 simulink_module.switch_theme 同步); 对话框 QSS 用 `_qss()` 映射 (dark 时浅色值→深色值)。
 - **🔬 三模型对比 (2026-08-05, commit ada65fb1, 老倪: \"增加一个没有leworldmodel的流程, 三个模型对比, 即 ACT, SmolVLA, SmolVLA+Leworldmodel串行\")**: 新模板「🔬 三模型对比」**18节点20连线** = ♻共用2 (📦metaworld数据 / 📊对比评估Scope) + **3 分支行**: ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead·ACT→Ensemble→训练) + SmolVLA 纯动作 4 (SmolVLM2→DiT-B→ActionHead·SmolVLA→训练, **无 LEW**) + SmolVLA+LEW 5 (SmolVLM2·LEW→DiT-B·LEW→🌐LeWorldModel→ActionHead·SmolVLA+LEW→训练)。三训练节点 policy=act / smolvla / smolvla_lew。入口 btn_compare3 \"🔬 三模型对比\" (#d4a800) → open_compare3()。**⚠️ 关键配置坑 (configuration_smolvla_lew.py:125-126 `__post_init__`)**: `freeze_smolvlm: true` 时 **`enable_lew_world_model` 被强制改 False** — 现有 config_smolvla_metaworld.yaml (freeze=true) 训练出的\"SmolVLA\"其实**根本没启用 LEW**! 要真 LEW 必须新建 `config_smolvla_lew_metaworld.yaml` (freeze_smolvlm: **false** + enable_lew_world_model: true + lew_* 参数)。on_train 三策略分支 (smolvla_lew→新配置+ts_dir=smolvla_lew_<ts> / smolvla→旧配置+smolvla_<ts> / else→ACT), 曲线落盘 reports/train_curve_<policy>.json 各写各的。compare_models.py main() 改循环 `policies=[(\"act\",\"ACT\"),(\"smolvla\",\"SmolVLA\"),(\"smolvla_lew\",\"SmolVLA+LEW\")]` 逐个 find_ckpt+eval (缺 checkpoint 跳过不报错); on_compare_scope 改\"有任一产物即可评估\"(不再强制双曲线都在)。ModelCompareDialog._load_data 通用 N 模型 (MODELS 表 + present=[k in m and m[k]]): loss 折线每模型一条 / 表格 N 列+胜出列 / bars.set_data(rows, names=[...]); simulink_scope.COLORS 加 `smolvla_lew: #a371f7` (紫)。**⚠️ BarCompareWidget paintEvent float 坐标崩 (2026-08-05 渲染对话框时暴露, commit 53164e6a)**: 原双模型版 `y0 = i * row_h` 是 float, `p.drawText(8, y0+14, ...)` **PyQt5 严格类型 → TypeError** (隐藏 bug 从未被触发, N 模型改造后测试渲染对话框才崩)。修: y0/yy 全部 `int()`。**教训: 自绘 paint 的 drawText/fillRect 坐标必须 int (同 QPen.setWidth 只收 int 一族); 改完必须真实渲染一遍**。验证 (offscreen EXIT=0): YAML 语义断言 (lew 配置 enable=true+freeze=false) / compare 语法 / 模板 18节点20连线 / Action Head 三行对齐 / ModelCompareDialog 假数据三模型表格含 \"3 模型\" / 画布渲染采样非白。
 
+## 🌍 L4 · 光模块插拔链 (v5.5.37, 2026-09-13 — 红方块抓取 → 光模块抓取插拔)
+老倪: 「把红色小方块的抓取实验, 改造成光模块的抓取插拔实验」。
+四节点与 cube 链**同构**, 只换任务: 🧪 环境渲染图像源 → 🎯 INTACT 插拔策略 (本域微调) →
+🌍 Z-MAX 引擎 RealStateSpaceSim (metaworld 真物理) → 🎬 插拔渲染视频。
+- **切任务** = `data/intact_sw_task.json` (`optical_insert` 默认 / `cube` 保留), **不埋代码分支**;
+  `data/intact_sw_policy.json` 可指定 policy/stats/mode/seeds/device。cube 旧桥不删。
+- **两个 venv 分工**: 引擎跑 `gui-venv311` (只有它有 metaworld), 模型由 `IntactRuntime` 起
+  **INTACT venv 子进程** (gui venv 无 torch 链)。cube 链相反 (env 在 INTACT venv 里)。
+- **动作口径**: v4 数据集动作列 = `sim._u_vec` (m/s) → 闭环必须按引擎自有约定还原
+  (`act[:3]=clip(u/K_ACT)` · `act[3]=CLOSE if u[3]>0.5`) 再给 `env.step`; 统计用
+  `tools/action_stats_from_h5.py` **现算** (权重/统计同源, 不许手写)。
+- **⚠️ 最坑: stale status 竞态** — 上一轮 status.json 还是 `stage=done` 时, 节点等待循环首轮即
+  判"本轮跑完" (实测光模块链读到 cube 终态: env=OGBCube / 52 帧 / cube 视频, 校验全红却查不出因)。
+  修法: `_sw_start` 在 Popen **之前**先写 `{"stage":"starting"}` 作废旧状态。
+  判定法: 报错里出现"上一轮的任务名/帧数" = 读到旧 status。
+- **验收**: `tools/verify_l4_optical_chain.py` 节点级 11/11 (真跑整链): 1800 帧 · 1800 次真推理 ·
+  frame_std 56.5 · 解析链 2/2=100% (插入 65.13/64.78mm · 全链插→拔→AOI=True) ‖ 模型直驱 0/2 (过冲) —
+  与离线判闸一致 (预测std 仅教师 7~16% = 塌均值), **模型能力问题非接线问题**, 日志/status 诚实标注。
+- **判闸根因 (配置级, 非训练量)**: ① `loss.intent.local_weight=0.1/goal=0.05` 而 `forward=1.0`
+  → actor 几乎不发声; ② `min_log_std=-5.0` → std 可缩到 0.007, "输出均值+极小方差"就是 NLL 最优解
+  ⇒ 塌缩是最优解。对策 = `intact_goal_optical_insert_v5.yaml` (权重 1.0/1.0 + min_log_std -2.0)。
+- **训练接力**: `train.py` 写死 `timeout 14400` (4h) 而 12 epoch 要 ~9.2h → 必被 SIGTERM (v3 死因 rc=124);
+  `l4_ab/train_intact_optical_chain.sh` 从最新 ckpt 换名续训到累计 TARGET epoch (CFG/FAMILY_V/TARGET/PER_RUN/DEADLINE)。
+- 📄 全部细节 (桥执行流/坑清单/命令) 见 `references/l4-optical-insert-chain.md`
+
 ## 🌍 L4 · SW 仿真世界引擎链 (v5.5.28, 2026-09-13 — INTACT cube 集成进状态空间)
 老倪: "把独立的 INTACT 运行环境集成到状态空间中, 点击运行就能跑 INTACT, 触发开关是 L4"
 - **链条 (独立, 只增不改)**: 🧪 SW环境渲染图像源(数据源) → 🎯 INTACT策略·cube(中间) →

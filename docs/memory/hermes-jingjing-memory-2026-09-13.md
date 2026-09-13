@@ -28,7 +28,7 @@ Hermes: 敏感命令硬拦+扫脚本→变量拼接绕; pkill -f杀自己; sudo�
 §
 3DApp: 旧App不删(新包名并存); keystore~/state3d_app/勿丢
 §
-引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5] → obs[7:10]=_pc光模块位置; 阶段名取sim.sched.stage(); gripper不由accel决定; 训练用_frame_sink的o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×K_ACT=act×0.5)
+引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5] → obs[7:10]=_pc光模块位置; gripper不由accel决定; 训练用_frame_sink的o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×K_ACT=act×0.5)
 §
 打包坑: PyInstaller sys.executable=app→runtime_env.resolve_python(); SmolVLM images=[[i]]+text×N(否则特征全零); transformers5→AutoModelForImageTextToText
 §
@@ -36,8 +36,10 @@ Hermes: 敏感命令硬拦+扫脚本→变量拼接绕; pkill -f杀自己; sudo�
 §
 L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选(预测器逐帧发指令φ*); 老倪红线: 真模型/预测器须默认生效, 日志现'脚本开环'即不合格
 §
-INTACT: 权重须paper_runtime(E1=576非根768); 两处同名module.py(根/paper_runtime): sys.path[0]=脚本目录→论文权重(要InverseTransitionActor)只能用paper_runtime跑; ckpt需config.json; h5须import hdf5plugin; eval每局出env_<i>.mp4到$STABLEWM_HOME(下次运行同名覆盖,需及时归档); 数据集只剩.zst=未解压; z_t/z_goal靠spy encode截获; 老倪Step1口径=不改变逻辑/复制项目→原生动作直接env.step(_direct_act钩子); 线性标定u_ff判死(R²≈0.04); 判决器=离线回放(须赢常数基线); 微调action_dim=8, 逆归一化z·std+mean, 动作头权重过低→塌缩均值; L4接入: u=w_ff·u_ff+(1-w_ff)·u_fb, 守卫TOL=0.15
+INTACT: 权重须paper_runtime(E1=576非根768); 两处同名module.py: 论文权重(要InverseTransitionActor)只能用paper_runtime跑; ckpt需config.json; h5须import hdf5plugin; eval每局出env_<i>.mp4到$STABLEWM_HOME(同名覆盖,需及时归档); 数据集只剩.zst=未解压; z_t/z_goal靠spy encode截获; 老倪Step1口径=不改变逻辑/复制项目→原生动作直接env.step(_direct_act钩子); 线性标定u_ff判死(R²≈0.04); 判决器=离线回放(须赢常数基线); 微调action_dim=8, 逆归一化z·std+mean, 动作头权重过低→塌缩均值; L4接入: u=w_ff·u_ff+(1-w_ff)·u_fb
 §
 守卫: TOL=0.15→100%+参与21-34%; 53D完备未破参与上限24-27%, >30%掉分/全模型崩; insert_depth原6mm太松(老倪目检戳穿)→0.002; tr[peg]=速度(位置用peg_head())
 §
-数据只留cube+reacher(09-13); 删大文件前验证依赖(曾误删唯一完整源)
+数据只留cube+reacher; 删大文件前验证依赖(曾误删唯一源)
+§
+模型: 本机只有DeepSeek直连key, 只认deepseek-flash/v4-pro; V4.1-Flash须openrouter/nous通道; 换全局模型要钉住定时任务
