@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.33")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.34")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.33 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.34 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.33 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.34 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.5.34: 🎛 L4·SW 互动查看器 (老倪: "可以像 L2 L3 的 dreamview 一样, 变成互动, 可以看到任意帧的信号么") — ①新增 `tools/gui/intact_signal_viewer.py`: **拖帧看任意帧画面+信号** 的互动窗口 — 时间轴滑块 / ◀▶ 单帧 步进 / ⏮⏭ 首尾 / ▶10fps 连续播放; 右侧信号表逐帧显示 帧文件·帧序号·step·回合·**模型动作[0..3]**·frame_std(>5=真图)·done·累计真推理次数; 下方 **pyqtgraph 四条动作曲线 + 游标线随滑块移动** (任意帧信号一眼可见) ②数据源自动扫描 `reports/**/frames/` (L4·SW 实况导出), 并读同名 **`status.jsonl` 逐帧信号日志** — 由 bridge 每步追加一行 (step/action/frame_std/done/model_calls) ③三个入口: 3D 视图 SW 实况窗口「🎛 互动查看器」按钮 / 画布「🎬 SW渲染视频」节点双击 / 直接开窗口 ④**为什么之前"视频不动"**: 实况窗口只在链条运行时逐帧刷新; 停下来后就定格在最后一帧 — 现在可拖帧/逐帧步进/看每帧信号 (与 dreamview 同款交互), 不再依赖"有没有在跑" ⑤诚实: 帧是真渲染图 (像素 std 可查, 实测 30.3~30.7); 无 status.jsonl 的旧产物信号列显示"—", 不编数值 ⑥验证 11/11 (offscreen): 扫到数据源51帧·逐帧信号51条·拖帧画面真图(std>5)·step与动作值跟着帧变·信号表四行动作·4条曲线51点·游标跟随(x=10)·播放暂停切换·越界夹紧不崩 (截图 reports/intact_sw/interactive_viewer_v5534.png)
         # v5.5.33: 🐛 修「弹出的实况窗口画面不动」根因 (只弹窗没跑桥) — ①**老倪实锤**: L4 档 ▶运行 → 窗口弹出但画面定住; 排查 = reports/intact_sw/status.json 仍是上一次 12:37 的旧时间戳、控制台日志 0 条 SW 痕迹、无桥进程 ⇒ **状态空间 ▶运行 走的是引擎真链路 (_start_real_sim), 不会执行画布上 SW 链条的节点逻辑** → 桥从未被启动, 窗口只能显示上次跑的旧帧 ②**修复**: `_auto_sw_live_window()` 除了弹窗, 还要 **真启动 SW 引擎链桥** (调 node_logic._sw_start; 已在跑则复用并如实提示"已在跑-复用") → 逐帧渲染真图 流式写入 frames/status.json, 窗口 150ms 轮询 → 画面真的会动; 启动/复用都在画布日志留痕 ③**端到端验证 7/7** (清空 frames 后真跑): 窗口弹出 · 桥真启动 (pid 191239) · 帧从 0 增长 · status.json 时间戳真更新 (15:17:51) · 窗口显示帧号从 step_000000 → step_000001 = 画面在动 · 状态行读新状态 (std=31.31, 阶段 run) · 日志有"已启动 stable-world 渲染桥" ④L2/L3 档仍完全不动
         # v5.5.32: 🎬 L4 档 ▶运行 自动弹出「SW 实况」独立窗口 (老倪: "跑链条时画面自己就出来了") — ①`simulink_module.start_sim` 在**状态空间画布**分支入口调 `_auto_sw_live_window()`: 当前档位 `_ss_cap_num()>=4` (L4) 才弹窗, L2/L3 档**完全不动** (返回 None, 保持原行为) ②画布日志留痕: "🎬 L4 档: 已自动弹出「SW 实况」独立窗口 (stable-world 逐帧渲染真图 · 数据源 reports/intact_sw/frames)" ③**全局单例** `ss_dreamview.sw_live_window()`: 自动弹出的窗口与 3D 视图内嵌小窗的「⤢ 放大窗口」、3D 左侧绿色按钮**共用同一个实例** (不会开出两个窗口) ④验证 7/7 (offscreen): L2 不弹 / L3 不弹 / L4 弹 (标题+位置) / 日志有记录 / 单例一致 (w2 is w3 is w) / L4 画布 start_sim 真走到该调用 (引擎被调用 1 次 + 窗口 True) / 窗口显示真帧 672×672 (截图 reports/intact_sw/sw_live_auto_v5532.png)
         # v5.5.31: 🎬 SW 实况独立窗口 (老倪: "小窗太小了, 独立出来一个正常窗口吧") — ①新增 `ss_dreamview.SWLiveWindow`: 单独一个**正常窗口**显示 stable-world 逐帧渲染真图 (数据源与 3D 角落小窗完全相同: reports/intact_sw/frames/*.jpg + status.json → L4「🌍 SW 仿真世界引擎链」真产物) ②窗口能力: 默认 760×860 **可拉伸** · 倍率 ×1/×1.5/×2/×3/×4 (默认 ×3=672px, 原帧 224×224) · ⏸暂停/▶继续 (定格不刷新) · 📌置顶 toggle · 📂视频目录 (3 面板 mp4 + showcase) ③**两个入口**: 3D 视图左侧新增绿色按钮「🎬 SW 实况窗口 (独立·放大看)」+ 3D 角落小窗新增「⤢ 放大窗口」按钮 (点它从小窗放大到独立窗口) ④单例: 已开则 raise/activate, 不重复开窗; resize 时按倍率重贴 ⑤诚实: 无产物显示"尚未跑过 — 选 L4 档点 ▶运行"; 状态行 4 行全读真 status.json (帧/std/阶段/步/回合/成功/success_rate/模型调用/零搜索/ckpt/数据源路径) ⑥验证 15/15 (offscreen): 按钮×2 在位 · 顶层窗口(父=None) 760×860 可拉伸 · 真帧 std=31.78 · 倍率 ×1:224 ×2:448 ×4:686 真生效 · ⏸暂停不刷新 · 状态行真值 · 置顶切换无异常 · 整窗 grab 非全黑 (亮像素 261005) ⑦踩坑记录: PyQt `QLabel.pixmap()` 返回对象会随后续 setPixmap 变动 → 测试比较必须先取 int (曾误判倍率不生效)

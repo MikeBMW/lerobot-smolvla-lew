@@ -83,6 +83,10 @@ def main() -> int:
 
     T = TASKS[a.task]
     os.makedirs(a.spool, exist_ok=True)
+    try:                                    # 清空上一轮的逐帧信号日志 (互动查看器只读本轮)
+        open(a.status + "l", "w", encoding="utf-8").close()
+    except Exception:
+        pass
     os.chdir(RT)
     sys.path.insert(0, RT)
     cache = os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
@@ -210,6 +214,17 @@ def main() -> int:
                        "frame_std": round(float(fr.std()), 2),
                        "elapsed": round(time.time() - t0, 1)})
             _write_status(a.status, st)
+            # 📈 2026-09-13 (老倪: "像 dreamview 一样互动看任意帧的信号"): 逐帧信号日志 (jsonl, 一帧一行)
+            try:
+                with open(a.status + "l", "a", encoding="utf-8") as _fh:
+                    _fh.write(json.dumps(_json_safe({
+                        "step": gstep, "ep": ep, "ep_index": k,
+                        "frame": os.path.basename(st.get("frame") or ""),
+                        "action": last.get("action"), "frame_std": st.get("frame_std"),
+                        "done": st.get("done"), "model_calls": last.get("calls")}),
+                        ensure_ascii=False) + "\n")
+            except Exception:
+                pass
             gstep += 1
 
         world._run(max_steps=a.eval_budget, mode="wait", on_step=on_step)

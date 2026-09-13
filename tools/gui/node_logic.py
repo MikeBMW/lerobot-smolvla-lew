@@ -1526,6 +1526,16 @@ def node_sw_video(ctx):
         app = QtWidgets.QApplication.instance()
         if app is None:
             return True
+        # 🎛 2026-09-13 老倪: 要能像 L2/L3 dreamview 一样互动看任意帧 → 优先开互动查看器
+        try:
+            import intact_signal_viewer as _iv
+            _vw = _iv.open_signal_viewer(os.path.dirname(fr))
+            if _vw is not None:
+                _vw.rescan(os.path.dirname(fr))
+                log("🎛 互动查看器已打开 — 拖时间轴/◀▶ 单帧, 任意帧的 画面+模型动作[0..3]+std+done+推理次数 同步显示")
+                return True
+        except Exception as _e:                     # 回落到简易实况窗 (不静默)
+            log(f"   (互动查看器不可用, 回落实况窗: {type(_e).__name__}: {_e})")
         w = QtWidgets.QDialog()
         w.setWindowTitle("🎬 SW 渲染视频 (stable-world) · L4")
         lay = QtWidgets.QVBoxLayout(w)

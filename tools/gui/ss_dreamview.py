@@ -519,6 +519,15 @@ class SWLiveWindow(QWidget):
         b_dir = QPushButton("📂 视频目录")
         b_dir.clicked.connect(self._open_dir)
         bar.addWidget(b_dir)
+        # 🎛 2026-09-13 老倪: 要像 L2/L3 dreamview 一样能互动看任意帧的信号
+        b_iv = QPushButton("🎛 互动查看器 (拖帧看信号)")
+        b_iv.setToolTip("打开互动查看器: 时间轴拖到任意帧 → 同步显示该帧的真渲染画面、\n"
+                        "模型动作[0..3]、frame_std、done、真推理次数, 并画出动作随帧的曲线 (游标跟随)")
+        b_iv.setStyleSheet("QPushButton{background:#00d4aa;color:#0d1117;font-weight:700;"
+                           "border:none;border-radius:4px;padding:4px 10px;}"
+                           "QPushButton:hover{background:#33e0b8;}")
+        b_iv.clicked.connect(self._open_viewer)
+        bar.addWidget(b_iv)
         bar.addStretch(1)
         v.addLayout(bar)
         self.lbl_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
@@ -1718,6 +1727,22 @@ class DreamView3D(QWidget):
             self._sw_panel.move(max(m, self.view.width() - self._sw_panel.width() - m), 44)
         except Exception:
             pass
+
+    def _open_viewer(self):
+        """🎛 打开互动查看器 (拖帧看任意帧的画面+信号; 老倪 2026-09-13)"""
+        try:
+            import intact_signal_viewer as _iv
+            d, _fr, _vd, _st = sw_dirs()
+            w = _iv.open_signal_viewer(d)
+            if w is not None:
+                w.rescan(d)
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[互动查看器] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
 
     def _sw_open_dir(self):
         try:
