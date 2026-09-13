@@ -26,13 +26,24 @@ class IntactRuntime:
     def __init__(self, repo: str | None = None, venv_python: str | None = None,
                  ckpt: str | None = None, task: str = "pusht",
                  hf_repo: str = "INTACT-JEPA/INTACT", hf_rev: str = "paper-e5-goal-v1",
-                 device: str = "cuda", policy: str = "direct", autostart: bool = True,
-                 policy_name: str | None = None):
+                 device: str | None = None, policy: str = "direct", autostart: bool = True,
+                 policy_name: str | None = None, runtime_kind: str | None = None):
         self.repo = repo or DEFAULT_REPO
         self.venv_python = venv_python or os.path.join(self.repo, ".venv", "bin", "python")
         self.ckpt, self.task = ckpt, task
         self.hf_repo, self.hf_rev = hf_repo, hf_rev
-        self.device, self.policy = device, policy
+        # 🐛 2026-09-13: 原来 device 默认 "cuda" 且**总是**显式传 --device → 调用方设的
+        #   INTACT_DEVICE=cpu 被覆盖 (探针会去抢训练显存)。改成 None = 不传, 由 worker 读 env
+        #   (worker: --device default = $INTACT_DEVICE or "cuda") → 与同机训练共存时能真的走 CPU。
+        self.device = device
+        self.policy = policy
+        # 🐛 2026-09-13: 本域微调权重 (INTACT_POLICY=<本地 ckpt>) 是用**根运行时**训的
+        #   (action_dim=8), 而 worker 对 hf_rev=paper-* 默认选 paper 运行时 → 报
+        #   `InstantiationException: module.IntentActionActor` (论文运行时没有这个类)。
+        #   规则: $INTACT_RUNTIME 优先; 否则"有本地微调权重 → root"; 都没有 → None (worker 自定,
+        #   官方 HF paper 资产才走 paper)。
+        self.runtime_kind = (runtime_kind or os.environ.get("INTACT_RUNTIME")
+                             or ("root" if os.environ.get("INTACT_POLICY") else None))
         self.policy_name = policy_name or os.environ.get(
             "INTACT_POLICY", f"recovery_delta_full_{task}_s{os.environ.get('INTACT_SEED', '3072')}")
         self.proc: subprocess.Popen | None = None
@@ -68,8 +79,12 @@ class IntactRuntime:
             script = "/home/ubuntu/lerobot-smolvla-lew/tools/intact_worker.py"
         cmd = [self.venv_python, script, "--repo", self.repo, "--task", self.task,
                "--hf-repo", self.hf_repo, "--hf-rev", self.hf_rev,
-               "--device", self.device, "--policy", self.policy,
+               "--policy", self.policy,
                "--policy-name", self.policy_name]
+        if self.device:               # 不传 → worker 用 $INTACT_DEVICE (默认 cuda)
+            cmd += ["--device", self.device]
+        if self.runtime_kind:         # root / paper (论文权重必须 paper)
+            cmd += ["--runtime", self.runtime_kind]
         if self.ckpt:
             cmd += ["--ckpt", self.ckpt]
         # 🐛 2026-09-13 迁移实测踩到: 未设 STABLEWM_HOME 时旧代码退回 <repo>/.cache → 本工程权重
@@ -175,4 +190,5 @@ class IntactRuntime:
     def info(self) -> dict:
         return {"repo": self.repo, "trained": self.trained, "reason": self.reason,
                 "dims": self.dims, "policy": self.policy, "ckpt": self.ckpt,
+                "runtime": self.runtime_kind, "device": self.device,
                 "worker_alive": bool(self.proc is not None and self.proc.poll() is None)}

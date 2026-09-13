@@ -1290,21 +1290,24 @@ def node_pdf_report(ctx):
 
 
 # ── 🎯 INTACT 节点 (2026-09-11 老倪: L4 层加 INTACT 节点, 输出直连机器人硬件) ──
-_INTACT_NODE_CACHE = {}
+#   🏗 2026-09-13 老倪: 「这段应该放到 src/lerobot/policies 这个地方, 你来重构代码」→
+#   编排逻辑 (建桥/接数据源/真推理/解码/证据落盘/日志文本) 全部下沉到 policy 层:
+#     src/lerobot/policies/intact/service.py  (IntactIntentService / IntentReport / get_service)
+#   GUI 这里只剩瘦调用: 取单例 → run_once(decode=…, log=ctx["log"]) → 结果挂到 module 面板。
+_INTACT_SVC = {}
 
 
-def _intact_get_node(root: str):
-    """取/建 INTACT 节点单例 (懒加载; 找不到工程根/依赖时抛错由调用方诚实上报)"""
+def _intact_service(root: str):
+    """取 policy 层单例 (跨多次双击复用同一 worker; 实现全在 policies/intact/service.py)。"""
     import importlib
     import sys as _sys
     src = os.path.join(root, "src")
     if src not in _sys.path:
         _sys.path.insert(0, src)
-    if "node" not in _INTACT_NODE_CACHE:
-        # 🔀 2026-09-13 老倪: INTACT 代码已迁移到 src/lerobot/policies/intact (旧路径留兼容转发)
-        _m = importlib.import_module("lerobot.policies.intact.runtime")
-        _INTACT_NODE_CACHE["node"] = _m.IntactNode(horizon=8, action_dim=4)
-    return _INTACT_NODE_CACHE["node"]
+    if "svc" not in _INTACT_SVC:
+        _m = importlib.import_module("lerobot.policies.intact.service")
+        _INTACT_SVC["svc"] = _m.get_service(root)
+    return _INTACT_SVC["svc"]
 
 
 def node_intact(ctx):
@@ -1313,49 +1316,20 @@ def node_intact(ctx):
     老倪 2026-09-13: "将 INTACT 接入到 L4 层 … INTACT 代码迁移到 src/lerobot 的 policies 文件夹 …
     数据源直接接入 metaworld, 输出接一个 decoder, 再进 L3"。
       · 策略实现 = src/lerobot/policies/intact/ (modeling_intact.py · IntactPolicy)
+      · 桥       = src/lerobot/policies/intact/runtime/model_adapter.py (跨 venv 子进程 → INTACT-JEPA venv)
       · 数据源   = metaworld 真环境 (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读)
-      · 输出     = ① action chunk (±1) ② 潜空间 ③ 诊断 → 交下游 decoder (ssintact_dec)
+      · 编排     = src/lerobot/policies/intact/service.py (本节点只调它, 自己不碰桥/证据)
     双击 → 真跑一步并打印诊断; 模型未就绪诚实标 trained=False (绝不返回假动作冒称成功)。
     """
     log = ctx["log"]
     root = ctx.get("root") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     try:
-        node = _intact_get_node(root)
-        if node.source is None:
-            try:                                   # 📥 数据源直接接入 metaworld
-                node.set_data_source("metaworld", seed=0)
-            except Exception as _e:                # metaworld 不可用 → 如实说明并退回本仓 episode
-                log(f"   ⚠️ metaworld 数据源不可用 ({type(_e).__name__}: {_e}) → 退回 l4_episode")
-                node.set_data_source("l4_episode")
-        out = node.step()
-        d = node.diagnostics()
-        log(f"🎯 INTACT: action chunk{out.chunk.shape} · 策略={out.policy}(零搜索) · "
-            f"candidate_sequences={d['candidate_sequences']:.0f} · 延迟 {d['latency_ms']:.1f}ms · "
-            f"数据源={out.source} · 输出={node.robot.name}")
-        if not out.trained:
-            log(f"   ⚠️ 模型未就绪 (trained=False) — 原因: {node.runtime.reason}; "
-                f"S1 调试: bash scripts/install.sh cu124 → eval_official.sh direct pusht")
+        svc = _intact_service(root)
+        svc.run_once(stage="", decode=False, log=log)
         return True
     except Exception as e:
         log(f"❌ INTACT 节点执行失败: {type(e).__name__}: {e}")
         return False
-
-
-# ── 🎯 INTACT 意图解码器 (L4 → L3, 2026-09-13 老倪: "输出接一个 decoder, 再进 L3") ──
-_INTACT_DEC_CACHE = {}
-
-
-def _intact_decoder(root: str, cond_dim: int = 6):
-    """取/建解码器单例 (无参, 未标定也照建 —— 未标定只影响 L3 条件通道, u_ff 先验仍可用)。"""
-    import importlib
-    import sys as _sys
-    src = os.path.join(root, "src")
-    if src not in _sys.path:
-        _sys.path.insert(0, src)
-    if "dec" not in _INTACT_DEC_CACHE:
-        _d = importlib.import_module("lerobot.policies.intact.decoder")
-        _INTACT_DEC_CACHE["dec"] = _d.IntactIntentDecoder(cond_dim=cond_dim)
-    return _INTACT_DEC_CACHE["dec"]
 
 
 def node_intact_dec(ctx):
@@ -1367,56 +1341,22 @@ def node_intact_dec(ctx):
       B) L3 条件向量 (流形坐标)     —— 需要标定映射 models/intact_l3_map.json;
                                       未标定 → 拒绝返回并计数 (不写死映射 = 不假接入)
     L3 侧消费: 引擎 SS_L4_INTACT=1 时按权重 w 注入 (w=0 / 未设 = 与现状**逐位相同**)。
+    ⚙️ 实现已下沉 policy 层: lerobot/policies/intact/service.py (IntactIntentService.run_once)
     """
-    import numpy as np                                    # noqa: PLC0415
     log = ctx["log"]
     mod = ctx.get("module")
     root = ctx.get("root") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     try:
-        node = _intact_get_node(root)
-        if node.source is None:
-            try:
-                node.set_data_source("metaworld", seed=0)
-            except Exception as _e:                       # noqa: BLE001
-                log(f"   ⚠️ metaworld 数据源不可用 ({type(_e).__name__}: {_e}) → 退回 l4_episode")
-                node.set_data_source("l4_episode")
-        stage = str(ctx.get("stage") or (node.source.info().get("stage", "") if node.source else ""))
-        dec = _intact_decoder(root)
-        out = node.step()                                  # 真推理 (未就绪会 raise, 不返回零动作)
-        d = dec.decode(out, stage=stage)
-        log(f"🎯 INTACT 意图解码器 [L4 → L3] · 阶段={stage or '(未标注)'} · 权重 w={d.weight:.2f}")
-        log(f"   ① u_ff 先验 {np.round(d.u_ff, 4).tolist()} ← {d.u_ff_source} "
-            f"(下发口径与引擎 state_space_sim_real.py 同源)")
-        if d.l3_cond is None:
-            log(f"   ② L3 条件: **不注入** — {d.l3_cond_source} · 原因: {dec.describe()['reason']}")
-            log("      (L3 仍走 VLM+DiT 原链路 → 零回退; 标定后本通道自动生效)")
-        else:
-            log(f"   ② L3 条件 {np.round(d.l3_cond, 4).tolist()} ← {d.l3_cond_source}")
-        if d.reason:
-            log(f"   ⚠️ {d.reason}")
-        # 证据落盘 (供 L3/引擎/报告读; 未就绪时也如实写)
-        try:
-            import json as _json
-            p = os.path.join(root, "reports", "intact_l3_cond.json")
-            with open(p, "w", encoding="utf-8") as f:
-                _json.dump({"stage": stage, "w": d.weight,
-                            "u_ff": None if d.u_ff is None else np.round(d.u_ff, 6).tolist(),
-                            "u_ff_source": d.u_ff_source,
-                            "l3_cond": None if d.l3_cond is None else np.round(d.l3_cond, 6).tolist(),
-                            "l3_cond_source": d.l3_cond_source,
-                            "reason": d.reason, "decoder": dec.describe(),
-                            "ts": __import__("time").strftime("%F %T")}, f, ensure_ascii=False, indent=1)
-            log(f"   → 证据: reports/intact_l3_cond.json")
-        except Exception as _e:                            # noqa: BLE001
-            log(f"   (证据落盘失败: {type(_e).__name__}: {_e})")
+        svc = _intact_service(root)
+        rep = svc.run_once(stage=str(ctx.get("stage") or ""), decode=True,
+                           write_evidence=True, log=log)
         if mod is not None:
             try:
-                mod._intact_dec = {"stage": stage, "u_ff": d.u_ff, "l3_cond": d.l3_cond,
-                                   "w": d.weight, "src": d.u_ff_source}
+                mod._intact_dec = rep.to_panel()
             except Exception:
                 pass
         return True
-    except Exception as e:                                 # noqa: BLE001
+    except Exception as e:
         log(f"❌ INTACT 解码器执行失败: {type(e).__name__}: {e}")
         return False
 

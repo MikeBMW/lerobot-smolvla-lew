@@ -2,9 +2,9 @@
  "stage": "",
  "w": 0.3,
  "u_ff": [
-  -0.045818,
-  0.26832,
-  0.266039,
+  -0.007753,
+  0.149342,
+  0.235622,
   1.0
  ],
  "u_ff_source": "intact(chunk×K_ACT=0.5)",
@@ -23,5 +23,38 @@
   "trained": false,
   "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
  },
- "ts": "2026-09-13 22:07:57"
+ "ts": "2026-09-13 23:32:19",
+ "trained": true,
+ "chunk_shape": [
+  8,
+  8
+ ],
+ "policy": "direct",
+ "source": "metaworld",
+ "obs_source": "metaworld_render",
+ "candidate_sequences": 0.0,
+ "latency_ms": 1189.82,
+ "reuse": 0.0,
+ "calls": 0.0,
+ "goal_src": "data_source(metaworld)",
+ "bridge": {
+  "repo": "/home/ubuntu/INTACT-JEPA",
+  "trained": true,
+  "reason": null,
+  "dims": {
+   "embed_dim": 0,
+   "action_dim": 8,
+   "history_size": 3,
+   "img_size": 224
+  },
+  "policy": "direct",
+  "ckpt": null,
+  "runtime": "root",
+  "device": "cpu",
+  "worker_alive": true,
+  "ready": true,
+  "available_reason": "ok",
+  "venv": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+  "task": "pusht"
+ }
 }

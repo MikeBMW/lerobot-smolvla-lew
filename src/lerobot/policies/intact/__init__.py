@@ -26,6 +26,8 @@ from .configuration_intact import IntactConfig
 from .decoder import DecodedIntent, IntactIntentDecoder
 from .modeling_intact import IntactPolicy
 from .runtime import MetaWorldSource, registry
+from .service import IntentReport, IntactIntentService, get_service, reset_service
 
 __all__ = ["IntactConfig", "IntactPolicy", "IntactIntentDecoder", "DecodedIntent",
-           "MetaWorldSource", "registry", "runtime"]
+           "MetaWorldSource", "registry", "runtime",
+           "IntactIntentService", "IntentReport", "get_service", "reset_service"]

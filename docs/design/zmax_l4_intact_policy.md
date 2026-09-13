@@ -56,10 +56,11 @@ INTACT 从"一个孤立画布节点（无连线、手工挂载）"变成 **L4 �
 
 ```
 src/lerobot/policies/intact/
-├── __init__.py               # 包出口 (IntactConfig / IntactPolicy / IntactIntentDecoder / MetaWorldSource)
+├── __init__.py               # 包出口 (IntactConfig / IntactPolicy / IntactIntentDecoder / service)
 ├── configuration_intact.py   # IntactConfig (PreTrainedConfig.register_subclass("intact"))
 ├── modeling_intact.py        # IntactPolicy (PreTrainedPolicy 外壳, 推理-only, 懒建桥)
 ├── decoder.py                # IntactIntentDecoder (L4 → L3)
+├── service.py                # ← v5.5.43 新增: IntactIntentService / IntentReport / get_service (编排门面)
 └── runtime/                  # ← 由 src/lerobot/manifold/intact_node/ **整体迁入** (实现一字未改)
     ├── contracts.py  data_source.py  model_adapter.py  node.py  robot_io.py
     ├── action_adapter.py  selftest.py
@@ -72,6 +73,33 @@ src/lerobot/manifold/intact_node/__init__.py    # 仅剩兼容转发 (旧引用�
 * 策略注册三处：`policies/__init__.py`（导出配置）、`factory.get_policy_class("intact")`、`PreTrainedConfig` 子类注册。
 * **诚实边界**：`IntactPolicy.forward()` 显式 `NotImplementedError` —— INTACT 权重训练在
   INTACT-JEPA 的冻结运行时（`paper_runtime`）里做，本仓库不假装能训；`get_optimizer_preset()` 返回 `None` 同理。
+
+### 4.1 桥接 vs 抄代码（v5.5.43，老倪问「引用过来还是沿用 /home/ubuntu/INTACT-JEPA」）
+
+**结论：沿用 `/home/ubuntu/INTACT-JEPA`，一个字都不改，本仓库只经"桥"调用。**理由（都是实测踩出来的）：
+
+| 方案 | 结果 |
+|---|---|
+| 把 INTACT 代码拷进本仓库 | ❌ 依赖冲突（stable_worldmodel/stable_pretraining/hydra 与 GUI venv 不兼容）；论文权重还必须它自己的 `paper_runtime`（根运行时参数布局不同，官方明确不支持）；拷进来就有两份会漂移的实现 |
+| 装进 GUI venv | ❌ 同上，且 GUI 会被 torch/hydra 拖死 |
+| **常驻子进程桥（本方案）** | ✅ 依赖隔离（worker 跑在 `INTACT-JEPA/.venv/bin/python`）；外部仓库只读不改（`RUNTIME_SHA256SUMS` 钉住的文件一字节未动）；协议只有 4 个命令 hello/act/reset/bye |
+
+桥的实现在 `runtime/model_adapter.py`（`IntactRuntime`），worker 是 `tools/intact_worker.py`（跑在 INTACT venv）。
+"原来的项目已经跑起来了" 是对的 —— **桥不是新东西，v5.5.40 之前就在跑**；本次（v5.5.43）做的是把
+**编排**（建桥 + 接数据源 + 真推理 + 解码 + 证据落盘 + 日志文本）从 GUI 下沉到 policy 层：
+
+```
+GUI  (tools/gui/node_logic.py)  ── 只剩瘦调用 ─┐
+                                              ▼
+src/lerobot/policies/intact/service.py   IntactIntentService.run_once(stage, decode, log)
+   ├─ ensure_ready()   建桥 + 接数据源 (metaworld → l4_episode 兜底, 原因写 note, 不静默)
+   ├─ node.step()      runtime/node.py 真推理 (未就绪 raise, 绝不返回零动作冒称成功)
+   ├─ decoder.decode() decoder.py u_ff 先验 + L3 条件 (未标定拒绝 + 计数)
+   └─ write_evidence() reports/intact_l3_cond.json (字段只增不改 → 引擎/工具不用动)
+```
+
+好处（可验证）：GUI/脚本/离线批跑同一个入口；换数据源、换权重、批量评测都不碰 GUI；
+`IntentReport.to_dict()` 是唯一证据来源（面板/日志/报告同源，不会出现两套数字）。
 
 ---
 
