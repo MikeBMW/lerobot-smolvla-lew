@@ -573,6 +573,14 @@ class DreamView3D(QWidget):
         #   感知层数据在最前, 之后 前馈加速器 → 自适应状态估计器 → 先验动力学预测器
         #   → 状态校正器 → 动作调制器 → 安全执行边界, 最后才是网格/坐标轴等辅助。
         self._layers_def = [
+            # ── 🎬 SW 实况 (2026-09-13 老倪 A: 把 stable-world 渲染帧贴进 3D 视图本体) ──
+            ("sw_live",   "🎬 SW 实况 · stable-world 渲染帧", True,
+             "L4「🌍 SW 仿真世界引擎链」的**逐帧渲染真图** (INTACT 标准机器人 cube,\n"
+             "环境 swm/OGBCube-v0 + MUJOCO_GL=egl 离屏渲染 224×224, 由跨 venv 桥\n"
+             "tools/intact_sw_bridge.py 写 reports/intact_sw/frames/*.jpg + status.json)\n"
+             "本层是浮在 3D 画面右上角的实况小窗 (画中画), 不是 GL 图层:\n"
+             "只控制它显示/隐藏, 关掉不影响 3D 场景与其它图层\n"
+             "真图判据: 面板上 std>5 才是真渲染帧 (实测 ~30)"),
             # ── 感知层 (最前) ──
             ("scene",     "📡 感知层 · 物理世界几何",     True,
              "画布节点「📡 传感器融合 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 光模块 /\n"
@@ -706,6 +714,14 @@ class DreamView3D(QWidget):
         self._overlay = LabelOverlay(self.view)     # 🏷 文字标注层 (贴在 3D 画布上)
         self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
         self._overlay.show()
+        # 🎬 2026-09-13 老倪 A: stable-world 渲染帧实况小窗 (self.view 的子控件 → 画中画)
+        self._sw_last = None
+        self._sw_panel = self._build_sw_panel()
+        self._sw_panel.show()
+        self._place_sw_panel()
+        self._sw_timer = QTimer(self)
+        self._sw_timer.timeout.connect(self._sw_poll)
+        self._sw_timer.start(150)
         self.view.installEventFilter(self)
         right.addWidget(self.view, 1)
 
@@ -1040,6 +1056,7 @@ class DreamView3D(QWidget):
                 et = ev.type()
                 if et == ev.Resize:
                     self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+                    self._place_sw_panel()          # 🎬 实况小窗跟着重贴 (右上角)
                     self._sync_fov()
                     self._refresh_label_positions()
                 elif et in (ev.MouseMove, ev.Wheel, ev.MouseButtonRelease,
@@ -1449,6 +1466,107 @@ class DreamView3D(QWidget):
             return
 
     # ── 图层开关 ──
+    # ── 🎬 SW 实况 · stable-world 渲染帧 (2026-09-13 老倪 A: 贴进 3D 视图本体) ──
+    def _sw_dirs(self):
+        """定位 L4 · SW 引擎链产物: (根, frames, video, status.json)"""
+        import os
+        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+        d = os.path.join(root, "reports", "intact_sw")
+        return d, os.path.join(d, "frames"), os.path.join(d, "video"), os.path.join(d, "status.json")
+
+    def _build_sw_panel(self):
+        """3D 画面右上角画中画: stable-world 逐帧渲染真图 + 跨 venv 桥状态 (真数据, 没跑过就如实说)"""
+        f = QFrame(self.view)
+        f.setStyleSheet("QFrame{background:rgba(13,17,23,235); border:1px solid #30363d; border-radius:6px;}")
+        v = QVBoxLayout(f)
+        v.setContentsMargins(8, 6, 8, 6)
+        v.setSpacing(4)
+        t = QLabel("🎬 SW 实况 · stable world (INTACT cube) · L4")
+        t.setStyleSheet("color:#00d4aa; font-size:12px; font-weight:700; border:none;")
+        v.addWidget(t)
+        self._sw_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
+        self._sw_img.setFixedSize(300, 224)
+        self._sw_img.setAlignment(Qt.AlignCenter)
+        self._sw_img.setStyleSheet("background:#161b22; color:#8b949e; font-size:11px; border:1px solid #30363d;")
+        v.addWidget(self._sw_img)
+        self._sw_info = QLabel("—")
+        self._sw_info.setStyleSheet("color:#c9d1d9; font-size:10px; border:none;")
+        self._sw_info.setWordWrap(True)
+        self._sw_info.setFixedWidth(300)
+        v.addWidget(self._sw_info)
+        b = QPushButton("📂 打开视频目录 (3 面板 mp4)")
+        b.setToolTip("reports/intact_sw/video/ — stable-world 官方 save_panel_videos 出的\n"
+                     "agent | dataset | goal 三面板视频 (每回合一份) + showcase 合集")
+        b.setStyleSheet("QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
+                        "border-radius:4px;padding:3px 0;font-size:11px;}"
+                        "QPushButton:hover{border-color:#00d4aa;color:#00d4aa;}")
+        b.clicked.connect(self._sw_open_dir)
+        v.addWidget(b)
+        f.adjustSize()
+        return f
+
+    def _place_sw_panel(self):
+        """把实况小窗锚在 3D 画面右上角 (窗口尺寸变化时重贴)"""
+        try:
+            m = 12
+            self._sw_panel.adjustSize()
+            self._sw_panel.move(max(m, self.view.width() - self._sw_panel.width() - m), 44)
+        except Exception:
+            pass
+
+    def _sw_open_dir(self):
+        try:
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            _d, _fr, vd, _st = self._sw_dirs()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
+        except Exception:
+            pass
+
+    def _sw_poll(self):
+        """150ms 轮询真帧: 帧号变了才重贴图 (省 CPU); 图层关掉则完全不刷新"""
+        if not self._layer_on.get("sw_live", True):
+            return
+        try:
+            import os
+            import json
+            _d, fr, vd, st = self._sw_dirs()
+            if not os.path.isdir(fr):
+                return
+            frames = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            if not frames:
+                if self._sw_last != "__none__":
+                    self._sw_img.setText("尚未跑过 — 选 L4 档点 ▶运行")
+                    self._sw_last = "__none__"
+                return
+            newest = frames[-1]
+            if newest != self._sw_last:
+                pm = QPixmap(os.path.join(fr, newest))
+                if not pm.isNull():
+                    self._sw_img.setPixmap(pm.scaled(self._sw_img.size(), Qt.KeepAspectRatio,
+                                                     Qt.SmoothTransformation))
+                self._sw_last = newest
+            info = {}
+            try:
+                with open(st, encoding="utf-8") as fh:
+                    info = json.load(fh)
+            except Exception:
+                pass
+            vids = []
+            try:
+                vids = sorted([x for x in os.listdir(vd) if x.endswith(".mp4")])
+            except Exception:
+                pass
+            show = next((x for x in vids if "showcase" in x), (vids[-1] if vids else None))
+            self._sw_info.setText(
+                f"帧 {newest} · std={info.get('frame_std')} (>5 = 真图)\n"
+                f"阶段 {info.get('stage')} · 步 {info.get('step')} · "
+                f"回合 {info.get('ep_done')} · 成功 {info.get('succ')}\n"
+                f"模型调用 {info.get('model_calls')} 次 · 零搜索 {info.get('zero_search')}\n"
+                f"视频: {show or '—'}")
+        except Exception:
+            pass
+
     def _toggle_layer(self, key, checked):
         """图层开关 → GL 元素可见性 + **重建文字标注**。
         🐛 2026-08-25 老倪「图像层都关了以后, 文字没有消失; 文字要绑定图层」根因:
@@ -1456,6 +1574,13 @@ class DreamView3D(QWidget):
         且看门狗还在按旧的世界坐标持续重投影 → 图层关了文字仍留在画面上。
         修: 切完图层立刻按新开关状态重建标注 (每条标注都受其所属图层控制)。"""
         self._layer_on[key] = checked
+        if key == "sw_live":                       # 🎬 实况小窗 (画中画) 显示/隐藏
+            try:
+                self._sw_panel.setVisible(bool(checked))
+                if checked:
+                    self._place_sw_panel()
+            except Exception:
+                pass
         self._apply_layer_visibility(key, checked)
         try:
             if getattr(self, "_n", 0) > 0:

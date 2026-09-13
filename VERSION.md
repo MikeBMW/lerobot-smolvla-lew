@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.30** | 09-13 | 🎬 A: stable-world 渲染帧贴进 3D 视图本体 — 3D 视图右上角「SW 实况」画中画 (逐帧真图 150ms 轮询 + 状态行真值 + 图层勾选 + 随窗重贴 + 打开视频目录); 数据源 = L4「🌍 SW 仿真世界引擎链」产物 reports/intact_sw/; 验证 9/9 (真帧 std=32.46, 关/开 生效, 小窗在视口内, 整窗 grab 非全黑) |
 | **v5.5.29** | 09-13 | 🐛 修「启动状态空间即崩」: 背景行标题省略号传给 QFontMetrics.elidedText 的宽度是 float → paint() 内 TypeError → Qt Abort 整个 GUI; `_wrap_title` 入口 int(avail) + paint 传 _aw; 单元对照 int/float + 背景行真实 paint + 整画布 render 三重验证 |
 | **v5.5.28** | 09-13 | 🌍 L4 · SW 仿真世界引擎链 — 独立链条 4 节点 (数据源渲染图 → INTACT策略·cube → stable-world 引擎 → SW渲染视频) + L4 色带自动触发 (只增不改, L2/L3 零影响) + 跨 venv 子进程桥 tools/intact_sw_bridge.py (与 ②debug 同源, 逐帧流式: 52 帧 std=30.26 · 动作真下发 env.step · 模型真调用 52 次零搜索 · 官方 save_panel_videos 3 面板视频) |
 | **v5.5.27** | 09-12 | 🎨 画布节点 UI 统一优化 (老倪: 字号/字数/不挤不裁) — 根因 `QFont("Arial")` 在本机解析成 Liberation Sans (无中文字形→逐字回退) + 标题 9/8/7 自适应 = 大小不一; 统一为 Noto Sans CJK SC + 固定 9pt Bold/8pt + 最多两行 + 超出省略号(悬停看全名) + 自动撑宽 (state_space_obs.json 70 节点实测: 撑宽后单行 70/70 · 两行 0 · 省略 0) |
