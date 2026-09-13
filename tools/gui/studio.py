@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.34")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.35")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.34 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.35 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.34 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.35 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.5.35: 🐛 修「点 SW实况窗口 没反应」根因 (按钮回调连错类) — ①**老倪实锤**: 点 SW 实况窗口按钮毫无反应; 真显示环境(DISPLAY=:0)复现 = `[SW 实况窗口] 打开失败: AttributeError: 'SWLiveWindow' object has no attribute '_open_viewer'` ②**根因**: v5.5.34 给 SWLiveWindow 加的「🎛 互动查看器」按钮, 回调连成了 `self._open_viewer` —— 那是 **DreamView3D** 的方法, SWLiveWindow 上不存在 → **构造期就 AttributeError** → `sw_live_window()` 返回 None → 点按钮静默无反应 (只剩一行 print) ③**修复**: 给 SWLiveWindow 补上自己的 `_open_viewer()` (用 sw_dirs() 定位数据源再开互动查看器) ④**回归测试固化** (这次的教训: 加按钮后必须真点一遍): 新增真显示下的_全按钮点击回归 — SWLiveWindow 3 按钮 + 置顶勾选 + 倍率下拉 + DreamView3D 7 按钮 全部点击无异常, 且点击后 SW 实况窗口真存在且可见 (geom 206,212,809,860), 互动查看器可见 ⑤验证 ALL PASS (DISPLAY=:0 真 X11, 非 offscreen —— offscreen 测不出这类构造期回调错误)
         # v5.5.34: 🎛 L4·SW 互动查看器 (老倪: "可以像 L2 L3 的 dreamview 一样, 变成互动, 可以看到任意帧的信号么") — ①新增 `tools/gui/intact_signal_viewer.py`: **拖帧看任意帧画面+信号** 的互动窗口 — 时间轴滑块 / ◀▶ 单帧 步进 / ⏮⏭ 首尾 / ▶10fps 连续播放; 右侧信号表逐帧显示 帧文件·帧序号·step·回合·**模型动作[0..3]**·frame_std(>5=真图)·done·累计真推理次数; 下方 **pyqtgraph 四条动作曲线 + 游标线随滑块移动** (任意帧信号一眼可见) ②数据源自动扫描 `reports/**/frames/` (L4·SW 实况导出), 并读同名 **`status.jsonl` 逐帧信号日志** — 由 bridge 每步追加一行 (step/action/frame_std/done/model_calls) ③三个入口: 3D 视图 SW 实况窗口「🎛 互动查看器」按钮 / 画布「🎬 SW渲染视频」节点双击 / 直接开窗口 ④**为什么之前"视频不动"**: 实况窗口只在链条运行时逐帧刷新; 停下来后就定格在最后一帧 — 现在可拖帧/逐帧步进/看每帧信号 (与 dreamview 同款交互), 不再依赖"有没有在跑" ⑤诚实: 帧是真渲染图 (像素 std 可查, 实测 30.3~30.7); 无 status.jsonl 的旧产物信号列显示"—", 不编数值 ⑥验证 11/11 (offscreen): 扫到数据源51帧·逐帧信号51条·拖帧画面真图(std>5)·step与动作值跟着帧变·信号表四行动作·4条曲线51点·游标跟随(x=10)·播放暂停切换·越界夹紧不崩 (截图 reports/intact_sw/interactive_viewer_v5534.png)
         # v5.5.33: 🐛 修「弹出的实况窗口画面不动」根因 (只弹窗没跑桥) — ①**老倪实锤**: L4 档 ▶运行 → 窗口弹出但画面定住; 排查 = reports/intact_sw/status.json 仍是上一次 12:37 的旧时间戳、控制台日志 0 条 SW 痕迹、无桥进程 ⇒ **状态空间 ▶运行 走的是引擎真链路 (_start_real_sim), 不会执行画布上 SW 链条的节点逻辑** → 桥从未被启动, 窗口只能显示上次跑的旧帧 ②**修复**: `_auto_sw_live_window()` 除了弹窗, 还要 **真启动 SW 引擎链桥** (调 node_logic._sw_start; 已在跑则复用并如实提示"已在跑-复用") → 逐帧渲染真图 流式写入 frames/status.json, 窗口 150ms 轮询 → 画面真的会动; 启动/复用都在画布日志留痕 ③**端到端验证 7/7** (清空 frames 后真跑): 窗口弹出 · 桥真启动 (pid 191239) · 帧从 0 增长 · status.json 时间戳真更新 (15:17:51) · 窗口显示帧号从 step_000000 → step_000001 = 画面在动 · 状态行读新状态 (std=31.31, 阶段 run) · 日志有"已启动 stable-world 渲染桥" ④L2/L3 档仍完全不动
         # v5.5.32: 🎬 L4 档 ▶运行 自动弹出「SW 实况」独立窗口 (老倪: "跑链条时画面自己就出来了") — ①`simulink_module.start_sim` 在**状态空间画布**分支入口调 `_auto_sw_live_window()`: 当前档位 `_ss_cap_num()>=4` (L4) 才弹窗, L2/L3 档**完全不动** (返回 None, 保持原行为) ②画布日志留痕: "🎬 L4 档: 已自动弹出「SW 实况」独立窗口 (stable-world 逐帧渲染真图 · 数据源 reports/intact_sw/frames)" ③**全局单例** `ss_dreamview.sw_live_window()`: 自动弹出的窗口与 3D 视图内嵌小窗的「⤢ 放大窗口」、3D 左侧绿色按钮**共用同一个实例** (不会开出两个窗口) ④验证 7/7 (offscreen): L2 不弹 / L3 不弹 / L4 弹 (标题+位置) / 日志有记录 / 单例一致 (w2 is w3 is w) / L4 画布 start_sim 真走到该调用 (引擎被调用 1 次 + 窗口 True) / 窗口显示真帧 672×672 (截图 reports/intact_sw/sw_live_auto_v5532.png)

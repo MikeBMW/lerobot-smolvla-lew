@@ -562,6 +562,24 @@ class SWLiveWindow(QWidget):
         except Exception:
             pass
 
+    def _open_viewer(self):
+        """🎛 打开互动查看器 (拖帧看任意帧的画面+信号; 老倪 2026-09-13)
+        ⚠️ 2026-09-13 修: 这个按钮此前连到了 DreamView3D 的同名方法 → SWLiveWindow 上不存在
+        → 构造时 AttributeError → sw_live_window() 返回 None → 点按钮"没反应" (只有一个 print)。"""
+        try:
+            import intact_signal_viewer as _iv
+            d, _fr, _vd, _st = sw_dirs()
+            w = _iv.open_signal_viewer(d)
+            if w is not None:
+                w.rescan(d)
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[互动查看器] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
     def _open_dir(self):
         try:
             from PyQt5.QtGui import QDesktopServices
