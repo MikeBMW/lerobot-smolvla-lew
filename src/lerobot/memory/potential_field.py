@@ -719,23 +719,40 @@ class MemoryLayerBridge:
                 "d_goal_m": diag["d_goal_m"], "phase_from": ("clock" if t is not None else "state"),
                 "gates": self.gates()}
 
-    def blend_action(self, u_model, x, t=None, w_max=0.5, k_act=0.5, w_floor=0.2, d_max=0.5):
+    def blend_action(self, u_model, x, t=None, w_max=0.5, k_act=0.5, w_floor=0.2, d_max=0.5,
+                     w_far=0.85, d_near_m=0.03, d_far_m=0.15):
         """执行钩子 (逐步打开): u = (1−w)·u_model + w·u_field, w = w_max·max(conf, w_floor)。
         层全关 → w=0, 恒等返回 (可断言零回退)。
         w_floor = **恢复下限**: 出轨迹管时 (conf→0) 仍留一部分场权, 把状态拉回管里 (L4 的
           "失败自主恢复"语义); 设 0 即纯置信门。
         d_max = 覆盖范围闸: 离**所有**轨迹管都超过 d_max (默认 500mm) → 记忆不覆盖该状态,
-          不干预 (诚实边界, 不硬拽)。"""
+          不干预 (诚实边界, 不硬拽)。
+
+        ── 🚀 2026-09-14 增益调度 (阶梯第一版实测暴露的真问题) ──
+        第一版 30 格实测: 模型直驱 0/30 全失败 (插入距离 585~611mm, 模型塌缩到均值动作),
+        而记忆层**每步都介入** (3000/3000) 但 w̄ 恒 = 0.1 = w_max·w_floor (现场 conf 恒 0) →
+        10% 的场权根本扳不动 600mm 模型误差 ⇒ L2/L23/L234/总装 与 off 的差异只有噪声级
+        (609.4 vs 588.5mm) = **不算提升**。
+        修法 (增益调度, 不是拍脑袋): **离轨迹管越远 → 场权越大**; 贴管附近 (模型本来就跟得住)
+        维持原公式不动 (保证不回退)。
+            far = clip((d_perp − d_near) / (d_far − d_near), 0, 1)
+            w   = max(w_max·max(conf, w_floor),  w_far·far)
+        默认 d_near=30mm (在管内, 场不抢权) / d_far=150mm (远场, 场主导 w=0.85)。
+        参数全部可在调用处覆盖; 说明写进结果 (far / w_far 字段) 以便同口径对比。
+        """
         u = np.asarray(u_model, float).ravel()[:4].copy()
         it = self.intent(x, t)
         if not it["active"]:
             return u, {"w": 0.0, "applied": False, "reason": "记忆层全关 → u 原样"}
         conf = float(it["conf"])
-        if float(it.get("d_perp_m") or 0.0) > float(d_max):
+        d_perp = float(it.get("d_perp_m") or 0.0)
+        if d_perp > float(d_max):
             return u, {"w": 0.0, "applied": False, "reason": f"离最近轨迹管 {it['d_perp_m']*1000:.0f}mm "
                                                             f"> 覆盖上限 {d_max*1000:.0f}mm → 不干预",
                        "skill": it["skill"], "conf": conf, "d_perp_m": it["d_perp_m"]}
-        w = float(w_max * max(conf, w_floor))
+        far = float(np.clip((d_perp - float(d_near_m)) / max(float(d_far_m) - float(d_near_m), 1e-9),
+                            0.0, 1.0))
+        w = max(float(w_max * max(conf, w_floor)), float(w_far) * far)
         if w <= 1e-6:
             return u, {"w": 0.0, "applied": False, "reason": "置信≈0 且无恢复下限 → 不干预",
                        "skill": it["skill"], "conf": conf, "d_perp_m": it["d_perp_m"]}
@@ -743,6 +760,7 @@ class MemoryLayerBridge:
         u[:3] = np.clip((1.0 - w) * u[:3] + w * np.clip(uf, -1, 1), -1.0, 1.0)
         return u, {"w": round(w, 4), "applied": True, "skill": it["skill"], "conf": conf,
                    "d_perp_m": it["d_perp_m"], "d_goal_m": it["d_goal_m"],
+                   "far": round(far, 3), "w_far_gain": round(float(w_far) * far, 4),
                    "phase_from": it["phase_from"], "u_model": [round(float(v), 4) for v in u_model],
                    "u_field": [round(float(v), 4) for v in uf],
                    "u_out": [round(float(v), 4) for v in u]}

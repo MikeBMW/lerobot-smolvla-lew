@@ -54,6 +54,16 @@ ARMS = [("off",  {"L2": 0, "L3": 0, "L4": 0, "assembly": 0}),
         ("assy", {"L2": 1, "L3": 1, "L4": 1, "assembly": 1})]
 DISTURBS = [("none", "l3"), ("disturb", "l4")]      # cap=l3 无注入 / cap=l4 真注入干扰
 
+# ── 🐛 2026-09-14 数据一致性修复 (实测抓到的真问题) ──
+#   同一 seed / 同 cap / 同权重 / 同代码, 解析链结果却从 65.26mm(done) 漂到 58.02mm(not done) ——
+#   原因是**记忆状态文件是可变状态**: 引擎每跑一局都可能把成功轨迹固化进 data/muscle_memory.json
+#   (还有 assembly_memory.json 台账 / shared_memory.json), 而这些文件既不在 manifest 里, 也不会在
+#   格与格之间复位 → 后面的格看到的"记忆"和前面的格不一样 ⇒ 同口径被悄悄破坏。
+#   修法: ① 把记忆状态文件 + 引擎读的 models/*.pt 纳入 manifest sha256 ② 每格开跑前把记忆状态
+#   **复位到本 manifest 的快照** (所有格起点一致), 跑完把该格产生的状态另存为 artifact (不丢证据)。
+STATE_FILES = ["data/muscle_memory.json", "data/assembly_memory.json", "data/shared_memory.json",
+               "data/memory_layers.json"]
+
 
 # ─────────────── ① 数据一致性 ───────────────
 def _sha(p: str, n: int = 1 << 20) -> str:
@@ -84,7 +94,13 @@ def latest_ckpt() -> str:
     return best[1] if best else ""
 
 
-def build_manifest(policy: str, seeds, steps: int, mode: str, device: str) -> dict:
+def _rehash(m: dict) -> str:
+    body = json.dumps({k: v for k, v in m.items() if k != "ts"}, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(body.encode()).hexdigest()[:12]
+
+
+def build_manifest(policy: str, seeds, steps: int, mode: str, device: str,
+                   state_hashes: dict | None = None) -> dict:
     cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
     ck = os.path.join(cache, "checkpoints", policy) if policy else ""
     m = {"ts": time.strftime("%F %T"), "policy": policy,
@@ -93,6 +109,10 @@ def build_manifest(policy: str, seeds, steps: int, mode: str, device: str) -> di
          "stats": os.path.basename(STATS), "stats_sha256_16": _sha(STATS) if os.path.isfile(STATS) else None,
          "seeds": seeds, "max_steps": steps, "mode": mode, "device": device,
          "gates": json.load(open(GATES, encoding="utf-8")) if os.path.isfile(GATES) else {},
+         "state_sha256_16": (dict(state_hashes) if state_hashes is not None
+                             else {rel: None for rel in STATE_FILES}),
+         "models_sha256_16": {os.path.basename(p): _sha(p)
+                              for p in sorted(glob.glob(os.path.join(ROOT, "models", "*.pt")))},
          "code": {}, "git": None}
     for rel in ("tools/gui/state_space_sim_real.py", "tools/intact_sw_optical_bridge.py",
                 "src/lerobot/memory/potential_field.py", "src/lerobot/memory/mem_nodes.py",
@@ -110,8 +130,7 @@ def build_manifest(policy: str, seeds, steps: int, mode: str, device: str) -> di
                            if k in d}
     except Exception:                                                # noqa: BLE001
         pass
-    body = json.dumps({k: v for k, v in m.items() if k != "ts"}, sort_keys=True, ensure_ascii=False)
-    m["manifest_hash"] = hashlib.sha256(body.encode()).hexdigest()[:12]
+    m["manifest_hash"] = _rehash(m)
     return m
 
 
@@ -135,6 +154,44 @@ def restore_gates(saved: dict) -> None:
         json.dump(saved, open(GATES, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 
+# ── 记忆状态快照 / 复位 (同 manifest 所有格起点一致) ──
+def snapshot_state(dst: str) -> dict:
+    os.makedirs(dst, exist_ok=True)
+    snap = {}
+    for rel in STATE_FILES:
+        src = os.path.join(ROOT, rel)
+        if os.path.isfile(src):
+            d = os.path.join(dst, os.path.basename(rel))
+            shutil.copy2(src, d)
+            snap[rel] = _sha(d)
+        else:
+            snap[rel] = None
+    return snap
+
+
+def restore_state(src: str) -> None:
+    """把记忆状态复位到快照 (格与格之间必须一致, 否则同口径被悄悄破坏)。"""
+    for rel in STATE_FILES:
+        a = os.path.join(src, os.path.basename(rel))
+        b = os.path.join(ROOT, rel)
+        if os.path.isfile(a):
+            os.makedirs(os.path.dirname(b) or ".", exist_ok=True)
+            shutil.copy2(a, b)
+
+
+def save_state_artifact(tag: str) -> dict:
+    """跑完把该格产生的记忆状态另存 (证据不丢), 返回 sha 便于比较。"""
+    out = {}
+    for rel in STATE_FILES:
+        p = os.path.join(ROOT, rel)
+        if os.path.isfile(p):
+            d = os.path.join(OUTDIR, "state_after", f"{tag}__{os.path.basename(rel)}")
+            os.makedirs(os.path.dirname(d), exist_ok=True)
+            shutil.copy2(p, d)
+            out[rel] = _sha(p)
+    return out
+
+
 def done_keys() -> set:
     ks = set()
     if os.path.isfile(RUNS):
@@ -148,8 +205,10 @@ def done_keys() -> set:
 
 
 def run_cell(arm: str, gates: dict, disturb: str, cap: str, seed: int, policy: str,
-             a, man: dict) -> dict:
+             a, man: dict, snapdir: str = "") -> dict:
     set_gates(gates)
+    if snapdir:
+        restore_state(snapdir)          # 每格起点 = 本 manifest 的记忆快照 (同口径)
     tag = f"{arm}_{disturb}_s{seed}"
     stp = f"/tmp/memladder_{tag}_status.json"
     spool = f"/tmp/memladder_{tag}_spool"
@@ -194,6 +253,8 @@ def run_cell(arm: str, gates: dict, disturb: str, cap: str, seed: int, policy: s
                              "insert_mm": x.get("insert_mm"), "disturb": x.get("disturb")} for x in ana],
            "cell_tail": tail if rc != 0 else ""}
     os.makedirs(OUTDIR, exist_ok=True)
+    if snapdir:
+        row["state_after"] = save_state_artifact(tag)   # 本格产生的记忆状态 (证据)
     with open(RUNS, "a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
     try:                                                             # 帧不落库 (省磁盘), 视频留档
@@ -247,6 +308,8 @@ def main() -> int:
     ap.add_argument("--chunk-step", type=int, default=0)
     ap.add_argument("--cell-timeout", type=int, default=5400)
     ap.add_argument("--outdir", default="", help="结果目录 (默认 reports/mem_ladder; 冒烟测试可指到 /tmp)")
+    ap.add_argument("--no-freeze-state", dest="freeze_state", action="store_false",
+                    help="不复位记忆状态快照 (默认复位; 关掉=接受记忆漂移, 不建议)")
     a = ap.parse_args()
 
     global OUTDIR, RUNS, HIST
@@ -266,7 +329,19 @@ def main() -> int:
 
     print("═" * 92)
     print("🧲 记忆层集成阶梯 (L2 准确性 → L3 调度 → L4 抗干扰 → 总装仲裁)")
+    # 先算 core hash (不含记忆状态) → 快照目录名; 再把快照的 sha 并进 manifest 重算 hash
     man = build_manifest(policy, seeds, a.steps, a.mode, a.device)
+    snapdir = ""
+    if a.freeze_state:
+        snapdir = os.path.join(OUTDIR, f"state_snap_{man['manifest_hash']}")
+        if not (os.path.isdir(snapdir) and os.listdir(snapdir)):
+            snapshot_state(snapdir)                    # 第一跑: 以当前记忆状态为本批起点
+        man["state_sha256_16"] = {
+            rel: (_sha(os.path.join(snapdir, os.path.basename(rel)))
+                  if os.path.isfile(os.path.join(snapdir, os.path.basename(rel))) else None)
+            for rel in STATE_FILES}
+        man["state_snapshot_dir"] = os.path.relpath(snapdir, ROOT)
+        man["manifest_hash"] = _rehash(man)
     mp = os.path.join(OUTDIR, f"manifest_{man['manifest_hash']}.json")
     json.dump(man, open(mp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"① 数据一致性 manifest → {os.path.relpath(mp, ROOT)}  (hash={man['manifest_hash']})")
@@ -275,6 +350,8 @@ def main() -> int:
     print(f"   代码 git={man['git']} · 引擎/桥/势场 sha256[:16]="
           f"{[v for v in man['code'].values()]}")
     print(f"   记忆开关快照 {man['gates']}")
+    print(f"   记忆状态快照 {man.get('state_sha256_16')} (目录 {man.get('state_snapshot_dir')}) "
+          f"→ 每格开跑前复位, 所有格起点一致 (数据一致性)")
     print(f"② 矩阵: {len(arms)} 臂 × {len(dists)} 干扰档 × {len(seeds)} seed = "
           f"{len(arms) * len(dists) * len(seeds)} 格 · 步数 {a.steps} · 设备 {a.device}")
 
@@ -291,7 +368,7 @@ def main() -> int:
                         print(f"   ⏭ 跳过 (已跑过) {arm}/{disturb}/seed{sd}")
                         continue
                     print(f"\n── 跑 {arm} · 干扰={disturb}(cap={cap}) · seed={sd} · 开关 {gates}")
-                    row = run_cell(arm, gates, disturb, cap, sd, policy, a, man)
+                    row = run_cell(arm, gates, disturb, cap, sd, policy, a, man, snapdir=snapdir)
                     rows.append(row)
                     me = row["model_eps"][0] if row["model_eps"] else {}
                     print(f"   → done={me.get('done')} 插入={me.get('insert_mm')}mm "
