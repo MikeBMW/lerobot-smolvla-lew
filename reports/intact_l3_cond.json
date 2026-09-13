@@ -2,9 +2,9 @@
  "stage": "",
  "w": 0.3,
  "u_ff": [
-  -0.007753,
-  0.149342,
-  0.235622,
+  -0.009448,
+  0.147147,
+  0.222904,
   1.0
  ],
  "u_ff_source": "intact(chunk×K_ACT=0.5)",
@@ -23,7 +23,7 @@
   "trained": false,
   "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
  },
- "ts": "2026-09-13 23:32:19",
+ "ts": "2026-09-13 23:48:40",
  "trained": true,
  "chunk_shape": [
   8,
@@ -33,7 +33,7 @@
  "source": "metaworld",
  "obs_source": "metaworld_render",
  "candidate_sequences": 0.0,
- "latency_ms": 1189.82,
+ "latency_ms": 1212.81,
  "reuse": 0.0,
  "calls": 0.0,
  "goal_src": "data_source(metaworld)",
