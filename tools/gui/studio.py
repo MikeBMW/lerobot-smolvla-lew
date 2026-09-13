@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.38")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.39")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.38 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.39 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.38 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.39 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.5.39: 势场收敛修复 + 逐层对照工具 (小版本迭代) — 管壁高度改 λ=4·k_att·σ² 归一 + 新增近谷锥形吸引项 k_lin=3·k_att·σ → 消除近谷次极小 (收敛 4000 步未达标 → 98~127 步到 <1mm, Φ 严格单调降); 覆盖闸 d_max=500mm + 相位按状态软判; 新增 tools/mem_layer_ablation.py (四臂 AB: off/L2/L23/L234); 势场验证 26/26, 桥 e2e 全关 0 介入 / 开 L2 介入 120/120
         # v5.5.38: 🧲 **分层记忆势场 (L2 肌肉 / L3 工艺流程 / L4 物理工作空间 / 总装机记忆联络)** (老倪: "先把这个势场的逻辑, 实现到 L2肌肉记忆, L3工艺流程记忆, L4物理工作空间记忆, 以及总装机记忆的记忆层联络策略") — ①**统一接口 = 标量势场 Φ(x), 梯度 −∇Φ = 意图** (不传技能标签, 只传往哪走): L2 `SkillPotentialField` Φ_SK = ½k‖x−x_g‖² + λ(1−exp(−d⊥²/2σ²)) — 谷底=冠军轨迹**真末点** · σ=谷宽(中位间距×1.6) · 触发/速度上限取技能库真值; L3 `ProcessPotentialField` Φ_process = Σ w_k(t)·Φ_SK, Σw≡1 (w 由**真跑帧数**归一 + raised-cosine 交叉淡入) → 谷底按时序从 SK01 移到 SK07; L4 `GlobalPotentialField` = 流程 + 障碍(孔壁/台面 **引擎现场几何**) + 世界模型预测项(未接预测器恒 0 且显式标记) ②**总装机记忆 `MemoryLayerBridge`**: 四层联络策略 + **逐层开关** data/memory_layers.json (默认全关 → compose=None / blend 恒等, 可断言零回退) + 跨层仲裁(接触段技能势场优先, 自由段流程势场优先) + 台账 data/assembly_memory.json ③**L4 INTACT 链接入** (intact_sw_optical_bridge): 开了哪层就按 `blend_action` 混入 −∇Φ 意图 (u=(1−w)u_model+w·u_field, w=w_max·max(conf,w_floor), w_floor=恢复下限), **相位由状态软判**(时钟进度与模型直驱不同步) ④新画布节点「🧲 总装机记忆 · 势场联络」+ 4 连线 (ss_mem_l2/l3/l4 → 节点 → 调度) ⑤**实测**: 势场 26/26 (真数据: muscle_memory 7 条冠军轨迹 + 引擎真几何; 解析梯度 vs 数值 1e-7 · 横向势单调 · 收敛 ≤1mm 且 Φ 严格下降 · Σw≡1 · 孔壁斥力双向正确 · 逐层开关逐项生效 · 全关恒等) · 桥 e2e: 全关 0 介入 / 开 L2 真介入 ⑥**查出真问题**: `muscle_memory` 的 io.entry/exit 与 champ_x **锚点不同源** (差 15~145mm; SK06/07 ≈ PEG_HEAD_OFF_XY=0.13 → 抓握点系 vs 光模块头系) → 势场按轨迹末点自洽处理并把差异报出 (不静默)
         # v5.5.37: 🌍 **L4 光模块插拔链** (老倪 2026-09-13: "把红色小方块的抓取实验, 改造成光模块的抓取插拔实验") — ①**L4 链条任务化**: 切任务 = data/intact_sw_task.json, 默认 `optical_insert` = Z-MAX 引擎 RealStateSpaceSim(metaworld peg-insert-side-v3 真物理) + 本域微调 INTACT 权重; `cube` (stable-world 论文权重) 保留可切, 不删旧桥 ②**新桥 tools/intact_sw_optical_bridge.py** (跑 gui-venv311, 有 metaworld; 模型经 IntactRuntime 起 INTACT venv 子进程, 跨 venv 隔离): 同 seed 解析链对照(插入 + 插→拔→AOI 全链)取目标帧 → **模型动作真下发 env.step** (引擎既有 _direct_act 直驱入口, 无解析控制器) → 逐帧 spool 224² + status.jsonl + 480² mp4 打标(真推理次数/模型输出/插入深度) ③**u 口径反变换** (v4 数据集动作列 = 引擎控制向量 sim._u_vec, m/s 量纲): 按引擎**自己那套约定**还原 act[:3]=clip(u/K_ACT)·act[3]=CLOSE if u[3]>0.5 (state_space_sim_real.py:1183/1198 同源) — 量纲逆运算, 非新控制律 ④**新工具 tools/action_stats_from_h5.py**: 从 h5 现算 mean/std (get_column_stats 同口径 + action_space 标注) — 权重与统计强制同源 ⑤**🐛 竞态修复(实测踩过)**: 上一轮 status.json 仍是 stage=done 时节点等待循环会把**旧终态**当本轮跑完 (光模块链读到 cube 终态) → 启动前先作废 status 写 starting ⑥互动查看器补三行: 阶段(引擎状态机)/插入深度(mm 真几何)/下发 env 动作 ⑦**实测(节点级 11/11)**: 1800 帧 · 1800 次真推理 · frame_std 56.5 · 解析链 2/2=100% (插入 65.13/64.78mm · seed0 全链=True) ‖ 模型直驱 0/2 (过冲 643/553mm) — 与离线判闸一致(预测std 仅教师 7~16% 塌均值), **模型能力问题非接线问题**, 面板/日志诚实标注
         # v5.5.36: 🧭 3D 视图改口径 (老倪: "不要搞成画中画了, 就是两三个窗口, 都用 dreamview —— 一个 L2, 一个 L3, 一个 L4 的 stable world") — ①**移除画中画**: DreamView3D 不再在 3D 场景右上角贴 SW 实况小窗 (不创建 _sw_panel/不起 150ms 定时器/图层表删掉 sw_live 项) ②**改为三个独立 dreamview 窗口**, 3D 视图左侧新增一排按钮 (可同时开, 互不遮挡): 「🧭 L2 DreamView」只开 感知层+末端轨迹; 「🧭 L3 DreamView」再加 ①前馈加速器/②自适应状态估计/③先验动力学预测; 「🌍 L4·SW DreamView」= stable-world 逐帧真渲染 + 拖帧看任意帧信号 (时间轴/单步/播放 + 模型动作曲线) ③**档位预设贯通**: `DreamView3D(level=...)` 与 `open_ss_3d(level=...)` 新增 level 参数 → 打开即按档位开关图层 + 标题标注 ④验证 10/10 (真 X11): 画中画确已移除 · 三按钮在位 · L2 预设只开 scene/traj · L3 预设含 uff/latent/prior · L4 开出 stable-world 窗口 (52 帧) · 三窗口可并存 (截图 reports/intact_sw/dreamview_trio_v5536.png)

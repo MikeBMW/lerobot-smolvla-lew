@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.39** | 09-13 | 势场收敛修复 (λ∝k_att·σ² + 锥形项 k_lin → 98~127 步收敛 <1mm) · 覆盖闸 d_max · 相位按状态判 · 新增逐层对照工具 mem_layer_ablation.py · 验证 26/26 |
 | **v5.5.38** | 09-13 | 🧲 **分层记忆势场**: L2 技能势场(冠军轨迹 Φ_SK) / L3 流程势场(Σw_k(t), 谷底按时序移动) / L4 全局势场(+孔壁障碍+世界模型项) / 总装机记忆联络(逐层开关 data/memory_layers.json, 默认全关=零回退, 跨层仲裁+台账) · L4 INTACT 链按层混入 −∇Φ 意图(blend_action) · 新画布节点「🧲 总装机记忆·势场联络」。实测势场 26/26 (真数据) · e2e 全关 0 介入/开 L2 真介入。发现 muscle_memory io.entry/exit 与 champ_x 锚点不同源(15~145mm) |
 | **v5.5.37** | 09-13 | 🌍 **L4 光模块插拔链**: 把红方块抓取改造成光模块抓取插拔 —— L4 链条任务化(data/intact_sw_task.json, 默认 optical_insert = Z-MAX 引擎真物理 + 本域微调权重) · 新桥 intact_sw_optical_bridge.py(跨 venv: 引擎 gui-venv311 + 模型 INTACT venv) · u 口径反变换 · 新工具 action_stats_from_h5.py · 修 status 竞态(旧终态误判) · 查看器补阶段/深度/env动作。实测节点级 11/11: 1800 帧 1800 次真推理 解析链 2/2=100%(插入 65mm/全链) 模型直驱 0/2(过冲→诚实标注) |
 | **v5.5.36** | 09-13 | 🧭 3D 视图去画中画 → 三个 dreamview 窗口 (L2 / L3 / L4·stable-world); 档位预设贯通 DreamView3D(level=)/open_ss_3d(level=); 验证 10/10 |
