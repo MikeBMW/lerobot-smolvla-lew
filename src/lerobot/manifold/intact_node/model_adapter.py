@@ -79,6 +79,14 @@ class IntactRuntime:
         try:
             self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.DEVNULL, text=True, bufsize=1, env=env)
+            # ♻️ 2026-09-13 防僵尸: worker 崩退后没人 wait() → GUI 进程表里留 <defunct>
+            #   (实测: studio.py 里挂了 18 分钟的 [python] <defunct>)。守护线程 wait 一次即回收,
+            #   poll()/returncode 语义不变, 不影响行式 JSON 协议。
+            try:
+                import threading as _th
+                _th.Thread(target=self.proc.wait, daemon=True).start()
+            except Exception:
+                pass
         except Exception as e:
             self.reason = f"worker 启动失败: {type(e).__name__}: {e}"
             return False
