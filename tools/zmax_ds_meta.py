@@ -42,6 +42,7 @@ PURPOSE = {
     "zmax_insert_v2": ("INTACT 域内微调 v2 (300回合, 动作头权重1.0)", "Z-MAX 六层引擎真链路"),
     "tworoom": ("INTACT 官方基准任务", "INTACT 官方数据集"),
     "cube_single_expert": ("INTACT 官方基准任务", "INTACT 官方数据集"),
+    "reacher": ("INTACT 官方基准任务 (reacher)", "INTACT 官方数据集 (quentinll/lewm-reacher)"),
 }
 
 
