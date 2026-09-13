@@ -42,6 +42,8 @@ def main():
     ap.add_argument("--stats", default=os.path.join(ROOT, "reports",
                                                     "optical_insert_v3_action_stats.json")
                     or "optical_insert_v3_action_stats.json")
+    ap.add_argument("--skill", default="auto", choices=["auto", "on", "zero", "off"],
+                    help="skill_ctx 三态: auto(有列就喂) / on(喂真值) / zero(全零消融) / off(不喂)")
     ap.add_argument("--n", type=int, default=120, help="抽样帧数")
     ap.add_argument("--stride", type=int, default=150, help="采样间隔 (帧)")
     ap.add_argument("--device", default="cuda")
@@ -65,6 +67,17 @@ def main():
     print(f"═══ 离线回放检验 (原项目评法) · {os.path.basename(a.h5)} · {N} 帧 ═══")
     print(f"   抽样 n={a.n} stride={a.stride} · 逆归一化 a_raw = z·std + mean (n={stats['n_finite']})")
 
+    # 🧠 skill_ctx (L2 原子技能上下文) 三态: on=用数据集真值 / zero=全零消融 / off=根本不喂
+    #   意义: 同一权重同一帧, 只差"看不看得见 L2 技能" → 这是"记忆层条件确实有用"的唯一硬证据
+    _SK = str(getattr(a, "skill", "auto")).lower()
+    _has_sk = ("skill_ctx" in f)
+    if _SK == "auto":
+        _SK = "on" if _has_sk else "off"
+    if _SK in ("on", "zero") and not _has_sk:
+        print(f"⚠️ --skill {_SK} 但数据集没有 skill_ctx 列 → 降级为 off")
+        _SK = "off"
+    print(f"   skill_ctx 通道: {_SK}" + (f" (dim={f['skill_ctx'].shape[1]})" if _has_sk else ""))
+
     idx = list(range(0, N, a.stride))[:a.n]
     rt = IntactRuntime(task=a.task, device=a.device)
     node = IntactNode(horizon=a.horizon, runtime=rt)
@@ -81,7 +94,12 @@ def main():
     preds, gts, t0 = [], [], time.time()
     for k, i in enumerate(idx):
         fr = np.transpose(np.asarray(px[i], np.float32), (2, 0, 1))
-        out = node.step(fr, obs_source="engine_render")
+        _sk_v = None
+        if _SK == "on":
+            _sk_v = np.asarray(f["skill_ctx"][i], np.float32)
+        elif _SK == "zero":
+            _sk_v = np.zeros(int(f["skill_ctx"].shape[1]), np.float32)
+        out = node.step(fr, obs_source="engine_render", skill_ctx=_sk_v)
         chunk = np.asarray(out.chunk, np.float32)
         raw = chunk[0, a.slot * 4:(a.slot + 1) * 4]
         preds.append(np.clip(raw * a_std + a_mean, -1, 1))
@@ -114,6 +132,8 @@ def main():
     json.dump({"meta": {"h5": a.h5, "n": len(P), "stride": a.stride, "slot": a.slot,
                         "policy": os.environ.get("INTACT_POLICY", ""),
                         "runtime": os.environ.get("INTACT_RUNTIME", ""),
+                        "skill_mode": _SK,
+                        "skill_dim": (int(f["skill_ctx"].shape[1]) if _has_sk else 0),
                         "obs": "数据集真帧 (与训练同源)", "ts": time.strftime("%F %T")},
                "per_axis": {nm: {"mae": float(np.abs(P[:, j] - G[:, j]).mean()),
                                  "pearson": float(pearsonr(P[:, j], G[:, j])[0]),

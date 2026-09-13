@@ -108,7 +108,7 @@ def load_stats(path):
 
 def install_model_drive(sim, node, a_mean, a_std, action_space, k_act, clip_fn,
                         grip_close, grip_open, infer_every=1, chunk_step=0, slot=0,
-                        rec=None, state=None):
+                        rec=None, state=None, process=None):
     """把「INTACT 真推理 → 模型动作 → env.step」装到引擎上 (原项目逻辑, 无解析控制器)。
 
     实现方式 (不改引擎任何代码): 引擎每步末调用 _frame_sink(本桥的 sink); 在 sink 里做一次
@@ -121,11 +121,31 @@ def install_model_drive(sim, node, a_mean, a_std, action_space, k_act, clip_fn,
     rec = rec if rec is not None else {"raw": [], "act": [], "stage": [], "chunk_norm": []}
     state = state if state is not None else {"n": 0, "calls": 0, "err": None}
 
-    def _infer(sim_, frame_bgr):
+    def _infer(sim_, frame_bgr, act=None, obs=None):
         frame = np.asarray(frame_bgr)
         fr = cv2.resize(frame, (IMG, IMG), interpolation=cv2.INTER_AREA) \
             .transpose(2, 0, 1).astype(np.float32)
-        out = node.step(fr, obs_source="engine_render")     # INTACT 原生推理 (子进程, 真调用)
+        # 🧠 L2 原子技能上下文 (逐帧真值 → 模型 skill 通道; 与采集数据同一构造器 = 同口径)
+        #   坐标用 **夹爪真实位置 obs[0:3]** (v5.5.48 实锤), 不是 peg_head
+        sk = None
+        try:
+            from lerobot.policies.intact.skill_ctx import build_skill_ctx
+            _x = (np.asarray(obs, float).ravel()[:3] if obs is not None
+                  else np.asarray(getattr(sim_, "x", np.zeros(3)), float).ravel()[:3])
+            _st = ""
+            try:
+                _st = str(sim_.sched.stage())
+            except Exception:                                  # noqa: BLE001
+                _st = ""
+            _uv = getattr(sim_, "_u_vec", None)
+            _g = float(np.asarray(_uv, float).ravel()[3]) if _uv is not None else (
+                float(np.asarray(act, float).ravel()[3]) if act is not None else 0.0)
+            sk = build_skill_ctx(process, _x, _st, _g)
+            rec.setdefault("skill_ctx", []).append(np.asarray(sk, np.float32).copy())
+        except Exception as e:                                 # noqa: BLE001
+            if state.get("skill_ctx_err") is None:
+                state["skill_ctx_err"] = f"{type(e).__name__}: {e}"
+        out = node.step(fr, obs_source="engine_render", skill_ctx=sk)   # INTACT 原生推理 (子进程, 真调用)
         chunk = np.asarray(out.chunk, np.float32)
         state["calls"] += 1
         rec["chunk_norm"].append(float(np.linalg.norm(chunk)))
@@ -169,7 +189,8 @@ def main():
                     help="能力档位 (引擎 run(cap=…)): l4 = 抗干扰档 —— 引擎真注入来料移位/转向 "
                          "(±3.5cm/±15°物理/90°转台视觉) + 恢复预算×2; l3 = 无干扰对照档 "
                          "(同 seed 同权重, 只差是否注入干扰 → 抗干扰的**同口径**对照)")
-    ap.add_argument("--model-episodes", type=int, default=0, help="0 = 全部 seed 都做模型直驱")
+    ap.add_argument("--model-episodes", type=int, default=0,
+                    help="0 = 全部 seed 都做模型直驱; -1 = **不做模型直驱** (只要解析链/抗干扰证据视频)")
     ap.add_argument("--goal-npy", default=os.path.join(ROOT, "reports", "intact_goal_frame_optical.npy"))
     a = ap.parse_args()
 
@@ -215,10 +236,17 @@ def main():
     rt = IntactRuntime(task="pusht", device=a.device)       # task 名=原项目注册名, 权重由 INTACT_POLICY 定
     node = IntactNode(horizon=8, runtime=rt)
     if not getattr(node.runtime, "trained", False):
-        st.update({"stage": "error", "err": f"INTACT 未就绪: {getattr(node.runtime, 'reason', '?')}"})
-        _write_status(a.status, st)
-        print(json.dumps(_json_safe(st), ensure_ascii=False))
-        return 3
+        _why = f"INTACT 未就绪: {getattr(node.runtime, 'reason', '?')}"
+        if int(a.model_episodes) < 0:
+            # 只要解析链/抗干扰证据视频 → 模型不在环, 不该因模型没起来而整轮失败
+            st.update({"model_ready": False, "model_skip_reason": _why})
+            _write_status(a.status, st)
+            print(f"⚠️ {_why}\n   → --model-episodes -1 (不做模型直驱): 本轮只出解析链/抗干扰证据视频, 继续")
+        else:
+            st.update({"stage": "error", "err": _why})
+            _write_status(a.status, st)
+            print(json.dumps(_json_safe(st), ensure_ascii=False))
+            return 3
     st.update({"model_ready": True, "action_dim": int(getattr(node, "action_dim", 0) or 0),
                "hist_size": int(getattr(node, "hist_size", 0) or 0),
                "ckpt_file": os.path.join(_CACHE, "checkpoints", os.environ.get("INTACT_POLICY", ""))})
@@ -307,7 +335,8 @@ def main():
         infer, rec, state = install_model_drive(
             sim, node, a_mean, a_std, action_space, K_ACT, np.clip,
             GRIP_CLOSE, GRIP_OPEN, infer_every=a.infer_every, chunk_step=a.chunk_step,
-            slot=a.slot, rec=rec, state=state)
+            slot=a.slot, rec=rec, state=state,
+            process=(getattr(mem_br, "process", None) if mem_br is not None else None))
         wr = _mk_writer(video_path, (480, 480))
         fr_stats: list[float] = []
         served = [0]
@@ -317,7 +346,7 @@ def main():
             f = np.asarray(s.env.render())
             n_err = None
             try:
-                act_new = infer(s, f)
+                act_new = infer(s, f, act, o)
                 s._direct_act = act_new
                 rec["act"].append(np.asarray(act_new, float).copy())
             except Exception as e:                                  # noqa: BLE001
@@ -428,12 +457,13 @@ def main():
                 if rec["stage"] else {}}
 
     t0 = time.time()
-    n_model = a.model_episodes if a.model_episodes > 0 else len(seeds)
+    n_model = 0 if a.model_episodes < 0 else (
+        a.model_episodes if a.model_episodes > 0 else len(seeds))
     msucc = bsucc = 0
     for k, sd in enumerate(seeds):
         st.update({"stage": "baseline", "ep_index": k, "seed_running": sd})
         _write_status(a.status, st)
-        vbase = os.path.join(a.video_dir, f"{a.task}_解析链对照_seed{sd}.mp4")
+        vbase = os.path.join(a.video_dir, f"{a.task}_解析链_{a.cap}_seed{sd}.mp4")
         base, goal = analytic_rollout(sd, a.mode, video_path=vbase, tag=" 插入")
         bsucc += int(bool(base["done"]))
         if goal is not None and k == 0:
@@ -451,7 +481,9 @@ def main():
               f"插入={base['insert_mm']}mm · 全链={((base.get('full_chain') or {}).get('done'))} "
               f"· 视频 {os.path.basename(vbase)}", flush=True)
 
-        if goal is None or k >= n_model:
+        if goal is None or k >= n_model or not st.get("model_ready", False):
+            if k < n_model and not st.get("model_ready", False):
+                print("   ⏭ 模型未就绪 → 跳过模型直驱 (解析链证据不受影响)")
             continue
         vdir = os.path.join(a.video_dir, f"{a.task}_模型直驱_seed{sd}.mp4")
         out = model_rollout(sd, goal, k, video_path=vdir)

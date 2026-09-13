@@ -154,7 +154,8 @@ class IntactNode:
 
     # ── 接口 4: 一步 ──
     def step(self, obs_frame: np.ndarray | None = None,
-             obs_source: str | None = None) -> IntactOutput:
+             obs_source: str | None = None,
+             skill_ctx: np.ndarray | None = None) -> IntactOutput:
         """obs_frame=None → 从数据源取; 否则用给定帧构造输入。
 
         单步语义: 一次调用 = **一次真实前向** (obs 滑窗 → 模型 get_action → action chunk),
@@ -192,6 +193,14 @@ class IntactNode:
                               waypoint=self.waypoint, action_history=self.action_hist)
 
         info = build_info_dict(inp, intent_mode=self.intent_mode)
+        # 🧠 L2 原子技能上下文 (老倪 09-14: "让 L4 看到 L2 的原子技能")
+        #   构造侧 = src/lerobot/policies/intact/skill_ctx.build_skill_ctx (与采集数据同口径);
+        #   skill_dim=0 的老 checkpoint 会忽略它 (逐位等价); skill_dim>0 的 ckpt 缺它则**报错**
+        #   (在 jepa.get_action 里硬闸, 不许静默降级)。
+        if skill_ctx is not None:
+            _sk = np.asarray(skill_ctx, dtype=np.float32).ravel()[None, None, :]
+            info["skill_ctx"] = _sk
+            self.stats.setdefault("skill_ctx_dim", []).append(int(_sk.shape[-1]))
         actions, diag = self.runtime.get_action(info, horizon=self.horizon)
         # ★ 防"假成功"硬闸: adapter 在 act 失败时会返回零动作并标 act_failed/trained=0,
         #   这里必须显式报错 —— 否则"形状对+全零"会被当成成功 (实测踩坑: 零回退冒充真推理)

@@ -30,6 +30,9 @@ def main():
     ap.add_argument("--dest", default=os.environ.get("LOCAL_DATASET_DIR",
                                                      "/home/ubuntu/stable-wm-cache") + "/datasets")
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--skill-ctx", action="store_true",
+                    help="把 part npz 里的 skill_ctx (L2 原子技能上下文) 一起写进 h5 "
+                         "(keys_to_load 里加 skill_ctx 后训练侧才能消费)")
     ap.add_argument("--keep-parts", action="store_true")
     a = ap.parse_args()
 
@@ -58,8 +61,14 @@ def main():
                 pix = d["pixels"]
                 act = np.asarray(d["action"], np.float32)
                 obs = np.asarray(d["observation"], np.float32)
+                sk = np.asarray(d["skill_ctx"], np.float32) if (
+                    a.skill_ctx and "skill_ctx" in d.files) else None
                 n = int(L.sum())
                 assert n == pix.shape[0] == act.shape[0] == obs.shape[0], f"{p} 帧数不一致"
+                if a.skill_ctx and sk is None:
+                    print(f"   ⚠️ {os.path.basename(p)} 无 skill_ctx 列 → 该 part 跳过 skill_ctx")
+                if sk is not None and sk.shape[0] != n:
+                    raise ValueError(f"{p} skill_ctx 帧数 {sk.shape[0]} != {n}")
                 if dpix is None:      # 首次: 建可扩展数据集
                     dpix = f.create_dataset("pixels", data=pix, maxshape=(None,) + pix.shape[1:],
                                             dtype=np.uint8, chunks=(32,) + pix.shape[1:],
@@ -73,6 +82,9 @@ def main():
                                              data=np.concatenate([np.arange(m, dtype=np.int64)
                                                                   for m in L]),
                                              maxshape=(None,), dtype=np.int64)
+                    if sk is not None:
+                        dsk = f.create_dataset("skill_ctx", data=sk,
+                                               maxshape=(None, sk.shape[1]), dtype=np.float32)
                 else:
                     s = tot_f
                     for ds, arr in ((dpix, pix), (da, act), (dob, obs)):
@@ -83,6 +95,9 @@ def main():
                     dep[s_e:s_e + len(L)] = L
                     dstep.resize(s + n, axis=0)
                     dstep[s:s + n] = np.concatenate([np.arange(m, dtype=np.int64) for m in L])
+                    if sk is not None and "dsk" in locals():
+                        dsk.resize(s + n, axis=0)
+                        dsk[s:s + n] = sk
                 tot_f += n
                 tot_e += len(L)
                 mt = d["meta"][0] if "meta" in d.files else {}
@@ -91,7 +106,7 @@ def main():
                     std_all += list(mt.get("ep_frame_std") or [])
                     if mt.get("done_rate") is not None:
                         _done_pairs.append((len(L), float(mt["done_rate"])))
-                del d, pix, act, obs
+                del d, pix, act, obs, sk
                 print(f"   [{k+1}/{len(files)}] {os.path.basename(p)}: 回合 {len(L)} · 帧 {n} · "
                       f"累计 {tot_f} 帧 · {time.time()-t0:.0f}s", flush=True)
             # ep_offset/ep_idx 全局化
@@ -102,6 +117,8 @@ def main():
                 [np.full(m, i, dtype=np.int32) for i, m in enumerate(Lall)]))
             f.attrs["meta"] = json.dumps({
                 "source": "Z-MAX 六层引擎真链路 (metaworld insert) · 分块采集后合并",
+                "skill_ctx": ("[stage_onehot(13) | L2 技能软权重 w(8) | d_perp | arc_frac | grip] = 24"
+                              if a.skill_ctx else "未合并 (未带 --skill-ctx)"),
                 "parts": [os.path.basename(p) for p in files], "part_meta": part_meta,
                 "episodes": int(tot_e), "frames": int(tot_f),
                 "done_rate": (round(sum(n * r for n, r in _done_pairs) /
@@ -123,7 +140,8 @@ def main():
             import stable_worldmodel as swm         # noqa: PLC0415
             ds = swm.data.load_dataset(a.out_name, cache_dir=os.path.dirname(a.dest),
                                        num_steps=8, frameskip=2,
-                                       keys_to_load=["pixels", "action", "observation"],
+                                       keys_to_load=(["pixels", "action", "observation"]
+                                                     + (["skill_ctx"] if a.skill_ctx else [])),
                                        keys_to_cache=["action", "observation"])
             print(f"  官方 load_dataset OK: len={len(ds)} · get_dim(action)={ds.get_dim('action')} "
                   f"· get_dim(pixels)={ds.get_dim('pixels')}")
