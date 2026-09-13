@@ -64,6 +64,13 @@ class IntactRuntime:
             return False, f"INTACT venv 不存在: {self.venv_python} (先 bash scripts/install.sh cu124)"
         return True, "ok"
 
+    # ── 本工程根 (含 tools/intact_worker.py) ──
+    def _project_root(self) -> str:
+        d = os.path.dirname(os.path.abspath(__file__))
+        while d != os.path.dirname(d) and not os.path.isfile(os.path.join(d, "tools", "intact_worker.py")):
+            d = os.path.dirname(d)
+        return d
+
     # ── 启动 + 握手 ──
     def start(self) -> bool:
         ok, why = self.available()
@@ -71,9 +78,7 @@ class IntactRuntime:
             self.reason = why
             return False
         # 找本工程根 (含 reports/ 或 tools/intact_worker.py)
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d != os.path.dirname(d) and not os.path.isfile(os.path.join(d, "tools", "intact_worker.py")):
-            d = os.path.dirname(d)
+        d = self._project_root()
         script = os.path.join(d, "tools", "intact_worker.py")
         if not os.path.isfile(script):
             script = "/home/ubuntu/lerobot-smolvla-lew/tools/intact_worker.py"
@@ -155,6 +160,18 @@ class IntactRuntime:
                     v = v.detach().cpu().numpy()
                 arrs[k] = np.asarray(v)
             np.savez(fin, **arrs)
+            # 🔬 2026-09-13 调试配套: INTACT_KEEP_INPUT=1 → 把 worker 收到的**真实输入**(真渲染帧 +
+            #   goal + 动作历史) 留一份到 reports/intact_last_input.npz, 供 tools/intact_worker_debug.py
+            #   在 INTACT venv 里 in-process 重放 (那儿才打得到 INTACT 仓库模型代码的断点)。
+            if os.environ.get("INTACT_KEEP_INPUT"):
+                try:
+                    import shutil as _sh
+                    _keep = os.path.join(self._project_root(), "reports", "intact_last_input.npz")
+                    os.makedirs(os.path.dirname(_keep), exist_ok=True)
+                    _sh.copy2(fin, _keep)
+                    self.keep_input_path = _keep
+                except Exception:
+                    pass
             resp = self._rpc({"cmd": "act", "in": fin, "out": fout, "horizon": int(horizon)})
             if not resp.get("ok"):
                 self.reason = resp.get("reason") or "act 失败"

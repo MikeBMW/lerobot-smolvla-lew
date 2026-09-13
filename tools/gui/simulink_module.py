@@ -12804,6 +12804,37 @@ class SimulinkModule(QWidget):
                  "program": "${file}",
                  "python": os.path.expanduser("~/lerobot-venv/bin/python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False},
+                # ── 🎯 INTACT L4 调试配置 (2026-09-13 老倪: "你来给出 INTACT L4 的调试配置") ──
+                #   ⚠️ 必须写在本模板里: 「右键 → 打开 VSCode」会重写 .vscode/launch.json,
+                #      模板里没有的条目会被抹掉。改动这里 = 同步改 .vscode/launch.json。
+                #   ① policy 层 (gui-venv311): 断点打 src/lerobot/policies/intact/**
+                #       (service.py / decoder.py / runtime/*.py), 不经过 GUI 也能单步
+                #   ② GUI 节点路径: 断点打 tools/gui/node_logic.py::node_intact_dec + policy 层
+                #   ③ 模型侧 (INTACT-JEPA/.venv = py3.10): 断点打 /home/ubuntu/INTACT-JEPA/**
+                #       与 tools/intact_worker.py::Runtime.act —— 真输入来自 reports/intact_last_input.npz
+                #       (INTACT_KEEP_INPUT=1 时桥自动留档), 不是合成数据
+                #   ④ 光模块插拔链 (真物理, gui-venv311 + Z-MAX 引擎)
+                {"name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_service_e2e.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
+                {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_gui_node_check.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "QT_QPA_PLATFORM": "offscreen"}},
+                {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_worker_debug.py"),
+                 "python": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
+                {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_sw_optical_bridge.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt"],
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
             ],
         }
         try:

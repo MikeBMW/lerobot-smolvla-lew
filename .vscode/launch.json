@@ -31,6 +31,97 @@
       "cwd": "/home/ubuntu/lerobot-smolvla-lew",
       "console": "integratedTerminal",
       "justMyCode": false
+    },
+    {
+      "name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/lerobot-smolvla-lew/tools/intact_service_e2e.py",
+      "python": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/lerobot-smolvla-lew",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
+        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_KEEP_INPUT": "1",
+        "MUJOCO_GL": "egl"
+      }
+    },
+    {
+      "name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/lerobot-smolvla-lew/tools/intact_gui_node_check.py",
+      "python": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/lerobot-smolvla-lew",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
+        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_DEVICE": "cpu",
+        "QT_QPA_PLATFORM": "offscreen"
+      }
+    },
+    {
+      "name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/lerobot-smolvla-lew/tools/intact_worker_debug.py",
+      "python": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+      "cwd": "/home/ubuntu/lerobot-smolvla-lew",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
+        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
+        "MUJOCO_GL": "egl"
+      }
+    },
+    {
+      "name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/lerobot-smolvla-lew/tools/intact_sw_optical_bridge.py",
+      "python": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+      "args": [
+        "--task",
+        "optical_insert",
+        "--seeds",
+        "0,1",
+        "--mode",
+        "insert",
+        "--max-steps",
+        "900",
+        "--device",
+        "cpu",
+        "--policy",
+        "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt"
+      ],
+      "cwd": "/home/ubuntu/lerobot-smolvla-lew",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
+        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
+        "INTACT_KEEP_INPUT": "1",
+        "PYOPENGL_PLATFORM": "egl",
+        "MUJOCO_GL": "egl"
+      }
     }
   ]
 }
