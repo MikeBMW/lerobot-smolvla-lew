@@ -3745,14 +3745,15 @@ try:
                                           node_ss_mem_l4, node_ss_mem_share,
                                           node_ss_intent_bundle, node_ss_skill_dict,
                                           node_ss_mem_links, node_ss_intent_direct,
-                                          node_ss_motor_hub, node_ss_global_mem)
+                                          node_ss_motor_hub, node_ss_global_mem,
+                                          node_ss_mem_field)
 except Exception as _me:
     _mem_err = f"⚠️ 记忆节点实现未加载 (真源 src/lerobot/memory/mem_nodes.py): {_me}"
     node_ss_mem_l2 = node_ss_mem_l3 = node_ss_mem_l4 = node_ss_mem_share = (
         lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
     node_ss_intent_bundle = node_ss_skill_dict = node_ss_mem_links = node_ss_intent_direct = (
         lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
-    node_ss_motor_hub = node_ss_global_mem = (
+    node_ss_motor_hub = node_ss_global_mem = node_ss_mem_field = (
         lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
 
 _reg("ss_mem_l2", ["L2 记忆 · 肌肉记忆"], "🔧 L2 记忆 · 肌肉记忆 — 固化标杆库 (muscle_memory)", node_ss_mem_l2)
@@ -3770,6 +3771,9 @@ _reg("ss_motor_hub", ["运动基元库", "肌肉记忆中枢", "运动基元"],
 _reg("ss_global_mem", ["全局记忆中枢", "三层记忆", "融会贯通"],
      "🧠 全局记忆中枢 — L4物理规律/L3流程/L2肌肉 三层联合体检 + 二态意图语法 (INTACT Fig.1)",
      node_ss_global_mem)
+_reg("ss_mem_field", ["总装机记忆 · 势场联络", "势场联络", "记忆层势场"],
+     "🧲 总装机记忆 · 势场联络 — L2 技能势场 / L3 流程势场 / L4 全局势场 → 意图 −∇Φ (逐层开关)",
+     node_ss_mem_field)
 _reg("ss_vlm", ["VLM 通用视觉编码"], "🧠 VLM 通用视觉编码器 (SmolVLA式) — 视觉/触觉/检测框 token → 潜空间 z",
     node_ss_vlm)
 _reg("ss_dec", ["潜空间 Decoder"], "🔄 潜空间 Decoder — 流形坐标 → 动作建议 u_mani (与 MLP 融合)",

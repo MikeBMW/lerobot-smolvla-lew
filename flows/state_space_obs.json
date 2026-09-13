@@ -1310,6 +1310,21 @@
    }
   },
   {
+   "id": "ss_mem_field",
+   "type": "model",
+   "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "x": 360,
+   "y": -1085,
+   "w": 330,
+   "h": 50,
+   "params": {
+    "state_space": true,
+    "mem_field": true,
+    "desc": "[总装机记忆·势场联络] L2 肌肉记忆: 每条技能冠军轨迹→技能势场 Φ_SK (谷底=真跑末点 · σ=谷宽 · 触发/速度上限取技能库真值) · L3 工艺流程记忆: 按真实段时长(真跑帧数)加权组合→流程势场 Φ_process(x,t), 谷底随时序从 SK01 连续移到 SK07 · L4 物理工作空间记忆: Φ_process + 障碍场(孔壁/台面 引擎现场几何) + 世界模型预测项 · 输出 −∇Φ = 意图(方向/速率/技能/置信) 给 L4 INTACT 链按层叠加(blend_action)。逐层开关 = data/memory_layers.json (默认全关=零干预, 逐步打开)。源码 src/lerobot/memory/potential_field.py · 节点 mem_nodes.node_ss_mem_field",
+    "source": "src/lerobot/memory/potential_field.py"
+   }
+  },
+  {
    "id": "ss_mem_share",
    "type": "model",
    "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
@@ -2162,6 +2177,38 @@
    "f_port": "out2",
    "t_port": "in1",
    "label": "SW 渲染视频 (3D)"
+  },
+  {
+   "id": "lkmemf1",
+   "f": "ss_mem_l2",
+   "t": "ss_mem_field",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能势场 Φ_SK (谷底/σ/触发)"
+  },
+  {
+   "id": "lkmemf2",
+   "f": "ss_mem_l3",
+   "t": "ss_mem_field",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "流程势场 Φ_process (权重时序)"
+  },
+  {
+   "id": "lkmemf3",
+   "f": "ss_mem_l4",
+   "t": "ss_mem_field",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "工作空间势场 Φ_global (障碍/预测)"
+  },
+  {
+   "id": "lkmemf4",
+   "f": "ss_mem_field",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "意图 −∇Φ → 调度"
   }
  ]
 }

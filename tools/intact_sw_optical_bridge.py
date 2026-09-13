@@ -223,9 +223,31 @@ def main():
     print(f"   动作反归一化: {os.path.basename(a.stats)} action_space={action_space} "
           f"(n_finite={s_meta.get('n_finite')}) · K_ACT={K_ACT}")
 
+    # 🧲 记忆层势场 (老倪 2026-09-13): 逐层开关 (默认全关 = 零干预)。开了哪几层, 就用哪几层的
+    #   −∇Φ 意图按置信度混入模型动作 (blend_action); 全关时本块恒等不影响 (可断言)。
+    mem_br, mem_note = None, ""
+    try:
+        import sys as _s2
+        _rp = os.path.join(ROOT, "src")
+        if _rp not in _s2.path:
+            _s2.path.insert(0, _rp)
+        from lerobot.memory.potential_field import MemoryLayerBridge      # noqa: PLC0415
+        mem_br = MemoryLayerBridge.from_real_data(ROOT)
+        _g = mem_br.gates()
+        mem_note = (f"L2={_g['L2']} L3={_g['L3']} L4={_g['L4']} 总装机={_g['assembly']}"
+                    f" ({'全关 → 零干预' if not mem_br.any_on() else '按层介入'})")
+        st.update({"memory_layers": _g, "memory_layers_note": mem_note,
+                   "memory_skills": [f.code for f in mem_br.fields], "memory_reason": mem_br.reason})
+        _write_status(a.status, st)
+        print(f"🧲 记忆层势场: 开关 {mem_note} · 技能场 {len(mem_br.fields)} · {mem_br.reason}")
+    except Exception as e:                                              # noqa: BLE001
+        mem_note = f"未接入 ({type(e).__name__}: {e})"
+        print(f"⚠️ 记忆层势场未接入: {mem_note}")
+
     gstep = [0]
     all_frames = []
     rows = []
+    mem_stats = {"applied": 0, "w_mean": [], "last": None, "skipped": 0, "last_skip": None}
 
     def analytic_rollout(seed, mode, video_path=None, tag=""):
         """同 seed 解析链: 取 ① 成功/插入深度(同口径对照) ② 末帧作 goal ③ (可选) 录像"""
@@ -298,6 +320,32 @@ def main():
                 n_err = state["err"]
             st_i = gstep[0]
             gstep[0] += 1
+            # 🧲 记忆层介入 (逐层开关; 全关 → u 原样返回, 等价于原链路)
+            if mem_br is not None and mem_br.any_on():
+                try:
+                    _x = np.asarray(s.peg_head(), float).ravel()[:3]
+                    # 相位由状态定 (t=None): 模型直驱时"时钟进度"与实际所在相位不同步
+                    _u2, _binfo = mem_br.blend_action(s._direct_act, _x, None, w_max=0.5, k_act=K_ACT)
+                    if _binfo.get("applied"):
+                        s._direct_act = _u2
+                        mem_stats["applied"] += 1
+                        mem_stats["w_mean"].append(float(_binfo.get("w") or 0.0))
+                        mem_stats["last"] = {"step": st_i, "skill": _binfo.get("skill"), **_binfo}
+                        if st_i % 25 == 0:
+                            print(f"   🧲 记忆层介入 step={st_i} 技能={_binfo.get('skill')} "
+                                  f"w={_binfo.get('w')} conf={_binfo.get('conf')} "
+                                  f"模型={_binfo.get('u_model')} 场={_binfo.get('u_field')} "
+                                  f"→ 合成={_binfo.get('u_out')}", flush=True)
+                    else:
+                        mem_stats["skipped"] = mem_stats.get("skipped", 0) + 1
+                        mem_stats["last_skip"] = {"step": st_i, **_binfo}
+                        if st_i % 25 == 0:
+                            print(f"   🧲 记忆层未介入 step={st_i}: {_binfo.get('reason')} "
+                                  f"(技能={_binfo.get('skill')} conf={_binfo.get('conf')} "
+                                  f"d⊥={_binfo.get('d_perp_m')})", flush=True)
+                except Exception as e:                                  # noqa: BLE001
+                    if mem_stats.get("err") is None:
+                        mem_stats["err"] = f"{type(e).__name__}: {e}"
             fr224 = cv2.resize(f, (IMG, IMG), interpolation=cv2.INTER_AREA)
             fp = os.path.join(a.spool, f"step_{st_i:06d}.jpg")
             cv2.imwrite(fp, fr224, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
@@ -440,6 +488,24 @@ def main():
         f"L4 演示档小样本随机起点 (seeds={seeds}, mode={a.mode}), 非官方 100 局口径。"
         f"解析链对照 {bsucc}/{len(rows)} 成功 = 引擎本任务可达性; 模型直驱"
         f" {msucc}/{n_done or 0} 成功 = 本域微调权重真实水平 (不做任何加工)。")
+    # 🧲 记忆层接入统计 + 总装机台账 (老倪"逐步打开每层记忆"的观测口)
+    _wm = float(np.mean(mem_stats["w_mean"])) if mem_stats["w_mean"] else 0.0
+    st["memory_intervene"] = {"note": mem_note, "steps_applied": mem_stats["applied"],
+                              "steps_skipped": mem_stats.get("skipped", 0),
+                              "w_mean": round(_wm, 4), "last": mem_stats["last"],
+                              "last_skip": mem_stats.get("last_skip"),
+                              "err": mem_stats.get("err")}
+    if mem_br is not None:
+        try:
+            st["assembly_ledger_last"] = mem_br.record_outcome(
+                a.task, done=bool(msucc or (a.model_episodes == 0 and bsucc)),
+                steps=gstep[0], insert_mm=(rows[-1].get("model") or {}).get("insert_mm")
+                if rows and rows[-1].get("model") else rows[-1]["analytic"].get("insert_mm"),
+                layers=mem_br.gates(),
+                note=f"L4 光模块插拔链 (解析链 {bsucc}/{len(rows)} · 模型 {msucc}/{n_done or 0} · "
+                     f"记忆层介入 {mem_stats['applied']} 步 w̄={_wm:.3f})")
+        except Exception as e:                                          # noqa: BLE001
+            st["assembly_ledger_err"] = f"{type(e).__name__}: {e}"
     _write_status(a.status, st)
     print("\n" + json.dumps(_json_safe({k2: st[k2] for k2 in
                                         ("ok", "stage", "steps", "succ", "success_rate",

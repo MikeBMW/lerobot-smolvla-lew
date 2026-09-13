@@ -376,3 +376,100 @@ def node_ss_global_mem(ctx):
         if log:
             log(f"⚠️ 全局记忆中枢失败: {e}")
         return False
+
+def node_ss_mem_field(ctx):
+    """🧲 总装机记忆 · 势场联络 — L2 技能势场 / L3 流程势场 / L4 全局势场 → 意图 (−∇Φ)
+
+    老倪 2026-09-13: 把"势场"实现到 L2肌肉 / L3工艺流程 / L4物理工作空间 + 总装机记忆联络策略。
+    本节点 = 这条联络策略在画布上的**唯一入口**: ①打印四层联络契约与逐层开关 (默认全关)
+    ②用真数据 (muscle_memory 冠军轨迹 + 引擎现场几何) 现场构造势场并打印谷底/谷宽
+    ③在引擎当前状态处算 Φ 与 −∇Φ (真值, 有引擎就取真实末端位置, 没有就用当前激活技能的入口)
+    ④输出意图 (方向/速率/技能/置信) 并写入共享记忆 (l2/l3/l4 out + 总装机台账)
+    逐层打开: data/memory_layers.json (或本节点日志里给出的命令), 全关时**零干预**。
+    """
+    log = ctx.get("log")
+    root = str(ctx.get("root") or os.getcwd())
+    try:
+        import numpy as np
+        from lerobot.memory.potential_field import MemoryLayerBridge
+    except Exception:                                     # 兼容: 直接以脚本目录起
+        try:
+            import sys as _s
+            _s.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))), "src"))
+            import numpy as np
+            from lerobot.memory.potential_field import MemoryLayerBridge
+        except Exception as e:                            # noqa: BLE001
+            if log:
+                log(f"⚠️ 势场记忆: 模块未加载 ({type(e).__name__}: {e})")
+            return False
+    try:
+        br = MemoryLayerBridge.from_real_data(root)
+        st = br.status()
+        g = st["gates"]
+        if log:
+            log(f"🧲 总装机记忆 · 势场联络: L2 技能势场 {st['n_skills']} 条 · "
+                f"L3 流程势场 {'有' if st['process'] else '无'} · "
+                f"L4 障碍场 {'接现场几何' if st['obstacle'] else '未接'} · "
+                f"世界模型项 {'已接' if st['world'] else '未接(恒0)'}")
+            log(f"   逐层开关 (默认全关=零干预): L2={g['L2']} L3={g['L3']} L4={g['L4']} 总装机={g['assembly']}")
+            if not st["n_skills"]:
+                log(f"   ⚠️ 无可用技能轨迹 ({st['reason']}) → 需先跑真实化把标杆入库 (L2 肌肉记忆)")
+                return False
+            for f in br.fields:
+                log(f"   🔧 {f.code} {f.stage}: 谷底 {np.round(f.x_g, 3).tolist()} · σ={f.sigma*1000:.1f}mm "
+                    f"· 轨迹 {f.L*1000:.0f}mm · v_cap={f.v_cap} · 命中 {f.n_ok}")
+                if f.goal_fallback:
+                    log(f"      ⚠️ io.exit 与 champ_x 不同源 ({f.goal_mismatch_m*1000:.1f}mm): "
+                        f"{f.goal_fallback_reason[:70]}")
+        # 现场状态: 优先取引擎真实末端位置 (有引擎实例/轨迹就用真的, 不编)
+        x_cur, src = None, "无引擎 → 用当前激活技能入口 (演示)"
+        sim = None
+        for attr in ("_ss_last_sim", "_real_sim_ref"):
+            sim = getattr(ctx.get("module"), attr, None) if ctx.get("module") is not None else None
+            if sim is not None:
+                break
+        if sim is not None:
+            try:
+                x_cur = np.asarray(sim.peg_head(), float).ravel()[:3]
+                src = "引擎真实光模块头位置 (sim.peg_head)"
+            except Exception:                             # noqa: BLE001
+                x_cur = None
+        t = 0.5
+        if x_cur is None:
+            x_cur = br.process.active(t).x_0
+        # 逐层 compose (全关 → None, 零干预)
+        phi, contrib = br.compose(x_cur, t)
+        it = br.intent(x_cur, t)
+        if log:
+            log(f"   当前状态 x={np.round(x_cur, 4).tolist()} ({src}) · t={t}")
+            if not it["active"]:
+                log(f"   Φ=None → 记忆层全关, 不干预 ({it['reason']}) · 未开层时行为与原系统**完全一致**")
+            else:
+                log(f"   Φ_总={contrib.get('phi_total')} (L2={contrib.get('L2')} 技能={contrib.get('L2_skill')} "
+                    f"· L3={contrib.get('L3')} · L4障碍={contrib.get('L4_obstacle')} 世界={contrib.get('L4_world')})")
+                log(f"   意图 −∇Φ = {np.round(it['dir'], 3).tolist()} · 速率 {it['step_m']} m/s · "
+                    f"技能 {it['skill']}({it['stage']}) · 置信 {it['conf']} · 离谷底 {it['d_goal_m']*1000:.1f}mm")
+                ab = br.arbitrate(it["stage"], contact_p=0.5 if it["stage"] in ("下降", "抓取", "插入") else 0.0)
+                log(f"   总装机仲裁: 主层 {ab['primary_layer']} (接触={ab['contact']}) — {ab['note']}")
+            log("   逐层打开: 写 data/memory_layers.json {\"L2\":1} → 再加 \"L3\":1 → 再加 \"L4\":1, "
+                "然后跑 L4 INTACT 链即按层叠加介入 (blend_action)")
+        # 写共享记忆 (三层 out + 总装机台账)
+        try:
+            stt = _sys_mem()
+            if stt:
+                stt.put("l2", "out", {"time": time.strftime("%H:%M:%S"), "势场技能": st["n_skills"],
+                                      "谷底": {f.code: [round(float(v), 4) for v in f.x_g] for f in br.fields[:3]}},
+                        cap=20)
+                stt.put("l3", "out", {"time": time.strftime("%H:%M:%S"),
+                                      "流程谷底时序": [c for _, c, _, _ in br.process.goal_path(7)]}, cap=20)
+                stt.put("l4", "out", {"time": time.strftime("%H:%M:%S"),
+                                      "障碍场": bool(st["obstacle"]), "世界模型项": bool(st["world"]),
+                                      "意图": it["dir"] if it["active"] else None}, cap=20)
+        except Exception:                                 # noqa: BLE001
+            pass
+        return True
+    except Exception as e:                                # noqa: BLE001
+        if log:
+            log(f"⚠️ 势场记忆联络失败: {type(e).__name__}: {e}")
+        return False
