@@ -6168,6 +6168,32 @@ class SimulinkModule(QWidget):
         dlg = ScopeCompareDialog(self)
         self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
+    # ── 🎬 SW 实况独立窗口 (2026-09-13 老倪: L4 档 ▶运行 时自动弹出, 跑链条画面自己出来) ──
+    def open_sw_live_window(self):
+        """打开/前置「SW 实况」独立窗口 —— 与 3D 视图内嵌小窗的「⤢ 放大窗口」是同一全局单例"""
+        try:
+            import ss_dreamview as _dv          # 同目录模块 (与 open_ss_3d 一样的懒加载姿势)
+            return _dv.sw_live_window()
+        except Exception as e:                  # noqa: BLE001
+            try:
+                self._log(f"⚠️ SW 实况窗口打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def _auto_sw_live_window(self):
+        """L4 档 ▶运行 → 自动弹出 SW 实况独立窗口; L2/L3 档完全不动 (保持原有行为)"""
+        try:
+            if self._ss_cap_num() < 4:
+                return None
+        except Exception:
+            return None
+        w = self.open_sw_live_window()
+        if w is not None:
+            self._log("🎬 L4 档: 已自动弹出「SW 实况」独立窗口 "
+                      "(stable-world 逐帧渲染真图 · 数据源 reports/intact_sw/frames)")
+        return w
+
     def start_sim(self):
         # 🚀 即时反馈 (2026-08-05 老倪: "运行, 还是没反应" — 点击瞬间按钮变运行中+状态栏提示)
         self.btn_run.setText("⏳ 运行中…")
@@ -6182,6 +6208,8 @@ class SimulinkModule(QWidget):
             return
         # 🧮 状态空间画布 → 真实仿真引擎 (2026-08-18 老倪: 六层源码闭环, 非占位观察模式)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
+            # 🎬 2026-09-13 老倪: L4 档 ▶运行 → 自动弹出「SW 实况」独立窗口 (跑链条时画面自己出来)
+            self._auto_sw_live_window()
             # 🎥 2026-09-04 老倪「YOLO 还是假的?」: ▶运行 默认 = 真实化流程
             #   (metaworld 物理 + 每帧渲染→detect_3d, 断点每步可进); 勾选 ⚡引擎快演
             #   才走引擎简化世界 (0.1s 快演示, YOLO 仅末尾 1 次采样)

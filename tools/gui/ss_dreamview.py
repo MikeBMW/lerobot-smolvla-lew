@@ -452,6 +452,29 @@ def sw_read_status(path):
         return {}
 
 
+_SW_WIN = None            # 全局单例: 3D 内嵌小窗的「⤢ 放大」与画布 L4 ▶运行自动弹出 共用同一个窗口
+
+
+def sw_live_window():
+    """打开/前置 SW 实况独立窗口 (单例; 已开则 raise+activate, 不重复开)"""
+    global _SW_WIN
+    try:
+        if _SW_WIN is None:
+            _SW_WIN = SWLiveWindow()
+        if not _SW_WIN.isVisible():
+            _SW_WIN.show()
+            _SW_WIN._poll()                 # 立刻刷一帧, 不等 150ms
+        _SW_WIN.raise_()
+        _SW_WIN.activateWindow()
+        return _SW_WIN
+    except Exception as e:                  # noqa: BLE001
+        try:
+            print(f"[SW 实况窗口] 打开失败: {type(e).__name__}: {e}")
+        except Exception:
+            pass
+        return None
+
+
 class SWLiveWindow(QWidget):
     """🎬 stable-world 实况 · **独立窗口** (2026-09-13 老倪: 3D 角落里的小窗太小, 单独开一个正常窗口)
 
@@ -1707,24 +1730,8 @@ class DreamView3D(QWidget):
 
     def open_sw_window(self):
         """🎬 独立「SW 实况」窗口 (2026-09-13 老倪: 角落小窗太小 → 正常窗口放大看)
-        单例: 已开就 raise/activate; 数据源与内嵌小窗完全相同 (reports/intact_sw/frames)。"""
-        try:
-            w = getattr(self, "_sw_win", None)
-            if w is None or not w.isVisible():
-                if w is None:
-                    self._sw_win = SWLiveWindow()          # 顶层窗口, 父=None → 真正独立
-                    w = self._sw_win
-                w.show()
-                w._poll()                                   # 立刻刷一帧, 不等 150ms
-            w.raise_()
-            w.activateWindow()
-            return w
-        except Exception as e:                              # noqa: BLE001
-            try:
-                print(f"[SW 实况窗口] 打开失败: {type(e).__name__}: {e}")
-            except Exception:
-                pass
-            return None
+        走全局单例 → 与画布 L4 ▶运行 自动弹出的那个窗口是同一个 (不会开两个)。"""
+        return sw_live_window()
 
     def _sw_poll(self):
         """150ms 轮询真帧: 帧号变了才重贴图 (省 CPU); 图层关掉则完全不刷新"""
