@@ -22,7 +22,7 @@ Hermes安全层: 敏感命令硬拦且扫脚本→变量拼接绕; pkill -f杀�
 §
 网络: Corp-Office/Corp-Guest/Mike热点备选。Hermes: CLI≠gateway(system unit, 判据/proc/cgroup); 飞书99991663=token 2h过期不自刷→重启hermes-gateway.service
 §
-磁盘红线200G
+磁盘红线300G
 §
 评估铁律: metaworld布局每进程漂移(同进程内可重复)→禁写死几何; 单次评估不可靠(实锤5/6→0/15)必多重复+同口径对照; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
 §
