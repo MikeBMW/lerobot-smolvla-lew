@@ -235,7 +235,7 @@
    "name": "🧩 验证层 · Feature/Test 质量门 (回路外元层)",
    "x": -20,
    "y": 1190,
-   "w": 6180,
+   "w": 6060,
    "h": 140,
    "params": {
     "state_space": true,
@@ -492,7 +492,7 @@
    "id": "sslimit",
    "type": "system",
    "name": "🛡 安全执行边界 (饱和限幅)",
-   "x": 754,
+   "x": 3856,
    "y": 625,
    "w": 280,
    "icon": "🛡",
@@ -516,7 +516,7 @@
    "id": "ssact",
    "type": "hardware",
    "name": "🤖 机器人执行器",
-   "x": 4800,
+   "x": 4640,
    "y": 1045,
    "w": 280,
    "icon": "🤖",
@@ -539,7 +539,7 @@
    "id": "ssworld",
    "type": "hardware",
    "name": "🌍 物理世界",
-   "x": 5140,
+   "x": 5000,
    "y": 1045,
    "w": 280,
    "icon": "🌍",
@@ -562,7 +562,7 @@
    "id": "ssvideo",
    "type": "model",
    "name": "📊 仿真波形",
-   "x": 5500,
+   "x": 5360,
    "y": 1365,
    "w": 280,
    "icon": "📊",
@@ -587,7 +587,7 @@
    "id": "ssvideo2",
    "type": "model",
    "name": "🎥 操作视频",
-   "x": 6220,
+   "x": 6080,
    "y": 1365,
    "w": 280,
    "icon": "🎥",
@@ -955,7 +955,7 @@
    "h": 110,
    "y": 1215,
    "id": "ssfeat",
-   "x": 5500,
+   "x": 5360,
    "name": "🧩 Feature 功能清单",
    "params": {
     "state_space": true,
@@ -977,7 +977,7 @@
    "h": 110,
    "y": 1215,
    "id": "sstest",
-   "x": 5860,
+   "x": 5720,
    "name": "🧪 Test 用例执行",
    "params": {
     "state_space": true,
@@ -1007,7 +1007,7 @@
    "id": "ss3d_view",
    "type": "model",
    "name": "🧭 3D 视图",
-   "x": 5860,
+   "x": 5720,
    "y": 1365,
    "w": 280,
    "h": 110,
@@ -1025,16 +1025,15 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in2"
+    "in1"
    ],
    "outputs": [
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 2098,
+   "w": 170,
+   "h": 68,
+   "x": 1420,
    "y": 845,
    "id": "sssk1",
    "name": "① 接近 · SK01",
@@ -1060,9 +1059,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 2434,
+   "w": 170,
+   "h": 68,
+   "x": 1595,
    "y": 845,
    "id": "sssk2",
    "name": "② 对位 · SK02",
@@ -1088,9 +1087,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 2770,
+   "w": 170,
+   "h": 68,
+   "x": 1770,
    "y": 845,
    "id": "sssk3",
    "name": "③ 下降 · SK03",
@@ -1116,9 +1115,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 3106,
+   "w": 170,
+   "h": 68,
+   "x": 1945,
    "y": 845,
    "id": "sssk4",
    "name": "④ 抓取 · SK04",
@@ -1144,9 +1143,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 3442,
+   "w": 170,
+   "h": 68,
+   "x": 2120,
    "y": 845,
    "id": "sssk5",
    "name": "⑤ 抬起 · SK05",
@@ -1172,9 +1171,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 3778,
+   "w": 170,
+   "h": 68,
+   "x": 2295,
    "y": 845,
    "id": "sssk6",
    "name": "⑥ 转移 · SK06",
@@ -1200,9 +1199,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 4114,
+   "w": 170,
+   "h": 68,
+   "x": 2470,
    "y": 845,
    "id": "sssk7",
    "name": "⑦ 插入 · SK07",
@@ -1228,9 +1227,9 @@
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 4450,
+   "w": 170,
+   "h": 68,
+   "x": 2645,
    "y": 845,
    "id": "sssk8",
    "name": "⑧ 完成 · SK08",
@@ -1319,15 +1318,13 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py",
+    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md",
     "expert": true,
     "state_space": true,
     "intact": true,
     "data_source": "metaworld",
     "decoder": "ssintact_dec",
-    "source": "src/lerobot/policies/intact/service.py",
-    "source_symbol": "def run_once(",
-    "source_note": "编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py"
+    "source": "src/lerobot/policies/intact/modeling_intact.py"
    }
   },
   {
@@ -1341,13 +1338,11 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
+    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变",
     "expert": true,
     "state_space": true,
     "decoder": true,
-    "source": "src/lerobot/policies/intact/service.py",
-    "source_symbol": "def run_once(",
-    "source_note": "编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py"
+    "source": "src/lerobot/policies/intact/decoder.py"
    }
   },
   {
@@ -1452,16 +1447,15 @@
    "icon": "🅰️",
    "color": "#f0a020",
    "inputs": [
-    "in1",
-    "in2"
+    "in1"
    ],
    "outputs": [
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 1090,
+   "w": 170,
+   "h": 68,
+   "x": 905,
    "y": 845,
    "id": "ssa",
    "name": "🅰️ 通用算子 A · 参数写入",
@@ -1479,16 +1473,15 @@
    "icon": "🅱️",
    "color": "#f0a020",
    "inputs": [
-    "in1",
-    "in2"
+    "in1"
    ],
    "outputs": [
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 1426,
+   "w": 170,
+   "h": 68,
+   "x": 1080,
    "y": 845,
    "id": "ssb",
    "name": "🅱️ 通用算子 B · 参数微调",
@@ -1506,16 +1499,15 @@
    "icon": "🅾️",
    "color": "#f0a020",
    "inputs": [
-    "in1",
-    "in2"
+    "in1"
    ],
    "outputs": [
     "out1"
    ],
    "actions": [],
-   "w": 280,
-   "h": 110,
-   "x": 1762,
+   "w": 170,
+   "h": 68,
+   "x": 1255,
    "y": 845,
    "id": "ssc",
    "name": "🅾️ 通用算子 C · 参数校验",
@@ -2349,94 +2341,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "轨迹"
-  },
-  {
-   "id": "lksafe1",
-   "f": "sslimit",
-   "t": "ssa",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "🛡 限幅后控制 → 通用算子 A"
-  },
-  {
-   "id": "lksafe2",
-   "f": "sslimit",
-   "t": "ssb",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "🛡 限幅后控制 → 通用算子 B"
-  },
-  {
-   "id": "lksafe3",
-   "f": "sslimit",
-   "t": "ssc",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "🛡 限幅后控制 → 通用算子 C"
-  },
-  {
-   "id": "lksafe4",
-   "f": "sslimit",
-   "t": "sssk1",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "🛡 限幅后控制 → ① 接近 SK01"
-  },
-  {
-   "id": "lksafe5",
-   "f": "sslimit",
-   "t": "sssk2",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ② 对位 SK02"
-  },
-  {
-   "id": "lksafe6",
-   "f": "sslimit",
-   "t": "sssk3",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ③ 下降 SK03"
-  },
-  {
-   "id": "lksafe7",
-   "f": "sslimit",
-   "t": "sssk4",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ④ 抓取 SK04"
-  },
-  {
-   "id": "lksafe8",
-   "f": "sslimit",
-   "t": "sssk5",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑤ 抬起 SK05"
-  },
-  {
-   "id": "lksafe9",
-   "f": "sslimit",
-   "t": "sssk6",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑥ 转移 SK06"
-  },
-  {
-   "id": "lksafe10",
-   "f": "sslimit",
-   "t": "sssk7",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑦ 插入 SK07"
-  },
-  {
-   "id": "lksafe11",
-   "f": "sslimit",
-   "t": "sssk8",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑧ 完成 SK08"
   }
  ]
 }
