@@ -1318,13 +1318,15 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md",
+    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py",
     "expert": true,
     "state_space": true,
     "intact": true,
     "data_source": "metaworld",
     "decoder": "ssintact_dec",
-    "source": "src/lerobot/policies/intact/modeling_intact.py"
+    "source": "src/lerobot/policies/intact/service.py",
+    "source_symbol": "def run_once(",
+    "source_note": "编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py"
    }
   },
   {
@@ -1338,11 +1340,13 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变",
+    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
     "expert": true,
     "state_space": true,
     "decoder": true,
-    "source": "src/lerobot/policies/intact/decoder.py"
+    "source": "src/lerobot/policies/intact/service.py",
+    "source_symbol": "def run_once(",
+    "source_note": "编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py"
    }
   },
   {

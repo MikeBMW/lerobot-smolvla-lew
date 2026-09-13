@@ -12817,17 +12817,41 @@ class SimulinkModule(QWidget):
             return
         cmd = [code, root]
         # 🐛 2026-08-30 老倪: 打开当前节点实际源代码并定位 (node_logic 映射/外部源码)
+        # 🐛 2026-09-13 老倪: 「INTACT意图解码器 右键打开还是原来的 GUI, 没跳到 src/lerobot/policies」
+        #   → 原来只认 node_logic 映射, 未映射的键退回 node_logic.py 自身 → 看起来"没跳"。
+        #   改为 **节点自己声明的 params.source 优先** (可选 params.source_symbol 动态定位行号, 避免手写行号漂移),
+        #   找不到才退回 node_logic 映射 (老节点行为不变)。
         loc_desc = ""
+        _loc = None
         if node is not None:
+            _p = dict(node.get("params", {}) or {})
+            _src = str(_p.get("source") or "")
+            if _src and os.path.isfile(os.path.join(root, _src)):
+                _path = os.path.join(root, _src)
+                _line = None
+                _sym = str(_p.get("source_symbol") or "")
+                if _sym:
+                    try:
+                        with open(_path, encoding="utf-8", errors="ignore") as _f:
+                            for _i, _l in enumerate(_f, 1):
+                                if _l.lstrip().startswith(_sym):
+                                    _line = _i
+                                    break
+                    except Exception:
+                        pass
+                _loc = (_path, _line)
+        if _loc is None and node is not None:
             try:
                 from node_logic import match_node, get_node_location
                 key = match_node(node.get("name", ""))
                 path, line, _ = get_node_location(key) if key else (None, None, False)
                 if path and os.path.exists(path):
-                    cmd += ["-g", f"{path}:{line or 1}"]
-                    loc_desc = f" · 已定位 {os.path.basename(path)}:{line or 1}"
+                    _loc = (path, line)
             except Exception:
                 pass
+        if _loc:
+            cmd += ["-g", f"{_loc[0]}:{_loc[1] or 1}"]
+            loc_desc = f" · 已定位 {os.path.relpath(_loc[0], root)}:{_loc[1] or 1}"
         _sp.Popen(cmd, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
         self._log(f"🚀 VSCode 已打开 {root}{loc_desc} · 解释器 gui-venv311 已配置 "
                   f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)")

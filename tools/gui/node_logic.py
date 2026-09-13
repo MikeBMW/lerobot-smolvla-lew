@@ -3821,6 +3821,23 @@ _EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "manifold
 _EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (键对齐注册 ss_dec; 架构归位 src)
 
+# 🎯 INTACT 家族 (2026-09-13 老倪: 「VEH.5.022 INTACT意图解码器 右键打开 VSCode 还是原来的 GUI,
+#   你怎么没有跳到 src/lerobot/policies 文件夹里呢?」→ 根因: 这几个键**没有 _EXTERNAL_LOC 映射**,
+#   get_node_location() 退回 node_logic.py 自身 co_filename = 就是 GUI 文件。编排已下沉 policy 层,
+#   映射必须跟着走: 编排 = policies/intact/service.py, 真算法 = policies/intact/runtime/*.py)
+_INTACT_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "intact")
+_EXTERNAL_LOC["intact"] = (os.path.join(_INTACT_DIR, "service.py"), 200, "def run_once(")   # 🎯 策略节点: 编排入口 (建桥+接数据源+真推理+解码+证据)
+_EXTERNAL_LOC["intact_dec"] = (os.path.join(_INTACT_DIR, "service.py"), 200, "def run_once(")   # 🎯 意图解码器节点: 同一处编排 (解码在 decoder.py)
+_EXTERNAL_LOC["intact_decoder"] = (os.path.join(_INTACT_DIR, "decoder.py"), 66, "class IntactIntentDecoder")
+_EXTERNAL_LOC["intact_node"] = (os.path.join(_INTACT_DIR, "runtime", "node.py"), 48, "class IntactNode")
+_EXTERNAL_LOC["intact_bridge"] = (os.path.join(_INTACT_DIR, "runtime", "model_adapter.py"), 23, "class IntactRuntime")
+# 🌍 光模块插拔链 (L4 SW): 真实现 = 跨 venv 桥脚本 (GUI 侧 node_sw_* 只是调度)
+_SW_BRIDGE = os.path.join(_REPO_ROOT, "tools", "intact_sw_optical_bridge.py")
+_EXTERNAL_LOC["sw_intact"] = (_SW_BRIDGE, 1, "def ")
+_EXTERNAL_LOC["sw_world"] = (_SW_BRIDGE, 1, "def ")
+_EXTERNAL_LOC["sw_ds"] = (_SW_BRIDGE, 1, "def ")
+_EXTERNAL_LOC["sw_video"] = (_SW_BRIDGE, 1, "def ")
+
 
 # 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
 #   回路外元层, 与标定层/流形导航层同范式; 真源 src/lerobot/verification/verification_layer.py)
