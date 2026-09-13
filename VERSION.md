@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.31** | 09-13 | 🎬 SW 实况独立窗口 (小窗太小 → 正常窗口): SWLiveWindow 可拉伸 760×860 · 倍率 ×1~×4 (默认 ×3=672px) · ⏸暂停 · 📌置顶 · 📂视频目录; 两个入口 (3D 左侧按钮 / 小窗 ⤢ 放大); 单例; 验证 15/15 |
 | **v5.5.30** | 09-13 | 🎬 A: stable-world 渲染帧贴进 3D 视图本体 — 3D 视图右上角「SW 实况」画中画 (逐帧真图 150ms 轮询 + 状态行真值 + 图层勾选 + 随窗重贴 + 打开视频目录); 数据源 = L4「🌍 SW 仿真世界引擎链」产物 reports/intact_sw/; 验证 9/9 (真帧 std=32.46, 关/开 生效, 小窗在视口内, 整窗 grab 非全黑) |
 | **v5.5.29** | 09-13 | 🐛 修「启动状态空间即崩」: 背景行标题省略号传给 QFontMetrics.elidedText 的宽度是 float → paint() 内 TypeError → Qt Abort 整个 GUI; `_wrap_title` 入口 int(avail) + paint 传 _aw; 单元对照 int/float + 背景行真实 paint + 整画布 render 三重验证 |
 | **v5.5.28** | 09-13 | 🌍 L4 · SW 仿真世界引擎链 — 独立链条 4 节点 (数据源渲染图 → INTACT策略·cube → stable-world 引擎 → SW渲染视频) + L4 色带自动触发 (只增不改, L2/L3 零影响) + 跨 venv 子进程桥 tools/intact_sw_bridge.py (与 ②debug 同源, 逐帧流式: 52 帧 std=30.26 · 动作真下发 env.step · 模型真调用 52 次零搜索 · 官方 save_panel_videos 3 面板视频) |

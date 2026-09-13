@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.30")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.31")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.30 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.31 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.30 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.31 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.5.31: 🎬 SW 实况独立窗口 (老倪: "小窗太小了, 独立出来一个正常窗口吧") — ①新增 `ss_dreamview.SWLiveWindow`: 单独一个**正常窗口**显示 stable-world 逐帧渲染真图 (数据源与 3D 角落小窗完全相同: reports/intact_sw/frames/*.jpg + status.json → L4「🌍 SW 仿真世界引擎链」真产物) ②窗口能力: 默认 760×860 **可拉伸** · 倍率 ×1/×1.5/×2/×3/×4 (默认 ×3=672px, 原帧 224×224) · ⏸暂停/▶继续 (定格不刷新) · 📌置顶 toggle · 📂视频目录 (3 面板 mp4 + showcase) ③**两个入口**: 3D 视图左侧新增绿色按钮「🎬 SW 实况窗口 (独立·放大看)」+ 3D 角落小窗新增「⤢ 放大窗口」按钮 (点它从小窗放大到独立窗口) ④单例: 已开则 raise/activate, 不重复开窗; resize 时按倍率重贴 ⑤诚实: 无产物显示"尚未跑过 — 选 L4 档点 ▶运行"; 状态行 4 行全读真 status.json (帧/std/阶段/步/回合/成功/success_rate/模型调用/零搜索/ckpt/数据源路径) ⑥验证 15/15 (offscreen): 按钮×2 在位 · 顶层窗口(父=None) 760×860 可拉伸 · 真帧 std=31.78 · 倍率 ×1:224 ×2:448 ×4:686 真生效 · ⏸暂停不刷新 · 状态行真值 · 置顶切换无异常 · 整窗 grab 非全黑 (亮像素 261005) ⑦踩坑记录: PyQt `QLabel.pixmap()` 返回对象会随后续 setPixmap 变动 → 测试比较必须先取 int (曾误判倍率不生效)
         # v5.5.30: 🎬 A — stable-world 渲染帧贴进 3D 视图本体 (老倪点单: "把 stable-world 渲染帧贴进 pyqtgraph 3D 视图本体") — ①**3D 视图右上角新增「SW 实况」实况小窗 (画中画)**: 直接显示 L4 「🌍 SW 仿真世界引擎链」的**逐帧渲染真图** (INTACT cube, swm/OGBCube-v0 + MUJOCO_GL=egl 离屏 224×224), 150ms 轮询 reports/intact_sw/frames/*.jpg (帧号变才重贴图, 省 CPU) ②**状态行显示真值**: 帧号 + frame_std (>5 真图判据) + 阶段/步/回合/成功 + 模型调用次数 + 零搜索 + 最新视频名 (全部读 status.json, 没跑过就显示"尚未跑过 — 选 L4 档点 ▶运行", 不编数值) ③**并入左侧图层开关面板**: 新增「🎬 SW 实况 · stable-world 渲染帧」(默认勾选), 取消勾选 = 小窗隐藏, 不影响 3D 场景与其它图层 (它不是 GL 图层, 是 self.view 的子控件画中画) ④**随窗口自适应**: 3D 视口 resize 时小窗自动重贴 右上角 (与文字标注层同一套 eventFilter 钩子) ⑤**一键视频入口**: 小窗内「📂 打开视频目录」直达 reports/intact_sw/video/ (stable-world 官方 save_panel_videos 出的 agent|dataset|goal 三面板 mp4 + showcase 合集) ⑥**验证 9/9**: 面板存在/勾选框在位/贴上真帧 (pixmap std=32.46)/状态行真值/关→隐藏 开→显示/小窗在视口内 (x=596+318≤926)/整窗 grab 非全黑 (亮像素 65739) ⑦诚实: 小窗只显示桥真产出的帧; 无产物时显示"尚未跑过", 不画占位假图
         # v5.5.29: 🐛 修「启动状态空间即崩」根因 (背景行标题省略号宽度必须是 int) — ①**崩溃实锤**: faulthandler 转储 = `Fatal Python error: Aborted`, 栈顶 `simulink_module.py:2758 paint → _wrap_title → QFontMetrics.elidedText(text, ElideRight, avail)` 抛 `TypeError: argument 3 has unexpected type 'float'` → **paint() 内异常直接 abort 整个 GUI** (不是卡死, 是硬崩) ②**根因**: v5.5.27 统一 UI 时 `avail_w = max(80.0, float(...))` 是 float, 同行虽算了 `_aw = int(avail_w)` 却把 `avail_w` 传进 `_wrap_title` → 只要**任一背景行标题需要省略号**(= truncate 分支) 就必崩 ③**修复**: `_wrap_title` 入口 `avail = int(avail)` (防所有调用点) + paint 改传 `_aw` ④**验证**: 单元对照 `elidedText(float)` 复现同款 TypeError / int 正常; 新 L4 背景行 item 直接 `paint()` 渲染出内容 (亮像素 3442) 且无异常; 整画布 `scene.render()` 无异常 (亮像素 287021) ⑤**教训**: 任何 paint/paintEvent 里抛异常 = Qt abort 全进程, 凡是给 Qt API 的数值宽度一律先 int()
         # v5.5.28: 🌍 L4 · SW 仿真世界引擎链 (INTACT cube 集成进状态空间, 老倪: "把独立的 INTACT 运行环境集成到状态空间中, 点击运行就可以运行 INTACT, 触发开关是 L4") — ①**新增独立链条 4 节点 + 1 L4 色带** (数据源 `🧪 SW环境渲染图像源` → 中间 `🎯 INTACT策略·cube` → 硬件层 `🌍 SW仿真世界引擎` → 可视化 `🎬 SW渲染视频`), 连线 3 条单走 (渲染图像/动作块/渲染回流) + 1 条到视频节点; **只增不改**: 原有 70 节点/72 连线一字未动 (载入实测 75 节点 73 唯一连线), L2/L3 档零影响 ②**L4 触发开关 = 既有档位机制**: 链条放在名字含 L4 的 row_bg 色带内 → `_ss_node_cap_level` 自动判为 L4 档, 只有 L4 档的单步/播放链才执行它 (无需新代码分支) ③**跨 venv 子进程桥** `tools/intact_sw_bridge.py` (跑在 INTACT venv): 与 ②debug 任务**逐行同源** — 同一 World(swm/OGBCube-v0) / 同一 `load_pretrained(recovery_delta_full_cube_s3072)` / 同一 `PriorOnlySolver`(零搜索) / 同一 `_extract_init_goal`+`_apply_callables` / 同一 img_transform + StandardScaler(action); 唯一区别 = **逐帧流式**输出 (spool/*.jpg + status.json) ④**数据源 = 环境渲染真图**: 实测 52 帧, frame_std=30.26 (>5 真图判据) ⑤**硬件层 = stable-world 模拟器接口**: 动作真下发 `env.step` (每 receding_horizon=5 步重规划), 实测 52 步/3 回合/模型真调用 52 次/零搜索 (candidate_action_steps=0) ⑥**3D 视频从 stable world 取出**: 官方 `save_panel_videos` 出 3 面板 (agent|dataset|goal) 每回合一份 mp4 + concat 合集, 存 reports/intact_sw/video/ (实测 4 个文件, 含 showcase); 节点双击开逐帧实况窗 ⑦**诚实标注**: 演示档随机起点小样本 success_rate (实测 2/3) 明确标注"非官方 100 局口径 (官方 cube seed3072=98.67%)" ⑧**实测踩坑修**: 桥必须用 INTACT venv 解释器 (仓库 .venv 无 numpy → ModuleNotFoundError); `_sw_paths` 返回序 (dir,frames,status,video) 解包错位曾致 3 个节点读错文件 (已修); 桥进程退出瞬间 status 写入竞态 (加进程死亡检测 + 终态重读)

@@ -28,7 +28,7 @@ import numpy as np
 from PyQt5.QtCore import Qt, QTimer, QPointF
 from PyQt5.QtGui import QColor, QFont, QVector3D, QPainter, QPen, QPixmap, QBrush, QPolygonF
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
-                             QSlider, QPushButton, QFrame)
+                             QSlider, QPushButton, QFrame, QComboBox)
 
 import pyqtgraph.opengl as gl
 
@@ -434,6 +434,169 @@ class LabelOverlay(QWidget):
         p.end()
 
 
+# ── 🎬 SW 实况 (stable-world 渲染帧) — 独立窗口 + 3D 内嵌小窗共用同一数据源 ──
+def sw_dirs():
+    """L4「🌍 SW 仿真世界引擎链」产物目录: (根, frames, video, status.json)"""
+    import os
+    root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    d = os.path.join(root, "reports", "intact_sw")
+    return d, os.path.join(d, "frames"), os.path.join(d, "video"), os.path.join(d, "status.json")
+
+
+def sw_read_status(path):
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+class SWLiveWindow(QWidget):
+    """🎬 stable-world 实况 · **独立窗口** (2026-09-13 老倪: 3D 角落里的小窗太小, 单独开一个正常窗口)
+
+    数据源与 3D 视图内嵌小窗完全相同 (reports/intact_sw/frames/*.jpg + status.json,
+    即 L4「🌍 SW 仿真世界引擎链」逐帧渲染真图); 本窗口只做放大显示:
+      · 可拉伸 (默认 760×860) · 倍率 ×1/×1.5/×2/×3/×4 (默认 ×3 = 672px) · ⏸暂停/▶继续
+      · 📌置顶 toggle · 📂打开视频目录 (3 面板 mp4 + showcase 合集)
+    诚实: 没跑过就显示"尚未跑过", 不画占位假图; 状态行全部读真 status.json。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🎬 SW 实况 · stable world (INTACT cube) · L4")
+        self.resize(760, 860)
+        self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
+        self._last = None
+        self._pm0 = None
+        self._zoom = 3.0
+        self._paused = False
+        v = QVBoxLayout(self)
+        v.setContentsMargins(10, 10, 10, 10)
+        v.setSpacing(6)
+        t = QLabel("🎬 SW 实况 · stable world (INTACT cube) · L4 档")
+        t.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
+        v.addWidget(t)
+        bar = QHBoxLayout()
+        bar.setSpacing(6)
+        self.btn_pause = QPushButton("⏸ 暂停")
+        self.btn_pause.setCheckable(True)
+        self.btn_pause.setToolTip("暂停 = 停止轮询刷新 (画面定格); 再点继续")
+        self.btn_pause.toggled.connect(self._on_pause)
+        bar.addWidget(self.btn_pause)
+        self.cmb_zoom = QComboBox()
+        self.cmb_zoom.addItems(["×1", "×1.5", "×2", "×3", "×4"])
+        self.cmb_zoom.setCurrentText("×3")
+        self.cmb_zoom.setToolTip("显示倍率 (原帧 224×224; ×3 = 672px, 越大越糊属正常)")
+        self.cmb_zoom.currentTextChanged.connect(self._on_zoom)
+        bar.addWidget(self.cmb_zoom)
+        self.chk_top = QCheckBox("📌 置顶")
+        self.chk_top.toggled.connect(self._on_top)
+        bar.addWidget(self.chk_top)
+        b_dir = QPushButton("📂 视频目录")
+        b_dir.clicked.connect(self._open_dir)
+        bar.addWidget(b_dir)
+        bar.addStretch(1)
+        v.addLayout(bar)
+        self.lbl_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
+        self.lbl_img.setAlignment(Qt.AlignCenter)
+        self.lbl_img.setMinimumSize(420, 420)
+        self.lbl_img.setStyleSheet("background:#161b22; color:#8b949e; font-size:13px; border:1px solid #30363d;")
+        v.addWidget(self.lbl_img, 1)
+        self.lbl_info = QLabel("—")
+        self.lbl_info.setStyleSheet("color:#c9d1d9; font-size:12px;")
+        self.lbl_info.setWordWrap(True)
+        v.addWidget(self.lbl_info)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._poll)
+        self._timer.start(150)
+
+    # ── 交互 ──
+    def _on_pause(self, on):
+        self._paused = bool(on)
+        self.btn_pause.setText("▶ 继续" if on else "⏸ 暂停")
+
+    def _on_zoom(self, txt):
+        try:
+            self._zoom = float(str(txt).replace("×", "").strip())
+        except Exception:
+            self._zoom = 3.0
+        self._render()
+
+    def _on_top(self, on):
+        try:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(on))
+            self.show()
+        except Exception:
+            pass
+
+    def _open_dir(self):
+        try:
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            _d, _fr, vd, _st = sw_dirs()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
+        except Exception:
+            pass
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._render()
+
+    def _render(self):
+        """按当前倍率 + 窗口尺寸重贴当前帧 (resize/换倍率时调用)"""
+        try:
+            if self._pm0 is None or self._pm0.isNull():
+                return
+            z = max(224.0, 224.0 * float(self._zoom))
+            w = min(int(z), max(200, self.lbl_img.width() - 6))
+            h = min(int(z), max(200, self.lbl_img.height() - 6))
+            self.lbl_img.setPixmap(self._pm0.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception:
+            pass
+
+    def _poll(self):
+        if self._paused:
+            return
+        try:
+            import os
+            _d, fr, vd, stp = sw_dirs()
+            if not os.path.isdir(fr):
+                return
+            frames = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            if not frames:
+                if self._last != "__none__":
+                    self.lbl_img.setText("尚未跑过 — 选 L4 档点 ▶运行")
+                    self._pm0 = None
+                    self._last = "__none__"
+                return
+            newest = frames[-1]
+            if newest != self._last:
+                pm = QPixmap(os.path.join(fr, newest))
+                if not pm.isNull():
+                    self._pm0 = pm
+                    self._render()
+                self._last = newest
+            info = sw_read_status(stp)
+            vids = []
+            try:
+                vids = sorted([x for x in os.listdir(vd) if x.endswith(".mp4")])
+            except Exception:
+                pass
+            show = next((x for x in vids if "showcase" in x), (vids[-1] if vids else None))
+            self.lbl_info.setText(
+                f"帧 {newest} · frame_std={info.get('frame_std')} (>5 = 真图) · "
+                f"阶段 {info.get('stage')} · 步 {info.get('step')} · "
+                f"回合 {info.get('ep_done')} · 成功 {info.get('succ')} · "
+                f"success_rate={info.get('success_rate')}\n"
+                f"模型调用 {info.get('model_calls')} 次 · 零搜索={info.get('zero_search')} · "
+                f"ckpt={info.get('ckpt')}\n"
+                f"视频: {show or '—'}   ({len(vids)} 个文件)\n"
+                f"数据源: {fr}")
+        except Exception:
+            pass
+
+
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
@@ -566,6 +729,17 @@ class DreamView3D(QWidget):
         hint = QLabel("勾选要观察的处理层")
         hint.setStyleSheet("color:#8b949e; font-size:11px;")
         pl.addWidget(hint)
+        # 🎬 2026-09-13 老倪: SW 实况小窗太小 → 独立成正常窗口 (可拉伸/倍率/置顶/暂停)
+        self.btn_sw_win = QPushButton("🎬 SW 实况窗口 (独立·放大看)")
+        self.btn_sw_win.setToolTip("单独开一个正常窗口显示 stable-world 逐帧渲染真图\n"
+                                   "(数据源与 3D 角落小窗相同: reports/intact_sw/frames)\n"
+                                   "可拉伸 · 倍率 ×1~×4 · ⏸暂停 · 📌置顶 · 📂视频目录")
+        self.btn_sw_win.setStyleSheet(
+            "QPushButton{background:#00d4aa; color:#0d1117; font-weight:700; border:none;"
+            "border-radius:4px; padding:6px 0; font-size:12px;}"
+            "QPushButton:hover{background:#33e0b8;}")
+        self.btn_sw_win.clicked.connect(self.open_sw_window)
+        pl.addWidget(self.btn_sw_win)
         pl.addSpacing(6)
 
         # 图层: (key, 中文名, 默认开, 提示)
@@ -1501,7 +1675,15 @@ class DreamView3D(QWidget):
                         "border-radius:4px;padding:3px 0;font-size:11px;}"
                         "QPushButton:hover{border-color:#00d4aa;color:#00d4aa;}")
         b.clicked.connect(self._sw_open_dir)
-        v.addWidget(b)
+        hr = QHBoxLayout()
+        hr.setSpacing(4)
+        b2 = QPushButton("⤢ 放大窗口")
+        b2.setToolTip("把这个小窗独立成正常窗口 (可拉伸/倍率/置顶/暂停)")
+        b2.setStyleSheet(b.styleSheet())
+        b2.clicked.connect(self.open_sw_window)
+        hr.addWidget(b, 2)
+        hr.addWidget(b2, 1)
+        v.addLayout(hr)
         f.adjustSize()
         return f
 
@@ -1522,6 +1704,27 @@ class DreamView3D(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
         except Exception:
             pass
+
+    def open_sw_window(self):
+        """🎬 独立「SW 实况」窗口 (2026-09-13 老倪: 角落小窗太小 → 正常窗口放大看)
+        单例: 已开就 raise/activate; 数据源与内嵌小窗完全相同 (reports/intact_sw/frames)。"""
+        try:
+            w = getattr(self, "_sw_win", None)
+            if w is None or not w.isVisible():
+                if w is None:
+                    self._sw_win = SWLiveWindow()          # 顶层窗口, 父=None → 真正独立
+                    w = self._sw_win
+                w.show()
+                w._poll()                                   # 立刻刷一帧, 不等 150ms
+            w.raise_()
+            w.activateWindow()
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[SW 实况窗口] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
 
     def _sw_poll(self):
         """150ms 轮询真帧: 帧号变了才重贴图 (省 CPU); 图层关掉则完全不刷新"""
