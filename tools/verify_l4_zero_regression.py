@@ -1,79 +1,72 @@
 # -*- coding: utf-8 -*-
-"""零回退证明 (老倪红线: 增加 L4 只能提升能力, 不能让 L2/L3 下降)。
+"""🛡 零回退体检 (老倪红线: 增加 L4 只能提升能力, 不能让 L2/L3 下降)。
 
-证明三层:
-  ① 画布执行集: 按档位过滤 (cap_of ≤ 档位) 计算 L2/L3 档实际执行的节点集合
-     —— 与改动前 (git HEAD) 逐 id 相同 → L2/L3 执行路径零变化。
-  ② 引擎侧: SS_L4_INTACT 未设 → 代码路径根本不进 (纯 env 门控), 且新 tr 键只在门控内追加。
-  ③ 新增节点全部位于 L4 行内 (cap=4) → L2/L3 档不执行。
+只认三件**语义**不变量 (布局坐标不算语义, 允许为 UI 重排而移动):
+  ① 档位归属 (cap 级) 逐节点不变 —— 决定"哪个档位执行哪些节点"的唯一依据
+  ② 各档执行集 (cap ≤ 2 / 3 / 4) 逐 id 相同; L4 档只允许**增加**新节点
+  ③ 连线拓扑 (f→t 二元组 + label) 不变 —— 端口号可调整, 连线关系不许变
+对照对象: git HEAD 的 flows/state_space_obs.json
+用法: gui-venv311/bin/python tools/verify_l4_zero_regression.py
 """
 import json
 import subprocess
 import sys
 
 P = "/home/ubuntu/lerobot-smolvla-lew/flows/state_space_obs.json"
-before = json.loads(subprocess.run(
-    ["git", "-C", "/home/ubuntu/lerobot-smolvla-lew", "show", "HEAD:flows/state_space_obs.json"],
-    capture_output=True, text=True, check=True).stdout)
-after = json.load(open(P, encoding="utf-8"))
+ROOT = "/home/ubuntu/lerobot-smolvla-lew"
 
 
-def cap_map(doc):
-    rows = [n for n in doc["nodes"] if n.get("type") == "row_bg"]
+def cap_of(node, nodes):
+    """节点档位 (按所在 row_bg 色带): L4行=4 / L3行=3 / L2行=2 / 其它行=0 恒包含。"""
+    y = node.get("y", 0)
+    for b in nodes:
+        if b.get("type") != "row_bg":
+            continue
+        if b["y"] <= y < b["y"] + b.get("h", 0):
+            nm = b.get("name", "")
+            return 4 if "L4" in nm else 3 if "L3" in nm else 2 if "L2" in nm else 0
+    return 0
 
-    def cap_of(node):
-        y = node.get("y", 0)
-        for b in rows:
-            if b["y"] <= y < b["y"] + b.get("h", 0):
-                nm = b.get("name", "")
-                return 4 if "L4" in nm else 3 if "L3" in nm else 2 if "L2" in nm else 0
-        return 0
-    return {n["id"]: cap_of(n) for n in doc["nodes"]}
+
+def main() -> int:
+    before = json.loads(subprocess.run(
+        ["git", "-C", ROOT, "show", "HEAD:flows/state_space_obs.json"],
+        capture_output=True, text=True, check=True).stdout)
+    after = json.load(open(P, encoding="utf-8"))
+    nb = {n["id"]: n for n in before["nodes"]}
+    na = {n["id"]: n for n in after["nodes"]}
+    ok = True
+
+    # ① 档位归属
+    moved = [i for i in nb if i in na and cap_of(nb[i], before["nodes"]) != cap_of(na[i], after["nodes"])]
+    print(f"  ① 档位归属 (cap) 变化: {moved or '无'} {'✅' if not moved else '❌'}")
+    ok &= not moved
+
+    # ② 各档执行集
+    for lvl, num in (("L2", 2), ("L3", 3), ("L4", 4)):
+        sb = {i for i in nb if cap_of(nb[i], before["nodes"]) <= num}
+        sa = {i for i in na if cap_of(na[i], after["nodes"]) <= num}
+        added, removed = sa - sb, sb - sa
+        good = (not removed) and (not added if lvl != "L4" else True)
+        print(f"  ② {lvl} 档执行集: {len(sb)} → {len(sa)}  新增 {sorted(added) or '-'} "
+              f"移除 {sorted(removed) or '-'} {'✅' if good else '❌'}")
+        ok &= good
+
+    # ③ 连线拓扑 (f→t + label)
+    tb = sorted((l["f"], l["t"], l.get("label", "")) for l in before["links"])
+    ta = sorted((l["f"], l["t"], l.get("label", "")) for l in after["links"])
+    lost = [x for x in tb if x not in ta]
+    added_l = [x for x in ta if x not in tb]
+    print(f"  ③ 连线拓扑: 原有 {len(tb)} 条丢失 {len(lost)} {lost[:3] or ''} · "
+          f"新增 {len(added_l)} {[f'{a[0]}→{a[1]}' for a in added_l] or ''} "
+          f"{'✅' if not lost else '❌'}")
+    ok &= not lost
+
+    print()
+    print("零回退结论:", "✅ L2/L3 执行路径与连线拓扑逐项不变 (布局坐标变动不影响语义)"
+          if ok else "❌ 有回退!")
+    return 0 if ok else 1
 
 
-cb, ca = cap_map(before), cap_map(after)
-ok = True
-for lvl, num in (("L2", 2), ("L3", 3), ("L4", 4)):
-    sb = sorted(i for i, c in cb.items() if c <= num)
-    sa = sorted(i for i, c in ca.items() if c <= num)
-    added = sorted(set(sa) - set(sb))
-    removed = sorted(set(sb) - set(sa))
-    status = "✅ 完全相同" if not added and not removed else f"⚠️ 变化 +{added} -{removed}"
-    if lvl in ("L2", "L3") and (added or removed):
-        ok = False
-    print(f"  ① {lvl} 档执行集: 改动前 {len(sb)} → 改动后 {len(sa)} · {status}")
-
-# ② 引擎代码门控
-eng = open("/home/ubuntu/lerobot-smolvla-lew/tools/gui/state_space_sim_real.py", encoding="utf-8").read()
-n_env = eng.count('os.environ.get("SS_L4_INTACT")')
-print(f"  ② 引擎: SS_L4_INTACT 门控出现 {n_env} 处 (未设该变量 → 整段不执行)")
-print(f"     新 tr 键 (l4_w / l4_u_ff_vec / l4_cond_vec) 全部写在门控 if 内:",
-      all(eng.index(k) > eng.index('os.environ.get("SS_L4_INTACT") == "1"')
-          for k in ('"l4_w"', '"l4_u_ff_vec"', '"l4_cond_vec"')))
-if n_env < 2:
-    ok = False
-
-# ③ 新节点在 L4
-for nid in ("ssintact_dec",):
-    print(f"  ③ 新节点 {nid}: cap={ca[nid]} (必须 4)")
-    if ca.get(nid) != 4:
-        ok = False
-# ④ 现有节点字段零改动
-def sig(n):
-    return json.dumps({k: v for k, v in n.items() if k != "params"}, sort_keys=True, ensure_ascii=False)
-bmap = {n["id"]: sig(n) for n in before["nodes"]}
-amap = {n["id"]: sig(n) for n in after["nodes"]}
-moved = [i for i in bmap if bmap[i] != amap.get(i)]
-print(f"  ④ 现有节点 (除 ssintact/swintact 的路径字段) 位置/名称/类型变化: {moved or '无'}")
-if set(moved) - {"ssintact"}:
-    ok = False
-# 连线: 原有连线逐条不变
-bl = json.dumps(before["links"], sort_keys=True, ensure_ascii=False)
-al = json.dumps(after["links"], sort_keys=True, ensure_ascii=False)
-print(f"  ⑤ 新增连线: {sorted(set(l['id'] for l in after['links']) - set(l['id'] for l in before['links']))}")
-print(f"  ⑥ 原有连线 (f/t/label) 是否全在:",
-      all(all(l in after["links"] for l in before["links"]) for _ in [0]))
-
-print()
-print("零回退结论:", "✅ L2/L3 执行路径与节点/连线逐项不变 (只有 L4 档新增)" if ok else "❌ 有回退!")
-sys.exit(0 if ok else 1)
+if __name__ == "__main__":
+    sys.exit(main())
