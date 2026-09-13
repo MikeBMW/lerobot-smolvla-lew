@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.37** | 09-13 | 🌍 **L4 光模块插拔链**: 把红方块抓取改造成光模块抓取插拔 —— L4 链条任务化(data/intact_sw_task.json, 默认 optical_insert = Z-MAX 引擎真物理 + 本域微调权重) · 新桥 intact_sw_optical_bridge.py(跨 venv: 引擎 gui-venv311 + 模型 INTACT venv) · u 口径反变换 · 新工具 action_stats_from_h5.py · 修 status 竞态(旧终态误判) · 查看器补阶段/深度/env动作。实测节点级 11/11: 1800 帧 1800 次真推理 解析链 2/2=100%(插入 65mm/全链) 模型直驱 0/2(过冲→诚实标注) |
 | **v5.5.36** | 09-13 | 🧭 3D 视图去画中画 → 三个 dreamview 窗口 (L2 / L3 / L4·stable-world); 档位预设贯通 DreamView3D(level=)/open_ss_3d(level=); 验证 10/10 |
 | **v5.5.35** | 09-13 | 🐛 修「点 SW实况窗口没反应」: 按钮回调连到 DreamView3D 的同名方法 → 构造期 AttributeError; 补 SWLiveWindow._open_viewer; 加真显示全按钮点击回归 |
 | **v5.5.34** | 09-13 | 🎛 L4·SW 互动查看器 (像 dreamview 一样拖帧看任意帧信号): 时间轴/单步/播放 + 信号表 (模型动作[0..3]/std/done/推理次数) + 4 条动作曲线带游标; 数据源自动扫描 + status.jsonl 逐帧信号; 验证 11/11 |

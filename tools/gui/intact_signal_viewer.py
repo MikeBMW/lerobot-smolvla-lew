@@ -234,6 +234,10 @@ class IntactSignalViewer(QWidget):
             ("模型动作[2]", self._fmt(a, 2)),
             ("模型动作[3]", self._fmt(a, 3)),
             ("帧像素 std (>5=真图)", s.get("frame_std", "—")),
+            ("阶段 (引擎状态机)", s.get("stage_label", "—")),
+            ("插入深度 (mm, 真几何)", s.get("insert_mm", "—")),
+            ("下发 env 动作", (", ".join(f"{float(x):+.3f}" for x in s["env_action"])
+                               if isinstance(s.get("env_action"), list) else "—")),
             ("本步 done (任务完成)", s.get("done", "—")),
             ("累计真推理次数", s.get("model_calls", "—")),
         ]

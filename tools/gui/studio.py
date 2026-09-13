@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.36")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.37")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.36 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.37 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.36 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.37 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.5.37: 🌍 **L4 光模块插拔链** (老倪 2026-09-13: "把红色小方块的抓取实验, 改造成光模块的抓取插拔实验") — ①**L4 链条任务化**: 切任务 = data/intact_sw_task.json, 默认 `optical_insert` = Z-MAX 引擎 RealStateSpaceSim(metaworld peg-insert-side-v3 真物理) + 本域微调 INTACT 权重; `cube` (stable-world 论文权重) 保留可切, 不删旧桥 ②**新桥 tools/intact_sw_optical_bridge.py** (跑 gui-venv311, 有 metaworld; 模型经 IntactRuntime 起 INTACT venv 子进程, 跨 venv 隔离): 同 seed 解析链对照(插入 + 插→拔→AOI 全链)取目标帧 → **模型动作真下发 env.step** (引擎既有 _direct_act 直驱入口, 无解析控制器) → 逐帧 spool 224² + status.jsonl + 480² mp4 打标(真推理次数/模型输出/插入深度) ③**u 口径反变换** (v4 数据集动作列 = 引擎控制向量 sim._u_vec, m/s 量纲): 按引擎**自己那套约定**还原 act[:3]=clip(u/K_ACT)·act[3]=CLOSE if u[3]>0.5 (state_space_sim_real.py:1183/1198 同源) — 量纲逆运算, 非新控制律 ④**新工具 tools/action_stats_from_h5.py**: 从 h5 现算 mean/std (get_column_stats 同口径 + action_space 标注) — 权重与统计强制同源 ⑤**🐛 竞态修复(实测踩过)**: 上一轮 status.json 仍是 stage=done 时节点等待循环会把**旧终态**当本轮跑完 (光模块链读到 cube 终态) → 启动前先作废 status 写 starting ⑥互动查看器补三行: 阶段(引擎状态机)/插入深度(mm 真几何)/下发 env 动作 ⑦**实测(节点级 11/11)**: 1800 帧 · 1800 次真推理 · frame_std 56.5 · 解析链 2/2=100% (插入 65.13/64.78mm · seed0 全链=True) ‖ 模型直驱 0/2 (过冲 643/553mm) — 与离线判闸一致(预测std 仅教师 7~16% 塌均值), **模型能力问题非接线问题**, 面板/日志诚实标注
         # v5.5.36: 🧭 3D 视图改口径 (老倪: "不要搞成画中画了, 就是两三个窗口, 都用 dreamview —— 一个 L2, 一个 L3, 一个 L4 的 stable world") — ①**移除画中画**: DreamView3D 不再在 3D 场景右上角贴 SW 实况小窗 (不创建 _sw_panel/不起 150ms 定时器/图层表删掉 sw_live 项) ②**改为三个独立 dreamview 窗口**, 3D 视图左侧新增一排按钮 (可同时开, 互不遮挡): 「🧭 L2 DreamView」只开 感知层+末端轨迹; 「🧭 L3 DreamView」再加 ①前馈加速器/②自适应状态估计/③先验动力学预测; 「🌍 L4·SW DreamView」= stable-world 逐帧真渲染 + 拖帧看任意帧信号 (时间轴/单步/播放 + 模型动作曲线) ③**档位预设贯通**: `DreamView3D(level=...)` 与 `open_ss_3d(level=...)` 新增 level 参数 → 打开即按档位开关图层 + 标题标注 ④验证 10/10 (真 X11): 画中画确已移除 · 三按钮在位 · L2 预设只开 scene/traj · L3 预设含 uff/latent/prior · L4 开出 stable-world 窗口 (52 帧) · 三窗口可并存 (截图 reports/intact_sw/dreamview_trio_v5536.png)
         # v5.5.35: 🐛 修「点 SW实况窗口 没反应」根因 (按钮回调连错类) — ①**老倪实锤**: 点 SW 实况窗口按钮毫无反应; 真显示环境(DISPLAY=:0)复现 = `[SW 实况窗口] 打开失败: AttributeError: 'SWLiveWindow' object has no attribute '_open_viewer'` ②**根因**: v5.5.34 给 SWLiveWindow 加的「🎛 互动查看器」按钮, 回调连成了 `self._open_viewer` —— 那是 **DreamView3D** 的方法, SWLiveWindow 上不存在 → **构造期就 AttributeError** → `sw_live_window()` 返回 None → 点按钮静默无反应 (只剩一行 print) ③**修复**: 给 SWLiveWindow 补上自己的 `_open_viewer()` (用 sw_dirs() 定位数据源再开互动查看器) ④**回归测试固化** (这次的教训: 加按钮后必须真点一遍): 新增真显示下的_全按钮点击回归 — SWLiveWindow 3 按钮 + 置顶勾选 + 倍率下拉 + DreamView3D 7 按钮 全部点击无异常, 且点击后 SW 实况窗口真存在且可见 (geom 206,212,809,860), 互动查看器可见 ⑤验证 ALL PASS (DISPLAY=:0 真 X11, 非 offscreen —— offscreen 测不出这类构造期回调错误)
         # v5.5.34: 🎛 L4·SW 互动查看器 (老倪: "可以像 L2 L3 的 dreamview 一样, 变成互动, 可以看到任意帧的信号么") — ①新增 `tools/gui/intact_signal_viewer.py`: **拖帧看任意帧画面+信号** 的互动窗口 — 时间轴滑块 / ◀▶ 单帧 步进 / ⏮⏭ 首尾 / ▶10fps 连续播放; 右侧信号表逐帧显示 帧文件·帧序号·step·回合·**模型动作[0..3]**·frame_std(>5=真图)·done·累计真推理次数; 下方 **pyqtgraph 四条动作曲线 + 游标线随滑块移动** (任意帧信号一眼可见) ②数据源自动扫描 `reports/**/frames/` (L4·SW 实况导出), 并读同名 **`status.jsonl` 逐帧信号日志** — 由 bridge 每步追加一行 (step/action/frame_std/done/model_calls) ③三个入口: 3D 视图 SW 实况窗口「🎛 互动查看器」按钮 / 画布「🎬 SW渲染视频」节点双击 / 直接开窗口 ④**为什么之前"视频不动"**: 实况窗口只在链条运行时逐帧刷新; 停下来后就定格在最后一帧 — 现在可拖帧/逐帧步进/看每帧信号 (与 dreamview 同款交互), 不再依赖"有没有在跑" ⑤诚实: 帧是真渲染图 (像素 std 可查, 实测 30.3~30.7); 无 status.jsonl 的旧产物信号列显示"—", 不编数值 ⑥验证 11/11 (offscreen): 扫到数据源51帧·逐帧信号51条·拖帧画面真图(std>5)·step与动作值跟着帧变·信号表四行动作·4条曲线51点·游标跟随(x=10)·播放暂停切换·越界夹紧不崩 (截图 reports/intact_sw/interactive_viewer_v5534.png)

@@ -1353,7 +1353,7 @@ def _sw_paths(root: str):
 
 
 def _sw_python(root: str) -> str:
-    """桥必须跑在 INTACT venv (唯一装了 torch/hydra/stable_worldmodel 的环境)。
+    """cube 桥必须跑在 INTACT venv (唯一装了 torch/hydra/stable_worldmodel 的环境)。
     仓库 .venv 里没有 numpy/torch → 绝不能用它跑桥 (2026-09-13 实测踩过:
     用错解释器 = ModuleNotFoundError: No module named 'numpy')。"""
     for c in (os.environ.get("INTACT_PY") or "",
@@ -1361,6 +1361,65 @@ def _sw_python(root: str) -> str:
         if c and os.path.exists(c):
             return c
     return "python3"
+
+
+def _sw_gui_python(root: str) -> str:
+    """光模块插拔桥必须跑在 **gui-venv311** (只有它装了 metaworld: Z-MAX 引擎 RealStateSpaceSim
+    的物理环境)。模型不在这里跑 —— 它经 IntactRuntime 起 INTACT venv 子进程 (跨 venv 隔离)。"""
+    import sys as _sys
+    for c in (os.environ.get("SW_GUI_PY") or "", os.path.join(root, "gui-venv311", "bin", "python"),
+              _sys.executable or ""):
+        if c and os.path.exists(c):
+            return c
+    return _sys.executable
+
+
+def _sw_task(root: str) -> str:
+    """L4 链条任务 (老倪 2026-09-13: 把红方块抓取改造成光模块抓取插拔):
+      · optical_insert (默认) = Z-MAX 引擎光模块插拔 (metaworld peg-insert, 本域微调权重)
+      · cube                 = INTACT 标准机器人 OGBCube (stable-world 论文权重)
+    切任务 = 写 data/intact_sw_task.json {"task": "..."} (不埋进代码分支, 一眼可见)"""
+    import json as _json
+    for p in (os.path.join(root, "data", "intact_sw_task.json"),):
+        try:
+            with open(p, encoding="utf-8") as f:
+                t = str(_json.load(f).get("task") or "").strip()
+            if t in ("optical_insert", "cube"):
+                return t
+        except Exception:
+            pass
+    return "optical_insert"
+
+
+def _sw_deploy(root: str) -> dict:
+    """部署档 (权重 + 归一化统计), 缺省 = 自动挑最新 v4 微调权重。
+    ⚠️ 权重与统计必须同源: v4 数据集动作列是引擎 u 向量 (m/s) → 统计也是 u 口径
+       (tools/action_stats_from_h5.py 现算), 闭环按引擎 u→act 约定还原。"""
+    import json as _json
+    import glob as _glob
+    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    d = {"task": "optical_insert", "policy": "", "stats": os.path.join(root, "reports",
+                                                                      "optical_insert_v4_action_stats.json"),
+         "mode": "insert", "max_steps": 900, "seeds": "0,1", "device": "cpu"}
+    try:
+        with open(os.path.join(root, "data", "intact_sw_policy.json"), encoding="utf-8") as f:
+            d.update({k: v for k, v in (_json.load(f) or {}).items() if v not in (None, "")})
+    except Exception:
+        pass
+    if not d.get("policy"):                      # 自动挑 v4 最新 epoch 权重 (目录名/文件名)
+        best = None
+        for p in _glob.glob(os.path.join(cache, "checkpoints",
+                                         "intact_goal_optical_insert_v4_s3072", "weights_epoch_*.pt")):
+            try:
+                ep = int(os.path.basename(p).split("_")[-1].split(".")[0])
+            except Exception:
+                ep = -1
+            if best is None or ep > best[0]:
+                best = (ep, p)
+        if best:
+            d["policy"] = os.path.join(os.path.basename(os.path.dirname(best[1])),
+                                       os.path.basename(best[1]))
+    return d
 
 
 def _sw_status(path: str) -> dict:
@@ -1372,33 +1431,99 @@ def _sw_status(path: str) -> dict:
         return {}
 
 
+def _write_status_file(path: str, d: dict) -> None:
+    """原子写 status.json (启动前作废旧状态用; 节点侧唯一写点 = 这里)"""
+    import json
+    try:
+        tmp = str(path) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
 def _sw_alive() -> bool:
     p = _SW_S.get("proc")
     return bool(p) and p.poll() is None
 
 
 def _sw_start(root: str, log, episodes: int = 3):
-    """启动/复用 stable-world 渲染桥 (子进程, INTACT venv)。返回 (ok, status_path, frames_dir, video_dir)"""
+    """启动/复用 L4 引擎桥 (子进程)。返回 (ok, status_path, frames_dir, video_dir)
+
+    任务分派 (data/intact_sw_task.json):
+      · optical_insert (默认) → tools/intact_sw_optical_bridge.py 跑 gui-venv311
+        (Z-MAX 引擎真物理 metaworld + 本域微调 INTACT 权重; 模型在 INTACT venv 子进程里)
+      · cube                 → tools/intact_sw_bridge.py 跑 INTACT venv (论文权重的 OGBCube 演示)
+    """
     import json
+    import subprocess
     d, fr, st, vd = _sw_paths(root)
-    if not _sw_alive():
+    task = _sw_task(root)
+    if _sw_alive():
+        log(f"🌍 SW 引擎链: 复用已在跑的桥 (pid={_SW_S['proc'].pid})")
+        return True, st, fr, vd
+    try:
+        for f in os.listdir(d):
+            if f.startswith("bridge.log"):
+                os.remove(os.path.join(d, f))
+    except Exception:
+        pass
+    if task == "optical_insert":
+        script = os.path.join(root, "tools", "intact_sw_optical_bridge.py")
+        if not os.path.exists(script):
+            log(f"❌ 找不到光模块插拔桥脚本 {script}")
+            return False, st, fr, vd
+        dep = _sw_deploy(root)
+        if not dep.get("policy"):
+            log("❌ L4·光模块插拔: 没有可用微调权重 (checkpoints/intact_goal_optical_insert_v4_s3072/"
+                "weights_epoch_*.pt 不存在) → 先跑微调, 或写 data/intact_sw_policy.json 指定")
+            return False, st, fr, vd
+        py = _sw_gui_python(root)
+        cmd = [py, script, "--task", "optical_insert",
+               "--seeds", str(dep.get("seeds") or "0,1"),
+               "--mode", str(dep.get("mode") or "insert"),
+               "--max-steps", str(int(dep.get("max_steps") or 900)),
+               "--device", str(dep.get("device") or "cpu"),
+               "--policy", str(dep["policy"]),
+               "--stats", str(dep.get("stats") or ""),
+               "--spool", fr, "--status", st, "--video-dir", vd]
+        env = dict(os.environ)
+        env.setdefault("MUJOCO_GL", "egl")
+        env.setdefault("PYOPENGL_PLATFORM", "egl")
+        env["INTACT_POLICY"] = str(dep["policy"])
+        env.setdefault("INTACT_RUNTIME", "root")
+        log("🌍 L4 · 光模块插拔链: 已启动 Z-MAX 引擎桥 (真物理 metaworld peg-insert + 本域微调权重)")
+        log(f"   python={py} (gui-venv311, 有 metaworld) · 权重 {dep['policy']} · "
+            f"seeds {dep.get('seeds')} · 模式 {dep.get('mode')} · 设备 {dep.get('device')}")
+        log(f"   统计 {os.path.basename(str(dep.get('stats')))} (反归一化同源)")
+    else:
         script = os.path.join(root, "tools", "intact_sw_bridge.py")
         if not os.path.exists(script):
             log(f"❌ 找不到桥脚本 {script}")
             return False, st, fr, vd
         py = _sw_python(root)
+        env = dict(os.environ)
         cmd = [py, script, "--task", "cube", "--episodes", str(episodes),
                "--eval-budget", "50", "--goal-offset", "25",
                "--spool", fr, "--status", st, "--video-dir", vd]
-        lf = open(os.path.join(d, "bridge.log"), "a", encoding="utf-8")
-        _SW_S["proc"] = __import__("subprocess").Popen(
-            cmd, cwd=root, stdout=lf, stderr=__import__("subprocess").STDOUT)
-        _SW_S["logf"] = lf
-        log(f"🌍 SW 引擎链: 已启动 stable-world 渲染桥 (pid={_SW_S['proc'].pid}, "
-            f"python={os.path.basename(os.path.dirname(py))})")
-        log(f"   命令: {' '.join(cmd[:6])} … --spool {fr}")
-    else:
-        log(f"🌍 SW 引擎链: 复用已在跑的桥 (pid={_SW_S['proc'].pid})")
+        log("🌍 L4 · SW 引擎链 (cube): 启动 stable-world 渲染桥 (论文权重 OGBCube 演示)")
+        log(f"   python={os.path.basename(os.path.dirname(py))} · 权重 {cmd[3]} (论文 cube s3072)")
+    lf = open(os.path.join(d, "bridge.log"), "a", encoding="utf-8")
+    try:
+        # 🐛 2026-09-13 竞态修复: 上一轮 status.json 可能还是 stage=done (旧任务) → 节点等待循环
+        #   会把它当成"本轮已跑完"立刻返回 (实测踩过: 光模块链读到了 cube 的终态)。
+        #   启动前先把 status 作废 (写 starting), 让等待循环只能等到**本轮**的真终态。
+        _write_status_file(st, {"stage": "starting", "task": task,
+                                "started": time.strftime("%F %T"), "pid": None})
+        _SW_S["proc"] = subprocess.Popen(cmd, cwd=root, stdout=lf, stderr=subprocess.STDOUT, env=env)
+    except Exception as e:                                       # noqa: BLE001
+        log(f"❌ 桥启动失败: {type(e).__name__}: {e}")
+        lf.close()
+        return False, st, fr, vd
+    _SW_S["logf"] = lf
+    _SW_S["laststep"] = None
+    log(f"   pid={_SW_S['proc'].pid} · 日志 reports/intact_sw/bridge.log · 帧 spool {fr}")
     return True, st, fr, vd
 
 
@@ -1439,63 +1564,93 @@ def node_sw_ds(ctx):
     ok, st, fr, vd = _sw_start(root, log)
     if not ok:
         return False
-    log(f"📦 数据源 [L4·SW]: INTACT 环境渲染图像 (224×224 RGB, EGL 离屏渲染) · 帧 spool: {fr}")
+    tsk = _sw_task(root)
+    _env = "Z-MAX 引擎 RealStateSpaceSim (metaworld peg-insert-side-v3 真物理)" if tsk == "optical_insert" \
+        else "stable-world swm/OGBCube-v0"
+    log(f"📦 数据源 [L4·{'光模块插拔' if tsk == 'optical_insert' else 'cube'}]: 环境渲染图像 "
+        f"(224×224 RGB, EGL 离屏渲染) · 环境={_env} · 帧 spool: {fr}")
     t0 = time.time()
     last = {}
-    while time.time() - t0 < 300.0:
+    _budget = float(os.environ.get("SW_CHAIN_TIMEOUT", "2400"))
+    while time.time() - t0 < _budget:
         last = _sw_status(st)
         if last.get("stage") == "done":
             break
-        if not _sw_alive() and last.get("stage") != "done":
+        if not _sw_alive() and last.get("stage") not in ("done", "error"):
             time.sleep(0.8)
             last = _sw_status(st)
-            if last.get("stage") != "done":
+            if last.get("stage") not in ("done", "error"):
                 log(f"   ❌ 桥进程异常退出 (stage={last.get('stage')}) → reports/intact_sw/bridge.log")
                 return False
             break
-        if last.get("step") is not None and last.get("step") % 10 == 0:
-            log(f"   ⏳ 渲染中 … step={last.get('step')} std={last.get('frame_std')} "
-                f"stage={last.get('stage')}")
+        _s = last.get("step")
+        if _s is not None and int(_s) % 25 == 0 and int(_s) != _SW_S.get("laststep"):
+            _SW_S["laststep"] = int(_s)
+            log(f"   ⏳ {last.get('stage')} … step={_s} std={last.get('frame_std')} "
+                f"阶段={last.get('stage_label')} 插入深度={last.get('insert_mm')}mm "
+                f"真推理={last.get('model_calls')}")
         time.sleep(0.8)
     n = len([x for x in os.listdir(fr) if x.endswith(".jpg")]) if os.path.isdir(fr) else 0
     log(f"   ✅ 渲染帧 {n} 帧 (真图判据 frame_std={last.get('frame_std')} > 5) · "
-        f"回合 {last.get('ep_done')} · 起点 {last.get('eval_episodes')}@{last.get('start_steps')}")
+        f"回合 {last.get('ep_done')} · 起点 {last.get('eval_episodes')}@{last.get('start_steps')}"
+        f" · 累计真推理 {last.get('model_calls')} 次")
     return True
 
 
 def node_sw_intact(ctx):
-    """🎯 L4 中间策略 — INTACT (cube 论文权重, 零搜索)"""
+    """🎯 L4 中间策略 — INTACT (本域微调权重 · 零搜索 · 真模型在环)"""
     log = ctx["log"]
     root = str(ctx.get("root") or os.getcwd())
+    tsk = "光模块插拔" if _sw_task(root) == "optical_insert" else "cube"
     _, fr, st, _ = _sw_paths(root)
-    d = _sw_wait(st, lambda s: bool(s.get("model_calls")), 120.0, log, "INTACT 策略")
+    d = _sw_wait(st, lambda s: bool(s.get("model_calls")), 300.0, log, "INTACT 策略")
     if not d:
         log("❌ INTACT 策略: 未拿到桥状态 (看 reports/intact_sw/bridge.log)")
         return False
-    log(f"🎯 INTACT 策略 [L4·cube]: ckpt={d.get('ckpt')} · 文件={d.get('ckpt_file')}")
+    log(f"🎯 INTACT 策略 [L4·{tsk}]: ckpt={d.get('ckpt')}")
+    log(f"   权重文件 {d.get('ckpt_file')} · action_dim={d.get('action_dim')} · "
+        f"hist={d.get('hist_size')}")
     log(f"   真推理 模型调用 {d.get('model_calls')} 次 · 零搜索={d.get('zero_search', True)} "
         f"(candidate_action_steps=0)")
-    log(f"   最新动作块(前 5 维)= {d.get('action')} → 下发 stable-world 引擎")
+    log(f"   末帧 模型输出(已反归一化 u)={d.get('action')} → 下发 env 动作={d.get('env_action')}")
+    log(f"   动作口径 {d.get('action_space')} · 统计 {d.get('stats')} (与权重同源, 非手写)")
     return True
 
 
 def node_sw_world(ctx):
-    """🌍 L4 硬件层 — stable-world 仿真世界引擎 (动作真下发 env.step)"""
+    """🌍 L4 硬件层 — Z-MAX 引擎 / stable-world (动作真下发 env.step)"""
     log = ctx["log"]
     root = str(ctx.get("root") or os.getcwd())
+    tsk = _sw_task(root)
     _, fr, st, vd = _sw_paths(root)
-    log(f"🌍 SW 仿真世界引擎 [L4]: env={_sw_status(st).get('env', 'swm/OGBCube-v0')} · 动作真下发 env.step")
-    d = _sw_wait(st, lambda s: s.get("stage") == "done", 420.0, log, "SW 引擎")
+    d0 = _sw_status(st)
+    log(f"🌍 {'Z-MAX 引擎 (RealStateSpaceSim · metaworld 真物理)' if tsk == 'optical_insert' else 'SW 仿真世界引擎'}"
+        f" [L4]: env={d0.get('env', 'swm/OGBCube-v0')} · 动作真下发 env.step")
+    d = _sw_wait(st, lambda s: s.get("stage") == "done", 900.0, log, "SW 引擎")
     if not d:
-        log("❌ SW 引擎: 超时无终态 (看 reports/intact_sw/bridge.log)")
+        log("❌ 引擎: 超时无终态 (看 reports/intact_sw/bridge.log)")
         return False
-    log(f"   实跑 {d.get('steps')} 步 / {d.get('ep_done')} 回合 · 成功 {d.get('succ')} 局 "
-        f"→ success_rate={d.get('success_rate')}% · 模型调用 {d.get('model_calls')} 次")
-    log(f"   渲染帧均值 std={d.get('frame_std')} (>5 真图) · 视频: {d.get('video')}")
-    if d.get("showcase"):
-        log(f"   合集(3D 视频, 从 stable world 取出): {d.get('showcase')}")
-    log(f"   ⚠️ 诚实标注: 该 success_rate 为 L4 演示档随机起点小样本 (episodes={d.get('episodes')}), "
-        f"非官方 100 局口径 (官方 cube seed3072 = 98.67%)")
+    rows = d.get("rows") or []
+    nmod = len([r for r in rows if r.get("model")])
+    log(f"   引擎真跑 {d.get('steps')} 步 (模型在环) · 回合 {d.get('ep_done')} · "
+        f"模型真推理 {d.get('model_calls')} 次")
+    log(f"   解析链对照 (同 seed 同引擎, 可达性基线): {d.get('succ')}/{len(rows)} 成功 "
+        f"= {d.get('success_rate')}%")
+    for r in rows:
+        a = r.get("analytic") or {}
+        m = r.get("model") or {}
+        fc = (a.get("full_chain") or {})
+        log(f"     seed {r.get('seed')}: 解析链 done={a.get('done')} 插入={a.get('insert_mm')}mm"
+            + (f" · 全链(插→拔→AOI) done={fc.get('done')} aoi={fc.get('aoi_ok')}" if fc else "")
+            + (f" ‖ 模型直驱 done={m.get('done')} 插入={m.get('insert_mm')}mm "
+               f"真推理={m.get('model_calls')} 阶段末={str(m.get('stages'))[:60]}" if m else ""))
+    log(f"   模型直驱 (在环): {d.get('model_succ')}/{nmod} 成功 = {d.get('model_success_rate')}% · "
+        f"帧均值 std={d.get('frame_std')} (>5 真图)")
+    _pfx = "optical_insert_" if tsk == "optical_insert" else "cube_sw_"
+    _vs = sorted(x for x in os.listdir(vd) if x.endswith(".mp4") and x.startswith(_pfx))
+    log(f"   视频 ({len(_vs)} 个, 从引擎取出): " + (" · ".join(_vs[-4:]) or "尚未产出"))
+    if d.get("honest_note"):
+        log(f"   ⚠️ 诚实标注: {d.get('honest_note')}")
     return True
 
 
@@ -1516,8 +1671,13 @@ def node_sw_video(ctx):
         vids = sorted([os.path.join(vd, x) for x in os.listdir(vd) if x.endswith(".mp4")])
     except Exception:
         pass
-    log(f"🎬 SW 渲染视频 [L4]: 逐帧实况 {newest} · 最新一帧 {(d.get('frame_std'))} std")
-    log(f"   视频文件 ({len(vids)}): " + (" · ".join(os.path.basename(v) for v in vids[-3:]) or "尚未产出"))
+    tsk = "光模块插拔" if _sw_task(root) == "optical_insert" else "cube"
+    log(f"🎬 渲染视频 [L4·{tsk}]: 逐帧实况 {newest} · 最新一帧 {d.get('frame_std')} std "
+        f"(>5 真图) · 阶段 {d.get('stage_label')} · 插入深度 {d.get('insert_mm')}mm")
+    log(f"   视频文件 ({len(vids)}): " + (" · ".join(os.path.basename(v) for v in vids[-4:])
+                                          or "尚未产出"))
+    if d.get("honest_note"):
+        log(f"   ⚠️ {d.get('honest_note')}")
     try:                                                        # 实况窗 (lazy Qt, CLI 下跳过)
         import importlib.util as _ilu
         if _ilu.find_spec("PyQt5") is None:
@@ -1572,10 +1732,15 @@ def node_sw_video(ctx):
 
 
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
-_reg("sw_ds",      ["SW环境渲染图像源", "SW环境渲染"], "🧪 L4 数据源 — INTACT 环境渲染图像 (stable-world 渲染帧)", node_sw_ds)
-_reg("sw_intact",  ["INTACT策略"], "🎯 L4 中间 — INTACT 策略 cube (论文权重 零搜索)", node_sw_intact)
-_reg("sw_world",   ["SW仿真世界引擎", "SW仿真世界"], "🌍 L4 硬件层 — stable-world 仿真世界引擎 (动作真下发)", node_sw_world)
-_reg("sw_video",   ["SW渲染视频"], "🎬 L4 可视化 — 从 stable world 取出的渲染视频 (实况窗)", node_sw_video)
+_reg("sw_ds",      ["光模块插拔渲染图像源", "环境渲染图像源", "SW环境渲染图像源", "SW环境渲染"],
+     "🧪 L4 数据源 — 环境渲染真图 (光模块插拔: Z-MAX 引擎 / cube: stable-world)", node_sw_ds)
+_reg("sw_intact",  ["INTACT插拔策略", "INTACT 插拔策略", "INTACT策略"],
+     "🎯 L4 中间 — INTACT 策略 (光模块插拔: 本域微调权重 · 零搜索 · 真模型在环)", node_sw_intact)
+_reg("sw_world",   ["光模块插拔真物理", "SW仿真世界引擎", "SW仿真世界"],
+     "🌍 L4 硬件层 — 仿真世界引擎 (光模块插拔: Z-MAX RealStateSpaceSim 真物理 / cube: stable-world)",
+     node_sw_world)
+_reg("sw_video",   ["插拔渲染视频", "SW渲染视频"],
+     "🎬 L4 可视化 — 从引擎取出的渲染视频 (实况窗 + 互动查看器)", node_sw_video)
 # ── 🛩 飞行 · 标架转换 (Frenet / 端口任务坐标系 / 笛卡尔, 2026-09-13 老倪) ──
 def node_flight(ctx):
     """🛩 飞行 — 标架转换模块 (Frenet ⇄ 端口系 ⇄ 笛卡尔)
