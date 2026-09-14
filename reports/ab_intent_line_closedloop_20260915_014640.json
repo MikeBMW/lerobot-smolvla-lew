@@ -1,0 +1,625 @@
+{
+ "ts": "20260915_014640",
+ "policy": "intact_l4_current",
+ "steps_cap": 600,
+ "rows": [
+  {
+   "seed": 0,
+   "arm": "analytic",
+   "steps": 378,
+   "stage_counts": {
+    "接近": 46,
+    "对位": 29,
+    "下降": 64,
+    "抓取": 18,
+    "抬起": 42,
+    "转移": 61,
+    "插入": 47,
+    "插入 · 接触": 70,
+    "完成": 1
+   },
+   "done": true,
+   "insert_mm_end": 65.1,
+   "insert_mm_min": 0.8,
+   "peg_tgt_mm_end": 201.1,
+   "peg_tgt_mm_min": 51.2,
+   "u_ff_hash": "2ad2d26e4d06ccce",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 22.3
+  },
+  {
+   "seed": 0,
+   "arm": "direct",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 600
+   },
+   "done": false,
+   "insert_mm_end": 141.7,
+   "insert_mm_min": 64.7,
+   "peg_tgt_mm_end": 164.0,
+   "peg_tgt_mm_min": 164.0,
+   "u_ff_hash": "c7c043bbf57ccdc7",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 24.5
+  },
+  {
+   "seed": 0,
+   "arm": "line_w1",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 131,
+    "对位": 469
+   },
+   "done": false,
+   "insert_mm_end": 42.4,
+   "insert_mm_min": 42.2,
+   "peg_tgt_mm_end": 143.2,
+   "peg_tgt_mm_min": 143.2,
+   "u_ff_hash": "ad0e6076f177e56f",
+   "line": {
+    "enabled": true,
+    "ran": 74,
+    "applied": 592,
+    "w_zero": 0,
+    "refused": 1,
+    "ready": true,
+    "w_last": 0.3,
+    "clip_max": 0.0,
+    "err": "z7 历史为空 (几何潜空间未生成)",
+    "by_stage": {
+     "接近": 124,
+     "对位": 468
+    },
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 20.4
+  },
+  {
+   "seed": 0,
+   "arm": "direct_ins",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 600
+   },
+   "done": false,
+   "insert_mm_end": 141.5,
+   "insert_mm_min": 64.7,
+   "peg_tgt_mm_end": 164.0,
+   "peg_tgt_mm_min": 164.0,
+   "u_ff_hash": "143215d2c3ab6618",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入"
+    ]
+   },
+   "sec": 17.1
+  },
+  {
+   "seed": 0,
+   "arm": "line_w1_ins",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 131,
+    "对位": 469
+   },
+   "done": false,
+   "insert_mm_end": 43.6,
+   "insert_mm_min": 43.6,
+   "peg_tgt_mm_end": 143.2,
+   "peg_tgt_mm_min": 143.2,
+   "u_ff_hash": "13948d779a88fd4a",
+   "line": {
+    "enabled": true,
+    "ran": 74,
+    "applied": 592,
+    "w_zero": 0,
+    "refused": 1,
+    "ready": true,
+    "w_last": 0.3,
+    "clip_max": 0.0,
+    "err": "z7 历史为空 (几何潜空间未生成)",
+    "by_stage": {
+     "接近": 124,
+     "对位": 468
+    },
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入"
+    ]
+   },
+   "sec": 20.0
+  },
+  {
+   "seed": 1,
+   "arm": "analytic",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 18,
+    "对位": 37,
+    "下降": 67,
+    "抓取": 19,
+    "抬起": 40,
+    "转移": 105,
+    "插入": 101,
+    "插入 · 接触": 192,
+    "转移 · 接触": 18,
+    "下降 · 接触": 1,
+    "抓取 · 接触": 1,
+    "抬起 · 接触": 1
+   },
+   "done": false,
+   "insert_mm_end": 24.1,
+   "insert_mm_min": 1.5,
+   "peg_tgt_mm_end": 151.2,
+   "peg_tgt_mm_min": 56.2,
+   "u_ff_hash": "32b9c21b08d08c06",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 10.1
+  },
+  {
+   "seed": 1,
+   "arm": "direct",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 19,
+    "下降": 565
+   },
+   "done": false,
+   "insert_mm_end": 30.6,
+   "insert_mm_min": 6.6,
+   "peg_tgt_mm_end": 130.8,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "3c6e0e42d31a6acf",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 24.6
+  },
+  {
+   "seed": 1,
+   "arm": "line_w1",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 18,
+    "对位": 91,
+    "下降": 460,
+    "抓取": 18,
+    "抬起": 13
+   },
+   "done": false,
+   "insert_mm_end": 4.6,
+   "insert_mm_min": 1.3,
+   "peg_tgt_mm_end": 130.8,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "cb468ac5a5ce941b",
+   "line": {
+    "enabled": true,
+    "ran": 74,
+    "applied": 592,
+    "w_zero": 0,
+    "refused": 1,
+    "ready": true,
+    "w_last": 0.3,
+    "clip_max": 0.0,
+    "err": "z7 历史为空 (几何潜空间未生成)",
+    "by_stage": {
+     "接近": 11,
+     "对位": 91,
+     "下降": 459,
+     "抓取": 18,
+     "抬起": 13
+    },
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 20.1
+  },
+  {
+   "seed": 1,
+   "arm": "direct_ins",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 19,
+    "下降": 565
+   },
+   "done": false,
+   "insert_mm_end": 35.2,
+   "insert_mm_min": 6.6,
+   "peg_tgt_mm_end": 130.8,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "b7d65e494fb90579",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入"
+    ]
+   },
+   "sec": 18.1
+  },
+  {
+   "seed": 1,
+   "arm": "line_w1_ins",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 18,
+    "对位": 91,
+    "下降": 460,
+    "抓取": 18,
+    "抬起": 13
+   },
+   "done": false,
+   "insert_mm_end": 4.7,
+   "insert_mm_min": 1.7,
+   "peg_tgt_mm_end": 130.8,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "6cc4505631b13f30",
+   "line": {
+    "enabled": true,
+    "ran": 74,
+    "applied": 592,
+    "w_zero": 0,
+    "refused": 1,
+    "ready": true,
+    "w_last": 0.3,
+    "clip_max": 0.0,
+    "err": "z7 历史为空 (几何潜空间未生成)",
+    "by_stage": {
+     "接近": 11,
+     "对位": 91,
+     "下降": 459,
+     "抓取": 18,
+     "抬起": 13
+    },
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入"
+    ]
+   },
+   "sec": 18.9
+  },
+  {
+   "seed": 2,
+   "arm": "analytic",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 11,
+    "对位": 151,
+    "下降": 114,
+    "抓取": 37,
+    "抬起": 90,
+    "转移": 109,
+    "转移 · 接触": 9,
+    "插入": 3,
+    "插入 · 接触": 3,
+    "对位 · 接触": 70,
+    "下降 · 接触": 1,
+    "抓取 · 接触": 1,
+    "抬起 · 接触": 1
+   },
+   "done": false,
+   "insert_mm_end": 23.9,
+   "insert_mm_min": 6.5,
+   "peg_tgt_mm_end": 143.2,
+   "peg_tgt_mm_min": 73.9,
+   "u_ff_hash": "9bdae36d3ac46393",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 9.1
+  },
+  {
+   "seed": 2,
+   "arm": "direct",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 16,
+    "下降": 568
+   },
+   "done": false,
+   "insert_mm_end": 33.2,
+   "insert_mm_min": 6.0,
+   "peg_tgt_mm_end": 130.8,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "936cb744f9d5bf1b",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 18.2
+  },
+  {
+   "seed": 2,
+   "arm": "line_w1",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 19,
+    "对位": 426,
+    "下降": 124,
+    "抓取": 18,
+    "抬起": 13
+   },
+   "done": false,
+   "insert_mm_end": 47.8,
+   "insert_mm_min": 8.9,
+   "peg_tgt_mm_end": 143.2,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "0aee8fe1fe1def14",
+   "line": {
+    "enabled": true,
+    "ran": 74,
+    "applied": 592,
+    "w_zero": 0,
+    "refused": 1,
+    "ready": true,
+    "w_last": 0.3,
+    "clip_max": 0.0,
+    "err": "z7 历史为空 (几何潜空间未生成)",
+    "by_stage": {
+     "接近": 12,
+     "对位": 425,
+     "下降": 124,
+     "抓取": 18,
+     "抬起": 13
+    },
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ]
+   },
+   "sec": 21.6
+  },
+  {
+   "seed": 2,
+   "arm": "direct_ins",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 16,
+    "下降": 568
+   },
+   "done": false,
+   "insert_mm_end": 30.7,
+   "insert_mm_min": 6.0,
+   "peg_tgt_mm_end": 130.8,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "0cb94275bb041376",
+   "line": {
+    "enabled": false,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "w_last": 0.0,
+    "clip_max": 0.0,
+    "err": null,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入"
+    ]
+   },
+   "sec": 23.1
+  },
+  {
+   "seed": 2,
+   "arm": "line_w1_ins",
+   "steps": 600,
+   "stage_counts": {
+    "接近": 19,
+    "对位": 426,
+    "下降": 124,
+    "抓取": 18,
+    "抬起": 13
+   },
+   "done": false,
+   "insert_mm_end": 47.5,
+   "insert_mm_min": 10.0,
+   "peg_tgt_mm_end": 143.2,
+   "peg_tgt_mm_min": 130.8,
+   "u_ff_hash": "19e3972b5f2af560",
+   "line": {
+    "enabled": true,
+    "ran": 74,
+    "applied": 592,
+    "w_zero": 0,
+    "refused": 1,
+    "ready": true,
+    "w_last": 0.3,
+    "clip_max": 0.0,
+    "err": "z7 历史为空 (几何潜空间未生成)",
+    "by_stage": {
+     "接近": 12,
+     "对位": 425,
+     "下降": 124,
+     "抓取": 18,
+     "抬起": 13
+    },
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移",
+     "插入"
+    ]
+   },
+   "sec": 20.8
+  }
+ ]
+}

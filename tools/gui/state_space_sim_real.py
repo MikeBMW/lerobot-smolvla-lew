@@ -1405,6 +1405,8 @@ class RealStateSpaceSim:
         mn = s.get("manifold") or []
         stk = self._il_stack.summary() if self._il_stack is not None else {}
         return {"enabled": os.environ.get("SS_L4_INTENT_LINE") == "1",
+                "by_stage": dict(s.get("by_stage") or {}),
+                "stages_env": list(self._l4_stages),
                 "frames": s["frames"], "ran": s["ran"], "applied": s["applied"],
                 "w_zero": s["w_zero"], "refused": s["refused"],
                 "ready": bool(s["ready"]), "ready_src": s["ready_src"],
@@ -1424,6 +1426,10 @@ class RealStateSpaceSim:
         mean = (lambda v: round(sum(v) / len(v), 4)) if shift else (lambda v: 0.0)
         return {"enabled": os.environ.get("SS_L4_INTACT") == "1",
                 "shadow": bool(self._l4_shadow), "stages": self._l4_stages,
+                "l2_veto": self._l4_stats.get("l2_veto", 0),
+                "l2_veto_dir": self._l4_stats.get("l2_veto_dir", 0),
+                "l2_veto_mag": self._l4_stats.get("l2_veto_mag", 0),
+                "gate_pass": self._l4_stats.get("gate_pass", 0),
                 "calls": s["calls"], "reuse": s["reuse"], "refused": s["refused"],
                 "blend": s["blend"], "w_zero": s["w_zero"],
                 "w": s["w"], "u_ff_src": s["src"],
@@ -1988,6 +1994,33 @@ class RealStateSpaceSim:
                         _u4, _w4 = _r4
                         self._l4_stats["shift"].append(float(np.linalg.norm(
                             np.asarray(_u4, float)[:3] - np.asarray(u_ff, float)[:3])))
+                        # 🛡 L2 收口闸 (2026-09-15 实测驱动, 不是防患于未然):
+                        #   diag_u_trace 实测直驱档 u 在 y 轴恒定撞限幅 (−0.1239), |u| 是解析链的
+                        #   2.3×, 末端 60 帧飞 243mm 朝错误方向 → 600 帧永远停在"接近", 从没到过
+                        #   下降/插入(所以"插入段白名单解禁"是空操作, 已证)。上层提案越界时 L2 必须
+                        #   否决 (架构原则: 每层只能收窄可行域, 不放大)。
+                        #   两条闸: ①方向与下层参考相反 (cos<0) → 拒; ②幅度 > 1.5× 下层参考 → 拒;
+                        #   通过者按方向一致度加权 (w_eff = w·cos) — 越接近下层意图, 越允许注入。
+                        #   不设 SS_L4_INTACT_GATE=0 时默认生效; =0 可复现旧行为 (A/B 对照用)。
+                        if os.environ.get("SS_L4_INTACT_GATE", "1") == "1" and _w4 > 0:
+                            _ua = np.asarray(u_ff, float)[:3].copy()
+                            _up = np.asarray(_u4, float)[:3]
+                            _na, _np2 = float(np.linalg.norm(_ua)), float(np.linalg.norm(_up))
+                            _cos = (float(_ua @ _up) / (_na * _np2)
+                                    if _na > 1e-9 and _np2 > 1e-9 else 0.0)
+                            _mag = (_np2 / _na) if _na > 1e-9 else float("inf")
+                            if _cos < 0.0 or _mag > 1.5:
+                                self._l4_stats["l2_veto"] = self._l4_stats.get("l2_veto", 0) + 1
+                                if _cos < 0.0:
+                                    self._l4_stats["l2_veto_dir"] = \
+                                        self._l4_stats.get("l2_veto_dir", 0) + 1
+                                else:
+                                    self._l4_stats["l2_veto_mag"] = \
+                                        self._l4_stats.get("l2_veto_mag", 0) + 1
+                                _w4 = 0.0
+                            else:
+                                _w4 = _w4 * max(_cos, 0.0)
+                                self._l4_stats["gate_pass"] = self._l4_stats.get("gate_pass", 0) + 1
                         if _w4 > 0:
                             _b = ((1.0 - _w4) * np.asarray(u_ff, float)[:3]
                                   + _w4 * np.asarray(_u4, float)[:3])
@@ -2015,6 +2048,11 @@ class RealStateSpaceSim:
                 if _wi > 0.0:
                     u_ff = np.concatenate([_mrg, [u_ff[3]]])
                     self._il_stats["applied"] += 1
+                    # 🧮 逐阶段注入计数 (2026-09-15: 取证"插入段到底有没有被直连线覆盖" —
+                    #   不靠推断, 直接数; 阶段白名单默认排除"插入" → 该键默认应为空)
+                    _bs = self._il_stats.setdefault("by_stage", {})
+                    _sk = str(st_now)
+                    _bs[_sk] = _bs.get(_sk, 0) + 1
                     self._il_stats["clip_max"] = max(float(self._il_stats["clip_max"]),
                                                      float(_info.get("clip") or 0.0))
                 tr.setdefault("il_w", []).append(float(_wi))

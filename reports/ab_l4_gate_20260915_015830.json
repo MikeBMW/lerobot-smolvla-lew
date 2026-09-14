@@ -1,0 +1,521 @@
+{
+ "ts": "20260915_015830",
+ "policy": "intact_l4_current",
+ "rows": [
+  {
+   "seed": 0,
+   "arm": "analytic",
+   "line": false,
+   "steps": 379,
+   "done": true,
+   "stage_counts": {
+    "接近": 47,
+    "对位": 28,
+    "下降": 63,
+    "抓取": 18,
+    "抬起": 43,
+    "转移": 61,
+    "插入": 48,
+    "插入 · 接触": 70,
+    "完成": 1
+   },
+   "reached": {
+    "对位": 47,
+    "下降": 75,
+    "抓取": 138,
+    "转移": 199,
+    "插入": 260
+   },
+   "insert_mm_end": 65.4,
+   "insert_mm_min": 0.7,
+   "l4": {
+    "calls": 0,
+    "blend": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.0,
+    "u_ff_src": "analytic",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 7.6
+  },
+  {
+   "seed": 0,
+   "arm": "gate_off",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 600
+   },
+   "reached": {
+    "对位": -1,
+    "下降": -1,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 142.2,
+   "insert_mm_min": 62.7,
+   "l4": {
+    "calls": 75,
+    "blend": 600,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.7
+  },
+  {
+   "seed": 0,
+   "arm": "gate_on",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 114,
+    "对位": 486
+   },
+   "reached": {
+    "对位": 114,
+    "下降": -1,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 166.5,
+   "insert_mm_min": 49.2,
+   "l4": {
+    "calls": 75,
+    "blend": 12,
+    "w_zero": 588,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 588,
+    "l2_veto_dir": 315,
+    "l2_veto_mag": 273,
+    "gate_pass": 12
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.4
+  },
+  {
+   "seed": 0,
+   "arm": "gate_on_line",
+   "line": true,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 122,
+    "对位": 478
+   },
+   "reached": {
+    "对位": 122,
+    "下降": -1,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 330.6,
+   "insert_mm_min": 50.7,
+   "l4": {
+    "calls": 75,
+    "blend": 108,
+    "w_zero": 492,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 492,
+    "l2_veto_dir": 277,
+    "l2_veto_mag": 215,
+    "gate_pass": 108
+   },
+   "il": {
+    "ran": 74,
+    "applied": 592,
+    "w_last": 0.3
+   },
+   "sec": 9.3
+  },
+  {
+   "seed": 1,
+   "arm": "analytic",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 18,
+    "对位": 37,
+    "下降": 67,
+    "抓取": 19,
+    "抬起": 40,
+    "转移": 83,
+    "插入": 40,
+    "插入 · 接触": 262,
+    "转移 · 接触": 31,
+    "下降 · 接触": 1,
+    "抓取 · 接触": 1,
+    "抬起 · 接触": 1
+   },
+   "reached": {
+    "对位": 17,
+    "下降": 52,
+    "抓取": 118,
+    "转移": 175,
+    "插入": 233
+   },
+   "insert_mm_end": 37.1,
+   "insert_mm_min": 0.8,
+   "l4": {
+    "calls": 0,
+    "blend": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.0,
+    "u_ff_src": "analytic",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 4.9
+  },
+  {
+   "seed": 1,
+   "arm": "gate_off",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 19,
+    "下降": 565
+   },
+   "reached": {
+    "对位": 16,
+    "下降": 35,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 30.5,
+   "insert_mm_min": 6.3,
+   "l4": {
+    "calls": 75,
+    "blend": 600,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.4
+  },
+  {
+   "seed": 1,
+   "arm": "gate_on",
+   "line": false,
+   "steps": 346,
+   "done": true,
+   "stage_counts": {
+    "接近": 26,
+    "对位": 32,
+    "下降": 54,
+    "抓取": 18,
+    "抬起": 39,
+    "转移": 58,
+    "插入": 47,
+    "插入 · 接触": 71,
+    "完成": 1
+   },
+   "reached": {
+    "对位": 26,
+    "下降": 58,
+    "抓取": 112,
+    "转移": 169,
+    "插入": 227
+   },
+   "insert_mm_end": 65.2,
+   "insert_mm_min": 2.2,
+   "l4": {
+    "calls": 29,
+    "blend": 0,
+    "w_zero": 228,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 228,
+    "l2_veto_dir": 71,
+    "l2_veto_mag": 157,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 6.7
+  },
+  {
+   "seed": 1,
+   "arm": "gate_on_line",
+   "line": true,
+   "steps": 436,
+   "done": true,
+   "stage_counts": {
+    "接近": 26,
+    "对位": 39,
+    "下降": 68,
+    "抓取": 18,
+    "抬起": 52,
+    "转移": 65,
+    "插入": 86,
+    "插入 · 接触": 81,
+    "完成": 1
+   },
+   "reached": {
+    "对位": 26,
+    "下降": 65,
+    "抓取": 133,
+    "转移": 203,
+    "插入": 268
+   },
+   "insert_mm_end": 65.2,
+   "insert_mm_min": 1.5,
+   "l4": {
+    "calls": 34,
+    "blend": 0,
+    "w_zero": 269,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 269,
+    "l2_veto_dir": 62,
+    "l2_veto_mag": 207,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 33,
+    "applied": 428,
+    "w_last": 0.3
+   },
+   "sec": 7.1
+  },
+  {
+   "seed": 2,
+   "arm": "analytic",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 11,
+    "对位": 151,
+    "下降": 114,
+    "抓取": 37,
+    "抬起": 90,
+    "转移": 109,
+    "转移 · 接触": 9,
+    "插入": 3,
+    "插入 · 接触": 3,
+    "对位 · 接触": 70,
+    "下降 · 接触": 1,
+    "抓取 · 接触": 1,
+    "抬起 · 接触": 1
+   },
+   "reached": {
+    "对位": 8,
+    "下降": 49,
+    "抓取": 121,
+    "转移": 178,
+    "插入": 247
+   },
+   "insert_mm_end": 23.9,
+   "insert_mm_min": 6.5,
+   "l4": {
+    "calls": 0,
+    "blend": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.0,
+    "u_ff_src": "analytic",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 4.8
+  },
+  {
+   "seed": 2,
+   "arm": "gate_off",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 16,
+    "下降": 568
+   },
+   "reached": {
+    "对位": 16,
+    "下降": 32,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 30.7,
+   "insert_mm_min": 6.0,
+   "l4": {
+    "calls": 75,
+    "blend": 600,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.5
+  },
+  {
+   "seed": 2,
+   "arm": "gate_on",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 33,
+    "对位": 80,
+    "下降": 33,
+    "抓取": 19,
+    "抬起": 41,
+    "转移": 132,
+    "对位 · 接触": 46,
+    "下降 · 接触": 1,
+    "抓取 · 接触": 1,
+    "转移 · 接触": 14,
+    "插入": 79,
+    "插入 · 接触": 121
+   },
+   "reached": {
+    "对位": 32,
+    "下降": 96,
+    "抓取": 128,
+    "转移": 185,
+    "插入": 359
+   },
+   "insert_mm_end": 18.7,
+   "insert_mm_min": 2.5,
+   "l4": {
+    "calls": 51,
+    "blend": 0,
+    "w_zero": 401,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 401,
+    "l2_veto_dir": 103,
+    "l2_veto_mag": 298,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 8.1
+  },
+  {
+   "seed": 2,
+   "arm": "gate_on_line",
+   "line": true,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 34,
+    "对位": 165,
+    "下降": 103,
+    "抓取": 36,
+    "抬起": 97,
+    "转移": 110,
+    "转移 · 接触": 12,
+    "对位 · 接触": 43
+   },
+   "reached": {
+    "对位": 32,
+    "下降": 90,
+    "抓取": 136,
+    "转移": 203,
+    "插入": -1
+   },
+   "insert_mm_end": 87.7,
+   "insert_mm_min": 12.4,
+   "l4": {
+    "calls": 75,
+    "blend": 5,
+    "w_zero": 595,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 595,
+    "l2_veto_dir": 179,
+    "l2_veto_mag": 416,
+    "gate_pass": 5
+   },
+   "il": {
+    "ran": 74,
+    "applied": 592,
+    "w_last": 0.3
+   },
+   "sec": 9.8
+  }
+ ]
+}

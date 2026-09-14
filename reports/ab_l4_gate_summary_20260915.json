@@ -1,0 +1,99 @@
+{
+ "ts": "2026-09-15 02:00 CST",
+ "run": "ab_l4_gate_20260915_015830.json",
+ "what": "L2 收口闸 A/B: 直驱档(SS_L4_INTACT=1) 同 seed 同权重(r11 ep2), 只切 SS_L4_INTACT_GATE",
+ "root_cause": "diag_stage_gate/diag_u_trace 实测: 直驱档 u 在 y 轴恒定撞限幅(−0.1239), |u|=解析链 2.3×, 60 帧末端飞 243mm 朝错方向 → 永不离开\"接近\"(seed0) 或卡死在\"下降\"(seed1/2, 从未抓取) ⇒ 直驱档此前在引擎里**根本不可用**",
+ "correction": "先前\"插入段被白名单排除是瓶颈\"的判断作废: 实测 stage_counts 显示运行从未到达\"插入\"(甚至没到下降) ⇒ 把\"插入\"加进白名单是空操作 (direct vs direct_ins 数字一致, 已证)",
+ "gate": "SS_L4_INTACT_GATE=1 (默认): ①方向与下层参考相反 cos<0 → 否决; ②幅度>1.5×下层参考 → 否决; 通过者 w_eff=w·cos (可行域只收窄不放大)",
+ "table": {
+  "seed0": {
+   "analytic": {
+    "done": true,
+    "min_insert_mm": 0.7,
+    "reached_insert_frame": 260,
+    "veto": 0
+   },
+   "gate_off": {
+    "done": false,
+    "min_insert_mm": 62.7,
+    "reached_insert_frame": -1,
+    "veto": 0
+   },
+   "gate_on": {
+    "done": false,
+    "min_insert_mm": 49.2,
+    "reached_insert_frame": -1,
+    "veto": 588
+   },
+   "gate_on_line": {
+    "done": false,
+    "min_insert_mm": 50.7,
+    "reached_insert_frame": -1,
+    "veto": 492
+   }
+  },
+  "seed1": {
+   "analytic": {
+    "done": false,
+    "min_insert_mm": 0.8,
+    "reached_insert_frame": 233,
+    "veto": 0
+   },
+   "gate_off": {
+    "done": false,
+    "min_insert_mm": 6.3,
+    "reached_insert_frame": -1,
+    "veto": 0
+   },
+   "gate_on": {
+    "done": true,
+    "min_insert_mm": 2.2,
+    "reached_insert_frame": 227,
+    "veto": 228
+   },
+   "gate_on_line": {
+    "done": true,
+    "min_insert_mm": 1.5,
+    "reached_insert_frame": 268,
+    "veto": 269
+   }
+  },
+  "seed2": {
+   "analytic": {
+    "done": false,
+    "min_insert_mm": 6.5,
+    "reached_insert_frame": 247,
+    "veto": 0
+   },
+   "gate_off": {
+    "done": false,
+    "min_insert_mm": 6.0,
+    "reached_insert_frame": -1,
+    "veto": 0
+   },
+   "gate_on": {
+    "done": false,
+    "min_insert_mm": 2.5,
+    "reached_insert_frame": 359,
+    "veto": 401
+   },
+   "gate_on_line": {
+    "done": false,
+    "min_insert_mm": 12.4,
+    "reached_insert_frame": -1,
+    "veto": 595
+   }
+  }
+ },
+ "done_rate": {
+  "analytic": 1,
+  "gate_off": 0,
+  "gate_on": 1,
+  "gate_on_line": 1
+ },
+ "verdict": {
+  "gate_needed": "无闸 0/3 完成且卡死; 有闸 1/3 完成(seed1 首次全阶段) → 闸是必需项, 不是优化",
+  "gate_on_vs_analytic": "完成率同为 1/3; seed2 最小插入 2.5mm 优于解析链 6.5mm, seed0 反而差(49.2 vs 0.7) → 未稳定超越, 按交付门槛**不判提升**, 直驱仍不进默认档",
+  "line_arm": "gate_on_line 与 gate_on 同为 1/3, seed2 更差(12.4 vs 2.5) → 直连线无稳定增益"
+ }
+}

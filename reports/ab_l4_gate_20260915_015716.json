@@ -1,0 +1,252 @@
+{
+ "ts": "20260915_015716",
+ "policy": "intact_l4_current",
+ "rows": [
+  {
+   "seed": 0,
+   "arm": "gate_on",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 114,
+    "对位": 486
+   },
+   "reached": {
+    "对位": 114,
+    "下降": -1,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 157.0,
+   "insert_mm_min": 49.9,
+   "l4": {
+    "calls": 75,
+    "blend": 13,
+    "w_zero": 587,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 587,
+    "l2_veto_dir": 315,
+    "l2_veto_mag": 272,
+    "gate_pass": 13
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 12.6
+  },
+  {
+   "seed": 0,
+   "arm": "gate_off",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 600
+   },
+   "reached": {
+    "对位": -1,
+    "下降": -1,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 141.9,
+   "insert_mm_min": 63.8,
+   "l4": {
+    "calls": 75,
+    "blend": 600,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.1
+  },
+  {
+   "seed": 1,
+   "arm": "gate_on",
+   "line": false,
+   "steps": 347,
+   "done": true,
+   "stage_counts": {
+    "接近": 25,
+    "对位": 34,
+    "下降": 54,
+    "抓取": 18,
+    "抬起": 39,
+    "转移": 58,
+    "插入": 47,
+    "插入 · 接触": 71,
+    "完成": 1
+   },
+   "reached": {
+    "对位": 25,
+    "下降": 59,
+    "抓取": 113,
+    "转移": 170,
+    "插入": 228
+   },
+   "insert_mm_end": 65.2,
+   "insert_mm_min": 2.2,
+   "l4": {
+    "calls": 29,
+    "blend": 0,
+    "w_zero": 229,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 229,
+    "l2_veto_dir": 62,
+    "l2_veto_mag": 167,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 6.6
+  },
+  {
+   "seed": 1,
+   "arm": "gate_off",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 19,
+    "下降": 565
+   },
+   "reached": {
+    "对位": 16,
+    "下降": 35,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 30.7,
+   "insert_mm_min": 6.3,
+   "l4": {
+    "calls": 75,
+    "blend": 600,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.2
+  },
+  {
+   "seed": 2,
+   "arm": "gate_on",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 33,
+    "对位": 80,
+    "下降": 33,
+    "抓取": 19,
+    "抬起": 41,
+    "转移": 132,
+    "对位 · 接触": 46,
+    "下降 · 接触": 1,
+    "抓取 · 接触": 1,
+    "转移 · 接触": 14,
+    "插入": 79,
+    "插入 · 接触": 121
+   },
+   "reached": {
+    "对位": 32,
+    "下降": 96,
+    "抓取": 128,
+    "转移": 185,
+    "插入": 359
+   },
+   "insert_mm_end": 18.7,
+   "insert_mm_min": 2.5,
+   "l4": {
+    "calls": 51,
+    "blend": 0,
+    "w_zero": 401,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 401,
+    "l2_veto_dir": 103,
+    "l2_veto_mag": 298,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 8.2
+  },
+  {
+   "seed": 2,
+   "arm": "gate_off",
+   "line": false,
+   "steps": 600,
+   "done": false,
+   "stage_counts": {
+    "接近": 16,
+    "对位": 16,
+    "下降": 568
+   },
+   "reached": {
+    "对位": 16,
+    "下降": 32,
+    "抓取": -1,
+    "转移": -1,
+    "插入": -1
+   },
+   "insert_mm_end": 34.8,
+   "insert_mm_min": 6.0,
+   "l4": {
+    "calls": 75,
+    "blend": 600,
+    "w_zero": 0,
+    "refused": 0,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0
+   },
+   "il": {
+    "ran": 0,
+    "applied": 0,
+    "w_last": 0.0
+   },
+   "sec": 9.6
+  }
+ ]
+}

@@ -38,8 +38,15 @@ os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
 os.environ.setdefault("INTACT_RUNTIME", "root")
 os.environ.setdefault("INTACT_POLICY", "intact_l4_current")      # 指针 = r11 ep1
 os.environ.setdefault("OMP_NUM_THREADS", "6")
-ARMS = {"analytic": (False, False, 0.0), "direct": (True, False, 0.0),
-        "line_w0": (True, True, 0.0), "line_w1": (True, True, 1.0)}
+_S6 = "接近,对位,下降,抓取,抬起,转移"
+_S7 = _S6 + ",插入"                      # 插入段解禁 (原白名单故意排除"插入")
+# 臂: (L4直驱?, 直连线?, 注入权重, 阶段白名单)
+ARMS = {"analytic":        (False, False, 0.0, None),
+        "direct":          (True, False, 0.0, None),
+        "line_w0":         (True, True, 0.0, None),
+        "line_w1":         (True, True, 1.0, None),
+        "direct_ins":      (True, False, 0.0, _S7),
+        "line_w1_ins":     (True, True, 1.0, _S7)}
 
 
 def hh(a) -> str:
@@ -48,11 +55,15 @@ def hh(a) -> str:
 
 
 def run_one(seed: int, arm: str, steps: int) -> dict:
-    l4, line, w = ARMS[arm]
+    l4, line, w, stages = ARMS[arm]
     if l4:
         os.environ["SS_L4_INTACT"] = "1"
     else:
         os.environ.pop("SS_L4_INTACT", None)
+    if stages:
+        os.environ["SS_L4_INTACT_STAGES"] = stages
+    else:
+        os.environ.pop("SS_L4_INTACT_STAGES", None)
     if line:
         os.environ["SS_L4_INTENT_LINE"] = "1"
         os.environ["SS_L4_INTENT_LINE_W"] = str(w)
@@ -73,7 +84,10 @@ def run_one(seed: int, arm: str, steps: int) -> dict:
                                                 and len(peg) == len(tgt) and len(peg)) else None)
     uff = np.asarray(tr.get("u_ff_vec") or [], float)
     ils = sim.l4_intent_line_summary()
+    stg = [str(x).replace("阶段 ", "") for x in (tr.get("stage") or [])]
+    from collections import Counter
     return {"seed": seed, "arm": arm, "steps": int(len(tr.get("t", []))),
+            "stage_counts": dict(Counter(stg)),
             "done": bool(tr.get("done", [False])[-1]),
             "insert_mm_end": round(float(dist[-1]) * 1000, 1) if dist.size else None,
             "insert_mm_min": round(float(dist.min()) * 1000, 1) if dist.size else None,
@@ -81,7 +95,8 @@ def run_one(seed: int, arm: str, steps: int) -> dict:
             "peg_tgt_mm_min": round(float(g2g.min()) * 1000, 1) if g2g is not None else None,
             "u_ff_hash": hh(uff) if uff.size else "none",
             "line": {k: ils.get(k) for k in ("enabled", "ran", "applied", "w_zero", "refused",
-                                             "ready", "w_last", "clip_max", "err")},
+                                             "ready", "w_last", "clip_max", "err",
+                                             "by_stage", "stages_env")},
             "sec": round(time.time() - t0, 1)}
 
 
