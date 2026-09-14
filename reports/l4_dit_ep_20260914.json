@@ -1,0 +1,95 @@
+{
+ "meta": {
+  "seeds": [
+   0
+  ],
+  "mode": "insert",
+  "max_steps": 260,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 4,
+  "device": "cpu",
+  "policy": "intact_l4_current",
+  "runtime": "",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "n_finite": 18635,
+   "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+   "mean": [
+    -0.007139332597068512,
+    -0.007183539539160135,
+    -0.002103688130771039,
+    0.120300526487178
+   ],
+   "std": [
+    0.15305849460395074,
+    0.07153241744890618,
+    0.11256259314790976,
+    0.7331005658196346
+   ]
+  },
+  "ts": "2026-09-14 13:33:58"
+ },
+ "rows": [
+  {
+   "seed": 0,
+   "analytic": {
+    "done": false,
+    "steps": 260,
+    "frames": 260,
+    "video": null,
+    "insert_mm": 25.9
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 0,
+    "done": false,
+    "steps": 260,
+    "insert_mm": 92.2,
+    "model_calls": 65,
+    "err": null,
+    "sec": 371.8,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.16341303288936615,
+     0.1639125645160675,
+     0.22280998528003693,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 10,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     0.0142000000923872,
+     0.004000000189989805,
+     -0.016699999570846558,
+     0.26159998774528503
+    ],
+    "act_std": [
+     0.03020000085234642,
+     0.028200000524520874,
+     0.0421999990940094,
+     0.02710000053048134
+    ],
+    "act_absmax": [
+     0.07400000095367432,
+     0.0560000017285347,
+     0.11599999666213989,
+     0.3370000123977661
+    ],
+    "stages": {
+     "阶段 接近": 260
+    }
+   },
+   "video_analytic": null,
+   "video_direct": null
+  }
+ ]
+}

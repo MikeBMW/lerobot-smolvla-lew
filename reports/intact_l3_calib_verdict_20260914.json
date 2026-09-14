@@ -1,0 +1,22 @@
+{
+  "ts": "2026-09-14 13:38:22",
+  "tool": "tools/intact_l3_calib.py",
+  "question": "INTACT 潜空间 z_t(192) 能否线性解码本引擎流形真值 6 维 → 作为 L4→L3 标定映射?",
+  "data": {
+    "rounds": 13,
+    "samples": 1935,
+    "source": "reports/intact_pair_*.npz"
+  },
+  "method": "LOSO 13 折 + 折内 PCA(16) + 岭回归(alpha=1e-2) + 打乱标签 null 对照 (与 intact_fit_maps.py 同口径)",
+  "per_dim_test_r2": {
+    "progress": -0.146,
+    "risk": -0.307,
+    "V": -0.101,
+    "eta": -0.0,
+    "rem": -0.103,
+    "dperp": -0.001
+  },
+  "verdict": "不可标定 (6/6 维测试 R² ≤ 0, null 更负) → 拒绝写 models/intact_l3_map.json (硬接=假接入)",
+  "old_claim_correction": "reports/intact_decode_probe_20260912_150300.json 的 '2/6 可解码(rem/dperp)' 来自折间噪声 (单折可达 0.65, 跨轮转负) — 样本增至 1935 后不再成立",
+  "fallback_channel": "l4_cond = INTACT 意图增量 δ=z_goal−z_t 单位向量 (192 维, 无需标定, 每帧真值)"
+}
