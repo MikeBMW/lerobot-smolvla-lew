@@ -1,0 +1,43 @@
+# Z-MAX 数据闭环 · ACT 训练配置 (已知可用)
+# 用法: PYTHONPATH=src .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_act_closedloop.yaml
+output_dir: outputs/train/act_closed_loop
+job_name: act_closed_loop
+
+policy:
+  type: act
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-act-closedloop
+  n_obs_steps: 1          # 该fork仅支持1步观测!
+  n_action_steps: 7
+  chunk_size: 7
+  dim_model: 256
+  dim_feedforward: 1024
+  n_heads: 8
+  n_encoder_layers: 4
+  n_decoder_layers: 4
+  use_vae: true
+  latent_dim: 32
+
+dataset:
+  repo_id: lerobot/pusht
+  root: data/closed_loop
+  episodes: [0]
+  use_imagenet_stats: true
+
+batch_size: 8
+steps: 1000
+num_workers: 0
+persistent_workers: false
+log_freq: 100
+eval_freq: 500
+save_freq: 500
+save_checkpoint: true
+seed: 1337
+
+optimizer:
+  type: adam
+  lr: 1e-4
+  weight_decay: 0.0
+
+wandb:
+  enable: false
