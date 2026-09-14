@@ -32,12 +32,55 @@ def log(*a):
 
 _PROTO = None
 
+# 🎯 图像预处理常量 —— 必须与 train.py 的 `get_img_preprocessor` (ToImage=ImageNet) 一致。
+#   (2026-09-14: 运行时曾漏做这一步, 直接喂 0~255 原始像素 → 编码器退化, 详见 _prep_images)
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+_IMG_KEYS = ("pixels", "goal", "waypoint")
+
 
 def say(obj: dict) -> None:
     """把 JSON 写到私有协议口 (stdout 副本), 不与其他库的输出混流。"""
     import json as _j
     ( _PROTO or sys.stdout ).write(_j.dumps(obj) + "\n")
     ( _PROTO or sys.stdout ).flush()
+
+
+def _prep_images(info: dict, log) -> str:
+    """🎯 图像预处理与**训练侧逐位同口径** (2026-09-14 实锤修复)。
+
+    训练侧 (train.py build_dataset): HDF5Dataset 出 **uint8** 像素 → `ToImage(scale=True)`
+    = /255 → ImageNet 归一化 → 模型实际吃到的输入范围实测 [-2.118, 2.429] (mean 0.280)。
+    而运行时各路径 (判闸回放 / 引擎 L4 直驱 / direct_rollout) 把 h5 里 **float32 的 0~255 原始像素**
+    直接喂进来 → 尺度差 ~100 倍 + 巨大正向偏移 → ViT 编码器退化 → 动作头输出恒定且带偏移
+    (实测: 预测 std/教师 std ≈ 0.08, MAE 打不过常数基线, 且与训练轮数无关)。
+    这也是"判闸永远 ❌ / 直驱远差于解析链"的根因 —— 桥是唯一入口, 修这里所有运行时同时生效。
+    """
+    import torch
+
+    def _stats_like(v):
+        shape = (1,) * (v.ndim - 3) + (3, 1, 1)
+        m = torch.tensor(IMAGENET_MEAN, device=v.device, dtype=torch.float32).view(shape)
+        s = torch.tensor(IMAGENET_STD, device=v.device, dtype=torch.float32).view(shape)
+        return m, s
+
+    acts = []
+    for k in _IMG_KEYS:
+        v = info.get(k)
+        if not torch.is_tensor(v) or v.ndim < 3 or v.shape[-3] != 3:
+            continue
+        mn, mx = float(v.min()), float(v.max())
+        m, s = _stats_like(v)
+        if mx > 2.0:                       # 0~255 量级 (h5/引擎原生帧)
+            v = (v.to(torch.float32) / 255.0 - m) / s
+            acts.append(f"{k}:0-255→/255+ImageNet")
+        elif mn >= -0.01 and mx <= 1.01:   # 已 /255 但没做 ImageNet (如 skill 自检脚本)
+            v = (v.to(torch.float32) - m) / s
+            acts.append(f"{k}:0-1→+ImageNet")
+        else:                              # 已是归一化量级 → 原样 (防重复归一化)
+            acts.append(f"{k}:已归一化(原样)")
+        info[k] = v
+    return ", ".join(acts)
 
 
 class Runtime:
@@ -190,6 +233,11 @@ class Runtime:
         d = np.load(info_path, allow_pickle=True)
         info = {k: torch.from_numpy(d[k]).to(self.device) for k in d.files
                 if d[k].dtype != object}
+        # 🎯 与训练逐位同口径的图像预处理 (修前: 运行时喂 0~255 原始像素 → 编码器退化)
+        _img_acts = _prep_images(info, log)
+        if not getattr(self, "_img_prep_logged", False):
+            self._img_prep_logged = True
+            log(f"🎯 图像预处理 (与训练同口径): {_img_acts or '无图像键'}")
         # ── 潜空间截获 (只读: 不改模型任何参数/行为) ──
         _rec: list = []
         _orig_encode = self.model.encode
@@ -238,7 +286,9 @@ class Runtime:
                          "intent_norm": float(np.linalg.norm(_dl)),
                          "latent_encode_calls": float(len(_rec)),
                          "latent_dim": float(_z.shape[0])})
-        return {"out": out_path, "diagnostics": diag, "shape": list(actions.shape),
+        return {"out": out_path, "diagnostics": {**diag, "img_prep_done": 1.0},
+                "img_prep": _img_acts,
+                "shape": list(actions.shape),
                 "latent_keys": sorted(lat.keys()),
                 "latent_path": out_path,
                 "target_mode": os.environ.get("INVERSE_DIRECT_TARGET_MODE", "query")}
