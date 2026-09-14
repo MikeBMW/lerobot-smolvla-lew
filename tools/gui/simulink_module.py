@@ -11457,8 +11457,9 @@ class SimulinkModule(QWidget):
                                 _logs.append("🤖 L4 = INTACT 节点直驱: 每帧「模型动作 → env.step」(无解析控制器)")
                                 _logs.append(f"   ├ 权重 {os.environ.get('INTACT_POLICY')} · "
                                              f"目标帧 {os.path.basename(_gf)} · 变换 a_raw=z·std+mean (唯一变换)")
-                                _logs.append("   └ 诚实标注: 该 ckpt 离线判闸未过 (MAE≈常数·预测std小16倍) "
-                                             "→ 本档大概率跑不完, 属模型能力问题不是接线问题")
+                                _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ "
+                                             "on<zero ∧ std比≥0.30); 结论以 /home/ubuntu/l4_ab/judged/ "
+                                             "的 json 为准, 此处不写死数字")
                     except Exception as _ei:
                         import traceback
                         traceback.print_exc()

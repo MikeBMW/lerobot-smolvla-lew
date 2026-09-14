@@ -109,6 +109,63 @@ def analytic_rollout(seed, mode, max_steps, video_path=None):
             "insert_mm": (round(float(tr["dist"][-1]) * 1000, 1) if tr.get("dist") else None)}, goal
 
 
+def policy_service(node=None, root: str | None = None, log=None):
+    """🎯 policy 层意图服务单例 (引擎/直驱工具的统一编排入口)。
+
+    老倪 2026-09-14: 「点击运行 + 选 L4 就应该真进入 INTACT 意图解码器」——
+    原来模型直驱 (`install_direct_act`) 只调 `node.step()`, 解码器 (意图→u_ff 先验/L3 条件/证据)
+    整条不在链上, 断点自然永远不进。现在每次真推理都走 `service.run_once(decode=True)`:
+    解码器真执行 + 证据落盘 + 报告一处产出 (**单一实现**, 不再引擎/工具各写一套)。
+
+    动作口径**不变**: 仍是 chunk → 训练归一化逆变换 (唯一变换) → clip, 只是编排归 policy 层。
+    """
+    key = "svc"
+    if key not in _SVC:
+        import sys as _sys                                    # noqa: PLC0415
+        # 🐛 2026-09-14 实测: 这里原来写成往上跳**两级** → root 解析成 /home/ubuntu,
+        #   证据被写到 /home/ubuntu/reports/ (不在工程里)。改为"tools 的上一级 = 工程根",
+        #   并用 src/ 存在性兜底, 防 __file__ 位置变化。
+        _here = os.path.dirname(os.path.abspath(__file__))
+        _root = os.path.abspath(root or os.path.join(_here, ".."))
+        if not os.path.isdir(os.path.join(_root, "src")):
+            _root = os.path.abspath(os.path.join(_here, "..", ".."))
+        _src = os.path.join(_root, "src")
+        if _src not in _sys.path:
+            _sys.path.insert(0, _src)
+        from lerobot.policies.intact.service import get_service   # noqa: PLC0415
+        _SVC[key] = get_service(_root, log=log or (lambda *a: None))
+    return _SVC[key]
+
+
+_SVC: dict = {}
+_L2: dict = {}
+
+
+def l2_process(root: str | None = None, log=lambda *a: None):
+    """L2 原子技能势场 (skill_ctx 里 L2 字段的来源) —— 与采集数据**同口径**
+    (`MemoryLayerBridge.from_real_data`, 真 muscle_memory.json + 引擎几何)。
+
+    失败 → 返回 None (skill_ctx 退化成"相位+夹爪", 并**如实打印**), 不假装有记忆层。
+    """
+    if "p" not in _L2:
+        try:
+            import sys as _sys                                    # noqa: PLC0415
+            _root = os.path.abspath(root or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                        ".."))
+            _src = os.path.join(_root, "src")
+            if _src not in _sys.path:
+                _sys.path.insert(0, _src)
+            from lerobot.memory.potential_field import MemoryLayerBridge   # noqa: PLC0415
+            _L2["p"] = MemoryLayerBridge.from_real_data(root=_root, seed=104,
+                                                        use_engine_geom=True).process
+            _L2["err"] = None
+            log(f"🧠 L2 势场就绪 (skill_ctx 的 L2 字段来源): {type(_L2['p']).__name__}")
+        except Exception as e:                                    # noqa: BLE001
+            _L2["p"], _L2["err"] = None, f"{type(e).__name__}: {e}"
+            log(f"⚠️ L2 势场不可用 ({_L2['err']}) → skill_ctx 退化为相位+夹爪 (诚实标注)")
+    return _L2["p"]
+
+
 def install_direct_act(sim, node, a_mean, a_std, infer_every=1, chunk_step=0, slot=0, unz=True,
                        rec=None, state=None):
     """把「INTACT 节点真推理 → 模型动作」装到引擎上 (原项目逻辑: 模型动作直接当 env 动作)。
@@ -135,9 +192,48 @@ def install_direct_act(sim, node, a_mean, a_std, infer_every=1, chunk_step=0, sl
                     frame = np.asarray(s.env.render())          # 真实渲染帧 (原项目也是真图)
                     fr = cv2.resize(frame, (IMG, IMG), interpolation=cv2.INTER_AREA) \
                         .transpose(2, 0, 1).astype(np.float32)
-                    out = node.step(fr, obs_source="engine_render")
+                    # 🎯 2026-09-14: 改走 policy 层编排 (service.run_once + 解码器 + 证据落盘)
+                    #   原来这里直接 node.step() → 意图解码器整条不在链上 ("点运行"进不去断点)。
+                    #   节点与帧都不变 (仍是引擎真渲染帧 + 同一 worker), 只有编排归一处。
+                    _log = state.get("verbose_log") or (lambda *a: None)
+                    _svc = policy_service(node=node, log=_log)
+                    # 🧠 skill_ctx (L2 原子技能上下文): 逐帧构造, 与采集数据同口径 (单一构造器)。
+                    #   v6+ 权重 (skill_dim>0) **缺它会由模型侧硬闸报错**, 实测原文:
+                    #   "checkpoint was trained with a skill channel but info['skill_ctx'] was not provided"
+                    #   → 运行路径必须真喂, 不许静默降级 (老倪红线)。
+                    from lerobot.policies.intact.skill_ctx import build_skill_ctx   # noqa: PLC0415
+                    _proc = l2_process(log=_log)
+                    _u = np.asarray(u_ff, float).ravel()
+                    _grip = float(_u[3]) if _u.size >= 4 else 0.0     # 引擎控制向量 u[3] (开-1/停0/闭+1)
+                    #   x 口径: **夹爪真实位置** (引擎 self.x = obs[0:3], v5.5.48 实锤), 不是 peg_head
+                    _sk = build_skill_ctx(_proc, getattr(s, "x", None), str(stage), _grip)
+                    state["l2_ready"] = _proc is not None
+                    state["l2_err"] = _L2.get("err")
+                    state["skill_ctx_dim"] = int(_sk.size)
+                    state["skill_ctx_nonzero"] = int(np.count_nonzero(_sk))
+                    state["skill_ctx_head"] = [round(float(v), 4) for v in _sk[:13]]
+                    _rep = _svc.run_once(stage=str(stage), decode=True, node=node,
+                                         obs_frame=fr, obs_source="engine_render",
+                                         skill_ctx=_sk,
+                                         write_evidence=bool(state.get("write_evidence", True)),
+                                         log=_log)
+                    out = getattr(_svc, "last_out", None)
+                    if out is None:
+                        raise RuntimeError("service.run_once 未产出 last_out (编排未真执行)")
                     chunk = np.asarray(out.chunk, np.float32)
                     state["calls"] += 1
+                    # 解码器产物 (意图先验/L3 条件/证据) 一并留档 → "接上了"有据可查
+                    state["decoder"] = getattr(_rep, "decoder", None)
+                    state["u_ff"] = (None if _rep.u_ff is None
+                                     else np.asarray(_rep.u_ff, float).tolist())
+                    state["u_ff_source"] = _rep.u_ff_source
+                    state["l3_cond_ready"] = _rep.l3_cond is not None
+                    state["l3_cond_source"] = _rep.l3_cond_source
+                    state["evidence"] = getattr(_rep, "evidence_path", None)
+                    state["report_keys"] = sorted((_rep.to_dict() or {}).keys())
+                    rec.setdefault("u_ff", []).append(
+                        None if _rep.u_ff is None else np.asarray(_rep.u_ff, float).copy())
+                    rec.setdefault("dec_src", []).append(str(_rep.u_ff_source))
                     raw = chunk[min(chunk_step, len(chunk) - 1), slot * 4:(slot + 1) * 4]
                     act = (raw * a_std + a_mean) if unz else raw
                     s._dact_cache = np.clip(act, -1.0, 1.0)
@@ -207,6 +303,14 @@ def direct_rollout(seed, mode, max_steps, goal224, node, a_mean, a_std, unz,
     out = {"tag": tag, "seed": seed, "done": done, "steps": len(tr["t"]),
            "insert_mm": (round(float(tr["dist"][-1]) * 1000, 1) if tr.get("dist") else None),
            "model_calls": state["calls"], "err": state["err"], "sec": round(time.time() - t0, 1),
+           # 🎯 2026-09-14: 解码器 (意图) 产物 —— 证明"点运行"链路真经过意图解码器
+           "u_ff_src": state.get("u_ff_source"), "l3_cond_ready": state.get("l3_cond_ready"),
+           "l3_cond_src": state.get("l3_cond_source"), "evidence": state.get("evidence"),
+           "u_ff": state.get("u_ff"),
+           # 🧠 skill_ctx 喂给模型的现场凭据 (维度/非零数/L2 是否真就绪)
+           "skill_ctx_dim": state.get("skill_ctx_dim"),
+           "skill_ctx_nonzero": state.get("skill_ctx_nonzero"),
+           "l2_ready": state.get("l2_ready"), "l2_err": state.get("l2_err"),
            "act_mean": act.mean(0).round(4).tolist() if len(act) else None,
            "act_std": act.std(0).round(4).tolist() if len(act) else None,
            "act_absmax": np.abs(act).max(0).round(3).tolist() if len(act) else None,
@@ -216,6 +320,11 @@ def direct_rollout(seed, mode, max_steps, goal224, node, a_mean, a_std, unz,
         print(f"   [{tag}] done={done} 步数={out['steps']} 插入={out['insert_mm']}mm · "
               f"模型真推理 {state['calls']} 次 · {out['sec']}s"
               + (f" · ⚠️ {state['err']}" if state["err"] else ""), flush=True)
+        print(f"   [{tag}] 意图解码器: u_ff_src={out['u_ff_src']} · u_ff={out['u_ff']} · "
+              f"L3条件就绪={out['l3_cond_ready']}({out['l3_cond_src']})", flush=True)
+        print(f"   [{tag}] skill_ctx: {out['skill_ctx_dim']} 维 · 非零 {out['skill_ctx_nonzero']} 项 · "
+              f"L2势场就绪={out['l2_ready']}{'' if out['l2_ready'] else ' ⚠️' + str(out['l2_err'])} · "
+              f"证据={out['evidence']}", flush=True)
     return out, act
 
 

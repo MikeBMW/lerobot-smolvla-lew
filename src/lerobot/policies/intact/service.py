@@ -168,10 +168,18 @@ class IntactIntentService:
         self.decoder: Any = None         # decoder.IntactIntentDecoder (懒建)
         self.source_note = ""
         self._lock = threading.Lock()
+        # 🎯 2026-09-14 老倪「点运行 + L4 就该真进入意图解码器」——
+        #   支持**外部注入节点**: 引擎/直驱工具已经持有"真渲染帧"来源的节点时, 本服务不再另建
+        #   worker/数据源 (避免两份接线、两份数字), 只负责编排 (解码/证据/报告)。
+        self.external_node: Any = None
+        self.last_out: Any = None        # 最近一次真推理的原始输出 (调用方取 chunk 用, 口径不变)
+        self.last_report: Any = None     # 最近一次 IntentReport
 
     # ── 建桥 + 接数据源 (幂等; 重复调用不重复起 worker) ──
     def ensure_ready(self) -> tuple[bool, str]:
         with self._lock:
+            if self.node is None and self.external_node is not None:
+                self.node = self.external_node     # 外部注入: 用它自己的接线, 不覆盖、不另起 worker
             if self.node is None:
                 try:
                     from .runtime import IntactNode
@@ -179,7 +187,7 @@ class IntactIntentService:
                     return False, f"policy 层未就绪: {type(e).__name__}: {e}"
                 self.node = IntactNode(horizon=self.horizon, action_dim=self.action_dim,
                                        repo=self.repo, log=self.log)
-            if self.node.source is None:
+            if self.node.source is None and self.external_node is None:
                 try:
                     self.node.set_data_source(self.source_name, seed=self.seed)
                 except Exception as e:                             # noqa: BLE001
@@ -207,7 +215,22 @@ class IntactIntentService:
         return self.node.step()
 
     def run_once(self, stage: str = "", decode: bool = True, write_evidence: bool | None = None,
-                 log=None) -> IntentReport:
+                 log=None, node=None, obs_frame=None, obs_source: str = "engine_render",
+                 skill_ctx=None) -> IntentReport:
+        """一步真推理 (+解码 +证据)。
+
+        可选参数 (2026-09-14 新增, 供引擎/直驱工具复用同一条编排):
+          · node      : 外部持有的节点 (引擎的真帧来源节点) → 绑定后不再另建 worker/数据源;
+                        断点可停在**本函数** = 画布「INTACT 意图解码器」节点源码所在处。
+          · obs_frame : 显式观测帧 (引擎真渲染帧) → `node.step(obs_frame, obs_source=…)`;
+                        不传 = 由节点自己的数据源出帧 (E2E/双击节点路径, 原行为)。
+          · skill_ctx : 🧠 L2 原子技能上下文 (24 维, 构造侧统一用 skill_ctx.build_skill_ctx)。
+                        **skill_dim>0 的 ckpt 缺它会由模型侧硬闸报错** (拒绝静默降级) —— 实测:
+                        "checkpoint was trained with a skill channel but info['skill_ctx'] was not
+                        provided"; 所以运行路径必须逐帧构造并传入。
+        """
+        if node is not None:
+            self.external_node = node
         log = log or self.log
         ok, why = self.ensure_ready()
         if not ok:
@@ -220,7 +243,11 @@ class IntactIntentService:
             log(f"   ⚠️ ensure_goal 失败: {type(e).__name__}: {e}")
         src = self.node.source
         st = str(stage or (src.info().get("stage", "") if src is not None else ""))
-        out = self.node.step()                                  # 真推理
+        # 🧠 skill_ctx: skill_dim>0 的 ckpt 缺它会被模型侧硬闸**拒绝**(不静默降级) → 一并透传
+        out = self.node.step(obs_frame,
+                             obs_source=(obs_source if obs_frame is not None else None),
+                             skill_ctx=skill_ctx)                   # 真推理
+        self.last_out = out          # 调用方 (引擎/直驱) 取 chunk 用 —— 与原 node.step 返回**同一对象**
         diag = dict(self.node.diagnostics() or {})
         rep = IntentReport(stage=st, trained=bool(getattr(out, "trained", False)),
                            chunk_shape=tuple(np.asarray(out.chunk).shape),
@@ -231,6 +258,7 @@ class IntactIntentService:
                            latent_keys=sorted((getattr(out, "latent", None) or {}).keys()),
                            bridge=self.bridge_status(),
                            ts=time.strftime("%F %T"))
+        self.last_report = rep
         if decode:
             d = self.decoder.decode(out, stage=st)
             rep.decoded = True
