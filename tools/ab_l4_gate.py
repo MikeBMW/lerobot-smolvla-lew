@@ -26,12 +26,22 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
+# 🧊 评估纪律 (2026-09-15 实证): 引擎肌肉记忆默认开且跨 run 持久化 (data/muscle_memory.json);
+#   热记忆让同一 seed 结果随历史漂移 (seed0 从稳定成功→6/6 确定性失败; 冷/热 = 3/8 vs 4/8),
+#   且热记忆下 30~65% 执行帧是记忆回放而非实时计算。A/B 默认隔离成空记忆 (冷口径),
+#   AB_HOT_MEM=1 才用共享记忆。
+if os.environ.get("AB_HOT_MEM") != "1":
+    os.environ.setdefault("SS_MUSCLE_PATH", "/tmp/ab_mem_%d.json" % os.getpid())
 for k, v in (("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
              ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
              ("INTACT_RUNTIME", "root"), ("INTACT_POLICY", "intact_l4_current"),
              ("OMP_NUM_THREADS", "6")):
     os.environ.setdefault(k, v)
-ARMS = {"analytic": None, "gate_on": "1", "gate_off": "0", "gate_on_line": "1w"}
+# 🧪 2026-09-15: "l4_attach_only" = 挂上 L4 但把阶段白名单清空 → L4 块根本不进 (用于隔离
+#   "L4 推理本身是否改变了执行": 若 attach_only == analytic 而 gate_on != analytic, 则 L4 推理
+#   路径存在对解析链的隐性耦合 (必须查, 否则"闸后结果变好"的归因是错的)。
+ARMS = {"analytic": None, "gate_on": "1", "gate_off": "0", "gate_on_line": "1w",
+        "l4_attach_only": "1empty"}
 
 
 def run_one(seed: int, arm: str, steps: int, line: bool) -> dict:
@@ -39,9 +49,14 @@ def run_one(seed: int, arm: str, steps: int, line: bool) -> dict:
     if g is None:
         os.environ.pop("SS_L4_INTACT", None)
         os.environ.pop("SS_L4_INTACT_GATE", None)
+        os.environ.pop("SS_L4_INTACT_STAGES", None)
     else:
         os.environ["SS_L4_INTACT"] = "1"
         os.environ["SS_L4_INTACT_GATE"] = "1" if g.startswith("1") else "0"
+        if g.endswith("empty"):
+            os.environ["SS_L4_INTACT_STAGES"] = ""      # 空白名单 → L4 块永不进入
+        else:
+            os.environ.pop("SS_L4_INTACT_STAGES", None)
     line = line or g == "1w"
     if line:
         os.environ["SS_L4_INTENT_LINE"] = "1"

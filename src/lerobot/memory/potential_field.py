@@ -430,20 +430,32 @@ class ObstacleField:
         self.source = source
 
     @classmethod
-    def from_engine(cls, root="/home/ubuntu/lerobot-smolvla-lew", seed=104):
+    def from_engine(cls, root="/home/ubuntu/lerobot-smolvla-lew", seed=104, geom=None):
         """从真实引擎读现场几何 (geom: hole/goal/peg_grasp)。取不到 → (None, 原因), 绝不编造。
-        ⚠️ geom 在 _reset 里现场采样 (构造时为空) → 必须先真跑一次 reset 才读得到。"""
+        ⚠️ geom 在 _reset 里现场采样 (构造时为空) → 必须先真跑一次 reset 才读得到。
+
+        🚨 2026-09-15 **重大 bug 修复**: 原实现在引擎**正在运行**时又 `RealStateSpaceSim(...)`
+        新建了第二个引擎实例并 `_reset(104)` 采几何 —— 而 metaworld 的底层 MuJoCo sim 是**进程内
+        共享**的, 第二个实例 reset 会**改写正在运行场景的 qpos**: 实测 peg 被瞬移 Δ=[+1.2mm, −17mm, 0],
+        导致"同一个 seed"的 L4 臂与解析链臂跑的**根本不是同一个场景**(A/B 全部失真, 且热/冷记忆、
+        多次运行结果漂移都由此放大)。
+        修法: 调用方有现成 geom 时**直接传入** (geom=...), 不再新建引擎; 只读不写。
+        """
         import sys
         try:
-            p = os.path.join(root, "tools", "gui")
-            if p not in sys.path:
-                sys.path.insert(0, p)
-            from state_space_sim_real import RealStateSpaceSim       # noqa: PLC0415
-            sim = RealStateSpaceSim(seed=int(seed), vision=False, mode="insert", log=lambda *a: None)
-            g = dict(getattr(sim, "geom", {}) or {})
-            if not g:                                     # 构造后 geom 为空 → 真 reset 采样几何
-                sim._reset(int(seed))
+            if geom:
+                g = dict(geom)
+            else:
+                p = os.path.join(root, "tools", "gui")
+                if p not in sys.path:
+                    sys.path.insert(0, p)
+                from state_space_sim_real import RealStateSpaceSim       # noqa: PLC0415
+                sim = RealStateSpaceSim(seed=int(seed), vision=False, mode="insert",
+                                        log=lambda *a: None)
                 g = dict(getattr(sim, "geom", {}) or {})
+                if not g:                                 # 构造后 geom 为空 → 真 reset 采样几何
+                    sim._reset(int(seed))
+                    g = dict(getattr(sim, "geom", {}) or {})
             hole = g.get("hole")
             goal = g.get("goal")
             if hole is None or goal is None:
@@ -845,8 +857,13 @@ class MemoryLayerBridge:
 
     # ── 从真实数据装配 (L2/L3/L4) ──
     @classmethod
-    def from_real_data(cls, root="/home/ubuntu/lerobot-smolvla-lew", seed=104, use_engine_geom=True):
-        """用 data/muscle_memory.json 的冠军轨迹建 L2, 按时序建 L3, 引擎几何建 L4。缺数据不编。"""
+    def from_real_data(cls, root="/home/ubuntu/lerobot-smolvla-lew", seed=104, use_engine_geom=True,
+                       geom=None):
+        """用 data/muscle_memory.json 的冠军轨迹建 L2, 按时序建 L3, 引擎几何建 L4。缺数据不编。
+
+        geom: 调用方 (引擎) 现成的现场几何 → 透传给 ObstacleField.from_engine, **避免新建第二个
+        引擎实例污染正在运行的场景** (2026-09-15 实测 bug, 见 ObstacleField.from_engine 注释)。
+        """
         mpath = os.path.join(root, "data", "muscle_memory.json")
         if not os.path.isfile(mpath):
             return cls(root=root, reason=f"缺 {mpath}")
@@ -882,7 +899,8 @@ class MemoryLayerBridge:
             except Exception as e:                                     # noqa: BLE001
                 missing.append(f"{stg}({type(e).__name__})")
         proc = ProcessPotentialField(fields, durations=durs) if fields else None
-        obstacle, why = (ObstacleField.from_engine(root) if use_engine_geom else (None, "未启用"))
+        obstacle, why = (ObstacleField.from_engine(root, geom=geom) if use_engine_geom
+                         else (None, "未启用"))
         world = WorldField(gain=0.5)                                   # 无预测器 → enabled=False
         gf = GlobalPotentialField(proc, obstacle, world) if proc else None
         reason = ("ok" if fields else "无可用技能轨迹") + (f" · 缺阶段 {missing}" if missing else "") \

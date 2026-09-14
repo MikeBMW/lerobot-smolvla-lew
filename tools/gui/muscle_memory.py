@@ -177,7 +177,11 @@ _INSTANCE = None
 def get_memory():
     global _INSTANCE
     if _INSTANCE is None:
-        _INSTANCE = MuscleMemory()
+        # 2026-09-15: 支持路径隔离 (SS_MUSCLE_PATH)。取证: 肌肉记忆默认开且每次 run 都 save(),
+        #   后续 run 会读回**上一批 run 学到的 champion** → 评估不可复现 (实测同一 seed0 在多次
+        #   run 后从稳定成功变成确定性失败 6/6)。A/B 必须把记忆隔离到临时文件/空文件。
+        _p = os.environ.get("SS_MUSCLE_PATH") or None
+        _INSTANCE = MuscleMemory(path=_p)
     return _INSTANCE
 
 

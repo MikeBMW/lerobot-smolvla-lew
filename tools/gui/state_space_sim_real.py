@@ -174,6 +174,17 @@ GRIP_CLOSE = float(os.environ.get("SS_GRIP_CLOSE", "0.6"))   # metaworld 夹爪�
 #   ↑ 2026-09-10 攻抓取鲁棒性: 参数化以便做夹持力实验 (seed11/12 滑脱诊断: 引擎 grasped 是
 #     "夹爪闭合 3 步"的乐观推断, 非物理判据 → 试着加大闭合量看能否夹牢。
 GRIP_OPEN = -1.0        # 张开动作
+# 2026-09-15: 抓取点沿 peg 轴(x)平移 (默认 0 = 原行为逐位不变)。
+#   取证: peg = 240mm 长杆(胶囊 r15 半长120), 抓取目标=杆中心; seed2 的杆中心落在机器人基座
+#   正下方(x≈0.002, 杆身跨到 x=−0.118=基座后方) → 抓取位姿尴尬, 抬升滑移 13 次 (seed0/1 不滑)。
+#   本参数用于"A/B 抓取点"实验: 沿杆轴挪开基座方向再夹。
+GRASP_DX = float(os.environ.get("SS_GRASP_DX", "0.0"))
+# 自适应版 (2026-09-15): peg 中心太靠近机器人基座(x≈0)时, 沿 +x 把抓取点挪开, 目标=手腕离基座
+#   至少 GRASP_BASE_CLEAR。取证: seed2 杆中心 x=0.002(基座正下方) → 抬升滑移 13 次; 固定 +60mm
+#   → done 在独立进程×2重复下**被推翻**(seed2 仍失败, 且更深), 故**默认关** (SS_GRASP_ADAPT=1 才开);
+#   保留仅为后续实验旋钮。默认关 = 与既有行为逐位相同 (零回退)。
+GRASP_BASE_CLEAR = float(os.environ.get("SS_GRASP_CLEAR", "0.06"))
+GRASP_DX_MAX = float(os.environ.get("SS_GRASP_DX_MAX", "0.09"))    # 上限 (< 杆半长 0.12, 不移出杆)
 GRASP_SAT = 0.70        # 夹住销后的 gripper 饱和 (~0.70, cognition.py 注释; 空夹收敛 ~0.29)
 D_CONTACT = 0.02        # 接触距离 (同引擎)
 D_INSERT = 0.004        # 插入成功判定 (同引擎)
@@ -687,6 +698,12 @@ class RealStateSpaceSim:
         self._depth_min = 9.9       # 插入段最小残余深度 (离孔底, AOI 报告)
         self._aoi_report = None     # AOI 检测报告 (PASS/FAIL + 真实过程指标)
         self._went_back_0 = False   # 是否曾回接近重抓 (AOI 报告过程指标)
+        # 🐢 2026-09-15: 抬升/转移阶段限速参数化 (默认=类默认值, 不设环境变量行为逐位不变)。
+        #   取证: 解析链在 seed2/3/4/5 失败, 共同点是"滑移 3~10 次"(抬升/转移段), 疑动态载荷
+        #   使 240mm/0.1kg 长杆在夹爪内滑动 → 降速可减小惯性力。用于 A/B 验证。
+        for _k, _envk, _dflt in (("抬起", "SS_VCAP_LIFT", 0.30), ("转移", "SS_VCAP_TRANSFER", 0.35)):
+            if os.environ.get(_envk):
+                self.sched.v_cap[_k] = float(os.environ[_envk])
         self.stage_hist = []
         self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
@@ -797,6 +814,25 @@ class RealStateSpaceSim:
     #   (回退重抓时销可能被首次下降碰移, 静态采样坐标会空夹 — ep3-5 失败实锤)
     # 夹持后 (抬起→插入): 目标由"光模块头当前位置 + 实时夹爪偏移"驱动 —
     #   光模块头相对夹爪的方向/距离锁存后不变, 把光模块头送到孔口/终点即得夹爪目标
+    def _grasp_dx(self):
+        """抓取点沿 +x 的自适应平移量 (2026-09-15)。
+
+        依据: peg 是 240mm 长杆 (胶囊 r15 半长 120), 抓取目标 = 杆中心; 当杆中心落在机器人
+        基座正上方 (x≈0) 时, 手腕压在基座上方 → 抓取位姿尴尬 → 抬升滑移 (seed2 实测 13 次)。
+        规则: 需要的手腕离基座间隙 = GRASP_BASE_CLEAR − pg_x, 取 ≥0 并夹到 GRASP_DX_MAX
+        (上限 < 杆半长, 保证抓取点仍在杆上)。SS_GRASP_ADAPT=0 → 恒等于固定量 GRASP_DX (旧行为)。
+        """
+        dx = GRASP_DX
+        if os.environ.get("SS_GRASP_ADAPT", "0") != "1":
+            return dx
+        pg = getattr(self, "_peg_cur", None)
+        if pg is None:
+            return dx
+        need = GRASP_BASE_CLEAR - float(pg[0])
+        if need <= 0:
+            return dx
+        return dx + min(need, GRASP_DX_MAX)
+
     def _stage_target(self):
         g = self.geom
         st = self.sched.stage()
@@ -804,12 +840,13 @@ class RealStateSpaceSim:
         if pg is None:
             # 🐛 2026-09-07: R1 视觉尚未定位 peg → 原地悬停等检出 (诚实, 不回落真值)
             return np.array([self.x[0], self.x[1], self.x[2] + 0.01])
+        _dx = self._grasp_dx()
         if st == "接近":
-            return pg + np.array([0.0, 0.0, STAGE_APPROACH_H])
+            return pg + np.array([_dx, 0.0, STAGE_APPROACH_H])
         if st == "对位":
-            return pg + np.array([0.0, 0.0, STAGE_ALIGN_H])
+            return pg + np.array([_dx, 0.0, STAGE_ALIGN_H])
         if st in ("下降", "抓取"):
-            return pg + np.array([0.0, 0.0, STAGE_DESCEND_H])
+            return pg + np.array([_dx, 0.0, STAGE_DESCEND_H])
         if st == "抬起":
             # 垂直抬升: xy 保持当前, z 抬到销离台 STAGE_LIFT (保持锁存时夹爪-销高度差)
             gap_z = getattr(self, "_grasp_gap_z", 0.02)
@@ -1205,8 +1242,13 @@ class RealStateSpaceSim:
                 if os.path.join(_root, "src") not in _sys.path:
                     _sys.path.insert(0, os.path.join(_root, "src"))
                 from lerobot.memory.potential_field import MemoryLayerBridge  # noqa: PLC0415
+                # 🚨 2026-09-15 关键: 传**本引擎自己的 geom**。原实现不传 → ObstacleField.from_engine
+                #   会新建第二个 RealStateSpaceSim + _reset(104), 而 metaworld 底层 sim 进程内共享
+                #   → 正在运行的场景被改写 (实测 peg 瞬移 Δ=[+1.2mm,−17mm,0]), 导致 L4 臂与解析链臂
+                #   跑的不是同一个场景 (所有涉 L4 的 A/B 失真)。
                 d["p"] = MemoryLayerBridge.from_real_data(root=_root, seed=104,
-                                                          use_engine_geom=True).process
+                                                          use_engine_geom=True,
+                                                          geom=getattr(self, "geom", None)).process
                 d["err"] = None
             except Exception as e:                                          # noqa: BLE001
                 d["p"], d["err"] = None, f"{type(e).__name__}: {e}"

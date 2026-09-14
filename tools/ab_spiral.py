@@ -27,6 +27,12 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
+# 🧊 评估纪律 (2026-09-15 实证): 引擎肌肉记忆默认开且跨 run 持久化 (data/muscle_memory.json);
+#   热记忆让同一 seed 结果随历史漂移 (seed0 从稳定成功→6/6 确定性失败; 冷/热 = 3/8 vs 4/8),
+#   且热记忆下 30~65% 执行帧是记忆回放而非实时计算。A/B 默认隔离成空记忆 (冷口径),
+#   AB_HOT_MEM=1 才用共享记忆。
+if os.environ.get("AB_HOT_MEM") != "1":
+    os.environ.setdefault("SS_MUSCLE_PATH", "/tmp/ab_mem_%d.json" % os.getpid())
 for k, v in (("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
              ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
              ("INTACT_RUNTIME", "root"), ("INTACT_POLICY", "intact_l4_current"),
@@ -69,6 +75,9 @@ def main() -> int:
         arr = np.asarray([np.nan if x is None else x for x in dl], float) if dl else np.zeros(0)
         r = {"arm": a.arm, "seed": sd, "env": ARMS[a.arm], "steps": len(stg),
              "done": bool(tr.get("done", [False])[-1]),
+             "mm_hits": int(getattr(sim, "_mm_hits", 0) or 0),
+             "mm_on": bool(getattr(sim, "_mm_on", False)),
+             "muscle_path": os.environ.get("SS_MUSCLE_PATH") or "(默认 data/muscle_memory.json)",
              "stage_counts": dict(collections.Counter(stg)),
              "depth_min_mm": round(float(np.nanmin(arr)) * 1000, 2) if arr.size else None,
              "depth_end_mm": round(float(arr[-1]) * 1000, 2) if arr.size else None,
@@ -78,6 +87,7 @@ def main() -> int:
              "sec": round(time.time() - t0, 1)}
         print(f"[{a.arm:5s} seed{sd}] done={r['done']} depth最小={r['depth_min_mm']}mm "
               f"螺旋={r['spirals']} 回退={r['retreats']} 滑={r['slip_events']} "
+              f"记忆快通道命中={r['mm_hits']}帧(共{r['steps']}帧, mm_on={r['mm_on']}) "
               f"阶段={r['stage_counts']} · {r['sec']}s", flush=True)
         if jl:
             with open(jl, "a", encoding="utf-8") as fh:
