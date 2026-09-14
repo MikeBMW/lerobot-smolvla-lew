@@ -183,6 +183,10 @@ GRASP_DX = float(os.environ.get("SS_GRASP_DX", "0.0"))
 #   至少 GRASP_BASE_CLEAR。取证: seed2 杆中心 x=0.002(基座正下方) → 抬升滑移 13 次; 固定 +60mm
 #   → done 在独立进程×2重复下**被推翻**(seed2 仍失败, 且更深), 故**默认关** (SS_GRASP_ADAPT=1 才开);
 #   保留仅为后续实验旋钮。默认关 = 与既有行为逐位相同 (零回退)。
+# 🎯 2026-09-15 抓取点"离头距离"下限 (mm→m): 取证失败 seed 抓取点离头仅 112~124mm(设计 130),
+#   夹爪比设计深 6~18mm → 插入时段压治具上盖板 (同轴帧 78% 有 rightclaw/rightpad↔box#39 接触)
+#   → depth 卡 ~28mm; 成功 seed 129~132mm、无治具接触。低于下限 → 回退重抓并沿杆轴远头平移缺口。
+GRASP_MIN_REACH = float(os.environ.get("SS_GRASP_MIN_REACH", "0.126"))
 GRASP_BASE_CLEAR = float(os.environ.get("SS_GRASP_CLEAR", "0.06"))
 GRASP_DX_MAX = float(os.environ.get("SS_GRASP_DX_MAX", "0.09"))    # 上限 (< 杆半长 0.12, 不移出杆)
 GRASP_SAT = 0.70        # 夹住销后的 gripper 饱和 (~0.70, cognition.py 注释; 空夹收敛 ~0.29)
@@ -219,6 +223,14 @@ SPIRAL_DR = float(os.environ.get("SS_SPIRAL_DR", "0.000045"))     # 每帧半径
 SPIRAL_RMAX = float(os.environ.get("SS_SPIRAL_RMAX", "0.0045"))   # 半径上限 4.5mm
 SPIRAL_OMEGA = float(os.environ.get("SS_SPIRAL_OMEGA", "0.55"))   # 每帧角增量 (rad) → 70 帧约 6 圈
 SPIRAL_TRIES = int(os.environ.get("SS_SPIRAL_TRIES", "3"))        # 单轮最多螺旋次数
+# 🐢 2026-09-15 插入"降落受阻"恢复 (取证: 卡死 seed 进孔后从悬高 20mm 往下降时, 杆与治具接触
+#   把降落卡在孔轴上方 6.8~16mm, 同时水平推持续 → depth 爬到 27mm 死; 成功 seed 逐帧无治具接触、
+#   入孔偏差 0.14mm)。策略: 下降停滞 N 帧 → **沿孔轴回撤**(退出孔道)再降, 回撤量随停滞时长递增
+#   (标准 peg-in-hole "退-降-再进" 动作)。**默认关** (实测: 12 seed 基线开关无差异 5/12 vs 5/12,
+#   单 seed 变化 0.1~2.4mm 无收益 → 按"未证明提升不得进默认档"保留为旋钮; SS_DESCEND_FIX=1 开)。
+DESCEND_STALL_N = int(os.environ.get("SS_DESCEND_STALL_N", "8"))
+DESCEND_BACK_STEP = float(os.environ.get("SS_DESCEND_BACK_STEP", "0.0015"))
+DESCEND_BACK_MAX = float(os.environ.get("SS_DESCEND_BACK_MAX", "0.015"))
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
@@ -706,6 +718,8 @@ class RealStateSpaceSim:
                 self.sched.v_cap[_k] = float(os.environ[_envk])
         self.stage_hist = []
         self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
+        self._grasp_dx_extra = 0.0  # 🎯 2026-09-15 抓取点闭环补偿量 (沿杆轴远头; 只在离头过近时加)
+        self._grasp_fix_tries = 0   # 补偿重抓次数 (上限 2, 防死循环)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
         self._off_prev = None      # 上一帧 光模块−夹爪 (真值随动跟踪, 锚定判据 v2)
         self._x_prev = None        # 上一帧 夹爪位置 (判夹爪是否在动 — 抬升试探锚定)
@@ -822,7 +836,7 @@ class RealStateSpaceSim:
         规则: 需要的手腕离基座间隙 = GRASP_BASE_CLEAR − pg_x, 取 ≥0 并夹到 GRASP_DX_MAX
         (上限 < 杆半长, 保证抓取点仍在杆上)。SS_GRASP_ADAPT=0 → 恒等于固定量 GRASP_DX (旧行为)。
         """
-        dx = GRASP_DX
+        dx = GRASP_DX + float(getattr(self, "_grasp_dx_extra", 0.0) or 0.0)
         if os.environ.get("SS_GRASP_ADAPT", "0") != "1":
             return dx
         pg = getattr(self, "_peg_cur", None)
@@ -879,6 +893,12 @@ class RealStateSpaceSim:
             #   孔口上沿 (遇阻#1 实测 z_err=+2.6mm 卡死; z 校到 0.6mm 即推进 1.5mm)。
             if abs(float(ph_now[2] - hp[2])) > 0.0012:
                 # 段① 垂直降: xy 保持 (转移已对准), z 降到孔口中心
+                # 🐢 降落受阻 → 先沿孔轴回撤退出孔道再降 (2026-09-15)
+                _ds = int(getattr(self, "_descend_stall", 0) or 0)
+                if (os.environ.get("SS_DESCEND_FIX", "0") == "1"
+                        and _ds >= DESCEND_STALL_N):
+                    _back = min(DESCEND_BACK_MAX, DESCEND_BACK_STEP * (_ds - DESCEND_STALL_N + 1))
+                    return np.array([ph_now[0] + _back, ph_now[1], hp[2]]) - off
                 return np.array([ph_now[0], ph_now[1], hp[2]]) - off
             return self._goal_p() - off          # 段② 水平推入 (z 已同轴)
         # 🚀 2026-09-08 L3 扩展 (mode=full): 拔出/AOI/回程/放下 目标 (全头语义 ph→目标点, 锚=夹爪)
@@ -2395,6 +2415,29 @@ class RealStateSpaceSim:
                         self.log(f"🎯 夹持真值锚定 (抬升试探 peg 跟手): off0="
                                  f"{np.round(self._grasp_off0,4)} "
                                  f"(视觉残差不再影响滑脱判定, 转移/插入走编码器)")
+                        # 🎯 2026-09-15 抓取点闭环补偿 (证据: 失败 seed 抓取点离头 112~124mm < 设计
+                        #   130mm → 夹爪深 6~18mm 压在治具上盖板 box#39 上, 插入同轴后推不动,
+                        #   depth 卡 ~28mm; 成功 seed 129~132mm 且插入段无治具接触)。
+                        _reach = float(np.linalg.norm(
+                            np.asarray(self._grasp_off0, float)[:3]
+                            + np.asarray(self.geom.get("head_off", np.zeros(3)), float)))
+                        if (os.environ.get("SS_GRASP_REACH_FIX", "1") == "1"
+                                and _reach < GRASP_MIN_REACH
+                                and int(getattr(self, "_grasp_fix_tries", 0)) < 2):
+                            self._grasp_fix_tries = int(getattr(self, "_grasp_fix_tries", 0)) + 1
+                            _need = min(GRASP_MIN_REACH - _reach, 0.02)
+                            self._grasp_dx_extra = float(getattr(self, "_grasp_dx_extra", 0.0)) + _need
+                            self.log(f"🧠 抓取点补偿: 抓取点离头 {_reach*1000:.1f}mm < "
+                                     f"{GRASP_MIN_REACH*1000:.0f}mm → 沿杆轴远头平移 {_need*1000:.1f}mm "
+                                     f"重抓 (第{self._grasp_fix_tries}次)")
+                            self.grasped = False
+                            self._grasp_off0 = None
+                            self._off0_anchored = False
+                            try:
+                                self.sched._goto(0, "🧠 抓取点补偿 → 回接近重抓")
+                                self._reloc = True
+                            except Exception:
+                                pass
                 # 🎯 2026-09-10 滑脱判据改进 (seed11/12 边界误判实锤, 老倪攻抓取鲁棒性):
                 #   旧判据 |_off−_grasp_off0| > 8mm 会把"深夹后 peg 稳定停在 9mm 相对位移"
                 #   误判为滑脱 —— 实测 seed12 七次掉落全在 9.0~9.8mm (刚好越线), 而 seed7
@@ -2407,7 +2450,8 @@ class RealStateSpaceSim:
                 _doff_now = (float(np.linalg.norm(_off - self._off_prev))
                              if self._off_prev is not None else 0.0)
                 self._slip_run = self._slip_run + 1 if _doff_now > 0.004 else 0
-                _cum = float(np.linalg.norm(_off - self._grasp_off0))
+                _cum = (float(np.linalg.norm(_off - self._grasp_off0))
+                        if self._grasp_off0 is not None else 0.0)   # 🐛 09-15: 补偿重抓会把 off0 置 None
                 _give_up = False
                 if self._slip_run >= 5 or _cum > 0.015:
                     if getattr(self, "_regrip_tries", 0) < 3:
@@ -2499,6 +2543,20 @@ class RealStateSpaceSim:
             d_xy = self._d_xy_peg()
             dh = self._d_hole_h()
             depth = self._insert_depth()
+            # 🐢 2026-09-15 降落停滞计数 (只在插入段+夹持时; 成功路径 z 持续下降 → 恒 0, 零回退)
+            if str(self.sched.stage()).startswith("插入") and self.grasped:
+                _dzs = abs(float(ph[2] - self._hole_p()[2]))
+                _zp = getattr(self, "_descend_z_prev", None)
+                if _dzs > 0.0012:
+                    if _zp is not None and float(ph[2]) >= float(_zp) - 1e-4:
+                        self._descend_stall = int(getattr(self, "_descend_stall", 0)) + 1
+                    else:
+                        self._descend_stall = 0
+                else:
+                    self._descend_stall = 0
+                self._descend_z_prev = float(ph[2])
+            else:
+                self._descend_stall = 0
             lifted = float(ph[2]) - g["peg_z0"]
             # grasp_force = 夹持质量: 夹住且 光模块 随动 → 1; 掉件/空夹 → 0 (调度器回退判据)
             #   (放下放件中 _drop_released 后恒 0 — 该段不在调度器回退范围, 正常)

@@ -1,3 +1,4 @@
+import os
 """cognition.py — S3 认知决策层 (状态空间模型画布)
 
 🧪 状态校正器 (卡尔曼更新核心):
@@ -119,8 +120,12 @@ class ActionModulator:
         # 🐛 2026-09-06 静静: 转移→插入只看水平 dh, 会切在 peg 头低于孔口时 → 斜插顶孔沿
         #   插不进, 夹爪硬推把 peg 从夹爪里挤滑 (off 逐帧缩短) → 滑脱回退。切换须等
         #   peg 头悬在孔口上方 INSERT_HOVER±容差 (转移目标同款几何)。
-        self.INSERT_HOVER = 0.02        # 转移目标: peg 头悬孔口上方高度 (m)
-        self.INSERT_Z_TOL = 0.012       # 切换 z 容差 (太高压根进不了, 太低顶孔沿)
+        # 🐛 2026-09-15 参数化 (默认值=原硬编码, 不设环境变量行为逐位不变): 实测卡死 seed 在
+        #   head 高于孔轴 11.6/17.0mm 时被放行进入插入 (容差 ±12mm → 8~32mm 都能过闸), 随后
+        #   在孔道内降不下去 (杆压治具, 接触对 peg↔治具box) 卡在 depth≈27mm; 成功 seed 入孔时
+        #   偏差仅 0.14mm ⇒ 入口容差过松是主嫌。
+        self.INSERT_HOVER = float(os.environ.get("SS_INSERT_HOVER", "0.02"))
+        self.INSERT_Z_TOL = float(os.environ.get("SS_INSERT_Z_TOL", "0.012"))
 
     def stage(self):
         return self.STAGES[self.stage_idx]
