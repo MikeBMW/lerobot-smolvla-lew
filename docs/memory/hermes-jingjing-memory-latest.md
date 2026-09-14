@@ -10,17 +10,17 @@ web=4090训练+ComfyUI+前端+ECS+PM; 总工(4060/GitHub/GUI); 小芳=硬件
 §
 安全限值=🛡类别4栏位; 状态空间三层安全(否决+限幅+Sys0)
 §
-崩溃铁律: worker禁QObject→pyqtSignal回主线程; macOS GL须主线程(darwin跳渲染); GUI改码必重启
+崩溃铁律: worker禁QObject→pyqtSignal回主线程; macOS GL须主线程; GUI改码必重启
 §
-GitHub: 直连不通→ghproxy.net(push可用,但提交>500KB报413或挂→大图不进库; 凭证要显式Authorization头); Release走browser_download_url
+GitHub: 直连不通→ghproxy.net(push需显式Authorization头; >500KB报413或挂→大文件不进库); Release走browser_download_url
 §
-界面偏好: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 图层名按模块链路排序, 开关连文字绑; 数据页只放数据(产物归训练台); 面板数字禁假值
+界面偏好: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 图层按模块链路排序, 开关连文字绑; 数据页只放数据; 面板禁假值
 §
 Hermes: 敏感命令硬拦+扫脚本→变量拼接绕; pkill用[x]; sudo免密; 镜像技能/记忆前必扫凭据(gh[pousr]_40/AKIA)脱敏 — Push Protection拦(GH013)禁点allow-secret, 改脱敏+amend重推
 §
-跨会话/多会话: 先git log+session_search查证别重复训练; 同机多会话协商GPU(启训前查nvidia-smi); last须symlink; 报进度须说清'实际在跑什么'(说了没做=不可接受)
+跨会话/多会话: 先git log+session_search查证别重复训练; 同机多会话协商GPU(启训前查nvidia-smi); 报进度须说清'实际在跑什么'(说了没做=不可接受)
 §
-Hermes: CLI≠gateway(system unit); 飞书99991663=token 2h过期→重启hermes-gateway.service
+Hermes: CLI≠gateway(system unit); 飞书99991663=token过期→重启hermes-gateway
 §
 磁盘红线300G
 §
@@ -30,15 +30,15 @@ Hermes: CLI≠gateway(system unit); 飞书99991663=token 2h过期→重启hermes
 §
 引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5] → obs[7:10]=_pc光模块位置; gripper不由accel决定; 训练用_frame_sink的o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×K_ACT=act×0.5)
 §
-打包坑: PyInstaller sys.executable=app→runtime_env.resolve_python(); SmolVLM images=[[i]]+text×N(否则特征全零); transformers5→AutoModelForImageTextToText
+打包坑: PyInstaller sys.executable=app→runtime_env.resolve_python(); SmolVLM images=[[i]]+text×N; transformers5→AutoModelForImageTextToText
 §
 L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选(预测器逐帧发指令φ*); 老倪红线: 真模型/预测器须默认生效, 日志现'脚本开环'即不合格
 §
 守卫: TOL=0.15→100%+参与21-34%; 53D完备未破参与上限24-27%, >30%掉分/全模型崩; insert_depth原6mm太松(老倪目检戳穿)→0.002; tr[peg]=速度(位置用peg_head())
 §
-数据只留cube+reacher; 删大文件前验证依赖(曾误删唯一源)
+删大文件前验证依赖(曾误删唯一源)
 §
-模型: 本机仅DeepSeek key(deepseek-flash/v4-pro); 换全局模型须钉住定时任务
+模型: 本机仅DeepSeek key; 换全局模型须钉住定时任务
 §
 画布禁"右输入左输出"节点位置(可放大画布)
 §
@@ -47,3 +47,5 @@ L4档运行=INTACT直驱(install_direct_act→service.run_once, 逐帧喂skill_c
 断点/真执行: action_head.py:307(loss)只有画布「训练」节点进; L4运行=INTACT直驱不碰smolvla_lew; L3档模型执行真跑须SS_L3_DEV=cpu(ckpt预处理器device写死cuda,已修+熔断)
 §
 口径铁律: 运行时须=训练(图像/255+ImageNet, stats同源, 零回退勿两端零初始→通道死); 多轮一致差先查口径勿加训练量
+§
+记忆层坑(09-15): memory_layers.json L2=1→势场与模型反向, 合成u≈0→卡'接近'空转; 已置0待修(reports/PENDING_FIX_20260915.md); L4档full预算4000步; INTACT仍CPU
