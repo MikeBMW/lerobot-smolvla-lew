@@ -1,0 +1,80 @@
+{
+ "per_seed": [
+  {
+   "seed": 0,
+   "label": "成功",
+   "p_fail_mean": 0.2172,
+   "n": 276
+  },
+  {
+   "seed": 1,
+   "label": "失败",
+   "p_fail_mean": 0.676,
+   "n": 818
+  },
+  {
+   "seed": 2,
+   "label": "失败",
+   "p_fail_mean": 0.8662,
+   "n": 833
+  },
+  {
+   "seed": 3,
+   "label": "失败",
+   "p_fail_mean": 0.988,
+   "n": 837
+  },
+  {
+   "seed": 4,
+   "label": "失败",
+   "p_fail_mean": 0.7693,
+   "n": 675
+  },
+  {
+   "seed": 5,
+   "label": "失败",
+   "p_fail_mean": 0.806,
+   "n": 790
+  },
+  {
+   "seed": 6,
+   "label": "成功",
+   "p_fail_mean": 0.4542,
+   "n": 284
+  },
+  {
+   "seed": 7,
+   "label": "成功",
+   "p_fail_mean": 0.4471,
+   "n": 282
+  },
+  {
+   "seed": 8,
+   "label": "失败",
+   "p_fail_mean": 0.8836,
+   "n": 814
+  },
+  {
+   "seed": 9,
+   "label": "成功",
+   "p_fail_mean": 0.4543,
+   "n": 277
+  },
+  {
+   "seed": 10,
+   "label": "失败",
+   "p_fail_mean": 0.881,
+   "n": 728
+  },
+  {
+   "seed": 11,
+   "label": "失败",
+   "p_fail_mean": 0.8578,
+   "n": 784
+  }
+ ],
+ "p_fail_success_seeds_mean": 0.3932,
+ "p_fail_failure_seeds_mean": 0.8409875,
+ "oof_auc": 0.8008,
+ "limitation": "局级标签: 同 seed 内单一类别 → 折内 AUC 无定义; 且首段帧与成功局同形 → 会早报(假阳)"
+}

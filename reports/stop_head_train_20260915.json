@@ -1,0 +1,108 @@
+{
+ "ts": "2026-09-15",
+ "data": "stop_signal_v1.npz",
+ "n": 7398,
+ "fail_ratio": 0.8487429022789001,
+ "loso": [
+  {
+   "seed": 0,
+   "auc": NaN,
+   "acc": 0.8297,
+   "trivial_acc": 1.0,
+   "n": 276,
+   "n_fail": 0
+  },
+  {
+   "seed": 1,
+   "auc": NaN,
+   "acc": 0.6724,
+   "trivial_acc": 1.0,
+   "n": 818,
+   "n_fail": 818
+  },
+  {
+   "seed": 2,
+   "auc": NaN,
+   "acc": 0.8475,
+   "trivial_acc": 1.0,
+   "n": 833,
+   "n_fail": 833
+  },
+  {
+   "seed": 3,
+   "auc": NaN,
+   "acc": 0.9988,
+   "trivial_acc": 1.0,
+   "n": 837,
+   "n_fail": 837
+  },
+  {
+   "seed": 4,
+   "auc": NaN,
+   "acc": 0.7511,
+   "trivial_acc": 1.0,
+   "n": 675,
+   "n_fail": 675
+  },
+  {
+   "seed": 5,
+   "auc": NaN,
+   "acc": 0.8177,
+   "trivial_acc": 1.0,
+   "n": 790,
+   "n_fail": 790
+  },
+  {
+   "seed": 6,
+   "auc": NaN,
+   "acc": 0.588,
+   "trivial_acc": 1.0,
+   "n": 284,
+   "n_fail": 0
+  },
+  {
+   "seed": 7,
+   "auc": NaN,
+   "acc": 0.5284,
+   "trivial_acc": 1.0,
+   "n": 282,
+   "n_fail": 0
+  },
+  {
+   "seed": 8,
+   "auc": NaN,
+   "acc": 0.8845,
+   "trivial_acc": 1.0,
+   "n": 814,
+   "n_fail": 814
+  },
+  {
+   "seed": 9,
+   "auc": NaN,
+   "acc": 0.5957,
+   "trivial_acc": 1.0,
+   "n": 277,
+   "n_fail": 0
+  },
+  {
+   "seed": 10,
+   "auc": NaN,
+   "acc": 0.8819,
+   "trivial_acc": 1.0,
+   "n": 728,
+   "n_fail": 728
+  },
+  {
+   "seed": 11,
+   "auc": NaN,
+   "acc": 0.852,
+   "trivial_acc": 1.0,
+   "n": 784,
+   "n_fail": 784
+  }
+ ],
+ "loso_auc_mean": NaN,
+ "oof_auc": 0.8007869401971278,
+ "gate_0p75_passed": false,
+ "weights": null
+}

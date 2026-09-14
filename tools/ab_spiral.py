@@ -84,9 +84,12 @@ def main() -> int:
              "spirals": sum(1 for l in logs if "螺旋搜索" in l),
              "retreats": sum(1 for l in logs if "回退" in l),
              "slip_events": sum(1 for l in logs if "滑脱" in l or "感知偏差" in l),
+             "mstop_events": sum(1 for l in logs if "m_stop 交权" in l),
+             "risk_last": float(getattr(sim, "_mani_last", {}).get("risk") or 0.0) if getattr(sim, "_mani_last", None) else None,
              "sec": round(time.time() - t0, 1)}
         print(f"[{a.arm:5s} seed{sd}] done={r['done']} depth最小={r['depth_min_mm']}mm "
-              f"螺旋={r['spirals']} 回退={r['retreats']} 滑={r['slip_events']} "
+              f"螺旋={r['spirals']} 回退={r['retreats']} 滑={r['slip_events']} " \
+              f"m_stop={r['mstop_events']} "
               f"记忆快通道命中={r['mm_hits']}帧(共{r['steps']}帧, mm_on={r['mm_on']}) "
               f"阶段={r['stage_counts']} · {r['sec']}s", flush=True)
         if jl:

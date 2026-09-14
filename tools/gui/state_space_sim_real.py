@@ -2189,7 +2189,28 @@ class RealStateSpaceSim:
                 elif self._jiggle <= 0 and self._lew_corr <= 0:   # 不在回撤/修正窗口才累计
                     if float(np.linalg.norm(u_sat[:2])) > 0.03:   # 指令仍在水平推
                         self._stall += 1
-                        if self._stall >= INSERT_STALL_FRAMES:
+                        # 🧠 2026-09-15 ⑤ m_stop 交权专家 (SS_MSTOP=1 开; 默认关 = 零回退):
+                        #   用**已训流形专家**的预测 (risk 高 + progress 停滞) 提前判定"这条策略
+                        #   走不通, 交给下层专家 (回退重抓)", 而不是只等硬编码 INSERT_STALL_FRAMES 帧。
+                        _mstop_hit = False
+                        if (os.environ.get("SS_MSTOP") == "1" and str(st_now).startswith("插入")
+                                and getattr(self, "_mani_last", None) is not None):
+                            _ml = self._mani_last
+                            _hist = getattr(self, "_mstop_prog_hist", [])
+                            _hist.append(float(_ml.get("progress") or 0.0))
+                            self._mstop_prog_hist = _hist[-12:]
+                            _flat = (len(_hist) >= 8
+                                     and abs(_hist[-1] - _hist[0]) < float(
+                                         os.environ.get("SS_MSTOP_FLAT", "0.02")))
+                            _risk_hi = float(_ml.get("risk") or 0.0) >= float(
+                                os.environ.get("SS_MSTOP_RISK", "0.5"))
+                            if _flat and _risk_hi:
+                                _mstop_hit = True
+                                self._mstop_events = getattr(self, "_mstop_events", 0) + 1
+                                self.log(f"🧠 m_stop 交权专家: 专家 risk={_ml['risk']:.2f}≥阈值 且 "
+                                         f"progress 停滞 {_hist[0]:.3f}→{_hist[-1]:.3f} → 提前交权"
+                                         f" (第{self._mstop_events}次, 帧{_ml['frame']})")
+                        if _mstop_hit or self._stall >= INSERT_STALL_FRAMES:
                             self._stall = 0
                             self._stall_events += 1
                             # 🌀 螺旋搜索优先 (老倪 2026-09-10 直攻插入鲁棒性): 遇阻先"搜"不先"退"。
@@ -2660,6 +2681,12 @@ class RealStateSpaceSim:
                     tr["mani_eta"].append(float(_mp2["eta"]))
                     tr["mani_rem"].append(float(-_mp2["d_axial"]))
                     tr["mani_dperp"].append(float(_mp2["d_perp_norm"]))
+                    # 🧠 2026-09-15 ⑤ m_stop 交权: 存**已训流形专家**本帧信号 (供下帧决策用;
+                    #   默认不改变任何行为, 仅 SS_MSTOP=1 时被读)
+                    self._mani_last = {"risk": float(_mc2["risk"]), "progress": float(_mc2["progress"]),
+                                       "V": float(_mc2["V"]), "eta": float(_mp2["eta"]),
+                                       "rem": float(-_mp2["d_axial"]),
+                                       "dperp": float(_mp2["d_perp_norm"]), "frame": int(step)}
                     if _mpred is not None:
                         tr["mani_pred"].append(_mpred["manifold"][0].float().cpu().numpy())
                     else:
