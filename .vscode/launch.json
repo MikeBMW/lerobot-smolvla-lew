@@ -45,10 +45,11 @@
         "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
         "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
         "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
-        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_POLICY": "intact_l4_current",
         "INTACT_DEVICE": "cpu",
         "INTACT_KEEP_INPUT": "1",
-        "MUJOCO_GL": "egl"
+        "MUJOCO_GL": "egl",
+        "INTACT_RUNTIME": "root"
       }
     },
     {
@@ -64,9 +65,10 @@
         "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
         "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
         "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
-        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_POLICY": "intact_l4_current",
         "INTACT_DEVICE": "cpu",
-        "QT_QPA_PLATFORM": "offscreen"
+        "QT_QPA_PLATFORM": "offscreen",
+        "INTACT_RUNTIME": "root"
       }
     },
     {
@@ -82,7 +84,7 @@
         "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
         "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
         "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
-        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_POLICY": "intact_l4_current",
         "INTACT_DEVICE": "cpu",
         "INTACT_RUNTIME": "root",
         "MUJOCO_GL": "egl"
@@ -106,7 +108,7 @@
         "--device",
         "cpu",
         "--policy",
-        "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt"
+        "intact_l4_current"
       ],
       "cwd": "/home/ubuntu/lerobot-smolvla-lew",
       "console": "integratedTerminal",
@@ -115,7 +117,7 @@
         "STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
         "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
         "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
-        "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+        "INTACT_POLICY": "intact_l4_current",
         "INTACT_DEVICE": "cpu",
         "INTACT_RUNTIME": "root",
         "INTACT_KEEP_INPUT": "1",

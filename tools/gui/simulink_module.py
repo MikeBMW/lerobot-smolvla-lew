@@ -11381,17 +11381,28 @@ class SimulinkModule(QWidget):
                     os.environ.pop("SS_INTACT_SHADOW", None)
                     os.environ.setdefault("SS_INTACT_EVERY", "8")
                     os.environ.setdefault("INTACT_RUNTIME", "root")
-                    _ckp = os.environ.get("INTACT_POLICY",
-                                          "intact_goal_zmax_v2_s3072/weights_epoch_3.pt")
+                    _ckp = os.environ.get("INTACT_POLICY", "intact_l4_current")
                     os.environ["INTACT_POLICY"] = _ckp
                     os.environ.pop("SS_L3", None)
                     _demo_cap = False       # 不走固定演示 → INTACT 节点真干活
                     _logs.append(f"🤖 L4 = INTACT 节点工作: u_ff 槽位由 INTACT 真推理接管 "
                                  f"(每 {os.environ.get('SS_INTACT_EVERY')} 步一次真推理)")
-                    _logs.append(f"   ├ 权重: {_ckp} · runtime={os.environ.get('INTACT_RUNTIME')} "
-                                 f"· 节点 src/lerobot/manifold/intact_node")
-                    _logs.append("   └ 诚实标注: 该 ckpt 离线判闸未过 (xyz MAE 0.097 ≈ 常数 0.099 · "
-                                 "预测 std 比教师小 ~16 倍) → 本档可能跑不完, 属模型能力问题非接线问题")
+                    # 🎯 2026-09-14: 默认权重由写死轮次改为**稳定指针** `intact_l4_current`
+                    #   (checkpoints/intact_l4_current/weights.pt 软链 → 当前模型; 换模型只动软链:
+                    #    bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]) —— 原来写死
+                    #    `intact_goal_zmax_v2_s3072/weights_epoch_3.pt` 是上一代权重, 续训换名后必然过期。
+                    #   标注也改**动态**: 指针实际指向哪个文件就报哪个, 判闸数字不写死在此处 (会变假话)。
+                    _ptr_root = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+                    _ptr = os.path.join(_ptr_root, "checkpoints", str(_ckp))
+                    _real = os.path.realpath(_ptr)
+                    _sz = os.path.getsize(_real) if os.path.isfile(_real) else 0
+                    _logs.append(f"   ├ 权重: {_ckp} → "
+                                 f"{os.path.basename(_real) if _sz else '❌ 指针未解析到文件'}"
+                                 f" ({_sz} B) · runtime={os.environ.get('INTACT_RUNTIME')}"
+                                 f" · 节点 src/lerobot/policies/intact/")
+                    _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ on<zero "
+                                 "∧ std比≥0.30); 结论以 /home/ubuntu/l4_ab/judged/ 的 json 为准, "
+                                 "此处不写死数字")
                 elif not _demo_cap:
                     os.environ.pop("SS_INTACT", None)   # 非 L4 档: 清掉, 不影响解析链/L3
                 sim = RealStateSpaceSim(seed=104,
@@ -12818,23 +12829,23 @@ class SimulinkModule(QWidget):
                  "program": os.path.join(root, "tools/intact_service_e2e.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
                 {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_gui_node_check.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "QT_QPA_PLATFORM": "offscreen"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "QT_QPA_PLATFORM": "offscreen"}},
                 {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_worker_debug.py"),
                  "python": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
                 {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_sw_optical_bridge.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt"],
+                 "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_l4_current"],
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
             ],
         }
         try:

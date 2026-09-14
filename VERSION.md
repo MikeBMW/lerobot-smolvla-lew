@@ -16,6 +16,7 @@
 ## 版本历史
 
 | 版本 | 日期 | 内容 |
+| **v5.5.53** | 09-14 | 🎯 **L4 INTACT 调试配置改好 + 稳定权重指针**: 4 个配置原写死上一代轮次 `optical_insert_v4_s3072/weights_epoch_2.pt` → 改指 `checkpoints/intact_l4_current/` (config.json + 单个 weights.pt 软链, 按官方 load_pretrained 文件夹格式); 切换 `bash tools/l4_use_ckpt.sh`; 指针与显式路径**逐位同数**验证; launch.json 与 GUI 生成模板两处同步 (右键重写会覆盖); 新增 `tools/check_debug_cfg.py` 自检 PASS; 顺带修引擎 L4 档默认权重 (11385) 同类写死 + 把写死的判闸标注改动态
 | **v5.5.52** | 09-14 | 🧹 **磁盘压回红线内 + 守护 v4.1**: 系统盘 307G>300G 红线 → 手动清被取代的旧代数据集 (`optical_insert_v3.h5` 4.9G sha `3c8becc3…` / `v4.h5` 6.8G sha `98eda89d…`) + 旧代/无效链权重目录 + v5 中间轮 ep1/ep3 ⇒ **307G→294G**; 引用 v4.h5 的 v5 判闸 cron 先 pause; 守护脚本加 `--dry-run`、INTACT 权重"只留最后轮+保护暖启动源"、在跑目录改按 train.py cmdline 判定 (原 mtime 口径会误判刚清理过的目录); 台账 `reports/disk_cleanup_ledger_20260914.json`; 保护区(disturb 数据/暖启动源/在跑目录/官方数据集)复核全在, 训练零中断
 | **v5.5.51** | 09-14 | 💾 **数据保存 + 关机收口**: 新抗干扰数据集 `optical_insert_v5_disturb.h5` (7.37GB / 149,100 帧 / 2,982 窗口 / sha256 d3831406…) + 数据卡 (规模/口径/干扰分档 0.90·0.78·0.60/溯源) + `v6_resume.sh` 可续训脚本 (自动换轮次名) + `V6_RESUME.md` + 判闸哨兵自动认最新 v6* 目录
 | **v5.5.50** | 09-14 | 🛡 **画布补线: 安全执行边界 → 全部原子技能 + 通用算子**: 原 `sslimit` 零出线、②对位~⑧完成 零入线 (断链)。修: `sslimit` 移到原子层行首 + 11 条「🛡限幅后控制」前向出线 (逆向 0), 并给 ssa/ssb/ssc/sssk1 补 in2 端口。体检: L2/L3/L4 执行集 55/60/77 不变 · 83 条原连线零丢失 · 重叠 0; 代价: 逆向 2→3 · 穿框 39→48 · 交叉 110→133
