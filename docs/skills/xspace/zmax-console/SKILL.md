@@ -126,6 +126,54 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 
 ## 🧲 记忆层集成阶梯 (L2 准确性 → L3 调度 → L4 抗干扰 → 总装仲裁, v5.5.46)
 
+**第一版 30 格实测结论 (2026-09-14 03:01, manifest 6fc5fe9f60fa)**: 模型直驱 0/30 成功 (插入距离 585~611mm);
+L2/L23/L234/assy 与 off 的差异只有噪声级 → **不算提升**。两个根因, 都已定位到代码行:
+
+> ⚠️ **2026-09-14 追加 (v5.5.48, 这条把上面两条都盖住了)**: 记忆层当时**被喂错了坐标系** ——
+> 桥传 `s.peg_head()`, 而冠军轨迹/引擎肌肉记忆用**夹爪真实位置** (引擎 `self.x = obs[0:3]`,
+> state_space_sim_real.py:634)。同一 seed 下两者差 (0.017,0.054,0.176)m ⇒ 势场在**自己坐标系之外**求梯度,
+> 意图=噪声。所以"记忆层没效果"主要是这个 bug, 不是(只是)权重问题。
+> **判据/自查**: 用 `tools/mem_field_probe.py` 打坐标系对照 —— 同源时 `d_perp` 应 ≈ 0 (~1e-4),
+> 异构时 ~0.13m; 同源时相位会正常 SK01→SK07 推进。**任何"记忆层没效果"的结论, 先查这一条**。
+
+---
+
+## 🧠 v6: 让 L4 的 INTACT **看到并复用 L2 原子技能** (2026-09-14 老倪下令, 已落地)
+
+**契约 (改顺序=换版本)**: `skill_ctx` 24 维 = `[引擎相位 one-hot(13) | L2 势场技能软权重 w(8) |
+d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/intact/skill_ctx.py`
+(采集器 `tools/intact_insert_dataset_v5.py` 与闭环桥 `tools/intact_sw_optical_bridge.py` **共用同一函数** →
+训练/推理同口径; 有 `tools/skill_ctx_consistency_check.py` 做同口径回归)。
+
+**模型侧零回退构造 (关键)**: `IntentActionActor(skill_dim=24)` 新增 `E(s)` 分支, 但
+①`skill_dim: 0` 是默认值 → 参数形状与老配置逐字节相同, 老 ckpt 仍能 `strict` 加载;
+②打开时 `skill_enc` 末层**零初始化** 且 入口层 `net.0.weight` **老列逐位复制 + 新列置零** (缺后者
+暖启动会差 0.43 — 入口层形状变了被部分加载跳过, 随机初始化污染全网络, 自检检查 C 抓出来的);
+③`get_action` 里 skill_dim>0 却缺 skill_ctx → **直接报错, 不许静默降级**。
+自检: `INTACT-JEPA/tools/intact_skill_channel_check.py` 五条闸全过才算接上。
+
+**"有提升"判据 (老倪 09-12 口径)**: 同一权重同一批真帧跑 `--skill on` vs `--skill zero` (全零消融)
+→ 判三条: 赢常数基线 ∧ `MAE(on) < MAE(zero)` ∧ 预测std/教师std ≥ 0.30。
+哨兵 `/home/ubuntu/.hermes/scripts/v6_judge_watch.py` (cron, 静默无新 ckpt)。
+
+**坑 (踩过的)**:
+- `project_polyline()` 返回 **(最近点, 距离, 弧长, 段号) = 4 元组**。按 3 元组解包 → 每帧 ValueError
+  → 被引擎 `_frame_sink` **静默吞掉** → part npz 里**整列 skill_ctx 都没有**, 而日志一切正常 ✗✗
+  (老倪红线: 静默降级 = 白做)。教训: sink/回调里的构造失败要显式 raise 或至少记 `_SKERR` 进 meta。
+- 采集器 flush 时 `np.savez_compressed(p, **kw, ...)` —— `kw` 忘了 `**` → pixels/action/observation
+  全不落盘, 文件只有几 KB 而日志说"窗口 18" ✓ 假成功。**落盘后必须验 keys + 帧std>5**。
+1. **场权写死太低**: `blend_action` 里 `w = w_max·max(conf, w_floor)`, 桥用 `w_max=0.5`, `w_floor=0.2`,
+   而现场 `conf ≡ 0` (离最近轨迹管 207mm) ⇒ w̄ 恒 = **0.1** → 10% 的场权扳不动 600mm 模型误差。
+   已修 (增益调度): `far = clip((d_perp−d_near)/(d_far−d_near),0,1)`, `w = max(w_max·max(conf,w_floor), w_far·far)`,
+   默认 `w_far=0.85, d_near=30mm, d_far=150mm` —— **在管内维持原公式 (不回退), 远场让场主导**。
+2. **模型动作塌缩**: `IntentActionActor` 输入 = 潜槽 (z_t, m_t, z_t·m_t) + a_{t-1} 嵌入, **没有本体/几何输入**;
+   而数据集 `optical_insert_v4.h5` 里明明有 `observation` (39D) —— 但 `grep observation train.py jepa.py module.py`
+   **零命中 = 这个状态通道从来没人消费**。亚毫米插入能从 224²/patch14 的潜空间补出来吗? 补不出来 →
+   动作头预测条件均值 → 幅度只有教师 7~22% (v3/v4/v5 全如此) → 输给常数基线。
+   → 这是"模型直驱"这条路的天花板, 也是**记忆层势场存在的意义** (Φ 用引擎真几何/冠军轨迹建)。
+
+**其它落地铁律**:
+
 老倪口径: "集成 L2肌肉/L3流程/L4工作/总装记忆… 稳步推进… 要看到最终成功抗干扰的插拔… 能力要稳步提升不要波动,
 数据一致性最重要"。落地三条铁律:
 
