@@ -12835,7 +12835,7 @@ class SimulinkModule(QWidget):
                  "program": os.path.join(root, "tools/intact_gui_node_check.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "QT_QPA_PLATFORM": "offscreen"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
                 {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_worker_debug.py"),
                  "python": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",

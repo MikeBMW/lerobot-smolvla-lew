@@ -47,9 +47,9 @@
         "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
         "INTACT_POLICY": "intact_l4_current",
         "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
         "INTACT_KEEP_INPUT": "1",
-        "MUJOCO_GL": "egl",
-        "INTACT_RUNTIME": "root"
+        "MUJOCO_GL": "egl"
       }
     },
     {

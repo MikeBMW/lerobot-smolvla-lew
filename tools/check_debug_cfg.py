@@ -85,6 +85,12 @@ stale_env = sorted({v for v in tpl_env + lj_env if v and v != PTR_NAME})
 chk(not stale_env, "无任何写死/过期的 INTACT_POLICY", f"仍写死: {stale_env}")
 stale_args = sorted({v for v in tpl_args if v != PTR_NAME})
 chk(not stale_args, "无写死 --policy", f"仍写死: {stale_args}")
+# 每个配置都必须显式 INTACT_RUNTIME=root —— 曾经漏过一处, 被 GUI 右键重写 launch.json 抹掉后才发现
+n_rt_tpl = tpl_code.count('"INTACT_RUNTIME": "root"')
+n_rt_lj = sum(1 for c in ints if (c.get("env") or {}).get("INTACT_RUNTIME") == "root")
+chk(n_rt_tpl == 4 and n_rt_lj == 4,
+    f"INTACT_RUNTIME=root 四处齐全 (模板 {n_rt_tpl} · launch {n_rt_lj})",
+    f"INTACT_RUNTIME 缺失: 模板 {n_rt_tpl}/4 · launch {n_rt_lj}/4 (右键重写会抹掉模板里没有的键)")
 # 引擎 L4 档默认 (运行路径) 也必须是指针
 m = re.search(r'os\.environ\.get\("INTACT_POLICY",\s*"([^"]+)"\)', tpl_code)
 chk(bool(m) and m.group(1) == PTR_NAME,
