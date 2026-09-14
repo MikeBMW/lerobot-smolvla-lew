@@ -854,6 +854,12 @@ class RealStateSpaceSim:
             # 🚀 2026-09-10 类级缓存 (多 seed/多实例评估提速): 模型只加载一次, 后续实例直接复用。
             #   原来每 new 一个 RealStateSpaceSim 就重载一次 625M 模型 → 多 seed 评估慢 N 倍。
             _cls = type(self)
+            # 🐛 2026-09-14 熔断 (老倪: 断点不进/模型没真跑): 载入失败原来**每步重试整段加载**
+            #   实测 12 步 = 12 次 SmolVLALewPolicy.__init__ (~4s/步, 625M 反复载入) 且 select_action
+            #   0 次 → 模型从未真执行。这里记类级失败标记, 后续步直接返回 None (诚实标注, 不重载)。
+            #   要重新尝试: 设 SS_L3_FORCE_RETRY=1 (或重启控制台)。
+            if getattr(_cls, "_L3_FAILED", None) and os.environ.get("SS_L3_FORCE_RETRY") != "1":
+                return None
             if getattr(_cls, "_L3_CACHE", None) is not None:
                 self._l3_pol, self._l3_pre, self._l3_post = _cls._L3_CACHE
                 self._l3_dev = getattr(_cls, "_L3_DEV", "cuda")
@@ -877,9 +883,22 @@ class RealStateSpaceSim:
                     _ck = os.path.join(_repo, _ck)
                 _pol = SmolVLALewPolicy.from_pretrained(_ck)
                 _pol.eval()
-                self._l3_dev = "cuda" if torch.cuda.is_available() else "cpu"
+                # 🐛 2026-09-14 设备可覆盖 (原写死 cuda if available): 无卡/CPU 环境或要让 GUI
+                #   与训练共存的场合, 用 SS_L3_DEV=cpu 显式指定 → 否则 ckpt 里 device=cuda 的
+                #   预处理器实例化失败 (实测报错见下方 preprocessor_overrides 注释)。
+                self._l3_dev = (os.environ.get("SS_L3_DEV")
+                                or ("cuda" if torch.cuda.is_available() else "cpu"))
                 _pol.to(self._l3_dev)
-                _pre, _post = make_pre_post_processors(_pol.config, pretrained_path=_ck)
+                # 🐛 2026-09-14 根因修复 (老倪: "断点没反应" 查出的真 bug): ckpt 里保存的
+                #   device_processor 写死 device='cuda' → CPU/无卡时实例化直接抛错
+                #   ("Failed to instantiate processor step 'device_processor' with config:
+                #    {'device': 'cuda', 'float_dtype': None}") → 整段加载失败 → 每步 return None,
+                #   模型 0 次真执行且每步重载 625M。这里按**运行设备**覆盖该步 (官方 eval 同款写法)。
+                _pre, _post = make_pre_post_processors(
+                    _pol.config, pretrained_path=_ck,
+                    preprocessor_overrides={"device_processor": {"device": str(self._l3_dev)}},
+                    postprocessor_overrides={"device_processor": {"device": str(self._l3_dev)}},
+                )
                 self._l3_pol, self._l3_pre, self._l3_post = _pol, _pre, _post
                 # 🚀 写回类级缓存 → 后续实例零加载开销
                 _cls._L3_CACHE = (self._l3_pol, self._l3_pre, self._l3_post)
@@ -941,9 +960,13 @@ class RealStateSpaceSim:
                 act = _post(_pred) if _post is not None else _pred
             return np.asarray(act.detach().cpu().float()).reshape(-1)[:4]
         except Exception as _e:
+            # 🐛 2026-09-14 熔断: 记类级失败标记 → 后续步不再重试整段加载 (否则每步重载 625M)。
+            _cls = type(self)
+            if getattr(_cls, "_L3_FAILED", None) is None:
+                _cls._L3_FAILED = f"{type(_e).__name__}: {_e}"
             if not getattr(self, "_l3_warned", False):
                 self._l3_warned = True
-                self.log(f"⚠️ L3 推理失败: {_e}")
+                self.log(f"⚠️ L3 推理失败 (已熔断, 本进程内不再重试载入): {_e}")
             return None
 
     # ── 🎯 INTACT 前馈槽位 (Step 1, 2026-09-12) ────────────────────────────────

@@ -109,7 +109,6 @@ patch("lerobot.manifold.intact_node", "IntactRuntime", "__init__", "IntactRuntim
 patch("lerobot.manifold.intact_node", "IntactNode", "set_goal", "IntactNode.set_goal (目标帧注入)")
 patch("lerobot.policies.intact.service", "IntactIntentService", "run_once", "IntactIntentService.run_once (L4 编排) ← 父进程断点")
 patch_func("lerobot.policies.intact.skill_ctx", "build_skill_ctx", "build_skill_ctx (L2 上下文) ← 父进程断点")
-patch_func("lerobot.policies.intact.service", "policy_service", "policy_service (编排入口) ← 父进程断点")
 
 # ── 行级计数器 ───────────────────────────────────────────────────────────────
 TRACE_FILES = {
@@ -165,9 +164,13 @@ def report(scen: str, extra: dict) -> None:
                           ("modeling_smolvla_lew.py", 508, "def select_action( (推理)"),
                           ("intact/decoder.py", 126, "IntactIntentDecoder.decode 主体")]:
         print(f"   {line_hits(name, ln):>6}  {name}:{ln}  {why}")
-    print("\n   已执行到的 action_head.py 行 (证明文件被真实加载执行过):")
+    print("\n   已执行到的 action_head.py 行 (全量):")
     hits = sorted(LC.get("action_head.py", {}).items())
-    print("     ", ", ".join(f"{ln}({c})" for ln, c in hits[:40]) or "(无)")
+    print("     ", ", ".join(f"{ln}({c})" for ln, c in hits) or "(无)")
+    r = lambda a, b: sum(c for ln, c in hits if a <= ln <= b)                        # noqa: E731
+    print(f"\n   区间命中: 307={line_hits('action_head.py', 307)} · "
+          f"predict_action 主体(311-345)={r(311, 345)} · forward 主体(281-307)={r(281, 307)} · "
+          f"DiT.forward 主体(176-190)={r(176, 190)}")
     if extra:
         print("\n③ 引擎侧计数:", extra)
 
