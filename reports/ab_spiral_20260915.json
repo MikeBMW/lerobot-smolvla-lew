@@ -1,0 +1,85 @@
+{
+ "ts": "2026-09-15 02:35 CST",
+ "correction": "上一轮\"解析链只有 1/3 完成\"是**步数预算假象**: 那批 A/B 用了 --steps 600, seed1 在 600 帧被截断(阶段帧数合计正好 600) 时还在插入段; 放到 900 步 seed1 在 667 帧完成(done=True)",
+ "table": {
+  "base_seed0": {
+   "done": true,
+   "depth_min_mm": 0.78,
+   "steps": 384,
+   "spirals": 1,
+   "retreats": 1,
+   "slip": 1
+  },
+  "base_seed1": {
+   "done": true,
+   "depth_min_mm": 0.66,
+   "steps": 667,
+   "spirals": 3,
+   "retreats": 28,
+   "slip": 1
+  },
+  "base_seed2": {
+   "done": false,
+   "depth_min_mm": 64.75,
+   "steps": 900,
+   "spirals": 0,
+   "retreats": 13,
+   "slip": 10
+  },
+  "wide_seed0": {
+   "done": true,
+   "depth_min_mm": 0.82,
+   "steps": 385,
+   "spirals": 1,
+   "retreats": 1,
+   "slip": 1
+  },
+  "wide_seed1": {
+   "done": true,
+   "depth_min_mm": 0.79,
+   "steps": 771,
+   "spirals": 3,
+   "retreats": 35,
+   "slip": 2
+  },
+  "wide_seed2": {
+   "done": false,
+   "depth_min_mm": 64.75,
+   "steps": 900,
+   "spirals": 0,
+   "retreats": 13,
+   "slip": 10
+  },
+  "slow_seed0": {
+   "done": true,
+   "depth_min_mm": 0.88,
+   "steps": 384,
+   "spirals": 1,
+   "retreats": 1,
+   "slip": 1
+  },
+  "slow_seed1": {
+   "done": true,
+   "depth_min_mm": 0.75,
+   "steps": 625,
+   "spirals": 2,
+   "retreats": 20,
+   "slip": 2
+  },
+  "slow_seed2": {
+   "done": false,
+   "depth_min_mm": 64.75,
+   "steps": 900,
+   "spirals": 0,
+   "retreats": 13,
+   "slip": 10
+  }
+ },
+ "findings": {
+  "L2_real_rate": "900 步下解析链 2/3 完成: seed0 384帧✅(depth 0.78mm) · seed1 667帧✅(0.66mm, 螺旋3次/回退28次) · seed2 ❌",
+  "spiral_not_bottleneck": "螺旋参数 A/B (base 4.5mm/70帧 ×3 vs wide 9mm/110帧 ×5 vs slow 150帧/0.22rad ×4): 三条臂 seed0/seed1 全成功、seed2 全失败, 差异 <0.15mm ⇒ **螺旋参数不是瓶颈** (参数化保留, 默认值不变, 零回退)",
+  "seed1_really_is_retry_heavy": "seed1 完成靠螺旋3次+回退28次 ⇒ 完成但代价高 (667帧=66.7s), 说明对孔能力仍紧",
+  "seed2_real_failure": "seed2 是唯一真物理失败: 滑移 16~19mm/滑脱 → 10 次滑事件, 从未真正插入(螺旋0次=没进过插入遇阻) ⇒ 瓶颈在**抓取夹持稳定性**"
+ },
+ "next": "查 seed2 抓取滑移 (夹持力/抓取点/peg 摩擦) — 这是 L2 剩下唯一物理失败项"
+}

@@ -200,11 +200,14 @@ INS_DEV_FRAMES = 3
 #   而"回撤后重对"是**重试**不是**搜索**, 同样的偏差必然再次顶住 → 永远出不来。
 #   螺旋搜索: 遇阻时 peg 头在孔口上方走半径 1→4mm 递增的螺旋, 孔间隙 1~2mm 下 1~2 圈即入孔。
 SPIRAL_ENABLE = (os.environ.get("SS_SPIRAL", "1") != "0")   # 默认开 (只在遇阻时生效, 成功路径零影响)
-SPIRAL_FRAMES = 70          # 单次螺旋窗口帧数 (10Hz → 7s)
-SPIRAL_R0 = 0.0012          # 起始半径 1.2mm (≈孔间隙量级)
-SPIRAL_DR = 0.000045        # 每帧半径增量 (70 帧 → +3.2mm, 峰值 ~4.4mm)
-SPIRAL_RMAX = 0.0045        # 半径上限 4.5mm
-SPIRAL_OMEGA = 0.55         # 每帧角增量 (rad) → 70 帧约 6 圈
+# 2026-09-15: 参数化 (默认值 = 原硬编码值, 不设环境变量时行为逐位不变) — 起因见 diag_retract:
+#   seed1 对孔偏差 3.4~5.4mm 时螺旋只覆盖到 4.5mm/70 帧 ×3 次 → 仍顶壁 → 判"已滑"回退死循环。
+SPIRAL_FRAMES = int(os.environ.get("SS_SPIRAL_FRAMES", "70"))     # 单次螺旋窗口帧数 (10Hz → 7s)
+SPIRAL_R0 = float(os.environ.get("SS_SPIRAL_R0", "0.0012"))       # 起始半径 1.2mm (≈孔间隙量级)
+SPIRAL_DR = float(os.environ.get("SS_SPIRAL_DR", "0.000045"))     # 每帧半径增量 (70 帧 → +3.2mm)
+SPIRAL_RMAX = float(os.environ.get("SS_SPIRAL_RMAX", "0.0045"))   # 半径上限 4.5mm
+SPIRAL_OMEGA = float(os.environ.get("SS_SPIRAL_OMEGA", "0.55"))   # 每帧角增量 (rad) → 70 帧约 6 圈
+SPIRAL_TRIES = int(os.environ.get("SS_SPIRAL_TRIES", "3"))        # 单轮最多螺旋次数
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
@@ -2151,7 +2154,7 @@ class RealStateSpaceSim:
                             #   "回撤后重对"是重试, 同样偏差必然再顶住; 螺旋是主动搜索, 能真正找到孔。
                             _spiral_started = False
                             if (SPIRAL_ENABLE and getattr(self, "_spiral", 0) <= 0
-                                    and getattr(self, "_spiral_tries", 0) < 3):
+                                    and getattr(self, "_spiral_tries", 0) < SPIRAL_TRIES):
                                 self._spiral_tries += 1
                                 self._spiral = SPIRAL_FRAMES
                                 self._spiral_t = 0
