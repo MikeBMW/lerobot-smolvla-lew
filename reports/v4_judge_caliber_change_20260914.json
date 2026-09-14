@@ -1,0 +1,186 @@
+{
+ "ts": "2026-09-14 22:35 CST",
+ "title": "判闸口径换代: v3(不同源) → v4(训练同源自监督回放)",
+ "why": [
+  "v3 用 stride=120 散帧当模型 3 帧 obs 窗口 (训练是 stride=frameskip=2 连续窗口)",
+  "v3 用模型自己预测的 chunk 滚动 action_hist (训练用该帧前 2 帧真值动作)",
+  "v3 goal 一律第 0 回合末帧 (训练 goal = 本窗口末帧, 前视 2*(num_steps-1)=14 帧)",
+  "v3 只抽 120 帧 (占 9.6%, 全在数据集前段) / 只看 slot0 / 无重复 (slot>=2 取空切片)"
+ ],
+ "how": {
+  "script": "tools/intact_replay_check_v4.py",
+  "runner": "l4_ab/v4_judge_sweep.sh",
+  "params": "clips=200 × repeats=3 · 全 2982 回合均匀覆盖 · 逐槽 0/4/8/15 帧偏移",
+  "cpu_cost": "每轮 on+zero ≈ 60 s (GPU 4060, 200×3 前向)"
+ },
+ "verdict_flip": {
+  "v3": "7/7 输常数基线 (MAE 0.0387~0.0420 vs 常数 0.0325) · ΔMAE(on-zero) 7/7 负 ⇒ '记忆条无效/有害'",
+  "v4": "7/7 赢常数基线 (MAE 0.0466~0.0499 vs 常数 0.0830) · pearson_dx 0.53~0.63 · ΔMAE(on-zero) 6/7 正且**随训练轮数单调递增** (r5 +0.00057 → r10 +0.00497)",
+  "note": "v6r2 ep3 Δ=0 恰好是已知 skill 通道 0×0 死锁轮 (on/zero 逐位相同) → 修好死锁后 (r5+) Δ 转正, 内部自洽"
+ },
+ "caveats": [
+  "单轮 Δ 幅度 (r10 +0.005) 与单轮重复间波动 (每槽 mae_std≈0.0045) 同量级 ⇒ 显著性靠'7 轮单调趋势 + 死锁锚点=0', 不靠单轮",
+  "goal 口径对照 (r10, 200段×2): 训练口径 goal MAE 0.0481 vs 回合末帧 goal 0.0538 (+12%), 但预测幅度 0.0215 vs 0.0217 几乎不变 ⇒ goal 口径**不解释**直驱过冲 152~331mm",
+  "直驱过冲待查: 8 维动作块 = frameskip(2) 帧 × 4 维, 部署侧若按'每帧一个动作'消费/按 stride=1 喂观测, 速度会翻倍 — 下一步查 action_adapter/引擎消费口径"
+ ],
+ "artifacts": {
+  "summary": "reports/v4_judge_summary.json",
+  "marks": "l4_ab/judged/*_epoch*.json (已用 v4 数字刷新)",
+  "judge": "tools/intact_replay_check_v4.py",
+  "sweep": "l4_ab/v4_judge_sweep.sh",
+  "per_weight": [
+   {
+    "family": "intact_goal_optical_insert_v6r2_s3072",
+    "epoch": 3,
+    "v3_old_caliber": {
+     "mae_on": 0.039963994175195694,
+     "mae_zero": 0.039963994175195694,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": 0.0,
+     "pearson_dx": -0.06709876656532288,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.046659474881986775,
+     "mae_zero": 0.046659474881986775,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.0,
+     "pearson_dx": 0.6210219860076904,
+     "std_ratio_xyz_mean": 0.3843,
+     "win_const": true
+    }
+   },
+   {
+    "family": "intact_goal_optical_insert_v6r5_s3072",
+    "epoch": 1,
+    "v3_old_caliber": {
+     "mae_on": 0.04024563729763031,
+     "mae_zero": 0.038902658969163895,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": -0.00134,
+     "pearson_dx": 0.11134430766105652,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.049945319071412086,
+     "mae_zero": 0.05051173518101374,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.00057,
+     "pearson_dx": 0.5401342908541361,
+     "std_ratio_xyz_mean": 0.4048,
+     "win_const": true
+    }
+   },
+   {
+    "family": "intact_goal_optical_insert_v6r6_s3072",
+    "epoch": 1,
+    "v3_old_caliber": {
+     "mae_on": 0.03982331231236458,
+     "mae_zero": 0.03893214464187622,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": -0.00089,
+     "pearson_dx": 0.021055756136775017,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.046421377919614315,
+     "mae_zero": 0.04900248038272063,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.00258,
+     "pearson_dx": 0.5316218038400015,
+     "std_ratio_xyz_mean": 0.4313,
+     "win_const": true
+    }
+   },
+   {
+    "family": "intact_goal_optical_insert_v6r7_s3072",
+    "epoch": 1,
+    "v3_old_caliber": {
+     "mae_on": 0.039463482797145844,
+     "mae_zero": 0.03590741008520126,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": -0.00356,
+     "pearson_dx": -0.023235900327563286,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.046958213982482754,
+     "mae_zero": 0.04989080938200156,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.00293,
+     "pearson_dx": 0.5570696791013082,
+     "std_ratio_xyz_mean": 0.4869,
+     "win_const": true
+    }
+   },
+   {
+    "family": "intact_goal_optical_insert_v6r8_s3072",
+    "epoch": 1,
+    "v3_old_caliber": {
+     "mae_on": 0.03868512436747551,
+     "mae_zero": 0.03693930432200432,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": -0.00175,
+     "pearson_dx": 0.012423829175531864,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.04656713207562764,
+     "mae_zero": 0.0502123786136508,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.00365,
+     "pearson_dx": 0.5979266166687012,
+     "std_ratio_xyz_mean": 0.5095,
+     "win_const": true
+    }
+   },
+   {
+    "family": "intact_goal_optical_insert_v6r9_s3072",
+    "epoch": 1,
+    "v3_old_caliber": {
+     "mae_on": 0.04088358208537102,
+     "mae_zero": 0.03813745826482773,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": -0.00275,
+     "pearson_dx": -0.028078477829694748,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.04767921753227711,
+     "mae_zero": 0.05159710285564264,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.00392,
+     "pearson_dx": 0.6254219015439352,
+     "std_ratio_xyz_mean": 0.5321,
+     "win_const": true
+    }
+   },
+   {
+    "family": "intact_goal_optical_insert_v6r10_s3072",
+    "epoch": 1,
+    "v3_old_caliber": {
+     "mae_on": 0.04198012501001358,
+     "mae_zero": 0.040466487407684326,
+     "const": 0.032453134655952454,
+     "gain_on_minus_zero": -0.00151,
+     "pearson_dx": -0.048815447837114334,
+     "win_const": false
+    },
+    "v4_fixed_caliber": {
+     "mae_on": 0.04669853765517473,
+     "mae_zero": 0.051665802486240864,
+     "const": 0.08303288059930006,
+     "gain_on_minus_zero": 0.00497,
+     "pearson_dx": 0.6269045273462931,
+     "std_ratio_xyz_mean": 0.5531,
+     "win_const": true
+    }
+   }
+  ]
+ },
+ "sentinel_update": {
+  "script": "~/.hermes/scripts/v6_judge_watch.py",
+  "change": "JUDGE 指向 v4 + 新口径参数 (clips/repeats/goal-mode=train); 标记 schema 不变 (早收哨兵无需改)",
+  "criteria": "赢常数 ∧ on<zero ∧ 逐槽 std比均值 ≥0.30"
+ }
+}
