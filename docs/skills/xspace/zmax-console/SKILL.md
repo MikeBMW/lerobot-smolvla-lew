@@ -51,6 +51,20 @@ tools/gui/
 - **重新采集/要新真机数据 = 只能飞书 @小芳 (2026-08-03 实测, 老倪 "重新采集吧")**: Orin (192.168.23.10) 在 Mac 局域网内, **4060/WSL 侧 ping 不通、SSH 不可达** (zmax_auto_collector.py 是 MAC 端守护, collect_upload_npz.py 是旧占位脚本无真机能力) — 真机采集只能由小芳在 Mac/Orin 侧触发。触发方式 = 飞书 dataworld 群发消息 @小芳: ① `POST open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal` (json: app_id=cli_a87851ffe46b500d, app_secret 从 ~/.hermes/*.env 的 FEISHU_APP_SECRET 读) 拿 tenant_access_token; ② `POST open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id` (header Authorization: Bearer <tok>, json: receive_id=oc_c0b4048546145c5c581ddd1a9e8f565d, msg_type=text, content=json.dumps({"text": 消息}) 且 ensure_ascii=False)。消息里写清: 请用 Orin 采集 → Mac 中转 (192.168.23.1:8769) → ECS relay (datadrive.world/api/relay), 并报当前队列包数/最近落地时间让对方知道现状。发送后回执 200 + code=0 即成功。**别试 SSH/直连 Orin — 必失败; 也别假设 auto_loop 能自己拉新数据 — 队列空就是没新包**。
 - **auto_loop 闭环守护 = 数据到自动全流程 (2026-08-03 实证)**: 本地 `tools/auto_loop.py` (60s 轮询 relay /status) 数据闭环已全自动: 小芳上传 → auto_loop 拉取 (存 data/orin_live/auto_<ts>.json, 含 meta.source/frames/n_joint/n_action) → frames≥50 自动训练 (act_loop, 2000步 ~2.5min) → 训练完自动推模型回 ECS (cicd_deploy.py push 等效) → 小芳拉取部署 Orin。实测 20:26 89帧 / 20:38 107帧 两轮全自动完成, 日志在 outputs/train/loop_train.log。**老倪问"拉了么"时先看 auto_loop 进程日志 + data/orin_live 最新文件** — 数据可能已被守护自动取走, 队列空 ≠ 没采集, 而是闭环已消费。relay 新加的 /command 端点可让 4060 主动触发 Mac 端采集 (见 §12)。**frames=0 空包 (2026-08-04 实测)**: relay 队列里的 0 帧包 (如 pkg_20260804_075806.json) 会一直被 /status 列为 latest, auto_loop 每轮轮询重复打 `📥 新数据: <包名> | frames=0` — 是数据侧问题不是守护故障 (0 帧不触发训练); 要清就调 /latest 弹掉。
 - **多分身共享同一 git 仓库并行工作 (2026-08-02 实测)**: 飞书端 gateway agent (另一 Hermes 会话) 与 CLI 静静共用 `~/lerobot-smolvla-lew`, 它会 `git add -A` 提交整个工作区 — 你改到一半的文件可能被它一并提交 (git log 出现你没见过的 commit, 工作区突然 clean)。**改代码前先 `git status` + `git log --oneline -3` 确认**, 别假设工作区是上次会话留下的; 提交前 diff 确认自己的改动在里面。两方同时改同一文件会互相覆盖 — 关键文件 (simulink_module.py / cicd_pipeline.py) 改动后立即 commit, 别攒着。
+- **⚠️ 画布边必须与代码通路一致 — 缺线要补 + 标口径 (2026-09-15 老倪问「INTACT意图解码器怎么没有直接连接
+  流形专家预测器节点?」)**: 查证结论 = **代码里这条边真实存在、画布漏画了** —— `decoder.py` 产 `m_int`
+  (注释写明语义="给流形专家预测器的意图"), 引擎 `state_space_sim_real.py:1380` 取 `d.m_int` → `:1419` 喂
+  `WorldModelPredictor(z, a, m)` (对齐 INTACT 四槽语法 m_t); 只是**活跃口径是 z7** (z=引擎几何潜空间 R7 +
+  m=引擎几何意图 target−peg_head, 由 📐2D→3D 那条线供给), 解码器 m_int 在该口径下**只当门控**
+  (`w = m_int_weight × SS_L4_INTENT_LINE_W × ready`), 而 z_t 口径 (z=INTACT 潜空间192+m=m_int) 已被离线证伪
+  (LOSO R² 全负) → 于是画布只画了「解码器→DiT」这条, 让人误读成"没接"。
+  **规程**: ①查这类问题先 `python3 -c` 读 `flows/*.json` 打节点的入/出度 + 对照 `params.source` 指向的代码里
+  真实数据流 (别只看画布); ②补线用**文本级插入** (锚点断言唯一 + 断言旧连线逐字段零丢失 + 节点数不变), 新线
+  `t_port` 取该目标节点未占用的下一个 (本例 in1/in2 已占 → in3); 插入位置 = 目标节点出线数组里**靠前**处
+  (端口槽位按 link 数组序号, 水平线走上面的槽位少交叉); ③两个端点节点的 `desc` 补上"哪些入线属于哪个口径"
+  (老倪红线: 画布要自解释) ; ④验证三连: `tools/verify_l4_layout.py` (真画布 反向/重叠/穿框/交叉, 本例
+  143→145 交叉 +2 属新线必经) + `tools/verify_l4_zero_regression.py` (L2/L3/L4 执行集 55/60/77 逐项不变、
+  旧线 0 丢失) + 渲染 PNG 路径给用户目检。
 - **工具栏按钮显示不全 (2026-08-02 用户两次反馈 "CICD 那个按钮，显示的不全" / "3阶段这几个按钮的文字显示，看不全")**: QHBoxLayout 空间不足时按钮被压缩 → 文字截断省略。**正确解法 = 双行工具栏** (仿真控制一行 + CI/CD 操作独立第二行, 按钮文字保持完整如 "🔗 CI/CD 全链路"、"🎯 三阶段管线"), **不要缩写按钮文字** (用户反馈的是"看不全", 缩写是错误方向)。配套: spinbox setMaximumWidth(70/62)、标签短名 (时间/dt)。验证: offscreen 断言 `btn_cicd.text()` 完整 + `btn_run.mapTo(w)` y 坐标在 btn_cicd 之上 (两行独立)。commit 8fb74424。
 - **控制台歧义**: web console.html vs 桌面 studio.py。远程GUI=后者。
 - **功能重复必须合并, 单一入口 (2026-08-02 用户两次纠正: "CICD全链路打开后, 和数据闭环CICD控制台, 感觉功能重复了" → "那后面的 验证 集成 训练 部署这几个按钮, 是不是也重复")**: 老倪对控制台的 UI 铁律 = **一个功能一个入口, 绝不重复**。本会话落地:
