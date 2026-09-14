@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.55")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.5.56")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.55 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.56 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,10 +10165,44 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.55 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.56 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
         # v5.5.40: 🎯 **L4 INTACT 策略化 + 连线 (metaworld → INTACT → decoder → L3)** (老倪: "将 INTACT 接入到 L4 层, 把 L4 节点的 INTACT 代码迁移到 src/lerobot 的 policies 文件夹, 做好连线; 数据源直接接入 metaworld, 输出接一个 decoder 再进 L3; 不能让 L2 L3 下降") — ①**迁移**: `src/lerobot/manifold/intact_node/` 整体 git mv 到 `src/lerobot/policies/intact/runtime/` (实现一字未改; 旧路径留兼容转发, 桥/自检/引擎零改动) ②**策略化**: `configuration_intact.py` (注册名 intact) + `modeling_intact.py` (IntactPolicy: select_action/predict_action_chunk/predict_intent; forward 显式 NotImplementedError = 不假装能训) + 工厂/包出口三处注册 ③**数据源直连 metaworld**: 新 `runtime/metaworld_source.py` (MetaWorldSource, MT1 peg-insert-side-v3 · corner2 真渲染帧 224² + 39D 现场读 + 本域真实目标帧) 注册为数据源名 `metaworld` ④**解码器**: `decoder.py` (IntactIntentDecoder) — u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT **现读引擎源码**, 无需标定) + L3 流形条件 (需标定 models/intact_l3_map.json, 未标定**拒绝返回并计数**, 不写死映射) ⑤**连线**: 新节点「🎯 INTACT 意图解码器 (L4 → L3 条件)」+ 3 连线 (metaworld 数据源→INTACT 策略→解码器→L3 DiT), 两节点均在 L4 行内 (cap=4 → L2/L3 档不执行) ⑥**引擎三档**: `SS_L4_INTACT` (不设=逐位零变化 / _SHADOW=1 影子真推理真记录 / =1 按 w 融合 u_ff=(1−w)·analytic+w·L4, w=0 恒等) + `l4_intact_summary()` 全计数取证 + 新工具 `tools/l4_intact_ab.py` (A/B/C 三臂同 seed 子进程隔离) ⑦**实测**: 节点级真跑成功 (metaworld 数据源建成 · 真权重 trained=True · chunk(8,8) · candidate_sequences=0 零搜索 · 1396ms/步 CPU · 动作维自动对齐 4→8) · 解码器 u_ff 先验 + 未标定诚实拒绝 · **零回退证明**: L2 档 55 节点 / L3 档 60 节点 改动前后**逐 id 相同** (脚本对比 git HEAD) ⑧**迁移期修真 bug**: 未设 STABLEWM_HOME 时桥退回 <repo>/.cache → 权重全部找不到, 改为优先共享缓存 stable-wm-cache ⑨**A/B 首轮抓到第二个真 bug**: 引擎直喂帧路径没人设 goal 帧 → goal_displacement 模式每帧抛 ValueError (影子臂 60/60 次"真推理"实为空转, 只有计数在涨) → 新增 `ensure_goal()` 三级兜底 (已显式 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错; 修后 calls=8/reuse=52 (chunk=8 → 60 步恰好 8 次真推理) · goal_src=默认目标帧 · err=null, 且影子臂 dist 与修复前逐位相同 (不接管=行为不变) · 设计 docs/design/zmax_l4_intact_policy.md
+        # v5.5.56: 🔍🧪 **四个「运行时口径 ≠ 训练口径」根因全部修掉** (老倪: "训练减少到半小时以内" / "10分钟以内" / "只要一个epoch") ——
+        #   ①**记忆条件通道 0x0 死锁** (`INTACT-JEPA/train.py`, 提交 20a7791): 入口层 `net.0` 的 skill 新列
+        #     与 `skill_enc` 末层**同时零初始化** → E(s)=0×0 → 反向两侧梯度恒 0 → 训 3 轮后
+        #     `intent_actor.skill_enc.3.weight` 仍 100% 为 0; 判闸 skill=on/zero 输出**逐位相同**。
+        #     实测: ∂L/∂(新列)=∂L/∂(末层)=0.000e+00, 而 ∂L/∂(老列)=9.222e-01 (只有新通道死了)。
+        #     修: 新列改 U(±1/√in_dim)、末层保持零初始化 ⇒ 暖启动输出**逐位不变** (0×w=0) 但梯度可通
+        #     (∂L/∂末层 0 → 1.165e-01) + 新增 `_break_skill_deadlock()` 让续训自愈;
+        #     证据脚本 `INTACT-JEPA/tools/skill_deadlock_evidence.py`
+        #   ②**运行时图像口径** (`tools/intact_worker.py::_prep_images`, 提交 1163dc06): 训练侧 HDF5Dataset 出
+        #     **uint8** → `ToImage(scale=True)` /255 + ImageNet → 模型实际输入范围实测 [-2.118, 2.429];
+        #     而运行时 (判闸回放/引擎 L4 直驱/direct_rollout) 把 h5 里 **float32 的 0~255 原始像素**直接喂进去
+        #     → 尺度差 ~100 倍 + 巨大正向偏移 → 编码器退化 → 动作头输出恒定带偏移
+        #     ("预测 std 比 0.08"+"打不过常数基线", **与训练轮数无关**)。修在唯一入口 (自动判量级:
+        #     >2 视为 0-255; [0,1] 补 ImageNet; 已归一化原样), 诊断带 `img_prep` 字段逐次可查 →
+        #     实测同一 ckpt: std 比 0.08 → **0.61~0.76**, 偏置 +0.041 → -0.006, raw 输出 std 0.004 → 0.65
+        #   ③**判闸哨兵两个真 bug**: (a) 按 epoch 号去重 → `v6_epoch_1.json` 还在时续训/换轮次的 ep1/ep2
+        #     **永远判不出** (本次实锤踩中, 静默无输出) → 改按 family 去重 + 兼容别名 (老读者不受影响);
+        #     (b) "只判 1/2 与偶数轮"限流取消 (短跑每轮都判) + 报尾 f-string `{on,zero}` NameError 修掉
+        #   ④**直驱反归一化口径** (`tools/intact_direct_rollout.py`, 提交 0b453515): 默认 stats 错用
+        #     `zmax_action_stats.json` (源自 zmax_insert.h5, n=18635), 而 v5/v6 权重是
+        #     `optical_insert_v5_disturb` (n=149100) 训的 → dx std 0.153 vs 0.074 (放大 2.1×)、
+        #     grip mean 0.120 vs 0.828 ⇒ 指令缩放全错。修: 默认换**与训练同源** + 新增 `audit_stats()`
+        #     从 ckpt `train_config.yaml` 读训练数据集名比对, **不一致直接 SystemExit** (避免白跑 25 分钟
+        #     拿假数), 需对照才显式 `--allow-stats-mismatch`
+        #   ⑤**配套工具**: `tools/intact_replay_bias_probe.py` (逐维 mean/std/偏置/MAE 分解/pearson +
+        #     goal 口径对照; 用 own-goal 对照**证伪**"外来 goal 导致塌缩"的猜想)
+        #   ⑥**连带作废声明**: v5/v6/v6r2 历史判闸 ❌、"越训越塌"、直驱 92.2mm 全部建立在上面的坏口径上
+        #     → 全部作废; pre-fix 结果改名 `*__prefix_imgfix.json` / `*_v6r2_deadlock.json` 留证
+        #   ⑦**数据侧复核 (排除嫌疑)**: 数据集 skill_ctx 非零项数 3~8 为主 (3 项占 1.8 万帧) ·
+        #     共享构造器重算与落盘值**逐位相同** (最大差 0.000e+00) → 采集/闭环构造同源红线成立
+        #   ⑧**本轮实测 (修后)**: v6r5 ep1 判闸 on 0.0402 / zero 0.0389 / std 比 0.71 ⇒ "不塌缩"翻正,
+        #     但 **赢常数 / 有提升仍 False (400 步量不够 ⇒ 无提升证据, 不声明提升)**;
+        #     直驱 260 步 0/1 (插入 156.8mm · 真推理 65 次无错 · done=False) + 解析链同轮 0/1 ⇒
+        #     口径修好但**尚无提升证据**; 视频 `reports/evidence_l4_fixed/*.mp4`
         # v5.5.55: 🎯🧠 **L4 意图 → DiT 真接 (画布 ssintact_dec→ssdec 那条连线) + L3 模型执行真跑修复 + 断点取证** (老倪: "连线连的就是DiT, 必须改" / "L4 功能需要兼容 L3 功能" / "这个类的断点运行后没有进入") ——
         #   ①**标定硬结论 (不造假映射)**: 新工具 `tools/intact_l3_calib.py` 用 13 轮/1935 样本复算
         #     `z_t(192)→引擎流形6维` (LOSO 13 折 + 折内 PCA16 + 打乱标签 null) → **测试 R² 全 ≤0**
