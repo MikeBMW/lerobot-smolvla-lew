@@ -283,6 +283,11 @@ class RealStateSpaceSim:
         self._il_head = None        # StateSpaceActionHead (流形 6 维 → 动作 4 维)
         self._il_stack = None       # CapabilityStack (收缩/收口/记账)
         self._il_ready = False      # 预测器已训练?
+        self._il_scaler = None      # 训练侧标准化统计 (推理必须同源; 无则直通)
+        self._il_input_kind = None  # "z_t"(INTACT 潜, 已被实证不可辨识) / "z7"(几何, 实证 R²>0.5)
+        self._u_ff_last = None      # 上一帧前馈参考 (直连线把它当动作输入, 与训练同源)
+        self._il_l2 = {"p": None, "err": "未尝试", "tried": False}   # L2 势场 (skill_ctx 的 L2 字段来源)
+        self._il_meta_cache = None  # ckpt meta (输入口径/架构必须在**建模型之前**知道)
         self._il_last = None        # (u_int(4), w, info)
         self._il_stats = {"frames": 0, "ran": 0, "applied": 0, "w_zero": 0, "refused": 0,
                           "gain": [], "err": None, "ready": False, "ready_src": "未检查",
@@ -1118,7 +1123,15 @@ class RealStateSpaceSim:
                                 interpolation=cv2.INTER_AREA).transpose(2, 0, 1).astype(np.float32)
                 st["frame_std"].append(float(np.asarray(fr).std()))
                 # 📥 数据源直接接入 metaworld: 引擎帧即渲染帧, 标 engine_render (可溯源)
-                out = self._intact_node.step(fr, obs_source="engine_render")
+                # 🧠 2026-09-14 打通: L4 档必须把 **L2 原子技能上下文**喂进去 —— v6 权重在 jepa.get_action
+                #   里有硬闸 (缺 skill_ctx 直接 raise), 实测本路径 220/220 帧全被拒 ⇒ L4 档此前在引擎里
+                #   根本跑不到真推理。这里与采集/直驱共用同一构造器 build_skill_ctx (口径单一)。
+                _sk = self._l4_skill_ctx(str(stage))
+                out = self._intact_node.step(fr, obs_source="engine_render", skill_ctx=_sk)
+                st["skill_ctx_dim"] = int(np.asarray(_sk).size)
+                st["skill_ctx_nonzero"] = int(np.count_nonzero(_sk))
+                st["l2_ready"] = bool(self._l4_l2_proc() is not None)
+                st["l2_err"] = self._il_l2.get("err")
                 st["goal_src"] = getattr(self._intact_node, "goal_src", "") or "(未设置)"
             except Exception as e:                                          # noqa: BLE001
                 st["err"] = f"{type(e).__name__}: {e}"
@@ -1177,7 +1190,55 @@ class RealStateSpaceSim:
             return None
         return u, float(st.get("w") or 0.0)
 
+    # ── 🧠 L2 → L4 的 skill_ctx 供给 (2026-09-14 打通; v6 权重缺它会被硬闸拒, 实测 220/220 全拒) ──
+    def _l4_l2_proc(self):
+        """L2 原子技能势场 (skill_ctx 的 L2 字段来源, 与采集数据同口径); 不可用 → None + 诚实标注。"""
+        d = self._il_l2
+        if not d["tried"]:
+            d["tried"] = True
+            try:
+                import sys as _sys                                          # noqa: PLC0415
+                _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                if os.path.join(_root, "src") not in _sys.path:
+                    _sys.path.insert(0, os.path.join(_root, "src"))
+                from lerobot.memory.potential_field import MemoryLayerBridge  # noqa: PLC0415
+                d["p"] = MemoryLayerBridge.from_real_data(root=_root, seed=104,
+                                                          use_engine_geom=True).process
+                d["err"] = None
+            except Exception as e:                                          # noqa: BLE001
+                d["p"], d["err"] = None, f"{type(e).__name__}: {e}"
+        return d["p"]
+
+    def _l4_skill_ctx(self, stage: str) -> np.ndarray:
+        """构造 24 维 skill_ctx (相位 one-hot | L2 势场软权重 | d_perp/arc_frac/grip)。
+
+        L2 势场取不到时**退化为相位+夹爪并如实计数** (build_skill_ctx 的既有语义), 不假装有记忆层。
+        """
+        from lerobot.policies.intact.skill_ctx import build_skill_ctx       # noqa: PLC0415
+        _u = getattr(self, "_u_vec", None)
+        _grip = float(np.asarray(_u, float).ravel()[3]) if _u is not None else 0.0
+        return np.asarray(build_skill_ctx(self._l4_l2_proc(), getattr(self, "x", None),
+                                          str(stage), _grip), np.float32)
+
     # ── 🧬 直连线: L4 意图 → 流形专家预测器 → 动作头 (2026-09-14 老倪原则) ──
+    def _il_meta(self) -> dict:
+        """读 ckpt meta (输入口径/架构/质量指标)。**必须在建模型之前读** ——
+        实测踩到: 先按错误口径建模型 → load_state_dict 尺寸不符 → 首帧初始化失败。"""
+        if self._il_meta_cache is None:
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _ckp = os.environ.get("SS_L4_INTENT_PRED",
+                                  os.path.join(_root, "checkpoints", "manifold_predictor",
+                                               "intent_line.pt"))
+            self._il_meta_cache = {}
+            try:
+                if os.path.isfile(_ckp):
+                    import torch                                                # noqa: PLC0415
+                    self._il_meta_cache = (torch.load(_ckp, map_location="cpu",
+                                                      weights_only=False).get("meta") or {})
+            except Exception:                                                   # noqa: BLE001
+                self._il_meta_cache = {}
+        return self._il_meta_cache
+
     def _il_init(self, z_dim: int, m_dim: int) -> None:
         """懒加载直连线三件套 (预测器/动作头/能力栈仲裁)。**不训练也能跑** (接口真跑 + 零回退)。"""
         if self._il_pred is not None:
@@ -1192,20 +1253,38 @@ class RealStateSpaceSim:
                 sys.path.insert(0, _lew)
             from state_space_action_head import StateSpaceActionHead             # noqa: PLC0415
             from lerobot.manifold.capability_stack import CapabilityStack        # noqa: PLC0415
-            self._il_pred = WorldModelPredictor(z_dim=int(z_dim), act_dim=4, manifold_dim=6,
+            # 架构与输入口径都以 ckpt meta 为准 (建模型之前就得知道, 见 _il_meta)
+            _mt = self._il_meta()
+            _ckp = os.environ.get("SS_L4_INTENT_PRED",
+                                  os.path.join(_root, "checkpoints", "manifold_predictor",
+                                               "intent_line.pt"))
+            self._il_pred = WorldModelPredictor(z_dim=int(z_dim),
+                                               act_dim=int(_mt.get("act_dim", 4)),
+                                               manifold_dim=int(_mt.get("manifold_dim", 6)),
+                                               hidden_dim=int(_mt.get("hidden", 256)),
+                                               num_layers=int(_mt.get("layers", 2)),
                                                m_dim=int(m_dim))
             self._il_head = StateSpaceActionHead(input_dim=6, action_dim=4, chunk_size=1)
             self._il_stack = CapabilityStack(bounds=(-1.0, 1.0))
             # 就绪判定: 有**训练过的**预测器权重才算 ready; 没有 → 线路跑但不注入 (诚实标注)
-            ck = os.environ.get("SS_L4_INTENT_PRED",
-                                os.path.join(_root, "checkpoints", "manifold_predictor",
-                                             "intent_line.pt"))
+            ck = _ckp
             if os.path.isfile(ck) and os.path.getsize(ck) > 4096:
                 _sd = torch.load(ck, map_location="cpu", weights_only=False)
-                self._il_pred.load_state_dict(_sd["predictor"], strict=False)
-                self._il_head.load_state_dict(_sd["head"], strict=False)
-                self._il_ready = True
-                st["ready_src"] = f"已训练 ({os.path.relpath(ck, _root)})"
+                # 🛡 质量闸 (2026-09-14 夜): 不是"有文件就 ready" —— 必须带 LOSO R² 且 ≥0.30,
+                #   否则线路照跑但 w=0 (拿没训出来的预测器注入执行口 = 用噪声污染机器人)。
+                _r2 = (_sd.get("meta") or {}).get("loso_r2_mean")
+                self._il_input_kind = str(((_sd.get("meta") or {}).get("input_kind")) or "z_t")
+                if _r2 is not None and float(_r2) >= 0.30:
+                    self._il_pred.load_state_dict(_sd["predictor"], strict=False)
+                    self._il_head.load_state_dict(_sd["head"], strict=False)
+                    self._il_scaler = _sd.get("scaler") or None
+                    self._il_ready = True
+                    st["ready_src"] = (f"已训练且过闸 (LOSO R²={float(_r2):.3f} ≥0.30, "
+                                       f"{os.path.relpath(ck, _root)})")
+                else:
+                    self._il_ready = False
+                    st["ready_src"] = (f"权重在但未过质量闸 (LOSO R²={_r2} <0.30 或缺失) → "
+                                       f"线路在跑, w=0 不注入 ({os.path.relpath(ck, _root)})")
             else:
                 self._il_ready = False
                 st["ready_src"] = (f"未训练: {os.path.relpath(ck, _root)} 不存在 → 线路在跑, w=0 不注入")
@@ -1228,6 +1307,8 @@ class RealStateSpaceSim:
         st["frames"] += 1
         if os.environ.get("SS_L4_INTENT_LINE") != "1":
             return None
+        if not self._il_input_kind:                     # 口径先定 (首帧不许用错口径建模型)
+            self._il_input_kind = str(self._il_meta().get("input_kind") or "z_t")
         m = getattr(d, "m_int", None)
         st["src"] = str(getattr(d, "m_int_source", "") or "")
         if m is None:
@@ -1236,30 +1317,65 @@ class RealStateSpaceSim:
             return None
         try:
             import torch                                                        # noqa: PLC0415
-            lat = getattr(out, "latent", None) or {}
-            zt = lat.get("z_t")
-            z = np.asarray(zt if zt is not None else m, dtype=np.float32).reshape(1, -1)
+            # 🧭 输入口径 (2026-09-14 夜 实证选路):
+            #   · "z7"  = 引擎几何潜空间 R7 + 几何意图(Δ=target−peg) + 前馈参考 → 流形: LOSO R² 0.55/0.64 ✓ 用这条
+            #   · "z_t" = INTACT 潜空间 R192 + δ: LOSO R² 全负 (不可辨识) → 只保留兼容, 默认不 ready
+            if self._il_input_kind == "z7":
+                _z7 = getattr(self, "_z7_hist", None)
+                if not _z7:
+                    st["refused"] += 1
+                    st["err"] = "z7 历史为空 (几何潜空间未生成)"
+                    return None
+                z = np.asarray(_z7[-1], np.float32).reshape(1, -1)
+                try:
+                    m_geo = (np.asarray(self._stage_target(), float).ravel()[:3]
+                             - np.asarray(self.peg_head(), float).ravel()[:3])
+                except Exception as _e:                                         # noqa: BLE001
+                    st["refused"] += 1
+                    st["err"] = f"几何意图不可得 (target/peg_head 缺失: {type(_e).__name__})"
+                    return None
+                m_vec = np.asarray(m_geo, np.float32).reshape(1, -1)
+                _ref = self._u_ff_last
+                a = (np.asarray(_ref, np.float32).reshape(1, -1)[:, :4] if _ref is not None
+                     else np.zeros((1, 4), np.float32))
+                m = m_vec
+            else:
+                lat = getattr(out, "latent", None) or {}
+                zt = lat.get("z_t")
+                z = np.asarray(zt if zt is not None else d.m_int, dtype=np.float32).reshape(1, -1)
+                chunk = np.asarray(getattr(out, "chunk", None), dtype=np.float64)
+                if chunk.ndim == 1:
+                    chunk = chunk[None]
+                a = (np.asarray(chunk[0][:4], dtype=np.float32).reshape(1, -1) if chunk.size
+                     else np.zeros((1, 4), np.float32))
+                m = np.asarray(d.m_int, dtype=np.float32).reshape(1, -1)
             self._il_init(z.shape[-1], np.asarray(m).reshape(-1).size)
             if self._il_pred is None:
                 st["refused"] += 1
                 return None
-            chunk = np.asarray(getattr(out, "chunk", None), dtype=np.float64)
-            if chunk.ndim == 1:
-                chunk = chunk[None]
-            a = (np.asarray(chunk[0][:4], dtype=np.float32).reshape(1, -1) if chunk.size
-                 else np.zeros((1, 4), np.float32))
             mh = np.asarray(m, dtype=np.float32).reshape(1, -1)
             if mh.shape[-1] != getattr(self._il_pred, "m_dim", 0):              # 意图维不匹配 → 拒绝
                 st["err"] = f"意图维不匹配 m={mh.shape[-1]} vs m_dim={getattr(self._il_pred,'m_dim',0)}"
                 st["refused"] += 1
                 return None
+            _sc = self._il_scaler or {}
+            _app = lambda v, k: ((np.asarray(v, np.float32) - _sc[k + "_mu"]) / _sc[k + "_sd"]
+                                 if (k + "_mu") in _sc else np.asarray(v, np.float32))
             with torch.inference_mode():
-                o = self._il_pred(torch.from_numpy(z), torch.from_numpy(a), torch.from_numpy(mh))
+                o = self._il_pred(torch.from_numpy(_app(z.reshape(-1), "z")),
+                                  torch.from_numpy(_app(a.reshape(-1), "a")),
+                                  torch.from_numpy(_app(mh.reshape(-1), "d")))
                 manifold = np.asarray(o["manifold"].float().cpu()).reshape(-1)
+                if "m_mu" in _sc:                      # 反标准化回流形真量纲
+                    manifold = manifold * _sc["m_sd"] + _sc["m_mu"]
                 gain = float(o.get("intent_gain") or 0.0)
+                _mh = ((manifold - _sc["m_mu"]) / _sc["m_sd"]).astype(np.float32) if "m_mu" in _sc \
+                    else manifold.astype(np.float32)
                 act = np.asarray(self._il_head(
-                    torch.from_numpy(manifold.astype(np.float32)).reshape(1, -1)
+                    torch.from_numpy(_mh).reshape(1, -1)
                 ).float().cpu()).reshape(-1)[:4]
+                if "u_mu" in _sc:                      # 动作头反标准化
+                    act = act * _sc["u_sd"][:4] + _sc["u_mu"][:4]
         except Exception as e:                                                  # noqa: BLE001
             st["err"] = f"直连线推理异常 {type(e).__name__}: {e}"
             st["refused"] += 1
@@ -1863,6 +1979,8 @@ class RealStateSpaceSim:
             #   三档同 SS_INTACT 纪律: 不设 SS_L4_INTACT = **逐位零变化** / _SHADOW=1 = 影子真记录不接管 /
             #   =1 = 接管 (按解码器置信度 w 融合: u_ff = (1−w)·analytic + w·L4, w=0 → 原值不变)。
             #   与 SS_INTACT 的差别: 走 decoder 量纲逆运算, **不需要标定文件**; 未就绪/异常 → 计数 + 记来源。
+            # 🧬 直连线动作输入 = 本帧前馈参考 (与训练同源: 训练时喂的就是引擎真实下发的 u)
+            self._u_ff_last = np.asarray(u_ff, float).copy()
             if os.environ.get("SS_L4_INTACT") == "1" and self._intact_node is not None:
                 if st_now in self._l4_stages:
                     _r4 = self._l4_intact_u_ff(str(st_now))

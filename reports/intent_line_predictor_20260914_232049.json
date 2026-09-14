@@ -1,0 +1,37 @@
+{
+ "ts": "2026-09-14 23:20:49",
+ "frames": 1935,
+ "groups": [
+  "ft0",
+  "ft1",
+  "ft2",
+  "ft3",
+  "s0",
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5",
+  "s6",
+  "s7"
+ ],
+ "tol": [
+  0.03,
+  0.01,
+  0.01,
+  0.05,
+  0.015,
+  0.015
+ ],
+ "dim_names": [
+  "progress",
+  "risk",
+  "V",
+  "eta",
+  "rem",
+  "dperp"
+ ],
+ "loso_folds": [],
+ "loso_summary": {},
+ "ckpt": "../../../tmp/il_smoke.pt"
+}
