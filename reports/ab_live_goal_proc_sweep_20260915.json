@@ -1,0 +1,154 @@
+{
+ "ts": "2026-09-15 02:10 CST",
+ "method": "每臂独立进程 + 每组合 2 重复 (进程内多臂有状态泄漏嫌疑 → 已隔离; 结果可复现)",
+ "weights": "intact_l4_current → v6r11 weights_epoch_2.pt",
+ "table": {
+  "analytic_seed0": {
+   "done": "2/2",
+   "min_insert_mm": [
+    0.9,
+    0.6
+   ],
+   "end_mm": [
+    65.1,
+    65.1
+   ],
+   "veto": [
+    0,
+    0
+   ]
+  },
+  "analytic_seed1": {
+   "done": "0/2",
+   "min_insert_mm": [
+    0.5,
+    0.4
+   ],
+   "end_mm": [
+    17.6,
+    17.9
+   ],
+   "veto": [
+    0,
+    0
+   ]
+  },
+  "analytic_seed2": {
+   "done": "0/2",
+   "min_insert_mm": [
+    6.5,
+    6.5
+   ],
+   "end_mm": [
+    23.9,
+    23.9
+   ],
+   "veto": [
+    0,
+    0
+   ]
+  },
+  "fixed_gate_on_seed0": {
+   "done": "0/2",
+   "min_insert_mm": [
+    48.6,
+    50.2
+   ],
+   "end_mm": [
+    158.6,
+    120.8
+   ],
+   "veto": [
+    582,
+    570
+   ]
+  },
+  "fixed_gate_on_seed1": {
+   "done": "2/2",
+   "min_insert_mm": [
+    2.2,
+    2.0
+   ],
+   "end_mm": [
+    65.4,
+    65.1
+   ],
+   "veto": [
+    239,
+    238
+   ]
+  },
+  "fixed_gate_on_seed2": {
+   "done": "0/2",
+   "min_insert_mm": [
+    2.5,
+    2.5
+   ],
+   "end_mm": [
+    18.7,
+    18.7
+   ],
+   "veto": [
+    401,
+    401
+   ]
+  },
+  "live_gate_on_seed0": {
+   "done": "0/2",
+   "min_insert_mm": [
+    50.3,
+    49.4
+   ],
+   "end_mm": [
+    144.6,
+    113.0
+   ],
+   "veto": [
+    535,
+    519
+   ]
+  },
+  "live_gate_on_seed1": {
+   "done": "2/2",
+   "min_insert_mm": [
+    2.0,
+    2.0
+   ],
+   "end_mm": [
+    65.1,
+    65.2
+   ],
+   "veto": [
+    237,
+    239
+   ]
+  },
+  "live_gate_on_seed2": {
+   "done": "0/2",
+   "min_insert_mm": [
+    2.5,
+    2.5
+   ],
+   "end_mm": [
+    18.7,
+    18.7
+   ],
+   "veto": [
+    401,
+    401
+   ]
+  }
+ },
+ "findings": {
+  "reproducible": "同组合两重复几乎逐位一致 (analytic seed0 末端 65.1/65.1; gate_on seed1 min 2.2/2.0) ⇒ 指标稳, 不是随机噪声",
+  "live_goal_no_effect": "换活目标帧 (与训练同构: goal=回合末帧) 对最终结果**无可测影响** (seed0 48.6/50.2 vs 49.4/50.3; seed1 2.2/2.0 vs 2.0; seed2 2.5/2.5) —— 尽管提案平均差 0.115 (≈u 量级)。原因: 闸否决 87~98% ⇒ 结果由解析链主导",
+  "goal_is_a_real_factor": "但目标帧确实改变提案 (diag_goal_match: 0% 逐位相同, 最小插入 47.6→25.3mm 在闸关时) ⇒ 目标帧口径是\"提案不落可行域\"的成因之一, 不是唯一",
+  "real_bottleneck_L2": "**真正的瓶颈: L2 解析链自身成功率只有 1/3** (seed0 done 2/2; seed1 done 0/2 但最小插入 0.4~0.5mm —— 差 0.4mm 却判不完成; seed2 0/2)。上层再调也难稳定达标",
+  "no_promotion": "gate_on 与解析链完成率持平 (各 2/6), 完成分布不同 (解析链过 seed0, 直驱过 seed1); seed2 直驱 2.5mm 优于解析链 6.5mm ⇒ 仍不判\"提升\", 直驱不进默认档"
+ },
+ "artifacts": {
+  "jsonl": "/tmp/ab_proc.jsonl (18 行)",
+  "diag": "tools/diag_goal_match.py",
+  "harness": "tools/ab_live_goal.py"
+ }
+}
