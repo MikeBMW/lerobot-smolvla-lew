@@ -236,3 +236,6 @@ reports/ab_live_goal_2026*.json
 reports/ab_intent_line_closedloop_2026*.json
 reports/intact_last_input.npz
 checkpoints/
+
+# 手工备份文件不进库 (2026-09-15)
+*.bak-*

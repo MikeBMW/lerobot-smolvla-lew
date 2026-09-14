@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,10 +10165,21 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
         # v5.5.40: 🎯 **L4 INTACT 策略化 + 连线 (metaworld → INTACT → decoder → L3)** (老倪: "将 INTACT 接入到 L4 层, 把 L4 节点的 INTACT 代码迁移到 src/lerobot 的 policies 文件夹, 做好连线; 数据源直接接入 metaworld, 输出接一个 decoder 再进 L3; 不能让 L2 L3 下降") — ①**迁移**: `src/lerobot/manifold/intact_node/` 整体 git mv 到 `src/lerobot/policies/intact/runtime/` (实现一字未改; 旧路径留兼容转发, 桥/自检/引擎零改动) ②**策略化**: `configuration_intact.py` (注册名 intact) + `modeling_intact.py` (IntactPolicy: select_action/predict_action_chunk/predict_intent; forward 显式 NotImplementedError = 不假装能训) + 工厂/包出口三处注册 ③**数据源直连 metaworld**: 新 `runtime/metaworld_source.py` (MetaWorldSource, MT1 peg-insert-side-v3 · corner2 真渲染帧 224² + 39D 现场读 + 本域真实目标帧) 注册为数据源名 `metaworld` ④**解码器**: `decoder.py` (IntactIntentDecoder) — u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT **现读引擎源码**, 无需标定) + L3 流形条件 (需标定 models/intact_l3_map.json, 未标定**拒绝返回并计数**, 不写死映射) ⑤**连线**: 新节点「🎯 INTACT 意图解码器 (L4 → L3 条件)」+ 3 连线 (metaworld 数据源→INTACT 策略→解码器→L3 DiT), 两节点均在 L4 行内 (cap=4 → L2/L3 档不执行) ⑥**引擎三档**: `SS_L4_INTACT` (不设=逐位零变化 / _SHADOW=1 影子真推理真记录 / =1 按 w 融合 u_ff=(1−w)·analytic+w·L4, w=0 恒等) + `l4_intact_summary()` 全计数取证 + 新工具 `tools/l4_intact_ab.py` (A/B/C 三臂同 seed 子进程隔离) ⑦**实测**: 节点级真跑成功 (metaworld 数据源建成 · 真权重 trained=True · chunk(8,8) · candidate_sequences=0 零搜索 · 1396ms/步 CPU · 动作维自动对齐 4→8) · 解码器 u_ff 先验 + 未标定诚实拒绝 · **零回退证明**: L2 档 55 节点 / L3 档 60 节点 改动前后**逐 id 相同** (脚本对比 git HEAD) ⑧**迁移期修真 bug**: 未设 STABLEWM_HOME 时桥退回 <repo>/.cache → 权重全部找不到, 改为优先共享缓存 stable-wm-cache ⑨**A/B 首轮抓到第二个真 bug**: 引擎直喂帧路径没人设 goal 帧 → goal_displacement 模式每帧抛 ValueError (影子臂 60/60 次"真推理"实为空转, 只有计数在涨) → 新增 `ensure_goal()` 三级兜底 (已显式 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错; 修后 calls=8/reuse=52 (chunk=8 → 60 步恰好 8 次真推理) · goal_src=默认目标帧 · err=null, 且影子臂 dist 与修复前逐位相同 (不接管=行为不变) · 设计 docs/design/zmax_l4_intact_policy.md
+        # v5.6.1: 🎨 **补画布缺线: INTACT 意图解码器 → 流形专家预测器** (老倪: "怎么没有直接连接流形专家
+        #   预测器节点呢?") —— 查证结论: 这条数据通路**代码里真实存在、画布漏画** —— decoder.py 产 m_int
+        #   (语义="给流形专家预测器的意图"), 引擎 state_space_sim_real.py:1380 取 d.m_int → :1419 喂
+        #   WorldModelPredictor(z,a,m) (对齐 INTACT 四槽语法 [z,m_t,z⊙m_t,A(a_{t−1})] 的 m_t); 但活跃口径是
+        #   **z7** (z=引擎几何潜空间 R7 + m=引擎几何意图 target−peg_head, 由 📐2D→3D 那条线供给), 解码器
+        #   m_int 在该口径下只当**门控** (w=m_int_weight×SS_L4_INTENT_LINE_W×ready); z_t 口径 (z=INTACT
+        #   潜空间192+m=m_int) 才是本直连边但已被离线证伪 (z_t→流形 LOSO R² 全负)。修: 文本级插入 1 条连线
+        #   (t_port=in3) + 两端节点 desc 补"哪条入线属哪个口径"; 验证 真画布 节点77·连线91→92·反向2→2·
+        #   重叠0→0·穿框44→44·交叉143→145(+2) · 零回退 L2/L3/L4 执行集 55/60/77 逐项不变·旧线 0 丢失。
+        #   注: 该边不改运行时行为 (活跃口径 z7 不变), 作用是让画布与代码一致并标注口径; 要真正"通电"需
+        #   解码器在几何口径表达意图 (latent→几何映射已证不可辨识, 不能硬喂 192 维)
         # v5.6.0: 🐛🎯 **三个真根因 bug + L2 成功率 4/12→5/12 + yaw 直连验通** —— ①**最隐蔽的评估污染**:
         #   L2 势场构建 (ObstacleField.from_engine) 在引擎运行中又新建第二个 RealStateSpaceSim 并 _reset(104)
         #   采几何, 而 metaworld 底层 MuJoCo sim 进程内共享 → **正在运行的场景被改写** (实测 peg 瞬移
