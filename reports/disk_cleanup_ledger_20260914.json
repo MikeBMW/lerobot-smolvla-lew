@@ -1,0 +1,45 @@
+{
+  "ts": "2026-09-14 19:02 CST",
+  "reason": "系统盘 used 307G > 红线 300G (老倪指令: 磁盘不允许增长); 老倪选 A: 压回红线内",
+  "before": {"used_gb": 307, "avail_gb": 70, "total_gb": 396, "mount": "/dev/nvme0n1p5"},
+  "after": {"used_gb": 295, "avail_gb": 82},
+  "freed_bytes_approx": 13318900436,
+  "deleted": [
+    {
+      "path": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v3.h5",
+      "bytes": 5241067814,
+      "sha256": "3c8becc3ba1fbbda3e540ecf32329eb734a40157422d16c8315ffc13ab8c2ed7",
+      "why": "上一代光模块插拔数据集, 已被 v4/v5(带 skill_ctx + 真干扰) 取代",
+      "refs_before_delete": ["INTACT-JEPA/config/train/data/zmax_v3.yaml (死配置)", "tools/intact_replay_check_v3.py (默认参数)"],
+      "regenerate": "cd /home/ubuntu/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/intact_insert_dataset_v3.py --out-name optical_insert_v3 --dest /home/ubuntu/stable-wm-cache/datasets  然后 /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py --parts 'reports/optical_insert_v3_part*.npz' --out-name optical_insert_v3 --dest /home/ubuntu/stable-wm-cache/datasets"
+    },
+    {
+      "path": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v4.h5",
+      "bytes": 7283732145,
+      "sha256": "98eda89d7abc2e440775bb90327646c40f0b9ea18d77ac4ae2476ee1721ec747",
+      "why": "v5 代训练集, 已被 optical_insert_v5_disturb.h5 (7.37GB, sha256 d3831406…) 取代; v5 链路已 4 epoch 全判 ❌ 止损",
+      "refs_before_delete": ["INTACT-JEPA/config/train/data/zmax_v4.yaml (死配置)", "~/.hermes/scripts/v5_judge_watch.py (cron 24dd99948466 → 本次已 pause)", "tools/action_stats_from_h5.py 文档字符串"],
+      "paused_cron": {"job_id": "24dd99948466", "name": "v5 判闸哨兵", "reason": "v5 链路已止损; 若要恢复必须先回滚/重采 v4 h5 或把 H5 指到 disturb 数据(口径不一致, 不建议)"},
+      "regenerate": "同 v3 流程, --out-name optical_insert_v4"
+    },
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5r2_s3072", "bytes_approx": 252706816, "why": "无效接力链 (4 epoch 全 ❌), 无任何引用"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v3_s3072", "bytes_approx": 168820736, "why": "v3 代权重, 仅被自己的 train config 引用; 判闸数字已在 reports/intact_replay_v3_*.json"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6_smoke", "bytes_approx": 84934656, "why": "v6 冒烟跑 (通道自检) 留下的产物; 证据在 tools/intact_skill_channel_check.py 五闸输出"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_zmax_smoke", "bytes_approx": 12288, "why": "冒烟残渣"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5_s3072/weights_epoch_1.pt", "bytes": 83925120, "why": "中间轮 (disk-redline-guard 规则: 每目录只留最后 + 保护被 config 引用的轮)"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5_s3072/weights_epoch_3.pt", "bytes": 83925120, "why": "中间轮 (同上)"},
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/reports/v3_smoke_part00.npz", "bytes": 57451430, "why": "冒烟帧包"},
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/reports/v4_smoke_part00.npz", "bytes": 43159638, "why": "冒烟帧包"},
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/reports/zmax_v3_probe_part00.npz", "bytes": 42543167, "why": "探针帧包"}
+  ],
+  "protected_verified_after": [
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v5_disturb.h5", "bytes": 7369514300, "note": "v6 训练在用"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5_s3072/weights_epoch_2.pt", "bytes": 83925120, "note": "v6 暖启动源 (config init_weights_path + v6_resume.sh 引用)"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5_s3072/weights_epoch_4.pt", "bytes": 83925120, "note": "v5 最后轮"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r2_s3072", "note": "当前在跑的 v6r2 输出目录"},
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/cube_single_expert.h5", "note": "官方 INTACT 数据集, 老倪要求保留"},
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/reacher.h5", "note": "官方 INTACT 数据集, 老倪要求保留"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/recovery_delta_full_*", "note": "论文官方 recovery delta, 官方评测需要"}
+  ],
+  "not_touched": ["~/.cache/huggingface/hub (SmolVLM2 5.7G + INTACT 301M: 在用的模型缓存, 无 .incomplete 残留)", "reports/evidence_l4, evidence_joint_l4l2, layer_stack_evidence.json (证据)", "reports/mem_ladder (阶梯台结论 JSON/CSV + 视频)", "cube/reacher 官方数据集 188G"]
+}
