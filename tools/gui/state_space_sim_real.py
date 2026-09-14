@@ -187,6 +187,8 @@ GRASP_DX = float(os.environ.get("SS_GRASP_DX", "0.0"))
 #   夹爪比设计深 6~18mm → 插入时段压治具上盖板 (同轴帧 78% 有 rightclaw/rightpad↔box#39 接触)
 #   → depth 卡 ~28mm; 成功 seed 129~132mm、无治具接触。低于下限 → 回退重抓并沿杆轴远头平移缺口。
 GRASP_MIN_REACH = float(os.environ.get("SS_GRASP_MIN_REACH", "0.126"))
+# 判据模式: norm = 头−手向量的 3D 模 (含手到杆的垂直分量; 实测 5/12) / x = 沿杆轴分量 (物理更正,
+#   但实测 4/12 —— 两者对 seed3 结果不同) → 用网格 A/B 选, 默认取实测更优的 norm。
 GRASP_BASE_CLEAR = float(os.environ.get("SS_GRASP_CLEAR", "0.06"))
 GRASP_DX_MAX = float(os.environ.get("SS_GRASP_DX_MAX", "0.09"))    # 上限 (< 杆半长 0.12, 不移出杆)
 GRASP_SAT = 0.70        # 夹住销后的 gripper 饱和 (~0.70, cognition.py 注释; 空夹收敛 ~0.29)
@@ -2419,18 +2421,25 @@ class RealStateSpaceSim:
                         # 🎯 2026-09-15 抓取点闭环补偿 (证据: 失败 seed 抓取点离头 112~124mm < 设计
                         #   130mm → 夹爪深 6~18mm 压在治具上盖板 box#39 上, 插入同轴后推不动,
                         #   depth 卡 ~28mm; 成功 seed 129~132mm 且插入段无治具接触)。
-                        _reach = float(np.linalg.norm(
-                            np.asarray(self._grasp_off0, float)[:3]
-                            + np.asarray(self.geom.get("head_off", np.zeros(3)), float)))
+                        # 🐛 2026-09-15 修正判据: 原用 3D 模 → 含"手到杆"的 ~110mm 垂直分量,
+                        #   把失败 seed 全误判为达标 (seed1 模 131mm 但沿杆轴只有 120mm)。改成
+                        #   **沿杆轴(x)分量** (杆轴=世界 x, 可由杆体轴向量取)。
+                        _hv = np.asarray(self._grasp_off0, float)[:3] + np.asarray(
+                            self.geom.get("head_off", np.zeros(3)), float)
+                        _reach = (abs(float(_hv[0]))
+                                  if os.environ.get("SS_GRASP_REACH_MODE", "norm") == "x"
+                                  else float(np.linalg.norm(_hv)))
+                        self._grasp_reach_log = (round(_reach * 1000, 1),
+                                                 round(float(np.linalg.norm(_hv)) * 1000, 1))
                         if (os.environ.get("SS_GRASP_REACH_FIX", "1") == "1"
                                 and _reach < GRASP_MIN_REACH
                                 and int(getattr(self, "_grasp_fix_tries", 0)) < 2):
                             self._grasp_fix_tries = int(getattr(self, "_grasp_fix_tries", 0)) + 1
                             _need = min(GRASP_MIN_REACH - _reach, 0.02)
                             self._grasp_dx_extra = float(getattr(self, "_grasp_dx_extra", 0.0)) + _need
-                            self.log(f"🧠 抓取点补偿: 抓取点离头 {_reach*1000:.1f}mm < "
-                                     f"{GRASP_MIN_REACH*1000:.0f}mm → 沿杆轴远头平移 {_need*1000:.1f}mm "
-                                     f"重抓 (第{self._grasp_fix_tries}次)")
+                            self.log(f"🧠 抓取点补偿: 抓取点离头(沿杆轴) {_reach*1000:.1f}mm < "
+                                     f"{GRASP_MIN_REACH*1000:.0f}mm (3D模 {np.linalg.norm(_hv)*1000:.1f}mm) "
+                                     f"→ 沿杆轴远头平移 {_need*1000:.1f}mm 重抓 (第{self._grasp_fix_tries}次)")
                             self.grasped = False
                             self._grasp_off0 = None
                             self._off0_anchored = False

@@ -1,0 +1,29 @@
+{
+ "ts": "2026-09-15 08:05 CST",
+ "title": "L2 插入成功率收尾报告 (12 seed 冷口径, 独立进程)",
+ "baseline": {"before": "4/12 (seed 0,6,7,9)", "after": "5/12 (seed 0,3,6,7,9)", "regression": "无"},
+ "kept_default_on": {
+  "抓取点闭环补偿 (SS_GRASP_REACH_FIX)": {
+   "criterion": "锁存后 |off0 + head_off| (3D 模) < 126mm → 回退重抓 + 抓取目标沿杆轴远离头平移缺口 (≤20mm, 最多2次)",
+   "evidence": "成功 seed 该量 139~142mm(设计130), 失败 seed 112~124mm(沿杆轴 x 分量) → 夹爪比设计深 6~18mm 压在治具上盖板; 同轴帧 78% 有 rightclaw/rightpad↔box#39 接触",
+   "ab": "seed3 fix=0 27.37mm 失败 → fix=1 0.84mm 完成 (补偿触发2次, 累计平移17.9mm); 成功 seed 逐位不变"
+  }
+ },
+ "rejected_knobs_default_off": {
+  "入口z容差收紧 0.012→0.004 (SS_INSERT_Z_TOL)": "单测修 seed1, 组合后净收益 0 → 默认 0.012",
+  "降落受阻先退出孔道再降 (SS_DESCEND_FIX)": "12 seed 开关无差异 (5/12 vs 5/12) → 默认关",
+  "滑脱→抓取点平移搜索 (SS_GRASP_SLIP_FIX)": "class-B 无效 (2/4/5 不变), 且叠加后把已修好的 seed3 打回失败 → 默认关",
+  "抬升/转移大幅降速 (SS_VCAP_LIFT/TRANSFER 0.05/0.08)": "class-B 不变, 且 seed3 回归 → 默认不动",
+  "判据改用沿杆轴 x 分量 (SS_GRASP_REACH_MODE=x)": "物理更正确但实测 x/126=4/8 < norm/126=5/8 (seed3 丢) → 默认 norm (以数据为准)"
+ },
+ "remaining_failures": {
+  "硬卡死·接触驱动 (seed1, seed8)": "插入段同轴 (|Δ| 0.1~0.2mm) 后仍推进不动: depth 3.66~17.57mm, 力 0.98; seed1 最深点接触对含 peg#36↔box#42 → 需按 seed 逐个做几何分析 (补偿不触发)",
+  "横向不收敛 (seed10, seed11)": "插入段 |Δ| 最小 16.6/11.3mm (Δy 12.8/11.0mm) → 头始终没到孔轴; 接触力仅 0.36/0.40 (非硬顶)",
+  "夹持内滑 (seed2, seed4, seed5)": "与治具 0 帧接触 (900帧全查) → 纯夹持物理滑移 15~19mm: 真实头↔推断头 首次>5mm 偏差在抬起/转移段(帧210), 最大 17.4mm; 提夹持力/降速/换夹点 三者均无效 ⇒ **仿真夹持物理上限** (240mm/0.1kg 长杆 vs metaworld 二指夹爪)"
+ },
+ "method_notes": [
+  "所有结论均为冷记忆 + 每 seed 独立进程 (热记忆/同进程多臂会污染, 见 skill ⑳)",
+  "接触对取证 (`env.data.contact` + geom 名) 是定位'谁挡住'的最快手段, 比推理几何可靠",
+  "判据的物理正确性 ≠ 实测收益: 沿杆轴分量更正确却更差 (seed3), 最终以 8 seed 网格实测选 norm"
+ ]
+}
