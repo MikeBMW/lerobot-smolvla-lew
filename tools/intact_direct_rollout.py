@@ -45,7 +45,32 @@ if os.path.isdir(_CACHE):
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 IMG = 224
-STATS_FILE = os.path.join(ROOT, "reports", "zmax_action_stats.json")
+# 🎯 反归一化统计必须与**训练同源** (2026-09-14 实锤): 旧默认 zmax_action_stats.json 源自
+#   zmax_insert.h5 (n=18635), 而 v5/v6 权重是拿 optical_insert_v5_disturb (n=149100) 训的
+#   → dx std 0.153 vs 0.0742 (放大 2.1 倍)、grip mean 0.120 vs 0.828 → 指令缩放全错, 评测作废。
+STATS_FILE = os.path.join(ROOT, "reports", "optical_insert_v5_action_stats.json")
+
+
+def audit_stats(s_meta: dict, policy: str | None, allow_mismatch: bool = False) -> None:
+    """反归一化口径审计: 统计来源 != ckpt 训练数据集 → **快速失败**(否则白跑 25 分钟拿到假数)。"""
+    src = os.path.basename(str(s_meta.get("source", "")))
+    ck = str(policy or "").split("/")[0]
+    cache = os.environ.get("STABLEWM_HOME") or os.environ.get("LOCAL_DATASET_DIR") or _CACHE
+    cfg = os.path.join(cache, "checkpoints", ck, "train_config.yaml")
+    train_ds = ""
+    if os.path.isfile(cfg):
+        for line in open(cfg, encoding="utf-8"):
+            s = line.strip()
+            if s.startswith("name:") and s.endswith(".h5"):
+                train_ds = s.split(":", 1)[1].strip()
+                break
+    print(f"   🔎 口径审计: 反归一化统计={src or '?'} · ckpt={ck or '?'} · 训练数据集={train_ds or '未知'}")
+    if train_ds and src and src != train_ds:
+        msg = (f"反归一化统计源 {src} != ckpt 训练数据集 {train_ds} → 指令缩放会错, 数字不可用")
+        if not allow_mismatch:
+            raise SystemExit(f"❌ 口径不一致: {msg}\n   用 --stats reports/<与训练同源>_action_stats.json 重跑"
+                             f" (或显式 --allow-stats-mismatch 只做对照)。")
+        print(f"   ⚠️ 口径不一致但被显式放行: {msg}")
 
 
 def load_stats(path: str):
@@ -370,6 +395,8 @@ def main():
     ap.add_argument("--infer-every", type=int, default=1, help="每 N 步真推理一次 (1=每步都推)")
     ap.add_argument("--no-unz", action="store_true", help="不做训练归一化逆变换 (对照实验)")
     ap.add_argument("--stats", default=STATS_FILE)
+    ap.add_argument("--allow-stats-mismatch", action="store_true",
+                    help="显式放行反归一化统计与训练不同源 (默认不一致即快速失败)")
     ap.add_argument("--baseline", default="1", help="1=同轮跑解析链对照 (同口径)")
     ap.add_argument("--video-dir", default="", help="非空则录 mp4 到该目录 (解析链对照 + 模型直驱 各一段)")
     ap.add_argument("--out", default="")
@@ -380,6 +407,8 @@ def main():
     if not seeds:
         seeds = [0]
     a_mean, a_std, s_meta = load_stats(a.stats)
+    audit_stats(s_meta, os.environ.get("INTACT_POLICY"),
+                allow_mismatch=bool(getattr(a, "allow_stats_mismatch", False)))
     print(f"═══ Step 1 直驱: 模型动作 → env.step (无解析控制器) ═══")
     print(f"   引擎 mode={a.mode} · seeds={seeds} · max_steps={a.max_steps} · device={a.device}")
     print(f"   动作归一化逆变换: {s_meta['source']} "
