@@ -67,6 +67,12 @@ class DecodedIntent:
     #   真通道: INTACT 自己的意图增量 δ=z_goal−z_t (单位向量) 直接作为 DiT 的额外条件 token。
     l4_cond: np.ndarray | None = None
     l4_cond_source: str = ""
+    # 🧬 2026-09-14 (老倪原则: 上层只提供意图/条件, 执行由 L2 收口):
+    #   m_int = 给**流形专家预测器**的意图 (与 l4_cond 同源 δ=z_goal−z_t, 但语义是"意图条件",
+    #   不是 DiT 的 token)。m_int_weight = 门控 (意图退化时 =0 → 预测器不受污染, 零回退)。
+    m_int: np.ndarray | None = None
+    m_int_source: str = ""
+    m_int_weight: float = 0.0
 
 
 class IntactIntentDecoder:
@@ -151,9 +157,19 @@ class IntactIntentDecoder:
         reason = "" if abs(w) > 0 else "INTACT 意图退化 (intent_norm≈0) → w=0, 不注入"
         # ④ L4→L3 条件通道 (无需标定): 意图增量 δ=z_goal−z_t 的单位向量 → DiT 额外条件 token
         l4c, l4src = self._intent_cond(out)
+        # ⑤ 🧬 直连线意图 (给流形专家预测器): 同一 δ, 但作为**意图条件**, 不做量纲逆运算。
+        #    门控 = w (意图退化 → 0)，来源逐项标注; 预测器侧零初始化 → 关掉即逐位零回退。
+        m_int = l4c
+        m_src = (f"decoder(δ) ← {l4src}" if l4c is not None else f"拒绝({l4src})")
+        if l4c is None:
+            m_int = None
+            m_w = 0.0
+        else:
+            m_w = float(w)
         return DecodedIntent(u_ff=u, u_ff_source=u_ff_src, l3_cond=cond,
                              l3_cond_source=cond_src, weight=w, reason=reason,
-                             l4_cond=l4c, l4_cond_source=l4src)
+                             l4_cond=l4c, l4_cond_source=l4src,
+                             m_int=m_int, m_int_source=m_src, m_int_weight=m_w)
 
     def _intent_cond(self, out) -> tuple[np.ndarray | None, str]:
         """意图增量 δ=z_goal−z_t → 单位向量 (L4→L3 条件; 无需标定, 每帧真值)。"""

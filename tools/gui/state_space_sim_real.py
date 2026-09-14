@@ -273,6 +273,20 @@ class RealStateSpaceSim:
         self._l4_stats = {"calls": 0, "reuse": 0, "refused": 0, "blend": 0, "w_zero": 0,
                           "cond_ready": 0, "frame_std": [], "shift": [], "err": None,
                           "src": "analytic", "w": 0.0, "cond_src": "未标定", "goal_src": ""}
+        # 🧬 2026-09-14 (老倪原则: 上层只提供意图/条件, 执行永远由 L2 收口) —— **直连线**:
+        #   INTACT 意图 m_int → 流形专家预测器 (z' = mlp([z_t,a]) + gate·proj(m)) → 流形式 6 维
+        #   → StateSpaceActionHead → u_int → 与下层参考在同一 u_ff 槽位融合, 再经 L2 收口
+        #   (sched.decide + safety.saturate 一行不动)。
+        #   · SS_L4_INTENT_LINE 不设 → **逐位零变化** (零回退, 调用点根本不进)
+        #   · 预测器**未训练** → 线路照跑出证据, 但 w=0 (绝不拿噪声污染执行口)
+        self._il_pred = None        # WorldModelPredictor (m_dim>0)
+        self._il_head = None        # StateSpaceActionHead (流形 6 维 → 动作 4 维)
+        self._il_stack = None       # CapabilityStack (收缩/收口/记账)
+        self._il_ready = False      # 预测器已训练?
+        self._il_last = None        # (u_int(4), w, info)
+        self._il_stats = {"frames": 0, "ran": 0, "applied": 0, "w_zero": 0, "refused": 0,
+                          "gain": [], "err": None, "ready": False, "ready_src": "未检查",
+                          "src": "", "clip_max": 0.0, "w": 0.0, "manifold": []}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1114,6 +1128,9 @@ class RealStateSpaceSim:
             self._l4_cond = d.l3_cond
             # 🎯 2026-09-14 L4→DiT 条件通道 (192 维意图单位向量; 无需标定)
             self._l4_dit_cond = getattr(d, "l4_cond", None)
+            # 🧬 2026-09-14 直连线: 同一 δ 作为**意图**, 送流形专家预测器 (不是动作, 不越权)。
+            #   SS_L4_INTENT_LINE 不设 → 本调用立即返回 None (零回退, 逐位不变)
+            self._l4_intent_line(d, out, stage)
             st["cond_src"] = d.l3_cond_source
             st["cond_ready"] = 1 if d.l3_cond is not None else 0
             if d.u_ff is None:
@@ -1159,6 +1176,129 @@ class RealStateSpaceSim:
         if self._l4_shadow:            # 影子档: 真推理真解码真记录, 但不接管
             return None
         return u, float(st.get("w") or 0.0)
+
+    # ── 🧬 直连线: L4 意图 → 流形专家预测器 → 动作头 (2026-09-14 老倪原则) ──
+    def _il_init(self, z_dim: int, m_dim: int) -> None:
+        """懒加载直连线三件套 (预测器/动作头/能力栈仲裁)。**不训练也能跑** (接口真跑 + 零回退)。"""
+        if self._il_pred is not None:
+            return
+        st = self._il_stats
+        try:
+            import torch                                                        # noqa: PLC0415
+            from lerobot.manifold.predictor_layer import WorldModelPredictor     # noqa: PLC0415
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _lew = os.path.join(_root, "src", "lerobot", "policies", "smolvla_lew")
+            if _lew not in sys.path:
+                sys.path.insert(0, _lew)
+            from state_space_action_head import StateSpaceActionHead             # noqa: PLC0415
+            from lerobot.manifold.capability_stack import CapabilityStack        # noqa: PLC0415
+            self._il_pred = WorldModelPredictor(z_dim=int(z_dim), act_dim=4, manifold_dim=6,
+                                               m_dim=int(m_dim))
+            self._il_head = StateSpaceActionHead(input_dim=6, action_dim=4, chunk_size=1)
+            self._il_stack = CapabilityStack(bounds=(-1.0, 1.0))
+            # 就绪判定: 有**训练过的**预测器权重才算 ready; 没有 → 线路跑但不注入 (诚实标注)
+            ck = os.environ.get("SS_L4_INTENT_PRED",
+                                os.path.join(_root, "checkpoints", "manifold_predictor",
+                                             "intent_line.pt"))
+            if os.path.isfile(ck) and os.path.getsize(ck) > 4096:
+                _sd = torch.load(ck, map_location="cpu", weights_only=False)
+                self._il_pred.load_state_dict(_sd["predictor"], strict=False)
+                self._il_head.load_state_dict(_sd["head"], strict=False)
+                self._il_ready = True
+                st["ready_src"] = f"已训练 ({os.path.relpath(ck, _root)})"
+            else:
+                self._il_ready = False
+                st["ready_src"] = (f"未训练: {os.path.relpath(ck, _root)} 不存在 → 线路在跑, w=0 不注入")
+            self._il_pred.eval()
+            self._il_head.eval()
+            st["ready"] = bool(self._il_ready)
+            self.log(f"🧬 L4 直连线就绪: 预测器 z{int(z_dim)}/m{int(m_dim)} + 动作头(流形6) · "
+                     f"ready={self._il_ready} ({st['ready_src']})")
+        except Exception as e:                                                  # noqa: BLE001
+            self._il_pred, self._il_head, self._il_stack = None, None, None
+            st["err"] = f"直连线初始化失败 {type(e).__name__}: {e}"
+
+    def _l4_intent_line(self, d, out, stage: str = "") -> tuple | None:
+        """L4 意图 → 流形专家预测器 → 流形式 6 维 → 动作头 → u_int (引擎 u 空间)。
+
+        返回 (u_int(4), w, info); None = 本帧不进 (开关未开/无意图/异常, 均计数 + 记来源)。
+        w = m_int_weight × SS_L4_INTENT_LINE_W × ready —— **预测器未训练则 w=0** (零回退)。
+        """
+        st = self._il_stats
+        st["frames"] += 1
+        if os.environ.get("SS_L4_INTENT_LINE") != "1":
+            return None
+        m = getattr(d, "m_int", None)
+        st["src"] = str(getattr(d, "m_int_source", "") or "")
+        if m is None:
+            st["refused"] += 1
+            st["err"] = "无意图 (m_int=None)"
+            return None
+        try:
+            import torch                                                        # noqa: PLC0415
+            lat = getattr(out, "latent", None) or {}
+            zt = lat.get("z_t")
+            z = np.asarray(zt if zt is not None else m, dtype=np.float32).reshape(1, -1)
+            self._il_init(z.shape[-1], np.asarray(m).reshape(-1).size)
+            if self._il_pred is None:
+                st["refused"] += 1
+                return None
+            chunk = np.asarray(getattr(out, "chunk", None), dtype=np.float64)
+            if chunk.ndim == 1:
+                chunk = chunk[None]
+            a = (np.asarray(chunk[0][:4], dtype=np.float32).reshape(1, -1) if chunk.size
+                 else np.zeros((1, 4), np.float32))
+            mh = np.asarray(m, dtype=np.float32).reshape(1, -1)
+            if mh.shape[-1] != getattr(self._il_pred, "m_dim", 0):              # 意图维不匹配 → 拒绝
+                st["err"] = f"意图维不匹配 m={mh.shape[-1]} vs m_dim={getattr(self._il_pred,'m_dim',0)}"
+                st["refused"] += 1
+                return None
+            with torch.inference_mode():
+                o = self._il_pred(torch.from_numpy(z), torch.from_numpy(a), torch.from_numpy(mh))
+                manifold = np.asarray(o["manifold"].float().cpu()).reshape(-1)
+                gain = float(o.get("intent_gain") or 0.0)
+                act = np.asarray(self._il_head(
+                    torch.from_numpy(manifold.astype(np.float32)).reshape(1, -1)
+                ).float().cpu()).reshape(-1)[:4]
+        except Exception as e:                                                  # noqa: BLE001
+            st["err"] = f"直连线推理异常 {type(e).__name__}: {e}"
+            st["refused"] += 1
+            return None
+        st["ran"] += 1
+        st["gain"].append(gain)
+        if len(st["manifold"]) < 64:
+            st["manifold"].append(manifold.copy())
+        ka = float(getattr(self._l4_dec, "k_act", K_ACT))
+        u = np.concatenate([np.clip(act[:3], -1.0, 1.0) * ka,
+                            [1.0 if float(act[3]) > 0.5 else -1.0]])
+        w = float(getattr(d, "m_int_weight", 0.0)) * float(os.environ.get("SS_L4_INTENT_LINE_W", "1.0"))
+        if not self._il_ready:
+            w = 0.0
+            st["w_zero"] += 1
+        st["w"] = w
+        info = {"m_int": np.asarray(m, float), "src": st["src"], "manifold": manifold.copy(),
+                "gain": gain, "u_int": np.asarray(u, float).copy(), "stage": str(stage),
+                "ready": bool(self._il_ready)}
+        self._il_last = (np.asarray(u, float), w, info)
+        return self._il_last
+
+    def l4_intent_line_summary(self) -> dict:
+        """直连线取证摘要 (A/B 对照/报告用; 数字全来自实测, 不做修饰)。"""
+        s = self._il_stats
+        g = s.get("gain") or []
+        mn = s.get("manifold") or []
+        stk = self._il_stack.summary() if self._il_stack is not None else {}
+        return {"enabled": os.environ.get("SS_L4_INTENT_LINE") == "1",
+                "frames": s["frames"], "ran": s["ran"], "applied": s["applied"],
+                "w_zero": s["w_zero"], "refused": s["refused"],
+                "ready": bool(s["ready"]), "ready_src": s["ready_src"],
+                "src_last": s["src"], "w_last": round(float(s["w"]), 4),
+                "err": s["err"],
+                "intent_gain_mean": round(sum(g) / len(g), 6) if g else 0.0,
+                "manifold_last": [round(float(x), 5) for x in (mn[-1] if mn else [])],
+                "clip_max": float(stk.get("clip_max", 0.0)),
+                "stack": {k: stk.get(k) for k in ("commit", "vetoed", "clipped", "clip_max_mean",
+                                                  "w_last", "layers")}}
 
     def l4_intact_summary(self) -> dict:
         """L4 接入的取证摘要 (给 A/B 对照工具/报告; 数字全部来自实测计数, 不做修饰)。"""
@@ -1743,6 +1883,26 @@ class RealStateSpaceSim:
                         np.asarray(self._l4_last_u, float).copy())
                     tr.setdefault("l4_cond_vec", []).append(
                         None if self._l4_cond is None else np.asarray(self._l4_cond, float).copy())
+            # 🧬 2026-09-14 直连线融合 (老倪原则: 上层只给意图, 执行由 L2 收口):
+            #   u_ff ← proj_{U_L2}((1−w)·u_ff + w·u_int)  —— 越界必夹紧 (I2) 并记账
+            #   ★ 唯一执行出口不变: 紧接着的 sched.decide + safety.saturate 一行未动 (I1)
+            if (os.environ.get("SS_L4_INTENT_LINE") == "1" and self._il_last is not None
+                    and self._il_stack is not None):
+                _ui, _wi, _ii = self._il_last
+                _stk = self._il_stack
+                _stk.note_l2(np.asarray(u_ff, float), src="analytic/L3 参考")
+                _stk.note_l4(_ii.get("m_int"), str(_ii.get("src") or ""), _wi, ready=self._il_ready)
+                _mrg, _info = _stk.commit(u_l2=np.asarray(u_ff, float)[:3],
+                                         u_up=np.asarray(_ui, float)[:3], w_up=_wi)
+                if _wi > 0.0:
+                    u_ff = np.concatenate([_mrg, [u_ff[3]]])
+                    self._il_stats["applied"] += 1
+                    self._il_stats["clip_max"] = max(float(self._il_stats["clip_max"]),
+                                                     float(_info.get("clip") or 0.0))
+                tr.setdefault("il_w", []).append(float(_wi))
+                tr.setdefault("il_u_ff_vec", []).append(np.asarray(_ui, float).copy())
+                tr.setdefault("il_manifold_vec", []).append(
+                    np.asarray(_ii.get("manifold"), float).copy())
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
             # 🧠 前馈探针 (真实 MLP 激活, 诊断通道): 2026-09-08 老倪目检实锤 — 真实化主路径

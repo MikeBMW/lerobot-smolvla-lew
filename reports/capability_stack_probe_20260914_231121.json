@@ -1,0 +1,104 @@
+{
+ "ts": "2026-09-14 23:11:22",
+ "checks": {
+  "A_zero_regression": {
+   "hash_old_impl": "713b210be8f7051b",
+   "hash_m_none": "713b210be8f7051b",
+   "hash_zeroinit_gate": "713b210be8f7051b",
+   "bit_identical_none": true,
+   "bit_identical_zeroinit": true,
+   "intent_gain_untrained": 0.0,
+   "intent_gain_trained": 2.637650489807129,
+   "manifold_changed_when_live": true
+  },
+  "B_contraction": {
+   "n": 5000,
+   "violations": 0,
+   "max_clip_Linf": 6.962356,
+   "w0_bit_identical": true,
+   "info_w0": {
+    "applied": false,
+    "reason": "w=0 → L2 原值 (零回退)",
+    "clip": 0.0
+   },
+   "clip_max": 6.962355943521575,
+   "clipped_frames": 4546,
+   "layer_semantics_guard": "OK(ValueError)"
+  },
+  "C_line_runs": {
+   "manifold_dim": 6,
+   "manifold": [
+    -0.0167,
+    0.06861,
+    -0.02455,
+    -0.01753,
+    -0.0649,
+    -0.09763
+   ],
+   "head_raw_shape": [
+    1,
+    1,
+    4
+   ],
+   "u_int": [
+    -0.01432,
+    -0.01056,
+    0.01075,
+    -1.0
+   ],
+   "u_int_norm": 0.020788,
+   "intent_gain_untrained": 0.0,
+   "note": "随机权重: 只证接口真跑; 质量需训练 (readout R²/LOSO ≥0.3)"
+  },
+  "D_lyapunov": {
+   "monotone_seq": [
+    true,
+    {
+     "n": 5,
+     "v0": 1.0,
+     "v_last": 0.1,
+     "rise_max": 0.0,
+     "rise_cnt": 0
+    }
+   ],
+   "injected_rise_seq": [
+    false,
+    {
+     "n": 5,
+     "v0": 1.0,
+     "v_last": 0.1,
+     "rise_max": 0.26,
+     "rise_cnt": 1
+    }
+   ],
+   "V_def": "V = ‖peg/hand − hole‖² + w·yaw_err²",
+   "V_example": 0.02
+  },
+  "E_decoder": {
+   "u_ff_src": "intact(chunk×K_ACT=0.5)",
+   "m_int_is_not_none": true,
+   "m_int_norm": 1.0,
+   "m_int_weight": 0.3,
+   "m_int_source": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=19.5279)",
+   "l4_cond_unchanged": true,
+   "l3_cond_src": "拒绝(未标定)",
+   "excluded_stage_插入": {
+    "m_int": null,
+    "u_ff": null,
+    "reason": "阶段 '插入' 在排除表内 → 保持引擎解析 u_ff (零回退)",
+    "src": ""
+   },
+   "old_fields_intact": true
+  },
+  "F_engine_wiring": {
+   "has_method": true,
+   "has_summary": true,
+   "guarded_by_env": true,
+   "called_after_decode": true,
+   "fusion_before_decide": true,
+   "executor_untouched": true,
+   "py_compile": true,
+   "note": "GUI/GL 运行时联调未做 (需开控制台): 本次只证接线 + 零回退 + 收缩, 质量需训练预测器"
+  }
+ }
+}
