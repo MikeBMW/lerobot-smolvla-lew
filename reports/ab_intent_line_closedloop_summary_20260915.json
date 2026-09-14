@@ -1,0 +1,161 @@
+{
+ "ts": "2026-09-15 01:55 CST",
+ "what": "直连线(意图→流形专家预测器→动作头) 闭环 A/B: r11 ep1 与 ep2 权重各 3 seed × 4 臂, 同引擎路径, 只改臂",
+ "weights": {
+  "ep1": "v6r11 weights_epoch_1.pt (离线 MAE_on 0.0410, Δ+0.0264)",
+  "ep2": "v6r11 weights_epoch_2.pt (离线 MAE_on 0.0361, Δ+0.0971; 早停电选保留)"
+ },
+ "ep1_table": {
+  "0": {
+   "analytic": {
+    "done": true,
+    "insert_mm_end": 65.1,
+    "insert_mm_min": 1.1
+   },
+   "direct": {
+    "done": false,
+    "insert_mm_end": 253.1,
+    "insert_mm_min": 89.5
+   },
+   "line_w0": {
+    "done": false,
+    "insert_mm_end": 253.1,
+    "insert_mm_min": 89.5
+   },
+   "line_w1": {
+    "done": false,
+    "insert_mm_end": 222.3,
+    "insert_mm_min": 32.9
+   }
+  },
+  "1": {
+   "analytic": {
+    "done": false,
+    "insert_mm_end": 24.1,
+    "insert_mm_min": 1.5
+   },
+   "direct": {
+    "done": false,
+    "insert_mm_end": 46.9,
+    "insert_mm_min": 27.1
+   },
+   "line_w0": {
+    "done": false,
+    "insert_mm_end": 37.4,
+    "insert_mm_min": 27.6
+   },
+   "line_w1": {
+    "done": false,
+    "insert_mm_end": 34.1,
+    "insert_mm_min": 0.2
+   }
+  },
+  "2": {
+   "analytic": {
+    "done": false,
+    "insert_mm_end": 23.9,
+    "insert_mm_min": 6.5
+   },
+   "direct": {
+    "done": false,
+    "insert_mm_end": 49.4,
+    "insert_mm_min": 27.8
+   },
+   "line_w0": {
+    "done": false,
+    "insert_mm_end": 52.0,
+    "insert_mm_min": 25.2
+   },
+   "line_w1": {
+    "done": false,
+    "insert_mm_end": 55.8,
+    "insert_mm_min": 5.1
+   }
+  }
+ },
+ "ep2_table": {
+  "0": {
+   "analytic": {
+    "done": true,
+    "insert_mm_end": 65.1,
+    "insert_mm_min": 1.1
+   },
+   "direct": {
+    "done": false,
+    "insert_mm_end": 142.3,
+    "insert_mm_min": 65.6
+   },
+   "line_w0": {
+    "done": false,
+    "insert_mm_end": 141.9,
+    "insert_mm_min": 65.6
+   },
+   "line_w1": {
+    "done": false,
+    "insert_mm_end": 39.4,
+    "insert_mm_min": 39.4
+   }
+  },
+  "1": {
+   "analytic": {
+    "done": false,
+    "insert_mm_end": 24.1,
+    "insert_mm_min": 1.5
+   },
+   "direct": {
+    "done": false,
+    "insert_mm_end": 30.7,
+    "insert_mm_min": 6.6
+   },
+   "line_w0": {
+    "done": false,
+    "insert_mm_end": 34.8,
+    "insert_mm_min": 6.6
+   },
+   "line_w1": {
+    "done": false,
+    "insert_mm_end": 5.2,
+    "insert_mm_min": 1.1
+   }
+  },
+  "2": {
+   "analytic": {
+    "done": false,
+    "insert_mm_end": 23.9,
+    "insert_mm_min": 6.5
+   },
+   "direct": {
+    "done": false,
+    "insert_mm_end": 30.5,
+    "insert_mm_min": 6.0
+   },
+   "line_w0": {
+    "done": false,
+    "insert_mm_end": 50.5,
+    "insert_mm_min": 4.6
+   },
+   "line_w1": {
+    "done": false,
+    "insert_mm_end": 47.5,
+    "insert_mm_min": 9.3
+   }
+  }
+ },
+ "findings": {
+  "line_w0_equals_direct": "line_w0(真推理不注入) 与 direct 在噪声级一致 (ep2 seed0 末端 142.3 vs 141.9mm; seed1 min 6.6 vs 6.6mm) ⇒ 注入开关本身无副作用",
+  "direct_improves_from_ep1_to_ep2": "直驱基线随离线提升而改善: seed0 min 89.5→65.6mm · seed1 27.1→6.6mm · seed2 27.8→6.0mm ⇒ 离线提升**传导到了闭环**",
+  "line_w1_extra_gain_ep2": "开注入再额外改善: seed0 末端 142.3→39.4mm(min 65.6→39.4) · seed1 末端 30.7→5.2mm(min 6.6→1.1); seed2 略差 (30.5→47.5mm) ⇒ 3 seed 里 2 好 1 略差",
+  "still_no_done": "12 臂里只有解析链(analytic)在 seed0 done=True(378步) ⇒ 直驱/直连线都未完成任务, 按交付门槛**不判提升**, 默认保持 w=0",
+  "why": "插入段在 decoder excluded_stages 内 ⇒ 直连线在插入段不参与, 而插入正是成败所在"
+ },
+ "artifacts": {
+  "ep1_json": "ab_intent_line_closedloop_20260915_013011.json",
+  "ep2_json": "ab_intent_line_closedloop_20260915_013945.json",
+  "harness": "tools/ab_intent_line_closedloop.py"
+ },
+ "next": [
+  "插入段解除排除(仅作 u_ff 参考, L2 仍收口)作为新臂",
+  "yaw 专家直连(φ_ref 现成入口)",
+  "提升判据: done 率/几何自检插入深度, 多重复出范围"
+ ]
+}

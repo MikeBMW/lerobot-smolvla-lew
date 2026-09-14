@@ -1,0 +1,93 @@
+{
+ "ts": "20260915_013011",
+ "policy": "intact_l4_current",
+ "steps_cap": 600,
+ "note": "直连线闭环 A/B: 同权重(intact_l4_current=r11 ep1) 同 seed, 只改臂; 指标取自引擎真跑; 插入段在 decoder 的 excluded_stages 内 → 直连线在插入段不参与",
+ "table": [
+  {
+   "seed": 0,
+   "analytic": {
+    "done": true,
+    "steps": 378,
+    "ins_end": 65.1,
+    "ins_min": 1.1
+   },
+   "direct": {
+    "done": false,
+    "ins_end": 253.1,
+    "ins_min": 89.5
+   },
+   "line_w0": {
+    "done": false,
+    "ins_end": 253.1,
+    "ins_min": 89.5
+   },
+   "line_w1": {
+    "done": false,
+    "ins_end": 222.3,
+    "ins_min": 32.9,
+    "peg_tgt_min": 143.2
+   },
+   "delta_min_mm_w1_minus_direct": -56.6
+  },
+  {
+   "seed": 1,
+   "analytic": {
+    "done": false,
+    "steps": 600,
+    "ins_end": 24.1,
+    "ins_min": 1.5
+   },
+   "direct": {
+    "done": false,
+    "ins_end": 46.9,
+    "ins_min": 27.1
+   },
+   "line_w0": {
+    "done": false,
+    "ins_end": 37.4,
+    "ins_min": 27.6
+   },
+   "line_w1": {
+    "done": false,
+    "ins_end": 34.1,
+    "ins_min": 0.2,
+    "peg_tgt_min": 130.8
+   },
+   "delta_min_mm_w1_minus_direct": -26.9
+  },
+  {
+   "seed": 2,
+   "analytic": {
+    "done": false,
+    "steps": 600,
+    "ins_end": 23.9,
+    "ins_min": 6.5
+   },
+   "direct": {
+    "done": false,
+    "ins_end": 49.4,
+    "ins_min": 27.8
+   },
+   "line_w0": {
+    "done": false,
+    "ins_end": 52.0,
+    "ins_min": 25.2
+   },
+   "line_w1": {
+    "done": false,
+    "ins_end": 55.8,
+    "ins_min": 5.1,
+    "peg_tgt_min": 130.8
+   },
+   "delta_min_mm_w1_minus_direct": -22.7
+  }
+ ],
+ "read": {
+  "analytic_done": "解析链是唯一 done=True 的臂 (seed0 378步)",
+  "direct_never_done": "直驱三 seed 全 False, 最小插入 89.5/27.1/27.8mm → 未插到底",
+  "w0_equals_direct": "line_w0(真推理不注入) 与 direct 逐位/噪声级一致 (seed0 253.1/89.5 完全相同)",
+  "w1_improves_min": "line_w1 的\"最小插入距离\"三 seed 全部改善: 89.5→32.9 / 27.1→0.2 / 27.8→5.1 mm",
+  "w1_not_done": "但 done 仍全 False、末端未稳定改善 → 按交付门槛不能判\"提升\", 保持 w=0 默认"
+ }
+}
