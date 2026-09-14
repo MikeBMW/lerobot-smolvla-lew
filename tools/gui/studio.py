@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.5.56")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.5.56 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,10 +10165,24 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.5.56 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
         # v5.5.40: 🎯 **L4 INTACT 策略化 + 连线 (metaworld → INTACT → decoder → L3)** (老倪: "将 INTACT 接入到 L4 层, 把 L4 节点的 INTACT 代码迁移到 src/lerobot 的 policies 文件夹, 做好连线; 数据源直接接入 metaworld, 输出接一个 decoder 再进 L3; 不能让 L2 L3 下降") — ①**迁移**: `src/lerobot/manifold/intact_node/` 整体 git mv 到 `src/lerobot/policies/intact/runtime/` (实现一字未改; 旧路径留兼容转发, 桥/自检/引擎零改动) ②**策略化**: `configuration_intact.py` (注册名 intact) + `modeling_intact.py` (IntactPolicy: select_action/predict_action_chunk/predict_intent; forward 显式 NotImplementedError = 不假装能训) + 工厂/包出口三处注册 ③**数据源直连 metaworld**: 新 `runtime/metaworld_source.py` (MetaWorldSource, MT1 peg-insert-side-v3 · corner2 真渲染帧 224² + 39D 现场读 + 本域真实目标帧) 注册为数据源名 `metaworld` ④**解码器**: `decoder.py` (IntactIntentDecoder) — u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT **现读引擎源码**, 无需标定) + L3 流形条件 (需标定 models/intact_l3_map.json, 未标定**拒绝返回并计数**, 不写死映射) ⑤**连线**: 新节点「🎯 INTACT 意图解码器 (L4 → L3 条件)」+ 3 连线 (metaworld 数据源→INTACT 策略→解码器→L3 DiT), 两节点均在 L4 行内 (cap=4 → L2/L3 档不执行) ⑥**引擎三档**: `SS_L4_INTACT` (不设=逐位零变化 / _SHADOW=1 影子真推理真记录 / =1 按 w 融合 u_ff=(1−w)·analytic+w·L4, w=0 恒等) + `l4_intact_summary()` 全计数取证 + 新工具 `tools/l4_intact_ab.py` (A/B/C 三臂同 seed 子进程隔离) ⑦**实测**: 节点级真跑成功 (metaworld 数据源建成 · 真权重 trained=True · chunk(8,8) · candidate_sequences=0 零搜索 · 1396ms/步 CPU · 动作维自动对齐 4→8) · 解码器 u_ff 先验 + 未标定诚实拒绝 · **零回退证明**: L2 档 55 节点 / L3 档 60 节点 改动前后**逐 id 相同** (脚本对比 git HEAD) ⑧**迁移期修真 bug**: 未设 STABLEWM_HOME 时桥退回 <repo>/.cache → 权重全部找不到, 改为优先共享缓存 stable-wm-cache ⑨**A/B 首轮抓到第二个真 bug**: 引擎直喂帧路径没人设 goal 帧 → goal_displacement 模式每帧抛 ValueError (影子臂 60/60 次"真推理"实为空转, 只有计数在涨) → 新增 `ensure_goal()` 三级兜底 (已显式 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错; 修后 calls=8/reuse=52 (chunk=8 → 60 步恰好 8 次真推理) · goal_src=默认目标帧 · err=null, 且影子臂 dist 与修复前逐位相同 (不接管=行为不变) · 设计 docs/design/zmax_l4_intact_policy.md
+        # v5.6.0: 🐛🎯 **三个真根因 bug + L2 成功率 4/12→5/12 + yaw 直连验通** —— ①**最隐蔽的评估污染**:
+        #   L2 势场构建 (ObstacleField.from_engine) 在引擎运行中又新建第二个 RealStateSpaceSim 并 _reset(104)
+        #   采几何, 而 metaworld 底层 MuJoCo sim 进程内共享 → **正在运行的场景被改写** (实测 peg 瞬移
+        #   Δ=[+1.2mm,−17mm,0]) ⇒ 同 seed 的 L4 臂与解析链臂跑的不是同一场景, 之前所有涉 L4 的 A/B 失真;
+        #   修: 传现成 geom 只读不写 (修后逐帧复现解析链) ②**肌肉记忆跨 run 持久化污染评估** (默认开且每局
+        #   save; 热态下 30~65% 执行帧是记忆回放) → 加 SS_MUSCLE_PATH 隔离, A/B 默认冷口径 (冷 3/8 vs 热 4/8)
+        #   ③**插入失败真因不是杆是夹爪**: 接触对取证 78% 为 rightclaw/rightpad↔治具顶板; 抓取点↔头 失败
+        #   seed 112~124mm vs 成功 129~132mm(设计130) → 抓取点闭环补偿 (离头不足则回退重抓 + 沿杆轴远头
+        #   平移缺口) → seed3 27.37mm→0.84mm 完成, 成功 seed 逐位不变, **基线 4/12→5/12 零回退** ④三个
+        #   "试了没提升"旋钮 (入口z容差/降落回退/滑脱平移) 实测无收益 → 全部默认关 (未证明提升不进默认档)
+        #   ⑤**yaw 直连端到端验通**: L4 演示全链 success=True (φ*=−45.3° 流形决策 · 试抓头真前向 351 次 ·
+        #   插入 49.6mm · 拔出 56mm · AOI ok 悬停60帧距焦点7.7mm · 光耦合 η=1.0000) ⑥**m_stop 交权**:
+        #   接线 + 判据取证 (专家 mani_risk 不区分成功/卡死; 训 12seed/7398帧 stop_head 局级 OOF AUC 0.80
+        #   但答不了"何时停") → 不接线, 保持默认关
         # v5.5.56: 🔍🧪 **四个「运行时口径 ≠ 训练口径」根因全部修掉** (老倪: "训练减少到半小时以内" / "10分钟以内" / "只要一个epoch") ——
         #   ①**记忆条件通道 0x0 死锁** (`INTACT-JEPA/train.py`, 提交 20a7791): 入口层 `net.0` 的 skill 新列
         #     与 `skill_enc` 末层**同时零初始化** → E(s)=0×0 → 反向两侧梯度恒 0 → 训 3 轮后

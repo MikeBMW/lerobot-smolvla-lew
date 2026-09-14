@@ -224,3 +224,15 @@ reports/state_space_sim.mp4
 yolo-venv/
 runs/
 yolov8n.pt
+
+# 🧹 2026-09-15 v5.6.0 Git 精简: 交付件/大文件不进库 (老倪纪律)
+reports/*.mp4
+reports/*.png
+reports/*.pdf
+reports/*.xlsx
+reports/*.npz
+reports/ab_l4_gate_2026*.json
+reports/ab_live_goal_2026*.json
+reports/ab_intent_line_closedloop_2026*.json
+reports/intact_last_input.npz
+checkpoints/

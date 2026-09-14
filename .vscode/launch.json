@@ -67,8 +67,8 @@
         "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
         "INTACT_POLICY": "intact_l4_current",
         "INTACT_DEVICE": "cpu",
-        "QT_QPA_PLATFORM": "offscreen",
-        "INTACT_RUNTIME": "root"
+        "INTACT_RUNTIME": "root",
+        "QT_QPA_PLATFORM": "offscreen"
       }
     },
     {
