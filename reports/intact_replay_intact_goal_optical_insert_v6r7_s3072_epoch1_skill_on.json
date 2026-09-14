@@ -1,0 +1,46 @@
+{
+ "meta": {
+  "h5": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v5_disturb.h5",
+  "n": 120,
+  "stride": 120,
+  "slot": 0,
+  "policy": "intact_goal_optical_insert_v6r7_s3072/weights_epoch_1.pt",
+  "runtime": "root",
+  "skill_mode": "on",
+  "skill_dim": 24,
+  "obs": "数据集真帧 (与训练同源)",
+  "ts": "2026-09-14 16:31:43"
+ },
+ "per_axis": {
+  "dx": {
+   "mae": 0.0625743418931961,
+   "pearson": -0.023235900327563286,
+   "spearman": -0.009233296120050237,
+   "teacher_std": 0.06487774848937988,
+   "pred_std": 0.05005320906639099
+  },
+  "dy": {
+   "mae": 0.02235814370214939,
+   "pearson": 0.17188671231269836,
+   "spearman": 0.14937174347502108,
+   "teacher_std": 0.030864525586366653,
+   "pred_std": 0.017880333587527275
+  },
+  "dz": {
+   "mae": 0.03345797210931778,
+   "pearson": -0.11971836537122726,
+   "spearman": 0.25285480390135323,
+   "teacher_std": 0.047180257737636566,
+   "pred_std": 0.023532716557383537
+  },
+  "grip": {
+   "mae": 0.23032750189304352,
+   "pearson": 0.2245866358280182,
+   "spearman": 0.14948868961079254,
+   "teacher_std": 0.4396968483924866,
+   "pred_std": 0.2553272247314453
+  }
+ },
+ "model_xyz_mae": 0.039463482797145844,
+ "const_xyz_mae": 0.032453134655952454
+}
