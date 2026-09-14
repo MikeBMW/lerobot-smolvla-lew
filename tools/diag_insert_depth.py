@@ -24,6 +24,8 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
+# 🧊 冷记忆隔离 (2026-09-15): 热记忆会让结果随历史漂移; 诊断默认冷口径
+os.environ.setdefault("SS_MUSCLE_PATH", "/tmp/diag_mem_%d.json" % os.getpid())
 for k, v in (("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
              ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
              ("INTACT_RUNTIME", "root"), ("INTACT_POLICY", "intact_l4_current"),
