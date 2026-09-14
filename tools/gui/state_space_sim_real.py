@@ -720,6 +720,7 @@ class RealStateSpaceSim:
         self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
         self._grasp_dx_extra = 0.0  # 🎯 2026-09-15 抓取点闭环补偿量 (沿杆轴远头; 只在离头过近时加)
         self._grasp_fix_tries = 0   # 补偿重抓次数 (上限 2, 防死循环)
+        self._grasp_slip_tries = 0  # 🎯 滑脱→抓取点平移搜索次数 (上限 2)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
         self._off_prev = None      # 上一帧 光模块−夹爪 (真值随动跟踪, 锚定判据 v2)
         self._x_prev = None        # 上一帧 夹爪位置 (判夹爪是否在动 — 抬升试探锚定)
@@ -2477,6 +2478,19 @@ class RealStateSpaceSim:
                     try:
                         if (self.sched.RETREAT_LO <= self.sched.stage_idx <= self.sched.RETREAT_HI):
                             self._went_back_0 = True    # 🚀 AOI 报告过程指标: 曾回抓
+                            # 🎯 2026-09-15 滑脱 → 抓取点平移搜索 (**默认关**: 实测 class-B seed
+                            #   2/4/5 无效 (86.94 不变 / 92.59→94.4 更差 / 不变), 且与"抓取点补偿"
+                            #   叠加会把已修好的 seed3 打回失败 (True→False) ⇒ 不是提升项, 保留旋钮)
+                            # ── 原设计意图 (取证: class-B 失败 seed 反复
+                            #   "滑移 15/16/18mm → 滑脱(19mm) → 回退重抓" 同一处再夹必再滑; 与
+                            #   抓取点补偿共用 `_grasp_dx_extra` 旋钮, 沿杆轴远头平移换夹点)。
+                            if (os.environ.get("SS_GRASP_SLIP_FIX", "0") == "1"
+                                    and int(getattr(self, "_grasp_slip_tries", 0)) < 2):
+                                self._grasp_slip_tries = int(getattr(self, "_grasp_slip_tries", 0)) + 1
+                                _add = float(os.environ.get("SS_GRASP_SLIP_SHIFT", "0.012"))
+                                self._grasp_dx_extra = float(getattr(self, "_grasp_dx_extra", 0.0)) + _add
+                                self.log(f"🧠 滑脱→抓取点平移搜索: 换夹点 +{_add*1000:.0f}mm "
+                                         f"(累计 {self._grasp_dx_extra*1000:.0f}mm, 第{self._grasp_slip_tries}次)")
                             self.sched._goto(0, "⚠️ 光模块滑脱 (peg 未随夹爪) → 强制回退重抓")
                             self._reloc = True     # 回接近 → 视觉重定位被碰移的销
                             self.log("⚠️ 光模块滑脱 → 强制回退接近重抓")
