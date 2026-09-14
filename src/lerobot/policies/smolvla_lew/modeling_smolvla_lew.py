@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,6 +28,23 @@ from torch import Tensor, nn
 
 # 初始化logger
 logger = logging.getLogger(__name__)
+
+# 🗣 C1 指令增广池 (2026-09-10) — 同一语义的多种表述 (中英混合)。
+#   理论: "同一批轨迹 × 多种说法" → 语言在训练里变成随机变量而非常量,
+#   模型才无法把它当噪声忽略, 并借助 VLM 文本编码器的语义平滑性泛化到未见表述
+#   (L4 将来下的自然语言指令)。第一项必须是数据集原串 = 分布锚点, 保底不回退。
+#   训练开: SS_INSTR_AUG=1 (默认关, 推理不受影响)。
+_INSTR_POOL = [
+    "metaworld 光模块插拔",                                 # 数据集 tasks.parquet 实际原串 (锚点! 实测值)
+    "insert the peg into the side hole",
+    "put the peg into the hole on the side",
+    "pick up the optical module and insert it into the hole",
+    "align the peg with the hole and insert it",
+    "把光模块插入孔位",
+    "将光模块插入侧孔",
+    "光模块插装作业",
+    "对准孔位并插入光模块",
+]
 
 from lerobot.policies.pretrained import PreTrainedPolicy, T
 from lerobot.policies.utils import populate_queues
@@ -147,10 +165,20 @@ class SmolVLALewModel(nn.Module):
             image_tokens = "<image>" * num_images
             full_text = f"{image_tokens}{text}"
             
+            # 🖼 图像 token 数控制 (2026-09-10 老倪问"什么参数那么多"的答案):
+            #   max_image_size 的 longest_edge 语义 = **patch 边长** (值越小 → patch 越多 → token 越多)。
+            #   默认 512 → 17 patch → 1141 token/样本: 64×64 源图被"先缩到64再放大到512"再切块, 纯浪费。
+            #   实测: 1024→5 patch/347 token; 2048→1 patch/81 token。
+            #   SS_IMG_MAXEDGE 统一控制训练/推理 (必须一致, 否则 VLM 输入分布错 → 模型失效)。
+            _mkw = {}
+            _me = os.environ.get("SS_IMG_MAXEDGE")
+            if _me:
+                _mkw["max_image_size"] = {"longest_edge": int(_me)}
             proc_out = processor(
                 images=sample_imgs,
                 text=full_text,
-                return_tensors="pt"
+                return_tensors="pt",
+                **_mkw
             )
             
             all_pixel_values.append(proc_out["pixel_values"])
@@ -158,12 +186,35 @@ class SmolVLALewModel(nn.Module):
         
         device = next(self.smolvlm.parameters()).device
         pixel_values = torch.cat(all_pixel_values, dim=0).to(device)
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        
+        # 🐛 2026-09-10 变长指令批处理 (A: batch>1 的前提): 逐样本 processor 输出的 input_ids
+        #   长度随指令文本变化 → 直接 cat 会 "Sizes of tensors must match" 崩
+        #   (这就是原实现只能 batch=1 的原因)。修: 右 pad 到批内最大长度 + attention_mask;
+        #   causal 注意力下 pad 在序列末尾, 不会污染有效 token 的表示。batch=1 零开销、行为不变。
+        _lens = {int(t.shape[1]) for t in all_input_ids}
+        if len(_lens) > 1:
+            _tok = getattr(processor, "tokenizer", None)
+            _pid = getattr(_tok, "pad_token_id", None)
+            if _pid is None:
+                _pid = getattr(_tok, "eos_token_id", None) or 0
+            _max = max(_lens)
+            _ids, _msk = [], []
+            for _t in all_input_ids:
+                _n = _max - int(_t.shape[1])
+                _ids.append(_t if _n == 0 else torch.cat(
+                    [_t, torch.full((_t.shape[0], _n), int(_pid), dtype=_t.dtype)], dim=1))
+                _msk.append(torch.cat(
+                    [torch.ones_like(_t), torch.zeros((_t.shape[0], _n), dtype=_t.dtype)], dim=1))
+            input_ids = torch.cat(_ids, dim=0).to(device)
+            attention_mask = torch.cat(_msk, dim=0).to(device)
+        else:
+            input_ids = torch.cat(all_input_ids, dim=0).to(device)
+            attention_mask = None
+
         # 直接调用 vlm 模型
         vlm_out = self.smolvlm.vlm(
             pixel_values=pixel_values,
             input_ids=input_ids,
+            attention_mask=attention_mask,
             output_hidden_states=True,
             return_dict=True
         )
@@ -280,6 +331,7 @@ class SmolVLALewModel(nn.Module):
         batch_images: list[list[Image.Image]],
         instructions: list[str],
         state: np.ndarray | None = None,
+        l4_cond=None,                                  # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
     ) -> np.ndarray:
         if self.config.resize_images_to is not None:
             height, width = self.config.resize_images_to
@@ -301,7 +353,8 @@ class SmolVLALewModel(nn.Module):
 
         pred_actions = self.action_model.predict_action(
             conditioning_tokens=multimodal_embeds.float(),
-            state=state_tensor.float() if state_tensor is not None else None
+            state=state_tensor.float() if state_tensor is not None else None,
+            l4_cond=l4_cond,                           # 🎯 L4→L3 条件通道 (画布 ssintact_dec→ssdec 真接)
         )
         return pred_actions.detach().cpu().numpy()
 
@@ -381,6 +434,12 @@ class SmolVLALewPolicy(PreTrainedPolicy):
             if not instructions[idx] or len(instructions[idx].strip()) == 0:
                 instructions[idx] = "push red block to target"
 
+        # 🗣 C1 指令增广 (训练开关 SS_INSTR_AUG=1, 默认关 → 推理/既有行为零影响)
+        #   每步随机换一种说法 → 语言成为随机变量, 模型必须把它编码进条件而非忽略。
+        if os.environ.get("SS_INSTR_AUG", "0") == "1":
+            import random as _rnd
+            instructions = [_INSTR_POOL[_rnd.randrange(len(_INSTR_POOL))] for _ in instructions]
+
         actions_list = None
         action_is_pad_list = None
         actions_tensor = batch.get(ACTION)
@@ -432,7 +491,8 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         return self.model.parameters()
 
     @torch.no_grad()
-    def predict_action_chunk(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
+    def predict_action_chunk(self, batch: dict[str, Tensor], noise: Tensor | None = None,
+                             l4_cond=None) -> Tensor:
         self.eval()
         self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
 
@@ -444,15 +504,17 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         if "state" in examples[0] and examples[0]["state"] is not None:
             state_np = np.stack([ex["state"] for ex in examples])
 
-        actions_np = self.model.predict_action(batch_images, instructions, state_np)
+        # 🎯 2026-09-14 L4→L3 条件 (老倪: 连线必须真接): l4_cond=None → 与改造前逐位相同
+        actions_np = self.model.predict_action(batch_images, instructions, state_np, l4_cond=l4_cond)
         return torch.from_numpy(actions_np).to(device=self.config.device, dtype=torch.float32)
 
     @torch.no_grad()
-    def select_action(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
+    def select_action(self, batch: dict[str, Tensor], noise: Tensor | None = None,
+                      l4_cond=None) -> Tensor:
         self.eval()
         self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
         if len(self._queues[ACTION]) == 0:
-            actions = self.predict_action_chunk(batch)
+            actions = self.predict_action_chunk(batch, l4_cond=l4_cond)
             self._queues[ACTION].extend(actions.transpose(0, 1)[: self.config.n_action_steps])
         return self._queues[ACTION].popleft()
 

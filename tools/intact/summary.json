@@ -1,0 +1,285 @@
+{
+  "pusht": {
+    "per_seed": {
+      "0": {
+        "success_rate": 76.0,
+        "episodes": 100,
+        "successes": 76,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 23.692166805267334,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.2634003162384033,
+          "solve_time_sum": 0.5268006324768066
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      },
+      "1": {
+        "success_rate": 85.0,
+        "episodes": 100,
+        "successes": 85,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 23.840582132339478,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.27733325958251953,
+          "solve_time_sum": 0.5546665191650391
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      },
+      "42": {
+        "success_rate": 77.0,
+        "episodes": 100,
+        "successes": 77,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 23.853355884552002,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.27191174030303955,
+          "solve_time_sum": 0.5438234806060791
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      }
+    },
+    "mean": 79.33333333333333,
+    "sample_std": 4.932882862316247,
+    "official_same_training_seed": 79.67,
+    "official_3_training_seed_mean": 80.22,
+    "official_3_training_seed_std": 1.26,
+    "zero_search": {
+      "get_cost_calls_mean": 0.0,
+      "candidate_action_steps_mean": 0.0,
+      "configured_rollout_budget_mean": 0.0,
+      "actor_warmstart_enabled_mean": 1.0,
+      "solve_time_mean": 0.2634003162384033,
+      "num_solves": 2
+    }
+  },
+  "cube": {
+    "per_seed": {},
+    "mean": null,
+    "sample_std": null,
+    "official_same_training_seed": 98.67,
+    "official_3_training_seed_mean": 99.56,
+    "official_3_training_seed_std": 0.77,
+    "zero_search": {
+      "get_cost_calls_mean": null,
+      "candidate_action_steps_mean": null,
+      "configured_rollout_budget_mean": null,
+      "actor_warmstart_enabled_mean": null,
+      "solve_time_mean": null,
+      "num_solves": null
+    }
+  },
+  "reacher": {
+    "per_seed": {
+      "0": {
+        "success_rate": 95.0,
+        "episodes": 100,
+        "successes": 95,
+        "inference_mode": "direct(PriorOnlySolver)",
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 34.59624147415161,
+        "solver_timing": {
+          "actor_warmstart_enabled_sum": 2.0,
+          "actor_warmstart_enabled_mean": 1.0,
+          "candidate_action_steps_sum": 0.0,
+          "candidate_action_steps_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "solve_time_sum": 0.5998671054840088,
+          "solve_time_mean": 0.2999335527420044,
+          "num_solves": 2
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      },
+      "1": {
+        "success_rate": 99.0,
+        "episodes": 100,
+        "successes": 99,
+        "inference_mode": "direct(PriorOnlySolver)",
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 33.793336153030396,
+        "solver_timing": {
+          "actor_warmstart_enabled_sum": 2.0,
+          "actor_warmstart_enabled_mean": 1.0,
+          "candidate_action_steps_sum": 0.0,
+          "candidate_action_steps_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "solve_time_sum": 0.5718932151794434,
+          "solve_time_mean": 0.2859466075897217,
+          "num_solves": 2
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      },
+      "42": {
+        "success_rate": 97.0,
+        "episodes": 100,
+        "successes": 97,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 34.53388714790344,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.2867903709411621,
+          "solve_time_sum": 0.5735807418823242
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      }
+    },
+    "mean": 97.0,
+    "sample_std": 2.0,
+    "official_same_training_seed": 97.0,
+    "official_3_training_seed_mean": 95.67,
+    "official_3_training_seed_std": 1.76,
+    "zero_search": {
+      "get_cost_calls_mean": 0.0,
+      "candidate_action_steps_mean": 0.0,
+      "configured_rollout_budget_mean": 0.0,
+      "actor_warmstart_enabled_mean": 1.0,
+      "solve_time_mean": 0.2999335527420044,
+      "num_solves": 2
+    }
+  },
+  "tworoom": {
+    "per_seed": {
+      "0": {
+        "success_rate": 81.0,
+        "episodes": 100,
+        "successes": 81,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 24.820271730422974,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.26013731956481934,
+          "solve_time_sum": 0.5202746391296387
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      },
+      "1": {
+        "success_rate": 74.0,
+        "episodes": 100,
+        "successes": 74,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 23.793291807174683,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.26425600051879883,
+          "solve_time_sum": 0.5285120010375977
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      },
+      "42": {
+        "success_rate": 81.0,
+        "episodes": 100,
+        "successes": 81,
+        "inference_mode": null,
+        "num_eval": 100,
+        "horizon": 5,
+        "eval_total_time": 22.858669757843018,
+        "solver_timing": {
+          "actor_warmstart_enabled_mean": 1.0,
+          "actor_warmstart_enabled_sum": 2.0,
+          "candidate_action_steps_mean": 0.0,
+          "candidate_action_steps_sum": 0.0,
+          "configured_rollout_budget_mean": 0.0,
+          "configured_rollout_budget_sum": 0.0,
+          "get_cost_calls_mean": 0.0,
+          "get_cost_calls_sum": 0.0,
+          "num_solves": 2,
+          "solve_time_mean": 0.25232839584350586,
+          "solve_time_sum": 0.5046567916870117
+        },
+        "get_cost_calls": 0.0,
+        "rollout_candidates": 0.0
+      }
+    },
+    "mean": 78.66666666666667,
+    "sample_std": 4.041451884327381,
+    "official_same_training_seed": 78.67,
+    "official_3_training_seed_mean": 82.11,
+    "official_3_training_seed_std": 4.11,
+    "zero_search": {
+      "get_cost_calls_mean": 0.0,
+      "candidate_action_steps_mean": 0.0,
+      "configured_rollout_budget_mean": 0.0,
+      "actor_warmstart_enabled_mean": 1.0,
+      "solve_time_mean": 0.26013731956481934,
+      "num_solves": 2
+    }
+  }
+}

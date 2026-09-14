@@ -168,3 +168,308 @@ def node_ss_mem_share(ctx):
         if log:
             log(f"⚠️ 共享中枢读取失败: {e}")
         return False
+
+
+# ══════════════════════════════════════════════════════════════════
+# 🧠🧬 S1 意图丛节点 (2026-09-10 老倪: 三层能力共享 — 记忆图谱连接层)
+#   设计: docs/design/zmax_intent_bundle_3layer.md
+#   真源: src/lerobot/memory/memory_graph.py (links / recall / 技能词典 / 意图直读)
+# ══════════════════════════════════════════════════════════════════
+def _mg():
+    """memory_graph 访问器 (延迟导入, 失败返回 None)"""
+    import sys as _s, os as _o
+    _s.path.insert(0, _o.path.join(_o.path.dirname(_o.path.dirname(_o.path.dirname(
+        _o.path.abspath(__file__)))), "src"))
+    try:
+        from lerobot.memory import memory_graph
+        return memory_graph
+    except Exception:
+        return None
+
+
+def node_ss_intent_bundle(ctx):
+    """🧠 意图丛 · 四槽语法 — goal/from/skill/gate 统一意图接口
+    (层间只传意图向量 Δz=z_g−z_t, 动作只在 L2 生成 — INTACT 同构接口落地)"""
+    log = ctx.get("log")
+    try:
+        mg = _mg()
+        m = ctx.get("module")
+        tr = getattr(m, "_ss_tr", None) if m is not None else None
+        i = int(getattr(m, "_ss_round", 0) or 0)
+        if log:
+            log("🧠 意图丛 · 四槽意图语法 (INTACT 同构接口):")
+            log("    goal : 目标潜在点 z_g (L4 筹划产出 — 势场目标)")
+            log("    from : 当前 z_t + 段 s + 夹持相位 (感知层)")
+            log("    skill: L2 技能 id + 参数 (L3 编排产出)")
+            log("    gate : 验收度量 (mani 6维 / 位置残差) + 阈值")
+        if tr:
+            import numpy as _np
+            tgt = tr.get("target") or []
+            stg_l = tr.get("stage") or []
+            j = min(i, len(stg_l) - 1) if stg_l else -1
+            stg = str(stg_l[j]).replace("阶段 ", "").split("·")[0].strip() if j >= 0 else ""
+            sk = (mg.STAGE_TO_SK.get(stg, "SK-EXT:" + stg) if (mg and stg) else None)
+            if log:
+                _t = _np.round(_np.asarray(tgt[j], float), 4) if (tgt and j < len(tgt)) else "-"
+                log(f"    当前帧[{i}]: 段={stg or '-'} → 技能={sk or '-'} | goal={_t}")
+        if mg is not None and log:
+            log(f"    L2 动作基可用: {len(mg.skill_dict())} 技能 (词典) — 层间只传 Δz, 动作只在 L2 出")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 意图丛读取失败: {e}")
+        return False
+
+
+def node_ss_skill_dict(ctx):
+    """🧬 技能词典 · L2 动作基 — {skill → Δz/n_ok/帧长}
+    (L4 预测 Δz 后在此词典上 kNN 直读技能, 无需连续动作空间搜索)"""
+    log = ctx.get("log")
+    try:
+        mg = _mg()
+        if mg is None:
+            if log:
+                log("⚠️ 技能词典: memory_graph 不可用")
+            return False
+        m = ctx.get("module")
+        _sd = getattr(m, "seed", None) if m is not None else None
+        try:
+            seed = int(_sd) if _sd is not None else None
+        except Exception:
+            seed = None
+        d = mg.skill_dict(seed=seed)
+        if log:
+            log(f"🧬 技能词典 · L2 动作基 (seed={seed if seed is not None else '全'}): {len(d)} 技能")
+            for sk, v in sorted(d.items()):
+                log(f"    {sk} {v.get('stage')}: Δz={v.get('dz')} n_ok={v.get('n_ok')} 帧={v.get('frames')}")
+            log("    语义: L4 预测 Δz → 词典 kNN 直读技能 (动作基 = L2 已练成的标杆)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 技能词典读取失败: {e}")
+        return False
+
+
+def node_ss_mem_links(ctx):
+    """🔗 跨层连接 · 记忆图谱 — links(L4筹划→L3流程→L2技能) + 意图检索 recall"""
+    log = ctx.get("log")
+    try:
+        mg = _mg()
+        if mg is None:
+            if log:
+                log("⚠️ 跨层连接: memory_graph 不可用")
+            return False
+        g = mg.graph_summary()
+        if log:
+            log(f"🔗 跨层连接 · 记忆图谱: 层间链接 {g.get('n_links', 0)} 条 · 技能词典 {g.get('skill_dict_size', 0)} 技能")
+            log(f"    L2 {g.get('l2')} | L3 {g.get('l3')} | L4 {g.get('l4')}")
+            for lk in (g.get("recent_links") or [])[-3:]:
+                log(f"    ↳ 链接: seed{lk.get('seed')} {lk.get('cap')} 技能{lk.get('skills')} ({lk.get('cause')})")
+        m = ctx.get("module")
+        _sd = getattr(m, "seed", None) if m is not None else None
+        try:
+            seed = int(_sd) if _sd is not None else None
+        except Exception:
+            seed = None
+        r = mg.recall(stages=["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"],
+                      seed=seed, k=2)
+        if log:
+            if r.get("hits"):
+                for h in r["hits"]:
+                    log(f"    🔎 recall 命中 score={h['score']} seed={h['flow'].get('seed')} "
+                        f"技能={h['skills'][:5]} L4={'有' if h.get('l4') else '无'}")
+            else:
+                log(f"    🔎 recall: {r.get('reason')}")
+            log("    语义: L3/L4 经此检索复用 L2 标杆经验 (跨层能力共享, 带距离门防负迁移)")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 跨层连接读取失败: {e}")
+        return False
+
+
+def node_ss_intent_direct(ctx):
+    """🔮 意图直读 · Direct (INTACT) — Δz → 技能 kNN (无搜索, 实测延迟 ms 级)"""
+    log = ctx.get("log")
+    try:
+        mg = _mg()
+        if mg is None:
+            if log:
+                log("⚠️ 意图直读: memory_graph 不可用")
+            return False
+        d = mg.skill_dict()
+        if not d:
+            if log:
+                log("🔮 意图直读: 技能词典为空 (L2 尚未固化 — 先练 ≥3 次成功)")
+            return True
+        qk = next((k for k, v in d.items() if v.get("dz")), None)
+        q = d[qk]["dz"] if qk else None
+        r = mg.intent_direct(q)
+        if log:
+            log(f"🔮 意图直读 · Direct (INTACT): 查询 Δz={q} (取自 {qk})")
+            log(f"    命中技能={r.get('hit')} dist={r.get('dist')} 延迟={r.get('latency_ms')}ms")
+            log(f"    method: {r.get('method')}")
+            log("    参照 INTACT 论文: Direct 推理 2.9-5.5ms (无 CEM 搜索); 真意图向量接入待 S2/S3")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 意图直读失败: {e}")
+        return False
+
+
+def node_ss_motor_hub(ctx):
+    """🦾 运动基元库 — L2 肌肉记忆的共享抽象 (发力/速度/加速度/时长 → 全局基元)
+
+    老倪 09-10: "L2 原子技能都是肌肉记忆, 应该都知道怎么发力、速度、加速度, 怎么更快更稳更准
+    — 把这个信息共享给总装记忆。" 本节点展示从标杆提取出的共享基元库。
+    """
+    log = ctx.get("log")
+    try:
+        import json as _j
+        import os as _o
+        _root = _o.environ.get("ZMAX_ROOT", "/home/ubuntu/lerobot-smolvla-lew")
+        _sh = _j.load(open(_o.path.join(_root, "data", "shared_memory.json")))
+        m = _sh.get("motor") or {}
+        prim = m.get("primitives") or []
+        s = m.get("sharing") or {}
+        if not prim:
+            if log:
+                log("🦾 运动基元库: 空 (先运行 src/lerobot/memory/motor_hub.py 提取)")
+            return True
+        if log:
+            log(f"🦾 运动基元库: {s.get('n_prim')} 个共享基元 / {s.get('n_seg')} 条标杆 · "
+                f"参数压缩 {s.get('compression')}× · {s.get('n_multi_stage')} 个基元被多技能共用")
+            for p in prim:
+                f = (p.get("feat") or [0] * 11)
+                log(f"   #{p.get('id')} {p.get('name')}: {'/'.join(p.get('stages') or [])}")
+                log(f"      速度峰 {f[5]:.4f} · 加速峰 {f[7]:.4f} · 发力峰 {f[8]:.3f} · "
+                    f"{f[0]:.0f}帧 · 离散度 {p.get('spread')}")
+            mp = m.get("mapping") or {}
+            if mp:
+                log("   阶段→基元: " + " · ".join(f"{k}→#{v.get('primitive')}" for k, v in mp.items()))
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 运动基元库读取失败: {e}")
+        return False
+
+
+def node_ss_global_mem(ctx):
+    """🧠 全局记忆中枢 — L4 物理规律 / L3 流程 / L2 肌肉 三层联合体检 + 一次性就位
+
+    参考 INTACT Fig.1: 共享编码器 + 图同构二态意图语法(attached 局部 / detached 目标),
+    公共键 = (阶段, Δz); 判定基于证据(L3 成功率 / L4 可行率), 不做无根据的乐观结论。
+    """
+    log = ctx.get("log")
+    try:
+        from lerobot.memory.global_memory import GlobalMemory
+        gm = GlobalMemory()
+        if log:
+            for line in gm.report().split("\n"):
+                log("   " + line)
+            q = gm.query("插入")
+            log("   二态意图语法: attached z_t+1−z_t (肌肉记忆) | detached z_g−z_t (流程/物理)")
+            log(f"   插入段体检: 基元={(q['l2'] or {}).get('name')} · "
+                f"L3成功率={(q['l3'] or {}).get('done_rate')} → {q['consistency']['verdict']}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 全局记忆中枢失败: {e}")
+        return False
+
+def node_ss_mem_field(ctx):
+    """🧲 总装机记忆 · 势场联络 — L2 技能势场 / L3 流程势场 / L4 全局势场 → 意图 (−∇Φ)
+
+    老倪 2026-09-13: 把"势场"实现到 L2肌肉 / L3工艺流程 / L4物理工作空间 + 总装机记忆联络策略。
+    本节点 = 这条联络策略在画布上的**唯一入口**: ①打印四层联络契约与逐层开关 (默认全关)
+    ②用真数据 (muscle_memory 冠军轨迹 + 引擎现场几何) 现场构造势场并打印谷底/谷宽
+    ③在引擎当前状态处算 Φ 与 −∇Φ (真值, 有引擎就取真实末端位置, 没有就用当前激活技能的入口)
+    ④输出意图 (方向/速率/技能/置信) 并写入共享记忆 (l2/l3/l4 out + 总装机台账)
+    逐层打开: data/memory_layers.json (或本节点日志里给出的命令), 全关时**零干预**。
+    """
+    log = ctx.get("log")
+    root = str(ctx.get("root") or os.getcwd())
+    try:
+        import numpy as np
+        from lerobot.memory.potential_field import MemoryLayerBridge
+    except Exception:                                     # 兼容: 直接以脚本目录起
+        try:
+            import sys as _s
+            _s.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))), "src"))
+            import numpy as np
+            from lerobot.memory.potential_field import MemoryLayerBridge
+        except Exception as e:                            # noqa: BLE001
+            if log:
+                log(f"⚠️ 势场记忆: 模块未加载 ({type(e).__name__}: {e})")
+            return False
+    try:
+        br = MemoryLayerBridge.from_real_data(root)
+        st = br.status()
+        g = st["gates"]
+        if log:
+            log(f"🧲 总装机记忆 · 势场联络: L2 技能势场 {st['n_skills']} 条 · "
+                f"L3 流程势场 {'有' if st['process'] else '无'} · "
+                f"L4 障碍场 {'接现场几何' if st['obstacle'] else '未接'} · "
+                f"世界模型项 {'已接' if st['world'] else '未接(恒0)'}")
+            log(f"   逐层开关 (默认全关=零干预): L2={g['L2']} L3={g['L3']} L4={g['L4']} 总装机={g['assembly']}")
+            if not st["n_skills"]:
+                log(f"   ⚠️ 无可用技能轨迹 ({st['reason']}) → 需先跑真实化把标杆入库 (L2 肌肉记忆)")
+                return False
+            for f in br.fields:
+                log(f"   🔧 {f.code} {f.stage}: 谷底 {np.round(f.x_g, 3).tolist()} · σ={f.sigma*1000:.1f}mm "
+                    f"· 轨迹 {f.L*1000:.0f}mm · v_cap={f.v_cap} · 命中 {f.n_ok}")
+                if f.goal_fallback:
+                    log(f"      ⚠️ io.exit 与 champ_x 不同源 ({f.goal_mismatch_m*1000:.1f}mm): "
+                        f"{f.goal_fallback_reason[:70]}")
+        # 现场状态: 优先取引擎真实末端位置 (有引擎实例/轨迹就用真的, 不编)
+        x_cur, src = None, "无引擎 → 用当前激活技能入口 (演示)"
+        sim = None
+        for attr in ("_ss_last_sim", "_real_sim_ref"):
+            sim = getattr(ctx.get("module"), attr, None) if ctx.get("module") is not None else None
+            if sim is not None:
+                break
+        if sim is not None:
+            try:
+                x_cur = np.asarray(sim.peg_head(), float).ravel()[:3]
+                src = "引擎真实光模块头位置 (sim.peg_head)"
+            except Exception:                             # noqa: BLE001
+                x_cur = None
+        t = 0.5
+        if x_cur is None:
+            x_cur = br.process.active(t).x_0
+        # 逐层 compose (全关 → None, 零干预)
+        phi, contrib = br.compose(x_cur, t)
+        it = br.intent(x_cur, t)
+        if log:
+            log(f"   当前状态 x={np.round(x_cur, 4).tolist()} ({src}) · t={t}")
+            if not it["active"]:
+                log(f"   Φ=None → 记忆层全关, 不干预 ({it['reason']}) · 未开层时行为与原系统**完全一致**")
+            else:
+                log(f"   Φ_总={contrib.get('phi_total')} (L2={contrib.get('L2')} 技能={contrib.get('L2_skill')} "
+                    f"· L3={contrib.get('L3')} · L4障碍={contrib.get('L4_obstacle')} 世界={contrib.get('L4_world')})")
+                log(f"   意图 −∇Φ = {np.round(it['dir'], 3).tolist()} · 速率 {it['step_m']} m/s · "
+                    f"技能 {it['skill']}({it['stage']}) · 置信 {it['conf']} · 离谷底 {it['d_goal_m']*1000:.1f}mm")
+                ab = br.arbitrate(it["stage"], contact_p=0.5 if it["stage"] in ("下降", "抓取", "插入") else 0.0)
+                log(f"   总装机仲裁: 主层 {ab['primary_layer']} (接触={ab['contact']}) — {ab['note']}")
+            log("   逐层打开: 写 data/memory_layers.json {\"L2\":1} → 再加 \"L3\":1 → 再加 \"L4\":1, "
+                "然后跑 L4 INTACT 链即按层叠加介入 (blend_action)")
+        # 写共享记忆 (三层 out + 总装机台账)
+        try:
+            stt = _sys_mem()
+            if stt:
+                stt.put("l2", "out", {"time": time.strftime("%H:%M:%S"), "势场技能": st["n_skills"],
+                                      "谷底": {f.code: [round(float(v), 4) for v in f.x_g] for f in br.fields[:3]}},
+                        cap=20)
+                stt.put("l3", "out", {"time": time.strftime("%H:%M:%S"),
+                                      "流程谷底时序": [c for _, c, _, _ in br.process.goal_path(7)]}, cap=20)
+                stt.put("l4", "out", {"time": time.strftime("%H:%M:%S"),
+                                      "障碍场": bool(st["obstacle"]), "世界模型项": bool(st["world"]),
+                                      "意图": it["dir"] if it["active"] else None}, cap=20)
+        except Exception:                                 # noqa: BLE001
+            pass
+        return True
+    except Exception as e:                                # noqa: BLE001
+        if log:
+            log(f"⚠️ 势场记忆联络失败: {type(e).__name__}: {e}")
+        return False

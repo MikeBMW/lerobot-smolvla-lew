@@ -28,7 +28,7 @@ import numpy as np
 from PyQt5.QtCore import Qt, QTimer, QPointF
 from PyQt5.QtGui import QColor, QFont, QVector3D, QPainter, QPen, QPixmap, QBrush, QPolygonF
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
-                             QSlider, QPushButton, QFrame)
+                             QSlider, QPushButton, QFrame, QComboBox)
 
 import pyqtgraph.opengl as gl
 
@@ -434,13 +434,227 @@ class LabelOverlay(QWidget):
         p.end()
 
 
+# ── 🎬 SW 实况 (stable-world 渲染帧) — 独立窗口 + 3D 内嵌小窗共用同一数据源 ──
+def sw_dirs():
+    """L4「🌍 SW 仿真世界引擎链」产物目录: (根, frames, video, status.json)"""
+    import os
+    root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    d = os.path.join(root, "reports", "intact_sw")
+    return d, os.path.join(d, "frames"), os.path.join(d, "video"), os.path.join(d, "status.json")
+
+
+def sw_read_status(path):
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+_SW_WIN = None            # 全局单例: 3D 内嵌小窗的「⤢ 放大」与画布 L4 ▶运行自动弹出 共用同一个窗口
+
+
+def sw_live_window():
+    """打开/前置 SW 实况独立窗口 (单例; 已开则 raise+activate, 不重复开)"""
+    global _SW_WIN
+    try:
+        if _SW_WIN is None:
+            _SW_WIN = SWLiveWindow()
+        if not _SW_WIN.isVisible():
+            _SW_WIN.show()
+            _SW_WIN._poll()                 # 立刻刷一帧, 不等 150ms
+        _SW_WIN.raise_()
+        _SW_WIN.activateWindow()
+        return _SW_WIN
+    except Exception as e:                  # noqa: BLE001
+        try:
+            print(f"[SW 实况窗口] 打开失败: {type(e).__name__}: {e}")
+        except Exception:
+            pass
+        return None
+
+
+class SWLiveWindow(QWidget):
+    """🎬 stable-world 实况 · **独立窗口** (2026-09-13 老倪: 3D 角落里的小窗太小, 单独开一个正常窗口)
+
+    数据源与 3D 视图内嵌小窗完全相同 (reports/intact_sw/frames/*.jpg + status.json,
+    即 L4「🌍 SW 仿真世界引擎链」逐帧渲染真图); 本窗口只做放大显示:
+      · 可拉伸 (默认 760×860) · 倍率 ×1/×1.5/×2/×3/×4 (默认 ×3 = 672px) · ⏸暂停/▶继续
+      · 📌置顶 toggle · 📂打开视频目录 (3 面板 mp4 + showcase 合集)
+    诚实: 没跑过就显示"尚未跑过", 不画占位假图; 状态行全部读真 status.json。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🎬 SW 实况 · stable world (INTACT cube) · L4")
+        self.resize(760, 860)
+        self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
+        self._last = None
+        self._pm0 = None
+        self._zoom = 3.0
+        self._paused = False
+        v = QVBoxLayout(self)
+        v.setContentsMargins(10, 10, 10, 10)
+        v.setSpacing(6)
+        t = QLabel("🎬 SW 实况 · stable world (INTACT cube) · L4 档")
+        t.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
+        v.addWidget(t)
+        bar = QHBoxLayout()
+        bar.setSpacing(6)
+        self.btn_pause = QPushButton("⏸ 暂停")
+        self.btn_pause.setCheckable(True)
+        self.btn_pause.setToolTip("暂停 = 停止轮询刷新 (画面定格); 再点继续")
+        self.btn_pause.toggled.connect(self._on_pause)
+        bar.addWidget(self.btn_pause)
+        self.cmb_zoom = QComboBox()
+        self.cmb_zoom.addItems(["×1", "×1.5", "×2", "×3", "×4"])
+        self.cmb_zoom.setCurrentText("×3")
+        self.cmb_zoom.setToolTip("显示倍率 (原帧 224×224; ×3 = 672px, 越大越糊属正常)")
+        self.cmb_zoom.currentTextChanged.connect(self._on_zoom)
+        bar.addWidget(self.cmb_zoom)
+        self.chk_top = QCheckBox("📌 置顶")
+        self.chk_top.toggled.connect(self._on_top)
+        bar.addWidget(self.chk_top)
+        b_dir = QPushButton("📂 视频目录")
+        b_dir.clicked.connect(self._open_dir)
+        bar.addWidget(b_dir)
+        # 🎛 2026-09-13 老倪: 要像 L2/L3 dreamview 一样能互动看任意帧的信号
+        b_iv = QPushButton("🎛 互动查看器 (拖帧看信号)")
+        b_iv.setToolTip("打开互动查看器: 时间轴拖到任意帧 → 同步显示该帧的真渲染画面、\n"
+                        "模型动作[0..3]、frame_std、done、真推理次数, 并画出动作随帧的曲线 (游标跟随)")
+        b_iv.setStyleSheet("QPushButton{background:#00d4aa;color:#0d1117;font-weight:700;"
+                           "border:none;border-radius:4px;padding:4px 10px;}"
+                           "QPushButton:hover{background:#33e0b8;}")
+        b_iv.clicked.connect(self._open_viewer)
+        bar.addWidget(b_iv)
+        bar.addStretch(1)
+        v.addLayout(bar)
+        self.lbl_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
+        self.lbl_img.setAlignment(Qt.AlignCenter)
+        self.lbl_img.setMinimumSize(420, 420)
+        self.lbl_img.setStyleSheet("background:#161b22; color:#8b949e; font-size:13px; border:1px solid #30363d;")
+        v.addWidget(self.lbl_img, 1)
+        self.lbl_info = QLabel("—")
+        self.lbl_info.setStyleSheet("color:#c9d1d9; font-size:12px;")
+        self.lbl_info.setWordWrap(True)
+        v.addWidget(self.lbl_info)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._poll)
+        self._timer.start(150)
+
+    # ── 交互 ──
+    def _on_pause(self, on):
+        self._paused = bool(on)
+        self.btn_pause.setText("▶ 继续" if on else "⏸ 暂停")
+
+    def _on_zoom(self, txt):
+        try:
+            self._zoom = float(str(txt).replace("×", "").strip())
+        except Exception:
+            self._zoom = 3.0
+        self._render()
+
+    def _on_top(self, on):
+        try:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(on))
+            self.show()
+        except Exception:
+            pass
+
+    def _open_viewer(self):
+        """🎛 打开互动查看器 (拖帧看任意帧的画面+信号; 老倪 2026-09-13)
+        ⚠️ 2026-09-13 修: 这个按钮此前连到了 DreamView3D 的同名方法 → SWLiveWindow 上不存在
+        → 构造时 AttributeError → sw_live_window() 返回 None → 点按钮"没反应" (只有一个 print)。"""
+        try:
+            import intact_signal_viewer as _iv
+            d, _fr, _vd, _st = sw_dirs()
+            w = _iv.open_signal_viewer(d)
+            if w is not None:
+                w.rescan(d)
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[互动查看器] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def _open_dir(self):
+        try:
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            _d, _fr, vd, _st = sw_dirs()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
+        except Exception:
+            pass
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._render()
+
+    def _render(self):
+        """按当前倍率 + 窗口尺寸重贴当前帧 (resize/换倍率时调用)"""
+        try:
+            if self._pm0 is None or self._pm0.isNull():
+                return
+            z = max(224.0, 224.0 * float(self._zoom))
+            w = min(int(z), max(200, self.lbl_img.width() - 6))
+            h = min(int(z), max(200, self.lbl_img.height() - 6))
+            self.lbl_img.setPixmap(self._pm0.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception:
+            pass
+
+    def _poll(self):
+        if self._paused:
+            return
+        try:
+            import os
+            _d, fr, vd, stp = sw_dirs()
+            if not os.path.isdir(fr):
+                return
+            frames = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            if not frames:
+                if self._last != "__none__":
+                    self.lbl_img.setText("尚未跑过 — 选 L4 档点 ▶运行")
+                    self._pm0 = None
+                    self._last = "__none__"
+                return
+            newest = frames[-1]
+            if newest != self._last:
+                pm = QPixmap(os.path.join(fr, newest))
+                if not pm.isNull():
+                    self._pm0 = pm
+                    self._render()
+                self._last = newest
+            info = sw_read_status(stp)
+            vids = []
+            try:
+                vids = sorted([x for x in os.listdir(vd) if x.endswith(".mp4")])
+            except Exception:
+                pass
+            show = next((x for x in vids if "showcase" in x), (vids[-1] if vids else None))
+            self.lbl_info.setText(
+                f"帧 {newest} · frame_std={info.get('frame_std')} (>5 = 真图) · "
+                f"阶段 {info.get('stage')} · 步 {info.get('step')} · "
+                f"回合 {info.get('ep_done')} · 成功 {info.get('succ')} · "
+                f"success_rate={info.get('success_rate')}\n"
+                f"模型调用 {info.get('model_calls')} 次 · 零搜索={info.get('zero_search')} · "
+                f"ckpt={info.get('ckpt')}\n"
+                f"视频: {show or '—'}   ({len(vids)} 个文件)\n"
+                f"数据源: {fr}")
+        except Exception:
+            pass
+
+
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
-    def __init__(self, tr=None, parent=None, on_top=True, module=None):
+    def __init__(self, tr=None, parent=None, on_top=True, module=None, level=None):
         """module: 画布 SimulinkModule 引用 — 3D 上的 ▶运行/⏹停止 与画布按钮同一入口
         (v3.4.7 老倪: 3D 世界操作按钮, 与 simulink 画布运行按钮统一功能)"""
         self.module = module
+        self._level = str(level).upper() if level else None    # 🧭 L2/L3/L4 dreamview 档位
         super().__init__(parent)
         self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
         self.resize(1180, 820)
@@ -516,6 +730,27 @@ class DreamView3D(QWidget):
                 "QPushButton:checked{background:#1f6feb; color:#fff; border-color:#1f6feb;}")
             self.btn_top_w.toggled.connect(self._on_top_world)
             pl.addWidget(self.btn_top_w)
+            # 🧠 2026-09-11 老倪: "我要看到 L4 档位的区别" — 模型执行开关
+            #   勾上 → L4 档改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图;
+            #   不勾 → 原来的 L4Demo 固定演示 (90° 转台)。同一个档位, 当场对比。
+            self.btn_model_w = QPushButton("🧠 模型执行")
+            self.btn_model_w.setCheckable(True)
+            # 🎯 默认**不勾**: L4 档走引擎解析链 → 保证能看到完整 13 段(插→拔→AOI→放回);
+            #   勾上则改走 L3 模型接管 (注意: L4 干扰布局下模型可能卡在插入段 —
+            #   模型训练数据无干扰布局, 属数据覆盖问题; 建议在无干扰/已训练布局下勾选)
+            self.btn_model_w.setChecked(False)
+            self.btn_model_w.setToolTip(
+                "不勾(默认) = L4 档走引擎解析链: 完整 13 段 (插入→拔出→AOI检测→放回) + L4 干扰\n"
+                "勾上       = L4 档改走 L3 模型接管 (SmolVLA-Lew · 默认 ckpt)\n"
+                "⚠️ 模型在 L4 干扰布局下可能卡在插入段 (训练数据无干扰布局)")
+            self.btn_model_w.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:4px 0; font-size:11px;}"
+                "QPushButton:checked{background:#8957e5; color:#fff; border-color:#8957e5;}")
+            self.btn_model_w.toggled.connect(self._on_model_exec)
+            pl.addWidget(self.btn_model_w)
+            # ⚠️ setChecked 在 connect 之前不触发信号 → 默认值必须主动同步给 module
+            self._on_model_exec(False)
             # 📉 性能流形曲面窗 (2026-09-07 老倪: 流形要有形状 — η 代价碗独立 3D 曲面)
             self.btn_mani_bowl = QPushButton("📉 性能流形曲面")
             self.btn_mani_bowl.setToolTip(
@@ -545,6 +780,23 @@ class DreamView3D(QWidget):
         hint = QLabel("勾选要观察的处理层")
         hint.setStyleSheet("color:#8b949e; font-size:11px;")
         pl.addWidget(hint)
+        # 🧭 2026-09-13 老倪: 3D 视图不要画中画 —— 三个 dreamview 窗口 (L2 / L3 / L4·stable-world),
+        #   点哪个开哪个 (各自独立窗口, 与 DreamView3D 同款交互: 时间轴/图层开关/拖帧看信号)
+        _row_lv = QHBoxLayout()
+        _row_lv.setSpacing(4)
+        for _lvl, _txt, _tip, _col in (
+            ("L2", "🧭 L2 DreamView", "L2 档 3D 分层视图 (感知层 + 末端轨迹)", "#2e8b57"),
+            ("L3", "🧭 L3 DreamView", "L3 档 3D 分层视图 (加 前馈/状态估计/预测 层)", "#1f6feb"),
+            ("L4", "🌍 L4·SW DreamView", "L4·stable-world 实况 (逐帧真渲染 + 拖帧看信号)", "#8957e5"),
+        ):
+            _b = QPushButton(_txt)
+            _b.setToolTip(_tip + "\n(独立窗口, 可同时开; 不再有画中画)")
+            _b.setStyleSheet(f"QPushButton{{background:{_col};color:#ffffff;font-weight:700;"
+                             f"border:none;border-radius:4px;padding:6px 4px;font-size:11px;}}"
+                             f"QPushButton:hover{{background:#33e0b8;color:#0d1117;}}")
+            _b.clicked.connect(lambda _=False, lv=_lvl: self._open_level(lv))
+            _row_lv.addWidget(_b)
+        pl.addLayout(_row_lv)
         pl.addSpacing(6)
 
         # 图层: (key, 中文名, 默认开, 提示)
@@ -684,7 +936,18 @@ class DreamView3D(QWidget):
         self.view.setBackgroundColor('#0d1117')
         self._overlay = LabelOverlay(self.view)     # 🏷 文字标注层 (贴在 3D 画布上)
         self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        if self._level:                      # 按档位预设开关图层 + 标题标注
+            try:
+                self.setWindowTitle(f"🧭 状态空间 {self._level} DreamView (3D 分层)")
+                self.apply_level_preset(self._level)
+            except Exception:
+                pass
         self._overlay.show()
+        # 🗑 2026-09-13 老倪改口径: **不要画中画** —— stable-world 实况改为独立 dreamview 窗口
+        #   (原来的画中画小窗已移除; 需要看 L4 实况时点左侧「🌍 L4·stable-world DreamView」按钮)
+        self._sw_last = None
+        self._sw_panel = None
+        self._sw_timer = None
         self.view.installEventFilter(self)
         right.addWidget(self.view, 1)
 
@@ -802,8 +1065,12 @@ class DreamView3D(QWidget):
             self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
             # 🎯 2026-09-09 L4 演示 (L4Demo npz/meta): 演示场景注入设备 (转台/压电耦合台)
             #   3D 视图按 demo_geom 绘制 — 物理场景真实存在的设备, 视觉必须同呈现
-            if meta.get("demo"):
+            # 🎯 2026-09-11 老倪: "没看到转台盘/十字刻度" → 设备几何(转台/光耦合台)的读取
+            #   原先被包在 meta["demo"] 分支里 (那是 L4Demo 专属标记) — 引擎路径(L4 档新链路)
+            #   不带该标记 → _demo_geom 永远 None → 3D 不画转台。拆开: 几何呈现独立于"演示模式"。
+            if meta.get("demo_geom"):
                 self._demo_geom = meta.get("demo_geom") or {}
+            if meta.get("demo"):
                 self._peg_center_off = np.zeros(3)   # 演示 tr["peg"]=真 peg 中心, 无抓握点补偿
                 self._src = ("L4 演示全链 (seed=%s, %s 步, 终态 %s)"
                              % (meta.get('seed'), meta.get('steps'), meta.get('stage_final')))
@@ -1015,6 +1282,7 @@ class DreamView3D(QWidget):
                 et = ev.type()
                 if et == ev.Resize:
                     self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+                    self._place_sw_panel()          # 🎬 实况小窗跟着重贴 (右上角)
                     self._sync_fov()
                     self._refresh_label_positions()
                 elif et in (ev.MouseMove, ev.Wheel, ev.MouseButtonRelease,
@@ -1424,6 +1692,192 @@ class DreamView3D(QWidget):
             return
 
     # ── 图层开关 ──
+    # ── 🎬 SW 实况 · stable-world 渲染帧 (2026-09-13 老倪 A: 贴进 3D 视图本体) ──
+    def _sw_dirs(self):
+        """定位 L4 · SW 引擎链产物: (根, frames, video, status.json)"""
+        import os
+        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+        d = os.path.join(root, "reports", "intact_sw")
+        return d, os.path.join(d, "frames"), os.path.join(d, "video"), os.path.join(d, "status.json")
+
+    def _build_sw_panel(self):
+        """3D 画面右上角画中画: stable-world 逐帧渲染真图 + 跨 venv 桥状态 (真数据, 没跑过就如实说)"""
+        f = QFrame(self.view)
+        f.setStyleSheet("QFrame{background:rgba(13,17,23,235); border:1px solid #30363d; border-radius:6px;}")
+        v = QVBoxLayout(f)
+        v.setContentsMargins(8, 6, 8, 6)
+        v.setSpacing(4)
+        t = QLabel("🎬 SW 实况 · stable world (INTACT cube) · L4")
+        t.setStyleSheet("color:#00d4aa; font-size:12px; font-weight:700; border:none;")
+        v.addWidget(t)
+        self._sw_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
+        self._sw_img.setFixedSize(300, 224)
+        self._sw_img.setAlignment(Qt.AlignCenter)
+        self._sw_img.setStyleSheet("background:#161b22; color:#8b949e; font-size:11px; border:1px solid #30363d;")
+        v.addWidget(self._sw_img)
+        self._sw_info = QLabel("—")
+        self._sw_info.setStyleSheet("color:#c9d1d9; font-size:10px; border:none;")
+        self._sw_info.setWordWrap(True)
+        self._sw_info.setFixedWidth(300)
+        v.addWidget(self._sw_info)
+        b = QPushButton("📂 打开视频目录 (3 面板 mp4)")
+        b.setToolTip("reports/intact_sw/video/ — stable-world 官方 save_panel_videos 出的\n"
+                     "agent | dataset | goal 三面板视频 (每回合一份) + showcase 合集")
+        b.setStyleSheet("QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
+                        "border-radius:4px;padding:3px 0;font-size:11px;}"
+                        "QPushButton:hover{border-color:#00d4aa;color:#00d4aa;}")
+        b.clicked.connect(self._sw_open_dir)
+        hr = QHBoxLayout()
+        hr.setSpacing(4)
+        b2 = QPushButton("⤢ 放大窗口")
+        b2.setToolTip("把这个小窗独立成正常窗口 (可拉伸/倍率/置顶/暂停)")
+        b2.setStyleSheet(b.styleSheet())
+        b2.clicked.connect(self.open_sw_window)
+        hr.addWidget(b, 2)
+        hr.addWidget(b2, 1)
+        v.addLayout(hr)
+        f.adjustSize()
+        return f
+
+    def _place_sw_panel(self):
+        """把实况小窗锚在 3D 画面右上角 (窗口尺寸变化时重贴)"""
+        try:
+            m = 12
+            self._sw_panel.adjustSize()
+            self._sw_panel.move(max(m, self.view.width() - self._sw_panel.width() - m), 44)
+        except Exception:
+            pass
+
+    def _open_viewer(self):
+        """🎛 打开互动查看器 (拖帧看任意帧的画面+信号; 老倪 2026-09-13)"""
+        try:
+            import intact_signal_viewer as _iv
+            d, _fr, _vd, _st = sw_dirs()
+            w = _iv.open_signal_viewer(d)
+            if w is not None:
+                w.rescan(d)
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[互动查看器] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def _sw_open_dir(self):
+        try:
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            _d, _fr, vd, _st = self._sw_dirs()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
+        except Exception:
+            pass
+
+    # ── 🧭 三个 dreamview 窗口 (2026-09-13 老倪: L2 / L3 / L4·stable-world, 不要画中画) ──
+    LEVEL_PRESETS = {
+        "L2": ["scene", "traj"],                                  # L2: 感知层 + 末端实测轨迹
+        "L3": ["scene", "traj", "uff", "latent", "prior"],        # L3: 再加 前馈/状态估计/预测
+        "L4": ["scene", "traj", "uff", "latent", "prior"],        # L4: 引擎真链全部执行层
+    }
+
+    def apply_level_preset(self, level: str):
+        """按档位开关图层 (L2 只留基础感知/轨迹; L3/L4 打开执行层) —— 找不到的键跳过, 不报错"""
+        keys = [k for k, *_ in self._layers_def]
+        want = set(self.LEVEL_PRESETS.get(str(level).upper(), keys))
+        for k in keys:
+            try:
+                on = k in want
+                cb = self._chk.get(k)
+                if cb is not None and cb.isChecked() != on:
+                    cb.setChecked(on)          # 触发 _toggle_layer → 真开关图层
+                else:
+                    self._toggle_layer(k, on)
+            except Exception:
+                pass
+        return want
+
+    def _open_level(self, level: str):
+        """开对应档位的 dreamview 窗口: L4 → stable-world 逐帧实况 (含拖帧看信号); L2/L3 → 3D 分层视图"""
+        lv = str(level).upper()
+        if lv == "L4":
+            try:
+                import intact_signal_viewer as _iv
+                d, _fr, _vd, _st = sw_dirs()
+                w = _iv.open_signal_viewer(d)
+                if w is not None:
+                    w.setWindowTitle("🌍 L4 · stable-world DreamView (拖帧看信号)")
+                    w.rescan(d)
+                return w
+            except Exception as e:
+                try:
+                    print(f"[L4 SW DreamView] 打开失败: {type(e).__name__}: {e}")
+                except Exception:
+                    pass
+                return None
+        mod = getattr(self, "_module", None) or getattr(self, "module", None)
+        try:
+            w = mod.open_ss_3d(level=lv) if mod is not None and hasattr(mod, "open_ss_3d") else None
+            if w is None:
+                w = DreamView3D(tr=getattr(self, "_tr", None), module=mod, level=lv)
+                w.show()
+            self.apply_level_preset(lv)
+            return w
+        except Exception as e:
+            try:
+                print(f"[{lv} DreamView] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def open_sw_window(self):
+        """🎬 独立「SW 实况」窗口 (2026-09-13 老倪: 角落小窗太小 → 正常窗口放大看)
+        走全局单例 → 与画布 L4 ▶运行 自动弹出的那个窗口是同一个 (不会开两个)。"""
+        return sw_live_window()
+
+    def _sw_poll(self):
+        """150ms 轮询真帧: 帧号变了才重贴图 (省 CPU); 图层关掉则完全不刷新"""
+        if not self._layer_on.get("sw_live", True):
+            return
+        try:
+            import os
+            import json
+            _d, fr, vd, st = self._sw_dirs()
+            if not os.path.isdir(fr):
+                return
+            frames = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            if not frames:
+                if self._sw_last != "__none__":
+                    self._sw_img.setText("尚未跑过 — 选 L4 档点 ▶运行")
+                    self._sw_last = "__none__"
+                return
+            newest = frames[-1]
+            if newest != self._sw_last:
+                pm = QPixmap(os.path.join(fr, newest))
+                if not pm.isNull():
+                    self._sw_img.setPixmap(pm.scaled(self._sw_img.size(), Qt.KeepAspectRatio,
+                                                     Qt.SmoothTransformation))
+                self._sw_last = newest
+            info = {}
+            try:
+                with open(st, encoding="utf-8") as fh:
+                    info = json.load(fh)
+            except Exception:
+                pass
+            vids = []
+            try:
+                vids = sorted([x for x in os.listdir(vd) if x.endswith(".mp4")])
+            except Exception:
+                pass
+            show = next((x for x in vids if "showcase" in x), (vids[-1] if vids else None))
+            self._sw_info.setText(
+                f"帧 {newest} · std={info.get('frame_std')} (>5 = 真图)\n"
+                f"阶段 {info.get('stage')} · 步 {info.get('step')} · "
+                f"回合 {info.get('ep_done')} · 成功 {info.get('succ')}\n"
+                f"模型调用 {info.get('model_calls')} 次 · 零搜索 {info.get('zero_search')}\n"
+                f"视频: {show or '—'}")
+        except Exception:
+            pass
+
     def _toggle_layer(self, key, checked):
         """图层开关 → GL 元素可见性 + **重建文字标注**。
         🐛 2026-08-25 老倪「图像层都关了以后, 文字没有消失; 文字要绑定图层」根因:
@@ -1431,6 +1885,13 @@ class DreamView3D(QWidget):
         且看门狗还在按旧的世界坐标持续重投影 → 图层关了文字仍留在画面上。
         修: 切完图层立刻按新开关状态重建标注 (每条标注都受其所属图层控制)。"""
         self._layer_on[key] = checked
+        if key == "sw_live":                       # 🎬 实况小窗 (画中画) 显示/隐藏
+            try:
+                self._sw_panel.setVisible(bool(checked))
+                if checked:
+                    self._place_sw_panel()
+            except Exception:
+                pass
         self._apply_layer_visibility(key, checked)
         try:
             if getattr(self, "_n", 0) > 0:
@@ -1921,6 +2382,35 @@ class DreamView3D(QWidget):
                                   QColor(88, 166, 255), False, 0))
                 elif _ci2 >= 7:
                     _rows.append(("  ✅ 已到终态 完成", QColor(63, 185, 80), True, 0))
+            # 🧠 2026-09-11 老倪: 3D 里必须看得见「yaw 指令是谁发的」(来源 + φ* + 取证计数)
+            try:
+                _meta_d = tr.get("_meta") or {}
+                _yaw_now = (float(tr["mani_yaw"][i]) if (tr.get("mani_yaw") is not None
+                                                         and len(tr["mani_yaw"]) > i) else None)
+                _phi_now = (float(tr["mani_phi"][i]) if (tr.get("mani_phi") is not None
+                                                         and len(tr["mani_phi"]) > i) else None)
+                _arm_s = str(_meta_d.get("arm") or "").strip()
+                if _yaw_now is None:
+                    _src3 = "引擎解析链 (metaworld 4D 动作空间, 无 yaw 维)"
+                    _c3 = QColor(139, 148, 158)
+                elif _arm_s == "mani_yaw":
+                    _src3 = "🎯 yaw 试抓头决策 (真实试抓监督)" if _meta_d.get("mani") and \
+                        (_meta_d.get("mani") or {}).get("scorer", "").startswith("yaw 试抓头") \
+                        else "🧠 流形预测器决策 (每帧真调 φ* → 下发角)"
+                    _c3 = QColor(0, 212, 170)
+                else:
+                    _src3 = "脚本开环 Arm A (固定计划角, 预测器不参与动作)"
+                    _c3 = QColor(139, 148, 158)
+                _rows.append((f"🧠 yaw 指令来源: {_src3}", _c3, True, 0))
+                _txt3 = (f"   下发 yaw {_yaw_now:+.1f}°" if _yaw_now is not None else "   下发 yaw —")
+                if _phi_now is not None and _phi_now == _phi_now:      # NaN 安全
+                    _txt3 += f"   φ*(预测器) {_phi_now:+.1f}°"
+                _mi3 = _meta_d.get("mani") or {}
+                if _mi3:
+                    _txt3 += f"   前向 {_mi3.get('n_calls')} 次 trained={_mi3.get('trained')}"
+                _rows.append((_txt3, QColor(139, 148, 158), False, 0))
+            except Exception:
+                pass
             self._overlay.set_panel(_rows)
         except Exception as _e:
             print(f"⚠️ 标注层更新失败: {_e}")
@@ -2018,6 +2508,16 @@ class DreamView3D(QWidget):
                 self.module.stop_sim()
         except Exception as _e:
             print(f"⚠️ 3D 停止: {_e}")
+
+    def _on_model_exec(self, on):
+        """🧠 模型执行开关 (老倪 2026-09-11: 要看到 L4 档位的区别)。
+        勾上 → L4 档不走 L4Demo, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图;
+        不勾 → 原来的 L4Demo 固定演示。仅影响 L4 档 (L3 档不动, 老倪明确要求)。"""
+        try:
+            if self.module is not None:
+                self.module._model_exec = bool(on)
+        except Exception:
+            pass
 
     def _on_top_world(self, checked):
         """📌 置顶开关 — 画布运行/弹窗不会盖住 3D (flag 改动需重新 show 生效)"""

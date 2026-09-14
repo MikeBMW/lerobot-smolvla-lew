@@ -1,3 +1,4 @@
+import os
 """cognition.py — S3 认知决策层 (状态空间模型画布)
 
 🧪 状态校正器 (卡尔曼更新核心):
@@ -119,8 +120,12 @@ class ActionModulator:
         # 🐛 2026-09-06 静静: 转移→插入只看水平 dh, 会切在 peg 头低于孔口时 → 斜插顶孔沿
         #   插不进, 夹爪硬推把 peg 从夹爪里挤滑 (off 逐帧缩短) → 滑脱回退。切换须等
         #   peg 头悬在孔口上方 INSERT_HOVER±容差 (转移目标同款几何)。
-        self.INSERT_HOVER = 0.02        # 转移目标: peg 头悬孔口上方高度 (m)
-        self.INSERT_Z_TOL = 0.012       # 切换 z 容差 (太高压根进不了, 太低顶孔沿)
+        # 🐛 2026-09-15 参数化 (默认值=原硬编码, 不设环境变量行为逐位不变): 实测卡死 seed 在
+        #   head 高于孔轴 11.6/17.0mm 时被放行进入插入 (容差 ±12mm → 8~32mm 都能过闸), 随后
+        #   在孔道内降不下去 (杆压治具, 接触对 peg↔治具box) 卡在 depth≈27mm; 成功 seed 入孔时
+        #   偏差仅 0.14mm ⇒ 入口容差过松是主嫌。
+        self.INSERT_HOVER = float(os.environ.get("SS_INSERT_HOVER", "0.02"))
+        self.INSERT_Z_TOL = float(os.environ.get("SS_INSERT_Z_TOL", "0.012"))
 
     def stage(self):
         return self.STAGES[self.stage_idx]
@@ -133,13 +138,20 @@ class ActionModulator:
         self.stage_idx = idx
         self.history.append((self.STAGES[idx], reason))
 
-    def gripper_cmd(self, u_ff_g=0.0):
+    def gripper_cmd(self, u_ff_g=0.0, keep_closed=False):
         """夹爪指令归状态机 (与操作视频状态机一致: 接近/对位/下降 张开, 抓取起闭合并保持)
         ⚠️ 不能听前馈层的"近距即闭合"启发: 对位/下降阶段手已经离光模块 <3cm, 前馈会提前
         把夹爪闭上 → 还没到抓取阶段夹爪就关了 (3D 视图里看不到"张开→夹紧"的抓取动作),
-        且抓取阶段瞬间跳过 (gripper 早已 1.0)。夹持是状态锁存, 不是比例控制。"""
+        且抓取阶段瞬间跳过 (gripper 早已 1.0)。夹持是状态锁存, 不是比例控制。
+
+        keep_closed (2026-09-10 老倪直攻滑脱): 引擎在"回退重抓但光模块可能还在夹爪里"时置 True。
+          🎯 死循环根源: 滑移 → 回退到抓取之前 → 本函数返回 0 = 张爪 → **主动把件扔掉** → 再抓再滑。
+          只要工件仍在夹爪范围内, 回退期间也必须保持闭合 (工件没掉就别扔), 这才打断死循环。
+        """
         # (完成段开爪由引擎放件流程驱动 — 见 state_space_sim_real.run 放下段,
         #  状态机保持"抓取起锁存闭合"语义不变)
+        if keep_closed:
+            return 1.0
         return 1.0 if self.stage_idx >= self.GRASP_IDX else 0.0
 
     def _confirm(self, target_idx, reason):

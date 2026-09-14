@@ -124,6 +124,210 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **ModelCompareDialog/BarCompareWidget 主题化**: paint 用 `_st()` (simulink_scope.CUR_THEME 由 simulink_module.switch_theme 同步); 对话框 QSS 用 `_qss()` 映射 (dark 时浅色值→深色值)。
 - **🔬 三模型对比 (2026-08-05, commit ada65fb1, 老倪: \"增加一个没有leworldmodel的流程, 三个模型对比, 即 ACT, SmolVLA, SmolVLA+Leworldmodel串行\")**: 新模板「🔬 三模型对比」**18节点20连线** = ♻共用2 (📦metaworld数据 / 📊对比评估Scope) + **3 分支行**: ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead·ACT→Ensemble→训练) + SmolVLA 纯动作 4 (SmolVLM2→DiT-B→ActionHead·SmolVLA→训练, **无 LEW**) + SmolVLA+LEW 5 (SmolVLM2·LEW→DiT-B·LEW→🌐LeWorldModel→ActionHead·SmolVLA+LEW→训练)。三训练节点 policy=act / smolvla / smolvla_lew。入口 btn_compare3 \"🔬 三模型对比\" (#d4a800) → open_compare3()。**⚠️ 关键配置坑 (configuration_smolvla_lew.py:125-126 `__post_init__`)**: `freeze_smolvlm: true` 时 **`enable_lew_world_model` 被强制改 False** — 现有 config_smolvla_metaworld.yaml (freeze=true) 训练出的\"SmolVLA\"其实**根本没启用 LEW**! 要真 LEW 必须新建 `config_smolvla_lew_metaworld.yaml` (freeze_smolvlm: **false** + enable_lew_world_model: true + lew_* 参数)。on_train 三策略分支 (smolvla_lew→新配置+ts_dir=smolvla_lew_<ts> / smolvla→旧配置+smolvla_<ts> / else→ACT), 曲线落盘 reports/train_curve_<policy>.json 各写各的。compare_models.py main() 改循环 `policies=[(\"act\",\"ACT\"),(\"smolvla\",\"SmolVLA\"),(\"smolvla_lew\",\"SmolVLA+LEW\")]` 逐个 find_ckpt+eval (缺 checkpoint 跳过不报错); on_compare_scope 改\"有任一产物即可评估\"(不再强制双曲线都在)。ModelCompareDialog._load_data 通用 N 模型 (MODELS 表 + present=[k in m and m[k]]): loss 折线每模型一条 / 表格 N 列+胜出列 / bars.set_data(rows, names=[...]); simulink_scope.COLORS 加 `smolvla_lew: #a371f7` (紫)。**⚠️ BarCompareWidget paintEvent float 坐标崩 (2026-08-05 渲染对话框时暴露, commit 53164e6a)**: 原双模型版 `y0 = i * row_h` 是 float, `p.drawText(8, y0+14, ...)` **PyQt5 严格类型 → TypeError** (隐藏 bug 从未被触发, N 模型改造后测试渲染对话框才崩)。修: y0/yy 全部 `int()`。**教训: 自绘 paint 的 drawText/fillRect 坐标必须 int (同 QPen.setWidth 只收 int 一族); 改完必须真实渲染一遍**。验证 (offscreen EXIT=0): YAML 语义断言 (lew 配置 enable=true+freeze=false) / compare 语法 / 模板 18节点20连线 / Action Head 三行对齐 / ModelCompareDialog 假数据三模型表格含 \"3 模型\" / 画布渲染采样非白。
 
+## 🧲 记忆层集成阶梯 (L2 准确性 → L3 调度 → L4 抗干扰 → 总装仲裁, v5.5.46)
+
+**第一版 30 格实测结论 (2026-09-14 03:01, manifest 6fc5fe9f60fa)**: 模型直驱 0/30 成功 (插入距离 585~611mm);
+L2/L23/L234/assy 与 off 的差异只有噪声级 → **不算提升**。两个根因, 都已定位到代码行:
+
+> ⚠️ **2026-09-14 追加 (v5.5.48, 这条把上面两条都盖住了)**: 记忆层当时**被喂错了坐标系** ——
+> 桥传 `s.peg_head()`, 而冠军轨迹/引擎肌肉记忆用**夹爪真实位置** (引擎 `self.x = obs[0:3]`,
+> state_space_sim_real.py:634)。同一 seed 下两者差 (0.017,0.054,0.176)m ⇒ 势场在**自己坐标系之外**求梯度,
+> 意图=噪声。所以"记忆层没效果"主要是这个 bug, 不是(只是)权重问题。
+> **判据/自查**: 用 `tools/mem_field_probe.py` 打坐标系对照 —— 同源时 `d_perp` 应 ≈ 0 (~1e-4),
+> 异构时 ~0.13m; 同源时相位会正常 SK01→SK07 推进。**任何"记忆层没效果"的结论, 先查这一条**。
+
+---
+
+## 🧠 v6: 让 L4 的 INTACT **看到并复用 L2 原子技能** (2026-09-14 老倪下令, 已落地)
+
+**契约 (改顺序=换版本)**: `skill_ctx` 24 维 = `[引擎相位 one-hot(13) | L2 势场技能软权重 w(8) |
+d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/intact/skill_ctx.py`
+(采集器 `tools/intact_insert_dataset_v5.py` 与闭环桥 `tools/intact_sw_optical_bridge.py` **共用同一函数** →
+训练/推理同口径; 有 `tools/skill_ctx_consistency_check.py` 做同口径回归)。
+
+**模型侧零回退构造 (关键)**: `IntentActionActor(skill_dim=24)` 新增 `E(s)` 分支, 但
+①`skill_dim: 0` 是默认值 → 参数形状与老配置逐字节相同, 老 ckpt 仍能 `strict` 加载;
+②打开时 `skill_enc` 末层**零初始化** 且 入口层 `net.0.weight` **老列逐位复制 + 新列置零** (缺后者
+暖启动会差 0.43 — 入口层形状变了被部分加载跳过, 随机初始化污染全网络, 自检检查 C 抓出来的);
+③`get_action` 里 skill_dim>0 却缺 skill_ctx → **直接报错, 不许静默降级**。
+自检: `INTACT-JEPA/tools/intact_skill_channel_check.py` 五条闸全过才算接上。
+
+**"有提升"判据 (老倪 09-12 口径)**: 同一权重同一批真帧跑 `--skill on` vs `--skill zero` (全零消融)
+→ 判三条: 赢常数基线 ∧ `MAE(on) < MAE(zero)` ∧ 预测std/教师std ≥ 0.30。
+哨兵 `/home/ubuntu/.hermes/scripts/v6_judge_watch.py` (cron, 静默无新 ckpt)。
+
+**坑 (踩过的)**:
+- `project_polyline()` 返回 **(最近点, 距离, 弧长, 段号) = 4 元组**。按 3 元组解包 → 每帧 ValueError
+  → 被引擎 `_frame_sink` **静默吞掉** → part npz 里**整列 skill_ctx 都没有**, 而日志一切正常 ✗✗
+  (老倪红线: 静默降级 = 白做)。教训: sink/回调里的构造失败要显式 raise 或至少记 `_SKERR` 进 meta。
+- 采集器 flush 时 `np.savez_compressed(p, **kw, ...)` —— `kw` 忘了 `**` → pixels/action/observation
+  全不落盘, 文件只有几 KB 而日志说"窗口 18" ✓ 假成功。**落盘后必须验 keys + 帧std>5**。
+1. **场权写死太低**: `blend_action` 里 `w = w_max·max(conf, w_floor)`, 桥用 `w_max=0.5`, `w_floor=0.2`,
+   而现场 `conf ≡ 0` (离最近轨迹管 207mm) ⇒ w̄ 恒 = **0.1** → 10% 的场权扳不动 600mm 模型误差。
+   已修 (增益调度): `far = clip((d_perp−d_near)/(d_far−d_near),0,1)`, `w = max(w_max·max(conf,w_floor), w_far·far)`,
+   默认 `w_far=0.85, d_near=30mm, d_far=150mm` —— **在管内维持原公式 (不回退), 远场让场主导**。
+2. **模型动作塌缩**: `IntentActionActor` 输入 = 潜槽 (z_t, m_t, z_t·m_t) + a_{t-1} 嵌入, **没有本体/几何输入**;
+   而数据集 `optical_insert_v4.h5` 里明明有 `observation` (39D) —— 但 `grep observation train.py jepa.py module.py`
+   **零命中 = 这个状态通道从来没人消费**。亚毫米插入能从 224²/patch14 的潜空间补出来吗? 补不出来 →
+   动作头预测条件均值 → 幅度只有教师 7~22% (v3/v4/v5 全如此) → 输给常数基线。
+   → 这是"模型直驱"这条路的天花板, 也是**记忆层势场存在的意义** (Φ 用引擎真几何/冠军轨迹建)。
+
+**其它落地铁律**:
+
+老倪口径: "集成 L2肌肉/L3流程/L4工作/总装记忆… 稳步推进… 要看到最终成功抗干扰的插拔… 能力要稳步提升不要波动,
+数据一致性最重要"。落地三条铁律:
+
+1. **抗干扰必须真注入** (本次查出的关键缺口): 桥原来 `sim.run(max_steps=…)` **不传 cap** → 引擎 `_jitter_on=False`
+   ⇒ L4 链从来没被注入过干扰 (引擎里只有 `cap=='l4'` 才注入来料移位/转向 ±3.5cm/±15°物理/90°转台视觉 + 恢复预算×2)。
+   现在桥有 `--cap {l2,l3,l4}` 并透传 → **解析链与模型直驱同吃一份干扰** (同口径); 每格结果必须记真实干扰元数据。
+2. **同口径阶梯台** `tools/mem_ladder_integration.py`: 每次跑先冻结 manifest (权重 sha256+epoch · 反归一化 stats
+   sha256+action_space · 记忆开关快照 · 引擎/桥/势场源码 sha256 + git rev) → manifest_hash 不同就是不同历史行;
+   矩阵 = 5 臂 (off/L2/L23/L234/assy) × 2 干扰档 (none=cap l3 / disturb=cap l4) × N seed, **每格跑完 append**
+   → 断点续跑; 6 道闸: N1 L2 准确性 / N2 L23≥L2 / N3 抗干扰 (干扰档 ≥ 自身无干扰 −1/n 且 ≥ off 干扰档) /
+   N4 总装 ≥ 任一臂 / N5 零搜索 (candidate_sequences=0 且 调用/步≤1.05) / N6 稳定 (跨 seed 深度 std≤25mm)。
+   历史 append-only `reports/mem_ladder/ladder_history.csv` → 跨 ckpt 同一格直接对比 = 能力提升可追溯。
+3. **无人值守**: `~/.hermes/scripts/mem_ladder_watch.py` (no_agent cron 每 20min, 静默=无变化): 崩溃格报告 /
+   进程死且格未跑完**自动重启**(阶梯可续跑, 所以重启安全) / 新汇总结论推飞书。
+   ⚠️ cron 建任务时 schedule 必须写 `every 20m` (只写 `20m` = 一次性!)。
+4. **语义提醒**: 引擎在干扰轮会**主动旁路 L2 肌肉记忆** (标杆按摆放固化, 布局变了标杆失效 → 正确降级全精算伺服)。
+   即"抗干扰"这档本来就主要靠 L3/L4, 阶梯表里干扰档 L2 介入下降是**预期**而非回退 —— 但要在报告里说明, 不能当卖点。
+
+## 🚀 L4 INTACT 策略化 + 连线 (v5.5.40, 2026-09-13 — metaworld → INTACT → decoder → L3)
+老倪: 「将 INTACT 接入 L4 层, 把 L4 节点的 INTACT 代码迁移到 src/lerobot 的 policies 文件夹, 做好连线;
+数据源直接接入 metaworld, 输出接一个 decoder 再进 L3; **不能让原有 L2 L3 能力下降**」。
+- **代码落位**: `src/lerobot/policies/intact/` = `configuration_intact.py` (注册名 `intact`) +
+  `modeling_intact.py` (`IntactPolicy`: select_action / predict_action_chunk / predict_intent;
+  `forward()` 显式 NotImplementedError = 不假装本仓能训) + `decoder.py` (`IntactIntentDecoder`) +
+  `runtime/` (**原 `src/lerobot/manifold/intact_node/` 整体 git mv 进来**, 实现一字未改)。
+  旧路径 `manifold/intact_node/__init__.py` 只剩兼容转发 → 桥/自检/引擎/工具零改动。
+  注册三处: `policies/__init__.py` · `factory.get_policy_class("intact")` · `PreTrainedConfig.register_subclass`。
+- **数据源直连 metaworld**: `runtime/metaworld_source.py` → `MetaWorldSource` (MT1 peg-insert-side-v3 ·
+  camera corner2 · `env.render()` 224² 真渲染 + `_get_obs()[:39]` 现场读 + 本域真实目标帧
+  `reports/intact_goal_frame_optical.npy`), 注册名 `metaworld` (与 `l4_episode`/`official` 并列)。
+- **解码器两路** (`decoder.py`): ① `u_ff` 先验 4D = `act×K_ACT` (K_ACT **现读引擎源码**, 量纲逆运算,
+  **无需标定**) ② L3 流形条件 = 需 `models/intact_l3_map.json` (闸值 R²>0.3 且 null<0.1);
+  未标定 → **拒绝返回并计数** (`cond_src="拒绝(未标定)"`), 绝不写死映射。
+- **画布连线** (77 节点/83 连线): `ssdata →💾→ ssintact`(🎯 INTACT 策略, L4 行) `→ ssintact_dec`(🎯 INTACT
+  意图解码器, L4 行) `→ ssdec`(L3 DiT)。**两节点都在 L4 行内 (cap=4) → L2/L3 档根本不执行** = 结构性零回退。
+  改 flows/state_space_obs.json 用**文本级替换脚本**(正则锚点 + 断言其它节点逐字段不变), 别 json.load+dump。
+- **引擎三档** (`state_space_sim_real.py`, 与既有 `SS_INTACT` 同纪律): 不设 `SS_L4_INTACT` = 逐位零变化 /
+  `_SHADOW=1` = 影子(真渲染帧→真推理→真解码→记录, 不接管) / `=1` = 按 w 融合
+  `u_ff=(1−w)·analytic+w·L4` (w=0 恒等)。取证: `sim.l4_intact_summary()` (calls/reuse/refused/blend/
+  w_zero/frame_std/shift/goal_src/u_ff_src/l3_cond_src/err)。
+- **工具**: `tools/l4_intact_ab.py` (A 关 / B 影子 / C 接管, **逐臂子进程**隔离 env, 同 seed 同 cap) +
+  `tools/l4_intact_arm.py` (单臂) + `tools/verify_l4_zero_regression.py` (画布执行集按档位对比 git HEAD)。
+- **实测**: 节点级真跑 (真权重 trained=True · chunk(8,8) · `candidate_sequences=0` 零搜索 · 1396ms/步 CPU ·
+  动作维自动对齐 4→8); 三臂 seed0/1 700 步: A `dist 0.0186/0.3891` · B **逐位相同** + 真推理 78 次 ·
+  C `0.126/0.1221` + blend 700/700 步 → **无提升证据** (只证明通路真在跑, 提升待 v5 权重配对复验)。
+  零回退: L2 档 55 / L3 档 60 节点逐 id 不变, 原有 80 连线全在。
+- **两个必修的坑** (A/B 首轮抓到): ① 未设 `STABLEWM_HOME` 时桥退回 `<repo>/.cache` → 权重全找不到
+  (`FileNotFoundError: Checkpoint not found`) → adapter 改为优先共享缓存 `stable-wm-cache`;
+  ② 引擎"直喂帧"路径没人设 goal → `goal_displacement` 每帧 `ValueError` (**影子臂 60/60 次"真推理"实为空转,
+  计数照涨**) → 节点加 `ensure_goal()` 三级兜底 (已 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错。
+  **教训: `calls>0` 不能单独当"真接入"证据, 必须同看 `err`/`reuse`/`u_ff_src`/`goal_src`。**
+- 复现: `INTACT_RUNTIME=root INTACT_DEVICE=cpu INTACT_POLICY=intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt
+  gui-venv311/bin/python tools/l4_intact_ab.py --seeds 0,1 --max-steps 700 --cap l4`
+  · 设计 `docs/design/zmax_l4_intact_policy.md`
+
+### 🎨 画布排版硬规则 (v5.5.41 — 改 flows 坐标前必读, 否则算出来的摆位全废)
+画布**加载时会自己重排**, JSON 里的 x/w 只是输入:
+- 普通节点最小 **w≥280 / h≥110** (`simulink_module.py:5146/5147`) + `autofit_node_width` 撑宽到不裁字(≤380)
+- `_relayout_row_gaps(min_gap=56)` (12044 行): 按 **`round(y/60)` 分桶**, 桶内按 x 排序, 后一个节点必须
+  `x ≥ 前一个.x + 前一个.w + 56` (**行首 x 不变**) → 想让某节点 x 自由, 就把它放到**不同的 y 桶**里
+  (差 ≥60 即可分桶; 但 110 高的框要差 ≥110 才不重叠)
+- 连线端口: 起点 `ax = src.x + src.w`(源右缘), 终点 `bx = dst.x`(目标左缘) (`SimLinkItem._path:3298-3305`)
+  ⇒ **"右出线连到左入线" 判据 = ax > bx**; 要竖直线 ⇒ `src.x+src.w == dst.x`
+- row_bg 行带加载时会被统一左移到 `minx-266` 并右界不变 (5174-5190)
+- 所以: 布局要**按规则反推坐标**; 改完必须用真画布取证 ——
+  `QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_l4_layout.py`
+  (加载真画布逐条量 ax/bx + 渲染 PNG) 而不是只算 JSON 里的 x/w
+- 教训 (本次踩到): 我先按"配置坐标 = 渲染坐标"排了一版 → 画布把同行节点右推 36px, 那条线照样倒退。
+  量出来是 `240+300+56=596` 的规则在起作用。
+- **端口 slot 只认 link 数组先后, 与 `in1/in2` 命名无关** (`SimLinkItem._path:3289`):
+  `ay = src.y + h·(i+1)/(n+1)`, `i` = 该连线在该节点**出/入线里的序号**, `n` = 总条数。
+  所以"让连线整体不乱穿"的正解 = 把 `flows/*.json` 的 **`links` 数组按 `(src.y, src.x, dst.y, dst.x)` 全局排序**
+  (同一节点的出线/入线 slot 就单调于来向 → 两两不交叉), 排序对逻辑零影响; 想改端口几何就调 link 在数组里的位置。
+- **用户视角加载路径 = `open_state_space()`** → `load_flow_file()` **+ `_relayout_row_gaps()`** (11140 行)。
+  取证脚本必须显式补调一次 `m._relayout_row_gaps()` —— 少这一次, 量到的就不是用户看到的画布
+  (本工具早期版本踩过: 反向线少报 1 条、方框重叠多报 15 对)。
+- 工具: `tools/relayout_canvas_l4_row.py` (可复跑摆位: 备份 + 坐标表 + 全局连线排序) ·
+  `tools/verify_l4_layout.py` (真画布体检: ①反向 ②重叠 ③穿框 ④交叉 ⑤关键链 ax/bx ⑥L4 区+全画布 PNG)。
+- **"变成一层"的代价要诚实说**: 老倪要 L4 一层 ⇒ 5 个节点同行 ≈1660px 宽 ⇒ 下游 (DiT/前馈/状态机/执行器/
+  物理世界/验证/可视化) 必须依次右移 (本版画布右界 +1300px); 且两个**语义闭环回流**线
+  (物理世界→状态校正器 `↩观测反馈`, 引擎→渲染源 `↩渲染回流`) 天生反向, 消不掉, 只能标 `↩`。
+- L2 技能行 11 节点 (通用算子 A/B/C + SK01-08) = 3640px 行宽 > 执行器 x ⇒ SK04-08→执行器 5 条反向;
+  正解是**把执行器挪到该行尾右侧** (不是拆成两行 —— 老倪明确要一层), 顺带 +185px 让 L4→通用算子的出线也前向。
+
+## 🧲 分层记忆势场 (v5.5.38, 2026-09-13 — L2/L3/L4 + 总装机记忆联络, 与 L4 INTACT 链对接)
+老倪: 「把势场逻辑实现到 L2肌肉记忆 / L3工艺流程记忆 / L4物理工作空间记忆 / 总装机记忆的联络策略,
+然后逐步打开每层记忆提高 L4 INTACT 性能」。
+- **统一接口 = 标量势场 Φ(x)**, **−∇Φ = 意图** (不传技能标签)。L2 `Φ_SK` (谷底=冠军轨迹真末点, σ=谷宽,
+  λ=4·k_att·σ², 锥形项 k_lin=3·k_att·σ) → L3 `Φ_process=Σw_k(t)Φ_SK` (Σw≡1, raised-cosine 交叉淡入) →
+  L4 `Φ_global = Φ_process + Φ_obstacle(孔壁/台面现场几何) + Φ_world(世界模型预测项, 未接恒 0 且标记)`。
+  代码 `src/lerobot/memory/potential_field.py`, 画布节点 `🧲 总装机记忆 · 势场联络` (mem_nodes::node_ss_mem_field)。
+- **逐层开关 = data/memory_layers.json** (`L2/L3/L4/assembly`, **默认全关**): 全关 → compose=None /
+  blend_action **恒等** (零回退, 可断言); 开层后 L4 INTACT 链按 `u=(1−w)u_model+w·u_field`,
+  `w=w_max·max(conf,w_floor)` 混入 −∇Φ 意图; **相位按状态判** (时钟进度与模型直驱不同步)。
+  台账 data/assembly_memory.json; 仲裁: 接触段 L2 优先 / 自由段 L3 优先。
+- **实测 26/26** (真数据: muscle_memory 7 条冠军轨迹 + 引擎真几何): 梯度误差 1e-9 · 横向势单调 ·
+  收敛 98~127 步到 <1mm 且 Φ 严格降 · Σw≡1 · 孔壁斥力双向正确 · 逐层开关逐项生效。桥 e2e: 全关 0 介入 / 开 L2 介入 120/120。
+- **⚠️ 三个必须记住的设计约束 (都踩过)**: ① 谷底只能取 champ_x 末点 — muscle_memory 的 io.entry/exit
+  **锚点不同源** (差 15~145mm, SK06/07≈PEG_HEAD_OFF_XY=0.13), 用 io.exit 当谷底会导致场的最小值不在谷底 → 不收敛;
+  ② λ 必须按 λ=4·k_att·σ² 归一 + 加锥形项 k_lin, 否则短轨迹会出现离谷底 3~5mm 的次极小 (流量停住);
+  ③ muscle_memory.json 是**活数据** (rollout 会更新), 判据数字会漂移, 别写死。
+- 📄 详见 `references/memory-potential-fields-2026-09-13.md`
+
+## 🌍 L4 · 光模块插拔链 (v5.5.37, 2026-09-13 — 红方块抓取 → 光模块抓取插拔)
+老倪: 「把红色小方块的抓取实验, 改造成光模块的抓取插拔实验」。
+四节点与 cube 链**同构**, 只换任务: 🧪 环境渲染图像源 → 🎯 INTACT 插拔策略 (本域微调) →
+🌍 Z-MAX 引擎 RealStateSpaceSim (metaworld 真物理) → 🎬 插拔渲染视频。
+- **切任务** = `data/intact_sw_task.json` (`optical_insert` 默认 / `cube` 保留), **不埋代码分支**;
+  `data/intact_sw_policy.json` 可指定 policy/stats/mode/seeds/device。cube 旧桥不删。
+- **两个 venv 分工**: 引擎跑 `gui-venv311` (只有它有 metaworld), 模型由 `IntactRuntime` 起
+  **INTACT venv 子进程** (gui venv 无 torch 链)。cube 链相反 (env 在 INTACT venv 里)。
+- **动作口径**: v4 数据集动作列 = `sim._u_vec` (m/s) → 闭环必须按引擎自有约定还原
+  (`act[:3]=clip(u/K_ACT)` · `act[3]=CLOSE if u[3]>0.5`) 再给 `env.step`; 统计用
+  `tools/action_stats_from_h5.py` **现算** (权重/统计同源, 不许手写)。
+- **⚠️ 最坑: stale status 竞态** — 上一轮 status.json 还是 `stage=done` 时, 节点等待循环首轮即
+  判"本轮跑完" (实测光模块链读到 cube 终态: env=OGBCube / 52 帧 / cube 视频, 校验全红却查不出因)。
+  修法: `_sw_start` 在 Popen **之前**先写 `{"stage":"starting"}` 作废旧状态。
+  判定法: 报错里出现"上一轮的任务名/帧数" = 读到旧 status。
+- **验收**: `tools/verify_l4_optical_chain.py` 节点级 11/11 (真跑整链): 1800 帧 · 1800 次真推理 ·
+  frame_std 56.5 · 解析链 2/2=100% (插入 65.13/64.78mm · 全链插→拔→AOI=True) ‖ 模型直驱 0/2 (过冲) —
+  与离线判闸一致 (预测std 仅教师 7~16% = 塌均值), **模型能力问题非接线问题**, 日志/status 诚实标注。
+- **判闸根因 (配置级, 非训练量)**: ① `loss.intent.local_weight=0.1/goal=0.05` 而 `forward=1.0`
+  → actor 几乎不发声; ② `min_log_std=-5.0` → std 可缩到 0.007, "输出均值+极小方差"就是 NLL 最优解
+  ⇒ 塌缩是最优解。对策 = `intact_goal_optical_insert_v5.yaml` (权重 1.0/1.0 + min_log_std -2.0)。
+- **训练接力**: `train.py` 写死 `timeout 14400` (4h) 而 12 epoch 要 ~9.2h → 必被 SIGTERM (v3 死因 rc=124);
+  `l4_ab/train_intact_optical_chain.sh` 从最新 ckpt 换名续训到累计 TARGET epoch (CFG/FAMILY_V/TARGET/PER_RUN/DEADLINE)。
+- 📄 全部细节 (桥执行流/坑清单/命令) 见 `references/l4-optical-insert-chain.md`
+
+## 🌍 L4 · SW 仿真世界引擎链 (v5.5.28, 2026-09-13 — INTACT cube 集成进状态空间)
+老倪: "把独立的 INTACT 运行环境集成到状态空间中, 点击运行就能跑 INTACT, 触发开关是 L4"
+- **链条 (独立, 只增不改)**: 🧪 SW环境渲染图像源(数据源) → 🎯 INTACT策略·cube(中间) →
+  🌍 SW仿真世界引擎(硬件层) → 🎬 SW渲染视频(可视化) = 4 节点 + 1 个 row_bg + 4 连线
+  (flows/state_space_obs.json 文本级插入, 保持原缩进; 原有 70 节点/72 连线一字未动)
+- **L4 触发开关 = 复用既有档位机制**: 节点落在名字含 "L4" 的 row_bg 色带内 →
+  `_ss_node_cap_level()` 直接返回 4 → 只有 L4 档的单步/播放链执行它。**不需要新代码分支**,
+  L2/L3 档零影响 (offscreen 实测 L2/L3 节点全在)
+- **桥 = tools/intact_sw_bridge.py (跑在 INTACT venv, 跨 venv 子进程)**: 与 paper_runtime
+  eval 逐行同源 (同 World / load_pretrained / PriorOnlySolver 零搜索 / _extract_init_goal +
+  _apply_callables / img_transform + StandardScaler); 唯一区别 = **逐帧流式**
+  (spool/*.jpg + status.json) + 末尾官方 `save_panel_videos` 出 3 面板 (agent|dataset|goal) mp4
+  + concat 合集 = 「从 stable world 取出的 3D 视频」
+- **⚠️ 三个实测坑 (都踩过)**:
+  ① 桥**必须**用 INTACT venv 解释器 (`/home/ubuntu/INTACT-JEPA/.venv/bin/python`); 仓库 `.venv`
+     没有 numpy/torch → `ModuleNotFoundError: No module named 'numpy'` (症状: bridge.log 尾部报错,
+     status.json 永不出现)
+  ② `_sw_paths()` 返回序是 **(dir, frames, status, video)**; 解包错位 (`_, st, fr, vd = ...`)
+     会静默把 frames 当 status → 三个节点同时报 "桥进程已退出, stage=None" 却查不出原因
+  ③ 桥跑完会**退出进程**, 此刻 status 可能正处 `os.replace` 瞬间 → 读到 `{}`。正确姿势:
+     节点顺序链里**第一个节点负责启动桥并等到 `stage=='done'`**, 后续节点只读终态;
+     `_sw_wait` 里加"进程死亡 → 再读一次终态 → 才判定失败"并打印 bridge.log 尾部
+- **验证脚本**: offscreen 画布载入必须**按节点名匹配** (载入器会重生成 node id,
+  用插入时的 id 查不到); 端到端真跑实测 13.6s / 52 帧 / frame_std 30.26 (>5 真图) /
+  模型真调用 52 次 / candidate_action_steps=0 / 4 个视频文件
+
 ## simulink 工程完整性检查 (2026-08-28 v3.3.1, 老倪: 全面检查)
 新增 `tools/ci/zmax_integrity_check.py` 一键检查器, 五项全绿:
 1. **NODE_TYPES 三处同步** (simulink_module 15种 = validate_flow = simulink_ci) —
@@ -154,6 +358,14 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **根因 ⑦(2026-09-02 再实测, py-spy 铁证): 疑似"整机卡死" = 引擎断点挂起, 先 py-spy 判定再动手** — 老倪报"刚才怎么卡死了? 就鼠标能动, 其它都不动" (F5 调试 + 状态空间仿真运行中)。`sudo py-spy dump --pid <gui>` 主线程栈连续 3 次: `do_wait_suspend ← fuse_sensors ← _build_obs ← run ← _start_state_space_sim` — 引擎内部断点每步命中, debugpy 挂起主线程 → GUI 全死 (鼠标=X 服务器画的还能动, 窗口点击全无响应, 连日志都停写)。**判定流程: ①先查系统级 (uptime/负载/内存/D状态) — 系统正常 = 不是整机问题; ②py-spy dump GUI 主线程 — do_wait_suspend = 断点冻结 (删断点即恢复, 无需重启); ③freeze 在 paint 等非断点栈 = 真死循环/重绘风暴**。别急着重启机器 — 删 VSCode 引擎内部断点 (perception.py 等 src/lerobot/policies/left_right/state_space/*.py) 立即恢复。同会话 LiveUSB 无 swap 教训: 31G 内存 0 swap, 内存顶满直接冻结且无 OOM 日志 (systemd-oomd 报 "No swap; memory pressure usage will be degraded") → 防御=加 swapfile, 卡死先 Ctrl+Alt+F3 切 TTY 看谁吃满。**⚠️ LiveUSB overlay 上 swap 不能直接 swapon (Invalid argument — /cow overlayfs 内核不允许), 必须 loop 设备方案**: `sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile` → `LOOP=$(sudo losetup -f --show /swapfile) && sudo swapon $LOOP` (实测 8G OK); 开机自启用 systemd oneshot service (ExecStart 里先 `swapon --show | grep -q /dev/loop` 幂等跳过, **别写 ExecStop/swapoff -a — 会把已挂的 swap 全关掉**), enable 后重启自动 losetup+swapon; /swapfile 落 U 盘 casper-rw (sda2 ext3) 持久化分区, 重启不丢。
 - **YOLO 首次加载卡主线程弹 not responding (2026-09-02 老倪: "studio.py is not responding 不要跳出来")**: 状态空间播放 YOLO 节点真实执行 → _yolo_ensure_aligner 首次加载模型 10-40s (主线程同步) → 系统弹 not responding。解法: studio.py main() 启动即后台线程预热 `node_logic._yolo_ensure_aligner(None)` (YoloStateAligner 构造纯计算不碰 Qt, 线程安全), 播放时 _YOLO_ALIGNER 已缓存不卡。
 - **数据源节点架构 (2026-09-02 老倪: "数据源应该在 lerobot 框架, 至少 datasets 文件夹")**: ss_* 节点 (传感器融合/前馈等) 全部 _EXTERNAL_LOC 映射到 src/lerobot/policies/left_right/state_space/*.py 真实源码, **唯独 data (📦 metaworld 数据源) 曾无映射** — 只是 node_logic.py 的切换开关模板, 右键/断点进的是 tools/gui 控制台文件, 与感知/决策节点不同构。整改: 新建 src/lerobot/datasets/metaworld_data_source.py (probe_data_source 按 DATA_ROOTS 优先级真实探测本机训练仓库 info.json 帧/集/特征; resolve_source 数据源策略; 无 GUI/torch 依赖), node_metaworld_data 可修改区 **exec(compile(真实路径)) 加载真实调用** (co_filename 真实 → 断点命中), _EXTERNAL_LOC["data"]=(datasets 文件, 第一行实际代码, "def probe_data_source")。**新增节点接真实源码的三件套: ①框架层真实实现文件 (policies/datasets) ②node_logic 节点函数加载真实调用 (exec(compile(真实路径)) 保证断点命中) ③_EXTERNAL_LOC 映射 (右键/断点进真实文件, line 指第一行实际代码)**。v3.4.0 落地 (老倪验收: "进到断点了")。
+- **右键「打开源代码 / 打开 VSCode」定位优先级 (v5.5.44)**: ① 节点 `params.source` (+ `params.source_symbol` 按符号**现搜**行号) →
+  ② `node_logic._EXTERNAL_LOC[key]` 映射 → ③ 都没命中就退回 `node_logic.py` 自身 co_filename (= **GUI 文件**)。
+  **坑 (必踩): 代码搬到 src/ 后忘了改 `params.source` / 忘登记映射 → 右键永远停在 GUI 文件**
+  (老倪 2026-09-13: 「VEH.5.022 INTACT意图解码器 右键打开 vscode 源代码, 还是原来的 GUI, 你怎么没有跳到
+  src/lerobot/policies 文件夹里呢?」—— 这次两条一起犯: INTACT 家族没登记映射 **且** `open_in_vscode()` 当时只认映射不看 `params.source`)。
+  **一律给符号名, 不写死行号** (行号随重构漂移, 上次就跳到了 import 区看起来"没跳")。
+  自查: `QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_vscode_source_loc.py [节点id ...]`
+  (打桩 Popen 捕获 `code -g` 真命令, 断言路径含 `src/lerobot/policies` 且不含 `node_logic.py`)。
 - **解法三选一**: ① 右键节点→查看/编辑节点逻辑→「恢复出厂逻辑」(restore_default 从文件重新 exec, 行号真实) ② 重启 GUI(_SOURCE_CACHE 是内存, 重启即清) ③ `ZMAX_DEBUG_BREAK=1` 启动 GUI — execute_node_logic 开头(node_logic.py:124) `debugpy.breakpoint()` 任何节点逻辑执行前强制停, **不依赖断点绑定**, 调试动态 exec 函数唯一办法。
 - **执行证据判定法**: 状态空间画布点运行 → 终端出现 "📦 数据源:" = node_metaworld_data 执行了; 有日志但断点没停 = 断点绑定问题(不是代码路径问题); 没日志 = 没执行到(画布/路径不对)。
 - **F5 调试端口冲突**: 「🚀 全新调试进程」启动时 debugpy adapter 占 5678(--port 5678 --for-server), studio.py main 里 `debugpy.listen(5678)` 失败被 try/except 吞 → 想用「🔌 Attach 现有控制台(5678)」必须没有 F5 会话; GUI 启动即 listen 5678(main 内, 不阻塞)。

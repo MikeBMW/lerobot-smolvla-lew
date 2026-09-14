@@ -25,6 +25,7 @@ _DEFAULT = {
     "l2": {"muscle": {"skills": {}, "updated": None}},   # 肌肉记忆摘要 (源 muscle_memory.json)
     "l3": {"flows": []},                                  # 长程流程经验 (最近 N 轮)
     "l4": {"predict": [], "recover": []},                 # 筹划: 预测质量 / 恢复策略
+    "links": [],                                          # 🧬 S1 记忆图谱: 层间链接 (L4筹划→L3流程→L2技能)
     "meta": {"task": None, "cap": None, "updated": None},
 }
 _CACHE = None
@@ -89,7 +90,30 @@ def summary():
     l4p = mem.get("l4", {}).get("predict") or []
     l4 = {"预测记录": len(l4p),
           "最近残差": (l4p[-1].get("mae", "?") if l4p else None)}
-    return {"l2": l2, "l3": l3, "l4": l4, "meta": mem.get("meta", {})}
+    lk = mem.get("links") or []
+    return {"l2": l2, "l3": l3, "l4": l4, "links": {"层间连接": len(lk)},
+            "meta": mem.get("meta", {})}
+
+
+def put_link(entry, cap=60):
+    """🧬 S1 记忆图谱: 写层间链接 (L4 筹划 → L3 流程 → L2 技能)
+    entry: {seed, mode, cap, steps, skills:[...], cause, l4_mae, note}"""
+    mem = load()
+    mem.setdefault("links", [])
+    e = dict(entry or {})
+    e.setdefault("t", __import__("time").strftime("%m-%d %H:%M"))
+    mem["links"].append(e)
+    mem["links"] = mem["links"][-cap:]
+    mem["meta"]["updated"] = e["t"]
+    save()
+    return True
+
+
+def get_links(n=20):
+    """🧬 读最近 n 条层间链接 (画布/中枢/检索消费)"""
+    mem = load()
+    ls = mem.get("links") or []
+    return (ls[-n:] if n else ls)
 
 
 def muscle_lib():

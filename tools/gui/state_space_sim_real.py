@@ -20,6 +20,35 @@ import os
 import sys
 import numpy as np
 
+# ── 🎯 INTACT 节点就绪度 (2026-09-11): 引擎每帧调用, 必须廉价 (静态检查 + 结果缓存) ──
+_INTACT_READY_CACHE: dict = {}
+
+
+def _intact_ready() -> str:
+    """INTACT (zju3dv/INTACT-JEPA) 就绪度: 'True' / 'False(原因)'。
+
+    只做静态探测 (仓库/venv/依赖), **不 spawn 推理进程** —— 真调路径是画布节点
+    (node_logic.node_intact) 或 docs/design/zmax_intact_node.md 的 S3 适配。
+    """
+    if "v" in _INTACT_READY_CACHE:
+        return _INTACT_READY_CACHE["v"]
+    repo = os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA")
+    venv = os.path.join(repo, ".venv", "bin", "python")
+    if not os.path.isdir(repo):
+        v = "False(仓库缺失)"
+    elif not os.path.isfile(venv):
+        v = "False(venv 未建)"
+    else:
+        try:
+            import subprocess as _sp
+            r = _sp.run([venv, "-c", "import hydra, stable_worldmodel"],
+                        capture_output=True, timeout=90)
+            v = "True" if r.returncode == 0 else "False(依赖未装全)"
+        except Exception as _e:
+            v = f"False({type(_e).__name__})"
+    _INTACT_READY_CACHE["v"] = v
+    return v
+
 
 # ── 🧮 流形层加载 (2026-09-07 真实化补齐可视化输出 — 老倪: 流形节点要有输出) ──
 def _load_simreal_manifold():
@@ -80,6 +109,30 @@ def _find_ss_dir():
 _SS_DIR = _find_ss_dir()
 
 
+def _tool_path(name):
+    """定位仓库 tools/ 下的脚本 (frozen 多候选: _MEIPASS 根 / _MEIPASS/tools / 源码 tools/)。
+
+    🐛 2026-09-11 打包版 L4 演示根因: 原写法 `dirname(dirname(abspath(__file__)))/name` —
+      PyInstaller 下本模块在 PYZ 里, __file__ = _MEIPASS/xxx.pyc → 上溯两级 = _MEIPASS 的
+      **父目录** (系统临时目录) → 永远找不到 gen_l4_demo_video.py → L4 演示档在 exe 里
+      直接抛 FileNotFoundError = 发布版 L4 永远没有干扰动作 (只有源码版能看到 90° 转台)。
+    """
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _mp = getattr(sys, "_MEIPASS", "") or ""
+    cands = [
+        os.path.join(_mp, name) if _mp else "",
+        os.path.join(_mp, "tools", name) if _mp else "",
+        os.path.join(_here, name),
+        os.path.join(_here, os.pardir, os.pardir, "tools", name),
+        os.path.join(_here, os.pardir, os.pardir, name),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_here))), "tools", name),
+    ]
+    for c in cands:
+        if c and os.path.isfile(c):
+            return os.path.abspath(c)
+    return ""
+
+
 def _load(name):
     path = os.path.join(_SS_DIR, name)
     spec = importlib.util.spec_from_file_location(f"ss_real.{name[:-3]}", path)
@@ -97,7 +150,11 @@ def _make_env():
     if _ENV is not None:
         return _ENV
     os.environ.setdefault("DISPLAY", ":0")
-    os.environ.setdefault("MUJOCO_GL", "glfw")
+    try:
+        from mujoco_gl import setup_mujoco_gl as _setup_gl  # 平台自适应 (mac cgl / win wgl)
+        _setup_gl("glfw")
+    except Exception:
+        os.environ.setdefault("MUJOCO_GL", "glfw")
     import metaworld as _mt
     mt = _mt.MT1("peg-insert-side-v3")
     env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
@@ -113,8 +170,27 @@ def _make_env():
 
 DT_ENV = 0.1            # metaworld 1 step ≈ 0.1s 物理 (标定值, audit 可调)
 K_ACT = 0.5             # 引擎速度指令 m/s → act ±1 的标定: act = clip(u[:3]/K_ACT)
-GRIP_CLOSE = 0.6        # metaworld 夹爪闭合动作值 (gen_insert_video 同款, 防夹死)
+GRIP_CLOSE = float(os.environ.get("SS_GRIP_CLOSE", "0.6"))   # metaworld 夹爪闭合动作值
+#   ↑ 2026-09-10 攻抓取鲁棒性: 参数化以便做夹持力实验 (seed11/12 滑脱诊断: 引擎 grasped 是
+#     "夹爪闭合 3 步"的乐观推断, 非物理判据 → 试着加大闭合量看能否夹牢。
 GRIP_OPEN = -1.0        # 张开动作
+# 2026-09-15: 抓取点沿 peg 轴(x)平移 (默认 0 = 原行为逐位不变)。
+#   取证: peg = 240mm 长杆(胶囊 r15 半长120), 抓取目标=杆中心; seed2 的杆中心落在机器人基座
+#   正下方(x≈0.002, 杆身跨到 x=−0.118=基座后方) → 抓取位姿尴尬, 抬升滑移 13 次 (seed0/1 不滑)。
+#   本参数用于"A/B 抓取点"实验: 沿杆轴挪开基座方向再夹。
+GRASP_DX = float(os.environ.get("SS_GRASP_DX", "0.0"))
+# 自适应版 (2026-09-15): peg 中心太靠近机器人基座(x≈0)时, 沿 +x 把抓取点挪开, 目标=手腕离基座
+#   至少 GRASP_BASE_CLEAR。取证: seed2 杆中心 x=0.002(基座正下方) → 抬升滑移 13 次; 固定 +60mm
+#   → done 在独立进程×2重复下**被推翻**(seed2 仍失败, 且更深), 故**默认关** (SS_GRASP_ADAPT=1 才开);
+#   保留仅为后续实验旋钮。默认关 = 与既有行为逐位相同 (零回退)。
+# 🎯 2026-09-15 抓取点"离头距离"下限 (mm→m): 取证失败 seed 抓取点离头仅 112~124mm(设计 130),
+#   夹爪比设计深 6~18mm → 插入时段压治具上盖板 (同轴帧 78% 有 rightclaw/rightpad↔box#39 接触)
+#   → depth 卡 ~28mm; 成功 seed 129~132mm、无治具接触。低于下限 → 回退重抓并沿杆轴远头平移缺口。
+GRASP_MIN_REACH = float(os.environ.get("SS_GRASP_MIN_REACH", "0.126"))
+# 判据模式: norm = 头−手向量的 3D 模 (含手到杆的垂直分量; 实测 5/12) / x = 沿杆轴分量 (物理更正,
+#   但实测 4/12 —— 两者对 seed3 结果不同) → 用网格 A/B 选, 默认取实测更优的 norm。
+GRASP_BASE_CLEAR = float(os.environ.get("SS_GRASP_CLEAR", "0.06"))
+GRASP_DX_MAX = float(os.environ.get("SS_GRASP_DX_MAX", "0.09"))    # 上限 (< 杆半长 0.12, 不移出杆)
 GRASP_SAT = 0.70        # 夹住销后的 gripper 饱和 (~0.70, cognition.py 注释; 空夹收敛 ~0.29)
 D_CONTACT = 0.02        # 接触距离 (同引擎)
 D_INSERT = 0.004        # 插入成功判定 (同引擎)
@@ -135,6 +211,28 @@ INS_DEV_MM = 0.008          # 插入段 site-推算偏差守卫: 夹持后 peg �
                             #   接近重抓刷新锁存 (毫米级插入, 感知偏差>8mm 时推算引导无意义;
                             #   R0 用 site 真值, R1 真机同构替代 = 力觉/视觉偏差)
 INS_DEV_FRAMES = 3
+# 🌀 螺旋搜索参数 (2026-09-10 老倪直攻插入鲁棒性 — peg-in-hole 工业标准解法)
+#   起因: 实测引擎对孔能力上限 3~5mm (align_th 收紧到 3mm 时永远达不成, 卡在更早阶段),
+#   而插孔需要 1~2mm (孔间隙仅 1~2mm) → 差 2~3mm → 端面顶住孔口上缘 → 遇阻回撤循环,
+#   而"回撤后重对"是**重试**不是**搜索**, 同样的偏差必然再次顶住 → 永远出不来。
+#   螺旋搜索: 遇阻时 peg 头在孔口上方走半径 1→4mm 递增的螺旋, 孔间隙 1~2mm 下 1~2 圈即入孔。
+SPIRAL_ENABLE = (os.environ.get("SS_SPIRAL", "1") != "0")   # 默认开 (只在遇阻时生效, 成功路径零影响)
+# 2026-09-15: 参数化 (默认值 = 原硬编码值, 不设环境变量时行为逐位不变) — 起因见 diag_retract:
+#   seed1 对孔偏差 3.4~5.4mm 时螺旋只覆盖到 4.5mm/70 帧 ×3 次 → 仍顶壁 → 判"已滑"回退死循环。
+SPIRAL_FRAMES = int(os.environ.get("SS_SPIRAL_FRAMES", "70"))     # 单次螺旋窗口帧数 (10Hz → 7s)
+SPIRAL_R0 = float(os.environ.get("SS_SPIRAL_R0", "0.0012"))       # 起始半径 1.2mm (≈孔间隙量级)
+SPIRAL_DR = float(os.environ.get("SS_SPIRAL_DR", "0.000045"))     # 每帧半径增量 (70 帧 → +3.2mm)
+SPIRAL_RMAX = float(os.environ.get("SS_SPIRAL_RMAX", "0.0045"))   # 半径上限 4.5mm
+SPIRAL_OMEGA = float(os.environ.get("SS_SPIRAL_OMEGA", "0.55"))   # 每帧角增量 (rad) → 70 帧约 6 圈
+SPIRAL_TRIES = int(os.environ.get("SS_SPIRAL_TRIES", "3"))        # 单轮最多螺旋次数
+# 🐢 2026-09-15 插入"降落受阻"恢复 (取证: 卡死 seed 进孔后从悬高 20mm 往下降时, 杆与治具接触
+#   把降落卡在孔轴上方 6.8~16mm, 同时水平推持续 → depth 爬到 27mm 死; 成功 seed 逐帧无治具接触、
+#   入孔偏差 0.14mm)。策略: 下降停滞 N 帧 → **沿孔轴回撤**(退出孔道)再降, 回撤量随停滞时长递增
+#   (标准 peg-in-hole "退-降-再进" 动作)。**默认关** (实测: 12 seed 基线开关无差异 5/12 vs 5/12,
+#   单 seed 变化 0.1~2.4mm 无收益 → 按"未证明提升不得进默认档"保留为旋钮; SS_DESCEND_FIX=1 开)。
+DESCEND_STALL_N = int(os.environ.get("SS_DESCEND_STALL_N", "8"))
+DESCEND_BACK_STEP = float(os.environ.get("SS_DESCEND_BACK_STEP", "0.0015"))
+DESCEND_BACK_MAX = float(os.environ.get("SS_DESCEND_BACK_MAX", "0.015"))
 STAGE_APPROACH_H = 0.09
 STAGE_ALIGN_H = 0.05
 STAGE_DESCEND_H = 0.004
@@ -150,10 +248,13 @@ class RealStateSpaceSim:
     """R0 物理真实化 — run() 返回时间序列 (结构与引擎 tr 兼容)"""
 
     def __init__(self, log=None, seed=0, vision=False, vision_every=25, mode=None,
-                 demo_l4=False):
+                 demo_l4=False, mani_yaw=False):
         """demo_l4=True → 「L4 演示」档: run() 委托 L4 演示全链控制器 (90°外力干扰 +
         姿态适配抓取 + 光耦合精密操作), 产 tr 与引擎兼容; 默认 False 引擎原逻辑零改动"""
         self._demo_l4 = bool(demo_l4)
+        # 🧠 2026-09-11 (A): L4 演示档 ② 段 yaw 指令来源开关
+        #   False(默认) = 脚本开环 Arm A; True = 流形预测器逐帧决策 (Arm B)
+        self._mani_yaw_exec = bool(mani_yaw)
         self.log = log or (lambda *a: None)
         self.seed = seed
         self._abort = False   # ⏹ 2026-09-09: GUI ⏹停止/🔄重启置位 → run 循环提前退出 (防双 env 并发 mujoco segfault)
@@ -176,6 +277,49 @@ class RealStateSpaceSim:
         #   环境变量 SS_MODE=full 可全局启用; GUI ▶运行 接线见 simulink_module
         self.mode = mode or os.environ.get("SS_MODE", "insert")
         self._frame_sink = None    # 📸 2026-09-08: 帧采集钩子 (smolvla 图像数据; None=关)
+        # 🎯 2026-09-12 Step 1 (老倪: "Action 接入前馈加速器"): INTACT 动作 → u_ff 槽位
+        #   默认 **不挂载/不生效** (SS_INTACT 不设) → 既有行为零改变; 未标定 → 拒绝映射并计数
+        self._intact_node = None
+        self._intact_adapter = None
+        self._intact_buf: list = []
+        self._intact_every = int(os.environ.get("SS_INTACT_EVERY", "8"))
+        self._intact_shadow = os.environ.get("SS_INTACT_SHADOW") == "1"
+        self._intact_stages = [s.strip() for s in os.environ.get(
+            "SS_INTACT_STAGES", "接近,对位,下降,抓取,抬起,转移").split(",") if s.strip()]
+        self._intact_stats = {"intact_calls": 0, "refused_map": 0, "frames": 0, "chunk_reuse": 0,
+                              "err": None, "shift": [], "u_ff_src": "analytic"}
+        # 🎯 2026-09-13 老倪: L4 INTACT → 意图解码器 → L3 (metaworld → policies/intact → decoder)
+        #   与 _intact_* 同一 u_ff 槽位, 但走 decoder 的**量纲逆运算** (act×K_ACT) → **无需标定**;
+        #   L3 条件向量通道仍需标定。默认不生效 (SS_L4_INTACT 不设 = 与现状逐位相同)。
+        self._l4_dec = None
+        self._l4_buf: list = []
+        self._l4_cond = None
+        self._l4_last_u = None
+        self._l4_shadow = os.environ.get("SS_L4_INTACT_SHADOW") == "1"
+        self._l4_stages = [s.strip() for s in os.environ.get(
+            "SS_L4_INTACT_STAGES", ",".join(self._intact_stages)).split(",") if s.strip()]
+        self._l4_stats = {"calls": 0, "reuse": 0, "refused": 0, "blend": 0, "w_zero": 0,
+                          "cond_ready": 0, "frame_std": [], "shift": [], "err": None,
+                          "src": "analytic", "w": 0.0, "cond_src": "未标定", "goal_src": ""}
+        # 🧬 2026-09-14 (老倪原则: 上层只提供意图/条件, 执行永远由 L2 收口) —— **直连线**:
+        #   INTACT 意图 m_int → 流形专家预测器 (z' = mlp([z_t,a]) + gate·proj(m)) → 流形式 6 维
+        #   → StateSpaceActionHead → u_int → 与下层参考在同一 u_ff 槽位融合, 再经 L2 收口
+        #   (sched.decide + safety.saturate 一行不动)。
+        #   · SS_L4_INTENT_LINE 不设 → **逐位零变化** (零回退, 调用点根本不进)
+        #   · 预测器**未训练** → 线路照跑出证据, 但 w=0 (绝不拿噪声污染执行口)
+        self._il_pred = None        # WorldModelPredictor (m_dim>0)
+        self._il_head = None        # StateSpaceActionHead (流形 6 维 → 动作 4 维)
+        self._il_stack = None       # CapabilityStack (收缩/收口/记账)
+        self._il_ready = False      # 预测器已训练?
+        self._il_scaler = None      # 训练侧标准化统计 (推理必须同源; 无则直通)
+        self._il_input_kind = None  # "z_t"(INTACT 潜, 已被实证不可辨识) / "z7"(几何, 实证 R²>0.5)
+        self._u_ff_last = None      # 上一帧前馈参考 (直连线把它当动作输入, 与训练同源)
+        self._il_l2 = {"p": None, "err": "未尝试", "tried": False}   # L2 势场 (skill_ctx 的 L2 字段来源)
+        self._il_meta_cache = None  # ckpt meta (输入口径/架构必须在**建模型之前**知道)
+        self._il_last = None        # (u_int(4), w, info)
+        self._il_stats = {"frames": 0, "ran": 0, "applied": 0, "w_zero": 0, "refused": 0,
+                          "gain": [], "err": None, "ready": False, "ready_src": "未检查",
+                          "src": "", "clip_max": 0.0, "w": 0.0, "manifold": []}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -232,23 +376,88 @@ class RealStateSpaceSim:
         #   空夹循环 (SS_MUSCLE=0 同轮 352 步成功 vs =1 失败 500 步); 且 R1 成功轮会
         #   把标杆库混入不同代码版本轨迹 (污染)。R0 确定性仿真标杆可重复 (09-07 老倪
         #   验收场景 6 轮), 不受影响。GUI ▶运行 = R1 视觉 → 小脑自动关闭, 走实时感知。
-        if os.environ.get("SS_MUSCLE") != "0" and not self.vision:
+        # 🔮 2026-09-10 S3 影子模式: muscle 库对象**总是加载** (影子对比需读标杆),
+        #   快通道单独由 SS_MUSCLE 控制 (SS_MUSCLE=0 → 纯实时决策, 影子仍可对比)
+        self.muscle = None
+        self._mm_on = False
+        self._mm_obs = False          # 观察/io 采集开关 (独立于快通道: SS_OBSERVE=0 可关)
+        if not self.vision:
             try:
                 from muscle_memory import get_memory
                 self.muscle = get_memory()
-                self._mm_on = True
+                self._mm_on = (os.environ.get("SS_MUSCLE") != "0")
+                self._mm_obs = (os.environ.get("SS_OBSERVE") != "0")
             except Exception:
                 self.muscle = None
                 self._mm_on = False
-        else:
-            self.muscle = None
-            self._mm_on = False
+                self._mm_obs = False
         self._mm_stage = ""       # 当前记录阶段
         self._mm_step = 0         # 阶段内步计数
         self._mm_hits = 0         # 快通道命中帧数 (统计/展示)
         self._mm_seg = ""         # 当前重放段名
         self._mm_u = None         # 当前段标杆 u_exec 序列
         self._mm_i = 0            # 段内重放帧索引
+        # 🎯 S3' 意图直读 decoder (2026-09-10): 前馈槽位来源 "按 seed 查" → "按意图查"
+        #   旧: muscle.get_champ(seed, stage) = 记死场景 (换 seed 即失效);
+        #   新: (阶段, 段入口状态) 最近邻 = 跨场景共享 (意图泛化)。
+        #   默认关 (SS_INTENT=1 开), 与 _mm_on 互斥 → 不改变既有行为。
+        self._intent_dec = None
+        self._intent_on = (os.environ.get("SS_INTENT") == "1")
+        if self._intent_on:
+            try:
+                from lerobot.memory.intent_decoder import IntentDecoder
+                self._intent_dec = IntentDecoder(
+                    path=os.path.join(os.getcwd(), "data", "muscle_memory.json"))
+            except Exception:
+                self._intent_dec = None
+                self._intent_on = False
+        self._int_seg = ""
+        self._int_i = 0
+        self._int_u = None
+        self._int_hits = 0
+        self._int_src = None
+        # 🎯 S3' target-decoder v1 (2026-09-10): 意图(阶段+现场几何) → target → ⚡前馈加速器。
+        #   decoder 只出"往哪去"(粗), µm 级精度由 L2 闭环保证; 规则版 _stage_target() 始终兜底。
+        #   默认关 (SS_TDEC=1 开), SS_TDEC_HEAD=target|next 选头。
+        self._tdec = None
+        self._tdec_on = (os.environ.get("SS_TDEC") == "1")
+        self._tdec_hits = 0
+        if self._tdec_on:
+            try:
+                from lerobot.memory.target_decoder import TargetDecoder
+                self._tdec = TargetDecoder(head=os.environ.get("SS_TDEC_HEAD", "next"))
+            except Exception:
+                self._tdec = None
+                self._tdec_on = False
+        # 🦾 S4 运动基元快通道 (2026-09-10): L2 共享肌肉记忆接管 ⚡前馈槽位。
+        #   与 _mm_on/_intent_on 同一槽位(u_ff), 三选一; 来源 = MotorHub 的**共享基元**
+        #   (多 seed 平均模板 → 跨场景泛化, 不像"按 seed 查标杆"换个布局就失效)。
+        #   后端伺服残差 u_fb 照旧修正 → "基元给方向, 伺服保精度"(更快更稳更准)。
+        #   默认关 (SS_MOTOR_HUB=1 开)。
+        self._mhub = None
+        self._mhub_on = os.environ.get("SS_MOTOR_HUB") in ("1", "2")   # 1=纯模板 2=基元+几何调制
+        self._mh_seg = ""
+        self._mh_i = 0
+        self._mh_u = None
+        self._mh_meta = None
+        self._mh_hits = 0
+        if self._mhub_on:
+            try:
+                from lerobot.memory.motor_hub import MotorHub
+                self._mhub = MotorHub().load()
+                if not self._mhub.primitives:
+                    self._mhub.build(k=int(os.environ.get("SS_MOTOR_K", "4")))
+            except Exception:
+                self._mhub = None
+                self._mhub_on = False
+        # 🔮 S3 影子模式 (2026-09-10): 所有段 (含插入/完成) 都取标杆与实际决策同帧对比,
+        #   只记录不接管 — 为 S3 正式启用提供数据 (L2 标杆在各段可用性/gate 判定)。SS_SHADOW=0 可关。
+        self._shadow_on = (os.environ.get("SS_SHADOW") != "0")
+        self._sh_seg = ""
+        self._sh_i = 0
+        self._sh_u = None
+        self._sh_x = None
+        self._sh_acc = {}         # 段 → {n, du, du_max, dx, dx_max}
 
     def _load_aligner(self):
         """加载 YOLO 对齐器 (检测 + 深度反投影, 同 GUI 链路的真实模型)"""
@@ -281,7 +490,7 @@ class RealStateSpaceSim:
         - 大跳变 (>5cm) 单帧视为误检; 连续 2 帧同位置确认才采信 (滑脱回退后 peg 真被
           碰移的场景 — 否则永远抓旧位)"""
         try:
-            img = self.env.render()
+            img = self._render_frame()
             det3d = self._aligner.detect_3d(img)
             n = 0
             st = ""
@@ -452,6 +661,9 @@ class RealStateSpaceSim:
         self._depth_prev = float(self._insert_depth())
         self._stall = 0            # 推而不进连续帧数
         self._stall_events = 0     # 本阶段遇阻事件计数
+        self._spiral = 0           # 🌀 螺旋搜索窗口剩余帧 (0=不在搜索)
+        self._spiral_t = 0         # 🌀 螺旋相位 (帧)
+        self._spiral_tries = 0     # 🌀 本段已螺旋次数
         self._jiggle = 0           # 遇阻窗口剩余帧 (0=不在窗口)
         self._z7_hist = []         # 🧠 2026-09-10 LEW 前视: 最近 z7 序列 (遇阻修正用)
         self._lew_corr = 0         # LEW 修正剩余帧 (0=不在修正窗口)
@@ -459,6 +671,9 @@ class RealStateSpaceSim:
         self._jiggle_dir = 1.0     # 微调方向 (±) (保留兼容)
         self._retreat_then = None  # 回撤窗口结束后回退的目标阶段 (5=转移, 0=接近; None=不回退)
         self._grasp_age = 0        # 夹持锁存后帧数 (随动验证宽限期)
+        self._slip_run = 0         # 🎯 2026-09-10 滑脱判据: 相对滑动连续帧计数
+        self._regrip = 0           # 🎯 2026-09-10 重夹窗口帧数 (滑移时先重夹, 不急着回退)
+        self._regrip_tries = 0     # 🎯 本轮已重夹次数 (上限, 防无限循环)
         # 🐛 2026-09-04 静静 (探针12 实锤): 控制锚必须用 obs[0:3] hand (腕部=真实夹爪 claw),
         #   不能用 endEffector site — site 是腕下 4cm 的虚拟视觉点, 降到 光模块 高度时真实夹爪
         #   还悬空 2-3.5cm → 空夹 (接触实验里 '光模块 接触' 实为 光模块 贴桌面, 误读成夹持).
@@ -479,8 +694,11 @@ class RealStateSpaceSim:
             grasp_th=self._grasp_th,  # 夹紧度阈值 (可调; 原 0.50)
                                 # 防浅夹 (obs 0.5x) 锁存即抬 → peg 未压稳滑脱 (seed100 实锤)
                                 # (浅夹 0.72 就抬滑脱率高; 深夹到 0.60 以下夹持力才足)
-            align_th=0.025,     # 转移→插入 孔位对准 (光模块头-孔口水平, 视觉精度余量)
-            insert_depth=0.006,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
+            align_th=float(os.environ.get("SS_ALIGN_TH", "0.025")),
+                                # 转移→插入 孔位对准阈值 (光模块头-孔口水平距离) — 2026-09-10 参数化:
+                                #   原 0.025(25mm) 过松 → 还差 2~5mm 就放行去插 → 顶住孔壁 → 遇阻
+                                #   回撤循环 (seed11/12 实测 site-推算差 2.0~5.3mm)。毫米级插孔需要 <1~2mm。
+            insert_depth=0.002,  # 插入→完成: 光模块头离终点 6mm 内算完成 (metaworld 插入物理
                                 #   精度余量; 引擎 0.004 在真实物理下差 0.1mm 磨死 — ep5 实锤)
             lift_h=0.08,        # 抬起→转移: 销升 8cm (孔口高 0.13, 销初始 0.03 — 升够才平移防撞台)
             max_veto=5,
@@ -494,8 +712,17 @@ class RealStateSpaceSim:
         self._depth_min = 9.9       # 插入段最小残余深度 (离孔底, AOI 报告)
         self._aoi_report = None     # AOI 检测报告 (PASS/FAIL + 真实过程指标)
         self._went_back_0 = False   # 是否曾回接近重抓 (AOI 报告过程指标)
+        # 🐢 2026-09-15: 抬升/转移阶段限速参数化 (默认=类默认值, 不设环境变量行为逐位不变)。
+        #   取证: 解析链在 seed2/3/4/5 失败, 共同点是"滑移 3~10 次"(抬升/转移段), 疑动态载荷
+        #   使 240mm/0.1kg 长杆在夹爪内滑动 → 降速可减小惯性力。用于 A/B 验证。
+        for _k, _envk, _dflt in (("抬起", "SS_VCAP_LIFT", 0.30), ("转移", "SS_VCAP_TRANSFER", 0.35)):
+            if os.environ.get(_envk):
+                self.sched.v_cap[_k] = float(os.environ[_envk])
         self.stage_hist = []
         self._grasp_off0 = None    # 锁存瞬间 光模块−x (随动验证锚)
+        self._grasp_dx_extra = 0.0  # 🎯 2026-09-15 抓取点闭环补偿量 (沿杆轴远头; 只在离头过近时加)
+        self._grasp_fix_tries = 0   # 补偿重抓次数 (上限 2, 防死循环)
+        self._grasp_slip_tries = 0  # 🎯 滑脱→抓取点平移搜索次数 (上限 2)
         self._grasp_gap_z = 0.015  # 锁存瞬间 夹爪z−销z (抬升目标补偿)
         self._off_prev = None      # 上一帧 光模块−夹爪 (真值随动跟踪, 锚定判据 v2)
         self._x_prev = None        # 上一帧 夹爪位置 (判夹爪是否在动 — 抬升试探锚定)
@@ -541,7 +768,11 @@ class RealStateSpaceSim:
                 #   装饰 (hinge 铰接破坏抓取动力学实锤 → 无独立 90° 旋转; 90° 干扰动作由
                 #   视频动画层表达, 真机 6 轴末端回正)
                 _yaw = _rng.uniform(-0.26, 0.26)          # ±15° (物理可成功域)
-                _shell90 = False
+                # 🎯 2026-09-11 老倪: "L4 没有干扰, 跟 L3 一样" → 干扰的**视觉表达**(90°转台)
+                #   原先被显式关掉了 (_shell90=False) → 画面上看不出与 L3 的区别。
+                #   shell_yaw 是纯视觉装饰关节 (不影响抓取动力学, 见上注释) →
+                #   开它 = 3D 里看得见"来料被转 90°" + peg 物理仍只转可成功域小角 (任务仍可完成)。
+                _shell90 = True
             q = d.qpos.copy()
             q[_adr:_adr + 3] += [_dxy[0], _dxy[1], _dz]
             _c, _s = float(_npg2.cos(_yaw / 2)), float(_npg2.sin(_yaw / 2))
@@ -570,6 +801,18 @@ class RealStateSpaceSim:
                 "yaw_deg": round(float(_npg2.degrees(_yaw)), 1),
                 "shell90": bool(_shell90),   # 🧩 光模块体壳水平转 90° (视觉)
             }
+            # 🎯 2026-09-11 老倪: "没看到 L4 光模块旋转角度" →
+            #   3D 转台绘制只认 meta.demo_geom["turntable"] + tr["tt_yaw"]
+            #   (原先只有 L4Demo 那条路提供) → 引擎路径补上: 3D 会自动画转台盘 +
+            #   十字刻度并随 yaw 旋转 = 干扰"看得见"的机构证据。
+            try:
+                _pxy = self.env.data.site_xpos[self._site_ph][:2]
+                self._l4_tt = {"turntable": {"pos": [float(_pxy[0]), float(_pxy[1])], "r": 0.075}}
+                # 视觉转角: shell90 → 90°; 否则用物理 yaw (度)
+                self._l4_tt_yaw = (90.0 if _shell90 else float(_npg2.degrees(_yaw)))
+            except Exception:
+                self._l4_tt = None
+                self._l4_tt_yaw = 0.0
             # 🐛 2026-09-09 实锤: 肌肉记忆固化标杆按"场景=seed"命中 → 干扰布局(peg 移位)误重放
             #   旧动作 → 把 peg 推飞死循环 (diag: 225 步对位卡死 + peg 漂移 10cm)。分层语义:
             #   标杆绑定摆放 → 布局变了标杆失效 → 关快通道, 全精算伺服 (L2 能力不丢, 只在
@@ -588,6 +831,25 @@ class RealStateSpaceSim:
     #   (回退重抓时销可能被首次下降碰移, 静态采样坐标会空夹 — ep3-5 失败实锤)
     # 夹持后 (抬起→插入): 目标由"光模块头当前位置 + 实时夹爪偏移"驱动 —
     #   光模块头相对夹爪的方向/距离锁存后不变, 把光模块头送到孔口/终点即得夹爪目标
+    def _grasp_dx(self):
+        """抓取点沿 +x 的自适应平移量 (2026-09-15)。
+
+        依据: peg 是 240mm 长杆 (胶囊 r15 半长 120), 抓取目标 = 杆中心; 当杆中心落在机器人
+        基座正上方 (x≈0) 时, 手腕压在基座上方 → 抓取位姿尴尬 → 抬升滑移 (seed2 实测 13 次)。
+        规则: 需要的手腕离基座间隙 = GRASP_BASE_CLEAR − pg_x, 取 ≥0 并夹到 GRASP_DX_MAX
+        (上限 < 杆半长, 保证抓取点仍在杆上)。SS_GRASP_ADAPT=0 → 恒等于固定量 GRASP_DX (旧行为)。
+        """
+        dx = GRASP_DX + float(getattr(self, "_grasp_dx_extra", 0.0) or 0.0)
+        if os.environ.get("SS_GRASP_ADAPT", "0") != "1":
+            return dx
+        pg = getattr(self, "_peg_cur", None)
+        if pg is None:
+            return dx
+        need = GRASP_BASE_CLEAR - float(pg[0])
+        if need <= 0:
+            return dx
+        return dx + min(need, GRASP_DX_MAX)
+
     def _stage_target(self):
         g = self.geom
         st = self.sched.stage()
@@ -595,12 +857,13 @@ class RealStateSpaceSim:
         if pg is None:
             # 🐛 2026-09-07: R1 视觉尚未定位 peg → 原地悬停等检出 (诚实, 不回落真值)
             return np.array([self.x[0], self.x[1], self.x[2] + 0.01])
+        _dx = self._grasp_dx()
         if st == "接近":
-            return pg + np.array([0.0, 0.0, STAGE_APPROACH_H])
+            return pg + np.array([_dx, 0.0, STAGE_APPROACH_H])
         if st == "对位":
-            return pg + np.array([0.0, 0.0, STAGE_ALIGN_H])
+            return pg + np.array([_dx, 0.0, STAGE_ALIGN_H])
         if st in ("下降", "抓取"):
-            return pg + np.array([0.0, 0.0, STAGE_DESCEND_H])
+            return pg + np.array([_dx, 0.0, STAGE_DESCEND_H])
         if st == "抬起":
             # 垂直抬升: xy 保持当前, z 抬到销离台 STAGE_LIFT (保持锁存时夹爪-销高度差)
             gap_z = getattr(self, "_grasp_gap_z", 0.02)
@@ -615,11 +878,30 @@ class RealStateSpaceSim:
             #   (seed109 实锤: z孔偏+0.010 depth 6.3cm 卡 56 步后滑脱)。
             hp = self._hole_p()
             ph_now = self.peg_head()
+            # 🌀 2026-09-10 螺旋搜索 (老倪: 直攻插入鲁棒性 = peg-in-hole 工业标准解法)
+            #   引擎对孔能力上限 3~5mm vs 插孔需求 1~2mm → 端面顶住孔口上缘 → 推而不进 → 遇阻。
+            #   遇阻时 peg 头在孔口平面走**半径 1.2→4.5mm 递增的螺旋** (0.55rad/帧), 孔间隙 1~2mm
+            #   下偏差必然落入扫掠环带 → 物理滑入孔口 → 深度重新减少 → 退出螺旋走常规插入。
+            if getattr(self, "_spiral", 0) > 0 and SPIRAL_ENABLE:
+                self._spiral -= 1
+                _t = int(getattr(self, "_spiral_t", 0))
+                self._spiral_t = _t + 1
+                _r = min(SPIRAL_R0 + SPIRAL_DR * _t, SPIRAL_RMAX)
+                _th = SPIRAL_OMEGA * _t
+                return np.array([hp[0] + _r * np.cos(_th),
+                                 hp[1] + _r * np.sin(_th),
+                                 hp[2]]) - off
             # 🐛 2026-09-07 静静 (seed100 遇阻实锤): z 对齐判据 4mm → 1.2mm —
             #   孔间隙仅 1-2mm (peg 半径 15mm 无倒角刚体), 残留 z_err 2.6mm 水平推必顶
             #   孔口上沿 (遇阻#1 实测 z_err=+2.6mm 卡死; z 校到 0.6mm 即推进 1.5mm)。
             if abs(float(ph_now[2] - hp[2])) > 0.0012:
                 # 段① 垂直降: xy 保持 (转移已对准), z 降到孔口中心
+                # 🐢 降落受阻 → 先沿孔轴回撤退出孔道再降 (2026-09-15)
+                _ds = int(getattr(self, "_descend_stall", 0) or 0)
+                if (os.environ.get("SS_DESCEND_FIX", "0") == "1"
+                        and _ds >= DESCEND_STALL_N):
+                    _back = min(DESCEND_BACK_MAX, DESCEND_BACK_STEP * (_ds - DESCEND_STALL_N + 1))
+                    return np.array([ph_now[0] + _back, ph_now[1], hp[2]]) - off
                 return np.array([ph_now[0], ph_now[1], hp[2]]) - off
             return self._goal_p() - off          # 段② 水平推入 (z 已同轴)
         # 🚀 2026-09-08 L3 扩展 (mode=full): 拔出/AOI/回程/放下 目标 (全头语义 ph→目标点, 锚=夹爪)
@@ -643,6 +925,608 @@ class RealStateSpaceSim:
         if st == "放下":
             return g["peg_head0"] - off          # 光模块头落回初始位 (放件, 随后开爪)
         return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
+
+    def _l3_forward(self, visual39, l4_cond=None, tag="L3"):
+        """🧠 2026-09-10 L3 真执行 (老倪: 模型当执行者) — SmolVLA-Lew 策略真实前向
+        输入: 渲染帧 (480×480, 与训练同源) + 39D 视觉状态 → 输出 4D 动作
+        用: 引擎 SS_L3=1 时 xyz 由模型出 (gripper 仍由状态机管 — 模型二值回归不准)
+
+        🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) 连线"必须改"真接):
+          l4_cond != None → 把 L4 意图向量作为**额外条件 token** 送进同一颗 DiT (同一条前向,
+          不是另写一个模型)。l4_cond=None 时与本改造前**逐位相同** (L3 档零回退)。
+        """
+        try:
+            import torch
+            # 🚀 2026-09-10 类级缓存 (多 seed/多实例评估提速): 模型只加载一次, 后续实例直接复用。
+            #   原来每 new 一个 RealStateSpaceSim 就重载一次 625M 模型 → 多 seed 评估慢 N 倍。
+            _cls = type(self)
+            # 🐛 2026-09-14 熔断 (老倪: 断点不进/模型没真跑): 载入失败原来**每步重试整段加载**
+            #   实测 12 步 = 12 次 SmolVLALewPolicy.__init__ (~4s/步, 625M 反复载入) 且 select_action
+            #   0 次 → 模型从未真执行。这里记类级失败标记, 后续步直接返回 None (诚实标注, 不重载)。
+            #   要重新尝试: 设 SS_L3_FORCE_RETRY=1 (或重启控制台)。
+            if getattr(_cls, "_L3_FAILED", None) and os.environ.get("SS_L3_FORCE_RETRY") != "1":
+                return None
+            if getattr(_cls, "_L3_CACHE", None) is not None:
+                self._l3_pol, self._l3_pre, self._l3_post = _cls._L3_CACHE
+                self._l3_dev = getattr(_cls, "_L3_DEV", "cuda")
+                self._l3_task_str = getattr(_cls, "_L3_TASK", "metaworld 光模块插拔")
+            if getattr(self, "_l3_pol", None) is None:
+                import sys as _s
+                _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                _src = os.path.join(_repo, "src")
+                if _src not in _s.path:
+                    _s.path.insert(0, _src)
+                from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
+                from lerobot.policies.factory import make_pre_post_processors
+                # 🎯 2026-09-11 默认 ckpt 校正 (老倪问"这是真正的运行时模型么"暴露的问题):
+                #   原来默认指向 **v8/030000** (旧模型) → GUI 里开 SS_L3 时跑的是旧模型,
+                #   与"已验证跑通的新模型"不是同一个 → 成绩无法归因。
+                #   现改为**已实测验证过接管全链的模型** (v10_1h/004000: insert 341步 / full 865步
+                #   + AOI PASS, 有视频存证)。换模型请改这里或传 SS_L3_CK, 并保证验证口径一致。
+                _ck = os.environ.get(
+                    "SS_L3_CK", "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model")
+                if not os.path.isabs(_ck):
+                    _ck = os.path.join(_repo, _ck)
+                _pol = SmolVLALewPolicy.from_pretrained(_ck)
+                _pol.eval()
+                # 🐛 2026-09-14 设备可覆盖 (原写死 cuda if available): 无卡/CPU 环境或要让 GUI
+                #   与训练共存的场合, 用 SS_L3_DEV=cpu 显式指定 → 否则 ckpt 里 device=cuda 的
+                #   预处理器实例化失败 (实测报错见下方 preprocessor_overrides 注释)。
+                self._l3_dev = (os.environ.get("SS_L3_DEV")
+                                or ("cuda" if torch.cuda.is_available() else "cpu"))
+                _pol.to(self._l3_dev)
+                # 🐛 2026-09-14 根因修复 (老倪: "断点没反应" 查出的真 bug): ckpt 里保存的
+                #   device_processor 写死 device='cuda' → CPU/无卡时实例化直接抛错
+                #   ("Failed to instantiate processor step 'device_processor' with config:
+                #    {'device': 'cuda', 'float_dtype': None}") → 整段加载失败 → 每步 return None,
+                #   模型 0 次真执行且每步重载 625M。这里按**运行设备**覆盖该步 (官方 eval 同款写法)。
+                _pre, _post = make_pre_post_processors(
+                    _pol.config, pretrained_path=_ck,
+                    preprocessor_overrides={"device_processor": {"device": str(self._l3_dev)}},
+                    postprocessor_overrides={"device_processor": {"device": str(self._l3_dev)}},
+                )
+                self._l3_pol, self._l3_pre, self._l3_post = _pol, _pre, _post
+                # 🚀 写回类级缓存 → 后续实例零加载开销
+                _cls._L3_CACHE = (self._l3_pol, self._l3_pre, self._l3_post)
+                _cls._L3_DEV = self._l3_dev
+                # 🗣 语言指令必须用**数据集 tasks.parquet 里的原串** (2026-09-10 实测纠正:
+                #   v8 / v8_d1 都是 "metaworld 光模块插拔"; 采集脚本代码里写别的串但实际数据不是
+                #   → 硬编码易错, 改为动态读)。SS_L3_TASK 可覆盖 (将来接 L4 自然语言指令用)。
+                _t = ""
+                try:
+                    import pandas as _pd
+                    for _dp in (os.path.join(_repo, "data", "smolvla_peg_v8_d1", "meta", "tasks.parquet"),
+                                os.path.join(_repo, "data", "smolvla_peg_v8", "meta", "tasks.parquet")):
+                        if os.path.exists(_dp):
+                            _t = str(_pd.read_parquet(_dp)["task"].iloc[0])
+                            break
+                except Exception:
+                    _t = ""
+                self._l3_task_str = _t or "metaworld 光模块插拔"
+                _cls._L3_TASK = self._l3_task_str     # 🚀 一并缓存 (缓存命中时复用)
+                # 📌 必须打印实际加载的 ckpt 路径 — 让"跑通的模型"和"产品里跑的模型"可核对
+                #    (老倪 2026-09-11 追问"这是真正的运行时模型么"暴露: 原先不打印, 无法归因)
+                try:
+                    _ck_rel = os.path.relpath(_ck, _repo)
+                except Exception:
+                    _ck_rel = _ck
+                self._l3_ck_used = _ck_rel
+                self.log(f"🏆 L3 真执行接入: SmolVLA-Lew · 模型 ckpt = {_ck_rel} — "
+                         f"xyz 由模型出, gripper 由状态机管 · 🗣 语言 {self._l3_task_str!r}")
+            img = self._render_frame()
+            # 🐛 2026-09-10 口径同源: 训练数据图像是 128×128 (采集时 PIL LANCZOS 缩放后编码),
+            #   推理必须同样缩放 — 否则 480 原图与训练分布不一致 (=图像没真正接上)
+            try:
+                from PIL import Image as _PImg
+                # 🖼 2026-09-10 口径校正 (以实证为准): rollout_smolvla_lew.py 用 **128×128** 实测
+                #   模型闭环 5/6 追平解析链 → 128 是**验证过的正确值**。
+                #   (曾按 policy 配置 resize_images_to=[64,64] 推断成 64 → 接管实测卡死"转移"2318帧,
+                #    证明 64 是错的: 训练侧数据管线实际按 128 编码。) SS_L3_IMGSZ 可覆盖。
+                _l3_sz = int(os.environ.get("SS_L3_IMGSZ", "128"))
+                img = np.asarray(_PImg.fromarray(img).resize((_l3_sz, _l3_sz), _PImg.LANCZOS))
+            except Exception:
+                pass
+            it = torch.from_numpy(img).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+            st = torch.from_numpy(np.asarray(visual39, dtype=np.float32)).unsqueeze(0)
+            batch = {"observation.image": it.to(self._l3_dev),
+                     "observation.state": st.to(self._l3_dev),
+                     # 🗣 语言指令: 默认 = 数据集 tasks.parquet 原串 (载入时读, 实测 "metaworld 光模块插拔");
+                     #   SS_L3_TASK 可覆盖 → 将来 L4 用自然语言下达任务时走这里。
+                     #   (2026-09-10 教训: 硬编码串 = VLM 条件分布错; 必须与训练数据同一字面串)
+                     "task": os.environ.get("SS_L3_TASK", getattr(self, "_l3_task_str", "metaworld 光模块插拔"))}
+            batch = self._l3_pre(batch)
+            with torch.no_grad():
+                _pred = self._l3_pol.select_action(batch, l4_cond=l4_cond)
+                # 🎯 2026-09-10 关键修正 (接管卡死"转移2318帧"的真根因):
+                #   模型输出在**归一化空间** (policy 配置 ACTION=MIN_MAX), 必须用
+                #   post-processor 反归一化才能当真实动作执行。缺这一步 → 归一化值(-1~1)
+                #   被当成 m/s 使用 → 动作全错 → 接管必卡死。
+                #   参照实现: tools/rollout_smolvla_lew.py 的 `act = post(pred)`。
+                _post = getattr(self, "_l3_post", None)
+                act = _post(_pred) if _post is not None else _pred
+            return np.asarray(act.detach().cpu().float()).reshape(-1)[:4]
+        except Exception as _e:
+            # 🐛 2026-09-14 熔断: 记类级失败标记 → 后续步不再重试整段加载 (否则每步重载 625M)。
+            _cls = type(self)
+            if getattr(_cls, "_L3_FAILED", None) is None:
+                _cls._L3_FAILED = f"{type(_e).__name__}: {_e}"
+            if not getattr(self, "_l3_warned", False):
+                self._l3_warned = True
+                self.log(f"⚠️ {tag} 推理失败 (已熔断, 本进程内不再重试载入): {_e}")
+            return None
+
+    def _obs39(self) -> np.ndarray:
+        """训练同源观测 (env._get_obs() 前 39 维) — L3/L4 DiT 的 state 输入。"""
+        return np.asarray(self.env._get_obs(), dtype=np.float64).ravel()[:39]
+
+    def _l4_dit_stats_init(self) -> dict:
+        if not hasattr(self, "_l4_dit"):
+            self._l4_dit = {"calls": 0, "ok": 0, "refused": 0, "err": None, "cond_dim": 0,
+                            "cond_norm": 0.0, "act_norm": [], "delta": [], "beta": 0.0,
+                            "src": "off"}
+        return self._l4_dit
+
+    def _l4_dit_action(self, l4_cond, visual39=None):
+        """🎯 L4→DiT: 用 **L4 条件** 真跑同一颗 DiT (smolvla_lew 动作头) → 4D metaworld 动作或 None。
+
+        与 _l3_forward 共用一条实现 (同一个加载/前向/反归一化路径), 只多一个条件通道。
+        每次调用都计数 + 记录条件范数/动作范数 (证据可查, 不静默)。
+        """
+        st = self._l4_dit_stats_init()
+        if l4_cond is None:
+            st["refused"] += 1
+            st["src"] = "拒绝(无 L4 条件)"
+            return None
+        st["calls"] += 1
+        st["cond_dim"] = int(np.asarray(l4_cond).size)
+        st["cond_norm"] = float(np.linalg.norm(np.asarray(l4_cond, float)))
+        st["beta"] = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
+        try:
+            o = visual39 if visual39 is not None else self._obs39()
+            act = self._l3_forward(o, l4_cond=np.asarray(l4_cond, dtype=np.float32), tag="L4→DiT")
+        except Exception as e:                                                   # noqa: BLE001
+            st["err"] = f"{type(e).__name__}: {e}"
+            st["src"] = "异常"
+            return None
+        if act is None:
+            st["refused"] += 1
+            st["src"] = f"不注入({getattr(type(self), '_L3_FAILED', '?')})"
+            return None
+        st["ok"] += 1
+        st["act_norm"].append(float(np.linalg.norm(act[:3])))
+        st["src"] = "DiT(l4_cond)"
+        return np.asarray(act, dtype=float)
+
+    # ── 🎯 INTACT 前馈槽位 (Step 1, 2026-09-12) ────────────────────────────────
+    def attach_intact(self, node, adapter=None):
+        """挂载 INTACT 节点 + 动作适配层 (SS_INTACT=1 时在 u_ff 槽位生效)。"""
+        self._intact_node = node
+        self._intact_adapter = adapter
+        _ad = adapter.describe() if adapter is not None else {}
+        print(f"🎯 INTACT 已挂载: horizon={getattr(node, 'horizon', '?')} · "
+              f"适配层 enabled={_ad.get('enabled')} ({_ad.get('reason')}) · "
+              f"影子={self._intact_shadow} · 生效阶段={self._intact_stages}")
+        return True
+
+    def _intact_u_ff(self, stage=""):
+        """INTACT 每 SS_INTACT_EVERY 步真推理一次 → 标定映射 → 本引擎 4D u_ff (chunk 内逐帧取用)。
+
+        返回 None = 这一帧不接管 (未标定/推理异常/映射拒绝), 调用方保持原 u_ff —— 但每种情况都
+        **计数 + 记录来源**, 不做静默回退 (静默回退 = 假接入, 老倪红线)。
+        """
+        st = self._intact_stats
+        ad_ok = self._intact_adapter is not None and getattr(self._intact_adapter, "enabled", False)
+        # 接管模式必须已标定; **影子模式**未标定也允许真推理真记录 (只是不接管) —— 否则影子臂
+        # 拿不到任何 INTACT 真实数据 (第一版实测: 影子臂 intact_calls=0 全是"未标定拒绝")。
+        if not ad_ok and not self._intact_shadow:
+            st["refused_map"] += 1
+            st["u_ff_src"] = "analytic(未标定)"
+            return None
+        if not self._intact_buf:
+            st["frames"] += 1
+            try:
+                import cv2
+                fr = cv2.resize(np.asarray(self._render_frame()), (224, 224),
+                                interpolation=cv2.INTER_AREA).transpose(2, 0, 1).astype(np.float32)
+                st.setdefault("frame_std", []).append(float(np.asarray(fr).std()))
+                out = self._intact_node.step(fr, obs_source="engine_render")
+            except Exception as e:
+                st["err"] = f"{type(e).__name__}: {e}"
+                st["u_ff_src"] = "analytic(推理异常)"
+                return None
+            chunk = np.asarray(out.chunk, dtype=np.float32)
+            st.setdefault("chunk_norm", []).append(float(np.linalg.norm(chunk)))
+            st.setdefault("latent_norm", []).append(
+                float(np.linalg.norm((out.latent or {}).get("z_t", np.zeros(1)))))
+            if not ad_ok:                        # 影子 + 未标定: 真推理真记录, 不接管
+                st["intact_calls"] += 1
+                st["shadow_uncalibrated"] = st.get("shadow_uncalibrated", 0) + 1
+                st["u_ff_src"] = "intact(shadow, 未标定→不接管)"
+                return None
+            mapped, why = self._intact_adapter.map_chunk(chunk)
+            if mapped is None:
+                st["refused_map"] += 1
+                st["err"] = why
+                st["u_ff_src"] = "analytic(映射拒绝)"
+                return None
+            self._intact_buf = [np.asarray(m, dtype=float) for m in mapped]
+            st["intact_calls"] += 1
+        else:
+            st["chunk_reuse"] += 1
+        if not self._intact_buf:
+            return None
+        u = self._intact_buf.pop(0)
+        st["u_ff_src"] = "intact" + ("(shadow)" if self._l4_shadow else "")
+        return u
+
+    # ── 🎯 INTACT 意图解码器 → L3 (2026-09-13 老倪: metaworld 数据源 → INTACT → decoder → L3) ──
+    def _l4_intact_u_ff(self, stage=""):
+        """L4 一路: 每 receding chunk 真推理一次 → **意图解码器** → u_ff (引擎 u 空间) + L3 条件。
+
+        与 SS_INTACT (标定映射 → 接管) 的差别:
+          · 本路径用 decoder 的**量纲逆运算** (act×K_ACT, 与引擎 state_space_sim_real.py:1183
+            自有约定同源) → **不需要标定文件**即可生效;
+          · L3 条件向量通道仍需标定 (models/intact_l3_map.json) → 未标定拒绝 + 计数, 不写死映射。
+        返回 (u_4d, w) 或 None (None = 本帧不接管, 调用方保持原 u_ff; 每种情况计数 + 记来源)。
+        """
+        st = self._l4_stats
+        if self._l4_dec is None:
+            try:
+                from lerobot.policies.intact.decoder import IntactIntentDecoder  # noqa: PLC0415
+                self._l4_dec = IntactIntentDecoder(cond_dim=6)
+            except Exception as e:                                          # noqa: BLE001
+                st["err"] = f"decoder 加载失败 {type(e).__name__}: {e}"
+                st["src"] = "analytic(decoder 不可用)"
+                return None
+        if not self._l4_buf:
+            st["calls"] += 1
+            try:
+                import cv2                                                  # noqa: PLC0415
+                fr = cv2.resize(np.asarray(self._render_frame()), (224, 224),
+                                interpolation=cv2.INTER_AREA).transpose(2, 0, 1).astype(np.float32)
+                st["frame_std"].append(float(np.asarray(fr).std()))
+                # 📥 数据源直接接入 metaworld: 引擎帧即渲染帧, 标 engine_render (可溯源)
+                # 🧠 2026-09-14 打通: L4 档必须把 **L2 原子技能上下文**喂进去 —— v6 权重在 jepa.get_action
+                #   里有硬闸 (缺 skill_ctx 直接 raise), 实测本路径 220/220 帧全被拒 ⇒ L4 档此前在引擎里
+                #   根本跑不到真推理。这里与采集/直驱共用同一构造器 build_skill_ctx (口径单一)。
+                _sk = self._l4_skill_ctx(str(stage))
+                out = self._intact_node.step(fr, obs_source="engine_render", skill_ctx=_sk)
+                st["skill_ctx_dim"] = int(np.asarray(_sk).size)
+                st["skill_ctx_nonzero"] = int(np.count_nonzero(_sk))
+                st["l2_ready"] = bool(self._l4_l2_proc() is not None)
+                st["l2_err"] = self._il_l2.get("err")
+                st["goal_src"] = getattr(self._intact_node, "goal_src", "") or "(未设置)"
+            except Exception as e:                                          # noqa: BLE001
+                st["err"] = f"{type(e).__name__}: {e}"
+                st["src"] = "analytic(L4 推理异常)"
+                return None
+            d = self._l4_dec.decode(out, stage=stage)
+            self._l4_cond = d.l3_cond
+            # 🎯 2026-09-14 L4→DiT 条件通道 (192 维意图单位向量; 无需标定)
+            self._l4_dit_cond = getattr(d, "l4_cond", None)
+            # 🧬 2026-09-14 直连线: 同一 δ 作为**意图**, 送流形专家预测器 (不是动作, 不越权)。
+            #   SS_L4_INTENT_LINE 不设 → 本调用立即返回 None (零回退, 逐位不变)
+            self._l4_intent_line(d, out, stage)
+            st["cond_src"] = d.l3_cond_source
+            st["cond_ready"] = 1 if d.l3_cond is not None else 0
+            if d.u_ff is None:
+                st["refused"] += 1
+                st["src"] = d.u_ff_source
+                return None
+            st["src"] = d.u_ff_source
+            st["w"] = float(d.weight)
+            chunk = np.asarray(out.chunk, dtype=float)
+            if chunk.ndim == 1:
+                chunk = chunk[None]
+            ka = float(getattr(self._l4_dec, "k_act", 0.5))
+            self._l4_buf = [np.concatenate([np.clip(np.asarray(c, float)[:3], -1, 1) * ka,
+                                            [1.0 if float(c[3]) > 0.5 else -1.0]]) for c in chunk]
+        else:
+            st["reuse"] += 1
+        if not self._l4_buf:
+            return None
+        u = self._l4_buf.pop(0)
+        # 🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) → ssff 连线必须**真接**)
+        #   L4 意图 → 同一颗 DiT (额外条件 token) → 在**同一 u_ff 槽位**与 L4 前馈融合:
+        #     u = (1−β)·u_L4 + β·u_DiT,  β = SS_L4_DIT_BETA (默认 0.5, 记入证据)
+        #   SS_L4_DIT 不设 = 逐位零变化 (零回退); 未取到条件/DiT 不可用 → 不融合 + 计数。
+        if os.environ.get("SS_L4_DIT") == "1" and getattr(self, "_l4_dit_cond", None) is not None:
+            _sd = self._l4_dit_stats_init()
+            _every = int(os.environ.get("SS_L4_DIT_EVERY", os.environ.get("SS_INTACT_EVERY", "8")))
+            if (getattr(self, "_l4_dit_cache", None) is None
+                    or getattr(self, "_l4_dit_step", 0) % max(1, _every) == 0):
+                _ad = self._l4_dit_action(self._l4_dit_cond)
+                self._l4_dit_cache = None if _ad is None else np.asarray(_ad, float)[:4]
+            self._l4_dit_step = getattr(self, "_l4_dit_step", 0) + 1
+            _ac = getattr(self, "_l4_dit_cache", None)
+            if _ac is not None:
+                _ka = float(getattr(self._l4_dec, "k_act", 0.5))
+                _ud = np.concatenate([np.clip(np.asarray(_ac, float)[:3], -1, 1) * _ka,
+                                      [1.0 if float(_ac[3]) > 0.5 else -1.0]])
+                _beta = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
+                _u0 = np.asarray(u, float).copy()
+                u = (1.0 - _beta) * _u0 + _beta * _ud
+                _sd.setdefault("delta", []).append(float(np.linalg.norm(np.asarray(u, float)[:3] - _u0[:3])))
+                _sd["applied"] = int(_sd.get("applied", 0)) + 1
+        self._l4_last_u = np.asarray(u, dtype=float).copy()
+        if self._l4_shadow:            # 影子档: 真推理真解码真记录, 但不接管
+            return None
+        return u, float(st.get("w") or 0.0)
+
+    # ── 🧠 L2 → L4 的 skill_ctx 供给 (2026-09-14 打通; v6 权重缺它会被硬闸拒, 实测 220/220 全拒) ──
+    def _l4_l2_proc(self):
+        """L2 原子技能势场 (skill_ctx 的 L2 字段来源, 与采集数据同口径); 不可用 → None + 诚实标注。"""
+        d = self._il_l2
+        if not d["tried"]:
+            d["tried"] = True
+            try:
+                import sys as _sys                                          # noqa: PLC0415
+                _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                if os.path.join(_root, "src") not in _sys.path:
+                    _sys.path.insert(0, os.path.join(_root, "src"))
+                from lerobot.memory.potential_field import MemoryLayerBridge  # noqa: PLC0415
+                # 🚨 2026-09-15 关键: 传**本引擎自己的 geom**。原实现不传 → ObstacleField.from_engine
+                #   会新建第二个 RealStateSpaceSim + _reset(104), 而 metaworld 底层 sim 进程内共享
+                #   → 正在运行的场景被改写 (实测 peg 瞬移 Δ=[+1.2mm,−17mm,0]), 导致 L4 臂与解析链臂
+                #   跑的不是同一个场景 (所有涉 L4 的 A/B 失真)。
+                d["p"] = MemoryLayerBridge.from_real_data(root=_root, seed=104,
+                                                          use_engine_geom=True,
+                                                          geom=getattr(self, "geom", None)).process
+                d["err"] = None
+            except Exception as e:                                          # noqa: BLE001
+                d["p"], d["err"] = None, f"{type(e).__name__}: {e}"
+        return d["p"]
+
+    def _l4_skill_ctx(self, stage: str) -> np.ndarray:
+        """构造 24 维 skill_ctx (相位 one-hot | L2 势场软权重 | d_perp/arc_frac/grip)。
+
+        L2 势场取不到时**退化为相位+夹爪并如实计数** (build_skill_ctx 的既有语义), 不假装有记忆层。
+        """
+        from lerobot.policies.intact.skill_ctx import build_skill_ctx       # noqa: PLC0415
+        _u = getattr(self, "_u_vec", None)
+        _grip = float(np.asarray(_u, float).ravel()[3]) if _u is not None else 0.0
+        return np.asarray(build_skill_ctx(self._l4_l2_proc(), getattr(self, "x", None),
+                                          str(stage), _grip), np.float32)
+
+    # ── 🧬 直连线: L4 意图 → 流形专家预测器 → 动作头 (2026-09-14 老倪原则) ──
+    def _il_meta(self) -> dict:
+        """读 ckpt meta (输入口径/架构/质量指标)。**必须在建模型之前读** ——
+        实测踩到: 先按错误口径建模型 → load_state_dict 尺寸不符 → 首帧初始化失败。"""
+        if self._il_meta_cache is None:
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _ckp = os.environ.get("SS_L4_INTENT_PRED",
+                                  os.path.join(_root, "checkpoints", "manifold_predictor",
+                                               "intent_line.pt"))
+            self._il_meta_cache = {}
+            try:
+                if os.path.isfile(_ckp):
+                    import torch                                                # noqa: PLC0415
+                    self._il_meta_cache = (torch.load(_ckp, map_location="cpu",
+                                                      weights_only=False).get("meta") or {})
+            except Exception:                                                   # noqa: BLE001
+                self._il_meta_cache = {}
+        return self._il_meta_cache
+
+    def _il_init(self, z_dim: int, m_dim: int) -> None:
+        """懒加载直连线三件套 (预测器/动作头/能力栈仲裁)。**不训练也能跑** (接口真跑 + 零回退)。"""
+        if self._il_pred is not None:
+            return
+        st = self._il_stats
+        try:
+            import torch                                                        # noqa: PLC0415
+            from lerobot.manifold.predictor_layer import WorldModelPredictor     # noqa: PLC0415
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _lew = os.path.join(_root, "src", "lerobot", "policies", "smolvla_lew")
+            if _lew not in sys.path:
+                sys.path.insert(0, _lew)
+            from state_space_action_head import StateSpaceActionHead             # noqa: PLC0415
+            from lerobot.manifold.capability_stack import CapabilityStack        # noqa: PLC0415
+            # 架构与输入口径都以 ckpt meta 为准 (建模型之前就得知道, 见 _il_meta)
+            _mt = self._il_meta()
+            _ckp = os.environ.get("SS_L4_INTENT_PRED",
+                                  os.path.join(_root, "checkpoints", "manifold_predictor",
+                                               "intent_line.pt"))
+            self._il_pred = WorldModelPredictor(z_dim=int(z_dim),
+                                               act_dim=int(_mt.get("act_dim", 4)),
+                                               manifold_dim=int(_mt.get("manifold_dim", 6)),
+                                               hidden_dim=int(_mt.get("hidden", 256)),
+                                               num_layers=int(_mt.get("layers", 2)),
+                                               m_dim=int(m_dim))
+            self._il_head = StateSpaceActionHead(input_dim=6, action_dim=4, chunk_size=1)
+            self._il_stack = CapabilityStack(bounds=(-1.0, 1.0))
+            # 就绪判定: 有**训练过的**预测器权重才算 ready; 没有 → 线路跑但不注入 (诚实标注)
+            ck = _ckp
+            if os.path.isfile(ck) and os.path.getsize(ck) > 4096:
+                _sd = torch.load(ck, map_location="cpu", weights_only=False)
+                # 🛡 质量闸 (2026-09-14 夜): 不是"有文件就 ready" —— 必须带 LOSO R² 且 ≥0.30,
+                #   否则线路照跑但 w=0 (拿没训出来的预测器注入执行口 = 用噪声污染机器人)。
+                _r2 = (_sd.get("meta") or {}).get("loso_r2_mean")
+                self._il_input_kind = str(((_sd.get("meta") or {}).get("input_kind")) or "z_t")
+                if _r2 is not None and float(_r2) >= 0.30:
+                    self._il_pred.load_state_dict(_sd["predictor"], strict=False)
+                    self._il_head.load_state_dict(_sd["head"], strict=False)
+                    self._il_scaler = _sd.get("scaler") or None
+                    self._il_ready = True
+                    st["ready_src"] = (f"已训练且过闸 (LOSO R²={float(_r2):.3f} ≥0.30, "
+                                       f"{os.path.relpath(ck, _root)})")
+                else:
+                    self._il_ready = False
+                    st["ready_src"] = (f"权重在但未过质量闸 (LOSO R²={_r2} <0.30 或缺失) → "
+                                       f"线路在跑, w=0 不注入 ({os.path.relpath(ck, _root)})")
+            else:
+                self._il_ready = False
+                st["ready_src"] = (f"未训练: {os.path.relpath(ck, _root)} 不存在 → 线路在跑, w=0 不注入")
+            self._il_pred.eval()
+            self._il_head.eval()
+            st["ready"] = bool(self._il_ready)
+            self.log(f"🧬 L4 直连线就绪: 预测器 z{int(z_dim)}/m{int(m_dim)} + 动作头(流形6) · "
+                     f"ready={self._il_ready} ({st['ready_src']})")
+        except Exception as e:                                                  # noqa: BLE001
+            self._il_pred, self._il_head, self._il_stack = None, None, None
+            st["err"] = f"直连线初始化失败 {type(e).__name__}: {e}"
+
+    def _l4_intent_line(self, d, out, stage: str = "") -> tuple | None:
+        """L4 意图 → 流形专家预测器 → 流形式 6 维 → 动作头 → u_int (引擎 u 空间)。
+
+        返回 (u_int(4), w, info); None = 本帧不进 (开关未开/无意图/异常, 均计数 + 记来源)。
+        w = m_int_weight × SS_L4_INTENT_LINE_W × ready —— **预测器未训练则 w=0** (零回退)。
+        """
+        st = self._il_stats
+        st["frames"] += 1
+        if os.environ.get("SS_L4_INTENT_LINE") != "1":
+            return None
+        if not self._il_input_kind:                     # 口径先定 (首帧不许用错口径建模型)
+            self._il_input_kind = str(self._il_meta().get("input_kind") or "z_t")
+        m = getattr(d, "m_int", None)
+        st["src"] = str(getattr(d, "m_int_source", "") or "")
+        if m is None:
+            st["refused"] += 1
+            st["err"] = "无意图 (m_int=None)"
+            return None
+        try:
+            import torch                                                        # noqa: PLC0415
+            # 🧭 输入口径 (2026-09-14 夜 实证选路):
+            #   · "z7"  = 引擎几何潜空间 R7 + 几何意图(Δ=target−peg) + 前馈参考 → 流形: LOSO R² 0.55/0.64 ✓ 用这条
+            #   · "z_t" = INTACT 潜空间 R192 + δ: LOSO R² 全负 (不可辨识) → 只保留兼容, 默认不 ready
+            if self._il_input_kind == "z7":
+                _z7 = getattr(self, "_z7_hist", None)
+                if not _z7:
+                    st["refused"] += 1
+                    st["err"] = "z7 历史为空 (几何潜空间未生成)"
+                    return None
+                z = np.asarray(_z7[-1], np.float32).reshape(1, -1)
+                try:
+                    m_geo = (np.asarray(self._stage_target(), float).ravel()[:3]
+                             - np.asarray(self.peg_head(), float).ravel()[:3])
+                except Exception as _e:                                         # noqa: BLE001
+                    st["refused"] += 1
+                    st["err"] = f"几何意图不可得 (target/peg_head 缺失: {type(_e).__name__})"
+                    return None
+                m_vec = np.asarray(m_geo, np.float32).reshape(1, -1)
+                _ref = self._u_ff_last
+                a = (np.asarray(_ref, np.float32).reshape(1, -1)[:, :4] if _ref is not None
+                     else np.zeros((1, 4), np.float32))
+                m = m_vec
+            else:
+                lat = getattr(out, "latent", None) or {}
+                zt = lat.get("z_t")
+                z = np.asarray(zt if zt is not None else d.m_int, dtype=np.float32).reshape(1, -1)
+                chunk = np.asarray(getattr(out, "chunk", None), dtype=np.float64)
+                if chunk.ndim == 1:
+                    chunk = chunk[None]
+                a = (np.asarray(chunk[0][:4], dtype=np.float32).reshape(1, -1) if chunk.size
+                     else np.zeros((1, 4), np.float32))
+                m = np.asarray(d.m_int, dtype=np.float32).reshape(1, -1)
+            self._il_init(z.shape[-1], np.asarray(m).reshape(-1).size)
+            if self._il_pred is None:
+                st["refused"] += 1
+                return None
+            mh = np.asarray(m, dtype=np.float32).reshape(1, -1)
+            if mh.shape[-1] != getattr(self._il_pred, "m_dim", 0):              # 意图维不匹配 → 拒绝
+                st["err"] = f"意图维不匹配 m={mh.shape[-1]} vs m_dim={getattr(self._il_pred,'m_dim',0)}"
+                st["refused"] += 1
+                return None
+            _sc = self._il_scaler or {}
+            _app = lambda v, k: ((np.asarray(v, np.float32) - _sc[k + "_mu"]) / _sc[k + "_sd"]
+                                 if (k + "_mu") in _sc else np.asarray(v, np.float32))
+            with torch.inference_mode():
+                o = self._il_pred(torch.from_numpy(_app(z.reshape(-1), "z")),
+                                  torch.from_numpy(_app(a.reshape(-1), "a")),
+                                  torch.from_numpy(_app(mh.reshape(-1), "d")))
+                manifold = np.asarray(o["manifold"].float().cpu()).reshape(-1)
+                if "m_mu" in _sc:                      # 反标准化回流形真量纲
+                    manifold = manifold * _sc["m_sd"] + _sc["m_mu"]
+                gain = float(o.get("intent_gain") or 0.0)
+                _mh = ((manifold - _sc["m_mu"]) / _sc["m_sd"]).astype(np.float32) if "m_mu" in _sc \
+                    else manifold.astype(np.float32)
+                act = np.asarray(self._il_head(
+                    torch.from_numpy(_mh).reshape(1, -1)
+                ).float().cpu()).reshape(-1)[:4]
+                if "u_mu" in _sc:                      # 动作头反标准化
+                    act = act * _sc["u_sd"][:4] + _sc["u_mu"][:4]
+        except Exception as e:                                                  # noqa: BLE001
+            st["err"] = f"直连线推理异常 {type(e).__name__}: {e}"
+            st["refused"] += 1
+            return None
+        st["ran"] += 1
+        st["gain"].append(gain)
+        if len(st["manifold"]) < 64:
+            st["manifold"].append(manifold.copy())
+        ka = float(getattr(self._l4_dec, "k_act", K_ACT))
+        u = np.concatenate([np.clip(act[:3], -1.0, 1.0) * ka,
+                            [1.0 if float(act[3]) > 0.5 else -1.0]])
+        w = float(getattr(d, "m_int_weight", 0.0)) * float(os.environ.get("SS_L4_INTENT_LINE_W", "1.0"))
+        if not self._il_ready:
+            w = 0.0
+            st["w_zero"] += 1
+        st["w"] = w
+        info = {"m_int": np.asarray(m, float), "src": st["src"], "manifold": manifold.copy(),
+                "gain": gain, "u_int": np.asarray(u, float).copy(), "stage": str(stage),
+                "ready": bool(self._il_ready)}
+        self._il_last = (np.asarray(u, float), w, info)
+        return self._il_last
+
+    def l4_intent_line_summary(self) -> dict:
+        """直连线取证摘要 (A/B 对照/报告用; 数字全来自实测, 不做修饰)。"""
+        s = self._il_stats
+        g = s.get("gain") or []
+        mn = s.get("manifold") or []
+        stk = self._il_stack.summary() if self._il_stack is not None else {}
+        return {"enabled": os.environ.get("SS_L4_INTENT_LINE") == "1",
+                "by_stage": dict(s.get("by_stage") or {}),
+                "stages_env": list(self._l4_stages),
+                "frames": s["frames"], "ran": s["ran"], "applied": s["applied"],
+                "w_zero": s["w_zero"], "refused": s["refused"],
+                "ready": bool(s["ready"]), "ready_src": s["ready_src"],
+                "src_last": s["src"], "w_last": round(float(s["w"]), 4),
+                "err": s["err"],
+                "intent_gain_mean": round(sum(g) / len(g), 6) if g else 0.0,
+                "manifold_last": [round(float(x), 5) for x in (mn[-1] if mn else [])],
+                "clip_max": float(stk.get("clip_max", 0.0)),
+                "stack": {k: stk.get(k) for k in ("commit", "vetoed", "clipped", "clip_max_mean",
+                                                  "w_last", "layers")}}
+
+    def l4_intact_summary(self) -> dict:
+        """L4 接入的取证摘要 (给 A/B 对照工具/报告; 数字全部来自实测计数, 不做修饰)。"""
+        s = self._l4_stats
+        fstd = s.get("frame_std") or []
+        shift = s.get("shift") or []
+        mean = (lambda v: round(sum(v) / len(v), 4)) if shift else (lambda v: 0.0)
+        return {"enabled": os.environ.get("SS_L4_INTACT") == "1",
+                "shadow": bool(self._l4_shadow), "stages": self._l4_stages,
+                "l2_veto": self._l4_stats.get("l2_veto", 0),
+                "l2_veto_dir": self._l4_stats.get("l2_veto_dir", 0),
+                "l2_veto_mag": self._l4_stats.get("l2_veto_mag", 0),
+                "gate_pass": self._l4_stats.get("gate_pass", 0),
+                "calls": s["calls"], "reuse": s["reuse"], "refused": s["refused"],
+                "blend": s["blend"], "w_zero": s["w_zero"],
+                "w": s["w"], "u_ff_src": s["src"],
+                "goal_src": s.get("goal_src") or "(未设置)",
+                "l3_cond_ready": bool(s["cond_ready"]), "l3_cond_src": s["cond_src"],
+                "frame_std_mean": (round(sum(fstd) / len(fstd), 2) if fstd else None),
+                "shift_mean_m": mean(shift), "err": s["err"],
+                "decoder": (self._l4_dec.describe() if self._l4_dec is not None else None)}
+
+    def _render_frame(self, h=480, w=480):
+        """🛡 2026-09-10 安全渲染 (mac 点运行即崩根因): macOS 的 CGL 离屏 GL 上下文
+        只能在主线程创建; 引擎在 worker 线程调用 env.render() → native segfault →
+        整个 app 崩溃重启 (老倪 mac 实测)。mac 上返回黑帧占位 (R0 演示/轨迹/3D 全不受影响,
+        仅"渲染图像"不可用 — R1 视觉模式在 mac 上因此不可用, 属已知限制)。
+        SS_MAC_RENDER=1 可强制走真渲染 (调试用)。"""
+        import sys as _sys
+        try:
+            if _sys.platform == "darwin" and os.environ.get("SS_MAC_RENDER") != "1":
+                return np.zeros((h, w, 3), np.uint8)
+            # 🐛 2026-09-10 修复致命 bug (接管失败真根因): 这里原写作 `return self._render_frame()`
+            #   = **调用自身无限递归** → RecursionError 被下面 except 吞掉 → 永远返回全黑帧!
+            #   → L3 模型拿到黑图 → 输出与真实场景无关 → 接管必挂 (实测卡"转移"2318帧)。
+            #   正确做法: 真渲染 (env.render 与采集脚本 _frame_sink 同源)。
+            _rf = getattr(self.env, "render", None)
+            if _rf is not None:
+                return np.asarray(_rf())
+            return np.zeros((h, w, 3), np.uint8)
+        except Exception:
+            return np.zeros((h, w, 3), np.uint8)
 
     def peg_head(self):
         """光模块头世界坐标 (夹持后=编码器 hand+锁存偏移+头偏置 — 真机同构, 无 site 依赖,
@@ -688,9 +1572,14 @@ class RealStateSpaceSim:
         拔出 → AOI 镜头对焦点检测 → 光耦合精密操作 η 收敛), 全真物理; 返回 tr (keys 与引擎
         run() 兼容, GUI 消费安全)。引擎默认路径/能力零改动 (仅 demo_l4 构造时走此分支)"""
         import importlib.util
-        _tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _spec = importlib.util.spec_from_file_location(
-            "_l4demo_gen", os.path.join(_tools, "gen_l4_demo_video.py"))
+        # 🐛 2026-09-11: frozen 下必须走多候选探测 (原 dirname(dirname(__file__)) 在 exe 里
+        #   指向临时目录父级 → 找不到脚本 → 打包版 L4 演示直接失败 = 无干扰动作)
+        _gen_py = _tool_path("gen_l4_demo_video.py")
+        if not _gen_py:
+            raise RuntimeError(
+                "L4 演示脚本 gen_l4_demo_video.py 未找到 (打包缺 --add-data? 已探测 "
+                "_MEIPASS 根/_MEIPASS/tools/源码 tools)")
+        _spec = importlib.util.spec_from_file_location("_l4demo_gen", _gen_py)
         _g = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_g)
         # 🛡 2026-09-10: 演示前重生成场景 XML (真实 peg 惯量) — GUI/引擎委托路径保确定性;
@@ -702,7 +1591,14 @@ class RealStateSpaceSim:
             pass
         self.log("🏆 L4 演示档: 来料转台把光模块水平旋转 90° (外力干扰) → 夹爪绕z姿态适配抓取 "
                  "→ 回正 → 插入 → 拔出 → AOI 镜头对焦点 → 光耦合精密操作 (全真物理, 无动画造假)")
-        _demo = _g.L4Demo(seed=0, log=self.log, record=False)
+        _demo = _g.L4Demo(seed=0, log=self.log, record=False,
+                          mani_yaw=bool(getattr(self, "_mani_yaw_exec", False)))
+        if getattr(self, "_mani_yaw_exec", False):
+            self.log("🧠 L4 演示档 · 夹爪 yaw 指令来源 = **流形预测器** (Arm B): "
+                     "② 段每帧真调预测器 (候选角打分 → φ* → 下发角); 3D 面板会标注来源/φ*/前向次数")
+        else:
+            self.log("🧭 L4 演示档 · 夹爪 yaw 指令来源 = 脚本开环 (Arm A, 固定 90° 计划角); "
+                     "流形预测器仅旁路出数 (钩「🧠 流形 yaw 执行」可切成预测器决策)")
         try:
             ok, meta = _demo.run_all()
         finally:
@@ -755,7 +1651,7 @@ class RealStateSpaceSim:
         env = self.env
         self._reset(self.seed)
         # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)
-        if getattr(self, "_mm_on", False) and self.muscle is not None:
+        if getattr(self, "_mm_obs", False) and self.muscle is not None:
             try:
                 self.muscle.begin_episode(self.seed)
             except Exception:
@@ -770,6 +1666,11 @@ class RealStateSpaceSim:
               #   mani_*, 非 io_trace; 真实化轨迹此前无 → Scope 流形格空 = 老倪"流形没输出")
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "mani_rem": [], "mani_dperp": [], "mani_pred": [],   # 🧠 2026-09-08: JEPA 预测流形 (旁路 6 维)
+              # 🧠 2026-09-11 INTACT 二态意图 (L4升级): m_local(接触流形切向) / m_goal(性能流形梯度)
+              #   + 同构核验 cos (两态方向一致度: 自由空间应≈1, 接触约束下分工)
+              "m_local": [], "m_goal": [], "intent_iso": [],
+              # 🎯 2026-09-11 L4 干扰可视: 转台 yaw (3D 转台盘十字刻度随它旋转 — 干扰的机构证据)
+              "tt_yaw": [],
               "z7_vec": [],   # 🧠 2026-09-09: 旁路 z R7 (夹持后 x→光模块头) 供 predictor 训练同构采集
               "probe_seq": []}   # 🔭 2026-09-05: 每步前馈探针 (播放逐帧同步直方图/归因)
         done = False
@@ -783,8 +1684,27 @@ class RealStateSpaceSim:
             # ① 上一拍控制器指令 → metaworld 动作 → 真实物理
             u_vec = getattr(self, "_u_vec", np.zeros(4))
             act = np.zeros(4)
-            act[:3] = np.clip(u_vec[:3] / K_ACT, -1.0, 1.0)
-            act[3] = GRIP_CLOSE if u_vec[3] > 0.5 else GRIP_OPEN
+            # 🎯 2026-09-12 Step 1「模型直驱」: _direct_act 非 None 时, 该值**就是 env 级动作**
+            #   (dx,dy,dz,gripper; ±1 量纲) → 直接 env.step, 不再经 u/K_ACT 换算与夹爪阈值化。
+            #   与原生项目一致: 模型输出 action → env.step(action), 中间没有别的控制器。
+            #   默认 None = 既有行为零改变 (解析链/MLP 路径不受影响)。
+            _dact = getattr(self, "_direct_act", None)
+            if _dact is not None:
+                act = np.clip(np.asarray(_dact, dtype=float).ravel()[:4], -1.0, 1.0)
+            else:
+                act[:3] = np.clip(u_vec[:3] / K_ACT, -1.0, 1.0)
+            # 🎯 2026-09-10 重夹窗口 (老倪攻抓取鲁棒性): 滑移时**先重夹**而不是回退。
+            #   起因: 回退(→抓取之前)会让 gripper_cmd() 返回 0 = 张爪 → 真掉件 → 死循环。
+            #   这里在检测到"peg 在夹爪内缓慢下滑"时, 强制闭合 N 帧让夹爪再咬一次。
+            if _dact is not None:
+                pass                       # 直驱: 夹爪值已由模型给出 (act[3] 已赋值, 不再阈值化/重夹)
+            elif getattr(self, "_regrip", 0) > 0:
+                act[3] = GRIP_CLOSE
+                self._regrip -= 1
+                if self._regrip == 0:
+                    self.log("🦾 重夹窗口结束 → 继续任务 (不走回退)")
+            else:
+                act[3] = GRIP_CLOSE if u_vec[3] > 0.5 else GRIP_OPEN
             try:
                 env.step(act)
             except ValueError:
@@ -889,10 +1809,23 @@ class RealStateSpaceSim:
                                   _pc, self._goal_p(), np.zeros(3), np.zeros(2)])
             prev = self.obs_prev if self.obs_prev is not None else cur
             target = self._stage_target()
+            # 🎯 S3' decoder v1 (SS_TDEC=1): 上述规则 target 换成 "意图(阶段+现场几何) → target"
+            #   的学习版; 默认关 → 行为与既有完全一致。规则版永远是兜底 (decoder 载入失败/关闭)。
+            if getattr(self, "_tdec_on", False) and self._tdec is not None:
+                try:
+                    # 🐛 2026-09-10: 第4特征必须是 geom["goal"] (=site('goal'), 插入终点) —
+                    #   训练数据用 site('goal'); 原写 _hole_p()=site('hole') 差一个孔深偏移 → 全崩 0/8 实锤
+                    target = self._tdec.predict(
+                        self.sched.stage(), self.x,
+                        getattr(self, "_peg_cur", self.geom["peg_grasp"]), self._goal_p())
+                    self._tdec_hits += 1
+                except Exception as _te:
+                    self._tdec_on = False
+                    self.log(f"⚠️ target-decoder 失效 → 回退规则 target: {_te}")
             # 🧠 2026-09-07 肌肉记忆 (仿小脑): ①观察 — 每帧记录 (stage, x, u_exec);
             #   ②快通道 — 固化标杆后整段 u_exec 重放 (跳过 MLP 精算, "练熟的动作
             #   小脑直接给力"); 安全链 (decide/反馈/饱和限幅) 全保留。
-            if getattr(self, "_mm_on", False) and self.muscle is not None:
+            if getattr(self, "_mm_obs", False) and self.muscle is not None:
                 try:
                     _stg = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
                     if _stg != self._mm_stage:          # 阶段切换 → 段步计数重置
@@ -915,6 +1848,62 @@ class RealStateSpaceSim:
             st_now = self.sched.stage()
             u_ff = (self.accel.analytic_forward(obs) if st_now == "插入"
                     else self.accel.forward(obs))
+            # 🧠 2026-09-10 L3 真执行 (SS_L3=1 老倪: 模型当执行者): xyz 由 SmolVLA-Lew
+            #   模型输出 (gripper 保持状态机 — 模型二值回归不准); 每 4 步推理一次 (对齐训练帧率)
+            #   ⚠️ 生产默认关闭 (SS_L3 不设 = 解析链, 46.4%); 本开关用于 DAgger 迭代实验
+            if os.environ.get("SS_L3") == "1":
+                try:
+                    _l3n = int(os.environ.get("SS_L3_EVERY", "4"))
+                    _expert = np.asarray(u_ff, dtype=float).copy()   # 🎓 DAgger 专家标签 (解析链动作)
+                    if getattr(self, "_l3_cache", None) is None or (step % _l3n == 0):
+                        # 🎯 2026-09-10 真根因修正 (接管卡死"转移2318帧"):
+                        #   训练数据 state = **env._get_obs()** (采集脚本/rollout 同款口径), 而引擎
+                        #   自构造的 visual39 = concat([cur,prev,target]) 与之**不同源** (实测仅 15/39
+                        #   维相同, 全维最大差 1.24m) → 模型读到"另一个分布" → 动作全错 → 接管必卡死。
+                        #   传 env 原生观测 o 才是与训练同分布。rollout_smolvla_lew.py 正是这么做的。
+                        _u3 = self._l3_forward(o)
+                        if _u3 is not None:
+                            self._l3_cache = _u3
+                    if getattr(self, "_l3_cache", None) is not None:
+                        _model_act = np.asarray(self._l3_cache, dtype=float)[:4]
+                        self._l3_calls = getattr(self, "_l3_calls", 0) + 1
+                        # 🧠 2026-09-10 (老倪: 集成新模型到状态空间 + 不回退红线):
+                        #   SS_L3_SHADOW=1 → **影子集成**: L3 模型真推理、真记录 (建议 vs 解析链实际),
+                        #   但**不接管**执行 → L2 解析链保证成功率, 集成零回退风险。
+                        #   理由: v10_fast 新模型 xyz 平均|相关| 仅 0.032 (旧 v9 0.182, 阈值 0.5);
+                        #   直接接管必然把成功率打下去 → 违反"新模型接入不得回退"的红线。
+                        if os.environ.get("SS_L3_SHADOW") == "1":
+                            _d3 = float(np.linalg.norm(_model_act[:3] - np.asarray(u_ff, float)[:3]))
+                            if getattr(self, "_l3_shadow", None) is None:
+                                self._l3_shadow = []
+                            if step % max(1, _l3n) == 0:
+                                self._l3_shadow.append((str(st_now), _d3))
+                        else:
+                            # 🎯 2026-09-10 语义修正 (接管卡死第三处根因): 模型输出的是
+                            #   **metaworld act (±1)**, 而引擎的 u_ff 语义是"速度指令 (m/s)",
+                            #   下游 act = u_ff / K_ACT → 必须做反变换 u_ff = act × K_ACT。
+                            #   否则模型动作被放大 1/K_ACT = 2 倍 (0.5 → 满速) → 冲过头 → 卡死。
+                            _m3 = np.clip(_model_act[:3], -1.0, 1.0) * K_ACT
+                            u_ff = np.concatenate([_m3, [u_ff[3]]])
+                        # 🎓 DAgger 记录 (SS_DAGGER=1): 模型所处状态 + 专家动作 + 模型动作
+                        if os.environ.get("SS_DAGGER") == "1":
+                            if getattr(self, "_dagger_buf", None) is None:
+                                self._dagger_buf = {"frame": [], "state": [], "expert": [],
+                                                    "model": [], "stage": [], "t": []}
+                            if step % _l3n == 0:   # 与推理同频存帧 (控内存)
+                                try:
+                                    _f = self._render_frame()
+                                except Exception:
+                                    _f = np.zeros((480, 480, 3), np.uint8)
+                                self._dagger_buf["frame"].append(_f)
+                                self._dagger_buf["state"].append(
+                                    np.asarray(visual39, dtype=np.float32).copy())
+                                self._dagger_buf["expert"].append(_expert.copy())
+                                self._dagger_buf["model"].append(_model_act.copy())
+                                self._dagger_buf["stage"].append(str(st_now))
+                                self._dagger_buf["t"].append(float(step))
+                except Exception:
+                    pass
             # 🧠 2026-09-07 肌肉记忆快通道 (仿小脑): 固化标杆后整段 u_exec 直接重放 —
             #   "动作练熟, 小脑自动执行": 前馈 u_ff = 标杆序列同帧值 (跳过 MLP 精算);
             #   安全链 (decide/反馈/饱和限幅) 全保留 — 若环境异常偏离, 残差/接触反馈
@@ -937,6 +1926,89 @@ class RealStateSpaceSim:
                         self.log(f"🧠 肌肉记忆快通道: {_stn} 段标杆 u_exec 重放 (小脑接管前馈)")
                     self._mm_hits += 1
                     self._mm_i += 1
+            # 🎯 S3' 意图直读 (2026-09-10): 与快通道同一 u_ff 槽位, 来源换成"按意图查表"
+            #   (阶段 + 段入口状态) → 动作基, 跨场景共享。默认关 (SS_INTENT=1 开),
+            #   与 _mm_on 互斥 → 既有行为零改变。下游 L2 三件套 (前馈/估计/预测) 全不动。
+            if (getattr(self, "_intent_on", False) and self._intent_dec is not None
+                    and not getattr(self, "_mm_on", False)):
+                if _stn != getattr(self, "_int_seg", ""):
+                    self._int_seg = _stn
+                    self._int_i = 0
+                    if _stn in ("接近", "对位", "下降", "抓取", "抬起"):
+                        _iu, _im = self._intent_dec.query(_stn, self.peg_head())
+                        self._int_u = _iu
+                        self._int_src = _im
+                        if _iu is not None and self._int_hits == 0:
+                            self.log(f"🎯 意图直读: {_stn} 段 ← 意图最近邻 seed{_im.get('src_seed')} "
+                                     f"(d={_im.get('dist')}m, {_im.get('frames')}帧) 接管前馈")
+                    else:
+                        self._int_u = None   # 转移/插入/完成: 实时决策 (毫米级, 同快通道口径)
+                if self._int_u is not None and self._int_i < len(self._int_u):
+                    u_ff = self._int_u[self._int_i]
+                    self._int_hits += 1
+                    self._int_i += 1
+            # 🦾 S4 运动基元快通道 (2026-09-10): 与 _mm_on/_intent_on 同槽位, 三选一。
+            #   来源 = MotorHub 共享基元(多 seed 平均模板) → 跨场景泛化;
+            #   下游 ⚡前馈加速器/🔮估计器/📈预测器 一律不动, 伺服残差照旧修正。
+            if (getattr(self, "_mhub_on", False) and self._mhub is not None
+                    and not getattr(self, "_mm_on", False) and not getattr(self, "_intent_on", False)):
+                if _stn != getattr(self, "_mh_seg", ""):
+                    self._mh_seg = _stn
+                    self._mh_i = 0
+                    # 🛑 口径同 _mm 快通道: **只在 5 个前段用共享基元**;
+                    #   转移/插入/完成 = 毫米级接触/精插 → 必须实时决策(解析伺服),
+                    #   用"多 seed 平均模板"插一定崩 (09-10 实测: 全段套用 → 0/5 回退!)
+                    if _stn in ("接近", "对位", "下降", "抓取", "抬起"):
+                        # SS_MOTOR_HUB=2 → 版本 B: 基元 + 现场几何调制(方向/幅值按现场解算)
+                        # SS_MOTOR_HUB=1 → 版本 A: 纯模板重放
+                        if os.environ.get("SS_MOTOR_HUB") == "2":
+                            _mhu, _mhm = self._mhub.query_modulated(
+                                _stn, self.peg_head(), self._stage_target())
+                        else:
+                            _mhu, _mhm = self._mhub.query(_stn)
+                        self._mh_u, self._mh_meta = _mhu, _mhm
+                        if _mhu is not None and self._mh_hits == 0:
+                            self.log(f"🦾 运动基元: {_stn} 段 ← 共享基元#{_mhm.get('primitive')} "
+                                     f"{_mhm.get('name')} ({_mhm.get('dur'):.0f}帧/{_mhm.get('n_src')}源) 接管前馈")
+                    else:
+                        self._mh_u = None
+                if self._mh_u is not None and self._mh_i < len(self._mh_u):
+                    u_ff = self._mh_u[self._mh_i]
+                    self._mh_hits += 1
+                    self._mh_i += 1
+            # 🔮 S3 影子模式 (2026-09-10): 全段 (含插入/完成) 标杆 vs 实际决策 同帧对比 —
+            #   只记录不接管。产出: du (动作差, L2 先验与实时决策的差距) / dx (同帧位置差,
+            #   "若用标杆会不会跑偏") → 段末给 gate_ok(2mm) 判定该段标杆可用性。
+            if getattr(self, "_shadow_on", False) and self.muscle is not None:
+                try:
+                    if _stn != getattr(self, "_sh_seg", ""):
+                        self._sh_seg = _stn
+                        self._sh_i = 0
+                        _su, _sx = self.muscle.get_champ(self.seed, _stn)
+                        self._sh_u, self._sh_x = _su, _sx
+                    if self._sh_u is not None and self._sh_i < len(self._sh_u):
+                        _acc = self._sh_acc.setdefault(_stn, {"n": 0, "du": 0.0, "du_max": 0.0,
+                                                              "dx": 0.0, "dx_max": 0.0})
+                        _acc["n"] += 1
+                        try:
+                            _du = float(np.linalg.norm(np.asarray(self._sh_u[self._sh_i], float)
+                                                       - np.asarray(u_ff, float)))
+                        except Exception:
+                            _du = 0.0
+                        _acc["du"] += _du
+                        _acc["du_max"] = max(_acc["du_max"], _du)
+                        if self._sh_x is not None and self._sh_i < len(self._sh_x):
+                            try:
+                                _dx = float(np.linalg.norm(
+                                    np.asarray(self._sh_x[self._sh_i], float)[:3]
+                                    - np.asarray(self.x, float)[:3]))
+                                _acc["dx"] += _dx
+                                _acc["dx_max"] = max(_acc["dx_max"], _dx)
+                            except Exception:
+                                pass
+                        self._sh_i += 1
+                except Exception:
+                    pass
             act4 = np.concatenate([self.u_prev[:3], [0.0]])
             latent_pred = self.est.predict(self.latent, act4)
             prior = self.dyn.predict(self.latent, act4)
@@ -962,6 +2034,99 @@ class RealStateSpaceSim:
                             if self.res_ema is not None
                             else np.asarray(residual, dtype=float).copy())
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
+            # 🎯 2026-09-12 Step 1 (老倪: "Action 接入前馈加速器"): INTACT 动作进 u_ff 槽位。
+            #   三档: 不设 SS_INTACT = 现状 (解析/MLP); SS_INTACT_SHADOW=1 = 影子 (真推理真记录,
+            #   不接管执行, 零回退风险); 否则 = 接管 xyz (gripper 仍由状态机 — 同 SS_L3 纪律)。
+            #   阶段白名单默认排除"插入" (插入段引擎恒用解析伺服, 保持既有 mm 级精插)。
+            #   未标定/异常/映射拒绝 → 保持原 u_ff, 但计数 + 记录来源 (不做静默回退)。
+            if os.environ.get("SS_INTACT") == "1" and self._intact_node is not None:
+                if st_now in self._intact_stages:
+                    _u_i = self._intact_u_ff(str(st_now))
+                    if _u_i is not None:
+                        _d = float(np.linalg.norm(np.asarray(_u_i, float)[:3]
+                                                 - np.asarray(u_ff, float)[:3]))
+                        self._intact_stats["shift"].append(_d)
+                        if not self._intact_shadow:
+                            u_ff = np.concatenate([np.asarray(_u_i, float)[:3], [u_ff[3]]])
+            # 🎯 2026-09-13 老倪 (L4 → decoder → L3): metaworld 数据源 → INTACT 策略 → 意图解码器 →
+            #   本 u_ff 槽位 (与 L3 的 ssdec→ssff 同一融合点) + L3 条件向量 (标定后生效)。
+            #   三档同 SS_INTACT 纪律: 不设 SS_L4_INTACT = **逐位零变化** / _SHADOW=1 = 影子真记录不接管 /
+            #   =1 = 接管 (按解码器置信度 w 融合: u_ff = (1−w)·analytic + w·L4, w=0 → 原值不变)。
+            #   与 SS_INTACT 的差别: 走 decoder 量纲逆运算, **不需要标定文件**; 未就绪/异常 → 计数 + 记来源。
+            # 🧬 直连线动作输入 = 本帧前馈参考 (与训练同源: 训练时喂的就是引擎真实下发的 u)
+            self._u_ff_last = np.asarray(u_ff, float).copy()
+            if os.environ.get("SS_L4_INTACT") == "1" and self._intact_node is not None:
+                if st_now in self._l4_stages:
+                    _r4 = self._l4_intact_u_ff(str(st_now))
+                    if _r4 is not None:
+                        _u4, _w4 = _r4
+                        self._l4_stats["shift"].append(float(np.linalg.norm(
+                            np.asarray(_u4, float)[:3] - np.asarray(u_ff, float)[:3])))
+                        # 🛡 L2 收口闸 (2026-09-15 实测驱动, 不是防患于未然):
+                        #   diag_u_trace 实测直驱档 u 在 y 轴恒定撞限幅 (−0.1239), |u| 是解析链的
+                        #   2.3×, 末端 60 帧飞 243mm 朝错误方向 → 600 帧永远停在"接近", 从没到过
+                        #   下降/插入(所以"插入段白名单解禁"是空操作, 已证)。上层提案越界时 L2 必须
+                        #   否决 (架构原则: 每层只能收窄可行域, 不放大)。
+                        #   两条闸: ①方向与下层参考相反 (cos<0) → 拒; ②幅度 > 1.5× 下层参考 → 拒;
+                        #   通过者按方向一致度加权 (w_eff = w·cos) — 越接近下层意图, 越允许注入。
+                        #   不设 SS_L4_INTACT_GATE=0 时默认生效; =0 可复现旧行为 (A/B 对照用)。
+                        if os.environ.get("SS_L4_INTACT_GATE", "1") == "1" and _w4 > 0:
+                            _ua = np.asarray(u_ff, float)[:3].copy()
+                            _up = np.asarray(_u4, float)[:3]
+                            _na, _np2 = float(np.linalg.norm(_ua)), float(np.linalg.norm(_up))
+                            _cos = (float(_ua @ _up) / (_na * _np2)
+                                    if _na > 1e-9 and _np2 > 1e-9 else 0.0)
+                            _mag = (_np2 / _na) if _na > 1e-9 else float("inf")
+                            if _cos < 0.0 or _mag > 1.5:
+                                self._l4_stats["l2_veto"] = self._l4_stats.get("l2_veto", 0) + 1
+                                if _cos < 0.0:
+                                    self._l4_stats["l2_veto_dir"] = \
+                                        self._l4_stats.get("l2_veto_dir", 0) + 1
+                                else:
+                                    self._l4_stats["l2_veto_mag"] = \
+                                        self._l4_stats.get("l2_veto_mag", 0) + 1
+                                _w4 = 0.0
+                            else:
+                                _w4 = _w4 * max(_cos, 0.0)
+                                self._l4_stats["gate_pass"] = self._l4_stats.get("gate_pass", 0) + 1
+                        if _w4 > 0:
+                            _b = ((1.0 - _w4) * np.asarray(u_ff, float)[:3]
+                                  + _w4 * np.asarray(_u4, float)[:3])
+                            u_ff = np.concatenate([_b, [u_ff[3]]])
+                            self._l4_stats["blend"] += 1
+                        else:
+                            self._l4_stats["w_zero"] += 1
+                    tr.setdefault("l4_w", []).append(float(self._l4_stats.get("w") or 0.0))
+                    tr.setdefault("l4_u_ff_vec", []).append(
+                        None if self._l4_last_u is None else
+                        np.asarray(self._l4_last_u, float).copy())
+                    tr.setdefault("l4_cond_vec", []).append(
+                        None if self._l4_cond is None else np.asarray(self._l4_cond, float).copy())
+            # 🧬 2026-09-14 直连线融合 (老倪原则: 上层只给意图, 执行由 L2 收口):
+            #   u_ff ← proj_{U_L2}((1−w)·u_ff + w·u_int)  —— 越界必夹紧 (I2) 并记账
+            #   ★ 唯一执行出口不变: 紧接着的 sched.decide + safety.saturate 一行未动 (I1)
+            if (os.environ.get("SS_L4_INTENT_LINE") == "1" and self._il_last is not None
+                    and self._il_stack is not None):
+                _ui, _wi, _ii = self._il_last
+                _stk = self._il_stack
+                _stk.note_l2(np.asarray(u_ff, float), src="analytic/L3 参考")
+                _stk.note_l4(_ii.get("m_int"), str(_ii.get("src") or ""), _wi, ready=self._il_ready)
+                _mrg, _info = _stk.commit(u_l2=np.asarray(u_ff, float)[:3],
+                                         u_up=np.asarray(_ui, float)[:3], w_up=_wi)
+                if _wi > 0.0:
+                    u_ff = np.concatenate([_mrg, [u_ff[3]]])
+                    self._il_stats["applied"] += 1
+                    # 🧮 逐阶段注入计数 (2026-09-15: 取证"插入段到底有没有被直连线覆盖" —
+                    #   不靠推断, 直接数; 阶段白名单默认排除"插入" → 该键默认应为空)
+                    _bs = self._il_stats.setdefault("by_stage", {})
+                    _sk = str(st_now)
+                    _bs[_sk] = _bs.get(_sk, 0) + 1
+                    self._il_stats["clip_max"] = max(float(self._il_stats["clip_max"]),
+                                                     float(_info.get("clip") or 0.0))
+                tr.setdefault("il_w", []).append(float(_wi))
+                tr.setdefault("il_u_ff_vec", []).append(np.asarray(_ui, float).copy())
+                tr.setdefault("il_manifold_vec", []).append(
+                    np.asarray(_ii.get("manifold"), float).copy())
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
             # 🧠 前馈探针 (真实 MLP 激活, 诊断通道): 2026-09-08 老倪目检实锤 — 真实化主路径
@@ -986,8 +2151,19 @@ class RealStateSpaceSim:
             if np.ndim(u) == 0:
                 u = np.zeros(4)
             u = np.asarray(u, dtype=float).copy()
-            u[3] = self.sched.gripper_cmd(u_ff[3])
-            u_sat = self.safety.saturate(u, limit=0.6)
+            # 🦾 2026-09-10 (老倪直攻滑脱): 回退重抓期间**保持闭合**。
+            #   死循环的爆点是"滑移 → 回退到抓取之前 → gripper_cmd()=0 → 张爪 → 件真掉 → 再抓再滑"。
+            #   只要工件仍在夹爪范围内(未落回台面), 就不许张爪; 确实脱落才允许松开重抓。
+            _keep_closed = False
+            if not getattr(self, "_drop_ready", False) and self._peg_cur is not None:
+                try:
+                    _off_now = float(np.linalg.norm(np.asarray(self._peg_cur, float)[:3] - self.x))
+                    _peg_low = float(np.asarray(self._peg_cur, float)[2]) < 0.060   # 落回台面高度
+                    _keep_closed = bool(_off_now < 0.045 and not _peg_low)
+                except Exception:
+                    _keep_closed = False
+            u[3] = self.sched.gripper_cmd(u_ff[3], keep_closed=_keep_closed)
+            u_sat = self.safety.saturate(u, limit=float(os.environ.get("SS_LIMIT", "0.6")))
             u_sat = np.asarray(u_sat, dtype=float).copy()
             u_sat[3] = float(u[3])
             # 🚀 2026-09-08 L3 扩展: 放下放件 — 到位后开爪指令直接覆盖 (状态机保持
@@ -1036,9 +2212,42 @@ class RealStateSpaceSim:
                 elif self._jiggle <= 0 and self._lew_corr <= 0:   # 不在回撤/修正窗口才累计
                     if float(np.linalg.norm(u_sat[:2])) > 0.03:   # 指令仍在水平推
                         self._stall += 1
-                        if self._stall >= INSERT_STALL_FRAMES:
+                        # 🧠 2026-09-15 ⑤ m_stop 交权专家 (SS_MSTOP=1 开; 默认关 = 零回退):
+                        #   用**已训流形专家**的预测 (risk 高 + progress 停滞) 提前判定"这条策略
+                        #   走不通, 交给下层专家 (回退重抓)", 而不是只等硬编码 INSERT_STALL_FRAMES 帧。
+                        _mstop_hit = False
+                        if (os.environ.get("SS_MSTOP") == "1" and str(st_now).startswith("插入")
+                                and getattr(self, "_mani_last", None) is not None):
+                            _ml = self._mani_last
+                            _hist = getattr(self, "_mstop_prog_hist", [])
+                            _hist.append(float(_ml.get("progress") or 0.0))
+                            self._mstop_prog_hist = _hist[-12:]
+                            _flat = (len(_hist) >= 8
+                                     and abs(_hist[-1] - _hist[0]) < float(
+                                         os.environ.get("SS_MSTOP_FLAT", "0.02")))
+                            _risk_hi = float(_ml.get("risk") or 0.0) >= float(
+                                os.environ.get("SS_MSTOP_RISK", "0.5"))
+                            if _flat and _risk_hi:
+                                _mstop_hit = True
+                                self._mstop_events = getattr(self, "_mstop_events", 0) + 1
+                                self.log(f"🧠 m_stop 交权专家: 专家 risk={_ml['risk']:.2f}≥阈值 且 "
+                                         f"progress 停滞 {_hist[0]:.3f}→{_hist[-1]:.3f} → 提前交权"
+                                         f" (第{self._mstop_events}次, 帧{_ml['frame']})")
+                        if _mstop_hit or self._stall >= INSERT_STALL_FRAMES:
                             self._stall = 0
                             self._stall_events += 1
+                            # 🌀 螺旋搜索优先 (老倪 2026-09-10 直攻插入鲁棒性): 遇阻先"搜"不先"退"。
+                            #   "回撤后重对"是重试, 同样偏差必然再顶住; 螺旋是主动搜索, 能真正找到孔。
+                            _spiral_started = False
+                            if (SPIRAL_ENABLE and getattr(self, "_spiral", 0) <= 0
+                                    and getattr(self, "_spiral_tries", 0) < SPIRAL_TRIES):
+                                self._spiral_tries += 1
+                                self._spiral = SPIRAL_FRAMES
+                                self._spiral_t = 0
+                                _spiral_started = True
+                                self.log(f"🌀 遇阻#{self._stall_events} → 螺旋搜索 (第"
+                                         f"{self._spiral_tries}次, 半径 {SPIRAL_R0*1000:.1f}→"
+                                         f"{SPIRAL_RMAX*1000:.1f}mm, {SPIRAL_FRAMES}帧)")
                             # 🧠 2026-09-10 LEW 前视修正 (SS_LEW=transformer|mamba):
                             #   遇阻第 1-2 次先试 LEW 预测对心微调 (不盲目回退); 3 次才回退
                             _lew_ok = False
@@ -1061,6 +2270,7 @@ class RealStateSpaceSim:
                                         self._lew_off = np.clip(
                                             _dz[:2] / max(_dn, 1e-6), -1, 1) * 0.10
                                         self._lew_corr = 8   # 8 帧微调窗口
+                                        self._lew_d0 = float(self._insert_depth())  # 🐛 窗口起点深度 (结束校验用)
                                         self._jiggle = 0
                                         self._lew_ok = True
                                         self.log(f"🧠 LEW 前视遇阻修正: peg偏移预测"
@@ -1068,8 +2278,13 @@ class RealStateSpaceSim:
                                                  f" (SS_LEW={_lew_tag})")
                                 except Exception as _le:
                                     self.log(f"⚠️ LEW 修正失败: {_le}")
-                            if not _lew_ok:
+                            if not _lew_ok and not _spiral_started:
                                 self._jiggle = INSERT_JIGGLE_FRAMES    # 回撤窗口
+                            if _spiral_started:
+                                # 🌀 螺旋进行中: 既不回撤也不回退 (等搜索完成 — 孔间隙 1~2mm,
+                                #   半径 1.2→4.5mm 扫掠环带必覆盖真实孔位)
+                                self._jiggle = 0
+                                self._retreat_then = None
                             # 🐛 09-10 滑脱治本: 遇阻后 site-推算差 >5mm = peg 已滑 → 回接近
                             #   重抓刷新锁存 (原恒回转移 = 旧锁存对不准反复顶沿, seed1 实锤 7.4mm)
                             if self._stall_events >= 3:
@@ -1094,6 +2309,20 @@ class RealStateSpaceSim:
                                          f" [site-推算差="
                                          f"{np.linalg.norm(self.env.data.site_xpos[self._site_ph]-self.peg_head())*1000:.1f}mm"
                                          f" depth={_dnow*1000:.1f}mm]")
+                            # 🐛 2026-09-10 (静静) 夹持态回退守卫: 已夹着 peg 却回退到"接近/对位"
+                            #   → 接近/对位目标是 pg(实时光模块位置)+悬停高, 夹持时 pg 随夹爪动 =
+                            #   追不上的漂移目标 → 无限横向漂移死循环 (seed80 实测: 夹爪匀速漂走
+                            #   0.3m, 水平距离恒 94.5mm, 629 帧不动)。已夹持只能回"转移"(有孔口
+                            #   绝对目标), 不能回抓取前阶段。
+                            if self.grasped and self._retreat_then == 0:
+                                self._retreat_then = 5
+                                self.log("🛡 已夹持 → 回退强制改「转移重新对孔」"
+                                         " (防夹持态回对位追漂移目标死循环)")
+                            if _spiral_started:
+                                # 🌀 螺旋优先: 撤销上面安排的"回撤/回退" (等螺旋搜索完成)
+                                self._retreat_then = None
+                                self._jiggle = 0
+                                self._stall_events = 0
                     else:
                         self._stall = 0
             else:
@@ -1121,8 +2350,24 @@ class RealStateSpaceSim:
                 if off is not None and st_now == "插入" and self.grasped:
                     u_sat[0] += float(off[0])
                     u_sat[1] += float(off[1])
-                    if self._lew_corr == 0:
-                        self.log("🧠 LEW 微调结束 → 恢复推进")
+                if self._lew_corr == 0:
+                    # 🐛 2026-09-10 静静: 修正窗口结束必须**校验是否见效并计入遇阻次数**。
+                    #   原实现: 修正期间不计 stall、_stall_events 不增长 → "遇阻→修正→再遇阻→
+                    #   修正"无限循环, 永不触发回退 → seed1 实测 3/3 成功降到 1/3 (900 步耗尽)。
+                    #   修复: 无效 → _stall_events+1 (最多 2 次修正, 第 3 次走回退, 与 SS_LEW 关闭时一致)
+                    try:
+                        _d1 = float(self._insert_depth())
+                        if abs(_d1 - float(getattr(self, "_lew_d0", _d1))) < 0.0005:
+                            self._stall_events += 1
+                            self._stall = 0
+                            self.log(f"🧠 LEW 微调无改善 → 计入遇阻({self._stall_events}/3)")
+                        else:
+                            self._stall_events = 0
+                            self._stall = 0
+                            self.log("🧠 LEW 微调见效 → 继续推进")
+                    except Exception:
+                        pass
+                    self.log("🧠 LEW 微调结束 → 恢复推进")
             u_vec = self.execr.execute(u_sat)
             if np.ndim(u_vec) == 0:
                 u_vec = np.zeros(4)
@@ -1173,15 +2418,88 @@ class RealStateSpaceSim:
                         self.log(f"🎯 夹持真值锚定 (抬升试探 peg 跟手): off0="
                                  f"{np.round(self._grasp_off0,4)} "
                                  f"(视觉残差不再影响滑脱判定, 转移/插入走编码器)")
-                if float(np.linalg.norm(_off - self._grasp_off0)) > _slip_th:
-                    self.grasped = False                  # 掉了 → grasp_force 0 → 调度器回退重抓
-                    self._grasp_off0 = None
-                    self._off0_anchored = False
+                        # 🎯 2026-09-15 抓取点闭环补偿 (证据: 失败 seed 抓取点离头 112~124mm < 设计
+                        #   130mm → 夹爪深 6~18mm 压在治具上盖板 box#39 上, 插入同轴后推不动,
+                        #   depth 卡 ~28mm; 成功 seed 129~132mm 且插入段无治具接触)。
+                        # 🐛 2026-09-15 修正判据: 原用 3D 模 → 含"手到杆"的 ~110mm 垂直分量,
+                        #   把失败 seed 全误判为达标 (seed1 模 131mm 但沿杆轴只有 120mm)。改成
+                        #   **沿杆轴(x)分量** (杆轴=世界 x, 可由杆体轴向量取)。
+                        _hv = np.asarray(self._grasp_off0, float)[:3] + np.asarray(
+                            self.geom.get("head_off", np.zeros(3)), float)
+                        _reach = (abs(float(_hv[0]))
+                                  if os.environ.get("SS_GRASP_REACH_MODE", "norm") == "x"
+                                  else float(np.linalg.norm(_hv)))
+                        self._grasp_reach_log = (round(_reach * 1000, 1),
+                                                 round(float(np.linalg.norm(_hv)) * 1000, 1))
+                        if (os.environ.get("SS_GRASP_REACH_FIX", "1") == "1"
+                                and _reach < GRASP_MIN_REACH
+                                and int(getattr(self, "_grasp_fix_tries", 0)) < 2):
+                            self._grasp_fix_tries = int(getattr(self, "_grasp_fix_tries", 0)) + 1
+                            _need = min(GRASP_MIN_REACH - _reach, 0.02)
+                            self._grasp_dx_extra = float(getattr(self, "_grasp_dx_extra", 0.0)) + _need
+                            self.log(f"🧠 抓取点补偿: 抓取点离头(沿杆轴) {_reach*1000:.1f}mm < "
+                                     f"{GRASP_MIN_REACH*1000:.0f}mm (3D模 {np.linalg.norm(_hv)*1000:.1f}mm) "
+                                     f"→ 沿杆轴远头平移 {_need*1000:.1f}mm 重抓 (第{self._grasp_fix_tries}次)")
+                            self.grasped = False
+                            self._grasp_off0 = None
+                            self._off0_anchored = False
+                            try:
+                                self.sched._goto(0, "🧠 抓取点补偿 → 回接近重抓")
+                                self._reloc = True
+                            except Exception:
+                                pass
+                # 🎯 2026-09-10 滑脱判据改进 (seed11/12 边界误判实锤, 老倪攻抓取鲁棒性):
+                #   旧判据 |_off−_grasp_off0| > 8mm 会把"深夹后 peg 稳定停在 9mm 相对位移"
+                #   误判为滑脱 —— 实测 seed12 七次掉落全在 9.0~9.8mm (刚好越线), 而 seed7
+                #   (成功)几何相同却 0 次 → 这不是物理滑脱, 是**判据卡太死** → 反复回退重抓
+                #   → 死循环 (1500 步跑不完)。
+                #   新判据看**相对运动**(peg 在夹爪内滑动)而非相对位置:
+                #     · 连续 N 帧帧间偏移 > 4mm → 真滑脱 (物理上在滑)
+                #     · off 稳定(哪怕偏离 9mm) → 深夹正常状态, 不判
+                #     · 累计偏差放宽到 15mm 作保守兜底
+                _doff_now = (float(np.linalg.norm(_off - self._off_prev))
+                             if self._off_prev is not None else 0.0)
+                self._slip_run = self._slip_run + 1 if _doff_now > 0.004 else 0
+                _cum = (float(np.linalg.norm(_off - self._grasp_off0))
+                        if self._grasp_off0 is not None else 0.0)   # 🐛 09-15: 补偿重抓会把 off0 置 None
+                _give_up = False
+                if self._slip_run >= 5 or _cum > 0.015:
+                    if getattr(self, "_regrip_tries", 0) < 3:
+                        # 🦾 先重夹 (2026-09-10 老倪攻抓取鲁棒性): 滑移 ≠ 必须回退。
+                        #   回退会走到"抓取之前" → gripper_cmd()=0 → 张爪 → **真掉件** → 死循环。
+                        #   先强制闭合 15 帧让夹爪再咬一次; 重夹后 off 会回到锁存附近 → 继续任务。
+                        self._regrip_tries += 1
+                        self._regrip = 15
+                        self._slip_run = 0
+                        self.log(f"🦾 滑移 {_cum*1000:.0f}mm (第{self._regrip_tries}次) → 重夹窗口, 不回退")
+                    else:
+                        self.grasped = False              # 重夹 3 次仍滑 → 认输回退重抓
+                        self._grasp_off0 = None
+                        self._off0_anchored = False
+                        self._slip_run = 0
+                        self._regrip_tries = 0
+                        _give_up = True
+                        self.log(f"🔄 滑脱(累计{_cum*1000:.0f}mm, 重夹无效) → 回退重抓")
+
+                if _give_up:
                     # 🐛 强制回退到接近: 滑脱时 光模块 可能半挂在夹爪上 (z 未落回台面),
                     #   advance 的"落回台面"回退判据不触发 → 卡死在转移/插入 (ep1/2/4 350步实锤)
                     try:
                         if (self.sched.RETREAT_LO <= self.sched.stage_idx <= self.sched.RETREAT_HI):
                             self._went_back_0 = True    # 🚀 AOI 报告过程指标: 曾回抓
+                            # 🎯 2026-09-15 滑脱 → 抓取点平移搜索 (**默认关**: 实测 class-B seed
+                            #   2/4/5 无效 (86.94 不变 / 92.59→94.4 更差 / 不变), 且与"抓取点补偿"
+                            #   叠加会把已修好的 seed3 打回失败 (True→False) ⇒ 不是提升项, 保留旋钮)
+                            # ── 原设计意图 (取证: class-B 失败 seed 反复
+                            #   "滑移 15/16/18mm → 滑脱(19mm) → 回退重抓" 同一处再夹必再滑; 与
+                            #   抓取点补偿共用 `_grasp_dx_extra` 旋钮, 沿杆轴远头平移换夹点)。
+                            if (os.environ.get("SS_GRASP_SLIP_FIX", "0") == "1"
+                                    and int(getattr(self, "_grasp_slip_tries", 0)) < 2):
+                                self._grasp_slip_tries = int(getattr(self, "_grasp_slip_tries", 0)) + 1
+                                _add = float(os.environ.get("SS_GRASP_SLIP_SHIFT", "0.012"))
+                                self._grasp_dx_extra = float(getattr(self, "_grasp_dx_extra", 0.0)) + _add
+                                self.log(f"🧠 滑脱→抓取点平移搜索: 换夹点 +{_add*1000:.0f}mm "
+                                         f"(累计 {self._grasp_dx_extra*1000:.0f}mm, 第{self._grasp_slip_tries}次)")
                             self.sched._goto(0, "⚠️ 光模块滑脱 (peg 未随夹爪) → 强制回退重抓")
                             self._reloc = True     # 回接近 → 视觉重定位被碰移的销
                             self.log("⚠️ 光模块滑脱 → 强制回退接近重抓")
@@ -1248,6 +2566,20 @@ class RealStateSpaceSim:
             d_xy = self._d_xy_peg()
             dh = self._d_hole_h()
             depth = self._insert_depth()
+            # 🐢 2026-09-15 降落停滞计数 (只在插入段+夹持时; 成功路径 z 持续下降 → 恒 0, 零回退)
+            if str(self.sched.stage()).startswith("插入") and self.grasped:
+                _dzs = abs(float(ph[2] - self._hole_p()[2]))
+                _zp = getattr(self, "_descend_z_prev", None)
+                if _dzs > 0.0012:
+                    if _zp is not None and float(ph[2]) >= float(_zp) - 1e-4:
+                        self._descend_stall = int(getattr(self, "_descend_stall", 0)) + 1
+                    else:
+                        self._descend_stall = 0
+                else:
+                    self._descend_stall = 0
+                self._descend_z_prev = float(ph[2])
+            else:
+                self._descend_stall = 0
             lifted = float(ph[2]) - g["peg_z0"]
             # grasp_force = 夹持质量: 夹住且 光模块 随动 → 1; 掉件/空夹 → 0 (调度器回退判据)
             #   (放下放件中 _drop_released 后恒 0 — 该段不在调度器回退范围, 正常)
@@ -1352,10 +2684,43 @@ class RealStateSpaceSim:
                             predictor=_pred)
                         self._mani_pm = _MANI_MOD.PerformanceManifold(
                             hole_pos=self.geom["goal"], predictor=_pred)
+                        # 🧠 2026-09-11 L4 升级: INTACT 二态意图层 (流形实现, **保留流形**)
+                        #   流形 = 物理接地; 意图层 = 规划能力。二者正交互补, 不替换。
+                        #   m_local ≡ −e_par (接触流形切向, attached 全梯度) 
+                        #   m_goal  ≡ −∇V_p (性能流形梯度, stop-gradient 锚)
+                        #   两态同语法(Δz∈R³)由同一个 SharedIntentEncoder 消费 (共享参数)。
+                        try:
+                            from lerobot.manifold.intent_pair import (
+                                ManifoldIntentPair, SharedIntentEncoder)
+                            self._intent_pair = ManifoldIntentPair(self._mani_cm, self._mani_pm)
+                            self._intent_enc = SharedIntentEncoder(gain=1.0)
+                            self.log("🧠 L4 二态意图层已接 (INTACT): m_local(接触流形切向) / "
+                                     "m_goal(性能流形梯度) · 共享算子 + 非对称梯度 · 保留流形")
+                        except Exception as _ie:
+                            self._intent_pair = None
+                            self.log(f"⚠️ L4 意图层未接: {_ie}")
                     _ms2 = str(self.sched.stage()).replace("阶段 ", "").split("·")[0].strip()
                     _mc2 = self._mani_cm.decompose(self.x, ph, target,
                                                    getattr(self, "v", np.zeros(3)), _ms2)
                     _mp2 = self._mani_pm.evaluate(ph, stage=_ms2)
+                    # 🧠 2026-09-11 L4 二态意图 (INTACT): 每帧真算两态 + 同构核验
+                    #   (两态走同一语法; cos≈1 = 自由空间两态平行, 明显<1 = 接触约束下分工)
+                    if getattr(self, "_intent_pair", None) is not None:
+                        try:
+                            _ml, _il = self._intent_pair.local(
+                                self.x, ph, target, getattr(self, "v", np.zeros(3)), _ms2)
+                            _mg, _ig = self._intent_pair.goal(ph, stage=_ms2)
+                            tr["m_local"].append(np.asarray(_ml, float).ravel()[:3].copy())
+                            tr["m_goal"].append(np.asarray(_mg, float).ravel()[:3].copy())
+                            tr["intent_iso"].append(float(
+                                self._intent_pair.isomorph(_ml, _mg)["cos_sim"]))
+                        except Exception:
+                            pass
+                    # 🎯 2026-09-11 L4 干扰可视: 转台 yaw (3D 十字刻度随它转 = 干扰的机构证据)
+                    try:
+                        tr["tt_yaw"].append(float(getattr(self, "_l4_tt_yaw", 0.0)))
+                    except Exception:
+                        pass
                     # 🧠 JEPA 预测流形 (旁路对照): 几何潜空间 z R⁷ + 当前动作 → 预测流形坐标
                     # 🐛 2026-09-09: 夹持后 x→光模块头 (x+grasp_off0+head_off) — rem(头到孔底)
                     #   才可辨识 (插入段夹爪 x 几乎不动, 原 z7 无头位置 → rem 预测上限受限)
@@ -1397,6 +2762,12 @@ class RealStateSpaceSim:
                     tr["mani_eta"].append(float(_mp2["eta"]))
                     tr["mani_rem"].append(float(-_mp2["d_axial"]))
                     tr["mani_dperp"].append(float(_mp2["d_perp_norm"]))
+                    # 🧠 2026-09-15 ⑤ m_stop 交权: 存**已训流形专家**本帧信号 (供下帧决策用;
+                    #   默认不改变任何行为, 仅 SS_MSTOP=1 时被读)
+                    self._mani_last = {"risk": float(_mc2["risk"]), "progress": float(_mc2["progress"]),
+                                       "V": float(_mc2["V"]), "eta": float(_mp2["eta"]),
+                                       "rem": float(-_mp2["d_axial"]),
+                                       "dperp": float(_mp2["d_perp_norm"]), "frame": int(step)}
                     if _mpred is not None:
                         tr["mani_pred"].append(_mpred["manifold"][0].float().cpu().numpy())
                     else:
@@ -1431,12 +2802,17 @@ class RealStateSpaceSim:
             "vision": bool(self.vision),
             "done": bool(tr["done"][-1]) if tr["done"] else False,
             "mm_hits": int(getattr(self, "_mm_hits", 0)),
+            # 🎯 2026-09-11 L4 干扰可视 (老倪: "没看到 L4 光模块旋转角度"):
+            #   3D 的转台绘制(转台盘+十字刻度)只认 meta.demo_geom["turntable"] 与 tr["tt_yaw"],
+            #   原先仅 L4Demo 提供 → 引擎路径补上, 3D 即自动呈现"来料被转 90°"的机构证据。
+            "demo_geom": (getattr(self, "_l4_tt", None) or {}),
+            "jitter": dict(self._jitter_meta) if getattr(self, "_jitter_meta", None) else None,
         }
         # 📸 2026-09-08: VLM 关键帧随轨迹走 (node_ss_vlm 播放/双击取当前阶段真实帧编码)
         if getattr(self, "_key_frames", None):
             tr["key_frames"] = {k: np.asarray(v).copy() for k, v in self._key_frames.items()}
         # 🧠 2026-09-07 肌肉记忆: 本轮结束 — 成功轮提交段轨迹供固化/精进, 失败轮不固化
-        if getattr(self, "_mm_on", False) and self.muscle is not None:
+        if getattr(self, "_mm_obs", False) and self.muscle is not None:
             try:
                 _ok = bool(tr["done"][-1]) if tr["done"] else False
                 _r = self.muscle.end_episode(_ok)
@@ -1460,6 +2836,19 @@ class RealStateSpaceSim:
             tr["_meta"]["box_center"] = g["box_center"].copy()
         # 🧠 2026-09-09 分层记忆: 本轮结果入共享库 (L3 流程经验 + L4 预测质量 + meta)
         try:
+            # 🔮 S3 影子汇总 (2026-09-10, 只记录不接管): 全段 标杆 vs 实际决策 差异 + gate 判定
+            if getattr(self, "_sh_acc", None):
+                tr["shadow"] = {k: {"n": v["n"],
+                                    "du_mean": round(v["du"] / max(v["n"], 1), 5),
+                                    "du_max": round(v["du_max"], 5),
+                                    "dx_mean": round(v["dx"] / max(v["n"], 1), 5),
+                                    "dx_max": round(v["dx_max"], 5),
+                                    "gate_ok": bool(v["dx_max"] < 0.002)}
+                                for k, v in self._sh_acc.items()}
+                for _k, _v in tr["shadow"].items():
+                    self.log(f"🔮 S3 影子[{_k}]: du均值 {_v['du_mean']} max {_v['du_max']} | "
+                             f"dx均值 {_v['dx_mean']} max {_v['dx_max']} | "
+                             f"gate {'✅ 可用' if _v['gate_ok'] else '❌ 偏差大'}")
             self._write_shared_memory(tr)
         except Exception:
             pass
@@ -1509,8 +2898,21 @@ class RealStateSpaceSim:
                     "steps": n, "mae": mae,
                     "t": __import__("time").strftime("%m-%d %H:%M"),
                 }, cap=40)
+            if tr.get("shadow"):
+                _ms.put("l3", "shadow", {"seed": int(self.seed), "mode": self.mode,
+                                         "shadow": tr["shadow"],
+                                         "t": __import__("time").strftime("%m-%d %H:%M")}, cap=40)
             _ms.put("meta", "task", "光模块插拔 (insert/full)")
             _ms.put("meta", "cap", str(getattr(self, "_cap", "") or "L2"))
+            # 🧬 S1 记忆图谱 (2026-09-10 影子写, 不改控制路径): 层间链接 + L2 技能摘要同步
+            try:
+                from lerobot.memory import memory_graph as _mg
+                _mg.link({"seed": int(self.seed), "mode": self.mode,
+                          "cap": str(getattr(self, "_cap", "") or ""), "steps": n},
+                         _mg.stages_to_skills(stg), cause="run", l4_mae=mae)
+                _mg.sync_l2_from_muscle()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1606,6 +3008,16 @@ class RealStateSpaceSim:
                 "in": [("潜状态/先验", "估计器+动力学")],
                 "out": [("潜坐标 (位置3+预测力)", _lat),
                         ("速度场 prior−x̂₋", _vel)]},
+            # 🎯 INTACT 意图-动作 channel (2026-09-11 — 老倪: L4 加 INTACT 节点, 输出直连机器人硬件;
+            #   零搜索: candidate_sequences 恒 0。真调路径 = 画布节点双击 (node_logic.node_intact),
+            #   引擎侧在 S3 适配前**诚实标未接入**, 不写假 chunk)
+            "🧠 INTACT 意图-动作": {
+                "in": [("观测帧序列 (pixels T×224×224)", "3 帧滑窗 (history_size)"),
+                       ("目标意图 (goal 帧 / waypoint)", "数据源层"),
+                       ("动作历史 a_history", "raw 零 reset → 真实下发")],
+                "out": [("action chunk [H,D] (零搜索)", "(S3 前未接入引擎; 双击节点真调)"),
+                        ("策略/就绪", f"{os.environ.get('SS_INTACT_POLICY', 'direct')}(零搜索) · "
+                                     f"trained={_intact_ready()}")]},
             # 🧠 流形专家预测器 channel (2026-09-09 补 — 老倪: 预测器节点要有输入输出;
             #   引擎每帧真调 predict_manifold 的旁路结果发布到数据总线, 画布播放同源展示)
             "🧠 流形专家预测器": {

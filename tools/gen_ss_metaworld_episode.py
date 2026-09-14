@@ -24,6 +24,13 @@ import time
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 os.environ.setdefault("MUJOCO_EGL_DEVICE", "0")
+# 🐛 2026-09-11 (Windows CI/EXE): cp1252 控制台下表情/中文 print 抛 UnicodeEncodeError
+#   (GUI/CI 子进程捕获输出 → "视频生成失败") → 统一 UTF-8, 降级 replace。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))

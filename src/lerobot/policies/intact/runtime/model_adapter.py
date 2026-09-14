@@ -1,0 +1,211 @@
+# -*- coding: utf-8 -*-
+"""🧠 模型适配层 (intact_node.model_adapter) — 节点 ↔ INTACT-JEPA (跨 venv 子进程桥)。
+
+设计理由: INTACT 依赖 (stable_worldmodel / stable_pretraining / hydra) 只装在其自身 .venv,
+与本工程 venv 不兼容 → **常驻子进程 + 行式 JSON 协议** (tools/intact_worker.py)。
+节点侧只见 `get_action(info)` → `(actions, diagnostics)`; 不依赖任何 INTACT 内部符号。
+
+诚实标注: 依赖/权重缺失 → `trained=False` + `reason`, `get_action` 返回**零动作** (不许假动作)。
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import tempfile
+import threading
+
+import numpy as np
+
+DEFAULT_REPO = os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA")
+
+
+class IntactRuntime:
+    """INTACT 推理运行时 (子进程桥; 断点可进本类方法)。"""
+
+    def __init__(self, repo: str | None = None, venv_python: str | None = None,
+                 ckpt: str | None = None, task: str = "pusht",
+                 hf_repo: str = "INTACT-JEPA/INTACT", hf_rev: str = "paper-e5-goal-v1",
+                 device: str | None = None, policy: str = "direct", autostart: bool = True,
+                 policy_name: str | None = None, runtime_kind: str | None = None):
+        self.repo = repo or DEFAULT_REPO
+        self.venv_python = venv_python or os.path.join(self.repo, ".venv", "bin", "python")
+        self.ckpt, self.task = ckpt, task
+        self.hf_repo, self.hf_rev = hf_repo, hf_rev
+        # 🐛 2026-09-13: 原来 device 默认 "cuda" 且**总是**显式传 --device → 调用方设的
+        #   INTACT_DEVICE=cpu 被覆盖 (探针会去抢训练显存)。改成 None = 不传, 由 worker 读 env
+        #   (worker: --device default = $INTACT_DEVICE or "cuda") → 与同机训练共存时能真的走 CPU。
+        self.device = device
+        self.policy = policy
+        # 🐛 2026-09-13: 本域微调权重 (INTACT_POLICY=<本地 ckpt>) 是用**根运行时**训的
+        #   (action_dim=8), 而 worker 对 hf_rev=paper-* 默认选 paper 运行时 → 报
+        #   `InstantiationException: module.IntentActionActor` (论文运行时没有这个类)。
+        #   规则: $INTACT_RUNTIME 优先; 否则"有本地微调权重 → root"; 都没有 → None (worker 自定,
+        #   官方 HF paper 资产才走 paper)。
+        self.runtime_kind = (runtime_kind or os.environ.get("INTACT_RUNTIME")
+                             or ("root" if os.environ.get("INTACT_POLICY") else None))
+        self.policy_name = policy_name or os.environ.get(
+            "INTACT_POLICY", f"recovery_delta_full_{task}_s{os.environ.get('INTACT_SEED', '3072')}")
+        self.proc: subprocess.Popen | None = None
+        self.trained = False
+        self.reason: str | None = None
+        self.dims: dict = {}
+        # Step 0: 最近一次推理截获的潜空间 (z_t / z_goal / delta, 各 [B,192]); 无则空 dict
+        self.last_latent: dict = {}
+        self._lock = threading.Lock()
+        if autostart:
+            self.start()
+
+    # ── 可用性 (不启动进程, 只做静态检查) ──
+    def available(self) -> tuple[bool, str]:
+        if not os.path.isdir(self.repo):
+            return False, f"INTACT 仓库不存在: {self.repo}"
+        if not os.path.isfile(self.venv_python):
+            return False, f"INTACT venv 不存在: {self.venv_python} (先 bash scripts/install.sh cu124)"
+        return True, "ok"
+
+    # ── 本工程根 (含 tools/intact_worker.py) ──
+    def _project_root(self) -> str:
+        d = os.path.dirname(os.path.abspath(__file__))
+        while d != os.path.dirname(d) and not os.path.isfile(os.path.join(d, "tools", "intact_worker.py")):
+            d = os.path.dirname(d)
+        return d
+
+    # ── 启动 + 握手 ──
+    def start(self) -> bool:
+        ok, why = self.available()
+        if not ok:
+            self.reason = why
+            return False
+        # 找本工程根 (含 reports/ 或 tools/intact_worker.py)
+        d = self._project_root()
+        script = os.path.join(d, "tools", "intact_worker.py")
+        if not os.path.isfile(script):
+            script = "/home/ubuntu/lerobot-smolvla-lew/tools/intact_worker.py"
+        cmd = [self.venv_python, script, "--repo", self.repo, "--task", self.task,
+               "--hf-repo", self.hf_repo, "--hf-rev", self.hf_rev,
+               "--policy", self.policy,
+               "--policy-name", self.policy_name]
+        if self.device:               # 不传 → worker 用 $INTACT_DEVICE (默认 cuda)
+            cmd += ["--device", self.device]
+        if self.runtime_kind:         # root / paper (论文权重必须 paper)
+            cmd += ["--runtime", self.runtime_kind]
+        if self.ckpt:
+            cmd += ["--ckpt", self.ckpt]
+        # 🐛 2026-09-13 迁移实测踩到: 未设 STABLEWM_HOME 时旧代码退回 <repo>/.cache → 本工程权重
+        #   (stable-wm-cache/checkpoints/*) 全部找不到 (FileNotFoundError: Checkpoint not found)。
+        #   修正: 优先用**共享权重缓存** (与引擎/桥同一处), 只有它不存在才退回 repo/.cache。
+        _shared = os.environ.get("INTACT_STABLEWM_HOME") or "/home/ubuntu/stable-wm-cache"
+        _home = (os.environ.get("STABLEWM_HOME")
+                 or (_shared if os.path.isdir(_shared) else os.path.join(self.repo, ".cache")))
+        env = {**os.environ, "PYTHONUNBUFFERED": "1",
+               "STABLEWM_HOME": _home,
+               "LOCAL_DATASET_DIR": os.environ.get("LOCAL_DATASET_DIR", _home),
+               "MUJOCO_GL": os.environ.get("MUJOCO_GL", "egl")}
+        try:
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.DEVNULL, text=True, bufsize=1, env=env)
+            # ♻️ 2026-09-13 防僵尸: worker 崩退后没人 wait() → GUI 进程表里留 <defunct>
+            #   (实测: studio.py 里挂了 18 分钟的 [python] <defunct>)。守护线程 wait 一次即回收,
+            #   poll()/returncode 语义不变, 不影响行式 JSON 协议。
+            try:
+                import threading as _th
+                _th.Thread(target=self.proc.wait, daemon=True).start()
+            except Exception:
+                pass
+        except Exception as e:
+            self.reason = f"worker 启动失败: {type(e).__name__}: {e}"
+            return False
+        resp = self._rpc({"cmd": "hello"}, timeout=1800)     # 首次含 HF 下载 + 权重加载
+        if not resp.get("ok"):
+            self.reason = resp.get("reason") or "worker hello 失败"
+            return False
+        self.trained = bool(resp.get("trained"))
+        self.reason = resp.get("reason")
+        self.dims = resp.get("dims") or {}
+        return True
+
+    # ── 协议收发 ──
+    def _rpc(self, req: dict, timeout: float = 600.0) -> dict:
+        if self.proc is None or self.proc.poll() is not None:
+            return {"ok": False, "reason": self.reason or "worker 未运行"}
+        with self._lock:
+            try:
+                self.proc.stdin.write(json.dumps(req) + "\n")
+                self.proc.stdin.flush()
+            except Exception as e:
+                return {"ok": False, "reason": f"写 worker 失败: {e}"}
+            line = self.proc.stdout.readline()
+        if not line:
+            return {"ok": False, "reason": "worker 无响应 (可能崩溃, 见 stderr/日志)"}
+        try:
+            return json.loads(line)
+        except Exception as e:
+            return {"ok": False, "reason": f"worker 返回非 JSON: {e}: {line[:200]}"}
+
+    # ── 推理: info(dict of np/torch) → action chunk ──
+    def get_action(self, info: dict, horizon: int = 8) -> tuple[np.ndarray, dict]:
+        if not self.trained:
+            if self.proc is None:
+                self.start()
+            if not self.trained:                     # 仍不可用 → 零动作 (诚实)
+                d = self.dims.get("action_dim") or 4
+                return (np.zeros((int(horizon), int(d)), dtype=np.float32),
+                        {"trained": 0.0, "reason_zero_action": 1.0})
+        with tempfile.TemporaryDirectory() as td:
+            fin, fout = os.path.join(td, "in.npz"), os.path.join(td, "out.npz")
+            arrs = {}
+            for k, v in info.items():
+                if hasattr(v, "detach"):
+                    v = v.detach().cpu().numpy()
+                arrs[k] = np.asarray(v)
+            np.savez(fin, **arrs)
+            # 🔬 2026-09-13 调试配套: INTACT_KEEP_INPUT=1 → 把 worker 收到的**真实输入**(真渲染帧 +
+            #   goal + 动作历史) 留一份到 reports/intact_last_input.npz, 供 tools/intact_worker_debug.py
+            #   在 INTACT venv 里 in-process 重放 (那儿才打得到 INTACT 仓库模型代码的断点)。
+            if os.environ.get("INTACT_KEEP_INPUT"):
+                try:
+                    import shutil as _sh
+                    _keep = os.path.join(self._project_root(), "reports", "intact_last_input.npz")
+                    os.makedirs(os.path.dirname(_keep), exist_ok=True)
+                    _sh.copy2(fin, _keep)
+                    self.keep_input_path = _keep
+                except Exception:
+                    pass
+            resp = self._rpc({"cmd": "act", "in": fin, "out": fout, "horizon": int(horizon)})
+            if not resp.get("ok"):
+                self.reason = resp.get("reason") or "act 失败"
+                d = self.dims.get("action_dim") or 4
+                return (np.zeros((int(horizon), int(d)), dtype=np.float32),
+                        {"trained": 0.0, "act_failed": 1.0})
+            actions = np.load(fout)["actions"]
+            # ── Step 0: 潜空间随同返回 (worker 截获的 z_t/z_goal/delta; 缺失=空 dict 不报错) ──
+            lat: dict = {}
+            try:
+                with np.load(fout) as _z:
+                    lat = {k: _z[k] for k in ("z_t", "z_goal", "delta") if k in _z.files}
+            except Exception:
+                lat = {}
+            self.last_latent = lat
+            diag = {**dict(resp.get("diagnostics") or {}), "trained": 1.0}
+            if lat:
+                diag["latent_exported"] = 1.0
+            return actions, diag
+
+    def close(self) -> None:
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self._rpc({"cmd": "bye"}, timeout=5)
+            except Exception:
+                pass
+            try:
+                self.proc.terminate()
+            except Exception:
+                pass
+        self.proc = None
+
+    def info(self) -> dict:
+        return {"repo": self.repo, "trained": self.trained, "reason": self.reason,
+                "dims": self.dims, "policy": self.policy, "ckpt": self.ckpt,
+                "runtime": self.runtime_kind, "device": self.device,
+                "worker_alive": bool(self.proc is not None and self.proc.poll() is None)}

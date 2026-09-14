@@ -53,6 +53,9 @@ NODE_TYPES = {
     "pdf_report": {"cn": "PDF报告", "color": "#1f6feb"}, # 📄 Model Zoo技术选型报告生成 (2026-08-05 老倪)
     "skill":     {"cn": "原子技能", "color": "#00d4aa"},  # 🧩 原子技能 (2026-08-09 老倪: W²-VLA Token — 拖入画布→连结构条件→SYS1→action)
     "scene":     {"cn": "场景", "color": "#ff9f43"},     # 🏭 场景 (2026-08-09 老倪: 插拔/搬运/光学检测 — 点击打开 ECS 链接 + 建场景节点链)
+    # 🤖 2026-09-12 老倪: INTACT 标准机器人 (数据源层) + 机器人切换节点
+    "intact_robot": {"cn": "INTACT机器人", "color": "#00b4d8"},
+    "robot_switch": {"cn": "机器人切换", "color": "#f0a030"},
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 # 🔍 2026-08-25 老倪: "画布的方框有些小, 方框里面的字太挤, 重新排布一下"
@@ -62,6 +65,103 @@ COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
 #   放大到 280x110 + 每行按新宽度自动重排拉开间距 (_relayout_row_gaps)。
 DH = 110  # 节点高度 (84→110: 标题最多三行 + 上下留白)
 DW = 280  # 节点默认宽度 (240→280: 可用宽 204→228, 字不再贴徽章)
+# 🎨 2026-09-12 老倪: 「整个状态空间的节点 UI 统一优化 (字号/字数/不挤不裁)」——
+#   实测根因: 所有节点文字都写 QFont("Arial", ...), 而本机 Arial **不存在** → Qt 解析成
+#   Liberation Sans (只有西文字形) → 中文逐字回退到别的字体 ⇒ 同一行里中西文粗细/行高不一致,
+#   加上标题 9→8→7 逐节点自适应降字号 ⇒ 观感"大小不一/挤/显示不全"。
+#   统一规格 (全画布一致, 不再逐节点变): 统一字体族 + 固定字号 + 固定行数 + 超出省略号(+悬停显示全名)
+NODE_FONT = "Noto Sans CJK SC"   # 统一字体族 (实测本机可用, 中英度量一致; 缺则 Qt 回退系统默认)
+NODE_TITLE_PT = 9                # 标题固定 9pt Bold (取消 9/8/7 自适应)
+NODE_SUB_PT = 8                  # 次要文字固定 8pt
+NODE_PAD_L = 14                  # 标题左内边距
+NODE_PAD_R = 56                  # 标题右内边距 (给状态徽章留位)
+NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行省略号, 悬停看全名) 
+
+
+def _node_font(pt, bold=False):
+    """统一节点字体 (族名固定; 装不上时回退系统默认, 不再出现"Arial→Liberation"错配)。"""
+    f = QFont(NODE_FONT, pt)
+    f.setBold(bool(bold))
+    return f
+
+
+def _wrap_title(text, fm, avail, max_lines=NODE_TITLE_LINES):
+    """标题统一折行: 先按空格/·/()/符号断词, 再按字符填; 超出 max_lines →
+    返回 (lines, True) 由调用方给最后一行加省略号 (不再静默裁掉尾部字)。
+    返回值: (lines: list[str], truncated: bool)
+    """
+    text = str(text or "")
+    # 🐛 2026-09-13 崩溃修复: QFontMetrics.elidedText 宽度**必须 int** —
+    #   背景行 paint 里 avail_w 是 float (max(80.0, float(...))) → 标题需要省略号时
+    #   抛 TypeError: argument 3 has unexpected type 'float' → paint() 内异常 → Qt
+    #   Fatal Python error: Aborted 整个 GUI 直接崩 (实测: 新增长标题 L4 背景行触发)
+    avail = int(avail)
+    if avail <= 20 or not text:
+        return [text], False
+    if fm.horizontalAdvance(text) <= avail:
+        return [text], False
+    parts = (text.replace("·", " · ").replace("(", " ( ").replace(")", " ) ")
+                 .replace("+", " + ").replace("-", " - ").replace("/", " / ")
+                 .replace("：", " ： ").replace("，", " ， ")).split()
+    lines, cur = [], ""
+    for pt in (parts or [text]):
+        trial = (cur + " " + pt).strip()
+        if fm.horizontalAdvance(trial) <= avail or not cur:
+            cur = trial
+            continue
+        lines.append(cur)
+        cur = pt
+        if len(lines) >= max_lines:
+            break
+    if cur:
+        lines.append(cur)
+    if len(lines) <= max_lines and all(fm.horizontalAdvance(x) <= avail for x in lines):
+        return lines, False
+    # 按字符重排 (中文无空格) — 仍然只保留 max_lines 行
+    lines, cur = [], ""
+    for ch in text:
+        if fm.horizontalAdvance(cur + ch) <= avail or not cur:
+            cur += ch
+        else:
+            lines.append(cur)
+            cur = ch
+            if len(lines) >= max_lines:
+                break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    truncated = "".join(lines) != text
+    if truncated:
+        last = fm.elidedText(text[len("".join(lines[:-1])):], Qt.ElideRight,
+                             avail) if lines else fm.elidedText(text, Qt.ElideRight, avail)
+        lines = lines[:-1] + [last] if lines else [last]
+    return lines[:max_lines], truncated
+
+def autofit_node_width(node, max_w=380):
+    """🎨 2026-09-12 老倪「不裁字」: 按统一字号把节点宽度撑到"名字放得下"。
+
+    规则 (与绘制同一套度量, 所以撑过的框一定装得下):
+      · 单行放得下 → 不动; 需要更宽但 ≤max_w → 直接撑到单行宽 (最整齐)
+      · 单行超 max_w → 撑到"两行放得下"的宽度 (两行是标题上限)
+    返回 True = 改过宽度 (调用方用于统计/日志)。
+    """
+    try:
+        from PyQt5.QtGui import QFontMetrics as _FM
+        fm = _FM(_node_font(NODE_TITLE_PT, True))
+    except Exception:
+        return False
+    name = str(node.get("name") or "")
+    if not name or node.get("type") == "row_bg":
+        return False
+    w = int(node.get("w") or DW)
+    need1 = fm.horizontalAdvance(name) + NODE_PAD_L + NODE_PAD_R
+    if need1 <= w:
+        return False
+    if need1 <= max_w:
+        node["w"] = int(max(DW, need1))
+    else:
+        node["w"] = int(max(DW, min(max_w, need1 // 2 + NODE_PAD_L + NODE_PAD_R + 24)))
+    return True
+
 
 # 🎯 状态空间变量监控 → 画布连线映射 (2026-08-20 老倪: 选中右侧变量高亮对应连线)
 # 键 = state_space_sim.last_io 的模块名, 值 = state_space_obs.json 节点的 name
@@ -909,6 +1009,25 @@ def _repo_root_path():
     if getattr(sys, "frozen", False):
         return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def _tool_script(name):
+    """tools/ 脚本多候选定位 (frozen: _MEIPASS 根 / _MEIPASS/tools; 源码: 仓库 tools/)。
+
+    🐛 2026-09-11 打包版 L4 视频导出修复: CI 把 tools/*.py 用 --add-data 放在**包根**,
+      而原代码找 `_MEIPASS/tools/` → 打包版找不到生成器脚本 → L4 操作视频导出静默失败
+      (用户侧表现: "L4 没有干扰视频")。
+    """
+    _root = _repo_root_path()
+    _mp = getattr(sys, "_MEIPASS", "") or ""
+    cands = [os.path.join(_root, "tools", name),
+             os.path.join(_root, name),
+             os.path.join(_mp, name) if _mp else "",
+             os.path.join(_mp, "tools", name) if _mp else ""]
+    for _c in cands:
+        if _c and os.path.isfile(_c):
+            return os.path.abspath(_c)
+    return os.path.join(_root, "tools", name)
+
 
 def _load_skill_library_groups():
     """加载原子技能 token 库 → LIBRARY 分组 (每大类一组, 每条技能一个组件)
@@ -2638,30 +2757,24 @@ class SimNodeItem(QGraphicsObject):
             # 🐛 2026-08-22 老倪: 7pt≈28px 比节点标题(9pt)还小 → 升回 9pt; 15pt在192DPI≈50px太大
             # 🐛 2026-08-28 老倪"字体大": 12→10 起, 下限 9→8
             # 🐛 2026-09-09 老倪"还是大, 挤": 10→9 起, 下限 8→7
-            fs = 9
-            while fs >= 7:
-                painter.setFont(QFont("Arial", fs, QFont.Bold))
-                fm = painter.fontMetrics()
-                if fm.horizontalAdvance(name) <= avail_w:
-                    break
-                fs -= 1
-            line1, line2 = name, ""
-            if fm.horizontalAdvance(name) > avail_w:
-                # 9→6 仍超 → 按空格/+/-/符号拆两行 (每行再自适应)
-                parts = (name.replace("(", " ( ").replace(")", " ) ")
-                            .replace("+", " + ").replace("-", " - ").split())
-                line1, line2 = "", ""
-                for pt in parts:
-                    trial = (line1 + " " + pt).strip()
-                    if fm.horizontalAdvance(trial) <= avail_w or not line1:
-                        line1 = trial
-                    else:
-                        line2 = (line2 + " " + pt).strip()
-            if line1 and line2:
-                painter.drawText(QRectF(8, h / 2 - 24, _aw, 24), Qt.AlignVCenter | Qt.AlignLeft, line1)
-                painter.drawText(QRectF(8, h / 2 + 2, _aw, 24), Qt.AlignVCenter | Qt.AlignLeft, line2)
+            # 🎨 2026-09-12 老倪: 统一规格 — 固定 9pt Bold + 最多两行 + 省略号 (原 9→7 自适应 = 大小不一)
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            fm = painter.fontMetrics()
+            _bg_lines, _bg_trunc = _wrap_title(name, fm, _aw)
+            try:
+                if _bg_trunc:
+                    self.setToolTip(f"{name}\n(背景行放不下, 显示已省略)")
+            except Exception:
+                pass
+            if len(_bg_lines) > 1:
+                _lh = fm.height() + 1
+                _yy = h / 2 - _lh
+                for _i, _ln in enumerate(_bg_lines):
+                    painter.drawText(QRectF(8, _yy + _i * _lh, _aw, _lh),
+                                     Qt.AlignVCenter | Qt.AlignLeft, _ln)
             else:
-                painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft, line1 or name)
+                painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft,
+                                 (_bg_lines or [name])[0])
             # 左上角小标: 可编辑提示
             painter.setPen(QColor(255, 255, 255, 140))
             painter.setFont(QFont("Arial", 8))
@@ -2748,19 +2861,20 @@ class SimNodeItem(QGraphicsObject):
                     painter.setBrush(QColor("#ffd700"))
                     painter.drawEllipse(QPointF(_cx + 8, 37), 2.8, 2.8)
                 painter.setPen(QColor("#e6edf3") if _on else QColor("#8b949e"))
-                painter.setFont(QFont("Arial", 9, QFont.Bold if _on else QFont.Normal))
+                painter.setFont(_node_font(NODE_TITLE_PT, bold=bool(_on)))
                 painter.drawText(QRectF(_cx + 20, 28, _cw - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, _k)
-                painter.setFont(QFont("Arial", 8))
+                painter.setFont(_node_font(NODE_SUB_PT))
                 painter.setPen(QColor("#8b949e"))
                 painter.drawText(QRectF(_cx + 20, 44, _cw - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, _kd)
-            # desc (当前档说明, 底部小字)
-            painter.setFont(QFont("Arial", 8))
+            # desc (当前档说明, 底部小字) — 统一 8pt + 省略号 (不越框)
+            painter.setFont(_node_font(NODE_SUB_PT))
             painter.setPen(QColor("#8b949e"))
             _capdesc = {"L2": "基础: 插装即完成 (insert 8段)",
                         "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
                         "L4": "L4 抗干扰 90°: 来料转90°→绕z抓横→回正→插拔→AOI→光耦合 (全真物理)"}.get(_cap_cur, "")
-            painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16),
-                             Qt.AlignVCenter | Qt.AlignLeft, _capdesc)
+            _cfm = painter.fontMetrics()
+            painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16), Qt.AlignVCenter | Qt.AlignLeft,
+                             _cfm.elidedText(_capdesc, Qt.ElideRight, self.w - 24))
             return
         # 标题 (统一 9pt Bold, 超宽拆两行完整显示, 垂直居中 — 不截断/不逐节点降字号)
         # 🐛 2026-08-22 老倪: 原 9→8→7 逐节点降字号导致"大小不一", elidedText 截断"显示不全",
@@ -2770,57 +2884,40 @@ class SimNodeItem(QGraphicsObject):
         # 2026-08-25 老倪"字太挤": 右留 52px (原 36 → 字贴徽章), 允许拆到三行 (原最多两行硬塞)
         # 🐛 2026-08-28 老倪"字体大, 挤": 12/11/10 → 10/9/8 (192DPI 下 32px→27px)
         # 🐛 2026-09-09 老倪"还是大, 挤": 10/9/8 → 9/8/7 (27px→24px)
-        avail = max(40, self.w - 52)
-        line1, line2 = name, ""
-        for _fs in (9, 8, 7):
-            painter.setFont(QFont("Arial", _fs, QFont.Bold))
-            fm = painter.fontMetrics()
-            if fm.horizontalAdvance(name) <= avail:
-                line1, line2 = name, ""
-                break
-            # 按空格/符号拆词
-            parts = name.replace("·", " · ").replace("(", " ( ").replace(")", " ) ").split()
-            w1, w2 = "", ""
-            for pt in parts:
-                trial = (w1 + " " + pt).strip()
-                if fm.horizontalAdvance(trial) <= avail or not w1:
-                    w1 = trial
-                else:
-                    w2 = (w2 + " " + pt).strip()
-            if fm.horizontalAdvance(w2) <= avail and fm.horizontalAdvance(w1) <= avail:
-                line1, line2 = w1, w2
-                break
-            # 词拆失败 (中文无空格) → 按字符逐行填 (最多三行, 原来只有两行 → 长名字硬挤)
-            lines, cur = [], ""
-            for ch in name:
-                if fm.horizontalAdvance(cur + ch) <= avail or not cur:
-                    cur += ch
-                else:
-                    lines.append(cur)
-                    cur = ch
-                    if len(lines) == 3:
-                        break
-            if cur and len(lines) < 3:
-                lines.append(cur)
-            line1 = lines[0] if lines else name
-            line2 = "\n".join(lines[1:]) if len(lines) > 1 else ""
-            if len(lines) <= 3 and all(fm.horizontalAdvance(x) <= avail for x in lines):
-                break
-        disp = (line1 + "\n" + line2) if line2 else line1
+        # 🎨 2026-09-12 老倪: 标题统一规格 —— 固定 9pt Bold + 最多两行 + 超出省略号 + 悬停看全名
+        #   (原实现: 逐节点 9→8→7 自适应降字号 → 大小不一; 无省略号 → 尾部字被静默裁掉=显示不全)
+        avail = max(40, self.w - NODE_PAD_R)
+        painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+        _fm = painter.fontMetrics()
+        _lines, _trunc = _wrap_title(name, _fm, avail)
+        disp = "\n".join(_lines)
+        try:      # 省略号时用 tooltip 补全 (鼠标悬停即可看到完整节点名)
+            if _trunc:
+                self.setToolTip(f"{name}\n(节点框放不下, 显示已省略)")
+            elif str(self.toolTip() or "").startswith(name):
+                self.setToolTip("")
+        except Exception:
+            pass
+        _draw_lines = _lines if _lines else [name]
         if params.get("video"):
-            # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明)
-            painter.setFont(QFont("Arial", 9, QFont.Bold))
+            # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明) — 统一 9pt + 省略号, 不压到画面
+            painter.setPen(QColor(pal["title"]))
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            _fm2 = painter.fontMetrics()
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             disp.replace("\n", " "))
+                             _fm2.elidedText(name, Qt.ElideRight, self.w - 12))
         else:
             _gfx = t in ("yolo_gate", "train_gate", "mode_switch", "switch", "coord_overlay")
-            if _gfx:
-                # 有 checkbox/端口图形: 标题在上部 (下部留给图形)
-                painter.drawText(QRectF(14, 8, self.w - 56, 24), Qt.AlignVCenter | Qt.AlignLeft, disp)
-            else:
-                # 普通节点: 标题垂直居中 + 四周留白 (2026-08-25: 原来贴着框边和徽章, 视觉上"挤")
-                painter.drawText(QRectF(14, 10, self.w - 56, self.h - 26),
-                                 Qt.AlignVCenter | Qt.AlignLeft, disp)
+            painter.setPen(QColor(pal["title"]))
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            _fm2 = painter.fontMetrics()
+            _lh = _fm2.height() + 1                     # 固定行高 (字号固定 → 行距一致, 不再挤)
+            _top, _box_h = (8.0, self.h - 16.0) if _gfx else (10.0, self.h - 26.0)
+            _n = len(_draw_lines)
+            _y0 = _top + max(0.0, (_box_h - _n * _lh) / 2.0)     # 多行也垂直居中
+            for _i, _ln in enumerate(_draw_lines):
+                painter.drawText(QRectF(NODE_PAD_L, _y0 + _i * _lh, self.w - NODE_PAD_R, _lh),
+                                 Qt.AlignVCenter | Qt.AlignLeft, _ln)
         # 🎥 2026-08-18: 画布内嵌视频帧 — 操作视频节点 (视频画面画在节点主体内)
         if self.video_pixmap is not None and not self.video_pixmap.isNull():
             try:
@@ -4431,6 +4528,49 @@ class SimulinkModule(QWidget):
             "(mode=full 13 段, 本机实测 ~20-40s/轮 — GPU YOLO 快; 3D 视图可见 AOI 设备与全部后续动作)\n"
             "不勾 (默认) = 插装即完成 (8 段演示, 回归保底)")
         tl.addWidget(self.chk_l3_full)
+        # 🧠 2026-09-11 老倪 (A): L4 演示档的夹爪 yaw 指令改由**流形预测器**决策
+        #   勾选 (默认) = Arm B (预测器每帧真调 φ* → 下发角, 3D 面板标注来源);
+        #   取消勾选 = Arm A 脚本开环 (仅作对照回退)
+        self.chk_mani_yaw = QCheckBox("🧠 流形 yaw 执行")
+        # 🎯 2026-09-11 老倪: "必须用真实的流形预测的指令" → **默认勾选** (L4 档 yaw 由流形预测器发)
+        self.chk_mani_yaw.setChecked(True)
+        # 🤖 2026-09-12 老倪: "现在选择 L4 后, 应该切换到 INTACT 节点工作"
+        #   勾选(默认) = L4 档执行交给 **INTACT 节点**: 引擎 SS_INTACT=1 → INTACT 真推理填 u_ff 槽位
+        #   (每 SS_INTACT_EVERY=8 步一次真推理); 不用固定演示。
+        #   诚实标注: 当前域内微调 ckpt 离线判闸**未过** (xyz MAE 0.097 ≈ 常数 0.099 ·
+        #   预测 std 比教师小 ~16 倍 = 动作头仍塌在均值) → 本档大概率跑不完, 属模型能力问题;
+        #   要稳定演示请取消勾选 (回到 L4Demo 90° 全链)。日志打印权重的真实路径以便溯源。
+        self.chk_intact_exec = QCheckBox("🤖 L4 用 INTACT 节点执行")
+        self.chk_intact_exec.setChecked(True)
+        self.chk_intact_exec.setToolTip(
+            "【默认勾选】L4 档把控制权交给 INTACT 节点 (引擎 SS_INTACT=1: INTACT 真推理 → u_ff 槽位,\n"
+            "每 8 步一次真推理; 不再走 L4Demo 固定演示)。\n"
+            "诚实边界: INTACT 域内微调目前未过离线判闸 (MAE≈常数基线, 预测std 小 16 倍) → 本档可能失败,\n"
+            "那是模型能力问题不是接线问题; 取消勾选 = 回到 L4Demo 90° 抗干扰全链。\n"
+            "运行日志会打印「L4 = INTACT 节点工作 · 真推理 N 次 · 权重 <路径>」供溯源。")
+        self.chk_mani_yaw.setToolTip(
+            "【默认勾选】L4 演示档 ② 段夹爪偏航角由**流形预测器逐帧决策** (Arm B):\n"
+            "  每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选角打分取代价最小者下发\n"
+            "  (slew 0.03 rad/步; 权重 models/l4_mani_predictor_v5.pt, 打包版已随包)\n"
+            "取消勾选 = 脚本开环 Arm A (固定 90° 计划角) — 仅作对照回退\n"
+            "⚠️ 现状诚实说明 (v5.5.21 实测): v5 预测器在候选编码下代价单调退化 (argmin 落候选边界),\n"
+            "   且 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽) → 两臂任务结果相同 (6/6);\n"
+            "   3D 面板显示「yaw 指令来源 + 下发角 + φ* + 前向次数 + trained」逐帧可核对")
+        tl.addWidget(self.chk_mani_yaw)
+        tl.addWidget(self.chk_intact_exec)      # 🤖 2026-09-12: L4 → INTACT 节点执行 (默认勾选)
+        # 🎯 2026-09-14: L4 → DiT 条件通道 (画布 ssintact_dec → ssdec(DiT) 那条连线做成真接)
+        self.chk_l4_dit = QCheckBox("🎯 L4 意图 → DiT 精炼")
+        self.chk_l4_dit.setChecked(True)        # 老倪: "连线连的就是 DiT, 必须改" → 默认生效
+        self.chk_l4_dit.setToolTip(
+            "【默认勾选】L4 档把 INTACT 的意图向量 (δ=z_goal−z_t 单位向量, 192 维, 无需标定)\n"
+            "作为**额外条件 token** 送进同一颗 DiT (smolvla_lew 动作头, 与 L3 档同一份实现/同一权重),\n"
+            "DiT 输出与 INTACT 动作按 β=SS_L4_DIT_BETA(默认 0.5) 融合后下发。\n"
+            "  · 真接证据: 每帧/每 N 步真前向计数 · 条件维数 · 条件范数 · 融合前后 Δact 全部落盘\n"
+            "    (reports/intact_l3_cond.json + 直驱 state['dit']) — 可消融核对是不是摆设。\n"
+            "  · 诚实边界: 条件投影**未训练** (随机小初始化) ⇒ 通道真实参与前向, 但增益需后续训练;\n"
+            "    且 |z_t→流形6维| 实测不可标定 (13 轮/1935 样本 LOSO 测试 R²≤0) → 不走标定映射。\n"
+            "  · L3 档链路**一字未改** (l4_cond=None 时逐位相同); 取消勾选 = 回到纯 INTACT。")
+        tl.addWidget(self.chk_l4_dit)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -4452,6 +4592,15 @@ class SimulinkModule(QWidget):
         self.btn_load = btn_load
         tl.addWidget(btn_save)
         tl.addWidget(btn_load)
+
+        # 🤖 2026-09-12 老倪: 数据源层「机器人切换」入口 — 原项目原生机器人 + 原项目权重 (零搜索)
+        self.btn_intact_robot = mk_btn(
+            "🤖 INTACT机器人",
+            "机器人切换面板: reacher / pusht / cube / tworoom 四个原项目原生机器人 (原项目权重直接驱动, "
+            "零搜索)。切换后写 data/intact_robot_state.json — 画布上的「🤖 INTACT机器人」/「🔀 机器人切换」"
+            "节点双击也会打开本面板",
+            self._open_intact_robot_panel, "#00b4d8")
+        tl.addWidget(self.btn_intact_robot)
 
         # 🎥 录屏 + 💾 保存模型 (工具类, 2026-08-06 老倪: 归类一行)
         self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
@@ -5175,6 +5324,10 @@ class SimulinkModule(QWidget):
             "actions": [],
         }
         self.nodes.append(node)
+        try:      # 🎨 2026-09-12: 新节点也按统一字号撑到不裁字
+            autofit_node_width(node)
+        except Exception:
+            pass
         item = SimNodeItem(node, self)
         self._items[node["id"]] = item
         self.canvas._scene.addItem(item)
@@ -6028,6 +6181,48 @@ class SimulinkModule(QWidget):
         dlg = ScopeCompareDialog(self)
         self._show_nonmodal(dlg)  # 非模态, 2026-08-05 防卡死
 
+    # ── 🎬 SW 实况独立窗口 (2026-09-13 老倪: L4 档 ▶运行 时自动弹出, 跑链条画面自己出来) ──
+    def open_sw_live_window(self):
+        """打开/前置「SW 实况」独立窗口 —— 与 3D 视图内嵌小窗的「⤢ 放大窗口」是同一全局单例"""
+        try:
+            import ss_dreamview as _dv          # 同目录模块 (与 open_ss_3d 一样的懒加载姿势)
+            return _dv.sw_live_window()
+        except Exception as e:                  # noqa: BLE001
+            try:
+                self._log(f"⚠️ SW 实况窗口打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def _auto_sw_live_window(self):
+        """L4 档 ▶运行 → 自动弹出 SW 实况窗口 **并把 SW 引擎链桥真启动**
+        (2026-09-13 修: 只弹窗口不启动桥 → 窗口只有上次跑的旧帧, 看起来"视频不动")。
+        L2/L3 档完全不动 (返回 None, 保持原有行为)。"""
+        try:
+            if self._ss_cap_num() < 4:
+                return None
+        except Exception:
+            return None
+        w = self.open_sw_live_window()
+        # 🎬 关键: 让画面动起来 = 真跑 L4「SW 引擎链」(逐帧渲染 → status.json/frames 逐帧更新)
+        try:
+            import node_logic as _nl
+            root = _repo_root_path()
+            already = _nl._sw_alive()
+            ok, _st, _fr, _vd = _nl._sw_start(root, self._log)
+            if ok:
+                if already:
+                    self._log("🎬 L4 档: SW 引擎链已在跑 — 复用 (实况窗口继续跟随真帧)")
+                else:
+                    self._log("🎬 L4 档: SW 引擎链已随 ▶运行 启动 "
+                              "(stable-world 逐帧渲染真图 → 实况窗口逐帧刷新, 约 14s / 3 回合 / 52 帧)")
+        except Exception as e:                  # noqa: BLE001
+            try:
+                self._log(f"⚠️ SW 引擎链启动失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+        return w
+
     def start_sim(self):
         # 🚀 即时反馈 (2026-08-05 老倪: "运行, 还是没反应" — 点击瞬间按钮变运行中+状态栏提示)
         self.btn_run.setText("⏳ 运行中…")
@@ -6042,6 +6237,8 @@ class SimulinkModule(QWidget):
             return
         # 🧮 状态空间画布 → 真实仿真引擎 (2026-08-18 老倪: 六层源码闭环, 非占位观察模式)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
+            # 🎬 2026-09-13 老倪: L4 档 ▶运行 → 自动弹出「SW 实况」独立窗口 (跑链条时画面自己出来)
+            self._auto_sw_live_window()
             # 🎥 2026-09-04 老倪「YOLO 还是假的?」: ▶运行 默认 = 真实化流程
             #   (metaworld 物理 + 每帧渲染→detect_3d, 断点每步可进); 勾选 ⚡引擎快演
             #   才走引擎简化世界 (0.1s 快演示, YOLO 仅末尾 1 次采样)
@@ -6969,8 +7166,19 @@ class SimulinkModule(QWidget):
             if node.get("type") != "row_bg":
                 _w = node.get("w") or 0
                 _h = node.get("h") or 0
-                node["w"] = max(_w, 240)
+                node["w"] = max(_w, DW)      # 🎨 2026-09-12: 240→DW(280), 与统一字号配套
                 node["h"] = max(_h, DH)
+                # 🎨 2026-09-12 老倪「不裁字」: 名字放不下就按统一字号把框撑到放得下 (≤380px)
+                try:
+                    _before = node["w"]
+                    if autofit_node_width(node):
+                        _fit_n = getattr(self, "_autofit_n", 0) + 1
+                        self._autofit_n = _fit_n
+                        self._autofit_log = getattr(self, "_autofit_log", [])
+                        if len(self._autofit_log) < 6:
+                            self._autofit_log.append(f"{node.get('name','')[:16]}: {_before}→{node['w']}px")
+                except Exception:
+                    pass
             else:
                 node.setdefault("w", 240)
                 node.setdefault("h", DH)
@@ -7692,7 +7900,7 @@ class SimulinkModule(QWidget):
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(flow, f, ensure_ascii=False, indent=2)
             root = self._repo_root()
-            cmd = [sys.executable, os.path.join(root, "tools", "ci", "validate_flow.py"), tmp]
+            cmd = [_resolve_python(), os.path.join(root, "tools", "ci", "validate_flow.py"), tmp]
             if strict:
                 cmd.append("--strict")
             rc = self._run_cmd(cmd)
@@ -7728,7 +7936,7 @@ class SimulinkModule(QWidget):
                     p, n, (ok, ep) = export_dataset(n_episodes=8, seed_base=100, log=lambda m: self.log_signal.emit(f"   {m}"))
                     self.log_signal.emit(f"📥 仿真数据: {n}帧 · 成功 {ok}/{ep} → {p}")
                     import subprocess as _sp
-                    _py = os.path.join(root, "gui-venv311", "bin", "python")
+                    _py = _resolve_python()   # 🐛 打包环境禁 venv 硬编码路径
                     if not os.path.exists(_py):
                         _py = "python3"
                     r = _sp.run([_py, os.path.join(root, "tools", "build_ss_dataset.py")],
@@ -8217,7 +8425,7 @@ class SimulinkModule(QWidget):
 
         def _work():
             root = self._repo_root()
-            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "push"],
+            rc = self._run_cmd([_resolve_python(), os.path.join(root, "tools", "cicd_deploy.py"), "push"],
                                cwd=root)
             return (rc == 0), ("部署包已上传 ECS, 可进入部署" if rc == 0 else "集成失败 (见上方日志)")
 
@@ -8229,7 +8437,7 @@ class SimulinkModule(QWidget):
 
         def _work():
             root = self._repo_root()
-            rc = self._run_cmd([sys.executable, os.path.join(root, "tools", "cicd_deploy.py"), "status"],
+            rc = self._run_cmd([_resolve_python(), os.path.join(root, "tools", "cicd_deploy.py"), "status"],
                                cwd=root)
             return (rc == 0), ("部署状态已拉取 · 心跳正常" if rc == 0 else "部署状态检查失败")
 
@@ -8450,12 +8658,12 @@ class SimulinkModule(QWidget):
             def _work_l4():
                 import subprocess as _sp
                 root = self._repo_root()
-                py = os.path.join(root, "gui-venv311", "bin", "python")
+                py = _resolve_python()   # 🐛 打包环境禁 venv 硬编码路径
                 if not os.path.exists(py):
                     return False, "缺少 gui-venv311 (视频渲染环境)"
                 r = _sp.run([py, os.path.join(root, "tools", "gen_l4_demo_video.py"),
                              "--also-latest"], capture_output=True, text=True, timeout=1200,
-                            cwd=os.path.join(root, "tools"), env={**os.environ, "MUJOCO_GL": "egl"})
+                            cwd=os.path.join(root, "tools"), env={**os.environ, "MUJOCO_GL": (os.environ.get("MUJOCO_GL") or ("cgl" if sys.platform == "darwin" else "wgl" if sys.platform == "win32" else "egl"))})
                 out = (r.stdout or "").strip().splitlines()
                 last = out[-1] if out else "?"
                 mp4 = os.path.join(root, "reports", "ss_episode_latest.mp4")
@@ -9509,6 +9717,9 @@ class SimulinkModule(QWidget):
             if kind == "3d":
                 self.open_ss_3d()
                 return
+            if kind == "intact_robot_live":        # 🤖 2026-09-12 老倪: INTACT 机器人实况窗
+                self._open_intact_robot_live()
+                return
             if kind in ("hist", "attrib"):
                 from ff_hist_view import FFHistView
                 from ff_attrib_view import FFAttribView
@@ -9577,6 +9788,32 @@ class SimulinkModule(QWidget):
         # (\"双击数据源 → 加载真实模型 rollout\") 对齐, 改走真 rollout
         return self.on_infer_rollout(node or {})
 
+    def _open_intact_robot_live(self):
+        """🖥 画布上的 INTACT 机器人实况窗 (当前机器人 = data/intact_robot_state.json)。
+        真帧来源: 常驻 worker 的实时帧 / 本面板刚跑的 rollout / 官方评测视频。"""
+        try:
+            from intact_robot_panel import LiveViewWindow, read_state
+            rb = read_state().get("robot") or "tworoom"
+            win = LiveViewWindow(rb, self)
+            win.setAttribute(Qt.WA_DeleteOnClose, True)
+            win.show()
+            self._intact_live_win = win
+            self._log(f"🖥 打开 INTACT 机器人实况窗: {rb} (原项目权重 · 原生环境)")
+        except Exception as e:
+            self._log(f"❌ 实况窗打开失败: {type(e).__name__}: {e}")
+
+    def _open_intact_robot_panel(self):
+        """🤖 INTACT 标准机器人切换面板 (数据源层)。非模态, 来自 tools/gui/intact_robot_panel.py。"""
+        try:
+            from intact_robot_panel import IntactRobotPanel
+            dlg = IntactRobotPanel(self)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+            dlg.show()
+            self._intact_robot_dlg = dlg          # 持有引用, 防被 GC
+            self._log("🤖 打开 INTACT 标准机器人切换面板 (原项目权重 · 原生环境 · 零搜索)")
+        except Exception as e:
+            self._log(f"❌ 机器人切换面板打开失败: {type(e).__name__}: {e}")
+
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
@@ -9590,6 +9827,12 @@ class SimulinkModule(QWidget):
         if params.get("viz_kind"):
             self._log(f"🔭 双击可视化节点「{node.get('name', '')}」→ 打开 {params['viz_kind']} 窗口")
             self._open_viz_node(params.get("viz_kind"))
+            return
+        # 🤖 2026-09-12 老倪: INTACT 标准机器人 / 机器人切换节点 → 打开「机器人切换」面板
+        #   (数据源层: 选原项目原生机器人 → 写 data/intact_robot_state.json → 下游节点按它取数据)
+        if node.get("type") in ("intact_robot", "robot_switch") \
+                or "INTACT机器人" in node.get("name", "") or "机器人切换" in node.get("name", ""):
+            self._open_intact_robot_panel()
             return
         # 🌍 物理世界节点 → 硬件属性面板 (质量/惯量/自由度等) (2026-08-18 老倪)
         if params.get("state_space") and "物理世界" in node.get("name", ""):
@@ -10910,9 +11153,10 @@ class SimulinkModule(QWidget):
         self._relayout_row_gaps()      # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠
         _oneshot(self, 300, self._state_space_hint)
 
-    def open_ss_3d(self, on_top=True):
+    def open_ss_3d(self, on_top=True, level=None):
         """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)
-        on_top: True=手动点按钮(置顶防被视频窗遮挡); False=运行后自动弹出(不抢画布, 防画布黑屏)"""
+        on_top: True=手动点按钮(置顶防被视频窗遮挡); False=运行后自动弹出(不抢画布, 防画布黑屏)
+        level: 'L2'/'L3'/'L4' → 按档位预设图层 + 标题标注 (2026-09-13 老倪: 三个档位各一个 dreamview 窗口)"""
         try:
             from ss_dreamview import DreamView3D, load_episode
         except Exception as e:
@@ -10985,7 +11229,7 @@ class SimulinkModule(QWidget):
                 w.raise_()
                 w.activateWindow()
                 return
-        dv = DreamView3D(tr, on_top=on_top, module=self)
+        dv = DreamView3D(tr, on_top=on_top, module=self, level=level)   # 🧭 level=L2/L3/L4 → 档位预设+标题
         if not hasattr(self, "_ss_3d_windows"):
             self._ss_3d_windows = []
         # 只清理真正被销毁的对象 (isVisible 过滤会误删已关闭但可复用的窗口)
@@ -11032,7 +11276,8 @@ class SimulinkModule(QWidget):
         _mdesc = {
             "L2": "基础 L2: 插装光模块 (insert 8 段)",
             "L3": "🚀 L3 全链: 插→拔→AOI检测→放回 (13段, smolvla)",
-            "L4": "🎬 L4 抗干扰 90° 演示: 来料转台90°→绕z抓横→治具回正→插拔闭环→AOI→光耦合 (全真物理)",
+            "L4": "L4: 默认「🧠 模型执行」= 引擎真链路 + SmolVLA-Lew 接管 + 二态意图 "
+                  "(full 13段: 插→拔→AOI检测→放回); 取消勾选 = 原 90° 抗干扰演示",
         }.get(_cap, "插装即完成 (8段, 原演示)" if self._l3_mode is None else "🚀 L3 全链 full: 插→拔→AOI检测→放回 (13段)")
         self.btn_run.setText("🎬 L4 演示运行中… (90°全链, ~2-4分钟)" if _demo_cap else "🎥 真实运行中… (每帧 YOLO)")
         self.btn_run.setEnabled(False)
@@ -11088,15 +11333,171 @@ class SimulinkModule(QWidget):
                 _cap = getattr(self, "_cap_level", None)
                 # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (demo_l4 → 引擎委托 L4Demo 控制器:
                 #   来料转台90°外力干扰+绕z抓横+治具回正+插拔闭环+AOI+光耦合; 不走 YOLO/attempts)
-                _demo_cap = str(_cap or "").upper() == "L4"
+                # 🎯 2026-09-11 (v2, 老倪最高优先级「L4 必须有干扰旋转, 必须渲染出来」):
+                #   引擎路径看不到干扰的根因 (静态核实, 已实测):
+                #     metaworld stock XML **没有 shell_yaw 关节** → _inject_peg_jitter 里
+                #     「体壳水平转 90°」是静默 no-op (被 try/except 吞掉), 物理只转
+                #     可成功域 ±15° 且发生在第 0 帧之前 → 画面上没有任何旋转动作 = 与 L3 无差别。
+                #   → L4 档走 L4Demo 控制器 (真机构 + 真物理):
+                #     ① 来料转台 tt_yaw 关节 100 帧 0→90° 连续转动, 光模块随治具同步转 90°
+                #        (渲染帧与 3D 都看得见"外力把光模块转横"); ② 夹爪绕z 90° 姿态适配抓横放模块;
+                #     ③ 治具回正 → ④ 标准抓取 → ⑤ 插入49mm → ⑥ 拔出56mm → ⑦ AOI → ⑧ 光耦合 η。
+                #     实测 success=True 全链绿 (2026-09-11 13:22 本机复现, 1641 帧渲染)。
+                #   「🧠 模型执行」勾选 = 引擎解析链 (插→拔→AOI; 干扰仅姿态级, 无 90° 旋转)。
+                #   ⚠️ L3 档完全不受影响 (vision=True 引擎路径原样)。
+                _demo_cap = (str(_cap or "").upper() == "L4")
+                # 🧠 2026-09-11 (A) 主线程读控件 (worker 线程禁碰 QObject — 崩溃铁律):
+                #   勾「🧠 流形 yaw 执行」= L4 演示档 ② 段 yaw 由流形预测器决策 (Arm B)
+                try:
+                    _ckm = getattr(self, "chk_mani_yaw", None)
+                    self._mani_yaw_exec = bool(_ckm is not None and _ckm.isChecked())
+                except Exception:
+                    self._mani_yaw_exec = False
+                # 流形预测通道默认开 (旁路数据真出: mani_pred/mani_yaw/mani_phi 逐帧真值;
+                #   打包版无权重的场合会诚实标 trained=False, 不冒称)
+                try:
+                    os.environ["SS_MANI_PRED"] = "1"
+                except Exception:
+                    pass
+                # 🧠 2026-09-11 老倪: "我要看到 L4 档位的区别" —— 加「模型执行」开关:
+                #   关(默认) → 原来的 L4Demo 演示 (保留 90° 转台特色)
+                #   开       → **不走 L4Demo**, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图
+                #              → 同一个 L4 档, 一眼看出"固定演示"与"模型在干活"的区别
+                #   注: L3 档不受影响 (老倪: L3 档是正常的, 不用改)
+                # 🎯 2026-09-11 实测结论 (老倪: "L4 档怎么没有拔出光模块"):
+                #   L4=干扰布局(光模块被移位/转向) + 模型接管 → **卡在插入之前**, 走不到拔出
+                #     (模型在无干扰固定布局上训练, 没见过干扰后的布局 → 动作不适用)
+                #   同一干扰下 **解析链能跑完整 13 段**(862步 · 拔出164 · AOI PASS) ✓
+                #   → 所以默认走解析链(保证"看得到拔出/AOI"), 模型执行改为**可选展示**开关。
+                #   要用模型: 勾「🧠 模型执行」(注意: 干扰布局下可能卡, 属数据覆盖问题非代码问题)
+                _model_exec = bool(getattr(self, "_model_exec", False))
+                if _model_exec:
+                    os.environ["SS_L3"] = "1"
+                    _demo_cap = False
+                    _logs.append("🧠 模型执行已开: L3 模型接管 (默认 ckpt) — 与固定演示对比用")
+                else:
+                    os.environ.pop("SS_L3", None)
+                # 🤖 2026-09-12 老倪: "现在选择 L4 后, 应该切换到 INTACT 节点工作"
+                #   勾「🤖 L4 用 INTACT 节点执行」(默认) → L4 档不用固定演示, 把控制权交给 INTACT 节点:
+                #   引擎三档 (state_space_sim_real.py:1526) —— SS_INTACT=1 接管 u_ff / SHADOW=1 影子 /
+                #   不设 = 解析链。这里设 SS_INTACT=1 并清 SHADOW, 每 SS_INTACT_EVERY 步一次真推理。
+                #   诚实标注: 域内微调 ckpt 离线判闸未过 (MAE≈常数基线 · 预测std小16倍) → 本档可能失败,
+                #   属模型能力问题; 取消勾选 = 回到 L4Demo 90° 全链 (稳定演示保底)。
+                try:
+                    _cki = getattr(self, "chk_intact_exec", None)
+                    _intact_exec = bool(_cki is not None and _cki.isChecked())
+                except Exception:
+                    _intact_exec = False
+                self._intact_exec_on = _intact_exec      # 供下方装配块读取 (worker 线程不碰 QObject)
+                if _demo_cap and _intact_exec:
+                    os.environ["SS_INTACT"] = "1"
+                    os.environ.pop("SS_INTACT_SHADOW", None)
+                    os.environ.setdefault("SS_INTACT_EVERY", "8")
+                    os.environ.setdefault("INTACT_RUNTIME", "root")
+                    _ckp = os.environ.get("INTACT_POLICY", "intact_l4_current")
+                    os.environ["INTACT_POLICY"] = _ckp
+                    os.environ.pop("SS_L3", None)
+                    # 🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) 那条连线"必须改"成真接;
+                    #   "L4 功能需要兼容 L3 功能" → L3 档一字不动, 只在 L4 档给同一颗 DiT 加条件通道):
+                    #   L4 意图(192 维单位向量) 作为**额外条件 token** 进同一颗 DiT (smolvla_lew 动作头),
+                    #   输出与 INTACT 动作按 β 融合后下发 (u_ff 槽位 / 直驱动作各一处, 同一实现)。
+                    #   不设 SS_L4_DIT = 逐位零变化 (零回退); 关掉下面这个勾 = 回到纯 INTACT。
+                    try:
+                        _ckd = getattr(self, "chk_l4_dit", None)
+                        _l4_dit = bool(_ckd is not None and _ckd.isChecked())
+                    except Exception:
+                        _l4_dit = False
+                    if _l4_dit:
+                        os.environ["SS_L4_DIT"] = "1"
+                        os.environ.setdefault("SS_L4_DIT_EVERY", "16")   # 每 16 步一次真前向 (CPU 友好)
+                        os.environ.setdefault("SS_L4_DIT_BETA", "0.5")
+                        _logs.append("🎯 L4 DiT 条件通道已开: INTACT 意图 → 同一颗 DiT(额外条件 token) "
+                                     f"→ β={os.environ.get('SS_L4_DIT_BETA')} 融合下发 "
+                                     f"(每 {os.environ.get('SS_L4_DIT_EVERY')} 步一次真前向)")
+                        _logs.append("   └ 口径: 该条件投影**未训练**(随机小初始化) ⇒ 通道真实参与前向, "
+                                     "增益需后续训练; L3 档链路一字未改")
+                    else:
+                        os.environ.pop("SS_L4_DIT", None)
+                    _demo_cap = False       # 不走固定演示 → INTACT 节点真干活
+                    _logs.append(f"🤖 L4 = INTACT 节点工作: u_ff 槽位由 INTACT 真推理接管 "
+                                 f"(每 {os.environ.get('SS_INTACT_EVERY')} 步一次真推理)")
+                    # 🎯 2026-09-14: 默认权重由写死轮次改为**稳定指针** `intact_l4_current`
+                    #   (checkpoints/intact_l4_current/weights.pt 软链 → 当前模型; 换模型只动软链:
+                    #    bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]) —— 原来写死
+                    #    `intact_goal_zmax_v2_s3072/weights_epoch_3.pt` 是上一代权重, 续训换名后必然过期。
+                    #   标注也改**动态**: 指针实际指向哪个文件就报哪个, 判闸数字不写死在此处 (会变假话)。
+                    _ptr_root = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+                    _ptr = os.path.join(_ptr_root, "checkpoints", str(_ckp))
+                    _real = os.path.realpath(_ptr)
+                    _sz = os.path.getsize(_real) if os.path.isfile(_real) else 0
+                    _logs.append(f"   ├ 权重: {_ckp} → "
+                                 f"{os.path.basename(_real) if _sz else '❌ 指针未解析到文件'}"
+                                 f" ({_sz} B) · runtime={os.environ.get('INTACT_RUNTIME')}"
+                                 f" · 节点 src/lerobot/policies/intact/")
+                    _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ on<zero "
+                                 "∧ std比≥0.30); 结论以 /home/ubuntu/l4_ab/judged/ 的 json 为准, "
+                                 "此处不写死数字")
+                elif not _demo_cap:
+                    os.environ.pop("SS_INTACT", None)   # 非 L4 档: 清掉, 不影响解析链/L3
                 sim = RealStateSpaceSim(seed=104,
-                                        vision=not _demo_cap, vision_every=1,
+                                        # 🎯 L3 档用 R1 视觉(原样, 老倪明确不动); 
+                                        #   L4 改为引擎链路后用 R0 真值 — R1 每帧 YOLO 要 5-9 分钟/轮,
+                                        #   太慢看不清完整"插→拔→AOI"链 (老倪要看全链动作)
+                                        vision=(str(_cap or "").upper() == "L3") and (not _model_exec),
+                                        vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
                                         demo_l4=_demo_cap,
+                                        mani_yaw=bool(getattr(self, "_mani_yaw_exec", False)),
                                         log=lambda *a: _logs.append(
                                             " ".join(str(x) for x in a)))
                 self._real_sim_ref = sim          # 调试期引用 (防 GC)
                 self._ss_last_sim = sim           # 🔭 可视化层: probe 数据源 (真实化每帧更新)
+                # 🤖 2026-09-12 老倪: "现在选择 L4 后, 应该切换到 INTACT 节点工作"
+                #   真把控制权交给 INTACT 节点: 用**原项目逻辑**直驱 (模型动作 → env.step,
+                #   唯一变换=训练归一化逆变换), 目标帧取解析链完成态 (reports/intact_goal_frame.npy)。
+                #   装配器与 tools/intact_direct_rollout.py 共用 (install_direct_act) — 同一份代码路径,
+                #   不在 GUI 里另写一套 (防"两套实现结果不一致")。
+                _intact_ok = False
+                if str(_cap or "").upper() == "L4" and bool(getattr(self, "_intact_exec_on", False)):
+                    try:
+                        _root = self._repo_root()
+                        _tp = os.path.join(_root, "tools")
+                        if _tp not in sys.path:
+                            sys.path.insert(0, _tp)
+                        import intact_direct_rollout as _idr                      # noqa: PLC0415
+                        from lerobot.manifold.intact_node import (IntactNode,   # noqa: PLC0415
+                                                                  IntactRuntime)
+                        # ⚠️ task 名是原项目运行时的**注册表名**, 不是我们的任务名: 我们的域内 ckpt
+                        #   由 INTACT_POLICY 显式指定 + runtime=root; 用 task="insert" 会被解析成
+                        #   论文的 recovery_delta_full_insert_s3072 (不存在) → trained=False, 零动作。
+                        #   实测可用配置 = 与 tools/intact_direct_rollout.py 一致 (task="pusht")。
+                        _rti = IntactRuntime(task="pusht", device="cpu")             # CPU: 不与训练抢 GPU
+                        _nd = IntactNode(horizon=8, runtime=_rti)
+                        if not getattr(_nd.runtime, "trained", False):
+                            _logs.append(f"❌ INTACT 未就绪 ({getattr(_nd.runtime, 'reason', '?')}) → 保持解析链")
+                        else:
+                            _gf = os.path.join(_root, "reports", "intact_goal_frame.npy")
+                            _stf = os.path.join(_root, "reports", "zmax_action_stats.json")
+                            if not (os.path.isfile(_gf) and os.path.isfile(_stf)):
+                                _logs.append(f"❌ 缺目标帧/归一化统计 "
+                                             f"({os.path.basename(_gf)} / {os.path.basename(_stf)}) → 保持解析链")
+                            else:
+                                _nd.set_goal(np.load(_gf))
+                                _am, _as, _m = _idr.load_stats(_stf)
+                                _rec, _stt = _idr.install_direct_act(sim, _nd, _am, _as, infer_every=1)
+                                sim.attach_intact(_nd, None)
+                                sim._intact_drive = {"node": _nd, "rec": _rec, "state": _stt}
+                                _intact_ok = True
+                                _logs.append("🤖 L4 = INTACT 节点直驱: 每帧「模型动作 → env.step」(无解析控制器)")
+                                _logs.append(f"   ├ 权重 {os.environ.get('INTACT_POLICY')} · "
+                                             f"目标帧 {os.path.basename(_gf)} · 变换 a_raw=z·std+mean (唯一变换)")
+                                _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ "
+                                             "on<zero ∧ std比≥0.30); 结论以 /home/ubuntu/l4_ab/judged/ "
+                                             "的 json 为准, 此处不写死数字")
+                    except Exception as _ei:
+                        import traceback
+                        traceback.print_exc()
+                        _logs.append(f"❌ INTACT 直驱装配失败: {type(_ei).__name__}: {_ei} → 保持解析链")
                 # 🎯 2026-09-09 L4 抗干扰 attempts: cap=L4 → 每次 run 自动注入新干扰布局
                 #   (拿起前光模块移位/转向); 失败 (布局死局/未完成) → 换新干扰重试 ≤5 次,
                 #   = 来料重摆语义, 直到任务最终成功 (容忍干扰, 最后完成任务)
@@ -11111,13 +11512,29 @@ class SimulinkModule(QWidget):
                     _aoi = ((tr.get("_meta") or {}).get("aoi_report") or {})
                     _ok = _done and ((_cap or "").lower() != "l4" or sim.mode != "full"
                                      or _aoi.get("ok"))
-                    if _ok or _demo_cap or str(_cap).lower() != "l4" or _attempts >= 5:
+                    if _ok or _demo_cap or _intact_ok or str(_cap).lower() != "l4" or _attempts >= 5:
+                        # 🤖 _intact_ok: INTACT 直驱不做"换干扰重试" (它不是抗干扰演示; 重试 5 次
+                        #   × 600 步 CPU 推理 ≈ 1 小时 → 无意义), 跑一轮就出结果/出结论。
                         if _attempts > 1:
                             _logs.append(f"🎯 L4 抗干扰: 第 {_attempts} 次布局尝试成功 "
                                          f"(来料重摆 {_attempts-1} 次)")
                         break
                     _attempts += 1
                 v = sim._vis
+                # 🤖 INTACT 直驱溯源: 真推理次数 / 错误 / 最终动作 (老倪: 日志须能看出"实际在跑什么")
+                if getattr(sim, "_intact_drive", None):
+                    _std_ = sim._intact_drive["state"]
+                    _da = getattr(sim, "_direct_act", None)
+                    _logs.append(f"🤖 INTACT 直驱统计: 真推理 {_std_['calls']} 次 · "
+                                 f"错误 {_std_['err'] or '无'} · 最后下发动作 "
+                                 f"{np.round(_da, 3).tolist() if _da is not None else '无'}")
+                    _logs.append(f"   └ 插入深度 {round(float(tr['dist'][-1]) * 1000, 1) if tr.get('dist') else '?'}mm "
+                                 f"· done={bool(tr['done'][-1]) if tr.get('done') else None} "
+                                 f"(解析链同种子对照: 成功时 65.1mm/387 步)")
+                    try:
+                        sim._intact_drive["node"].close()
+                    except Exception:
+                        pass
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
                 self._real_tr = ("ok", tr, sim, rate, list(_logs))
             except Exception as _e:
@@ -11619,21 +12036,28 @@ class SimulinkModule(QWidget):
                 #   3D 视图读同一个 trace → 视频与 3D 视图 轨迹/动作/视角 完全一致。
                 #   (原 gen_insert_video.py 是双脑策略的另一条 episode, 与状态空间不同源)
                 out = _os.path.join(root, "reports", "ss_episode_latest.mp4")
-                _env = {**_os.environ, "MUJOCO_GL": "egl", "MUJOCO_EGL_DEVICE": "0"}
+                _env = {**_os.environ, "MUJOCO_GL": (os.environ.get("MUJOCO_GL") or ("cgl" if sys.platform == "darwin" else "wgl" if sys.platform == "win32" else "egl")), "MUJOCO_EGL_DEVICE": "0", "PYTHONIOENCODING": "utf-8"}
                 # 🎯 2026-09-09 (老倪: L4 档 3D 视频必须看到"外力把光模块旋转90°"): L4 档自动导出
                 #   切到 L4 演示全链生成器 (来料转台 90° 外力干扰 → 夹爪绕z回正抓取 → 对接 →
                 #   AOI → 光耦合精密操作 η 收敛), 覆盖同一条 ss_episode_latest.mp4 链接;
                 #   非 L4 档保持原同源 episode 生成器 (回归/演示两不相扰)
                 _cap_l4 = str(getattr(self, "_cap_level", "") or "").lower() in ("l4", "l4d")
                 if _cap_l4:
-                    _gen = os.path.join(tools_dir, "gen_l4_demo_video.py")
+                    _gen = _tool_script("gen_l4_demo_video.py")   # 🐛 09-11: frozen 多候选
                     self._safe_log("🎬 L4 档自动导出: 演示全链 (来料转台把光模块水平旋转90° 外力干扰 "
                                    "+ 夹爪绕z姿态适配 + 光耦合精密操作) — 渲染约 1-2 分钟")
                 else:
-                    _gen = os.path.join(tools_dir, "gen_ss_metaworld_episode.py")
-                r = _sp.run([sys.executable, _gen, "--also-latest"] if _cap_l4
-                            else [sys.executable, _gen, "--seed", "0", "--seeds", "3"],
-                            capture_output=True, text=True, timeout=1200, cwd=tools_dir, env=_env)
+                    _gen = _tool_script("gen_ss_metaworld_episode.py")
+                # 🐛 09-11: cwd 用脚本所在目录 (frozen 包根不是 tools/); 并把输出根交给生成器
+                #   (ZMAX_L4_ROOT) — 否则 frozen 下生成器写到临时目录父级, GUI scp 找不到文件
+                _cwd = _os.path.dirname(_gen) or tools_dir
+                _env = {**_env, "ZMAX_L4_ROOT": root}
+                # 🧠 2026-09-11 老倪: L4 视频必须同用流形预测指令 → 勾了「流形 yaw 执行」时
+                #   导出子进程也带 --mani-yaw (否则视频还是脚本开环, 与 3D 不一致)
+                _mani_flag = ["--mani-yaw"] if bool(getattr(self, "_mani_yaw_exec", False)) else []
+                r = _sp.run(([_resolve_python(), _gen, "--also-latest"] + _mani_flag) if _cap_l4
+                            else [_resolve_python(), _gen, "--seed", "0", "--seeds", "3"],
+                            capture_output=True, text=True, timeout=1200, cwd=_cwd, env=_env)
                 if r.returncode != 0:
                     self._safe_log(f"⚠️ 视频生成失败: {(r.stderr or '')[-300:]}")
                     return
@@ -12426,6 +12850,37 @@ class SimulinkModule(QWidget):
                  "program": "${file}",
                  "python": os.path.expanduser("~/lerobot-venv/bin/python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False},
+                # ── 🎯 INTACT L4 调试配置 (2026-09-13 老倪: "你来给出 INTACT L4 的调试配置") ──
+                #   ⚠️ 必须写在本模板里: 「右键 → 打开 VSCode」会重写 .vscode/launch.json,
+                #      模板里没有的条目会被抹掉。改动这里 = 同步改 .vscode/launch.json。
+                #   ① policy 层 (gui-venv311): 断点打 src/lerobot/policies/intact/**
+                #       (service.py / decoder.py / runtime/*.py), 不经过 GUI 也能单步
+                #   ② GUI 节点路径: 断点打 tools/gui/node_logic.py::node_intact_dec + policy 层
+                #   ③ 模型侧 (INTACT-JEPA/.venv = py3.10): 断点打 /home/ubuntu/INTACT-JEPA/**
+                #       与 tools/intact_worker.py::Runtime.act —— 真输入来自 reports/intact_last_input.npz
+                #       (INTACT_KEEP_INPUT=1 时桥自动留档), 不是合成数据
+                #   ④ 光模块插拔链 (真物理, gui-venv311 + Z-MAX 引擎)
+                {"name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_service_e2e.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
+                {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_gui_node_check.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
+                {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_worker_debug.py"),
+                 "python": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
+                {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
+                 "program": os.path.join(root, "tools/intact_sw_optical_bridge.py"),
+                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
+                 "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_l4_current"],
+                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
             ],
         }
         try:
@@ -12439,17 +12894,52 @@ class SimulinkModule(QWidget):
             return
         cmd = [code, root]
         # 🐛 2026-08-30 老倪: 打开当前节点实际源代码并定位 (node_logic 映射/外部源码)
+        # 🐛 2026-09-13 老倪: 「INTACT意图解码器 右键打开还是原来的 GUI, 没跳到 src/lerobot/policies」
+        #   → 原来只认 node_logic 映射, 未映射的键退回 node_logic.py 自身 → 看起来"没跳"。
+        #   改为 **节点自己声明的 params.source 优先** (可选 params.source_symbol 动态定位行号, 避免手写行号漂移),
+        #   找不到才退回 node_logic 映射 (老节点行为不变)。
         loc_desc = ""
+        _loc = None
         if node is not None:
+            _p = dict(node.get("params", {}) or {})
+            _src = str(_p.get("source") or "")
+            # 🐛 2026-09-14 老倪:「DiT 的右键怎么没有进入源代码」→ 两个真因:
+            #   ① 节点只写 file 不写符号 → 打开在**第 1 行**, 看着像"没跳进实现";
+            #   ② 不少节点把 source 写成**描述式**("路径 · 符号" / "路径 符号" / "路径 --flag"),
+            #      `os.path.isfile(join(root, 整串))` 必然失败 → 白丢一次定位机会。
+            #   这里: 拆出路径与符号; 若 params.source 只落到 GUI 自身 (node_logic.py) 而 registry
+            #   有真实实现, 让 registry 赢 (右键要进"真源码"不是进壳)。
+            _parts = [x.strip() for x in _src.replace("·", " ").split() if x.strip()]
+            _head = _parts[0] if _parts else ""
+            _sym_descr = (_parts[1] if len(_parts) > 1 and not _parts[1].startswith("--") else "")
+            _cand = ("" if (not _head or _head.startswith("--"))
+                     else (_head if os.path.isabs(_head) else os.path.join(root, _head)))
+            _gui_self = os.path.join(root, "tools", "gui", "node_logic.py")
+            if _cand and os.path.isfile(_cand) and os.path.abspath(_cand) != os.path.abspath(_gui_self):
+                _line = None
+                _sym = str(_p.get("source_symbol") or _sym_descr or "")
+                if _sym:
+                    try:
+                        with open(_cand, encoding="utf-8", errors="ignore") as _f:
+                            for _i, _l in enumerate(_f, 1):
+                                if _l.lstrip().startswith(_sym):
+                                    _line = _i
+                                    break
+                    except Exception:
+                        pass
+                _loc = (_cand, _line)
+        if _loc is None and node is not None:
             try:
                 from node_logic import match_node, get_node_location
                 key = match_node(node.get("name", ""))
                 path, line, _ = get_node_location(key) if key else (None, None, False)
                 if path and os.path.exists(path):
-                    cmd += ["-g", f"{path}:{line or 1}"]
-                    loc_desc = f" · 已定位 {os.path.basename(path)}:{line or 1}"
+                    _loc = (path, line)
             except Exception:
                 pass
+        if _loc:
+            cmd += ["-g", f"{_loc[0]}:{_loc[1] or 1}"]
+            loc_desc = f" · 已定位 {os.path.relpath(_loc[0], root)}:{_loc[1] or 1}"
         _sp.Popen(cmd, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
         self._log(f"🚀 VSCode 已打开 {root}{loc_desc} · 解释器 gui-venv311 已配置 "
                   f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)")
@@ -12640,3 +13130,18 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
+def _resolve_python():
+    """源码: 当前解释器; 打包: 找真 python (禁 app 二进制, 否则启动新 app 实例)"""
+    import os as _o2, shutil as _sh2, sys as _s2
+    if not getattr(_s2, "frozen", False):
+        return _s2.executable
+    p = _sh2.which("python3")
+    if p:
+        return p
+    for _c in ("/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"):
+        if _o2.path.exists(_c):
+            return _c
+    return "python3"

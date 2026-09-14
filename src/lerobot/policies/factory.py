@@ -172,6 +172,10 @@ def get_policy_class(name: str) -> type[PreTrainedPolicy]:
         from .left_right.modeling_left_right import LeftRightPolicy
 
         return LeftRightPolicy
+    elif name == "intact":
+        from .intact.modeling_intact import IntactPolicy
+
+        return IntactPolicy
     else:
         try:
             return _get_policy_cls_from_policy_name(name=name)

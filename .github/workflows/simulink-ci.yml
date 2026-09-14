@@ -1,0 +1,47 @@
+name: Simulink 模型验证 CI
+
+on:
+  push:
+    paths:
+      - 'simulink-spec.md'
+      - 'tools/gui/simulink_*.py'
+      - '**/flow*.json'
+      - '**.flow.json'
+  pull_request:
+    paths:
+      - 'simulink-spec.md'
+      - 'tools/gui/simulink_*.py'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 内置回归测试
+        run: python3 tools/gui/simulink_ci.py test
+
+      - name: 验证仓库内所有工作流
+        run: |
+          set +e
+          FAILED=0
+          for f in $(find . -name '*.flow.json' -o -path './examples/*' -name '*.json' 2>/dev/null | head -50); do
+            echo "=== $f ==="
+            python3 tools/gui/simulink_ci.py validate "$f" || FAILED=1
+          done
+          exit $FAILED
+
+      - name: 上传 CI 报告工件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulink-ci-report
+          path: |
+            **/ci_report*.html
+          if-no-files-found: ignore

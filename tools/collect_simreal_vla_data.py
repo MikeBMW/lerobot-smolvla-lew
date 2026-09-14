@@ -28,6 +28,12 @@ def main():
     ap.add_argument("--target", type=int, default=30, help="目标成功轨迹数")
     ap.add_argument("--out", default=str(ROOT / "data" / "smolvla_peg_v1"))
     ap.add_argument("--max-seeds", type=int, default=60)
+    # 🗣 C2 多任务数据 (2026-09-10): mode=insert(插装) / full(插拔+AOI 全链) —— 语义不同的
+    #   任务 × 不同指令 → 语言才有"区分力", 模型才学得会"听懂要干什么"(L4 指挥 L3 的前提)。
+    ap.add_argument("--mode", default="insert", choices=["insert", "full"], help="引擎任务模式")
+    ap.add_argument("--task", default="metaworld 光模块插拔",
+                    help="任务指令串 (写进 tasks.parquet, 必须与训练/推理保持一致; 禁硬编码旧串)")
+    ap.add_argument("--max-steps", type=int, default=0, help="单轮步数上限 (0=自动: insert 1200 / full 3000)")
     args = ap.parse_args()
     out = Path(args.out)
     (out / "data" / "chunk-000").mkdir(parents=True, exist_ok=True)
@@ -60,10 +66,11 @@ def main():
             except Exception:
                 pass
 
-        sim = RealStateSpaceSim(seed=seed, vision=False, mode="insert",
+        sim = RealStateSpaceSim(seed=seed, vision=False, mode=args.mode,
                                 log=lambda *a: None)
         sim._frame_sink = _sink
-        tr = sim.run(max_steps=1200)
+        _mst = args.max_steps or (3000 if args.mode == "full" else 1200)
+        tr = sim.run(max_steps=_mst)
         done = bool(tr["done"][-1]) if tr.get("done") else False
         if not done or not sink_called[0]:
             print(f"  seed{seed}: 未完成, 跳过 ({time.time()-t0:.0f}s)", flush=True)
@@ -124,7 +131,7 @@ def main():
     df["next.success"] = False
     df.to_parquet(out / "data" / "chunk-000" / "file-000.parquet")
     pd.DataFrame(all_eps).to_parquet(out / "meta" / "episodes" / "chunk-000" / "file-000.parquet")
-    pd.DataFrame({"task_index": [0], "task": ["peg-insert-side-v3"]}).to_parquet(
+    pd.DataFrame({"task_index": [0], "task": [args.task]}).to_parquet(
         out / "meta" / "tasks.parquet")
     states = np.stack([f["observation.state"] for f in all_frames])
     actions = np.stack([f["action"] for f in all_frames])

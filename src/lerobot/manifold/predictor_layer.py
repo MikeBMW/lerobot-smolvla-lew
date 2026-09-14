@@ -31,22 +31,56 @@ class LatentPredictor(nn.Module):
 
     LeWorldModel.ARPredictor 的轻量状态空间变体 (完整版见 world_model_le.py);
     输出 z 维 = 输入 z 维 (VLM 池化 R⁹⁶⁰ / 几何 R⁷ / 融合 R⁹⁶⁷ 由调用侧定)。
+
+    🧬 2026-09-14 (老倪原则: 上层只提供意图, 执行由 L2 收口): 新增**可选意图口** m
+    (`m_dim>0`)。意图不是"动作", 只作为预测器的额外条件:
+        z' = mlp([z, a])  +  gate · proj(m)
+    · `m=None` 或 `m_dim=0` → **逐位等于旧实现** (零回退);
+    · `proj` 末层**零初始化** → 即使给了 m, 未训练时增益恒为 0 (真零回退, 不是"看起来差不多")。
+    语义对齐 INTACT 四槽语法 [z, m_t, z·m_t, A(a_{t−1})] 里的 m_t。
     """
 
     def __init__(self, z_dim: int = 960, act_dim: int = 4,
-                 hidden_dim: int = 256, num_layers: int = 2) -> None:
+                 hidden_dim: int = 256, num_layers: int = 2,
+                 m_dim: int = 0, gate: float = 1.0) -> None:
         super().__init__()
         self.z_dim = int(z_dim)
         self.act_dim = int(act_dim)
+        self.m_dim = int(m_dim)
+        self.gate = float(gate)
         layers: list[nn.Module] = [nn.Linear(z_dim + act_dim, hidden_dim), nn.SiLU()]
         for _ in range(num_layers - 1):
             layers += [nn.Linear(hidden_dim, hidden_dim), nn.SiLU()]
         layers.append(nn.Linear(hidden_dim, z_dim))
         self.mlp = nn.Sequential(*layers)
+        if self.m_dim > 0:                      # 意图口 (零初始化末层 → 零回退)
+            self.intent_proj = nn.Sequential(
+                nn.Linear(self.m_dim, hidden_dim), nn.SiLU(),
+                nn.Linear(hidden_dim, z_dim),
+            )
+            nn.init.zeros_(self.intent_proj[-1].weight)
+            nn.init.zeros_(self.intent_proj[-1].bias)
+        else:
+            self.intent_proj = None
+        self.last_intent_gain = 0.0             # 取证: 本帧意图增益范数 (面板/探针)
 
-    def forward(self, z: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
-        """z: [B, z_dim], a: [B, act_dim] → z_pred: [B, z_dim]"""
-        return self.mlp(torch.cat([z, a], dim=-1))
+    def forward(self, z: torch.Tensor, a: torch.Tensor,
+                m: torch.Tensor | None = None) -> torch.Tensor:
+        """z: [B, z_dim], a: [B, act_dim] → z_pred: [B, z_dim]
+
+        m: [B, m_dim] 意图 (可选)。None 或 m_dim=0 → 与旧实现逐位相同。
+        """
+        z_pred = self.mlp(torch.cat([z, a], dim=-1))
+        self.last_intent_gain = 0.0
+        if m is not None and self.intent_proj is not None:
+            mm = torch.as_tensor(m, dtype=z_pred.dtype, device=z_pred.device)
+            if mm.ndim == 1:
+                mm = mm[None]
+            gain = self.intent_proj(mm)
+            self.last_intent_gain = float(gain.detach().float().norm().item())
+            z_pred = z_pred + self.gate * gain
+        return z_pred
+
 
 
 class ManifoldReadout(nn.Module):
@@ -81,20 +115,28 @@ class WorldModelPredictor(nn.Module):
     组装 LatentPredictor + ManifoldReadout (decoder = StateSpaceActionHead 独立,
     吃流形坐标解动作 — 见 state_space_action_head.py)。真机同构: predictor 只吃
     潜空间 (JEPA 原则), 流形坐标 = 导航地图读数。
+
+    🧬 2026-09-14: 可选意图口 `m_dim>0` — 上层 (L4 意图解码器) 的意图只作为**条件**进来,
+    不越权产动作; `m=None` 或门控未训练 → 逐位等于旧行为 (零回退)。
     """
 
     def __init__(self, z_dim: int = 960, act_dim: int = 4, manifold_dim: int = 6,
-                 hidden_dim: int = 256, num_layers: int = 2) -> None:
+                 hidden_dim: int = 256, num_layers: int = 2,
+                 m_dim: int = 0, gate: float = 1.0) -> None:
         super().__init__()
         self.z_dim = int(z_dim)
-        self.predictor = LatentPredictor(z_dim, act_dim, hidden_dim, num_layers)
+        self.m_dim = int(m_dim)
+        self.predictor = LatentPredictor(z_dim, act_dim, hidden_dim, num_layers,
+                                        m_dim=m_dim, gate=gate)
         self.readout = ManifoldReadout(z_dim, manifold_dim, max(128, hidden_dim // 2))
         self.manifold_dim = int(manifold_dim)
 
-    def forward(self, z, a):
-        z_pred = self.predictor(z, a)
+    def forward(self, z, a, m=None):
+        z_pred = self.predictor(z, a, m)
         manifold = self.readout(z_pred)
-        return {"z_pred": z_pred, "manifold": manifold}
+        return {"z_pred": z_pred, "manifold": manifold,
+                "intent_gain": float(getattr(self.predictor, "last_intent_gain", 0.0))}
+
 
 
 # ═══════════════════════════════════════════════════════════════
