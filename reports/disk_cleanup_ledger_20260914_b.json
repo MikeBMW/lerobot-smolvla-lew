@@ -1,0 +1,41 @@
+{
+  "ts": "2026-09-14 22:15 CST",
+  "reason": "老倪指令『压磁盘』; 开机后 used 295G / 红线 300G, 余量仅 5G",
+  "before": {"used_gb": 295, "avail_gb": 82, "redline_gb": 300, "mount": "/dev/nvme0n1p5"},
+  "after":  {"used_gb": 281, "avail_gb": 94, "redline_gb": 300},
+  "freed_gb_approx": 14,
+  "deleted": [
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/outputs/train/smolvla_lew_v10_r2", "bytes": 1442757036,
+     "sha256_model_safetensors": "f4cad6b0b1fe64bc927a555f2951466780ad9854967ba403738e5ebfe62162b1",
+     "why": "v10 试验分支 (6k 步), 全仓零代码引用 (仅日志/state.db 提及); v10 主线是 v10 -> v10_full",
+     "regenerate": "见 outputs/train/smolvla_lew_v10 r2 训练脚本历史; 或从 v10 ckpt 000500 重跑"},
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/outputs/train/smolvla_lew_v10_r2b", "bytes": 1442757036,
+     "sha256_model_safetensors": "e538f87c7c88c3324119e95ef3d9a4040d2b4c18166684c444613297be5332c6",
+     "why": "同上 (1.5k 步旁支), 零引用", "regenerate": "同上"},
+    {"path": "docker image pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime", "bytes_approx": 10340000000,
+     "why": "docker system df: Images 9.63GB ACTIVE=0, 无容器无卷; 本机训练走原生 lerobot-venv 不走容器",
+     "repull": "docker pull pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime",
+     "refs_before_delete": ["lerobot-smolvla-lew/Dockerfile", "skills .../docker-gpu-training/SKILL.md (仅文档, 用时重拉)"]},
+    {"path": "/var/log/journal (vacuum)", "bytes_approx": 549453824, "why": "journalctl --vacuum-size=200M, 释放 523.8M"},
+    {"path": "/var/cache/apt/archives/*.deb", "bytes_approx": 521000000, "why": "apt-get clean (83 个 deb)"},
+    {"path": "/var/crash/*", "bytes_approx": 122700000, "why": "崩溃转储残留"},
+    {"path": "~/.cache/pip/*, ~/.cache/LarkShell/*Cache*/CachedData", "bytes_approx": 120000000, "why": "可再生缓存 (pip/飞书)"},
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/flows/*.bak_*", "bytes_approx": 870000, "count": 15, "why": "状态空间 JSON 手改备份垃圾"}
+  ],
+  "not_deleted_on_purpose": [
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/*.h5", "why": "cube 95G + reacher 93G 官方数据 + 在用的 optical_insert_v5_disturb.h5 6.9G"},
+    {"path": "/home/ubuntu/lerobot-smolvla-lew/outputs/train/smolvla_lew_v10{,_full,_1h,_fast}, _v8, _d1", "why": "被活代码引用: tools/gui/state_space_sim_real.py, tools/gen_state_space_video.py, tools/eval_takeover.py, tools/rollout_smolvla_lew.py; v10 是 v10_full 的 pretrained_path 源"},
+    {"path": "hermes-portable.tar.gz / hermes_core_*.zip (~1.6G)", "why": "崩溃恢复保险 (hermes-crash-recovery), 非垃圾"},
+    {"path": "INTACT-JEPA/checkpoints-paper|_hf (2.5G)", "why": "论文权重, 官方评测口径需要"},
+    {"path": "/swapfile 8.1G", "why": "系统交换文件"}
+  ],
+  "protected_verified_after": [
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/cube_single_expert.h5", "ok": true},
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/reacher.h5", "ok": true},
+    {"path": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v5_disturb.h5", "ok": true},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5_s3072/weights_epoch_2.pt", "ok": true, "note": "v6 暖启动源"},
+    {"path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v5_s3072/weights_epoch_4.pt", "ok": true},
+    {"path": "outputs/train/smolvla_lew_v10{,_full,_1h,_fast}, _v8, _d1", "ok": true}
+  ],
+  "side_effect_check": {"training_process": "none running (GPU 0MiB)", "auto_loop": "PID 4604 alive, WS connected datadrive.world, 队列空等小芳", "guard_rerun": "used 281G / 红线 300G -> ✅ 在红线内"}
+}
