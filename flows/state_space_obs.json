@@ -1373,7 +1373,7 @@
       "icon": "🎯",
       "color": "#1f6feb",
       "params": {
-        "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
+        "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
         "expert": true,
         "state_space": true,
         "decoder": true,
@@ -1393,7 +1393,7 @@
       "icon": "🧮",
       "color": "#8957e5",
       "params": {
-        "desc": "[专家·世界模型 L4] JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/manifold/predictor_layer.py",
+        "desc": "[专家·世界模型 L4] **入线两条意图通道**: ①活跃口径 z7 = 引擎几何潜空间 R7 + 引擎几何意图 (target−peg_head), 来自 📐 2D→3D 解算; ②z_t 口径 = INTACT 潜空间 192 + 意图增量 m_int=δ(z_goal−z_t), 来自 🎯 INTACT 意图解码器 (该口径 LOSO R² 全负未启用, 但解码器的 m_int 仍作为门控/存在性条件参与, w=m_int_weight×SS_L4_INTENT_LINE_W×ready) · JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/manifold/predictor_layer.py",
         "expert": true,
         "state_space": true,
         "source": "src/lerobot/manifold/predictor_layer.py",
@@ -1932,6 +1932,14 @@
       "f_port": "out1",
       "t_port": "in1",
       "label": "意图/潜空间/动作块 (零搜索)"
+    },
+    {
+      "id": "lkild_jepa",
+      "f": "ssintact_dec",
+      "t": "ssmani_exp",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "意图 m_int → 预测器条件 (z_t 口径: z_t+δ; 活跃口径 z7 见 2D→3D 入线)"
     },
     {
       "id": "lkild3",
