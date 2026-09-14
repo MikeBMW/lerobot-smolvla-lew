@@ -12869,20 +12869,31 @@ class SimulinkModule(QWidget):
         if node is not None:
             _p = dict(node.get("params", {}) or {})
             _src = str(_p.get("source") or "")
-            if _src and os.path.isfile(os.path.join(root, _src)):
-                _path = os.path.join(root, _src)
+            # 🐛 2026-09-14 老倪:「DiT 的右键怎么没有进入源代码」→ 两个真因:
+            #   ① 节点只写 file 不写符号 → 打开在**第 1 行**, 看着像"没跳进实现";
+            #   ② 不少节点把 source 写成**描述式**("路径 · 符号" / "路径 符号" / "路径 --flag"),
+            #      `os.path.isfile(join(root, 整串))` 必然失败 → 白丢一次定位机会。
+            #   这里: 拆出路径与符号; 若 params.source 只落到 GUI 自身 (node_logic.py) 而 registry
+            #   有真实实现, 让 registry 赢 (右键要进"真源码"不是进壳)。
+            _parts = [x.strip() for x in _src.replace("·", " ").split() if x.strip()]
+            _head = _parts[0] if _parts else ""
+            _sym_descr = (_parts[1] if len(_parts) > 1 and not _parts[1].startswith("--") else "")
+            _cand = ("" if (not _head or _head.startswith("--"))
+                     else (_head if os.path.isabs(_head) else os.path.join(root, _head)))
+            _gui_self = os.path.join(root, "tools", "gui", "node_logic.py")
+            if _cand and os.path.isfile(_cand) and os.path.abspath(_cand) != os.path.abspath(_gui_self):
                 _line = None
-                _sym = str(_p.get("source_symbol") or "")
+                _sym = str(_p.get("source_symbol") or _sym_descr or "")
                 if _sym:
                     try:
-                        with open(_path, encoding="utf-8", errors="ignore") as _f:
+                        with open(_cand, encoding="utf-8", errors="ignore") as _f:
                             for _i, _l in enumerate(_f, 1):
                                 if _l.lstrip().startswith(_sym):
                                     _line = _i
                                     break
                     except Exception:
                         pass
-                _loc = (_path, _line)
+                _loc = (_cand, _line)
         if _loc is None and node is not None:
             try:
                 from node_logic import match_node, get_node_location
