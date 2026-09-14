@@ -249,6 +249,21 @@ class IntactIntentService:
                              skill_ctx=skill_ctx)                   # 真推理
         self.last_out = out          # 调用方 (引擎/直驱) 取 chunk 用 —— 与原 node.step 返回**同一对象**
         diag = dict(self.node.diagnostics() or {})
+        # 🔎 2026-09-14 溯源补强: 本路径桥的 `ckpt` 字段可能是空的 (worker 报 policy=direct),
+        #   证据里必须能看出"这次推理用的是哪个权重文件" → 把 env 与**指针解析后的真实路径**写进报告。
+        _pol = str(os.environ.get("INTACT_POLICY", "") or "")
+        if _pol:
+            _cache = (os.environ.get("STABLEWM_HOME") or os.environ.get("LOCAL_DATASET_DIR") or "")
+            _cand = os.path.join(_cache, "checkpoints", _pol) if _cache else ""
+            if _cand and os.path.exists(_cand):
+                _real = os.path.realpath(os.path.join(_cand, "weights.pt")) if os.path.isdir(_cand) else os.path.realpath(_cand)
+                diag["ckpt_env"] = _pol
+                diag["ckpt_realpath"] = _real
+                try:
+                    diag["ckpt_mtime"] = time.strftime("%F %T", time.localtime(os.path.getmtime(_real)))
+                    diag["ckpt_bytes"] = os.path.getsize(_real)
+                except OSError:
+                    pass
         rep = IntentReport(stage=st, trained=bool(getattr(out, "trained", False)),
                            chunk_shape=tuple(np.asarray(out.chunk).shape),
                            policy=str(getattr(out, "policy", "")),
