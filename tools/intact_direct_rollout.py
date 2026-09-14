@@ -236,6 +236,34 @@ def install_direct_act(sim, node, a_mean, a_std, infer_every=1, chunk_step=0, sl
                     rec.setdefault("dec_src", []).append(str(_rep.u_ff_source))
                     raw = chunk[min(chunk_step, len(chunk) - 1), slot * 4:(slot + 1) * 4]
                     act = (raw * a_std + a_mean) if unz else raw
+                    # 🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) → 执行器 连线必须**真接**)
+                    #   L4 意图 → 同一颗 DiT (额外条件 token) 真前向 → 与 INTACT 动作融合:
+                    #     act = (1−β)·act_INTACT + β·act_DiT,  β=SS_L4_DIT_BETA(默认0.5)
+                    #   SS_L4_DIT 不设 = 逐位零变化 (零回退); 无 L4 条件/DiT 不可用 → 不融合 + 计数。
+                    if os.environ.get("SS_L4_DIT") == "1":
+                        _cond = getattr(_rep, "l4_cond", None)
+                        _ad = s._l4_dit_action(_cond) if hasattr(s, "_l4_dit_action") else None
+                        if _ad is not None:
+                            _b = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
+                            _a0 = np.asarray(act, float)[:4].copy()
+                            act = (1.0 - _b) * _a0 + _b * np.asarray(_ad, float)[:4]
+                            state["dit"] = {
+                                "beta": _b, "cond_dim": int(np.asarray(_cond).size),
+                                "cond_src": getattr(_rep, "l4_cond_source", ""),
+                                "delta": float(np.linalg.norm(np.asarray(act, float)[:3] - _a0[:3])),
+                                "act_dit": [round(float(v), 5) for v in np.asarray(_ad, float)[:4]],
+                                "act_intact": [round(float(v), 5) for v in _a0[:4]],
+                                "applied": int(state.get("dit", {}).get("applied", 0)) + 1,
+                                "src": "DiT(l4_cond)",
+                            }
+                            rec.setdefault("dit_act", []).append(np.asarray(_ad, float).copy())
+                            rec.setdefault("dit_delta", []).append(
+                                float(state["dit"]["delta"]))
+                        else:
+                            state["dit"] = {"beta": float(os.environ.get("SS_L4_DIT_BETA", "0.5")),
+                                            "cond_dim": 0 if _cond is None else int(np.asarray(_cond).size),
+                                            "applied": 0, "src": "不注入(DiT 未就绪/无条件)",
+                                            "why": (getattr(s, "_l4_dit", {}) or {}).get("src")}
                     s._dact_cache = np.clip(act, -1.0, 1.0)
                     rec["raw"].append(raw.copy())
                     rec["chunk_norm"].append(float(np.linalg.norm(chunk)))

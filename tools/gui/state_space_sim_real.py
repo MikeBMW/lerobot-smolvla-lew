@@ -844,10 +844,14 @@ class RealStateSpaceSim:
             return g["peg_head0"] - off          # 光模块头落回初始位 (放件, 随后开爪)
         return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
 
-    def _l3_forward(self, visual39):
+    def _l3_forward(self, visual39, l4_cond=None, tag="L3"):
         """🧠 2026-09-10 L3 真执行 (老倪: 模型当执行者) — SmolVLA-Lew 策略真实前向
         输入: 渲染帧 (480×480, 与训练同源) + 39D 视觉状态 → 输出 4D 动作
         用: 引擎 SS_L3=1 时 xyz 由模型出 (gripper 仍由状态机管 — 模型二值回归不准)
+
+        🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) 连线"必须改"真接):
+          l4_cond != None → 把 L4 意图向量作为**额外条件 token** 送进同一颗 DiT (同一条前向,
+          不是另写一个模型)。l4_cond=None 时与本改造前**逐位相同** (L3 档零回退)。
         """
         try:
             import torch
@@ -950,7 +954,7 @@ class RealStateSpaceSim:
                      "task": os.environ.get("SS_L3_TASK", getattr(self, "_l3_task_str", "metaworld 光模块插拔"))}
             batch = self._l3_pre(batch)
             with torch.no_grad():
-                _pred = self._l3_pol.select_action(batch)
+                _pred = self._l3_pol.select_action(batch, l4_cond=l4_cond)
                 # 🎯 2026-09-10 关键修正 (接管卡死"转移2318帧"的真根因):
                 #   模型输出在**归一化空间** (policy 配置 ACTION=MIN_MAX), 必须用
                 #   post-processor 反归一化才能当真实动作执行。缺这一步 → 归一化值(-1~1)
@@ -966,8 +970,50 @@ class RealStateSpaceSim:
                 _cls._L3_FAILED = f"{type(_e).__name__}: {_e}"
             if not getattr(self, "_l3_warned", False):
                 self._l3_warned = True
-                self.log(f"⚠️ L3 推理失败 (已熔断, 本进程内不再重试载入): {_e}")
+                self.log(f"⚠️ {tag} 推理失败 (已熔断, 本进程内不再重试载入): {_e}")
             return None
+
+    def _obs39(self) -> np.ndarray:
+        """训练同源观测 (env._get_obs() 前 39 维) — L3/L4 DiT 的 state 输入。"""
+        return np.asarray(self.env._get_obs(), dtype=np.float64).ravel()[:39]
+
+    def _l4_dit_stats_init(self) -> dict:
+        if not hasattr(self, "_l4_dit"):
+            self._l4_dit = {"calls": 0, "ok": 0, "refused": 0, "err": None, "cond_dim": 0,
+                            "cond_norm": 0.0, "act_norm": [], "delta": [], "beta": 0.0,
+                            "src": "off"}
+        return self._l4_dit
+
+    def _l4_dit_action(self, l4_cond, visual39=None):
+        """🎯 L4→DiT: 用 **L4 条件** 真跑同一颗 DiT (smolvla_lew 动作头) → 4D metaworld 动作或 None。
+
+        与 _l3_forward 共用一条实现 (同一个加载/前向/反归一化路径), 只多一个条件通道。
+        每次调用都计数 + 记录条件范数/动作范数 (证据可查, 不静默)。
+        """
+        st = self._l4_dit_stats_init()
+        if l4_cond is None:
+            st["refused"] += 1
+            st["src"] = "拒绝(无 L4 条件)"
+            return None
+        st["calls"] += 1
+        st["cond_dim"] = int(np.asarray(l4_cond).size)
+        st["cond_norm"] = float(np.linalg.norm(np.asarray(l4_cond, float)))
+        st["beta"] = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
+        try:
+            o = visual39 if visual39 is not None else self._obs39()
+            act = self._l3_forward(o, l4_cond=np.asarray(l4_cond, dtype=np.float32), tag="L4→DiT")
+        except Exception as e:                                                   # noqa: BLE001
+            st["err"] = f"{type(e).__name__}: {e}"
+            st["src"] = "异常"
+            return None
+        if act is None:
+            st["refused"] += 1
+            st["src"] = f"不注入({getattr(type(self), '_L3_FAILED', '?')})"
+            return None
+        st["ok"] += 1
+        st["act_norm"].append(float(np.linalg.norm(act[:3])))
+        st["src"] = "DiT(l4_cond)"
+        return np.asarray(act, dtype=float)
 
     # ── 🎯 INTACT 前馈槽位 (Step 1, 2026-09-12) ────────────────────────────────
     def attach_intact(self, node, adapter=None):
@@ -1028,7 +1074,7 @@ class RealStateSpaceSim:
         if not self._intact_buf:
             return None
         u = self._intact_buf.pop(0)
-        st["u_ff_src"] = "intact" + ("(shadow)" if self._intact_shadow else "")
+        st["u_ff_src"] = "intact" + ("(shadow)" if self._l4_shadow else "")
         return u
 
     # ── 🎯 INTACT 意图解码器 → L3 (2026-09-13 老倪: metaworld 数据源 → INTACT → decoder → L3) ──
@@ -1066,6 +1112,8 @@ class RealStateSpaceSim:
                 return None
             d = self._l4_dec.decode(out, stage=stage)
             self._l4_cond = d.l3_cond
+            # 🎯 2026-09-14 L4→DiT 条件通道 (192 维意图单位向量; 无需标定)
+            self._l4_dit_cond = getattr(d, "l4_cond", None)
             st["cond_src"] = d.l3_cond_source
             st["cond_ready"] = 1 if d.l3_cond is not None else 0
             if d.u_ff is None:
@@ -1085,6 +1133,28 @@ class RealStateSpaceSim:
         if not self._l4_buf:
             return None
         u = self._l4_buf.pop(0)
+        # 🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) → ssff 连线必须**真接**)
+        #   L4 意图 → 同一颗 DiT (额外条件 token) → 在**同一 u_ff 槽位**与 L4 前馈融合:
+        #     u = (1−β)·u_L4 + β·u_DiT,  β = SS_L4_DIT_BETA (默认 0.5, 记入证据)
+        #   SS_L4_DIT 不设 = 逐位零变化 (零回退); 未取到条件/DiT 不可用 → 不融合 + 计数。
+        if os.environ.get("SS_L4_DIT") == "1" and getattr(self, "_l4_dit_cond", None) is not None:
+            _sd = self._l4_dit_stats_init()
+            _every = int(os.environ.get("SS_L4_DIT_EVERY", os.environ.get("SS_INTACT_EVERY", "8")))
+            if (getattr(self, "_l4_dit_cache", None) is None
+                    or getattr(self, "_l4_dit_step", 0) % max(1, _every) == 0):
+                _ad = self._l4_dit_action(self._l4_dit_cond)
+                self._l4_dit_cache = None if _ad is None else np.asarray(_ad, float)[:4]
+            self._l4_dit_step = getattr(self, "_l4_dit_step", 0) + 1
+            _ac = getattr(self, "_l4_dit_cache", None)
+            if _ac is not None:
+                _ka = float(getattr(self._l4_dec, "k_act", 0.5))
+                _ud = np.concatenate([np.clip(np.asarray(_ac, float)[:3], -1, 1) * _ka,
+                                      [1.0 if float(_ac[3]) > 0.5 else -1.0]])
+                _beta = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
+                _u0 = np.asarray(u, float).copy()
+                u = (1.0 - _beta) * _u0 + _beta * _ud
+                _sd.setdefault("delta", []).append(float(np.linalg.norm(np.asarray(u, float)[:3] - _u0[:3])))
+                _sd["applied"] = int(_sd.get("applied", 0)) + 1
         self._l4_last_u = np.asarray(u, dtype=float).copy()
         if self._l4_shadow:            # 影子档: 真推理真解码真记录, 但不接管
             return None

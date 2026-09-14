@@ -331,6 +331,7 @@ class SmolVLALewModel(nn.Module):
         batch_images: list[list[Image.Image]],
         instructions: list[str],
         state: np.ndarray | None = None,
+        l4_cond=None,                                  # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
     ) -> np.ndarray:
         if self.config.resize_images_to is not None:
             height, width = self.config.resize_images_to
@@ -352,7 +353,8 @@ class SmolVLALewModel(nn.Module):
 
         pred_actions = self.action_model.predict_action(
             conditioning_tokens=multimodal_embeds.float(),
-            state=state_tensor.float() if state_tensor is not None else None
+            state=state_tensor.float() if state_tensor is not None else None,
+            l4_cond=l4_cond,                           # 🎯 L4→L3 条件通道 (画布 ssintact_dec→ssdec 真接)
         )
         return pred_actions.detach().cpu().numpy()
 
@@ -489,7 +491,8 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         return self.model.parameters()
 
     @torch.no_grad()
-    def predict_action_chunk(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
+    def predict_action_chunk(self, batch: dict[str, Tensor], noise: Tensor | None = None,
+                             l4_cond=None) -> Tensor:
         self.eval()
         self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
 
@@ -501,15 +504,17 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         if "state" in examples[0] and examples[0]["state"] is not None:
             state_np = np.stack([ex["state"] for ex in examples])
 
-        actions_np = self.model.predict_action(batch_images, instructions, state_np)
+        # 🎯 2026-09-14 L4→L3 条件 (老倪: 连线必须真接): l4_cond=None → 与改造前逐位相同
+        actions_np = self.model.predict_action(batch_images, instructions, state_np, l4_cond=l4_cond)
         return torch.from_numpy(actions_np).to(device=self.config.device, dtype=torch.float32)
 
     @torch.no_grad()
-    def select_action(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
+    def select_action(self, batch: dict[str, Tensor], noise: Tensor | None = None,
+                      l4_cond=None) -> Tensor:
         self.eval()
         self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
         if len(self._queues[ACTION]) == 0:
-            actions = self.predict_action_chunk(batch)
+            actions = self.predict_action_chunk(batch, l4_cond=l4_cond)
             self._queues[ACTION].extend(actions.transpose(0, 1)[: self.config.n_action_steps])
         return self._queues[ACTION].popleft()
 

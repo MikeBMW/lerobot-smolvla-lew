@@ -73,6 +73,9 @@ class IntentReport:
     l3_cond_source: str = ""
     weight: float = 0.0
     reason: str = ""
+    # 🎯 2026-09-14 L4→L3 条件通道 (无需标定): INTACT 意图增量单位向量 → DiT 额外条件 token
+    l4_cond: np.ndarray | None = None
+    l4_cond_source: str = ""
     decoder: dict = field(default_factory=dict)
     evidence_path: str = ""
     bridge: dict = field(default_factory=dict)
@@ -93,6 +96,12 @@ class IntentReport:
                 out.append("      (L3 仍走 VLM+DiT 原链路 → 零回退; 标定后本通道自动生效)")
             else:
                 out.append(f"   ② L3 条件 {_r4(self.l3_cond)} ← {self.l3_cond_source}")
+            # 🎯 L4→L3 条件通道 (DiT 的额外条件 token; 与 ② 是两条独立通道)
+            if self.l4_cond is None:
+                out.append(f"   ③ DiT 条件通道: **不注入** — {self.l4_cond_source or '(未取到)'}")
+            else:
+                out.append(f"   ③ DiT 条件通道: {self.l4_cond.size} 维单位意图向量 "
+                           f"‖δ‖=1.0 ← {self.l4_cond_source}")
         else:
             out.append(f"🎯 INTACT: action chunk{tuple(self.chunk_shape)} · 策略={self.policy}(零搜索) · "
                        f"candidate_sequences={float(d.get('candidate_sequences', 0)):.0f} · "
@@ -113,6 +122,11 @@ class IntentReport:
                 "w": self.weight, "src": self.u_ff_source, "trained": self.trained,
                 "cond_ready": self.l3_cond is not None,
                 "cond_src": self.l3_cond_source, "obs_source": self.obs_source,
+                # 🎯 L4→L3 条件通道 (DiT 用)
+                "l4_cond_dim": int(self.l4_cond.size) if self.l4_cond is not None else 0,
+                "l4_cond_src": self.l4_cond_source,
+                "l4_cond_head": ([float(x) for x in np.round(self.l4_cond[:6], 4)]
+                                 if self.l4_cond is not None else None),
                 "chunk_shape": list(self.chunk_shape), "ts": self.ts}
 
     def to_dict(self) -> dict:
@@ -122,6 +136,8 @@ class IntentReport:
                 "diagnostics": self.diagnostics, "decoded": self.decoded,
                 "u_ff": _r4(self.u_ff), "u_ff_source": self.u_ff_source,
                 "l3_cond": _r4(self.l3_cond), "l3_cond_source": self.l3_cond_source,
+                "l4_cond_dim": int(self.l4_cond.size) if self.l4_cond is not None else 0,
+                "l4_cond_source": self.l4_cond_source,
                 "weight": self.weight, "reason": self.reason, "decoder": self.decoder,
                 "bridge": self.bridge, "ts": self.ts}
 
@@ -137,6 +153,8 @@ class IntentReport:
         return {"stage": self.stage, "w": self.weight,
                 "u_ff": self._r6(self.u_ff), "u_ff_source": self.u_ff_source,
                 "l3_cond": self._r6(self.l3_cond), "l3_cond_source": self.l3_cond_source,
+                # ↓ 2026-09-14 新增 (只增不改): DiT 条件通道 (192 维)
+                "l4_cond": self._r6(self.l4_cond), "l4_cond_source": self.l4_cond_source,
                 "reason": self.reason, "decoder": self.decoder,
                 "ts": self.ts,
                 # ↓ v5.5.43 新增 (只增不改)
@@ -279,6 +297,8 @@ class IntactIntentService:
             rep.decoded = True
             rep.u_ff, rep.u_ff_source = d.u_ff, d.u_ff_source
             rep.l3_cond, rep.l3_cond_source = d.l3_cond, d.l3_cond_source
+            # 🎯 2026-09-14 L4→L3 条件通道 (DiT 额外条件 token; 无需标定)
+            rep.l4_cond, rep.l4_cond_source = d.l4_cond, d.l4_cond_source
             rep.weight, rep.reason = float(d.weight), d.reason
             rep.decoder = self.decoder.describe()
             if write_evidence is None:

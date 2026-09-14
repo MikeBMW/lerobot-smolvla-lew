@@ -61,6 +61,12 @@ class DecodedIntent:
     l3_cond_source: str
     weight: float                      # 融合权重 w ∈ [0,1]
     reason: str = ""
+    # 🎯 2026-09-14 L4→L3 条件通道 (老倪: 画布 ssintact_dec → ssdec(DiT) 连线必须真接):
+    #   l3_cond 走"标定到引擎流形"的路 (需 models/intact_l3_map.json); 实测 z_t→流形6维 在
+    #   13 轮/1935 样本下 LOSO 测试 R²≤0 → **不可标定** (不做假映射)。因此新增这条**无需标定**的
+    #   真通道: INTACT 自己的意图增量 δ=z_goal−z_t (单位向量) 直接作为 DiT 的额外条件 token。
+    l4_cond: np.ndarray | None = None
+    l4_cond_source: str = ""
 
 
 class IntactIntentDecoder:
@@ -143,8 +149,31 @@ class IntactIntentDecoder:
         intent_norm = float(getattr(out, "diagnostics", {}).get("intent_norm") or 0.0)
         w = w_max if intent_norm > 1e-6 else 0.0
         reason = "" if abs(w) > 0 else "INTACT 意图退化 (intent_norm≈0) → w=0, 不注入"
+        # ④ L4→L3 条件通道 (无需标定): 意图增量 δ=z_goal−z_t 的单位向量 → DiT 额外条件 token
+        l4c, l4src = self._intent_cond(out)
         return DecodedIntent(u_ff=u, u_ff_source=u_ff_src, l3_cond=cond,
-                             l3_cond_source=cond_src, weight=w, reason=reason)
+                             l3_cond_source=cond_src, weight=w, reason=reason,
+                             l4_cond=l4c, l4_cond_source=l4src)
+
+    def _intent_cond(self, out) -> tuple[np.ndarray | None, str]:
+        """意图增量 δ=z_goal−z_t → 单位向量 (L4→L3 条件; 无需标定, 每帧真值)。"""
+        lat = getattr(out, "latent", None) or {}
+        if not isinstance(lat, dict):
+            return None, "拒绝(无潜空间)"
+        def _v(k):
+            v = lat.get(k)
+            if v is None:
+                return None
+            a = np.asarray(v, dtype=np.float64).ravel()
+            return a if a.size and np.all(np.isfinite(a)) else None
+        zt, zg = _v("z_t"), _v("z_goal")
+        if zt is None or zg is None or zt.size != zg.size:
+            return None, f"拒绝(缺 z_t/z_goal: z_t={zt is not None}, z_goal={zg is not None})"
+        d = zg - zt
+        n = float(np.linalg.norm(d))
+        if not np.isfinite(n) or n < 1e-9:
+            return None, f"拒绝(意图增量退化 ‖δ‖={n:.2e})"
+        return (d / n), f"intact(意图增量 δ=z_goal−z_t 单位向量, {d.size}维, 无需标定, ‖δ‖={n:.4f})"
 
     @staticmethod
     def _latent_vec(out) -> np.ndarray | None:

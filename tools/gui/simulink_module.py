@@ -4558,6 +4558,19 @@ class SimulinkModule(QWidget):
             "   3D 面板显示「yaw 指令来源 + 下发角 + φ* + 前向次数 + trained」逐帧可核对")
         tl.addWidget(self.chk_mani_yaw)
         tl.addWidget(self.chk_intact_exec)      # 🤖 2026-09-12: L4 → INTACT 节点执行 (默认勾选)
+        # 🎯 2026-09-14: L4 → DiT 条件通道 (画布 ssintact_dec → ssdec(DiT) 那条连线做成真接)
+        self.chk_l4_dit = QCheckBox("🎯 L4 意图 → DiT 精炼")
+        self.chk_l4_dit.setChecked(True)        # 老倪: "连线连的就是 DiT, 必须改" → 默认生效
+        self.chk_l4_dit.setToolTip(
+            "【默认勾选】L4 档把 INTACT 的意图向量 (δ=z_goal−z_t 单位向量, 192 维, 无需标定)\n"
+            "作为**额外条件 token** 送进同一颗 DiT (smolvla_lew 动作头, 与 L3 档同一份实现/同一权重),\n"
+            "DiT 输出与 INTACT 动作按 β=SS_L4_DIT_BETA(默认 0.5) 融合后下发。\n"
+            "  · 真接证据: 每帧/每 N 步真前向计数 · 条件维数 · 条件范数 · 融合前后 Δact 全部落盘\n"
+            "    (reports/intact_l3_cond.json + 直驱 state['dit']) — 可消融核对是不是摆设。\n"
+            "  · 诚实边界: 条件投影**未训练** (随机小初始化) ⇒ 通道真实参与前向, 但增益需后续训练;\n"
+            "    且 |z_t→流形6维| 实测不可标定 (13 轮/1935 样本 LOSO 测试 R²≤0) → 不走标定映射。\n"
+            "  · L3 档链路**一字未改** (l4_cond=None 时逐位相同); 取消勾选 = 回到纯 INTACT。")
+        tl.addWidget(self.chk_l4_dit)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -11384,6 +11397,27 @@ class SimulinkModule(QWidget):
                     _ckp = os.environ.get("INTACT_POLICY", "intact_l4_current")
                     os.environ["INTACT_POLICY"] = _ckp
                     os.environ.pop("SS_L3", None)
+                    # 🎯 2026-09-14 (老倪: 画布 ssintact_dec → ssdec(DiT) 那条连线"必须改"成真接;
+                    #   "L4 功能需要兼容 L3 功能" → L3 档一字不动, 只在 L4 档给同一颗 DiT 加条件通道):
+                    #   L4 意图(192 维单位向量) 作为**额外条件 token** 进同一颗 DiT (smolvla_lew 动作头),
+                    #   输出与 INTACT 动作按 β 融合后下发 (u_ff 槽位 / 直驱动作各一处, 同一实现)。
+                    #   不设 SS_L4_DIT = 逐位零变化 (零回退); 关掉下面这个勾 = 回到纯 INTACT。
+                    try:
+                        _ckd = getattr(self, "chk_l4_dit", None)
+                        _l4_dit = bool(_ckd is not None and _ckd.isChecked())
+                    except Exception:
+                        _l4_dit = False
+                    if _l4_dit:
+                        os.environ["SS_L4_DIT"] = "1"
+                        os.environ.setdefault("SS_L4_DIT_EVERY", "16")   # 每 16 步一次真前向 (CPU 友好)
+                        os.environ.setdefault("SS_L4_DIT_BETA", "0.5")
+                        _logs.append("🎯 L4 DiT 条件通道已开: INTACT 意图 → 同一颗 DiT(额外条件 token) "
+                                     f"→ β={os.environ.get('SS_L4_DIT_BETA')} 融合下发 "
+                                     f"(每 {os.environ.get('SS_L4_DIT_EVERY')} 步一次真前向)")
+                        _logs.append("   └ 口径: 该条件投影**未训练**(随机小初始化) ⇒ 通道真实参与前向, "
+                                     "增益需后续训练; L3 档链路一字未改")
+                    else:
+                        os.environ.pop("SS_L4_DIT", None)
                     _demo_cap = False       # 不走固定演示 → INTACT 节点真干活
                     _logs.append(f"🤖 L4 = INTACT 节点工作: u_ff 槽位由 INTACT 真推理接管 "
                                  f"(每 {os.environ.get('SS_INTACT_EVERY')} 步一次真推理)")

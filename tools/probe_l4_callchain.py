@@ -139,6 +139,27 @@ def _gtrace(frame, event, arg):
     return None
 
 
+def _find_line(rel_path: str, needle: str, default: int) -> int:
+    """按源码内容定位行号 (改文件后行号会漂移 → 证据不能写死行号)。"""
+    try:
+        p = os.path.join(ROOT, rel_path)
+        with open(p, encoding="utf-8") as f:
+            for i, ln in enumerate(f, 1):
+                if needle in ln:
+                    return i
+    except Exception:
+        pass
+    return default
+
+
+ACTION_HEAD = os.path.join("src", "lerobot", "policies", "smolvla_lew", "action_head.py")
+MODELING = os.path.join("src", "lerobot", "policies", "smolvla_lew", "modeling_smolvla_lew.py")
+LOSS_LINE = _find_line(ACTION_HEAD, "return (loss * valid_mask).sum()", 307)
+PRED_LINE = _find_line(ACTION_HEAD, "def predict_action(", 310)
+FWD_LINE = _find_line(ACTION_HEAD, "def forward(", 280)
+DIT_LINE = _find_line(ACTION_HEAD, "tem2 = self.timestep_encoder", 176) if False else 0
+
+
 def line_hits(name: str, lineno: int) -> int:
     return LC.get(name, {}).get(lineno, 0)
 
@@ -155,10 +176,9 @@ def report(scen: str, extra: dict) -> None:
     if ERR:
         print("   打桩失败:", ERR)
     print("\n② 行级计数 (关键行):")
-    for name, ln, why in [("action_head.py", 307, "👈 老倪断点: return (loss*valid_mask)..."),
-                          ("action_head.py", 280, "def forward( (loss 分支函数入口)"),
-                          ("action_head.py", 310, "def predict_action( (推理入口)"),
-                          ("action_head.py", 176, "DiT.forward 主体"),
+    for name, ln, why in [("action_head.py", LOSS_LINE, "👈 老倪断点: return (loss*valid_mask)... (行号自动定位)"),
+                          ("action_head.py", FWD_LINE, "def forward( (loss 分支函数入口)"),
+                          ("action_head.py", PRED_LINE, "def predict_action( (推理入口)"),
                           ("modeling_smolvla_lew.py", 234, "def forward( (训练 loss 分支)"),
                           ("modeling_smolvla_lew.py", 319, "action_loss = self.action_model(...) (唯一调用 loss 的地方)"),
                           ("modeling_smolvla_lew.py", 508, "def select_action( (推理)"),
@@ -168,9 +188,9 @@ def report(scen: str, extra: dict) -> None:
     hits = sorted(LC.get("action_head.py", {}).items())
     print("     ", ", ".join(f"{ln}({c})" for ln, c in hits) or "(无)")
     r = lambda a, b: sum(c for ln, c in hits if a <= ln <= b)                        # noqa: E731
-    print(f"\n   区间命中: 307={line_hits('action_head.py', 307)} · "
-          f"predict_action 主体(311-345)={r(311, 345)} · forward 主体(281-307)={r(281, 307)} · "
-          f"DiT.forward 主体(176-190)={r(176, 190)}")
+    print(f"\n   区间命中: loss 行({LOSS_LINE})={line_hits('action_head.py', LOSS_LINE)} · "
+          f"predict_action 主体({PRED_LINE+1}-{PRED_LINE+35})={r(PRED_LINE+1, PRED_LINE+35)} · "
+          f"forward 主体({FWD_LINE+1}-{LOSS_LINE-1})={r(FWD_LINE+1, LOSS_LINE-1)}")
     if extra:
         print("\n③ 引擎侧计数:", extra)
 
@@ -213,7 +233,7 @@ def run_engine(scen: str) -> dict:
     tr = sim.run(max_steps=STEPS)
     dt = time.time() - t0
     extra = {"steps": len(tr.get("stage", [])), "dt": dt}
-    for attr in ("_intact_stats", "_l4_stats", "_intact_drive"):
+    for attr in ("_intact_stats", "_l4_stats", "_intact_drive", "_l4_dit"):
         v = getattr(sim, attr, None)
         if isinstance(v, dict):
             keep = {k: (round(float(np.mean(x)), 4) if isinstance(x, list) and x else x)
@@ -221,6 +241,9 @@ def run_engine(scen: str) -> dict:
             if attr == "_intact_drive":
                 keep = {"keys": list(v.keys())}
             extra[attr] = keep
+    _drv = getattr(sim, "_intact_drive", None) or {}
+    if isinstance(_drv, dict):
+        extra["dit_state"] = (_drv.get("state") or {}).get("dit")
     extra["l3_calls"] = getattr(sim, "_l3_calls", 0)
     return extra
 

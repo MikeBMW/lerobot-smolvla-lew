@@ -205,6 +205,15 @@ DIT_PRESETS = {
 class SmolVLALewActionHead(nn.Module):
     def __init__(self, config: SmolVLALewConfig, cross_attention_dim: int) -> None:
         super().__init__()
+        # 🎯 2026-09-14 L4→L3 条件通道 (老倪: 画布 ssintact_dec → ssdec(DiT) 的连线"必须改"成真接):
+        #   懒创建的 cond 投影 (dim → inner_dim), 把 L4 意图向量作为**额外条件 token** 拼进
+        #   encoder_hidden_states。cond=None 时**一个 token 都不加** → 与改造前逐位相同 (L3 零回退)。
+        #   诚实标注: 该投影**未训练**(小随机初始化) —— 通道真实参与前向(可消融验证), 增益需后续训练。
+        self.l4_cond_proj: nn.Linear | None = None
+        self.l4_cond_dim = 0
+        # 条件 token 必须与 conditioning_tokens 同宽 (= DiT 的 cross_attention_dim, 实测 960;
+        # 曾误用 inner_dim=768 → RuntimeError: Expected size 960 but got size 768)
+        self.cross_attention_dim = int(cross_attention_dim)
         preset = DIT_PRESETS[config.action_model_type]
         self.config = config
         num_heads = config.action_num_heads or preset.num_attention_heads
@@ -258,6 +267,39 @@ class SmolVLALewActionHead(nn.Module):
         sample = self.beta_dist.sample([batch_size]).to(device=device, dtype=dtype)
         return (self.config.action_noise_s - sample) / self.config.action_noise_s
 
+    def ensure_l4_cond(self, dim: int, out_dim: int | None = None, device=None, dtype=None,
+                       scale: float = 0.02) -> None:
+        """保证 L4 条件投影存在 (懒创建, 不进 ckpt 的常规加载键 → 老权重加载零冲突)。
+
+        out_dim 必须 = conditioning_tokens 的宽度 (DiT cross_attention_dim); 默认取构造时传入值。
+        """
+        _out = int(out_dim or self.cross_attention_dim)
+        if (self.l4_cond_proj is not None and self.l4_cond_proj.in_features == int(dim)
+                and self.l4_cond_proj.out_features == _out):
+            return
+        _dev = device if device is not None else self.future_tokens.weight.device
+        _dt = dtype if dtype is not None else self.future_tokens.weight.dtype
+        lin = nn.Linear(int(dim), _out, bias=False).to(device=_dev, dtype=_dt)
+        with torch.no_grad():
+            lin.weight.normal_(0.0, float(scale))
+        self.l4_cond_proj = lin
+        self.l4_cond_dim = int(dim)
+
+    def apply_l4_cond(self, conditioning_tokens: torch.Tensor, l4_cond) -> torch.Tensor:
+        """L4 条件向量 → 额外条件 token 拼到 conditioning_tokens 尾部 (None → 原样返回, 零改动)。"""
+        if l4_cond is None:
+            return conditioning_tokens
+        c = torch.as_tensor(l4_cond, dtype=conditioning_tokens.dtype, device=conditioning_tokens.device)
+        if c.ndim == 1:
+            c = c[None]
+        if c.shape[0] == 1 and conditioning_tokens.shape[0] > 1:
+            c = c.expand(conditioning_tokens.shape[0], -1)
+        if (self.l4_cond_proj is None or self.l4_cond_proj.in_features != int(c.shape[-1])
+                or self.l4_cond_proj.out_features != int(conditioning_tokens.shape[-1])):
+            self.ensure_l4_cond(int(c.shape[-1]), out_dim=int(conditioning_tokens.shape[-1]),
+                                device=conditioning_tokens.device, dtype=conditioning_tokens.dtype)
+        return torch.cat([conditioning_tokens, self.l4_cond_proj(c)[:, None, :]], dim=1)
+
     def _build_inputs(
         self,
         conditioning_tokens: torch.Tensor,
@@ -283,6 +325,7 @@ class SmolVLALewActionHead(nn.Module):
         actions: torch.Tensor,
         state: torch.Tensor | None = None,
         action_is_pad: torch.Tensor | None = None,
+        l4_cond: torch.Tensor | None = None,          # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
     ) -> torch.Tensor:
         noise = torch.randn_like(actions)
         t = self.sample_time(actions.shape[0], actions.device, actions.dtype)
@@ -291,9 +334,10 @@ class SmolVLALewActionHead(nn.Module):
         t_discretized = (t * self.config.action_num_timestep_buckets).long()
 
         hidden_states = self._build_inputs(conditioning_tokens, noisy_actions, state, t_discretized)
+        _ct = self.apply_l4_cond(conditioning_tokens, l4_cond)
         pred = self.model(
             hidden_states=hidden_states,
-            encoder_hidden_states=conditioning_tokens,
+            encoder_hidden_states=_ct,
             timestep=t_discretized,
         )
         pred_actions = self.action_decoder(pred[:, -actions.shape[1] :])
@@ -311,8 +355,10 @@ class SmolVLALewActionHead(nn.Module):
         self,
         conditioning_tokens: torch.Tensor,
         state: torch.Tensor | None = None,
+        l4_cond: torch.Tensor | None = None,          # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
     ) -> torch.Tensor:
         batch_size = conditioning_tokens.shape[0]
+        _ct = self.apply_l4_cond(conditioning_tokens, l4_cond)
         actions = torch.randn(
             batch_size,
             self.action_horizon,
@@ -330,7 +376,7 @@ class SmolVLALewActionHead(nn.Module):
             hidden_states = self._build_inputs(conditioning_tokens, actions, state, timesteps)
             pred = self.model(
                 hidden_states=hidden_states,
-                encoder_hidden_states=conditioning_tokens,
+                encoder_hidden_states=_ct,
                 timestep=timesteps,
             )
             pred_velocity = self.action_decoder(pred[:, -self.action_horizon :])
