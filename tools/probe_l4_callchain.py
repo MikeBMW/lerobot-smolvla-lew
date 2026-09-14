@@ -74,6 +74,22 @@ def patch(modname: str, cls: str, meth: str, tag: str) -> None:
         ERR.append(f"{tag}: {type(e).__name__}: {e}")
 
 
+def patch_func(modname: str, funcname: str, tag: str) -> None:
+    """给模块级函数裹计数器。"""
+    try:
+        m = importlib.import_module(modname)
+        f = getattr(m, funcname)
+        if getattr(f, "_probe_wrapped", False):
+            return
+        def w(*a, **kw):
+            CALLS[tag] = CALLS.get(tag, 0) + 1
+            return f(*a, **kw)
+        w._probe_wrapped = True
+        setattr(m, funcname, w)
+    except Exception as e:                                                       # noqa: BLE001
+        ERR.append(f"{tag}: {type(e).__name__}: {e}")
+
+
 # ── ① 函数级: smolvla_lew 动作头 + 策略 + 状态空间头 ──────────────────────────
 _LEW = "lerobot.policies.smolvla_lew."
 patch(_LEW + "action_head", "SmolVLALewActionHead", "__init__", "SmolVLALewActionHead.__init__ ⚠️类被实例化")
@@ -90,6 +106,10 @@ patch("lerobot.policies.intact.decoder", "IntactIntentDecoder", "__init__", "Int
 patch("lerobot.policies.intact.decoder", "IntactIntentDecoder", "decode", "IntactIntentDecoder.decode")
 patch("lerobot.manifold.intact_node", "IntactNode", "step", "IntactNode.step (INTACT 真推理)")
 patch("lerobot.manifold.intact_node", "IntactRuntime", "__init__", "IntactRuntime.__init__ (跨venv桥)")
+patch("lerobot.manifold.intact_node", "IntactNode", "set_goal", "IntactNode.set_goal (目标帧注入)")
+patch("lerobot.policies.intact.service", "IntactIntentService", "run_once", "IntactIntentService.run_once (L4 编排) ← 父进程断点")
+patch_func("lerobot.policies.intact.skill_ctx", "build_skill_ctx", "build_skill_ctx (L2 上下文) ← 父进程断点")
+patch_func("lerobot.policies.intact.service", "policy_service", "policy_service (编排入口) ← 父进程断点")
 
 # ── 行级计数器 ───────────────────────────────────────────────────────────────
 TRACE_FILES = {
