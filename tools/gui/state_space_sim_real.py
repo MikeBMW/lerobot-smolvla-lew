@@ -361,9 +361,10 @@ class RealStateSpaceSim:
         self._gain_vwin: list = []         # 势函数窗口 (停滞判定)
         self._l4_last_u0 = None            # DiT **前**的 L4 意图动作 (导航路)
         self._l4_last_ud = None            # DiT **后**的流程动作 (流程路)
-        self._gain_stats = {"steps": 0, "zero_frames": 0, "k_nav_sum": 0.0, "k_flow_sum": 0.0,
-                            "k_mm_sum": 0.0, "applied": 0, "events": {},
-                            "k_nav_hist": [], "k_flow_hist": [], "p_hist": [], "err": None}
+        self._gain_stats = {"steps": 0, "zero_frames": 0, "refused": 0, "k_nav_sum": 0.0,
+                            "k_flow_sum": 0.0, "k_mm_sum": 0.0, "applied": 0, "events": {},
+                            "k_nav_hist": [], "k_flow_hist": [], "p_hist": [], "err": None,
+                            "cos_hist": [], "ratio_hist": []}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1825,7 +1826,9 @@ class RealStateSpaceSim:
                 "k_nav_mean": round(s["k_nav_sum"] / n, 5),
                 "k_flow_mean": round(s["k_flow_sum"] / n, 5),
                 "k_mm_mean": round(s["k_mm_sum"] / n, 5),
-                "events": dict(s["events"]), "err": s["err"],
+                "events": dict(s["events"]), "err": s["err"], "refused": s["refused"],
+                "cos_mean": (round(float(np.mean(s["cos_hist"])), 4) if s["cos_hist"] else None),
+                "ratio_mean": (round(float(np.mean(s["ratio_hist"])), 4) if s["ratio_hist"] else None),
                 "k_nav_tail": [round(float(x), 4) for x in s["k_nav_hist"][-8:]],
                 "k_flow_tail": [round(float(x), 4) for x in s["k_flow_hist"][-8:]],
                 "p_last": (round(float(s["p_hist"][-1]), 6) if s["p_hist"] else None),
@@ -2737,6 +2740,28 @@ class RealStateSpaceSim:
                             _up, _w_use = np.asarray(_go.u, float), 1.0
                         else:
                             _up = np.asarray(_go.u, float)
+                        # 🛡 2026-09-16 (A/B 实测驱动, 不是防患于未然): **方向/幅度闸** ——
+                        #   600 步实测: 无闸时 K>0 直连注入 → seed 0 终点 337→441mm (真回退), 根因是
+                        #   模型提案方向常反 (对齐层实测基线 cos −0.325)。老倪架构原则: 每层只能收窄
+                        #   可行域 → 上层提案与 L2 参考反向 (cos<门) / 超幅 (>1.5×) 一律**否决** (交回 L2),
+                        #   与 SS_L4_INTACT_GATE / SS_DIRECT_COS_MIN 同一口径 (默认门 0.9)。
+                        #   SS_ADAPT_GATE=0 可关 (复现无闸行为, 供 A/B 对照)。
+                        if (os.environ.get("SS_ADAPT_GATE", "1") == "1" and _w_use > 0.0):
+                            _na2 = float(np.linalg.norm(np.asarray(u_ff, float)[:3]))
+                            _np2 = float(np.linalg.norm(np.asarray(_go.u, float)[:3]))
+                            _cs = (float(np.asarray(u_ff, float)[:3] @ np.asarray(_go.u, float)[:3])
+                                   / (_na2 * _np2)) if (_na2 > 1e-9 and _np2 > 1e-9) else 0.0
+                            _rt = (_np2 / _na2) if _na2 > 1e-9 else float("inf")
+                            _cmin2 = float(os.environ.get("SS_ADAPT_COS_MIN", "0.9"))
+                            self._gain_stats["cos_hist"].append(float(_cs))
+                            self._gain_stats["ratio_hist"].append(float(min(_rt, 1e3)))
+                            tr.setdefault("gain_cos", []).append(float(_cs))
+                            tr.setdefault("gain_ratio", []).append(float(min(_rt, 1e3)))
+                            if _cs < _cmin2 or _rt > 1.5:
+                                _w_use = 0.0                                  # 否决 → 本步逐位纯 L2
+                                self._gain_stats["refused"] += 1
+                                _gsrc += f" · ⛔否决(cos={_cs:.3f}{' 反向' if _cs < 0 else ''}" \
+                                         f"{' 超幅' if _rt > 1.5 else ''})"
                 _stk.note_l2(np.asarray(u_ff, float),
                              src=("analytic/L3 参考 · 🎚 L2 肌肉记忆主导 (增益 0)" if
                                   (_go is not None and _w_use <= 0.0) else "analytic/L3 参考"))
