@@ -30,8 +30,6 @@ Hermes: CLI≠gateway(system unit); 飞书99991663=token过期→重启hermes-ga
 §
 引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5] → obs[7:10]=_pc光模块位置; gripper不由accel决定; 训练用_frame_sink的o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×K_ACT=act×0.5)
 §
-打包坑: PyInstaller sys.executable=app→runtime_env.resolve_python(); SmolVLM images=[[i]]+text×N; transformers5→AutoModelForImageTextToText
-§
 L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选(预测器逐帧发指令φ*); 老倪红线: 真模型/预测器须默认生效, 日志现'脚本开环'即不合格
 §
 守卫: TOL=0.15→100%+参与21-34%; 53D完备未破参与上限24-27%, >30%掉分/全模型崩; insert_depth原6mm太松(老倪目检戳穿)→0.002; tr[peg]=速度(位置用peg_head())
@@ -48,4 +46,4 @@ L4档运行=INTACT直驱(install_direct_act→service.run_once, 逐帧喂skill_c
 §
 口径铁律: 运行时须=训练(图像/255+ImageNet, stats同源, 零回退勿两端零初始→通道死); 多轮一致差先查口径勿加训练量
 §
-记忆层坑(09-15): memory_layers.json L2=1→势场与模型反向, 合成u≈0→卡'接近'空转; 已置0待修(reports/PENDING_FIX_20260915.md); L4档full预算4000步; INTACT仍CPU
+L4卡'接近'真因(v5.6.3已修): 直驱模型动作反向(cos−0.14)+幅度塌到17-42% → 手漂离光模块82mm; 推理异常静默写zeros伪装'模型不动'; 修=L2收口闸扩展直驱(阶段白名单+SS_DIRECT_COS_MIN0.9+否决步交回引擎自身u+异常显式报错); 今日闸全否决→执行层收口才成功(879步done+AOI); L4预算4000步(full2000×2); INTACT仍CPU≈0.11s/步

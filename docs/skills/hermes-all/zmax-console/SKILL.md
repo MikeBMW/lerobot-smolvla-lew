@@ -138,6 +138,44 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **ModelCompareDialog/BarCompareWidget 主题化**: paint 用 `_st()` (simulink_scope.CUR_THEME 由 simulink_module.switch_theme 同步); 对话框 QSS 用 `_qss()` 映射 (dark 时浅色值→深色值)。
 - **🔬 三模型对比 (2026-08-05, commit ada65fb1, 老倪: \"增加一个没有leworldmodel的流程, 三个模型对比, 即 ACT, SmolVLA, SmolVLA+Leworldmodel串行\")**: 新模板「🔬 三模型对比」**18节点20连线** = ♻共用2 (📦metaworld数据 / 📊对比评估Scope) + **3 分支行**: ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead·ACT→Ensemble→训练) + SmolVLA 纯动作 4 (SmolVLM2→DiT-B→ActionHead·SmolVLA→训练, **无 LEW**) + SmolVLA+LEW 5 (SmolVLM2·LEW→DiT-B·LEW→🌐LeWorldModel→ActionHead·SmolVLA+LEW→训练)。三训练节点 policy=act / smolvla / smolvla_lew。入口 btn_compare3 \"🔬 三模型对比\" (#d4a800) → open_compare3()。**⚠️ 关键配置坑 (configuration_smolvla_lew.py:125-126 `__post_init__`)**: `freeze_smolvlm: true` 时 **`enable_lew_world_model` 被强制改 False** — 现有 config_smolvla_metaworld.yaml (freeze=true) 训练出的\"SmolVLA\"其实**根本没启用 LEW**! 要真 LEW 必须新建 `config_smolvla_lew_metaworld.yaml` (freeze_smolvlm: **false** + enable_lew_world_model: true + lew_* 参数)。on_train 三策略分支 (smolvla_lew→新配置+ts_dir=smolvla_lew_<ts> / smolvla→旧配置+smolvla_<ts> / else→ACT), 曲线落盘 reports/train_curve_<policy>.json 各写各的。compare_models.py main() 改循环 `policies=[(\"act\",\"ACT\"),(\"smolvla\",\"SmolVLA\"),(\"smolvla_lew\",\"SmolVLA+LEW\")]` 逐个 find_ckpt+eval (缺 checkpoint 跳过不报错); on_compare_scope 改\"有任一产物即可评估\"(不再强制双曲线都在)。ModelCompareDialog._load_data 通用 N 模型 (MODELS 表 + present=[k in m and m[k]]): loss 折线每模型一条 / 表格 N 列+胜出列 / bars.set_data(rows, names=[...]); simulink_scope.COLORS 加 `smolvla_lew: #a371f7` (紫)。**⚠️ BarCompareWidget paintEvent float 坐标崩 (2026-08-05 渲染对话框时暴露, commit 53164e6a)**: 原双模型版 `y0 = i * row_h` 是 float, `p.drawText(8, y0+14, ...)` **PyQt5 严格类型 → TypeError** (隐藏 bug 从未被触发, N 模型改造后测试渲染对话框才崩)。修: y0/yy 全部 `int()`。**教训: 自绘 paint 的 drawText/fillRect 坐标必须 int (同 QPen.setWidth 只收 int 一族); 改完必须真实渲染一遍**。验证 (offscreen EXIT=0): YAML 语义断言 (lew 配置 enable=true+freeze=false) / compare 语法 / 模板 18节点20连线 / Action Head 三行对齐 / ModelCompareDialog 假数据三模型表格含 \"3 模型\" / 画布渲染采样非白。
 
+## 🛡 L4 档「跑满 4000 步不出插拔成功」真根因 + 直驱收口闸 (v5.6.3, 2026-09-15)
+
+老倪: 「为什么 3D 视频要走 4000 步，还没成功显示插拔成功的视频?」→ 定位到两条, 全部实测复现:
+
+1. **主因 = 直驱动作与执行层参考反向 + 幅度塌缩**。同 seed104 / cap=l4 / 同起点同干扰实测:
+   教师(解析链) `act=[+0.119,−0.130,−0.170]` vs 模型(INTACT 直驱 v6r11 ep2) `act=[−0.046,−0.013,−0.012]`
+   → `cos=−0.14`(方向反) 且前 130 步 std 只有教师 **17~42%** → 手朝**远离光模块**方向漂 82mm
+   (`|x−peg| 0.177→0.259m`) → 600 步(乃至 4000 预算)全停在「接近」`grasped=False` → 无插入/拔出/AOI。
+   ⚠️ 离线判闸(MAPE on 0.036<zero 0.133<const 0.083)过 ≠ 闭环能用 —— 离线在训练分布+真值动作历史上算的。
+2. **放大器 = 异常被静默写成零动作**: `install_direct_act` 的 `except` 里 `s._dact_cache = np.zeros(4)`
+   → 手完全不动, 而引擎日志只有 `阶段=接近 grasped=False`（表面像"模型不行"）。实测复现: 外部传残缺 `rec` dict
+   → 每步 `KeyError: 'raw'` → 60/600 步动作全 `[0,0,0,0]`。**任何异常都会伪装成"跑满预算没结果"。**
+
+**修法**（把引擎 `SS_L4_INTACT` 已有的 L2 收口闸**扩展到直驱路径**；架构原则: 上层只给意图, 执行由下层收口, 每层只能收窄可行域）:
+- 阶段白名单 `SS_DIRECT_STAGES`（默认 `接近,对位,转移`）—— 下降/抓取/插入/拔出/AOI 交执行层（注入会把「抓取点↔头」偏移出
+  129~132mm 成功域 → 抓取后滑脱 33mm → 回退重抓死循环）；
+- 一致度门槛 `SS_DIRECT_COS_MIN`（默认 **0.9**；实测 cos 0.5~0.85 仍会滑脱）；
+- 方向反相 / 零动作 / 幅度>1.5×参考 → 否决；方向一致 → 按 `w=cos` 融合且**融合后幅值不得超过参考**(收窄不放大)；
+- **否决的步不写 `_direct_act`** → 引擎用**自己刚算出的 u** 下发（与解析链逐位同源）；夹爪维持"状态机说了算"；
+- 「执行层参考」必须取 `orig()` 返回的 **u**（引擎真实控制量），**不是 `u_ff`** —— 用 u_ff 当参考会丢反馈/限速项,
+  自造抓取点偏移 → 每次抓取滑脱(踩过)；
+- 异常: 记 `state["err"]/err_steps` + **显式打印一次堆栈** + 本步交回执行层（不再写零动作）+ 后续步继续重试推理；
+- GUI `simulink_module.py` L4 档: 直驱装配成功后 `os.environ.pop("SS_INTACT")` —— 模型只留一条通道,
+  否则被闸否决的步仍从 u_ff 槽位**二次注入** → 同样滑脱；
+- 计数全留证 `state["gate"]={n,stage_out,veto_dir,veto_mag,blend,applied,clamped,cos_sum}`；`SS_DIRECT_GATE=0` 复现旧行为(A/B)。
+
+**验证 (本机真跑)**: L4 档 4000 预算 → `done=True · aoi_ok=True · 879 步 · 13 段全过 · 真推理 879 次 · err=无`
+(对照: 解析链 868 步; 原样直驱 600 步停「接近」)。视频 `reports/l4_model_gated_v4_seed104.mp4`(879 帧逐帧标注)
+→ https://datadrive.world/models/l4_model_gated_v4_seed104.mp4 ；报告 `reports/L4_4000_STEPS_ROOTCAUSE_20260915.md`。
+**⚠️ 诚实缺口**: 闸门今天 **全否决**(`blend=0`) ⇒ 模型每帧真推理+提案留档, 执行靠 L2 收口; "模型独立干完"尚不成立。
+下一步三条口径: goal 前瞻(训练 `train.py::construct_intents` goal=窗口末帧≈+k 前瞻) vs 运行时喂整段末态 `intact_goal_frame*.npy`
+(‖δ‖≈25) / `node.action_hist` 滚动的是归一化 chunk(vs 训练 raw) / 闭环 DAgger 再训 → 闸门按 cos 自动放权。
+
+**工具**: `tools/diag_l4_stall.py --arm {analytic,direct} --steps N --seed S [--video x.mp4]`（单臂真跑 + 逐步 jsonl + 标注视频,
+`--cap l4/none` 控干扰）· `tools/diag_intact_zero_act.py`（直驱内部产物微诊断：chunk/u_ff/skill_ctx/decoder/err 全打）。
+**坑**: ①传残缺 `rec` dict 给 `install_direct_act` 会静默变零动作（它按 `rec["raw"]` 直接索引）；②同一脚本里
+`rec["act"]` 是 **ndarray 列表**不是 dict 列表（`np.asarray(rec["act"])`）；③两臂要**分进程**跑（同进程 env 单例污染）。
+
 ## 🧲 记忆层集成阶梯 (L2 准确性 → L3 调度 → L4 抗干扰 → 总装仲裁, v5.5.46)
 
 **第一版 30 格实测结论 (2026-09-14 03:01, manifest 6fc5fe9f60fa)**: 模型直驱 0/30 成功 (插入距离 585~611mm);

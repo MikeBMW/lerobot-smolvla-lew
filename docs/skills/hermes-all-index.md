@@ -1,6 +1,7 @@
 # Hermes 技能全量镜像 (静静) — 索引
 
-> 共 155 个技能 · 源: ~/.hermes/skills · 排除本机快照 tar.gz 与 >2MB 单文件
+> 共 155 个技能 · 源 `~/.hermes/skills` · 排除 `.curator_backups/*.tar.gz` 与 >2MB 单文件
+
 > 目录: `docs/skills/hermes-all/<技能名>/` (SKILL.md + references/ + scripts/ + templates/)
 
 | 技能 | 分类 | 文件数 | 说明 |
@@ -159,4 +160,4 @@
 | `spike` | software-development | 1 | Throwaway experiments to validate an idea before build. |
 | `systematic-debugging` | software-development | 1 | 4-phase root cause debugging: understand bugs before fixing. |
 | `test-driven-development` | software-development | 1 | TDD: enforce RED-GREEN-REFACTOR, tests before code. |
-| `zmax-console` | software-development | 296 | Z-MAX Console |
+| `zmax-console` | software-development | 300 | Z-MAX Console |
