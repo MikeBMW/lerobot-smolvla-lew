@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.3 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.4 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,16 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.3 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.4 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.4: 📋 **L4 档日志/证据补强 (同 v5.6.3 修, 让老倪在日志里一眼看出"实际在跑什么")** —— ①L4 档跑完打印
+        #   **L2 收口闸计数**: 共 N 步 · 阶段白名单外 · 方向/一致度否决 · 幅度否决 · 采纳融合 · 幅值限幅
+        #   (取自 sim._intact_drive['state']['gate']) ②`blend=0` 时显式标注「本轮模型提案一次都没通过收口闸 (全部交执行层),
+        #   属模型闭环一致度不足, 不是接线问题」—— 防"收口后看起来像脚本开环"的误读; ③诊断证据入库:
+        #   `reports/L4_4000_STEPS_ROOTCAUSE_20260915.md` + `reports/diag_l4_*`(逐步 jsonl 轨迹/汇总) + 工具
+        #   `tools/diag_l4_stall.py`(单臂真跑+标注视频) / `tools/diag_intact_zero_act.py`(直驱内部产物微诊断)。
+        #   行为零回退: 只加日志与证据文件, 不碰任何档位/控制律 (v5.6.3 的收口闸逻辑逐字未改)。
         # v5.6.3: 🛡🤖 **L4 档「跑满 4000 步不出插拔成功」根因修 (老倪: 为什么3D视频要走4000步还没成功显示插拔成功的视频?)** ——
         #   ①**主因 = 直驱动作反向+塌幅**: 同 seed/同干扰/同起点实测, 教师(解析链) act=[+0.119,−0.130,−0.170] 而模型(直驱 v6r11 ep2)
         #   act=[−0.046,−0.013,−0.012] ⇒ cos=−0.14 (方向反) 且前130步 std 只有教师 17~42% (塌缩) ⇒ 手朝**远离光模块**方向漂 82mm

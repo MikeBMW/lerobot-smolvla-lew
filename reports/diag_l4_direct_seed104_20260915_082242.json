@@ -1,0 +1,75 @@
+{
+ "arm": "direct",
+ "seed": 104,
+ "mode": "full",
+ "cap": "l4",
+ "steps_run": 60,
+ "budget": 60,
+ "done": false,
+ "aoi_ok": null,
+ "insert_mm": 97.38,
+ "grasped_ever": false,
+ "first_grasp_step": null,
+ "stages": {
+  "阶段 接近": 60
+ },
+ "model_calls": 60,
+ "err": "KeyError: 'raw'",
+ "seconds": 8.7,
+ "sec_per_step": 0.145,
+ "act_mean": [
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "act_std": [
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "act_absmax": [
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "residual_last": 0.0277,
+ "residual_min": 0.0004,
+ "meta": {
+  "arm": "direct",
+  "seed": 104,
+  "mode": "full",
+  "cap": "l4",
+  "steps": 60,
+  "infer_every": 1,
+  "ts": "2026-09-15 08:22:42",
+  "env": {
+   "trained": true,
+   "reason": "None",
+   "policy": "intact_l4_current",
+   "runtime": "root",
+   "device": "cpu",
+   "stats": {
+    "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+    "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+    "n_finite": 18635,
+    "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+    "mean": [
+     -0.007139332597068512,
+     -0.007183539539160135,
+     -0.002103688130771039,
+     0.120300526487178
+    ],
+    "std": [
+     0.15305849460395074,
+     0.07153241744890618,
+     0.11256259314790976,
+     0.7331005658196346
+    ]
+   }
+  }
+ },
+ "out": "/home/ubuntu/lerobot-smolvla-lew/reports/diag_l4_direct_seed104_20260915_082242.jsonl"
+}

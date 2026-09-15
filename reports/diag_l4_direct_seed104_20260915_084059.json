@@ -1,0 +1,94 @@
+{
+ "arm": "direct",
+ "seed": 104,
+ "mode": "full",
+ "cap": "l4",
+ "steps_run": 600,
+ "budget": 4000,
+ "done": false,
+ "aoi_ok": null,
+ "insert_mm": 0.55,
+ "grasped_ever": true,
+ "first_grasp_step": 139,
+ "stages": {
+  "阶段 接近": 29,
+  "阶段 对位": 36,
+  "阶段 下降": 306,
+  "阶段 抓取": 54,
+  "阶段 抬起": 120,
+  "阶段 转移": 55
+ },
+ "model_calls": 600,
+ "err": null,
+ "seconds": 67.1,
+ "sec_per_step": 0.112,
+ "act_mean": [
+  -0.0072,
+  -0.0002,
+  -0.0208,
+  -0.3707
+ ],
+ "act_std": [
+  0.073,
+  0.0641,
+  0.1698,
+  0.7816
+ ],
+ "act_absmax": [
+  0.352,
+  0.238,
+  0.412,
+  1.0
+ ],
+ "residual_last": 0.0008,
+ "residual_min": 0.0002,
+ "gate": {
+  "n": 600,
+  "veto_dir": 84,
+  "veto_mag": 0,
+  "blend": 37,
+  "ref_zero": 0,
+  "stage_out": 479,
+  "cos_sum": 24.47879134804992,
+  "w_min": 0.5032300352704869,
+  "w_max": 0.8510634184734139,
+  "cos_used": 37,
+  "applied": 37
+ },
+ "err_steps": null,
+ "meta": {
+  "arm": "direct",
+  "seed": 104,
+  "mode": "full",
+  "cap": "l4",
+  "steps": 4000,
+  "infer_every": 1,
+  "ts": "2026-09-15 08:41:00",
+  "env": {
+   "trained": true,
+   "reason": "None",
+   "policy": "intact_l4_current",
+   "runtime": "root",
+   "device": "cpu",
+   "stats": {
+    "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+    "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+    "n_finite": 18635,
+    "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+    "mean": [
+     -0.007139332597068512,
+     -0.007183539539160135,
+     -0.002103688130771039,
+     0.120300526487178
+    ],
+    "std": [
+     0.15305849460395074,
+     0.07153241744890618,
+     0.11256259314790976,
+     0.7331005658196346
+    ]
+   }
+  }
+ },
+ "out": "/home/ubuntu/lerobot-smolvla-lew/reports/diag_l4_direct_seed104_20260915_084059.jsonl"
+}

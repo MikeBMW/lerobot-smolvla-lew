@@ -1,0 +1,89 @@
+{
+ "arm": "direct",
+ "seed": 104,
+ "mode": "full",
+ "cap": "none",
+ "steps_run": 60,
+ "budget": 60,
+ "done": false,
+ "aoi_ok": null,
+ "insert_mm": 23.9,
+ "grasped_ever": false,
+ "first_grasp_step": null,
+ "stages": {
+  "阶段 接近": 29,
+  "阶段 对位": 31
+ },
+ "model_calls": 60,
+ "err": null,
+ "seconds": 8.8,
+ "sec_per_step": 0.146,
+ "act_mean": [
+  0.0895,
+  -0.0985,
+  -0.1568,
+  -1.0
+ ],
+ "act_std": [
+  0.0304,
+  0.0313,
+  0.0283,
+  0.0
+ ],
+ "act_absmax": [
+  0.121,
+  0.206,
+  0.183,
+  1.0
+ ],
+ "residual_last": 0.0007,
+ "residual_min": 0.0004,
+ "gate": {
+  "n": 60,
+  "veto_dir": 0,
+  "veto_mag": 0,
+  "blend": 0,
+  "ref_zero": 0,
+  "stage_out": 60,
+  "cos_sum": 0.0,
+  "w_min": null,
+  "w_max": null,
+  "cos_used": 0
+ },
+ "err_steps": null,
+ "meta": {
+  "arm": "direct",
+  "seed": 104,
+  "mode": "full",
+  "cap": "none",
+  "steps": 60,
+  "infer_every": 1,
+  "ts": "2026-09-15 08:44:20",
+  "env": {
+   "trained": true,
+   "reason": "None",
+   "policy": "intact_l4_current",
+   "runtime": "root",
+   "device": "cpu",
+   "stats": {
+    "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+    "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+    "n_finite": 18635,
+    "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+    "mean": [
+     -0.007139332597068512,
+     -0.007183539539160135,
+     -0.002103688130771039,
+     0.120300526487178
+    ],
+    "std": [
+     0.15305849460395074,
+     0.07153241744890618,
+     0.11256259314790976,
+     0.7331005658196346
+    ]
+   }
+  }
+ },
+ "out": "/tmp/dir_nojit.jsonl"
+}

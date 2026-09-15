@@ -1,0 +1,54 @@
+{
+ "arm": "analytic",
+ "seed": 104,
+ "mode": "full",
+ "cap": "none",
+ "steps_run": 60,
+ "budget": 60,
+ "done": false,
+ "aoi_ok": null,
+ "insert_mm": 23.92,
+ "grasped_ever": false,
+ "first_grasp_step": null,
+ "stages": {
+  "阶段 接近": 29,
+  "阶段 对位": 31
+ },
+ "model_calls": 0,
+ "err": null,
+ "seconds": 2.4,
+ "sec_per_step": 0.04,
+ "act_mean": [
+  0.0896,
+  -0.0985,
+  -0.1568,
+  -1.0
+ ],
+ "act_std": [
+  0.0304,
+  0.0313,
+  0.0283,
+  0.0
+ ],
+ "act_absmax": [
+  0.121,
+  0.206,
+  0.183,
+  1.0
+ ],
+ "residual_last": 0.0007,
+ "residual_min": 0.0004,
+ "gate": null,
+ "err_steps": null,
+ "meta": {
+  "arm": "analytic",
+  "seed": 104,
+  "mode": "full",
+  "cap": "none",
+  "steps": 60,
+  "infer_every": 1,
+  "ts": "2026-09-15 08:44:16",
+  "env": {}
+ },
+ "out": "/tmp/ana_nojit.jsonl"
+}
