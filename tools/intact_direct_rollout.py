@@ -210,6 +210,7 @@ def install_direct_act(sim, node, a_mean, a_std, infer_every=1, chunk_step=0, sl
 
         def dec(u_ff, u_fb, contact_p, r_scalar):
             u, stage = orig(u_ff, u_fb, contact_p, r_scalar)   # 只取阶段标签; 解析指令被丢弃
+            _veto_step = False        # 🛡 L2 收口闸否决标记 → 本步交回引擎自己的控制律
             step_i = state["n"]
             state["n"] += 1
             if step_i % max(1, infer_every) == 0 or getattr(s, "_dact_cache", None) is None:
@@ -289,14 +290,112 @@ def install_direct_act(sim, node, a_mean, a_std, infer_every=1, chunk_step=0, sl
                                             "cond_dim": 0 if _cond is None else int(np.asarray(_cond).size),
                                             "applied": 0, "src": "不注入(DiT 未就绪/无条件)",
                                             "why": (getattr(s, "_l4_dit", {}) or {}).get("src")}
+                    # 🛡 2026-09-15 L2 收口闸 (扩展到**直驱**路径; 与引擎 SS_L4_INTACT 闸同一条纪律)
+                    #   实测驱动 (tools/diag_l4_stall.py, seed104 / mode=full / cap=l4, 同起点同干扰):
+                    #     教师(解析链) act=[+0.119,−0.130,−0.170] → |x−peg| 0.177→0.021m, 136 步抓取;
+                    #     模型(直驱 v6r11 ep2) act=[−0.046,−0.013,−0.012] → 方向**相反** + 幅度塌到 1/3
+                    #     ⇒ 手朝远离光模块方向漂 (|x−peg| 0.177→0.259m) ⇒ 600 步(乃至 4000 步预算)
+                    #     永远停在"接近"且 grasped=False ⇒ 没有插入/拔出/AOI = 3D 视频看不到"插拔成功"。
+                    #   架构原则 (老倪): 上层只给意图/条件, 执行由下层收口, **每层只能收窄可行域**。
+                    #   ⇒ 模型 xyz 与执行层参考反相 / 零动作 / 超 1.5× 幅 → 否决, 交回参考;
+                    #     方向一致 → 按 w_eff=cos(∈0..1) 与参考融合 (不放大: 不会超过参考幅值上限)。
+                    #   夹爪维持"状态机说了算" (同 SS_INTACT 纪律) —— 否则模型恒开爪 = 永不抓取。
+                    #   SS_DIRECT_GATE=0 可复现旧行为 (A/B 对照用)。计数在 state["gate"] 里留证。
+                    if os.environ.get("SS_DIRECT_GATE", "1") == "1":
+                        _g = state.setdefault("gate", {"n": 0, "veto_dir": 0, "veto_mag": 0,
+                                                       "blend": 0, "ref_zero": 0, "stage_out": 0,
+                                                       "cos_sum": 0.0, "w_min": None, "w_max": None,
+                                                       "cos_used": 0})
+                        try:
+                            from state_space_sim_real import K_ACT as _KACT   # noqa: PLC0415
+                        except Exception:                                     # noqa: BLE001
+                            _KACT = 0.5
+                        try:
+                            from state_space_sim_real import GRIP_CLOSE as _GC, GRIP_OPEN as _GO  # noqa: PLC0415
+                        except Exception:                                     # noqa: BLE001
+                            _GC, _GO = 0.6, -1.0
+                        # ★ 执行层参考 = **引擎本帧真实控制量** u (不是 u_ff): 引擎 act = clip(u[:3]/K_ACT)。
+                        #   ⚠️ 2026-09-15 实测教训: 先前用 u_ff 当参考 → 丢掉反馈/限速项 → 抓取点偏移
+                        #   → 每次抓取后滑脱 33mm → 回退重抓死循环 (自造回归, 已修)。
+                        _ref = np.asarray(u, float).ravel()
+                        _ar = np.clip(_ref[:3] / float(_KACT), -1.0, 1.0)      # 执行层参考 (env 级 act)
+                        _am = np.asarray(act, float).ravel()[:3]
+                        _nr, _nm = float(np.linalg.norm(_ar)), float(np.linalg.norm(_am))
+                        _grip_exec = _GC if float(_ref[3]) > 0.5 else _GO
+                        _g["n"] += 1
+                        # 记录**模型原始提案** (审核/报告用: 与执行层参考的可比量化)
+                        _ma = state.setdefault("model_act", [])
+                        if len(_ma) < 4000:
+                            _ma.append([round(float(v), 4) for v in np.asarray(act, float).ravel()[:4]])
+                        # ① 阶段白名单 (同引擎 SS_INTACT 纪律: 插入段本来就排除解析接管) ——
+                        #    实测 seed104: 若在 下降/抓取 段注入模型动作 (哪怕 cos>0), 抓取点↔头偏移
+                        #    偏离 129~132mm 成功域 → 光模块滑脱 → 回退重抓死循环 + peg 被碰飞 12cm。
+                        _sl = os.environ.get("SS_DIRECT_STAGES", "接近,对位,转移")
+                        _in_stage = any(s.strip() and s.strip() in str(stage)
+                                        for s in _sl.split(",") if s.strip())
+                        if not _in_stage:
+                            _g["stage_out"] += 1
+                            _veto_step = True          # → 本步不写 _direct_act, 引擎走自己的控制律
+                        elif _nr < 1e-9:
+                            _g["ref_zero"] += 1          # 参考本身为零 → 无法判定 → 放行模型动作
+                        else:
+                            _cos = (float(_ar @ _am) / (_nr * _nm)) if _nm > 1e-9 else 0.0
+                            # ② 一致度门槛: 方向反相/零动作/一致度 < SS_DIRECT_COS_MIN(默认0.9, 实测标定:
+                            #   cos 0.5~0.85 仍会把抓取点偏移出 129~132mm 成功域 → 滑脱) / 超 1.5×幅
+                            #    → 否决 (本步交回执行层, 引擎用自己刚算出的 u)
+                            _cmin = float(os.environ.get("SS_DIRECT_COS_MIN", "0.9"))
+                            if _nm <= 1e-9 or _cos < 0.0:
+                                _g["veto_dir"] += 1
+                                _veto_step = True
+                            elif _nm > 1.5 * _nr:
+                                _g["veto_mag"] += 1
+                                _veto_step = True
+                            elif _cos < _cmin:
+                                _g["veto_dir"] += 1
+                                _veto_step = True
+                            else:
+                                _w = max(0.0, min(1.0, _cos))
+                                _g["blend"] += 1
+                                _g["cos_sum"] += _cos
+                                _g["cos_used"] += 1
+                                _g["w_min"] = _w if _g["w_min"] is None else min(_g["w_min"], _w)
+                                _g["w_max"] = _w if _g["w_max"] is None else max(_g["w_max"], _w)
+                                _bl = (1.0 - _w) * _ar + _w * _am
+                                # 🛡 收窄不放大: 融合后幅值不得超过执行层参考幅值
+                                _nb = float(np.linalg.norm(_bl))
+                                if _nb > _nr > 1e-9:
+                                    _bl = _bl * (_nr / _nb)
+                                    _g["clamped"] = int(_g.get("clamped", 0)) + 1
+                                act = np.concatenate([_bl, [_grip_exec]])
+                                _g["applied"] = int(_g.get("applied", 0)) + 1
+                            rec.setdefault("gate_cos", []).append(round(float(_cos), 4))
                     s._dact_cache = np.clip(act, -1.0, 1.0)
                     rec["raw"].append(raw.copy())
                     rec["chunk_norm"].append(float(np.linalg.norm(chunk)))
-                except Exception as e:                          # 模型/渲染失败 → 记错并停直驱
+                except Exception as e:              # 模型/渲染失败 → **不静默冻住机器人** (2026-09-15 修)
                     state["err"] = f"{type(e).__name__}: {e}"
-                    s._dact_cache = np.zeros(4, np.float32)
-            s._direct_act = s._dact_cache
-            rec["act"].append(np.asarray(s._direct_act, float).copy())
+                    state["err_steps"] = int(state.get("err_steps", 0)) + 1
+                    if not state.get("err_logged"):
+                        state["err_logged"] = True
+                        try:
+                            _loge = state.get("verbose_log") or (lambda *a: None)
+                            _loge(f"   ❌ INTACT 直驱推理异常 ({type(e).__name__}: {e}) → 本步交回执行层参考, "
+                                  f"不写零动作; 后续步继续重试真推理")
+                            import traceback as _tb          # noqa: PLC0415
+                            _tb.print_exc()
+                        except Exception:                    # noqa: BLE001
+                            pass
+                    # 🐛 2026-09-15 修正 (旧实现 = `s._dact_cache = np.zeros(4)`):
+                    #   异常被吞成**零动作** ⇒ 手完全不动, 而日志只有 "阶段=接近 grasped=False"
+                    #   ⇒ 用户以为"模型不行/卡死", 实际是异常; 且会静默烧完整个 4000 步预算。
+                    #   实测复现: 传入残缺 rec dict ⇒ 每步 `KeyError: 'raw'` ⇒ 60/600 步动作全 0。
+                    #   改为交回引擎解析伺服 (= 执行层收口), 并把异常显式打出来。
+                    s._dact_cache = None
+            # 🛡 闸否决的这一步: 不写 _direct_act → 引擎用**自己刚算出的 u** 下发 (等于该步由执行层收口,
+            #   与解析链逐位同源); 模型产物仍留在 rec/state 里 (真推理 + 证据, 不静默丢弃)。
+            s._direct_act = None if _veto_step else s._dact_cache
+            rec["act"].append(np.asarray(s._dact_cache, float).copy()
+                              if s._dact_cache is not None else np.zeros(4, np.float32))
             rec["stage"].append(str(stage))
             return u, stage
 

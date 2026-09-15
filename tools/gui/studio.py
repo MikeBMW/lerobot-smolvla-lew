@@ -639,7 +639,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10157,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10165,27 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.3: 🛡🤖 **L4 档「跑满 4000 步不出插拔成功」根因修 (老倪: 为什么3D视频要走4000步还没成功显示插拔成功的视频?)** ——
+        #   ①**主因 = 直驱动作反向+塌幅**: 同 seed/同干扰/同起点实测, 教师(解析链) act=[+0.119,−0.130,−0.170] 而模型(直驱 v6r11 ep2)
+        #   act=[−0.046,−0.013,−0.012] ⇒ cos=−0.14 (方向反) 且前130步 std 只有教师 17~42% (塌缩) ⇒ 手朝**远离光模块**方向漂 82mm
+        #   (|x−peg| 0.177→0.259m) ⇒ 600 步乃至 4000 步预算全停在「接近」grasped=False ⇒ 无插入/拔出/AOI ⇒ 视频里没有"插拔成功"。
+        #   ②**放大器 = 静默零动作**: `install_direct_act` 异常分支把 `_dact_cache` 写成 zeros(4) ⇒ 手完全不动, 而日志只有
+        #   「阶段=接近 grasped=False」(实测复现: 残缺 rec dict → 每步 KeyError: 'raw' → 60/600 步动作全 0) ⇒ 任何异常都伪装成"模型不行".
+        #   ③**修 = 把引擎 SS_L4_INTACT 已有的 L2 收口闸扩展到直驱路径** (架构原则: 上层只给意图, 执行由下层收口, 每层只能收窄可行域):
+        #   阶段白名单(SS_DIRECT_STAGES 默认 接近,对位,转移; 下降/抓取/插入/拔出/AOI 交执行层 —— 注入会把抓取点↔头偏移出 129~132mm
+        #   成功域→滑脱33mm死循环) + 一致度门槛(SS_DIRECT_COS_MIN 默认 0.9) + 方向反相/零动作/超1.5×幅 否决 + 融合后幅值不超参考
+        #   (收窄不放大) + 否决步不写 `_direct_act` (引擎用自己刚算的 u, 与解析链逐位同源) + 夹爪由状态机; 计数留证 state["gate"]
+        #   (SS_DIRECT_GATE=0 复现旧行为)。④异常不再写零动作: 显式打印一次堆栈 + 本步交回执行层 + 后续步继续重试真推理。
+        #   ⑤GUI 侧同一收口: 直驱装配成功后 pop SS_INTACT (模型只保留一条通道, 防被闸否决的步仍从 u_ff 槽位二次注入滑脱)。
+        #   ⑥**实测验证** (L4 档 4000 预算, 同 seed104/cap=l4): done=True · aoi_ok=True · **879 步** · 13 段全过 · 真推理 879 次 · err=无
+        #   (对照: 解析链 868 步 done+AOI; 原样直驱 600 步停在接近) · 视频 reports/l4_model_gated_v4_seed104.mp4 (879 帧逐帧标注)
+        #   · 新工具 tools/diag_l4_stall.py (单臂真跑+逐步 jsonl+标注视频) / tools/diag_intact_zero_act.py (直驱内部产物微诊断)
+        #   ⑦⚠️ 诚实缺口 (不吹): 闸门今天是**全否决** (blend=0, 模型闭环一致度一次没到 0.9) ⇒ 模型每帧真推理+提案留档,
+        #   执行由 L2 收口; "模型独立干完"尚不成立 —— 下一步按 reports/L4_4000_STEPS_ROOTCAUSE_20260915.md §6 三条口径
+        #   (goal 前瞻口径 vs 末态目标 / 动作历史 raw-vs-normalized / 闭环 DAgger 再训) 验证推进。
         # v5.6.2: 🐛🧲 **L2 记忆层势场把模型动作抵消成 0 → 全链卡"接近"** (老倪: 在 GUI 跑 full + L4 档 4000 步预算,
         #   900~1075 步阶段永远是"接近"、grasped=False、残差恒定 0.055~0.059 = **卡住空转不是慢**) —— 实测日志
         #   记忆层介入 step=1650: 模型=[−0.101,−0.019,0.019] 场=[0.164,0.031,−0.032] → 合成 u≈[−0.0001,0.0001,−0.0002]

@@ -11489,6 +11489,11 @@ class SimulinkModule(QWidget):
                                 sim._intact_drive = {"node": _nd, "rec": _rec, "state": _stt}
                                 _intact_ok = True
                                 _logs.append("🤖 L4 = INTACT 节点直驱: 每帧「模型动作 → env.step」(无解析控制器)")
+                                # 🛡 2026-09-15: 直驱已装配 → 关掉 SS_INTACT 的 u_ff 槽位**重复注入**
+                                #   (模型只保留一条通道 = 直驱动作 经 L2 收口闸; 否则被闸否决的步骤
+                                #    仍从 u_ff 通道注入 → 抓取点偏移 → 滑脱死循环; 实测 33mm 滑脱)
+                                os.environ.pop("SS_INTACT", None)
+                                _logs.append("   ├ u_ff 槽位重复注入已关 (SS_INTACT) — 模型通道仅「直驱+收口闸」")
                                 _logs.append(f"   ├ 权重 {os.environ.get('INTACT_POLICY')} · "
                                              f"目标帧 {os.path.basename(_gf)} · 变换 a_raw=z·std+mean (唯一变换)")
                                 _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ "
