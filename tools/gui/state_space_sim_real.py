@@ -348,6 +348,22 @@ class RealStateSpaceSim:
         self._align_err = None
         self._align_stats = {"applied": 0, "cos_before": [], "cos_after": [], "ratio_after": [],
                              "ready": False, "map_src": "", "err": None}
+        # ══════════════════════════════════════════════════════════════════════════
+        # 🎚 2026-09-16 老倪: 卡尔曼式**自适应增益** (前馈/上层通道的"信谁多少")
+        #   语义: K_nav = L4 导航增益, K_flow = L3 流程增益(DiT), L2 = 执行层 (肌肉记忆, 唯一出口)。
+        #   熟场景 (无事件) → P 收敛到地板 → 增益**硬置 0 → 默认 L2**; 泛化/受扰/OOD → 事件抬 Q
+        #   → 增益自动抬升 → 更信 L4 导航; 事件消失 → κ 衰减回落。数学与实测判据见
+        #   src/lerobot/manifold/adaptive_gain.py (自检 5/5)。SS_ADAPT_GAIN 不设 = 一行不改。
+        # ══════════════════════════════════════════════════════════════════════════
+        self._gain_cache = None            # GainScheduler (懒加载)
+        self._gain_last = None             # 上一帧 GainOut (面板/面板取值)
+        self._gain_stage = ""              # 上一帧阶段 (判阶段切换)
+        self._gain_vwin: list = []         # 势函数窗口 (停滞判定)
+        self._l4_last_u0 = None            # DiT **前**的 L4 意图动作 (导航路)
+        self._l4_last_ud = None            # DiT **后**的流程动作 (流程路)
+        self._gain_stats = {"steps": 0, "zero_frames": 0, "k_nav_sum": 0.0, "k_flow_sum": 0.0,
+                            "k_mm_sum": 0.0, "applied": 0, "events": {},
+                            "k_nav_hist": [], "k_flow_hist": [], "p_hist": [], "err": None}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1283,11 +1299,19 @@ class RealStateSpaceSim:
                 _ka = float(getattr(self._l4_dec, "k_act", 0.5))
                 _ud = np.concatenate([np.clip(np.asarray(_ac, float)[:3], -1, 1) * _ka,
                                       [1.0 if float(_ac[3]) > 0.5 else -1.0]])
-                _beta = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
-                _u0 = np.asarray(u, float).copy()
-                u = (1.0 - _beta) * _u0 + _beta * _ud
-                _sd.setdefault("delta", []).append(float(np.linalg.norm(np.asarray(u, float)[:3] - _u0[:3])))
-                _sd["applied"] = int(_sd.get("applied", 0)) + 1
+                # 🎚 2026-09-16: 两路分别留档 (导航路 = DiT 前的 L4 意图, 流程路 = DiT 流程动作) ——
+                #   自适应增益档 (SS_ADAPT_GAIN=1) 用**自适应增益**做这个融合, 此处固定 β 让位,
+                #   否则 DiT 会被计两次 (固定 β + 增益层)。不设 SS_ADAPT_GAIN = 原固定 β 一行不改。
+                self._l4_last_u0 = np.asarray(u, float).copy()
+                self._l4_last_ud = np.asarray(_ud, float).copy()
+                if os.environ.get("SS_ADAPT_GAIN") == "1":
+                    _sd.setdefault("deferred", []).append(1)
+                else:
+                    _beta = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
+                    _u0 = np.asarray(u, float).copy()
+                    u = (1.0 - _beta) * _u0 + _beta * _ud
+                    _sd.setdefault("delta", []).append(float(np.linalg.norm(np.asarray(u, float)[:3] - _u0[:3])))
+                    _sd["applied"] = int(_sd.get("applied", 0)) + 1
         self._l4_last_u = np.asarray(u, dtype=float).copy()
         if self._l4_shadow:            # 影子档: 真推理真解码真记录, 但不接管
             return None
@@ -1671,8 +1695,14 @@ class RealStateSpaceSim:
             return np.zeros(7)
 
     # 🎯 2026-09-15 Step ① L4 方向/幅度对齐 (数据驱动; 不改闸的语义)
-    def _aligner(self):
-        """懒加载 L4→引擎 u 的对齐映射 (models/l4_align_map.json; 未标定 → None, 不施加)。"""
+    def _l4_aligner(self):
+        """懒加载 L4→引擎 u 的对齐映射 (models/l4_align_map.json; 未标定 → None, 不施加)。
+
+        🐛 2026-09-16 修: 原方法名 `_aligner` 与 __init__ 里的**实例属性** `self._aligner`
+        (R1 视觉用的 YoloStateAligner, 行 411/524) 撞名 → 实例属性把方法遮蔽掉, 调用点
+        `self._aligner()` 直接 TypeError ('NoneType' object is not callable)。此前因映射未标定
+        从没走到这一行, 所以一直没暴露; 标定完成 (loop 后 r2/cos 过闸) 一旦开 SS_L4_ALIGN=1 必崩。
+        """
         if self._align_cache is None and self._align_err is None:
             try:
                 _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1690,6 +1720,118 @@ class RealStateSpaceSim:
                 self._align_stats["err"] = self._align_err
                 self.log(f"⚠️ L4 对齐映射加载失败: {self._align_err}")
         return self._align_cache
+
+    # ── 🎚 卡尔曼式自适应增益 (2026-09-16 老倪: 增益大→信 L4 导航, 增益小→默认 L2 肌肉记忆) ──
+    def _gain_sched(self):
+        """懒加载 GainScheduler (SS_ADAPT_GAIN=1 才有实例; 失败 → None + 诚实记录)。"""
+        if self._gain_cache is not None:
+            return self._gain_cache
+        try:
+            from lerobot.manifold.adaptive_gain import GainScheduler
+            _lim = float(os.environ.get("SS_LIMIT", "0.6"))
+            self._gain_cache = GainScheduler(
+                enabled=True, bounds=(-_lim, _lim),
+                kmin=float(os.environ.get("SS_GAIN_KMIN", "0.0")),
+                kmax_nav=float(os.environ.get("SS_GAIN_KMAX_NAV", "0.5")),
+                kmax_flow=float(os.environ.get("SS_GAIN_KMAX_FLOW", "0.5")),
+                kappa=float(os.environ.get("SS_GAIN_KAPPA", "0.90")))
+            self.log("🎚 自适应增益层就绪 (卡尔曼式: 熟场景→默认 L2 / 泛化受扰→抬 L4 导航 + L3 流程)")
+        except Exception as e:                                            # noqa: BLE001
+            self._gain_cache = None
+            self._gain_stats["err"] = f"{type(e).__name__}: {e}"
+            self.log(f"⚠️ 自适应增益层加载失败: {self._gain_stats['err']}")
+        return self._gain_cache
+
+    def _gain_events(self, stage: str) -> dict:
+        """结构信号 → 事件量 (全部真实可测, 无凭感觉系数)。"""
+        ev = {"ood_sigma": 0.0, "mm_miss": 0.0, "stall": 0.0, "stage_switch": 0.0}
+        # (a) OOD: 与蒸馏域**同口径**的逐通道归一化 (左脑 MLP 自带 sm/ss) → σ 超门幅度
+        try:
+            _ff = getattr(self.accel, "_ff", None)
+            _sm = getattr(_ff, "sm", None)
+            _o39 = getattr(self, "_last_obs39", None)
+            if _sm is not None and _o39 is not None:
+                _ss = _ff.ss
+                xn = (np.asarray(_o39, float) - _sm) / np.where(_ss > 1e-4, _ss, 1.0)
+                _gate = float(getattr(self.parallel, "DOMAIN_SIGMA", 4.0))
+                ev["ood_sigma"] = max(0.0, float(np.max(np.abs(xn))) / _gate - 1.0)
+        except Exception:                                                 # noqa: BLE001
+            pass
+        # (b) 肌肉记忆: 该 (场景, 阶段) 没练过 → 先验不可信 → 该信导航
+        try:
+            _st = stage.replace("阶段 ", "").split("·")[0].strip()
+            if self.muscle is not None and _st in ("接近", "对位", "下降", "抓取", "抬起"):
+                if self.muscle.get_champ(self.seed, _st)[0] is None:
+                    ev["mm_miss"] = 1.0
+        except Exception:                                                 # noqa: BLE001
+            pass
+        # (c) 停滞: 势函数 V 用**本阶段的任务相关势** (势必须与阶段同口径, 否则误报) —
+        #     抓取/下降/插入/拔出段: V = ‖peg头 − 孔口‖ (毫米级接触); 其余段: V = ‖hand − 本段目标‖
+        #     25 帧窗口内几乎不降 = 手漂/滑脱/卡死 → 抬增益 (更信 L4 导航)。
+        #     ⚠️ 2026-09-16 实测教训: 一开始统一用 ‖peg−hole‖ → 接近段 (还没抓件) 该量恒
+        #       338mm 不变 → 停滞恒为 1 → 增益被顶到 0.5 帽 (熟场景也"受扰") ⇒ 必须分阶段。
+        try:
+            _st = stage.replace("阶段 ", "").split("·")[0].strip()
+            if _st in ("下降", "抓取", "插入", "拔出", "完成"):
+                h = self.env.data.site_xpos[self._site_hole]
+                v = float(np.linalg.norm(np.asarray(self.peg_head(), float)[:3]
+                                         - np.asarray(h, float)[:3]))
+            else:
+                tg = np.asarray(self._stage_target(), float).ravel()[:3]
+                v = float(np.linalg.norm(np.asarray(self.x, float).ravel()[:3] - tg))
+            self._gain_vwin.append(v)
+            if len(self._gain_vwin) > 25:
+                self._gain_vwin.pop(0)
+            if len(self._gain_vwin) >= 25 and min(self._gain_vwin) > self._gain_vwin[0] * 0.98:
+                ev["stall"] = 1.0
+        except Exception:                                                 # noqa: BLE001
+            pass
+        # (d) 阶段刚切换 (流程不确定 → 抬 L3 流程增益)
+        if str(stage) != self._gain_stage:
+            ev["stage_switch"] = 1.0
+        return ev
+
+    def _gain_step(self, u_l2, u_nav, u_flow, u_champ, stage: str):
+        """一帧增益结算 (返回 GainOut; 失败 → None, 上游按原路径走)。"""
+        g = self._gain_sched()
+        if g is None:
+            return None
+        try:
+            _ev = self._gain_events(stage)
+            self._gain_stage = str(stage)
+            o = g.step(u_l2=u_l2, u_nav=u_nav, u_flow=u_flow, u_champ=u_champ, **_ev)
+            self._gain_last = o
+            s = self._gain_stats
+            s["steps"] += 1
+            s["k_nav_sum"] += float(o.k_nav)
+            s["k_flow_sum"] += float(o.k_flow)
+            s["k_mm_sum"] += float(o.k_mm)
+            for k in o.events:
+                s["events"][k] = s["events"].get(k, 0) + 1
+            s["k_nav_hist"].append(float(o.k_nav))
+            s["k_flow_hist"].append(float(o.k_flow))
+            s["p_hist"].append(float(g.p))
+            return o
+        except Exception as e:                                            # noqa: BLE001
+            self._gain_stats["err"] = f"{type(e).__name__}: {e}"
+            return None
+
+    def gain_summary(self) -> dict:
+        """增益层取证摘要 (面板/报告用; 数值全部实测)。"""
+        s = self._gain_stats
+        n = max(1, int(s["steps"]))
+        return {"enabled": os.environ.get("SS_ADAPT_GAIN") == "1",
+                "steps": s["steps"], "applied": s["applied"], "zero_frames": s["zero_frames"],
+                "k_nav_mean": round(s["k_nav_sum"] / n, 5),
+                "k_flow_mean": round(s["k_flow_sum"] / n, 5),
+                "k_mm_mean": round(s["k_mm_sum"] / n, 5),
+                "events": dict(s["events"]), "err": s["err"],
+                "k_nav_tail": [round(float(x), 4) for x in s["k_nav_hist"][-8:]],
+                "k_flow_tail": [round(float(x), 4) for x in s["k_flow_hist"][-8:]],
+                "p_last": (round(float(s["p_hist"][-1]), 6) if s["p_hist"] else None),
+                "p_zero_gate": (None if self._gain_cache is None
+                                else round(float(self._gain_cache.p_zero), 6)),
+                "reason_last": (getattr(self._gain_last, "reason", "") or "")}
 
     def dump_align_data(self, path: str | None = None) -> str:
         """把采到的成对样本 (u_l2, u_up, 阶段) 落盘 (标定用)。"""
@@ -2238,6 +2380,8 @@ class RealStateSpaceSim:
             visual39 = np.concatenate([cur, prev, target])
             tactile4 = np.array([self.gripper, float(self.grasped), 0.0, 0.0])
             obs = self.perception.fuse_sensors(visual39, force, tactile4)
+            # 🎚 2026-09-16: 留一帧 39 维观测 (与左脑 MLP 同口径) 供自适应增益判 OOD (σ 超门)
+            self._last_obs39 = np.asarray(obs, dtype=float).reshape(-1)[:39]
             # ⑤ 六层控制器 (同引擎: 前馈→估计→预测→校正→调度→限幅→执行)
             # 🧠 分层伺服 (2026-09-06 晚, 同 gen 采集管道): 前段 = 蒸馏 MLP 真实主执行
             #   (多布局重训, 域守卫兜底); 插入段 = 毫米级接触 → 解析伺服精插
@@ -2479,10 +2623,13 @@ class RealStateSpaceSim:
                                 pass
                         _align_info = None
                         if os.environ.get("SS_L4_ALIGN") == "1":
-                            _al = self._aligner()
+                            _al = self._l4_aligner()
                             if _al is not None and _al.ready:
                                 _u4, _align_info = _al.align(_u4, stage=str(st_now),
                                                              ref=_ua_raw)
+                                # 🎚 2026-09-16: 对齐后的 L4 动作 = 增益层的**导航路**参考
+                                #   (否则增益层拿到的是对齐前/DiT 前的原始提案 → 与对齐层口径不一致)
+                                self._l4_last_u0 = np.asarray(_u4, float).copy()
                                 self._align_stats["applied"] += 1
                                 self._align_stats["cos_before"].append(_al.last_cos_before)
                                 self._align_stats["cos_after"].append(_al.last_cos_after)
@@ -2553,13 +2700,61 @@ class RealStateSpaceSim:
                     and self._il_stack is not None):
                 _ui, _wi, _ii = self._il_last
                 _stk = self._il_stack
-                _stk.note_l2(np.asarray(u_ff, float), src="analytic/L3 参考")
-                _stk.note_l4(_ii.get("m_int"), str(_ii.get("src") or ""), _wi, ready=self._il_ready)
-                _mrg, _info = _stk.commit(u_l2=np.asarray(u_ff, float)[:3],
-                                         u_up=np.asarray(_ui, float)[:3], w_up=_wi)
-                if _wi > 0.0:
+                # ══════════════════════════════════════════════════════════════════════
+                # 🎚 2026-09-16 老倪: 卡尔曼式**自适应增益**替代固定 w=0.3
+                #   K_nav = L4 导航增益 (DiT 前的意图动作), K_flow = L3 流程增益 (DiT 流程动作),
+                #   L2 = 执行层 (肌肉记忆/解析伺服, 唯一出口)。熟场景无事件 → P 落到地板 →
+                #   增益**硬置 0 → 逐位纯 L2** (此行不 commit, 零回退); 泛化(σ超门/没标杆)/受扰
+                #   (新息异常/停滞) → 事件抬 Q → 增益自动抬升 → 更信 L4 导航 + L3 流程。
+                #   ★ 唯一出口不变: 下面的 sched.decide + safety.saturate 一行未动 (I1);
+                #     结果仍经 stk.commit 投影进 U_L2 (I2)。SS_ADAPT_GAIN 不设 = 原路径一行不改。
+                # ══════════════════════════════════════════════════════════════════════
+                _up, _w_use, _gsrc, _go = np.asarray(_ui, float), float(_wi), "", None
+                if os.environ.get("SS_ADAPT_GAIN") == "1":
+                    _mm_cur = None
+                    try:
+                        if (getattr(self, "_mm_u", None) is not None
+                                and getattr(self, "_mm_i", 0) > 0):
+                            _mm_cur = np.asarray(self._mm_u[self._mm_i - 1], float)
+                    except Exception:                                          # noqa: BLE001
+                        _mm_cur = None
+                    _go = self._gain_step(u_l2=np.asarray(u_ff, float),
+                                          u_nav=(self._l4_last_u0 if self._l4_last_u0 is not None
+                                                 else np.asarray(_ui, float)),
+                                          u_flow=getattr(self, "_l4_last_ud", None),
+                                          u_champ=_mm_cur, stage=str(st_now))
+                    if _go is not None:
+                        tr.setdefault("gain_k_nav", []).append(float(_go.k_nav))
+                        tr.setdefault("gain_k_flow", []).append(float(_go.k_flow))
+                        tr.setdefault("gain_k_mm", []).append(float(_go.k_mm))
+                        tr.setdefault("gain_p", []).append(float(_go.p_prior))
+                        _w_use = float(_go.k_nav)
+                        _gsrc = (f" · 🎚 K_nav={_go.k_nav:.3f} K_flow={_go.k_flow:.3f} "
+                                 f"K_mm={_go.k_mm:.3f} ({_go.reason})")
+                        if (_go.k_flow > 0.0 or _go.k_mm > 0.0):
+                            # 增益层已把三路 (L2 基座 + 导航 + 流程 + 肌肉修正) 融成参考 →
+                            # 收口闸以 w=1 收到该参考 (仍投影进 U_L2, 记账在 commit 里)
+                            _up, _w_use = np.asarray(_go.u, float), 1.0
+                        else:
+                            _up = np.asarray(_go.u, float)
+                _stk.note_l2(np.asarray(u_ff, float),
+                             src=("analytic/L3 参考 · 🎚 L2 肌肉记忆主导 (增益 0)" if
+                                  (_go is not None and _w_use <= 0.0) else "analytic/L3 参考"))
+                _stk.note_l4(_ii.get("m_int"), str(_ii.get("src") or "") + _gsrc, _w_use,
+                             ready=self._il_ready)
+                _applied = False
+                if os.environ.get("SS_ADAPT_GAIN") == "1" and _go is not None and _w_use <= 0.0:
+                    # 熟场景: 增益硬置 0 → 逐位纯 L2 (不 commit, 零回退), 只记账
+                    self._gain_stats["zero_frames"] += 1
+                else:
+                    _mrg, _info = _stk.commit(u_l2=np.asarray(u_ff, float)[:3],
+                                              u_up=np.asarray(_up, float)[:3], w_up=_w_use)
+                    _applied = _w_use > 0.0
+                if _applied:
                     u_ff = np.concatenate([_mrg, [u_ff[3]]])
                     self._il_stats["applied"] += 1
+                    if _go is not None:
+                        self._gain_stats["applied"] += 1
                     # 🧮 逐阶段注入计数 (2026-09-15: 取证"插入段到底有没有被直连线覆盖" —
                     #   不靠推断, 直接数; 阶段白名单默认排除"插入" → 该键默认应为空)
                     _bs = self._il_stats.setdefault("by_stage", {})
@@ -2567,7 +2762,7 @@ class RealStateSpaceSim:
                     _bs[_sk] = _bs.get(_sk, 0) + 1
                     self._il_stats["clip_max"] = max(float(self._il_stats["clip_max"]),
                                                      float(_info.get("clip") or 0.0))
-                tr.setdefault("il_w", []).append(float(_wi))
+                tr.setdefault("il_w", []).append(float(_w_use))
                 tr.setdefault("il_u_ff_vec", []).append(np.asarray(_ui, float).copy())
                 tr.setdefault("il_manifold_vec", []).append(
                     np.asarray(_ii.get("manifold"), float).copy())

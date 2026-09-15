@@ -355,6 +355,39 @@ def install_direct_act(sim, node, a_mean, a_std, infer_every=1, chunk_step=0, sl
                                 _veto_step = True
                             else:
                                 _w = max(0.0, min(1.0, _cos))
+                                # ══════════════════════════════════════════════════════════
+                                # 🎚 2026-09-16 老倪: 卡尔曼式**自适应增益** —— 直驱档同一纪律:
+                                #   熟场景 (无事件) → K → 0 → 模型动作不接管 ⇒ **默认 L2 肌肉记忆/
+                                #   解析伺服** (直接连物理世界那层); 泛化/受扰 (新场景无标杆 / σ 超
+                                #   蒸馏域 / 进程停滞 / 阶段切换) → 事件抬 Q → K 自动抬升 ⇒ **更信
+                                #   L4 导航**。仍受 ①②闸 (方向 cos≥0.9 / 幅度 ≤1.5× / 阶段白名单) 约束,
+                                #   且 K ≤ 0.5 帽 (每层只能收窄, 不放大)。不设 SS_ADAPT_GAIN = 原 cos 权重。
+                                # ══════════════════════════════════════════════════════════
+                                if os.environ.get("SS_ADAPT_GAIN") == "1":
+                                    try:
+                                        from lerobot.manifold.adaptive_gain import GainScheduler  # noqa: PLC0415
+                                        _gs = state.get("gain")
+                                        if _gs is None:
+                                            _gs = GainScheduler(bounds=(-1.0, 1.0))
+                                            state["gain"] = _gs
+                                        _evx = {}
+                                        try:
+                                            if hasattr(s, "_gain_events"):
+                                                _evx = s._gain_events(str(stage))
+                                        except Exception:                       # noqa: BLE001
+                                            _evx = {}
+                                        _go2 = _gs.step(u_l2=_ar, u_nav=_am, u_champ=None, **_evx)
+                                        _w = float(_go2.k_nav)
+                                        if _w <= 0.0:
+                                            _g["gain_zero"] = int(_g.get("gain_zero", 0)) + 1
+                                        state["gain_last"] = {"k_nav": round(float(_go2.k_nav), 5),
+                                                              "k_flow": round(float(_go2.k_flow), 5),
+                                                              "p": round(float(_go2.p_prior), 6),
+                                                              "events": dict(_go2.events),
+                                                              "reason": _go2.reason}
+                                        rec.setdefault("gain_k", []).append(round(float(_w), 4))
+                                    except Exception as _eg:                     # noqa: BLE001
+                                        state["gain_err"] = f"{type(_eg).__name__}: {_eg}"
                                 _g["blend"] += 1
                                 _g["cos_sum"] += _cos
                                 _g["cos_used"] += 1
