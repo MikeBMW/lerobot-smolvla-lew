@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10212,7 +10212,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.6 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.7 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10220,9 +10220,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.6 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.7 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.7: 🧬 **L4 纤维丛联络层 (动作丛→接触丛→DiT) + 方向/幅度对齐层 + 同口径多臂 A/B** — ①INTACT **预测潜空间** z_pred 真进链 (桥白名单只透传 z_t/z_goal/delta 把该键吃掉的 bug 修掉; 零搜索 direct 不调 predictor → 用 predict() 逐位复刻 rollout_one_step 推完 chunk) ②新增 src/lerobot/manifold/fiber_bundle.py: 丛映射 Φ:z_pred→接触丛 6 维 (582 条真样本 LOO R² 0.471 · null 0.000) + 丛映射 A:z_pred→几何 z7 (0.607) + 水平提升 h_z / 挠率 κ / 曲率 ‖Ω‖ (线性 Φ 曲率≈0 作对照) ③流形专家预测器**权重一字未改**, z 换源 ẑ7=A·z_pred+b (证据: 预测器 z 来源=fiber) ④DiT 条件 token 214 维 = δ̂192 ⊕ ĥ_z6 ⊕ Φ(z_pred)6 ⊕ Φ_p(z_pred)6 ⊕ 标量 (同一 apply_l4_cond; 性能丛只作条件不作幅值权重) ⑤L4 行 19 条边审计: 有数据 13 · 死线 6 (VLM z960 3 条需重训口径 / L4 记忆 2 条 / 算子A 1 条) ⑥零回退: L2 档 fiber 0/1 **逐位相同** (hash 3d330ebc8b0c19e88cbd0706def2f455) · L3 档新代码根本不进; ⚠️注: L3 逐位 hash **不可作判据** (625M CPU bf16 FP 级非确定, 同配置两臂亦不同 — 已复现) → 用结构性判据 ⑦**同口径多臂 A/B (3 seed×150 步 · 每臂独立进程) = 无实质提升** (fiber=1 vs 基线 rel_V/rel_dist: seed0 +1.95%/−36% · seed2 −0.06%/−1.77% · seed5 +0.47%/−3.67%; 判据自我收紧 1e-9→相对 1% 实质阈值, 原阈值会把 1e-5 噪声判成"提升") ⇒ **SS_L4_FIBER 保持默认关, 不进默认档**; 结构性原因: L2 收口闸 150 帧否决 79~120 帧 + cos∠(预测潜空间,几何联络) 跨阶段 0.80/−0.46/0.22 不稳 ⑧新增工具 fit_fiber_map / audit_l4_edges / verify_fiber_zero_regression / ab_fiber_line / ab_l4_arms / feishu_notify (+ 探针 L4line/L4audit 场景 + np/torch 播种 + 审计 json) | 
         # v5.6.6: 📄 **运行台账 + AOI 报告行 (只加日志与证据, 控制律零改动)** —— 真实化运行完成时:
         #   ① 日志打 `🔍 AOI 报告: ok=… 插入最浅 …mm 峰值力 … 卡滞 … 回抓 …` (以前 AOI 只在内部判 ok,
         #      不打印 ⇒ 老倪看不到"插到位没有"的判据) ② 落一份 `reports/gui_real_run_<时间>.json`:

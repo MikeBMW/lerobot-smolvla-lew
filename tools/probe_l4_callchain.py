@@ -337,13 +337,22 @@ def run_engine(scen: str) -> dict:
             extra["fiber_dump"] = sim.dump_fiber_data(os.environ["SS_L4_FIBER_DATA"])
     except Exception as _e:                                                      # noqa: BLE001
         extra["fiber_summary"] = {"err": f"{type(_e).__name__}: {_e}"}
+    # 🎯 Step ① 对齐采数 + 取证 (u_l2/u_int 成对; 收口闸通过率)
+    try:
+        if os.environ.get("SS_L4_ALIGN_DATA") and hasattr(sim, "dump_align_data"):
+            extra["align_dump"] = sim.dump_align_data(os.environ["SS_L4_ALIGN_DATA"])
+        if hasattr(sim, "align_summary"):
+            extra["align_summary"] = sim.align_summary()
+    except Exception as _e:                                                      # noqa: BLE001
+        extra["align_summary"] = {"err": f"{type(_e).__name__}: {_e}"}
     # 🧾 L4 区每条线的数据流审计: 逐帧列统计 + 各层 summary → json (audit_l4_edges.py 消费)
     try:
         _cols = ("u_ff_vec", "u_exec_vec", "u_fuse_vec", "l4_u_ff_vec", "l4_cond_vec",
                  "mani_pred", "mani_progress", "mani_risk", "mani_V", "mani_eta",
                  "mani_dperp", "z7_vec", "latent_vec",
                  "fiber_h_norm", "fiber_kappa_tor", "fiber_kappa_curv", "fiber_cos_geo",
-                 "fiber_contact_true", "fiber_perf_true", "fiber_z7_hat", "fiber_cond_norm")
+                 "fiber_contact_true", "fiber_perf_true", "fiber_z7_hat", "fiber_cond_norm",
+                 "l4_cos", "l4_mag_ratio", "l4_gate", "l4_cos_pre_align")
         _tr = locals().get("tr")
         _cstats = {}
         if _tr is not None:
@@ -419,6 +428,7 @@ def run_engine(scen: str) -> dict:
                            "env": {k: os.environ.get(k) for k in
                                    ("SS_L4_INTACT", "SS_L4_INTENT_LINE", "SS_L4_FIBER",
                                     "SS_L4_DIT", "SS_L3", "SS_INTACT")},
+                           "align": extra.get("align_summary"),
                            "trace_cols": _cstats, "summaries": extra["summaries"]},
                           _f, ensure_ascii=False, indent=1, default=str)
             extra["audit_json"] = _dst

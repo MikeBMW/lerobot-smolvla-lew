@@ -339,6 +339,15 @@ class RealStateSpaceSim:
                              "h_norm": [], "omega": [], "phi": [], "err": None,
                              "src": "", "map_src": "", "ready": False,
                              "contact_pred": [], "contact_true": [], "contact_err": []}
+        # 🎯 2026-09-15 Step ① L4 方向/幅度对齐 (让上层的注入能过 L2 收口闸)
+        #   · self._align_data: 采成对 (u_l2 下层参考, u_up 上层提案, 阶段) —— SS_L4_ALIGN_DATA=<npz>
+        #   · SS_L4_ALIGN=1 时在收口闸**之前**施加标定映射 (线性 R/b + 锥角截断 + 幅度封顶)
+        #   · 不设 = 一行不改 (逐位零回退); 未标定/未过闸 = 不施加 (计数 + 来源)
+        self._align_data: list = []
+        self._align_cache = None
+        self._align_err = None
+        self._align_stats = {"applied": 0, "cos_before": [], "cos_after": [], "ratio_after": [],
+                             "ready": False, "map_src": "", "err": None}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1661,6 +1670,65 @@ class RealStateSpaceSim:
         except Exception:                                                     # noqa: BLE001
             return np.zeros(7)
 
+    # 🎯 2026-09-15 Step ① L4 方向/幅度对齐 (数据驱动; 不改闸的语义)
+    def _aligner(self):
+        """懒加载 L4→引擎 u 的对齐映射 (models/l4_align_map.json; 未标定 → None, 不施加)。"""
+        if self._align_cache is None and self._align_err is None:
+            try:
+                _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                _src = os.path.join(_root, "src")
+                if _src not in sys.path:
+                    sys.path.insert(0, _src)
+                from lerobot.manifold.l4_align import IntentAligner
+                _al = IntentAligner(root=_root)
+                self._align_cache = _al
+                self._align_stats["ready"] = bool(_al.ready)
+                self._align_stats["map_src"] = _al.note
+                self.log(f"🎯 L4 对齐映射: {_al.note} (ready={_al.ready})")
+            except Exception as e:                                            # noqa: BLE001
+                self._align_err = f"{type(e).__name__}: {e}"
+                self._align_stats["err"] = self._align_err
+                self.log(f"⚠️ L4 对齐映射加载失败: {self._align_err}")
+        return self._align_cache
+
+    def dump_align_data(self, path: str | None = None) -> str:
+        """把采到的成对样本 (u_l2, u_up, 阶段) 落盘 (标定用)。"""
+        p = path or os.environ.get("SS_L4_ALIGN_DATA") or ""
+        if not self._align_data or not p:
+            return ""
+        try:
+            import numpy as _np
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            _np.savez(p,
+                      u_l2=_np.stack([r["u_l2"] for r in self._align_data]),
+                      u_up=_np.stack([r["u_up"] for r in self._align_data]),
+                      w=_np.asarray([r["w"] for r in self._align_data]),
+                      grip=_np.asarray([r["grip"] for r in self._align_data]),
+                      stage=_np.asarray([r["stage"] for r in self._align_data]),
+                      n=_np.asarray([len(self._align_data)]))
+            self.log(f"🎯 对齐采数落盘: {p} (n={len(self._align_data)})")
+            return p
+        except Exception as e:                                                # noqa: BLE001
+            self.log(f"⚠️ 对齐采数落盘失败: {type(e).__name__}: {e}")
+            return ""
+
+    def align_summary(self) -> dict:
+        """对齐层取证摘要 (对齐前/后 cos、幅度比; 全部实测)。"""
+        s = self._align_stats
+        mn = lambda v: (float(np.mean(np.asarray(v, float))) if len(v) else 0.0)     # noqa: E731
+        return {"enabled": os.environ.get("SS_L4_ALIGN") == "1",
+                "applied": s["applied"], "ready": bool(s["ready"]),
+                "map_src": s["map_src"], "err": s["err"],
+                "cos_before_mean": round(mn(s["cos_before"]), 4),
+                "cos_after_mean": round(mn(s["cos_after"]), 4),
+                "ratio_after_mean": round(mn(s["ratio_after"]), 4),
+                "sample_n": len(self._align_data),
+                "gate": {"pass": self._l4_stats.get("gate_pass", 0),
+                         "veto": self._l4_stats.get("l2_veto", 0),
+                         "veto_dir": self._l4_stats.get("l2_veto_dir", 0),
+                         "veto_mag": self._l4_stats.get("l2_veto_mag", 0),
+                         "blend": self._l4_stats.get("blend", 0)}}
+
     def fiber_line_summary(self) -> dict:
         """纤维丛联络层取证摘要 (A/B/报告用; 数字全部来自实测计数)。"""
         s = self._fiber_stats
@@ -2388,6 +2456,37 @@ class RealStateSpaceSim:
                     _r4 = self._l4_intact_u_ff(str(st_now))
                     if _r4 is not None:
                         _u4, _w4 = _r4
+                        # ══════════════════════════════════════════════════════════
+                        # 🎯 2026-09-15 Step ① 方向/幅度对齐 (老倪: "先对齐让 L4 注入能过 L2 收口闸")
+                        #   实测基线: 150 帧里 79~120 帧被闸否决, 多为方向相反 (cos<0)。
+                        #   做法 (全部数据驱动, 不改闸的语义):
+                        #     ① 采成对样本 (u_ff 下层参考, u_int 上层提案, 阶段) → SS_L4_ALIGN_DATA
+                        #     ② tools/fit_l4_align.py 标定"L4→引擎 u"的线性映射 (去系统性反向/量纲差)
+                        #     ③ SS_L4_ALIGN=1 时在**闸之前**施加映射, 并把正交分量按目标锥角截断
+                        #        (cos≥SS_L4_ALIGN_COS_MIN, 默认 0.9) + 幅度封顶 (≤1.2×L2)
+                        #   不设 SS_L4_ALIGN → 一行不改 (逐位零回退)
+                        # ══════════════════════════════════════════════════════════
+                        _ua_raw = np.asarray(u_ff, float)[:3].copy()
+                        _up_raw = np.asarray(_u4, float)[:3].copy()
+                        if os.environ.get("SS_L4_ALIGN_DATA"):
+                            try:
+                                self._align_data.append({
+                                    "u_l2": _ua_raw.copy(), "u_up": _up_raw.copy(),
+                                    "stage": str(st_now), "w": float(_w4),
+                                    "grip": float(np.asarray(u_ff, float).ravel()[3]),
+                                })
+                            except Exception:                                      # noqa: BLE001
+                                pass
+                        _align_info = None
+                        if os.environ.get("SS_L4_ALIGN") == "1":
+                            _al = self._aligner()
+                            if _al is not None and _al.ready:
+                                _u4, _align_info = _al.align(_u4, stage=str(st_now),
+                                                             ref=_ua_raw)
+                                self._align_stats["applied"] += 1
+                                self._align_stats["cos_before"].append(_al.last_cos_before)
+                                self._align_stats["cos_after"].append(_al.last_cos_after)
+                                self._align_stats["ratio_after"].append(_al.last_ratio)
                         self._l4_stats["shift"].append(float(np.linalg.norm(
                             np.asarray(_u4, float)[:3] - np.asarray(u_ff, float)[:3])))
                         # 🛡 L2 收口闸 (2026-09-15 实测驱动, 不是防患于未然):
@@ -2405,18 +2504,27 @@ class RealStateSpaceSim:
                             _cos = (float(_ua @ _up) / (_na * _np2)
                                     if _na > 1e-9 and _np2 > 1e-9 else 0.0)
                             _mag = (_np2 / _na) if _na > 1e-9 else float("inf")
+                            # 🎯 逐帧量 (对齐效果可量化: 对齐前/后 cos 与幅度比)
+                            tr.setdefault("l4_cos", []).append(float(_cos))
+                            tr.setdefault("l4_mag_ratio", []).append(
+                                float(min(_mag, 1e3)))
+                            tr.setdefault("l4_cos_pre_align", []).append(
+                                None if _align_info is None else float(_align_info["cos_before"]))
                             if _cos < 0.0 or _mag > 1.5:
                                 self._l4_stats["l2_veto"] = self._l4_stats.get("l2_veto", 0) + 1
                                 if _cos < 0.0:
                                     self._l4_stats["l2_veto_dir"] = \
                                         self._l4_stats.get("l2_veto_dir", 0) + 1
+                                    tr.setdefault("l4_gate", []).append(-1.0)
                                 else:
                                     self._l4_stats["l2_veto_mag"] = \
                                         self._l4_stats.get("l2_veto_mag", 0) + 1
+                                    tr.setdefault("l4_gate", []).append(-2.0)
                                 _w4 = 0.0
                             else:
                                 _w4 = _w4 * max(_cos, 0.0)
                                 self._l4_stats["gate_pass"] = self._l4_stats.get("gate_pass", 0) + 1
+                                tr.setdefault("l4_gate", []).append(1.0)
                         if _w4 > 0:
                             _b = ((1.0 - _w4) * np.asarray(u_ff, float)[:3]
                                   + _w4 * np.asarray(_u4, float)[:3])
