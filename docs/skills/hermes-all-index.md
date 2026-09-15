@@ -36,13 +36,13 @@
 | `songwriting-and-ai-music` | creative | 1 | Songwriting craft and Suno AI music prompts. |
 | `touchdesigner-mcp` | creative | 23 | Control TouchDesigner via twozero MCP. |
 | `e-drive-ubuntu-clone` | devops | 1 | Use when 把U盘LiveUSB系统迁移到E盘装Ubuntu(nvme0n1p5)。含授权红线。 |
-| `gnome-desktop-launchers` | devops | 1 | Use when GNOME桌面 .desktop 快捷方式有叉号/未信任/建桌面图标。DING缓存坑+修复序列。 |
+| `gnome-desktop-launchers` | devops | 2 | Use when GNOME桌面 .desktop 快捷方式有叉号/未信任/建桌面图标。DING缓存坑+修复序列。 |
 | `http-relay-service` | devops | 5 | Use for HTTP relay/queue services on remote hosts. |
 | `linux-chinese-input` | devops | 1 | Use when 在 Linux/WSL/U盘Live系统装中文输入法 (ibus/fcitx5). |
 | `linux-wifi-troubleshooting` | devops | 4 | Use when Linux WiFi 连不上/掉线/只能连热点. 诊断国家码/省电/Intel驱动/信号. |
 | `novnc-remote-desktop` | devops | 3 | Use when 要浏览器/手机远程看+操作 Linux 桌面或 websockify 转发 VNC 失败. |
 | `sdlc-review` | devops | 1 | Review Kanban handoffs and route verified outcomes. |
-| `unattended-pipeline-supervision` | devops | 4 | Use when 无人值守长流水线(下载/校验/解压/训练/评测)需终态上报 — 静默哨兵+沙箱验两分支. |
+| `unattended-pipeline-supervision` | devops | 6 | Use when 无人值守长流水线(下载/校验/解压/训练/评测)需终态上报 — 静默哨兵+沙箱验两分支. |
 | `zmax-dual-boot-hermes` | devops | 2 | Use when U盘出差要带Hermes记忆或双系统数据架构(nvme0n1p5)维护。 |
 | `zmax-usb-hermes-mirror` | devops | 1 | Use when U盘随身镜像/E盘数据盘bind/离家记忆 部署维护排障。静静大脑跨盘架构 (09-06)。 |
 | `zmax-ws-chat-debug` | devops | 2 | Use when datadrive.world 群聊/WS 无消息, 诊断 WS 服务端推送。chat.html 空。 |
@@ -50,7 +50,7 @@
 | `himalaya` | email | 3 | Himalaya CLI: IMAP/SMTP email from terminal. |
 | `codebase-inspection` | github | 1 | Inspect codebases w/ pygount: LOC, languages, ratios. |
 | `git-history-slimming` | github | 1 | Use when a git repo is bloated or user wants 精简/不要什么都上传. |
-| `github-actions-ci` | github | 7 | 'Use for GitHub Actions: Windows exe, Docker, ACR, releases.' |
+| `github-actions-ci` | github | 8 | 'Use for GitHub Actions: Windows exe, Docker, ACR, releases.' |
 | `github-auth` | github | 3 | GitHub auth setup: HTTPS tokens, SSH keys, gh CLI login. |
 | `github-code-review` | github | 2 | Review PRs: diffs, inline comments via gh or REST. |
 | `github-issue-to-pr` | github | 1 | Carry a GitHub issue to a verified PR with honest CI state. |
@@ -67,13 +67,13 @@
 | `hf-dataset-subset` | mlops | 6 | Use when 只要一小部分数据/磁盘不够 — download a small HF dataset subset. |
 | `hf-weight-download` | mlops | 1 | HF权重下载卡死解决, ignore_patterns跳onnx, 断点续传, 离线加载验证。 |
 | `huggingface-hub` | mlops | 1 | HuggingFace hf CLI: search/download/upload models, datasets. |
-| `intact-jepa-official-eval` | mlops | 11 | Use when 跑 INTACT-JEPA 论文权重官方评测或核口径/视频。 |
+| `intact-jepa-official-eval` | mlops | 12 | Use when 跑 INTACT-JEPA 论文权重官方评测或核口径/视频。 |
 | `intact-lewm-official-eval` | mlops | 1 | Use when 复现/跑 INTACT(LeWM) 四任务官方评测或数据集报错。 |
 | `lerobot-act-training` | mlops | 8 | Use when training ACT policies in lerobot-smolvla-lew fork. |
 | `lerobot-dataset-engineering` | mlops | 6 | LeRobot 数据集构建坑 — timestamp相对/索引重编号/视频对齐/hub覆盖。训练数据出错时用。 |
 | `llama-cpp` | mlops | 7 | llama.cpp local GGUF inference + HF Hub model discovery. |
 | `metaworld-sim-eval` | mlops | 6 | Metaworld 仿真 rollout 视频 + 多模型对比评估。生成 sim 视频时用。 |
-| `nvidia-gpu-driver-setup` | mlops | 4 | Use when Ubuntu 装 NVIDIA 驱动或 nouveau 冲突加载失败。 |
+| `nvidia-gpu-driver-setup` | mlops | 6 | Use when Ubuntu 装 NVIDIA 驱动或 nouveau 冲突加载失败。 |
 | `policy-direct-drive-integration` | mlops | 7 | Use when 策略直接输出指令开机器人 (直驱) 或先判动作头能否用. |
 | `python-ml-env-mirrors` | mlops | 4 | Use when pip/pytorch.org is slow: use aliyun mirrors. |
 | `pytorch-cuda-install` | mlops | 2 | Use when official PyTorch+CUDA wheel installs fail. |
@@ -88,7 +88,7 @@
 | `serving-llms-vllm` | mlops | 5 | vLLM: high-throughput LLM serving, OpenAI API, quantization. |
 | `simulink-flow-engineering` | mlops | 27 | Use when 生成/改 simulink flow JSON、模块库LIBRARY加删按钮、VEH.5编号问题。 |
 | `smolvlm-perception-integration` | mlops | 2 | 'Use when 把真实 SmolVLM/VLM 视觉编码接入画布感知节点, 或本地单帧编码。含回归红线。' |
-| `unattended-job-orchestration` | mlops | 5 | Use when 长跑多阶段任务(下载/解压/训练/评测)要无人值守出结果 — 接力脚本 + 哨兵 cron 只报一次。 |
+| `unattended-job-orchestration` | mlops | 7 | Use when 长跑多阶段任务(下载/解压/训练/评测)要无人值守出结果 — 接力脚本 + 哨兵 cron 只报一次。 |
 | `weights-and-biases` | mlops | 4 | W&B: log ML experiments, sweeps, model registry, dashboards. |
 | `yolo-3d-perception-chain` | mlops | 1 | YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评估原则。 |
 | `yolo-depth-head` | mlops | 2 | 给 YOLO 加 depth head 恢复 z 深度, 替代写死深度平面。 |
@@ -143,16 +143,16 @@
 | `hermes-agent-skill-authoring` | software-development | 1 | Author in-repo SKILL.md files: frontmatter and structure. |
 | `hermes-crash-recovery` | software-development | 12 | Restore Hermes crash: repos, creds, memory, gateway. |
 | `inspecting-hermes-desktop-dom` | software-development | 1 | Read the live Hermes desktop DOM/CSS over CDP. |
-| `integration-level-audit` | software-development | 14 | Use when 判定模型/节点是否真的接进执行链 — 节点级 vs 档位级分级取证, 孤岛/假接入识别. |
-| `layered-capability-stack` | software-development | 2 | Use when 打通分层能力栈或给已有链路加可选通道 — 上层只给意图/条件, 执行由最下层收口 + 零回退取证. |
+| `integration-level-audit` | software-development | 22 | Use when 判定模型/节点是否真的接进执行链 — 节点级 vs 档位级分级取证, 孤岛/假接入识别. |
+| `layered-capability-stack` | software-development | 3 | Use when 打通分层能力栈或给已有链路加可选通道 — 上层只给意图/条件, 执行由最下层收口 + 零回退取证. |
 | `model-capability-feature-dbc` | software-development | 5 | Model Capability Feature Library & feature.dbc |
 | `node-inspect-debugger` | software-development | 1 | Debug Node.js via --inspect + Chrome DevTools Protocol CLI. |
 | `plan` | software-development | 1 | Write a markdown plan to .hermes/plans/; no execution. |
 | `ppt-as-control-interface` | software-development | 2 | Drive a desktop console via PPT slides with markers. |
 | `ppt-driven-workflow` | software-development | 2 | PPT to console via markers. Template match, arch, sync. |
 | `pyqt-gui-auto-verification` | software-development | 13 | Use when PyQt5 GUI 自动取证测试 — 驱动真实窗口截图作证据入报告。 |
-| `pyqt5-distribution` | software-development | 13 | Package PyQt5 apps — Docker X11, Windows .exe CI, doc sync, auto-update, PPT instruction engine. |
-| `pyqt5-gui-development` | software-development | 12 | Use when developing/debugging PyQt5 GUIs on WSL/WSLg. |
+| `pyqt5-distribution` | software-development | 14 | Package PyQt5 apps — Docker X11, Windows .exe CI, doc sync, auto-update, PPT instruction engine. |
+| `pyqt5-gui-development` | software-development | 13 | Use when developing/debugging PyQt5 GUIs on WSL/WSLg. |
 | `python-debugpy` | software-development | 1 | Debug Python: pdb REPL + debugpy remote (DAP). |
 | `qt-gl-rendering-pitfalls` | software-development | 1 | Qt/pyqtgraph GL 渲染坑与 QPainter 2.5D 替代 |
 | `requesting-code-review` | software-development | 1 | Pre-commit review: security scan, quality gates, auto-fix. |

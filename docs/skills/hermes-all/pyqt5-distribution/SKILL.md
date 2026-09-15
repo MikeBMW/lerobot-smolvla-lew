@@ -499,6 +499,45 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
    GUI 用 `subprocess(capture_output=True)` 调同一脚本时同样崩 = 静默"视频生成失败"。双保险:
    脚本顶部 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` + 父进程 env 传 `PYTHONIOENCODING=utf-8`。
 
+## 坑: mujoco 自带插件 DLL 在 frozen 包里解析不到依赖 (2026-09-15 Windows 实锤修)
+
+**症状** (exe 里点「真实化运行」即失败):
+`Failed to load dynlib/dll '...\_MEI00000d042\mujoco\plugin\actuator.dll'.
+Most likely this dynlib/dll was not found when the application was frozen.`
+
+**别被这句话骗 —— 文件其实在包里**。`--collect-all mujoco` 收集没问题, 但布局是:
+- `_MEIPASS/mujoco/mujoco.dll` (运行时库, 在 mujoco/ 这一级)
+- `_MEIPASS/mujoco/plugin/actuator.dll` (插件, 在下一级)
+而 `actuator.dll` 的 PE 导入表依赖 **mujoco.dll** + VCRUNTIME140/MSVCP140。Windows 解析 DLL 依赖
+只查「该 DLL 自身目录 + 进程已注册搜索目录」→ plugin/ 里没有 mujoco.dll (MSVCP140 只在
+PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loader/pyimod03_ctypes.py`
+会 patch ctypes.CDLL) 把底层 OSError 包装成上面那句 —— **真正的 cause 在 `e.__cause__`**,
+所以报错处务必把 `__cause__` 打出来, 否则永远查不出缺哪个 DLL。
+
+**零 Windows 取证手法**:
+1. 下载已发布 exe → `python -m PyInstaller.utils.cliutils.archive_viewer -r -b App.exe > list.txt`,
+   grep `mujoco` 看 `mujoco\mujoco.dll` / `mujoco\plugin\actuator.dll` 各自在哪一级;
+2. `pip download --no-deps --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp -d /tmp/w mujoco==<ver>`
+   拿到 Windows wheel (就是 zip) → `pefile` 读插件 DLL 的导入表, 知道它缺谁。
+
+**修法** = `--runtime-hook pyi_rth_mujoco_dlls.py` (钩子在主脚本前跑, 早于 import mujoco)。**别硬编码一套依赖就以为完事** —— 实测同一个 bug 在 CI runner 上底层原因是
+`OSError [WinError 1114] A dynamic link library (DLL) initialization routine failed`(DLL 找到了但初始化失败),
+在真机上可能是 `WinError 126`。所以钩子要**逐级修 + 每级真 `ctypes.CDLL` 实测 + 修不动显式降级**, 并把结论写进环境变量留证:
+① 注册 `_MEIPASS` / `_MEIPASS/mujoco` / `_MEIPASS/mujoco/plugin` 到 DLL 搜索目录 + PATH
+   (注意 ctypes.CDLL 走 LOAD_WITH_ALTERED_SEARCH_PATH, 别只靠 AddDllDirectory);
+② 仍加载不了 → 把 `mujoco.dll` 复制进 `plugin/` (让插件目录自足 —— 依赖解析必然包含 DLL 自身目录);
+③ 再把 `VCRUNTIME140* / MSVCP140*` 复制进去;
+④ 仍失败 → 把该插件改名 `*.dll.zmax-off` **显式停用**(mujoco 的 `_load_all_bundled_plugins` 只扫
+   `.dll/.so/.dylib`, 改名后就不会去 load) —— **前提是先证明产品不用引擎插件**: `grep -r "<plugin" 全库 + metaworld/assets` 命中 0。
+非 Windows / 非 frozen 直接 return。模板见 `templates/pyi_rth_mujoco_dlls.py`。
+
+**发版前必须真验 (只查"文件在不在包里"抓不到这个 bug)**: GUI 加 `--engine-selftest` 入口
+(放入口脚本顶部、Qt 导入之前; `--windowed` 下 sys.stdout/stderr 为 None → 结果写 json + 退出码,
+且 `traceback.print_exc()` 会再抛 AttributeError 把真错误盖掉 → 有 stderr 才打印), CI 里真跑
+`ZMAX_SELFTEST_OUT=... ./App.exe --engine-selftest` → 真 import mujoco/metaworld + 建模型 + 步进;
+失败即 fail 发版。再加一个 A/B job (`workflow_dispatch` 开关) 构建**不装钩子**的基线并断言它必须崩
+→ 证明根因 + 证明核验步骤"有牙" (不是永远绿的装饰)。渲染只记录不判失败 (CI runner 无显示)。
+
 ## Common CI failures & fixes
 
 | Symptom | Root cause | Fix |
@@ -510,6 +549,7 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
 | .exe crashes: `ModuleNotFoundError: grpc` | Missing grpcio in pip install | Add `grpcio protobuf` to deps |
 | .exe crashes: `ModuleNotFoundError: torch` | torch not bundled | Wrap in try/except with `_TORCH_AVAILABLE` flag |
 | .exe crashes: `AttributeError: 'HomeWidget' has no '_check_updates'` | Button calls main window method directly | Use `pyqtSignal` pattern instead |
+| .exe 点「运行」即崩: `Failed to load dynlib/dll '...\mujoco\plugin\actuator.dll' ... not found when the application was frozen` | 插件目录里没有它依赖的 `mujoco.dll`(在上一级 `mujoco/`) + VC 运行时 | `--runtime-hook pyi_rth_mujoco_dlls.py` (把依赖复制进 `mujoco/plugin/` 做自足目录) + CI 冻结核验 `App.exe --engine-selftest`; 报错处打印 `e.__cause__` |
 | .exe crashes at startup: `FileNotFoundError [WinError 3] ...\AppData\Local\data` | PyInstaller **onefile** exe cwd ≠ repo (unpacked temp/AppData); relative-path `os.listdir("data")` throws | Guard EVERY filesystem probe with `os.path.exists/isdir` before listdir; build paths from an absolute `_repo_root()` (frozen-aware), never bare relative names; probe-only code must degrade to empty list on missing dirs |
 
 ### Qt GUI Patterns

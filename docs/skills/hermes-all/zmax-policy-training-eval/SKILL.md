@@ -887,6 +887,18 @@ def _feat_to_dict(feats):
 - 结果判读: 视觉大模型 grab6 训练后仍 ~0/8 抓起 (距孔≈初始 0.35-0.36) = BC 学不会
   peg-insert, 与历次结论一致 — 不是评估 bug (评估管道已按铁律修好)。
 
+## L4 直驱 vs 解析链 同口径判读 (2026-09-15 实测, 3 seed)
+
+- 跑法: `gui-venv311/bin/python tools/intact_direct_rollout.py --mode full --seeds <a,b,c> --max-steps 4000 --infer-every 1 --baseline 1 --video-dir reports/evidence_l4_verify_<日期>`
+- 判读铁律: **逐 seed 对比直驱 vs 解析链**, 别只看成功数。实测 104 两臂都 done=True(+AOI ok),
+  105/106 两臂都跑不完 3000 步 ⇒ 失败属**该 seed 干扰布局**层(连真值解析控制器也过不去), 不是模型通道问题。
+- 闸线要读: `🛡 L2 收口闸: 共 N 步 · 阶段白名单外 … · 方向/一致度否决 … · 采纳融合 …` ——
+  **采纳融合>0 才算模型真参与**; 全否决(blend=0)要如实说"本轮模型提案全被否决", 不能包装成"模型在干"。
+- **⚠️ insert_mm 单次不可作判据**: 同 seed 两次跑 4.2mm ↔ 8.1mm(env 单例复用 + RNG), 硬判据 = done +
+  AOI ok(insert_depth_min / stall / 回抓) + 几何自检; 单次值只当参考。
+- 工具与 GUI 同口径落盘: `reports/intact_direct_*.json` 里有 collect 闸计数 + AOI 报告 + 阶段覆盖
+  (L2/L3 走解析链无直驱时这两项为空, 照写不编数); GUI 侧落在 `reports/gui_real_run_*.json` (v5.6.6+)。
+
 ## 关键文件
 - tools/eval_insert.py (run_episode 评估, _load_stats 按模型)
 - tools/gen_metaworld_data.py (--stop-after-grab/--rel-vec/--grab-only/--far)
