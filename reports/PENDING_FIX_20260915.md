@@ -1,5 +1,28 @@
 # 待修清单 · 2026-09-15（关机前留档，下次启动执行）
 
+## 🔻 关机前状态 (2026-09-15 13:40 静静 — 保存数据 + 小版本迭代 已完成)
+
+- **版本 `v5.6.6`**（tag 已推；CI 并行出 Windows .exe + macOS .zip，**含发版前冻结核验**）
+  · `v5.6.5` = Windows 点「🎥 真实化运行」必崩 的根因修（mujoco 插件 DLL 依赖解析 → 运行时钩子）
+  · `v5.6.6` = GUI 运行台账 + AOI 报告行（**行为零回退**，只加日志与证据文件）
+- **已入库 (main)**: GUI `tools/gui/simulink_module.py`/`studio.py`/`pyi_rth_mujoco_dlls.py`(新) ·
+  工具 `tools/intact_direct_rollout.py`(闸/AOI 落盘) · CI `.github/workflows/build-win-exe.yml`(冻结核验 + A/B job) ·
+  本轮证据 `reports/intact_direct_20260915_131432.json` + 100 个历史小证据(json/txt 398KB) ·
+  技能全量镜像 `docs/skills/hermes-all` + `docs/memory` 记忆备份
+- **未入库（按"大文件不进代码库"纪律，仍在磁盘）**: `reports/evidence_l4_verify_20260915/`(6 段 L4 视频) ·
+  `reports/evidence_*/` · `reports/intact_sw/video/` · `reports/mem_ladder/video/` ≈ 819MB
+- **无训练在跑**、GPU 空闲（0 MiB）、磁盘 282G/300G、auto_loop 守护在跑（队列空）
+- **开机守护已装**: user crontab `@reboot sleep 30 && ~/.hermes/scripts/hermes_cron_reclock.sh`
+  —— 防"开机 RTC 偏 8h → cron next_run 全被推后 → 全天不触发"（今天真实发生过，见下节）
+
+## ⏭ 下次启动第一步（照旧 + 新增）
+
+1. `date` 对时间；`hermes cron status` / `hermes cron list` 确认 next_run 在未来（异常则跑 reclock 脚本）；
+2. 打开 GUI 目检 **L4 档**：日志应出现 `🛡 L2 收口闸: 共 N 步 · …`、跑完出现 `🔍 AOI 报告: ok=…` +
+   `📄 运行台账已存: reports/gui_real_run_*.json`，并跑完全链 **done=True + AOI ok**；
+3. 或 headless 同口径：`tools/intact_direct_rollout.py --mode full --seeds 104,105,106 --max-steps 4000 --infer-every 1 --baseline 1 --video-dir reports/evidence_l4_verify_<日期>`；
+4. 想让闸门按 cos 自动放权 → 继续 §6 三条口径（goal 前瞻口径 / 动作历史 raw-vs-normalized / 闭环 DAgger 再训）。
+
 ## 🔬 2026-09-15 13:30 本轮实跑 (L4 档目检 + Windows exe 崩溃根因修) — 全部有 CI/日志实证
 
 ### A. L4 档实跑目检（3 seeds，直驱 vs 解析链**同轮同口径**）
