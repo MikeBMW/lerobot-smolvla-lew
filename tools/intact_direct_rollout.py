@@ -467,7 +467,12 @@ def direct_rollout(seed, mode, max_steps, goal224, node, a_mean, a_std, unz,
            "act_std": act.std(0).round(4).tolist() if len(act) else None,
            "act_absmax": np.abs(act).max(0).round(3).tolist() if len(act) else None,
            "stages": {s: rec["stage"].count(s) for s in sorted(set(rec["stage"]))}
-           if rec["stage"] else {}}
+           if rec["stage"] else {},
+           # 🛡 2026-09-15: 收口闸计数 + AOI 报告 —— GUI 里靠这两行看出"模型到底被采纳没有/插到位没有";
+           #   headless 工具同样落盘/打印, 否则"跑满预算/手没动"无法自证 (老倪红线)
+           "gate": dict(state.get("gate") or {}),
+           "aoi": dict((tr.get("_meta") or {}).get("aoi_report") or {}),
+           "gate_cos_last5": (rec.get("gate_cos") or [])[-5:]}
     if verbose:
         print(f"   [{tag}] done={done} 步数={out['steps']} 插入={out['insert_mm']}mm · "
               f"模型真推理 {state['calls']} 次 · {out['sec']}s"
@@ -477,6 +482,19 @@ def direct_rollout(seed, mode, max_steps, goal224, node, a_mean, a_std, unz,
         print(f"   [{tag}] skill_ctx: {out['skill_ctx_dim']} 维 · 非零 {out['skill_ctx_nonzero']} 项 · "
               f"L2势场就绪={out['l2_ready']}{'' if out['l2_ready'] else ' ⚠️' + str(out['l2_err'])} · "
               f"证据={out['evidence']}", flush=True)
+        # 🛡 GUI 同款哨兵行: 收口闸计数 + AOI (否则无法区分"模型在干"与"脚本在开环推")
+        _g = out.get("gate") or {}
+        if _g:
+            print(f"   [{tag}] 🛡 L2 收口闸: 共 {_g.get('n', 0)} 步 · 阶段白名单外 {_g.get('stage_out', 0)} · "
+                  f"方向/一致度否决 {_g.get('veto_dir', 0)} · 幅度否决 {_g.get('veto_mag', 0)} · "
+                  f"采纳融合 {_g.get('blend', 0)} · 幅值限幅 {_g.get('clamped', 0)}", flush=True)
+            if int(_g.get("blend", 0)) == 0:
+                print(f"   [{tag}]    ⚠️ 本轮模型提案一次都没通过收口闸 (全部交执行层执行) — "
+                      f"属模型闭环一致度不足, 不是接线问题 · 末5步 cos={out.get('gate_cos_last5')}", flush=True)
+        _a = out.get("aoi") or {}
+        if _a:
+            print(f"   [{tag}] 🔍 AOI 报告: ok={_a.get('ok')} · "
+                  + json.dumps({k: v for k, v in _a.items() if k != 'ok'}, ensure_ascii=False)[:400], flush=True)
     return out, act
 
 

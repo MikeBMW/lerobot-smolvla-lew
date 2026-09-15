@@ -11554,9 +11554,22 @@ class SimulinkModule(QWidget):
                 rate = (v["n"] / (v["shot"] * 2) * 100) if v.get("shot") else 0.0
                 self._real_tr = ("ok", tr, sim, rate, list(_logs))
             except Exception as _e:
-                import traceback
-                traceback.print_exc()
-                self._real_tr = ("err", str(_e), None, 0.0, list(_logs))
+                import traceback as _tb2
+                _tb_txt = _tb2.format_exc()
+                # 🐛 2026-09-15: frozen(--windowed) 下 sys.stderr 为 None, 直接 print_exc 会再抛
+                #   AttributeError 把真错误盖掉 → 有 stderr 才打印
+                try:
+                    if sys.stderr is not None:
+                        sys.stderr.write(_tb_txt)
+                except Exception:
+                    pass
+                # 🐛 2026-09-15: 把底层 cause 一起打出来 —— PyInstaller 的 ctypes 钩子会把
+                #   "WinError 126 找不到依赖 DLL" 包装成 "not found when the application was frozen",
+                #   真实原因(哪个 DLL 缺)只在 __cause__ 里; 不打印就查不出来
+                _cause = getattr(_e, "__cause__", None)
+                _tail = _tb_txt.strip().splitlines()[-1] if _tb_txt.strip() else "?"
+                self._real_tr = ("err", (f"{_e} ← 底层: {type(_cause).__name__}: {_cause}" if _cause
+                                         else f"{_e} ← 底层: {_tail}"), None, 0.0, list(_logs))
             # ⚠️ 勿加 env.close(): _make_env 是进程级单例 _ENV, 跨轮复用 (reset 重 seed);
             #   close 单例 → 下轮复用已关 env → 渲染黑 → YOLO 0% → 手飞 9.9m (09-09 自引入回归实锤)
 

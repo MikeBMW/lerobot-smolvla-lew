@@ -12,6 +12,10 @@ on:
         description: 'Version tag (e.g. v3.0.0)'
         required: false
         default: 'dev-snapshot'
+      ab_baseline:
+        description: 'A/B 取证: 额外构建"不装 mujoco DLL 修复钩子"的基线, 冻结核验必须失败 (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   # ────────────────────────── Windows ──────────────────────────
@@ -100,7 +104,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -112,13 +116,32 @@ jobs:
           NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
           NW=$(grep -c "l4_mani_predictor_v5.pt" listing.txt || true)
           NH=$(grep -c "l4_yaw_head_grasp_dz_v2.pt" listing.txt || true)
-          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW · yaw 试抓头: $NH"
+          # 🐛 2026-09-15: mujoco 运行时库 + 插件 DLL 必须都在 (缺了 owner 就是"点运行就崩");
+          #   注意这只守卫"文件在不在包里"——真正能否 load 由下面的冻结核验判 (v5.6.4 就是文件齐全仍崩)
+          MD=$(grep -c 'mujoco.mujoco.dll' listing.txt || true)
+          PD=$(grep -c 'mujoco.plugin.actuator.dll' listing.txt || true)
+          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW · yaw 试抓头: $NH · mujoco 运行时库: $MD · mujoco 插件: $PD"
           grep -m3 "sawyer_peg_insertion_side" listing.txt || true
-          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ]; then
-            echo "::error::metaworld assets 未打进 exe (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
+          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ] || [ "$MD" -lt 1 ] || [ "$PD" -lt 1 ]; then
+            echo "::error::metaworld/mujoco 资产未打进 exe (--collect-all metaworld/mujoco 或 L4 场景 XML 预生成缺失)"
             exit 1
           fi
           ls -la tools/gui/dist/Z-MAX_Console.exe
+
+      - name: "冻结核验: 真跑打包产物 (import mujoco/metaworld + 建 L4 场景 + 步进) — 老倪「发版前先自证」"
+        shell: bash
+        run: |
+          cd tools/gui/dist
+          OUT="$(pwd)/engine_selftest.json"
+          RC=0
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?
+          echo "--- engine_selftest.json ---"
+          cat "$OUT" 2>/dev/null || echo "(无输出文件: exe 没跑到写文件那步)"
+          if [ "$RC" != "0" ]; then
+            echo "::error::冻结核验失败 (exit=$RC) — 打包后的 exe 里引擎起不来, 不允许发版 (v5.6.4 的 mujoco 插件 DLL bug 就是这一步抓的)"
+            exit 1
+          fi
+          echo "✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -145,6 +168,53 @@ jobs:
               (未签名 → 首次打开: 右键 → 打开, 或 系统设置 → 隐私与安全性 → 仍要打开)
 
             > macOS 版为 Apple Silicon (arm64) 构建; Intel Mac 请用 Windows 版或源码运行。
+
+  # ──────────── A/B 对照 (只取证, 不发版): 不装修复钩子 → 冻结核验必须失败 ────────────
+  # 触发: workflow_dispatch 勾 ab_baseline=true。
+  # 作用: 证明 v5.6.4「点真实化运行就崩」的根因**就是** mujoco 运行时库不在插件目录里,
+  #       同时证明上面的"冻结核验"这一步是有牙的 (不是永远绿的装饰步骤)。
+  # 与正式构建唯一差别 = 少一个 --runtime-hook; 依赖/collect 参数与正式构建同口径。
+  build-ab-baseline:
+    name: "A/B 对照: 不装 mujoco DLL 修复钩子 (必须复现崩)"
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.ab_baseline == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies (与正式构建同口径)
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
+          pip install mujoco metaworld glfw gymnasium imageio
+      - name: "Generate L4 demo scene XML (与正式构建同口径: 自检要练的就是这个场景)"
+        shell: bash
+        run: |
+          python tools/gen_l4_demo_scene.py --peg-real-inertia
+          python -c "import metaworld,os; p=os.path.join(os.path.dirname(metaworld.__file__),'assets','sawyer_xyz','sawyer_peg_insertion_side_l4.xml'); print('L4 XML:', p, os.path.isfile(p)); assert os.path.isfile(p)"
+      - name: "Build .exe 基线 (无 --runtime-hook; 自检入口在 studio.py 顶部, 早于 Qt 导入, 故无需其余 --add-data)"
+        run: |
+          cd tools\gui
+          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco studio.py
+      - name: "冻结核验 (基线, 期望失败 = 复现 v5.6.4 崩)"
+        shell: bash
+        run: |
+          cd tools/gui/dist
+          OUT="$(pwd)/ab_engine_selftest.json"
+          RC=0
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console_ab.exe --engine-selftest || RC=$?
+          echo "--- ab_engine_selftest.json (基线) ---"
+          cat "$OUT" 2>/dev/null || echo "(无输出文件)"
+          if [ "$RC" = "0" ]; then
+            echo "::error::A/B 基线竟然通过 —— 冻结核验无牙 或 环境已变, 修复的因果未证实"
+            exit 1
+          fi
+          echo "✅ A/B 取证成立: 不装钩子必崩 (exit=$RC) → mujoco 插件 DLL 依赖解析就是根因"
 
   # ────────────────────────── macOS ──────────────────────────
   build-mac:
@@ -221,6 +291,7 @@ jobs:
         run: |
           cd tools/gui
           pyinstaller --windowed --icon logo.icns --name "Z-MAX_Console" \
+            --runtime-hook pyi_rth_mujoco_dlls.py \
             --add-data "logo.png:." \
             --add-data "$GITHUB_WORKSPACE/tools/gen_l4_demo_video.py:." --add-data "docs_sync.py:." \
             --add-data "ppt_engine.py:." --add-data "update_checker.py:." \
@@ -254,6 +325,20 @@ jobs:
             echo "::error::metaworld assets 未打进 .app (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
             exit 1
           fi
+
+      - name: "冻结核验 (mac): 真跑 .app 里的引擎 (import mujoco/metaworld + 建 L4 场景 + 步进)"
+        run: |
+          BIN=tools/gui/dist/Z-MAX_Console.app/Contents/MacOS/Z-MAX_Console
+          OUT="$(pwd)/engine_selftest_mac.json"
+          RC=0
+          ZMAX_SELFTEST_OUT="$OUT" "$BIN" --engine-selftest || RC=$?
+          echo "--- engine_selftest_mac.json ---"
+          cat "$OUT" 2>/dev/null || echo "(无输出文件: .app 没跑到写文件那步)"
+          if [ "$RC" != "0" ]; then
+            echo "::error::mac 冻结核验失败 (exit=$RC)"
+            exit 1
+          fi
+          echo "✅ mac 冻结核验通过"
 
       - name: Set bundle version (修 PyInstaller 默认 0.0.0 → 真实版本)
         run: |

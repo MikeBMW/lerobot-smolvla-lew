@@ -19,6 +19,61 @@ import glob
 import time  # 硬件工具箱日志时间戳
 import math  # 离线仿真正弦波
 
+# 🔬 2026-09-15 冻结核验入口 (CI 用, 老倪「双击前先自证」): 在**真正打包好的 exe/app** 里跑引擎
+#   启动真实验证 —— 只查"文件在不在包里"(archive_viewer) 不够: v5.6.4 Windows exe 里 mujoco 插件
+#   DLL 和 mujoco.dll 都在包里, 但点「真实化运行」仍报 "Failed to load dynlib/dll ... not found
+#   when the application was frozen"。所以这里真 import mujoco/metaworld + 建模型 + 步进。
+#   --windowed 无 stdout → 结果写 json (ZMAX_SELFTEST_OUT) + 退出码 0=通过。
+#   渲染只作记录不判失败 (CI runner 无显示环境, WGL/EGL 可用性不属本次问题)。
+if "--engine-selftest" in sys.argv:
+    import json as _sel_json
+    import traceback as _sel_tb
+
+    _sel = {"argv": sys.argv[:4], "frozen": bool(getattr(sys, "frozen", False)),
+            "meipass": getattr(sys, "_MEIPASS", None)}
+    _sel_rc = 1
+    try:
+        import mujoco as _sel_mj
+
+        _sel["mujoco"] = _sel_mj.__version__
+        _sel["plugin_handles"] = len(getattr(_sel_mj, "PLUGIN_HANDLES", []) or [])
+        _sel["dll_fix"] = os.environ.get("ZMAX_MUJOCO_DLL_FIX", "")
+        import metaworld as _sel_mw
+
+        _sel["metaworld"] = getattr(_sel_mw, "__version__", "n/a")
+        _xml = os.path.join(os.path.dirname(_sel_mw.__file__), "assets", "sawyer_xyz",
+                            "sawyer_peg_insertion_side_l4.xml")
+        _sel["xml"] = _xml
+        _sel["xml_exists"] = os.path.isfile(_xml)
+        _m = _sel_mj.MjModel.from_xml_path(_xml)
+        _d = _sel_mj.MjData(_m)
+        for _ in range(5):
+            _sel_mj.mj_step(_m, _d)
+        _sel["nq"] = int(_m.nq)
+        _sel["nbody"] = int(_m.nbody)
+        _sel["qpos_sum"] = round(float(_d.qpos.sum()), 6)
+        try:  # 渲染单独记录 (不判失败)
+            _r = _sel_mj.Renderer(_m, 64, 64)
+            _r.update_scene(_d)
+            _sel["render_px"] = int(_r.render().mean())
+            _r.close()
+            _sel["render_ok"] = True
+        except Exception as _re:
+            _sel["render_ok"] = False
+            _sel["render_err"] = f"{type(_re).__name__}: {_re}"
+        _sel_rc = 0
+    except Exception as _sel_e:
+        _sel["error"] = f"{type(_sel_e).__name__}: {_sel_e}"
+        _sel["cause"] = repr(getattr(_sel_e, "__cause__", None))
+        _sel["trace"] = _sel_tb.format_exc()
+    _sel["rc"] = _sel_rc
+    try:
+        with open(os.environ.get("ZMAX_SELFTEST_OUT", "engine_selftest.json"), "w", encoding="utf-8") as _f:
+            _sel_json.dump(_sel, _f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    sys.exit(_sel_rc)
+
 # 🐛 2026-08-18: 禁用 Qt D-Bus — QDBusConnection 无 parent 孤儿 + 10s 轮询 timer
 # (孤儿 timer 追踪实锤 10s 周期 QObject), 与 activateTimers 批次碰撞 → NULL receiver
 import os as _os
@@ -639,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10157,7 +10212,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.4 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.5 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10165,9 +10220,20 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.4 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.5 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.5: 🔧 **Windows exe 点「真实化运行」必崩 的根因修 (老倪实测: Failed to load dynlib/dll
+        #   '...\_MEI...\mujoco\plugin\actuator.dll ... not found when the application was frozen')** ——
+        #   根因(用 archive_viewer+pefile 反查 v5.6.4 exe 实测): PyInstaller 把 mujoco 运行时库放在
+        #   `_MEIPASS/mujoco/mujoco.dll`、插件在 `_MEIPASS/mujoco/plugin/actuator.dll`, 而 actuator.dll 的 PE
+        #   导入表依赖 `mujoco.dll` + VCRUNTIME140/MSVCP140; plugin/ 里没有它们, Windows 只在「DLL 自身目录
+        #   + 已注册搜索目录」里解析依赖 → WinError 126, PyInstaller 再包成上面那句(底层原因被盖住)。
+        #   修 = 新增 PyInstaller 运行时钩子 `pyi_rth_mujoco_dlls.py`(在 import mujoco 之前把 mujoco.dll /
+        #   VCRUNTIME140*/MSVCP140* 复制进 plugin/ 做成自足目录 + 注册 _MEIPASS 各级到 DLL 搜索路径);
+        #   CI 加**冻结核验**: 打包后真跑 `Z-MAX_Console.exe --engine-selftest`(真 import mujoco/metaworld +
+        #   建 L4 场景模型 + 步进), 不通过就 fail —— 只查"文件在不在包里"抓不到这个 bug。
+        #   另: 真实化运行失败时日志补出底层 cause(WinError), 下次一眼看到根因。
         # v5.6.4: 📋 **L4 档日志/证据补强 (同 v5.6.3 修, 让老倪在日志里一眼看出"实际在跑什么")** —— ①L4 档跑完打印
         #   **L2 收口闸计数**: 共 N 步 · 阶段白名单外 · 方向/一致度否决 · 幅度否决 · 采纳融合 · 幅值限幅
         #   (取自 sim._intact_drive['state']['gate']) ②`blend=0` 时显式标注「本轮模型提案一次都没通过收口闸 (全部交执行层),
