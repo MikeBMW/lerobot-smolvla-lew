@@ -1,0 +1,25 @@
+WARNING:root:No accelerated backend detected. Using default cpu, this will be slow.
+WARNING:lerobot.configs.policies:Device 'cuda' is not available. Switching to 'cpu'.
+WARNING:root:No accelerated backend detected. Using default cpu, this will be slow.
+WARNING:lerobot.configs.policies:Device 'cuda' is not available. Switching to 'cpu'.
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] Model config: pad_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 128002. This may result in unexpected behavior.
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights: 100%|██████████| 489/489 [00:00<00:00, 5004.40it/s]
+✓ LeWorldModel initialized: hidden_dim=192, layers=6, attn_mode=adaln
+Loading weights from local directory
+🧪 ckpt: outputs/train/smolvla_lew_v10_full/checkpoints/008000/pretrained_model
+   task: 'metaworld 光模块插拔' | seed 104 | 每 4 步一帧
+   引擎轨迹 348 步 · done=True
+   有效样本 87
+
+       维 |      MAE      专家幅度    MAE/幅度      相关     符号一致
+       x |   0.1013    0.0765      1.32  -0.095    0.437
+       y |   0.0776    0.0558      1.39  -0.164    0.517
+       z |   0.1152    0.0907      1.27   0.110    0.575
+ gripper |   0.6619    0.7471      0.89   0.391    0.632
+
+  夹爪闭合比例: 模型 0.00 vs 专家 0.37
+  ★ xyz 平均|相关| = 0.123   (>0.5 才算学到; ≈0 = 输出与输入无关)
+  判读: MAE/幅度 ≈1 且 |相关|≈0 → 模型在'猜均值'; |相关|>0.5 → 真在跟
+→ /tmp/policy_corr_checkpoints.json

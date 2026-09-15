@@ -1,0 +1,3 @@
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/cube_sw_ep0_seed42.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/cube_sw_ep1_seed42.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/cube_sw_ep2_seed42.mp4'

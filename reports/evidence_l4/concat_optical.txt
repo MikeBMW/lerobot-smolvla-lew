@@ -1,0 +1,6 @@
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4/optical_insert_解析链_l4_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4/optical_insert_解析链_l4_seed1.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4/optical_insert_解析链_l4_seed2.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4/optical_insert_解析链全链(插→拔→AOI)_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4/optical_insert_解析链全链(插→拔→AOI)_seed1.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4/optical_insert_解析链全链(插→拔→AOI)_seed2.mp4'

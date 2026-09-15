@@ -1,0 +1,947 @@
+{
+ "ts": "2026-09-14 03:01:15",
+ "manifest": {
+  "ts": "2026-09-14 00:04:36",
+  "policy": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+  "ckpt_sha256_16": "14518807828b5b78",
+  "ckpt_bytes": 83925120,
+  "stats": "optical_insert_v4_action_stats.json",
+  "stats_sha256_16": "24a6253f9eeb2d6d",
+  "seeds": [
+   0,
+   1,
+   2
+  ],
+  "max_steps": 1000,
+  "mode": "insert",
+  "device": "cpu",
+  "gates": {
+   "L2": 0,
+   "L3": 0,
+   "L4": 0,
+   "assembly": 0,
+   "updated": "2026-09-13 21:08"
+  },
+  "code": {
+   "tools/gui/state_space_sim_real.py": "d4826473e23b942a",
+   "tools/intact_sw_optical_bridge.py": "7603bc355cbb9bb1",
+   "src/lerobot/memory/potential_field.py": "6a9f0c1a2cedbc9e",
+   "src/lerobot/memory/mem_nodes.py": "7e0d922592fadb12",
+   "tools/mem_ladder_integration.py": "a5cc3032dea93ffc"
+  },
+  "git": "23c7d22c",
+  "stats_meta": {
+   "action_space": "u",
+   "n_finite": 147700
+  },
+  "manifest_hash": "6fc5fe9f60fa"
+ },
+ "n_runs": 30,
+ "new_runs": 30,
+ "skipped": 0,
+ "agg": {
+  "off|none": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    642.02,
+    610.44,
+    512.9
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 642.02,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.002400000113993883,
+      0.0031999999191612005,
+      0.0012000000569969416,
+      0.0035000001080334187
+     ],
+     "disturb": null,
+     "seconds": 382.4
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 610.44,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0026000000070780516,
+      0.003000000026077032,
+      0.004000000189989805,
+      0.03620000183582306
+     ],
+     "disturb": null,
+     "seconds": 324.5
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 512.9,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0027000000700354576,
+      0.00139999995008111,
+      0.002400000113993883,
+      0.003000000026077032
+     ],
+     "disturb": null,
+     "seconds": 327.7
+    }
+   ],
+   "w_mean": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "applied": 0,
+   "sec": [
+    402.6,
+    344.1,
+    351.3
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 588.5,
+   "depth_std": 55.0,
+   "w_mean_avg": 0.0,
+   "calls_per_step": 1.0
+  },
+  "off|disturb": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    667.13,
+    568.7,
+    579.9
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 667.13,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.004800000227987766,
+      0.003000000026077032,
+      0.003000000026077032,
+      0.023099999874830246
+     ],
+     "disturb": {
+      "dx_cm": 1.5,
+      "dy_cm": 0.2,
+      "dz_mm": 6.9,
+      "yaw_deg": -6.1,
+      "shell90": true
+     },
+     "seconds": 336.1
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 568.7,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.003599999938160181,
+      0.00279999990016222,
+      0.0032999999821186066,
+      0.03229999914765358
+     ],
+     "disturb": {
+      "dx_cm": -3.2,
+      "dy_cm": 2.5,
+      "dz_mm": 8.7,
+      "yaw_deg": 9.4,
+      "shell90": true
+     },
+     "seconds": 332.4
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 579.9,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.003700000001117587,
+      0.0027000000700354576,
+      0.0026000000070780516,
+      0.024000000208616257
+     ],
+     "disturb": {
+      "dx_cm": -2.8,
+      "dy_cm": -2.4,
+      "dz_mm": -0.2,
+      "yaw_deg": 9.3,
+      "shell90": true
+     },
+     "seconds": 311.1
+    }
+   ],
+   "w_mean": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "applied": 0,
+   "sec": [
+    359.8,
+    349.9,
+    327.7
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 605.2,
+   "depth_std": 44.0,
+   "w_mean_avg": 0.0,
+   "calls_per_step": 1.0
+  },
+  "L2|none": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    630.42,
+    599.52,
+    598.29
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 630.42,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.00139999995008111,
+      0.002199999988079071,
+      0.002300000051036477,
+      0.0010000000474974513
+     ],
+     "disturb": null,
+     "seconds": 335.3
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 599.52,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0035000001080334187,
+      0.0034000000450760126,
+      0.004699999932199717,
+      0.04039999842643738
+     ],
+     "disturb": null,
+     "seconds": 321.5
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 598.29,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.00419999985024333,
+      0.003000000026077032,
+      0.002199999988079071,
+      0.017400000244379044
+     ],
+     "disturb": null,
+     "seconds": 322.8
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    354.1,
+    342.4,
+    339.7
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 609.4,
+   "depth_std": 14.9,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "L2|disturb": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    671.32,
+    567.84,
+    517.01
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 671.32,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.002899999963119626,
+      0.003100000089034438,
+      0.003000000026077032,
+      0.011900000274181366
+     ],
+     "disturb": {
+      "dx_cm": 1.5,
+      "dy_cm": 0.2,
+      "dz_mm": 6.9,
+      "yaw_deg": -6.1,
+      "shell90": true
+     },
+     "seconds": 319.7
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 567.84,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.004399999976158142,
+      0.003000000026077032,
+      0.003800000064074993,
+      0.03240000084042549
+     ],
+     "disturb": {
+      "dx_cm": -3.2,
+      "dy_cm": 2.5,
+      "dz_mm": 8.7,
+      "yaw_deg": 9.4,
+      "shell90": true
+     },
+     "seconds": 313.7
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 517.01,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0019000000320374966,
+      0.00279999990016222,
+      0.003700000001117587,
+      0.00989999994635582
+     ],
+     "disturb": {
+      "dx_cm": -2.8,
+      "dy_cm": -2.4,
+      "dz_mm": -0.2,
+      "yaw_deg": 9.3,
+      "shell90": true
+     },
+     "seconds": 319.7
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    344.0,
+    331.2,
+    336.3
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 585.4,
+   "depth_std": 64.2,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "L23|none": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    635.0,
+    599.94,
+    582.78
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 635.0,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0024999999441206455,
+      0.0017999999690800905,
+      0.0013000000035390258,
+      0.0007999999797903001
+     ],
+     "disturb": null,
+     "seconds": 308.0
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 599.94,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0035000001080334187,
+      0.0034000000450760126,
+      0.004800000227987766,
+      0.04100000113248825
+     ],
+     "disturb": null,
+     "seconds": 311.9
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 582.78,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0027000000700354576,
+      0.0038999998942017555,
+      0.0031999999191612005,
+      0.026900000870227814
+     ],
+     "disturb": null,
+     "seconds": 285.3
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    325.6,
+    332.2,
+    309.2
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 605.9,
+   "depth_std": 21.7,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "L23|disturb": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    695.95,
+    567.88,
+    568.67
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 695.95,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0035000001080334187,
+      0.003700000001117587,
+      0.003100000089034438,
+      0.013100000098347664
+     ],
+     "disturb": {
+      "dx_cm": 1.5,
+      "dy_cm": 0.2,
+      "dz_mm": 6.9,
+      "yaw_deg": -6.1,
+      "shell90": true
+     },
+     "seconds": 315.7
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 567.88,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.004399999976158142,
+      0.003000000026077032,
+      0.003800000064074993,
+      0.03240000084042549
+     ],
+     "disturb": {
+      "dx_cm": -3.2,
+      "dy_cm": 2.5,
+      "dz_mm": 8.7,
+      "yaw_deg": 9.4,
+      "shell90": true
+     },
+     "seconds": 797.6
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 568.67,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.006099999882280827,
+      0.0024999999441206455,
+      0.004100000020116568,
+      0.02539999969303608
+     ],
+     "disturb": {
+      "dx_cm": -2.8,
+      "dy_cm": -2.4,
+      "dz_mm": -0.2,
+      "yaw_deg": 9.3,
+      "shell90": true
+     },
+     "seconds": 323.5
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    336.7,
+    815.5,
+    340.1
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 610.8,
+   "depth_std": 60.2,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "L234|none": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    635.2,
+    599.78,
+    582.59
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 635.2,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0024999999441206455,
+      0.0017999999690800905,
+      0.0013000000035390258,
+      0.0007999999797903001
+     ],
+     "disturb": null,
+     "seconds": 313.3
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 599.78,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0034000000450760126,
+      0.0034000000450760126,
+      0.004800000227987766,
+      0.041200000792741776
+     ],
+     "disturb": null,
+     "seconds": 316.3
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 582.59,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0027000000700354576,
+      0.0038999998942017555,
+      0.003100000089034438,
+      0.026000000536441803
+     ],
+     "disturb": null,
+     "seconds": 307.5
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    332.1,
+    336.3,
+    329.5
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 605.9,
+   "depth_std": 21.9,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "L234|disturb": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    695.95,
+    567.88,
+    568.67
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 695.95,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0035000001080334187,
+      0.003700000001117587,
+      0.003100000089034438,
+      0.013100000098347664
+     ],
+     "disturb": {
+      "dx_cm": 1.5,
+      "dy_cm": 0.2,
+      "dz_mm": 6.9,
+      "yaw_deg": -6.1,
+      "shell90": true
+     },
+     "seconds": 308.7
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 567.88,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.004399999976158142,
+      0.003000000026077032,
+      0.003800000064074993,
+      0.03240000084042549
+     ],
+     "disturb": {
+      "dx_cm": -3.2,
+      "dy_cm": 2.5,
+      "dz_mm": 8.7,
+      "yaw_deg": 9.4,
+      "shell90": true
+     },
+     "seconds": 306.2
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 568.67,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.006099999882280827,
+      0.0024999999441206455,
+      0.004100000020116568,
+      0.02539999969303608
+     ],
+     "disturb": {
+      "dx_cm": -2.8,
+      "dy_cm": -2.4,
+      "dz_mm": -0.2,
+      "yaw_deg": 9.3,
+      "shell90": true
+     },
+     "seconds": 315.6
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    332.6,
+    323.7,
+    332.9
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 610.8,
+   "depth_std": 60.2,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "assy|none": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    638.07,
+    609.06,
+    582.75
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 638.07,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0024999999441206455,
+      0.0017999999690800905,
+      0.0013000000035390258,
+      0.0007999999797903001
+     ],
+     "disturb": null,
+     "seconds": 307.3
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 609.06,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.00430000014603138,
+      0.003100000089034438,
+      0.003800000064074993,
+      0.03240000084042549
+     ],
+     "disturb": null,
+     "seconds": 300.6
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 582.75,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.002899999963119626,
+      0.003800000064074993,
+      0.0032999999821186066,
+      0.026799999177455902
+     ],
+     "disturb": null,
+     "seconds": 322.1
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    329.1,
+    322.4,
+    345.2
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 610.0,
+   "depth_std": 22.6,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  },
+  "assy|disturb": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    695.95,
+    567.88,
+    568.67
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 0,
+     "done": false,
+     "insert_mm": 695.95,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.0035000001080334187,
+      0.003700000001117587,
+      0.003100000089034438,
+      0.013100000098347664
+     ],
+     "disturb": {
+      "dx_cm": 1.5,
+      "dy_cm": 0.2,
+      "dz_mm": 6.9,
+      "yaw_deg": -6.1,
+      "shell90": true
+     },
+     "seconds": 308.9
+    },
+    {
+     "seed": 1,
+     "done": false,
+     "insert_mm": 567.88,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.004399999976158142,
+      0.003000000026077032,
+      0.003800000064074993,
+      0.03240000084042549
+     ],
+     "disturb": {
+      "dx_cm": -3.2,
+      "dy_cm": 2.5,
+      "dz_mm": 8.7,
+      "yaw_deg": 9.4,
+      "shell90": true
+     },
+     "seconds": 317.8
+    },
+    {
+     "seed": 2,
+     "done": false,
+     "insert_mm": 568.67,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.006099999882280827,
+      0.0024999999441206455,
+      0.004100000020116568,
+      0.02539999969303608
+     ],
+     "disturb": {
+      "dx_cm": -2.8,
+      "dy_cm": -2.4,
+      "dz_mm": -0.2,
+      "yaw_deg": 9.3,
+      "shell90": true
+     },
+     "seconds": 290.0
+    }
+   ],
+   "w_mean": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "applied": 3000,
+   "sec": [
+    331.5,
+    334.8,
+    306.9
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 610.8,
+   "depth_std": 60.2,
+   "w_mean_avg": 0.1,
+   "calls_per_step": 1.0
+  }
+ },
+ "gates": [
+  {
+   "name": "N1 L2 准确性 (成功率≥off 且 深度不差 2mm)",
+   "pass": false,
+   "info": "off=0.0% → L2=0.0% · 深度 588.5→609.4"
+  },
+  {
+   "name": "N2 L3 调度 (L23 ≥ L2)",
+   "pass": true,
+   "info": "L2=0.0% → L23=0.0%"
+  },
+  {
+   "name": "N3 L4 抗干扰 (L234 干扰档 ≥ 自身无干扰 −1/n 且 ≥ off 干扰档)",
+   "pass": true,
+   "info": "L234 无干扰=0.0% / 干扰=0.0% · off 干扰=0.0%"
+  },
+  {
+   "name": "N4 总装 (assy 干扰档 ≥ 任一臂)",
+   "pass": true,
+   "info": "assy=0.0% vs max(其它)=0.0%"
+  },
+  {
+   "name": "N5 高效零搜索 (candidate_sequences=0 且 调用/步 ≤1.05)",
+   "pass": true,
+   "info": "[(('off', 'none'), 1.0), (('off', 'disturb'), 1.0), (('L2', 'none'), 1.0), (('L2', 'disturb'), 1.0), (('L23', 'none'), 1.0), (('L23', 'disturb'), 1.0), (('L234', 'none'), 1.0), (('L234', 'disturb'), 1.0), (('assy', 'none'), 1.0), (('assy', 'disturb'), 1.0)]"
+  },
+  {
+   "name": "N6 稳定 (跨 seed 深度 std ≤ 25mm)",
+   "pass": false,
+   "info": "[(('L2', 'disturb'), 64.2), (('L2', 'none'), 14.9), (('L23', 'disturb'), 60.2), (('L23', 'none'), 21.7), (('L234', 'disturb'), 60.2), (('L234', 'none'), 21.9), (('assy', 'disturb'), 60.2), (('assy', 'none'), 22.6), (('off', 'disturb'), 44.0), (('off', 'none'), 55.0)]"
+  }
+ ],
+ "verdict": "FAIL"
+}

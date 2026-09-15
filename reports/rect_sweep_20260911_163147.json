@@ -1,0 +1,112 @@
+[
+  {
+    "a": 0.015,
+    "b": 0.015,
+    "long_mm": 30.0,
+    "short_mm": 30.0,
+    "grasp0": [
+      true,
+      129.5
+    ],
+    "grasp90": [
+      true,
+      137.6
+    ],
+    "ins0": [
+      true,
+      49.3
+    ],
+    "ins90": [
+      true,
+      48.9
+    ]
+  },
+  {
+    "a": 0.02,
+    "b": 0.008,
+    "long_mm": 40.0,
+    "short_mm": 16.0,
+    "grasp0": [
+      true,
+      104.9
+    ],
+    "grasp90": [
+      false,
+      -0.0
+    ],
+    "ins0": [
+      true,
+      48.7
+    ],
+    "ins90": [
+      true,
+      49.2
+    ]
+  },
+  {
+    "a": 0.028,
+    "b": 0.008,
+    "long_mm": 56.0,
+    "short_mm": 16.0,
+    "grasp0": [
+      false,
+      60.3
+    ],
+    "grasp90": [
+      false,
+      23.4
+    ],
+    "ins0": [
+      false,
+      5.7
+    ],
+    "ins90": [
+      true,
+      19.4
+    ]
+  },
+  {
+    "a": 0.034,
+    "b": 0.01,
+    "long_mm": 68.0,
+    "short_mm": 20.0,
+    "grasp0": [
+      true,
+      134.1
+    ],
+    "grasp90": [
+      false,
+      27.5
+    ],
+    "ins0": [
+      false,
+      0.0
+    ],
+    "ins90": [
+      false,
+      0.0
+    ]
+  },
+  {
+    "a": 0.04,
+    "b": 0.01,
+    "long_mm": 80.0,
+    "short_mm": 20.0,
+    "grasp0": [
+      true,
+      140.5
+    ],
+    "grasp90": [
+      false,
+      32.2
+    ],
+    "ins0": [
+      false,
+      0.8
+    ],
+    "ins90": [
+      false,
+      0.0
+    ]
+  }
+]

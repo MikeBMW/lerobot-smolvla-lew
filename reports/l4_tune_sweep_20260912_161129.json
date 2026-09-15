@@ -1,0 +1,269 @@
+{
+  "ts": "2026-09-12 16:10:52",
+  "mode": "sweep",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "reps": 1,
+  "max_steps": 600,
+  "runs": [
+    {
+      "label": "k_fb=0.4",
+      "params": {
+        "k_fb": 0.4
+      },
+      "n": 6,
+      "success": 1,
+      "success_rate": 0.167,
+      "steps_mean": 564.2,
+      "steps_std": 80.1,
+      "insert_mm_mean": 38.1,
+      "timeouts": 5,
+      "rows": [
+        {
+          "seed": 0,
+          "done": true,
+          "steps": 385,
+          "insert_mm": 65.1,
+          "timeout": false,
+          "rep": 0
+        },
+        {
+          "seed": 1,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 27.1,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 2,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 23.4,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 3,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 19.0,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 4,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 57.7,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 5,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 36.6,
+          "timeout": true,
+          "rep": 0
+        }
+      ],
+      "verdict_vs_base": "≈ 无差异"
+    },
+    {
+      "label": "k_fb=1.0",
+      "params": {
+        "k_fb": 1.0
+      },
+      "n": 6,
+      "success": 1,
+      "success_rate": 0.167,
+      "steps_mean": 564.7,
+      "steps_std": 79.0,
+      "insert_mm_mean": 30.2,
+      "timeouts": 5,
+      "rows": [
+        {
+          "seed": 0,
+          "done": true,
+          "steps": 388,
+          "insert_mm": 65.2,
+          "timeout": false,
+          "rep": 0
+        },
+        {
+          "seed": 1,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 7.8,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 2,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 23.4,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 3,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 21.0,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 4,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 30.3,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 5,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 33.4,
+          "timeout": true,
+          "rep": 0
+        }
+      ],
+      "verdict_vs_base": "≈ 无差异"
+    },
+    {
+      "label": "k_fb=2.0",
+      "params": {
+        "k_fb": 2.0
+      },
+      "n": 6,
+      "success": 1,
+      "success_rate": 0.167,
+      "steps_mean": 565,
+      "steps_std": 78.3,
+      "insert_mm_mean": 27.1,
+      "timeouts": 5,
+      "rows": [
+        {
+          "seed": 0,
+          "done": true,
+          "steps": 390,
+          "insert_mm": 65.3,
+          "timeout": false,
+          "rep": 0
+        },
+        {
+          "seed": 1,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 16.4,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 2,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 23.2,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 3,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 19.4,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 4,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 38.3,
+          "timeout": true,
+          "rep": 0
+        },
+        {
+          "seed": 5,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 0.1,
+          "timeout": true,
+          "rep": 0
+        }
+      ],
+      "verdict_vs_base": "≈ 无差异"
+    }
+  ],
+  "baseline": {
+    "label": "base(k_fb)",
+    "params": {},
+    "n": 6,
+    "success": 1,
+    "success_rate": 0.167,
+    "steps_mean": 564.3,
+    "steps_std": 79.8,
+    "insert_mm_mean": 30.2,
+    "timeouts": 5,
+    "rows": [
+      {
+        "seed": 0,
+        "done": true,
+        "steps": 386,
+        "insert_mm": 65.2,
+        "timeout": false,
+        "rep": 0
+      },
+      {
+        "seed": 1,
+        "done": false,
+        "steps": 600,
+        "insert_mm": 7.8,
+        "timeout": true,
+        "rep": 0
+      },
+      {
+        "seed": 2,
+        "done": false,
+        "steps": 600,
+        "insert_mm": 23.4,
+        "timeout": true,
+        "rep": 0
+      },
+      {
+        "seed": 3,
+        "done": false,
+        "steps": 600,
+        "insert_mm": 21.0,
+        "timeout": true,
+        "rep": 0
+      },
+      {
+        "seed": 4,
+        "done": false,
+        "steps": 600,
+        "insert_mm": 30.3,
+        "timeout": true,
+        "rep": 0
+      },
+      {
+        "seed": 5,
+        "done": false,
+        "steps": 600,
+        "insert_mm": 33.4,
+        "timeout": true,
+        "rep": 0
+      }
+    ]
+  }
+}

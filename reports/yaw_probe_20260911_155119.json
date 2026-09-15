@@ -1,0 +1,156 @@
+{
+  "meta": {
+    "seeds": [
+      0
+    ],
+    "phis": [
+      -90.0,
+      -75.0,
+      -60.0,
+      -45.0,
+      -30.0,
+      -15.0,
+      0.0,
+      15.0,
+      30.0,
+      45.0,
+      60.0,
+      75.0,
+      90.0
+    ],
+    "reps": 1,
+    "elapsed_s": 16.9
+  },
+  "rows": [
+    {
+      "seed": 0,
+      "phi_deg": -90.0,
+      "yaw_end_deg": -89.4,
+      "ok": true,
+      "dz_m": 0.1352,
+      "follow_mm": 5.5,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": -75.0,
+      "yaw_end_deg": -75.6,
+      "ok": true,
+      "dz_m": 0.1372,
+      "follow_mm": 2.3,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": -60.0,
+      "yaw_end_deg": -61.9,
+      "ok": true,
+      "dz_m": 0.1391,
+      "follow_mm": 1.1,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": -45.0,
+      "yaw_end_deg": -48.1,
+      "ok": true,
+      "dz_m": 0.1374,
+      "follow_mm": 3.0,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": -30.0,
+      "yaw_end_deg": -27.5,
+      "ok": true,
+      "dz_m": 0.1344,
+      "follow_mm": 7.3,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": -15.0,
+      "yaw_end_deg": -13.8,
+      "ok": true,
+      "dz_m": 0.1318,
+      "follow_mm": 9.5,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 0.0,
+      "yaw_end_deg": 0.0,
+      "ok": true,
+      "dz_m": 0.1295,
+      "follow_mm": 11.7,
+      "steps": 750,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 15.0,
+      "yaw_end_deg": 13.8,
+      "ok": true,
+      "dz_m": 0.1239,
+      "follow_mm": 13.8,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 30.0,
+      "yaw_end_deg": 27.5,
+      "ok": true,
+      "dz_m": 0.1218,
+      "follow_mm": 15.3,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 45.0,
+      "yaw_end_deg": 48.1,
+      "ok": true,
+      "dz_m": 0.1263,
+      "follow_mm": 14.8,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 60.0,
+      "yaw_end_deg": 61.9,
+      "ok": true,
+      "dz_m": 0.1302,
+      "follow_mm": 13.5,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 75.0,
+      "yaw_end_deg": 75.6,
+      "ok": true,
+      "dz_m": 0.1333,
+      "follow_mm": 13.8,
+      "steps": 1150,
+      "rep": 0
+    },
+    {
+      "seed": 0,
+      "phi_deg": 90.0,
+      "yaw_end_deg": 89.4,
+      "ok": true,
+      "dz_m": 0.1376,
+      "follow_mm": 11.4,
+      "steps": 1150,
+      "rep": 0
+    }
+  ]
+}

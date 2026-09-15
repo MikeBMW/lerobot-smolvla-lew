@@ -1,0 +1,326 @@
+{
+  "ts": "2026-09-12 16:28:59",
+  "mode": "paired",
+  "seeds": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "reps": 1,
+  "max_steps": 600,
+  "runs": [],
+  "pair_sets": {
+    "params": {
+      "align_xy_fine": 0.04
+    },
+    "wins": 1,
+    "losses": 0,
+    "n": 16,
+    "base_rate": 0.375,
+    "cand_rate": 0.4375,
+    "conclusion": "≈ 无差异 (在噪声内, 不能声称提升)",
+    "pairs": [
+      {
+        "seed": 8,
+        "rep": 0,
+        "base": {
+          "seed": 8,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 18.8,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 8,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 23.2,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 9,
+        "rep": 0,
+        "base": {
+          "seed": 9,
+          "done": true,
+          "steps": 371,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 9,
+          "done": true,
+          "steps": 379,
+          "insert_mm": 65.1,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 10,
+        "rep": 0,
+        "base": {
+          "seed": 10,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 11.6,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 10,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 15.2,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 11,
+        "rep": 0,
+        "base": {
+          "seed": 11,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 17.0,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 11,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 17.7,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 12,
+        "rep": 0,
+        "base": {
+          "seed": 12,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 0.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 12,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 1.5,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 13,
+        "rep": 0,
+        "base": {
+          "seed": 13,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 28.8,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 13,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 62.0,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 14,
+        "rep": 0,
+        "base": {
+          "seed": 14,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 22.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 14,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 5.2,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 15,
+        "rep": 0,
+        "base": {
+          "seed": 15,
+          "done": true,
+          "steps": 377,
+          "insert_mm": 65.4,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 15,
+          "done": true,
+          "steps": 391,
+          "insert_mm": 65.1,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 16,
+        "rep": 0,
+        "base": {
+          "seed": 16,
+          "done": true,
+          "steps": 384,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 16,
+          "done": true,
+          "steps": 403,
+          "insert_mm": 65.3,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 17,
+        "rep": 0,
+        "base": {
+          "seed": 17,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 29.4,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 17,
+          "done": true,
+          "steps": 409,
+          "insert_mm": 65.0,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 18,
+        "rep": 0,
+        "base": {
+          "seed": 18,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 29.6,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 18,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 41.9,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 19,
+        "rep": 0,
+        "base": {
+          "seed": 19,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 10.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 19,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 9.7,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 20,
+        "rep": 0,
+        "base": {
+          "seed": 20,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 26.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 20,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 42.7,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 21,
+        "rep": 0,
+        "base": {
+          "seed": 21,
+          "done": true,
+          "steps": 341,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 21,
+          "done": true,
+          "steps": 361,
+          "insert_mm": 65.1,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 22,
+        "rep": 0,
+        "base": {
+          "seed": 22,
+          "done": true,
+          "steps": 380,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 22,
+          "done": true,
+          "steps": 398,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 23,
+        "rep": 0,
+        "base": {
+          "seed": 23,
+          "done": true,
+          "steps": 345,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 23,
+          "done": true,
+          "steps": 383,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      }
+    ]
+  }
+}

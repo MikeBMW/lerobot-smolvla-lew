@@ -1,0 +1,2 @@
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_joint_l4l2/optical_insert_模型直驱_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/evidence_joint_l4l2/optical_insert_解析链_l4_seed0.mp4'

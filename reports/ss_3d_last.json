@@ -1,0 +1,25 @@
+{
+ "mode": "full",
+ "seed": 104,
+ "l3": true,
+ "ck": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+ "steps": 865,
+ "done": true,
+ "stages": {
+  "接近": 26,
+  "对位": 30,
+  "下降": 67,
+  "抓取": 18,
+  "抬起": 40,
+  "转移": 50,
+  "插入": 109,
+  "拔出": 165,
+  "AOI转移": 82,
+  "AOI检测": 136,
+  "回程": 73,
+  "放下": 68,
+  "完成": 1
+ },
+ "video": "/home/ubuntu/lerobot-smolvla-lew/reports/ss_3d_l3_full_20260910_222329.mp4",
+ "n_frames": 865
+}

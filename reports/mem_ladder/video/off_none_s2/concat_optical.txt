@@ -1,0 +1,2 @@
+file '/home/ubuntu/lerobot-smolvla-lew/reports/mem_ladder/video/off_none_s2/optical_insert_模型直驱_seed2.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/mem_ladder/video/off_none_s2/optical_insert_解析链对照_seed2.mp4'

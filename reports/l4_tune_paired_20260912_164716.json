@@ -1,0 +1,630 @@
+{
+  "ts": "2026-09-12 16:33:16",
+  "mode": "paired",
+  "seeds": [
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55
+  ],
+  "reps": 1,
+  "max_steps": 600,
+  "runs": [],
+  "pair_sets": {
+    "params": {
+      "align_xy_fine": 0.04
+    },
+    "wins": 0,
+    "losses": 0,
+    "n": 32,
+    "base_rate": 0.40625,
+    "cand_rate": 0.40625,
+    "conclusion": "≈ 无差异 (在噪声内, 不能声称提升)",
+    "pairs": [
+      {
+        "seed": 24,
+        "rep": 0,
+        "base": {
+          "seed": 24,
+          "done": true,
+          "steps": 356,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 24,
+          "done": true,
+          "steps": 378,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 25,
+        "rep": 0,
+        "base": {
+          "seed": 25,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 26.9,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 25,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 24.9,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 26,
+        "rep": 0,
+        "base": {
+          "seed": 26,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 14.2,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 26,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 59.4,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 27,
+        "rep": 0,
+        "base": {
+          "seed": 27,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 90.3,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 27,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 34.5,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 28,
+        "rep": 0,
+        "base": {
+          "seed": 28,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 18.0,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 28,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 18.1,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 29,
+        "rep": 0,
+        "base": {
+          "seed": 29,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 13.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 29,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 19.6,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 30,
+        "rep": 0,
+        "base": {
+          "seed": 30,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 19.9,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 30,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 16.4,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 31,
+        "rep": 0,
+        "base": {
+          "seed": 31,
+          "done": true,
+          "steps": 377,
+          "insert_mm": 65.1,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 31,
+          "done": true,
+          "steps": 396,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 32,
+        "rep": 0,
+        "base": {
+          "seed": 32,
+          "done": true,
+          "steps": 400,
+          "insert_mm": 65.1,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 32,
+          "done": true,
+          "steps": 414,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 33,
+        "rep": 0,
+        "base": {
+          "seed": 33,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 25.7,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 33,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 14.5,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 34,
+        "rep": 0,
+        "base": {
+          "seed": 34,
+          "done": true,
+          "steps": 377,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 34,
+          "done": true,
+          "steps": 395,
+          "insert_mm": 65.1,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 35,
+        "rep": 0,
+        "base": {
+          "seed": 35,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 47.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 35,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 6.9,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 36,
+        "rep": 0,
+        "base": {
+          "seed": 36,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 31.2,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 36,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 72.6,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 37,
+        "rep": 0,
+        "base": {
+          "seed": 37,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 6.5,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 37,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 16.9,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 38,
+        "rep": 0,
+        "base": {
+          "seed": 38,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 20.7,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 38,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 0.8,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 39,
+        "rep": 0,
+        "base": {
+          "seed": 39,
+          "done": true,
+          "steps": 413,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 39,
+          "done": true,
+          "steps": 418,
+          "insert_mm": 64.7,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 40,
+        "rep": 0,
+        "base": {
+          "seed": 40,
+          "done": true,
+          "steps": 386,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 40,
+          "done": true,
+          "steps": 397,
+          "insert_mm": 65.4,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 41,
+        "rep": 0,
+        "base": {
+          "seed": 41,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 6.7,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 41,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 8.0,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 42,
+        "rep": 0,
+        "base": {
+          "seed": 42,
+          "done": true,
+          "steps": 399,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 42,
+          "done": true,
+          "steps": 393,
+          "insert_mm": 64.8,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 43,
+        "rep": 0,
+        "base": {
+          "seed": 43,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 121.4,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 43,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 35.7,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 44,
+        "rep": 0,
+        "base": {
+          "seed": 44,
+          "done": true,
+          "steps": 395,
+          "insert_mm": 65.1,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 44,
+          "done": true,
+          "steps": 410,
+          "insert_mm": 65.4,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 45,
+        "rep": 0,
+        "base": {
+          "seed": 45,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 31.3,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 45,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 16.4,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 46,
+        "rep": 0,
+        "base": {
+          "seed": 46,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 31.7,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 46,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 8.2,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 47,
+        "rep": 0,
+        "base": {
+          "seed": 47,
+          "done": true,
+          "steps": 388,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 47,
+          "done": true,
+          "steps": 403,
+          "insert_mm": 65.3,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 48,
+        "rep": 0,
+        "base": {
+          "seed": 48,
+          "done": true,
+          "steps": 407,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 48,
+          "done": true,
+          "steps": 420,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 49,
+        "rep": 0,
+        "base": {
+          "seed": 49,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 32.3,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 49,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 70.7,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 50,
+        "rep": 0,
+        "base": {
+          "seed": 50,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 3.1,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 50,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 23.5,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 51,
+        "rep": 0,
+        "base": {
+          "seed": 51,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 20.2,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 51,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 25.5,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 52,
+        "rep": 0,
+        "base": {
+          "seed": 52,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 6.8,
+          "timeout": true
+        },
+        "cand": {
+          "seed": 52,
+          "done": false,
+          "steps": 600,
+          "insert_mm": 7.9,
+          "timeout": true
+        }
+      },
+      {
+        "seed": 53,
+        "rep": 0,
+        "base": {
+          "seed": 53,
+          "done": true,
+          "steps": 403,
+          "insert_mm": 65.3,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 53,
+          "done": true,
+          "steps": 416,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 54,
+        "rep": 0,
+        "base": {
+          "seed": 54,
+          "done": true,
+          "steps": 380,
+          "insert_mm": 65.1,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 54,
+          "done": true,
+          "steps": 396,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      },
+      {
+        "seed": 55,
+        "rep": 0,
+        "base": {
+          "seed": 55,
+          "done": true,
+          "steps": 396,
+          "insert_mm": 65.2,
+          "timeout": false
+        },
+        "cand": {
+          "seed": 55,
+          "done": true,
+          "steps": 411,
+          "insert_mm": 65.2,
+          "timeout": false
+        }
+      }
+    ]
+  }
+}

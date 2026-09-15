@@ -1,0 +1,86 @@
+{
+ "meta": {
+  "seeds": [
+   104
+  ],
+  "mode": "insert",
+  "max_steps": 80,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 1,
+  "device": "cpu",
+  "policy": "intact_l4_current",
+  "runtime": "root",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "n_finite": 18635,
+   "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+   "mean": [
+    -0.007139332597068512,
+    -0.007183539539160135,
+    -0.002103688130771039,
+    0.120300526487178
+   ],
+   "std": [
+    0.15305849460395074,
+    0.07153241744890618,
+    0.11256259314790976,
+    0.7331005658196346
+   ]
+  },
+  "ts": "2026-09-14 12:07:05"
+ },
+ "rows": [
+  {
+   "seed": 104,
+   "analytic": {
+    "done": false,
+    "steps": 80,
+    "frames": 80,
+    "video": null,
+    "insert_mm": 8.4
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 104,
+    "done": false,
+    "steps": 80,
+    "insert_mm": 97.4,
+    "model_calls": 0,
+    "err": "RuntimeError: INTACT 推理失败/未训练, 拒绝返回零动作: ValueError: checkpoint was trained with a skill channel (skill_dim>0) but info['skill_ctx'] was not provided — refusing to silently degrade | return func(*args, **kwargs) ⏎ File \"/home/ubuntu/INTACT-JEPA/jepa.py\", line 268, in get_action ⏎ raise ValueError( ⏎ ValueError: checkpoint was trained with a skill channel (skill_dim>0) but info['skill_ctx'] was not provided — refusing to silently degrade",
+    "sec": 10.0,
+    "u_ff_src": null,
+    "l3_cond_ready": null,
+    "l3_cond_src": null,
+    "evidence": null,
+    "u_ff": null,
+    "act_mean": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "act_std": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "act_absmax": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "stages": {
+     "阶段 接近": 80
+    }
+   },
+   "video_analytic": null,
+   "video_direct": null
+  }
+ ]
+}

@@ -1,0 +1,127 @@
+{
+ "meta": {
+  "seeds": [
+   2
+  ],
+  "mode": "insert",
+  "max_steps": 260,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 4,
+  "device": "cpu",
+  "policy": "intact_goal_optical_insert_v6r2_s3072/weights_epoch_3.pt",
+  "runtime": "",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v5_disturb.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "action_space": "u",
+   "action_space_note": "引擎控制向量 sim._u_vec (xyz 速度 m/s, 夹爪 [-1..1])",
+   "n_finite": 149100,
+   "n_total": 149100,
+   "episodes": 2982,
+   "key_order": "[dx, dy, dz, gripper]",
+   "mean": [
+    0.009584567461471998,
+    -0.0007370877433880109,
+    -0.008142088376508767,
+    0.8275117370892019
+   ],
+   "std": [
+    0.07401497906901305,
+    0.03594847263807004,
+    0.046405847568526254,
+    0.3818843172011489
+   ],
+   "per_axis": {
+    "dx": {
+     "mean": 0.009584567461471998,
+     "std": 0.07401497906901305,
+     "min": -0.3478531241416931,
+     "max": 0.3076854646205902
+    },
+    "dy": {
+     "mean": -0.0007370877433880109,
+     "std": 0.03594847263807004,
+     "min": -0.28863924741744995,
+     "max": 0.22699177265167236
+    },
+    "dz": {
+     "mean": -0.008142088376508767,
+     "std": 0.046405847568526254,
+     "min": -0.1160554438829422,
+     "max": 0.2118677794933319
+    },
+    "gripper": {
+     "mean": 0.8275117370892019,
+     "std": 0.3818843172011489,
+     "min": -1.0,
+     "max": 1.0
+    }
+   },
+   "written": "2026-09-14 06:18:28"
+  },
+  "ts": "2026-09-14 17:08:20"
+ },
+ "rows": [
+  {
+   "seed": 2,
+   "analytic": {
+    "done": false,
+    "steps": 260,
+    "frames": 260,
+    "video": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed2_20260914_170239.mp4",
+    "insert_mm": 62.6
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 2,
+    "done": false,
+    "steps": 260,
+    "insert_mm": 331.9,
+    "model_calls": 65,
+    "err": null,
+    "sec": 333.7,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.5,
+     0.5,
+     0.14931252598762512,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 2,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.0697999969124794,
+     0.06260000169277191,
+     -0.03970000147819519,
+     0.4837999939918518
+    ],
+    "act_std": [
+     0.03660000115633011,
+     0.03750000149011612,
+     0.054499998688697815,
+     0.14560000598430634
+    ],
+    "act_absmax": [
+     0.14800000190734863,
+     0.13099999725818634,
+     0.1469999998807907,
+     0.7250000238418579
+    ],
+    "stages": {
+     "阶段 接近": 119,
+     "阶段 接近 · 接触": 141
+    }
+   },
+   "video_analytic": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed2_20260914_170239.mp4",
+   "video_direct": null
+  }
+ ]
+}

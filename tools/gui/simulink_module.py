@@ -11331,6 +11331,7 @@ class SimulinkModule(QWidget):
                 #   重抓时间耗尽; 10 轮回归仅 seed101/102/103/104/108 通过, 104 最快 352 步)。
                 #   演示固定成功 seed, seed100 类布局留给真机/夹持质量修复后再覆盖。
                 _cap = getattr(self, "_cap_level", None)
+                self._last_run_cap = str(_cap or "")   # v5.6.6: 台账要写"这一轮跑的哪一档"
                 # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (demo_l4 → 引擎委托 L4Demo 控制器:
                 #   来料转台90°外力干扰+绕z抓横+治具回正+插拔闭环+AOI+光耦合; 不走 YOLO/attempts)
                 # 🎯 2026-09-11 (v2, 老倪最高优先级「L4 必须有干扰旋转, 必须渲染出来」):
@@ -11632,11 +11633,62 @@ class SimulinkModule(QWidget):
             self._log(f"🎥 真实化运行完成: {len(tr['t'])} 步 · "
                       f"{'✅ 插拔完成' if ok else '⚠️ 未完成 (真实感知下的真实结果)'}"
                       f" · YOLO 检出 {rate:.0f}%")
+            # v5.6.6: 完成即打 AOI 报告 + 落一份运行台账 json —— headless 工具同款两行,
+            #   GUI 里也能一眼看出"插到位没有/AOI 判了什么", 并留下能拿走的证据文件
+            _aoi = ((tr.get("_meta") or {}).get("aoi_report") or {})
+            if _aoi:
+                self._log(f"🔍 AOI 报告: ok={_aoi.get('ok')} · 插入最浅 {_aoi.get('insert_depth_min_mm')}mm · "
+                          f"峰值力 {_aoi.get('force_peak')} · 卡滞 {_aoi.get('insert_stall_events')} 次 · "
+                          f"回抓 {_aoi.get('went_back_grasp')}")
+            try:
+                _led = self._write_run_ledger(tr, rate, ok)
+                self._log(f"📄 运行台账已存: {_led}")
+            except Exception as _le:
+                self._log(f"⚠️ 运行台账写入失败: {type(_le).__name__}: {_le}")
             self._real_finish(tr)
         else:
             for _l in r[4]:
                 self._log(_l)
             self._log(f"⚠️ 真实化运行失败: {r[1]}")
+
+    def _write_run_ledger(self, tr, rate, ok):
+        """v5.6.6: 真实化运行台账落盘 (老倪铁律: 口头不算, 要能拿走的证据文件)。
+
+        写 reports/gui_real_run_<时间>.json: 档位/步数/done/插入深度/YOLO 检出/收口闸计数/AOI 报告/阶段覆盖。
+        L2·L3 (解析链, 无直驱) 时收口闸与阶段为空 —— 照写不误, 不编数。
+        """
+        import json as _json
+        import os as _osr
+        import time as _tr
+        _rep = _osr.path.join(self._repo_root(), "reports")
+        _osr.makedirs(_rep, exist_ok=True)
+        _sim = getattr(self, "_ss_last_sim", None)
+        _drv = getattr(_sim, "_intact_drive", None) if _sim is not None else None
+        _gate, _stages, _calls = {}, {}, None
+        if isinstance(_drv, dict):
+            _gate = dict((_drv.get("state") or {}).get("gate") or {})
+            _calls = (_drv.get("state") or {}).get("calls")
+            _st = list((_drv.get("rec") or {}).get("stage") or [])
+            _stages = {x: _st.count(x) for x in sorted(set(_st))}
+        _dist = list(tr.get("dist") or [])
+        _led = {
+            "ts": _tr.strftime("%F %T"),
+            "cap": getattr(self, "_last_run_cap", None),
+            "mode": getattr(self, "_l3_mode", None),
+            "steps": len(tr.get("t") or []),
+            "done": bool(ok),
+            "insert_mm": (round(float(_dist[-1]) * 1000, 1) if _dist else None),
+            "yolo_detect_pct": round(float(rate), 1),
+            "model_calls": _calls,
+            "gate": _gate,
+            "aoi_report": dict((tr.get("_meta") or {}).get("aoi_report") or {}),
+            "stage_counts": _stages,
+            "grasped": (bool(getattr(_sim, "_vis", {}).get("grasped")) if getattr(_sim, "_vis", None) else None),
+        }
+        _out = _osr.path.join(_rep, "gui_real_run_" + _tr.strftime("%Y%m%d_%H%M%S") + ".json")
+        with open(_out, "w", encoding="utf-8") as _f:
+            _json.dump(_led, _f, ensure_ascii=False, indent=1)
+        return _out
 
     def _real_finish(self, tr):
         """🎥 真实轨迹 → 播放/3D/总线 (io_trace 与引擎同构 13 模块, dw 复用)"""

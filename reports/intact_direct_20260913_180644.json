@@ -1,0 +1,187 @@
+{
+ "meta": {
+  "seeds": [
+   0,
+   1,
+   2
+  ],
+  "mode": "insert",
+  "max_steps": 700,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 1,
+  "device": "cuda",
+  "policy": "intact_goal_optical_insert_v3_s3072/weights_epoch_1.pt",
+  "runtime": "root",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v3.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "n_finite": 106200,
+   "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+   "mean": [
+    -0.0935372206425564,
+    -0.0006760941944489649,
+    -0.006652779183089551,
+    0.6000000238418579
+   ],
+   "std": [
+    0.05190746860843131,
+    0.0038145974105201833,
+    0.0157988244749974,
+    0.0
+   ],
+   "compare_v2": {
+    "mean": [
+     -0.007139332597068512,
+     -0.007183539539160135,
+     -0.002103688130771039,
+     0.120300526487178
+    ],
+    "std": [
+     0.15305849460395074,
+     0.07153241744890618,
+     0.11256259314790976,
+     0.7331005658196346
+    ],
+    "n_finite": 18635
+   }
+  },
+  "ts": "2026-09-13 18:06:44"
+ },
+ "rows": [
+  {
+   "seed": 0,
+   "analytic": {
+    "done": true,
+    "steps": 387,
+    "frames": 387,
+    "video": "reports/v3_rollout_videos/insert_解析链对照_seed0_20260913_175932.mp4",
+    "insert_mm": 65.1
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 0,
+    "done": false,
+    "steps": 700,
+    "insert_mm": 658.8,
+    "model_calls": 700,
+    "err": null,
+    "sec": 105.0,
+    "act_mean": [
+     -0.07479999959468842,
+     -0.00559999980032444,
+     -0.009999999776482582,
+     0.6000000238418579
+    ],
+    "act_std": [
+     0.0019000000320374966,
+     0.00039999998989515007,
+     0.0007999999797903001,
+     0.0
+    ],
+    "act_absmax": [
+     0.0989999994635582,
+     0.006000000052154064,
+     0.010999999940395355,
+     0.6000000238418579
+    ],
+    "stages": {
+     "阶段 接近": 84,
+     "阶段 接近 · 接触": 616
+    }
+   },
+   "video_analytic": "reports/v3_rollout_videos/insert_解析链对照_seed0_20260913_175932.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 1,
+   "analytic": {
+    "done": true,
+    "steps": 663,
+    "frames": 663,
+    "video": "reports/v3_rollout_videos/insert_解析链对照_seed1_20260913_175932.mp4",
+    "insert_mm": 65.4
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 1,
+    "done": false,
+    "steps": 700,
+    "insert_mm": 289.2,
+    "model_calls": 700,
+    "err": null,
+    "sec": 104.2,
+    "act_mean": [
+     -0.08569999784231186,
+     -0.008100000210106373,
+     -0.004399999976158142,
+     0.6000000238418579
+    ],
+    "act_std": [
+     0.0013000000035390258,
+     0.00019999999494757503,
+     0.0005000000237487257,
+     0.0
+    ],
+    "act_absmax": [
+     0.09000000357627869,
+     0.008999999612569809,
+     0.004999999888241291,
+     0.6000000238418579
+    ],
+    "stages": {
+     "阶段 接近": 153,
+     "阶段 接近 · 接触": 547
+    }
+   },
+   "video_analytic": "reports/v3_rollout_videos/insert_解析链对照_seed1_20260913_175932.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 2,
+   "analytic": {
+    "done": false,
+    "steps": 700,
+    "frames": 700,
+    "video": "reports/v3_rollout_videos/insert_解析链对照_seed2_20260913_175932.mp4",
+    "insert_mm": 25.7
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 2,
+    "done": false,
+    "steps": 700,
+    "insert_mm": 249.4,
+    "model_calls": 700,
+    "err": null,
+    "sec": 116.2,
+    "act_mean": [
+     -0.07609999924898148,
+     -0.006099999882280827,
+     -0.007899999618530273,
+     0.6000000238418579
+    ],
+    "act_std": [
+     0.0008999999845400453,
+     0.0006000000284984708,
+     0.000699999975040555,
+     0.0
+    ],
+    "act_absmax": [
+     0.07999999821186066,
+     0.007000000216066837,
+     0.008999999612569809,
+     0.6000000238418579
+    ],
+    "stages": {
+     "阶段 接近": 215,
+     "阶段 接近 · 接触": 485
+    }
+   },
+   "video_analytic": "reports/v3_rollout_videos/insert_解析链对照_seed2_20260913_175932.mp4",
+   "video_direct": null
+  }
+ ]
+}

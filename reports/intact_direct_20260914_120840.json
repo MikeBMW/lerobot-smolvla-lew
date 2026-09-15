@@ -1,0 +1,95 @@
+{
+ "meta": {
+  "seeds": [
+   104
+  ],
+  "mode": "insert",
+  "max_steps": 80,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 1,
+  "device": "cpu",
+  "policy": "intact_l4_current",
+  "runtime": "root",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/zmax_insert.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "n_finite": 18635,
+   "key_order": "[dx,dy,dz,gripper] (env 级 act, ±1)",
+   "mean": [
+    -0.007139332597068512,
+    -0.007183539539160135,
+    -0.002103688130771039,
+    0.120300526487178
+   ],
+   "std": [
+    0.15305849460395074,
+    0.07153241744890618,
+    0.11256259314790976,
+    0.7331005658196346
+   ]
+  },
+  "ts": "2026-09-14 12:08:40"
+ },
+ "rows": [
+  {
+   "seed": 104,
+   "analytic": {
+    "done": false,
+    "steps": 80,
+    "frames": 80,
+    "video": null,
+    "insert_mm": 8.4
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 104,
+    "done": false,
+    "steps": 80,
+    "insert_mm": 88.6,
+    "model_calls": 80,
+    "err": null,
+    "sec": 24.8,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.11915326118469238,
+     0.05875013768672943,
+     0.2550843060016632,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 8,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     0.030500000342726707,
+     0.004399999976158142,
+     0.051600001752376556,
+     0.4803999960422516
+    ],
+    "act_std": [
+     0.006300000008195639,
+     0.0034000000450760126,
+     0.004699999932199717,
+     0.006500000134110451
+    ],
+    "act_absmax": [
+     0.03500000014901161,
+     0.012000000104308128,
+     0.054999999701976776,
+     0.48399999737739563
+    ],
+    "stages": {
+     "阶段 接近": 80
+    }
+   },
+   "video_analytic": null,
+   "video_direct": null
+  }
+ ]
+}

@@ -1,0 +1,34 @@
+{
+ "ts": "2026-09-14 03:01:40",
+ "policy": "intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt",
+ "ckpt_sha256_16": "14518807828b5b78",
+ "ckpt_bytes": 83925120,
+ "stats": "optical_insert_v4_action_stats.json",
+ "stats_sha256_16": "24a6253f9eeb2d6d",
+ "seeds": [
+  0
+ ],
+ "max_steps": 1000,
+ "mode": "insert",
+ "device": "cpu",
+ "gates": {
+  "L2": 0,
+  "L3": 0,
+  "L4": 0,
+  "assembly": 0,
+  "updated": "2026-09-13 21:08"
+ },
+ "code": {
+  "tools/gui/state_space_sim_real.py": "d4826473e23b942a",
+  "tools/intact_sw_optical_bridge.py": "7603bc355cbb9bb1",
+  "src/lerobot/memory/potential_field.py": "bb0bd2dd9f12a230",
+  "src/lerobot/memory/mem_nodes.py": "7e0d922592fadb12",
+  "tools/mem_ladder_integration.py": "a5cc3032dea93ffc"
+ },
+ "git": "85796d09",
+ "stats_meta": {
+  "action_space": "u",
+  "n_finite": 147700
+ },
+ "manifest_hash": "b355ab3d6085"
+}

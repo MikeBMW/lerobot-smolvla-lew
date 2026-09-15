@@ -1,0 +1,44 @@
+{
+ "meta": {
+  "h5": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v3.h5",
+  "n": 120,
+  "stride": 120,
+  "slot": 0,
+  "policy": "intact_goal_optical_insert_v3_s3072/weights_epoch_2.pt",
+  "runtime": "root",
+  "obs": "数据集真帧 (与训练同源)",
+  "ts": "2026-09-13 18:42:28"
+ },
+ "per_axis": {
+  "dx": {
+   "mae": 0.0473758839070797,
+   "pearson": -0.018422916531562805,
+   "spearman": 0.1089450656295576,
+   "teacher_std": 0.055013563483953476,
+   "pred_std": 0.004564819857478142
+  },
+  "dy": {
+   "mae": 0.004586982075124979,
+   "pearson": -0.3310242295265198,
+   "spearman": -0.36453225918466553,
+   "teacher_std": 0.003608292667195201,
+   "pred_std": 0.0008660393650643528
+  },
+  "dz": {
+   "mae": 0.008946884423494339,
+   "pearson": 0.031178021803498268,
+   "spearman": 0.23137023404403081,
+   "teacher_std": 0.016319559887051582,
+   "pred_std": 0.0009984784992411733
+  },
+  "grip": {
+   "mae": 0.0,
+   "pearson": NaN,
+   "spearman": NaN,
+   "teacher_std": 0.0,
+   "pred_std": 0.0
+  }
+ },
+ "model_xyz_mae": 0.02030325122177601,
+ "const_xyz_mae": 0.018936552107334137
+}

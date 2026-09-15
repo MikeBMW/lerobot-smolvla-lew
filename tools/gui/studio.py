@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10212,7 +10212,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.6 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10220,9 +10220,15 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.6 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.6: 📄 **运行台账 + AOI 报告行 (只加日志与证据, 控制律零改动)** —— 真实化运行完成时:
+        #   ① 日志打 `🔍 AOI 报告: ok=… 插入最浅 …mm 峰值力 … 卡滞 … 回抓 …` (以前 AOI 只在内部判 ok,
+        #      不打印 ⇒ 老倪看不到"插到位没有"的判据) ② 落一份 `reports/gui_real_run_<时间>.json`:
+        #      档位/模式/步数/done/插入深度/YOLO检出/真推理次数/L2收口闸计数/AOI报告/阶段覆盖 ——
+        #      与 tools/intact_direct_rollout.py 的台账同字段口径, GUI 跑完也能把证据文件交出去。
+        #   L2/L3 (解析链, 无直驱) 时闸/阶段为空, 照写不编数。行为零回退: 不碰控制律/档位/装配。
         # v5.6.5: 🔧 **Windows exe 点「真实化运行」必崩 的根因修 (老倪实测: Failed to load dynlib/dll
         #   '...\_MEI...\mujoco\plugin\actuator.dll ... not found when the application was frozen')** ——
         #   根因(用 archive_viewer+pefile 反查 v5.6.4 exe 实测): PyInstaller 把 mujoco 运行时库放在

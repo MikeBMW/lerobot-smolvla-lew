@@ -1,0 +1,8 @@
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_模型直驱_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_模型直驱_seed1.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_解析链_l4_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_解析链_l4_seed1.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_解析链全链(插→拔→AOI)_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_解析链全链(插→拔→AOI)_seed1.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_解析链对照_seed0.mp4'
+file '/home/ubuntu/lerobot-smolvla-lew/reports/intact_sw/video/optical_insert_解析链对照_seed1.mp4'

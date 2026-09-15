@@ -1,0 +1,178 @@
+{
+ "ckpt": "intact_goal_optical_insert_v6r2_s3072/weights_epoch_3.pt",
+ "rows": [
+  {
+   "seed": 0,
+   "analytic": {
+    "done": false,
+    "steps": 260,
+    "frames": 260,
+    "video": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed0_20260914_163351.mp4",
+    "insert_mm": 25.9
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 0,
+    "done": false,
+    "steps": 260,
+    "insert_mm": 152.8,
+    "model_calls": 65,
+    "err": null,
+    "sec": 455.9,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.4967823624610901,
+     0.3105049431324005,
+     0.1344805657863617,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 3,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.003000000026077032,
+     0.023800000548362732,
+     -0.04230000078678131,
+     0.47870001196861267
+    ],
+    "act_std": [
+     0.04190000146627426,
+     0.03959999978542328,
+     0.050200000405311584,
+     0.16830000281333923
+    ],
+    "act_absmax": [
+     0.11900000274181366,
+     0.11299999803304672,
+     0.13699999451637268,
+     0.628000020980835
+    ],
+    "stages": {
+     "阶段 接近": 260
+    }
+   },
+   "video_analytic": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed0_20260914_163351.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 1,
+   "analytic": {
+    "done": false,
+    "steps": 260,
+    "frames": 260,
+    "video": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed1_20260914_164141.mp4",
+    "insert_mm": 10.9
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 1,
+    "done": false,
+    "steps": 260,
+    "insert_mm": 294.6,
+    "model_calls": 65,
+    "err": null,
+    "sec": 1241.7,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.5,
+     0.5,
+     0.12728799879550934,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 2,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.05260000005364418,
+     0.05649999901652336,
+     -0.042399998754262924,
+     0.44940000772476196
+    ],
+    "act_std": [
+     0.04690000042319298,
+     0.05480000004172325,
+     0.046799998730421066,
+     0.15219999849796295
+    ],
+    "act_absmax": [
+     0.15600000321865082,
+     0.15600000321865082,
+     0.1340000033378601,
+     0.5809999704360962
+    ],
+    "stages": {
+     "阶段 接近": 123,
+     "阶段 接近 · 接触": 137
+    }
+   },
+   "video_analytic": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed1_20260914_164141.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 2,
+   "analytic": {
+    "done": false,
+    "steps": 260,
+    "frames": 260,
+    "video": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed2_20260914_170239.mp4",
+    "insert_mm": 62.6
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 2,
+    "done": false,
+    "steps": 260,
+    "insert_mm": 331.9,
+    "model_calls": 65,
+    "err": null,
+    "sec": 333.7,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.5,
+     0.5,
+     0.14931252598762512,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 2,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.0697999969124794,
+     0.06260000169277191,
+     -0.03970000147819519,
+     0.4837999939918518
+    ],
+    "act_std": [
+     0.03660000115633011,
+     0.03750000149011612,
+     0.054499998688697815,
+     0.14560000598430634
+    ],
+    "act_absmax": [
+     0.14800000190734863,
+     0.13099999725818634,
+     0.1469999998807907,
+     0.7250000238418579
+    ],
+    "stages": {
+     "阶段 接近": 119,
+     "阶段 接近 · 接触": 141
+    }
+   },
+   "video_analytic": "/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/insert_解析链对照_seed2_20260914_170239.mp4",
+   "video_direct": null
+  }
+ ]
+}
