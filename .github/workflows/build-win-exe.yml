@@ -168,6 +168,11 @@ jobs:
               (未签名 → 首次打开: 右键 → 打开, 或 系统设置 → 隐私与安全性 → 仍要打开)
 
             > macOS 版为 Apple Silicon (arm64) 构建; Intel Mac 请用 Windows 版或源码运行。
+            >
+            > **v5.6.5 修**: Windows 版点「🎥 真实化运行」崩 (`Failed to load dynlib/dll ...\mujoco\plugin\actuator.dll`)
+            > —— 打包成 exe 后 mujoco 引擎插件 DLL 加载失败。现在打包时逐级补依赖 (注册搜索目录 → 把 mujoco.dll/VC 运行时复制进插件目录),
+            > 仍加载不了就**显式停用**该插件 (本产品全部场景不使用 mujoco 引擎插件, 全库 grep `<plugin` 命中 0);
+            > 并新增 **发版前冻结核验**: CI 里真跑 `exe --engine-selftest` (真 import mujoco/metaworld + 建 L4 场景 + 步进), 不过不发版。
 
   # ──────────── A/B 对照 (只取证, 不发版): 不装修复钩子 → 冻结核验必须失败 ────────────
   # 触发: workflow_dispatch 勾 ab_baseline=true。
@@ -197,10 +202,10 @@ jobs:
         run: |
           python tools/gen_l4_demo_scene.py --peg-real-inertia
           python -c "import metaworld,os; p=os.path.join(os.path.dirname(metaworld.__file__),'assets','sawyer_xyz','sawyer_peg_insertion_side_l4.xml'); print('L4 XML:', p, os.path.isfile(p)); assert os.path.isfile(p)"
-      - name: "Build .exe 基线 (无 --runtime-hook; 自检入口在 studio.py 顶部, 早于 Qt 导入, 故无需其余 --add-data)"
+      - name: "Build .exe 基线 (无 --runtime-hook; collect 参数与正式构建同口径, 只少一个钩子)"
         run: |
           cd tools\gui
-          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco studio.py
+          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all pyqtgraph --collect-all OpenGL studio.py
       - name: "冻结核验 (基线, 期望失败 = 复现 v5.6.4 崩)"
         shell: bash
         run: |
@@ -214,7 +219,12 @@ jobs:
             echo "::error::A/B 基线竟然通过 —— 冻结核验无牙 或 环境已变, 修复的因果未证实"
             exit 1
           fi
-          echo "✅ A/B 取证成立: 不装钩子必崩 (exit=$RC) → mujoco 插件 DLL 依赖解析就是根因"
+          # 必须崩在 "mujoco 插件 DLL" 上, 不能是别的错 (否则等于没证明根因)
+          if ! grep -q "actuator.dll" "$OUT" || ! grep -qi "mujoco" "$OUT"; then
+            echo "::error::A/B 基线失败原因不是 mujoco 插件 DLL (见上 json) → 本次 A/B 不作数"
+            exit 1
+          fi
+          echo "✅ A/B 取证成立: 不装钩子 → mujoco 插件 DLL 加载崩 (与老倪 Windows 现象同源); 正式包装了钩子 → 核验通过"
 
   # ────────────────────────── macOS ──────────────────────────
   build-mac:
