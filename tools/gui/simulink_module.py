@@ -11536,6 +11536,17 @@ class SimulinkModule(QWidget):
                     _logs.append(f"   └ 插入深度 {round(float(tr['dist'][-1]) * 1000, 1) if tr.get('dist') else '?'}mm "
                                  f"· done={bool(tr['done'][-1]) if tr.get('done') else None} "
                                  f"(解析链同种子对照: 成功时 65.1mm/387 步)")
+                    # 🛡 2026-09-15: 收口闸计数必须打出来 —— 否则"手没动/跑满预算"看起来像模型在干活
+                    #   (老倪红线: 日志须能看出**实际在跑什么**)。blend=0 就是"模型提案全被否决"。
+                    _gt = (_std_.get("gate") or {})
+                    if _gt:
+                        _logs.append(
+                            f"   └ 🛡 L2 收口闸: 共 {_gt.get('n', 0)} 步 · 阶段白名单外 {_gt.get('stage_out', 0)} · "
+                            f"方向/一致度否决 {_gt.get('veto_dir', 0)} · 幅度否决 {_gt.get('veto_mag', 0)} · "
+                            f"采纳融合 {_gt.get('blend', 0)} · 幅值限幅 {_gt.get('clamped', 0)}")
+                        if int(_gt.get("blend", 0)) == 0:
+                            _logs.append("      ⚠️ 本轮模型提案**一次都没通过收口闸** (全部交执行层执行) — "
+                                         "属模型闭环一致度不足 (真推理+提案已留档 state['gate']), 不是接线问题")
                     try:
                         sim._intact_drive["node"].close()
                     except Exception:
