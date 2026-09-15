@@ -76,11 +76,18 @@ jobs:
           print(tpl % (ver[0],ver[1],ver[2],ver[3],ver[0],ver[1],ver[2],ver[3]))
           " > tools/gui/version_info.txt
 
-      - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频; Windows 无 ffmpeg → 用预抽帧缓存直接播放, 2026-08-27)
+      - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频, 2026-08-27)
         shell: bash
         run: |
           mkdir -p reports
-          curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
+          # 🐛 2026-09-15: datadrive.world 偶发拉取失败 (mac job 今天连挂两次, 35s 即挂; Windows 同一步同一时刻却成功)
+          #   → 加 3 次退避重试 + 失败时打印 HTTP 状态, 别让外部静态站的抖动卡掉整次发版
+          for i in 1 2 3; do
+            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --connect-timeout 20 --max-time 180 \
+                 -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip; then break; fi
+            echo "::warning::mlp_video_pack.zip 第 $i 次下载失败"; sleep 10
+          done
+          ls -l mlp_video_pack.zip
           python -m zipfile -e mlp_video_pack.zip reports/
           ls -la reports/ | head -8
           ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
@@ -277,7 +284,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p reports
-          curl -fsSL -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip
+          # 🐛 2026-09-15: datadrive.world 偶发拉取失败 (mac job 今天连挂两次, 35s 即挂; Windows 同一步几乎同时却成功)
+          #   → 3 次退避重试, 别让外部静态站的抖动卡掉整次发版
+          for i in 1 2 3; do
+            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --connect-timeout 20 --max-time 180 \
+                 -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip; then break; fi
+            echo "::warning::mlp_video_pack.zip 第 $i 次下载失败"; sleep 10
+          done
+          ls -l mlp_video_pack.zip
           python -m zipfile -e mlp_video_pack.zip reports/
           ls -la reports/ | head -8
 
