@@ -1,5 +1,25 @@
 # 待修清单 · 2026-09-15（关机前留档，下次启动执行）
 
+## 🔻 关机前状态 (2026-09-15 09:15 静静 — 保存数据 + 小版本迭代 已完成)
+
+- **版本**: `v5.6.4`（= 本文件所在 main 的 HEAD 96e0913b；tag 已推，CI 出 Windows .exe + macOS .zip）
+  · `v5.6.2` = 老倪点的那次发布（exe sha256 已逐位实测 `9379b053…b7ca9b76`）
+  · `v5.6.3` = L4 档 4000 步根因修（收口闸 + 异常不再静默零动作）
+  · `v5.6.4` = 收口闸计数日志 + blend=0 显式标注 + 诊断证据/工具入库（**行为零回退**，只加日志与证据）
+- **已入库 (main)**: 修代码 `tools/intact_direct_rollout.py` · GUI 收口 `tools/gui/simulink_module.py` ·
+  诊断工具 `tools/diag_l4_stall.py` / `tools/diag_intact_zero_act.py` · 报告 `reports/L4_4000_STEPS_ROOTCAUSE_20260915.md` ·
+  逐步轨迹 `reports/diag_l4_*` · 技能全量镜像 `docs/skills/hermes-all` (155 技能/1119 文件) + `docs/memory` 记忆备份
+- **未入库（按"大文件不进代码库"纪律，仍在磁盘）**: `reports/evidence_*/` · `reports/intact_sw/video/` · `reports/mem_ladder/video/`
+  = 717MB 的 mp4 证据（其中本次成功视频已上传 https://datadrive.world/models/l4_model_gated_v4_seed104.mp4）
+- **无训练在跑**、GPU 空闲、INTACT 用 CPU；auto_loop 守护在跑（队列空）
+
+## ⏭ 下次启动第一步（照旧 + 新增）
+
+1. `date` 对时间；2. `hermes cron status` / `hermes cron list` 确认 next_run 在未来；
+3. 打开 GUI 目检 **L4 档**：日志应出现 `🛡 L2 收口闸: 共 N 步 · …` +（若 blend=0）`⚠️ 本轮模型提案一次都没通过收口闸`，
+   并跑完 13 段（接近→…→AOI→完成）**done=True + AOI ok**；
+4. 继续 §6 三条口径验证（goal 前瞻口径 / 动作历史 raw-vs-normalized / 闭环 DAgger 再训）→ 让闸门按 cos 自动放权。
+
 > ✅ **2026-09-15 08:55 更新（静静，已定位+已修+已验）**：本清单 ①（全链卡"接近"）的**完整根因**已查明并修复，
 > 详见 `reports/L4_4000_STEPS_ROOTCAUSE_20260915.md`。要点：
 > · ①的真实主因不是 L2 势场（势场只作用在 u_ff 解析通道），而是 **L4 档默认走的 INTACT 直驱**：模型动作与执行层参考
