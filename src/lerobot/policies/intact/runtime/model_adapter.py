@@ -180,10 +180,14 @@ class IntactRuntime:
                         {"trained": 0.0, "act_failed": 1.0})
             actions = np.load(fout)["actions"]
             # ── Step 0: 潜空间随同返回 (worker 截获的 z_t/z_goal/delta; 缺失=空 dict 不报错) ──
+            #    🧬 2026-09-15: 一并透传 **predictor 预测的潜空间** z_pred / z_pred_last / z_pred_seq
+            #    (之前只白名单 z_t/z_goal/delta → 预测潜空间被桥这一层丢掉, 下游拿不到)
             lat: dict = {}
             try:
                 with np.load(fout) as _z:
-                    lat = {k: _z[k] for k in ("z_t", "z_goal", "delta") if k in _z.files}
+                    lat = {k: _z[k] for k in ("z_t", "z_goal", "delta",
+                                              "z_pred", "z_pred_last", "z_pred_seq")
+                           if k in _z.files}
             except Exception:
                 lat = {}
             self.last_latent = lat

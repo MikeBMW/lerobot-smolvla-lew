@@ -239,8 +239,15 @@ class Runtime:
             self._img_prep_logged = True
             log(f"🎯 图像预处理 (与训练同口径): {_img_acts or '无图像键'}")
         # ── 潜空间截获 (只读: 不改模型任何参数/行为) ──
+        #   🧬 2026-09-15 Step 2: 同时截获 **world model predictor 预测出来的 z'** ——
+        #   不是另算一遍, 而是截获 get_action 内部 rollout_one_step → self.predict(...) 的返回
+        #   (INTACT-JEPA jepa.py:171-186: prediction = self.predict(embedding_context, act_emb)[:, -1:])。
+        #   所以 z_pred 与"规划器实际用来推演的潜空间"逐位一致, 可直接作为 L4 的**预测潜空间**
+        #   送下游 (流形专家预测器 / 接触丛联络)。
         _rec: list = []
+        _rec_pred: list = []
         _orig_encode = self.model.encode
+        _orig_predict = getattr(self.model, "predict", None)
 
         def _spy(inf):
             out = _orig_encode(inf)
@@ -249,13 +256,26 @@ class Runtime:
                 _rec.append(e.detach())
             return out
 
+        def _spy_predict(embedding, action_embedding):
+            out = _orig_predict(embedding, action_embedding)
+            if torch.is_tensor(out):
+                _rec_pred.append(out.detach())
+            return out
+
         self.model.encode = _spy                              # 实例属性遮蔽方法 (仅本次调用)
+        if _orig_predict is not None:
+            self.model.predict = _spy_predict
         try:
             with torch.inference_mode():
                 actions = self.model.get_action(info, horizon=int(horizon))
         finally:
             try:
                 del self.model.encode
+            except AttributeError:
+                pass
+            try:
+                if _orig_predict is not None:
+                    del self.model.predict
             except AttributeError:
                 pass
         actions = actions.detach().cpu().numpy()
@@ -267,6 +287,42 @@ class Runtime:
                 lat["z_goal"] = _rec[1][:, -1].float().cpu().numpy()
             if "z_t" in lat and "z_goal" in lat:
                 lat["delta"] = lat["z_goal"] - lat["z_t"]
+            # 🧬 预测潜空间: 第 1 步 = 当前观测 + 计划动作 → 下一时刻 z' (与规划器同源)
+            if len(_rec_pred) >= 1:
+                _p0 = _rec_pred[0]
+                lat["z_pred"] = (_p0[:, -1] if _p0.ndim == 3 else _p0).float().cpu().numpy()
+            if len(_rec_pred) >= 2:
+                _pn = _rec_pred[-1]
+                lat["z_pred_last"] = (_pn[:, -1] if _pn.ndim == 3 else _pn).float().cpu().numpy()
+            # 🧬 2026-09-15: 零搜索 direct 规划**不调用 predictor** (只在给 prefix_actions 的
+            #   rollout 路径才调, jepa.py:245-253) ⇒ 上面截获在常规闭环里是空的。
+            #   所以这里用**模型自己的 predict()** 显式推演计划动作, 逐位复刻 rollout_one_step:
+            #     emb_ctx = 滑窗最后 history_size 帧, act_ctx = 动作历史(末位换成计划动作)
+            #     z_{k+1} = model.predict(emb_ctx, action_encoder(act_ctx))[:, -1]
+            #   连续推完整个 chunk → z_pred(第1步) / z_pred_last(整段末端) = 预测潜空间轨迹。
+            if "z_pred" not in lat and len(_rec) >= 1:
+                _emb = _rec[0]
+                _H = int(actions.shape[1]) if actions.ndim == 3 else 1
+                _hs = int(getattr(self.model.predictor, "pos_embedding").size(1))
+                _hs = max(1, min(_hs, int(_emb.size(1))))
+                _a_hist = info.get("action")
+                if _a_hist is None:
+                    _a_hist = torch.zeros((1, _hs, int(actions.shape[-1])),
+                                          device=_emb.device, dtype=_emb.dtype)
+                _act_ctx = _a_hist[:, -_hs:].clone()
+                _emb_ctx = _emb[:, -_hs:].clone()
+                _seq = []
+                _acts_t = torch.from_numpy(np.asarray(actions)).to(_emb.device, _emb.dtype)
+                with torch.inference_mode():
+                    for _i in range(_H):
+                        _act_ctx[:, -1] = _acts_t[:, _i]
+                        _nx = self.model.predict(_emb_ctx, self.model.action_encoder(_act_ctx))[:, -1:]
+                        _seq.append(_nx.detach())
+                        _emb_ctx = torch.cat([_emb_ctx, _nx], dim=1)[:, -_hs:]
+                lat["z_pred"] = _seq[0][:, -1].float().cpu().numpy()
+                lat["z_pred_last"] = _seq[-1][:, -1].float().cpu().numpy()
+                if len(_seq) > 1:
+                    lat["z_pred_seq"] = torch.cat(_seq, dim=1)[0].float().cpu().numpy()
         except Exception as e:                                # 潜空间导出失败不许影响动作路径
             log("⚠️ 潜空间导出失败 (动作不受影响):", type(e).__name__, e)
             lat = {}

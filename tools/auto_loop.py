@@ -93,13 +93,18 @@ def process_new_data():
             if LOCK.exists():
                 log("🔒 训练进行中, 该包留待下一轮 (防并发破坏数据集)")
                 return
-            SEEN.add(latest)
             log("⚡ 数据量达标, 拉取+训练...")
             pkg = pull_data()
             if pkg:
                 ts = time.strftime("%Y%m%d_%H%M%S")
                 fp = LIVE / f"auto_{ts}.json"
-                fp.write_text(json.dumps(pkg, ensure_ascii=False))
+                LIVE.mkdir(parents=True, exist_ok=True)   # 目录缺失时自动创建 (曾被 FileNotFoundError 吞包)
+                try:
+                    fp.write_text(json.dumps(pkg, ensure_ascii=False))
+                except Exception as ex:
+                    log(f"❌ 数据落盘失败, 该包保留待重试: {ex}")
+                    return
+                SEEN.add(latest)          # 仅落盘成功后才标记已见, 失败可下轮重试
                 log(f"💾 已存 {fp.name} ({len(pkg.get('frames',[]))}帧)")
                 # 重建数据集 → 训练 → 上传
                 LOCK.touch()

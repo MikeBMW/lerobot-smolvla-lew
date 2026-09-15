@@ -320,6 +320,25 @@ class RealStateSpaceSim:
         self._il_stats = {"frames": 0, "ran": 0, "applied": 0, "w_zero": 0, "refused": 0,
                           "gain": [], "err": None, "ready": False, "ready_src": "未检查",
                           "src": "", "clip_max": 0.0, "w": 0.0, "manifold": []}
+        # ══════════════════════════════════════════════════════════════════════
+        # 🧬 2026-09-15 纤维丛联络层 (老倪: INTACT predictor 预测的 z 潜空间 → 流形专家预测器;
+        #   动作丛 → 接触丛 (主力) / 性能丛 (次要) 的映射联络; 最后进 DiT 生成轨迹)
+        #   · 输入: 桥导出的 **z_pred = predictor(z_t, a)** (与规划器同源, 逐位一致)
+        #   · 映射: Φ: Z(192) → 接触丛 F_C(6)   (标定 models/intact_fiber_map.json, LOSO R² 闸)
+        #           A: Z(192) → 几何基 R^7      (丛映射 → 喂既有流形专家预测器, 其权重不动)
+        #   · 联络: 水平提升 h_z = Φ(z_pred) − Φ(z_t); 挠率 κ=‖h_z−h_geo‖; 曲率 Ω=Φ 的交换子
+        #   · 去向: ① 流形专家预测器 (z 用 ẑ7=A·z_pred+b) ② DiT 条件 token (叠加, 不替换 δ 通道)
+        #   · 纪律: SS_L4_FIBER 不设 = 逐位零变化; 标定未过闸 = 线路照跑但不注入 (w=0)
+        # ══════════════════════════════════════════════════════════════════════
+        self._fiber = None                  # FiberConnection (懒加载)
+        self._fiber_last = None             # LiftResult
+        self._fiber_frame: dict = {}        # 本帧量 (run() 里并入 tr 逐帧列)
+        self._fiber_data: list = []         # 采数 (SS_L4_FIBER_DATA=<npz 路径>)
+        self._fiber_stats = {"frames": 0, "ran": 0, "no_latent": 0, "not_ready": 0,
+                             "kappa_tor": [], "kappa_curv": [], "cos_geo": [],
+                             "h_norm": [], "omega": [], "phi": [], "err": None,
+                             "src": "", "map_src": "", "ready": False,
+                             "contact_pred": [], "contact_true": [], "contact_err": []}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1204,6 +1223,18 @@ class RealStateSpaceSim:
             self._l4_cond = d.l3_cond
             # 🎯 2026-09-14 L4→DiT 条件通道 (192 维意图单位向量; 无需标定)
             self._l4_dit_cond = getattr(d, "l4_cond", None)
+            # ══════════════════════════════════════════════════════════════════
+            # 🧬 2026-09-15 纤维丛联络 (老倪): 先把 **predictor 预测的 z 潜空间** 经丛映射/联络
+            #   变成接触丛上的量与 DiT 条件, 再喂流形专家预测器 (下一步用它做 z 输入)。
+            #   潜空间丛 Z(192) --Φ--> 接触丛 F_C(6) (主力); 性能丛 F_P(6) 只记录 (插拔次要)。
+            #   · SS_L4_FIBER 不设 → 返回 None, 下面两处一律不生效 (逐位零变化)
+            #   · 标定未过闸 → 线路照跑 (计数+来源), 条件不注入
+            # ══════════════════════════════════════════════════════════════════
+            _fbr = self._l4_fiber_line(d, out, stage)
+            if _fbr is not None and _fbr.get("cond") is not None and bool(self._fiber_stats.get("ready")):
+                # 条件 token 叠加: 既有 δ(192) 扩展为 [δ̂(192) ⊕ ĥ_z(6) ⊕ 标量] —— 只产条件
+                self._l4_dit_cond = _fbr["cond"]
+                self._fiber_stats["cond_used"] = int(self._fiber_stats.get("cond_used", 0)) + 1
             # 🧬 2026-09-14 直连线: 同一 δ 作为**意图**, 送流形专家预测器 (不是动作, 不越权)。
             #   SS_L4_INTENT_LINE 不设 → 本调用立即返回 None (零回退, 逐位不变)
             self._l4_intent_line(d, out, stage)
@@ -1365,6 +1396,290 @@ class RealStateSpaceSim:
             self._il_pred, self._il_head, self._il_stack = None, None, None
             st["err"] = f"直连线初始化失败 {type(e).__name__}: {e}"
 
+    # ══════════════════════════════════════════════════════════════════════
+    # 🧬 纤维丛联络层 (2026-09-15, 老倪): 动作丛 → 接触丛 (主力) / 性能丛 (次要)
+    #   潜空间丛 Z(192) --Φ(标定)--> 接触丛 F_C(6); 水平提升 h_z = Φ(z_pred) − Φ(z_t);
+    #   挠率 κ=‖h_z − h_geo‖ (潜空间联络 ⊖ 几何联络); 曲率 Ω = Φ 的交换子 (二阶项才有非零)。
+    #   去向: ① 流形专家预测器 (z 用 ẑ7 = A·z_pred + b, 既有权重不动) ② DiT 条件 token (叠加)。
+    # ══════════════════════════════════════════════════════════════════════
+    def _fc(self):
+        """懒加载 FiberConnection (标定 models/intact_fiber_map.json)。"""
+        if self._fiber is None:
+            try:
+                _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                _src = os.path.join(_root, "src")
+                if _src not in sys.path:
+                    sys.path.insert(0, _src)
+                from lerobot.manifold.fiber_bundle import FiberConnection
+                self._fiber = FiberConnection(root=_root)
+                _d = self._fiber.describe()
+                self._fiber_stats["ready"] = bool(_d["ready"])
+                self._fiber_stats["map_src"] = (f"{_d['path']} · ready={_d['ready']} · "
+                                                f"contact_r2_loso={( _d['contact_map'] or {}).get('r2_loso')} · "
+                                                f"morph_r2_loso={(_d['morph_z7'] or {}).get('r2_loso')} · {_d['note']}")
+                self.log(f"🧬 纤维丛联络层: {_d['path']} → contact={_d['contact_map']} · "
+                         f"z7丛映射={_d['morph_z7']} · ready={_d['ready']}")
+            except Exception as e:                                            # noqa: BLE001
+                self._fiber_stats["err"] = f"FiberConnection 加载失败 {type(e).__name__}: {e}"
+                self.log(f"⚠️ 纤维丛联络层加载失败: {type(e).__name__}: {e}")
+        return self._fiber
+
+    def _fiber_truth(self, stage: str = ""):
+        """接触丛坐标真值 F_C(6) + 性能丛 F_P(6) + e 向量 (canonical, 与 manifold_layer 同口径)。
+
+        F_C = [progress(切向进度), risk(法向偏离), V=½‖e‖², V̇=−e·v, v∥(切向速度), v⊥(法向速度)]
+        F_P = [η(耦合效率估计), δ⊥, δ_axial, δ⊥x, δ⊥y, δ⊥z]  ← 插拔任务次要 (只记录, w_perf=0)
+        """
+        hand = np.asarray(self.x, float).ravel()[:3]
+        try:
+            ph = np.asarray(self.peg_head(), float).ravel()[:3]
+        except Exception:                                                     # noqa: BLE001
+            ph = hand
+        try:
+            tgt = np.asarray(self._stage_target(), float).ravel()[:3]
+        except Exception:                                                     # noqa: BLE001
+            tgt = hand
+        v = np.asarray(getattr(self, "v", np.zeros(3)), float).ravel()[:3]
+        s = str(stage).split("·")[0].strip()
+        # 通道轴 (与 manifold_layer 同语义): 插入=工艺斜线, 下降/抓取/抬起=竖直, 其余=自由空间
+        try:
+            from lerobot.manifold.manifold_layer import AXIS_INSERT, _stage_name
+            s = _stage_name(s)
+            if s in ("插入", "拔出", "完成"):
+                ax = np.asarray(AXIS_INSERT, float)
+            elif s in ("下降", "抓取", "抬起"):
+                ax = np.array([0.0, 0.0, 1.0])
+            else:
+                ax = None
+        except Exception:                                                     # noqa: BLE001
+            ax = np.array([0.0, 1.0, 0.0]) if s in ("插入", "拔出") else None
+        # 误差项 (与 ContactManifold._error 同口径)
+        if s in ("插入", "拔出", "完成"):
+            try:
+                hole = np.asarray(getattr(self, "hole_pos", None), float).ravel()[:3]
+            except Exception:                                                 # noqa: BLE001
+                hole = tgt
+            e = ph - hole
+        else:
+            e = tgt - hand
+        if ax is None:
+            progress, risk, e_perp = float(np.linalg.norm(e)), 0.0, np.zeros(3)
+            v_par = 0.0
+            v_perp = float(np.linalg.norm(v))
+        else:
+            e_par_v = float(e @ ax) * ax
+            e_perp = e - e_par_v
+            progress, risk = float(abs(e @ ax)), float(np.linalg.norm(e_perp))
+            v_par = float(v @ ax)
+            v_perp = float(np.linalg.norm(v - v_par * ax))
+        V = 0.5 * float(e @ e)
+        Vdot = -float(e @ v)
+        c6 = np.array([progress, risk, V, Vdot, v_par, v_perp], float)
+        # 性能丛 (光耦合对准代价, 次要): 与 PerformanceManifold.evaluate 同源语义
+        try:
+            _ax = np.array([1.0, 0.0, 0.0])           # 孔轴 (完成态贴孔底)
+            d_ax = float((ph - tgt) @ _ax)
+            d_perp = (ph - tgt) - d_ax * _ax
+            dpn = float(np.linalg.norm(d_perp))
+            sig = 0.004
+            eta = float(np.exp(-((dpn / sig) ** 2) - (max(0.0, d_ax) / 0.05) ** 2))
+            p6 = np.array([eta, dpn, d_ax, d_perp[0], d_perp[1], d_perp[2]], float)
+        except Exception:                                                     # noqa: BLE001
+            p6 = np.zeros(6)
+        return c6, p6, e
+
+    def _l4_fiber_line(self, d, out, stage: str = ""):
+        """潜空间丛 → 接触丛 (水平提升/挠率/曲率) + 供流形专家预测器与 DiT 的联络产物。
+
+        返回 dict (或 None): {"h_z","kappa_tor","cos_geo","omega","kappa_curv","z7_hat",
+                             "contact_pred","contact_true","cond","src"}
+        SS_L4_FIBER 不设 → 立即返回 None (逐位零变化, 调用点不进)。
+        """
+        st = self._fiber_stats
+        if os.environ.get("SS_L4_FIBER") != "1":
+            return None
+        st["frames"] += 1
+        lat = getattr(out, "latent", None) or {}
+        zt, zp, zg = lat.get("z_t"), lat.get("z_pred"), lat.get("z_goal")
+        if zt is None or zp is None:
+            st["no_latent"] += 1
+            st["src"] = (f"拒绝(缺潜空间: z_t={zt is not None}, z_pred={zp is not None} — "
+                         f"桥需导出 predictor 的 z_pred)")
+            return None
+        fc = self._fc()
+        if fc is None:
+            st["err"] = st["err"] or "FiberConnection 未加载"
+            return None
+        c6, p6, e_vec = self._fiber_truth(str(stage))
+        # ── 采数 (标定用): 成对 (z_t, z_pred, z_goal, 接触丛真值, 几何 z7, 性能真值) ──
+        #    关键纪律: **未标定也照样采** —— 否则"没标定→没采数→永远标不了"死锁。
+        if os.environ.get("SS_L4_FIBER_DATA"):
+            try:
+                self._fiber_data.append({
+                    "z_t": np.asarray(zt, float).ravel(), "z_pred": np.asarray(zp, float).ravel(),
+                    "z_goal": (None if zg is None else np.asarray(zg, float).ravel()),
+                    "contact": np.asarray(c6, float), "perf": np.asarray(p6, float),
+                    "z7_geo": self._fiber_z7_geo(), "stage": str(stage),
+                })
+            except Exception as _de:                                      # noqa: BLE001
+                st["err"] = f"采数失败: {type(_de).__name__}: {_de}"
+        if not fc.ready:
+            # 未标定/未过闸: 线路照跑 (采数 + 计数 + 来源), 但**不产条件不注入** (诚实拒绝)
+            st["not_ready"] += 1
+            st["src"] = f"未标定/未过闸 → 只采数不注入 ({fc.note})"
+            return None
+        # 几何联络 (canonical, 无需标定): 沿当前前馈参考的**单位步长几何预报** → 接触丛增量
+        h_geo = np.zeros(3)
+        try:
+            u_ref = np.asarray(getattr(self, "_u_ff_last", None), float).ravel()
+            if u_ref.size >= 3:
+                n = float(np.linalg.norm(u_ref[:3]))
+                if n > 1e-9:
+                    hand = np.asarray(self.x, float).ravel()[:3]
+                    step_m = 1e-3                                    # 单位步长 = 1mm (方向性比较用)
+                    _hand2 = hand + (u_ref[:3] / n) * step_m
+                    try:
+                        _ph = np.asarray(self.peg_head(), float).ravel()[:3]
+                        _tg = np.asarray(self._stage_target(), float).ravel()[:3]
+                    except Exception:                                # noqa: BLE001
+                        _ph, _tg = np.asarray(self.x, float).ravel()[:3], hand
+                    _c2, _, _ = self._fiber_truth_at(_hand2, _ph, _tg, e_vec)
+                    h_geo = np.asarray(_c2[:3], float) - np.asarray(c6[:3], float)
+        except Exception as _he:                                          # noqa: BLE001
+            st["err"] = f"几何联络计算失败: {type(_he).__name__}: {_he}"
+        lift = fc.lift(zt, zp, z_goal=zg, h_geo=h_geo)
+        if not lift.ok:
+            st["err"] = st["err"] or f"提升失败: {lift.src}"
+            st["src"] = lift.src
+            return None
+        st["ran"] += 1
+        st["h_norm"].append(float(np.linalg.norm(lift.h_z)))
+        st["kappa_tor"].append(float(lift.kappa_tor))
+        st["kappa_curv"].append(float(lift.kappa_curv))
+        st["cos_geo"].append(float(lift.cos_geo))
+        st["phi"].append(np.asarray(lift.phi_zp, float).copy())
+        if lift.omega is not None:
+            st["omega"].append(np.asarray(lift.omega, float).copy())
+        st["contact_true"].append(np.asarray(c6, float).copy())
+        st["src"] = lift.src
+        # 联络产物 → DiT 条件 (叠加在既有 δ 通道之外; 只产条件, 不写执行量)
+        delta = lat.get("delta")
+        cond = None
+        if delta is not None:
+            cond = fc.condition_vector(delta, lift, extra=[float(self._l4_stats.get("w") or 0.0)])
+        self._fiber_frame = {
+            "fiber_h_norm": float(np.linalg.norm(lift.h_z)),
+            "fiber_kappa_tor": float(lift.kappa_tor),
+            "fiber_kappa_curv": float(lift.kappa_curv),
+            "fiber_cos_geo": float(lift.cos_geo),
+            "fiber_contact_true": np.asarray(c6, float).copy(),
+            "fiber_perf_true": np.asarray(p6, float).copy(),
+            "fiber_cond_norm": (0.0 if cond is None else float(np.linalg.norm(cond))),
+            "fiber_z7_hat": (None if lift.z7_hat is None
+                             else np.asarray(lift.z7_hat, float).copy()),
+        }
+        if lift.z7_hat is not None:
+            st["z7_hat"] = np.asarray(lift.z7_hat, float).copy()
+        # (采数已在函数前段完成 —— 未标定也要采, 否则死锁; 这里只补联络量)
+        if self._fiber_data and os.environ.get("SS_L4_FIBER_DATA"):
+            try:
+                self._fiber_data[-1].update({"h_z": np.asarray(lift.h_z, float),
+                                             "kappa_curv": float(lift.kappa_curv)})
+            except Exception:                                                 # noqa: BLE001
+                pass
+        self._fiber_last = lift
+        return {"h_z": np.asarray(lift.h_z, float), "kappa_tor": float(lift.kappa_tor),
+                "cos_geo": float(lift.cos_geo), "omega": lift.omega,
+                "kappa_curv": float(lift.kappa_curv),
+                "z7_hat": (None if lift.z7_hat is None else np.asarray(lift.z7_hat, float)),
+                "contact_true": np.asarray(c6, float), "perf_pred": lift.perf_pred,
+                "cond": cond, "src": lift.src}
+
+    def dump_fiber_data(self, path: str | None = None) -> str:
+        """把采到的 (z_t, z_pred, z_goal, 接触丛真值, 几何 z7, 性能真值) 落盘 (标定用)。"""
+        if not self._fiber_data:
+            return ""
+        p = path or os.environ.get("SS_L4_FIBER_DATA") or ""
+        if not p:
+            return ""
+        try:
+            import numpy as _np
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            n = len(self._fiber_data)
+            _zt = _np.stack([r["z_t"] for r in self._fiber_data])
+            _zp = _np.stack([r["z_pred"] for r in self._fiber_data])
+            _zg = [r["z_goal"] for r in self._fiber_data]
+            _zg = (_np.stack(_zg) if all(x is not None for x in _zg)
+                   else _np.zeros_like(_zt))
+            _np.savez(p, z_t=_zt, z_pred=_zp, z_goal=_zg,
+                      contact=_np.stack([r["contact"] for r in self._fiber_data]),
+                      perf=_np.stack([r["perf"] for r in self._fiber_data]),
+                      z7_geo=_np.stack([r["z7_geo"] for r in self._fiber_data]),
+                      h_z=_np.stack([r.get("h_z") if r.get("h_z") is not None
+                                     else _np.zeros(6) for r in self._fiber_data]),
+                      kappa_curv=_np.asarray([float(r.get("kappa_curv") or 0.0)
+                                              for r in self._fiber_data]),
+                      stage=_np.asarray([r["stage"] for r in self._fiber_data]),
+                      n=_np.asarray([n]))
+            self.log(f"🧬 纤维丛采数落盘: {p} (n={n})")
+            return p
+        except Exception as e:                                                # noqa: BLE001
+            self.log(f"⚠️ 纤维丛采数落盘失败: {type(e).__name__}: {e}")
+            return ""
+
+    def _fiber_truth_at(self, hand, peg_head, target, e_ref):
+        """给定位姿的接触丛 3 维 (progress/risk/V) —— 几何预报用 (无量纲方向比较)。"""
+        e = np.asarray(target, float).ravel()[:3] - np.asarray(hand, float).ravel()[:3]
+        s = str(self.sched.stage()).split("·")[0].strip()
+        try:
+            from lerobot.manifold.manifold_layer import AXIS_INSERT, _stage_name
+            s = _stage_name(s)
+        except Exception:                                                     # noqa: BLE001
+            AXIS_INSERT = np.array([0.0, 1.0, 0.0])
+        if s in ("插入", "拔出", "完成"):
+            ax = np.asarray(AXIS_INSERT, float)
+        elif s in ("下降", "抓取", "抬起"):
+            ax = np.array([0.0, 0.0, 1.0])
+        else:
+            ax = None
+        if ax is None:
+            return np.array([float(np.linalg.norm(e)), 0.0, 0.5 * float(e @ e)]), None, e
+        e_par = float(e @ ax) * ax
+        return (np.array([float(abs(e @ ax)), float(np.linalg.norm(e - e_par)),
+                          0.5 * float(e @ e)]), ax, e)
+
+    def _fiber_z7_geo(self):
+        """引擎几何潜空间 z7 (与流形旁路同公式): [手/头−目标, 手/头−光模块, 夹持指示]。"""
+        try:
+            _hx = np.asarray(self.x, float).ravel()[:3]
+            if getattr(self, "grasped", False) and getattr(self, "_grasp_off0", None) is not None:
+                _hx = _hx + np.asarray(self._grasp_off0, float).ravel()[:3] \
+                    + np.asarray(self.geom.get("head_off", np.zeros(3)), float).ravel()[:3]
+            _tg = np.asarray(self._stage_target(), float).ravel()[:3]
+            _pg = np.asarray(self.peg_head(), float).ravel()[:3]
+            return np.concatenate([_hx - _tg, _hx - _pg, [1.0 if self.grasped else 0.0]])
+        except Exception:                                                     # noqa: BLE001
+            return np.zeros(7)
+
+    def fiber_line_summary(self) -> dict:
+        """纤维丛联络层取证摘要 (A/B/报告用; 数字全部来自实测计数)。"""
+        s = self._fiber_stats
+        mn = lambda v: (float(np.mean(np.asarray(v, float))) if len(v) else 0.0)     # noqa: E731
+        return {"enabled": os.environ.get("SS_L4_FIBER") == "1",
+                "frames": s["frames"], "ran": s["ran"], "no_latent": s["no_latent"],
+                "ready": bool(s["ready"]), "map_src": s["map_src"], "err": s["err"],
+                "src_last": s["src"],
+                "h_norm_mean": round(mn(s["h_norm"]), 4),
+                "kappa_tor_mean": round(mn(s["kappa_tor"]), 4),
+                "kappa_curv_mean": round(mn(s["kappa_curv"]), 6),
+                "cos_geo_mean": round(mn(s["cos_geo"]), 4),
+                "phi_last": ([round(float(x), 5) for x in s["phi"][-1]] if s["phi"] else []),
+                "omega_last": ([round(float(x), 6) for x in s["omega"][-1]] if s["omega"] else []),
+                "contact_true_last": ([round(float(x), 5) for x in s["contact_true"][-1]]
+                                      if s["contact_true"] else []),
+                "sample_n": len(self._fiber_data),
+                "w_perf": 0.0, "perf_note": "插拔任务次要: 只记录不注入 (老倪口径)"}
+
     def _l4_intent_line(self, d, out, stage: str = "") -> tuple | None:
         """L4 意图 → 流形专家预测器 → 流形式 6 维 → 动作头 → u_int (引擎 u 空间)。
 
@@ -1389,12 +1704,24 @@ class RealStateSpaceSim:
             #   · "z7"  = 引擎几何潜空间 R7 + 几何意图(Δ=target−peg) + 前馈参考 → 流形: LOSO R² 0.55/0.64 ✓ 用这条
             #   · "z_t" = INTACT 潜空间 R192 + δ: LOSO R² 全负 (不可辨识) → 只保留兼容, 默认不 ready
             if self._il_input_kind == "z7":
+                # 🧬 2026-09-15 (老倪): **优先用 INTACT predictor 预测的 z 潜空间** ——
+                #   ẑ7 = A·z_pred + b (丛映射 Z(192)→几何基 R^7, 标定 LOSO R² 过闸);
+                #   流形专家预测器的架构与权重**一字未改** (输入维仍是 7), 换的是"喂什么进去":
+                #   从"当场几何 z7" 变成"世界模型预测出来的潜空间经联络拉回得到的 z7"。
+                #   SS_L4_FIBER 不设 / 未过闸 / 无 z_pred → 自动退回当场几何 z7 (与改造前逐位相同)。
+                _z7hat = (self._fiber_stats.get("z7_hat")
+                          if os.environ.get("SS_L4_FIBER") == "1" else None)
+                if _z7hat is not None:
+                    z = np.asarray(_z7hat, np.float32).reshape(1, -1)
+                    st["z_src"] = "fiber(A·z_pred+b ← INTACT 预测潜空间)"
                 _z7 = getattr(self, "_z7_hist", None)
-                if not _z7:
+                if _z7hat is None and not _z7:
                     st["refused"] += 1
                     st["err"] = "z7 历史为空 (几何潜空间未生成)"
                     return None
-                z = np.asarray(_z7[-1], np.float32).reshape(1, -1)
+                if _z7hat is None:
+                    z = np.asarray(_z7[-1], np.float32).reshape(1, -1)
+                    st["z_src"] = "engine(z7 几何)"
                 try:
                     m_geo = (np.asarray(self._stage_target(), float).ravel()[:3]
                              - np.asarray(self.peg_head(), float).ravel()[:3])
@@ -1479,6 +1806,7 @@ class RealStateSpaceSim:
                 "w_zero": s["w_zero"], "refused": s["refused"],
                 "ready": bool(s["ready"]), "ready_src": s["ready_src"],
                 "src_last": s["src"], "w_last": round(float(s["w"]), 4),
+                "z_src": str(s.get("z_src") or "engine(z7 几何)"),
                 "err": s["err"],
                 "intent_gain_mean": round(sum(g) / len(g), 6) if g else 0.0,
                 "manifold_last": [round(float(x), 5) for x in (mn[-1] if mn else [])],
@@ -2102,6 +2430,14 @@ class RealStateSpaceSim:
                         np.asarray(self._l4_last_u, float).copy())
                     tr.setdefault("l4_cond_vec", []).append(
                         None if self._l4_cond is None else np.asarray(self._l4_cond, float).copy())
+                    # 🧬 2026-09-15 纤维丛联络层逐帧列 (接触丛真值/提升/挠率/曲率/预测潜空间拉回)
+                    _fbf = self._fiber_frame or {}
+                    for _fk in ("fiber_h_norm", "fiber_kappa_tor", "fiber_kappa_curv",
+                                "fiber_cos_geo", "fiber_contact_true", "fiber_perf_true",
+                                "fiber_z7_hat", "fiber_cond_norm"):
+                        tr.setdefault(_fk, []).append(_fbf.get(_fk))
+                    if self._l4_dit_cond is not None and os.environ.get("SS_L4_FIBER") == "1":
+                        tr["fiber_cond_dim"] = int(np.asarray(self._l4_dit_cond).size)
             # 🧬 2026-09-14 直连线融合 (老倪原则: 上层只给意图, 执行由 L2 收口):
             #   u_ff ← proj_{U_L2}((1−w)·u_ff + w·u_int)  —— 越界必夹紧 (I2) 并记账
             #   ★ 唯一执行出口不变: 紧接着的 sched.decide + safety.saturate 一行未动 (I1)
