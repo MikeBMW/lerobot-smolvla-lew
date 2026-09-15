@@ -1,5 +1,26 @@
 # 待修清单 · 2026-09-15（关机前留档，下次启动执行）
 
+## 🔎 2026-09-15 12:35 开机自检（静静 — 上一任务收尾）
+- **时钟**: 开机时 RTC 偏 **+8h**（journal: `setting system clock to 2026-09-15T12:20:49 UTC`），
+  NTP 在 12:21:27 拨正；现 `System clock synchronized: yes`，RTC 已写回正确 UTC（下次开机应正常）。
+- **cron**: 8h 偏差导致 13 个任务 next_run 全被推到 20:3x（= 8 小时不触发，watchdog 静默死亡）。
+  已全部 `hermes cron edit --schedule <原样>` 重算；**并已加开机守护**：user crontab
+  `@reboot sleep 30 && ~/.hermes/scripts/hermes_cron_reclock.sh`（等 NTP 同步后自动重算，日志 `~/.hermes/logs/cron_reclock.log`）。
+- **上一任务（发布最新控制台 win+mac）已闭环**: v5.6.4 的 macOS 构建昨次 failure（步骤 `Download MLP operation video` 拉 datadrive 超时/中断，
+  41s 即挂），本次重跑 **attempt 2 success（3 分钟）**，Release `v5.6.4` 现有双包：
+  `Z-MAX_Console.exe` 164,737,806 B + `Z-MAX_Console-macOS.zip` 129,091,533 B（12:29 上传）。
+- **守护/进程**: auto_loop 已随 @reboot 重启（12:22 起，队列空，WS 已重连）；GPU 空闲 0 MiB；磁盘 282G/300G。
+
+### ⚠️ 未修（新发现，非本任务范围）
+- **Quality CI 在 main 长期红**：pre-commit 12 个 hook 挂（debug-statements / check-yaml / end-of-file / trailing-whitespace /
+  ruff-format(632 文件) / ruff / typos / pyupgrade / prettier / zizmor / bandit / mypy）。
+  主因 = **技能镜像入库**（`docs/skills/hermes-all`、`docs/skills/xspace`、`docs/memory` 千余文件未过 lint），
+  少量真红：`experiments/train/trace_train.py:179,233 breakpoint()`、`train_smolvla_mini.py:38 pdb`、
+  `config/state_machines/motion/尝试插入第一次.yaml:23` YAML 语法、`tools/disk_guard.py:20` typos(lew)。
+  建议修法（下轮做）：给 `docs/skills|docs/memory` 加 pre-commit `exclude`（或 CI 只查 `src/ tools/ docker/`）+ 清实验脚本调试断点。
+- **Docker 镜像 CI**: `Log in to Alibaba Cloud ACR` = "Username and password required" → ACR 凭据 secret 缺失/过期。
+- **Z-MAX CI/CD**: `Simulink 工作流标准合规检查` failure。
+
 ## 🔻 关机前状态 (2026-09-15 09:15 静静 — 保存数据 + 小版本迭代 已完成)
 
 - **版本**: `v5.6.4`（= 本文件所在 main 的 HEAD 96e0913b；tag 已推，CI 出 Windows .exe + macOS .zip）
