@@ -365,6 +365,12 @@ class RealStateSpaceSim:
                             "k_flow_sum": 0.0, "k_mm_sum": 0.0, "applied": 0, "events": {},
                             "k_nav_hist": [], "k_flow_hist": [], "p_hist": [], "err": None,
                             "cos_hist": [], "ratio_hist": []}
+        # 🧭 2026-09-16 李群意图层 (SU(2)/SE(3)): 意图 Δz →(Φ) ω/ξ → DiT 几何 token + 导航方向
+        self._lie_cache = None             # LieIntentMap (懒加载; False = 加载失败/未标定)
+        self._lie_frame = None             # 本帧 {"xi"(6), "omega"(3), ...}
+        self._lie_stats = {"frames": 0, "ran": 0, "refused": 0, "no_latent": 0, "applied": 0,
+                           "xi_norm": None, "om_norm": None, "cond_dim": 0, "cos": [],
+                           "src": "", "err": None, "xi_hist": [], "om_hist": []}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1264,6 +1270,9 @@ class RealStateSpaceSim:
             # 🧬 2026-09-14 直连线: 同一 δ 作为**意图**, 送流形专家预测器 (不是动作, 不越权)。
             #   SS_L4_INTENT_LINE 不设 → 本调用立即返回 None (零回退, 逐位不变)
             self._l4_intent_line(d, out, stage)
+            # 🧭 2026-09-16 李群意图层 (SU(2)/SE(3)): INTACT 预测潜空间 Δz --Φ--> ω/ξ,
+            #   ① 作为几何 token 追加进 DiT 条件 ② 供导航方向参考 (幅度按 L2 包络收窄)。
+            self._lie_intent_line(out, stage)
             st["cond_src"] = d.l3_cond_source
             st["cond_ready"] = 1 if d.l3_cond is not None else 0
             if d.u_ff is None:
@@ -1554,6 +1563,8 @@ class RealStateSpaceSim:
                     "z_goal": (None if zg is None else np.asarray(zg, float).ravel()),
                     "contact": np.asarray(c6, float), "perf": np.asarray(p6, float),
                     "z7_geo": self._fiber_z7_geo(), "stage": str(stage),
+                    # 🧭 2026-09-16 李群真值 (SU(2)/SE(3) 标定): 末端/光模块/孔口位姿
+                    "lie": self._lie_truth(),
                 })
             except Exception as _de:                                      # noqa: BLE001
                 st["err"] = f"采数失败: {type(_de).__name__}: {_de}"
@@ -1629,6 +1640,32 @@ class RealStateSpaceSim:
                 "contact_true": np.asarray(c6, float), "perf_pred": lift.perf_pred,
                 "cond": cond, "src": lift.src}
 
+    def _lie_truth(self):
+        """🧭 2026-09-16 李群真值 (SE(3)/SU(2) 标定用, 全部从 MuJoCo 现场读, 不写死几何):
+
+        返回 末端/光模块/孔口 的 (位置, 四元数) + 手爪位置/速度。
+        用途: 逐帧差分 → 真实刚体运动 ξ_true=(ω,v) ∈ se(3) 与旋转意图 ω ∈ su(2),
+        作为 "INTACT 意图 Δz → 李代数" 丛映射 Φ 的**教师标签**。
+        """
+        try:
+            _d = self.env.data
+            from lerobot.manifold.lie_intent import quat_from_R          # noqa: PLC0415
+
+            def _pose(sid):
+                # ⚠️ MuJoCo 3.3 的 MjData **没有 site_xquat** (只有 site_xpos/site_xmat) ——
+                #   姿态必须从 site_xmat 转四元数 (实测踩坑: 写 site_xquat 会静默取不到 → 采数为空)
+                _R = np.asarray(_d.site_xmat[sid], float).reshape(3, 3)
+                return (np.asarray(_d.site_xpos[sid], float).copy(), quat_from_R(_R))
+            _pe, _qe = _pose(self._site_ee)
+            _pp, _qp = _pose(self._site_ph)
+            _ph, _qh = _pose(self._site_hole)
+            return {"ee_p": _pe, "ee_q": _qe, "peg_p": _pp, "peg_q": _qp,
+                    "hole_p": _ph, "hole_q": _qh,
+                    "x": np.asarray(self.x, float).ravel()[:3].copy(),
+                    "v": np.asarray(getattr(self, "v", np.zeros(3)), float).ravel()[:3].copy()}
+        except Exception:                                                 # noqa: BLE001
+            return None
+
     def dump_fiber_data(self, path: str | None = None) -> str:
         """把采到的 (z_t, z_pred, z_goal, 接触丛真值, 几何 z7, 性能真值) 落盘 (标定用)。"""
         if not self._fiber_data:
@@ -1654,6 +1691,11 @@ class RealStateSpaceSim:
                       kappa_curv=_np.asarray([float(r.get("kappa_curv") or 0.0)
                                               for r in self._fiber_data]),
                       stage=_np.asarray([r["stage"] for r in self._fiber_data]),
+                      # 🧭 2026-09-16 李群真值 (缺就整块不写, 诚实标注)
+                      **({k: _np.stack([r["lie"][k] for r in self._fiber_data])
+                          for k in ("ee_p", "ee_q", "peg_p", "peg_q", "hole_p", "hole_q",
+                                    "x", "v")}
+                         if all(r.get("lie") is not None for r in self._fiber_data) else {}),
                       n=_np.asarray([n]))
             self.log(f"🧬 纤维丛采数落盘: {p} (n={n})")
             return p
@@ -1721,6 +1763,118 @@ class RealStateSpaceSim:
                 self._align_stats["err"] = self._align_err
                 self.log(f"⚠️ L4 对齐映射加载失败: {self._align_err}")
         return self._align_cache
+
+    def _lie_map(self):
+        """懒加载 Φ: 意图 Δz(192) → su(2) ω / se(3) ξ (models/lie_intent_map.json)。
+
+        未标定 → None (只计数不注入, 诚实标注); 失败 → False (不再重试)。
+        """
+        if self._lie_cache is not None:
+            return self._lie_cache if self._lie_cache is not False else None
+        try:
+            import json as _json                                             # noqa: PLC0415
+            from lerobot.manifold.lie_intent import LieIntentMap             # noqa: PLC0415
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            p = os.environ.get("SS_L4_LIE_MAP") or os.path.join(_root, "models",
+                                                               "lie_intent_map.json")
+            if not os.path.isfile(p):
+                self._lie_stats["src"] = f"未标定 ({os.path.relpath(p, _root)} 不存在)"
+                self._lie_cache = False
+                return None
+            _d = _json.load(open(p, encoding="utf-8"))
+            m = LieIntentMap(gate=float(_d.get("gate", 0.30)), ridge=float(_d.get("ridge", 1e-2)),
+                             pca_dim=int(_d.get("pca_dim", 32)))
+            m.P = {"mu": np.asarray(_d["pca_mu"], float), "V": np.asarray(_d["pca_V"], float)}
+            m.W_su2 = np.asarray(_d["W_su2"], float)
+            m.W_se3 = np.asarray(_d["W_se3"], float)
+            m.meta = _d.get("meta") or {}
+            m.ready = bool(_d.get("ready"))
+            self._lie_cache = m
+            _m3 = (m.meta.get("se3") or {})
+            _m2 = (m.meta.get("su2") or {})
+            self.log(f"🧭 李群意图层就绪: Φ_se3 R²_loso={_m3.get('r2_loso')} (null={_m3.get('null')}) · "
+                     f"Φ_su2 R²_loso={_m2.get('r2_loso')} · n={_d.get('n')} · ready={m.ready}")
+        except Exception as e:                                               # noqa: BLE001
+            self._lie_cache = False
+            self._lie_stats["err"] = f"{type(e).__name__}: {e}"
+            self.log(f"⚠️ 李群意图层加载失败: {self._lie_stats['err']}")
+        return self._lie_cache if self._lie_cache is not False else None
+
+    def _lie_intent_line(self, out, stage: str = "") -> dict | None:
+        """🧭 INTACT 意图 Δz → (ω∈su(2), ξ∈se(3)) → ① DiT 几何 token ② 导航方向参考。
+
+        老倪口径: 纯旋转用 SU(2) (ω), 完整刚体用 SE(3) (ξ=(ω,v)); 下游 DiT 解码成前馈加速器
+        能接受的动作量纲 —— **幅度由 L2 包络收窄** (上层只给方向, 不放大, 同 I2 纪律)。
+        SS_L4_LIE 不设 → 立即返回 None (逐位零变化)。
+        """
+        st = self._lie_stats
+        if os.environ.get("SS_L4_LIE") != "1":
+            return None
+        st["frames"] += 1
+        m = self._lie_map()
+        if m is None:
+            st["refused"] += 1
+            return None
+        lat = getattr(out, "latent", None) or {}
+        zt, zp = lat.get("z_t"), lat.get("z_pred")
+        if zt is None or zp is None:
+            st["no_latent"] += 1
+            st["src"] = "拒绝(缺 z_t/z_pred — 桥需导出 predictor 预测潜空间)"
+            return None
+        dz = np.asarray(zp, float).ravel() - np.asarray(zt, float).ravel()
+        om, xi = m.predict(dz)                       # ω∈R³ (su(2)) · ξ=(ω,v)∈R⁶ (se(3))
+        if not m.ready:
+            st["refused"] += 1
+            st["src"] = f"未过闸 → 只计数不注入 (R²_loso={(m.meta.get('se3') or {}).get('r2_loso')})"
+            return None
+        st["ran"] += 1
+        st["xi_norm"] = round(float(np.linalg.norm(xi)), 6)
+        st["om_norm"] = round(float(np.linalg.norm(om)), 6)
+        st["xi_hist"].append(float(np.linalg.norm(xi)))
+        st["om_hist"].append(float(np.linalg.norm(om)))
+        self._lie_frame = {"xi": np.asarray(xi, float), "omega": np.asarray(om, float),
+                          "dz_norm": float(np.linalg.norm(dz)),
+                          "src": "Φ(Δz): INTACT 预测潜空间 → se(3)/su(2) (标定 LOO 过闸)"}
+        # ① DiT 几何 token: 既有条件 + [ξ(6) ⊕ ω(3)] (附加不替换; 该实现按维自动重建投影)
+        try:
+            if getattr(self, "_l4_dit_cond", None) is not None:
+                self._l4_dit_cond = np.concatenate([np.asarray(self._l4_dit_cond, float).ravel(),
+                                                    np.asarray(xi, float), np.asarray(om, float)])
+                st["cond_dim"] = int(self._l4_dit_cond.size)
+                st["src"] = f"DiT 条件 + ξ(6)+ω(3) (共 {st['cond_dim']} 维)"
+        except Exception as _e:                                              # noqa: BLE001
+            st["err"] = f"条件拼接失败: {type(_e).__name__}: {_e}"
+        # ② 导航方向参考: ξ 的平移部分 → 单位方向 × L2 幅度包络 (每层只能收窄, 不放大)
+        try:
+            _ref = np.asarray(getattr(self, "_u_ff_last", None), float).ravel()
+            _v = np.asarray(xi[3:], float)
+            _nv = float(np.linalg.norm(_v))
+            if _nv > 1e-9 and _ref.size >= 4:
+                _mag = float(np.linalg.norm(_ref[:3]))
+                _dir = _v / _nv * max(_mag, 1e-6)
+                _u_dir = np.concatenate([_dir, [_ref[3]]])
+                _cs = (float(_dir @ _ref[:3]) / max(_mag * _nv / _nv * np.linalg.norm(_dir), 1e-12)
+                       if np.linalg.norm(_dir) > 1e-12 else 0.0)
+                st["cos"].append(_cs)
+                st.setdefault("u_dir", _u_dir)
+                st["applied"] += 1
+        except Exception:                                                     # noqa: BLE001
+            pass
+        return self._lie_frame
+
+    def lie_summary(self) -> dict:
+        """李群意图层取证摘要 (全部实测)。"""
+        s = self._lie_stats
+        _m = self._lie_cache if isinstance(self._lie_cache, object) else None
+        return {"enabled": os.environ.get("SS_L4_LIE") == "1",
+                "frames": s["frames"], "ran": s["ran"], "refused": s["refused"],
+                "no_latent": s["no_latent"], "applied": s["applied"],
+                "xi_norm_last": s["xi_norm"], "om_norm_last": s["om_norm"],
+                "cond_dim": s["cond_dim"],
+                "cos_mean": (round(float(np.mean(s["cos"])), 4) if s["cos"] else None),
+                "ready": bool(getattr(_m, "ready", False)),
+                "meta": (getattr(_m, "meta", None) or {}),
+                "src": s["src"], "err": s["err"]}
 
     # ── 🎚 卡尔曼式自适应增益 (2026-09-16 老倪: 增益大→信 L4 导航, 增益小→默认 L2 肌肉记忆) ──
     def _gain_sched(self):
@@ -2722,8 +2876,11 @@ class RealStateSpaceSim:
                     except Exception:                                          # noqa: BLE001
                         _mm_cur = None
                     _go = self._gain_step(u_l2=np.asarray(u_ff, float),
-                                          u_nav=(self._l4_last_u0 if self._l4_last_u0 is not None
-                                                 else np.asarray(_ui, float)),
+                                          u_nav=(self._lie_stats.get("u_dir")
+                                                 if (os.environ.get("SS_L4_LIE") == "1"
+                                                     and self._lie_stats.get("u_dir") is not None)
+                                                 else (self._l4_last_u0 if self._l4_last_u0 is not None
+                                                       else np.asarray(_ui, float))),
                                           u_flow=getattr(self, "_l4_last_ud", None),
                                           u_champ=_mm_cur, stage=str(st_now))
                     if _go is not None:
@@ -2731,6 +2888,12 @@ class RealStateSpaceSim:
                         tr.setdefault("gain_k_flow", []).append(float(_go.k_flow))
                         tr.setdefault("gain_k_mm", []).append(float(_go.k_mm))
                         tr.setdefault("gain_p", []).append(float(_go.p_prior))
+                        # 🧭 李群逐帧列 (ξ/ω 真值: 意图 → SE(3)/SU(2) 的实际数值)
+                        _lf = self._lie_frame or {}
+                        tr.setdefault("lie_xi", []).append(
+                            None if _lf.get("xi") is None else np.asarray(_lf["xi"], float).copy())
+                        tr.setdefault("lie_omega", []).append(
+                            None if _lf.get("omega") is None else np.asarray(_lf["omega"], float).copy())
                         _w_use = float(_go.k_nav)
                         _gsrc = (f" · 🎚 K_nav={_go.k_nav:.3f} K_flow={_go.k_flow:.3f} "
                                  f"K_mm={_go.k_mm:.3f} ({_go.reason})")

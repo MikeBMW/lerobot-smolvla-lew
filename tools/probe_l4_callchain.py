@@ -329,6 +329,12 @@ def run_engine(scen: str) -> dict:
             extra["il_summary"] = sim.l4_intent_line_summary()
     except Exception as _e:                                                      # noqa: BLE001
         extra["il_summary"] = {"err": f"{type(_e).__name__}: {_e}"}
+    # 🧭 2026-09-16 李群意图层取证 (SU(2)/SE(3): 意图 Δz → ω/ξ → DiT token + 导航方向)
+    try:
+        if hasattr(sim, "lie_summary"):
+            extra["lie_summary"] = sim.lie_summary()
+    except Exception as _e:                                                      # noqa: BLE001
+        extra["lie_summary"] = {"err": f"{type(_e).__name__}: {_e}"}
     # 🎚 2026-09-16 自适应增益层取证 (卡尔曼式: 熟场景→L2 / 泛化受扰→抬 L4 导航 + L3 流程)
     try:
         if hasattr(sim, "gain_summary"):
