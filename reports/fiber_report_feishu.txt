@@ -1,0 +1,62 @@
+🧬 Z-MAX L4 纤维丛联络层 上线（动作丛 → 接触丛 → DiT）
+【真数据取证 · 零回退已验证 · 未跑闭环】
+
+一、你要的三件事，按顺序做完并取证
+
+① INTACT predictor 预测的 z 潜空间 → 流形专家预测器
+· 桥现在导出 z_pred = predictor(z_t, a)：零搜索 direct 规划本来**不调 predictor**（只在带 prefix 的 rollout 路径才调），改成用模型自己的 predict() 逐位复刻 rollout_one_step，把整个 chunk 推完 → z_pred / z_pred_last / z_pred_seq
+· 顺手修了个真 bug：桥的白名单只透传 z_t/z_goal/delta，**预测潜空间被桥这一层丢掉** → 下游永远拿不到（这是"导出了却没人收到"的典型）
+· 流形专家预测器**权重一字未改**，换的是"喂什么进去"：当场几何 z7 → ẑ7 = A·z_pred + b（丛映射 Z(192)→几何基 R⁷，LOO R²=0.607）
+· 实测：预测器 z 来源 = fiber(A·z_pred+b ← INTACT 预测潜空间)，ran=25/25 次，applied=200 帧
+
+② 动作丛 → 接触丛 的映射联络（纤维丛数学，全部可测）
+· 丛结构：动作丛 A（参考水平场 = L2 解析 u_ff）· 潜空间丛 Z(192) · **接触丛 C(6) 主力** · 性能丛 P(6) 次要
+· 丛映射 Φ: Z→F_C = W·z + W_q·φ(PCA₈(z))：线性项 = 联络系数，二次项让**曲率可非零**
+· 水平提升 h_z = Φ(z_pred) − Φ(z_t)；挠率 κ = ‖h_z − h_geo‖（潜空间联络 ⊖ 几何联络）；曲率 Ω = Φ 的交换子
+· 标定 = 582 条真实引擎样本（8 seed × 900 步，逐帧采），ridge + 留一交叉验证：
+    Φ 接触丛   R²_loso 0.471（null 0.000）逐维 [0.60, −0.11, 0.40, 0.55, 0.70, 0.69]
+    A 丛映射   R²_loso 0.607
+    Φ_geo 几何联络对照 0.586 ｜ Φ_p 性能丛 0.410
+  闸值 R²_loso ≥ 0.30 且 null < 0.10 → 过闸
+· 运行时实测（200 步）：‖h_z‖=0.046 · κ_tor=0.038 · cos∠=0.63 · ‖Ω‖=0.013
+  （自检里做了对照：**线性 Φ 的曲率恒 0、二次 Φ 的曲率非零** → 证明曲率项不是摆设）
+
+③ 最后进 DiT 生成轨迹（叠加，不替换）
+· DiT 条件 token = 214 维 = δ̂(192) ⊕ ĥ_z(6 提升) ⊕ Φ(z_pred) 接触丛 6 ⊕ Φ_p(z_pred) 性能丛 6 ⊕ 4 标量
+· 实测 DiT(l4_cond) calls=25 ok=25 cond_dim=214 applied=200 β=0.5 —— 走的是**同一颗 smolvla_lew DiT**，不是另写模型
+· 性能丛按你的口径：只作条件 token，**不参与动作幅值权重**（插拔任务性能流形作用小）
+
+二、L4 每条线的实际数据审计（tools/audit_l4_edges.py，只认运行时计数）
+L4 行 19 条边：**有数据 13 · 死线 6**
+有数据：数据源→INTACT(25) · INTACT→解码器(25 推理+175 复用) · 解码器→流形专家(ran25/applied200) · 解码器→DiT(ok25) · 流形专家→接触流形(200 帧 6 维) · 流形专家→性能流形(200 帧) · 几何→流形专家(200 帧 z7) · 几何→接触流形(200) · 几何→性能流形(200) · **接触流形→DiT(含 Φ 6 维)** · **性能流形→DiT(含 Φ_p 6 维)** · 接触流形→可视化(200) · 性能流形→可视化(200)
+还没接（诚实报，不糊）：VLM 潜空间 z(960) → 流形专家/接触/性能 **3 条**（预测器当前口径是 z7/预测潜空间经丛映射，要接必须按 960 口径重训）；L4 记忆 → 流形专家/接触流形 **2 条**（记忆层未接预测器输入）；流形专家 → 通用算子A **1 条**（引擎未把预测流形写进算子A 参数槽）
+
+三、零回退（不能降低 L2／L3）
+· **L2 档：逐位相同**（同 seed、每臂独立进程）
+    fiber 不设 : 3d330ebc8b0c19e88cbd0706def2f455
+    fiber=1    : 3d330ebc8b0c19e88cbd0706def2f455  ← 逐位一致
+    并且两臂的 L4/纤维丛链路计数都是 0（新代码在 L2 档根本不进）
+· **L3 档：新代码根本不进**（两臂 L4calls=0 / fiber.frames=0），唯一执行出口未动
+    注（仪器诚实）：L3 档的逐位 hash **不能当判据** —— 625M 模型 CPU bf16 路径有 FP 级非确定，
+    同配置两臂跑两次 hash 也不同（已复现 3 次，播种+单线程也一样）。所以 L3 的判据用"新代码未进 + 结构不变 + L2 逐位相同"，不用 hash 硬凑。
+· **L4 档：按设计可变**（这才是"叠加"），新通道实测：
+    ‖h_z‖=0.050 · κ_tor=0.047 · ‖Ω‖=0.019 · cos∠=0.86 · il.applied=60/60 帧 · DiT cond_dim=214
+    融合仍走能力栈收缩投影：applied=200 / vetoed=0 / clip_max=0（L2 收口闸在位）
+· 工具：tools/verify_fiber_zero_regression.py（可复跑）
+
+四、怎么开（默认关=零回退）
+· SS_L4_FIBER=1 开纤维丛层（L4 档）；SS_L4_FIBER_DATA=reports/fiber_calib.npz 采对标定样本
+· 没进默认档的原因：按你定的门槛"交付=有提升非仅不回退"，**默认档要等同口径 A/B 提升证据**（现在只有接线+标定+零回退，闭环 A/B 未跑）
+
+五、改动清单
+tools/intact_worker.py（z_pred 导出）· src/lerobot/policies/intact/runtime/model_adapter.py（白名单透传）
+src/lerobot/manifold/fiber_bundle.py（新增：丛结构/Φ/水平提升/挠率/曲率/条件向量 + selftest）
+tools/gui/state_space_sim_real.py（接线：_l4_fiber_line、预测器 z 走 ẑ7、DiT 条件叠加、8 个逐帧列）
+tools/fit_fiber_map.py（标定）· tools/probe_l4_callchain.py（L4line/L4audit 场景 + 取证）· tools/audit_l4_edges.py · tools/verify_fiber_zero_regression.py · tools/feishu_notify.py
+docs/design/zmax_l4_fiber_bundle.md（设计文档，含丛数学与纪律）
+
+六、下一步（缺口按优先级）
+1) 预测器按 960 口径重训 → 接通 VLM 那 3 条线（现在预测潜空间口径已通，只差 960 版权重）
+2) 记忆层（筹划）→ 预测器输入 → 接通 2 条记忆线
+3) 预测流形 → 算子A 动态参数 → 接通最后 1 条
+4) 同口径 A/B（SS_L4_FIBER 0/1，3 seed × 2 重复）出 L4 任务指标 → 再决定是否进默认档 + GUI 勾选

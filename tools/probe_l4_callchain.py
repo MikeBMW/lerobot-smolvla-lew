@@ -383,6 +383,25 @@ def run_engine(scen: str) -> dict:
             except Exception as _he:                                              # noqa: BLE001
                 extra["trace_hash"] = f"hash失败 {type(_he).__name__}: {_he}"
         extra["trace_cols"] = _cstats
+        # 🧾 A/B 需要的任务级终态 + 李雅普诺夫 V 轨迹统计 (同口径两臂比较用)
+        try:
+            _f = {}
+            if _tr is not None:
+                _done = [bool(x) for x in (_tr.get("done") or [])]
+                _dist = [float(x) for x in (_tr.get("dist") or []) if x is not None]
+                _V = [float(x) for x in (_tr.get("mani_V") or []) if x is not None]
+                _stg = [str(x) for x in (_tr.get("stage") or [])]
+                _f = {"steps": len(_tr.get("stage") or []),
+                      "done_any": bool(any(_done)), "done_last": bool(_done[-1]) if _done else None,
+                      "dist_min": (min(_dist) if _dist else None),
+                      "dist_last": (_dist[-1] if _dist else None),
+                      "V_first": (_V[0] if _V else None), "V_last": (_V[-1] if _V else None),
+                      "V_min": (min(_V) if _V else None), "V_max": (max(_V) if _V else None),
+                      "V_n": len(_V),
+                      "stage_counts": {k: _stg.count(k) for k in sorted(set(_stg))}}
+            extra["final"] = _f
+        except Exception as _fe:                                                  # noqa: BLE001
+            extra["final"] = {"err": f"{type(_fe).__name__}: {_fe}"}
         extra["summaries"] = {
             "intact_attach": sim._intact_stats if hasattr(sim, "_intact_stats") else {},
             "l4": sim._l4_stats,
@@ -396,6 +415,7 @@ def run_engine(scen: str) -> dict:
             with open(_dst, "w", encoding="utf-8") as _f:
                 json.dump({"scen": scen, "steps": extra.get("steps"),
                            "trace_hash": extra.get("trace_hash"),
+                           "final": extra.get("final"),
                            "env": {k: os.environ.get(k) for k in
                                    ("SS_L4_INTACT", "SS_L4_INTENT_LINE", "SS_L4_FIBER",
                                     "SS_L4_DIT", "SS_L3", "SS_INTACT")},
