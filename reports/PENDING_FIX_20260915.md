@@ -1,5 +1,38 @@
 # 待修清单 · 2026-09-15（关机前留档，下次启动执行）
 
+## 🔬 2026-09-15 13:30 本轮实跑 (L4 档目检 + Windows exe 崩溃根因修) — 全部有 CI/日志实证
+
+### A. L4 档实跑目检（3 seeds，直驱 vs 解析链**同轮同口径**）
+命令: `INTACT_RUNTIME=root INTACT_POLICY=intact_l4_current ./gui-venv311/bin/python tools/intact_direct_rollout.py --mode full --seeds 104,105,106 --max-steps 4000 --infer-every 1 --baseline 1 --video-dir reports/evidence_l4_verify_20260915`
+报告: `reports/intact_direct_20260915_131432.json`（+ 6 段 mp4 在 `reports/evidence_l4_verify_20260915/`）
+
+| seed | 解析链(对照) | 模型直驱 | 收口闸(白名单外/方向否决/采纳融合) | AOI |
+|---|---|---|---|---|
+| 104 | done=True 878 步 · 8.9mm | **done=True 949 步 · 8.1mm · 真推理 949 次** | 706 / 136 / **107 采纳** | **ok=True** (insert_depth_min 1.38mm, force_peak 0.991, 无 stall, 无回抓) |
+| 105 | done=False 3000 步 · 12.8mm | done=False 3000 步 · 26.2mm | 1235 / 1696 / 69 | {} (未完成) |
+| 106 | done=False 3000 步 · 32.3mm | done=False 3000 步 · 0.7mm | 1474 / 1142 / 377 | {} (未完成) |
+
+- seed104 阶段覆盖 14/14：接近→对位→下降→插入→插入·接触→抓取→抬起→转移→对位→拔出→拔出·接触→回程→放下→AOI转移→AOI检测。
+- **关键结论**：直驱与解析链**逐 seed 结果一致**（1/3 成功）⇒ 105/106 的失败是**该 seed 干扰布局层面的困难案例**（连解析链真值控制器也跑不完），不是 L4 模型通道问题。GUI 的 L4 档本来就会换干扰布局重试 ≤5 次。
+- 与 v5.6.3 那次「闸全否决(blend=0)」相比：现在模型提案**真被采纳**（104: 107 步融合，w 0.906~1.000）。
+- 工具补强：`tools/intact_direct_rollout.py` 现在落盘/打印 GUI 同款哨兵行（收口闸计数 + AOI 报告），headless 也能自证「实际在跑什么」。
+- ⚠️ 口径提醒：同 seed 两次运行 insert 深度会漂（4.2mm ↔ 8.1mm），**别拿单次 insert_mm 下结论**；硬判据用 done + AOI(+ 几何自检)。
+
+### B. Windows exe 点「🎥 真实化运行」必崩 —— 根因已查清并修复（v5.6.5 已发双包）
+- **现象**：`Failed to load dynlib/dll '...\_MEI...\mujoco\plugin\actuator.dll'. Most likely this dynlib/dll was not found when the application was frozen.`
+- **根因**（archive_viewer + pefile + CI 实测，非推测）：打包后 `mujoco/mujoco.dll` 在 `mujoco/` 级、插件在 `mujoco/plugin/` 级；
+  `actuator.dll` 的 PE 导入表依赖 `mujoco.dll`(+VC 运行时)，而 Windows 解析 DLL 依赖只看「DLL 自身目录 + 已注册搜索目录」→
+  PyInstaller 的 ctypes 钩子把底层 OSError 包成上面那句；**底层真因实测 = WinError 1114（DLL 初始化例程失败），老倪机上同一句话**。
+- **修**：新增 `tools/gui/pyi_rth_mujoco_dlls.py`（PyInstaller `--runtime-hook`，在 import mujoco 之前跑）：
+  ①注册 `_MEIPASS`/`mujoco`/`mujoco/plugin` 到 DLL 搜索目录 → ②仍失败则把 mujoco.dll 复制进 plugin/ → ③再复制 VC 运行时 → ④仍失败则显式停用该插件并留证。
+  CI 实测结论 = **阶段①就够**（`dll_fix=stage=dirs_only,n=4`，4 个插件全部加载成功）。
+- **防复发（老倪「发版前先自证」）**：CI 新增**冻结核验** —— 打包后真跑 `Z-MAX_Console.exe --engine-selftest`
+  （真 import mujoco/metaworld + 建 L4 场景模型 + 步进，结果写 json + 退出码；Windows/mac 都跑），不过不发版；
+  另加 **A/B 基线 job**（`workflow_dispatch` 勾 `ab_baseline=true`）：不装钩子的基线**必须崩在 mujoco/actuator.dll** 上才算取证成立。
+- **实证**：正式包 `plugin_handles=4, rc=0`；基线包 `rc=1, cause=WinError 1114 @ mujoco/__init__.py:183` —— 同一 commit、同 collect 参数，只差一个钩子。
+- **产物**：v5.6.5 Release 双包已更新（exe 164,746,355 B / macOS.zip 129,100,144 B，13:24 上传），CI 三 job 全绿。
+- 附：CI runner 无显卡 → 核验里 `render_ok=false (gladLoadGL error)` 属**环境**限制，故意只记录不判失败（真机渲染另走正常路径）。
+
 ## 🔎 2026-09-15 12:35 开机自检（静静 — 上一任务收尾）
 - **时钟**: 开机时 RTC 偏 **+8h**（journal: `setting system clock to 2026-09-15T12:20:49 UTC`），
   NTP 在 12:21:27 拨正；现 `System clock synchronized: yes`，RTC 已写回正确 UTC（下次开机应正常）。
