@@ -384,7 +384,9 @@ class HardwareDiscoveryThread(QThread):
     progress = pyqtSignal(str)
     
     ORIN_HOST = "192.168.23.66"
-    ORIN_USER = "nvidia"
+    ORIN_USER = "tashan"   # 🐛 2026-09-16: 原 "nvidia" 是废弃账号(nvidia@.10 时代) → ssh Permission denied
+                           #    → 硬件工具箱点「🔍发现硬件/连接 Orin」弹「无法连接 192.168.23.66」。
+                           #    当前 Orin 账号 = tashan (密码/免密同上), 直连局域网已打通。
     
     def __init__(self):
         super().__init__()
@@ -432,7 +434,7 @@ class HardwareDiscoveryThread(QThread):
         # 2. ROS2 节点发现
         self.progress.emit("🔍 发现 ROS2 节点...")
         out, rc = self._ssh(
-            "source /opt/ros/humble/setup.bash 2>/dev/null; "
+            "export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash 2>/dev/null; "
             "ros2 node list 2>/dev/null || echo 'NO_ROS2'",
             timeout=8
         )
@@ -450,7 +452,7 @@ class HardwareDiscoveryThread(QThread):
         # 3. ROS2 Topic 发现
         self.progress.emit("🔍 发现 ROS2 Topic...")
         out, rc = self._ssh(
-            "source /opt/ros/humble/setup.bash 2>/dev/null; "
+            "export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash 2>/dev/null; "
             "ros2 topic list 2>/dev/null",
             timeout=8
         )
@@ -467,7 +469,7 @@ class HardwareDiscoveryThread(QThread):
         ])]
         for topic in key_topics[:10]:  # 最多10个
             out, rc = self._ssh(
-                f"source /opt/ros/humble/setup.bash 2>/dev/null; "
+                f"export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash 2>/dev/null; "
                 f"ros2 topic info {topic} 2>/dev/null | head -3",
                 timeout=5
             )
@@ -493,7 +495,7 @@ class HardwareDiscoveryThread(QThread):
         # 6. TCP Bridge 状态
         self.progress.emit("🌉 检查 TCP Bridge...")
         out, rc = self._ssh(
-            "pgrep -f 'orin_forwarder' >/dev/null 2>&1 && echo 'RUNNING' || echo 'STOPPED'",
+            "pgrep -f 'orin_gateway|orin_forwarder' >/dev/null 2>&1 && echo 'RUNNING' || echo 'STOPPED'",
             timeout=5
         )
         results["tcp_bridge"]["running"] = (out == "RUNNING")
