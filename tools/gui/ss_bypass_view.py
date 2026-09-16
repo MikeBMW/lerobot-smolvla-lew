@@ -62,12 +62,14 @@ class CurveWidget(QtWidgets.QWidget):
         self.setMinimumHeight(260)
         self.res = []          # [(t, residual)]
         self.con = []          # [(t, contact_p)]
+        self.dx = []           # [(t, 真机位移速率 m/s)] — 真口径接入前唯一有分辨力的真实通道
         self.rows = 0
 
     def set_data(self, rows):
         self.rows = len(rows)
         self.res = [(float(r.get("t", 0)), float(r.get("residual", 0) or 0)) for r in rows]
         self.con = [(float(r.get("t", 0)), float(r.get("contact_p", 0) or 0)) for r in rows]
+        self.dx = [(float(r.get("t", 0)), float(r.get("dx_real", 0) or 0)) for r in rows]
         self.update()
 
     def _draw(self, p, series, color, label, y0, h, ymin, ymax, fmt):
@@ -96,15 +98,18 @@ class CurveWidget(QtWidgets.QWidget):
         p.setPen(QtCore.Qt.NoPen)
         p.drawEllipse(pts[-1], 3, 3)
         p.setPen(QtGui.QPen(QtGui.QColor(FG), 1))
-        p.drawText(70 + w - 90, y0 + 12, f"最近 {n} 帧")
+        p.drawText(70 + w - 160, y0 + 12, f"最新 {series[-1][1]:.4f} · 最近 {n} 帧")
 
     def paintEvent(self, ev):
         p = QtGui.QPainter(self)
         p.fillRect(self.rect(), QtGui.QColor(PANEL))
-        h = (self.height() - 30) // 2
+        h = (self.height() - 42) // 3
         rmax = max([v for _, v in self.res] + [1e-6])
-        self._draw(p, self.res, C_RES, "残差 (m)", 6, h, 0.0, rmax * 1.15 + 1e-9, lambda v: f"{v:.4f}")
-        self._draw(p, self.con, C_CON, "接触概率", 6 + h + 18, h, 0.0, 1.0, lambda v: f"{v:.2f}")
+        dmax = max([v for _, v in self.dx] + [1e-6])
+        self._draw(p, self.res, C_RES, "残差 (m)", 4, h, 0.0, rmax * 1.15 + 1e-9, lambda v: f"{v:.4f}")
+        self._draw(p, self.con, C_CON, "接触概率", 4 + h + 14, h, 0.0, 1.0, lambda v: f"{v:.2f}")
+        self._draw(p, self.dx, C_OK, "真机位移速率 (m/s)",
+                   4 + 2 * (h + 14), h, 0.0, dmax * 1.15 + 1e-9, lambda v: f"{v:.4f}")
         p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
         p.drawText(60, self.height() - 4, f"逐帧记录 {self.rows} 条 · 横轴=时间(等距) · 纵轴各自归一")
 

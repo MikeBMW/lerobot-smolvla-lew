@@ -140,6 +140,13 @@ def main():
                     bump("缺 tcp_pose")
                     continue
                 x = np.asarray(x, dtype=float)
+                # 真机位移速率 (由相邻真实帧差分; 机器静止≈0, 产线一动立刻有值)
+                _prev = st.get("_prev_x")
+                _pt = st.get("_prev_t")
+                _rt = float(r.get("t", 0))
+                dx_real = (float(np.linalg.norm(x - np.asarray(_prev, dtype=float))) / max(1e-6, _rt - _pt)
+                           if (_prev is not None and _pt is not None and _rt > _pt) else 0.0)
+                st["_prev_x"], st["_prev_t"] = x.tolist(), _rt
                 jv = r.get("jvel")
                 if jv is None:
                     bump("缺关节速度(jvel)")
@@ -217,6 +224,7 @@ def main():
                 st["u_ff_norm"].append(round(un, 5))
                 st["u_ff_norm"] = st["u_ff_norm"][-200:]
                 st["last"] = {"t": r.get("t"), "x": [round(float(q), 5) for q in x],
+                              "dx_real": round(dx_real, 5),
                               "v_norm": round(float(np.linalg.norm(v)), 4),
                               "residual": round(r_scalar, 5), "contact_p": round(contact_p, 4),
                               "stage": stage, "decide": tag, "gripper_cmd": g_cmd,
@@ -231,6 +239,7 @@ def main():
                     "prior": [round(float(q), 6) for q in prior],
                     "u_ff": [round(float(q), 4) for q in u_ff],
                     "u_sat": [round(float(q), 4) for q in u_sat], "gripper_cmd": g_cmd,
+                    "x_real": [round(float(q), 5) for q in x], "dx_real": round(dx_real, 5),
                     "input_map": (pr.get("input_map") if pr else None),
                     "gaps": {k: v for k, v in (("gripper", grip is None), ("ft", ft is None),
                                                ("geometry", r.get("z7") is None)) if v},
