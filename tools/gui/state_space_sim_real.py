@@ -371,6 +371,10 @@ class RealStateSpaceSim:
         self._lie_stats = {"frames": 0, "ran": 0, "refused": 0, "no_latent": 0, "applied": 0,
                            "xi_norm": None, "om_norm": None, "cond_dim": 0, "cos": [],
                            "src": "", "err": None, "xi_hist": [], "om_hist": []}
+        # 🛡 2026-09-16 质量闸 (老倪门槛: 未证明提升不得进默认档): 逐阶段判"上层是否优于 L2",
+        #   未过闸的阶段 K 强制 0 (只记录不抬增益)。models/lie_quality_gate.json
+        self._gate_cache = None
+        self._gate_stats = {"blocked": 0, "allowed": 0, "stages": {}}
         if self.mode not in ("insert", "full"):
             raise ValueError(f"mode 必须是 insert/full, 收到 {self.mode!r}")
         self.vision = vision          # R1: 工件感知 (光模块/hole) 走 YOLO; hand 恒编码器真值
@@ -1862,6 +1866,40 @@ class RealStateSpaceSim:
             pass
         return self._lie_frame
 
+    def _quality_gate(self) -> dict:
+        """🛡 质量闸: 逐阶段判"上层是否优于 L2" (models/lie_quality_gate.json)。
+
+        未过闸的阶段 → 增益强制 0 (只记录不抬)。文件缺失 = 不限制 (但会在摘要里如实标注)。
+        """
+        if self._gate_cache is not None:
+            return self._gate_cache
+        try:
+            import json as _json                                             # noqa: PLC0415
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            p = os.environ.get("SS_L4_QUALITY_MAP") or os.path.join(_root, "models",
+                                                                   "lie_quality_gate.json")
+            if not os.path.isfile(p):
+                self._gate_cache = {"stages": {}, "src": "无质量闸文件 → 不限制 (诚实标注)"}
+            else:
+                _d = _json.load(open(p, encoding="utf-8"))
+                self._gate_cache = {"stages": _d.get("stages") or {}, "margin": _d.get("margin"),
+                                    "global": _d.get("global"),
+                                    "src": os.path.basename(p)}
+                _ok = [k for k, v in (self._gate_cache["stages"] or {}).items() if v.get("pass")]
+                self.log(f"🛡 质量闸已加载 ({os.path.basename(p)}): 允许抬增益的阶段={_ok or '无'}")
+        except Exception as e:                                               # noqa: BLE001
+            self._gate_cache = {"stages": {}, "src": f"加载失败 {type(e).__name__}: {e}"}
+        return self._gate_cache
+
+    def quality_summary(self) -> dict:
+        g = self._quality_gate()
+        return {"enabled": os.environ.get("SS_QUALITY_GATE", "1") == "1",
+                "src": g.get("src"), "margin": g.get("margin"),
+                "allowed_stages": [k for k, v in (g.get("stages") or {}).items() if v.get("pass")],
+                "blocked_stages": [k for k, v in (g.get("stages") or {}).items() if not v.get("pass")],
+                "blocked_frames": int(self._gate_stats["blocked"]),
+                "allowed_frames": int(self._gate_stats["allowed"])}
+
     def lie_summary(self) -> dict:
         """李群意图层取证摘要 (全部实测)。"""
         s = self._lie_stats
@@ -2925,6 +2963,25 @@ class RealStateSpaceSim:
                                 self._gain_stats["refused"] += 1
                                 _gsrc += f" · ⛔否决(cos={_cs:.3f}{' 反向' if _cs < 0 else ''}" \
                                          f"{' 超幅' if _rt > 1.5 else ''})"
+                        # 🛡 2026-09-16 质量闸 (老倪门槛): 该阶段若"上层未证明优于 L2" → K 强制 0
+                        #   (逐阶段判据由 tools/fit_lie_quality_gate.py 用真值样本 LOSO 标定)
+                        if os.environ.get("SS_QUALITY_GATE", "1") == "1" and _w_use > 0.0:
+                            try:
+                                _gq = (self._quality_gate().get("stages") or {})
+                                _sk2 = str(st_now).replace("阶段 ", "").split("·")[0].strip()
+                                _vi = _gq.get(_sk2)
+                                if _vi is not None and not bool(_vi.get("pass")):
+                                    _w_use = 0.0
+                                    self._gain_stats["refused"] += 1
+                                    self._gate_stats["blocked"] += 1
+                                    self._gate_stats["stages"][_sk2] = \
+                                        self._gate_stats["stages"].get(_sk2, 0) + 1
+                                    _gsrc += (f" · 🛡质量闸否决({_sk2}: cos_L4={_vi.get('cos_l4')} ≤ "
+                                              f"L2 {_vi.get('cos_l2')}+{_vi.get('delta')})")
+                                else:
+                                    self._gate_stats["allowed"] += 1
+                            except Exception:                                      # noqa: BLE001
+                                pass
                 _stk.note_l2(np.asarray(u_ff, float),
                              src=("analytic/L3 参考 · 🎚 L2 肌肉记忆主导 (增益 0)" if
                                   (_go is not None and _w_use <= 0.0) else "analytic/L3 参考"))

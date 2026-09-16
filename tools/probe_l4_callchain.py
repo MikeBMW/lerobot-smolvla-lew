@@ -329,6 +329,12 @@ def run_engine(scen: str) -> dict:
             extra["il_summary"] = sim.l4_intent_line_summary()
     except Exception as _e:                                                      # noqa: BLE001
         extra["il_summary"] = {"err": f"{type(_e).__name__}: {_e}"}
+    # 🛡 2026-09-16 质量闸取证 (逐阶段"上层是否优于 L2"; 未过闸 → K 强制 0)
+    try:
+        if hasattr(sim, "quality_summary"):
+            extra["quality_summary"] = sim.quality_summary()
+    except Exception as _e:                                                      # noqa: BLE001
+        extra["quality_summary"] = {"err": f"{type(_e).__name__}: {_e}"}
     # 🧭 2026-09-16 李群意图层取证 (SU(2)/SE(3): 意图 Δz → ω/ξ → DiT token + 导航方向)
     try:
         if hasattr(sim, "lie_summary"):

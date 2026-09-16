@@ -243,6 +243,29 @@ def contact_decompose(e_tw, axis=(0.0, 0.0, 1.0)):
     return float(v @ ax), float(np.linalg.norm(v - (v @ ax) * ax)), float(np.linalg.norm(e[:3]))
 
 
+def wrap_pi(ang):
+    """角度折叠到 (−π, π]。"""
+    return float((float(ang) + np.pi) % (2.0 * np.pi) - np.pi)
+
+
+def yaw_from_twist(e_tw, axis=(0.0, 0.0, 1.0)):
+    """🧭 SU(2) 姿态意图: 从接触 twist 取出**绕插拔轴需要的修正角** (rad)。
+
+    e = log(T_hole⁻¹·T_peg) 的旋转部分 ω 是"孔系里还差多少旋转"; 绕轴的残差 = ω·â,
+    要消除它需要把夹爪绕轴转 −ω·â ⇒ 返回该值 (弧度, 折叠到 (−π,π])。
+    这是 yaw 通道的 **SU(2) 几何先验** (替代"猜测残余失配 δφ"的经验假设)。
+    """
+    e = np.asarray(e_tw, float).reshape(6)
+    ax = np.asarray(axis, float) / max(np.linalg.norm(axis), EPS)
+    return wrap_pi(-float(e[:3] @ ax))
+
+
+def geodesic_deg(a_deg, b_deg):
+    """圆上测地距离 (度), 180° 折叠 (长条模块绕 z 转 180° 等价 → 距离 0)。"""
+    d = abs(wrap_pi(np.deg2rad(float(a_deg) - float(b_deg))))
+    return float(np.rad2deg(min(d, np.pi - d)))
+
+
 # ══════════════════════════ 切空间增益融合 ══════════════════════════
 class LieGainBlend:
     """🎚 增益在**李代数**里做融合 (老倪: L2 执行 / L4 导航 / L3 流程, 记忆层协调)。
@@ -379,6 +402,12 @@ class LieIntentMap:
         Zd = self._design(z, self.P)
         return (Zd @ self.W_su2).reshape(3), (Zd @ self.W_se3).reshape(6)
 
+    def predict_batch(self, dz) -> tuple[np.ndarray, np.ndarray]:
+        """批量: (n,192) → ((n,3), (n,6))。"""
+        Z = np.asarray(dz, float).reshape(len(dz), -1)
+        Zd = self._design(Z, self.P)
+        return Zd @ self.W_su2, Zd @ self.W_se3
+
 
 # ══════════════════════════ 自检 ══════════════════════════
 def self_test() -> int:
@@ -500,7 +529,27 @@ def self_test() -> int:
     print(f"⑪ R↔quat 往返: 200 组最大误差 {e11:.2e} → {'✓' if e11 < 1e-9 else '✗'}")
     ok &= e11 < 1e-9
 
-    print(f"── 自检结论: {'11/11 全过' if ok else '有判据未过'} ──")
+    # ⑫ SU(2) yaw 先验: 孔相对光模块转 90° → 需要的修正角 = −90° (符号/量级都对)
+    T_h = se3_make([1, 0, 0, 0], [0.5, 0.0, 0.1])
+    T_p = se3_make(quat_exp([0, 0, np.deg2rad(90)]), [0.5, 0.0, 0.1])
+    ph_req = float(np.rad2deg(yaw_from_twist(contact_twist(T_p, T_h))))
+    c12 = abs(ph_req + 90.0) < 1e-6
+    print(f"⑫ SU(2) yaw 先验: 孔−件转 90° → 修正角 {ph_req:+.4f}° (期望 −90°) → "
+          f"{'✓' if c12 else '✗'}")
+    ok &= c12
+
+    # ⑬ 圆上测地距离: 180° 折叠 (长条件 180° 等价) + 对称性 + 三角不等式抽样
+    d1 = geodesic_deg(0.0, 90.0)
+    d2 = geodesic_deg(0.0, 180.0)
+    d3 = geodesic_deg(90.0, 90.0)
+    d4 = min(abs(geodesic_deg(a, b) - geodesic_deg(b, a)) for a, b in
+             [(0.0, 45.0), (30.0, -120.0), (170.0, -170.0)])
+    c13 = (abs(d1 - 90.0) < 1e-6 and abs(d2 - 0.0) < 1e-6 and abs(d3) < 1e-9 and d4 < 1e-9)
+    print(f"⑬ 圆测地距离: d(0,90)={d1:.4f}° · d(0,180)={d2:.4f}° (=0, 180° 等价) · "
+          f"d(90,90)={d3:.1e} · 对称性误差 {d4:.1e} → {'✓' if c13 else '✗'}")
+    ok &= c13
+
+    print(f"── 自检结论: {'13/13 全过' if ok else '有判据未过'} ──")
     return 0 if ok else 1
 
 

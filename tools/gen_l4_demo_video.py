@@ -27,6 +27,10 @@ ROOT = (os.environ.get("ZMAX_L4_ROOT")
         or getattr(sys, "_MEIPASS", "")
         or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+# 🧭 2026-09-16: 李群几何模块 (lerobot.manifold.lie_intent) 需要 src 在路径上
+_SRC = os.path.join(ROOT, "src")
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 import numpy as np
 import mujoco
 import metaworld
@@ -488,6 +492,113 @@ class L4Demo:
             n += 1
         return float(np.linalg.norm(self.peg_head() - desired)), n
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 🧭 2026-09-16 老倪: SU(2) 意图并进 **yaw 出口** (Arm C)
+    #   引擎动作里没有旋转维 (姿态走 yaw 通道), 所以"让 SU(2) 参与控制"的唯一真实出口 = 这里。
+    #   几何量: 接触 twist e = log(T_hole⁻¹·T_peg) (孔系表达), 绕轴残差 → 需要的修正角
+    #           Δφ_L4 = yaw_from_twist(e); 脚本参考 Δφ_L2 = 计划角 − 当前角。
+    #   融合:   Δφ = (1−K)·Δφ_L2 + K·Δφ_L4   (切空间/一维李代数, K=0 → 逐位等于脚本臂)
+    #   K 来源: 记忆层判据 (事件→Q 的卡尔曼增益, 同引擎): 阶段切换 / 残差不降 (停滞) → 抬 K。
+    #   开关:   SS_L4_LIE_YAW=1 才启用 (不设 = 原有 Arm A/B 行为一行不改)。
+    # ═══════════════════════════════════════════════════════════════════════════
+    def _contact_twist_demo(self):
+        """🧭 接触 twist: log(T_hole⁻¹ · T_peg), 位姿直读 MuJoCo (site_xmat/xpos), 不写死几何。"""
+        try:
+            from lerobot.manifold.lie_intent import contact_twist, quat_from_R, se3_make
+            _hole_id = self.m.site("hole").id
+            T_hole = se3_make(quat_from_R(self.d.site_xmat[_hole_id].reshape(3, 3)),
+                              self.d.site_xpos[_hole_id])
+            T_peg = se3_make(quat_from_R(self.d.xmat[self.peg_id].reshape(3, 3)),
+                             self.d.xpos[self.peg_id])
+            return contact_twist(T_peg, T_hole)
+        except Exception:                                                     # noqa: BLE001
+            return None
+
+    def _su2_yaw_gain(self):
+        """记忆层判据 → K (与引擎同一套: 事件抬 Q, 熟场景回落)。"""
+        if getattr(self, "_lie_gs", None) is None:
+            try:
+                from lerobot.manifold.lie_intent import GainScheduler  # noqa: PLC0415
+                self._lie_gs = GainScheduler(enabled=True, kmin=0.0, kmax_nav=0.5)
+            except Exception:                                                 # noqa: BLE001
+                self._lie_gs = False
+        return self._lie_gs or None
+
+    def _align_yaw_su2(self, max_steps=400, slew_rad=0.03, script_deg=90.0):
+        """Arm C: SU(2) 几何 yaw (接触 twist 残差) + 增益融合; Δφ 切空间凸组合, slew 同其它臂。"""
+        from lerobot.manifold.lie_intent import wrap_pi, yaw_from_twist     # noqa: PLC0415
+        gs = self._su2_yaw_gain()
+        yaw = float(self.env._grip_yaw)
+        req_hist, k_hist, res_hist = [], [], []
+        for n in range(max_steps):
+            e = self._contact_twist_demo()
+            dphi_l4 = yaw_from_twist(e) if e is not None else 0.0          # SU(2) 几何修正
+            dphi_l2 = math.radians(script_deg) - yaw                       # 脚本参考修正
+            res_deg = abs(math.degrees(wrap_pi(dphi_l2 - dphi_l4)))
+            # 事件: 首帧阶段切换 + 残差不降 (停滞, 几何残差没在被消除)
+            stall = 1.0 if (len(res_hist) >= 12 and min(res_hist[-12:]) > res_hist[-12] * 0.995) else 0.0
+            k = 0.0
+            if gs is not None:
+                o = gs.step(u_l2=np.array([dphi_l2]), u_nav=np.array([dphi_l4]),
+                            stage_switch=1.0 if n == 0 else 0.0, stall=stall)
+                k = float(o.k_nav)
+            req_hist.append(dphi_l4)
+            res_hist.append(res_deg)
+            k_hist.append(k)
+            dphi = (1.0 - k) * dphi_l2 + k * dphi_l4
+            step = max(-slew_rad, min(slew_rad, dphi))
+            yaw += step
+            self.env._grip_yaw = yaw
+            if n % 40 == 0:
+                self.log(f"    🧭 SU(2) yaw 决策#{n}: Δφ_L4={math.degrees(dphi_l4):+.2f}° "
+                         f"Δφ_L2={math.degrees(dphi_l2):+.2f}° K={k:.3f} → 下发 {math.degrees(yaw):+.1f}°")
+            self.step(np.array([0.0, 0.0, 0.0, 0.0]))
+            if abs(dphi) < 1e-3:
+                break
+        try:
+            self._lie_yaw_info = {"phi_deg": float(math.degrees(yaw)),
+                                  "dphi_l4_last": float(math.degrees(req_hist[-1])),
+                                  "k_mean": float(np.mean(k_hist)), "k_last": float(k_hist[-1]),
+                                  "res_last_deg": float(res_hist[-1]), "steps": len(k_hist)}
+        except Exception:                                                     # noqa: BLE001
+            self._lie_yaw_info = None
+        self.history.append(
+            f"② 姿态适配(SU(2) 几何 yaw + 增益): 指令 {math.degrees(yaw):.1f}° · "
+            f"几何残差 Δφ_L4={math.degrees(req_hist[-1]):+.2f}° · K 均 {np.mean(k_hist):.3f} "
+            f"({len(k_hist)} 步)")
+        return float(math.degrees(yaw))
+
+    def align_yaw_su2_loop(self, max_steps=300, slew_rad=0.008, tol_deg=0.5, k=0.6):
+        """🧭 ② 之后的 Arm C (夹持后): 用接触 twist 的绕轴残差**闭环**转 yaw 到几何对齐。
+
+        ⚠️ 实测教训 (2026-09-16): ② 段的 twist 由转台决定、夹爪是空的 → 夹爪转不动它,
+        所以那里 Δφ_L4 不是可控目标 (本轮实测 K→0、让位脚本, 结果与脚本臂一致);
+        夹持之后 twist 直接随夹爪变化 ⇒ 这里才是 SU(2) 残差真正可控的段。
+        返回 (起始残差°, 收尾残差°, 步数); 不收敛就如实返回 (后面的姿态预检会拦)。
+        """
+        from lerobot.manifold.lie_intent import yaw_from_twist               # noqa: PLC0415
+        e0 = self._contact_twist_demo()
+        r0 = math.degrees(yaw_from_twist(e0)) if e0 is not None else float("nan")
+        n = 0
+        for _ in range(max_steps):
+            e = self._contact_twist_demo()
+            if e is None:
+                break
+            dphi = yaw_from_twist(e)
+            if abs(math.degrees(dphi)) < tol_deg:
+                break
+            step = max(-slew_rad, min(slew_rad, k * dphi))
+            self.env._grip_yaw = float(self.env._grip_yaw) + step
+            self.step(np.concatenate([np.zeros(3), [1.0]]))       # 夹持保持 (g=+1, 防掉件)
+            n += 1
+        e1 = self._contact_twist_demo()
+        r1 = math.degrees(yaw_from_twist(e1)) if e1 is not None else float("nan")
+        self._lie_yaw_info = {"res_start_deg": float(r0), "res_end_deg": float(r1), "steps": n,
+                              "grip_yaw_deg": float(math.degrees(self.env._grip_yaw))}
+        self.log(f"   🧭 SU(2) 几何对准闭环: 绕轴残差 {r0:+.2f}° → {r1:+.2f}° ({n} 步, "
+                 f"yaw={math.degrees(self.env._grip_yaw):+.1f}°)")
+        return r0, r1, n
+
     def ramp_yaw(self, target, step_rad=0.02, hold=None, g=1.0, max_steps=600):
         """夹持中渐进转 yaw (防猛拉甩脱), 位置保持"""
         cur = self.env._grip_yaw
@@ -561,7 +672,11 @@ class L4Demo:
         self.env._grip_yaw = 0.0
         self.servo(pc + np.array([0, 0, 0.15]), tol=0.006, max_steps=600)
         # 🧠 Arm B: yaw 指令由流形预测器决策 (老倪: 让流形预测器真正发旋转指令)
-        if self._mani_yaw and self._mani_act is not None:
+        # 🧭 2026-09-16 Arm C (SS_L4_LIE_YAW=1): 指令由 **SU(2) 几何残差 (接触 twist)** 给,
+        #   与脚本参考在切空间按增益 K 融合 (K=0 → 逐位等于脚本臂行为)。
+        if os.environ.get("SS_L4_LIE_YAW") == "1":
+            self._yaw_cmd_deg = self._align_yaw_su2()
+        elif self._mani_yaw and self._mani_act is not None:
             self._yaw_cmd_deg = self._align_yaw_manifold()
         else:
             self.ramp_yaw(math.pi/2, step_rad=0.03, hold=None, g=0.0, max_steps=400)
@@ -757,6 +872,10 @@ class L4Demo:
         ph = self.peg_head()
         self.servo_head(np.array([hole[0], hole[1], ph[2]]), tol=0.008, max_steps=900)
         self.servo_head(hole, tol=0.006, max_steps=500)
+        # 🧭 2026-09-16 (SS_L4_LIE_YAW=1): 插入前用 **SU(2) 接触 twist 残差闭环** 把姿态对死
+        #   (夹持后 twist 随夹爪变 = 可控段; ② 段空夹爪不可控, 那里让位脚本参考)
+        if os.environ.get("SS_L4_LIE_YAW") == "1":
+            self.align_yaw_su2_loop()
         # 🛡 预检: peg 长轴必须沿 x (横置态插入会撞孔盒/产生假推进 — 回正失败不硬来)
         xa = self.d.xmat[self.peg_id].reshape(3, 3)[:, 0].copy()
         xa[2] = 0.0
