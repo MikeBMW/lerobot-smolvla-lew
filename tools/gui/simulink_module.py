@@ -11440,11 +11440,41 @@ class SimulinkModule(QWidget):
                                  "此处不写死数字")
                 elif not _demo_cap:
                     os.environ.pop("SS_INTACT", None)   # 非 L4 档: 清掉, 不影响解析链/L3
+                # 🧠 2026-09-16 老倪: "L2 功能应该和 L4 功能兼容, 运行 L4 的时候 L2 也要运行" ——
+                #   档位内接线 (全局默认值不动):
+                #     ①前馈蒸馏 MLP 真身 (L2 执行层): 不设 SS_USE_MLP 时装配期
+                #       state_space_sim_real.py:399 把 accel.forward 覆盖成 analytic_forward
+                #       → 那段真身一次都不进 (实测 真身进入 0 次 / n_mlp=0 / n_guard=0);
+                #     ②R1 真实视觉 (L2 感知链 YOLO): 原来只给 L3 档 → L4 档日志恒打
+                #       "YOLO 未启动" (实测 [n/4000] 行);
+                #   只在 **L4 + 引擎路径** (勾「🤖INTACT 节点执行」/「🧠模型执行」) 生效;
+                #   L4 纯演示档走 L4Demo 独立链, 与引擎 vision 无关, 不动;
+                #   非 L4 档: pop 回原状 → L2/L3 逐位零回退。开关 SS_L4_L2_COMPAT=1 可开 (默认关)。
+                #   档位内接线; **默认关** —— 同口径 A/B (gui-venv311 · seed104 · 120 步 · cap=l4):
+                #     臂A 现状 n_mlp=0 · YOLO 未启动 · 终点 0.42mm
+                #     臂B 接线 n_mlp=120(每帧真身) · YOLO 240/240 检出 · 终点 **6.82mm** (16×)
+                #   ⇒ 接了但不进默认档 (老倪门槛: 未证明提升不得进默认档); 要开: SS_L4_L2_COMPAT=1
+                _l4_cap = str(_cap or "").upper().startswith("L4")
+                _l2_compat = bool(_l4_cap and (not _demo_cap)
+                                  and os.environ.get("SS_L4_L2_COMPAT", "0") == "1")
+                if _l2_compat:
+                    os.environ["SS_USE_MLP"] = "1"
+                    _logs.append("🧩 L4 档 · L2 兼容已开 (SS_L4_L2_COMPAT=1): 前馈蒸馏 MLP 真身 "
+                                 "(SS_USE_MLP=1) + R1 真实视觉 YOLO (vision=True) 同档运行")
+                    _logs.append("   └ ⚠️ 实测代价 (seed104/120步): 终点距离 0.42 → 6.82mm (YOLO 检测"
+                                 "误差进 obs + MLP 在分布边缘), 属精度回退 ⇒ 默认关")
+                else:
+                    os.environ.pop("SS_USE_MLP", None)   # 非 L4/演示档: 原位不动 (零回退)
                 sim = RealStateSpaceSim(seed=104,
                                         # 🎯 L3 档用 R1 视觉(原样, 老倪明确不动); 
                                         #   L4 改为引擎链路后用 R0 真值 — R1 每帧 YOLO 要 5-9 分钟/轮,
                                         #   太慢看不清完整"插→拔→AOI"链 (老倪要看全链动作)
-                                        vision=(str(_cap or "").upper() == "L3") and (not _model_exec),
+                                        # 🧩 2026-09-16 老倪改口: "运行 L4 时 L2 也要运行" →
+                                        #   L4 引擎路径也开 R1 视觉 (代价: 每帧 detect_3d, 一轮 5-9 分钟);
+                                        #   L2 兼容整体关 (SS_L4_L2_COMPAT=0) 时回到 R0 真值。
+                                        vision=((str(_cap or "").upper() == "L3" and not _model_exec)
+                                                or (str(_cap or "").upper().startswith("L4")
+                                                    and (not _model_exec) and _l2_compat)),
                                         vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
                                         demo_l4=_demo_cap,

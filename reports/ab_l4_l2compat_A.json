@@ -1,0 +1,1 @@
+{"arm": "A", "steps": 120, "vision": false, "SS_USE_MLP": null, "mlp_loaded": true, "ff_is_none": false, "forward_overridden_at_start": true, "n_mlp": 0, "n_guard": 0, "yolo_shots": 0, "yolo_dets": 0, "yolo_log_sample": "[100/120] 阶段=下降 残差=0.001 接触p=0.50 grp=1.00 grasped=False · YOLO 未启动", "dist_min_mm": 0.13, "dist_last_mm": 0.42, "done": false, "elapsed_s": 3.3}
