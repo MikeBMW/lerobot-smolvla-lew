@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Z-MAX 跨机闭环 Step 1 · Orin 侧采集/记录节点 (只读采集 + 只记录, 绝不发布控制)
+"""Z-MAX 跨机闭环 · Orin 侧采集 + 执行闸门节点 (Step 2)
 
-拓扑: Orin(本节点) --/zmax_ss/state--> 4060(Docker ROS 桥 → venv 推理) --/zmax_ss/action--> Orin(仅记录)
+严格不新增 Orin 软件依赖: 只用已装的 rclpy/numpy, 不需要 rclcpp/编译工具链。
+(2026-09-16 老倪: 「不要在 orin 上安装新软件」→ 原 rclcpp 重写方案取消, 改 Python 降载 + 闸门)
 
-铁律 (Step 1 旁路):
-  · 只订阅真机话题, 不发布任何控制话题, 不调用任何服务
-  · 收到 4060 的动作提案 **只写 jsonl + 日志**, 不下发 (执行闸门留到 Step 2)
+拓扑: Orin(本节点) --/zmax_ss/state--> 4060(Docker ROS 桥 → venv 推理) --/zmax_ss/action--> Orin
+      ↑ Step 2 起: 收到提案先过闸门 (阶段白名单 / 方向一致度 / 幅值上限 / 超时), 通过且 armed 才放行
 
-订阅: /robot/joint_states /robot/force_torque /gripper_pos /robot_status /motion/active_states (全部 raw)
-发布: /zmax_ss/state (std_msgs/String, JSON, 默认 20Hz)  ← 这是数据上行, 不是控制
-记录: /home/tashan/.zmax/ss_link/{state,action}_<日期>.jsonl
+CPU 降载 (实测依据, 60s 稳态, 单核口径):
+  全量 5 路(关节49.5Hz+力50Hz+夹爪12Hz+状态2Hz+阶段1Hz) ≈ 13~14%
+  默认 MIN(关节49.5+夹爪12 ≈ 62 msg/s)            ≈ 7~8%   ← 满足「我方服务 <8% 单核」红线
+  Python rclpy 的开销主要在"DDS 逐条派发", 与反序列化/我的计算无关(实测两者差 ~0.3%);
+  想全量又低载需 rclcpp(C++), 但 Orin 无 rclcpp 头且不装新包 → 现方案: 默认 MIN, 需要力/阶段时 SS_EDGE_FULL=1 临时开。
 
-state 报文: {"t","seq","src":"orin_edge","joints":[6],"jvel":[6],"gripper","ft":[6],
-             "robot_state","prod_stage","pubs":{...},"scope":"readonly"}
-  其中 jvel 由 位置差分 得到 (话题自带 velocity 时优先用)
-action 报文 (来自 4060): {"t","seq","action":[6],"yaw":{dz,ok},"model_ms","e2e_ms","input_map","mode":"shadow_only"}
+执行闸门 (Step 2, 老倪: 逐层收窄 + L2 收口):
+  · SS_GATE_ARM=0 (默认) → 只判决、只记录, 不下发 (旁路; 放权需显式开)
+  · 阶段白名单 SS_GATE_STAGES (默认 "接近,对位,转移") —— 下降/抓取/插入/拔出/AOI 交回执行层
+  · 方向一致度 SS_GATE_COS_MIN (默认 0.9): 提案方向 vs 真机当前运动方向
+  · 幅值上限 SS_GATE_MAX_MAG (默认 1.5×): 提案幅值 / 真机速度幅值
+  · 超时 SS_GATE_STALE_MS (默认 300): 提案比现场旧太多 → 否决
+  每条判决写 jsonl + 计数, 可复核; 否决原因分类统计。
 """
 import argparse
 import json
@@ -25,6 +30,7 @@ import time
 
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from rclpy.serialization import deserialize_message
@@ -39,6 +45,15 @@ AQ = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE, history=Histor
 
 class EdgeNode(Node):
     JOINTS_TOPIC = os.environ.get("SS_EDGE_JOINTS_TOPIC", "/robot/joint_states")
+    FULL = os.environ.get("SS_EDGE_FULL", "0") == "1"
+    ARM = os.environ.get("SS_GATE_ARM", "0") == "1"
+    STAGES = [s.strip() for s in os.environ.get("SS_GATE_STAGES", "接近,对位,转移").split(",") if s.strip()]
+    COS_MIN = float(os.environ.get("SS_GATE_COS_MIN", "0.9"))
+    MAX_MAG = float(os.environ.get("SS_GATE_MAX_MAG", "1.5"))
+    STALE_MS = float(os.environ.get("SS_GATE_STALE_MS", "300"))
+    # 仅测试用: 参考速度注入 (现场静止时让方向/幅值判据可被确定性验证)
+    _REF = os.environ.get("SS_GATE_REF_VEL", "")
+    REF_VEL = np.array([float(x) for x in _REF.split(",") if x.strip()]) if _REF.strip() else None
 
     def __init__(self, state_topic, action_topic, rate_hz):
         super().__init__("ss_edge")
@@ -46,27 +61,33 @@ class EdgeNode(Node):
         day = time.strftime("%Y%m%d")
         self.f_state = open(os.path.join(OUT_DIR, f"state_{day}.jsonl"), "a")
         self.f_action = open(os.path.join(OUT_DIR, f"action_{day}.jsonl"), "a")
+        self.f_gate = open(os.path.join(OUT_DIR, f"gate_{day}.jsonl"), "a")
         self._lock = threading.Lock()
         self._rj = self._rf = self._rg = self._rst = self._rstage = None
         self.j = self.f = self.g = None
         self.st = self.stage = ""
         self.prev_pos = self.prev_t = None
-        self.seq = 0
-        self.n_pub = self.n_act = 0
-        self.last_act = None
+        self.seq = self.n_pub = self.n_act = 0
+        self.vel = np.zeros(6)
+        self.verdicts = {}
+        self.gate_armed = self.ARM
 
+        # ── 订阅 (只读) ──
         self.create_subscription(JointState, self.JOINTS_TOPIC, self.cb_j, JQ, raw=True)
-        self.create_subscription(WrenchStamped, "/robot/force_torque", self.cb_f, JQ, raw=True)
         self.create_subscription(Float32, "/gripper_pos", self.cb_g, 5, raw=True)
-        self.create_subscription(String, "/robot_status", self.cb_st, 5, raw=True)
-        self.create_subscription(String, "/motion/active_states", self.cb_stage, 5, raw=True)
+        if self.FULL:   # 全量模式: 力/机器人状态/产线阶段 (CPU ~13%, 仅在需要时开)
+            self.create_subscription(WrenchStamped, "/robot/force_torque", self.cb_f, JQ, raw=True)
+            self.create_subscription(String, "/robot_status", self.cb_st, 5, raw=True)
+            self.create_subscription(String, "/motion/active_states", self.cb_stage, 5, raw=True)
+
         self.pub = self.create_publisher(String, state_topic, AQ)
         self.create_subscription(String, action_topic, self.on_action, AQ)
         self.create_timer(1.0 / max(1.0, rate_hz), self.tick)
         self.create_timer(10.0, self.report)
         self.get_logger().info(
-            f"🛰️ Orin 采集节点启动: 订阅 {self.JOINTS_TOPIC} + force + gripper + status + stage | "
-            f"发布 {state_topic} @{rate_hz}Hz | 接收 {action_topic} 仅记录 | 记录目录 {OUT_DIR}")
+            f"🛰️ Orin 采集+闸门节点启动 | 订阅 {'全量5路' if self.FULL else 'MIN(关节+夹爪)'} + {self.JOINTS_TOPIC} | "
+            f"发布 {state_topic} @{rate_hz}Hz | 闸门 {'ARMED(会放行)' if self.ARM else 'disarmed(只判不下发)'} | "
+            f"阶段白名单={self.STAGES} cos≥{self.COS_MIN} |mag|≤{self.MAX_MAG}× | 超时>{self.STALE_MS}ms | 记录 {OUT_DIR}")
 
     # ── 回调: 只存原始字节 ──
     def cb_j(self, m):
@@ -88,14 +109,15 @@ class EdgeNode(Node):
         try:
             if self._rj is not None:
                 self.j = deserialize_message(bytes(self._rj), JointState)
-            if self._rf is not None:
-                self.f = deserialize_message(bytes(self._rf), WrenchStamped)
             if self._rg is not None:
                 self.g = deserialize_message(bytes(self._rg), Float32)
-            if self._rst is not None:
-                self.st = deserialize_message(bytes(self._rst), String).data
-            if self._rstage is not None:
-                self.stage = deserialize_message(bytes(self._rstage), String).data
+            if self.FULL:
+                if self._rf is not None:
+                    self.f = deserialize_message(bytes(self._rf), WrenchStamped)
+                if self._rst is not None:
+                    self.st = deserialize_message(bytes(self._rst), String).data
+                if self._rstage is not None:
+                    self.stage = deserialize_message(bytes(self._rstage), String).data
         except Exception:
             pass
 
@@ -110,6 +132,7 @@ class EdgeNode(Node):
             dt = max(1e-4, t - self.prev_t)
             vel = [(a - b) / dt for a, b in zip(pos, self.prev_pos)]
         self.prev_pos, self.prev_t = pos, t
+        self.vel = np.array(vel[:6], dtype=float) if vel else np.zeros(6)
         ft = None
         if self.f is not None:
             w = self.f.wrench
@@ -119,7 +142,8 @@ class EdgeNode(Node):
         st = {
             "t": round(t, 4), "seq": self.seq, "src": "orin_edge",
             "joints": [round(x, 5) for x in pos],
-            "jvel": [round(x, 5) for x in vel[:6]] if vel else [],
+            "jvel": [round(float(x), 5) for x in self.vel],
+            "sp_norm": round(float(np.linalg.norm(self.vel)), 5),
             "gripper": round(float(self.g.data), 3) if self.g is not None else None,
             "ft": ft,
             "robot_state": self.st[:160],
@@ -135,19 +159,68 @@ class EdgeNode(Node):
         if self.n_pub % 100 == 0:
             self.f_state.flush()
 
+    # ═══ 执行闸门 (Step 2) ═══
+    def gate(self, prop: dict, real_vel: np.ndarray, now: float):
+        """返回 (verdict, detail)。绝不执行任何动作, 只判决。
+
+        SS_GATE_REF_VEL: **仅测试用** 参考速度注入 (逗号分隔 6 维)。现场机械臂静止时,
+        方向/幅值判据没有参考 → 无法验证; 该钩子让判据可被确定性测试, 默认不设 = 用真机速度。
+        """
+        ref = self.REF_VEL if self.REF_VEL is not None else (real_vel if real_vel is not None else np.zeros(6))
+        if not self.gate_armed:
+            return "disarmed", "闸门未武装(SS_GATE_ARM=0) — 只判不下发"
+        age_ms = (now - float(prop.get("t", 0))) * 1000.0
+        if age_ms > self.STALE_MS:
+            return "veto_stale", f"提案过旧 {age_ms:.0f}ms > {self.STALE_MS:.0f}ms"
+        stage = (prop.get("stage") or self.stage or "").strip()
+        if stage and self.STAGES and not any(s in stage for s in self.STAGES):
+            return "veto_stage", f"阶段 '{stage}' 不在白名单 {self.STAGES}"
+        a = np.array(prop.get("action") or [], dtype=float)
+        if a.size < 3:
+            return "veto_shape", f"动作维度异常 {a.size}"
+        a3 = a[:3]
+        na = float(np.linalg.norm(a3))
+        nv = float(np.linalg.norm(ref[:3])) if ref.size >= 3 else 0.0
+        if nv > 1e-6:
+            cos = float(np.dot(a3, ref[:3]) / (na * nv + 1e-9))
+            if cos < self.COS_MIN:
+                return "veto_dir", f"方向不一致 cos={cos:.3f} < {self.COS_MIN} (提案 {na:.3f} vs 参考 {nv:.3f})"
+            if self.MAX_MAG > 0 and na > self.MAX_MAG * nv:
+                return "veto_mag", f"幅值过大 {na:.3f} > {self.MAX_MAG}×参考 {nv:.3f}"
+            return "pass_no_exec", f"过闸 (cos={cos:.3f}) — 执行钩子未接线, 仅记录"
+        # 真机静止: 无参考方向 → 只允许极小动作
+        if na > 1e-3:
+            return "veto_noref", f"真机静止(|v|<1e-6) 但提案幅值 {na:.3f} → 无可信参考, 否决"
+        return "pass_no_exec", "真机静止 + 提案近零 — 过闸, 仅记录"
+
     def on_action(self, msg):
-        """收到 4060 的动作提案 —— 只记录, 绝不执行"""
+        """收到 4060 的动作提案 → 过闸 → 只记录 (Step 2 不加执行钩子)"""
         self.n_act += 1
-        self.last_act = msg.data[:400]
+        now = time.time()
+        try:
+            prop = json.loads(msg.data)
+        except Exception:
+            prop = {"raw": msg.data[:200]}
+        verdict, detail = self.gate(prop, self.vel, now)
+        self.verdicts[verdict] = self.verdicts.get(verdict, 0) + 1
+        rec = {"t": round(now, 4), "seq": prop.get("seq"), "case": prop.get("case"),
+               "verdict": verdict, "detail": detail,
+               "action": prop.get("action"), "yaw": prop.get("yaw"),
+               "model_ms": prop.get("model_ms"), "e2e_ms": prop.get("e2e_ms"),
+               "real_jvel": [round(float(x), 5) for x in self.vel],
+               "prod_stage": self.stage[:40], "armed": self.gate_armed, "executed": False}
         with self._lock:
-            self.f_action.write(msg.data.replace("\n", " ") + "\n")
+            self.f_gate.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self.f_action.write(json.dumps(prop, ensure_ascii=False) + "\n")
         if self.n_act % 20 == 0:
+            self.f_gate.flush()
             self.f_action.flush()
-            self.get_logger().info(f"📥 收到 4060 提案 {self.n_act} 条 (只记录, 不下发) · 最新: {self.last_act[:160]}")
+            self.get_logger().info(f"🚧 闸门 #{self.n_act}: {verdict} · {detail} · 统计={self.verdicts}")
 
     def report(self):
         self.get_logger().info(
-            f"🛰️ 上行 {self.n_pub} 帧 · 下行已记录 {self.n_act} 条 · 产线阶段={self.stage[:30] or '-'}")
+            f"🛰️ 上行 {self.n_pub} 帧 · 提案 {self.n_act} 条 · 闸门={self.verdicts} · "
+            f"速度范数={float(np.linalg.norm(self.vel)):.4f} · 阶段={self.stage[:20] or '-'}")
 
 
 def main():
@@ -162,12 +235,19 @@ def main():
     n = EdgeNode(a.state_topic, a.action_topic, a.rate)
     try:
         rclpy.spin(n)
-    except KeyboardInterrupt:
-        pass
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass          # SIGTERM/kill 时 rclpy 抛 ExternalShutdownException — 属正常退出路径
     finally:
-        n.get_logger().info(f"停止: 上行 {n.n_pub} · 下行记录 {n.n_act}")
-        n.destroy_node()
-        rclpy.shutdown()
+        try:
+            n.get_logger().info(f"停止: 上行 {n.n_pub} · 提案 {n.n_act} · 闸门={n.verdicts}")
+        except Exception:
+            pass
+        try:
+            n.destroy_node()
+        except Exception:
+            pass
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

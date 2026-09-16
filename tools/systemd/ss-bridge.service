@@ -1,0 +1,17 @@
+[Unit]
+Description=Z-MAX cross-machine ROS bridge (Docker ros:humble, /zmax_ss/state -> 4060 infer -> /zmax_ss/action)
+After=network-online.target docker.service ss-local-infer.service
+Wants=network-online.target
+Requires=docker.service
+After=ss-local-infer.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f ss_bridge
+ExecStart=/usr/bin/docker run --rm --name ss_bridge --network host -e ROS_DOMAIN_ID=0 -v /home/ubuntu/lerobot-smolvla-lew/tools:/work:ro ros:humble-ros-base bash -lc "source /opt/ros/humble/setup.bash && exec python3 /work/ss_bridge_node.py --state-topic /zmax_ss/state --action-topic /zmax_ss/action --infer-url http://127.0.0.1:8790"
+ExecStop=/usr/bin/docker stop -t 3 ss_bridge
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

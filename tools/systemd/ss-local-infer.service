@@ -1,0 +1,16 @@
+[Unit]
+Description=Z-MAX state-space 4060 inference service (SS local infer, 127.0.0.1:8790)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/lerobot-smolvla-lew
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/lerobot-venv/bin/python tools/ss_local_infer_server.py --port 8790
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

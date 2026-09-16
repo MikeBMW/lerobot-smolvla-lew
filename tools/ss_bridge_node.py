@@ -58,6 +58,7 @@ class BridgeNode(Node):
         e2e_ms = round((time.time() - t0) * 1000, 2)
         out = {
             "t": time.time(), "seq": st.get("seq"), "src": "host4060", "mode": "shadow_only",
+            "stage": st.get("prod_stage", ""),           # 回带现场阶段 → Orin 闸门做阶段白名单判定
             "action": res.get("action"), "yaw": res.get("yaw"),
             "model_ms": res.get("model_ms"), "e2e_ms": e2e_ms,
             "input_map": res.get("input_map"),
