@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.8")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10212,7 +10212,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.7 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.8 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10220,9 +10220,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.7 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.8 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.8: 🧭🎚 **意图李群化 (SU(2)/SE(3)) + 卡尔曼式自适应增益 + 质量闸** — ①新增 src/lerobot/manifold/lie_intent.py: SU(2)/SE(3) 运算 (exp∘log 互逆 4.5e-16 · 群合成 1.4e-17) + 接触丛 twist e=log(T_hole⁻¹·T_peg) (**孔系表达**, 整体刚体变换后不变 8.4e-17 ⇒ 跨场景可比) + 切空间增益融合 (含旋转走测地线 · K=0 逐位零回退) + Φ 标定 (PCA+ridge+LOO 闸), 自检 **13/13** ②Φ 标定 (352 对逐帧真值 · 8 seed · 教师=末端位姿逐帧差分, 无写死几何): **Φ_su2 LOO R² 0.806 / Φ_se3 0.712** (null<0.08); 逐维最强 = 绕插拔轴旋转 ω_z **0.817**, v_x 0.438 / v_z 0.511, 最弱 v_y 0.056 ③横向归因 (diag_lie_lateral): 排除"信息缺失"(σ 10.9/4.0mm) 与"非线性"(二次特征不抬升) → 口径+阶段混合: 双路意图 pred⊕goal 抬到 v_x 0.569 / v_y 0.202 / v_z 0.703 ④DiT 真消费: cond **214→223 维** (ξ6+ω3 真进 DiT), act_norm 0.1766→0.1625 (响应真实但小 ⇒ 几何 token 需按自身尺度定标) ⑤引擎接线 (SS_L4_LIE=1): Δz→ξ/ω 进 DiT 条件 + ξ_v 作导航方向 (幅度按 L2 包络收窄) + 逐帧列 lie_xi/lie_omega ⑥**卡尔曼式自适应增益** (SS_ADAPT_GAIN=1): 先验=L2 肌肉记忆/解析伺服, 观测=L4 导航+L3 流程, K=P/(P+R); 事件(σ超门/无标杆/新息异常/停滞/换段)→Q 抬升, 熟场景 P 落地板 → **K 硬置 0 = 逐位纯 L2** (实测 K 尾 0.0 · 肌肉命中 564/600 帧), 泛化场景 K≈0.34~0.4; 600 步 11 臂 A/B = **无收益** (gain 终点 47~51mm vs base 23.4mm) ⇒ opt-in 不进默认档 ⑦**质量闸** (SS_QUALITY_GATE=1): 逐阶段 LOSO 判"上层是否优于 L2" (梯度=孔口−末端; 转移段 cos_L4 0.661 < cos_L2 0.852 → 否决只记录不抬), 在线取证 allowed_frames=gain.applied ⑧修 bug: `def _aligner` 与 R1 视觉实例属性 `self._aligner` **撞名** → SS_L4_ALIGN=1 必 TypeError; 改名 `_l4_aligner`; 对齐层标定完成 (cos −0.325 → **LOO +0.931** ready) ⑨yaw 出口 Arm C (SS_L4_LIE_YAW=1): SU(2) 残差切空间融合 + 夹持后几何闭环; ⚠️ 插入段 A/B 出**失败证据** (基线 49.4/50mm 成功 vs Arm C 夹持失败 Δz 0.7mm → 步数/时序不同 + ②段空夹爪 twist 不可控) ⇒ 未验证不宣称 ⑩新增工具 fit_lie_intent / fit_lie_quality_gate / diag_lie_lateral / diag_lie_yaw / diag_gain_ab / diag_ff_entry | 
         # v5.6.7: 🧬 **L4 纤维丛联络层 (动作丛→接触丛→DiT) + 方向/幅度对齐层 + 同口径多臂 A/B** — ①INTACT **预测潜空间** z_pred 真进链 (桥白名单只透传 z_t/z_goal/delta 把该键吃掉的 bug 修掉; 零搜索 direct 不调 predictor → 用 predict() 逐位复刻 rollout_one_step 推完 chunk) ②新增 src/lerobot/manifold/fiber_bundle.py: 丛映射 Φ:z_pred→接触丛 6 维 (582 条真样本 LOO R² 0.471 · null 0.000) + 丛映射 A:z_pred→几何 z7 (0.607) + 水平提升 h_z / 挠率 κ / 曲率 ‖Ω‖ (线性 Φ 曲率≈0 作对照) ③流形专家预测器**权重一字未改**, z 换源 ẑ7=A·z_pred+b (证据: 预测器 z 来源=fiber) ④DiT 条件 token 214 维 = δ̂192 ⊕ ĥ_z6 ⊕ Φ(z_pred)6 ⊕ Φ_p(z_pred)6 ⊕ 标量 (同一 apply_l4_cond; 性能丛只作条件不作幅值权重) ⑤L4 行 19 条边审计: 有数据 13 · 死线 6 (VLM z960 3 条需重训口径 / L4 记忆 2 条 / 算子A 1 条) ⑥零回退: L2 档 fiber 0/1 **逐位相同** (hash 3d330ebc8b0c19e88cbd0706def2f455) · L3 档新代码根本不进; ⚠️注: L3 逐位 hash **不可作判据** (625M CPU bf16 FP 级非确定, 同配置两臂亦不同 — 已复现) → 用结构性判据 ⑦**同口径多臂 A/B (3 seed×150 步 · 每臂独立进程) = 无实质提升** (fiber=1 vs 基线 rel_V/rel_dist: seed0 +1.95%/−36% · seed2 −0.06%/−1.77% · seed5 +0.47%/−3.67%; 判据自我收紧 1e-9→相对 1% 实质阈值, 原阈值会把 1e-5 噪声判成"提升") ⇒ **SS_L4_FIBER 保持默认关, 不进默认档**; 结构性原因: L2 收口闸 150 帧否决 79~120 帧 + cos∠(预测潜空间,几何联络) 跨阶段 0.80/−0.46/0.22 不稳 ⑧新增工具 fit_fiber_map / audit_l4_edges / verify_fiber_zero_regression / ab_fiber_line / ab_l4_arms / feishu_notify (+ 探针 L4line/L4audit 场景 + np/torch 播种 + 审计 json) | 
         # v5.6.6: 📄 **运行台账 + AOI 报告行 (只加日志与证据, 控制律零改动)** —— 真实化运行完成时:
         #   ① 日志打 `🔍 AOI 报告: ok=… 插入最浅 …mm 峰值力 … 卡滞 … 回抓 …` (以前 AOI 只在内部判 ok,
