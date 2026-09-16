@@ -3527,7 +3527,10 @@ class RealStateSpaceSim:
                        if _v.get("shot") else "YOLO 未启动")
                 self.log(f"[{step}/{int(max_steps)}] 阶段={self.sched.stage()} "
                          f"残差={r_scalar:.3f} 接触p={contact_p:.2f} "
-                         f"grp={self.gripper:.2f} grasped={self.grasped} · {_vs}")
+                         f"grp={self.gripper:.2f} grasped={self.grasped} · {_vs} · "
+                         f"前馈 MLP真身 {getattr(self.accel, 'n_mlp', -1)}/守卫 "
+                         f"{getattr(self.accel, 'n_guard', -1)}"
+                         f"{' (未启用: SS_USE_MLP≠1 → forward 被解析覆盖)' if getattr(self.accel, 'n_mlp', 0) == 0 else ''}")
             tr["t"].append(round(step * DT_ENV, 3))
             tr["dist"].append(d_xy if not self.grasped else dh)
             tr["u_ff"].append(float(np.linalg.norm(u_ff[:3])))

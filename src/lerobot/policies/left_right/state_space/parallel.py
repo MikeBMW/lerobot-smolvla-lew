@@ -147,6 +147,21 @@ class FeedforwardAccelerator:
         (b) 归一化逐通道 |x| ≤ DOMAIN_SIGMA (target 通道自身域外 = 布局偏离蒸馏数据,
             仅看 3D 距离会漏 — 真实化现场采样布局 >10cm 偏移即此, MLP 输出弱/反)。
         权重缺失时整体回退解析 (见 __init__ 警告与 self.loaded)。"""
+        # 🔎 2026-09-16 老倪「L4 跑这段还是进不了断点」— 让"到底有没有执行"与调试器解耦:
+        #   ①硬停开关 SS_FF_BREAK=1 (照 ZMAX_DEBUG_BREAK 惯例): 不依赖断点绑定, 每次进真身必停
+        #     (spec_from_file_location 加载的模块断点曾不绑定 → 这是保底手段)
+        #   ②每 100 次打一行执行证据 (终端/GUI 日志可见, 不依赖任何调试器)
+        if os.environ.get("SS_FF_BREAK") == "1":
+            try:
+                import debugpy as _dbg                              # noqa: PLC0415
+                if _dbg.is_client_connected():
+                    _dbg.breakpoint()
+            except Exception:
+                pass
+        self.n_calls = int(getattr(self, "n_calls", 0)) + 1
+        if self.n_calls % 100 == 1:
+            print(f"🧠 前馈加速器: MLP 真身执行 #{self.n_calls} (域内 {self.n_mlp} · 守卫 {self.n_guard}) "
+                  f"· loaded={self.loaded}", flush=True)
         obs = np.asarray(obs, dtype=float)
         if self._ff is None:
             return self.analytic_forward(obs)
