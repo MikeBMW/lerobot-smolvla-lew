@@ -54,7 +54,25 @@ sudo docker run --rm --network host -e ROS_DOMAIN_ID=0 ros:humble-ros-base \
 (条数/坏行/时间跨度/字段非空计数/input_map 取值/sha256/git rev/工具 sha256) + `archive.json`。
 实测首批: state 11991 条 / proposal 11963 条 / 坏行 0 / 跨度 1377.8 s / input_map 全为 `placeholder_v0`。
 
-## 6. 两个必须记住的坑
+## 7. 状态空间「旁路运行」= 4060 侧影子运行器 (2026-09-16 老倪: 「状态空间，开始旁路运行」)
+`tools/ss_bypass_run.py` (systemd `ss-bypass.service`, 跑 `~/lerobot-venv/bin/python`, 10 Hz 常驻):
+- **输入**: 跟随 `ss_remote_tap` 落盘的 `state_*.jsonl` + `proposal_*.jsonl` (按 t 最近邻 ≤0.25 s 对齐模型建议)。
+- **每帧真调六层真实源码** (按文件路径 `importlib` 加载, 与引擎同源):
+  `perception.fuse_sensors`(43D) → `dynamics.PriorDynamicsPredictor.predict` → `cognition.state_correction` +
+  `contact_probability` → `cognition.ActionModulator.advance/decide` → `safety.saturate`。
+  计数落 `status.json.layer_calls` (五项相等 = 六层每帧都真跑)。**口径必须与引擎逐字对齐**:
+  `latent=[x(3),0.0] · act4=[u_prev[:3],0.0] · PriorDynamicsPredictor(A=1.0, B=0.02)` (见
+  `tools/gui/state_space_sim_real.py:765 / 2770-2772`); 我第一版喂 7D latent + 3D action → 广播 ValueError (当场被自检抓到)。
+- **零下行铁律 (比"只读"更强)**: 运行器**不 import rclpy、不开任何 socket**, 因此结构上不可能写回 Orin;
+  自证写进心跳 `zero_downlink: {rclpy_imported:False, publishers:0, sockets_opened:0, writes_to_orin:0}`。
+- **诚实缺口显式计数, 不填假值**: `gap` 逐项计数 —— `缺夹爪开度` / `缺六维力` (机器空闲时无发布者)、
+  `缺 z7(现场几何未示教)`; 几何类证据缺失时 `advance(dist_h/depth/peg_z…)` 一律传 `None` → 状态机**合理停在「接近」**
+  并记录原因 (不是 bug, 是口径缺口的可追溯表达); `input_map=placeholder_v0` 同样逐帧记录 (真口径要等现场示教)。
+- 实测 (机器空闲): 350 步/35 s · 五项 layer_calls 各 350 · 阶段分布 {接近:350} · 残差 0.00581 (= B·|u_ff| 量级, 自洽)
+  · 接触p 0.5015 · 否决 0 · err 0 · Orin 侧 `pgrep` 仍为空。
+- 单步异常**显式 raise/记录 + 打堆栈前 3 次** (绝不静默吞); 文件用 `--duration` 可做自检, 0=常驻。
+
+## 8. 两个必须记住的坑
 1. **ssh 上 `pkill -f` 会自杀**: 模式串只要出现在**自己这条命令行**里 (例如命令里还要 `rm ~/.zmax/ss_edge.log`),
    bash -c 的整条命令行就匹配 → pkill 杀完目标把 shell 也杀了, **后续命令全不执行** (本次实测 exit 255, 清理只做了一半)。
    正解二选一: ①方括号技巧 `pkill -f "ss_[e]dge.py"`; ②**锚定法** `pgrep -af "^python3 .*ss_"` (远程 shell 命令行以
