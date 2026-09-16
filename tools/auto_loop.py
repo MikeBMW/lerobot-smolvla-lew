@@ -54,10 +54,23 @@ def pull_data():
 
 
 def build_dataset():
-    """用 orin_live 数据重建 6D 数据集 (若新数据到达)"""
-    subprocess.run([sys.executable, str(HOME / "tools/build_orin6d_dataset.py")],
-                   cwd=str(HOME), capture_output=True, timeout=120)
-    return (HOME / "data" / "orin_6d").exists()
+    """用 orin_live 数据重建 6D 数据集
+
+    判据必须是**产物**: data/chunk-000/*.parquet 存在。
+    旧判据 `(data/orin_6d).exists()` 恒为 True(空壳目录也在) → 数据集无 parquet 时
+    照跑训练, 8 秒后崩在 FileNotFoundError, 日志只写"训练失败"把真因藏了。
+    """
+    r = subprocess.run([sys.executable, str(HOME / "tools/build_orin6d_dataset.py")],
+                       cwd=str(HOME), capture_output=True, timeout=300)
+    out = (r.stdout or b"").decode(errors="replace").strip().splitlines()
+    pq = sorted((HOME / "data" / "orin_6d" / "data" / "chunk-000").glob("*.parquet"))
+    if not pq:
+        log("❌ 数据集构建失败: 无 parquet 产物 — 不启动训练 (上次真因被 8 秒'训练失败'掩盖)")
+        for ln in out[-4:]:
+            log("   builder| " + ln)
+        return False
+    log(f"📦 数据集就绪: {len(pq)} 个 parquet")
+    return True
 
 
 def train():
