@@ -550,11 +550,39 @@ class RealStateSpaceSim:
         _dw = next((c for c in _dc if _os.path.isfile(c)), None)
         _ss_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))  # tools/gui
         _yolo_dir = _os.path.join(_REPO, "src", "lerobot", "policies", "yolo_3d")
-        import importlib.util as _ilu
-        spec = _ilu.spec_from_file_location("r1_yolo_aligner",
-                                            _os.path.join(_yolo_dir, "yolo_state_aligner.py"))
-        _m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(_m)
+        _yolo_py = _os.path.join(_yolo_dir, "yolo_state_aligner.py")
+        # 🐛 2026-09-17 老倪「运行 L2 时 YoloStateAligner 的断点进不去」根因:
+        #   原用 spec_from_file_location("r1_yolo_aligner", ...) 加载 → **debugpy 断点不绑定**
+        #   (R1 视觉每帧真跑 detect_3d, VSCode 永不停 — 与 2026-09-16 _load() 同一根因,
+        #    `_load` 已修, 这里漏了)。修法同 _load(): ①复用主线程正常 import 的
+        #   yolo_state_aligner (node_logic._yolo_prepare_imports 已 import → 同一模块对象,
+        #   断点按真实路径查表命中, 且与画布 YOLO 节点同源不再各持一份类)
+        #   ②没有则正常 import (走 import hook) ③再不行 exec(compile(真实绝对路径))
+        #   ④全失败才退回原 spec 加载 (不静默降级语义)。
+        _m = sys.modules.get("yolo_state_aligner")
+        if _m is None or not hasattr(_m, "YoloStateAligner"):
+            try:
+                if _yolo_dir not in sys.path:
+                    sys.path.insert(0, _yolo_dir)
+                import yolo_state_aligner as _m  # noqa: F401
+            except Exception:                                            # noqa: BLE001
+                _m = None
+        if _m is None or not hasattr(_m, "YoloStateAligner"):
+            try:
+                import types as _types
+                with open(_yolo_py, encoding="utf-8") as _f:
+                    _src = _f.read()
+                _m = _types.ModuleType("r1_yolo_aligner")
+                _m.__file__ = _os.path.abspath(_yolo_py)
+                _m.__name__ = "r1_yolo_aligner"
+                sys.modules["r1_yolo_aligner"] = _m
+                exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
+            except Exception as _e:                                      # noqa: BLE001
+                self.log(f"⚠️ R1 YOLO exec 路径失败 ({type(_e).__name__}: {_e}) → 退回 spec 加载")
+                import importlib.util as _ilu
+                spec = _ilu.spec_from_file_location("r1_yolo_aligner", _yolo_py)
+                _m = _ilu.module_from_spec(spec)
+                spec.loader.exec_module(_m)
         self._aligner = _m.YoloStateAligner(_w, self.env, depth_weights=_dw)
         self.log(f"🎯 R1 YOLO 已加载: {_os.path.basename(_w)} · 深度 {_os.path.basename(_dw) if _dw else '无'}")
 
