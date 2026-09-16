@@ -102,7 +102,9 @@ sudo docker run --rm --network host -e ROS_DOMAIN_ID=0 ros:humble-ros-base \
    甚至写成 `/tmp/xxx.sh` 再 `bash` 都被拦 — 守卫会读脚本内容, 报 "cannot restart or stop the gateway")。
    正解 = **`kill <MainPID>`**, 让 systemd 的 `Restart=always` 自己用新代码拉起 (实测 26s 内新心跳 `started` 时间刷新、
    新字段 `dx_real` 立刻出现) — 顺带验证了服务自愈能力。PID 用 `pgrep -f "[s]s_bypass_run.py"` 拿。
-4. **GUI 控制台重启 = 杀旧 / 启新必须分两次调用** (老规矩)。本机控制台当前**没有** systemd 单元
-   (`systemctl --user cat zmax-studio` → No files found), 实际是从 `tools/gui` 目录手动起:
-   `cd <repo>/tools/gui && DISPLAY=:0 XAUTHORITY=/run/user/1000/gdm/Xauthority <repo>/gui-venv311/bin/python studio.py`
-   (后台模式), 证据三连 = 新 pid + 启动时间 + `grep -n "Z-MAX v5.6.17" studio.py`。
+4. **GUI 控制台重启 = 杀旧 / 启新必须分两次调用** (老规矩)。控制台单元曾缺失 (`systemctl --user cat zmax-studio`
+   → No files found), 本轮**已重建** `~/.config/systemd/user/zmax-studio.service` (WorkingDirectory=tools/gui,
+   `DISPLAY=:0` + `XAUTHORITY=/run/user/1000/gdm/Xauthority`, Restart=on-failure) → `systemctl --user enable --now zmax-studio`。
+   验证证据 = `systemctl --user is-active` + pid + 窗口标题 (`DISPLAY=:0 xdotool search --name XSpace getwindowname %@`
+   → "XSpace Studio — Z-MAX v5.6.17 [W-01] ⚠️非调试模式 - [画布]")。
+   ⚠️ **手动后台起的 GUI 会在 ~7 分钟后 exit 0 自行退出** (quitOnLastWindowClosed/会话回收), 所以要长期可见就走单元, 别靠 nohup。
