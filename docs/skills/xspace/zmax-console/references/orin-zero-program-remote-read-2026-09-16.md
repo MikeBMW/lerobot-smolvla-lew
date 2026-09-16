@@ -91,7 +91,29 @@ sudo docker run --rm --network host -e ROS_DOMAIN_ID=0 ros:humble-ros-base \
   ③节点名→NODE_LOGIC key ④真数据灌入两个窗口 + PNG。**⚠️ 画布加载会重生成 node id** (实测 `n1789560638710xxx`),
   一切断言/对比必须**按节点名**, 用 id 前缀匹配会串行撞名 (我第一版就踩了: 前缀 `🔧 L2 基础辅助功能 · ` 命中多行带)。
 
-## 9. 两个必须记住的坑
+## 9. 数据源「仿真/真机」开关 = 直接做在 📦 数据源节点上 (v5.6.18, 老倪: 「就在 metaworld 数据源这个节点上直接增加切换开关…这样连线都不用增加了」)
+- **撤掉独立传感器节点**: 老倪原话先要"传感器与数据源同位置 + 开关", 最后定调 ="开关做在数据源节点本体, 不加连线"
+  ⇒ 删除 `ssbyps` + 它的 2 条连线, 观察器改从 📦 数据源取信号 (`lksrc_viz`)。画布 80→79 节点 / 100→99 连线。
+- **实现三件套** (节点参数 `src_switch: true` / `src_state: "仿真"|"真机"`):
+  ① painter: `elif params.get("src_switch")` 分支画拨钮 (灰=仿真 / 绿=真机, 圆点+文字) —— 必须在
+  `elif t == "mode_switch"` **之前** (同一条 elif 链); ② 切换入口 = **单击拨钮矩形** (`SimNodeItem.mousePressEvent`,
+  与"导出按钮"同款 `QRectF(8, self.h-26, self.w-16, 20).contains(QPointF(e.pos()))` 命中法; **双击语义保持不变** =
+  run_env 按模式跑训练/推理) + 右键菜单项「切换数据源: 仿真 ⇄ 真机」; ③ `on_toggle_src()` 切 `module._data_source`
+  (`metaworld`/`bypass_real`) + `_save_param_to_flow` 持久化 + 真机时把真机帧写 `module._bypass_obs` 并报位姿/图像/缺口。
+- **⚠️ `_save_mode_to_flow` 原用 `indent=1` 写回**, 而画布 JSON 是 `indent=2` → 一旦触发整文件重排 (diff 爆炸 + 破坏文本锚点)。
+  已修成 indent=2; 新增 `_save_param_to_flow(node, key)` 走同一格式。
+- **真机图像通道 (2026-09-16 实测)**: 现场**唯一有发布者的图像话题** = `/foundationpose/tray_reference/debug_image`
+  (`sensor_msgs/Image`, 发布者节点 `vision_tag`, RELIABLE) — 但它**只在产线视觉活起来时才出帧** (空闲 20s 0 帧, `hz` 无输出);
+  `/realsense/color/image_raw` 发布者 **0** (D405 已接但 Orin 未装 `realsense2_camera`); `/tactile_sensor` 是
+  **自定义消息 `interfaces/msg/TactileSensor`** → 容器里没有类型定义, **订不了** (要订得从 Orin 拷 install 里的生成模块)。
+  ⇒ **必须区分「无发布者」与「有发布者但空闲无帧」**: 采集节点每 5s `count_publishers(topic)` 写进 `pubs` 字段,
+  面板/日志按三态如实显示 (有帧 / 话题在线但无帧 / 无发布者)。**绝不拿旧帧或占位图冒充真图**。
+- **容器内出图**: ros:humble-ros-base 只有 numpy (无 cv2/PIL) → 用**纯 Python PNG 编码** (zlib+struct, 灰度/彩色两路)
+  落 `cam_latest.png`, 宿主 GUI 直接 QPixmap 显示 (实测 320×240 rgb8 正常)。
+- 取证: `tools/verify_src_switch.py` (offscreen 真画布) — 校验节点/连线增量、拨钮真渲染(存 PNG)、**单击拨钮真切换**
+  (真机位姿+图像三态进 `module._bypass_obs`)、切回仿真、Z700 面板预览与如实标注、旧连线对 v5.6.16 基线零丢失。
+
+## 10. 两个必须记住的坑
 1. **ssh 上 `pkill -f` 会自杀**: 模式串只要出现在**自己这条命令行**里 (例如命令里还要 `rm ~/.zmax/ss_edge.log`),
    bash -c 的整条命令行就匹配 → pkill 杀完目标把 shell 也杀了, **后续命令全不执行** (本次实测 exit 255, 清理只做了一半)。
    正解二选一: ①方括号技巧 `pkill -f "ss_[e]dge.py"`; ②**锚定法** `pgrep -af "^python3 .*ss_"` (远程 shell 命令行以
