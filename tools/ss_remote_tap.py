@@ -29,7 +29,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import PoseStamped
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float64, String
 
 OUT = os.environ.get("SS_OUT", "/out")
@@ -46,7 +46,7 @@ class RemoteTap(Node):
         # enable_rosout=False: 连 rclpy 自带的 /rosout 发布者都不要 → 域内零 publisher, 绝对只读
         super().__init__("ss_remote_tap", enable_rosout=False, start_parameter_services=False)
         self.lock = threading.Lock()
-        self.n = {k: 0 for k in ("tcp", "joint", "ft", "grip", "stage", "rstat")}
+        self.n = {k: 0 for k in ("tcp", "joint", "ft", "grip", "stage", "rstat", "img")}
         self.tcp = None
         self.jpos = self.jvel = None
         self.ft = None
@@ -56,6 +56,9 @@ class RemoteTap(Node):
         self.tcp_frame = None
         self.jnames = []
         self.rstat = None
+        self._rimg = None
+        self.img = None            # {topic,encoding,w,h,std,t}
+        self.img_path = os.path.join(OUT, "cam_latest.png")
         self.geom, self.geom_note = self._load_geom()
         self.create_subscription(PoseStamped, "/robot/tcp_pose", self.cb_tcp, _q(1))
         self.create_subscription(JointState, "/real_joint_states", self.cb_joint, _q(1))
@@ -66,6 +69,16 @@ class RemoteTap(Node):
         self.create_subscription(Float64, "/gripper_pos", self.cb_grip, _q(1))
         self.create_subscription(String, "/motion/active_states", self.cb_stage, _q(1))
         self.create_subscription(String, "/robot_status", self.cb_rstat, _q(1))   # 真机状态 JSON
+        # 📷 真机图像 (现场唯一有发布者的图像话题: FoundationPose 托盘参考 debug_image;
+        #    RealSense 驱动未装 ⇒ /realsense/* 无发布者, 已实测)
+        self.topics_watch = ["/robot/tcp_pose", "/real_joint_states", "/robot/force_torque", "/gripper_pos",
+                             "/motion/active_states", "/robot_status", "/tactile_sensor", "/realsense/color/image_raw",
+                             "/foundationpose/tray_reference/debug_image"]
+        self.pub_counts = {}
+        self.create_timer(5.0, self._count_pubs)      # 发布者计数 (只读查询)
+        self.create_subscription(Image, os.environ.get("SS_CAM_TOPIC",
+                                                       "/foundationpose/tray_reference/debug_image"),
+                                 self.cb_img, _q(1), raw=True)
 
     def _load_geom(self):
         try:
@@ -115,6 +128,19 @@ class RemoteTap(Node):
             self.stage = str(m.data)[:60]
             self.n["stage"] += 1
 
+    def _count_pubs(self):
+        """每话题发布者数 → 区分"无发布者"(设备/驱动缺) 与 "有发布者但当前空闲无帧" """
+        try:
+            for t in self.topics_watch:
+                self.pub_counts[t] = int(self.count_publishers(t))
+        except Exception:
+            pass
+
+    def cb_img(self, m):
+        with self.lock:
+            self._rimg = m
+            self.n["img"] += 1
+
     def cb_rstat(self, m):
         with self.lock:
             self.rstat = str(m.data)[:300]
@@ -134,6 +160,8 @@ class RemoteTap(Node):
             return {"t": round(time.time(), 3), "tcp": self.tcp,
                     "tcp_quat": self.tcp_quat, "tcp_frame": self.tcp_frame,
                     "jnames": self.jnames, "robot_status": self.rstat,
+                    "image": (dict(self.img, age=round(time.time() - self.img["t"], 2)) if self.img else None),
+                    "pubs": dict(self.pub_counts),
                     "jpos": [round(float(x), 6) for x in self.jpos[:6]] if self.jpos else None,
                     "jvel": [round(float(x), 6) for x in self.jvel[:6]] if self.jvel else None,
                     "ft": [round(float(x), 4) for x in self.ft] if self.ft else None,

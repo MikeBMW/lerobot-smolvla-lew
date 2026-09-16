@@ -71,7 +71,14 @@ def read_latest():
     gaps = {k: True for k, v in (("夹爪开度", r.get("gripper")), ("六维力", r.get("ft")),
                                  ("关节速度", r.get("jvel")), ("场景几何 z7", r.get("z7")),
                                  ("机器人状态", r.get("robot_status"))) if v is None}
+    pubs = r.get("pubs") or {}
+    img = r.get("image") or {}
+    if img and img.get("t") is not None:
+        img = dict(img, age=round(time.time() - float(img["t"]), 2),
+                   png=(os.path.join(REMOTE_DIR, "cam_latest.png")
+                        if os.path.exists(os.path.join(REMOTE_DIR, "cam_latest.png")) else None))
     return {"ok": True, "file": path, "age_s": round(age, 2), "fresh": age <= STALE_S,
+            "pubs": pubs, "image": (img or None),
             "tcp": r.get("tcp"), "tcp_quat": r.get("tcp_quat"), "tcp_frame": r.get("tcp_frame"),
             "jnames": r.get("jnames") or [], "jpos": r.get("jpos"), "jvel": r.get("jvel"),
             "gripper": r.get("gripper"), "ft": r.get("ft"), "z7": r.get("z7"),

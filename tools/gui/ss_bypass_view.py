@@ -301,6 +301,19 @@ class Z700SignalsView(QtWidgets.QWidget):
             g3.addWidget(w, i // 4, i % 4)
         root.addWidget(gb3)
 
+        gbi = QtWidgets.QGroupBox("真机图像 (现场唯一有发布者的图像话题)")
+        gi = QtWidgets.QHBoxLayout(gbi)
+        self.img_view = QtWidgets.QLabel("(无图像)")
+        self.img_view.setFixedSize(240, 180)
+        self.img_view.setStyleSheet("background:#161b22; color:#8b949e; border:1px solid #30363d;")
+        self.img_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.img_meta = QtWidgets.QLabel("-")
+        self.img_meta.setStyleSheet(f"color:{FG};font-size:12px;")
+        self.img_meta.setWordWrap(True)
+        gi.addWidget(self.img_view)
+        gi.addWidget(self.img_meta, 1)
+        root.addWidget(gbi)
+
         gb4 = QtWidgets.QGroupBox("状态空间旁路 (物理世界输出 → 状态校正闭环)")
         g4 = QtWidgets.QGridLayout(gb4)
         for i, (t_, k, h) in enumerate([("当前阶段", "stage", "13 段状态机 · 旁路判定"),
@@ -362,6 +375,29 @@ class Z700SignalsView(QtWidgets.QWidget):
             recv = st.get("recv") or {}
             self.labs["s_rate"].setText(("✅ " if p.get("fresh") else "⚠️过期 ") + f"{p.get('age_s')}s"
                                         + f" · tcp×{recv.get('tcp', 0)} joint×{recv.get('joint', 0)}")
+            im = p.get("image") or {}
+            png = im.get("png")
+            if png and os.path.exists(png):
+                pm = QtGui.QPixmap(png)
+                if not pm.isNull():
+                    self.img_view.setPixmap(pm.scaled(self.img_view.size(), QtCore.Qt.KeepAspectRatio,
+                                                      QtCore.Qt.SmoothTransformation))
+                self.img_meta.setText(f"话题: {im.get('topic')}\n尺寸: {im.get('w')}×{im.get('h')} "
+                                      f"编码: {im.get('encoding')}\n对比度 std: {im.get('std')} "
+                                      f"(>5 判真图)\n新鲜度: {im.get('age')}s\n文件: {os.path.basename(png)}")
+            else:
+                _pubs = (p.get("pubs") or {})
+                _n = _pubs.get("/foundationpose/tray_reference/debug_image")
+                _rs = _pubs.get("/realsense/color/image_raw")
+                if _n:
+                    self.img_view.setText("(话题在线, 当前无帧)")
+                    self.img_meta.setText(f"话题: /foundationpose/tray_reference/debug_image\n发布者: {_n} (vision_tag) "
+                                          f"— 在线但产线视觉空闲 → 无帧\nRealSense 彩色话题发布者: {_rs} "
+                                          f"(D405 已接, Orin 未装 realsense2_camera)\n触觉: interfaces/msg/TactileSensor "
+                                          f"(自定义消息, 容器无类型定义 → 暂不可订)")
+                else:
+                    self.img_view.setText("(无图像发布者)")
+                    self.img_meta.setText("真机图像话题当前无发布者 (现场视觉节点未起)")
             b = self.src.read_bypass_status()
             last = b.get("last") or {}
             self.labs["b_stage"].setText(str(last.get("stage", "-")))

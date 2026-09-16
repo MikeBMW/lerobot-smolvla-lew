@@ -2706,6 +2706,12 @@ class SimNodeItem(QGraphicsObject):
         其余区域透传给 scene (拖拽/选中不受影响)"""
         try:
             p = self.node.get("params", {})
+            if e.button() == Qt.LeftButton and p.get("src_switch"):
+                # 🔀 数据源拨钮 (仿真 ⇄ 真机)
+                if QRectF(8, self.h - 26, self.w - 16, 20).contains(QPointF(e.pos())):
+                    self.scene_ref.on_toggle_src(self.node)
+                    e.accept()
+                    return
             if e.button() == Qt.LeftButton and (p.get("skill_composer") or p.get("detection_targets")):
                 btn = QRectF(self.w - 38, self.h - 22, 34, 18)
                 if btn.contains(e.pos()):
@@ -3054,6 +3060,21 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(QPen(QColor("#58a6ff"), 1.8))
             painter.drawLine(QPointF(px-6, py), QPointF(px+6, py))
             painter.drawLine(QPointF(px, py-6), QPointF(px, py+6))
+        elif params.get("src_switch"):
+            # 🔀 数据源切换 (2026-09-16 老倪: 仿真 ⇄ 真机, 就做在 📦 数据源节点上, 不加连线)
+            _st = params.get("src_state", "仿真")
+            _on = (_st == "真机")
+            _col = QColor("#3fb950" if _on else "#8b949e")
+            _r = QRectF(8, self.h - 26, self.w - 16, 20)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(QBrush(QColor("#0d1117")))
+            painter.setPen(QPen(_col, 1.3))
+            painter.drawRoundedRect(_r, 10, 10)
+            painter.setBrush(QBrush(_col))
+            painter.drawEllipse(QRectF(_r.x() + 5, _r.y() + 6, 8, 8))
+            painter.setPen(QPen(_col, 1.0))
+            painter.drawText(_r.adjusted(18, 0, -4, 0), Qt.AlignVCenter | Qt.AlignLeft,
+                             f"数据源: {_st}")
         elif t == "mode_switch":
             # 🔀 训练/推理模式开关: 圆点指示 (绿=训练 蓝=推理)
             md = params.get("mode", "train")
@@ -3596,6 +3617,11 @@ class SimCanvas(QGraphicsView):
                 and not item.node.get("params", {}).get("insert_report"):
             a_ds = menu.addAction("查看数据集")
         a_run = menu.addAction("运行节点")
+        # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
+        a_srcsw = None
+        if item.node.get("params", {}).get("src_switch"):
+            a_srcsw = menu.addAction("切换数据源: 仿真 ⇄ 真机 (当前 %s)"
+                                     % item.node["params"].get("src_state", "仿真"))
         # 🚀 打开 VSCode 调试 (2026-08-30 老倪: 工程 + 自动虚拟环境, 断点单步)
         a_vscode = menu.addAction("打开 VSCode 调试")
         # 📥 Excel 导出 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点)
@@ -3632,7 +3658,9 @@ class SimCanvas(QGraphicsView):
             a_viz = menu.addAction("🔭 打开显示窗口 (波形/直方图/视图)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
-        if chosen == a_logic:
+        if a_srcsw is not None and chosen == a_srcsw:
+            self.module.on_toggle_src(item.node)
+        elif chosen == a_logic:
             self.module.on_show_node_logic(item.node)
         elif chosen == a_param:
             self.module.on_node_params(item.node)
@@ -10439,6 +10467,84 @@ class SimulinkModule(QWidget):
                 return p["mode"]
         return None
 
+    def on_toggle_src(self, node):
+        """🔀 数据源切换 (仿真 ⇄ 真机) — 做在 📦 metaworld 数据源节点上 (2026-09-16 老倪)
+
+        真机: 读 4060 远程只读采集的真机帧 (TCP 位姿+姿态四元数/六关节/六维力/夹爪/机器人状态/**图像**)
+              → module._bypass_obs, _data_source="bypass_real"; 缺通道与未示教几何显式报缺
+        仿真: 回到 metaworld 演示数据源
+        """
+        p = node.setdefault("params", {})
+        p["src_state"] = "真机" if p.get("src_state", "仿真") == "仿真" else "仿真"
+        self._data_source = "bypass_real" if p["src_state"] == "真机" else "metaworld"
+        it = self._items.get(node.get("id"))
+        if it:
+            it.update()
+        self._save_param_to_flow(node, "src_state")
+        self._log(f"🔀 数据源切换 → {'📡 真机 (Orin 远程只读)' if p['src_state'] == '真机' else '🧪 仿真 (metaworld)'}")
+        if p["src_state"] == "真机":
+            try:
+                import importlib.util as _iu
+                path = os.path.join(os.environ.get("ZMAX_REPO_ROOT") or os.path.dirname(os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__)))),
+                    "src", "lerobot", "datasets", "bypass_sensor_source.py")
+                spec = _iu.spec_from_file_location("bypass_sensor_source", path)
+                m = _iu.module_from_spec(spec)
+                spec.loader.exec_module(m)
+                d = m.read_latest()
+                if d.get("ok"):
+                    self._bypass_obs = d
+                    gaps = [k for k, v in (d.get("gaps") or {}).items() if v]
+                    self._log(f"   ├ 机器人位姿: TCP=[{', '.join(f'{x:+.4f}' for x in (d.get('tcp') or []))}] "
+                              f"frame={d.get('tcp_frame')} · 姿态四元数={['%.3f' % v for v in (d.get('tcp_quat') or [])]}"
+                              f" · 关节 {len(d.get('jpos') or [])} 轴")
+                    img = d.get("image") or {}
+                    _pubs = d.get("pubs") or {}
+                    _camn = _pubs.get("/foundationpose/tray_reference/debug_image")
+                    if img:
+                        self._log(f"   ├ 图像: {img.get('w')}x{img.get('h')} {img.get('encoding')} "
+                                  f"std={img.get('std')} age={img.get('age')}s"
+                                  + (f" → {os.path.basename(str(img.get('png')))}" if img.get("png") else ""))
+                    elif _camn:
+                        self._log(f"   ├ 图像: 话题在线 (发布者 {_camn}: vision_tag) 但产线视觉当前空闲 → 无帧 "
+                                  f"(RealSense 彩色话题发布者 {_pubs.get('/realsense/color/image_raw')}: 驱动未装)")
+                    else:
+                        self._log(f"   ├ 图像: 无发布者 (现场视觉节点未起) · RealSense 发布者 "
+                                  f"{_pubs.get('/realsense/color/image_raw')}")
+                    self._log(f"   └ 新鲜度 {d.get('age_s')}s · 缺口: {', '.join(gaps) if gaps else '无'}")
+                    if d.get("z7") is None:
+                        self._log("      ⚠️ 场景几何未示教 → 几何类证据不可得 (拒算不编造)")
+                else:
+                    self._log(f"   └ ❌ {d.get('reason')}")
+            except Exception as e:
+                self._log(f"   └ ❌ 真机数据读取失败: {type(e).__name__}: {e}")
+        else:
+            self._log("   └ 已切回 metaworld 演示数据源 (39D 状态 / 4D 动作)")
+        for attr in ("_bypass_view_win", "_z700_signals_win"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                try:
+                    w.refresh()
+                except Exception:
+                    pass
+
+    def _save_param_to_flow(self, node, key):
+        """💾 单个 param 写回当前画布 JSON (按节点名匹配; 保持 indent=2 与原文一致)"""
+        try:
+            path = getattr(self, "_flow_path", None)
+            if not path or not os.path.exists(path):
+                return
+            import json as _j
+            flow = _j.load(open(path, encoding="utf-8"))
+            for n in flow.get("nodes", []):
+                if n.get("name") == node.get("name"):
+                    n.setdefault("params", {})[key] = node["params"][key]
+                    break
+            _j.dump(flow, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+            self._log(f"💾 已保存 {key}={node['params'][key]} → {os.path.basename(path)}")
+        except Exception:
+            pass
+
     def _toggle_mode(self, node):
         """🔀 训练/推理模式开关 (2026-08-12 老倪: 训练旁推理模块)
         双击切换: train ⇄ infer; 激活路径节点金色高亮, 未激活灰显"""
@@ -10479,7 +10585,7 @@ class SimulinkModule(QWidget):
                     n.setdefault("params", {})["mode"] = node["params"]["mode"]
                     break
             _j.dump(flow, open(path, "w", encoding="utf-8"),
-                    ensure_ascii=False, indent=1)
+                    ensure_ascii=False, indent=2)   # 🐛 2026-09-16: 原 indent=1 会把整个画布 JSON 重排
             self._log(f"💾 模式已保存: {os.path.basename(path)} → {node['params']['mode']}")
         except Exception:
             pass

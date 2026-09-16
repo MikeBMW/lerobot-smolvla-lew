@@ -731,6 +731,8 @@
       "actions": [],
       "color": "#58a6ff",
       "params": {
+        "src_switch": true,
+        "src_state": "真机",
         "source": "metaworld",
         "task": "peg-insert-side-v3",
         "frames": 4800,
@@ -739,24 +741,7 @@
         "policy": "left_right",
         "run_env": true,
         "state_space": true,
-        "desc": "[基础·分段小模型] 数据层·运行环境: metaworld 仿真数据 (39D 状态/4D 动作) → 感知层; 双击=按当前模式运行真实模型 (🚀训练/📷推理)"
-      }
-    },
-    {
-      "id": "ssbyps",
-      "type": "hardware",
-      "icon": "📡",
-      "x": 1003,
-      "y": -1450,
-      "w": 280,
-      "h": 110,
-      "name": "📡 旁路真机传感器 (Orin 远程只读 · 真机信号源)",
-      "params": {
-        "state_space": true,
-        "bypass_sensor": true,
-        "source": "src/lerobot/datasets/bypass_sensor_source.py",
-        "desc": "[数据源层·真机] 旁路真机感知流: 4060 侧远程只读订阅 Orin(192.168.23.66) 生产话题 (/robot/tcp_pose 位姿+四元数 · /real_joint_states 六关节 · /robot/force_torque 六维力 · /gripper_pos · /robot_status 电源/运行/报警) → state_*.jsonl; 双击 = 画布数据源切到真机旁路; 缺通道与未示教几何按缺报缺 (不填假值)",
-        "source_symbol": "def read_latest"
+        "desc": "[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)"
       }
     },
     {
@@ -773,7 +758,7 @@
       "actions": [],
       "color": "#3fb950",
       "params": {
-        "mode": "train",
+        "mode": "infer",
         "state_space": true,
         "desc": "[基础·分段小模型] 运行模式选择: 🚀训练=训练真实模型 / 📷推理=加载真实模型rollout · 双击切换"
       }
@@ -2457,20 +2442,12 @@
       "label": "引擎状态/帧"
     },
     {
-      "id": "lkbps_obs",
-      "f": "ssbyps",
-      "t": "ssobs",
-      "f_port": "out1",
-      "t_port": "in4",
-      "label": "旁路真机感知 (TCP/关节/力 · 远程只读)"
-    },
-    {
-      "id": "lkbps_viz",
-      "f": "ssbyps",
+      "id": "lksrc_viz",
+      "f": "ssdata",
       "t": "ssbypv",
-      "f_port": "out2",
+      "f_port": "out1",
       "t_port": "in1",
-      "label": "真机信号源 (10Hz 落盘)"
+      "label": "数据源信号 (仿真/真机) → 旁路观察"
     },
     {
       "id": "lkw_z700",
