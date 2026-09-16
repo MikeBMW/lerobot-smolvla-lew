@@ -34,6 +34,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from rclpy.serialization import deserialize_message
+from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float32, String
 from geometry_msgs.msg import WrenchStamped
@@ -46,6 +47,8 @@ AQ = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE, history=Histor
 class EdgeNode(Node):
     JOINTS_TOPIC = os.environ.get("SS_EDGE_JOINTS_TOPIC", "/robot/joint_states")
     FULL = os.environ.get("SS_EDGE_FULL", "0") == "1"
+    TCP = os.environ.get("SS_EDGE_TCP", "0") == "1"      # 订阅 /robot/tcp_pose 并算 z7 (标定桥)
+    GEOM_PATH = os.environ.get("SS_GEOM_PATH", os.path.expanduser("~/zmax_state_space/models/real_cell_geometry.json"))
     ARM = os.environ.get("SS_GATE_ARM", "0") == "1"
     STAGES = [s.strip() for s in os.environ.get("SS_GATE_STAGES", "接近,对位,转移").split(",") if s.strip()]
     COS_MIN = float(os.environ.get("SS_GATE_COS_MIN", "0.9"))
@@ -64,6 +67,9 @@ class EdgeNode(Node):
         self.f_gate = open(os.path.join(OUT_DIR, f"gate_{day}.jsonl"), "a")
         self._lock = threading.Lock()
         self._rj = self._rf = self._rg = self._rst = self._rstage = None
+        self._rtcp = None
+        self.tcp = None
+        self.geom, self.geom_note = self._load_geom()
         self.j = self.f = self.g = None
         self.st = self.stage = ""
         self.prev_pos = self.prev_t = None
@@ -75,6 +81,8 @@ class EdgeNode(Node):
         # ── 订阅 (只读) ──
         self.create_subscription(JointState, self.JOINTS_TOPIC, self.cb_j, JQ, raw=True)
         self.create_subscription(Float32, "/gripper_pos", self.cb_g, 5, raw=True)
+        if self.TCP:    # 标定桥: 真机 TCP 位姿 (50Hz, 用于引擎口径 z7)
+            self.create_subscription(PoseStamped, "/robot/tcp_pose", self.cb_tcp, JQ, raw=True)
         if self.FULL:   # 全量模式: 力/机器人状态/产线阶段 (CPU ~13%, 仅在需要时开)
             self.create_subscription(WrenchStamped, "/robot/force_torque", self.cb_f, JQ, raw=True)
             self.create_subscription(String, "/robot_status", self.cb_st, 5, raw=True)
@@ -105,12 +113,43 @@ class EdgeNode(Node):
     def cb_stage(self, m):
         self._rstage = m
 
+    def cb_tcp(self, m):
+        self._rtcp = m
+
+    def _load_geom(self):
+        """加载现场示教几何; 缺失/未通过校验 → 返回 None (推理端必须拒算 z7, 不许编造)"""
+        try:
+            import json as _json
+            d = _json.load(open(self.GEOM_PATH))
+            if not d.get("validated"):
+                return None, f"几何未通过校验 ({self.GEOM_PATH})"
+            pts = d.get("points", {})
+            if not all(k in pts for k in ("peg_head", "goal")):
+                return None, "几何缺 peg_head/goal"
+            return {"peg_head": [pts["peg_head"][k] for k in "xyz"],
+                    "goal": [pts["goal"][k] for k in "xyz"]}, f"示教几何 {d.get('updated_at')}"
+        except Exception as e:
+            return None, f"无示教几何文件 ({type(e).__name__})"
+
+    def _z7(self):
+        """引擎口径 z7 = [手/头−目标(3), 手/头−光模块(3), 夹持(1)] (与 _fiber_z7_geo 同公式)"""
+        if self.tcp is None or self.geom is None:
+            return None
+        hx = np.array(self.tcp, dtype=float)
+        tg = np.array(self.geom["goal"], dtype=float)
+        pg = np.array(self.geom["peg_head"], dtype=float)
+        grasp = 1.0 if (self.g is not None and float(self.g.data) < 500.0) else 0.0
+        return np.concatenate([hx - tg, hx - pg, [grasp]])
+
     def _decode(self):
         try:
             if self._rj is not None:
                 self.j = deserialize_message(bytes(self._rj), JointState)
             if self._rg is not None:
                 self.g = deserialize_message(bytes(self._rg), Float32)
+            if self.TCP and self._rtcp is not None:
+                _p = deserialize_message(bytes(self._rtcp), PoseStamped).pose.position
+                self.tcp = [round(_p.x, 6), round(_p.y, 6), round(_p.z, 6)]
             if self.FULL:
                 if self._rf is not None:
                     self.f = deserialize_message(bytes(self._rf), WrenchStamped)
@@ -148,6 +187,9 @@ class EdgeNode(Node):
             "ft": ft,
             "robot_state": self.st[:160],
             "prod_stage": self.stage[:60],
+            "tcp": self.tcp,
+            "z7": ([round(float(x), 6) for x in self._z7().tolist()] if self._z7() is not None else None),
+            "geom": (self.geom_note if self.geom else f"缺失: {self.geom_note}"),
             "scope": "readonly",
         }
         m = String()
