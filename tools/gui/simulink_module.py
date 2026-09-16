@@ -647,6 +647,22 @@ REFERENCE_APPS = [
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
 LIBRARY = [
+    # 🆕 2026-09-16 老倪: 旁路接控制台 (真机信号源 + 两个观察器)
+    ("hardware", "📡 旁路真机感知", [
+        {"name": "📡 旁路真机传感器", "params": {"bypass_sensor": True, "source": "bypass_real",
+                                           "state_space": True,
+                                           "desc": "真机感知流 (4060 远程只读 Orin 生产话题): "
+                                                   "TCP 位姿/六关节/六维力/夹爪/机器人状态; "
+                                                   "双击 = 切画布数据源到真机旁路"}},
+    ]),
+    ("model", "🔭 旁路可视化 (可视化层)", [
+        {"name": "📈 旁路实时可视化", "params": {"viz_kind": "bypass", "state_space": True,
+                                            "desc": "当前阶段(13段)/残差/接触概率 实时曲线, 500ms 刷新"}},
+        {"name": "🖥 Z700 真机信号", "params": {"viz_kind": "z700_signals", "state_space": True,
+                                            "desc": "输入=🌍物理世界输出; 显示全部真机信号 "
+                                                   "(TCP+四元数/六关节/六维力/夹爪/触觉/机器人状态)"}},
+    ]),
+
     # 🚀 Z700 工程完整模块组 (2026-08-12 老倪: Z700 画布全部节点 → 库中集中可找, 自动 VEH.5 编号)
     ("model", "🚀 Z700 工程 (插拔)", [
         {"name": "📦 metaworld_peg", "params": {"source": "metaworld", "frames": 4800, "active": True,
@@ -9726,6 +9742,9 @@ class SimulinkModule(QWidget):
         """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
         hist/attrib: 窗口单例 + 有引擎末帧探针则填入 (真实数据, 无则不造假只提示)"""
         try:
+            if kind in ("bypass", "z700_signals"):     # 🆕 2026-09-16 老倪: 旁路可视化 / Z700 真机信号
+                self._open_bypass_viz(kind)
+                return
             if kind == "scope":
                 self.show_state_space_scope()
                 return
@@ -9820,6 +9839,63 @@ class SimulinkModule(QWidget):
         except Exception as e:
             self._log(f"❌ 实况窗打开失败: {type(e).__name__}: {e}")
 
+    def _open_bypass_viz(self, kind):
+        """🔭 旁路可视化窗口 (bypass=阶段/残差/接触曲线; z700_signals=全部真机信号) — 非模态, 500ms 自刷新"""
+        try:
+            import ss_bypass_view
+            attr = "_bypass_view_win" if kind == "bypass" else "_z700_signals_win"
+            win = getattr(self, attr, None)
+            if win is None:
+                win = (ss_bypass_view.SSBypassView(self) if kind == "bypass"
+                       else ss_bypass_view.Z700SignalsView(self))
+                setattr(self, attr, win)
+            win.show()
+            win.raise_()
+            win.refresh()
+            self._log("📈 旁路实时可视化已打开 (当前阶段/残差/接触概率曲线, 500ms 刷新)"
+                      if kind == "bypass" else
+                      "🖥 Z700 真机信号面板已打开 (物理世界输出 → TCP/关节/力/状态全信号)")
+        except Exception as e:
+            self._log(f"❌ 旁路可视化窗口打开失败: {type(e).__name__}: {e}")
+
+    def on_bypass_sensor_node(self, node):
+        """📡 旁路真机传感器节点 (数据源层): 读真机感知流 → 切画布数据源 → 汇报真机帧与缺口"""
+        try:
+            import importlib.util as _iu
+            import os as _os
+            root = _os.environ.get("ZMAX_REPO_ROOT") or _os.path.dirname(_os.path.dirname(
+                _os.path.dirname(_os.path.abspath(__file__))))
+            path = _os.path.join(root, "src", "lerobot", "datasets", "bypass_sensor_source.py")
+            spec = _iu.spec_from_file_location("bypass_sensor_source", path)
+            m = _iu.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            p = m.read_latest()
+            if not p.get("ok"):
+                self._log(f"📡 旁路真机传感器: ❌ {p.get('reason')}")
+                return
+            self._bypass_obs = p
+            self._bypass_src_active = True
+            self._data_source = "bypass_real"
+            gaps = [k for k, v in (p.get("gaps") or {}).items() if v]
+            self._log(f"📡 旁路真机传感器: {'✅ 新鲜' if p.get('fresh') else '⚠️ 过期'} {p.get('age_s')}s"
+                      f" · 数据源已切换: metaworld → **真机旁路** (Orin 远程只读, 零下行)")
+            self._log(f"   └ TCP=[{', '.join(f'{x:+.4f}' for x in (p.get('tcp') or []))}]"
+                      f" frame={p.get('tcp_frame')} · 产线={p.get('stage_prod') or '空闲'}"
+                      f" · 缺通道: {', '.join(gaps) if gaps else '无'}")
+            if p.get("z7") is None:
+                self._log("   └ ⚠️ 场景几何 z7 未示教 → 几何类证据不可得 (拒算, 不编造); "
+                          "示教后自动转真口径")
+            # 已开的窗口立即灌一轮真机数据
+            for attr in ("_bypass_view_win", "_z700_signals_win"):
+                w = getattr(self, attr, None)
+                if w is not None:
+                    try:
+                        w.refresh()
+                    except Exception:
+                        pass
+        except Exception as e:
+            self._log(f"❌ 旁路真机传感器读取失败: {type(e).__name__}: {e}")
+
     def _open_intact_robot_panel(self):
         """🤖 INTACT 标准机器人切换面板 (数据源层)。非模态, 来自 tools/gui/intact_robot_panel.py。"""
         try:
@@ -9845,6 +9921,11 @@ class SimulinkModule(QWidget):
         if params.get("viz_kind"):
             self._log(f"🔭 双击可视化节点「{node.get('name', '')}」→ 打开 {params['viz_kind']} 窗口")
             self._open_viz_node(params.get("viz_kind"))
+            return
+        # 📡 2026-09-16 老倪: 旁路真机传感器 (数据源层) → 读真机感知流 + 切换画布数据源到真机旁路;
+        #   带 bypass_sensor 标记, 必须放"数据源切换"分支之前 (同 verif/viz 家族教训)
+        if params.get("bypass_sensor"):
+            self.on_bypass_sensor_node(node)
             return
         # 🤖 2026-09-12 老倪: INTACT 标准机器人 / 机器人切换节点 → 打开「机器人切换」面板
         #   (数据源层: 选原项目原生机器人 → 写 data/intact_robot_state.json → 下游节点按它取数据)

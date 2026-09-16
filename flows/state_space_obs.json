@@ -248,7 +248,7 @@
       "name": "🔭 可视化层 · 观察器 (回路外, 不参与控制)",
       "x": -20,
       "y": 1345,
-      "w": 12706,
+      "w": 13400,
       "h": 170,
       "color": "#1f2937"
     },
@@ -743,6 +743,23 @@
       }
     },
     {
+      "id": "ssbyps",
+      "type": "hardware",
+      "icon": "📡",
+      "x": 1003,
+      "y": -1450,
+      "w": 280,
+      "h": 110,
+      "name": "📡 旁路真机传感器 (Orin 远程只读 · 真机信号源)",
+      "params": {
+        "state_space": true,
+        "bypass_sensor": true,
+        "source": "src/lerobot/datasets/bypass_sensor_source.py",
+        "desc": "[数据源层·真机] 旁路真机感知流: 4060 侧远程只读订阅 Orin(192.168.23.66) 生产话题 (/robot/tcp_pose 位姿+四元数 · /real_joint_states 六关节 · /robot/force_torque 六维力 · /gripper_pos · /robot_status 电源/运行/报警) → state_*.jsonl; 双击 = 画布数据源切到真机旁路; 缺通道与未示教几何按缺报缺 (不填假值)",
+        "source_symbol": "def read_latest"
+      }
+    },
+    {
       "id": "ssmode",
       "name": "🔀 训练/推理",
       "type": "mode_switch",
@@ -1040,6 +1057,40 @@
         "desc": "3D 分层视图 — Apollo 风格 (YOLO框/末端轨迹/处理层叠加, 每层可开关)",
         "source": "tools/gui/node_logic.py · node_ss_3d_view",
         "viz_kind": "3d"
+      }
+    },
+    {
+      "id": "ssbypv",
+      "type": "model",
+      "icon": "📈",
+      "x": 12712,
+      "y": 1365,
+      "w": 280,
+      "h": 110,
+      "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+      "params": {
+        "state_space": true,
+        "viz_kind": "bypass",
+        "desc": "[可视化层·回路外] 旁路逐帧记录 → 当前阶段(13 段状态机)/残差(m)/接触概率 实时曲线, 500ms 刷新; 同窗显示六层调用数 · 零下行自证(rclpy/socket/写回) · 缺口计数 · 数据源新鲜度",
+        "source": "tools/gui/ss_bypass_view.py",
+        "source_symbol": "class SSBypassView"
+      }
+    },
+    {
+      "id": "ssz700",
+      "type": "model",
+      "icon": "🖥",
+      "x": 13048,
+      "y": 1365,
+      "w": 280,
+      "h": 110,
+      "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+      "params": {
+        "state_space": true,
+        "viz_kind": "z700_signals",
+        "desc": "[可视化层·回路外] 输入 = 🌍物理世界输出。显示全部真机信号: TCP 位置+姿态四元数+坐标系 · 六关节位置/速度(含关节名) · 六维力/力矩 · 夹爪开度 · 触觉 4D · 机器人电源/运行/报警/急停/碰撞 · 产线阶段 · 采样率与新鲜度 · 缺通道清单; 附状态空间旁路当前阶段/残差/接触概率",
+        "source": "tools/gui/ss_bypass_view.py",
+        "source_symbol": "class Z700SignalsView"
       }
     },
     {
@@ -2404,6 +2455,30 @@
       "f_port": "out1",
       "t_port": "in1",
       "label": "引擎状态/帧"
+    },
+    {
+      "id": "lkbps_obs",
+      "f": "ssbyps",
+      "t": "ssobs",
+      "f_port": "out1",
+      "t_port": "in4",
+      "label": "旁路真机感知 (TCP/关节/力 · 远程只读)"
+    },
+    {
+      "id": "lkbps_viz",
+      "f": "ssbyps",
+      "t": "ssbypv",
+      "f_port": "out2",
+      "t_port": "in1",
+      "label": "真机信号源 (10Hz 落盘)"
+    },
+    {
+      "id": "lkw_z700",
+      "f": "ssworld",
+      "t": "ssz700",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "物理世界输出 (真机全信号)"
     },
     {
       "id": "lks15",

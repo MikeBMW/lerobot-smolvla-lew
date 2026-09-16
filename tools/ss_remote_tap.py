@@ -46,12 +46,16 @@ class RemoteTap(Node):
         # enable_rosout=False: 连 rclpy 自带的 /rosout 发布者都不要 → 域内零 publisher, 绝对只读
         super().__init__("ss_remote_tap", enable_rosout=False, start_parameter_services=False)
         self.lock = threading.Lock()
-        self.n = {k: 0 for k in ("tcp", "joint", "ft", "grip", "stage")}
+        self.n = {k: 0 for k in ("tcp", "joint", "ft", "grip", "stage", "rstat")}
         self.tcp = None
         self.jpos = self.jvel = None
         self.ft = None
         self.grip = None
         self.stage = ""
+        self.tcp_quat = None
+        self.tcp_frame = None
+        self.jnames = []
+        self.rstat = None
         self.geom, self.geom_note = self._load_geom()
         self.create_subscription(PoseStamped, "/robot/tcp_pose", self.cb_tcp, _q(1))
         self.create_subscription(JointState, "/real_joint_states", self.cb_joint, _q(1))
@@ -61,6 +65,7 @@ class RemoteTap(Node):
         self.create_subscription(JointState, "/robot/force_torque", self.cb_ft, _q(1))
         self.create_subscription(Float64, "/gripper_pos", self.cb_grip, _q(1))
         self.create_subscription(String, "/motion/active_states", self.cb_stage, _q(1))
+        self.create_subscription(String, "/robot_status", self.cb_rstat, _q(1))   # 真机状态 JSON
 
     def _load_geom(self):
         try:
@@ -74,15 +79,19 @@ class RemoteTap(Node):
             return None, f"无示教几何({type(e).__name__}) — z7 拒算, 不编造"
 
     def cb_tcp(self, m):
-        p = m.pose.position
+        p, o = m.pose.position, m.pose.orientation
         with self.lock:
             self.tcp = [p.x, p.y, p.z]
+            self.tcp_quat = [o.x, o.y, o.z, o.w]      # 姿态 (真机 TCP 四元数)
+            self.tcp_frame = m.header.frame_id        # 坐标系 (base_link)
             self.n["tcp"] += 1
 
     def cb_joint(self, m):
         with self.lock:
             self.jpos = list(m.position)
             self.jvel = list(m.velocity) if len(m.velocity) else None
+            if m.name and not self.jnames:
+                self.jnames = list(m.name)            # 关节名 (只记一次)
             self.n["joint"] += 1
 
     def cb_ft(self, m):
@@ -106,6 +115,11 @@ class RemoteTap(Node):
             self.stage = str(m.data)[:60]
             self.n["stage"] += 1
 
+    def cb_rstat(self, m):
+        with self.lock:
+            self.rstat = str(m.data)[:300]
+            self.n["rstat"] = self.n.get("rstat", 0) + 1
+
     def z7(self):
         with self.lock:
             if self.tcp is None or self.geom is None:
@@ -118,6 +132,8 @@ class RemoteTap(Node):
         z = self.z7()
         with self.lock:
             return {"t": round(time.time(), 3), "tcp": self.tcp,
+                    "tcp_quat": self.tcp_quat, "tcp_frame": self.tcp_frame,
+                    "jnames": self.jnames, "robot_status": self.rstat,
                     "jpos": [round(float(x), 6) for x in self.jpos[:6]] if self.jpos else None,
                     "jvel": [round(float(x), 6) for x in self.jvel[:6]] if self.jvel else None,
                     "ft": [round(float(x), 4) for x in self.ft] if self.ft else None,

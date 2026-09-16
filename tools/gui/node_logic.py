@@ -3919,6 +3919,128 @@ _EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):"
 _EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
 
 
+# ═══ 📡/📈/🖥 旁路真机感知 (2026-09-16 老倪: 旁路接控制台可视化 + 真机信号节点) ═══
+def _bypass_src_module():
+    """加载框架层真机感知数据源 (src/lerobot/datasets/bypass_sensor_source.py)"""
+    import importlib.util as _iu
+    path = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "bypass_sensor_source.py")
+    spec = _iu.spec_from_file_location("bypass_sensor_source", path)
+    m = _iu.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def node_ss_bypass_sensor(ctx):
+    """📡 旁路真机传感器 (数据源层) — 读真机感知流: 4060 远程只读订阅 Orin 生产话题落盘的
+    state_*.jsonl (TCP 位姿/六关节/六维力/夹爪/机器人状态)。双击 = 把画布数据源切到真机旁路,
+    并把最新真机帧写入 module._bypass_obs (供下游 43D 观测/可视化节点消费)。缺通道显式报缺。"""
+    log = ctx.get("log")
+    module = ctx.get("module")
+    try:
+        m = _bypass_src_module()
+        p = m.read_latest()
+        if not p.get("ok"):
+            if log:
+                log(f"📡 旁路真机传感器: ❌ {p.get('reason')}")
+            return False
+        gaps = [k for k, v in (p.get("gaps") or {}).items() if v]
+        if module is not None:
+            try:
+                module._bypass_obs = p
+                module._bypass_src_active = True
+            except Exception:
+                pass
+        tcp = p.get("tcp") or []
+        jv = p.get("jvel") or []
+        vnorm = (sum(float(v) ** 2 for v in jv)) ** 0.5 if jv else float("nan")
+        if log:
+            log(f"📡 旁路真机传感器: {'✅ 新鲜' if p.get('fresh') else '⚠️ 过期'} {p.get('age_s')}s"
+                f" · TCP=[{', '.join(f'{x:+.4f}' for x in tcp)}] ({p.get('tcp_frame')})"
+                f" · 关节速度范数={vnorm:.4f} rad/s · 产线={p.get('stage_prod') or '空闲'}")
+            log(f"   └ 数据源: {os.path.basename(str(p.get('file')))} (Orin 远程只读, 零下行)"
+                f" · 缺通道: {', '.join(gaps) if gaps else '无'}")
+            if p.get("z7") is None:
+                log("   └ ⚠️ 场景几何 z7 未现场示教 → 旁路几何类证据不可得 (拒算, 不编造)")
+        return True, f"旁路真机帧 {p.get('age_s')}s"
+    except Exception as e:
+        if log:
+            log(f"📡 旁路真机传感器执行异常: {type(e).__name__}: {e}")
+        return False
+
+
+def node_ss_bypass_viz(ctx):
+    """📈 旁路实时可视化 (可视化层观察器) — 当前阶段 / 残差 / 接触概率 曲线 (500ms 实时刷新)"""
+    log = ctx.get("log")
+    module = ctx.get("module")
+    try:
+        import ss_bypass_view                      # 同目录 (tools/gui)
+        win = getattr(module, "_bypass_view_win", None) if module is not None else None
+        if win is None or getattr(win, "isVisible", lambda: False)() is False:
+            win = ss_bypass_view.SSBypassView(module)
+            if module is not None:
+                try:
+                    module._bypass_view_win = win
+                except Exception:
+                    pass
+        win.show()
+        win.raise_()
+        win.refresh()
+        if log:
+            from_ = (win.labs["stage"].text(), win.labs["residual"].text(), win.labs["contact_p"].text())
+            log(f"📈 旁路实时可视化: 已打开 (当前阶段={from_[0]} · 残差={from_[1]} · 接触概率={from_[2]})")
+        return True, "旁路可视化窗口"
+    except Exception as e:
+        if log:
+            log(f"📈 旁路可视化打开失败: {type(e).__name__}: {e}")
+        return False
+
+
+def node_ss_z700_signals(ctx):
+    """🖥 Z700 真机信号 (可视化层观察器) — 输入 = 🌍 物理世界 输出; 显示全部真机信号
+    (TCP 位姿+四元数 / 六关节位置速度 / 六维力力矩 / 夹爪 / 触觉 / 机器人状态 / 产线阶段)"""
+    log = ctx.get("log")
+    module = ctx.get("module")
+    try:
+        import ss_bypass_view
+        win = getattr(module, "_z700_signals_win", None) if module is not None else None
+        if win is None or getattr(win, "isVisible", lambda: False)() is False:
+            win = ss_bypass_view.Z700SignalsView(module)
+            if module is not None:
+                try:
+                    module._z700_signals_win = win
+                except Exception:
+                    pass
+        win.show()
+        win.raise_()
+        win.refresh()
+        if log:
+            log(f"🖥 Z700 真机信号: 已打开 (TCP={win.labs['tcp_x'].text()},{win.labs['tcp_y'].text()},"
+                f"{win.labs['tcp_z'].text()} · 运行={win.labs['s_op'].text()} · "
+                f"旁路阶段={win.labs['b_stage'].text()})")
+        return True, "Z700 真机信号窗口"
+    except Exception as e:
+        if log:
+            log(f"🖥 Z700 真机信号打开失败: {type(e).__name__}: {e}")
+        return False
+
+
+_reg("ss_bypass_sensor", ["旁路真机传感器", "真机传感器"], 
+     "📡 旁路真机传感器 (数据源层) — 读真机感知流 (4060 远程只读 Orin), 双击切换画布数据源到真机旁路",
+     node_ss_bypass_sensor)
+_reg("ss_bypass_viz", ["旁路实时可视化", "旁路可视化"],
+     "📈 旁路实时可视化 (可视化层) — 当前阶段/残差/接触概率 曲线, 500ms 实时刷新",
+     node_ss_bypass_viz)
+_reg("ss_z700_signals", ["Z700 真机信号", "真机信号"],
+     "🖥 Z700 真机信号 (可视化层) — 物理世界输出 → 全部真机信号面板",
+     node_ss_z700_signals)
+
+_EXTERNAL_LOC["ss_bypass_sensor"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
+                                                  "bypass_sensor_source.py"), 62, "def read_latest")
+_EXTERNAL_LOC["ss_bypass_viz"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                               "ss_bypass_view.py"), 160, "class SSBypassView")
+_EXTERNAL_LOC["ss_z700_signals"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                 "ss_bypass_view.py"), 260, "class Z700SignalsView")
+
 # 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
 def _resolve_python():
     """源码: 当前解释器; 打包: 找真 python (禁 app 二进制, 否则启动新 app 实例)"""
