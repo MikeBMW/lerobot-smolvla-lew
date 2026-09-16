@@ -1,0 +1,19 @@
+[Unit]
+Description=Z-MAX 状态空间旁路(影子)运行 — 4060侧, 吃真机感知 jsonl, 零下行不接管
+After=network-online.target ss-remote-tap.service
+Wants=ss-remote-tap.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/lerobot-smolvla-lew
+Environment=SS_REMOTE_DIR=/home/ubuntu/zmax_ss_remote
+Environment=SS_BYPASS_DIR=/home/ubuntu/zmax_data/ss_bypass
+ExecStart=/home/ubuntu/lerobot-venv/bin/python /home/ubuntu/lerobot-smolvla-lew/tools/ss_bypass_run.py --rate 10
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
