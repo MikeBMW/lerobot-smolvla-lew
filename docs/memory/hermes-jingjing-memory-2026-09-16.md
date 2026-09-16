@@ -1,6 +1,6 @@
 web=4090训练+ComfyUI+前端+ECS+PM; 总工(4060/GitHub/GUI); 小芳=硬件
 §
-链路: Orin→Mac→ECS→4060; WSL↔Orin不通→relay(datadrive.world/ws)+Mac守护; scp>100MB断→base64; 模型chmod644
+链路: Orin→Mac→ECS→4060; 本机可直连Orin网(192.168.23.50/24无网关, netplan 99-orin-lan; ssh tashan@.66/ts123; 8765 /record/download真录制)→旧'必绕ECS'作废; WSL→relay; scp>100MB断→base64; 模型chmod644
 §
 RTC勿动; 开机NTP拨钟→报时间先核对; cron next_run会被推8h→hermes_cron_reclock.sh
 §
@@ -42,7 +42,7 @@ L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选; 老倪红线: �
 §
 L4档运行=INTACT直驱(install_direct_act→service.run_once喂skill_ctx), 装配pop SS_L3; 动作头loss行仅训练分支
 §
-ALIGN(cos+0.93); L4档L2兼容SS_L4_L2_COMPAT=1(默认关,开=MLP+vision→精度回退); ADAPT_GAIN(熟场景K=0纯L2;A/B未证提升→opt-in); SS_L4_LIE=1李群层(Φ_se3 R².71→lie_intent_map.json; MuJoCo无site_xquat用site_xmat); QUALITY_GATE逐阶段判上层vs L2; 探针import重置env→A/B须import后重设; SS_L4_DIT=1 CPU极慢
+SS_L4_LIE=1李群层(Φ_se3; site_xmat代site_xquat)
 §
 断点: 动作头loss行(351)只有画布「训练」节点进; L3档真跑须SS_L3_DEV=cpu; 前馈MLP真身parallel.py:143仅SS_USE_MLP=1进, 否则372行实例覆盖forward=analytic→n_mlp恒0
 §
@@ -50,4 +50,4 @@ ALIGN(cos+0.93); L4档L2兼容SS_L4_L2_COMPAT=1(默认关,开=MLP+vision→精�
 §
 L4卡'接近'真因(v5.6.3): 直驱动作反向cos−0.14+幅度塌→手漂82mm; 修=L2收口闸扩展直驱(SS_DIRECT_COS_MIN0.9+否决步交回引擎u); L4预算4000步; INTACT CPU≈0.11s/步
 §
-ThinkBook16p G5 IRX: HDMI在dGPU→双屏须 modeset=1 + xorg-video-nvidia-580(ISO pool 126.09); nvidia包hold; ~/bin/dual_screen_setup.sh
+ThinkBook16p G5: HDMI走dGPU→modeset=1+xorg-video-nvidia-580; nvidia包hold; ~/bin/dual_screen_setup.sh
