@@ -273,7 +273,32 @@ class SSBypassView(QtWidgets.QWidget):
                 st_txt = "缺 (无 /robot_status)"
             self.labs["p_pose_rs"].setText(st_txt)
 
-            # 实时图像 (多话题状态如实显示)
+            # 实时图像 (多话题状态如实显示) —— L2 YOLO 标注图优先 (旁路可视化唯一出口)
+            import json as _json2
+            _ydp = os.path.join(os.path.expanduser("~/zmax_data/ss_bypass"), "yolo_detections.json")
+            _yimg = os.path.join(os.path.expanduser("~/zmax_data/ss_bypass"), "yolo_annotated.png")
+            try:
+                _yd = _json2.load(open(_ydp)) if os.path.exists(_ydp) else None
+            except Exception:
+                _yd = None
+            if _yd and os.path.exists(_yimg) and (time.time() - os.path.getmtime(_yimg)) <= 6.0:
+                _pm = QtGui.QPixmap(_yimg)
+                if not _pm.isNull():
+                    self.img_view.setPixmap(_pm.scaled(self.img_view.size(), QtCore.Qt.KeepAspectRatio,
+                                                       QtCore.Qt.SmoothTransformation))
+                _peg = _yd.get("peg_optical_module")
+                _dt = " · ".join(f"{d['cls']}={d['conf']}" for d in (_yd.get("detections") or [])[:4]) or "无检出"
+                self.img_meta.setText(
+                    f"🎯 L2 YOLO 旁路检测 (输出=可视化, 零下行)\n源图: {_yd.get('image')} "
+                    f"[{_yd.get('source_kind')}] {_yd.get('size')} · age={_yd.get('frame_age_s')}s\n"
+                    f"检出: {_dt}\n" +
+                    (f"✅ 光模块(peg) conf={_peg['conf']} box={_peg['xyxy']}" if _peg else "⚠️ 未检出光模块(peg)"))
+                rows = self.src.tail_bypass(240)
+                self.curve.set_data(rows)
+                self.lab_foot.setText(f"旁路可视化: 真机位姿 + L2 YOLO 标注图 (唯一输出, 无任何下行) · "
+                                      f"权重 {os.path.basename(str(_yd.get('weights', '')))} · imgsz={_yd.get('imgsz')} "
+                                      f"conf_th={_yd.get('conf_th')}")
+                return
             byt = p.get("images_by_topic") or {}
             pick, pick_t = None, None
             for t, v in byt.items():                     # RealSense 优先 (只认新鲜帧 ≤5s)

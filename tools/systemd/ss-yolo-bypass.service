@@ -1,0 +1,16 @@
+[Unit]
+Description=Z-MAX L2 YOLO 旁路检测 (真机图像→光模块检出, 只出可视化, 零下行)
+After=ss-remote-tap.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/lerobot-smolvla-lew
+Environment=SS_REMOTE_DIR=/home/ubuntu/zmax_ss_remote
+Environment=SS_BYPASS_DIR=/home/ubuntu/zmax_data/ss_bypass
+ExecStart=/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python /home/ubuntu/lerobot-smolvla-lew/tools/ss_yolo_on_real.py --auto --loop --interval 0.5
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

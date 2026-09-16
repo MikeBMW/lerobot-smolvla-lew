@@ -245,3 +245,7 @@ reports/**/*.mp4
 reports/**/*.avi
 reports/**/*.zip
 reports/**/*.tar.gz
+# ROS2 接口包构建产物 (可由 tools/ros2_interfaces/build_x86.sh 重建, 不进库)
+tools/ros2_interfaces/build/
+tools/ros2_interfaces/install/
+tools/ros2_interfaces/log/
