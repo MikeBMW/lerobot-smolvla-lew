@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.6.12")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.6.13")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10212,7 +10212,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.12 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.6.13 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10220,9 +10220,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.12 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.6.13 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.6.13: 🚀 **发布链路修复 (Windows .exe + macOS .app 双平台发版)** — 查 tag 构建: v5.6.9~v5.6.12 **Windows .exe 全成功、macOS .app 连挂 4 次**, 全挂在同一步 `Download MLP operation video + pre-extracted frames` (下 datadrive.world 的 `mlp_video_pack.zip`, mac runner 5 秒即挂; 同一时刻 Windows job 同一步成功 ⇒ 外部静态站对 mac runner 偶发不可达, 非代码问题)。演示视频只是**内置素材**, 不该卡整次发版 ⇒ `.github/workflows/build-win-exe.yml` 两个 job 同步改成不致命: ①3 次重试 + 强制 `--http1.1` + `--connect-timeout 20 --max-time 240` ②3 次全失败 → `::warning::` + **占位放行** (写 0 字节 `reports/mlp_insert_success_final.mp4` 与 `_mlp_cache_mlp_insert_success_final/.placeholder` — PyInstaller `--add-data` 路径必须存在) ③结果写 `$GITHUB_STEP_SUMMARY` (`video_pack=ok` / `missing`) 可溯源 ④YAML 校验: jobs = build(windows-latest,13 步) · build-ab-baseline(windows-latest,6 步) · build-mac(macos-latest,16 步) | 
         # v5.6.12: 🔎 **前馈 forward 的"是否真执行"与调试器解耦 (老倪第三次: L4 跑这段还是进不了断点)** — ①`parallel.py::forward` 真身开头加**硬停开关 `SS_FF_BREAK=1`** (照 ZMAX_DEBUG_BREAK 惯例, 用 debugpy.breakpoint() 且仅在 is_client_connected 时触发) → 不依赖断点绑定必停, 用来区分"没执行" vs "绑定失败" ②真身每 100 次打一行执行证据 `🧠 前馈加速器: MLP 真身执行 #N (域内 … · 守卫 …)` ③引擎进度行 (老倪看的那行 `[step/max] 阶段=…`) 末尾直接加 `· 前馈 MLP真身 N/守卫 M`, 未启用时补 `(未启用: SS_USE_MLP≠1 → forward 被解析覆盖)` — 实测两臂: SS_USE_MLP=1 → `n_mlp=30/30 守卫 0`; 不设 → `0/0 (未启用…)` 且函数 n_calls=-1 (一次没进) ④诊断口径: 日志显示 N>0 而断点不停 ⇒ 绑定/断点位置问题 (断点须设在 `obs = np.asarray(…)` 首行, 不是 def/docstring 行); 显示 0 ⇒ 档位/勾选问题 (须 L4 档 + 勾「🤖 INTACT 节点执行」或「🧠 模型执行」) | 
         # v5.6.11: 🧩 **L4 档新增勾选框「🧩 L2 兼容 (前馈 MLP + YOLO)」** — 老倪: "L4 档加一个勾选框" (不再靠环境变量): FlowBar 第二行工具栏 (与「🤖 L4 用 INTACT 节点执行」「🎯 L4 意图 → DiT 精炼」同排) 新增 `chk_l2_compat`, **默认勾选**; 勾选 = L4 引擎路径内 `SS_USE_MLP=1` (前馈蒸馏 MLP 真身进 forward) + `vision=True` (R1 YOLO 每帧真检测); tooltip 明写实测代价 (终点 0.42→6.82mm · 墙钟 2.1×) 与等效环境变量 `SS_L4_L2_COMPAT=0`; 装配块主线程读控件 → 存 `self._l2_compat_on` → 判定 `_l4_cap ∧ ¬demo_cap ∧ _l2_compat_on ∧ env≠0`, 日志打印「L2 兼容勾选框 = ✅/⬜」; L2/L3 档不受影响 (零回退); 验证 `tools/verify_l2_compat_checkbox.py` offscreen **11/11** (存在/文字/挂布局(FlowBar)/同排/默认勾选/tooltip 500 字含实测代价/点击可切换/装配块读控件/状态参与判定/仍受环境变量约束) | 
         # v5.6.10: 🔌🐛 **L2 兼容默认开 + 六层模块断点绑定修复** — 老倪「YOLO 检测模型接入 L4 怎么还没改好? 这段 forward 在 L4 跑还是进不了断点」: ①上一版 `SS_L4_L2_COMPAT` 默认关 ⇒ L4 跑时 `SS_USE_MLP` 没被设 → 装配期 `state_space_sim_real.py:399` 又把 `accel.forward` 覆盖成 analytic → **断点没有可命中点** ⇒ 改**默认开** (要还原 `SS_L4_L2_COMPAT=0`), L4 引擎路径日志打印"L2 兼容已开"+实测代价 ②**真根因 (更隐蔽)**: 引擎 `_load()` 用 `spec_from_file_location` 加载六层模块 (parallel/perception/cognition/safety/execution) → **debugpy 断点不绑定** (函数真执行但 VSCode 不停; zmax-console 技能「断点坑 根因⑤」已实证) ⇒ 改 `exec(compile(src, 真实绝对路径, "exec"))` + 注入 `__file__`/`__name__` + 注册 sys.modules, 失败退回 spec (不静默降级) ③实测验证 (gui-venv311): 五文件类方法 co_filename 不在六层目录的 = 0 · exec 加载后 20 步 `实例覆盖 forward=False · forward 指向 FeedforwardAccelerator.forward @ parallel.py · n_mlp=20 · n_guard=0` ④看断点必须三条同时满足: L4 档且勾「🤖INTACT 节点执行」/「🧠模型执行」(默认 L4 纯演示档走 L4Demo 独立链, 链上无 FeedforwardAccelerator) + VSCode F5 启动 (直接 python studio.py 是非调试模式) + 改码后重启 GUI | 

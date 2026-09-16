@@ -79,18 +79,32 @@ jobs:
       - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频, 2026-08-27)
         shell: bash
         run: |
-          mkdir -p reports
-          # 🐛 2026-09-15: datadrive.world 偶发拉取失败 (mac job 今天连挂两次, 35s 即挂; Windows 同一步同一时刻却成功)
-          #   → 加 3 次退避重试 + 失败时打印 HTTP 状态, 别让外部静态站的抖动卡掉整次发版
+          mkdir -p reports/_mlp_cache_mlp_insert_success_final
+          # 🐛 2026-09-16: 与 mac job 同步改成"不致命" — 外部静态站抖动不该卡发版;
+          #   3 次重试 + 强制 HTTP/1.1 + 全失败占位放行 (PyInstaller --add-data 路径必须存在)。
+          ok=0
           for i in 1 2 3; do
-            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --connect-timeout 20 --max-time 180 \
-                 -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip; then break; fi
-            echo "::warning::mlp_video_pack.zip 第 $i 次下载失败"; sleep 10
+            if curl -fsSL --http1.1 --retry 3 --retry-delay 5 --retry-all-errors \
+                 --connect-timeout 20 --max-time 240 \
+                 -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip; then ok=1; break; fi
+            echo "::warning::mlp_video_pack.zip 第 $i 次下载失败"
+            curl -s -o /dev/null -w "  HTTP=%{http_code} connect=%{time_connect}s\n" \
+              -I https://datadrive.world/models/mlp_video_pack.zip || true
+            sleep 10
           done
-          ls -l mlp_video_pack.zip
-          python -m zipfile -e mlp_video_pack.zip reports/
-          ls -la reports/ | head -8
-          ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
+          if [ "$ok" = "1" ]; then
+            python -m zipfile -e mlp_video_pack.zip reports/
+            ls -la reports/ | head -8
+            ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
+            echo "video_pack=ok" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::演示视频包 3 次下载失败 → 本次产物不含内置演示视频 (占位放行, 不卡发版)"
+            : > reports/mlp_insert_success_final.mp4
+            mkdir -p reports/_mlp_cache_mlp_insert_success_final
+            : > reports/_mlp_cache_mlp_insert_success_final/.placeholder
+            echo "video_pack=missing (产物不含内置演示视频)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          test -f reports/mlp_insert_success_final.mp4
 
       - name: "Download manifold predictor + yaw 试抓头 weights (流形 yaw/试抓头要真权重 — 权重不进代码库, 走 ECS 静态)"
         shell: bash
@@ -283,17 +297,35 @@ jobs:
       - name: Download MLP operation video + pre-extracted frames (exe 内置操作视频, 2026-08-27)
         shell: bash
         run: |
-          mkdir -p reports
-          # 🐛 2026-09-15: datadrive.world 偶发拉取失败 (mac job 今天连挂两次, 35s 即挂; Windows 同一步几乎同时却成功)
-          #   → 3 次退避重试, 别让外部静态站的抖动卡掉整次发版
+          mkdir -p reports/_mlp_cache_mlp_insert_success_final
+          # 🐛 2026-09-16 老倪「发布 windows 和 mac 版本」: mac job 在 v5.6.9~v5.6.12 **连挂 4 次**,
+          #   全挂在这一步 (Windows 同一步同一时刻成功) → 外部静态站 (datadrive.world) 对 mac
+          #   runner 偶发不可达。演示视频只是**内置素材**, 不该卡掉整次发版 ⇒ 改:
+          #   ① 3 次重试 + 强制 HTTP/1.1 (HTTP/2 抖动时更稳) ② 全失败 → ::warning:: + **占位放行**
+          #   (PyInstaller --add-data 的路径必须存在) ③ 结果写 job summary, 可溯源。
+          ok=0
           for i in 1 2 3; do
-            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --connect-timeout 20 --max-time 180 \
-                 -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip; then break; fi
-            echo "::warning::mlp_video_pack.zip 第 $i 次下载失败"; sleep 10
+            if curl -fsSL --http1.1 --retry 3 --retry-delay 5 --retry-all-errors \
+                 --connect-timeout 20 --max-time 240 \
+                 -o mlp_video_pack.zip https://datadrive.world/models/mlp_video_pack.zip; then ok=1; break; fi
+            echo "::warning::mlp_video_pack.zip 第 $i 次下载失败"
+            curl -s -o /dev/null -w "  HTTP=%{http_code} connect=%{time_connect}s\n" \
+              -I https://datadrive.world/models/mlp_video_pack.zip || true
+            sleep 10
           done
-          ls -l mlp_video_pack.zip
-          python -m zipfile -e mlp_video_pack.zip reports/
-          ls -la reports/ | head -8
+          if [ "$ok" = "1" ]; then
+            python -m zipfile -e mlp_video_pack.zip reports/
+            ls -la reports/ | head -8
+            ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
+            echo "video_pack=ok" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::演示视频包 3 次下载失败 → 本次产物不含内置演示视频 (占位放行, 不卡发版)"
+            : > reports/mlp_insert_success_final.mp4
+            mkdir -p reports/_mlp_cache_mlp_insert_success_final
+            : > reports/_mlp_cache_mlp_insert_success_final/.placeholder
+            echo "video_pack=missing (产物不含内置演示视频)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          test -f reports/mlp_insert_success_final.mp4
 
       - name: Resolve metaworld assets path
         run: |
