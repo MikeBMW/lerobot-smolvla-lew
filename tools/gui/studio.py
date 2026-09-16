@@ -6869,20 +6869,54 @@ class HardwareModule(SubModuleWidget):
             pass
 
     def _tower_cmd(self, color):
-        """发送塔灯控制命令 (2026-08-09 老倪: 中间件通道统一版)
-        通道: ECS relay /command → Mac 守护 (tashan@192.168.23.66) → ros2 topic pub /tower_light/command
-        (本地 WSL 172.18.x 与 Orin 192.168.23.x 不同网段 — 直连永远不通, 统一走中间件)"""
-        from relay_middleware import RelayMiddleware, RelayError
+        """发送塔灯控制命令 (🐛 2026-09-16 老倪: "点红色不变红" → 改为**本地直连优先, 中间件兜底**)
+
+        旧实现只走 ECS relay /command → Mac 守护 → ssh Orin → ros2 topic pub。
+        Mac 守护没在跑(或不在现场)时, 指令就石沉大海 —— 灯永远不变, 界面也没报错。
+        本机已直连 Orin 局域网(netplan 99-orin-lan), 实测直连发布可用:
+          ssh tashan@192.168.23.66 → ROS_DOMAIN_ID=0 ros2 topic pub --once
+          /tower_light/command std_msgs/msg/String "{data: <color>}"
+        发完回读 /tower_light/status 验证 (state 应等于 color), 让"点到变色"可证。
+        """
+        import subprocess
         self._log(f"🚦 塔灯 → {color}")
+        direct_err = ""
         try:
+            r = subprocess.run([
+                "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
+                "-o", "ConnectTimeout=5", "tashan@192.168.23.66",
+                "export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash && "
+                f'ros2 topic pub --once /tower_light/command std_msgs/msg/String "{{data: {color}}}" && '
+                "timeout 5 ros2 topic echo /tower_light/status --once 2>/dev/null | head -1"
+            ], capture_output=True, text=True, timeout=25)
+            if r.returncode == 0:
+                state = ""
+                for _ln in (r.stdout or "").splitlines():
+                    if "state" in _ln:
+                        state = _ln.strip()[:150]
+                        break
+                self._log(f"   ✅ 直连下发完成 (Orin 塔灯 → {color})" + (f"\n   🔎 回读: {state}" if state else ""))
+                self.hw_table.item(0, 2).setText("🟢 已生效 (直连)")
+                self.hw_table.item(0, 3).setText(color)
+                return
+            _e = (r.stderr or r.stdout or "").strip().splitlines()
+            direct_err = _e[-1] if _e else f"rc={r.returncode}"
+            self._log(f"   ⚠️ 直连失败: {direct_err} → 转中间件")
+        except Exception as e:
+            direct_err = f"{type(e).__name__}: {e}"
+            self._log(f"   ⚠️ 直连异常: {direct_err} → 转中间件")
+
+        # ── 兜底: ECS relay → Mac 守护 (无直连网络时仍可用) ──
+        try:
+            from relay_middleware import RelayMiddleware
             mw = RelayMiddleware(timeout=10)
             resp = mw.send(f"tower_light {color}")
             self._log(f"   📡 已下发 Mac 塔灯指令: {resp.get('cmd','')}")
             self.hw_table.item(0, 2).setText("🟡 指令已下发")
             self.hw_table.item(0, 3).setText(color)
             self._log("   🤖 Mac 守护轮询到指令 → ssh tashan@192.168.23.66 → ros2 topic pub /tower_light/command")
-        except RelayError as e:
-            self._log(f"   ❌ 塔灯控制失败 (中间件): {e}")
+        except Exception as e:
+            self._log(f"   ❌ 塔灯控制失败: 直连({direct_err}) + 中间件({e})")
     
     def _gripper_cmd(self, pos):
         """夹爪开/关"""
