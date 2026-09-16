@@ -172,6 +172,33 @@ class SSBypassView(QtWidgets.QWidget):
             g2.addWidget(w, i // 3, i % 3)
         root.addWidget(gb2)
 
+        gbp = QtWidgets.QGroupBox("真机位姿 (实时 · 远程只读 Orin)")
+        gp = QtWidgets.QGridLayout(gbp)
+        for i, (t_, k, h_) in enumerate([("TCP X / Y / Z", "pose_xyz", "m · base_link 末端位置"),
+                                         ("姿态四元数", "pose_quat", "x,y,z,w · 末端朝向"),
+                                         ("六关节位置", "pose_q", "rad · q1..q6"),
+                                         ("六关节速度", "pose_dq", "rad/s · 全 0 = 机器静止"),
+                                         ("位置变化率", "pose_dx", "m/s · 由真实帧差分 (产线在动)"),
+                                         ("机器人状态", "pose_rs", "电源 / 运行 / 报警 / 急停 / 碰撞")]):
+            w, lab = self._row(t_)
+            lab.setStyleSheet(f"color:{FG};font-size:12px;")
+            self.labs["p_" + k] = lab
+            gp.addWidget(w, i // 3, i % 3)
+        root.addWidget(gbp)
+
+        gbimg = QtWidgets.QGroupBox("实时图像 (RealSense 彩色优先 / FoundationPose 调试帧兜底)")
+        gi = QtWidgets.QHBoxLayout(gbimg)
+        self.img_view = QtWidgets.QLabel("(无图像)")
+        self.img_view.setFixedSize(320, 240)
+        self.img_view.setStyleSheet("background:#161b22; color:#8b949e; border:1px solid #30363d;")
+        self.img_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.img_meta = QtWidgets.QLabel("-")
+        self.img_meta.setStyleSheet(f"color:{FG};font-size:12px;")
+        self.img_meta.setWordWrap(True)
+        gi.addWidget(self.img_view)
+        gi.addWidget(self.img_meta, 1)
+        root.addWidget(gbimg)
+
         self.curve = CurveWidget()
         root.addWidget(self.curve, 1)
         self.lab_foot = QtWidgets.QLabel("")
@@ -208,6 +235,79 @@ class SSBypassView(QtWidgets.QWidget):
             self.labs["src_ft"].setText(str(p.get("ft")) if p.get("ft") is not None else "缺(无发布者)")
             self.labs["src_z7"].setText("未示教 (拒算)" if p.get("z7") is None else str(p["z7"]))
             self.labs["src_prod"].setText(p.get("stage_prod") or "空闲")
+
+            # 真机位姿 (TCP + 四元数 + 六关节 + 机器人状态)
+            tcp = p.get("tcp") or []
+            self.labs["p_pose_xyz"].setText(", ".join(f"{v:+.4f}" for v in tcp) + f"  ({p.get('tcp_frame')})" if tcp else "-")
+            q = p.get("tcp_quat") or []
+            self.labs["p_pose_quat"].setText(", ".join(f"{v:+.3f}" for v in q) if q else "缺")
+            jp = p.get("jpos") or []
+            jv = p.get("jvel") or []
+            self.labs["p_pose_q"].setText(" ".join(f"{v:+.3f}" for v in jp) if jp else "缺")
+            self.labs["p_pose_dq"].setText(" ".join(f"{v:+.3f}" for v in jv) if jv else "缺")
+            moving = bool(jv) and max(abs(v) for v in jv) > 1e-4
+            self.labs["p_pose_dq"].setStyleSheet(f"color:{C_OK if moving else DIM};font-size:12px;")
+            dxr = (last.get("dx_real") if last else None)
+            self.labs["p_pose_dx"].setText(f"{dxr:.4f}" if isinstance(dxr, (int, float)) else "-")
+            self.labs["p_pose_dx"].setStyleSheet(
+                f"color:{C_OK if isinstance(dxr, (int, float)) and dxr > 0.002 else DIM};font-size:12px;")
+            import json as _json
+            import re as _re
+            _rsraw = p.get("robot_status") or ""
+            try:
+                rs = _json.loads(_rsraw)
+            except Exception:                      # 截断/非完整 JSON → 正则兜底 (如实取值, 不猜)
+                rs = {}
+                for _k in ("power_state", "operation_state", "error_reason"):
+                    _m = _re.search(r'"%s"\s*:\s*"([^"]*)"' % _k, _rsraw)
+                    if _m:
+                        rs[_k] = _m.group(1)
+                for _k in ("has_error", "estop_detected", "collision_detected"):
+                    rs[_k] = ('"%s": true' % _k) in _rsraw.replace(" ", "")
+            if rs:
+                st_txt = (f"{rs.get('power_state', '?')} / {rs.get('operation_state', '?')} / "
+                          + ("报警 " + str(rs.get("error_reason", "")) if rs.get("has_error")
+                             else ("急停" if rs.get("estop_detected") else
+                                   ("碰撞" if rs.get("collision_detected") else "正常"))))
+            else:
+                st_txt = "缺 (无 /robot_status)"
+            self.labs["p_pose_rs"].setText(st_txt)
+
+            # 实时图像 (多话题状态如实显示)
+            byt = p.get("images_by_topic") or {}
+            pick, pick_t = None, None
+            for t, v in byt.items():                     # RealSense 优先 (只认新鲜帧 ≤5s)
+                if v.get("png") and "realsense" in t and (v.get("age") or 99) <= 5.0:
+                    pick, pick_t = v, t
+            if pick is None:
+                for t, v in byt.items():
+                    if v.get("png") and (v.get("age") or 99) <= 5.0:
+                        pick, pick_t = v, t
+            if pick and os.path.exists(pick["png"]):
+                pm = QtGui.QPixmap(pick["png"])
+                if not pm.isNull():
+                    self.img_view.setPixmap(pm.scaled(self.img_view.size(), QtCore.Qt.KeepAspectRatio,
+                                                      QtCore.Qt.SmoothTransformation))
+                self.img_meta.setText(
+                    f"显示: {pick_t}\n{('RealSense 彩色' if 'realsense' in str(pick_t) else 'FoundationPose 调试帧')} "
+                    f"{pick.get('w')}×{pick.get('h')} {pick.get('encoding')} · 对比度 std={pick.get('std')} "
+                    f"(>5 判真图)\n新鲜度: {pick.get('age')}s\n各话题: " +
+                    " / ".join(f"{t.split('/')[-1]}={'有帧' if v.get('png') else '无帧'}" for t, v in byt.items()))
+            else:
+                _pubs = (p.get("pubs") or {})
+                _rs = _pubs.get("/realsense/color/image_raw")
+                _fp = _pubs.get("/foundationpose/tray_reference/debug_image")
+                if _rs and _rs > 0:
+                    self.img_view.setText("(RealSense 在线, 等待帧)")
+                elif _fp:
+                    self.img_view.setText("(FoundationPose 在线, 当前无帧)")
+                else:
+                    self.img_view.setText("(无图像发布者)")
+                self.img_meta.setText(
+                    f"当前无图像帧 — 发布者计数: RealSense 彩色={_rs} (D405 已接, Orin 未装 realsense2_camera), "
+                    f"FoundationPose 调试帧={_fp} (vision_tag, 产线视觉空闲时不发帧)\n"
+                    f"触觉 interfaces/msg/TactileSensor = 自定义消息, 容器无类型定义 → 暂不可订\n"
+                    f"💡 现场一旦有帧 (驱动起来/产线跑) 这里会立即显示真图, 不会用旧帧或占位图冒充")
 
             rows = self.src.tail_bypass(240)
             self.curve.set_data(rows)

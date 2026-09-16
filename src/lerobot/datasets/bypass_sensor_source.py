@@ -23,6 +23,7 @@ import time
 REMOTE_DIR = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax_ss_remote"))
 BYPASS_DIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax_data/ss_bypass"))
 STALE_S = float(os.environ.get("SS_SENSOR_STALE_S", "3.0"))   # 超过此秒数视为不新鲜
+IMG_FRESH_S = float(os.environ.get("SS_IMG_FRESH_S", "5.0"))  # 图像帧新鲜窗口 (超时不显示, 防旧图冒充)
 
 
 def _latest_file(d, prefix):
@@ -62,23 +63,42 @@ def _tail_json(path, n=1, chunk=65536):
 def read_latest():
     """最新一帧真机感知 → dict (含 fresh/age_s/gaps)"""
     path = _latest_file(REMOTE_DIR, "state_")
-    rows = _tail_json(path, n=1)
+    rows = _tail_json(path, n=12)
     if not rows:
         return {"ok": False, "reason": f"无真机感知数据 ({REMOTE_DIR}/state_*.jsonl)", "fresh": False,
                 "gaps": {"数据源": True}, "file": path}
     r = dict(rows[-1])
+    # 稀疏话题 (力/夹爪/机器人状态/图像 ~2-12Hz) 的最新值可能不在最后一帧 → 回看最近 12 帧取最近非空
+    for _k in ("ft", "gripper", "robot_status", "prod_stage", "image"):
+        if r.get(_k) is None:
+            for _r in reversed(rows):
+                if _r.get(_k) is not None:
+                    r[_k] = _r[_k]
+                    break
     age = max(0.0, time.time() - float(r.get("t", 0)))
     gaps = {k: True for k, v in (("夹爪开度", r.get("gripper")), ("六维力", r.get("ft")),
                                  ("关节速度", r.get("jvel")), ("场景几何 z7", r.get("z7")),
                                  ("机器人状态", r.get("robot_status"))) if v is None}
     pubs = r.get("pubs") or {}
     img = r.get("image") or {}
+    imgs_by_topic = r.get("images_by_topic") or {}
     if img and img.get("t") is not None:
-        img = dict(img, age=round(time.time() - float(img["t"]), 2),
-                   png=(os.path.join(REMOTE_DIR, "cam_latest.png")
-                        if os.path.exists(os.path.join(REMOTE_DIR, "cam_latest.png")) else None))
+        _p = img.get("path") or os.path.join(REMOTE_DIR, "cam_latest.png")
+        _age = round(time.time() - float(img["t"]), 2)
+        # ⚠️ 只认新鲜帧 (age ≤ IMG_FRESH_S): 旧图/离线测试图绝不当作实时图
+        img = dict(img, age=_age, png=(_p if (os.path.exists(_p) and _age <= IMG_FRESH_S) else None))
+    if imgs_by_topic:
+        _out = {}
+        for _t, _v in imgs_by_topic.items():
+            if not _v:
+                continue
+            _p = _v.get("path")
+            _age = round(time.time() - float(_v.get("t", 0)), 2)
+            _out[_t] = dict(_v, age=_age,
+                            png=(_p if (_p and os.path.exists(_p) and _age <= IMG_FRESH_S) else None))
+        imgs_by_topic = _out
     return {"ok": True, "file": path, "age_s": round(age, 2), "fresh": age <= STALE_S,
-            "pubs": pubs, "image": (img or None),
+            "pubs": pubs, "image": (img or None), "images_by_topic": imgs_by_topic,
             "tcp": r.get("tcp"), "tcp_quat": r.get("tcp_quat"), "tcp_frame": r.get("tcp_frame"),
             "jnames": r.get("jnames") or [], "jpos": r.get("jpos"), "jvel": r.get("jvel"),
             "gripper": r.get("gripper"), "ft": r.get("ft"), "z7": r.get("z7"),

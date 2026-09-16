@@ -56,9 +56,9 @@ class RemoteTap(Node):
         self.tcp_frame = None
         self.jnames = []
         self.rstat = None
-        self._rimg = None
-        self.img = None            # {topic,encoding,w,h,std,t}
-        self.img_path = os.path.join(OUT, "cam_latest.png")
+        self._rimgs = {}            # topic → 最近原始 Image 字节 (raw 订阅, 1Hz 解码)
+        self.img = None             # 选定帧 (RealSense 彩色优先)
+        self.imgs = {}             # topic → 最近解码结果 (分话题如实报状态)
         self.geom, self.geom_note = self._load_geom()
         self.create_subscription(PoseStamped, "/robot/tcp_pose", self.cb_tcp, _q(1))
         self.create_subscription(JointState, "/real_joint_states", self.cb_joint, _q(1))
@@ -76,9 +76,12 @@ class RemoteTap(Node):
                              "/foundationpose/tray_reference/debug_image"]
         self.pub_counts = {}
         self.create_timer(5.0, self._count_pubs)      # 发布者计数 (只读查询)
-        self.create_subscription(Image, os.environ.get("SS_CAM_TOPIC",
-                                                       "/foundationpose/tray_reference/debug_image"),
-                                 self.cb_img, _q(1), raw=True)
+        # 📷 图像: RealSense 彩色 (现场期望的"实时 realsense 图像") 优先, FoundationPose 调试图兜底
+        self.cam_topics = ["/realsense/color/image_raw",
+                           "/foundationpose/tray_reference/debug_image"]
+        for _t in self.cam_topics:
+            self.create_subscription(Image, _t, lambda m, _tt=_t: self.cb_img(m, _tt), _q(1), raw=True)
+        self.create_timer(1.0, self._tick_img)         # 1Hz: raw 字节 → 反序列化 → 元数据 + PNG
 
     def _load_geom(self):
         try:
@@ -136,14 +139,84 @@ class RemoteTap(Node):
         except Exception:
             pass
 
-    def cb_img(self, m):
+    def cb_img(self, m, topic=None):
+        """raw=True 订阅 → 回调只存字节 (高频不做重活), 解码在 1Hz 定时器里"""
         with self.lock:
-            self._rimg = m
+            self._rimgs[topic or "?"] = m
             self.n["img"] += 1
+
+    @staticmethod
+    def _png_write(arr, path, gray=False):
+        """纯 Python PNG 编码 (容器只有 numpy, 无 cv2/PIL): arr=uint8 HxW(x3)"""
+        import struct
+        import zlib
+        h, w = arr.shape[:2]
+        raw = b"".join(b"\x00" + arr[y].tobytes() for y in range(h))
+
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+        png = b"\x89PNG\r\n\x1a\n"
+        png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0 if gray else 2, 0, 0, 0))
+        png += chunk(b"IDAT", zlib.compress(raw, 6))
+        png += chunk(b"IEND", b"")
+        open(path, "wb").write(png)
+
+    def _decode_img(self, m, topic=None):
+        """Image → 元数据 + PNG 落盘 (真图判据 std>5, 与引擎同口径); 不支持的编码只记元数据"""
+        import numpy as _np
+        enc = (m.encoding or "").lower()
+        h, w = int(m.height), int(m.width)
+        tp = topic or getattr(m, "_ss_topic", None) or "?"
+        meta = {"topic": tp, "encoding": enc, "w": w, "h": h, "step": int(m.step),
+                "t": time.time(), "std": None, "saved": False,
+                "path": os.path.join(OUT, "cam_rs.png" if "realsense" in tp else "cam_fp.png")}
+        try:
+            buf = _np.frombuffer(bytes(m.data), dtype=_np.uint8)
+            if enc in ("rgb8", "bgr8") and buf.size >= h * w * 3:
+                a = buf[: h * w * 3].reshape(h, w, 3)
+                if enc == "bgr8":
+                    a = a[:, :, ::-1]
+                meta["std"] = round(float(a.std()), 2)
+                self._png_write(_np.ascontiguousarray(a), meta["path"])
+                meta["saved"] = True
+            elif enc in ("mono8", "8uc1") and buf.size >= h * w:
+                a = buf[: h * w].reshape(h, w)
+                meta["std"] = round(float(a.std()), 2)
+                self._png_write(a, meta["path"], gray=True)
+                meta["saved"] = True
+            elif enc in ("mono16", "16uc1", "32fc1") and buf.size >= h * w * 2:
+                a16 = buf[: h * w * 2].view(_np.uint16).reshape(h, w)
+                a = (a16.astype(_np.float32) / max(1.0, float(a16.max())) * 255).astype(_np.uint8)
+                meta["std"] = round(float(a.std()), 2)
+                self._png_write(a, meta["path"], gray=True)
+                meta["saved"] = True
+        except Exception as e:
+            meta["err"] = f"{type(e).__name__}: {e}"
+        return meta
+
+    def _tick_img(self):
+        """1Hz: 反序列化各话题最新帧 → 解码落盘; RealSense 有帧则优先作为 self.img"""
+        try:
+            from rclpy.serialization import deserialize_message
+            for t, raw in list(self._rimgs.items()):
+                if time.time() - (self.imgs.get(t) or {}).get("t", 0) <= 1.0:
+                    continue
+                try:
+                    msg = deserialize_message(bytes(raw), Image)
+                    meta = self._decode_img(msg, topic=t)
+                    self.imgs[t] = meta
+                    if meta.get("saved") and ("realsense" in t or not (self.img or {}).get("saved")):
+                        self.img = meta
+                except Exception as e:
+                    self.imgs[t] = {"topic": t, "err": f"{type(e).__name__}: {e}", "t": time.time()}
+        except Exception:
+            pass
 
     def cb_rstat(self, m):
         with self.lock:
-            self.rstat = str(m.data)[:300]
+            self.rstat = str(m.data)[:1200]     # 截断会破坏 JSON → 面板解析失败 (300 截过)
             self.n["rstat"] = self.n.get("rstat", 0) + 1
 
     def z7(self):
@@ -161,6 +234,8 @@ class RemoteTap(Node):
                     "tcp_quat": self.tcp_quat, "tcp_frame": self.tcp_frame,
                     "jnames": self.jnames, "robot_status": self.rstat,
                     "image": (dict(self.img, age=round(time.time() - self.img["t"], 2)) if self.img else None),
+                    "images_by_topic": {t: dict(v, age=round(time.time() - v.get("t", 0), 2))
+                                        for t, v in self.imgs.items()},
                     "pubs": dict(self.pub_counts),
                     "jpos": [round(float(x), 6) for x in self.jpos[:6]] if self.jpos else None,
                     "jvel": [round(float(x), 6) for x in self.jvel[:6]] if self.jvel else None,
