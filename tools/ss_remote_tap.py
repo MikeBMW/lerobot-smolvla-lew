@@ -43,7 +43,8 @@ def _q(depth=1):
 
 class RemoteTap(Node):
     def __init__(self):
-        super().__init__("ss_remote_tap")
+        # enable_rosout=False: 连 rclpy 自带的 /rosout 发布者都不要 → 域内零 publisher, 绝对只读
+        super().__init__("ss_remote_tap", enable_rosout=False, start_parameter_services=False)
         self.lock = threading.Lock()
         self.n = {k: 0 for k in ("tcp", "joint", "ft", "grip", "stage")}
         self.tcp = None
@@ -157,9 +158,14 @@ def main():
                 except Exception as e:
                     fp.write(json.dumps({"t": st["t"], "error": f"{type(e).__name__}: {e}"}) + "\n")
             if cnt % int(max(1, a.rate * 5)) == 0:
-                _pubs = n.get_publisher_names_and_types()
+                # 自证: 本节点自己建了几个发布者 (rclpy 未暴露公开列表, 用运行时实体表)
+                _pubs = [getattr(x, "topic_name", "?") for x in getattr(n, "_publishers", [])]
+                _ext = {t: n.count_publishers(t) for t in
+                        ("/robot/tcp_pose", "/real_joint_states", "/robot/force_torque", "/gripper_pos", "/motion/active_states")}
                 json.dump({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "samples": cnt, "recv": dict(n.n),
-                           "self_publishers": len(_pubs), "self_subscriptions": len(n.get_subscription_names_and_types()),
+                           "self_publishers": _pubs,   # 预期 [] = 域内零发布
+                           "self_pub_count": len(_pubs), "self_subscriptions": len(getattr(n, "_subscriptions", [])),
+                           "外部队列发布者(Orin侧)": _ext,
                            "geom": n.geom_note, "z7_ok": st["z7"] is not None,
                            "tcp": st["tcp"], "stage": st["prod_stage"]},
                           open(os.path.join(OUT, "status.json"), "w"), ensure_ascii=False, indent=1)
