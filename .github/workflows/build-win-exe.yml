@@ -94,7 +94,7 @@ jobs:
           done
           if [ "$ok" = "1" ]; then
             python -m zipfile -e mlp_video_pack.zip reports/
-            ls -la reports/ | head -8
+            ls -la reports/ | head -n 8 || true   # pipefail: head 先退会让 ls 收 SIGPIPE, 必须兜底
             ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
             echo "video_pack=ok" >> "$GITHUB_STEP_SUMMARY"
           else
@@ -315,7 +315,7 @@ jobs:
           done
           if [ "$ok" = "1" ]; then
             python -m zipfile -e mlp_video_pack.zip reports/
-            ls -la reports/ | head -8
+            ls -la reports/ | head -n 8 || true   # pipefail: head 先退会让 ls 收 SIGPIPE, 必须兜底
             ls reports/_mlp_cache_mlp_insert_success_final/ | wc -l
             echo "video_pack=ok" >> "$GITHUB_STEP_SUMMARY"
           else
