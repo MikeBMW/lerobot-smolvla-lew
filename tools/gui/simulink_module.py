@@ -4571,6 +4571,24 @@ class SimulinkModule(QWidget):
             "    且 |z_t→流形6维| 实测不可标定 (13 轮/1935 样本 LOSO 测试 R²≤0) → 不走标定映射。\n"
             "  · L3 档链路**一字未改** (l4_cond=None 时逐位相同); 取消勾选 = 回到纯 INTACT。")
         tl.addWidget(self.chk_l4_dit)
+        # 🧩 2026-09-16 老倪: "L4 档加一个勾选框「🧩 L2 兼容 (前馈 MLP + YOLO)」"
+        #   勾选(默认) = L4 引擎路径 (勾「🤖 INTACT 节点执行」/「🧠 模型执行」) 里 **L2 也真跑**:
+        #     ①前馈蒸馏 MLP 真身进 forward (SS_USE_MLP=1; 不设时装配期会被覆盖成 analytic_forward,
+        #       断点永远没有可命中点) ②R1 真实视觉 YOLO 每帧 detect (vision=True, 否则日志恒"YOLO 未启动")
+        #   ⚠️ 实测代价 (seed104/120 步, gui-venv311): 终点距离 0.42 → 6.82mm (YOLO 检测值替换 R0 真值
+        #   + MLP 在分布边缘), 时长 2.1× ⇒ 要精度优先就取消勾选 (回到 R0 真值 + 解析前馈)。
+        self.chk_l2_compat = QCheckBox("🧩 L2 兼容 (前馈 MLP + YOLO)")
+        self.chk_l2_compat.setChecked(True)
+        self.chk_l2_compat.setToolTip(
+            "【默认勾选】L4 档 (引擎路径: 勾「🤖 L4 用 INTACT 节点执行」或「🧠 模型执行」) 里让 **L2 同档真跑**:\n"
+            "  ①前馈蒸馏 MLP 真身进 forward (环境变量 SS_USE_MLP=1) —— 不设时装配期会用实例属性把\n"
+            "    accel.forward 覆盖成 analytic_forward ⇒ 那段真身在 L4 一次都不进 (断点也没有可命中点);\n"
+            "  ②R1 真实视觉 YOLO 每帧真检测 (vision=True, vision_every=1) —— 不设时日志恒打「YOLO 未启动」。\n"
+            "⚠️ 实测代价 (seed104 · 120 步 · gui-venv311): 终点距离 0.42mm → 6.82mm (YOLO 检测误差替换了\n"
+            "   R0 真值 + MLP 在训练分布边缘), 墙钟 3.3s → 6.9s (2.1×) ⇒ **要精度优先请取消勾选**\n"
+            "   (回到 R0 真值 + 解析前馈; 逐帧 MLP 的收益尚未证明)。\n"
+            "取消勾选等效环境变量 SS_L4_L2_COMPAT=0; L2/L3 档不受本勾选框影响 (零回退)。")
+        tl.addWidget(self.chk_l2_compat)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         tl.addWidget(self.btn_stop)
@@ -11454,12 +11472,21 @@ class SimulinkModule(QWidget):
                 #     臂A 现状 n_mlp=0 · YOLO 未启动 · 终点 0.42mm
                 #     臂B 接线 n_mlp=120(每帧真身) · YOLO 240/240 检出 · 终点 **6.82mm** (16×)
                 #   ⇒ 接了但不进默认档 (老倪门槛: 未证明提升不得进默认档); 要开: SS_L4_L2_COMPAT=1
+                # 🧩 2026-09-16 勾选框入口 (老倪要"工具按钮好使"): 读控件状态存属性, 下方装配块只读属性
+                try:
+                    _ckz = getattr(self, "chk_l2_compat", None)
+                    self._l2_compat_on = bool(_ckz is not None and _ckz.isChecked())
+                except Exception:
+                    self._l2_compat_on = True
                 _l4_cap = str(_cap or "").upper().startswith("L4")
-                _l2_compat = bool(_l4_cap and (not _demo_cap)
+                _l2_compat = bool(_l4_cap and (not _demo_cap) and self._l2_compat_on
                                   and os.environ.get("SS_L4_L2_COMPAT", "1") != "0")
+                if _l4_cap and not _demo_cap:
+                    _logs.append("🧩 L2 兼容勾选框 = " + ("✅ 勾选 (L2 同档真跑)" if self._l2_compat_on
+                                                          else "⬜ 未勾 (L4 用 R0 真值 + 解析前馈)"))
                 if _l2_compat:
                     os.environ["SS_USE_MLP"] = "1"
-                    _logs.append("🧩 L4 档 · L2 兼容已开 (SS_L4_L2_COMPAT=1): 前馈蒸馏 MLP 真身 "
+                    _logs.append("🧩 L4 档 · L2 兼容已开 (勾选框 ✅ / SS_L4_L2_COMPAT=1): 前馈蒸馏 MLP 真身 "
                                  "(SS_USE_MLP=1) + R1 真实视觉 YOLO (vision=True) 同档运行")
                     _logs.append("   └ ⚠️ 实测代价 (seed104/120步): 终点距离 0.42 → 6.82mm (YOLO 检测"
                                  "误差进 obs + MLP 在分布边缘), 属精度回退 ⇒ 默认关")
