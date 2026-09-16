@@ -1,0 +1,159 @@
+{
+ "arm": "base",
+ "seed": 0,
+ "steps": 600,
+ "dt": 11.52,
+ "s_per_step": 0.019,
+ "done": false,
+ "stage_dist": {
+  "阶段 对位": 536,
+  "阶段 接近": 64
+ },
+ "dist_first_mm": 336.95,
+ "dist_min_mm": 336.95,
+ "dist_final_mm": 398.7,
+ "mm_hits": 565,
+ "mm_on": true,
+ "mm_champ_loaded": true,
+ "il": {
+  "enabled": true,
+  "by_stage": {
+   "接近": 57,
+   "对位": 535
+  },
+  "stages_env": [
+   "接近",
+   "对位",
+   "下降",
+   "抓取",
+   "抬起",
+   "转移"
+  ],
+  "frames": 75,
+  "ran": 74,
+  "applied": 592,
+  "w_zero": 0,
+  "refused": 1,
+  "ready": true,
+  "ready_src": "已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)",
+  "src_last": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.3193)",
+  "w_last": 0.3,
+  "z_src": "engine(z7 几何)",
+  "err": "z7 历史为空 (几何潜空间未生成)",
+  "intent_gain_mean": 6.000594,
+  "manifold_last": [
+   0.00479,
+   0.01464,
+   0.00169,
+   0.48554,
+   0.01624,
+   -0.14901
+  ],
+  "clip_max": 0.0,
+  "stack": {
+   "commit": 592,
+   "vetoed": 0,
+   "clipped": 0,
+   "clip_max_mean": null,
+   "w_last": 0.3,
+   "layers": {
+    "L2": {
+     "kind": "action",
+     "src": "analytic/L3 参考",
+     "weight": 1.0,
+     "accepted": true,
+     "reason": "执行层 (唯一出口)",
+     "hash": "63c1cd98f3d0c896"
+    },
+    "L4": {
+     "kind": "intent",
+     "src": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.3193)",
+     "weight": 0.3,
+     "accepted": true,
+     "reason": "采纳: w=0.300",
+     "hash": "fd6191cb5621bc05",
+     "ready": true
+    }
+   }
+  }
+ },
+ "gain": {
+  "enabled": false,
+  "steps": 0,
+  "applied": 0,
+  "zero_frames": 0,
+  "k_nav_mean": 0.0,
+  "k_flow_mean": 0.0,
+  "k_mm_mean": 0.0,
+  "events": {},
+  "err": null,
+  "k_nav_tail": [],
+  "k_flow_tail": [],
+  "p_last": null,
+  "p_zero_gate": null,
+  "reason_last": ""
+ },
+ "gain_log": [],
+ "mm_log": [
+  "🧠 肌肉记忆快通道: 接近 段标杆 u_exec 重放 (小脑接管前馈)"
+ ],
+ "l4_stats": {
+  "calls": 75,
+  "reuse": 525,
+  "refused": 0,
+  "blend": 564,
+  "w_zero": 36,
+  "cond_ready": 0,
+  "frame_std": 56.13822,
+  "err": null,
+  "src": "intact(chunk×K_ACT=0.5)",
+  "w": 0.3,
+  "cond_src": "拒绝(未标定)",
+  "goal_src": "set_goal(显式)",
+  "skill_ctx_dim": 24,
+  "skill_ctx_nonzero": 2,
+  "l2_ready": true,
+  "l2_err": null,
+  "l2_veto": 36,
+  "l2_veto_mag": 1,
+  "gate_pass": 564,
+  "l2_veto_dir": 35
+ },
+ "intact_stats": {
+  "intact_calls": 0,
+  "refused_map": 0,
+  "frames": 0,
+  "chunk_reuse": 0,
+  "err": null,
+  "shift": null,
+  "u_ff_src": "analytic"
+ },
+ "logs": [
+  "[250/600] 阶段=对位 残差=0.007 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[275/600] 阶段=对位 残差=0.007 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[300/600] 阶段=对位 残差=0.007 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[325/600] 阶段=对位 残差=0.005 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[350/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[375/600] 阶段=对位 残差=0.005 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[400/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[425/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[450/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[475/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[500/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[525/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[550/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[575/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动"
+ ],
+ "uff_mean_norm": 0.04931,
+ "uff_last": [
+  -0.03634,
+  -0.0353,
+  0.01286
+ ],
+ "uff_hash": "139f3b3ffa689e75",
+ "uff_stage_mean_norm": {
+  "接近": 0.08879,
+  "对位": 0.04452
+ },
+ "uff_nonzero_frames": 599
+}

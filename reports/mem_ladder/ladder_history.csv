@@ -1,0 +1,17 @@
+ts,manifest,arm,disturb,n,succ,succ_rate,depth_mean,depth_std,calls_per_step,intervene_steps,w_mean,seconds_per_ep,ckpt,git
+2026-09-14 03:01:15,6fc5fe9f60fa,L2,disturb,3,0,0.0,585.4,64.2,1.0,3000,0.1,337,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,L2,none,3,0,0.0,609.4,14.9,1.0,3000,0.1,345,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,L23,disturb,3,0,0.0,610.8,60.2,1.0,3000,0.1,497,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,L23,none,3,0,0.0,605.9,21.7,1.0,3000,0.1,322,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,L234,disturb,3,0,0.0,610.8,60.2,1.0,3000,0.1,330,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,L234,none,3,0,0.0,605.9,21.9,1.0,3000,0.1,333,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,assy,disturb,3,0,0.0,610.8,60.2,1.0,3000,0.1,324,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,assy,none,3,0,0.0,610.0,22.6,1.0,3000,0.1,332,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,off,disturb,3,0,0.0,605.2,44.0,1.0,0,0.0,346,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:01:15,6fc5fe9f60fa,off,none,3,0,0.0,588.5,55.0,1.0,0,0.0,366,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,23c7d22c
+2026-09-14 03:35:03,b355ab3d6085,L2,disturb,1,0,0.0,419.1,0.0,1.0,1000,0.8087,322,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,85796d09
+2026-09-14 03:35:03,b355ab3d6085,L2,none,1,0,0.0,431.6,0.0,1.0,1000,0.7491,328,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,85796d09
+2026-09-14 03:35:03,b355ab3d6085,L234,disturb,1,0,0.0,419.1,0.0,1.0,1000,0.8087,336,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,85796d09
+2026-09-14 03:35:03,b355ab3d6085,L234,none,1,0,0.0,431.6,0.0,1.0,1000,0.7491,344,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,85796d09
+2026-09-14 03:35:03,b355ab3d6085,off,disturb,1,0,0.0,667.1,0.0,1.0,0,0.0,355,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,85796d09
+2026-09-14 03:35:03,b355ab3d6085,off,none,1,0,0.0,649.3,0.0,1.0,0,0.0,318,intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt,85796d09

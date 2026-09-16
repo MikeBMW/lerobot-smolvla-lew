@@ -1,0 +1,181 @@
+{
+ "arm": "gain",
+ "seed": 0,
+ "steps": 600,
+ "dt": 12.3,
+ "s_per_step": 0.021,
+ "done": false,
+ "stage_dist": {
+  "阶段 对位": 536,
+  "阶段 接近": 64
+ },
+ "dist_first_mm": 336.95,
+ "dist_min_mm": 336.95,
+ "dist_final_mm": 441.28,
+ "mm_hits": 565,
+ "mm_on": true,
+ "mm_champ_loaded": true,
+ "il": {
+  "enabled": true,
+  "by_stage": {
+   "接近": 57,
+   "对位": 535
+  },
+  "stages_env": [
+   "接近",
+   "对位",
+   "下降",
+   "抓取",
+   "抬起",
+   "转移"
+  ],
+  "frames": 75,
+  "ran": 74,
+  "applied": 592,
+  "w_zero": 0,
+  "refused": 1,
+  "ready": true,
+  "ready_src": "已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)",
+  "src_last": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.2156)",
+  "w_last": 0.3,
+  "z_src": "engine(z7 几何)",
+  "err": "z7 历史为空 (几何潜空间未生成)",
+  "intent_gain_mean": 6.000561,
+  "manifold_last": [
+   0.00506,
+   0.01582,
+   0.00164,
+   0.45499,
+   0.02096,
+   -0.14473
+  ],
+  "clip_max": 0.0,
+  "stack": {
+   "commit": 592,
+   "vetoed": 0,
+   "clipped": 0,
+   "clip_max_mean": null,
+   "w_last": 1.0,
+   "layers": {
+    "L2": {
+     "kind": "action",
+     "src": "analytic/L3 参考",
+     "weight": 1.0,
+     "accepted": true,
+     "reason": "执行层 (唯一出口)",
+     "hash": "ebf080b872262149"
+    },
+    "L4": {
+     "kind": "intent",
+     "src": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.2156) · 🎚 K_nav=0.000 K_flow=0.000 K_mm=0.350 (默认 L2 (肌肉记忆/解析伺服主导))",
+     "weight": 1.0,
+     "accepted": true,
+     "reason": "采纳: w=1.000",
+     "hash": "149d598d7788d403",
+     "ready": true
+    }
+   }
+  }
+ },
+ "gain": {
+  "enabled": true,
+  "steps": 592,
+  "applied": 592,
+  "zero_frames": 0,
+  "k_nav_mean": 0.26774,
+  "k_flow_mean": 0.0,
+  "k_mm_mean": 0.25629,
+  "events": {
+   "stage_switch": 2,
+   "stall": 294
+  },
+  "err": null,
+  "k_nav_tail": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "k_flow_tail": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p_last": 0.001015,
+  "p_zero_gate": 0.0016,
+  "reason_last": "默认 L2 (肌肉记忆/解析伺服主导)"
+ },
+ "gain_log": [
+  "🎚 自适应增益层就绪 (卡尔曼式: 熟场景→默认 L2 / 泛化受扰→抬 L4 导航 + L3 流程)"
+ ],
+ "mm_log": [
+  "🧠 肌肉记忆快通道: 接近 段标杆 u_exec 重放 (小脑接管前馈)"
+ ],
+ "l4_stats": {
+  "calls": 75,
+  "reuse": 525,
+  "refused": 0,
+  "blend": 0,
+  "w_zero": 600,
+  "cond_ready": 0,
+  "frame_std": 56.31518,
+  "err": null,
+  "src": "intact(chunk×K_ACT=0.5)",
+  "w": 0.3,
+  "cond_src": "拒绝(未标定)",
+  "goal_src": "set_goal(显式)",
+  "skill_ctx_dim": 24,
+  "skill_ctx_nonzero": 2,
+  "l2_ready": true,
+  "l2_err": null,
+  "l2_veto": 600,
+  "l2_veto_mag": 134,
+  "l2_veto_dir": 466
+ },
+ "intact_stats": {
+  "intact_calls": 0,
+  "refused_map": 0,
+  "frames": 0,
+  "chunk_reuse": 0,
+  "err": null,
+  "shift": null,
+  "u_ff_src": "analytic"
+ },
+ "logs": [
+  "[250/600] 阶段=对位 残差=0.007 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[275/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[300/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[325/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[350/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[375/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[400/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[425/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[450/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[475/600] 阶段=对位 残差=0.005 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[500/600] 阶段=对位 残差=0.007 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[525/600] 阶段=对位 残差=0.008 接触p=0.52 grp=1.00 grasped=False · YOLO 未启动",
+  "[550/600] 阶段=对位 残差=0.007 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[575/600] 阶段=对位 残差=0.003 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动"
+ ],
+ "uff_mean_norm": 0.05324,
+ "uff_last": [
+  -0.01915,
+  -0.01789,
+  0.0059
+ ],
+ "uff_hash": "2b9e8467d33a0898",
+ "uff_stage_mean_norm": {
+  "接近": 0.11993,
+  "对位": 0.04514
+ },
+ "uff_nonzero_frames": 599
+}

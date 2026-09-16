@@ -239,3 +239,9 @@ checkpoints/
 
 # 手工备份文件不进库 (2026-09-15)
 *.bak-*
+
+# 2026-09-16: 证据视频一律不入库 (大文件), 只留 manifest
+reports/**/*.mp4
+reports/**/*.avi
+reports/**/*.zip
+reports/**/*.tar.gz

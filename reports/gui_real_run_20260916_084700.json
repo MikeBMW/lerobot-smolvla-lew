@@ -1,0 +1,35 @@
+{
+ "ts": "2026-09-16 08:47:00",
+ "cap": "L4",
+ "mode": "full",
+ "steps": 872,
+ "done": true,
+ "insert_mm": 6.4,
+ "yolo_detect_pct": 0.0,
+ "model_calls": 0,
+ "gate": {},
+ "aoi_report": {
+  "ok": true,
+  "insert_depth_min_mm": 1.35,
+  "force_peak": 0.938,
+  "insert_stall_events": 0,
+  "went_back_grasp": false
+ },
+ "stage_counts": {
+  "阶段 AOI检测": 135,
+  "阶段 AOI转移": 75,
+  "阶段 下降": 70,
+  "阶段 回程": 74,
+  "阶段 对位": 33,
+  "阶段 抓取": 18,
+  "阶段 抬起": 39,
+  "阶段 拔出": 127,
+  "阶段 拔出 · 接触": 38,
+  "阶段 接近": 18,
+  "阶段 插入": 50,
+  "阶段 插入 · 接触": 67,
+  "阶段 放下": 69,
+  "阶段 转移": 59
+ },
+ "grasped": false
+}

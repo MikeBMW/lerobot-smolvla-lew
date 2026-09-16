@@ -1,0 +1,204 @@
+{
+ "arm": "gain",
+ "seed": 777,
+ "steps": 600,
+ "dt": 12.27,
+ "s_per_step": 0.02,
+ "done": false,
+ "stage_dist": {
+  "阶段 下降": 100,
+  "阶段 下降 · 接触": 3,
+  "阶段 对位": 190,
+  "阶段 对位 · 接触": 10,
+  "阶段 抓取": 21,
+  "阶段 抓取 · 接触": 3,
+  "阶段 抬起": 50,
+  "阶段 抬起 · 接触": 3,
+  "阶段 接近": 53,
+  "阶段 插入": 5,
+  "阶段 插入 · 接触": 9,
+  "阶段 转移": 126,
+  "阶段 转移 · 接触": 27
+ },
+ "dist_first_mm": 260.18,
+ "dist_min_mm": 16.71,
+ "dist_final_mm": 47.24,
+ "mm_hits": 0,
+ "mm_on": true,
+ "mm_champ_loaded": false,
+ "il": {
+  "enabled": true,
+  "by_stage": {
+   "接近": 46,
+   "对位": 199,
+   "下降": 103,
+   "抓取": 24,
+   "抬起": 53,
+   "转移": 107,
+   "插入": 14
+  },
+  "stages_env": [
+   "接近",
+   "对位",
+   "下降",
+   "抓取",
+   "抬起",
+   "转移"
+  ],
+  "frames": 74,
+  "ran": 73,
+  "applied": 546,
+  "w_zero": 0,
+  "refused": 1,
+  "ready": true,
+  "ready_src": "已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)",
+  "src_last": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=15.9251)",
+  "w_last": 0.3,
+  "z_src": "engine(z7 几何)",
+  "err": "z7 历史为空 (几何潜空间未生成)",
+  "intent_gain_mean": 9.85564,
+  "manifold_last": [
+   0.01817,
+   0.00177,
+   -0.0004,
+   0.00036,
+   0.19352,
+   -0.12097
+  ],
+  "clip_max": 0.0,
+  "stack": {
+   "commit": 546,
+   "vetoed": 0,
+   "clipped": 0,
+   "clip_max_mean": null,
+   "w_last": 0.3969595720059469,
+   "layers": {
+    "L2": {
+     "kind": "action",
+     "src": "analytic/L3 参考",
+     "weight": 1.0,
+     "accepted": true,
+     "reason": "执行层 (唯一出口)",
+     "hash": "81dc4389d63252db"
+    },
+    "L4": {
+     "kind": "intent",
+     "src": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=15.9251) · 🎚 K_nav=0.397 K_flow=0.000 K_mm=0.000 (抬增益: 更信 L4导航)",
+     "weight": 0.397,
+     "accepted": true,
+     "reason": "采纳: w=0.397",
+     "hash": "07e2685a87801e4b",
+     "ready": true
+    }
+   }
+  }
+ },
+ "gain": {
+  "enabled": true,
+  "steps": 592,
+  "applied": 546,
+  "zero_frames": 46,
+  "k_nav_mean": 0.34165,
+  "k_flow_mean": 0.0,
+  "k_mm_mean": 0.0,
+  "events": {
+   "mm_miss": 425,
+   "stage_switch": 30,
+   "stall": 112
+  },
+  "err": null,
+  "refused": 0,
+  "cos_mean": null,
+  "ratio_mean": null,
+  "k_nav_tail": [
+   0.397,
+   0.397,
+   0.397,
+   0.397,
+   0.397,
+   0.397,
+   0.397,
+   0.397
+  ],
+  "k_flow_tail": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p_last": 0.039696,
+  "p_zero_gate": 0.0016,
+  "reason_last": "抬增益: 更信 L4导航"
+ },
+ "gain_log": [
+  "🎚 自适应增益层就绪 (卡尔曼式: 熟场景→默认 L2 / 泛化受扰→抬 L4 导航 + L3 流程)"
+ ],
+ "mm_log": [],
+ "l4_stats": {
+  "calls": 74,
+  "reuse": 512,
+  "refused": 0,
+  "blend": 376,
+  "w_zero": 210,
+  "cond_ready": 0,
+  "frame_std": 55.61116,
+  "err": null,
+  "src": "intact(chunk×K_ACT=0.5)",
+  "w": 0.3,
+  "cond_src": "拒绝(未标定)",
+  "goal_src": "set_goal(显式)",
+  "skill_ctx_dim": 24,
+  "skill_ctx_nonzero": 2,
+  "l2_ready": true,
+  "l2_err": null,
+  "gate_pass": 376,
+  "l2_veto": 210,
+  "l2_veto_dir": 210
+ },
+ "intact_stats": {
+  "intact_calls": 0,
+  "refused_map": 0,
+  "frames": 0,
+  "chunk_reuse": 0,
+  "err": null,
+  "shift": null,
+  "u_ff_src": "analytic"
+ },
+ "logs": [
+  "[375/600] 阶段=转移 残差=0.014 接触p=1.00 grp=0.43 grasped=True · YOLO 未启动",
+  "🔄 插入感知偏差 11mm (peg 夹爪内滑) → 回接近重抓刷新锁存",
+  "[400/600] 阶段=对位 残差=0.011 接触p=0.52 grp=1.00 grasped=False · YOLO 未启动",
+  "[425/600] 阶段=对位 残差=0.005 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[450/600] 阶段=对位 残差=0.004 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动",
+  "[475/600] 阶段=下降 残差=0.002 接触p=0.50 grp=1.00 grasped=False · YOLO 未启动",
+  "[500/600] 阶段=下降 残差=0.003 接触p=0.51 grp=0.74 grasped=False · YOLO 未启动",
+  "🔩 夹爪深夹到位 (obs gripper=0.46) → 抬升试探",
+  "[525/600] 阶段=转移 残差=0.013 接触p=0.53 grp=0.32 grasped=True · YOLO 未启动",
+  "🦾 滑移 16mm (第1次) → 重夹窗口, 不回退",
+  "🔄 插入感知偏差 20mm (peg 夹爪内滑) → 回接近重抓刷新锁存",
+  "[550/600] 阶段=对位 残差=0.018 接触p=0.54 grp=0.42 grasped=False · YOLO 未启动",
+  "🦾 重夹窗口结束 → 继续任务 (不走回退)",
+  "[575/600] 阶段=对位 残差=0.006 接触p=0.51 grp=1.00 grasped=False · YOLO 未启动"
+ ],
+ "uff_mean_norm": 0.07714,
+ "uff_last": [
+  0.00772,
+  -0.03287,
+  -0.00792
+ ],
+ "uff_hash": "18fed58afa5bfc9f",
+ "uff_stage_mean_norm": {
+  "接近": 0.13475,
+  "对位": 0.05016,
+  "下降": 0.05828,
+  "抓取": 0.03896,
+  "抬起": 0.09671,
+  "转移": 0.10899,
+  "插入": 0.02032
+ },
+ "uff_nonzero_frames": 600
+}

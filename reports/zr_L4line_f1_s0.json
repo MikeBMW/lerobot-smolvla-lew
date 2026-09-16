@@ -1,0 +1,380 @@
+{
+ "scen": "L4line",
+ "steps": 60,
+ "trace_hash": "4e8f82fad3546e4cb3685166562f0f85",
+ "env": {
+  "SS_L4_INTACT": "1",
+  "SS_L4_INTENT_LINE": "1",
+  "SS_L4_FIBER": "1",
+  "SS_L4_DIT": null,
+  "SS_L3": null,
+  "SS_INTACT": null
+ },
+ "trace_cols": {
+  "u_ff_vec": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 4,
+   "last_norm": 0.0674380707339788
+  },
+  "u_exec_vec": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 4,
+   "last_norm": 0.06790491918319848
+  },
+  "u_fuse_vec": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 4,
+   "last_norm": 0.06790491918319848
+  },
+  "l4_u_ff_vec": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 4,
+   "last_norm": 1.219382734638331
+  },
+  "l4_cond_vec": {
+   "n": 60,
+   "n_nonnull": 0,
+   "n_nonzero": 0,
+   "dim": 0,
+   "last_norm": 0.0
+  },
+  "mani_pred": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 6,
+   "last_norm": 0.25991477877995955
+  },
+  "mani_progress": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.07267561189303855
+  },
+  "mani_risk": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 0,
+   "dim": 1,
+   "last_norm": 0.0
+  },
+  "mani_V": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.002640872282013783
+  },
+  "mani_eta": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 0,
+   "dim": 1,
+   "last_norm": 0.0
+  },
+  "mani_dperp": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.12082151631062704
+  },
+  "z7_vec": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 7,
+   "last_norm": 0.13784868164552463
+  },
+  "latent_vec": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 4,
+   "last_norm": 0.6624081474372304
+  },
+  "fiber_h_norm": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.03186081106438355
+  },
+  "fiber_kappa_tor": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.028589303497406696
+  },
+  "fiber_kappa_curv": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.02916369728489024
+  },
+  "fiber_cos_geo": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 0.9751816493569506
+  },
+  "fiber_contact_true": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 6,
+   "last_norm": 0.07983119271161364
+  },
+  "fiber_perf_true": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 6,
+   "last_norm": 0.1552417197540958
+  },
+  "fiber_z7_hat": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 7,
+   "last_norm": 0.2023247379173111
+  },
+  "fiber_cond_norm": {
+   "n": 60,
+   "n_nonnull": 60,
+   "n_nonzero": 60,
+   "dim": 1,
+   "last_norm": 1.7540982397991411
+  }
+ },
+ "summaries": {
+  "intact_attach": {
+   "intact_calls": 0,
+   "refused_map": 0,
+   "frames": 0,
+   "chunk_reuse": 0,
+   "err": null,
+   "shift": [],
+   "u_ff_src": "analytic"
+  },
+  "l4": {
+   "calls": 8,
+   "reuse": 52,
+   "refused": 0,
+   "blend": 0,
+   "w_zero": 60,
+   "cond_ready": 0,
+   "frame_std": [
+    55.94976043701172,
+    55.92599868774414,
+    55.9215202331543,
+    55.922035217285156,
+    55.9195556640625,
+    55.92079544067383,
+    55.91468048095703,
+    55.91204833984375
+   ],
+   "shift": [
+    0.27418332038538346,
+    0.5206303695520095,
+    0.5189992864775347,
+    0.4974121970842537,
+    0.48424970662125266,
+    0.47974939706247105,
+    0.48332791691919125,
+    0.4953437641564814,
+    0.53232333285786,
+    0.5880850498154108,
+    0.6639942592561164,
+    0.7163441538920753,
+    0.7138169420944858,
+    0.7103150796774538,
+    0.7059707475444618,
+    0.7010848737824525,
+    0.6964746162465737,
+    0.6937999828407447,
+    0.6926005883828106,
+    0.6935404732455337,
+    0.6972867598743319,
+    0.7044642077064356,
+    0.7156765876768493,
+    0.7316038455299481,
+    0.7444989908832808,
+    0.7593191218355242,
+    0.7762540925713423,
+    0.794808191897891,
+    0.814765125407443,
+    0.8360363403476244,
+    0.8586472581789002,
+    0.8827447551266892,
+    0.9021786603466074,
+    0.9198374336699414,
+    0.9139636822654275,
+    0.8970665228518123,
+    0.8807632019727956,
+    0.8648647881444214,
+    0.8494827639122615,
+    0.8349421717168198,
+    0.8181148620328577,
+    0.8034162418543415,
+    0.7930551937122127,
+    0.7864136341873823,
+    0.7826490890911307,
+    0.7809946762774379,
+    0.7807794862927576,
+    0.7813028214515583,
+    0.7845611779987409,
+    0.7931561374777522,
+    0.8023644710850921,
+    0.8270639184541978,
+    0.83308115727987,
+    0.8345615771471977,
+    0.8314441032001973,
+    0.8245802886539217,
+    0.7608465361145139,
+    0.7133366438941137,
+    0.7260507889536292,
+    0.7293801821664969
+   ],
+   "err": null,
+   "src": "intact(chunk×K_ACT=0.5)",
+   "w": 0.3,
+   "cond_src": "拒绝(未标定)",
+   "goal_src": "set_goal(显式)",
+   "skill_ctx_dim": 24,
+   "skill_ctx_nonzero": 3,
+   "l2_ready": true,
+   "l2_err": null,
+   "l2_veto": 60,
+   "l2_veto_dir": 37,
+   "l2_veto_mag": 23
+  },
+  "il": {
+   "enabled": true,
+   "by_stage": {
+    "接近": 51,
+    "对位": 9
+   },
+   "stages_env": [
+    "接近",
+    "对位",
+    "下降",
+    "抓取",
+    "抬起",
+    "转移"
+   ],
+   "frames": 8,
+   "ran": 8,
+   "applied": 60,
+   "w_zero": 0,
+   "refused": 0,
+   "ready": true,
+   "ready_src": "已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)",
+   "src_last": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=20.9366)",
+   "w_last": 0.3,
+   "z_src": "fiber(A·z_pred+b ← INTACT 预测潜空间)",
+   "err": null,
+   "intent_gain_mean": 8.567547,
+   "manifold_last": [
+    -0.00899,
+    0.03058,
+    0.00049,
+    0.07148,
+    0.08318,
+    0.06058
+   ],
+   "clip_max": 0.0,
+   "stack": {
+    "commit": 60,
+    "vetoed": 0,
+    "clipped": 0,
+    "clip_max_mean": null,
+    "w_last": 0.3,
+    "layers": {
+     "L2": {
+      "kind": "action",
+      "src": "analytic/L3 参考",
+      "weight": 1.0,
+      "accepted": true,
+      "reason": "执行层 (唯一出口)",
+      "hash": "f89a14e5cfe2dc96"
+     },
+     "L4": {
+      "kind": "intent",
+      "src": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=20.9366)",
+      "weight": 0.3,
+      "accepted": true,
+      "reason": "采纳: w=0.300",
+      "hash": "a790779ebad7c933",
+      "ready": true
+     }
+    }
+   }
+  },
+  "fiber": {
+   "enabled": true,
+   "frames": 8,
+   "ran": 8,
+   "no_latent": 0,
+   "ready": true,
+   "map_src": "intact_fiber_map.json · ready=True · contact_r2_loso=0.4711 · morph_r2_loso=0.6067 · 标定 n=582 (真实引擎样本) · 数据文件 8 个 · contact r²_loso=0.471 / morph r²_loso=0.607 → ready=True",
+   "err": null,
+   "src_last": "Φ(z_pred)−Φ(z_t) · contact r²_loso=0.471 (null=0.000, n=582) · z7 丛映射 r²_loso=0.607",
+   "h_norm_mean": 0.0505,
+   "kappa_tor_mean": 0.0466,
+   "kappa_curv_mean": 0.018834,
+   "cos_geo_mean": 0.8598,
+   "phi_last": [
+    0.09648,
+    0.00121,
+    0.00535,
+    -0.00251,
+    -0.00014,
+    0.0184
+   ],
+   "omega_last": [
+    0.028519,
+    0.002262,
+    0.003099,
+    -0.000459,
+    -0.004247,
+    0.002053
+   ],
+   "contact_true_last": [
+    0.0776,
+    0.0,
+    0.00301,
+    -0.0014,
+    0.0,
+    0.01844
+   ],
+   "sample_n": 0,
+   "w_perf": 0.0,
+   "perf_note": "插拔任务次要: 只记录不注入 (老倪口径)"
+  },
+  "l4_dit": {
+   "calls": 0,
+   "ok": 0,
+   "refused": 0,
+   "err": null,
+   "cond_dim": 0,
+   "cond_norm": 0.0,
+   "act_norm": [],
+   "delta": [],
+   "beta": 0.0,
+   "src": "off"
+  }
+ }
+}

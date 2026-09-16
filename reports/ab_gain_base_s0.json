@@ -1,0 +1,175 @@
+{
+ "arm": "base",
+ "seed": 0,
+ "steps": 600,
+ "dt": 12.76,
+ "s_per_step": 0.021,
+ "done": false,
+ "stage_dist": {
+  "阶段 下降": 49,
+  "阶段 对位": 238,
+  "阶段 抓取": 18,
+  "阶段 抬起": 121,
+  "阶段 接近": 65,
+  "阶段 插入": 1,
+  "阶段 插入 · 接触": 2,
+  "阶段 转移": 106
+ },
+ "dist_first_mm": 336.95,
+ "dist_min_mm": 285.77,
+ "dist_final_mm": 336.88,
+ "mm_hits": 429,
+ "mm_on": true,
+ "mm_champ_loaded": true,
+ "il": {
+  "enabled": true,
+  "by_stage": {
+   "接近": 58,
+   "对位": 237,
+   "下降": 49,
+   "抓取": 18,
+   "抬起": 121,
+   "转移": 106,
+   "插入": 3
+  },
+  "stages_env": [
+   "接近",
+   "对位",
+   "下降",
+   "抓取",
+   "抬起",
+   "转移"
+  ],
+  "frames": 75,
+  "ran": 74,
+  "applied": 592,
+  "w_zero": 0,
+  "refused": 1,
+  "ready": true,
+  "ready_src": "已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)",
+  "src_last": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=24.0155)",
+  "w_last": 0.3,
+  "z_src": "engine(z7 几何)",
+  "err": "z7 历史为空 (几何潜空间未生成)",
+  "intent_gain_mean": 12.080252,
+  "manifold_last": [
+   0.01031,
+   0.04055,
+   0.00121,
+   0.04733,
+   0.10366,
+   0.00262
+  ],
+  "clip_max": 0.0,
+  "stack": {
+   "commit": 592,
+   "vetoed": 0,
+   "clipped": 0,
+   "clip_max_mean": null,
+   "w_last": 0.3,
+   "layers": {
+    "L2": {
+     "kind": "action",
+     "src": "analytic/L3 参考",
+     "weight": 1.0,
+     "accepted": true,
+     "reason": "执行层 (唯一出口)",
+     "hash": "d3a6cf850377671b"
+    },
+    "L4": {
+     "kind": "intent",
+     "src": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=24.0155)",
+     "weight": 0.3,
+     "accepted": true,
+     "reason": "采纳: w=0.300",
+     "hash": "6150e8182b9d6070",
+     "ready": true
+    }
+   }
+  }
+ },
+ "gain": {
+  "enabled": false,
+  "steps": 0,
+  "applied": 0,
+  "zero_frames": 0,
+  "k_nav_mean": 0.0,
+  "k_flow_mean": 0.0,
+  "k_mm_mean": 0.0,
+  "events": {},
+  "err": null,
+  "k_nav_tail": [],
+  "k_flow_tail": [],
+  "p_last": null,
+  "p_zero_gate": null,
+  "reason_last": ""
+ },
+ "gain_log": [],
+ "mm_log": [
+  "🧠 肌肉记忆快通道: 接近 段标杆 u_exec 重放 (小脑接管前馈)"
+ ],
+ "l4_stats": {
+  "calls": 75,
+  "reuse": 522,
+  "refused": 0,
+  "blend": 10,
+  "w_zero": 587,
+  "cond_ready": 0,
+  "frame_std": 56.10274,
+  "err": null,
+  "src": "intact(chunk×K_ACT=0.5)",
+  "w": 0.3,
+  "cond_src": "拒绝(未标定)",
+  "goal_src": "set_goal(显式)",
+  "skill_ctx_dim": 24,
+  "skill_ctx_nonzero": 3,
+  "l2_ready": true,
+  "l2_err": null,
+  "l2_veto": 587,
+  "l2_veto_mag": 244,
+  "l2_veto_dir": 343,
+  "gate_pass": 10
+ },
+ "intact_stats": {
+  "intact_calls": 0,
+  "refused_map": 0,
+  "frames": 0,
+  "chunk_reuse": 0,
+  "err": null,
+  "shift": null,
+  "u_ff_src": "analytic"
+ },
+ "logs": [
+  "[275/600] 阶段=抬起 残差=0.002 接触p=0.50 grp=0.30 grasped=True · YOLO 未启动",
+  "[300/600] 阶段=转移 残差=0.004 接触p=0.51 grp=0.30 grasped=True · YOLO 未启动",
+  "[325/600] 阶段=转移 残差=0.017 接触p=0.53 grp=0.30 grasped=True · YOLO 未启动",
+  "[350/600] 阶段=转移 残差=0.003 接触p=0.51 grp=0.30 grasped=True · YOLO 未启动",
+  "[375/600] 阶段=转移 残差=0.003 接触p=0.51 grp=0.30 grasped=True · YOLO 未启动",
+  "[400/600] 阶段=转移 残差=0.001 接触p=0.50 grp=0.30 grasped=True · YOLO 未启动",
+  "🔄 插入感知偏差 11mm (peg 夹爪内滑) → 回接近重抓刷新锁存",
+  "[425/600] 阶段=对位 残差=0.001 接触p=0.50 grp=0.30 grasped=False · YOLO 未启动",
+  "[450/600] 阶段=对位 残差=0.000 接触p=0.50 grp=0.30 grasped=False · YOLO 未启动",
+  "[475/600] 阶段=对位 残差=0.000 接触p=0.50 grp=0.33 grasped=False · YOLO 未启动",
+  "[500/600] 阶段=对位 残差=0.000 接触p=0.50 grp=1.00 grasped=False · YOLO 未启动",
+  "[525/600] 阶段=对位 残差=0.000 接触p=0.50 grp=1.00 grasped=False · YOLO 未启动",
+  "[550/600] 阶段=对位 残差=0.001 接触p=0.50 grp=1.00 grasped=False · YOLO 未启动",
+  "[575/600] 阶段=对位 残差=0.000 接触p=0.50 grp=1.00 grasped=False · YOLO 未启动"
+ ],
+ "uff_mean_norm": 0.08931,
+ "uff_last": [
+  0.02279,
+  0.02085,
+  -0.03201
+ ],
+ "uff_hash": "b42953bb1f9aaafa",
+ "uff_stage_mean_norm": {
+  "接近": 0.09319,
+  "对位": 0.04926,
+  "下降": 0.05011,
+  "抓取": 0.01616,
+  "抬起": 0.11919,
+  "转移": 0.17508,
+  "插入": 0.0119
+ },
+ "uff_nonzero_frames": 599
+}

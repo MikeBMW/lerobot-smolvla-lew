@@ -1,0 +1,200 @@
+{
+ "arm": "gain",
+ "seed": 777,
+ "steps": 600,
+ "dt": 12.5,
+ "s_per_step": 0.021,
+ "done": false,
+ "stage_dist": {
+  "阶段 下降": 104,
+  "阶段 下降 · 接触": 4,
+  "阶段 对位": 178,
+  "阶段 抓取": 22,
+  "阶段 抓取 · 接触": 4,
+  "阶段 抬起": 51,
+  "阶段 抬起 · 接触": 4,
+  "阶段 接近": 54,
+  "阶段 插入": 6,
+  "阶段 插入 · 接触": 8,
+  "阶段 转移": 130,
+  "阶段 转移 · 接触": 35
+ },
+ "dist_first_mm": 260.18,
+ "dist_min_mm": 16.71,
+ "dist_final_mm": 50.84,
+ "mm_hits": 0,
+ "mm_on": true,
+ "mm_champ_loaded": false,
+ "il": {
+  "enabled": true,
+  "by_stage": {
+   "接近": 47,
+   "对位": 177,
+   "下降": 108,
+   "抓取": 26,
+   "抬起": 55,
+   "转移": 119,
+   "插入": 14
+  },
+  "stages_env": [
+   "接近",
+   "对位",
+   "下降",
+   "抓取",
+   "抬起",
+   "转移"
+  ],
+  "frames": 74,
+  "ran": 73,
+  "applied": 546,
+  "w_zero": 0,
+  "refused": 1,
+  "ready": true,
+  "ready_src": "已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)",
+  "src_last": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=11.1881)",
+  "w_last": 0.3,
+  "z_src": "engine(z7 几何)",
+  "err": "z7 历史为空 (几何潜空间未生成)",
+  "intent_gain_mean": 9.870096,
+  "manifold_last": [
+   0.01898,
+   0.00172,
+   -0.00057,
+   0.0027,
+   0.19545,
+   -0.11155
+  ],
+  "clip_max": 0.0,
+  "stack": {
+   "commit": 546,
+   "vetoed": 0,
+   "clipped": 0,
+   "clip_max_mean": null,
+   "w_last": 0.49112821144679797,
+   "layers": {
+    "L2": {
+     "kind": "action",
+     "src": "analytic/L3 参考",
+     "weight": 1.0,
+     "accepted": true,
+     "reason": "执行层 (唯一出口)",
+     "hash": "a5de425a5b2390f3"
+    },
+    "L4": {
+     "kind": "intent",
+     "src": "decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=11.1881) · 🎚 K_nav=0.491 K_flow=0.000 K_mm=0.000 (抬增益: 更信 L4导航)",
+     "weight": 0.4911,
+     "accepted": true,
+     "reason": "采纳: w=0.491",
+     "hash": "d7154bcb69a97037",
+     "ready": true
+    }
+   }
+  }
+ },
+ "gain": {
+  "enabled": true,
+  "steps": 592,
+  "applied": 546,
+  "zero_frames": 46,
+  "k_nav_mean": 0.33619,
+  "k_flow_mean": 0.0,
+  "k_mm_mean": 0.0,
+  "events": {
+   "mm_miss": 413,
+   "stage_switch": 37,
+   "stall": 110
+  },
+  "err": null,
+  "k_nav_tail": [
+   0.397,
+   0.397,
+   0.5,
+   0.4644,
+   0.4183,
+   0.5,
+   0.5,
+   0.4911
+  ],
+  "k_flow_tail": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p_last": 0.049113,
+  "p_zero_gate": 0.0016,
+  "reason_last": "抬增益: 更信 L4导航"
+ },
+ "gain_log": [
+  "🎚 自适应增益层就绪 (卡尔曼式: 熟场景→默认 L2 / 泛化受扰→抬 L4 导航 + L3 流程)"
+ ],
+ "mm_log": [],
+ "l4_stats": {
+  "calls": 74,
+  "reuse": 512,
+  "refused": 0,
+  "blend": 361,
+  "w_zero": 225,
+  "cond_ready": 0,
+  "frame_std": 55.61014,
+  "err": null,
+  "src": "intact(chunk×K_ACT=0.5)",
+  "w": 0.3,
+  "cond_src": "拒绝(未标定)",
+  "goal_src": "set_goal(显式)",
+  "skill_ctx_dim": 24,
+  "skill_ctx_nonzero": 2,
+  "l2_ready": true,
+  "l2_err": null,
+  "gate_pass": 361,
+  "l2_veto": 225,
+  "l2_veto_dir": 225
+ },
+ "intact_stats": {
+  "intact_calls": 0,
+  "refused_map": 0,
+  "frames": 0,
+  "chunk_reuse": 0,
+  "err": null,
+  "shift": null,
+  "u_ff_src": "analytic"
+ },
+ "logs": [
+  "[500/600] 阶段=下降 残差=0.003 接触p=0.51 grp=0.74 grasped=False · YOLO 未启动",
+  "🔩 夹爪深夹到位 (obs gripper=0.35) → 抬升试探",
+  "[525/600] 阶段=转移 残差=0.012 接触p=0.52 grp=0.31 grasped=True · YOLO 未启动",
+  "🦾 滑移 15mm (第1次) → 重夹窗口, 不回退",
+  "🦾 滑移 16mm (第2次) → 重夹窗口, 不回退",
+  "🦾 滑移 17mm (第3次) → 重夹窗口, 不回退",
+  "🔄 滑脱(累计18mm, 重夹无效) → 回退重抓",
+  "⚠️ 光模块滑脱 → 强制回退接近重抓",
+  "[550/600] 阶段=对位 残差=0.007 接触p=1.00 grp=0.43 grasped=False · YOLO 未启动",
+  "🔩 夹爪深夹到位 (obs gripper=0.49) → 抬升试探",
+  "🦾 重夹窗口结束 → 继续任务 (不走回退)",
+  "🎯 夹持真值锚定 (抬升试探 peg 跟手): off0=[ 0.011  -0.0194 -0.0416] (视觉残差不再影响滑脱判定, 转移/插入走编码器)",
+  "🔄 插入感知偏差 22mm (peg 夹爪内滑) → 回接近重抓刷新锁存",
+  "[575/600] 阶段=对位 残差=0.022 接触p=0.54 grp=0.64 grasped=False · YOLO 未启动"
+ ],
+ "uff_mean_norm": 0.07832,
+ "uff_last": [
+  0.0144,
+  -0.0571,
+  -0.01779
+ ],
+ "uff_hash": "312b41f97e005761",
+ "uff_stage_mean_norm": {
+  "接近": 0.13335,
+  "对位": 0.0535,
+  "下降": 0.0589,
+  "抓取": 0.04165,
+  "抬起": 0.09438,
+  "转移": 0.10465,
+  "插入": 0.02048
+ },
+ "uff_nonzero_frames": 600
+}

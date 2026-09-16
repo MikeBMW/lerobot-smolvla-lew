@@ -1,0 +1,14 @@
+{
+ "ts": "2026-09-15 17:25:59",
+ "cap": "L2",
+ "mode": null,
+ "steps": 352,
+ "done": true,
+ "insert_mm": 65.2,
+ "yolo_detect_pct": 0.0,
+ "model_calls": null,
+ "gate": {},
+ "aoi_report": {},
+ "stage_counts": {},
+ "grasped": false
+}

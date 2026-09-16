@@ -1,0 +1,1213 @@
+{
+ "meta": {
+  "seeds": [
+   104,
+   0,
+   6,
+   7,
+   9,
+   101,
+   40,
+   50,
+   103,
+   70,
+   105,
+   106
+  ],
+  "mode": "full",
+  "max_steps": 4000,
+  "unz": true,
+  "chunk_step": 0,
+  "slot": 0,
+  "infer_every": 1,
+  "device": "cuda",
+  "policy": "intact_l4_current",
+  "runtime": "root",
+  "obs_source": "engine_render 480²→224²(CHW)",
+  "stats": {
+   "source": "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v5_disturb.h5",
+   "method": "get_column_stats 同口径 (finite 行, ddof=1)",
+   "action_space": "u",
+   "action_space_note": "引擎控制向量 sim._u_vec (xyz 速度 m/s, 夹爪 [-1..1])",
+   "n_finite": 149100,
+   "n_total": 149100,
+   "episodes": 2982,
+   "key_order": "[dx, dy, dz, gripper]",
+   "mean": [
+    0.009584567461471998,
+    -0.0007370877433880109,
+    -0.008142088376508767,
+    0.8275117370892019
+   ],
+   "std": [
+    0.07401497906901305,
+    0.03594847263807004,
+    0.046405847568526254,
+    0.3818843172011489
+   ],
+   "per_axis": {
+    "dx": {
+     "mean": 0.009584567461471998,
+     "std": 0.07401497906901305,
+     "min": -0.3478531241416931,
+     "max": 0.3076854646205902
+    },
+    "dy": {
+     "mean": -0.0007370877433880109,
+     "std": 0.03594847263807004,
+     "min": -0.28863924741744995,
+     "max": 0.22699177265167236
+    },
+    "dz": {
+     "mean": -0.008142088376508767,
+     "std": 0.046405847568526254,
+     "min": -0.1160554438829422,
+     "max": 0.2118677794933319
+    },
+    "gripper": {
+     "mean": 0.8275117370892019,
+     "std": 0.3818843172011489,
+     "min": -1.0,
+     "max": 1.0
+    }
+   },
+   "written": "2026-09-14 06:18:28"
+  },
+  "ts": "2026-09-15 23:18:48"
+ },
+ "rows": [
+  {
+   "seed": 104,
+   "analytic": {
+    "done": true,
+    "steps": 882,
+    "frames": 882,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed104_20260915_230626.mp4",
+    "insert_mm": 9.7
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 104,
+    "done": true,
+    "steps": 949,
+    "insert_mm": 14.2,
+    "model_calls": 949,
+    "err": null,
+    "sec": 38.5,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.043200112879276276,
+     -0.25872066617012024,
+     -0.005061795469373465,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 11,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.05310000106692314,
+     -0.01080000028014183,
+     -0.022600000724196434,
+     0.6567999720573425
+    ],
+    "act_std": [
+     0.06129999831318855,
+     0.026000000536441803,
+     0.029899999499320984,
+     0.6474000215530396
+    ],
+    "act_absmax": [
+     0.15199999511241913,
+     0.06800000369548798,
+     0.0989999994635582,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 136,
+     "阶段 AOI转移": 82,
+     "阶段 下降": 88,
+     "阶段 回程": 73,
+     "阶段 对位": 52,
+     "阶段 抓取": 18,
+     "阶段 抬起": 46,
+     "阶段 拔出": 130,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 54,
+     "阶段 插入": 48,
+     "阶段 插入 · 接触": 68,
+     "阶段 放下": 68,
+     "阶段 转移": 50
+    },
+    "gate": {
+     "n": 949,
+     "veto_dir": 136,
+     "veto_mag": 0,
+     "blend": 102,
+     "ref_zero": 0,
+     "stage_out": 711,
+     "cos_sum": 99.9161151931339,
+     "w_min": 0.9148062745769652,
+     "w_max": 0.9992136315912197,
+     "cos_used": 102,
+     "applied": 102
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.37,
+     "force_peak": 0.993,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.6658,
+     -0.6645,
+     -0.6616,
+     -0.6539,
+     -0.6504
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed104_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 0,
+   "analytic": {
+    "done": true,
+    "steps": 1015,
+    "frames": 1015,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed0_20260915_230626.mp4",
+    "insert_mm": 23.5
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 0,
+    "done": true,
+    "steps": 1034,
+    "insert_mm": 22.9,
+    "model_calls": 1034,
+    "err": null,
+    "sec": 37.6,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.5,
+     -0.5,
+     -0.31636133790016174,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.05869999900460243,
+     -0.05700000002980232,
+     -0.04670000076293945,
+     0.5131000280380249
+    ],
+    "act_std": [
+     0.08060000091791153,
+     0.053700000047683716,
+     0.027499999850988388,
+     0.49160000681877136
+    ],
+    "act_absmax": [
+     0.23899999260902405,
+     0.23999999463558197,
+     0.1080000028014183,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 137,
+     "阶段 AOI转移": 66,
+     "阶段 下降": 194,
+     "阶段 回程": 46,
+     "阶段 对位": 32,
+     "阶段 抓取": 18,
+     "阶段 抬起": 54,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 62,
+     "阶段 插入": 46,
+     "阶段 插入 · 接触": 74,
+     "阶段 放下": 80,
+     "阶段 转移": 60
+    },
+    "gate": {
+     "n": 1034,
+     "veto_dir": 216,
+     "veto_mag": 0,
+     "blend": 4,
+     "ref_zero": 0,
+     "stage_out": 814,
+     "cos_sum": 3.8736986517441556,
+     "w_min": 0.9526392280602872,
+     "w_max": 0.9838885179096929,
+     "cos_used": 4,
+     "applied": 4
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.41,
+     "force_peak": 0.95,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.7729,
+     -0.7767,
+     -0.7596,
+     -0.7474,
+     -0.7333
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed0_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 6,
+   "analytic": {
+    "done": true,
+    "steps": 870,
+    "frames": 870,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed6_20260915_230626.mp4",
+    "insert_mm": 9.6
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 6,
+    "done": true,
+    "steps": 883,
+    "insert_mm": 8.2,
+    "model_calls": 883,
+    "err": null,
+    "sec": 30.9,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.5,
+     -0.5,
+     -0.48253101110458374,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.0471000000834465,
+     -0.03460000082850456,
+     -0.03620000183582306,
+     0.4977000057697296
+    ],
+    "act_std": [
+     0.06539999693632126,
+     0.04360000044107437,
+     0.032600000500679016,
+     0.4697999954223633
+    ],
+    "act_absmax": [
+     0.2150000035762787,
+     0.1679999977350235,
+     0.09799999743700027,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 136,
+     "阶段 AOI转移": 62,
+     "阶段 下降": 70,
+     "阶段 回程": 34,
+     "阶段 对位": 28,
+     "阶段 抓取": 18,
+     "阶段 抬起": 45,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 54,
+     "阶段 插入": 49,
+     "阶段 插入 · 接触": 70,
+     "阶段 放下": 82,
+     "阶段 转移": 70
+    },
+    "gate": {
+     "n": 883,
+     "veto_dir": 213,
+     "veto_mag": 0,
+     "blend": 1,
+     "ref_zero": 0,
+     "stage_out": 669,
+     "cos_sum": 0.9484342414093884,
+     "w_min": 0.9484342414093884,
+     "w_max": 0.9484342414093884,
+     "cos_used": 1,
+     "applied": 1
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.33,
+     "force_peak": 0.966,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.9774,
+     -0.9789,
+     -0.979,
+     -0.9812,
+     -0.9806
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed6_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 7,
+   "analytic": {
+    "done": true,
+    "steps": 900,
+    "frames": 900,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed7_20260915_230626.mp4",
+    "insert_mm": 25.3
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 7,
+    "done": true,
+    "steps": 908,
+    "insert_mm": 25.9,
+    "model_calls": 908,
+    "err": null,
+    "sec": 33.9,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.059658125042915344,
+     -0.16007494926452637,
+     -0.09369441866874695,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.020400000736117363,
+     -0.020999999716877937,
+     -0.03440000116825104,
+     0.4334000051021576
+    ],
+    "act_std": [
+     0.037300001829862595,
+     0.02459999918937683,
+     0.025200000032782555,
+     0.45750001072883606
+    ],
+    "act_absmax": [
+     0.1720000058412552,
+     0.13099999725818634,
+     0.09700000286102295,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 136,
+     "阶段 AOI转移": 77,
+     "阶段 下降": 28,
+     "阶段 回程": 69,
+     "阶段 对位": 94,
+     "阶段 抓取": 18,
+     "阶段 抬起": 45,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 20,
+     "阶段 插入": 45,
+     "阶段 插入 · 接触": 73,
+     "阶段 放下": 78,
+     "阶段 转移": 60
+    },
+    "gate": {
+     "n": 908,
+     "veto_dir": 249,
+     "veto_mag": 0,
+     "blend": 2,
+     "ref_zero": 0,
+     "stage_out": 657,
+     "cos_sum": 1.872630376945994,
+     "w_min": 0.9206259587873153,
+     "w_max": 0.9520044181586788,
+     "cos_used": 2,
+     "applied": 2
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.33,
+     "force_peak": 0.969,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.3912,
+     -0.8327,
+     -0.9289,
+     -0.9654,
+     -0.9752
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed7_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 9,
+   "analytic": {
+    "done": true,
+    "steps": 883,
+    "frames": 883,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed9_20260915_230626.mp4",
+    "insert_mm": 12.8
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 9,
+    "done": true,
+    "steps": 941,
+    "insert_mm": 8.6,
+    "model_calls": 941,
+    "err": null,
+    "sec": 35.0,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.004352332092821598,
+     -0.09516242891550064,
+     -0.07411815971136093,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 11,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     0.006300000008195639,
+     -0.03180000185966492,
+     -0.05339999869465828,
+     0.22010000050067902
+    ],
+    "act_std": [
+     0.03819999843835831,
+     0.02329999953508377,
+     0.04280000180006027,
+     0.6219000220298767
+    ],
+    "act_absmax": [
+     0.09700000286102295,
+     0.07900000363588333,
+     0.10400000214576721,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 135,
+     "阶段 AOI转移": 76,
+     "阶段 下降": 68,
+     "阶段 回程": 73,
+     "阶段 对位": 60,
+     "阶段 抓取": 18,
+     "阶段 抬起": 42,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 56,
+     "阶段 插入": 48,
+     "阶段 插入 · 接触": 69,
+     "阶段 放下": 69,
+     "阶段 转移": 62
+    },
+    "gate": {
+     "n": 941,
+     "veto_dir": 140,
+     "veto_mag": 0,
+     "blend": 114,
+     "ref_zero": 0,
+     "stage_out": 687,
+     "cos_sum": 110.62103038203786,
+     "w_min": 0.9064668734245176,
+     "w_max": 0.9997127867955443,
+     "cos_used": 114,
+     "applied": 114
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.58,
+     "force_peak": 0.944,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     0.3893,
+     0.4095,
+     0.4176,
+     0.4145,
+     0.4177
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed9_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 101,
+   "analytic": {
+    "done": true,
+    "steps": 892,
+    "frames": 892,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed101_20260915_230626.mp4",
+    "insert_mm": 9.8
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 101,
+    "done": true,
+    "steps": 892,
+    "insert_mm": 10.1,
+    "model_calls": 892,
+    "err": null,
+    "sec": 32.5,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.011869316920638084,
+     0.1963881105184555,
+     -0.03684212267398834,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.023900000378489494,
+     -0.0203000009059906,
+     -0.026200000196695328,
+     0.5462999939918518
+    ],
+    "act_std": [
+     0.04809999838471413,
+     0.025599999353289604,
+     0.031099999323487282,
+     0.4706999957561493
+    ],
+    "act_absmax": [
+     0.15600000321865082,
+     0.1080000028014183,
+     0.10300000011920929,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 136,
+     "阶段 AOI转移": 74,
+     "阶段 下降": 73,
+     "阶段 回程": 33,
+     "阶段 对位": 28,
+     "阶段 抓取": 18,
+     "阶段 抬起": 42,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 49,
+     "阶段 插入": 48,
+     "阶段 插入 · 接触": 71,
+     "阶段 放下": 80,
+     "阶段 转移": 75
+    },
+    "gate": {
+     "n": 892,
+     "veto_dir": 226,
+     "veto_mag": 0,
+     "blend": 0,
+     "ref_zero": 0,
+     "stage_out": 666,
+     "cos_sum": 0.0,
+     "w_min": null,
+     "w_max": null,
+     "cos_used": 0
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.43,
+     "force_peak": 0.972,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.9608,
+     -0.9613,
+     -0.9647,
+     -0.9675,
+     -0.9674
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed101_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 40,
+   "analytic": {
+    "done": true,
+    "steps": 901,
+    "frames": 901,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed40_20260915_230626.mp4",
+    "insert_mm": 7.2
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 40,
+    "done": true,
+    "steps": 903,
+    "insert_mm": 6.9,
+    "model_calls": 903,
+    "err": null,
+    "sec": 34.4,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.5,
+     -0.5,
+     -0.4438422918319702,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 10,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.016499999910593033,
+     -0.020500000566244125,
+     -0.031099999323487282,
+     0.3197999894618988
+    ],
+    "act_std": [
+     0.04360000044107437,
+     0.023000000044703484,
+     0.03150000050663948,
+     0.4449999928474426
+    ],
+    "act_absmax": [
+     0.2240000069141388,
+     0.14800000190734863,
+     0.10899999737739563,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 136,
+     "阶段 AOI转移": 77,
+     "阶段 下降": 64,
+     "阶段 回程": 63,
+     "阶段 对位": 36,
+     "阶段 抓取": 18,
+     "阶段 抬起": 42,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 43,
+     "阶段 插入": 49,
+     "阶段 插入 · 接触": 69,
+     "阶段 放下": 70,
+     "阶段 转移": 71
+    },
+    "gate": {
+     "n": 903,
+     "veto_dir": 226,
+     "veto_mag": 0,
+     "blend": 1,
+     "ref_zero": 0,
+     "stage_out": 676,
+     "cos_sum": 0.9839883688614369,
+     "w_min": 0.9839883688614369,
+     "w_max": 0.9839883688614369,
+     "cos_used": 1,
+     "applied": 1
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.62,
+     "force_peak": 0.941,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     0.1782,
+     -0.0332,
+     -0.3315,
+     -0.8632,
+     -0.9859
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed40_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 50,
+   "analytic": {
+    "done": false,
+    "steps": 3000,
+    "frames": 3000,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed50_20260915_230626.mp4",
+    "insert_mm": 1.8
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 50,
+    "done": false,
+    "steps": 3000,
+    "insert_mm": 31.7,
+    "model_calls": 3000,
+    "err": null,
+    "sec": 108.4,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.41891250014305115,
+     -0.01827983930706978,
+     0.4059871435165405,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 3,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     0.06109999865293503,
+     -0.00139999995008111,
+     0.02070000022649765,
+     0.8029999732971191
+    ],
+    "act_std": [
+     0.026200000196695328,
+     0.0071000000461936,
+     0.021199999377131462,
+     0.5619000196456909
+    ],
+    "act_absmax": [
+     0.09700000286102295,
+     0.04399999976158142,
+     0.10199999809265137,
+     1.0
+    ],
+    "stages": {
+     "阶段 下降": 582,
+     "阶段 下降 · 接触": 18,
+     "阶段 对位": 1733,
+     "阶段 对位 · 接触": 5,
+     "阶段 抓取": 41,
+     "阶段 抓取 · 接触": 9,
+     "阶段 抬起": 133,
+     "阶段 抬起 · 接触": 1,
+     "阶段 接近": 69,
+     "阶段 插入": 21,
+     "阶段 插入 · 接触": 77,
+     "阶段 转移": 311
+    },
+    "gate": {
+     "n": 3000,
+     "veto_dir": 1859,
+     "veto_mag": 0,
+     "blend": 259,
+     "ref_zero": 0,
+     "stage_out": 882,
+     "cos_sum": 247.04947188841314,
+     "w_min": 0.9004595337109206,
+     "w_max": 0.9988117562935631,
+     "cos_used": 259,
+     "applied": 259
+    },
+    "aoi": {},
+    "gate_cos_last5": [
+     -0.0849,
+     -0.1002,
+     -0.1297,
+     -0.1457,
+     -0.1552
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed50_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 103,
+   "analytic": {
+    "done": true,
+    "steps": 877,
+    "frames": 877,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed103_20260915_230626.mp4",
+    "insert_mm": 13.3
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 103,
+    "done": true,
+    "steps": 875,
+    "insert_mm": 14.6,
+    "model_calls": 875,
+    "err": null,
+    "sec": 32.4,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.09515588730573654,
+     -0.3399917185306549,
+     -0.04343912750482559,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.02319999970495701,
+     -0.011800000444054604,
+     -0.025699999183416367,
+     0.4975000023841858
+    ],
+    "act_std": [
+     0.04179999977350235,
+     0.018400000408291817,
+     0.019099999219179153,
+     0.474700003862381
+    ],
+    "act_absmax": [
+     0.17800000309944153,
+     0.09399999678134918,
+     0.10499999672174454,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 135,
+     "阶段 AOI转移": 75,
+     "阶段 下降": 46,
+     "阶段 回程": 32,
+     "阶段 对位": 36,
+     "阶段 抓取": 18,
+     "阶段 抬起": 42,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 57,
+     "阶段 插入": 47,
+     "阶段 插入 · 接触": 70,
+     "阶段 放下": 81,
+     "阶段 转移": 71
+    },
+    "gate": {
+     "n": 875,
+     "veto_dir": 239,
+     "veto_mag": 0,
+     "blend": 0,
+     "ref_zero": 0,
+     "stage_out": 636,
+     "cos_sum": 0.0,
+     "w_min": null,
+     "w_max": null,
+     "cos_used": 0
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.64,
+     "force_peak": 0.977,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.7444,
+     -0.7413,
+     -0.7349,
+     -0.7301,
+     -0.7231
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed103_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 70,
+   "analytic": {
+    "done": true,
+    "steps": 866,
+    "frames": 866,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed70_20260915_230626.mp4",
+    "insert_mm": 7.6
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 70,
+    "done": true,
+    "steps": 865,
+    "insert_mm": 8.2,
+    "model_calls": 865,
+    "err": null,
+    "sec": 32.1,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.038008399307727814,
+     -0.10328912734985352,
+     -0.02960258536040783,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     -0.02539999969303608,
+     -0.03739999979734421,
+     -0.03929999843239784,
+     0.4740000069141388
+    ],
+    "act_std": [
+     0.06549999862909317,
+     0.040800001472234726,
+     0.030400000512599945,
+     0.4586000144481659
+    ],
+    "act_absmax": [
+     0.2280000001192093,
+     0.2029999941587448,
+     0.10000000149011612,
+     1.0
+    ],
+    "stages": {
+     "阶段 AOI检测": 136,
+     "阶段 AOI转移": 63,
+     "阶段 下降": 60,
+     "阶段 回程": 53,
+     "阶段 对位": 29,
+     "阶段 抓取": 18,
+     "阶段 抬起": 42,
+     "阶段 拔出": 129,
+     "阶段 拔出 · 接触": 36,
+     "阶段 接近": 44,
+     "阶段 插入": 47,
+     "阶段 插入 · 接触": 71,
+     "阶段 放下": 78,
+     "阶段 转移": 59
+    },
+    "gate": {
+     "n": 865,
+     "veto_dir": 195,
+     "veto_mag": 0,
+     "blend": 0,
+     "ref_zero": 0,
+     "stage_out": 670,
+     "cos_sum": 0.0,
+     "w_min": null,
+     "w_max": null,
+     "cos_used": 0
+    },
+    "aoi": {
+     "ok": true,
+     "insert_depth_min_mm": 1.62,
+     "force_peak": 0.975,
+     "insert_stall_events": 0,
+     "went_back_grasp": false
+    },
+    "gate_cos_last5": [
+     -0.0926,
+     -0.4631,
+     -0.788,
+     -0.874,
+     -0.901
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed70_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 105,
+   "analytic": {
+    "done": false,
+    "steps": 3000,
+    "frames": 3000,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed105_20260915_230626.mp4",
+    "insert_mm": 12.8
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 105,
+    "done": false,
+    "steps": 3000,
+    "insert_mm": 30.5,
+    "model_calls": 3000,
+    "err": null,
+    "sec": 112.8,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     -0.08122524619102478,
+     -0.09860607981681824,
+     -0.20704570412635803,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 3,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     0.005400000140070915,
+     -0.027300000190734863,
+     -0.023099999874830246,
+     0.7430999875068665
+    ],
+    "act_std": [
+     0.0908999964594841,
+     0.05180000141263008,
+     0.028599999845027924,
+     0.42820000648498535
+    ],
+    "act_absmax": [
+     0.2199999988079071,
+     0.21899999678134918,
+     0.10599999874830246,
+     1.0
+    ],
+    "stages": {
+     "阶段 下降": 491,
+     "阶段 下降 · 接触": 18,
+     "阶段 对位": 1295,
+     "阶段 对位 · 接触": 33,
+     "阶段 抓取": 74,
+     "阶段 抓取 · 接触": 16,
+     "阶段 抬起": 161,
+     "阶段 抬起 · 接触": 14,
+     "阶段 接近": 30,
+     "阶段 接近 · 接触": 8,
+     "阶段 插入": 40,
+     "阶段 插入 · 接触": 421,
+     "阶段 转移": 267,
+     "阶段 转移 · 接触": 132
+    },
+    "gate": {
+     "n": 3000,
+     "veto_dir": 1659,
+     "veto_mag": 0,
+     "blend": 106,
+     "ref_zero": 0,
+     "stage_out": 1235,
+     "cos_sum": 99.68854621198511,
+     "w_min": 0.9018765000738772,
+     "w_max": 0.9975996767821008,
+     "cos_used": 106,
+     "applied": 106
+    },
+    "aoi": {},
+    "gate_cos_last5": [
+     -0.1876,
+     0.0071,
+     -0.3704,
+     -0.031,
+     -0.6396
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed105_20260915_230626.mp4",
+   "video_direct": null
+  },
+  {
+   "seed": 106,
+   "analytic": {
+    "done": false,
+    "steps": 3000,
+    "frames": 3000,
+    "video": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed106_20260915_230626.mp4",
+    "insert_mm": 32.3
+   },
+   "direct": {
+    "tag": "直驱",
+    "seed": 106,
+    "done": false,
+    "steps": 3000,
+    "insert_mm": 129.2,
+    "model_calls": 3000,
+    "err": null,
+    "sec": 111.1,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json",
+    "u_ff": [
+     0.3762853443622589,
+     0.3786868751049042,
+     0.18685071170330048,
+     -1.0
+    ],
+    "skill_ctx_dim": 24,
+    "skill_ctx_nonzero": 4,
+    "l2_ready": true,
+    "l2_err": null,
+    "act_mean": [
+     0.057500001043081284,
+     0.0010000000474974513,
+     -0.010099999606609344,
+     0.742900013923645
+    ],
+    "act_std": [
+     0.07980000227689743,
+     0.051100000739097595,
+     0.035100001841783524,
+     0.5856000185012817
+    ],
+    "act_absmax": [
+     0.29899999499320984,
+     0.22699999809265137,
+     0.1080000028014183,
+     1.0
+    ],
+    "stages": {
+     "阶段 下降": 853,
+     "阶段 对位": 1025,
+     "阶段 抓取": 216,
+     "阶段 抬起": 435,
+     "阶段 接近": 51,
+     "阶段 转移": 420
+    },
+    "gate": {
+     "n": 3000,
+     "veto_dir": 1212,
+     "veto_mag": 4,
+     "blend": 280,
+     "ref_zero": 0,
+     "stage_out": 1504,
+     "cos_sum": 267.25805320033885,
+     "w_min": 0.9004988036942666,
+     "w_max": 0.9978980520693436,
+     "cos_used": 280,
+     "applied": 280
+    },
+    "aoi": {},
+    "gate_cos_last5": [
+     0.6079,
+     0.6184,
+     0.6143,
+     0.612,
+     0.6061
+    ]
+   },
+   "video_analytic": "reports/evidence_ab10_f1_r1/insert_解析链对照_seed106_20260915_230626.mp4",
+   "video_direct": null
+  }
+ ]
+}
