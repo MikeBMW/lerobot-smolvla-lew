@@ -1,0 +1,17 @@
+# Z-MAX 状态空间旁路/采集 运行数据轮转 (2026-09-17 加)
+# 这三份是 append-only 证据流, 现场服务持有文件句柄 → 必须用 copytruncate (不能 rename, 否则服务继续写旧 inode)
+/home/ubuntu/zmax_ss_remote/state_*.jsonl
+/home/ubuntu/zmax_ss_remote/proposal_*.jsonl
+/home/ubuntu/zmax_data/ss_bypass/bypass_*.jsonl
+/home/ubuntu/zmax_ss_remote/srv_snapshot.jsonl
+{
+    daily
+    size 200M
+    rotate 5
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+    su ubuntu ubuntu
+}

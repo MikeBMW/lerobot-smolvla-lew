@@ -52,13 +52,24 @@ def pick_frame():
     return best[0], best[1], ("real" if best[1] <= FRESH_S else "stale")
 
 
+_MODEL = None
+
+
+def _model():
+    """模型只加载一次 (2026-09-17 修: 原来每帧 YOLO(WEIGHTS) 重建 → 内存/显存抖动 + CPU 尖峰)"""
+    global _MODEL
+    if _MODEL is None:
+        from ultralytics import YOLO
+        _MODEL = YOLO(WEIGHTS)
+        _MODEL.predict(np.zeros((IMGSZ, IMGSZ, 3), dtype=np.uint8), imgsz=IMGSZ, verbose=False)  # 预热
+    return _MODEL
+
+
 def run(image_path, source_kind="real", age=None, save=True):
-    from ultralytics import YOLO
     im = Image.open(image_path).convert("RGB")
     rgb = np.asarray(im)
     bgr = np.ascontiguousarray(rgb[:, :, ::-1])          # ⚠️ ultralytics 用 BGR
-    model = YOLO(WEIGHTS)
-    res = model.predict(bgr, imgsz=IMGSZ, conf=CONF, verbose=False)[0]
+    res = _model().predict(bgr, imgsz=IMGSZ, conf=CONF, verbose=False)[0]
     names = res.names if isinstance(res.names, dict) else {i: n for i, n in enumerate(res.names)}
     dets = []
     for b in res.boxes:
