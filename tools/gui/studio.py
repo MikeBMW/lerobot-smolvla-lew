@@ -7345,6 +7345,19 @@ class HardwareModule(SubModuleWidget):
         self._discovery_thread.start()
     
     def _on_discovery_result(self, result: dict):
+        """渲染总闸 (🐛 2026-09-16 VEH.3.04 崩因): PyQt 槽里未捕获异常 = qFatal 直接中止进程。
+        任何渲染异常都只记日志, 不许冒泡 — 否则点一次「发现硬件」整个控制台就没了。"""
+        try:
+            self._render_discovery_result(result)
+        except Exception as e:
+            import traceback
+            self._log(f"❌ 发现结果渲染失败 (已拦截, GUI 未崩): {type(e).__name__}: {e}")
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
+
+    def _render_discovery_result(self, result: dict):
         self.btn_discover.setEnabled(True)
         self.btn_discover.setText("🔍 再次发现")
         
@@ -7367,14 +7380,23 @@ class HardwareModule(SubModuleWidget):
         
         # 更新 ROS2 节点列表
         if nodes:
-            node_data = [(n, result.get("topic_details", {}).get(n, "")) for n in nodes]
-            self._populate_nodes(node_data if node_data[0][1] else 
-                [(n, Z700_ROS2_NODES.get("real", {}).get(n, "")) for n in nodes])
+            # 🐛 Z700_ROS2_NODES["real"] 是 [(名, 说明)] 列表, 不是 dict —
+            #    旧代码 .get() 直接 AttributeError: 'list' object has no attribute 'get'
+            #    (以前发现必失败到不了这行, 免密修好后一发现就崩)。列表/字典都兼容。
+            _known = Z700_ROS2_NODES.get("real", [])
+            if isinstance(_known, dict):
+                _known_map = dict(_known)
+            else:
+                _known_map = {str(k): v for k, v in _known}
+            _details = result.get("topic_details", {}) or {}
+            node_data = [(n, _details.get(n) or _known_map.get(n, "")) for n in nodes]
+            self._populate_nodes(node_data)
         
         # 更新设备树状态
-        self.device_tree.topLevelItem(0).setText(1, "🔴 真机在线")
-        self.device_tree.topLevelItem(1).setText(1, f"{len(nodes)} 节点 ✅")
-        self.device_tree.topLevelItem(4).setText(1, "🔴 真实IO")
+        for _ix, _txt in ((0, "🔴 真机在线"), (1, f"{len(nodes)} 节点 ✅"), (4, "🔴 真实IO")):
+            _it = self.device_tree.topLevelItem(_ix)
+            if _it is not None:          # 设备树条目数变化时不许 None.setText 崩
+                _it.setText(1, _txt)
         
         self.status_label.setText(f"🟢 在线 · {len(nodes)}节点")
         self.status_label.setStyleSheet(f"color:{C_GREEN}; padding:4px 12px; background:{C_BG2}; border-radius:4px; border:1px solid {C_GREEN}44;")
