@@ -24,6 +24,7 @@
   ~/lerobot-venv/bin/python tools/ss_bypass_run.py --duration 60      # 自检 60s 退出
 """
 import argparse
+import glob
 import importlib.util
 import json
 import os
@@ -49,22 +50,69 @@ def load_mod(name):
     return m
 
 
-class Tailer:
-    """跟随一个持续追加的 jsonl (从当前末尾开始), 逐行产出 dict"""
+def _newest_jsonl(directory, prefix):
+    """取目录里最新的 <prefix>_*.jsonl (按 mtime); 无 → None"""
+    cands = glob.glob(os.path.join(directory, f"{prefix}_*.jsonl"))
+    return max(cands, key=os.path.getmtime) if cands else None
 
-    def __init__(self, path):
-        self.path = path
+
+class Tailer:
+    """跟随「目录里最新的」<prefix>_*.jsonl (从末尾开始), 逐行产出 dict
+
+    🐛 2026-09-17 根治: 原来用本地日期拼死文件名 (state_YYYYMMDD.jsonl)。
+      tap 容器 TZ=UTC ⇒ 00:00–08:00 CST 期间它写的是上一(UTC)日的文件名
+      (proposal_20260916.jsonl), 而本机本地日期已是 09-17 ⇒ open() 抛
+      FileNotFoundError ⇒ systemd Restart=always 每 5s 拉起 (实测 11 分钟 135 次重启)。
+      现在: 按实际存在的最新文件跟随 (每 2s 重扫, 跨天/轮转/切日自动接上);
+      文件还没落盘 → 等, 不崩 (采集侧未启动时也不再刷 journal)。
+    """
+
+    def __init__(self, prefix, directory):
+        self.prefix = prefix
+        self.dir = directory
+        self.path = None
         self.fh = None
         self.ino = None
+        self._last_scan = 0.0
+        self._open()
+
+    def _resolve(self):
+        return (_newest_jsonl(self.dir, self.prefix)
+                or os.path.join(self.dir, f"{self.prefix}_{time.strftime('%Y%m%d')}.jsonl"))
 
     def _open(self):
-        self.fh = open(self.path, "r", encoding="utf-8", errors="replace")
-        self.fh.seek(0, os.SEEK_END)
-        self.ino = os.stat(self.path).st_ino
+        self.path = self._resolve()
+        try:
+            self.fh = open(self.path, "r", encoding="utf-8", errors="replace")
+            self.fh.seek(0, os.SEEK_END)
+            self.ino = os.stat(self.path).st_ino
+            return True
+        except FileNotFoundError:
+            self.fh = None
+            return False
+        except Exception:
+            self.fh = None
+            return False
+
+    def _reopen(self):
+        if self.fh is not None:
+            try:
+                self.fh.close()
+            except Exception:
+                pass
+            self.fh = None
+        return self._open()
 
     def poll(self):
-        if self.fh is None or not os.path.exists(self.path) or os.stat(self.path).st_ino != self.ino:
-            self._open()
+        now = time.time()
+        if self.fh is None or now - self._last_scan > 2.0:
+            self._last_scan = now
+            if self.fh is None or self._resolve() != self.path:
+                if not self._reopen():
+                    return []
+        elif not os.path.exists(self.path or "") or os.stat(self.path or "").st_ino != self.ino:
+            if not self._reopen():
+                return []
         out = []
         for ln in self.fh:
             ln = ln.strip()
@@ -92,10 +140,9 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
     day = time.strftime("%Y%m%d")
-    day_in = day
     fout = open(os.path.join(OUT_DIR, f"bypass_{day}.jsonl"), "a", buffering=1)
-    T_st = Tailer(os.path.join(IN_DIR, f"state_{day_in}.jsonl"))
-    T_pr = Tailer(os.path.join(IN_DIR, f"proposal_{day_in}.jsonl"))
+    T_st = Tailer("state", IN_DIR)          # 跟随 IN_DIR 里最新的 state_*.jsonl (不按本地日期拼名)
+    T_pr = Tailer("proposal", IN_DIR)       # 同上 — 2026-09-17: tap 容器按 UTC 命名, 拼本地日期必崩
 
     prior_dyn = dynamics.PriorDynamicsPredictor(A=1.0, B=0.02, use_wm=False)   # 与引擎同参; 先验走线性 (引擎实际路径)
     mod = cognition.ActionModulator()          # 引擎默认参数 (与 L2/L3 档同源)
@@ -118,7 +165,9 @@ def main():
 
     t_start = time.time()
     last_step = 0.0
-    print(f"[bypass] 状态空间旁路启动 · 输入={IN_DIR} · 输出={OUT_DIR} · 零下行(rclpy={('rclpy' in sys.modules)})", flush=True)
+    print(f"[bypass] 状态空间旁路启动 · 输入={IN_DIR} · 输出={OUT_DIR} · 零下行(rclpy={('rclpy' in sys.modules)})"
+          f" · 跟随 state={T_st.path if T_st.fh else '等待落盘'} · proposal={T_pr.path if T_pr.fh else '等待落盘'}",
+          flush=True)
     while True:
         if a.duration and time.time() - t_start >= a.duration:
             break
