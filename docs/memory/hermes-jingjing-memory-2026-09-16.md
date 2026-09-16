@@ -2,9 +2,9 @@ web=4090训练+ComfyUI+前端+ECS+PM; 总工(4060/GitHub/GUI); 小芳=硬件
 §
 链路: Orin→Mac→ECS→4060; WSL↔Orin不通→relay(datadrive.world/ws)+Mac守护; scp>100MB断→base64; 模型chmod644
 §
-RTC勿动; 开机NTP拨钟(曾偏8h)→报时间先核对; cron next_run会被推8h→hermes_cron_reclock.sh(@reboot须绝对路径调hermes)
+RTC勿动; 开机NTP拨钟→报时间先核对; cron next_run会被推8h→hermes_cron_reclock.sh
 §
-画布三级: L4=世界模型(流形JEPA+LEW)/L3=VLM+DiT/L2=原子技能+左A/B/C算子
+画布三级: L4=世界模型(流形JEPA+LEW)/L3=VLM+DiT/L2=原子技能
 §
 交付前先自跑通; 清理只删明显垃圾留证据
 §
@@ -24,9 +24,9 @@ Hermes: CLI≠gateway; 飞书99991663=token过期→重启hermes-gateway
 §
 磁盘红线300G
 §
-评估铁律: 布局每进程漂移禁写死几何; 单次不可靠必多重复+同口径; 每臂独立进程; 肌肉记忆A/B须SS_MUSCLE_PATH冷隔离; 预算≥引擎cap; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
+评估铁律: 布局每进程漂移禁写死几何; 单次不可靠必多重复+同口径; 每臂独立进程+同解释器; 肌肉记忆A/B须SS_MUSCLE_PATH冷隔离; 预算≥引擎cap; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
 §
-3DApp: 旧App不删(新包名并存); keystore勿丢
+3DApp旧App不删;keystore勿丢
 §
 引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5] → obs[7:10]=_pc光模块位置; gripper不由accel决定; 训练用_frame_sink的o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×K_ACT=act×0.5)
 §
@@ -34,17 +34,17 @@ L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选; 老倪红线: �
 §
 守卫: TOL=0.15→100%+参与21-34%; 53D完备未破参与上限24-27%, >30%掉分/全模型崩; insert_depth原6mm太松(老倪目检戳穿)→0.002; tr[peg]=速度(位置用peg_head())
 §
-删大文件前验证依赖(曾误删唯一源)
+删大文件先验依赖
 §
 模型: 本机仅DeepSeek key; 换全局模型须钉住定时任务
 §
-画布禁"右输入左输出"节点位置(可放大画布)
+画布禁右输入左输出节点
 §
 L4档运行=INTACT直驱(install_direct_act→service.run_once喂skill_ctx), 装配pop SS_L3; 动作头loss行仅训练分支
 §
-L4纤维丛(09-15): SS_L4_FIBER=1开(默认关); 桥须透传predictor预测潜空间z_pred(白名单!); fiber_bundle.py=Φ:z_pred→接触丛6(R²0.47)+丛映射A:z_pred→z7(0.61)+水平提升/挠率/曲率; 预测器z走ẑ7=A·z_pred+b, DiT条件214维; tools=fit_fiber_map/audit_l4_edges/verify_fiber_zero_regression; 探针须播种(L3 FP非确定: 两臂hash天然不同)
+ALIGN(cos+0.93); L4档L2兼容SS_L4_L2_COMPAT=1(默认关,开=MLP+vision→精度回退); ADAPT_GAIN(熟场景K=0纯L2;A/B未证提升→opt-in); SS_L4_LIE=1李群层(Φ_se3 R².71→lie_intent_map.json; MuJoCo无site_xquat用site_xmat); QUALITY_GATE逐阶段判上层vs L2; 探针import重置env→A/B须import后重设; SS_L4_DIT=1 CPU极慢
 §
-断点: 动作头loss行(现351)只有画布「训练」节点进; L3档真跑须SS_L3_DEV=cpu(ckpt预处理器device写死cuda,已修+熔断)
+断点: 动作头loss行(351)只有画布「训练」节点进; L3档真跑须SS_L3_DEV=cpu; 前馈MLP真身parallel.py:143仅SS_USE_MLP=1进, 否则372行实例覆盖forward=analytic→n_mlp恒0
 §
 口径铁律: 运行时须=训练(图像/255+ImageNet, stats同源, 零回退勿两端零初始→通道死); 多轮一致差先查口径勿加训练量
 §
