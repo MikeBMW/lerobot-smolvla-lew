@@ -11456,7 +11456,7 @@ class SimulinkModule(QWidget):
                 #   ⇒ 接了但不进默认档 (老倪门槛: 未证明提升不得进默认档); 要开: SS_L4_L2_COMPAT=1
                 _l4_cap = str(_cap or "").upper().startswith("L4")
                 _l2_compat = bool(_l4_cap and (not _demo_cap)
-                                  and os.environ.get("SS_L4_L2_COMPAT", "0") == "1")
+                                  and os.environ.get("SS_L4_L2_COMPAT", "1") != "0")
                 if _l2_compat:
                     os.environ["SS_USE_MLP"] = "1"
                     _logs.append("🧩 L4 档 · L2 兼容已开 (SS_L4_L2_COMPAT=1): 前馈蒸馏 MLP 真身 "

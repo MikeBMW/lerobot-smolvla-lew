@@ -84,7 +84,37 @@ SS_USE_MLP=1 ./gui-venv311/bin/python tools/ab_l4_l2_compat.py B 120
 SK04-08→执行器 5 条反向同源)。结构性修法 = 把 L2 行/执行器位置按"右出左入"重排 (下一轮)。
 `tools/verify_l4_zero_regression.py`: 档位归属无变化 · L2/L3/L4 执行集 55/60/77 逐项不变 · 旧连线 0 丢失 ✅
 
-## 六、附带发现 (环境)
+## 七、补丁 (老倪: "YOLO 检测模型接入 L4 怎么还没改好? 这段 forward 在 L4 跑还是进不了断点")
+
+两个原因, 都修了:
+
+### ① 默认关 → L4 跑时根本没执行
+上一版把 `SS_L4_L2_COMPAT` 做成 **默认关** (因为 A/B 精度回退 16×) ⇒ 你不设环境变量跑 L4 时
+`SS_USE_MLP` 没被设置 → 装配期 `forward` 仍被覆盖成 `analytic_forward` → 断点永远没有可命中点。
+**已改默认开** (`SS_L4_L2_COMPAT` 默认 `1`; 要还原原状 `=0`), L4 引擎路径下日志会打印
+"🧩 L4 档 · L2 兼容已开" + 实测代价。
+
+### ② 断点不绑定 (真根因, 技能里早有记录)
+比"没执行"更隐蔽的一条: 引擎用 `_load()` → `spec_from_file_location` 加载六层模块
+(parallel/perception/cognition/...), **debugpy 对这类模块的断点不绑定** —— 函数真执行、日志有输出,
+VSCode 就是不停 (zmax-console 技能「VSCode 断点调试坑 根因⑤」)。
+**已改成 `exec(compile(src, 真实绝对路径, "exec"))`** + 注入 `__file__`/`__name__` + 注册 sys.modules,
+失败才退回 spec 加载 (不静默降级)。
+验证 (gui-venv311, 真跑):
+```
+parallel.py / cognition.py / execution.py: co_filename 不在六层目录的类方法 = 0
+exec 加载后 跑 20 步: 实例覆盖 forward=False · forward 指向 FeedforwardAccelerator.forward @ parallel.py
+                     · n_mlp=20 (每帧真身) · n_guard=0
+```
+
+### 想看到断点命中, 必须同时满足三条
+1. **L4 档且走引擎路径** (勾「🤖 L4 用 INTACT 节点执行」或「🧠 模型执行」) —— 默认的 L4 纯演示档走
+   L4Demo 独立链 (自己的 env/控制器), 链上**没有** FeedforwardAccelerator, 断点永远不可能命中;
+2. **VSCode F5 启动控制台** —— 直接 `python studio.py` 是"非调试模式", 标题栏会带 ⚠️, 断点不生效;
+3. **改完代码重启 GUI** (旧进程跑旧代码), 并在 L4 跑之前确认日志出现 "🧠 SS_USE_MLP=1: 分层伺服"。
+
+
+## 八、附带发现 (环境)
 
 `ultralytics` 只在 **gui-venv311** (8.4.126), 不在 `~/lerobot-venv` → 任何带 vision=True 的引擎跑法
 (含 on_infer/on_eval 里的 lerobot-venv 路径) 会 `ModuleNotFoundError: ultralytics`。GUI 本身跑

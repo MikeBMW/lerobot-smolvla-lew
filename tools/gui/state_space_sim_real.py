@@ -134,8 +134,31 @@ def _tool_path(name):
 
 
 def _load(name):
+    """加载六层控制器子模块 (parallel/perception/cognition/...)。
+
+    🐛 2026-09-16 老倪「这段 forward 在 L4 运行时还是进不了断点」根因之一:
+    `spec_from_file_location` 加载的模块 **debugpy 断点不绑定** (函数真执行但 VSCode 不停 —
+    技能 zmax-console「VSCode 断点调试坑 根因⑤」已实证)。改用 `exec(compile(src, 真实绝对路径))`
+    → 函数 `co_filename` 指向真实文件, 断点按路径查表必命中; 命名空间注入 `__file__`/`__name__`
+    (子模块里用 `__file__` 定位资源, 丢了会 NameError)。失败则退回原 spec 加载 (不静默降级语义)。
+    """
     path = os.path.join(_SS_DIR, name)
-    spec = importlib.util.spec_from_file_location(f"ss_real.{name[:-3]}", path)
+    mod_name = f"ss_real.{name[:-3]}"
+    if os.path.isfile(path):
+        try:
+            import sys as _sys
+            import types as _types
+            with open(path, encoding="utf-8") as _f:
+                _src = _f.read()
+            _m = _types.ModuleType(mod_name)
+            _m.__file__ = os.path.abspath(path)
+            _m.__name__ = mod_name
+            _sys.modules[mod_name] = _m               # 断点解析/pickle 需要
+            exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
+            return _m
+        except Exception as _e:                       # noqa: BLE001
+            print(f"⚠️ _load exec 路径失败 ({name}): {type(_e).__name__}: {_e} → 退回 spec 加载")
+    spec = importlib.util.spec_from_file_location(mod_name, path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
