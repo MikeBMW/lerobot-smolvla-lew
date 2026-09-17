@@ -49,7 +49,12 @@ import numpy as np
 
 ROOT_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot")
 ROOT_SIM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot_sim")
-DEFAULT_CLASSES = ["optical_module"]        # 光模块 (老倪现场: 光模块一端入镜)
+# 🐛 2026-09-17 口径纠正: 真机类别名必须用 `peg` (不是 optical_module)。
+#   依据 = src/lerobot/policies/yolo_3d/frame_source.py:40 的唯一口径源
+#   CLASS_MAP = {"hand": "hand", "peg": "光模块", "hole": "hole"} (注释: peg→光模块, id 顺序不许改),
+#   下游 tools/real_yolo_perceive.py 按业务名取 det3d.get("hand") / det3d["光模块"] / det3d["hole"]。
+#   旧默认 "optical_module" 在 CLASS_MAP 里没有条目 → 真机权重训出来接不进感知链 (光模块那一路恒空)。
+DEFAULT_CLASSES = ["peg"]                   # 光模块 (现场一端入镜; 画面若能看到孔口再加 "hole")
 DEFAULT_SIM_CLASSES = ["peg", "hole", "hand"]   # 仿真 metaworld 三类 (与 data/yolo_peg 现有口径一致)
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp")
 
@@ -272,6 +277,17 @@ def save_sample(root, frame_rgb: np.ndarray, boxes, *, device="", seq=None, ts=N
         rec.update(extra)
     with open(P["annot"], "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    # 📌 真值侧车 (老倪 2026-09-17: 训练要有光模块位置/距离) — 一条样本一条真值, 与标注同生命周期。
+    #    单独成文件是为了让训练/标定**只读真值**就能用 (不必解析整份 annotations.jsonl 的审计流水)。
+    if extra and extra.get("truth"):
+        tp = os.path.join(P["sessions"], session, "truth.jsonl")
+        try:
+            with open(tp, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"stem": stem, "session": session, "saved_iso": rec["saved_iso"],
+                                    "w": w, "h": h, "boxes": recs, "truth": extra["truth"]},
+                                   ensure_ascii=False) + "\n")
+        except OSError:
+            pass
     _register_session(root, session, device, w, h, annotator, src)
     return rec
 
@@ -292,6 +308,89 @@ def _register_session(root, session, device, w, h, annotator, src):
     _write_json(os.path.join(P["sessions"], session, "session.json"),
                 {"session": session, "device": device, "w": w, "h": h, "annotator": annotator,
                  "src": src, "n_images": s["n_images"], "updated": s["updated"]})
+
+
+def _session_n(root, session) -> int:
+    return len([p for p in glob.glob(os.path.join(paths(root)["sessions"], session, "frames", "*"))
+                if p.lower().endswith(IMG_EXT)])
+
+
+def _sync_meta(root):
+    """按磁盘实况刷新 meta.json 的会话清单/图片数 + 每个会话的 session.json
+    (删除样本后必须调 —— 否则 meta 与磁盘不一致, 「已存 N 张」会骗人)"""
+    P = paths(root)
+    meta = _read_json(P["meta"], {}) or {}
+    idx = {s["name"]: s for s in meta.get("sessions", [])}
+    for sd in sorted(glob.glob(os.path.join(P["sessions"], "*"))):
+        if not os.path.isdir(sd):
+            continue
+        name = os.path.basename(sd)
+        idx.setdefault(name, {"name": name, "created": time.strftime("%F %T")})
+        n = _session_n(root, name)
+        idx[name]["n_images"] = n
+        sj = os.path.join(sd, "session.json")
+        if os.path.isfile(sj):
+            d = _read_json(sj, {}) or {}
+            d["n_images"] = n
+            d["updated"] = time.strftime("%F %T")
+            _write_json(sj, d)
+    meta["sessions"] = sorted([s for s in idx.values()
+                               if os.path.isdir(os.path.join(P["sessions"], s["name"]))],
+                              key=lambda x: x["name"])
+    meta["n_images"] = sum(int(s.get("n_images", 0)) for s in meta["sessions"])
+    _write_json(P["meta"], meta)
+    return meta
+
+
+def delete_sample(root=ROOT_DEFAULT, session=None, stem=None) -> dict:
+    """🗑 删掉一张样本 —— **图与标注成对删** (绝不只删图留下孤儿标注)。
+
+    返回 {"deleted": [...], "missing": [...]}: 实际删掉的文件 / 本来就不在的。
+    """
+    out = {"deleted": [], "missing": []}
+    if not (session and stem):
+        return out
+    sess_dir = os.path.join(paths(root)["sessions"], session)
+    for sub, exts in (("frames", IMG_EXT), ("labels", (".txt",))):
+        for e in exts:
+            fp = os.path.join(sess_dir, sub, stem + e)
+            if os.path.isfile(fp):
+                os.remove(fp)
+                out["deleted"].append(os.path.relpath(fp, root))
+            else:
+                out["missing"].append(os.path.relpath(fp, root))
+    _sync_meta(root)
+    # 真值侧车同步 (删样本就把它的真值一起删, 免得训练读到不存在的图)
+    tp = os.path.join(sess_dir, "truth.jsonl")
+    if os.path.isfile(tp):
+        keep = []
+        for ln in _read_lines(tp):
+            try:
+                if json.loads(ln).get("stem") != stem:
+                    keep.append(ln)
+            except ValueError:
+                continue
+        with open(tp, "w", encoding="utf-8") as f:
+            f.write(("\n".join(keep) + "\n") if keep else "")
+    return out
+
+
+def clear_session(root=ROOT_DEFAULT, session=None) -> dict:
+    """🗑 清空一个会话的全部样本 (图+标注), 保留会话目录/类别表; meta 计数同步刷新。"""
+    n = 0
+    if not session:
+        return {"removed": 0}
+    sess_dir = os.path.join(paths(root)["sessions"], session)
+    for sub in ("frames", "labels"):
+        for p in glob.glob(os.path.join(sess_dir, sub, "*")):
+            os.remove(p)
+            n += 1
+    tp = os.path.join(sess_dir, "truth.jsonl")
+    if os.path.isfile(tp):                       # 真值侧车随会话一起清
+        os.remove(tp)
+        n += 1
+    _sync_meta(root)
+    return {"removed": n, "session": session}
 
 
 # ───────────────────────── 遍历 / 构建 / 体检 ─────────────────────────
@@ -382,6 +481,23 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
            f"nc: {len(names)}", "names:", *[f"  {i}: {n}" for i, n in enumerate(names)]]
     with open(os.path.join(ds, "data.yaml"), "w", encoding="utf-8") as f:
         f.write("\n".join(yml) + "\n")
+    # 📌 真值聚合 (老倪 2026-09-17: 「训练要有光模块位置/距离」): 各会话 truth.jsonl → dataset/truth.jsonl
+    #    训练/标定只读这一个文件就能拿到每张图的 3D 真值 (与仿真 data/yolo_peg 的真值投影标签同口径)
+    stems = {s["stem"] for s in samples}
+    trows = []
+    for tp in sorted(glob.glob(os.path.join(P["sessions"], "*", "truth.jsonl"))):
+        for ln in _read_lines(tp):
+            try:
+                r = json.loads(ln)
+            except ValueError:
+                continue
+            if r.get("stem") in stems:               # 只留图还在的 (删过的样本不留真值)
+                trows.append(r)
+    with open(os.path.join(ds, "truth.jsonl"), "w", encoding="utf-8") as f:
+        for r in trows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    stats["n_truth"] = len(trows)
+    stats["truth_file"] = os.path.join(ds, "truth.jsonl")
     _write_json(os.path.join(ds, "stats.json"), stats)
     return stats
 
@@ -502,6 +618,76 @@ def import_yolo_dir(root, src_dir, session, classes=None, tag="import") -> int:
     return n
 
 
+def clean(root=ROOT_DEFAULT, drop_orphan_images=False) -> dict:
+    """🧹 清理不配对的残留 (2026-09-17 老倪: 「我把图像删了, 但标注没删」)
+
+    只删**孤儿标注** (有 .txt 没图) —— 这是最容易出错、且一定会让训练/体检报错的东西;
+    **只有图没标签**默认保留不删 (那可能是刻意留的背景负样本, 或误删标注), 只统计并在返回里报出来,
+    由 --check 提示人决定。dataset/ 是生成物, 清了无妨, 下一次 --build 会重建。
+    返回 {sessions_removed, dataset_removed, orphan_images, orphan_labels_kept}
+    """
+    P = ensure_layout(root)
+    ds = P["dataset"]
+    removed, kept_imgs = 0, []
+    # ① 会话层
+    for sd in sorted(glob.glob(os.path.join(P["sessions"], "*"))):
+        frames = {os.path.splitext(os.path.basename(p))[0]
+                  for p in glob.glob(os.path.join(sd, "frames", "*")) if p.lower().endswith(IMG_EXT)}
+        labels = {os.path.splitext(os.path.basename(p))[0]
+                  for p in glob.glob(os.path.join(sd, "labels", "*.txt"))}
+        for st in sorted(labels - frames):
+            os.remove(os.path.join(sd, "labels", st + ".txt"))
+            removed += 1
+        kept_imgs += [os.path.join(sd, "frames", st + img)
+                      for st in sorted(frames - labels) for img in [".jpg"]]
+    # ② dataset 层 (生成物)
+    for sp in ("train", "val"):
+        di = {os.path.splitext(os.path.basename(p))[0]
+              for p in glob.glob(os.path.join(ds, "images", sp, "*")) if p.lower().endswith(IMG_EXT)}
+        dl = {os.path.splitext(os.path.basename(p))[0]
+              for p in glob.glob(os.path.join(ds, "labels", sp, "*.txt"))}
+        for st in sorted(dl - di):
+            os.remove(os.path.join(ds, "labels", sp, st + ".txt"))
+            removed += 1
+        if drop_orphan_images:
+            for st in sorted(di - dl):
+                for img in glob.glob(os.path.join(ds, "images", sp, st + ".*")):
+                    os.remove(img)
+    return {"sessions_removed": removed, "orphan_images": len(kept_imgs),
+            "orphan_image_list": [os.path.relpath(p, root) for p in kept_imgs]}
+
+
+def reset(root=ROOT_DEFAULT, keep_audit=True) -> dict:
+    """🗑 清空标定数据 (重来一遍用): 删 sessions 全部 + dataset 全部, **保留** classes.txt / README.md 结构。
+
+    keep_audit=True: annotations.jsonl (谁标了什么的历史) 保留不清 —— 它是审计流水, 不是训练数据。
+    meta.json 的会话清单/计数清零。删完请重新采集 (视频流窗口 → 标定模式 → 拖框 → 💾/⏭)。
+    """
+    P = ensure_layout(root)
+    ds = P["dataset"]
+    n = 0
+    for sub in ("frames", "labels"):
+        for p in glob.glob(os.path.join(P["sessions"], "*", sub, "*")):
+            os.remove(p)
+            n += 1
+    for sub in (os.path.join("images", "train"), os.path.join("images", "val"),
+                os.path.join("labels", "train"), os.path.join("labels", "val")):
+        for p in glob.glob(os.path.join(ds, sub, "*")):
+            os.remove(p)
+            n += 1
+    for f in ("data.yaml", "stats.json"):
+        fp = os.path.join(ds, f)
+        if os.path.isfile(fp):
+            os.remove(fp)
+            n += 1
+    _write_json(P["meta"], {"version": 1, "created": time.strftime("%F %T"),
+                            "sessions": [], "n_images": 0, "classes": load_classes(root),
+                            "reset_at": time.strftime("%F %T")})
+    if not keep_audit:
+        open(P["annot"], "w").close()
+    return {"removed": n, "classes": load_classes(root), "audit_kept": keep_audit}
+
+
 # ───────────────────────── CLI ─────────────────────────
 def main():
     ap = argparse.ArgumentParser(description="真机 YOLO 标定数据管理 (目录规范/保存/构建/体检)")
@@ -518,7 +704,28 @@ def main():
     ap.add_argument("--add-class", default=None)
     ap.add_argument("--import-yolo-dir", default=None)
     ap.add_argument("--session", default=None)
+    ap.add_argument("--clean", action="store_true",
+                    help="清理孤儿标注 (有 .txt 没图); dataset 层一并清, 之后重新 --build")
+    ap.add_argument("--reset", action="store_true",
+                    help="清空全部标定数据 (sessions + dataset), 保留 classes.txt; 需 --yes 确认")
+    ap.add_argument("--yes", action="store_true", help="配合 --reset: 跳过确认")
     a = ap.parse_args()
+
+    if a.reset:
+        if not a.yes:
+            print(f"⚠️ 将清空 {a.root} 下全部标定数据 (sessions + dataset), 保留 classes.txt/README.md。")
+            print("   确认请加 --yes 重跑。")
+            return 2
+        r = reset(a.root)
+        print(f"✅ 已清空: 删除 {r['removed']} 个文件 · 类别表保留 {r['classes']} · 审计流水保留={r['audit_kept']}")
+        return 0
+    if a.clean:
+        r = clean(a.root)
+        print(f"🧹 清理完成: 删除孤儿标注 {r['sessions_removed']} 个 · "
+              f"有图无标注保留 {r['orphan_images']} 个 (需查那就去 --check)")
+        for p in r["orphan_image_list"][:10]:
+            print("   ⚠️ 有图无标注:", p)
+        return 0
 
     if a.add_class:
         print(f"class id = {add_class(a.root, a.add_class)} (类别表: {load_classes(a.root)})")

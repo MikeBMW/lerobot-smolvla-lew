@@ -44,6 +44,7 @@ for _p in (_HERE, os.path.dirname(_HERE)):                 # tools/gui + tools
 
 from yolo_label_widget import YoloLabelWidget             # noqa: E402
 import yolo_annot_dataset as yad                          # noqa: E402
+import real_truth as rt                                   # noqa: E402  真机位姿真值 (单一来源)
 
 ORIN = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66")
 CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
@@ -203,6 +204,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._frame_meta = {}                 # 当前帧来源 (device/seq/age/src)
         self._session = yad.session_name("d405")
         self._n_saved = 0
+        self._last_saved = None               # 最近一次保存的样本 {stem, session} — 供「🗑 丢弃当前帧」
         self._syncing = False
 
         # 数据根随**输入源**走 (真机/仿真分开存: 口径不同, 混一起训练会让类别语义打结)
@@ -240,6 +242,20 @@ class YoloInputViewer(QtWidgets.QDialog):
         top.addWidget(self.btn)
         v.addLayout(top)
 
+        # ── 真值行 (老倪 2026-09-17: 「训练要有光模块距离/位置等信息…读出真值, 对齐 metaworld 数据」) ──
+        #   真值 = 4060 侧 Docker 只读订阅 Orin /robot/tcp_pose 落盘的 state jsonl / status.json (单一来源
+        #   tools/real_truth.py)。1Hz 刷新 (别跟着 15Hz 画面刷, 文件 IO 不值当); 保存标注时**同时**把真值写进样本。
+        trow = QtWidgets.QHBoxLayout()
+        self.lbl_truth = QtWidgets.QLabel("📌 真机真值: 读取中…")
+        self.lbl_truth.setObjectName("ph")
+        self.lbl_truth.setWordWrap(True)
+        self.lbl_truth.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        _sp3 = self.lbl_truth.sizePolicy()
+        _sp3.setHorizontalPolicy(QtWidgets.QSizePolicy.Ignored)
+        self.lbl_truth.setSizePolicy(_sp3)
+        trow.addWidget(self.lbl_truth, 1)
+        v.addLayout(trow)
+
         # ── 第 2 行: 标定 ──
         ann = QtWidgets.QHBoxLayout()
         self.chk_annot = QtWidgets.QCheckBox("✏️ 标定模式")
@@ -261,10 +277,10 @@ class YoloInputViewer(QtWidgets.QDialog):
         ann.addWidget(self.btn_newcls)
         for txt, fn, tip in (("💾 保存标注", self._save_annot, "保存当前图片 + 框 (Enter)"),
                              ("⏭ 保存并下一帧", self._save_next, "保存后自动取下一帧继续标 (N)"),
-                             ("🏷 改选中类别", self._relabel_selected, "把选中的框改成当前类别"),
-                             ("↩ 撤销", lambda: self.w_orig.undo(), "撤销上一次改动 (Ctrl+Z)"),
-                             ("🗑 删选中", lambda: self.w_orig.remove_selected(), "删除选中框 (Del)"),
-                             ("✖ 清空框", lambda: self.w_orig.clear_boxes(), "清空本帧所有框"),
+                             ("🏷 改选中类别", self._relabel_selected, "把选中的框改成当前类别 (哪个窗选中就改哪个)"),
+                             ("↩ 撤销", lambda: self._active_pane().undo(), "撤销上一次改动 (Ctrl+Z)"),
+                             ("🗑 删选中", lambda: self._active_pane().remove_selected(), "删除选中框 (Del)"),
+                             ("✖ 清空框", lambda: self._active_pane().clear_boxes(), "清空本帧所有框"),
                              ("🧊 冻结/▶实时", self._toggle_freeze, "冻结当前帧 / 恢复跟随实时 (F)")):
             b = QtWidgets.QPushButton(txt)
             b.clicked.connect(fn)
@@ -289,6 +305,10 @@ class YoloInputViewer(QtWidgets.QDialog):
         for txt, fn, tip in (("📦 构建数据集", self._build_dataset, "sessions → dataset/{images,labels}/{train,val} + data.yaml"),
                              ("🔍 数据体检", self._check_dataset, "标签格式/类别范围/配对/重复图 全检"),
                              ("🚀 训练 YOLO", self._train_dialog, "用标定好的数据微调 YOLO (后台跑, 给日志路径)"),
+                             ("🗑 丢弃当前帧", self._discard_current,
+                              "把**刚保存的这张**样本从会话里删掉 (图+标注成对删, 不留孤儿)"),
+                             ("🗑 清空本会话", self._clear_session,
+                              "删掉当前会话全部样本 (图+标注) — 会先弹确认, 不可恢复"),
                              ("📂 数据目录", self._open_dir, "在文件管理器打开标定数据根目录")):
             b = QtWidgets.QPushButton(txt)
             b.clicked.connect(fn)
@@ -311,6 +331,13 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.w_rot.setVisible(False)
         self.w_orig.changed.connect(lambda: self._sync_boxes(self.w_orig, self.w_rot))
         self.w_rot.changed.connect(lambda: self._sync_boxes(self.w_rot, self.w_orig))
+        # 🐛 2026-09-17 老倪「改选中的类别不好使」根因: 两窗只同步**框集合**, 不同步**选中项**
+        #   —— _sync_boxes 在"框集合相同"时直接 return, 而在旋转窗里点选一个框只改 _sel 不改框集合
+        #   ⇒ 左窗 _sel 仍是 -1, 而「🏷改选中类别 / 🗑删选中 / ↩撤销」当时全绑在 w_orig.selected() 上
+        #   ⇒ 在右窗(旋转180°, 相机翻转时最常用)选中框后点这些键 = 取不到选中 → 看着像按钮坏了。
+        #   修: ①两侧 selectionChanged 互相同步选中索引 ②这些按钮改走 _active_pane() (谁选中就作用于谁)。
+        self.w_orig.selectionChanged.connect(lambda i: self._mirror_sel(self.w_orig, self.w_rot, i))
+        self.w_rot.selectionChanged.connect(lambda i: self._mirror_sel(self.w_rot, self.w_orig, i))
         self.w_orig.cursorMoved.connect(lambda *_a: None)
         self.img, self.img_rot = self.w_orig, self.w_rot       # 兼容旧调用/取证
         pane_titles = {0: "🖼 原始 (0°)", 1: "🔄 旋转 180° (相机翻转)"}
@@ -350,6 +377,12 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.timer.setInterval(66)          # ~15Hz 刷新
         self.timer.timeout.connect(self._tick)
         self.timer.start()
+        # 📌 真值 1Hz 刷新 (老倪 2026-09-17: 训练要有光模块位置/距离 → 面板要看得见)
+        self._last_truth = None
+        self._truth_timer = QtCore.QTimer(self)
+        self._truth_timer.setInterval(1000)
+        self._truth_timer.timeout.connect(self._refresh_truth)
+        self._truth_timer.start()
         self._chain_state = ""
         self._chain_stopped = False      # 手动「⏹ 停止链路」后不自动重连
         self._recovering = False
@@ -520,6 +553,25 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._sync_boxes(self.w_orig, self.w_rot, force=True)
         self._paint_frames()
 
+    def _mirror_sel(self, src, dst, idx):
+        """选中项跨窗同步 (只同步索引: 框集合本来就共享, 重建反而会打断拖拽/递归)"""
+        if getattr(self, "_mirroring", False):
+            return
+        self._mirroring = True
+        try:
+            if dst.selected() != idx:
+                dst._sel = idx
+                dst.update()
+        finally:
+            self._mirroring = False
+
+    def _active_pane(self):
+        """当前操作目标窗: 谁有选中框就作用于谁 (都没选中 → 左窗, 保持旧行为)"""
+        for w in (self.w_rot, self.w_orig):
+            if w.selected() >= 0:
+                return w
+        return self.w_orig
+
     def _sync_boxes(self, src, dst, force=False):
         """两窗共享同一组框 (都存原始帧坐标 → 直接复制; 防止"旋转窗标的框看不见"的困惑)"""
         if self._syncing:
@@ -644,7 +696,7 @@ class YoloInputViewer(QtWidgets.QDialog):
     # ── 标定 ────────────────────────────────────────────────────────────
     _ANNOT_BTNS = ("💾 保存标注", "⏭ 保存并下一帧", "↩ 撤销", "🗑 删选中", "✖ 清空框",
                    "🧊 冻结/▶实时", "📦 构建数据集", "🔍 数据体检", "🚀 训练 YOLO", "🏷 改选中类别",
-                   "📂 数据目录", "＋新类别")
+                   "📂 数据目录", "＋新类别", "🗑 丢弃当前帧", "🗑 清空本会话")
 
     def _set_annot_visible(self, on):
         """⚠️ 血泪: 最初把「✏️ 标定模式」勾选框**自己也藏了** → 用户永远打不开标定, 界面上找不到任何标定按钮
@@ -721,7 +773,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.cb_cls.blockSignals(True)
         self.cb_cls.clear()
         self.cb_cls.addItems(names)
-        self.cb_cls.setCurrentText(cur if cur in names else (names[0] if names else "optical_module"))
+        self.cb_cls.setCurrentText(cur if cur in names else (names[0] if names else "peg"))
         self.cb_cls.blockSignals(False)
         self.w_orig.set_classes(names)
         self.w_rot.set_classes(names)
@@ -744,11 +796,12 @@ class YoloInputViewer(QtWidgets.QDialog):
         txt = self.cb_cls.currentText().strip()
         if not txt:
             return
-        if self.w_orig.selected() < 0:
-            self._log_line("没有选中框 (先点一下框再改类别)")
+        w = self._active_pane()
+        if w.selected() < 0:
+            self._log_line("没有选中框 (先在框内点一下选中, 再点这个按钮)")
             return
-        self.w_orig.set_selected_class(txt)
-        self._sync_boxes(self.w_orig, self.w_rot, force=True)
+        w.set_selected_class(txt)
+        self._sync_boxes(w, self.w_orig if w is self.w_rot else self.w_rot, force=True)
         self._log_line(f"选中框类别 → {txt}")
 
     def _add_class_dialog(self):
@@ -787,11 +840,13 @@ class YoloInputViewer(QtWidgets.QDialog):
                                   ts=time.time(), src=f"{fm.get('src') or self.source}",
                                   session=self._session, annotator=self.ed_who.text().strip(),
                                   tag="d405" if self.source == "real" else "sim",
-                                  extra={"frame_age_s": fm.get("age_s"), "ui": "yolo_input_viewer"})
+                                  extra={"frame_age_s": fm.get("age_s"), "ui": "yolo_input_viewer",
+                                         "truth": self._truth_snapshot()})
         except Exception as e:                                             # noqa: BLE001
             QtWidgets.QMessageBox.warning(self, "保存失败", f"{type(e).__name__}: {e}")
             return None
         self._n_saved += 1
+        self._last_saved = {"stem": rec.get("stem"), "session": rec.get("session")}   # 供「🗑 丢弃当前帧」定位
         msg = (f"已保存 {os.path.basename(rec['image'])} · {len(boxes)} 框 "
                f"({', '.join(b['cls'] for b in rec['boxes']) or '背景样本'}) → {rec['session']}")
         self._log_line(msg)
@@ -807,6 +862,86 @@ class YoloInputViewer(QtWidgets.QDialog):
 
     def _save_next(self):
         self._save_annot(next_frame=True)
+
+    def _truth_snapshot(self):
+        """📌 真机位姿真值快照 (仿真源 → None)。保存样本与面板显示**共用这一个入口** —
+        真值只有一个来源 (Orin /robot/tcp_pose → 采集容器落盘 → tools/real_truth.py), 不许各写一套。"""
+        if self.source != "real":
+            return None
+        try:
+            return rt.snapshot()
+        except Exception as e:                                             # noqa: BLE001
+            self._log_line(f"⚠️ 真值读取失败: {type(e).__name__}: {e}")
+            return None
+
+    def _refresh_truth(self):
+        """📌 真值行 1Hz 刷新 —— 末端(手/头)/光模块 的 x y z · 距孔口 · 新鲜度。
+        自解释: 每个数都带物理含义与坐标系; 拿不到的一律显示"— + 原因", 不拿旧值/默认值冒充 (老倪红线)。"""
+        if self.source != "real":
+            self.lbl_truth.setText("📌 真值: 当前是仿真源 — 切到「🎥 真机 RealSense」才会读 Orin 位姿真值")
+            return
+        t = self._truth_snapshot()
+        if not t or not t.get("tcp"):
+            self.lbl_truth.setText("📌 真机真值: 读不到 (采集容器 ss-remote-tap 没在跑? 见 ~/zmax_ss_remote)")
+            return
+        self._last_truth = t
+        seg, dist, notes = t.get("obs39_segments", {}), t.get("dist", {}), t.get("notes", {})
+
+        def _v(a):
+            return "—" if a is None else f"{float(a):+.4f}"
+
+        fresh = "✅" if t.get("fresh") else "⚠️旧"
+        txt = (f"📌 真机真值 base_link · 新鲜度 {t.get('age_s')}s{fresh}: "
+               f"末端(手/头) x={_v(t['tcp'][0])} y={_v(t['tcp'][1])} z={_v(t['tcp'][2])} m")
+        peg = seg.get("peg")
+        txt += (f" · 光模块中心 x={_v(peg[0])} y={_v(peg[1])} z={_v(peg[2])}" if peg
+                else f" · 光模块中心 —({notes.get('peg', '未标定')})")
+        if dist.get("tcp_to_goal_m") is not None:
+            txt += f" · 距孔口 {dist['tcp_to_goal_m'] * 1000:.1f} mm"
+        else:
+            txt += f" · 距孔口 —({notes.get('hole', '未示教几何')})"
+        txt += f" · 关节{'✓' if t.get('joints') else '—'} · 姿态{'✓' if t.get('tcp_quat') else '—'}"
+        self.lbl_truth.setText(txt)
+
+    def _discard_current(self):
+        """🗑 丢弃当前帧 — 把**刚保存的这张**样本从会话里删掉 (图+标注成对删, 不留孤儿)
+
+        (2026-09-17 老倪: 「窗口上加 🗑 丢弃当前帧」— 以前删只能走命令行/文件管理器,
+         只删图不删标注就留下孤儿标注, 之后 --build/训练/体检全报错。)
+        """
+        rec = getattr(self, "_last_saved", None)
+        if not rec or not rec.get("stem"):
+            self._log_line("🗑 丢弃当前帧: 这张还没保存过 — 先「💾 保存标注」再丢弃")
+            QtWidgets.QMessageBox.information(self, "丢弃当前帧", "当前帧还没有保存过 (先「💾 保存标注」)。")
+            return
+        r = yad.delete_sample(self.annot_root, rec.get("session"), rec.get("stem"))
+        self._n_saved = max(0, self._n_saved - 1)
+        self._last_saved = None
+        self.w_orig.clear_boxes()
+        self.w_rot.clear_boxes()
+        self._log_line(f"🗑 已丢弃 {rec['stem']}: 删除 {len(r['deleted'])} 个文件 {r['deleted']} (会话 {rec.get('session')})")
+        self._refresh_data_label()
+
+    def _clear_session(self):
+        """🗑 清空本会话 — 删掉当前会话全部样本 (图+标注成对删), 弹确认后执行"""
+        n = yad._session_n(self.annot_root, self._session)
+        if n == 0:
+            self._log_line(f"🗑 清空本会话: {self._session} 里没有样本")
+            QtWidgets.QMessageBox.information(self, "清空本会话", f"会话 {self._session} 里没有样本。")
+            return
+        if QtWidgets.QMessageBox.question(
+                self, "清空本会话",
+                f"将删除会话「{self._session}」下全部 {n} 张样本 (图片 + 标注成对删), 不可恢复。\n\n继续?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+            self._log_line("🗑 清空本会话: 已取消")
+            return
+        r = yad.clear_session(self.annot_root, self._session)
+        self._last_saved = None
+        self.w_orig.clear_boxes()
+        self.w_rot.clear_boxes()
+        self._log_line(f"🗑 已清空会话 {self._session}: 删除 {r['removed']} 个文件 (类别表未动)")
+        self._refresh_data_label()
 
     def _build_dataset(self):
         def work():

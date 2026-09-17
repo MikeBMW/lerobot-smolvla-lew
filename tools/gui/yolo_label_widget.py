@@ -87,8 +87,8 @@ class YoloLabelWidget(QtWidgets.QWidget):
         self._sel = -1
         self._undo = []
         self._editable = bool(editable)
-        self._cls = "optical_module"                 # 新建框的类别
-        self._classes = ["optical_module"]
+        self._cls = "peg"                            # 新建框的类别 (口径: 见 frame_source.py CLASS_MAP peg→光模块)
+        self._classes = ["peg"]
         self._drag = None                            # ('new'|'move'|'resize', 角, 起点...)
         self._hit = None
         # 显示几何 (paintEvent 里算好后, 鼠标事件用同一套 → 像素映射严格一致)
@@ -332,7 +332,11 @@ class YoloLabelWidget(QtWidgets.QWidget):
         kind, box, start, idx = self._drag
         W, H = self._rgb.shape[1], self._rgb.shape[0]
         if kind == "new":
-            self._drag = ("new", start, pt, -1)
+            # 🐛 2026-09-17 老倪「左键拖不出框」根因: 原来写成 ("new", start, pt, -1) ——
+            #   start 是"上一次鼠标移动点", 每动一次就把**按下锚点覆盖掉** ⇒ 松开时
+            #   算出的矩形只剩最后一小段位移(通常 <4px) → 被当成误点丢弃 (或拖出个小碎片框)。
+            #   锚点必须恒为按下那一点 (index1), index2 才跟随鼠标。
+            self._drag = ("new", box, pt, -1)
             self.update()
             return True
         # move / resize 在显示空间算, 结束再映射回原始

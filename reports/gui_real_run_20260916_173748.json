@@ -1,0 +1,33 @@
+{
+ "ts": "2026-09-16 17:37:48",
+ "cap": "L4",
+ "mode": "full",
+ "steps": 3001,
+ "done": false,
+ "insert_mm": 72.1,
+ "yolo_detect_pct": 100.0,
+ "model_calls": 3001,
+ "gate": {
+  "n": 3001,
+  "veto_dir": 2786,
+  "veto_mag": 4,
+  "blend": 54,
+  "ref_zero": 0,
+  "stage_out": 157,
+  "cos_sum": 50.467492928262715,
+  "w_min": 0.9001199513277388,
+  "w_max": 0.9814483620369059,
+  "cos_used": 54,
+  "applied": 54,
+  "clamped": 20
+ },
+ "aoi_report": {},
+ "stage_counts": {
+  "阶段 下降": 123,
+  "阶段 对位": 2825,
+  "阶段 抓取": 24,
+  "阶段 抬起": 10,
+  "阶段 接近": 19
+ },
+ "grasped": false
+}

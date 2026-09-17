@@ -43,7 +43,13 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import PoseStamped
 
-OUT = os.path.expanduser(os.environ.get("SS_GEOM_PATH", "~/zmax_state_space/models/real_cell_geometry.json"))
+# 落盘路径口径 (2026-09-17 对齐修复): 采集器 ss_remote_tap.py 读的是 $SS_OUT/real_cell_geometry.json,
+# 本工具原来默认写 ~/zmax_state_space/models/ → 两边不一致 = 示教完 tap 仍报「无示教几何」。
+# 现与 tap 同口径: 显式 SS_GEOM_PATH 优先, 否则有 SS_OUT 就跟 tap 落同一处, 都没有才退回旧默认。
+OUT = os.path.expanduser(os.environ.get(
+    "SS_GEOM_PATH",
+    os.path.join(os.environ["SS_OUT"], "real_cell_geometry.json") if os.environ.get("SS_OUT")
+    else "~/zmax_state_space/models/real_cell_geometry.json"))
 VALID_KEYS = ("peg_head", "goal", "aoi", "tray_origin", "home")
 
 

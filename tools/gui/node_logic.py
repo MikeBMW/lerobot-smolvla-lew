@@ -1818,6 +1818,10 @@ _reg("flight",    ["飞行", "标架转换", "Frenet"],
      "🛩 飞行 — 标架转换 (Frenet/端口系/笛卡尔): 沿端口轴前进 + 端面微调", node_flight)
 _reg("collect",    ["采集"],        "① 采集 — 拉取 Orin 真实数据 → 修复 action → 落地", node_collect)
 _reg("train",      ["训练", "全新训练"], "② 训练 — ACT 策略训练 (含 metaworld 全新训练)", node_train)
+# 🎯 2026-09-17 老倪: 「加 → 引擎页一键训」— YOLO 感知前端训练节点 (params.policy="yolo")。
+#   ⚠️ 必须单独注册: match_node 取**最长关键字**, 通用 "训练"(2字) 会被 ss_yolo 的裸关键字 "YOLO"(4字)
+#   抢走 ⇒ 「🚀 YOLO 训练」会被派去跑目标检测而不是训练 (实测踩到)。故这里用 "YOLO 训练"(5字) 压过它。
+_reg("train_yolo", ["YOLO 训练"], "🎯 YOLO 检测训练 — 真机标注数据微调 (policy=yolo · 步数=epoch)", node_train)
 _reg("validate",   ["验证"],        "③ 验证 — 流程拓扑合规检查 (validate_flow)", node_validate)
 _reg("integrate",  ["集成"],        "④ 集成 — 打包 checkpoint → 上传 ECS 中转", node_integrate)
 _reg("deploy",     ["部署"],        "⑤ 部署 — 部署状态检查与推送", node_deploy)

@@ -465,11 +465,22 @@ REFERENCE_APPS = [
                                                      "desc": "🧩 VLA-Touch 结构条件: latent += proj(state)×gate — 结构坐标叠加进视觉嵌入 (双击改 gate/state_dim)"}),
         ("coord_overlay", "🧩 结构条件 · AWE", {"gate": 0.5, "state_dim": 39, "dim_mode": "concat",
                                                "desc": "🧩 AWE 结构条件: latent += proj(state)×gate — 结构坐标叠加进视触觉潜状态 (双击改 gate/state_dim)"}),
+        # 🎯 2026-09-17 老倪: 「加 → 引擎页一键训」— YOLO 感知前端自己的训练节点。
+        #   之前引擎里 _train_yolo_detector() 写了但**没有节点传 policy="yolo"** ⇒ 从界面到不了那段代码。
+        #   policy="yolo" → on_train 走 YOLO 分支: 优先真机标注 data/yolo_annot/dataset
+        #   (视频流窗口「✏️标定模式」产出) → tools/yolo_annot_train.py --base auto(仿真权重域适应微调);
+        #   无真机数据时才回退仿真 data/yolo_peg。训练步数 steps = YOLO 的 epoch 数 (双击节点可改)。
+        ("system", "🚀 YOLO 训练", {"policy": "yolo", "steps": 100,
+                                    "desc": "YOLO 检测训练 (感知前端): 真机标注数据 → ultralytics 微调 → outputs/yolo_annot/<name>; 步数=epoch (双击节点改参数 · 右键/双击执行)"}),
     ], [
         # 感知链 (2026-08-06 老倪修正: YOLO 只做 state 适配, 视频直接进各模型视觉 ViT):
         #   state 通道: 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter→各模型 state 输入
         #   图像通道: 数据→各模型视觉主干 (ResNet18/SmolVLM2/DINOv2/SigLIP) 直接进, 不经 YOLO
         (0, 1, "图像"), (1, 3, "开=39D"), (3, 4, "2D框"), (4, 5, "3D坐标"),  # 感知链: 开关→YOLO→2D→3D→StateAdapter (共享🧩已下放)
+        # YOLO 检测 → YOLO 训练 (2026-09-17 老倪: 引擎页一键训; 索引 64 = 节点表末尾追加, 旧索引不受影响)
+        # ⚠️ 源索引是 **3**(🎯 YOLO 目标检测) 不是 2 —— 索引 2 是共享「🧩 结构条件」定义, 建节点时被跳过,
+        #    index_to_id 里没有它 ⇒ 写 (2,64) 连线会被静默丢弃 (实测踩到)。
+        (3, 64, "训练"),
         # ACT 路: 图像→ResNet18(6); State→🧩结构·ACT(59); 主干latent→🧩; latent+→Encoder(7)
         (0, 6, "图像"), (5, 59, "state39D"), (6, 59, "图像特征"), (59, 7, "latent+"), (7, 8), (8, 9), (9, 10), (10, 11),
         # SmolVLA 路: 图像→SmolVLM2(13); State→🧩结构·SmolVLA(60); latent+→DiT-B(14)
@@ -517,7 +528,8 @@ REFERENCE_APPS = [
     [
         # 感知前端链 (共享): 数据→YOLO开关→YOLO检测→2D→3D→StateAdapter (🧩结构条件已下放到各模型行 latent 处)
         # 注: 共享「🧩 结构条件」定义在 load_reference_app 被显式跳过 (下放各模型行), 不进 layout
-        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", "", "", ""],
+        #     🚀 YOLO 训练 放「训练/基准」列 (第 10 列), 与 🚀 ACT 训练 等同列对齐
+        ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🎯 YOLO 目标检测", "📐 2D→3D 解算", "🔌 State Adapter", "", "", "", "", "", "🚀 YOLO 训练", ""],
         # ACT 行: 训练 → 🎮仿真推理·ACT → 🎮仿真视频·ACT
         ["📦 metaworld_peg", "🎯 YOLO 感知开关", "🔌 State Adapter", "🖼 视觉主干 ResNet18", "🧩 结构条件 · ACT", "🚫 VAE 编码器（无）", "🔤 Transformer Encoder", "🔡 Transformer Decoder", "🎯 Action Head 4D · ACT", "⏳ Temporal Ensemble", "🚀 ACT 训练", "🎮 仿真推理 · ACT", "🎮 仿真视频 · ACT"],
         # SmolVLA 纯动作行
@@ -8453,34 +8465,78 @@ class SimulinkModule(QWidget):
             pass
         self._start_worker(_work, f"正在准备 {policy} 训练 (拉取数据源 + 启动训练)", stage="train")
 
+    def _yolo_training_env(self, root):
+        """YOLO 训练解释器: ①gui-venv311(带 ultralytics, 与视频流窗口「🚀训练YOLO」同源) ②lerobot-venv。
+        都没有 → (None, 原因), 显式报错不静默失败。"""
+        cands = [os.path.join(root, "gui-venv311", "bin", "python"),
+                 os.path.expanduser("~/lerobot-venv/bin/python")]
+        tried = []
+        for py in cands:
+            if not os.path.exists(py):
+                tried.append(f"{py} (不存在)")
+                continue
+            if os.system(f"{py} -c 'import ultralytics' >/dev/null 2>&1") != 0:
+                tried.append(f"{py} (无 ultralytics)")
+                continue
+            return py, ""
+        return None, "无可用解释器 → " + " · ".join(tried)
+
     def _train_yolo_detector(self, steps=None):
-        """🎯 YOLO检测训练 (ultralytics yolov8n) — 感知前端, 独立于 lerobot 策略训练
-        数据: data/yolo_peg (gen_yolo_data.py 仿真自动标注 光模块/hole/hand)
-        训练: src/lerobot/policies/yolo_3d/train_yolo.py → outputs/yolo_peg/<name>
+        """🎯 YOLO检测训练 (ultralytics) — 感知前端, 独立于 lerobot 策略训练
+
+        数据二选一 (2026-09-17 老倪:「标号的数据在哪里? 怎么组织 yolo 训练」):
+          · 真机标注 data/yolo_annot/dataset —— 视频流窗口「✏️标定模式」产出的正路 (现场唯一真数据)
+            走 tools/yolo_annot_train.py: --base auto(=拿现有仿真权重做域适应微调, 因为仿真权重在真机 0 检出) imgsz 640
+          · 仿真自动标注 data/yolo_peg —— gen_yolo_data.py 生成 (3类 hand/peg/hole)
+            走 src/lerobot/policies/yolo_3d/train_yolo.py imgsz 480
+        有真机标注数据时**默认用真机数据**; 想指定: 环境变量 SS_YOLO_DATA=<数据集目录>。
+        ⚠️ 数据脚本/口径变了必须改这里, 别处不许另起一套。
         """
         root = self._repo_root()
-        py = os.path.expanduser("~/lerobot-venv/bin/python")
-        train_script = os.path.join(root, "src", "lerobot", "policies", "yolo_3d", "train_yolo.py")
-        data_dir = os.path.join(root, "data", "yolo_peg")
-        data_yaml = os.path.join(data_dir, "data.yaml")
         epochs = int(steps) if steps else 50
-        self.log_signal.emit("════ 🎯 YOLO检测训练 (ultralytics yolov8n) ════")
-        # 1. 环境 + 数据前置检测 (缺则明确根因, 不静默失败)
-        if not os.path.exists(py):
-            return False, "YOLO检测 训练失败: ~/lerobot-venv 环境缺失 (参考 zmax-state-space-training 技能重建)"
-        if os.system(f"{py} -c 'import ultralytics' >/dev/null 2>&1") != 0:
-            return False, "YOLO检测 训练失败: ultralytics 未安装 (lerobot-venv 执行 pip install ultralytics)"
-        if not os.path.exists(data_yaml):
-            return False, ("YOLO检测 训练失败: 数据缺失 — 先运行 gen_yolo_data.py 生成 "
-                           "(python src/lerobot/policies/yolo_3d/gen_yolo_data.py --eps 200 --out data/yolo_peg)")
-        # 2. 训练
+        self.log_signal.emit("════ 🎯 YOLO检测训练 ════")
+        py, why = self._yolo_training_env(root)
+        if py is None:
+            return False, f"YOLO检测 训练失败: {why} (gui-venv311 里 pip install ultralytics 后重试)"
+        real_dir = os.path.join(root, "data", "yolo_annot", "dataset")
+        sim_dir = os.path.join(root, "data", "yolo_peg")
+        want = os.environ.get("SS_YOLO_DATA", "").strip()
+        if want:
+            data_dir, src_tag = want, "SS_YOLO_DATA 指定"
+        elif os.path.exists(os.path.join(real_dir, "data.yaml")):
+            data_dir, src_tag = real_dir, "真机标注 (视频流窗口标定模式产出)"
+        else:
+            data_dir, src_tag = sim_dir, "仿真自动标注"
+        if not os.path.exists(os.path.join(data_dir, "data.yaml")):
+            return False, (f"YOLO检测 训练失败: 数据缺失 {data_dir}/data.yaml — "
+                           "真机数据请先去视频流窗口点「📦 构建数据集」; "
+                           "仿真数据先跑 gen_yolo_data.py --eps 200 --out data/yolo_peg")
+        is_real = os.path.abspath(data_dir).startswith(os.path.abspath(os.path.join(root, "data", "yolo_annot")))
         ts = time.strftime("%Y%m%d_%H%M%S")
-        self.log_signal.emit(f"🚀 YOLO检测 训练启动 (yolov8n · {epochs} epoch · 4060 GPU)...")
-        rc = self._run_cmd([py, "-u", train_script, "--data", data_dir, "--epochs", str(epochs),
-                            "--imgsz", "480", "--name", f"run_{ts}"], cwd=root)
+        if is_real:
+            script = os.path.join(root, "tools", "yolo_annot_train.py")
+            out_hint = f"outputs/yolo_annot/engine_{ts}"
+            cmd = [py, "-u", script, "--data", data_dir, "--root", os.path.dirname(data_dir),
+                   "--epochs", str(epochs), "--imgsz", "640", "--base", "auto",
+                   "--name", f"engine_{ts}"]
+        else:
+            script = os.path.join(root, "src", "lerobot", "policies", "yolo_3d", "train_yolo.py")
+            out_hint = f"outputs/yolo_peg/run_{ts}"
+            has_cuda = os.system(f"{py} -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)'"
+                                 " >/dev/null 2>&1") == 0
+            cmd = [py, "-u", script, "--data", data_dir, "--epochs", str(epochs),
+                   "--imgsz", "480", "--device", "0" if has_cuda else "cpu", "--name", f"run_{ts}"]
+        try:
+            shown = os.path.relpath(py, root)
+        except ValueError:
+            shown = py
+        self.log_signal.emit(f"📊 数据源: {src_tag} → {os.path.relpath(data_dir, root)} · "
+                             f"解释器 {shown} · {epochs} epoch · 权重 {out_hint}")
+        self.log_signal.emit(f"🚀 YOLO检测 训练启动 ({os.path.basename(script)})...")
+        rc = self._run_cmd(cmd, cwd=root)
         if rc == 0:
-            self.log_signal.emit(f"✅ YOLO检测 训练完成: outputs/yolo_peg/run_{ts}")
-            return True, f"YOLO检测 训练完成 · outputs/yolo_peg/run_{ts}"
+            self.log_signal.emit(f"✅ YOLO检测 训练完成: {out_hint}")
+            return True, f"YOLO检测 训练完成 · {out_hint}"
         return False, "YOLO检测 训练失败 (见上方日志)"
 
     @staticmethod
