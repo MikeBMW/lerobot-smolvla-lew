@@ -1,0 +1,63 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+① 控件坐标映射 (拖框 → 原始帧像素坐标; 旋转窗要换算回来)
+  ✅ map/unmap 往返 0° (100, 50) → (100, 50)
+  ✅ box 往返 0° (280, 200, 400, 260)
+  ✅ map/unmap 往返 90° (429, 100) → (100, 50)
+  ✅ box 往返 90° (280, 200, 400, 260)
+  ✅ map/unmap 往返 180° (539, 429) → (100, 50)
+  ✅ box 往返 180° (280, 200, 400, 260)
+  ✅ map/unmap 往返 270° (50, 539) → (100, 50)
+  ✅ box 往返 270° (280, 200, 400, 260)
+  ✅ 控件拖框 0° → 框落在原始帧目标上 (±3px) 拖出 (280.0, 200.0, 400.0, 260.0) vs 目标 (280, 200, 400, 260)
+  ✅   0° 框类别/尺寸正确 类别=optical_module 尺寸=120x60
+  ✅ 控件拖框 180° → 框落在原始帧目标上 (±3px) 拖出 (280.0, 200.0, 400.0, 260.0) vs 目标 (280, 200, 400, 260)
+  ✅   180° 框类别/尺寸正确 类别=optical_module 尺寸=120x60
+  ✅ 控件拖框 90° → 框落在原始帧目标上 (±3px) 拖出 (280.0, 200.33333333333331, 400.0, 260.33333333333337) vs 目标 (280, 200, 400, 260)
+  ✅   90° 框类别/尺寸正确 类别=optical_module 尺寸=120x60
+② 标定会话落盘 (窗口集成: 标定模式 → 框 → 保存)
+  ✅ 标定模式: 画面冻结 + 左窗可编辑 
+  ✅ 两窗框同步 (旋转窗能看到同一组框) 左 2 个 / 右 2 个
+  ✅ 保存返回记录 20260917_093702_513.jpg
+  ✅ 图片落盘 (sessions/<会话>/frames/) <root>/sessions/s20260917_0937_d405/frames/20260917_093702_513.jpg 6195 B
+  ✅ YOLO 标签 2 行且字段=5 | ['0 0.53125 0.47917 0.18750 0.12500', '1 0.21875 0.18750 0.12500 0.12500']
+  ✅ 标签数值 == 手算归一化值 | ['0', '0.53125', '0.47917', '0.18750', '0.12500'] vs [0, 0.53125, 0.47917, 0.1875, 0.125]
+  ✅ 新类别已进 classes.txt 且 id 连续 | ['optical_module', 'fiber_connector']
+  ✅ 会话元信息含设备身份/标定员 | device=/dev/video2 Intel(R) RealSense(TM) 8086:… annotator=ubuntu
+  ✅ annotations.jsonl 追加了完整记录 (像素框+设备+帧号) | box_px=[280.0, 200.0, 400.0, 260.0] seq=42
+  ✅ meta.json 记录会话与张数 | n_images=1 classes=['optical_module', 'fiber_connector']
+  ✅ 状态行显示数据根/会话/已存张数 
+④ 快捷键 (Enter 保存 / N 下一帧 / F 冻结) 已绑定 + 输入框有焦点时不抢键
+  ✅ 快捷键对象齐 4 个 (Enter/Return/N/F) | [16777220, 16777221, 78, 70]
+  ✅ 触发保存快捷键 → 真存下一张 | 已存 3
+  ✅ 标定员输入框有焦点 → 快捷键不抢键 (不误存) | 已存 3
+③ 数据集构建 + 体检 (含反向验证: 坏标签必须被抓出来)
+  ✅ data.yaml 生成 
+  ✅ data.yaml 含 train/val/nc/names 且 nc 与类别表一致 | names:   0: optical_module   1: fiber_connector
+  ✅ 划分可复现且 val 非空 | {'root': '/tmp/annot_ui__fcsceu4', 'built': '2026-09-17 09:37:03', 'val_ratio': 0.5, 'seed': 0, 'classes': ['optical_module', 'fiber_connector'], 'n_train': 3, 'n_val': 3, 'per_class': {'optical_module': 2, 'fiber_connector': 2}, 'n_boxes': 4, 'n_samples': 3, 'val_overlap_train': True, 'note': '样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信)', 'sessions': ['s20260917_0937_d405']}
+  ✅ 体检通过 (干净数据) | 图 3 框 4 类别分布 {'optical_module': 2, 'fiber_connector': 2}
+  ✅ 体检能抓出坏标签 (反向验证) | ['20260917_093702_513:1 class id 9 超出类别表 (0..1)', '20260917_093702_513:2 中心 2.0,0.5 不在 [0,1]']
+  ✅ 恢复后再次体检通过 (0 误报) 
+   目录结构:
+     <root>/ ['README.md', 'annotations.jsonl', 'classes.txt', 'live_frame.json'] …
+     <root>/dataset/ ['data.yaml', 'stats.json']
+     <root>/dataset/labels/val/ ['20260917_093702_513.txt', '20260917_093702_521.txt', '20260917_093702_939.txt']
+     <root>/dataset/labels/train/ ['20260917_093702_513.txt', '20260917_093702_521.txt', '20260917_093702_939.txt']
+     <root>/dataset/images/val/ ['20260917_093702_513.jpg', '20260917_093702_521.jpg', '20260917_093702_939.jpg']
+     <root>/dataset/images/train/ ['20260917_093702_513.jpg', '20260917_093702_521.jpg', '20260917_093702_939.jpg']
+     <root>/sessions/s20260917_0937_d405/ ['session.json']
+     <root>/sessions/s20260917_0937_d405/labels/ ['20260917_093702_513.txt', '20260917_093702_521.txt', '20260917_093702_939.txt']
+     <root>/sessions/s20260917_0937_d405/frames/ ['20260917_093702_513.jpg', '20260917_093702_521.jpg', '20260917_093702_939.jpg']
+   annotations.jsonl 行数 = 3
+
+结论: ✅ 全部通过
