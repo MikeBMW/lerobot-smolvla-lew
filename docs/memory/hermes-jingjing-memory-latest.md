@@ -1,6 +1,6 @@
 web=4090训练+ComfyUI+前端+ECS+PM; 总工(4060/GitHub/GUI); 小芳=硬件
 §
-链路: Orin→Mac→ECS→4060(旧'必绕ECS'作废); 本机直连Orin网 192.168.23.50/24无网关(netplan 99-orin-lan, ssh tashan@.66免密); 8765 /record/download真录制; scp>100MB断→base64; 模型chmod644
+链路: Orin→Mac→ECS→4060; 本机直连Orin网 192.168.23.50/24无网关(netplan 99-orin-lan, ssh tashan@.66免密); scp>100MB断→base64; 模型chmod644
 §
 RTC勿动; 开机NTP拨钟→报时间先核对; cron next_run会被推8h→hermes_cron_reclock.sh
 §
@@ -26,8 +26,6 @@ Hermes: CLI≠gateway; 飞书99991663=token过期→重启hermes-gateway
 §
 评估铁律: 布局每进程漂移禁写死几何; 单次不可靠必多重复+同口径; 每臂独立进程+同解释器; 肌肉记忆A/B须SS_MUSCLE_PATH冷隔离
 §
-3DApp旧App不删;keystore勿丢
-§
 引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5]→obs[7:10]=_pc光模块位置; 训练用o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×0.5)
 §
 L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选; 老倪红线: 真模型须默认生效, 日志现'脚本开环'即不合格
@@ -50,6 +48,6 @@ L4'接近'真因(v5.6.3): 直驱反向cos−0.14→修SS_DIRECT_COS_MIN=0.9+否�
 §
 ThinkBook16p G5: HDMI走dGPU→modeset=1+xorg-nvidia-580(包hold); ~/bin/dual_screen_setup.sh
 §
-Orin ROS=domain0; tcp_pose 50Hz真值=z7'手/头'项, 几何须示教(ss_geom_calib); force_torque同名双类型→只订JointState; 图像=/foundationpose/...debug_image(vision_tag, 产线空闲无帧); RealSense驱动缺; 触觉自定义msg不可订; 控制台=systemd --user zmax-studio
+Orin ROS=domain0; tcp_pose 50Hz真值(base_link); 几何须示教ss_geom_calib; force_torque同名双类型→只订JointState; 控制台=systemd --user zmax-studio; 红线: Orin零自研程序零自启→采集走4060侧Docker(ros:humble --net host)只读订阅节点零发布; D405在Orin但驱动未装(先扫pub count)→真像素走UVC video2|4; YOLO已装Orin~/.local(离线轮子+tv_ops_shim兜NMS); 仿真权重真机0检出须微调
 §
-架构(09-16): Orin采集/4060跑模型(domain0); 红线: Orin零自研程序零自启(已全清, 勿再加); 采集=4060侧Docker(ros:humble --net host)远程只读订阅Orin话题, 节点零发布
+感知源收口: yolo_3d/frame_source.py 四源+profile, 反投影仅一份estimate_3d; 真机3D须K+手眼外参+plane_z(calib_real_cam.py)
