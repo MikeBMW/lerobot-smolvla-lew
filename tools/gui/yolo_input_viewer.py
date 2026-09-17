@@ -18,6 +18,11 @@
 
 纪律: 只显示原始帧 (不画框); 勾「叠加 YOLO 框」才跑检测 (默认关, 保持"原始视频流"语义)。
 新鲜度: meta.age_s 超阈值即显示 "⚠️ 无新帧", 绝不拿旧图冒充实时 (老倪红线)。
+
+双画面 (老倪 2026-09-17: 「相机总是翻转, 要同时显示两个窗口, 一个原始一个旋转180度, 方便观察」):
+  同一帧**并排两个子窗口** —— 左 = 原始 (0°), 右 = 旋转 (默认 180°, 可选 90°/270°)。
+  旋转用 Qt 原生 `QPixmap.transformed(QTransform().rotate(deg))` (不依赖 cv2, 也不改像素语义),
+  两窗共用**同一帧源**, 分辨率/帧龄/设备身份完全一致 → 只是观察方向不同, 不产生第二路数据。
 """
 from __future__ import annotations
 
@@ -41,6 +46,7 @@ _SSH = ["ssh", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=no", ORIN]
 
 _CSS = ("QDialog{background:#0d1117;} QLabel{color:#e6edf3;font-size:12px;}"
         "QLabel#img{background:#161b22;border:1px solid #30363d;}"
+        "QLabel#ph{color:#8b949e;font-size:11px;padding:1px 2px;}"
         "QLabel#st{background:#161b22;border:1px solid #30363d;padding:6px;}"
         "QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;padding:5px 10px;border-radius:4px;}"
         "QPushButton:hover{background:#30363d;} QCheckBox{color:#e6edf3;} QComboBox{background:#161b22;color:#e6edf3;}")
@@ -169,17 +175,47 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.chk.setChecked(False)
         self.chk.setToolTip("默认关 = 纯原始视频流; 打开则同时跑 detect_3d 并画框 (证明模型看到的是这帧)")
         top.addWidget(self.chk)
+        # 双画面: 相机常被翻转安装 → 右侧并排显示旋转后的同一帧 (默认开, 180°)
+        self.chk_rot = QtWidgets.QCheckBox("🔄 并排旋转窗")
+        self.chk_rot.setChecked(True)
+        self.chk_rot.setToolTip("相机翻转安装时, 右侧同时显示旋转后的画面, 与左侧原始帧并排对照 "
+                                "(同一帧源, 只是观察方向不同)")
+        self.chk_rot.toggled.connect(self._apply_rot_vis)
+        top.addWidget(self.chk_rot)
+        self.cb_rot = QtWidgets.QComboBox()
+        self.cb_rot.addItems(["180°", "90°", "270°"])
+        self.cb_rot.setToolTip("旋转角度 (默认 180° = 相机上下颠倒安装)")
+        self.cb_rot.currentIndexChanged.connect(lambda _i: self._apply_rot_vis())
+        top.addWidget(self.cb_rot)
         self.btn = QtWidgets.QPushButton("⏹ 停止链路")
         self.btn.clicked.connect(self._toggle_chain)
         top.addWidget(self.btn)
         v.addLayout(top)
 
-        self.img = QtWidgets.QLabel("等待输入帧…")
-        self.img.setObjectName("img")
-        self.img.setAlignment(QtCore.Qt.AlignCenter)
-        self.img.setMinimumSize(640, 480)
-        self.img.setScaledContents(False)
-        v.addWidget(self.img, 1)
+        # ── 两个子窗口并排: 左 = 原始 (0°) / 右 = 旋转 (相机翻转) ──
+        panes = QtWidgets.QHBoxLayout()
+        self._pm = {"orig": None, "rot": None}
+        self._painting = False
+        pane_titles = {"orig": "🖼 原始 (0°)", "rot": "🔄 旋转 180° (相机翻转)"}
+        self._pane_head = {}
+        for key in ("orig", "rot"):
+            col = QtWidgets.QVBoxLayout()
+            head = QtWidgets.QLabel(pane_titles[key])
+            head.setObjectName("ph")
+            im = QtWidgets.QLabel("等待输入帧…")
+            im.setObjectName("img")
+            im.setAlignment(QtCore.Qt.AlignCenter)
+            im.setMinimumSize(320, 240)
+            im.setScaledContents(False)
+            col.addWidget(head)
+            col.addWidget(im, 1)
+            self._pane_head[key] = head
+            panes.addLayout(col, 1)
+        self._pane_img = {"orig": panes.itemAt(0).layout().itemAt(1).widget(),
+                          "rot": panes.itemAt(1).layout().itemAt(1).widget()}
+        self.img = self._pane_img["orig"]           # 原始画面 (兼容旧调用/取证)
+        self.img_rot = self._pane_img["rot"]        # 旋转画面
+        v.addLayout(panes, 1)
 
         self.st = QtWidgets.QLabel("—")
         self.st.setObjectName("st")
@@ -192,6 +228,12 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.timer.timeout.connect(self._tick)
         self.timer.start()
         self._chain_state = ""
+        self._chain_stopped = False      # 手动「⏹ 停止链路」后不自动重连
+        self._recovering = False
+        self._stale_since = None
+        self._last_recover = time.time()  # 给首次拉起 20s 宽限, 别和启动线程抢
+        self._last_show_ensure = time.time()
+        self._closed = False
         QtCore.QTimer.singleShot(200, self._start_source)
 
     # ── 源管理 ──────────────────────────────────────────────────────────
@@ -202,6 +244,8 @@ class YoloInputViewer(QtWidgets.QDialog):
     def _start_source(self):
         if self.cb.currentIndex() == 0:
             self.source = "real"
+            self._stale_since = None
+            self._last_recover = time.time()
             self.btn.setEnabled(True)
             t = threading.Thread(target=self._ensure_chain_bg, daemon=True)
             t.start()
@@ -226,10 +270,62 @@ class YoloInputViewer(QtWidgets.QDialog):
         s = _RemoteChain.ensure()
         self._chain_state = s
         self._log_line("链路: " + s)
+        self._collect_if_closed()
+
+    def _collect_if_closed(self):
+        """⚠️ 竞态收口: ensure 是后台线程 (Orin 拉起 ~10s) —— 期间用户可能已关窗/点停止,
+        若不管, ensure 会在关窗**之后**把 Docker 客户端拉起来 → 孤儿轮询进程 (实测踩过)。
+        所以 ensure 返回后必须复查一次状态, 已关就立刻收口。"""
+        if self._closed or self._chain_stopped:
+            _RemoteChain.stop()
+            self._log_line("窗口已关闭/已停止 → 收口: 停掉刚拉起的链路 (Orin 节点无调用自退)")
+
+    def showEvent(self, ev):                                               # noqa: N802
+        """窗口重新显示 (关窗复用) → 重新拉起链路; 30s 内不重复拉 (最小化/还原不折腾)"""
+        super().showEvent(ev)
+        if self.source == "real" and not self._chain_stopped and time.time() - self._last_show_ensure > 30:
+            self._last_show_ensure = time.time()
+            self._stale_since = None
+            self._last_recover = time.time()
+            threading.Thread(target=self._ensure_chain_bg, daemon=True).start()
 
     def _toggle_chain(self):
+        if self._chain_stopped:                       # 已停 → 手动重连
+            self._chain_stopped = False
+            self.btn.setText("⏹ 停止链路")
+            self._log_line("手动重连链路 …")
+            threading.Thread(target=self._ensure_chain_bg, daemon=True).start()
+            return
+        self._chain_stopped = True
+        self.btn.setText("▶ 重连链路")
         _RemoteChain.stop()
         self._log_line("已停止 Docker 客户端与 Orin srv 节点 (Orin 侧无调用也会自动退出)")
+
+    def _maybe_recover(self):
+        """断流自愈: Orin 节点 25s 无调用自退 / Docker 客户端被杀 → 自动重连 (节流 20s; 手动停止则不动)"""
+        if self._chain_stopped or self._recovering:
+            return
+        now = time.time()
+        if self._stale_since is None:
+            self._stale_since = now
+        if now - self._stale_since < 6.0 or now - self._last_recover < 20.0:
+            return
+        self._last_recover = now
+        self._recovering = True
+        self._log_line(f"⚠️ 无新帧 {now - self._stale_since:.0f}s → 自动重连链路 (Orin srv + Docker 客户端)")
+        threading.Thread(target=self._recover_bg, daemon=True).start()
+
+    def _recover_bg(self):
+        try:
+            s = _RemoteChain.ensure()
+            self._chain_state = s
+            _RemoteChain._log(f"自动重连完成: {s}")
+            self._log_line("自动重连: " + s)
+        except Exception as e:                                             # noqa: BLE001
+            self._log_line(f"自动重连失败: {type(e).__name__}: {e}")
+        finally:
+            self._recovering = False
+            self._collect_if_closed()
 
     def _log_line(self, s):
         if self.module is not None and hasattr(self.module, "_log"):
@@ -237,6 +333,56 @@ class YoloInputViewer(QtWidgets.QDialog):
                 self.module._log(f"📺 输入图像: {s}")
             except Exception:                                              # noqa: BLE001
                 pass
+
+    # ── 双画面 (原始 / 旋转) ────────────────────────────────────────────
+    def _rot_deg(self) -> int:
+        return {"180°": 180, "90°": 90, "270°": 270}.get(self.cb_rot.currentText(), 180)
+
+    def _apply_rot_vis(self):
+        """旋转开关/角度变化: 显隐右窗并按当前角度重画 (共用同一帧, 不产生第二路数据)"""
+        on = self.chk_rot.isChecked()
+        for w in (self._pane_head["rot"], self.img_rot):
+            w.setVisible(on)
+        if not on:
+            self._pm["rot"] = None
+            self.img_rot.clear()
+        if on:
+            self._pane_head["rot"].setText(f"🔄 旋转 {self._rot_deg()}° (相机翻转)")
+            if self._pm.get("orig") is not None:
+                self._set_frames(self._pm["orig"])
+        self._paint_frames()
+
+    def _set_frames(self, pm_src):
+        """同一帧 → 两个子窗口: 左=原始 / 右=旋转 (Qt 原生 transform, 无 cv2 依赖)"""
+        self._pm["orig"] = pm_src
+        if self.chk_rot.isChecked() and pm_src is not None and not pm_src.isNull():
+            self._pm["rot"] = pm_src.transformed(QtGui.QTransform().rotate(self._rot_deg()),
+                                                 QtCore.Qt.SmoothTransformation)
+        else:
+            self._pm["rot"] = None
+        self._paint_frames()
+
+    def _paint_frames(self):
+        """把缓存的两帧按各自子窗口尺寸等比缩放显示 (resize 时重画, 不重新解码)"""
+        if self._painting:
+            return
+        self._painting = True
+        try:
+            for key in ("orig", "rot"):
+                im = self._pane_img[key]
+                pm = self._pm.get(key)
+                if pm is None or pm.isNull():
+                    continue
+                if im.width() < 10 or im.height() < 10:
+                    continue
+                im.setPixmap(pm.scaled(im.size(), QtCore.Qt.KeepAspectRatio,
+                                       QtCore.Qt.SmoothTransformation))
+        finally:
+            self._painting = False
+
+    def resizeEvent(self, ev):                                              # noqa: N802
+        super().resizeEvent(ev)
+        self._paint_frames()
 
     # ── 刷新 ────────────────────────────────────────────────────────────
     def _tick(self):
@@ -256,6 +402,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             self.st.setText("⚠️ 还没有帧文件 " + LIVE_JPG + "\n"
                             "   链路状态: " + (self._chain_state or "启动中…") +
                             "\n   (Orin 侧 srv 未起 / Docker 客户端未起 / D405 UVC 被占用 都可能)")
+            self._maybe_recover()
             return
         try:
             st = os.stat(LIVE_JPG)
@@ -263,23 +410,28 @@ class YoloInputViewer(QtWidgets.QDialog):
             if sig != self._last_sig:
                 pm = QtGui.QPixmap(LIVE_JPG)
                 if not pm.isNull():
-                    self.img.setPixmap(pm.scaled(self.img.size(), QtCore.Qt.KeepAspectRatio,
-                                                 QtCore.Qt.SmoothTransformation))
+                    self._set_frames(pm)          # 同一帧 → 左原始 + 右旋转(180°)
                     self._last_sig = sig
         except Exception:                                                  # noqa: BLE001
             pass
         if not meta:
             self.st.setText(f"⚠️ 有帧文件但缺 meta ({LIVE_META}) → 无法判定新鲜度")
+            self._maybe_recover()
             return
         ok = bool(meta.get("ok"))
         age = meta.get("age_s")
         stale = bool(meta.get("stale")) or (age is not None and age > 5.0)
         head = "✅ 实时真机帧" if (ok and not stale) else ("⚠️ 无新帧 (显示的是最后一帧)" if ok else "❌ 链路无数据")
+        if ok and not stale:
+            self._stale_since = None                  # 有新鲜帧 → 复位自愈计时
+        else:
+            self._maybe_recover()
         self.st.setText(
             f"{head}   ← 输入源: {meta.get('src')}   ({meta.get('w')}x{meta.get('h')})\n"
             f"设备: {meta.get('device')}\n"
             f"帧号 seq={meta.get('seq')} · 帧龄 age={age}s · JPEG { (meta.get('jpeg_bytes') or 0)/1024:.1f} KB "
             f"· 服务端压缩 {meta.get('encode_ms')} ms (q={meta.get('quality')}) · 服务端 {meta.get('server_fps')} Hz\n"
+            f"双画面: 左=原始 (0°) · {('右=旋转 ' + str(self._rot_deg()) + '° (同一帧的 Qt 旋转, 观察用, 不改像素语义)') if self.chk_rot.isChecked() else '右窗已关 (勾「🔄 并排旋转窗」打开)'}\n"
             f"服务端主机: {meta.get('server')} · 通道: Orin(取帧+JPEG) → ROS2 srv /zmax/live_frame → 本机 Docker → 本窗口\n"
             f"{'⚠️ ' + str(meta.get('reason')) if not ok else ''}")
 
@@ -295,20 +447,29 @@ class YoloInputViewer(QtWidgets.QDialog):
         h, w = rgb.shape[:2]
         img = QtGui.QImage(bytes(rgb.data), w, h, 3 * w, QtGui.QImage.Format_RGB888)
         pm = QtGui.QPixmap.fromImage(img)
-        self.img.setPixmap(pm.scaled(self.img.size(), QtCore.Qt.KeepAspectRatio,
-                                     QtCore.Qt.SmoothTransformation))
+        self._set_frames(pm)
         self._sim_fps_n += 1
         if time.time() - self._sim_fps_t >= 1.0:
             self._sim_fps = self._sim_fps_n / (time.time() - self._sim_fps_t)
             self._sim_fps_n, self._sim_fps_t = 0, time.time()
         self.st.setText(f"🧪 仿真渲染帧 (metaworld corner2) · {w}x{h} · {self._sim_fps:.1f} FPS\n"
                         f"设备: {d['info'].get('device')}\n"
+                        f"双画面: 左=原始 (0°) · {('右=旋转 ' + str(self._rot_deg()) + '° (同一帧旋转)') if self.chk_rot.isChecked() else '右窗已关'}\n"
                         f"用途: 与真机帧做口径对照 (朝向 rot90 / 通道 / 内参 / 深度)")
 
     def closeEvent(self, ev):                                              # noqa: N802
         try:
             self.timer.stop()
             self._stop_source()
+        except Exception:                                                  # noqa: BLE001
+            pass
+        # 窗口 = 链路的唯一客户端 ⇒ 关窗收口: 停 Docker 客户端 (Orin 节点 25s 无调用自退)
+        # (后台线程做, 别阻塞关窗; ssh/docker 各自有超时)
+        try:
+            self._closed = True
+            if self.source == "real":
+                self._chain_stopped = True
+                threading.Thread(target=_RemoteChain.stop, daemon=True).start()
         except Exception:                                                  # noqa: BLE001
             pass
         try:
@@ -332,6 +493,14 @@ def open_input_viewer(parent=None, module=None, source: str = "real"):
             win = None
     win = YoloInputViewer(parent, module=module, source=source)
     YoloInputViewer._cur = win
-    win.resize(700, 640)
+    # 两个子窗口并排 ⇒ 默认宽度加倍; 屏幕放不下就按可用宽度收 (别出屏)
+    w, h = 1320, 700
+    try:
+        scr = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        w = min(w, max(700, scr.width() - 80))
+        h = min(h, max(480, scr.height() - 80))
+    except Exception:                                                      # noqa: BLE001
+        pass
+    win.resize(w, h)
     win.show()
     return win

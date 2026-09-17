@@ -1,0 +1,14 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+① 拉起链路并确认双窗有实时帧
+    Orin srv: OK · Docker 客户端: OK
+  ✅ 双窗都有画面 
+  ✅ 关窗前链路是新鲜的 (age<3s) | ❌ 链路无数据   ← 输入源: None   (NonexNone)
+  ✅ 链路进程在跑 (关窗前) 客户端 pid=572
+  ✅ Orin 节点在跑 (关窗前) Orin 侧进程数=1
+② 关窗 → 应自动停客户端, Orin 节点 25s 无调用自退
+  ✅ 关窗后 Docker 客户端已停 1s
+  ✅ 关窗后 Orin 节点已退出 (无残留) 11s
+   链路日志尾部: [08:57:06] Orin srv 停止 rc=0 
+
+结论: ✅ 全部通过

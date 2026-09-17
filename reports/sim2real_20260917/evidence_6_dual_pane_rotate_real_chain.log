@@ -1,0 +1,53 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+① 菜单项: YOLO 节点右键应出现「打开输入图像 (实时原始视频流)」并真的打开窗口
+  ✅ 菜单含该入口 (菜单项 7 个)
+  ✅ 点击后打开了输入图像窗口 
+② 仿真源: 窗口显示 metaworld 原始渲染帧 (且两个子窗口都在更新)
+  ✅ 拿到帧 (QLabel 有 pixmap) 530x530
+  ✅ 状态行说明是仿真渲染 | 🧪 仿真渲染帧 (metaworld corner2) · 480x480 · 0.1 FPS
+  ✅ 左窗(原始)有画面 
+  ✅ 右窗(旋转)同时有画面 533x533
+  ✅ 状态行说明双画面 | ['双画面: 左=原始 (0°) · 右=旋转 180° (同一帧旋转)']
+④ 双画面旋转 = 真实像素级 180° (合成非对称图走真机显示路径, 不拉真链路)
+  ✅ 默认: 旋转开关=开 且角度=180° chk=True deg=180
+  ✅ 左右两窗都拿到画面 
+  ✅ 旋转图尺寸 = 原图尺寸 (180° 不变形) orig 120x80 rot 120x80
+  ✅ 逐点验证 rot(x,y) == orig(W-1-x, H-1-y) (7 点) 不符点: []
+  ✅ 左上象限颜色真的翻转 (原红 → 旋后白, 即原右下) orig(5,5)=(254, 0, 0) rot(5,5)=(255, 255, 255)
+⑤ 旋转开关/角度生效
+  ✅ 取消勾选 → 右窗隐藏 
+  ✅ 切 90° → 长宽互换且仍是同一帧的旋转 90° 图 80x120 (原 120x80)
+  ✅ 取景点(原本左上红)在 90° 旋转后跑到右上 rot90(右上)=(254, 0, 0)
+③ 真机链路 (Orin srv + Docker 客户端) → 窗口显示 D405 原始帧 (双窗同时更新)
+   帧文件: /home/ubuntu/zmax_ss_remote/live_frame.jpg
+   链路状态: Orin srv: OK · Docker 客户端: OK
+  ✅ 拿到真机帧 (左窗 pixmap) 586x440
+  ✅ 右窗(旋转180°)同时显示同一真机帧 590x443
+  ✅ 画面持续更新 (≥5 个不同帧) 观察到 198 个不同 (mtime,size)
+  ✅ 旋转窗逐帧跟随更新 (≥5 个不同旋转帧) 198 个不同旋转帧
+  ✅ 真机帧同样满足 rot(x,y)==orig(W-1-x,H-1-y) 不符点: []
+  ✅ 状态行含设备身份 (RealSense/8086:0b5b/序列号) | 设备: /dev/video2 Intel(R) RealSense(TM) Depth Ca 8086:0b5b sn=255323073
+  ✅ 状态行明确'实时/无新帧'判定与双画面 | ✅ 实时真机帧   ← 输入源: uvc   (640x480)
+⑥ 断流自愈: 杀掉链路 (模拟 Orin 节点 25s 空闲自退 / 客户端被杀) → 窗口应自动重连并恢复
+  ✅ 杀链路后窗口自动重连, 真机帧恢复 17s 后恢复
+  ✅ 恢复后旋转窗也继续更新 
+  ✅ 日志有自动重连记录 | ['[08:42:49] 自动重连完成: Orin srv: OK · Docker 客户端: OK']
+
+结论: ✅ 全部通过
+Exception ignored in: <function OffScreenViewer.__del__ at 0x72eda4a82ac0>
+Traceback (most recent call last):
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/gymnasium/envs/mujoco/mujoco_rendering.py", line 235, in __del__
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/gymnasium/envs/mujoco/mujoco_rendering.py", line 232, in free
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/mujoco/glfw/__init__.py", line 35, in free
+TypeError: 'NoneType' object is not callable
+Exception ignored in: <function GLContext.__del__ at 0x72eda4bade40>
+Traceback (most recent call last):
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/mujoco/glfw/__init__.py", line 41, in __del__
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/mujoco/glfw/__init__.py", line 35, in free
+TypeError: 'NoneType' object is not callable

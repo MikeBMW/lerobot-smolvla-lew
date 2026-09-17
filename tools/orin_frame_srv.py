@@ -91,6 +91,7 @@ class Grabber:
 
     def __init__(self, device: int, w: int, h: int, fps: float, quality: int, topic: str):
         self.quality = quality
+        self.fps = 0.0                     # 服务端实测取帧率 (持久字段; 每帧 meta 里回填)
         self.period = 1.0 / max(1.0, fps)
         self.lock = threading.Lock()
         self.jpeg = None
@@ -182,11 +183,16 @@ class Grabber:
                         self.n += 1
                         self.meta = {"seq": self.n, "src": self.mode, "w": int(fr.shape[1]),
                                      "h": int(fr.shape[0]), "encode_ms": round(enc_ms, 2),
-                                     "quality": self.quality}
+                                     "fps": self.fps, "quality": self.quality}
                     n += 1
             if n and time.time() - t_prev >= 1.0:
+                _f = round(n / (time.time() - t_prev), 1)
                 with self.lock:
-                    self.meta["fps"] = round(n / (time.time() - t_prev), 1)
+                    # ⚠️ 每帧 encode 都会**重建** meta dict → fps 必须存成实例字段, 否则下一帧就丢
+                    # (旧实现只在 1s 分支里塞 self.meta["fps"], 下一帧被覆盖 ⇒ 客户端永远读到 null)
+                    self.fps = _f
+                    if self.meta:
+                        self.meta["fps"] = _f
                 n, t_prev = 0, time.time()
             dt = self.period - (time.time() - t0)
             if dt > 0:
@@ -220,7 +226,19 @@ def main():
     # 单实例守卫 (避免双击/重连时堆多个进程)
     try:
         r = subprocess.run(["pgrep", "-f", a.marker], capture_output=True, text=True)
-        others = [p for p in r.stdout.split() if p.isdigit() and int(p) != os.getpid()]
+        # ⚠️ 只认"真 python 节点"进程: 否则**拉起命令自己的 shell/ssh 命令行**里含同一 marker 串
+        # (实测: ssh 远端 bash -c '... --marker wdtest ...' 被判成"已有实例" → 节点拒绝启动)
+        others = []
+        for p in r.stdout.split():
+            if not p.isdigit() or int(p) == os.getpid():
+                continue
+            try:
+                cl = open(f"/proc/{p}/cmdline", "rb").read().decode("utf-8", "replace")
+            except Exception:                                              # noqa: BLE001
+                continue
+            argv0 = os.path.basename(cl.split("\0")[0] or "")
+            if "python" in argv0 and a.marker in cl:      # argv[0] 必须是 python (bash -c 包装不算)
+                others.append(p)
         if len(others) > 0:
             print(f"[frame-srv] 已有实例在跑 (pid={others}) → 本进程退出", flush=True)
             return 0
@@ -243,6 +261,27 @@ def main():
     node = Node("zmax_frame_srv", enable_rosout=False, start_parameter_services=False)
     state = {"calls": 0, "last": time.time(), "t0": time.time()}
 
+    # ── 自退看门狗 (独立线程) ─────────────────────────────────────────────
+    # ⚠️ 教训 (2026-09-17 实测): 只在 spin 主循环里判空闲**不可靠** —— 实测客户端停了 60s+
+    # 节点仍在跑 (callback 有调用但主循环没走到判定)。改用独立线程 + os._exit(0) 硬收口,
+    # 保证「临时进程」纪律: 无调用必自退, 绝不常驻 (Orin 是生产设备)。
+    def _idle_watch():
+        while True:
+            time.sleep(1.0)
+            idle = time.time() - state["last"]
+            if state["calls"] > 0 and idle > a.idle_seconds:
+                print(f"[frame-srv] 无调用 {idle:.0f}s (> {a.idle_seconds:.0f}s) → 退出 "
+                      f"(临时进程不常驻, 共服务 {state['calls']} 次)", flush=True)
+                os._exit(0)
+            if state["calls"] == 0 and time.time() - state["t0"] > 120.0:
+                print("[frame-srv] 从未被调用 120s → 退出 (临时进程不常驻)", flush=True)
+                os._exit(0)
+            if time.time() - state["t0"] > a.max_seconds:
+                print(f"[frame-srv] 到达兜底时限 {a.max_seconds:.0f}s → 退出", flush=True)
+                os._exit(0)
+
+    threading.Thread(target=_idle_watch, daemon=True).start()
+
     def srv_cb(_req, resp):
         jpeg, meta = grab.snapshot()
         state["calls"] += 1
@@ -260,9 +299,14 @@ def main():
     print(f"[frame-srv] 就绪 · 服务={a.service} · 源={grab.mode} · {dev_desc} · "
           f"JPEG q={a.quality} @ {a.fps}Hz (压缩在服务端, 老倪要求)", flush=True)
     srv = None
+    _hb = time.time()
     try:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.1)
+            if time.time() - _hb > 10.0:          # 心跳留证 (证明主循环在转)
+                _hb = time.time()
+                print(f"[frame-srv] 心跳 · 调用 {state['calls']} 次 · 空闲 "
+                      f"{time.time() - state['last']:.0f}s", flush=True)
             if time.time() - state["last"] > a.idle_seconds and state["calls"] > 0:
                 print(f"[frame-srv] 无调用 {a.idle_seconds:.0f}s → 退出 (临时进程不常驻)", flush=True)
                 break

@@ -1,0 +1,25 @@
+链路: Orin srv: OK · Docker 客户端: OK
+屏幕: 3200x2000 · DPI=192
+窗口: 1320x700
+  ✅ 左窗(原始)有画面且尺寸合理 pixmap 632x474 · 控件 632x429 @(22,115)
+  ✅ 右窗(旋转)有画面且尺寸合理 pixmap 632x474 · 控件 632x432 @(666,112)
+  ✅ 两窗并排 (右窗在右且垂直区间一致) 左 x=22..654 · 右 x=666..1298
+  ✅ 两窗互不重叠 
+  ✅ 两窗等高 (并排对齐) 429 vs 432
+  ✅ 窗口完整落在屏幕内 @(930,610) 1320x700
+  ✅ 标题两个子窗标签都可见 | 🖼 原始 (0°) / 🔄 旋转 180° (相机翻转)
+  ✅ 左右两窗来自同一帧且旋转几何正确 rot(x,y)==orig(W-1-x,H-1-y) 不符点 0/5 · 同坐标不同色 3/5 (纯信息, 画面本身对称时可为 0)
+  ✅ 两窗尺寸一致 (180° 保持长宽) 632x474 vs 632x474
+  ✅ 窗口截图已保存 /home/ubuntu/zmax_data/input_viewer_dual_pane_real.png (395545 B)
+状态行:
+   ✅ 实时真机帧   ← 输入源: uvc   (640x480)
+   设备: /dev/video2 Intel(R) RealSense(TM) Depth Ca 8086:0b5b sn=255323073856
+   帧号 seq=80 · 帧龄 age=0.598s · JPEG 19.4 KB · 服务端压缩 3.18 ms (q=70) · 服务端 10.0 Hz
+   双画面: 左=原始 (0°) · 右=旋转 180° (同一帧的 Qt 旋转, 观察用, 不改像素语义)
+   服务端主机: ubuntu · 通道: Orin(取帧+JPEG) → ROS2 srv /zmax/live_frame → 本机 Docker → 本窗口
+   
+日志(后 4 条):
+   [08:47:39] Orin srv 启动 rc=0: 1723033 python3 tools/orin_frame_srv.py --device 2 --quality 70 --fps 10 --idle-seconds 25 | --- 日志 --- | [frame-srv] 就绪 · 服务=/zmax/live_frame · 源=uvc · /dev/video2 Intel(R) RealSense(TM) Depth Ca 8086:0b5b sn=255323073856 · JPEG q=70 @ 10.0Hz (压缩在服务端, 老倪要求)
+   [08:47:39] Docker 客户端已在跑
+
+结论: ✅ 全部通过
