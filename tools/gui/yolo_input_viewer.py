@@ -244,7 +244,9 @@ class YoloInputViewer(QtWidgets.QDialog):
                                   "(框按**原始帧坐标**存档, 在旋转窗上圈选会自动换算回来)")
         self.chk_annot.toggled.connect(self._toggle_annot)
         ann.addWidget(self.chk_annot)
-        ann.addWidget(QtWidgets.QLabel("类别:"))
+        # ⚠️ 勾选框**永远可见** (它是标定的唯一入口); 下面这些只在标定模式打开时出现
+        self.lbl_cls = QtWidgets.QLabel("类别:")
+        ann.addWidget(self.lbl_cls)
         self.cb_cls = QtWidgets.QComboBox()
         self.cb_cls.setEditable(True)
         self.cb_cls.setMinimumWidth(150)
@@ -269,6 +271,13 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.ed_who = QtWidgets.QLineEdit(os.environ.get("USER", "engineer"))
         self.ed_who.setMaximumWidth(90)
         ann.addWidget(self.ed_who)
+        self.lbl_annot_hint = QtWidgets.QLabel("")     # 常显提示 (自解释: 下一步该点哪)
+        self.lbl_annot_hint.setObjectName("ph")
+        self.lbl_annot_hint.setWordWrap(True)
+        _sp = self.lbl_annot_hint.sizePolicy()
+        _sp.setHorizontalPolicy(QtWidgets.QSizePolicy.Ignored)   # 长提示不许顶宽窗口 (实测: 窗口被撑到 2436px 出屏)
+        self.lbl_annot_hint.setSizePolicy(_sp)
+        ann.addWidget(self.lbl_annot_hint, 1)
         ann.addStretch(1)
         v.addLayout(ann)
 
@@ -285,6 +294,10 @@ class YoloInputViewer(QtWidgets.QDialog):
         drow.addStretch(1)
         self.lbl_data = QtWidgets.QLabel("")
         self.lbl_data.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.lbl_data.setWordWrap(True)                          # 长路径/类别列表同理, 别撑宽
+        _sp2 = self.lbl_data.sizePolicy()
+        _sp2.setHorizontalPolicy(QtWidgets.QSizePolicy.Ignored)
+        self.lbl_data.setSizePolicy(_sp2)
         drow.addWidget(self.lbl_data, 2)
         v.addLayout(drow)
 
@@ -390,11 +403,30 @@ class YoloInputViewer(QtWidgets.QDialog):
     def showEvent(self, ev):                                               # noqa: N802
         """窗口重新显示 (关窗复用) → 重新拉起链路; 30s 内不重复拉 (最小化/还原不折腾)"""
         super().showEvent(ev)
+        self._clamp_to_screen()
         if self.source == "real" and not self._chain_stopped and time.time() - self._last_show_ensure > 30:
             self._last_show_ensure = time.time()
             self._stale_since = None
             self._last_recover = time.time()
             threading.Thread(target=self._ensure_chain_bg, daemon=True).start()
+
+    def _clamp_to_screen(self, silent=True):
+        """屏幕变了 (拔外接显示器/换分辨率) 就把窗口拉回可见范围 —— 实测: 拔屏后窗口 2436x797 落到 1920x1200 屏外,
+        用户看到的现象就是"窗口跑到屏幕外面去了"。只在越界时才动 (不打断用户手动缩放)。"""
+        try:
+            scr = QtWidgets.QApplication.primaryScreen().availableGeometry()
+            w = min(self.width(), max(700, scr.width() - 40))
+            h = min(self.height(), max(460, scr.height() - 40))
+            x = min(max(self.x(), scr.x()), scr.x() + max(0, scr.width() - w))
+            y = min(max(self.y(), scr.y()), scr.y() + max(0, scr.height() - h))
+            if (w, h, x, y) != (self.width(), self.height(), self.x(), self.y()):
+                self.setGeometry(x, y, w, h)
+                if not silent:
+                    self._log_line(f"屏幕变化 → 窗口拉回屏内: ({x},{y}) {w}x{h} (屏 {scr.width()}x{scr.height()})")
+                return True
+        except Exception:                                                  # noqa: BLE001
+            pass
+        return False
 
     def _toggle_chain(self):
         if self._chain_stopped:                       # 已停 → 手动重连
@@ -505,6 +537,9 @@ class YoloInputViewer(QtWidgets.QDialog):
 
     # ── 刷新 ────────────────────────────────────────────────────────────
     def _tick(self):
+        if time.time() - getattr(self, "_last_clamp", 0) > 5.0:      # 抜屏/换分辨率后 5s 内自动拉回
+            self._last_clamp = time.time()
+            self._clamp_to_screen(silent=False)
         if self.source == "real":
             self._tick_real()
         else:
@@ -591,15 +626,23 @@ class YoloInputViewer(QtWidgets.QDialog):
                         f"用途: 与真机帧做口径对照 (朝向 rot90 / 通道 / 内参 / 深度)")
 
     # ── 标定 ────────────────────────────────────────────────────────────
+    _ANNOT_BTNS = ("💾 保存标注", "⏭ 保存并下一帧", "↩ 撤销", "🗑 删选中", "✖ 清空框",
+                   "🧊 冻结/▶实时", "📦 构建数据集", "🔍 数据体检", "🚀 训练 YOLO", "🏷 改选中类别",
+                   "📂 数据目录", "＋新类别")
+
     def _set_annot_visible(self, on):
-        for w in (self.chk_annot, self.cb_cls, self.btn_newcls, self.ed_who,
-                  self.lbl_data, self.btn_newcls):
+        """⚠️ 血泪: 最初把「✏️ 标定模式」勾选框**自己也藏了** → 用户永远打不开标定, 界面上找不到任何标定按钮
+        (我 offscreen 取证时是程序化 setChecked(True), 所以没暴露)。**入口控件必须常显** —— 隐的是它的下级控件。"""
+        self.chk_annot.setVisible(True)
+        for w in (self.lbl_cls, self.cb_cls, self.btn_newcls, self.ed_who, self.lbl_data):
             w.setVisible(on)
         for b in self.findChildren(QtWidgets.QPushButton):
-            if b.text() in ("💾 保存标注", "⏭ 保存并下一帧", "↩ 撤销", "🗑 删选中", "✖ 清空框",
-                            "🧊 冻结/▶实时", "📦 构建数据集", "🔍 数据体检", "🚀 训练 YOLO", "🏷 改选中类别",
-                            "📂 数据目录", "＋新类别"):
+            if b.text() in self._ANNOT_BTNS:
                 b.setVisible(on)
+        self.lbl_annot_hint.setVisible(True)
+        self.lbl_annot_hint.setText(
+            "标定工程: 勾左边的「✏️ 标定模式」→ 画面冻结 → 拖框圈住光模块 → 选/输类别 → 💾 保存标注" if not on
+            else "拖框=圈目标 · 拖框内=移动 · 拖角=缩放 · 右键框内=删框 · Enter 保存 · N 下一帧 · Del 删选中 · Ctrl+Z 撤销")
 
     def _toggle_annot(self, on):
         self.chk_annot.setText("✏️ 标定模式 (开)" if on else "✏️ 标定模式")

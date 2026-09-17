@@ -96,8 +96,21 @@ v = yiv.YoloInputViewer(None, module=None, source="real")
 v.resize(1320, 760)
 v.show()
 pump(0.3)
+print("②a 入口可达性 (根因取证: 「标定按钮怎么没有找到?」= 勾选框被自己也藏了)")
+v.chk_annot.show()                                  # 模拟真实窗口 (offscreen 下 isVisible 需窗口已 show)
+pump(0.2)
+_btns = {b.text(): b for b in v.findChildren(QtWidgets.QPushButton)}
+chk("默认状态: 「✏️ 标定模式」勾选框可见且可用 (标定唯一入口必须常显)",
+    v.chk_annot.isVisible() and v.chk_annot.isEnabled(), f"| visible={v.chk_annot.isVisible()}")
+_early = [t for t in v._ANNOT_BTNS if t in _btns and _btns[t].isVisible()]
+chk("默认状态: 标定/数据按钮隐藏 (勾上标定模式后才出现)", not _early, f"| 意外可见: {_early}")
+chk("默认状态: 常显提示告诉工程师下一步点哪", v.lbl_annot_hint.isVisible() and "标定模式" in v.lbl_annot_hint.text(),
+    f"| {v.lbl_annot_hint.text()[:40]}")
 v.chk_annot.setChecked(True)              # 进标定模式 (冻结)
 pump(0.2)
+_miss = [t for t in v._ANNOT_BTNS
+         if t not in _btns or not _btns[t].isVisible() or _btns[t].width() < 20]
+chk("标定模式打开后 12 个按钮全部可见且未塌缩 (宽>20px)", not _miss, f"| 缺/塌: {_miss}")
 _mock_meta = os.path.join(tmp, "live_frame.json")
 with open(_mock_meta, "w") as f:          # 冻结后再喂帧, 且把 meta 指到 mock → 记录可确定性断言
     json.dump({"ok": True, "src": "uvc", "device": "/dev/video2 Intel(R) RealSense(TM) 8086:0b5b sn=255323073856",

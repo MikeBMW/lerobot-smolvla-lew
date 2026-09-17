@@ -10,6 +10,10 @@ This plugin does not support propagateSizeHints()
 This plugin does not support propagateSizeHints()
 This plugin does not support propagateSizeHints()
 This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
 ① 控件坐标映射 (拖框 → 原始帧像素坐标; 旋转窗要换算回来)
   ✅ map/unmap 往返 0° (100, 50) → (100, 50)
   ✅ box 往返 0° (280, 200, 400, 260)
@@ -26,10 +30,15 @@ This plugin does not support propagateSizeHints()
   ✅ 控件拖框 90° → 框落在原始帧目标上 (±3px) 拖出 (280.0, 200.33333333333331, 400.0, 260.33333333333337) vs 目标 (280, 200, 400, 260)
   ✅   90° 框类别/尺寸正确 类别=optical_module 尺寸=120x60
 ② 标定会话落盘 (窗口集成: 标定模式 → 框 → 保存)
+②a 入口可达性 (根因取证: 「标定按钮怎么没有找到?」= 勾选框被自己也藏了)
+  ✅ 默认状态: 「✏️ 标定模式」勾选框可见且可用 (标定唯一入口必须常显) | visible=True
+  ✅ 默认状态: 标定/数据按钮隐藏 (勾上标定模式后才出现) | 意外可见: []
+  ✅ 默认状态: 常显提示告诉工程师下一步点哪 | 标定工程: 勾左边的「✏️ 标定模式」→ 画面冻结 → 拖框圈住光模块 → 选/
+  ✅ 标定模式打开后 12 个按钮全部可见且未塌缩 (宽>20px) | 缺/塌: []
   ✅ 标定模式: 画面冻结 + 左窗可编辑 
   ✅ 两窗框同步 (旋转窗能看到同一组框) 左 2 个 / 右 2 个
-  ✅ 保存返回记录 20260917_093702_513.jpg
-  ✅ 图片落盘 (sessions/<会话>/frames/) <root>/sessions/s20260917_0937_d405/frames/20260917_093702_513.jpg 6195 B
+  ✅ 保存返回记录 20260917_094529_293.jpg
+  ✅ 图片落盘 (sessions/<会话>/frames/) <root>/sessions/s20260917_0945_d405/frames/20260917_094529_293.jpg 6195 B
   ✅ YOLO 标签 2 行且字段=5 | ['0 0.53125 0.47917 0.18750 0.12500', '1 0.21875 0.18750 0.12500 0.12500']
   ✅ 标签数值 == 手算归一化值 | ['0', '0.53125', '0.47917', '0.18750', '0.12500'] vs [0, 0.53125, 0.47917, 0.1875, 0.125]
   ✅ 新类别已进 classes.txt 且 id 连续 | ['optical_module', 'fiber_connector']
@@ -44,20 +53,20 @@ This plugin does not support propagateSizeHints()
 ③ 数据集构建 + 体检 (含反向验证: 坏标签必须被抓出来)
   ✅ data.yaml 生成 
   ✅ data.yaml 含 train/val/nc/names 且 nc 与类别表一致 | names:   0: optical_module   1: fiber_connector
-  ✅ 划分可复现且 val 非空 | {'root': '/tmp/annot_ui__fcsceu4', 'built': '2026-09-17 09:37:03', 'val_ratio': 0.5, 'seed': 0, 'classes': ['optical_module', 'fiber_connector'], 'n_train': 3, 'n_val': 3, 'per_class': {'optical_module': 2, 'fiber_connector': 2}, 'n_boxes': 4, 'n_samples': 3, 'val_overlap_train': True, 'note': '样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信)', 'sessions': ['s20260917_0937_d405']}
+  ✅ 划分可复现且 val 非空 | {'root': '/tmp/annot_ui_gwmilxbn', 'built': '2026-09-17 09:45:30', 'val_ratio': 0.5, 'seed': 0, 'classes': ['optical_module', 'fiber_connector'], 'n_train': 3, 'n_val': 3, 'per_class': {'optical_module': 2, 'fiber_connector': 2}, 'n_boxes': 4, 'n_samples': 3, 'val_overlap_train': True, 'note': '样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信)', 'sessions': ['s20260917_0945_d405']}
   ✅ 体检通过 (干净数据) | 图 3 框 4 类别分布 {'optical_module': 2, 'fiber_connector': 2}
-  ✅ 体检能抓出坏标签 (反向验证) | ['20260917_093702_513:1 class id 9 超出类别表 (0..1)', '20260917_093702_513:2 中心 2.0,0.5 不在 [0,1]']
+  ✅ 体检能抓出坏标签 (反向验证) | ['20260917_094529_293:1 class id 9 超出类别表 (0..1)', '20260917_094529_293:2 中心 2.0,0.5 不在 [0,1]']
   ✅ 恢复后再次体检通过 (0 误报) 
    目录结构:
      <root>/ ['README.md', 'annotations.jsonl', 'classes.txt', 'live_frame.json'] …
      <root>/dataset/ ['data.yaml', 'stats.json']
-     <root>/dataset/labels/val/ ['20260917_093702_513.txt', '20260917_093702_521.txt', '20260917_093702_939.txt']
-     <root>/dataset/labels/train/ ['20260917_093702_513.txt', '20260917_093702_521.txt', '20260917_093702_939.txt']
-     <root>/dataset/images/val/ ['20260917_093702_513.jpg', '20260917_093702_521.jpg', '20260917_093702_939.jpg']
-     <root>/dataset/images/train/ ['20260917_093702_513.jpg', '20260917_093702_521.jpg', '20260917_093702_939.jpg']
-     <root>/sessions/s20260917_0937_d405/ ['session.json']
-     <root>/sessions/s20260917_0937_d405/labels/ ['20260917_093702_513.txt', '20260917_093702_521.txt', '20260917_093702_939.txt']
-     <root>/sessions/s20260917_0937_d405/frames/ ['20260917_093702_513.jpg', '20260917_093702_521.jpg', '20260917_093702_939.jpg']
+     <root>/dataset/labels/val/ ['20260917_094529_293.txt', '20260917_094529_300.txt', '20260917_094529_713.txt']
+     <root>/dataset/labels/train/ ['20260917_094529_293.txt', '20260917_094529_300.txt', '20260917_094529_713.txt']
+     <root>/dataset/images/val/ ['20260917_094529_293.jpg', '20260917_094529_300.jpg', '20260917_094529_713.jpg']
+     <root>/dataset/images/train/ ['20260917_094529_293.jpg', '20260917_094529_300.jpg', '20260917_094529_713.jpg']
+     <root>/sessions/s20260917_0945_d405/ ['session.json']
+     <root>/sessions/s20260917_0945_d405/labels/ ['20260917_094529_293.txt', '20260917_094529_300.txt', '20260917_094529_713.txt']
+     <root>/sessions/s20260917_0945_d405/frames/ ['20260917_094529_293.jpg', '20260917_094529_300.jpg', '20260917_094529_713.jpg']
    annotations.jsonl 行数 = 3
 
 结论: ✅ 全部通过

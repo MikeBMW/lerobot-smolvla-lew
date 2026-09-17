@@ -46,6 +46,11 @@ if v._rgb is None:
     fr[20:60, 20:200] = (120, 120, 120)
     v._rgb = fr
     v._paint_frames()
+_entry_ok = v.chk_annot.isVisible() and v.chk_annot.width() > 60
+chk("真桌面默认状态: 「✏️ 标定模式」入口可见且够大", _entry_ok,
+    f"| {v.chk_annot.width()}x{v.chk_annot.height()}px text={v.chk_annot.text()!r}")
+chk("真桌面默认状态: 常显提示可见且写明下一步", v.lbl_annot_hint.isVisible() and "标定模式" in v.lbl_annot_hint.text(),
+    f"| {v.lbl_annot_hint.text()[:50]}")
 v.chk_annot.setChecked(True)                 # 标定模式 (按钮/面板全出现)
 v.w_orig.add_box_px((190, 340, 450, 470), "optical_module")
 app.processEvents(); time.sleep(0.6); app.processEvents()
