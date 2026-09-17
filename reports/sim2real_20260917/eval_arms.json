@@ -1,0 +1,1853 @@
+{
+ "conf": 0.25,
+ "imgsz": 480,
+ "real_dir": "/home/ubuntu/zmax_data/real_cam/orin_d405_eval",
+ "sim_dir": "data/yolo_peg_holdout/images",
+ "real_degenerate_excluded": [
+  "real_88941f6daef5_live_0.jpg"
+ ],
+ "arms": {
+  "peg_v1": {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+   "size_mb": 6.2,
+   "classes": {
+    "0": "hand",
+    "1": "peg",
+    "2": "hole"
+   },
+   "real": {
+    "0aaa569130_real_0aaa5691307a_alt_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0106
+     ],
+     "best_rot": 0
+    },
+    "12315c654e_real_12315c654ec2_alt_3.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "1bd0b2a582_real_1bd0b2a58204_dev4_MJPG_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "366af7fa37_real_366af7fa37aa_live_3.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "36bc46391c_real_36bc46391cd4_dev4_MJPG_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "61c0a4156f_real_61c0a4156f6d_live_5.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "7ae134ce46_real_7ae134ce464a_20260917_093035_368.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "7da6d5d10b_real_7da6d5d10b8f_20260917_093036_984.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "88416dc090_real_88416dc090a2_20260917_093036_602.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "9579b3c296_real_9579b3c2961e_20260917_093038_417.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "9f5395b975_real_9f5395b975ca_dev2_MJPG_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "a25b851527_real_a25b85152742_dev2_MJPG_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "a9a2ff7d2a_real_a9a2ff7d2ab1_alt_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0106
+     ],
+     "best_rot": 0
+    },
+    "b609ab4066_real_b609ab406641_20260917_093039_037.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "bc8759d450_real_bc8759d4507f_20260917_093037_207.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "c08fe09047_real_c08fe09047a4_20260917_093039_656.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "ce49d4a101_real_ce49d4a101a6_live_4.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0107
+     ],
+     "best_rot": 0
+    },
+    "d3dbd62758_real_d3dbd6275891_alt_2.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "e6fe3dcb3d_real_e6fe3dcb3d4a_20260917_093037_825.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    }
+   },
+   "sim": {
+    "frames": 60,
+    "mean_det_per_frame": 3.0,
+    "frames_all_classes": 60,
+    "mean_conf": {
+     "hole": 0.972,
+     "hand": 0.961,
+     "peg": 0.968
+    }
+   },
+   "real_summary": {
+    "frames": 19,
+    "frames_with_det": 0,
+    "best_rot_total_det": 0,
+    "max_conf_any": 0.0107,
+    "cls_total_best_rot": {},
+    "均值每帧检出": 0.0
+   }
+  },
+  "ctrl_sim": {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_peg/ctrl_sim/weights/best.pt",
+   "size_mb": 6.2,
+   "classes": {
+    "0": "hand",
+    "1": "peg",
+    "2": "hole"
+   },
+   "real": {
+    "0aaa569130_real_0aaa5691307a_alt_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "12315c654e_real_12315c654ec2_alt_3.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "1bd0b2a582_real_1bd0b2a58204_dev4_MJPG_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0301
+     ],
+     "best_rot": 0
+    },
+    "366af7fa37_real_366af7fa37aa_live_3.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "36bc46391c_real_36bc46391cd4_dev4_MJPG_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.027
+     ],
+     "best_rot": 0
+    },
+    "61c0a4156f_real_61c0a4156f6d_live_5.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "7ae134ce46_real_7ae134ce464a_20260917_093035_368.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "7da6d5d10b_real_7da6d5d10b8f_20260917_093036_984.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "88416dc090_real_88416dc090a2_20260917_093036_602.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "9579b3c296_real_9579b3c2961e_20260917_093038_417.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "9f5395b975_real_9f5395b975ca_dev2_MJPG_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "a25b851527_real_a25b85152742_dev2_MJPG_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "a9a2ff7d2a_real_a9a2ff7d2ab1_alt_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "b609ab4066_real_b609ab406641_20260917_093039_037.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "bc8759d450_real_bc8759d4507f_20260917_093037_207.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "c08fe09047_real_c08fe09047a4_20260917_093039_656.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "ce49d4a101_real_ce49d4a101a6_live_4.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "d3dbd62758_real_d3dbd6275891_alt_2.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "e6fe3dcb3d_real_e6fe3dcb3d4a_20260917_093037_825.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    }
+   },
+   "sim": {
+    "frames": 60,
+    "mean_det_per_frame": 3.0,
+    "frames_all_classes": 60,
+    "mean_conf": {
+     "hole": 0.973,
+     "hand": 0.963,
+     "peg": 0.969
+    }
+   },
+   "real_summary": {
+    "frames": 19,
+    "frames_with_det": 0,
+    "best_rot_total_det": 0,
+    "max_conf_any": 0.0301,
+    "cls_total_best_rot": {},
+    "均值每帧检出": 0.0
+   }
+  },
+  "dr_mix": {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_peg/dr_mix/weights/best.pt",
+   "size_mb": 6.2,
+   "classes": {
+    "0": "hand",
+    "1": "peg",
+    "2": "hole"
+   },
+   "real": {
+    "0aaa569130_real_0aaa5691307a_alt_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "12315c654e_real_12315c654ec2_alt_3.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "1bd0b2a582_real_1bd0b2a58204_dev4_MJPG_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "366af7fa37_real_366af7fa37aa_live_3.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0161,
+      0.0156,
+      0.0104
+     ],
+     "best_rot": 0
+    },
+    "36bc46391c_real_36bc46391cd4_dev4_MJPG_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "61c0a4156f_real_61c0a4156f6d_live_5.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0113
+     ],
+     "best_rot": 0
+    },
+    "7ae134ce46_real_7ae134ce464a_20260917_093035_368.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.012,
+      0.0101
+     ],
+     "best_rot": 0
+    },
+    "7da6d5d10b_real_7da6d5d10b8f_20260917_093036_984.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0101,
+      0.0101
+     ],
+     "best_rot": 0
+    },
+    "88416dc090_real_88416dc090a2_20260917_093036_602.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0119,
+      0.0107
+     ],
+     "best_rot": 0
+    },
+    "9579b3c296_real_9579b3c2961e_20260917_093038_417.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0152,
+      0.0102,
+      0.0101
+     ],
+     "best_rot": 0
+    },
+    "9f5395b975_real_9f5395b975ca_dev2_MJPG_0.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "a25b851527_real_a25b85152742_dev2_MJPG_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0129,
+      0.0129,
+      0.0107
+     ],
+     "best_rot": 0
+    },
+    "a9a2ff7d2a_real_a9a2ff7d2ab1_alt_1.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "b609ab4066_real_b609ab406641_20260917_093039_037.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0121
+     ],
+     "best_rot": 0
+    },
+    "bc8759d450_real_bc8759d4507f_20260917_093037_207.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0112,
+      0.0104
+     ],
+     "best_rot": 0
+    },
+    "c08fe09047_real_c08fe09047a4_20260917_093039_656.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0145
+     ],
+     "best_rot": 0
+    },
+    "ce49d4a101_real_ce49d4a101a6_live_4.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [
+      0.0177,
+      0.0163,
+      0.0108,
+      0.0103
+     ],
+     "best_rot": 0
+    },
+    "d3dbd62758_real_d3dbd6275891_alt_2.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    },
+    "e6fe3dcb3d_real_e6fe3dcb3d4a_20260917_093037_825.jpg": {
+     "rots": {
+      "0": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "1": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "2": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      },
+      "3": {
+       "n": 0,
+       "cls": [],
+       "conf": [],
+       "boxes": []
+      }
+     },
+     "peak_low_thresh": [],
+     "best_rot": 0
+    }
+   },
+   "sim": {
+    "frames": 60,
+    "mean_det_per_frame": 3.0,
+    "frames_all_classes": 60,
+    "mean_conf": {
+     "peg": 0.937,
+     "hole": 0.93,
+     "hand": 0.922
+    }
+   },
+   "real_summary": {
+    "frames": 19,
+    "frames_with_det": 0,
+    "best_rot_total_det": 0,
+    "max_conf_any": 0.0177,
+    "cls_total_best_rot": {},
+    "均值每帧检出": 0.0
+   }
+  }
+ }
+}

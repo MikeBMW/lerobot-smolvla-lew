@@ -1,0 +1,87 @@
+{
+ "n": 20,
+ "frames": [
+  {
+   "md5": "9f5395b975ca",
+   "src": "/home/ubuntu/zmax_data/real_cam/orin_d405/dev2_MJPG_0.jpg"
+  },
+  {
+   "md5": "a25b85152742",
+   "src": "/home/ubuntu/zmax_data/real_cam/orin_d405/dev2_MJPG_1.jpg"
+  },
+  {
+   "md5": "36bc46391cd4",
+   "src": "/home/ubuntu/zmax_data/real_cam/orin_d405/dev4_MJPG_0.jpg"
+  },
+  {
+   "md5": "1bd0b2a58204",
+   "src": "/home/ubuntu/zmax_data/real_cam/orin_d405/dev4_MJPG_1.jpg"
+  },
+  {
+   "md5": "0aaa5691307a",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/alt_0.jpg"
+  },
+  {
+   "md5": "a9a2ff7d2ab1",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/alt_1.jpg"
+  },
+  {
+   "md5": "d3dbd6275891",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/alt_2.jpg"
+  },
+  {
+   "md5": "12315c654ec2",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/alt_3.jpg"
+  },
+  {
+   "md5": "88941f6daef5",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/live_0.jpg"
+  },
+  {
+   "md5": "366af7fa37aa",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/live_3.jpg"
+  },
+  {
+   "md5": "ce49d4a101a6",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/live_4.jpg"
+  },
+  {
+   "md5": "61c0a4156f6d",
+   "src": "/home/ubuntu/lerobot-smolvla-lew/reports/sim2real_20260917/real_d405_live/live_5.jpg"
+  },
+  {
+   "md5": "7ae134ce464a",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093035_368.jpg"
+  },
+  {
+   "md5": "88416dc090a2",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093036_602.jpg"
+  },
+  {
+   "md5": "7da6d5d10b8f",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093036_984.jpg"
+  },
+  {
+   "md5": "bc8759d4507f",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093037_207.jpg"
+  },
+  {
+   "md5": "e6fe3dcb3d4a",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093037_825.jpg"
+  },
+  {
+   "md5": "9579b3c2961e",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093038_417.jpg"
+  },
+  {
+   "md5": "b609ab406641",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093039_037.jpg"
+  },
+  {
+   "md5": "c08fe09047a4",
+   "src": "/home/ubuntu/zmax_data/annot_smoke/sessions/smoke_real/frames/20260917_093039_656.jpg"
+  }
+ ],
+ "dir": "/home/ubuntu/zmax_data/real_cam/orin_d405_eval",
+ "note": "真机 D405 UVC 帧; 无人工标注 (光模块现场位于画面下方正中, 属口述非标注)"
+}

@@ -1,0 +1,7 @@
+DR 数据集 manifest
+data/yolo_peg_dr: images=9000 labels=9000 size=1.5G
+data/yolo_peg_drmix: images=11400 labels=11400 size=1.9G
+data/yolo_peg_holdout: images=600 labels=600 size=104M
+scene-seed=20260917 rep=2 eps=30
+8a83e29f513c40f09f842063fb807654  data/yolo_peg_dr/data.yaml
+d79460ca5e7fe29d453cf83b8addcd3f  data/yolo_peg_drmix/data.yaml

@@ -5,8 +5,144 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
 
 # YOLO 3D 感知链 (仿真=真机同构)
 
-## 触发
-- peg-insert 插拔模型训练/评估
+## 🚀 sim→real 无缝移植 (2026-09-17 落地, Orin 已跑通真机相机)
+
+**架构 = 差异点收口**: 仿真与真机只差 5 处 (图像来源 / 内参 / 深度 / 外参 / 朝向·通道口径),
+全部收口到 `src/lerobot/policies/yolo_3d/frame_source.py` 的 `FrameSource`; 检测+反投影**只有一份代码**
+(`YoloStateAligner.estimate_3d`), 仿真原实现保留成 `_detect_3d_sim_legacy` 走 sim 源 (零回退)。
+四源: `SimFrameSource(env)` · `RosFrameSource(话题)` · `UvcFrameSource(/dev/videoN)` · `FileFrameSource(目录)`。
+源 profile 声明: `train_rot_k` (仿真训练集是 rot90 k=2 → 真机 0) · `rgb_order` (ultralytics 吃 BGR) ·
+`depth_metric` (米制深度=1.0 / 预测深度=套 DEPTH_SCALE) · `class_map(peg→光模块)` · `frame(world/base_link/camera)`。
+统一入口: `tools/real_yolo_perceive.py --source sim|ros|uvc:N|file:DIR` → 39D 契约 + 取证 json + `meta.gaps`。
+
+**实测取证 (reports/sim2real_20260917)**: 仿真零回退 **0.00e+00** (同进程同帧新旧实现) ·
+通用几何 vs legacy **2.22e-16** (同帧同深度, 证明"真机那套"不是第二套实现) ·
+**Orin 真跑** D405 UVC `/dev/video2` → YOLO GPU **36ms/帧 (27.7FPS)** / CPU 892ms。
+
+**关键坑 (都踩过)**:
+- **域差是硬缺口**: 仿真权重在真机 D405 帧 **0 检出** (4 种朝向全 0, 峰值分 0.0105 vs 阈值 0.25;
+  对照组仿真帧 0.95~0.97) → 代码接通 ≠ 能感知, **必须真机数据微调/重训** (或教师蒸馏: 生产栈
+  FoundationPose/vision_tag 的 3D 位姿投影回图像生成伪标签)。
+- **别用"帧里有没有 depth"判断口径**: 预测深度也要套尺度校准 → 用**源声明** `depth_metric` 决定;
+  且 YOLO depth head **只在 sim 源**用 (它按仿真渲染标定, 拿它预测真机像素=假证据)。
+- **相机系约定**: 标准光学系 +x右/+y下/**+z朝前**; mujoco `cam_mat0` 是"看向 -z" → 标准系要乘
+  `S=diag(1,-1,-1)` (det=+1 合法旋转), 且沿光轴深度的 cosθ 用**相机系**归一化射线 z 分量。
+  少了这步: 3D 点整体偏 ~0.17m (实测)。
+- **真机 D405 当前只能走 UVC**: Orin 上 `realsense2_camera` 驱动没装 → `/realsense/*` **Publisher=0**
+  (图里有订阅者 ≠ 有帧! 先跑 `tools/ros_scan_image_topics.py` 看 pub count); D405 `/dev/video2`、
+  `/dev/video4` 可读 640x480 MJPG, `video0/1/3/5` 被占用。
+- **Orin 上 ultralytics 起不来 = torch/torchvision C++ ABI 不匹配** (Jetson torch 2.5.0a0+nv24.08 +
+  通用 torchvision 0.20.0): `Couldn't load custom C++ ops` 崩在 NMS。Orin 无外网 → ①本机
+  `pip download --platform manylinux2014_aarch64 --only-binary=:all: --python-version 3.10 --no-deps`
+  下纯 python 轮子 (ultralytics/ultralytics-thop/polars/py-cpuinfo), scp 过去 `pip3 install --user --no-index` ;
+  ②`yolo_3d/tv_ops_shim.py` 用纯 torch 实现 nms/batched_nms/box_iou 兜底 (只在 ops 真崩时打补丁)。
+- **真机 3D 的两个前置**: 相机内参 K + 手眼外参 T_base_cam + 台面 plane_z → `tools/calib_real_cam.py`
+  (棋盘格 `--intrinsics` / 手眼 `--handeye`), 写 `models/real_cam_calib.json`; 未标定时 `meta.gaps` 显式报
+  "无外参 → 输出相机系", **绝不用仿真值冒充**。
+- **真机 hand 用 `/robot/tcp_pose` 真值** (frame_id=base_link, 50Hz), 不用 YOLO hand (R1 契约: 末端=编码器)。
+- 红线: Orin 侧**零自启** (只放 /home/tashan 用户目录文件); 采数据走 **4060 侧 Docker ros:humble --net host
+  只读订阅** (`tools/ros_record_realsense.py`)。
+
+
+## 🧪 域随机化 (DR) 能修域差吗? — 实测**不能**, 必须真机数据 (2026-09-17)
+
+老倪: 「运行在 orin 上, 能够感知实际的机器人环境」。链路已通(上节), 但模型在真机 0 检出。
+本轮把这条缺口做成**同口径 A/B 的三臂对照** (`docs/design/zmax_sim2real_dr_experiment.md`):
+
+| 臂 | 训练数据 | 真机 19 帧×4 朝向 | 真机最高 conf | 仿真 hold-out |
+|---|---|---|---|---|
+| `peg_v1` (生产) | 仿真 1800 | 0 帧 / 0 框 | 0.0107 | 3.00 框/帧 · 60/60 · 0.96~0.97 |
+| `ctrl_sim` (控变量) | 仿真 1800 重训 | 0 / 0 | 0.0301 | 3.00 · 60/60 · 0.96~0.97 |
+| `dr_mix` (DR) | 仿真 1800 + DR 8100 | 0 / 0 | 0.0177 | 3.00 · 60/60 · 0.92~0.94 |
+
+**结论: 纯仿真域随机化不足以跨到产线真机** (峰值 conf 只从 0.0107 抬到 ~0.03, 阈值 0.25 的 1/10;
+76 次推理 0 检出), 且三臂仿真侧零回退。⇒ 必做 = 真机数据微调 或 教师蒸馏(FoundationPose 位姿投影回图像),
+二者都要 Orin 在线。**DR 数据不白做**: 它是真机微调时的防遗忘混合集。
+
+**DR 怎么做** (`gen_yolo_data.py --dr`, **默认关 = 零回退**): ①场景层 `--dr-scene`: 光照位置/方向/强度/色温/
+环境光 · **全部材质颜色随机** · 纹理换随机噪声 · 相机 ±3cm/±5% fovy/±5° 旋转 (投影读同一份 model → 图像与标注天然同步)
+②图像层: 亮度/伽马/对比/色偏 · 高斯噪声 · 运动/离焦/降采样模糊 · 暗角 · 随机遮挡 · 缩放裁切(框同步) ·
+小角旋转 ±8°(框同步) · **灰底 114 letterbox**(复刻 640x480 真机帧送进 imgsz=480 的版式)。
+判据工具: `tools/eval_sim2real_yolo.py` (多臂同口径: 真机 4 朝向 + 仿真 hold-out, 逐臂 json + 目检图) ·
+`tools/analyze_real_det.py` (位置先验: 光模块现场在画面**下方正中** x∈[0.25,0.75] y∈[0.55,1.0]; 朝向一致性:
+真检出应集中在同一 rot; 分帧组) · `tools/real_frame_selfcheck.py` (测集自检: 目标区到底有没有结构, 判定
+"0 检出"是模型锅还是测集锅 — 本轮实测 11/19 帧目标区几乎无结构) · `tools/verify_dr_labels_geometry.py`。
+
+**⚠️ 三个大坑 (都实测踩过)**:
+1. **跨进程"逐位比对"在这套生成器上根本不成立**: metaworld 的场景随机向量走**全局 np.random**,
+   `env.reset(seed=ep)` 不生效 → 同一份旧代码跑两次, 300/300 图**全不一样**。后果:
+   (a) 零回退只能用**同进程等价性**证明(同 env 同帧, 新公式 vs 旧公式逐字符比 → 本轮 120/120 一致);
+   (b) 训练/评测必须用**落盘固定数据集**, 别信"同 seed 重生成";
+   (c) 要可复现必须显式 `--scene-seed`(新加, DR 模式默认带上; 实测同种子 300/300 文件逐位一致)。
+2. **模板匹配验证标签一致性时, 底图必须放"唯一标记"**: 用规则矩形/规则纹理当底图 → `matchTemplate`
+   歧义(匹配度 0.05~0.17) → **假失败**; 且 patch 的**缩放因子**(96×480/cw)与**旋转中心**(patch 自身中心,
+   不是图像中心) 必须算对, 否则又是假失败(本轮前后踩了两次, 都是验证脚本 bug, 不是生成器)。
+   正解: 唯一粗粒噪声标记 + patch 走同一几何变换链 → 60/60 通过, 最大错位 7.3px(中位 0.7px)。
+3. **"0 检出"必须先做测集自检再下结论**: 真机帧可能有一半根本没对准目标区(纯背景/虚焦/纯黑) —
+   拿它当分母会把"采集问题"误判成"模型不行"。测集自检: ROI 梯度密度 vs 全图 + ROI 内最大边缘连通块
+   (>50px 才算有结构) + 3x3 区带物体化分布 + 退化帧(std<5)剔除。
+
+
+
+老倪: 「现在要采集真机图片训练 YOLO。在右键打开的窗口增加标定功能: 标定工程师根据图像圈选光模块、
+输入类别、保存当前图片, 而且 YOLO 模型可以通过保存的图片进行模型训练」(现场: 光模块只出现在画面**最下方正中**)
+
+**三个件 (代码位置固定, 别另起炉灶)**:
+| 文件 | 职责 |
+|---|---|
+| `tools/gui/yolo_label_widget.py` | 可拖框画面控件: 拖框/移动/四角缩放/右键删/撤销; **框永远存"原始帧像素坐标"** |
+| `tools/yolo_annot_dataset.py` | 目录规范 + 保存 + 构建 + 体检 (库 + CLI): `--init/--build/--check/--stats/--import-yolo-dir` |
+| `tools/yolo_annot_train.py` | 体检 → 选基座(auto=现有仿真权重微调) → ultralytics 训练 → **训练后真推理验证** |
+| `tools/gui/yolo_input_viewer.py` | 「打开输入图像」窗口: ✏️标定模式 / 类别combo+新类别 / 💾保存 / ⏭保存并下一帧 / 🏷改选中类别 / 撤销 / 删选中 / 清空 / 🧊冻结 / 📦构建数据集 / 🔍体检 / 🚀训练 / 📂数据目录 |
+
+**目录契约 (`data/yolo_annot`, data/ 已 .gitignore → 数据不进代码库)**:
+`classes.txt`(行号=class id) · `sessions/<会话>/{frames,labels,session.json}`(溯源: 相机身份/seq/帧龄/标定员) ·
+`annotations.jsonl`(追加式流水: 像素框+类别+来源) · `dataset/{images,labels}/{train,val}` + `data.yaml` + `stats.json`(构建层, **训练唯一入口**) · `meta.json`。
+两层设计的原因: 会话层保**溯源**(防拿旧图冒充), 构建层保**可复现**(改 val 比例只重跑 --build)。
+
+**必须记住的坑 (都实测踩过)**:
+- **旋转窗标注要换算回原始帧**: 工程师可能在 180°/90° 旋转窗上圈选 → `unmap_box()` 换算; 存错=标签镜像的脏数据。
+  实测: 0/90/180/270 拖框拆出的框都精确落回目标 (±3px)。
+- **两个子窗共享同一组框** (都存原始坐标) → 任一窗改动同步到另一窗, 否则"在旋转窗标的框左窗看不见"。
+- **类别 combo 打字别顺手改选中框**: 原实现把 combo 变更同步到 selected box → 工程师只想切"下一个框的类别"
+  却把当前框改了 (实测踩到: 本想标 optical_module 的框变成 fiber_connector, class id 直接错)。
+  正解 = 单独「🏷 改选中类别」按钮, combo 只管"新建框用什么类"。
+- **小样本 val 兜底**: ultralytics 必须有非空 val; 样本<8 时 val 复用 train → **必须在 stats 里显式标注
+  `val_overlap_train=true` + note"mAP 不可信"**, 统计别按两遍算 (框数会翻倍误导)。≥8 张时按文件名哈希划分 (可复现),
+  并兜底强制至少一张进 val。
+- **`--build` 后用硬链接** (跨盘自动退回拷贝) → 数据集不重复占盘。
+- **体检必须能抓错** (反向验证): 注入 `class id 越界` + `中心>1` 两行 → check 必须报 2 个错, 恢复后 0 误报;
+  纯"跑通"不算证据。体检项: 配对/字段数/类别范围/坐标范围/退化框/重复图 md5/空标注(背景样本)/data.yaml nc 一致性。
+- **保存口径**: 图片 = 窗口那一帧的像素 (真机源从 Orin JPEG 解码后 q95 重编码), **不旋转**, 与推理输入同向;
+  0 框也保存 (背景负样本, 空 .txt)。
+- **窗口改码后要先在真桌面 (192DPI) 量一遍**: 标定行 13 个按钮实测不截断 (实际宽 ≥ sizeHint); offscreen 96DPI 会误判。
+- **chk_rot 在 connect 之前 setChecked(True)** → toggled 不触发 → 右窗(构造时已 hide)永远不显示;
+  必须显式调一次 `_apply_rot_vis()`。凡是"默认开 + 靠 toggled 生效"的开关都有这个坑。
+- **GUI 与数据层解耦**: GUI `import yolo_annot_dataset as yad`, 保存走 `yad.save_sample()` —— 加新入口
+  (网页/命令行/批处理) 复用同一落盘逻辑, 别在 GUI 里手写文件。
+- **⚠️ 入口控件绝不能藏 (2026-09-17 用户实测: 「窗口的标定按钮怎么没有找到? 无法拉出边界框啊」)**: 首版
+  `_set_annot_visible(False)` 把「✏️ 标定模式」**勾选框自己也 hide 了** → 界面上没有任何标定入口, 用户永远打不开
+  标定 (死锁)。**offscreen 取证照样全绿** —— 因为断言是程序化 `setChecked(True)`, 绕过了"人能不能点到"。
+  铁律: **开关类入口控件恒常显**, 只隐它的下级控件; 并在旁边给一句常显提示"下一步点哪"
+  (自解释)。取证必须加一条**入口可达性断言**: 默认状态 `chk_annot.isVisible() and isEnabled()`
+  + 打开后逐个按钮 `isVisible() and width()>20`。
+- **⚠️ 长文本 QLabel 会顶宽整个窗口 (真桌面才暴露)**: 数据行(lbl_data: 长路径+类别表)与提示语用默认
+  SizePolicy 时, QLabel 的 minimumSizeHint = 整行文字宽 → 把窗口撑到 **2436px**, 在 1920 屏上直接出屏
+  (用户看到"窗口跑到屏幕外面")。修: `setWordWrap(True)` + `horizontalPolicy=QSizePolicy.Ignored`。
+  **拔外接显示器/换分辨率后窗口会留在屏外** → `showEvent` + `_tick` 每 5s 复查 `availableGeometry()`,
+  越界才 `setGeometry` 拉回 (不动用户手动缩放)。判据: 真桌面跑一遍断言
+  `窗口完整在屏内 (x/y/w/h 都在 availableGeometry 内)`。⚠️ 我这台本机屏幕在会话中从 **3200x2000@192DPI
+  变成 1920x1200@96DPI** (拔了外接屏) → 同一脚本两次运行结果不同, 别把环境变化误判成代码 bug。
+- **快捷键**: Enter=保存 · N=保存并下一帧 · F=冻结 (画面控件内 Del=删选中 · Ctrl+Z=撤销 · 1-9=选类别);
+  **必须加输入框守卫** (焦点在 QLineEdit/可编辑 combo 时不抢键), 否则标定员名字打不出来。
+
+**取证 (全绿, 脚本在 ~/zmax_data/)**: `verify_yolo_annot.py` (坐标映射 0/90/180/270 + 窗口集成落盘 + 标签数值手算比对 +
+体检反向验证 + 快捷键) · `verify_annot_ui_real.py` (真桌面 192DPI: 按钮不截断/两窗并排/截图) ·
+`annot_smoke_real.py` (真机 D405 帧 → 标定 → 构建, 8 张) + `yolo_annot_train.py --epochs 2 --device 0`
+→ **真 GPU 训练跑通**: box_loss 3.75→3.03, best.pt 落 `runs/detect/outputs/yolo_annot_smoke/.../weights/best.pt`。
+⚠️ 精度仍未验证: 首次标定需人工 (建议首轮 ≥100-300 张, 覆盖不同位置/光照), 我做的烟雾框是**程序化占位框**只证管线。
+
+
 - YOLO 检测 → 3D 坐标 → state 对齐
 - 仿真数据要模拟真机感知（不白给坐标）
 

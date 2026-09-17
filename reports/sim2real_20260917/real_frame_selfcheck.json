@@ -1,0 +1,357 @@
+{
+ "roi": [
+  0.3,
+  0.6,
+  0.7,
+  1.0
+ ],
+ "frames": [
+  {
+   "frame": "real_0aaa5691307a_alt_0.jpg",
+   "roi_edge_density": 2.8,
+   "global_edge_density": 5.3,
+   "roi_max_blob_px": 35,
+   "most_objectlike_band": "行1列1 (密度 8.1)",
+   "grid_density": [
+    8.1,
+    5.2,
+    5.7,
+    5.8,
+    5.6,
+    4.7,
+    7.7,
+    2.8,
+    2.6
+   ]
+  },
+  {
+   "frame": "real_12315c654ec2_alt_3.jpg",
+   "roi_edge_density": 2.1,
+   "global_edge_density": 4.6,
+   "roi_max_blob_px": 39,
+   "most_objectlike_band": "行3列1 (密度 8.4)",
+   "grid_density": [
+    5.3,
+    5.4,
+    5.2,
+    4.0,
+    4.8,
+    3.9,
+    8.4,
+    2.0,
+    2.1
+   ]
+  },
+  {
+   "frame": "real_1bd0b2a58204_dev4_MJPG_1.jpg",
+   "roi_edge_density": 0.7,
+   "global_edge_density": 6.9,
+   "roi_max_blob_px": 5,
+   "most_objectlike_band": "行1列1 (密度 17.4)",
+   "grid_density": [
+    17.4,
+    6.3,
+    6.5,
+    12.6,
+    6.8,
+    7.1,
+    4.0,
+    0.5,
+    1.1
+   ]
+  },
+  {
+   "frame": "real_366af7fa37aa_live_3.jpg",
+   "roi_edge_density": 0.5,
+   "global_edge_density": 5.0,
+   "roi_max_blob_px": 25,
+   "most_objectlike_band": "行1列1 (密度 12.9)",
+   "grid_density": [
+    12.9,
+    3.7,
+    2.6,
+    11.9,
+    5.4,
+    4.9,
+    1.9,
+    0.4,
+    1.2
+   ]
+  },
+  {
+   "frame": "real_36bc46391cd4_dev4_MJPG_0.jpg",
+   "roi_edge_density": 0.8,
+   "global_edge_density": 6.9,
+   "roi_max_blob_px": 4,
+   "most_objectlike_band": "行1列1 (密度 17.4)",
+   "grid_density": [
+    17.4,
+    6.3,
+    6.6,
+    12.7,
+    6.8,
+    7.1,
+    4.0,
+    0.6,
+    1.0
+   ]
+  },
+  {
+   "frame": "real_61c0a4156f6d_live_5.jpg",
+   "roi_edge_density": 2.3,
+   "global_edge_density": 5.4,
+   "roi_max_blob_px": 22,
+   "most_objectlike_band": "行1列1 (密度 10.3)",
+   "grid_density": [
+    10.3,
+    5.2,
+    5.7,
+    6.9,
+    5.9,
+    4.9,
+    4.3,
+    1.9,
+    3.1
+   ]
+  },
+  {
+   "frame": "real_7ae134ce464a_20260917_093035_368.jpg",
+   "roi_edge_density": 7.3,
+   "global_edge_density": 6.7,
+   "roi_max_blob_px": 619,
+   "most_objectlike_band": "行2列2 (密度 8.1)",
+   "grid_density": [
+    4.8,
+    7.0,
+    6.4,
+    7.1,
+    8.1,
+    6.2,
+    7.7,
+    6.6,
+    6.5
+   ]
+  },
+  {
+   "frame": "real_7da6d5d10b8f_20260917_093036_984.jpg",
+   "roi_edge_density": 7.4,
+   "global_edge_density": 6.8,
+   "roi_max_blob_px": 651,
+   "most_objectlike_band": "行2列2 (密度 8.2)",
+   "grid_density": [
+    4.8,
+    7.1,
+    6.4,
+    7.1,
+    8.2,
+    6.2,
+    7.8,
+    6.6,
+    6.6
+   ]
+  },
+  {
+   "frame": "real_88416dc090a2_20260917_093036_602.jpg",
+   "roi_edge_density": 7.4,
+   "global_edge_density": 6.8,
+   "roi_max_blob_px": 634,
+   "most_objectlike_band": "行2列2 (密度 8.2)",
+   "grid_density": [
+    4.8,
+    7.0,
+    6.4,
+    7.1,
+    8.2,
+    6.2,
+    7.8,
+    6.6,
+    6.7
+   ]
+  },
+  {
+   "frame": "real_88941f6daef5_live_0.jpg",
+   "degenerate": true,
+   "note": "纯色/纯黑帧 (mean=90.0 std=0.0) — 从分母剔除"
+  },
+  {
+   "frame": "real_9579b3c2961e_20260917_093038_417.jpg",
+   "roi_edge_density": 7.3,
+   "global_edge_density": 6.7,
+   "roi_max_blob_px": 635,
+   "most_objectlike_band": "行2列2 (密度 8.1)",
+   "grid_density": [
+    4.7,
+    7.0,
+    6.3,
+    7.0,
+    8.1,
+    6.0,
+    7.7,
+    6.5,
+    6.5
+   ]
+  },
+  {
+   "frame": "real_9f5395b975ca_dev2_MJPG_0.jpg",
+   "roi_edge_density": 1.5,
+   "global_edge_density": 5.4,
+   "roi_max_blob_px": 28,
+   "most_objectlike_band": "行1列1 (密度 11.5)",
+   "grid_density": [
+    11.5,
+    5.2,
+    5.5,
+    6.9,
+    6.0,
+    5.1,
+    4.7,
+    1.4,
+    2.3
+   ]
+  },
+  {
+   "frame": "real_a25b85152742_dev2_MJPG_1.jpg",
+   "roi_edge_density": 2.7,
+   "global_edge_density": 5.1,
+   "roi_max_blob_px": 37,
+   "most_objectlike_band": "行3列1 (密度 8.4)",
+   "grid_density": [
+    7.6,
+    5.2,
+    5.6,
+    4.0,
+    5.5,
+    4.3,
+    8.4,
+    2.6,
+    2.4
+   ]
+  },
+  {
+   "frame": "real_a9a2ff7d2ab1_alt_1.jpg",
+   "roi_edge_density": 2.8,
+   "global_edge_density": 5.3,
+   "roi_max_blob_px": 35,
+   "most_objectlike_band": "行1列1 (密度 8.1)",
+   "grid_density": [
+    8.1,
+    5.2,
+    5.7,
+    5.8,
+    5.6,
+    4.7,
+    7.7,
+    2.7,
+    2.6
+   ]
+  },
+  {
+   "frame": "real_b609ab406641_20260917_093039_037.jpg",
+   "roi_edge_density": 7.3,
+   "global_edge_density": 6.6,
+   "roi_max_blob_px": 646,
+   "most_objectlike_band": "行2列2 (密度 7.9)",
+   "grid_density": [
+    4.7,
+    7.0,
+    6.3,
+    7.0,
+    7.9,
+    5.9,
+    7.7,
+    6.5,
+    6.4
+   ]
+  },
+  {
+   "frame": "real_bc8759d4507f_20260917_093037_207.jpg",
+   "roi_edge_density": 7.4,
+   "global_edge_density": 6.7,
+   "roi_max_blob_px": 624,
+   "most_objectlike_band": "行2列2 (密度 8.1)",
+   "grid_density": [
+    4.7,
+    7.0,
+    6.4,
+    7.1,
+    8.1,
+    6.2,
+    7.8,
+    6.7,
+    6.7
+   ]
+  },
+  {
+   "frame": "real_c08fe09047a4_20260917_093039_656.jpg",
+   "roi_edge_density": 7.3,
+   "global_edge_density": 6.6,
+   "roi_max_blob_px": 632,
+   "most_objectlike_band": "行2列2 (密度 8.0)",
+   "grid_density": [
+    4.8,
+    7.0,
+    6.2,
+    7.0,
+    8.0,
+    5.8,
+    7.6,
+    6.5,
+    6.3
+   ]
+  },
+  {
+   "frame": "real_ce49d4a101a6_live_4.jpg",
+   "roi_edge_density": 0.5,
+   "global_edge_density": 5.0,
+   "roi_max_blob_px": 23,
+   "most_objectlike_band": "行1列1 (密度 12.9)",
+   "grid_density": [
+    12.9,
+    3.7,
+    2.6,
+    11.9,
+    5.4,
+    5.0,
+    1.9,
+    0.3,
+    1.2
+   ]
+  },
+  {
+   "frame": "real_d3dbd6275891_alt_2.jpg",
+   "roi_edge_density": 2.1,
+   "global_edge_density": 4.6,
+   "roi_max_blob_px": 39,
+   "most_objectlike_band": "行3列1 (密度 8.4)",
+   "grid_density": [
+    5.3,
+    5.4,
+    5.2,
+    4.0,
+    4.7,
+    3.9,
+    8.4,
+    2.0,
+    2.1
+   ]
+  },
+  {
+   "frame": "real_e6fe3dcb3d4a_20260917_093037_825.jpg",
+   "roi_edge_density": 7.4,
+   "global_edge_density": 6.7,
+   "roi_max_blob_px": 629,
+   "most_objectlike_band": "行2列2 (密度 8.1)",
+   "grid_density": [
+    4.8,
+    7.0,
+    6.4,
+    7.0,
+    8.1,
+    6.0,
+    7.7,
+    6.6,
+    6.5
+   ]
+  }
+ ]
+}
