@@ -11451,6 +11451,26 @@ class SimulinkModule(QWidget):
         dv.activateWindow()
         self._log("🧭 已打开 3D 分层视图 (Apollo 风格): 场景/YOLO框/前馈/融合指令u/限幅/状态估计/接触 各层可开关")
 
+    def _ss_vision_on(self, cap, model_exec, l2_compat) -> bool:
+        """R1 真实视觉 (每步 render → YOLO detect_3d) 是否开启 — 单一判据 (可单测)
+
+        🐛 2026-09-17 老倪: 「单独选择 L2 也应该进入断点; 要保证 L2 功能首先独立运行,
+           要进入 YOLO 检测的断点」→ **L2 档默认开 R1 真实视觉** (L2 自己的感知链真跑,
+           detect_3d 每步被调用 → 断点命中)。关掉: SS_L2_YOLO=0 (回到 R0 真值 + 解析前馈)。
+        ⚠️ 代价诚实告知: R1 是**每步**真渲染 + 真 YOLO (不节流/不冻结 — 老倪红线),
+           L2 insert 一轮 ~500-1000 步 ⇒ 数分钟级 (日志会打印提示)。
+        """
+        c = str(cap or "").upper()
+        if model_exec:
+            return False
+        if c.startswith("L4"):
+            return bool(l2_compat)
+        if c == "L3":
+            return True
+        if c == "L2":
+            return os.environ.get("SS_L2_YOLO", "1") != "0"
+        return False
+
     def _start_real_sim(self):
         """🎥 真实化运行 (2026-09-04 老倪: YOLO 断点每步可进, 不造假)
         metaworld 真实物理 + 每帧 render→YOLO detect_3d (RealStateSpaceSim vision)
@@ -11679,6 +11699,12 @@ class SimulinkModule(QWidget):
                                  "误差进 obs + MLP 在分布边缘), 属精度回退 ⇒ 默认关")
                 else:
                     os.environ.pop("SS_USE_MLP", None)   # 非 L4/演示档: 原位不动 (零回退)
+                # 🎯 2026-09-17 老倪: L2 档也真跑 R1 视觉 → detect_3d 每步被调用, 断点可进。
+                _ss_vision = self._ss_vision_on(_cap, _model_exec, _l2_compat)
+                if str(_cap or "").upper() == "L2" and not _model_exec:
+                    _logs.append("🎯 L2 档 · R1 真实视觉 = " + ("✅ 开 (每步 metaworld 渲染 → YOLO detect_3d, "
+                                 "断点可进; 代价: 每步真推理 ⇒ 一轮数分钟; 关: SS_L2_YOLO=0)"
+                                 if _ss_vision else "⬜ 关 (SS_L2_YOLO=0 → R0 真值 + 解析前馈)"))
                 sim = RealStateSpaceSim(seed=104,
                                         # 🎯 L3 档用 R1 视觉(原样, 老倪明确不动); 
                                         #   L4 改为引擎链路后用 R0 真值 — R1 每帧 YOLO 要 5-9 分钟/轮,
@@ -11686,9 +11712,8 @@ class SimulinkModule(QWidget):
                                         # 🧩 2026-09-16 老倪改口: "运行 L4 时 L2 也要运行" →
                                         #   L4 引擎路径也开 R1 视觉 (代价: 每帧 detect_3d, 一轮 5-9 分钟);
                                         #   L2 兼容整体关 (SS_L4_L2_COMPAT=0) 时回到 R0 真值。
-                                        vision=((str(_cap or "").upper() == "L3" and not _model_exec)
-                                                or (str(_cap or "").upper().startswith("L4")
-                                                    and (not _model_exec) and _l2_compat)),
+                                        # 🎯 2026-09-17 老倪: L2 档同样开 R1 视觉 (L2 功能独立运行 + 断点可进)。
+                                        vision=_ss_vision,
                                         vision_every=1,
                                         mode=getattr(self, "_l3_mode", None),
                                         demo_l4=_demo_cap,
