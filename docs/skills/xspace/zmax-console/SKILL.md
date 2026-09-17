@@ -759,3 +759,33 @@ close 只是隐藏 (无 WA_DeleteOnClose), 对象+GL 上下文都在; 数据源�
 `QFontInfo(QFont('Arial', pt)).pixelSize()` 打真机 px。
 
 - **🗂 模板多行展开布局 (2026-08-05, commit ada65fb1, 老倪: \"你每次都是从一条直线上开始给出, 你需要把所有节点展开, 不要重叠成一条线; 类似的功能, 例如 Action Head, 应该垂直对齐\")**: **用户偏好 — 模板加载节点禁止单行横排 (13+ 节点一条直线出画布外)**。REFERENCE_APPS 条目支持可选**第4元素 layout** (3元组模板兼容, 4元组才启用): `layout = [[节点名...]每行]` 网格 — **行 = 模型分支 (y 递进 230), 列 = 功能角色 (x 递进 260), 空串 \"\" 占位跳过**。同名节点多行出现 → 取各自候选坐标 → **同列垂直对齐** (三模型 Action Head 都落第5列 x=1420, y=80/310/540)。load_reference_app 加 layout 分支: 先 `pos.setdefault(nm, []).append((x,y))` 收集同名多行坐标 → 每节点取 `next(p for p in cands if p not in used)` (used 去重保证共享节点只画一次, 如 metaworld 三行共用顶部一个) → 兜底单行。**⚠️ REFERENCE_APPS 改 4 元组后全仓库 3 处 `for nm, nodes, links in REFERENCE_APPS` 解包全崩 (ValueError) — 必须逐个改 `for item in ...: nm=item[0]`** (参考应用按钮 1758 / _act_build_link_existing / _act_build_finish)。验证 (offscreen): 三模型模板 18节点 / Action Head `len(set(x))==1` 且 `ys == [80,310,540]` / metaworld 只画一次 / 双模型+ACT-Meta 回归 (3元组) 不崩。
+## 输入图像窗口「三路源」+ 引擎实况取证 (2026-09-17/18, commit 6ef836a7)
+**窗口 = tools/gui/yolo_input_viewer.py, 输入源下拉 3 项: 🎥 真机 RealSense / 🧪 仿真 metaworld / 💻 本机摄像头。**
+- 数据根按源分开 (tools/yolo_annot_dataset.py): `data/yolo_annot`(真机) · `yolo_annot_sim`(仿真) ·
+  `yolo_annot_usbcam`(本机摄像头) — 三路口径不混, 会话 tag 分别 d405/sim_corner2/usbcam。
+- 💻 本机摄像头: `/dev/video0` = Luxvisions Integrated RGB Camera (内置 UVC, uvcvideo 内核自带), 1280x720 MJPG 30fps 可跑满。
+  **坑1 (cv2 V4L2)**: `cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)` 报
+  "backend generally available but can't be used to capture by name" → **必须换算成索引**(`cv2.VideoCapture(0, CAP_V4L2)`)。
+  **坑2 (UVC 独占)**: `_start_source` 非幂等时 (`__init__` 的 singleShot(200ms) + 手切下拉各起一次) 旧采集线程成孤儿 →
+  **设备被永久占用**, 之后任何一路都"打不开摄像头" → 修: start 前先收旧线程 + `join(1.5)` 等 release。
+**仿真源语义**: 引擎没在跑时窗口渲染的是 `node_logic._YOLO_ALIGNER.env` (只 reset、**从不 step**) = 静止初始帧
+(老倪两次误读成"光模块没插进槽"!). 点 ▶运行 后窗口自动跟随引擎实况帧 (SS_LIVE_FRAME 共享槽, 与 detect_3d 同一帧);
+无实况 → 画面顶部压橙字横幅"引擎未运行 · 静态初始帧", 不假动。
+**引擎实况取证 (1Hz)**: `/tmp/ss_live_frame.json` = 步号/阶段/**沿孔轴进深 mm**/**横向偏差 mm**/夹持/窗口消费计数,
+每轮收尾强制落一次 → 这类"看起来没插进去"的问题直接用数据说话, 不用截图目测。
+**窗口通用修复 (同批)**: ①`_clamp_to_screen` 必须按**所有屏幕**判可见性 (只认 primaryScreen → 拖到扩展屏 5s 被拽回,
+  实测 t=5.0s 跳回 x=572); ②切源必须**清画面+清框** (只切链路 → 上一路画面残留, 真机源看起来在放仿真视频);
+  ③真机源只让**新鲜**帧上屏 (meta.ok ∧ age≤5s), 超 10s 换占位画面写原因; ④标定冻结时不动画面。
+
+## 插销/插槽"没插进槽/横向偏差" — 口径问题, 非控制偏差 (2026-09-18 实测)
+**结论**: metaworld peg-insert-side 官方判据 = **杆头(pegHead 站点)到 goal 点** ≤7cm 算成功
+(`metaworld/envs/sawyer_peg_insertion_side_v3.py:115`); 引擎把杆头推到 0.6mm 内、横向 2.1~2.5mm → 判据上是"完成"。
+但光模块是 **24cm 长杆**(geom box 0.015/0.015/0.12, euler 0 1.57 0 使长轴沿世界 x), 只入槽 6~7cm、约 17cm 横在盒外
+→ 老倪肉眼判"没插到槽里、和插槽横向差一截"。**槽道几何**: 盒内两根 3cm 立柱(碰撞 geom size[0]=0.03, world y=box_y±0.06)
+形成 y 向 6cm 宽、z 向 6cm 高、x 向 19.2cm 长的通槽; 孔口 site(0,-0.096,0.13) 在盒 +x 面, goal=mouth+66mm(x 向)。
+**待老倪定**: 是否改"光模块体坐进插槽"口径 (杆头推到槽道尽头 → 杆体 19cm 进槽) — 动 L2/L3/L4 共用插入段, 须同口径 A/B。
+**取证脚本** (tools/): diag_insert_offset_truth / diag_insert_geom_truth / diag_scene_bodies /
+diag_pixel_align_peg_slot (corner2 投影: 孔口到杆轴 0.3px) / diag_which_state_on_screen /
+diag_compare_window_render (抓窗口与渲染帧逐像素比对) / ascii_render / zoom_insert_region。
+**留档**: ~/zmax_data/20260918_0616_evidence/ (MANIFEST.md + 窗口抓图 + 候选帧 + 轮次日志) 与
+~/zmax_data/ss_remote/20260918_0615/ (state/proposal jsonl.gz + MANIFEST)。
