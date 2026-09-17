@@ -1,0 +1,35 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+① 仿真源: metaworld 渲染帧进窗口 + 两窗都有画面
+  ✅ 拿到仿真帧 | shape=(480, 480, 3)
+  ✅ 是真渲染帧 (480x480+非纯色) | std=56.5 均值=131
+  ✅ 左窗+右窗都有画面 | 左 480x480 右 480x480
+② 数据根随源切换 (真机 / 仿真 分开存, 别混训)
+  ✅ 仿真模式 → 仿真数据根 | /tmp/annot_sim_b34_an3u
+  ✅ 仿真类别表 = peg/hole/hand | ['peg', 'hole', 'hand']
+  ✅ 数据行标注『🧪仿真数据根』 | 🧪仿真数据根 /tmp/annot_sim_b34_an3u · 0 张 / 0 框 · 类别 ['peg', 'hole', 'hand']
+③ 仿真模式标定: 冻结 → 拖框 → 保存 (落仿真根)
+  ✅ 标定模式进入 (冻结+可编辑) 
+  ✅ 两窗框同步 | 左 2 右 2
+  ✅ 保存成功 | 20260917_095247_503.jpg
+  ✅ 落盘在**仿真**数据根 (不是真机根) | <sim>/sessions/s20260917_0952_sim_corner2/frames/20260917_095247_503.jpg
+  ✅ 会话名带 sim 标记 | s20260917_0952_sim_corner2
+  ✅ 记录里设备标为 mujoco 渲染 (不是真机相机) | device=mujoco 渲染 (非真机相机)
+  ✅ 来源标为仿真源 | src=sim:metaworld corner2
+  ✅ 标签 2 行 + 类别 id 在表内 | ['0 0.42708 0.60417 0.22917 0.16667', '1 0.70833 0.70833 0.16667 0.16667']
+④ 仿真数据根构建 + 体检
+  ✅ data.yaml nc=3 + names=peg/hole/hand | names:   0: peg   1: hole   2: hand
+  ✅ 仿真数据集体检通过 | 图 1 框 2 分布 {'peg': 1, 'hole': 1}
+  ✅ 真机数据根零污染 (仿真标注没写进真机根) | 真机根张数=0
+  ✅ 真机根类别仍是 optical_module (与仿真 peg/hole/hand 分开) | ['optical_module']
+
+结论: ✅ 全部通过

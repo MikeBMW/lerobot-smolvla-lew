@@ -205,8 +205,11 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._n_saved = 0
         self._syncing = False
 
-        P = yad.ensure_layout(ANNOT_ROOT)
-        self.annot_root = P["root"]
+        # 数据根随**输入源**走 (真机/仿真分开存: 口径不同, 混一起训练会让类别语义打结)
+        self._annot_source = "real" if source == "real" else "sim"
+        self.annot_root = yad.ensure_layout(yad.root_for(self._annot_source),
+                                            yad.default_classes_for(self._annot_source))["root"]
+        self._session = yad.session_name(yad.session_tag_for(self._annot_source))
 
         # ── 第 1 行: 输入源 / 显示 ──
         v = QtWidgets.QVBoxLayout(self)
@@ -364,6 +367,7 @@ class YoloInputViewer(QtWidgets.QDialog):
     def _start_source(self):
         if self.cb.currentIndex() == 0:
             self.source = "real"
+            self._set_annot_root("real")
             self._stale_since = None
             self._last_recover = time.time()
             self.btn.setEnabled(True)
@@ -371,10 +375,22 @@ class YoloInputViewer(QtWidgets.QDialog):
             t.start()
         else:
             self.source = "sim"
+            self._set_annot_root("sim")
             self.btn.setEnabled(False)
             self._sim = _SimGrabber(self._q, self.chk.isChecked())
             self._sim.start()
             self._log_line("仿真源已启动 (metaworld corner2 原始渲染帧)")
+
+    def _set_annot_root(self, source):
+        """输入源切换 → 数据根/会话/类别表跟着切 (仿真 peg·hole·hand ‖ 真机 optical_module 分开存)"""
+        root = yad.ensure_layout(yad.root_for(source), yad.default_classes_for(source))["root"]
+        self._annot_source = source
+        if root != self.annot_root:
+            self.annot_root = root
+            self._session = yad.session_name(yad.session_tag_for(source))
+            self._reload_classes()
+            self._log_line(f"数据根随输入源切换 → {root} · 会话 {self._session} · 类别 {yad.load_classes(root)}")
+        self._refresh_data_label()
 
     def _stop_source(self):
         if self._sim is not None:
@@ -754,7 +770,8 @@ class YoloInputViewer(QtWidgets.QDialog):
         n_box = 0
         for s in yad.iter_samples(root):
             n_box += len(yad._read_lines(s["label"]))
-        self.lbl_data.setText(f"数据集 {root} · {n_img} 张 / {n_box} 框 · 类别 {names}")
+        kind = "🧪仿真" if getattr(self, "_annot_source", "real") == "sim" else "🎥真机"
+        self.lbl_data.setText(f"{kind}数据根 {root} · {n_img} 张 / {n_box} 框 · 类别 {names}")
 
     def _save_annot(self, next_frame=False):
         if self._rgb is None:

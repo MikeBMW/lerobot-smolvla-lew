@@ -48,8 +48,26 @@ import time
 import numpy as np
 
 ROOT_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot")
+ROOT_SIM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot_sim")
 DEFAULT_CLASSES = ["optical_module"]        # 光模块 (老倪现场: 光模块一端入镜)
+DEFAULT_SIM_CLASSES = ["peg", "hole", "hand"]   # 仿真 metaworld 三类 (与 data/yolo_peg 现有口径一致)
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp")
+
+
+def root_for(source: str) -> str:
+    """按**数据源**给数据根: 真机 与 仿真 分开存 (口径不同 —— 仿真 peg 与真机光模块不是一回事,
+    混在一个数据集里训练会让类别语义打结)。"""
+    if str(source).startswith("sim"):
+        return os.environ.get("ZMAX_ANNOT_ROOT_SIM", ROOT_SIM_DEFAULT)
+    return os.environ.get("ZMAX_ANNOT_ROOT", ROOT_DEFAULT)
+
+
+def default_classes_for(source: str) -> list:
+    return list(DEFAULT_SIM_CLASSES) if str(source).startswith("sim") else list(DEFAULT_CLASSES)
+
+
+def session_tag_for(source: str) -> str:
+    return "sim_corner2" if str(source).startswith("sim") else "d405"
 README_TMPL = """# YOLO 真机标定数据 (data/yolo_annot)
 
 > 由 `tools/yolo_annot_dataset.py --init` 生成 / `--build` 更新。**目录即契约, 别手改结构。**
