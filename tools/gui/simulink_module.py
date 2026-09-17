@@ -3617,6 +3617,12 @@ class SimCanvas(QGraphicsView):
                 and not item.node.get("params", {}).get("insert_report"):
             a_ds = menu.addAction("查看数据集")
         a_run = menu.addAction("运行节点")
+        # 🎥 2026-09-17 老倪: YOLO 目标检测节点右键 → 打开输入图像 (实时原始视频流)
+        #   真机链路 = Orin UVC取帧+JPEG压缩(服务端) → ROS2 srv /zmax/live_frame
+        #             → 本机 Docker 客户端落盘 → 本窗口轮询显示 (GUI 无需 rclpy)
+        a_input = None
+        if item.node.get("params", {}).get("detection_targets") or "YOLO" in item.node.get("name", ""):
+            a_input = menu.addAction("打开输入图像 (实时原始视频流)")
         # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
         a_srcsw = None
         if item.node.get("params", {}).get("src_switch"):
@@ -3694,6 +3700,16 @@ class SimCanvas(QGraphicsView):
             self.module._open_verif_dialog(item.node)
         elif a_rfp is not None and chosen == a_rfp:
             self.module._open_verif_dialog(item.node, tab="rfp")
+        elif a_input is not None and chosen == a_input:
+            # 🎥 2026-09-17 老倪: 打开输入图像 (实时原始视频流) — 真机走 Orin srv → Docker → 本地文件
+            try:
+                from yolo_input_viewer import open_input_viewer
+                open_input_viewer(self, module=self.module, source="real")
+            except Exception as _e:                                        # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
+                except Exception:                                          # noqa: BLE001
+                    pass
 
     def _show_link_menu(self, item, view_pos):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
