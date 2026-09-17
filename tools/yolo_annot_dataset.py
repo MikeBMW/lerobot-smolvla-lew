@@ -49,6 +49,10 @@ import numpy as np
 
 ROOT_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot")
 ROOT_SIM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot_sim")
+# 💻 2026-09-17 老倪: 第三路输入源 = 本机内置摄像头 (无 Orin 也能采真像素) → 数据根独立,
+#    避免和真机 D405 帧/仿真渲染帧混在一个类别表里 (口径打结)
+ROOT_USBCAM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                  "data", "yolo_annot_usbcam")
 # 🐛 2026-09-17 口径纠正: 真机类别名必须用 `peg` (不是 optical_module)。
 #   依据 = src/lerobot/policies/yolo_3d/frame_source.py:40 的唯一口径源
 #   CLASS_MAP = {"hand": "hand", "peg": "光模块", "hole": "hole"} (注释: peg→光模块, id 顺序不许改),
@@ -60,10 +64,13 @@ IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp")
 
 
 def root_for(source: str) -> str:
-    """按**数据源**给数据根: 真机 与 仿真 分开存 (口径不同 —— 仿真 peg 与真机光模块不是一回事,
-    混在一个数据集里训练会让类别语义打结)。"""
-    if str(source).startswith("sim"):
+    """按**数据源**给数据根: 真机 / 仿真 / 本机摄像头 分开存 (口径不同 —— 仿真 peg 与真机光模块
+    不是一回事, 混在一个数据集里训练会让类别语义打结)。"""
+    s = str(source)
+    if s.startswith("sim"):
         return os.environ.get("ZMAX_ANNOT_ROOT_SIM", ROOT_SIM_DEFAULT)
+    if s.startswith("usbcam"):
+        return os.environ.get("ZMAX_ANNOT_ROOT_USBCAM", ROOT_USBCAM_DEFAULT)
     return os.environ.get("ZMAX_ANNOT_ROOT", ROOT_DEFAULT)
 
 
@@ -72,7 +79,12 @@ def default_classes_for(source: str) -> list:
 
 
 def session_tag_for(source: str) -> str:
-    return "sim_corner2" if str(source).startswith("sim") else "d405"
+    s = str(source)
+    if s.startswith("sim"):
+        return "sim_corner2"
+    if s.startswith("usbcam"):
+        return "usbcam"
+    return "d405"
 README_TMPL = """# YOLO 真机标定数据 (data/yolo_annot)
 
 > 由 `tools/yolo_annot_dataset.py --init` 生成 / `--build` 更新。**目录即契约, 别手改结构。**

@@ -1,0 +1,41 @@
+{
+ "ckpt": "outputs/train/smolvla_lew_v10_full/checkpoints/008000/pretrained_model",
+ "seed": 104,
+ "n": 87,
+ "engine_done": true,
+ "per_dim": {
+  "x": {
+   "mae": 0.1006,
+   "expert_amp": 0.0765,
+   "mae_over_amp": 1.316,
+   "corr": -0.163,
+   "sign_agree": 0.46
+  },
+  "y": {
+   "mae": 0.0736,
+   "expert_amp": 0.0558,
+   "mae_over_amp": 1.319,
+   "corr": -0.057,
+   "sign_agree": 0.483
+  },
+  "z": {
+   "mae": 0.1084,
+   "expert_amp": 0.0907,
+   "mae_over_amp": 1.195,
+   "corr": 0.098,
+   "sign_agree": 0.563
+  },
+  "gripper": {
+   "mae": 0.6704,
+   "expert_amp": 0.7471,
+   "mae_over_amp": 0.897,
+   "corr": 0.348,
+   "sign_agree": 0.621
+  }
+ },
+ "gripper_close_ratio": {
+  "model": 0.0,
+  "expert": 0.368
+ },
+ "xyz_mean_abs_corr": 0.106
+}

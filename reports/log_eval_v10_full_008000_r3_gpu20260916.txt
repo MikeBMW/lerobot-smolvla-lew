@@ -1,0 +1,23 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] Model config: pad_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 128002. This may result in unexpected behavior.
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights:  29%|██▉       | 141/489 [00:00<00:00, 1271.79it/s]Loading weights:  55%|█████▌    | 269/489 [00:00<00:00, 399.10it/s] Loading weights:  69%|██████▉   | 337/489 [00:00<00:00, 426.65it/s]Loading weights:  84%|████████▍ | 411/489 [00:00<00:00, 492.01it/s]Loading weights:  98%|█████████▊| 477/489 [00:00<00:00, 516.34it/s]Loading weights: 100%|██████████| 489/489 [00:00<00:00, 513.22it/s]
+✓ LeWorldModel initialized: hidden_dim=192, layers=6, attn_mode=adaln
+Loading weights from local directory
+🧪 ckpt: outputs/train/smolvla_lew_v10_full/checkpoints/008000/pretrained_model
+   task: 'metaworld 光模块插拔' | seed 104 | 每 4 步一帧
+   引擎轨迹 348 步 · done=True
+   有效样本 87
+
+       维 |      MAE      专家幅度    MAE/幅度      相关     符号一致
+       x |   0.1039    0.0765      1.36  -0.174    0.437
+       y |   0.0742    0.0558      1.33  -0.077    0.483
+       z |   0.1105    0.0907      1.22   0.171    0.494
+ gripper |   0.6771    0.7471      0.91   0.330    0.621
+
+  夹爪闭合比例: 模型 0.00 vs 专家 0.37
+  ★ xyz 平均|相关| = 0.141   (>0.5 才算学到; ≈0 = 输出与输入无关)
+  判读: MAE/幅度 ≈1 且 |相关|≈0 → 模型在'猜均值'; |相关|>0.5 → 真在跟
+→ /tmp/policy_corr_checkpoints.json

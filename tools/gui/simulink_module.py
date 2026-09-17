@@ -3440,6 +3440,23 @@ class SimLinkItem(QGraphicsObject):
 # ════════════════════════════════════════════════════════════════
 # 画布视图
 # ════════════════════════════════════════════════════════════════
+def _canvas_src_state(module):
+    """画布当前输入源状态 → '仿真' | '真机'
+
+    🎥 2026-09-17 老倪: 「调了仿真模式, 右键打开输入图像还是现场视频」的根因 ——
+    打开窗口时 source 写死 "real", 没跟画布「🔀 数据源切换」(📦 数据源节点 params.src_state) 走。
+    这里统一取画布状态, 供右键菜单/窗口跟随使用; 画布上没有该节点时与画布自身默认一致 (= 👻仿真)。
+    """
+    try:
+        for n in getattr(module, "nodes", None) or []:
+            st = (n.get("params") or {}).get("src_state")
+            if st in ("仿真", "真机"):
+                return st
+    except Exception:                                                      # noqa: BLE001
+        pass
+    return "真机" if getattr(module, "_data_source", "") == "bypass_real" else "仿真"
+
+
 class SimCanvas(QGraphicsView):
     flow_changed = pyqtSignal()
     log = pyqtSignal(str)
@@ -3634,7 +3651,10 @@ class SimCanvas(QGraphicsView):
         #             → 本机 Docker 客户端落盘 → 本窗口轮询显示 (GUI 无需 rclpy)
         a_input = None
         if item.node.get("params", {}).get("detection_targets") or "YOLO" in item.node.get("name", ""):
-            a_input = menu.addAction("打开输入图像 (实时原始视频流)")
+            # 🎥 2026-09-17 老倪: 标签带当前输入源, 一眼看出这菜单会开哪一路 (原来只写"实时原始视频流")
+            _cs = _canvas_src_state(self.module)
+            a_input = menu.addAction("打开输入图像 (%s)"
+                                     % ("🧪 仿真 metaworld" if _cs == "仿真" else "🎥 真机 RealSense"))
         # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
         a_srcsw = None
         if item.node.get("params", {}).get("src_switch"):
@@ -3713,10 +3733,13 @@ class SimCanvas(QGraphicsView):
         elif a_rfp is not None and chosen == a_rfp:
             self.module._open_verif_dialog(item.node, tab="rfp")
         elif a_input is not None and chosen == a_input:
-            # 🎥 2026-09-17 老倪: 打开输入图像 (实时原始视频流) — 真机走 Orin srv → Docker → 本地文件
+            # 🎥 2026-09-17 老倪: 打开输入图像 — **输入源跟随画布「🔀 数据源切换」**
+            #   (原来写死 source="real" → 画布切到仿真, 窗口还是现场视频, 老倪当场抓出)
+            #   真机: Orin srv → Docker → 本地文件轮询 ‖ 仿真: metaworld corner2 渲染帧
             try:
                 from yolo_input_viewer import open_input_viewer
-                open_input_viewer(self, module=self.module, source="real")
+                _src = "sim" if _canvas_src_state(self.module) == "仿真" else "real"
+                open_input_viewer(self, module=self.module, source=_src)
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
@@ -10554,6 +10577,23 @@ class SimulinkModule(QWidget):
             it.update()
         self._save_param_to_flow(node, "src_state")
         self._log(f"🔀 数据源切换 → {'📡 真机 (Orin 远程只读)' if p['src_state'] == '真机' else '🧪 仿真 (metaworld)'}")
+        # 🎥 2026-09-17 老倪: 输入图像窗口若开着 → 窗口跟着切源
+        #   (否则画布已经切到仿真, 窗口还端着一路现场视频; 手动在下拉里切也行, 但容易忘)
+        try:
+            import yolo_input_viewer as _yiv
+            _w = getattr(_yiv.YoloInputViewer, "_cur", None)
+            if _w is not None and _w.isVisible():
+                # 💻 窗口手动选了「本机摄像头」→ 不动它 (手动源优先, 图像跟画布只对 真机/仿真 两路)
+                if getattr(_w, "source", "") == "usbcam":
+                    self._log("🎥 输入图像窗口当前是「💻 本机摄像头」源 → 不跟随画布数据源切换")
+                else:
+                    _want = 1 if p["src_state"] == "仿真" else 0
+                    if _w.cb.currentIndex() != _want:
+                        _w.cb.setCurrentIndex(_want)   # 触发 _switch: 停旧源 → 起新源 → 数据根跟着切
+                        self._log("🎥 输入图像窗口跟随切源 → %s"
+                                  % ("🧪 仿真 metaworld" if _want else "🎥 真机 RealSense"))
+        except Exception:                                                  # noqa: BLE001
+            pass
         if p["src_state"] == "真机":
             try:
                 import importlib.util as _iu

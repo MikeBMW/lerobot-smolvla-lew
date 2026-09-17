@@ -16,9 +16,136 @@
 用法: python3 state_space_sim_real.py [轮数]
 """
 import importlib.util
+import json
 import os
 import sys
+import time
 import numpy as np
+
+# ════════════════════════════════════════════════════════════════
+# 🎥 引擎实况帧槽 (2026-09-17 老倪: 「点了运行, 仿真图像不动, 应该实时同步」)
+#   ── 为什么原来不动: GUI「输入图像」窗口的仿真源渲染的是 node_logic._YOLO_ALIGNER.env
+#      (只 reset 过一次、**从没 step 过** 的对齐器环境) → 永远是同一帧;
+#      而 ▶运行 跑的是本文件的 RealStateSpaceSim (它自己的 env, 每步 render + detect_3d)。
+#   ── 修法: 引擎每步真渲染的帧 (与 detect_3d 拿到的**同一帧**) 挂到进程共享槽,
+#      窗口直接显示它 → 与运行严格同步; 不新开第二个渲染器 (mujoco 渲染非线程安全)。
+# ════════════════════════════════════════════════════════════════
+SS_LIVE_FRAME: dict = {"t": 0.0, "step": None, "rgb": None, "tag": "", "consumed": 0, "_file_t": 0.0}
+SS_LIVE_STATUS = "/tmp/ss_live_frame.json"      # 外部可核对: 引擎步号/帧龄/窗口消费计数
+
+
+def _ss_write_status(force=False):
+    """把实况槽状态落盘 (节流 1Hz; 帧发布与指标发布共用同一出口)"""
+    _now = time.time()
+    if not force and _now - SS_LIVE_FRAME.get("_file_t", 0.0) < 1.0:
+        return
+    SS_LIVE_FRAME["_file_t"] = _now
+    try:
+        _rgb = SS_LIVE_FRAME.get("rgb")
+        with open(SS_LIVE_STATUS, "w", encoding="utf-8") as f:
+            json.dump({"t": round(_now, 3), "step": SS_LIVE_FRAME.get("step"),
+                       "tag": SS_LIVE_FRAME.get("tag"),
+                       "shape": (list(np.asarray(_rgb).shape) if _rgb is not None else None),
+                       "viewer_consumed": SS_LIVE_FRAME.get("consumed"),
+                       "insert": SS_LIVE_FRAME.get("metrics")}, f)
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def ss_publish_live_frame(rgb, step=None, tag="engine"):
+    """把引擎当前步的渲染帧挂到共享槽 (worker 线程调用; 只存引用, 不拷贝不渲染)"""
+    try:
+        if rgb is None:
+            return
+        SS_LIVE_FRAME["t"] = time.time()
+        SS_LIVE_FRAME["step"] = step
+        SS_LIVE_FRAME["rgb"] = rgb
+        SS_LIVE_FRAME["tag"] = tag
+        _ss_write_status()
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def ss_latest_live_frame(max_age=2.0):
+    """取最近的引擎实况帧 → (rgb, step, age_s) | None (引擎没在跑 / 帧太旧)"""
+    try:
+        _rgb = SS_LIVE_FRAME.get("rgb")
+        if _rgb is None:
+            return None
+        _age = time.time() - float(SS_LIVE_FRAME.get("t") or 0.0)
+        if _age > float(max_age):
+            return None
+        return _rgb, SS_LIVE_FRAME.get("step"), _age
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
+def ss_mark_live_frame_consumed():
+    """窗口真显示了实况帧 → 计数 (核对: /tmp/ss_live_frame.json 的 viewer_consumed)"""
+    try:
+        SS_LIVE_FRAME["consumed"] = int(SS_LIVE_FRAME.get("consumed") or 0) + 1
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def ss_set_viewer_wants(want: bool):
+    """GUI「输入图像」窗口是否正在看仿真实况。
+
+    R0/L2 (非视觉档) 引擎每步本来不渲染 → 没人看就不渲染 (零开销); 有人在看则由
+    ss_should_render_for_viewer 节流渲染, 保证窗口在**任何档位**都有画面跟着运行。
+    """
+    try:
+        SS_LIVE_FRAME["want"] = bool(want)
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def ss_should_render_for_viewer(step, vision_on: bool, every: int = 5) -> bool:
+    """非视觉档下, 是否该为实况槽渲染这一帧 (节流 1/every 步; 有窗口在看才渲染)"""
+    try:
+        if vision_on:
+            return False
+        if not SS_LIVE_FRAME.get("want"):
+            return False
+        return int(step) % max(1, int(every)) == 0
+    except Exception:                                                      # noqa: BLE001
+        return False
+
+
+def ss_publish_metrics(d: dict):
+    """引擎每步写"光模块 vs 插槽"的真值量 (阶段/已进孔深度 mm/横向偏差 mm/夹持)。
+
+    🎯 2026-09-17 老倪: 「光模块最后没插进槽, 水平差一段」—— 有了这个,
+    外部 (以及我) 可以直接读 /tmp/ss_live_frame.json 拿**你自己那次运行**的数据说话,
+    不靠截图目测。1Hz 随实况帧落盘。
+    """
+    try:
+        SS_LIVE_FRAME["metrics"] = d
+        if SS_LIVE_FRAME.get("rgb") is None:      # 没画面 (R0 无窗口看) → 步号也由指标给
+            SS_LIVE_FRAME["step"] = d.get("step")
+        _ss_write_status()          # 与帧发布共用 1Hz 出口 (没画面时也能落盘)
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def ss_insert_metrics(env, site_ph, hole, goal, stage=None, grasped=None, step=None) -> dict:
+    """由站点真值算插入度量: depth(沿孔轴, 正=已进孔) / lateral(垂直孔轴的横向偏差)"""
+    try:
+        ph = np.asarray(env.data.site_xpos[site_ph], float).copy()
+        hole = np.asarray(hole, float)
+        goal = np.asarray(goal, float)
+        ax = goal - hole
+        ax = ax / (float(np.linalg.norm(ax)) or 1.0)
+        dl = ph - hole
+        dep = float(np.dot(dl, ax))
+        lat = float(np.linalg.norm(dl - dep * ax))
+        return {"step": step, "stage": stage, "depth_mm": round(dep * 1000.0, 1),
+                "lateral_mm": round(lat * 1000.0, 1), "grasped": bool(grasped),
+                "peg": [round(float(v), 4) for v in ph],
+                "hole": [round(float(v), 4) for v in hole],
+                "goal": [round(float(v), 4) for v in goal]}
+    except Exception:                                                      # noqa: BLE001
+        return {}
 
 # ── 🎯 INTACT 节点就绪度 (2026-09-11): 引擎每帧调用, 必须廉价 (静态检查 + 结果缓存) ──
 _INTACT_READY_CACHE: dict = {}
@@ -2307,7 +2434,12 @@ class RealStateSpaceSim:
             #   正确做法: 真渲染 (env.render 与采集脚本 _frame_sink 同源)。
             _rf = getattr(self.env, "render", None)
             if _rf is not None:
-                return np.asarray(_rf())
+                _fr = np.asarray(_rf())
+                # 🎥 2026-09-17: 这一步真渲染的帧 = detect_3d 拿到的同一帧 → 挂共享槽,
+                #   GUI「输入图像」窗口据此与 ▶运行 同步显示 (不再渲染那个从没 step 过的对齐器 env)
+                ss_publish_live_frame(_fr, step=getattr(self, "_live_step", None),
+                                      tag=getattr(self, "_live_tag", "") or "engine")
+                return _fr
             return np.zeros((h, w, 3), np.uint8)
         except Exception:
             return np.zeros((h, w, 3), np.uint8)
@@ -2460,6 +2592,18 @@ class RealStateSpaceSim:
         done = False
         truncated = False
         for step in range(int(max_steps)):
+            # 🎥 2026-09-17: 当前步号随渲染帧一起发布 (GUI 输入图像窗口显示"与运行同步 · step=N")
+            self._live_step = step
+            # 🎯 2026-09-17: 每步发布"光模块 vs 插槽"真值量 (阶段/已进孔深度/横向偏差)
+            #   → /tmp/ss_live_frame.json 里可查 (老倪"最后没插进槽"这类问题用数据说话, 不靠目测)
+            if step % 5 == 0:
+                try:
+                    ss_publish_metrics(ss_insert_metrics(
+                        self.env, self._site_ph, self.geom["hole"], self.geom["goal"],
+                        stage=(self.sched.stage() if getattr(self, "sched", None) else None),
+                        grasped=getattr(self, "grasped", None), step=step))
+                except Exception:                                          # noqa: BLE001
+                    pass
             # ⏹ 2026-09-09: 停止请求 (GUI ⏹停止/🔄重启先置 _abort=True → 本步末退出,
             #   线程 join 后才允许开新引擎 — 双 metaworld env 并发 mujoco C segfault 实锤)
             if getattr(self, "_abort", False):
@@ -2527,6 +2671,15 @@ class RealStateSpaceSim:
             #      不掩盖 — 这正是 RealityGap 要暴露的; 真机用 eye-in-hand 相机解决)
             if self.vision and self._aligner is not None:
                 self._vis_refresh()
+            else:
+                # 🎥 2026-09-17: R0/L2 (非视觉档) 本来不渲染 → 窗口没画面跟着动。
+                #   有窗口在看 (ss_set_viewer_wants) 时节流渲染供实况槽; 没人看 = 零开销。
+                if ss_should_render_for_viewer(step, bool(self.vision and self._aligner is not None)):
+                    try:
+                        self._live_tag = "engine-r0"
+                        self._render_frame()
+                    except Exception:                                      # noqa: BLE001
+                        pass
             x_new = o[0:3].copy()
             self.v = (x_new - self.x) / DT_ENV if step > 0 else np.zeros(3)
             self.x = x_new
@@ -3789,6 +3942,16 @@ class RealStateSpaceSim:
                              f"gate {'✅ 可用' if _v['gate_ok'] else '❌ 偏差大'}")
             self._write_shared_memory(tr)
         except Exception:
+            pass
+        # 🎯 2026-09-17: 收尾强制落一次终局度量 (短轮 R0 只跑 ~1s, 1Hz 节流会只留首帧样本)
+        try:
+            ss_publish_metrics(ss_insert_metrics(
+                self.env, self._site_ph, self.geom["hole"], self.geom["goal"],
+                stage=(tr.get("stage") or [None])[-1],
+                grasped=getattr(self, "grasped", None),
+                step=len(tr.get("stage") or []) - 1))
+            _ss_write_status(force=True)
+        except Exception:                                                  # noqa: BLE001
             pass
         return tr
 

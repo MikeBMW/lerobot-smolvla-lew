@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -51,6 +52,10 @@ CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
 SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
 LIVE_JPG = os.path.join(SHARED, "live_frame.jpg")
 LIVE_META = os.path.join(SHARED, "live_frame.json")
+# 💻 2026-09-17 老倪: 第三路输入源 = 本机内置摄像头 (UVC 直读, 不依赖 Orin/Docker)
+USBCAM_DEV = os.environ.get("ZMAX_USBCAM_DEV", "/dev/video0")
+USBCAM_FPS = int(os.environ.get("ZMAX_USBCAM_FPS", "15"))
+_SRC_IDX = {"real": 0, "sim": 1, "usbcam": 2}
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ANNOT_ROOT = os.environ.get("ZMAX_ANNOT_ROOT", yad.ROOT_DEFAULT)
 _SSH = ["ssh", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=no", ORIN]
@@ -139,8 +144,69 @@ class _RemoteChain:
         cls._log(f"Orin srv 停止 rc={rc2} {out2.strip()[:60]}")
 
 
+def _engine_live_frame(max_age=2.0):
+    """▶运行 中, 引擎当前步的实况帧 (同进程共享槽, 见 state_space_sim_real.SS_LIVE_FRAME)
+
+    → (rgb, step, age_s) | None。引擎没在跑 (或帧太旧) → None, 窗口回退到静态渲染并**如实标注**。
+    🎥 2026-09-17 老倪: 「点了运行, 仿真图像不动」根因 —— 原来这个仿真源渲染的是
+    node_logic._YOLO_ALIGNER.env (只 reset 过一次、从没 step 过) → 永远同一帧, 与运行无关。
+    """
+    try:
+        import state_space_sim_real as _ssr
+        return _ssr.ss_latest_live_frame(max_age)
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
+def _engine_live_frame_consumed():
+    """窗口真显示了一帧实况 → 计数 (外部核对 /tmp/ss_live_frame.json: viewer_consumed)"""
+    try:
+        import state_space_sim_real as _ssr
+        _ssr.ss_mark_live_frame_consumed()
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def _engine_viewer_wants(want):
+    """告知引擎: 仿真实况窗口开/关 (关 → 非视觉档不再渲染, 零开销)"""
+    try:
+        import state_space_sim_real as _ssr
+        _ssr.ss_set_viewer_wants(bool(want))
+    except Exception:                                                      # noqa: BLE001
+        pass
+
+
+def _banner(rgb, text, color=(255, 140, 40)):
+    """在画面上压一条提示横幅 (顶部深色底 + 橙字) — 让"这不是运行画面"一眼可见
+
+    🎯 2026-09-17 老倪两次问「仿真渲染里光模块没插进槽/和插槽横向有偏差」——
+    实际看到的是**引擎未运行时的静止初始帧**(metaworld 初始布局: 光模块平躺台面,
+    离插槽水平 ~358mm)。只靠状态栏小字不够, 直接压在画面上。
+    """
+    try:
+        import numpy as _np
+        out = _np.ascontiguousarray(rgb).copy()
+        h, w = out.shape[:2]
+        band = max(20, int(h * 0.075))
+        out[:band, :, :] = (out[:band, :, :] * 0.25).astype(out.dtype)     # 压暗
+        try:
+            import cv2 as _cv2
+            _cv2.putText(out, text, (8, int(band * 0.72)), _cv2.FONT_HERSHEY_SIMPLEX,
+                         max(0.32, w / 1600.0), color, 1, _cv2.LINE_AA)
+        except Exception:                                                  # noqa: BLE001
+            pass
+        return out
+    except Exception:                                                      # noqa: BLE001
+        return rgb
+
+
 class _SimGrabber(threading.Thread):
-    """仿真渲染取帧 (worker 线程: 只做 mujoco render, 不碰 Qt)"""
+    """仿真渲染取帧 (worker 线程: 只做 mujoco render / 读实况槽, 不碰 Qt)
+
+    🎥 两路来源 (2026-09-17):
+      · ▶运行 中 → 用引擎**当前步**渲染的那一帧 (与 detect_3d 同一帧) = 与运行严格同步
+      · 引擎 idle → 回退到对齐器 env 的静态渲染, 标注"引擎未运行 → 静态初始帧" (如实, 不假动)
+    """
 
     def __init__(self, out_q: queue.Queue, yolo_overlay: bool):
         super().__init__(daemon=True)
@@ -148,36 +214,144 @@ class _SimGrabber(threading.Thread):
         self.overlay = yolo_overlay
         self.stop_flag = False
 
+    def _grab_once(self, nl):
+        """取一帧 → (img, info); nl 可为 None (仅当不需要叠加检测时)"""
+        _live = _engine_live_frame()
+        al = None
+        if _live is not None:
+            img, _step, _age = _live
+            info = {"src": "engine:▶运行 实况 (metaworld corner2)",
+                    "shape": f"{img.shape[1]}x{img.shape[0]}",
+                    "device": f"引擎渲染帧 (与 detect_3d 同一帧) · step={_step} · 帧龄 {_age:.2f}s",
+                    "step": _step, "age": _age, "engine": True}
+        else:
+            if nl is None:                                  # 只可能在"只用实况帧"的调用里
+                return None, None
+            al = nl._yolo_ensure_aligner(None)
+            img = al.env.render()          # RGB 原始渲染帧 (与引擎同源; 但该 env 从不 step)
+            info = {"src": "sim:metaworld corner2 (引擎未运行 → 静态初始帧)",
+                    "shape": f"{img.shape[1]}x{img.shape[0]}",
+                    "device": "mujoco 渲染 (非真机相机) · 引擎 idle",
+                    "engine": False}
+        if self.overlay:
+            try:                       # 可选: 同时跑检测, 证明模型看到的就是这帧
+                if al is None:
+                    al = nl._yolo_ensure_aligner(None)
+                _bgr = np.ascontiguousarray(img)[:, :, ::-1].copy()
+                res = al.model.predict(_bgr, conf=0.4, verbose=False)[0]
+                _plotted = res.plot()
+                img = _plotted[:, :, ::-1] if _plotted is not None else img
+                info["yolo"] = f"{len(res.boxes)} 框"
+            except Exception as e:                                     # noqa: BLE001
+                info["yolo"] = f"检测失败 {type(e).__name__}"
+        if not info.get("engine"):
+            img = _banner(img, "⚠️ 引擎未运行 · 静态初始帧 — 这幅画面没有在跑仿真 (点 ▶运行 看实况)")
+        return img, info
+
     def run(self):
-        try:
-            sys.path.insert(0, os.path.join(REPO, "tools", "gui"))
-            import node_logic as nl
-        except Exception as e:                                             # noqa: BLE001
-            self.q.put({"err": f"node_logic 加载失败: {e}"})
-            return
+        nl = None
+        if self.overlay:            # 只有要叠加检测时才需要 node_logic/对齐器 (否则零加载)
+            try:
+                sys.path.insert(0, os.path.join(REPO, "tools", "gui"))
+                import node_logic as nl_   # noqa: F401
+                nl = nl_
+            except Exception as e:                                     # noqa: BLE001
+                self.q.put({"err": f"node_logic 加载失败: {e}"})
+                return
         while not self.stop_flag:
             t0 = time.time()
             try:
-                al = nl._yolo_ensure_aligner(None)
-                img = al.env.render()          # RGB 原始渲染帧 (与引擎同源)
-                info = {"src": "sim:metaworld corner2", "shape": f"{img.shape[1]}x{img.shape[0]}",
-                        "device": "mujoco 渲染 (非真机相机)"}
-                if self.overlay:
-                    try:                       # 可选: 同时跑检测, 证明模型看到的就是这帧
-                        _bgr = img[:, :, ::-1].copy()
-                        res = al.model.predict(_bgr, conf=0.4, verbose=False)[0]
-                        _plotted = res.plot()
-                        img = _plotted[:, :, ::-1] if _plotted is not None else img
-                        info["yolo"] = f"{len(res.boxes)} 框"
-                    except Exception as e:                                     # noqa: BLE001
-                        info["yolo"] = f"检测失败 {type(e).__name__}"
+                img, info = self._grab_once(nl)
+                if img is None:
+                    time.sleep(0.1)
+                    continue
+                if info.get("engine"):
+                    _engine_live_frame_consumed()
                 self.q.put({"rgb": np.ascontiguousarray(img), "info": info})
-            except Exception as e:                                         # noqa: BLE001
+            except Exception as e:                                     # noqa: BLE001
                 self.q.put({"err": f"仿真取帧失败: {type(e).__name__}: {e}"})
                 time.sleep(0.5)
             dt = 0.08 - (time.time() - t0)
             if dt > 0:
                 time.sleep(dt)
+
+
+class _CamGrabber(threading.Thread):
+    """💻 本机内置摄像头取帧 (cv2/V4L2 直读; 只读设备, 不碰 Orin/Docker/Qt)
+
+    ⚠️ cv2 在**主线程**先 import 好再传进来 (PyQt5 进程里后台线程首次 import cv2
+    可能触发它自带的 Qt 插件路径, 与主程序 Qt 打架 — 老倪这台机器 08 月踩过同类坑)。
+    """
+
+    def __init__(self, out_q: queue.Queue, dev: str = USBCAM_DEV, fps: int = USBCAM_FPS, cv2=None):
+        super().__init__(daemon=True)
+        self.q = out_q
+        self.dev = dev
+        self.fps = max(1, int(fps))
+        self.cv2 = cv2
+        self.stop_flag = False
+
+    def _open(self, cv2):
+        """打开设备 —— ⚠️ cv2 V4L2 后端**不能按设备名(path)打开**
+        (实测 cv2 5.0: "backend is generally available but can't be used to capture by name") →
+        /dev/videoN 一律换算成索引 N 打开; 非标准路径才退回按名字 (默认后端)。"""
+        dev = str(self.dev)
+        m = re.match(r"^/dev/video(\d+)$", dev)
+        cap = cv2.VideoCapture(int(m.group(1)), cv2.CAP_V4L2) if m else cv2.VideoCapture(dev)
+        try:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        except Exception:                                                # noqa: BLE001
+            pass
+        return cap
+
+    def run(self):
+        cv2 = self.cv2
+        if cv2 is None:
+            try:
+                import cv2 as _c2                                        # noqa: PLC0415
+                cv2 = _c2
+            except Exception as e:                                       # noqa: BLE001
+                self.q.put({"err": f"cv2 不可用: {e}"})
+                return
+        cap = None
+        while not self.stop_flag:
+            if cap is None or not cap.isOpened():
+                try:
+                    cap = self._open(cv2)
+                except Exception as e:                                   # noqa: BLE001
+                    self.q.put({"err": f"打开摄像头失败 {self.dev}: {type(e).__name__}: {e}"})
+                    time.sleep(1.0)
+                    continue
+                if not cap.isOpened():
+                    self.q.put({"err": f"打不开摄像头 {self.dev} (被占用? 另一路摄像头源/其它程序正在读; "
+                                       f"或设备号不对 → 可改 ZMAX_USBCAM_DEV=/dev/videoN)"})
+                    time.sleep(1.0)
+                    continue
+            t0 = time.time()
+            ok, fr = cap.read()
+            if not ok or fr is None:
+                self.q.put({"err": f"摄像头读帧失败 {self.dev} → 重连中"})
+                try:
+                    cap.release()
+                except Exception:                                        # noqa: BLE001
+                    pass
+                cap = None
+                time.sleep(0.5)
+                continue
+            rgb = np.ascontiguousarray(fr[:, :, ::-1])       # BGR→RGB (与真机/仿真同口径)
+            self.q.put({"rgb": rgb, "info": {
+                "src": f"usbcam:{self.dev}", "device": "本机内置 UVC 摄像头",
+                "shape": f"{rgb.shape[1]}x{rgb.shape[0]}", "engine": False, "usbcam": True}})
+            dt = (1.0 / self.fps) - (time.time() - t0)
+            if dt > 0:
+                time.sleep(dt)
+        try:
+            if cap is not None:
+                cap.release()
+        except Exception:                                                # noqa: BLE001
+            pass
 
 
 class YoloInputViewer(QtWidgets.QDialog):
@@ -195,10 +369,13 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.source = source
         self._q: queue.Queue = queue.Queue(maxsize=6)
         self._sim: _SimGrabber | None = None
+        self._cam: _CamGrabber | None = None           # 💻 本机摄像头取帧线程
         self._last_sig = None
         self._sim_fps_t, self._sim_fps_n = time.time(), 0
         self._sim_fps = 0.0
         self._rgb = None                      # 当前显示帧 (原始朝向 RGB)
+        self._view_tag = ""                   # 🖼 当前画面来源: real / sim-engine / sim-idle / waiting-* / stale-real
+        self._real_last_fresh = 0.0           # 🖼 最近一次"新鲜真机帧"上屏时间 (判旧图是否该换占位)
         self._frozen = False                  # 冻结 (标定用): 不再跟随实时帧
         self._pending = None                  # 冻结期间攒下的最新帧
         self._frame_meta = {}                 # 当前帧来源 (device/seq/age/src)
@@ -207,8 +384,8 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._last_saved = None               # 最近一次保存的样本 {stem, session} — 供「🗑 丢弃当前帧」
         self._syncing = False
 
-        # 数据根随**输入源**走 (真机/仿真分开存: 口径不同, 混一起训练会让类别语义打结)
-        self._annot_source = "real" if source == "real" else "sim"
+        # 数据根随**输入源**走 (真机/仿真/本机摄像头分开存: 口径不同, 混一起训练会让类别语义打结)
+        self._annot_source = {"real": "real", "sim": "sim", "usbcam": "usbcam"}.get(source, "real")
         self.annot_root = yad.ensure_layout(yad.root_for(self._annot_source),
                                             yad.default_classes_for(self._annot_source))["root"]
         self._session = yad.session_name(yad.session_tag_for(self._annot_source))
@@ -218,8 +395,10 @@ class YoloInputViewer(QtWidgets.QDialog):
         top = QtWidgets.QHBoxLayout()
         top.addWidget(QtWidgets.QLabel("输入源:"))
         self.cb = QtWidgets.QComboBox()
-        self.cb.addItems(["🎥 真机 RealSense (Orin→ROS2 srv→Docker)", "🧪 仿真渲染 (metaworld corner2)"])
-        self.cb.setCurrentIndex(0 if source == "real" else 1)
+        self.cb.addItems(["🎥 真机 RealSense (Orin→ROS2 srv→Docker)",
+                          "🧪 仿真渲染 (metaworld corner2)",
+                          f"💻 本机摄像头 (内置 UVC {USBCAM_DEV})"])
+        self.cb.setCurrentIndex(_SRC_IDX.get(str(source), 0))
         self.cb.currentIndexChanged.connect(self._switch)
         top.addWidget(self.cb, 1)
         self.chk = QtWidgets.QCheckBox("叠加 YOLO 框")
@@ -393,26 +572,132 @@ class YoloInputViewer(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(200, self._start_source)
 
     # ── 源管理 ──────────────────────────────────────────────────────────
+    def _placeholder_rgb(self, lines, w=640, h=480):
+        """合成"无帧/占位"画面 (深底 + 文字)
+
+        ⚠️ 2026-09-17 老倪: 「没连真机, 选了真机还是放 metaworld 视频」—— 原因是切源时
+        **上一路画面残留在控件里** (真机路径只在帧文件签名变化时才重画; 没新帧就一直是旧图)。
+        占位画面让"当前源没数据"一眼可见, 不再靠旧画面冒充 (老倪红线: 不拿旧图冒充实时)。
+        """
+        img = QtGui.QImage(w, h, QtGui.QImage.Format_RGB888)
+        img.fill(QtGui.QColor("#0d1117"))
+        p = QtGui.QPainter(img)
+        try:
+            y = 52
+            for i, ln in enumerate(lines):
+                f = p.font()
+                f.setPointSize(13 if i == 0 else 10)
+                f.setBold(i == 0)
+                p.setFont(f)
+                p.setPen(QtGui.QColor("#f0883e") if i == 0 else QtGui.QColor("#c9d1d9"))
+                p.drawText(QtCore.QRect(24, y, w - 48, 320),
+                           QtCore.Qt.TextWordWrap | QtCore.Qt.AlignTop, ln)
+                y += 34 + 17 * int(len(ln) / 58)
+                if y > h - 50:
+                    break
+        finally:
+            p.end()
+        stride = img.bytesPerLine()
+        buf = img.constBits()
+        buf.setsize(stride * h)
+        arr = np.frombuffer(bytes(buf), np.uint8).reshape(h, stride)[:, : w * 3].reshape(h, w, 3)
+        return np.ascontiguousarray(arr)
+
+    def _show_placeholder(self, lines, tag="waiting"):
+        """显示占位画面 (清框: 上一路的框属于上一路的帧坐标系, 不能跨源残留)"""
+        try:
+            self._rgb = self._placeholder_rgb(lines)
+            self._view_tag = tag
+            for _wdg in (self.w_orig, self.w_rot):
+                _wdg.set_boxes([])
+            self._paint_frames()
+        except Exception:                                                  # noqa: BLE001
+            pass
+
+    def _reset_view_for_source(self, source):
+        """切换输入源 → 清掉上一路画面/签名/框, 并立刻给出新源占位提示
+
+        (原来只切链路不切画面: 从仿真切到真机, 屏上还挂着 metaworld 的画面,
+         正好被误读成"选了真机却在放仿真视频")
+        """
+        self._last_sig = None
+        self._pending_sig = None
+        self._real_last_fresh = 0.0
+        self._stale_since = None
+        if source == "real":
+            self._show_placeholder([
+                "🎥 真机源 · 等 Orin 帧 …",
+                "通道: Orin 取帧 + JPEG → ROS2 srv /zmax/live_frame → 本机 Docker 客户端 → 本窗口",
+                "真机未连接 / Orin srv 未起 / D405 被占用时, 这里会一直显示本提示,"
+                " 既不显示旧帧也不显示仿真画面",
+            ], tag="waiting-real")
+        elif source == "usbcam":
+            self._show_placeholder([
+                "💻 本机摄像头 · 等第一帧 …",
+                f"设备 {USBCAM_DEV} (内置 UVC, 可改 ZMAX_USBCAM_DEV=/dev/videoN)",
+                "这一路直读本机摄像头, 不经 Orin/Docker — 没连真机也能采真像素做标定/YOLO",
+            ], tag="waiting-usbcam")
+        else:
+            self._show_placeholder([
+                "🧪 仿真源 · 等 metaworld 渲染帧 …",
+                "点 ▶运行 后本窗口自动跟随引擎实况帧 (与 detect_3d 同一帧)",
+                "引擎没在跑时给的是静止初始帧, 状态栏会如实标注 (不假动)",
+            ], tag="waiting-sim")
+
     def _switch(self, _i):
         self._stop_source()
         self._start_source()
 
     def _start_source(self):
-        if self.cb.currentIndex() == 0:
+        # ⚠️ 幂等: 先收掉可能在跑/被孤立的采集线程。
+        #   实测踩坑: __init__ 的 singleShot(200ms) 与用户手切下拉可能各触发一次 _start_source
+        #   → 旧 _CamGrabber 被覆盖成孤儿, 线程不停 → **UVC 设备被永久占用**, 之后任何一路都"打不开摄像头"。
+        if self._sim is not None:
+            self._sim.stop_flag = True
+            self._sim = None
+        if self._cam is not None:
+            _old = self._cam
+            _old.stop_flag = True
+            self._cam = None
+            try:
+                _old.join(timeout=1.5)          # 等它 release 设备
+            except Exception:                                                # noqa: BLE001
+                pass
+        _idx = self.cb.currentIndex()
+        if _idx == 0:
             self.source = "real"
             self._set_annot_root("real")
+            self._reset_view_for_source("real")     # 🖼 清掉上一路画面 (不残留仿真帧)
             self._stale_since = None
             self._last_recover = time.time()
             self.btn.setEnabled(True)
             t = threading.Thread(target=self._ensure_chain_bg, daemon=True)
             t.start()
-        else:
+        elif _idx == 1:
             self.source = "sim"
             self._set_annot_root("sim")
+            self._reset_view_for_source("sim")      # 🖼 清掉上一路画面 (不残留真机帧)
             self.btn.setEnabled(False)
             self._sim = _SimGrabber(self._q, self.chk.isChecked())
             self._sim.start()
-            self._log_line("仿真源已启动 (metaworld corner2 原始渲染帧)")
+            _engine_viewer_wants(True)      # 🎥 告诉引擎"有窗口在看实况" (非视觉档也节流渲染)
+            self._log_line("仿真源已启动 (metaworld corner2; ▶运行 中自动跟随引擎实况帧)")
+        else:
+            # 💻 本机内置摄像头 (UVC 直读) — 无 Orin/Docker 也能出真像素, 用于标定/YOLO 域适应
+            self.source = "usbcam"
+            self._set_annot_root("usbcam")
+            self._reset_view_for_source("usbcam")
+            self.btn.setEnabled(False)
+            _cv2 = None
+            try:                            # ⚠️ 主线程 import cv2 (不在 worker 线程首导)
+                import cv2 as _cv2m                                          # noqa: PLC0415
+                _cv2 = _cv2m
+            except Exception as e:                                           # noqa: BLE001
+                self._log_line(f"⚠️ cv2 不可用 ({type(e).__name__}: {e}) → 摄像头源起不来")
+            self._cam = _CamGrabber(self._q, USBCAM_DEV, USBCAM_FPS, cv2=_cv2)
+            self._cam.start()
+            self._log_line(f"💻 本机摄像头源已启动 ({USBCAM_DEV}, MJPG 1280x720 @{USBCAM_FPS}fps; "
+                           f"数据根 {self.annot_root})")
 
     def _set_annot_root(self, source):
         """输入源切换 → 数据根/会话/类别表跟着切 (仿真 peg·hole·hand ‖ 真机 optical_module 分开存)"""
@@ -429,6 +714,15 @@ class YoloInputViewer(QtWidgets.QDialog):
         if self._sim is not None:
             self._sim.stop_flag = True
             self._sim = None
+            _engine_viewer_wants(False)     # 🎥 窗口不看了 → 引擎恢复零开销 (非视觉档不再渲染)
+        if self._cam is not None:                                       # 💻 摄像头线程收口
+            self._cam.stop_flag = True
+            _ct = self._cam
+            self._cam = None
+            try:
+                _ct.join(timeout=1.5)      # 等它把设备 release 掉 (UVC 独占: 不等会导致切回时"打不开")
+            except Exception:                                            # noqa: BLE001
+                pass
         try:
             while True:
                 self._q.get_nowait()
@@ -459,19 +753,59 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._last_recover = time.time()
             threading.Thread(target=self._ensure_chain_bg, daemon=True).start()
 
-    def _clamp_to_screen(self, silent=True):
-        """屏幕变了 (拔外接显示器/换分辨率) 就把窗口拉回可见范围 —— 实测: 拔屏后窗口 2436x797 落到 1920x1200 屏外,
-        用户看到的现象就是"窗口跑到屏幕外面去了"。只在越界时才动 (不打断用户手动缩放)。"""
+    def _screens(self):
+        """当前**所有**屏幕的可用区域 (多屏=虚拟桌面)。
+        ⚠️ 判越界必须遍历全部屏 —— 只看 primaryScreen 会把副屏当成"屏幕外"。"""
+        out = []
         try:
-            scr = QtWidgets.QApplication.primaryScreen().availableGeometry()
-            w = min(self.width(), max(700, scr.width() - 40))
-            h = min(self.height(), max(460, scr.height() - 40))
-            x = min(max(self.x(), scr.x()), scr.x() + max(0, scr.width() - w))
-            y = min(max(self.y(), scr.y()), scr.y() + max(0, scr.height() - h))
+            for s in QtWidgets.QApplication.screens():
+                ag = s.availableGeometry()
+                if ag.width() > 0 and ag.height() > 0:
+                    out.append(ag)
+        except Exception:                                                  # noqa: BLE001
+            pass
+        return out
+
+    @staticmethod
+    def _visible_ratio(r, screens):
+        """窗口矩形落在所有可用屏幕内的面积占比"""
+        area = max(1, r.width() * r.height())
+        vis = 0
+        for ag in screens:
+            i = r.intersected(ag)
+            if i.width() > 0 and i.height() > 0:
+                vis += i.width() * i.height()
+        return vis / area
+
+    def _clamp_to_screen(self, silent=True):
+        """窗口真跑到**所有屏幕之外** (拔外接屏 / 换分辨率) 才拉回可见范围。
+
+        ⚠️ 2026-09-17 老倪: 「窗口拖到扩展屏就自己跳回笔记本屏」的根因 —— 原实现拿
+        primaryScreen() (eDP-1 1920x1200) 当唯一边界, 而 _tick 每 5s 会调它一次
+        (见 _tick: `if time.time() - self._last_clamp > 5.0`), 于是窗口被拖到 HDMI
+        (x≥1920) 就被判"越界"→ setGeometry 拽回主屏, 实测 t=5s 跳回 (x=2332→586)。
+        修法: ①按全部屏幕判可见性 —— 在任一屏可见 ≥40% 就完全不动 (拖到副屏=完全可见, 不干预)
+              ②真越界时拉回**离窗口中心最近的屏** (拔掉 HDMI 后该屏区域消失 → 回 eDP, 原功能不丢)
+        """
+        try:
+            screens = self._screens()
+            if not screens:
+                return False
+            r = QtCore.QRect(self.x(), self.y(), self.width(), self.height())
+            if self._visible_ratio(r, screens) >= 0.4:
+                return False                     # 在多屏桌面上可见 → 用户放哪就是哪
+            c = r.center()
+            target = min(screens, key=lambda ag: (ag.center().x() - c.x()) ** 2
+                         + (ag.center().y() - c.y()) ** 2)
+            w = min(self.width(), max(700, target.width() - 40))
+            h = min(self.height(), max(460, target.height() - 40))
+            x = min(max(self.x(), target.x()), target.x() + max(0, target.width() - w))
+            y = min(max(self.y(), target.y()), target.y() + max(0, target.height() - h))
             if (w, h, x, y) != (self.width(), self.height(), self.x(), self.y()):
                 self.setGeometry(x, y, w, h)
                 if not silent:
-                    self._log_line(f"屏幕变化 → 窗口拉回屏内: ({x},{y}) {w}x{h} (屏 {scr.width()}x{scr.height()})")
+                    self._log_line(f"窗口在所有屏之外 → 拉回最近屏: ({x},{y}) {w}x{h} "
+                                   f"(屏 {target.width()}x{target.height()} @{target.x()},{target.y()})")
                 return True
         except Exception:                                                  # noqa: BLE001
             pass
@@ -610,8 +944,42 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._clamp_to_screen(silent=False)
         if self.source == "real":
             self._tick_real()
+        elif self.source == "usbcam":
+            self._tick_cam()                        # 💻 本机摄像头 (队列帧)
         else:
             self._tick_sim()
+
+    def _tick_cam(self):
+        """💻 本机摄像头帧刷新 (UVC 队列帧; 与仿真同一条取帧路径, 只是来源不同)"""
+        try:
+            d = self._q.get_nowait()
+        except queue.Empty:
+            return
+        if "err" in d:
+            self.st.setText("⚠️ " + d["err"] + f"\n设备: {USBCAM_DEV} (可用 ZMAX_USBCAM_DEV 换)")
+            return
+        rgb = d["rgb"]
+        h, w = rgb.shape[:2]
+        if self._frozen:
+            self._pending = rgb                    # 冻结(标定中): 攒着, 点「下一帧」再显示
+        else:
+            self._rgb = rgb
+            self._view_tag = "usbcam"
+            self._paint_frames()
+        self._sim_fps_n += 1
+        if time.time() - self._sim_fps_t >= 1.0:
+            self._sim_fps = self._sim_fps_n / max(1e-6, time.time() - self._sim_fps_t)
+            self._sim_fps_n, self._sim_fps_t = 0, time.time()
+        info = d.get("info") or {}
+        self._frame_meta = {"device": info.get("device"), "src": info.get("src"),
+                            "seq": None, "age_s": 0.0, "ok": True, "stale": False}
+        self.st.setText(f"💻 本机摄像头 (UVC 直读) · {w}x{h} · {self._sim_fps:.1f} FPS"
+                        f"{'  🧊 已冻结(标定中)' if self._frozen else ''}\n"
+                        f"设备: {info.get('device')} · {info.get('src')} (V4L2 只读, 不碰 Orin/Docker)\n"
+                        f"口径: 与真机/仿真同路 (BGR→RGB), 可直接拖框标定 → 构建数据集 → 训 YOLO\n"
+                        f"数据根: {self.annot_root} · 会话 {self._session} · 本窗已存 {self._n_saved} 张"
+                        f" · 当前帧框 {len(self.w_orig.boxes())} 个\n"
+                        f"双画面: 左=原始 (0°) · {('右=旋转 ' + str(self._rot_deg()) + '° (同一帧旋转)') if self.chk_rot.isChecked() else '右窗已关'}")
 
     def _tick_real(self):
         meta = None
@@ -620,33 +988,65 @@ class YoloInputViewer(QtWidgets.QDialog):
                 meta = json.load(open(LIVE_META, encoding="utf-8"))
             except Exception:                                              # noqa: BLE001
                 meta = None
+        _stale_gap_s = 10.0        # 超过这么久没有新鲜真机帧 → 换占位画面 (不拿旧图冒充实时)
+        _since_fresh = time.time() - getattr(self, "_real_last_fresh", 0.0)
         if not os.path.isfile(LIVE_JPG):
             self.st.setText("⚠️ 还没有帧文件 " + LIVE_JPG + "\n"
                             "   链路状态: " + (self._chain_state or "启动中…") +
                             "\n   (Orin 侧 srv 未起 / Docker 客户端未起 / D405 UVC 被占用 都可能)")
+            if not self._frozen and _since_fresh > _stale_gap_s:
+                self._show_placeholder([
+                    "🎥 真机源 · 无帧 (真机未连接)",
+                    "还没有帧文件: " + LIVE_JPG,
+                    "链路状态: " + (self._chain_state or "启动中…"),
+                    "排查: Orin 侧 srv 未起 / Docker 客户端未起 / D405 UVC 被占用",
+                    "本窗口不会用旧帧或仿真帧占位",
+                ], tag="no-frame-real")
             self._maybe_recover()
             return
+        # 新鲜度判决先做 (决定"能不能拿这个文件画面")
+        ok = bool(meta and meta.get("ok"))
+        age = meta.get("age_s") if meta else None
+        stale = bool(meta and meta.get("stale")) or (age is not None and age > 5.0)
+        _fresh = ok and not stale
         try:
             st = os.stat(LIVE_JPG)
-            sig = (int(st.st_mtime_ns), st.st_size)
-            if sig != self._last_sig:
+            sig = (st.st_mtime_ns, st.st_size)
+            if _fresh and sig != self._last_sig:       # ⚠️ 只有新鲜帧才允许上屏
                 self._last_sig = sig
                 if not self._frozen:
                     rgb = rgb_from_file(LIVE_JPG)
                     if rgb is not None:
                         self._rgb = rgb
+                        self._view_tag = "real"
                         self._paint_frames()
                 else:
                     self._pending_sig = sig
         except Exception:                                                  # noqa: BLE001
             pass
+        if _fresh:
+            self._real_last_fresh = time.time()
+            self._stale_since = None
+        else:
+            self._maybe_recover()
+            if not self._frozen and _since_fresh > _stale_gap_s:
+                _last = ""
+                try:
+                    _last = time.strftime("%H:%M:%S", time.localtime(os.stat(LIVE_JPG).st_mtime))
+                except Exception:                                          # noqa: BLE001
+                    pass
+                self._show_placeholder([
+                    "🎥 真机源 · 无新帧 (真机未连接 / 链路不通)",
+                    "原因: " + str((meta or {}).get("reason") or ("缺 meta 文件 " + LIVE_META)),
+                    f"最后真机帧: {_last} ({int(_since_fresh)}s 前, {int((meta or {}).get('age_s') or 0)}s 龄)"
+                    if _last else "本地帧文件没有可用时间戳",
+                    "通道: Orin 取帧 + JPEG → /zmax/live_frame → 本机 Docker → 本窗口",
+                    "本窗口只显示新鲜真机帧; 旧帧/仿真帧都不会拿来顶替",
+                ], tag="stale-real")
         if not meta:
             self.st.setText(f"⚠️ 有帧文件但缺 meta ({LIVE_META}) → 无法判定新鲜度")
             self._maybe_recover()
             return
-        ok = bool(meta.get("ok"))
-        age = meta.get("age_s")
-        stale = bool(meta.get("stale")) or (age is not None and age > 5.0)
         head = "✅ 实时真机帧" if (ok and not stale) else ("⚠️ 无新帧 (显示的是最后一帧)" if ok else "❌ 链路无数据")
         if ok and not stale:
             self._stale_since = None                  # 有新鲜帧 → 复位自愈计时
@@ -686,9 +1086,23 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._sim_fps_n, self._sim_fps_t = 0, time.time()
         self._frame_meta = {"device": d["info"].get("device"), "src": d["info"].get("src"),
                             "seq": None, "age_s": 0.0, "ok": True, "stale": False}
+        self._view_tag = "sim-engine" if d["info"].get("engine") else "sim-idle"
+        _eng = bool(d["info"].get("engine"))
+        if _eng:
+            self.st.setText(f"🎥 引擎实况帧 · 与 ▶运行 同步 (metaworld corner2) · {w}x{h}"
+                            f" · step={d['info'].get('step')} · 帧龄 {d['info'].get('age', 0):.2f}s"
+                            f"{'  🧊 已冻结(标定中)' if self._frozen else ''}\n"
+                            f"来源: {d['info'].get('src')} · {d['info'].get('device')}\n"
+                            f"口径: 与引擎 detect_3d 同一帧 (引擎每步 ~0.5-1s, 窗口 15Hz 取最新)\n"
+                            f"标定: 数据根 {self.annot_root} · 会话 {self._session} · 本窗已存 {self._n_saved} 张"
+                            f" · 当前帧框 {len(self.w_orig.boxes())} 个\n"
+                            f"双画面: 左=原始 (0°) · {('右=旋转 ' + str(self._rot_deg()) + '° (同一帧旋转)') if self.chk_rot.isChecked() else '右窗已关'}")
+            return
         self.st.setText(f"🧪 仿真渲染帧 (metaworld corner2) · {w}x{h} · {self._sim_fps:.1f} FPS"
                         f"{'  🧊 已冻结(标定中)' if self._frozen else ''}\n"
                         f"设备: {d['info'].get('device')}\n"
+                        f"⚠️ 引擎未在跑 → 这是**静止的初始帧** (对齐器 env 只 reset 不 step); "
+                        f"点 ▶运行 后本窗口自动切到引擎实况\n"
                         f"双画面: 左=原始 (0°) · {('右=旋转 ' + str(self._rot_deg()) + '° (同一帧旋转)') if self.chk_rot.isChecked() else '右窗已关'}\n"
                         f"标定: 数据根 {self.annot_root} · 会话 {self._session} · 本窗已存 {self._n_saved} 张 · 当前帧框 {len(self.w_orig.boxes())} 个\n"
                         f"用途: 与真机帧做口径对照 (朝向 rot90 / 通道 / 内参 / 深度)")
@@ -878,7 +1292,9 @@ class YoloInputViewer(QtWidgets.QDialog):
         """📌 真值行 1Hz 刷新 —— 末端(手/头)/光模块 的 x y z · 距孔口 · 新鲜度。
         自解释: 每个数都带物理含义与坐标系; 拿不到的一律显示"— + 原因", 不拿旧值/默认值冒充 (老倪红线)。"""
         if self.source != "real":
-            self.lbl_truth.setText("📌 真值: 当前是仿真源 — 切到「🎥 真机 RealSense」才会读 Orin 位姿真值")
+            self.lbl_truth.setText("📌 真值: 当前是 "
+                                   + ("💻 本机摄像头源" if self.source == "usbcam" else "仿真源")
+                                   + " — 切到「🎥 真机 RealSense」才会读 Orin 位姿真值")
             return
         t = self._truth_snapshot()
         if not t or not t.get("tcp"):
@@ -1017,12 +1433,26 @@ class YoloInputViewer(QtWidgets.QDialog):
 
 
 def open_input_viewer(parent=None, module=None, source: str = "real"):
-    """给画布右键菜单用: 复用窗口, 打开即显示实时原始输入流"""
+    """给画布右键菜单用: 复用窗口, 打开即显示实时原始输入流
+
+    ⚠️ 2026-09-17 老倪: 复用旧窗口时必须把**输入源**也对齐 —— 窗口是单例 (_cur),
+    原来只 raise_() 不管源, 于是"上次开的是真机窗口 → 这次画布在仿真也给你放现场视频"。
+    """
     win = getattr(YoloInputViewer, "_cur", None)
     if win is not None:
         try:
             if not win.isVisible():
                 win.show()
+            # 源对齐: 0=真机 RealSense / 1=仿真 metaworld (setCurrentIndex 会触发 _switch 换源)
+            # 💻 用户在窗口里手动选了「本机摄像头」→ 尊重手动选择, 菜单打开时不动它
+            try:
+                _want = _SRC_IDX.get(str(source), 0)
+                _cur_is_cam = (getattr(win, "source", "") == "usbcam")
+                if (not _cur_is_cam) and getattr(win, "cb", None) is not None \
+                        and win.cb.currentIndex() != _want:
+                    win.cb.setCurrentIndex(_want)
+            except Exception:                                              # noqa: BLE001
+                pass
             win.raise_()
             win.activateWindow()
             return win
@@ -1032,12 +1462,28 @@ def open_input_viewer(parent=None, module=None, source: str = "real"):
     YoloInputViewer._cur = win
     # 两个子窗口并排 ⇒ 默认宽度加倍; 屏幕放不下就按可用宽度收 (别出屏)
     w, h = 1320, 760
+    ag = None
     try:
-        scr = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        w = min(w, max(700, scr.width() - 80))
-        h = min(h, max(480, scr.height() - 80))
+        _app = QtWidgets.QApplication
+        # 🖥 2026-09-17 老倪: 子窗开在**主窗所在那块屏** (原按 primaryScreen → 主窗已拖到 HDMI,
+        #   子窗还是永远弹在笔记本屏, 每次都要手拖)
+        scr = None
+        try:
+            if parent is not None:
+                c = parent.window().frameGeometry().center()
+                scr = _app.screenAt(c) if hasattr(_app, "screenAt") else None
+        except Exception:                                                  # noqa: BLE001
+            scr = None
+        if scr is None:
+            scr = _app.primaryScreen()
+        if scr is not None:
+            ag = scr.availableGeometry()
+            w = min(w, max(700, ag.width() - 80))
+            h = min(h, max(480, ag.height() - 80))
     except Exception:                                                      # noqa: BLE001
-        pass
+        ag = None
     win.resize(w, h)
+    if ag is not None:
+        win.move(ag.x() + max(0, (ag.width() - w) // 2), ag.y() + max(0, (ag.height() - h) // 2))
     win.show()
     return win
