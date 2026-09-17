@@ -1,0 +1,30 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+① 菜单项: YOLO 节点右键应出现「打开输入图像 (实时原始视频流)」并真的打开窗口
+  ✅ 菜单含该入口 (菜单项 7 个)
+  ✅ 点击后打开了输入图像窗口 
+② 仿真源: 窗口显示 metaworld 原始渲染帧
+  ✅ 拿到帧 (QLabel 有 pixmap) 501x501
+  ✅ 状态行说明是仿真渲染 | 🧪 仿真渲染帧 (metaworld corner2) · 480x480 · 12.7 FPS
+③ 真机链路 (Orin srv + Docker 客户端) → 窗口显示 D405 原始帧
+   链路状态: Orin srv: OK · Docker 客户端: OK
+  ✅ 拿到真机帧 (pixmap) 641x481
+  ✅ 画面持续更新 (≥5 个不同帧) 观察到 211 个不同 (mtime,size)
+  ✅ 状态行含设备身份 (RealSense/8086:0b5b/序列号) | 设备: /dev/video2 Intel(R) RealSense(TM) Depth Ca 8086:0b5b sn=255323073
+  ✅ 状态行明确'实时/无新帧'判定 | ✅ 实时真机帧   ← 输入源: uvc   (640x480)
+
+结论: ✅ 全部通过
+Exception ignored in: <function OffScreenViewer.__del__ at 0x75f18d57e7a0>
+Traceback (most recent call last):
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/gymnasium/envs/mujoco/mujoco_rendering.py", line 235, in __del__
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/gymnasium/envs/mujoco/mujoco_rendering.py", line 232, in free
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/mujoco/glfw/__init__.py", line 35, in free
+TypeError: 'NoneType' object is not callable
+Exception ignored in: <function GLContext.__del__ at 0x75f18db85b20>
+Traceback (most recent call last):
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/mujoco/glfw/__init__.py", line 41, in __del__
+  File "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/mujoco/glfw/__init__.py", line 35, in free
+TypeError: 'NoneType' object is not callable
