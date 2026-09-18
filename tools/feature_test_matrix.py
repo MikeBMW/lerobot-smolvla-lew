@@ -34,6 +34,13 @@ FEATURES = [
     ("F11", "各层开关独立(可叠加)",          "ALL","SS_L4_*",               "self:no_mutex",                        "python", "无档位互斥"),
     ("F12", "唯一执行出口",                  "ALL","-",                     "self:single_exit",                     "python", "出口计数=1"),
     ("F13", "仿真↔真机随时切换",             "ALL","MODE_ORDER",            "self:mode_switch",                     "python", "三模式入口在"),
+    # ── 2026-09-18 补齐: manifold 层模块能力 (此前 13 项未覆盖) ──
+    ("F14", "自适应增益随风险收紧",           "L2", "SS_ADAPT_GAIN",         "tools/verify_adaptive_gain.py",        "script", "增益有界且越危险不增"),
+    ("F15", "共享意图编码(两态同算子)",        "L2", "-",                     "tools/verify_intent_pair.py",          "script", "两态同算子且都产动作"),
+    ("F16", "动作似然/行为对齐",              "L2", "-",                     "tools/verify_likelihood_head.py",      "script", "似然可算且可反传"),
+    ("F17", "接触/性能流形度量",              "L4", "SS_L4_FIBER",           "tools/verify_manifold_layer.py",       "script", "偏离风险≥对齐"),
+    ("F18", "潜空间一步预测",                 "L4", "SS_L4_INTENT_LINE",     "tools/verify_predictor_layer.py",      "script", "前向形状正确且非零"),
+    ("F19", "能力栈逐层收缩(可行域收窄)",      "ALL","-",                     "tools/verify_capability_stack.py",     "script", "越界100%夹紧"),
 ]
 
 
