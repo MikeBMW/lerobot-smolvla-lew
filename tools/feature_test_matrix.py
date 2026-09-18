@@ -78,7 +78,9 @@ def run_self_check(fn):
 def run_script(path):
     if not os.path.exists(path):
         return False, "用例脚本不存在"
-    r = subprocess.run(["timeout", "400", "gui-venv311/bin/python", "-u", path],
+    # 超时预算: 慢用例 (L4 纤维丛零回退要跑 625M 模型 CPU bf16) 给 900s
+    to = "900" if any(s in path for s in ("fiber_zero_regression", "l4_zero_regression", "src_switch", "annot_sim")) else "400"
+    r = subprocess.run(["timeout", to, "gui-venv311/bin/python", "-u", path],
                        capture_output=True, text=True, cwd=ROOT,
                        env={**os.environ, "PYTHONPATH": f"{ROOT}/src"})
     tail = [x for x in (r.stdout or "").strip().split("\n") if x.strip()][-1:] or [""]

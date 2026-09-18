@@ -55,8 +55,8 @@ while time.time() - t0 < 60 and v._rgb is None:
     pump(0.2)
 chk("拿到仿真帧", v._rgb is not None, f"| shape={None if v._rgb is None else v._rgb.shape}")
 if v._rgb is not None:
-    chk("是真渲染帧 (480x480+非纯色)", v._rgb.shape[:2] == (480, 480) and float(v._rgb.std()) > 5,
-        f"| std={float(v._rgb.std()):.1f} 均值={float(v._rgb.mean()):.0f}")
+    chk("是真渲染帧 (480x640+非纯色, 对齐真机 D405 分辨率)", v._rgb.shape[:2] == (480, 640) and float(v._rgb.std()) > 5,
+        f"| shape={v._rgb.shape[:2]} std={float(v._rgb.std()):.1f} 均值={float(v._rgb.mean()):.0f}")
 chk("左窗+右窗都有画面", v.w_orig.pixmap() is not None and not v.w_orig.pixmap().isNull()
     and v.w_rot.pixmap() is not None and not v.w_rot.pixmap().isNull(),
     f"| 左 {v.w_orig.pixmap().width()}x{v.w_orig.pixmap().height()} 右 {v.w_rot.pixmap().width()}x{v.w_rot.pixmap().height()}")
