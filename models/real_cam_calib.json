@@ -1,10 +1,29 @@
 {
  "_note": "真机相机标定 — 由 tools/calib_real_cam.py 生成/填写。K 与 T_base_cam 未标定前, real_yolo_perceive 只给 2D 框并在相机系报点 (显式 gap, 不编造 base 系坐标)。",
- "ready": false,
- "reason": "未标定: 缺 K (内参). 两条路: ①棋盘格 ~10 分钟: python3 tools/calib_real_cam.py --intrinsics <图目录> ; ②有 RealSense SDK 的机器上 rs-enumerate-devices -c 或 pyrealsense2 pipeline.get_active_profile() 直接读 D405 彩色流内参 (工厂标定值)。",
- "K": null,
- "dist": null,
- "image_size": [640, 480],
+ "ready": true,
+ "reason": "内参已成 (K 来自 ROS camera_info)。3D 仍需: 手眼 T_base_cam (缺) / 台面 plane_z (缺)",
+ "K": [
+  394.0623474121094,
+  0.0,
+  318.443603515625,
+  0.0,
+  393.472412109375,
+  238.658447265625,
+  0.0,
+  0.0,
+  1.0
+ ],
+ "dist": [
+  -0.0539163276553154,
+  0.057097118347883224,
+  0.00034414068795740604,
+  0.0009524741326458752,
+  -0.01931513287127018
+ ],
+ "image_size": [
+  640,
+  480
+ ],
  "T_base_cam": null,
  "plane_z": null,
  "_how_to_fill": {
@@ -13,5 +32,17 @@
   "T_base_cam": "4x4 行主序 16 个数 — 相机系→base_link 的齐次变换 (相机系约定: +x 右, +y 下, +z 朝前/光轴)",
   "plane_z": "无深度时的回退平面 (base 系 z 值), 例 {\"光模块\": 0.02, \"hole\": 0.02, \"hand\": 0.15}; 工装面高度用夹爪或塞尺量一次"
  },
- "_verify": "填完跑: gui-venv311/bin/python tools/real_yolo_perceive.py --source uvc:2 --frames 3 --calib models/real_cam_calib.json   → meta 里 ext_src 应变成 'T_base_cam(tf/标定)', gaps 不再报无内参/无外参"
+ "_verify": "填完跑: gui-venv311/bin/python tools/real_yolo_perceive.py --source uvc:2 --frames 3 --calib models/real_cam_calib.json   → meta 里 ext_src 应变成 'T_base_cam(tf/标定)', gaps 不再报无内参/无外参",
+ "distortion_model": "plumb_bob",
+ "K_src": "真机出厂内参 · /realsense/color/camera_info (ROS camera_info, 只读订阅) · 采集于 2026-09-18 18:09:25",
+ "fx_fy_cx_cy": [
+  394.0623474121094,
+  393.472412109375,
+  318.443603515625,
+  238.658447265625
+ ],
+ "_todo": {
+  "T_base_cam": "手眼外参未标定: 可①棋盘格 tools/calib_real_cam.py --handeye ②由 (框,TCP) 自监督解手眼 box3d_live_box.py --collect",
+  "plane_z": "台面高度未标定: 用夹爪或塞尺量一次"
+ }
 }
