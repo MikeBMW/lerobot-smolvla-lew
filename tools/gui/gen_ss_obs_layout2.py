@@ -33,7 +33,7 @@ ROWS = [
     ("🌍 L4 · 光模块插拔链 (环境渲染 → INTACT → 引擎 → 视频)", "swbg_l4sw",
      ["swds", "swintact", "swworld", "swvideo"]),
     ("🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)", "ssbg5",
-     ["ssllm_in", "ss_mem_share", "ssreason", "ssskill", "ssllm",
+     ["ssllm_in", "n_eng_mem", "ss_mem_share", "ssreason", "ssskill", "ssllm",
       "n_mem_links", "n_intent_direct", "n_intent_bundle", "n_skill_dict"]),
     ("🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)", "row_mem_l4", ["ss_mem_l4", "ss_mem_field"]),
     ("🏆 L4 专家自主功能 · 标定与流形世界模型", "ssbg7",
@@ -187,6 +187,20 @@ def main():
     for nid in DEAD_BANDS:
         n = nodes[nid]
         n["x"], n["y"], n["w"], n["h"] = 0, BASE_Y - 300, 100, 8
+
+    # ── 反向线自动标注: 右→左的边 = 双向关系的"上报/下发"另一半 → label 前加 ↩ (画布既有约定) ──
+    annotated = 0
+    for l in d["links"]:
+        u, w = l.get("f"), l.get("t")
+        if u not in nodes or w not in nodes:
+            continue
+        if nodes[u].get("type") == "row_bg" or nodes[w].get("type") == "row_bg":
+            continue
+        # ⚠️ 只**加**↩, 绝不剥掉既有的 ↩ (剥掉=标签变了 → 零回退工具按 (源,目标,标签) 比对会判"丢线", 实测踩过)
+        if nodes[u]["x"] >= nodes[w]["x"] and not (l.get("label") or "").startswith("↩"):
+            l["label"] = "↩ " + (l.get("label") or "").strip()
+            annotated += 1
+    print(f"反向线标 ↩: {annotated} 条新增标注")
 
     # 反向连线统计 (按落位后的实际坐标)
     v = [(l["f"], l["t"]) for l in d["links"]

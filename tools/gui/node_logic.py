@@ -124,7 +124,7 @@ def _demo_node_output(module, node, ctx):
     # 🧩 原子技能节点 (2026-09-07 老倪: 技能层 demo 也要真实数值 — 轻量读 tr, 无副作用)
     try:
         if (match_node(name) or "").startswith("sssk"):
-            return node_ss_skill(ctx)
+            return node_ss_atomic(ctx)
     except Exception:
         pass
     # 🅰️🅱️🅾️ 通用算子 A/B/C (2026-09-10 老倪: L2 原子技能行最左侧万能节点,
@@ -3150,6 +3150,9 @@ def node_ss_llm(ctx):
         spec.loader.exec_module(m)
         p = m.TaskPlanner()
         ins = (ctx.get("params") or {}).get("instruction", "插入光模块")
+        _ctx_txt = _llm_context_text()          # 场景理解 + 总装记忆上下文 (真实读, 取不到如实说)
+        if log and _ctx_txt:
+            log(f"   📥 规划上下文: {_ctx_txt[:200]}")
         tokens = p.plan(ins)
         names = []
         for t in tokens:
@@ -3199,6 +3202,59 @@ def node_ss_reason(ctx):
         return False
 
 
+def _skill_spec_from_env(log=None):
+    """🛠 技能编排器的**环境输入** (老倪 2026-09-19: "环境数据要输入给技能编排层的大语言模型")
+
+    三路真实数据汇成规格文本, 交 SkillComposer 编排:
+      ① 环境: 实时帧来源 (真机 D405 旁路帧 / metaworld 仿真渲染帧) + 帧龄
+      ② 现场: 场景理解结果 (SceneVLM describe: 目标/在不在夹爪/画面质量)
+      ③ 记忆: 顶层宏观记忆的下行建议 (macro_memory.advice)
+    哪一路取不到就**如实打印**, 不假装看过现场 (老倪红线)。
+    """
+    import json
+    parts, notes = [], []
+    try:
+        meta = _VLM.get("img") or {}
+        if meta.get("src") in ("real", "sim"):
+            parts.append("环境=%s(帧 %s, 帧龄 %ss)" % (
+                "真机产线" if meta["src"] == "real" else "metaworld 仿真",
+                meta.get("frame"), meta.get("frame_age_s")))
+        else:
+            notes.append("环境帧不可用")
+    except Exception:                                                          # noqa: BLE001
+        notes.append("环境帧读取异常")
+    try:
+        sc = _SS_STATE.get("scene_vlm") or {}
+        j = sc.get("json") or {}
+        if sc.get("ok") and j:
+            bits = ["%s=%s" % (k, j[k]) for k in ("目标是什么", "在夹爪上吗", "朝向", "光照") if j.get(k)]
+            q = j.get("画面质量")
+            if isinstance(q, dict):
+                bad = [k for k, v in q.items() if v not in (False, None, "false", "False")]
+                bits.append("画面问题=" + (",".join(bad) if bad else "无"))
+            parts.append("现场: " + (" · ".join(bits) if bits else "已理解"))
+        else:
+            notes.append("场景理解未就绪 (%s)" % (sc.get("src") or "VLM 未跑"))
+    except Exception:                                                          # noqa: BLE001
+        notes.append("场景理解读取异常")
+    try:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
+        from lerobot.memory.macro_memory import MacroMemory                     # noqa: PLC0415
+        adv = (MacroMemory().store.get("advice") or {})
+        if adv:
+            parts.append("宏观记忆建议: " + json.dumps(adv, ensure_ascii=False)[:120])
+        else:
+            notes.append("宏观记忆暂无下行建议")
+    except Exception as e:                                                     # noqa: BLE001
+        notes.append("宏观记忆不可用 (%s)" % type(e).__name__)
+    spec = (ctx_default_spec() if False else "新型 OSFP 光模块, 高插入力")
+    if parts:
+        spec = spec + " | " + " | ".join(parts)
+    if log and notes:
+        log("   ⚠️ 环境数据缺: " + "; ".join(notes))
+    return spec
+
+
 def node_ss_skill(ctx):
     """🛠 技能编排器 — 新型号规格 → 新技能序列 + 力阈值/节拍 (双击=编排演示)"""
     log = ctx.get("log")
@@ -3209,7 +3265,10 @@ def node_ss_skill(ctx):
         m = _ilu.module_from_spec(spec)
         spec.loader.exec_module(m)
         c = m.SkillComposer()
-        spec_text = (ctx.get("params") or {}).get("spec", "新型 OSFP 光模块, 高插入力")
+        spec_text = (ctx.get("params") or {}).get("spec") or _skill_spec_from_env(log)
+        if log:
+            log(f"   📥 环境输入口径: 数据源/真机实况 (in1/in2) + 场景理解 + 宏观记忆建议 → 规格文本 "
+                f"(见 _skill_spec_from_env; 缺哪一路会如实打印)")
         out = c.compose(spec_text)
         if log:
             log(f"🛠 技能编排器: 规格「{spec_text}」")
@@ -3223,6 +3282,71 @@ def node_ss_skill(ctx):
     except Exception as e:
         if log:
             log(f"⚠️ 技能编排器演示失败: {e}")
+        return False
+
+
+def _llm_context_text():
+    """🧠 任务规划器/🔍异常推理器的输入上下文: 场景理解 + 总装记忆条目 (真实读)"""
+    import json
+    bits = []
+    try:
+        sc = _SS_STATE.get("scene_vlm") or {}
+        if sc.get("ok") and (sc.get("json") or {}):
+            j = sc["json"]
+            items = [f"{k}={j[k]}" for k in ("目标可见", "在夹爪上吗", "标定建议") if j.get(k)]
+            bits.append("场景(" + str(sc.get("src", "?")) + "): " + " · ".join(items))
+    except Exception:                                                          # noqa: BLE001
+        pass
+    try:
+        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        sh = os.path.join(_REPO_ROOT, "data", "shared_memory.json")
+        if os.path.exists(sh):
+            s2 = json.load(open(sh, encoding="utf-8"))
+            m2 = s2.get("meta") or {}
+            if m2.get("context"):
+                bits.append("总装: " + str(m2["context"])[:120])
+    except Exception:                                                          # noqa: BLE001
+        pass
+    if not bits:
+        bits.append("(无场景/总装上下文 — 规划仅用指令文本)")
+    return " | ".join(bits)
+
+
+def node_ss_eng_mem(ctx):
+    """📚 工程记忆 · 技能与经验库 → 🧠 总装记忆中枢 (老倪 2026-09-19: 与飞书端商量好, 工程记忆同步到总装)
+
+    读**真实文件**: docs/memory/*.md (跨端同步记忆) + ~/.hermes/memories/*.md (Hermes 记忆) +
+    ~/.hermes/skills/**/SKILL.md (技能库) → 汇总条数/最新更新 → 追加式同步进顶层宏观记忆
+    (macro_memory.engineering, 幂等指纹去重 + 原子写 + 回读校验)。
+    """
+    log = ctx.get("log")
+    try:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
+        from lerobot.memory.eng_memory import EngMemory                         # noqa: PLC0415
+        m = EngMemory(repo=_REPO_ROOT)
+        snap = m.collect()
+        c = snap["counts"]
+        if log:
+            log(f"📚 工程记忆 (真实文件): 同步文档 {c['docs_memory_files']} 篇 · "
+                f"Hermes 记忆 {c['hermes_memory_files']} 个 · 技能 {c['skills']} 条 "
+                f"(小节 {c['skill_sections']}) · 记忆条目 {c['memory_items(§)']} 条")
+            n = snap.get("newest") or {}
+            log(f"   最新: {n.get('mtime_str')} · {os.path.basename(n.get('path', ''))}")
+        r = m.sync_to_macro()
+        if log:
+            if r.get("ok"):
+                log(f"   ⮕ 已同步进 🧠总装记忆中枢 (macro_memory.engineering): "
+                    f"{'写入 %d 个文件条目' % r.get('added_files', 0) if r.get('wrote') else '内容未变(幂等跳过)'}"
+                    f" · llm={r.get('llm')}")
+                if r.get("note"):
+                    log(f"   ℹ️ {r['note']}")
+            else:
+                log(f"   ⚠️ 同步失败: {r.get('why')}")
+        _SS_STATE["eng_memory"] = {"counts": c, "ok": bool(r.get("ok")), "wrote": bool(r.get("wrote"))}
+        return bool(r.get("ok"))
+    except Exception as e:
+        if log:
+            log(f"⚠️ 工程记忆同步失败: {type(e).__name__}: {e}")
         return False
 
 
@@ -3380,6 +3504,7 @@ def node_ss_llm_in(ctx):
 
 _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
 _reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
+_reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 技能与经验库 — docs/memory + Hermes 记忆 + 技能库 → 同步进总装记忆 (源码 eng_memory.py)", node_ss_eng_mem)
 _reg("ss_llm",   ["任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
 _reg("ss_reason", ["异常推理器"], "🔍 异常推理器 — 连续否决/阶段卡死→异常分类+恢复建议; 双击=诊断演示 (源码 planner.py ExceptionReasoner)", node_ss_reason)
 _reg("ss_skill", ["技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)
@@ -3588,7 +3713,7 @@ _EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"),
 _MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
 
 
-def node_ss_skill(ctx):
+def node_ss_atomic(ctx):
     """🧩 原子技能层 (2026-09-07 老倪: 决策层与执行层之间加技能模板层)
     机制: 8 个原子技能 (SK01-08) = 固定轨迹模板; 决策层 (动作调制器状态机经安全边界)
     明确选定当前技能并**实时赋值** (阶段目标/速度), 技能模板被复制实例化 → 快速执行 →
@@ -3785,7 +3910,7 @@ for _skid, _sktag, _skstage, _sktpl in _SKILLS:
          f"🧩 原子技能 {_sktag} · {_sktpl}: 固定轨迹模板 — 决策层选定本技能时实时赋值 "
          f"(阶段目标/速度) → 模板复制实例化快速执行 → 输出执行指令给 🤖执行器 "
          f"(模板源码 skills/atomic_skills.py, 真实源=引擎轨迹当前帧)",
-         node_ss_skill)
+         node_ss_atomic)
 
 # 🔗 2026-09-08 老倪: 原子技能源码集中到 src/lerobot/.../state_space/skills/atomic_skills.py —
 #   右键每个 SK 节点看对应技能类 (独立符号, 防"两节点显示同一段"坑)
