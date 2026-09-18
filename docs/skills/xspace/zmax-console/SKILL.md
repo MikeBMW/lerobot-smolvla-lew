@@ -759,6 +759,28 @@ close 只是隐藏 (无 WA_DeleteOnClose), 对象+GL 上下文都在; 数据源�
 `QFontInfo(QFont('Arial', pt)).pixelSize()` 打真机 px。
 
 - **🗂 模板多行展开布局 (2026-08-05, commit ada65fb1, 老倪: \"你每次都是从一条直线上开始给出, 你需要把所有节点展开, 不要重叠成一条线; 类似的功能, 例如 Action Head, 应该垂直对齐\")**: **用户偏好 — 模板加载节点禁止单行横排 (13+ 节点一条直线出画布外)**。REFERENCE_APPS 条目支持可选**第4元素 layout** (3元组模板兼容, 4元组才启用): `layout = [[节点名...]每行]` 网格 — **行 = 模型分支 (y 递进 230), 列 = 功能角色 (x 递进 260), 空串 \"\" 占位跳过**。同名节点多行出现 → 取各自候选坐标 → **同列垂直对齐** (三模型 Action Head 都落第5列 x=1420, y=80/310/540)。load_reference_app 加 layout 分支: 先 `pos.setdefault(nm, []).append((x,y))` 收集同名多行坐标 → 每节点取 `next(p for p in cands if p not in used)` (used 去重保证共享节点只画一次, 如 metaworld 三行共用顶部一个) → 兜底单行。**⚠️ REFERENCE_APPS 改 4 元组后全仓库 3 处 `for nm, nodes, links in REFERENCE_APPS` 解包全崩 (ValueError) — 必须逐个改 `for item in ...: nm=item[0]`** (参考应用按钮 1758 / _act_build_link_existing / _act_build_finish)。验证 (offscreen): 三模型模板 18节点 / Action Head `len(set(x))==1` 且 `ys == [80,310,540]` / metaworld 只画一次 / 双模型+ACT-Meta 回归 (3元组) 不崩。
+## 控制台两个高频故障 (2026-09-18 实测, 都已修)
+
+### ① 模式下拉切「🔌 本地连接 (Local)」→ 整个控制台 SIGABRT (无弹窗, 直接消失)
+根因: `_on_mode_changed` 里 `modes=["sim","local","real"]` 但 `Z700_ROS2_NODES` 只有 sim/real 两个键
+→ `KeyError: 'local'` 抛在 Qt 槽里没人接 = **Qt 槽内未捕获异常 → qFatal → 整进程中止**
+(日志 /tmp/studio_launch.log: `Fatal Python error: Aborted` + traceback 到 studio.py:7317)。
+同一类坑 2026-09-14 出现过一次 (`Z700_ROS2_NODES["real"]` 被当 dict 调 `.get()`)。
+**纪律: 任何 Qt 槽体都要包 try/except 兜底 (异常只记日志, 绝不冒泡) — 这是"点一下就崩"的通式。**
+修法: 未知/越界模式键一律退回 sim 表 + 如实打日志; 槽体总兜底。
+排查证据: `journalctl --user -u zmax-studio --since "…"` 找 `Fatal Python error`, 看 `Current thread` 那几行。
+
+### ② 「输入图像」真机源"永远无画面", 但 L2 其实一直在吃帧
+`yolo_input_viewer.py` 的真机源原来**只认 srv 落盘** `live_frame.jpg/.json`
+(Orin `/zmax/live_frame` → 本机 Docker `ss_frame_srv_client.py`)。
+Orin 侧服务不可达时 (容器日志 `❌ 服务 /zmax/live_frame 不存在 → 退出`) 该文件冻结在旧时间戳
+→ 窗口按"不上旧帧"纪律显示空/占位, **而真机图像其实一直在流**: Docker tap 落盘 `cam_rs.png`
+(0.x 秒龄, 只读订阅生产话题), **L2 侧 (`ss_yolo_on_real.py` CAND) 吃的就是这条**。
+口径: 窗口显示的真机源必须 = L2 实际消费的那条流 → 加同源回退链
+`cam_rs.png → cam_fp.png → cam_latest.png → srv_cam.png/.jpg`, 逐文件 mtime 新鲜度 (≤10s),
+有新鲜帧就上屏并在状态栏标「来源 / 帧龄 / srv 为何回退」; 全不新鲜 → 占位逐条列候选状态。
+**不要改回"只认 srv"**: Orin 红线=零自研程序, 话题落盘才是常驻正解。
+
 ## 输入图像窗口「三路源」+ 引擎实况取证 (2026-09-17/18, commit 6ef836a7)
 **窗口 = tools/gui/yolo_input_viewer.py, 输入源下拉 3 项: 🎥 真机 RealSense / 🧪 仿真 metaworld / 💻 本机摄像头。**
 - 数据根按源分开 (tools/yolo_annot_dataset.py): `data/yolo_annot`(真机) · `yolo_annot_sim`(仿真) ·

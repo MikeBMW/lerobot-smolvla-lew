@@ -46,12 +46,12 @@ L4'接近'真因: 直驱反向→SS_DIRECT_COS_MIN=0.9+否决步交回引擎; L4
 §
 ThinkBook16p G5: HDMI走dGPU→modeset=1+xorg-nvidia-580(包hold); ~/bin/dual_screen_setup.sh
 §
-Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torque同名双类型→只订JointState; 红线: Orin零自研零自启→采集走4060侧Docker只读订阅; D405驱动未装→真像素走UVC video2|4; 仿真权重真机0检出须微调
+Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torque双类型→只订WrenchStamped(BEST_EFFORT)49.5Hz; 红线: Orin零自研零自启→4060侧Docker只读订阅; D405未装→真像素走UVC video2|4; 真机臂可驱(/move_pose/move_line在线+力控插装原语), operation_state=drag=人工拖动勿下发
 §
 感知源收口: yolo_3d/frame_source.py 四源+profile, 反投影仅一份estimate_3d; 真机3D须K+手眼外参+plane_z(calib_real_cam.py)
 §
 画面≠结果: 仿真窗口idle=静止初始帧(光模块离槽358mm,带横幅), 跑起来=引擎实况帧; /tmp/ss_live_frame.json 记step/depth/lateral; L2=插好收尾, L3/L4全链=放回台面
 §
-看不了图→抓窗口+模板匹配定哪一帧(技法见 pyqt-gui-auto-verification 的 pixel-forensics 参考)
+看不了图→抓窗口+几何断言/模板匹配(pyqt-gui-auto-verification refs)
 §
-内置摄像头/dev/video0 720p30 MJPG(uvcvideo; video2=灰度IR; 1/3=metadata)
+内置摄像头video0 720p30 MJPG, video2=灰度IR
