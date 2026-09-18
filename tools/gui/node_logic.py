@@ -3234,20 +3234,149 @@ def node_ss_bg5(ctx):
     return True
 
 
+# ── 🖼→🧠 场景理解通道 (2026-09-19 老倪: 增加"环境 → 📝 任务指令"节点的数据通道, 节点要能看到场景,
+#    用视觉大模型推进真实标定; 主线程绝不阻塞 —— 一律后台线程 + 结果缓存) ──
+_VLM = {"last": {}, "img": None}
+
+
+def _ctx_params(ctx):
+    try:
+        return (ctx or {}).get("params") or {}
+    except Exception:                                                          # noqa: BLE001
+        return {}
+
+
+def _vlm_frame():
+    """取场景图 (这就是"从环境到节点"的那条通道):
+       ① **真机**: 旁路同一行落盘的最新帧 (与 tcp 同刻配对) — ZMAX_SS_REMOTE_DIR/cam_rs.png
+       ② **仿真**: 感知链缓存的 metaworld 渲染帧 (_YOLO_CACHE['img'])
+       返回 (image_path, src, meta); meta 如实带帧龄/来源 (NTP 回拨时负帧龄拒用)"""
+    meta = {}
+    try:
+        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        cands = [os.path.join(_d, n) for n in ("cam_rs.png", "cam_fp.png", "cam_latest.png")]
+        cands = [c for c in cands if os.path.exists(c)]
+        if cands:
+            f = max(cands, key=os.path.getmtime)
+            age = time.time() - os.path.getmtime(f)
+            if -1.0 <= age <= float(os.environ.get("SS_VLM_FRAME_FRESH_S", "10")):
+                meta = {"frame_age_s": round(age, 2), "frame_src": "真机帧 (D405 · 旁路同刻)",
+                        "frame": os.path.basename(f)}
+                return f, "real", meta
+            meta = {"frame_age_s": round(age, 2), "frame_src": "真机帧(旧)", "frame": os.path.basename(f)}
+    except Exception:                                                          # noqa: BLE001
+        pass
+    img = _YOLO_CACHE.get("img") if "_YOLO_CACHE" in globals() else None
+    if img is not None:
+        try:
+            import numpy as _np
+            from PIL import Image as _Im
+            fp = "/tmp/ss_vlm_frame_%d.png" % os.getpid()
+            _Im.fromarray(_np.asarray(img, dtype=_np.uint8)).save(fp)
+            meta.update({"frame_age_s": None, "frame_src": "仿真 metaworld 渲染帧",
+                         "frame": os.path.basename(fp)})
+            return fp, "sim", meta
+        except Exception:                                                      # noqa: BLE001
+            pass
+    return None, "无", meta
+
+
+def _vlm_ctx(ctx):
+    """给模型的**确定性**上下文 (只做交叉核对, 不让它照抄)"""
+    c = {"instruction": _ctx_params(ctx).get("instruction"), "stage": _SS_STATE.get("stage")}
+    b3 = (_YOLO_CACHE.get("box3d") or {}) if "_YOLO_CACHE" in globals() else {}
+    if b3.get("box2d_obs"):
+        c["box"] = b3.get("box2d_obs")
+    if b3.get("center"):
+        c["tcp"] = [round(v, 4) for v in b3["center"]]
+    return {k: v for k, v in c.items() if v is not None}
+
+
+def _vlm_brief(j):
+    """把模型 JSON 压成一行 (面板自解释: 看到什么/在不在手上/能不能用/下一步)"""
+    if not isinstance(j, dict):
+        return str(j)[:160]
+    keys = ("目标可见", "目标是什么", "在夹爪上吗", "朝向", "这帧可用", "合格", "下一步动作", "标定建议")
+    parts = ["%s=%s" % (k, j[k]) for k in keys if k in j]
+    q = j.get("画面质量")
+    if isinstance(q, dict):
+        bad = [k for k, v in q.items() if v not in (False, None, "false", "False")]
+        parts.append("画面问题=" + (",".join(bad) if bad else "无"))
+    return " · ".join(parts) or str(j)[:160]
+
+
+def _vlm_ask_async(mode, image, ctx, log, fresh_s=8.0):
+    """后台线程调 VLM (主线程绝不阻塞); 8 秒内的同一模式结果直接复用"""
+    import threading as _th
+    last = _VLM.get("last") or {}
+    if (last.get("mode") == mode and time.time() - last.get("at", 0) < fresh_s
+            and (last.get("result") or {}).get("ok")):
+        return last
+    st = {"mode": mode, "at": time.time(), "result": {"ok": False, "why": "调用中…"}, "pending": True}
+    _VLM["last"] = st
+
+    def _work():
+        try:
+            v = _ss_import("scene_vlm").SceneVLM.get()
+            r = getattr(v, mode)(image, ctx)
+            st.update({"result": r, "pending": False, "status": v.status(), "calls": v.calls})
+            _SS_STATE["scene_vlm"] = {"mode": mode, "ok": bool(r.get("ok")), "json": r.get("json"),
+                                      "src": r.get("src"), "status": v.status()}
+            if isinstance(r.get("json"), dict) and r["json"].get("标定建议"):
+                _SS_STATE["llm_next_action"] = r["json"].get("标定建议")
+            if log:
+                if r.get("ok"):
+                    log("🖼🧠 场景理解 (VLM %s · %sms · 第 %s 次): %s"
+                        % (r.get("src"), r.get("latency_ms"), v.calls, _vlm_brief(r.get("json"))))
+                elif r.get("rule"):
+                    log("🖼🧠 无可用 VLM (%s) → **规则回退摘要**: %s" % (r.get("why"), r.get("rule")))
+                else:
+                    log("🖼🧠 场景理解失败: %s" % (r.get("why"),))
+        except Exception as e:                                                 # noqa: BLE001
+            st.update({"result": {"ok": False, "why": "%s: %s" % (type(e).__name__, e)}, "pending": False})
+            if log:
+                log("⚠️ 场景理解异常: %s: %s" % (type(e).__name__, e))
+
+    _th.Thread(target=_work, daemon=True).start()
+    return st
+
+
 def node_ss_llm_in(ctx):
-    """📝 任务指令 — MES 工单 / 自然语言指令输入 → 真实下发 TaskPlanner (planner.py)"""
+    """📝 任务指令 — MES 工单/自然语言 + **场景图 (环境通道)** → VLM 场景理解 → 任务规划器 (planner.py)
+
+    数据通道 (老倪 2026-09-19「增加一条从环境到本节点的数据通道, 这个节点要能看到场景」):
+      in1 = 场景图: 真机最新帧 (D405 旁路同刻) 或 仿真 metaworld 渲染帧, 由 _vlm_frame() 按可用性选
+      指令 = params.instruction (MES 工单 / 自然语言)
+    模型 = SceneVLM: 本地 Qwen2.5-VL-3B worker (无需 key) 或 SS_VLM_URL+SS_VLM_KEY (OpenAI 兼容 API)
+    输出 = _SS_STATE["scene_vlm"] (结构化场景) + _SS_STATE["llm_next_action"] (标定/操作建议) → 下游可读
+    🚫 无模型时只给**规则回退摘要**并如实标注 —— 不假装有视觉理解 (老倪红线)
+    """
     log = ctx.get("log")
     try:
-        ins = (ctx.get("params") or {}).get("instruction", "插入光模块")
+        ins = _ctx_params(ctx).get("instruction", "插入光模块")
         _SS_STATE["instruction"] = ins
+        img, src, meta = _vlm_frame()
+        _VLM["img"] = dict({"src": src}, **meta)
+        if img is None:
+            if log:
+                log("📝 任务指令: 「%s」 → 已下发 🧠任务规划器 (planner.py) · ⚠️ 场景图通道无数据 "
+                    "(真机帧不在 / 仿真帧未采样)" % ins)
+            return True
+        st = _vlm_ask_async("describe", img, _vlm_ctx(ctx), log)
         if log:
-            log(f"📝 任务指令 (真实): 「{ins}」 → 已下发 🧠任务规划器 (planner.py)")
+            log("📝 任务指令: 「%s」 · 场景图 = %s (%s%s)" % (
+                ins, meta.get("frame"), meta.get("frame_src"),
+                (", 帧龄 %ss" % meta["frame_age_s"]) if meta.get("frame_age_s") is not None else ""))
+            r = (st or {}).get("result") or {}
+            if st.get("pending"):
+                log("   🖼🧠 已把场景图发给视觉大模型 (后台线程, 不阻塞画布) — 结果下一拍打印")
+            elif r.get("ok"):
+                log("   → 场景理解已就绪, 已下发 🧠任务规划器 (planner.py)")
         return True
     except Exception as e:
         if log:
-            log(f"⚠️ 任务指令处理失败: {e}")
+            log("⚠️ 任务指令处理失败: %s" % e)
         return False
-
 
 _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
 _reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
