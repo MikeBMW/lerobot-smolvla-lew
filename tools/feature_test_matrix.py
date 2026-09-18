@@ -41,6 +41,8 @@ FEATURES = [
     ("F17", "接触/性能流形度量",              "L4", "SS_L4_FIBER",           "tools/verify_manifold_layer.py",       "script", "偏离风险≥对齐"),
     ("F18", "潜空间一步预测",                 "L4", "SS_L4_INTENT_LINE",     "tools/verify_predictor_layer.py",      "script", "前向形状正确且非零"),
     ("F19", "能力栈逐层收缩(可行域收窄)",      "ALL","-",                     "tools/verify_capability_stack.py",     "script", "越界100%夹紧"),
+    # ── 2026-09-19 多层级记忆系统: 顶层宏观记忆 (老倪: 总装记忆=Qwen 宏观层) ──
+    ("F20", "顶层宏观记忆(跨任务画像+归因+建议)","MEM","SS_MACRO_LLM_URL",       "tools/verify_macro_memory.py",         "script", "只读下层+幂等+建议有据"),
 ]
 
 

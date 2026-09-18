@@ -3941,6 +3941,15 @@ class RealStateSpaceSim:
                              f"dx均值 {_v['dx_mean']} max {_v['dx_max']} | "
                              f"gate {'✅ 可用' if _v['gate_ok'] else '❌ 偏差大'}")
             self._write_shared_memory(tr)
+            # 🧠 2026-09-19 顶层宏观记忆同步 (老倪: "总装记忆对应 Qwen 顶层宏观记忆, 与状态空间工程记忆保持同步")
+            #   · 默认关 (SS_MACRO=0) = 零回退; 开启后每局结束消化新台账 + 刷新分阶段建议
+            #   · 只读下层 (不改 assembly/shared/muscle), 且失败不阻塞主流程 (异常只记录)
+            if os.environ.get("SS_MACRO") == "1":
+                try:
+                    from lerobot.memory.macro_memory import MacroMemory   # noqa: PLC0415
+                    self._macro_sync = MacroMemory().sync()
+                except Exception as _me:                                  # noqa: BLE001
+                    self._macro_sync = {"err": f"{type(_me).__name__}: {_me}"}
         except Exception:
             pass
         # 🎯 2026-09-17: 收尾强制落一次终局度量 (短轮 R0 只跑 ~1s, 1Hz 节流会只留首帧样本)
