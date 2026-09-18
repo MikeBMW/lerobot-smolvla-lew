@@ -22,7 +22,8 @@ import time
 
 import numpy as np
 
-ROOT = "/home/tashan/zmax_yolo"
+ROOT = "/home/tashan/zmax_yolo" if os.path.isdir("/home/tashan/zmax_yolo") else \
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src", "lerobot", "policies", "yolo_3d"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 

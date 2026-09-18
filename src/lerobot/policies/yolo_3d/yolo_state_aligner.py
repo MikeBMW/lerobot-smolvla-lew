@@ -182,6 +182,16 @@ class YoloStateAligner:
             meta["K_src"] = "fovy(单焦距近似)"
         else:
             meta["gaps"].append("无内参 (K 与 fovy 都缺) → 无法反投影")
+            # 🐛 2026-09-18 静静: 这里以前直接 return, 把**已经检出的 2D 框**一起丢了 —— 下游只会看到
+            #   "检出=0", 看起来像"模型在真机上看不见", 实际是"没标定把框扔了"。实测: 真机帧上在役权重
+            #   检出 2 个框 conf 0.92/0.93, 却因缺 K 被丢弃。现在如实回传 2D 框 (只作 2D 用, 绝不塞进 3D 槽)。
+            try:
+                meta["boxes_2d"] = [{"cls": res.names[int(b.cls)], "conf": round(float(b.conf), 4),
+                                     "box_px": [round(float(v), 1) for v in b.xyxy[0]]} for b in res.boxes]
+            except Exception:                                              # noqa: BLE001
+                meta["boxes_2d"] = []
+            meta["n_boxes_2d"] = len(meta["boxes_2d"])
+            meta["notes"].append("2D 框已给出, 3D 不可用 (缺标定); 补 K/外参/深度后才出 3D")
             return det3d, meta
         # ── 外参 ──
         T = frame.T_base_cam
@@ -207,15 +217,27 @@ class YoloStateAligner:
                 u, v = W - u, H - v
             d = None
             if depth_map is not None:
-                x1i, y1i = int(np.clip(x1, 0, W - 1)), int(np.clip(y1, 0, H - 1))
-                x2i, y2i = int(np.clip(x2, 0, W - 1)), int(np.clip(y2, 0, H - 1))
-                if x2i > x1i and y2i > y1i:
-                    d = float(np.median(depth_map[y1i:y2i, x1i:x2i]))
-                else:
-                    d = float(depth_map[int(np.clip(v, 0, H - 1)), int(np.clip(u, 0, W - 1))])
-                if not depth_is_metric:             # 预测深度才需尺度校准 (米制深度=1.0)
+                # 🎯 2026-09-18: 深度算法整合 (depth_align) — 鲁棒采样 + 线差估计
+                #   旧实现 = 框内简单中值: 混入 0/NaN/离群即污染 Z, 且无线差传播。
+                #   新实现 = 有效掩码 + MAD 去离群 + σ∝Z²; 无有效深度 → 返 None (回退链不变)。
+                #   零回退: 无 depth_map 时整段不进; 采样失败走原 plane_z / 报 gap 路径。
+                try:
+                    from .depth_align import sample_depth_robust
+                    _z, _dinfo = sample_depth_robust(depth_map, [x1, y1, x2, y2])
+                    if _z is not None:
+                        d = float(_z)
+                        meta.setdefault("depth_meta", {})[str(raw)] = _dinfo
+                except Exception as _e:                       # noqa: BLE001
+                    meta["notes"].append(f"depth_align 采样异常→回退简单中值: {type(_e).__name__}")
+                    x1i, y1i = int(np.clip(x1, 0, W - 1)), int(np.clip(y1, 0, H - 1))
+                    x2i, y2i = int(np.clip(x2, 0, W - 1)), int(np.clip(y2, 0, H - 1))
+                    if x2i > x1i and y2i > y1i:
+                        d = float(np.median(depth_map[y1i:y2i, x1i:x2i]))
+                    else:
+                        d = float(depth_map[int(np.clip(v, 0, H - 1)), int(np.clip(u, 0, W - 1))])
+                if d is not None and not depth_is_metric:     # 预测深度才需尺度校准 (米制=1.0)
                     d *= (self._hand_scale if raw == "hand" else self._depth_scale)
-                if not (np.isfinite(d) and d > 0.1):
+                if d is not None and not (np.isfinite(d) and d > 0.1):
                     d = None
             ray_c = np.array([(u - cx) / fx, (v - cy) / fy, 1.0])
             ray_c = ray_c / np.linalg.norm(ray_c)

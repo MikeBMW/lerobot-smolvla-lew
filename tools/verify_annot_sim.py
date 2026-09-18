@@ -95,8 +95,8 @@ chk("仿真数据集体检通过", not r["errors"], f"| 图 {r['n_images']} 框 
 yad.ensure_layout(REAL_ROOT)                    # 真机根初始化 (正常由窗口在真机模式构造时做)
 n_real = len(list(yad.iter_samples(REAL_ROOT)))
 chk("真机数据根零污染 (仿真标注没写进真机根)", n_real == 0, f"| 真机根张数={n_real}")
-chk("真机根类别仍是 optical_module (与仿真 peg/hole/hand 分开)",
-    yad.load_classes(REAL_ROOT) == ["optical_module"], f"| {yad.load_classes(REAL_ROOT)}")
+chk("真机根类别 = peg (与 CLASS_MAP 对齐, 可接感知链; 旧 optical_module 已废弃)",
+    yad.load_classes(REAL_ROOT) == ["peg"], f"| {yad.load_classes(REAL_ROOT)}")
 v.close()
 shutil.rmtree(REAL_ROOT, ignore_errors=True)
 shutil.rmtree(SIM_ROOT, ignore_errors=True)
