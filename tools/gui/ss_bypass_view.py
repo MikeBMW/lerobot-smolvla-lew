@@ -48,70 +48,173 @@ C_RES = "#ffa657"      # 残差 = 橙
 C_CON = "#58a6ff"      # 接触概率 = 蓝
 C_OK = "#3fb950"
 C_BAD = "#f85149"
+
+# ── 波形通道定义 (每通道一条独立泳道; min_span = 静止时的最小量程, 防噪声被放大成假波动) ──
+BANDS_SS = [
+    {"key": "residual", "title": "残差", "unit": "m", "color": C_RES,
+     "fmt": (lambda v: f"{v:.4f}"), "min_span": 0.002},
+    {"key": "contact_p", "title": "接触概率", "unit": "", "color": C_CON,
+     "fmt": (lambda v: f"{v:.3f}"), "fixed": "01"},
+    {"key": "dx_real", "title": "真机位移速率", "unit": "m/s", "color": C_OK,
+     "fmt": (lambda v: f"{v:.4f}"), "min_span": 0.01},
+]
+BANDS_REAL = [
+    {"key": "tcp_x", "title": "TCP X", "unit": "m", "color": "#ffa657",
+     "fmt": (lambda v: f"{v:+.4f}"), "min_span": 1e-4},
+    {"key": "tcp_y", "title": "TCP Y", "unit": "m", "color": "#3fb950",
+     "fmt": (lambda v: f"{v:+.4f}"), "min_span": 1e-4},
+    {"key": "tcp_z", "title": "TCP Z", "unit": "m", "color": "#58a6ff",
+     "fmt": (lambda v: f"{v:+.4f}"), "min_span": 1e-4},
+    {"key": "force_mag", "title": "插入力 |F|", "unit": "N", "color": "#f778ba",
+     "fmt": (lambda v: f"{v:.2f}"), "min_span": 0.1},
+    {"key": "force_fz", "title": "轴向力 Fz", "unit": "N", "color": "#d29922",
+     "fmt": (lambda v: f"{v:+.2f}"), "min_span": 0.1},
+]
 SS = (f"QWidget {{ background:{BG}; color:{FG}; font-family:'Noto Sans CJK SC','Microsoft YaHei',sans-serif; }}"
-      f"QLabel {{ color:{FG}; font-size:13px; }}"
-      f"QGroupBox {{ border:1px solid #30363d; border-radius:6px; margin-top:10px; padding:8px; color:{DIM}; }}"
-      f"QGroupBox::title {{ subcontrol-origin: margin; left:10px; color:{DIM}; }}")
+      f"QLabel {{ color:{FG}; font-size:15px; }}"
+      f"QGroupBox {{ border:1px solid #30363d; border-radius:6px; margin-top:14px; padding:10px; }}"
+      f"QGroupBox {{ color:{DIM}; font-size:14px; }}"
+      f"QGroupBox::title {{ subcontrol-origin: margin; left:12px; padding:0 4px; color:{DIM}; font-size:14px; }}")
 
 
 class CurveWidget(QtWidgets.QWidget):
-    """双通道时间序列 (残差 / 接触概率) — 纯 QPainter, 无 GL/第三方依赖"""
+    """多泳道实时波形 — 纯 QPainter, 无 GL/第三方依赖
 
-    def __init__(self, parent=None):
+    排版铁律 (老倪 2026-09-18「波形名称和描述的字体有重叠 / 字太小」):
+      · 每个通道一条**独立泳道**: 左侧栏放「通道名 + 当前值」, 右侧栏放该泳道量程上下限,
+        绘图区只画曲线 —— 文字三处物理分离, 结构上不可能重叠 (旧版名与量程都挤在同一 x 位置)。
+      · 字号显式指定 (通道名 13px 粗 / 当前值 17px / 刻度 12px), 不受系统默认小字影响。
+    """
+
+    FAM = "Noto Sans CJK SC"
+
+    def __init__(self, bands, title="", parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(260)
-        self.res = []          # [(t, residual)]
-        self.con = []          # [(t, contact_p)]
-        self.dx = []           # [(t, 真机位移速率 m/s)] — 真口径接入前唯一有分辨力的真实通道
-        self.rows = 0
+        self.bands = bands            # [{"key","title","unit","color","fmt","min_span","fixed"}]
+        self.title = title
+        self.data = {b["key"]: [] for b in bands}
+        self.setMinimumHeight(30 + 112 * max(1, len(bands)))
+        f = self.font()
+        f.setFamily(self.FAM)
+        f.setPointSizeF(11.0)
+        self.setFont(f)
 
-    def set_data(self, rows):
-        self.rows = len(rows)
-        self.res = [(float(r.get("t", 0)), float(r.get("residual", 0) or 0)) for r in rows]
-        self.con = [(float(r.get("t", 0)), float(r.get("contact_p", 0) or 0)) for r in rows]
-        self.dx = [(float(r.get("t", 0)), float(r.get("dx_real", 0) or 0)) for r in rows]
-        self.update()
+    def set_series(self, key, pts):
+        if key in self.data:
+            self.data[key] = list(pts or [])
+            self.update()
 
-    def _draw(self, p, series, color, label, y0, h, ymin, ymax, fmt):
-        w = max(1, self.width() - 70)
-        p.setPen(QtGui.QPen(QtGui.QColor("#21262d"), 1))
-        p.drawLine(60, y0, 60 + w, y0)
-        p.drawLine(60, y0 + h, 60 + w, y0 + h)
-        p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
-        p.drawText(6, y0 + 12, label)
-        p.drawText(6, y0 + h, fmt(ymin))
-        p.drawText(6, y0 + 14, fmt(ymax))
-        if len(series) < 2:
-            p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
-            p.drawText(70, y0 + h // 2, "等待旁路逐帧记录…")
-            return
-        n = len(series)
-        span = max(1e-9, ymax - ymin)
-        pts = []
-        for i, (_, v) in enumerate(series):
-            x = 60 + int(w * i / (n - 1))
-            y = y0 + h - int(h * (max(ymin, min(ymax, v)) - ymin) / span)
-            pts.append(QtCore.QPoint(x, y))
-        p.setPen(QtGui.QPen(QtGui.QColor(color), 2))
-        p.drawPolyline(QtGui.QPolygon(pts))
-        p.setBrush(QtGui.QBrush(QtGui.QColor(color)))
-        p.setPen(QtCore.Qt.NoPen)
-        p.drawEllipse(pts[-1], 3, 3)
-        p.setPen(QtGui.QPen(QtGui.QColor(FG), 1))
-        p.drawText(70 + w - 160, y0 + 12, f"最新 {series[-1][1]:.4f} · 最近 {n} 帧")
+    def _fonts(self):
+        fam = self.font().family() or self.FAM
+        return (QtGui.QFont(fam, 12, QtGui.QFont.Bold),      # 通道名
+                QtGui.QFont(fam, 16, QtGui.QFont.DemiBold),  # 当前值
+                QtGui.QFont(fam, 11),                        # 量程刻度 / 脚注
+                QtGui.QFont(fam, 14, QtGui.QFont.DemiBold))  # 组件标题
+
+    def layout(self):
+        """绘制几何 — paintEvent 与自检**共用同一套矩形** (自检断言的就是真实绘制位置)"""
+        f_t, f_v, f_a, _fh = self._fonts()
+        fm_t, fm_v, fm_a = QtGui.QFontMetrics(f_t), QtGui.QFontMetrics(f_v), QtGui.QFontMetrics(f_a)
+        W, H = self.width(), self.height()
+        n = max(1, len(self.bands))
+        head = 30 if self.title else 6
+        foot, gap = 24, 10
+        band_h = max(fm_t.height() + fm_v.height() + 16, (H - head - foot - gap * (n - 1)) // n)
+        gutter = max(fm_t.horizontalAdvance(b["title"]) for b in self.bands) + 20
+        right_w = max(fm_a.horizontalAdvance("-0.0000"), fm_a.horizontalAdvance("-100.0")) + 16
+        x0, x1 = gutter, max(gutter + 60, W - right_w - 8)
+        info = {"x0": x0, "x1": x1, "band_h": band_h, "head": head, "gap": gap, "gutter": gutter,
+                "right_w": right_w, "fm_t": fm_t, "fm_v": fm_v, "fm_a": fm_a, "bands": []}
+        for i, b in enumerate(self.bands):
+            y0 = head + i * (band_h + gap)
+            tb = y0 + fm_t.ascent() + 4                        # 通道名基线
+            vb = tb + fm_t.descent() + 6 + fm_v.ascent()       # 当前值基线 (在通道名下方)
+            info["bands"].append({
+                "y0": y0, "title_baseline": tb, "value_baseline": vb,
+                "title_rect": QtCore.QRect(6, tb - fm_t.ascent(),
+                                           fm_t.horizontalAdvance(b["title"]), fm_t.height()),
+                "value_rect": QtCore.QRect(6, vb - fm_v.ascent(), 0, fm_v.height()),
+                "hi_rect": QtCore.QRect(x1 + 5, y0 + 2, right_w - 8, fm_a.height()),
+                "lo_rect": QtCore.QRect(x1 + 5, y0 + band_h - fm_a.height() - 2,
+                                        right_w - 8, fm_a.height()),
+            })
+        return info
 
     def paintEvent(self, ev):
         p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
         p.fillRect(self.rect(), QtGui.QColor(PANEL))
-        h = (self.height() - 42) // 3
-        rmax = max([v for _, v in self.res] + [1e-6])
-        dmax = max([v for _, v in self.dx] + [1e-6])
-        self._draw(p, self.res, C_RES, "残差 (m)", 4, h, 0.0, rmax * 1.15 + 1e-9, lambda v: f"{v:.4f}")
-        self._draw(p, self.con, C_CON, "接触概率", 4 + h + 14, h, 0.0, 1.0, lambda v: f"{v:.2f}")
-        self._draw(p, self.dx, C_OK, "真机位移速率 (m/s)",
-                   4 + 2 * (h + 14), h, 0.0, dmax * 1.15 + 1e-9, lambda v: f"{v:.4f}")
+        f_t, f_v, f_a, f_h = self._fonts()
+        g = self.layout()
+        x0, x1, band_h = g["x0"], g["x1"], g["band_h"]
+        W, H = self.width(), self.height()
+
+        if self.title:
+            p.setFont(f_h)
+            p.setPen(QtGui.QPen(QtGui.QColor(FG), 1))
+            p.drawText(8, 21, self.title)
+
+        npts_max = 0
+        for i, b in enumerate(self.bands):
+            gi = g["bands"][i]
+            y0 = gi["y0"]
+            series = self.data.get(b["key"]) or []
+            npts_max = max(npts_max, len(series))
+            vals = [v for _, v in series]
+            fmt = b.get("fmt") or (lambda v: f"{v:.4f}")
+            if b.get("fixed") == "01":
+                lo, hi = 0.0, 1.0
+            elif vals:
+                vmin, vmax = min(vals), max(vals)
+                span = max(vmax - vmin, float(b.get("min_span", 0.0)) or 1e-9)
+                pad = span * 0.15
+                lo, hi = vmin - pad, vmax + pad
+            else:
+                lo, hi = 0.0, 1.0
+
+            # 网格 + 边框 (绘图区)
+            p.setPen(QtGui.QPen(QtGui.QColor("#21262d"), 1))
+            for k in range(3):
+                p.drawLine(x0, y0 + int(band_h * k / 2), x1, y0 + int(band_h * k / 2))
+            p.setPen(QtGui.QPen(QtGui.QColor("#30363d"), 1))
+            p.drawRect(x0, y0, x1 - x0, band_h)
+
+            # 左栏: 通道名 (上) + 当前值 (下) — 两行分层, 基线由 layout() 保证不叠
+            p.setFont(f_t)
+            p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
+            p.drawText(6, gi["title_baseline"], b["title"])
+            p.setFont(f_v)
+            p.setPen(QtGui.QPen(QtGui.QColor(b["color"]), 1))
+            p.drawText(6, gi["value_baseline"], (fmt(vals[-1]) if vals else "—")
+                       + ((" " + b["unit"]) if b.get("unit") else ""))
+
+            # 右栏: 量程上限 (顶) / 下限 (底) — 与左栏 x 区间完全分离
+            p.setFont(f_a)
+            p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
+            p.drawText(gi["hi_rect"], QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, fmt(hi))
+            p.drawText(gi["lo_rect"], QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, fmt(lo))
+
+            if len(series) < 2:
+                p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
+                p.drawText(x0 + 14, y0 + band_h // 2 + 5, b.get("empty") or "等待数据…")
+                continue
+            m = len(series)
+            span_v = max(1e-12, hi - lo)
+            pts = []
+            for j, (_, v) in enumerate(series):
+                xx = x0 + 2 + int((x1 - x0 - 4) * j / (m - 1))
+                yy = y0 + band_h - 3 - int((band_h - 6) * (max(lo, min(hi, v)) - lo) / span_v)
+                pts.append(QtCore.QPoint(xx, yy))
+            p.setPen(QtGui.QPen(QtGui.QColor(b["color"]), 2))
+            p.drawPolyline(QtGui.QPolygon(pts))
+            p.setBrush(QtGui.QBrush(QtGui.QColor(b["color"])))
+            p.setPen(QtCore.Qt.NoPen)
+            p.drawEllipse(pts[-1], 3, 3)
+
+        p.setFont(f_a)
         p.setPen(QtGui.QPen(QtGui.QColor(DIM), 1))
-        p.drawText(60, self.height() - 4, f"逐帧记录 {self.rows} 条 · 横轴=时间(等距) · 纵轴各自归一")
+        p.drawText(8, H - 7, f"横轴 = 最近 {npts_max} 帧 (等距 · 10Hz 采集 ≈ {npts_max / 10.0:.0f}s) ·"
+                             f" 纵轴各自自适应量程 · 缺通道显示等待, 不填假值")
 
 
 class SSBypassView(QtWidgets.QWidget):
@@ -120,8 +223,8 @@ class SSBypassView(QtWidgets.QWidget):
     def __init__(self, module=None):
         super().__init__(None, QtCore.Qt.Window)
         self.module = module
-        self.setWindowTitle("📈 旁路实时可视化 — 状态空间 (当前阶段 / 残差 / 接触概率)")
-        self.resize(980, 560)
+        self.setWindowTitle("📈 旁路实时可视化 — 状态空间 (当前阶段 / 残差 / 接触概率 / 真机位姿 XYZ / 插入力)")
+        self.resize(1660, 1060)
         self.setStyleSheet(SS)
         self.src = _load_src()
         self._build()
@@ -132,9 +235,9 @@ class SSBypassView(QtWidgets.QWidget):
 
     def _row(self, k):
         lab = QtWidgets.QLabel("-")
-        lab.setStyleSheet(f"color:{FG};font-size:14px;")
+        lab.setStyleSheet(f"color:{FG};font-size:19px;")
         kk = QtWidgets.QLabel(k)
-        kk.setStyleSheet(f"color:{DIM};font-size:12px;")
+        kk.setStyleSheet(f"color:{DIM};font-size:14px;")
         w = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(w)
         v.setContentsMargins(2, 2, 2, 2)
@@ -146,7 +249,7 @@ class SSBypassView(QtWidgets.QWidget):
     def _build(self):
         root = QtWidgets.QVBoxLayout(self)
         head = QtWidgets.QLabel("🔭 可视化层 · 旁路观察器 (回路外, 不参与控制) — 数据源: 旁路真机传感器 (Orin 远程只读)")
-        head.setStyleSheet(f"color:{DIM};font-size:12px;")
+        head.setStyleSheet(f"color:{DIM};font-size:15px;")
         root.addWidget(head)
 
         gb = QtWidgets.QGroupBox("旁路运行状态 (六层真源码逐帧)")
@@ -179,17 +282,19 @@ class SSBypassView(QtWidgets.QWidget):
                                          ("六关节位置", "pose_q", "rad · q1..q6"),
                                          ("六关节速度", "pose_dq", "rad/s · 全 0 = 机器静止"),
                                          ("位置变化率", "pose_dx", "m/s · 由真实帧差分 (产线在动)"),
-                                         ("机器人状态", "pose_rs", "电源 / 运行 / 报警 / 急停 / 碰撞")]):
+                                         ("机器人状态", "pose_rs", "电源 / 运行 / 报警 / 急停 / 碰撞"),
+                                         ("插入力 |F|", "pose_fmag", "N · 合力 = √(Fx²+Fy²+Fz²) · 真实力信号"),
+                                         ("轴向插入力 Fz", "pose_fz", "N · 工具轴接触反馈力 (插装判据)"),
+                                         ("六维力 Fx,Fy,Fz", "pose_f3", "N · 腕部力觉三分量 · 50Hz")]):
             w, lab = self._row(t_)
-            lab.setStyleSheet(f"color:{FG};font-size:12px;")
             self.labs["p_" + k] = lab
-            gp.addWidget(w, i // 3, i % 3)
+            gp.addWidget(w, i // 5, i % 5)          # 5 列 → 9 格只占 2 行 (窗口别太高)
         root.addWidget(gbp)
 
         gbimg = QtWidgets.QGroupBox("实时图像 (RealSense 彩色优先 / FoundationPose 调试帧兜底)")
         gi = QtWidgets.QHBoxLayout(gbimg)
         self.img_view = QtWidgets.QLabel("(无图像)")
-        self.img_view.setFixedSize(320, 240)
+        self.img_view.setFixedSize(260, 195)
         self.img_view.setStyleSheet("background:#161b22; color:#8b949e; border:1px solid #30363d;")
         self.img_view.setAlignment(QtCore.Qt.AlignCenter)
         self.img_meta = QtWidgets.QLabel("-")
@@ -199,11 +304,45 @@ class SSBypassView(QtWidgets.QWidget):
         gi.addWidget(self.img_meta, 1)
         root.addWidget(gbimg)
 
-        self.curve = CurveWidget()
-        root.addWidget(self.curve, 1)
+        self.curve = CurveWidget(BANDS_SS, title="状态空间通道 (旁路六层真源码逐帧)")
+        self.curve_real = CurveWidget(BANDS_REAL, title="真机通道 (Orin 远程只读 · 位姿 50Hz/落盘 10Hz · 力 49.5Hz)")
+        box = QtWidgets.QHBoxLayout()
+        box.setSpacing(12)
+        box.addWidget(self.curve, 1)
+        box.addWidget(self.curve_real, 1)
+        root.addLayout(box, 1)
         self.lab_foot = QtWidgets.QLabel("")
-        self.lab_foot.setStyleSheet(f"color:{DIM};font-size:11px;")
+        self.lab_foot.setStyleSheet(f"color:{DIM};font-size:14px;")
+        self.lab_foot.setWordWrap(True)
         root.addWidget(self.lab_foot)
+
+    def _feed_curves(self):
+        """把最近一段真实逐帧记录喂给两条波形 (旁路通道 + 真机位姿/插入力); 缺的通道留空, 不填假值"""
+        rows = self.src.tail_bypass(240)
+        self.curve.set_series("residual", [(float(r.get("t", 0)), float(r.get("residual", 0) or 0))
+                                           for r in rows])
+        self.curve.set_series("contact_p", [(float(r.get("t", 0)), float(r.get("contact_p", 0) or 0))
+                                            for r in rows])
+        self.curve.set_series("dx_real", [(float(r.get("t", 0)), float(r.get("dx_real", 0) or 0))
+                                          for r in rows])
+        xs, ys, zs, mag, fz = [], [], [], [], []
+        for r in (self.src.tail_state(240) or []):
+            t = float(r.get("t", 0) or 0)
+            q = r.get("tcp") or []
+            if len(q) >= 3:
+                xs.append((t, float(q[0])))
+                ys.append((t, float(q[1])))
+                zs.append((t, float(q[2])))
+            w = r.get("ft") or []
+            if len(w) >= 3:
+                fx, fy, fzz = float(w[0]), float(w[1]), float(w[2])
+                mag.append((t, (fx * fx + fy * fy + fzz * fzz) ** 0.5))
+                fz.append((t, fzz))
+        self.curve_real.set_series("tcp_x", xs)
+        self.curve_real.set_series("tcp_y", ys)
+        self.curve_real.set_series("tcp_z", zs)
+        self.curve_real.set_series("force_mag", mag)
+        self.curve_real.set_series("force_fz", fz)
 
     def refresh(self):
         try:
@@ -233,6 +372,13 @@ class SSBypassView(QtWidgets.QWidget):
             self.labs["src_vnorm"].setText(f"{sum(v * v for v in jv) ** 0.5:.4f}" if jv else "缺")
             self.labs["src_grip"].setText(str(p.get("gripper")) if p.get("gripper") is not None else "缺(无发布者)")
             self.labs["src_ft"].setText(str(p.get("ft")) if p.get("ft") is not None else "缺(无发布者)")
+            ft6 = p.get("ft") or []
+            _fm = (sum(v * v for v in ft6[:3]) ** 0.5) if len(ft6) >= 3 else None
+            self.labs["p_pose_fmag"].setText(f"{_fm:.2f} N" if _fm is not None else "缺")
+            self.labs["p_pose_fmag"].setStyleSheet(
+                f"color:{'#f778ba' if _fm is not None else C_BAD};font-size:19px;")
+            self.labs["p_pose_fz"].setText(f"{ft6[2]:+.2f} N" if len(ft6) >= 3 else "缺")
+            self.labs["p_pose_f3"].setText(", ".join(f"{v:+.2f}" for v in ft6[:3]) if len(ft6) >= 3 else "缺")
             self.labs["src_z7"].setText("未示教 (拒算)" if p.get("z7") is None else str(p["z7"]))
             self.labs["src_prod"].setText(p.get("stage_prod") or "空闲")
 
@@ -246,11 +392,11 @@ class SSBypassView(QtWidgets.QWidget):
             self.labs["p_pose_q"].setText(" ".join(f"{v:+.3f}" for v in jp) if jp else "缺")
             self.labs["p_pose_dq"].setText(" ".join(f"{v:+.3f}" for v in jv) if jv else "缺")
             moving = bool(jv) and max(abs(v) for v in jv) > 1e-4
-            self.labs["p_pose_dq"].setStyleSheet(f"color:{C_OK if moving else DIM};font-size:12px;")
+            self.labs["p_pose_dq"].setStyleSheet(f"color:{C_OK if moving else DIM};font-size:19px;")
             dxr = (last.get("dx_real") if last else None)
             self.labs["p_pose_dx"].setText(f"{dxr:.4f}" if isinstance(dxr, (int, float)) else "-")
             self.labs["p_pose_dx"].setStyleSheet(
-                f"color:{C_OK if isinstance(dxr, (int, float)) and dxr > 0.002 else DIM};font-size:12px;")
+                f"color:{C_OK if isinstance(dxr, (int, float)) and dxr > 0.002 else DIM};font-size:19px;")
             import json as _json
             import re as _re
             _rsraw = p.get("robot_status") or ""
@@ -293,8 +439,7 @@ class SSBypassView(QtWidgets.QWidget):
                     f"[{_yd.get('source_kind')}] {_yd.get('size')} · age={_yd.get('frame_age_s')}s\n"
                     f"检出: {_dt}\n" +
                     (f"✅ 光模块(peg) conf={_peg['conf']} box={_peg['xyxy']}" if _peg else "⚠️ 未检出光模块(peg)"))
-                rows = self.src.tail_bypass(240)
-                self.curve.set_data(rows)
+                self._feed_curves()
                 self.lab_foot.setText(f"旁路可视化: 真机位姿 + L2 YOLO 标注图 (唯一输出, 无任何下行) · "
                                       f"权重 {os.path.basename(str(_yd.get('weights', '')))} · imgsz={_yd.get('imgsz')} "
                                       f"conf_th={_yd.get('conf_th')}")
@@ -334,8 +479,7 @@ class SSBypassView(QtWidgets.QWidget):
                     f"触觉 interfaces/msg/TactileSensor = 自定义消息, 容器无类型定义 → 暂不可订\n"
                     f"💡 现场一旦有帧 (驱动起来/产线跑) 这里会立即显示真图, 不会用旧帧或占位图冒充")
 
-            rows = self.src.tail_bypass(240)
-            self.curve.set_data(rows)
+            self._feed_curves()
             self.lab_foot.setText(f"数据源: {p.get('file')} · 旁路记录 {os.path.basename(str(s.get('bypass_file', self.src.probe().get('bypass_file'))))}"
                                   f" · 刷新 500ms · 缺口/未示教项按缺报缺 (不填假值)")
         except Exception as e:

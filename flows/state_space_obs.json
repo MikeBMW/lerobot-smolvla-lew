@@ -732,7 +732,7 @@
       "color": "#58a6ff",
       "params": {
         "src_switch": true,
-        "src_state": "仿真",
+        "src_state": "真机",
         "source": "metaworld",
         "task": "peg-insert-side-v3",
         "frames": 4800,

@@ -104,7 +104,7 @@ class Tailer:
         return self._open()
 
     def poll(self):
-        now = time.time()
+        now = time.monotonic()          # 🩹 时钟回拨安全 (见 main(): NTP 回拨 8h 事故)
         if self.fh is None or now - self._last_scan > 2.0:
             self._last_scan = now
             if self.fh is None or self._resolve() != self.path:
@@ -163,7 +163,7 @@ def main():
     def heartbeat():
         json.dump(st, open(os.path.join(OUT_DIR, "status.json"), "w"), ensure_ascii=False, indent=1)
 
-    t_start = time.time()
+    t_start = time.monotonic()
     last_step = 0.0
     print(f"[bypass] 状态空间旁路启动 · 输入={IN_DIR} · 输出={OUT_DIR} · 零下行(rclpy={('rclpy' in sys.modules)})"
           f" · 跟随 state={T_st.path if T_st.fh else '等待落盘'} · proposal={T_pr.path if T_pr.fh else '等待落盘'}",
@@ -179,7 +179,10 @@ def main():
         rows = T_st.poll()
         for r in rows:
             st["samples"] += 1
-            now = time.time()
+            # 🩹 2026-09-18 时钟回拨事故: 节拍判据必须用单调钟。原来 time.time() 差值在 NTP
+            #   回拨 8h 后变负 → `now - last_step < 1/rate` 恒真 → 逐帧记录永久 continue
+            #   (旁路 20:15 起再无一行落盘), 这就是旁路/真机通道"不实时"的同一个根因。
+            now = time.monotonic()
             if now - last_step < 1.0 / a.rate:
                 continue
             last_step = now

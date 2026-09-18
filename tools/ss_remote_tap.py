@@ -9,7 +9,8 @@ Orin 侧: 不装任何东西、不跑任何自研程序、不接收任何写回 
 订阅(只读, BEST_EFFORT):
   /robot/tcp_pose      真机 TCP 笛卡尔位姿 50Hz   → 引擎口径 z7 的「手/头」项
   /real_joint_states   真机关节 49Hz              → jvel
-  /robot/force_torque  力/力矩                    → ft
+  /robot/force_torque  六维力/力矩 49.5Hz         → ft (WrenchStamped, BEST_EFFORT)
+                           # 同名双类型话题: 力信号只从 WrenchStamped 来 (JointState 那条无消息)
   /gripper_pos         夹爪位置                   → 夹持判定
   /motion/active_states 产线阶段 (当前空闲, 空)
 输出(全部落在 4060 本机):
@@ -28,7 +29,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, WrenchStamped
 from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float64, String
 
@@ -62,10 +63,15 @@ class RemoteTap(Node):
         self.geom, self.geom_note = self._load_geom()
         self.create_subscription(PoseStamped, "/robot/tcp_pose", self.cb_tcp, _q(1))
         self.create_subscription(JointState, "/real_joint_states", self.cb_joint, _q(1))
-        # ⚠️ 现场 /robot/force_torque 是同名双类型话题(JointState + WrenchStamped)。
-        #    本镜像的 WrenchStamped python typesupport 建订阅即报 "invalid allocator"(已实测),
-        #    故只订 JointState; 若将来力信号以 WrenchStamped 发布 → 计数为 0, 需换桥接方式。
-        self.create_subscription(JointState, "/robot/force_torque", self.cb_ft, _q(1))
+        # ⚠️ 现场 /robot/force_torque 是**同名双类型**话题 (JointState + WrenchStamped)。
+        #    实测 (2026-09-18 容器内直订取证): 真实的力/力矩以 **WrenchStamped @ BEST_EFFORT**
+        #    在发 (~49.5Hz, Fx/Fy/Fz+Tx/Ty/Tz 真实变化); JointState 那条**一条也没有** (ft 计数长期为 0)。
+        #    ⛔ 同一个 node 里**不能**对同一话题名建两个不同类型的订阅 —— 会直接抛
+        #      "create_subscription() called for existing topic name … with incompatible type"
+        #      → "invalid allocator" (这就是旧注释里那条坑的真因, 曾把 tap 打成 crash-loop)。
+        #    故本节点**只订 WrenchStamped**; 若将来力信号改回 JointState 发布, 这里会显示
+        #    "缺(无发布者)", 需按新类型改这一行 (不会假报)。
+        self.create_subscription(WrenchStamped, "/robot/force_torque", self.cb_wrench, _q(1))
         self.create_subscription(Float64, "/gripper_pos", self.cb_grip, _q(1))
         self.create_subscription(String, "/motion/active_states", self.cb_stage, _q(1))
         self.create_subscription(String, "/robot_status", self.cb_rstat, _q(1))   # 真机状态 JSON
@@ -111,6 +117,7 @@ class RemoteTap(Node):
             self.n["joint"] += 1
 
     def cb_ft(self, m):
+        """⚠️ 现场该话题的 JointState 类型**无发布者**(实测计数恒 0), 当前未建订阅 —— 保留供切类型时复用"""
         with self.lock:
             self.ft = list(m.effort)[:6] if len(m.effort) else None
             self.n["ft"] += 1
@@ -161,7 +168,16 @@ class RemoteTap(Node):
         png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0 if gray else 2, 0, 0, 0))
         png += chunk(b"IDAT", zlib.compress(raw, 6))
         png += chunk(b"IEND", b"")
-        open(path, "wb").write(png)
+        # 🛠 2026-09-18: 原实现 = open(path,"wb").write(png) **非原子** (先截断再写) ——
+        #   读者 (输入图像窗口 / L2 旁路, 10Hz 轮询) 可能读到**半张 PNG** (截断帧):
+        #   解码失败 → 最轻是无图, 最坏是解码器原生崩 (06:53:40 控制台 SIGSEGV 的可疑向量之一)。
+        #   改为 写临时文件 + os.replace 原子替换 (同目录同文件系统 → 读者永远看到完整帧)。
+        tmp = f"{path}.tmp{os.getpid()}"
+        with open(tmp, "wb") as f:
+            f.write(png)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
 
     def _decode_img(self, m, topic=None):
         """Image → 元数据 + PNG 落盘 (真图判据 std>5, 与引擎同口径); 不支持的编码只记元数据"""
@@ -170,7 +186,7 @@ class RemoteTap(Node):
         h, w = int(m.height), int(m.width)
         tp = topic or getattr(m, "_ss_topic", None) or "?"
         meta = {"topic": tp, "encoding": enc, "w": w, "h": h, "step": int(m.step),
-                "t": time.time(), "std": None, "saved": False,
+                "t": time.time(), "tm": time.monotonic(), "std": None, "saved": False,
                 "path": os.path.join(OUT, "cam_rs.png" if "realsense" in tp else "cam_fp.png")}
         try:
             buf = _np.frombuffer(bytes(m.data), dtype=_np.uint8)
@@ -197,11 +213,20 @@ class RemoteTap(Node):
         return meta
 
     def _tick_img(self):
-        """1Hz: 反序列化各话题最新帧 → 解码落盘; RealSense 有帧则优先作为 self.img"""
+        """1Hz: 反序列化各话题最新帧 → 解码落盘; RealSense 有帧则优先作为 self.img
+
+        🩹 2026-09-18 时钟回拨事故 (真机画面冻在 12:15 不再实时): 本机 NTP 把系统钟
+        回拨 8h 后, 所有 `time.time()` 差值变负 → ① 本函数 `time.time()-上次解码 <= 1.0`
+        恒真 → 永久 continue, 图像再也不解码; ② 主循环采样判据同样恒假 → 停止落盘。
+        纪律: **节拍/新鲜度一律用单调钟 time.monotonic()**, time.time() 只用于落盘时间戳。
+        """
         try:
             from rclpy.serialization import deserialize_message
+            tm = getattr(self, "_dec_tm", None)
+            if tm is None:
+                tm = self._dec_tm = {}
             for t, raw in list(self._rimgs.items()):
-                if time.time() - (self.imgs.get(t) or {}).get("t", 0) <= 1.0:
+                if time.monotonic() - tm.get(t, 0.0) <= 1.0:
                     continue
                 try:
                     msg = deserialize_message(bytes(raw), Image)
@@ -210,7 +235,9 @@ class RemoteTap(Node):
                     if meta.get("saved") and ("realsense" in t or not (self.img or {}).get("saved")):
                         self.img = meta
                 except Exception as e:
-                    self.imgs[t] = {"topic": t, "err": f"{type(e).__name__}: {e}", "t": time.time()}
+                    self.imgs[t] = {"topic": t, "err": f"{type(e).__name__}: {e}", "t": time.time(),
+                                    "tm": time.monotonic()}
+                tm[t] = time.monotonic()
         except Exception:
             pass
 
@@ -233,8 +260,8 @@ class RemoteTap(Node):
             return {"t": round(time.time(), 3), "tcp": self.tcp,
                     "tcp_quat": self.tcp_quat, "tcp_frame": self.tcp_frame,
                     "jnames": self.jnames, "robot_status": self.rstat,
-                    "image": (dict(self.img, age=round(time.time() - self.img["t"], 2)) if self.img else None),
-                    "images_by_topic": {t: dict(v, age=round(time.time() - v.get("t", 0), 2))
+                    "image": (dict(self.img, age=_age_m(self.img)) if self.img else None),
+                    "images_by_topic": {t: dict(v, age=_age_m(v))
                                         for t, v in self.imgs.items()},
                     "pubs": dict(self.pub_counts),
                     "jpos": [round(float(x), 6) for x in self.jpos[:6]] if self.jpos else None,
@@ -244,6 +271,17 @@ class RemoteTap(Node):
                     "z7": [round(float(x), 6) for x in z] if z is not None else None,
                     "geom": self.geom_note if self.geom else f"缺失: {self.geom_note}",
                     "scope": "readonly-remote"}
+
+
+def _age_m(meta):
+    """帧龄 (秒): 优先单调钟 (时钟回拨/跳变安全), 老记录退化 wall-clock 差值且**钳到非负**。
+    🩹 2026-09-18: 旧实现 age=time.time()-t, NTP 回拨 8h 后 age≈-28800 → 任何
+    `age <= 阈值` 的新鲜度判据都恒真, 旧帧被当成实时帧 (老倪红线: 绝不拿旧图冒充实时)。"""
+    if not meta:
+        return None
+    if "tm" in meta:
+        return round(max(0.0, time.monotonic() - float(meta["tm"])), 2)
+    return round(max(0.0, time.time() - float(meta.get("t", time.time()))), 2)
 
 
 def main():
@@ -258,11 +296,11 @@ def main():
     fs = open(os.path.join(OUT, f"state_{day}.jsonl"), "a", buffering=1)
     fp = open(os.path.join(OUT, f"proposal_{day}.jsonl"), "a", buffering=1)
     print(f"[tap] 远程只读采集启动 rate={a.rate}Hz out={OUT} geom={n.geom_note} 本节点 publisher 数=0", flush=True)
-    t0, cnt = time.time(), 0
+    t0, cnt = time.monotonic(), 0
     while True:
         rclpy.spin_once(n, timeout_sec=0.02)
-        if time.time() - t0 >= 1.0 / a.rate:
-            t0 = time.time()
+        if time.monotonic() - t0 >= 1.0 / a.rate:
+            t0 = time.monotonic()
             st = n.snapshot()
             fs.write(json.dumps(st, ensure_ascii=False) + "\n")
             cnt += 1

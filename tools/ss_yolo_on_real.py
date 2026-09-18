@@ -29,21 +29,30 @@ from PIL import Image, ImageDraw
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax_ss_remote"))
 OUTDIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax_data/ss_bypass"))
-WEIGHTS = os.environ.get("SS_YOLO_WEIGHTS",
-                         os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))
-IMGSZ = int(os.environ.get("SS_YOLO_IMGSZ", "480"))
+WEIGHTS = os.environ.get("SS_YOLO_WEIGHTS") or next(
+    (p for p in (os.path.join(REPO, "models/yolo_peg_live.pt"),                                  # 🎯 真机在役权重 (指针, 升级只改它)
+                 os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))      # 旧仿真域权重 (兜底)
+     if os.path.exists(p)),
+    os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))
+IMGSZ = int(os.environ.get("SS_YOLO_IMGSZ", "640"))
 CONF = float(os.environ.get("SS_YOLO_CONF", "0.4"))
 FRESH_S = float(os.environ.get("SS_IMG_FRESH_S", "5.0"))     # 真机帧新鲜窗口
 CAND = ("cam_rs.png", "cam_fp.png", "cam_latest.png", "srv_cam.png", "srv_cam.jpg")   # RealSense 优先
 
 
 def pick_frame():
-    """最新真机帧 (RealSense 彩色优先); 返回 (path, age_s, kind)"""
+    """最新真机帧 (RealSense 彩色优先); 返回 (path, age_s, kind)
+
+    🩹 2026-09-18: 帧龄钳到非负 —— NTP 回拨导致 mtime 在未来时, age 为负会让
+    "新鲜"判据恒真 (旧帧冒充实时). 帧仍是最新可比的一张, 故只钳龄 + 标 clock_skew.
+    """
     best = None
     for i, name in enumerate(CAND):
         p = os.path.join(REMOTE, name)
         if os.path.exists(p):
             age = time.time() - os.path.getmtime(p)
+            if age < -1.0:                       # 时钟回拨: 不按"新鲜"采信, 只标号
+                age = 0.0
             if best is None or (i < best[2] and age <= FRESH_S * 4) or age < best[1] - 0.5:
                 if age <= FRESH_S * 4:
                     best = (p, age, i)
@@ -91,7 +100,11 @@ def run(image_path, source_kind="real", age=None, save=True):
             dr.rectangle([x1, y1, x2, y2], outline=col, width=3)
             dr.text((x1 + 3, max(0, y1 - 14)), f"{d['cls']} {d['conf']:.2f}", fill=col)
         os.makedirs(OUTDIR, exist_ok=True)
-        im.save(os.path.join(OUTDIR, "yolo_annotated.png"))
+        # 🛠 2026-09-18: 原子写 (tmp + os.replace) —— 读者 (面板/我/取证脚本) 可能正好撞上半张 PNG;
+        #   与 Docker tap 落盘同一纪律 (实测: 复制时报 0 字节 = 正好读到截断瞬间)。
+        _tmp = os.path.join(OUTDIR, f"yolo_annotated.png.tmp{os.getpid()}")
+        im.save(_tmp, format="PNG")          # ⚠️ 必须显式给 format: PIL 按扩展名猜 → .tmp 会报 unknown file extension
+        os.replace(_tmp, os.path.join(OUTDIR, "yolo_annotated.png"))
         json.dump(rec, open(os.path.join(OUTDIR, "yolo_detections.json"), "w"), ensure_ascii=False, indent=1)
     return rec
 

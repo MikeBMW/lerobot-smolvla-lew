@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
+import shlex
+import subprocess
 import sys
 import time
 
@@ -38,6 +41,12 @@ _BASE_CANDS = [
 
 
 def find_base(repo="."):
+    # 🎯 2026-09-18: **真机在役权重优先** (models/yolo_peg_live.pt = 标定微调后的真机域权重),
+    #   其次才是最新产物, 最后才是仿真域权重 —— 域适应从"已经在真机上有检出"的权重继续,
+    #   而不是每次从仿真域重来 (实测仿真权重在真机帧 0 检出)。
+    live = os.path.join(repo, "models", "yolo_peg_live.pt")
+    if os.path.isfile(live):
+        return live
     cands = []
     for pat in _BASE_CANDS:
         cands += glob.glob(os.path.join(repo, pat), recursive=True)
@@ -45,6 +54,53 @@ def find_base(repo="."):
     if not cands:
         return None
     return max(cands, key=os.path.getmtime)
+
+
+def live_eval_report(a, best: str) -> None:
+    """🎯 训练后**真机实时帧**同口径对照 (老倪门槛: 有提升才认; 数字必须来自真推理)。
+
+    对照组 = **在役权重** models/yolo_peg_live.pt (没有就退回 peg_v1 仿真权重);
+    评测帧 = 训练**之后**新采的新鲜 cam_rs.png (真机帧, 与 L2 旁路同源)。
+    """
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ev = os.path.join(repo, "tools", "yolo_live_eval.py")
+    if not os.path.isfile(ev):
+        print("⚠️ 缺 tools/yolo_live_eval.py → 跳过真机帧对照")
+        return
+    cur = os.path.join(repo, "models", "yolo_peg_live.pt")
+    ws = [w for w in (cur, best) if os.path.isfile(w)]
+    out = os.path.join(repo, "reports", f"yolo_live_eval_{a.name}.json")
+    vis = os.path.join(repo, "reports", f"yolo_live_vis_{a.name}")
+    cmd = [sys.executable, ev, "--weights", *ws, "--frames", str(a.live_frames),
+           "--imgsz", str(a.imgsz), "--conf", "0.25", "--out", out, "--vis-dir", vis]
+    print("=" * 78)
+    print(f"[真机帧对照] {' vs '.join(os.path.basename(w) for w in ws)} "
+          f"→ 采 {a.live_frames} 张新鲜真机帧 (训练后新采, 未见过)")
+    try:
+        subprocess.run(cmd, check=False)
+    except Exception as e:                                                     # noqa: BLE001
+        print(f"⚠️ 真机帧对照失败: {type(e).__name__}: {e}")
+        return
+    try:
+        d = json.load(open(out, encoding="utf-8"))
+        rs = {os.path.basename(r["weights"]): r for r in d["results"]}
+        new = rs.get(os.path.basename(best))
+        old = rs.get(os.path.basename(cur)) if os.path.isfile(cur) else None
+        if new:
+            print(f"   新权重: peg 检出 {new['frames_with_peg']}/{new['n_frames']} 帧 · "
+                  f"conf mean {new['peg_conf_mean']} max {new['peg_conf_max']}")
+        if old:
+            print(f"   在役  : peg 检出 {old['frames_with_peg']}/{old['n_frames']} 帧 · "
+                  f"conf mean {old['peg_conf_mean']} max {old['peg_conf_max']}")
+            verdict = ("✅ 有提升 (检出率↑ 或 conf↑)" if (new and (
+                new["peg_rate"] > old["peg_rate"]
+                or (new["peg_rate"] == old["peg_rate"] and (new["peg_conf_mean"] or 0) >
+                    (old["peg_conf_mean"] or 0) + 0.02))) else "➖ 持平/回退 → 按纪律不上默认档")
+            print(f"   判定: {verdict}")
+        print(f"   可视化(画框): {vis}  数据: {out}")
+        print(f"   上在役 (单点切换): ln -sfn {os.path.abspath(best)} {cur}")
+    except Exception as e:                                                     # noqa: BLE001
+        print(f"⚠️ 解析对照结果失败: {type(e).__name__}: {e}")
 
 
 def main():
@@ -61,7 +117,35 @@ def main():
     ap.add_argument("--project", default="outputs/yolo_annot")
     ap.add_argument("--verify", type=int, default=8, help="训练后在 N 张 val 图上真推理验证")
     ap.add_argument("--force", action="store_true", help="体检有错也继续 (不推荐)")
+    # ── 🚀 2026-09-18 全面升级 (老倪: 「你是专业的 YOLO 感知模型工程师, 全面升级训练程序」) ──
+    ap.add_argument("--patience", type=int, default=60, help="早停耐心 (val 不升即停)")
+    ap.add_argument("--cos-lr", action="store_true", default=True, help="余弦学习率 (默认开)")
+    ap.add_argument("--no-cos-lr", dest="cos_lr", action="store_false")
+    ap.add_argument("--cache", action="store_true", default=True, help="缓存图像 (小数据集提速)")
+    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--live-eval", type=int, default=30,
+                    help="训练后在**新鲜真机帧**上评测 (0=跳过). 交付门槛: 与在役权重同口径对照")
+    ap.add_argument("--live-frames", type=int, default=40, help="采多少张新鲜真机帧做评测")
+    ap.add_argument("--detached", action="store_true",
+                    help="用 systemd-run 起独立单元跑 (不挂在控制台 cgroup 下 → 关/重启控制台不会杀掉训练)")
     a = ap.parse_args()
+
+    # ── 0. --detached: 自我重入到独立 systemd 单元 (必须先做, 否则后续全是主进程) ──
+    if a.detached and not os.environ.get("YOLO_ANNOT_DETACHED"):
+        log = os.path.join(yad.ROOT_DEFAULT, "train.log")
+        args = [x for x in sys.argv[1:] if x != "--detached"]
+        unit = "yolo-annot-" + time.strftime("%m%d-%H%M%S")
+        cmd = ("env YOLO_ANNOT_DETACHED=1 " + shlex.quote(sys.executable) + " "
+               + shlex.quote(os.path.abspath(__file__)) + " " + " ".join(shlex.quote(x) for x in args)
+               + f" > {shlex.quote(log)} 2>&1")
+        rc = os.system(f"systemd-run --user --collect --unit {shlex.quote(unit)} "
+                       f"--working-directory {shlex.quote(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))} "
+                       f"bash -lc {shlex.quote(cmd)}")
+        print(f"🚀 已用独立单元 {unit}.service 启动训练 (rc={rc>>8}) · 日志 {log}\n"
+              f"   查看: systemctl --user status {unit} · journalctl --user -u {unit} -f\n"
+              f"   好处: 关掉/重启控制台不会杀掉训练 (systemd 默认会连带杀同 cgroup 的子进程)")
+        return 0 if rc == 0 else 3
 
     # ── 1. 体检 ──
     print("=" * 78)
@@ -109,8 +193,9 @@ def main():
     t0 = time.time()
     model = YOLO(base)
     model.train(data=yml, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=dev,
-                project=a.project, name=a.name, workers=2, verbose=True,
-                exist_ok=True, plots=True)
+                project=a.project, name=a.name, workers=a.workers, verbose=True,
+                exist_ok=True, plots=True,
+                patience=a.patience, cos_lr=a.cos_lr, cache=a.cache, seed=a.seed)
     dt = time.time() - t0
 
     # ── 4. 找 best.pt + 真推理验证 ──
@@ -145,6 +230,9 @@ def main():
         for l in lines:
             print(l)
         print("   权重路径(给 Orin 部署): " + best)
+    # ── 5. 🎯 真机实时帧同口径对照 (交付门槛: 有提升才认; 数字来自真推理) ──
+    if a.live_eval and best:
+        live_eval_report(a, best)
     print("✅ 完成")
     return 0
 

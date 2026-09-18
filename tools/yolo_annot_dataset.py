@@ -466,6 +466,27 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
                 os.remove(old)
     names = load_classes(root)
     samples = list(iter_samples(root))
+    # 🧹 2026-09-18 去重 (体检会告警、训练会白算, 还会让同帧泄漏进 train/val 两侧):
+    #   同 md5 图只保留**第一个**(按文件名时间序) —— 帧文件名的会话内序号/时间即顺序。
+    try:
+        import hashlib as _hl
+        _seen, _uniq, _dups = {}, [], []
+        for s in sorted(samples, key=lambda x: x["stem"]):
+            try:
+                _m = _hl.md5(open(s["image"], "rb").read()).hexdigest()
+            except OSError:
+                _uniq.append(s); continue
+            if _m in _seen:
+                _dups.append(s["stem"])
+                continue
+            _seen[_m] = s["stem"]
+            _uniq.append(s)
+        if _dups:
+            print(f"🧹 去重: 丢弃 {len(_dups)} 张与前面重复的图 → {', '.join(_dups[:5])}"
+                  + (" …" if len(_dups) > 5 else ""))
+        samples = _uniq
+    except Exception as _e:                                                    # noqa: BLE001
+        print(f"⚠️ 去重跳过 ({type(_e).__name__}: {_e})")
     # 小样本兜底: ultralytics 必须有非空 val; 样本太少时 val=train (并在 stats 里**显式标注**,
     # 因为"train=val 同数据"会让 mAP 虚高 —— 只用于跑通管线, 不能当精度证据)
     small = len(samples) < 8

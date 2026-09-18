@@ -52,6 +52,18 @@ CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
 SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
 LIVE_JPG = os.path.join(SHARED, "live_frame.jpg")
 LIVE_META = os.path.join(SHARED, "live_frame.json")
+# 🩹 2026-09-18 老倪: 「运行L2功能, 怎么输入图像没有了?」—— 真机源原来**只认 srv 落盘 live_frame.jpg**
+#   (Orin /zmax/live_frame → Docker 客户端), 该服务不可达时窗口就"永远无画面"; 而真机图像其实一直在流:
+#   Docker tap 只读订阅落盘的 cam_rs.png 一直新鲜, **L2 侧吃的就是这条** (ss_yolo_on_real CAND)。
+#   → 加候选链回退 (同一帧口径, 与 L2 同源), 仍守"只上新鲜帧、旧图不冒充"纪律。
+REAL_FILE_CANDS = (
+    ("cam_rs.png", "RealSense 彩色 (Docker tap 只读订阅落盘 · 与 L2 同源)"),
+    ("cam_fp.png", "FoundationPose 调试图 (Docker tap 落盘 · 与 L2 同级)"),
+    ("cam_latest.png", "最近图像帧 (Docker tap 落盘)"),
+    ("srv_cam.png", "srv 落盘 PNG"),
+    ("srv_cam.jpg", "srv 落盘 JPEG"),
+)
+REAL_FILE_FRESH_S = float(os.environ.get("ZMAX_VIEWER_FILE_FRESH_S", "10"))
 # 💻 2026-09-17 老倪: 第三路输入源 = 本机内置摄像头 (UVC 直读, 不依赖 Orin/Docker)
 USBCAM_DEV = os.environ.get("ZMAX_USBCAM_DEV", "/dev/video0")
 USBCAM_FPS = int(os.environ.get("ZMAX_USBCAM_FPS", "15"))
@@ -77,19 +89,91 @@ def _run(cmd, timeout=15, shell=False):
         return -1, f"{type(e).__name__}: {e}"
 
 
-def rgb_from_file(path):
-    """读图 → RGB uint8 (cv2 优先; 无 cv2 用 Qt 解码)"""
+def _live_weights():
+    """🎯 真机在役 YOLO 权重 = models/yolo_peg_live.pt (符号链接指针; 升级只需重指这一处)。"""
+    p = os.path.join(REPO, "models", "yolo_peg_live.pt")
+    return p if os.path.exists(p) else None
+
+
+_DET_MODELS: dict = {}
+
+
+def _detect_with(weights: str, rgb):
+    """真推理检测 (按权重缓存模型) → [{cls, conf, xyxy}]。任何异常都返回 [] (绝不因检测崩窗口)。"""
+    try:
+        from ultralytics import YOLO
+        if not weights:
+            return []
+        m = _DET_MODELS.get(weights)
+        if m is None:
+            m = YOLO(weights)
+            _DET_MODELS[weights] = m
+        r = m.predict(np.ascontiguousarray(rgb[:, :, ::-1]), imgsz=640, conf=0.25, verbose=False)[0]
+        names = m.names
+        return [{"cls": str(names.get(int(b.cls[0]), int(b.cls[0]))),
+                 "conf": round(float(b.conf[0]), 3),
+                 "xyxy": [float(v) for v in b.xyxy[0].tolist()]} for b in r.boxes]
+    except Exception:                                                          # noqa: BLE001
+        return []
+
+
+def _live_detect(rgb):
+    """真机帧检测 (权重 = models/yolo_peg_live.pt, 与 L2 旁路同域同口径)。"""
+    return _detect_with(_live_weights(), rgb)
+
+
+def _render_boxes(rgb, dets):
+    """在**副本**上画框 (标定用的原始像素不动)。"""
     try:
         import cv2
-        bgr = cv2.imread(path)
-        if bgr is not None:
-            return np.ascontiguousarray(bgr[:, :, ::-1])
-    except Exception:                                                      # noqa: BLE001
-        pass
-    pm = QtGui.QPixmap(path)
-    if pm.isNull():
+        out = np.ascontiguousarray(rgb.copy())
+        for d in dets:
+            x1, y1, x2, y2 = [int(v) for v in d["xyxy"]]
+            col = (0, 255, 128) if str(d["cls"]).lower() == "peg" else (0, 200, 255)
+            cv2.rectangle(out, (x1, y1), (x2, y2), col, 2)
+            cv2.putText(out, f"{d['cls']} {d['conf']:.2f}", (x1, max(14, y1 - 6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
+        return out
+    except Exception:                                                          # noqa: BLE001
+        return rgb
+
+
+def rgb_from_file(path):
+    """读图 → RGB uint8 (cv2 优先; 无 cv2 用 Qt 解码)
+
+    🛠 2026-09-18: 改为**先整块读入内存再解码** + 失败一律返回 None (不抛)。
+    原因: 落盘方 (Docker tap) 是 10Hz 覆盖写, 老实现 `cv2.imread(path)` 可能撞上
+    半张 PNG (截断帧) → 解码路径不稳定; 现在读到内存再解 (截断 → 解码失败 → None),
+    调用方按"这帧不可用"跳过, 绝不因读图失败崩窗口。
+    """
+    try:
+        with open(path, "rb") as f:
+            buf = f.read()
+    except OSError:
         return None
-    return qimage_to_rgb(pm.toImage())
+    if not buf:
+        return None
+    # ① cv2 可用 → **它就是权威**: 解码失败 (含截断帧) 直接判"这帧不可用"返回 None,
+    #    不再把坏数据交给 Qt 解码器 (实测: 截断 buffer 会走进 Qt 解码路径, 无 QApplication 时
+    #    直接 `QPixmap: Must construct a QGuiApplication` → SIGABRT; 有 QApplication 也只是白解坏数据)。
+    try:
+        import cv2
+    except ImportError:
+        cv2 = None
+    if cv2 is not None:
+        try:
+            bgr = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
+            return None if bgr is None else np.ascontiguousarray(bgr[:, :, ::-1])
+        except Exception:                                                  # noqa: BLE001
+            return None
+    # ② 只在没有 cv2 时才退回 Qt 解码 (且必须已有 QGuiApplication)
+    try:
+        pm = QtGui.QPixmap()
+        if not pm.loadFromData(buf):
+            return None
+        return qimage_to_rgb(pm.toImage())
+    except Exception:                                                      # noqa: BLE001
+        return None
 
 
 def qimage_to_rgb(qimg: QtGui.QImage):
@@ -401,10 +485,30 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.cb.setCurrentIndex(_SRC_IDX.get(str(source), 0))
         self.cb.currentIndexChanged.connect(self._switch)
         top.addWidget(self.cb, 1)
+        # 🎯 2026-09-18 老倪: 「在 YOLO 目标检测节点的当前输入图像的基础之上, 增加一个感知模式,
+        #   点击感知模式后, 即可在当前图像上叠加感知结果 bounding box」
+        #   设计 = **单一开关** (取代原来语义含糊的「叠加 YOLO 框」): 点开即在**当前显示的这一帧**
+        #   (实时/冻结 · 真机/仿真/本机摄像头 任一源) 上叠加真推理的检测框 + 右侧一行结果数值;
+        #   只叠加**显示**, 存档/标定永远用原始像素 (框不会烧进训练图)。
+        self.btn_percept = QtWidgets.QPushButton("🎯 感知模式")
+        self.btn_percept.setCheckable(True)
+        self.btn_percept.setToolTip("在当前输入图像上叠加**感知结果** (目标检测 bounding box)\n"
+                                    "· 真机源 → models/yolo_peg_live.pt (与 L2 管线同一权重)\n"
+                                    "· 仿真源 → 仿真域权重 (域不混, 只用于对照)\n"
+                                    "· 只叠加显示: 标定存档仍用原始像素, 框不会烧进训练图")
+        self.btn_percept.toggled.connect(self._on_percept)
+        top.addWidget(self.btn_percept)
+        self.lbl_percept = QtWidgets.QLabel("")
+        self.lbl_percept.setObjectName("ph")
+        _sp5 = self.lbl_percept.sizePolicy()
+        _sp5.setHorizontalPolicy(QtWidgets.QSizePolicy.Ignored)
+        self.lbl_percept.setSizePolicy(_sp5)
+        top.addWidget(self.lbl_percept, 1)
         self.chk = QtWidgets.QCheckBox("叠加 YOLO 框")
         self.chk.setChecked(False)
-        self.chk.setToolTip("默认关 = 纯原始视频流; 打开则同时跑 detect_3d 并画框 (证明模型看到的是这帧)")
-        top.addWidget(self.chk)
+        self.chk.setVisible(False)          # 由「🎯 感知模式」取代 (保留控件以便双向同步/兼容旧调用)
+        self.chk.setToolTip("(旧开关) 与「🎯 感知模式」同一个语义: 勾它 = 打开感知模式")
+        self.chk.toggled.connect(self._on_percept_alias)
         self.chk_rot = QtWidgets.QCheckBox("🔄 并排旋转窗")
         self.chk_rot.setChecked(True)
         self.chk_rot.setToolTip("相机翻转安装时, 右侧同时显示旋转后的画面, 与左侧原始帧并排对照 "
@@ -503,6 +607,21 @@ class YoloInputViewer(QtWidgets.QDialog):
         drow.addWidget(self.lbl_data, 2)
         v.addLayout(drow)
 
+        # ── 第 3.5 行: 本窗口**自己的结果回显** ──────────────────────────────
+        #   老倪 2026-09-18: 「我点击 构建数据集 / 数据体检 / 训练YOLO, 也没有反应啊」
+        #   实测这三个按钮**都在干活** (simulink_log 有实证: 07:17:59 构建 train=21/val=2/框=23、
+        #   07:18:09 体检 ✅ 通过、07:18:13 训练 rc=0 起了 100 轮) —— 但结果只写进**画布底部日志**,
+        #   本窗口里一个字都不显示 ⇒ 用户完全不知道点成功了没有。现在本窗口内直接回显每一步结果,
+        #   并挂训练进度轮询 (从 results.csv 读真值, 不编造)。
+        self.lbl_annot_result = QtWidgets.QLabel("")
+        self.lbl_annot_result.setObjectName("st")
+        self.lbl_annot_result.setWordWrap(True)
+        self.lbl_annot_result.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        _sp4 = self.lbl_annot_result.sizePolicy()
+        _sp4.setHorizontalPolicy(QtWidgets.QSizePolicy.Ignored)
+        self.lbl_annot_result.setSizePolicy(_sp4)
+        v.addWidget(self.lbl_annot_result)
+
         # ── 两个子窗口: 左 = 原始 (0°) / 右 = 旋转 (相机翻转) ──
         panes = QtWidgets.QHBoxLayout()
         self.w_orig = YoloLabelWidget(rot_deg=0, editable=False)
@@ -530,6 +649,47 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._pane_head[key] = head
             panes.addLayout(col, 1)
         self._pane_img = {"orig": self.w_orig, "rot": self.w_rot}
+        # ── 第 3 列: 📺 实时预览 + 📸 抓当前帧 ────────────────────────────────
+        #   老倪 2026-09-18: 「保存并下一帧时我看不到当前实时画面, 怎么办?」
+        #   标定必须在**冻结帧**上画框 (不能动), 但作业期间必须能看见现场实时画面,
+        #   才能判断"画面到现在这个状态了、该抓下一帧了" (例: 光模块已被送到位)。
+        #   故加这一列: 冻结时它持续显示**同一路新鲜帧** (与 L2 同源, 带帧龄),
+        #   并给「📸 用当前实时帧标定」一键把标定画面换成此刻那一帧 (换帧即清框 —— 框属于旧帧坐标)。
+        pipcol = QtWidgets.QVBoxLayout()
+        self.lbl_pip_head = QtWidgets.QLabel("📺 实时预览 (冻结也能看)")
+        self.lbl_pip_head.setObjectName("ph")
+        pipcol.addWidget(self.lbl_pip_head)
+        self.pip = QtWidgets.QLabel("(等待新鲜实时帧…)")
+        self.pip.setMinimumSize(300, 225)
+        self.pip.setAlignment(QtCore.Qt.AlignCenter)
+        self.pip.setWordWrap(True)
+        self.pip.setStyleSheet("background:#0d1117; color:#8b949e; border:1px solid #30363d;")
+        pipcol.addWidget(self.pip, 1)
+        self.btn_grab = QtWidgets.QPushButton("📸 用当前实时帧标定")
+        self.btn_grab.setToolTip("把标定画面换成**此刻的实时帧** (会清掉当前框: 框属于旧帧坐标, 不能跨帧留)\n"
+                                 "用途: 冻结作业时看到现场到位了 → 一键抓这一帧来标")
+        self.btn_grab.clicked.connect(self._grab_live_frame)
+        pipcol.addWidget(self.btn_grab)
+        # 🔄 实时预览翻转 (老倪 2026-09-18: 「实时图像要能够调整翻转180度, 因为相机总是自己翻转」)
+        #   相机倒装/翻转安装是常态 → 实时预览窗必须能独立转正 (只影响**显示**, 不改像素与标签语义:
+        #   标定框始终按原始帧坐标存档, 抓帧也永远抓原始朝向那一帧)。
+        _rotrow = QtWidgets.QHBoxLayout()
+        _lbl = QtWidgets.QLabel("🔄 预览翻转:")
+        _lbl.setObjectName("ph")
+        _rotrow.addWidget(_lbl)
+        self.cb_pip_rot = QtWidgets.QComboBox()
+        self.cb_pip_rot.addItems(["180° (相机倒装转正)", "0° (原始朝向)", "90°", "270°"])
+        self.cb_pip_rot.setCurrentIndex(0)                # 默认 180°: 相机总是自己翻转
+        self.cb_pip_rot.setToolTip("只影响实时预览的**显示朝向** (相机倒装时转正看清现场)\n"
+                                   "标定框仍按原始帧坐标存档; 「📸 抓当前实时帧」抓的也是原始朝向")
+        self.cb_pip_rot.currentIndexChanged.connect(self._on_pip_rot_changed)
+        _rotrow.addWidget(self.cb_pip_rot)
+        pipcol.addLayout(_rotrow)
+        self.lbl_pip_meta = QtWidgets.QLabel("")
+        self.lbl_pip_meta.setObjectName("ph")
+        self.lbl_pip_meta.setWordWrap(True)
+        pipcol.addWidget(self.lbl_pip_meta)
+        panes.addLayout(pipcol, 1)
         v.addLayout(panes, 1)
         self._apply_rot_vis()      # ⚠️ 必须显式调一次: chk_rot 在 connect 之前就 setChecked(True) 了,
                                    # 否则 toggled 不会触发 → 右窗永远隐藏 (构建期就隐藏了, 没人再显示它)
@@ -566,7 +726,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._chain_stopped = False      # 手动「⏹ 停止链路」后不自动重连
         self._recovering = False
         self._stale_since = None
-        self._last_recover = time.time()  # 给首次拉起 20s 宽限, 别和启动线程抢
+        self._last_recover = time.monotonic()  # 给首次拉起 20s 宽限, 别和启动线程抢
         self._last_show_ensure = time.time()
         self._closed = False
         QtCore.QTimer.singleShot(200, self._start_source)
@@ -669,7 +829,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._set_annot_root("real")
             self._reset_view_for_source("real")     # 🖼 清掉上一路画面 (不残留仿真帧)
             self._stale_since = None
-            self._last_recover = time.time()
+            self._last_recover = time.monotonic()
             self.btn.setEnabled(True)
             t = threading.Thread(target=self._ensure_chain_bg, daemon=True)
             t.start()
@@ -750,7 +910,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         if self.source == "real" and not self._chain_stopped and time.time() - self._last_show_ensure > 30:
             self._last_show_ensure = time.time()
             self._stale_since = None
-            self._last_recover = time.time()
+            self._last_recover = time.monotonic()
             threading.Thread(target=self._ensure_chain_bg, daemon=True).start()
 
     def _screens(self):
@@ -824,10 +984,15 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._log_line("已停止 Docker 客户端与 Orin srv 节点 (Orin 侧无调用也会自动退出)")
 
     def _maybe_recover(self):
-        """断流自愈: Orin 节点 25s 无调用自退 / Docker 客户端被杀 → 自动重连 (节流 20s; 手动停止则不动)"""
+        """断流自愈: Orin 节点 25s 无调用自退 / Docker 客户端被杀 → 自动重连 (节流 20s; 手动停止则不动)
+
+        🩹 2026-09-18 时钟回拨事故: 全部用单调钟 —— 原来 time.time() 差值在 NTP 回拨 8h 后
+        变负, 于是"无新帧 6s → 自动重连"永远不触发 (画面冻住且无人救), 正是这次真机图像
+        不是实时的第二重原因。
+        """
         if self._chain_stopped or self._recovering:
             return
-        now = time.time()
+        now = time.monotonic()
         if self._stale_since is None:
             self._stale_since = now
         if now - self._stale_since < 6.0 or now - self._last_recover < 20.0:
@@ -920,12 +1085,20 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._syncing = False
 
     def _paint_frames(self):
-        """把当前帧同时推给两个子窗口 (各自按自己的 rot_deg 显示)"""
+        """把当前帧同时推给两个子窗口 (各自按自己的 rot_deg 显示)
+
+        🎯 感知模式开 → **显示副本**上叠加检测框 (self._dets); 存档/标定永远用 self._rgb_raw 原始像素
+        (框不会烧进训练图 —— 这是加感知叠加时必须守的纪律)。
+        """
         if self._rgb is None:
             return
-        self.w_orig.set_frame_rgb(self._rgb)
+        _disp = self._rgb
+        if (getattr(self, "btn_percept", None) is not None and self.btn_percept.isChecked()
+                and getattr(self, "_dets", None)):
+            _disp = _render_boxes(self._rgb, self._dets)
+        self.w_orig.set_frame_rgb(_disp)
         if self.chk_rot.isChecked():
-            self.w_rot.set_frame_rgb(self._rgb)
+            self.w_rot.set_frame_rgb(_disp)
         self._pm = {"orig": self.w_orig.pixmap(),
                     "rot": self.w_rot.pixmap() if self.chk_rot.isChecked() else None}
 
@@ -939,8 +1112,19 @@ class YoloInputViewer(QtWidgets.QDialog):
 
     # ── 刷新 ────────────────────────────────────────────────────────────
     def _tick(self):
-        if time.time() - getattr(self, "_last_clamp", 0) > 5.0:      # 抜屏/换分辨率后 5s 内自动拉回
-            self._last_clamp = time.time()
+        # 🛡 2026-09-18 槽体总兜底 (同 studio.py「点一下就崩」通式: Qt 定时器/槽里未捕获异常
+        #   → qFatal → 整个控制台进程中止, 且无弹窗)。刷新异常只记日志, 绝不冒泡。
+        try:
+            self._tick_inner()
+        except Exception as _e:                                  # noqa: BLE001
+            try:
+                self._log_line(f"⚠️ 刷新异常 (已兜住, 窗口继续): {type(_e).__name__}: {_e}")
+            except Exception:                                     # noqa: BLE001
+                pass
+
+    def _tick_inner(self):
+        if time.monotonic() - getattr(self, "_last_clamp", 0) > 5.0:      # 抜屏/换分辨率后 5s 内自动拉回
+            self._last_clamp = time.monotonic()
             self._clamp_to_screen(silent=False)
         if self.source == "real":
             self._tick_real()
@@ -948,6 +1132,20 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._tick_cam()                        # 💻 本机摄像头 (队列帧)
         else:
             self._tick_sim()
+        # 🎯 感知模式看门狗 (冻结帧/静止场景兜底; 实时性由"新帧即推理"那条路保证, 见各 _tick_*)
+        #   ⚠️ 两个纪律: ①叠加在 paint 阶段 (换帧/冻结/标定都不会丢框) ②新帧到达时**先推理再画** (框与帧同拍)
+        self._percept_refresh()
+        # 📺 实时预览列: 冻结(标定)作业时持续显示现场; 未冻结时主画面本身就是实时 → 该列显式置空 (不摆旧图)
+        if self._frozen:
+            self._pip_update()
+        else:
+            _pip = getattr(self, "pip", None)
+            if _pip is not None and getattr(self, "_pip_state", "") != "idle":
+                self._pip_state = "idle"
+                _pip.clear()
+                _pip.setText("(未冻结: 主画面本身即实时)")
+                if getattr(self, "lbl_pip_meta", None) is not None:
+                    self.lbl_pip_meta.setText("冻结(标定)时才需要这一列")
 
     def _tick_cam(self):
         """💻 本机摄像头帧刷新 (UVC 队列帧; 与仿真同一条取帧路径, 只是来源不同)"""
@@ -963,8 +1161,10 @@ class YoloInputViewer(QtWidgets.QDialog):
         if self._frozen:
             self._pending = rgb                    # 冻结(标定中): 攒着, 点「下一帧」再显示
         else:
+            self._rgb_raw = rgb
             self._rgb = rgb
             self._view_tag = "usbcam"
+            self._percept_refresh(force=True)          # 🎯 本帧先推理再画
             self._paint_frames()
         self._sim_fps_n += 1
         if time.time() - self._sim_fps_t >= 1.0:
@@ -981,6 +1181,267 @@ class YoloInputViewer(QtWidgets.QDialog):
                         f" · 当前帧框 {len(self.w_orig.boxes())} 个\n"
                         f"双画面: 左=原始 (0°) · {('右=旋转 ' + str(self._rot_deg()) + '° (同一帧旋转)') if self.chk_rot.isChecked() else '右窗已关'}")
 
+    # ── 🎯 感知模式 (老倪 2026-09-18) ───────────────────────────────────
+    def _on_percept(self, on):
+        """点「🎯 感知模式」→ 在当前输入图像上叠加感知结果 (bounding box)。"""
+        self.chk.blockSignals(True)                 # 双向同步别名, 防递归
+        try:
+            self.chk.setChecked(bool(on))
+        finally:
+            self.chk.blockSignals(False)
+        self._dets, self._percept_txt, self._dets_ts = [], "", 0.0
+        self._percept_refresh(force=True)
+        self._paint_frames()
+        self._log_line(("🎯 感知模式开: 在当前输入图像上叠加感知结果 (真推理 bounding box)"
+                        if on else "🎯 感知模式关: 恢复纯原始图像"))
+
+    def _on_percept_alias(self, on):
+        """旧「叠加 YOLO 框」勾选框 → 同步到感知模式按钮。"""
+        if self.btn_percept.isChecked() != bool(on):
+            self.btn_percept.blockSignals(True)
+            try:
+                self.btn_percept.setChecked(bool(on))
+            finally:
+                self.btn_percept.blockSignals(False)
+            self._on_percept(bool(on))
+
+    def _percept_weights(self):
+        """按当前输入源选权重 (域不混): 真机 → 真机在役权重; 仿真/本机摄像头 → 仿真域权重。"""
+        if self.source == "real":
+            return _live_weights()
+        p = os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt")
+        return p if os.path.exists(p) else None
+
+    def _percept_refresh(self, force: bool = False):
+        """在当前**显示帧**上跑一次感知 (2.5Hz 节流) → self._dets / self._percept_txt。"""
+        if getattr(self, "btn_percept", None) is None or not self.btn_percept.isChecked():
+            self._dets, self._percept_txt = [], ""
+            if getattr(self, "lbl_percept", None) is not None:
+                self.lbl_percept.setText("")
+            return
+        now = time.time()
+        # 硬地板上限: 即使 force (新帧立即推理, 保证"框跟帧同拍") 也最多 12Hz, 防 30fps 源把 GPU 打满
+        if now - getattr(self, "_dets_ts", 0.0) < (0.08 if force else 0.4):
+            return
+        src = getattr(self, "_rgb_raw", None)
+        if src is None:
+            src = self._rgb
+        if src is None:
+            return
+        self._dets_ts = now
+        w = self._percept_weights()
+        dets = _detect_with(w or "", src)
+        self._dets = dets
+        wid = os.path.basename(w) if w else "?"
+        if not dets:
+            self._percept_txt = f"🎯 感知({wid}): 无检出"
+        else:
+            top = max(dets, key=lambda d: d["conf"])
+            self._percept_txt = (f"🎯 感知({wid}): {len(dets)} 框 · 最高 {top['cls']} "
+                                 f"conf={top['conf']:.2f} · box={[round(v) for v in top['xyxy']]}")
+        if getattr(self, "lbl_percept", None) is not None:
+            self.lbl_percept.setText(self._percept_txt)
+
+    def _live_real_frame(self):
+        """🎯 真机源「当前新鲜帧」的**单一入口** (实时刷新 / 实时预览 / 保存并下一帧 共用同一口径)。
+
+        ① srv 落盘新鲜 (meta.ok ∧ 非 stale ∧ age ≤ 5s) → live_frame.jpg (带 seq/编码耗时)
+        ② 否则 Docker tap 落盘新鲜帧 (cam_rs → cam_fp → cam_latest, **L2 吃的就是这条**)
+        ③ 都不新鲜 → 返回 (None, 原因, None) —— **绝不回退历史帧** (红线: 不用旧图冒充实时)
+        返回: (rgb, 来源标签, 帧龄秒) 或 (None, 原因字符串, None)
+        """
+        meta = None
+        if os.path.isfile(LIVE_META):
+            try:
+                meta = json.load(open(LIVE_META, encoding="utf-8"))
+            except Exception:                                              # noqa: BLE001
+                meta = None
+        _age_s = meta.get("age_s") if isinstance(meta, dict) else None
+        # 🩹 2026-09-18: age_s 必须落在 [0, 5]s —— 负龄 = 时钟回拨 (mtime/戳在未来), 不是新鲜
+        _age_ok = (_age_s is None) or (0.0 <= float(_age_s) <= 5.0)
+        if (os.path.isfile(LIVE_JPG) and isinstance(meta, dict) and meta.get("ok")
+                and not meta.get("stale") and _age_ok):
+            rgb = rgb_from_file(LIVE_JPG)
+            if rgb is not None:
+                return rgb, "srv 落盘 live_frame.jpg (Orin /zmax/live_frame)", (float(_age_s) if _age_s is not None else 0.0)
+        pick = self._pick_real_file()
+        if pick is not None:
+            rgb = rgb_from_file(pick[0])
+            if rgb is not None:
+                return rgb, os.path.basename(pick[0]) + " (Docker tap · 与 L2 同源)", pick[2]
+        _why = "srv 不可达"
+        if isinstance(meta, dict) and meta.get("reason"):
+            _why = f"srv: {meta.get('reason')}"
+        return None, _why + f" 且无新鲜落盘帧 (候选: " + " · ".join(
+            getattr(self, "_real_cand_status", []) or ["(未扫描)"]) + ")", None
+
+    def _live_frame_any(self):
+        """当前源可选用的「最新实时帧」—— PiP 实时预览与「📸 抓当前实时帧」共用。
+
+        真机 → `_live_real_frame()` (文件链); 仿真/本机摄像头 → 冻结期间 `_tick_*` 攒下的
+        `self._pending` (最新队列帧, 不额外消费队列)。返回 (rgb, 来源标签, 帧龄秒) | (None, 原因, None)。
+        """
+        if self.source == "real":
+            return self._live_real_frame()
+        if self._pending is not None:
+            return self._pending, ("metaworld 引擎实况帧" if self.source == "sim" else "本机摄像头 UVC"), 0.0
+        return None, ("仿真源暂无新帧 (引擎/采集线程未产出)" if self.source == "sim"
+                      else "本机摄像头暂无新帧"), None
+
+    def _pip_rot_deg(self) -> int:
+        """实时预览的显示翻转角 (只影响显示; 相机倒装时用来转正)。"""
+        cb = getattr(self, "cb_pip_rot", None)
+        if cb is None:
+            return 180
+        return {"0° (原始朝向)": 0, "90°": 90, "180° (相机倒装转正)": 180, "270°": 270}.get(
+            cb.currentText(), 180)
+
+    @staticmethod
+    def _rot_rgb(rgb, deg: int):
+        """按角度旋转 RGB 数组 —— 与 YoloLabelWidget 的 Qt 旋转同向 (顺时针为正)。"""
+        if not deg:
+            return rgb
+        k = (-int(deg) // 90) % 4          # Qt QTransform().rotate(deg) 是顺时针 → np.rot90 逆时针, 取反
+        return np.ascontiguousarray(np.rot90(rgb, k))
+
+    def _on_pip_rot_changed(self, *_a):
+        """翻转角变了 → 立刻重画实时预览 (不等下一节流窗)。"""
+        self._pip_ts = 0.0
+        self._pip_update()
+
+    def _pip_update(self):
+        """📺 冻结(标定)时把**最新实时帧**画进实时预览小窗 —— 标定作业时也能看见现场。
+
+        老倪 2026-09-18: 「保存并下一帧时看不到当前实时画面, 怎么办?」标定必须在冻结帧上画框,
+        但作业期间必须能看见现场, 才能判断"这一帧值不值得标"。刷新 ~5Hz (节流, 不抢标定流畅度)。
+        """
+        pip = getattr(self, "pip", None)
+        if pip is None:
+            return
+        now = time.time()
+        if now - getattr(self, "_pip_ts", 0.0) < 0.2:
+            return
+        self._pip_ts = now
+        self._pip_state = "live"
+        rgb, label, age = self._live_frame_any()
+        if rgb is None:
+            pip.setText("⚠️ 无实时帧\n" + str(label)[:120])
+            self._pip_meta = None
+        else:
+            _deg = self._pip_rot_deg()
+            rgb = self._rot_rgb(rgb, _deg)          # 🔄 相机倒装 → 显示转正 (只影响显示)
+            qimg = QtGui.QImage(np.ascontiguousarray(rgb).data, rgb.shape[1], rgb.shape[0],
+                                rgb.shape[1] * 3, QtGui.QImage.Format_RGB888)
+            pm = QtGui.QPixmap.fromImage(qimg).scaled(pip.width(), pip.height(),
+                                                      QtCore.Qt.KeepAspectRatio,
+                                                      QtCore.Qt.SmoothTransformation)
+            pip.setPixmap(pm)
+            self._pip_meta = {"label": label, "age": age, "rot": _deg}
+            pip.setToolTip(f"来源: {label} · 帧龄 {age:.1f}s · 显示翻转 {_deg}° (相机倒装转正用)")
+        if getattr(self, "lbl_pip_meta", None) is not None:
+            self.lbl_pip_meta.setText(
+                "(无实时帧)" if self._pip_meta is None
+                else f"{self._pip_meta['label']} · 帧龄 {self._pip_meta['age']:.1f}s"
+                     f" · 翻转 {self._pip_meta.get('rot', 0)}°")
+
+    def _grab_live_frame(self):
+        """📸 用**当前实时帧**替换标定画面 (老倪: 冻结作业时也想直接抓现场那一帧来标)。
+
+        口径: 与实时预览同一入口; 换帧 → 清掉旧框 (框属于旧帧的像素坐标, 不能跨帧留);
+        抓不到新鲜帧就**明说原因不换** (不给旧图)。
+        """
+        rgb, label, age = self._live_frame_any()
+        if rgb is None:
+            self._log_line("⚠️ 抓当前实时帧失败: " + str(label) + " → 保持当前帧不动")
+            return False
+        self.w_orig.clear_boxes()
+        self.w_rot.clear_boxes()
+        self._rgb_raw = rgb
+        self._rgb = rgb
+        self._pending = None
+        self._frozen = True
+        self._paint_frames()
+        self._log_line(f"📸 已用当前实时帧替换标定画面: {label} · 帧龄 {age:.1f}s (旧框已清, 请重新圈选)")
+        return True
+
+    def _pick_real_file(self, fresh_s: float | None = None):
+        """真机图像候选链挑帧: 返回 (path, label, age_s) 中最新鲜的**新鲜**帧; 无 → None。
+
+        与 L2 侧同源 (ss_yolo_on_real.py CAND: cam_rs → cam_fp → cam_latest),
+        新鲜度 = 文件 mtime 年龄 ≤ fresh_s (默认 ZMAX_VIEWER_FILE_FRESH_S=10s)。
+        另: 所有候选的逐条状态 (缺文件/不新鲜) 记进 self._real_cand_status, 供占位画面如实列出。
+        """
+        fresh_s = REAL_FILE_FRESH_S if fresh_s is None else fresh_s
+        now = time.time()
+        best, status = None, []
+        for name, label in REAL_FILE_CANDS:
+            p = os.path.join(SHARED, name)
+            if not os.path.isfile(p):
+                status.append(f"{name}: 缺文件")
+                continue
+            try:
+                age = now - os.path.getmtime(p)
+            except OSError:
+                status.append(f"{name}: 读不到时间戳")
+                continue
+            if age < -1.0:
+                # 🩹 2026-09-18 时钟回拨事故: 本机 NTP 把钟回拨 8h 后, 旧帧文件 mtime 落在
+                #   未来 → age 为负. 任何 `age <= 阈值` 判据都会把**静止旧帧**判成实时帧
+                #   (正是"画面不实时了但窗口还说新鲜"的根因) → 负龄一律拒用, 如实标注。
+                status.append(f"{name}: ⏰ 时钟异常 (mtime 在未来 {abs(age):.0f}s) → 拒用")
+                continue
+            if age <= fresh_s:
+                status.append(f"{name}: ✅ 新鲜 {age:.1f}s")
+                if best is None or age < best[2]:
+                    best = (p, label, age)
+            else:
+                status.append(f"{name}: ⚠️ 旧帧 {age:.0f}s")
+        self._real_cand_status = status
+        return best
+
+    def _tick_real_fallback(self, stale_gap_s: float, meta: dict | None) -> bool:
+        """srv 真机帧不可用/不新鲜时的**同源回退**: 用 Docker tap 落盘帧 (L2 吃的那一条)。
+
+        返回 True = 已上屏 (调用方直接 return); False = 无可用新鲜帧 (调用方走占位/自愈)。
+        纪律不变: 只上新鲜帧 (文件 mtime 年龄 ≤ REAL_FILE_FRESH_S), 旧帧绝不冒充实时。
+        """
+        pick = self._pick_real_file()
+        if pick is None:
+            return False
+        p, label, age = pick
+        try:
+            st = os.stat(p)
+            sig = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            return False
+        if sig != self._last_sig:
+            self._last_sig = sig
+            if not self._frozen:
+                rgb = rgb_from_file(p)
+                if rgb is None:
+                    return False
+                self._rgb_raw = rgb
+                self._rgb = rgb
+                self._view_tag = "real"
+                self._percept_refresh(force=True)      # 🎯 本帧先推理再画 (实时跟随)
+                self._paint_frames()
+            else:
+                self._pending_sig = sig
+        self._real_last_fresh = time.monotonic()
+        self._stale_since = None
+        self._frame_meta = {"device": "D405 (Docker tap 只读订阅)", "seq": None,
+                            "age_s": round(age, 1), "src": label, "stale": False, "ok": True}
+        self.st.setText(
+            f"✅ 实时真机帧 (与 L2 同源 · Docker tap 落盘){'  🧊 已冻结(标定中)' if self._frozen else ''}\n"
+            f"来源: {label}\n"
+            f"文件: {os.path.basename(p)} · 帧龄 {age:.1f}s (新鲜阈值 {REAL_FILE_FRESH_S:.0f}s)\n"
+            f"srv 通道 (/zmax/live_frame): {str((meta or {}).get('reason') or '不可达/无 meta')}"
+            f" → 已自动回退到话题落盘帧 (不拿旧图冒充)\n"
+            f"标定: 数据根 {self.annot_root} · 会话 {self._session} · 本窗已存 {self._n_saved} 张"
+            f" · 当前帧框 {len(self.w_orig.boxes())} 个\n"
+            f"通道: Orin 相机 → ROS2 话题 → 本机 Docker tap 落盘 → 本窗口 (L2 读同一文件)")
+        return True
+
     def _tick_real(self):
         meta = None
         if os.path.isfile(LIVE_META):
@@ -989,16 +1450,22 @@ class YoloInputViewer(QtWidgets.QDialog):
             except Exception:                                              # noqa: BLE001
                 meta = None
         _stale_gap_s = 10.0        # 超过这么久没有新鲜真机帧 → 换占位画面 (不拿旧图冒充实时)
-        _since_fresh = time.time() - getattr(self, "_real_last_fresh", 0.0)
+        # 🩹 2026-09-18: 单调钟 —— 回拨后 time.time() 差值变负会让"久无新鲜帧"永不成立
+        _since_fresh = time.monotonic() - getattr(self, "_real_last_fresh", 0.0)
         if not os.path.isfile(LIVE_JPG):
+            # 🩹 2026-09-18: srv 落盘文件都没有 → 先试 Docker tap 落盘帧 (与 L2 同源), 有就上屏
+            if self._tick_real_fallback(_stale_gap_s, meta):
+                return
             self.st.setText("⚠️ 还没有帧文件 " + LIVE_JPG + "\n"
                             "   链路状态: " + (self._chain_state or "启动中…") +
-                            "\n   (Orin 侧 srv 未起 / Docker 客户端未起 / D405 UVC 被占用 都可能)")
+                            "\n   (Orin 侧 srv 未起 / Docker 客户端未起 / D405 UVC 被占用 都可能)\n"
+                            "   同源回退帧: " + " · ".join(getattr(self, "_real_cand_status", []) or ["(未扫描)"]))
             if not self._frozen and _since_fresh > _stale_gap_s:
                 self._show_placeholder([
                     "🎥 真机源 · 无帧 (真机未连接)",
-                    "还没有帧文件: " + LIVE_JPG,
+                    "srv 帧文件: " + LIVE_JPG + " 不存在",
                     "链路状态: " + (self._chain_state or "启动中…"),
+                    "同源回退帧 (Docker tap): " + (" · ".join(getattr(self, "_real_cand_status", []) or ["(未扫描)"])),
                     "排查: Orin 侧 srv 未起 / Docker 客户端未起 / D405 UVC 被占用",
                     "本窗口不会用旧帧或仿真帧占位",
                 ], tag="no-frame-real")
@@ -1009,6 +1476,10 @@ class YoloInputViewer(QtWidgets.QDialog):
         age = meta.get("age_s") if meta else None
         stale = bool(meta and meta.get("stale")) or (age is not None and age > 5.0)
         _fresh = ok and not stale
+        if not _fresh:
+            # 🩹 srv 不新鲜/不可达 → 走 Docker tap 落盘帧 (真机图像流没断, L2 一直在吃这条)
+            if self._tick_real_fallback(_stale_gap_s, meta):
+                return
         try:
             st = os.stat(LIVE_JPG)
             sig = (st.st_mtime_ns, st.st_size)
@@ -1017,15 +1488,18 @@ class YoloInputViewer(QtWidgets.QDialog):
                 if not self._frozen:
                     rgb = rgb_from_file(LIVE_JPG)
                     if rgb is not None:
+                        self._rgb_raw = rgb
                         self._rgb = rgb
                         self._view_tag = "real"
+                        # 🎯 先对**这一帧**跑感知再画 → 框与帧同拍 (老倪 08:2x: 「移动光模块, 框要跟着走」)
+                        self._percept_refresh(force=True)
                         self._paint_frames()
                 else:
                     self._pending_sig = sig
         except Exception:                                                  # noqa: BLE001
             pass
         if _fresh:
-            self._real_last_fresh = time.time()
+            self._real_last_fresh = time.monotonic()
             self._stale_since = None
         else:
             self._maybe_recover()
@@ -1040,6 +1514,8 @@ class YoloInputViewer(QtWidgets.QDialog):
                     "原因: " + str((meta or {}).get("reason") or ("缺 meta 文件 " + LIVE_META)),
                     f"最后真机帧: {_last} ({int(_since_fresh)}s 前, {int((meta or {}).get('age_s') or 0)}s 龄)"
                     if _last else "本地帧文件没有可用时间戳",
+                    "同源回退帧 (Docker tap, L2 读同一文件): "
+                    + (" · ".join(getattr(self, "_real_cand_status", []) or ["(未扫描)"] )),
                     "通道: Orin 取帧 + JPEG → /zmax/live_frame → 本机 Docker → 本窗口",
                     "本窗口只显示新鲜真机帧; 旧帧/仿真帧都不会拿来顶替",
                 ], tag="stale-real")
@@ -1078,7 +1554,9 @@ class YoloInputViewer(QtWidgets.QDialog):
         if self._frozen:
             self._pending = rgb                    # 冻结: 攒着, 用户点「下一帧」再显示
         else:
+            self._rgb_raw = rgb
             self._rgb = rgb
+            self._percept_refresh(force=True)          # 🎯 本帧先推理再画
             self._paint_frames()
         self._sim_fps_n += 1
         if time.time() - self._sim_fps_t >= 1.0:
@@ -1171,12 +1649,23 @@ class YoloInputViewer(QtWidgets.QDialog):
             if rgb is None:
                 return False
             self._pending = None
+            self._rgb_raw = rgb
             self._rgb = rgb
         else:
-            rgb = rgb_from_file(LIVE_JPG) if os.path.isfile(LIVE_JPG) else None
+            # 🐛 2026-09-18 老倪: 「点『保存并下一帧』怎么显示以前的历史图像?」
+            #   根因: 这里原来**无条件读 LIVE_JPG** (srv 落盘 live_frame.jpg), 而该通道不可达时
+            #   那是一张 17 小时前的历史帧 → 标定时把昨天的旧图当"下一帧"标 = 直接污染训练数据。
+            #   现改为走**真机当前新鲜帧的单一入口** `_live_real_frame()` (与实时预览/实时刷新同口径)。
+            rgb, _src, _age = self._live_real_frame()
             if rgb is None:
+                self._log_line("⚠️ 取下一帧失败: " + str(_src) + " → 保持当前帧; **不回退历史帧** "
+                               "(旧图会污染标定数据)。候选状态: "
+                               + " · ".join(getattr(self, "_real_cand_status", []) or ["(未扫描)"]))
                 return False
+            self._rgb_raw = rgb
             self._rgb = rgb
+            self._percept_refresh(force=True)          # 🎯 新帧立刻推理 → 框跟着换
+            self._log_line(f"取下一帧: {_src} · 帧龄 {_age:.1f}s (只取新鲜帧, 旧帧不顶替)")
         self._frozen = True
         self._paint_frames()
         return True
@@ -1249,7 +1738,12 @@ class YoloInputViewer(QtWidgets.QDialog):
         yad.add_class(self.annot_root, cls0)
         fm = self._frame_meta or {}
         try:
-            rec = yad.save_sample(self.annot_root, self._rgb, boxes,
+            # ⚠️ 存档必须用**原始帧** (self._rgb_raw): 勾了「叠加 YOLO 框」时 self._rgb 上画过绿框,
+            #   存进训练集会变成"框烧进像素"的脏数据 (标签本来就存坐标) —— 2026-09-18 加叠加时同步修。
+            _save_rgb = getattr(self, "_rgb_raw", None)
+            if _save_rgb is None or getattr(_save_rgb, "shape", None) != getattr(self._rgb, "shape", None):
+                _save_rgb = self._rgb
+            rec = yad.save_sample(self.annot_root, _save_rgb, boxes,
                                   device=fm.get("device") or "", seq=fm.get("seq"),
                                   ts=time.time(), src=f"{fm.get('src') or self.source}",
                                   session=self._session, annotator=self.ed_who.text().strip(),

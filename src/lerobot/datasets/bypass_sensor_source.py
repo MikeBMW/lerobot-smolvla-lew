@@ -15,6 +15,7 @@
     read_latest() -> dict           # 最新一帧真机感知 (含 gaps / fresh / age_s)
     read_bypass_status() -> dict    # 旁路运行器心跳 (阶段/残差/接触p/零下行自证/缺口)
     tail_bypass(n) -> list[dict]    # 旁路逐帧记录最近 n 条 (画曲线用)
+    tail_state(n) -> list[dict]     # 真机逐帧历史 (t/tcp/六维力, 增量读 → 位姿与插入力波形)
 """
 import json
 import os
@@ -141,6 +142,51 @@ def read_bypass_status():
 def tail_bypass(n=240):
     """旁路逐帧记录最近 n 条 (画残差/接触概率曲线)"""
     return _tail_json(_latest_file(BYPASS_DIR, "bypass_"), n=n, chunk=262144)
+
+
+# ── 真机逐帧历史 (TCP xyz + 六维力) → 波形显示 ────────────────────────────────
+# state_*.jsonl 每行 ~5KB (含图像元数据), 整段重读太贵 → 模块级增量缓存: 只吃新增字节。
+# 跨天/轮转/截断自动重接 (旧文件丢了就重开新文件), 与 ss_remote_tap 的 Tailer 同一思路。
+_STATE_CACHE = {"path": None, "off": 0, "rows": []}
+
+
+def tail_state(n=300, max_bytes=768 * 1024, seek_back=2 * 1024 * 1024):
+    """真机感知逐帧记录最近 n 条 (含 t / tcp[3] / ft[6]) —— 供波形显示, 增量只读新增字节"""
+    path = _latest_file(REMOTE_DIR, "state_")
+    if not path:
+        return []
+    c = _STATE_CACHE
+    try:
+        size = os.path.getsize(path)
+    except Exception:
+        return c["rows"]
+    if c["path"] != path or size < c["off"]:          # 换文件 / 被轮转截断 → 重开
+        c["path"], c["off"], c["rows"] = path, max(0, size - seek_back), []
+    if size <= c["off"]:
+        return c["rows"]
+    try:
+        with open(path, "rb") as f:
+            f.seek(c["off"])
+            raw = f.read(max_bytes)
+    except Exception:
+        return c["rows"]
+    if not raw:
+        return c["rows"]
+    cut = raw.rfind(b"\n")                             # 字节级定位: 只消费到最后一个完整行
+    if cut < 0:                                        # 还没有完整行 → 原地等下一拍
+        return c["rows"]
+    c["off"] += cut + 1
+    for ln in raw[:cut].decode("utf-8", errors="replace").splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            c["rows"].append(json.loads(ln))
+        except Exception:                              # 半行/坏行 → 跳过, 不猜
+            continue
+    if len(c["rows"]) > n:
+        c["rows"] = c["rows"][-n:]
+    return c["rows"]
 
 
 if __name__ == "__main__":       # 自检 (命令行直接跑)

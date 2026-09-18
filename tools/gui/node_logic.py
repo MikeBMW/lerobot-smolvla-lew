@@ -1928,6 +1928,11 @@ def _yolo_ensure_aligner(log):
     import yolo_state_aligner
     _cands = ["runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
               "outputs/yolo_peg/peg_v1/weights/best.pt"]
+    # ⚠️ 2026-09-18 决策记录: **不要**把 models/yolo_peg_live.pt (真机域权重) 塞进这里 ——
+    #   这条链同时服务**仿真** (metaworld 渲染帧) 与 2D→3D; 真机域权重是 1 类 (peg, 真实 640x480 域),
+    #   在仿真帧上会 0 检出 → 会把仿真 L2 链打回退。真机帧的检测走**独立入口**:
+    #   tools/ss_yolo_on_real.py (L2 旁路, SS_YOLO_WEIGHTS 默认 models/yolo_peg_live.pt)
+    #   与「输入图像」窗口真机源的叠加 (yolo_input_viewer._live_overlay)。
     _w = next((c for c in _cands if os.path.isfile(os.path.join(_REPO_ROOT, c))), _cands[0])
     # 🎯 深度模型权重候选 (YOLO depth head) — 🐛 2026-09-03 老倪: 原构造漏传
     #   depth_weights → depth_model=None → detect_3d 全程走「写死 z 平面」回退

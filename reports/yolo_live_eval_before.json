@@ -1,0 +1,678 @@
+{
+ "frames_dir": "/tmp/live_eval_0918_0725",
+ "frames": 17,
+ "ts": "2026-09-18 07:26:27",
+ "results": [
+  {
+   "weights": "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 17,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "hand",
+    "1": "peg",
+    "2": "hole"
+   },
+   "peg_class_idx": [
+    1
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_015.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_016.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_peg/dr_mix/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 17,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "hand",
+    "1": "peg",
+    "2": "hole"
+   },
+   "peg_class_idx": [
+    1
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_015.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_016.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_annot/annot_0918_0711/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 17,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "peg"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_015.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_016.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_annot/annot_0918_0718/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 17,
+   "frames_with_peg": 17,
+   "peg_rate": 1.0,
+   "peg_conf_mean": 0.649,
+   "peg_conf_max": 0.704,
+   "classes": {
+    "0": "peg"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.688,
+       "xyxy": [
+        297.5,
+        21.9,
+        340.2,
+        149.7
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_001.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.65,
+       "xyxy": [
+        298.2,
+        22.0,
+        340.2,
+        149.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_002.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.655,
+       "xyxy": [
+        297.9,
+        20.6,
+        340.7,
+        149.4
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_003.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.635,
+       "xyxy": [
+        298.8,
+        21.6,
+        340.1,
+        149.3
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_004.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.649,
+       "xyxy": [
+        298.9,
+        21.3,
+        339.9,
+        149.6
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_005.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.689,
+       "xyxy": [
+        298.4,
+        21.5,
+        340.2,
+        149.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_006.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.656,
+       "xyxy": [
+        299.4,
+        22.3,
+        339.6,
+        148.9
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_007.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.626,
+       "xyxy": [
+        298.8,
+        21.1,
+        340.4,
+        149.9
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_008.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.665,
+       "xyxy": [
+        299.3,
+        22.7,
+        339.5,
+        147.7
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_009.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.597,
+       "xyxy": [
+        298.8,
+        21.6,
+        340.8,
+        150.4
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_010.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.612,
+       "xyxy": [
+        299.2,
+        21.6,
+        340.4,
+        150.9
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_011.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.635,
+       "xyxy": [
+        298.7,
+        21.1,
+        340.1,
+        149.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_012.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.649,
+       "xyxy": [
+        300.0,
+        22.7,
+        340.3,
+        149.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_013.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.653,
+       "xyxy": [
+        298.5,
+        22.9,
+        339.3,
+        148.4
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_014.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.645,
+       "xyxy": [
+        299.2,
+        21.5,
+        340.5,
+        149.3
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_015.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.625,
+       "xyxy": [
+        298.7,
+        25.0,
+        339.6,
+        146.1
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_016.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.704,
+       "xyxy": [
+        298.7,
+        21.0,
+        339.8,
+        147.4
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

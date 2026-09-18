@@ -7418,14 +7418,32 @@ class SimulinkModule(QWidget):
             pass
 
     def _log(self, msg):
-        self.log_box.append(msg)
-        self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
-        # 🐛 2026-08-20 静静诊断: 落盘方便定位 GUI 训练流程 (Model Zoo 终端看不到画布日志)
+        # 🛠 2026-09-18 (**core dump 实证的崩溃根因收口**): 本方法原来**直接** `self.log_box.append(msg)`,
+        #   一旦从后台线程调用 (例: 📺 输入图像窗口的重连线程 `_recover_bg` → `module._log`) 就是
+        #   **跨线程操作 QTextEdit**。实测两连崩 (06:53:40 / 07:05:53) 的栈顶就是
+        #   QTextEdit::paintEvent → QTextEngine::shapeText → hb_shape → QFontEngineFT::recalcAdvances
+        #   (gdb 读 /tmp/core.python.82728 得到), 伴随 Qt 告警 "Cannot queue arguments of type
+        #   'QTextCursor'" —— 同文件 `_safe_log` 早就为这个原因存在, 但 `_log` 本体没设防。
+        #   修法 = 收口在这一个方法里: ①文件留档总是写 (与 GUI 无关) ②非主线程一律排队回主线程
+        #   再 append (禁止任何调用方跨线程碰文本控件, 也不需要各调用方各写一套)。
         try:
             with open("/tmp/simulink_log.txt", "a", encoding="utf-8") as _f:
                 _f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
         except Exception:
             pass
+        try:
+            import threading as _th
+        except Exception:                                                      # noqa: BLE001
+            _th = None
+        if _th is not None and _th.current_thread() is not _th.main_thread():
+            try:
+                from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+                QMetaObject.invokeMethod(self.log_box, "append", Qt.QueuedConnection, Q_ARG(str, msg))
+            except Exception:                                                  # noqa: BLE001
+                pass
+            return
+        self.log_box.append(msg)
+        self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
 
     def _safe_log(self, msg):
         """🛡 后台线程安全日志 (2026-08-06: _auto_finalize_work 等 threading.Thread 直接
