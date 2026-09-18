@@ -145,19 +145,6 @@ def main():
         row_y[r] = y_cursor
         y_cursor += 130 + row_slots[r] * 124 + 90      # 自适应行高 (含行间距)
     print(f"行高自适应: 最高行 {max(row_slots.values())+1} 档 · 画布高 {y_cursor}px")
-    for r, (title, band, node_ids) in enumerate(ROWS):
-        if not band:
-            continue
-        b = nodes[band]
-        x0 = min(nodes[i]["x"] for i in node_ids)
-        x1 = max(nodes[i]["x"] + nodes[i].get("w", 160) for i in node_ids)
-        b["x"], b["y"], b["w"], b["h"] = x0 - BAND_PAD, row_y[r] - 20, (x1 - x0) + BAND_PAD + 60, (130 + row_slots[r] * 124 + 40)
-        b["name"] = title
-        b["params"] = dict(b.get("params") or {}, desc=title)
-    for nid in DEAD_BANDS:
-        n = nodes[nid]
-        n["x"], n["y"], n["w"], n["h"] = 0, BASE_Y - 300, 100, 8
-
     # ── 定点修补: 把"布局产生的"反向线 (非反馈边) 的目标节点向右挪, 直到只剩反馈边 ──
     fb_set = set(fb)
     row_members = {r: list(ns) for r, ns in order.items()}
@@ -187,6 +174,19 @@ def main():
                 fixed += 1
         if not fixed:
             break
+
+    for r, (title, band, node_ids) in enumerate(ROWS):
+        if not band:
+            continue
+        b = nodes[band]
+        x0 = min(nodes[i]["x"] for i in node_ids)
+        x1 = max(nodes[i]["x"] + nodes[i].get("w", 160) for i in node_ids)
+        b["x"], b["y"], b["w"], b["h"] = x0 - BAND_PAD, row_y[r] - 20, (x1 - x0) + BAND_PAD + 60, (130 + row_slots[r] * 124 + 40)
+        b["name"] = title
+        b["params"] = dict(b.get("params") or {}, desc=title)
+    for nid in DEAD_BANDS:
+        n = nodes[nid]
+        n["x"], n["y"], n["w"], n["h"] = 0, BASE_Y - 300, 100, 8
 
     # 反向连线统计 (按落位后的实际坐标)
     v = [(l["f"], l["t"]) for l in d["links"]
