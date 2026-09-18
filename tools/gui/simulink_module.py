@@ -58,6 +58,12 @@ NODE_TYPES = {
     "robot_switch": {"cn": "机器人切换", "color": "#f0a030"},
 }
 COLORS = {t: v["color"] for t, v in NODE_TYPES.items()}
+# 🔀 运行模式 (数据层, 2026-09-18 老倪三态): 📷 推理 rollout / 🚀 训练(仿真 metaworld) /
+#    🎯 真机数据 L2 训练 (边干边学闭环: 真机帧采集+自动标注 → 训练 → 同口径对照 → 有提升才上在役)
+MODE_ORDER = ("infer", "train", "real_l2")
+MODE_LABEL = {"infer": "📷 推理", "train": "🚀 训练", "real_l2": "🎯 真机数据 L2 训练"}
+MODE_COLOR = {"infer": "#58a6ff", "train": "#3fb950", "real_l2": "#d29922"}
+MODE_TRAIN_FAMILY = ("train", "real_l2")          # 这两个模式下训练类节点激活 / 推理类节点灰显
 # 🔍 2026-08-25 老倪: "画布的方框有些小, 方框里面的字太挤, 重新排布一下"
 #   实测 (tools/probe_canvas_nodes.py): 状态空间 22 节点全是 240x84, 最长名字需要 204px
 #   而可用宽只有 204px (w-36) → 零余量, 两行硬塞; 横向已有节点紧贴 (间隙 0px),
@@ -2915,6 +2921,11 @@ class SimNodeItem(QGraphicsObject):
         #   固定 y=4 贴顶"不居中" → 统一 9pt + 拆两行 + 垂直居中
         painter.setPen(QColor(pal["title"]))
         name = self.node["name"]
+        # 🔀 2026-09-18 三态模式开关: 节点标题**显示当前模式** (📷推理 / 🚀训练 / 🎯真机数据L2训练)
+        #   — 画布上该节点 type=mode_switch, 标题若只显示节点名, 用户看不到自己选了什么模式
+        _md = params.get("mode")
+        if _md in MODE_ORDER:
+            name = f"🔀 {MODE_LABEL.get(_md, _md)}"
         # 2026-08-25 老倪"字太挤": 右留 52px (原 36 → 字贴徽章), 允许拆到三行 (原最多两行硬塞)
         # 🐛 2026-08-28 老倪"字体大, 挤": 12/11/10 → 10/9/8 (192DPI 下 32px→27px)
         # 🐛 2026-09-09 老倪"还是大, 挤": 10/9/8 → 9/8/7 (27px→24px)
@@ -3088,9 +3099,9 @@ class SimNodeItem(QGraphicsObject):
             painter.drawText(_r.adjusted(18, 0, -4, 0), Qt.AlignVCenter | Qt.AlignLeft,
                              f"数据源: {_st}")
         elif t == "mode_switch":
-            # 🔀 训练/推理模式开关: 圆点指示 (绿=训练 蓝=推理)
+            # 🔀 训练/推理模式开关: 圆点指示 (绿=训练 蓝=推理 橙=真机数据 L2 训练)
             md = params.get("mode", "train")
-            md_col = QColor("#3fb950") if md == "train" else QColor("#58a6ff")
+            md_col = QColor(MODE_COLOR.get(md, "#3fb950"))
             painter.setBrush(QColor("#0d1117"))
             painter.setPen(QPen(md_col, 1.4))
             painter.drawEllipse(QRectF(14, 26, 13, 13))
@@ -6347,6 +6358,15 @@ class SimulinkModule(QWidget):
             self._log("⚠️ 画布为空 — 点击上方「🗂 参考应用」一键加载模板, 或从左侧模块库添加节点")
             if self._tutorial_active:
                 self._tutorial_hint_mismatch("run", "pipeline")
+            return
+        # 🎯 2026-09-18 老倪: 模式 = 🎯 真机数据 L2 训练 → 「▶ 运行」= 启动真机数据边干边学闭环
+        #   (不跑仿真: 该模式的运行物 = 真机帧采集 + 自动标注 + 训练闭环, 见 on_real_l2_train)
+        if self._current_mode() == "real_l2":
+            self._log("▶ 运行: 当前模式 = 🎯 真机数据 L2 训练 → 不跑仿真, 启动真机数据边干边学闭环 "
+                      "(采集 → 训练 → 同口径对照 → 有提升才上在役)")
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
+            self.on_real_l2_train(None)
             return
         # 🧮 状态空间画布 → 真实仿真引擎 (2026-08-18 老倪: 六层源码闭环, 非占位观察模式)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
@@ -9957,6 +9977,11 @@ class SimulinkModule(QWidget):
         policy = "left_right"
         if node:
             policy = node.get("params", {}).get("policy", policy)
+        # 🎯 2026-09-18 老倪: 真机数据 L2 训练模式 → 双击数据源/运行环境 = 启动边干边学闭环
+        if mode == "real_l2":
+            self._log("📦 数据层 · 🎯 真机数据 L2 训练 → 边干边学闭环 "
+                      "(真机帧采集+自动标注 → 建集 → 训练 → 同口径对照 → 有提升才上在役)")
+            return self.on_real_l2_train(node)
         if mode == "train":
             self._log(f"📦 数据层 · 🚀 训练模式 → 训练真实模型 (policy={policy}, metaworld 数据)")
             return self.on_train(policy=policy)
@@ -9965,6 +9990,54 @@ class SimulinkModule(QWidget):
         # 日志写\"加载真实模型 rollout\"实际没跑 — 与切换模式时的引导文案
         # (\"双击数据源 → 加载真实模型 rollout\") 对齐, 改走真 rollout
         return self.on_infer_rollout(node or {})
+
+    def on_real_l2_train(self, node=None):
+        """🎯 真机数据 L2 训练 (2026-09-18 老倪): 打开边干边学面板 + 按需启动常驻闭环
+
+        模式开关 = 🎯 真机数据 L2 训练 时, 点「▶ 运行」/ 双击 📦 数据源 → 走这里:
+          环1 真机帧采集 (新鲜度门+去重+姿态多样性门) + 自动标注 (几何真值/伪标注, 只进 train)
+          环2 触发训练 (从在役权重续训, systemd 独立单元) → 训练后新鲜真机帧**同口径对照**
+              → 有提升才上在役 (指针原子切换 + sha256 留痕)
+          环3 人工标注 (控制台「输入图像」窗口) 提供 val 裁决集
+        面板/日志只显示产物真值; 前置缺失 (无新鲜帧/标定未就绪) 如实报, 不编造。
+        """
+        try:
+            import l2_autolearn_panel as lap
+        except Exception as e:                                                 # noqa: BLE001
+            self._log(f"❌ 缺少 tools/gui/l2_autolearn_panel.py: {type(e).__name__}: {e}")
+            return
+        win = getattr(self, "_l2_panel", None)
+        if win is None:
+            win = lap.L2AutoLearnPanel(self)
+            self._l2_panel = win
+        win.show()
+        win.raise_()
+        win.refresh()
+        # 🚀 常驻未起则自动起 (老倪: "点击运行后即可根据真实数据进行训练")
+        try:
+            import json as _j
+            stt = _j.load(open("/home/ubuntu/zmax_data/l2_autolearn/state.json", encoding="utf-8"))
+        except Exception:                                                      # noqa: BLE001
+            stt = {}
+        alive = False
+        try:
+            pid = int(open("/home/ubuntu/zmax_data/l2_autolearn/daemon.pid", encoding="utf-8").read().strip())
+            os.kill(pid, 0)
+            alive = True
+        except Exception:                                                      # noqa: BLE001
+            alive = False
+        if not alive:
+            self._log("🎯 真机数据 L2 训练: 常驻闭环未运行 → 现在启动 "
+                      "(采集真机帧 + 满触发条件自动跑一轮训练; 独立 systemd 单元, 控制台重启不中断)")
+            win.start_daemon()
+        else:
+            self._log("🎯 真机数据 L2 训练: 常驻闭环已在运行 → 面板显示当前进度 "
+                      f"(已采样 {stt.get('n_collected', 0)} 张)")
+        # 🔭 同时把旁路可视化窗口带出来 (看真机帧/阶段/接触, 采集时人能对着现场核)
+        try:
+            self._open_bypass_viz("bypass")
+        except Exception:                                                      # noqa: BLE001
+            pass
 
     def _open_intact_robot_live(self):
         """🖥 画布上的 INTACT 机器人实况窗 (当前机器人 = data/intact_robot_state.json)。
@@ -10108,7 +10181,7 @@ class SimulinkModule(QWidget):
             return
         # 1.5) Switch 节点 (仿 Simulink Switch 块): 切换数据源路由
         # 🐛 2026-08-12 老倪: 训练/推理模式开关 (params.mode) 优先于数据源路由 (params.switch)
-        if params.get("mode") in ("train", "infer"):
+        if params.get("mode") in MODE_ORDER:
             self._toggle_mode(node)
             return
         if params.get("switch") or node.get("type") == "switch":
@@ -10145,9 +10218,10 @@ class SimulinkModule(QWidget):
             return
         # 1.75) 📷 推理 (rollout) 模块 (2026-08-12 老倪: 训练旁推理模块)
         if params.get("infer_rollout"):
-            # 🐛 2026-08-12 老倪: 训练模式下推理节点禁用 (模式开关互斥)
-            if self._current_mode() == "train":
-                self._log("🔀 当前为训练模式 — 双击 🔀 训练/推理 开关切到推理后再推理")
+            # 🐛 2026-08-12 老倪: 训练模式下推理节点禁用 (模式开关互斥); 三态含真机L2训练
+            if self._current_mode() in MODE_TRAIN_FAMILY:
+                self._log(f"🔀 当前为 {MODE_LABEL.get(self._current_mode())} 模式 — "
+                          "双击 🔀 开关切到「📷 推理」后再推理")
                 return
             self.on_infer_rollout(node)
             return
@@ -10573,10 +10647,10 @@ class SimulinkModule(QWidget):
             it.update()
 
     def _current_mode(self):
-        """🔀 画布模式开关当前状态 → 'train' | 'infer' | None (2026-08-12)"""
+        """🔀 画布模式开关当前状态 → 'train' | 'infer' | 'real_l2' | None (2026-08-12; 三态 2026-09-18)"""
         for n in self.nodes:
             p = n.get("params", {})
-            if p.get("mode") in ("train", "infer"):
+            if p.get("mode") in MODE_ORDER:
                 return p["mode"]
         return None
 
@@ -10676,18 +10750,25 @@ class SimulinkModule(QWidget):
             pass
 
     def _toggle_mode(self, node):
-        """🔀 训练/推理模式开关 (2026-08-12 老倪: 训练旁推理模块)
-        双击切换: train ⇄ infer; 激活路径节点金色高亮, 未激活灰显"""
+        """🔀 运行模式开关 (2026-08-12 老倪: 训练旁推理模块; 2026-09-18 三态)
+        双击循环切换: 📷 推理 → 🚀 训练(仿真 metaworld) → 🎯 真机数据 L2 训练 → 📷 推理
+        · 训练族 (训练/真机L2) 激活训练类节点 · 未激活灰显"""
         p = node.setdefault("params", {})
-        p["mode"] = "infer" if p.get("mode", "train") == "train" else "train"
+        cur = p.get("mode", "train")
+        nxt = MODE_ORDER[(MODE_ORDER.index(cur) + 1) % len(MODE_ORDER)] \
+            if cur in MODE_ORDER else MODE_ORDER[1]
+        p["mode"] = nxt
         it = self._items.get(node["id"])
         if it:
             it.update()
-        self._apply_mode_highlight(p["mode"])
-        self._log(f"🔀 模式切换 → {'🚀 训练' if p['mode'] == 'train' else '📷 推理 (rollout)'}")
-        # 🐛 2026-08-19 老倪"选择训练怎么没有提示": 切换后给明确操作引导
-        # + 高亮数据源节点 (引导双击运行)
-        if p["mode"] == "train":
+        self._apply_mode_highlight(nxt)
+        self._log(f"🔀 模式切换 → {MODE_LABEL[nxt]}")
+        # 🐛 2026-08-19 老倪"选择训练怎么没有提示": 切换后给明确操作引导 + 高亮数据源节点
+        if nxt == "real_l2":
+            self._log("   ▶ 真机数据 L2 训练模式: 点「▶ 运行」(或双击 📦 数据源) → 打开「🎯 真机数据 L2 训练」面板, "
+                      "开始边干边学 (采集真机帧+自动标注 → 训练 → 同口径对照 → 有提升才上在役)")
+            self._log("   └ 前置: 真机旁路在跑 (cam_rs 新鲜) · 交付门槛=同口径有提升 · val 只由人工标注构成")
+        elif nxt == "train":
             self._log("   ▶ 训练模式: 双击「📦 metaworld 数据源」→ 训练真实模型 (left_right)")
         else:
             self._log("   ▶ 推理模式: 双击「📦 metaworld 数据源」→ 加载真实模型 rollout")
@@ -10721,13 +10802,14 @@ class SimulinkModule(QWidget):
             pass
 
     def _apply_mode_highlight(self, mode):
-        """按模式高亮训练/推理节点: 激活金色边框 + 灰显未激活"""
+        """按模式高亮训练/推理节点: 激活金色边框 + 灰显未激活
+        (三态: 📷推理 → 只激活推理类; 🚀训练 / 🎯真机L2 → 激活训练类, 推理类灰显)"""
         for n in self.nodes:
             p = n.get("params", {})
             if p.get("train_gate") or p.get("policy") and n.get("type") == "system" and "训练" in n.get("name", ""):
-                p["mode_active"] = "train" == mode and "train" or "off"
+                p["mode_active"] = "train" if mode in MODE_TRAIN_FAMILY else "off"
             elif p.get("infer_rollout"):
-                p["mode_active"] = "infer" == mode and "infer" or "off"
+                p["mode_active"] = "infer" if mode == "infer" else "off"
             it = self._items.get(n["id"])
             if it:
                 it.update()

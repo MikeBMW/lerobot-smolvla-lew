@@ -108,11 +108,14 @@ def main():
         if "hole" in det3d:
             obs39[36:39] = det3d["hole"]
         rec = {"i": i, "dt_s": round(dt, 3), "n_det": len(det3d), "hand_src": hand_src,
+               "n_boxes_2d": meta.get("n_boxes_2d"), "boxes_2d": meta.get("boxes_2d"),
                "det3d": {k: [round(float(q), 5) for q in v] for k, v in sorted(det3d.items())},
                "obs39_filled": [None if np.isnan(x) else round(float(x), 5) for x in obs39],
                "meta": meta, "frame_shape": list(frame.rgb.shape) if frame.rgb is not None else None}
         recs.append(rec)
-        print(f"[real] #{i} {dt:.2f}s 检出={rec['n_det']} {rec['det3d']} "
+        _n2 = meta.get("n_boxes_2d")
+        print(f"[real] #{i} {dt:.2f}s 3D点={rec['n_det']} · 2D框={_n2 if _n2 is not None else '-'} "
+              f"{rec['boxes_2d'] or rec['det3d']} "
               f"| depth={meta['depth_src']} K={meta['K_src']} ext={meta['ext_src']} "
               f"frame={meta['frame']} gaps={len(meta['gaps'])}")
         for g in meta["gaps"]:
@@ -135,8 +138,15 @@ def main():
     print(f"\n[real] 完成: {len(recs)} 帧 · 总检出 {n_det} · 平均 {np.mean(t_all):.2f}s/帧 "
           f"({1.0/np.mean(t_all):.2f} FPS) → {js}")
     if n_det == 0:
-        print("[real] ⚠️ 0 检出 — 先看是不是域差: 仿真权重在真机图上无信号 (见 probe_sim2real_domain_gap), "
-              "需要真机数据微调; 校验类名/权重路径/朝向口径后仍为 0 即确认域差。")
+        _two = sum(int(r.get("n_boxes_2d") or 0) for r in recs)
+        if _two:
+            print(f"[real] ⚠️ 0 个 3D 点, 但 **2D 检出 {_two} 个框** —— 缺标定导致无法反投影, 不是模型没看见。")
+            print("       要出 3D 框: ① 模块 — 机器人动作自标定 models/real_cam_proj.json "
+                  "(tools/real_autolabel.py --probe; 模块 3D 靠 TCP+实测偏移+尺寸, 不需要深度传感器)")
+            print("                  ② 其它物体 (孔位/料盘) — 需米制深度 (Orin 装 RealSense 驱动) 或 plane_z 光线-平面回退")
+        else:
+            print("[real] ⚠️ 0 检出 — 先看是不是域差: 仿真权重在真机图上无信号 (见 probe_sim2real_domain_gap), "
+                  "需要真机数据微调; 校验类名/权重路径/朝向口径后仍为 0 即确认域差。")
     return 0
 
 

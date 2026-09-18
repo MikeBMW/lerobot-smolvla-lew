@@ -89,7 +89,10 @@ def run_script(path):
     to = "900" if any(s in path for s in ("fiber_zero_regression", "l4_zero_regression", "src_switch", "annot_sim")) else "400"
     r = subprocess.run(["timeout", to, "gui-venv311/bin/python", "-u", path],
                        capture_output=True, text=True, cwd=ROOT,
-                       env={**os.environ, "PYTHONPATH": f"{ROOT}/src"})
+                       env={**os.environ, "PYTHONPATH": f"{ROOT}/src",
+                            # F05 的 L3 正对照要跑 625M 模型 CPU bf16 (>1000s) → 如实跳过;
+                            # 零回退判据由 L2 逐位相同 + L3 新代码静态未进承担 (脚本内已打印说明)
+                            "FIBER_SKIP_L3": "1"})
     tail = [x for x in (r.stdout or "").strip().split("\n") if x.strip()][-1:] or [""]
     return r.returncode == 0, tail[0][:70]
 

@@ -10824,6 +10824,14 @@ class StudioMainWindow(QMainWindow):
             traceback.print_exc()
 
     def closeEvent(self, ev):
+        # 🧪 TEMP DIAG 2026-09-18 (静静): 控制台启动 ~30s 后自己关窗退出 — 抓调用栈, 抓完还原
+        try:
+            import time as _t3
+            import traceback as _tb2
+            with open("/tmp/closeEvent_stack.log", "a", encoding="utf-8") as _f2:
+                _f2.write(f"=== {_t3.time():.3f} closeEvent 调用栈 ===\n" + "".join(_tb2.format_stack()) + "\n")
+        except Exception:
+            pass
         """🛡 主窗口关闭清理 (2026-08-05 崩溃修复#4: StudioMainWindow 原本无 closeEvent →
         _orin_timer(5s轮询)/_rerun_worker(QThread)/_live_timer/_replay_timer/_stats_timer
         关闭时未清理 → QThread: Destroyed while thread is still running exit 134 SIGABRT)

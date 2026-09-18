@@ -489,26 +489,62 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
         print(f"⚠️ 去重跳过 ({type(_e).__name__}: {_e})")
     # 小样本兜底: ultralytics 必须有非空 val; 样本太少时 val=train (并在 stats 里**显式标注**,
     # 因为"train=val 同数据"会让 mAP 虚高 —— 只用于跑通管线, 不能当精度证据)
+    # 🔴 红线 2026-09-18 (L2 边干边学): **自动标注样本绝不进 val**。
+    #   原因: val 是交付门槛的裁决集 (同口径对照的"真值侧"); 自动标注来自在役模型/几何真值,
+    #   放进 val = 自证循环 (自己标自己, 指标虚高 → 假提升上线)。val 只由人工标注构成。
+    _meta = _read_json(P["meta"], {}) or {}
+    auto_sess = {s["name"] for s in (_meta.get("sessions") or [])
+                 if str(s.get("annotator", "")).startswith("auto")}
+    # ⚠️ 2026-09-18 质量红线: **待标注帧 (auto:pending) 不进数据集** —— 无标签帧若当背景负样本,
+    #   会教模型"目标=背景"(在役权重低置信漏检的帧里其实有目标)。等人工/几何补标后再进。
+    pending_sess = {s["name"] for s in (_meta.get("sessions") or [])
+                    if str(s.get("annotator", "")) == "auto:pending"}
+    _n_all = len(samples)
+    samples = [s for s in samples if s["session"] not in pending_sess]
+    _n_pend = _n_all - len(samples)
+    if _n_pend:
+        print(f"⏳ 待标注池排除 {_n_pend} 张 (annotator=auto:pending, 未标注不进训练集)")
+    auto_sess -= pending_sess
+    n_auto = len([s for s in samples if s["session"] in auto_sess])
+    n_human = len(samples) - n_auto
     small = len(samples) < 8
     stats = {"root": root, "built": time.strftime("%F %T"), "val_ratio": val_ratio, "seed": seed,
              "classes": names, "n_train": 0, "n_val": 0, "per_class": {}, "n_boxes": 0,
              "n_samples": len(samples), "val_overlap_train": bool(small),
-             "note": ("样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信)" if small
-                      else "val 按文件名哈希划分, 与 train 无重叠"),
+             "n_auto_samples": n_auto, "n_human_samples": n_human, "n_auto_train": 0,
+             "auto_in_val": 0, "auto_sessions": sorted(auto_sess),
+             "n_pending_excluded": _n_pend, "pending_sessions": sorted(pending_sess),
+             "note": (("样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信); "
+                       + ("val 仅由人工样本构成" if n_human else "⚠️ 无人工样本, val 含自动标注 → mAP 不可信"))
+                      if small else
+                      "val 按文件名哈希划分且**不含自动标注样本** (自动标注红线: 只进 train)"),
              "sessions": sorted({s["session"] for s in samples})}
-    if not small and all(_split_of(s["stem"], val_ratio, seed) != "val" for s in samples):
-        # 哈希碰巧没划出 val → 强制把"哈希最大"的一张划进 val (保证 data.yaml 的 val 非空)
-        biggest = max(samples, key=lambda s: hashlib.sha1(f"{seed}:{s['stem']}".encode()).hexdigest())
+    if not small and all(_split_of(s["stem"], val_ratio, seed) != "val" for s in samples
+                         if s["session"] not in auto_sess):
+        # 哈希碰巧没划出 val → 强制把"哈希最大的人工样本"划进 val (保证 data.yaml 的 val 非空且是人工)
+        pool = [s for s in samples if s["session"] not in auto_sess] or samples
+        biggest = max(pool, key=lambda s: hashlib.sha1(f"{seed}:{s['stem']}".encode()).hexdigest())
         forced = {biggest["stem"]}
     else:
         forced = set()
     for s in samples:
-        sp = "val" if (small or s["stem"] in forced) else _split_of(s["stem"], val_ratio, seed)
-        splits = ("train", "val") if small else (sp,)
+        is_auto = s["session"] in auto_sess
+        if small:
+            # 只有人工样本才同时进 train/val (自动样本只进 train)
+            splits = ("train",) if (is_auto and n_human) else ("train", "val")
+        else:
+            sp = "val" if s["stem"] in forced else _split_of(s["stem"], val_ratio, seed)
+            if is_auto:
+                sp = "train"                     # 🔴 红线: 自动标注只进 train
+            splits = (sp,)
         for sp_i in splits:
             # 小样本时 val 是 train 的副本 → 统计只算一次 (否则类别分布/框数翻倍, 看数据时被误导)
             _emit_split(root, ds, s, sp_i, names, stats, link,
                         count=(not small) or sp_i == "train")
+            if sp_i == "val" and is_auto:
+                stats["auto_in_val"] += 1
+            if sp_i == "train" and is_auto:
+                stats["n_auto_train"] += 1
     yml = ["# 由 tools/yolo_annot_dataset.py --build 生成 — 别手改 (改完会被下一次 --build 覆盖)",
            f"path: {os.path.abspath(ds)}", "train: images/train", "val: images/val",
            f"nc: {len(names)}", "names:", *[f"  {i}: {n}" for i, n in enumerate(names)]]

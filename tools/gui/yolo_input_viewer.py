@@ -1743,8 +1743,13 @@ class YoloInputViewer(QtWidgets.QDialog):
             _save_rgb = getattr(self, "_rgb_raw", None)
             if _save_rgb is None or getattr(_save_rgb, "shape", None) != getattr(self._rgb, "shape", None):
                 _save_rgb = self._rgb
+            # 🐛 2026-09-18 修: 仿真帧的 _frame_meta 无 device → 记录里 device 为空,
+            #   导致"仿真/真机"数据混在同一根时无法区分来源 (F08 用例抓到的真 bug)。
+            #   兜底: 按数据源填默认, 真机=D405, 仿真=mujoco 渲染。
+            _dev = fm.get("device") or ("RealSense D405 (真机相机)" if self.source == "real"
+                                        else "mujoco 渲染 (引擎仿真, 非真机相机)")
             rec = yad.save_sample(self.annot_root, _save_rgb, boxes,
-                                  device=fm.get("device") or "", seq=fm.get("seq"),
+                                  device=_dev, seq=fm.get("seq"),
                                   ts=time.time(), src=f"{fm.get('src') or self.source}",
                                   session=self._session, annotator=self.ed_who.text().strip(),
                                   tag="d405" if self.source == "real" else "sim",
