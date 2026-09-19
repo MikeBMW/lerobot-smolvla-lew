@@ -8,6 +8,7 @@
 接口: FIFO ~/zmax_data/l2_cmd.fifo  (一行一条 JSON: {"skill":"L2.lift","d_mm":100})
 """
 import json, os, re, subprocess, sys, threading, time
+import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "tashan@192.168.23.66"
@@ -74,6 +75,21 @@ def dispatch(reg, spec, chan):
     if not sk:
         log("拒绝: 未知技能 %s" % sid)
         return "未知技能: %s" % sid
+    if sk.get("ros") == "http":
+        url = sk.get("url", "")
+        method = sk.get("method", "POST")
+        try:
+            req = urllib.request.Request(url, data=(b"" if method == "POST" else None), method=method)
+            t0 = time.time()
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = r.read().decode("utf-8", "ignore")
+                code = r.status
+            dt = (time.time() - t0) * 1000
+            log("HTTP %s → %s (%.0fms) %s" % (url, code, dt, body[:120]))
+            return "HTTP %s → %s (%.0fms)" % (url, code, dt)
+        except Exception as e:
+            log("HTTP 失败 %s: %s" % (url, e))
+            return "HTTP 失败: %s" % e
     if sk["ros"] == "gripper":
         if "close" in sid:
             fo = float(spec.get("force", sk["param"]["force"].get("default", 40)))

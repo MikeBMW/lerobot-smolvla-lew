@@ -12,6 +12,31 @@ import time
 from PyQt5.QtWidgets import (QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QListWidget,
                              QListWidgetItem, QPlainTextEdit, QPushButton, QVBoxLayout)
 
+
+# 深色主题: 技能清单亮字 (2026-09-19 老倪: 黑字黑底看不清 -> 改亮色)
+DARK_QSS = """
+QDialog, QWidget { background: #1b1e24; color: #e8e8e8; }
+QLabel { color: #e8e8e8; font-size: 13px; }
+QListWidget { background: #12141a; color: #eaeaea; border: 1px solid #3a3f4b;
+              font-size: 13px; outline: none; }
+QListWidget::item { padding: 7px 9px; color: #eaeaea; }
+QListWidget::item:selected { background: #2d4f6b; color: #ffffff; }
+QListWidget::item:hover { background: #232833; }
+QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { background: #12141a; color: #ffffff;
+              border: 1px solid #3a3f4b; padding: 5px; font-size: 13px; }
+QPushButton { background: #2a2f3a; color: #f0f0f0; border: 1px solid #46506a;
+              padding: 6px 14px; border-radius: 4px; font-size: 13px; }
+QPushButton:hover { background: #354054; }
+QPushButton#startBtn { background: #2f6b3f; color: #ffffff; font-weight: bold; }
+QPushButton#startBtn:hover { background: #3a8250; }
+QPlainTextEdit, QTextEdit { background: #0f1115; color: #d6e0d6; border: 1px solid #3a3f4b;
+              font-size: 12px; }
+QGroupBox { color: #e8e8e8; border: 1px solid #3a3f4b; margin-top: 8px; padding-top: 6px; }
+QGroupBox::title { color: #e8e8e8; }
+QHeaderView::section { background: #232833; color: #eaeaea; border: 1px solid #3a3f4b; }
+"""
+
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
@@ -46,6 +71,7 @@ class L2SkillDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(DARK_QSS)   # 亮字深底 (老倪反馈)
         self.setWindowTitle("💪 L2 原子技能清单 — 工程记忆 · 技能与经验库")
         self.resize(640, 470)
         try:
