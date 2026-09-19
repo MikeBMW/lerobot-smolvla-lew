@@ -46,14 +46,18 @@ Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torqu
 §
 画面≠结果: idle=静止初始帧非结果
 §
-看不了图→抓窗口+几何断言/模板匹配(pyqt-gui-auto-verification)
+看不了图→抓窗口+几何断言/模板匹配
 §
 内置cam video0 720p/video2灰度IR; 产线.23工控机admin/admin, 服务10081-10083
 §
 YOLO在役权重=软链models/yolo_peg_live.pt(readlink -f看在役); 微调秒级0.38s/轮, 瓶颈是数据
 §
-2D→3D框: 5档; 真机K白拿(fx394≠仿真610); 相机在臂上(eye-in-hand)+板CGB-020=20白点(黑底白点→findCirclesGrid反色; 棋盘检测器会误检12角点)→tcp_quat=wxyz序; 真机帧0.53fps→采集必验新帧(md5)
+采集判据=位姿极差0+画面内容差≤2灰阶(勿用md5,曝光漂移); 中转state流tcp/quat是缓存旧值须直读Orin topic
 §
-本机(4060)无有线网口(仅WiFi)→连Orin局域网须USB网卡(驱动已就绪)
+本机仅WiFi→连Orin网须USB网卡(就绪)
 §
 飞书端=另一Hermes会话共用同一工作树; 跨端同步走docs/memory/*.md+commit/push
+§
+真机: collision_detection_enabled=False(撞不停), robot_status被截断(estop读不到)
+§
+真机画面: 老倪面板显示的是**180°翻转帧**, 我用tap原始帧(未翻转) → 同一模块: 我帧上左=他帧下右; YOLO按未翻转帧训练(翻转后conf掉一半); 报方向一律说"朝画面中心/远离中心"避免歧义
