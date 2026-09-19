@@ -231,7 +231,7 @@ def solve(views, Km, grid, spacing, transpose=False, sub=None):
         out = []
         for k in use:
             T_b2c = np.linalg.inv(TA[k] @ X) @ T_bb
-            pr, _ = cv2.projectPoints(obj, cv2.Rodrigues(T_b2c[:3, :3])[0],
+            pr, _ = cv2.projectPoints(obj * p[12], cv2.Rodrigues(T_b2c[:3, :3])[0],
                                       T_b2c[:3, 3].reshape(3, 1), Km, None)
             out.append((pr.reshape(-1, 2) - views[used[k]]["pts"]).ravel())
         return np.concatenate(out)
@@ -239,7 +239,7 @@ def solve(views, Km, grid, spacing, transpose=False, sub=None):
     def refine(X0):
         T_bb0 = _avg_T([TA[k] @ X0 @ TB[k] for k in use])
         p0 = np.concatenate([cv2.Rodrigues(X0[:3, :3])[0].ravel(), X0[:3, 3],
-                             cv2.Rodrigues(T_bb0[:3, :3])[0].ravel(), T_bb0[:3, 3]])
+                             cv2.Rodrigues(T_bb0[:3, :3])[0].ravel(), T_bb0[:3, 3], [1.0]])
         r = least_squares(resid, p0, method="lm", max_nfev=8000)
         errs = np.linalg.norm(resid(r.x).reshape(-1, 2), axis=1)
         return _T(cv2.Rodrigues(r.x[:3])[0], r.x[3:6]), r, errs
@@ -268,8 +268,8 @@ def solve(views, Km, grid, spacing, transpose=False, sub=None):
             X = Xn
         try:
             Xr, r, errs = refine(X)
-        except Exception:                                                      # noqa: BLE001
-            continue
+        except Exception as _e:                                                 # noqa: BLE001
+            print(f'  候选异常: {type(_e).__name__}: {_e}'); continue
         med = float(np.median(errs))
         if best is None or med < best[0]:
             best = (med, Xr, r, errs, float(np.percentile(errs, 90)), X0)
