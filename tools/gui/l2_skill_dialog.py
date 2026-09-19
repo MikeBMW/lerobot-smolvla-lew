@@ -50,13 +50,20 @@ LOG = os.path.expanduser("~/zmax_data/l2_" + "dae" + "mon.log")
 
 
 def alive():
-    """常驻执行器是否在跑 (探活, 避免无读端写 FIFO 卡死界面)"""
+    """常驻执行器是否在跑 (探活, 避免无读端写 FIFO 卡死界面)
+
+    2026-09-20 收紧: 旧版在 /proc/*/cmdline 里搜子串 "l2_daemon.py", 会被 grep / 编辑器 /
+    hermes 包装 shell 的命令行字符串误命中 -> 执行器真死了却显示"在线"(静默假信号)。
+    改为精确 argv 匹配: argv[0] 是 python 且某个 argv 参数以 tools/l2_daemon.py 结尾。
+    """
     for p in glob.glob("/proc/[0-9]*/cmdline"):
         try:
-            c = open(p, "rb").read().decode("utf-8", "ignore")
+            argv = [a for a in open(p, "rb").read().decode("utf-8", "ignore").split("\0") if a]
         except Exception:
             continue
-        if DAEMON_NAME in c and "python" in c:
+        if not argv or "python" not in argv[0]:
+            continue
+        if any(a.endswith("tools/" + DAEMON_NAME) for a in argv[1:]):
             return True
     return False
 

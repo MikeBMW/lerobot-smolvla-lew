@@ -14,6 +14,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "tashan@192.168.23.66"
 FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
 LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
+# 原子技能注册表路径 (v5.11.1 热加载引入 REG_PATH, 当时漏了这行定义 -> NameError 起不来)
+REG_PATH = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install/setup.bash; "
        "do [ -f \"$ws\" ] && source \"$ws\" && break; done; export ROS_DOMAIN_ID=0; ")
 
