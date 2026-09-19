@@ -3702,6 +3702,11 @@ class SimCanvas(QGraphicsView):
             a_rfp = menu.addAction("需求规格书 RFP (客户指标→作业→功能)")
             if _is_test:
                 a_auto = menu.addAction("⚡ 一键自动测试 (环境→用例→报告 PDF/Excel)")
+        # 🧿 DeepSeek 视觉语言节点右键 (2026-09-19 老倪: 「这个节点右键可以打开视觉语言大模型的输出结果,
+        #    设计输出给用户的结果显示 UI, 要实现清晰的理解场景」)
+        a_vlm = None
+        if item.node.get("params", {}).get("vlm_llm") or item.node.get("params", {}).get("vlm_panel"):
+            a_vlm = menu.addAction("视觉语言判读结果 (场景理解/标定引导)")
         # 🔭 可视化层节点右键 (2026-09-05 老倪: 双击依赖时序/位置, 右键是可靠入口)
         if item.node.get("params", {}).get("viz_kind"):
             a_viz = menu.addAction("🔭 打开显示窗口 (波形/直方图/视图)")
@@ -3737,6 +3742,15 @@ class SimCanvas(QGraphicsView):
             self.module.on_open_calib_table(item.node)
         elif a_auto is not None and chosen == a_auto:
             self.module._run_auto_test(item.node)
+        elif a_vlm is not None and chosen == a_vlm:
+            try:
+                from vlm_panel import open_vlm_panel
+                open_vlm_panel(self, module=self.module, node=item.node)
+            except Exception as _ve:                                       # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开视觉判读窗口失败: {type(_ve).__name__}: {_ve}")
+                except Exception:                                          # noqa: BLE001
+                    pass
         elif a_viz is not None and chosen == a_viz:
             self.module.on_node_activated(item.node)
         elif a_verif is not None and chosen == a_verif:

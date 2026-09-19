@@ -3312,6 +3312,39 @@ def _llm_context_text():
     return " | ".join(bits)
 
 
+def node_dsvl(ctx):
+    """🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 后台线程判读当前画面, 结果写 _SS_STATE 并落盘
+
+    数据通道: 环境帧/引擎真图/真机帧 (in1~in3) + MES 工单 (in4) → 场景判读 → 场景理解层 👁 → LLM 层。
+    右键 = tools/gui/vlm_panel.py 判读结果窗口 (字段表/实时画面/历史)。
+    人机在环红线: 本节点只产出『判读+建议』, 不产生任何机械臂动作指令。
+    """
+    log = ctx.get("log")
+    try:
+        ins = _ctx_params(ctx).get("instruction", "插入光模块")
+        img, src, meta = _vlm_frame()
+        if img is None:
+            if log:
+                log("🧿 DeepSeek-V4-Flash: ⚠️ 无可用画面 (真机帧不在 / 仿真帧未采样) — 不判读")
+            return False
+        st = _vlm_ask_async("describe", img, dict(_vlm_ctx(ctx), instruction=ins), log)
+        if log:
+            log(f"🧿 DeepSeek-V4-Flash (deepseek-flash · Vision): 画面 {meta.get('frame')} "
+                f"({meta.get('frame_src')}) → 场景判读 (后台线程); 右键本节点可打开判读结果窗口")
+            r = (st or {}).get("result") or {}
+            if st.get("pending"):
+                log("   ⏳ 判读中 (Cold start 60~134s, 缓存命中 ~1s) — 结果下一拍显示")
+            elif r.get("ok"):
+                log(f"   ✅ {_vlm_brief(r.get('json'))}")
+            else:
+                log(f"   ⚠️ {r.get('why')}")
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ DeepSeek 判读节点失败: {type(e).__name__}: {e}")
+        return False
+
+
 def node_ss_eng_mem(ctx):
     """📚 工程记忆 · 技能与经验库 → 🧠 总装记忆中枢 (老倪 2026-09-19: 与飞书端商量好, 工程记忆同步到总装)
 
@@ -3505,6 +3538,7 @@ def node_ss_llm_in(ctx):
 _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
 _reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
 _reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 技能与经验库 — docs/memory + Hermes 记忆 + 技能库 → 同步进总装记忆 (源码 eng_memory.py)", node_ss_eng_mem)
+_reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 场景判读+建议; 右键=判读结果窗口 (源码 scene_vlm.py)", node_dsvl)
 _reg("ss_llm",   ["任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
 _reg("ss_reason", ["异常推理器"], "🔍 异常推理器 — 连续否决/阶段卡死→异常分类+恢复建议; 双击=诊断演示 (源码 planner.py ExceptionReasoner)", node_ss_reason)
 _reg("ss_skill", ["技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)

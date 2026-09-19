@@ -88,6 +88,23 @@ def _key_from_hermes_env(name):
     return None
 
 
+CALLS_LOG = os.path.expanduser(os.environ.get("SS_VLM_CALLS_LOG", "~/zmax_data/vlm_calls.jsonl"))
+
+
+def _log_call(mode, image, r, ctx=None):
+    """落盘每次判读 (UI 面板/history 的唯一数据源; 不落盘就没有可显示的东西)"""
+    try:
+        os.makedirs(os.path.dirname(CALLS_LOG), exist_ok=True)
+        rec = {"ts": time.time(), "mode": mode, "frame": str(image),
+               "src": r.get("src"), "latency_ms": r.get("latency_ms"),
+               "ok": bool(r.get("ok")), "json": r.get("json"), "why": r.get("why"),
+               "rule": r.get("rule"), "ctx": ctx}
+        with open(CALLS_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:                                                          # noqa: BLE001
+        pass
+
+
 class SceneVLM:
     """单例语义: 每进程一个 (worker 常驻, 反复问)"""
 
@@ -288,6 +305,7 @@ class SceneVLM:
             r["ok"] = bool(j)
             if not j:
                 r["why"] = f"模型输出不是合法 JSON: {str(r.get('text'))[:120]!r}"
+        _log_call("describe", image, r, ctx)
         return r
 
     def guide(self, image, ctx=None):
@@ -306,6 +324,7 @@ class SceneVLM:
             r["ok"] = bool(j)
             if not j:
                 r["why"] = f"模型输出不是合法 JSON: {str(r.get('text'))[:120]!r}"
+        _log_call("guide", image, r, ctx)
         return r
 
     def quality(self, image, ctx=None):
@@ -321,6 +340,7 @@ class SceneVLM:
             r["ok"] = bool(j)
             if not j:
                 r["why"] = f"模型输出不是合法 JSON: {str(r.get('text'))[:120]!r}"
+        _log_call("quality", image, r, ctx)
         return r
 
     def close(self):
