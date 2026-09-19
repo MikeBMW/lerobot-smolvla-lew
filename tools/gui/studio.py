@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.11.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.11.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10297,7 +10297,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.11.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.11.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10305,9 +10305,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.11.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.11.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.11.1: 🧠→💪 **大模型层指挥 L2 技能升级 + 节点↔代码全对齐** — 老倪: 「L2 的原子技能不仅要高效, 还要保持更新; DeepSeek VL 识别出新路径/新场景时, L2 技能要能被快速更新; 设计快速学习训练流程 … 首先对齐仿真系统, 代码每个节点都要实际对应上」 ①**L2 快速学习/更新器** `tools/l2_skill_learn.py` (--from-trace 从演示轨迹提取点位生成技能 · --from-plan 按 VL/L3 规划生成 · --set-point 就地更新点位并版本自增 · 全部变更写 `data/skills/CHANGELOG.jsonl` 可回溯; 实测: 真演示轨迹→15 点技能 ✓ p1 更新→v2 ✓) ②**执行器热加载**: 注册表 mtime 一变立即重读 ⇒ 技能更新**下一帧即用, 无需重启** ✓ ③**编排器** `tools/l2_autoupdate.py`: DeepSeek VL 场景理解 → LLM 判定场景/技能失配 → 生成点位更新提案 → `--apply` 热更新 (真跑: 真实场景+真实技能 → 提案 {"action":"none"} ✓) ④**节点↔代码审计** `tools/verify_node_code_map.py`: **67/67 节点全对齐 · 0 孤儿节点 · 骨干映射文件全部存在** ✓ (修正: 引擎真实位置 tools/gui/state_space_sim_real.py) ⑤**AOI 三技能**: 金手指/表面/金手指AOI图片 + `cam_finger_10082_work_v3.py` 已上工控机(新增 /picture 读当前照片 · /last_result 读判决 · --port 安全测试; 改动仅 5 行) ⑥**技能清单 UI**: 亮字深底 · 字号放大(列表17px/窗口820x620) · **图片预览区**(金手指AOI图片直接显示照片, 支持自动刷新2s) · HTTP技能不再带 speed 参数
         # v5.11.0: 💪 **L2 原子技能常驻执行器(延迟 60s→<1s) + 技能清单 UI + 画布主干连线修复** — 老倪: 「再次整合 L4 L3 L2 功能。现在你的反馈速度太慢了，发出指令后 1 分钟才能动作。你要将这些技能固化到 L2 级别功能 … 在工程记忆 技能与经验库 节点，双击后打开技能清单 … 例如，用户可以选择 抬升技能，再输入 10cm, 点击开始，则立刻驱动机械臂抬升 10 厘米；你来设计 UI」
         #   ①**速度根因与修复**: 旧路径每条指令都要"新开 ssh + ROS 发现 + 等驱动 30s 空闲" ⇒ 用户感受 ~60s ✗ → 新增 `tools/l2_daemon.py` 常驻执行器: 两条常驻 ssh 通道(命令循环·环境只 source 一次 + 位姿流维护位姿缓存) + FIFO 接口(`~/zmax_data/l2_cmd.fifo`, 写一行 JSON 即下发) + **发完立即回执** → 实测 21:12:43 写 FIFO 同秒「已下发」, z 0.29235→0.30235 = 精确 +10.00mm ✓
         #   ②**L2 原子技能注册表** `data/skills/l2_atomic/registry.json`: ⬆️抬升(默认50mm) · ⬇️下降 · ↔️前后平移 · ↕️左右平移 · 🤏合爪(力40→开度185=夹牢) · ✋张爪 · 📍到示教点 + 组合技能(抓取循环 / 演示学习循环11点)

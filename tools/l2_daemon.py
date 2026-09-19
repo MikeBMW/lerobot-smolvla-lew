@@ -19,6 +19,26 @@ PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install
 
 _pose = {"p": None, "q": None, "t": 0.0}
 
+
+_reg_mtime = [0.0]
+
+
+def maybe_reload(reg):
+    """注册表一变就重读 —— L2 技能热更新 (VL 指挥升级后立即生效, 无需重启)"""
+    try:
+        m = os.path.getmtime(REG_PATH)
+    except OSError:
+        return reg
+    if m != _reg_mtime[0]:
+        try:
+            reg2 = json.load(open(REG_PATH, encoding="utf-8"))
+            _reg_mtime[0] = m
+            log("注册表热加载: %d 个原子技能" % len(reg2.get("skills", [])))
+            return reg2
+        except Exception as e:
+            log("注册表热加载失败(继续用旧): %s" % e)
+    return reg
+
 def log(msg):
     line = "[%s] %s" % (time.strftime("%H:%M:%S"), msg)
     print(line, flush=True)
@@ -132,7 +152,7 @@ def main():
     if os.path.exists(FIFO):
         os.unlink(FIFO)
     os.mkfifo(FIFO)
-    reg = json.load(open(os.path.join(REPO, "data/skills/l2_atomic/registry.json"), encoding="utf-8"))
+    reg = json.load(open(REG_PATH, encoding="utf-8"))
     threading.Thread(target=state_thread, daemon=True).start()
     loop = PRE + 'while read -r c; do eval "$c"; done'
     chan = subprocess.Popen(["ssh", "-o", "BatchMode=yes", HOST, loop],
@@ -141,6 +161,7 @@ def main():
     threading.Thread(target=out_thread, args=(chan,), daemon=True).start()
     log("L2 常驻执行器启动 · FIFO=%s · 原子技能 %d 个" % (FIFO, len(reg["skills"])))
     while True:
+        reg = maybe_reload(reg)
         with open(FIFO, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()

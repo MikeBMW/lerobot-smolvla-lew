@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QList
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QCheckBox, QGroupBox
+from PyQt5.QtWidgets import QComboBox
 
 
 # 深色主题: 技能清单亮字 (2026-09-19 老倪: 黑字黑底看不清 -> 改亮色)
@@ -123,6 +124,8 @@ class L2SkillDialog(QDialog):
         self.lbl = QLabel("—")
         right.addWidget(self.lbl)
         self.spin = QDoubleSpinBox()
+        self.combo = QComboBox()
+        self.combo.setVisible(False)
         self.spin.setRange(-1000.0, 1000.0)
         self.spin.setDecimals(1)
         right.addWidget(self.spin)
@@ -161,18 +164,34 @@ class L2SkillDialog(QDialog):
         if not it:
             return
         s = it.data(32) or {}
-        self.lbl.setText("技能: %s (%s)" % (s.get("name", ""), s.get("id", "")))
         p = s.get("param") or {}
         if p:
             k, meta = list(p.items())[0]
-            self.spin.setEnabled(True)
-            self.spin.setValue(float(meta.get("default", 50)))
-            self.spin.setSuffix(" " + str(meta.get("unit", "")))
-            self.lbl.setText("%s\n参数: %s (默认 %s %s)" % (s.get("name", ""), meta.get("label", k),
-                                                        meta.get("default"), meta.get("unit", "")))
+            try:
+                num = float(meta.get("default"))
+                is_num = True
+            except (TypeError, ValueError):
+                num, is_num = 0.0, False
+            self.spin.setVisible(is_num)
+            self.spin.setEnabled(is_num)
+            self.combo.setVisible(not is_num)
+            if is_num:
+                self.spin.setValue(num)
+                self.spin.setSuffix(" " + str(meta.get("unit", "")))
+            else:
+                if self.combo.count() == 0:
+                    for v in (meta.get("values") or ["home", "grasp", "place", "up1",
+                                                     "wp_a", "wp_b", "wp_c", "wp_d", "wp_e", "wp_f"]):
+                        self.combo.addItem(str(v))
+                idx = self.combo.findText(str(meta.get("default")))
+                if idx >= 0:
+                    self.combo.setCurrentIndex(idx)
+            self.lbl.setText("%s\n参数: %s (默认 %s)" % (s.get("name", ""), meta.get("label", k), meta.get("default")))
         else:
-            self.spin.setValue(0.0)
+            self.spin.setVisible(False)
             self.spin.setEnabled(False)
+            self.combo.setVisible(False)
+            self.lbl.setText("技能: %s (%s)  — 无参数, 直接开始" % (s.get("name", ""), s.get("id", "")))
 
     IMG_URL = "http://192.168.23.23:10082/picture"
 
@@ -200,20 +219,24 @@ class L2SkillDialog(QDialog):
         self.out.appendPlainText("[%s] 取到照片 %dx%d %d KB" % (time.strftime("%H:%M:%S"), pm.width(), pm.height(), len(data) // 1024))
 
     def _go(self):
-        if isinstance(s, dict) and s.get("id") == "L2.aoi_picture":
-            self._refresh_image()
-            self.chk_auto.setChecked(True)
-            return
         it = self.lst.currentItem()
         if not it:
             return
         s = it.data(32) or {}
+        if isinstance(s, dict) and s.get("id") == "L2.aoi_picture":
+            self._refresh_image()
+            self.chk_auto.setChecked(True)
+            return
         spec = {"skill": s.get("id")}
         if s.get("ros") != "http":   # 金手指/表面 AOI 等 HTTP 技能不需要 speed
             spec["speed"] = 60
         p = s.get("param") or {}
         if p:
-            spec[list(p.keys())[0]] = float(self.spin.value())
+            k0 = list(p.keys())[0]
+            if self.combo.isVisible() and self.combo.count():
+                spec[k0] = self.combo.currentText()
+            else:
+                spec[k0] = float(self.spin.value())
         try:
             msg = send(spec)
         except Exception as e:
