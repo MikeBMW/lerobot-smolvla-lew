@@ -10136,9 +10136,22 @@ class SimulinkModule(QWidget):
         except Exception as e:
             self._log(f"❌ 机器人切换面板打开失败: {type(e).__name__}: {e}")
 
+    def _open_l2_skills(self):
+        """2026-09-19 老倪: L2 原子技能清单 (选技能 -> 填参数 -> 开始 -> 立即动作)"""
+        try:
+            from l2_skill_dialog import L2SkillDialog
+            L2SkillDialog(self).exec_()
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "L2 技能", "加载失败: %s" % e)
+
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 2026-09-19 老倪: 📚 工程记忆·技能与经验库 双击 -> L2 原子技能清单
+        if "技能与经验库" in str(node.get("name", "")):
+            self._open_l2_skills()
+            return
         # 0.0) 🧩 验证层 Feature/Test 节点 (2026-09-04 老倪: 双击 → 清单/结果对话框 + 导出 Excel)
         #   ⚠️ 必须放最前 — ssfeat/sstest 带 source 字段, 会被下方"数据源切换"分支抢先拦截
         if params.get("verif_layer"):

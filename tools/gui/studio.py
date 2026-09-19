@@ -11059,6 +11059,15 @@ class StudioMainWindow(QMainWindow):
         names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步", "推理服务", "Simulink", "数据空间", "架构总览"]  # v1.8.0: 与 self.modules 顺序一致 (13项)
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
 
+    def _open_l2_skills(self):
+        """L2 原子技能清单 (工程记忆 技能与经验库)"""
+        try:
+            from l2_skill_dialog import L2SkillDialog
+        except Exception as e:
+            QMessageBox.warning(self, "L2 技能", "对话框模块加载失败: %s" % e)
+            return
+        L2SkillDialog(self).exec_()
+
     def _build_menubar(self):
         """构建专业开发环境菜单栏"""
         self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11096,6 +11105,10 @@ class StudioMainWindow(QMainWindow):
         act_open_repo.setShortcut("Ctrl+O")
         act_open_repo.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.repo_path)))
         m_file.addAction(act_open_repo)
+
+        act_l2 = QAction("💪 L2 原子技能清单 (抬升/平移/合爪)", self)
+        act_l2.triggered.connect(self._open_l2_skills)
+        m_file.addAction(act_l2)
 
         m_file.addSeparator()
 
