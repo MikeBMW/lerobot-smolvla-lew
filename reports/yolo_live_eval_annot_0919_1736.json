@@ -1,0 +1,237 @@
+{
+ "frames_dir": "/tmp/live_eval_0919_1736",
+ "frames": 16,
+ "ts": "2026-09-19 17:37:05",
+ "results": [
+  {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 16,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "peg",
+    "1": "OPT_Gold"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_015.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_annot/annot_0919_1736/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 16,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "peg",
+    "1": "OPT_Gold"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_015.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  }
+ ]
+}

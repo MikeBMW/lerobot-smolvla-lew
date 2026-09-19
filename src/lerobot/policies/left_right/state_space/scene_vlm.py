@@ -54,7 +54,11 @@ _PY = os.path.join(_REPO, "gui-venv311", "bin", "python")
 #   · 默认本地开源 Qwen2.5-VL-3B-Instruct (无需 key, 8GB 4060 可跑)
 #   · 可换 Qwen3-VL 系 (更强, 显存更大): SS_VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct 等
 #   · 或走 API: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max
-DEFAULT_MODEL = os.environ.get("SS_VLM_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
+_LOCAL_SNAP = os.path.expanduser("~/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots")
+_LOCAL_DEF = next((os.path.join(_LOCAL_SNAP, d) for d in sorted(os.listdir(_LOCAL_SNAP))
+                   if os.path.exists(os.path.join(_LOCAL_SNAP, d, "config.json"))), None) \
+    if os.path.isdir(_LOCAL_SNAP) else None
+DEFAULT_MODEL = os.environ.get("SS_VLM_MODEL") or _LOCAL_DEF or "Qwen/Qwen2.5-VL-3B-Instruct"
 SYS_PROMPT = ("你是 Z-MAX 光模块插拔工位的现场视觉助手, 面向「把真实场景标定做对」这件事。"
               "只描述你**真的看到**的内容; 看不清就说看不清, 不要猜、不要编数字。"
               "回答用简体中文, 严格按要求的 JSON 格式, 不要输出多余文字。")
@@ -126,7 +130,9 @@ class SceneVLM:
         self.key = os.environ.get("SS_VLM_KEY") or None
         self.provider = "explicit" if self.url else None
         if not self.url:
-            dsk = os.environ.get("DEEPSEEK_API_KEY") or _key_from_hermes_env("DEEPSEEK_API_KEY")
+            _force = (os.environ.get("SS_VLM_PROVIDER") or "").lower()
+            dsk = None if _force == "local" else (
+                os.environ.get("DEEPSEEK_API_KEY") or _key_from_hermes_env("DEEPSEEK_API_KEY"))
             if dsk:                                  # 本机 ~/.hermes/.env 已有 → 零申请成本, 直接可用
                 self.url = os.environ.get("SS_VLM_BASE", os.environ.get("DEEPSEEK_BASE_URL",
                                                                         "https://api.deepseek.com"))
