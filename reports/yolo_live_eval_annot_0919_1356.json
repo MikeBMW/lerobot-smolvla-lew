@@ -1,0 +1,412 @@
+{
+ "frames_dir": "/tmp/live_eval_0919_1356",
+ "frames": 16,
+ "ts": "2026-09-19 13:57:03",
+ "results": [
+  {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 16,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "peg"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_015.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_annot/annot_0919_1356/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 16,
+   "frames_with_peg": 16,
+   "peg_rate": 1.0,
+   "peg_conf_mean": 0.709,
+   "peg_conf_max": 0.727,
+   "classes": {
+    "0": "peg",
+    "1": "OPT_Gold"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.706,
+       "xyxy": [
+        445.9,
+        73.8,
+        509.8,
+        260.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_001.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.701,
+       "xyxy": [
+        445.9,
+        73.7,
+        509.8,
+        260.9
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_002.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.727,
+       "xyxy": [
+        445.9,
+        73.9,
+        509.9,
+        261.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_003.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.707,
+       "xyxy": [
+        445.9,
+        73.4,
+        510.3,
+        261.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_004.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.713,
+       "xyxy": [
+        445.9,
+        73.8,
+        510.5,
+        260.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_005.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.7,
+       "xyxy": [
+        445.9,
+        73.7,
+        510.3,
+        261.1
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_006.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.712,
+       "xyxy": [
+        445.9,
+        73.6,
+        510.2,
+        261.1
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_007.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.711,
+       "xyxy": [
+        445.9,
+        73.5,
+        510.3,
+        261.3
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_008.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.704,
+       "xyxy": [
+        446.0,
+        74.0,
+        509.8,
+        260.6
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_009.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.704,
+       "xyxy": [
+        446.0,
+        74.0,
+        509.8,
+        260.6
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_010.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.716,
+       "xyxy": [
+        445.8,
+        73.6,
+        509.7,
+        261.0
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_011.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.689,
+       "xyxy": [
+        445.9,
+        73.5,
+        510.0,
+        261.1
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_012.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.703,
+       "xyxy": [
+        445.9,
+        73.7,
+        510.3,
+        260.9
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_013.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.716,
+       "xyxy": [
+        446.0,
+        73.9,
+        510.1,
+        261.0
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_014.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.716,
+       "xyxy": [
+        446.0,
+        73.9,
+        510.1,
+        261.0
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_015.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.715,
+       "xyxy": [
+        445.9,
+        74.0,
+        510.0,
+        260.6
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
