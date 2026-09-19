@@ -422,7 +422,7 @@
    "id": "sssched",
    "type": "system",
    "name": "🧭 动作调制器",
-   "x": 2120,
+   "x": 3520,
    "y": 4420,
    "w": 280,
    "icon": "🧭",
@@ -492,7 +492,7 @@
    "id": "sslimit",
    "type": "system",
    "name": "🛡 安全执行边界 (饱和限幅)",
-   "x": 2450,
+   "x": 3856,
    "y": 4420,
    "w": 280,
    "icon": "🛡",
@@ -915,7 +915,7 @@
    "h": 110,
    "y": 1764,
    "id": "ssmani_c",
-   "x": 8720,
+   "x": 1440,
    "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
    "params": {
     "state_space": true,
@@ -940,7 +940,7 @@
    "h": 110,
    "y": 1888,
    "id": "ssmani_p",
-   "x": 8720,
+   "x": 1440,
    "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
    "params": {
     "state_space": true,
@@ -964,7 +964,7 @@
    "actions": [],
    "w": 190,
    "h": 68,
-   "x": 2120,
+   "x": 1310,
    "y": 1764,
    "id": "sslat",
    "name": "🧮 潜空-流形",
@@ -1338,8 +1338,8 @@
    "id": "ssvlm",
    "type": "model",
    "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
-   "x": 1790,
-   "y": 2576,
+   "x": 1000,
+   "y": 952,
    "w": 280,
    "h": 110,
    "icon": "🧠",
@@ -1432,7 +1432,7 @@
    "id": "ssintact_dec",
    "type": "model",
    "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
-   "x": 8060,
+   "x": 1180,
    "y": 1764,
    "w": 300,
    "h": 110,
@@ -2124,14 +2124,6 @@
    "label": "筹划 → 预测流形参考"
   },
   {
-   "id": "lk_mem105",
-   "f": "ss_mem_l4",
-   "t": "ssmani_c",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "筹划建议"
-  },
-  {
    "id": "lkmemf4",
    "f": "ss_mem_field",
    "t": "sssched",
@@ -2146,22 +2138,6 @@
    "f_port": "out1",
    "t_port": "in3",
    "label": "意图 m_int → 预测器条件 (z_t 口径: z_t+δ; 活跃口径 z7 见 2D→3D 入线)"
-  },
-  {
-   "id": "lkjepa_c",
-   "f": "ssmani_exp",
-   "t": "ssmani_c",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "预测流形 (JEPA)"
-  },
-  {
-   "id": "lkjepa_p",
-   "f": "ssmani_exp",
-   "t": "ssmani_p",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "预测流形 (JEPA)"
   },
   {
    "id": "lkmani_c1",
@@ -2186,14 +2162,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "流程势场 Φ_process (权重时序)"
-  },
-  {
-   "id": "lk_mem104",
-   "f": "ss_mem_l3",
-   "t": "ssvlm",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "流程经验"
   },
   {
    "id": "lk_mem205",
@@ -2556,14 +2524,6 @@
    "label": "轨迹"
   },
   {
-   "id": "lksafe1",
-   "f": "sslimit",
-   "t": "ssa",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "🛡 限幅后控制 → 通用算子 A"
-  },
-  {
    "id": "lksafe2",
    "f": "sslimit",
    "t": "ssb",
@@ -2586,62 +2546,6 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "🛡 限幅后控制 → ① 接近 SK01"
-  },
-  {
-   "id": "lksafe5",
-   "f": "sslimit",
-   "t": "sssk2",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ② 对位 SK02"
-  },
-  {
-   "id": "lksafe6",
-   "f": "sslimit",
-   "t": "sssk3",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ③ 下降 SK03"
-  },
-  {
-   "id": "lksafe7",
-   "f": "sslimit",
-   "t": "sssk4",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ④ 抓取 SK04"
-  },
-  {
-   "id": "lksafe8",
-   "f": "sslimit",
-   "t": "sssk5",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑤ 抬起 SK05"
-  },
-  {
-   "id": "lksafe9",
-   "f": "sslimit",
-   "t": "sssk6",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑥ 转移 SK06"
-  },
-  {
-   "id": "lksafe10",
-   "f": "sslimit",
-   "t": "sssk7",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑦ 插入 SK07"
-  },
-  {
-   "id": "lksafe11",
-   "f": "sslimit",
-   "t": "sssk8",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑧ 完成 SK08"
   },
   {
    "id": "lkvlm_in1",
@@ -2682,14 +2586,6 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "43D 状态/阶段 → 异常归因"
-  },
-  {
-   "id": "lkrea2",
-   "f": "sslimit",
-   "t": "ssreason",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "安全否决/限幅计数 → 异常归因"
   },
   {
    "id": "lkrea3",
@@ -2756,14 +2652,6 @@
    "label": "规划 → 意图四槽 (goal/from/skill/gate)"
   },
   {
-   "id": "lkib2",
-   "f": "n_intent_bundle",
-   "t": "ssintact_dec",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "意图四槽 → 解码器"
-  },
-  {
    "id": "lkmode1",
    "f": "ssdata",
    "t": "ssmode",
@@ -2810,14 +2698,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "检测框/反投影 → 标定层校验"
-  },
-  {
-   "id": "lkcal3",
-   "f": "sscalib",
-   "t": "sslat",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "几何标定 → 潜空间标定"
   },
   {
    "id": "lkcal4",
@@ -2972,14 +2852,6 @@
    "label": "前馈激活 → 直方图"
   },
   {
-   "id": "lkviz_bp",
-   "f": "sssched",
-   "t": "ssbypv",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "阶段/调度 → 旁路实时可视化"
-  },
-  {
    "id": "lkviz_wave",
    "f": "ssobs",
    "t": "ssvideo",
@@ -3074,6 +2946,38 @@
    "f_port": "out2",
    "t_port": "in6",
    "label": "前馈 u_ff → 动作融合"
+  },
+  {
+   "id": "lkrs_ssintact_dec_ssdec",
+   "f": "ssintact_dec",
+   "t": "ssdec",
+   "f_port": "out1",
+   "t_port": "in5",
+   "label": "L4 条件 → L3 DiT"
+  },
+  {
+   "id": "lkrs_ssmani_c_ssdec",
+   "f": "ssmani_c",
+   "t": "ssdec",
+   "f_port": "out1",
+   "t_port": "in5",
+   "label": "接触流形坐标"
+  },
+  {
+   "id": "lkrs_ssmani_p_ssdec",
+   "f": "ssmani_p",
+   "t": "ssdec",
+   "f_port": "out1",
+   "t_port": "in5",
+   "label": "性能流形代价"
+  },
+  {
+   "id": "lkrs_sslat_ssdec",
+   "f": "sslat",
+   "t": "ssdec",
+   "f_port": "out1",
+   "t_port": "in5",
+   "label": "潜空间 → 动作头条件"
   }
  ],
  "params_note": ""
