@@ -75,6 +75,19 @@ def _json_from(text):
         return None
 
 
+def _key_from_hermes_env(name):
+    """从 ~/.hermes/.env 兜底取 key (GUI 进程 env 里常没有; 这样重启控制台也不用配)"""
+    try:
+        with open(os.path.expanduser("~/.hermes/.env"), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(name + "="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'") or None
+    except Exception:                                                          # noqa: BLE001
+        pass
+    return None
+
+
 class SceneVLM:
     """单例语义: 每进程一个 (worker 常驻, 反复问)"""
 
@@ -87,9 +100,25 @@ class SceneVLM:
         return cls._inst
 
     def __init__(self):
+        # 三路径解析 (优先级: 显式 SS_VLM_URL/KEY > DeepSeek 自带 key (本机已配, 无需申请) > 本地开源 worker)
+        #   · DeepSeek: deepseek-flash(DeepSeek-V4.1-Flash) **支持 Vision ✓** (官方 pricing 表; v4-pro 不支持)
+        #     格式与 OpenAI 兼容完全一致 (content blocks + image_url data URL) —— 官方 Vision 指南 2026-09
+        #   · Qwen: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + model qwen-vl-max
+        explicit_model = os.environ.get("SS_VLM_MODEL")
         self.url = os.environ.get("SS_VLM_URL") or None
         self.key = os.environ.get("SS_VLM_KEY") or None
-        self.model = os.environ.get("SS_VLM_MODEL") or DEFAULT_MODEL
+        self.provider = "explicit" if self.url else None
+        if not self.url:
+            dsk = os.environ.get("DEEPSEEK_API_KEY") or _key_from_hermes_env("DEEPSEEK_API_KEY")
+            if dsk:                                  # 本机 ~/.hermes/.env 已有 → 零申请成本, 直接可用
+                self.url = os.environ.get("SS_VLM_BASE", os.environ.get("DEEPSEEK_BASE_URL",
+                                                                        "https://api.deepseek.com"))
+                self.key = dsk
+                self.provider = "deepseek"
+        if self.url:
+            self.model = explicit_model or ("deepseek-flash" if self.provider == "deepseek" else "qwen-vl-max")
+        else:
+            self.model = explicit_model or DEFAULT_MODEL
         self.timeout = float(os.environ.get("SS_VLM_TIMEOUT", "60"))
         self.proc = None
         self.worker_ok = None
@@ -100,8 +129,10 @@ class SceneVLM:
     # ── 路径选择 ──
     def status(self):
         if self.url:
-            return {"path": "http", "model": self.model,
-                    "detail": f"OpenAI 兼容 API {self.url}" + ("" if self.key else " (无 key)")}
+            tag = {"deepseek": "DeepSeek Vision (本机已配 key, 无需申请)",
+                   "explicit": "OpenAI 兼容 API"}.get(self.provider or "", "OpenAI 兼容 API")
+            return {"path": "http", "provider": self.provider, "model": self.model,
+                    "detail": f"{tag} {self.url}" + ("" if self.key else " (无 key)")}
         return {"path": "local", "model": self.model,
                 "detail": f"本地子进程 worker ({'已就绪' if self.worker_ok else '未验证'})"}
 
@@ -118,6 +149,9 @@ class SceneVLM:
             b64 = base64.b64encode(f.read()).decode()
         ext = "png" if str(image).lower().endswith("png") else "jpeg"
         body = {"model": self.model, "temperature": 0, "max_tokens": int(max_tokens),
+                # DeepSeek 默认 thinking → 视觉判读实测 61.7s; 关掉后按需打开 (SS_VLM_THINKING=1)
+                **({"thinking": {"type": "enabled" if os.environ.get("SS_VLM_THINKING") == "1" else "disabled"}}
+                   if (self.provider == "deepseek" or "deepseek" in str(self.url)) else {}),
                 "messages": ([{"role": "system", "content": system or SYS_PROMPT}] if True else []) + [
                     {"role": "user", "content": [
                         {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{b64}"}},

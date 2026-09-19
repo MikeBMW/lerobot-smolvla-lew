@@ -1895,8 +1895,8 @@
    "params": {
     "state_space": true,
     "vlm_llm": true,
-    "model": "Qwen2.5-VL-3B-Instruct (本地, 无 key) / Qwen3-VL 可插拔",
-    "desc": "大模型层的**视觉通路**: 环境帧 (metaworld 渲染) / 引擎真图 / 真机帧 → 场景理解 JSON (目标/在不在夹爪/画面质量/光照/标定建议) → 供 任务规划器·异常推理器·技能编排器·意图解码器·总装记忆 消费。 本地 Qwen2.5-VL-3B (SS_VLM_MODEL 可换 Qwen3-VL), 或 SS_VLM_URL+KEY 走 OpenAI 兼容 API; 无模型时只给规则回退摘要并如实标注。源码 scene_vlm.py + tools/vlm_worker.py",
+    "model": "DeepSeek-V4.1-Flash Vision (本机已配 key, 零申请) / Qwen2.5-VL-3B 本地 / Qwen3-VL / qwen-vl-max (API)",
+    "desc": "大模型层**视觉通路** (2026-09-19 实测可用): 环境帧/引擎真图/真机帧 → 场景理解 JSON (目标/在不在夹爪/画面质量/光照/背景/标定建议) → 任务规划器·异常推理器·技能编排器·意图解码器·总装记忆。 默认走 **DeepSeek Vision (deepseek-flash / V4.1-Flash, 本机 ~/.hermes/.env 已配 key, 关思考后真机帧实测 1.36s)**; 可换 Qwen: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max; 或本地开源 Qwen2.5-VL-3B (无需 key) / Qwen3-VL。无模型时只给规则回退摘要并如实标注。源码 scene_vlm.py + tools/vlm_worker.py",
     "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
     "source_symbol": "class SceneVLM"
    }
@@ -3151,5 +3151,6 @@
    "t_port": "in2",
    "label": "总装记忆 → 功能清单核对"
   }
- ]
+ ],
+ "params_note": ""
 }
