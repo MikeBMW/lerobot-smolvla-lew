@@ -7555,6 +7555,14 @@ class HardwareModule(SubModuleWidget):
             self._replay_stop()
             self._log("✅ 回放完成")
     
+    def _run_l2_muscle(self):
+        """2026-09-19: L2 原子技能清单 (选技能 -> 填参数 -> 开始 -> 立即动作)"""
+        try:
+            from l2_skill_dialog import L2SkillDialog
+            L2SkillDialog(self).exec_()
+        except Exception as e:
+            QMessageBox.warning(self, "L2 技能", "加载失败: %s" % e)
+
     def _on_device_selected(self, item, col):
         text = item.text(0).strip()
         if "概览" in text: self.detail_stack.setCurrentIndex(0)
