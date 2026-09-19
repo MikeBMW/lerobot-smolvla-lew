@@ -10145,6 +10145,27 @@ class SimulinkModule(QWidget):
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(self, "L2 技能", "加载失败: %s" % e)
 
+    def _open_su2_panel(self, node=None):
+        """🧩 SU(2) 统一状态空间观测面板 — 所有可视化层工具的统一入口 (2026-09-20 老倪)
+
+        面板读真实数据: module._SS_STATE 当前帧实测量 + reports/su2_state_report.json 引擎轨迹;
+        含 Bloch 球(可拖动旋转)/S³/层贡献反演/层间不可交换与 FS 距离矩阵/节点映射/阶段轨迹,
+        以及"打开可视化工具"下拉 (波形/3D/直方图/归因/视频/输入图像)。
+        """
+        try:
+            from su2_dialog import SU2Panel
+        except Exception as _e:                                             # noqa: BLE001
+            self._log(f"⚠️ SU(2) 观测面板加载失败: {type(_e).__name__}: {_e}")
+            return
+        try:
+            self._su2_panel = SU2Panel(module=self, node=node or {})
+            self._su2_panel.show()
+            self._su2_panel.raise_()
+            self._log("🧩 SU(2) 统一状态空间观测面板已打开: Bloch球(拖动旋转) · 层贡献反演 · "
+                      "层间不可交换/FS距离 · 节点映射 · 阶段轨迹 · 可视化工具入口")
+        except Exception as _e:                                             # noqa: BLE001
+            self._log(f"⚠️ SU(2) 观测面板打开失败: {type(_e).__name__}: {_e}")
+
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
@@ -10156,6 +10177,12 @@ class SimulinkModule(QWidget):
         #   ⚠️ 必须放最前 — ssfeat/sstest 带 source 字段, 会被下方"数据源切换"分支抢先拦截
         if params.get("verif_layer"):
             self._open_verif_dialog(node)
+            return
+        # 🧩 2026-09-20 老倪: SU(2) 统一状态空间节点 (VEH.5.041) → 群观测面板
+        #   (Bloch球/S³/层贡献/反演剥离/距离矩阵/节点映射 + 可视化工具统一入口)
+        #   ⚠️ 必须放 source 分支前 —— 该节点带 source 字段, 否则双击被"数据源切换"抢先
+        if params.get("su2_unified_state"):
+            self._open_su2_panel(node)
             return
         # 🔭 可视化层观察器 (2026-09-04 老倪: 直方图/归因/仿真波形/3D/操作视频 双击 → 开显示窗口;
         #   必须放 source 分支前 — 这些节点带 source 字段会被"数据源切换"抢先)

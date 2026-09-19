@@ -270,7 +270,7 @@
   {
    "id": "ssobs",
    "type": "system",
-   "name": "🧩 43D 统一状态向量 (obs)",
+   "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
    "x": 1460,
    "y": 3732,
    "w": 280,
@@ -279,9 +279,15 @@
    "h": 110,
    "params": {
     "state_space": true,
-    "desc": "[基础·分段小模型] 43D 统一状态向量 obs: 位置/姿态/速度/力/触觉 融合 — 时空感知前端输出; 感知层增强: in2=YOLO 2D→3D 感知坐标, in3=触觉感知",
-    "source": "src/lerobot/policies/left_right/state_space/perception.py",
-    "source_symbol": "def fuse_sensors"
+    "su2_unified_state": true,
+    "group": "SU(2) = {U ∈ C^2x2 : U†U = I, det U = 1}",
+    "map_law": "ω = π·tanh(gain·‖v‖)·v̂ (有界映射律, θ<π 不绕圈, 方向保留)",
+    "blocks": "L2=43D obs 几何误差 | L3=流形规划(进度/偏离/剩余) | L4=安全动作(u_sat/接触/η) | L5=大模型意图",
+    "observables": "θ偏离角 / n̂状态方向 / |w|收敛度 / 逐层剥离贡献 / 层间不可交换性 / Fubini-Study 距离",
+    "viz_tools": "Bloch球 + S³分量 + 层贡献 + 反演剥离 + 距离矩阵 + 节点映射 (双击开观测面板)",
+    "desc": "[统一状态·群] SU(2) 二阶特殊酉群: 原 43D 统一状态向量降为群里的 L2 输入块; 全部层(L2/L3/L4/L5)与全部节点数据按有界映射律映成群元素, 群乘法=层合成(不可交换=层间耦合), 反演剥离读每层贡献; 群恒等元 ⇔ 场景收敛",
+    "source": "src/lerobot/policies/left_right/state_space/su2.py",
+    "source_symbol": "class SU2UnifiedState"
    },
    "inputs": [
     "in1",

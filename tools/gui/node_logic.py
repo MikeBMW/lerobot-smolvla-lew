@@ -3077,9 +3077,87 @@ def node_ss_scope(ctx):
 
 
 # 外部源码位置: 语义key → (绝对路径, 行号兜底, 真实符号名)
+# ── 🧩 SU(2) 统一状态空间 (二阶特殊酉群) ─────────────────────────────────────
+# 2026-09-20 老倪: 原 ss_obs 节点源码是 perception.fuse_sensors (传感器融合拼接),
+# 那是"把 43D 拼起来", 不是统一状态。统一状态空间是一个群 SU(2);
+# 全部层/全部节点的数据都要映进这个群, 在群里观察并理解整个场景。
+def _ss_su2_frame(mod, log=None):
+    """取当前帧的层标量 (引擎轨迹当前步 / 真机旁路帧), 缺失项 = 0 (不编造)
+
+    真源与 ▶运行/单步/右键 同源: module._ss_tr 的当前步 (module._ss_round);
+    无引擎轨迹时退真机旁路 module._bypass_obs 的 43D (触觉/接触通道)。
+    """
+    import numpy as _np
+    keys = ["mani_progress", "mani_dperp", "mani_rem", "mani_eta", "mani_V", "mani_risk",
+            "u_sat", "contact_p", "dist", "u_ff", "grasp"]
+    fr = {k: 0.0 for k in keys}
+    tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+    if tr:
+        n = len(tr.get("t", []) or [])
+        idx = int(getattr(mod, "_ss_round", 0) or 0)
+        idx = max(0, min(idx, max(0, n - 1)))
+        for k in keys:
+            seq = tr.get(k)
+            if seq and idx < len(seq):
+                try:
+                    fr[k] = float(seq[idx])
+                except Exception:                                       # noqa: BLE001
+                    pass
+    else:
+        obs = getattr(mod, "_bypass_obs", None) if mod is not None else None
+        if obs is not None:
+            o = _np.asarray(obs, dtype=float).ravel()
+            if o.size >= 43:
+                fr["grasp"] = float(o[39])
+                fr["contact_p"] = float(o[40])
+    return fr
+
+
+def node_ss_su2(ctx):
+    """🧩 SU(2) 统一状态空间 — 真实执行 su2.py::SU2UnifiedState (群映射, 非拼接)
+
+    L2(43D 几何误差) ⊗ L3(流形规划) ⊗ L4(安全动作) ⊗ L5(大模型意图) → 场景群元素;
+    输出: 状态方向 n̂ / 偏离角 θ / 收敛度|w| + 逐层剥离贡献 + 层间不可交换性 (全实测量)。
+    """
+    log = ctx.get("log")
+    try:
+        mod = ctx.get("module")
+        su2 = _ss_import("su2")
+        obs43 = _ss_ensure_obs43(log)
+        frame = _ss_su2_frame(mod, log)
+        st = _SS_STATE.get("_su2_state")
+        if st is None:
+            st = su2.SU2UnifiedState(log=None)
+            _SS_STATE["_su2_state"] = st
+        scene, layers, u = st.push(frame, obs43)
+        _SS_STATE["su2_scene"] = scene
+        _SS_STATE["su2_layers"] = layers
+        _SS_STATE["su2_readout"] = u
+        try:
+            nodes = su2.encode_nodes(getattr(mod, "_ss_io_frame", None) or {})
+            if nodes:
+                _SS_STATE["su2_nodes"] = nodes
+        except Exception:                                               # noqa: BLE001
+            pass
+        if log:
+            log("🧩 SU(2) 统一状态空间 (二阶特殊酉群): %s" % u["readout"])
+            for L in ("L2", "L3", "L4", "L5"):
+                log("   %s %s" % (L, layers[L].describe()))
+            log("   群反演剥离: 残余 θ=%.2e (≈0 ⇒ 分解自洽) · 主导层=%s · 层间不可交换 L2|L4=%.4f"
+                % (u["layer_peel"]["_residual"]["theta"], u["dominant_layer"],
+                   u["noncommutativity"].get("L2|L4", 0.0)))
+            log("   (43D obs = 群里的 L2 输入块; 其余节点数据按 NODE_SPECS 各自映射成群元素)")
+        return True
+    except Exception as e:                                              # noqa: BLE001
+        if log:
+            log("⚠️ SU(2) 统一状态映射失败: %s" % e)
+        return False
+
 _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
-_EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
+# 🧩 2026-09-20 老倪: VEH.5.041 从"传感器融合拼接(43D)"升级为"SU(2) 统一状态空间(群)"
+#   右键该节点应显示群实现 su2.py::class SU2UnifiedState, 不再显示 fuse_sensors
+_EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "su2.py"), 537, "class SU2UnifiedState")
 _EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
 _EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")
 _EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 186, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128→158 (重写后漂移; 现按符号动态定位)
@@ -3108,7 +3186,10 @@ _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
 
 _reg("ss_bg1",   ["时空感知前端"], "时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 _reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
-_reg("ss_obs",   ["43D", "统一状态向量"], "🧩 43D 统一状态向量 — 39D 视觉结构 + 触觉 4D (源码 perception.py)", node_ss_s1)
+# 🧩 2026-09-20: VEH.5.041「统一状态」= SU(2) 群节点 (43D 拼接语义保留在 📡传感器融合)
+#   key 仍用 ss_obs (与画布节点 id ssobs 对齐, 避免与 ss_su2 重复注册歧义)
+_reg("ss_obs",   ["SU(2)", "二阶特殊酉群", "统一状态空间"],
+     "🧩 SU(2) 统一状态空间 — 二阶特殊酉群 {U∈C²ˣ²: U†U=I, det U=1}: L2/L3/L4/L5 + 全部节点数据 → 群元素 (源码 state_space/su2.py)", node_ss_su2)
 _reg("ss_bg2",   ["并行处理层"], "并行处理层 — 快慢分离 (源码 state_space/parallel.py)", node_ss_s2)
 _reg("ss_ff",    ["前馈加速器"], "⚡ 前馈加速器 — 快路径 obs→u_ff 建议 (权重 30%, 源码 parallel.py FeedforwardAccelerator)", node_ss_s2)
 _reg("ss_est",   ["自适应状态估计器"], "🔮 自适应状态估计器 — 慢路径 递归潜状态+卡尔曼预测-校正 (源码 parallel.py AdaptiveStateEstimator)", node_ss_s2)
