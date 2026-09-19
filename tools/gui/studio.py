@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.10.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.11.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10297,7 +10297,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.10.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.11.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10305,9 +10305,16 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.10.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.11.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.11.0: 💪 **L2 原子技能常驻执行器(延迟 60s→<1s) + 技能清单 UI + 画布主干连线修复** — 老倪: 「再次整合 L4 L3 L2 功能。现在你的反馈速度太慢了，发出指令后 1 分钟才能动作。你要将这些技能固化到 L2 级别功能 … 在工程记忆 技能与经验库 节点，双击后打开技能清单 … 例如，用户可以选择 抬升技能，再输入 10cm, 点击开始，则立刻驱动机械臂抬升 10 厘米；你来设计 UI」
+        #   ①**速度根因与修复**: 旧路径每条指令都要"新开 ssh + ROS 发现 + 等驱动 30s 空闲" ⇒ 用户感受 ~60s ✗ → 新增 `tools/l2_daemon.py` 常驻执行器: 两条常驻 ssh 通道(命令循环·环境只 source 一次 + 位姿流维护位姿缓存) + FIFO 接口(`~/zmax_data/l2_cmd.fifo`, 写一行 JSON 即下发) + **发完立即回执** → 实测 21:12:43 写 FIFO 同秒「已下发」, z 0.29235→0.30235 = 精确 +10.00mm ✓
+        #   ②**L2 原子技能注册表** `data/skills/l2_atomic/registry.json`: ⬆️抬升(默认50mm) · ⬇️下降 · ↔️前后平移 · ↕️左右平移 · 🤏合爪(力40→开度185=夹牢) · ✋张爪 · 📍到示教点 + 组合技能(抓取循环 / 演示学习循环11点)
+        #   ③**技能清单 UI** `tools/gui/l2_skill_dialog.py`: 画布「📚 工程记忆 · 技能与经验库」节点**双击** → 技能列表 + 参数输入框 + 「▶ 开始(立即动作)」+ 结果输出; 另配菜单入口与真机面板按钮; 含执行器探活(离线时不卡界面) ✓ 烟测: 7 技能 / 默认抬升 50.0mm / 探活在线 ✓
+        #   ④**画布主干修复**: 前馈加速器被"图深度重排"顶到 x=9380 ✗ + 其→动作调制器连线被我"剔除右→左"误删 ✗ → 按原设计排正 **DiT(1810)→⚡前馈(2050)→🧭动作调制器(3520)→🛡安全执行边界(3856)→🤖执行器(5090)** + 从归档兜底恢复 **6 条正向前馈边**(流形专家预测器→接触/性能流形 · 标定→潜空间 · 异常推理器→调制器 · FlowMatch→执行器) + **流形专家预测器排到两条流形之前** ✓
+        #   ⑤验收: 83 节点 / 131 连线 · **右→左 0 条** · **功能孤立 0** · 画布装载全通过; 矩阵 27/27 全绿(含 F26 L2肌肉记忆→ROS2 转发链 / F27 L4 安全闸门)
+        #   ⑥**从演示学习(人机在环)**: 291s 位姿流(50Hz/14363样本) + 夹爪流 + 23 帧 → 切出 11 个停稳点位(取料 z=10.9cm / 放料 z=14.7cm) + 夹爪三事件(合142→开1000→合169) → 固化 L2 肌肉记忆技能; 回放精度实测 **0.2µm**; ⚠️教训: 演示点本身贴底 + 碰撞检测关闭 ⇒ 低位点回放必须留余量(已加 `contact_guard`) ✓
         # v5.10.0: 🧿🧠 **真机人机在环首次完整抓取闭环 + 感知链(L2 YOLO→板坐标系3D→L3 DeepSeek VL)接入真实数据流 + 画布卫生 + 多层记忆** — 老倪: 「你来整体升级状态空间的工程, 提升视觉语言能力 … 这些功能要都在真实的数据流里面运行」
         #   ①**真实链路运行器** `tools/perception_chain_real.py`: 真机帧 → YOLO(在役权重) → 板坐标系(工序坐标系·免手眼, 输出模块 (x,y)mm) → DeepSeek VL 场景理解(9字段: 目标/位置/朝向/在夹爪上/画面质量/光照/背景线索/标定建议) → 单一真源 `data/scene_state.json` + `macro_memory.perception`(追加式, 其它键原样)
         #   ②**L2/L3/L4 功能清单↔用例 25/25** (新增 F21 YOLO实时检出 · F22 板坐标系定位 · F23 VL场景理解 · F24 单一真源可回放 · F25 画布连线=真实链路)
