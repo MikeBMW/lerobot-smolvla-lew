@@ -1,130 +1,26 @@
 [
  {
-  "id": "lk_mem105",
+  "id": "lk_mem203",
   "f": "ss_mem_l4",
-  "t": "ssmani_c",
+  "t": "ssmani_exp",
   "f_port": "out1",
   "t_port": "in1",
-  "label": "筹划建议"
+  "label": "筹划 → 预测流形参考"
  },
  {
-  "id": "lkjepa_c",
-  "f": "ssmani_exp",
-  "t": "ssmani_c",
-  "f_port": "out1",
-  "t_port": "in3",
-  "label": "预测流形 (JEPA)"
- },
- {
-  "id": "lkjepa_p",
-  "f": "ssmani_exp",
-  "t": "ssmani_p",
-  "f_port": "out1",
-  "t_port": "in3",
-  "label": "预测流形 (JEPA)"
- },
- {
-  "id": "lk_mem104",
-  "f": "ss_mem_l3",
-  "t": "ssvlm",
+  "id": "lkcal5",
+  "f": "sslat",
+  "t": "ssmani_exp",
   "f_port": "out1",
   "t_port": "in1",
-  "label": "流程经验"
+  "label": "潜空间地图 → 流形导航预测"
  },
  {
-  "id": "lksafe1",
-  "f": "sslimit",
-  "t": "ssa",
-  "f_port": "out1",
-  "t_port": "in2",
-  "label": "🛡 限幅后控制 → 通用算子 A"
- },
- {
-  "id": "lksafe5",
-  "f": "sslimit",
-  "t": "sssk2",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ② 对位 SK02"
- },
- {
-  "id": "lksafe6",
-  "f": "sslimit",
-  "t": "sssk3",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ③ 下降 SK03"
- },
- {
-  "id": "lksafe7",
-  "f": "sslimit",
-  "t": "sssk4",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ④ 抓取 SK04"
- },
- {
-  "id": "lksafe8",
-  "f": "sslimit",
-  "t": "sssk5",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ⑤ 抬起 SK05"
- },
- {
-  "id": "lksafe9",
-  "f": "sslimit",
-  "t": "sssk6",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ⑥ 转移 SK06"
- },
- {
-  "id": "lksafe10",
-  "f": "sslimit",
-  "t": "sssk7",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ⑦ 插入 SK07"
- },
- {
-  "id": "lksafe11",
-  "f": "sslimit",
-  "t": "sssk8",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "🛡 限幅后控制 → ⑧ 完成 SK08"
- },
- {
-  "id": "lkrea2",
-  "f": "sslimit",
-  "t": "ssreason",
-  "f_port": "out1",
-  "t_port": "in3",
-  "label": "安全否决/限幅计数 → 异常归因"
- },
- {
-  "id": "lkib2",
-  "f": "n_intent_bundle",
+  "id": "lkdec_vlm",
+  "f": "ssvlm",
   "t": "ssintact_dec",
   "f_port": "out1",
-  "t_port": "in2",
-  "label": "意图四槽 → 解码器"
- },
- {
-  "id": "lkcal3",
-  "f": "sscalib",
-  "t": "sslat",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "几何标定 → 潜空间标定"
- },
- {
-  "id": "lkviz_bp",
-  "f": "sssched",
-  "t": "ssbypv",
-  "f_port": "out1",
-  "t_port": "in2",
-  "label": "阶段/调度 → 旁路实时可视化"
+  "t_port": "in4",
+  "label": "视觉潜空间 z → 解码条件"
  }
 ]

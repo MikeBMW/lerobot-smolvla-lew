@@ -915,7 +915,7 @@
    "h": 110,
    "y": 1764,
    "id": "ssmani_c",
-   "x": 1440,
+   "x": 1310,
    "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
    "params": {
     "state_space": true,
@@ -940,7 +940,7 @@
    "h": 110,
    "y": 1888,
    "id": "ssmani_p",
-   "x": 1440,
+   "x": 1310,
    "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
    "params": {
     "state_space": true,
@@ -964,7 +964,7 @@
    "actions": [],
    "w": 190,
    "h": 68,
-   "x": 1310,
+   "x": 1490,
    "y": 1764,
    "id": "sslat",
    "name": "🧮 潜空-流形",
@@ -1432,7 +1432,7 @@
    "id": "ssintact_dec",
    "type": "model",
    "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
-   "x": 1180,
+   "x": 1000,
    "y": 1764,
    "w": 300,
    "h": 110,
@@ -1459,7 +1459,7 @@
    "id": "ssmani_exp",
    "type": "model",
    "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
-   "x": 8390,
+   "x": 1180,
    "y": 1764,
    "w": 280,
    "h": 110,
@@ -2116,14 +2116,6 @@
    "label": "工作空间势场 Φ_global (障碍/预测)"
   },
   {
-   "id": "lk_mem203",
-   "f": "ss_mem_l4",
-   "t": "ssmani_exp",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "筹划 → 预测流形参考"
-  },
-  {
    "id": "lkmemf4",
    "f": "ss_mem_field",
    "t": "sssched",
@@ -2708,14 +2700,6 @@
    "label": "VLM 潜空间 → 几何/速度场标定"
   },
   {
-   "id": "lkcal5",
-   "f": "sslat",
-   "t": "ssmani_exp",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "潜空间地图 → 流形导航预测"
-  },
-  {
    "id": "lkdec_ds",
    "f": "ssdata",
    "t": "ssintact_dec",
@@ -2730,14 +2714,6 @@
    "f_port": "out1",
    "t_port": "in5",
    "label": "真机帧+编码器位姿 → 意图解码输入"
-  },
-  {
-   "id": "lkdec_vlm",
-   "f": "ssvlm",
-   "t": "ssintact_dec",
-   "f_port": "out1",
-   "t_port": "in4",
-   "label": "视觉潜空间 z → 解码条件"
   },
   {
    "id": "lkvllm_ds",
@@ -2978,6 +2954,54 @@
    "f_port": "out1",
    "t_port": "in5",
    "label": "潜空间 → 动作头条件"
+  },
+  {
+   "id": "lkrs_ssmani_exp_ssmani_c",
+   "f": "ssmani_exp",
+   "t": "ssmani_c",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "预测流形 (JEPA)"
+  },
+  {
+   "id": "lkrs_ssmani_exp_ssmani_p",
+   "f": "ssmani_exp",
+   "t": "ssmani_p",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "预测流形 (JEPA)"
+  },
+  {
+   "id": "lkrs_sscalib_sslat",
+   "f": "sscalib",
+   "t": "sslat",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "几何标定 → 潜空间标定"
+  },
+  {
+   "id": "lkrs_ssreason_sssched",
+   "f": "ssreason",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "↩ 反馈: 恢复建议"
+  },
+  {
+   "id": "lkrs_ssmani_exp_ssa",
+   "f": "ssmani_exp",
+   "t": "ssa",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "L4 动态参数 (世界模型预测)"
+  },
+  {
+   "id": "lkrs_ssdec_ssact",
+   "f": "ssdec",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "action 直通执行端 (端到端快路径)"
   }
  ],
  "params_note": ""
