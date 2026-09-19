@@ -43,7 +43,7 @@ ROWS = [
     ("🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching", "ssbg_vlm", ["ssvlm", "ssdec"]),
     ("🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)", "row_mem_l2", ["ss_mem_l2"]),
     ("🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)", "ssbg0",
-     ["ssyolo", "sstactile", "ss2d3d", "ssaoi"]),
+     ["ssyolo", "n_board_frame", "sstactile", "ss2d3d", "ssaoi"]),
     ("🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)", "ssbg1", ["sssensor", "ssobs"]),
     ("🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)", "ssbg2",
      ["ssest", "sspred", "ssinnov", "ssff"]),

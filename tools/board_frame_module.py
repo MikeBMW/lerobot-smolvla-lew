@@ -30,7 +30,7 @@ def run(img_path, conf=0.25):
     lam = float(np.dot(n, t)) / float(np.dot(n, ray))
     p_cam = ray * lam
     p_board = R.T @ (p_cam - t)
-    return {"ok": True, "板点": len(pts), "板距mm": round(float(np.linalg.norm(t)), 1),
+    return {"ok": True, "板点": len(pts), "板距_m": round(float(np.linalg.norm(t)), 4),
             "模块在板坐标 (x,y,mm)": [round(float(p_board[0]) * 1000, 1), round(float(p_board[1]) * 1000, 1)],
             "离板面mm": round(float(p_board[2]) * 1000, 1), "框": [round(cx, 1), round(cy, 1)],
             "conf": round(float(b.conf[0]), 3)}
