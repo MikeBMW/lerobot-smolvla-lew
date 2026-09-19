@@ -8,9 +8,13 @@ import glob
 import json
 import os
 import time
+import urllib.request
 
 from PyQt5.QtWidgets import (QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QListWidget,
                              QListWidgetItem, QPlainTextEdit, QPushButton, QVBoxLayout)
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QCheckBox, QGroupBox
 
 
 # 深色主题: 技能清单亮字 (2026-09-19 老倪: 黑字黑底看不清 -> 改亮色)
@@ -129,6 +133,24 @@ class L2SkillDialog(QDialog):
         self.out.setReadOnly(True)
         self.out.appendPlainText("执行器状态: %s" % ("在线 ✓" if alive() else "离线 ✗"))
         right.addWidget(self.out)
+        # 图片预览: 金手指AOI图片 -> http://192.168.23.23:10082/picture (老倪: UI 接收并显示图片)
+        gimg = QGroupBox("金手指AOI图片  (10082 /picture)")
+        vimg = QVBoxLayout(gimg)
+        self.img = QLabel("点「开始」或「刷新图片」取图")
+        self.img.setMinimumHeight(260)
+        self.img.setAlignment(Qt.AlignCenter)
+        self.img.setStyleSheet("QLabel{background:#0f1115;color:#8a929e;border:1px solid #3a4152;font-size:14px;}")
+        vimg.addWidget(self.img)
+        hb2 = QHBoxLayout()
+        self.btn_img = QPushButton("刷新图片")
+        self.btn_img.clicked.connect(self._refresh_image)
+        self.chk_auto = QCheckBox("自动刷新(2s)")
+        self.chk_auto.toggled.connect(self._toggle_auto)
+        self.lbl_img = QLabel("")
+        hb2.addWidget(self.btn_img); hb2.addWidget(self.chk_auto); hb2.addWidget(self.lbl_img); hb2.addStretch(1)
+        vimg.addLayout(hb2)
+        right.addWidget(gimg, 2)
+        self.tmr = QTimer(self); self.tmr.setInterval(2000); self.tmr.timeout.connect(self._refresh_image)
         lay.addLayout(right)
         if self.lst.count():
             self.lst.setCurrentRow(0)
@@ -152,7 +174,36 @@ class L2SkillDialog(QDialog):
             self.spin.setValue(0.0)
             self.spin.setEnabled(False)
 
+    IMG_URL = "http://192.168.23.23:10082/picture"
+
+    def _toggle_auto(self, on):
+        self.tmr.start() if on else self.tmr.stop()
+
+    def _refresh_image(self):
+        """接收并显示金手指AOI当前照片 (从工控机 /picture 拉取)"""
+        url = self.IMG_URL + "?t=%d" % int(time.time())
+        try:
+            r = urllib.request.urlopen(url, timeout=8)
+            data = r.read()
+            ct = r.headers.get("Content-Type", "")
+        except Exception as e:
+            self.img.setPixmap(QPixmap())
+            self.img.setText("取图失败: %s\n(确认工控机 v3 已在 10082 运行)" % e)
+            self.lbl_img.setText("")
+            return
+        pm = QPixmap()
+        if not pm.loadFromData(data):
+            self.img.setText("返回非图片 (%s): %s" % (ct, data[:180]))
+            return
+        self.img.setPixmap(pm.scaled(self.img.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.lbl_img.setText("%dx%d  %d KB  %s" % (pm.width(), pm.height(), len(data) // 1024, time.strftime("%H:%M:%S")))
+        self.out.appendPlainText("[%s] 取到照片 %dx%d %d KB" % (time.strftime("%H:%M:%S"), pm.width(), pm.height(), len(data) // 1024))
+
     def _go(self):
+        if isinstance(s, dict) and s.get("id") == "L2.aoi_picture":
+            self._refresh_image()
+            self.chk_auto.setChecked(True)
+            return
         it = self.lst.currentItem()
         if not it:
             return
