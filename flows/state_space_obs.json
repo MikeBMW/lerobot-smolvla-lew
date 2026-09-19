@@ -1936,7 +1936,7 @@
   },
   {
    "id": "n_l2_muscle",
-   "type": "process",
+   "type": "model",
    "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
    "x": 800,
    "y": 1400,
