@@ -91,6 +91,72 @@ def build_move(sk, spec, pts):
     return (t, q)
 
 
+IMG_LAST = os.path.expanduser("~/zmax_data/aoi_last_frame.png")
+
+
+def _image_health(raw):
+    """图像健康度: 尺寸/均值/对比度/最大灰阶 → 判定 (全黑/偏暗/正常)
+
+    为什么必须量化: 2026-09-20 现场"图片框黑屏" —— 文件 2.2MB 看着像真图(纯噪声不可压缩),
+    实际全图 15M 像素 mean=3.35/255 max=5 (只有读出噪声底) = 相机在拍但进光≈0。
+    光看文件大小会误判, 必须看像素统计。
+    """
+    try:
+        import io
+        import numpy as np
+        from PIL import Image
+        with Image.open(io.BytesIO(raw)) as im:
+            a = np.asarray(im).astype(np.float32)
+            w, h = im.size
+        mean, std, mx = float(a.mean()), float(a.std()), float(a.max())
+        if mx <= 12 and mean < 8:
+            v = "⚠️全黑(相机在拍但进光≈0) — 查光源/镜头盖/曝光(EXPOSURE_US)"
+        elif mean < 25:
+            v = "⚠️偏暗(进光不足)"
+        else:
+            v = "✅正常"
+        return "%dx%d mean=%.2f std=%.2f max=%.0f → %s" % (w, h, mean, std, mx, v)
+    except Exception as e:                                                    # noqa: BLE001
+        return "解析失败(%s)" % e
+
+
+def _pic_meta(url):
+    """取该图源元数据 (?meta=1): 文件名 + 拍摄时间 → 给出"帧龄"(新鲜度)
+
+    老倪铁律: 面板禁假值 / 画面要带状态 —— 一张图必须能说出"它是什么时候拍的"。
+    """
+    try:
+        import urllib.parse
+        u = url.split("?")[0] + "?meta=1"
+        with urllib.request.urlopen(u, timeout=10) as r:
+            d = json.loads(r.read().decode("utf-8", "ignore"))
+        age = max(0.0, time.time() - float(d.get("t", 0) or 0))
+        return "拍摄 %s · 帧龄 %.0fs · 工控机文件 %s" % (
+            time.strftime("%H:%M:%S", time.localtime(d.get("t", 0) or 0)), age,
+            d.get("file", "?"))
+    except Exception as e:                                                      # noqa: BLE001
+        return "元数据取不到(%s)" % type(e).__name__
+
+
+def _accept_image(raw, url, code, dt):
+    """图像类 HTTP 返回: 落盘 + 健康度判定(全黑/偏暗/正常) + 帧龄 + 日志/回执
+
+    2026-09-20 现场"图片框黑屏"教训: 文件 2.2MB 看着像真图(纯噪声不可压缩), 实际全图
+    mean=3.35/255 max=5 (只有读出噪声底), 必须看像素统计才知道相机是不是真看到东西。
+    """
+    kb = len(raw) / 1024.0
+    try:
+        with open(IMG_LAST, "wb") as f:
+            f.write(raw)
+    except Exception:                                                          # noqa: BLE001
+        pass
+    h = _image_health(raw)
+    msg = "HTTP %s → %s (%.0fms) 图像 %.0fKB · %s · %s · 已存 %s" % (
+        url, code, dt, kb, h, _pic_meta(url), IMG_LAST)
+    log(msg)
+    return msg
+
+
 def dispatch(reg, spec, chan):
     sid = spec.get("skill", "")
     sk = {s["id"]: s for s in reg["skills"]}.get(sid)
@@ -99,14 +165,24 @@ def dispatch(reg, spec, chan):
         return "未知技能: %s" % sid
     if sk.get("ros") == "http":
         url = sk.get("url", "")
+        # 2026-09-20: 支持 query 后缀 (如 ?grab=1 每次重新拍一帧 / ?meta=1 取元数据)
+        _q = sk.get("query") or ""
+        if _q and "?" not in url:
+            url = url + _q
         method = sk.get("method", "POST")
         try:
             req = urllib.request.Request(url, data=(b"" if method == "POST" else None), method=method)
             t0 = time.time()
-            with urllib.request.urlopen(req, timeout=30) as r:
-                body = r.read().decode("utf-8", "ignore")
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read()
                 code = r.status
+                ctype = r.headers.get("Content-Type", "")
             dt = (time.time() - t0) * 1000
+            # 🖼 二进制图像: 不往日志里倒字节(原实现 decode(utf-8,'ignore') 会把 PNG 乱码灌进日志),
+            #   改存盘 + 输出图像健康度判定(全黑/偏暗/正常) —— 老倪 2026-09-20 黑屏排查沉淀
+            if raw[:8] == b"\x89PNG\r\n\x1a\n" or raw[:2] == b"\xff\xd8" or "image" in ctype.lower():
+                return _accept_image(raw, url, code, dt)
+            body = raw.decode("utf-8", "ignore")
             log("HTTP %s → %s (%.0fms) %s" % (url, code, dt, body[:400]))
             return "HTTP %s → %s (%.0fms) 返回: %s" % (url, code, dt, body[:300].replace("\n", " "))
         except Exception as e:
