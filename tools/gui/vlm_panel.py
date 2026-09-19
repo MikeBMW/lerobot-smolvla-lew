@@ -26,6 +26,23 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton, QTableWidget,
                              QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 
+# 🎨 深色配色 (与工程既有面板统一: tools/gui/calibration_dialog.py 的 _DARK)
+#    老倪 2026-09-19: 「右面显示的字体和背景都是黑色, 看不清啊。字体改成白色。」
+_DARK = ("QDialog { background:#0d1117; color:#e6edf3; } "
+         "QLabel { color:#e6edf3; background:transparent; } "
+         "QTableWidget { background:#161b22; color:#e6edf3; border:1px solid #30363d; "
+         "gridline-color:#30363d; alternate-background-color:#0d1117; } "
+         "QTableWidget::item { color:#e6edf3; padding:3px; } "
+         "QTableWidget::item:selected { background:#1f6feb; color:#ffffff; } "
+         "QHeaderView::section { background:#21262d; color:#e6edf3; border:none; padding:5px; } "
+         "QTextEdit { background:#161b22; color:#e6edf3; border:1px solid #30363d; } "
+         "QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; "
+         "border-radius:5px; padding:7px 14px; font-size:13px; } "
+         "QPushButton:hover { background:#1f6feb; color:#ffffff; } "
+         "QScrollBar { background:#0d1117; } "
+         "QToolTip { background:#161b22; color:#e6edf3; border:1px solid #30363d; }")
+
+
 CALLS = os.path.expanduser("~/zmax_data/vlm_calls.jsonl")
 FRAMES = [os.path.expanduser("~/zmax_ss_remote/cam_rs.png"),
           os.path.expanduser("~/zmax_ss_remote/cam_fp.png")]
@@ -90,7 +107,8 @@ class VlmPanel(QDialog):
         self.module = module
         self.node = node or {}
         self.setWindowTitle("🧿 DeepSeek-V4-Flash 视觉语言判读 (人机在环)")
-        self.resize(1180, 720)
+        self.resize(1240, 760)
+        self.setStyleSheet(_DARK)      # 🎨 白字深底 (原来继承系统默认 → 黑字黑底看不清)
         self._busy = False
         v = QVBoxLayout(self)
 
@@ -115,7 +133,7 @@ class VlmPanel(QDialog):
         self.lbl_img = QLabel("(无最新帧)")
         self.lbl_img.setMinimumSize(640, 480)
         self.lbl_img.setAlignment(Qt.AlignCenter)
-        self.lbl_img.setStyleSheet("border: 1px solid #444;")
+        self.lbl_img.setStyleSheet("border: 1px solid #30363d; background:#161b22; color:#8b949e;")
         left.addWidget(self.lbl_img)
         self.lbl_img_info = QLabel("")
         left.addWidget(self.lbl_img_info)
@@ -138,6 +156,8 @@ class VlmPanel(QDialog):
         # ── 人机在环红线 ──
         self.lbl_gate = QLabel("⚠️ 人机在环: 本节点输出=『场景判读 + 建议』; "
                                "任何机械臂动作仍须操作员确认后才下发 (模型不直接驱动机器人)。")
+        self.lbl_gate.setStyleSheet("color:#f0c674; background:#161b22; border:1px solid #30363d; "
+                                    "border-radius:5px; padding:6px;")
         self.lbl_gate.setWordWrap(True)
         v.addWidget(self.lbl_gate)
 
