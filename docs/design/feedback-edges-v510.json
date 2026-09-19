@@ -1,18 +1,42 @@
 [
  {
-  "id": "lkl2m1",
-  "f": "ss_mem_l2",
-  "t": "n_l2_muscle",
+  "id": "lkild3",
+  "f": "ssintact_dec",
+  "t": "ssdec",
   "f_port": "out1",
-  "t_port": "in1",
-  "label": "L2 记忆 → 技能库"
+  "t_port": "in2",
+  "label": "L4 条件 → L3 DiT (未标定则不注入)"
  },
  {
-  "id": "lkl2m2",
-  "f": "ssskill",
-  "t": "n_l2_muscle",
+  "id": "lkmc_dc",
+  "f": "ssmani_c",
+  "t": "ssdec",
   "f_port": "out1",
-  "t_port": "in1",
-  "label": "L3 序列 → L2 技能"
+  "t_port": "in3",
+  "label": "接触流形坐标"
+ },
+ {
+  "id": "lkmp_dc",
+  "f": "ssmani_p",
+  "t": "ssdec",
+  "f_port": "out2",
+  "t_port": "in2",
+  "label": "性能流形代价"
+ },
+ {
+  "id": "lkcal6",
+  "f": "sslat",
+  "t": "ssdec",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "潜空间 → 动作头条件"
+ },
+ {
+  "id": "lkff_sched",
+  "f": "ssff",
+  "t": "sssched",
+  "f_port": "out2",
+  "t_port": "in6",
+  "label": "前馈 u_ff → 动作融合"
  }
 ]
