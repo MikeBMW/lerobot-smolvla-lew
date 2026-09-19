@@ -23,8 +23,9 @@ import time
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-                             QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel, QPushButton,
+                             QSplitter, QTableWidget, QTableWidgetItem, QTextEdit,
+                             QVBoxLayout, QWidget)
 
 # 🎨 深色配色 (与工程既有面板统一: tools/gui/calibration_dialog.py 的 _DARK)
 #    老倪 2026-09-19: 「右面显示的字体和背景都是黑色, 看不清啊。字体改成白色。」
@@ -107,8 +108,15 @@ class VlmPanel(QDialog):
         self.module = module
         self.node = node or {}
         self.setWindowTitle("🧿 DeepSeek-V4-Flash 视觉语言判读 (人机在环)")
-        self.resize(1240, 760)
+        # 🐛 2026-09-19 老倪: 「最大化的按钮不好使」+「窗口还无法拖动」
+        #   QDialog 默认 flags 不带最大化按钮; 且原来以父窗口为 parent → 被当瞬时窗口, 标题栏拖不动。
+        #   → 显式给 最小化/最大化/关闭/系统菜单 + 顶层窗口 (parent 只用于首次定位) + 非模态, 可自由拖动/最大化
+        self.setWindowFlags(Qt.Window | Qt.WindowMinMaxButtonsHint
+                            | Qt.WindowCloseButtonHint | Qt.WindowSystemMenuHint)
+        self.setWindowModality(Qt.NonModal)
+        self.setMinimumSize(880, 560)
         self.setStyleSheet(_DARK)      # 🎨 白字深底 (原来继承系统默认 → 黑字黑底看不清)
+        self._restore_geom()
         self._busy = False
         v = QVBoxLayout(self)
 
@@ -127,8 +135,8 @@ class VlmPanel(QDialog):
             row.addWidget(b)
         v.addLayout(row)
 
-        # ── 中部: 左画面 / 右判读 ──
-        mid = QHBoxLayout()
+        # ── 中部: 左画面 / 右判读 (QSplitter: 中间分隔条可拖动, 自己分配显示区域) ──
+        split = QSplitter(Qt.Horizontal)
         left = QVBoxLayout()
         self.lbl_img = QLabel("(无最新帧)")
         self.lbl_img.setMinimumSize(640, 480)
@@ -137,21 +145,33 @@ class VlmPanel(QDialog):
         left.addWidget(self.lbl_img)
         self.lbl_img_info = QLabel("")
         left.addWidget(self.lbl_img_info)
-        mid.addLayout(left, 1)
+        # (left/right 交给下面的 QSplitter 承载; 别先 addLayout 到中间层, 否则 setLayout 冲突告警)
         right = QVBoxLayout()
         self.tbl = QTableWidget(0, 3)
         self.tbl.setHorizontalHeaderLabels(["字段", "含义 (物理/工程)", "模型判读"])
-        self.tbl.horizontalHeader().setStretchLastSection(True)
-        self.tbl.setColumnWidth(0, 150)
-        self.tbl.setColumnWidth(1, 230)
+        # 🐛 2026-09-19 老倪: 「含义里面有很多字, 你给省略了」→ 换行 + 行高自适应 + 该列可拖宽
+        self.tbl.setWordWrap(True)
+        self.tbl.setTextElideMode(Qt.ElideNone)
+        _hh = self.tbl.horizontalHeader()
+        _hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        _hh.setSectionResizeMode(1, QHeaderView.Interactive)
+        _hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tbl.setColumnWidth(1, 360)
+        self.tbl.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tbl.verticalHeader().setVisible(False)
         right.addWidget(self.tbl)
         self.txt_raw = QTextEdit()
         self.txt_raw.setReadOnly(True)
         self.txt_raw.setPlaceholderText("原始输出 (模型返回全文)")
         self.txt_raw.setMaximumHeight(150)
         right.addWidget(self.txt_raw)
-        mid.addLayout(right, 1)
-        v.addLayout(mid, 3)
+        _lw, _rw = QWidget(), QWidget()
+        _lw.setLayout(left); _rw.setLayout(right)
+        split.addWidget(_lw); split.addWidget(_rw)
+        split.setStretchFactor(0, 4); split.setStretchFactor(1, 5)   # 画面:判读 ≈ 4:5
+        split.setSizes([560, 660])
+        v.addWidget(split, 4)
+        self.split = split
 
         # ── 人机在环红线 ──
         self.lbl_gate = QLabel("⚠️ 人机在环: 本节点输出=『场景判读 + 建议』; "
@@ -164,8 +184,17 @@ class VlmPanel(QDialog):
         # ── 历史 ──
         v.addWidget(QLabel("判读历史 (最近 20 次, 自动刷新)"))
         self.tbl_hist = QTableWidget(0, 6)
-        self.tbl_hist.setHorizontalHeaderLabels(["时间", "模式", "耗时ms", "来源", "结论", "画面"])
-        self.tbl_hist.horizontalHeader().setStretchLastSection(True)
+        self.tbl_hist.setHorizontalHeaderLabels(["时间", "模式", "耗时ms", "来源", "结论 (标定建议/下一步)", "画面"])
+        self.tbl_hist.setWordWrap(True)
+        self.tbl_hist.setTextElideMode(Qt.ElideNone)
+        _h2 = self.tbl_hist.horizontalHeader()
+        for _c in (0, 1, 2, 4):
+            _h2.setSectionResizeMode(_c, QHeaderView.ResizeToContents)
+        _h2.setSectionResizeMode(3, QHeaderView.Interactive)
+        _h2.setSectionResizeMode(5, QHeaderView.Stretch)
+        self.tbl_hist.setColumnWidth(3, 170)
+        self.tbl_hist.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tbl_hist.verticalHeader().setVisible(False)
         v.addWidget(self.tbl_hist, 2)
 
         self._timer = QTimer(self)
@@ -225,6 +254,46 @@ class VlmPanel(QDialog):
                                    str(c.get("src", "")), str(concl)[:70],
                                    os.path.basename(str(c.get("frame", "")))]):
                 self.tbl_hist.setItem(r, i, QTableWidgetItem(t))
+        try:
+            self.tbl.resizeRowsToContents()
+            self.tbl_hist.resizeRowsToContents()
+        except Exception:                                                      # noqa: BLE001
+            pass
+
+    # ── 窗口几何记忆 (拖动/最大化后下次照旧) ──
+    GEOM = os.path.expanduser("~/zmax_data/vlm_panel_geom.txt")
+
+    def _restore_geom(self):
+        try:
+            with open(self.GEOM) as f:
+                x, y, w, h = (int(v) for v in f.read().split()[:4])
+            self.setGeometry(x, y, max(w, 880), max(h, 560))
+        except Exception:                                                      # noqa: BLE001
+            self.resize(1240, 780)
+
+    def closeEvent(self, e):
+        try:
+            g = self.geometry()
+            with open(self.GEOM, "w") as f:
+                f.write(f"{g.x()} {g.y()} {g.width()} {g.height()}")
+        except Exception:                                                      # noqa: BLE001
+            pass
+        super().closeEvent(e)
+
+    def resizeEvent(self, e):
+        """窗口放大/最大化后立刻重排画面与列宽 (不等 5s 轮询)"""
+        super().resizeEvent(e)
+        try:
+            fp = next((f for f in FRAMES if os.path.exists(f)), None)
+            if fp:
+                pix = QPixmap(fp)
+                if not pix.isNull():
+                    self.lbl_img.setPixmap(pix.scaled(self.lbl_img.width(), self.lbl_img.height(),
+                                                      Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.tbl.resizeRowsToContents()
+            self.tbl_hist.resizeRowsToContents()
+        except Exception:                                                      # noqa: BLE001
+            pass
 
     # ── 动作 ──
     def _ask(self, mode):
