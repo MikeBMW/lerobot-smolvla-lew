@@ -185,9 +185,7 @@ def main():
         b["x"], b["y"], b["w"], b["h"] = x0 - BAND_PAD, row_y[r] - 20, (x1 - x0) + BAND_PAD + 60, (130 + row_slots[r] * 124 + 40)
         b["name"] = title
         b["params"] = dict(b.get("params") or {}, desc=title)
-    for nid in DEAD_BANDS:
-        n = nodes[nid]
-        n["x"], n["y"], n["w"], n["h"] = 0, BASE_Y - 300, 100, 8
+    # 停用带移除 + 大模型层锚定见下
 
     # ── 反向线自动标注: 右→左的边 = 双向关系的"上报/下发"另一半 → label 前加 ↩ (画布既有约定) ──
     annotated = 0

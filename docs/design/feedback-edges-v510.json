@@ -1,0 +1,178 @@
+[
+ {
+  "id": "lksw1",
+  "f": "swds",
+  "t": "swintact",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "环境渲染图像 224×224"
+ },
+ {
+  "id": "lkllm1",
+  "f": "ssllm_in",
+  "t": "ssllm",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "任务指令"
+ },
+ {
+  "id": "lkllm5",
+  "f": "ssskill",
+  "t": "ssllm",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "新技能注册"
+ },
+ {
+  "id": "lkllm4",
+  "f": "ssreason",
+  "t": "sssched",
+  "f_port": "out1",
+  "t_port": "in4",
+  "label": "↩ 反馈: 恢复建议"
+ },
+ {
+  "id": "lkild2",
+  "f": "ssintact",
+  "t": "ssintact_dec",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "意图/潜空间/动作块 (零搜索)"
+ },
+ {
+  "id": "lk_l4_abc",
+  "f": "ssmani_exp",
+  "t": "ssa",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "L4 动态参数 (世界模型预测)"
+ },
+ {
+  "id": "lkdc_act",
+  "f": "ssdec",
+  "t": "ssact",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "action 直通执行端 (端到端快路径)"
+ },
+ {
+  "id": "lks4",
+  "f": "ssff",
+  "t": "sssched",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "u_ff 建议 (30%)"
+ },
+ {
+  "id": "lks8",
+  "f": "ssinnov",
+  "t": "sssched",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "↩ 反馈: contact + 残差"
+ },
+ {
+  "id": "lkvlm_in2",
+  "f": "swds",
+  "t": "ssllm_in",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "引擎真图 → 场景理解 (VLM)"
+ },
+ {
+  "id": "lkrea4",
+  "f": "ssreason",
+  "t": "ssllm",
+  "f_port": "out1",
+  "t_port": "in4",
+  "label": "↩ 恢复建议 → 重规划"
+ },
+ {
+  "id": "lkmem1",
+  "f": "ss_mem_l2",
+  "t": "ss_mem_share",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "↩ 肌肉记忆 (固化标杆) → 总装"
+ },
+ {
+  "id": "lkmem2",
+  "f": "ss_mem_l3",
+  "t": "ss_mem_share",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "↩ 流程记忆 (跨段序列) → 总装"
+ },
+ {
+  "id": "lkmem3",
+  "f": "ss_mem_l4",
+  "t": "ss_mem_share",
+  "f_port": "out1",
+  "t_port": "in3",
+  "label": "↩ 筹划记忆 (预测/恢复) → 总装"
+ },
+ {
+  "id": "lkmem4",
+  "f": "n_mem_links",
+  "t": "ss_mem_share",
+  "f_port": "out1",
+  "t_port": "in4",
+  "label": "↩ 记忆图谱 links → 总装"
+ },
+ {
+  "id": "lkdict2",
+  "f": "n_skill_dict",
+  "t": "sssched",
+  "f_port": "out1",
+  "t_port": "in6",
+  "label": "↩ 技能 kNN 直读 → 动作调制"
+ },
+ {
+  "id": "lkid2",
+  "f": "n_intent_direct",
+  "t": "sssched",
+  "f_port": "out1",
+  "t_port": "in7",
+  "label": "技能直读 (无搜索) → 动作调制"
+ },
+ {
+  "id": "lkcal2",
+  "f": "sscalib",
+  "t": "ss2d3d",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "↩ 标定 (内参K/手眼/尺寸) → 3D 反投影"
+ },
+ {
+  "id": "lkvllm_sw",
+  "f": "swds",
+  "t": "n_dsvl",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "↩ 引擎逐帧真图 → 视觉理解"
+ },
+ {
+  "id": "lkvllm_rz",
+  "f": "ssz700",
+  "t": "n_dsvl",
+  "f_port": "out1",
+  "t_port": "in3",
+  "label": "↩ 真机帧 → 视觉理解"
+ },
+ {
+  "id": "lkdsvl_ins",
+  "f": "ssllm_in",
+  "t": "n_dsvl",
+  "f_port": "out1",
+  "t_port": "in4",
+  "label": "↩ MES 工单/指令 → 判读上下文"
+ },
+ {
+  "id": "lkbdf160",
+  "f": "ssz700",
+  "t": "n_board_frame",
+  "f_port": "out1",
+  "t_port": "in2",
+  "label": "真机帧 → 板检测 (20 圆点)"
+ }
+]

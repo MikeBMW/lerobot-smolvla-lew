@@ -57,21 +57,6 @@
    }
   },
   {
-   "id": "ssbg6",
-   "type": "row_bg",
-   "name": "🏆 L4 专家自主功能 · 潜空间/世界模型标定 (地图校准 · 回路外)",
-   "x": 0,
-   "y": -160,
-   "w": 100,
-   "h": 8,
-   "params": {
-    "state_space": true,
-    "desc": "标定层 (地图校准视角): 引力=动作快路径旋钮, 斥力=状态预测旋钮, 潜空间=世界模型预测流形的几何标定(维度/类别/速度场); 回路外元层不参与推理"
-   },
-   "color": "#7b3fbf",
-   "icon": "🏆"
-  },
-  {
    "id": "ssbg7",
    "type": "row_bg",
    "name": "🏆 L4 专家自主功能 · 标定与流形世界模型",
@@ -791,7 +776,7 @@
     "out1"
    ],
    "actions": [],
-   "x": 6740,
+   "x": 9050,
    "y": 952,
    "w": 206,
    "h": 68,
@@ -848,7 +833,7 @@
     "out1"
    ],
    "actions": [],
-   "x": 8390,
+   "x": 2780,
    "y": 952,
    "w": 163,
    "h": 68,
@@ -877,7 +862,7 @@
     "out1"
    ],
    "actions": [],
-   "x": 8720,
+   "x": 6080,
    "y": 952,
    "w": 163,
    "h": 68,
@@ -1690,8 +1675,8 @@
    "id": "n_skill_dict",
    "type": "model",
    "name": "🧬 技能词典 · L2 动作基",
-   "x": 9050,
-   "y": 952,
+   "x": 6410,
+   "y": 1076,
    "w": 270,
    "h": 68,
    "icon": "🧬",
@@ -1733,7 +1718,7 @@
    "type": "model",
    "name": "🔮 意图直读 · Direct",
    "x": 8390,
-   "y": 1076,
+   "y": 1764,
    "w": 270,
    "h": 68,
    "icon": "🔮",
@@ -1878,7 +1863,7 @@
    "id": "n_vlm_llm",
    "type": "model",
    "name": "👁 视觉语言大模型 (Qwen2.5-VL / Qwen3-VL)",
-   "x": 7730,
+   "x": 800,
    "y": 952,
    "w": 320,
    "h": 68,
@@ -1906,7 +1891,7 @@
    "id": "n_dsvl",
    "type": "model",
    "name": "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环)",
-   "x": 7400,
+   "x": 470,
    "y": 952,
    "w": 330,
    "h": 68,
@@ -1951,14 +1936,6 @@
   }
  ],
  "links": [
-  {
-   "id": "lksw1",
-   "f": "swds",
-   "t": "swintact",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "环境渲染图像 224×224"
-  },
   {
    "id": "lksw2",
    "f": "swintact",
@@ -2104,36 +2081,12 @@
    "label": "总装下发 → L2 肌肉记忆"
   },
   {
-   "id": "lkllm1",
-   "f": "ssllm_in",
-   "t": "ssllm",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "任务指令"
-  },
-  {
-   "id": "lkllm5",
-   "f": "ssskill",
-   "t": "ssllm",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "新技能注册"
-  },
-  {
    "id": "lkllm2",
    "f": "ssllm",
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in3",
    "label": "技能Token序列"
-  },
-  {
-   "id": "lkllm4",
-   "f": "ssreason",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in4",
-   "label": "↩ 反馈: 恢复建议"
   },
   {
    "id": "lkmemf3",
@@ -2168,14 +2121,6 @@
    "label": "意图 −∇Φ → 调度"
   },
   {
-   "id": "lkild2",
-   "f": "ssintact",
-   "t": "ssintact_dec",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "意图/潜空间/动作块 (零搜索)"
-  },
-  {
    "id": "lkild_jepa",
    "f": "ssintact_dec",
    "t": "ssmani_exp",
@@ -2206,14 +2151,6 @@
    "f_port": "out1",
    "t_port": "in3",
    "label": "预测流形 (JEPA)"
-  },
-  {
-   "id": "lk_l4_abc",
-   "f": "ssmani_exp",
-   "t": "ssa",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "L4 动态参数 (世界模型预测)"
   },
   {
    "id": "lkmc_dc",
@@ -2310,14 +2247,6 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "action→前馈层 (练熟固化=肌肉记忆快通道)"
-  },
-  {
-   "id": "lkdc_act",
-   "f": "ssdec",
-   "t": "ssact",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "action 直通执行端 (端到端快路径)"
   },
   {
    "id": "lkmemf1",
@@ -2440,14 +2369,6 @@
    "label": "obs 43D"
   },
   {
-   "id": "lks4",
-   "f": "ssff",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "u_ff 建议 (30%)"
-  },
-  {
    "id": "lkffh1",
    "f": "ssff",
    "t": "ssff_hist",
@@ -2478,14 +2399,6 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "next_obs 预测"
-  },
-  {
-   "id": "lks8",
-   "f": "ssinnov",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "↩ 反馈: contact + 残差"
   },
   {
    "id": "lks9",
@@ -2752,14 +2665,6 @@
    "label": "仿真 metaworld 渲染帧 → 场景理解 (VLM)"
   },
   {
-   "id": "lkvlm_in2",
-   "f": "swds",
-   "t": "ssllm_in",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "引擎真图 → 场景理解 (VLM)"
-  },
-  {
    "id": "lkvlm_in3",
    "f": "ssz700",
    "t": "ssllm_in",
@@ -2808,46 +2713,6 @@
    "label": "异常归因 → 技能修正"
   },
   {
-   "id": "lkrea4",
-   "f": "ssreason",
-   "t": "ssllm",
-   "f_port": "out1",
-   "t_port": "in4",
-   "label": "↩ 恢复建议 → 重规划"
-  },
-  {
-   "id": "lkmem1",
-   "f": "ss_mem_l2",
-   "t": "ss_mem_share",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "↩ 肌肉记忆 (固化标杆) → 总装"
-  },
-  {
-   "id": "lkmem2",
-   "f": "ss_mem_l3",
-   "t": "ss_mem_share",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "↩ 流程记忆 (跨段序列) → 总装"
-  },
-  {
-   "id": "lkmem3",
-   "f": "ss_mem_l4",
-   "t": "ss_mem_share",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "↩ 筹划记忆 (预测/恢复) → 总装"
-  },
-  {
-   "id": "lkmem4",
-   "f": "n_mem_links",
-   "t": "ss_mem_share",
-   "f_port": "out1",
-   "t_port": "in4",
-   "label": "↩ 记忆图谱 links → 总装"
-  },
-  {
    "id": "lkmem5",
    "f": "n_eng_mem",
    "t": "ss_mem_share",
@@ -2888,28 +2753,12 @@
    "label": "新技能注册 → 技能词典"
   },
   {
-   "id": "lkdict2",
-   "f": "n_skill_dict",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in6",
-   "label": "↩ 技能 kNN 直读 → 动作调制"
-  },
-  {
    "id": "lkid1",
    "f": "ssintact_dec",
    "t": "n_intent_direct",
    "f_port": "out1",
    "t_port": "in1",
    "label": "Δz → 意图直读"
-  },
-  {
-   "id": "lkid2",
-   "f": "n_intent_direct",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in7",
-   "label": "技能直读 (无搜索) → 动作调制"
   },
   {
    "id": "lkib1",
@@ -2976,14 +2825,6 @@
    "label": "检测框/反投影 → 标定层校验"
   },
   {
-   "id": "lkcal2",
-   "f": "sscalib",
-   "t": "ss2d3d",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "↩ 标定 (内参K/手眼/尺寸) → 3D 反投影"
-  },
-  {
    "id": "lkcal3",
    "f": "sscalib",
    "t": "sslat",
@@ -3046,22 +2887,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "环境帧 (metaworld 渲染) → 视觉理解"
-  },
-  {
-   "id": "lkvllm_sw",
-   "f": "swds",
-   "t": "n_dsvl",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "↩ 引擎逐帧真图 → 视觉理解"
-  },
-  {
-   "id": "lkvllm_rz",
-   "f": "ssz700",
-   "t": "n_dsvl",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "↩ 真机帧 → 视觉理解"
   },
   {
    "id": "lkvllm_pl",
@@ -3208,28 +3033,12 @@
    "label": "DeepSeek-V4-Flash 判读结果 → 场景理解层 (人机在环)"
   },
   {
-   "id": "lkdsvl_ins",
-   "f": "ssllm_in",
-   "t": "n_dsvl",
-   "f_port": "out1",
-   "t_port": "in4",
-   "label": "↩ MES 工单/指令 → 判读上下文"
-  },
-  {
    "id": "lkbdf159",
    "f": "ssyolo",
    "t": "n_board_frame",
    "f_port": "out1",
    "t_port": "in1",
    "label": "YOLO 2D 框 → 射线 (L2 感知)"
-  },
-  {
-   "id": "lkbdf160",
-   "f": "ssz700",
-   "t": "n_board_frame",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "真机帧 → 板检测 (20 圆点)"
   },
   {
    "id": "lkbdf161",
