@@ -26,14 +26,15 @@ from collections import defaultdict
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 FLOW = os.path.join(REPO, "flows", "state_space_obs.json")
 BASE_X, BASE_Y, COL_W, ROW_H, BAND_PAD = 140, 140, 330, 300, 170
-SLOT_CAP = 3           # 行内同层最多竖排几档 (超出向右挪列)
+SLOT_CAP = 5           # 行内同层最多竖排几档 (超出向右挪列)
 
 ROWS = [
-    ("📦 数据源 (metaworld 环境 · 供给全部层级)", "ssbg_data", ["ssdata", "ssmode", "sscap"]),
+    ("📦 数据源 (metaworld 环境 + 真机信号 · 供给全部层级)", "ssbg_data",
+     ["ssdata", "ssz700", "ssmode", "sscap"]),
     ("🌍 L4 · 光模块插拔链 (环境渲染 → INTACT → 引擎 → 视频)", "swbg_l4sw",
      ["swds", "swintact", "swworld", "swvideo"]),
     ("🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)", "ssbg5",
-     ["ssllm_in", "n_eng_mem", "ss_mem_share", "ssreason", "ssskill", "ssllm",
+     ["ssllm_in", "n_eng_mem", "n_vlm_llm", "ss_mem_share", "ssreason", "ssskill", "ssllm",
       "n_mem_links", "n_intent_direct", "n_intent_bundle", "n_skill_dict"]),
     ("🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)", "row_mem_l4", ["ss_mem_l4", "ss_mem_field"]),
     ("🏆 L4 专家自主功能 · 标定与流形世界模型", "ssbg7",
@@ -51,8 +52,8 @@ ROWS = [
      ["sssk1", "sssk2", "sssk3", "sssk4", "sssk5", "sssk6", "sssk7", "sssk8", "ssa", "ssb", "ssc"]),
     ("🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)", "ssbg4", ["ssact", "ssworld"]),
     ("🧩 验证层 · Feature/Test 质量门 (回路外元层)", "ssbg8", ["ssfeat", "sstest"]),
-    ("🔭 可视化层 · 观察器 (真机/旁路/3D/视频)", "ssbg9",
-     ["ssff_hist", "ssz700", "ssbypv", "ss3d_view", "ssvideo", "ssvideo2"]),
+    ("🔭 可视化层 · 观察器 (旁路/3D/视频/直方图)", "ssbg9",
+     ["ssbypv", "ss3d_view", "ssvideo", "ssvideo2", "ssff_hist"]),
 ]
 DEAD_BANDS = ["ssbg6"]
 

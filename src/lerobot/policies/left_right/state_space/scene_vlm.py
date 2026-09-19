@@ -50,6 +50,10 @@ _REPO = _find_repo()
 _WORKER = os.path.join(_REPO, "tools", "vlm_worker.py")
 _PY = os.path.join(_REPO, "gui-venv311", "bin", "python")
 
+# 视觉语言模型选型 (老倪 2026-09-19: 大模型层要"看到场景"):
+#   · 默认本地开源 Qwen2.5-VL-3B-Instruct (无需 key, 8GB 4060 可跑)
+#   · 可换 Qwen3-VL 系 (更强, 显存更大): SS_VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct 等
+#   · 或走 API: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max
 DEFAULT_MODEL = os.environ.get("SS_VLM_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
 SYS_PROMPT = ("你是 Z-MAX 光模块插拔工位的现场视觉助手, 面向「把真实场景标定做对」这件事。"
               "只描述你**真的看到**的内容; 看不清就说看不清, 不要猜、不要编数字。"
