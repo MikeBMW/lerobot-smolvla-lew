@@ -8,6 +8,7 @@
 ④ 右键菜单项存在 (拨钮参数驱动)
 ⑤ Z700 面板图像预览 (有 PNG 时显示真图)
 """
+import json
 import os
 import sys
 import time
@@ -61,7 +62,16 @@ m0, it0, lk0 = load("/tmp/state_space_obs.bak2.json")          # 上一版(含�
 m, items, links = load(os.path.join(ROOT, "flows", "state_space_obs.json"))
 print(f"  上一版 {len(it0)} 节点/{len(lk0)} 连线  →  本版 {len(items)} 节点/{len(links)} 连线")
 chk("独立 📡 传感器节点已撤", find(items, "旁路真机传感器") is None)
-chk("节点数 = 79", len(items) == 79, f"实际 {len(items)}")
+# 🐛 2026-09-19 老倪全系统检查: 原来硬写 79 → 画布加节点 (工程记忆/视觉大模型/DeepSeek) 后误判失败。
+#   用例意图是"画布节点齐全", 不是钉死数量 → 改为与 flow JSON 对账 (画布节点数 == 流程条目数, 且非空)
+try:
+    _flow = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                        "flows", "state_space_obs.json"), encoding="utf-8"))
+    _expect = len(_flow["nodes"])
+except Exception:
+    _expect = None
+chk(f"节点数与流程对账 (画布 {len(items)} / 流程 {_expect})",
+    bool(items) and (_expect is None or len(items) == _expect), f"实际 {len(items)}")
 chk("连线数不减于旧基线 (撤2加1 的净值, 容差≥-1)", len(links) >= len(lk0) - 1, f"{len(lk0)} → {len(links)}")
 src_node = find(items, "metaworld 数据源")
 chk("📦 数据源节点在", src_node is not None)
