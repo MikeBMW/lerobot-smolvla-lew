@@ -110,8 +110,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p models
-          curl -fsSL -o models/l4_mani_predictor_v5.pt https://datadrive.world/models/l4_mani_predictor_v5.pt
-          curl -fsSL -o models/l4_yaw_head_grasp_dz_v2.pt https://datadrive.world/models/l4_yaw_head_grasp_dz_v2.pt
+          curl -fsSL -o models/l4_mani_predictor_v5.pt https://github.com/MikeBMW/lerobot-smolvla-lew/releases/download/weights-v1/l4_mani_predictor_v5.pt
+          curl -fsSL -o models/l4_yaw_head_grasp_dz_v2.pt https://github.com/MikeBMW/lerobot-smolvla-lew/releases/download/weights-v1/l4_yaw_head_grasp_dz_v2.pt
           python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('mani md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
           python -c "import hashlib; h=hashlib.md5(open('models/l4_yaw_head_grasp_dz_v2.pt','rb').read()).hexdigest(); print('yaw head md5:', h); assert h=='6a6915b3a0fdcf7a09728b4ac3a9d348', h"
 
@@ -339,8 +339,8 @@ jobs:
       - name: "Download manifold predictor + yaw 试抓头 weights (流形 yaw/试抓头要真权重 — 权重不进代码库, 走 ECS 静态)"
         run: |
           mkdir -p models
-          curl -fsSL -o models/l4_mani_predictor_v5.pt https://datadrive.world/models/l4_mani_predictor_v5.pt
-          curl -fsSL -o models/l4_yaw_head_grasp_dz_v2.pt https://datadrive.world/models/l4_yaw_head_grasp_dz_v2.pt
+          curl -fsSL -o models/l4_mani_predictor_v5.pt https://github.com/MikeBMW/lerobot-smolvla-lew/releases/download/weights-v1/l4_mani_predictor_v5.pt
+          curl -fsSL -o models/l4_yaw_head_grasp_dz_v2.pt https://github.com/MikeBMW/lerobot-smolvla-lew/releases/download/weights-v1/l4_yaw_head_grasp_dz_v2.pt
           python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('mani md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
           python -c "import hashlib; h=hashlib.md5(open('models/l4_yaw_head_grasp_dz_v2.pt','rb').read()).hexdigest(); print('yaw head md5:', h); assert h=='6a6915b3a0fdcf7a09728b4ac3a9d348', h"
       - name: Build .app with PyInstaller
