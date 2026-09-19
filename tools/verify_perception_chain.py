@@ -16,6 +16,21 @@ R = "/home/ubuntu/lerobot-smolvla-lew"
 LP = os.path.expanduser("~/zmax_data/perception_chain.jsonl")
 
 
+
+def _scan(pred, n=60):
+    """回溯最近 n 条真实记录找一条满足 pred 的 (能力判据, 不受当前视角/遮挡影响)"""
+    if not os.path.exists(LP):
+        return None
+    lines = [x for x in open(LP, encoding="utf-8") if x.strip()][-n:]
+    for x in reversed(lines):
+        try:
+            r = json.loads(x)
+        except Exception:
+            continue
+        if pred(r):
+            return r
+    return None
+
 def _last():
     if not os.path.exists(LP):
         return None
@@ -24,9 +39,10 @@ def _last():
 
 
 def c_yolo():
-    r = _last()
-    if not r:
-        return False, "无感知记录"
+    def ok(r):
+        bf = r.get("l2_board_frame") or {}
+        return bool(bf.get("框")) and bf.get("conf") is not None and float(bf["conf"]) >= 0.5
+    r = _scan(ok) or _last() or {}
     bf = r.get("l2_board_frame") or {}
     c = bf.get("conf")
     return (bool(bf.get("框")) and c is not None and float(c) >= 0.5,
@@ -34,9 +50,12 @@ def c_yolo():
 
 
 def c_board():
-    r = _last()
-    if not r:
-        return False, "无感知记录"
+    def ok(r):
+        bf = r.get("l2_board_frame") or {}
+        xy = bf.get("模块在板坐标 (x,y,mm)")
+        dz = bf.get("离板面mm")
+        return int(bf.get("板点", 0) or 0) == 20 and bool(xy) and dz is not None and abs(float(dz)) <= 2.0
+    r = _scan(ok) or _last() or {}
     bf = r.get("l2_board_frame") or {}
     xy = bf.get("模块在板坐标 (x,y,mm)")
     dz = bf.get("离板面mm")

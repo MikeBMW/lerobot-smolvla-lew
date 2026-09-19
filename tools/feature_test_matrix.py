@@ -45,9 +45,11 @@ FEATURES = [
     ("F20", "顶层宏观记忆(跨任务画像+归因+建议)","MEM","SS_MACRO_LLM_URL",       "tools/verify_macro_memory.py",         "script", "只读下层+幂等+建议有据"),    # ── 2026-09-19 视觉语言大模型集成 (老倪: YOLO 感知光模块 + DeepSeek VL 理解场景, 真实链路) ──
     ("F21", "YOLO 在役权重实时检出光模块",     "L2", "-",                     "tools/vpc_yolo_live.py",               "script", "真机帧 conf≥0.5 且框有效"),
     ("F22", "板坐标系定位(工序系·免手眼)",     "L2", "-",                     "tools/vpc_board_frame.py",             "script", "板点=20 且 |离板面|≤2mm"),
-    ("F23", "DeepSeek VL 场景理解(结构化)",    "L3", "SS_VLM_*",              "tools/vpc_vlm_scene.py",               "script", "目标/画面质量/背景线索 齐备"),
+    ("F23", "DeepSeek VL 场景理解(结构化)",    "LLM", "SS_VLM_*",              "tools/vpc_vlm_scene.py",               "script", "目标/画面质量/背景线索 齐备"),
     ("F24", "感知链单一真源+可回放",           "ALL","-",                     "tools/vpc_single_source.py",           "script", "scene_state 含感知链段"),
     ("F25", "画布连线与真实链路一致",          "ALL","-",                     "tools/vpc_canvas_wired.py",            "script", "板坐标系入≥3出≥3 功能孤立=0"),
+    ("F26", "L2 肌肉记忆技能→ROS2 转发链",    "L2", "-",                     "tools/vpc_l2_muscle.py",               "script", "技能JSON合法+dry-run字节正常"),
+    ("F27", "L4 安全闸门+分层职责文档",        "L4", "-",                     "tools/vpc_l4_gate.py",                 "script", "闸门三判据+复位+四层文档齐备")
 ]
 
 

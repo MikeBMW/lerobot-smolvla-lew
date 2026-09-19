@@ -791,7 +791,7 @@
   {
    "id": "ssllm",
    "type": "model",
-   "name": "🧠 任务规划器 (LLM)",
+   "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
    "icon": "🧠",
    "color": "#a78bfa",
    "inputs": [
@@ -849,7 +849,7 @@
   {
    "id": "ssskill",
    "type": "model",
-   "name": "🛠 技能编排器 (LLM)",
+   "name": "🛠 L3 技能序列编排",
    "icon": "🛠",
    "color": "#3fb950",
    "inputs": [
@@ -1406,7 +1406,7 @@
   {
    "id": "ssintact",
    "type": "model",
-   "name": "🎯 INTACT 策略 (L4: metaworld → 零搜索 意图→动作)",
+   "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
    "x": 9710,
    "y": 1764,
    "w": 300,
@@ -1499,7 +1499,7 @@
   {
    "id": "ss_mem_l2",
    "type": "model",
-   "name": "🔧 L2 记忆 · 肌肉记忆 (小脑 · DMP式标杆回放)",
+   "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
    "x": 1460,
    "y": 2920,
    "w": 280,
@@ -1511,7 +1511,7 @@
   {
    "id": "ss_mem_l3",
    "type": "model",
-   "name": "🚀 L3 记忆 · 长程规划 (海马体 · 情景/流匹配)",
+   "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
    "x": 1460,
    "y": 2232,
    "w": 280,
@@ -1523,7 +1523,7 @@
   {
    "id": "ss_mem_l4",
    "type": "model",
-   "name": "🏆 L4 记忆 · 筹划 (前额叶 · 工作记忆/SSM)",
+   "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
    "x": 1460,
    "y": 1420,
    "w": 280,
@@ -1862,7 +1862,7 @@
   {
    "id": "n_vlm_llm",
    "type": "model",
-   "name": "👁 视觉语言大模型 (Qwen2.5-VL / Qwen3-VL)",
+   "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
    "x": 800,
    "y": 952,
    "w": 320,
@@ -1890,7 +1890,7 @@
   {
    "id": "n_dsvl",
    "type": "model",
-   "name": "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环)",
+   "name": "🧿 DeepSeek-VL · 场景理解 (大模型层)",
    "x": 470,
    "y": 952,
    "w": 330,
@@ -1933,6 +1933,25 @@
    },
    "icon": "📐",
    "color": "#d4a800"
+  },
+  {
+   "id": "n_l2_muscle",
+   "type": "process",
+   "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "x": 800,
+   "y": 1400,
+   "w": 240,
+   "h": 124,
+   "icon": "💪",
+   "color": "#3FB950",
+   "params": {
+    "kind": "real",
+    "real": true,
+    "skill": "data/skills/l2_muscle/光模块_抓放循环_v1.json",
+    "bridge": "tools/l2_ros2_bridge.py",
+    "layer": "L2",
+    "desc": "L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin"
+   }
   }
  ],
  "links": [
@@ -3071,6 +3090,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "真机帧 → 板检测 (20 圆点)"
+  },
+  {
+   "id": "lkl2m3",
+   "f": "n_l2_muscle",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "L2 肌肉记忆 → 动作调制"
   }
  ],
  "params_note": ""

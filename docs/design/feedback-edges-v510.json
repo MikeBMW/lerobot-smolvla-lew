@@ -1,10 +1,18 @@
 [
  {
-  "id": "lkw_z700",
-  "f": "ssworld",
-  "t": "ssz700",
+  "id": "lkl2m1",
+  "f": "ss_mem_l2",
+  "t": "n_l2_muscle",
   "f_port": "out1",
   "t_port": "in1",
-  "label": "物理世界输出 (真机全信号)"
+  "label": "L2 记忆 → 技能库"
+ },
+ {
+  "id": "lkl2m2",
+  "f": "ssskill",
+  "t": "n_l2_muscle",
+  "f_port": "out1",
+  "t_port": "in1",
+  "label": "L3 序列 → L2 技能"
  }
 ]

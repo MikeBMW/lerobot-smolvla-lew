@@ -6498,6 +6498,12 @@ class HardwareModule(SubModuleWidget):
         self.btn_discover.setToolTip("SSH连接Orin · 发现ROS2节点和Topic · 系统资源 · TCP Bridge状态")
         self.btn_discover.clicked.connect(self._discover_hardware)
         self.btn_discover.setVisible(False)  # 仅Real模式显示
+        self.btn_l2_muscle = QPushButton("💪 L2 抓放循环 (肌肉记忆)")
+        self.btn_l2_muscle.setStyleSheet(f"background:{C_PURPLE if 'C_PURPLE' in dir() else '#7B2DC0'}; color:white; border:none; border-radius:4px; padding:6px 12px; font-weight:bold;")
+        self.btn_l2_muscle.setToolTip("L2 肌肉记忆技能 → ROS2 转发 → Orin 真机: 张爪→抬起→下降→夹紧(force40)→抬起; 逐步三闸门+取证")
+        self.btn_l2_muscle.clicked.connect(self._run_l2_muscle)
+        self.btn_l2_muscle.setVisible(False)  # 仅Real模式显示
+        toolbar.addWidget(self.btn_l2_muscle)
         toolbar.addWidget(self.btn_discover)
         
         self.status_label = QLabel("● 待机")
