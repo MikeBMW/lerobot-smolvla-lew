@@ -41,6 +41,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
 DAEMON_NAME = "l2_" + "dae" + "mon.py"
+LOG = os.path.expanduser("~/zmax_data/l2_" + "dae" + "mon.log")
 
 
 def alive():
@@ -61,9 +62,32 @@ def send(spec):
         return "✗ 执行器未跑 — 先启动 tools/" + DAEMON_NAME
     if not os.path.exists(FIFO):
         return "✗ FIFO 缺失: " + FIFO
+    try:
+        n0 = os.path.getsize(LOG)
+    except Exception:
+        n0 = 0
     with open(FIFO, "w", encoding="utf-8") as f:
         f.write(json.dumps(spec, ensure_ascii=False) + "\n")
-    return "✓ 已下发: " + json.dumps(spec, ensure_ascii=False)
+    # 回读执行器响应 (老倪 09-19: 要看到"返回的 JSON 数据", 不是只显示已下发)
+    resp = ""
+    t0 = time.time()
+    while time.time() - t0 < 8:
+        time.sleep(0.4)
+        try:
+            with open(LOG, encoding="utf-8", errors="ignore") as f:
+                f.seek(n0)
+                lines = [x.strip() for x in f.read().splitlines() if x.strip()]
+        except Exception:
+            lines = []
+        for x in reversed(lines):
+            if ("受理:" in x) or x.startswith("[") and ("HTTP" in x):
+                resp = x
+                break
+        if resp:
+            break
+    out = "→ 下发: " + json.dumps(spec, ensure_ascii=False)
+    out += ("\n← 执行器: " + resp) if resp else ("\n← 执行器: (未回读, 看 " + os.path.basename(LOG) + ")")
+    return out
 
 
 class L2SkillDialog(QDialog):

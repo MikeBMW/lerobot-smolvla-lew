@@ -85,8 +85,8 @@ def dispatch(reg, spec, chan):
                 body = r.read().decode("utf-8", "ignore")
                 code = r.status
             dt = (time.time() - t0) * 1000
-            log("HTTP %s → %s (%.0fms) %s" % (url, code, dt, body[:120]))
-            return "HTTP %s → %s (%.0fms)" % (url, code, dt)
+            log("HTTP %s → %s (%.0fms) %s" % (url, code, dt, body[:400]))
+            return "HTTP %s → %s (%.0fms) 返回: %s" % (url, code, dt, body[:300].replace("\n", " "))
         except Exception as e:
             log("HTTP 失败 %s: %s" % (url, e))
             return "HTTP 失败: %s" % e
