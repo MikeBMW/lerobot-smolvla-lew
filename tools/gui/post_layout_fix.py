@@ -15,6 +15,7 @@ DEAD = ["ssbg6"]
 PIN = {"n_dsvl": (470, 952), "n_vlm_llm": (800, 952), "ss_mem_share": (1130, 952),
        "n_eng_mem": (140, 952), "ssllm": (1460, 952), "n_mem_links": (1790, 952),
        "n_intent_bundle": (1790, 1076), "ssreason": (2780, 952), "ssskill": (6080, 952),
+       "ssz700": (470, 140),   # 🖥 Z700 真机信号 → 数据源行(左上=源头); 图深度重排曾把它顶到 x=5750, 使"真机帧→板检测"变成右→左
        "n_intent_direct": (8390, 1764),   # 紧贴上上游 ssintact_dec(8060) 右侧 → 边为正向, 且不孤立
  "n_skill_dict": (6410, 1076), "ssllm_in": (9050, 952),
 }
@@ -29,7 +30,8 @@ def main():
         if k in nd:
             nd[k]["x"], nd[k]["y"] = x, y
     # 右→左被剔除后变成孤立的真能力节点: **移到消费者左侧 + 正向重建边** (老倪: 不许孤立, 更不许有右→左线)
-    RESTORE = [("ssintact_dec", "n_intent_direct", "Δz → 意图直读")]
+    RESTORE = [("ssintact_dec", "n_intent_direct", "Δz → 意图直读"),
+               ("ssz700", "n_board_frame", "真机帧 → 板检测 (20 圆点)")]
     have = {(l["f"], l["t"]) for l in d["links"]}
     for _f, _t, _lab in RESTORE:
         if _f in nd and _t in nd and (_f, _t) not in have:

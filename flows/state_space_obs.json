@@ -1088,7 +1088,7 @@
    "id": "ssz700",
    "type": "model",
    "icon": "🖥",
-   "x": 5750,
+   "x": 470,
    "y": 140,
    "w": 280,
    "h": 110,
@@ -2553,14 +2553,6 @@
    "label": "数据源信号 (仿真/真机) → 旁路观察"
   },
   {
-   "id": "lkw_z700",
-   "f": "ssworld",
-   "t": "ssz700",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "物理世界输出 (真机全信号)"
-  },
-  {
    "id": "lks15",
    "f": "ssworld",
    "t": "ssvideo2",
@@ -3071,6 +3063,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "工序坐标系目标 → 动作调制"
+  },
+  {
+   "id": "lkrs_ssz700_n_board_frame",
+   "f": "ssz700",
+   "t": "n_board_frame",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "真机帧 → 板检测 (20 圆点)"
   }
  ],
  "params_note": ""
