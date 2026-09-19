@@ -1,7 +1,22 @@
 {
  "scen": "L3",
  "steps": 8,
- "trace_hash": "c6646797c71786e119542e064a94978a",
+ "trace_hash": "f308aef09622993b8b182ef771b310d1",
+ "final": {
+  "steps": 8,
+  "done_any": false,
+  "done_last": false,
+  "dist_min": 0.15682229259625446,
+  "dist_last": 0.15992902320373917,
+  "V_first": 0.015173502167854491,
+  "V_last": 0.015437711271534836,
+  "V_min": 0.015173502167854491,
+  "V_max": 0.0157107627483498,
+  "V_n": 8,
+  "stage_counts": {
+   "阶段 接近": 8
+  }
+ },
  "env": {
   "SS_L4_INTACT": null,
   "SS_L4_INTENT_LINE": null,
@@ -10,41 +25,59 @@
   "SS_L3": "1",
   "SS_INTACT": null
  },
+ "align": {
+  "enabled": false,
+  "applied": 0,
+  "ready": false,
+  "map_src": "",
+  "err": null,
+  "cos_before_mean": 0.0,
+  "cos_after_mean": 0.0,
+  "ratio_after_mean": 0.0,
+  "sample_n": 0,
+  "gate": {
+   "pass": 0,
+   "veto": 0,
+   "veto_dir": 0,
+   "veto_mag": 0,
+   "blend": 0
+  }
+ },
  "trace_cols": {
   "u_ff_vec": {
    "n": 8,
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 4,
-   "last_norm": 0.0570180447360936
+   "last_norm": 0.05673907349346471
   },
   "u_exec_vec": {
    "n": 8,
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 4,
-   "last_norm": 0.12
+   "last_norm": 0.12000000000000001
   },
   "u_fuse_vec": {
    "n": 8,
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 4,
-   "last_norm": 0.12
+   "last_norm": 0.12000000000000001
   },
   "mani_pred": {
    "n": 8,
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 6,
-   "last_norm": 0.3249780091149927
+   "last_norm": 0.3236293252568894
   },
   "mani_progress": {
    "n": 8,
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 1,
-   "last_norm": 0.17571403638831068
+   "last_norm": 0.17571403627220472
   },
   "mani_risk": {
    "n": 8,
@@ -58,7 +91,7 @@
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 1,
-   "last_norm": 0.015437711291936284
+   "last_norm": 0.015437711271534836
   },
   "mani_eta": {
    "n": 8,
@@ -79,14 +112,14 @@
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 7,
-   "last_norm": 0.28801515762793906
+   "last_norm": 0.28801515759370194
   },
   "latent_vec": {
    "n": 8,
    "n_nonnull": 8,
    "n_nonzero": 8,
    "dim": 4,
-   "last_norm": 0.631123319183068
+   "last_norm": 0.6311233187337395
   }
  },
  "summaries": {

@@ -21,11 +21,11 @@ import json
 import os
 import time
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel, QPushButton,
-                             QSplitter, QTableWidget, QTableWidgetItem, QTextEdit,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QHBoxLayout, QHeaderView, QLabel,
+                             QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem,
+                             QTextEdit, QVBoxLayout, QWidget)
 
 # 🎨 深色配色 (与工程既有面板统一: tools/gui/calibration_dialog.py 的 _DARK)
 #    老倪 2026-09-19: 「右面显示的字体和背景都是黑色, 看不清啊。字体改成白色。」
@@ -40,6 +40,9 @@ _DARK = ("QDialog { background:#0d1117; color:#e6edf3; } "
          "QPushButton { background:#21262d; color:#e6edf3; border:1px solid #30363d; "
          "border-radius:5px; padding:7px 14px; font-size:13px; } "
          "QPushButton:hover { background:#1f6feb; color:#ffffff; } "
+         "QCheckBox { color:#e6edf3; } QCheckBox::indicator { width:14px; height:14px; } "
+         "QSpinBox, QComboBox { background:#161b22; color:#e6edf3; border:1px solid #30363d; "
+         "border-radius:4px; padding:2px 6px; } QComboBox QAbstractItemView { background:#161b22; color:#e6edf3; } "
          "QScrollBar { background:#0d1117; } "
          "QToolTip { background:#161b22; color:#e6edf3; border:1px solid #30363d; }")
 
@@ -103,6 +106,9 @@ def _fmt_val(v):
 
 
 class VlmPanel(QDialog):
+    # 🔄 判读完成 → 回主线程刷新 (Qt 控件只能在主线程改)
+    sig_ready = pyqtSignal(dict)
+
     def __init__(self, parent=None, module=None, node=None):
         super().__init__(parent)
         self.module = module
@@ -125,15 +131,41 @@ class VlmPanel(QDialog):
         self.lbl_status.setWordWrap(True)
         v.addWidget(self.lbl_status)
         row = QHBoxLayout()
-        for text, fn in (("立即判读 (场景理解)", lambda: self._ask("describe")),
-                         ("标定向导 (下一步动作)", lambda: self._ask("guide")),
-                         ("采集质检 (能否进数据集)", lambda: self._ask("quality")),
+        for text, fn in (("立即判读 (场景理解)", lambda: self._judge_async("describe")),
+                         ("标定向导 (下一步动作)", lambda: self._judge_async("guide")),
+                         ("采集质检 (能否进数据集)", lambda: self._judge_async("quality")),
                          ("刷新", self.refresh),
                          ("打开记录目录", self._open_dir)):
             b = QPushButton(text)
             b.clicked.connect(fn)
             row.addWidget(b)
         v.addLayout(row)
+
+        # ── 🔄 自动判读 (真实时) ──
+        # 老倪 2026-09-19: 「为什么你的视觉语言判读的节点, 不是实时更新的呢?」
+        #   原因: 原来只在点按钮/右键运行时判读一次 → 面板看着不动。这里挂定时器 + 后台线程:
+        #   ① 界面永不卡 (判读在线程里跑)  ② 每次判读都落盘 vlm_calls.jsonl (历史/字段表随刷新)
+        arow = QHBoxLayout()
+        self.chk_auto = QCheckBox("自动判读 (实时)")
+        self.chk_auto.toggled.connect(self._toggle_auto)
+        arow.addWidget(self.chk_auto)
+        arow.addWidget(QLabel("间隔(s)"))
+        self.spin_int = QSpinBox()
+        self.spin_int.setRange(2, 300)
+        self.spin_int.setValue(10)
+        self.spin_int.valueChanged.connect(lambda _v: self._auto.setInterval(int(self.spin_int.value()) * 1000))
+        arow.addWidget(self.spin_int)
+        arow.addWidget(QLabel("模式"))
+        self.cmb_mode = QComboBox()
+        self.cmb_mode.addItems(["quality", "describe", "guide"])
+        arow.addWidget(self.cmb_mode)
+        self.lbl_auto = QLabel("自动判读: 关 (勾选后每 %ds 用当前真机帧判读一次)" % self.spin_int.value())
+        arow.addWidget(self.lbl_auto, 1)
+        v.addLayout(arow)
+        self._auto = QTimer(self)
+        self._auto.timeout.connect(self._auto_tick)
+        self._last_lat = None
+        self.sig_ready.connect(self._on_ready)
 
         # ── 中部: 左画面 / 右判读 (QSplitter: 中间分隔条可拖动, 自己分配显示区域) ──
         split = QSplitter(Qt.Horizontal)
@@ -217,7 +249,11 @@ class VlmPanel(QDialog):
         n_ok = sum(1 for c in calls if c.get("ok"))
         self.lbl_status.setText(
             f"模型: {st.get('model')} · 路径: {st.get('detail')} · 累计调用 {len(calls)} 次 (成功 {n_ok}) · "
-            f"最近耗时 {last.get('latency_ms', '—')}ms\n日志: {CALLS}")
+            f"最近耗时 {last.get('latency_ms', '—')}ms"
+            + (f" · 面板内最近 {self._last_lat}ms" if getattr(self, "_last_lat", None) else "")
+            + (f" · 自动判读 {'开' if getattr(self, 'chk_auto', None) is not None and self.chk_auto.isChecked() else '关'}"
+               f"/{self.cmb_mode.currentText()}" if hasattr(self, "cmb_mode") else "")
+            + f"\n日志: {CALLS}")
         # 图像
         fp = next((f for f in FRAMES if os.path.exists(f)), None)
         if fp:
@@ -259,6 +295,61 @@ class VlmPanel(QDialog):
             self.tbl_hist.resizeRowsToContents()
         except Exception:                                                      # noqa: BLE001
             pass
+
+    # ── 🔄 自动判读 (后台线程, 界面不卡) ──
+    def _toggle_auto(self, on):
+        if on:
+            self._auto.start(int(self.spin_int.value()) * 1000)
+            self.lbl_auto.setText(f"自动判读: 开 · 每 {self.spin_int.value()}s (模式 {self.cmb_mode.currentText()}) "
+                                  f"· 判读中界面不阻塞")
+            self._auto_tick()
+        else:
+            self._auto.stop()
+            self.lbl_auto.setText("自动判读: 关")
+
+    def _auto_tick(self):
+        if self._busy:
+            return
+        self._judge_async(self.cmb_mode.currentText())
+
+    def _judge_async(self, mode):
+        """后台线程判读 → 完成后 emit 回主线程刷新 (不阻塞 Qt 事件循环)"""
+        import threading
+        fp = next((f for f in FRAMES if os.path.exists(f)), None)
+        if not fp:
+            self.lbl_status.setText("⚠️ 没有可用画面 (真机帧不在)")
+            return
+        self._busy = True
+        self.lbl_status.setText(f"⏳ 判读中… ({mode})")
+
+        def work():
+            t0 = time.time()
+            out = {"mode": mode, "ok": False, "why": "?"}
+            try:
+                import sys
+                sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+                from lerobot.policies.left_right.state_space.scene_vlm import SceneVLM    # noqa: PLC0415
+                v = SceneVLM.get()
+                r = getattr(v, mode)(fp, {"stage": "现场"})
+                out = dict(r)
+                out["mode"] = mode
+            except Exception as e:                                                  # noqa: BLE001
+                out["why"] = f"{type(e).__name__}: {e}"
+            out["wall_ms"] = int((time.time() - t0) * 1000)
+            try:
+                self.sig_ready.emit(out)
+            except Exception:                                                       # noqa: BLE001
+                pass
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_ready(self, r):
+        self._busy = False
+        self._last_lat = r.get("latency_ms")
+        if not r.get("ok"):
+            self.lbl_status.setText(f"⚠️ 判读未成功: {r.get('why')}"
+                                    + (f" · 规则回退: {r.get('rule')}" if r.get("rule") else ""))
+        self.refresh()
 
     # ── 窗口几何记忆 (拖动/最大化后下次照旧) ──
     GEOM = os.path.expanduser("~/zmax_data/vlm_panel_geom.txt")

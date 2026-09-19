@@ -237,6 +237,11 @@ def do_report():
     return 0
 
 
+def _camera_mount():
+    """相机安装方式 — 决定哪套几何成立 (老倪 2026-09-19 现场确认: 相机固定在协作臂上, 正对下方标定板 ~50cm)"""
+    return (os.environ.get("SS_CAMERA_MOUNT", "eye_in_hand") or "").strip().lower()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--loop", action="store_true")
@@ -266,11 +271,27 @@ def main():
                 c.n_acc += 1
             print_rec(c, rec, tag=f"#{c.n_seen}")
             if args.collect and not c.solver.fitted and (c.n_acc % 5 == 0) and len(c.solver.obs) >= last_fit_n:
+                # 🛑 2026-09-19 物理前提闸门: 本自监督模型假设**相机固定 + 目标随工具运动**。
+                #    现场是 eye-in-hand (相机在协作臂上, 标定板/工件静止) → 相机运动会被误当成目标运动,
+                #    必然拟合出漂亮但错误的参数 (曾打出"✅ 自监督标定成功"假成功) ⇒ 直接拒算, 转 handeye_collect。
+                if _camera_mount() == "eye_in_hand":
+                    print("\n🛑 拒算: 本机相机为 eye-in-hand (在协作臂上), 该自监督模型(假设相机固定/目标随工具动)不成立。")
+                    print("   正路: python tools/handeye_collect.py 采 (图,位姿) 对 → 用下方标定板做手眼标定 (无需夹爪)。")
+                    break
                 r = c.fit()
                 if r.get("ok") and not r.get("already"):
-                    print(f"\n✅ 自监督标定成功 → {STATE}")
-                    if c.solver.fitted:
-                        b3 = c.solver.predict_box3d(rec["box"], tcp=rec["tcp"], quat=rec["quat"])
+                    # 只有**回读确认落盘**才说成功 (原来无条件打印, 曾造成"假成功"误报)
+                    if os.path.exists(STATE):
+                        try:
+                            _st = json.load(open(STATE, encoding="utf-8"))
+                            print(f"\n✅ 标定已落盘并回读校验: {STATE} (mode={_st.get('mode')} "
+                                  f"rms={_st.get('rms_px')} off={_st.get('off_mm')})")
+                        except Exception as _e:                                  # noqa: BLE001
+                            print(f"\n⚠️ fit 返回 ok 但回读失败: {type(_e).__name__}: {_e}")
+                    else:
+                        print(f"\n⚠️ fit 返回 ok **但文件未落盘** ({STATE} 不存在) → 不算标定成功, 不展示 3D 框")
+                    if c.solver.fitted and os.path.exists(STATE):
+                        b3 = c.solver.predict_box3d(rec["box"], tcp=rec["tcp"], quat=rec.get("quat"))
                         print(f"   本帧 3D 边界框: mode={b3['mode']} 中心={b3.get('center')} "
                               f"IoU={b3.get('iou')} σ={b3.get('sigma_mm')}")
                     break

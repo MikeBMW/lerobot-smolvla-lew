@@ -1,0 +1,168 @@
+{
+ "source": "sim",
+ "n": 2,
+ "conf": 0.4,
+ "weights": "best.pt",
+ "mean_dt_s": 0.297,
+ "fps": 3.37,
+ "frames": [
+  {
+   "i": 0,
+   "dt_s": 0.575,
+   "n_det": 3,
+   "hand_src": "vision",
+   "n_boxes_2d": null,
+   "boxes_2d": null,
+   "det3d": {
+    "hand": [
+     0.03288,
+     0.58407,
+     0.17555
+    ],
+    "hole": [
+     -0.16706,
+     0.57932,
+     0.15218
+    ],
+    "光模块": [
+     0.04361,
+     0.59646,
+     0.03621
+    ]
+   },
+   "obs39_filled": [
+    0.03288,
+    0.58407,
+    0.17555,
+    null,
+    0.04361,
+    0.59646,
+    0.03621,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    0.03288,
+    0.58407,
+    0.17555,
+    null,
+    0.04361,
+    0.59646,
+    0.03621,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    -0.16706,
+    0.57932,
+    0.15218
+   ],
+   "meta": {
+    "frame": "world",
+    "K_src": "camera_info/标定 K",
+    "ext_src": "T_base_cam(tf/标定)",
+    "depth_src": "YOLO depth head(仿真校准)",
+    "gaps": [],
+    "notes": []
+   },
+   "frame_shape": [
+    480,
+    480,
+    3
+   ]
+  },
+  {
+   "i": 1,
+   "dt_s": 0.019,
+   "n_det": 3,
+   "hand_src": "vision",
+   "n_boxes_2d": null,
+   "boxes_2d": null,
+   "det3d": {
+    "hand": [
+     0.03288,
+     0.58407,
+     0.17555
+    ],
+    "hole": [
+     -0.16706,
+     0.57932,
+     0.15218
+    ],
+    "光模块": [
+     0.04361,
+     0.59646,
+     0.03621
+    ]
+   },
+   "obs39_filled": [
+    0.03288,
+    0.58407,
+    0.17555,
+    null,
+    0.04361,
+    0.59646,
+    0.03621,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    0.03288,
+    0.58407,
+    0.17555,
+    null,
+    0.04361,
+    0.59646,
+    0.03621,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    -0.16706,
+    0.57932,
+    0.15218
+   ],
+   "meta": {
+    "frame": "world",
+    "K_src": "camera_info/标定 K",
+    "ext_src": "T_base_cam(tf/标定)",
+    "depth_src": "YOLO depth head(仿真校准)",
+    "gaps": [],
+    "notes": []
+   },
+   "frame_shape": [
+    480,
+    480,
+    3
+   ]
+  }
+ ]
+}

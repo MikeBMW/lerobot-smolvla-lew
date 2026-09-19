@@ -1,0 +1,245 @@
+{
+ "runs": [
+  {
+   "ts": "2026-09-14 12:22:24",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 46.18,
+   "layers": {
+    "L2": 1,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 1800 步 w̄=0.263)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-14 12:48:58",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 46.18,
+   "layers": {
+    "L2": 1,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 1800 步 w̄=0.263)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-14 13:13:43",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 46.18,
+   "layers": {
+    "L2": 1,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 1800 步 w̄=0.263)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-15 07:05:37",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 258.75,
+   "layers": {
+    "L2": 1,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 1800 步 w̄=0.374)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-15 09:13:23",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-15 13:36:59",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-15 20:52:57",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-16 07:06:20",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-16 08:30:47",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-16 08:48:21",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-16 09:09:05",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-16 09:22:45",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-16 17:29:57",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.21,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-18 22:16:09",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1800,
+   "insert_mm": 269.86,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/2 · 模型 0/2 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-18 22:16:13",
+   "task": "verify_memory_potential_fields",
+   "done": true,
+   "steps": 0,
+   "insert_mm": null,
+   "layers": {
+    "L2": 1,
+    "L3": 1,
+    "L4": 1,
+    "assembly": 0
+   },
+   "note": "验证脚本写入 (真台账)",
+   "reason": "ok · 缺阶段 ['完成']"
+  },
+  {
+   "ts": "2026-09-19 07:28:28",
+   "task": "optical_insert",
+   "done": true,
+   "steps": 1200,
+   "insert_mm": 194.0,
+   "layers": {
+    "L2": 0,
+    "L3": 0,
+    "L4": 0,
+    "assembly": 0
+   },
+   "note": "L4 光模块插拔链 (解析链 1/1 · 模型 0/1 · 记忆层介入 0 步 w̄=0.000)",
+   "reason": "ok · 缺阶段 ['完成']"
+  }
+ ],
+ "updated": "2026-09-19 07:28:28"
+}

@@ -1,0 +1,85 @@
+{
+ "ts": "2026-09-18 15:05:43",
+ "total": 11,
+ "passed": 11,
+ "failed": [],
+ "results": [
+  {
+   "case": "E1",
+   "desc": "状态空间画布加载",
+   "pass": true,
+   "evidence": "",
+   "detail": "nodes=79"
+  },
+  {
+   "case": "E1b",
+   "desc": "三态定义 MODE_ORDER=['infer', 'train', 'real_l2']",
+   "pass": true,
+   "evidence": "",
+   "detail": "标签={'infer': '📷 推理', 'train': '🚀 训练', 'real_l2': '🎯 真机数据 L2 训练'}"
+  },
+  {
+   "case": "E2",
+   "desc": "找到 🔀 模式开关节点",
+   "pass": true,
+   "evidence": "",
+   "detail": "名称=🔀 训练/推理 当前=train"
+  },
+  {
+   "case": "E2b",
+   "desc": "双击循环: infer → train → real_l2 → infer",
+   "pass": true,
+   "evidence": "",
+   "detail": "labels=['📷 推理', '🚀 训练', '🎯 真机数据 L2 训练', '📷 推理']"
+  },
+  {
+   "case": "E3",
+   "desc": "节点标题/指示圆点真实渲染随模式改变 (像素证据)",
+   "pass": true,
+   "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/l2_autolearn_evidence/node_mode_train.png | /home/ubuntu/lerobot-smolvla-lew/reports/l2_autolearn_evidence/node_mode_real_l2.png",
+   "detail": "训练态 vs 真机L2态 平均像素差=14.296123120300752"
+  },
+  {
+   "case": "E3b",
+   "desc": "画布整图取证 (真机L2 模式激活路径高亮)",
+   "pass": true,
+   "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/l2_autolearn_evidence/canvas_real_l2_mode.png",
+   "detail": "内容比=0.091"
+  },
+  {
+   "case": "E4",
+   "desc": "真机L2 模式下「▶ 运行」→ 真机数据学习闭环入口 (不跑仿真)",
+   "pass": true,
+   "evidence": "",
+   "detail": "入口调用=['run_button'] · _sim_running=False"
+  },
+  {
+   "case": "E5",
+   "desc": "双击 📦 数据源(运行环境) 在真机L2 模式 → 同一入口",
+   "pass": true,
+   "evidence": "",
+   "detail": "调用=['run_env']"
+  },
+  {
+   "case": "E6",
+   "desc": "「🎯 真机数据 L2 训练」面板打开 · 关键字段齐",
+   "pass": true,
+   "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/l2_autolearn_evidence/panel_l2_autolearn.png",
+   "detail": "缺字段=无 · 内容比=0.985"
+  },
+  {
+   "case": "E6b",
+   "desc": "面板含按钮: 开始边干边学/立即跑一轮/停止/刷新 + 有提升才上在役 开关",
+   "pass": true,
+   "evidence": "",
+   "detail": "轮数=60 触发样本=12 自动上线=True"
+  },
+  {
+   "case": "E7",
+   "desc": "取证后画布模式已复原为 🚀 训练 (不改变默认档)",
+   "pass": true,
+   "evidence": "",
+   "detail": "mode=train"
+  }
+ ]
+}

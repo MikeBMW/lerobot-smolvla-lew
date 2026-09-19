@@ -2,6 +2,28 @@
  "scen": "L2",
  "steps": 300,
  "trace_hash": "3d330ebc8b0c19e88cbd0706def2f455",
+ "final": {
+  "steps": 300,
+  "done_any": false,
+  "done_last": false,
+  "dist_min": 5.972877761112025e-05,
+  "dist_last": 0.009433844138291835,
+  "V_first": 0.015173502167854491,
+  "V_last": 0.0028448302067426725,
+  "V_min": 0.00014883948696850312,
+  "V_max": 0.017508083473586986,
+  "V_n": 300,
+  "stage_counts": {
+   "阶段 下降": 65,
+   "阶段 对位": 33,
+   "阶段 抓取": 18,
+   "阶段 抬起": 39,
+   "阶段 接近": 41,
+   "阶段 插入": 1,
+   "阶段 插入 · 接触": 42,
+   "阶段 转移": 61
+  }
+ },
  "env": {
   "SS_L4_INTACT": null,
   "SS_L4_INTENT_LINE": null,
@@ -9,6 +31,24 @@
   "SS_L4_DIT": null,
   "SS_L3": null,
   "SS_INTACT": null
+ },
+ "align": {
+  "enabled": false,
+  "applied": 0,
+  "ready": false,
+  "map_src": "",
+  "err": null,
+  "cos_before_mean": 0.0,
+  "cos_after_mean": 0.0,
+  "ratio_after_mean": 0.0,
+  "sample_n": 0,
+  "gate": {
+   "pass": 0,
+   "veto": 0,
+   "veto_dir": 0,
+   "veto_mag": 0,
+   "blend": 0
+  }
  },
  "trace_cols": {
   "u_ff_vec": {
