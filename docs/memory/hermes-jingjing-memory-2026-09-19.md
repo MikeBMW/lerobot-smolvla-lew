@@ -42,16 +42,18 @@ L4'接近'真因: 直驱反向→SS_DIRECT_COS_MIN=0.9+否决步交回引擎; L4
 §
 Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torque只订WrenchStamped(BEST_EFFORT); 红线Orin零自研零自启→4060侧Docker只读订阅; 臂解锁细节见real-arm-motion-control
 §
-感知源收口: 反投影仅一份estimate_3d; 真机3D须K+手眼外参+plane_z(calib_real_cam.py); 在役depth话题全帧2-3m勿用; Orin(tashan@.66)有pyrealsense2
+感知源收口: 反投影仅一份estimate_3d; 真机3D须K+手眼+plane_z; depth话题勿用(全帧2-3m)
 §
-画面≠结果: idle=静止初始帧(离槽358mm+横幅)非结果; /tmp/ss_live_frame.json记step/depth/lateral; L2=插好收尾, L3/L4=放回台面
+画面≠结果: idle=静止初始帧非结果
 §
 看不了图→抓窗口+几何断言/模板匹配(pyqt-gui-auto-verification)
 §
-内置cam video0 720p MJPG/video2灰度IR; 产线.23工控机admin/admin, 服务10081-10083
+内置cam video0 720p/video2灰度IR; 产线.23工控机admin/admin, 服务10081-10083
 §
 YOLO在役权重=软链models/yolo_peg_live.pt(readlink -f看在役); 微调秒级0.38s/轮, 瓶颈是数据
 §
-2D→3D框: predict_box3d 5档(未标定=fk_only+gaps); 真机K白拿(camera_info→real_cam_calib.json, fx394≠仿真610)→手眼+off+R_rel=角点4mm; 不估R_rel偏77mm; 无K尺寸不可解
+2D→3D框: 5档; 真机K白拿(fx394≠仿真610); 相机在臂上(eye-in-hand)+板CGB-020=20白点(黑底白点→findCirclesGrid反色; 棋盘检测器会误检12角点)→tcp_quat=wxyz序; 真机帧0.53fps→采集必验新帧(md5)
 §
 本机(4060)无有线网口(仅WiFi)→连Orin局域网须USB网卡(驱动已就绪)
+§
+飞书端=另一Hermes会话共用同一工作树; 跨端同步走docs/memory/*.md+commit/push
