@@ -127,6 +127,15 @@ def _demo_node_output(module, node, ctx):
             return node_ss_atomic(ctx)
     except Exception:
         pass
+    # 🧩 2026-09-20 老倪: ▶运行 播放到「SU(2) 统一状态空间」节点 → 真跑一次轻量群映射
+    #   (demo_light=True: 不冷加载 YOLO/metaworld, 只用缓存 obs43; 群运算 ~1ms 不卡播放)
+    #   根因: ▶运行 走 demo 路径(不重跑节点真实函数) → 原实现下 su2.py 根本不执行,
+    #        在 su2.py 里设的断点永远不命中。
+    try:
+        if (ctx.get("params") or {}).get("su2_unified_state") or "SU(2)" in str(name):
+            return node_ss_su2({**ctx, "demo_light": True})
+    except Exception:
+        pass
     # 🅰️🅱️🅾️ 通用算子 A/B/C (2026-09-10 老倪: L2 原子技能行最左侧万能节点,
     #   L4 动态参数更新接口 — 参数写入/微调/校验)
     try:
@@ -3118,12 +3127,22 @@ def node_ss_su2(ctx):
 
     L2(43D 几何误差) ⊗ L3(流形规划) ⊗ L4(安全动作) ⊗ L5(大模型意图) → 场景群元素;
     输出: 状态方向 n̂ / 偏离角 θ / 收敛度|w| + 逐层剥离贡献 + 层间不可交换性 (全实测量)。
+
+    ctx["demo_light"]=True (▶运行 播放路径): **不冷加载** YOLO/metaworld, obs43 只取缓存
+    (_SS_STATE["obs43"]); 群运算是纯 numpy ~1ms, 不会卡播放 — 且**真实执行 su2.py**,
+    所以在 su2.py 里设的断点在 ▶运行 时也能命中 (2026-09-20 老倪: "运行后断点不进入")。
     """
     log = ctx.get("log")
+    light = bool(ctx.get("demo_light"))
     try:
         mod = ctx.get("module")
         su2 = _ss_import("su2")
-        obs43 = _ss_ensure_obs43(log)
+        if light:
+            obs43 = _SS_STATE.get("obs43")          # 仅缓存, 不触发采样
+            if obs43 is None and log:
+                log("🧩 SU(2) (演示帧): L2 无缓存 obs43 → 该层为单位元 (不冷加载 YOLO/metaworld)")
+        else:
+            obs43 = _ss_ensure_obs43(log)
         frame = _ss_su2_frame(mod, log)
         st = _SS_STATE.get("_su2_state")
         if st is None:
