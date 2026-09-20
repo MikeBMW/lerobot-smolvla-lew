@@ -8,7 +8,7 @@
 
 架构口径 (与状态空间一致)
     上层(状态空间/技能) 只给**意图**: "把金手指调到最佳视角并合焦"
-    执行全部走 **L2 收口**: L2.move_x / L2.move_y / L2.lift / L2.lower (FIFO 一行 JSON)
+    执行全部走 **L2 收口**: L2.forward/backward/left/right/lift/lower 方向技能 (距离恒正; FIFO 一行 JSON)
     可行域逐层收窄: 单步限幅 → 单轴总量限幅 → 迭代次数上限 → 检测不可靠即否决
     本脚本不做任何"自研运动学", 只用已注册的 L2 原子技能。
 
@@ -71,6 +71,20 @@ def send_l2(skill, **kw):
     with open(FIFO, "w", encoding="utf-8") as f:
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
     return payload
+
+
+def jog_skill(axis, signed_mm):
+    """有符号步进 → L2 方向技能名 (2026-09-20 拆分后: 前进/后退/向左/向右/抬升/下降)。
+
+    ⚠️ 旧实现把方向放在 `sign` 字段里下发, 而执行层只读 `d_mm`(取绝对值) → **负步进实际往正方向走**
+    (潜伏的符号 bug, 离线测试台自己乘了 sign 所以没暴露)。现在方向内定在技能名里、距离恒为正,
+    这类符号 bug 从结构上消失。
+    """
+    if axis == "x":
+        return "L2.forward" if signed_mm >= 0 else "L2.backward"
+    if axis == "y":
+        return "L2.left" if signed_mm >= 0 else "L2.right"
+    return "L2.lift" if signed_mm >= 0 else "L2.lower"
 
 
 # ---------------------------------------------------------------- 纯逻辑 (离线可测)
@@ -180,12 +194,12 @@ class ServoController:
             my = self.clamp_step(step[1], "y")
             sent = (mx, my)
             if dry:
-                self.log(f"    [dry] 本想下发: L2.move_x {mx:+.3f}mm / L2.move_y {my:+.3f}mm")
+                self.log(f"    [dry] 本想下发: {jog_skill('x', mx)} {abs(mx):.3f}mm / {jog_skill('y', my)} {abs(my):.3f}mm")
                 return False, "dry-run (未授权不动)"
             if abs(mx) > 0.02:
-                self.send("L2.move_x", d_mm=round(abs(mx), 3), sign=1 if mx > 0 else -1)
+                self.send(jog_skill("x", mx), d_mm=round(abs(mx), 3))
             if abs(my) > 0.02:
-                self.send("L2.move_y", d_mm=round(abs(my), 3), sign=1 if my > 0 else -1)
+                self.send(jog_skill("y", my), d_mm=round(abs(my), 3))
             time.sleep(0.4)
             now = self.get_reg()
             okj, whyj = self.jump_ok(prev or r, now["region"], self.jac, sent)
@@ -209,24 +223,24 @@ class ServoController:
         for mm in FOCUS_STEPS:
             for attempt in range(2):
                 if dry:
-                    self.log(f"    [dry] 本想下发: {ax} {sign*mm:+.2f}mm (当前 focus={best:.0f})")
+                    self.log(f"    [dry] 本想下发: {jog_skill('z', sign * mm)} {abs(sign * mm):.2f}mm (当前 focus={best:.0f})")
                     return False, "dry-run (未授权不动)"
                 d = self.clamp_step(sign * mm, "z")
-                self.send(ax, d_mm=round(abs(d), 3), sign=1 if d > 0 else -1)
+                self.send(jog_skill("z", d), d_mm=round(abs(d), 3))
                 time.sleep(0.5)
                 reg = self.get_reg()
                 ok, why = self.reliable(reg)
                 if not ok:
                     self.log(f"    ⛔ 否决: {why} → 退回本步")
-                    self.send(ax, d_mm=round(abs(d), 3), sign=-1 if d > 0 else 1)
+                    self.send(jog_skill("z", -d), d_mm=round(abs(d), 3))
                     break
                 f = reg.get("focus")
-                self.log(f"    {ax} {d:+.2f}mm → focus={f:.0f} (原 {best:.0f})")
+                self.log(f"    {jog_skill('z', d)} {abs(d):.2f}mm → focus={f:.0f} (原 {best:.0f})")
                 if f is not None and f > best * 1.01:
                     best = f
                     continue
                 # 变差 → 退回并反向
-                self.send(ax, d_mm=round(abs(d), 3), sign=-1 if d > 0 else 1)
+                self.send(jog_skill("z", -d), d_mm=round(abs(d), 3))
                 sign = -sign
                 break
         self.log(f"✅ 对焦完成: focus={best:.0f}")
@@ -245,7 +259,7 @@ def cmd_check(args):
         print(f"与示教基准偏差: ({ex:+.1f},{ey:+.1f})px · 角度差 {reg['region']['angle']-tgt['region']['angle']:+.2f}° · "
               f"focus {reg.get('focus')} vs 基准 {tgt.get('focus')}")
         if step:
-            print(f"若授权, 本步会下发: L2.move_x {step[0]:+.3f}mm / L2.move_y {step[1]:+.3f}mm")
+            print(f"若授权, 本步会下发: {jog_skill('x', step[0])} {abs(step[0]):.3f}mm / {jog_skill('y', step[1])} {abs(step[1]):.3f}mm")
     else:
         print(f"未找到示教基准 {TARGET_PATH} → 先 teach")
     return 0
@@ -282,14 +296,14 @@ def cmd_calibrate(args):
     if not base.get("ok"):
         print("区域检测失败, 无法标定"); return 1
     pts["base"] = base["region"]
-    for axis, skill in (("x", "L2.move_x"), ("y", "L2.move_y")):
-        send_l2(skill, d_mm=dmm, sign=1)
+    for axis in ("x", "y"):
+        send_l2(jog_skill(axis, +1), d_mm=dmm)
         time.sleep(args.settle)
         reg = get_region(grab=True)
         if not reg.get("ok"):
             print(f"{axis} 探测后区域检测失败 → 中止"); return 1
         pts[axis] = reg["region"]
-        send_l2(skill, d_mm=dmm, sign=-1)      # 回原位
+        send_l2(jog_skill(axis, -1), d_mm=dmm)      # 回原位(反方向)
         time.sleep(args.settle)
     dx = [(pts["x"]["cx"] - pts["base"]["cx"]) / dmm, (pts["x"]["cy"] - pts["base"]["cy"]) / dmm]
     dy = [(pts["y"]["cx"] - pts["base"]["cx"]) / dmm, (pts["y"]["cy"] - pts["base"]["cy"]) / dmm]

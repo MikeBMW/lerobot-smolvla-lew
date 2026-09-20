@@ -133,6 +133,33 @@ for SK in SLOTS:
     check(tag, "⑧真值差 clearange → 判未到位", (not ok2) and err2 > clr - 1, "%.1fmm" % (err2 if err2 is not None else -1))
     print()
 
+print("── 方向点动技能: 前进 / 后退 / 向左 / 向右 (2026-09-20 拆分) ──")
+_regj = {s["id"]: s for s in REG["skills"]}
+_JOG = {"L2.forward": (0, +1, "前进"), "L2.backward": (0, -1, "后退"),
+        "L2.left": (1, +1, "向左"), "L2.right": (1, -1, "向右")}
+for _sid, (_axi, _sg, _nm) in _JOG.items():
+    _sk = _regj.get(_sid)
+    check("点动", "%s「%s」已注册" % (_sid, _nm), _sk is not None)
+    if not _sk:
+        continue
+    set_pose([0.5, 0.2, 0.3], age=0.05)
+    _r = l2d.build_move(_sk, {"skill": _sid, "d_mm": 50}, PTS)
+    _tgt = [0.5, 0.2, 0.3]
+    _tgt[_axi] += _sg * 0.05
+    check("点动", "%s 目标 = 当前 %+d×50mm, 其余轴不动" % (_nm, _sg),
+          _r is not None and max(abs(_r[0][i] - _tgt[i]) for i in range(3)) < 1e-9,
+          "(%.4f, %.4f, %.4f)" % tuple(_r[0]) if _r else "无")
+    _r2 = l2d.build_move(_sk, {"skill": _sid, "d_mm": -50}, PTS)
+    check("点动", "%s 距离填负数也按本方向走(方向内定, 不靠符号)" % _nm,
+          _r2 is not None and _r2[0][_axi] == _tgt[_axi])
+check("点动", "旧 L2.move_x / L2.move_y 已下线", "L2.move_x" not in _regj and "L2.move_y" not in _regj)
+check("点动", "方向标签自解释(日志口径)",
+      l2d._dir_label(50, 0, 0) == "→前进(+X)" and l2d._dir_label(0, -50, 0) == "→向右(-Y)"
+      and l2d._dir_label(0, 0, 50) == "↑上升(+Z)")
+_servo = open(os.path.join(REPO, "tools/aoi_gold_servo.py"), encoding="utf-8").read()
+check("点动", "视觉伺服不再用旧技能名/已无 sign 字段",
+      "L2.move_x" not in _servo and "L2.move_y" not in _servo and "sign=1 if" not in _servo)
+
 print("── 全局 ──")
 check("全局", "⑨等待上限按距离估(448mm@30 → >160s)", l2d._stage_timeout({"timeout_s": 60}, 448.0, 30) > 160,
       "%.0fs" % l2d._stage_timeout({"timeout_s": 60}, 448.0, 30))

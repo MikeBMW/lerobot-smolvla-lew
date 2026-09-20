@@ -102,19 +102,50 @@ def state_thread():
             buf = []
 
 
-def build_move(sk, spec, pts):
-    p, q = _pose["p"], _pose["q"]
+def _dir_label(dx, dy, dz):
+    """运动方向标签(自解释): 前进/后退/向左/向右/上升/下降 + 基座轴向符号
+
+    口径 (与旧注册表标签一致, 机器人右手系): +X=前 · +Y=左 · +Z=上。
+    """
+    if dz > 0.5:
+        return "↑上升(+Z)"
+    if dz < -0.5:
+        return "↓下降(-Z)"
+    if abs(dx) > 0.5 and abs(dx) >= abs(dy):
+        return "→前进(+X)" if dx > 0 else "→后退(-X)"
+    if abs(dy) > 0.5:
+        return "→向左(+Y)" if dy > 0 else "→向右(-Y)"
+    return "→平动"
+
+
+def build_move(sk, spec, pts, cur=None, curq=None):
+    # ⚠️ 相对运动的目标 = 真实当前位姿 + 偏移 → 位姿必须直读(常驻流缓存会滞后整分钟级,
+    #    会把这 50mm 累加成错的落点); cur/curq 由调用方传入可避免重复直读。
+    if cur is None:
+        cur, curq, _src = _pose_best()
+    p, q = cur, (curq or _pose["q"])
     if not p or not q:
         return None
     t = list(p)
     if sk["ros"] == "line_rel":
-        d = float(spec.get("d_mm", sk["param"]["d_mm"].get("default", 50))) / 1000.0
+        _pd = (sk.get("param") or {}).get("d_mm") or {}
+        d = float(spec.get("d_mm", _pd.get("default", 50))) / 1000.0
         a = sk["axis"]
+        # 方向技能 (2026-09-20 老倪: 前后平移 → 前进/后退, 左右平移 → 向左/向右):
+        #   **距离只填正数, 方向由技能内定** —— 现场不用再填负号(填错符号=往反方向走)。
         if a == "z_pos":
             t[2] = p[2] + abs(d)
         elif a == "z_neg":
             t[2] = p[2] - abs(d)
-        elif a == "x":
+        elif a == "x_pos":
+            t[0] = p[0] + abs(d)
+        elif a == "x_neg":
+            t[0] = p[0] - abs(d)
+        elif a == "y_pos":
+            t[1] = p[1] + abs(d)
+        elif a == "y_neg":
+            t[1] = p[1] - abs(d)
+        elif a == "x":                      # 兼容旧行为(带符号)
             t[0] = p[0] + d
         elif a == "y":
             t[1] = p[1] + d
@@ -425,18 +456,21 @@ def dispatch(reg, spec, chan):
         # 🅰 2026-09-20【一号位】: 技能带 steps → 多阶段执行(逐阶段下发 + 真值等到位再进下一阶段)
         if sk.get("steps"):
             return run_stages(sk, spec, chan, pts)
-        r = build_move(sk, spec, pts)
+        # 相对运动(前进/后退/向左/向右/抬升/下降)的落点 = **真实当前位姿** + 偏移
+        # → 位姿直读, 不用滞后缓存(缓存滞后会把每一步的误差累加成错落点); 与 Δ 日志共用同一次读。
+        _cur, _cq, _csrc = _pose_best()
+        r = build_move(sk, spec, pts, _cur, _cq)
         if not r:
-            log("拒绝: 位姿缓存未就绪或点位不存在")
+            log("拒绝: 位姿读不到(直读失败且常驻缓存过期)或点位不存在")
             return "位姿缓存未就绪"
         (x, y, z), (qx, qy, qz, qw) = r[0], r[1]
         # 🛡 2026-09-20 事故修复 (老倪按下急停那次): 下发前一律算 Δ 并做方向守卫 ——
         #   架构原则"执行由最下层收口": 上层点错点/送错参数, 底层必须能看见 Δ 并有权拒发。
-        _cur = _pose["p"] or [0.0, 0.0, 0.0]
-        dx, dy, dz = (x - _cur[0]) * 1000.0, (y - _cur[1]) * 1000.0, (z - _cur[2]) * 1000.0
-        _dir = "↑上升" if dz > 0.5 else ("↓下降" if dz < -0.5 else "→平动")
-        log("目标 %s: pos=(%.4f, %.4f, %.4f) · Δ=(%+.1f, %+.1f, %+.1f)mm %s"
-            % (sid, x, y, z, dx, dy, dz, _dir))
+        _c0 = _cur or [0.0, 0.0, 0.0]
+        dx, dy, dz = (x - _c0[0]) * 1000.0, (y - _c0[1]) * 1000.0, (z - _c0[2]) * 1000.0
+        _dir = _dir_label(dx, dy, dz)
+        log("目标 %s: pos=(%.4f, %.4f, %.4f) · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 位姿来源 %s"
+            % (sid, x, y, z, dx, dy, dz, _dir, _csrc))
         _gd = (sk.get("guard") or {}).get("dz_down_limit_mm")
         if _gd is not None and dz < -abs(float(_gd)):
             _allow = spec.get("allow_down_mm")
