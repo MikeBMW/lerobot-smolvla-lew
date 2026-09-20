@@ -1,0 +1,20 @@
+{
+ "ref": "Finger_Image_W2448_H2048_No_8.png",
+ "strip_w": 1455.0,
+ "strip_h": 165.0,
+ "ref_tilt_deg": 0.5999999999999872,
+ "tpl_w": 1512,
+ "tpl_h": 186,
+ "strip_off": [
+  0.0,
+  0.0
+ ],
+ "roi_cols": [
+  471,
+  1925
+ ],
+ "roi_rows": [
+  1091,
+  1255
+ ]
+}

@@ -713,7 +713,15 @@
    "params": {
     "target": "金手指/端面/外观",
     "state_space": true,
-    "desc": "[基础·分段小模型] 感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)"
+    "desc": "[基础·分段小模型] 感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)。【2026-09-20 接线】原始图 → 状态空间区域检测/伺服引导: ①区域检测 10082 GET /region?grab=1 (原始图坐标系定向框+对焦清晰度 focus) ②触发检测 10082 POST /capture_detect (异步, 判决只打工控机终端) ③规整裁剪结果 GET /picture?kind=crop + 质量指标 GET /crop_info (残余倾角/金覆盖/高亮占比) ④对准+对焦伺服 L2.aoi_gold_align → tools/aoi_gold_servo.py (区域偏差→L2小步进; 沿光轴退火找 focus 峰值; 默认 dry-run)",
+    "aoi_interfaces": {
+     "region": "http://192.168.23.23:10082/region?grab=1",
+     "capture": "http://192.168.23.23:10082/capture_detect",
+     "picture_origin": "http://192.168.23.23:10082/picture",
+     "picture_crop": "http://192.168.23.23:10082/picture?kind=crop",
+     "crop_quality": "http://192.168.23.23:10082/crop_info",
+     "servo_skill": "L2.aoi_gold_align"
+    }
    }
   },
   {
