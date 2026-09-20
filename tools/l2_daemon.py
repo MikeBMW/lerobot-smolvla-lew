@@ -454,6 +454,9 @@ def main():
                 except Exception:
                     log("无效指令: %s" % line[:80])
                     continue
+                # 🐛 2026-09-20 21:22 现场: 注册表热加载原来只在主循环顶部做 → 改完注册表后的
+                #   **第一条**指令仍用旧表(新建的 L2.slot2 被判"未知技能", 第二条才认)。现在每条指令前重读。
+                reg = maybe_reload(reg)
                 try:
                     log("受理: " + dispatch(reg, spec, chan))
                 except Exception as e:
