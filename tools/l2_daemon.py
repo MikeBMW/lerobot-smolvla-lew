@@ -205,6 +205,20 @@ def wait_arrive(target, tol_mm=2.0, timeout_s=30.0):
     return False, best
 
 
+def _stage_timeout(st, lin_mm, speed):
+    """等一阶段的**时间上限** —— 按距离和速度估, 不写死。
+    前情 (2026-09-20 21:09 现场): 阶段1 直线 448mm, 超时写死 60s → 60s 时臂还在半路(差 196.6mm)
+    被判"未到位"而中止; 但指令已发不会撤回, 臂自己走完停在正上方 → **误判成机械臂没回到位**。
+    实测口径: rt_speed_ratio=0.05、speed=30 时约 2.8mm/s (155mm 走 56s) ⇒ 约 0.093 mm/s 每单位 speed。
+    st.timeout_dynamic=false 时按 timeout_s 硬值(自检用)。
+    """
+    base = float(st.get("timeout_s", 40.0))
+    if not st.get("timeout_dynamic", True):
+        return base
+    eff = max(0.093 * float(speed or 30), 0.4)            # mm/s 估算
+    return max(base, round(15.0 + lin_mm / eff * 1.6, 1))
+
+
 def run_stages(sk, spec, chan, pts):
     """多阶段技能: 逐阶段 ①算目标 ②守卫 ③下发 ④等真值到位 ⑤再进下一阶段。
     任一阶段被守卫拒/未到位 → 中止剩余阶段并**绝不重发**(30s 超时那次的教训)。"""
@@ -222,9 +236,10 @@ def run_stages(sk, spec, chan, pts):
             return "阶段 %d 拒绝: %s" % (i, pl["err"])
         plans.append(pl)
         c = pl["pos"]
-        log("阶段 %d/%d「%s」点=%s pos=(%.4f, %.4f, %.4f) · 预计Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · speed %s"
+        log("阶段 %d/%d「%s」点=%s pos=(%.4f, %.4f, %.4f) · 预计Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · speed %s · 等待上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["pos"][0], pl["pos"][1], pl["pos"][2],
-               pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"]))
+               pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"],
+               _stage_timeout(st, pl["lin"], pl["speed"])))
     if spec.get("dry"):
         for i, pl in enumerate(plans, 1):
             log("DRY-RUN 阶段 %d/%d 将下发: %s" % (i, n, pl["call"][:220]))
@@ -240,14 +255,16 @@ def run_stages(sk, spec, chan, pts):
                 log("🛡 下发前复检拒绝 阶段 %d/%d: %s" % (i, n, pl2["err"]))
                 return "🛡 阶段 %d 被守卫拒绝" % i
             pl = pl2
+        _to = _stage_timeout(st, pl["lin"], pl.get("speed", spec.get("speed", 60)))
         chan.stdin.write(pl["call"] + "\n")
         chan.stdin.flush()
-        log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s"
-            % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"]))
-        ok, err = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), float(st.get("timeout_s", 30.0)))
+        log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · 等到位上限 %.0fs"
+            % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
+        ok, err = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
         if not ok:
-            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm) → 中止剩余阶段, 绝不重发"
-                % (i, n, float(st.get("timeout_s", 30.0)), ("%.1f" % err) if err is not None else "无真值"))
+            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm) → 中止剩余阶段, 绝不重发; "
+                "⚠️ 已下发的指令不会撤回, 臂可能仍在走 —— 以真值判定, 别重复点"
+                % (i, n, _to, ("%.1f" % err) if err is not None else "无真值"))
             return "🛑 阶段 %d 未到位, 已中止(见日志)" % i
         log("✅ 阶段 %d/%d 到位 · 真值偏差 %.1fmm · 夹爪未动"
             % (i, n, err if err is not None else -1.0))

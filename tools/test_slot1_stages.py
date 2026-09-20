@@ -129,9 +129,10 @@ check("阶段数 = 2", len(SK1["steps"]) == 2)
 
 print("── ⑦ 阶段串行铁律: 未到位绝不发下一阶段 ──")
 # 目标在 +30mm, 而假真值一直停在槽位点 → wait_arrive 必然超时 → 必须中止(且只发过 1 条)
-# 把阶段1 的 timeout 压到 1s, 免得自检等 60s
+# 把阶段1 的 timeout 压到 1s 且关掉动态估算, 免得自检等几十秒
 SK_FAST = json.loads(json.dumps(SK1, ensure_ascii=False))
 SK_FAST["steps"][0]["timeout_s"] = 1.0
+SK_FAST["steps"][0]["timeout_dynamic"] = False
 set_pose(SLOT1["pos"], age=0.05)
 ch = FakeChan()
 out = l2d.run_stages(SK_FAST, {"skill": "L2.slot1", "speed": 30}, ch, PTS)
@@ -147,6 +148,15 @@ check("真值就在目标 → 判到位", ok and err is not None and err < 0.01,
 set_pose(SLOT1["pos"], age=0.05)
 ok2, err2 = l2d.wait_arrive([SLOT1["pos"][0], SLOT1["pos"][1], SLOT1["pos"][2] + 0.03], 1.0, 1.0)
 check("真值差 30mm → 判未到位", (not ok2) and err2 > 25, "最近偏差 %.1fmm" % (err2 if err2 is not None else -1))
+
+print("── ⑨ 等待上限按距离算(不写死) ──")
+t155 = l2d._stage_timeout({"timeout_s": 60}, 155.4, 30)
+t448 = l2d._stage_timeout({"timeout_s": 60}, 448.0, 30)
+check("155mm@speed30 → 上限 > 实测 56s", t155 > 56, "%.0fs" % t155)
+check("448mm@speed30 → 上限 > 实测 160s", t448 > 160, "%.0fs" % t448)
+check("30mm 插入段 → 仍给足时间", l2d._stage_timeout({"timeout_s": 40}, 30.0, 30) >= 40, "%.0fs" % l2d._stage_timeout({"timeout_s": 40}, 30.0, 30))
+check("timeout_dynamic=false → 用硬值(自检/特例)",
+      l2d._stage_timeout({"timeout_s": 1.0, "timeout_dynamic": False}, 448.0, 30) == 1.0)
 
 print()
 if fails:
