@@ -106,6 +106,155 @@ def build_move(sk, spec, pts):
     return (t, q)
 
 
+# ── 多阶段技能 (2026-09-20 老倪【一号位】需求: 阶段1 到槽位正上方 → 阶段2 下降到槽位, 全程不松爪) ──
+#   设计口径: 每阶段"下发后必须用真值等到位"才允许进下一阶段(判完成只看真值);
+#   阶段之间不碰夹爪 —— "全程不松爪"由技能定义里没有 gripper 步骤来保证(执行层不自己发明动作)。
+def _load_points():
+    """点位库: 演示学习轨迹点 + L2 传授点库 (同名以传授点库为准)"""
+    pts = {}
+    for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
+                "data/skills/l2_atomic/taught_points.json"):
+        try:
+            with open(os.path.join(REPO, _pf), encoding="utf-8") as _f:
+                pts.update(json.load(_f).get("points", {}))
+        except Exception as _e:                                              # noqa: BLE001
+            log("点位库 %s 读取失败(跳过): %s" % (_pf, _e))
+    return pts
+
+
+def _point_name(sk, st, spec):
+    """点位名取值链: 技能级锁点(优先且忽略误送) > 阶段 to > spec.point > param.point.default > 技能 point > home"""
+    if sk.get("point_locked") and sk.get("point"):
+        if spec.get("point") and spec.get("point") != sk["point"]:
+            log("⚠️ %s 点位已锁定=%s, 忽略收到的 point=%s" % (sk.get("id"), sk["point"], spec.get("point")))
+        return sk["point"]
+    _pm = (sk.get("param") or {}).get("point") or {}
+    return st.get("to") or spec.get("point") or _pm.get("default") or sk.get("point") or "home"
+
+
+def plan_stage(sk, st, pts, spec, cur):
+    """算单阶段 目标/Δ/方向/下发字节; 守卫不过 → 返回 {"err":...} (调用方一律不下发)"""
+    name = _point_name(sk, st, spec)
+    if name not in pts:
+        return {"err": "点位 %s 不在点位库" % name}
+    t = [float(v) for v in pts[name]["pos"]]
+    t[2] += float(st.get("dz_mm", 0.0)) / 1000.0          # base 系竖直偏移(mm): 正=上, 负=下
+    if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
+        q = [float(v) for v in pts[name]["quat"]]         # 显式回示教姿态 → 纯平移, 不带旋转
+    else:
+        q = list(_pose["q"]) if _pose["q"] else None
+    if not q:
+        return {"err": "位姿缓存未就绪(当前姿态缺)"}
+    dx, dy, dz = [(t[i] - cur[i]) * 1000.0 for i in range(3)]
+    _dir = "↑上升" if dz > 0.5 else ("↓下降" if dz < -0.5 else "→平动")
+    lin = (dx * dx + dy * dy + dz * dz) ** 0.5
+    g = dict(sk.get("guard") or {})
+    g.update(st.get("guard") or {})                        # 阶段级守卫覆盖技能级
+    gd = g.get("dz_down_limit_mm")
+    if gd is not None and dz < -abs(float(gd)):
+        if spec.get("allow_down_mm") is None or float(spec.get("allow_down_mm")) < abs(dz):
+            return {"err": "向下 %.1fmm > 守卫 %.0fmm (确需下降请带 allow_down_mm)" % (-dz, float(gd)),
+                    "pos": t, "dz": dz}
+    # 🛡 z_floor 硬红线 (2026-09-20 现场修正): 目标 z **不得低于参考点位 z**(+偏移)。
+    #   前情: 老倪把臂抬到槽位上方 185mm 后点「一号位」被"向下>40mm"守卫误拦 —— 真正该守的是
+    #   "绝不下压到槽位点以下"(攻进夹具), 而不是"相对当前位姿下降多少"(转移段本来就该允许大下降)。
+    #   这条与 Δ 无关, 与调用方传什么参数无关, 编造不了。
+    zf = g.get("z_floor_point")
+    if zf:
+        if zf not in pts:
+            return {"err": "z_floor 参考点 %s 不在点位库" % zf, "pos": t}
+        _off = float(g.get("z_floor_offset_mm", 0.0))
+        floor = pts[zf]["pos"][2] + _off / 1000.0
+        if t[2] < floor - 1e-6:
+            _bel = (floor - t[2]) * 1000.0
+            _al = spec.get("allow_below_mm")
+            if _al is None or float(_al) < _bel:
+                return {"err": "目标 z=%.4f 低于下限 %s%+.0fmm=%.4f (低了 %.1fmm; 确需下压请带 allow_below_mm)"
+                        % (t[2], zf, _off, floor, _bel), "pos": t, "dz": dz}
+            log("⚠️ z_floor 被 allow_below_mm=%.1f 显式放行: 目标低于槽位点 %.1fmm" % (float(_al), _bel))
+    ml = g.get("max_lin_mm")
+    if ml is not None and lin > float(ml):
+        return {"err": "直线距离 %.0fmm > 守卫 %.0fmm (请人工把臂移到槽位附近再跑)" % (lin, float(ml)),
+                "pos": t, "lin": lin}
+    sp = float(spec.get("speed", 60))
+    if sk.get("speed_max") is not None:                    # 技能级限速上限(练习用低速, 收口在执行层)
+        sp = min(sp, float(sk["speed_max"]))
+    call = ('ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
+            'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
+            % (sp, t[0], t[1], t[2], q[0], q[1], q[2], q[3]))
+    return {"name": name, "pos": t, "quat": q, "dx": dx, "dy": dy, "dz": dz,
+            "dir": _dir, "lin": lin, "call": call, "speed": sp}
+
+
+def wait_arrive(target, tol_mm=2.0, timeout_s=30.0):
+    """等到位: **只看真值** /robot/tcp_pose 缓存(须新鲜 <2s), 连续两次落进容差算停稳。
+    返回 (ok, 偏差mm)。绝不用 success / 计时来判完成 —— 老倪: 判完成只看真值。"""
+    t0, best = time.time(), None
+    while time.time() - t0 < timeout_s:
+        p, ts = _pose["p"], _pose["t"]
+        if p and (time.time() - ts) < 2.0:
+            e = max(abs(p[i] - target[i]) * 1000.0 for i in range(3))
+            best = e if best is None else min(best, e)
+            if e <= tol_mm:
+                time.sleep(0.4)
+                p2 = _pose["p"]
+                e2 = max(abs(p2[i] - target[i]) * 1000.0 for i in range(3))
+                if e2 <= tol_mm:
+                    return True, e2
+        time.sleep(0.2)
+    return False, best
+
+
+def run_stages(sk, spec, chan, pts):
+    """多阶段技能: 逐阶段 ①算目标 ②守卫 ③下发 ④等真值到位 ⑤再进下一阶段。
+    任一阶段被守卫拒/未到位 → 中止剩余阶段并**绝不重发**(30s 超时那次的教训)。"""
+    steps = sk.get("steps") or []
+    n = len(steps)
+    cur = _pose["p"]
+    if not cur or (time.time() - _pose["t"]) > 5.0:
+        log("拒绝: 位姿缓存未就绪(等 tap 真值)")
+        return "位姿缓存未就绪"
+    plans, c = [], list(cur)
+    for i, st in enumerate(steps, 1):
+        pl = plan_stage(sk, st, pts, spec, c)
+        if pl.get("err"):
+            log("🛡 阶段 %d/%d 拒绝: %s" % (i, n, pl["err"]))
+            return "阶段 %d 拒绝: %s" % (i, pl["err"])
+        plans.append(pl)
+        c = pl["pos"]
+        log("阶段 %d/%d「%s」点=%s pos=(%.4f, %.4f, %.4f) · 预计Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · speed %s"
+            % (i, n, st.get("note", ""), pl["name"], pl["pos"][0], pl["pos"][1], pl["pos"][2],
+               pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"]))
+    if spec.get("dry"):
+        for i, pl in enumerate(plans, 1):
+            log("DRY-RUN 阶段 %d/%d 将下发: %s" % (i, n, pl["call"][:220]))
+        return "DRY-RUN(未下发) %d 阶段: %s" % (
+            n, " | ".join("阶段%d Δ=(%+.1f,%+.1f,%+.1f)mm%s" % (i, p["dx"], p["dy"], p["dz"], p["dir"])
+                          for i, p in enumerate(plans, 1)))
+    for i, st in enumerate(steps, 1):
+        pl = plans[i - 1]
+        live = _pose["p"]                                  # 下发前用**实时**位姿复算 Δ + 复检守卫
+        if live:
+            pl2 = plan_stage(sk, st, pts, spec, live)
+            if pl2.get("err"):
+                log("🛡 下发前复检拒绝 阶段 %d/%d: %s" % (i, n, pl2["err"]))
+                return "🛡 阶段 %d 被守卫拒绝" % i
+            pl = pl2
+        chan.stdin.write(pl["call"] + "\n")
+        chan.stdin.flush()
+        log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s"
+            % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"]))
+        ok, err = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), float(st.get("timeout_s", 30.0)))
+        if not ok:
+            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm) → 中止剩余阶段, 绝不重发"
+                % (i, n, float(st.get("timeout_s", 30.0)), ("%.1f" % err) if err is not None else "无真值"))
+            return "🛑 阶段 %d 未到位, 已中止(见日志)" % i
+        log("✅ 阶段 %d/%d 到位 · 真值偏差 %.1fmm · 夹爪未动"
+            % (i, n, err if err is not None else -1.0))
+        time.sleep(float(st.get("dwell_s", 1.0)))
+    return "✅ 全部 %d 阶段完成" % n
+
+
 IMG_LAST = os.path.expanduser("~/zmax_data/aoi_last_frame.png")
 
 
@@ -218,14 +367,10 @@ def dispatch(reg, spec, chan):
     else:
         # 点位来源: ①演示学习轨迹点 ②L2 传授点库 taught_points.json (2026-09-20 起,
         #   供"进入金手指AOI检测区"这类按现场示教的绝对点回点; 同名以传授点库为准)
-        pts = {}
-        for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
-                    "data/skills/l2_atomic/taught_points.json"):
-            try:
-                with open(os.path.join(REPO, _pf), encoding="utf-8") as _f:
-                    pts.update(json.load(_f).get("points", {}))
-            except Exception as _e:                                          # noqa: BLE001
-                log("点位库 %s 读取失败(跳过): %s" % (_pf, _e))
+        pts = _load_points()
+        # 🅰 2026-09-20【一号位】: 技能带 steps → 多阶段执行(逐阶段下发 + 真值等到位再进下一阶段)
+        if sk.get("steps"):
+            return run_stages(sk, spec, chan, pts)
         r = build_move(sk, spec, pts)
         if not r:
             log("拒绝: 位姿缓存未就绪或点位不存在")
