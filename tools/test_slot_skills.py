@@ -179,7 +179,10 @@ if LK:
           and A["use_current_pose_as_box_origin"] is True and A["amplify_one"] == 6.0 and A["frequency_one"] == 3.0)
     check("里萨如", "全程无夹爪步骤", "grip" not in json.dumps(LK["steps"], ensure_ascii=False))
     set_pose(IP["pos"], q=IP["quat"], age=0.05)
-    p1 = l2d.plan_stage(LK, st1, PTS, {"speed": 30}, IP["pos"])
+    r_no = l2d.plan_stage(LK, st1, PTS, {"speed": 30}, IP["pos"])
+    check("里萨如", "阶段1(拔出段)未确认解锁 → 拒发(硬守卫)",
+          "err" in r_no and "解锁" in r_no["err"], r_no.get("err", "")[:64])
+    p1 = l2d.plan_stage(LK, st1, PTS, {"speed": 30, "allow_unlocked_retract": True}, IP["pos"])
     p2 = l2d.plan_stage(LK, st2, PTS, {"speed": 30}, p1["pos"])
     Rm = l2d._quat_R(IP["quat"])
     exp1 = [IP["pos"][i] + Rm[i][2] * (-0.06) for i in range(3)]
@@ -189,8 +192,22 @@ if LK:
           max(abs(p2["pos"][i] - IP["pos"][i]) for i in range(3)) < 1e-9)
     check("里萨如", "两段直线各 60mm · 限速 30", abs(p1["lin"] - 60.0) < 1.0 and p1["speed"] == 30.0)
     ch = FakeChan()
-    out = l2d.run_stages(LK, {"skill": "L2.lissa_insert", "speed": 30, "dry": True}, ch, PTS)
-    check("里萨如", "dry 零下发且服务不被调用", ch.writes == [] and "DRY-RUN" in out)
+    out_no = l2d.run_stages(LK, {"skill": "L2.lissa_insert", "speed": 30, "dry": True}, ch, PTS)
+    check("里萨如", "三段技能 dry(未确认解锁) → 被守卫拒 且 零下发",
+          ch.writes == [] and "拒绝" in out_no, out_no[:52])
+    ch = FakeChan()
+    out = l2d.run_stages(LK, {"skill": "L2.lissa_insert", "speed": 30, "dry": True,
+                              "allow_unlocked_retract": True}, ch, PTS)
+    check("里萨如", "确认已解锁后 dry → 三段计划齐全 且 零下发",
+          ch.writes == [] and "DRY-RUN" in out and "阶段3" in out)
+    SR = _regj.get("L2.lissa_search")
+    check("里萨如", "只搜索技能已注册(单阶段=力控服务)", SR is not None and len(SR["steps"]) == 1
+          and SR["steps"][0]["op"] == "service")
+    if SR:
+        ch = FakeChan()
+        out = l2d.run_stages(SR, {"skill": "L2.lissa_search", "dry": True}, ch, PTS)
+        check("里萨如", "只搜索 dry → 只调服务 且 零运动下发",
+              ch.writes == [] and "DRY-RUN" in out and "服务 /lissajous_force_search" in out, out[:60])
     # 服务回执路径: 用桩替换真调用, 绝不真打服务
     _stub = {"id": "T.lissa", "name": "t", "steps": [dict(st3, timeout_s=2)]}
     set_pose(IP["pos"], q=IP["quat"], age=0.05)
@@ -206,6 +223,36 @@ if LK:
           "全部 1 阶段完成" in out and ch.writes == [], out[:60])
     check("里萨如", "服务请求串含全部字段(%d 个)" % len(A), l2d._args_to_yaml(A).count(":") >= len(A),
           l2d._args_to_yaml(A)[:60] + " …")
+
+print("── 解锁并拔出 (L2.pull_module, 机理=夹爪后方钩子) ──")
+PK = _regj.get("L2.pull_module")
+check("拔出", "技能已注册(5 段)", PK is not None and len(PK["steps"]) == 5)
+if PK:
+    IP2 = PTS[PK["point"]]
+    s1, s2, s3, s4, s5 = PK["steps"]
+    check("拔出", "段1 = 垂直下移 3mm 补偿下垂 · 相对量", s1.get("rel") is True and abs(s1["dz_mm"] + 3.0) < 1e-9)
+    check("拔出", "段2/段4 = 夹爪步(产线参数 pos1000/f50 · pos0/f30)",
+          s2.get("op") == "gripper" and s2["pos"] == 1000.0 and s2["force"] == 50.0
+          and s4.get("op") == "gripper" and s4["pos"] == 0.0 and s4["force"] == 30.0)
+    check("拔出", "段3 = 沿工具轴退 15mm(钩绿环) · 相对量", s3.get("rel") is True and s3["local_mm"][2] == -15.0)
+    check("拔出", "段5 = 沿工具轴退 120mm(拉出) · 相对量", s5.get("rel") is True and s5["local_mm"][2] == -120.0)
+    deep = [IP2["pos"][0] + 0.0114, IP2["pos"][1], IP2["pos"][2] - 0.0007]   # 力控后: 比示教插入位深 11.4mm
+    set_pose(deep, q=IP2["quat"], age=0.05)
+    p1 = l2d.plan_stage(PK, s1, PTS, {"speed": 30}, deep)
+    check("拔出", "段1 目标 = 当前位姿-3mm(**不回示教插入位**)",
+          ("err" not in p1) and abs(p1["pos"][0] - deep[0]) < 1e-9 and abs(p1["pos"][2] - (deep[2] - 0.003)) < 1e-9,
+          "Δ=(%+.1f,%+.1f,%+.1f)mm" % (p1["dx"], p1["dy"], p1["dz"]))
+    p3 = l2d.plan_stage(PK, s3, PTS, {"speed": 30}, p1["pos"])
+    p5 = l2d.plan_stage(PK, s5, PTS, {"speed": 30}, p3["pos"])
+    check("拔出", "段3 退 15mm / 段5 退 120mm(每次按当时位姿重算)",
+          abs(p3["lin"] - 15.0) < 1.0 and abs(p5["lin"] - 120.0) < 3.0,
+          "lin=%.1f/%.1f mm" % (p3.get("lin", -1), p5.get("lin", -1)))
+    check("拔出", "终点比起点外移 >130mm(真往外拔)", (deep[0] - p5["pos"][0]) * 1000 > 130,
+          "%.0fmm" % ((deep[0] - p5["pos"][0]) * 1000))
+    ch = FakeChan()
+    out = l2d.run_stages(PK, {"skill": "L2.pull_module", "speed": 30, "dry": True, "stages": [1]}, ch, PTS)
+    check("拔出", "分段执行 stages=[1] → 只计划 1 段且零下发",
+          ch.writes == [] and "1 阶段" in out, out[:56])
 
 print("── 全局 ──")
 check("全局", "⑨等待上限按距离估(448mm@30 → >160s)", l2d._stage_timeout({"timeout_s": 60}, 448.0, 30) > 160,

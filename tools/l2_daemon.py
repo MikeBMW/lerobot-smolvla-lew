@@ -256,19 +256,50 @@ def _service_call(st):
     return ok, "%.1fs · success=%s · %s" % (dt, ok, (m.group(1) if m else "")[:400])
 
 
+def _gripper_cmd(st):
+    """夹爪步 → 远端命令行 (字段与产线 SetGripperPosition 同口径: pos/speed/force/acc/push_length/push_speed)"""
+    return ('ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
+            'target_force: %.1f, target_acc: %.1f, target_push_length: %.1f, target_push_speed: %.1f}"'
+            % (float(st.get("pos", 1000.0)), float(st.get("speed", -1.0)), float(st.get("force", -1.0)),
+               float(st.get("acc", -1.0)), float(st.get("push_length", 0.0)), float(st.get("push_speed", 40.0))))
+
+
+def _call_remote(cmd, timeout=40):
+    """同步跑一条远端 ROS 服务命令 → (ok, 输出)。夹爪/力控这类必须看真实回执。"""
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, PRE + cmd],
+                           capture_output=True, text=True, timeout=timeout)
+        out = (r.stdout or "") + (r.stderr or "")
+    except Exception as e:                                                   # noqa: BLE001
+        return False, "调用异常: %s" % e
+    return ("response:" in out), out
+
+
 def plan_stage(sk, st, pts, spec, cur):
-    """算单阶段 目标/Δ/方向/下发字节; 守卫不过 → 返回 {"err":...} (调用方一律不下发)"""
-    name = _point_name(sk, st, spec)
-    if name not in pts:
-        return {"err": "点位 %s 不在点位库" % name}
-    t = [float(v) for v in pts[name]["pos"]]
-    t[2] += float(st.get("dz_mm", 0.0)) / 1000.0          # base 系竖直偏移(mm): 正=上, 负=下
-    if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
-        q = [float(v) for v in pts[name]["quat"]]         # 显式回示教姿态 → 纯平移, 不带旋转
-    else:
+    """算单阶段 目标/Δ/方向/下发字节; 守卫不过 → 返回 {"err":...} (调用方一律不下发)
+
+    `rel: true` = **相对当前位姿**的运动(如"沿工具轴退 15mm"/"下移 3mm 补偿下垂") —— 目标从
+    实时位姿算, 姿态保持当前。拔出这类动作必须用相对量: 力控插入会把模块多压进几毫米, 若用
+    "回到示教插入位"的绝对点, 就变成了先把模块往回拽(锁着的时候=硬拽锁扣)。
+    """
+    if st.get("rel"):
+        name = "rel(当前位姿)"
+        t = [float(v) for v in cur]
         q = list(_pose["q"]) if _pose["q"] else None
-    if not q:
-        return {"err": "位姿缓存未就绪(当前姿态缺)"}
+        if not q:
+            return {"err": "位姿缓存未就绪(当前姿态缺)"}
+    else:
+        name = _point_name(sk, st, spec)
+        if name not in pts:
+            return {"err": "点位 %s 不在点位库" % name}
+        t = [float(v) for v in pts[name]["pos"]]
+        if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
+            q = [float(v) for v in pts[name]["quat"]]     # 显式回示教姿态 → 纯平移, 不带旋转
+        else:
+            q = list(_pose["q"]) if _pose["q"] else None
+        if not q:
+            return {"err": "位姿缓存未就绪(当前姿态缺)"}
+    t[2] += float(st.get("dz_mm", 0.0)) / 1000.0          # base 系竖直偏移(mm): 正=上, 负=下
     # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
     #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
     lm = st.get("local_mm")
@@ -303,6 +334,13 @@ def plan_stage(sk, st, pts, spec, cur):
                 return {"err": "目标 z=%.4f 低于下限 %s%+.0fmm=%.4f (低了 %.1fmm; 确需下压请带 allow_below_mm)"
                         % (t[2], zf, _off, floor, _bel), "pos": t, "dz": dz}
             log("⚠️ z_floor 被 allow_below_mm=%.1f 显式放行: 目标低于槽位点 %.1fmm" % (float(_al), _bel))
+    # 🛡 "先解锁再拔" 硬守卫 (2026-09-20 老倪现场提醒 + 产线口径):
+    #   光模块插到位后**锁扣是锁住的**, 直接沿轴退 = 硬拽锁扣(可能伤模块/夹具)。
+    #   产线做法: 合爪 force30 夹住后面**绿色环** → 沿工具轴退 15mm 解锁 → 再退 120mm 拔出。
+    #   凡标了 needs_unlock 的阶段默认拒发, 只有显式 spec.allow_unlocked_retract=true(已解锁)才放行。
+    if st.get("needs_unlock") and not spec.get("allow_unlocked_retract"):
+        return {"err": "本阶段会拔出光模块, 但模块是锁住的 → 必须先解锁(合爪夹绿环→沿轴退15mm); "
+                       "确认已解锁请带 allow_unlocked_retract=true", "pos": t}
     ml = g.get("max_lin_mm")
     if ml is not None and lin > float(ml):
         return {"err": "直线距离 %.0fmm > 守卫 %.0fmm (请人工把臂移到槽位附近再跑)" % (lin, float(ml)),
@@ -355,6 +393,15 @@ def run_stages(sk, spec, chan, pts):
     """多阶段技能: 逐阶段 ①算目标 ②守卫 ③下发 ④等真值到位 ⑤再进下一阶段。
     任一阶段被守卫拒/未到位 → 中止剩余阶段并**绝不重发**(30s 超时那次的教训)。"""
     steps = sk.get("steps") or []
+    steps_all = steps
+    _only = spec.get("stages")          # 分段执行: 只跑指定阶段(逐段核对/逐段请示, 其余本次不执行)
+    if _only:
+        _want = [int(x) for x in _only]
+        steps = [st for st in steps_all if int(st.get("stage", steps_all.index(st) + 1)) in _want]
+        if not steps:
+            log("拒绝: stages=%s 没匹配到任何阶段" % _only)
+            return "stages 过滤后没有阶段"
+        log("分段执行: 只跑阶段 %s (共 %d 段)" % (_want, len(steps)))
     n = len(steps)
     cur, _cq, csrc = _pose_best()
     if not cur:
@@ -372,6 +419,13 @@ def run_stages(sk, spec, chan, pts):
                           "dz": 0.0, "dir": "服务", "name": st["srv"], "call": _service_cmd(st)})
             log("阶段 %d/%d「%s」→ 调服务 %s (本机不下发运动; 力控由驱动执行)"
                 % (i, n, st.get("note", ""), st["srv"]))
+            continue
+        if st.get("op") == "gripper":
+            # 夹爪步: 同步调 gripper_driver + 看回执(curr_pos 是唯一能读到的夹爪真值)
+            plans.append({"service": True, "pos": None, "lin": 0.0, "speed": 0.0, "dx": 0.0, "dy": 0.0,
+                          "dz": 0.0, "dir": "夹爪", "name": "gripper", "call": _gripper_cmd(st)})
+            log("阶段 %d/%d「%s」→ 调夹爪 pos=%s force=%s speed=%s"
+                % (i, n, st.get("note", ""), st.get("pos"), st.get("force"), st.get("speed")))
             continue
         pl = plan_stage(sk, st, pts, spec, c)
         if pl.get("err"):
@@ -395,6 +449,16 @@ def run_stages(sk, spec, chan, pts):
                           for i, p in enumerate(plans, 1)))
     for i, st in enumerate(steps, 1):
         pl = plans[i - 1]
+        if st.get("op") == "gripper":
+            ok, out = _call_remote(_gripper_cmd(st), float(st.get("timeout_s", 30)) + 15)
+            _m = re.search(r"curr_pos=([-\d.]+)", out)
+            log("阶段 %d/%d「%s」夹爪回执: curr_pos=%s · %s"
+                % (i, n, st.get("note", ""), _m.group(1) if _m else "?", "OK" if ok else out.strip()[-160:]))
+            if not ok:
+                log("🛑 阶段 %d/%d 夹爪服务失败 → 中止剩余阶段" % (i, n))
+                return "🛑 阶段 %d 夹爪失败" % i
+            time.sleep(float(st.get("dwell_s", 0.5)))
+            continue
         if st.get("op") == "service":
             # 力控类原语: **同步**调用 + 看真实回执(success/message), 失败即中止, 绝不重发
             ok, info = _service_call(st)
