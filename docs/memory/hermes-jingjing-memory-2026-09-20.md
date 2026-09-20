@@ -1,6 +1,6 @@
 web=4090+前端+ECS; 总工=4060/GitHub/GUI; 小芳=硬件
 §
-本机直连Orin网 192.168.23.50/24无网关(真网卡enx00e04c0c32a0; NM bad profile match:{}会让.50跑到摄像头RNDIS口→全网不通, 见skill)
+本机直连Orin网 192.168.23.50/24无网关(真网卡enx00e04c0c32a0; NM bad profile match:{}会让.50跑到摄像头RNDIS口→全网不通)
 §
 NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用
 §
@@ -10,11 +10,11 @@ NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用
 §
 安全: 🛡4栏位+三层(否决/限幅/Sys0)
 §
-GUI改码必重启(systemctl --user restart zmax-studio, Restart=no不自拉; 无autosave; 重启后ps查双开)
+GUI改码必重启(zmax-studio; 无autosave)
 §
-GitHub: 直连不通→ghproxy.net(远端已配); Release走browser_download_url
+GitHub直连不通→ghproxy.net; Release用browser_download_url
 §
-界面偏好: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 图层按链路排序; 面板禁假值
+界面偏好: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 面板禁假值
 §
 Hermes: 长/含$()命令硬拦→拆多段或read_file; sudo免密
 §
@@ -38,8 +38,6 @@ L4档运行=INTACT直驱(install_direct_act→run_once喂skill_ctx), 装配pop S
 §
 评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器
 §
-L4'接近'真因: 直驱反向→SS_DIRECT_COS_MIN=0.9+否决步交回引擎; L4预算4000步
-§
 Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torque只订WrenchStamped; 红线Orin零自研零自启→4060只读订阅; 详见real-arm-motion-control
 §
 感知源收口: 反投影仅一份estimate_3d; 真机3D须K+手眼+plane_z; depth话题勿用(全帧2-3m)
@@ -54,12 +52,12 @@ YOLO在役=软链models/yolo_peg_live.pt; 瓶颈是数据
 §
 飞书端=另一Hermes会话共用同一工作树; 跨端同步走docs/memory/*.md+commit/push
 §
-真机: collision_detection_enabled=False(撞不停), robot_status被截断(estop读不到)
-§
 真机画面: 老倪面板=180°翻转帧, 我用tap原始帧; 同一模块我帧上左=他帧下右; 报方向说'朝画面中心'
 §
 夹爪: 开1000/夹0+force40→185(空载21); 力值读不到; 拖动模式忽略夹爪指令; 抬升后开度不变=夹牢
 §
-真机: rt动作后必下电(需示教器上电); move_joint/move_line 不下电; 30s超时success=False但动作已完成→别重发
+真机: rt动作后必下电(需示教器上电); move_joint/line不下电; 30s超时success=False但动作已成→别重发; collision_detection_enabled=False, robot_status被截断
 §
-L2原子技能: 常驻执行器 tools/l2_daemon.py(保活cron l2_daemon_keepalive.sh) + FIFO ~/zmax_data/l2_cmd.fifo 一行JSON下发; 注册表 data/skills/l2_atomic/registry.json; 示教点须锁点point_locked+运动前dry空跑(参数化曾致急停)
+L2原子技能: tools/l2_daemon.py(保活cron)+FIFO ~/zmax_data/l2_cmd.fifo 一行JSON; 注册表 data/skills/l2_atomic/registry.json; 示教点锁点+运动前dry空跑(参数化曾致急停)
+§
+AOI10082 v4: /picture=原图, ?kind=crop=拉长960方图(喂YOLO), ?kind=natural=原比例1455x70, /region=原图金手指区域+focus; 金手指只取焊盘排(离散|gx|高), 下实心金带/亮边沿不入画布; 伺服tools/aoi_gold_servo.py(L2.aoi_gold_align)四级闸; 技能清单预览默认拉长版
