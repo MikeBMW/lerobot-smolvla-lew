@@ -1,8 +1,8 @@
 web=4090+前端+ECS; 总工=4060/GitHub/GUI; 小芳=硬件
 §
-链路: Orin→Mac→ECS→4060; 本机直连Orin网(仅WiFi需USB网卡) 192.168.23.50/24无网关(ssh tashan@.66免密); scp>100MB断→base64; 模型chmod644
+本机直连Orin网 192.168.23.50/24无网关(真网卡enx00e04c0c32a0; NM bad profile match:{}会让.50跑到摄像头RNDIS口→全网不通, 见skill)
 §
-NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用; cron reclock
+NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用
 §
 分层(09-19更正): LLM=DeepSeek-VL场景理解; L4 INTACT=安全+物理导航; L3=长程序列规划; L2=肌肉记忆; 画布加载重生node id→按节点名断言
 §
@@ -24,7 +24,7 @@ Hermes: CLI≠gateway; 飞书99991663=token过期→重启gateway
 §
 磁盘红线300G; 留档~/zmax_data
 §
-引擎obs39D=cur18+prev18+target3; obs[7:10]=_pc光模块位置; L3推理须env原生obs+128图+task动态+post反归一化(u_ff=act×0.5)
+引擎obs39D=cur18+prev18+target3; obs[7:10]=_pc光模块位置; L3推理须env原生obs+128图+task动态+post反归一化(u_ff=act×0.5); 统一状态=SU(2)群su2.py
 §
 L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选; 老倪红线: 真模型须默认生效, 日志现'脚本开环'即不合格
 §
@@ -36,7 +36,7 @@ L4档运行=INTACT直驱(install_direct_act→run_once喂skill_ctx), 装配pop S
 §
 断点: 动作头loss行351仅画布「训练」节点进; L3真跑须SS_L3_DEV=cpu; 前馈MLP须SS_USE_MLP=1(parallel.py:143)
 §
-评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器; 肌肉记忆A/B冷隔离
+评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器
 §
 L4'接近'真因: 直驱反向→SS_DIRECT_COS_MIN=0.9+否决步交回引擎; L4预算4000步
 §
@@ -48,7 +48,7 @@ Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torqu
 §
 内置cam video0 720p/video2灰度IR; 产线.23工控机admin/admin, 服务10081-10083
 §
-YOLO在役=软链models/yolo_peg_live.pt(readlink -f,旧权重留可回滚); 瓶颈是数据
+YOLO在役=软链models/yolo_peg_live.pt; 瓶颈是数据
 §
 采集判据=位姿极差0+画面差≤2灰阶(勿md5); 中转state流tcp/quat是缓存旧值须直读topic
 §
@@ -62,4 +62,4 @@ YOLO在役=软链models/yolo_peg_live.pt(readlink -f,旧权重留可回滚); 瓶
 §
 真机: rt动作后必下电(需示教器上电); move_joint/move_line 不下电; 30s超时success=False但动作已完成→别重发
 §
-L2原子技能: 常驻执行器 tools/l2_daemon.py + FIFO ~/zmax_data/l2_cmd.fifo (一行JSON即下发,延迟<1s); 注册表 data/skills/l2_atomic/registry.json; UI=画布「工程记忆·技能与经验库」双击(或菜单)
+L2原子技能: 常驻执行器 tools/l2_daemon.py(保活cron l2_daemon_keepalive.sh) + FIFO ~/zmax_data/l2_cmd.fifo 一行JSON下发; 注册表 data/skills/l2_atomic/registry.json; 示教点须锁点point_locked+运动前dry空跑(参数化曾致急停)
