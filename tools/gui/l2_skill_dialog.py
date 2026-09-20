@@ -144,13 +144,21 @@ class L2SkillDialog(QDialog):
         self.out.appendPlainText("执行器状态: %s" % ("在线 ✓" if alive() else "离线 ✗"))
         right.addWidget(self.out)
         # 图片预览: 金手指AOI图片 -> http://192.168.23.23:10082/picture (老倪: UI 接收并显示图片)
-        gimg = QGroupBox("金手指AOI图片  (10082 /picture)")
+        gimg = QGroupBox("金手指AOI图片  (10082) · 来源可选")
         vimg = QVBoxLayout(gimg)
         self.img = QLabel("点「开始」或「刷新图片」取图")
         self.img.setMinimumHeight(260)
         self.img.setAlignment(Qt.AlignCenter)
         self.img.setStyleSheet("QLabel{background:#0f1115;color:#8a929e;border:1px solid #3a4152;font-size:14px;}")
         vimg.addWidget(self.img)
+        hb0 = QHBoxLayout()
+        hb0.addWidget(QLabel("来源:"))
+        self.cmb_src = QComboBox()
+        for _lab, _p in self.IMG_SOURCES:
+            self.cmb_src.addItem(_lab)
+        self.cmb_src.currentIndexChanged.connect(lambda _i: self._refresh_image())
+        hb0.addWidget(self.cmb_src, 1)
+        vimg.addLayout(hb0)
         hb2 = QHBoxLayout()
         self.btn_img = QPushButton("刷新图片")
         self.btn_img.clicked.connect(self._refresh_image)
@@ -214,21 +222,34 @@ class L2SkillDialog(QDialog):
             self.combo.setVisible(False)
             self.lbl.setText("技能: %s (%s)  — 无参数, 直接开始" % (s.get("name", ""), s.get("id", "")))
 
-    IMG_URL = "http://192.168.23.23:10082/picture"
+    IMG_BASE = "http://192.168.23.23:10082"
+    # 图片来源可选 (老倪: 技能清单里要能看到"拉长后的金手指")
+    #   /picture            = 原始图 2448x2048
+    #   /picture?kind=crop  = 金手指拉长版 960x960 (喂 YOLO 的规范化图, 默认)
+    #   /picture?kind=natural = 金手指原比例 (不拉伸, 目检用)
+    IMG_SOURCES = [("金手指拉长 960x960 (喂YOLO)", "/picture?kind=crop"),
+                   ("原图 2448x2048", "/picture"),
+                   ("金手指原比例 (不拉伸)", "/picture?kind=natural")]
+    IMG_URL = IMG_BASE + IMG_SOURCES[0][1]
 
     def _toggle_auto(self, on):
         self.tmr.start() if on else self.tmr.stop()
 
     def _refresh_image(self):
-        """接收并显示金手指AOI当前照片 (从工控机 /picture 拉取)"""
-        url = self.IMG_URL + "?t=%d" % int(time.time())
+        """接收并显示金手指AOI当前照片 (按选中的来源从工控机 10082 拉取)"""
+        try:
+            _lab = self.cmb_src.currentText()
+        except Exception:
+            _lab = self.IMG_SOURCES[0][0]
+        _path = dict(self.IMG_SOURCES).get(_lab, "/picture")
+        url = self.IMG_BASE + _path + ("&" if "?" in _path else "?") + "t=%d" % int(time.time())
         try:
             r = urllib.request.urlopen(url, timeout=8)
             data = r.read()
             ct = r.headers.get("Content-Type", "")
         except Exception as e:
             self.img.setPixmap(QPixmap())
-            self.img.setText("取图失败: %s\n(确认工控机 v3 已在 10082 运行)" % e)
+            self.img.setText("取图失败: %s\n(确认工控机程序已在 10082 运行: v4 或 v3)" % e)
             self.lbl_img.setText("")
             return
         pm = QPixmap()
@@ -236,7 +257,7 @@ class L2SkillDialog(QDialog):
             self.img.setText("返回非图片 (%s): %s" % (ct, data[:180]))
             return
         self.img.setPixmap(pm.scaled(self.img.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.lbl_img.setText("%dx%d  %d KB  %s" % (pm.width(), pm.height(), len(data) // 1024, time.strftime("%H:%M:%S")))
+        self.lbl_img.setText("%s · %dx%d · %d KB · %s" % (_lab.split()[0], pm.width(), pm.height(), len(data) // 1024, time.strftime("%H:%M:%S")))
         self.out.appendPlainText("[%s] 取到照片 %dx%d %d KB" % (time.strftime("%H:%M:%S"), pm.width(), pm.height(), len(data) // 1024))
 
     def _go(self):
@@ -244,7 +265,7 @@ class L2SkillDialog(QDialog):
         if not it:
             return
         s = it.data(32) or {}
-        if isinstance(s, dict) and s.get("id") == "L2.aoi_picture":
+        if isinstance(s, dict) and str(s.get("id", "")).startswith("L2.aoi"):
             self._refresh_image()
             self.chk_auto.setChecked(True)
             return
