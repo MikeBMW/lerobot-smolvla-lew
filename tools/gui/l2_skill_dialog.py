@@ -187,12 +187,26 @@ class L2SkillDialog(QDialog):
                 self.spin.setSuffix(" " + str(meta.get("unit", "")))
             else:
                 if self.combo.count() == 0:
-                    for v in (meta.get("values") or ["home", "grasp", "place", "up1",
-                                                     "wp_a", "wp_b", "wp_c", "wp_d", "wp_e", "wp_f"]):
+                    # 🐛 2026-09-20 事故修复: 默认值不在候选列表里时, 旧代码 findText 返回 -1 →
+                    #   **静默停在 index 0 = "home"** → 点的技能实际下发 home(向下~375mm), 老倪按了急停。
+                    #   现在: 默认值优先且必须在列表里; 并合并传授点库(taught_points.json)的点名。
+                    vals = list(meta.get("values") or ["home", "grasp", "place", "up1",
+                                                       "wp_a", "wp_b", "wp_c", "wp_d", "wp_e", "wp_f"])
+                    try:
+                        import json as _j
+                        _tp = os.path.join(REPO, "data/skills/l2_atomic/taught_points.json")
+                        for _n in (_j.load(open(_tp, encoding="utf-8")).get("points") or {}):
+                            if _n not in vals:
+                                vals.append(_n)
+                    except Exception:
+                        pass
+                    _d = str(meta.get("default"))
+                    if _d and _d not in vals:
+                        vals.insert(0, _d)
+                    for v in vals:
                         self.combo.addItem(str(v))
                 idx = self.combo.findText(str(meta.get("default")))
-                if idx >= 0:
-                    self.combo.setCurrentIndex(idx)
+                self.combo.setCurrentIndex(idx if idx >= 0 else 0)
             self.lbl.setText("%s\n参数: %s (默认 %s)" % (s.get("name", ""), meta.get("label", k), meta.get("default")))
         else:
             self.spin.setVisible(False)

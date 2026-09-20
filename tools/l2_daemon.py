@@ -84,8 +84,18 @@ def build_move(sk, spec, pts):
         elif a == "y":
             t[1] = p[1] + d
     elif sk["ros"] == "line_abs":
-        name = spec.get("point", sk["param"]["point"].get("default", "home"))
+        # 🛡 2026-09-20 事故修复: 技能可用 point_locked 把目标点锁死在技能定义里 —
+        #   收到 spec.point 一律忽略(防 GUI/调用方误送别的点), 并记一条告警。
+        #   未锁的技能仍兼容旧的 spec.point / param.point.default 取值链(空 param 也不再 KeyError)。
+        _pm = (sk.get("param") or {}).get("point") or {}
+        if sk.get("point_locked") and sk.get("point"):
+            name = sk["point"]
+            if spec.get("point") and spec.get("point") != name:
+                log("⚠️ %s 点位已锁定=%s, 忽略收到的 point=%s" % (sk.get("id"), name, spec.get("point")))
+        else:
+            name = spec.get("point") or _pm.get("default") or sk.get("point") or "home"
         if name not in pts:
+            log("拒绝: 点位 %s 不在点位库" % name)
             return None
         t = list(pts[name]["pos"])
         # 2026-09-20 老倪: "回到能看清光模块的位姿" = 位置+姿态都要回到示教点。
@@ -164,6 +174,8 @@ def _accept_image(raw, url, code, dt):
 
 def dispatch(reg, spec, chan):
     sid = spec.get("skill", "")
+    dx = dy = dz = 0.0                  # 运动类分支会覆写; 夹爪/http 分支保持 0
+    _dir = "→平动"
     sk = {s["id"]: s for s in reg["skills"]}.get(sid)
     if not sk:
         log("拒绝: 未知技能 %s" % sid)
@@ -219,6 +231,20 @@ def dispatch(reg, spec, chan):
             log("拒绝: 位姿缓存未就绪或点位不存在")
             return "位姿缓存未就绪"
         (x, y, z), (qx, qy, qz, qw) = r[0], r[1]
+        # 🛡 2026-09-20 事故修复 (老倪按下急停那次): 下发前一律算 Δ 并做方向守卫 ——
+        #   架构原则"执行由最下层收口": 上层点错点/送错参数, 底层必须能看见 Δ 并有权拒发。
+        _cur = _pose["p"] or [0.0, 0.0, 0.0]
+        dx, dy, dz = (x - _cur[0]) * 1000.0, (y - _cur[1]) * 1000.0, (z - _cur[2]) * 1000.0
+        _dir = "↑上升" if dz > 0.5 else ("↓下降" if dz < -0.5 else "→平动")
+        log("目标 %s: pos=(%.4f, %.4f, %.4f) · Δ=(%+.1f, %+.1f, %+.1f)mm %s"
+            % (sid, x, y, z, dx, dy, dz, _dir))
+        _gd = (sk.get("guard") or {}).get("dz_down_limit_mm")
+        if _gd is not None and dz < -abs(float(_gd)):
+            _allow = spec.get("allow_down_mm")
+            if _allow is None or float(_allow) < abs(dz):
+                log("🛡 拒绝: 技能守卫 dz_down_limit_mm=%.0fmm, 本次要向下 %.1fmm (要真的下降请带 allow_down_mm)"
+                    % (float(_gd), -dz))
+                return "🛡 已拒绝: 向下 %.0fmm 超过守卫 %.0fmm" % (-dz, float(_gd))
         sp = float(spec.get("speed", 60))
         call = ('ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
                 'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
@@ -230,7 +256,8 @@ def dispatch(reg, spec, chan):
         return "DRY-RUN(未下发): %s" % call[:170]
     chan.stdin.write(call + "\n")
     chan.stdin.flush()
-    log("已下发 %s -> %s" % (sid, (spec.get("d_mm", spec.get("force", spec.get("point", ""))))))
+    log("已下发 %s -> %s · Δ=(%+.1f,%+.1f,%+.1f)mm %s"
+        % (sid, (spec.get("d_mm", spec.get("force", spec.get("point", "")))), dx, dy, dz, _dir))
     return "已下发"
 
 
