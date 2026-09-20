@@ -1,8 +1,8 @@
 web=4090+前端+ECS; 总工=4060/GitHub/GUI; 小芳=硬件
 §
-本机直连Orin网 192.168.23.50/24无网关(真网卡enx00e04c0c32a0; NM bad profile match:{}会让.50跑到摄像头RNDIS口→全网不通)
+本机直连Orin网 192.168.23.50/24无网关(enx00e04c0c32a0; NM bad match:{}会让.50跑到RNDIS口→全网不通)
 §
-NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用
+NTP回拨8h(勿动RTC)→节拍用time.monotonic, 负帧龄拒用
 §
 分层(09-19更正): LLM=DeepSeek-VL场景理解; L4 INTACT=安全+物理导航; L3=长程序列规划; L2=肌肉记忆; 画布加载重生node id→按节点名断言
 §
@@ -12,9 +12,9 @@ NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用
 §
 GUI改码必重启(zmax-studio; 无autosave)
 §
-GitHub直连不通→ghproxy.net; Release用browser_download_url
+GitHub不通→ghproxy.net; Release用browser_download_url
 §
-界面偏好: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 面板禁假值
+界面: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 面板禁假值
 §
 Hermes: 长/含$()命令硬拦→拆多段或read_file; sudo免密
 §
@@ -32,13 +32,13 @@ L4档默认=L4Demo真机构链+「🧠流形yaw执行」勾选; 老倪红线: �
 §
 模型: 本机仅DeepSeek key; 换全局模型须钉住定时任务
 §
-L4档运行=INTACT直驱(install_direct_act→run_once喂skill_ctx), 装配pop SS_L3
+L4档运行=INTACT直驱(install_direct_act→run_once), 装配pop SS_L3
 §
 断点: 动作头loss行351仅画布「训练」节点进; L3真跑须SS_L3_DEV=cpu; 前馈MLP须SS_USE_MLP=1(parallel.py:143)
 §
 评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器
 §
-Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torque只订WrenchStamped; 红线Orin零自研零自启→4060只读订阅; 详见real-arm-motion-control
+Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torque只订WrenchStamped; 红线Orin零自研零自启→4060只读订阅
 §
 感知源收口: 反投影仅一份estimate_3d; 真机3D须K+手眼+plane_z; depth话题勿用(全帧2-3m)
 §
@@ -50,14 +50,14 @@ YOLO在役=软链models/yolo_peg_live.pt; 瓶颈是数据
 §
 采集判据=位姿极差0+画面差≤2灰阶(勿md5); 中转state流tcp/quat是缓存旧值须直读topic
 §
-飞书端=另一Hermes会话共用同一工作树; 跨端同步走docs/memory/*.md+commit/push
+飞书端=另一Hermes会话共用同一工作树; 跨端同步走docs/memory+commit/push
 §
-真机画面: 老倪面板=180°翻转帧, 我用tap原始帧; 同一模块我帧上左=他帧下右; 报方向说'朝画面中心'
+真机画面: 老倪面板=180°翻转帧; 同一模块我帧上左=他帧下右; 报方向说'朝画面中心'
 §
 夹爪: 开1000/夹0+force40→185(空载21); 力值读不到; 拖动模式忽略夹爪指令; 抬升后开度不变=夹牢
 §
-真机: rt动作后必下电(需示教器上电); move_joint/line不下电; 30s超时success=False但动作已成→别重发; collision_detection_enabled=False, robot_status被截断
+真机: rt动作后必下电; move_joint/line不下电; 30s超时success=False但动作已成→别重发; collision_detection=False, robot_status被截断
 §
-L2原子技能: tools/l2_daemon.py(保活cron)+FIFO ~/zmax_data/l2_cmd.fifo 一行JSON; 注册表 data/skills/l2_atomic/registry.json; 示教点锁点+运动前dry空跑(参数化曾致急停)
+L2原子技能: tools/l2_daemon.py(保活cron)+FIFO ~/zmax_data/l2_cmd.fifo一行JSON; 注册表data/skills/l2_atomic/registry.json(data/忽略); 点动=前进/后退/向左/向右(+X=前/+Y=左, 距离恒正); steps=多阶段(逐阶段真值到位才进下一阶段, 位姿须直读话题—状态流缓存滞后分钟级, 改daemon须重启); 槽位技能L2.slot1/2=一号/二号位(↑30→↓30不松爪; 录点watch+注册register_slot_skill+自检test_slot_skills)
 §
-AOI10082 v4: /picture=原图, ?kind=crop=拉长960方图(喂YOLO), ?kind=natural=原比例1455x70, /region=原图金手指区域+focus; 金手指只取焊盘排(离散|gx|高), 下实心金带/亮边沿不入画布; 伺服tools/aoi_gold_servo.py(L2.aoi_gold_align)四级闸; 技能清单预览默认拉长版
+AOI10082 v4: /picture=原图, ?kind=crop=拉长960方图(喂YOLO), ?kind=natural=1455x70, /region=区域+focus; 金手指只取焊盘排, 下实心金带/亮边沿不入画布; 伺服tools/aoi_gold_servo.py
