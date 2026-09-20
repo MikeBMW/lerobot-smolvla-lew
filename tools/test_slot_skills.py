@@ -23,6 +23,7 @@ _s = importlib.util.spec_from_file_location("l2d", os.path.join(REPO, "tools/l2_
 l2d = importlib.util.module_from_spec(_s)
 _s.loader.exec_module(l2d)
 l2d.LOG = "/tmp/l2_test_slot_skills.log"          # 自检日志写 /tmp, 不污染真机执行器日志
+l2d.USE_DIRECT_POSE = False       # 离线自检: 禁止真去 docker 读真机话题, 只走喂进去的合成位姿
 
 REG = json.load(open(os.path.join(REPO, "data/skills/l2_atomic/registry.json"), encoding="utf-8"))
 PTS = l2d._load_points()
@@ -125,10 +126,10 @@ for SK in SLOTS:
     check(tag, "⑦未到位 → 中止且只发 1 条", "中止" in out and len(ch.writes) == 1, "writes=%d" % len(ch.writes))
 
     set_pose([base[0], base[1], base[2] + clr / 1000.0], age=0.05)
-    ok, err = l2d.wait_arrive([base[0], base[1], base[2] + clr / 1000.0], 1.0, 2.0)
+    ok, err, _src = l2d.wait_arrive([base[0], base[1], base[2] + clr / 1000.0], 1.0, 2.0)
     check(tag, "⑧真值在目标 → 判到位", ok and err is not None and err < 0.01, "%.4fmm" % (err if err is not None else -1))
     set_pose(base, age=0.05)
-    ok2, err2 = l2d.wait_arrive([base[0], base[1], base[2] + clr / 1000.0], 1.0, 1.0)
+    ok2, err2, _s2 = l2d.wait_arrive([base[0], base[1], base[2] + clr / 1000.0], 1.0, 1.0)
     check(tag, "⑧真值差 clearange → 判未到位", (not ok2) and err2 > clr - 1, "%.1fmm" % (err2 if err2 is not None else -1))
     print()
 

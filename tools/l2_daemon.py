@@ -21,6 +21,41 @@ PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install
 
 _pose = {"p": None, "q": None, "t": 0.0}
 
+# 直读真值 (与 tools/record_l2_point.py 同一口径): 容器 + 数值解析
+CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
+NUM = re.compile(r"-?\d+\.?\d*(?:e-?\d+)?")
+USE_DIRECT_POSE = True   # 关键判定优先直读话题; 自检里置 False 走缓存(保证离线可测)
+
+
+def _pose_direct(timeout=10):
+    """直读 /robot/tcp_pose (经本机 Docker tap 容器, 只读, 不下发任何指令)。
+
+    2026-09-20 现场教训: 常驻状态流的缓存**会滞后**(实测整分钟级) → 算出的 Δ 是旧值、
+    到位被误判("未到位"中止, 而臂其实正在走到位)。所以守卫的 Δ 与"等到位"一律直读话题,
+    常驻缓存只当兜底 —— 这也是 memory 里那条"中转 state 流是缓存旧值须直读 topic"的代码化。
+    """
+    try:
+        r = subprocess.run(["sudo", "docker", "exec", CONTAINER, "bash", "-lc",
+                            "source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=0; "
+                            "timeout 6 ros2 topic echo --once /robot/tcp_pose --field pose"],
+                           capture_output=True, text=True, timeout=timeout)
+    except Exception as e:                                                   # noqa: BLE001
+        log("直读位姿失败: %s" % e)
+        return None
+    vals = [float(x) for x in NUM.findall(r.stdout)]
+    return vals[:7] if len(vals) >= 7 else None
+
+
+def _pose_best():
+    """返回 (pos, quat, 来源)。优先直读话题(direct); 读不到退回常驻流缓存(cache, 新鲜窗口 5s); 都没有 none。"""
+    if USE_DIRECT_POSE:
+        v = _pose_direct()
+        if v:
+            return v[:3], v[3:7], "direct"
+    if _pose["p"] and (time.time() - _pose["t"]) < 5.0:
+        return _pose["p"], _pose["q"], "cache"
+    return None, None, "none"
+
 
 _reg_mtime = [0.0]
 
@@ -187,22 +222,23 @@ def plan_stage(sk, st, pts, spec, cur):
 
 
 def wait_arrive(target, tol_mm=2.0, timeout_s=30.0):
-    """等到位: **只看真值** /robot/tcp_pose 缓存(须新鲜 <2s), 连续两次落进容差算停稳。
-    返回 (ok, 偏差mm)。绝不用 success / 计时来判完成 —— 老倪: 判完成只看真值。"""
-    t0, best = time.time(), None
+    """等到位: **只看真值**(直读 /robot/tcp_pose; 读不到才退常驻缓存), 连续两次落进容差算停稳。
+    返回 (ok, 最近偏差mm, 位姿来源)。绝不用 success / 计时来判完成 —— 老倪: 判完成只看真值。"""
+    t0, best, src = time.time(), None, "none"
     while time.time() - t0 < timeout_s:
-        p, ts = _pose["p"], _pose["t"]
-        if p and (time.time() - ts) < 2.0:
+        p, _q, src = _pose_best()
+        if p:
             e = max(abs(p[i] - target[i]) * 1000.0 for i in range(3))
             best = e if best is None else min(best, e)
             if e <= tol_mm:
-                time.sleep(0.4)
-                p2 = _pose["p"]
-                e2 = max(abs(p2[i] - target[i]) * 1000.0 for i in range(3))
-                if e2 <= tol_mm:
-                    return True, e2
-        time.sleep(0.2)
-    return False, best
+                time.sleep(0.5)
+                p2, _q2, src2 = _pose_best()
+                if p2:
+                    e2 = max(abs(p2[i] - target[i]) * 1000.0 for i in range(3))
+                    if e2 <= tol_mm:
+                        return True, e2, src2
+        time.sleep(0.5)
+    return False, best, src
 
 
 def _stage_timeout(st, lin_mm, speed):
@@ -224,10 +260,11 @@ def run_stages(sk, spec, chan, pts):
     任一阶段被守卫拒/未到位 → 中止剩余阶段并**绝不重发**(30s 超时那次的教训)。"""
     steps = sk.get("steps") or []
     n = len(steps)
-    cur = _pose["p"]
-    if not cur or (time.time() - _pose["t"]) > 5.0:
-        log("拒绝: 位姿缓存未就绪(等 tap 真值)")
+    cur, _cq, csrc = _pose_best()
+    if not cur:
+        log("拒绝: 位姿读不到(直读失败且常驻缓存过期)")
         return "位姿缓存未就绪"
+    log("当前位姿(来源 %s): (%.4f, %.4f, %.4f)" % (csrc, cur[0], cur[1], cur[2]))
     plans, c = [], list(cur)
     for i, st in enumerate(steps, 1):
         pl = plan_stage(sk, st, pts, spec, c)
@@ -248,7 +285,7 @@ def run_stages(sk, spec, chan, pts):
                           for i, p in enumerate(plans, 1)))
     for i, st in enumerate(steps, 1):
         pl = plans[i - 1]
-        live = _pose["p"]                                  # 下发前用**实时**位姿复算 Δ + 复检守卫
+        live, _lq, lsrc = _pose_best()                     # 下发前用**实时直读位姿**复算 Δ + 复检守卫
         if live:
             pl2 = plan_stage(sk, st, pts, spec, live)
             if pl2.get("err"):
@@ -260,14 +297,14 @@ def run_stages(sk, spec, chan, pts):
         chan.stdin.flush()
         log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · 等到位上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
-        ok, err = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
+        ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
         if not ok:
-            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm) → 中止剩余阶段, 绝不重发; "
+            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm, 位姿来源 %s) → 中止剩余阶段, 绝不重发; "
                 "⚠️ 已下发的指令不会撤回, 臂可能仍在走 —— 以真值判定, 别重复点"
-                % (i, n, _to, ("%.1f" % err) if err is not None else "无真值"))
+                % (i, n, _to, ("%.1f" % err) if err is not None else "无真值", psrc))
             return "🛑 阶段 %d 未到位, 已中止(见日志)" % i
-        log("✅ 阶段 %d/%d 到位 · 真值偏差 %.1fmm · 夹爪未动"
-            % (i, n, err if err is not None else -1.0))
+        log("✅ 阶段 %d/%d 到位 · 真值偏差 %.1fmm (来源 %s) · 夹爪未动"
+            % (i, n, err if err is not None else -1.0, psrc))
         time.sleep(float(st.get("dwell_s", 1.0)))
     return "✅ 全部 %d 阶段完成" % n
 
