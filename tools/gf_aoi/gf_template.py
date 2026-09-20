@@ -81,10 +81,66 @@ def roi_extent(im, m=None, dens_frac=0.05, dens_min=25, bridge=35, lum_cut=1.25,
     return int(x0), int(x1), int(ytop), int(ybot)
 
 
-def measure_strip(im, verbose=False, top_extra=6, bottom_extra=0):
+def fingers_run(im, m=None, min_h=20, min_gx=18, gap=6, dens_frac=0.05, dens_min=25, verbose=False):
+    """定位"金手指"本身: 主列段内按行密度分 run(允许<=gap行空隙), 取**最上面**那片
+    "边缘密集(离散焊盘)|高度>=min_h" 的 run —— 下方那条实心金带/塑料厚边沿都不取。
+    返回 (x0, x1, ytop, ybot) 或 None"""
+    if m is None:
+        m = gold_mask(im, k=(9, 9))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats((m > 0).astype(np.uint8), 8)
+    if n <= 1:
+        return None
+    i = 1 + int(np.argmax(stats[1:, 4]))
+    x0, x1 = int(stats[i, 0]), int(stats[i, 0] + stats[i, 2] - 1)
+    sub = m[:, x0:x1 + 1]
+    rows = (sub > 0).sum(axis=1)
+    if rows.max() <= 0:
+        return None
+    dense = rows > max(dens_min, dens_frac * rows.max())
+    gx = np.abs(cv2.Sobel(cv2.cvtColor(im, cv2.COLOR_BGR2GRAY), cv2.CV_32F, 1, 0, ksize=3))
+    runs, s = [], None
+    y = 0
+    while y < len(dense):
+        if dense[y] and s is None:
+            s = y
+        elif not dense[y] and s is not None:
+            if any(dense[y:y + gap + 1]):      # 允许 <=gap 行空隙
+                y += 1
+                continue
+            runs.append((s, y - 1)); s = None
+        y += 1
+    if s is not None:
+        runs.append((s, len(dense) - 1))
+    best = None
+    if verbose:
+        print(f"    run 分析 (列段 x[{x0},{x1}], 行密度峰 {rows.max()}, 阈值 {max(dens_min, dens_frac*rows.max()):.0f}):")
+    for (a, b) in runs:
+        h = b - a + 1
+        if h < 8:
+            continue
+        cov = float(sub[a:b + 1].mean()) / 255.0
+        g = float(gx[a:b + 1, x0:x1 + 1].mean())
+        if verbose:
+            print(f"      y[{a},{b}] 高{h:3d} 金覆盖{cov*100:5.1f}% |gx|={g:5.1f} "
+                  f"{'← 焊盘排(候选)' if (h >= min_h and g >= min_gx) else ''}")
+        if h >= min_h and g >= min_gx and best is None:   # 取最上面那个合格 run
+            best = (a, b)
+    if best is None:
+        return None
+    a, b = best
+    # 左右端: 用"最大金连通域"的 x 范围 —— 焊盘两端在部分帧里金像素稀疏, 用 run 自己的列剖面会抖 ±90px;
+    # 金手指与下方金带同属一条连接器边, 列范围一致, 取连通域稳定得多
+    return (x0, x1, a, b)
+
+
+def measure_strip(im, verbose=False, top_extra=2, bottom_extra=2):
     """金手指条几何 {cx,cy,w,h,tilt} —— 覆盖整块金手指区(含上排焊盘 + 下部金带), 不含底部塑料亮边沿"""
     m = gold_mask(im, k=(9, 9))
-    ext = roi_extent(im, m, verbose=verbose)
+    ext = fingers_run(im, m, verbose=verbose)        # ← 只取"金手指"本身(最上面那片离散焊盘 run)
+    if ext is None:
+        if verbose:
+            print("    (未找到焊盘排 run → 退回整块金手指区)")
+        ext = roi_extent(im, m, verbose=verbose)
     if ext is None:
         return None
     x0, x1, y0, y1 = ext

@@ -19,7 +19,7 @@ def _top_edge_slope(mask, frac_col=0.3, smooth=None):
 
 class GoldFingerCropper:
     def __init__(self, template_png, canonical_w=1600, canonical_h=220,
-                 margin_x=0.03, margin_y=0.25, preserve_aspect=True,
+                 margin_x=0.02, margin_y=0.03, preserve_aspect=False,
                  coarse_scale=0.25, coarse_angle=3.0, coarse_step=0.5,
                  fine_step=0.1, fine_scales=(0.97, 1.0, 1.03),
                  min_score=0.55, min_psr=6.0, min_gold_cover=0.35,
@@ -128,13 +128,14 @@ class GoldFingerCropper:
         # ③ 角度精修: 在 ±span 内扫描, 取"裁剪图里条质心线斜率"最小者 —— 直接对准目标度量, 不猜符号
         angle, scan = self._refine_angle(bgr, angle, scale, tc)
         strip = self._strip_from(angle, scale, tc)
-        out, M = self._warp(bgr, strip)
-        q = self._quality(bgr, out)
+        out, M = self._warp(bgr, strip)                     # 规范化画布(默认拉伸到 canonical, 喂 YOLO)
+        out_nat, _ = self._warp(bgr, strip, natural=True)    # 原比例(1:1 像素) —— 指标与目检用
+        q = self._quality(bgr, out_nat)
         self.last = {"method": "template", "score": round(score, 4), "psr": psr,
                      "angle": round(angle, 3), "scale": round(scale, 4),
                      "strip": {k: round(v, 2) for k, v in strip.items()},
                      "quality": q, "canonical": (out.shape[1], out.shape[0]),
-                     "angle_scan": scan}
+                     "natural": (out_nat.shape[1], out_nat.shape[0]), "angle_scan": scan}
         if score < self.min_score:
             self.last["warn"] = f"模板匹配弱 score={score:.3f} < {self.min_score} → 需人工复核"
         elif q["stripe_slope_px_per_1000"] is None:
@@ -144,8 +145,9 @@ class GoldFingerCropper:
                                  f"> 容差 {self.slope_tol} → 需人工复核")
         elif q["gold_cover"] < self.min_gold_cover:
             self.last["warn"] = f"裁剪内金覆盖低 {q['gold_cover']:.2f} → 需人工复核"
+        self._last_natural = out_nat
         if return_debug:
-            return out, self.last, {"M": M, "strip": strip, "tpl_center": tc}
+            return out, self.last, {"M": M, "strip": strip, "tpl_center": tc, "natural": out_nat}
         return out, self.last
 
     def _refine_angle(self, bgr, angle0, scale, tc, span=None, step=0.05):
@@ -206,18 +208,22 @@ class GoldFingerCropper:
         s, _, _ = core_band_slope(self._gold_mask(crop, k=(41, 5)))
         return s
 
-    def _warp(self, bgr, strip):
-        cw = self.canonical_w
-        ch = self.canonical_h
-        mx = int(round(cw * self.margin_x))
-        my = int(round(ch * self.margin_y))
-        if self.preserve_aspect:
-            osw = cw - 2 * mx
-            osh = max(1, int(round(osw * strip["h"] / strip["w"])))
-            ch = osh + 2 * my
+    def _warp(self, bgr, strip, natural=False):
+        if natural:
+            cw, ch = int(round(strip["w"])), int(round(strip["h"]))
+            mx = my = 0
+        else:
+            cw = self.canonical_w
+            ch = self.canonical_h
+            mx = int(round(cw * self.margin_x))
+            my = int(round(ch * self.margin_y))
+            if self.preserve_aspect:
+                osw = cw - 2 * mx
+                osh = max(1, int(round(osw * strip["h"] / strip["w"])))
+                ch = osh + 2 * my
         scale = strip.get("scale", 1.0)
         R = cv2.getRotationMatrix2D((0, 0), strip["angle"], 1.0)   # 与 _rot_tpl 同一约定
-        my_ = int(round(ch * self.margin_y)) if self.preserve_aspect else my
+        my_ = int(round(ch * self.margin_y)) if (self.preserve_aspect and not natural) else my
         dst = np.float32([[mx, my_], [cw - mx, my_], [cw - mx, ch - my_]])
 
         def src_pt(dx, dy):        # dx,dy = 模板空间里相对"条中心"的偏移
