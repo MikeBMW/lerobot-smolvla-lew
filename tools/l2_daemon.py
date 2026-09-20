@@ -88,6 +88,11 @@ def build_move(sk, spec, pts):
         if name not in pts:
             return None
         t = list(pts[name]["pos"])
+        # 2026-09-20 老倪: "回到能看清光模块的位姿" = 位置+姿态都要回到示教点。
+        # 默认沿用旧行为(位置用示教点 · 姿态保持当前), 技能上标 "quat":"taught" 才恢复示教姿态
+        # —— 不改既有 goto_point/home 的行为(避免给老技能加姿态旋转风险)。
+        if str(sk.get("quat", "")).lower() == "taught" and pts[name].get("quat"):
+            q = list(pts[name]["quat"])
     return (t, q)
 
 
@@ -199,11 +204,16 @@ def dispatch(reg, spec, chan):
                     'target_speed: -1.0, target_force: -1.0, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"')
     else:
+        # 点位来源: ①演示学习轨迹点 ②L2 传授点库 taught_points.json (2026-09-20 起,
+        #   供"进入金手指AOI检测区"这类按现场示教的绝对点回点; 同名以传授点库为准)
         pts = {}
-        try:
-            pts = json.load(open(os.path.join(REPO, "data/skills/l2_muscle/光模块_抓放_演示学习_v1.json"), encoding="utf-8"))["points"]
-        except Exception:
-            pts = {}
+        for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
+                    "data/skills/l2_atomic/taught_points.json"):
+            try:
+                with open(os.path.join(REPO, _pf), encoding="utf-8") as _f:
+                    pts.update(json.load(_f).get("points", {}))
+            except Exception as _e:                                          # noqa: BLE001
+                log("点位库 %s 读取失败(跳过): %s" % (_pf, _e))
         r = build_move(sk, spec, pts)
         if not r:
             log("拒绝: 位姿缓存未就绪或点位不存在")
@@ -213,6 +223,11 @@ def dispatch(reg, spec, chan):
         call = ('ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
                 'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
                 % (sp, x, y, z, qx, qy, qz, qw))
+    if spec.get("dry"):
+        # 🧪 2026-09-20: 空跑 —— 算出目标位姿与将要下发的 ros2 调用并打印, **不下发**
+        #   (反复练习/回点前先核对目标, 避免盲发; 也是无副作用的自证手段)
+        log("DRY-RUN %s → %s" % (sid, call[:220]))
+        return "DRY-RUN(未下发): %s" % call[:170]
     chan.stdin.write(call + "\n")
     chan.stdin.flush()
     log("已下发 %s -> %s" % (sid, (spec.get("d_mm", spec.get("force", spec.get("point", ""))))))
