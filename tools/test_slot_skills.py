@@ -160,6 +160,53 @@ _servo = open(os.path.join(REPO, "tools/aoi_gold_servo.py"), encoding="utf-8").r
 check("点动", "视觉伺服不再用旧技能名/已无 sign 字段",
       "L2.move_x" not in _servo and "L2.move_y" not in _servo and "sign=1 if" not in _servo)
 
+print("── 里萨如力控插入 (L2.lissa_insert, 配方只读抄自产线) ──")
+LK = _regj.get("L2.lissa_insert")
+check("里萨如", "技能已注册", LK is not None)
+if LK:
+    IP = PTS.get(LK["point"])
+    st1, st2, st3 = LK["steps"]
+    check("里萨如", "三阶段: 退到插槽口 → 推进插入位 → 调力控服务",
+          st1.get("local_mm") == [0.0, 0.0, -60.0] and st2.get("local_mm") == [0.0, 0.0, 0.0]
+          and st3.get("op") == "service" and len(LK["steps"]) == 3)
+    check("里萨如", "服务名/类型 = 产线原服务",
+          st3["srv"] == "/lissajous_force_search" and st3["type"] == "interfaces/srv/LissajousForceSearch")
+    A = st3["args"]
+    check("里萨如", "参数=产线配方(6N 工具系 XY面 ±10mm/8s 自标定 负载1.51kg)",
+          A["cartesian_desired_force"] == [0.0, 0.0, 6.0, 0.0, 0.0, 0.0] and A["frame_type"] == 3 and A["plane"] == 0
+          and A["search_box"] == [-0.01, 0.01, -0.01, 0.01, -0.01, 0.01] and A["search_box_timeout_sec"] == 8.0
+          and A["calibrate_force_sensor"] is True and A["load"][0] == 1.51
+          and A["use_current_pose_as_box_origin"] is True and A["amplify_one"] == 6.0 and A["frequency_one"] == 3.0)
+    check("里萨如", "全程无夹爪步骤", "grip" not in json.dumps(LK["steps"], ensure_ascii=False))
+    set_pose(IP["pos"], q=IP["quat"], age=0.05)
+    p1 = l2d.plan_stage(LK, st1, PTS, {"speed": 30}, IP["pos"])
+    p2 = l2d.plan_stage(LK, st2, PTS, {"speed": 30}, p1["pos"])
+    Rm = l2d._quat_R(IP["quat"])
+    exp1 = [IP["pos"][i] + Rm[i][2] * (-0.06) for i in range(3)]
+    check("里萨如", "插槽口 = 插入位 + R·(0,0,-60mm) (沿模块轴向退, 不是 base 竖直)",
+          max(abs(p1["pos"][i] - exp1[i]) for i in range(3)) < 1e-9, "退到 (%.4f, %.4f, %.4f)" % tuple(p1["pos"]))
+    check("里萨如", "阶段2 回到插入位(退/进互为逆)",
+          max(abs(p2["pos"][i] - IP["pos"][i]) for i in range(3)) < 1e-9)
+    check("里萨如", "两段直线各 60mm · 限速 30", abs(p1["lin"] - 60.0) < 1.0 and p1["speed"] == 30.0)
+    ch = FakeChan()
+    out = l2d.run_stages(LK, {"skill": "L2.lissa_insert", "speed": 30, "dry": True}, ch, PTS)
+    check("里萨如", "dry 零下发且服务不被调用", ch.writes == [] and "DRY-RUN" in out)
+    # 服务回执路径: 用桩替换真调用, 绝不真打服务
+    _stub = {"id": "T.lissa", "name": "t", "steps": [dict(st3, timeout_s=2)]}
+    set_pose(IP["pos"], q=IP["quat"], age=0.05)
+    l2d._service_call = lambda st: (False, "3.2s · success=False · FORCE_CONTROL_CLEANUP_FAILED setToolset(tool1, wobj0) failed")
+    ch = FakeChan()
+    out = l2d.run_stages(_stub, {"skill": "T.lissa"}, ch, PTS)
+    check("里萨如", "服务 success=False → 中止 且 零运动下发",
+          "服务失败" in out and ch.writes == [], out[:60])
+    l2d._service_call = lambda st: (True, "0.9s · success=True · 插入完成")
+    ch = FakeChan()
+    out = l2d.run_stages(_stub, {"skill": "T.lissa"}, ch, PTS)
+    check("里萨如", "服务 success=True → 阶段完成 且 零运动下发",
+          "全部 1 阶段完成" in out and ch.writes == [], out[:60])
+    check("里萨如", "服务请求串含全部字段(%d 个)" % len(A), l2d._args_to_yaml(A).count(":") >= len(A),
+          l2d._args_to_yaml(A)[:60] + " …")
+
 print("── 全局 ──")
 check("全局", "⑨等待上限按距离估(448mm@30 → >160s)", l2d._stage_timeout({"timeout_s": 60}, 448.0, 30) > 160,
       "%.0fs" % l2d._stage_timeout({"timeout_s": 60}, 448.0, 30))

@@ -198,6 +198,64 @@ def _point_name(sk, st, spec):
     return st.get("to") or spec.get("point") or _pm.get("default") or sk.get("point") or "home"
 
 
+def _quat_R(q):
+    """四元数(xyzw) → 3x3 旋转矩阵 (用于工具坐标系平移: 生产口径 PoseTranslateLocalOffset)"""
+    x, y, z, w = [float(v) for v in q]
+    return [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]]
+
+
+def _args_to_yaml(a):
+    """dict → ROS2 CLI 的服务请求串 {k: v, k2: [..]} (只支持 标量/布尔/数值数组)"""
+    def val(v):
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, int):
+            return str(v)
+        if isinstance(v, float):
+            return repr(v)
+        if isinstance(v, (list, tuple)):
+            return "[" + ", ".join(val(x) for x in v) + "]"
+        return str(v)
+    return "{" + ", ".join("%s: %s" % (k, val(v)) for k, v in a.items()) + "}"
+
+
+def _service_cmd(st):
+    """服务步 → 远端命令行 (ros2 service call)"""
+    return 'timeout %d ros2 service call %s %s "%s"' % (
+        int(float(st.get("timeout_s", 60)) + 10), st["srv"], st["type"], _args_to_yaml(st.get("args") or {}))
+
+
+def _service_call(st):
+    """**同步**调一个 ROS 服务并解析真实回执 → (ok, 摘要)。
+
+    为什么必须同步看回执: 力控类原语(里萨如力控插入)的成败只有驱动知道, 失败原因写在 message 里
+    (实测 2026-09-17: `FORCE_CONTROL_CLEANUP_FAILED ... setToolset(tool1, wobj0) failed: 工具工件坐标系
+    设置失败`)。只看"已下发"会把失败当成功 —— 老倪的红线: 判完成只看真值/真实回执, 不看 success 假象。
+    """
+    if not st.get("srv") or not st.get("type"):
+        return False, "服务步缺少 srv/type"
+    cmd = PRE + _service_cmd(st)
+    t0 = time.time()
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, cmd],
+                           capture_output=True, text=True, timeout=float(st.get("timeout_s", 60)) + 25)
+        out = (r.stdout or "") + (r.stderr or "")
+    except Exception as e:                                                   # noqa: BLE001
+        return False, "服务调用异常: %s" % e
+    dt = time.time() - t0
+    flat = out.replace(" ", "")
+    if "success=True" in flat:
+        ok = True
+    elif "success=False" in flat:
+        ok = False
+    else:
+        return False, "%.1fs · 没拿到 success 字段(超时/服务未起?) · 尾部: %s" % (dt, out.strip()[-200:])
+    m = re.search(r"message='([^']*)'", out) or re.search(r'message="([^"]*)"', out)
+    return ok, "%.1fs · success=%s · %s" % (dt, ok, (m.group(1) if m else "")[:400])
+
+
 def plan_stage(sk, st, pts, spec, cur):
     """算单阶段 目标/Δ/方向/下发字节; 守卫不过 → 返回 {"err":...} (调用方一律不下发)"""
     name = _point_name(sk, st, spec)
@@ -211,6 +269,13 @@ def plan_stage(sk, st, pts, spec, cur):
         q = list(_pose["q"]) if _pose["q"] else None
     if not q:
         return {"err": "位姿缓存未就绪(当前姿态缺)"}
+    # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
+    #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
+    lm = st.get("local_mm")
+    if lm:
+        R = _quat_R(q)
+        for i in range(3):
+            t[i] += (R[i][0] * float(lm[0]) + R[i][1] * float(lm[1]) + R[i][2] * float(lm[2])) / 1000.0
     dx, dy, dz = [(t[i] - cur[i]) * 1000.0 for i in range(3)]
     _dir = "↑上升" if dz > 0.5 else ("↓下降" if dz < -0.5 else "→平动")
     lin = (dx * dx + dy * dy + dz * dz) ** 0.5
@@ -298,6 +363,16 @@ def run_stages(sk, spec, chan, pts):
     log("当前位姿(来源 %s): (%.4f, %.4f, %.4f)" % (csrc, cur[0], cur[1], cur[2]))
     plans, c = [], list(cur)
     for i, st in enumerate(steps, 1):
+        if st.get("op") == "service":
+            # 服务步 (如里萨如力控搜索): 本机不下发运动, 由驱动自己动作 —— 计划阶段只做前置校验
+            if not st.get("srv") or not st.get("type"):
+                log("🛡 阶段 %d/%d 拒绝: 服务步缺 srv/type" % (i, n))
+                return "阶段 %d 拒绝: 服务步缺 srv/type" % i
+            plans.append({"service": True, "pos": None, "lin": 0.0, "speed": 0.0, "dx": 0.0, "dy": 0.0,
+                          "dz": 0.0, "dir": "服务", "name": st["srv"], "call": _service_cmd(st)})
+            log("阶段 %d/%d「%s」→ 调服务 %s (本机不下发运动; 力控由驱动执行)"
+                % (i, n, st.get("note", ""), st["srv"]))
+            continue
         pl = plan_stage(sk, st, pts, spec, c)
         if pl.get("err"):
             log("🛡 阶段 %d/%d 拒绝: %s" % (i, n, pl["err"]))
@@ -310,12 +385,25 @@ def run_stages(sk, spec, chan, pts):
                _stage_timeout(st, pl["lin"], pl["speed"])))
     if spec.get("dry"):
         for i, pl in enumerate(plans, 1):
-            log("DRY-RUN 阶段 %d/%d 将下发: %s" % (i, n, pl["call"][:220]))
+            if pl.get("service"):
+                log("DRY-RUN 阶段 %d/%d 将调用: %s" % (i, n, pl["call"]))
+            else:
+                log("DRY-RUN 阶段 %d/%d 将下发: %s" % (i, n, pl["call"][:220]))
         return "DRY-RUN(未下发) %d 阶段: %s" % (
-            n, " | ".join("阶段%d Δ=(%+.1f,%+.1f,%+.1f)mm%s" % (i, p["dx"], p["dy"], p["dz"], p["dir"])
+            n, " | ".join(("阶段%d 服务 %s" % (i, p["name"])) if p.get("service")
+                          else ("阶段%d Δ=(%+.1f,%+.1f,%+.1f)mm%s" % (i, p["dx"], p["dy"], p["dz"], p["dir"]))
                           for i, p in enumerate(plans, 1)))
     for i, st in enumerate(steps, 1):
         pl = plans[i - 1]
+        if st.get("op") == "service":
+            # 力控类原语: **同步**调用 + 看真实回执(success/message), 失败即中止, 绝不重发
+            ok, info = _service_call(st)
+            log("阶段 %d/%d「%s」服务回执: %s" % (i, n, st.get("note", ""), info))
+            if not ok:
+                log("🛑 阶段 %d/%d 服务失败 → 中止剩余阶段, 不重发" % (i, n))
+                return "🛑 阶段 %d 服务失败: %s" % (i, info)
+            time.sleep(float(st.get("dwell_s", 0.5)))
+            continue
         live, _lq, lsrc = _pose_best()                     # 下发前用**实时直读位姿**复算 Δ + 复检守卫
         if live:
             pl2 = plan_stage(sk, st, pts, spec, live)
