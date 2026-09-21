@@ -62,6 +62,12 @@ REAL_FILE_CANDS = (
     ("cam_latest.png", "最近图像帧 (Docker tap 落盘)"),
     ("srv_cam.png", "srv 落盘 PNG"),
     ("srv_cam.jpg", "srv 落盘 JPEG"),
+    # 🩹 2026-09-20 老倪: 「状态空间工程的 YOLO目标检测节点, 我还是看不到输入图像」——
+    #   根因: Orin 重启后产线相机节点未跑 → cam_rs/cam_fp/cam_latest 全缺 → 无候选可上屏;
+    #   而 L2 (ss_yolo_on_real CAND) 此时吃的是本机工位相机兜底帧 cam_local.png (source_kind=bench_cam)。
+    #   → 面板候选链补上同一条 (与 L2 严格同源), 并**自报家门**「本机工位相机(备用·非产线视角)」,
+    #     绝不冒充产线 RealSense; 产线帧一回来即被上面的 cam_rs/cam_fp 优先选中。
+    ("cam_local.png", "本机工位相机 (备用·非产线视角 · 与 L2 同源)"),
 )
 REAL_FILE_FRESH_S = float(os.environ.get("ZMAX_VIEWER_FILE_FRESH_S", "10"))
 # 💻 2026-09-17 老倪: 第三路输入源 = 本机内置摄像头 (UVC 直读, 不依赖 Orin/Docker)
@@ -390,6 +396,34 @@ class _CamGrabber(threading.Thread):
             pass
         return cap
 
+    def _file_frame(self, max_age: float = 10.0):
+        """📄 文件同源兜底: 读取图小进程落盘的 cam_local.png (与直读是同一台本机相机)。
+
+        用途: 设备被其它进程占用 (常见: tools/local_cam_feed.py 常驻取图, 供 L2/面板共享) 时,
+              「💻 本机摄像头」这一路不再空转报错, 而是读同一路落盘帧。
+        纪律: 只上新鲜帧 (mtime 年龄 ≤ max_age), 时钟回拨负龄拒用; 非新鲜 → None (绝不拿旧图冒充实时)。
+        """
+        import os as _os
+        import time as _tm
+        p = _os.path.join(_os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote"),
+                          "cam_local.png")
+        try:
+            if not _os.path.isfile(p):
+                return None
+            age = _tm.time() - _os.path.getmtime(p)
+            if age < -1.0 or age > max_age:
+                return None
+            from PIL import Image
+            im = Image.open(p).convert("RGB")
+            rgb = np.asarray(im)
+        except Exception:                                                    # noqa: BLE001
+            return None
+        return {"rgb": rgb, "info": {
+            "src": "usbcam_file:cam_local.png",
+            "device": "本机工位相机 (文件同源·取图进程占用设备时)",
+            "shape": f"{rgb.shape[1]}x{rgb.shape[0]}", "engine": False, "usbcam": True,
+            "file_age_s": round(age, 2)}}
+
     def run(self):
         cv2 = self.cv2
         if cv2 is None:
@@ -409,6 +443,16 @@ class _CamGrabber(threading.Thread):
                     time.sleep(1.0)
                     continue
                 if not cap.isOpened():
+                    # 🩹 2026-09-20: 设备被"取图小进程"(tools/local_cam_feed.py)占用时, 原来只报错空转 →
+                    #   现在回退读**同一路落盘帧** cam_local.png (同一物理相机/同一口径), info 里自报家门
+                    #   "文件同源"; 设备一旦空出来, 循环下一轮自动切回直读。
+                    fm = self._file_frame()
+                    if fm is not None:
+                        self.q.put(fm)
+                        dt = (1.0 / self.fps) - (time.time() - t0)
+                        if dt > 0:
+                            time.sleep(dt)
+                        continue
                     self.q.put({"err": f"打不开摄像头 {self.dev} (被占用? 另一路摄像头源/其它程序正在读; "
                                        f"或设备号不对 → 可改 ZMAX_USBCAM_DEV=/dev/videoN)"})
                     time.sleep(1.0)
@@ -1373,7 +1417,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         """
         fresh_s = REAL_FILE_FRESH_S if fresh_s is None else fresh_s
         now = time.time()
-        best, status = None, []
+        fresh, status = [], []
         for name, label in REAL_FILE_CANDS:
             p = os.path.join(SHARED, name)
             if not os.path.isfile(p):
@@ -1392,12 +1436,17 @@ class YoloInputViewer(QtWidgets.QDialog):
                 continue
             if age <= fresh_s:
                 status.append(f"{name}: ✅ 新鲜 {age:.1f}s")
-                if best is None or age < best[2]:
-                    best = (p, label, age)
+                fresh.append((p, label, age, name))
             else:
                 status.append(f"{name}: ⚠️ 旧帧 {age:.0f}s")
         self._real_cand_status = status
-        return best
+        # 🩹 2026-09-20: 兜底源不得抢源 —— 只要产线(RealSense/FoundationPose)帧新鲜, 就用它;
+        #   本机工位相机帧写入更频, 若按"最新鲜"取会让画面在两路之间来回跳。
+        pool = [c for c in fresh if c[3] != "cam_local.png"] or fresh
+        if not pool:
+            return None
+        pool.sort(key=lambda c: c[2])
+        return pool[0][0], pool[0][1], pool[0][2]
 
     def _tick_real_fallback(self, stale_gap_s: float, meta: dict | None) -> bool:
         """srv 真机帧不可用/不新鲜时的**同源回退**: 用 Docker tap 落盘帧 (L2 吃的那一条)。

@@ -694,7 +694,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.11.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.11.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -6606,6 +6606,16 @@ class HardwareModule(SubModuleWidget):
         self.btn_cam_connect.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 12px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
         self.btn_cam_connect.clicked.connect(self._cam_connect)
         cam_bar.addWidget(self.btn_cam_connect)
+        # 🔀 2026-09-20 老倪: 「怎么在我的本机摄像头, 和 realsense 摄像头, 来回切换呢?」
+        #   本面板加「来源」切换 (切换立即生效: 已连接时下一轮轮询即换源, 未连接时点连接即按所选来源)
+        self.cb_cam_src = QComboBox()
+        self.cb_cam_src.addItems(["🔁 自动 (远端 → 产线RealSense → 本机相机)",
+                                  "🎥 产线 RealSense (cam_rs.png)",
+                                  "💻 本机工位相机 (cam_local.png)"])
+        self.cb_cam_src.setStyleSheet(f"QComboBox{{background:#161b22; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                                      f" border-radius:6px; padding:4px; font-size:18px;}}")
+        self.cb_cam_src.currentIndexChanged.connect(self._cam_src_changed)
+        cam_bar.addWidget(self.cb_cam_src)
         self.cam_status = QLabel("⚪ 未连接 · 快照端点 datadrive.world/api/snapshot/latest")
         self.cam_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; background:transparent; border:none;")
         cam_bar.addWidget(self.cam_status, 1)
@@ -6750,6 +6760,73 @@ class HardwareModule(SubModuleWidget):
         btn.setToolTip(f"塔灯 {text}")
         return btn
     
+    # 🩹 2026-09-20 老倪: 「VEH.3.28 摄像头实时画面, 硬件工具箱, 连接摄像头 还是没有图像」
+    #   根因: 本面板只认远端快照 https://datadrive.world/api/snapshot/latest (ECS 中继), 该端点现在不可达
+    #   (老倪口径"晚上再开") → 探测失败就报"无图像", 与真机相机在不在无关。
+    #   修: 远端不可达时**回退本地新鲜帧** —— 与「输入图像」面板/L2 同一条候选链 (含 cam_local 兜底),
+    #       状态栏**自报家门**(来源标签 + 帧龄); 远端恢复后仍优先远端。旧帧绝不当实时帧用。
+    _CAM_LOCAL_CANDS = (
+        ("cam_rs.png", "产线 RealSense (Docker tap 落盘)"),
+        ("cam_fp.png", "FoundationPose 调试图 (Docker tap 落盘)"),
+        ("cam_local.png", "本机工位相机 (备用·非产线视角)"),
+    )
+    _CAM_SRC_NAMES = ("自动", "产线 RealSense", "本机工位相机")
+
+    def _cam_src_pref(self):
+        """当前来源偏好 (读下拉实时值, 切换立即生效): 0=自动 1=产线RealSense 2=本机相机"""
+        try:
+            return int(self.cb_cam_src.currentIndex())
+        except Exception:                                                      # noqa: BLE001
+            return 0
+
+    def _cam_src_changed(self, *_):
+        i = self._cam_src_pref()
+        nm = self._CAM_SRC_NAMES[i] if 0 <= i < len(self._CAM_SRC_NAMES) else str(i)
+        self.cam_status.setText(f"🔀 来源已切换: {nm} — 未连接请点「连接摄像头」; 已连接下一轮(1.5s)生效")
+        self._log(f"🔀 摄像头来源切换为: {nm}")
+
+    def _cam_local_frame(self):
+        """本地新鲜帧回退: 返回 (bytes, 来源标签, 帧龄s) 或 None。
+
+        纪律同输入图像面板: 只上新鲜帧 (mtime 年龄 ≤10s), 时钟回拨负龄一律拒用, 旧帧不冒充实时。
+        🔀 2026-09-20: 按「来源」下拉过滤候选 (自动=全链 · 产线RealSense=不含本机相机 · 本机=只本机相机)。
+        """
+        import os as _os
+        import time as _tm
+        base = _os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        pref = self._cam_src_pref()
+        cands = self._CAM_LOCAL_CANDS
+        if pref == 1:
+            cands = tuple(c for c in cands if c[0] != "cam_local.png")
+        elif pref == 2:
+            cands = tuple(c for c in cands if c[0] == "cam_local.png")
+        best_real, best_local = None, None
+        for name, label in cands:
+            p = _os.path.join(base, name)
+            if not _os.path.isfile(p):
+                continue
+            try:
+                age = _tm.time() - _os.path.getmtime(p)
+            except OSError:
+                continue
+            if age < -1.0:                      # ⏰ 时钟回拨 (mtime 在未来) → 拒用
+                continue
+            if age <= 10.0:
+                try:
+                    item = (open(p, "rb").read(), label, age)
+                except OSError:
+                    continue
+                # 🩹 2026-09-20: 兜底源不得抢源 —— 本机相机帧写入更频 (2Hz) 比产线帧 (1Hz) 新,
+                #   若按"最新鲜"取会永远显示本机相机 (老倪实测: 「还是本机摄像头」)。
+                #   → 产线 RealSense/FoundationPose 帧新鲜时一律优先; 全无才用本机相机兜底。
+                if name == "cam_local.png":
+                    if best_local is None or age < best_local[2]:
+                        best_local = item
+                else:
+                    if best_real is None or age < best_real[2]:
+                        best_real = item
+        return best_real or best_local
+
     def _cam_connect(self):
         """🔌 摄像头连接: 探测快照端点 → 开始轮询显示 (2026-08-09 老倪: cicd.html 方案)
         🐛 2026-08-10 老倪: 同步 requests 在主线程会阻塞 GUI (网络超时=窗口假死)
@@ -6758,6 +6835,9 @@ class HardwareModule(SubModuleWidget):
         self.btn_cam_connect.setEnabled(False)
 
         def _probe():
+            # 🔀 2026-09-20: 来源下拉 = 产线RealSense / 本机相机 时**跳过远端快照探测** (直接走本地链)
+            if self._cam_src_pref() != 0:
+                return (None, None, None, f"来源={self._CAM_SRC_NAMES[self._cam_src_pref()]} (已跳过远端快照)")
             try:
                 import requests as _rq
                 r = _rq.get("https://datadrive.world/api/snapshot/latest", timeout=4)
@@ -6768,6 +6848,20 @@ class HardwareModule(SubModuleWidget):
         def _apply(res):
             code, ctype, content, err = res
             self.btn_cam_connect.setEnabled(True)
+            ok_remote = (not err) and code == 200 and (ctype or "").startswith("image")
+            if not ok_remote:
+                # 🩹 远端快照不可达/无图 → 本地新鲜帧回退 (来源与帧龄如实写在状态栏, 不冒充远端)
+                loc = self._cam_local_frame()
+                if loc is not None:
+                    data, label, age = loc
+                    self.cam_status.setText(f"🟡 已连接 · 远端快照不可达 → 本地源: {label} · 帧龄 {age:.1f}s")
+                    self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:19px; background:transparent; border:none;")
+                    self.btn_cam_connect.setText("⏹ 断开摄像头")
+                    self._show_cam_frame(data)
+                    self._cam_timer.start(1500)      # 1.5s 轮询 (远端一恢复自动切回远端)
+                    self._log(f"📷 摄像头已连接 (本地回退) — 源 {label} · 帧龄 {age:.1f}s · "
+                              f"远端失败: {err or ('HTTP %s' % code)}")
+                    return
             if err:
                 self.cam_status.setText(f"❌ 连接失败: {err}")
                 self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:19px; background:transparent; border:none;")
@@ -6805,15 +6899,19 @@ class HardwareModule(SubModuleWidget):
         self._cam_polling = True
 
         def _fetch():
-            try:
-                import requests as _rq
-                r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
-                            timeout=4)
-                if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
-                    return r.content
-            except Exception:
-                pass  # 单帧失败不中断轮询
-            return None
+            # 🔀 2026-09-20: 来源=产线RealSense/本机相机 → 跳过远端, 直接读本地链
+            if self._cam_src_pref() == 0:
+                try:
+                    import requests as _rq
+                    r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
+                                timeout=4)
+                    if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
+                        return r.content
+                except Exception:
+                    pass  # 单帧失败不中断轮询
+            # 🩹 2026-09-20: 远端不可达 → 本地新鲜帧兜底 (与连接探测同一条候选链), 远端恢复后自动切回
+            loc = self._cam_local_frame()
+            return loc[0] if loc is not None else None
 
         def _apply(data):
             self._cam_polling = False
@@ -6823,18 +6921,32 @@ class HardwareModule(SubModuleWidget):
         _th.Thread(target=lambda: self._cam_apply_later(_fetch, _apply), daemon=True).start()
 
     def _show_cam_frame(self, data):
-        """📷 QLabel 显示 JPEG 帧"""
+        """📷 QLabel 显示帧 (JPEG / PNG 自适应)
+
+        🩹 2026-09-20 老倪: 「摄像头实时画面, 显示已经连接, 但是没有图像」——
+          根因: 这里原来写死 `loadFromData(data, "JPG")`, 而新增的**本地回退帧是 PNG**
+          (cam_local.png / cam_rs.png)。格式不匹配 → loadFromData 失败 → pm 为空 → 画面空白,
+          但状态栏已按"已连接"显示 (所以表现正是"已连接却没图")。
+          → 先让 Qt 按文件魔数自动识别, 再按显式格式兜底; 仍失败则如实记录(不静默)。
+        """
         try:
             from PyQt5.QtGui import QPixmap
             from PyQt5.QtCore import QBuffer, QByteArray
             pm = QPixmap()
-            pm.loadFromData(data, "JPG")
-            if not pm.isNull():
+            ok = pm.loadFromData(data)
+            if not ok:
+                for fmt in ("JPG", "PNG", "BMP"):
+                    if pm.loadFromData(data, fmt):
+                        ok = True
+                        break
+            if ok and not pm.isNull():
                 # 等比缩放保持比例
                 self.cam_view.setPixmap(pm.scaled(self.cam_view.width(), self.cam_view.height(),
                                                   Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        except Exception:
-            pass
+            else:
+                self.cam_view.setText(f"⚠️ 帧解码失败 ({len(data) if data else 0} 字节) — 格式未识别")
+        except Exception as e:                                                 # noqa: BLE001
+            self.cam_view.setText(f"⚠️ 显示失败: {type(e).__name__}: {e}")
 
     def _on_ws_status(self, evt):
         """📡 WS 实时 Orin 状态回调 — 🐛 2026-08-19 Segfault 根治:
@@ -10297,7 +10409,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.11.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.11.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10305,9 +10417,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.11.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.11.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.11.3: 🧠🎯 **VLM 通用视觉编码器 归位 L3 高级自动功能行 (紧接 Flow-Matching DiT)** — 老倪: 「画布上, VLM通用视觉编码器, 应该是 L3高级自动功能的功能, 后面直接跟着 Flow-Matching DiT。你先改好画布, 然后保存数据, 小版本迭代, 准备关机」 ①**根因**: 该节点原在 🧠大模型层行 (1000,952), 且与 n_vlm_llm(800,w=320)/ss_mem_share(1130,w=280) 空间重叠 —— 既放错行又压着别的节点。②**改动**(`tools/gui/fix_vlm_l3_row.py`, 幂等可重跑): ssvlm → **(1160, 2576)** 即 🚀 L3 高级自动功能行; 该行背景向左扩到 x=1000 (w 7770→8390) 把节点包在带内; 确认 `ssvlm → ssdec(Flow-Matching Action Head DiT)` 直达连线在位。③**x=1160 的取值理由(布局纪律)**: 它在 L4 行流形节点 (x=1180/1310/1490) **左侧** ⇒ 原有 4 条出边仍是"左→右"正向, 不因移位产生老倪明确不要的"右→左"连线 (2026-09-19 布局坑: 剔除右→左会误伤主干)。④**证据**(offscreen 真加载 + JSON 静态断言): 节点 83 · 画布连线 127(JSON 131 条按 (f,t) 去重后, 4 对重复为既有) · VLM 落在 L3 带内(水平/垂直) · 与 DiT 同行且间距 370px · VLM→DiT 直达边在 · **全画布 右→左 0 条** ✓ · 幂等复跑"已就位"。(验证脚本 /tmp/hermes-verify-vlm-l3-row.py; 备份 /tmp/state_space_obs.bak_*.json)
         # v5.11.2: 🎯 **金手指 AOI v4 — 模板法规整截取 + 区域检测/视觉伺服对准 + 自动对焦 + 状态空间接线** — 老倪: 「之前的代码把金手指截取的歪歪扭扭，不合格；你来用模板的方式截取规整的金手指部分」→「下方还有一个厚厚的边沿，不是金手指，也要去掉，只保留金手指部分；而且金手指纵向太短了，要拉长到符合 YOLO v8 检测的比例」。①**歪斜根因(实测)**: 固定窗 [[400,1000],[2000,1000],[2000,1250],[400,1250]] 与实际条位置对不上(条中心 y 在 1008~1450 漂 ~400px, 条自身还带 0.6~1.0° 倾角), 且 `out_w=None→out_w=img_w` 把 1600x250 的窗静默拉成原图 2448x2048(纵向 8.2x 拉伸) = 又歪又拉长。②**v4 模板法**: 参考真图去倾斜 ROI 做模板(居中存放) → 运行期 1/4 尺度多角度粗搜 → 1/1 局部窗精修(角度+尺度) → **角度扫描: 直接以「实心金带核心行(行密度≥95%峰值)质心线斜率」为目标度量取最小**(不猜符号) → 单次仿射映射到规范化画布; 兜底链 模板失败→HSV 条带→中心窗(明确标记)。③**现场两轮目检后的几何**: 只保留**焊盘排**(离散, |gx|≥18) = 金手指本身 **1455x70**, 下方实心金带(覆盖64%/|gx|8.3)与塑料本体亮边沿(亮度冲 255)一律不进画布; 金手指只占 21:1 太扁 → 纵向拉伸到 **960x960 方图**(与 yolo_detector/config.yaml imgsz=960 对齐, 不 letterbox/不上采样), 另存原比例版供目检。④**接口**(工控机 10082): `/picture`=原始图 2448x2048 · `?kind=crop`=拉长 960x960 · `?kind=natural`=原比例 1455x70 · `/crop_info`=score/残余倾角/线残差/金覆盖/高亮占比 · **新增 `/region`=原始图坐标系金手指区域(定向框+四边形+外接框)+对焦清晰度 focus(Laplacian 方差)**。⑤**视觉伺服 tools/aoi_gold_servo.py**(注册 L2.aoi_gold_align): 区域偏差→`Δarm=-M·e`(符号实测, 标定雅可比) + 沿光轴退火爬坡对焦(0.8→0.4→0.2mm, focus 峰值即停) + **四级闸**(默认 dry-run / 检测不可靠否决 / 单步2mm·单轴15mm·25次 / 实测位移 vs 雅可比预期 >3x 立即停); 一次 `teach` 基准 + 一次 `calibrate` 雅可比。⑥**技能清单 UI**: 图片预览区加「来源」下拉(金手指拉长960 / 原图 / 原比例), 默认拉长版 —— 原来写死 /picture 而那个口现在是原图, 所以看不到拉长后的金手指。⑦**实测证据**: 5 张真图 条 **1454~1462 x 70~72 跨帧一致** · score 0.933~0.938 · **残余倾角 -0.94~0.61 px/1000**(v3 现状 0.87~1.02 且整幅残差 98px) · 桩相机全链 5/5 · 真 Flask+HTTP 端到端 8/8(含解码校验 2448x2048 / 960x960 / 1455x70) · 伺服离线 5/5(收敛/限幅/否决/对焦/dry-run)。⑧**数据**: tools/aoi_gold_region_label.py 用模板法几何**自动标** YOLO 区域数据集(低可信 score<0.90 或覆盖<0.45 自动挑出人工复核), 缺的是现场图片量。 | v5.11.1: 🧠→💪 **大模型层指挥 L2 技能升级 + 节点↔代码全对齐** — 老倪: 「L2 的原子技能不仅要高效, 还要保持更新; DeepSeek VL 识别出新路径/新场景时, L2 技能要能被快速更新; 设计快速学习训练流程 … 首先对齐仿真系统, 代码每个节点都要实际对应上」 ①**L2 快速学习/更新器** `tools/l2_skill_learn.py` (--from-trace 从演示轨迹提取点位生成技能 · --from-plan 按 VL/L3 规划生成 · --set-point 就地更新点位并版本自增 · 全部变更写 `data/skills/CHANGELOG.jsonl` 可回溯; 实测: 真演示轨迹→15 点技能 ✓ p1 更新→v2 ✓) ②**执行器热加载**: 注册表 mtime 一变立即重读 ⇒ 技能更新**下一帧即用, 无需重启** ✓ ③**编排器** `tools/l2_autoupdate.py`: DeepSeek VL 场景理解 → LLM 判定场景/技能失配 → 生成点位更新提案 → `--apply` 热更新 (真跑: 真实场景+真实技能 → 提案 {"action":"none"} ✓) ④**节点↔代码审计** `tools/verify_node_code_map.py`: **67/67 节点全对齐 · 0 孤儿节点 · 骨干映射文件全部存在** ✓ (修正: 引擎真实位置 tools/gui/state_space_sim_real.py) ⑤**AOI 三技能**: 金手指/表面/金手指AOI图片 + `cam_finger_10082_work_v3.py` 已上工控机(新增 /picture 读当前照片 · /last_result 读判决 · --port 安全测试; 改动仅 5 行) ⑥**技能清单 UI**: 亮字深底 · 字号放大(列表17px/窗口820x620) · **图片预览区**(金手指AOI图片直接显示照片, 支持自动刷新2s) · HTTP技能不再带 speed 参数
         # v5.11.0: 💪 **L2 原子技能常驻执行器(延迟 60s→<1s) + 技能清单 UI + 画布主干连线修复** — 老倪: 「再次整合 L4 L3 L2 功能。现在你的反馈速度太慢了，发出指令后 1 分钟才能动作。你要将这些技能固化到 L2 级别功能 … 在工程记忆 技能与经验库 节点，双击后打开技能清单 … 例如，用户可以选择 抬升技能，再输入 10cm, 点击开始，则立刻驱动机械臂抬升 10 厘米；你来设计 UI」
         #   ①**速度根因与修复**: 旧路径每条指令都要"新开 ssh + ROS 发现 + 等驱动 30s 空闲" ⇒ 用户感受 ~60s ✗ → 新增 `tools/l2_daemon.py` 常驻执行器: 两条常驻 ssh 通道(命令循环·环境只 source 一次 + 位姿流维护位姿缓存) + FIFO 接口(`~/zmax_data/l2_cmd.fifo`, 写一行 JSON 即下发) + **发完立即回执** → 实测 21:12:43 写 FIFO 同秒「已下发」, z 0.29235→0.30235 = 精确 +10.00mm ✓

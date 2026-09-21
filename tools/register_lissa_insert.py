@@ -35,6 +35,27 @@ PROD_VMAX = [0.1, 0.1, 0.01, 5.0, 5.0, 5.0]                       # 笛卡尔限
 RETRACT_MM = 60.0                                                 # 插槽口 = 插入位沿工具 Z 退 60mm (第一次)
 
 
+def _svc_step(force, stage=3):
+    return {"stage": stage, "op": "service", "srv": "/lissajous_force_search",
+            "type": "interfaces/srv/LissajousForceSearch", "timeout_s": 60, "dwell_s": 0.5,
+            "note": "阶段%d 里萨如力控搜索插入(%.0fN)" % (stage, force),
+            "args": {
+                "frame_type": 3,                                   # 工具坐标系
+                "plane": 0,                                        # XY 平面李萨如抖动
+                "load": PROD_LOAD,
+                "cartesian_stiffness": PROD_K,
+                "cartesian_max_vel": PROD_VMAX,
+                "cartesian_desired_force": [0.0, 0.0, force, 0.0, 0.0, 0.0],   # 沿工具 Z 压
+                "amplify_one": 6.0, "frequency_one": 3.0,
+                "amplify_two": 4.0, "frequency_two": 2.0, "phase_diff": 0.0,
+                "calibrate_force_sensor": True, "force_settle_sec": 0.1,
+                "timeout_sec": 2.0,
+                "use_current_pose_as_box_origin": True,             # 搜索盒原点=当前位置(插槽口/插入位)
+                "search_box": [-0.01, 0.01, -0.01, 0.01, -0.01, 0.01],   # ±10mm 盒(min/max 对)
+                "search_box_is_inside": True, "search_box_timeout_sec": 8.0,
+            }}
+
+
 def build(name, pt, force=6.0):
     return {
         "id": "L2.lissa_insert",
@@ -48,38 +69,43 @@ def build(name, pt, force=6.0):
         "param": {},
         "guard": {"max_lin_mm": 300, "z_floor_point": pt, "z_floor_offset_mm": 0},
         "steps": [
-            {"stage": 1, "to": pt, "local_mm": [0.0, 0.0, -RETRACT_MM],
-             "note": "阶段1 沿模块轴向退 60mm 到插槽口", "guard": {"dz_down_limit_mm": 400},
+            {"stage": 1, "to": pt, "local_mm": [0.0, 0.0, -RETRACT_MM], "needs_unlock": True,
+             "note": "阶段1 沿模块轴向退 60mm 到插槽口(⚠️ 会拔出模块: 必须先解锁)", "guard": {"dz_down_limit_mm": 400},
              "tol_mm": 1.0, "timeout_s": 90, "dwell_s": 1.0},
             {"stage": 2, "to": pt, "local_mm": [0.0, 0.0, 0.0],
              "note": "阶段2 直线推进到插入位", "guard": {"dz_down_limit_mm": 40},
              "tol_mm": 0.5, "timeout_s": 90, "dwell_s": 1.0},
-            {"stage": 3, "op": "service", "srv": "/lissajous_force_search",
-             "type": "interfaces/srv/LissajousForceSearch", "timeout_s": 60, "dwell_s": 0.5,
-             "note": "阶段3 里萨如力控搜索插入(%.0fN)" % force,
-             "args": {
-                 "frame_type": 3,                                   # 工具坐标系
-                 "plane": 0,                                        # XY 平面李萨如抖动
-                 "load": PROD_LOAD,
-                 "cartesian_stiffness": PROD_K,
-                 "cartesian_max_vel": PROD_VMAX,
-                 "cartesian_desired_force": [0.0, 0.0, force, 0.0, 0.0, 0.0],   # 沿工具 Z 压
-                 "amplify_one": 6.0, "frequency_one": 3.0,
-                 "amplify_two": 4.0, "frequency_two": 2.0, "phase_diff": 0.0,
-                 "calibrate_force_sensor": True, "force_settle_sec": 0.1,
-                 "timeout_sec": 2.0,
-                 "use_current_pose_as_box_origin": True,             # 搜索盒原点=当前位置(插槽口/插入位)
-                 "search_box": [-0.01, 0.01, -0.01, 0.01, -0.01, 0.01],   # ±10mm 盒(min/max 对)
-                 "search_box_is_inside": True, "search_box_timeout_sec": 8.0,
-             }},
+            _svc_step(force, 3),
         ],
         "contact_guard": "力控插入只靠驱动的 cartesian_desired_force(本机不下压); 若现场见插入不到位, "
                          "先看服务回执原文, 再考虑改用 8N(产线第二次档), 不改判据硬说成功",
         "note": "【%s · 里萨如力控插入】配方**只读抄自产线** 尝试插入第一次.yaml: "
                 "沿工具 Z 退 60mm 到插槽口 → 直线推进到插入位(%s 示教点) → 调 /lissajous_force_search"
-                "(工具系 · XY 平面 · 6N 沿工具 Z · 李萨如 6mm/3Hz + 4mm/2Hz · 盒 ±10mm/8s · 到位前自动标定力传感器)。"
+                "(工具系 · XY 平面 · %.0fN 沿工具 Z · 李萨如 6mm/3Hz + 4mm/2Hz · 盒 ±10mm/8s · 到位前自动标定力传感器)。"
                 "全程不发夹爪指令。服务回执 success=False 即中止并报原文。"
-                "产线原流程还用 8N 做第二次尝试; 要先只送插槽口再纯力控插入(不推到位), 去掉阶段2 即可。" % (name, pt),
+                "已到槽口只想做力控那一段 → 用同源技能 L2.lissa_search(同一份配方, 只调服务)。"
+                % (name, pt, force),
+    }
+
+
+def build_search_only(pt, force=6.0):
+    """只跑力控搜索那一段 (人工已把模块摆到槽口时用) —— 与三段技能**同一份配方**(共用 _svc_step)。"""
+    return {
+        "id": "L2.lissa_search",
+        "name": "里萨如力控插入·只搜索",
+        "icon": "🔍",
+        "ros": "line_abs",
+        "quat": "taught",
+        "point": pt,
+        "point_locked": True,
+        "speed_max": 30,
+        "param": {},
+        "guard": {"max_lin_mm": 300, "z_floor_point": pt, "z_floor_offset_mm": 0},
+        "steps": [_svc_step(force, 1)],
+        "contact_guard": "只调力控服务, 本机不下发任何运动; 回执 success=False 即中止不重发",
+        "note": "【里萨如力控插入·只搜索】人工已把光模块摆到插槽口后, 只执行产线的 /lissajous_force_search"
+                "(配方与 L2.lissa_insert 同一份: 工具系 · XY · %.0fN 沿工具 Z · 李萨如 6mm/3Hz+4mm/2Hz · "
+                "盒 ±10mm 原点=当前位姿/8s · 自动标定力传感器)。点 %s 仅用于守卫(z_floor/锁点)。" % (force, pt),
     }
 
 
@@ -92,28 +118,36 @@ def main():
         print("❌ 点位 %s 还没录" % pt)
         return 1
     reg = json.load(open(REG, encoding="utf-8"))
-    ids = [s["id"] for s in reg["skills"]]
-    sk = build(nm, pt, force)
     bak = "/tmp/registry.json.prelissa_%d" % time.time()
     shutil.copy2(REG, bak)
-    if "L2.lissa_insert" in ids:
-        reg["skills"][ids.index("L2.lissa_insert")] = sk
-        act = "覆盖更新"
-    else:
-        at = max(i for i, x in enumerate(reg["skills"]) if x["id"].startswith("L2.slot")) + 1
-        reg["skills"].insert(at, sk)
-        act = "新增"
+    made = []
+    for sk in (build(nm, pt, force), build_search_only(pt, force)):
+        ids = [s["id"] for s in reg["skills"]]
+        if sk["id"] in ids:
+            reg["skills"][ids.index(sk["id"])] = sk
+            act = "覆盖更新"
+        else:
+            at = max(i for i, x in enumerate(reg["skills"]) if x["id"].startswith("L2.slot")) + 1
+            reg["skills"].insert(at, sk)
+            act = "新增"
+        made.append((act, sk["id"], sk["name"]))
     json.dump(reg, open(REG, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    chk = [s for s in json.load(open(REG, encoding="utf-8"))["skills"] if s["id"] == "L2.lissa_insert"][0]
-    st3 = chk["steps"][2]
-    assert st3["op"] == "service" and st3["srv"] == "/lissajous_force_search", "阶段3 不是力控服务"
-    assert st3["args"]["cartesian_desired_force"][2] == force, "期望力不符"
-    assert "gripper" not in json.dumps(chk, ensure_ascii=False).replace(chk["contact_guard"], ""), "夹爪混进来了"
+    allsk = json.load(open(REG, encoding="utf-8"))["skills"]
+    chk = [s for s in allsk if s["id"] == "L2.lissa_insert"][0]
+    chk2 = [s for s in allsk if s["id"] == "L2.lissa_search"][0]
+    for c in (chk, chk2):
+        svc = [s for s in c["steps"] if s.get("op") == "service"]
+        assert len(svc) == 1 and svc[0]["srv"] == "/lissajous_force_search", "%s 力控服务步不对" % c["id"]
+        assert svc[0]["args"]["cartesian_desired_force"][2] == force, "%s 期望力不符" % c["id"]
+        assert not any("grip" in json.dumps(s, ensure_ascii=False) for s in c["steps"]), "%s 夹爪步骤混入" % c["id"]
+    assert chk["steps"][0].get("needs_unlock") is True, "三段技能的拔出段没加解锁守卫"
+    assert len(chk["steps"]) == 3 and len(chk2["steps"]) == 1, "阶段数不对"
     p = pts[pt]["pos"]
-    print("✅ %s L2.lissa_insert「%s」→ 技能数 %d · 点 %s=(%.7f, %.7f, %.7f)"
-          % (act, chk["name"], len(reg["skills"]), pt, p[0], p[1], p[2]))
-    print("   阶段1 沿工具 Z 退 %.0fmm 到插槽口   阶段2 直线推进到插入位   阶段3 里萨如力控(%.0fN, 盒±10mm/8s)"
-          % (RETRACT_MM, force))
+    for act, sid, sname in made:
+        print("✅ %s %s「%s」" % (act, sid, sname))
+    print("   → 技能数 %d · 点 %s=(%.7f, %.7f, %.7f)" % (len(allsk), pt, p[0], p[1], p[2]))
+    print("   L2.lissa_insert: 退60mm(⚠️需解锁) → 推进插入位 → 力控 %.0fN" % force)
+    print("   L2.lissa_search: 只调力控 %.0fN (人工已把模块摆到槽口时用)" % force)
     print("   守卫 %s · 限速 %s · 锁点 %s · 备份 %s" % (chk["guard"], chk["speed_max"], chk["point_locked"], bak))
     print("   配方来源: 产线 尝试插入第一次.yaml (只读抄, 产线代码未改)")
     return 0

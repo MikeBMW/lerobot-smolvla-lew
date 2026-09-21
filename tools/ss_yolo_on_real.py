@@ -37,7 +37,13 @@ WEIGHTS = os.environ.get("SS_YOLO_WEIGHTS") or next(
 IMGSZ = int(os.environ.get("SS_YOLO_IMGSZ", "640"))
 CONF = float(os.environ.get("SS_YOLO_CONF", "0.4"))
 FRESH_S = float(os.environ.get("SS_IMG_FRESH_S", "5.0"))     # 真机帧新鲜窗口
-CAND = ("cam_rs.png", "cam_fp.png", "cam_latest.png", "srv_cam.png", "srv_cam.jpg")   # RealSense 优先
+CAND = ("cam_rs.png", "cam_fp.png", "cam_latest.png", "srv_cam.png", "srv_cam.jpg",
+        "cam_local.png")   # RealSense 优先; cam_local = 本机工位相机(备用, 明确标注)
+
+# 🏷 2026-09-20: 来源标签表 (诚实纪律: 兜底源必须自报家门, 不许冒充产线相机)
+_KIND_BY_NAME = {"cam_local.png": "bench_cam"}
+_SRC_LABEL = {"real": "产线 RealSense", "stale": "产线 RealSense(旧帧)",
+              "bench_cam": "本机工位相机(备用·非产线视角)", "sim": "仿真", "test": "自检图"}
 
 
 def pick_frame():
@@ -45,20 +51,28 @@ def pick_frame():
 
     🩹 2026-09-18: 帧龄钳到非负 —— NTP 回拨导致 mtime 在未来时, age 为负会让
     "新鲜"判据恒真 (旧帧冒充实时). 帧仍是最新可比的一张, 故只钳龄 + 标 clock_skew.
+    🩹 2026-09-20: **兜底源不得抢源** —— 本机相机帧写入频率比产线帧高, 原"新 0.5s 就可换源"
+       会让画面在 RealSense/本机相机之间来回跳 (实测检出数也跟着跳)。改为: 只要有**新鲜的
+       非本机(RealSense/FoundationPose)帧, 就用它; 本机相机只在前面全不可用时兜底。
     """
-    best = None
+    cands = []                                   # [(path, age, idx)] 全为新鲜候选
     for i, name in enumerate(CAND):
         p = os.path.join(REMOTE, name)
-        if os.path.exists(p):
-            age = time.time() - os.path.getmtime(p)
-            if age < -1.0:                       # 时钟回拨: 不按"新鲜"采信, 只标号
-                age = 0.0
-            if best is None or (i < best[2] and age <= FRESH_S * 4) or age < best[1] - 0.5:
-                if age <= FRESH_S * 4:
-                    best = (p, age, i)
-    if best is None:
+        if not os.path.exists(p):
+            continue
+        age = time.time() - os.path.getmtime(p)
+        if age < -1.0:                           # 时钟回拨: 不按"新鲜"采信, 只标号
+            age = 0.0
+        if age <= FRESH_S * 4:
+            cands.append((p, age, i))
+    if not cands:
         return None, None, None
-    return best[0], best[1], ("real" if best[1] <= FRESH_S else "stale")
+    local = [c for c in cands if os.path.basename(c[0]) == "cam_local.png"]
+    real = [c for c in cands if os.path.basename(c[0]) != "cam_local.png"]
+    pool = real if real else local               # ✅ 产线源优先; 全无 → 本机兜底
+    pick = min(pool, key=lambda c: (c[2], c[1]))
+    return pick[0], pick[1], (_KIND_BY_NAME.get(os.path.basename(pick[0]))
+                              or ("real" if pick[1] <= FRESH_S else "stale"))
 
 
 _MODEL = None
@@ -87,6 +101,7 @@ def run(image_path, source_kind="real", age=None, save=True):
                      "xyxy": [round(float(v), 1) for v in b.xyxy[0].tolist()]})
     dets.sort(key=lambda d: -d["conf"])
     rec = {"t": time.time(), "image": os.path.basename(image_path), "source_kind": source_kind,
+           "source_label": _SRC_LABEL.get(source_kind, str(source_kind)),
            "frame_age_s": (round(age, 2) if age is not None else None),
            "size": [im.width, im.height], "imgsz": IMGSZ, "conf_th": CONF, "weights": WEIGHTS,
            "detections": dets,
@@ -94,6 +109,11 @@ def run(image_path, source_kind="real", age=None, save=True):
            "n": len(dets), "ros_publishers": 0, "scope": "bypass-visualization-only"}
     if save:
         dr = ImageDraw.Draw(im)
+        # 🏷 2026-09-20: 画面自身标状态 (源 + 帧龄 + 检出数) —— 老倪会把画面当结果, 必须自解释
+        _lab = _SRC_LABEL.get(source_kind, str(source_kind))
+        _ban = f"源: {_lab} · " + ("帧龄 --" if age is None else f"帧龄 {age:.1f}s") + f" · 检出 {len(dets)}"
+        dr.rectangle([0, 0, im.width, 22], fill=(0, 0, 0))
+        dr.text((6, 5), _ban, fill=(0, 255, 128) if source_kind == "real" else (255, 200, 0))
         for d in dets:
             x1, y1, x2, y2 = d["xyxy"]
             col = {"peg": (0, 255, 128), "hole": (255, 200, 0), "hand": (0, 160, 255)}.get(d["cls"], (255, 80, 80))
@@ -113,7 +133,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image")
     ap.add_argument("--auto", action="store_true", help="取最新真机帧")
-    ap.add_argument("--source-kind", default="real", choices=["real", "stale", "sim", "test"])
+    ap.add_argument("--source-kind", default="real", choices=["real", "stale", "bench_cam", "sim", "test"])
     ap.add_argument("--loop", action="store_true")
     ap.add_argument("--interval", type=float, default=0.5)
     a = ap.parse_args()

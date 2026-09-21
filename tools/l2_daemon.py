@@ -403,10 +403,18 @@ def run_stages(sk, spec, chan, pts):
             return "stages 过滤后没有阶段"
         log("分段执行: 只跑阶段 %s (共 %d 段)" % (_want, len(steps)))
     n = len(steps)
+    # 🩹 2026-09-21 老倪: 「原子技能 松开夹抓, 怎么不好使了」—— 根因之一: 执行器**一律先读 TCP 位姿**,
+    #   位姿源不可用 (产线驱动未跑) 时连纯夹爪指令都被拒 → 守卫越权 (夹爪指令本身不需要位姿)。
+    #   改为: 本批若**全部是非运动步**(op=gripper/service), 位姿读不到也放行 (只在日志里声明);
+    #   只要有任一运动步, 位姿仍严格要求 (不盲发, 纪律不变)。
+    _has_motion = any(st.get("op") not in ("gripper", "service") for st in steps)
     cur, _cq, csrc = _pose_best()
     if not cur:
-        log("拒绝: 位姿读不到(直读失败且常驻缓存过期)")
-        return "位姿缓存未就绪"
+        if _has_motion:
+            log("拒绝: 位姿读不到(直读失败且常驻缓存过期)")
+            return "位姿缓存未就绪"
+        log("⚠️ 位姿不可用, 但本批 %d 步全为非运动步(夹爪/服务) → 跳过位姿前置 (只发夹爪/服务指令)" % n)
+        cur, csrc = [0.0, 0.0, 0.0], "none(非运动步, 无需位姿)"
     log("当前位姿(来源 %s): (%.4f, %.4f, %.4f)" % (csrc, cur[0], cur[1], cur[2]))
     plans, c = [], list(cur)
     for i, st in enumerate(steps, 1):
@@ -592,6 +600,10 @@ def dispatch(reg, spec, chan):
             log("HTTP 失败 %s: %s" % (url, e))
             return "HTTP 失败: %s" % e
     if sk["ros"] == "gripper":
+        # 🩹 2026-09-21: 单步夹爪技能原来没定义 dx/dy/dz/_dir, 走到下面的日志行会抛 NameError
+        #   (表现就是"原子技能 松开夹爪 不好使")。夹爪步本来就没有位移, 显式置零并标"夹爪"。
+        dx = dy = dz = 0.0
+        _dir = "夹爪"
         if "close" in sid:
             fo = float(spec.get("force", sk["param"]["force"].get("default", 40)))
             call = ('ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 0.0, '
