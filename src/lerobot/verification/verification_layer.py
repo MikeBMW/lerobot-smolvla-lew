@@ -1718,7 +1718,7 @@ class VerificationLayer:
              else f"✗ 写死 {fake} / 诚实标注 {honest}")
 
     def t_yolo_th(self, np):
-        return self._audit([["src/lerobot/policies/yolo_3d/yolo_state_aligner.py", ["def detect_3d(self, img, conf=0.4)"], "conf 阈值参数"]], np)
+        return self._audit([["src/lerobot/policies/yolo_3d/yolo_state_aligner.py", ["def detect_3d(self, img=None, conf=0.4)"], "conf 阈值参数"]], np)
 
     def t_yolo_prewarm(self, np):
         return self._audit([["tools/gui/studio.py", ["_yolo_ensure_aligner", "预热"], "启动预热"]], np)

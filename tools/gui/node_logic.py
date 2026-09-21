@@ -2468,10 +2468,10 @@ _EXTERNAL_LOC["lr_contact"]  = (os.path.join(_LR_DIR, "configuration_left_right.
 
 # 🎯 YOLO 3D 感知链 (2026-08-12 老倪: 查看/编辑节点逻辑 → 显示真实源码 yolo_3d/)
 _YOLO_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d")
-_EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心
+_EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57, "class YoloStateAligner")   # 🎯 YOLO 3D 检测+2D→3D 核心 (2026-09-21 行号同步: 37→57)
 # 🐛 2026-09-04 静静: 原映射指向 pixel_to_ray(11行) — 2026-08-23 改 cam_mat0 矩阵反投影后已成死代码,
 #   全仓库零执行调用 → 查看源码/断点永不命中 (老倪断点停在 detect_3d 126 才发现). 改指真实反投影 detect_3d.
-_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 65, "def detect_3d")  # 📐 2D→3D 解算: YOLO 框→cam_mat0 反投影→3D (深度优先/写死z回退) — 断点打 104-110 行
+_EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 93, "def detect_3d")  # 📐 2D→3D 解算 (2026-09-21 行号同步: 65→93)
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
 _EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 40, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 # 🐛 2026-08-12: state_adapter 不挂外部源码 — 原误指 yolo_state_aligner.py (与 YOLO 3D 相同, 用户指出);
@@ -3176,16 +3176,16 @@ _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def f
 _EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
 # 🧩 2026-09-20 老倪: VEH.5.041 从"传感器融合拼接(43D)"升级为"SU(2) 统一状态空间(群)"
 #   右键该节点应显示群实现 su2.py::class SU2UnifiedState, 不再显示 fuse_sensors
-_EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "su2.py"), 537, "class SU2UnifiedState")
+_EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "su2.py"), 558, "class SU2UnifiedState")  # 2026-09-21 行号同步: 537→558
 _EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
 _EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")
-_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 186, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128→158 (重写后漂移; 现按符号动态定位)
+_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 201, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128→158; 2026-09-21: →201 (重写后漂移; 现按符号动态定位)
 _EXTERNAL_LOC["ss_pred"]   = (os.path.join(_SS_DIR, "dynamics.py"), 62, "class PriorDynamicsPredictor")
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
 _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")
 # 🐛 2026-09-02 老倪: 动作调制器节点双击 → 直接显示 decide 方法本体 (否决权+前馈反馈相加+阶段限速),
 #   不是整个类 (原映射 class 行号 27 也不准, 实际 30)
-_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 216, "def decide")
+_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 228, "def decide")  # 2026-09-21 行号同步: 216→228
 _EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 _EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
@@ -3648,7 +3648,7 @@ _reg("ss_skill", ["技能编排器"], "🛠 技能编排器 — 新型号规格�
 # 🎯 YOLO 目标检测 — 检测目标清单 (2026-08-20 老倪: 需求说明书 → 22 目标 6 类)
 #   数据源: flows/detection_targets.json · 导出: yolo_3d/detection_targets.py
 # ════════════════════════════════════════════════════════════════
-_EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 37, "class YoloStateAligner")
+_EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57, "class YoloStateAligner")  # 2026-09-21 行号同步: 37→57
 
 
 def node_ss_yolo(ctx):
@@ -4426,7 +4426,7 @@ _EXTERNAL_LOC["action_head"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "poli
 _EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
 _EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
-                                         "predictor_layer.py"), 78, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src)
+                                         "predictor_layer.py"), 112, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src); 2026-09-21 行号同步: 78→112
 _EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "state_space_action_head.py"), 26, "class StateSpaceActionHead")  # 🐛 2026-09-08: 状态空间 ActionHead (键对齐注册 ss_dec; 架构归位 src)
 
@@ -4435,17 +4435,17 @@ _EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies"
 #   get_node_location() 退回 node_logic.py 自身 co_filename = 就是 GUI 文件。编排已下沉 policy 层,
 #   映射必须跟着走: 编排 = policies/intact/service.py, 真算法 = policies/intact/runtime/*.py)
 _INTACT_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "intact")
-_EXTERNAL_LOC["intact"] = (os.path.join(_INTACT_DIR, "service.py"), 200, "def run_once(")   # 🎯 策略节点: 编排入口 (建桥+接数据源+真推理+解码+证据)
-_EXTERNAL_LOC["intact_dec"] = (os.path.join(_INTACT_DIR, "service.py"), 200, "def run_once(")   # 🎯 意图解码器节点: 同一处编排 (解码在 decoder.py)
-_EXTERNAL_LOC["intact_decoder"] = (os.path.join(_INTACT_DIR, "decoder.py"), 66, "class IntactIntentDecoder")
+_EXTERNAL_LOC["intact"] = (os.path.join(_INTACT_DIR, "service.py"), 235, "def run_once(")   # 🎯 策略节点: 编排入口 (建桥+接数据源+真推理+解码+证据) (2026-09-21 行号同步: 200→235)
+_EXTERNAL_LOC["intact_dec"] = (os.path.join(_INTACT_DIR, "service.py"), 235, "def run_once(")   # 🎯 意图解码器节点 (2026-09-21 行号同步: 200→235)
+_EXTERNAL_LOC["intact_decoder"] = (os.path.join(_INTACT_DIR, "decoder.py"), 78, "class IntactIntentDecoder")  # 2026-09-21 行号同步: 66→78
 _EXTERNAL_LOC["intact_node"] = (os.path.join(_INTACT_DIR, "runtime", "node.py"), 48, "class IntactNode")
 _EXTERNAL_LOC["intact_bridge"] = (os.path.join(_INTACT_DIR, "runtime", "model_adapter.py"), 23, "class IntactRuntime")
 # 🌍 光模块插拔链 (L4 SW): 真实现 = 跨 venv 桥脚本 (GUI 侧 node_sw_* 只是调度)
 _SW_BRIDGE = os.path.join(_REPO_ROOT, "tools", "intact_sw_optical_bridge.py")
-_EXTERNAL_LOC["sw_intact"] = (_SW_BRIDGE, 1, "def ")
-_EXTERNAL_LOC["sw_world"] = (_SW_BRIDGE, 1, "def ")
-_EXTERNAL_LOC["sw_ds"] = (_SW_BRIDGE, 1, "def ")
-_EXTERNAL_LOC["sw_video"] = (_SW_BRIDGE, 1, "def ")
+_EXTERNAL_LOC["sw_intact"] = (_SW_BRIDGE, 168, "def main(")  # 2026-09-21: 原 (…,1,"def ") 占位 → 指向真编排入口
+_EXTERNAL_LOC["sw_world"] = (_SW_BRIDGE, 109, "def install_model_drive(")  # 2026-09-21: 原占位 → 真世界模型驱动
+_EXTERNAL_LOC["sw_ds"] = (_SW_BRIDGE, 101, "def load_stats(")  # 2026-09-21: 原占位 → 真数据源(归一化统计)
+_EXTERNAL_LOC["sw_video"] = (_SW_BRIDGE, 81, "def _mk_writer(")  # 2026-09-21: 原占位 → 真视频写出
 
 
 # 🧩 验证层 (2026-09-03 老倪: 状态空间系统 feature list + test cases 汇总执行 —
