@@ -257,10 +257,17 @@ def _service_call(st):
 
 
 def _gripper_cmd(st):
-    """夹爪步 → 远端命令行 (字段与产线 SetGripperPosition 同口径: pos/speed/force/acc/push_length/push_speed)"""
-    return ('ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
+    """夹爪步 → 远端命令行 (字段与产线 SetGripperPosition 同口径: pos/speed/force/acc/push_length/push_speed)
+
+    ⚠️ 2026-09-21 (老倪「松开夹爪不好使」): 服务端没起时 `ros2 service call` 会**无限等**
+    ("waiting for service to become available...") → 把常驻命令通道**永久卡死**, 后面所有技能排队。
+    加 `timeout N`(timeout_s+10) 硬上限: 超时即返回失败, 通道立刻放行。
+    注意口径: 客户端超时 ≠ 动作没下发 —— 判完成仍只看真值/回执(绝不重发)。
+    """
+    return ('timeout %d ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
             'target_force: %.1f, target_acc: %.1f, target_push_length: %.1f, target_push_speed: %.1f}"'
-            % (float(st.get("pos", 1000.0)), float(st.get("speed", -1.0)), float(st.get("force", -1.0)),
+            % (int(float(st.get("timeout_s", 30)) + 10),
+               float(st.get("pos", 1000.0)), float(st.get("speed", -1.0)), float(st.get("force", -1.0)),
                float(st.get("acc", -1.0)), float(st.get("push_length", 0.0)), float(st.get("push_speed", 40.0))))
 
 
@@ -348,9 +355,10 @@ def plan_stage(sk, st, pts, spec, cur):
     sp = float(spec.get("speed", 60))
     if sk.get("speed_max") is not None:                    # 技能级限速上限(练习用低速, 收口在执行层)
         sp = min(sp, float(sk["speed_max"]))
-    call = ('ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
+    # ⚠️ 2026-09-21: 加硬超时, 服务端没起时别把命令通道永久卡死(客户端超时≠没下发, 到位仍只看真值)
+    call = ('timeout %d ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
             'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
-            % (sp, t[0], t[1], t[2], q[0], q[1], q[2], q[3]))
+            % (int(_stage_timeout(st, lin, sp) + 10), sp, t[0], t[1], t[2], q[0], q[1], q[2], q[3]))
     return {"name": name, "pos": t, "quat": q, "dx": dx, "dy": dy, "dz": dz,
             "dir": _dir, "lin": lin, "call": call, "speed": sp}
 
@@ -607,11 +615,11 @@ def dispatch(reg, spec, chan):
         _dir = "夹爪"
         if "close" in sid:
             fo = float(spec.get("force", sk["param"]["force"].get("default", 40)))
-            call = ('ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 0.0, '
+            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 0.0, '
                     'target_speed: -1.0, target_force: %s, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"' % fo)
         else:
-            call = ('ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 1000.0, '
+            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 1000.0, '
                     'target_speed: -1.0, target_force: -1.0, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"')
     else:
@@ -644,7 +652,7 @@ def dispatch(reg, spec, chan):
                     % (float(_gd), -dz))
                 return "🛡 已拒绝: 向下 %.0fmm 超过守卫 %.0fmm" % (-dz, float(_gd))
         sp = float(spec.get("speed", 60))
-        call = ('ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
+        call = ('timeout 90 ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
                 'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
                 % (sp, x, y, z, qx, qy, qz, qw))
     if spec.get("dry"):
