@@ -484,8 +484,9 @@ def run_stages(sk, spec, chan, pts):
                 return "🛡 阶段 %d 被守卫拒绝" % i
             pl = pl2
         _to = _stage_timeout(st, pl["lin"], pl.get("speed", spec.get("speed", 60)))
-        chan.stdin.write(pl["call"] + "\n")
-        chan.stdin.flush()
+        if not chan_send(pl["call"]):
+            log("🛑 阶段 %d/%d 下发失败: 命令通道不可用 → 中止剩余阶段(绝不重发)" % (i, n))
+            return "🛑 阶段 %d 下发失败: 命令通道不可用" % i
         log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · 等到位上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
         ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
@@ -651,8 +652,9 @@ def dispatch(reg, spec, chan):
         #   (反复练习/回点前先核对目标, 避免盲发; 也是无副作用的自证手段)
         log("DRY-RUN %s → %s" % (sid, call[:220]))
         return "DRY-RUN(未下发): %s" % call[:170]
-    chan.stdin.write(call + "\n")
-    chan.stdin.flush()
+    if not chan_send(call):
+        log("🛑 下发失败: 命令通道不可用(已尝试重建)")
+        return "🛑 下发失败: 命令通道不可用"
     log("已下发 %s -> %s · Δ=(%+.1f,%+.1f,%+.1f)mm %s"
         % (sid, (spec.get("d_mm", spec.get("force", spec.get("point", "")))), dx, dy, dz, _dir))
     return "已下发"
@@ -665,17 +667,119 @@ def out_thread(chan):
             log("ROS: " + ln[:200])
 
 
+# ── 命令通道自愈 (2026-09-21 老倪: 「原子技能 松开夹爪 不好使」根因之二) ─────────
+#   实况取证: 开机 20:08:32 建的常驻 ssh 通道**建完就死了**(子进程 5587 变僵尸 Z 状态),
+#   之后每次 chan.stdin.write 直接 Broken pipe → 所有技能静默失效(不止夹爪),
+#   而 keepalive 只判\"进程在不在\" → 永不恢复。修法:
+#   ① 启动前等直连链路 + 用一次性 ssh 探针确认真能登录(不然白建通道 = 又变僵尸)
+#   ② 写失败 → 自动重建通道并重试一次
+#   ③ 后台看门狗 15s 一查, 通道静默死掉也自愈
+_CHAN = {"p": None, "spawn_t": 0.0}
+_SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+             "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "TCPKeepAlive=yes"]
+
+
+def _link_ready(timeout=120):
+    """等直连产线网源地址就绪 (开机竞态: 网卡地址晚于自启服务)。"""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            r = subprocess.run(["ip", "route", "get", "192.168.23.66"],
+                               capture_output=True, text=True, timeout=5)
+            if "src 192.168.23.50" in r.stdout:
+                return True
+        except Exception:                                                    # noqa: BLE001
+            pass
+        time.sleep(2)
+    return False
+
+
+def _ssh_once(cmd, timeout=15):
+    try:
+        r = subprocess.run(["ssh"] + _SSH_OPTS + [HOST, cmd],
+                           capture_output=True, text=True, timeout=timeout)
+        return r.returncode == 0, (r.stdout + r.stderr).strip()
+    except Exception as e:                                                   # noqa: BLE001
+        return False, str(e)
+
+
+def _chan_alive():
+    p = _CHAN["p"]
+    return bool(p) and p.poll() is None
+
+
+def _spawn_chan(force=False):
+    """(重)建常驻命令通道。force=True 时先收掉老的(含僵尸, 别留 <defunct>)。"""
+    if _chan_alive() and not force:
+        return _CHAN["p"]
+    old = _CHAN["p"]
+    if old is not None:
+        for _f in (lambda: old.stdin.close(), old.kill):
+            try:
+                _f()
+            except Exception:                                                # noqa: BLE001
+                pass
+        try:
+            old.wait(timeout=5)          # 收僵尸
+        except Exception:                                                    # noqa: BLE001
+            pass
+    loop = PRE + 'while read -r c; do eval "$c"; done'
+    p = subprocess.Popen(["ssh"] + _SSH_OPTS + [HOST, loop], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    _CHAN["p"], _CHAN["spawn_t"] = p, time.time()
+    threading.Thread(target=out_thread, args=(p,), daemon=True).start()
+    log("🔌 命令通道已建立 (pid=%d)" % p.pid)
+    return p
+
+
+def chan_send(call):
+    """下发一条 ROS2 调用; 通道死了就重建并重试一次 (别让技能静默失效)。"""
+    for attempt in (1, 2):
+        if not _chan_alive():
+            log("🩹 命令通道不可用 → 重建 (%s)" % ("首次" if attempt == 1 else "重试"))
+            _spawn_chan(force=True)
+            time.sleep(1.0)
+        try:
+            _CHAN["p"].stdin.write(call + "\n")
+            _CHAN["p"].stdin.flush()
+            return True
+        except (BrokenPipeError, OSError, ValueError) as e:
+            log("🩹 下发遇到 %s → 重建通道后重试" % type(e).__name__)
+            _spawn_chan(force=True)
+            time.sleep(1.5)
+    return False
+
+
+def chan_watchdog():
+    """后台看门狗: 通道静默死掉(ssh 无输出退出/网络闪断)也能自愈。"""
+    while True:
+        time.sleep(15)
+        if not _chan_alive():
+            log("🩹 看门狗: 命令通道已死 → 自动重建")
+            _spawn_chan(force=True)
+
+
 def main():
     if os.path.exists(FIFO):
         os.unlink(FIFO)
     os.mkfifo(FIFO)
     reg = json.load(open(REG_PATH, encoding="utf-8"))
     threading.Thread(target=state_thread, daemon=True).start()
-    loop = PRE + 'while read -r c; do eval "$c"; done'
-    chan = subprocess.Popen(["ssh", "-o", "BatchMode=yes", HOST, loop],
-                            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1)
-    threading.Thread(target=out_thread, args=(chan,), daemon=True).start()
+    # ① 等直连链路就绪 ② 一次性 ssh 探针确认真能登录 —— 否则通道"建完即死"变僵尸(2026-09-21 实况)
+    if not _link_ready(120):
+        log("⚠️ 直连链路 120s 未就绪, 仍尝试建通道(会由看门狗/下发时自愈)")
+    for _i in range(1, 61):
+        _ok, _out = _ssh_once("echo ZMAX_CHAN_PROBE_OK", timeout=12)
+        if _ok and "ZMAX_CHAN_PROBE_OK" in _out:
+            log("✅ ssh 探针通过 (第 %d 次尝试)" % _i)
+            break
+        if _i == 1:
+            log("⏳ 等 Orin ssh 就绪中(最多 120s)...")
+        time.sleep(2)
+    else:
+        log("⚠️ ssh 探针 120s 未通过 — 通道由看门狗/下发时重建")
+    chan = _spawn_chan(force=True)
+    threading.Thread(target=chan_watchdog, daemon=True).start()
     log("L2 常驻执行器启动 · FIFO=%s · 原子技能 %d 个" % (FIFO, len(reg["skills"])))
     while True:
         reg = maybe_reload(reg)
