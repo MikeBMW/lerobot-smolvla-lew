@@ -4523,9 +4523,9 @@ _reg("ssb", ["通用算子 B", "参数微调"],
 _reg("ssc", ["通用算子 C", "参数校验"],
      "🅾️ 通用算子 C · 参数校验 (VALIDATE) — 🛡 安全限值闸 (力/速度/位姿), 越界拒绝回退 (源码 node_logic.py node_ss_abc)",
      node_ss_abc)
-_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
-_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
-_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 2760, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 3900, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 3900, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 3900, "def node_ss_abc(ctx):")
 
 
 # ═══ 📡/📈/🖥 旁路真机感知 (2026-09-16 老倪: 旁路接控制台可视化 + 真机信号节点) ═══
@@ -4646,9 +4646,9 @@ _reg("ss_z700_signals", ["Z700 真机信号", "真机信号"],
 _EXTERNAL_LOC["ss_bypass_sensor"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                                   "bypass_sensor_source.py"), 62, "def read_latest")
 _EXTERNAL_LOC["ss_bypass_viz"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                               "ss_bypass_view.py"), 160, "class SSBypassView")
+                                               "ss_bypass_view.py"), 220, "class SSBypassView")
 _EXTERNAL_LOC["ss_z700_signals"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                 "ss_bypass_view.py"), 260, "class Z700SignalsView")
+                                                 "ss_bypass_view.py"), 489, "class Z700SignalsView")
 
 # 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
 def _resolve_python():
