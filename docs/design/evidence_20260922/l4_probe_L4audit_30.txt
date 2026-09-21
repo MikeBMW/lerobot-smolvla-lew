@@ -1,0 +1,94 @@
+探针场景=L4audit 步数=30 CUDA_VISIBLE_DEVICES='' (空 = 不动 GPU)
+🧠 INTACT 意图-动作: 动作维对齐 4 → 8 (来自模型实测)
+🧠 INTACT 意图-动作: 数据源=未设置 · 策略=direct(零搜索) · action_dim=8 · horizon=8 · trained=True
+INTACT runtime: trained=True · reason=None
+🎯 INTACT 已挂载: horizon=8 · 适配层 enabled=None (None) · 影子=False · 生效阶段=['接近', '对位', '下降', '抓取', '抬起', '转移']
+WARNING:root:No accelerated backend detected. Using default cpu, this will be slow.
+WARNING:lerobot.configs.policies:Device 'cuda' is not available. Switching to 'cpu'.
+WARNING:root:No accelerated backend detected. Using default cpu, this will be slow.
+WARNING:lerobot.configs.policies:Device 'cuda' is not available. Switching to 'cpu'.
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] Model config: pad_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 128002. This may result in unexpected behavior.
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights:   4%|▎         | 18/489 [00:00<00:02, 167.24it/s]Loading weights:  10%|▉         | 47/489 [00:00<00:02, 218.88it/s]Loading weights:  15%|█▌        | 74/489 [00:00<00:01, 234.56it/s]Loading weights:  21%|██▏       | 105/489 [00:00<00:01, 258.56it/s]Loading weights:  27%|██▋       | 131/489 [00:00<00:01, 244.11it/s]Loading weights:  34%|███▎      | 164/489 [00:00<00:01, 266.82it/s]Loading weights:  39%|███▉      | 191/489 [00:00<00:01, 257.74it/s]Loading weights:  45%|████▌     | 222/489 [00:00<00:00, 270.11it/s]Loading weights:  51%|█████     | 250/489 [00:00<00:00, 266.38it/s]Loading weights:  57%|█████▋    | 280/489 [00:01<00:00, 275.21it/s]Loading weights:  68%|██████▊   | 333/489 [00:01<00:00, 346.55it/s]Loading weights:  84%|████████▍ | 413/489 [00:01<00:00, 467.72it/s]Loading weights:  98%|█████████▊| 477/489 [00:01<00:00, 502.41it/s]Loading weights: 100%|██████████| 489/489 [00:01<00:00, 347.06it/s]
+✓ LeWorldModel initialized: hidden_dim=192, layers=6, attn_mode=adaln
+Loading weights from local directory
+/home/ubuntu/lerobot-smolvla-lew/tools/gui/state_space_sim_real.py:1262: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:203.)
+  it = torch.from_numpy(img).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+
+==============================================================================
+场景 L4audit · 步数 30 · 用时 58.1s
+==============================================================================
+① 函数级调用计数 (0 = 该函数在本次运行里一次都没进):
+        2  DiT.forward (DiT 主干)
+        1  IntactIntentDecoder.__init__
+        4  IntactIntentDecoder.decode
+        1  IntactNode.set_goal (目标帧注入)
+        4  IntactNode.step (INTACT 真推理)
+        1  IntactRuntime.__init__ (跨venv桥)
+        1  SmolVLALewActionHead.__init__ ⚠️类被实例化
+        1  SmolVLALewActionHead.predict_action (推理)
+        1  SmolVLALewPolicy.__init__ ⚠️策略被实例化
+        1  SmolVLALewPolicy.predict_action_chunk
+        4  SmolVLALewPolicy.select_action
+        4  build_skill_ctx (L2 上下文) ← 父进程断点
+
+② 行级计数 (关键行):
+        0  action_head.py:351  👈 老倪断点: return (loss*valid_mask)... (行号自动定位)
+        0  action_head.py:322  def forward( (SmolVLALewActionHead, 锚定类内非全文件首个)
+        0  action_head.py:354  def predict_action( (推理入口)
+        0  modeling_smolvla_lew.py:234  def forward( (训练 loss 分支)
+        0  modeling_smolvla_lew.py:319  action_loss = self.action_model(...) (唯一调用 loss 的地方)
+        0  modeling_smolvla_lew.py:512  def select_action( (推理)
+        0  intact/decoder.py:126  IntactIntentDecoder.decode 主体
+
+   已执行到的 action_head.py 行 (全量):
+      50(1), 51(1), 54(2), 55(2), 56(2), 57(2), 58(2), 59(2), 60(2), 65(1), 66(1), 67(1), 68(1), 69(1), 72(2), 73(2), 75(2), 76(2), 77(2), 78(2), 83(1), 84(1), 85(1), 86(1), 89(2), 90(2), 95(1), 96(1), 97(1), 98(1), 101(2), 102(2), 115(1), 116(1), 117(1), 118(2), 119(1), 120(1), 121(1), 122(1), 123(1), 124(1), 125(1), 127(1), 128(1), 136(2), 137(2), 138(2), 139(2), 140(2), 156(1), 157(1), 158(1), 159(2), 160(5), 161(2), 162(1), 163(1), 164(1), 165(1), 166(1), 167(1), 169(2), 172(1), 173(1), 174(1), 182(2), 183(2), 184(4), 185(2), 186(2), 187(2), 188(2), 207(1), 212(1), 213(1), 216(1), 217(1), 218(1), 219(1), 220(1), 221(1), 223(1), 224(1), 225(1), 227(1), 228(2), 229(1), 230(1), 231(1), 232(1), 233(1), 234(1), 236(1), 237(2), 238(2), 239(1), 240(1), 241(1), 242(1), 246(1), 247(2), 248(2), 249(1), 250(1), 251(1), 252(1), 256(1), 259(1), 260(2), 261(1), 262(1), 264(1), 276(1), 277(1), 280(1), 281(1), 282(1), 283(2), 284(1), 285(1), 286(1), 290(1), 292(1), 293(1), 294(1), 295(1), 297(1), 299(2), 300(1), 301(1), 310(2), 311(2), 312(2), 314(2), 315(2), 316(2), 317(2), 319(2), 320(2), 360(1), 361(1), 362(2), 363(1), 364(1), 365(1), 366(1), 367(1), 369(1), 370(3), 371(2), 372(2), 373(4), 374(2), 376(2), 377(4), 378(2), 379(2), 380(2), 382(2), 383(2), 384(1)
+
+   区间命中: loss 行(351)=0 · predict_action 主体(355-389)=40 · forward 主体(323-350)=0
+
+③ 引擎侧计数: {'steps': 30, 'dt': 58.11620783805847, '_intact_stats': {'intact_calls': 0, 'refused_map': 0, 'frames': 0, 'chunk_reuse': 0, 'err': None, 'shift': [], 'u_ff_src': 'analytic'}, '_l4_stats': {'calls': 4, 'reuse': 26, 'refused': 0, 'blend': 0, 'w_zero': 30, 'cond_ready': 0, 'frame_std': 55.9299, 'shift': 0.3368, 'err': None, 'src': 'intact(chunk×K_ACT=0.5)', 'w': 0.3, 'cond_src': '拒绝(未标定)', 'goal_src': 'set_goal(显式)', 'skill_ctx_dim': 24, 'skill_ctx_nonzero': 9, 'l2_ready': True, 'l2_err': None, 'l2_veto': 30, 'l2_veto_dir': 7, 'l2_veto_mag': 23}, '_l4_dit': {'calls': 4, 'ok': 4, 'refused': 0, 'err': None, 'cond_dim': 214, 'cond_norm': 1.7690288747041163, 'act_norm': 0.1553, 'delta': 0.3337, 'beta': 0.5, 'src': 'DiT(l4_cond)', 'applied': 30}, 'dit_state': None, 'l3_calls': 0, 'quality_summary': {'enabled': True, 'src': 'lie_quality_gate.json', 'margin': 0.05, 'allowed_stages': ['下降', '对位', '抬起', '接近'], 'blocked_stages': ['转移'], 'blocked_frames': 0, 'allowed_frames': 0}, 'lie_summary': {'enabled': False, 'frames': 0, 'ran': 0, 'refused': 0, 'no_latent': 0, 'applied': 0, 'xi_norm_last': None, 'om_norm_last': None, 'cond_dim': 0, 'cos_mean': None, 'ready': False, 'meta': {}, 'src': '', 'err': None}, 'gain_summary': {'enabled': False, 'steps': 0, 'applied': 0, 'zero_frames': 0, 'k_nav_mean': 0.0, 'k_flow_mean': 0.0, 'k_mm_mean': 0.0, 'events': {}, 'err': None, 'refused': 0, 'cos_mean': None, 'ratio_mean': None, 'k_nav_tail': [], 'k_flow_tail': [], 'p_last': None, 'p_zero_gate': None, 'reason_last': ''}, 'fiber_summary': {'enabled': True, 'frames': 4, 'ran': 4, 'no_latent': 0, 'ready': True, 'map_src': 'intact_fiber_map.json · ready=True · contact_r2_loso=0.4711 · morph_r2_loso=0.6067 · 标定 n=582 (真实引擎样本) · 数据文件 8 个 · contact r²_loso=0.471 / morph r²_loso=0.607 → ready=True', 'err': None, 'src_last': 'Φ(z_pred)−Φ(z_t) · contact r²_loso=0.471 (null=0.000, n=582) · z7 丛映射 r²_loso=0.607', 'h_norm_mean': 0.0769, 'kappa_tor_mean': 0.0735, 'kappa_curv_mean': 0.022712, 'cos_geo_mean': 0.9877, 'phi_last': [0.12018, 0.00206, 0.00684, -0.00317, -0.00165, 0.02198], 'omega_last': [0.015305, 0.000286, 0.001277, -0.000257, -2.8e-05, -0.000537], 'contact_true_last': [0.12596, 0.0, 0.00793, -0.00319, 0.0, 0.0254], 'sample_n': 0, 'w_perf': 0.0, 'perf_note': '插拔任务次要: 只记录不注入 (老倪口径)'}, 'align_summary': {'enabled': False, 'applied': 0, 'ready': False, 'map_src': '', 'err': None, 'cos_before_mean': 0.0, 'cos_after_mean': 0.0, 'ratio_after_mean': 0.0, 'sample_n': 0, 'gate': {'pass': 0, 'veto': 30, 'veto_dir': 7, 'veto_mag': 23, 'blend': 0}}, 'trace_hash': '181460e3aee4f59dd8e88bbc4dfd876f', 'trace_cols': {'u_ff_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.0976984799375004}, 'u_exec_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.12000000000000001}, 'u_fuse_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.12000000000000001}, 'l4_u_ff_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 1.086436645721386}, 'l4_cond_vec': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'mani_pred': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 6, 'last_norm': 0.29480964702785617}, 'mani_progress': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.11350927502877538}, 'mani_risk': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 0, 'dim': 1, 'last_norm': 0.0}, 'mani_V': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.006442177758779085}, 'mani_eta': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 0, 'dim': 1, 'last_norm': 0.0}, 'mani_dperp': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.12084409179839058}, 'z7_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 7, 'last_norm': 0.20861298357733035}, 'latent_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.647145872001262}, 'fiber_h_norm': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.06868400911030184}, 'fiber_kappa_tor': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.06283396575824249}, 'fiber_kappa_curv': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.015372427659881666}, 'fiber_cos_geo': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.9909137282461586}, 'fiber_contact_true': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 6, 'last_norm': 0.12878442294377715}, 'fiber_perf_true': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 6, 'last_norm': 0.19209370587492222}, 'fiber_z7_hat': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 7, 'last_norm': 0.2028791439400391}, 'fiber_cond_norm': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 1.7690288747041163}, 'l4_cos': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.2238380757068321}, 'l4_mag_ratio': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 3.1177332714932198}, 'l4_gate': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 1.0}, 'l4_cos_pre_align': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}}, 'final': {'steps': 30, 'done_any': False, 'done_last': False, 'dist_min': 0.10004902606932851, 'dist_last': 0.10004902606932851, 'V_first': 0.015173502167854491, 'V_last': 0.006442177758779085, 'V_min': 0.006442177758779085, 'V_max': 0.01552358368521843, 'V_n': 30, 'stage_counts': {'阶段 接近': 30}}, 'summaries': {'intact_attach': {'intact_calls': 0, 'refused_map': 0, 'frames': 0, 'chunk_reuse': 0, 'err': None, 'shift': [], 'u_ff_src': 'analytic'}, 'l4': {'calls': 4, 'reuse': 26, 'refused': 0, 'blend': 0, 'w_zero': 30, 'cond_ready': 0, 'frame_std': [55.949764251708984, 55.925994873046875, 55.921409606933594, 55.92251968383789], 'shift': [0.2289520994610696, 0.220316561278806, 0.21828231875854964, 0.21511048914559697, 0.21668514898668936, 0.22165297487142796, 0.2294902078953642, 0.24055354695561335, 0.2326059310587267, 0.27276901242597834, 0.3214978711299708, 0.35305546016255285, 0.35234899402566544, 0.35187884327856106, 0.35184337023923284, 0.3525048219553115, 0.3684371310208809, 0.36936827985758197, 0.37120495533298276, 0.3741864026173948, 0.3785847285031336, 0.38462292404387266, 0.39253350552693905, 0.40260505033873345, 0.42247237141738514, 0.43148521646687327, 0.44137197523557015, 0.451830540542013, 0.462756658108667, 0.4741242286177198], 'err': None, 'src': 'intact(chunk×K_ACT=0.5)', 'w': 0.3, 'cond_src': '拒绝(未标定)', 'goal_src': 'set_goal(显式)', 'skill_ctx_dim': 24, 'skill_ctx_nonzero': 9, 'l2_ready': True, 'l2_err': None, 'l2_veto': 30, 'l2_veto_dir': 7, 'l2_veto_mag': 23}, 'il': {'enabled': True, 'by_stage': {'接近': 30}, 'stages_env': ['接近', '对位', '下降', '抓取', '抬起', '转移'], 'frames': 4, 'ran': 4, 'applied': 30, 'w_zero': 0, 'refused': 0, 'ready': True, 'ready_src': '已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)', 'src_last': 'decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.2787)', 'w_last': 0.3, 'z_src': 'fiber(A·z_pred+b ← INTACT 预测潜空间)', 'err': None, 'intent_gain_mean': 8.985935, 'manifold_last': [0.07006, -5e-05, 0.00262, 0.00808, 0.16942, 0.22344], 'clip_max': 0.0, 'stack': {'commit': 30, 'vetoed': 0, 'clipped': 0, 'clip_max_mean': None, 'w_last': 0.3, 'layers': {'L2': {'kind': 'action', 'src': 'analytic/L3 参考', 'weight': 1.0, 'accepted': True, 'reason': '执行层 (唯一出口)', 'hash': '3f35fc15558fb7d4'}, 'L4': {'kind': 'intent', 'src': 'decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.2787)', 'weight': 0.3, 'accepted': True, 'reason': '采纳: w=0.300', 'hash': 'c301cb844536b2dc', 'ready': True}}}}, 'fiber': {'enabled': True, 'frames': 4, 'ran': 4, 'no_latent': 0, 'ready': True, 'map_src': 'intact_fiber_map.json · ready=True · contact_r2_loso=0.4711 · morph_r2_loso=0.6067 · 标定 n=582 (真实引擎样本) · 数据文件 8 个 · contact r²_loso=0.471 / morph r²_loso=0.607 → ready=True', 'err': None, 'src_last': 'Φ(z_pred)−Φ(z_t) · contact r²_loso=0.471 (null=0.000, n=582) · z7 丛映射 r²_loso=0.607', 'h_norm_mean': 0.0769, 'kappa_tor_mean': 0.0735, 'kappa_curv_mean': 0.022712, 'cos_geo_mean': 0.9877, 'phi_last': [0.12018, 0.00206, 0.00684, -0.00317, -0.00165, 0.02198], 'omega_last': [0.015305, 0.000286, 0.001277, -0.000257, -2.8e-05, -0.000537], 'contact_true_last': [0.12596, 0.0, 0.00793, -0.00319, 0.0, 0.0254], 'sample_n': 0, 'w_perf': 0.0, 'perf_note': '插拔任务次要: 只记录不注入 (老倪口径)'}, 'l4_dit': {'calls': 4, 'ok': 4, 'refused': 0, 'err': None, 'cond_dim': 214, 'cond_norm': 1.7690288747041163, 'act_norm': [0.19600102305412292, 0.15187345445156097, 0.1334708333015442, 0.13977399468421936], 'delta': [0.052184897031873664, 0.3233111261204278, 0.32326897192788134, 0.30782241061740334, 0.2955975281529472, 0.28761781141157416, 0.28381245938982924, 0.28430322415160425, 0.35175662811321184, 0.3660078576491025, 0.38969705715781605, 0.4069843799779448, 0.4045645043364165, 0.401136579316859, 0.3965022146609118, 0.39064227679912905, 0.34119921596173414, 0.33676635638704644, 0.33280746500403424, 0.3297525194897064, 0.3280066341393527, 0.32799581154927676, 0.3301193573621906, 0.3347959741586244, 0.3323698284186565, 0.336835917749884, 0.34261323766593, 0.3495460978942647, 0.35752938782585786, 0.36649559148185074], 'beta': 0.5, 'src': 'DiT(l4_cond)', 'applied': 30}}}
+
+③b 🧬 直连线取证 (INTACT 意图解码器 → 流形专家预测器):
+     enabled: True
+     frames: 4
+     ran: 4
+     applied: 30
+     w_zero: 0
+     refused: 0
+     ready: True
+     ready_src: 已训练且过闸 (LOSO R²=0.638 ≥0.30, checkpoints/manifold_predictor/intent_line.pt)
+     src_last: decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.2787)
+     w_last: 0.3
+     err: None
+     intent_gain_mean: 8.985935
+     manifold_last: [0.07006, -5e-05, 0.00262, 0.00808, 0.16942, 0.22344]
+     clip_max: 0.0
+     stack: {'commit': 30, 'vetoed': 0, 'clipped': 0, 'clip_max_mean': None, 'w_last': 0.3, 'layers': {'L2': {'kind': 'action', 'src': 'analytic/L3 参考', 'weight': 1.0, 'accepted': True, 'reason': '执行层 (唯一出口)', 'hash': '3f35fc15558fb7d4'}, 'L4': {'kind': 'intent', 'src': 'decoder(δ) ← intact(意图增量 δ=z_goal−z_t 单位向量, 192维, 无需标定, ‖δ‖=25.2787)', 'weight': 0.3, 'accepted': True, 'reason': '采纳: w=0.300', 'hash': 'c301cb844536b2dc', 'ready': True}}}
+     by_stage: {'接近': 30}
+
+③c 🧬 纤维丛联络层 (潜空间丛 Z → 接触丛 C 主力 / 性能丛 P 次要):
+     enabled: True
+     frames: 4
+     ran: 4
+     no_latent: 0
+     ready: True
+     map_src: intact_fiber_map.json · ready=True · contact_r2_loso=0.4711 · morph_r2_loso=0.6067 · 标定 n=582 (真实引擎样本) · 数据文件 8 个 · contact r²_loso=0.471 / morph r²_loso=0.607 → ready=True
+     err: None
+     src_last: Φ(z_pred)−Φ(z_t) · contact r²_loso=0.471 (null=0.000, n=582) · z7 丛映射 r²_loso=0.607
+     h_norm_mean: 0.0769
+     kappa_tor_mean: 0.0735
+     kappa_curv_mean: 0.022712
+     cos_geo_mean: 0.9877
+     phi_last: [0.12018, 0.00206, 0.00684, -0.00317, -0.00165, 0.02198]
+     omega_last: [0.015305, 0.000286, 0.001277, -0.000257, -2.8e-05, -0.000537]
+     contact_true_last: [0.12596, 0.0, 0.00793, -0.00319, 0.0, 0.0254]
+     sample_n: 0
+     w_perf: 0.0
+     perf_note: 插拔任务次要: 只记录不注入 (老倪口径)
+
+④ 引擎日志告警回放 (累计 9 行, 关键 1 行):
+    🏆 L3 真执行接入: SmolVLA-Lew · 模型 ckpt = outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model — xyz 由模型出, gripper 由状态机管 · 🗣 语言 'metaworld 光模块插拔'
+=== L4audit done ===
