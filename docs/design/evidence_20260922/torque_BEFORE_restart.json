@@ -1,0 +1,163 @@
+{
+ "ip": "192.168.23.160",
+ "jointPos_rad": [
+  0.566044503,
+  0.03693598,
+  -2.400618614,
+  1.831983161,
+  0.624965824,
+  -0.719388813,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "jointVel_rad_s": [
+  0.0,
+  -0.0,
+  -0.0,
+  0.0,
+  -0.0,
+  0.0
+ ],
+ "jointTorque_Nm": [
+  29.129222,
+  -16.016019,
+  -25.014848,
+  -11.454706,
+  -21.98129,
+  0.816624
+ ],
+ "tcp_endInRef_m": [
+  0.662338367,
+  0.126221267,
+  0.292778138
+ ],
+ "operateMode": "OperateMode.manual",
+ "powerState": "PowerState.off",
+ "interfaces_found": {
+  "tool": {
+   "instance": [
+    "setToolset",
+    "toolsInfo",
+    "toolset"
+   ],
+   "class": [
+    "setToolset",
+    "toolsInfo",
+    "toolset"
+   ]
+  },
+  "load": {
+   "instance": [
+    "loadProject"
+   ],
+   "class": [
+    "loadProject"
+   ]
+  },
+  "alarm": {
+   "instance": [
+    "clearServoAlarm"
+   ],
+   "class": [
+    "clearServoAlarm"
+   ]
+  },
+  "torque": {
+   "instance": [
+    "jointTorque"
+   ],
+   "class": [
+    "jointTorque"
+   ]
+  },
+  "limit": {
+   "instance": [
+    "getSoftLimit",
+    "setSoftLimit"
+   ],
+   "class": [
+    "getSoftLimit",
+    "setSoftLimit"
+   ]
+  },
+  "collision": {
+   "instance": [
+    "disableCollisionDetection",
+    "enableCollisionDetection"
+   ],
+   "class": [
+    "disableCollisionDetection",
+    "enableCollisionDetection"
+   ]
+  },
+  "drag": {
+   "instance": [
+    "disableDrag",
+    "enableDrag"
+   ],
+   "class": [
+    "disableDrag",
+    "enableDrag"
+   ]
+  },
+  "power": {
+   "instance": [
+    "powerState",
+    "setPowerState"
+   ],
+   "class": [
+    "powerState",
+    "setPowerState"
+   ]
+  },
+  "reset": {
+   "instance": [
+    "moveReset"
+   ],
+   "class": [
+    "moveReset"
+   ]
+  },
+  "clear": {
+   "instance": [
+    "clearServoAlarm"
+   ],
+   "class": [
+    "clearServoAlarm"
+   ]
+  },
+  "state": {
+   "instance": [
+    "getKeypadState",
+    "getStateData",
+    "operationState",
+    "powerState",
+    "recoverState",
+    "setPowerState",
+    "startReceiveRobotState",
+    "stopReceiveRobotState",
+    "updateRobotState"
+   ],
+   "class": [
+    "getKeypadState",
+    "getStateData",
+    "operationState",
+    "powerState",
+    "recoverState",
+    "setPowerState",
+    "startReceiveRobotState",
+    "stopReceiveRobotState",
+    "updateRobotState"
+   ]
+  },
+  "_all_count": {
+   "instance": 93,
+   "class": 93
+  }
+ },
+ "disconnect": "ok"
+}
