@@ -257,10 +257,13 @@ def report(scen: str, extra: dict) -> None:
 
 def build_intact_node():
     from lerobot.manifold.intact_node import IntactNode, IntactRuntime
+    import intact_direct_rollout as _idr
     rt = IntactRuntime(task="pusht", device="cpu")
     nd = IntactNode(horizon=8, runtime=rt)
     gf = os.path.join(ROOT, "reports", "intact_goal_frame.npy")
-    stf = os.path.join(ROOT, "reports", "zmax_action_stats.json")
+    # 🎯 2026-09-22: 反归一化统计按 ckpt 训练集自动同源 (原来写死 zmax_action_stats.json → 与 v6 权重不同源)
+    stf, _why = _idr.resolve_stats()
+    print(f"统计同源解析: {_why}")
     print(f"INTACT runtime: trained={getattr(rt, 'trained', None)} · reason={getattr(rt, 'reason', '')}")
     if os.path.isfile(gf) and os.path.isfile(stf):
         nd.set_goal(np.load(gf))

@@ -12013,7 +12013,10 @@ class SimulinkModule(QWidget):
                             _logs.append(f"❌ INTACT 未就绪 ({getattr(_nd.runtime, 'reason', '?')}) → 保持解析链")
                         else:
                             _gf = os.path.join(_root, "reports", "intact_goal_frame.npy")
-                            _stf = os.path.join(_root, "reports", "zmax_action_stats.json")
+                            # 🎯 2026-09-22: 反归一化统计**按 ckpt 训练集自动同源** (原来写死 zmax_action_stats.json,
+                            #   它源自旧 zmax_insert.h5 → 与在役 v6 权重不同源, dx/dz 幅度差约 2 倍)
+                            _stf, _stf_why = _idr.resolve_stats()
+                            _logs.append(f"   {_stf_why}")
                             if not (os.path.isfile(_gf) and os.path.isfile(_stf)):
                                 _logs.append(f"❌ 缺目标帧/归一化统计 "
                                              f"({os.path.basename(_gf)} / {os.path.basename(_stf)}) → 保持解析链")

@@ -1,0 +1,32 @@
+🧠 INTACT 意图-动作: 动作维对齐 4 → 8 (来自模型实测)
+🧠 INTACT 意图-动作: 数据源=未设置 · 策略=direct(零搜索) · action_dim=8 · horizon=8 · trained=True
+统计同源解析: ✅ 同源: optical_insert_v5_action_stats.json ↔ ckpt 训练集 optical_insert_v5_disturb.h5
+INTACT runtime: trained=True · reason=None
+归一化统计源: /home/ubuntu/lerobot-smolvla-lew/reports/optical_insert_v5_action_stats.json
+  mean=[0.009600000455975533, -0.000699999975040555, -0.008100000210106373, 0.8274999856948853]  std=[0.07400000095367432, 0.03590000048279762, 0.04639999940991402, 0.38190001249313354]
+  文件字段: ['action_space', 'action_space_note', 'episodes', 'key_order', 'mean', 'method', 'n_finite', 'n_total']
+🎯 INTACT 已挂载: horizon=8 · 适配层 enabled=None (None) · 影子=True · 生效阶段=['接近', '对位', '下降', '抓取', '抬起', '转移']
+==============================================================================
+L4 直驱路取证 · 步数=200
+==============================================================================
+① sim._direct_act 已装载: False
+② 直驱记录 rec['act'] (模型动作喂 env 的次数) = 200
+   rec['raw'] (归一化逆变换后) = 200
+   rec['stage'] 分布 = {'阶段 接近': 112, '阶段 对位': 88}
+   chunk_norm: 均值 4.4867 · 最小 2.6415 · 最大 11.1791
+③ 模型动作 (喂给 env 的 4D, 前 5 帧):
+[[-0.0058 -0.0008 -0.0112 -0.2712]
+ [-0.0118 -0.0048 -0.0686 -0.0262]
+ [-0.0225 -0.0008 -0.0501 -0.0396]
+ [-0.0171 -0.0027 -0.0469 -0.0281]
+ [-0.0088 -0.0056 -0.0403  0.0007]]
+   |逐维 std| = [0.0218, 0.0038, 0.0166, 0.3681]  (全 0 = 没真驱动)
+   |逐维均值| = [0.0078, -0.0053, 0.0158, 0.7037]
+④ trace u_exec: 帧数 200 · 非零帧 200 · 逐维 std [0.0703, 0.0537, 0.027, 0.0]
+⑤ 直驱路是否真决定动作: 是 ✅
+   引擎内部统计 _intact_stats: {'intact_calls': 0, 'refused_map': 0, 'frames': 0, 'chunk_reuse': 0, 'err': None, 'shift': [], 'u_ff_src': 'analytic'}
+⑦ 直驱 state (含 L2 收口闸计数): {"n": 200, "calls": 200, "err": null, "gate": {"n": 200, "veto_dir": 200, "veto_mag": 0, "blend": 0, "ref_zero": 0, "stage_out": 0, "cos_sum": 0.0, "w_min": null, "w_max": null, "cos_used": 0}, "l2_ready": true, "l2_err": null, "skill_ctx_dim": 24, "skill_ctx_nonzero": 4, "u_ff_source": "intact(chunk×K_ACT=0.5)", "l3_cond_ready": false, "decoder": {"decoder": "intact_l3_decoder", "cond_dim": 6, "excluded_stages": ["插入"], "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)", "l3_cond_ready": false, "l3_cond_map": "models/intact_l3_map.json", "trained": false, "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"}, "evidence": "/home/ubuntu/lerobot-smolvla-lew/reports/intact_l3_cond.json"}
+   → 闸通过率: 融合 0/200 · 否决方向 200/200 · 否决幅值 0/200 · 交回参考 0/200 · 阶段外 0/200
+⑧ 结局: dist_min=None · done_any=None · V_last=None · 阶段计数=None
+⑨ 模型动作 vs env 实际执行: rec['act'] 有 200 帧, _direct_act=False ⇒ 模型动作未采纳 (被闸否决 → 执行参考)
+⑥ 引擎自报日志 (前 6 条): ['🏆 L4 流形预测器已部署 (l4_mani_predictor_v5.pt — JEPA LatentPredictor→ManifoldReadout, trained=True)', '🧠 L4 二态意图层已接 (INTACT): m_local(接触流形切向) / m_goal(性能流形梯度) · 共享算子 + 非对称梯度 · 保留流形']

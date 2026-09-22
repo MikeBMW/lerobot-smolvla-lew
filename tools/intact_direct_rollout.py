@@ -48,7 +48,53 @@ IMG = 224
 # 🎯 反归一化统计必须与**训练同源** (2026-09-14 实锤): 旧默认 zmax_action_stats.json 源自
 #   zmax_insert.h5 (n=18635), 而 v5/v6 权重是拿 optical_insert_v5_disturb (n=149100) 训的
 #   → dx std 0.153 vs 0.0742 (放大 2.1 倍)、grip mean 0.120 vs 0.828 → 指令缩放全错, 评测作废。
-STATS_FILE = os.path.join(ROOT, "reports", "optical_insert_v5_action_stats.json")
+# 2026-09-22: 在役权重已是 v6 (训练集 optical_insert_v6_disturb.h5) → 默认改 v6 统计,
+#   并新增 resolve_stats(): 按 ckpt 的 train_config.yaml 自动挑**同源**统计 (别再手写路径)。
+STATS_FILE = os.path.join(ROOT, "reports", "optical_insert_v6_action_stats.json")
+
+
+def resolve_stats(ckpt: str | os.PathLike | None = None, root: str = ROOT) -> tuple[str, str]:
+    """按 ckpt 的训练数据集自动找**同源**反归一化统计。返回 (path, reason)。
+
+    口径纪律: 统计源的 h5 必须 == ckpt train_config.yaml 里的 `name:` → 否则指令缩放错。
+    找不到同源时**回落默认并给出原因** (调用方要打印; 关键路径用 audit_stats 快速失败)。
+    """
+    import glob as _glob                                       # noqa: PLC0415
+    rdir = os.path.join(root, "reports")
+    cache = os.environ.get("STABLEWM_HOME") or os.environ.get("LOCAL_DATASET_DIR") or _CACHE
+    ck = str(ckpt or os.environ.get("INTACT_POLICY", "") or "").split("/")[0]
+    base = os.path.join(cache, "checkpoints", ck)
+    # 权重可能是「目录」, 也可能是「目录 + weights.pt 软链 → 真实权重目录」两种形态:
+    #   实测 intact_l4_current/ = {config.json, weights.pt -> intact_goal_optical_insert_v6r11_s3072/weights_epoch_2.pt}
+    #   → 前者目录内没有 train_config.yaml, **必须跟随软链**才能拿到训练集名 (否则解析成"未知")。
+    cfgs: list[str] = []
+    if os.path.isdir(base):
+        cfgs.append(os.path.join(base, "train_config.yaml"))
+        for w in ("weights.pt", "weights_epoch_2.pt", "weights_epoch_1.pt", "weights_last.pt"):
+            wp = os.path.join(base, w)
+            if os.path.islink(wp) or os.path.isfile(wp):
+                cfgs.append(os.path.join(os.path.dirname(os.path.realpath(wp)), "train_config.yaml"))
+    train_ds = ""
+    for cfg in cfgs:
+        if not os.path.isfile(cfg):
+            continue
+        for line in open(cfg, encoding="utf-8"):
+            s = line.strip()
+            if s.startswith("name:") and s.endswith(".h5"):
+                train_ds = s.split(":", 1)[1].strip()
+                break
+        if train_ds:
+            break
+    if train_ds:
+        for p in sorted(_glob.glob(os.path.join(rdir, "*_action_stats.json"))):
+            try:
+                d = json.load(open(p, encoding="utf-8"))
+            except Exception:                                   # noqa: BLE001
+                continue
+            if os.path.basename(str(d.get("source", ""))) == train_ds:
+                return p, f"✅ 同源: {os.path.basename(p)} ↔ ckpt 训练集 {train_ds}"
+    return STATS_FILE, (f"⚠️ 未找到与 ckpt 训练集 {train_ds or '?'} 同源的统计 → 回落 "
+                        f"{os.path.basename(STATS_FILE)} (口径可能不一致)")
 
 
 def audit_stats(s_meta: dict, policy: str | None, allow_mismatch: bool = False) -> None:

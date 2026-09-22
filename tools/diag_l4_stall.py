@@ -139,7 +139,9 @@ def main():
                        "runtime": os.environ.get("INTACT_RUNTIME"),
                        "device": os.environ.get("INTACT_DEVICE", "cpu")}
         slag = os.path.join(ROOT, "reports", "intact_goal_frame.npy")
-        sstf = os.path.join(ROOT, "reports", "zmax_action_stats.json")
+        import intact_direct_rollout as _idr
+        sstf, _why = _idr.resolve_stats()
+        print(f"[stall-diag] 统计同源: {_why}")
         if not (os.path.isfile(slag) and os.path.isfile(sstf)):
             print(f"❌ 缺目标帧/统计: {slag} / {sstf}")
             return 3
