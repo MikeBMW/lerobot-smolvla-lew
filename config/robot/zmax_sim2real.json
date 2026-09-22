@@ -1,0 +1,166 @@
+{
+ "_doc": "Z-MAX 仿真↔真机参数桥 — 由 tools/sim2real_bridge.py 生成。引擎口径 ↔ 真机物理量逐条对照 (含来源与就绪度), sim→real 迁移前先读本表。",
+ "_generated_at": "2026-09-22 11:21:19",
+ "robot": {
+  "engine_side": "metaworld 仿真臂 (R0 物理真实化)",
+  "real_side": "XMS5-R800-W4G3B4C (珞石, DOF 6)",
+  "urdf_sha256_16": "4e0288ac88042652",
+  "link_mass_sum_kg": 13.622,
+  "payload_kg": 1.51,
+  "payload_cog_m": [
+   0.01617,
+   0.01289,
+   0.031170000000000003
+  ],
+  "_mass_inertia_src": "URDF config/robot/xms5_r800_w4g3b4c.urdf (6 连杆全带惯量张量)"
+ },
+ "frames": {
+  "engine_hand": {
+   "obs": "obs[0:3]",
+   "real": "TCP (FK(jpos) 或编码器)",
+   "real_fk_residual_mm": 3.518,
+   "_src": "URDF FK ↔ /robot/tcp_pose 实测对照 (tools/robot_spec_sync.py)"
+  },
+  "engine_peg": {
+   "obs": "obs[4:7]",
+   "real": "YOLO 2D + 反投影 (K + T_base_cam + plane_z) 或 plane_z 光线回退",
+   "tool_offset_m": null,
+   "_reason": "未示教几何 → obs[4:7] 无法从 TCP 推 → 引擎侧保持感知直给 (真机侧走 YOLO 反投影); 现场零运动示教 tools/ss_geom_calib.py --record peg_head 后可闭合"
+  },
+  "engine_target": {
+   "obs": "obs[36:39]",
+   "real": "示教孔位 (cell_geometry.goal)",
+   "ready": false,
+   "_reason": "未示教 goal (孔口/孔底)"
+  },
+  "control_tcp_offset_m": [
+   -0.015875,
+   0.015293,
+   0.260422
+  ],
+  "nominal_tool_offset_m": [
+   -0.01588615307905028,
+   0.018348498948158043,
+   0.2586775713451509
+  ],
+  "_tcp_note": "产线 TCP 由只读多帧反解得到, 与 URDF 名义 tool1 差 ~3mm (工具几何名义值 vs 现场夹爪); sim→real 用 control_tcp 口径, 不用名义 tool1"
+ },
+ "scale_action": {
+  "engine": {
+   "u_unit": "m/s",
+   "act1_eq_mps": 0.5,
+   "_src": "state_space_sim_real: act=u(m/s)/0.5 (metaworld 伺服稳态 ≈9mm/步@act1)"
+  },
+  "real": {
+   "unit": "m/s",
+   "servo": "RT 伺服/点位 (Orin robot_driver)"
+  },
+  "act_to_mps": 0.5,
+  "u_sat_mps": 0.6,
+  "one_step_mm": 10.0,
+  "_verify": "真机运动需现场闸门 (本工具不发任何指令)"
+ },
+ "joint_limits": {
+  "n": 6,
+  "items": [
+   {
+    "name": "XMS5-R800-W4G3B4C_joint_1",
+    "type": "revolute",
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "velocity": 3.141592653589793,
+    "effort": 113.0
+   },
+   {
+    "name": "XMS5-R800-W4G3B4C_joint_2",
+    "type": "revolute",
+    "lower": -2.7925,
+    "upper": 2.618,
+    "velocity": 3.141592653589793,
+    "effort": 113.0
+   },
+   {
+    "name": "XMS5-R800-W4G3B4C_joint_3",
+    "type": "revolute",
+    "lower": -2.9671,
+    "upper": 2.4435,
+    "velocity": 3.141592653589793,
+    "effort": 70.0
+   },
+   {
+    "name": "XMS5-R800-W4G3B4C_joint_4",
+    "type": "revolute",
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "velocity": 3.141592653589793,
+    "effort": 25.0
+   },
+   {
+    "name": "XMS5-R800-W4G3B4C_joint_5",
+    "type": "revolute",
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "velocity": 3.141592653589793,
+    "effort": 25.0
+   },
+   {
+    "name": "XMS5-R800-W4G3B4C_joint_6",
+    "type": "revolute",
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "velocity": 3.141592653589793,
+    "effort": 19.0
+   }
+  ],
+  "_src": "URDF 限位 (位置/速度/力矩)",
+  "used_by": "L2 收口闸 (逐轴夹紧) + 安全层限幅"
+ },
+ "workspace_real": {
+  "n_frames": 400,
+  "state_file": "/home/ubuntu/zmax_data/real_tap_20260922/state_20260922.jsonl",
+  "tcp_x_range": [
+   0.6639,
+   0.6639
+  ],
+  "tcp_y_range": [
+   -0.0293,
+   -0.0293
+  ],
+  "tcp_z_range": [
+   0.2935,
+   0.2935
+  ],
+  "static": true
+ },
+ "calib_refs": {
+  "camera_K": [
+   394.0623474121094,
+   0.0,
+   318.443603515625,
+   0.0,
+   393.472412109375,
+   238.658447265625,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "T_base_cam": null,
+  "plane_z": null,
+  "depth_scale_sim_only": 0.9616
+ },
+ "gaps": [
+  {
+   "item": "T_base_cam",
+   "reason": "未标定: 需零运动人工拖动 10+ 位姿采 (板: tools/board_handeye_solve.py)"
+  },
+  {
+   "item": "plane_z",
+   "reason": "未标定: 需现场用夹爪或塞尺量一次台面高度"
+  },
+  {
+   "item": "cell_geometry.points",
+   "reason": "无示教几何: 需现场零运动示教 — gui-venv311/bin/python tools/ss_geom_calib.py --record peg_head|goal|aoi (人工拖到位置后确认, 无运动指令)"
+  }
+ ],
+ "_redline": "全流程只读: URDF + 落盘真机帧 + 标定注册表; 无任何真机控制指令 (move/jog/rt/gripper 一律未调)"
+}

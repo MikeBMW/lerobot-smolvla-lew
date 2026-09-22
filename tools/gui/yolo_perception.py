@@ -13,6 +13,8 @@
 输出: 检测框 → 3D 位姿 → 替换 39D 观测对应段 → 43D 状态空间观测
 """
 import os
+import sys as _sys
+
 import numpy as np
 
 # 相机默认参数 (corner2 视角, 仿真标定; 真机用相机标定外参)
@@ -22,8 +24,32 @@ _DEF_CAM = {"cam_pos": np.array([0.0, -0.25, 0.9]),
 
 # 39D 结构: [0:3]=hand, [18:21]=光模块, [36:39]=hole/goal (与 yolo_state_aligner 一致)
 _SEG = {"hand": (0, 3), "peg": (18, 21), "hole": (36, 39)}
-# 平面高度假设 (m) — 真机用深度相机/标定替代
-_PLANE_Z = {"hand": 0.155, "peg": 0.03, "hole": 0.129}
+
+# 🧭 台面高度: 一律先读全系统标定注册表 config/calib/zmax_calib.json (单一真源);
+#    未标定时才回退下面的**仿真**默认值, 并把来源记在 _PLANE_Z_SRC 里 (真机不许拿仿真常量冒充已标)。
+_PLANE_Z_SIM_FALLBACK = {"hand": 0.155, "peg": 0.03, "hole": 0.129}
+
+
+def _load_plane_z():
+    try:
+        _t = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _t not in _sys.path:
+            _sys.path.insert(0, _t)
+        import zmax_params as _zp                       # noqa: PLC0415
+        return _zp.plane_z(), f"全系统标定注册表 ({os.path.relpath(_zp.CALIB, _zp.ROOT)})"
+    except Exception as _e:                             # noqa: BLE001
+        return None, f"注册表不可读 ({type(_e).__name__})"
+
+
+_PLANE_Z_V, _PLANE_Z_SRC = _load_plane_z()
+if isinstance(_PLANE_Z_V, dict):
+    _PLANE_Z = {k: float(v) for k, v in _PLANE_Z_V.items()}
+elif isinstance(_PLANE_Z_V, (int, float)):
+    _PLANE_Z = {k: float(_PLANE_Z_V) for k in ("hand", "peg", "hole")}
+else:
+    _PLANE_Z = dict(_PLANE_Z_SIM_FALLBACK)
+    _PLANE_Z_SRC = (_PLANE_Z_SRC + " → 未标定, 回退**仿真**默认 (真机请现场量一次台面高度)")
+
 
 
 class YoloPerception:

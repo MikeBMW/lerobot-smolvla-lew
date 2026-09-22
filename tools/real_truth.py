@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import time
 
 OUT_DEFAULT = os.environ.get("SS_OUT", os.path.expanduser("~/zmax_ss_remote"))
@@ -88,18 +89,38 @@ def read_status(out=None) -> dict:
 
 
 def load_geom(path=None) -> tuple:
-    """现场示教几何 (与采集器同一文件/同一口径) → ({'peg_head':[x,y,z], 'goal':[x,y,z]} | None, 说明)"""
-    p = os.path.expanduser(path or os.environ.get("SS_GEOM_PATH", GEOM_DEFAULT))
-    try:
-        d = json.load(open(p, encoding="utf-8"))
-        if not d.get("validated"):
-            return None, f"几何未通过校验({p})"
-        pts = d["points"]
-        return ({"peg_head": [pts["peg_head"][k] for k in "xyz"],
-                 "goal": [pts["goal"][k] for k in "xyz"]},
-                f"示教几何 {d.get('updated_at')} @ {p}")
-    except Exception as e:                           # noqa: BLE001
-        return None, f"无示教几何({type(e).__name__}) @ {p} — 相关项拒填, 不编造"
+    """现场示教几何 (与采集器同一文件/同一口径) → ({'peg_head':[x,y,z], 'goal':[x,y,z]} | None, 说明)
+
+    查找顺序: 显式 path / $SS_GEOM_PATH → 采集器输出 real_cell_geometry.json
+              → **全系统标定注册表** config/calib/zmax_calib.json 的 cell_geometry.points (单一真源)。
+    """
+    cands = [os.path.expanduser(path or os.environ.get("SS_GEOM_PATH", GEOM_DEFAULT))]
+    last = "无示教几何 — 相关项拒填, 不编造"
+    try:                                                  # 单一真源兜底 (2026-09-22 统一参数接口)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import zmax_params as _zp                          # noqa: PLC0415
+        reg = _zp.calib()
+        pts = (reg.get("cell_geometry") or {}).get("points")
+        if pts:
+            need = all(k in pts for k in ("peg_head", "goal"))
+            if need:
+                return ({"peg_head": [pts["peg_head"][k] for k in "xyz"],
+                         "goal": [pts["goal"][k] for k in "xyz"]},
+                        f"标定注册表 cell_geometry ({os.path.relpath(_zp.CALIB, _zp.ROOT)})")
+    except Exception:                                     # noqa: BLE001
+        pass
+    for p in cands:
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+            if not d.get("validated"):
+                return None, f"几何未通过校验({p})"
+            pts = d["points"]
+            return ({"peg_head": [pts["peg_head"][k] for k in "xyz"],
+                     "goal": [pts["goal"][k] for k in "xyz"]},
+                    f"示教几何 {d.get('updated_at')} @ {p}")
+        except Exception as e:                           # noqa: BLE001
+            last = f"无示教几何({type(e).__name__}) @ {p} — 相关项拒填, 不编造"
+    return None, last
 
 
 def quat_to_R(q):
@@ -114,7 +135,8 @@ def quat_to_R(q):
 
 def peg_tool_offset():
     """模块中心相对 TCP 的夹具偏移 (米, base_link 下的固定工具偏移) — 由标定给出, 没有就 None。
-    来源优先级: 环境变量 SS_PEG_TOOL_OFFSET='x,y,z' > 几何文件字段 peg_tool_offset > 无。"""
+    来源优先级: 环境变量 SS_PEG_TOOL_OFFSET='x,y,z' > 几何文件字段 peg_tool_offset
+              > **全系统标定注册表** config/calib/zmax_calib.json 的 cell_geometry.peg_tool_offset > 无。"""
     ev = os.environ.get("SS_PEG_TOOL_OFFSET", "").strip()
     if ev:
         try:
@@ -129,6 +151,15 @@ def peg_tool_offset():
         v = d.get("peg_tool_offset")
         if v and len(v) == 3:
             return [float(t) for t in v], f"几何文件字段 @ {p}"
+    except Exception:                                # noqa: BLE001
+        pass
+    try:                                             # 单一真源兜底 (2026-09-22)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import zmax_params as _zp                     # noqa: PLC0415
+        pts = (_zp.calib().get("cell_geometry") or {}).get("points") or {}
+        v = pts.get("peg_tool_offset")
+        if v and len(v) == 3:
+            return [float(t) for t in v], f"标定注册表 cell_geometry.peg_tool_offset"
     except Exception:                                # noqa: BLE001
         pass
     return None, "未标定夹具偏移 (模块中心≠TCP) → 光模块项填 null, 只用 TCP 真值, 不编造"

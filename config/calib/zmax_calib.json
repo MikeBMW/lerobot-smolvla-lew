@@ -1,0 +1,88 @@
+{
+ "_doc": "Z-MAX 标定参数注册表 — 由 tools/zmax_params.py --sync 合并生成。所有层读本文件, 禁止硬编码内外参。",
+ "_generated_at": "2026-09-22 11:16:29",
+ "camera": {
+  "K": [
+   394.0623474121094,
+   0.0,
+   318.443603515625,
+   0.0,
+   393.472412109375,
+   238.658447265625,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "dist": [
+   -0.0539163276553154,
+   0.057097118347883224,
+   0.00034414068795740604,
+   0.0009524741326458752,
+   -0.01931513287127018
+  ],
+  "image_size": [
+   640,
+   480
+  ],
+  "fx": 394.0623474121094,
+  "fy": 393.472412109375,
+  "cx": 318.443603515625,
+  "cy": 238.658447265625,
+  "distortion_model": "plumb_bob",
+  "_src": "models/real_cam_calib.json (真机出厂内参 · /realsense/color/camera_info (ROS camera_info, 只读订阅) · 采集于 2026-09-18 18:09:25)"
+ },
+ "T_base_cam": {
+  "value": null,
+  "_src": "models/real_cam_calib.json",
+  "_reason": "未标定: 需零运动人工拖动 10+ 位姿采 (板: tools/board_handeye_solve.py)"
+ },
+ "plane_z": {
+  "value": null,
+  "_src": "calib_report_*.json",
+  "_reason": "未标定: 需现场用夹爪或塞尺量一次台面高度"
+ },
+ "depth_scale": {
+  "value": 0.9616,
+  "_src": "yolo_state_aligner 默认 (2026-09-07 探针 tools/probe_r1_yolo_calib.py 实测均值)",
+  "_scope": "仿真单目深度 (SILog) 专用; 真机走 RealSense 米制深度/plane_z 回退"
+ },
+ "cell_geometry": {
+  "points": null,
+  "_reason": "无示教几何: 需现场零运动示教 — gui-venv311/bin/python tools/ss_geom_calib.py --record peg_head|goal|aoi (人工拖到位置后确认, 无运动指令)"
+ },
+ "robot": {
+  "spec": "config/robot/zmax_robot_spec.json",
+  "dof": 6,
+  "urdf_sha256_16": "4e0288ac88042652",
+  "link_mass_sum_kg": 13.622
+ },
+ "tool_payload": {
+  "mass_kg": 1.51,
+  "cog_m": [
+   0.01617,
+   0.01289,
+   0.031170000000000003
+  ],
+  "_src": "state_repair_0922_002520.json",
+  "_reason": null
+ },
+ "control_tcp": {
+  "ok": true,
+  "n_frames": 400,
+  "frame": "XMS5-R800-W4G3B4C_link6",
+  "offset_xyz_m": [
+   -0.015875,
+   0.015293,
+   0.260422
+  ],
+  "offset_std_mm": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "rot_dev_deg_max": 0.0,
+  "verdict": "刚体一致 (std ≤2mm 且姿态偏差 ≤1°) — 可作产线 TCP 口径入库",
+  "_src": "真机只读采集落盘多帧反解 (FK(jpos) 对 tcp_pose)",
+  "_reason": null
+ }
+}
