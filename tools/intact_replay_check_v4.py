@@ -100,6 +100,17 @@ def main() -> int:
 
     rt = IntactRuntime(task=a.task, device=a.device)
     node = IntactNode(horizon=a.horizon, runtime=rt)
+    if not node.runtime.trained and a.device != "cpu":
+        # 🩹 2026-09-22: 官方加载路径 swm.wm.utils.load_pretrained() **硬要 CUDA**,
+        #   没 GPU/CUDA_VISIBLE_DEVICES 空 时报 "No CUDA GPUs are available" → 判闸整条失败。
+        #   判闸是**离线回放**, CPU 完全够 (实测 60 clips 约 2 分钟) ⇒ 自动回退 CPU 再试一次,
+        #   并把原因说清楚(老倪红线: 失败要报根因, 不能静默降级成"判闸不可用")。
+        _why = str(node.runtime.reason)
+        if "CUDA" in _why or "GPU" in _why:
+            print(f"⚠️ 官方加载路径要 CUDA ({_why[:80]}) → 自动回退 --device cpu 重试")
+            rt = IntactRuntime(task=a.task, device="cpu")
+            node = IntactNode(horizon=a.horizon, runtime=rt)
+            a.device = "cpu"
     if not node.runtime.trained:
         print(f"❌ INTACT 未就绪: {node.runtime.reason}")
         return 3
@@ -212,6 +223,7 @@ def main() -> int:
     json.dump({"meta": {"h5": a.h5, "policy": os.environ.get("INTACT_POLICY", ""), "skill_mode": _SK,
                         "skill_dim": sk_dim, "clips": a.clips, "repeats": a.repeats, "seed": a.seed,
                         "horizon": a.horizon, "frameskip": FRAMESKIP, "num_steps": NUM_STEPS,
+                        "device": a.device,
                         "obs_window": HIST, "goal_ahead_frames": goal_ahead, "goal_mode": a.goal_mode,
                         "action_history": "真值 raw 前 2 块 (训练口径)",
                         "obs": "数据集真帧 · 连续窗口 (stride 2) · teacher-forced",
