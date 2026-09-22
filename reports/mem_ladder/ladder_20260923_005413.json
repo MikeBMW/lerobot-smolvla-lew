@@ -1,0 +1,270 @@
+{
+ "ts": "2026-09-23 00:54:13",
+ "manifest": {
+  "ts": "2026-09-23 00:38:39",
+  "policy": "joint_v5/weights.pt",
+  "ckpt_sha256_16": "93440e6acc508efc",
+  "ckpt_bytes": 84058348,
+  "stats": "optical_insert_v4_action_stats.json",
+  "stats_sha256_16": "24a6253f9eeb2d6d",
+  "seeds": [
+   104,
+   7,
+   42
+  ],
+  "max_steps": 1000,
+  "mode": "insert",
+  "device": "cpu",
+  "gates": {
+   "L2": 0,
+   "L3": 0,
+   "L4": 0,
+   "assembly": 0,
+   "updated": "2026-09-15 07:09:44"
+  },
+  "state_sha256_16": {
+   "data/muscle_memory.json": "902589ddbd2a9554",
+   "data/assembly_memory.json": "41aeb3b783f6801b",
+   "data/shared_memory.json": "d1f1fdee8f55f4a7",
+   "data/memory_layers.json": "caf84fdd3e281881"
+  },
+  "models_sha256_16": {
+   "hjepa_zflow_model.pt": "5f647121422276ea",
+   "l4_mani_predictor_v1.pt": "cfbba44f386b2eb9",
+   "l4_mani_predictor_v2.pt": "10afd516c29083ce",
+   "l4_mani_predictor_v4.pt": "b63f210202da2895",
+   "l4_mani_predictor_v5.pt": "5cc4b5820755b987",
+   "l4_yaw_head_grasp_dz_v1.pt": "ccdf452baa948452",
+   "l4_yaw_head_grasp_dz_v2.pt": "9516aa839ff461bf",
+   "lew_mamba_interleave.pt": "2e3e26cbcc3a9d08",
+   "lew_transformer.pt": "2820d0eb603ff647",
+   "yolo_peg_live.pt": "e0d84ed83da74497"
+  },
+  "code": {
+   "tools/gui/state_space_sim_real.py": "3b617b8b5ae8a7fd",
+   "tools/intact_sw_optical_bridge.py": "96c06fac2a9b4d96",
+   "src/lerobot/memory/potential_field.py": "d3f8d3b851ef20c2",
+   "src/lerobot/memory/mem_nodes.py": "7e0d922592fadb12",
+   "tools/mem_ladder_integration.py": "cb2b3536052c9f9a"
+  },
+  "git": "f08b6321",
+  "stats_meta": {
+   "action_space": "u",
+   "n_finite": 147700
+  },
+  "manifest_hash": "f980c234a2e0",
+  "state_snapshot_dir": "reports/mem_ladder/state_snap_f7dafa0dd48e"
+ },
+ "n_runs": 6,
+ "new_runs": 6,
+ "skipped": 0,
+ "agg": {
+  "L234|none": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    272.6,
+    294.43,
+    458.53
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 104,
+     "done": false,
+     "insert_mm": 272.6,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.028699999675154686,
+      0.005900000222027302,
+      0.006300000008195639,
+      0.013899999670684338
+     ],
+     "disturb": null,
+     "seconds": 139.1
+    },
+    {
+     "seed": 7,
+     "done": false,
+     "insert_mm": 294.43,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.025200000032782555,
+      0.004999999888241291,
+      0.005900000222027302,
+      0.05570000037550926
+     ],
+     "disturb": null,
+     "seconds": 139.2
+    },
+    {
+     "seed": 42,
+     "done": false,
+     "insert_mm": 458.53,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.021800000220537186,
+      0.0071000000461936,
+      0.011699999682605267,
+      0.01489999983459711
+     ],
+     "disturb": null,
+     "seconds": 142.0
+    }
+   ],
+   "w_mean": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "applied": 0,
+   "sec": [
+    153.0,
+    153.6,
+    155.8
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 341.9,
+   "depth_std": 83.0,
+   "w_mean_avg": 0.0,
+   "calls_per_step": 1.0
+  },
+  "L234|disturb": {
+   "n": 3,
+   "succ": 0,
+   "depths": [
+    469.39,
+    301.88,
+    391.87
+   ],
+   "calls": 3000,
+   "recs": [
+    {
+     "seed": 104,
+     "done": false,
+     "insert_mm": 469.39,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.008500000461935997,
+      0.004000000189989805,
+      0.008200000040233135,
+      0.011800000444054604
+     ],
+     "disturb": {
+      "dx_cm": -0.4,
+      "dy_cm": 2.6,
+      "dz_mm": 5.1,
+      "yaw_deg": -2.8,
+      "shell90": true
+     },
+     "seconds": 142.0
+    },
+    {
+     "seed": 7,
+     "done": false,
+     "insert_mm": 301.88,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.027000000700354576,
+      0.00930000003427267,
+      0.006899999920278788,
+      0.013199999928474426
+     ],
+     "disturb": {
+      "dx_cm": -1.2,
+      "dy_cm": 3.4,
+      "dz_mm": 9.6,
+      "yaw_deg": -1.8,
+      "shell90": true
+     },
+     "seconds": 138.1
+    },
+    {
+     "seed": 42,
+     "done": false,
+     "insert_mm": 391.87,
+     "calls": 1000,
+     "steps": 1000,
+     "u_raw_std": [
+      0.02630000002682209,
+      0.0034000000450760126,
+      0.010200000368058681,
+      0.01489999983459711
+     ],
+     "disturb": {
+      "dx_cm": -3.2,
+      "dy_cm": 1.1,
+      "dz_mm": 1.4,
+      "yaw_deg": 14.6,
+      "shell90": true
+     },
+     "seconds": 142.5
+    }
+   ],
+   "w_mean": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "applied": 0,
+   "sec": [
+    155.8,
+    155.1,
+    160.2
+   ],
+   "steps": [
+    1000,
+    1000,
+    1000
+   ],
+   "succ_rate": 0.0,
+   "depth_mean": 387.7,
+   "depth_std": 68.4,
+   "w_mean_avg": 0.0,
+   "calls_per_step": 1.0
+  }
+ },
+ "gates": [
+  {
+   "name": "N1 L2 准确性 (成功率≥off 且 深度不差 2mm)",
+   "pass": false,
+   "info": "off=None% → L2=None% · 深度 None→None"
+  },
+  {
+   "name": "N2 L3 调度 (L23 ≥ L2)",
+   "pass": false,
+   "info": "L2=None% → L23=None%"
+  },
+  {
+   "name": "N3 L4 抗干扰 (L234 干扰档 ≥ 自身无干扰 −1/n 且 ≥ off 干扰档)",
+   "pass": true,
+   "info": "L234 无干扰=0.0% / 干扰=0.0% · off 干扰=None%"
+  },
+  {
+   "name": "N4 总装 (assy 干扰档 ≥ 任一臂)",
+   "pass": false,
+   "info": "assy=None% vs max(其它)=0.0%"
+  },
+  {
+   "name": "N5 高效零搜索 (candidate_sequences=0 且 调用/步 ≤1.05)",
+   "pass": true,
+   "info": "[(('L234', 'none'), 1.0), (('L234', 'disturb'), 1.0)]"
+  },
+  {
+   "name": "N6 稳定 (跨 seed 深度 std ≤ 25mm)",
+   "pass": false,
+   "info": "[(('L234', 'disturb'), 68.4), (('L234', 'none'), 83.0)]"
+  }
+ ],
+ "verdict": "FAIL"
+}

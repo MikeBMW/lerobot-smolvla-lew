@@ -19,3 +19,11 @@ ts,manifest,arm,disturb,n,succ,succ_rate,depth_mean,depth_std,calls_per_step,int
 2026-09-19 07:37:10,1800a3d362ca,L23,none,1,0,0.0,183.3,0.0,1.0,0,0.0,171,intact_goal_optical_insert_v5_s3072/weights_epoch_4.pt,63bb97db
 2026-09-19 07:37:10,1800a3d362ca,L234,none,1,0,0.0,182.9,0.0,1.0,0,0.0,173,intact_goal_optical_insert_v5_s3072/weights_epoch_4.pt,63bb97db
 2026-09-19 07:37:10,1800a3d362ca,off,none,1,0,0.0,194.0,0.0,1.0,0,0.0,174,intact_goal_optical_insert_v5_s3072/weights_epoch_4.pt,63bb97db
+2026-09-23 00:16:05,bd63016de057,L234,disturb,1,0,0.0,606.5,0.0,1.0,0,0.0,180,intact_l4_current/weights.pt,f08b6321
+2026-09-23 00:16:05,bd63016de057,L234,none,1,0,0.0,572.1,0.0,1.0,0,0.0,162,intact_l4_current/weights.pt,f08b6321
+2026-09-23 00:22:06,2f09b23dc47e,L234,disturb,1,0,0.0,469.4,0.0,1.0,0,0.0,182,joint_v5/weights.pt,f08b6321
+2026-09-23 00:22:06,2f09b23dc47e,L234,none,1,0,0.0,301.4,0.0,1.0,0,0.0,179,joint_v5/weights.pt,f08b6321
+2026-09-23 00:38:39,ef28cb5c03f8,L234,disturb,3,0,0.0,487.6,102.0,1.0,0,0.0,154,intact_l4_current/weights.pt,f08b6321
+2026-09-23 00:38:39,ef28cb5c03f8,L234,none,3,0,0.0,502.9,116.5,1.0,0,0.0,152,intact_l4_current/weights.pt,f08b6321
+2026-09-23 00:54:13,f980c234a2e0,L234,disturb,3,0,0.0,387.7,68.4,1.0,0,0.0,157,joint_v5/weights.pt,f08b6321
+2026-09-23 00:54:13,f980c234a2e0,L234,none,3,0,0.0,341.9,83.0,1.0,0,0.0,154,joint_v5/weights.pt,f08b6321

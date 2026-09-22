@@ -1,0 +1,54 @@
+{
+ "ts": "2026-09-23 00:04:07",
+ "policy": "intact_l4_current",
+ "ckpt_sha256_16": null,
+ "ckpt_bytes": null,
+ "stats": "optical_insert_v4_action_stats.json",
+ "stats_sha256_16": "24a6253f9eeb2d6d",
+ "seeds": [
+  104
+ ],
+ "max_steps": 1200,
+ "mode": "insert",
+ "device": "cpu",
+ "gates": {
+  "L2": 0,
+  "L3": 0,
+  "L4": 0,
+  "assembly": 0,
+  "updated": "2026-09-15 07:09:44",
+  "note": "2026-09-15 静静: L2 置 0 — 实测 L2 势场与模型动作反向抵消 (合成≈0.0001) 导致全链 run 卡在'接近'(grasped=False); 下次启动定位 L2 场权/相位后再决定是否恢复"
+ },
+ "state_sha256_16": {
+  "data/muscle_memory.json": "ca785e8be3f6bf65",
+  "data/assembly_memory.json": "3408fb03f614d700",
+  "data/shared_memory.json": "c7c7c13a8496e0c1",
+  "data/memory_layers.json": "588ab0cef0750366"
+ },
+ "models_sha256_16": {
+  "hjepa_zflow_model.pt": "5f647121422276ea",
+  "l4_mani_predictor_v1.pt": "cfbba44f386b2eb9",
+  "l4_mani_predictor_v2.pt": "10afd516c29083ce",
+  "l4_mani_predictor_v4.pt": "b63f210202da2895",
+  "l4_mani_predictor_v5.pt": "5cc4b5820755b987",
+  "l4_yaw_head_grasp_dz_v1.pt": "ccdf452baa948452",
+  "l4_yaw_head_grasp_dz_v2.pt": "9516aa839ff461bf",
+  "lew_mamba_interleave.pt": "2e3e26cbcc3a9d08",
+  "lew_transformer.pt": "2820d0eb603ff647",
+  "yolo_peg_live.pt": "e0d84ed83da74497"
+ },
+ "code": {
+  "tools/gui/state_space_sim_real.py": "3b617b8b5ae8a7fd",
+  "tools/intact_sw_optical_bridge.py": "96c06fac2a9b4d96",
+  "src/lerobot/memory/potential_field.py": "d3f8d3b851ef20c2",
+  "src/lerobot/memory/mem_nodes.py": "7e0d922592fadb12",
+  "tools/mem_ladder_integration.py": "cb2b3536052c9f9a"
+ },
+ "git": "f08b6321",
+ "stats_meta": {
+  "action_space": "u",
+  "n_finite": 147700
+ },
+ "manifest_hash": "620fb08fe5c3",
+ "state_snapshot_dir": "reports/mem_ladder/state_snap_a5108407d347"
+}
