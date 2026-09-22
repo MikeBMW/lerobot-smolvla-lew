@@ -78,6 +78,11 @@ intact_goal_optical_insert_v6d6..d9_s3072 / weights_epoch_1.pt（各 84 MB, 1ep�
 
 - 已优雅停止：真机 ROS tap 容器（只读订阅）· `ss_yolo_on_real` · `ss_bypass_run` · `auto_loop` ·
   `box3d_live_box`；训练接力链在 **v6d9 完成后**停止（未启动 d10）。
+- **训练链的退出是"主动停"不是崩溃**（下次看日志别误判）：后台进程以 **SIGTERM / exit 143** 结束，
+  报错尾是 `RuntimeError: DataLoader worker (pid ...) is killed by signal: Terminated` ——
+  那是我 kill 掉 d10 那轮的 dataloader 子进程造成的，属预期。
+  停后核验：训练进程 0 · GPU 空闲 · **d1..d9 的 `weights_epoch_1.pt` 各 84,066,084 B 全在位** ·
+  未完成的 `intact_goal_optical_insert_v6d10_s3072` 目录已清（不留没有权重的目录，免哨兵认坏权重）。
 - 仍在跑（关机自然停）：`hermes gateway` · `ss_local_infer_server(8790)` · `l2_daemon`（cron @reboot + 5min keepalive 会拉起）·
   GUI `studio.py`（在跑，关机即关）。
 - cron 播报任务（磁盘红线/链路巡检/L4 进度/INTACT 四任务…）随关机停，开机自动恢复。
