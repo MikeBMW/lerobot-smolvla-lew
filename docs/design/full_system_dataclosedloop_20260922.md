@@ -232,3 +232,24 @@ $P tools/sim2real_loop.py --train --eval    # 六环闭环
 4. **L2 微调** 未证明提升 (持平) → 未上默认档; 真机评测帧太少 (1 帧)。
 5. **大模型层** Qwen2.5-VL-3B 权重本机未下全 (HF 缓存仅小文件) → 上大模型前需下载 + 显存错峰。
 6. L4 LoRA 权重尚未过判闸 → 需在 v6 数据上跑 `intact_replay_check_v4` 逐轴 corr 对照在役 v6d9。
+
+---
+
+## 11. 发布记录 (v5.12.0) 与 CI 实况
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| tag v5.12.0 + main | ✅ 已推 | 版本 6 处同步点 + VERSION.md 历史行; 后续修正 commit 7efd924c 已推 main |
+| Windows `.exe` | ✅ 128.7MB / 164.3MB | Release 产物 `Z-MAX_Console.exe` (164.3 MB) |
+| macOS `.zip` | ✅ | `Z-MAX_Console-macOS.zip` (128.7 MB) |
+| 下载页 | — | https://github.com/MikeBMW/lerobot-smolvla-lew/releases/tag/v5.12.0 |
+| Simulink 模型验证 CI | ✅ success | |
+| Build & Push Console Docker Image | ❌ failure | **根因 = `Log in to Alibaba Cloud ACR` 步骤失败** (阿里云 ACR 凭据缺失/失效), 属既有基础设施问题, 与本轮代码无关; 补凭据后可重跑 |
+| Create Release / PyPI | ⏭ skipped | 设计如此 |
+
+**体检工具假警报修正 (commit 7efd924c)**: `tools/llm_layer_check.py` 原来只查 HF 缓存,
+把**在役权重** (INTACT 在 `stable-wm-cache/checkpoints`, L3 在 `outputs/train`, L2 是 `models/yolo_peg_live.pt` 软链)
+误报成"未下全" → 现 HF 缓存只判"要从网上下"的 (Qwen VL / SmolVLM), L4/L3/L2 判本机在役位置。
+修正后: L4_INTACT_in_service ✅ (→ intact_l4_current) · L3_SmolVLA ✅ · L2_YOLO_live ✅ (→ best.pt);
+**唯一真缺口 = Qwen2.5-VL-3B 权重未下全 (0MB)**。
+
