@@ -206,6 +206,13 @@ def main() -> int:
                             "pearson_dy": _pm[1], "pearson_dz": _pm[2], "pearson_grip": _pm[3],
                             "pearson_xyz_min": float(np.nanmin(_pm[:3])),
                             "std_ratio_xyz": float(np.mean(srs)), "reps": len(maes)}
+    if not per_slot:
+        # 🩹 2026-09-22 (自检时抓到): clips 太少时每槽有效配对 <20 → 逐槽循环全 `continue`,
+        #   后面均值变成 nan 并打印"❌ 输常数" —— 那是**假判决**(看着像模型失败, 其实是样本不够)。
+        #   哨兵若用小 clips 跑会误报。这里显式拒绝判决并给可执行的修法。
+        print(f"\n⚠️ 样本不足 → **本次不作判决**: 采了 {a.clips} 段, 每槽需要 ≥20 个有效配对才出结论。"
+              f"\n   这不是模型失败(别据此报 ❌)。请把 --clips 提到 ≥30 再跑。")
+        return 4
     ks = [int(k) for k in per_slot]
     print(f"\n═══ 逐槽 (n≈{a.clips}/重复 × {a.repeats} 重复) ═══")
     print(f"{'帧偏移k':>7}{'MAE':>10}{'±std':>8}{'常数基线':>10}{'赢常数':>7}"
