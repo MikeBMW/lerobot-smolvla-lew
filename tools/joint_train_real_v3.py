@@ -156,6 +156,7 @@ def main() -> int:
     ap.add_argument("--lambda-l2", type=float, default=0.5)
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--out", default=f"{ROOT}/reports/joint_real_v3.json")
+    ap.add_argument("--save", default="", help="导出联合产物目录")
     a = ap.parse_args()
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -241,6 +242,19 @@ def main() -> int:
                "n_l2": n_l2, "n_l3": n_l3, "real_image": real is not None,
                "secs": round(dt, 2)}, open(a.out, "w"), ensure_ascii=False, indent=1)
     print(f"取证: {a.out}")
+    if a.save:
+        os.makedirs(a.save, exist_ok=True)
+        # 只存**联合训练改动的部分** (L2/L3/wm_proj/l2_cons + L4 微调增量), 不存整个基座
+        joint_sd = {k: v for k, v in model.state_dict().items()
+                    if k.startswith(("l2.", "l3.", "wm_proj.", "l2_cons."))}
+        torch.save({"joint": joint_sd, "verdict": verdict, "hist": hist[-3:]},
+                   os.path.join(a.save, "joint_v3.pt"))
+        # L4 微调增量 (与在役 ckpt 的差), 便于 merge/回滚
+        torch.save({"l4_delta": {k: v for k, v in model.jepa.state_dict().items()}},
+                   os.path.join(a.save, "l4_finetuned.pt"))
+        mb1 = os.path.getsize(os.path.join(a.save, "joint_v3.pt")) / 1048576
+        mb2 = os.path.getsize(os.path.join(a.save, "l4_finetuned.pt")) / 1048576
+        print(f"产物: joint_v3.pt ({mb1:.1f}MB) + l4_finetuned.pt ({mb2:.1f}MB) → {a.save}")
     return 0
 
 
