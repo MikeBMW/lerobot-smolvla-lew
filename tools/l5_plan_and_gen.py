@@ -65,6 +65,7 @@ def main():
     ap.add_argument("--out", default="/home/ubuntu/stable-wm-cache/datasets/l5_gen_v1.h5")
     ap.add_argument("--seed", type=int, default=104)
     ap.add_argument("--save-every", type=int, default=20)
+    ap.add_argument("--vision", type=int, default=1, help="1=开渲染(才有关键帧, 真像素)")
     a = ap.parse_args()
 
     import h5py
@@ -91,7 +92,7 @@ def main():
         if d["id"] < start_from:
             continue
         try:
-            sim = RealStateSpaceSim(seed=a.seed + d["id"], vision=False, log=lambda *x: None)
+            sim = RealStateSpaceSim(seed=a.seed + d["id"], vision=bool(a.vision), log=lambda *x: None)
         except Exception as e:
             print(f"  ⚠️ 变体 {d['id']} 引擎失败: {str(e)[:80]}")
             continue
@@ -105,6 +106,8 @@ def main():
         obs_l = tr.get("obs", []); stage_l = tr.get("stage", [])
         act_l = tr.get("u_sat_vec", None) or tr.get("u_exec_vec", None) or tr.get("u_ff_vec", [])
         kf = getattr(sim, "_key_frames", {}) or {}
+        if d["id"] % a.save_every == 0:
+            print(f"      [diag] 变体{d['id']} 关键帧 {len(kf)} 个: {list(kf)[:4]}", flush=True)
         obs_buf, act_buf, px_buf = [], [], []
         n = min(len(obs_l), len(act_l) if act_l else 0)
         for t in range(n):
