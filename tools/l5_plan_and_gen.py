@@ -97,13 +97,39 @@ def main():
             print(f"  ⚠️ 变体 {d['id']} 引擎失败: {str(e)[:80]}")
             continue
 
+        # ★★ 2026-09-23 修: obs 必须与 v5/v6 同约定 = **env._get_obs()[:39]** (实测辨明)
+        #    之前误用 tr["obs"] (引擎 fused 39 维) → 与训练数据不可比
+        #    挂 fuse_sensors 钩子 (每步恰好调 1 次) → 精确 1:1 对齐轨迹步
+        _env_obs = []
+        try:
+            _orig_fuse = sim.perception.fuse_sensors
+
+            def _fuse_hook(visual39, force, tactile4, _o=_orig_fuse, _s=sim, _b=_env_obs):
+                try:
+                    _b.append(np.asarray(_s.env._get_obs(), dtype=np.float64).ravel()[:39].copy())
+                except Exception:
+                    pass
+                return _o(visual39, force, tactile4)
+
+            sim.perception.fuse_sensors = _fuse_hook
+        except Exception as e:
+            print(f"  ⚠️ 变体 {d['id']} obs 钩子挂载失败: {str(e)[:60]}", flush=True)
+
         # 用 run() 拿真轨迹 (引擎无公开 step)
         try:
             tr = sim.run(max_steps=a.steps)
         except Exception as e:
             print(f"  ⚠️ 变体 {d['id']} run 失败: {str(e)[:80]}")
             continue
-        obs_l = tr.get("obs", []); stage_l = tr.get("stage", [])
+        _tr_obs = tr.get("obs", [])
+        # 优先用 env 原生 obs (与 v5/v6 同源); 长度必须与轨迹一致才采用
+        if _env_obs and abs(len(_env_obs) - len(_tr_obs)) <= 1:
+            obs_l = _env_obs
+        else:
+            obs_l = _tr_obs
+            print(f"  ⚠️ 变体 {d['id']} env obs 长度不符 ({len(_env_obs)} vs {len(_tr_obs)}), 回落 tr['obs']",
+                  flush=True)
+        stage_l = tr.get("stage", [])
         act_l = tr.get("u_sat_vec", None) or tr.get("u_exec_vec", None) or tr.get("u_ff_vec", [])
         kf = getattr(sim, "_key_frames", {}) or {}
         if d["id"] % a.save_every == 0:
