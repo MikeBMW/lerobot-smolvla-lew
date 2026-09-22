@@ -143,6 +143,52 @@ def main() -> int:
         print(f"  {ax:8s}{best['j']:>11d}{best['corr']:>8.3f}{best['K']:>10.4f}{best['r2']:>8.3f}   {verdict}")
         res[ax] = best
 
+    # ③b 时滞扫描 —— 判「接线/口径错位」还是「能力不足」的关键补充
+    #   若模型 chunk 第 0 行并不对应「当前步」(存在固定时滞/错位), 则 corr 会在某个 lag 上显著更高
+    #   ⇒ 属口径/接线问题 (便宜可修); 若所有 lag 都上不去 ⇒ 能力不足 (只能训练侧解决)
+    LAGS = list(range(-8, 9))
+    print(f"\n③b 时滞扫描 (模型 vs 参考 t+lag; lag={LAGS[0]}..{LAGS[-1]}, 每轴取最佳 (维,lag))")
+    print(f"{'引擎轴':8s}{'最佳维':>8s}{'最佳lag':>9s}{'corr':>8s}   对照(lag0) / 增益")
+    lag_res = {}
+    for d, ax in enumerate(AX):
+        y_all = U[:, d]
+        best = None
+        for j in range(M.shape[1]):
+            x_all = M[:, j]
+            if float(x_all.std()) < 1e-9:
+                continue
+            for L in LAGS:
+                if L >= 0:
+                    xs, ys = x_all[: n - L], y_all[L:]
+                else:
+                    xs, ys = x_all[-L:], y_all[: n + L]
+                if len(xs) < 60:
+                    continue
+                m = (np.abs(ys) > 1e-6) if d < 3 else np.ones(len(ys), bool)
+                if int(m.sum()) < 30:
+                    m = np.ones(len(ys), bool)
+                if float(xs[m].std()) < 1e-9:
+                    continue
+                c = float(np.corrcoef(xs[m], ys[m])[0, 1])
+                if not np.isfinite(c):
+                    continue
+                if best is None or abs(c) > abs(best["corr"]):
+                    best = {"j": j, "lag": L, "corr": c}
+        if best is None:
+            print(f"  {ax:8s}      —")
+            lag_res[ax] = None
+            continue
+        c0 = (res[ax]["corr"] if res.get(ax) else 0.0) or 0.0
+        gain = abs(best["corr"]) - abs(c0)
+        flag = "  ★时滞可救" if best["lag"] != 0 and gain >= 0.15 else ""
+        print(f"  {ax:8s}{best['j']:>8d}{best['lag']:>9d}{best['corr']:>8.3f}   (lag0={c0:+.3f}, 增益 {gain:+.3f}){flag}")
+        lag_res[ax] = best
+    _sav = [f"{ax}@{v['lag']}({v['corr']:+.2f})" for ax, v in lag_res.items() if v and abs(v["corr"]) >= 0.5]
+    if _sav:
+        print(f"  ⇒ 有轴在 lag≠0 且 |corr|≥0.5: {_sav} → **优先查接线/口径 (便宜), 别急着重训**")
+    else:
+        print("  ⇒ 所有 lag 都上不去 → 时滞不是主因 (继续按能力侧处理)")
+
     oks = [v for v in res.values() if v]
     strong = [v for v in oks if abs(v["corr"]) >= 0.5]
     mid = [v for v in oks if 0.25 <= abs(v["corr"]) < 0.5]
@@ -158,7 +204,7 @@ def main() -> int:
     out = {"steps": STEPS, "seed": SEED, "n_pairs": int(n), "stats_src": stf,
            "model_std": [float(R[:, d].std()) for d in range(R.shape[1])],
            "ref_std": [float(U[:, d].std()) for d in range(4)],
-           "fit": res, "strong_axes": len(strong), "mid_axes": len(mid),
+           "fit": res, "lag_fit": lag_res, "strong_axes": len(strong), "mid_axes": len(mid),
            "model_act_sample": R[:200].tolist(), "ref_u_sample": U[:200].tolist()}
     os.makedirs(os.path.join(ROOT, "reports"), exist_ok=True)
     p = os.path.join(ROOT, "reports", f"intact_action_frame_fit_seed{SEED}_{STEPS}.json")

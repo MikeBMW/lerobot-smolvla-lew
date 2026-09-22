@@ -24,6 +24,13 @@ l2d = importlib.util.module_from_spec(_s)
 _s.loader.exec_module(l2d)
 l2d.LOG = "/tmp/l2_test_slot_skills.log"          # 自检日志写 /tmp, 不污染真机执行器日志
 l2d.USE_DIRECT_POSE = False       # 离线自检: 禁止真去 docker 读真机话题, 只走喂进去的合成位姿
+# 🛡 2026-09-22 加固 (发现于视觉引导抓取自检): 原来只关位姿直读 —— 运动步仍走**真通道**
+#   (run_stages 调的是模块级 chan_send → 会 ssh 到 Orin 真下发), 离线自检等于能真动机械臂。
+#   现在把下发/服务/夹爪三条出口全部换成记录器, 并逐用例断言"期望几条就几条"。
+SENDS: list[str] = []
+l2d.chan_send = lambda call: (SENDS.append(call) or True)
+l2d._call_remote = lambda cmd, timeout=40: (SENDS.append(cmd) or True, "response: curr_pos=21.0")
+l2d._service_call = lambda st: (SENDS.append("srv:%s" % st.get("srv")) or True, "ok")
 
 REG = json.load(open(os.path.join(REPO, "data/skills/l2_atomic/registry.json"), encoding="utf-8"))
 PTS = l2d._load_points()
@@ -81,8 +88,8 @@ for SK in SLOTS:
         continue
     base = [float(v) for v in P["pos"]]
     set_pose(base, age=0.05)
-    ch = FakeChan()
-    out = l2d.run_stages(SK, {"skill": SK["id"], "dry": True, "speed": 60}, ch, PTS)
+    n0 = len(SENDS)
+    out = l2d.run_stages(SK, {"skill": SK["id"], "dry": True, "speed": 60}, FakeChan(), PTS)
     pl = l2d.plan_stage(SK, st1, PTS, {"speed": 60}, base)
     p2 = l2d.plan_stage(SK, st2, PTS, {"speed": 60}, pl["pos"])
     check(tag, "②阶段1 Δ=(0,0,+%.0f)mm 竖直上升" % clr, abs(pl["dz"] - clr) < 1e-6 and abs(pl["dx"]) < 1e-6, "dz=%+.3f" % pl["dz"])
@@ -90,7 +97,7 @@ for SK in SLOTS:
     check(tag, "②目标=示教点±clearance", abs(pl["pos"][2] - (base[2] + clr / 1000.0)) < 1e-9 and abs(p2["pos"][2] - base[2]) < 1e-9)
     check(tag, "②姿态=示教姿态(纯平移)", pl["quat"] == [float(v) for v in P["quat"]])
     check(tag, "②限速生效", pl["speed"] == float(SK["speed_max"]), "speed=%s" % pl["speed"])
-    check(tag, "②dry 零下发", ch.writes == [] and "DRY-RUN" in out, "writes=%d" % len(ch.writes))
+    check(tag, "②dry 零下发", len(SENDS) == n0 and "DRY-RUN" in out, "sends=%d" % (len(SENDS) - n0))
 
     high100 = [base[0], base[1], base[2] + 0.10]
     r = l2d.plan_stage(SK, st2, PTS, {"speed": 60}, high100)
@@ -108,22 +115,22 @@ for SK in SLOTS:
 
     far = [base[0] + 0.60, base[1], base[2]]
     set_pose(far, age=0.05)
-    ch = FakeChan()
-    out = l2d.run_stages(SK, {"skill": SK["id"], "speed": 60}, ch, PTS)
-    check(tag, "⑤远离 600mm → 拒发且零下发", ch.writes == [] and "拒" in out, out[:50])
+    n0 = len(SENDS)
+    out = l2d.run_stages(SK, {"skill": SK["id"], "speed": 60}, FakeChan(), PTS)
+    check(tag, "⑤远离 600mm → 拒发且零下发", len(SENDS) == n0 and "拒" in out, out[:50])
 
     set_pose(base, age=30.0)
-    ch = FakeChan()
-    out = l2d.run_stages(SK, {"skill": SK["id"], "speed": 60}, ch, PTS)
-    check(tag, "⑥真值过期 → 拒发", ch.writes == [] and "未就绪" in out, out[:40])
+    n0 = len(SENDS)
+    out = l2d.run_stages(SK, {"skill": SK["id"], "speed": 60}, FakeChan(), PTS)
+    check(tag, "⑥真值过期 → 拒发", len(SENDS) == n0 and "未就绪" in out, out[:40])
 
     FAST = json.loads(json.dumps(SK, ensure_ascii=False))
     FAST["steps"][0]["timeout_s"] = 1.0
     FAST["steps"][0]["timeout_dynamic"] = False
     set_pose(base, age=0.05)
-    ch = FakeChan()
-    out = l2d.run_stages(FAST, {"skill": SK["id"], "speed": 30}, ch, PTS)
-    check(tag, "⑦未到位 → 中止且只发 1 条", "中止" in out and len(ch.writes) == 1, "writes=%d" % len(ch.writes))
+    n0 = len(SENDS)
+    out = l2d.run_stages(FAST, {"skill": SK["id"], "speed": 30}, FakeChan(), PTS)
+    check(tag, "⑦未到位 → 中止且只发 1 条", "中止" in out and len(SENDS) - n0 == 1, "sends=%d" % (len(SENDS) - n0))
 
     set_pose([base[0], base[1], base[2] + clr / 1000.0], age=0.05)
     ok, err, _src = l2d.wait_arrive([base[0], base[1], base[2] + clr / 1000.0], 1.0, 2.0)

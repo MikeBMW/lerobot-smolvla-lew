@@ -172,7 +172,8 @@ def main() -> int:
     kmax = min(rows[0][0].shape[1], min(len(rows[0][0][0]), 64))
     per_slot: dict[str, dict] = {}
     for k in range(kmax):
-        maes, consts, prs, srs = [], [], [], []
+        maes, consts, srs = [], [], []
+        prs: list[list[float]] = [[] for _ in range(BLOCK)]      # 🎯 逐轴 pearson (dx,dy,dz,grip)
         for P, G, _gm in rows:
             p, gt = P[:, k], G[:, k]
             ok = np.isfinite(p).all(1) & np.isfinite(gt).all(1)
@@ -181,20 +182,28 @@ def main() -> int:
                 continue
             maes.append(float(np.abs(p - gt).mean()))
             consts.append(float(np.abs(np.repeat(gt.mean(0)[None], len(gt), 0) - gt).mean()))
-            prs.append(float(pearsonr(p[:, 0], gt[:, 0])[0]))
+            # 🎯 KPI-1 要的是**逐轴** corr (L2 收口闸按逐轴 |corr|<0.5 否决), 不能只看 dx
+            for _j in range(min(BLOCK, p.shape[1], gt.shape[1])):
+                if p[:, _j].std() > 1e-9 and gt[:, _j].std() > 1e-9:
+                    prs[_j].append(float(pearsonr(p[:, _j], gt[:, _j])[0]))
             srs.append(float(p[:, :3].std() / max(float(gt[:, :3].std()), 1e-9)))
         if not maes:
             continue
+        _pm = [float(np.mean(v)) if v else float("nan") for v in prs]
         per_slot[str(k)] = {"mae": float(np.mean(maes)), "mae_std": float(np.std(maes, ddof=1)) if len(maes) > 1 else 0.0,
-                            "const": float(np.mean(consts)), "pearson_dx": float(np.mean(prs)),
+                            "const": float(np.mean(consts)), "pearson_dx": _pm[0],
+                            "pearson_dy": _pm[1], "pearson_dz": _pm[2], "pearson_grip": _pm[3],
+                            "pearson_xyz_min": float(np.nanmin(_pm[:3])),
                             "std_ratio_xyz": float(np.mean(srs)), "reps": len(maes)}
     ks = [int(k) for k in per_slot]
     print(f"\n═══ 逐槽 (n≈{a.clips}/重复 × {a.repeats} 重复) ═══")
-    print(f"{'帧偏移k':>7}{'MAE':>10}{'±std':>8}{'常数基线':>10}{'赢常数':>7}{'pearson_dx':>11}{'std比xyz':>9}")
+    print(f"{'帧偏移k':>7}{'MAE':>10}{'±std':>8}{'常数基线':>10}{'赢常数':>7}"
+          f"{'p_dx':>8}{'p_dy':>8}{'p_dz':>8}{'p_grip':>8}{'min|xyz|':>9}{'std比xyz':>9}")
     for k in ks:
         d = per_slot[str(k)]
         print(f"{k:>7}{d['mae']:>10.4f}{d['mae_std']:>8.4f}{d['const']:>10.4f}"
-              f"{str(d['mae'] < d['const']):>7}{d['pearson_dx']:>11.3f}{d['std_ratio_xyz']:>9.3f}")
+              f"{str(d['mae'] < d['const']):>7}{d['pearson_dx']:>8.3f}{d['pearson_dy']:>8.3f}"
+              f"{d['pearson_dz']:>8.3f}{d['pearson_grip']:>8.3f}{d['pearson_xyz_min']:>9.3f}{d['std_ratio_xyz']:>9.3f}")
 
     sel = [k for k in a.lens if str(k) in per_slot] or ks
     mae_sel = float(np.mean([per_slot[str(k)]["mae"] for k in sel]))

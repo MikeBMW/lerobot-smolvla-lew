@@ -397,10 +397,74 @@ def _stage_timeout(st, lin_mm, speed):
     return max(base, round(15.0 + lin_mm / eff * 1.6, 1))
 
 
+def _vision_resolve(sk, spec):
+    """🎯 视觉引导门 (fail-closed): 跑一次双路视觉判据 → (槽位名, 一句证据, 说明)
+
+    支持自检注入: 环境变量 L2_VISION_FAKE=slot1|slot2|none (离线自检用, 不碰真机)。
+    任何异常 → 返回 None (调用方拒发), 绝不退化成"盲发到某个默认槽位"。
+    """
+    fake = os.environ.get("L2_VISION_FAKE", "").strip()
+    if fake:
+        if fake in ("slot1", "slot2"):
+            return fake, "自检注入(未读真机)", "L2_VISION_FAKE=%s" % fake
+        return None, "", "自检注入 %s (不得出槽位)" % fake
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import vision_grasp_skill as vgs                                   # noqa: PLC0415
+        j = vgs.judge_slot(verbose=False)
+    except Exception as e:                                                 # noqa: BLE001
+        return None, "", "视觉模块不可用(%s: %s)" % (type(e).__name__, e)
+    if not j.get("ok"):
+        return None, "", "视觉判据未过: %s" % j.get("reason")
+    ev = j.get("evidence") or {}
+    B = (ev.get("routeB_pixel") or {}).get("per_slot", {}).get(j["slot"], {})
+    n_det = next((r for r in (ev.get("routeA_box") or {}).get(j["slot"], []) if r.get("hit")), {})
+    return j["slot"], ("双路一致 · YOLO Δx=%.1fpx dy=%+.1fpx(conf %.2f) · 像素峰距=%.1fpx"
+                       % (n_det.get("dx", -1.0), n_det.get("dy", 0.0), n_det.get("conf", 0.0),
+                          B.get("peak_dist_px", -1.0))), "vision_ok"
+
+
+def _apply_vision_names(steps, guard, name):
+    """占位点 slot_vision (阶段 to + 各级 z_floor_point) → 视觉解析出的真实槽位名。"""
+    def _fixg(g):
+        g = dict(g or {})
+        if g.get("z_floor_point") == "slot_vision":
+            g["z_floor_point"] = name
+        return g
+    out = []
+    for st in steps:
+        st2 = dict(st)
+        if st2.get("to") == "slot_vision":
+            st2["to"] = name
+        if st2.get("guard"):
+            st2["guard"] = _fixg(st2["guard"])
+        out.append(st2)
+    return out, _fixg(guard)
+
+
 def run_stages(sk, spec, chan, pts):
     """多阶段技能: 逐阶段 ①算目标 ②守卫 ③下发 ④等真值到位 ⑤再进下一阶段。
-    任一阶段被守卫拒/未到位 → 中止剩余阶段并**绝不重发**(30s 超时那次的教训)。"""
+    任一阶段被守卫拒/未到位 → 中止剩余阶段并**绝不重发**(30s 超时那次的教训)。
+
+    🎯 视觉引导 (2026-09-22 · id=L2.grasp_vision): 条目带 vision_gate → 执行前跑**双路视觉判据**
+      解析阶段里的占位点 slot_vision; 判不出/两路冲突/视觉模块不可用 → **拒发** (fail-closed, 宁缺勿假)。
+    """
     steps = sk.get("steps") or []
+    if sk.get("vision_gate"):
+        _vn, _vin, _vwhy = _vision_resolve(sk, spec)
+        if not _vn:
+            log("🛡 视觉门拒发 (%s): %s" % (sk.get("id"), _vwhy))
+            return "🛡 视觉门拒发: %s" % _vwhy
+        if _vn not in pts:
+            log("🛡 视觉门解析出的槽位 %s 不在点位库 → 拒发" % _vn)
+            return "🛡 视觉门拒发: %s 不在点位库" % _vn
+        sk = dict(sk)
+        steps, _g2 = _apply_vision_names(steps, sk.get("guard"), _vn)
+        sk["steps"] = steps
+        sk["guard"] = _g2
+        spec = dict(spec)
+        spec["point"] = _vn
+        log("🎯 视觉门通过: 目标槽位 = %s · %s" % (_vn, _vin))
     steps_all = steps
     _only = spec.get("stages")          # 分段执行: 只跑指定阶段(逐段核对/逐段请示, 其余本次不执行)
     if _only:
