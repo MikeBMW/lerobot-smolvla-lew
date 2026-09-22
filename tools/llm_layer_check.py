@@ -59,7 +59,28 @@ def check() -> dict:
                        "ready": wmb >= min_mb, "min_mb": min_mb}
     out["weights"] = models
 
-    # ② 方法: 引擎/技能层里的场景理解模块 (描述性/程序性记忆) — 程序性(技能库)总是可用, 不依赖大权重
+    # ①b 本机**实际在用**的权重位置 (2026-09-22 修: 只查 HF 缓存会把"我们在役的权重"误报成未下全 ——
+    #    INTACT 权重一直在 stable-wm-cache/checkpoints, 不在 HF hub 缓存里 → 假警报)
+    local = {}
+    CACHE = "/home/ubuntu/stable-wm-cache"
+    l4_dir = os.path.join(CACHE, "checkpoints", "intact_l4_current")
+    cands = glob.glob(os.path.join(CACHE, "checkpoints", "intact_goal_optical_insert_v6*_s3072", "weights_*.pt"))
+    local["L4_INTACT_in_service"] = {
+        "path": l4_dir, "exists": os.path.isdir(l4_dir),
+        "target": (os.path.realpath(l4_dir) if os.path.isdir(l4_dir) else None),
+        "n_ckpt_dirs": len({os.path.dirname(p) for p in cands}),
+        "newest_ckpt_mb": (round(max(os.path.getsize(p) for p in cands) / 1e6, 1) if cands else 0.0),
+        "ready": bool(cands) or os.path.isdir(l4_dir),
+    }
+    l3 = os.path.join(ROOT, "outputs/train/smolvla_lew_sim/checkpoints/000300")
+    local["L3_SmolVLA"] = {"path": os.path.relpath(l3, ROOT), "exists": os.path.isdir(l3),
+                           "ready": os.path.isdir(l3)}
+    yl = os.path.join(ROOT, "models/yolo_peg_live.pt")
+    local["L2_YOLO_live"] = {"path": os.path.relpath(yl, ROOT), "exists": os.path.exists(yl),
+                             "target": (os.path.realpath(yl) if os.path.islink(yl) else None),
+                             "ready": os.path.exists(yl)}
+    out["local_weights"] = local
+
     sv = os.path.join(ROOT, "src/lerobot/policies/left_right/state_space/scene_vlm.py")
     out["engine_scene_vlm"] = {"path": os.path.relpath(sv, ROOT), "exists": os.path.exists(sv),
                                "importable": False, "note": ""}
@@ -103,11 +124,16 @@ def check() -> dict:
     out["single_source"] = {"robot_spec": os.path.relpath(spec, ROOT) if os.path.exists(spec) else None,
                             "calib": os.path.relpath(calib, ROOT) if os.path.exists(calib) else None}
 
-    # 判定
+    # 判定: HF 缓存里只认"要从网上下的" (Qwen VL / SmolVLM 参考权重);
+    #      L4/L3/L2 只看**本机在役权重**是否在位 (它们在 stable-wm-cache / models / outputs, 不在 HF 缓存)
     gaps = []
-    for k, v in models.items():
+    for k in ("qwen2.5-vl-3b", "smolvlm2-500m"):
+        v = models[k]
         if not v["ready"]:
             gaps.append(f"{k} 权重未下全 (实际 {v['weight_mb']}MB < 门槛 {v['min_mb']}MB)")
+    for k, v in local.items():
+        if not v["ready"]:
+            gaps.append(f"{k} 在役权重缺失 ({v['path']})")
     if not (out["creds"]["DEEPSEEK_API_KEY_env"] or cfg_hit):
         gaps.append("无云端大模型凭据 (DeepSeek key)")
     if not out["engine_scene_vlm"]["exists"]:
@@ -121,8 +147,11 @@ def main() -> int:
     print("🧠 大模型层体检 (只读)")
     print("─" * 76)
     for k, v in r["weights"].items():
-        print(f"  权重 {k:<16} {'✅' if v['ready'] else '⚠️ 未下全'} "
-              f"{v['weight_mb']} MB / 门槛 {v['min_mb']} MB ({v['weight_files']} 个权重文件)")
+        tag = "✅" if v["ready"] else ("⚠️ 未下全" if k == "qwen2.5-vl-3b" else "ℹ️ 缓存空(不影响在役)")
+        print(f" HF缓存 {k:<16} {tag} {v['weight_mb']} MB / 门槛 {v['min_mb']} MB")
+    for k, v in r["local_weights"].items():
+        print(f" 在役   {k:<20} {'✅' if v['ready'] else '❌'} {v.get('path')}"
+              + (f" → {os.path.basename(str(v.get('target')))}" if v.get("target") else ""))
     ev = r["engine_scene_vlm"]
     print(f"  引擎场景理解 scene_vlm.py: {'✅ 可导入' if ev['importable'] else '⚠️ ' + (ev['note'] or '缺')}")
     c = r["creds"]
