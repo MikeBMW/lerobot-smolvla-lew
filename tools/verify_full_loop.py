@@ -108,6 +108,32 @@ try:
 except Exception as e:                                                    # noqa: BLE001
     seg("③ L4 INTACT 零搜索动作块", False, (time.time() - t0) * 1000, f"{type(e).__name__}: {e}")
 
+# ── ③b L3: SmolVLA 策略真入环 (SS_L3=1; CPU 设备避开 8GB 卡) ─────────
+t0 = time.time()
+try:
+    import subprocess
+    _r = subprocess.run(
+        ["timeout", "900", os.path.join(ROOT, "gui-venv311/bin/python"), "-c",
+         "import os,sys,time\n"
+         "os.environ['SS_L3']='1'; os.environ.setdefault('SS_L3_DEV','cpu')\n"
+         "os.environ.setdefault('MUJOCO_GL','egl')\n"
+         f"sys.path.insert(0,'{ROOT}/src'); sys.path.insert(0,'{ROOT}/tools/gui')\n"
+         f"os.chdir('{ROOT}/tools/gui')\n"
+         "from state_space_sim_real import RealStateSpaceSim\n"
+         "sim=RealStateSpaceSim(seed=104,vision=False,log=lambda *a:None)\n"
+         "tr=sim.run(max_steps=12)\n"
+         "cls=type(sim)\n"
+         "print('L3OK' if getattr(cls,'_L3_FAILED',None) is None else 'L3FAIL')\n"
+         "print('steps',len(tr['t']),'stage',sim.sched.stage())\n"],
+        capture_output=True, text=True, cwd=ROOT, env={**os.environ})
+    _out = (_r.stdout or "") + (_r.stderr or "")
+    _ok = "L3OK" in _out
+    _st = [l for l in _out.split("\n") if l.startswith("steps")]
+    seg("③b L3 SmolVLA 真入环 (12步)", _ok, (time.time() - t0) * 1000,
+        f"{_st[0] if _st else _out.strip()[-70:]}")
+except Exception as e:                                                    # noqa: BLE001
+    seg("③b L3 SmolVLA 真入环 (12步)", False, (time.time() - t0) * 1000, f"{type(e).__name__}: {e}")
+
 # ── ④ L2: 感知 2D→3D ─────────────────────────────────────────────────
 t0 = time.time()
 try:
