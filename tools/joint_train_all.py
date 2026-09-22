@@ -126,6 +126,15 @@ def build_stages(a) -> list:
     b3 = 4 if a.lora_l3 else 8
     l3_targets = [t for t in a.l3_targets.split(",") if t]
     l3_outdir = f"outputs/train/smolvla_lew_lora_{a.steps}{a.l3_tag}"
+    # 🛡 2026-09-22 实测踩到: lerobot 对已存在的 output_dir 且 resume=False 会直接 FileExistsError
+    #   (5 秒白跑一轮)。这里**自动避让** (加 _rNN 后缀) 并回报, 而不是把冲突留给用户去猜。
+    if os.path.isdir(os.path.join(ROOT, l3_outdir)):
+        _i = 2
+        while os.path.isdir(os.path.join(ROOT, f"{l3_outdir}_r{_i}")):
+            _i += 1
+        print(f"⚠️ L3 输出目录 {l3_outdir} 已存在 → 自动改用 {l3_outdir}_r{_i} (不覆盖旧产物)")
+        l3_outdir = f"{l3_outdir}_r{_i}"
+    cfg3 = cfg3.replace(".yaml", f"_{os.path.basename(l3_outdir).split('_')[-1]}.yaml")
     gen3 = [PY_GUI, os.path.join(ROOT, "tools", "mk_smolvla_sim_cfg.py"),
             "--steps", str(a.steps), "--batch", str(b3), "--out", cfg3,
             "--outdir", l3_outdir]
