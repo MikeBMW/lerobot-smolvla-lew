@@ -151,8 +151,8 @@ policy:
   state_dim: 39
   steps: 2
 reward_model: null
-output_dir: outputs/train/smolvla_lew_lora_200
-job_name: smolvla_lew_lora_200
+output_dir: outputs/train/smolvla_lew_lora_200_fpsafe
+job_name: smolvla_lew_lora_200_fpsafe
 resume: false
 seed: 1337
 cudnn_deterministic: false

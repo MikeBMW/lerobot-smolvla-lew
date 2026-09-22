@@ -151,8 +151,8 @@ policy:
   state_dim: 39
   steps: 2
 reward_model: null
-output_dir: outputs/train/smolvla_lew_lora_200
-job_name: smolvla_lew_lora_200
+output_dir: outputs/train/smolvla_lew_lora_200_ownlora
+job_name: smolvla_lew_lora_200_ownlora
 resume: false
 seed: 1337
 cudnn_deterministic: false
@@ -198,19 +198,7 @@ wandb:
   run_id: null
   mode: null
   add_tags: true
-peft:
-  method_type: LORA
-  r: 8
-  lora_alpha: 16
-  target_modules:
-  - q_proj
-  - k_proj
-  - v_proj
-  - o_proj
-  full_training_modules: []
-  autocast_adapter_dtype: false
-  exclude_modules:
-  - vision_model
+peft: null
 sample_weighting: null
 rename_map: {}
 checkpoint_path: outputs/train/smolvla_lew_d1/checkpoints/last

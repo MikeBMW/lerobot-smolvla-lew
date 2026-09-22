@@ -132,3 +132,13 @@ class PeftConfig:
     # If None, the PEFT library defaults to alpha=8, which may dampen high-rank adapters.
     # Common values are r (alpha == rank) or 2*r.
     lora_alpha: int | None = None
+
+    # ── Z-MAX 2026-09-22 追加: 让 LoRA 在 8GB 卡上跑得动 ─────────────────────────────
+    # exclude_modules ⇒ 把视觉塔排除在适配器之外 (all-linear 会给 vision MLP fc1/fc2 也挂,
+    #   实测 OOM 栈就停在 smolvlm fwd 的 self.fc2, 报错点 = peft 的 _cast_input_dtype 把输入转 fp32)。
+    #   默认 None = 老行为, 零回退。
+    # ⚠️ 不要加 `autocast_adapter_dtype`: peft 0.21.0 的 LoraConfig **已无此参数**,
+    #   传进去会 TypeError: LoraConfig.__init__() got an unexpected keyword argument
+    #   (2026-09-22 实测)。该版本对适配器输入的 fp32 转换无法用配置关闭 → 只能靠 exclude_modules
+    #   + 降 batch + expandable_segments 把峰值压下来。
+    exclude_modules: list[str] | None = None

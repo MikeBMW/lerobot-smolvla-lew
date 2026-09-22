@@ -151,8 +151,8 @@ policy:
   state_dim: 39
   steps: 2
 reward_model: null
-output_dir: outputs/train/smolvla_lew_lora_200
-job_name: smolvla_lew_lora_200
+output_dir: outputs/train/smolvla_lew_lora_200_visionex
+job_name: smolvla_lew_lora_200_visionex
 resume: false
 seed: 1337
 cudnn_deterministic: false
@@ -208,7 +208,6 @@ peft:
   - v_proj
   - o_proj
   full_training_modules: []
-  autocast_adapter_dtype: false
   exclude_modules:
   - vision_model
 sample_weighting: null

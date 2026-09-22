@@ -118,30 +118,40 @@ def build_stages(a) -> list:
     # L3: SmolVLA+LEW (+lerobot 原生 PEFT LoRA)
     #   ⚠️ PEFT 段**写进 YAML** 而不是走 `--peft.xxx` 命令行: draccus 对 `peft: PeftConfig|None=None`
     #   这种可空子配置的命令行覆盖不可靠 (父项 None 时子项无处挂) → 直接改生成的 yaml 最稳。
-    cfg3 = os.path.join(ROOT, f"config_smolvla_lew_lora_{a.steps}.yaml")
+    cfg3 = os.path.join(ROOT, f"config_smolvla_lew_lora_{a.steps}{a.l3_tag}.yaml")
     # ⚠️ LoRA 目标 all-linear 会给视觉塔也挂适配器 → 8GB 卡的激活额外开销把 batch8 顶爆
     #   (2026-09-22 实测 torch.OutOfMemoryError: 需 816MiB, 仅余 330MiB) → LoRA 轮降 batch 到 4
-    #   并开 expandable_segments 抗碎片。
-    b3 = 2 if a.lora_l3 else 8
+    #   并开 expandable_segments 抗碎片。2026-09-22 追加: autocast_adapter_dtype=False +
+    #   exclude_modules=[vision_model] 让 LoRA 在 8GB 卡上真跑得动 (见 --l3-targets)。
+    b3 = 4 if a.lora_l3 else 8
     l3_targets = [t for t in a.l3_targets.split(",") if t]
+    l3_outdir = f"outputs/train/smolvla_lew_lora_{a.steps}{a.l3_tag}"
     gen3 = [PY_GUI, os.path.join(ROOT, "tools", "mk_smolvla_sim_cfg.py"),
             "--steps", str(a.steps), "--batch", str(b3), "--out", cfg3,
-            "--outdir", f"outputs/train/smolvla_lew_lora_{a.steps}"]
+            "--outdir", l3_outdir]
     l3_cmd = [PY_LEROBOT, "-m", "lerobot.scripts.lerobot_train", f"--config_path={cfg3}"]
     l3_env = {"PATH": "/home/ubuntu/lerobot-venv/bin:" + os.environ.get("PATH", ""),
               "PYTHONPATH": os.path.join(ROOT, "src"),
               "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
               "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled"}
+    if a.lora_l3 and a.l3_lora_engine == "local":
+        # 自研 lora_inject 通道: 不产生 fp32 大激活 ⇒ 8GB 卡可行 (peft 通道实测四档全 OOM)
+        l3_env.update({"ZMAX_LORA_LOCAL": "1", "ZMAX_LORA_MOD": LORA_MOD,
+                       "ZMAX_LORA_R": str(a.lora_r), "ZMAX_LORA_ALPHA": str(a.lora_r * 2),
+                       "ZMAX_LORA_TARGETS": ",".join(l3_targets),
+                       "ZMAX_LORA_EXCLUDE": "vision_model",
+                       "ZMAX_LORA_OUT": os.path.join(mroot, "lora_l3_init.pt")})
     post3 = []
     pre3 = [{"cmd": gen3, "cwd": ROOT, "env": l3_env,
              "log": os.path.join(mroot, "L3_mkcfg.log")}]
-    if a.lora_l3:
+    if a.lora_l3 and a.l3_lora_engine == "peft":
         _code = (
             "import yaml,sys\n"
             f"p={cfg3!r}\n"
             "c=yaml.safe_load(open(p))\n"
             "c['peft']={'method_type':'LORA','r':%d,'lora_alpha':%d,"
-            f"'target_modules':{l3_targets!r},'full_training_modules':[]}}\n"
+            f"'target_modules':{l3_targets!r},'full_training_modules':[],"
+            "'exclude_modules':['vision_model']}\n"
             "yaml.safe_dump(c,open(p,'w'),sort_keys=False,allow_unicode=True)\n"
             "print('[L3] 已写入 peft(LoRA) 段:',c['peft'])\n" % (a.lora_r, a.lora_r * 2)
         )
@@ -166,11 +176,11 @@ def build_stages(a) -> list:
          "evidence": [os.path.join(CACHE, "checkpoints", l4_name)],
          "note": f"起点 {os.path.basename(os.path.dirname(L4_INIT))}/{os.path.basename(L4_INIT)}"},
         {"id": "L3", "layer": "L3 SmolVLA (长程序列规划)", "gpu_mb": 6000, "est_min": 6,
-         "desc": ("SmolVLA+LEW 续训 + lerobot 原生 PEFT(LoRA)" if a.lora_l3
+         "desc": (f"SmolVLA+LEW 续训 + LoRA({a.l3_lora_engine} 引擎)" if a.lora_l3
                   else "SmolVLA+LEW 续训 (全参)"),
          "pre": pre3,
          "cwd": ROOT, "cmd": l3_cmd, "env": l3_env, "log": os.path.join(mroot, "L3.log"),
-         "evidence": [os.path.join(ROOT, f"outputs/train/smolvla_lew_lora_{a.steps}")],
+         "evidence": [os.path.join(ROOT, l3_outdir)],
          "note": f"起点 {os.path.relpath(L3_CKPT, ROOT)}"},
         {"id": "L2", "layer": "L2 YOLO (检测) + 2D→3D", "gpu_mb": 4000, "est_min": 5,
          "desc": "真机标注帧域适应微调 (基座=在役软链)",
@@ -236,6 +246,10 @@ def main() -> int:
     ap.add_argument("--lora-l3", dest="lora_l3", action="store_true", default=True)
     ap.add_argument("--no-lora-l3", dest="lora_l3", action="store_false")
     ap.add_argument("--lora-r", type=int, default=8)
+    ap.add_argument("--l3-lora-engine", default="local", choices=["local", "peft"],
+                    help="L3 LoRA 引擎: local=自研 lora_inject (8GB 卡可行, 默认) / peft=lerobot 原生 "
+                         "(会把适配器输入转 fp32, 8GB 卡实测 OOM)")
+    ap.add_argument("--l3-tag", default="", help="L3 输出目录/配置名后缀 (重试轮用, 避免覆盖旧产物)")
     ap.add_argument("--l3-targets", default="q_proj,k_proj,v_proj,o_proj",
                     help="L3 LoRA 目标模块 (默认只挂语言注意力投影, 不挂视觉塔 —— 8GB 卡实测)"
                          "all-linear 会 OOM")

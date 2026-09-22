@@ -20,6 +20,7 @@ Requires: pip install 'lerobot[training]'  (includes dataset + accelerate + wand
 
 import dataclasses
 import logging
+import os
 import time
 from contextlib import nullcontext
 from pprint import pformat
@@ -296,6 +297,33 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
             logging.info("Using PEFT! Wrapping model.")
             peft_cli_overrides = dataclasses.asdict(cfg.peft)
             policy = policy.wrap_with_peft(peft_cli_overrides=peft_cli_overrides)
+
+    # 🧩 Z-MAX 自研 LoRA 通道 (2026-09-22, 老倪「适配或增加 LoRA」) —— **默认关 = 零回退**。
+    #   动机: peft 0.21 的 LoRA 会把适配器**输入**强制转 fp32 (`tuners_utils._cast_input_dtype`),
+    #   VLM 大激活多留一份 ⇒ 8GB 卡上 all-linear / q,k,v,o × batch 8/4/2 四档全 OOM (实测栈停在
+    #   smolvlm fwd 的 vision MLP fc2)。自研 lora_inject 走低秩两次小 matmul 且 A/B 降到输入 dtype
+    #   ⇒ 不产生 fp32 大激活。开法: ZMAX_LORA_LOCAL=1 (+ ZMAX_LORA_R / _TARGETS / _EXCLUDE / _OUT)。
+    if os.environ.get("ZMAX_LORA_LOCAL", "0") == "1":
+        import importlib.util as _ilu
+        _lp = os.environ.get("ZMAX_LORA_MOD",
+                             "/home/ubuntu/lerobot-smolvla-lew/tools/lora_inject.py")
+        _sp = _ilu.spec_from_file_location("zmax_lora_local", _lp)
+        _li = _ilu.module_from_spec(_sp)
+        _sp.loader.exec_module(_li)
+        _tg = [t for t in os.environ.get("ZMAX_LORA_TARGETS",
+                                         "q_proj,k_proj,v_proj,o_proj").split(",") if t]
+        _ex = [t for t in os.environ.get("ZMAX_LORA_EXCLUDE", "vision_model").split(",") if t]
+        _info = _li.inject_lora(policy, targets=_tg, exclude=_ex,
+                               r=int(os.environ.get("ZMAX_LORA_R", "8")),
+                               alpha=int(os.environ.get("ZMAX_LORA_ALPHA", "16")), verbose=True)
+        _out = os.environ.get("ZMAX_LORA_OUT", "")
+        if _out:
+            _m = _li.save_adapter(policy, _out, meta={"stage": "init", "targets": _tg,
+                                                     "exclude": _ex, "engine": "zmax_lora_inject",
+                                                     **_info})
+            print(f"[lora-local] 初始适配器: {_m}")
+        print(f"[lora-local] 可训参数 {_info['trainable_params']:,}/{_info['total_params']:,}"
+              f" = {_info['params_pct']}% (基座冻结, 无 peft fp32 输入转换)")
 
     # Wait for all processes to finish model creation before continuing
     accelerator.wait_for_everyone()

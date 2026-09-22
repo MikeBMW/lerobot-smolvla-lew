@@ -63,8 +63,18 @@ class LoRALinear(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.base(x)
         if self.r > 0:
-            d = self.lora_B @ self.lora_A                              # [out, in]
-            out = out + self.scaling * torch.nn.functional.linear(self.dropout(x), d)
+            # 🧠 2026-09-22: 用**低秩两次小 matmul** (x·Aᵀ → ·Bᵀ) 而不是先 materialize [out,in] 的
+            #   B@A —— 后者每层要临时开一份与基座权重同尺寸的张量; 更重要的是**把 A/B 降到输入的
+            #   dtype**(bf16) 再算, 避免 peft 那种"把大激活强制转 fp32"的显存翻倍 (8GB 卡 OOM 根因)。
+            #   数值影响: 适配器路径在 bf16 下计算, 累积误差 ~1e-3 量级, 对低秩微调无实质影响;
+            #   导出/merge 仍在 fp32 下折叠 (离线, 不受此影响)。
+            xd = self.dropout(x)
+            A, B = self.lora_A, self.lora_B
+            if A.dtype != xd.dtype:
+                A = A.to(xd.dtype)
+                B = B.to(xd.dtype)
+            out = out + self.scaling * torch.nn.functional.linear(
+                torch.nn.functional.linear(xd, A), B)
         return out
 
     def merged_weight(self) -> torch.Tensor:

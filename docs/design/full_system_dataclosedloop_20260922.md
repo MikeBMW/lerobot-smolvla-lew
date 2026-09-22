@@ -120,13 +120,21 @@ skill_ctx_usage 1.000`。
 target_modules:[q_proj,k_proj,v_proj,o_proj]}` **写进生成的 YAML** (不走 `--peft.xxx` 命令行:
 draccus 对可空子配置的命令行覆盖不可靠), 日志确认 `Using PEFT! Wrapping model.`。
 
-⚠️ **L3 LoRA 在 8GB 卡上尚未跑通 (三次尝试均 OOM, 如实报)**: 全参 batch8 能跑 (~6.2GB),
-但开 LoRA 后 `torch.OutOfMemoryError`(需 816MiB/仅余 330MiB); 逐层收紧仍不够 ——
-`all-linear`→`q/k/v/o` + batch 8→4→**2** 三档都 OOM。根因: **peft 对适配器输入做 fp32 转换**
-(`tuners_utils._cast_input_dtype`), VLM 大激活多留一份 fp32 ⇒ 净增 ~1GB 以上, 8GB 卡装不下。
-修法 (按代价排序, 留档待决): ① 换 12GB+ 卡跑 L3 LoRA; ② 只给动作专家头挂 LoRA
-(`full_training_modules` + 缩小 targets); ③ 视觉塔整体冻结后 LoRA 语言层 (需 lerobot 侧支持
-`exclude_modules`)。**当前 L3 交付 = 全参续训** (已验证路径, batch8/3.9s per step)。
+⚠️→✅ **L3 LoRA: 先 OOM 四次, 最后用自研引擎跑通 (全过程留档)**
+1. lerobot 0.5.2 原生 PEFT 链路本身是通的 (补装 `peft 0.21.0`, 日志 `Using PEFT! Wrapping model.`)。
+2. 但 **8GB 卡上四档全 OOM** (`all-linear`/`q,k,v,o` × batch 8/4/2, 含 `expandable_segments`):
+   报错点固定为 `peft/tuners/lora/layer.py:1100 → _cast_input_dtype`, 栈停在 smolvlm 前向的
+   视觉塔 MLP `self.fc2`。**根因 = peft 把适配器输入强制转 fp32**, VLM 大激活多留一份 ⇒ 净增 >1GB。
+   `LoraConfig.autocast_adapter_dtype` 在 peft 0.21 **已无此参数**(传了直接 TypeError) ⇒ 配置关不掉。
+3. **解法 = 走自研 LoRA 引擎** (`tools/lora_inject.py` + `lerobot_train.py` 的 `ZMAX_LORA_LOCAL=1` 守卫,
+   默认关): ① 用**低秩两次小 matmul**(x·Aᵀ→·Bᵀ) 而不是先 materialize `[out,in]` 的 B@A;
+   ② 把 A/B **降到输入 dtype**(bf16) 再算 ⇒ 不用 fp32 大激活。另用 `exclude_modules=['vision_model']`
+   把视觉塔排除在适配器之外 (lerobot `PeftConfig` 新增该字段, 默认 None = 零回退)。
+4. 实测结果: **注入 256 层 / 可训 2,785,280 / 627,945,784 = 0.4436% · batch 4 · 2.29s/step ·
+   200 步 7:38 · 显存峰值 6.25GB · 0 OOM · rc=0**, ckpt `outputs/train/smolvla_lew_lora_200_ownlora/checkpoints/000200`
+   (512 个 lora 张量, 其中 **128/256 的 lora_B 已非零** = 在活跃前向路径上的层真学到了; 其余层未被前向
+   触及故仍为零, 属正常)。L3 配置/输出目录用 `--l3-tag` 后缀隔离, 不覆盖旧产物。
+5. 结论: **peft 引擎 = 8GB 卡不可用; 自研引擎 = 可用** (编排器 `--l3-lora-engine local|peft`, 默认 local)。
 
 **部署口径**: `tools/lora_merge_ckpt.py` 把 LoRA 训练产物折叠成普通权重
 (`W_eff = W_base + (alpha/r)·B@A`), 并**校验输出键集合与起点权重完全一致**才允许落盘 ——
