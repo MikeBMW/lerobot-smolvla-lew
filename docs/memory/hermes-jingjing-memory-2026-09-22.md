@@ -18,7 +18,7 @@ GitHub不通→ghproxy.net
 §
 Hermes: 长/$()命令拆多段; sudo免密
 §
-跨会话: 启训前nvidia-smi查GPU; ssh pkill -f自杀→锚定^python3
+ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash有Vision,本机key已配,61s→异步旁路; smolvlm2-500m兜底); qwen3B勿再试(HF镜像大文件必败)
 §
 Hermes: CLI≠gateway; 飞书99991663→重启gateway
 §
@@ -26,11 +26,11 @@ Hermes: CLI≠gateway; 飞书99991663→重启gateway
 §
 引擎obs39D=cur18+prev18+target3; obs[7:10]=_pc光模块位置; L3推理须env原生obs+128图+task动态+post反归一化(u_ff=act×0.5)
 §
-L4=INTACT直驱(install_direct_act→sim._direct_act; pop SS_L3); 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5全veto(fit_intact_action_frame.py); 真模型默认生效
+L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5全veto; 真模型默认生效
 §
 守卫: 模型参与>30%掉分; insert_depth=0.002
 §
-断点: L3须SS_L3_DEV=cpu; MLP须SS_USE_MLP=1(parallel.py:143)
+断点: L3须SS_L3_DEV=cpu(8G装不下SmolVLA+LEW7.08G→OOM); MLP须SS_USE_MLP=1; 训练前腾GPU
 §
 评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器
 §
@@ -40,7 +40,7 @@ Orin ROS=domain0; tcp_pose 50Hz真值; 几何须ss_geom_calib; 红线Orin零自�
 §
 画面≠结果(idle=静止初始帧); 看不了图→抓窗口+几何断言
 §
-内置cam 720p/灰度IR; .23工控机admin/admin: 10081活·10082金手指·10083表面(可直连)
+内置cam720p/灰度IR
 §
 YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
@@ -56,7 +56,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 槽位技能L2.slot1/2(↑30→↓30不松爪; watch/register_slot_skill/test_slot_skills)
 §
-AOI10082 v4: /picture原图·?kind=crop拉长960(喂YOLO)·?kind=natural 1455x70·/region区域; 金手指只取焊盘排; tools/aoi_gold_servo.py
+AOI: .23工控机admin/admin; /picture原图·?kind=crop拉长960喂YOLO·natural1455x70·/region; 金手指只取焊盘排; aoi_gold_servo.py; 10082/10083已TCP CLOSED需现场重启
 §
 L2.lissa_insert=里萨如力控插入(产线6N配方,插槽口=沿工具Z退60mm→推进→/lissajous_force_search); 点位insert_pose=产线治具插入位
 §
