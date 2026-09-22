@@ -3090,8 +3090,12 @@ class RealStateSpaceSim:
                                 "fiber_cos_geo", "fiber_contact_true", "fiber_perf_true",
                                 "fiber_z7_hat", "fiber_cond_norm"):
                         tr.setdefault(_fk, []).append(_fbf.get(_fk))
-                    if self._l4_dit_cond is not None and os.environ.get("SS_L4_FIBER") == "1":
-                        tr["fiber_cond_dim"] = int(np.asarray(self._l4_dit_cond).size)
+                    # 🐛 2026-09-22 修: _l4_dit_cond 是**条件初始化** (@1439/1450 仅部分路径设),
+                    #   此处原为直接访问 → 未初始化路径抛 AttributeError (B 臂实测撞到)。
+                    #   与 @1481/@2022 保持一致: 用 getattr 兜底。
+                    _dc = getattr(self, "_l4_dit_cond", None)
+                    if _dc is not None and os.environ.get("SS_L4_FIBER") == "1":
+                        tr["fiber_cond_dim"] = int(np.asarray(_dc).size)
             # 🧬 2026-09-14 直连线融合 (老倪原则: 上层只给意图, 执行由 L2 收口):
             #   u_ff ← proj_{U_L2}((1−w)·u_ff + w·u_int)  —— 越界必夹紧 (I2) 并记账
             #   ★ 唯一执行出口不变: 紧接着的 sched.decide + safety.saturate 一行未动 (I1)

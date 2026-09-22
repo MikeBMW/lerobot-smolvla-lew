@@ -308,7 +308,7 @@ def main() -> int:
         torch.save({"joint": {k: v for k, v in model.state_dict().items()
                               if k.startswith(("l2.", "mem.", "l3.", "wm_proj.", "l2_cons.", "up_cons."))},
                     "verdict": verdict}, os.path.join(a.save, "joint_v5.pt"))
-        torch.save({"state_dict": model.jepa.state_dict()}, os.path.join(a.save, "weights.pt"))
+        torch.save(model.jepa.state_dict(), os.path.join(a.save, "weights.pt"))  # 扁平! 引擎直接加载
         print(f"产物 → {a.save} (joint_v5.pt + weights.pt[扁平, 引擎可直接加载])")
     print(f"取证: {a.out}")
     return 0
