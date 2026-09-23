@@ -16,8 +16,8 @@ sys.path.insert(0, R + "/tools")
 
 import numpy as np  # noqa: E402
 
-CKPT_U = "/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
-SEEDS = [104, 7, 42, 2024, 13, 99]
+CKPT_U = os.environ.get("AB_CKPT", "/home/ubuntu/stable-wm-cache/checkpoints/unified_v13/unified.pt")
+SEEDS = [104, 7, 2024]
 MAX = 1200
 
 
@@ -56,10 +56,24 @@ def run_arm(kind, seed, cap="l3"):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", default="", help="只跑某个臂 (intact/unified)")
+    ap.add_argument("--caps", default="", help="逗号分隔 (l3,l4)")
+    ap.add_argument("--seeds", default="", help="逗号分隔")
+    ap.add_argument("--max-n", type=int, default=0, help="最多跑几局 (0=不限)")
+    _a = ap.parse_args()
+    _kinds = [_a.only] if _a.only else ["intact", "unified"]
+    _caps = ([(("none", "l3"), ("disturb", "l4"))[i] for i in range(2)] if not _a.caps
+             else [((("none", "l3") if x.strip() == "l3" else ("disturb", "l4"))) for x in _a.caps.split(",")])
+    _seeds = [int(x) for x in _a.seeds.split(",")] if _a.seeds else SEEDS
+    _done = 0
     rows = []
-    for kind in ("intact", "unified"):
-        for _dn, cap in CAPS:
-          for sd in SEEDS:
+    for kind in _kinds:
+        for _dn, cap in _caps:
+          for sd in _seeds:
+            if _a.max_n and _done >= _a.max_n:
+                break
             os.environ["SS_L4_INTACT"] = "1"
             os.environ["INTACT_RUNTIME"] = "root"
             os.environ["INTACT_POLICY"] = "intact_l4_current"
@@ -69,8 +83,17 @@ def main():
                 r = {"seed": sd, "err": f"{type(e).__name__}: {str(e)[:110]}"}
             r["arm"] = kind
             r["disturb"] = _dn
+            _done += 1
             rows.append(r)
             print(f"  {kind:8s} {_dn:7s} seed={sd:4d} -> {r}", flush=True)
+            # ★ 局间清理: 引擎每局重建 sim + 加载两个模型, 不释放 → 内存累积 OOM
+            import gc as _gc
+            _gc.collect()
+            try:
+                import torch as _t
+                _t.cuda.empty_cache()
+            except Exception:
+                pass
 
     print("\n" + "=" * 92)
     print("  臂       干扰     seed  步数  done  calls refused    w    深度mm")
