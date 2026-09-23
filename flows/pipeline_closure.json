@@ -1,0 +1,257 @@
+{
+ "format": "zmax_flow/1",
+ "version": 1,
+ "name": "Z-MAX 数据闭环 Pipeline (穿线版)",
+ "sim": {
+  "by": "Hermes",
+  "ts": "2026-09-23 13:59:30",
+  "last_update": "2026-09-23 14:03:35",
+  "closure": "done"
+ },
+ "nodes": [
+  {
+   "id": "np0l5",
+   "type": "row_bg",
+   "name": "L5 定方向·造数据",
+   "x": 60,
+   "y": 60,
+   "w": 300,
+   "icon": "🧭",
+   "color": "#8b5cf6",
+   "params": {
+    "impl": "planner.rules.builtin",
+    "desc": "任务分解 → 阶段/技能序列 + 变体方向生成",
+    "status": "success",
+    "layer": "L5",
+    "ts": "2026-09-23 14:03:31"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "np1mem",
+   "type": "row_bg",
+   "name": "记忆层 五层联络",
+   "x": 400,
+   "y": 60,
+   "w": 300,
+   "icon": "🧠",
+   "color": "#f59e0b",
+   "params": {
+    "impl": "memory.json",
+    "desc": "L2肌肉/L3流程/L4工作/宏观 → 跨层检索与注入",
+    "status": "success",
+    "layer": "MEM",
+    "ts": "2026-09-23 14:03:31"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "np2l2",
+   "type": "row_bg",
+   "name": "L2 检测反馈",
+   "x": 740,
+   "y": 60,
+   "w": 300,
+   "icon": "👁",
+   "color": "#06b6d4",
+   "params": {
+    "impl": "detect.yolo",
+    "desc": "YOLO 2D → 3D 反投影 → 反馈一致性",
+    "status": "success",
+    "layer": "L2",
+    "ts": "2026-09-23 14:03:31"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "np3l4",
+   "type": "row_bg",
+   "name": "L4 认知预测",
+   "x": 1080,
+   "y": 60,
+   "w": 300,
+   "icon": "🌍",
+   "color": "#3b82f6",
+   "params": {
+    "impl": "node.unified",
+    "desc": "统一主干(SigLIP+四头) 多模型可仲裁",
+    "status": "success",
+    "layer": "L4",
+    "ts": "2026-09-23 14:03:35"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "np4l3",
+   "type": "row_bg",
+   "name": "L3 状态调度",
+   "x": 1420,
+   "y": 60,
+   "w": 300,
+   "icon": "🎛",
+   "color": "#22c55e",
+   "params": {
+    "impl": "dispatch.k_act",
+    "desc": "动作块 → u_ff (量纲逆运算 act×K_ACT)",
+    "status": "success",
+    "layer": "L3",
+    "ts": "2026-09-23 14:03:35"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "np5exec",
+   "type": "row_bg",
+   "name": "执行 · 数据闭环",
+   "x": 1760,
+   "y": 60,
+   "w": 300,
+   "icon": "♻",
+   "color": "#ef4444",
+   "params": {
+    "impl": "closure",
+    "desc": "真机执行 → 采集回流 → 闭环完成判定",
+    "status": "success",
+    "layer": "EXEC",
+    "ts": "2026-09-23 14:03:35"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  }
+ ],
+ "links": [
+  {
+   "id": "lp0",
+   "f": "np0l5",
+   "t": "np1mem",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "任务/技能"
+  },
+  {
+   "id": "lp1",
+   "f": "np1mem",
+   "t": "np2l2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "记忆注入"
+  },
+  {
+   "id": "lp2",
+   "f": "np2l2",
+   "t": "np3l4",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "感知反馈"
+  },
+  {
+   "id": "lp3",
+   "f": "np3l4",
+   "t": "np4l3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "认知预测"
+  },
+  {
+   "id": "lp4",
+   "f": "np4l3",
+   "t": "np5exec",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "调度指令"
+  },
+  {
+   "id": "lp_back1",
+   "f": "np5exec",
+   "t": "np1mem",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "经验回流"
+  },
+  {
+   "id": "lp_back2",
+   "f": "np3l4",
+   "t": "np1mem",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "工作记忆"
+  }
+ ]
+}

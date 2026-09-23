@@ -1,8 +1,155 @@
 {
- "L2": 0,
- "L3": 0,
- "L4": 0,
- "assembly": 0,
- "updated": "2026-09-15 07:09:44",
- "note": "2026-09-15 静静: L2 置 0 — 实测 L2 势场与模型动作反向抵消 (合成≈0.0001) 导致全链 run 卡在'接近'(grasped=False); 下次启动定位 L2 场权/相位后再决定是否恢复"
+ "updated": "2026-09-23 14:04:13",
+ "L2": {
+  "count": 4,
+  "items": [
+   {
+    "id": "L2.slot1",
+    "desc": "槽位技能①: 下降30mm 不松爪",
+    "links": [
+     "L3.flow.insert",
+     "L4.work.peg_pose"
+    ]
+   },
+   {
+    "id": "L2.slot2",
+    "desc": "槽位技能②: 上抬30mm 不松爪",
+    "links": [
+     "L3.flow.insert"
+    ]
+   },
+   {
+    "id": "L2.lissa_insert",
+    "desc": "里萨如力控插入(6N 配方, 沿工具Z退60→推进→力搜索)",
+    "links": [
+     "L3.flow.insert",
+     "L4.work.force_traj",
+     "assembly.recipe.6N"
+    ]
+   },
+   {
+    "id": "L2.pull_module",
+    "desc": "拔出: 退15→合爪f30→退120",
+    "links": [
+     "L3.flow.extract"
+    ]
+   }
+  ]
+ },
+ "L3": {
+  "count": 3,
+  "items": [
+   {
+    "id": "L3.flow.insert",
+    "desc": "插入流程: 接近→对位→下降→抓取→抬起→转移→插入",
+    "links": [
+     "L2.lissa_insert",
+     "L2.slot1",
+     "L2.slot2",
+     "L4.work.peg_pose",
+     "assembly.recipe.6N"
+    ]
+   },
+   {
+    "id": "L3.flow.extract",
+    "desc": "拔出流程: 对位→下降→合爪→退120",
+    "links": [
+     "L2.pull_module"
+    ]
+   },
+   {
+    "id": "L3.flow.calib",
+    "desc": "标定流程: 状态→采集→解算→验证→入库",
+    "links": [
+     "assembly.calib.registry",
+     "L4.work.geom"
+    ]
+   }
+  ]
+ },
+ "L4": {
+  "count": 4,
+  "items": [
+   {
+    "id": "L4.work.peg_pose",
+    "desc": "工件位姿估计(统一主干预测)",
+    "links": [
+     "L2.lissa_insert",
+     "L3.flow.insert"
+    ]
+   },
+   {
+    "id": "L4.work.force_traj",
+    "desc": "接触段力轨迹(插入 6N)",
+    "links": [
+     "L2.lissa_insert",
+     "assembly.recipe.6N"
+    ]
+   },
+   {
+    "id": "L4.work.geom",
+    "desc": "几何真值: 孔口/孔底/盒 (cell_geometry)",
+    "links": [
+     "assembly.calib.registry"
+    ]
+   },
+   {
+    "id": "L4.work.unified_ckpt",
+    "desc": "统一主干 backbone_cont (留出 L4 0.008)",
+    "links": [
+     "assembly.model.registry"
+    ]
+   }
+  ]
+ },
+ "assembly": {
+  "count": 3,
+  "items": [
+   {
+    "id": "assembly.recipe.6N",
+    "desc": "产线插入力配方 6N (来自真机验证)",
+    "links": [
+     "L2.lissa_insert",
+     "L4.work.force_traj",
+     "macro.plan.insert"
+    ]
+   },
+   {
+    "id": "assembly.calib.registry",
+    "desc": "标定注册表 config/calib/zmax_calib.json (禁硬编码)",
+    "links": [
+     "L3.flow.calib",
+     "L3.flow.extract",
+     "L4.work.geom",
+     "macro.plan.calib"
+    ]
+   },
+   {
+    "id": "assembly.model.registry",
+    "desc": "模型注册: unified_siglip / joint_v5 / intact_l4_current",
+    "links": [
+     "L4.work.unified_ckpt"
+    ]
+   }
+  ]
+ },
+ "macro": {
+  "count": 2,
+  "items": [
+   {
+    "id": "macro.plan.insert",
+    "desc": "宏观: 完成光模块插入并回流数据",
+    "links": [
+     "L3.flow.insert"
+    ]
+   },
+   {
+    "id": "macro.plan.calib",
+    "desc": "宏观: 人机在环标定提升垂直场景能力",
+    "links": [
+     "L3.flow.calib"
+    ]
+   }
+  ]
+ }
 }
