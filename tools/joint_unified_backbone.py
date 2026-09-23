@@ -268,6 +268,16 @@ def main():
 
     if a.pixel_cache:
         RealH5.build_pixel_cache(files)          # ★ 必须在建 DataLoader(fork) 之前
+    # ★ 增强配置必须在建 DataLoader 之前落到类属性上, 且打印出来 (防静默失效)
+    import numpy as _np2
+    RealH5._AUG = int(getattr(a, "aug", 0))
+    try:
+        _sl, _sh = [float(x) for x in str(getattr(a, "aug_scale", "0.95,1.05")).split(",")]
+    except Exception:
+        _sl, _sh = 0.95, 1.05
+    RealH5._AUG_SCALE = (min(_sl, _sh), max(_sl, _sh))
+    print("  🎨 增强: %s | 缩放范围 %.2f~%.2f | 平移±8px · 旋转±5°"
+          % ("开" if RealH5._AUG else "关", RealH5._AUG_SCALE[0], RealH5._AUG_SCALE[1]), flush=True)
     dl = make_loader(files, a.batch, a.workers, a.chunk, aug=a.aug)
     it = iter(dl)
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=a.wd)
