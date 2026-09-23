@@ -1,0 +1,1 @@
+{"ts":"2026-09-24T06:50:23+08:00","before_mb":280163,"after_mb":272806,"freed_mb":7357,"items":{"journal_vacuum_mb":1125,"rotated_logs_mb":126,"installer_logs_mb":20,"apt_cache_mb":135,"crash_dumps_mb":7,"pip_uv_cache_mb":438,"desktop_caches_mb":176,"larkshell_mb":929,"snap_caches_mb":183,"trash_mb":546,"hf_onnx_mb":0}}

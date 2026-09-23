@@ -1,0 +1,326 @@
+{
+ "ts": "20260924_064820",
+ "policy": "intact_l4_v6lora_200",
+ "steps": 40,
+ "policy_fingerprint": {
+  "policy": "intact_l4_v6lora_200",
+  "dir": "/home/ubuntu/stable-wm-cache/checkpoints/intact_l4_v6lora_200",
+  "exists": true,
+  "pt": {
+   "weights.pt": {
+    "mb": 84.0,
+    "sha256_16": "a55352769328feeb"
+   }
+  }
+ },
+ "runs": {
+  "0:analytic": {
+   "seed": 0,
+   "arm": "analytic",
+   "n": 40,
+   "stage_counts": {
+    "接近": 40
+   },
+   "done": false,
+   "l4_w": [],
+   "il_w": [],
+   "l4_gate": [],
+   "l4_sum": {
+    "enabled": false,
+    "shadow": false,
+    "stages": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ],
+    "l2_veto": 0,
+    "l2_veto_dir": 0,
+    "l2_veto_mag": 0,
+    "gate_pass": 0,
+    "calls": 0,
+    "reuse": 0,
+    "refused": 0,
+    "blend": 0,
+    "w_zero": 0,
+    "w": 0.0,
+    "u_ff_src": "analytic",
+    "goal_src": "(未设置)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "未标定",
+    "frame_std_mean": null,
+    "shift_mean_m": 0.0,
+    "err": null,
+    "decoder": null
+   },
+   "il_sum": {
+    "enabled": false,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ],
+    "frames": 0,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "ready_src": "未检查",
+    "src_last": "",
+    "w_last": 0.0,
+    "z_src": "engine(z7 几何)",
+    "err": null,
+    "intent_gain_mean": 0.0,
+    "manifold_last": [],
+    "clip_max": 0.0,
+    "stack": {
+     "commit": null,
+     "vetoed": null,
+     "clipped": null,
+     "clip_max_mean": null,
+     "w_last": null,
+     "layers": null
+    }
+   },
+   "sec": 8.8
+  },
+  "0:direct": {
+   "seed": 0,
+   "arm": "direct",
+   "n": 40,
+   "stage_counts": {
+    "接近": 40
+   },
+   "done": false,
+   "l4_w": [
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3
+   ],
+   "il_w": [],
+   "l4_gate": [
+    -1.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0,
+    -2.0
+   ],
+   "l4_sum": {
+    "enabled": true,
+    "shadow": false,
+    "stages": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ],
+    "l2_veto": 40,
+    "l2_veto_dir": 1,
+    "l2_veto_mag": 39,
+    "gate_pass": 0,
+    "calls": 5,
+    "reuse": 35,
+    "refused": 0,
+    "blend": 0,
+    "w_zero": 40,
+    "w": 0.3,
+    "u_ff_src": "intact(chunk×K_ACT=0.5)",
+    "goal_src": "默认目标帧(intact_goal_frame_optical.npy)",
+    "l3_cond_ready": false,
+    "l3_cond_src": "拒绝(未标定)",
+    "frame_std_mean": 55.93,
+    "shift_mean_m": 0.6509,
+    "err": null,
+    "decoder": {
+     "decoder": "intact_l3_decoder",
+     "cond_dim": 6,
+     "excluded_stages": [
+      "插入"
+     ],
+     "u_ff_path": "act×K_ACT (K_ACT=0.5, 读自引擎源码)",
+     "l3_cond_ready": false,
+     "l3_cond_map": "models/intact_l3_map.json",
+     "trained": false,
+     "reason": "未标定: models/intact_l3_map.json 不存在 → u_ff 先验可用, L3 条件向量不注入 (拒绝 + 计数, 不写死映射)"
+    }
+   },
+   "il_sum": {
+    "enabled": false,
+    "by_stage": {},
+    "stages_env": [
+     "接近",
+     "对位",
+     "下降",
+     "抓取",
+     "抬起",
+     "转移"
+    ],
+    "frames": 5,
+    "ran": 0,
+    "applied": 0,
+    "w_zero": 0,
+    "refused": 0,
+    "ready": false,
+    "ready_src": "未检查",
+    "src_last": "",
+    "w_last": 0.0,
+    "z_src": "engine(z7 几何)",
+    "err": null,
+    "intent_gain_mean": 0.0,
+    "manifold_last": [],
+    "clip_max": 0.0,
+    "stack": {
+     "commit": null,
+     "vetoed": null,
+     "clipped": null,
+     "clip_max_mean": null,
+     "w_last": null,
+     "layers": null
+    }
+   },
+   "sec": 4.9
+  }
+ },
+ "compare": {
+  "0:direct": {
+   "final": {
+    "frames": 40,
+    "identical_frames": 40,
+    "identical_frac": 1.0,
+    "d_norm_mean": 0.0,
+    "d_norm_max": 0.0,
+    "d_norm_nonzero_frac": 0.0,
+    "per_dim_abs_mean": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "first_identical_idx": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   "exec": {
+    "frames": 40,
+    "identical_frames": 40,
+    "identical_frac": 1.0,
+    "d_norm_mean": 0.0,
+    "d_norm_max": 0.0,
+    "d_norm_nonzero_frac": 0.0,
+    "per_dim_abs_mean": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "first_identical_idx": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   "raw_l4": {
+    "frames": 40,
+    "identical_frames": 0,
+    "identical_frac": 0.0,
+    "d_norm_mean": 1.19582268,
+    "d_norm_max": 1.22703087,
+    "d_norm_nonzero_frac": 1.0,
+    "per_dim_abs_mean": [
+     0.10985929,
+     0.43756368,
+     0.42711023,
+     1.0
+    ],
+    "first_identical_idx": []
+   }
+  }
+ }
+}
