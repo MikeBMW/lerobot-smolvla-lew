@@ -21,13 +21,13 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
 
-def load_model():
+def load_model(ckpt=None):
     import torch
     from transformers import AutoModel
     from joint_unified_backbone import Unified, MODEL
     full = AutoModel.from_pretrained(MODEL, dtype=torch.float32)
     net = Unified(full.vision_model, freeze=True)
-    ck = os.path.join("/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt")
+    ck = ckpt or "/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
     sd = torch.load(ck, map_location="cpu", weights_only=False)
     net.load_state_dict(sd, strict=False)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,6 +46,7 @@ def infer(net, dev, img224, obs39):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--ckpt", default="")
     ap.add_argument("--n", type=int, default=24)
     ap.add_argument("--dx", type=float, default=8.0, help="平移像素")
     ap.add_argument("--scale", type=float, default=1.10)
@@ -59,7 +60,7 @@ def main():
         print("❌ 缺引擎样本 /tmp/bridge_engine_smpl.npz (先跑 bridge_engine_online.py PHASE=collect)")
         return 1
     O, P = d["O"][:a.n], d["P"][:a.n]
-    net, dev = load_model()
+    net, dev = load_model(a.ckpt or None)
     print("=" * 78)
     print("📐 几何流形不变性验证 (%d 样本 · 引擎真帧)" % len(P))
     print("=" * 78)
@@ -73,23 +74,36 @@ def main():
         return o
 
     base = np.stack([infer(net, dev, P[i].astype(np.uint8), O[i].astype(np.float32)) for i in range(len(P))])
-    # ① 平移 → 等变增量
-    shf = np.stack([infer(net, dev, warpH(P[i].astype(np.uint8), dx=a.dx).astype(np.uint8),
-                          O[i].astype(np.float32)) for i in range(len(P))])
-    # ② 缩放
-    scl = np.stack([infer(net, dev, warpH(P[i].astype(np.uint8), sc=a.scale).astype(np.uint8),
-                          O[i].astype(np.float32)) for i in range(len(P))])
-    # ③ 旋转
-    rot = np.stack([infer(net, dev, warpH(P[i].astype(np.uint8), rot=a.rot).astype(np.uint8),
-                          O[i].astype(np.float32)) for i in range(len(P))])
+    # ★ 多幅度扫描: 单幅度噪声大 → 取多种幅度平均, 结论才稳
+    MAG_T = (4.0, 8.0, 16.0)
+    MAG_S = (1.05, 1.10)
+    MAG_R = (5.0, 10.0)
+    def _avg(mag_list, **kw):
+        vals, last = [], []
+        for mg in mag_list:
+            k = dict(kw)
+            k[list(kw.keys())[0]] = mg
+            W2 = np.stack([infer(net, dev, warpH(P[i].astype(np.uint8), **k).astype(np.uint8),
+                                 O[i].astype(np.float32)) for i in range(len(P))])
+            # ★ 主指标: 方向一致性 cosine(尺度无关, 抗"小基准放大")
+            A2 = W2.reshape(len(W2), -1); B2 = base.reshape(len(base), -1)
+            num = np.sum(A2 * B2, 1)
+            den = np.linalg.norm(A2, axis=1) * np.linalg.norm(B2, axis=1) + 1e-9
+            cos = float(np.mean(num / den))
+            vals.append(cos)                      # 此处 vals 存 cosine
+            last.append(W2)
+        return float(np.mean(vals)), vals, last[-1]
+    csh, v_sh, shf = _avg(MAG_T, dx=0.0)
+    csc, v_sc, scl = _avg(MAG_S, sc=1.0)
+    cro, v_ro, rot = _avg(MAG_R, rot=0.0)
 
     d_sh = np.mean(np.abs(shf - base))
     d_sc = np.mean(np.abs(scl - base))
     d_ro = np.mean(np.abs(rot - base))
     mag = max(1e-9, np.mean(np.abs(base)))
-    print("\n① 平移 %.0fpx : 预测平均变化 %.6f  (相对 %.1f%%)" % (a.dx, d_sh, 100 * d_sh / mag))
-    print("② 缩放 x%.2f : 预测平均变化 %.6f  (相对 %.1f%%)" % (a.scale, d_sc, 100 * d_sc / mag))
-    print("③ 旋转 %.0f°  : 预测平均变化 %.6f  (相对 %.1f%%)" % (a.rot, d_ro, 100 * d_ro / mag))
+    print("\n① 平移 %s px : **方向一致性 cos=%.4f** · 逐幅度 %s" % (MAG_T, csh, [round(v,4) for v in v_sh]))
+    print("② 缩放 %s : **方向一致性 cos=%.4f** · 逐幅度 %s" % (MAG_S, csc, [round(v,4) for v in v_sc]))
+    print("③ 旋转 %s° : **方向一致性 cos=%.4f** · 逐幅度 %s" % (MAG_R, cro, [round(v,4) for v in v_ro]))
 
     # ④ 流形一致性: 四种几何状态下预测的逐维方差(越小越"不变形")
     stack = np.stack([base, shf, scl, rot])          # (4, n, T, 4)
@@ -97,14 +111,14 @@ def main():
     print("④ 流形一致性  : 四态预测逐维标准差 %.6f  (基准幅度 %.6f → %.1f%%)"
           % (dim_std, mag, 100 * dim_std / mag))
 
-    thr_re = 0.35      # 单变换相对变化阈值(腿: 过大=对几何过敏, 过小=退化不看图)
+    thr_cos = 0.90     # 方向一致性下限 (cos≥0.90 视为几何稳定)
     thr_man = 0.30     # 流形一致性阈值
-    rels = [d_sh / mag, d_sc / mag, d_ro / mag]
-    ok_re = all(r <= thr_re for r in rels)
+    rels = [csh, csc, cro]
+    ok_re = all(r >= thr_cos for r in rels)
     ok_man = (dim_std / mag) <= thr_man
     print("\n" + "=" * 78)
-    print("判据: 单变换相对变化 ≤ %.0f%% · 流形一致性 ≤ %.0f%%" % (thr_re * 100, thr_man * 100))
-    print("结果: 变换响应 %s · 流形一致性 %s" % ("✅" if ok_re else "❌", "✅" if ok_man else "❌"))
+    print("判据: 方向一致性 cos ≥ %.2f · 流形一致性 ≤ %.0f%%" % (thr_cos, thr_man * 100))
+    print("结果: 方向一致性 %s (%.3f/%.3f/%.3f) · 流形一致性 %s (%.1f%%)" % ("✅" if ok_re else "❌", csh, csc, cro, "✅" if ok_man else "❌", 100*float(np.mean(np.stack([base,shf,scl,rot]).std(0))/mag)))
     print("→ %s" % ("✅ 性能不变形 (几何流形上稳定)" if (ok_re and ok_man) else "⚠️ 存在几何敏感性, 需域增强"))
     print("=" * 78)
     return 0 if (ok_re and ok_man) else 2

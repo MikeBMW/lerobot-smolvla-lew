@@ -35,12 +35,32 @@ MODEL = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
 IMGSZ = 224
 
 
+def _aug_px(px, seed):
+    """★ 域增强: 随机平移 ±8px · 尺度 0.95~1.05 · 旋转 ±5° (由 seed 派生→可复现)
+    目的: 治几何敏感性 (不变性检验显示平移是最敏感维度 33.8%)"""
+    try:
+        import cv2
+    except Exception:
+        return px
+    rng = np.random.default_rng(int(seed) * 7919 + 13)
+    H, W = px.shape[:2]
+    dx = float(rng.uniform(-8, 8))
+    dy = float(rng.uniform(-8, 8))
+    sc = float(rng.uniform(0.95, 1.05))
+    rot = float(rng.uniform(-5, 5))
+    M = cv2.getRotationMatrix2D((W / 2.0, H / 2.0), rot, sc)
+    M[0, 2] += dx
+    M[1, 2] += dy
+    return cv2.warpAffine(px, M, (W, H), borderMode=cv2.BORDER_REPLICATE)
+
+
 class RealH5(torch.utils.data.Dataset):
     """真数据: pixels/observation/action。返回 (obs, act, pix224)"""
 
     _PIX_CACHE = None       # 类级: fork 前加载 → 所有 worker 共享 (COW)
 
-    def __init__(self, files, chunk=7):
+    def __init__(self, files, chunk=7, aug=0):
+        self.aug = int(aug)
         self.f = [h5py.File(p, "r") for p in files]
         self.off = np.cumsum([0] + [int(x["observation"].shape[0]) for x in self.f])
         self.chunk = chunk
@@ -89,6 +109,8 @@ class RealH5(torch.utils.data.Dataset):
         obs_next = np.asarray(f["observation"][jn], dtype=np.float32)
         jc = [min(j + k, N - 1) for k in range(self.chunk)]
         act_chunk = np.stack([np.asarray(f["action"][q], dtype=np.float32) for q in jc])  # (chunk, 4)
+        if self.aug:
+            px = _aug_px(px, j)      # ★ 域增强: 平移/尺度/旋转 (治几何敏感性)
         return obs, act_chunk, px, obs_next
 
 
@@ -159,8 +181,8 @@ class Unified(nn.Module):
         return {"obs_hat": obs_hat, "z": z, "z_l2": z_l2, "u": u, "scene": scene}
 
 
-def make_loader(files, bs, workers, chunk=7):
-    ds = RealH5(files, chunk)
+def make_loader(files, bs, workers, chunk=7, aug=0):
+    ds = RealH5(files, chunk, aug=aug)
     return torch.utils.data.DataLoader(ds, batch_size=bs, shuffle=True, num_workers=workers,
                                        pin_memory=True, drop_last=True, persistent_workers=workers > 0)
 
@@ -212,6 +234,7 @@ def main():
     ap.add_argument("--wd", type=float, default=0.01)
     ap.add_argument("--chunk", type=int, default=7)
     ap.add_argument("--freeze-trunk", type=int, default=1, help="1=冻结预训练主干(默认,保护特征)")
+    ap.add_argument("--aug", type=int, default=0, help="1=训练集几何域增强(留出集不加)")
     ap.add_argument("--files", default=f"{SWM}/datasets/optical_insert_v6_disturb.h5")
     ap.add_argument("--holdout", default="")
     ap.add_argument("--stats", type=int, default=250)
@@ -243,7 +266,7 @@ def main():
 
     if a.pixel_cache:
         RealH5.build_pixel_cache(files)          # ★ 必须在建 DataLoader(fork) 之前
-    dl = make_loader(files, a.batch, a.workers, a.chunk)
+    dl = make_loader(files, a.batch, a.workers, a.chunk, aug=a.aug)
     it = iter(dl)
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=a.wd)
     HO = ([a.holdout] if a.holdout and os.path.isfile(a.holdout) else None)
