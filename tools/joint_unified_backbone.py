@@ -236,6 +236,7 @@ def main():
     ap.add_argument("--chunk", type=int, default=7)
     ap.add_argument("--freeze-trunk", type=int, default=1, help="1=冻结预训练主干(默认,保护特征)")
     ap.add_argument("--aug", type=int, default=0, help="1=训练集几何域增强(留出集不加)")
+    ap.add_argument("--init", default="", help="从已有统一主干 ckpt 续训 (两阶段: 增强→短程微调追精度)")
     ap.add_argument("--aug-scale", default="0.95,1.05", help="增强缩放范围 lo,hi (治缩放敏感性)")
     ap.add_argument("--files", default=f"{SWM}/datasets/optical_insert_v6_disturb.h5")
     ap.add_argument("--holdout", default="")
@@ -262,6 +263,15 @@ def main():
     trunk = full.vision_model
     del full
     model = Unified(trunk, freeze=a.freeze_trunk).to(dev)
+    if getattr(a, "init", ""):
+        import os as _os
+        if _os.path.isfile(a.init):
+            _sd0 = torch.load(a.init, map_location="cpu", weights_only=False)
+            _r = model.load_state_dict(_sd0, strict=False)
+            print("  🔁 续训自 %s (missing=%d unexpected=%d)"
+                  % (_os.path.basename(a.init), len(_r.missing_keys), len(_r.unexpected_keys)), flush=True)
+        else:
+            print("  ⚠️ --init 文件不存在: %s (将从头训练!)" % a.init, flush=True)
     n_tr = sum(p.numel() for p in model.trunk.parameters())
     n_hd = sum(p.numel() for p in model.parameters()) - n_tr
     print(f"   主干 {n_tr/1e6:.1f}M ({'冻结' if a.freeze_trunk else '可训'}) · 四头 {n_hd/1e6:.2f}M")
