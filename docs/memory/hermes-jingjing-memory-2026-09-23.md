@@ -1,12 +1,12 @@
-web=4090+前端+ECS; 总工=4060/GitHub/GUI; 小芳=硬件
+web=4090+前端+ECS(老倪已关机→远端快照datadrive.world/relay/WS全断,勿依赖); 总工=4060/GitHub/GUI; 小芳=硬件
 §
-Orin直连 .23.50/24无网关(enx00e04c0c32a0; NM bad match:{}→.50走RNDIS不通)
+Orin直连 .23.50/24无网关(enx00e04c0c32a0; NM bad match→RNDIS不通)
 §
 NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 分层(老倪): L5定方向造数据/L4认知预测/L3状态调度/L2检测反馈; 统一主干=SigLIP768d预训练共享+四头(泛化成立), from-scratch小主干必记忆; 画布重生node id→按名断言
 §
-交付前先自跑通; 清理只删明显垃圾
+交付前先自跑通; GPU不许空转; 改配置必核验生效(打印/hash)
 §
 安全: 🛡4栏位+三层(否决/限幅/Sys0)
 §
@@ -14,11 +14,11 @@ GUI改码必重启(zmax-studio无autosave)
 §
 GitHub不通→ghproxy.net
 §
-界面: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 面板禁假值
+界面: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 面板禁假值; 技能清单要少而可分辨
 §
-Hermes: 长命令拆多段(长内联python易被截断→写脚本文件); sudo免密
+Hermes: 长命令拆多段(内联py易截断→写脚本文件); sudo免密
 §
-ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash有Vision,本机key已配,61s→异步旁路; smolvlm2-500m兜底); qwen3B勿再试(HF镜像大文件必败)
+ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(61s→异步旁路; smolvlm2-500m兜底); qwen3B勿试
 §
 Hermes: CLI≠gateway; 飞书99991663→重启gateway
 §
@@ -52,9 +52,9 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 真机: rt动作后必下电; move_joint/line不下电; 30s超时success=False但动作已成勿重发; collision_detection=False
 §
-槽位技能L2.slot1/2(↑30→↓30不松爪; watch/register_slot_skill/test_slot_skills)
+槽位技能L2.slot1/2(↑30→↓30不松爪)
 §
-AOI: .23工控机admin/admin; /picture原图·?kind=crop拉长960喂YOLO·natural1455x70·/region; 金手指只取焊盘排; aoi_gold_servo.py
+AOI: .23工控机; 10082金手指有/picture(原图|crop960|natural)·/region·/crop_info·/last_result(判决通道); 10083表面仅POST capture_detect; 10081无关; 真拍先问; tools/aoi_health.py体检
 §
 L2.lissa_insert=里萨如力控插入(产线6N配方,插槽口=沿工具Z退60mm→推进→/lissajous_force_search); 点位insert_pose=产线治具插入位
 §
