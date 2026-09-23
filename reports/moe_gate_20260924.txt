@@ -1,0 +1,29 @@
+[transformers] Model config: pad_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 128002. This may result in unexpected behavior.
+Loading weights:   0%|          | 0/488 [00:00<?, ?it/s]Loading weights: 100%|██████████| 488/488 [00:00<00:00, 18851.85it/s]
+[transformers] [1mSmolVLMModel LOAD REPORT[0m from: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+Key            | Status     |  | 
+---------------+------------+--+-
+lm_head.weight | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+🧬 MOE 已加载: stage_moe (missing=0)
+
+==============================================================================
+🔍 门控分化诊断 (3000 样本 · v6_holdout_rand.h5)
+==============================================================================
+  ① 阶段 → 专家 混淆矩阵 (行=真阶段, 列=专家, 值=样本数)
+     阶段     E0    E1    E2    E3    E4    E5    E6      主导专家  占比
+     接近       1995  159   0     0     0     0     0       E0        92.6%
+     对位       71    64    0     0     0     0     0       E0        52.6%
+     下降       56    47    76    0     0     0     0       E2        42.5%
+     抓取       4     0     0     11    0     0     0       E3        73.3%
+     抬起       32    1     0     0     14    0     0       E0        68.1%
+     转移       209   1     0     0     0     6     0       E0        96.8%
+     插入       78    0     0     0     0     0     176     E6        69.3%
+
+  ② 路由熵: 平均 0.259 (最大 1.946; 越低越专一)
+  ③ 有效专家数: **7 / 7** ✅ 全用上
+  ④ 阶段-专家一一对应率: **6/7** ✅ 分化成立
+==============================================================================
+判据: 一一对应率 ≥6/7 且 有效专家=7 → MOE 分工成立（非退化）
