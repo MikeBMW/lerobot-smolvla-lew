@@ -77,6 +77,10 @@ CAPABILITY_LEVELS = {
              "②前馈层肌肉记忆固化 (lkdc_ff)", "groups": ["auto_seq", "muscle"]},
             {"fid": "L3-B05", "name": "端到端演示", "desc": "端到端自主演示链 (全流程自动执行; 仿真链已通, "
              "真 VLM+DiT 权重接管后验收)", "groups": ["auto", "auto_seq"]},
+            {"fid": "L3-B06", "name": "LoRA 微调 (L3)", "desc": "SmolVLA 本域 LoRA 微调 (VLM 注意力 + action expert / "
+             "flow-matching 头, tools/lora_inject.py): 200 步 / loss 0.192 / action_loss 0.2368 / 显存 3.75GB (batch2); "
+             "产物 outputs/train/smolvla_lew_lora_200r4/checkpoints — 需与统一主干/MOE 同口径评测后才进默认档",
+             "groups": ["smolvla", "auto"]},
         ],
     },
     "L4": {
@@ -119,6 +123,14 @@ CAPABILITY_LEVELS = {
              "叠堆+载物台+光纤基准) → 真空治具吸附 → 压电 x/y 微动伺服 (行程±2mm) 使 δ(模块头−光纤基准)→0, "
              "η=exp(−δ²/2σ²) 性能流形收敛报告 (实测 η0.89→1.0000, 6 轮微动)",
              "groups": ["mp", "sched_real", "chain"]},
+            {"fid": "L4-C13", "name": "阶段专家 MOE", "desc": "7 阶段专属专家 (接近/对位/下降/抓取/抬起/转移/插入) + "
+             "先验门控路由, 主干 SigLIP 768d 冻结, 只训专家+门控: 留出 观测 0.0093/动作 0.0503 vs 平凡基线 "
+             "0.0366/0.0955 (优 75%/47%); **建设中** — 门控分化诊断/密集基线A/B/引擎闭环三项待跑; "
+             "真源 tools/stage_moe_backbone.py", "groups": ["moe", "obs43"]},
+            {"fid": "L4-C14", "name": "LoRA 微调 (L4)", "desc": "INTACT 本域 LoRA 微调 (r8/α16, 注入 112 层线性; "
+             "tools/lora_inject.py) + 产物 merge 后才可部署 (tools/merge_lora_ckpt.py): 200 步产物 A/B "
+             "**未证明提升** → 不切在役指针 (2026-09-24 Δu 诊断定位根因: 幅值比中位 5.8×被 L2 收口闸逐帧否决)",
+             "groups": ["intact", "sched_real"]},
         ],
     },
 }

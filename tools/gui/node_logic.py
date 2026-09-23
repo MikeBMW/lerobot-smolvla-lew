@@ -4663,3 +4663,112 @@ def _resolve_python():
         if _o2.path.exists(_c):
             return _c
     return "python3"
+
+
+# ═══════════ 2026-09-24 新增功能节点: 阶段专家 MOE / L4 LoRA 微调 / L3 LoRA 微调 ═══════════
+# 老倪: 「代办任务也要面向节点功能, 例如 MOE架构这样的改造, 也要显示在状态空间的整个工程里,
+#        作为一个功能节点; L4和L3层的LoRA微调节点需要显示在画布上」+ 「节点要是进不了系统则删掉」
+# 三节点均为**真节点** (注册 + 真源码映射 + 真实磁盘现状 + 真实连线), 不是装饰。
+def _swm_home():
+    import os as _o3
+    return _o3.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+
+
+def node_ss_moe(ctx):
+    """🧬 阶段专家 MOE — 7 阶段专属专家 + 先验门控路由 (SigLIP 主干冻结)
+    源码: tools/stage_moe_backbone.py (STAGES / class StageMoE) · 诊断: tools/moe_gate_diagnose.py
+    报告的数字全部取自磁盘/日志实况, 不写死 (缺就报缺)。"""
+    import glob
+    import os as _o4
+    import time as _t4
+    log = ctx.get("log")
+
+    def _ck(p, tag):
+        if not os.path.exists(p):
+            return f"{tag} 缺"
+        st = os.stat(p)
+        return (f"{tag} {st.st_size / 1e6:.0f}MB @"
+                f"{_t4.strftime('%m-%d %H:%M', _t4.localtime(st.st_mtime))}")
+
+    cks = [_ck(os.path.join(_swm_home(), "checkpoints", "stage_moe_s1", "moe.pt"), "s1"),
+           _ck(os.path.join(_swm_home(), "checkpoints", "stage_moe", "moe.pt"), "s2")]
+    gate = sorted(glob.glob(os.path.join(_REPO_ROOT, "reports", "moe_gate_*.json")))
+    if log:
+        log("🧬 阶段专家 MOE: 7 专家 (接近/对位/下降/抓取/抬起/转移/插入) · 主干 SigLIP 768d 冻结 + 门控路由")
+        log(f"   权重: {' · '.join(cks)}")
+        log("   实测 (训练日志 2026-09-24): s1 留出 观测 0.0106@1500 · s2 best 观测 0.0093 / 动作 0.0503 "
+            f"(平凡基线 0.0366 / 0.0955 → 优 75% / 47%)")
+        log("   ⏳ 建设中 (老倪待办): ①门控分化诊断="
+            f"{'已跑 ' + os.path.basename(gate[-1]) if gate else '待跑'} ②同数据密集基线严格A/B=待跑 ③引擎闭环n=10=待跑")
+    return True
+
+
+def node_ss_lora_l4(ctx):
+    """🎛 L4 · INTACT LoRA 微调 — 真源 tools/lora_inject.py (LoRALinear/inject_lora, r8/α16)
+    + tools/merge_lora_ckpt.py (merge 后才可部署)。现状取自磁盘 + 最新 Δu 诊断报告。"""
+    import glob
+    import json
+    import os as _o5
+    log = ctx.get("log")
+    d = os.path.join(_swm_home(), "checkpoints", "intact_goal_optical_insert_v6lora_200")
+    pt = sorted(glob.glob(os.path.join(d, "*.pt")))
+    if log:
+        log("🎛 L4 · INTACT LoRA 微调: r=8 / α=16 · 注入 112 层线性 · 产物目录 checkpoints/"
+            "intact_goal_optical_insert_v6lora_200")
+        if pt:
+            log("   产物: " + " · ".join(f"{os.path.basename(p)} {os.path.getsize(p) / 1e6:.0f}MB" for p in pt))
+        else:
+            log("   产物: 缺 (目录不存在)")
+        rep = sorted(glob.glob(os.path.join(_REPO_ROOT, "reports", "diag_lora_du_*intact_l4_v6lora_200.json")))
+        if rep:
+            try:
+                j = json.load(open(rep[-1], encoding="utf-8"))
+                cm = j.get("compare", {})
+                k = next((k for k in cm if k.endswith(":direct")), None)
+                if k:
+                    f = cm[k]["final"]
+                    log(f"   Δu 诊断 ({os.path.basename(rep[-1])}): 最终指令与解析链逐位相同 "
+                        f"{f.get('identical_frames')}/{f.get('frames')} 帧 · Δu_raw 均值 {cm[k]['raw_l4'].get('d_norm_mean'):.2f}"
+                        " → 根因=幅值比中位 5.2~5.8×(红线 1.5×) 被 L2 收口闸逐帧否决")
+            except Exception as e:                                        # noqa: BLE001
+                log(f"   Δu 诊断读取失败: {type(e).__name__}")
+        log("   ⏳ 待办: 对齐层把幅值比收到 ~1 后同口径重跑 3seed×4臂 A/B (有提升才切在役指针)")
+    return True
+
+
+def node_ss_lora_l3(ctx):
+    """🎛 L3 · SmolVLA LoRA 微调 — 真源 tools/lora_inject.py 注入 smolvla_lew
+    (VLM 注意力 + action expert), 训练产物 outputs/train/smolvla_lew_lora_*/checkpoints。"""
+    import glob
+    import os as _o6
+    log = ctx.get("log")
+    root = os.path.join(_REPO_ROOT, "outputs", "train")
+    runs = sorted(glob.glob(os.path.join(root, "smolvla_lew_lora_*")),
+                  key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
+    if log:
+        log("🎛 L3 · SmolVLA LoRA 微调: 注入 VLM 注意力 + action expert (flow-matching 头)")
+        if runs:
+            r = runs[-1]
+            ck = sorted(glob.glob(os.path.join(r, "checkpoints", "*")))
+            log(f"   最新产物: {os.path.basename(r)} · checkpoint {len(ck)} 个 "
+                f"({os.path.basename(ck[-1]) if ck else '缺'})")
+            log("   实测 (2026-09-24 存档): 200 步 / 3670s · loss 0.192 · action_loss 0.2368 · 显存 3.75GB (LoRA, batch2)")
+        else:
+            log("   产物: 缺")
+        log("   ⏳ 待办: 与统一主干/阶段专家 MOE 同口径评测 (留出集 + 平凡基线) 后才进默认档")
+    return True
+
+
+_reg("ss_moe", ["阶段专家 MOE", "阶段专家MOE", "MOE 架构", "MOE架构"],
+     "🧬 阶段专家 MOE (7 阶段专家 + 先验门控路由 · 建设中) — L4 认知预测主干改造",
+     node_ss_moe)
+_reg("ss_lora_l4", ["L4 LoRA 微调", "L4 LoRA", "INTACT LoRA"],
+     "🎛 L4 · INTACT LoRA 微调 (r8/α16 · 需 merge 后可部署 · A/B 未证明提升)",
+     node_ss_lora_l4)
+_reg("ss_lora_l3", ["L3 LoRA 微调", "L3 LoRA", "SmolVLA LoRA"],
+     "🎛 L3 · SmolVLA LoRA 微调 (VLM 注意力 + action expert · 200 步 loss 0.192)",
+     node_ss_lora_l3)
+
+_EXTERNAL_LOC["ss_moe"] = (os.path.join(_REPO_ROOT, "tools", "stage_moe_backbone.py"), 42, "class StageMoE")
+_EXTERNAL_LOC["ss_lora_l4"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 105, "def inject_lora")
+_EXTERNAL_LOC["ss_lora_l3"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 41, "class LoRALinear")

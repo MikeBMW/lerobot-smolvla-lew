@@ -59,9 +59,11 @@ def seg_cross(a, b, c, d):
 
 
 def _find_cycle(adj, ids):
+    """DFS 找一个环。⚠️ 必须 sorted 迭代节点集合 —— set 的迭代顺序受字符串哈希随机化影响,
+    跨进程会不同 → 断环集在两次运行间抖动 (2026-09-24 实锤: FAS 3~6 条乱跳)。"""
     color = {i: 0 for i in ids}
     stack, work = [], []
-    for s in ids:
+    for s in sorted(ids):
         if color[s]:
             continue
         color[s] = 1
@@ -92,16 +94,21 @@ def _find_cycle(adj, ids):
     return None
 
 
-def break_cycles(ids, edges, labels, protected):
-    """断环: 优先断语义反馈线(反馈/回流), 保护主链。返回 (保留的DAG边, 断掉的反馈边)。"""
+def break_cycles(ids, edges, labels, protected, preferred_back=()):
+    """断环: 优先断语义反馈线(反馈/回流/偏好集), 保护主链。返回 (保留的DAG边, 断掉的反馈边)。"""
     adj = defaultdict(set)
     for f, t in edges:
         adj[f].add(t)
+    pref = set(preferred_back)
 
     def prio(f, t):
         if (f, t) in protected:
             return 3
-        lab = labels.get((f, t), "")
+        if (f, t) in pref:
+            return -1
+        # ⚠️ 用**原始标签**算优先级 (剥掉我们自己打的 "↩ 反馈: " 前缀), 否则打标反噬优先级
+        #    → 连续两次运行的断环集不同 = 不幂等 (2026-09-24 实锤: 3 条 ↔ 5 条来回抖)
+        lab = labels.get((f, t), "").replace("↩ 反馈: ", "").replace("↩ 反馈回路", "")
         return 0 if ("反馈" in lab or "回流" in lab) else 1
 
     fb = []
@@ -109,7 +116,9 @@ def break_cycles(ids, edges, labels, protected):
         cyc = _find_cycle(adj, ids)
         if not cyc:
             break
-        f, t = min(cyc, key=lambda e: (prio(*e), len(labels.get(e, ""))))
+        f, t = min(cyc, key=lambda e: (prio(*e),
+                                       len(labels.get(e, "").replace("↩ 反馈: ", "").replace("↩ 反馈回路", "")),
+                                       e[0], e[1]))
         adj[f].discard(t)
         fb.append((f, t))
     dags = {(f, t) for (f, t) in edges if (f, t) not in set(fb)}
@@ -117,6 +126,18 @@ def break_cycles(ids, edges, labels, protected):
 
 
 class Layout:
+    # 🎯 语义回流的边: 断环时**最先断**这几条 (它们本来就是"回到上游"的线, 视觉上反向是正常的)。
+    # 2026-09-24 定档 (逐个都实锤过):
+    #  ① sw 插拔链闭环 = 策略→引擎→渲染图像源→策略; 必须断"引擎→渲染图像源"(渲染回流),
+    #     否则去断"策略→引擎"这条语义前向线, 三节点 x 顺序被拆散;
+    #  ② 记忆环 = L2/L3/L4 记忆→记忆图谱→总装记忆→下发回 L2/L3/L4; 必须断"总装下发回下层"那三条
+    #     (上层写回下层 = 语义反馈), 否则去断"记忆→图谱"会让图谱节点成断头。
+    # ⚠️ 这里必须**显式声明**, 不能靠标签文本 (打标会反噬优先级 → 断环集在两次运行间抖动 = 不幂等)。
+    PREFERRED_BACK = {("swworld", "swds"),
+                      ("ss_mem_share", "ss_mem_l2"),
+                      ("ss_mem_share", "ss_mem_l3"),
+                      ("ss_mem_share", "ss_mem_l4")}
+
     def __init__(self, path):
         self.d = json.load(open(path, encoding="utf-8"))
         self.nodes = {n["id"]: n for n in self.d["nodes"]}
@@ -127,7 +148,8 @@ class Layout:
         edges = [(L["f"], L["t"]) for L in self.links if L["f"] in self.nodes and L["t"] in self.nodes]
         self.labels = {(L["f"], L["t"]): str(L.get("label") or "") for L in self.links}
         self.protected = {("sssched", "sslimit")}
-        self.dag, self.fb = break_cycles(set(self.nodes), edges, self.labels, self.protected)
+        self.dag, self.fb = break_cycles(set(self.nodes), edges, self.labels, self.protected,
+                                         self.PREFERRED_BACK)
         self.fbset = set(self.fb)
         self.edges = edges
         # 行带归属
@@ -449,13 +471,18 @@ class Layout:
         self.bands = ordered
 
     def mark_feedback(self):
+        """给断环边打 ↩ 标; **并撤销**不再断环的边上的标 (否则标签反噬优先级 → 二次运行不幂等, 2026-09-24 实锤)。"""
         n = 0
         for L in self.links:
-            if (L["f"], L["t"]) in self.fbset:
-                lab = str(L.get("label") or "")
+            lab = str(L.get("label") or "")
+            e = (L["f"], L["t"])
+            if e in self.fbset:
                 if not lab.startswith("↩"):
                     L["label"] = ("↩ 反馈: " + lab) if lab else "↩ 反馈回路"
                     n += 1
+            elif lab.startswith("↩ 反馈: "):
+                L["label"] = lab[len("↩ 反馈: "):]
+                n += 1
         return n
 
 
