@@ -44,8 +44,6 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 采集判据=位姿极差0+画面差≤2灰阶; 中转state流tcp/quat直读topic
 §
-飞书端=另一Hermes会话同一工作树; 同步docs/memory+push
-§
 真机画面: 老倪面板=180°翻转; 报方向说'朝画面中心'
 §
 夹爪: 开1000/夹0+force40→185(空载21); 力值读不到; 拖动模式忽略夹爪指令
@@ -54,7 +52,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 槽位技能L2.slot1/2(↑30→↓30不松爪)
 §
-AOI: .23工控机; 10082金手指有/picture(原图|crop960|natural)·/region·/crop_info·/last_result(判决通道); 10083表面仅POST capture_detect; 10081无关; 真拍先问; tools/aoi_health.py体检
+AOI: .23工控机; 10082金手指有/picture(crop960|natural)·/region·/crop_info·/last_result判决; 10083表面V2仅POST, 表面V4已写待部署(aoi_v4/surface_10083_work_v4.py); 10081无关; 真拍先问; tools/aoi_health.py体检
 §
 L2.lissa_insert=里萨如力控插入(产线6N配方,插槽口=沿工具Z退60mm→推进→/lissajous_force_search); 点位insert_pose=产线治具插入位
 §
