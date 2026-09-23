@@ -1,0 +1,237 @@
+{
+ "format": "zmax_flow/1",
+ "version": 1,
+ "name": "Z-MAX 人机在环标定闭环",
+ "sim": {
+  "by": "Hermes",
+  "ts": "2026-09-23 14:12:26",
+  "last_update": "2026-09-23 14:12:26",
+  "closure": "done"
+ },
+ "nodes": [
+  {
+   "id": "ncpreflight",
+   "type": "row_bg",
+   "name": "01 预检 标定状态",
+   "x": 60,
+   "y": 80,
+   "w": 300,
+   "icon": "🔍",
+   "color": "#64748b",
+   "params": {
+    "layer": "preflight",
+    "status": "success",
+    "ts": "2026-09-23 14:12:26"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "nchitl",
+   "type": "row_bg",
+   "name": "02 人机在环采集",
+   "x": 400,
+   "y": 80,
+   "w": 300,
+   "icon": "🤝",
+   "color": "#f59e0b",
+   "params": {
+    "layer": "hitl",
+    "status": "success",
+    "ts": "2026-09-23 14:12:26"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "ncsolve",
+   "type": "row_bg",
+   "name": "03 解算 T_base_cam/plane_z",
+   "x": 740,
+   "y": 80,
+   "w": 300,
+   "icon": "📐",
+   "color": "#3b82f6",
+   "params": {
+    "layer": "solve",
+    "status": "success",
+    "ts": "2026-09-23 14:12:26"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "ncverify",
+   "type": "row_bg",
+   "name": "04 验证 重投影残差",
+   "x": 1080,
+   "y": 80,
+   "w": 300,
+   "icon": "✅",
+   "color": "#22c55e",
+   "params": {
+    "layer": "verify",
+    "status": "success",
+    "ts": "2026-09-23 14:12:26"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "ncregister",
+   "type": "row_bg",
+   "name": "05 入库 标定注册表",
+   "x": 1420,
+   "y": 80,
+   "w": 300,
+   "icon": "💾",
+   "color": "#8b5cf6",
+   "params": {
+    "layer": "register",
+    "status": "success",
+    "ts": "2026-09-23 14:12:26"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  },
+  {
+   "id": "ncuplift",
+   "type": "row_bg",
+   "name": "06 垂直场景能力提升",
+   "x": 1760,
+   "y": 80,
+   "w": 300,
+   "icon": "📈",
+   "color": "#ef4444",
+   "params": {
+    "layer": "uplift",
+    "status": "success",
+    "ts": "2026-09-23 14:12:26"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "入",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "出",
+     "dtype": "any"
+    }
+   ]
+  }
+ ],
+ "links": [
+  {
+   "id": "lc1",
+   "f": "ncpreflight",
+   "t": "nchitl",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "lc2",
+   "f": "nchitl",
+   "t": "ncsolve",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "lc3",
+   "f": "ncsolve",
+   "t": "ncverify",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "lc4",
+   "f": "ncverify",
+   "t": "ncregister",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "lc5",
+   "f": "ncregister",
+   "t": "ncuplift",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": ""
+  },
+  {
+   "id": "lc_back",
+   "f": "ncuplift",
+   "t": "nchitl",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "迭代加采(人机在环)"
+  }
+ ]
+}
