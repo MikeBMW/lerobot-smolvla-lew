@@ -1,0 +1,99 @@
+{
+ "frames_dir": "/tmp/live_eval_0922_1422",
+ "frames": 1,
+ "ts": "2026-09-22 14:23:29",
+ "results": [
+  {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 1,
+   "frames_with_peg": 1,
+   "peg_rate": 1.0,
+   "peg_conf_mean": 0.906,
+   "peg_conf_max": 0.906,
+   "classes": {
+    "0": "peg",
+    "1": "OPT_Gold"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 2,
+     "peg": 2,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.906,
+       "xyxy": [
+        156.3,
+        67.7,
+        215.9,
+        161.4
+       ]
+      },
+      {
+       "cls": "peg",
+       "conf": 0.36,
+       "xyxy": [
+        190.0,
+        0.5,
+        235.1,
+        24.6
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_annot/annot_lora_20260922_141238/weights/best.pt",
+   "imgsz": 640,
+   "conf": 0.25,
+   "n_frames": 1,
+   "frames_with_peg": 1,
+   "peg_rate": 1.0,
+   "peg_conf_mean": 0.904,
+   "peg_conf_max": 0.904,
+   "classes": {
+    "0": "peg",
+    "1": "OPT_Gold"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 2,
+     "peg": 2,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.904,
+       "xyxy": [
+        156.3,
+        67.7,
+        215.9,
+        161.4
+       ]
+      },
+      {
+       "cls": "peg",
+       "conf": 0.344,
+       "xyxy": [
+        189.9,
+        0.5,
+        235.1,
+        24.7
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

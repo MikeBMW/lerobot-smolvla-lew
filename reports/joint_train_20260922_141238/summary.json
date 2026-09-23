@@ -1,0 +1,103 @@
+{
+ "generated_at": "2026-09-22 14:23:31",
+ "steps": 200,
+ "lora": {
+  "L4": true,
+  "L3": true,
+  "r": 8
+ },
+ "gpu_free_mb_at_end": 7695,
+ "rows": [
+  {
+   "stage": "L4",
+   "layer": "L4 INTACT (安全+物理导航)",
+   "desc": "INTACT 续训 + LoRA 适配 (基座冻结, 只训 lora_A/B)",
+   "cmd": [
+    "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+    "train.py",
+    "--config-name=intact_goal_optical_insert_v6",
+    "data=zmax_v6",
+    "output_model_name=intact_goal_optical_insert_v6lora_200",
+    "init_weights_path=/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d9_s3072/weights_epoch_1.pt",
+    "init_zero_skill_branch=false",
+    "trainer.max_epochs=1",
+    "+trainer.limit_train_batches=200"
+   ],
+   "rc": 0,
+   "secs": 128.4,
+   "log": "/home/ubuntu/lerobot-smolvla-lew/reports/joint_train_20260922_141238/L4.log",
+   "evidence": [
+    {
+     "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200",
+     "exists": true,
+     "size_mb": null
+    }
+   ],
+   "ts": "2026-09-22 14:14:46"
+  },
+  {
+   "stage": "L3",
+   "layer": "L3 SmolVLA (长程序列规划)",
+   "desc": "SmolVLA+LEW 续训 + LoRA(local 引擎)",
+   "cmd": [
+    "/home/ubuntu/lerobot-venv/bin/python",
+    "-m",
+    "lerobot.scripts.lerobot_train",
+    "--config_path=/home/ubuntu/lerobot-smolvla-lew/config_smolvla_lew_lora_200_r2.yaml"
+   ],
+   "rc": 0,
+   "secs": 471.3,
+   "log": "/home/ubuntu/lerobot-smolvla-lew/reports/joint_train_20260922_141238/L3.log",
+   "evidence": [
+    {
+     "path": "/home/ubuntu/lerobot-smolvla-lew/outputs/train/smolvla_lew_lora_200_r2",
+     "exists": true,
+     "size_mb": null
+    }
+   ],
+   "ts": "2026-09-22 14:22:38"
+  },
+  {
+   "stage": "L2",
+   "layer": "L2 YOLO (检测) + 2D→3D",
+   "desc": "真机标注帧域适应微调 (基座=在役软链)",
+   "cmd": [
+    "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+    "/home/ubuntu/lerobot-smolvla-lew/tools/yolo_annot_train.py",
+    "--epochs",
+    "30",
+    "--imgsz",
+    "640",
+    "--name",
+    "annot_lora_20260922_141238",
+    "--base",
+    "/home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt"
+   ],
+   "rc": 0,
+   "secs": 53.6,
+   "log": "/home/ubuntu/lerobot-smolvla-lew/reports/joint_train_20260922_141238/L2.log",
+   "evidence": [
+    {
+     "path": "/home/ubuntu/lerobot-smolvla-lew/data/yolo_annot/dataset",
+     "exists": true,
+     "size_mb": null
+    }
+   ],
+   "ts": "2026-09-22 14:23:31"
+  },
+  {
+   "stage": "LLM",
+   "layer": "大模型层 (VLM/VLA 意图)",
+   "desc": "权重/接口就绪体检 (无训练; 上大模型须显存协商)",
+   "cmd": [
+    "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+    "/home/ubuntu/lerobot-smolvla-lew/tools/llm_layer_check.py"
+   ],
+   "rc": 1,
+   "secs": 0.0,
+   "log": "/home/ubuntu/lerobot-smolvla-lew/reports/joint_train_20260922_141238/LLM.log",
+   "evidence": [],
+   "ts": "2026-09-22 14:23:31"
+  }
+ ]
+}
