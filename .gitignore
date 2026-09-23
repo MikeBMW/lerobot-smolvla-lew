@@ -249,3 +249,7 @@ reports/**/*.tar.gz
 tools/ros2_interfaces/build/
 tools/ros2_interfaces/install/
 tools/ros2_interfaces/log/
+
+# 2026-09-24 权重/可视化批次不入库 (磁盘保留)
+reports/**/lora_*_init.pt
+reports/yolo_live_vis_*/
