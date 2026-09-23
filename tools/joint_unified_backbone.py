@@ -298,7 +298,7 @@ def main():
     print(f"   主干 {n_tr/1e6:.1f}M ({'冻结' if a.freeze_trunk else '可训'}) · 四头 {n_hd/1e6:.2f}M")
 
     if a.pixel_cache:
-        RealH5.build_pixel_cache(files)          # ★ 必须在建 DataLoader(fork) 之前
+        RealH5.build_pixel_cache(files, cap_bytes=(int(float(getattr(a, "cache_gb", 0.0)) * 1024**3) or None))   # ★ 必须与 --cache-gb 一致 (此处是真调用点)
     # ★ 增强配置必须在建 DataLoader 之前落到类属性上, 且打印出来 (防静默失效)
     import numpy as _np2
     RealH5._AUG = int(getattr(a, "aug", 0))
