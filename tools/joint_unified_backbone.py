@@ -66,14 +66,32 @@ class RealH5(torch.utils.data.Dataset):
         self.off = np.cumsum([0] + [int(x["observation"].shape[0]) for x in self.f])
         self.chunk = chunk
 
+    @staticmethod
+    def _safe_cap_gb():
+        """按可用内存算缓存上限: 只用 available 的 60%, 且至少留 5GB 给进程/系统"""
+        try:
+            with open("/proc/meminfo") as f:
+                avail = 0
+                for ln in f:
+                    if ln.startswith("MemAvailable"):
+                        avail = int(ln.split()[1]) / 1048576.0
+                        break
+            if avail > 0:
+                return max(3.0, min(20.0, avail * 0.80 - 1.0))   # 留 ~20% 余量给进程/系统
+        except Exception:
+            pass
+        return 12.0
+
     @classmethod
-    def build_pixel_cache(cls, files, cap_bytes=20 * 1024**3):
+    def build_pixel_cache(cls, files, cap_bytes=None):
         """把所有像素读进内存 (uint8)。h5 分块 512 帧 → 随机取 1 帧要解压 75MB, 这是真瓶颈。"""
         tot = sum(int(h5py.File(p, "r")["pixels"].shape[0]) for p in files)
+        if cap_bytes is None:
+            cap_bytes = int(cls._safe_cap_gb() * 1024**3)
         per = int(h5py.File(files[0], "r")["pixels"][0].nbytes) if tot else 0
         need = tot * per
         if need > cap_bytes:
-            print(f"  ⚠️ 像素缓存需 {need/1024**3:.1f}GB > 上限 {cap_bytes/1024**3:.0f}GB → 跳过缓存")
+            print(f"  ⚠️ 像素缓存需 {need/1024**3:.1f}GB > 安全上限 {cap_bytes/1024**3:.1f}GB (按可用内存自动算) → 跳过缓存, 走磁盘流式(慢但不OOM)", flush=True)
             return None
         print(f"  载入像素缓存: {tot:,} 帧 × {per/1024:.0f}KB = {need/1024**3:.1f}GB ...", flush=True)
         arr = np.empty((tot,) + tuple(h5py.File(files[0], "r")["pixels"].shape[1:]), dtype=np.uint8)
@@ -182,7 +200,9 @@ class Unified(nn.Module):
         return {"obs_hat": obs_hat, "z": z, "z_l2": z_l2, "u": u, "scene": scene}
 
 
-def make_loader(files, bs, workers, chunk=7, aug=0):
+def make_loader(files, bs, workers, chunk=7, aug=0, cap=None):
+    if cap is not None:
+        RealH5.build_pixel_cache(files, cap_bytes=cap)
     ds = RealH5(files, chunk, aug=aug)
     return torch.utils.data.DataLoader(ds, batch_size=bs, shuffle=True, num_workers=workers,
                                        pin_memory=True, drop_last=True, persistent_workers=workers > 0)
@@ -236,6 +256,7 @@ def main():
     ap.add_argument("--chunk", type=int, default=7)
     ap.add_argument("--freeze-trunk", type=int, default=1, help="1=冻结预训练主干(默认,保护特征)")
     ap.add_argument("--aug", type=int, default=0, help="1=训练集几何域增强(留出集不加)")
+    ap.add_argument("--cache-gb", type=float, default=0.0, help="像素缓存上限GB (0=按可用内存自动)")
     ap.add_argument("--init", default="", help="从已有统一主干 ckpt 续训 (两阶段: 增强→短程微调追精度)")
     ap.add_argument("--aug-scale", default="0.95,1.05", help="增强缩放范围 lo,hi (治缩放敏感性)")
     ap.add_argument("--files", default=f"{SWM}/datasets/optical_insert_v6_disturb.h5")
@@ -288,7 +309,8 @@ def main():
     RealH5._AUG_SCALE = (min(_sl, _sh), max(_sl, _sh))
     print("  🎨 增强: %s | 缩放范围 %.2f~%.2f | 平移±8px · 旋转±5°"
           % ("开" if RealH5._AUG else "关", RealH5._AUG_SCALE[0], RealH5._AUG_SCALE[1]), flush=True)
-    dl = make_loader(files, a.batch, a.workers, a.chunk, aug=a.aug)
+    _cap = int(float(getattr(a, "cache_gb", 0.0)) * 1024**3) or None
+    dl = make_loader(files, a.batch, a.workers, a.chunk, aug=a.aug, cap=_cap)
     it = iter(dl)
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=a.wd)
     HO = ([a.holdout] if a.holdout and os.path.isfile(a.holdout) else None)
