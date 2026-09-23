@@ -1,26 +1,10 @@
 [
  {
-  "id": "lk_mem203",
-  "f": "ss_mem_l4",
-  "t": "ssmani_exp",
+  "id": "lkfix_ssinnov_sssched",
+  "f": "ssinnov",
+  "t": "sssched",
   "f_port": "out1",
-  "t_port": "in1",
-  "label": "筹划 → 预测流形参考"
- },
- {
-  "id": "lkcal5",
-  "f": "sslat",
-  "t": "ssmani_exp",
-  "f_port": "out1",
-  "t_port": "in1",
-  "label": "潜空间地图 → 流形导航预测"
- },
- {
-  "id": "lkdec_vlm",
-  "f": "ssvlm",
-  "t": "ssintact_dec",
-  "f_port": "out1",
-  "t_port": "in4",
-  "label": "视觉潜空间 z → 解码条件"
+  "t_port": "in8",
+  "label": "↩ 反馈 · contact+残差 → 动作调制 (u_fb)"
  }
 ]

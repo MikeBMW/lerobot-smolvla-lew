@@ -81,13 +81,18 @@ class RemoteTap(Node):
                              "/motion/active_states", "/robot_status", "/tactile_sensor", "/realsense/color/image_raw",
                              "/foundationpose/tray_reference/debug_image"]
         self.pub_counts = {}
-        self.create_timer(5.0, self._count_pubs)      # 发布者计数 (只读查询)
+        # 🛠 2026-09-23 修复 (老倪问"摄像头连接失败"): 原先这里用 rclpy 定时器驱动
+        #   发布者计数/图像解码 —— **rclpy 定时器按墙钟调度**, 本机 NTP 把钟回拨 7.14h 后,
+        #   定时器的"下次触发时刻"被推到未来 7h → **永久停摆** (实测: cam_rs.png 冻在
+        #   回拨前那一刻 01:14:34, 而 img 计数照涨 = 假采集; 同容器的独立探针立刻能出图)。
+        #   纪律与 09-18 同名事故一致: **节拍一律用单调钟** → 改为由主循环按 monotonic 驱动
+        #   (见 main(): n._tick_img() / n._count_pubs())。
+        self._tick_dt = {"img": 0.0, "pub": 0.0}
         # 📷 图像: RealSense 彩色 (现场期望的"实时 realsense 图像") 优先, FoundationPose 调试图兜底
         self.cam_topics = ["/realsense/color/image_raw",
                            "/foundationpose/tray_reference/debug_image"]
         for _t in self.cam_topics:
             self.create_subscription(Image, _t, lambda m, _tt=_t: self.cb_img(m, _tt), _q(1), raw=True)
-        self.create_timer(1.0, self._tick_img)         # 1Hz: raw 字节 → 反序列化 → 元数据 + PNG
 
     def _load_geom(self):
         try:
@@ -241,6 +246,21 @@ class RemoteTap(Node):
         except Exception:
             pass
 
+    def tick_monotonic(self):
+        """🛠 2026-09-23: **单调钟节拍** (替代 rclpy 墙钟定时器, 免疫时钟回拨/跳变)。
+
+        图像解码 1Hz · 发布者计数 5s。由 main() 主循环每轮调用 (主循环本身用 monotonic 计时)。
+        为什么不用 create_timer: rclpy Timer 以墙钟算"下次触发时刻", NTP 回拨后该时刻落到
+        未来 (实测 7.14h) → 回调永久不再触发, 而订阅回调照跑 ⇒ "假采集"(计数涨、图不更新)。
+        """
+        now = time.monotonic()
+        if now - self._tick_dt["img"] >= 1.0:
+            self._tick_dt["img"] = now
+            self._tick_img()
+        if now - self._tick_dt["pub"] >= 5.0:
+            self._tick_dt["pub"] = now
+            self._count_pubs()
+
     def cb_rstat(self, m):
         with self.lock:
             self.rstat = str(m.data)[:1200]     # 截断会破坏 JSON → 面板解析失败 (300 截过)
@@ -299,6 +319,7 @@ def main():
     t0, cnt = time.monotonic(), 0
     while True:
         rclpy.spin_once(n, timeout_sec=0.02)
+        n.tick_monotonic()          # 🛠 2026-09-23: 图像解码/发布者计数 (单调钟节拍, 免疫回拨)
         if time.monotonic() - t0 >= 1.0 / a.rate:
             t0 = time.monotonic()
             st = n.snapshot()

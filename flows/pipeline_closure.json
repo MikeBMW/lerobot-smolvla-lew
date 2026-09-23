@@ -5,8 +5,33 @@
  "sim": {
   "by": "Hermes",
   "ts": "2026-09-23 13:59:30",
-  "last_update": "2026-09-23 14:03:35",
-  "closure": "done"
+  "last_update": "2026-09-23 23:39:28",
+  "closure": "done",
+  "last_run": {
+   "seed": 104,
+   "stages": {
+    "l5": "planner.taskplanner  conf=1.000  0.1ms",
+    "mem": "memory.json  conf=6.000  0.0ms",
+    "l2": "detect.yolo  conf=1.000  479.8ms",
+    "l4": "vote[node.unified]  conf=2.709  26.9ms",
+    "l3": "dispatch.k_act  conf=2.709  0.0ms",
+    "exec": "引擎闭环: done=True · 345 步 · 最小插入距 1.4mm · L4真推理33次 · 融合84帧 · L2收口否决146(方向130)"
+   },
+   "exec": {
+    "done": true,
+    "steps": 345,
+    "min_dist_mm": 1.4,
+    "l4_calls": 33,
+    "blend": 84,
+    "refused": 0,
+    "l2_veto": {
+     "total": 146,
+     "dir": 130,
+     "mag": 16
+    }
+   },
+   "ts": "2026-09-23 23:39:28"
+  }
  },
  "nodes": [
   {
@@ -23,7 +48,7 @@
     "desc": "任务分解 → 阶段/技能序列 + 变体方向生成",
     "status": "success",
     "layer": "L5",
-    "ts": "2026-09-23 14:03:31"
+    "ts": "2026-09-23 23:39:19"
    },
    "inputs": [
     {
@@ -54,7 +79,7 @@
     "desc": "L2肌肉/L3流程/L4工作/宏观 → 跨层检索与注入",
     "status": "success",
     "layer": "MEM",
-    "ts": "2026-09-23 14:03:31"
+    "ts": "2026-09-23 23:39:19"
    },
    "inputs": [
     {
@@ -85,7 +110,7 @@
     "desc": "YOLO 2D → 3D 反投影 → 反馈一致性",
     "status": "success",
     "layer": "L2",
-    "ts": "2026-09-23 14:03:31"
+    "ts": "2026-09-23 23:39:20"
    },
    "inputs": [
     {
@@ -116,7 +141,7 @@
     "desc": "统一主干(SigLIP+四头) 多模型可仲裁",
     "status": "success",
     "layer": "L4",
-    "ts": "2026-09-23 14:03:35"
+    "ts": "2026-09-23 23:39:23"
    },
    "inputs": [
     {
@@ -147,7 +172,7 @@
     "desc": "动作块 → u_ff (量纲逆运算 act×K_ACT)",
     "status": "success",
     "layer": "L3",
-    "ts": "2026-09-23 14:03:35"
+    "ts": "2026-09-23 23:39:23"
    },
    "inputs": [
     {
@@ -178,7 +203,7 @@
     "desc": "真机执行 → 采集回流 → 闭环完成判定",
     "status": "success",
     "layer": "EXEC",
-    "ts": "2026-09-23 14:03:35"
+    "ts": "2026-09-23 23:39:28"
    },
    "inputs": [
     {

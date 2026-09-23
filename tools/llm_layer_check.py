@@ -127,10 +127,15 @@ def check() -> dict:
     # 判定: HF 缓存里只认"要从网上下的" (Qwen VL / SmolVLM 参考权重);
     #      L4/L3/L2 只看**本机在役权重**是否在位 (它们在 stable-wm-cache / models / outputs, 不在 HF 缓存)
     gaps = []
-    for k in ("qwen2.5-vl-3b", "smolvlm2-500m"):
-        v = models[k]
-        if not v["ready"]:
-            gaps.append(f"{k} 权重未下全 (实际 {v['weight_mb']}MB < 门槛 {v['min_mb']}MB)")
+    # 🛠 2026-09-23 老倪: 全量 pipeline 跑通优先 —— qwen2.5-vl-3b 按**既定口径不启用**
+    #   (L5 场景理解走 DeepSeek Vision API, 本地兜底 = smolvlm2-500m; 3B VL 需 8GB 显存, 8G 卡勿试),
+    #   所以它只是 informational, **不算缺口** (原先把 gap 计成失败 → LLM 阶段 rc=1 拖垮整链)。
+    for k in ("smolvlm2-500m",):
+        v = (out.get("weights") or {}).get(k) or {}
+        if not v.get("ready"):
+            gaps.append(f"{k} 权重未下全 (实际 {v.get('weight_mb')}MB < 门槛 {v.get('min_mb')}MB)")
+    _q = (out.get("weights") or {}).get("qwen2.5-vl-3b") or {}
+    out["qwen3b_informational"] = (not _q.get("ready"))
     for k, v in local.items():
         if not v["ready"]:
             gaps.append(f"{k} 在役权重缺失 ({v['path']})")

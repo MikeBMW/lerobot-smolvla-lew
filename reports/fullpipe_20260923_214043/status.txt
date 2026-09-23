@@ -1,0 +1,10 @@
+START 2026-09-23 21:40:43 out=reports/fullpipe_20260923_214043
+[L5_gen] start 2026-09-23 21:40:43
+[L5_gen] RC=0 end 2026-09-23 22:24:06
+[JOINT] start 2026-09-23 22:24:06
+[JOINT] RC=1 end 2026-09-23 22:30:22
+[EVAL] start 2026-09-23 22:30:22
+[EVAL] RC=0 end 2026-09-23 22:30:55
+DONE 2026-09-23 22:30:55
+[L3_retry] start 2026-09-23 22:36:55 batch=2 tag=r4
+[L3_retry] RC=0 end 2026-09-23 23:38:05

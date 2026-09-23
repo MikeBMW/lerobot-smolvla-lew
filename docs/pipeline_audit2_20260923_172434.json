@@ -1,0 +1,100 @@
+{
+ "ts": "2026-09-23 17:24:34",
+ "L5_taskplanner": {
+  "import": true,
+  "n_tokens": 4,
+  "validate": true,
+  "tokens": [
+   "[SKILL_NPO006]",
+   "[SKILL_NPO011]",
+   "[SKILL_NPO031]",
+   "[SKILL_XPO032]"
+  ]
+ },
+ "baseline": {
+  "arm": "baseline_analytic",
+  "steps": 342,
+  "done": true,
+  "insert_mm": 65.2,
+  "min_dist_mm": 2.2,
+  "wall_s": 3.4
+ },
+ "full_pipeline": {
+  "arm": "full_pipeline",
+  "steps": 348,
+  "done": true,
+  "insert_mm": 65.3,
+  "min_dist_mm": 1.6,
+  "wall_s": 11.5,
+  "pipeline": {
+   "frames": 33,
+   "layers": {
+    "L5": {
+     "calls": 33,
+     "ok": 33,
+     "src": {
+      "planner.taskplanner": 33
+     },
+     "avg_ms": 0.11
+    },
+    "MEM": {
+     "calls": 33,
+     "ok": 33,
+     "src": {
+      "memory.json": 33
+     },
+     "avg_ms": 0.1
+    },
+    "L2": {
+     "calls": 33,
+     "ok": 33,
+     "src": {
+      "detect.yolo": 33
+     },
+     "avg_ms": 18.33
+    },
+    "L4": {
+     "calls": 33,
+     "ok": 33,
+     "src": {
+      "vote[node.unified]": 33
+     },
+     "avg_ms": 10.31
+    },
+    "L3": {
+     "calls": 33,
+     "ok": 33,
+     "src": {
+      "dispatch.k_act": 33
+     },
+     "avg_ms": 0.01
+    }
+   },
+   "frame_std": [
+    55.53,
+    55.86
+   ],
+   "engine": {
+    "calls": 33,
+    "reuse": 197,
+    "refused": 0,
+    "w_zero": 149,
+    "blend": 81,
+    "u_ff_src": null,
+    "err": null
+   },
+   "l2_gate": {
+    "veto": 149,
+    "veto_dir": 126,
+    "veto_mag": 23
+   }
+  }
+ },
+ "zero_regression": {
+  "baseline_done": true,
+  "pipeline_done": true,
+  "baseline_insert_mm": 65.2,
+  "pipeline_insert_mm": 65.3,
+  "same_or_better": false
+ }
+}

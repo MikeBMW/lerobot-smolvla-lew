@@ -1,0 +1,204 @@
+dataset:
+  repo_id: data/smolvla_peg_v8_d1
+  root: data/smolvla_peg_v8_d1
+  episodes: null
+  image_transforms:
+    enable: false
+    max_num_transforms: 3
+    random_order: false
+    tfs:
+      brightness:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          brightness:
+          - 0.8
+          - 1.2
+      contrast:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          contrast:
+          - 0.8
+          - 1.2
+      saturation:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          saturation:
+          - 0.5
+          - 1.5
+      hue:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          hue:
+          - -0.05
+          - 0.05
+      sharpness:
+        weight: 1.0
+        type: SharpnessJitter
+        kwargs:
+          sharpness:
+          - 0.5
+          - 1.5
+      affine:
+        weight: 1.0
+        type: RandomAffine
+        kwargs:
+          degrees:
+          - -5.0
+          - 5.0
+          translate:
+          - 0.05
+          - 0.05
+  revision: null
+  use_imagenet_stats: true
+  video_backend: pyav
+  return_uint8: false
+  streaming: false
+env: null
+policy:
+  type: smolvla_lew
+  n_obs_steps: 1
+  input_features:
+    observation.image:
+      type: VISUAL
+      shape:
+      - 3
+      - 480
+      - 480
+    observation.state:
+      type: STATE
+      shape:
+      - 39
+  output_features:
+    action:
+      type: ACTION
+      shape:
+      - 4
+  device: cuda
+  use_amp: true
+  use_peft: false
+  push_to_hub: false
+  repo_id: null
+  private: null
+  tags: null
+  license: null
+  pretrained_path: /home/ubuntu/lerobot-smolvla-lew/outputs/train/smolvla_lew_v10/checkpoints/last/pretrained_model
+  pretrained_revision: null
+  chunk_size: 7
+  n_action_steps: 7
+  normalization_mapping:
+    VISUAL: IDENTITY
+    STATE: MEAN_STD
+    ACTION: MIN_MAX
+  smolvlm_name: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+  freeze_smolvlm: true
+  siglip_image_size: 64
+  num_vision_tokens: 64
+  num_expert_layers: -1
+  num_vlm_layers: -1
+  self_attn_every_n_layers: -1
+  expert_width_multiplier: 0.5
+  action_model_type: DiT-B
+  action_hidden_size: 256
+  action_num_layers: 1
+  action_num_heads: null
+  action_attention_head_dim: null
+  action_dropout: 0.2
+  action_num_timestep_buckets: 1000
+  action_noise_beta_alpha: 1.5
+  action_noise_beta_beta: 1.0
+  action_noise_s: 0.999
+  num_target_vision_tokens: 16
+  action_max_seq_len: 1024
+  num_inference_timesteps: 2
+  repeated_diffusion_steps: 4
+  num_action_tokens_per_timestep: 4
+  num_embodied_action_tokens_per_instruction: 8
+  enable_lew_world_model: true
+  lew_attn_mode: adaln
+  lew_loss_weight: 0.1
+  lew_hidden_dim: 192
+  lew_num_layers: 6
+  lew_attention_heads: 8
+  lew_dim_head: 24
+  lew_mlp_dim: 768
+  lew_dropout: 0.1
+  num_video_frames: 2
+  resize_images_to:
+  - 64
+  - 64
+  binarize_gripper_action: true
+  pre_snap_gripper_action: true
+  clip_normalized_actions: true
+  gripper_dim: 6
+  gripper_threshold: 0.5
+  torch_dtype: float16
+  gradient_checkpointing: true
+  optimizer_lr: 0.0001
+  optimizer_betas:
+  - 0.9
+  - 0.95
+  optimizer_eps: 1.0e-08
+  optimizer_weight_decay: 1.0e-10
+  optimizer_grad_clip_norm: 10.0
+  scheduler_warmup_steps: 1000
+  scheduler_decay_steps: 30000
+  scheduler_decay_lr: 2.5e-06
+  action_dim: 4
+  state_dim: 39
+  steps: 2
+reward_model: null
+output_dir: outputs/train/smolvla_lew_lora_200_r3
+job_name: smolvla_lew_lora_200_r3
+resume: false
+seed: 1337
+cudnn_deterministic: false
+num_workers: 4
+batch_size: 4
+prefetch_factor: 4
+persistent_workers: false
+steps: 200
+eval_freq: -1
+log_freq: 10
+tolerance_s: 0.0001
+save_checkpoint: true
+save_freq: 500
+use_policy_training_preset: true
+optimizer:
+  type: adamw
+  lr: 0.0002
+  weight_decay: 1.0e-10
+  grad_clip_norm: 10.0
+  betas:
+  - 0.9
+  - 0.95
+  eps: 1.0e-08
+scheduler:
+  type: cosine_decay_with_warmup
+  num_warmup_steps: 300
+  num_decay_steps: 8000
+  peak_lr: 0.0002
+  decay_lr: 1.0e-05
+eval:
+  n_episodes: 50
+  batch_size: 22
+  use_async_envs: true
+  recording: false
+  recording_repo_id: null
+  recording_private: false
+wandb:
+  enable: false
+  disable_artifact: false
+  project: lerobot
+  entity: null
+  notes: null
+  run_id: null
+  mode: null
+  add_tags: true
+peft: null
+sample_weighting: null
+rename_map: {}
+checkpoint_path: outputs/train/smolvla_lew_d1/checkpoints/last

@@ -1,0 +1,253 @@
+{
+ "ts": "2026-09-23 17:21:38",
+ "repo": "/home/ubuntu/lerobot-smolvla-lew",
+ "engine_per_frame": {
+  "seed": 104,
+  "max_steps": 400,
+  "steps_run": 349,
+  "wall_s": 16.8,
+  "done": true,
+  "insert_mm": 65.4,
+  "pipeline_frames": 33,
+  "engine_calls": 33,
+  "chunk_reuse": 197,
+  "refused": 0,
+  "w_zero": 148,
+  "blend": 82,
+  "l2_veto": 148,
+  "l2_veto_dir": 126,
+  "l2_veto_mag": 22,
+  "u_ff_src": null,
+  "err": null,
+  "w_last": null,
+  "l4_src_hist": {
+   "vote[node.unified]": 33
+  },
+  "layer_ok": {
+   "L5": {
+    "calls": 33,
+    "ok": 33,
+    "src": [
+     "planner.rules.builtin"
+    ]
+   },
+   "MEM": {
+    "calls": 33,
+    "ok": 33,
+    "src": [
+     "memory.json"
+    ]
+   },
+   "L2": {
+    "calls": 33,
+    "ok": 33,
+    "src": [
+     "detect.stub"
+    ]
+   },
+   "L4": {
+    "calls": 33,
+    "ok": 33,
+    "src": [
+     "vote[node.unified]"
+    ]
+   },
+   "L3": {
+    "calls": 33,
+    "ok": 33,
+    "src": [
+     "dispatch.k_act"
+    ]
+   }
+  },
+  "frame_std_min": 55.53,
+  "frame_std_max": 55.86
+ },
+ "real_frame": {
+  "shape": [
+   224,
+   224,
+   3
+  ],
+  "mean": 129.93,
+  "std": 55.94,
+  "obs39_first4": [
+   -0.1075,
+   0.4202,
+   0.161,
+   0.2999
+  ]
+ },
+ "A_yolo_unified": {
+  "tag": "yolo+unified",
+  "total_ms": 72423.8,
+  "layers": {
+   "L5": {
+    "ok": true,
+    "src": "planner.rules.builtin",
+    "conf": 1.0,
+    "ms": 0.0,
+    "n_out": 0,
+    "err": ""
+   },
+   "MEM": {
+    "ok": true,
+    "src": "memory.json",
+    "conf": 6.0,
+    "ms": 0.08,
+    "n_out": 0,
+    "err": ""
+   },
+   "L2": {
+    "ok": true,
+    "src": "detect.yolo",
+    "conf": 1.0,
+    "ms": 70895.59,
+    "n_out": 0,
+    "err": ""
+   },
+   "L4": {
+    "ok": true,
+    "src": "node.unified",
+    "conf": 2.6696,
+    "ms": 15.22,
+    "n_out": 7,
+    "err": ""
+   },
+   "L3": {
+    "ok": true,
+    "src": "dispatch.k_act",
+    "conf": 2.6696,
+    "ms": 0.04,
+    "n_out": 7,
+    "err": ""
+   }
+  },
+  "l4_chunk": {
+   "shape": [
+    7,
+    4
+   ],
+   "norm": 2.6696,
+   "nonzero_frac": 1.0,
+   "per_step_change": 0.0069
+  }
+ },
+ "B_vote": {
+  "tag": "vote(unified,intact)",
+  "total_ms": 5689.9,
+  "layers": {
+   "L5": {
+    "ok": true,
+    "src": "planner.rules.builtin",
+    "conf": 1.0,
+    "ms": 0.0,
+    "n_out": 0,
+    "err": ""
+   },
+   "MEM": {
+    "ok": true,
+    "src": "memory.json",
+    "conf": 6.0,
+    "ms": 0.07,
+    "n_out": 0,
+    "err": ""
+   },
+   "L2": {
+    "ok": true,
+    "src": "detect.yolo",
+    "conf": 1.0,
+    "ms": 56.63,
+    "n_out": 0,
+    "err": ""
+   },
+   "L4": {
+    "ok": true,
+    "src": "vote[node.unified]",
+    "conf": 2.6696,
+    "ms": 11.27,
+    "n_out": 7,
+    "err": ""
+   },
+   "L3": {
+    "ok": true,
+    "src": "dispatch.k_act",
+    "conf": 2.6696,
+    "ms": 0.04,
+    "n_out": 7,
+    "err": ""
+   }
+  },
+  "l4_chunk": {
+   "shape": [
+    7,
+    4
+   ],
+   "norm": 2.6696,
+   "nonzero_frac": 1.0,
+   "per_step_change": 0.0069
+  },
+  "vote": {
+   "n": 2,
+   "ok": 2,
+   "cand": [
+    [
+     "node.unified",
+     2.6696,
+     true
+    ],
+    [
+     "node.intact",
+     0.9348,
+     true
+    ]
+   ]
+  }
+ },
+ "C_ablation": {
+  "tag": "L4=null",
+  "total_ms": 0.1,
+  "layers": {
+   "L5": {
+    "ok": true,
+    "src": "planner.rules.builtin",
+    "conf": 1.0,
+    "ms": 0.0,
+    "n_out": 0,
+    "err": ""
+   },
+   "MEM": {
+    "ok": true,
+    "src": "memory.json",
+    "conf": 6.0,
+    "ms": 0.07,
+    "n_out": 0,
+    "err": ""
+   },
+   "L2": {
+    "ok": true,
+    "src": "detect.stub",
+    "conf": 0.5,
+    "ms": 0.0,
+    "n_out": 0,
+    "err": ""
+   },
+   "L4": {
+    "ok": true,
+    "src": "null",
+    "conf": 0.0,
+    "ms": 0.0,
+    "n_out": 0,
+    "err": ""
+   },
+   "L3": {
+    "ok": false,
+    "src": "dispatch.skip",
+    "conf": 0.0,
+    "ms": 0.0,
+    "n_out": 0,
+    "err": "无上游 chunk"
+   }
+  }
+ }
+}

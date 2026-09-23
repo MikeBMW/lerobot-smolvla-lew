@@ -670,8 +670,33 @@ def dispatch(reg, spec, chan):
             log("HTTP %s → %s (%.0fms) %s" % (url, code, dt, body[:400]))
             return "HTTP %s → %s (%.0fms) 返回: %s" % (url, code, dt, body[:300].replace("\n", " "))
         except Exception as e:
-            log("HTTP 失败 %s: %s" % (url, e))
-            return "HTTP 失败: %s" % e
+            # 🛠 2026-09-23: 服务端 4xx/5xx 时把**响应体**读出来 (原来只回 "HTTP Error 500
+            #   INTERNAL SERVER ERROR", 看不出真因; 实测 body={"code":500,"msg":"相机初始化失败"}),
+            #   并把 AOI 侧常见真因一并提示, 免得现场只能干瞪眼。
+            _body = ""
+            try:
+                _e = getattr(e, "read", None)
+                _raw = e.read() if callable(_e) else b""
+                _body = _raw.decode("utf-8", "ignore")[:200].replace("\n", " ")
+            except Exception:                                        # noqa: BLE001
+                pass
+            _hint = ""
+            _msg = ""
+            try:                                                     # body 是 {"code":..,"msg":..} (可能被 \\u 转义)
+                _j = json.loads(_body) if _body else {}
+                _msg = str(_j.get("msg", "")) or _body
+            except Exception:                                        # noqa: BLE001
+                _msg = _body
+            if "Connection refused" in str(e) or "Errno 111" in str(e):
+                _hint = (" | 真因=工控机上那套 AOI 程序**没在监听**(端口拒绝连接) "
+                         "→ 需在 .23 上把对应程序(金手指 10082 / 表面 10083)启动起来; 本机侧无解")
+            elif "相机初始化失败" in _msg or "相机初始化失败" in _body:
+                _hint = (" | 真因=工控机侧**相机初始化失败**: 相机被其它程序独占/USB掉线/未上电 "
+                         "→ 需在 .23 上关掉占用相机的程序(或重插相机)后重试; 本机侧无解")
+            elif "尚无" in _msg:
+                _hint = " | 真因=服务端本轮还没拍过照 → 先跑「金手指①触发拍照检测」"
+            log("HTTP 失败 %s: %s %s%s" % (url, e, _msg or _body, _hint))
+            return "HTTP 失败: %s | %s%s" % (e, _msg or _body, _hint)
     if sk["ros"] == "gripper":
         # 🩹 2026-09-21: 单步夹爪技能原来没定义 dx/dy/dz/_dir, 走到下面的日志行会抛 NameError
         #   (表现就是"原子技能 松开夹爪 不好使")。夹爪步本来就没有位移, 显式置零并标"夹爪"。

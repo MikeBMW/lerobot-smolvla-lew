@@ -124,7 +124,7 @@ class L2SkillDialog(QDialog):
             it.setData(32, s)
             self.lst.addItem(it)
         self.lst.currentRowChanged.connect(self._sel)
-        self.lst.itemDoubleClicked.connect(lambda _it: self._go())
+        self.lst.itemDoubleClicked.connect(lambda _it: self._go(True))   # 双击 = 只看图
         left.addWidget(self.lst)
         lay.addLayout(left)
         right = QVBoxLayout()
@@ -235,21 +235,29 @@ class L2SkillDialog(QDialog):
     def _toggle_auto(self, on):
         self.tmr.start() if on else self.tmr.stop()
 
-    def _refresh_image(self):
-        """接收并显示金手指AOI当前照片 (按选中的来源从工控机 10082 拉取)"""
-        try:
-            _lab = self.cmb_src.currentText()
-        except Exception:
-            _lab = self.IMG_SOURCES[0][0]
-        _path = dict(self.IMG_SOURCES).get(_lab, "/picture")
-        url = self.IMG_BASE + _path + ("&" if "?" in _path else "?") + "t=%d" % int(time.time())
+    def _refresh_image(self, url=None, label=None):
+        """接收并显示 AOI 当前照片。
+
+        · url 省略 → 按「来源」下拉从工控机 **10082** 拉 (金手指默认路径, 老行为不变)
+        · url 给出 → 用**该技能自己的 url/query** 拉 (如表面通道 10083 的 /picture?kind=crop)
+          🛠 2026-09-23 老倪: "先把当前的表面检测做成技能, 而且也要看到图片" → 预览不再是硬编码 10082
+        """
+        if url is None:
+            try:
+                _lab = self.cmb_src.currentText()
+            except Exception:
+                _lab = self.IMG_SOURCES[0][0]
+            _path = dict(self.IMG_SOURCES).get(_lab, "/picture")
+            url = self.IMG_BASE + _path
+            label = label or _lab
+        url = url + ("&" if "?" in url else "?") + "t=%d" % int(time.time())
         try:
             r = urllib.request.urlopen(url, timeout=8)
             data = r.read()
             ct = r.headers.get("Content-Type", "")
         except Exception as e:
             self.img.setPixmap(QPixmap())
-            self.img.setText("取图失败: %s\n(确认工控机程序已在 10082 运行: v4 或 v3)" % e)
+            self.img.setText("取图失败: %s\n(源: %s)" % (e, url.rsplit("?", 1)[0]))
             self.lbl_img.setText("")
             return
         pm = QPixmap()
@@ -257,18 +265,28 @@ class L2SkillDialog(QDialog):
             self.img.setText("返回非图片 (%s): %s" % (ct, data[:180]))
             return
         self.img.setPixmap(pm.scaled(self.img.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.lbl_img.setText("%s · %dx%d · %d KB · %s" % (_lab.split()[0], pm.width(), pm.height(), len(data) // 1024, time.strftime("%H:%M:%S")))
-        self.out.appendPlainText("[%s] 取到照片 %dx%d %d KB" % (time.strftime("%H:%M:%S"), pm.width(), pm.height(), len(data) // 1024))
+        _tag = (label or "AOI").split()[0]
+        self.lbl_img.setText("%s · %dx%d · %d KB · %s" % (_tag, pm.width(), pm.height(),
+                                                          len(data) // 1024, time.strftime("%H:%M:%S")))
+        self.out.appendPlainText("[%s] 取到照片 %dx%d %d KB (源 %s)"
+                                 % (time.strftime("%H:%M:%S"), pm.width(), pm.height(),
+                                    len(data) // 1024, url.rsplit("?", 1)[0]))
 
-    def _go(self):
+    def _go(self, preview_only=False):
         it = self.lst.currentItem()
         if not it:
             return
         s = it.data(32) or {}
-        if isinstance(s, dict) and str(s.get("id", "")).startswith("L2.aoi"):
+        _is_aoi = isinstance(s, dict) and str(s.get("id", "")).startswith("L2.aoi")
+        if _is_aoi and preview_only:
+            # 双击 L2.aoi* = 只看图 (2026-09-20 老倪: 双击任意 L2.aoi* 刷新预览)
             self._refresh_image()
             self.chk_auto.setChecked(True)
             return
+        # 🛠 2026-09-23 修复 (老倪: "检测金手指技能为什么没有反馈"): 原实现把**所有** L2.aoi*
+        #   在 _go 开头就 return 掉 → 「金手指AOI检测」永远不下发, 点了等于只取图 = 没反馈。
+        #   现在: 双击=预览 / 「开始」按钮=**真下发到常驻执行器** (http 技能 → POST /capture_detect),
+        #   并把执行器回显 + 检测吃的那张图一起显示出来。
         spec = {"skill": s.get("id")}
         if s.get("ros") != "http":   # 金手指/表面 AOI 等 HTTP 技能不需要 speed
             spec["speed"] = 60
@@ -284,3 +302,27 @@ class L2SkillDialog(QDialog):
         except Exception as e:
             msg = "✗ %s" % e
         self.out.appendPlainText("[%s] %s" % (time.strftime("%H:%M:%S"), msg))
+        if _is_aoi:
+            # 🛠 2026-09-23: 只有**触发检测类**才提示"判决不回传" (看图类不提示, 免得刷屏分不清)
+            if str(s.get("id")) in ("L2.aoi_gold", "L2.aoi_surface"):
+                self.out.appendPlainText("[%s] ⚠️ 触发类只回「已受理」; 判决看「📝 …判决(OK/NG)」技能 "
+                                         "或工控机终端" % time.strftime("%H:%M:%S"))
+            _u, _lab = self._skill_image_url(s)
+            self._refresh_image(url=_u, label=_lab)   # 图像类=自己的URL; 触发/判决类=同通道 /picture?kind=crop
+
+    def _skill_image_url(self, s):
+        """按技能推断该显示哪张图 (老倪: 表面检测也要能看到图)。
+        · 图像类技能(kind=image) → 用它自己的 url+query (如 10083 /picture?kind=crop)
+        · 触发/判决/指标类(JSON 端点) → 取**同通道**的 /picture?kind=crop 图像
+        返回 (url 或 None, 标签)"""
+        u = str(s.get("url") or "")
+        q = str(s.get("query") or "")
+        if str(s.get("kind") or "") == "image" and u:
+            return u + q, str(s.get("name") or "AOI")
+        base = u
+        for suf in ("/capture_detect", "/last_result", "/crop_info", "/region"):
+            if suf in base:
+                base = base.split(suf)[0]
+        if base.startswith("http"):
+            return base + "/picture?kind=crop", str(s.get("name") or "AOI") + " · 图"
+        return None, None

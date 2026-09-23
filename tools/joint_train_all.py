@@ -123,7 +123,9 @@ def build_stages(a) -> list:
     #   (2026-09-22 实测 torch.OutOfMemoryError: 需 816MiB, 仅余 330MiB) → LoRA 轮降 batch 到 4
     #   并开 expandable_segments 抗碎片。2026-09-22 追加: autocast_adapter_dtype=False +
     #   exclude_modules=[vision_model] 让 LoRA 在 8GB 卡上真跑得动 (见 --l3-targets)。
-    b3 = 4 if a.lora_l3 else 8
+    b3 = (a.l3_batch if getattr(a, "l3_batch", 0) else (4 if a.lora_l3 else 8))
+    if getattr(a, "l3_batch", 0):
+        print(f"ℹ️ L3 batch 手动指定 = {b3} (LoRA={a.lora_l3})")
     l3_targets = [t for t in a.l3_targets.split(",") if t]
     l3_outdir = f"outputs/train/smolvla_lew_lora_{a.steps}{a.l3_tag}"
     # 🛡 2026-09-22 实测踩到: lerobot 对已存在的 output_dir 且 resume=False 会直接 FileExistsError
@@ -259,6 +261,8 @@ def main() -> int:
                     help="L3 LoRA 引擎: local=自研 lora_inject (8GB 卡可行, 默认) / peft=lerobot 原生 "
                          "(会把适配器输入转 fp32, 8GB 卡实测 OOM)")
     ap.add_argument("--l3-tag", default="", help="L3 输出目录/配置名后缀 (重试轮用, 避免覆盖旧产物)")
+    ap.add_argument("--l3-batch", type=int, default=0,
+                    help="L3 批大小 (0=自动: LoRA 4 / 非 LoRA 8)。8GB 卡与其它任务共存时用 2 抗 OOM")
     ap.add_argument("--l3-targets", default="q_proj,k_proj,v_proj,o_proj",
                     help="L3 LoRA 目标模块 (默认只挂语言注意力投影, 不挂视觉塔 —— 8GB 卡实测)"
                          "all-linear 会 OOM")

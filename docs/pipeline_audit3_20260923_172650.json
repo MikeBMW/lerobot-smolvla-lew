@@ -1,0 +1,126 @@
+{
+ "ts": "2026-09-23 17:26:50",
+ "L2_weights_compare": {
+  "live_weights": "/home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt",
+  "prod_frame": true,
+  "prod_live": {
+   "tag": "prod+live",
+   "model": "yolo_peg_live.pt",
+   "n_det": 0,
+   "ms": 780.3,
+   "det": []
+  },
+  "prod_coco": {
+   "tag": "prod+coco",
+   "model": "yolov8s.pt",
+   "n_det": 0,
+   "ms": 41.1,
+   "det": []
+  }
+ },
+ "full_pipeline_live_L2": {
+  "steps": 347,
+  "done": true,
+  "min_dist_mm": 1.0,
+  "wall_s": 14.6,
+  "pipeline_frames": 33,
+  "layers": {
+   "L5": {
+    "calls": 33,
+    "ok": 33,
+    "src": {
+     "planner.taskplanner": 33
+    },
+    "avg_ms": 0.1,
+    "det_per_frame": []
+   },
+   "MEM": {
+    "calls": 33,
+    "ok": 33,
+    "src": {
+     "memory.json": 33
+    },
+    "avg_ms": 0.1,
+    "det_per_frame": []
+   },
+   "L2": {
+    "calls": 33,
+    "ok": 33,
+    "src": {
+     "detect.yolo": 33
+    },
+    "avg_ms": 8.18,
+    "det_per_frame": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "L4": {
+    "calls": 33,
+    "ok": 33,
+    "src": {
+     "vote[node.unified]": 33
+    },
+    "avg_ms": 10.19,
+    "det_per_frame": []
+   },
+   "L3": {
+    "calls": 33,
+    "ok": 33,
+    "src": {
+     "dispatch.k_act": 33
+    },
+    "avg_ms": 0.0,
+    "det_per_frame": []
+   }
+  },
+  "frame_std": [
+   55.53,
+   55.85
+  ],
+  "engine": {
+   "calls": 33,
+   "reuse": 198,
+   "refused": 0,
+   "w_zero": 153,
+   "blend": 78,
+   "err": null
+  },
+  "l2_gate": {
+   "veto": 153,
+   "veto_dir": 126,
+   "veto_mag": 27
+  }
+ }
+}

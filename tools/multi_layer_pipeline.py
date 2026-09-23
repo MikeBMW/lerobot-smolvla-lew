@@ -32,6 +32,16 @@ from typing import Any, Callable, Dict, List, Optional
 
 # ─────────────────────────── 契约 ───────────────────────────
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _default_live_weights() -> str:
+    """在役检测器权重 (光模块) — models/yolo_peg_live.pt 软链; 缺失则回 None (由 YoloPerception 兜底)。
+    L2 层默认必须用这个, 否则会静默退到通用 COCO yolov8s = 假件。"""
+    p = os.path.join(_REPO, "models", "yolo_peg_live.pt")
+    return p if os.path.exists(p) else None
+
+
 @dataclass
 class NodeOut:
     """每层统一输出: 数据 + 状态 + 来源 + 耗时 (便于取证)"""
@@ -298,9 +308,19 @@ class L2DetectLayer(Layer):
             import sys
             sys.path.insert(0, "/home/ubuntu/lerobot-smolvla-lew/tools/gui")
             from yolo_perception import YoloPerception
-            self._yp = YoloPerception(weights=self.weights or None)
+            # 🎯 2026-09-23 老倪: pipeline 里的 L2 必须用**在役检测器**, 不能用通用 COCO yolov8s
+            #   (实测: 不给 weights → yolo_perception 默认 yolov8s.pt 80类 → 检到的不是光模块 = 假件)
+            self._yp = YoloPerception(weights=self.weights or _default_live_weights())
             self._yp._load()
         return self
+
+    def describe(self) -> str:
+        try:
+            self.load()
+            w = os.path.basename(getattr(self._yp, "weights", "") or "")
+            return "YOLO=%s" % (w or "?")
+        except Exception:                                                # noqa: BLE001
+            return "YOLO=未加载"
 
     def infer(self, ctx):
         t0 = time.time()
