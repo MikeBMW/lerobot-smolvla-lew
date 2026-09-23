@@ -112,6 +112,7 @@ class JointFull(nn.Module):
         self.l2_cons = nn.Linear(z, z)                      # L2 反馈一致性头
         # 记忆编码
         self.mem_enc = nn.Sequential(nn.Linear(mem_dim, 64), nn.SiLU(), nn.Linear(64, z))
+        self.mem_dim = mem_dim          # ★ 供留出评估构造记忆向量
         # L3 状态调度 (官方同构: Linear→SiLU→...→Linear)
         self.l3 = nn.Sequential(nn.Linear(z, 256), nn.SiLU(), nn.Linear(256, 256), nn.SiLU(),
                                 nn.Linear(256, chunk * act_dim))
@@ -140,11 +141,49 @@ class JointFull(nn.Module):
         z_pred = self.jepa.predict(z_in.unsqueeze(1), a_emb)       # L4 认知预测
         z_pred = z_pred[:, 0, :]
         u = self.l3(z_pred).view(-1, self.chunk, self.act_dim)     # L3 状态调度
+        if getattr(self, "bounded", True):
+            u = torch.tanh(u)      # ★ 结构限幅: 输出恒在 [-1,1] (数据合法域) → 防 OOD 发散
         # L2 反馈一致性: 从 z_pred 反推 "感知应看到什么"
         l2_fb = self.l2_cons(z_pred)
         # L4 到观测的预测 (认知预测的显式监督)
         obs_hat = self.obs_head(z_pred)
         return dict(z_pred=z_pred, u=u, l2_fb=l2_fb, z_l2=z_l2, obs_hat=obs_hat)
+
+
+def eval_holdout(model, dl, dev, limit=512):
+    """留出集评估 (域迁移): 返回 **L4认知预测 obs MAE (主)** + L3动作 MAE + z 预测误差。
+
+    老倪定义: L4=认知预测 → 主指标应是**观测预测误差**, 不是动作误差。
+    """
+    import torch.nn.functional as F
+    model.eval(); a_tot = o_tot = z_tot = 0.0; n = 0
+    with torch.no_grad():
+        for obs, act, px, goal in dl:
+            if n >= limit: break
+            obs, act, goal = obs.to(dev), act.to(dev), goal.to(dev)
+            img = to_img_batch(px).to(dev)
+            mem = torch.zeros(obs.shape[0], model.mem_dim, device=dev)
+            out = model(img, obs, act, mem, goal)
+            u = out["u"]
+            a_tot += F.l1_loss(u, act.unsqueeze(1).repeat(1, u.shape[1], 1), reduction="sum").item()
+            o_tot += F.l1_loss(out["obs_hat"], goal, reduction="sum").item()      # ★ L4 认知预测主指标
+            z_tot += F.l1_loss(out["z_pred"], out["z_l2"].detach(), reduction="sum").item()  # L4 世界模型
+            n += obs.shape[0]
+    model.train()
+    d = max(1, n)
+    return (a_tot / d / max(1, out["u"].shape[1]),      # 动作 MAE
+            o_tot / d,                                   # ★ 观测预测 MAE (L4 主指标)
+            z_tot / d)                                   # 世界模型 z 误差
+
+
+def save_ckpt(model, d):
+    os.makedirs(d, exist_ok=True)
+    torch.save(model.jepa.state_dict(), f"{d}/weights.pt")
+    import shutil
+    shutil.copy(f"{CKPT}/config.json", f"{d}/config.json")
+    torch.save({k: v for k, v in model.state_dict().items()
+                if k.startswith(("l2_", "l3.", "mem_enc.", "goal_enc.", "obs_head."))},
+               f"{d}/joint_full.pt")
 
 
 def main():
@@ -158,6 +197,12 @@ def main():
     ap.add_argument("--save", default=f"{SWM}/checkpoints/joint_full_v6")
     ap.add_argument("--stats", type=int, default=200, help="每 N 步打印 GPU 状态")
     ap.add_argument("--amp", type=int, default=0, help="1=用混合精度 (与 L4 内部 fp32 有冲突, 默认关)")
+    ap.add_argument("--files", default="", help="训练 h5 列表(逗号分隔); 空=默认 v6+v5")   # ★
+    ap.add_argument("--freeze-l4", type=int, default=1,
+                    help="1=冻结 L4 基座(保护预训练表征), 只训小头; 0=全参微调(会冲垮表征)")  # ★
+    ap.add_argument("--wd", type=float, default=1e-4, help="权重衰减")
+    ap.add_argument("--holdout", default=f"{SWM}/datasets/l5_heldout.h5",
+                    help="留出集 h5 (域迁移监控 + 按此选最优 ckpt)")                       # ★
     a = ap.parse_args()
 
     torch.manual_seed(a.seed)
@@ -187,12 +232,21 @@ def main():
     n_l2 = sum(p.numel() for p in model.l2_proj.parameters()) + sum(p.numel() for p in model.l2_cons.parameters())
     n_mem = sum(p.numel() for p in model.mem_enc.parameters())
     n_l3 = sum(p.numel() for p in model.l3.parameters())
+    # ★ 冻结 L4 基座 (保护预训练世界模型表征)
+    if a.freeze_l4:
+        n_fr = 0
+        for q in model.jepa.parameters():
+            if q.requires_grad:
+                q.requires_grad_(False); n_fr += q.numel()
+        print(f"🧊 L4 基座已冻结: {n_fr:,} 参数 (只训小头 → 保护预训练表征)", flush=True)
     print(f"L2 检测反馈 {n_l2:,} | 记忆 {n_mem:,} | L3 状态调度 {n_l3:,} | L4 认知预测 {sum(p.numel() for p in model.jepa.parameters()):,}")
 
     # ── 真数据 ──
-    files = [f"{SWM}/datasets/optical_insert_v6_disturb.h5", f"{SWM}/datasets/optical_insert_v5_disturb.h5"]
+    files = [x for x in a.files.split(",") if x] or [
+        f"{SWM}/datasets/optical_insert_v6_disturb.h5",
+        f"{SWM}/datasets/optical_insert_v5_disturb.h5"]
     ds = RealH5(files, chunk=a.chunk)
-    print(f"真数据 {ds.total:,} 帧 (v6+v5) · {len(ds.cols)} 个 h5")
+    print(f"真数据 {ds.total:,} 帧 · {len(ds.cols)} 个 h5" + (" · **含 L5 变体(域随机化)**" if len(files) > 2 else ""))
 
     # ── 记忆向量 (五层聚合) ──
     mem = torch.zeros(13, device=dev)
@@ -213,7 +267,7 @@ def main():
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=1e-4)
+    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=a.wd)
 
     def make_loader(bs):
         return torch.utils.data.DataLoader(ds, batch_size=bs, shuffle=True, num_workers=a.workers,
@@ -264,6 +318,13 @@ def main():
     dl = make_loader(bs)
     it = iter(dl)
     hist = []
+    ho_dl = None
+    if a.holdout and os.path.isfile(a.holdout):
+        ho_ds = RealH5([a.holdout], chunk=a.chunk)
+        ho_dl = torch.utils.data.DataLoader(ho_ds, batch_size=64, shuffle=False, num_workers=0,
+                                            pin_memory=True, drop_last=False)
+        print(f"  留出集: {a.holdout} (域迁移监控 + 按此选最优 ckpt)", flush=True)
+    best_ho = [float("inf")]
     t0 = time.time()
     for s in range(1, a.steps + 1):
         try:
@@ -296,9 +357,18 @@ def main():
             if dev == "cuda":
                 gpu_m = torch.cuda.max_memory_allocated() / 1048576
                 gpu_r = torch.cuda.memory_reserved() / 1048576
+            ho = ""
+            if ho_dl is not None:
+                ha, ho_m, hz = eval_holdout(model, ho_dl, dev, 512)
+                hm = ho_m                      # ★ best 以 L4 认知预测(obs MAE)为准
+                if hm < best_ho[0]:
+                    best_ho[0] = hm
+                    if a.save:
+                        save_ckpt(model, a.save)
+                ho = f" | ★留出: L4观测MAE {ho_m:.4f}(best {best_ho[0]:.4f}) · 动作MAE {ha:.4f} · z {hz:.4f}"
             print(f"  step {s:6d}/{a.steps} | loss {loss.item():.4f} L_act {L_act.item():.4f} "
                   f"L_obs {L_obs.item():.4f} L_l2 {L_l2.item():.4f} | ∇ {float(gn):.2e} | "
-                  f"{sps:.1f} 步/s | 显存 {gpu_m:.0f}/{gpu_r:.0f}MB", flush=True)
+                  f"{sps:.1f} 步/s | 显存 {gpu_m:.0f}/{gpu_r:.0f}MB{ho}", flush=True)
     dt = time.time() - t0
     print(f"✅ 完成 {a.steps} 步 / {dt:.1f}s ({a.steps/dt:.1f} 步/s) | loss {hist[0]:.4f} → {hist[-1]:.4f}")
 

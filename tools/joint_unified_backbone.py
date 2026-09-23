@@ -46,7 +46,7 @@ class RealH5(torch.utils.data.Dataset):
         self.chunk = chunk
 
     @classmethod
-    def build_pixel_cache(cls, files, cap_bytes=14 * 1024**3):
+    def build_pixel_cache(cls, files, cap_bytes=20 * 1024**3):
         """把所有像素读进内存 (uint8)。h5 分块 512 帧 → 随机取 1 帧要解压 75MB, 这是真瓶颈。"""
         tot = sum(int(h5py.File(p, "r")["pixels"].shape[0]) for p in files)
         per = int(h5py.File(files[0], "r")["pixels"][0].nbytes) if tot else 0
