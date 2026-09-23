@@ -17,13 +17,18 @@ import torch
 
 
 class _Out:
-    __slots__ = ("chunk", "latent", "trained", "intent_norm")
+    """契约对齐 IntactOutput —— 引擎 decoder.py:155 从 **out.diagnostics['intent_norm']** 取置信度,
+    为 0 则判'意图退化' → w=0 (不接管)。故必须提供 diagnostics 字典 (2026-09-23 实跑定位)。"""
+
+    __slots__ = ("chunk", "latent", "trained", "intent_norm", "diagnostics", "goal_src")
 
     def __init__(self, chunk, z_t, trained=True):
         self.chunk = chunk
         self.latent = {"z_t": z_t}
         self.trained = trained
         self.intent_norm = float(np.linalg.norm(chunk))
+        self.diagnostics = {"intent_norm": self.intent_norm}    # ★ 解码器的置信度来源
+        self.goal_src = "unified_world_model"
 
 
 class UnifiedNode:
