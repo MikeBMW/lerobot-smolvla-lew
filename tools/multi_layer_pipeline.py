@@ -482,3 +482,73 @@ if __name__ == "__main__":
     print(p.report(out))
     p.save("/tmp/pipeline_spec.demo.json")
     print("\nspec 已存 /tmp/pipeline_spec.demo.json (可直接改 impl 换模型)")
+
+# ─────────────── 引擎挂载适配器 (零引擎改动) ───────────────
+
+class PipelineNode:
+    """把整条 Pipeline 包成 IntactNode 同款接口, 供引擎直接挂载。
+
+    引擎调用: node.step(fr, obs_source=..., skill_ctx=...) -> out(.chunk/.trained/.diagnostics)
+    spec 来源: 环境变量 SS_PIPELINE_SPEC (JSON 字符串或 JSON 文件路径)
+    """
+    def __init__(self, spec=None, spec_path="", sim=None, horizon=8):
+        self.sim = sim
+        if spec is None:
+            raw = os.environ.get("SS_PIPELINE_SPEC", "").strip()
+            if raw and os.path.isfile(raw):
+                with open(raw, encoding="utf-8") as f:
+                    spec = json.load(f)
+            elif raw:
+                spec = json.loads(raw)
+            else:
+                spec = build_default_spec()
+        self.spec = spec
+        self.pipe = Pipeline(spec)
+        self.horizon = horizon
+        self.trained = True
+        self.last = None
+        print("[PipelineNode] 装配完成: " + " -> ".join(self.pipe.order), flush=True)
+
+    def _obs39(self):
+        o = getattr(self.sim, "_last_obs39", None) if self.sim is not None else None
+        if o is None:
+            import numpy as np
+            return np.zeros(39, dtype=np.float32)
+        import numpy as np
+        return np.asarray(o, dtype=np.float32).ravel()[:39]
+
+    def step(self, fr, obs_source=None, skill_ctx=None):
+        import numpy as np
+        img = np.asarray(fr)
+        if img.ndim == 3 and img.shape[0] == 3:      # CHW -> HWC
+            img = img.transpose(1, 2, 0)
+        out = self.pipe.run(img=img, obs39=self._obs39(), skill_ctx=skill_ctx)
+        self.last = out
+        l4 = out.get("L4")
+        chunk = (l4.data.get("chunk") if (l4 and l4.ok) else None)
+        if chunk is None:                             # L4 缺失时回退 L3 输出
+            l3 = out.get("L3")
+            chunk = (l3.data.get("u_ff") if (l3 and l3.ok) else None)
+        if chunk is None:
+            raise RuntimeError("Pipeline 全部候选均无可用 chunk")
+        chunk = np.asarray(chunk, dtype=np.float32)
+        conf = float((l4.conf if l4 else 0.0) or 0.0)
+        return _PipelineOut(chunk, conf, out)
+
+
+class _PipelineOut:
+    __slots__ = ("chunk", "latent", "trained", "intent_norm", "diagnostics", "goal_src", "layers")
+
+    def __init__(self, chunk, conf, layers):
+        import numpy as np
+        self.chunk = chunk
+        self.latent = {"z_t": np.zeros(192, dtype=np.float32)}
+        self.trained = True
+        self.intent_norm = float(conf) if conf > 0 else float(np.linalg.norm(chunk))
+        self.diagnostics = {"intent_norm": self.intent_norm}
+        self.goal_src = "pipeline"
+        self.layers = layers
+
+
+def make_pipeline_node(**kw) -> PipelineNode:
+    return PipelineNode(**kw)
