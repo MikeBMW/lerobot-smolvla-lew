@@ -46,7 +46,8 @@ def _aug_px(px, seed):
     H, W = px.shape[:2]
     dx = float(rng.uniform(-8, 8))
     dy = float(rng.uniform(-8, 8))
-    sc = float(rng.uniform(0.95, 1.05))
+    _lo, _hi = getattr(RealH5, "_AUG_SCALE", (0.95, 1.05))
+    sc = float(rng.uniform(float(_lo), float(_hi)))
     rot = float(rng.uniform(-5, 5))
     M = cv2.getRotationMatrix2D((W / 2.0, H / 2.0), rot, sc)
     M[0, 2] += dx
@@ -235,6 +236,7 @@ def main():
     ap.add_argument("--chunk", type=int, default=7)
     ap.add_argument("--freeze-trunk", type=int, default=1, help="1=冻结预训练主干(默认,保护特征)")
     ap.add_argument("--aug", type=int, default=0, help="1=训练集几何域增强(留出集不加)")
+    ap.add_argument("--aug-scale", default="0.95,1.05", help="增强缩放范围 lo,hi (治缩放敏感性)")
     ap.add_argument("--files", default=f"{SWM}/datasets/optical_insert_v6_disturb.h5")
     ap.add_argument("--holdout", default="")
     ap.add_argument("--stats", type=int, default=250)
