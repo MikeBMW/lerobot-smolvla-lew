@@ -17,11 +17,14 @@ sys.path.insert(0, R + "/tools")
 import numpy as np  # noqa: E402
 
 CKPT_U = "/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
-SEEDS = [104, 7]
+SEEDS = [104, 7, 42, 2024, 13, 99]
 MAX = 1200
 
 
-def run_arm(kind, seed):
+CAPS = [("none", "l3"), ("disturb", "l4")]
+
+
+def run_arm(kind, seed, cap="l3"):
     from state_space_sim_real import RealStateSpaceSim
 
     sim = RealStateSpaceSim(seed=seed, vision=True, log=lambda *a: None)
@@ -34,11 +37,12 @@ def run_arm(kind, seed):
 
         node = UnifiedNode(CKPT_U, sim=sim, horizon=8)
     sim.attach_intact(node, None)
-    tr = sim.run(max_steps=MAX)
+    tr = sim.run(max_steps=MAX, cap=cap)
     s = getattr(sim, "_l4_stats", {}) or {}
     depth = abs(float(sim.x[0]) - (-0.2429)) * 1000.0 if hasattr(sim, "x") else float("nan")
     return {
         "seed": seed,
+        "cap": cap,
         "steps": len(tr["t"]),
         "done": bool(tr["done"][-1]),
         "stage": sim.sched.stage(),
@@ -54,20 +58,22 @@ def run_arm(kind, seed):
 def main():
     rows = []
     for kind in ("intact", "unified"):
-        for sd in SEEDS:
+        for _dn, cap in CAPS:
+          for sd in SEEDS:
             os.environ["SS_L4_INTACT"] = "1"
             os.environ["INTACT_RUNTIME"] = "root"
             os.environ["INTACT_POLICY"] = "intact_l4_current"
             try:
-                r = run_arm(kind, sd)
+                r = run_arm(kind, sd, cap)
             except Exception as e:                                   # noqa: BLE001
                 r = {"seed": sd, "err": f"{type(e).__name__}: {str(e)[:110]}"}
             r["arm"] = kind
+            r["disturb"] = _dn
             rows.append(r)
-            print(f"  {kind:8s} seed={sd:3d} -> {r}", flush=True)
+            print(f"  {kind:8s} {_dn:7s} seed={sd:4d} -> {r}", flush=True)
 
     print("\n" + "=" * 92)
-    print("  臂         seed  步数  done  阶段    calls reuse refused  src                      w     深度mm")
+    print("  臂       干扰     seed  步数  done  calls refused    w    深度mm")
     for r in rows:
         if "err" in r:
             print(f"  {r['arm']:8s} {r['seed']:5d}  ❌ {r['err']}")

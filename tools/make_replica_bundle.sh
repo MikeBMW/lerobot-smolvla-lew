@@ -47,4 +47,16 @@ echo "   校验: sha256sum 已存 ${OUT}.sha256"
 ( cd "$(dirname ${OUT})" && sha256sum "$(basename ${OUT})".tar.* > "${OUT}.sha256" 2>/dev/null || true )
 
 echo "═══ ④ 冒烟: 用打包内容自校验 ═══"
-python3 "$STAGE/lerobot-smolvla-lew/tools/replica_verify.py" --root "$STAGE" --manifest replica_manifest.json 2>&1 | tail -12 || true
+# ★ 自动挑一个**有 numpy 的 python** (系统 python3 常缺 → 会误报冒烟失败)
+PYBIN=""
+for c in "$REPO/gui-venv311/bin/python" "$REPO/.venv/bin/python" /home/ubuntu/INTACT-JEPA/.venv/bin/python python3; do
+  if [ -x "$(command -v $c 2>/dev/null || echo $c)" ] && "$c" -c 'import numpy' 2>/dev/null; then
+    PYBIN="$c"; break
+  fi
+done
+if [ -n "$PYBIN" ]; then
+  echo "   用 $PYBIN (含 numpy)"
+  "$PYBIN" "$STAGE/lerobot-smolvla-lew/tools/replica_verify.py" --root "$STAGE" --manifest replica_manifest.json 2>&1 | tail -12 || true
+else
+  echo "   ⚠️ 未找到含 numpy 的 python, 跳过冒烟 (改在备份端跑 replica_verify.py)"
+fi
