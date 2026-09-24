@@ -24,6 +24,7 @@ import time
 
 import numpy as np
 
+STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 ROOT = "/home/ubuntu/lerobot-smolvla-lew"
 sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, f"{ROOT}/tools/gui")
@@ -78,7 +79,7 @@ def main():
     # 增量写 h5 (可中断/续跑)
     f = h5py.File(a.out, "a")
     for k, shape, dt in (("observation", (0, 39), "float32"), ("action", (0, 4), "float32"),
-                         ("pixels", (0, 224, 224, 3), "uint8"), ("goal", (0, 39), "float32"),
+                         ("pixels", (0, 224, 224, 3), "uint8"), ("goal", (0, 39), "float32"), ("skill_ctx", (0, 24), "float32"),
                          ("variant_id", (0,), "int32")):
         if k not in f:
             f.create_dataset(k, shape=shape, maxshape=(None,) + shape[1:], dtype=dt, chunks=True)
@@ -134,7 +135,7 @@ def main():
         kf = getattr(sim, "_key_frames", {}) or {}
         if d["id"] % a.save_every == 0:
             print(f"      [diag] 变体{d['id']} 关键帧 {len(kf)} 个: {list(kf)[:4]}", flush=True)
-        obs_buf, act_buf, px_buf = [], [], []
+        obs_buf, act_buf, px_buf, sk_buf = [], [], [], []
         n = min(len(obs_l), len(act_l) if act_l else 0)
         for t in range(n):
             obs = np.asarray(obs_l[t], dtype=np.float32).ravel()[:39]
@@ -159,13 +160,16 @@ def main():
             av = np.asarray(act_l[t], dtype=np.float32).ravel()[:4]
             if av.shape[0] < 4:
                 av = np.pad(av, (0, 4 - av.shape[0]))
-            obs_buf.append(obs); act_buf.append(av); px_buf.append(px)
+            _si = STAGES.index(stg) if stg in STAGES else 0
+            _sk = np.zeros(24, dtype=np.float32); _sk[13 + _si] = 1.0
+            obs_buf.append(obs); act_buf.append(av); px_buf.append(px); sk_buf.append(_sk)
         if not obs_buf:
             continue
         n = len(obs_buf)
         obs_a, act_a, px_a = np.stack(obs_buf), np.stack(act_buf), np.stack(px_buf)
+        sk_a = np.stack(sk_buf)
         goal_a = np.roll(obs_a, -7, axis=0)            # L4 认知预测的目标 (未来第 7 帧)
-        for k, arr in (("observation", obs_a), ("action", act_a), ("pixels", px_a), ("goal", goal_a)):
+        for k, arr in (("observation", obs_a), ("action", act_a), ("pixels", px_a), ("goal", goal_a), ("skill_ctx", sk_a)):
             m = f[k].shape[0]
             f[k].resize(m + n, axis=0); f[k][m:m + n] = arr
         vid = np.full((n,), d["id"], dtype=np.int32)
