@@ -1,0 +1,2490 @@
+{
+ "ts": "20260924_081359",
+ "runtime_source": "canvas_link_reconcile_20260924_072443.json",
+ "runtime_channels": [
+  "⚡ 前馈加速器",
+  "🌍 物理世界",
+  "🎯 YOLO 目标检测",
+  "📈 先验动力学预测器",
+  "📐 2D→3D 解算",
+  "📡 传感器融合",
+  "📦 metaworld 数据源",
+  "🔮 自适应状态估计器",
+  "🖐 触觉感知",
+  "🛡 安全限幅",
+  "🤖 执行器",
+  "🧠 INTACT 意图-动作",
+  "🧠 流形专家预测器",
+  "🧪 状态校正器",
+  "🧭 动作调制器",
+  "🧮 性能流形",
+  "🧮 接触流形",
+  "🧮 潜空间"
+ ],
+ "tol": 12,
+ "n_nodes": 70,
+ "n_links": 152,
+ "grade_count": {
+  "R1-运行时每帧": 16,
+  "⚠-缺陷": 43,
+  "R2-档位级真接": 3,
+  "R3-语义": 5,
+  "R5-待建": 3
+ },
+ "nodes": [
+  {
+   "id": "sssensor",
+   "name": "📡 传感器融合",
+   "key": "ss_sensor",
+   "links": 3,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/perception.py",
+   "map_sym": "def fuse_sensors",
+   "map_line": 20,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "📡 传感器融合",
+   "defects": []
+  },
+  {
+   "id": "ssobs",
+   "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "key": "ss_obs",
+   "links": 8,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/su2.py",
+   "map_sym": "class SU2UnifiedState",
+   "map_line": 558,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssff",
+   "name": "⚡ 前馈加速器",
+   "key": "ss_ff",
+   "links": 8,
+   "reg_ok": true,
+   "map_file": "gui-venv311/lib/python3.11/site-packages/lightning_fabric/strategies/parallel.py",
+   "map_sym": "class FeedforwardAccelerator",
+   "map_line": 117,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "⚡ 前馈加速器",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssest",
+   "name": "🔮 自适应状态估计器",
+   "key": "ss_est",
+   "links": 3,
+   "reg_ok": true,
+   "map_file": "gui-venv311/lib/python3.11/site-packages/lightning_fabric/strategies/parallel.py",
+   "map_sym": "class AdaptiveStateEstimator",
+   "map_line": 201,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🔮 自适应状态估计器",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "sspred",
+   "name": "📈 先验动力学预测器",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "📈 先验动力学预测器",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssinnov",
+   "name": "🧪 状态校正器",
+   "key": "ss_correct",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/cognition.py",
+   "map_sym": "def state_correction",
+   "map_line": 17,
+   "map_sym_line_delta": 1,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🧪 状态校正器",
+   "defects": []
+  },
+  {
+   "id": "sssched",
+   "name": "🧭 动作调制器",
+   "key": "ss_sched",
+   "links": 13,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/cognition.py",
+   "map_sym": "def decide",
+   "map_line": 228,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🧭 动作调制器",
+   "defects": []
+  },
+  {
+   "id": "sslimit",
+   "name": "🛡 安全执行边界 (饱和限幅)",
+   "key": "ss_limit",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/safety.py",
+   "map_sym": "def saturate",
+   "map_line": 17,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🛡 安全限幅",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssact",
+   "name": "🤖 机器人执行器",
+   "key": "ss_act",
+   "links": 11,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/execution.py",
+   "map_sym": "class RobotExecutor",
+   "map_line": 14,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🤖 执行器",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssworld",
+   "name": "🌍 物理世界",
+   "key": "ss_world",
+   "links": 8,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/execution.py",
+   "map_sym": "class PhysicalWorld",
+   "map_line": 25,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🌍 物理世界",
+   "defects": []
+  },
+  {
+   "id": "ssvideo",
+   "name": "📊 仿真波形",
+   "key": "ss_scope",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssvideo2",
+   "name": "🎥 操作视频",
+   "key": "ss_video",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssyolo",
+   "name": "🎯 YOLO 目标检测",
+   "key": "ss_yolo",
+   "links": 6,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+   "map_sym": "class YoloStateAligner",
+   "map_line": 57,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🎯 YOLO 目标检测",
+   "defects": []
+  },
+  {
+   "id": "ss2d3d",
+   "name": "📐 2D→3D 解算",
+   "key": "yolo_align",
+   "links": 8,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+   "map_sym": "def detect_3d",
+   "map_line": 93,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "📐 2D→3D 解算",
+   "defects": []
+  },
+  {
+   "id": "sstactile",
+   "name": "🖐 触觉感知",
+   "key": "yolo_tactile",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/yolo_3d/gen_tactile.py",
+   "map_sym": "def synth_tactile",
+   "map_line": 21,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🖐 触觉感知",
+   "defects": []
+  },
+  {
+   "id": "ssaoi",
+   "name": "🔍 外观质量检测",
+   "key": "ss_aoi",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/yolo_3d/quality_check.py",
+   "map_sym": "class AOIQualityChecker",
+   "map_line": 40,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R2-档位级真接",
+   "defects": []
+  },
+  {
+   "id": "ssdata",
+   "name": "📦 metaworld 数据源",
+   "key": "data",
+   "links": 12,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "📦 metaworld 数据源",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssmode",
+   "name": "🔀 训练/推理",
+   "key": "mode_switch",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssllm_in",
+   "name": "📝 任务指令 · MES/自然语言",
+   "key": "ss_llm_in",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": "gui-venv311/lib/python3.11/site-packages/torch/distributed/checkpoint/planner.py",
+   "map_sym": "class TaskPlanner",
+   "map_line": 94,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssllm",
+   "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "key": null,
+   "links": 5,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssreason",
+   "name": "🔍 异常推理器 (LLM)",
+   "key": "ss_reason",
+   "links": 5,
+   "reg_ok": true,
+   "map_file": "gui-venv311/lib/python3.11/site-packages/torch/distributed/checkpoint/planner.py",
+   "map_sym": "class ExceptionReasoner",
+   "map_line": 196,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssskill",
+   "name": "🛠 L3 技能序列编排",
+   "key": null,
+   "links": 13,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sscalib",
+   "name": "🧮 标定层 · 引力-斥力-动作",
+   "key": "ss_calib",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "src/lerobot/calibration/calibration_layer.py",
+   "map_sym": "class CalibrationLayer",
+   "map_line": 73,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssmani_c",
+   "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+   "key": "ss_mani_c",
+   "links": 5,
+   "reg_ok": true,
+   "map_file": "src/lerobot/manifold/manifold_layer.py",
+   "map_sym": "class ContactManifold",
+   "map_line": 65,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🧮 接触流形",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssmani_p",
+   "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+   "key": "ss_mani_p",
+   "links": 5,
+   "reg_ok": true,
+   "map_file": "src/lerobot/manifold/manifold_layer.py",
+   "map_sym": "class PerformanceManifold",
+   "map_line": 154,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🧮 性能流形",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sslat",
+   "name": "🧮 潜空-流形",
+   "key": "ss_lat",
+   "links": 3,
+   "reg_ok": true,
+   "map_file": "src/lerobot/calibration/calibration_layer.py",
+   "map_sym": "LATENT_CALIB",
+   "map_line": 58,
+   "map_sym_line_delta": 3,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssfeat",
+   "name": "🧩 Feature 功能清单",
+   "key": "ss_feature",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "src/lerobot/verification/verification_layer.py",
+   "map_sym": "FEATURES = [",
+   "map_line": 47,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sstest",
+   "name": "🧪 Test 用例执行",
+   "key": "ss_test",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "src/lerobot/verification/verification_layer.py",
+   "map_sym": "class VerificationLayer",
+   "map_line": 111,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssff_hist",
+   "name": "🧠 前馈激活直方图",
+   "key": "ss_ff_hist",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss3d_view",
+   "name": "🧭 3D 视图",
+   "key": "ss_3d_view",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssbypv",
+   "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+   "key": "ss_bypass_viz",
+   "links": 1,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssz700",
+   "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "key": "ss_z700_signals",
+   "links": 6,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk1",
+   "name": "① 接近 · SK01",
+   "key": null,
+   "links": 3,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk2",
+   "name": "② 对位 · SK02",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk3",
+   "name": "③ 下降 · SK03",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk4",
+   "name": "④ 抓取 · SK04",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk5",
+   "name": "⑤ 抬起 · SK05",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk6",
+   "name": "⑥ 转移 · SK06",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk7",
+   "name": "⑦ 插入 · SK07",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "sssk8",
+   "name": "⑧ 完成 · SK08",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssvlm",
+   "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "key": "ss_vlm",
+   "links": 10,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssdec",
+   "name": "🎯 Flow-Matching Action Head (DiT)",
+   "key": "action_head",
+   "links": 7,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射"
+   ]
+  },
+  {
+   "id": "ssintact",
+   "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "key": "intact",
+   "links": 6,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/intact/service.py",
+   "map_sym": "def run_once(",
+   "map_line": 235,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R2-档位级真接",
+   "defects": []
+  },
+  {
+   "id": "ssintact_dec",
+   "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "key": "intact_dec",
+   "links": 7,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/intact/service.py",
+   "map_sym": "def run_once(",
+   "map_line": 235,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": false,
+   "grade": "R2-档位级真接",
+   "defects": []
+  },
+  {
+   "id": "ssmani_exp",
+   "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "key": "ss_pred",
+   "links": 7,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/dynamics.py",
+   "map_sym": "class PriorDynamicsPredictor",
+   "map_line": 62,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": true,
+   "cap_ref": true,
+   "grade": "R1-运行时每帧",
+   "rt_channel": "🧠 流形专家预测器",
+   "defects": []
+  },
+  {
+   "id": "sscap",
+   "name": "🧭 能力档位",
+   "key": "ss_cap",
+   "links": 5,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_mem_l2",
+   "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "key": null,
+   "links": 6,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_mem_l3",
+   "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "key": null,
+   "links": 4,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_mem_l4",
+   "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "key": "ss_world",
+   "links": 3,
+   "reg_ok": true,
+   "map_file": "src/lerobot/policies/left_right/state_space/execution.py",
+   "map_sym": "class PhysicalWorld",
+   "map_line": 25,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_mem_field",
+   "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "key": "ss_mem_field",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "R3-语义",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_mem_share",
+   "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "key": "ss_mem_share",
+   "links": 10,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "R3-语义",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssa",
+   "name": "🅰️ 通用算子 A · 参数写入",
+   "key": "ssa",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def node_ss_abc(ctx):",
+   "map_line": 3900,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssb",
+   "name": "🅱️ 通用算子 B · 参数微调",
+   "key": "ssb",
+   "links": 3,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def node_ss_abc(ctx):",
+   "map_line": 3900,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ssc",
+   "name": "🅾️ 通用算子 C · 参数校验",
+   "key": "ssc",
+   "links": 3,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def node_ss_abc(ctx):",
+   "map_line": 3900,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_intent_bundle",
+   "name": "🧠 意图丛 · 四槽语法",
+   "key": "ss_intent_bundle",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_skill_dict",
+   "name": "🧬 技能词典 · L2 动作基",
+   "key": "ss_skill_dict",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_mem_links",
+   "name": "🔗 跨层连接 · 记忆图谱",
+   "key": "ss_mem_links",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_intent_direct",
+   "name": "🔮 意图直读 · Direct",
+   "key": "ss_intent_direct",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "swds",
+   "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "key": "sw_ds",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def load_stats(",
+   "map_line": 101,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "swintact",
+   "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "key": "sw_intact",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def main(",
+   "map_line": 168,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "swworld",
+   "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "key": "sw_world",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def install_model_drive(",
+   "map_line": 109,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "swvideo",
+   "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+   "key": "sw_video",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": "def _mk_writer(",
+   "map_line": 81,
+   "map_sym_line_delta": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_eng_mem",
+   "name": "📚 工程记忆 · 技能与经验库",
+   "key": "n_eng_mem",
+   "links": 1,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "R3-语义",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_vlm_llm",
+   "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "key": "n_dsvl",
+   "links": 6,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "R3-语义",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_dsvl",
+   "name": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "key": "n_dsvl",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "R3-语义",
+   "defects": [
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_board_frame",
+   "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "key": null,
+   "links": 6,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "n_l2_muscle",
+   "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "key": null,
+   "links": 2,
+   "reg_ok": false,
+   "map_file": null,
+   "map_sym": null,
+   "map_ok": false,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "⚠-缺陷",
+   "defects": [
+    "缺执行注册",
+    "缺/失效源码映射",
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_moe",
+   "name": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (建设中)",
+   "key": "ss_moe",
+   "links": 4,
+   "reg_ok": true,
+   "map_file": "tools/stage_moe_backbone.py",
+   "map_sym": "class StageMoE",
+   "map_line": 42,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "R5-待建",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_lora_l4",
+   "name": "🎛 L4 · INTACT LoRA 微调 (r8/α16 · A/B 未证明提升)",
+   "key": "ss_lora_l4",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "tools/lora_inject.py",
+   "map_sym": "def inject_lora",
+   "map_line": 105,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": true,
+   "grade": "R5-待建",
+   "defects": [
+    "引擎无引用"
+   ]
+  },
+  {
+   "id": "ss_lora_l3",
+   "name": "🎛 L3 · SmolVLA LoRA 微调 (200 步 · loss 0.192)",
+   "key": "ss_lora_l3",
+   "links": 2,
+   "reg_ok": true,
+   "map_file": "tools/lora_inject.py",
+   "map_sym": "class LoRALinear",
+   "map_line": 41,
+   "map_sym_line_delta": 0,
+   "map_ok": true,
+   "engine_ref": false,
+   "cap_ref": false,
+   "grade": "R5-待建",
+   "defects": [
+    "引擎无引用"
+   ]
+  }
+ ],
+ "non_runtime_links": [
+  {
+   "from": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "to": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "sw_intact",
+   "to_key": "sw_world",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "to": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "sw_world",
+   "to_key": "sw_ds",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "to": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "sw_world",
+   "to_key": "sw_video",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "R2-档位级真接",
+   "from_key": "data",
+   "to_key": "intact",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "📡 传感器融合",
+   "to": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_sensor",
+   "to_key": "intact",
+   "gap": "两端均为设计语义/档位级 (非运行时, 合法)"
+  },
+  {
+   "from": "⚡ 前馈加速器",
+   "to": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_ff",
+   "to_key": "intact",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "data",
+   "to_key": "ss_vlm",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "to": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mem_share",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "to": "🔍 异常推理器 (LLM)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mem_share",
+   "to_key": "ss_reason",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "to": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mem_share",
+   "to_key": "ss_world",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "to": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mem_share",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "to": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mem_share",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "to": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R3-语义",
+   "from_key": "ss_world",
+   "to_key": "ss_mem_field",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "to": "🧭 动作调制器",
+   "from_grade": "R3-语义",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_mem_field",
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "to": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "from_grade": "R2-档位级真接",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "intact_dec",
+   "to_key": "ss_pred",
+   "gap": "两端均为设计语义/档位级 (非运行时, 合法)"
+  },
+  {
+   "from": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+   "to": "📊 仿真波形",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mani_c",
+   "to_key": "ss_scope",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧮 性能流形 · 耦合代价 (V_p/η)",
+   "to": "📊 仿真波形",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mani_p",
+   "to_key": "ss_scope",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "to": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R3-语义",
+   "from_key": null,
+   "to_key": "ss_mem_field",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "to": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_vlm",
+   "to_key": "ss_pred",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "to": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_vlm",
+   "to_key": "ss_mani_c",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "to": "🧮 性能流形 · 耦合代价 (V_p/η)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_vlm",
+   "to_key": "ss_mani_p",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "to": "🎯 Flow-Matching Action Head (DiT)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_vlm",
+   "to_key": "action_head",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🎯 Flow-Matching Action Head (DiT)",
+   "to": "⚡ 前馈加速器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "action_head",
+   "to_key": "ss_ff",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "to": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R3-语义",
+   "from_key": null,
+   "to_key": "ss_mem_field",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "to": "⚡ 前馈加速器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_ff",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🎯 YOLO 目标检测",
+   "to": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_yolo",
+   "to_key": "ss_vlm",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🎯 YOLO 目标检测",
+   "to": "🔍 外观质量检测",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_yolo",
+   "to_key": "ss_aoi",
+   "gap": "两端均为设计语义/档位级 (非运行时, 合法)"
+  },
+  {
+   "from": "📐 2D→3D 解算",
+   "to": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "yolo_align",
+   "to_key": "ss_obs",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🖐 触觉感知",
+   "to": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "yolo_tactile",
+   "to_key": "ss_obs",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🔍 外观质量检测",
+   "to": "🧭 动作调制器",
+   "from_grade": "R2-档位级真接",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_aoi",
+   "to_key": "ss_sched",
+   "gap": "两端均为设计语义/档位级 (非运行时, 合法)"
+  },
+  {
+   "from": "📡 传感器融合",
+   "to": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_sensor",
+   "to_key": "ss_obs",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "to": "⚡ 前馈加速器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_obs",
+   "to_key": "ss_ff",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "to": "🔮 自适应状态估计器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_obs",
+   "to_key": "ss_est",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "⚡ 前馈加速器",
+   "to": "🧠 前馈激活直方图",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_ff",
+   "to_key": "ss_ff_hist",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🅰️ 通用算子 A · 参数写入",
+   "to": "🅱️ 通用算子 B · 参数微调",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ssa",
+   "to_key": "ssb",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🅱️ 通用算子 B · 参数微调",
+   "to": "🅾️ 通用算子 C · 参数校验",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ssb",
+   "to_key": "ssc",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🅾️ 通用算子 C · 参数校验",
+   "to": "① 接近 · SK01",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ssc",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "① 接近 · SK01",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "② 对位 · SK02",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "③ 下降 · SK03",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "④ 抓取 · SK04",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "⑤ 抬起 · SK05",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "⑥ 转移 · SK06",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "⑦ 插入 · SK07",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "⑧ 完成 · SK08",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🌍 物理世界",
+   "to": "🧩 Feature 功能清单",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "ss_feature",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🌍 物理世界",
+   "to": "🧪 Test 用例执行",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "ss_test",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🌍 物理世界",
+   "to": "📊 仿真波形",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "ss_scope",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🌍 物理世界",
+   "to": "🧭 3D 视图",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "ss_3d_view",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "data",
+   "to_key": "ss_bypass_viz",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🌍 物理世界",
+   "to": "🎥 操作视频",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "ss_video",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🛡 安全执行边界 (饱和限幅)",
+   "to": "🅱️ 通用算子 B · 参数微调",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_limit",
+   "to_key": "ssb",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🛡 安全执行边界 (饱和限幅)",
+   "to": "🅾️ 通用算子 C · 参数校验",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_limit",
+   "to_key": "ssc",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🛡 安全执行边界 (饱和限幅)",
+   "to": "① 接近 · SK01",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_limit",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "📝 任务指令 · MES/自然语言",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "data",
+   "to_key": "ss_llm_in",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "to": "📝 任务指令 · MES/自然语言",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_z700_signals",
+   "to_key": "ss_llm_in",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🛠 L3 技能序列编排",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "data",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "to": "🛠 L3 技能序列编排",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_z700_signals",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "to": "🔍 异常推理器 (LLM)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_obs",
+   "to_key": "ss_reason",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🔍 异常推理器 (LLM)",
+   "to": "🛠 L3 技能序列编排",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_reason",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "📚 工程记忆 · 技能与经验库",
+   "to": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "from_grade": "R3-语义",
+   "to_grade": "R3-语义",
+   "from_key": "n_eng_mem",
+   "to_key": "ss_mem_share",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "to": "🔗 跨层连接 · 记忆图谱",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": "ss_mem_links",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "to": "🔗 跨层连接 · 记忆图谱",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": "ss_mem_links",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "to": "🔗 跨层连接 · 记忆图谱",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "ss_mem_links",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "🧬 技能词典 · L2 动作基",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": "ss_skill_dict",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "to": "🔮 意图直读 · Direct",
+   "from_grade": "R2-档位级真接",
+   "to_grade": "⚠-缺陷",
+   "from_key": "intact_dec",
+   "to_key": "ss_intent_direct",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "to": "🧠 意图丛 · 四槽语法",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": "ss_intent_bundle",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🔀 训练/推理",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "data",
+   "to_key": "mode_switch",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🔀 训练/推理",
+   "to": "🧭 能力档位",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "mode_switch",
+   "to_key": "ss_cap",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧭 能力档位",
+   "to": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_cap",
+   "to_key": "intact",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧭 能力档位",
+   "to": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_cap",
+   "to_key": "ss_vlm",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧭 能力档位",
+   "to": "⚡ 前馈加速器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_cap",
+   "to_key": "ss_ff",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📐 2D→3D 解算",
+   "to": "🧮 标定层 · 引力-斥力-动作",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "yolo_align",
+   "to_key": "ss_calib",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "to": "🧮 潜空-流形",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_vlm",
+   "to_key": "ss_lat",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "R2-档位级真接",
+   "from_key": "data",
+   "to_key": "intact_dec",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "to": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_z700_signals",
+   "to_key": "intact_dec",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "R3-语义",
+   "from_key": "data",
+   "to_key": "n_dsvl",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "to": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "n_dsvl",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "to": "🔍 异常推理器 (LLM)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "n_dsvl",
+   "to_key": "ss_reason",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "to": "🛠 L3 技能序列编排",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "n_dsvl",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "to": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "from_grade": "R3-语义",
+   "to_grade": "R2-档位级真接",
+   "from_key": "n_dsvl",
+   "to_key": "intact_dec",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "to": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "from_grade": "R3-语义",
+   "to_grade": "R3-语义",
+   "from_key": "n_dsvl",
+   "to_key": "ss_mem_share",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📦 metaworld 数据源",
+   "to": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "data",
+   "to_key": "sw_ds",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "to": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "from_grade": "R2-档位级真接",
+   "to_grade": "⚠-缺陷",
+   "from_key": "intact",
+   "to_key": "sw_intact",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🌍 物理世界",
+   "to": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_world",
+   "to_key": "sw_world",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+   "to": "🎥 操作视频",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "sw_video",
+   "to_key": "ss_video",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧭 能力档位",
+   "to": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_cap",
+   "to_key": "sw_intact",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎯 YOLO 目标检测",
+   "to": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_yolo",
+   "to_key": "sw_ds",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📐 2D→3D 解算",
+   "to": "🧭 3D 视图",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "yolo_align",
+   "to_key": "ss_3d_view",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "⚡ 前馈加速器",
+   "to": "🧠 前馈激活直方图",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_ff",
+   "to_key": "ss_ff_hist",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "to": "📊 仿真波形",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_obs",
+   "to_key": "ss_scope",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🤖 机器人执行器",
+   "to": "🧪 Test 用例执行",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_act",
+   "to_key": "ss_test",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "to": "🧩 Feature 功能清单",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mem_share",
+   "to_key": "ss_feature",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "to": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "from_grade": "R3-语义",
+   "to_grade": "R3-语义",
+   "from_key": "n_dsvl",
+   "to_key": "n_dsvl",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎯 YOLO 目标检测",
+   "to": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_yolo",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "to": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "from_grade": "R3-语义",
+   "to_grade": "⚠-缺陷",
+   "from_key": "n_dsvl",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "to": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R3-语义",
+   "from_key": null,
+   "to_key": "ss_mem_share",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "to": "📐 2D→3D 解算",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "yolo_align",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "to": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_z700_signals",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": null,
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "to": "🎯 Flow-Matching Action Head (DiT)",
+   "from_grade": "R2-档位级真接",
+   "to_grade": "⚠-缺陷",
+   "from_key": "intact_dec",
+   "to_key": "action_head",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+   "to": "🎯 Flow-Matching Action Head (DiT)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mani_c",
+   "to_key": "action_head",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧮 性能流形 · 耦合代价 (V_p/η)",
+   "to": "🎯 Flow-Matching Action Head (DiT)",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_mani_p",
+   "to_key": "action_head",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧮 潜空-流形",
+   "to": "🎯 Flow-Matching Action Head (DiT)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_lat",
+   "to_key": "action_head",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧮 标定层 · 引力-斥力-动作",
+   "to": "🧮 潜空-流形",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_calib",
+   "to_key": "ss_lat",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🔍 异常推理器 (LLM)",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_reason",
+   "to_key": "ss_sched",
+   "gap": "缺/失效源码映射"
+  },
+  {
+   "from": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "to": "🅰️ 通用算子 A · 参数写入",
+   "from_grade": "R1-运行时每帧",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_pred",
+   "to_key": "ssa",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎯 Flow-Matching Action Head (DiT)",
+   "to": "🤖 机器人执行器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "action_head",
+   "to_key": "ss_act",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "to": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (建设中)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R5-待建",
+   "from_key": "ss_obs",
+   "to_key": "ss_moe",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "to": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (建设中)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R5-待建",
+   "from_key": "ss_vlm",
+   "to_key": "ss_moe",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (建设中)",
+   "to": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "from_grade": "R5-待建",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_moe",
+   "to_key": "ss_pred",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (建设中)",
+   "to": "🧭 动作调制器",
+   "from_grade": "R5-待建",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_moe",
+   "to_key": "ss_sched",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "to": "🎛 L4 · INTACT LoRA 微调 (r8/α16 · A/B 未证明提升)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R5-待建",
+   "from_key": "ss_z700_signals",
+   "to_key": "ss_lora_l4",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎛 L4 · INTACT LoRA 微调 (r8/α16 · A/B 未证明提升)",
+   "to": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "from_grade": "R5-待建",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_lora_l4",
+   "to_key": "intact",
+   "gap": "引擎无引用"
+  },
+  {
+   "from": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "to": "🎛 L3 · SmolVLA LoRA 微调 (200 步 · loss 0.192)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R5-待建",
+   "from_key": "ss_z700_signals",
+   "to_key": "ss_lora_l3",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🎛 L3 · SmolVLA LoRA 微调 (200 步 · loss 0.192)",
+   "to": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "from_grade": "R5-待建",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_lora_l3",
+   "to_key": "ss_vlm",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📝 任务指令 · MES/自然语言",
+   "to": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R3-语义",
+   "from_key": "ss_llm_in",
+   "to_key": "n_dsvl",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "📝 任务指令 · MES/自然语言",
+   "to": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_llm_in",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧠 意图丛 · 四槽语法",
+   "to": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R2-档位级真接",
+   "from_key": "ss_intent_bundle",
+   "to_key": "intact_dec",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🧬 技能词典 · L2 动作基",
+   "to": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "ss_skill_dict",
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🔗 跨层连接 · 记忆图谱",
+   "to": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R3-语义",
+   "from_key": "ss_mem_links",
+   "to_key": "ss_mem_share",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🔮 意图直读 · Direct",
+   "to": "🧭 动作调制器",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "R1-运行时每帧",
+   "from_key": "ss_intent_direct",
+   "to_key": "ss_sched",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "to": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": "sw_ds",
+   "to_key": "sw_intact",
+   "gap": "引擎无引用 + 缺/失效源码映射"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "② 对位 · SK02",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "③ 下降 · SK03",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "④ 抓取 · SK04",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "⑤ 抬起 · SK05",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "⑥ 转移 · SK06",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "⑦ 插入 · SK07",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  },
+  {
+   "from": "🛠 L3 技能序列编排",
+   "to": "⑧ 完成 · SK08",
+   "from_grade": "⚠-缺陷",
+   "to_grade": "⚠-缺陷",
+   "from_key": null,
+   "to_key": null,
+   "gap": "引擎无引用 + 缺/失效源码映射 + 缺执行注册"
+  }
+ ]
+}

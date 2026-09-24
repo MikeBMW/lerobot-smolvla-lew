@@ -3639,9 +3639,9 @@ _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢�
 _reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
 _reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 技能与经验库 — docs/memory + Hermes 记忆 + 技能库 → 同步进总装记忆 (源码 eng_memory.py)", node_ss_eng_mem)
 _reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 场景判读+建议; 右键=判读结果窗口 (源码 scene_vlm.py)", node_dsvl)
-_reg("ss_llm",   ["任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
+_reg("ss_llm",   ["长程序列规划器", "任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
 _reg("ss_reason", ["异常推理器"], "🔍 异常推理器 — 连续否决/阶段卡死→异常分类+恢复建议; 双击=诊断演示 (源码 planner.py ExceptionReasoner)", node_ss_reason)
-_reg("ss_skill", ["技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)
+_reg("ss_skill", ["技能序列编排", "技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -4395,8 +4395,8 @@ except Exception as _me:
     node_ss_motor_hub = node_ss_global_mem = node_ss_mem_field = (
         lambda ctx, _e=_mem_err: ((ctx.get("log") or print)(_e), False)[1])
 
-_reg("ss_mem_l2", ["L2 记忆 · 肌肉记忆"], "🔧 L2 记忆 · 肌肉记忆 — 固化标杆库 (muscle_memory)", node_ss_mem_l2)
-_reg("ss_mem_l3", ["L3 记忆 · 长程规划"], "🚀 L3 记忆 · 长程规划 — 跨段技能序列流程经验", node_ss_mem_l3)
+_reg("ss_mem_l2", ["肌肉记忆操作", "L2 记忆 · 肌肉记忆"], "🔧 L2 记忆 · 肌肉记忆 — 固化标杆库 (muscle_memory)", node_ss_mem_l2)
+_reg("ss_mem_l3", ["记忆: 海马体", "L3 记忆 · 长程规划"], "🚀 L3 记忆 · 长程规划 — 跨段技能序列流程经验", node_ss_mem_l3)
 _reg("ss_mem_l4", ["L4 记忆 · 筹划"], "🏆 L4 记忆 · 筹划 — 世界模型预测质量/恢复策略", node_ss_mem_l4)
 _reg("ss_mem_share", ["总装记忆中枢", "共享记忆中枢"], "🧠 总装记忆中枢 — 三层记忆汇总总装 (大模型层)", node_ss_mem_share)
 # 🧠🧬 S1 意图丛 (2026-09-10): 三层能力共享 — 记忆图谱连接层
@@ -4772,3 +4772,103 @@ _reg("ss_lora_l3", ["L3 LoRA 微调", "L3 LoRA", "SmolVLA LoRA"],
 _EXTERNAL_LOC["ss_moe"] = (os.path.join(_REPO_ROOT, "tools", "stage_moe_backbone.py"), 42, "class StageMoE")
 _EXTERNAL_LOC["ss_lora_l4"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 105, "def inject_lora")
 _EXTERNAL_LOC["ss_lora_l3"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 41, "class LoRALinear")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 📐 板坐标系定位 / 💪 L2 肌肉记忆技能库 (2026-09-24 接线)
+#   来由: 档位级验收 (tools/canvas_level_audit.py) 查出这两个画布节点
+#         match_node(name) = None → 双击无执行函数 (老倪红线: 进不了系统则删掉)。
+#   处置: 两条都有**真实实现** (board_frame_module.py / l2_ros2_bridge.py) → 接上真执行, 不删。
+# ══════════════════════════════════════════════════════════════════════════════
+def node_n_board_frame(ctx):
+    """📐 板坐标系定位 (工序坐标系·免手眼) — 真机帧 → 板检测(20点/反色/排镜像) + YOLO
+    → 模块在板坐标 (x,y)mm。真执行 tools/board_frame_module.py::run(实况帧);
+    帧源 = ~/zmax_ss_remote/cam_rs.png (产线相机直落)。无帧/帧缺 → 如实报, **不造数**。"""
+    log = ctx.get("log") or (lambda *a: None)
+    try:
+        import importlib.util as _ilu
+        import time as _t
+        p = os.path.join(_REPO_ROOT, "tools", "board_frame_module.py")
+        spec = _ilu.spec_from_file_location("zmax_board_frame_module", p)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        img = str((ctx.get("params") or {}).get("img")
+                  or os.path.expanduser("~/zmax_ss_remote/cam_rs.png"))
+        if not os.path.isfile(img):
+            log(f"⚠ 板坐标系定位: 无实况帧 {img} (产线相机未起/未落盘) → 不定位, 不造数")
+            return False
+        age = _t.time() - os.path.getmtime(img)
+        r = m.run(img)
+        log(f"📐 板坐标系定位 · 帧 {os.path.basename(img)} (龄 {age:.1f}s)")
+        if r.get("ok"):
+            xy = r.get("模块在板坐标 (x,y,mm)")
+            log(f"   板点 {r.get('板点')} · 板距 {r.get('板距_m')}m · 模块在板坐标 {xy}mm · "
+                f"离板面 {r.get('离板面mm')}mm · conf {r.get('conf')}")
+            _SS_STATE["board_xy_mm"] = xy
+            _SS_STATE["board_frame_src"] = img
+            return True
+        log(f"   未定位: {r.get('why')} (板点 {r.get('板点')})")
+        return False
+    except Exception as e:                                                     # noqa: BLE001
+        log(f"⚠️ 板坐标系定位失败: {type(e).__name__}: {e}")
+        return False
+
+
+def node_n_l2_muscle(ctx):
+    """💪 L2 肌肉记忆技能库 (光模块抓放循环) — 读**真实技能 JSON** + ROS2 桥**只读**状态。
+    真执行: data/skills/l2_muscle/*.json (技能定义) + tools/l2_ros2_bridge.py (仅查询)。
+    ⚠ 只读纪律: 本节点**不调** run_step/cmd_move → 不下发任何真机动作 (动作须人工授权)。"""
+    log = ctx.get("log") or (lambda *a: None)
+    try:
+        import glob as _g
+        import json as _json
+        pr = ctx.get("params") or {}
+        sk = str(pr.get("skill") or os.path.join(_REPO_ROOT, "data", "skills", "l2_muscle",
+                                                 "光模块_抓放循环_v1.json"))
+        if not os.path.isfile(sk):
+            cands = sorted(_g.glob(os.path.join(_REPO_ROOT, "data", "skills", "l2_muscle", "*.json")))
+            if not cands:
+                log("⚠ L2 肌肉记忆技能库: 无技能 JSON → 未固化任何标杆")
+                return False
+            sk = cands[0]
+        d = _json.load(open(sk, encoding="utf-8"))
+        steps = d.get("steps") or d.get("points") or []
+        log(f"💪 L2 肌肉记忆技能库 · {os.path.basename(sk)}")
+        log(f"   技能 {d.get('id')} · 层 {d.get('layer')} · 类型 {d.get('kind')} · 段数 {len(steps)}")
+        for i, s in enumerate(steps[:10], 1):
+            txt = s if isinstance(s, str) else " · ".join(
+                f"{k}={s[k]}" for k in list(s)[:4]) if isinstance(s, dict) else str(s)
+            log(f"   {i}. {txt}")
+        if d.get("params"):
+            log(f"   ⚙ 参数: {_json.dumps(d['params'], ensure_ascii=False)[:160]}")
+        # ROS2 桥: **只读**查询 (有界超时, 避免卡 GUI); Orin 不在线则如实报
+        try:
+            import importlib.util as _ilu
+            bp = os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py")
+            spec = _ilu.spec_from_file_location("zmax_l2_ros2_bridge", bp)
+            bm = _ilu.module_from_spec(spec)
+            spec.loader.exec_module(bm)
+            o = bm.sh("timeout 6 ros2 topic echo --once /robot_status 2>/dev/null | head -2", 10)
+            ok = bool(str(o).strip())
+            log(f"   🔌 ROS2 桥 (只读): {'在线 · ' + str(o).strip()[:120] if ok else '无响应 (Orin 未连/未起)'}"
+                f" · 桥文件 {os.path.basename(bp)}")
+            _SS_STATE["l2_muscle_ros2"] = ok
+        except Exception as e:                                                 # noqa: BLE001
+            log(f"   🔌 ROS2 桥 (只读): 查询失败 {type(e).__name__}")
+        return True
+    except Exception as e:                                                     # noqa: BLE001
+        log(f"⚠️ L2 肌肉记忆技能库失败: {type(e).__name__}: {e}")
+        return False
+
+
+_reg("n_board_frame", ["板坐标系定位", "工序坐标系", "免手眼"],
+     "📐 板坐标系定位 — 真机帧→板检测+YOLO→模块在板坐标 (x,y)mm; 绕开手拖位姿精度 (源码 tools/board_frame_module.py::run)",
+     node_n_board_frame)
+_reg("n_l2_muscle", ["肌肉记忆技能库", "光模块抓放循环"],
+     "💪 L2 肌肉记忆技能库 — 读真实技能 JSON + ROS2 桥只读状态 (动作须人工授权, 本节点不下发)",
+     node_n_l2_muscle)
+
+_EXTERNAL_LOC["n_board_frame"] = (os.path.join(_REPO_ROOT, "tools", "board_frame_module.py"),
+                                  11, "def run(")
+_EXTERNAL_LOC["n_l2_muscle"] = (os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py"),
+                                81, "def run_step(")
