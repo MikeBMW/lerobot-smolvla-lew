@@ -186,6 +186,110 @@ def main():
     _log_after = sum(1 for _ in open(_lg, encoding="utf-8")) if os.path.isfile(_lg) else 0
     ck("⑥ 切源取图**不新增真拍** (审计流水未增长)", _log_after == log_before,
        f"{log_before} → {_log_after}")
+
+    # ⑦ curl 命令可见 + 可复制 (老倪: "把 curl 命令显示在窗口, 可以复制后在 4060 终端执行")
+    w.cmb_src.setCurrentIndex(3)
+    for _ in range(25):
+        app.processEvents(); time.sleep(0.05)
+    txt = w.term_cmd.toPlainText().strip()
+    last = txt.splitlines()[-1] if txt else ""
+    RES["term_cmd"] = {"n_lines": len(txt.splitlines()), "last": last,
+                       "json_lines": len(w.term_json.toPlainText().splitlines())}
+    ck("⑦ 窗口显示 curl 命令 (含目标 URL, 可直接执行)",
+       last.startswith("curl ") and "192.168.23.23" in last and "10082" in last, last[:110])
+    w._copy_text(w.term_cmd)
+    app.processEvents()
+    cb = QtWidgets.QApplication.clipboard().text()
+    ck("⑦ 复制命令 → 剪贴板内容与命令框一致", cb.strip() == txt, f"剪贴板 {len(cb)} 字符")
+    jtxt = w.term_json.toPlainText()
+    ck("⑦ 终端有服务反馈 JSON 原文", "http" in jtxt and "{" in jtxt,
+       f"{len(jtxt.splitlines())} 行; 片段: {jtxt.strip().splitlines()[-1][:90]}")
+    w._copy_text(w.term_json)
+    app.processEvents()
+    ck("⑦ 复制反馈 → 剪贴板拿到 JSON", len(QtWidgets.QApplication.clipboard().text()) > 20)
+
+    # ⑧ 每个技能"点击即可执行得到结果"
+    skill_res = {}
+    for k in ("gold_finger", "module_body", "optical_port", "full"):
+        w.skill_btns[k].click()
+        app.processEvents(); time.sleep(0.05)
+        skill_res[k] = {"rows": w.tbl_verdict.rowCount(), "has_res": w._last_res is not None}
+    j_before = len(w.term_json.toPlainText())
+    svc = {}
+    for name, b in (("crop_info", w.btn_opt_crop), ("region", w.btn_opt_region),
+                    ("pic_meta", w.btn_opt_meta), ("last_result", w.btn_opt_verd),
+                    ("fetch_recent", w.btn_opt_recent)):
+        b.click()
+        app.processEvents(); time.sleep(0.35)
+        svc[name] = len(w.term_json.toPlainText()) > j_before
+        j_before = len(w.term_json.toPlainText())
+    RES["skill_click"] = {"inference": skill_res, "service": svc}
+    ck("⑧ 四个推理技能点击即出判决表", all(v["rows"] > 0 and v["has_res"] for v in skill_res.values()),
+       str({k: v["rows"] for k, v in skill_res.items()}))
+    ck("⑧ 五个服务技能点击即得 JSON 反馈", all(svc.values()), str(svc))
+
+    # ⑨ 图片右键可复制到剪贴板 (老倪: "显示的图片, 右键即可复制, 可粘贴到别的地方")
+    from aoi_inspect_console import CopyImageView                    # noqa: E402
+    from yolo_label_widget import YoloLabelWidget                    # noqa: E402
+    w.cmb_src.setCurrentIndex(3)
+    for _ in range(25):
+        app.processEvents(); time.sleep(0.05)
+    ok_copy = w.wid.copy_image()
+    app.processEvents()
+    img = QtWidgets.QApplication.clipboard().image()
+    ok_o = w.wid_orig.copy_image()
+    app.processEvents()
+    img_o = QtWidgets.QApplication.clipboard().image()
+    RES["img_copy"] = {"crop": [img.width(), img.height()], "orig": [img_o.width(), img_o.height()],
+                       "has_ctxmenu": CopyImageView.contextMenuEvent is not YoloLabelWidget.contextMenuEvent,
+                       "widgets": [type(w.wid).__name__, type(w.wid_orig).__name__],
+                       "crop_path": w.wid._path, "orig_path": w.wid_orig._path}
+    ck("⑨ 判据图右键复制 → 剪贴板拿到同尺寸图", ok_copy and img.width() == w._last_rgb.shape[1]
+       and img.height() == w._last_rgb.shape[0], f"{img.width()}x{img.height()}")
+    ck("⑨ 原始图右键复制 → 剪贴板拿到 2448x2048",
+       ok_o and img_o.width() == 2448 and img_o.height() == 2048, f"{img_o.width()}x{img_o.height()}")
+    ck("⑨ 两幅画面都装了右键复制菜单 (非编辑态不误删框)",
+       isinstance(w.wid, CopyImageView) and isinstance(w.wid_orig, CopyImageView)
+       and RES["img_copy"]["has_ctxmenu"], str(RES["img_copy"]["widgets"]))
+    ck("⑨ 画面有本地副本路径 (可复制路径贴到别处)",
+       bool(w.wid._path) and os.path.isfile(w.wid._path) and os.path.isfile(w.wid_orig._path),
+       f"{w.wid._path} | {w.wid_orig._path}")
+
+    # ⑩ 过曝切除 (老倪: "要把原始图过曝光的部分去掉")
+    def _img_stats(rgb):
+        g = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+        ten = float((cv2.Sobel(g, cv2.CV_32F, 1, 0) ** 2 + cv2.Sobel(g, cv2.CV_32F, 0, 1) ** 2).mean())
+        return {"sat_pct": round(float((g >= 250).mean() * 100), 1),
+                "deadwhite_rows": int((g.mean(axis=1) > 235).sum()),
+                "row_var": round(float(g.mean(axis=1).std()), 1),
+                "worst_col_sat_pct": round(float(((g >= 250).mean(axis=0)).max() * 100), 1),
+                "tenengrad": round(ten, 0)}
+
+    w.cmb_src.setCurrentIndex(3)
+    for _ in range(25):
+        app.processEvents(); time.sleep(0.05)
+    w.chk_expfix.setChecked(False)
+    app.processEvents(); time.sleep(0.6)
+    raw_top = w._last_rgb
+    w.chk_expfix.setChecked(True)
+    app.processEvents(); time.sleep(0.8)
+    fixed = w._last_rgb
+    s_raw, s_fix = _img_stats(raw_top), _img_stats(fixed)
+    RES["expfix"] = {"raw_factory_topview": s_raw, "after_crop": s_fix, "meta": w._expfix_meta}
+    ck("⑩ 切除前(工厂拉伸图)确认过曝: 死白行>0 且饱和>40%",
+       s_raw["deadwhite_rows"] > 0 and s_raw["sat_pct"] > 40, str(s_raw))
+    ck("⑩ 切除后: 死白行=0 且饱和<15% 且细节能量显著提升",
+       s_fix["deadwhite_rows"] == 0 and s_fix["sat_pct"] < 15
+       and s_fix["tenengrad"] > max(3000, s_raw["tenengrad"] * 2),
+       f"{s_raw} → {s_fix}")
+    ck("⑩ 左右死白列也切了 (最差列饱和从 100% 降下来)",
+       s_raw["worst_col_sat_pct"] > 90 and s_fix["worst_col_sat_pct"] < 60,
+       f"最差列饱和 {s_raw['worst_col_sat_pct']}% → {s_fix['worst_col_sat_pct']}%")
+    ck("⑩ 切除台账 (裁掉多少行/列 + cliff 位置) 如实记录",
+       bool(w._expfix_meta.get("ok")) and w._expfix_meta.get("dropped_sat_rows", 0) > 0
+       and w._expfix_meta.get("cliff", {}).get("y", -1) >= 0,
+       f"裁掉 {w._expfix_meta.get('dropped_sat_rows')} 行 · 保留 {w._expfix_meta.get('kept_rows')} · "
+       f"列裁 {w._expfix_meta.get('x_trim')} · cliff y={w._expfix_meta.get('cliff', {}).get('y')}")
     w.close()
 
     out = os.path.join(ROOT, "reports", f"opt_camera_verify_{time.strftime('%Y%m%d_%H%M%S')}.json")

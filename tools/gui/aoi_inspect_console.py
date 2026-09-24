@@ -35,6 +35,7 @@ from yolo_label_widget import YoloLabelWidget                          # noqa: E
 import yolo_annot_dataset as yad                                       # noqa: E402
 from aoi_head import AoiQualityHead, AOI_CLASSES, CLASS_CN, ROI_SKILLS  # noqa: E402
 import opt_camera_client as optc                                        # noqa: E402  (工控机 OPT 相机)
+import aoi_exposure_fix as aex                                          # noqa: E402  (过曝切除)
 
 SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
 REAL_CANDS = ("cam_rs.png", "cam_local.png", "cam_usb.png")
@@ -75,6 +76,88 @@ def _qss() -> str:
     """
 
 
+class CopyImageView(YoloLabelWidget):
+    """画面控件 + **右键复制图片** (老倪: "显示的图片, 右键即可复制, 可以粘贴到别的地方")。
+
+    ⚠️ 不破坏既有行为: 编辑态且右键命中某个框时 → 仍是"删除该框", 不弹菜单。
+    """
+
+    msg = QtCore.pyqtSignal(str)
+
+    def __init__(self, parent=None, rot_deg=0, editable=False):
+        super().__init__(parent, rot_deg=rot_deg, editable=editable)
+        self._path = ""
+
+    def set_path(self, p):
+        self._path = str(p or "")
+
+    def copy_image(self) -> bool:
+        """把当前画面放进系统剪贴板 (可粘贴到聊天/文档/画图), 同时带上本地路径文本。
+
+        ⚠️ 必须**一次性 setMimeData**: 先 setImage 再 setText 会把图片冲掉
+        (剪贴板只保留一份 mime 载荷, 2026-09-24 实测: 原始图复制后 0x0)。
+        """
+        rgb = self.frame_rgb()
+        if rgb is None:
+            return False
+        rgb = np.ascontiguousarray(rgb)
+        h, w = rgb.shape[:2]
+        img = QtGui.QImage(rgb.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
+        md = QtCore.QMimeData()
+        md.setImageData(img.copy())
+        if self._path:
+            md.setText(self._path)          # 粘到文本处 = 路径; 粘到图处 = 图片
+        QtWidgets.QApplication.clipboard().setMimeData(md)
+        return True
+
+    def copy_path(self) -> str:
+        if not self._path:
+            return ""
+        QtWidgets.QApplication.clipboard().setText(self._path)
+        return self._path
+
+    def save_as(self, parent=None) -> str:
+        rgb = self.frame_rgb()
+        if rgb is None:
+            return ""
+        p, _ = QtWidgets.QFileDialog.getSaveFileName(parent or self, "另存为 PNG",
+                                                    self._path or "aoi_view.png", "PNG (*.png)")
+        if not p:
+            return ""
+        import cv2
+        cv2.imwrite(p, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+        return p
+
+    def contextMenuEvent(self, ev):                                # noqa: N802
+        try:
+            pt = self._img_pt_from_event(ev)
+            on_box = bool(self._editable) and pt is not None and self._hit_test(pt)[1] >= 0
+        except Exception:                                          # noqa: BLE001
+            on_box = False
+        if on_box:
+            return                                                 # 编辑态点框 = 删框 (既有行为)
+        m = QtWidgets.QMenu(self)
+        a_img = m.addAction("📋 复制图片 (可粘贴到其它地方)")
+        a_path = m.addAction("📋 复制图片路径")
+        a_save = m.addAction("💾 另存为 PNG…")
+        m.addSeparator()
+        a_info = m.addAction("ℹ️ 画面信息 (尺寸/来源)")
+        chosen = m.exec_(ev.globalPos())
+        if chosen is None:
+            return
+        if chosen == a_img:
+            self.msg.emit("📋 已复制图片到剪贴板 (Ctrl+V 可粘贴)" if self.copy_image() else "⚠️ 无画面可复制")
+        elif chosen == a_path:
+            p = self.copy_path()
+            self.msg.emit(f"📋 已复制路径: {p}" if p else "⚠️ 该画面暂无本地文件路径")
+        elif chosen == a_save:
+            p = self.save_as(self)
+            self.msg.emit(f"💾 已另存: {p}" if p else "已取消")
+        elif chosen == a_info:
+            rgb = self.frame_rgb()
+            self.msg.emit(f"ℹ️ 画面 {None if rgb is None else rgb.shape} · 本地文件 {self._path or '(无)'}")
+
+
 class AoiInspectConsole(QtWidgets.QDialog):
     """质量检测汇总终端 v2 (简洁版): 三行工具 + 左画面 / 右 Tab + 一行状态。"""
 
@@ -102,6 +185,8 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._opt_lastres = {}
         self._last_opt_cam = 1
         self._orig_rgb = None                    # 📷 原始图 (?kind=origin 2448x2048)
+        self._view_paths = {}                    # 画面本地副本路径 (供复制路径)
+        self._expfix_meta = {}                   # 过曝切除台账
         self._build()
         self._sync_classes()
         self._init_data_root()
@@ -201,6 +286,14 @@ class AoiInspectConsole(QtWidgets.QDialog):
                                       self._opt_verdict)
         for wdg in (self.cmb_via, self.btn_opt_grab, self.btn_opt_recent, self.btn_opt_verd):
             r2src.addWidget(wdg)
+        self.btn_opt_crop = self._btn("📐 裁剪指标", "GET /crop_info (规整度/残余倾角/线残差/金覆盖) — 只读",
+                                      self._opt_cropinfo)
+        self.btn_opt_region = self._btn("📍 区域", "GET /region (金手指区域框 + 对焦清晰度) — 只读, 不拍照",
+                                        self._opt_region)
+        self.btn_opt_meta = self._btn("🗂 图片元数据", "GET /picture?meta=1 (文件名/大小/时间戳/最近判决) — 只读",
+                                      self._opt_picmeta)
+        for wdg2 in (self.btn_opt_crop, self.btn_opt_region, self.btn_opt_meta):
+            r2src.addWidget(wdg2)
         self.btn_load = self._btn("📂 载入", "载入单帧图片/视频首帧 (离线复看与标定素材)", self._pick_file)
         r2src.addWidget(self.btn_load)
         r2src.addStretch(1)
@@ -266,7 +359,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         _lov.setContentsMargins(0, 0, 0, 0); _lov.setSpacing(2)
         self.lbl_v_orig = self._dim("原始图 -")
         _lov.addWidget(self.lbl_v_orig)
-        self.wid_orig = YoloLabelWidget(editable=False)
+        self.wid_orig = CopyImageView(editable=False)
         self.wid_orig.setToolTip("工控机原始图 (?kind=origin, 2448x2048) — 目检/复审; 可切成标定基准")
         _lov.addWidget(self.wid_orig, 1)
         self.split_view.addWidget(_lo)
@@ -274,11 +367,14 @@ class AoiInspectConsole(QtWidgets.QDialog):
         _lcv.setContentsMargins(0, 0, 0, 0); _lcv.setSpacing(2)
         self.lbl_v_crop = self._dim("判据图 · 拉伸 -")
         _lcv.addWidget(self.lbl_v_crop)
-        self.wid = YoloLabelWidget(editable=False)
+        self.wid = CopyImageView(editable=False)
         self.wid.setToolTip("判据图 = 规整拉长 (?kind=topview 960x960) — 任务头推理输入 + 默认标定基准")
         _lcv.addWidget(self.wid, 1)
         self.split_view.addWidget(_lc)
         self.split_view.setSizes([540, 420])
+        for _v in (self.wid, self.wid_orig):
+            _v.msg.connect(self.log)
+            _v.setToolTip(_v.toolTip() + "\n右键 → 复制图片 / 另存为 / 复制路径")
         lv.addWidget(self.split_view, 1)
         lr = QtWidgets.QHBoxLayout(); lr.setSpacing(8)
         lr.addWidget(self._dim("画面"))
@@ -294,6 +390,13 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.chk_roi = QtWidgets.QCheckBox("ROI 高亮")
         self.chk_roi.setChecked(True)
         lr.addWidget(self.chk_roi)
+        self.chk_expfix = QtWidgets.QCheckBox("过曝切除")
+        self.chk_expfix.setChecked(True)
+        self.chk_expfix.setToolTip("老倪 2026-09-24: 工控机拉伸图 73% 是死白 (饱和 61.5%%、死白行 532/960)。\n"
+                                   "勾选 → **不用工控机拉伸图, 改从原始图自裁**: 切掉过曝带 + 左右死白列,\n"
+                                   "只保留金手指条 → 判据图 (实测饱和 61.5%%→5.6%%, 死白行 0, 细节能量 ×8.5)")
+        self.chk_expfix.toggled.connect(lambda _v: self._on_expfix_toggle())
+        lr.addWidget(self.chk_expfix)
         lr.addWidget(self._dim("标定基准"))
         self.rb_basis_crop = QtWidgets.QRadioButton("判据图")
         self.rb_basis_crop.setChecked(True)
@@ -329,14 +432,38 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.tbl_def.cellDoubleClicked.connect(self._goto_defect)
         t2v.addWidget(self.tbl_def, 1)
         self.tabs.addTab(t2, "检测")
-        # Tab3 标定·训练
+        # Tab3 终端: curl 命令 (可复制去 4060 终端执行) + 服务反馈 JSON
         t3 = QtWidgets.QWidget(); t3v = QtWidgets.QVBoxLayout(t3); t3v.setContentsMargins(6, 6, 6, 6)
+        t3v.setSpacing(4)
+        tr = QtWidgets.QHBoxLayout(); tr.setSpacing(6)
+        self.btn_cp_cmd = self._btn("📋 复制命令", "把下面命令框内容复制到剪贴板 (可直接粘到 4060 终端执行)",
+                                    lambda: self._copy_text(self.term_cmd))
+        self.btn_cp_json = self._btn("📋 复制反馈", "复制服务反馈 JSON 全文", lambda: self._copy_text(self.term_json))
+        self.btn_cp_both = self._btn("📋 复制命令+反馈", "命令与反馈一起复制", self._copy_both)
+        self.btn_term_clear = self._btn("🗑 清空终端", "清空命令与反馈框", self._term_clear)
+        for b2 in (self.btn_cp_cmd, self.btn_cp_json, self.btn_cp_both, self.btn_term_clear):
+            tr.addWidget(b2)
+        tr.addStretch(1)
+        self.lbl_term = self._dim("最近: -")
+        tr.addWidget(self.lbl_term)
+        t3v.addLayout(tr)
+        t3v.addWidget(self._dim("命令 (可直接粘到 4060 终端执行)"))
+        self.term_cmd = QtWidgets.QPlainTextEdit(); self.term_cmd.setReadOnly(True)
+        self.term_cmd.setMaximumBlockCount(400); self.term_cmd.setMaximumHeight(110)
+        t3v.addWidget(self.term_cmd)
+        t3v.addWidget(self._dim("服务反馈 (JSON 原文)"))
+        self.term_json = QtWidgets.QPlainTextEdit(); self.term_json.setReadOnly(True)
+        self.term_json.setMaximumBlockCount(800)
+        t3v.addWidget(self.term_json, 1)
+        self.tabs.addTab(t3, "终端")
+        # Tab4 标定·训练
+        t4 = QtWidgets.QWidget(); t3v4 = QtWidgets.QVBoxLayout(t4); t3v4.setContentsMargins(6, 6, 6, 6)
         self.lbl_train = self._dim("训练: 待启动 (先📦构建 → 🚀训练)")
-        t3v.addWidget(self.lbl_train)
+        t3v4.addWidget(self.lbl_train)
         self.txt_log = QtWidgets.QPlainTextEdit(); self.txt_log.setReadOnly(True)
         self.txt_log.setMaximumBlockCount(1500)
-        t3v.addWidget(self.txt_log, 1)
-        self.tabs.addTab(t3, "标定·训练")
+        t3v4.addWidget(self.txt_log, 1)
+        self.tabs.addTab(t4, "标定·训练")
         rv.addWidget(self.tabs, 1)
         split.addWidget(right)
         split.setSizes([860, 560])
@@ -371,6 +498,35 @@ class AoiInspectConsole(QtWidgets.QDialog):
             self.lbl_train.setText("训练: " + str(s)[:110])
         except RuntimeError:                                   # 窗口已销毁 (进程收尾信号晚到)
             print("[aoi-console]", s)
+
+    # ══════════════════════ 终端 (curl 命令 + 服务反馈) ══════════════════════
+    def _term(self, cmd: str, obj=None, note: str = ""):
+        """把这次请求的 **curl 命令** 与 **服务反馈 JSON** 打进终端页 (都可选中复制)。"""
+        try:
+            if cmd:
+                self.term_cmd.appendPlainText(str(cmd))
+            if obj is not None:
+                txt = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False, indent=1)
+                self.term_json.appendPlainText(f"[{time.strftime('%H:%M:%S')}] {txt}"
+                                               + (f"   ({note})" if note else ""))
+            if cmd:
+                self._elide(self.lbl_term, "最近: " + str(cmd)[:70], str(cmd))
+        except RuntimeError:                                       # 窗口已销毁
+            pass
+
+    def _copy_text(self, wdg):
+        t = wdg.toPlainText()
+        QtWidgets.QApplication.clipboard().setText(t)
+        self.log(f"📋 已复制 {len(t)} 字符到剪贴板 (可直接 Ctrl+V)")
+
+    def _copy_both(self):
+        t = "### 命令\n" + self.term_cmd.toPlainText() + "\n### 反馈\n" + self.term_json.toPlainText()
+        QtWidgets.QApplication.clipboard().setText(t)
+        self.log(f"📋 已复制命令+反馈 ({len(t)} 字符)")
+
+    def _term_clear(self):
+        self.term_cmd.clear(); self.term_json.clear()
+        self.log("🗑 终端已清空")
 
     # ══════════════════════ 取帧 / 链路 ══════════════════════
     def _opt_cam(self) -> int:
@@ -448,9 +604,13 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._last_rgb = np.asarray(rgb)
         self._last_tag = tag
         self.wid.set_frame_rgb(self._last_rgb)
-        self._elide(self.lbl_v_crop, f"判据图 · {tag} {self._last_rgb.shape[1]}x{self._last_rgb.shape[0]}",
-                    f"{tag} · {self._last_rgb.shape}")
+        if getattr(self, "_expfix_lbl", None):
+            self._elide(self.lbl_v_crop, self._expfix_lbl[0], self._expfix_lbl[1])
+        else:
+            self._elide(self.lbl_v_crop, f"判据图 · {tag} {self._last_rgb.shape[1]}x{self._last_rgb.shape[0]}",
+                        f"{tag} · {self._last_rgb.shape}")
         if self._orig_rgb is None:               # 非 OPT 源: 原始图=同帧 (没有单独的原始图)
+            self._expfix_lbl = None
             self.wid_orig.set_frame_rgb(self._last_rgb)
             self._elide(self.lbl_v_orig, f"原始图 (=同帧) {self._last_rgb.shape[1]}x{self._last_rgb.shape[0]}",
                         "该帧源无独立原始图, 与判据图同帧")
@@ -504,10 +664,15 @@ class AoiInspectConsole(QtWidgets.QDialog):
         c = optc.CAMERAS[cam]
         if grab:
             r = optc.capture_detect(cam, via=via)
+            self._term(r.get("cmd", ""), r, note=f"真拍 {c['name']}")
             self.log(f"📸 {c['name']} 相机真拍: HTTP {r.get('http')} {r.get('ms')}ms via {r.get('via')} "
                      f"→ {r.get('resp')}")
         rgb, meta = optc.fetch_frame(cam, kind="topview", grab=grab, via=via)
         self._opt_meta = meta                       # ⚠️ 失败也要落状态, 否则界面看不到失败原因
+        self._term(meta.get("cmd", ""), {"ok": meta.get("ok"), "http": meta.get("http"),
+                                         "ms": meta.get("ms"), "shape": meta.get("shape"),
+                                         "mean_gray": meta.get("mean_gray"), "bytes": meta.get("bytes"),
+                                         "err": meta.get("err")}, note=f"判据图 {c['name']}")
         if rgb is None:
             self.log(f"❌ 取图失败: {meta.get('err')} (相机 {c['name']} SN {c['sn']})")
             self._elide(self.lbl_chain, "链路 ❌ " + str(meta.get("err"))[:60], str(meta))
@@ -519,15 +684,24 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._orig_rgb = None
         orig, ometa = optc.fetch_frame(cam, kind="origin", grab=False, via=via)
         self._opt_orig_meta = ometa
+        self._term(ometa.get("cmd", ""), {"ok": ometa.get("ok"), "http": ometa.get("http"),
+                                         "ms": ometa.get("ms"), "shape": ometa.get("shape"),
+                                         "bytes": ometa.get("bytes"), "err": ometa.get("err")},
+                   note=f"原始图 {c['name']}")
+        self._dump_view(orig, f"{c['name']}_origin")
+        self._dump_view(rgb, f"{c['name']}_topview")
         if orig is not None:
             self._orig_rgb = orig
             self.wid_orig.set_frame_rgb(orig)
+            self.wid_orig.set_path(self._view_paths.get(f"{c['name']}_origin", ""))
             self._elide(self.lbl_v_orig, f"原始图 {orig.shape[1]}x{orig.shape[0]} "
                                          f"({ometa.get('bytes', 0)//1024}KB {ometa.get('ms', 0):.0f}ms)",
                         f"工控机原始图 ?kind=origin · {ometa}")
         else:
             self._elide(self.lbl_v_orig, "原始图 取失败", str(ometa))
-        self._set_frame(rgb, self._opt_tag)
+        frame, fx = self._apply_expfix(rgb)
+        self._set_frame(frame, self._opt_tag + (" · 过曝切除" if fx and fx.get("ok") else ""))
+        self.wid.set_path(self._view_paths.get(f"{c['name']}_topview", ""))
         self.wid.set_classes([CLASS_CN.get(x, x) for x in self._cls_names()])
         res = self.run_skill(self._cur_skill, quiet=True)
         self._elide(self.lbl_chain, f"链路 ✅ {c['name']} {meta['shape'][1]}x{meta['shape'][0]} "
@@ -546,9 +720,78 @@ class AoiInspectConsole(QtWidgets.QDialog):
         via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
         lr = optc.last_result(cam, via=via)
         self._opt_lastres = lr
+        self._term(lr.get("_cmd", ""), lr, note="工控机判决 /last_result")
         self.log(f"📋 工控机判决: {json.dumps(lr, ensure_ascii=False)[:260]}")
         if self._last_res:
             self._fill_verdict(self._last_res)
+
+    def _apply_expfix(self, topview_rgb):
+        """过大曝切除: 用**原始图自裁判据图** (切掉死白带/死白列)。返回 (图, meta)。"""
+        if not self.chk_expfix.isChecked():
+            return topview_rgb, {}
+        if self._orig_rgb is None:
+            self.log("ℹ️ 过曝切除: 无原始图可用 → 仍用工控机拉伸图")
+            return topview_rgb, {}
+        clean, meta = aex.clean_judge_frame(self._orig_rgb, out=self.head.imgsz)
+        if clean is None:
+            self.log(f"⚠️ 过曝切除失败: {meta.get('err')} → 仍用工控机拉伸图 (如实记录)")
+            self._term("", meta, note="过曝切除失败")
+            return topview_rgb, meta
+        self._expfix_meta = meta
+        self._term("", meta, note="过曝切除 (本地图像处理, 用原始图自裁)")
+        self._expfix_lbl = (f"判据图 · 过曝切除 {clean.shape[1]}x{clean.shape[0]} · 饱和 "
+                            f"{meta['sat_before']*100:.1f}%→{meta['sat_after']*100:.1f}% · 裁掉 {meta['dropped_sat_rows']} 行",
+                            f"保留行 {meta['kept_rows']} · 列裁 {meta['x_trim']} · cliff {meta['cliff']} · "
+                            f"最差列饱和 {meta['col_sat_after_max']*100:.0f}% · 规则 {meta['rule']}")
+        return clean, meta
+
+    def _on_expfix_toggle(self):
+        self.log("🧯 过曝切除: " + ("开 (原始图自裁判据图)" if self.chk_expfix.isChecked() else "关 (用工厂拉伸图)"))
+        if self.cmb_src.currentIndex() in SRC_OPT_IDX and self._opt_rgb is not None:
+            self._opt_fetch(grab=False, quiet=True)
+
+    def _dump_view(self, rgb, tag: str) -> str:
+        """把当前画面落一份本地副本 (供"复制图片路径"粘到别处/写报告)。"""
+        if rgb is None:
+            return ""
+        try:
+            import cv2
+            d = os.path.join(ROOT, "reports", "opt_view")
+            os.makedirs(d, exist_ok=True)
+            p = os.path.join(d, f"{tag}.png")
+            cv2.imwrite(p, cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2BGR))
+            self._view_paths[tag] = p
+            return p
+        except Exception:                                          # noqa: BLE001
+            return ""
+
+    def _opt_cropinfo(self):
+        cam = self._opt_cam()
+        via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
+        if cam != 1:
+            self.log("⚠️ 裁剪指标只有金手指相机(10082)提供"); return
+        d = optc.crop_info(cam, via=via)
+        self._term(d.get("_cmd", ""), d, note="裁剪指标 /crop_info")
+        self.tabs.setCurrentIndex(2)
+        self.log(f"📐 裁剪指标: {json.dumps(d, ensure_ascii=False)[:200]}")
+
+    def _opt_region(self):
+        cam = self._opt_cam()
+        via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
+        if cam != 1:
+            self.log("⚠️ 区域检测只有金手指相机(10082)提供"); return
+        d = optc.region(cam, grab=False, via=via)          # 只读: 用最近一张, 不拍照
+        self._term(d.get("_cmd", ""), d, note="区域 /region (不拍照)")
+        self.tabs.setCurrentIndex(2)
+        self.log(f"📍 区域: {json.dumps(d, ensure_ascii=False)[:200]}")
+
+    def _opt_picmeta(self):
+        cam = self._opt_cam()
+        via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
+        d = optc.picture_meta(cam, via=via)
+        self._term(d.get("_cmd", ""), d, note="图片元数据 /picture?meta=1")
+        self.tabs.setCurrentIndex(2)
+        self.log(f"🗂 图片元数据: {json.dumps(d, ensure_ascii=False)[:200]}")
 
     def run_skill(self, roi_key: str, quiet: bool = False):
         self._cur_skill = roi_key

@@ -4,3 +4,7 @@
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1140.1, "via": "local", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 16:06:51"}
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1079.6, "via": "local", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 16:15:14"}
 {"cam": "金手指", "port": 10082, "kind": "topview", "http": "200", "ms": 1142.7, "via": "local", "bytes": 750248, "shape": [960, 960, 3], "action": "fetch_grab", "ts": "2026-09-24 16:15:15"}
+{"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 5.1, "via": "local", "ts": "2026-09-24 16:18:51"}
+{"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 4.9, "via": "local", "ts": "2026-09-24 16:20:29"}
+{"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 4.3, "via": "local", "ts": "2026-09-24 16:26:11"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1177.7, "via": "orin", "cmd": "sshpass -p <pw> ssh tashan@192.168.23.66 \"curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'\"", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 16:26:51"}

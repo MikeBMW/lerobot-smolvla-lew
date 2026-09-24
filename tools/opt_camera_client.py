@@ -54,10 +54,13 @@ def _curl(url: str, via: str = "local", method: str = "GET", timeout: int = 12, 
 
     返回 (ok, payload, info): payload = bytes(binary) / dict(json) / str(文本)
     """
+    # 🔧 生成等价 curl 命令 (给窗口显示 + 用户复制到终端执行)
+    _curl_local = (f"curl -s -m {timeout} -X {method} '{url}'" + (" -o frame.png" if binary else ""))
     if via == "orin":
         b64 = " -o - | base64 -w0" if binary else ""
         cmd = (f"timeout {timeout} curl -s -m {timeout} -X {method} "
                f"-w '\\n__HTTP__%{{http_code}} %{{time_total}}' {url}{b64}")
+        info_cmd = f'sshpass -p <pw> ssh {ORIN} "{_curl_local}"' 
         p = subprocess.run(["sshpass", "-p", ORIN_PW, "ssh", "-o", "StrictHostKeyChecking=no",
                             "-o", "ConnectTimeout=8", ORIN, cmd],
                            capture_output=True, timeout=timeout + 12)
@@ -74,7 +77,7 @@ def _curl(url: str, via: str = "local", method: str = "GET", timeout: int = 12, 
         if binary and out:
             out = base64.b64decode(out.strip() + b"=" * (-len(out.strip()) % 4))
         info = {"via": "orin", "http": http, "ms": round(ms, 1), "rc": p.returncode,
-                "err": p.stderr.decode(errors="ignore")[:200]}
+                "err": p.stderr.decode(errors="ignore")[:200], "cmd": info_cmd}
     else:
         args = ["curl", "-s", "-m", str(timeout), "-X", method,
                 "-w", "\n__HTTP__%{http_code} %{time_total}"]
@@ -93,7 +96,7 @@ def _curl(url: str, via: str = "local", method: str = "GET", timeout: int = 12, 
             except Exception:                                          # noqa: BLE001
                 pass
         info = {"via": "local", "http": http, "ms": round(ms, 1), "rc": p.returncode,
-                "err": p.stderr.decode(errors="ignore")[:200]}
+                "err": p.stderr.decode(errors="ignore")[:200], "cmd": _curl_local}
     if not binary:
         try:
             return True, json.loads(out.decode("utf-8", "ignore") or "{}"), info
@@ -134,13 +137,37 @@ def last_result(cam: int = 1, via: str = "local") -> dict:
     d = payload if isinstance(payload, dict) else {"raw": str(payload)[:200]}
     d["_http"] = info.get("http")
     d["_ms"] = info.get("ms")
+    d["_cmd"] = info.get("cmd", "")
     return d
 
 
 def crop_info(cam: int = 1, via: str = "local") -> dict:
     port = CAMERAS[cam]["port"]
     ok, payload, info = _curl(f"http://{HOST}:{port}/crop_info", via=via)
-    return payload if isinstance(payload, dict) else {"raw": str(payload)[:200]}
+    d = payload if isinstance(payload, dict) else {"raw": str(payload)[:200]}
+    d["_http"], d["_ms"], d["_cmd"] = info.get("http"), info.get("ms"), info.get("cmd", "")
+    return d
+
+
+def region(cam: int = 1, grab: bool = False, via: str = "local") -> dict:
+    """区域检测 (金手指区域框 + 对焦清晰度)。grab=True 会真拍 (默认 False 用最近一张)。"""
+    port = CAMERAS[cam]["port"]
+    url = f"http://{HOST}:{port}/region" + ("?grab=1" if grab else "")
+    ok, payload, info = _curl(url, via=via, timeout=25 if grab else 12)
+    d = payload if isinstance(payload, dict) else {"raw": str(payload)[:200]}
+    d["_http"], d["_ms"], d["_cmd"] = info.get("http"), info.get("ms"), info.get("cmd", "")
+    _audit({"cam": CAMERAS[cam]["name"], "port": port, "action": "region", "grab": bool(grab),
+            "http": info.get("http"), "ms": info.get("ms"), "via": info.get("via")})
+    return d
+
+
+def picture_meta(cam: int = 1, via: str = "local") -> dict:
+    """图片元数据 (?meta=1): 文件名/大小/时间戳/最近判决 (只读, 不拍照)。"""
+    port = CAMERAS[cam]["port"]
+    ok, payload, info = _curl(f"http://{HOST}:{port}/picture?kind=topview&meta=1", via=via)
+    d = payload if isinstance(payload, dict) else {"raw": str(payload)[:200]}
+    d["_http"], d["_ms"], d["_cmd"] = info.get("http"), info.get("ms"), info.get("cmd", "")
+    return d
 
 
 def capture_detect(cam: int = 1, via: str = "local") -> dict:
@@ -149,6 +176,7 @@ def capture_detect(cam: int = 1, via: str = "local") -> dict:
     ok, payload, info = _curl(f"http://{HOST}:{port}/capture_detect", via=via, method="POST")
     rec = {"cam": CAMERAS[cam]["name"], "port": port, "action": "capture_detect",
            "http": info.get("http"), "ms": info.get("ms"), "via": info.get("via"),
+           "cmd": info.get("cmd", ""),
            "resp": payload if isinstance(payload, dict) else str(payload)[:120]}
     _audit(rec)
     return rec
@@ -170,7 +198,8 @@ def fetch_frame(cam: int = 1, kind: str = "topview", grab: bool = False, via: st
     ok, data, info = _curl(url, via=via, timeout=25 if grab else 12, binary=True)
     meta = {"cam": c["name"], "port": c["port"], "model": c["model"], "sn": c["sn"],
             "kind": kind, "grab": bool(grab), "http": info.get("http"),
-            "ms": info.get("ms"), "via": info.get("via"), "bytes": len(data) if data else 0}
+            "ms": info.get("ms"), "via": info.get("via"), "bytes": len(data) if data else 0,
+            "cmd": info.get("cmd", "")}
     if not data or (info.get("http") not in ("200", "", None)):
         try:
             j = json.loads(data.decode("utf-8", "ignore"))
@@ -192,7 +221,7 @@ def fetch_frame(cam: int = 1, kind: str = "topview", grab: bool = False, via: st
     return rgb, meta
 
 
-def health(via: str = "local") -> dict:
+def health(via: str = "local") -> dict:          # noqa: D401
     """逐相机体检 (只读: 路由 + 判决通道; 不拍照)。"""
     out = {"host": HOST, "via": via, "cams": {}}
     for cam, c in CAMERAS.items():
