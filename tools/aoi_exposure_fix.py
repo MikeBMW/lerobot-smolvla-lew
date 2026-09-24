@@ -26,6 +26,8 @@ import os
 import numpy as np
 
 SAT_LEVEL = 250          # 判"饱和像素"的灰度门限 (255 上限下的实际死白线)
+K_DEFAULT = 2.0          # 🎯 拉长倍数 (老倪 2026-09-24: 先说拉长三倍, 随即改口径 → **拉长 2 倍**)
+                         #    口径: **只把短边拉 k 倍, 长边保持原样** (不再拉成方图/8~13 倍)
 DEF = {
     "sat_thr": 0.40,     # 保留带允许的饱和像素占比上限 (金面镜反光 ~0.35 可过, 死白带 0.6+ 必须切)
     "edge_pct": 92,      # 边缘密集判定分位 (行 |gx| 均值)
@@ -92,6 +94,28 @@ def find_cliff(prof: dict) -> dict:
     return {"y": k, "jump": float(d[k:k + w].mean())}
 
 
+def stretch_short(rgb, k: float = K_DEFAULT):
+    """**只把短边拉 k 倍** (长边不动) —— 金手指条不再被拉成方图。返回 (图, meta_k)。"""
+    import cv2
+    a = np.asarray(rgb)
+    h, w = a.shape[:2]
+    if k is None or abs(float(k) - 1.0) < 1e-6:
+        return a, {"k": 1.0, "axis": "none", "out_hw": [h, w], "in_hw": [h, w],
+                   "stretch_desc": "无拉长 (×1.0)"}
+    if h <= w:
+        out = (w, max(1, int(round(h * float(k)))))
+        axis = "h"
+    else:
+        out = (max(1, int(round(w * float(k)))), h)
+        axis = "w"
+    img = cv2.resize(a, out, interpolation=cv2.INTER_CUBIC)
+    _short_in, _short_out = (h, out[1]) if axis == "h" else (w, out[0])
+    return img, {"k": round(float(k), 2), "axis": axis, "out_hw": [out[1], out[0]],
+                 "stretch_desc": (f"短边{'高' if axis == 'h' else '宽'} {_short_in}→{_short_out} "
+                                  f"(×{float(k):.1f}) · 长边不动"),
+                 "in_hw": [h, w]}
+
+
 def _runs(mask, merge_gap):
     out, cur = [], None
     for y, m in enumerate(mask):
@@ -130,8 +154,8 @@ def analyze(rgb) -> dict:
             "verdict": ("overexposed" if prof["sat_all"] > 0.10 else "ok")}
 
 
-def clean_judge_frame(rgb, out: int = 960, sat_thr: float | None = None, pad: int | None = None,
-                      return_natural: bool = False):
+def clean_judge_frame(rgb, out: int | None = None, sat_thr: float | None = None, pad: int | None = None,
+                      return_natural: bool = False, k: float = K_DEFAULT):
     """原始图 → **无过曝判据图**: 切掉死白带, 只保留金手指条, 归一化到 out×out (可另返原比例版)。
 
     返回 (clean_rgb, meta)。meta 如实记录: 切掉了多少过曝行、切前/切后饱和占比、保留行区间、cliff。
@@ -155,11 +179,16 @@ def clean_judge_frame(rgb, out: int = 960, sat_thr: float | None = None, pad: in
     x0, x1, xmeta = trim_x(band)
     band = band[:, x0:x1]
     sat_dropped = int((prof["sat"] > sat_thr).sum())
-    clean = cv2.resize(band, (out, out), interpolation=cv2.INTER_CUBIC)
+    if out:                                    # 兼容旧口径: 显式给 out 才拉成 out×out 方图
+        clean = cv2.resize(band, (int(out), int(out)), interpolation=cv2.INTER_CUBIC)
+        kmeta = {"k": None, "axis": "square", "out_hw": [int(out), int(out)]}
+    else:                                      # 🎯 默认: 只把短边拉 k 倍 (老倪口径)
+        clean, kmeta = stretch_short(band, k)
     meta = {"ok": True, "kept_rows": [y0, y1], "kept_h": y1 - y0, "src_h": prof["H"], "src_w": prof["W"],
             "dropped_sat_rows": sat_dropped, "dropped_pct": round(sat_dropped / prof["H"] * 100, 1),
             "sat_before": round(a["sat_all"], 4), "sat_after": round(float((_gray(clean) >= SAT_LEVEL).mean()), 4),
-            "cliff": a["cliff"], "candidate": best, "out": [out, out],
+            "cliff": a["cliff"], "candidate": best, "out": list(clean.shape[:2])[::-1],
+            **kmeta,
             "x_trim": xmeta,
             "col_sat_after_max": round(float((_gray(clean) >= SAT_LEVEL).mean(axis=0).max()), 3),
             "rule": f"sat≤{sat_thr} 且 边缘密集(P{DEF['edge_pct']}) 且 高≥{DEF['min_h']}行, 上下留 {pad} 行"}
@@ -168,7 +197,7 @@ def clean_judge_frame(rgb, out: int = 960, sat_thr: float | None = None, pad: in
     return clean, meta
 
 
-def stretch_rect(rgb, rect, out: int = 640):
+def stretch_rect(rgb, rect, out: int | None = None, k: float = K_DEFAULT):
     """**把用户框选的矩形拉伸成判据图** (老倪 2026-09-24: "我拖出边界框圈出矩形, 你来将圈选矩形对应拉伸")。
 
     rect = (x0, y0, x1, y1) —— 原始图像素坐标 (可以是画面上拖出来的框)。
@@ -186,9 +215,13 @@ def stretch_rect(rgb, rect, out: int = 640):
     g = _gray(crop)
     gx = np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0))
     gy = np.abs(cv2.Sobel(g, cv2.CV_32F, 0, 1))
-    img = cv2.resize(crop, (int(out), int(out)), interpolation=cv2.INTER_CUBIC)
+    if out:
+        img = cv2.resize(crop, (int(out), int(out)), interpolation=cv2.INTER_CUBIC)
+        kmeta = {"k": None, "axis": "square", "out_hw": [int(out), int(out)]}
+    else:
+        img, kmeta = stretch_short(crop, k)
     meta = {"ok": True, "mode": "manual_rect", "rect": [x0, y0, x1, y1], "rect_wh": [x1 - x0, y1 - y0],
-            "src_hw": [H, W], "out": [int(out), int(out)],
+            "src_hw": [H, W], "out": list(img.shape[:2])[::-1], **kmeta,
             "sat_in_rect": round(float((g >= SAT_LEVEL).mean()), 4),
             "deadwhite_rows_in_rect": int((g.mean(axis=1) > 235).sum()),
             "mean_in_rect": round(float(g.mean()), 1), "std_in_rect": round(float(g.std()), 1),
@@ -234,9 +267,11 @@ if __name__ == "__main__":
     print("诊断:", {k: v for k, v in a.items() if k != "gold_candidates"})
     for c in a["gold_candidates"]:
         print("  条带候选:", c)
-    clean, meta = clean_judge_frame(rgb, out=960)
+    _k = float(sys.argv[2]) if len(sys.argv) > 2 else K_DEFAULT
+    clean, meta = clean_judge_frame(rgb, k=_k)          # 默认只拉短边 3 倍
     print("裁切:", {k: v for k, v in meta.items() if k not in ("natural", "candidate")})
+    print(f"→ 拉长口径: {meta.get('stretch_desc')}")
     if clean is not None:
-        o = p.replace(".png", "_clean960.png")
+        o = p.replace(".png", f"_clean_k{_k:g}.png")
         cv2.imwrite(o, cv2.cvtColor(clean, cv2.COLOR_RGB2BGR))
         print("→", o)

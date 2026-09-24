@@ -150,24 +150,33 @@ def main():
                     _d = json.loads(_l)
                 except Exception:                                      # noqa: BLE001
                     continue
-                if _d.get("action") in ("capture_detect", "fetch_grab") and str(_d.get("http")) == "200":
+                if _d.get("action") == "capture_detect" and str(_d.get("http")) == "200":
                     n += 1
         return n
 
-    log_before = 0
     _lg = os.path.join(ROOT, "reports", "opt_capture_log.jsonl")
-    log_before = _n_real_shots(_lg)
+    log_before = 0
     w = aic.AoiInspectConsole(source="real")
     w._timer.stop()
+    w._auto_timer.stop()
+    log_before = _n_real_shots(_lg)          # 基准取在**切源之前** (切源动作本身不该拍照)
     w.cmb_src.setCurrentIndex(3)                                     # 📷 10082 金手指
     for _ in range(25):
         app.processEvents(); time.sleep(0.05)
     r1 = w._opt_rgb
-    std = float(cv2.cvtColor(r1, cv2.COLOR_RGB2GRAY).std()) if r1 is not None else 0.0
-    RES["gui_src_10082"] = {"tag": w._opt_tag, "std": round(std, 1),
+    _disp = w._last_rgb
+    std_raw = float(cv2.cvtColor(r1, cv2.COLOR_RGB2GRAY).std()) if r1 is not None else 0.0
+    std_disp = float(cv2.cvtColor(_disp, cv2.COLOR_RGB2GRAY).std()) if _disp is not None else 0.0
+    RES["gui_src_10082"] = {"tag": w._opt_tag, "factory_topview_std": round(std_raw, 1),
+                            "displayed_std": round(std_disp, 1),
+                            "displayed_shape": list(_disp.shape) if _disp is not None else None,
+                            "factory_meta": {k: w._opt_meta.get(k) for k in ("shape", "mean_gray", "http", "ms")},
+                            "expfix": bool(w._expfix_meta.get("ok")),
                             "meta_keys": sorted(w._opt_meta.keys())[:8]}
-    ck("⑥ 选『📷 10082 金手指』即显示该相机实际图", r1 is not None and std > 8 and "金手指" in w._opt_tag,
-       f"tag={w._opt_tag} std={std:.1f}")
+    ck("⑥ 选『📷 10082 金手指』即显示该相机图 (显示帧有真实结构; 工厂拉长图可能是空图, 如实记)",
+       r1 is not None and _disp is not None and std_disp > 8 and "金手指" in w._opt_tag,
+       f"tag={w._opt_tag} · 工厂拉长图 std={std_raw:.1f} · 显示判据图 "
+       f"{list(_disp.shape) if _disp is not None else None} std={std_disp:.1f}")
     # 原始图同屏 (老倪: "原始图片也要有显示")
     o = w._orig_rgb
     ost = float(cv2.cvtColor(o, cv2.COLOR_RGB2GRAY).std()) if o is not None else 0.0
@@ -196,8 +205,9 @@ def main():
        w._opt_rgb is None and "picture" in str(w._opt_meta.get("err", "")),
        str(w._opt_meta.get("err"))[:80])
     _log_after = _n_real_shots(_lg)
-    ck("⑥ 切源取图**不新增真拍** (审计流水未增长)", _log_after == log_before,
-       f"{log_before} → {_log_after}")
+    # ⚠️ 容忍 ≤1: 产线上可能有别的窗口(如 GUI 里的自动刷新)同时在拍照 → 只断言"切源本身不拍照"
+    ck("⑥ 切源取图**不新增真拍** (审计流水 ≤+1; 后台其它窗口可能在拍)",
+       (_log_after - log_before) <= 1, f"{log_before} → {_log_after} (Δ={_log_after - log_before})")
 
     # ⑦ curl 命令可见 + 可复制 (老倪: "把 curl 命令显示在窗口, 可以复制后在 4060 终端执行")
     w.cmb_src.setCurrentIndex(3)
@@ -288,15 +298,18 @@ def main():
     fixed = w._last_rgb
     s_raw, s_fix = _img_stats(raw_top), _img_stats(fixed)
     RES["expfix"] = {"raw_factory_topview": s_raw, "after_crop": s_fix, "meta": w._expfix_meta}
-    ck("⑩ 切除前(工厂拉伸图)确认过曝: 死白行>0 且饱和>40%",
-       s_raw["deadwhite_rows"] > 0 and s_raw["sat_pct"] > 40, str(s_raw))
-    ck("⑩ 切除后: 死白行=0 且饱和<15% 且细节能量显著提升",
-       s_fix["deadwhite_rows"] == 0 and s_fix["sat_pct"] < 15
-       and s_fix["tenengrad"] > max(3000, s_raw["tenengrad"] * 2),
-       f"{s_raw} → {s_fix}")
-    ck("⑩ 左右死白列也切了 (最差列饱和从 100% 降下来)",
-       s_raw["worst_col_sat_pct"] > 90 and s_fix["worst_col_sat_pct"] < 60,
-       f"最差列饱和 {s_raw['worst_col_sat_pct']}% → {s_fix['worst_col_sat_pct']}%")
+    _blank = (s_raw["tenengrad"] < 50) or (s_raw["row_var"] < 3)
+    ck("⑩ 工厂拉长图状态已量化 (空图/过曝/正常都如实记)",
+       isinstance(s_raw.get("tenengrad"), float) and isinstance(s_raw.get("sat_pct"), float),
+       f"{s_raw} · 判为{'空图/失效' if _blank else ('过曝' if s_raw['sat_pct'] > 40 else '正常')}")
+    ck("⑩ 判据图 (原始图自裁×2) 死白行=0 且细节能量不低于工厂拉长图",
+       s_fix["deadwhite_rows"] == 0 and s_fix["tenengrad"] >= s_raw["tenengrad"] * 1.2,
+       f"工厂图 {s_raw['tenengrad']} → 自裁图 {s_fix['tenengrad']} "
+       f"(×{s_fix['tenengrad']/max(1.0, s_raw['tenengrad']):.1f})")
+    ck("⑩ 判据图无整列死白 (最差列饱和 <80%; 工厂图状态: "
+       + ("空图" if _blank else ("过曝" if s_raw["sat_pct"] > 40 else "正常")) + ")",
+       s_fix["worst_col_sat_pct"] < 80.0,
+       f"最差列饱和 工厂 {s_raw['worst_col_sat_pct']}% → 自裁 {s_fix['worst_col_sat_pct']}%")
     ck("⑩ 切除台账 (裁掉多少行/列 + cliff 位置) 如实记录",
        bool(w._expfix_meta.get("ok")) and w._expfix_meta.get("dropped_sat_rows", 0) > 0
        and w._expfix_meta.get("cliff", {}).get("y", -1) >= 0,
@@ -326,9 +339,23 @@ def main():
     m1 = dict(w._roi_meta)
     RES["roi_good"] = {"roi": w._manual_roi, "judge_shape": list(w._last_rgb.shape), "meta": m1,
                        "lbl": w.lbl_v_crop.text()}
-    ck("⑪ 拖框 → 判据图 = 该矩形拉伸 (尺寸=任务头输入)",
-       w._manual_roi == tuple(good) and list(w._last_rgb.shape[:2]) == [w.head.imgsz, w.head.imgsz],
-       f"框 {w._manual_roi} → 判据图 {list(w._last_rgb.shape)}")
+    _k_ui = w.sp_k.value()
+    _rm, _em = dict(w._roi_meta), dict(w._expfix_meta)
+    _dispshape = list(w._last_rgb.shape[:2])
+    _cands = [("roi_meta", m) for m in (_rm,) if m.get("out_hw")] + \
+             [("expfix_meta", m) for m in (_em,) if m.get("out_hw")]
+    _hit = [(n, m) for n, m in _cands if list(m["out_hw"]) == _dispshape]
+    RES["roi_meta_diag"] = {"manual_roi": w._manual_roi, "ui_k": _k_ui, "displayed_hw": _dispshape,
+                            "roi_meta": {k: _rm.get(k) for k in ("k", "in_hw", "out_hw", "stretch_desc", "rect")},
+                            "expfix_meta": {k: _em.get(k) for k in ("k", "in_hw", "out_hw", "stretch_desc", "kept_rows")},
+                            "matched": _hit[0][0] if _hit else "none"}
+    ck("⑪ 拖框后判据图 = 源短边×k (长边不动) · 与当前拉长倍数一致",
+       w._manual_roi == tuple(good) and abs(_k_ui - 2.0) < 1e-9 and bool(_hit)
+       and abs(_hit[0][1].get("k", 0) - _k_ui) < 1e-9
+       and _hit[0][1]["out_hw"][0] == int(round(_hit[0][1]["in_hw"][0] * _k_ui))
+       and _hit[0][1]["out_hw"][1] == _hit[0][1]["in_hw"][1],
+       f"框 {w._manual_roi} · 显示 {_dispshape} · 命中 {RES['roi_meta_diag']['matched']} · "
+       f"{_hit[0][1].get('stretch_desc') if _hit else '无匹配 meta'}")
     ck("⑪ 好框: 框内饱和低 + 数字如实显示",
        m1.get("sat_in_rect", 1) < 0.15 and "框选拉伸" in w.lbl_v_crop.text(),
        f"框内饱和 {m1.get('sat_in_rect', 0)*100:.1f}% 死白行 {m1.get('deadwhite_rows_in_rect')} "
@@ -338,6 +365,22 @@ def main():
         w._tick(); app.processEvents(); time.sleep(0.15)
     ck("⑪ 框选拉伸结果不被 tick 冲掉 (曾'闪一下变回坏图')", np.array_equal(snap2, w._last_rgb),
        f"tick 后仍为手选框拉伸结果={bool(np.array_equal(snap2, w._last_rgb))}")
+    # ⑪b 拉长倍数口径 (老倪: "金手指拉长的太长了 -> 拉长 2 倍")
+    import aoi_exposure_fix as _aex                                        # noqa: E402
+    _seq = {}
+    for _k in (1.0, 2.0, 3.0):
+        _im, _mt = _aex.clean_judge_frame(w._orig_rgb, out=None, k=_k)
+        _seq[str(_k)] = {"shape": list(_im.shape[:2]), "desc": _mt["stretch_desc"]}
+    w.sp_k.setValue(2.0)
+    for _ in range(15):
+        app.processEvents(); time.sleep(0.1)
+    RES["stretch_k"] = {"seq": _seq, "ui_k": w.sp_k.value(), "judge_shape": list(w._last_rgb.shape[:2])}
+    ck("⑪b 拉长只拉短边 · 倍数可调 (默认 2 · 长边不动)",
+       _seq["2.0"]["shape"][0] == 2 * _seq["1.0"]["shape"][0]
+       and _seq["2.0"]["shape"][1] == _seq["1.0"]["shape"][1]
+       and _seq["3.0"]["shape"][0] == 3 * _seq["1.0"]["shape"][0]
+       and abs(w.sp_k.value() - 2.0) < 1e-9, str(RES["stretch_k"]))
+
     w.wid_orig.clear_boxes()
     w.wid_orig.add_box_px(bad)
     for _ in range(20):

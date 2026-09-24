@@ -296,10 +296,12 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.cmb_auto = QtWidgets.QComboBox(); self.cmb_auto.addItems(["3s", "5s", "10s"])
         self.cmb_auto.setCurrentText("5s"); self.cmb_auto.setMaximumWidth(70)
         self.cmb_auto.currentTextChanged.connect(lambda _t: self._on_auto_toggle(self.chk_auto.isChecked()))
-        self.cmb_auto_mode = QtWidgets.QComboBox(); self.cmb_auto_mode.addItems(["真拍", "只取图"])
+        self.cmb_auto_mode = QtWidgets.QComboBox(); self.cmb_auto_mode.addItems(["只取图", "真拍"])
         self.cmb_auto_mode.setMaximumWidth(90)
         self.cmb_auto_mode.currentTextChanged.connect(lambda _t: self._on_auto_toggle(self.chk_auto.isChecked()))
-        self.cmb_auto_mode.setToolTip("真拍 = 每次更新都 POST /capture_detect (产线台会真拍)")
+        self.cmb_auto_mode.setToolTip("默认「只取图」= 只 GET /picture 不拍照 (安全)\n"
+                                      "「真拍」= 每次更新都 POST /capture_detect 真拍产线台\n"
+                                      "⚠️ 真拍模式间隔强制 ≥10s (防连拍影响产线)")
         for wdg in (self.cmb_via, self.btn_opt_grab, self.btn_opt_recent,
                     self.chk_auto, self.cmb_auto, self.cmb_auto_mode):
             r2src.addWidget(wdg)
@@ -434,6 +436,14 @@ class AoiInspectConsole(QtWidgets.QDialog):
                                    "只保留金手指条 → 判据图 (实测饱和 61.5%→5.6%, 死白行 0, 细节能量 ×8.5)")
         self.chk_expfix.toggled.connect(lambda _v: self._on_expfix_toggle())
         r5.addWidget(self.chk_expfix)
+        r5.addWidget(self._dim("拉长"))
+        self.sp_k = QtWidgets.QDoubleSpinBox()
+        self.sp_k.setRange(1.0, 6.0); self.sp_k.setSingleStep(0.5); self.sp_k.setValue(2.0)
+        self.sp_k.setMaximumWidth(80)
+        self.sp_k.setToolTip("金手指拉长倍数 (老倪 2026-09-24 最终口径: **只把短边拉 2 倍**, 长边保持原样;\n"
+                             "原来工控机拉成方图 = 纵向 8~13 倍, 太长了)")
+        self.sp_k.valueChanged.connect(self._on_k_changed)
+        r5.addWidget(self.sp_k)
         self.chk_roi_pick = QtWidgets.QCheckBox("🎯 框选拉伸")
         self.chk_roi_pick.setToolTip("老倪 2026-09-24: 在**原始图**上拖出矩形 → 松手即把该矩形拉伸成判据图\n"
                                      "(自动裁切不理想时手动指定; 框内过曝会有数字告警)")
@@ -959,7 +969,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         if self._orig_rgb is None or not self._manual_roi:
             self.log("⚠️ 框选拉伸: 需要原始图 + 一个框")
             return
-        img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=self.head.imgsz)
+        img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=None, k=self.sp_k.value())
         self._roi_meta = meta
         if img is None:
             self.log(f"⚠️ 框选拉伸失败: {meta.get('err')}")
@@ -967,7 +977,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.wid.set_frame_rgb(img)
         self.wid.set_path(self._dump_view(img, "manual_roi_judge"))
         self._term("", meta, note=f"框选拉伸 {'(拖框自动)' if auto else ''}")
-        self._elide(self.lbl_v_crop, f"判据图 · 框选拉伸 {img.shape[1]}x{img.shape[0]} · "
+        self._elide(self.lbl_v_crop, f"判据图 · 框选拉伸×{meta.get('k') or 2:g} {img.shape[1]}x{img.shape[0]} · "
                                      f"框内饱和 {meta['sat_in_rect']*100:.1f}% · 框内死白行 {meta['deadwhite_rows_in_rect']}",
                     f"框 {meta['rect']} ({meta['rect_wh'][0]}x{meta['rect_wh'][1]}px) → {meta['out']} · "
                     f"框内均值 {meta['mean_in_rect']} std {meta['std_in_rect']} Tenengrad {meta['tenengrad_in_rect']}")
@@ -1004,7 +1014,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
     def _apply_expfix(self, topview_rgb):
         """判据图来源优先级: ① 手动框选拉伸 ② 原始图自动过曝切除 ③ 工厂拉伸图(如实告警)。"""
         if self._manual_roi and self._orig_rgb is not None and self.chk_expfix.isChecked():
-            img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=self.head.imgsz)
+            img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=None, k=self.sp_k.value())
             if img is not None:
                 self._roi_meta = meta
                 self._term("", meta, note="框选拉伸 (记住的 ROI 自动套用)")
@@ -1015,12 +1025,14 @@ class AoiInspectConsole(QtWidgets.QDialog):
                 self.log(f"🎯 套用记住的框选 ROI {meta['rect']} → 框内饱和 "
                          f"{meta['sat_in_rect']*100:.1f}%" + (f" ⚠️ {meta['warning']}" if meta.get("warning") else ""))
                 return img, meta
+        if self._manual_roi:
+            self.log("⚠️ 仅自动裁切生效: 手动框选失败或未开启过曝切除 → 如需用框选请重拖一次")
         if not self.chk_expfix.isChecked():
             return topview_rgb, {}
         if self._orig_rgb is None:
             self.log("ℹ️ 过曝切除: 无原始图可用 → 仍用工控机拉伸图")
             return topview_rgb, {}
-        clean, meta = aex.clean_judge_frame(self._orig_rgb, out=self.head.imgsz)
+        clean, meta = aex.clean_judge_frame(self._orig_rgb, out=None, k=self.sp_k.value())
         if clean is None:
             self.log(f"⚠️ 自动过曝切除未找到合格带: {meta.get('err')} → 回退工控机拉伸图 (可能仍一片白! "
                      f"请在原始图上用『🎯 框选拉伸』手动指定)")
@@ -1030,11 +1042,16 @@ class AoiInspectConsole(QtWidgets.QDialog):
             return topview_rgb, meta
         self._expfix_meta = meta
         self._term("", meta, note="过曝切除 (本地图像处理, 用原始图自裁)")
-        self._expfix_lbl = (f"判据图 · 过曝切除 {clean.shape[1]}x{clean.shape[0]} · 饱和 "
+        self._expfix_lbl = (f"判据图 · 过曝切除 拉长×{meta.get('k') or 2:g} {clean.shape[1]}x{clean.shape[0]} · 饱和 "
                             f"{meta['sat_before']*100:.1f}%→{meta['sat_after']*100:.1f}% · 裁掉 {meta['dropped_sat_rows']} 行",
                             f"保留行 {meta['kept_rows']} · 列裁 {meta['x_trim']} · cliff {meta['cliff']} · "
                             f"最差列饱和 {meta['col_sat_after_max']*100:.0f}% · 规则 {meta['rule']}")
         return clean, meta
+
+    def _on_k_changed(self, v):
+        self.log(f"🔧 拉长倍数 → ×{v:g} (短边拉长, 长边不动)")
+        if self.cmb_src.currentIndex() in SRC_OPT_IDX and self._opt_rgb is not None:
+            self._opt_fetch(grab=False, quiet=True)
 
     def _on_expfix_toggle(self):
         self.log("🧯 过曝切除: " + ("开 (原始图自裁判据图)" if self.chk_expfix.isChecked() else "关 (用工厂拉伸图)"))
@@ -1150,6 +1167,9 @@ class AoiInspectConsole(QtWidgets.QDialog):
             return
         sec = int(str(self.cmb_auto.currentText()).rstrip("s") or 5)
         mode = self.cmb_auto_mode.currentText()
+        if mode == "真拍" and sec < 10:                 # 防连拍打扰产线
+            sec = 10
+            self.log("⚠️ 真拍模式间隔强制 ≥10s (已按 10s)")
         self._auto_timer.start(sec * 1000)
         self.log("▶ 自动刷新: 每 %ds · 模式「%s」%s"
                  % (sec, mode, "  ⚠️ 真拍模式: 会连续触发工控机拍照 (产线台)" if mode == "真拍" else " (不拍照)"))

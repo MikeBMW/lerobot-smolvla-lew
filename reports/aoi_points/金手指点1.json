@@ -1,39 +1,33 @@
 {
  "name": "金手指点1",
- "recorded_at": "2026-09-24 16:54:15",
+ "recorded_at": "2026-09-24 17:45:33",
  "operator": "engineer",
  "pose": {
   "pos": [
-   0.5972987,
-   0.1486197,
-   0.6415947
+   0.5973107,
+   0.1426173,
+   0.6415652
   ],
   "quat": [
-   -0.0800138,
-   0.0069569,
-   0.9963443,
-   0.0291112
+   -0.0799063,
+   0.0077645,
+   0.9960053,
+   0.0390903
   ]
  },
- "roi": null,
- "judge_png": "",
+ "roi": [
+  433,
+  948,
+  2056,
+  1074
+ ],
+ "judge_png": "/tmp/x.png",
  "judge_stats": {
-  "judge_shape": [
-   480,
-   640,
-   3
-  ],
-  "mean": 110.6,
-  "sat_pct": 2.27
+  "sat_in_rect": 0.044
  },
  "spread": {
-  "pos_m": 5.1e-07,
-  "quat": 3.5e-07
+  "pos_m": 0.0,
+  "quat": 0.0
  },
- "status_at_record": {
-  "power_state": "on",
-  "operation_state": "idle",
-  "has_error": "false",
-  "error_code": ""
- }
+ "status_at_record": {}
 }
