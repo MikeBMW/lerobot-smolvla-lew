@@ -1,0 +1,228 @@
+{
+ "frame": "data/real_yolo_perception_104.mp4",
+ "head": {
+  "weights": "",
+  "model_ready": false,
+  "classes": [],
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "entry_visibility": {
+  "n_buttons": 20,
+  "not_reachable": [],
+  "widths": {
+   "gold_finger": 124,
+   "module_body": 108,
+   "optical_port": 108,
+   "full": 109,
+   "save": 108,
+   "savenext": 140,
+   "newcls": 101,
+   "setcls": 127,
+   "undo": 102,
+   "del": 102,
+   "clear": 101,
+   "build": 127,
+   "check": 73,
+   "train": 156,
+   "live": 108,
+   "datadir": 108,
+   "expjson": 152,
+   "expcsv": 144,
+   "labelmode": 112,
+   "freeze": 146
+  }
+ },
+ "schema": {
+  "path": "/tmp/aoi_verify_0kf4_jhy/yolo_aoi_annot/classes.txt",
+  "lines": [
+   "module_body",
+   "gold_finger",
+   "optical_port",
+   "gf_scratch",
+   "gf_contam",
+   "gf_oxide",
+   "gf_chip",
+   "app_scratch",
+   "app_deform",
+   "app_stain"
+  ]
+ },
+ "skills": {
+  "gold_finger": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 8.1
+  },
+  "module_body": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 8.2
+  },
+  "optical_port": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 8.4
+  },
+  "full": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 8.5
+  }
+ },
+ "roi": {
+  "meta": {
+   "box": [
+    0,
+    0,
+    480,
+    480
+   ],
+   "pad": 0.0,
+   "zoom": 2.667,
+   "src_shape": [
+    480,
+    480
+   ],
+   "out": 640
+  },
+  "stretched_shape": [
+   640,
+   640,
+   3
+  ],
+  "zoom": 5.74
+ },
+ "annot": {
+  "before": 0,
+  "after": 1,
+  "check": {
+   "n_images": 1,
+   "n_labels": 1,
+   "n_boxes": 2,
+   "n_empty_label": 0,
+   "errors": [],
+   "warnings": [
+    "dataset/data.yaml 不存在 → 还没 --build"
+   ],
+   "per_class": {
+    "gf_scratch": 2
+   },
+   "sessions": {
+    "s20260924_1523_d405": 1
+   },
+   "data_yaml": null
+  },
+  "sample_files": 1
+ },
+ "dataset": {
+  "stats": {
+   "root": "/tmp/aoi_verify_0kf4_jhy/yolo_aoi_annot",
+   "built": "2026-09-24 15:23:28",
+   "val_ratio": 0.15,
+   "seed": 0,
+   "classes": [
+    "module_body",
+    "gold_finger",
+    "optical_port",
+    "gf_scratch",
+    "gf_contam",
+    "gf_oxide",
+    "gf_chip",
+    "app_scratch",
+    "app_deform",
+    "app_stain"
+   ],
+   "n_train": 1,
+   "n_val": 1,
+   "per_class": {
+    "gf_scratch": 2
+   },
+   "n_boxes": 2,
+   "n_samples": 1,
+   "val_overlap_train": true,
+   "n_auto_samples": 0,
+   "n_human_samples": 1,
+   "n_auto_train": 0,
+   "auto_in_val": 0,
+   "auto_sessions": [],
+   "n_pending_excluded": 0,
+   "pending_sessions": [],
+   "note": "样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信); val 仅由人工样本构成",
+   "sessions": [
+    "s20260924_1523_d405"
+   ],
+   "n_truth": 0,
+   "truth_file": "/tmp/aoi_verify_0kf4_jhy/yolo_aoi_annot/dataset/truth.jsonl"
+  },
+  "train": 1,
+  "val": 1,
+  "data_yaml": true
+ },
+ "export": {
+  "json": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_inspect_20260924_152328.json",
+  "csv": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_inspect_20260924_152328.csv",
+  "json_keys": [
+   "ts",
+   "roi_skill",
+   "loc",
+   "roi_meta",
+   "defects",
+   "verdict",
+   "weights",
+   "model_classes",
+   "note",
+   "elapsed_ms"
+  ]
+ },
+ "train_proc": {
+  "started": false,
+  "log_tail": [
+   "[设备] 0 · torch 2.7.1+cu128 · cuda=True",
+   "[参数] epochs=30 imgsz=640 batch=8 类别=['module_body', 'gold_finger', 'optical_port', 'gf_scratch', 'gf_contam', 'gf_oxide', 'gf_chip', 'app_scratch', 'app_deform', 'app_stain'] nc=10",
+   "=============================================================================="
+  ]
+ },
+ "train_smoke": {
+  "cmd": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python /home/ubuntu/lerobot-smolvla-lew/tools/yolo_annot_train.py --data /tmp/aoi_verify_0kf4_jhy/yolo_aoi_annot/dataset --root /tmp/aoi_verify_0kf4_jhy/yolo_aoi_annot --base auto --epochs 1 --imgsz 320 --batch 2 --name aoi_verify_0924_1523 --project outputs/yolo_aoi --verify 2",
+  "rc": 0,
+  "wall_s": 42.4,
+  "best_pt": "/home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_aoi/aoi_verify_0924_1523/weights/best.pt",
+  "tail": "=====================================================\n[真机帧对照] yolo_peg_live.pt vs best.pt → 采 40 张新鲜真机帧 (训练后新采, 未见过)\n   新权重: peg 检出 0/16 帧 · conf mean None max None\n   在役  : peg 检出 3/16 帧 · conf mean 0.263 max 0.27\n   判定: ➖ 持平/回退 → 按纪律不上默认档\n   可视化(画框): /home/ubuntu/lerobot-smolvla-lew/reports/yolo_live_vis_aoi_verify_0924_1523  数据: /home/ubuntu/lerobot-smolvla-lew/reports/yolo_live_eval_aoi_verify_0924_1523.json\n   上在役 (单点切换): ln -sfn /home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_aoi/aoi_verify_0924_1523/weights/best.pt /home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt\n✅ 完成\n"
+ },
+ "screenshot": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_console_verify_20260924_152418.png",
+ "checks": {
+  "① 全部入口可达 (可见+可用+宽>20)": true,
+  "② 类别 schema 落盘 (行号=class id)": true,
+  "③ 载入帧文件": true,
+  "③ 四技能均出判决表 (>0 行)": true,
+  "③ 判决来源可辨 (启发式/模型 标注)": true,
+  "④ 图像定位 + 拉伸生效 (ROI→imgsz²)": true,
+  "⑤ 标定落盘 (样本数 +1)": true,
+  "⑤ 体检可跑 (无异常)": true,
+  "⑥ 数据集构建 (data.yaml + 分片)": true,
+  "⑦ 判决导出 (JSON+CSV)": true,
+  "⑧ 在线训练可启动 (命令下发)": true,
+  "⑨ 真训练 smoke 产出 best.pt": true
+ },
+ "checks_pass": "12/12"
+}

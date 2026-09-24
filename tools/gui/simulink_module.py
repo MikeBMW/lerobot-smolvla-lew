@@ -3666,6 +3666,12 @@ class SimCanvas(QGraphicsView):
             _cs = _canvas_src_state(self.module)
             a_input = menu.addAction("打开输入图像 (%s)"
                                      % ("🧪 仿真 metaworld" if _cs == "仿真" else "🎥 真机 RealSense"))
+        # 🔍 2026-09-24 老倪: 外观质量检测节点右键 → 打开**质量检测汇总终端**
+        #   (金手指检查 / 外观划伤 / 光口端面 / 全帧扫描 · 图像定位+拉伸 · 缺陷框选标定 · 在线增量训练)
+        #   与「打开输入图像」同款入口: 帧源跟随画布「🔀 数据源切换」
+        a_aoi = None
+        if "外观质量检测" in item.node.get("name", "") or item.node.get("params", {}).get("aoi_quality"):
+            a_aoi = menu.addAction("打开质量检测终端 (金手指/外观/标定/在线训练)")
         # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
         a_srcsw = None
         if item.node.get("params", {}).get("src_switch"):
@@ -3768,6 +3774,17 @@ class SimCanvas(QGraphicsView):
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
+                except Exception:                                          # noqa: BLE001
+                    pass
+        elif a_aoi is not None and chosen == a_aoi:
+            # 🔍 2026-09-24 老倪: 质量检测汇总终端 (帧源同样跟随画布数据源切换)
+            try:
+                from aoi_inspect_console import open_aoi_console
+                _src = "sim" if _canvas_src_state(self.module) == "仿真" else "real"
+                open_aoi_console(self, module=self.module, source=_src)
+            except Exception as _e:                                        # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开质量检测终端失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
 

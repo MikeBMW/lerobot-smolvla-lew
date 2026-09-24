@@ -1,0 +1,396 @@
+{
+ "frames_dir": "/tmp/live_eval_0924_1520",
+ "frames": 15,
+ "ts": "2026-09-24 15:20:33",
+ "results": [
+  {
+   "weights": "/home/ubuntu/lerobot-smolvla-lew/models/yolo_peg_live.pt",
+   "imgsz": 320,
+   "conf": 0.25,
+   "n_frames": 15,
+   "frames_with_peg": 15,
+   "peg_rate": 1.0,
+   "peg_conf_mean": 0.656,
+   "peg_conf_max": 0.798,
+   "classes": {
+    "0": "peg",
+    "1": "OPT_Gold"
+   },
+   "peg_class_idx": [
+    0
+   ],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.497,
+       "xyxy": [
+        297.5,
+        0.0,
+        361.7,
+        48.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_001.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.505,
+       "xyxy": [
+        297.5,
+        0.0,
+        361.7,
+        48.7
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_002.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.505,
+       "xyxy": [
+        297.5,
+        0.0,
+        361.7,
+        48.7
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_003.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.506,
+       "xyxy": [
+        297.7,
+        0.0,
+        361.7,
+        48.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_004.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.542,
+       "xyxy": [
+        298.6,
+        0.0,
+        361.2,
+        49.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_005.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.542,
+       "xyxy": [
+        298.6,
+        0.0,
+        361.2,
+        49.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_006.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.585,
+       "xyxy": [
+        298.4,
+        0.0,
+        361.7,
+        51.0
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_007.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.768,
+       "xyxy": [
+        299.2,
+        0.0,
+        360.3,
+        65.3
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_008.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.768,
+       "xyxy": [
+        299.2,
+        0.0,
+        360.3,
+        65.3
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_009.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.767,
+       "xyxy": [
+        298.7,
+        0.0,
+        360.0,
+        65.5
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_010.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.765,
+       "xyxy": [
+        301.1,
+        0.0,
+        361.9,
+        64.8
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_011.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.798,
+       "xyxy": [
+        302.1,
+        0.0,
+        362.0,
+        66.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_012.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.798,
+       "xyxy": [
+        302.1,
+        0.0,
+        362.0,
+        66.2
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_013.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.756,
+       "xyxy": [
+        301.2,
+        0.0,
+        362.2,
+        62.6
+       ]
+      }
+     ]
+    },
+    {
+     "frame": "live_014.png",
+     "n": 1,
+     "peg": 1,
+     "dets": [
+      {
+       "cls": "peg",
+       "conf": 0.737,
+       "xyxy": [
+        300.6,
+        0.0,
+        362.3,
+        62.2
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "weights": "runs/detect/outputs/yolo_aoi/aoi_verify_0924_1519/weights/best.pt",
+   "imgsz": 320,
+   "conf": 0.25,
+   "n_frames": 15,
+   "frames_with_peg": 0,
+   "peg_rate": 0.0,
+   "peg_conf_mean": null,
+   "peg_conf_max": null,
+   "classes": {
+    "0": "module_body",
+    "1": "gold_finger",
+    "2": "optical_port",
+    "3": "gf_scratch",
+    "4": "gf_contam",
+    "5": "gf_oxide",
+    "6": "gf_chip",
+    "7": "app_scratch",
+    "8": "app_deform",
+    "9": "app_stain"
+   },
+   "peg_class_idx": [],
+   "rows": [
+    {
+     "frame": "live_000.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_001.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_002.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_003.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_004.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_005.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_006.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_007.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_008.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_009.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_010.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_011.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_012.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_013.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    },
+    {
+     "frame": "live_014.png",
+     "n": 0,
+     "peg": 0,
+     "dets": []
+    }
+   ]
+  }
+ ]
+}

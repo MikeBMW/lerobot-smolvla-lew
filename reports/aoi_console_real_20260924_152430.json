@@ -1,0 +1,93 @@
+{
+ "checks": {
+  "① 窗口完整在屏内": true,
+  "② 按钮不被截断 (实际宽≥提示宽)": true,
+  "③ 截图落盘": true
+ },
+ "pass": "3/3",
+ "screen": [
+  3068,
+  1936
+ ],
+ "window": [
+  863,
+  394,
+  1634,
+  1122
+ ],
+ "btn_widths": {
+  "gold_finger": [
+   167,
+   167
+  ],
+  "module_body": [
+   144,
+   144
+  ],
+  "optical_port": [
+   144,
+   144
+  ],
+  "full": [
+   146,
+   146
+  ],
+  "save": [
+   144,
+   144
+  ],
+  "savenext": [
+   189,
+   189
+  ],
+  "newcls": [
+   114,
+   114
+  ],
+  "setcls": [
+   171,
+   171
+  ],
+  "undo": [
+   94,
+   94
+  ],
+  "del": [
+   117,
+   117
+  ],
+  "clear": [
+   116,
+   116
+  ],
+  "build": [
+   170,
+   170
+  ],
+  "check": [
+   95,
+   95
+  ],
+  "train": [
+   213,
+   213
+  ],
+  "live": [
+   144,
+   144
+  ],
+  "datadir": [
+   144,
+   144
+  ],
+  "expjson": [
+   211,
+   211
+  ],
+  "expcsv": [
+   193,
+   193
+  ]
+ },
+ "screenshot": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_console_real_20260924_152430.png"
+}

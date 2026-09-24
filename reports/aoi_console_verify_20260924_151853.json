@@ -1,0 +1,212 @@
+{
+ "frame": "data/real_yolo_perception_104.mp4",
+ "head": {
+  "weights": "",
+  "model_ready": false,
+  "classes": [],
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "entry_visibility": {
+  "n_buttons": 20,
+  "not_reachable": [],
+  "widths": {
+   "gold_finger": 124,
+   "module_body": 108,
+   "optical_port": 108,
+   "full": 109,
+   "save": 108,
+   "savenext": 140,
+   "newcls": 101,
+   "setcls": 127,
+   "undo": 102,
+   "del": 102,
+   "clear": 101,
+   "build": 127,
+   "check": 73,
+   "train": 156,
+   "live": 108,
+   "datadir": 108,
+   "expjson": 152,
+   "expcsv": 144,
+   "labelmode": 112,
+   "freeze": 146
+  }
+ },
+ "schema": {
+  "path": "/tmp/aoi_verify_gdvkpx6d/yolo_aoi_annot/classes.txt",
+  "lines": [
+   "module_body",
+   "gold_finger",
+   "optical_port",
+   "gf_scratch",
+   "gf_contam",
+   "gf_oxide",
+   "gf_chip",
+   "app_scratch",
+   "app_deform",
+   "app_stain"
+  ]
+ },
+ "skills": {
+  "gold_finger": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 9.2
+  },
+  "module_body": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 8.5
+  },
+  "optical_port": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 9.0
+  },
+  "full": {
+   "rows": 6,
+   "loc": 0,
+   "defects": 0,
+   "source_set": [
+    "heuristic"
+   ],
+   "pass": false,
+   "elapsed_ms": 9.1
+  }
+ },
+ "roi": {
+  "meta": {
+   "box": [
+    0,
+    0,
+    640,
+    480
+   ],
+   "pad": 0.0,
+   "zoom": 2.667,
+   "src_shape": [
+    480,
+    640
+   ],
+   "out": 640
+  },
+  "stretched_shape": [
+   640,
+   640,
+   3
+  ],
+  "zoom": 5.74
+ },
+ "annot": {
+  "before": 0,
+  "after": 0,
+  "check": {
+   "n_images": 0,
+   "n_labels": 0,
+   "n_boxes": 0,
+   "n_empty_label": 0,
+   "errors": [],
+   "warnings": [
+    "dataset/data.yaml 不存在 → 还没 --build"
+   ],
+   "per_class": {},
+   "sessions": {},
+   "data_yaml": null
+  },
+  "sample_files": 0
+ },
+ "dataset": {
+  "stats": {
+   "root": "/tmp/aoi_verify_gdvkpx6d/yolo_aoi_annot",
+   "built": "2026-09-24 15:18:52",
+   "val_ratio": 0.15,
+   "seed": 0,
+   "classes": [
+    "module_body",
+    "gold_finger",
+    "optical_port",
+    "gf_scratch",
+    "gf_contam",
+    "gf_oxide",
+    "gf_chip",
+    "app_scratch",
+    "app_deform",
+    "app_stain"
+   ],
+   "n_train": 0,
+   "n_val": 0,
+   "per_class": {},
+   "n_boxes": 0,
+   "n_samples": 0,
+   "val_overlap_train": true,
+   "n_auto_samples": 0,
+   "n_human_samples": 0,
+   "n_auto_train": 0,
+   "auto_in_val": 0,
+   "auto_sessions": [],
+   "n_pending_excluded": 0,
+   "pending_sessions": [],
+   "note": "样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信); ⚠️ 无人工样本, val 含自动标注 → mAP 不可信",
+   "sessions": [],
+   "n_truth": 0,
+   "truth_file": "/tmp/aoi_verify_gdvkpx6d/yolo_aoi_annot/dataset/truth.jsonl"
+  },
+  "train": 0,
+  "val": 0,
+  "data_yaml": true
+ },
+ "export": {
+  "json": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_inspect_20260924_151852.json",
+  "csv": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_inspect_20260924_151852.csv",
+  "json_keys": [
+   "ts",
+   "roi_skill",
+   "loc",
+   "roi_meta",
+   "defects",
+   "verdict",
+   "weights",
+   "model_classes",
+   "note",
+   "elapsed_ms"
+  ]
+ },
+ "train_proc": {
+  "started": false,
+  "log_tail": [
+   "❌ 体检不通过 → 先修数据 (或 --force 强行继续)",
+   "🏁 训练进程退出 code=2 · run=aoi_0924_1518",
+   "⚠️ 未找到 best.pt (训练可能失败; 看上面日志)"
+  ]
+ },
+ "screenshot": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_console_verify_20260924_151852.png",
+ "checks": {
+  "① 全部入口可达 (可见+可用+宽>20)": true,
+  "② 类别 schema 落盘 (行号=class id)": true,
+  "③ 载入帧文件": false,
+  "③ 四技能均出判决表 (>0 行)": true,
+  "③ 判决来源可辨 (启发式/模型 标注)": true,
+  "④ 图像定位 + 拉伸生效 (ROI→imgsz²)": true,
+  "⑤ 标定落盘 (样本数 +1)": false,
+  "⑤ 体检可跑 (无异常)": true,
+  "⑥ 数据集构建 (data.yaml + 分片)": false,
+  "⑦ 判决导出 (JSON+CSV)": true,
+  "⑧ 在线训练可启动 (命令下发)": true
+ },
+ "checks_pass": "8/11"
+}

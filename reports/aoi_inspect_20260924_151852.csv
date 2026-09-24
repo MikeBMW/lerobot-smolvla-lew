@@ -1,0 +1,7 @@
+target_id,target,defect,value,threshold,pass,source
+DET-AOI-01,金手指表面缺陷,划痕,68,≤6条,False,heuristic
+DET-AOI-01,金手指表面缺陷,污染,103,≤8点,False,heuristic
+DET-AOI-01,金手指表面缺陷,氧化/镀层缺损,57.63,≤18.0,False,heuristic
+DET-AOI-02,光口端面清洁度,对焦不良/端面破损,154.7,≥60.0,True,heuristic
+DET-AOI-04,外观/尺寸检测,毛刺/边缘密度,0.044,≤0.35,True,heuristic
+DET-AOI-03,金线/焊点显微检测,显微复检,,需显微镜头帧,True,heuristic
