@@ -160,7 +160,7 @@ def main():
         w._train_proc = None
     RES["train_proc"] = {"started": w._train_proc is not None, "log_tail":
                          w.txt_log.toPlainText().strip().splitlines()[-3:]}
-    ck("⑧ 在线训练可启动 (命令下发)", "🚀 在线训练" in w.txt_log.toPlainText())
+    ck("⑧ 在线训练可启动 (命令下发)", "🚀 训练" in w.txt_log.toPlainText())
 
     # ⑨ 真训练 smoke (1 epoch · 真 GPU/CPU · 产出 best.pt) —— 真证据, 不是"命令下发"
     import subprocess

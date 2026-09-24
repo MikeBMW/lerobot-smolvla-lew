@@ -23,7 +23,7 @@ for _p in (os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui"),
 
 os.environ.setdefault("ZMAX_ANNOT_ROOT_AOI", os.path.join(ROOT, "data", "yolo_aoi_annot"))
 
-from PyQt5 import QtWidgets, QtGui                                        # noqa: E402
+from PyQt5 import QtWidgets, QtGui, QtCore                                  # noqa: E402
 import aoi_inspect_console as aic                                        # noqa: E402
 
 CHECKS = {}
@@ -59,6 +59,25 @@ def main():
     png = os.path.join(ROOT, "reports", f"aoi_console_real_{time.strftime('%Y%m%d_%H%M%S')}.png")
     ok = w.grab().save(png)
     ck("③ 截图落盘", ok and os.path.getsize(png) > 10000, png)
+
+    # ④ 最大化真能用 (老倪 v2 反馈: "最大化按钮不好使") — 必须真实 DISPLAY 下判 isMaximized
+    w.showMaximized()
+    for _ in range(20):
+        app.processEvents(); time.sleep(0.05)
+    is_max = w.isMaximized()
+    wide = w.width() >= QtWidgets.QApplication.primaryScreen().availableGeometry().width() - 60
+    ck("④ 最大化真生效 (isMaximized + 宽≈屏宽)", is_max and wide,
+       f"isMaximized={is_max} 宽={w.width()} 屏宽={QtWidgets.QApplication.primaryScreen().availableGeometry().width()}")
+    w.showNormal()
+    for _ in range(10):
+        app.processEvents(); time.sleep(0.03)
+
+    # ⑤ 窗口类型必须是 Qt.Window (QDialog 的 Dialog 类型在 X11 下最大化不响应 = 根因)
+    #   ⚠️ 判据坑: 不能用 `flags & Qt.Dialog` 判定 —— Qt.Dialog = Window|Dialog, 会同时命中 Window 位;
+    #   必须取类型字段 WindowType_Mask (低 8 位) 比较。
+    _t = int(w.windowFlags()) & int(QtCore.Qt.WindowType_Mask)
+    ck("⑤ 窗口类型 = Qt.Window (最大化根因)", _t == int(QtCore.Qt.Window),
+       f"type={hex(_t)} flags={hex(int(w.windowFlags()))}")
 
     out = png.replace(".png", ".json")
     json.dump({"checks": CHECKS, "pass": f"{sum(CHECKS.values())}/{len(CHECKS)}",
