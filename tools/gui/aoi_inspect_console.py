@@ -34,6 +34,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets                             # noqa: E
 from yolo_label_widget import YoloLabelWidget                          # noqa: E402
 import yolo_annot_dataset as yad                                       # noqa: E402
 from aoi_head import AoiQualityHead, AOI_CLASSES, CLASS_CN, ROI_SKILLS  # noqa: E402
+import opt_camera_client as optc                                        # noqa: E402  (工控机 OPT 相机)
 
 SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
 REAL_CANDS = ("cam_rs.png", "cam_local.png", "cam_usb.png")
@@ -79,8 +80,8 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowMaximizeButtonHint
                             | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowCloseButtonHint)
         self.setWindowTitle("🔍 外观质量检测 · 汇总终端")
-        self.resize(1440, 900)
-        self.setMinimumSize(1080, 680)
+        self.resize(1500, 920)
+        self.setMinimumSize(1200, 700)
         self.setStyleSheet(_qss())
         self.module = module
         self.source = source
@@ -91,6 +92,10 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._last_best = ""
         self._cur_skill = "gold_finger"
         self._train_proc = None
+        self._opt_rgb = None                     # 🏭 OPT 相机最近一帧 (绝不自动真拍)
+        self._opt_meta = {}
+        self._opt_tag = ""
+        self._opt_lastres = {}
         self._build()
         self._sync_classes()
         self._init_data_root()
@@ -104,6 +109,8 @@ class AoiInspectConsole(QtWidgets.QDialog):
         b = QtWidgets.QPushButton(text)
         b.setToolTip(tip)
         b.clicked.connect(slot)
+        # 🚫 防截断 (老倪: "有的显示不全"): 最小宽 = 文本提示宽 → 布局挤压时按钮不再被裁字
+        b.setMinimumWidth(b.sizeHint().width())
         if primary:
             b.setObjectName("pri")
         return b
@@ -155,22 +162,46 @@ class AoiInspectConsole(QtWidgets.QDialog):
                           lambda _=False, k=key: self.run_skill(k))
             r1.addWidget(b)
             self.skill_btns[key] = b
-        r1.addWidget(self._sep_v())
-        self.cmb_src = QtWidgets.QComboBox()
-        self.cmb_src.addItems(["🎥 真机", "🧪 仿真", "🖼 文件"])
-        self.cmb_src.setToolTip("帧源: 真机 RealSense / 仿真 metaworld / 载入文件")
-        self.cmb_src.setCurrentIndex(0 if self.source != "sim" else 1)
-        self.cmb_src.setMaximumWidth(110)
-        self.cmb_src.currentIndexChanged.connect(self._on_src_change)
-        r1.addWidget(self.cmb_src)
-        self.btn_load = self._btn("📂 载入", "载入单帧图片/视频首帧 (离线复看与标定素材)", self._pick_file)
-        r1.addWidget(self.btn_load)
         r1.addStretch(1)
         self.lbl_chain = self._dim("链路: 取帧中…")
         self.lbl_chain.setMinimumWidth(220)
         self.lbl_time = self._dim("推理 -")
         r1.addWidget(self.lbl_chain); r1.addWidget(self.lbl_time)
         v.addLayout(r1)
+        v.addWidget(self._sep())
+
+        # ── 行 2 数据源 (真机/仿真/文件/🏭 OPT 相机) ──
+        r2src = QtWidgets.QHBoxLayout(); r2src.setSpacing(6)
+        r2src.addWidget(self._dim("源"))
+        self.cmb_src = QtWidgets.QComboBox()
+        self.cmb_src.addItems(["🎥 真机", "🧪 仿真", "🖼 文件", "🏭 OPT 相机"])
+        self.cmb_src.setToolTip("帧源: 真机 RealSense / 仿真 metaworld / 载入文件 / "
+                                "工控机 OPT 相机 (金手指 10082 · 表面 10083)")
+        self.cmb_src.setCurrentIndex(0 if self.source != "sim" else 1)
+        self.cmb_src.setMinimumWidth(120)
+        self.cmb_src.currentIndexChanged.connect(self._on_src_change)
+        r2src.addWidget(self.cmb_src)
+        # 🏭 OPT 相机控件 (工控机 192.168.23.23 → 奥普特相机; 真拍必须手动点)
+        self.cmb_cam = QtWidgets.QComboBox()
+        self.cmb_cam.addItems(["金手指 10082", "表面 10083"])
+        self.cmb_cam.setToolTip("工控机上的两台 OPT 相机 (金手指 OPT-CC1-GG50 / 表面 OPT-CC1-C050-GG3-00)")
+        self.cmb_cam.setMinimumWidth(120)
+        self.cmb_via = QtWidgets.QComboBox()
+        self.cmb_via.addItems(["本机直连", "经 Orin"])
+        self.cmb_via.setToolTip("经 Orin = ssh 到 192.168.23.66 再 request (本机不在产线网时用)")
+        self.cmb_via.setMinimumWidth(100)
+        self.btn_opt_grab = self._btn("📸 拍帧", "⚠️ 真拍产线台一张 (工控机 /capture_detect + 取图)",
+                                      lambda: self._opt_fetch(grab=True), primary=True)
+        self.btn_opt_recent = self._btn("🖼 最近图", "取工控机内存里的最近一张 (不拍照, 但会过期)",
+                                        lambda: self._opt_fetch(grab=False))
+        self.btn_opt_verd = self._btn("📋 工控机判决", "GET /last_result (工控机自家模型判决: OK/NG/缺陷数)",
+                                      self._opt_verdict)
+        for wdg in (self.cmb_cam, self.cmb_via, self.btn_opt_grab, self.btn_opt_recent, self.btn_opt_verd):
+            r2src.addWidget(wdg)
+        self.btn_load = self._btn("📂 载入", "载入单帧图片/视频首帧 (离线复看与标定素材)", self._pick_file)
+        r2src.addWidget(self.btn_load)
+        r2src.addStretch(1)
+        v.addLayout(r2src)
         v.addWidget(self._sep())
 
         # ── 行 2 标定 ──
@@ -314,6 +345,10 @@ class AoiInspectConsole(QtWidgets.QDialog):
     def _grab(self):
         if self.chk_freeze.isChecked() and self._last_rgb is not None:
             return self._last_rgb, f"冻结/{self._last_tag}", None
+        if self.cmb_src.currentIndex() == 3:                        # 🏭 OPT: **绝不自动真拍**
+            if self._opt_rgb is not None:
+                return self._opt_rgb, self._opt_tag, None
+            return None, "🏭 OPT: 点『📸 拍帧』(真拍) 或『🖼 最近图』(不拍)", None
         if self.cmb_src.currentIndex() == 1:
             try:
                 import yolo_input_viewer as yiv
@@ -396,6 +431,44 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._tick()
 
     # ══════════════════════ 技能 ══════════════════════
+    # ── 🏭 工控机 OPT 相机 ──
+    def _opt_fetch(self, grab: bool):
+        """从工控机取 OPT 相机图 → 任务头识别 → 显示/判决/可标定。grab=True 会真拍一张。"""
+        cam = 1 if self.cmb_cam.currentIndex() == 0 else 2
+        via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
+        c = optc.CAMERAS[cam]
+        if grab:
+            r = optc.capture_detect(cam, via=via)
+            self.log(f"📸 {c['name']} 相机真拍: HTTP {r.get('http')} {r.get('ms')}ms via {r.get('via')} "
+                     f"→ {r.get('resp')}")
+        rgb, meta = optc.fetch_frame(cam, kind="topview", grab=grab, via=via)
+        if rgb is None:
+            self.log(f"❌ 取图失败: {meta.get('err')} (相机 {c['name']} SN {c['sn']})")
+            self._elide(self.lbl_chain, "链路 ❌ " + str(meta.get("err"))[:60], str(meta))
+            return
+        self._opt_rgb = rgb
+        self._opt_meta = meta
+        self._opt_tag = f"🏭 {c['name']} {meta['kind']} {meta['shape'][1]}x{meta['shape'][0]}"
+        self.cmb_src.setCurrentIndex(3)
+        self._set_frame(rgb, self._opt_tag)
+        self.wid.set_classes([CLASS_CN.get(x, x) for x in self._cls_names()])
+        res = self.run_skill(self._cur_skill, quiet=True)
+        self._elide(self.lbl_chain, f"链路 ✅ {c['name']} {meta['shape'][1]}x{meta['shape'][0]} "
+                                    f"{meta['ms']:.0f}ms via {meta['via']}", json.dumps(meta, ensure_ascii=False))
+        self.log(f"🏭 {c['name']}相机图: {meta['shape']} 灰度均值 {meta['mean_gray']} · HTTP {meta['http']} "
+                 f"· {meta['ms']:.0f}ms · {meta['bytes']//1024}KB · via {meta['via']}"
+                 + (f" → 任务头: 定位 {len(res['loc'])} 缺陷 {len(res['defects'])}" if res else ""))
+
+    def _opt_verdict(self):
+        """读工控机自家模型判决 (只读) → 追加到判决表 (source=opt-工控机), 与任务头同表对照。"""
+        cam = 1 if self.cmb_cam.currentIndex() == 0 else 2
+        via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
+        lr = optc.last_result(cam, via=via)
+        self._opt_lastres = lr
+        self.log(f"📋 工控机判决: {json.dumps(lr, ensure_ascii=False)[:260]}")
+        if self._last_res:
+            self._fill_verdict(self._last_res)
+
     def run_skill(self, roi_key: str, quiet: bool = False):
         self._cur_skill = roi_key
         if self._last_rgb is None:
@@ -420,7 +493,15 @@ class AoiInspectConsole(QtWidgets.QDialog):
 
     def _fill_verdict(self, res):
         v = res["verdict"]
-        rows = v["items"]
+        rows = list(v["items"])
+        # 🏭 工控机自家模型判决同表对照 (只读 /last_result; 与本任务头两路并列, 来源可辨)
+        lr = self._opt_lastres or {}
+        if lr.get("code") == 200:
+            rows.append({"target_id": "OPT-工控机",
+                         "target": f"工控机模型({lr.get('detect_type', 'gf')})",
+                         "defect": f"count={lr.get('count')} verdict={lr.get('verdict', '-')}",
+                         "value": lr.get("count"), "threshold": "count=0",
+                         "pass": lr.get("count") == 0, "source": "opt-工控机"})
         self.tbl_verdict.setRowCount(len(rows))
         for i, it in enumerate(rows):
             cells = [it.get("target_id", "-"), f'{it.get("target", "")} {it.get("defect", "")}',

@@ -1,0 +1,140 @@
+{
+ "health": {
+  "host": "192.168.23.23",
+  "via": "local",
+  "cams": {
+   "金手指": {
+    "port": 10082,
+    "sn": "D265250070",
+    "model": "OPT-CC1-GG50",
+    "routes": {
+     "/picture": "POST, GET, OPTIONS, HEAD",
+     "/crop_info": "OPTIONS, GET, HEAD",
+     "/region": "OPTIONS, GET, HEAD",
+     "/last_result": "OPTIONS, GET, HEAD",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "尚无检测结果",
+     "_http": "404",
+     "_ms": 4.6
+    },
+    "has_picture": true
+   },
+   "表面": {
+    "port": 10083,
+    "sn": "D265250099",
+    "model": "OPT-CC1-C050-GG3-00",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "无该路由"
+    },
+    "has_picture": false
+   }
+  }
+ },
+ "last_result_local": {
+  "code": 404,
+  "msg": "尚无检测结果",
+  "_http": "404",
+  "_ms": 5.6
+ },
+ "last_result_orin": {
+  "code": 404,
+  "msg": "尚无检测结果",
+  "_http": "404",
+  "_ms": 5.2
+ },
+ "head": {
+  "weights": "",
+  "ready": false,
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "capture": {
+  "capture_detect": {
+   "cam": "金手指",
+   "port": 10082,
+   "action": "capture_detect",
+   "http": "200",
+   "ms": 1626.1,
+   "via": "local",
+   "resp": {
+    "code": 200,
+    "msg": "success"
+   }
+  },
+  "fetch_meta": {
+   "cam": "金手指",
+   "port": 10082,
+   "model": "OPT-CC1-GG50",
+   "sn": "D265250070",
+   "kind": "topview",
+   "grab": false,
+   "http": "200",
+   "ms": 15.7,
+   "via": "local",
+   "bytes": 786728,
+   "ok": true,
+   "shape": [
+    960,
+    960,
+    3
+   ],
+   "mean": 199.3,
+   "mean_gray": 201.7
+  },
+  "wall_s": 2.7
+ },
+ "head_on_real": {
+  "rows": 6,
+  "sources": [
+   "heuristic"
+  ],
+  "loc": 0,
+  "defects": 0,
+  "elapsed_ms": 36.3,
+  "roi_meta": {
+   "box": [
+    0,
+    0,
+    960,
+    960
+   ],
+   "pad": 0.0,
+   "zoom": 2.0,
+   "src_shape": [
+    960,
+    960
+   ],
+   "out": 640
+  }
+ },
+ "saved_png": "/home/ubuntu/lerobot-smolvla-lew/reports/opt_capture_20260924_155553.png",
+ "sample_saved": true,
+ "surface_gap": {
+  "ok": false,
+  "cam": "表面",
+  "port": 10083,
+  "err": "表面相机在工控机侧无 /picture 路由 → 只能触发拍照 (见 patch 文档)"
+ },
+ "checks": {
+  "① 10082 有 /picture 路由": true,
+  "① 10082 有 /last_result 判决通道": true,
+  "① 10083 只有 /capture_detect (如实标注无 /picture)": true,
+  "① 工控机判决可读 (本机直连)": false,
+  "② 经 Orin 通道等价 (同一条判决 t 相同)": false,
+  "③ 真拍拿到图 (非黑帧)": true,
+  "④ 任务头在真图上出判决表": true,
+  "④ 真图落盘 + 可入标定库": true,
+  "⑤ 10083 取图如实报缺口 (无 /picture)": true
+ },
+ "checks_pass": "7/9"
+}

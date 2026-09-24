@@ -1,0 +1,107 @@
+{
+ "checks": {
+  "① 窗口完整在屏内": true,
+  "② 按钮不被截断 (实际宽≥提示宽)": true,
+  "③ 截图落盘": true,
+  "④ 最大化真生效 (isMaximized + 宽≈屏宽)": true,
+  "⑤ 窗口类型 = Qt.Window (最大化根因)": true
+ },
+ "pass": "5/5",
+ "screen": [
+  3068,
+  1936
+ ],
+ "window": [
+  906,
+  542,
+  1500,
+  900
+ ],
+ "btn_widths": {
+  "gold_finger": [
+   123,
+   123
+  ],
+  "module_body": [
+   100,
+   100
+  ],
+  "optical_port": [
+   100,
+   100
+  ],
+  "full": [
+   102,
+   102
+  ],
+  "save": [
+   100,
+   100
+  ],
+  "savenext": [
+   121,
+   121
+  ],
+  "newcls": [
+   94,
+   94
+  ],
+  "setcls": [
+   103,
+   103
+  ],
+  "undo": [
+   96,
+   96
+  ],
+  "del": [
+   80,
+   73
+  ],
+  "clear": [
+   96,
+   96
+  ],
+  "build": [
+   102,
+   102
+  ],
+  "check": [
+   99,
+   99
+  ],
+  "train": [
+   100,
+   100
+  ],
+  "live": [
+   124,
+   124
+  ],
+  "datadir": [
+   100,
+   100
+  ],
+  "expjson": [
+   114,
+   114
+  ],
+  "expcsv": [
+   95,
+   95
+  ],
+  "opt_grab": [
+   100,
+   100
+  ],
+  "opt_recent": [
+   126,
+   126
+  ],
+  "opt_verd": [
+   173,
+   173
+  ]
+ },
+ "screenshot": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_console_real_20260924_155935.png"
+}

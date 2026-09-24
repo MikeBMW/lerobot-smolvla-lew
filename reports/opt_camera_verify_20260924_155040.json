@@ -1,0 +1,66 @@
+{
+ "health": {
+  "host": "192.168.23.23",
+  "via": "local",
+  "cams": {
+   "金手指": {
+    "port": 10082,
+    "sn": "D265250070",
+    "model": "OPT-CC1-GG50",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "(路由不存在)"
+    },
+    "last_result": {
+     "raw": "\n",
+     "_http": "000",
+     "_ms": 0.2
+    },
+    "has_picture": true
+   },
+   "表面": {
+    "port": 10083,
+    "sn": "D265250099",
+    "model": "OPT-CC1-C050-GG3-00",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "(路由不存在)"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "无该路由"
+    },
+    "has_picture": false
+   }
+  }
+ },
+ "last_result_local": {
+  "raw": "\n",
+  "_http": "000",
+  "_ms": 0.3
+ },
+ "last_result_orin": {
+  "raw": "\n",
+  "_http": "000",
+  "_ms": 0.7
+ },
+ "head": {
+  "weights": "",
+  "ready": false,
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "checks": {
+  "① 10082 有 /picture 路由": false,
+  "① 10082 有 /last_result 判决通道": false,
+  "① 10083 只有 /capture_detect (如实标注无 /picture)": false,
+  "① 工控机判决可读 (本机直连)": false,
+  "② 经 Orin 通道等价 (同一条判决 t 相同)": false
+ },
+ "checks_pass": "0/5"
+}
