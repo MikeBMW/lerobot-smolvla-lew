@@ -1016,7 +1016,7 @@
    "params": {
     "state_space": true,
     "verif_layer": true,
-    "desc": "Feature 功能清单: 状态空间系统全部 feature 汇总 (A引擎 7/B六层 11/C感知链 4/D规划 3/E元层 5/F画布 4/G手动 10); 源码 verification_layer.py FEATURES",
+    "desc": "Feature 功能清单: 状态空间系统全部 feature 汇总 (A12/B13/C4/D3/E5/F4/G10/H6; 分级 L2 38/L4 11); 共 57 条自动/半自动断言 · 功能树 113 功能×562 用例 (22 节点); 新增: F-B12 3D视觉引导 / F-B13 触觉反馈闭环 (2026-09-24); 源码 verification_layer.py FEATURES",
     "source": "src/lerobot/verification/verification_layer.py",
     "source_symbol": "FEATURES = ["
    }
@@ -1040,7 +1040,7 @@
    "params": {
     "state_space": true,
     "verif_layer": true,
-    "desc": "Test 用例执行: 跑自动化套件 F-A01~F-F04 (引擎/六层/感知/规划/元层/画布映射), PASS/FAIL+数值证据; 单跑 ZMAX_VERIF_ONLY=F-xx; 源码 verification_layer.py t_F_* 断言",
+    "desc": "Test 用例执行: 跑自动化套件 (引擎/六层/感知/规划/元层/画布), PASS/FAIL+数值证据 · 当前 57 条 (自动 47) · 新增 F-B12/F-B13 = 真物理引擎断言 (慢~20s, 单跑 ZMAX_VERIF_ONLY=F-B12); 源码 verification_layer.py VerificationLayer",
     "source": "src/lerobot/verification/verification_layer.py",
     "source_symbol": "class VerificationLayer"
    }

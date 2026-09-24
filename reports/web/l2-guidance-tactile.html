@@ -1,0 +1,77 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>L2 3D 视觉引导 · 触觉反馈闭环 — 功能与测试用例</title><style>
+body{background:#0d1520;color:#d0d7de;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+margin:0;padding:24px 32px;font-size:14px;line-height:1.6}
+h1{color:#fff;font-size:23px;border-bottom:2px solid #00d4aa;padding-bottom:8px}
+h2{color:#00d4aa;font-size:17px;margin-top:26px;border-left:4px solid #00d4aa;padding-left:10px}
+h3{color:#58a6ff;font-size:14.5px;margin-top:18px}
+table{border-collapse:collapse;width:100%;margin:10px 0}
+th{background:#111c2b;color:#8b949e;text-align:left;padding:7px 9px;border:1px solid #1f2937;font-weight:600}
+td{padding:7px 9px;border:1px solid #1f2937;vertical-align:top}
+code{background:#111c2b;color:#7ee787;padding:1px 5px;border-radius:3px;font-size:12.5px}
+.ok{color:#3fb950;font-weight:700}.bad{color:#f85149;font-weight:700}.warn{color:#d29922;font-weight:700}
+.meta{color:#8b949e;font-size:12.5px}
+.tools{margin:14px 0;display:flex;gap:10px;flex-wrap:wrap}
+a.btn{background:#00d4aa;color:#04121a;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:6px}
+a.btn.alt{background:#1f6feb;color:#fff}
+pre{background:#111c2b;border:1px solid #1f2937;border-radius:6px;padding:12px;overflow:auto;font-size:12.5px}
+</style></head><body>
+<h1>🔧 L2 · 3D 视觉引导 &amp; 触觉反馈闭环<span class="meta"> — 功能定义 + 测试用例 (实测)</span></h1>
+<p class="meta">生成 2026-09-24 08:48:48 · 单一真源: capability_levels.py / verification_layer.py / node_func_tree.py
+· 实测引擎: state_space_sim_real.py (metaworld 真物理, seed104, 400 步) · 页面 <code>https://datadrive.world/l2-guidance-tactile.html</code></p>
+
+<div class="tools">
+  <a class="btn" href="./l2-guidance-tactile.md" download>⬇ 下载 Markdown</a>
+  <a class="btn alt" href="./function-list.html">← 功能清单总表</a>
+  <button class="btn alt" onclick="copyMd()">📋 复制 Markdown</button>
+  <span class="meta" id="copyMsg"></span>
+</div>
+
+<h2>一、功能定义 (L2 基础辅助功能)</h2>
+<table><tr><th>编号</th><th>名称</th><th>定义与实测指标</th><th>能力分组</th></tr>
+<tr><td><code>L2-A12</code></td><td><b>3D 视觉引导</b></td><td>视觉引导闭环 (视觉伺服): 2D→3D 解算位姿 → 引导向量 → 伺服收敛。实测 (真物理引擎 seed104 400 步): 横向偏差前1/3中位 140.8mm → 后1/3 38.5mm (**0.27×**), 末端法向偏离 148.3mm → **0.3mm** (mani_dperp 首末)。位姿来源: R0 几何真值 / R1 真帧 YOLO detect_3d (F-C01/C02 另测)。**如实标注**: "静态目标向量 vs 逐帧速度"方向一致率仅 12.3% → 该口径不合适, 判据用**偏差收敛 + 法向偏离归零** (用例 F-B12)。</td><td>2d3d / sobs / yolo</td></tr>
+<tr><td><code>L2-A13</code></td><td><b>触觉反馈闭环</b></td><td>力/触觉 → 接触概率 → 力保护闭环。实测: corr(contact_p, |force|) = **0.974** (力→接触概率真实联动) · 插入段 contact_p 中位 **0.9918** · 力上界 **0.672N** (≤1.0 力保护未越界); 触觉通道 obs[39:43] = [原始开度, grasped, 0, 0] 与状态**互补一致率 1.000** (夹紧度=1−开度, 既有约定) · grasped 一致率 0.995。**缺口如实标**: 通道 2/3 (前向/侧向力) 在引擎恒 0 —— 真机触觉才有 (用例 F-B13)。</td><td>tac / sssensor / sobs</td></tr>
+</table>
+
+<h2>二、测试用例与**本次实测**结果</h2>
+<table><tr><th>用例</th><th>断言内容</th><th>域</th><th>方式</th><th>结果</th><th>真源方法</th></tr><tr><td><code>F-B12</code></td><td>3D 视觉引导闭环: 引导向量在位 + 横向偏差收敛 (后1/3 ≤ 前1/3×0.5) + 末端法向偏离 <1mm</td><td>S1</td><td>自动 [慢~20s]</td><td><span class='ok'>✅ PASS</span></td><td>F-B12</td></tr><tr><td><code>F-B13</code></td><td>触觉反馈闭环: 触觉通道↔状态互补/一致 + corr(contact_p,|force|)≥0.8 + 插入段 contact_p≥0.9 + 力有界≤1N</td><td>S1</td><td>自动 [慢~20s]</td><td><span class='ok'>✅ PASS</span></td><td>F-B13</td></tr></table>
+<h3>实测明细 (现场真跑)</h3><table><tr><th>用例</th><th>实测明细</th><th>耗时</th></tr><tr><td><code>F-B12</code></td><td>n=344 · 引导范数中位 130.8mm · 横向偏差 前1/3 135.9mm → 后1/3 38.5mm (0.28×, 判据 ≤0.50×) · 法向偏离 148.3→0.29mm (判据 <1mm) · [注] 静态向量vs速度 cos>0.3 占比 0.211 (低 = 静态目标向量不含阶段子目标, 不用作判据)</td><td>4.9s</td></tr><tr><td><code>F-B13</code></td><td>互补一致率 1.000 (判据 ≥0.99) · grasped 一致 0.997 · corr(cp,|F|) 0.975 (≥0.8) · 插入段 cp 中位 0.9931 (≥0.9) · 力上界 0.665N (≤1.0 力保护) · 通道2/3 非零帧 0 (引擎恒 0 = 真机触觉缺口, 如实标)</td><td>0.0s</td></tr></table>
+
+<h2>三、关键实测数字 (真物理引擎, 非估计)</h2>
+<table><tr><th>指标</th><th>实测值</th><th>判据</th></tr>
+<tr><td>引导向量范数 (中位)</td><td>130.75 mm</td><td>—</td></tr>
+<tr><td>横向偏差 前1/3 → 后1/3</td><td>140.84 → 38.54 mm</td><td>后1/3 ≤ 前1/3 × 0.50</td></tr>
+<tr><td>末端法向偏离 首 → 末</td><td>148.28 → 0.3 mm</td><td>末帧 &lt; 1 mm</td></tr>
+<tr><td>触觉通道↔状态 互补一致率</td><td class="ok">0.0 (互补口径 1.000)</td><td>≥ 0.99</td></tr>
+<tr><td>力 → 接触概率 相关性</td><td>0.9741</td><td>≥ 0.80</td></tr>
+<tr><td>插入段 contact_p 中位</td><td>0.9918</td><td>≥ 0.90</td></tr>
+<tr><td>接触力上界 (力保护)</td><td>0.6718 N</td><td>≤ 1.0 N</td></tr>
+<tr><td>触觉通道 2/3 (前向/侧向力)</td><td class="warn">引擎恒 0</td><td>真机触觉缺口 — 如实标注, 未冒充</td></tr>
+</table>
+<p class="meta">注: 触觉通道 0 = 钳口**原始开度**, 轨迹 gripper = **夹紧度 = 1 − 开度** (既有约定), 故断言用**互补一致率**;
+「静态目标向量 vs 逐帧速度」方向一致率仅 ~0.21 —— 该口径不含阶段子目标, 故判据用**偏差收敛 + 法向偏离归零**。</p>
+
+<h2>四、功能树登记 (分层功能 → 用例映射)</h2>
+<table><tr><th>节点</th><th>功能编号</th><th>功能</th><th>说明</th><th>用例</th></tr><tr><td>📐 2D→3D 解算 <span class='meta'>(ss2d3d)</span></td><td><code>FN2d06</code></td><td>视觉伺服引导闭环</td><td>解算出的三维位姿被直接用作引导信号: 由目标点与末端位姿生成引导向量, 驱动伺服收敛, 使末端在接近、对位、下降与转移各段逐步贴近目标, 横向偏差与法向偏离随过程收敛到毫米以内。</td><td>· 引导向量逐帧在位 <span class='meta'>[auto]</span><br>· 横向偏差收敛 (后1/3 ≤ 前1/3×0.5) <span class='meta'>[auto]</span><br>· 末端法向偏离 <1mm <span class='meta'>[auto]</span><br>· 静态向量方向口径不适用 <span class='meta'>[manual]</span></td></tr><tr><td>🖐 触觉感知 <span class='meta'>(sstactile)</span></td><td><code>FNtac06</code></td><td>触觉反馈闭环</td><td>触觉与力觉信号构成闭环: 触觉向量与夹持状态保持互补一致, 力信号映射为接触概率并与力值强相关, 接触段接触概率稳定在 0.99 以上; 同时末端力被安全边界约束在阈值内, 力保护在该闭环内真实生效。</td><td>· 触觉通道↔状态互补一致 (≥0.99) <span class='meta'>[auto]</span><br>· 力→接触概率联动 corr(contact_p,|F|) ≥0.8 <span class='meta'>[auto]</span><br>· 插入段接触概率中位 ≥0.9 <span class='meta'>[auto]</span><br>· 力保护: 接触力上界 ≤1N <span class='meta'>[auto]</span><br>· 前向/侧向力通道 <span class='meta'>[manual]</span></td></tr></table>
+
+<h2>五、链路与源码</h2>
+<table><tr><th>环节</th><th>位置</th></tr>
+<tr><td>功能定义 (功能清单节点数据源)</td><td><code>src/lerobot/verification/capability_levels.py</code> → L2-A12 / L2-A13</td></tr>
+<tr><td>测试用例 (测试用例节点数据源)</td><td><code>src/lerobot/verification/verification_layer.py</code> → F-B12 / F-B13 + t_F_B12 / t_F_B13</td></tr>
+<tr><td>分层功能树 (网页总表数据源)</td><td><code>src/lerobot/verification/node_func_tree.py</code> → FN2d06 / FNtac06</td></tr>
+<tr><td>真物理引擎 (断言数据源)</td><td><code>tools/gui/state_space_sim_real.py</code> (metaworld, seed104)</td></tr>
+<tr><td>画布节点</td><td>📐 2D→3D 解算 (ss2d3d) · 🖐 触觉感知 (sstactile) · 📡 传感器融合 (sssensor)</td></tr>
+<tr><td>复现命令</td><td><code>MUJOCO_GL=egl gui-venv311/bin/python tools/ss_feature_tests.py --only F-B12</code> / <code>--only F-B13</code></td></tr>
+</table>
+
+<script>
+async function copyMd() {
+  const msg = document.getElementById('copyMsg');
+  try {
+    const r = await fetch('./l2-guidance-tactile.md');
+    await navigator.clipboard.writeText(await r.text());
+    msg.textContent = '✅ 已复制 Markdown 到剪贴板';
+  } catch (e) { msg.textContent = '⚠ 复制失败, 请用「下载 Markdown」按钮: ' + e; }
+}
+</script>
+</body></html>

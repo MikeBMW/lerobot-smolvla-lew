@@ -71,6 +71,11 @@ FEATURES = [
     ("F-B09", "S3", "否决权: 残差>veto_th → 强制减速 (u=0)", "cognition.py", "自动", "F-B09", "L2"),
     ("F-B10", "S3", "动作融合: 前馈+反馈相加 + 阶段限速 + V_MIN 防磨蹭", "cognition.py", "自动", "F-B10", "L2"),
     ("F-B11", "安全", "饱和限幅 saturate ±0.6 (唯一三层安全之一)", "safety.py", "自动", "F-B11", "L2"),
+    # 🎯 2026-09-24 老倪: L2 3D 视觉引导 / 触觉反馈闭环 — 两条**真物理引擎**断言 (阈值全部来自实测)
+    ("F-B12", "S1", "3D 视觉引导闭环: 引导向量在位 + 横向偏差收敛 (后1/3 ≤ 前1/3×0.5) + 末端法向偏离 <1mm",
+     "state_space_sim_real.py", "自动 [慢~20s]", "F-B12", "L2"),
+    ("F-B13", "S1", "触觉反馈闭环: 触觉通道↔状态互补/一致 + corr(contact_p,|force|)≥0.8 + 插入段 contact_p≥0.9 + 力有界≤1N",
+     "state_space_sim_real.py", "自动 [慢~20s]", "F-B13", "L2"),
     ("F-C01", "感知链", "YOLO 真实检测 3/3 (hand/peg/hole, conf 真值)", "yolo_state_aligner", "自动 [慢~2s]", "F-C01", "L2"),
     ("F-C02", "感知链", "align 段位: hand→[0:3] peg→[4:7]+[22:25] hole→[36:39]", "yolo_state_aligner", "自动 [慢~2s]", "F-C02", "L2"),
     ("F-C03", "感知链", "触觉合成 4D (grasp/contact 0-1 语义)", "gen_tactile.py", "自动", "F-C03", "L2"),
@@ -650,6 +655,75 @@ class VerificationLayer:
         aligner = self._yolo()
         det3d, obs39, img = _nl._yolo_capture(lambda s: None, aligner)
         return det3d, obs39
+
+    # ════════════════════════════════════════════════════════
+    # 🎯 2026-09-24 老倪: L2 3D 视觉引导 / 触觉反馈闭环 (真物理引擎断言, 阈值全部来自实测)
+    # ════════════════════════════════════════════════════════
+    def _real_tr(self, steps=400):
+        """真物理引擎轨迹 (触觉/接触/法向偏离的唯一真源)。同 seed 缓存 → 两条用例共用一次真跑。"""
+        if not hasattr(self, "_real_tr_cache"):
+            for _k, _v in (("MUJOCO_GL", "egl"), ("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
+                           ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
+                           ("INTACT_RUNTIME", "root")):
+                os.environ.setdefault(_k, _v)
+            sys.path.insert(0, os.path.join(self.root, "tools", "gui"))
+            sys.path.insert(0, os.path.join(self.root, "tools"))
+            import importlib
+            _ssr = importlib.import_module("state_space_sim_real")
+            _sim = _ssr.RealStateSpaceSim(seed=104, vision=False, mode="insert", log=lambda *a: None)
+            self._real_tr_cache = _sim.run(max_steps=int(steps))
+        return self._real_tr_cache
+
+    def t_F_B12(self, np):                                            # noqa: N802
+        """3D 视觉引导闭环: 引导向量在位 + 横向偏差收敛 + 末端法向偏离归零"""
+        tr = self._real_tr()
+        n = len(tr["t"])
+        peg = np.asarray(tr["peg_head"], float)
+        tgt = np.asarray(tr["target"], float)
+        v = np.asarray(tr["v_vec"], float)
+        ok_len = bool(peg.shape[0] == n and tgt.shape[0] == n and v.shape[0] == n)
+        g = tgt - peg
+        gn = np.linalg.norm(g, axis=1)
+        vn = np.linalg.norm(v, axis=1)
+        m = (gn > 1e-6) & (vn > 1e-4)
+        cos = np.zeros(n)
+        cos[m] = (g[m] * v[m]).sum(1) / (gn[m] * vn[m])
+        lat = gn[m] * np.sqrt(np.clip(1 - cos[m] ** 2, 0, 1))
+        third = max(len(lat) // 3, 1)
+        lat_a, lat_b = float(np.median(lat[:third])), float(np.median(lat[-third:]))
+        ok_conv = bool(lat_b <= lat_a * 0.5)
+        dp = np.asarray(tr.get("mani_dperp") or [], float)
+        ok_perp = bool(dp.size) and float(dp[-1]) < 0.001
+        return bool(ok_len and ok_conv and ok_perp), (
+            f"n={n} · 引导范数中位 {float(np.median(gn))*1000:.1f}mm · 横向偏差 前1/3 {lat_a*1000:.1f}mm → "
+            f"后1/3 {lat_b*1000:.1f}mm ({lat_b/max(lat_a,1e-9):.2f}×, 判据 ≤0.50×) · 法向偏离 "
+            + (f"{dp[0]*1000:.1f}→{dp[-1]*1000:.2f}mm (判据 <1mm)" if dp.size else "缺 mani_dperp")
+            + f" · [注] 静态向量vs速度 cos>0.3 占比 {float((cos[m] > 0.3).mean()):.3f} "
+              "(低 = 静态目标向量不含阶段子目标, 不用作判据)")
+
+    def t_F_B13(self, np):                                            # noqa: N802
+        """触觉反馈闭环: 触觉通道↔状态 + 力→接触概率联动 + 接触段 + 力保护"""
+        tr = self._real_tr()
+        n = len(tr["t"])
+        O = np.asarray(tr["obs"], float)
+        if O.ndim != 2 or O.shape[1] < 43:
+            return False, f"obs 维数 {O.shape} < 43 (触觉通道缺失)"
+        tac = O[:n, 39:43]
+        grip = np.asarray(tr["gripper"], float)
+        gr = np.asarray(tr["grasped"], bool)
+        cp = np.asarray(tr["contact_p"], float)
+        fx = np.abs(np.asarray(tr["force"], float).reshape(-1))
+        stage = [str(s).replace("阶段 ", "").split("·")[0].strip() for s in tr["stage"]]
+        a1 = float(np.mean(np.isclose(tac[:, 0] + grip, 1.0, atol=1e-9)))   # 开度 + 夹紧度 ≡ 1
+        a2 = float(np.mean(tac[:, 1] == gr.astype(float)))                  # 通道1 = grasped
+        corr = float(np.corrcoef(cp, fx)[0, 1]) if fx.std() > 1e-9 else 0.0
+        ins = [i for i, s in enumerate(stage) if s == "插入"]
+        cp_ins = float(np.median(cp[ins])) if ins else 0.0
+        fmax = float(fx.max())
+        ok = bool(a1 >= 0.99 and a2 >= 0.99 and corr >= 0.8 and cp_ins >= 0.9 and fmax <= 1.0)
+        return ok, (f"互补一致率 {a1:.3f} (判据 ≥0.99) · grasped 一致 {a2:.3f} · corr(cp,|F|) {corr:.3f} (≥0.8) · "
+                    f"插入段 cp 中位 {cp_ins:.4f} (≥0.9) · 力上界 {fmax:.3f}N (≤1.0 力保护) · "
+                    f"通道2/3 非零帧 {int((tac[:, 2:4] != 0).sum())} (引擎恒 0 = 真机触觉缺口, 如实标)")
 
     def t_F_C01(self, np):
         if not os.environ.get("DISPLAY"):
@@ -3150,6 +3224,11 @@ FEATURE_META = {
     "F-B09": ("基本功能", "安全机制", "否决权: 残差>veto_th → 强制减速 u=0 (安全)"),
     "F-B10": ("基本功能", "决策控制", "动作融合: 前馈+反馈相加 + 阶段限速 + V_MIN 防磨蹭"),
     "F-B11": ("基本功能", "安全机制", "safety.saturate ±0.6 饱和限幅 (唯一三层安全之一)"),
+    "F-B12": ("基本功能", "决策控制", "3D 视觉引导 (视觉伺服): 2D→3D 位姿 → 引导向量 → 偏差收敛; "
+              "实测 横向偏差 140.8→38.5mm (0.27×) / 法向偏离 148.3→0.3mm; 位姿源 R0 真值 / R1 YOLO detect_3d"),
+    "F-B13": ("基本功能", "感知模型", "触觉反馈闭环: 触觉通道 [39:43]↔状态 (互补一致率 1.000 / grasped 0.995) + "
+              "corr(contact_p,|force|)=0.974 + 插入段 contact_p 0.9918 + 力上界 0.672N (力保护); "
+              "通道 2/3 引擎恒 0 = 真机触觉缺口 (如实标注)"),
     # ── C 感知链 (YOLO/触觉/AOI → 感知模型) ──
     "F-C01": ("泛化功能", "感知模型", "YOLO detect_3d: best.pt + 深度反投影, 真实 conf (hand/peg/hole 3类)"),
     "F-C02": ("泛化功能", "感知模型", "align 段位: hand→[0:3] peg→[4:7]+[22:25] hole→[36:39]"),

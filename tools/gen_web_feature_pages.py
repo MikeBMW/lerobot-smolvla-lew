@@ -68,7 +68,8 @@ td,th{{border:1px solid #000!important}}h1,h2,h3{{color:#000!important;border-co
 .tag,.code,.tno,.kind{{color:#000!important;border-color:#000!important}}}}
 </style></head><body>
 <a href="/">← 主页</a> · <a href="/function-list.html">🧩 功能清单</a> ·
-<a href="/requirements-spec.html">📋 需求规格书</a>
+<a href="/requirements-spec.html">📋 需求规格书</a> ·
+<a href="/l2-guidance-tactile.html">🎯 L2 3D视觉引导 / 触觉反馈闭环 (功能+实测用例)</a>
 <button onclick="window.print()" style="float:right;padding:6px 14px;background:#00d4aa;
 color:#000;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">📄 导出PDF</button>
 """
