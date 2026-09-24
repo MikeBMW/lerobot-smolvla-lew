@@ -4872,3 +4872,92 @@ _EXTERNAL_LOC["n_board_frame"] = (os.path.join(_REPO_ROOT, "tools", "board_frame
                                   11, "def run(")
 _EXTERNAL_LOC["n_l2_muscle"] = (os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py"),
                                 81, "def run_step(")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🧮 流形引擎 (Manifold Engine) — L4 核心内核 (2026-09-24 老倪架构升级)
+#   位置: L4 专家自主功能行, 前向输入前沿(4690)与输出前沿(10016)之间 → x=7500 (居中, 见 tools/canvas_add_manifold_engine.py 硬断言)
+#   真执行: src/lerobot/manifold/manifold_engine.py (编码→投影→度量/梯度→测地线导航→有界反馈)
+#   数据真源: module._ss_tr 当前帧 obs43 (与 ▶运行/单步 同源) · 标定 models/manifold_engine.npz
+#   ⚠ 只读旁路: 结果进 _SS_STATE/日志, **不下发动作** (动作须人工授权)
+# ══════════════════════════════════════════════════════════════════════════════
+def node_ss_mani_eng(ctx):
+    """🧮 流形引擎 — 高维状态 → 低维流形 (编码/投影/度量/导航/反馈 五阶段真跑)"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+        path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
+        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_engine", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr is None or not tr.get("t"):
+            if log:
+                log("⚠️ 流形引擎: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源, 不造状态)")
+            return False
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        O = np.asarray(tr["obs"], dtype=float)
+        if O.ndim != 2 or O.shape[1] < 43:
+            if log:
+                log(f"⚠️ 流形引擎: 轨迹 obs 维数 {O.shape} 不足 43 → 无法编码 (如实报, 不补造)")
+            return False
+        eng = m.ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4)
+        ck = os.path.join(_REPO_ROOT, "models", "manifold_engine.npz")
+        loaded = eng.load(ck)
+        calib_note = f"标定 {os.path.basename(ck)}" if loaded else "未标定 → 用本段轨迹现场拟合"
+        if not loaded:
+            U = np.asarray(tr.get("u_exec_vec") or np.zeros((len(O), 4)), dtype=float)[:len(O), :4]
+            eng.fit(O[:, :43], U)
+        goal = eng.project(O[-1, :43])["p"]            # 目标 = 末帧收敛态 (真值锚, 非自选)
+        eng.goal_point = goal
+        r = eng.project(O[idx, :43])
+        gf = eng.gradient_flow()
+        p_next = eng.navigator.step(r["p"], gf["descent"], dt=0.01)
+        nav = eng.navigate(goal, T=16)
+        st = eng.step(O[idx, :43], dt=0.01)
+        fb = eng.feedback_update(O[min(idx + 1, len(O) - 1), :r["p"].size] -
+                                 O[idx, :r["p"].size])
+        lat = eng.latency_report()
+        meta = r["meta"]
+        _SS_STATE["mani_eng"] = {"p": r["p"].tolist(), "phi": gf["phi"], "conf": r["confidence"],
+                                 "anomaly": r["anomaly"], "action": st["action"].tolist(),
+                                 "residual": r["residual"], "drift": r["drift"], "idx": idx}
+        if log:
+            reg = m.MANIFOLD_REGISTRY
+            ready = [k for k, v in reg.items() if v["status"] == "ready"]
+            log(f"🧮 流形引擎 · L4 核心内核 (帧 {idx}/{len(O)-1} · {calib_note})")
+            log(f"   流形 {eng.manifold_type} · 约束「{reg[eng.manifold_type]['constraint']}」· "
+                f"度量「{reg[eng.manifold_type]['metric']}」· 测地线「{reg[eng.manifold_type]['geodesic']}」"
+                f" · 状态 {reg[eng.manifold_type]['status']}")
+            log(f"   可用流形 {len(ready)}/{len(reg)}: {' · '.join(ready)}")
+            log(f"   未实现(如实登记): " + " · ".join(f"{k}({v.get('why','')[:22]})"
+                                                     for k, v in reg.items() if v["status"] != "ready"))
+            log(f"   ① 编码: {O.shape[1]}D → z({eng.encoder.latent_dim}D)  ② 投影: p={np.round(r['p'], 3)}"
+                + (f" · θ={meta.get('theta')} visibility={meta.get('visibility')}" if "theta" in meta else ""))
+            log(f"   ③ 约束违例 {r['residual']:.2e} · 投影改动 {r['drift']:.4f} · 置信 {r['confidence']:.3f}"
+                f" · 异常 {'是 ⚠' if r['anomaly'] else '否'}"
+                + (f" · 潜维补齐 {meta.get('need')}←{meta.get('got')}" if meta.get("latent_padded") else ""))
+            log(f"   ④ 势能 Φ={gf['phi']:.5f} · 梯度范数 {gf['norm']:.4f} (切空间 −∇Φ, 向收敛态)")
+            log(f"   ⑤ 测地线→收敛态: 长度 {nav['length']:.4f} · {nav['geodesic_kind']} · 终点误差 {nav['end_error']:.2e}"
+                f" · {nav.get('t_navigate_ms')}ms")
+            log(f"   ⑥ 动作建议 a={np.round(st['action'], 3)} ({st['decode_src']}) · "
+                f"有界反馈 ‖Δ‖={fb['norm']:.4f}{' (已限幅)' if fb['clamped'] else ''}")
+            log(f"   ⏱ 延迟: 编码 {lat.get('encode', {}).get('mean_ms')}ms · 投影 {lat.get('project', {}).get('mean_ms')}ms"
+                f" · 梯度 {lat.get('metric', {}).get('mean_ms')}ms · 测地线 {lat.get('navigate', {}).get('mean_ms')}ms"
+                f" · 端到端 {lat.get('total_mean_ms')}ms (上限 ~{lat.get('implied_max_hz')}Hz)")
+            log("   🔒 只读旁路: 结论进数据总线/日志, 不下发动作 (动作须人工授权)")
+        return True
+    except Exception as e:                                                      # noqa: BLE001
+        if log:
+            log(f"⚠️ 流形引擎失败: {type(e).__name__}: {e}")
+        return False
+
+
+_reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
+     "🧮 流形引擎 — L4 核心内核: 高维状态→低维流形, 流形上 表征/投影/度量/测地线导航/梯度流/有界反馈 "
+     "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine)",
+     node_ss_mani_eng)
+_EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
+                                395, "class ManifoldEngine")

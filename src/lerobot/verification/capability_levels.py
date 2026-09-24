@@ -131,6 +131,13 @@ CAPABILITY_LEVELS = {
              "tools/lora_inject.py) + 产物 merge 后才可部署 (tools/merge_lora_ckpt.py): 200 步产物 A/B "
              "**未证明提升** → 不切在役指针 (2026-09-24 Δu 诊断定位根因: 幅值比中位 5.8×被 L2 收口闸逐帧否决)",
              "groups": ["intact", "sched_real"]},
+            {"fid": "L4-C15", "name": "流形引擎", "desc": "L4 核心内核: 高维状态→低维流形 (编码→投影→度量/梯度→"
+             "测地线导航→有界反馈 五阶段真跑)。ready 流形 7 种 (euclidean/sphere/torus/so3/se3/su2/latent_flat, "
+             "复用 su2.py 群 + lie_intent SO3/SE3 + manifold_layer 势能 + fiber_bundle 提升); calabi_yau/hyperbolic "
+             "**如实登记为 planned** (缺 Ricci-flat 度量/双曲图卡, 不造数)。实测延迟: 端到端 0.056ms/帧 · 投影 0.019ms "
+             "· 测地线T=16 0.24ms · 约束违例 1.1e-16 (真跑引擎轨迹); 解码器岭回归**只在标定分布内可信** "
+             "(训练段逐维相关 0.76~0.94) ⇒ 只读旁路, 未接管动作。真源 src/lerobot/manifold/manifold_engine.py",
+             "groups": ["lat", "mc", "mp", "obs43"]},
         ],
     },
 }

@@ -1,0 +1,167 @@
+{
+ "数据源": "真跑引擎 seed104 160 步 (obs43 真实轨迹)",
+ "流形": "su2",
+ "标定": {
+  "loaded": true,
+  "n_fit": 120,
+  "latent_dim": 16,
+  "readout_r2_训练段": 0.5762,
+  "readout_r2_未见段": -2.4997,
+  "readout_r2_全段": 0.8979,
+  "逐维相关_训练段": [
+   0.826,
+   0.94,
+   0.924,
+   0.757
+  ],
+  "幅度比_全段(中位)": 1.099,
+  "预测最大幅值": 1.1,
+  "真值最大幅值": 1.0,
+  "n_训练/未见": [
+   120,
+   40
+  ],
+  "src": "ridge 拟合解码器 (带动作界限幅)"
+ },
+ "实测_单帧端到端": {
+  "n": 159,
+  "mean_ms": 0.0636,
+  "p50_ms": 0.0609,
+  "p95_ms": 0.0802
+ },
+ "实测_分阶段延迟": {
+  "encode": {
+   "n": 321,
+   "mean_ms": 0.0023,
+   "p50_ms": 0.0023,
+   "p95_ms": 0.0031
+  },
+  "project": {
+   "n": 321,
+   "mean_ms": 0.0221,
+   "p50_ms": 0.0222,
+   "p95_ms": 0.0304
+  },
+  "metric": {
+   "n": 159,
+   "mean_ms": 0.0151,
+   "p50_ms": 0.0146,
+   "p95_ms": 0.0181
+  },
+  "navigate": {
+   "n": 1,
+   "mean_ms": 0.2687,
+   "p50_ms": 0.2687,
+   "p95_ms": 0.2687
+  },
+  "feedback": {
+   "n": 159,
+   "mean_ms": 0.0086,
+   "p50_ms": 0.0083,
+   "p95_ms": 0.0105
+  },
+  "total_mean_ms": 0.3168,
+  "implied_max_hz": 3156.6
+ },
+ "实测_约束违例_max": 1.1102230246251565e-16,
+ "实测_投影改动量(均值)": 0.3502,
+ "实测_投影改动量分位": {
+  "p50": 0.213,
+  "p95": 0.9803,
+  "max": 0.9808
+ },
+ "实测_置信度(均值/最小)": [
+  0.3634,
+  0.0074
+ ],
+ "实测_异常帧数": 38,
+ "实测_异常率": 0.239,
+ "实测_势能下降帧占比": 0.5063,
+ "实测_势能Φ(首/末)": [
+  0.95953,
+  0.0
+ ],
+ "测地线": {
+  "T": 16,
+  "length": 1.530313,
+  "end_error": 0.0,
+  "kind": "指数映射 + slerp",
+  "t_ms": 0.269
+ },
+ "规格对照": {
+  "单次推理 (step: 编码+投影+梯度+导航步)": 0.3168,
+  "规格要求 <10ms": "达标",
+  "流形投影延迟": 0.0221,
+  "规格要求 <1ms": "达标",
+  "测地线计算 (T=16)": 0.2687,
+  "规格要求 <50ms": "达标",
+  "闭环频率上限": "3156.6 Hz",
+  "规格要求 >100Hz": "达标",
+  "注": "精度/鲁棒性指标需真机或长跑数据才能给, 本表只报**实测延迟**, 不抄规格书数字"
+ },
+ "流形注册表": {
+  "euclidean": {
+   "status": "ready",
+   "metric": "欧氏",
+   "geodesic": "直线",
+   "src": "本模块",
+   "why": ""
+  },
+  "sphere": {
+   "status": "ready",
+   "metric": "弧长 (chord→arc)",
+   "geodesic": "大圆 (slerp)",
+   "src": "本模块",
+   "why": ""
+  },
+  "torus": {
+   "status": "ready",
+   "metric": "周期欧氏",
+   "geodesic": "线性 mod 2π",
+   "src": "本模块",
+   "why": ""
+  },
+  "so3": {
+   "status": "ready",
+   "metric": "测地角 arccos((tr R−1)/2)",
+   "geodesic": "四元数 slerp",
+   "src": "lie_intent",
+   "why": ""
+  },
+  "se3": {
+   "status": "ready",
+   "metric": "Killing 近似 ‖ΔR‖_F + ‖Δt‖",
+   "geodesic": "螺旋运动 (slerp R + lerp t)",
+   "src": "lie_intent",
+   "why": ""
+  },
+  "su2": {
+   "status": "ready",
+   "metric": "Fubini–Study (distance_fs)",
+   "geodesic": "指数映射 + slerp",
+   "src": "state_space/su2.py",
+   "why": ""
+  },
+  "latent_flat": {
+   "status": "ready",
+   "metric": "欧氏",
+   "geodesic": "直线 (带自适应增益)",
+   "src": "fiber_bundle 标定口径",
+   "why": ""
+  },
+  "calabi_yau": {
+   "status": "planned",
+   "metric": "Ricci-flat",
+   "geodesic": "复测地线",
+   "src": "—",
+   "why": "缺 Ricci-flat 度量求解器 (未实现) → 仅登记不提供投影/导航, **不造数**"
+  },
+  "hyperbolic": {
+   "status": "planned",
+   "metric": "Poincaré 度量",
+   "geodesic": "双曲测地线",
+   "src": "—",
+   "why": "未实现 (缺 exp/log 图卡)"
+  }
+ }
+}

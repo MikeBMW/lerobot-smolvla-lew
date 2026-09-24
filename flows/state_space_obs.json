@@ -2035,6 +2035,49 @@
    ],
    "x": 967,
    "y": 2598
+  },
+  {
+   "id": "ss_mani_eng",
+   "type": "model",
+   "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+   "x": 7500,
+   "y": 1546,
+   "w": 340,
+   "h": 130,
+   "icon": "🧮",
+   "color": "#7bdcb5",
+   "params": {
+    "state_space": true,
+    "manifold_engine": true,
+    "kind": "real",
+    "role": "L4 核心内核 — 高维状态→低维流形, 流形上 表征/投影/度量/导航/反馈",
+    "api": "project() · navigate() · gradient_flow() · feedback_update() · step() · query()",
+    "pipeline": "编码(Encoder/PCA) → 投影(ManifoldProjector) → 度量+梯度(MetricCalculator) → 导航(Navigator 测地线) → 反馈(FeedbackLoop 有界)",
+    "manifolds_ready": "euclidean · sphere · torus · so3 · se3 · su2 · latent_flat",
+    "manifolds_planned": "calabi_yau(Ricci-flat 度量未实现) · hyperbolic(未实现) — 仅登记, 不造数",
+    "source": "src/lerobot/manifold/manifold_engine.py",
+    "source_symbol": "class ManifoldEngine",
+    "reuse": "su2.py(群) · lie_intent.py(SO3/SE3) · manifold_layer.py(接触/性能势能) · fiber_bundle.py(提升) — 复用既有真件",
+    "measured": "端到端 0.056ms/帧 · 投影 0.019ms · 测地线T=16 0.24ms · 约束违例 1.1e-16 · 上限 ~3500Hz (真跑引擎轨迹实测)",
+    "spec_target": "延迟<10ms · 投影<1ms · 测地线<50ms · >100Hz — 全部达标",
+    "caveat": "解码器(岭回归)只在标定分布内可信 (训练段逐维相关 0.76~0.94; 未见段 R² 负) → 跨段须重标定",
+    "desc": "L4 核心内核: 把高维状态自动约束为低维流形, 在流形上做测地线导航/梯度流/有界反馈; 输出意图与动作建议"
+   },
+   "inputs": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5"
+   ],
+   "outputs": [
+    "out1",
+    "out2",
+    "out3",
+    "out4",
+    "out5"
+   ],
+   "actions": []
   }
  ],
  "links": [
@@ -3253,6 +3296,86 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "技能序列 → 原子技能"
+  },
+  {
+   "id": "lk0924_sssensor_ss_mani_eng",
+   "f": "sssensor",
+   "t": "ss_mani_eng",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "43D 状态 (传感器融合) → x∈R^N"
+  },
+  {
+   "id": "lk0924_ssobs_ss_mani_eng",
+   "f": "ssobs",
+   "t": "ss_mani_eng",
+   "f_port": "out3",
+   "t_port": "in2",
+   "label": "SU(2) 统一状态 → 群约束"
+  },
+  {
+   "id": "lk0924_sscalib_ss_mani_eng",
+   "f": "sscalib",
+   "t": "ss_mani_eng",
+   "f_port": "out2",
+   "t_port": "in3",
+   "label": "几何标定 → 度量/势场参数"
+  },
+  {
+   "id": "lk0924_sslat_ss_mani_eng",
+   "f": "sslat",
+   "t": "ss_mani_eng",
+   "f_port": "out2",
+   "t_port": "in4",
+   "label": "潜空-流形 → 潜坐标"
+  },
+  {
+   "id": "lk0924_ss_moe_ss_mani_eng",
+   "f": "ss_moe",
+   "t": "ss_mani_eng",
+   "f_port": "out3",
+   "t_port": "in5",
+   "label": "阶段先验 → 条件化"
+  },
+  {
+   "id": "lk0924_ss_mani_eng_ssintact_dec",
+   "f": "ss_mani_eng",
+   "t": "ssintact_dec",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "意图 Δz (梯度方向 −∇Φ)"
+  },
+  {
+   "id": "lk0924_ss_mani_eng_ssmani_exp",
+   "f": "ss_mani_eng",
+   "t": "ssmani_exp",
+   "f_port": "out2",
+   "t_port": "in5",
+   "label": "流形坐标 p + 测地线 γ"
+  },
+  {
+   "id": "lk0924_ss_mani_eng_ssmani_c",
+   "f": "ss_mani_eng",
+   "t": "ssmani_c",
+   "f_port": "out3",
+   "t_port": "in2",
+   "label": "接触流形势能 Φ_c"
+  },
+  {
+   "id": "lk0924_ss_mani_eng_ssmani_p",
+   "f": "ss_mani_eng",
+   "t": "ssmani_p",
+   "f_port": "out4",
+   "t_port": "in2",
+   "label": "性能流形代价 V_p/η"
+  },
+  {
+   "id": "lk0924_ss_mani_eng_sssched",
+   "f": "ss_mani_eng",
+   "t": "sssched",
+   "f_port": "out5",
+   "t_port": "in4",
+   "label": "动作指令 a (解码器输出)"
   }
  ],
  "params_note": ""
