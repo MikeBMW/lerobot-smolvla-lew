@@ -313,3 +313,10 @@
 {"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 6.0, "via": "local", "ts": "2026-09-24 17:43:58"}
 {"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 5.3, "via": "local", "ts": "2026-09-24 17:44:50"}
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1081.1, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 17:45:21"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1126.9, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 17:49:04"}
+{"cam": "表面", "port": 10083, "action": "capture_detect", "http": "200", "ms": 234.0, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10083/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 17:49:11"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1098.0, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 17:50:19"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1170.5, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 17:50:23"}
+{"cam": "金手指", "port": 10082, "kind": "topview", "http": "200", "ms": 1172.4, "via": "local", "bytes": 1983796, "shape": [960, 960, 3], "action": "fetch_grab", "ts": "2026-09-24 17:50:24"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1216.7, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 17:50:48"}
+{"cam": "金手指", "port": 10082, "kind": "topview", "http": "200", "ms": 1224.3, "via": "local", "bytes": 1984015, "shape": [960, 960, 3], "action": "fetch_grab", "ts": "2026-09-24 17:50:49"}

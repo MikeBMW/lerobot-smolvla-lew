@@ -129,6 +129,17 @@ def record(name: str, desc: str = "", samples: int = 6, roi=None, judge_png: str
         return {"ok": False, "err": meta.get("err", "位姿不可用"), "meta": meta}
     d = load_points()
     pts = d.setdefault("points", {})
+    # 🗂 更新前留痕 (可回滚): 旧值追加进 reports/aoi_points/<name>.history.jsonl
+    old = pts.get(name)
+    if old:
+        try:
+            os.makedirs(CTX_DIR, exist_ok=True)
+            with open(os.path.join(CTX_DIR, f"{name}.history.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps({"replaced_at": time.strftime("%F %T"), "old": old,
+                                    "new_pos": pose["pos"], "new_quat": pose["quat"],
+                                    "by": operator, "reason": "update"}, ensure_ascii=False) + "\n")
+        except Exception:                                              # noqa: BLE001
+            pass
     pts[name] = {"pos": pose["pos"], "quat": pose["quat"],
                  "desc": desc or f"AOI 示教点 ({name})",
                  "recorded_at": time.strftime("%F %T"), "source": meta["source"],

@@ -15,22 +15,22 @@
  "live_read": {
   "pose": {
    "pos": [
-    0.5973107,
-    0.1426173,
-    0.6415652
+    0.5973109,
+    0.1426171,
+    0.641565
    ],
    "quat": [
-    -0.0799063,
+    -0.0799061,
     0.0077645,
     0.9960053,
-    0.0390903
+    0.0390904
    ]
   },
   "meta": {
    "ok": true,
    "n": 4,
-   "spread_pos_m": 4.6e-07,
-   "spread_quat": 3.1e-07,
+   "spread_pos_m": 4e-07,
+   "spread_quat": 3.7e-07,
    "status": {
     "power_state": "on",
     "operation_state": "idle",
@@ -70,46 +70,46 @@
   "dry_run": true,
   "target": {
    "pos": [
-    0.5973107,
-    0.1426173,
-    0.6415652
+    0.5973109,
+    0.1426171,
+    0.641565
    ],
    "quat": [
-    -0.0799063,
+    -0.0799061,
     0.0077645,
     0.9960053,
-    0.0390903
+    0.0390904
    ]
   },
   "current": {
    "pos": [
     0.5973109,
-    0.1426171,
-    0.6415647
+    0.1426174,
+    0.641565
    ],
    "quat": [
-    -0.0799059,
-    0.0077645,
+    -0.0799061,
+    0.0077646,
     0.9960054,
     0.0390904
    ]
   },
   "fifo_cmd": "echo '{\"skill\": \"L2.goto_point\", \"point\": \"金手指点1\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo",
-  "ros_cmd": "ssh tashan@192.168.23.66 bash -lc 'timeout 90 ros2 service call /move_line interfaces/srv/TargetPose \"{speed: 30, joint_state: {name: [], position: []}, pose: {position: {x: 0.5973107, y: 0.1426173, z: 0.6415652}, orientation: {x: -0.0799063, y: 0.0077645, z: 0.9960053, w: 0.0390903}}}\" 2>&1 | tail -3'",
-  "recorded_at": "2026-09-24 17:45:33",
+  "ros_cmd": "ssh tashan@192.168.23.66 bash -lc 'timeout 90 ros2 service call /move_line interfaces/srv/TargetPose \"{speed: 30, joint_state: {name: [], position: []}, pose: {position: {x: 0.5973109, y: 0.1426171, z: 0.641565}, orientation: {x: -0.0799061, y: 0.0077645, z: 0.9960053, w: 0.0390904}}}\" 2>&1 | tail -3'",
+  "recorded_at": "2026-09-24 17:54:25",
   "desc": "AOI 金手指观察位 (verify 注入)",
   "delta_mm": [
-   -0.0,
    0.0,
+   -0.0,
    0.0
   ],
   "delta_norm_mm": 0.0,
-  "delta_deg": 0.02,
+  "delta_deg": 0.016,
   "note": "dry-run: 未下发任何运动 (真动加 authorize=True 或窗口勾『真执行』)"
  },
  "cmds": {
   "fifo": "echo '{\"skill\": \"L2.goto_point\", \"point\": \"金手指点1\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo",
-  "ros": "ssh tashan@192.168.23.66 bash -lc 'timeout 90 ros2 service call /move_line interfaces/srv/TargetPose \"{speed: 30, joint_state: {name: [], position: []}, pose: {position: {x: 0.5973107, y: 0.1426173, z: 0.6415652}, orientation: {x: -0.0799063, y: 0.0077645, z: 0.9960053, w: 0.0390903}}}\" 2>&1 | tail -3'"
+  "ros": "ssh tashan@192.168.23.66 bash -lc 'timeout 90 ros2 service call /move_line interfaces/srv/TargetPose \"{speed: 30, joint_state: {name: [], position: []}, pose: {position: {x: 0.5973109, y: 0.1426171, z: 0.641565}, orientation: {x: -0.0799061, y: 0.0077645, z: 0.9960053, w: 0.0390904}}}\" 2>&1 | tail -3'"
  },
  "registry": [
   "L2.goto_aoi_gold",
@@ -133,7 +133,7 @@
   "log_tail": "📍 已记住「GUI测试点」 pos=[0.5973, 0.1426, 0.6416] 抖动 0.001mm (4 帧) · 上下文 → /home/ubuntu/lerobot-smolvla-lew/reports/aoi_points/"
  },
  "gui_goto_dry": {
-  "log": "🎯 [dry-run] 回到「GUI测试点」: Δ位置 [0.0, -0.0, -0.0] mm (模长 0.0 mm) · Δ姿态 0.0° · 命令已打到终端页 (可复制执行)",
+  "log": "🎯 [dry-run] 回到「GUI测试点」: Δ位置 [-0.0, 0.0, 0.0] mm (模长 0.0 mm) · Δ姿态 0.009° · 命令已打到终端页 (可复制执行)",
   "term": ".goto_point\", \"point\": \"GUI测试点\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo\necho '{\"skill\": \"L2.goto_point\", \"point\": \"GUI测试点\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo"
  },
  "checks": {
