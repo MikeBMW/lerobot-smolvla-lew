@@ -114,3 +114,22 @@
 ### 新增工具 (均在 tools/)
 `canvas_level_audit.py` (档位级四件套) · `moe_engine_bypass.py` (只读旁路, --model moe|dense) ·
 `moe_holdout_persistence.py` (同源三方对照) · `obs_step_delta.py` (帧间位移尺度对比) · `canvas_link_reconcile.py` (运行时对账)
+
+---
+
+## 2026-09-24 晚 · 架构升级: 流形引擎 (Manifold Engine) 落地 L4 核心内核 (commit f3bf1a0d)
+
+| 项 | 结果 |
+|---|---|
+| 新组件 | `src/lerobot/manifold/manifold_engine.py::ManifoldEngine` — 五阶段真跑 (编码/投影/度量+梯度/测地线导航/有界反馈) |
+| 复用真件 | su2.py(群) · lie_intent(SO3/SE3) · manifold_layer(势能 Φ) · fiber_bundle(丛提升) |
+| 流形注册表 | 9 种 = 7 ready + 2 **如实 planned** (calabi_yau/hyperbolic, 拒答不造数) |
+| 实测延迟 | 端到端 **0.056ms/帧** · 投影 0.019ms · 测地线T=16 0.24ms · 上限 ~3500Hz (规格全达标) |
+| 实测精度 | 约束违例 **1.1e-16** · 测地线终点误差 0 · Φ 0.96→0 收敛 · 解码器训练段逐维相关 0.76~0.94 (未见段 R² 负 → 只在标定分布内可信) |
+| 修的真 bug | 5 个: 潜维静默退化 / SE(3) 切分 / 残差语义 / 反馈维数广播 / 解码器外推发散(3.05→1.10) |
+| 画布 | 新节点 x=7500 = L4 前向输入前沿(4690) 与输出前沿(10016) 的中点 (偏差 147); 落在同行带最大空档; 零重叠; 入 5 出 5 全前向 |
+| 完备性 | 节点 **71** · 连线 **162** · 孤岛 0 · 断头 7 全合法终端 · 悬空 3 全数据源 · 重叠 0 |
+| 档位级审计 | 新节点 **R2-档位级真接** (注册 ✅ / 源码映射 ✅ / 10 连线) · 全图真缺口 **0** |
+| 三件套 | node_logic 注册+真执行函数 + `_EXTERNAL_LOC` + 能力清单 L4-C15 |
+| 灰度 | 只读旁路 (不下发动作); 接管前置 = 跨段重标定 + 同口径 A/B 不回退 + 授权 |
+| 新增工具 | `tools/manifold_engine_bench.py` · `tools/canvas_add_manifold_engine.py` (6 硬断言) · `tools/studio_ctl.sh` (安全启停, 防 pkill 自杀 + venv 路径坑) |
