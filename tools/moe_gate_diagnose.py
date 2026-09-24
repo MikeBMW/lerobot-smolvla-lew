@@ -82,12 +82,22 @@ def main():
         ok += int(share > 0.5)
         print("     %-8s " % STAGES[s] + "".join("%-6d" % v for v in row) +
               "  E%-6d  %5.1f%%" % (top, share * 100))
+    # ★ 单射性: 每个阶段是否映射到**不同**专家 (防"全归E0"式的假分化)
+    tops = []
+    for s in range(NS):
+        m = (y == s)
+        if m.sum() == 0:
+            continue
+        tops.append(int(np.bincount(routes[m], minlength=NS).argmax()))
+    n_inj = len(set(tops))
     used = len(set(routes.tolist()))
     print("\n  ② 路由熵: 平均 %.3f (最大 %.3f; 越低越专一)" % (ent.mean(), np.log(NS)))
     print("  ③ 有效专家数: **%d / %d** %s" % (used, NS, "✅ 全用上" if used == NS else "⚠️ 有专家饿死"))
-    print("  ④ 阶段-专家一一对应率: **%d/%d** %s" % (ok, NS, "✅ 分化成立" if ok >= NS - 1 else "❌ 未分化"))
+    print("  ④ 主导对应率: **%d/%d** (各行最大是否达标 — 弱判据, 会假阳性)")
+    print("  ⑤ ★**单射性(关键判据)**: 各阶段主导专家去重后 **%d 个** %s" %
+          (n_inj, "✅ 各阶段分到不同专家" if n_inj >= 6 else "❌ **坍缩**: 多阶段挤在同一专家 → MOE 退化"))
     print("=" * 78)
-    print("判据: 一一对应率 ≥6/7 且 有效专家=7 → MOE 分工成立（非退化）")
+    print("判据(修订): **单射性 ≥6/7** 且 **有效专家 ≥6** → 分工成立; 只看主导对应率会假阳性")
     return 0
 
 

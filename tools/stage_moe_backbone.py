@@ -68,16 +68,23 @@ class StageMoE(nn.Module):
             }))
         self.mem_dim = mem_dim
 
-    def forward(self, px, obs, obs_next, mem, stage_p, hard=True):
-        """px:(B,3,H,W) obs:(B,39) mem:(B,13) stage_p:(B,7) 先验阶段概率"""
+    def forward(self, px, obs, obs_next, mem, stage_p, hard=True, route="prior"):
+        """px:(B,3,H,W) obs:(B,39) mem:(B,13) stage_p:(B,7) 先验阶段概率
+        route: "prior"=**按阶段先验硬路由**(保证分化, 正解) / "soft"=学习门控(实测坍缩)"""
         feat = self.trunk(pixel_values=px).pooler_output if hasattr(self.trunk, "pooler_output") else None
         if feat is None:
             feat = self.trunk(pixel_values=px).last_hidden_state.mean(1)
         h = self.fuse(torch.cat([feat, obs, mem], dim=1))                 # (B,256)
 
-        prior = stage_p @ self.gate_prior                                  # (B,NS) 先验路由
-        logits = prior + self.gate_mlp(torch.cat([h, stage_p], dim=1))     # (B,NS)
-        g = F.softmax(logits, dim=1)                                       # (B,NS) 门控权重
+        if route == "prior":
+            # ★ 硬先验路由: 直接按阶段选择专家 (无自由学习 → 不可能坍缩)
+            g = stage_p / stage_p.sum(1, keepdim=True).clamp_min(1e-6)
+            g = torch.where(g.sum(1, keepdim=True) > 0.5, g,
+                            torch.full_like(g, 1.0 / self.n_experts))
+        else:
+            prior = stage_p @ self.gate_prior
+            logits = prior + self.gate_mlp(torch.cat([h, stage_p], dim=1))
+            g = F.softmax(logits, dim=1)
 
         # 专家输出
         outs_o = torch.stack([e["l4"](h) for e in self.experts], dim=1)                     # (B,NS,39)
@@ -137,6 +144,7 @@ def main():
     ap.add_argument("--wd", type=float, default=0.01)
     ap.add_argument("--stats", type=int, default=300)
     ap.add_argument("--chunk", type=int, default=7)
+    ap.add_argument("--route", default="prior", choices=["prior", "soft"], help="prior=按阶段硬路由(推荐)")
     ap.add_argument("--aug", type=int, default=0)
     ap.add_argument("--aug-scale", default="0.90,1.10")
     ap.add_argument("--cache-gb", type=float, default=1.0)
@@ -158,6 +166,7 @@ def main():
 
     trunk = AutoModel.from_pretrained(MODEL, dtype=torch.float32).vision_model
     net = StageMoE(trunk, chunk=a.chunk, freeze=1).to(dev)
+    print(f"   🚦 路由模式: **{a.route}**" + (" (按阶段先验硬路由)" if a.route == "prior" else " (学习门控, 实测会坍缩)"))
     if a.init and os.path.isfile(a.init):
         sd0 = torch.load(a.init, map_location="cpu", weights_only=False)
         r = net.load_state_dict(sd0, strict=False)
@@ -210,7 +219,7 @@ def main():
         stage_p = stage_p.to(dev).float()
         mem = torch.zeros(obs.shape[0], 13, device=dev)
 
-        out = net(px, obs, obs_next, mem, stage_p, hard=True)
+        out = net(px, obs, obs_next, mem, stage_p, hard=True, route=a.route)
         L4 = F.mse_loss(out["o_hat"], obs_next)
         L3 = F.mse_loss(out["u"], act)
         L = L4 + L3
@@ -229,7 +238,7 @@ def main():
                     ho = torch.from_numpy(H_O[b0:b1]).to(dev)
                     ha = torch.from_numpy(H_A[b0:b1]).to(dev)
                     hsp = torch.from_numpy(H_S[b0:b1]).to(dev)
-                    o2 = net(hpx, ho, ho, torch.zeros(b1 - b0, 13, device=dev), hsp, hard=False)
+                    o2 = net(hpx, ho, ho, torch.zeros(b1 - b0, 13, device=dev), hsp, hard=False, route=a.route)
                     mo += float(F.l1_loss(o2["o_hat"], ho, reduction="sum"))
                     ma += float(F.l1_loss(o2["u"], ha, reduction="sum"))
                 mo /= len(H_O) * H_O.shape[1]
