@@ -3462,7 +3462,12 @@ def node_ss_eng_mem(ctx):
         if log:
             log(f"📚 工程记忆 (真实文件): 同步文档 {c['docs_memory_files']} 篇 · "
                 f"Hermes 记忆 {c['hermes_memory_files']} 个 · 技能 {c['skills']} 条 "
-                f"(小节 {c['skill_sections']}) · 记忆条目 {c['memory_items(§)']} 条")
+                f"(小节 {c['skill_sections']}) · 记忆条目 {c['memory_items(§)']} 条 · "
+                f"**机器人可执行技能 {c.get('l2_skills', 0)} 条**")
+            _l2 = snap.get("l2_skills") or []
+            _aoi = [s2.get("name") for s2 in _l2 if s2.get("group") == "AOI检测"]
+            if _aoi:
+                log(f"   🤖 可执行技能 (AOI检测组 {len(_aoi)} 条): " + " / ".join(_aoi[-4:]))
             n = snap.get("newest") or {}
             log(f"   最新: {n.get('mtime_str')} · {os.path.basename(n.get('path', ''))}")
         r = m.sync_to_macro()

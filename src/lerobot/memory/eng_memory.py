@@ -81,6 +81,30 @@ class EngMemory:
         skills.sort()
 
         files = [_stat(p) for p in (docs + mems + skills) if os.path.exists(p)]
+        # 🎯 机器人**可执行**技能库 (2026-09-24 老倪: 「回到金手指点1」这类技能要在工程记忆里看到):
+        #    L2 原子技能库 data/skills/l2_atomic/registry.json (GUI 技能清单/常驻执行器同一真源)
+        #    + L2 肌肉记忆技能库 data/skills/l2_muscle/*.json
+        l2_files, l2_skills = [], []
+        _reg = os.path.join(self.repo, "data", "skills", "l2_atomic", "registry.json")
+        if os.path.exists(_reg):
+            l2_files.append(_stat(_reg))
+            try:
+                with open(_reg, encoding="utf-8") as f:
+                    _d = json.load(f)
+                for sk in (_d.get("skills") or []):
+                    l2_skills.append({"id": sk.get("id"), "name": sk.get("name", ""),
+                                      "group": sk.get("group", ""), "ros": sk.get("ros", ""),
+                                      "point": sk.get("point", ""),
+                                      "blocked": ("需" in str(sk.get("note", "")) and "picture" in str(sk.get("note", "")))})
+            except Exception:                                              # noqa: BLE001
+                pass
+        l2_muscle, l2_muscle_files = [], []
+        _mdir = os.path.join(self.repo, "data", "skills", "l2_muscle")
+        if os.path.isdir(_mdir):
+            for _f in sorted(os.listdir(_mdir)):
+                if _f.endswith(".json"):
+                    l2_muscle_files.append(_stat(os.path.join(_mdir, _f)))
+                    l2_muscle.append(_f[:-5])
         # 技能条目数 (按 SKILL.md 里 "## " 小节粗略计) + 工程记忆里的条目 (§ 分段)
         doc_items = 0
         for p in docs + mems:
@@ -93,9 +117,12 @@ class EngMemory:
             "docs_memory": [f for f in files if "/docs/memory/" in f["path"]],
             "hermes_memory": [f for f in files if "/memories/" in f["path"]],
             "skills": [f for f in files if f["path"].endswith("/SKILL.md")],
+            "l2_skills": l2_skills, "l2_skill_files": l2_files,
+            "l2_muscle": l2_muscle, "l2_muscle_files": l2_muscle_files,
             "counts": {"docs_memory_files": len(docs), "hermes_memory_files": len(mems),
                         "skills": len(skills), "memory_items(§)": doc_items,
-                        "skill_sections": skill_sections},
+                        "skill_sections": skill_sections,
+                        "l2_skills": len(l2_skills), "l2_muscle_skills": len(l2_muscle)},
             "newest": newest,
             "collected_at": time.strftime("%F %T"),
         }
@@ -104,7 +131,8 @@ class EngMemory:
     def sync_to_macro(self) -> dict:
         snap = self.collect()
         fp_src = json.dumps([[f["path"], f["size"], f["mtime"]] for f in
-                             snap["docs_memory"] + snap["hermes_memory"] + snap["skills"]],
+                             snap["docs_memory"] + snap["hermes_memory"] + snap["skills"]
+                             + snap.get("l2_skill_files", []) + snap.get("l2_muscle_files", [])],
                             sort_keys=True)
         fp = hashlib.sha256(fp_src.encode()).hexdigest()[:16]
         try:
@@ -118,7 +146,10 @@ class EngMemory:
                     "llm": bool(os.environ.get("SS_MACRO_LLM_URL"))}
         store.setdefault("version", 1)
         store["engineering"] = {
-            "source": "docs/memory/*.md + ~/.hermes/memories/*.md + ~/.hermes/skills/**/SKILL.md",
+            "source": ("docs/memory/*.md + ~/.hermes/memories/*.md + ~/.hermes/skills/**/SKILL.md"
+                       " + data/skills/l2_atomic/registry.json (机器人可执行技能库) + data/skills/l2_muscle/*.json"),
+            "l2_skills": snap.get("l2_skills", []),
+            "l2_muscle": snap.get("l2_muscle", []),
             "counts": snap["counts"],
             "newest": snap["newest"],
             "files": [{"path": os.path.relpath(f["path"], self.repo) if f["path"].startswith(self.repo) else f["path"],
@@ -149,6 +180,7 @@ class EngMemory:
         n = self.collect()["newest"] or {}
         return (f"工程记忆: 同步文档 {c['docs_memory_files']} 篇 · Hermes 记忆 {c['hermes_memory_files']} 个 · "
                 f"技能 {c['skills']} 条 (小节 {c['skill_sections']}) · 记忆条目 {c['memory_items(§)']} 条 · "
+                f"机器人可执行技能 {c.get('l2_skills', 0)} 条 · "
                 f"最新更新 {n.get('mtime_str', '?')} ({os.path.basename(n.get('path', ''))})")
 
 

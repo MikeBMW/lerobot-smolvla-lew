@@ -1,0 +1,230 @@
+{
+ "health": {
+  "host": "192.168.23.23",
+  "via": "local",
+  "cams": {
+   "金手指": {
+    "port": 10082,
+    "sn": "D265250070",
+    "model": "OPT-CC1-GG50",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "(路由不存在)"
+    },
+    "last_result": {
+     "raw": "\n",
+     "_http": "000",
+     "_ms": 0.4,
+     "_cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/last_result'"
+    },
+    "has_picture": true
+   },
+   "表面": {
+    "port": 10083,
+    "sn": "D265250099",
+    "model": "OPT-CC1-C050-GG3-00",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "(路由不存在)"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "无该路由"
+    },
+    "has_picture": false
+   }
+  }
+ },
+ "last_result_local_before": {
+  "raw": "\n",
+  "_http": "000",
+  "_ms": 0.3,
+  "_cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/last_result'"
+ },
+ "head": {
+  "weights": "",
+  "ready": false,
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "gui_src_10082": {
+  "tag": "",
+  "std": 0.0,
+  "meta_keys": [
+   "bytes",
+   "cam",
+   "cmd",
+   "err",
+   "grab",
+   "http",
+   "kind",
+   "model"
+  ]
+ },
+ "gui_orig": {
+  "shape": null,
+  "std": 0.0,
+  "lbl_orig": "原始图 (=同帧) 640x480",
+  "lbl_crop": "判据图 · 🎥 cam_rs.png 640x480"
+ },
+ "gui_src_10083": {
+  "rgb_is_none": true,
+  "meta": {
+   "ok": false,
+   "cam": "表面",
+   "port": 10083,
+   "err": "表面相机在工控机侧无 /picture 路由 → 只能触发拍照 (见 patch 文档)"
+  }
+ },
+ "term_cmd": {
+  "n_lines": 2,
+  "last": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/picture?kind=topview' -o frame.png",
+  "json_lines": 27
+ },
+ "skill_click": {
+  "inference": {
+   "gold_finger": {
+    "rows": 6,
+    "has_res": true
+   },
+   "module_body": {
+    "rows": 6,
+    "has_res": true
+   },
+   "optical_port": {
+    "rows": 6,
+    "has_res": true
+   },
+   "full": {
+    "rows": 6,
+    "has_res": true
+   }
+  },
+  "service": {
+   "crop_info": true,
+   "region": true,
+   "pic_meta": true,
+   "last_result": true,
+   "fetch_recent": true
+  }
+ },
+ "img_copy": {
+  "crop": [
+   640,
+   480
+  ],
+  "orig": [
+   640,
+   480
+  ],
+  "has_ctxmenu": true,
+  "widgets": [
+   "CopyImageView",
+   "CopyImageView"
+  ],
+  "crop_path": "",
+  "orig_path": ""
+ },
+ "expfix": {
+  "raw_factory_topview": {
+   "sat_pct": 0.2,
+   "deadwhite_rows": 0,
+   "row_var": 16.7,
+   "worst_col_sat_pct": 2.1,
+   "tenengrad": 5912.0
+  },
+  "after_crop": {
+   "sat_pct": 0.2,
+   "deadwhite_rows": 0,
+   "row_var": 16.7,
+   "worst_col_sat_pct": 2.1,
+   "tenengrad": 5912.0
+  },
+  "meta": {}
+ },
+ "roi_good": {
+  "roi": [
+   433,
+   948,
+   2056,
+   1074
+  ],
+  "judge_shape": [
+   480,
+   640,
+   3
+  ],
+  "meta": {},
+  "lbl": "判据图 · 🎥 cam_rs.png 640x480"
+ },
+ "roi_bad": {},
+ "api_btns": {
+  "n": 7,
+  "missing": [],
+  "disabled": [],
+  "surface": [
+   "surface_capture",
+   "surface_gap"
+  ],
+  "bad_surface": []
+ },
+ "svc_click": {
+  "lines_before": 0,
+  "lines_after": 6,
+  "log_tail": "📐 裁剪指标: {\"raw\": \"\\n\", \"_http\": \"000\", \"_ms\": 0.2, \"_cmd\": \"curl -s -m 12 -X GET 'http://192.168.23.23:10082/crop_info'\"}"
+ },
+ "shot_label": {
+  "text": "拍照 17:10:33 (3.2s 前) · 真拍",
+  "extra": "取图 16ms · HTTP 200 · 713KB · [960, 960, 3]"
+ },
+ "auto_refresh": {
+  "on": true,
+  "off": false,
+  "mode": "真拍"
+ },
+ "checks": {
+  "① 10082 有 /picture 路由": false,
+  "① 10082 有 /last_result 判决通道": false,
+  "① 10083 只有 /capture_detect (如实标注无 /picture)": false,
+  "① /last_result 通道可达且结构化": false,
+  "② 经 Orin 通道可达 (ssh→curl 同一条通道)": false,
+  "⑥ 选『📷 10082 金手指』即显示该相机实际图": false,
+  "⑥ 同屏显示原始图 (2048x2448 有结构)": false,
+  "⑥ 两幅画面都有帧 + 尺寸标注": true,
+  "⑥ 标定基准可切到原始图 (可编辑只开在选中画面)": true,
+  "⑥ 选『📷 10083 表面』如实报缺口 (不伪造图)": true,
+  "⑥ 切源取图**不新增真拍** (审计流水未增长)": true,
+  "⑦ 窗口显示 curl 命令 (含目标 URL, 可直接执行)": true,
+  "⑦ 复制命令 → 剪贴板内容与命令框一致": true,
+  "⑦ 终端有服务反馈 JSON 原文": true,
+  "⑦ 复制反馈 → 剪贴板拿到 JSON": true,
+  "⑧ 四个推理技能点击即出判决表": true,
+  "⑧ 五个服务技能点击即得 JSON 反馈": true,
+  "⑨ 判据图右键复制 → 剪贴板拿到同尺寸图": true,
+  "⑨ 原始图右键复制 → 剪贴板拿到 2448x2048": false,
+  "⑨ 两幅画面都装了右键复制菜单 (非编辑态不误删框)": true,
+  "⑨ 画面有本地副本路径 (可复制路径贴到别处)": false,
+  "⑩ 切除前(工厂拉伸图)确认过曝: 死白行>0 且饱和>40%": false,
+  "⑩ 切除后: 死白行=0 且饱和<15% 且细节能量显著提升": false,
+  "⑩ 左右死白列也切了 (最差列饱和从 100% 降下来)": false,
+  "⑩ 切除台账 (裁掉多少行/列 + cliff 位置) 如实记录": false,
+  "⑩ 定时器 tick 不冲掉过曝切除结果 (跨 3 跳画面逐位不变)": true,
+  "⑪ 拖框 → 判据图 = 该矩形拉伸 (尺寸=任务头输入)": false,
+  "⑪ 好框: 框内饱和低 + 数字如实显示": false,
+  "⑪ 框选拉伸结果不被 tick 冲掉 (曾'闪一下变回坏图')": true,
+  "⑪ 坏框(过曝带): 如实告警'拉伸后仍会一片白'": false,
+  "⑪ 记住此框 → 落盘 ROI 文件": true,
+  "⑪ 新开窗口自动读回记住的 ROI": true,
+  "⑪ 清除框 → ROI 清空 + 文件删除 (回到自动裁切)": true,
+  "⑧ 10082 七个接口按钮 + 10083 两个 全部可达 (点一下就能用)": true,
+  "⑧ 服务按钮点一下就出结果 (JSON/curl 进终端页; 失败也如实记)": true,
+  "⑧ 拍照时间可见 (拍照 HH:MM:SS + 帧龄 + 取图耗时/码)": true,
+  "⑧ 自动刷新 开/关可控 (默认关)": true
+ },
+ "checks_pass": "21/37"
+}

@@ -141,10 +141,22 @@ def main():
     from PyQt5 import QtWidgets                                      # noqa: E402
     import aoi_inspect_console as aic                                # noqa: E402
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    def _n_real_shots(path):
+        """只数**真拍** (成功 capture_detect / fetch_grab); 失败记录不算。"""
+        n = 0
+        if os.path.isfile(path):
+            for _l in open(path, encoding="utf-8"):
+                try:
+                    _d = json.loads(_l)
+                except Exception:                                      # noqa: BLE001
+                    continue
+                if _d.get("action") in ("capture_detect", "fetch_grab") and str(_d.get("http")) == "200":
+                    n += 1
+        return n
+
     log_before = 0
     _lg = os.path.join(ROOT, "reports", "opt_capture_log.jsonl")
-    if os.path.isfile(_lg):
-        log_before = sum(1 for _ in open(_lg, encoding="utf-8"))
+    log_before = _n_real_shots(_lg)
     w = aic.AoiInspectConsole(source="real")
     w._timer.stop()
     w.cmb_src.setCurrentIndex(3)                                     # 📷 10082 金手指
@@ -183,7 +195,7 @@ def main():
     ck("⑥ 选『📷 10083 表面』如实报缺口 (不伪造图)",
        w._opt_rgb is None and "picture" in str(w._opt_meta.get("err", "")),
        str(w._opt_meta.get("err"))[:80])
-    _log_after = sum(1 for _ in open(_lg, encoding="utf-8")) if os.path.isfile(_lg) else 0
+    _log_after = _n_real_shots(_lg)
     ck("⑥ 切源取图**不新增真拍** (审计流水未增长)", _log_after == log_before,
        f"{log_before} → {_log_after}")
 
@@ -349,6 +361,57 @@ def main():
     ck("⑪ 清除框 → ROI 清空 + 文件删除 (回到自动裁切)",
        w._manual_roi is None and not os.path.isfile(roi_file), f"roi={w._manual_roi}")
     w.close()
+
+
+    # ⑧ UI 级断言 (不依赖工控机在线): 服务接口按钮 + 拍照时间 + 自动刷新
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import time as _t
+    from PyQt5 import QtWidgets as _QW                                    # noqa: E402
+    import aoi_inspect_console as _aic                                    # noqa: E402
+    _app = _QW.QApplication.instance() or _QW.QApplication([])
+    _w = _aic.AoiInspectConsole(source="real")
+    _w._timer.stop(); _w.show()
+    for _ in range(12):
+        _app.processEvents()
+    _want = ["capture_detect", "picture_origin", "picture_topview", "region", "crop_info",
+             "last_result", "picture_meta"]
+    _miss = [k for k in _want if k not in _w.api_btns]
+    _bad = [k for k, b in _w.api_btns.items() if not (b.isVisible() and b.isEnabled())]
+    _bad83 = [k for k, b in _w.api83_btns.items() if not (b.isVisible() and b.isEnabled())]
+    RES["api_btns"] = {"n": len(_w.api_btns), "missing": _miss, "disabled": _bad,
+                       "surface": list(_w.api83_btns.keys()), "bad_surface": _bad83}
+    ck("⑧ 10082 七个接口按钮 + 10083 两个 全部可达 (点一下就能用)",
+       not _miss and not _bad and not _bad83 and len(_w.api_btns) == 7, str(RES["api_btns"]))
+    # 点一个只读接口: 无论工控机在不在线, 都必须**返回结果**(图或如实报错)而不崩
+    _before_lines = len(_w.term_json.toPlainText().splitlines())
+    _w.api_btns["crop_info"].click()
+    for _ in range(30):
+        _app.processEvents(); _t.sleep(0.1)
+    _after_lines = len(_w.term_json.toPlainText().splitlines())
+    _log_txt = _w.txt_log.toPlainText()
+    RES["svc_click"] = {"lines_before": _before_lines, "lines_after": _after_lines,
+                        "log_tail": _log_txt.strip().splitlines()[-1][:120]}
+    ck("⑧ 服务按钮点一下就出结果 (JSON/curl 进终端页; 失败也如实记)",
+       _after_lines > _before_lines, f"{_before_lines}→{_after_lines} · {RES['svc_click']['log_tail']}")
+    # 拍照时间标签 (注入快照时间验证显示口径)
+    _w._update_shot({"ms": 16, "http": "200", "bytes": 731000, "shape": [960, 960, 3]},
+                    t=_t.time() - 3.2, action="真拍")
+    _lbl = _w.lbl_shot.text()
+    RES["shot_label"] = {"text": _lbl, "extra": _w.lbl_shot_extra.text()}
+    ck("⑧ 拍照时间可见 (拍照 HH:MM:SS + 帧龄 + 取图耗时/码)",
+       _lbl.startswith("拍照 ") and "s 前" in _lbl and "真拍" in _lbl and "16ms" in _w.lbl_shot_extra.text(),
+       f"{_lbl} | {_w.lbl_shot_extra.text()}")
+    # 自动刷新 开/关
+    _w.chk_auto.setChecked(True)
+    _app.processEvents(); _t.sleep(0.1)
+    _on = _w._auto_timer.isActive()
+    _w.chk_auto.setChecked(False)
+    _app.processEvents(); _t.sleep(0.1)
+    _off = _w._auto_timer.isActive()
+    RES["auto_refresh"] = {"on": _on, "off": _off, "mode": _w.cmb_auto_mode.currentText()}
+    ck("⑧ 自动刷新 开/关可控 (默认关)",
+       _on and not _off, str(RES["auto_refresh"]))
+    _w.close()
 
     out = os.path.join(ROOT, "reports", f"opt_camera_verify_{time.strftime('%Y%m%d_%H%M%S')}.json")
     RES["checks"] = CHECKS

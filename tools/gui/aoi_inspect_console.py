@@ -199,6 +199,8 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(500)
+        self._auto_timer = QtCore.QTimer(self)                 # 自动刷新 (默认关)
+        self._auto_timer.timeout.connect(self._auto_tick)
 
     # ══════════════════════ 小工具 ══════════════════════
     def _btn(self, text, tip, slot, primary=False):
@@ -283,26 +285,74 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.cmb_via.addItems(["本机直连", "经 Orin"])
         self.cmb_via.setToolTip("经 Orin = ssh 到 192.168.23.66 再 request (本机不在产线网时用)")
         self.cmb_via.setMinimumWidth(100)
-        self.btn_opt_grab = self._btn("📸 拍帧", "⚠️ 真拍产线台一张 (工控机 /capture_detect + 取图)",
+        self.btn_opt_grab = self._btn("📸 立即拍照 (真拍并显示)",
+                                      "⚠️ POST /capture_detect 真拍产线台一张 → 立刻取原始图+拉伸图并显示 (带拍照时间)",
                                       lambda: self._opt_fetch(grab=True), primary=True)
-        self.btn_opt_recent = self._btn("🖼 最近图", "取工控机内存里的最近一张 (不拍照, 但会过期)",
+        self.btn_opt_recent = self._btn("🔄 取最近图", "GET /picture — 不拍照, 取工控机内存里最近一张",
                                         lambda: self._opt_fetch(grab=False))
-        self.btn_opt_verd = self._btn("📋 工控机判决", "GET /last_result (工控机自家模型判决: OK/NG/缺陷数)",
-                                      self._opt_verdict)
-        for wdg in (self.cmb_via, self.btn_opt_grab, self.btn_opt_recent, self.btn_opt_verd):
+        self.chk_auto = QtWidgets.QCheckBox("自动刷新")
+        self.chk_auto.setToolTip("勾选后按间隔自动更新画面 + 拍照时间\n模式『真拍』= 每次 POST /capture_detect (产线台会真拍)\n模式『只取图』= 只 GET /picture 不拍照")
+        self.chk_auto.toggled.connect(self._on_auto_toggle)
+        self.cmb_auto = QtWidgets.QComboBox(); self.cmb_auto.addItems(["3s", "5s", "10s"])
+        self.cmb_auto.setCurrentText("5s"); self.cmb_auto.setMaximumWidth(70)
+        self.cmb_auto.currentTextChanged.connect(lambda _t: self._on_auto_toggle(self.chk_auto.isChecked()))
+        self.cmb_auto_mode = QtWidgets.QComboBox(); self.cmb_auto_mode.addItems(["真拍", "只取图"])
+        self.cmb_auto_mode.setMaximumWidth(90)
+        self.cmb_auto_mode.currentTextChanged.connect(lambda _t: self._on_auto_toggle(self.chk_auto.isChecked()))
+        self.cmb_auto_mode.setToolTip("真拍 = 每次更新都 POST /capture_detect (产线台会真拍)")
+        for wdg in (self.cmb_via, self.btn_opt_grab, self.btn_opt_recent,
+                    self.chk_auto, self.cmb_auto, self.cmb_auto_mode):
             r2src.addWidget(wdg)
-        self.btn_opt_crop = self._btn("📐 裁剪指标", "GET /crop_info (规整度/残余倾角/线残差/金覆盖) — 只读",
-                                      self._opt_cropinfo)
-        self.btn_opt_region = self._btn("📍 区域", "GET /region (金手指区域框 + 对焦清晰度) — 只读, 不拍照",
-                                        self._opt_region)
-        self.btn_opt_meta = self._btn("🗂 图片元数据", "GET /picture?meta=1 (文件名/大小/时间戳/最近判决) — 只读",
-                                      self._opt_picmeta)
-        for wdg2 in (self.btn_opt_crop, self.btn_opt_region, self.btn_opt_meta):
-            r2src.addWidget(wdg2)
         self.btn_load = self._btn("📂 载入", "载入单帧图片/视频首帧 (离线复看与标定素材)", self._pick_file)
         r2src.addWidget(self.btn_load)
         r2src.addStretch(1)
         v.addLayout(r2src)
+        v.addWidget(self._sep())
+
+        # ── 行 2b 拍照时间/取图状态 (老倪: "都不知道是什么时候拍照的") ──
+        r2ts = QtWidgets.QHBoxLayout(); r2ts.setSpacing(8)
+        self.lbl_shot = QtWidgets.QLabel("拍照: 尚未拍照")
+        self.lbl_shot.setStyleSheet("color:#d29922;font-weight:bold")
+        r2ts.addWidget(self.lbl_shot)
+        self.lbl_shot_extra = self._dim("")
+        self.lbl_shot_extra.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+        r2ts.addWidget(self.lbl_shot_extra, 1)
+        v.addLayout(r2ts)
+        v.addWidget(self._sep())
+
+        # ── 行 2c 服务接口 = 技能按钮 ──
+        r2api = QtWidgets.QHBoxLayout(); r2api.setSpacing(5)
+        r2api.addWidget(self._dim("10082 金手指"))
+        self.api_btns = {}
+        for _key, _label, _tip in (
+                ("capture_detect", "① 触发拍照检测", "POST /capture_detect — 触发工控机拍照+其自家 YOLO 检测 (异步)"),
+                ("picture_origin", "② 实拍原图", "GET /picture?kind=origin — 原始图 2448x2048 (目检/复审)"),
+                ("picture_topview", "③ 拉长960", "GET /picture?kind=topview — 规整拉长图 (喂 YOLO)"),
+                ("region", "④ 区域+对焦", "GET /region — 金手指区域框 + 对焦清晰度 (只读)"),
+                ("crop_info", "⑤ 裁剪指标", "GET /crop_info — 规整度/残余倾角/线残差/金覆盖 (只读)"),
+                ("last_result", "⑥ 判决 OK/NG", "GET /last_result — 工控机自家模型判决 (只读)"),
+                ("picture_meta", "⑦ 图片元数据", "GET /picture?meta=1 — 文件名/大小/时间戳 (只读)")):
+            _b = self._btn(_label, _tip + "\n点一下真执行; curl 命令 + JSON 反馈都进『终端』页 (可复制)",
+                           lambda _=False, k=_key: self._svc_call(k))
+            r2api.addWidget(_b)
+            self.api_btns[_key] = _b
+        r2api.addStretch(1)
+        v.addLayout(r2api)
+        r2api2 = QtWidgets.QHBoxLayout(); r2api2.setSpacing(5)
+        r2api2.addWidget(self._dim("10083 表面"))
+        self.api83_btns = {}
+        for _key, _label, _tip in (("surface_capture", "① 触发拍照检测", "POST /capture_detect (10083) — 表面相机触发拍照"),
+                                   ("surface_gap", "② 取图(缺口)", "GET /picture (10083) — 现状: 工控机侧无该路由 → 只能触发拍照")):
+            _b = self._btn(_label, _tip, lambda _=False, k=_key: self._svc_call(k))
+            r2api2.addWidget(_b)
+            self.api83_btns[_key] = _b
+        r2api2.addStretch(1)
+        v.addLayout(r2api2)
+        # 兼容旧验证脚本的属性名
+        self.btn_opt_verd = self.api_btns["last_result"]
+        self.btn_opt_crop = self.api_btns["crop_info"]
+        self.btn_opt_region = self.api_btns["region"]
+        self.btn_opt_meta = self.api_btns["picture_meta"]
         v.addWidget(self._sep())
 
         # ── 行 2 标定 ──
@@ -776,6 +826,11 @@ class AoiInspectConsole(QtWidgets.QDialog):
         res = self.run_skill(self._cur_skill, quiet=True)
         self._elide(self.lbl_chain, f"链路 ✅ {c['name']} {meta['shape'][1]}x{meta['shape'][0]} "
                                     f"{meta['ms']:.0f}ms via {meta['via']}", json.dumps(meta, ensure_ascii=False))
+        try:
+            _t = optc.picture_meta(cam, via=via).get("t")
+        except Exception:                                          # noqa: BLE001
+            _t = None
+        self._update_shot(meta, t=_t, action=("真拍" if grab else "取最近图"))
         if not quiet:
             self.log(f"🖼 {c['name']}: 原始图 {ometa.get('shape')} {ometa.get('bytes', 0)//1024}KB "
                      f"+ 判据图 {meta['shape']} {meta['bytes']//1024}KB "
@@ -1000,6 +1055,110 @@ class AoiInspectConsole(QtWidgets.QDialog):
             return p
         except Exception:                                          # noqa: BLE001
             return ""
+
+    def _update_shot(self, meta=None, t=None, action=""):
+        """拍照/取图时间戳 (老倪: "都不知道是什么时候拍照的") — t=工控机快照时间(epoch)"""
+        import datetime
+        m = meta or {}
+        if t:
+            age = time.time() - float(t)
+            head = ("拍照 %s (%.1fs 前)"
+                    % (datetime.datetime.fromtimestamp(float(t)).strftime('%H:%M:%S'), age))
+        else:
+            head = "取图 " + datetime.datetime.now().strftime('%H:%M:%S')
+        self.lbl_shot.setText(head + ((" · " + action) if action else ""))
+        sat = (" · 判据图饱和 %.1f%%" % (self._expfix_meta.get("sat_after", 0) * 100)
+               if self._expfix_meta.get("ok") else "")
+        self._elide(self.lbl_shot_extra,
+                    "取图 %.0fms · HTTP %s · %dKB · %s%s"
+                    % (m.get("ms", 0), m.get("http"), (m.get("bytes") or 0) // 1024, m.get("shape"), sat),
+                    json.dumps({k: m.get(k) for k in ("cam", "kind", "http", "ms", "bytes", "shape", "via")},
+                               ensure_ascii=False))
+
+    def _svc_call(self, key: str):
+        """服务接口技能按钮: 点一下**真执行**该 HTTP 接口 → 终端页出 curl+JSON, 图/时间同步更新。"""
+        cam = self._opt_cam()
+        via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
+        if key == "surface_capture":
+            cam, key = 2, "capture_detect"
+        elif key == "surface_gap":
+            _rgb, meta = optc.fetch_frame(2, kind="topview", grab=False, via=via)
+            self._term(meta.get("cmd", ""), meta, note="10083 取图 (缺口)")
+            self.tabs.setCurrentIndex(2)
+            self.log("❌ 10083 表面取图: %s" % meta.get("err"))
+            return
+        c = optc.CAMERAS[cam]
+        if key == "capture_detect":
+            r = optc.capture_detect(cam, via=via)
+            self._term(r.get("cmd", ""), r, note="%d 触发拍照检测" % c["port"])
+            self.tabs.setCurrentIndex(2)
+            self.log("📸 %s(%d) 触发拍照检测: HTTP %s %sms → %s"
+                     % (c["name"], c["port"], r.get("http"), r.get("ms"), r.get("resp")))
+            if cam == 1:
+                self._opt_fetch(grab=False, quiet=False)
+            return
+        if key in ("picture_origin", "picture_topview"):
+            kind = "origin" if key == "picture_origin" else "topview"
+            rgb, meta = optc.fetch_frame(cam, kind=kind, grab=False, via=via)
+            self._term(meta.get("cmd", ""),
+                       {k: meta.get(k) for k in ("ok", "http", "ms", "shape", "bytes", "err")},
+                       note="%s 图" % kind)
+            if rgb is None:
+                self.tabs.setCurrentIndex(2)
+                self.log("❌ %s 取图失败: %s" % (kind, meta.get("err")))
+                return
+            self._dump_view(rgb, "%s_%s" % (c["name"], kind))
+            try:
+                t = optc.picture_meta(cam, via=via).get("t")
+            except Exception:                                          # noqa: BLE001
+                t = None
+            if kind == "origin":
+                self._orig_rgb = rgb
+                self.wid_orig.set_frame_rgb(rgb)
+                self.wid_orig.set_path(self._view_paths.get(c["name"] + "_origin", ""))
+                self._elide(self.lbl_v_orig, "原始图 %dx%d (%dKB %.0fms)"
+                            % (rgb.shape[1], rgb.shape[0], meta.get("bytes", 0) // 1024, meta.get("ms", 0)),
+                            meta.get("cmd", ""))
+            else:
+                self._opt_rgb = rgb
+                frame, _fx = self._apply_expfix(rgb)
+                self._set_frame(frame, "📷 %s topview %dx%d" % (c["name"], rgb.shape[1], rgb.shape[0]))
+            self._update_shot(meta, t=t, action=kind + " 图")
+            self.run_skill(self._cur_skill, quiet=True)
+            return
+        {"region": self._opt_region, "crop_info": self._opt_cropinfo,
+         "last_result": self._opt_verdict, "picture_meta": self._opt_meta_t}.get(key, lambda: None)()
+
+    def _opt_meta_t(self):
+        """图片元数据 + 顺手刷新拍照时间。"""
+        cam, via = self._opt_cam(), ("orin" if self.cmb_via.currentIndex() == 1 else "local")
+        d = optc.picture_meta(cam, via=via)
+        self._term(d.get("_cmd", ""), d, note="图片元数据 /picture?meta=1")
+        self.tabs.setCurrentIndex(2)
+        self._update_shot({"ms": d.get("_ms"), "http": d.get("_http"), "kind": "meta"}, t=d.get("t"),
+                          action="元数据")
+        self.log("🗂 图片元数据: %s" % json.dumps(d, ensure_ascii=False)[:220])
+
+    def _on_auto_toggle(self, on: bool):
+        """自动刷新 (默认关): 真拍模式会连续触发工控机拍照 (产线台), 有明确提示。"""
+        try:
+            self._auto_timer.stop()
+        except AttributeError:
+            return
+        if not on:
+            self.log("⏸ 自动刷新: 关")
+            return
+        sec = int(str(self.cmb_auto.currentText()).rstrip("s") or 5)
+        mode = self.cmb_auto_mode.currentText()
+        self._auto_timer.start(sec * 1000)
+        self.log("▶ 自动刷新: 每 %ds · 模式「%s」%s"
+                 % (sec, mode, "  ⚠️ 真拍模式: 会连续触发工控机拍照 (产线台)" if mode == "真拍" else " (不拍照)"))
+
+    def _auto_tick(self):
+        if self.cmb_src.currentIndex() not in SRC_OPT_IDX:
+            self.chk_auto.setChecked(False)
+            return
+        self._opt_fetch(grab=(self.cmb_auto_mode.currentText() == "真拍"), quiet=True)
 
     def _opt_cropinfo(self):
         cam = self._opt_cam()
