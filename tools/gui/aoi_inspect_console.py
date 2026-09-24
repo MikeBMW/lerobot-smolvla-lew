@@ -42,6 +42,10 @@ TRAIN_PY = os.path.join(ROOT, "tools", "yolo_annot_train.py")
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 GREEN, RED, ORANGE, DIM = "#3fb950", "#f85149", "#d29922", "#8b949e"
 FONT = '"Noto Sans CJK SC", "DejaVu Sans", sans-serif'
+# 🏭 数据源清单: 两台 OPT 相机直接作为可选源 (老倪 2026-09-24: "选择10082金手指, 则看到这个相机的实际图片")
+SRC_ITEMS = ["🎥 真机", "🧪 仿真", "🖼 文件", "📷 10082 金手指", "📷 10083 表面"]
+SRC_OPT_IDX = {3: 1, 4: 2}          # 源索引 → OPT 相机号 (1=金手指 10082 / 2=表面 10083)
+SRC_OPT_HINT = {3: "10082 金手指 (OPT-CC1-GG50)", 4: "10083 表面 (OPT-CC1-C050-GG3-00)"}
 
 
 def _qss() -> str:
@@ -96,6 +100,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._opt_meta = {}
         self._opt_tag = ""
         self._opt_lastres = {}
+        self._last_opt_cam = 1
         self._build()
         self._sync_classes()
         self._init_data_root()
@@ -174,18 +179,15 @@ class AoiInspectConsole(QtWidgets.QDialog):
         r2src = QtWidgets.QHBoxLayout(); r2src.setSpacing(6)
         r2src.addWidget(self._dim("源"))
         self.cmb_src = QtWidgets.QComboBox()
-        self.cmb_src.addItems(["🎥 真机", "🧪 仿真", "🖼 文件", "🏭 OPT 相机"])
-        self.cmb_src.setToolTip("帧源: 真机 RealSense / 仿真 metaworld / 载入文件 / "
-                                "工控机 OPT 相机 (金手指 10082 · 表面 10083)")
+        self.cmb_src.addItems(SRC_ITEMS)
+        self.cmb_src.setToolTip("帧源: 真机 RealSense / 仿真 metaworld / 载入文件 /\n"
+                                "📷 10082 金手指 (OPT-CC1-GG50)\n📷 10083 表面 (OPT-CC1-C050-GG3-00)\n"
+                                "选中相机源 = 立刻显示该相机的实际图 (取工控机最近一张, 不拍照)")
         self.cmb_src.setCurrentIndex(0 if self.source != "sim" else 1)
-        self.cmb_src.setMinimumWidth(120)
+        self.cmb_src.setMinimumWidth(150)
         self.cmb_src.currentIndexChanged.connect(self._on_src_change)
         r2src.addWidget(self.cmb_src)
         # 🏭 OPT 相机控件 (工控机 192.168.23.23 → 奥普特相机; 真拍必须手动点)
-        self.cmb_cam = QtWidgets.QComboBox()
-        self.cmb_cam.addItems(["金手指 10082", "表面 10083"])
-        self.cmb_cam.setToolTip("工控机上的两台 OPT 相机 (金手指 OPT-CC1-GG50 / 表面 OPT-CC1-C050-GG3-00)")
-        self.cmb_cam.setMinimumWidth(120)
         self.cmb_via = QtWidgets.QComboBox()
         self.cmb_via.addItems(["本机直连", "经 Orin"])
         self.cmb_via.setToolTip("经 Orin = ssh 到 192.168.23.66 再 request (本机不在产线网时用)")
@@ -196,7 +198,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
                                         lambda: self._opt_fetch(grab=False))
         self.btn_opt_verd = self._btn("📋 工控机判决", "GET /last_result (工控机自家模型判决: OK/NG/缺陷数)",
                                       self._opt_verdict)
-        for wdg in (self.cmb_cam, self.cmb_via, self.btn_opt_grab, self.btn_opt_recent, self.btn_opt_verd):
+        for wdg in (self.cmb_via, self.btn_opt_grab, self.btn_opt_recent, self.btn_opt_verd):
             r2src.addWidget(wdg)
         self.btn_load = self._btn("📂 载入", "载入单帧图片/视频首帧 (离线复看与标定素材)", self._pick_file)
         r2src.addWidget(self.btn_load)
@@ -342,13 +344,17 @@ class AoiInspectConsole(QtWidgets.QDialog):
             print("[aoi-console]", s)
 
     # ══════════════════════ 取帧 / 链路 ══════════════════════
+    def _opt_cam(self) -> int:
+        """当前源对应的 OPT 相机号 (1=10082 金手指 / 2=10083 表面)。"""
+        return SRC_OPT_IDX.get(self.cmb_src.currentIndex(), self._last_opt_cam)
+
     def _grab(self):
         if self.chk_freeze.isChecked() and self._last_rgb is not None:
             return self._last_rgb, f"冻结/{self._last_tag}", None
-        if self.cmb_src.currentIndex() == 3:                        # 🏭 OPT: **绝不自动真拍**
+        if self.cmb_src.currentIndex() in SRC_OPT_IDX:              # 🏭 OPT: **绝不自动真拍**
             if self._opt_rgb is not None:
                 return self._opt_rgb, self._opt_tag, None
-            return None, "🏭 OPT: 点『📸 拍帧』(真拍) 或『🖼 最近图』(不拍)", None
+            return None, "📷 相机源: 点『🖼 最近图』(不拍照) 或『📸 拍帧』(真拍)", None
         if self.cmb_src.currentIndex() == 1:
             try:
                 import yolo_input_viewer as yiv
@@ -427,14 +433,24 @@ class AoiInspectConsole(QtWidgets.QDialog):
             self._elide(self.lbl_chain, "链路 ⚠️ " + tag, tag)
 
     def _on_src_change(self, idx):
+        """切源。选 📷 相机源 → **立刻取该相机实际图显示** (取工控机内存最近一张, 不拍照)。"""
         self.source = "sim" if idx == 1 else "real"
+        if idx in SRC_OPT_IDX:
+            c = optc.CAMERAS[SRC_OPT_IDX[idx]]
+            self._elide(self.lbl_chain, f"链路 ⏳ {c['name']} 取图…", str(c))
+            self._opt_rgb = None                                   # 换相机 → 清缓存, 防串图
+            self._opt_fetch(grab=False, quiet=True)
+            if self._opt_rgb is None:                              # 无最近图 → 引导真拍
+                self.log(f"ℹ️ {c['name']} 相机暂无最近图 (工控机内存空) → 点『📸 拍帧』真拍一张")
+            return
         self._tick()
 
     # ══════════════════════ 技能 ══════════════════════
     # ── 🏭 工控机 OPT 相机 ──
-    def _opt_fetch(self, grab: bool):
+    def _opt_fetch(self, grab: bool, quiet: bool = False):
         """从工控机取 OPT 相机图 → 任务头识别 → 显示/判决/可标定。grab=True 会真拍一张。"""
-        cam = 1 if self.cmb_cam.currentIndex() == 0 else 2
+        cam = self._opt_cam()
+        self._last_opt_cam = cam
         via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
         c = optc.CAMERAS[cam]
         if grab:
@@ -442,26 +458,27 @@ class AoiInspectConsole(QtWidgets.QDialog):
             self.log(f"📸 {c['name']} 相机真拍: HTTP {r.get('http')} {r.get('ms')}ms via {r.get('via')} "
                      f"→ {r.get('resp')}")
         rgb, meta = optc.fetch_frame(cam, kind="topview", grab=grab, via=via)
+        self._opt_meta = meta                       # ⚠️ 失败也要落状态, 否则界面看不到失败原因
         if rgb is None:
             self.log(f"❌ 取图失败: {meta.get('err')} (相机 {c['name']} SN {c['sn']})")
             self._elide(self.lbl_chain, "链路 ❌ " + str(meta.get("err"))[:60], str(meta))
             return
         self._opt_rgb = rgb
         self._opt_meta = meta
-        self._opt_tag = f"🏭 {c['name']} {meta['kind']} {meta['shape'][1]}x{meta['shape'][0]}"
-        self.cmb_src.setCurrentIndex(3)
+        self._opt_tag = f"📷 {c['name']} {meta['kind']} {meta['shape'][1]}x{meta['shape'][0]}"
         self._set_frame(rgb, self._opt_tag)
         self.wid.set_classes([CLASS_CN.get(x, x) for x in self._cls_names()])
         res = self.run_skill(self._cur_skill, quiet=True)
         self._elide(self.lbl_chain, f"链路 ✅ {c['name']} {meta['shape'][1]}x{meta['shape'][0]} "
                                     f"{meta['ms']:.0f}ms via {meta['via']}", json.dumps(meta, ensure_ascii=False))
-        self.log(f"🏭 {c['name']}相机图: {meta['shape']} 灰度均值 {meta['mean_gray']} · HTTP {meta['http']} "
-                 f"· {meta['ms']:.0f}ms · {meta['bytes']//1024}KB · via {meta['via']}"
-                 + (f" → 任务头: 定位 {len(res['loc'])} 缺陷 {len(res['defects'])}" if res else ""))
+        if not quiet:
+            self.log(f"📷 {c['name']}相机实际图: {meta['shape']} 灰度均值 {meta['mean_gray']} · HTTP {meta['http']} "
+                     f"· {meta['ms']:.0f}ms · {meta['bytes']//1024}KB · via {meta['via']}"
+                     + (f" → 任务头: 定位 {len(res['loc'])} 缺陷 {len(res['defects'])}" if res else ""))
 
     def _opt_verdict(self):
         """读工控机自家模型判决 (只读) → 追加到判决表 (source=opt-工控机), 与任务头同表对照。"""
-        cam = 1 if self.cmb_cam.currentIndex() == 0 else 2
+        cam = self._opt_cam()
         via = "orin" if self.cmb_via.currentIndex() == 1 else "local"
         lr = optc.last_result(cam, via=via)
         self._opt_lastres = lr

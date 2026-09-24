@@ -129,8 +129,44 @@ def main():
         RES["surface_gap"] = meta2
         ck("⑤ 10083 取图如实报缺口 (无 /picture)",
            rgb2 is None and "/picture" in str(meta2.get("err", "")), str(meta2.get("err"))[:90])
+
+
     else:
         print("  ⏭ 跳过 ③④⑤ (未加 --authorize; 真拍产线台需授权)")
+
+    # ── ⑥ 窗口级断言 (不需真拍: 用相机的最近一张图) ──
+    # ⑥ 窗口"选相机源即显示该相机实际图" (离线 GUI 断言; 只取最近图, **不拍照**)
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import cv2                                                       # noqa: E402
+    from PyQt5 import QtWidgets                                      # noqa: E402
+    import aoi_inspect_console as aic                                # noqa: E402
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    log_before = 0
+    _lg = os.path.join(ROOT, "reports", "opt_capture_log.jsonl")
+    if os.path.isfile(_lg):
+        log_before = sum(1 for _ in open(_lg, encoding="utf-8"))
+    w = aic.AoiInspectConsole(source="real")
+    w._timer.stop()
+    w.cmb_src.setCurrentIndex(3)                                     # 📷 10082 金手指
+    for _ in range(25):
+        app.processEvents(); time.sleep(0.05)
+    r1 = w._opt_rgb
+    std = float(cv2.cvtColor(r1, cv2.COLOR_RGB2GRAY).std()) if r1 is not None else 0.0
+    RES["gui_src_10082"] = {"tag": w._opt_tag, "std": round(std, 1),
+                            "meta_keys": sorted(w._opt_meta.keys())[:8]}
+    ck("⑥ 选『📷 10082 金手指』即显示该相机实际图", r1 is not None and std > 8 and "金手指" in w._opt_tag,
+       f"tag={w._opt_tag} std={std:.1f}")
+    w.cmb_src.setCurrentIndex(4)                                     # 📷 10083 表面
+    for _ in range(25):
+        app.processEvents(); time.sleep(0.05)
+    RES["gui_src_10083"] = {"rgb_is_none": w._opt_rgb is None, "meta": w._opt_meta}
+    ck("⑥ 选『📷 10083 表面』如实报缺口 (不伪造图)",
+       w._opt_rgb is None and "picture" in str(w._opt_meta.get("err", "")),
+       str(w._opt_meta.get("err"))[:80])
+    _log_after = sum(1 for _ in open(_lg, encoding="utf-8")) if os.path.isfile(_lg) else 0
+    ck("⑥ 切源取图**不新增真拍** (审计流水未增长)", _log_after == log_before,
+       f"{log_before} → {_log_after}")
+    w.close()
 
     out = os.path.join(ROOT, "reports", f"opt_camera_verify_{time.strftime('%Y%m%d_%H%M%S')}.json")
     RES["checks"] = CHECKS

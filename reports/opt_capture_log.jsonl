@@ -1,3 +1,4 @@
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1626.1, "via": "local", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 15:55:52"}
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1109.7, "via": "local", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 15:57:06"}
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1143.4, "via": "local", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 15:57:48"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1140.1, "via": "local", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 16:06:51"}
