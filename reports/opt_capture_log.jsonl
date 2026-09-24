@@ -326,3 +326,6 @@
 {"cam": "金手指", "port": 10082, "kind": "topview", "http": "200", "ms": 1203.4, "via": "local", "bytes": 1983425, "shape": [960, 960, 3], "action": "fetch_grab", "ts": "2026-09-24 18:09:26"}
 {"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 5.2, "via": "local", "ts": "2026-09-24 18:27:27"}
 {"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 4.6, "via": "local", "ts": "2026-09-24 18:28:27"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1090.0, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 18:45:49"}
+{"cam": "金手指", "port": 10082, "model": "OPT-CC1-GG50", "sn": "D265250070", "kind": "topview", "grab": false, "http": "404", "ms": 7.4, "via": "local", "bytes": 103, "cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/picture?kind=topview' -o frame.png", "ok": false, "err": "尚无照片: 先 POST /capture_detect 或 GET /picture?grab=1", "action": "fetch_fail", "ts": "2026-09-24 19:00:48"}
+{"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1109.5, "via": "local", "cmd": "curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 19:02:26"}
