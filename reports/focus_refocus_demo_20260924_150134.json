@@ -1,0 +1,439 @@
+{
+ "ts": "2026-09-24 15:01:34",
+ "caliber": {
+  "k_px_per_mm": 0.6,
+  "z_focus_mm": 300.0,
+  "note": "真图 + 合成离焦物理 σ=k·|z−z_focus|; 候选帧先过有效帧闸"
+ },
+ "frame_candidates": [
+  {
+   "path": "/home/ubuntu/lerobot-smolvla-lew/data/real_yolo_perception_100.mp4",
+   "tag": "真机 D405 帧 (real_yolo_perception_100)",
+   "mean": 116.41,
+   "std": 54.53,
+   "ten": 10568.5,
+   "lap": 1046.2,
+   "valid": true,
+   "why": "有效帧"
+  },
+  {
+   "path": "/home/ubuntu/lerobot-smolvla-lew/data/ss3d_l3_full_insert_pull_aoi_104.mp4",
+   "tag": "引擎真渲染帧 (L3 全链 104)",
+   "mean": 31.81,
+   "std": 45.29,
+   "ten": 34291.5,
+   "lap": 2414.8,
+   "valid": true,
+   "why": "有效帧"
+  },
+  {
+   "path": "/home/ubuntu/zmax_data/aoi_last_frame.png",
+   "tag": "现役 AOI 帧 (aoi_last_frame)",
+   "mean": 9.53,
+   "std": 2.22,
+   "ten": 4.4,
+   "lap": 2.4,
+   "valid": false,
+   "why": "无效帧: Tenengrad=4.4 < 50 (无结构) · std=2.2 < 5 (近乎平坦)"
+  }
+ ],
+ "source_frame": {
+  "tag": "真机 D405 帧 (real_yolo_perception_104)",
+  "path": "/home/ubuntu/lerobot-smolvla-lew/data/real_yolo_perception_104.mp4",
+  "shape": [
+   480,
+   480,
+   3
+  ],
+  "metrics": {
+   "lap": 1867.18477,
+   "ten": 16290.91245,
+   "hf": 0.06147,
+   "std": 56.01711,
+   "clip_hi": 0.00626,
+   "mean": 0.46181,
+   "roi": "center"
+  }
+ },
+ "R0_calibration": {
+  "c_hf_fit": 0.106,
+  "grid": [
+   {
+    "sigma_true": 0.5,
+    "q": 0.9986,
+    "q_hf": 0.6729,
+    "lap": 735.7,
+    "ten": 12598.3,
+    "c_implied": 0.717,
+    "sigma_est": 0.074
+   },
+   {
+    "sigma_true": 0.75,
+    "q": 0.9951,
+    "q_hf": 0.3651,
+    "lap": 194.4,
+    "ten": 8929.4,
+    "c_implied": 0.569,
+    "sigma_est": 0.14
+   },
+   {
+    "sigma_true": 1.0,
+    "q": 0.9887,
+    "q_hf": 0.1984,
+    "lap": 84.2,
+    "ten": 6715.4,
+    "c_implied": 0.497,
+    "sigma_est": 0.213
+   },
+   {
+    "sigma_true": 1.5,
+    "q": 0.9396,
+    "q_hf": 0.0431,
+    "lap": 25.2,
+    "ten": 4085.4,
+    "c_implied": 0.318,
+    "sigma_est": 0.499
+   },
+   {
+    "sigma_true": 2.0,
+    "q": 0.6825,
+    "q_hf": 0.0073,
+    "lap": 10.7,
+    "ten": 2693.5,
+    "c_implied": 0.172,
+    "sigma_est": 1.236
+   },
+   {
+    "sigma_true": 3.0,
+    "q": 0.0028,
+    "q_hf": 0.0005,
+    "lap": 3.8,
+    "ten": 1441.1,
+    "c_implied": 0.066,
+    "sigma_est": 4.845
+   },
+   {
+    "sigma_true": 4.0,
+    "q": 0.0013,
+    "q_hf": 0.0004,
+    "lap": 2.4,
+    "ten": 922.4,
+    "c_implied": 0.082,
+    "sigma_est": 5.143
+   },
+   {
+    "sigma_true": 5.0,
+    "q": 0.0006,
+    "q_hf": 0.0004,
+    "lap": 2.0,
+    "ten": 651.4,
+    "c_implied": 0.097,
+    "sigma_est": 5.476
+   },
+   {
+    "sigma_true": 6.0,
+    "q": 0.0005,
+    "q_hf": 0.0004,
+    "lap": 1.8,
+    "ten": 490.1,
+    "c_implied": 0.115,
+    "sigma_est": 5.521
+   }
+  ],
+  "sigma_est_mae_px": 0.837,
+  "sigma_est_max_err_px": 1.845
+ },
+ "R1a_sweep": {
+  "curve": [
+   {
+    "dz_mm": -15.0,
+    "q": 0.0025,
+    "sigma_est_px": 4.893
+   },
+   {
+    "dz_mm": -14.0,
+    "q": 0.0028,
+    "sigma_est_px": 4.851
+   },
+   {
+    "dz_mm": -13.0,
+    "q": 0.0052,
+    "sigma_est_px": 4.59
+   },
+   {
+    "dz_mm": -12.0,
+    "q": 0.0009,
+    "sigma_est_px": 5.306
+   },
+   {
+    "dz_mm": -11.0,
+    "q": 0.0007,
+    "sigma_est_px": 5.417
+   },
+   {
+    "dz_mm": -10.0,
+    "q": 0.0005,
+    "sigma_est_px": 5.521
+   },
+   {
+    "dz_mm": -9.0,
+    "q": 0.0005,
+    "sigma_est_px": 5.484
+   },
+   {
+    "dz_mm": -8.0,
+    "q": 0.0005,
+    "sigma_est_px": 5.481
+   },
+   {
+    "dz_mm": -7.0,
+    "q": 0.0006,
+    "sigma_est_px": 5.468
+   },
+   {
+    "dz_mm": -6.0,
+    "q": 0.0006,
+    "sigma_est_px": 5.464
+   },
+   {
+    "dz_mm": -5.0,
+    "q": 0.0028,
+    "sigma_est_px": 4.845
+   },
+   {
+    "dz_mm": -4.0,
+    "q": 0.0797,
+    "sigma_est_px": 3.181
+   },
+   {
+    "dz_mm": -3.0,
+    "q": 0.811,
+    "sigma_est_px": 0.915
+   },
+   {
+    "dz_mm": -2.0,
+    "q": 0.9785,
+    "sigma_est_px": 0.295
+   },
+   {
+    "dz_mm": -1.0,
+    "q": 0.9974,
+    "sigma_est_px": 0.103
+   },
+   {
+    "dz_mm": 0.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 1.0,
+    "q": 0.9974,
+    "sigma_est_px": 0.103
+   },
+   {
+    "dz_mm": 2.0,
+    "q": 0.9785,
+    "sigma_est_px": 0.295
+   },
+   {
+    "dz_mm": 3.0,
+    "q": 0.811,
+    "sigma_est_px": 0.915
+   },
+   {
+    "dz_mm": 4.0,
+    "q": 0.0797,
+    "sigma_est_px": 3.181
+   },
+   {
+    "dz_mm": 5.0,
+    "q": 0.0028,
+    "sigma_est_px": 4.845
+   },
+   {
+    "dz_mm": 6.0,
+    "q": 0.0006,
+    "sigma_est_px": 5.464
+   },
+   {
+    "dz_mm": 7.0,
+    "q": 0.0006,
+    "sigma_est_px": 5.468
+   },
+   {
+    "dz_mm": 8.0,
+    "q": 0.0005,
+    "sigma_est_px": 5.481
+   },
+   {
+    "dz_mm": 9.0,
+    "q": 0.0005,
+    "sigma_est_px": 5.484
+   },
+   {
+    "dz_mm": 10.0,
+    "q": 0.0005,
+    "sigma_est_px": 5.521
+   },
+   {
+    "dz_mm": 11.0,
+    "q": 0.0007,
+    "sigma_est_px": 5.417
+   },
+   {
+    "dz_mm": 12.0,
+    "q": 0.0009,
+    "sigma_est_px": 5.306
+   },
+   {
+    "dz_mm": 13.0,
+    "q": 0.0052,
+    "sigma_est_px": 4.59
+   },
+   {
+    "dz_mm": 14.0,
+    "q": 0.0028,
+    "sigma_est_px": 4.851
+   },
+   {
+    "dz_mm": 15.0,
+    "q": 0.0025,
+    "sigma_est_px": 4.893
+   }
+  ],
+  "peak_dz_mm": 0.0,
+  "peak_q": 1.0,
+  "q_at_0mm": 1.0,
+  "per_frame_ms": 2.87
+ },
+ "R1b_closed_loop": {
+  "start_-9mm": {
+   "ok": false,
+   "reason": "motion",
+   "z_final_mm": 291.0,
+   "dz_net_mm": 0.0,
+   "detail": "运动模糊 (方向性 1.47 > 0.8 或臂速 0.00>0.15) → 驻停重拍, 不动臂",
+   "n_probes": 2,
+   "trace": [
+    {
+     "z_mm": 291.0,
+     "q": 0.0005,
+     "sigma_est_px": 5.484,
+     "lap": 1.9,
+     "hf": 2.2961e-05,
+     "metric_ms": 3.15,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 294.0,
+     "q": 0.0006,
+     "sigma_est_px": 5.464,
+     "lap": 2.8,
+     "hf": 2.3127e-05,
+     "metric_ms": 2.52,
+     "dz_cmd_mm": null
+    }
+   ]
+  },
+  "start_12mm": {
+   "ok": false,
+   "reason": "motion",
+   "z_final_mm": 312.0,
+   "dz_net_mm": 0.0,
+   "detail": "运动模糊 (方向性 1.05 > 0.8 或臂速 0.00>0.15) → 驻停重拍, 不动臂",
+   "n_probes": 2,
+   "trace": [
+    {
+     "z_mm": 312.0,
+     "q": 0.0009,
+     "sigma_est_px": 5.306,
+     "lap": 1.8,
+     "hf": 2.4522e-05,
+     "metric_ms": 3.23,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 315.0,
+     "q": 0.0025,
+     "sigma_est_px": 4.893,
+     "lap": 1.7,
+     "hf": 2.8839e-05,
+     "metric_ms": 3.92,
+     "dz_cmd_mm": null
+    }
+   ]
+  }
+ },
+ "R1c_attribution": {
+  "motion": {
+   "aniso_clear": 1.455,
+   "aniso_motion": 1.998,
+   "theta_deg": 64.0,
+   "verdict": "clear"
+  },
+  "exposure": {
+   "clip_hi": 0.6679,
+   "verdict": "exposure"
+  },
+  "unresolvable_scatter": {
+   "ok": false,
+   "reason": "motion",
+   "q_best": 0.0003,
+   "n_probes": 2,
+   "detail": "运动模糊 (方向性 1.53 > 0.8 或臂速 0.00>0.15) → 驻停重拍, 不动臂"
+  },
+  "invalid_blank": {
+   "ok": false,
+   "reason": "no_target",
+   "n_probes": 1,
+   "detail": "无效帧: Tenengrad=0.0 < 50 (无结构) · std=0.0 < 5 (近乎平坦)"
+  },
+  "invalid_real_aoi_frame": {
+   "ok": false,
+   "reason": "no_target",
+   "detail": "无效帧: Tenengrad=4.4 < 50 (无结构) · std=2.2 < 5 (近乎平坦)",
+   "mean": 9.53,
+   "std": 2.22,
+   "ten": 4.4
+  }
+ },
+ "R1d_pose": {
+  "grasp_pose_mm": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 30.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0
+  },
+  "axis_source": "名义光轴",
+  "n_cam_in_base": [
+   0.0,
+   0.0,
+   -1.0
+  ],
+  "focus_dz_mm": 0.0,
+  "pose_corrected": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 30.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0,
+   "focus_dz_mm": 0.0
+  }
+ },
+ "checks": {
+  "R0 σ 估计 MAE ≤0.5px": false,
+  "R1a 扫焦曲线峰值在对焦点 (±1mm)": true,
+  "R1a 峰谷对比显著 (端点 ≤0.5×峰值)": true,
+  "R1b 两方向起步均复焦成功且落点 ±1mm": false,
+  "R1c 运动模糊判 motion 且各向异性上升": false,
+  "R1c 过曝判 exposure": true,
+  "R1c 端面散射判 unresolvable (不假装修好)": false,
+  "R1c 无结构帧判 no_target (不判不修)": true,
+  "R1c 现役真机 AOI 黑帧被闸拦住": true,
+  "单帧量测 <20ms (实时可行)": true
+ },
+ "checks_pass": "6/10"
+}

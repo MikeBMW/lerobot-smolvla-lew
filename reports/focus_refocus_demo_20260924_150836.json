@@ -1,0 +1,537 @@
+{
+ "ts": "2026-09-24 15:08:36",
+ "caliber": {
+  "k_px_per_mm": 0.6,
+  "z_focus_mm": 300.0,
+  "note": "真图 + 合成离焦物理 σ=k·|z−z_focus|; 候选帧先过有效帧闸"
+ },
+ "frame_candidates": [
+  {
+   "path": "/home/ubuntu/lerobot-smolvla-lew/data/real_yolo_perception_100.mp4",
+   "tag": "真机 D405 帧 (real_yolo_perception_100)",
+   "mean": 116.41,
+   "std": 54.53,
+   "ten": 10568.5,
+   "lap": 1046.2,
+   "valid": true,
+   "why": "有效帧"
+  },
+  {
+   "path": "/home/ubuntu/lerobot-smolvla-lew/data/ss3d_l3_full_insert_pull_aoi_104.mp4",
+   "tag": "引擎真渲染帧 (L3 全链 104)",
+   "mean": 31.81,
+   "std": 45.29,
+   "ten": 34291.5,
+   "lap": 2414.8,
+   "valid": true,
+   "why": "有效帧"
+  },
+  {
+   "path": "/home/ubuntu/zmax_data/aoi_last_frame.png",
+   "tag": "现役 AOI 帧 (aoi_last_frame)",
+   "mean": 9.53,
+   "std": 2.22,
+   "ten": 4.4,
+   "lap": 2.4,
+   "valid": false,
+   "why": "无效帧: Tenengrad=4.4 < 50 (无结构) · std=2.2 < 5 (近乎平坦)"
+  }
+ ],
+ "source_frame": {
+  "tag": "真机 D405 帧 (real_yolo_perception_104)",
+  "path": "/home/ubuntu/lerobot-smolvla-lew/data/real_yolo_perception_104.mp4",
+  "shape": [
+   480,
+   480,
+   3
+  ],
+  "metrics": {
+   "lap": 1867.18477,
+   "ten": 16290.91245,
+   "hf": 0.09896,
+   "std": 56.01711,
+   "clip_hi": 0.00626,
+   "mean": 0.46181,
+   "roi": "center"
+  }
+ },
+ "R0_calibration": {
+  "c_lap_fit": 0.5315,
+  "grid": [
+   {
+    "sigma_true": 0.5,
+    "q": 0.959,
+    "r_lap": 0.394,
+    "lap": 735.7,
+    "ten": 12598.3,
+    "c_implied": 0.649,
+    "sigma_est": 0.409
+   },
+   {
+    "sigma_true": 0.75,
+    "q": 0.8622,
+    "r_lap": 0.10412,
+    "lap": 194.4,
+    "ten": 8929.4,
+    "c_implied": 0.518,
+    "sigma_est": 0.77
+   },
+   {
+    "sigma_true": 1.0,
+    "q": 0.7695,
+    "r_lap": 0.04508,
+    "lap": 84.2,
+    "ten": 6715.4,
+    "c_implied": 0.519,
+    "sigma_est": 1.024
+   },
+   {
+    "sigma_true": 1.5,
+    "q": 0.5843,
+    "r_lap": 0.01349,
+    "lap": 25.2,
+    "ten": 4085.4,
+    "c_implied": 0.544,
+    "sigma_est": 1.466
+   },
+   {
+    "sigma_true": 2.0,
+    "q": 0.4231,
+    "r_lap": 0.00576,
+    "lap": 10.7,
+    "ten": 2693.5,
+    "c_implied": 0.573,
+    "sigma_est": 1.855
+   },
+   {
+    "sigma_true": 3.0,
+    "q": 0.2255,
+    "r_lap": 0.00205,
+    "lap": 3.8,
+    "ten": 1441.1,
+    "c_implied": 0.653,
+    "sigma_est": 2.441
+   },
+   {
+    "sigma_true": 4.0,
+    "q": 0.1517,
+    "r_lap": 0.0013,
+    "lap": 2.4,
+    "ten": 922.4,
+    "c_implied": 0.774,
+    "sigma_est": 2.747
+   },
+   {
+    "sigma_true": 5.0,
+    "q": 0.1228,
+    "r_lap": 0.00106,
+    "lap": 2.0,
+    "ten": 651.4,
+    "c_implied": 0.918,
+    "sigma_est": 2.896
+   },
+   {
+    "sigma_true": 6.0,
+    "q": 0.1124,
+    "r_lap": 0.00098,
+    "lap": 1.8,
+    "ten": 490.1,
+    "c_implied": 1.078,
+    "sigma_est": 2.957
+   }
+  ],
+  "valid_range_px": [
+   0.75,
+   2.0
+  ],
+  "sigma_est_mae_px": 0.056,
+  "sigma_est_max_err_px": 0.145
+ },
+ "R1a_sweep": {
+  "curve": [
+   {
+    "dz_mm": -15.0,
+    "q": 0.1009,
+    "sigma_est_px": 3.029
+   },
+   {
+    "dz_mm": -14.0,
+    "q": 0.1042,
+    "sigma_est_px": 3.008
+   },
+   {
+    "dz_mm": -13.0,
+    "q": 0.1062,
+    "sigma_est_px": 2.995
+   },
+   {
+    "dz_mm": -12.0,
+    "q": 0.1101,
+    "sigma_est_px": 2.971
+   },
+   {
+    "dz_mm": -11.0,
+    "q": 0.1116,
+    "sigma_est_px": 2.962
+   },
+   {
+    "dz_mm": -10.0,
+    "q": 0.1124,
+    "sigma_est_px": 2.957
+   },
+   {
+    "dz_mm": -9.0,
+    "q": 0.1177,
+    "sigma_est_px": 2.925
+   },
+   {
+    "dz_mm": -8.0,
+    "q": 0.1282,
+    "sigma_est_px": 2.866
+   },
+   {
+    "dz_mm": -7.0,
+    "q": 0.1443,
+    "sigma_est_px": 2.783
+   },
+   {
+    "dz_mm": -6.0,
+    "q": 0.173,
+    "sigma_est_px": 2.649
+   },
+   {
+    "dz_mm": -5.0,
+    "q": 0.2255,
+    "sigma_est_px": 2.441
+   },
+   {
+    "dz_mm": -4.0,
+    "q": 0.3181,
+    "sigma_est_px": 2.14
+   },
+   {
+    "dz_mm": -3.0,
+    "q": 0.4784,
+    "sigma_est_px": 1.717
+   },
+   {
+    "dz_mm": -2.0,
+    "q": 0.6965,
+    "sigma_est_px": 1.203
+   },
+   {
+    "dz_mm": -1.0,
+    "q": 0.9203,
+    "sigma_est_px": 0.576
+   },
+   {
+    "dz_mm": 0.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 1.0,
+    "q": 0.9203,
+    "sigma_est_px": 0.576
+   },
+   {
+    "dz_mm": 2.0,
+    "q": 0.6965,
+    "sigma_est_px": 1.203
+   },
+   {
+    "dz_mm": 3.0,
+    "q": 0.4784,
+    "sigma_est_px": 1.717
+   },
+   {
+    "dz_mm": 4.0,
+    "q": 0.3181,
+    "sigma_est_px": 2.14
+   },
+   {
+    "dz_mm": 5.0,
+    "q": 0.2255,
+    "sigma_est_px": 2.441
+   },
+   {
+    "dz_mm": 6.0,
+    "q": 0.173,
+    "sigma_est_px": 2.649
+   },
+   {
+    "dz_mm": 7.0,
+    "q": 0.1443,
+    "sigma_est_px": 2.783
+   },
+   {
+    "dz_mm": 8.0,
+    "q": 0.1282,
+    "sigma_est_px": 2.866
+   },
+   {
+    "dz_mm": 9.0,
+    "q": 0.1177,
+    "sigma_est_px": 2.925
+   },
+   {
+    "dz_mm": 10.0,
+    "q": 0.1124,
+    "sigma_est_px": 2.957
+   },
+   {
+    "dz_mm": 11.0,
+    "q": 0.1116,
+    "sigma_est_px": 2.962
+   },
+   {
+    "dz_mm": 12.0,
+    "q": 0.1101,
+    "sigma_est_px": 2.971
+   },
+   {
+    "dz_mm": 13.0,
+    "q": 0.1062,
+    "sigma_est_px": 2.995
+   },
+   {
+    "dz_mm": 14.0,
+    "q": 0.1042,
+    "sigma_est_px": 3.008
+   },
+   {
+    "dz_mm": 15.0,
+    "q": 0.1009,
+    "sigma_est_px": 3.029
+   }
+  ],
+  "peak_dz_mm": 0.0,
+  "peak_q": 1.0,
+  "q_at_0mm": 1.0,
+  "per_frame_ms": 2.78
+ },
+ "R1b_closed_loop": {
+  "start_-9mm": {
+   "ok": true,
+   "reason": "defocus",
+   "z_final_mm": 301.0,
+   "dz_net_mm": 10.0,
+   "detail": "扫焦复焦成功 5 探测 / 行程 10.00mm / q 0.12→0.92",
+   "n_probes": 5,
+   "trace": [
+    {
+     "z_mm": 291.0,
+     "q": 0.1177,
+     "sigma_est_px": 2.925,
+     "lap": 1.9,
+     "hf": 6.8173e-05,
+     "metric_ms": 3.18,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 292.0,
+     "q": 0.1282,
+     "sigma_est_px": 2.866,
+     "lap": 2.1,
+     "hf": 7.6247e-05,
+     "metric_ms": 2.81,
+     "dz_cmd_mm": 3.0
+    },
+    {
+     "z_mm": 295.0,
+     "q": 0.2255,
+     "sigma_est_px": 2.441,
+     "lap": 3.8,
+     "hf": 0.00025953,
+     "metric_ms": 2.49,
+     "dz_cmd_mm": 3.0
+    },
+    {
+     "z_mm": 298.0,
+     "q": 0.6965,
+     "sigma_est_px": 1.203,
+     "lap": 49.8,
+     "hf": 0.023668,
+     "metric_ms": 2.31,
+     "dz_cmd_mm": 3.0
+    },
+    {
+     "z_mm": 301.0,
+     "q": 0.9203,
+     "sigma_est_px": 0.576,
+     "lap": 394.5,
+     "hf": 0.064549,
+     "metric_ms": 2.23,
+     "dz_cmd_mm": null
+    }
+   ]
+  },
+  "start_12mm": {
+   "ok": false,
+   "reason": "unresolvable",
+   "z_final_mm": 311.8,
+   "dz_net_mm": -0.2,
+   "detail": "扫焦 9 探测 / 行程 6.40mm 仍 q_best=0.11 < 0.78 → 不可恢复 (破损/污染/遮挡), 报 NG 转人工",
+   "n_probes": 9,
+   "trace": [
+    {
+     "z_mm": 312.0,
+     "q": 0.1101,
+     "sigma_est_px": 2.971,
+     "lap": 1.8,
+     "hf": 5.4997e-05,
+     "metric_ms": 3.34,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 313.0,
+     "q": 0.1062,
+     "sigma_est_px": 2.995,
+     "lap": 1.7,
+     "hf": 6.0178e-05,
+     "metric_ms": 3.61,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 314.5,
+     "q": 0.1016,
+     "sigma_est_px": 3.024,
+     "lap": 1.7,
+     "hf": 5.1971e-05,
+     "metric_ms": 4.42,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 313.5,
+     "q": 0.1019,
+     "sigma_est_px": 3.023,
+     "lap": 1.7,
+     "hf": 5.2856e-05,
+     "metric_ms": 3.94,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 312.5,
+     "q": 0.1111,
+     "sigma_est_px": 2.965,
+     "lap": 1.8,
+     "hf": 5.9962e-05,
+     "metric_ms": 3.79,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 311.5,
+     "q": 0.1089,
+     "sigma_est_px": 2.978,
+     "lap": 1.8,
+     "hf": 5.611e-05,
+     "metric_ms": 3.58,
+     "dz_cmd_mm": 0.3
+    },
+    {
+     "z_mm": 311.8,
+     "q": 0.1123,
+     "sigma_est_px": 2.957,
+     "lap": 1.8,
+     "hf": 6.0621e-05,
+     "metric_ms": 3.77,
+     "dz_cmd_mm": 0.3
+    },
+    {
+     "z_mm": 312.1,
+     "q": 0.1099,
+     "sigma_est_px": 2.972,
+     "lap": 1.8,
+     "hf": 5.3941e-05,
+     "metric_ms": 3.71,
+     "dz_cmd_mm": -0.3
+    },
+    {
+     "z_mm": 311.8,
+     "q": 0.1123,
+     "sigma_est_px": 2.957,
+     "lap": 1.8,
+     "hf": 6.0621e-05,
+     "metric_ms": 3.85,
+     "dz_cmd_mm": null
+    }
+   ]
+  }
+ },
+ "R1c_attribution": {
+  "motion": {
+   "aniso_clear": 0.787,
+   "aniso_motion": 1.708,
+   "theta_deg": 92.0,
+   "ratio": 2.171,
+   "verdict_speed": "motion",
+   "verdict_aniso_only": "defocus",
+   "caveat": "图像方向性**不能作运动判据**: ① 方向依赖 (0°/90° 拖影 aniso 反降到 0.52×/0.62×基线, 会漏检) ② 离焦同样抬高该比值, 且比真运动更高 (见 aniso_deep_defocus vs ratio) → 运动归因只用臂速 (编码器真值)",
+   "aniso_deep_defocus": 2.701
+  },
+  "exposure": {
+   "clip_hi": 0.6679,
+   "verdict": "exposure"
+  },
+  "unresolvable_scatter": {
+   "ok": false,
+   "reason": "unresolvable",
+   "q_best": 0.2255,
+   "n_probes": 12,
+   "detail": "扫焦 12 探测 / 行程 15.40mm 仍 q_best=0.23 < 0.78 → 不可恢复 (破损/污染/遮挡), 报 NG 转人工"
+  },
+  "invalid_blank": {
+   "ok": false,
+   "reason": "no_target",
+   "n_probes": 1,
+   "detail": "无效帧: Tenengrad=0.0 < 50 (无结构) · std=0.0 < 5 (近乎平坦)"
+  },
+  "invalid_real_aoi_frame": {
+   "ok": false,
+   "reason": "no_target",
+   "detail": "无效帧: Tenengrad=4.4 < 50 (无结构) · std=2.2 < 5 (近乎平坦)",
+   "mean": 9.53,
+   "std": 2.22,
+   "ten": 4.4
+  }
+ },
+ "R1d_pose": {
+  "grasp_pose_mm": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 30.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0
+  },
+  "axis_source": "名义光轴",
+  "n_cam_in_base": [
+   0.0,
+   0.0,
+   -1.0
+  ],
+  "focus_dz_mm": 10.0,
+  "pose_corrected": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 20.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0,
+   "focus_dz_mm": 10.0
+  }
+ },
+ "checks": {
+  "R0 σ 估计在有效域 (0.75~2px) MAE ≤0.3px": true,
+  "R1a 扫焦曲线峰值在对焦点 (±1mm)": true,
+  "R1a 峰谷对比显著 (端点 ≤0.5×峰值)": true,
+  "R1b 两方向起步均复焦成功且落点 ±1mm": false,
+  "R1c 运动模糊判 motion (臂速主判据)": true,
+  "R1c 过曝判 exposure": true,
+  "R1c 端面散射判 unresolvable (不假装修好)": true,
+  "R1c 无结构帧判 no_target (不判不修)": true,
+  "R1c 现役真机 AOI 黑帧被闸拦住": true,
+  "单帧量测 <20ms (实时可行)": true
+ },
+ "checks_pass": "9/10"
+}

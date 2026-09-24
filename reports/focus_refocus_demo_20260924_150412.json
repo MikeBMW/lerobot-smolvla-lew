@@ -1,0 +1,570 @@
+{
+ "ts": "2026-09-24 15:04:12",
+ "caliber": {
+  "k_px_per_mm": 0.6,
+  "z_focus_mm": 300.0,
+  "note": "真图 + 合成离焦物理 σ=k·|z−z_focus|; 候选帧先过有效帧闸"
+ },
+ "frame_candidates": [
+  {
+   "path": "/home/ubuntu/lerobot-smolvla-lew/data/real_yolo_perception_100.mp4",
+   "tag": "真机 D405 帧 (real_yolo_perception_100)",
+   "mean": 116.41,
+   "std": 54.53,
+   "ten": 10568.5,
+   "lap": 1046.2,
+   "valid": true,
+   "why": "有效帧"
+  },
+  {
+   "path": "/home/ubuntu/lerobot-smolvla-lew/data/ss3d_l3_full_insert_pull_aoi_104.mp4",
+   "tag": "引擎真渲染帧 (L3 全链 104)",
+   "mean": 31.81,
+   "std": 45.29,
+   "ten": 34291.5,
+   "lap": 2414.8,
+   "valid": true,
+   "why": "有效帧"
+  },
+  {
+   "path": "/home/ubuntu/zmax_data/aoi_last_frame.png",
+   "tag": "现役 AOI 帧 (aoi_last_frame)",
+   "mean": 9.53,
+   "std": 2.22,
+   "ten": 4.4,
+   "lap": 2.4,
+   "valid": false,
+   "why": "无效帧: Tenengrad=4.4 < 50 (无结构) · std=2.2 < 5 (近乎平坦)"
+  }
+ ],
+ "source_frame": {
+  "tag": "真机 D405 帧 (real_yolo_perception_104)",
+  "path": "/home/ubuntu/lerobot-smolvla-lew/data/real_yolo_perception_104.mp4",
+  "shape": [
+   480,
+   480,
+   3
+  ],
+  "metrics": {
+   "lap": 1867.18477,
+   "ten": 16290.91245,
+   "hf": 0.06147,
+   "std": 56.01711,
+   "clip_hi": 0.00626,
+   "mean": 0.46181,
+   "roi": "center"
+  }
+ },
+ "R0_calibration": {
+  "c_hf_fit": 0.4075,
+  "grid": [
+   {
+    "sigma_true": 0.5,
+    "q": 0.98,
+    "q_hf": 0.6729,
+    "lap": 735.7,
+    "ten": 12598.3,
+    "c_implied": 0.717,
+    "sigma_est": 0.284
+   },
+   {
+    "sigma_true": 0.75,
+    "q": 0.9303,
+    "q_hf": 0.3651,
+    "lap": 194.4,
+    "ten": 8929.4,
+    "c_implied": 0.569,
+    "sigma_est": 0.537
+   },
+   {
+    "sigma_true": 1.0,
+    "q": 0.8456,
+    "q_hf": 0.1984,
+    "lap": 84.2,
+    "ten": 6715.4,
+    "c_implied": 0.497,
+    "sigma_est": 0.819
+   },
+   {
+    "sigma_true": 1.5,
+    "q": 0.3981,
+    "q_hf": 0.0431,
+    "lap": 25.2,
+    "ten": 4085.4,
+    "c_implied": 0.318,
+    "sigma_est": 1.919
+   },
+   {
+    "sigma_true": 2.0,
+    "q": 0.1054,
+    "q_hf": 0.0073,
+    "lap": 10.7,
+    "ten": 2693.5,
+    "c_implied": 0.172,
+    "sigma_est": 3.0
+   },
+   {
+    "sigma_true": 3.0,
+    "q": 0.1054,
+    "q_hf": 0.0005,
+    "lap": 3.8,
+    "ten": 1441.1,
+    "c_implied": 0.066,
+    "sigma_est": 3.0
+   },
+   {
+    "sigma_true": 4.0,
+    "q": 0.1054,
+    "q_hf": 0.0004,
+    "lap": 2.4,
+    "ten": 922.4,
+    "c_implied": 0.082,
+    "sigma_est": 3.0
+   },
+   {
+    "sigma_true": 5.0,
+    "q": 0.1054,
+    "q_hf": 0.0004,
+    "lap": 2.0,
+    "ten": 651.4,
+    "c_implied": 0.097,
+    "sigma_est": 3.0
+   },
+   {
+    "sigma_true": 6.0,
+    "q": 0.1054,
+    "q_hf": 0.0004,
+    "lap": 1.8,
+    "ten": 490.1,
+    "c_implied": 0.115,
+    "sigma_est": 3.0
+   }
+  ],
+  "valid_range_px": [
+   0.75,
+   2.0
+  ],
+  "sigma_est_mae_px": 0.453,
+  "sigma_est_max_err_px": 1.0
+ },
+ "R1a_sweep": {
+  "curve": [
+   {
+    "dz_mm": -15.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -14.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -13.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -12.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -11.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -10.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -9.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -8.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -7.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -6.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -5.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -4.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -3.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": -2.0,
+    "q": 0.7251,
+    "sigma_est_px": 1.134
+   },
+   {
+    "dz_mm": -1.0,
+    "q": 0.9617,
+    "sigma_est_px": 0.395
+   },
+   {
+    "dz_mm": 0.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 1.0,
+    "q": 0.9617,
+    "sigma_est_px": 0.395
+   },
+   {
+    "dz_mm": 2.0,
+    "q": 0.7251,
+    "sigma_est_px": 1.134
+   },
+   {
+    "dz_mm": 3.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 4.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 5.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 6.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 7.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 8.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 9.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 10.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 11.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 12.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 13.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 14.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   },
+   {
+    "dz_mm": 15.0,
+    "q": 0.1054,
+    "sigma_est_px": 3.0
+   }
+  ],
+  "peak_dz_mm": 0.0,
+  "peak_q": 1.0,
+  "q_at_0mm": 1.0,
+  "per_frame_ms": 45.46
+ },
+ "R1b_closed_loop": {
+  "start_-9mm": {
+   "ok": false,
+   "reason": "unresolvable",
+   "z_final_mm": 278.1,
+   "dz_net_mm": -12.9,
+   "detail": "扫焦曲线近乎平坦 (波动 0.0% < 5%) → 非对焦所致, 不硬修",
+   "n_probes": 11,
+   "trace": [
+    {
+     "z_mm": 291.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.9,
+     "hf": 2.2961e-05,
+     "metric_ms": 44.4,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 294.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 2.8,
+     "hf": 2.3127e-05,
+     "metric_ms": 43.98,
+     "dz_cmd_mm": -3.0
+    },
+    {
+     "z_mm": 288.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.8,
+     "hf": 2.4522e-05,
+     "metric_ms": 45.34,
+     "dz_cmd_mm": -3.0
+    },
+    {
+     "z_mm": 285.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 2.8839e-05,
+     "metric_ms": 45.77,
+     "dz_cmd_mm": -3.0
+    },
+    {
+     "z_mm": 282.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 3.1671e-05,
+     "metric_ms": 47.01,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 281.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 3.2993e-05,
+     "metric_ms": 47.3,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 280.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 4.1354e-05,
+     "metric_ms": 48.4,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 279.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 4.1547e-05,
+     "metric_ms": 48.7,
+     "dz_cmd_mm": -0.3
+    },
+    {
+     "z_mm": 278.7,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 3.6346e-05,
+     "metric_ms": 48.6,
+     "dz_cmd_mm": -0.3
+    },
+    {
+     "z_mm": 278.4,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 3.7093e-05,
+     "metric_ms": 48.28,
+     "dz_cmd_mm": -0.3
+    },
+    {
+     "z_mm": 278.1,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 5.0352e-05,
+     "metric_ms": 49.01,
+     "dz_cmd_mm": null
+    }
+   ]
+  },
+  "start_12mm": {
+   "ok": true,
+   "reason": "defocus",
+   "z_final_mm": 301.0,
+   "dz_net_mm": -11.0,
+   "detail": "扫焦复焦成功 7 探测 / 行程 14.00mm / q 0.11→0.96",
+   "n_probes": 7,
+   "trace": [
+    {
+     "z_mm": 312.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.8,
+     "hf": 2.4522e-05,
+     "metric_ms": 48.69,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 315.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.7,
+     "hf": 2.8839e-05,
+     "metric_ms": 45.93,
+     "dz_cmd_mm": -3.0
+    },
+    {
+     "z_mm": 309.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 1.9,
+     "hf": 2.2961e-05,
+     "metric_ms": 44.4,
+     "dz_cmd_mm": -3.0
+    },
+    {
+     "z_mm": 306.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 2.8,
+     "hf": 2.3127e-05,
+     "metric_ms": 44.61,
+     "dz_cmd_mm": -3.0
+    },
+    {
+     "z_mm": 303.0,
+     "q": 0.1054,
+     "sigma_est_px": 3.0,
+     "lap": 14.3,
+     "hf": 0.00081326,
+     "metric_ms": 44.06,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 302.0,
+     "q": 0.7251,
+     "sigma_est_px": 1.134,
+     "lap": 49.8,
+     "hf": 0.0070319,
+     "metric_ms": 43.83,
+     "dz_cmd_mm": -1.0
+    },
+    {
+     "z_mm": 301.0,
+     "q": 0.9617,
+     "sigma_est_px": 0.395,
+     "lap": 394.5,
+     "hf": 0.031674,
+     "metric_ms": 44.32,
+     "dz_cmd_mm": null
+    }
+   ]
+  }
+ },
+ "R1c_attribution": {
+  "motion": {
+   "aniso_clear": 1.271,
+   "aniso_motion": 1.449,
+   "theta_deg": 60.0,
+   "ratio": 1.141,
+   "verdict": "defocus"
+  },
+  "exposure": {
+   "clip_hi": 0.6679,
+   "verdict": "exposure"
+  },
+  "unresolvable_scatter": {
+   "ok": false,
+   "reason": "unresolvable",
+   "q_best": 0.1054,
+   "n_probes": 11,
+   "detail": "扫焦曲线近乎平坦 (波动 0.0% < 5%) → 非对焦所致, 不硬修"
+  },
+  "invalid_blank": {
+   "ok": false,
+   "reason": "no_target",
+   "n_probes": 1,
+   "detail": "无效帧: Tenengrad=0.0 < 50 (无结构) · std=0.0 < 5 (近乎平坦)"
+  },
+  "invalid_real_aoi_frame": {
+   "ok": false,
+   "reason": "no_target",
+   "detail": "无效帧: Tenengrad=4.4 < 50 (无结构) · std=2.2 < 5 (近乎平坦)",
+   "mean": 9.53,
+   "std": 2.22,
+   "ten": 4.4
+  }
+ },
+ "R1d_pose": {
+  "grasp_pose_mm": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 30.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0
+  },
+  "axis_source": "名义光轴",
+  "n_cam_in_base": [
+   0.0,
+   0.0,
+   -1.0
+  ],
+  "focus_dz_mm": -12.9,
+  "pose_corrected": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 42.9,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0,
+   "focus_dz_mm": -12.9
+  }
+ },
+ "checks": {
+  "R0 σ 估计在有效域 (0.75~2px) MAE ≤0.3px": false,
+  "R1a 扫焦曲线峰值在对焦点 (±1mm)": true,
+  "R1a 峰谷对比显著 (端点 ≤0.5×峰值)": true,
+  "R1b 两方向起步均复焦成功且落点 ±1mm": false,
+  "R1c 运动模糊判 motion 且方向性 >1.35×基线": false,
+  "R1c 过曝判 exposure": true,
+  "R1c 端面散射判 unresolvable (不假装修好)": true,
+  "R1c 无结构帧判 no_target (不判不修)": true,
+  "R1c 现役真机 AOI 黑帧被闸拦住": true,
+  "单帧量测 <20ms (实时可行)": false
+ },
+ "checks_pass": "6/10"
+}

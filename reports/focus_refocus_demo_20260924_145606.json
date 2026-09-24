@@ -1,0 +1,387 @@
+{
+ "ts": "2026-09-24 14:56:06",
+ "caliber": {
+  "k_px_per_mm": 0.6,
+  "z_focus_mm": 300.0,
+  "note": "真图 + 合成离焦物理 σ=k·|z−z_focus|; 判据来自真实图像处理"
+ },
+ "source_frame": {
+  "tag": "真机 AOI 帧 (aoi_last_frame.png)",
+  "path": "/home/ubuntu/zmax_data/aoi_last_frame.png",
+  "shape": [
+   2048,
+   2448,
+   3
+  ]
+ },
+ "R0_calibration": {
+  "c_hf_fit": 23720.4615,
+  "grid": [
+   {
+    "sigma_true": 0.5,
+    "q": 1.0,
+    "q_hf": 1.0027,
+    "c_implied": 15811.388,
+    "lap": 2.4,
+    "ten": 4.4,
+    "sigma_est": 0.0
+   },
+   {
+    "sigma_true": 0.75,
+    "q": 1.0,
+    "q_hf": 1.1806,
+    "c_implied": 23717.082,
+    "lap": 1.1,
+    "ten": 3.8,
+    "sigma_est": 0.0
+   },
+   {
+    "sigma_true": 1.0,
+    "q": 1.0,
+    "q_hf": 1.2575,
+    "c_implied": 31622.777,
+    "lap": 0.7,
+    "ten": 3.1,
+    "sigma_est": 0.0
+   },
+   {
+    "sigma_true": 1.5,
+    "q": 1.0,
+    "q_hf": 1.3159,
+    "c_implied": 47434.165,
+    "lap": 0.4,
+    "ten": 2.3,
+    "sigma_est": 0.0
+   },
+   {
+    "sigma_true": 2.0,
+    "q": 1.0,
+    "q_hf": 1.2748,
+    "c_implied": 63245.553,
+    "lap": 0.3,
+    "ten": 1.6,
+    "sigma_est": 0.0
+   },
+   {
+    "sigma_true": 3.0,
+    "q": 1.0,
+    "q_hf": 1.0133,
+    "c_implied": 94868.33,
+    "lap": 0.1,
+    "ten": 0.9,
+    "sigma_est": 0.0
+   },
+   {
+    "sigma_true": 4.0,
+    "q": 0.9161,
+    "q_hf": 0.7405,
+    "c_implied": 6.758,
+    "lap": 0.1,
+    "ten": 0.6,
+    "sigma_est": 14040.704
+   },
+   {
+    "sigma_true": 5.0,
+    "q": 0.8156,
+    "q_hf": 0.5508,
+    "c_implied": 5.537,
+    "lap": 0.1,
+    "ten": 0.4,
+    "sigma_est": 21420.199
+   },
+   {
+    "sigma_true": 6.0,
+    "q": 0.7277,
+    "q_hf": 0.4402,
+    "c_implied": 5.321,
+    "lap": 0.0,
+    "ten": 0.3,
+    "sigma_est": 26748.726
+   }
+  ],
+  "sigma_est_mae_px": 6911.487,
+  "sigma_est_max_err_px": 26742.726
+ },
+ "R1a_sweep": {
+  "curve": [
+   {
+    "dz_mm": -15.0,
+    "q": 0.0,
+    "sigma_est_px": 33461.79
+   },
+   {
+    "dz_mm": -14.0,
+    "q": 0.0,
+    "sigma_est_px": 33107.252
+   },
+   {
+    "dz_mm": -13.0,
+    "q": 0.0,
+    "sigma_est_px": 32178.474
+   },
+   {
+    "dz_mm": -12.0,
+    "q": 0.0,
+    "sigma_est_px": 31030.89
+   },
+   {
+    "dz_mm": -11.0,
+    "q": 0.0,
+    "sigma_est_px": 29253.493
+   },
+   {
+    "dz_mm": -10.0,
+    "q": 0.0,
+    "sigma_est_px": 26748.726
+   },
+   {
+    "dz_mm": -9.0,
+    "q": 0.0,
+    "sigma_est_px": 23884.7
+   },
+   {
+    "dz_mm": -8.0,
+    "q": 0.0,
+    "sigma_est_px": 20128.571
+   },
+   {
+    "dz_mm": -7.0,
+    "q": 0.0,
+    "sigma_est_px": 15724.825
+   },
+   {
+    "dz_mm": -6.0,
+    "q": 0.0,
+    "sigma_est_px": 10529.874
+   },
+   {
+    "dz_mm": -5.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": -4.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": -3.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": -2.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": -1.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 0.0,
+    "q": 0.0,
+    "sigma_est_px": 8.544
+   },
+   {
+    "dz_mm": 1.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 2.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 3.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 4.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 5.0,
+    "q": 1.0,
+    "sigma_est_px": 0.0
+   },
+   {
+    "dz_mm": 6.0,
+    "q": 0.0,
+    "sigma_est_px": 10529.874
+   },
+   {
+    "dz_mm": 7.0,
+    "q": 0.0,
+    "sigma_est_px": 15724.825
+   },
+   {
+    "dz_mm": 8.0,
+    "q": 0.0,
+    "sigma_est_px": 20128.571
+   },
+   {
+    "dz_mm": 9.0,
+    "q": 0.0,
+    "sigma_est_px": 23884.7
+   },
+   {
+    "dz_mm": 10.0,
+    "q": 0.0,
+    "sigma_est_px": 26748.726
+   },
+   {
+    "dz_mm": 11.0,
+    "q": 0.0,
+    "sigma_est_px": 29253.493
+   },
+   {
+    "dz_mm": 12.0,
+    "q": 0.0,
+    "sigma_est_px": 31030.89
+   },
+   {
+    "dz_mm": 13.0,
+    "q": 0.0,
+    "sigma_est_px": 32178.474
+   },
+   {
+    "dz_mm": 14.0,
+    "q": 0.0,
+    "sigma_est_px": 33107.252
+   },
+   {
+    "dz_mm": 15.0,
+    "q": 0.0,
+    "sigma_est_px": 33461.79
+   }
+  ],
+  "peak_dz_mm": -5.0,
+  "peak_q": 1.0,
+  "q_at_0mm": 0.0,
+  "per_frame_ms": 27.54
+ },
+ "R1b_closed_loop": {
+  "start_-9mm": {
+   "ok": false,
+   "reason": "exposure",
+   "z_final_mm": 291.0,
+   "dz_net_mm": 0.0,
+   "detail": "欠曝 mean=0.038 < 0.15",
+   "n_probes": 2,
+   "trace": [
+    {
+     "z_mm": 291.0,
+     "q": 0.0,
+     "sigma_est_px": 23884.7,
+     "lap": 0.1,
+     "hf": 0.0038275,
+     "metric_ms": 28.63,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 294.0,
+     "q": 0.0,
+     "sigma_est_px": 10529.874,
+     "lap": 0.1,
+     "hf": 0.0064392,
+     "metric_ms": 21.0,
+     "dz_cmd_mm": null
+    }
+   ]
+  },
+  "start_12mm": {
+   "ok": false,
+   "reason": "exposure",
+   "z_final_mm": 312.0,
+   "dz_net_mm": 0.0,
+   "detail": "欠曝 mean=0.038 < 0.15",
+   "n_probes": 2,
+   "trace": [
+    {
+     "z_mm": 312.0,
+     "q": 0.0,
+     "sigma_est_px": 31030.89,
+     "lap": 0.0,
+     "hf": 0.0028429,
+     "metric_ms": 26.65,
+     "dz_cmd_mm": null
+    },
+    {
+     "z_mm": 315.0,
+     "q": 0.0,
+     "sigma_est_px": 33461.79,
+     "lap": 0.0,
+     "hf": 0.002578,
+     "metric_ms": 29.6,
+     "dz_cmd_mm": null
+    }
+   ]
+  }
+ },
+ "R1c_attribution": {
+  "motion": {
+   "aniso_clear": 0.154,
+   "aniso_motion": 0.76,
+   "theta_deg": 72.0,
+   "verdict": "exposure"
+  },
+  "exposure": {
+   "clip_hi": 0.0,
+   "verdict": "defocus"
+  },
+  "unresolvable_scatter": {
+   "ok": false,
+   "reason": "exposure",
+   "q_best": 0.0,
+   "detail": "欠曝 mean=0.038 < 0.15",
+   "n_probes": 2
+  },
+  "unresolvable_flat": {
+   "ok": true,
+   "reason": "clear",
+   "detail": "起始即清晰 q=1.00"
+  }
+ },
+ "R1d_pose": {
+  "grasp_pose_mm": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 30.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0
+  },
+  "n_cam_in_base": [
+   0.0,
+   0.0,
+   -1.0
+  ],
+  "focus_dz_mm": 0.0,
+  "pose_corrected": {
+   "x": 0.0,
+   "y": 595.0,
+   "z": 30.0,
+   "rx": 180.0,
+   "ry": 0.0,
+   "rz": 0.0,
+   "focus_dz_mm": 0.0
+  }
+ },
+ "checks": {
+  "R0 σ 估计误差 ≤0.5px": false,
+  "R1a 扫焦曲线单峰且峰值在对焦点(±1mm)": false,
+  "R1a 峰谷对比显著 (端点 q ≤ 0.5×峰值)": true,
+  "R1b 两侧起步均复焦成功且落点 ±1mm": false,
+  "R1c 运动模糊判为 motion (各向异性上升)": false,
+  "R1c 过曝判为 exposure": false,
+  "R1c 端面散射判为 unresolvable (不假装修好)": false,
+  "R1c 无结构判为 unresolvable": false,
+  "单帧量测 < 20ms (实时可行)": false
+ },
+ "checks_pass": "1/9"
+}
