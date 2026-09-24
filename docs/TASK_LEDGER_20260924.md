@@ -133,3 +133,17 @@
 | 三件套 | node_logic 注册+真执行函数 + `_EXTERNAL_LOC` + 能力清单 L4-C15 |
 | 灰度 | 只读旁路 (不下发动作); 接管前置 = 跨段重标定 + 同口径 A/B 不回退 + 授权 |
 | 新增工具 | `tools/manifold_engine_bench.py` · `tools/canvas_add_manifold_engine.py` (6 硬断言) · `tools/studio_ctl.sh` (安全启停, 防 pkill 自杀 + venv 路径坑) |
+
+---
+
+## 2026-09-24 晚 · L2「3D 视觉引导 / 触觉反馈闭环」功能+用例 → 功能清单/用例节点/网页 (commit 3dcb80d4)
+
+| 项 | 结果 |
+|---|---|
+| 功能清单 (capability_levels) | L2-A12 3D 视觉引导 · L2-A13 触觉反馈闭环 (desc 直接带实测指标) |
+| 测试用例 (verification_layer) | **F-B12 ✅** 横向偏差 135.9→38.5mm (0.28×, 判据≤0.50×) · 法向偏离 148.3→**0.29mm**(<1mm) · 引导范数中位 130.8mm; **F-B13 ✅** 触觉↔状态互补一致 **1.000** · corr(contact_p,\|F\|) **0.975** · 插入段 cp 0.9931 · 力上界 **0.665N** |
+| 功能树 (node_func_tree) | FN2d06 视觉伺服引导闭环 · FNtac06 触觉反馈闭环 (8 条子用例) |
+| 画布节点 | `ssfeat`/`sstest` desc 用**真源实时计数**刷新 (FEATURES 57 · 分组 A12/B13/C4/D3/E5/F4/G10/H6 · 树 113功能×562用例) — 由 `tools/canvas_update_verif_nodes.py` 生成, 不再手写 |
+| 网页 (ECS 上线) | 新页 `https://datadrive.world/l2-guidance-tactile.html` + `.md` (下载/复制 Markdown 按钮) · 总表 function-list.html 重生成+导航 · 主页 index.html 加导航 (全部 HTTP 200 复核) |
+| 三个如实标注 | ① 触觉通道 0 = 原始开度、轨迹 gripper = 夹紧度 = 1−开度 → 用**互补一致率**断言 (按相等比得 0%) ② 触觉通道 2/3 引擎恒 0 = 真机触觉缺口 ③ 静态目标向量 vs 逐帧速度 一致率仅 0.21 → 判据改用偏差收敛+法向偏离归零 |
+| 新工具 | `tools/measure_l2_guide_tactile.py` (阈值先实测) · `tools/gen_l2_guide_tactile_page.py` (生成+部署+HTTP 复核) · `tools/canvas_update_verif_nodes.py` |
