@@ -178,7 +178,7 @@ SS_MODULE_TO_NAME = {
     "📐 2D→3D 解算": "📐 2D→3D 解算",
     "🖐 触觉感知": "🖐 触觉感知",
     "🔍 外观质量检测": "🔍 外观质量检测",
-    "📡 传感器融合": "📡 传感器融合",
+    "📡 融合定位": "📡 融合定位",
     "⚡ 前馈加速器": "⚡ 前馈加速器",
     "🔮 自适应状态估计器": "🔮 自适应状态估计器",
     "📈 先验动力学预测器": "📈 先验动力学预测器",
@@ -11350,9 +11350,9 @@ class SimulinkModule(QWidget):
                 f"<tr><td style='color:#ffd700'>饱和限幅</td><td>速度/力/位置限幅 — 防过冲防碰撞</td></tr>"
                 f"</table><p style='color:#8b949e;font-size:11pt;margin-top:6px'>"
                 f"📌 认知层否决权 + 物理限幅 = 双层安全: 决策层看语义, 执行层卡物理</p>")
-        elif "传感器融合" in nm:
+        elif ("融合定位" in nm) or ("传感器融合" in nm):
             html = (
-                f"<h3 style='color:#58a6ff;margin:4px'>📡 传感器融合 — 时空感知前端</h3>"
+                f"<h3 style='color:#58a6ff;margin:4px'>📡 融合定位 — 视觉 ⊕ 触觉 → 统一状态空间</h3>"
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:11pt'>"
                 f"<tr style='color:#e6edf3'><th>传感器</th><th>维度</th><th>信息</th></tr>"
                 f"<tr><td style='color:#00d4aa'>RGB-D</td><td>视觉</td><td>位置/姿态/深度 (YOLO 2D→3D)</td></tr>"
@@ -11605,7 +11605,7 @@ class SimulinkModule(QWidget):
 
     def open_state_space(self):
         """🧮 状态空间模型画布 (2026-08-17 老倪: 按流程做状态空间新按钮 — 打开模型画布)
-        时空感知前端 (传感器融合 → 43D obs)
+        融合定位 (视觉 ⊕ 触觉 → 统一状态空间 43D obs)
         并行处理层 (快慢分离: 前馈加速器 MLP + 自适应状态估计器 GRU → 预测/校正)
         认知决策层 (动作调制器握否决权 → 安全执行边界)
         执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 状态校正)
@@ -11616,7 +11616,7 @@ class SimulinkModule(QWidget):
             self._qmsg_info("🧮 状态空间", "状态空间模型画布加载失败")
             return
         self._log("════ 🧮 状态空间模型 (时空感知 → 并行认知 → 决策执行 → 物理闭环) ════")
-        self._log("时空感知前端: 📡传感器融合 (RGB-D+力觉+触觉) → 🧩43D统一状态向量 obs")
+        self._log("融合定位: 📡视觉(YOLO→2D→3D) ⊕ 触觉4D ⊕ 外观质量 → 🧩统一状态空间 43D obs")
         self._log("并行处理层 (快慢分离): ⚡前馈加速器(原左脑MLP, u_ff权重30%) ‖ 🔮自适应状态估计器(原右脑GRU)")
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
         self._log("认知决策层 (握有否决权): 🧭动作调制器(原状态机, 8阶段状态机: 接近→对位→下降→抓取→抬起→转移→插入→完成) → 🛡安全执行边界(饱和限幅)")

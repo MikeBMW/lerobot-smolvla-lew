@@ -2755,7 +2755,7 @@ def _ss_ensure_obs43(log):
 
 
 def node_ss_s1(ctx):
-    """时空感知前端 — 📡传感器融合: metaworld 采样 39D + 触觉合成 → fuse_sensors() → 43D (perception.py)
+    """融合定位 — 📡 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量: fuse_sensors() → 统一状态空间 43D (perception.py)
     🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
     log = ctx.get("log")
     try:
@@ -2772,12 +2772,12 @@ def node_ss_s1(ctx):
         obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
         _SS_STATE.update({"obs43": obs43, "obs39": obs39})
         if log:
-            log(f"📡 传感器融合 (真实): 39D+触觉4D → 43D · hand={np.round(obs39[0:3],3)} "
+            log(f"📡 融合定位 (真实): 视觉39D ⊕ 触觉4D → 统一状态空间 43D · hand={np.round(obs39[0:3],3)} "
                 f"光模块={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
         return True
     except Exception as e:
         if log:
-            log(f"⚠️ 传感器融合真实执行失败: {e}")
+            log(f"⚠️ 融合定位真实执行失败: {e}")
         return False
 
 
@@ -3204,7 +3204,7 @@ _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                       "metaworld_data_source.py"), 54, "def probe_data_source")
 
 _reg("ss_bg1",   ["时空感知前端"], "时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
-_reg("ss_sensor", ["传感器融合"], "📡 传感器融合 — RGB-D+力觉+触觉 → 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
+_reg("ss_sensor", ["传感器融合", "融合定位"], "📡 融合定位 — 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量 → 统一状态空间 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
 # 🧩 2026-09-20: VEH.5.041「统一状态」= SU(2) 群节点 (43D 拼接语义保留在 📡传感器融合)
 #   key 仍用 ss_obs (与画布节点 id ssobs 对齐, 避免与 ss_su2 重复注册歧义)
 _reg("ss_obs",   ["SU(2)", "二阶特殊酉群", "统一状态空间"],

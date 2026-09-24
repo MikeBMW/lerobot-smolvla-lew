@@ -77,10 +77,13 @@ def main() -> int:
     chk.append(("docs_sync 两键", d.count('"%s"' % ov), d2.count('"%s"' % nv)))
 
     # 4) version_sync.py 版本面板字面量 (🐛 2026-09-24: 原先漏了这处 → 面板长期显示旧号)
+    #   ⚠️ 2026-09-24 实测修: 本文件的值**不带 v 前缀** (`zmax_ver = "5.13.0"`), 而 ov/nv 带 v
+    #   → 原正则永远 0 命中 (静默漏同步, 与本次"面板停在旧号"同族根因)。用去 v 版本号匹配。
+    ov_bare, nv_bare = ov.lstrip("v"), nv.lstrip("v")
     v = _read(VSYNC)
-    v2 = v.replace('zmax_ver = "%s"' % ov, 'zmax_ver = "%s"' % nv)
-    chk.append(("version_sync zmax_ver", v.count('zmax_ver = "%s"' % ov),
-                v2.count('zmax_ver = "%s"' % nv)))
+    v2 = v.replace('zmax_ver = "%s"' % ov_bare, 'zmax_ver = "%s"' % nv_bare)
+    chk.append(("version_sync zmax_ver", v.count('zmax_ver = "%s"' % ov_bare),
+                v2.count('zmax_ver = "%s"' % nv_bare)))
 
     vm = _read(VM)
     row = "| **%s** | %s | %s |\n" % (nv, time.strftime("%m-%d"), summ)     # 🐛 日期原写死 09-22

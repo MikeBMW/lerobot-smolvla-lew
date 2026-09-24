@@ -246,8 +246,8 @@
   {
    "id": "sssensor",
    "type": "hardware",
-   "name": "📡 传感器融合",
-   "x": 700,
+   "name": "📡 融合定位",
+   "x": 3080,
    "y": 3964,
    "w": 160,
    "icon": "📡",
@@ -255,15 +255,20 @@
    "h": 68,
    "params": {
     "state_space": true,
-    "desc": "[基础·分段小模型] 传感器融合: RGB-D + 力觉 + 触觉 → 43D 统一状态向量 (obs)",
+    "desc": "[基础·分段小模型] 融合定位 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费)",
     "source": "src/lerobot/policies/left_right/state_space/perception.py",
-    "source_symbol": "def fuse_sensors"
+    "source_symbol": "def fuse_sensors",
+    "fuse": "视觉 ⊕ 触觉 ⊕ 外观质量"
    },
    "inputs": [
-    "in1"
+    "in1",
+    "in2",
+    "in3",
+    "in4"
    ],
    "outputs": [
-    "out1"
+    "out1",
+    "out2"
    ],
    "actions": []
   },
@@ -1435,7 +1440,7 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 🧩 **三路入线口径** (2026-09-16 老倪「L2 应与 L4 兼容」): in1 = 数据源真帧+39D; in2 = L2 感知融合状态 (YOLO→2D→3D→传感器融合, L4 引擎路径 vision=True 时生效); in3 = L2 前馈蒸馏 MLP 的 u_ff (L4 档 SS_USE_MLP=1 时真身参与, 否则装配期被解析覆盖); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py",
+    "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 🧩 **三路入线口径** (2026-09-16 老倪「L2 应与 L4 兼容」): in1 = 数据源真帧+39D; in2 = L2 感知融合状态 (YOLO→2D→3D→融合定位, L4 引擎路径 vision=True 时生效); in3 = L2 前馈蒸馏 MLP 的 u_ff (L4 档 SS_USE_MLP=1 时真身参与, 否则装配期被解析覆盖); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py",
     "expert": true,
     "state_space": true,
     "intact": true,
@@ -2378,22 +2383,6 @@
    "label": "⬆ 几何 销/孔"
   },
   {
-   "id": "lksy2",
-   "f": "ss2d3d",
-   "t": "ssobs",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "感知坐标 3D"
-  },
-  {
-   "id": "lksy3",
-   "f": "sstactile",
-   "t": "ssobs",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "触觉 4D"
-  },
-  {
    "id": "lks27",
    "f": "ssaoi",
    "t": "sssched",
@@ -3303,7 +3292,7 @@
    "t": "ss_mani_eng",
    "f_port": "out2",
    "t_port": "in1",
-   "label": "43D 状态 (传感器融合) → x∈R^N"
+   "label": "43D 状态 (融合定位) → x∈R^N"
   },
   {
    "id": "lk0924_ssobs_ss_mani_eng",
@@ -3376,6 +3365,30 @@
    "f_port": "out5",
    "t_port": "in4",
    "label": "动作指令 a (解码器输出)"
+  },
+  {
+   "id": "lk0924f_2d3d_fuse",
+   "f": "ss2d3d",
+   "t": "sssensor",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "视觉 3D 定位 (YOLO→2D→3D)"
+  },
+  {
+   "id": "lk0924f_tac_fuse",
+   "f": "sstactile",
+   "t": "sssensor",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "触觉 4D (力/接触)"
+  },
+  {
+   "id": "lk0924f_aoi_fuse",
+   "f": "ssaoi",
+   "t": "sssensor",
+   "f_port": "out1",
+   "t_port": "in4",
+   "label": "外观质量门"
   }
  ],
  "params_note": ""

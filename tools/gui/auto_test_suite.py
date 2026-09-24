@@ -307,7 +307,7 @@ class StateSpaceAutoTest:
         if only:
             self.steps = [s for s in self.steps if s[0].startswith(only)]
 
-    # ── TC09:  感知层 (📡传感器融合 → 🧩43D obs) ──
+    # ── TC09:  感知层 (📡融合定位 → 🧩43D obs) ──
     def tc09_perception(self):
         def fn():
             sim = getattr(self.sim, "_ss_sim", None) or getattr(self.sim, "_sim", None)
@@ -319,14 +319,14 @@ class StateSpaceAutoTest:
                 import numpy as np
                 # 读画布节点:  感知前端是否含 传感器融合/43D obs
                 names = [x.get("name", "") for x in self.sim.nodes]
-                has_sensor = any("传感器" in n or "感知" in n for n in names)
+                has_sensor = any(("传感器" in n) or ("感知" in n) or ("融合定位" in n) for n in names)
                 has_obs = any("43D" in n or "obs" in n.lower() or "状态向量" in n for n in names)
                 return (has_sensor and has_obs,
-                        f"感知节点: 传感器融合={'有' if has_sensor else '无'}, 43D obs={'有' if has_obs else '无'}",
+                        f"感知节点: 融合定位={'有' if has_sensor else '无'}, 43D obs={'有' if has_obs else '无'}",
                         self.sim.canvas)
             except Exception as e:
                 return False, f"感知层验证异常: {e!r}", self.sim.canvas
-        return ("TC09_感知层", "📡传感器融合 → 🧩43D状态向量 (画布节点)", fn)
+        return ("TC09_感知层", "📡融合定位 → 🧩43D状态向量 (画布节点)", fn)
 
     # ── TC10:  并行处理层 (⚡前馈加速器 ‖ 🔮状态估计器 → 📈预测 → 🧪校正) ──
     def tc10_parallel(self):

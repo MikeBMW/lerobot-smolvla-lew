@@ -4080,8 +4080,8 @@ class RealStateSpaceSim:
                         ("hand 3D", self.x)]},   # hand=编码器 (真机同构)
             "🖐 触觉感知": {
                 "in": [], "out": [("触觉 4D", obs[39:43])]},
-            "📡 传感器融合": {
-                "in": [("视觉 39D", obs[:39]), ("触觉 4D", obs[39:43])],
+            "📡 融合定位": {
+                "in": [("视觉 3D (YOLO→2D→3D)", obs[:39]), ("触觉 4D", obs[39:43]), ("外观质量", _conf)],
                 "out": [("obs 43D", obs)]},
             "⚡ 前馈加速器": {
                 "in": [("obs 43D", obs)], "out": [("u_ff 4D", u_ff)]},

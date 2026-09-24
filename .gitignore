@@ -253,3 +253,7 @@ tools/ros2_interfaces/log/
 # 2026-09-24 权重/可视化批次不入库 (磁盘保留)
 reports/**/lora_*_init.pt
 reports/yolo_live_vis_*/
+
+# 画布/流程本地备份 (归档在 ~/zmax_data, 不进版本库)
+flows/*.bak_*
+flows/*.json.bak
