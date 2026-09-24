@@ -187,6 +187,9 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._orig_rgb = None                    # 📷 原始图 (?kind=origin 2448x2048)
         self._view_paths = {}                    # 画面本地副本路径 (供复制路径)
         self._expfix_meta = {}                   # 过曝切除台账
+        self._roi_path = os.path.join(ROOT, "reports", "aoi_roi.json")
+        self._manual_roi = aex.load_roi(self._roi_path)   # 记住的框选 ROI (跨帧复用)
+        self._roi_meta = {}
         self._build()
         self._sync_classes()
         self._init_data_root()
@@ -375,6 +378,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         for _v in (self.wid, self.wid_orig):
             _v.msg.connect(self.log)
             _v.setToolTip(_v.toolTip() + "\n右键 → 复制图片 / 另存为 / 复制路径")
+        self.wid_orig.changed.connect(self._on_orig_boxes_changed)
         lv.addWidget(self.split_view, 1)
         lr = QtWidgets.QHBoxLayout(); lr.setSpacing(8)
         lr.addWidget(self._dim("画面"))
@@ -390,6 +394,14 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.chk_roi = QtWidgets.QCheckBox("ROI 高亮")
         self.chk_roi.setChecked(True)
         lr.addWidget(self.chk_roi)
+        self.chk_roi_pick = QtWidgets.QCheckBox("🎯 框选拉伸")
+        self.chk_roi_pick.setToolTip("老倪 2026-09-24: 在**原始图**上拖出矩形 → 松手即把该矩形拉伸成判据图\n"
+                                     "(自动裁切不理想时手动指定; 框内过曝会有数字告警)")
+        self.chk_roi_pick.toggled.connect(self._on_roi_pick)
+        lr.addWidget(self.chk_roi_pick)
+        self.btn_roi_keep = self._btn("💾 记住此框", "把当前框选记成默认 ROI (后续帧自动套用)", self._on_roi_keep)
+        self.btn_roi_clear = self._btn("✖ 清除框", "清除框选, 回到自动裁切", self._on_roi_clear)
+        lr.addWidget(self.btn_roi_keep); lr.addWidget(self.btn_roi_clear)
         self.chk_expfix = QtWidgets.QCheckBox("过曝切除")
         self.chk_expfix.setChecked(True)
         self.chk_expfix.setToolTip("老倪 2026-09-24: 工控机拉伸图 73% 是死白 (饱和 61.5%%、死白行 532/960)。\n"
@@ -725,8 +737,90 @@ class AoiInspectConsole(QtWidgets.QDialog):
         if self._last_res:
             self._fill_verdict(self._last_res)
 
+    # ── 🎯 框选拉伸 (老倪 2026-09-24) ──
+    def _on_roi_pick(self, on: bool):
+        """开/关框选模式: 打开后原始图上可拖框 (松手即拉伸)。"""
+        self.wid_orig.set_editable(bool(on))
+        if on:
+            self.wid_orig.setFocus()
+            self.log("🎯 框选拉伸: 请在**原始图**上拖出矩形 (松手即把该矩形拉伸成判据图); "
+                     "此模式下画的框=拉伸区, 不写入标注")
+        else:
+            self._on_basis_change()
+
+    def _on_orig_boxes_changed(self):
+        """原始图画面上框变化 → 框选模式下立刻按最后一个框拉伸。"""
+        if not self.chk_roi_pick.isChecked():
+            return
+        bs = self.wid_orig.boxes_px()
+        if not bs:
+            return
+        b = bs[-1]
+        rect = b["box"] if isinstance(b, dict) else b
+        self._manual_roi = tuple(int(round(v)) for v in rect[:4])
+        self._apply_manual_roi(auto=True)
+
+    def _apply_manual_roi(self, auto: bool = False):
+        """按框选矩形拉伸判据图 → 任务头重跑。框内过曝/细节全部如实报数。"""
+        if self._orig_rgb is None or not self._manual_roi:
+            self.log("⚠️ 框选拉伸: 需要原始图 + 一个框")
+            return
+        img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=self.head.imgsz)
+        self._roi_meta = meta
+        if img is None:
+            self.log(f"⚠️ 框选拉伸失败: {meta.get('err')}")
+            return
+        self.wid.set_frame_rgb(img)
+        self.wid.set_path(self._dump_view(img, "manual_roi_judge"))
+        self._term("", meta, note=f"框选拉伸 {'(拖框自动)' if auto else ''}")
+        self._elide(self.lbl_v_crop, f"判据图 · 框选拉伸 {img.shape[1]}x{img.shape[0]} · "
+                                     f"框内饱和 {meta['sat_in_rect']*100:.1f}% · 框内死白行 {meta['deadwhite_rows_in_rect']}",
+                    f"框 {meta['rect']} ({meta['rect_wh'][0]}x{meta['rect_wh'][1]}px) → {meta['out']} · "
+                    f"框内均值 {meta['mean_in_rect']} std {meta['std_in_rect']} Tenengrad {meta['tenengrad_in_rect']}")
+        self.log(f"🎯 框选拉伸: 框 {meta['rect']} ({meta['rect_wh'][0]}x{meta['rect_wh'][1]}px) → 判据图 "
+                 f"{img.shape[1]}x{img.shape[0]} · 框内饱和 {meta['sat_in_rect']*100:.1f}% · "
+                 f"死白行 {meta['deadwhite_rows_in_rect']} · Tenengrad {meta['tenengrad_in_rect']:.0f}"
+                 + (f"  ⚠️ {meta['warning']}" if meta.get("warning") else ""))
+        self.run_skill(self._cur_skill, quiet=True)
+
+    def _on_roi_keep(self):
+        if not self._manual_roi:
+            self.log("⚠️ 还没有框可记")
+            return
+        ok = aex.save_roi(self._roi_path, self._manual_roi, {"by": "engineer"})
+        self.log(f"💾 已记住框选 ROI {self._manual_roi} → {self._roi_path} (后续帧自动套用)" if ok
+                 else "❌ 记住失败")
+
+    def _on_roi_clear(self):
+        self._manual_roi = None
+        self._roi_meta = {}
+        try:
+            self.wid_orig.clear_boxes()
+        except Exception:                                          # noqa: BLE001
+            pass
+        if os.path.isfile(self._roi_path):
+            try:
+                os.remove(self._roi_path)
+            except Exception:                                      # noqa: BLE001
+                pass
+        self.log("✖ 已清除框选 ROI → 回到自动裁切")
+        if self.cmb_src.currentIndex() in SRC_OPT_IDX and self._opt_rgb is not None:
+            self._opt_fetch(grab=False, quiet=True)
+
     def _apply_expfix(self, topview_rgb):
-        """过大曝切除: 用**原始图自裁判据图** (切掉死白带/死白列)。返回 (图, meta)。"""
+        """判据图来源优先级: ① 手动框选拉伸 ② 原始图自动过曝切除 ③ 工厂拉伸图(如实告警)。"""
+        if self._manual_roi and self._orig_rgb is not None and self.chk_expfix.isChecked():
+            img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=self.head.imgsz)
+            if img is not None:
+                self._roi_meta = meta
+                self._term("", meta, note="框选拉伸 (记住的 ROI 自动套用)")
+                self._expfix_lbl = (f"判据图 · 记住的框选 {img.shape[1]}x{img.shape[0]} · "
+                                    f"框内饱和 {meta['sat_in_rect']*100:.1f}% · 死白行 {meta['deadwhite_rows_in_rect']}",
+                                    f"框 {meta['rect']} → {meta['out']} · 框内均值 {meta['mean_in_rect']} · "
+                                    f"Tenengrad {meta['tenengrad_in_rect']:.0f}")
+                self.log(f"🎯 套用记住的框选 ROI {meta['rect']} → 框内饱和 "
+                         f"{meta['sat_in_rect']*100:.1f}%" + (f" ⚠️ {meta['warning']}" if meta.get("warning") else ""))
+                return img, meta
         if not self.chk_expfix.isChecked():
             return topview_rgb, {}
         if self._orig_rgb is None:
@@ -734,8 +828,11 @@ class AoiInspectConsole(QtWidgets.QDialog):
             return topview_rgb, {}
         clean, meta = aex.clean_judge_frame(self._orig_rgb, out=self.head.imgsz)
         if clean is None:
-            self.log(f"⚠️ 过曝切除失败: {meta.get('err')} → 仍用工控机拉伸图 (如实记录)")
-            self._term("", meta, note="过曝切除失败")
+            self.log(f"⚠️ 自动过曝切除未找到合格带: {meta.get('err')} → 回退工控机拉伸图 (可能仍一片白! "
+                     f"请在原始图上用『🎯 框选拉伸』手动指定)")
+            self._term("", meta, note="过曝切除失败→回退工厂图")
+            self._expfix_lbl = ("判据图 · ⚠️ 工厂拉伸图 (自动裁切未找到合格带, 可能过曝)",
+                                "请在原始图上用『🎯 框选拉伸』拖框指定拉伸区")
             return topview_rgb, meta
         self._expfix_meta = meta
         self._term("", meta, note="过曝切除 (本地图像处理, 用原始图自裁)")

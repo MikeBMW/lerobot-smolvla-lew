@@ -290,6 +290,50 @@ def main():
        and w._expfix_meta.get("cliff", {}).get("y", -1) >= 0,
        f"裁掉 {w._expfix_meta.get('dropped_sat_rows')} 行 · 保留 {w._expfix_meta.get('kept_rows')} · "
        f"列裁 {w._expfix_meta.get('x_trim')} · cliff y={w._expfix_meta.get('cliff', {}).get('y')}")
+
+    # ⑪ 手动框选拉伸 (老倪: "我鼠标拖出边界框圈出矩形, 你来将圈选矩形对应拉伸")
+    good = [433, 948, 2056, 1074]          # 金手指条
+    bad = [433, 640, 2056, 900]            # 过曝死白带
+    w.cmb_src.setCurrentIndex(3)
+    for _ in range(25):
+        app.processEvents(); time.sleep(0.05)
+    w.chk_roi_pick.setChecked(True)
+    app.processEvents()
+    w.wid_orig.add_box_px(good)            # 等价于用户拖出这个框
+    for _ in range(20):
+        app.processEvents(); time.sleep(0.05)
+    m1 = dict(w._roi_meta)
+    RES["roi_good"] = {"roi": w._manual_roi, "judge_shape": list(w._last_rgb.shape), "meta": m1,
+                       "lbl": w.lbl_v_crop.text()}
+    ck("⑪ 拖框 → 判据图 = 该矩形拉伸 (尺寸=任务头输入)",
+       w._manual_roi == tuple(good) and list(w._last_rgb.shape[:2]) == [w.head.imgsz, w.head.imgsz],
+       f"框 {w._manual_roi} → 判据图 {list(w._last_rgb.shape)}")
+    ck("⑪ 好框: 框内饱和低 + 数字如实显示",
+       m1.get("sat_in_rect", 1) < 0.15 and "框选拉伸" in w.lbl_v_crop.text(),
+       f"框内饱和 {m1.get('sat_in_rect', 0)*100:.1f}% 死白行 {m1.get('deadwhite_rows_in_rect')} "
+       f"Tenengrad {m1.get('tenengrad_in_rect')} · {w.lbl_v_crop.text()}")
+    w.wid_orig.clear_boxes()
+    w.wid_orig.add_box_px(bad)
+    for _ in range(20):
+        app.processEvents(); time.sleep(0.05)
+    m2 = dict(w._roi_meta)
+    RES["roi_bad"] = m2
+    ck("⑪ 坏框(过曝带): 如实告警'拉伸后仍会一片白'",
+       m2.get("sat_in_rect", 0) > 0.40 and "过曝" in str(m2.get("warning", "")),
+       f"框内饱和 {m2.get('sat_in_rect', 0)*100:.1f}% · warning={m2.get('warning')}")
+    w._on_roi_keep()
+    app.processEvents()
+    roi_file = os.path.join(ROOT, "reports", "aoi_roi.json")
+    ck("⑪ 记住此框 → 落盘 ROI 文件", os.path.isfile(roi_file),
+       f"{roi_file} → {open(roi_file, encoding='utf-8').read()[:90]}")
+    w2 = aic.AoiInspectConsole(source="real")          # 新实例应读回记住的 ROI
+    w2._timer.stop()
+    ck("⑪ 新开窗口自动读回记住的 ROI", tuple(w2._manual_roi or ()) == tuple(bad), f"{w2._manual_roi}")
+    w2.close()
+    w._on_roi_clear()
+    app.processEvents(); time.sleep(0.3)
+    ck("⑪ 清除框 → ROI 清空 + 文件删除 (回到自动裁切)",
+       w._manual_roi is None and not os.path.isfile(roi_file), f"roi={w._manual_roi}")
     w.close()
 
     out = os.path.join(ROOT, "reports", f"opt_camera_verify_{time.strftime('%Y%m%d_%H%M%S')}.json")

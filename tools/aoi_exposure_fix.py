@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 SAT_LEVEL = 250          # 判"饱和像素"的灰度门限 (255 上限下的实际死白线)
@@ -164,6 +166,60 @@ def clean_judge_frame(rgb, out: int = 960, sat_thr: float | None = None, pad: in
     if return_natural:
         meta["natural"] = band
     return clean, meta
+
+
+def stretch_rect(rgb, rect, out: int = 640):
+    """**把用户框选的矩形拉伸成判据图** (老倪 2026-09-24: "我拖出边界框圈出矩形, 你来将圈选矩形对应拉伸")。
+
+    rect = (x0, y0, x1, y1) —— 原始图像素坐标 (可以是画面上拖出来的框)。
+    返回 (stretched_rgb, meta)。meta 如实给出**框内**的过曝/细节指标, 让"白不白"有数可依。
+    """
+    import cv2
+    a = np.asarray(rgb)
+    H, W = a.shape[:2]
+    x0, y0, x1, y1 = [int(round(v)) for v in rect[:4]]
+    x0, x1 = max(0, min(x0, x1)), min(W, max(x0, x1))
+    y0, y1 = max(0, min(y0, y1)), min(H, max(y0, y1))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return None, {"ok": False, "err": f"框太小 ({x1-x0}x{y1-y0}px), 至少 4x4", "rect": [x0, y0, x1, y1]}
+    crop = a[y0:y1, x0:x1]
+    g = _gray(crop)
+    gx = np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0))
+    gy = np.abs(cv2.Sobel(g, cv2.CV_32F, 0, 1))
+    img = cv2.resize(crop, (int(out), int(out)), interpolation=cv2.INTER_CUBIC)
+    meta = {"ok": True, "mode": "manual_rect", "rect": [x0, y0, x1, y1], "rect_wh": [x1 - x0, y1 - y0],
+            "src_hw": [H, W], "out": [int(out), int(out)],
+            "sat_in_rect": round(float((g >= SAT_LEVEL).mean()), 4),
+            "deadwhite_rows_in_rect": int((g.mean(axis=1) > 235).sum()),
+            "mean_in_rect": round(float(g.mean()), 1), "std_in_rect": round(float(g.std()), 1),
+            "tenengrad_in_rect": round(float((gx * gx + gy * gy).mean()), 0),
+            "warning": ("框内过曝严重 (饱和>40%): 拉伸后仍会一片白, 建议缩小/上移框" 
+                        if float((g >= SAT_LEVEL).mean()) > 0.40 else "")}
+    return img, meta
+
+
+def load_roi(path: str):
+    """读回记住的框选 ROI (跨帧/跨会话复用)。"""
+    try:
+        import json
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        r = d.get("rect")
+        return tuple(int(v) for v in r) if r and len(r) == 4 else None
+    except Exception:                                                  # noqa: BLE001
+        return None
+
+
+def save_roi(path: str, rect, extra: dict | None = None) -> bool:
+    import json
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"rect": [int(v) for v in rect], "saved_iso": __import__("time").strftime("%F %T"),
+                       **(extra or {})}, f, ensure_ascii=False, indent=1)
+        return True
+    except Exception:                                                  # noqa: BLE001
+        return False
 
 
 if __name__ == "__main__":

@@ -1,0 +1,321 @@
+{
+ "health": {
+  "host": "192.168.23.23",
+  "via": "local",
+  "cams": {
+   "金手指": {
+    "port": 10082,
+    "sn": "D265250070",
+    "model": "OPT-CC1-GG50",
+    "routes": {
+     "/picture": "POST, GET, OPTIONS, HEAD",
+     "/crop_info": "OPTIONS, GET, HEAD",
+     "/region": "OPTIONS, GET, HEAD",
+     "/last_result": "OPTIONS, GET, HEAD",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 200,
+     "count": 0,
+     "defects": [],
+     "detect_type": "gf",
+     "ms": 1558.0,
+     "n": 7,
+     "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_8.png",
+     "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260924_162825_013.png",
+     "t": 1790238507.506204,
+     "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_8.png",
+     "verdict": "OK",
+     "_http": "200",
+     "_ms": 5.1,
+     "_cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/last_result'"
+    },
+    "has_picture": true
+   },
+   "表面": {
+    "port": 10083,
+    "sn": "D265250099",
+    "model": "OPT-CC1-C050-GG3-00",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "无该路由"
+    },
+    "has_picture": false
+   }
+  }
+ },
+ "last_result_local_before": {
+  "code": 200,
+  "count": 0,
+  "defects": [],
+  "detect_type": "gf",
+  "ms": 1558.0,
+  "n": 7,
+  "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_8.png",
+  "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260924_162825_013.png",
+  "t": 1790238507.506204,
+  "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_8.png",
+  "verdict": "OK",
+  "_http": "200",
+  "_ms": 3.8,
+  "_cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/last_result'"
+ },
+ "head": {
+  "weights": "",
+  "ready": false,
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "gui_src_10082": {
+  "tag": "📷 金手指 topview 960x960",
+  "std": 73.0,
+  "meta_keys": [
+   "bytes",
+   "cam",
+   "cmd",
+   "grab",
+   "http",
+   "kind",
+   "mean",
+   "mean_gray"
+  ]
+ },
+ "gui_orig": {
+  "shape": [
+   2048,
+   2448,
+   3
+  ],
+  "std": 79.0,
+  "lbl_orig": "原始图 2448x2048 (4495KB 53ms)",
+  "lbl_crop": "判据图 · 过曝切除 640x640 · 饱和 13.3%→5.5% · 裁掉 207 行"
+ },
+ "gui_src_10083": {
+  "rgb_is_none": true,
+  "meta": {
+   "ok": false,
+   "cam": "表面",
+   "port": 10083,
+   "err": "表面相机在工控机侧无 /picture 路由 → 只能触发拍照 (见 patch 文档)"
+  }
+ },
+ "term_cmd": {
+  "n_lines": 4,
+  "last": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/picture?kind=origin' -o frame.png",
+  "json_lines": 147
+ },
+ "skill_click": {
+  "inference": {
+   "gold_finger": {
+    "rows": 6,
+    "has_res": true
+   },
+   "module_body": {
+    "rows": 6,
+    "has_res": true
+   },
+   "optical_port": {
+    "rows": 6,
+    "has_res": true
+   },
+   "full": {
+    "rows": 6,
+    "has_res": true
+   }
+  },
+  "service": {
+   "crop_info": true,
+   "region": true,
+   "pic_meta": true,
+   "last_result": true,
+   "fetch_recent": true
+  }
+ },
+ "img_copy": {
+  "crop": [
+   640,
+   640
+  ],
+  "orig": [
+   2448,
+   2048
+  ],
+  "has_ctxmenu": true,
+  "widgets": [
+   "CopyImageView",
+   "CopyImageView"
+  ],
+  "crop_path": "/home/ubuntu/lerobot-smolvla-lew/reports/opt_view/金手指_topview.png",
+  "orig_path": "/home/ubuntu/lerobot-smolvla-lew/reports/opt_view/金手指_origin.png"
+ },
+ "expfix": {
+  "raw_factory_topview": {
+   "sat_pct": 60.6,
+   "deadwhite_rows": 459,
+   "row_var": 45.5,
+   "worst_col_sat_pct": 100.0,
+   "tenengrad": 2242.0
+  },
+  "after_crop": {
+   "sat_pct": 5.7,
+   "deadwhite_rows": 0,
+   "row_var": 18.8,
+   "worst_col_sat_pct": 32.8,
+   "tenengrad": 29712.0
+  },
+  "meta": {
+   "ok": true,
+   "kept_rows": [
+    940,
+    1083
+   ],
+   "kept_h": 143,
+   "src_h": 2048,
+   "src_w": 2448,
+   "dropped_sat_rows": 207,
+   "dropped_pct": 10.1,
+   "sat_before": 0.1329,
+   "sat_after": 0.0552,
+   "cliff": {
+    "y": 582,
+    "jump": 5.439671993255615
+   },
+   "candidate": {
+    "y0": 948,
+    "y1": 1074,
+    "h": 127,
+    "sat": 0.346,
+    "edge": 42.35,
+    "ok": true
+   },
+   "out": [
+    640,
+    640
+   ],
+   "x_trim": {
+    "trimmed": true,
+    "x_span": [
+     432,
+     2056
+    ],
+    "dropped_cols": [
+     0,
+     432
+    ],
+    "col_sat_before_max": 1.0
+   },
+   "col_sat_after_max": 0.317,
+   "rule": "sat≤0.4 且 边缘密集(P92) 且 高≥20行, 上下留 8 行"
+  }
+ },
+ "roi_good": {
+  "roi": [
+   433,
+   948,
+   2056,
+   1074
+  ],
+  "judge_shape": [
+   640,
+   640,
+   3
+  ],
+  "meta": {
+   "ok": true,
+   "mode": "manual_rect",
+   "rect": [
+    433,
+    948,
+    2056,
+    1074
+   ],
+   "rect_wh": [
+    1623,
+    126
+   ],
+   "src_hw": [
+    2048,
+    2448
+   ],
+   "out": [
+    640,
+    640
+   ],
+   "sat_in_rect": 0.0441,
+   "deadwhite_rows_in_rect": 0,
+   "mean_in_rect": 142.6,
+   "std_in_rect": 57.5,
+   "tenengrad_in_rect": 23334.0,
+   "warning": ""
+  },
+  "lbl": "判据图 · 框选拉伸 640x640 · 框内饱和 4.4% · 框内死白行 0"
+ },
+ "roi_bad": {
+  "ok": true,
+  "mode": "manual_rect",
+  "rect": [
+   433,
+   640,
+   2056,
+   900
+  ],
+  "rect_wh": [
+   1623,
+   260
+  ],
+  "src_hw": [
+   2048,
+   2448
+  ],
+  "out": [
+   640,
+   640
+  ],
+  "sat_in_rect": 0.519,
+  "deadwhite_rows_in_rect": 132,
+  "mean_in_rect": 179.8,
+  "std_in_rect": 85.3,
+  "tenengrad_in_rect": 2738.0,
+  "warning": "框内过曝严重 (饱和>40%): 拉伸后仍会一片白, 建议缩小/上移框"
+ },
+ "checks": {
+  "① 10082 有 /picture 路由": true,
+  "① 10082 有 /last_result 判决通道": true,
+  "① 10083 只有 /capture_detect (如实标注无 /picture)": true,
+  "① /last_result 通道可达且结构化": true,
+  "② 经 Orin 通道可达 (ssh→curl 同一条通道)": true,
+  "⑥ 选『📷 10082 金手指』即显示该相机实际图": true,
+  "⑥ 同屏显示原始图 (2048x2448 有结构)": true,
+  "⑥ 两幅画面都有帧 + 尺寸标注": true,
+  "⑥ 标定基准可切到原始图 (可编辑只开在选中画面)": true,
+  "⑥ 选『📷 10083 表面』如实报缺口 (不伪造图)": true,
+  "⑥ 切源取图**不新增真拍** (审计流水未增长)": true,
+  "⑦ 窗口显示 curl 命令 (含目标 URL, 可直接执行)": true,
+  "⑦ 复制命令 → 剪贴板内容与命令框一致": true,
+  "⑦ 终端有服务反馈 JSON 原文": true,
+  "⑦ 复制反馈 → 剪贴板拿到 JSON": true,
+  "⑧ 四个推理技能点击即出判决表": true,
+  "⑧ 五个服务技能点击即得 JSON 反馈": true,
+  "⑨ 判据图右键复制 → 剪贴板拿到同尺寸图": true,
+  "⑨ 原始图右键复制 → 剪贴板拿到 2448x2048": true,
+  "⑨ 两幅画面都装了右键复制菜单 (非编辑态不误删框)": true,
+  "⑨ 画面有本地副本路径 (可复制路径贴到别处)": true,
+  "⑩ 切除前(工厂拉伸图)确认过曝: 死白行>0 且饱和>40%": true,
+  "⑩ 切除后: 死白行=0 且饱和<15% 且细节能量显著提升": true,
+  "⑩ 左右死白列也切了 (最差列饱和从 100% 降下来)": true,
+  "⑩ 切除台账 (裁掉多少行/列 + cliff 位置) 如实记录": true,
+  "⑪ 拖框 → 判据图 = 该矩形拉伸 (尺寸=任务头输入)": true,
+  "⑪ 好框: 框内饱和低 + 数字如实显示": true,
+  "⑪ 坏框(过曝带): 如实告警'拉伸后仍会一片白'": true,
+  "⑪ 记住此框 → 落盘 ROI 文件": true,
+  "⑪ 新开窗口自动读回记住的 ROI": true,
+  "⑪ 清除框 → ROI 清空 + 文件删除 (回到自动裁切)": true
+ },
+ "checks_pass": "31/31"
+}
