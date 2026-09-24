@@ -1,0 +1,539 @@
+{
+ "health": {
+  "host": "192.168.23.23",
+  "via": "local",
+  "cams": {
+   "金手指": {
+    "port": 10082,
+    "sn": "D265250070",
+    "model": "OPT-CC1-GG50",
+    "routes": {
+     "/picture": "OPTIONS, GET, POST, HEAD",
+     "/crop_info": "GET, OPTIONS, HEAD",
+     "/region": "GET, OPTIONS, HEAD",
+     "/last_result": "GET, OPTIONS, HEAD",
+     "/capture_detect": "OPTIONS, POST"
+    },
+    "last_result": {
+     "code": 200,
+     "count": 0,
+     "defects": [],
+     "detect_type": "gf",
+     "ms": 1602.7,
+     "n": 144,
+     "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_283.png",
+     "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260924_180925_287.png",
+     "t": 1790244567.2958655,
+     "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_283.png",
+     "verdict": "OK",
+     "_http": "200",
+     "_ms": 4.8,
+     "_cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/last_result'"
+    },
+    "has_picture": true
+   },
+   "表面": {
+    "port": 10083,
+    "sn": "D265250099",
+    "model": "OPT-CC1-C050-GG3-00",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "无该路由"
+    },
+    "has_picture": false
+   }
+  }
+ },
+ "last_result_local_before": {
+  "code": 200,
+  "count": 0,
+  "defects": [],
+  "detect_type": "gf",
+  "ms": 1602.7,
+  "n": 144,
+  "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_283.png",
+  "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260924_180925_287.png",
+  "t": 1790244567.2958655,
+  "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_283.png",
+  "verdict": "OK",
+  "_http": "200",
+  "_ms": 7.5,
+  "_cmd": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/last_result'"
+ },
+ "head": {
+  "weights": "",
+  "ready": false,
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "gui_src_10082": {
+  "tag": "📷 金手指 topview 960x960",
+  "factory_topview_std": 49.1,
+  "displayed_std": 50.7,
+  "displayed_shape": [
+   236,
+   1623,
+   3
+  ],
+  "factory_meta": {
+   "shape": [
+    960,
+    960,
+    3
+   ],
+   "mean_gray": 156.1,
+   "http": "200",
+   "ms": 29.5
+  },
+  "expfix": false,
+  "meta_keys": [
+   "bytes",
+   "cam",
+   "cmd",
+   "grab",
+   "http",
+   "kind",
+   "mean",
+   "mean_gray"
+  ]
+ },
+ "gui_orig": {
+  "shape": [
+   2048,
+   2448,
+   3
+  ],
+  "std": 81.5,
+  "lbl_orig": "原始图 2448x2048 (4824KB 55ms)",
+  "lbl_crop": "判据图 · 记住的框选 1623x236 · 框内饱和 7.8% · 死白行 0"
+ },
+ "gui_src_10083": {
+  "rgb_is_none": true,
+  "meta": {
+   "ok": false,
+   "cam": "表面",
+   "port": 10083,
+   "err": "表面相机在工控机侧无 /picture 路由 → 只能触发拍照 (见 patch 文档)"
+  }
+ },
+ "term_cmd": {
+  "n_lines": 4,
+  "last": "curl -s -m 12 -X GET 'http://192.168.23.23:10082/picture?kind=origin' -o frame.png",
+  "json_lines": 137
+ },
+ "skill_click": {
+  "inference": {
+   "gold_finger": {
+    "rows": 6,
+    "has_res": true
+   },
+   "module_body": {
+    "rows": 6,
+    "has_res": true
+   },
+   "optical_port": {
+    "rows": 6,
+    "has_res": true
+   },
+   "full": {
+    "rows": 6,
+    "has_res": true
+   }
+  },
+  "service": {
+   "crop_info": true,
+   "region": true,
+   "pic_meta": true,
+   "last_result": true,
+   "fetch_recent": true
+  }
+ },
+ "img_copy": {
+  "crop": [
+   1623,
+   236
+  ],
+  "orig": [
+   2448,
+   2048
+  ],
+  "has_ctxmenu": true,
+  "widgets": [
+   "CopyImageView",
+   "CopyImageView"
+  ],
+  "crop_path": "/home/ubuntu/lerobot-smolvla-lew/reports/opt_view/金手指_topview.png",
+  "orig_path": "/home/ubuntu/lerobot-smolvla-lew/reports/opt_view/金手指_origin.png"
+ },
+ "expfix": {
+  "raw_factory_topview": {
+   "sat_pct": 6.1,
+   "deadwhite_rows": 48,
+   "row_var": 31.2,
+   "worst_col_sat_pct": 28.5,
+   "tenengrad": 9405.0
+  },
+  "after_crop": {
+   "sat_pct": 9.4,
+   "deadwhite_rows": 0,
+   "row_var": 15.2,
+   "worst_col_sat_pct": 51.1,
+   "tenengrad": 12513.0
+  },
+  "meta": {
+   "ok": true,
+   "kept_rows": [
+    941,
+    1076
+   ],
+   "kept_h": 135,
+   "src_h": 2048,
+   "src_w": 2448,
+   "dropped_sat_rows": 353,
+   "dropped_pct": 17.2,
+   "sat_before": 0.1803,
+   "sat_after": 0.0906,
+   "cliff": {
+    "y": 565,
+    "jump": 5.569864749908447
+   },
+   "candidate": {
+    "y0": 949,
+    "y1": 1067,
+    "h": 119,
+    "sat": 0.388,
+    "edge": 42.05,
+    "ok": true
+   },
+   "out": [
+    1622,
+    270
+   ],
+   "k": 2.0,
+   "axis": "h",
+   "out_hw": [
+    270,
+    1622
+   ],
+   "stretch_desc": "短边高 135→270 (×2.0) · 长边不动",
+   "in_hw": [
+    135,
+    1622
+   ],
+   "x_trim": {
+    "trimmed": true,
+    "x_span": [
+     402,
+     2024
+    ],
+    "dropped_cols": [
+     0,
+     402
+    ],
+    "col_sat_before_max": 1.0
+   },
+   "col_sat_after_max": 0.485,
+   "rule": "sat≤0.4 且 边缘密集(P92) 且 高≥20行, 上下留 8 行"
+  }
+ },
+ "roi_switch_off": {
+  "judge_shape": [
+   252,
+   1623
+  ],
+  "judge_src": "手动框选",
+  "k": 2.0,
+  "desc": "短边高 126→252 (×2.0) · 长边不动"
+ },
+ "console_state": {
+  "ts": "2026-09-24 18:27:39",
+  "roi": [
+   433,
+   948,
+   2056,
+   1074
+  ],
+  "k": 2.0,
+  "judge_src": "手动框选",
+  "judge_shape": [
+   252,
+   1623,
+   3
+  ],
+  "orig_shape": [
+   2048,
+   2448,
+   3
+  ],
+  "roi_meta": {
+   "ok": true,
+   "k": 2.0,
+   "in_hw": [
+    126,
+    1623
+   ],
+   "out_hw": [
+    252,
+    1623
+   ],
+   "rect": [
+    433,
+    948,
+    2056,
+    1074
+   ],
+   "rect_wh": [
+    1623,
+    126
+   ],
+   "sat_in_rect": 0.0964,
+   "tenengrad_in_rect": 21062.0,
+   "stretch_desc": "短边高 126→252 (×2.0) · 长边不动",
+   "warning": ""
+  },
+  "camera": "📷 金手指 topview 960x960"
+ },
+ "roi_good": {
+  "roi": [
+   433,
+   948,
+   2056,
+   1074
+  ],
+  "judge_shape": [
+   252,
+   1623,
+   3
+  ],
+  "meta": {
+   "ok": true,
+   "mode": "manual_rect",
+   "rect": [
+    433,
+    948,
+    2056,
+    1074
+   ],
+   "rect_wh": [
+    1623,
+    126
+   ],
+   "src_hw": [
+    2048,
+    2448
+   ],
+   "out": [
+    1623,
+    252
+   ],
+   "k": 2.0,
+   "axis": "h",
+   "out_hw": [
+    252,
+    1623
+   ],
+   "stretch_desc": "短边高 126→252 (×2.0) · 长边不动",
+   "in_hw": [
+    126,
+    1623
+   ],
+   "sat_in_rect": 0.0964,
+   "deadwhite_rows_in_rect": 0,
+   "mean_in_rect": 173.2,
+   "std_in_rect": 50.9,
+   "tenengrad_in_rect": 21062.0,
+   "warning": ""
+  },
+  "lbl": "判据图 · 记住的框选 1623x252 · 框内饱和 9.6% · 死白行 0"
+ },
+ "roi_meta_diag": {
+  "manual_roi": [
+   433,
+   948,
+   2056,
+   1074
+  ],
+  "ui_k": 2.0,
+  "displayed_hw": [
+   252,
+   1623
+  ],
+  "roi_meta": {
+   "k": 2.0,
+   "in_hw": [
+    126,
+    1623
+   ],
+   "out_hw": [
+    252,
+    1623
+   ],
+   "stretch_desc": "短边高 126→252 (×2.0) · 长边不动",
+   "rect": [
+    433,
+    948,
+    2056,
+    1074
+   ]
+  },
+  "expfix_meta": {
+   "k": 2.0,
+   "in_hw": [
+    135,
+    1622
+   ],
+   "out_hw": [
+    270,
+    1622
+   ],
+   "stretch_desc": "短边高 135→270 (×2.0) · 长边不动",
+   "kept_rows": [
+    941,
+    1076
+   ]
+  },
+  "matched": "roi_meta"
+ },
+ "stretch_k": {
+  "seq": {
+   "1.0": {
+    "shape": [
+     135,
+     1622
+    ],
+    "desc": "无拉长 (×1.0)"
+   },
+   "2.0": {
+    "shape": [
+     270,
+     1622
+    ],
+    "desc": "短边高 135→270 (×2.0) · 长边不动"
+   },
+   "3.0": {
+    "shape": [
+     405,
+     1622
+    ],
+    "desc": "短边高 135→405 (×3.0) · 长边不动"
+   }
+  },
+  "ui_k": 2.0,
+  "judge_shape": [
+   252,
+   1623
+  ]
+ },
+ "roi_bad": {
+  "ok": true,
+  "mode": "manual_rect",
+  "rect": [
+   433,
+   640,
+   2056,
+   900
+  ],
+  "rect_wh": [
+   1623,
+   260
+  ],
+  "src_hw": [
+   2048,
+   2448
+  ],
+  "out": [
+   1623,
+   520
+  ],
+  "k": 2.0,
+  "axis": "h",
+  "out_hw": [
+   520,
+   1623
+  ],
+  "stretch_desc": "短边高 260→520 (×2.0) · 长边不动",
+  "in_hw": [
+   260,
+   1623
+  ],
+  "sat_in_rect": 0.6123,
+  "deadwhite_rows_in_rect": 154,
+  "mean_in_rect": 203.2,
+  "std_in_rect": 71.9,
+  "tenengrad_in_rect": 2936.0,
+  "warning": "框内过曝严重 (饱和>40%): 拉伸后仍会一片白, 建议缩小/上移框"
+ },
+ "api_btns": {
+  "n": 7,
+  "missing": [],
+  "disabled": [],
+  "surface": [
+   "surface_capture",
+   "surface_gap"
+  ],
+  "bad_surface": []
+ },
+ "svc_click": {
+  "lines_before": 0,
+  "lines_after": 103,
+  "log_tail": "📐 裁剪指标: {\"angle\": -0.35, \"angle_scan\": [[-0.85, -80.11], [-0.8, -73.86], [-0.75, -67.14], [-0.7, -59.27], [-0.65, -52.37"
+ },
+ "shot_label": {
+  "text": "拍照 18:27:44 (3.2s 前) · 真拍",
+  "extra": "判据图来源: - · 取图 16ms · HTTP 200 · 713KB · [960, 960, 3]"
+ },
+ "auto_refresh": {
+  "on": true,
+  "off": false,
+  "mode": "只取图"
+ },
+ "checks": {
+  "① 10082 有 /picture 路由": true,
+  "① 10082 有 /last_result 判决通道": true,
+  "① 10083 只有 /capture_detect (如实标注无 /picture)": true,
+  "① /last_result 通道可达且结构化": true,
+  "② 经 Orin 通道可达 (ssh→curl 同一条通道)": true,
+  "⑥ 选『📷 10082 金手指』即显示该相机图 (显示帧有真实结构; 工厂拉长图可能是空图, 如实记)": true,
+  "⑥ 同屏显示原始图 (2048x2448 有结构)": true,
+  "⑥ 两幅画面都有帧 + 尺寸标注": true,
+  "⑥ 标定基准可切到原始图 (可编辑只开在选中画面)": true,
+  "⑥ 选『📷 10083 表面』如实报缺口 (不伪造图)": true,
+  "⑥ 切源取图**不新增真拍** (审计流水 ≤+1; 后台其它窗口可能在拍)": true,
+  "⑦ 窗口显示 curl 命令 (含目标 URL, 可直接执行)": true,
+  "⑦ 复制命令 → 剪贴板内容与命令框一致": true,
+  "⑦ 终端有服务反馈 JSON 原文": true,
+  "⑦ 复制反馈 → 剪贴板拿到 JSON": true,
+  "⑧ 四个推理技能点击即出判决表": true,
+  "⑧ 五个服务技能点击即得 JSON 反馈": true,
+  "⑨ 判据图右键复制 → 剪贴板拿到同尺寸图": true,
+  "⑨ 原始图右键复制 → 剪贴板拿到 2448x2048": true,
+  "⑨ 两幅画面都装了右键复制菜单 (非编辑态不误删框)": true,
+  "⑨ 画面有本地副本路径 (可复制路径贴到别处)": true,
+  "⑩ 工厂拉长图状态已量化 (空图/过曝/正常都如实记)": true,
+  "⑩ 判据图 (原始图自裁×2) 死白行=0 且细节能量不低于工厂拉长图": true,
+  "⑩ 判据图无整列死白 (最差列饱和 <80%; 工厂图状态: 正常)": true,
+  "⑩ 切除台账 (裁掉多少行/列 + cliff 位置) 如实记录": true,
+  "⑩ 定时器 tick 不冲掉过曝切除结果 (跨 3 跳画面逐位不变)": true,
+  "⑪a 关掉『过曝切除』后手动框选仍生效 (不再掉回工厂图)": true,
+  "⑪a 圈选状态自动落盘 (roi/倍数/来源/判据图尺寸 → 4060 侧可读取核对)": true,
+  "⑪ 拖框后判据图 = 源短边×k (长边不动) · 与当前拉长倍数一致": true,
+  "⑪ 好框: 框内饱和低 + 数字如实显示": true,
+  "⑪ 框选拉伸结果不被 tick 冲掉 (曾'闪一下变回坏图')": true,
+  "⑪b 拉长只拉短边 · 倍数可调 (默认 2 · 长边不动)": true,
+  "⑪ 坏框(过曝带): 如实告警'拉伸后仍会一片白'": true,
+  "⑪ 记住此框 → 落盘 ROI 文件": true,
+  "⑪ 新开窗口自动读回记住的 ROI": true,
+  "⑪ 清除框 → ROI 清空 + 文件删除 (回到自动裁切)": true,
+  "⑧ 10082 七个接口按钮 + 10083 两个 全部可达 (点一下就能用)": true,
+  "⑧ 服务按钮点一下就出结果 (JSON/curl 进终端页; 失败也如实记)": true,
+  "⑧ 拍照时间可见 (拍照 HH:MM:SS + 帧龄 + 取图耗时/码)": true,
+  "⑧ 自动刷新 开/关可控 (默认关)": true
+ },
+ "checks_pass": "40/40"
+}

@@ -449,6 +449,11 @@ class AoiInspectConsole(QtWidgets.QDialog):
                                      "(自动裁切不理想时手动指定; 框内过曝会有数字告警)")
         self.chk_roi_pick.toggled.connect(self._on_roi_pick)
         r5.addWidget(self.chk_roi_pick)
+        self.btn_roi_detect = self._btn("🎯 识别金手指并框",
+                                        "在当前**原始图**上自动找到金手指条 (边缘密集且未过曝) → 自动把它设为拉伸区\n"
+                                        "自己圈不准时点一下, 结果会标在画面上并输出坐标/指标",
+                                        self._roi_detect)
+        r5.addWidget(self.btn_roi_detect)
         self.btn_roi_keep = self._btn("💾 记住此框", "把当前框选记成默认 ROI (后续帧自动套用)", self._on_roi_keep)
         self.btn_roi_clear = self._btn("✖ 清除框", "清除框选, 回到自动裁切", self._on_roi_clear)
         r5.addWidget(self.btn_roi_keep); r5.addWidget(self.btn_roi_clear)
@@ -995,7 +1000,9 @@ class AoiInspectConsole(QtWidgets.QDialog):
         if img is None:
             self.log(f"⚠️ 框选拉伸失败: {meta.get('err')}")
             return
-        self.wid.set_frame_rgb(img)
+        # ⚠️ BUGFIX (2026-09-24 老倪: "金手指检测没有拉伸到金手指部分"): 原来只换了**显示**,
+        #   `self._last_rgb` (任务头推理的输入帧) 还是旧帧 → 看着圈了却没用上。现在走 _set_frame 统一更新。
+        self._set_frame(img, f"🎯 手动框选 {img.shape[1]}x{img.shape[0]}")
         self.wid.set_path(self._dump_view(img, "manual_roi_judge"))
         self._judge_src = "手动框选"
         self._save_roi_auto()
@@ -1009,6 +1016,42 @@ class AoiInspectConsole(QtWidgets.QDialog):
                  f"死白行 {meta['deadwhite_rows_in_rect']} · Tenengrad {meta['tenengrad_in_rect']:.0f}"
                  + (f"  ⚠️ {meta['warning']}" if meta.get("warning") else ""))
         self.run_skill(self._cur_skill, quiet=True)
+
+    def _roi_detect(self):
+        """🎯 识别金手指并自动框: 用算法定位金手指条 → 设为拉伸区 (人圈不准时的一键兜底)"""
+        if self._orig_rgb is None:
+            self.log("⚠️ 还没有原始图 (先选 📷 10082 并取图)")
+            return
+        import aoi_exposure_fix as _aex
+        a = _aex.analyze(self._orig_rgb)
+        band = None
+        for c in (a.get("gold_candidates") or []):
+            if c.get("ok"):
+                band = c
+                break
+        if not band:
+            self.log("❌ 自动识别未找到未过曝的金手指条 → 请手动圈选")
+            return
+        H, W = self._orig_rgb.shape[:2]
+        y0, y1 = band["y0"], band["y1"]
+        sub = self._orig_rgb[y0:y1 + 1]
+        import cv2
+        gx = np.abs(cv2.Sobel(_aex._gray(sub), cv2.CV_32F, 1, 0)).mean(axis=0)
+        keep = gx >= np.percentile(gx, 55)
+        xs = np.where(keep)[0]
+        x0, x1 = (int(xs.min()), int(xs.max())) if len(xs) else (0, W - 1)
+        self._manual_roi = (x0, int(y0), x1, int(y1))
+        self.chk_roi_pick.setChecked(False)
+        try:
+            self.wid_orig.clear_boxes()
+            self.wid_orig.add_box_px(list(self._manual_roi), cls="金手指")
+        except Exception:                                              # noqa: BLE001
+            pass
+        self._judge_src = "自动识别金手指"
+        self._apply_manual_roi(auto=True)
+        self.log(f"🎯 自动识别金手指: 框 {self._manual_roi} "
+                 f"({x1 - x0}x{band['h']}px) · 条带行边缘 {band['edge']} · "
+                 f"饱和 {band['sat']*100:.1f}% · k={self.sp_k.value():g}")
 
     def _on_roi_keep(self):
         if not self._manual_roi:
