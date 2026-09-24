@@ -30,12 +30,18 @@ SWM = "/home/ubuntu/stable-wm-cache"
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default=f"{SWM}/checkpoints/stage_moe/moe.pt")
+    ap.add_argument("--model", default="moe", choices=["moe", "dense"])
+    ap.add_argument("--ckpt", default="")
     ap.add_argument("--data", default=f"{SWM}/datasets/v6_holdout_rand.h5")
     ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--batch", type=int, default=64)
-    ap.add_argument("--out", default=os.path.join(ROOT, "reports", "moe_holdout_vs_persist.json"))
+    ap.add_argument("--out", default="")
     a = ap.parse_args()
+    if not a.ckpt:
+        a.ckpt = (f"{SWM}/checkpoints/stage_moe/moe.pt" if a.model == "moe"
+                  else f"{SWM}/checkpoints/dense_sub25k_600/unified.pt")
+    if not a.out:
+        a.out = os.path.join(ROOT, "reports", f"{a.model}_holdout_vs_persist.json")
 
     import h5py
     import torch
@@ -45,11 +51,17 @@ def main() -> int:
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     trunk = AutoModel.from_pretrained(MODEL, dtype=torch.float32).vision_model
-    net = StageMoE(trunk, freeze=1).to(dev)
+    if a.model == "moe":
+        net = StageMoE(trunk, freeze=1).to(dev)
+    else:
+        from joint_unified_backbone import Unified, to_img
+        net = Unified(trunk, freeze=1).to(dev)
     sd = torch.load(a.ckpt, map_location="cpu", weights_only=False)
+    if isinstance(sd, dict) and "model" in sd and not any(k.startswith("trunk.") for k in sd):
+        sd = sd["model"]
     r = net.load_state_dict(sd, strict=False)
     net.eval()
-    print(f"🧬 加载 {os.path.basename(a.ckpt)} (missing={len(r.missing_keys)})", flush=True)
+    print(f"🧬 [{a.model}] 加载 {os.path.basename(a.ckpt)} (missing={len(r.missing_keys)})", flush=True)
 
     f = h5py.File(a.data, "r")
     N = int(f["observation"].shape[0])
@@ -64,25 +76,32 @@ def main() -> int:
     t0 = time.time()
     for s in range(0, len(idx), a.batch):
         e = min(len(idx), s + a.batch)
-        px = torch.from_numpy(PX[s:e]).to(dev).float().div(255.0).permute(0, 3, 1, 2)
         o = torch.from_numpy(O[s:e]).to(dev)
         on = torch.from_numpy(ON[s:e]).to(dev)
         sp = torch.from_numpy(SP[s:e]).to(dev)
         mem = torch.zeros(e - s, 13, device=dev)
-        with torch.no_grad():
-            out = net(px, o, None, mem, sp, hard=True)
-        d_moe.append((out["o_hat"] - on).abs().mean(1).cpu().numpy())
+        if a.model == "moe":
+            px = torch.from_numpy(PX[s:e]).to(dev).float().div(255.0).permute(0, 3, 1, 2)
+            with torch.no_grad():
+                out = net(px, o, None, mem, sp, hard=True)
+            oh, ex = out["o_hat"], out["expert_id"]
+        else:
+            px = to_img(PX[s:e]).to(dev)                     # dense 训练侧口径: /255 + (x-0.5)/0.5
+            with torch.no_grad():
+                out = net(px, o, None, mem)
+            oh, ex = out["obs_hat"], None
+        d_moe.append((oh - on).abs().mean(1).cpu().numpy())
         d_per.append((o - on).abs().mean(1).cpu().numpy())
-        # 阶段: 真值 = 先验 argmax; 门控 = expert_id
-        truth = sp.argmax(1)
-        acc += int((out["expert_id"] == truth).sum())
+        if ex is not None:
+            acc += int((ex == sp.argmax(1)).sum())
         n += e - s
     dm, dp = np.concatenate(d_moe), np.concatenate(d_per)
-    res = {"data": os.path.basename(a.data), "n": int(n), "elapsed_s": round(time.time() - t0, 1),
-           "one_step_mae_moe": round(float(dm.mean()), 6),
+    res = {"model": a.model, "data": os.path.basename(a.data), "n": int(n), "elapsed_s": round(time.time() - t0, 1),
+           "one_step_mae_model": round(float(dm.mean()), 6),
+           "one_step_mae_moe": round(float(dm.mean()), 6),   # 兼容旧键名
            "one_step_mae_persist": round(float(dp.mean()), 6),
            "ratio_moe_over_persist": round(float(dm.mean() / dp.mean()), 3),
-           "gate_stage_acc_truth_prior": round(acc / max(n, 1), 4)}
+           "gate_stage_acc_truth_prior": (round(acc / max(n, 1), 4) if a.model == "moe" else None)}
     print(json.dumps(res, ensure_ascii=False, indent=1))
     with open(a.out, "w") as fh:
         json.dump(res, fh, ensure_ascii=False, indent=1)

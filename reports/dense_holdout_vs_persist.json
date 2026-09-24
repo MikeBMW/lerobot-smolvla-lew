@@ -1,0 +1,11 @@
+{
+ "model": "dense",
+ "data": "v6_holdout_rand.h5",
+ "n": 2000,
+ "elapsed_s": 14.2,
+ "one_step_mae_model": 0.015417,
+ "one_step_mae_moe": 0.015417,
+ "one_step_mae_persist": 0.002972,
+ "ratio_moe_over_persist": 5.188,
+ "gate_stage_acc_truth_prior": null
+}

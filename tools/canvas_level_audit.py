@@ -177,22 +177,36 @@ def main() -> int:
     gc = defaultdict(int)
     for r in rows:
         gc[r["grade"]] += 1
-    link_rows = []
+    link_rows, n_one, n_both_rt = [], 0, 0
     for L in flow["links"]:
         rf = next((x for x in rows if x["id"] == L["f"]), None)
         rtt = next((x for x in rows if x["id"] == L["t"]), None)
-        if rf and rtt and not (rf["grade"].startswith("R1") and rtt["grade"].startswith("R1")):
-            link_rows.append({"from": rf["name"], "to": rtt["name"],
-                              "from_grade": rf["grade"], "to_grade": rtt["grade"],
-                              "gap": " + ".join(sorted(set(rf["defects"] + rtt["defects"]))) or
-                                     "两端设计语义/档位级 (非运行时, 合法)"})
+        if not (rf and rtt):
+            continue
+        a_rt, b_rt = rf["grade"].startswith("R1"), rtt["grade"].startswith("R1")
+        if a_rt and b_rt:
+            n_both_rt += 1
+            continue
+        if a_rt or b_rt:
+            n_one += 1
+        # 单端/双端均记录 (逐条给去向), 双端运行时已在上面 continue
+        link_rows.append({"from": rf["name"], "to": rtt["name"],
+                          "from_grade": rf["grade"], "to_grade": rtt["grade"],
+                          "one_end_runtime": bool(a_rt or b_rt),
+                          "gap": " + ".join(sorted(set(rf["defects"] + rtt["defects"]))) or
+                                 ("单端运行时 (另一端档位级/语义, 合法)" if (a_rt or b_rt)
+                                  else "两端设计语义/档位级 (非运行时, 合法)")})
     out = {"ts": ts, "runtime_source": rt_src, "n_nodes": len(rows), "n_links": len(flow["links"]),
-           "grade_count": dict(gc), "nodes": rows, "non_runtime_links": link_rows}
+           "grade_count": dict(gc), "nodes": rows,
+           "link_split": {"both_runtime": n_both_rt, "one_runtime": n_one,
+                          "both_non_runtime": len(link_rows) - n_one},
+           "non_runtime_links": link_rows}
     p = os.path.join(ROOT, "reports", f"canvas_level_audit_{ts}.json")
     json.dump(out, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
     md = [f"# 画布档位级验收 — {ts}", "",
           f"- 节点 {len(rows)} · 连线 {len(flow['links'])} · 运行时通道来源 `{rt_src}`",
+          f"- 连线拆解: 双端运行时 {n_both_rt} · 单端运行时 {n_one} · 双端非运行时 {len(link_rows)-n_one}",
           f"- 等级: " + " · ".join(f"{k} {v}" for k, v in sorted(gc.items())), "",
           "## 逐节点 (执行注册用真 match_node)", "",
           "| 节点 | 类型 | 等级 | key | 注册 | 源码映射 | 行差 | 引擎引用 | 连线 | 缺陷 |",
@@ -203,9 +217,11 @@ def main() -> int:
             "✅" if r["reg_ok"] else "❌", (r["map_file"] or "—").split("/")[-1] if r["map_ok"] else "❌",
             r.get("map_line_delta"), "✅" if r["engine_ref"] else "—", r["links"],
             " / ".join(r["defects"]) or "—"))
-    md += ["", f"## 双端非运行时连线 ({len(link_rows)} 条)", "", "| 起点 | 终点 | 等级 | 缺口 |", "|---|---|---|---|"]
+    md += ["", f"## 非双端运行时连线 ({len(link_rows)} 条 = 单端 {n_one} + 双端非运行时 {len(link_rows)-n_one})", "",
+           "| 起点 | 终点 | 等级 | 单端运行时 | 缺口 |", "|---|---|---|---|---|"]
     for x in link_rows:
-        md.append(f"| {x['from'][:26]} | {x['to'][:26]} | {x['from_grade']} → {x['to_grade']} | {x['gap']} |")
+        md.append(f"| {x['from'][:26]} | {x['to'][:26]} | {x['from_grade']} → {x['to_grade']} | "
+                  f"{'✔' if x['one_end_runtime'] else '—'} | {x['gap']} |")
     pm = os.path.join(ROOT, "reports", f"canvas_level_audit_{ts}.md")
     open(pm, "w", encoding="utf-8").write("\n".join(md) + "\n")
 
@@ -214,7 +230,9 @@ def main() -> int:
     print(f"⚠ 无执行注册节点 {len(bad)}:")
     for r in bad:
         print(f"   [{r['type']}] {r['name'][:40]} | 连线 {r['links']} | {' / '.join(r['defects'])}")
-    print(f"双端非运行时连线 {len(link_rows)} 条")
+    print(f"连线拆解: 双端运行时 {n_both_rt} · 单端运行时 {n_one} · 双端非运行时 {len(link_rows)-n_one}")
+    print(f"非双端运行时连线 {len(link_rows)} 条 · 其中真缺口 (端点无执行注册) "
+          f"{sum(1 for x in link_rows if '缺执行注册' in x['gap'])}")
     print(f"→ {p}\n→ {pm}")
     print("LEVEL_AUDIT_DONE")
     return 0

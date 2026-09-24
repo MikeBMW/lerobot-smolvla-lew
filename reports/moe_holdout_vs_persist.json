@@ -1,7 +1,9 @@
 {
+ "model": "moe",
  "data": "v6_holdout_rand.h5",
  "n": 2000,
- "elapsed_s": 13.9,
+ "elapsed_s": 14.0,
+ "one_step_mae_model": 0.009894,
  "one_step_mae_moe": 0.009894,
  "one_step_mae_persist": 0.002972,
  "ratio_moe_over_persist": 3.329,

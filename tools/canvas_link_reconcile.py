@@ -12,6 +12,10 @@
 
 判据 (老倪红线): 画布上连的线要么是**运行时真数据流**, 要么明确是**设计语义**(容器/记忆/档位),
 不允许"看起来连着但两边都不存在"。本脚本给的就是这条判定的**逐条清单**。
+
+⚠️ 口径边界 (2026-09-24): 本脚本的**节点分级是启发式启发口径** (按节点 id 集合 + 名字子串),
+**不是权威**。权威分级见 `tools/canvas_level_audit.py` (直接 import node_logic 调真 match_node,
+并核 _EXTERNAL_LOC 映射有效性)。两者若不一致, **以 canvas_level_audit.py 为准**。
 """
 from __future__ import annotations
 

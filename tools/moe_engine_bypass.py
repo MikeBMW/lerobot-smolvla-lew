@@ -234,6 +234,7 @@ def main() -> int:
     ap.add_argument("--truth-seed", type=int, default=0, help="真值先验变体只跑这个 seed (上界参考)")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
+    a.out = os.path.abspath(a.out) if a.out else ""        # 🐛 脚本会 os.chdir(GUI) → 相对路径会落到 tools/gui/ 下
     if not a.ckpt:
         a.ckpt = (f"{SWM}/checkpoints/stage_moe/moe.pt" if a.model == "moe"
                   else f"{SWM}/checkpoints/dense_sub25k_600/unified.pt")
@@ -303,7 +304,8 @@ def main() -> int:
               f"(非训练段 {s['stage_non_train_frames']}) · 逐段 {s['per_stage_acc']}")
     else:
         print(f"③ 无门控 (dense 模型); 训练段帧 {s['stage_truth_frames']} 非训练段 {s['stage_non_train_frames']}")
-    print(f"   一步预测 MAE: MOE {s['one_step_pred_mae_moe']} vs 持久基线 {s['one_step_pred_mae_persist']} (n={s['one_step_pred_n']})")
+    print(f"   一步预测 MAE: {a.model} {s['one_step_pred_mae_moe']} vs 持久基线 "
+          f"{s['one_step_pred_mae_persist']} (n={s['one_step_pred_n']})")
     if out["summary_truth_prior"]:
         t = out["summary_truth_prior"]
         print(f"④ 真值先验上界参考: acc {t['gate_self_stage_acc']} · 一步预测 MAE {t['one_step_pred_mae_moe']}")
