@@ -290,6 +290,7 @@ def main():
     w.cmb_src.setCurrentIndex(3)
     for _ in range(25):
         app.processEvents(); time.sleep(0.05)
+    w._manual_roi = None                  # ⑩ 专测**自动裁切**: 先清掉上轮记住的框选 ROI
     w.chk_expfix.setChecked(False)
     app.processEvents(); time.sleep(0.6)
     raw_top = w._last_rgb
@@ -336,6 +337,29 @@ def main():
     w.wid_orig.add_box_px(good)            # 等价于用户拖出这个框
     for _ in range(20):
         app.processEvents(); time.sleep(0.05)
+    # ⑪a 手选框不受「过曝切除」开关影响 (老倪 2026-09-24 报的 bug: 关掉开关 → 掉回工厂图)
+    w.chk_expfix.setChecked(False)
+    for _ in range(20):
+        app.processEvents(); time.sleep(0.1)
+    _shp_off, _src_off = list(w._last_rgb.shape[:2]), getattr(w, "_judge_src", "")
+    _meta_off = dict(w._roi_meta)
+    RES["roi_switch_off"] = {"judge_shape": _shp_off, "judge_src": _src_off,
+                             "k": _meta_off.get("k"), "desc": _meta_off.get("stretch_desc")}
+    ck("⑪a 关掉『过曝切除』后手动框选仍生效 (不再掉回工厂图)",
+       _src_off == "手动框选" and _shp_off[1] == _meta_off.get("in_hw", [0, 0])[1]
+       and _shp_off[0] == int(round(_meta_off.get("in_hw", [1, 1])[0] * 2.0)),
+       f"{RES['roi_switch_off']} · 期望短边×2={int(round(_meta_off.get('in_hw',[1,1])[0]*2.0))}")
+    w.chk_expfix.setChecked(True)
+    for _ in range(15):
+        app.processEvents(); time.sleep(0.1)
+    # 圈选状态落盘 (我看不到屏幕, 但能读到"你圈的框"与拉伸结果)
+    _st = os.path.join(ROOT, "reports", "aoi_console_state.json")
+    _sj = json.load(open(_st, encoding="utf-8")) if os.path.isfile(_st) else {}
+    RES["console_state"] = _sj
+    ck("⑪a 圈选状态自动落盘 (roi/倍数/来源/判据图尺寸 → 4060 侧可读取核对)",
+       bool(_sj.get("roi")) and _sj.get("k") == 2.0 and _sj.get("judge_src") == "手动框选",
+       f"roi={_sj.get('roi')} k={_sj.get('k')} src={_sj.get('judge_src')} judge={_sj.get('judge_shape')}")
+
     m1 = dict(w._roi_meta)
     RES["roi_good"] = {"roi": w._manual_roi, "judge_shape": list(w._last_rgb.shape), "meta": m1,
                        "lbl": w.lbl_v_crop.text()}
@@ -357,7 +381,8 @@ def main():
        f"框 {w._manual_roi} · 显示 {_dispshape} · 命中 {RES['roi_meta_diag']['matched']} · "
        f"{_hit[0][1].get('stretch_desc') if _hit else '无匹配 meta'}")
     ck("⑪ 好框: 框内饱和低 + 数字如实显示",
-       m1.get("sat_in_rect", 1) < 0.15 and "框选拉伸" in w.lbl_v_crop.text(),
+       m1.get("sat_in_rect", 1) < 0.15
+       and ("框选拉伸" in w.lbl_v_crop.text() or "记住的框选" in w.lbl_v_crop.text()),
        f"框内饱和 {m1.get('sat_in_rect', 0)*100:.1f}% 死白行 {m1.get('deadwhite_rows_in_rect')} "
        f"Tenengrad {m1.get('tenengrad_in_rect')} · {w.lbl_v_crop.text()}")
     snap2 = w._last_rgb.copy()

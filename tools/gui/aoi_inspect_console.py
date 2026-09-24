@@ -946,6 +946,10 @@ class AoiInspectConsole(QtWidgets.QDialog):
         """开/关框选模式: 打开后原始图上可拖框 (松手即拉伸)。"""
         self.wid_orig.set_editable(bool(on))
         if on:
+            try:
+                self.rb_basis_orig.setChecked(True)      # 框选必须在**原始图**上 (道具统一)
+            except Exception:                                          # noqa: BLE001
+                pass
             self.wid_orig.setFocus()
             self.log("🎯 框选拉伸: 请在**原始图**上拖出矩形 (松手即把该矩形拉伸成判据图); "
                      "此模式下画的框=拉伸区, 不写入标注")
@@ -964,6 +968,23 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._manual_roi = tuple(int(round(v)) for v in rect[:4])
         self._apply_manual_roi(auto=True)
 
+    def _save_roi_auto(self):
+        """每次框选都自动落盘 ROI + 当前判据图状态 (4060 侧可读取核对——我看不到屏幕,
+        但能读到你圈的框和拉伸结果。)"""
+        try:
+            aex.save_roi(self._roi_path, self._manual_roi, {"by": "auto", "source": "drag"})
+            with open(os.path.join(ROOT, "reports", "aoi_console_state.json"), "w", encoding="utf-8") as f:
+                json.dump({"ts": time.strftime("%F %T"), "roi": list(self._manual_roi) if self._manual_roi else None,
+                           "k": self.sp_k.value(), "judge_src": getattr(self, "_judge_src", ""),
+                           "judge_shape": list(self._last_rgb.shape) if self._last_rgb is not None else None,
+                           "orig_shape": list(self._orig_rgb.shape) if self._orig_rgb is not None else None,
+                           "roi_meta": {kk: self._roi_meta.get(kk) for kk in
+                                        ("ok", "k", "in_hw", "out_hw", "rect", "rect_wh", "sat_in_rect",
+                                         "tenengrad_in_rect", "stretch_desc", "warning")},
+                           "camera": self._opt_tag}, f, ensure_ascii=False, indent=1)
+        except Exception:                                              # noqa: BLE001
+            pass
+
     def _apply_manual_roi(self, auto: bool = False):
         """按框选矩形拉伸判据图 → 任务头重跑。框内过曝/细节全部如实报数。"""
         if self._orig_rgb is None or not self._manual_roi:
@@ -976,6 +997,8 @@ class AoiInspectConsole(QtWidgets.QDialog):
             return
         self.wid.set_frame_rgb(img)
         self.wid.set_path(self._dump_view(img, "manual_roi_judge"))
+        self._judge_src = "手动框选"
+        self._save_roi_auto()
         self._term("", meta, note=f"框选拉伸 {'(拖框自动)' if auto else ''}")
         self._elide(self.lbl_v_crop, f"判据图 · 框选拉伸×{meta.get('k') or 2:g} {img.shape[1]}x{img.shape[0]} · "
                                      f"框内饱和 {meta['sat_in_rect']*100:.1f}% · 框内死白行 {meta['deadwhite_rows_in_rect']}",
@@ -1012,12 +1035,19 @@ class AoiInspectConsole(QtWidgets.QDialog):
             self._opt_fetch(grab=False, quiet=True)
 
     def _apply_expfix(self, topview_rgb):
-        """判据图来源优先级: ① 手动框选拉伸 ② 原始图自动过曝切除 ③ 工厂拉伸图(如实告警)。"""
-        if self._manual_roi and self._orig_rgb is not None and self.chk_expfix.isChecked():
+        """判据图来源优先级: ① 手动框选拉伸 ② 原始图自动过曝切除 ③ 工厂拉伸图(如实告警)。
+
+        ⚠️ BUGFIX (2026-09-24 老倪: "金手指检测没有拉伸到金手指部分"): 手动框选原来被「过曝切除」
+        开关挡住 (开关关掉时直接走工厂拉长图) → 现在**手动框选永远优先**, 开关只管自动裁切。
+        """
+        self._judge_src = "工厂拉长图"
+        if self._manual_roi and self._orig_rgb is not None:
             img, meta = aex.stretch_rect(self._orig_rgb, self._manual_roi, out=None, k=self.sp_k.value())
             if img is not None:
                 self._roi_meta = meta
-                self._term("", meta, note="框选拉伸 (记住的 ROI 自动套用)")
+                self._judge_src = "手动框选"
+                self._save_roi_auto()
+                self._term("", meta, note="框选拉伸 (手动框选 · 不受过曝切除开关影响)")
                 self._expfix_lbl = (f"判据图 · 记住的框选 {img.shape[1]}x{img.shape[0]} · "
                                     f"框内饱和 {meta['sat_in_rect']*100:.1f}% · 死白行 {meta['deadwhite_rows_in_rect']}",
                                     f"框 {meta['rect']} → {meta['out']} · 框内均值 {meta['mean_in_rect']} · "
@@ -1026,8 +1056,9 @@ class AoiInspectConsole(QtWidgets.QDialog):
                          f"{meta['sat_in_rect']*100:.1f}%" + (f" ⚠️ {meta['warning']}" if meta.get("warning") else ""))
                 return img, meta
         if self._manual_roi:
-            self.log("⚠️ 仅自动裁切生效: 手动框选失败或未开启过曝切除 → 如需用框选请重拖一次")
+            self.log("⚠️ 手动框选失败 → 回落自动/工厂图 (请重拖一次框)")
         if not self.chk_expfix.isChecked():
+            self._judge_src = "工厂拉长图 (过曝切除已关)"
             return topview_rgb, {}
         if self._orig_rgb is None:
             self.log("ℹ️ 过曝切除: 无原始图可用 → 仍用工控机拉伸图")
@@ -1041,6 +1072,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
                                 "请在原始图上用『🎯 框选拉伸』拖框指定拉伸区")
             return topview_rgb, meta
         self._expfix_meta = meta
+        self._judge_src = "自动裁切(原始图)"
         self._term("", meta, note="过曝切除 (本地图像处理, 用原始图自裁)")
         self._expfix_lbl = (f"判据图 · 过曝切除 拉长×{meta.get('k') or 2:g} {clean.shape[1]}x{clean.shape[0]} · 饱和 "
                             f"{meta['sat_before']*100:.1f}%→{meta['sat_after']*100:.1f}% · 裁掉 {meta['dropped_sat_rows']} 行",
@@ -1073,6 +1105,10 @@ class AoiInspectConsole(QtWidgets.QDialog):
         except Exception:                                          # noqa: BLE001
             return ""
 
+    def _judge_src_label(self) -> str:
+        return "判据图来源: " + str(getattr(self, "_judge_src", "-")) \
+            + (" · 框 " + str(tuple(self._manual_roi)) if self._manual_roi else "")
+
     def _update_shot(self, meta=None, t=None, action=""):
         """拍照/取图时间戳 (老倪: "都不知道是什么时候拍照的") — t=工控机快照时间(epoch)"""
         import datetime
@@ -1087,7 +1123,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         sat = (" · 判据图饱和 %.1f%%" % (self._expfix_meta.get("sat_after", 0) * 100)
                if self._expfix_meta.get("ok") else "")
         self._elide(self.lbl_shot_extra,
-                    "取图 %.0fms · HTTP %s · %dKB · %s%s"
+                    self._judge_src_label() + " · 取图 %.0fms · HTTP %s · %dKB · %s%s"
                     % (m.get("ms", 0), m.get("http"), (m.get("bytes") or 0) // 1024, m.get("shape"), sat),
                     json.dumps({k: m.get(k) for k in ("cam", "kind", "http", "ms", "bytes", "shape", "via")},
                                ensure_ascii=False))
