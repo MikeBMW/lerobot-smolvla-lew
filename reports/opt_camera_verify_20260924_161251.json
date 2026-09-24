@@ -1,0 +1,120 @@
+{
+ "health": {
+  "host": "192.168.23.23",
+  "via": "local",
+  "cams": {
+   "金手指": {
+    "port": 10082,
+    "sn": "D265250070",
+    "model": "OPT-CC1-GG50",
+    "routes": {
+     "/picture": "POST, GET, OPTIONS, HEAD",
+     "/crop_info": "OPTIONS, GET, HEAD",
+     "/region": "OPTIONS, GET, HEAD",
+     "/last_result": "OPTIONS, GET, HEAD",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 200,
+     "count": 0,
+     "defects": [],
+     "detect_type": "gf",
+     "ms": 1529.7,
+     "n": 4,
+     "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_4.png",
+     "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260924_160652_007.png",
+     "t": 1790237213.7551076,
+     "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_4.png",
+     "verdict": "OK",
+     "_http": "200",
+     "_ms": 4.7
+    },
+    "has_picture": true
+   },
+   "表面": {
+    "port": 10083,
+    "sn": "D265250099",
+    "model": "OPT-CC1-C050-GG3-00",
+    "routes": {
+     "/picture": "(路由不存在)",
+     "/crop_info": "(路由不存在)",
+     "/region": "(路由不存在)",
+     "/last_result": "(路由不存在)",
+     "/capture_detect": "POST, OPTIONS"
+    },
+    "last_result": {
+     "code": 404,
+     "msg": "无该路由"
+    },
+    "has_picture": false
+   }
+  }
+ },
+ "last_result_local_before": {
+  "code": 200,
+  "count": 0,
+  "defects": [],
+  "detect_type": "gf",
+  "ms": 1529.7,
+  "n": 4,
+  "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_4.png",
+  "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260924_160652_007.png",
+  "t": 1790237213.7551076,
+  "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_4.png",
+  "verdict": "OK",
+  "_http": "200",
+  "_ms": 5.3
+ },
+ "head": {
+  "weights": "",
+  "ready": false,
+  "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)"
+ },
+ "gui_src_10082": {
+  "tag": "📷 金手指 topview 960x960",
+  "std": 71.6,
+  "meta_keys": [
+   "bytes",
+   "cam",
+   "grab",
+   "http",
+   "kind",
+   "mean",
+   "mean_gray",
+   "model"
+  ]
+ },
+ "gui_orig": {
+  "shape": [
+   2048,
+   2448,
+   3
+  ],
+  "std": 78.9,
+  "lbl_orig": "原始图 2448x2048 (4498KB 62ms)",
+  "lbl_crop": "判据图 · 📷 金手指 topview 960x960 960x960"
+ },
+ "gui_src_10083": {
+  "rgb_is_none": true,
+  "meta": {
+   "ok": false,
+   "cam": "表面",
+   "port": 10083,
+   "err": "表面相机在工控机侧无 /picture 路由 → 只能触发拍照 (见 patch 文档)"
+  }
+ },
+ "checks": {
+  "① 10082 有 /picture 路由": true,
+  "① 10082 有 /last_result 判决通道": true,
+  "① 10083 只有 /capture_detect (如实标注无 /picture)": true,
+  "① /last_result 通道可达且结构化": true,
+  "② 经 Orin 通道可达 (ssh→curl 同一条通道)": true,
+  "⑥ 选『📷 10082 金手指』即显示该相机实际图": true,
+  "⑥ 同屏显示原始图 (2048x2448 有结构)": true,
+  "⑥ 两幅画面都有帧 + 尺寸标注": true,
+  "⑥ 标定基准可切到原始图 (可编辑只开在选中画面)": true,
+  "⑥ 选『📷 10083 表面』如实报缺口 (不伪造图)": true,
+  "⑥ 切源取图**不新增真拍** (审计流水未增长)": true
+ },
+ "checks_pass": "11/11"
+}

@@ -101,6 +101,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._opt_tag = ""
         self._opt_lastres = {}
         self._last_opt_cam = 1
+        self._orig_rgb = None                    # 📷 原始图 (?kind=origin 2448x2048)
         self._build()
         self._sync_classes()
         self._init_data_root()
@@ -219,9 +220,9 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.btn_save = self._btn("💾 保存", "保存当前帧 + 框 (原始帧像素坐标)", lambda: self._save_annot(False))
         self.btn_savenext = self._btn("⏭ 下一帧", "保存并取下一帧 (实时流)", lambda: self._save_annot(True))
         self.btn_setcls = self._btn("🏷 改类", "把选中框改成 combo 里的类别", self._set_selected_class)
-        self.btn_undo = self._btn("↩ 撤销", "撤销上一次框操作", lambda: self.wid.undo())
-        self.btn_del = self._btn("🗑 删", "删除选中的框", lambda: self.wid.remove_selected())
-        self.btn_clear = self._btn("✖ 清空", "清空全部框", lambda: self.wid.clear_boxes())
+        self.btn_undo = self._btn("↩ 撤销", "撤销上一次框操作 (对当前标定基准)", lambda: self._basis_widget()[0].undo())
+        self.btn_del = self._btn("🗑 删", "删除选中的框 (当前基准)", lambda: self._basis_widget()[0].remove_selected())
+        self.btn_clear = self._btn("✖ 清空", "清空当前基准的全部框", lambda: self._basis_widget()[0].clear_boxes())
         for b in (self.btn_newcls, self.btn_save, self.btn_savenext, self.btn_setcls,
                   self.btn_undo, self.btn_del, self.btn_clear):
             r2.addWidget(b)
@@ -258,8 +259,27 @@ class AoiInspectConsole(QtWidgets.QDialog):
 
         left = QtWidgets.QWidget(); lv = QtWidgets.QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0); lv.setSpacing(4)
+        # 🖼 双画面: 原始图 ‖ 判据图(拉伸) — 老倪 2026-09-24: "原始图片也要有显示"
+        self.split_view = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.split_view.setChildrenCollapsible(False)
+        _lo = QtWidgets.QWidget(); _lov = QtWidgets.QVBoxLayout(_lo)
+        _lov.setContentsMargins(0, 0, 0, 0); _lov.setSpacing(2)
+        self.lbl_v_orig = self._dim("原始图 -")
+        _lov.addWidget(self.lbl_v_orig)
+        self.wid_orig = YoloLabelWidget(editable=False)
+        self.wid_orig.setToolTip("工控机原始图 (?kind=origin, 2448x2048) — 目检/复审; 可切成标定基准")
+        _lov.addWidget(self.wid_orig, 1)
+        self.split_view.addWidget(_lo)
+        _lc = QtWidgets.QWidget(); _lcv = QtWidgets.QVBoxLayout(_lc)
+        _lcv.setContentsMargins(0, 0, 0, 0); _lcv.setSpacing(2)
+        self.lbl_v_crop = self._dim("判据图 · 拉伸 -")
+        _lcv.addWidget(self.lbl_v_crop)
         self.wid = YoloLabelWidget(editable=False)
-        lv.addWidget(self.wid, 1)
+        self.wid.setToolTip("判据图 = 规整拉长 (?kind=topview 960x960) — 任务头推理输入 + 默认标定基准")
+        _lcv.addWidget(self.wid, 1)
+        self.split_view.addWidget(_lc)
+        self.split_view.setSizes([540, 420])
+        lv.addWidget(self.split_view, 1)
         lr = QtWidgets.QHBoxLayout(); lr.setSpacing(8)
         lr.addWidget(self._dim("画面"))
         self.chk_freeze = QtWidgets.QCheckBox("🧊 冻结")
@@ -274,6 +294,15 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.chk_roi = QtWidgets.QCheckBox("ROI 高亮")
         self.chk_roi.setChecked(True)
         lr.addWidget(self.chk_roi)
+        lr.addWidget(self._dim("标定基准"))
+        self.rb_basis_crop = QtWidgets.QRadioButton("判据图")
+        self.rb_basis_crop.setChecked(True)
+        self.rb_basis_crop.setToolTip("在拉伸图上标框 (与任务头推理输入同口径, 训练用)")
+        self.rb_basis_orig = QtWidgets.QRadioButton("原始图")
+        self.rb_basis_orig.setToolTip("在原始 2448x2048 图上标框 (目检/复审用; 存原始帧坐标)")
+        for rb in (self.rb_basis_crop, self.rb_basis_orig):
+            lr.addWidget(rb)
+        self.rb_basis_orig.toggled.connect(self._on_basis_change)
         self.lbl_roi = self._dim("ROI -")
         self.lbl_roi.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         lr.addWidget(self.lbl_roi, 1)
@@ -419,6 +448,26 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._last_rgb = np.asarray(rgb)
         self._last_tag = tag
         self.wid.set_frame_rgb(self._last_rgb)
+        self._elide(self.lbl_v_crop, f"判据图 · {tag} {self._last_rgb.shape[1]}x{self._last_rgb.shape[0]}",
+                    f"{tag} · {self._last_rgb.shape}")
+        if self._orig_rgb is None:               # 非 OPT 源: 原始图=同帧 (没有单独的原始图)
+            self.wid_orig.set_frame_rgb(self._last_rgb)
+            self._elide(self.lbl_v_orig, f"原始图 (=同帧) {self._last_rgb.shape[1]}x{self._last_rgb.shape[0]}",
+                        "该帧源无独立原始图, 与判据图同帧")
+
+    def _basis_widget(self):
+        """(标定基准控件, 该基准的帧, 基准名)"""
+        if self.rb_basis_orig.isChecked():
+            return self.wid_orig, self._orig_rgb, "origin"
+        return self.wid, self._last_rgb, "topview"
+
+    def _on_basis_change(self, _=None):
+        """标定基准切换: 可编辑只开在选中的那幅画面上 (防误标到另一幅)。"""
+        on = self.chk_label.isChecked()
+        use_orig = self.rb_basis_orig.isChecked()
+        self.wid.set_editable(bool(on and not use_orig))
+        self.wid_orig.set_editable(bool(on and use_orig))
+        self.log(f"✏️ 标定基准 → {'原始图 2448x2048' if use_orig else '判据图 960x960 (拉伸)'}")
 
     def _tick(self):
         rgb, tag, age = self._grab()
@@ -466,12 +515,27 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._opt_rgb = rgb
         self._opt_meta = meta
         self._opt_tag = f"📷 {c['name']} {meta['kind']} {meta['shape'][1]}x{meta['shape'][0]}"
+        # 🖼 原始图: 同一次拍照的另一路 (GET /picture?kind=origin, **不重复拍**)
+        self._orig_rgb = None
+        orig, ometa = optc.fetch_frame(cam, kind="origin", grab=False, via=via)
+        self._opt_orig_meta = ometa
+        if orig is not None:
+            self._orig_rgb = orig
+            self.wid_orig.set_frame_rgb(orig)
+            self._elide(self.lbl_v_orig, f"原始图 {orig.shape[1]}x{orig.shape[0]} "
+                                         f"({ometa.get('bytes', 0)//1024}KB {ometa.get('ms', 0):.0f}ms)",
+                        f"工控机原始图 ?kind=origin · {ometa}")
+        else:
+            self._elide(self.lbl_v_orig, "原始图 取失败", str(ometa))
         self._set_frame(rgb, self._opt_tag)
         self.wid.set_classes([CLASS_CN.get(x, x) for x in self._cls_names()])
         res = self.run_skill(self._cur_skill, quiet=True)
         self._elide(self.lbl_chain, f"链路 ✅ {c['name']} {meta['shape'][1]}x{meta['shape'][0]} "
                                     f"{meta['ms']:.0f}ms via {meta['via']}", json.dumps(meta, ensure_ascii=False))
         if not quiet:
+            self.log(f"🖼 {c['name']}: 原始图 {ometa.get('shape')} {ometa.get('bytes', 0)//1024}KB "
+                     f"+ 判据图 {meta['shape']} {meta['bytes']//1024}KB "
+                     f"(同一次拍照, 双画面显示)")
             self.log(f"📷 {c['name']}相机实际图: {meta['shape']} 灰度均值 {meta['mean_gray']} · HTTP {meta['http']} "
                      f"· {meta['ms']:.0f}ms · {meta['bytes']//1024}KB · via {meta['via']}"
                      + (f" → 任务头: 定位 {len(res['loc'])} 缺陷 {len(res['defects'])}" if res else ""))
@@ -566,6 +630,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         d = self._last_res["defects"][row]
         self.chk_freeze.setChecked(True)
         self.chk_label.setChecked(True)
+        self.rb_basis_crop.setChecked(True)     # 缺陷框是判据图(拉伸)坐标 → 基准切回判据图
         self._select_class_in_combo(d["cls"])
         self.wid.add_box_px(d["box"], cls=CLASS_CN.get(d["cls"], d["cls"]))
         self.tabs.setCurrentIndex(2)
@@ -586,6 +651,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         for c in names:
             self.cmb_cls.addItem(f"{CLASS_CN.get(c, c)}", c)
         self.wid.set_classes([CLASS_CN.get(c, c) for c in names])
+        self.wid_orig.set_classes([CLASS_CN.get(c, c) for c in names])
         try:
             n = len(list(yad.iter_samples(self.head.root)))
             self._elide(self.lbl_data, f"样本 {n} · 类别 {len(names)} · {os.path.basename(self.head.root)}"
@@ -601,8 +667,8 @@ class AoiInspectConsole(QtWidgets.QDialog):
             self.log(f"⚠️ 数据根初始化失败: {type(e).__name__}: {e}")
 
     def _on_label_toggle(self, on):
-        self.wid.set_editable(bool(on))
-        self.log("✏️ 标定模式开 (拖框/缩放, 存原始帧坐标)" if on else "✏️ 标定模式关")
+        self._on_basis_change()          # 按当前基准开/关可编辑
+        self.log("✏️ 标定模式开 (拖框/缩放; 存该基准帧像素坐标)" if on else "✏️ 标定模式关")
 
     def _add_class(self):
         name, ok = QtWidgets.QInputDialog.getText(self, "新类别", "类名 (英文, 作为 class id):")
@@ -624,11 +690,12 @@ class AoiInspectConsole(QtWidgets.QDialog):
                 return
 
     def _save_annot(self, next_frame=False):
-        if self._last_rgb is None:
+        wdg, fr, basis = self._basis_widget()          # 标定基准: 判据图(默认) 或 原始图
+        if fr is None:
             self.log("⚠️ 无帧可存")
             return
         boxes = []
-        for b in self.wid.boxes_px():
+        for b in wdg.boxes_px():
             cls_txt = b.get("cls", "") if isinstance(b, dict) else ""
             cname = None
             for i in range(self.cmb_cls.count()):
@@ -642,20 +709,21 @@ class AoiInspectConsole(QtWidgets.QDialog):
         kw = {"device": self._last_tag, "annotator": self.ed_annotator.text() or "engineer",
               "src": ("sim" if self.cmb_src.currentIndex() == 1 else "real")}
         try:
+            kw["extra"] = {"basis": basis, "frame": f"{fr.shape[1]}x{fr.shape[0]}"}
             sig = set(yad.save_sample.__code__.co_varnames[:yad.save_sample.__code__.co_argcount])
             kw = {k: v for k, v in kw.items() if k in sig}
-            yad.save_sample(self.head.root, self._last_rgb, boxes, **kw)
-            self.log(f"💾 已存 {len(boxes)} 框")
+            yad.save_sample(self.head.root, fr, boxes, **kw)
+            self.log(f"💾 已存 {len(boxes)} 框 (基准={basis} {fr.shape[1]}x{fr.shape[0]})")
         except Exception as e:                                     # noqa: BLE001
             self.log(f"❌ 保存失败: {type(e).__name__}: {e}")
             return
-        self.wid.clear_boxes()
+        wdg.clear_boxes()
         self._sync_classes()
         if next_frame:
             self.chk_freeze.setChecked(False)
 
     def _set_selected_class(self):
-        self.wid.set_selected_class(self.cmb_cls.currentText())
+        self._basis_widget()[0].set_selected_class(self.cmb_cls.currentText())
         self.log(f"🏷 选中框 → {self.cmb_cls.currentText()}")
 
     # ══════════════════════ 数据 / 训练 ══════════════════════

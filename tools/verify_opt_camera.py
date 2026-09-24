@@ -156,6 +156,26 @@ def main():
                             "meta_keys": sorted(w._opt_meta.keys())[:8]}
     ck("⑥ 选『📷 10082 金手指』即显示该相机实际图", r1 is not None and std > 8 and "金手指" in w._opt_tag,
        f"tag={w._opt_tag} std={std:.1f}")
+    # 原始图同屏 (老倪: "原始图片也要有显示")
+    o = w._orig_rgb
+    ost = float(cv2.cvtColor(o, cv2.COLOR_RGB2GRAY).std()) if o is not None else 0.0
+    RES["gui_orig"] = {"shape": list(o.shape) if o is not None else None, "std": round(ost, 1),
+                       "lbl_orig": w.lbl_v_orig.text(), "lbl_crop": w.lbl_v_crop.text()}
+    ck("⑥ 同屏显示原始图 (2048x2448 有结构)", o is not None and list(o.shape)[:2] == [2048, 2448] and ost > 8,
+       f"shape={list(o.shape) if o is not None else None} std={ost:.1f} · {w.lbl_v_orig.text()}")
+    ck("⑥ 两幅画面都有帧 + 尺寸标注", w.wid_orig.frame_rgb() is not None and w.wid.frame_rgb() is not None
+       and "原始图" in w.lbl_v_orig.text() and "判据图" in w.lbl_v_crop.text(),
+       f"orig='{w.lbl_v_orig.text()}' crop='{w.lbl_v_crop.text()}'")
+    # 标定基准可切 (可编辑只开在选中画面)
+    w.chk_label.setChecked(True)
+    w.rb_basis_orig.setChecked(True)
+    app.processEvents()
+    orig_ed, crop_ed = w.wid_orig._editable, w.wid._editable
+    w.rb_basis_crop.setChecked(True)
+    app.processEvents()
+    ck("⑥ 标定基准可切到原始图 (可编辑只开在选中画面)",
+       orig_ed is True and crop_ed is False and w.wid_orig._editable is False and w.wid._editable is True,
+       f"基准=原始图: orig_ed={orig_ed} crop_ed={crop_ed} → 切回判据图后 orig={w.wid_orig._editable} crop={w.wid._editable}")
     w.cmb_src.setCurrentIndex(4)                                     # 📷 10083 表面
     for _ in range(25):
         app.processEvents(); time.sleep(0.05)
