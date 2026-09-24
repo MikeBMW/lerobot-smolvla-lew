@@ -10,6 +10,30 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15
 > ⚠️纪律: 只patch改; kill-9重启(pkill 用 "gui-venv311/bin/python studio" 别用 studio.py, 会打死 Hermes 自己的 shell); --gpus all本地/--runtime nvidia远程; -o Port; 主线程禁网络请求(摄像头坑); 启动/黑屏见 launch-guide.md; 训练入口/状态见 gui-navigation.md; 控件小/字挤/面板窄见 ui-sizing-hidpi.md; refs: gui-discipline, simulink-flow-and-buttons, simulink-flow-authoring, help-menu-doc-open
 
+## 🌐 功能清单/测试用例 → 网页 (datadrive.world, 2026-09-24 新增 L2 专项页)
+
+**真源三处 (改功能/用例只改这三处, 网页全部自动带出)**:
+| 内容 | 文件 | 关键点 |
+|---|---|---|
+| 功能定义 | `src/lerobot/verification/capability_levels.py` | `CAPABILITY_LEVELS[层]["funcs"]` = {fid,name,desc,groups} |
+| 测试用例 | `src/lerobot/verification/verification_layer.py` | `FEATURES` 元组 `(id,域,名称,源,方式,方法,层)` + `FEATURE_META[id]=(kind,role,spec)` + `def t_F_B12(self, np)` 真断言 (返回 `(bool, 详情str)`) |
+| 分层功能树 | `src/lerobot/verification/node_func_tree.py` | `NODE_TREE[节点key]["funcs"]` 每 func 带 `tests:[(名称,auto/semi/manual,方法名,备注)]` |
+
+**生成 + 部署 (深色主题 #0d1520/#00d4aa, 打印友好)**:
+- 功能清单总表 + 需求规格书: `tools/gen_web_feature_pages.py` → `reports/web/{function-list,requirements-spec}.html`
+- 专项页 (L2 3D视觉引导/触觉反馈闭环, 含 Markdown 导出): `tools/gen_l2_guide_tactile_page.py`
+  → `reports/web/l2-guidance-tactile.{html,md}`, 顶部按钮「⬇下载 Markdown / 📋复制 Markdown」,
+  **现场真跑**两条用例把 PASS+实测明细写进页面 (`--no-run` 跳过)
+- 上传: `ZMAX_ECS_PW=<密码> python <工具>` 或 `sshpass -p <pw> scp 文件 root@39.102.211.79:/www/wwwroot/datadrive.world/` + `chmod 644`
+  (**22 端口**; 23 端口连不上) → 复核 `https://datadrive.world/<页>.html`
+- ⚠️ **主页 `index.html` 只在 ECS 上, 仓库里没有源**: 改导航要 `scp` 拉回本地 → 本地 patch (锚点断言 count==1) → `scp` 回传 → HTTP 复核
+- 计数类文案别手写: `tools/canvas_update_verif_nodes.py` 从真源重算并刷新画布 `ssfeat`/`sstest` 的 `desc`
+  (加用例后 "B六层 11" 这类数字会过期; 该脚本幂等, 改画布前先 `bash tools/studio_ctl.sh stop`)
+
+**测试用例写法纪律**: 阈值必须**先实测再写** (`tools/measure_l2_guide_tactile.py` 这类量测脚本先行),
+断言里带上"判据 + 实测值"字符串; 口径不确定时先核对真源 (实例: 触觉通道 0 = 原始开度, 轨迹 gripper = 夹紧度 = 1−开度
+→ 必须用**互补一致率**断言, 按"相等"比会得 0%); 未实现/占位通道要**如实标注**不得冒充。
+
 ## 架构速查
 
 ```
