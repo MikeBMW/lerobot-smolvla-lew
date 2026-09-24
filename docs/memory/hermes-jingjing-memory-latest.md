@@ -1,6 +1,6 @@
 小芳=孪生备份端(Mac)
 §
-Orin直连 .23.50/24无网关(enx00e04c0c32a0; NM bad match→RNDIS不通)
+Orin=192.168.23.66(tashan/ts123); 产线口.23.50/24无网关(enx00e04c0c32a0); 两机直达工控机.23.23
 §
 NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
@@ -14,9 +14,9 @@ GUI改码必重启(zmax-studio无autosave)
 §
 GitHub不通→ghproxy.net
 §
-界面: 单色勿彩高亮; 实时滚动; 自解释(标签+数值+物理含义); 面板禁假值; 技能清单要少而可分辨
+技能清单少而可分辨; 一切可复制可执行(curl/JSON/图右键), 点击必出结果
 §
-Hermes: 长命令拆多段(内联py易截断→写脚本文件); sudo免密
+Hermes: 长命令拆多段(内联py易截断→写脚本); sudo免密
 §
 ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(61s→异步旁路; smolvlm2-500m兜底); qwen3B勿试
 §

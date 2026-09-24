@@ -10,6 +10,102 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15
 > ⚠️纪律: 只patch改; kill-9重启(pkill 用 "gui-venv311/bin/python studio" 别用 studio.py, 会打死 Hermes 自己的 shell); --gpus all本地/--runtime nvidia远程; -o Port; 主线程禁网络请求(摄像头坑); 启动/黑屏见 launch-guide.md; 训练入口/状态见 gui-navigation.md; 控件小/字挤/面板窄见 ui-sizing-hidpi.md; refs: gui-discipline, simulink-flow-and-buttons, simulink-flow-authoring, help-menu-doc-open
 
+## 🏷 画布节点**改名/移位**必同步清单 (2026-09-24 融合定位实测, 漏一处即静默失效)
+画布节点名 = **数据总线通道名** = `node_logic` 注册匹配键, 改名不是改 JSON 一件事。逐处清单:
+| # | 位置 | 漏了会怎样 |
+|---|---|---|
+| 1 | `flows/state_space_obs.json` (node.name/x/y/inputs/outputs + links) | — |
+| 2 | `tools/gui/data_world.py` `MODULE_ORDER` | 数据总线/3D/面板排序丢该模块 |
+| 3 | `tools/gui/simulink_module.py` `SS_MODULE_TO_NAME` (键+值) | 变量监控高亮不到连线 |
+| 4 | `tools/gui/simulink_module.py` 双击面板 `elif "<名>" in nm:` 分支 | 双击弹空白/错面板 |
+| 5 | `tools/gui/state_space_sim_real.py` io 发布 dict 键 | **引擎每帧 io 挂不上 → 画布播放无该节点信号** |
+| 6 | `tools/gui/state_space_sim.py` (非真实引擎) io 发布键 | 同上 (两引擎必须同源) |
+| 7 | `tools/gui/node_logic.py` `_reg(key, [匹配名…], desc)` | 右键/双击「查看节点逻辑」→ match_node=None → 显示"定位中…" |
+| 8 | `tools/gui/auto_test_suite.py` 用例判据 (如 TC09 `any("传感器" in n …)`) | **验收用例假失败** (改名后特征字串消失) |
+| 9 | `src/lerobot/verification/node_func_tree.py` 显示名 (+ `ss_dreamview` 注释) | 网页功能清单显示旧名 |
+验证四件套 (改完必跑): ① `python -c "import node_logic; node_logic.match_node('<新名>')"` 非 None
+② `tools/canvas_level_audit.py` → **⚠无执行注册 0 · 真缺口 0** ③ 几何体检: 区内 反向/重叠/交叉 = 0 (新增线也不能引入)
+④ `tools/studio_ctl.sh restart` (GUI 无 autosave, 改码+改画布必须重启) 后 `/tmp/studio_launch.log` 的 `Traceback|Error` 计数 = 0。
+**备份纪律**: 改前 `cp flows/state_space_obs.json flows/…bak_pre_<改动>_<ts>` (回滚靠它, 不用 git 历史);
+过期快照别留在工作树 → 移 `~/zmax_data/canvas_baks_archive_<日期>` + `.gitignore` 覆盖 `.bak_/.bak./.bak-` 三种命名。
+
+## 🐛 版本号迭代 (bump_version.py) — 6 处同步 + 1 行历史
+`gui-venv311/bin/python tools/bump_version.py --to X.Y.Z --summary-file /tmp/v.txt [--dry]` 自动改:
+studio.py 品牌 QLabel + 2 处窗口标题 + changelog 注释行 + `update_checker.CURRENT_VERSION` +
+`docs_sync` 两键 + **`version_sync.py` 的 `zmax_ver`** + VERSION.md 表首插一行。
+- ⚠️ **`version_sync.py` 的 `zmax_ver` 值不带 v 前缀** (`zmax_ver = "5.13.0"`), 而工具里的 ov/nv 带 v →
+  原正则**永远 0 命中 = 静默漏同步** (版本面板长期停在旧号)。2026-09-24 已修 (`ov.lstrip("v")`) —— 若再见到
+  `version_sync zmax_ver 旧命中 0`, 就是又被改回去了, 手工补完再修工具。
+- 工具**只改不提交**: 先 `--dry` 看逐处命中再去掉 --dry; 之后由调用方 `git add/commit` (打 tag 会触发
+  Windows/macOS 桌面包 CI —— 小版本默认只 commit+push, 要出包再单独 tag)。
+- 归档照 `tools/archive_release_5_13_1.sh` 模式: 只放真实产物+改动文件+审计证据, 生成 MANIFEST(sha256)。
+
+## 🧹 哨兵/任务清理判据 (2026-09-24: 18→9 条)
+删之前**逐条查终态证据**, 只删"目标已终态"的 (脚本留在 `~/.hermes/scripts/`, 需要时一行重建):
+`ls <flags>` 已报过 (`.four_tasks_reported`/`zmax_release_watch_<tag>.done`) · 流水线 `status.txt=DONE`+`RC=0` ·
+被监视目录 >24h 无新文件且**无相关进程** (`ps aux|grep`) · 远端口令失效(permission denied) · 一次性公告已过期(旧版本号)。
+保留三类: 基础设施 (sys-watchdog/数据链路/磁盘红线/技能记忆同步) · 活跃项目哨兵 · 现场工具 (仍 pause 待现场的不删)。
+
+## 🧰 汇总终端: curl 可复制 + 终端页 + 图片右键复制 (2026-09-24 实测)
+
+老倪四条要求对应的做法 (已落在 `tools/gui/aoi_inspect_console.py`, 可照抄):
+
+1. **"curl 命令显示在窗口, 我复制后在终端执行"** → 让客户端把**等价命令**带出来: 在统一出口
+   `_curl()` 里按同一组参数拼 `curl -s -m {timeout} -X {method} '{url}'` (+ binary 时 ` -o frame.png`),
+   via=orin 时拼 `sshpass -p <pw> ssh <orin> "…"` → 放进 `info["cmd"]`, 再透传到 meta/dict (`_cmd`)。
+   ⚠️ 别在窗口里手写命令字符串 —— 会与真实请求参数漂移, 必须同源生成。
+2. **"要有个终端看 JSON 反馈"** → 独立 Tab〔终端〕: 上=命令框(只读等宽, 最多 400 行) 下=JSON 原文
+   (带 `[HH:MM:SS]` 时间戳, 800 行); 每行都可选中复制, 配 [📋复制命令][📋复制反馈][📋复制命令+反馈][🗑清空]。
+   本地图像处理 (如过曝切除) 也往同一页打, cmd 传空串即可。
+3. **"每个技能点击即可执行得到结果"** → 技能 = 真函数 + 结果落可见位置: 推理类写判决表/缺陷表,
+   服务类写终端 JSON + 日志; 验证时**逐个 `.click()` 断言产出** (不许只看按钮存在)。
+4. **"图片右键即可复制, 可粘贴到别处"** → 画面控件换子类 `CopyImageView(YoloLabelWidget)`, 复写
+   `contextMenuEvent`: **编辑态且命中框时不弹菜单** (保住"右键删框"既有行为), 否则弹
+   复制图片/复制图片路径/另存为/画面信息。
+   ```python
+   md = QtCore.QMimeData(); md.setImageData(img.copy())
+   if path: md.setText(path)                 # 粘到文本处=路径, 粘到图处=图片
+   QtWidgets.QApplication.clipboard().setMimeData(md)      # ✅ 一次性
+   ```
+   ⚠️ **实测坑**: 先 `clipboard.setImage()` 再 `clipboard.setText()` → **图片被冲掉** (剪贴板只保留一份 mime
+   载荷), 表现为"复制成功但剪贴板 0x0"。另外 **offscreen 后端的 `clipboard.image()` 恒 0x0** →
+   剪贴板类断言必须放**真桌面**(DISPLAY=:0)跑, offscreen 里只能验 mimeData/逻辑。
+   ⚠️ 同族坑: 在 DISPLAY=:0 下**先 import cv2 再 import PyQt5** 会抢走 xcb 插件 (报 "Could not load the
+   Qt platform plugin xcb") → 测试脚本里 PyQt5 必须最先导入。
+
+## 📋 画布节点「右键打开新窗口」标准做法 + 汇总终端 (2026-09-24 外观质量检测实测)
+
+**三处接线 (缺一处点了没反应/无菜单项)**:
+1. `simulink_module.py` `SimCanvas._show_node_menu`(RightButton 分支) 加菜单项, 触发条件用**节点名子串**
+   (`"外观质量检测" in item.node.get("name","")` 或 `params.<flag>`; 同 YOLO 的 `"YOLO" in name`)
+2. 同函数下方**动作分派链**加 `elif a_xx is not None and chosen == a_xx:` 分支, 帧源跟随画布:
+   `_src = "sim" if _canvas_src_state(self.module) == "仿真" else "real"`
+3. 新窗口模块 `tools/gui/<name>_widget.py` 暴露 `open_xxx(parent, module=..., source=...)` (单实例复用:
+   类属性 `_cur` 存实例, 再开先 close)
+4. ⚠️ 改完 GUI **必须重启** (`bash tools/studio_ctl.sh restart`) 入口才活; 日志 `Traceback|Error` 计数=0 才算通过
+
+**汇总终端窗口骨架 (质量检测汇总终端为样板)**: 三行头 (①技能行 ②标定行 ③数据/训练行, 全常显) +
+QSplitter(左画面 `YoloLabelWidget` / 右面板 判决表→定位→缺陷清单→训练日志) + 状态栏 (链路/判决/导出);
+快捷键 `Enter/N/F/G` 且**焦点在输入框时不抢键**。
+
+**复用既有件 (别重写)**: 标定控件 `yolo_label_widget.YoloLabelWidget`(拖框/缩放/右键删/撤销) ·
+数据层 `yolo_annot_dataset`(`save_sample/build_dataset/check_dataset/iter_samples/add_class`) ·
+训练 `yolo_annot_train.py`(体检不过退出 2, 训练后真推理验证)。
+
+**四个实测坑**:
+1. **`save_sample` 的 boxes 契约是 5 元组 `(x1,y1,x2,y2, cls_id|cls_name)`**, 不是 `(box, cls)` —
+   传错在 `float(b[2])` 处炸, 被 try/except 吞成"保存失败"(静默), 排查时先看落盘数没涨。
+2. **QProcess 信号里别引用 `self._proc`**: 进程结束时 C++ 对象已删 → `RuntimeError: wrapped C/C++ object
+   has been deleted`。用默认参数绑进闭包 `lambda pr=_p: ...`。
+3. **关窗必须收口**: `closeEvent` 里 `disconnect()` 三个信号 + 若在跑则 `kill()`; 否则进程收尾信号打到已销毁
+   控件 → RuntimeError → **进程 abort (core dumped)**。`log()` 也加 try/except 兜底。
+4. **`load_frame_file` 要分支视频**: `cv2.imread` 读不了 mp4 → 走 `cv2.VideoCapture` 取首帧。
+
+**验证套路 (两层, 记取"offscreen 全绿≠人能用")**:
+`tools/verify_aoi_console.py` (offscreen: 入口可达性 `isVisible() and isEnabled() and width()>20` · 四技能判决表 · ROI 拉伸尺寸 ·
+标定落盘计数 · 体检 · 构建数据集 · 导出 · **真训练 smoke 产出 best.pt**) +
+`tools/verify_aoi_console_real.py` (真桌面: 窗口在 availableGeometry 内 · 按钮 `width() ≥ sizeHint().width()` · 截图)。
+
 ## 🌐 功能清单/测试用例 → 网页 (datadrive.world, 2026-09-24 新增 L2 专项页)
 
 **真源三处 (改功能/用例只改这三处, 网页全部自动带出)**:
