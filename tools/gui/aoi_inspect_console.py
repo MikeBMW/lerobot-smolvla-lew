@@ -36,6 +36,7 @@ import yolo_annot_dataset as yad                                       # noqa: E
 from aoi_head import AoiQualityHead, AOI_CLASSES, CLASS_CN, ROI_SKILLS  # noqa: E402
 import opt_camera_client as optc                                        # noqa: E402  (工控机 OPT 相机)
 import aoi_exposure_fix as aex                                          # noqa: E402  (过曝切除)
+import aoi_teach_point as tp                                            # noqa: E402  (📍 示教点/回位)
 
 SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
 REAL_CANDS = ("cam_rs.png", "cam_local.png", "cam_usb.png")
@@ -193,6 +194,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._build()
         self._sync_classes()
         self._init_data_root()
+        self._tp_refresh()
         self._tick()
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -347,7 +349,64 @@ class AoiInspectConsole(QtWidgets.QDialog):
         for b in (self.btn_build, self.btn_check, self.btn_train, self.btn_live, self.btn_datadir):
             r3.addWidget(b)
         v.addLayout(r3)
+
+        # ── 行 4 示教点 (记住当前位置 → 一键回位; 回位走 L2 收口) ──
+        r3b = QtWidgets.QHBoxLayout(); r3b.setSpacing(6)
+        r3b.addWidget(self._dim("📍 示教点"))
+        self.cmb_point = QtWidgets.QComboBox(); self.cmb_point.setMinimumWidth(140)
+        self.cmb_point.setToolTip("已记住的点位 (l2_atomic/taught_points.json) — 回位目标")
+        r3b.addWidget(self.cmb_point)
+        self.ed_point_name = QtWidgets.QLineEdit("金手指点1")
+        self.ed_point_name.setMaximumWidth(120)
+        self.ed_point_name.setToolTip("『记住此点』用的名字 (如 金手指点1)")
+        r3b.addWidget(self.ed_point_name)
+        self.btn_tp_rec = self._btn("📍 记住此点", "把机械臂**当前位姿**记为示教点 (读 /robot/tcp_pose 真值; "
+                                                  "抖动大/读不到会拒绝记录)", self._tp_record)
+        self.btn_tp_goto = self._btn("🎯 回到此点", "回到 combo 里选的点位; 默认 dry-run 只算 Δ, 勾『真执行』才动",
+                                     self._tp_goto)
+        self.btn_tp_cmd = self._btn("📋 复制回位命令", "复制 L2 收口命令 (可粘到 4060 终端执行)", self._tp_copy)
+        r3b.addWidget(self.btn_tp_rec); r3b.addWidget(self.btn_tp_goto); r3b.addWidget(self.btn_tp_cmd)
+        self.chk_tp_auth = QtWidgets.QCheckBox("真执行")
+        self.chk_tp_auth.setToolTip("⚠️ 勾选后『回到此点』会真下发运动 (会弹确认框; 仍走 L2 收口闸门)")
+        r3b.addWidget(self.chk_tp_auth)
+        r3b.addStretch(1)
+        self.lbl_point = self._dim("点位 -")
+        r3b.addWidget(self.lbl_point)
+        v.addLayout(r3b)
+
+        # ── 行 5 画面裁切/标定基准 (整宽独立行: 控件多, 挤在左侧 540px 条里会被截断) ──
+        r5 = QtWidgets.QHBoxLayout(); r5.setSpacing(6)
+        r5.addWidget(self._dim("画面"))
+        self.chk_expfix = QtWidgets.QCheckBox("过曝切除")
+        self.chk_expfix.setChecked(True)
+        self.chk_expfix.setToolTip("老倪 2026-09-24: 工控机拉伸图 73% 是死白 (饱和 61.5%、死白行 532/960)。\n"
+                                   "勾选 → **不用工控机拉伸图, 改从原始图自裁**: 切掉过曝带 + 左右死白列,\n"
+                                   "只保留金手指条 → 判据图 (实测饱和 61.5%→5.6%, 死白行 0, 细节能量 ×8.5)")
+        self.chk_expfix.toggled.connect(lambda _v: self._on_expfix_toggle())
+        r5.addWidget(self.chk_expfix)
+        self.chk_roi_pick = QtWidgets.QCheckBox("🎯 框选拉伸")
+        self.chk_roi_pick.setToolTip("老倪 2026-09-24: 在**原始图**上拖出矩形 → 松手即把该矩形拉伸成判据图\n"
+                                     "(自动裁切不理想时手动指定; 框内过曝会有数字告警)")
+        self.chk_roi_pick.toggled.connect(self._on_roi_pick)
+        r5.addWidget(self.chk_roi_pick)
+        self.btn_roi_keep = self._btn("💾 记住此框", "把当前框选记成默认 ROI (后续帧自动套用)", self._on_roi_keep)
+        self.btn_roi_clear = self._btn("✖ 清除框", "清除框选, 回到自动裁切", self._on_roi_clear)
+        r5.addWidget(self.btn_roi_keep); r5.addWidget(self.btn_roi_clear)
+        r5.addWidget(self._sep_v())
+        r5.addWidget(self._dim("标定基准"))
+        self.rb_basis_crop = QtWidgets.QRadioButton("判据图")
+        self.rb_basis_crop.setChecked(True)
+        self.rb_basis_crop.setToolTip("在拉伸图上标框 (与任务头推理输入同口径, 训练用)")
+        self.rb_basis_orig = QtWidgets.QRadioButton("原始图")
+        self.rb_basis_orig.setToolTip("在原始 2448x2048 图上标框 (目检/复审用; 存原始帧坐标)")
+        for rb in (self.rb_basis_crop, self.rb_basis_orig):
+            r5.addWidget(rb)
+        self.rb_basis_orig.toggled.connect(self._on_basis_change)
+        r5.addStretch(1)
+        v.addLayout(r5)
         v.addWidget(self._sep())
+        # 布局落定后按真实字体再钉一次最小宽 (防 9pt 字体解析晚于 sizeHint)
+        self._fix_min_widths()
 
         # ── 主体: 左画面 / 右 Tab ──
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -394,30 +453,6 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.chk_roi = QtWidgets.QCheckBox("ROI 高亮")
         self.chk_roi.setChecked(True)
         lr.addWidget(self.chk_roi)
-        self.chk_roi_pick = QtWidgets.QCheckBox("🎯 框选拉伸")
-        self.chk_roi_pick.setToolTip("老倪 2026-09-24: 在**原始图**上拖出矩形 → 松手即把该矩形拉伸成判据图\n"
-                                     "(自动裁切不理想时手动指定; 框内过曝会有数字告警)")
-        self.chk_roi_pick.toggled.connect(self._on_roi_pick)
-        lr.addWidget(self.chk_roi_pick)
-        self.btn_roi_keep = self._btn("💾 记住此框", "把当前框选记成默认 ROI (后续帧自动套用)", self._on_roi_keep)
-        self.btn_roi_clear = self._btn("✖ 清除框", "清除框选, 回到自动裁切", self._on_roi_clear)
-        lr.addWidget(self.btn_roi_keep); lr.addWidget(self.btn_roi_clear)
-        self.chk_expfix = QtWidgets.QCheckBox("过曝切除")
-        self.chk_expfix.setChecked(True)
-        self.chk_expfix.setToolTip("老倪 2026-09-24: 工控机拉伸图 73% 是死白 (饱和 61.5%%、死白行 532/960)。\n"
-                                   "勾选 → **不用工控机拉伸图, 改从原始图自裁**: 切掉过曝带 + 左右死白列,\n"
-                                   "只保留金手指条 → 判据图 (实测饱和 61.5%%→5.6%%, 死白行 0, 细节能量 ×8.5)")
-        self.chk_expfix.toggled.connect(lambda _v: self._on_expfix_toggle())
-        lr.addWidget(self.chk_expfix)
-        lr.addWidget(self._dim("标定基准"))
-        self.rb_basis_crop = QtWidgets.QRadioButton("判据图")
-        self.rb_basis_crop.setChecked(True)
-        self.rb_basis_crop.setToolTip("在拉伸图上标框 (与任务头推理输入同口径, 训练用)")
-        self.rb_basis_orig = QtWidgets.QRadioButton("原始图")
-        self.rb_basis_orig.setToolTip("在原始 2448x2048 图上标框 (目检/复审用; 存原始帧坐标)")
-        for rb in (self.rb_basis_crop, self.rb_basis_orig):
-            lr.addWidget(rb)
-        self.rb_basis_orig.toggled.connect(self._on_basis_change)
         self.lbl_roi = self._dim("ROI -")
         self.lbl_roi.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         lr.addWidget(self.lbl_roi, 1)
@@ -497,6 +532,17 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.log(f"   类别 {len(AOI_CLASSES)}: " + " ".join(AOI_CLASSES))
         if self.head._load_err:
             self.log(f"   ⚠️ {self.head._load_err}")
+
+    def _fix_min_widths(self):
+        """按**真实字体**再钉一遍按钮最小宽 (QSS/字体解析晚于 sizeHint → 会在窄行里被截字)。"""
+        for b in self.findChildren(QtWidgets.QPushButton):
+            w = b.sizeHint().width()
+            if w > b.minimumWidth():
+                b.setMinimumWidth(w)
+
+    def showEvent(self, ev):                                       # noqa: N802
+        super().showEvent(ev)
+        self._fix_min_widths()
 
     def _sep_v(self):
         f = QtWidgets.QFrame()
@@ -643,15 +689,27 @@ class AoiInspectConsole(QtWidgets.QDialog):
 
     def _tick(self):
         rgb, tag, age = self._grab()
-        if rgb is not None:
-            self._set_frame(rgb, tag)
-            self.wid.set_classes([CLASS_CN.get(c, c) for c in self._cls_names()])
-            if not self.chk_label.isChecked():
-                self.run_skill(self._cur_skill, quiet=True)
-            self._elide(self.lbl_chain, "链路 ✅ " + tag + (f" {age:.1f}s" if age is not None else ""),
-                        f"帧源: {tag} · 帧龄 {age}")
-        else:
+        if rgb is None:
             self._elide(self.lbl_chain, "链路 ⚠️ " + tag, tag)
+            return
+        if self.cmb_src.currentIndex() in SRC_OPT_IDX:
+            # ⚠️ BUGFIX (2026-09-24 老倪: "框选拉伸后闪一下又变回坏图"):
+            #   OPT 源的帧**只在显式取图时更新** (拍帧/最近图/框选/切除开关)。
+            #   原来这里每 500ms 把 self._opt_rgb (工厂拉伸图) 重新塞进判据图面板 →
+            #   会把「过曝切除」「框选拉伸」的结果直接冲掉 ("闪一下变回死白")。
+            m = self._opt_meta or {}
+            self._elide(self.lbl_chain, f"链路 ✅ {tag}"
+                        + (f" · {m.get('ms', 0):.0f}ms" if m.get("ms") else "")
+                        + (" · 过曝切除" if self._expfix_meta.get("ok") else ""),
+                        json.dumps({k: m.get(k) for k in ("cam", "kind", "shape", "http", "ms", "bytes", "via")},
+                                   ensure_ascii=False))
+            return
+        self._set_frame(rgb, tag)
+        self.wid.set_classes([CLASS_CN.get(c, c) for c in self._cls_names()])
+        if not self.chk_label.isChecked():
+            self.run_skill(self._cur_skill, quiet=True)
+        self._elide(self.lbl_chain, "链路 ✅ " + tag + (f" {age:.1f}s" if age is not None else ""),
+                    f"帧源: {tag} · 帧龄 {age}")
 
     def _on_src_change(self, idx):
         """切源。选 📷 相机源 → **立刻取该相机实际图显示** (取工控机内存最近一张, 不拍照)。"""
@@ -736,6 +794,87 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.log(f"📋 工控机判决: {json.dumps(lr, ensure_ascii=False)[:260]}")
         if self._last_res:
             self._fill_verdict(self._last_res)
+
+    # ── 📍 示教点 (老倪 2026-09-24: "记住这个金手指点1, 通过这个技能回到这个位置") ──
+    def _tp_refresh(self):
+        pts = tp.list_points()
+        cur = self.cmb_point.currentText()
+        self.cmb_point.clear()
+        for k in pts:
+            self.cmb_point.addItem(k)
+        if cur and cur in pts:
+            self.cmb_point.setCurrentText(cur)
+        elif pts:
+            self.cmb_point.setCurrentIndex(0)
+        self._elide(self.lbl_point, f"点位 {len(pts)} 个" + (f" · 当前 {self.cmb_point.currentText()}" if pts else ""),
+                    json.dumps({k: {kk: vv for kk, vv in v.items() if kk in ('pos', 'recorded_at', 'spread_pos_m')}
+                                for k, v in pts.items()}, ensure_ascii=False, indent=1))
+
+    def _tp_record(self):
+        name = (self.ed_point_name.text() or "金手指点1").strip()
+        st = {}
+        try:
+            g = self._last_rgb
+            if g is not None:
+                import aoi_exposure_fix as _aex
+                gg = _aex._gray(g)
+                st = {"judge_shape": list(g.shape), "mean": round(float(gg.mean()), 1),
+                      "sat_pct": round(float((gg >= _aex.SAT_LEVEL).mean() * 100), 2)}
+        except Exception:                                          # noqa: BLE001
+            st = {}
+        r = tp.record(name, desc=f"AOI 示教点 ({name})", samples=4, roi=self._manual_roi,
+                      judge_png=(self.wid._path or ""), judge_stats=st,
+                      operator=(self.ed_annotator.text() or "engineer"))
+        if not r.get("ok"):
+            self.log(f"❌ 记住失败: {r.get('err')}")
+            return
+        self._term(r.get("fifo_cmd", ""), {"point": name, "pose": r["pose"], "spread_m": r["meta"]["spread_pos_m"],
+                                           "n": r["meta"]["n"], "ctx": r["ctx"]}, note="记住示教点")
+        self.log(f"📍 已记住「{name}」 pos={[round(v, 4) for v in r['pose']['pos']]} "
+                 f"抖动 {r['meta']['spread_pos_m']*1000:.3f}mm ({r['meta']['n']} 帧) · 上下文 → {r['ctx']}")
+        self._tp_refresh()
+
+    def _tp_goto(self):
+        name = self.cmb_point.currentText()
+        if not name:
+            self.log("⚠️ 没有点位可回 (先『📍 记住此点』)")
+            return
+        auth = self.chk_tp_auth.isChecked()
+        if auth:
+            g0 = tp.goto(name, authorize=False)
+            ans = QtWidgets.QMessageBox.question(
+                self, "确认真动",
+                f"⚠️ 将真下发运动: 回到「{name}」\n\nΔ位置 {g0.get('delta_mm')} mm "
+                f"(模长 {g0.get('delta_norm_mm')} mm)\nΔ姿态 {g0.get('delta_deg')}°\n"
+                f"记录于 {g0.get('recorded_at')}\n\n仍受 L2 收口闸门/限幅约束。确认执行?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if ans != QtWidgets.QMessageBox.Yes:
+                self.log("已取消真动")
+                return
+        r = tp.goto(name, authorize=auth)
+        self._term(r.get("fifo_cmd", ""), {k: r.get(k) for k in ("name", "dry_run", "delta_mm", "delta_norm_mm",
+                                                                 "delta_deg", "phase", "err_norm_mm", "err_deg",
+                                                                 "ok", "err", "note")}, note="回位")
+        if not r.get("ok"):
+            self.log(f"❌ 回位失败: {r.get('err')}")
+            return
+        if r.get("dry_run"):
+            self.log(f"🎯 [dry-run] 回到「{name}」: Δ位置 {r.get('delta_mm')} mm (模长 {r.get('delta_norm_mm')} mm) · "
+                     f"Δ姿态 {r.get('delta_deg')}° · 命令已打到终端页 (可复制执行)")
+        else:
+            self.log(f"🎯 已下发回位「{name}」 via {r.get('phase')} → 回读误差 "
+                     f"{r.get('err_norm_mm')} mm / {r.get('err_deg')}° ({'达标' if r.get('ok') else '未达标'})")
+
+    def _tp_copy(self):
+        name = self.cmb_point.currentText() or (self.ed_point_name.text() or "")
+        if not name:
+            self.log("⚠️ 无点位名")
+            return
+        cmd = tp.fifo_cmd(name)
+        QtWidgets.QApplication.clipboard().setText(cmd)
+        self._term(cmd, {"skill": "L2.goto_point", "point": name}, note="回位命令 (L2 收口)")
+        self.tabs.setCurrentIndex(2)
+        self.log(f"📋 已复制回位命令 (可粘到 4060 终端执行): {cmd}")
 
     # ── 🎯 框选拉伸 (老倪 2026-09-24) ──
     def _on_roi_pick(self, on: bool):

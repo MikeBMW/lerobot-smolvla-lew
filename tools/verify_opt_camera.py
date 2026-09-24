@@ -291,6 +291,15 @@ def main():
        f"裁掉 {w._expfix_meta.get('dropped_sat_rows')} 行 · 保留 {w._expfix_meta.get('kept_rows')} · "
        f"列裁 {w._expfix_meta.get('x_trim')} · cliff y={w._expfix_meta.get('cliff', {}).get('y')}")
 
+    # ⑩b 定时器 tick 不得把切除结果冲掉 (老倪: "闪一下就变回坏图" = 500ms tick 重塞工厂图)
+    _before = np.array_equal
+    snap = w._last_rgb.copy()
+    for _ in range(3):
+        w._tick(); app.processEvents(); time.sleep(0.15)
+    ck("⑩ 定时器 tick 不冲掉过曝切除结果 (跨 3 跳画面逐位不变)",
+       np.array_equal(snap, w._last_rgb),
+       f"shape {w._last_rgb.shape} · 与 tick 前逐位相同={bool(np.array_equal(snap, w._last_rgb))}")
+
     # ⑪ 手动框选拉伸 (老倪: "我鼠标拖出边界框圈出矩形, 你来将圈选矩形对应拉伸")
     good = [433, 948, 2056, 1074]          # 金手指条
     bad = [433, 640, 2056, 900]            # 过曝死白带
@@ -312,6 +321,11 @@ def main():
        m1.get("sat_in_rect", 1) < 0.15 and "框选拉伸" in w.lbl_v_crop.text(),
        f"框内饱和 {m1.get('sat_in_rect', 0)*100:.1f}% 死白行 {m1.get('deadwhite_rows_in_rect')} "
        f"Tenengrad {m1.get('tenengrad_in_rect')} · {w.lbl_v_crop.text()}")
+    snap2 = w._last_rgb.copy()
+    for _ in range(3):
+        w._tick(); app.processEvents(); time.sleep(0.15)
+    ck("⑪ 框选拉伸结果不被 tick 冲掉 (曾'闪一下变回坏图')", np.array_equal(snap2, w._last_rgb),
+       f"tick 后仍为手选框拉伸结果={bool(np.array_equal(snap2, w._last_rgb))}")
     w.wid_orig.clear_boxes()
     w.wid_orig.add_box_px(bad)
     for _ in range(20):

@@ -10,3 +10,6 @@
 {"cam": "金手指", "port": 10082, "action": "capture_detect", "http": "200", "ms": 1177.7, "via": "orin", "cmd": "sshpass -p <pw> ssh tashan@192.168.23.66 \"curl -s -m 12 -X POST 'http://192.168.23.23:10082/capture_detect'\"", "resp": {"code": 200, "msg": "success"}, "ts": "2026-09-24 16:26:51"}
 {"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 4.6, "via": "local", "ts": "2026-09-24 16:37:40"}
 {"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 5.5, "via": "local", "ts": "2026-09-24 16:38:33"}
+{"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 4.7, "via": "local", "ts": "2026-09-24 16:40:59"}
+{"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 6.1, "via": "local", "ts": "2026-09-24 16:49:39"}
+{"cam": "金手指", "port": 10082, "action": "region", "grab": false, "http": "200", "ms": 4.6, "via": "local", "ts": "2026-09-24 16:52:59"}

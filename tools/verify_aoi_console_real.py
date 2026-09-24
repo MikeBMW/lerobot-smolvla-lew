@@ -53,7 +53,10 @@ def main():
             "setcls": w.btn_setcls, "undo": w.btn_undo, "del": w.btn_del, "clear": w.btn_clear,
             "build": w.btn_build, "check": w.btn_check, "train": w.btn_train, "live": w.btn_live,
             "datadir": w.btn_datadir, "expjson": w.btn_expjson, "expcsv": w.btn_expcsv,
-            "opt_grab": w.btn_opt_grab, "opt_recent": w.btn_opt_recent, "opt_verd": w.btn_opt_verd}
+            "opt_grab": w.btn_opt_grab, "opt_recent": w.btn_opt_recent, "opt_verd": w.btn_opt_verd,
+            "opt_crop": w.btn_opt_crop, "opt_region": w.btn_opt_region, "opt_meta": w.btn_opt_meta,
+            "tp_record": w.btn_tp_rec, "tp_goto": w.btn_tp_goto, "tp_copy": w.btn_tp_cmd,
+            "roi_keep": w.btn_roi_keep, "roi_clear": w.btn_roi_clear}
     trunc = {k: (b.width(), b.sizeHint().width()) for k, b in btns.items() if b.width() < b.sizeHint().width() - 1}
     ck("② 按钮不被截断 (实际宽≥提示宽)", not trunc, f"{len(btns)} 个; 截断: {trunc or '无'}")
 

@@ -1,0 +1,93 @@
+{
+ "ts": "16:51:07",
+ "roi_skill": null,
+ "loc": [],
+ "roi_meta": {
+  "box": [
+   0,
+   0,
+   480,
+   480
+  ],
+  "pad": 0.0,
+  "zoom": 2.667,
+  "src_shape": [
+   480,
+   480
+  ],
+  "out": 640
+ },
+ "defects": [],
+ "verdict": {
+  "items": [
+   {
+    "target_id": "DET-AOI-01",
+    "target": "金手指表面缺陷",
+    "defect": "划痕",
+    "value": 134,
+    "threshold": "≤6条",
+    "pass": false,
+    "conf": 0.92,
+    "source": "heuristic"
+   },
+   {
+    "target_id": "DET-AOI-01",
+    "target": "金手指表面缺陷",
+    "defect": "污染",
+    "value": 34,
+    "threshold": "≤8点",
+    "pass": false,
+    "conf": 0.9,
+    "source": "heuristic"
+   },
+   {
+    "target_id": "DET-AOI-01",
+    "target": "金手指表面缺陷",
+    "defect": "氧化/镀层缺损",
+    "value": 41.11,
+    "threshold": "≤18.0",
+    "pass": false,
+    "conf": 0.88,
+    "source": "heuristic"
+   },
+   {
+    "target_id": "DET-AOI-02",
+    "target": "光口端面清洁度",
+    "defect": "对焦不良/端面破损",
+    "value": 321.5,
+    "threshold": "≥60.0",
+    "pass": true,
+    "conf": 0.9,
+    "source": "heuristic"
+   },
+   {
+    "target_id": "DET-AOI-04",
+    "target": "外观/尺寸检测",
+    "defect": "毛刺/边缘密度",
+    "value": 0.041,
+    "threshold": "≤0.35",
+    "pass": true,
+    "conf": 0.85,
+    "source": "heuristic"
+   },
+   {
+    "target_id": "DET-AOI-03",
+    "target": "金线/焊点显微检测",
+    "defect": "显微复检",
+    "value": null,
+    "threshold": "需显微镜头帧",
+    "pass": true,
+    "conf": 1.0,
+    "note": "非显微帧, 跳过",
+    "source": "heuristic"
+   }
+  ],
+  "pass": false,
+  "n_defects": 0,
+  "src": "heuristic"
+ },
+ "weights": "",
+ "model_classes": [],
+ "note": "无质量检测权重 → 启发式兜底 (判决表标 source=heuristic)",
+ "elapsed_ms": 9.9
+}

@@ -1,0 +1,158 @@
+{
+ "parse": {
+  "pos": [
+   0.5972987921981883,
+   0.14861965656340248,
+   0.6415945406966718
+  ],
+  "quat": [
+   -0.08001368679169181,
+   0.006957001274360952,
+   0.9963442798234966,
+   0.029111614903116638
+  ]
+ },
+ "live_read": {
+  "pose": {
+   "pos": [
+    0.5972987,
+    0.1486201,
+    0.6415946
+   ],
+   "quat": [
+    -0.0800136,
+    0.006957,
+    0.9963443,
+    0.0291112
+   ]
+  },
+  "meta": {
+   "ok": true,
+   "n": 4,
+   "spread_pos_m": 5.2e-07,
+   "spread_quat": 4.6e-07,
+   "status": {
+    "power_state": "on",
+    "operation_state": "idle",
+    "has_error": "false",
+    "error_code": ""
+   },
+   "frame": "base_link",
+   "source": "/robot/tcp_pose (只读订阅)"
+  }
+ },
+ "record": {
+  "ok": true,
+  "keys": [
+   "desc",
+   "frame",
+   "n_samples",
+   "pos",
+   "quat",
+   "recorded_at",
+   "source",
+   "spread_pos_m",
+   "spread_quat"
+  ],
+  "ctx": "/home/ubuntu/lerobot-smolvla-lew/reports/aoi_points/金手指点1.json"
+ },
+ "refuse": {
+  "ok": false,
+  "err": "读不到 (模拟)",
+  "meta": {
+   "ok": false,
+   "err": "读不到 (模拟)"
+  }
+ },
+ "goto_dry": {
+  "ok": true,
+  "name": "金手指点1",
+  "dry_run": true,
+  "target": {
+   "pos": [
+    0.5972987,
+    0.1486201,
+    0.6415946
+   ],
+   "quat": [
+    -0.0800136,
+    0.006957,
+    0.9963443,
+    0.0291112
+   ]
+  },
+  "current": {
+   "pos": [
+    0.5972985,
+    0.1486202,
+    0.6415949
+   ],
+   "quat": [
+    -0.0800139,
+    0.0069569,
+    0.9963443,
+    0.029111
+   ]
+  },
+  "fifo_cmd": "echo '{\"skill\": \"L2.goto_point\", \"point\": \"金手指点1\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo",
+  "ros_cmd": "ssh tashan@192.168.23.66 bash -lc 'timeout 90 ros2 service call /move_line interfaces/srv/TargetPose \"{speed: 30, joint_state: {name: [], position: []}, pose: {position: {x: 0.5972987, y: 0.1486201, z: 0.6415946}, orientation: {x: -0.0800136, y: 0.006957, z: 0.9963443, w: 0.0291112}}}\" 2>&1 | tail -3'",
+  "recorded_at": "2026-09-24 16:53:32",
+  "desc": "AOI 金手指观察位 (verify 注入)",
+  "delta_mm": [
+   0.0,
+   -0.0,
+   -0.0
+  ],
+  "delta_norm_mm": 0.0,
+  "delta_deg": 0.0,
+  "note": "dry-run: 未下发任何运动 (真动加 authorize=True 或窗口勾『真执行』)"
+ },
+ "cmds": {
+  "fifo": "echo '{\"skill\": \"L2.goto_point\", \"point\": \"金手指点1\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo",
+  "ros": "ssh tashan@192.168.23.66 bash -lc 'timeout 90 ros2 service call /move_line interfaces/srv/TargetPose \"{speed: 30, joint_state: {name: [], position: []}, pose: {position: {x: 0.5972987, y: 0.1486201, z: 0.6415946}, orientation: {x: -0.0800136, y: 0.006957, z: 0.9963443, w: 0.0291112}}}\" 2>&1 | tail -3'"
+ },
+ "registry": [
+  "L2.goto_aoi_gold",
+  "L2.goto_point"
+ ],
+ "gui_ctrls": {
+  "bad": [],
+  "widths": {
+   "point_combo": 140,
+   "name_edit": 120,
+   "btn_record": 98,
+   "btn_goto": 98,
+   "btn_copy": 133,
+   "chk_auth": 64
+  }
+ },
+ "gui_record": {
+  "in_lib": true,
+  "in_combo": true,
+  "log_tail": "📍 已记住「GUI测试点」 pos=[0.5973, 0.1486, 0.6416] 抖动 0.001mm (4 帧) · 上下文 → /home/ubuntu/lerobot-smolvla-lew/reports/aoi_points/"
+ },
+ "gui_goto_dry": {
+  "log": "🎯 [dry-run] 回到「GUI测试点」: Δ位置 [0.0, 0.0, -0.0] mm (模长 0.0 mm) · Δ姿态 0.0° · 命令已打到终端页 (可复制执行)",
+  "term": ".goto_point\", \"point\": \"GUI测试点\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo\necho '{\"skill\": \"L2.goto_point\", \"point\": \"GUI测试点\"}' > /home/ubuntu/zmax_data/l2_cmd.fifo"
+ },
+ "checks": {
+  "① 位姿解析 (真帧文本 → pos/quat)": true,
+  "① 空/坏文本 → 返回 None (不猜)": true,
+  "② 真机位姿可读 (/robot/tcp_pose 只读)": true,
+  "② idle 时抖动在阈值内 (0.5mm)": true,
+  "③ 记住点位 → taught_points.json (字段与既有库同名)": true,
+  "③ AOI 上下文 (框选 ROI + 判据图快照 + 指标) 一并留档": true,
+  "④ 位姿不可用时拒绝写库 (不造假点位)": true,
+  "⑤ dry-run 算 Δ位置/Δ姿态 (不发运动)": true,
+  "⑤ dry-run 未产生任何运动 (phase 字段不存在 = 没走下发分支)": true,
+  "⑥ FIFO 收口命令文本可复制": true,
+  "⑥ ros2 服务命令文本可复制 (含 6 维目标位姿)": true,
+  "⑦ registry 有 L2.goto_point (回位走常驻执行器, 自带闸门/限幅)": true,
+  "⑧ 示教点控件全部可达 (记住/回位/复制/真执行勾选/点位表)": true,
+  "⑧ 点『📍 记住此点』→ 真位姿落库 + 下拉出现该点": true,
+  "⑧ 点『🎯 回到此点』默认 dry-run: 出 Δ 且**未下发运动**": true,
+  "⑧ 回位命令进终端页 (可复制)": true,
+  "⑧ 『📋 复制回位命令』→ 剪贴板拿到 L2 收口命令 (可粘终端执行)": true
+ },
+ "pass": "17/17"
+}

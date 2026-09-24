@@ -1,0 +1,39 @@
+{
+ "name": "GUI测试点",
+ "recorded_at": "2026-09-24 16:54:09",
+ "operator": "engineer",
+ "pose": {
+  "pos": [
+   0.5972988,
+   0.1486199,
+   0.6415946
+  ],
+  "quat": [
+   -0.0800136,
+   0.0069569,
+   0.9963443,
+   0.0291113
+  ]
+ },
+ "roi": null,
+ "judge_png": "",
+ "judge_stats": {
+  "judge_shape": [
+   480,
+   640,
+   3
+  ],
+  "mean": 110.4,
+  "sat_pct": 2.27
+ },
+ "spread": {
+  "pos_m": 5.1e-07,
+  "quat": 5.1e-07
+ },
+ "status_at_record": {
+  "power_state": "on",
+  "operation_state": "idle",
+  "has_error": "false",
+  "error_code": ""
+ }
+}
