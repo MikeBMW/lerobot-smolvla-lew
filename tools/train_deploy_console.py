@@ -61,7 +61,7 @@ TRAIN_CMDS = {
     "L4": "{v} tools/joint_unified_backbone.py --steps {n} --batch 64 --workers 3 --stats 250 "
           "--aug 1 --aug-scale 0.90,1.10 --cache-gb 6 "
           "--holdout {swm}/datasets/v6_holdout_rand.h5 "
-          "--files {swm}/datasets/v6_sub25k.h5,{swm}/datasets/l5_new_sub12k.h5 "
+          "--files {swm}/datasets/v6_sub25k.h5,{swm}/datasets/l5_v6_sub10k.h5 "
           "--progress-file {swm}/reports/progress_{jid}.json --progress-every 10 "
           "--save {swm}/checkpoints/unified_web",
     "L4moe": "{v} tools/stage_moe_backbone.py --steps {n} --batch 64 --workers 3 --stats 250 "
@@ -211,6 +211,9 @@ pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;fo
 <h1>🎛 Z-MAX 训练 · 部署控制台</h1>
 <div class="sub" id="sub">加载中…</div>
 <div class="grid" id="grid"></div>
+<div class="card" style="margin-top:12px"><h2>🖥 硬件 · 存储 · 算力（实时实测）</h2>
+<div class="sub" id="hwsub">加载中…</div>
+<div class="grid" id="hwgrid"></div></div>
 <div class="card" style="margin-top:12px"><h2>📈 训练进度 + 能力提升（实测指标）</h2>
 <div class="sub" id="pgsub">加载中…</div>
 <div id="pgbar"></div>
@@ -248,6 +251,34 @@ async function load(){
   h+='</div>';
  }
  document.getElementById('grid').innerHTML=h;
+ const hw=await j('/api/hardware');
+ if(hw && hw.gpu){
+  const g=hw.gpu, c=hw.cpu, m=hw.mem, d=hw.disk, cp=hw.compute||{};
+  const bar=(p,col)=>`<div style="background:#0d1117;border:1px solid #30363d;border-radius:5px;height:11px;margin:2px 0">
+     <div style="width:${Math.min(100,p||0)}%;height:100%;background:${col};border-radius:4px"></div></div>`;
+  document.getElementById('hwsub').textContent=`${hw.ts} · GPU 进程 ${(hw.gpu_procs||[]).length} 个`;
+  document.getElementById('hwgrid').innerHTML=
+   `<div class="card"><b>🎮 GPU 负载</b><div style="font-size:11px;color:#8b949e">${g.name||''}</div>
+     ${bar(g.util_pct,'linear-gradient(90deg,#238636,#3fb950)')}
+     <div style="font-size:12px">利用率 <b class="st">${g.util_pct}%</b> · 温度 ${g.temp_c}°C · 功耗 ${g.power_w}W</div>
+     ${bar(g.mem_used_pct,'#1f6feb')}
+     <div style="font-size:12px">显存 <b>${g.mem_used_mb}/${g.mem_total_mb} MB</b> (${g.mem_used_pct}%)</div>
+     <div style="font-size:11px;color:#8b949e">SM 时钟 ${g.clk_sm_mhz}/${g.clk_sm_max_mhz} MHz</div></div>
+   <div class="card"><b>⚡ 算力（实测吞吐）</b>
+     <div style="font-size:12px;margin-top:4px">训练步速 <b class="st">${cp.sps||'—'}</b> 步/s</div>
+     <div style="font-size:12px">折算 <b>${cp.steps_per_hour||'—'}</b> 步/小时 · 样本 <b>${cp.samples_per_s_b64||'—'}</b>/s(batch64)</div>
+     <div style="font-size:11px;color:#8b949e">来源 ${cp.src||'—'} · ${cp.running?'🔴 训练中':'已停'}</div>
+     <div style="font-size:11px;color:#8b949e;margin-top:4px">GPU 型号参考算力: RTX 4060 Laptop ≈ 15 TFLOPS(fp32) / 120 TFLOPS(INT4)</div></div>
+   <div class="card"><b>🧠 CPU + 内存</b>
+     ${bar(c.util_pct,'#bb8009')}
+     <div style="font-size:12px">CPU <b>${c.util_pct}%</b> · ${c.cores} 核 · load ${c.load1}/${c.load5}/${c.load15}</div>
+     ${bar(m.used_pct,'#8b5cf6')}
+     <div style="font-size:12px">内存 <b>${m.used_gb}/${m.total_gb} GB</b> (${m.used_pct}%) · 可用 ${m.avail_gb}GB</div></div>
+   <div class="card"><b>💾 存储</b>
+     ${bar(d.used_pct,'#da3633')}
+     <div style="font-size:12px">磁盘 <b>${d.used_gb}/${d.total_gb} GB</b> · 可用 <b class="st">${d.free_gb} GB</b></div>
+     <table style="margin-top:5px">${(d.dirs||[]).map(x=>`<tr><td>${x.name}</td><td>${x.gb} GB</td></tr>`).join('')}</table></div>`;
+ }
  const pg=await j('/api/progress');
  if(pg && pg.jobs){
   // ★ 优先用**实时进度文件**(真·10步一跳), 回退到日志解析
@@ -315,6 +346,14 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, PAGE, "text/html; charset=utf-8")
         if u.path == "/api/status":
             return self._send(200, json.dumps(status(), ensure_ascii=False))
+        if u.path == "/api/hardware":
+            try:
+                sys.path.insert(0, os.path.join(REPO, "tools"))
+                import hardware_view as _hw
+                return self._send(200, json.dumps(_hw.collect(), ensure_ascii=False))
+            except Exception as e:                                        # noqa: BLE001
+                return self._send(200, json.dumps({"err": "%s: %s" % (type(e).__name__, str(e)[:90])},
+                                                  ensure_ascii=False))
         if u.path == "/api/progress":
             try:
                 sys.path.insert(0, os.path.join(REPO, "tools"))

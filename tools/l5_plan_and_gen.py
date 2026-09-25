@@ -49,14 +49,59 @@ def plan_variants(n: int, seed: int = 104) -> list:
     for i in range(n):
         dirs.append({
             "id": i,
+            "goal_dx": float(rng.uniform(-0.006, 0.006)),      # ±6mm 轴向 (新增)
             "goal_dy": float(rng.uniform(-0.020, 0.020)),      # ±20mm 对位方向
             "goal_dz": float(rng.uniform(-0.010, 0.010)),      # ±10mm 高度
+            "yaw_deg": float(rng.uniform(-3.0, 3.0)),          # ±3° 模块偏航 (新增)
+            "slot_mm": float(rng.uniform(-5.0, 5.0)),          # ±5mm 槽位错位 (新增)
+            "surface": int(rng.integers(0, 3)),                # 0=洁净 1=油污 2=氧化 (新增)
             "stage_skip": int(rng.integers(0, 2)),             # 0=完整, 1=省略接近
             "grip_force": int(rng.choice([30, 40, 50])),       # 抓取力档
             "speed_scale": float(rng.choice([0.8, 1.0, 1.2])), # 速度档
-            "why": "L5 规划器按'对位偏差×阶段组合×力档×速度'展开方向",
+            "why": "L5 规划器按 8 维展开: 轴向×对位×高度×偏航×槽位×表面×阶段×力档×速度",
         })
     return dirs
+
+
+def apply_variant(sim, d):
+    """★ 把变体**真正注入**引擎（此前只改 seed, 变体维度未生效 —— 本次修正）
+
+    做法与引擎 _inject_peg_jitter 一致: 直接改 MuJoCo 模型里 peg body 的 free joint qpos,
+    然后 mj_forward() 让引擎以新初始条件起跑。返回 (ok, detail) 供取证。
+    """
+    try:
+        import mujoco as mj
+        import numpy as np
+        m, dt = sim.env.model, sim.env.data
+        adr = None
+        for i in range(m.nbody):
+            if m.body(i).name == "peg":
+                j = m.body_jntadr[i]
+                if j >= 0 and m.jnt_type[j] == 0:            # FREE joint
+                    adr = m.jnt_qposadr[j]
+                break
+        if adr is None:
+            return False, "未找到 peg free joint"
+        p0 = dt.qpos[adr:adr + 3].copy()
+        dt.qpos[adr + 0] += float(d.get("goal_dx", 0.0))
+        dt.qpos[adr + 1] += float(d.get("goal_dy", 0.0))
+        dt.qpos[adr + 2] += float(d.get("goal_dz", 0.0))
+        # 偏航: 绕 z 轴旋转四元数 (qpos[3:7] = w,x,y,z)
+        yaw = np.radians(float(d.get("yaw_deg", 0.0)))
+        q = dt.qpos[adr + 3:adr + 7].copy()
+        dq = np.array([np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)])   # 绕 z
+        w1, x1, y1, z1 = q
+        w2, x2, y2, z2 = dq
+        dt.qpos[adr + 3:adr + 7] = np.array([
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
+        mj.mj_forward(m, dt)
+        p1 = dt.qpos[adr:adr + 3].copy()
+        return True, "Δpos=%.1fmm yaw=%.2f°" % (float(np.linalg.norm(p1 - p0)) * 1000, float(d.get("yaw_deg", 0)))
+    except Exception as e:                                                        # noqa: BLE001
+        return False, "%s: %s" % (type(e).__name__, str(e)[:70])
 
 
 def main():
@@ -115,6 +160,11 @@ def main():
             sim.perception.fuse_sensors = _fuse_hook
         except Exception as e:
             print(f"  ⚠️ 变体 {d['id']} obs 钩子挂载失败: {str(e)[:60]}", flush=True)
+
+        # ★ 真注入变体（横向/高度/偏航）—— 不注入则"变体"只是标签
+        _ok_i, _det_i = apply_variant(sim, d)
+        if d["id"] % a.save_every == 0:
+            print("      [inject] 变体%d: %s %s" % (d["id"], "✅" if _ok_i else "⚠️", _det_i), flush=True)
 
         # 用 run() 拿真轨迹 (引擎无公开 step)
         try:
