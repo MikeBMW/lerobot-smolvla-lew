@@ -3770,18 +3770,139 @@ class SimCanvas(QGraphicsView):
                     self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
+    def _link_topic(self, item):
+        """取该连线的 DDS topic 名 (老倪 2026-09-25: 所有连线交换的数据都该是 DDS topic)
+        优先用 flows JSON 里的 dds_topic 字段; 没有则按同规范现算 (确定性, 同线同 topic)
+        """
+        link = getattr(item, "link", None) or {}
+        t = link.get("dds_topic")
+        if t:
+            return t
+        try:
+            from ss_link_topics import topic_for  # noqa: PLC0415
+            flow = ""
+            try:
+                flow = getattr(self.module, "_current_flow_name", "") or ""
+            except Exception:
+                pass
+            if not flow:
+                flow = str(getattr(self.module, "flow_name", "") or "flow")
+            return topic_for(flow, link)
+        except Exception:
+            f = link.get("f") or "?"
+            tt = link.get("t") or "?"
+            return (f"zmax/ss/<flow>/{f}.{link.get('f_port')}"
+                    f"__{tt}.{link.get('t_port')}")
+
+    def _open_link_topic(self, item, live: bool = False):
+        """打开该连线的 DDS topic (信息 / 实时数据)
+        数据源: ECS DDS 总线 (/api/train/statespace + ZMAX_StateSpace 网关)
+        """
+        topic = self._link_topic(item)
+        link = getattr(item, "link", None) or {}
+        src = getattr(item, "src", None)
+        dst = getattr(item, "dst", None)
+        sname = (src.node.get("name") if src and hasattr(src, "node") else "") or link.get("f", "?")
+        dname = (dst.node.get("name") if dst and hasattr(dst, "node") else "") or link.get("t", "?")
+
+        lines = [
+            f"主题 (DDS topic):",
+            f"  {topic}",
+            "",
+            f"连线:  {sname}  ·  {link.get('f_port')}  ──▶  {link.get('t_port')}  ·  {dname}",
+            f"数据:  {link.get('label') or '(未标注)'}",
+            f"链路 id: {link.get('id')}",
+            "",
+        ]
+        if live:
+            lines.append("── 实时数据 (来自 DDS 总线) ──")
+            try:
+                import json as _j
+                import urllib.request as _u
+                got = False
+                # ① 状态空间节点状态
+                try:
+                    with _u.urlopen("http://datadrive.world/api/train/statespace", timeout=6) as r:
+                        ss = _j.loads(r.read()).get("statespace", {})
+                    for nid, v in list(ss.items())[:12]:
+                        lines.append(f"  [{nid}] {v.get('state')} · {str(v.get('detail'))[:70]}")
+                        got = True
+                except Exception as e:
+                    lines.append(f"  (statespace 取不到: {type(e).__name__})")
+                # ② 连线 live topic 值 (SS 数据面)
+                try:
+                    with _u.urlopen("http://datadrive.world/api/train/hardware", timeout=6) as r:
+                        hw = _j.loads(r.read()).get("machines", {})
+                    for m, v in list(hw.items())[:6]:
+                        lines.append(f"  [机器 {m}] gpu={v.get('gpu')} "
+                                     f"vram={v.get('gpu_vram')}/{v.get('gpu_vram_total')}GB")
+                        got = True
+                except Exception:
+                    pass
+                if not got:
+                    lines.append("  (总线暂无数据 — 确认上报服务在跑)")
+            except Exception as e:
+                lines.append(f"  ⚠️ 读取失败: {type(e).__name__}: {str(e)[:80]}")
+        lines += [
+            "",
+            "说明: DDS 数据面 — 局域网走原生 CycloneDDS; 跨公网经 ECS",
+            "      WebSocket DDS 网关 (wss://datadrive.world/ws/dds/) 上总线。",
+        ]
+        text = "\n".join(lines)
+
+        # 复制到剪贴板 + 弹窗
+        try:
+            from PyQt5.QtWidgets import QApplication as _QA
+            _QA.clipboard().setText(topic)
+        except Exception:
+            pass
+        try:
+            from PyQt5.QtWidgets import QMessageBox as _MB
+            box = _MB(self)
+            box.setWindowTitle(("🔭 DDS topic 实时数据" if live else "🔗 DDS topic"))
+            box.setText(f"<b>{topic}</b><br><br>"
+                        f"{sname} · {link.get('f_port')} → {link.get('t_port')} · {dname}<br>"
+                        f"数据: {link.get('label') or '—'}")
+            box.setDetailedText(text)
+            box.setInformativeText("topic 名已复制到剪贴板")
+            box.exec_()
+        except Exception as e:
+            print(f"topic: {topic}\n{text}\n(弹窗失败: {e})")
 
     def _show_link_menu(self, item, view_pos):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
-        仿节点右键菜单 — 无深色 QSS (VcXsrv 黑屏坑) + 菜单项去 emoji (字体缺字形黑块)"""
+        仿节点右键菜单 — 无深色 QSS (VcXsrv 黑屏坑) + 菜单项去 emoji (字体缺字形黑块)
+        2026-09-25 老倪: 「所有连线，右键要能直接打开 topic」→ 增 3 项 DDS topic 操作
+        """
         menu = QMenu()
         a_data = menu.addAction("查看连线数据")
+        menu.addSeparator()
+        a_topic = menu.addAction("查看 DDS topic")
+        a_live = menu.addAction("打开 topic 实时数据")
+        a_copy = menu.addAction("复制 topic 名")
+        menu.addSeparator()
         a_del = menu.addAction("删除连线")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 光标真实位置, 多屏不跑偏
         if chosen == a_data:
             try:
                 self.module._on_link_selected(item)
+            except Exception:
+                pass
+        elif chosen == a_topic:
+            try:
+                self._open_link_topic(item, live=False)
+            except Exception as e:
+                print(f"查看 topic 失败: {type(e).__name__}: {e}")
+        elif chosen == a_live:
+            try:
+                self._open_link_topic(item, live=True)
+            except Exception as e:
+                print(f"打开 topic 实时数据失败: {type(e).__name__}: {e}")
+        elif chosen == a_copy:
+            try:
+                from PyQt5.QtWidgets import QApplication as _QA
+                _QA.clipboard().setText(self._link_topic(item))
             except Exception:
                 pass
         elif chosen == a_del:
