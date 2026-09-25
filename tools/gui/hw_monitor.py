@@ -164,9 +164,22 @@ def _gpu_apple(warn: list) -> dict | None:
     mn = re.search(r'"model"\s*=\s*"([^"]+)"', out)
     if mn:
         name = mn.group(1)
+    # ⚠️ 血泪坑 (2026-09-25 老倪: "mac 没有显存, 等待上报"):
+    #   Apple Silicon 是统一内存架构, ioreg 没有"显存总量"字段 → mem_total_gb 恒 None
+    #   → APP 卡片拿不到显存总量 → 一直显示"等待上报"。
+    #   修法: mem_total_gb 取系统物理内存 (GPU 可用上限 = 统一内存);
+    #        mem_used_gb 用 ioreg 的 "In use system memory" (GPU 实际占用)。
+    mem_total = None
+    if psutil:
+        try:
+            mem_total = round(psutil.virtual_memory().total / GB, 2)
+        except Exception:
+            pass
+    if mem_total is None:
+        warn.append("未能取到统一内存总量 (psutil 不可用) — APP 卡片可能显示不全")
     return {"backend": "mps", "name": name, "count": 1,
             "util_pct": util, "mem_used_gb": round(mem_used, 2) if mem_used is not None else None,
-            "mem_total_gb": None, "note": "统一内存架构 (显存=系统内存)"}
+            "mem_total_gb": mem_total, "note": "统一内存架构 (显存总量=系统内存)"}
 
 
 def _gpu_nvidia(warn: list) -> dict | None:
