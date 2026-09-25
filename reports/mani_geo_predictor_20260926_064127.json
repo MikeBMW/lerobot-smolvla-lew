@@ -1,0 +1,36 @@
+{
+ "ts": "2026-09-26 06:41:27",
+ "data": "data/manifold_geo_v1.npz",
+ "frames": 343,
+ "tol": [
+  0.03,
+  0.01,
+  0.01,
+  0.05,
+  0.015,
+  0.015
+ ],
+ "dim_names": [
+  "progress",
+  "risk",
+  "V",
+  "eta",
+  "rem",
+  "dperp"
+ ],
+ "folds": [],
+ "summary": {},
+ "ckpt": "checkpoints/manifold_predictor/mani_geo.pt",
+ "ckpt_meta": {
+  "kind": "mani_geo",
+  "input_kind": "z7",
+  "intent_kind": "geo_disp(target−peg)",
+  "variant": "off",
+  "loso_r2_mean": null,
+  "loso_r2_median": null,
+  "loso_intent_dR2": null,
+  "frames": 343,
+  "groups": 1,
+  "ts": "2026-09-26 06:41:27"
+ }
+}
