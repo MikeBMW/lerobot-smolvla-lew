@@ -23,6 +23,23 @@ _GUI_DIR = os.path.dirname(os.path.abspath(__file__))
 if _GUI_DIR not in sys.path:
     sys.path.insert(0, _GUI_DIR)
 import node_logic
+
+# ── DDS 连线总线（老倪 2026-09-25: 连线数据全部走 DDS topic）──
+_DDS_BUS = None
+
+
+def _dds_bus():
+    """懒加载 DDS 连线总线; 不可用返回 None（调用方回落本进程字典, 零回退）"""
+    global _DDS_BUS
+    if _DDS_BUS is None:
+        try:
+            from dds_link_bus import get_bus
+            _DDS_BUS = get_bus()
+            print("[DDS] 连线总线:", _DDS_BUS.stats())
+        except Exception as _e:
+            _DDS_BUS = False
+            print("[DDS] 连线总线不可用(回落本进程):", str(_e)[:100])
+    return _DDS_BUS or None
 from node_logic_dialog import NodeLogicDialog
 
 import os as _os_mod
@@ -3655,17 +3672,122 @@ class SimCanvas(QGraphicsView):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
         仿节点右键菜单 — 无深色 QSS (VcXsrv 黑屏坑) + 菜单项去 emoji (字体缺字形黑块)"""
         menu = QMenu()
+        # 📡 2026-09-25 老倪: "所有连线，右键要能直接打开topic"
+        a_topic = menu.addAction("📡 打开 DDS Topic")
+        a_copy = menu.addAction("📋 复制 Topic 名")
+        menu.addSeparator()
         a_data = menu.addAction("查看连线数据")
         a_del = menu.addAction("删除连线")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 光标真实位置, 多屏不跑偏
-        if chosen == a_data:
+        if chosen == a_topic:
+            self._show_link_topic_dds(item)
+        elif chosen == a_copy:
+            try:
+                QApplication.clipboard().setText(self._link_topic_str(item))
+            except Exception:
+                pass
+        elif chosen == a_data:
             try:
                 self.module._on_link_selected(item)
             except Exception:
                 pass
         elif chosen == a_del:
             self.module.delete_link(item.link)
+
+    # ---------- 📡 连线 DDS Topic（老倪 2026-09-25: 连线右键直接打开 topic）----------
+    @staticmethod
+    def _link_topic_str(item):
+        """该连线对应的 DDS topic 名（连线数据按**源节点**发布到 zmax/link_value）"""
+        try:
+            s = item.src.node
+            return "zmax/link_value  (源节点: %s / id=%s)" % (s.get("name", "?"), s.get("id", "?"))
+        except Exception:
+            return "zmax/link_value"
+
+    def _show_link_topic_dds(self, item):
+        """📡 打开该连线的 DDS Topic 监视窗（内容可全选复制; 老倪要求"可复制"）"""
+        try:
+            from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
+                                         QPlainTextEdit, QMessageBox, QApplication)
+            src = item.src.node
+            dst = item.dst.node
+            src_id = src.get("id")
+            # ① DDS 实时值（真正的 topic 数据）
+            live = None
+            st = {"ok": False, "err": "DDS 未启用", "sent": 0, "recv": 0, "cached_nodes": 0, "cfg": ""}
+            try:
+                import os as _o, sys as _s
+                for _c in ("/home/ubuntu/zmax_dds",):
+                    if _o.path.isdir(_c) and _c not in _s.path:
+                        _s.path.insert(0, _c)
+                _d = _o.path.dirname(_o.path.abspath(__file__))
+                if _d not in _s.path:
+                    _s.path.insert(0, _d)
+                from dds_link_bus import get_bus
+                b = get_bus()
+                live = b.latest(src_id)
+                st = b.stats()
+            except Exception as _e:
+                st = {"ok": False, "err": str(_e)[:90], "sent": 0, "recv": 0, "cached_nodes": 0, "cfg": ""}
+            # ② 本进程值（回落源）
+            local = None
+            try:
+                local = self.module._sim_signals.get(src_id)
+            except Exception:
+                pass
+            txt = (
+                "📡 连线 DDS Topic\n"
+                "──────────────────────────────\n"
+                "Topic        : zmax/link_value\n"
+                "源节点        : %s  (id=%s)\n"
+                "目标节点      : %s\n"
+                "端口          : %s → %s\n"
+                "──────────────────────────────\n"
+                "DDS 实时值    : %s\n"
+                "本进程值      : %s\n"
+                "──────────────────────────────\n"
+                "DDS 状态      : %s\n"
+                "发布/接收计数 : %s / %s\n"
+                "缓存节点数    : %s\n"
+                "配置          : %s\n"
+                "──────────────────────────────\n"
+                "其他进程/机器/语言订阅方式:\n"
+                "  python: from zmax_node import Node; Node('x').sub('link_value')\n"
+                "  ROS2  : ros2 topic echo /zmax/link_value\n"
+                % (src.get("name", "?"), src_id, dst.get("name", "?"),
+                   item.link.get("f_port", "out1"), item.link.get("t_port", "in1"),
+                   live if live is not None else "（暂无 · 点 ▶运行/单步 后产生）",
+                   local if local is not None else "（无）",
+                   "✅ 已连接" if st.get("ok") else ("❌ %s" % st.get("err", "")),
+                   st.get("sent", 0), st.get("recv", 0), st.get("cached_nodes", 0),
+                   st.get("cfg") or "默认")
+            )
+            dlg = QDialog(self)
+            dlg.setWindowTitle("📡 连线 DDS Topic — %s" % src.get("name", "?"))
+            dlg.resize(600, 400)
+            lay = QVBoxLayout(dlg)
+            te = QPlainTextEdit()
+            te.setPlainText(txt)
+            te.setReadOnly(True)
+            te.setStyleSheet("font-family:Consolas,monospace;font-size:12px")
+            lay.addWidget(te)
+            row = QHBoxLayout()
+            b1 = QPushButton("📋 复制全部")
+            b1.clicked.connect(lambda: QApplication.clipboard().setText(txt))
+            b2 = QPushButton("🔄 刷新")
+            b2.clicked.connect(lambda: (dlg.close(), self._show_link_topic_dds(item)))
+            b3 = QPushButton("关闭")
+            b3.clicked.connect(dlg.close)
+            row.addWidget(b1); row.addWidget(b2); row.addStretch(); row.addWidget(b3)
+            lay.addLayout(row)
+            dlg.exec_()
+        except Exception as e:
+            try:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "打开 Topic 失败", "%s: %s" % (type(e).__name__, str(e)[:160]))
+            except Exception:
+                pass
 
     def on_node_export(self, node):
         """📥 节点右下角导出按钮 (🛠技能编排器 / 🎯YOLO) → 导出 Excel"""
@@ -6741,11 +6863,21 @@ class SimulinkModule(QWidget):
                 pass
 
     def _collect_inputs(self, n):
-        """🐛 2026-08-12 老倪: 收集上游节点输出 (连线 f→t, 来自 _sim_signals)"""
+        """收集上游节点输出 (连线 f→t)
+
+        ★ 2026-09-25 老倪: "所有连线交换的数据, 都应该是 DDS topic"
+          取值顺序: ① DDS 连线 topic (zmax/link_value, 跨进程/跨机可消费)
+                    ② 本进程 _sim_signals（DDS 不可用时回落 → 零回退, 不破坏原链路）
+        """
         ins = {}
+        bus = _dds_bus()
         for lk in self.links:
             if lk.get("t") == n["id"]:
-                src = self._sim_signals.get(lk.get("f"))
+                src = None
+                if bus is not None:
+                    src = bus.latest(lk.get("f"))          # ① DDS
+                if src is None:
+                    src = self._sim_signals.get(lk.get("f"))   # ② 本进程
                 if src is not None:
                     ins[lk.get("f_port", "in1")] = src
         return ins
@@ -6827,6 +6959,13 @@ class SimulinkModule(QWidget):
         if out is not None:
             self._log(f"  ⮕ 输出: {out}")
             self._sim_signals[n["id"]] = out
+            # ★ 同时发布到 DDS 连线 topic（连线数据 = DDS topic; 失败静默不影响画布）
+            try:
+                _b = _dds_bus()
+                if _b is not None:
+                    _b.publish(n["id"], n.get("name", ""), "out1", out)
+            except Exception:
+                pass
         # 状态: 成功 (绿) — 单步模式保持金色高亮
         n["status"] = "step_active" if keep_active else "success"
         if item:
