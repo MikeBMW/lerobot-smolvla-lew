@@ -1,0 +1,7 @@
+{"kind": "refused", "prompt": "真机插入光模块到治具", "rule": "插(入|装)", "ts": "2026-09-25 08:46:53"}
+{"kind": "handled", "seq": 1, "prompt": "查询状态空间当前档位与在役模型", "func": "status", "ok": true, "ts": "2026-09-25 08:52:24"}
+{"kind": "refused", "prompt": "用机械臂把光模块插入治具并夹紧", "rule": "插(入|装)", "ts": "2026-09-25 08:53:43"}
+{"kind": "handled", "seq": 2, "prompt": "画布有多少节点 (端到端取证)", "func": "canvas", "ok": true, "ts": "2026-09-25 08:53:44"}
+{"kind": "refused", "prompt": "用机械臂把光模块插入治具并夹紧", "rule": "插(入|装)", "ts": "2026-09-25 08:54:28"}
+{"kind": "refused", "prompt": "用机械臂把光模块插入治具并夹紧", "rule": "插(入|装)", "ts": "2026-09-25 08:54:37"}
+{"kind": "handled", "seq": 4, "prompt": "画布有多少节点 (端到端取证)", "func": "canvas", "ok": true, "ts": "2026-09-25 08:54:38"}

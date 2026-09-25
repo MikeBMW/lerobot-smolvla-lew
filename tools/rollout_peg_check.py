@@ -16,7 +16,11 @@ def main():
     ap.add_argument("--save", default=None, help="成功时保存帧到目录")
     args = ap.parse_args()
 
-    os.chdir("/home/xspace/lerobot-smolvla-lew")
+    # 🐛 2026-09-25: 原为 os.chdir("/home/xspace/lerobot-smolvla-lew") — 那是**另一台机器/容器**的路径,
+    #   本机(4060 工位机)没有该目录 → 引擎 rollout 直接 FileNotFoundError (被管道 tail 掩盖成 rc=0)。
+    #   改为按本文件位置推仓库根, 换机器/换用户都不会再挂。
+    _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(_REPO)
     sys.path.insert(0, "tools"); sys.path.insert(0, "src")
     import metaworld
     import rollout_video as rv

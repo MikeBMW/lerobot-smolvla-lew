@@ -152,6 +152,27 @@ CAPABILITY_LEVELS = {
              "groups": ["lat", "mc", "mp", "obs43"]},
         ],
     },
+    # ── L5 🧠 大模型层 (回路外慢决策): 2026-09-25 老倪「L5 新节点: 与 web 的 agent 交换信息」──
+    "L5": {
+        "name": "大模型层 · 远程智能体交换",
+        "auto_ref": "整车域控制器/云端座舱助理 (回路外慢决策: 意图/编排/经验) → 机器人 L5 大模型层",
+        "tech": "ECS 中转游标通道 + 只读功能白名单 (提示词→能力语义→真数据回执)",
+        "rows": ["🧠 大模型层"],
+        "summary": ("回路外慢决策层: DeepSeek-V4-Flash 场景理解 + 任务/编排/记忆中枢 + **Web 智能体桥**"
+                    "(web 上的 agent 用自然语言提示词远程调用状态空间**只读功能**并拿到真数据回执)。"
+                    "动作类提示词一律拒答 (红线), 全部功能只读/仿真内/通知 —— 为现场授权后立即开工预留人机通道"),
+        "funcs": [
+            {"fid": "L5-C01", "name": "Web 智能体桥 · 远程提示词", "desc":
+             "web agent ↔ 状态空间双向交换: ECS 中转 /api/relay/agent/{prompt,reply,status} (游标式 append-only "
+             "jsonl, GET 只读幂等 ?after=N), 本机 L5 节点 5s 轮询 → **只读功能白名单**派发 → 回执到 web。"
+             "可调功能 (能力语义): 状态/画布/报告/记忆/技能/仿真自检/网络/AOI 只读判决/真机只读信号/飞书通知; "
+             "动作类提示词拒答并记审计 (老倪红线: 不动真机)。通道实测: web POST→本地派发→web GET 回执 "
+             "含真数据 (画布 87 节点/165 连线) · 游标不重放 · 常驻 systemd enabled+active · 取证 27/27。"
+             "真源 src/lerobot/policies/left_right/state_space/web_agent_bridge.py · "
+             "画布节点 🌐 Web 智能体桥 · 远程提示词 (L5, DeepSeek 左侧) · "
+             "取证 tools/verify_web_agent_node.py", "groups": []},
+        ],
+    },
 }
 
 
@@ -201,7 +222,7 @@ if __name__ == "__main__":
         print(f"\n[{lv['level']}] {lv['name']} · {lv['tech']}")
         print(f"  类比: {lv['auto_ref']} · {lv['funcs']} 功能 · {lv['groups']} 方法组")
         print(f"  {lv['summary']}")
-    for lv in ("L2", "L3", "L4"):
+    for lv in ("L2", "L3", "L4", "L5"):
         ts = resolve_tests(lv)
         print(f"\n{lv} 解析到 {len(ts)} 个真实断言方法")
         for t in ts[:6]:

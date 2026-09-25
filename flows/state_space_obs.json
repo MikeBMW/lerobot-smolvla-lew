@@ -2083,6 +2083,51 @@
     "out5"
    ],
    "actions": []
+  },
+  {
+   "id": "n_web_agent",
+   "type": "model",
+   "name": "🌐 Web 智能体桥 · 远程提示词",
+   "icon": "🌐",
+   "color": "#a371f7",
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "params": {
+    "state_space": true,
+    "web_agent": true,
+    "readonly": true,
+    "transport": "ECS 中转 /api/relay/agent/{prompt,reply,status} (游标式 append-only jsonl, 只读幂等)",
+    "poll_s": 5,
+    "endpoints": {
+     "web→本机": "POST /api/relay/agent/prompt {text} → 本机 5s 轮询 GET /api/relay/agent/prompt?after=N",
+     "本机→web": "POST /api/relay/agent/reply → web GET /api/relay/agent/reply?after=N"
+    },
+    "funcs": [
+     "help",
+     "status",
+     "canvas",
+     "reports",
+     "memory",
+     "skills",
+     "sim",
+     "net",
+     "aoi",
+     "robot_read",
+     "feishu"
+    ],
+    "redline": "只读白名单: 提示词命中动作类关键词(插入/抓取/夹爪/移动/拍照/示教…) → 拒答+记审计, 不转发",
+    "desc": "[L5 人机在环] web 上的 agent 用**自然语言提示词**远程调用状态空间的**只读功能**(状态/画布/报告/记忆/技能/仿真自检/网络/AOI 只读判决/真机只读信号/飞书通知), 并把执行结果回执到 web; 动作类提示词一律拒答 (老倪红线: 不动真机)。画布侧: 入=工程记忆能力清单, 出=提示词意图 → L5 场景理解(DeepSeek); 回执不经画布(中转副作用)。",
+    "source": "src/lerobot/policies/left_right/state_space/web_agent_bridge.py",
+    "source_symbol": "class WebAgentBridge (dispatch/poll_once/watch)"
+   },
+   "x": 1544,
+   "y": 554,
+   "w": 230,
+   "h": 68
   }
  ],
  "links": [
@@ -3389,6 +3434,22 @@
    "f_port": "out1",
    "t_port": "in4",
    "label": "外观质量门"
+  },
+  {
+   "id": "lkwa_mem",
+   "f": "n_eng_mem",
+   "t": "n_web_agent",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "能力清单/工程记忆 → 远程可调功能面"
+  },
+  {
+   "id": "lkwa_dsvl",
+   "f": "n_web_agent",
+   "t": "n_dsvl",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "远程提示词意图 → L5 场景理解"
   }
  ],
  "params_note": ""

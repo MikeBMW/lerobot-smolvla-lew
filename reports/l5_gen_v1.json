@@ -1,6 +1,6 @@
 {
- "n": 60,
- "frames": 23393,
- "sec": 349.07528471946716,
- "out": "/home/ubuntu/stable-wm-cache/datasets/l5_gen_v5.h5"
+ "n": 1,
+ "frames": 40,
+ "sec": 6.556510925292969e-05,
+ "out": "/tmp/l5_smoke.h5"
 }

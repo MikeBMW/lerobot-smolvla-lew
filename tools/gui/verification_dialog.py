@@ -462,7 +462,7 @@ class VerificationDialog(QDialog):
         try:
             cap = _load_cap()
             _cap_ss = {"L2": "#3fb950", "L3": "#d29922", "L4": "#a371f7"}
-            for lv in ("L2", "L3", "L4"):
+            for lv in ("L2", "L3", "L4", "L5"):
                 d = cap.CAPABILITY_LEVELS[lv]
                 _ico = {"L2": "🔧", "L3": "🚀", "L4": "🏆"}[lv]
                 head = QTreeWidgetItem(

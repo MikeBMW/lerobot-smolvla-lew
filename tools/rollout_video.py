@@ -107,6 +107,16 @@ def load_policy(policy: str):
         if _st:
             pol.stats = {"a_mean": _st["action.mean"], "a_std": _st["action.std"],
                          "s_mean": _st["observation.state.mean"], "s_std": _st["observation.state.std"]}
+    elif policy in ("state_space", "left_right"):
+        # 🐛 2026-09-25: 原来这一支落到 else → 用 SmolVLALewPolicy 装载 left_right 权重 →
+        #   LeftRightConfig.validate_features() 缺参 TypeError (仿真 rollout 一直跑不起来)。
+        #   Z-MAX 状态空间/双脑 ckpt 的真源类 = LeftRightPolicy (config.type=left_right)。
+        from lerobot.policies.left_right.modeling_left_right import LeftRightPolicy
+        pol = LeftRightPolicy.from_pretrained(pm, local_files_only=True)
+        _st = _load_preprocessor_stats(pm)
+        if _st:
+            pol.stats = {"a_mean": _st["action.mean"], "a_std": _st["action.std"],
+                         "s_mean": _st["observation.state.mean"], "s_std": _st["observation.state.std"]}
     elif policy == "vla_touch":
         import importlib.util
         spec = importlib.util.spec_from_file_location("train_vla_touch", os.path.join(ROOT, "tools", "train_vla_touch.py"))

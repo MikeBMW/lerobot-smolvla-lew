@@ -3445,6 +3445,38 @@ def node_dsvl(ctx):
         return False
 
 
+def node_web_agent(ctx):
+    """🌐 Web 智能体桥 · 远程提示词 — 拉取 web agent 提示词 → **只读功能白名单**派发 → 回执
+
+    真源: src/lerobot/policies/left_right/state_space/web_agent_bridge.py::WebAgentBridge
+    通道: ECS 中转 /api/relay/agent/{prompt,reply,status} (游标式 append-only jsonl, 只读幂等)
+    红线 (老倪 2026-09-25): 提示词命中动作类关键词 → 拒答 + 记审计; 本节点**不下发任何机械臂动作**
+    可调功能 (能力语义): help/status/canvas/reports/memory/skills/sim/net/aoi/robot_read/feishu
+    """
+    log = ctx.get("log")
+    try:
+        import sys as _s
+        if _SS_DIR not in _s.path:
+            _s.path.insert(0, _SS_DIR)
+        from web_agent_bridge import WebAgentBridge
+        b = WebAgentBridge()
+        if log:
+            log("🌐 Web 智能体桥: 轮询 ECS 中转 /agent/prompt → 只读功能派发 → 回执")
+        r = b.poll_once(timeout=8)
+        items = r.get("processed") or []
+        if log:
+            log(f"  ← 本轮处理 {len(items)} 条 (游标={r.get('cursor')} · 队列待处理 {r.get('pending', 0)})")
+            for it in items[:6]:
+                log(f"    #{it.get('seq')} [{it.get('func')}] {'✅' if it.get('ok') else '🚫'} {str(it.get('text'))[:70]}")
+            if not items:
+                log("  (无新提示词 — 桥已就绪; web 侧 POST /api/relay/agent/prompt 即达)")
+        return bool(r.get("ok", True))
+    except Exception as e:                                            # noqa: BLE001
+        if log:
+            log(f"❌ Web 智能体桥执行失败: {type(e).__name__}: {e}")
+        return False
+
+
 def node_ss_eng_mem(ctx):
     """📚 工程记忆 · 技能与经验库 → 🧠 总装记忆中枢 (老倪 2026-09-19: 与飞书端商量好, 工程记忆同步到总装)
 
@@ -3644,6 +3676,10 @@ _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢�
 _reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
 _reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 技能与经验库 — docs/memory + Hermes 记忆 + 技能库 → 同步进总装记忆 (源码 eng_memory.py)", node_ss_eng_mem)
 _reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 场景判读+建议; 右键=判读结果窗口 (源码 scene_vlm.py)", node_dsvl)
+# 🌐 2026-09-25 老倪: L5「Web 智能体桥」— web 上的 agent 用提示词远程调用状态空间**只读功能** (源码 web_agent_bridge.py)
+_EXTERNAL_LOC["n_web_agent"] = (os.path.join(_SS_DIR, "web_agent_bridge.py"), 1, "class WebAgentBridge")
+_reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_agent", "网页智能体"],
+     "🌐 Web 智能体桥 · 远程提示词 — web agent 提示词 → 只读功能派发(状态/画布/报告/记忆/技能/仿真/网络/AOI/真机只读/飞书) → 回执到 web; 动作类提示词一律拒答 (源码 web_agent_bridge.py)", node_web_agent)
 _reg("ss_llm",   ["长程序列规划器", "任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
 _reg("ss_reason", ["异常推理器"], "🔍 异常推理器 — 连续否决/阶段卡死→异常分类+恢复建议; 双击=诊断演示 (源码 planner.py ExceptionReasoner)", node_ss_reason)
 _reg("ss_skill", ["技能序列编排", "技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)
