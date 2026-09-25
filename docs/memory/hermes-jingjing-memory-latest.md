@@ -1,4 +1,4 @@
-Orin=192.168.23.66(tashan/ts123); 产线口.23.50/24无网关(enx00e04c0c32a0); 两机直达工控机.23.23
+Orin=192.168.23.66(tashan/ts123); 产线.23.50/24无网关(enx00e04c0c32a0); 两机达工控机.23.23
 §
 NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
@@ -34,11 +34,11 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 真机: rt后必下电; move_joint/line不下电; 30s超时success=False勿重发; collision_detection=False
 §
-L2.lissa_insert=力控插入(6N,沿工具Z退60mm→推进→lissajous); insert_pose=治具插入位
+L2.lissa_insert=力控插入(6N,沿工具Z退60mm→推进→lissajous)
 §
 真机视: 只起camera/realsense_source(参抄launch); tap→cam_rs.png
 §
-记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]非peg_head
+记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
 真源: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先;worktree缺venv/data→软链主仓); LoRA=lora_inject.py
 §
@@ -50,10 +50,12 @@ LoRA需merge(否则零动作伪装'没提升'): merge_lora_ckpt.py; 判假A/B=�
 §
 AOI: 10082金手指/10083表面; /capture_detect 200=受理; 判据图=手选框>原图自裁>拉长图
 §
-老倪的APP四条链(勿混): ①手机zmax=WebView壳(~/state3d_app)→datadrive.world/state-3d.html(ECS,改需SSH密码) ②robot-monitor.html读mac分支robot-status.json ③桌面exe=studio.py ④新交付~/state3d_app/hw/ZMAX-Hardware.apk(com.zmax.hw,页内嵌assets,读公网JSON)
+老倪的APP四条链(勿混): ①手机zmax=WebView壳(~/state3d_app)→datadrive.world/state-3d.html(ECS,改需SSH密码) ②robot-monitor.html读mac分支robot-status.json ③桌面exe=studio.py ④~/state3d_app/hw/ZMAX-Hardware.apk(com.zmax.hw,页内嵌assets,读公网JSON)
 §
-ECS relay: 端点upload/latest/status; 包={meta:{source,type,project,role,machines},data:{machines:{名:{cpu,mem,disk,gpu}}}}; ★/latest=最新包覆盖→多端互顶,并存须改ECS; 4060上报=zmax_hw_uploader.py(仓库外)+systemd zmax-dds-agg
+ECS relay: upload/latest/status; 包={meta:{source,type,project,role,machines},data:{machines:{名:{cpu,mem,disk,gpu}}}}; ★/latest=最新包覆盖→多端互顶; 4060上报=zmax_hw_uploader.py+systemd zmax-dds-agg
 §
 遥测架构(老倪): DDS只测试/标定/诊断,量产默认关(prod零开销不import);开关env>运行时>文件>prod; tools/gui/zmax_telemetry.py+画布空白右键
 §
 连线=DDS topic zmax/link_value(按源节点);画布写点发/读点DDS优先回落内存(零回退);连线右键开Topic
+§
+GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
