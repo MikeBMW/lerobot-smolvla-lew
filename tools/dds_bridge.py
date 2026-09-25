@@ -64,6 +64,8 @@ def main():
                         v = [str(x) for x in v]
                     d[k] = v
                 key = str(d.get("node") or "?").strip()
+                if "TEST" in key.upper() or "自测" in key:      # ★ 自测节点绝不进生产视图
+                    continue
                 slot = nodes.setdefault(key, {})
                 slot["hw" if topic == "hw_state" else ("prog" if topic == "train_prog" else "hb")] = d
                 slot["recv_ts"] = time.time()
@@ -73,6 +75,8 @@ def main():
             last_tick = now
             out = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "uptime_s": round(now - t0, 1),
                    "nodes": {}}
+            for k in [kk for kk, vv in nodes.items() if (now - (vv.get("recv_ts") or 0)) > 120]:
+                nodes.pop(k, None)                              # ★ 过期节点移除（防僵尸）
             for k, v in nodes.items():
                 age = round(now - (v.get("recv_ts") or 0), 1)
                 out["nodes"][k] = {**v, "age_s": age, "stale": age > a.stale}
