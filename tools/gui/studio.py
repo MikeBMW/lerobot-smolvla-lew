@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10743,7 +10743,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.6 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10751,10 +10751,11 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.6 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.15.5: ★硬件卡加**远端(4060)真实数据行** + 数据源自动发现 —— APP 装在任何机器上都能看到 4060 实测
+        # v5.15.6: v5.15.6 (补丁): ① **L5「Web 智能体桥 · 远程提示词」开通** (老倪: 「开通一个状态空间 L5 的新节点, 与 web 的 agent 交换信息, 位置在 DeepSeek 左侧, 你来构图」): 画布 L5 大模型层 **DeepSeek 左侧** (x=1544 · 同行带 y=554 · 只加 **1 节点 2 连线**, 入=工程记忆能力清单 / 出=提示词意图→L5 场景理解, 回执走中转不画线保持简洁; 构图工具六条硬断言 + 备份); 运行时**真接** (node_logic `_reg`+`_EXTERNAL_LOC`+真执行函数 `node_web_agent`; 档位级审计 **R2-档位级真接** · 无执行注册 0 · 真缺口 0) + 能力清单新增 **L5 层 + L5-C01**; 真源 `web_agent_bridge.py` = **11 项只读功能白名单** (状态/服务·画布·报告台账·记忆层·技能库·仿真自检·网络体检·AOI 只读判决·真机只读信号·飞书通知·help), **动作类提示词一律拒答 + 记审计** (老倪红线「不要动真机」); 通道 = ECS 中转**纯追加**路由 `/api/relay/agent/{prompt,reply,status}` (游标式 append-only jsonl, GET **只读幂等** `?after=N`, 对比 `/command` 单槽不丢消息); 常驻 `zmax-web-agent-bridge.service` (User=ubuntu — 用 root 会在 reports/ 留 root 属主文件把用户态工具卡死); 取证 `verify_web_agent_node.py` **27/27** (公网端到端 web POST→本地派发→web GET 回执真数据 · 游标不重放 · 拒答审计) ② **ECS 外部故障修复**: 中转 `zmax_relay`(39053) 与 `ws_relay`(8765) 两进程**双双不在** (只剩 nginx) → `/api/relay/*` 与 `/ws` **全 502** (studio/auto_loop 每 5s 重连刷日志 · 网页群聊不通) → 按技能 `http-relay-service` §9 拉起并复核全端点 200 ③ **网络性能优化 (实证 + 开机自启)**: 交错 A/B (Latin-square 轮转, 6 轮取中位) 实测远端单流下载 4.30→**5.12MB/s (+19%, 5/6 轮胜)**, 单旋钮复验 窗口天花板+`tcp_slow_start_after_idle=0` **+6.1% (5/6)**, 基线噪声带 ±3%; **无收益项一律拒绝并留证** (IPv6 AAAA 前置无代价 / WiFi 省电默认已关 / 国家码已 CN / `tcp_fin_timeout` 管不了 TIME_WAIT / busy_poll 不适用); 落地 `/etc/sysctl.d/99-zmax-net.conf` + `tools/zmax_net_optimize.sh` + `zmax-net-optimize.service` (**每次开机**应用旋钮+断言省电 off+DNS 预热+体检台账 jsonl); 另一条教训: 首测顺序偏差能造出 +19% 假提升 → 必须交错 ④ **AOI 几何口径对照** (同图实测): 线上方图 960×960 死白 4.51%/死白行 0 vs 我们原图自裁短边×2 死白 20.28%/死白行 14 → **训练口径取线上同源** (已核 AOI 数据集现存图 device=opt-10082 · 960×960) ⑤ **sim-to-real 上真机前预检 8/8** (`tools/sim2real_preflight.py`: 引擎真跑 metaworld 真物理+MOE 120 步 rc=0 · 造数据带渲染真产物 · 状态空间旁路活链路 8790 推理 Δ58/6s · 流形内核 · 通用策略 rollout · L5 桥 · AOI 只读 · 记忆层) + 真机只读 6/8 (Orin 0.225ms · 10082 判决 OK · 10083 四路由仍 404) + 在役服务 8/8 active, **全程零动作下发**; 修两个真 bug: `rollout_peg_check.py` 硬编码 `/home/xspace/...` 路径 (另一台机器) 被 `| tail` 掩盖成 rc=0 · `rollout_video.load_policy` 缺 left_right 分支 → 用 SmolVLA 类装载双脑权重报 `validate_features()` 缺参 TypeError (仿真 rollout 长期跑不通) ⑥ 取证口径两条纠正: **不要用管道尾命令的 rc 判断被测程序成败** · **画布行带背景节点 (bg/row_bg) 必须排除在重叠判定外** ⑦ 技能沉淀: 新建 `web-agent-canvas-bridge` · `linux-network-perf-boot`, 补 `http-relay-service` (agent 通道 + 双进程恢复) 与 `linux-host-maintenance`
+# v5.15.5: ★硬件卡加**远端(4060)真实数据行** + 数据源自动发现 —— APP 装在任何机器上都能看到 4060 实测
 #    候选数据源: ZMAX_HW_URL / ~/.zmax_hw_url → 本机8799 → 10.163.146.78:8799 → 192.168.23.50:8799
 #    另加「🔄 刷新数据源」按钮 + 底部标注当前数据源(便于排查)
 # v5.15.4: APP 内加 **DDS 节点区** — 节点列表(名/角色/设备/后端CUDA或MPS/训练进度/在线龄 + 🟢🔴状态灯)
