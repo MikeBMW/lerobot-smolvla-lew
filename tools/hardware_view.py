@@ -163,10 +163,30 @@ def remote():
     return d
 
 
+DDS_F = "/home/ubuntu/stable-wm-cache/reports/dds_latest.json"
+
+
+def dds_nodes():
+    """★ 从 DDS→JSON 桥读**所有节点**（4060 + Mac + ...）的硬件资源
+    —— 这是老倪要的"4060 和 mac 的硬件资源都显示, 用 DDS 传数据"
+    无数据时返回明确说明（不返回空对象, 避免前端显示 undefined）"""
+    import json as _j
+    if not os.path.isfile(DDS_F):
+        return {"ok": False, "note": "DDS 桥未运行 → 启动: /home/ubuntu/dds-venv/bin/python tools/dds_bridge.py",
+                "nodes": {}}
+    try:
+        d = _j.load(open(DDS_F, encoding="utf-8"))
+    except Exception as e:                                                      # noqa: BLE001
+        return {"ok": False, "note": "DDS JSON 解析失败: %s" % str(e)[:60], "nodes": {}}
+    d["ok"] = True
+    d["bridge_age_s"] = round(time.time() - (os.path.getmtime(DDS_F)), 1)
+    return d
+
+
 def collect():
     return {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "gpu": gpu(), "gpu_procs": gpu_procs(),
             "cpu": cpu(), "mem": mem(), "disk": disk(), "compute": throughput(),
-            "remote": remote()}
+            "remote": remote(), "dds": dds_nodes()}
 
 
 if __name__ == "__main__":

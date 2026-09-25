@@ -277,7 +277,22 @@ async function load(){
    <div class="card"><b>💾 存储</b>
      ${bar(d.used_pct,'#da3633')}
      <div style="font-size:12px">磁盘 <b>${d.used_gb}/${d.total_gb} GB</b> · 可用 <b class="st">${d.free_gb} GB</b></div>
-     <table style="margin-top:5px">${(d.dirs||[]).map(x=>`<tr><td>${x.name}</td><td>${x.gb} GB</td></tr>`).join('')}</table></div>`;
+     <table style="margin-top:5px">${(d.dirs||[]).map(x=>`<tr><td>${x.name}</td><td>${x.gb} GB</td></tr>`).join('')}</table></div>
+   <div class="card"><b>🌐 DDS 三端硬件资源</b>
+     <div style="font-size:11px;color:#8b949e">${(hw.dds&&hw.dds.ok)?('桥运行中 · 节点 '+(Object.keys(hw.dds.nodes||{}).length)+' 个 · 数据龄 '+hw.dds.bridge_age_s+'s'):((hw.dds&&hw.dds.note)||'DDS 桥未运行')}</div>
+     ${Object.entries((hw.dds&&hw.dds.nodes)||{}).map(([nm,v])=>{
+        const h=v.hw||{}, p=v.prog||{};
+        const f=(x,d=1)=>(x==null||x<0)?'—':(+x).toFixed(d);
+        return `<div style="border-top:1px solid #21262d;margin-top:6px;padding-top:5px">
+          <b>${nm}</b> <span style="font-size:11px;color:#8b949e">${v.role||''} · ${h.backend||'?'}</span>
+          ${v.stale?'<span class="bad"> ⚠️ '+v.age_s+'s 未更新</span>':'<span class="st"> ✅ '+v.age_s+'s</span>'}
+          <div style="font-size:11px">${h.device_name||'—'}</div>
+          <div style="font-size:11px">GPU ${f(h.util_pct,0)}% · 显存 ${f(h.mem_used_mb,0)}/${f(h.mem_total_mb,0)}MB · ${f(h.temp_c,0)}°C · ${f(h.power_w)}W · ${f(h.clk_mhz,0)}MHz</div>
+          <div style="font-size:11px">CPU ${f(h.cpu_util_pct,0)}% (${h.cpu_cores||'—'}核) load ${f(h.load1)} · 内存 ${f(h.mem_avail_gb)}/${f(h.mem_total_gb)}GB · 盘可用 ${f(h.disk_free_gb)}/${f(h.disk_total_gb)}GB</div>
+          ${(p.step!=null&&p.step>=0)?`<div style="font-size:11px">训练 ${p.job||''} ${p.step}/${p.total} ${f(p.pct)}% loss ${f(p.loss,5)} best ${f(p.best_obs,5)}</div>`:''}
+          ${h.note?`<div style="font-size:10px;color:#8b949e">${h.note}</div>`:''}
+        </div>`;}).join('')||'<div style="font-size:11px;color:#8b949e">（等待节点上报 → 两端各跑一次: 4060 用 dds_node_4060.py, Mac 用 mac_hw_report.py --dds）</div>'}
+   </div>`;
  }
  const pg=await j('/api/progress');
  if(pg && pg.jobs){
