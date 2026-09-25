@@ -29,6 +29,26 @@ RELAY = os.environ.get("ZMAX_RELAY_URL", "http://datadrive.world/api/relay/uploa
 ROLE = os.environ.get("ZMAX_HW_ROLE", "mac")
 
 
+def _align_gpu(g: dict, training: dict | None = None) -> dict:
+    """**对齐 APP 读取的字段格式** (2026-09-25 实测发现)
+    APP/监控页 读的是: vram_used_mb / vram_total_mb / vram_used_pct / temp_c / power_w / clk_mhz
+    而我原来只给 mem_used_gb / mem_total_gb → APP 认不出 → Mac 卡片不显示显存。
+    这里两套都发 (向后兼容 + APP 可读)。
+    """
+    out = dict(g)
+    used_gb, total_gb = g.get("mem_used_gb"), g.get("mem_total_gb")
+    out["vram_used_mb"] = round(used_gb * 1024, 1) if used_gb is not None else None
+    out["vram_total_mb"] = round(total_gb * 1024, 1) if total_gb is not None else None
+    if used_gb is not None and total_gb:
+        out["vram_used_pct"] = round(used_gb / total_gb * 100, 1)
+    else:
+        out["vram_used_pct"] = None
+    out.setdefault("temp_c", None)
+    out.setdefault("power_w", None)
+    out.setdefault("clk_mhz", None)
+    return out
+
+
 def collect(measure_tflops: bool = False) -> dict:
     """采集: 本机 + DDS 收到的其他机器"""
     out = {"machines": {}, "collected_at": time.time(), "collector": ROLE}
@@ -40,9 +60,10 @@ def collect(measure_tflops: bool = False) -> dict:
         out["machines"][ROLE] = {
             "host": d["host"],
             "cpu": d["cpu"], "mem": d["mem"], "disk": d["disk"],
-            "gpu": d["gpu"], "compute": d["compute"],
+            "gpu": _align_gpu(d["gpu"]), "compute": d["compute"],
             "training": d["training"], "warnings": d.get("warn", []),
             "platform": d.get("platform"), "ts": d.get("ts"),
+            "train_steps_per_s": None,
             "source": "local_probe", "age_s": 0.0,
         }
     except Exception as e:
@@ -60,8 +81,9 @@ def collect(measure_tflops: bool = False) -> dict:
             out["machines"][r] = {
                 "host": m.get("host"),
                 "cpu": m["cpu"], "mem": m["mem"], "disk": m["disk"],
-                "gpu": m["gpu"], "compute": m["compute"],
+                "gpu": _align_gpu(m["gpu"]), "compute": m["compute"],
                 "training": m["training"],
+                "train_steps_per_s": None,
                 "source": "dds", "age_s": m.get("age_s"),
             }
     except Exception as e:
