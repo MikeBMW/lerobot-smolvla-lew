@@ -74,12 +74,15 @@ def probe_cpu() -> dict:
 
 
 # ── CPU 百分比: 加锁缓存 ──────────────────────────────────────────
-# ⚠️ 血泪坑: APP 里有两个调用方 (DDS 播报端 1Hz + 面板 QTimer 2s) 并发调 probe(),
+# ⚠️ 血泪坑 1: APP 里有两个调用方 (DDS 播报端 1Hz + 面板 QTimer 2s) 并发调 probe(),
 #    psutil.cpu_percent(interval=…) 每次调用都会重置内部基准 → 两个调用方互相
 #    "偷" 基准 → 结果恒 0.0% (面板看着像"没有硬件数据")。
 #    修法: 带锁 + 1s 缓存, 同一秒内所有调用方共享同一个真实采样值。
+# ⚠️ 血泪坑 2: macOS 上 interval=0.12 实测恒返回 0.0 (CPU tick 窗口太短, 取不到样本);
+#    实测 0.12→0.0 / 0.12→0.0 / 0.5→17.2 ⇒ 必须 ≥0.5s。
 _CPU_LOCK = threading.Lock()
 _CPU_CACHE: dict = {"ts": 0.0, "val": None}
+_CPU_SAMPLE_WINDOW = 0.5      # macOS 实测下限; 低于此值 psutil 恒返回 0.0
 
 
 def _cpu_percent_cached(min_interval: float = 1.0) -> float | None:
@@ -89,7 +92,7 @@ def _cpu_percent_cached(min_interval: float = 1.0) -> float | None:
         now = time.time()
         if _CPU_CACHE["val"] is None or (now - _CPU_CACHE["ts"]) >= min_interval:
             try:
-                _CPU_CACHE["val"] = round(psutil.cpu_percent(interval=0.12), 1)
+                _CPU_CACHE["val"] = round(psutil.cpu_percent(interval=_CPU_SAMPLE_WINDOW), 1)
                 _CPU_CACHE["ts"] = time.time()
             except Exception:
                 pass
