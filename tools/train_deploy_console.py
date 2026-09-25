@@ -62,11 +62,14 @@ TRAIN_CMDS = {
           "--aug 1 --aug-scale 0.90,1.10 --cache-gb 6 "
           "--holdout {swm}/datasets/v6_holdout_rand.h5 "
           "--files {swm}/datasets/v6_sub25k.h5,{swm}/datasets/l5_new_sub12k.h5 "
+          "--progress-file {swm}/reports/progress_{jid}.json --progress-every 10 "
           "--save {swm}/checkpoints/unified_web",
     "L4moe": "{v} tools/stage_moe_backbone.py --steps {n} --batch 64 --workers 3 --stats 250 "
              "--route prior --aug 1 --aug-scale 0.90,1.10 --cache-gb 5 "
              "--holdout {swm}/datasets/v6_holdout_rand.h5 "
-             "--files {swm}/datasets/v6_sub25k.h5 --save {swm}/checkpoints/stage_moe_web",
+             "--files {swm}/datasets/v6_sub25k.h5 "
+             "--progress-file {swm}/reports/progress_{jid}.json --progress-every 10 "
+             "--save {swm}/checkpoints/stage_moe_web",
     # L2 归小芳 → 平台只生成"处理单", 不本机执行
     "L2": "# 【待小芳执行 · Mac】L2 检测层微调\n"
           "# 1) 拉取最新数据切片: <网盘/relay 链接>\n"
@@ -147,7 +150,7 @@ def start_train(layer, steps):
                 "dispatch": TRAIN_CMDS[layer]}
     jid = "job_%s_%d" % (layer.lower(), int(time.time()))
     log = "/tmp/web_%s.log" % jid
-    cmd = TRAIN_CMDS[layer].format(v=VENV, n=int(steps), swm=SWM)
+    cmd = TRAIN_CMDS[layer].format(v=VENV, n=int(steps), swm=SWM, jid=jid)
     try:
         f = open(log, "w")
         p = subprocess.Popen(cmd, shell=True, cwd=REPO, stdout=f, stderr=subprocess.STDOUT)
@@ -247,7 +250,14 @@ async function load(){
  document.getElementById('grid').innerHTML=h;
  const pg=await j('/api/progress');
  if(pg && pg.jobs){
-  const run=pg.jobs.find(x=>x.running)||pg.jobs[0];
+  // ★ 优先用**实时进度文件**(真·10步一跳), 回退到日志解析
+  const lv=(pg.live||[]).find(x=>x.running && !x.stale);
+  const run=lv? {log:lv.file, running:true, step:lv.step, total:lv.total, pct:lv.pct,
+                 sps:lv.sps, loss:lv.loss, eta_s:(lv.total-lv.step)/Math.max(1e-6,lv.sps||1),
+                 holdout_obs:(lv.best_obs!=null?lv.best_obs:'—'), holdout_act:'(见日志)',
+                 best_obs:(lv.best_obs!=null?lv.best_obs:'—'), best_act:'—',
+                 gain_obs: pg.jobs[0]?pg.jobs[0].gain_obs:'—', gain_act: pg.jobs[0]?pg.jobs[0].gain_act:'—',
+                 live:true} : (pg.jobs.find(x=>x.running)||pg.jobs[0]);
   document.getElementById('pgsub').textContent = run?
     `${run.log} · ${run.running?'🔴 训练中':'已结束'} · ${run.step}/${run.total} 步 · ${run.sps} 步/s · loss ${run.loss} · ETA ${Math.round((run.eta_s||0)/60)} 分钟` : '无训练日志';
   if(run){

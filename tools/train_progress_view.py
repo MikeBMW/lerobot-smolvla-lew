@@ -57,6 +57,25 @@ def _parse_log(path):
     return out
 
 
+def live_progress():
+    """★ 真·实时进度: 直接读训练脚本写的进度文件（10 步一跳, 不受日志粒度限制）"""
+    out = []
+    for f in glob.glob(os.path.join(SWM, "reports", "progress_*.json")) + \
+            glob.glob("/tmp/progress_*.json"):
+        try:
+            d = json.load(open(f, encoding="utf-8"))
+        except Exception:                                                      # noqa: BLE001
+            continue
+        age = time.time() - (d.get("ts") or 0)
+        d["age_s"] = round(age, 1)
+        d["stale"] = age > 30          # 30 秒没更新 → 视为已停
+        d["source"] = "progress_file"
+        d["file"] = os.path.basename(f)
+        out.append(d)
+    out.sort(key=lambda x: x.get("ts") or 0, reverse=True)
+    return out
+
+
 def collect():
     jobs = []
     seen = set()
@@ -79,7 +98,8 @@ def collect():
         m = os.path.getmtime(d)
         if best_ckpt is None or m > best_ckpt[0]:
             best_ckpt = (m, d)
-    return {"jobs": jobs[:8], "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+    live = live_progress()
+    return {"live": live, "jobs": jobs[:8], "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
             "baseline": BASELINE,
             "latest_ckpt": ({"path": os.path.relpath(best_ckpt[1], REPO),
                              "mb": round(os.path.getsize(best_ckpt[1]) / 1048576, 1),

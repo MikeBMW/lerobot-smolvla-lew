@@ -22,6 +22,7 @@
 路由信号: 数据自带 skill_ctx[:,13:20] (7 阶段概率), 不依赖引擎额外输入
 """
 import argparse
+import json
 import os
 import sys
 import time
@@ -143,6 +144,8 @@ def main():
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--wd", type=float, default=0.01)
     ap.add_argument("--stats", type=int, default=300)
+    ap.add_argument("--progress-file", default="", help="真·实时进度 JSON（控制台进度条直读）")
+    ap.add_argument("--progress-every", type=int, default=10)
     ap.add_argument("--chunk", type=int, default=7)
     ap.add_argument("--route", default="prior", choices=["prior", "soft"], help="prior=按阶段硬路由(推荐)")
     ap.add_argument("--aug", type=int, default=0)
@@ -166,6 +169,8 @@ def main():
 
     trunk = AutoModel.from_pretrained(MODEL, dtype=torch.float32).vision_model
     net = StageMoE(trunk, chunk=a.chunk, freeze=1).to(dev)
+    if a.progress_file:
+        os.makedirs(os.path.dirname(os.path.abspath(a.progress_file)), exist_ok=True)
     print(f"   🚦 路由模式: **{a.route}**" + (" (按阶段先验硬路由)" if a.route == "prior" else " (学习门控, 实测会坍缩)"))
     if a.init and os.path.isfile(a.init):
         sd0 = torch.load(a.init, map_location="cpu", weights_only=False)
@@ -179,6 +184,8 @@ def main():
     RealH5._AUG = int(a.aug)
     _sl, _sh = [float(x) for x in a.aug_scale.split(",")]
     RealH5._AUG_SCALE = (min(_sl, _sh), max(_sl, _sh))
+    if a.progress_file:
+        os.makedirs(os.path.dirname(os.path.abspath(a.progress_file)), exist_ok=True)
     print(f"   🎨 增强: {'开' if a.aug else '关'} | 缩放 {RealH5._AUG_SCALE}")
     RealH5.build_pixel_cache(files, cap_bytes=(int(a.cache_gb * 1024**3) or None))
     ds = RealH5Stage(files, a.chunk)
@@ -228,6 +235,21 @@ def main():
         gn = nn.utils.clip_grad_norm_([p for p in net.parameters() if p.requires_grad], 1.0)
         opt.step()
 
+        # ★★ 真·实时进度（与 --stats 解耦）
+        if a.progress_file and (s % max(1, a.progress_every) == 0 or s == 1):
+            try:
+                json.dump({"step": s, "total": a.steps, "pct": round(100.0 * s / a.steps, 1),
+                           "loss": round(float(L.item()), 6),
+                           "sps": round(s / max(1e-6, time.time() - t0), 2),
+                           "best_obs": (round(float(best[0]), 6) if best[0] < 9e8 else None),
+                           "best_step": best[1], "ts": time.time(), "pid": os.getpid(),
+                           "route": a.route, "save": a.save, "running": True},
+                          open(a.progress_file, "w", encoding="utf-8"), ensure_ascii=False)
+            except Exception as _pe:                                        # noqa: BLE001
+                if not getattr(a, "_pf_warned", False):
+                    print("  ⚠️ 进度文件写入失败(不影响训练): %s: %s" % (type(_pe).__name__, _pe), flush=True)
+                    a._pf_warned = True
+
         if s % a.stats == 0 or s == 1:
             net.eval()
             with torch.no_grad():
@@ -253,6 +275,13 @@ def main():
                   f"| ∇ {float(gn):.2e} | {s/(time.time()-t0):.1f}步/s | 留出 观测 {mo:.4f} 动作 {ma:.4f} "
                   f"(best {best[0]:.4f}@{best[1]}) | 基线 {base_o:.4f}/{base_a:.4f}", flush=True)
     print(f"✅ 完成 {a.steps} 步 / {time.time()-t0:.0f}s")
+    if a.progress_file:
+        try:
+            _d = json.load(open(a.progress_file, encoding="utf-8"))
+            _d.update({"running": False, "pct": 100.0, "finished_ts": time.time()})
+            json.dump(_d, open(a.progress_file, "w", encoding="utf-8"), ensure_ascii=False)
+        except Exception:                                                   # noqa: BLE001
+            pass
     if a.save:
         print(f"产物 → {a.save}/moe.pt")
 

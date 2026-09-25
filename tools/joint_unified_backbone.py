@@ -262,6 +262,8 @@ def main():
     ap.add_argument("--files", default=f"{SWM}/datasets/optical_insert_v6_disturb.h5")
     ap.add_argument("--holdout", default="")
     ap.add_argument("--stats", type=int, default=250)
+    ap.add_argument("--progress-file", default="", help="真·实时进度 JSON（控制台进度条直读, 不受 stats 粒度限制）")
+    ap.add_argument("--progress-every", type=int, default=10)
     ap.add_argument("--save", default="")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--pixel-cache", type=int, default=1, help="1=像素进内存(消除h5随机读瓶颈)")
@@ -340,6 +342,21 @@ def main():
         gn = torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 1.0)
         opt.step()
 
+        # ★★ 真·实时进度（与 --stats 解耦: 控制台进度条 10 步一跳, 不是 250 步）
+        if a.progress_file and (s % max(1, a.progress_every) == 0 or s == 1):
+            try:
+                json.dump({"step": s, "total": a.steps, "pct": round(100.0 * s / a.steps, 1),
+                           "loss": round(float(L.item()), 6),
+                           "sps": round(s / max(1e-6, time.time() - t0), 2),
+                           "best_obs": (round(float(best[0]), 6) if best[0] < 9e8 else None),
+                           "best_step": best[1], "ts": time.time(), "pid": os.getpid(),
+                           "save": a.save, "running": True},
+                          open(a.progress_file, "w", encoding="utf-8"), ensure_ascii=False)
+            except Exception as _pe:                                        # noqa: BLE001
+                if not getattr(a, "_pf_warned", False):
+                    print("  ⚠️ 进度文件写入失败(不影响训练): %s: %s" % (type(_pe).__name__, _pe), flush=True)
+                    a._pf_warned = True
+
         if s % a.stats == 0 or s == 1:
             sps = s / max(1e-6, time.time() - t0)
             ho = ""
@@ -356,6 +373,13 @@ def main():
                   f"L3 {L_act.item():.4f} | ∇ {float(gn):.2e} | {sps:.1f}步/s | {gpu:.0f}MB{ho}", flush=True)
 
     print(f"✅ 完成 {a.steps} 步 / {time.time()-t0:.0f}s")
+    if a.progress_file:
+        try:
+            _d = json.load(open(a.progress_file, encoding="utf-8"))
+            _d.update({"running": False, "pct": 100.0, "finished_ts": time.time()})
+            json.dump(_d, open(a.progress_file, "w", encoding="utf-8"), ensure_ascii=False)
+        except Exception:                                                   # noqa: BLE001
+            pass
     if a.save:
         print(f"产物 → {a.save}/unified.pt")
     return 0
