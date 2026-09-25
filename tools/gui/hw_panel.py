@@ -167,10 +167,16 @@ class HwMonitorPanel(QWidget):
         _paint(self.bar_disk, k.get("percent"))
         self.lbl_disk.setText(f"{k.get('used_gb')}/{k.get('total_gb')}GB · 可用{k.get('free_gb')}GB")
 
-        tf, eff = cp.get("tflops_fp32"), cp.get("tflops_effective")
-        self.lbl_compute.setText(
-            f"标称 {tf} TFLOPS FP32" + (f" · 当前有效 ≈ {eff} TFLOPS" if eff is not None else "")
-            + (f" ({cp.get('note')})" if cp.get("note") else ""))
+        tf, eff, meas = cp.get("tflops_fp32"), cp.get("tflops_effective"), cp.get("tflops_measured")
+        if meas is not None:
+            txt = f"实测 {meas} TFLOPS FP32"
+        else:
+            txt = f"标称 {tf} TFLOPS FP32 [未实测]"
+        if eff is not None:
+            txt += f" · 当前有效 ≈ {eff} TFLOPS"
+        if cp.get("note"):
+            txt += f" ({cp['note']})"
+        self.lbl_compute.setText(txt)
 
         if tr.get("active"):
             names = ", ".join(sorted({p["name"] for p in tr["procs"]})[:3])

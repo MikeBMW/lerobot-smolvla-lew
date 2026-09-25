@@ -183,28 +183,95 @@ def probe_gpu(warn: list) -> dict:
 
 
 # ────────────────────────── 算力 ──────────────────────────
-def probe_compute(gpu: dict) -> dict:
+# 实测缓存 (benchmark 有成本, 同设备只跑一次)
+_TFLOPS_CACHE: dict = {}
+
+
+def benchmark_tflops(device: str = "mps", size: int = 1024, iters: int = 30,
+                     warmup: int = 5) -> float | None:
+    """**实测** FP32 算力 (TFLOPS) — 真跑 matmul 统计 FLOPs, 不是查表
+
+    FLOPs = 2 * N^3 (乘加各算 1) · 大矩阵才能吃满算力, 默认 1024x1024。
+    返回 None 表示设备不可用/测不出 (诚实标注, 不编数)。
+    """
+    key = f"{device}:{size}:{iters}"
+    if key in _TFLOPS_CACHE:
+        return _TFLOPS_CACHE[key]
+    try:
+        import torch  # type: ignore
+        dev = torch.device(device)
+        if device == "mps" and not (getattr(torch.backends, "mps", None)
+                                    and torch.backends.mps.is_available()):
+            return None
+        if device == "cuda" and not torch.cuda.is_available():
+            return None
+        a = torch.randn(size, size, dtype=torch.float32, device=dev)
+        b = torch.randn(size, size, dtype=torch.float32, device=dev)
+        for _ in range(warmup):                      # 预热 (首次含编译/分配)
+            _ = a @ b
+        _sync(device)
+        t0 = time.perf_counter()
+        for _ in range(iters):
+            _ = a @ b
+        _sync(device)
+        dt = time.perf_counter() - t0
+        if dt <= 0:
+            return None
+        tf = (2.0 * size ** 3 * iters) / dt / 1e12
+        _TFLOPS_CACHE[key] = round(tf, 2)
+        return _TFLOPS_CACHE[key]
+    except Exception:
+        return None
+
+
+def _sync(device: str):
+    """等设备算完 (测时必需, 否则测到的是下发耗时)"""
+    try:
+        import torch  # type: ignore
+        if device == "cuda":
+            torch.cuda.synchronize()
+        elif device == "mps":
+            torch.mps.synchronize()
+    except Exception:
+        pass
+
+
+def probe_compute(gpu: dict, measure: bool = True) -> dict:
     chip = ""
     if sys.platform == "darwin":
         chip = _run(["sysctl", "-n", "machdep.cpu.brand_string"]).strip()
-    tf = _TFLOPS.get(chip)
+    nominal = _TFLOPS.get(chip)
     note = ""
     if gpu.get("backend") == "cuda":
         gname = gpu.get("name", "")
         for k, v in _TFLOPS_NV.items():
             if k in gname:
-                tf = v
+                nominal = v
                 break
-        if tf is None:
-            tf = _TFLOPS_NV.get("Orin") if "Orin" in gname or "tegra" in gname.lower() else None
-        note = "NVIDIA 标称 FP32"
+        if nominal is None and ("Orin" in gname or "tegra" in gname.lower()):
+            nominal = _TFLOPS_NV.get("Orin")
+        note = "NVIDIA"
     elif gpu.get("backend") == "mps":
-        note = f"{chip} 标称 FP32 (GPU 核心)" if tf else "Apple Silicon 标称 FP32"
-    est = None  # 实测算力需要 benchmark, 这里只给标称 + 实时利用率
-    if gpu.get("util_pct") is not None and tf:
-        est = round(tf * gpu["util_pct"] / 100.0, 2)
-    return {"device": gpu.get("backend", "none"), "tflops_fp32": tf,
-            "tflops_effective": est, "note": note, "cpu_brand": chip or platform.processor()}
+        note = f"{chip} 统一内存 GPU" if nominal else "Apple Silicon"
+    elif gpu.get("backend") == "cpu" and sys.platform == "darwin":
+        nominal = _TFLOPS.get(chip)
+        note = "CPU (无加速器)"
+
+    # ★ 实测算力 (优先于标称)
+    backend = gpu.get("backend", "none")
+    measured = None
+    if measure and backend in ("mps", "cuda"):
+        measured = benchmark_tflops(backend)
+
+    # 当前有效 = 实测 × 实时利用率 (没实测就退回标称×利用率)
+    base = measured if measured is not None else nominal
+    eff = None
+    if gpu.get("util_pct") is not None and base:
+        eff = round(base * gpu["util_pct"] / 100.0, 2)
+    return {"device": backend, "tflops_measured": measured, "tflops_fp32": nominal,
+            "tflops_effective": eff, "note": note,
+            "cpu_brand": chip or platform.processor(),
+            "basis": "实测" if measured is not None else ("标称" if nominal else "无")}
 
 
 # ────────────────────────── 训练进程 ──────────────────────────
@@ -254,6 +321,94 @@ def probe(disk_root: str | None = None) -> dict:
             "training": train, "warn": warn}
 
 
+def probe_remote(host: str, user: str = "xspace", port: int = 22,
+                 timeout: float = 8.0, key: str | None = None,
+                 remote_py: str = "python3") -> dict:
+    """**远程 GPU 机器实测** (4060/V100/4090) — SSH 跑 nvidia-smi + 远程 matmul 实测
+
+    返回结构与 probe() 同构 (只填 cpu/mem/disk/gpu/compute 能取到的部分);
+    失败时返回 {"ok": False, "err": ...} — 上层按"离线"显示, 不编数。
+    """
+    import shlex
+    base = ["ssh", "-o", f"ConnectTimeout={int(timeout)}", "-o", "BatchMode=yes",
+            "-p", str(port)]
+    if key:
+        base += ["-i", os.path.expanduser(key)]
+    tgt = f"{user}@{host}"
+
+    # 一条命令拿全: GPU(名称/利用率/显存) + CPU负载 + 内存 + 磁盘
+    rcmd = (
+        "echo '@@GPU'; nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total"
+        " --format=csv,noheader,nounits 2>/dev/null | head -1; "
+        "echo '@@CPU'; nproc 2>/dev/null; cat /proc/loadavg 2>/dev/null; "
+        "echo '@@MEM'; free -m 2>/dev/null | awk '/^Mem:/{print $2\" \"$3\" \"$7}'; "
+        "echo '@@DSK'; df -m / 2>/dev/null | tail -1 | awk '{print $2\" \"$3\" \"$4}'"
+    )
+    try:
+        r = subprocess.run(base + [tgt, rcmd], capture_output=True, text=True, timeout=timeout + 6)
+    except Exception as e:
+        return {"ok": False, "err": f"{type(e).__name__}: {str(e)[:80]}", "host": host}
+    if r.returncode != 0:
+        return {"ok": False, "err": (r.stderr or "").strip()[:120] or f"ssh exit {r.returncode}",
+                "host": host}
+
+    out = {"ok": True, "host": f"{user}@{host}", "gpu": None, "cpu": None, "mem": None,
+           "disk": None, "tflops_measured": None}
+    sec = None
+    for line in (r.stdout or "").splitlines():
+        s = line.strip()
+        if s.startswith("@@"):
+            sec = s[2:]
+            continue
+        if not s:
+            continue
+        if sec == "GPU":
+            p = [x.strip() for x in s.split(",")]
+            if len(p) >= 4:
+                out["gpu"] = {"backend": "cuda", "name": p[0], "util_pct": float(p[1]),
+                              "mem_used_gb": round(float(p[2]) / 1024, 2),
+                              "mem_total_gb": round(float(p[3]) / 1024, 2)}
+        elif sec == "CPU":
+            if s.isdigit():
+                out["cpu"] = {"cores": int(s)}
+            elif out.get("cpu") is not None:
+                l = s.split()
+                if len(l) >= 3:
+                    out["cpu"].update(load1=float(l[0]), load5=float(l[1]), load15=float(l[2]))
+        elif sec == "MEM":
+            l = s.split()
+            if len(l) >= 3:
+                tot, used, avail = (float(x) / 1024 for x in l[:3])
+                out["mem"] = {"total_gb": round(tot, 1), "used_gb": round(used, 1),
+                              "avail_gb": round(avail, 1),
+                              "percent": round(used / tot * 100, 1) if tot else None}
+        elif sec == "DSK":
+            l = s.split()
+            if len(l) >= 3:
+                tot, used, free = (float(x) / 1024 for x in l[:3])
+                out["disk"] = {"total_gb": round(tot, 1), "used_gb": round(used, 1),
+                               "free_gb": round(free, 1),
+                               "percent": round(used / tot * 100, 1) if tot else None}
+
+    # 远程实测算力 (有 torch 才测; 失败不影响其余字段)
+    bench = (
+        f"{remote_py} -c \"import torch,time;"
+        "d=torch.device('cuda');a=torch.randn(1024,1024,device=d);b=torch.randn(1024,1024,device=d);"
+        "[a@b for _ in range(5)];torch.cuda.synchronize();t=time.perf_counter();"
+        "[a@b for _ in range(30)];torch.cuda.synchronize();"
+        "print(round(2*1024**3*30/(time.perf_counter()-t)/1e12,2))\" 2>/dev/null"
+    )
+    try:
+        rb = subprocess.run(base + [tgt, f"cd ~ && {bench}"], capture_output=True, text=True,
+                            timeout=max(25.0, timeout))
+        v = (rb.stdout or "").strip().splitlines()
+        if v and v[-1].replace(".", "").isdigit():
+            out["tflops_measured"] = float(v[-1])
+    except Exception:
+        pass
+    return out
+
+
 def fmt(d: dict) -> str:
     """人类可读摘要 (日志/终端用)"""
     c, m, k, g, cp, t = d["cpu"], d["mem"], d["disk"], d["gpu"], d["compute"], d["training"]
@@ -263,7 +418,10 @@ def fmt(d: dict) -> str:
              f" · swap {m['swap_used_gb']}/{m['swap_total_gb']}GB ({m['swap_percent']}%)")
     L.append(f"  磁盘 {k['used_gb']}/{k['total_gb']}GB ({k['percent']}%) · 可用 {k['free_gb']}GB")
     L.append(f"  GPU  {g['backend'].upper()} {g['name']} · 利用率 {g['util_pct']}% · 显存 {g['mem_used_gb']}GB")
-    L.append(f"  算力 标称 {cp['tflops_fp32']} TFLOPS FP32 · 当前有效 ≈ {cp['tflops_effective']} TFLOPS")
+    if cp.get("tflops_measured") is not None:
+        L.append(f"  算力 实测 {cp['tflops_measured']} TFLOPS FP32 (真跑 matmul) · 当前有效 ≈ {cp['tflops_effective']}")
+    else:
+        L.append(f"  算力 标称 {cp['tflops_fp32']} TFLOPS FP32 [未实测] · 当前有效 ≈ {cp['tflops_effective']}")
     L.append(f"  训练 {'✅ 进行中 ' + str(t['count']) + ' 个进程' if t['active'] else '⏹ 无'}")
     for w in d["warn"]:
         L.append(f"  ⚠️  {w}")
