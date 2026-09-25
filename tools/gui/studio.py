@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10647,7 +10647,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.3 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.4 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10655,10 +10655,13 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.3 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.4 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.15.3: ★硬件参数**必须走DDS** — 桌面APP进程内直连 DDS 订阅 zmax/hw_state, 4060+Mac 两端并列
+        # v5.15.4: APP 内加 **DDS 节点区** — 节点列表(名/角色/设备/后端CUDA或MPS/训练进度/在线龄 + 🟢🔴状态灯)
+#    + 右下角「📡 启动本机 DDS 发布」按钮(一键在本机起 DDS 发布, 自包含不依赖外部脚本)
+#    实测: 5s 发现 1 节点 · 传输=dds-inproc(DDS 直连)
+# v5.15.3: ★硬件参数**必须走DDS** — 桌面APP进程内直连 DDS 订阅 zmax/hw_state, 4060+Mac 两端并列
 #    三级: 进程内DDS(首选) → dds-venv子进程DDS桥 → HTTP兜底(会明确标注"非DDS")
 #    CI 打包带 cyclonedds + dds 数据(_MEIPASS); 卡片标注传输方式(实测 DDS 直连)
 #    修: 模块级 import threading 缺失(此前插到函数里→APP 直接崩)
