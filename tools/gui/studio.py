@@ -10916,27 +10916,49 @@ class StudioMainWindow(QMainWindow):
         """🛰 切换 DDS 观测层模式 (老倪 2026-09-25:
         「topic 用于测试/标定/诊断, 量产时不用」)
         off=量产(零开销) · test=全镜像 · calib=只标定 · diag=只诊断 · status=查状态
+
+        审计落盘 /tmp/zmax_ss_topic_audit.json — 便于外部核验"app 内观测层真活着"
+        (老倪: 要实测不要标称; 命令通道是否生效必须可证实)
         """
+        import json as _json
+        import time as _time
         try:
             from ss_topic_bus import bus as _tb  # noqa: PLC0415
         except Exception as e:
             self.statusBar().showMessage(f"🛰 DDS 观测层不可用: {e}", 4000)
+            try:
+                _json.dump({"ok": False, "err": f"{type(e).__name__}: {e}",
+                            "ts": _time.strftime("%Y-%m-%d %H:%M:%S")},
+                           open("/tmp/zmax_ss_topic_audit.json", "w", encoding="utf-8"),
+                           ensure_ascii=False, indent=1)
+            except Exception:
+                pass
             return
         if m == "status":
             a = _tb.audit()
             self.statusBar().showMessage(
                 f"🛰 DDS观测层 mode={a['mode']} enabled={a['enabled']} "
                 f"backend={a['backend']} sent={a['sent']} topics={a['topics']}", 8000)
-            return
-        ok = _tb.set_mode(m)
-        a = _tb.audit()
-        icon = "🔴" if a["mode"] == "off" else "🟢"
-        extra = " (量产: 零 DDS 痕迹)" if a["mode"] == "off" else ""
-        self.statusBar().showMessage(
-            f"{icon} DDS观测层 → {a['mode']}{extra} · backend={a['backend']}",
-            6000 if ok else 4000)
+        else:
+            _tb.set_mode(m)
+            a = _tb.audit()
+            icon = "🔴" if a["mode"] == "off" else "🟢"
+            extra = " (量产: 零 DDS 痕迹)" if a["mode"] == "off" else ""
+            self.statusBar().showMessage(
+                f"{icon} DDS观测层 → {a['mode']}{extra} · backend={a['backend']}",
+                6000)
+            try:
+                self._log(f"🛰 DDS 观测层模式 = {a['mode']}{extra}")
+            except Exception:
+                pass
+        # 审计落盘 (外部可核验)
         try:
-            self._log(f"🛰 DDS 观测层模式 = {a['mode']}{extra}")
+            a = _tb.audit()
+            a["ok"] = True
+            a["cmd"] = m
+            a["ts"] = _time.strftime("%Y-%m-%d %H:%M:%S")
+            _json.dump(a, open("/tmp/zmax_ss_topic_audit.json", "w", encoding="utf-8"),
+                       ensure_ascii=False, indent=1)
         except Exception:
             pass
 
