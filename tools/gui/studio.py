@@ -1299,6 +1299,29 @@ class HomeWidget(QWidget):
         hero = self._hero()
         layout.addWidget(hero)
 
+        # ═══ 🖥 训练硬件集群 (DDS 实时) — 2026-09-23 小芳 ═══════════════
+        # 首页直接可见: Mac/4060/Orin/4090 的 负载·存储·算力
+        # 数据经真 DDS (CycloneDDS) 传递, APP 自身即 DDS 节点
+        self._hw_fleet = None
+        self._hw_dds = None
+        self._hw_dds_timer = None
+        try:
+            from hw_fleet_panel import HwFleetPanel
+            self._hw_fleet = HwFleetPanel(roles=("mac", "4060", "orin", "4090"))
+            layout.addWidget(self._hw_fleet)
+        except Exception as _e:
+            _lbl = QLabel(f"⚠️ 硬件面板未加载: {type(_e).__name__}: {str(_e)[:90]}")
+            _lbl.setStyleSheet("color:#e0a030;font-size:12px;")
+            layout.addWidget(_lbl)
+        try:
+            from hw_dds import HwPublisher
+            self._hw_dds = HwPublisher(role="mac", measure_tflops=True)
+            self._hw_dds_timer = QTimer(self)
+            self._hw_dds_timer.timeout.connect(self._hw_dds.tick)
+            self._hw_dds_timer.start(1000)          # 1Hz 播报本机硬件
+        except Exception:
+            self._hw_dds = None
+
         # --- 架构流程 ---
         layout.addWidget(ArchFlowBar())
 
@@ -8655,7 +8678,30 @@ class MonitorModule(SubModuleWidget):
         self.mon_log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
         self.mon_log.setText("  就绪\n")
         bl.addWidget(self.mon_log)
-        
+
+        # ═══ 🖥 训练硬件集群 (DDS 实时) ═══════════════════════════════
+        # 2026-09-23 小芳: Mac/4060/Orin/4090 硬件资源经真 DDS (CycloneDDS)
+        #   话题 zmax/hw/metrics / IDL 类型 ZMaxHwMetrics
+        #   APP 自身即一个 DDS 节点: 既播报本机, 又订阅其他机器
+        self._hw_fleet = None
+        self._hw_dds = None
+        self._hw_dds_timer = None
+        try:
+            from hw_fleet_panel import HwFleetPanel
+            self._hw_fleet = HwFleetPanel(roles=("mac", "4060", "orin", "4090"))
+            bl.addWidget(self._hw_fleet)
+        except Exception as _e:
+            self.mon_log.append(f"⚠️ 硬件面板未加载: {type(_e).__name__}: {str(_e)[:80]}")
+        try:
+            from hw_dds import HwPublisher
+            self._hw_dds = HwPublisher(role="mac", measure_tflops=True)
+            self._hw_dds_timer = QTimer(self)
+            self._hw_dds_timer.timeout.connect(self._hw_dds.tick)
+            self._hw_dds_timer.start(1000)      # 1Hz 播报本机硬件到 DDS
+            self.mon_log.append("🖥 DDS 节点已启动 (role=mac · 话题 zmax/hw/metrics)")
+        except Exception as _e:
+            self.mon_log.append(f"⚠️ DDS 节点未启动: {type(_e).__name__}: {str(_e)[:80]}")
+
         body.setLayout(bl)
         self._build_shell(body)
         

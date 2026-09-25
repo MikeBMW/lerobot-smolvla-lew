@@ -205,7 +205,10 @@ class HwSubscriber:
     def poll(self) -> dict:
         for s in self.rd.take(N=200):
             m = from_idl(s)
-            r = m["role"] or "unknown"
+            r = (m.get("role") or "").strip()
+            if not r:
+                # 空 role 样本丢弃 (避免面板长出"❓ 未知节点"空卡)
+                continue
             cur = self.latest.get(r)
             if cur is None or m["ts"] >= cur["ts"]:
                 self.latest[r] = m
