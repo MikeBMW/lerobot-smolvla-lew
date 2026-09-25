@@ -297,13 +297,13 @@ def probe_training() -> dict:
 
 
 # ────────────────────────── 汇总 ──────────────────────────
-def probe(disk_root: str | None = None) -> dict:
+def probe(disk_root: str | None = None, measure: bool = True) -> dict:
     warn: list[str] = []
     cpu = probe_cpu()
     mem = probe_mem()
     disk = probe_disk(disk_root)
     gpu = probe_gpu(warn)
-    comp = probe_compute(gpu)
+    comp = probe_compute(gpu, measure=measure)
     train = probe_training()
     if mem.get("percent") is not None and mem["percent"] > 85:
         warn.append(f"内存紧张: {mem['percent']}% 已用 (可用 {mem['avail_gb']}GB)")
