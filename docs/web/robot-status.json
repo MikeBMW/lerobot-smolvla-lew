@@ -9,7 +9,7 @@
   "next_L1_s": 300,
   "next_L2_s": 1800,
   "manual_refresh": true,
-  "hardware_updated": "2026-09-25 19:00:32",
+  "hardware_updated": "2026-09-25 19:02:36",
   "hardware_source": "4060 本机 nvidia-smi/proc（真实采集）"
  },
  "L0": {
@@ -148,7 +148,7 @@
   "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
   "node": "4060（静静·工作端）",
   "backend": "cuda",
-  "ts": "2026-09-25 19:00:31",
+  "ts": "2026-09-25 19:02:34",
   "vram_used_mb": 340.0,
   "vram_total_mb": 8188.0,
   "vram_used_pct": 4.2,
@@ -159,7 +159,7 @@
   "gpu_clk_mhz": 1890.0,
   "cpu_util_pct": 1.5,
   "cpu_cores": 32,
-  "load1": 0.58,
+  "load1": 0.5,
   "mem_used_gb": 7.9,
   "mem_total_gb": 31.0,
   "mem_avail_gb": 23.1,
