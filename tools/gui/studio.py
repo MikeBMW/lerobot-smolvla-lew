@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10599,7 +10599,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10607,10 +10607,14 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.15.2: 桌面APP硬件卡加 **Mac(小芳·备份端)** 行 — 4060+MAC 两端并列显示
+        # v5.15.3: ★硬件参数**必须走DDS** — 桌面APP进程内直连 DDS 订阅 zmax/hw_state, 4060+Mac 两端并列
+#    三级: 进程内DDS(首选) → dds-venv子进程DDS桥 → HTTP兜底(会明确标注"非DDS")
+#    CI 打包带 cyclonedds + dds 数据(_MEIPASS); 卡片标注传输方式(实测 DDS 直连)
+#    修: 模块级 import threading 缺失(此前插到函数里→APP 直接崩)
+# v5.15.2: 桌面APP硬件卡加 **Mac(小芳·备份端)** 行 — 4060+MAC 两端并列显示
 #    数据: 4060=本机 nvidia-smi; Mac=经 DDS→JSON 桥(URL 可配 ZMAX_HW_URL/~/.zmax_hw_url)
 #    实测: DDS 发布 → 桥 → 卡 渲染全链路通过(含 MPS 可用性/内存/磁盘/CPU)
 # v5.15.1: 🖥 桌面APP首页加「硬件资源」卡 — 4060(本机)真实硬件参数实时显示:
