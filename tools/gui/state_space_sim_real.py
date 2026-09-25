@@ -3243,6 +3243,34 @@ class RealStateSpaceSim:
             if np.ndim(u) == 0:
                 u = np.zeros(4)
             u = np.asarray(u, dtype=float).copy()
+
+            # ═══ 🛰 DDS 观测层镜像 (2026-09-25 老倪) ═══════════════════════════
+            # 「状态空间工程全局数据空间用DDS协议」+「所有连线交换的数据都是 DDS topic」
+            #   + 「topic 用于测试/标定/诊断, 量产时不用」
+            #
+            # 一处覆盖**六层全链**(前馈/估计/残差/接触/决策/执行), 不必逐层改:
+            #   parallel.out_ff    前馈加速器输出 u_ff
+            #   parallel.contact   接触概率 + 残差 (状态校正器)
+            #   cognition.decide   动作调制器决策 (u_exec + 八阶段)
+            #   execution.u_exec   最终下发动作 (仅落盘, 零发布)
+            #
+            # 模式 off (量产): mirror() 内部 1s 节流比较后直接 return, 0.48µs/次,
+            #   零 socket / 零 DDS 库 / 零线程 —— 审计可证没在走 DDS。
+            try:
+                from ss_topic_bus import mirror as _mirror   # noqa: PLC0415
+                _step = len(tr.get("u_exec_vec", []))
+                _mirror("zmax/ss/engine/parallel.out_ff", {
+                    "u_ff": [round(float(x), 5) for x in np.asarray(u_ff, float).ravel()[:4]],
+                    "step": _step, "stage": stage}, kind="link")
+                _mirror("zmax/ss/engine/parallel.contact", {
+                    "contact_p": round(float(contact_p), 5),
+                    "residual": round(float(r_scalar), 6),
+                    "step": _step, "stage": stage}, kind="diag")
+                _mirror("zmax/ss/engine/cognition.decide", {
+                    "u_exec": [round(float(x), 5) for x in np.asarray(u, float).ravel()[:4]],
+                    "stage": stage, "step": _step}, kind="link")
+            except Exception:
+                pass
             # 🦾 2026-09-10 (老倪直攻滑脱): 回退重抓期间**保持闭合**。
             #   死循环的爆点是"滑移 → 回退到抓取之前 → gripper_cmd()=0 → 张爪 → 件真掉 → 再抓再滑"。
             #   只要工件仍在夹爪范围内(未落回台面), 就不许张爪; 确实脱落才允许松开重抓。

@@ -48,12 +48,43 @@ import time
 MODE_FILE = os.environ.get("ZMAX_SS_TOPIC_MODE_FILE", "/tmp/zmax_ss_topic_mode")
 VALID_MODES = ("off", "test", "calib", "diag", "on")
 
-# 标定模式关注的 topic 关键字 (命中才镜像)
-_CALIB_KEYS = ("calib", "handeye", "tcp", "plane", "intrinsic", "extrinsic",
-               "gauge", "标定", "cam", "pose")
-# 诊断模式关注的 topic 关键字
-_DIAG_KEYS = ("health", "status", "diag", "error", "warn", "latency", "fps",
-              "health", "监控", "诊断")
+# 标定模式: 从**真实标定配置**派生 scope (老倪 2026-09-25 缺口②)
+#   原来写死关键字 (calib/handeye/tcp/…) → 过宽 (含 "cam"/"pose" 的 topic 全被捞进来)
+#   现改为读 config/calib/zmax_calib.json 的真实标定项, 再拼上产线几何/标定线话题
+_CALIB_KEYS_FALLBACK = ("calib", "handeye", "T_base_cam", "plane_z", "depth_scale",
+                        "cell_geometry", "tool_payload", "control_tcp", "intrinsic",
+                        "extrinsic", "标定")
+# 诊断模式: 状态空间真实诊断信号 (接触/残差/阶段/健康/时延/帧率/告警)
+_DIAG_KEYS_FALLBACK = ("contact", "residual", "stage", "health", "status", "diag",
+                       "error", "warn", "latency", "fps", "monitor", "诊断", "engine")
+
+
+def _load_calib_scope() -> list:
+    """从 config/calib/zmax_calib.json 的真实标定项派生 scope"""
+    import json as _json
+    for base in (os.environ.get("ZMAX_REPO_ROOT", ""), os.getcwd(),
+                 os.path.dirname(os.path.dirname(os.path.dirname(
+                     os.path.abspath(__file__))))):
+        if not base:
+            continue
+        p = os.path.join(base, "config", "calib", "zmax_calib.json")
+        try:
+            if os.path.exists(p):
+                d = _json.load(open(p, encoding="utf-8"))
+                keys = [k for k in d.keys() if not k.startswith("_")]
+                if keys:
+                    return list(keys) + ["calib", "标定"]
+        except Exception:
+            pass
+    return list(_CALIB_KEYS_FALLBACK)
+
+
+def _load_diag_scope() -> list:
+    """诊断 scope: 状态空间真实诊断信号 (可用环境变量覆盖)"""
+    env = os.environ.get("ZMAX_SS_DIAG_SCOPE", "")
+    if env.strip():
+        return [s.strip() for s in env.split(",") if s.strip()]
+    return list(_DIAG_KEYS_FALLBACK)
 
 
 class TopicBus:
@@ -95,9 +126,9 @@ class TopicBus:
 
     def _apply_scope(self):
         if self._mode == "calib":
-            self._scope = list(_CALIB_KEYS)
+            self._scope = _load_calib_scope()      # 真实标定项 (config/calib/zmax_calib.json)
         elif self._mode == "diag":
-            self._scope = list(_DIAG_KEYS)
+            self._scope = _load_diag_scope()       # 真实诊断信号 (contact/residual/health/…)
         else:
             self._scope = []
 
