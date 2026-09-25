@@ -10895,6 +10895,10 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 1200, self._open_ss_3d_cmd)
                     elif line == "ss_run":
                         _oneshot(self, 300, self._run_ss_cmd)
+                    elif line in ("topic_off", "topic_test", "topic_calib",
+                                  "topic_diag", "topic_on", "topic_status"):
+                        # 🛰 2026-09-25 老倪:「topic 测试/标定/诊断用, 量产关闭」
+                        _oneshot(self, 200, lambda _l=line: self._set_ss_topic_mode(_l[6:]))
                     elif line in self.modules:
                         self._on_nav(line)
                     else:
@@ -10907,6 +10911,34 @@ class StudioMainWindow(QMainWindow):
     def _open_ss_canvas_cmd(self):
         if getattr(self, "simulink", None) is not None:
             self.simulink.open_state_space()
+
+    def _set_ss_topic_mode(self, m: str):
+        """🛰 切换 DDS 观测层模式 (老倪 2026-09-25:
+        「topic 用于测试/标定/诊断, 量产时不用」)
+        off=量产(零开销) · test=全镜像 · calib=只标定 · diag=只诊断 · status=查状态
+        """
+        try:
+            from ss_topic_bus import bus as _tb  # noqa: PLC0415
+        except Exception as e:
+            self.statusBar().showMessage(f"🛰 DDS 观测层不可用: {e}", 4000)
+            return
+        if m == "status":
+            a = _tb.audit()
+            self.statusBar().showMessage(
+                f"🛰 DDS观测层 mode={a['mode']} enabled={a['enabled']} "
+                f"backend={a['backend']} sent={a['sent']} topics={a['topics']}", 8000)
+            return
+        ok = _tb.set_mode(m)
+        a = _tb.audit()
+        icon = "🔴" if a["mode"] == "off" else "🟢"
+        extra = " (量产: 零 DDS 痕迹)" if a["mode"] == "off" else ""
+        self.statusBar().showMessage(
+            f"{icon} DDS观测层 → {a['mode']}{extra} · backend={a['backend']}",
+            6000 if ok else 4000)
+        try:
+            self._log(f"🛰 DDS 观测层模式 = {a['mode']}{extra}")
+        except Exception:
+            pass
 
     def _open_ss_3d_cmd(self):
         if getattr(self, "simulink", None) is not None:

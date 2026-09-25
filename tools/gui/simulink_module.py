@@ -5843,6 +5843,19 @@ class SimulinkModule(QWidget):
             mt = getattr(self, "model_tree", None)
             if mt is not None and hasattr(mt, "show_link_data"):
                 mt.show_link_data(info)
+            # ═══ 🛰 DDS 观测层镜像 (2026-09-25) ═══════════════════════════
+            # 老倪: 「所有连线交换的数据都应该是 DDS topic」+「量产会关闭」
+            # 模式 off(量产) → 此行 0.4µs 直接 return, 零 socket / 零 DDS 库
+            try:
+                from ss_topic_bus import mirror  # noqa: PLC0415
+                _topic = (link.get("dds_topic")
+                          or f"zmax/ss/canvas/{src_id}.{link.get('f_port')}"
+                             f"__{dst.get('id')}.{link.get('t_port')}")
+                mirror(_topic, {"label": info["label"], "value": val,
+                                "src": info["src_name"], "dst": info["dst_name"],
+                                "simulated": info["simulated"]}, kind="link")
+            except Exception:
+                pass
             # 高亮该连线 (金色加粗) — 先清其他连线的 _ss_hl 再点亮当前
             self.highlight_ss_links(None, None)
             try:

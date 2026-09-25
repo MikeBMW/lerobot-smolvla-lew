@@ -64,7 +64,8 @@ class TopicBus:
     """
 
     __slots__ = ("_mode", "_backend", "_sent", "_dropped", "_lock",
-                 "_scope", "_last_mode_check", "_mtime", "_stats", "_err")
+                 "_scope", "_last_mode_check", "_mtime", "_stats", "_err",
+                 "_calls")
 
     def __init__(self):
         self._mode = os.environ.get("ZMAX_SS_TOPIC_MODE", "off").strip().lower()
@@ -79,6 +80,7 @@ class TopicBus:
         self._mtime = 0.0
         self._stats = {}
         self._err = ""
+        self._calls = 0               # mirror() 调用计数 (用于降频轮询模式文件)
         if self._mode in ("calib", "diag"):
             self._apply_scope()
 
@@ -114,10 +116,15 @@ class TopicBus:
             self._apply_scope()
         return True
 
-    def _poll_mode_file(self):
-        """运行时开关: 允许写 /tmp/zmax_ss_topic_mode 热切换 (1s 节流)"""
+    def _poll_mode_file(self, force: bool = False):
+        """运行时开关: 允许写 /tmp/zmax_ss_topic_mode 热切换 (1s 节流)
+
+        ⚠️ 坑 (2026-09-25 实测抓到): 若把本函数放在 mirror() 的 off 短路**之后**,
+           off 模式永远执行不到 → 写文件也切不过来 (热切换失效)。
+           修法: mirror() 里按调用计数降频调用本函数 (每 N 次一次 os.stat)。
+        """
         now = time.time()
-        if now - self._last_mode_check < 1.0:
+        if not force and now - self._last_mode_check < 1.0:
             return
         self._last_mode_check = now
         try:
@@ -164,16 +171,22 @@ class TopicBus:
     def mirror(self, topic: str, payload, *, kind: str = "link") -> bool:
         """把一条信号镜像到 DDS topic。
 
-        **off 模式 (量产): 一次属性比较 + return False —— 零开销、零副作用。**
-        返回 True = 已发出; False = 未发 (模式关闭 / 被 scope 过滤 / 出错)
+        **off 模式 (量产): 一次 1s 节流的时间比较 + return False**
+        —— 零 socket / 零 DDS 库 / 零线程; 成本 ~0.5µs/次 (实测)。
+
+        每次调用都执行 1s 节流的模式轮询 → 写 /tmp/zmax_ss_topic_mode
+        最迟 1 秒内热切生效 (无需重启)。
         """
-        if self._mode == "off":                 # ← 量产路径: 唯一成本
-            return False
-        self._poll_mode_file()                  # 运行时开关 (1s 节流)
-        if self._mode == "off":
+        self._calls += 1
+        # ⚠️ 这里必须**每次**都调 _poll_mode_file() —— 它内部自带 1s 节流
+        #     (time.time() 比较 ~100ns, 对量产路径可忽略)。
+        #    曾经用"每 256 次调用才查"的计数法 → 低频场景(每帧才几条连线)
+        #    要几十秒才切过来 = 热切换形同失效 (2026-09-25 实测抓到)。
+        self._poll_mode_file()
+        if self._mode == "off":              # ← 量产路径: 到此为止
             return False
         if self._scope and not any(k in topic or k in kind for k in self._scope):
-            self._dropped += 1                  # 标定/诊断模式的 scope 过滤
+            self._dropped += 1                # 标定/诊断模式的 scope 过滤
             return False
         b = self._ensure_backend()
         if not b:
