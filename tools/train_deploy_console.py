@@ -39,6 +39,7 @@ SWM = "/home/ubuntu/stable-wm-cache"
 CKPT = os.path.join(SWM, "checkpoints")
 STATE = os.path.join(REPO, "docs", "PIPELINE_STATE.json")
 AUDIT = os.path.join(REPO, "docs", "deploy_audit.jsonl")
+MANIFOLD = os.path.join(REPO, "docs", "manifold_view.json")
 VENV = os.path.join(REPO, "gui-venv311", "bin", "python")
 
 # ─────── 分工策略（老倪 2026-09-24 定）───────
@@ -206,6 +207,14 @@ pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;fo
 <h1>🎛 Z-MAX 训练 · 部署控制台</h1>
 <div class="sub" id="sub">加载中…</div>
 <div class="grid" id="grid"></div>
+<div class="card" style="margin-top:12px"><h2>🌀 结构化流形（真实计算 · 由 SU(2) 流形引擎产出）</h2>
+<div class="sub" id="mfsub">加载中…</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+ <div style="flex:1;min-width:240px"><div style="font-size:12px;color:#8b949e">θ(t) 场景测地演化</div><canvas id="mfc" width="520" height="120" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px"></canvas></div>
+ <div style="flex:1;min-width:240px"><div style="font-size:12px;color:#8b949e">各层 θ（末帧）</div><div id="mfl" style="font-size:12px;padding-top:6px"></div></div>
+</div>
+<div style="font-size:12px;color:#8b949e;margin-top:8px">层间不可交换性 ‖[U_i,U_j]‖（耦合强度）</div>
+<pre id="mfcpl">—</pre></div>
 <div class="card" style="margin-top:12px"><h2>📜 操作审计（最近 12 条）</h2><pre id="audit">—</pre></div>
 <script>
 const OWN={L2:['小芳','mac'],L3:['静静',''],L4:['静静',''],L5:['静静',''],MEM:['静静','']};
@@ -230,6 +239,20 @@ async function load(){
   h+='</div>';
  }
  document.getElementById('grid').innerHTML=h;
+ const mf=await j('/api/manifold');
+ if(mf && mf.theta_series){
+  document.getElementById('mfsub').textContent=`${mf.n_steps} 步 · θ: min ${mf.theta_stats.min} max ${mf.theta_stats.max} mean ${mf.theta_stats.mean} std ${mf.theta_stats.std}`;
+  const cv=document.getElementById('mfc'), g=cv.getContext('2d'), s=mf.theta_series;
+  const mn=Math.min(...s), mx=Math.max(...s), W=cv.width, H=cv.height;
+  g.clearRect(0,0,W,H); g.strokeStyle='#00d4aa'; g.lineWidth=2; g.beginPath();
+  s.forEach((v,i)=>{const x=i/(s.length-1)*W, y=H-(v-mn)/Math.max(1e-9,mx-mn)*(H-16)-8; i?g.lineTo(x,y):g.moveTo(x,y)}); g.stroke();
+  const L=mf.per_step[mf.per_step.length-1].layer_theta;
+  document.getElementById('mfl').innerHTML=Object.entries(L).map(([k,v])=>
+    `<div style="margin:3px 0">${k} <span style="display:inline-block;height:9px;width:${Math.min(100,v/3.15*100)}%;background:#58a6ff;border-radius:3px"></span> ${v.toFixed(4)}</div>`).join('')
+    + `<div style="color:#8b949e;margin-top:4px">L5=0 → 未接 LLM（诚实标注）</div>`;
+  const nz=Object.entries(mf.coupling||{}).filter(([k,v])=>v>1e-9);
+  document.getElementById('mfcpl').textContent = nz.length? nz.map(([k,v])=>k+'  '+v).join('\n') : '（全零：各层元素可交换 → 无耦合）';
+ } else { document.getElementById('mfsub').textContent='尚无流形数据 → 跑 python tools/manifold_train_view.py'; }
  const a=await j('/api/audit'); document.getElementById('audit').textContent=a.lines.join('\\n')||'（暂无）';
 }
 async function tr(L){const n=(document.getElementById('n_'+L)||{}).value||2500;
@@ -260,6 +283,14 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, PAGE, "text/html; charset=utf-8")
         if u.path == "/api/status":
             return self._send(200, json.dumps(status(), ensure_ascii=False))
+        if u.path == "/api/manifold":
+            d = {}
+            if os.path.isfile(MANIFOLD):
+                try:
+                    d = json.load(open(MANIFOLD, encoding="utf-8"))
+                except Exception as e:                                    # noqa: BLE001
+                    d = {"err": "%s: %s" % (type(e).__name__, str(e)[:80])}
+            return self._send(200, json.dumps(d, ensure_ascii=False))
         if u.path == "/api/audit":
             lines = []
             if os.path.isfile(AUDIT):
