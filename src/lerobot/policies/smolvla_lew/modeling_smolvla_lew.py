@@ -234,11 +234,13 @@ class SmolVLALewModel(nn.Module):
     def forward(self, examples: list[dict]) -> dict[str, Tensor]:
         # breakpoint()
         batch_size = len(examples)
-        logger.info(
-            f"[SmolVLALew] Forward pass: batch_size={batch_size}, "
-            f"has_action={'action' in examples[0] and examples[0]['action'] is not None}, "
-            f"le_world_model={'enabled' if self.le_world_model is not None else 'disabled'}, "
-            f"enable_lew_world_model={self.config.enable_lew_world_model if hasattr(self, 'config') else 'N/A'}"
+        # ★ 2026-09-26 老倪: 逐步打印 → CPU 开销 → GPU 掉载; 需时设 ZMAX_VERBOSE_STEP=1
+        if os.environ.get("ZMAX_VERBOSE_STEP"):
+            logger.info(
+                f"[SmolVLALew] Forward pass: batch_size={batch_size}, "
+                f"has_action={'action' in examples[0] and examples[0]['action'] is not None}, "
+                f"le_world_model={'enabled' if self.le_world_model is not None else 'disabled'}, "
+                f"enable_lew_world_model={self.config.enable_lew_world_model if hasattr(self, 'config') else 'N/A'}"
         )
         
         batch_images = [ex["image"] for ex in examples]

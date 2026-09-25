@@ -139,6 +139,111 @@ def status():
     return out
 
 
+def _real_python_pid(shell_pid, timeout=12.0):
+    """★ shell=True 时 p.pid 是 /bin/sh 包装进程 → 解析出**真正跑训练的 python 子进程**
+
+    (老倪 2026-09-25: "训练控制节点app的训练要保证是真实模型训练")
+    """
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            out = subprocess.run(["ps", "--ppid", str(shell_pid), "-o", "pid=,args="],
+                                 capture_output=True, text=True, timeout=5).stdout
+            for ln in out.strip().splitlines():
+                ln = ln.strip()
+                if not ln:
+                    continue
+                sp = ln.split(None, 1)
+                if len(sp) == 2 and "python" in sp[1]:
+                    return int(sp[0])
+            # 一层不够 → 再看孙子进程
+            out2 = subprocess.run(["ps", "-eo", "pid=,ppid=,args="],
+                                  capture_output=True, text=True, timeout=5).stdout
+            kids = set()
+            for ln in out2.strip().splitlines():
+                sp = ln.split(None, 2)
+                if len(sp) == 3 and sp[1] == str(shell_pid):
+                    kids.add(int(sp[0]))
+            for ln in out2.strip().splitlines():
+                sp = ln.split(None, 2)
+                if len(sp) == 3 and sp[1].isdigit() and int(sp[1]) in kids and "python" in sp[2]:
+                    return int(sp[0])
+        except Exception:                                                   # noqa: BLE001
+            pass
+        time.sleep(0.4)
+    return None
+
+
+def _gpu_presence(pid):
+    """该 pid 是否真的在 GPU 计算进程表 + 占多少显存"""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory",
+                              "--format=csv,noheader"], capture_output=True, text=True, timeout=8).stdout
+        for ln in out.strip().splitlines():
+            if "," not in ln:
+                continue
+            p, mem = [x.strip() for x in ln.split(",", 1)]
+            if p == str(pid):
+                return {"in_gpu": True, "gpu_mem": mem}
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return {"in_gpu": False, "gpu_mem": None}
+
+
+def _gpu_util():
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used",
+                              "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=8).stdout
+        v = [x.strip() for x in out.split(",")]
+        return {"util_pct": int(v[0]), "mem_used_mb": int(v[1])}
+    except Exception:                                                       # noqa: BLE001
+        return {"util_pct": None, "mem_used_mb": None}
+
+
+def _verify_real_training(jid, log, sleep_s=20.0):
+    """★ 后台自证: APP 启的训练必须满足 → 真 python 进程 + 在 GPU 表 + 命令行含训练 + 步数推进"""
+    try:
+        time.sleep(sleep_s)
+        j = JOBS.get(jid)
+        if not j:
+            return
+        shell_pid = j.get("pid")
+        real = _real_python_pid(shell_pid) if shell_pid else None
+        proof = {"checked_at": time.strftime("%H:%M:%S"), "shell_pid": shell_pid, "real_pid": real}
+        if real:
+            try:
+                proof["cmdline"] = open("/proc/%d/cmdline" % real, "rb").read().decode(
+                    "utf-8", "replace").replace("\x00", " ").strip()[:220]
+            except Exception:                                               # noqa: BLE001
+                proof["cmdline"] = ""
+            proof.update(_gpu_presence(real))
+            proof["cmd_is_train"] = any(k in proof.get("cmdline", "") for k in
+                                        ("train", "lerobot_train", "yolo", "backbone", "intact", "joint"))
+            # 步数推进（日志里两次取样）
+            try:
+                s1 = os.path.getsize(log) if os.path.isfile(log) else 0
+                time.sleep(15)
+                s2 = os.path.getsize(log) if os.path.isfile(log) else 0
+                proof["log_growing"] = s2 > s1
+                proof["log_bytes"] = s2
+            except Exception:                                               # noqa: BLE001
+                proof["log_growing"] = None
+        proof.update(_gpu_util())
+        # 判定
+        ok_rings = [bool(real), bool(proof.get("cmd_is_train")),
+                    bool(proof.get("in_gpu")), proof.get("log_growing") is not False]
+        proof["rings"] = "%d/4" % sum(1 for x in ok_rings if x)
+        proof["real"] = all(ok_rings)
+        j["proof"] = proof
+        j["real_pid"] = real
+        _audit({"ev": "train_proof", "jid": jid, "real": proof["real"], "rings": proof["rings"],
+                "real_pid": real, "in_gpu": proof.get("in_gpu"), "gpu_mem": proof.get("gpu_mem")})
+        print("[自证] %s real=%s rings=%s real_pid=%s in_gpu=%s %s"
+              % (jid, proof["real"], proof["rings"], real, proof.get("in_gpu"), proof.get("gpu_mem")), flush=True)
+    except Exception as e:                                                  # noqa: BLE001
+        print("[自证] %s 异常: %s" % (jid, str(e)[:100]), flush=True)
+
+
 def start_train(layer, steps):
     if layer not in TRAIN_CMDS:
         return {"ok": False, "msg": "该层无本机训练命令（L2 归属小芳 → 见处理单）",

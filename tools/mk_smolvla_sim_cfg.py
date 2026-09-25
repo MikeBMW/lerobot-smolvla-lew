@@ -32,8 +32,12 @@ def main():
 
     cfg["dataset"]["repo_id"] = DS
     cfg["dataset"]["root"] = DS
-    cfg["num_workers"] = 4                     # 4060 本机, 别抢满 CPU
+    # ★ 2026-09-26 老倪: "gpu训练负载不能小于一半" —— 原 4 workers 导致 GPU 等数据掉到 0%
+    #   32 核机器 → 提到 12 workers + prefetch 8（CPU 侧并行, 不增显存）
+    import os as _o
+    cfg["num_workers"] = int(_o.environ.get("ZMAX_NUM_WORKERS", "12"))
     cfg["batch_size"] = a.batch
+    cfg["prefetch_factor"] = int(_o.environ.get("ZMAX_PREFETCH", "8"))
     cfg["steps"] = a.steps
     cfg["save_freq"] = max(a.steps, 500)       # 有界跑: 只存最后
     cfg["log_freq"] = 10
