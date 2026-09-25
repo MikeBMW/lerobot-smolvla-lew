@@ -66,11 +66,23 @@ def mac_section():
     relay 的 /latest 里可能是我转发的包（含 mac 转发）或小芳自己的包，两者都认。
     """
     import urllib.request as _ur
-    try:
-        with _ur.urlopen("https://datadrive.world/api/relay/latest", timeout=15) as r:
-            j = json.loads(r.read().decode("utf-8", "replace"))
-    except Exception:                                                           # noqa: BLE001
-        return None
+    # ★ relay /latest 是"最新包覆盖"，单次可能抓到不含 Mac 的包 → 重试最多 6 次 (共约 9s)
+    for _try in range(6):
+        try:
+            with _ur.urlopen("https://datadrive.world/api/relay/latest", timeout=12) as r:
+                j = json.loads(r.read().decode("utf-8", "replace"))
+        except Exception:                                                       # noqa: BLE001
+            time.sleep(1.5)
+            continue
+        _hit = _scan_mac(j)
+        if _hit:
+            return _hit
+        time.sleep(1.5)
+    return None
+
+
+def _scan_mac(j):
+    """从 relay 包里找出 Mac 机器（可被重用）"""
     for k, v in ((j.get("data") or {}).get("machines") or {}).items():
         if "4060" in str(k):
             continue
