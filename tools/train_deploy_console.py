@@ -189,7 +189,70 @@ def deploy(layer, ckpt_dir, note=""):
             "record": rec[layer]}
 
 
-PAGE = """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+PAGE_HW = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-MAX 硬件资源</title><style>
+body{font-family:-apple-system,"PingFang SC",sans-serif;background:#0d1117;color:#c9d1d9;margin:0;padding:14px;font-size:15px}
+h1{font-size:17px;margin:0 0 3px} .sub{color:#8b949e;font-size:12px;margin-bottom:10px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:9px;padding:11px;margin-bottom:10px}
+.nm{font-weight:700;font-size:15px} .role{color:#8b949e;font-size:12px}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;border-top:1px solid #21262d}
+.kv:first-of-type{border-top:0} .k{color:#8b949e} .v{font-weight:600}
+.st{color:#3fb950} .bad{color:#ff4444} .warn{color:#d29922}
+.bar{background:#0d1117;border:1px solid #30363d;border-radius:5px;height:12px;margin:3px 0}
+.bar>div{height:100%;border-radius:4px}
+</style></head><body>
+<h1>🖥 Z-MAX 硬件资源</h1><div class="sub" id="s">加载中…</div>
+<div id="o"></div>
+<div class="sub" style="margin-top:14px">数据: 4060=本机 nvidia-smi/proc · Mac/MPS=DDS zmax/hw_state · 每 3 秒刷新</div>
+<script>
+const f=(x,d=0)=>(x==null||x<0)?'—':(+x).toFixed(d);
+function bar(p,col){return `<div class="bar"><div style="width:${Math.min(100,p||0)}%;background:${col}"></div></div>`}
+function card(node,role,backend,dev,rows,tone){
+ return `<div class="card"><div class="nm">${node} <span class="role">${role} · ${backend}</span> ${tone}</div>
+  <div class="role">${dev}</div>${rows}</div>`}
+async function tick(){
+ let hw={};try{hw=await (await fetch('/api/hardware')).json()}catch(e){}
+ const g=hw.gpu||{},c=hw.cpu||{},m=hw.mem||{},d=hw.disk||{},cp=hw.compute||{};
+ document.getElementById('s').textContent=(hw.ts||'')+' · 4060 本机实测'+(hw.dds&&hw.dds.ok?(' · DDS 桥 '+hw.dds.bridge_age_s+'s'):' · DDS 桥未运行');
+ let h='';
+ h+=card('4060（静静·本机）','工作端','CUDA',g.name||'—',
+   `${bar(g.util_pct,'linear-gradient(90deg,#238636,#3fb950)')}
+    <div class="kv"><span class="k">GPU 利用率</span><span class="v st">${f(g.util_pct)}%</span></div>
+    <div class="kv"><span class="k">显存</span><span class="v">${f(g.mem_used_mb)} / ${f(g.mem_total_mb)} MB（${f(g.mem_used_pct)}%）</span></div>
+    <div class="kv"><span class="k">温度 / 功耗</span><span class="v">${f(g.temp_c)}°C / ${f(g.power_w,1)}W</span></div>
+    <div class="kv"><span class="k">SM 时钟</span><span class="v">${f(g.clk_sm_mhz)} / ${f(g.clk_sm_max_mhz)} MHz</span></div>
+    ${bar(c.util_pct,'#bb8009')}
+    <div class="kv"><span class="k">CPU</span><span class="v">${f(c.util_pct,1)}%（${c.cores||'—'}核）load ${c.load1||'—'}</span></div>
+    <div class="kv"><span class="k">内存</span><span class="v">${f(m.used_gb,1)} / ${f(m.total_gb,1)} GB（${f(m.used_pct)}%）</span></div>
+    <div class="kv"><span class="k">磁盘可用</span><span class="v">${f(d.free_gb,1)} / ${f(d.total_gb,1)} GB</span></div>
+    <div class="kv"><span class="k">算力（实测）</span><span class="v">${cp.sps||'—'} 步/s（${cp.steps_per_hour||'—'} 步/小时）</span></div>`,
+   '<span class="st">● 在线</span>');
+ const nodes=(hw.dds&&hw.dds.nodes)||{};
+ const keys=Object.keys(nodes).filter(k=>!/^4060/.test(k));
+ if(keys.length){
+  keys.forEach(k=>{const v=nodes[k],h2=v.hw||{},p=v.prog||{};
+   h+=card(k,(v.role||'?'),h2.backend||'?',h2.device_name||'—',
+     `${bar(h2.util_pct,'#1f6feb')}
+      <div class="kv"><span class="k">GPU/MPS 利用率</span><span class="v">${f(h2.util_pct)}%</span></div>
+      <div class="kv"><span class="k">显存/统一内存</span><span class="v">${f(h2.mem_used_mb)} / ${f(h2.mem_total_mb)} MB</span></div>
+      <div class="kv"><span class="k">CPU</span><span class="v">${f(h2.cpu_util_pct,1)}%（${h2.cpu_cores||'—'}核）</span></div>
+      <div class="kv"><span class="k">内存 / 磁盘可用</span><span class="v">${f(h2.mem_avail_gb,1)}GB / ${f(h2.disk_free_gb,1)}GB</span></div>
+      ${p.step!=null&&p.step>=0?`<div class="kv"><span class="k">训练</span><span class="v">${p.step}/${p.total} ${f(p.pct,1)}%</span></div>`:''}
+      ${h2.note?`<div class="role">${h2.note}</div>`:''}`,
+     v.stale?'<span class="bad">● 停'+v.age_s+'s</span>':'<span class="st">● 在线 '+v.age_s+'s</span>');
+  });
+ } else {
+  h+=`<div class="card"><div class="nm">Mac（小芳·备份端）<span class="role"> MPS</span> <span class="warn">● 未上报</span></div>
+   <div class="role">在 Mac 上执行一次即可出现：</div>
+   <div class="role">~/dds-venv/bin/python tools/mac_hw_report.py --dds --watch 30</div></div>`;
+ }
+ document.getElementById('o').innerHTML=h;
+}
+tick(); setInterval(tick,3000);
+</script></body></html>"""
+
+PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Z-MAX 训练 · 部署控制台</title>
 <style>
@@ -359,6 +422,8 @@ class H(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         if u.path in ("/", "/index.html"):
             return self._send(200, PAGE, "text/html; charset=utf-8")
+        if u.path in ("/hw", "/hw/"):
+            return self._send(200, PAGE_HW, "text/html; charset=utf-8")
         if u.path == "/api/status":
             return self._send(200, json.dumps(status(), ensure_ascii=False))
         if u.path == "/api/hardware":
