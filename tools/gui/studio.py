@@ -1273,6 +1273,129 @@ class ProductRoadmapWidget(QFrame):
 # ============================================================
 # 首页页面
 # ============================================================
+class HardwareCard(QFrame):
+    """🖥 硬件资源卡（老倪 2026-09-25: "app还是没有4060硬件参数"）
+
+    显示本机(4060)真实硬件参数, 2 秒刷新一次:
+      GPU 利用率/显存/温度/功耗/SM时钟 · CPU 利用率+核数 · 内存 · 磁盘 · 实测训练吞吐
+    ★ 全部真实数据源: nvidia-smi + /proc（不依赖第三方库 → 打包成 exe 也能用）
+    ★ 读不到时显示"—", 不显示 0 冒充（0 是合法实测值）
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("hwCard")
+        self.setStyleSheet(
+            f"#hwCard{{background:{C_CARD};border:1px solid {C_BORDER};border-radius:10px}}")
+        v = QVBoxLayout(self)
+        v.setContentsMargins(16, 12, 16, 12)
+        v.setSpacing(6)
+        head = QHBoxLayout()
+        t = QLabel("🖥 硬件资源  4060（本机）")
+        t.setStyleSheet(f"color:{C_WHITE};font-size:14px;font-weight:700;border:none")
+        self.lb_ts = QLabel("采样中…")
+        self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:11px;border:none")
+        head.addWidget(t)
+        head.addStretch()
+        head.addWidget(self.lb_ts)
+        v.addLayout(head)
+
+        self.lb_gpu = QLabel("—")
+        self.lb_cpu = QLabel("—")
+        self.lb_mem = QLabel("—")
+        self.lb_disk = QLabel("—")
+        self.lb_thr = QLabel("—")
+        for lb in (self.lb_gpu, self.lb_cpu, self.lb_mem, self.lb_disk, self.lb_thr):
+            lb.setStyleSheet(f"color:{C_GRAY};font-size:12px;border:none")
+            lb.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
+            v.addWidget(lb)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.refresh)
+        self._timer.start(2000)
+        QTimer.singleShot(200, self.refresh)      # 立即先刷一次（不等 2 秒）
+
+    @staticmethod
+    def _sh(cmd, timeout=8):
+        try:
+            return subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                                  timeout=timeout).stdout.strip()
+        except Exception:                                                       # noqa: BLE001
+            return ""
+
+    def refresh(self):
+        import shutil   # ★ studio.py 只在方法内局部导入 shutil（模块级没有）→ 这里必须自己导
+        try:
+            # ── GPU（nvidia-smi: 利用率/显存/温度/功耗/时钟）──
+            g = self._sh("nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,"
+                         "temperature.gpu,power.draw,clocks.sm,clocks.max.sm "
+                         "--format=csv,noheader,nounits")
+            if g and "," in g:
+                p = [x.strip() for x in g.split(",")]
+                mem_pct = (100.0 * float(p[2]) / float(p[3])) if p[3] and float(p[3]) > 0 else 0
+                self.lb_gpu.setText(
+                    f"🎮 <b>GPU</b> {p[0]} &nbsp; 利用率 <b>{p[1]}%</b> · "
+                    f"显存 <b>{p[2]}/{p[3]} MB</b> ({mem_pct:.0f}%) · "
+                    f"温度 <b>{p[4]}°C</b> · 功耗 <b>{p[5]}W</b> · "
+                    f"SM 时钟 {p[6]}/{p[7]} MHz")
+            else:
+                self.lb_gpu.setText("🎮 <b>GPU</b> —（未检测到 nvidia-smi）")
+
+            # ── CPU（/proc/stat 两次采样差值）──
+            def _snap():
+                f = open("/proc/stat").readline().split()[1:]
+                v = [int(x) for x in f]
+                return sum(v), v[3]
+            t0, i0 = _snap()
+            time.sleep(0.12)
+            t1, i1 = _snap()
+            cpu_pct = 100.0 * (1 - (i1 - i0) / max(1, t1 - t0))
+            la = open("/proc/loadavg").read().split()
+            self.lb_cpu.setText(f"🧠 <b>CPU</b> <b>{cpu_pct:.1f}%</b> · {os.cpu_count()} 核 · "
+                                f"load {la[0]}/{la[1]}/{la[2]}")
+
+            # ── 内存（/proc/meminfo）──
+            mi = {}
+            for ln in open("/proc/meminfo"):
+                k = ln.split(":")[0]
+                mi[k] = int(ln.split()[1]) / 1048576.0
+            tot, av = mi.get("MemTotal", 0), mi.get("MemAvailable", 0)
+            self.lb_mem.setText(f"💾 <b>内存</b> <b>{tot - av:.1f}/{tot:.1f} GB</b> "
+                                f"({100 * (tot - av) / max(tot, 1):.0f}%) · 可用 {av:.1f} GB")
+
+            # ── 磁盘 ──
+            try:
+                du = shutil.disk_usage("/")
+                self.lb_disk.setText(f"🗄 <b>磁盘</b> <b>{du.free / 1073741824:.1f}/{du.total / 1073741824:.1f} GB 可用</b>"
+                                     f"（已用 {100.0 * du.used / du.total:.0f}%）")
+            except Exception:                                                   # noqa: BLE001
+                self.lb_disk.setText("🗄 <b>磁盘</b> —")
+
+            # ── 算力（实测: 最近训练日志/进度文件的 步/s）──
+            sps = ""
+            try:
+                import glob as _g
+                import json as _j
+                best = None
+                for f in _g.glob("/home/ubuntu/stable-wm-cache/reports/progress_*.json"):
+                    try:
+                        d = _j.load(open(f, encoding="utf-8"))
+                        if d.get("sps") and (time.time() - (d.get("ts") or 0) < 600):
+                            best = d
+                    except Exception:                                               # noqa: BLE001
+                        pass
+                if best:
+                    sps = (f" · 实测 <b>{best['sps']} 步/s</b>（{int(best['sps'] * 3600)} 步/小时）"
+                           f" · 训练{'进行中' if best.get('running') else '已停'}")
+            except Exception:                                                       # noqa: BLE001
+                pass
+            self.lb_thr.setText(f"⚡ <b>算力</b>{sps or ' —（暂无近期训练吞吐）'}")
+
+            self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
+        except Exception as e:                                                  # noqa: BLE001
+            self.lb_ts.setText("采样失败: %s" % str(e)[:40])
+
+
 class HomeWidget(QWidget):
     module_clicked = pyqtSignal(str)
 
@@ -1298,6 +1421,9 @@ class HomeWidget(QWidget):
         # --- Hero ---
         hero = self._hero()
         layout.addWidget(hero)
+
+        # 🖥 硬件资源卡（老倪 2026-09-25: 首页要看到 4060 硬件参数; 2 秒自动刷新）
+        layout.addWidget(HardwareCard())
 
         # --- 架构流程 ---
         layout.addWidget(ArchFlowBar())
