@@ -78,6 +78,24 @@ When the consumer is a laptop that shuts down often, ECS is always-on, and demos
 - Relay queues accumulate junk when an upstream producer keeps pushing (snapshot/thumbnail streams): thousands of small packets, tens of MB. Don't `rm -rf` the whole queue — iterate packets, inspect `meta.source` (or equivalent tag), delete `snapshot`/`thumbnail` types, keep real `data` packets. Report deleted-vs-kept counts.
 - Fix the upstream so it stops pushing junk (pause the producer), not just clean once.
 
+### 10. agent 消息通道 (2026-09-25 实测: 与 web 智能体交换提示词/回执)
+`zmax_relay.py` 上纯追加一组路由 (数据队列不动), 落盘 `/root/zmax-relay/agent/{prompt,reply}.jsonl`:
+```
+POST /agent/prompt  {"text","from","meta"} → {"ok":true,"seq":N}      # web agent 下发
+GET  /agent/prompt?after=N                 → {"prompts":[...],"next":M} # 本机只读游标拉取 (幂等, 不 pop)
+POST /agent/reply   {"prompt_seq","text","data"} → {"ok":true,"seq":M}  # 本机回执
+GET  /agent/reply?after=N                  → {"replies":[...],"next":K}
+GET  /agent/status                         → 两侧计数 + last_prompt/last_reply
+```
+- 为什么不用 `/command`: 那是**单槽覆盖** (后一条吃掉前一条) 的采集指令; agent 消息要可重放/不丢 → append-only + `?after=N`。
+- ⚠️ `seq` 是小整数: 想"跳到队尾"必须读 `/agent/status.last_prompt.seq`, 用 `after=1e9` 会把新消息也过滤掉。
+- ⚠️ 消费者(本机 5s 常驻) 与取证脚本会抢同一条消息 → 取证时先 `systemctl stop` 消费者。
+- 补丁锚点唯一性: `if path == "/command":` 在 do_GET/do_POST 各出现一次, 别拿它当锚点; 用 `def do_POST(self):\n        path = self.path.split("?")[0]\n`。
+
+### 11. 两个进程都不在时的恢复 (2026-09-25 实测)
+症状: `/api/relay/*` **全部** 502 且 `/ws` 也 502, 但首页 200 → 说明 nginx 活着, **zmax_relay(39053) 与 ws_relay(8765) 双双不在** (无人监管, 重启/崩溃后静默死掉)。
+恢复: 各用自带脚本拉起 (`bash /root/zmax-relay/start.sh`、`bash /root/zmax-relay/start_ws.sh`), 两次 ssh 分开执行 (脚本内 pkill 会匹配同一条命令行)。复核 status/peek/packages/orin/status/cam/status + `/ws`(426=升级协商, 说明 WS 服务活了; 502=还没起)。
+
 ## Verification checklist
 1. `curl -X POST <relay>/upload` small JSON → `{"ok": true}`
 2. `curl <relay>/peek` → item present, still queued after

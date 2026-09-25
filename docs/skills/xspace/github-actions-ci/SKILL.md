@@ -128,12 +128,29 @@ curl -sL -H "Authorization: token $TOKEN" -H "Accept: application/octet-stream" 
 ```
 资产 API 响应里有 `digest`（sha256），下载后 `sha256sum` 必须一致。macOS 架构用 `file` 查（Mach-O arm64 = M1 原生）；bundle 版本用 python plistlib 读 Info.plist（Linux 无 PlistBuddy/plutil）。
 
-**下载路径坑（2026-08-26 发版实测，两条铁律）**：
-1. **assets API 带 token 会被 WAF 拒 400**（公司网/代理环境实测）：`api.github.com/.../releases/assets/$ID` 带 `Authorization: token` 直接 400；但不带 token 的 `GET api.github.com/repos/O/R/releases/tags/vX.Y.Z`（拿 assets 列表 + 每项的 `digest` sha256 字段）是通的。→ **下载一律走 `browser_download_url` 直连**：
+**下载路径坑（2026-08-26 发版实测，两条铁律）**：1. **assets API 带 token 会被 WAF 拒 400**（公司网/代理环境实测）：`api.github.com/.../releases/assets/$ID` 带 `Authorization: token` 直接 400；但不带 token 的 `GET api.github.com/repos/O/R/releases/tags/vX.Y.Z`（拿 assets 列表 + 每项的 `digest` sha256 字段）是通的。→ **下载一律走 `browser_download_url` 直连**：
    ```bash
    curl -sL -o asset.zip "https://github.com/O/R/releases/download/vX.Y.Z/AssetName.exe"
    ```
 2. **curl 跨域 302 必须 `-L`**：browser_download_url 会 302 到 S3/对象存储，不跟跳转就得到 302 空壳（几字节）；并发分块/断点续传（`-C -`）时尤其容易漏 `-L`。digest 对比：GitHub API 的 `digest` 字段格式是 `sha256:<hex>`，与本地 `sha256sum` 输出比对时先去掉 `sha256:` 前缀。
+
+## 资产实测验证三个坑（2026-09-18 发 v5.7.0 实测，全都会造成误判）
+
+1. **curl 会静默卡死并留下「截断文件」** —— 本轮 `curl -sL -o file <browser_download_url>` 卡死 20 分钟零进度，
+   `subprocess` 超时抛错，但**磁盘上留了一个 85MB 的半截 mac zip**（应 129MB）。下一次校验若只看"文件在不在"就会放行。
+   正确下载器必须：`-C -`(续传) + `--retry 3 --retry-all-errors` + `--connect-timeout 20 --max-time 600`
+   + **卡死判定 `--speed-limit 20000 --speed-time 45`**（<20KB/s 持续 45s 判死）+ 循环重试直至 `size == 远端 size`
+   + 直连连续失败后换 `https://ghproxy.net/<原url>` 兜底。判据永远是 **size + sha256 双核对**，不是"下下来了"。
+2. **mac zip 里有 16 个 Info.plist，必须精确取主 app 的** —— 包内还有 PyQt5 各 framework、`Python.framework`、
+   以及 MuJoCo 自带的 `MuJoCo_(mjpython).app` 的 plist。用 `endswith("Contents/Info.plist")` 取第一个会命中
+   **mjpython 的 3.3.0**（MuJoCo 自己的版本），把好包误判成 ❌ 未同步版本。
+   正确取法：**精确路径** `Z-MAX_Console.app/Contents/Info.plist`，核 `CFBundleShortVersionString` 与 `CFBundleVersion` 两者都等于发版号。
+3. **onefile exe 的内置资产名不会以明文出现** —— PyInstaller onefile 把 data 打进压缩归档，`strings`/`strings -el`
+   查 `metaworld`/`mujoco`/场景 XML 名会得到 **0 次**，但这**不代表没进包**（本品实测 162 个 metaworld XML +
+   `sawyer_xyz/sawyer_peg_insertion_side_l4.xml` + `models/l4_mani_predictor_v5.pt` + 内置 mp4 全在）。
+   资产进包核验看 **CI 的 "Verify engine assets bundled" + "冻结核验(真跑产物)" 两个步骤**，或本地用
+   `pyi-archive_viewer` 列归档；**PE 版本号**则用 UTF-16LE 解 `StringFileInfo`（`FileVersion` / `ProductVersion`
+   应为发版号，本轮实测 `5.7.0` ✅）。
 
 ## Docker build & push to Alibaba Cloud ACR (China)
 

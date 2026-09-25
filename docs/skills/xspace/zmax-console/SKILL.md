@@ -10,6 +10,126 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15
 > ⚠️纪律: 只patch改; kill-9重启(pkill 用 "gui-venv311/bin/python studio" 别用 studio.py, 会打死 Hermes 自己的 shell); --gpus all本地/--runtime nvidia远程; -o Port; 主线程禁网络请求(摄像头坑); 启动/黑屏见 launch-guide.md; 训练入口/状态见 gui-navigation.md; 控件小/字挤/面板窄见 ui-sizing-hidpi.md; refs: gui-discipline, simulink-flow-and-buttons, simulink-flow-authoring, help-menu-doc-open
 
+## 🏷 画布节点**改名/移位**必同步清单 (2026-09-24 融合定位实测, 漏一处即静默失效)
+画布节点名 = **数据总线通道名** = `node_logic` 注册匹配键, 改名不是改 JSON 一件事。逐处清单:
+| # | 位置 | 漏了会怎样 |
+|---|---|---|
+| 1 | `flows/state_space_obs.json` (node.name/x/y/inputs/outputs + links) | — |
+| 2 | `tools/gui/data_world.py` `MODULE_ORDER` | 数据总线/3D/面板排序丢该模块 |
+| 3 | `tools/gui/simulink_module.py` `SS_MODULE_TO_NAME` (键+值) | 变量监控高亮不到连线 |
+| 4 | `tools/gui/simulink_module.py` 双击面板 `elif "<名>" in nm:` 分支 | 双击弹空白/错面板 |
+| 5 | `tools/gui/state_space_sim_real.py` io 发布 dict 键 | **引擎每帧 io 挂不上 → 画布播放无该节点信号** |
+| 6 | `tools/gui/state_space_sim.py` (非真实引擎) io 发布键 | 同上 (两引擎必须同源) |
+| 7 | `tools/gui/node_logic.py` `_reg(key, [匹配名…], desc)` | 右键/双击「查看节点逻辑」→ match_node=None → 显示"定位中…" |
+| 8 | `tools/gui/auto_test_suite.py` 用例判据 (如 TC09 `any("传感器" in n …)`) | **验收用例假失败** (改名后特征字串消失) |
+| 9 | `src/lerobot/verification/node_func_tree.py` 显示名 (+ `ss_dreamview` 注释) | 网页功能清单显示旧名 |
+验证四件套 (改完必跑): ① `python -c "import node_logic; node_logic.match_node('<新名>')"` 非 None
+② `tools/canvas_level_audit.py` → **⚠无执行注册 0 · 真缺口 0** ③ 几何体检: 区内 反向/重叠/交叉 = 0 (新增线也不能引入)
+④ `tools/studio_ctl.sh restart` (GUI 无 autosave, 改码+改画布必须重启) 后 `/tmp/studio_launch.log` 的 `Traceback|Error` 计数 = 0。
+**备份纪律**: 改前 `cp flows/state_space_obs.json flows/…bak_pre_<改动>_<ts>` (回滚靠它, 不用 git 历史);
+过期快照别留在工作树 → 移 `~/zmax_data/canvas_baks_archive_<日期>` + `.gitignore` 覆盖 `.bak_/.bak./.bak-` 三种命名。
+
+## 🐛 版本号迭代 (bump_version.py) — 6 处同步 + 1 行历史
+`gui-venv311/bin/python tools/bump_version.py --to X.Y.Z --summary-file /tmp/v.txt [--dry]` 自动改:
+studio.py 品牌 QLabel + 2 处窗口标题 + changelog 注释行 + `update_checker.CURRENT_VERSION` +
+`docs_sync` 两键 + **`version_sync.py` 的 `zmax_ver`** + VERSION.md 表首插一行。
+- ⚠️ **`version_sync.py` 的 `zmax_ver` 值不带 v 前缀** (`zmax_ver = "5.13.0"`), 而工具里的 ov/nv 带 v →
+  原正则**永远 0 命中 = 静默漏同步** (版本面板长期停在旧号)。2026-09-24 已修 (`ov.lstrip("v")`) —— 若再见到
+  `version_sync zmax_ver 旧命中 0`, 就是又被改回去了, 手工补完再修工具。
+- 工具**只改不提交**: 先 `--dry` 看逐处命中再去掉 --dry; 之后由调用方 `git add/commit` (打 tag 会触发
+  Windows/macOS 桌面包 CI —— 小版本默认只 commit+push, 要出包再单独 tag)。
+- 归档照 `tools/archive_release_5_13_1.sh` 模式: 只放真实产物+改动文件+审计证据, 生成 MANIFEST(sha256)。
+
+## 🧹 哨兵/任务清理判据 (2026-09-24: 18→9 条)
+删之前**逐条查终态证据**, 只删"目标已终态"的 (脚本留在 `~/.hermes/scripts/`, 需要时一行重建):
+`ls <flags>` 已报过 (`.four_tasks_reported`/`zmax_release_watch_<tag>.done`) · 流水线 `status.txt=DONE`+`RC=0` ·
+被监视目录 >24h 无新文件且**无相关进程** (`ps aux|grep`) · 远端口令失效(permission denied) · 一次性公告已过期(旧版本号)。
+保留三类: 基础设施 (sys-watchdog/数据链路/磁盘红线/技能记忆同步) · 活跃项目哨兵 · 现场工具 (仍 pause 待现场的不删)。
+
+## 🧰 汇总终端: curl 可复制 + 终端页 + 图片右键复制 (2026-09-24 实测)
+
+老倪四条要求对应的做法 (已落在 `tools/gui/aoi_inspect_console.py`, 可照抄):
+
+1. **"curl 命令显示在窗口, 我复制后在终端执行"** → 让客户端把**等价命令**带出来: 在统一出口
+   `_curl()` 里按同一组参数拼 `curl -s -m {timeout} -X {method} '{url}'` (+ binary 时 ` -o frame.png`),
+   via=orin 时拼 `sshpass -p <pw> ssh <orin> "…"` → 放进 `info["cmd"]`, 再透传到 meta/dict (`_cmd`)。
+   ⚠️ 别在窗口里手写命令字符串 —— 会与真实请求参数漂移, 必须同源生成。
+2. **"要有个终端看 JSON 反馈"** → 独立 Tab〔终端〕: 上=命令框(只读等宽, 最多 400 行) 下=JSON 原文
+   (带 `[HH:MM:SS]` 时间戳, 800 行); 每行都可选中复制, 配 [📋复制命令][📋复制反馈][📋复制命令+反馈][🗑清空]。
+   本地图像处理 (如过曝切除) 也往同一页打, cmd 传空串即可。
+3. **"每个技能点击即可执行得到结果"** → 技能 = 真函数 + 结果落可见位置: 推理类写判决表/缺陷表,
+   服务类写终端 JSON + 日志; 验证时**逐个 `.click()` 断言产出** (不许只看按钮存在)。
+4. **"图片右键即可复制, 可粘贴到别处"** → 画面控件换子类 `CopyImageView(YoloLabelWidget)`, 复写
+   `contextMenuEvent`: **编辑态且命中框时不弹菜单** (保住"右键删框"既有行为), 否则弹
+   复制图片/复制图片路径/另存为/画面信息。
+   ```python
+   md = QtCore.QMimeData(); md.setImageData(img.copy())
+   if path: md.setText(path)                 # 粘到文本处=路径, 粘到图处=图片
+   QtWidgets.QApplication.clipboard().setMimeData(md)      # ✅ 一次性
+   ```
+   ⚠️ **实测坑**: 先 `clipboard.setImage()` 再 `clipboard.setText()` → **图片被冲掉** (剪贴板只保留一份 mime
+   载荷), 表现为"复制成功但剪贴板 0x0"。另外 **offscreen 后端的 `clipboard.image()` 恒 0x0** →
+   剪贴板类断言必须放**真桌面**(DISPLAY=:0)跑, offscreen 里只能验 mimeData/逻辑。
+   ⚠️ 同族坑: 在 DISPLAY=:0 下**先 import cv2 再 import PyQt5** 会抢走 xcb 插件 (报 "Could not load the
+   Qt platform plugin xcb") → 测试脚本里 PyQt5 必须最先导入。
+
+## 📋 画布节点「右键打开新窗口」标准做法 + 汇总终端 (2026-09-24 外观质量检测实测)
+
+**三处接线 (缺一处点了没反应/无菜单项)**:
+1. `simulink_module.py` `SimCanvas._show_node_menu`(RightButton 分支) 加菜单项, 触发条件用**节点名子串**
+   (`"外观质量检测" in item.node.get("name","")` 或 `params.<flag>`; 同 YOLO 的 `"YOLO" in name`)
+2. 同函数下方**动作分派链**加 `elif a_xx is not None and chosen == a_xx:` 分支, 帧源跟随画布:
+   `_src = "sim" if _canvas_src_state(self.module) == "仿真" else "real"`
+3. 新窗口模块 `tools/gui/<name>_widget.py` 暴露 `open_xxx(parent, module=..., source=...)` (单实例复用:
+   类属性 `_cur` 存实例, 再开先 close)
+4. ⚠️ 改完 GUI **必须重启** (`bash tools/studio_ctl.sh restart`) 入口才活; 日志 `Traceback|Error` 计数=0 才算通过
+
+**汇总终端窗口骨架 (质量检测汇总终端为样板)**: 三行头 (①技能行 ②标定行 ③数据/训练行, 全常显) +
+QSplitter(左画面 `YoloLabelWidget` / 右面板 判决表→定位→缺陷清单→训练日志) + 状态栏 (链路/判决/导出);
+快捷键 `Enter/N/F/G` 且**焦点在输入框时不抢键**。
+
+**复用既有件 (别重写)**: 标定控件 `yolo_label_widget.YoloLabelWidget`(拖框/缩放/右键删/撤销) ·
+数据层 `yolo_annot_dataset`(`save_sample/build_dataset/check_dataset/iter_samples/add_class`) ·
+训练 `yolo_annot_train.py`(体检不过退出 2, 训练后真推理验证)。
+
+**四个实测坑**:
+1. **`save_sample` 的 boxes 契约是 5 元组 `(x1,y1,x2,y2, cls_id|cls_name)`**, 不是 `(box, cls)` —
+   传错在 `float(b[2])` 处炸, 被 try/except 吞成"保存失败"(静默), 排查时先看落盘数没涨。
+2. **QProcess 信号里别引用 `self._proc`**: 进程结束时 C++ 对象已删 → `RuntimeError: wrapped C/C++ object
+   has been deleted`。用默认参数绑进闭包 `lambda pr=_p: ...`。
+3. **关窗必须收口**: `closeEvent` 里 `disconnect()` 三个信号 + 若在跑则 `kill()`; 否则进程收尾信号打到已销毁
+   控件 → RuntimeError → **进程 abort (core dumped)**。`log()` 也加 try/except 兜底。
+4. **`load_frame_file` 要分支视频**: `cv2.imread` 读不了 mp4 → 走 `cv2.VideoCapture` 取首帧。
+
+**验证套路 (两层, 记取"offscreen 全绿≠人能用")**:
+`tools/verify_aoi_console.py` (offscreen: 入口可达性 `isVisible() and isEnabled() and width()>20` · 四技能判决表 · ROI 拉伸尺寸 ·
+标定落盘计数 · 体检 · 构建数据集 · 导出 · **真训练 smoke 产出 best.pt**) +
+`tools/verify_aoi_console_real.py` (真桌面: 窗口在 availableGeometry 内 · 按钮 `width() ≥ sizeHint().width()` · 截图)。
+
+## 🌐 功能清单/测试用例 → 网页 (datadrive.world, 2026-09-24 新增 L2 专项页)
+
+**真源三处 (改功能/用例只改这三处, 网页全部自动带出)**:
+| 内容 | 文件 | 关键点 |
+|---|---|---|
+| 功能定义 | `src/lerobot/verification/capability_levels.py` | `CAPABILITY_LEVELS[层]["funcs"]` = {fid,name,desc,groups} |
+| 测试用例 | `src/lerobot/verification/verification_layer.py` | `FEATURES` 元组 `(id,域,名称,源,方式,方法,层)` + `FEATURE_META[id]=(kind,role,spec)` + `def t_F_B12(self, np)` 真断言 (返回 `(bool, 详情str)`) |
+| 分层功能树 | `src/lerobot/verification/node_func_tree.py` | `NODE_TREE[节点key]["funcs"]` 每 func 带 `tests:[(名称,auto/semi/manual,方法名,备注)]` |
+
+**生成 + 部署 (深色主题 #0d1520/#00d4aa, 打印友好)**:
+- 功能清单总表 + 需求规格书: `tools/gen_web_feature_pages.py` → `reports/web/{function-list,requirements-spec}.html`
+- 专项页 (L2 3D视觉引导/触觉反馈闭环, 含 Markdown 导出): `tools/gen_l2_guide_tactile_page.py`
+  → `reports/web/l2-guidance-tactile.{html,md}`, 顶部按钮「⬇下载 Markdown / 📋复制 Markdown」,
+  **现场真跑**两条用例把 PASS+实测明细写进页面 (`--no-run` 跳过)
+- 上传: `ZMAX_ECS_PW=<密码> python <工具>` 或 `sshpass -p <pw> scp 文件 root@39.102.211.79:/www/wwwroot/datadrive.world/` + `chmod 644`
+  (**22 端口**; 23 端口连不上) → 复核 `https://datadrive.world/<页>.html`
+- ⚠️ **主页 `index.html` 只在 ECS 上, 仓库里没有源**: 改导航要 `scp` 拉回本地 → 本地 patch (锚点断言 count==1) → `scp` 回传 → HTTP 复核
+- 计数类文案别手写: `tools/canvas_update_verif_nodes.py` 从真源重算并刷新画布 `ssfeat`/`sstest` 的 `desc`
+  (加用例后 "B六层 11" 这类数字会过期; 该脚本幂等, 改画布前先 `bash tools/studio_ctl.sh stop`)
+
+**测试用例写法纪律**: 阈值必须**先实测再写** (`tools/measure_l2_guide_tactile.py` 这类量测脚本先行),
+断言里带上"判据 + 实测值"字符串; 口径不确定时先核对真源 (实例: 触觉通道 0 = 原始开度, 轨迹 gripper = 夹紧度 = 1−开度
+→ 必须用**互补一致率**断言, 按"相等"比会得 0%); 未实现/占位通道要**如实标注**不得冒充。
+
 ## 架构速查
 
 ```
@@ -46,9 +166,16 @@ tools/gui/
 > (含实测探针 `tools/probe_ui_metrics.py`)。
 
 ## 陷阱
+> 📌 **Orin 生产设备红线 (2026-09-16 老倪: 「不要在orin上增加新程序…你先只是转发orin的感知信号」)**:
+> Orin 侧**零自研程序零自启** (我此前放的 ss_edge/ss_shadow/ss_infer + crontab `@reboot` 已全清);
+> 采集改走 **4060 侧 Docker 远程只读订阅** (`ros:humble --network host` + `ROS_DOMAIN_ID=0` 可直读 Orin 生产话题,
+> 实测 tcp_pose 49.79 Hz / real_joint_states 100.43 Hz); 采集节点 `enable_rosout=False` **零发布** (self_publishers 自证,
+> `/parameter_events` 关不掉要如实说明); 标定桥 z7 缺现场几何 → **拒算不编造**。细节 + 两坑
+> (`ssh` 上 `pkill -f` 模式串出现在自己命令行会自杀 → 锚定 `^python3` 或按 PID; `/tmp` 备份会被清理 → 写 `~/zmax_data`)
+> 见 `references/orin-zero-program-remote-read-2026-09-16.md`。
 > 📌 三模型对比 2026-08-05 下半场完整细节 (LEW 旁路/性能扩展 P50·平滑度/连线标签/删双模型/CrossAttn K-V 注入/ARPredictor 拆解/子系统总系统/参考应用滚动条/验证脚本坑) 见 `references/three-model-compare-v2.md`。新增入口功能必须给第二行工具栏按钮 (老倪找不到 = 没做)。
 - **reference 索引**: Simulink 架构演进 (三模型对比/子系统/CrossAttn/数据流标签/8指标/去重) 详见 `references/subsystem-crossattn-3model.md`; 旧双模型/MDI/浮动见 `references/act-smolvla-compare-mdi.md` (部分 deprecated)。
-- **重新采集/要新真机数据 = 只能飞书 @小芳 (2026-08-03 实测, 老倪 "重新采集吧")**: Orin (192.168.23.10) 在 Mac 局域网内, **4060/WSL 侧 ping 不通、SSH 不可达** (zmax_auto_collector.py 是 MAC 端守护, collect_upload_npz.py 是旧占位脚本无真机能力) — 真机采集只能由小芳在 Mac/Orin 侧触发。触发方式 = 飞书 dataworld 群发消息 @小芳: ① `POST open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal` (json: app_id=cli_a87851ffe46b500d, app_secret 从 ~/.hermes/*.env 的 FEISHU_APP_SECRET 读) 拿 tenant_access_token; ② `POST open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id` (header Authorization: Bearer <tok>, json: receive_id=oc_c0b4048546145c5c581ddd1a9e8f565d, msg_type=text, content=json.dumps({"text": 消息}) 且 ensure_ascii=False)。消息里写清: 请用 Orin 采集 → Mac 中转 (192.168.23.1:8769) → ECS relay (datadrive.world/api/relay), 并报当前队列包数/最近落地时间让对方知道现状。发送后回执 200 + code=0 即成功。**别试 SSH/直连 Orin — 必失败; 也别假设 auto_loop 能自己拉新数据 — 队列空就是没新包**。
+- **重新采集/要新真机数据 = 只能飞书 @小芳 (2026-08-03 实测, 老倪 "重新采集吧")**: Orin (192.168.23.10) 在 Mac 局域网内, **4060/WSL 侧 ping 不通、SSH 不可达** (⚠️ 2026-09-16 作废: 本机 USB 千兆网卡 192.168.23.50/24 + netplan 99-orin-lan → `ssh tashan@192.168.23.66` 通, 且 `ROS_DOMAIN_ID=0` 可远程直读 Orin 生产话题, 见 `references/orin-zero-program-remote-read-2026-09-16.md`; 采数据/查话题不再必绕 Mac) (zmax_auto_collector.py 是 MAC 端守护, collect_upload_npz.py 是旧占位脚本无真机能力) — 真机采集只能由小芳在 Mac/Orin 侧触发。触发方式 = 飞书 dataworld 群发消息 @小芳: ① `POST open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal` (json: app_id=cli_a87851ffe46b500d, app_secret 从 ~/.hermes/*.env 的 FEISHU_APP_SECRET 读) 拿 tenant_access_token; ② `POST open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id` (header Authorization: Bearer <tok>, json: receive_id=oc_c0b4048546145c5c581ddd1a9e8f565d, msg_type=text, content=json.dumps({"text": 消息}) 且 ensure_ascii=False)。消息里写清: 请用 Orin 采集 → Mac 中转 (192.168.23.1:8769) → ECS relay (datadrive.world/api/relay), 并报当前队列包数/最近落地时间让对方知道现状。发送后回执 200 + code=0 即成功。**不许在 Orin 上装程序/起进程 (生产设备红线, 只做远程只读订阅); 也别假设 auto_loop 能自己拉新数据 — 队列空就是没新包**。
 - **auto_loop 闭环守护 = 数据到自动全流程 (2026-08-03 实证)**: 本地 `tools/auto_loop.py` (60s 轮询 relay /status) 数据闭环已全自动: 小芳上传 → auto_loop 拉取 (存 data/orin_live/auto_<ts>.json, 含 meta.source/frames/n_joint/n_action) → frames≥50 自动训练 (act_loop, 2000步 ~2.5min) → 训练完自动推模型回 ECS (cicd_deploy.py push 等效) → 小芳拉取部署 Orin。实测 20:26 89帧 / 20:38 107帧 两轮全自动完成, 日志在 outputs/train/loop_train.log。**老倪问"拉了么"时先看 auto_loop 进程日志 + data/orin_live 最新文件** — 数据可能已被守护自动取走, 队列空 ≠ 没采集, 而是闭环已消费。relay 新加的 /command 端点可让 4060 主动触发 Mac 端采集 (见 §12)。**frames=0 空包 (2026-08-04 实测)**: relay 队列里的 0 帧包 (如 pkg_20260804_075806.json) 会一直被 /status 列为 latest, auto_loop 每轮轮询重复打 `📥 新数据: <包名> | frames=0` — 是数据侧问题不是守护故障 (0 帧不触发训练); 要清就调 /latest 弹掉。
 - **多分身共享同一 git 仓库并行工作 (2026-08-02 实测)**: 飞书端 gateway agent (另一 Hermes 会话) 与 CLI 静静共用 `~/lerobot-smolvla-lew`, 它会 `git add -A` 提交整个工作区 — 你改到一半的文件可能被它一并提交 (git log 出现你没见过的 commit, 工作区突然 clean)。**改代码前先 `git status` + `git log --oneline -3` 确认**, 别假设工作区是上次会话留下的; 提交前 diff 确认自己的改动在里面。两方同时改同一文件会互相覆盖 — 关键文件 (simulink_module.py / cicd_pipeline.py) 改动后立即 commit, 别攒着。
 - **⚠️ 画布边必须与代码通路一致 — 缺线要补 + 标口径 (2026-09-15 老倪问「INTACT意图解码器怎么没有直接连接
@@ -67,6 +194,27 @@ tools/gui/
   旧线 0 丢失) + 渲染 PNG 路径给用户目检。
 - **工具栏按钮显示不全 (2026-08-02 用户两次反馈 "CICD 那个按钮，显示的不全" / "3阶段这几个按钮的文字显示，看不全")**: QHBoxLayout 空间不足时按钮被压缩 → 文字截断省略。**正确解法 = 双行工具栏** (仿真控制一行 + CI/CD 操作独立第二行, 按钮文字保持完整如 "🔗 CI/CD 全链路"、"🎯 三阶段管线"), **不要缩写按钮文字** (用户反馈的是"看不全", 缩写是错误方向)。配套: spinbox setMaximumWidth(70/62)、标签短名 (时间/dt)。验证: offscreen 断言 `btn_cicd.text()` 完整 + `btn_run.mapTo(w)` y 坐标在 btn_cicd 之上 (两行独立)。commit 8fb74424。
 - **控制台歧义**: web console.html vs 桌面 studio.py。远程GUI=后者。
+- **⚠️ 新增功能"用户找不到入口"通用栏 (2026-09-17 老倪: 「窗口的标定按钮怎么没有找到?」)**: ①`setVisible(False)` 别连
+  **入口开关自己**一起藏 (入口恒常显 + 常显一句"下一步点哪"); ②offscreen 断言 `obj.exists()`/程序化 `setChecked(True)`
+  **证明不了人点得到** → 必须断言入口控件 `isVisible()/isEnabled()/width>阈值`; ③长文本 QLabel 撑宽窗口 →
+  `wordWrap(True)` + `Ignored` 横向策略; ④窗口尺寸必须真桌面量 + 拔屏后自动拉回 (见 yolo-3d-perception-chain 标定工程节)。
+- **🏷 输入图像窗口 = 真机 YOLO 标定工位 (2026-09-17 老倪: 「在右键打开的窗口增加标定功能, 工程师圈选光模块、输入类别、保存当前图片, YOLO 能拿这些图片训练」)**: 窗口 (`tools/gui/yolo_input_viewer.py`) 第 2 行 = 标定行 (✏️标定模式 · 类别 combo+「＋新类别」 · 💾保存标注 · ⏭保存并下一帧 · 🏷改选中类别 · ↩撤销 · 🗑删选中 · ✖清空框 · 🧊冻结/▶实时 · 标定员), 第 3 行 = 数据行 (📦构建数据集 · 🔍数据体检 · 🚀训练 YOLO · 📂数据目录 + 数据根/张数/类别). 画面控件 = `tools/gui/yolo_label_widget.py` (拖框/移动/四角缩放/右键删/Ctrl+Z); 数据落盘/构建/体检 = `tools/yolo_annot_dataset.py` (data/yolo_annot: classes.txt + sessions/<会话>/{frames,labels} + annotations.jsonl + dataset/{images,labels}/{train,val}+data.yaml); 训练 = `tools/yolo_annot_train.py` (体检→基座 auto→ultralytics→训练后真推理验证). **设计/坑详见 yolo-3d-perception-chain 技能「真机标定工程」节** (旋转窗换算/两窗同步/类别 combo 误改选中框/小样本 val 兜底/体检反向验证/chk_rot 默认开不触发 toggled/快捷键输入框守卫).
+- **📺 YOLO 节点右键「打开输入图像」= 实时真机原始视频流 (2026-09-17 老倪要"看到是否拿到 realsense 图像")**: 三条源同一窗口 (`tools/gui/yolo_input_viewer.py`): ①真机 (Orin→ROS2 srv→本机 Docker→本地文件) ②仿真渲染 metaworld corner2 ③(可扩展)回放。默认**不画框**(原始流语义), 勾选才叠 YOLO 框。状态行必须给出: 输入源/分辨率/**设备身份(VID:PID+序列号)**/seq/帧龄 age/JPEG KB/服务端压缩耗时/fps + 「✅实时真机帧 / ⚠️无新帧 / ❌无数据」判定 —— 老倪就是看这行判断"到底有没有拿到 D405 图像"。
+  **真机链路 (实机跑通)**: Orin `tools/orin_frame_srv.py` (UVC 取帧 + **JPEG 压缩在服务端** → 服务 `/zmax/live_frame`) → 4060 `tools/ss_frame_srv_client.py` 在**本机 Docker 容器**里调该 srv (gui-venv311 无 rclpy, 容器是唯一能调 ROS2 的环境; 复用常驻 tap 容器, 它已挂 /repo:ro + /out) → 落 `live_frame.jpg/.json` → 窗口轮询。
+  **坑 (都踩过)**: ①**现场 18 个 .srv 没有一个返回图像** (`grep -iE "image|uint8\[\]"` 0 命中; `/hmi/snapshot` 的 snapshot_json `image=found:false` 实测) + `/realsense/*` Publisher=0 (驱动未装) ⇒ 图像只能 UVC 直读再服务转发, 别指望现成图像接口; ②自定义 .srv 要在 Orin 编译 (没 colcon) → **复用现场已有类型 `interfaces/srv/HmiSnapshot`** (success/message/snapshot_json), 把 base64 JPEG 放进 snapshot_json; ③`ros:humble-ros-base` 容器**没有 cv2** → 客户端不要解码, **JPEG 原样落盘** (Qt/PIL 直接读), 有 cv2 时再补 PNG; ④ssh 上 `pkill -f <脚本名>` 会**自杀** (命令行含该串) → 一律方括号技巧 `pkill -f 'orin_frame_[s]rv'`; ⑤Orin 侧脚本必须 `source /opt/ros/humble/setup.bash` + 现场工作区 install (rclpy/interfaces), 我在脚本里另加了 `interfaces` dist-packages 路径兜底; ⑥Orin 纪律: 临时进程 (按需拉起/单实例守卫/25s 无调用自退/绝不自启), 控制台窗口关闭时 `pkill` 掉 Docker 客户端 + Orin 节点。
+  取证: `~/zmax_data/verify_input_viewer.py --with-chain` (菜单项+点击开窗 / 仿真源 12.7FPS / 真机源 25s 211 帧不同 + 状态行含 `RealSense ... 8086:0b5b sn=...` + "✅实时真机帧")。
+- **🔄 双画面 (原始 + 旋转180°) 并排 (2026-09-17 老倪: 「相机总是翻转, 要同时显示两个窗口, 一个原始一个旋转180度, 方便观察。在右键打开的窗口增加这个旋转180度窗口」)**: 同一帧**并排两个子窗口** —— 左 `🖼 原始 (0°)` / 右 `🔄 旋转 180° (相机翻转)`, 下拉可选 90°/270°, 勾选框「🔄 并排旋转窗」**默认开** (取消只留原始窗)。实现要点: ①旋转用 **Qt 原生** `QPixmap.transformed(QTransform().rotate(deg), SmoothTransformation)` —— 无 cv2 依赖 (容器/venv 都没有), 且不动像素语义; ②两窗**共用同一帧源** (`_set_frames(pm)` 一次调用同时喂两窗 → 分辨率/帧龄/设备身份必然一致, 不产生第二路数据); ③缓存**未缩放** pixmap (`self._pm`), `resizeEvent` 里按各自控件尺寸等比重画 (不重新解码); ④状态行加「双画面: …」一行自解释; ⑤默认窗口 1320x700, 超屏按 `availableGeometry` 收。
+  **验证法 (可信口径)**: 合成四象限非对称图 (左上红/右上绿/左下蓝/右下白) 写成 `live_frame.jpg` 走**真机显示路径** (临时目录 + patch 模块级 `LIVE_JPG/LIVE_META` + 打桩 `_RemoteChain.ensure`), 然后**逐点断言** `rot(x,y) == orig(W-1-x, H-1-y)` (容差 40) + 左上象限颜色翻转; 真机帧也跑同一断言 (实测 0 不符)。⚠️ 别用"同坐标两窗颜色不同"当判据 —— 画面本身对称/大面积同色时会误判 (第一版就误报了)。
+  真机桌面 (3200x2000 / 192DPI) 另量: 左 632x429 @x22 / 右 632x432 @x666 等高不重叠 + 截图 `~/zmax_data/input_viewer_dual_pane_real.png` (offscreen 只有 96DPI, 尺寸必须真屏量)。
+- **⚠️ 链路生命周期 = 窗口 (2026-09-17 实测补齐)**: ①**关窗收口** (closeEvent 后台线程 `_RemoteChain.stop()`, 别阻塞关窗); ②**showEvent 重拉** (关窗复用窗口, 再显示时按需重 ensure, 30s 内不重复拉, 最小化/还原不折腾); ③**断流自愈** `_maybe_recover()` (meta 无新鲜帧 >6s 且距上次重连 ≥20s → 后台重连, 手动「⏹ 停止」后不重连, 按钮变「▶ 重连链路」; 实测杀掉链路 17s 后自动恢复真机帧, 用户控制台里也真自愈过); ④**竞态收口 `_collect_if_closed()`** —— ensure 是后台线程 (Orin 拉起 ~10s), 期间用户关窗/点停止时若不管, ensure 会在**关窗之后**把 Docker 客户端拉起来 → **孤儿 10Hz 轮询进程** (实测: 客户端 430 在关窗后 7s 启动, 之后一直活着, 把 Orin 节点"钉"住不空闲)。凡是"后台拉起外部进程"的功能都要在返回后复查一次意图状态。
+- **⚠️ Orin 侧节点三修 (tools/orin_frame_srv.py, 2026-09-17 实测)**: ①`server_fps` 恒 null —— 每帧 encode 都**重建** meta dict, 1s 分支塞进去的 fps 下一帧就被覆盖 → 必须存**持久字段** (`self.fps`) 每帧回填; ②**自退看门狗** —— 只在 `rclpy.spin_once` 主循环里判空闲**不可靠** (实测客户端已停 60s+ 节点仍在跑, 且此时"心跳"显示 calls 还在涨 = 有别的客户端在调, 别急着怪循环) → 加**独立线程**看门狗 (无调用>idle / 从未被调用>120s / 超兜底时限 → `os._exit(0)`) + 每 10s 打一行心跳 (`调用 N 次 · 空闲 Xs`) 留证; 隔离实测 ✅ (30 次真调用后停手 8s → `[frame-srv] 无调用 8s → 退出`); ③**单实例守卫误判** —— `pgrep -f marker` 会匹配**拉起命令自己的 ssh/bash 命令行**里的同名串 (含 `--marker wdtest` 的 bash -c 自己) → 节点打印 "已有实例在跑" 拒绝启动 → 只认 `argv[0]` 是 python 的进程 (`os.path.basename(cmdline.split('\0')[0])`)。⚠️ 另: **D405 UVC 独占** —— 一个节点开着 /dev/video2 时第二个节点 `cap.open` 直接失败 (`RuntimeError: /dev/video2 打不开 (被占用?)`), 想并行跑隔离测试节点得先让出现场节点 (或换设备号)。
+- **⚠️ ssh 远端命令里出现目标文件名 = 自杀 (本会话复踩)**: `ssh orin 'pkill -f "orin_frame_[s]rv"; ls -l .../orin_frame_srv.py'` —— 方括号技巧救不了后半句, **`ls` 的明文文件名让整条 bash -c 命令行匹配到 pkill 模式 → shell 自杀 → ssh 返回 255, 后续命令全没执行**。规则: ssh 远端一条命令里**只要有任何一处出现明文目标名** (ls/md5sum/grep/cat 文件名/echo 路径), pkill 就会自杀 → 一律用通配 (`orin_frame_*.py`) 或把 pkill 与查看拆成两条 ssh。
+- **🎯 各档 "R1 真实视觉/YOLO 开不开" 的唯一判据 = `SimulinkModule._ss_vision_on(cap, model_exec, l2_compat)`** (2026-09-17 老倪: 「单独选择 L2 也应该进入 YOLO 检测的断点; L2 功能要首先独立运行」): `L2 → True (SS_L2_YOLO=0 可关)` · `L3 → True` · `L4 → 随「🧩 L2 兼容」勾选` · `model_exec=True → False` (模型执行档走模型不开 R1)。
+  ⚠️ **YOLO 断点进不去的头号原因就是这里**: L2 档曾为 False ⇒ `RealStateSpaceSim.__init__` 的 `if self.vision: self._load_aligner()` 不执行 → `self._aligner=None` → 每步 `if self.vision and self._aligner is not None: self._vis_refresh()` 直接跳过 ⇒ **`detect_3d` 一次都没被调用**。判定靠实跑日志两行: 逐步 "YOLO 未启动" + 结束 "YOLO 检出 0%"(别猜, 看 /tmp/simulink_log.txt)。
+  代价: R1 是**每步**真渲染+真 YOLO (不节流/不冻结), L2 insert 一轮 500~1000 步 ⇒ 数分钟级; 要快用 `SS_L2_YOLO=0` 或勾「⚡引擎快演」(后者只末尾真采样 1 次)。
+  取证: `~/zmax_data/verify_l2_yolo_breakpoint.py` → 真值表 6/6 + 真跑引擎 20 步 vision=True → detect_3d 20/20 次, vision=False → 0 次 (零回退)。commit d9b5bdd1。
+  **另一类"断点不进"**: 进程跑在 Orin/另一台机 (真机脚本) 时, 本机仓库文件的断点永不命中 (两份文件路径 + Orin 无 debugpy) → 真机链路要在本机跑 `tools/real_yolo_perceive.py --source ros`。
+- **引擎 YoloStateAligner 的 debugpy 绑定 (2026-09-17 修)**: `state_space_sim_real._load_aligner` 原来用 `spec_from_file_location("r1_yolo_aligner", …)` 加载 → 断点不绑定 (每帧真跑 detect_3d 但 VSCode 不停) → 改为 ①复用 node_logic 正常 import 的同一模块对象 ②否则正常 import ③否则 `exec(compile(src, 真实路径))` ④退回 spec。取证 `~/zmax_data/probe_yolo_bp_20260917.py` (同一类对象 + co_filename=真实路径 + 真推理不回归)。commit 3e4b0825。
 - **功能重复必须合并, 单一入口 (2026-08-02 用户两次纠正: "CICD全链路打开后, 和数据闭环CICD控制台, 感觉功能重复了" → "那后面的 验证 集成 训练 部署这几个按钮, 是不是也重复")**: 老倪对控制台的 UI 铁律 = **一个功能一个入口, 绝不重复**。本会话落地:
   1. 删「🔗 CI/CD 全链路」按钮 (btn_cicd) —— CICDPanel 与 PipelinePanel 功能重叠 (都是 CICD 主题 + 全流程 + 日志), 合并进数据闭环控制台。CICDPanel 类保留 (open_cicd_panel 兼容), 但入口移除。
   2. 删工具栏第二行「✅ 验证 / 🚀 训练 / 📦 集成 / 🚚 部署」4 按钮 —— 与控制台内 6 环节按钮重复。**删按钮必须同步清理引用**: `_start_worker` / `_run_node_stage` 里的 `for b in (self.btn_validate, ...): b.setEnabled(False/True)` 会 AttributeError 崩 (btn 没了)。防重入靠 `_worker.isRunning()` 已足够, 按钮禁用循环直接删。删除后 `grep -cn "btn_validate\|btn_integrate\|btn_deploy"` 应为 0。
@@ -86,6 +234,8 @@ tools/gui/
 - **live_monitor/data_sync 训练入口冲突 (2026-08-02)**: `tools/live_monitor.py` 和 `tools/data_sync.py` 用**固定** config_act_mw_v111.yaml (output_dir=act_mw_v111) 触发训练 → 目录已存在必 FileExistsError (日志: outputs/train/live_train.log)。这两处也要时间戳 output_dir (同 on_train 的 re.sub 模式)。训练产物目录名不匹配 `act_<时间戳>` 规则 (如 act_finetune) = 不是 GUI on_train 触发的, 排查时先认目录名。
 - **CICD 主控台 (2026-08-02)**: 老倪要求"控制台是主控点，node 上有所有链路主要 node 能运行；既有 metaworld 又有 Orin 又有 ACT，可随意切换训练"。落地 = REFERENCE_APPS[0] = "🎛 CICD 主控台" **7节点6连线** (Orin源+metaworld源 → 🔀Switch → ACT训练 → 验证 → 集成 → 部署)，节点双击即运行/切换。⚠️ **REFERENCE_APPS 首位已不是 "⚙️ CI/CD 默认流水线"** — 旧文档/旧测试若假设 `open_cicd_panel()` 加载 3 节点会 FAIL，现在是 7 节点。⚠️ **新节点类型必须三处同步 NODE_TYPES**: simulink_module.py + tools/ci/validate_flow.py + tools/gui/simulink_ci.py (两个验证器各有独立枚举, 漏改 → validate --strict 报 "类型非法" rc=1, 本会话实测踩过); 改完跑 `simulink_ci.py test` 内置回归。完整实现细节见 `references/master-console.md`。
 - **修改 GUI 代码后必须重启控制台 (2026-08-02 用户催 "你修改完了，要重新打开控制台"; 2026-08-04 再催 "你没重启控制台")**: 改完 simulink_module.py / studio.py 后旧进程还在跑旧代码, 用户看到旧行为以为没改。流程: offscreen 验证 → `pkill -f "tools/gui/studio.py"` (确认 `ps aux | grep studio.py | grep -v grep | wc -l` == 0) → `cd ~/lerobot-smolvla-lew && python3 tools/gui/studio.py` (terminal background=true) → sleep 6 确认进程活着。**汇报必须带证据三连: 新 pid + 启动时间 + 窗口标题版本号 (`grep -n "v1.5.0" tools/gui/studio.py`)** — 用户会主动质疑 "你没重启控制台", 即使用户当时操作的进程已含新代码, 也别辩解, 直接干净重启一次 + 给 pid/时间/版本证据。操作顺序 = 修改 → 验证 → 重启 → 推送。⚠️ **pkill 自杀 (2026-08-02 实测 exit -15; 2026-08-04 复踩)**: `pkill -f "studio.py"` 所在命令行的 bash 进程本身也含 "studio.py" 字符串 → pkill 匹配到 shell 自己把自己杀了, 后续命令 (git commit/push) 全部没执行。**2026-08-04 复踩细节: 即使 pkill \"单独一条 terminal 调用\", 命令里带 `pkill -f "tools/gui/studio.py"; sleep 2; ps ...` — bash -c 的整条命令行含目标字符串, 一样自杀 (exit -15), pkill 杀完目标进程后 shell 也被杀, 后面 sleep/ps 全不执行**。**正解 = 方括号技巧 (同 §12 relay pkill)**: `pkill -f "[s]tudio.py"` — 命令行里没有明文 studio.py (是 [s]tudio.py), 不匹配自己; 目标进程命令行是明文 "python3 tools/gui/studio.py" 仍匹配。验证: `ps aux | grep "[s]tudio.py" | grep -v grep | wc -l` 归 0 后重启。原则: 命令行里绝不能出现目标进程的明文名字 (pkill/grep 都不行), 一律 [x] 技巧; 重启与 git 推送分两条命令。
+- **⚠️ systemd `Restart=always` ⇒ 关窗口 = 反复弹回 (2026-09-17 老倪: 「为什么控制台在反复重启? 停止重启」)**: `~/.config/systemd/user/zmax-studio.service` 原 `Restart=always`+`RestartSec=5` ⇒ **正常退出(exit 0)也拉起** —— 用户点 X 关掉 → 5s 后又弹回来 (实测 06:46 重启后 6 分钟内被拉起 4 次)。**判定法 (先分清"崩溃"还是"被关")**: `/tmp/closeEvent.log` 每行 `closeEvent WS清理:` = 主窗口收到**关闭请求**(正常关闭流程, 无 traceback / 无 `/tmp/studio_faulth.log`), 对照 `journalctl --user -u zmax-studio | grep -E "Scheduled restart|Main process exited"` 时间戳 —— 崩溃会是 `code=killed` 或 exit≠0 且带栈。**修法**: 改 `Restart=on-failure` (崩溃仍自动恢复, 正常关窗口就保持关闭) + `systemctl --user daemon-reload`; 立刻止损用 `systemctl --user stop zmax-studio` (enabled 保留 = 下次登录仍自启, 要彻底不自启再 `disable`)。⚠️ **双拉起源 = 双实例**: 桌面图标 `~/Desktop/XSpace-Studio.desktop` → `tools/gui/launch_studio.sh` (脚本自带 `pgrep` 单实例检查, 已有实例只激活窗口) 与 user service 是**两条独立路径**, service 侧无单实例检查 → 登录后可能两个控制台窗口。
+- **⚠️ 长跑服务按"本地日期拼文件名"必炸 (2026-09-17 `ss-bypass.service` 实测: 11 分钟 135 次重启, 每 5s 一次)**: `tools/ss_bypass_run.py` 用 `time.strftime("%Y%m%d")` 拼 `state_/proposal_YYYYMMDD.jsonl`, 而 `ss-remote-tap` 的 **Docker 容器 TZ=UTC** 写的是上一(UTC)日文件名 (00:00–08:00 CST 窗口内差一天) ⇒ `open()` FileNotFoundError ⇒ `Restart=always` 每 5s 拉起。**修法 (已落地 ea614e2c)**: `Tailer(prefix, dir)` 跟随 IN_DIR 里**最新存在的** `*.jsonl` (每 2s 重扫, 跨天/轮转/切日自动接上), 文件未落盘就返回空**等待不崩**。**铁律: 跨进程共享的日志/数据文件名一律"取最新存在文件"(或显式传 TZ), 别各自按本地日期拼; 任何 `Restart=always` 的服务先问一句"正常退出该不该复活"**。
 - **offscreen 验证 CICDWorker 别造 FakeWorker (2026-08-03 实测)**: log/finished 是**真 pyqtSignal**, 自定义 FakeWorker 类给 `log = None` 会在 `worker.log.connect(...)` 处 AttributeError 崩 (`'NoneType' object has no attribute 'connect'`)。正确做法: monkeypatch `CICDWorker.start = lambda self: None` 防真线程启动, 其余走真实类 (信号对象齐全)。防重入验证用假 worker 对象: `class FakeRunning: def isRunning(self): return True` 赋给 `w._worker` → 调 on_xxx() → 断言引导 step 不变。
 - **offscreen 验证 QThread 异步信号 (2026-08-02 实测 3 轮才过)**: CICDWorker(QThread) 的 finished_ok/finished 是 queued connection — worker 线程跑完 ≠ 主线程 slot 已执行。断言节点 status 变化必须:
   ```python
@@ -137,6 +287,44 @@ ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers
 - **实测对比 (4060, 300步/模型, 60帧)**: 训练速度 ACT 13.0 vs SmolVLA 2.0 step/s; 动作MSE 1.40 vs 1.06 (SmolVLA 略准); 成功率 3.3% vs 3.3% (均未收敛, 300步太短); 鲁棒性(重复推理std) 0.014 vs 0.127 (ACT 稳 9x, SmolVLA DiT 采样噪声); 推理延迟 5.7ms vs 503ms (ACT 快 88x)。报告落 reports/model_compare_<ts>.json → ModelCompareDialog 双loss折线 + 五指标条形图 (训练速度/MSE/成功率/鲁棒性/延迟, 好值绿✓) + 表格, 导出 PNG 存 reports/。
 - **ModelCompareDialog/BarCompareWidget 主题化**: paint 用 `_st()` (simulink_scope.CUR_THEME 由 simulink_module.switch_theme 同步); 对话框 QSS 用 `_qss()` 映射 (dark 时浅色值→深色值)。
 - **🔬 三模型对比 (2026-08-05, commit ada65fb1, 老倪: \"增加一个没有leworldmodel的流程, 三个模型对比, 即 ACT, SmolVLA, SmolVLA+Leworldmodel串行\")**: 新模板「🔬 三模型对比」**18节点20连线** = ♻共用2 (📦metaworld数据 / 📊对比评估Scope) + **3 分支行**: ACT 7 (ResNet18→CVAE→Encoder→Decoder→ActionHead·ACT→Ensemble→训练) + SmolVLA 纯动作 4 (SmolVLM2→DiT-B→ActionHead·SmolVLA→训练, **无 LEW**) + SmolVLA+LEW 5 (SmolVLM2·LEW→DiT-B·LEW→🌐LeWorldModel→ActionHead·SmolVLA+LEW→训练)。三训练节点 policy=act / smolvla / smolvla_lew。入口 btn_compare3 \"🔬 三模型对比\" (#d4a800) → open_compare3()。**⚠️ 关键配置坑 (configuration_smolvla_lew.py:125-126 `__post_init__`)**: `freeze_smolvlm: true` 时 **`enable_lew_world_model` 被强制改 False** — 现有 config_smolvla_metaworld.yaml (freeze=true) 训练出的\"SmolVLA\"其实**根本没启用 LEW**! 要真 LEW 必须新建 `config_smolvla_lew_metaworld.yaml` (freeze_smolvlm: **false** + enable_lew_world_model: true + lew_* 参数)。on_train 三策略分支 (smolvla_lew→新配置+ts_dir=smolvla_lew_<ts> / smolvla→旧配置+smolvla_<ts> / else→ACT), 曲线落盘 reports/train_curve_<policy>.json 各写各的。compare_models.py main() 改循环 `policies=[(\"act\",\"ACT\"),(\"smolvla\",\"SmolVLA\"),(\"smolvla_lew\",\"SmolVLA+LEW\")]` 逐个 find_ckpt+eval (缺 checkpoint 跳过不报错); on_compare_scope 改\"有任一产物即可评估\"(不再强制双曲线都在)。ModelCompareDialog._load_data 通用 N 模型 (MODELS 表 + present=[k in m and m[k]]): loss 折线每模型一条 / 表格 N 列+胜出列 / bars.set_data(rows, names=[...]); simulink_scope.COLORS 加 `smolvla_lew: #a371f7` (紫)。**⚠️ BarCompareWidget paintEvent float 坐标崩 (2026-08-05 渲染对话框时暴露, commit 53164e6a)**: 原双模型版 `y0 = i * row_h` 是 float, `p.drawText(8, y0+14, ...)` **PyQt5 严格类型 → TypeError** (隐藏 bug 从未被触发, N 模型改造后测试渲染对话框才崩)。修: y0/yy 全部 `int()`。**教训: 自绘 paint 的 drawText/fillRect 坐标必须 int (同 QPen.setWidth 只收 int 一族); 改完必须真实渲染一遍**。验证 (offscreen EXIT=0): YAML 语义断言 (lew 配置 enable=true+freeze=false) / compare 语法 / 模板 18节点20连线 / Action Head 三行对齐 / ModelCompareDialog 假数据三模型表格含 \"3 模型\" / 画布渲染采样非白。
+
+## 🛡 L4 档「跑满 4000 步不出插拔成功」真根因 + 直驱收口闸 (v5.6.3, 2026-09-15)
+
+老倪: 「为什么 3D 视频要走 4000 步，还没成功显示插拔成功的视频?」→ 定位到两条, 全部实测复现:
+
+1. **主因 = 直驱动作与执行层参考反向 + 幅度塌缩**。同 seed104 / cap=l4 / 同起点同干扰实测:
+   教师(解析链) `act=[+0.119,−0.130,−0.170]` vs 模型(INTACT 直驱 v6r11 ep2) `act=[−0.046,−0.013,−0.012]`
+   → `cos=−0.14`(方向反) 且前 130 步 std 只有教师 **17~42%** → 手朝**远离光模块**方向漂 82mm
+   (`|x−peg| 0.177→0.259m`) → 600 步(乃至 4000 预算)全停在「接近」`grasped=False` → 无插入/拔出/AOI。
+   ⚠️ 离线判闸(MAPE on 0.036<zero 0.133<const 0.083)过 ≠ 闭环能用 —— 离线在训练分布+真值动作历史上算的。
+2. **放大器 = 异常被静默写成零动作**: `install_direct_act` 的 `except` 里 `s._dact_cache = np.zeros(4)`
+   → 手完全不动, 而引擎日志只有 `阶段=接近 grasped=False`（表面像"模型不行"）。实测复现: 外部传残缺 `rec` dict
+   → 每步 `KeyError: 'raw'` → 60/600 步动作全 `[0,0,0,0]`。**任何异常都会伪装成"跑满预算没结果"。**
+
+**修法**（把引擎 `SS_L4_INTACT` 已有的 L2 收口闸**扩展到直驱路径**；架构原则: 上层只给意图, 执行由下层收口, 每层只能收窄可行域）:
+- 阶段白名单 `SS_DIRECT_STAGES`（默认 `接近,对位,转移`）—— 下降/抓取/插入/拔出/AOI 交执行层（注入会把「抓取点↔头」偏移出
+  129~132mm 成功域 → 抓取后滑脱 33mm → 回退重抓死循环）；
+- 一致度门槛 `SS_DIRECT_COS_MIN`（默认 **0.9**；实测 cos 0.5~0.85 仍会滑脱）；
+- 方向反相 / 零动作 / 幅度>1.5×参考 → 否决；方向一致 → 按 `w=cos` 融合且**融合后幅值不得超过参考**(收窄不放大)；
+- **否决的步不写 `_direct_act`** → 引擎用**自己刚算出的 u** 下发（与解析链逐位同源）；夹爪维持"状态机说了算"；
+- 「执行层参考」必须取 `orig()` 返回的 **u**（引擎真实控制量），**不是 `u_ff`** —— 用 u_ff 当参考会丢反馈/限速项,
+  自造抓取点偏移 → 每次抓取滑脱(踩过)；
+- 异常: 记 `state["err"]/err_steps` + **显式打印一次堆栈** + 本步交回执行层（不再写零动作）+ 后续步继续重试推理；
+- GUI `simulink_module.py` L4 档: 直驱装配成功后 `os.environ.pop("SS_INTACT")` —— 模型只留一条通道,
+  否则被闸否决的步仍从 u_ff 槽位**二次注入** → 同样滑脱；
+- 计数全留证 `state["gate"]={n,stage_out,veto_dir,veto_mag,blend,applied,clamped,cos_sum}`；`SS_DIRECT_GATE=0` 复现旧行为(A/B)。
+
+**验证 (本机真跑)**: L4 档 4000 预算 → `done=True · aoi_ok=True · 879 步 · 13 段全过 · 真推理 879 次 · err=无`
+(对照: 解析链 868 步; 原样直驱 600 步停「接近」)。视频 `reports/l4_model_gated_v4_seed104.mp4`(879 帧逐帧标注)
+→ https://datadrive.world/models/l4_model_gated_v4_seed104.mp4 ；报告 `reports/L4_4000_STEPS_ROOTCAUSE_20260915.md`。
+**⚠️ 诚实缺口**: 闸门今天 **全否决**(`blend=0`) ⇒ 模型每帧真推理+提案留档, 执行靠 L2 收口; "模型独立干完"尚不成立。
+下一步三条口径: goal 前瞻(训练 `train.py::construct_intents` goal=窗口末帧≈+k 前瞻) vs 运行时喂整段末态 `intact_goal_frame*.npy`
+(‖δ‖≈25) / `node.action_hist` 滚动的是归一化 chunk(vs 训练 raw) / 闭环 DAgger 再训 → 闸门按 cos 自动放权。
+
+**工具**: `tools/diag_l4_stall.py --arm {analytic,direct} --steps N --seed S [--video x.mp4]`（单臂真跑 + 逐步 jsonl + 标注视频,
+`--cap l4/none` 控干扰）· `tools/diag_intact_zero_act.py`（直驱内部产物微诊断：chunk/u_ff/skill_ctx/decoder/err 全打）。
+**坑**: ①传残缺 `rec` dict 给 `install_direct_act` 会静默变零动作（它按 `rec["raw"]` 直接索引）；②同一脚本里
+`rec["act"]` 是 **ndarray 列表**不是 dict 列表（`np.asarray(rec["act"])`）；③两臂要**分进程**跑（同进程 env 单例污染）。
 
 ## 🧲 记忆层集成阶梯 (L2 准确性 → L3 调度 → L4 抗干扰 → 总装仲裁, v5.5.46)
 
@@ -691,3 +879,55 @@ close 只是隐藏 (无 WA_DeleteOnClose), 对象+GL 上下文都在; 数据源�
 `QFontInfo(QFont('Arial', pt)).pixelSize()` 打真机 px。
 
 - **🗂 模板多行展开布局 (2026-08-05, commit ada65fb1, 老倪: \"你每次都是从一条直线上开始给出, 你需要把所有节点展开, 不要重叠成一条线; 类似的功能, 例如 Action Head, 应该垂直对齐\")**: **用户偏好 — 模板加载节点禁止单行横排 (13+ 节点一条直线出画布外)**。REFERENCE_APPS 条目支持可选**第4元素 layout** (3元组模板兼容, 4元组才启用): `layout = [[节点名...]每行]` 网格 — **行 = 模型分支 (y 递进 230), 列 = 功能角色 (x 递进 260), 空串 \"\" 占位跳过**。同名节点多行出现 → 取各自候选坐标 → **同列垂直对齐** (三模型 Action Head 都落第5列 x=1420, y=80/310/540)。load_reference_app 加 layout 分支: 先 `pos.setdefault(nm, []).append((x,y))` 收集同名多行坐标 → 每节点取 `next(p for p in cands if p not in used)` (used 去重保证共享节点只画一次, 如 metaworld 三行共用顶部一个) → 兜底单行。**⚠️ REFERENCE_APPS 改 4 元组后全仓库 3 处 `for nm, nodes, links in REFERENCE_APPS` 解包全崩 (ValueError) — 必须逐个改 `for item in ...: nm=item[0]`** (参考应用按钮 1758 / _act_build_link_existing / _act_build_finish)。验证 (offscreen): 三模型模板 18节点 / Action Head `len(set(x))==1` 且 `ys == [80,310,540]` / metaworld 只画一次 / 双模型+ACT-Meta 回归 (3元组) 不崩。
+## 控制台两个高频故障 (2026-09-18 实测, 都已修)
+
+### ① 模式下拉切「🔌 本地连接 (Local)」→ 整个控制台 SIGABRT (无弹窗, 直接消失)
+根因: `_on_mode_changed` 里 `modes=["sim","local","real"]` 但 `Z700_ROS2_NODES` 只有 sim/real 两个键
+→ `KeyError: 'local'` 抛在 Qt 槽里没人接 = **Qt 槽内未捕获异常 → qFatal → 整进程中止**
+(日志 /tmp/studio_launch.log: `Fatal Python error: Aborted` + traceback 到 studio.py:7317)。
+同一类坑 2026-09-14 出现过一次 (`Z700_ROS2_NODES["real"]` 被当 dict 调 `.get()`)。
+**纪律: 任何 Qt 槽体都要包 try/except 兜底 (异常只记日志, 绝不冒泡) — 这是"点一下就崩"的通式。**
+修法: 未知/越界模式键一律退回 sim 表 + 如实打日志; 槽体总兜底。
+排查证据: `journalctl --user -u zmax-studio --since "…"` 找 `Fatal Python error`, 看 `Current thread` 那几行。
+
+### ② 「输入图像」真机源"永远无画面", 但 L2 其实一直在吃帧
+`yolo_input_viewer.py` 的真机源原来**只认 srv 落盘** `live_frame.jpg/.json`
+(Orin `/zmax/live_frame` → 本机 Docker `ss_frame_srv_client.py`)。
+Orin 侧服务不可达时 (容器日志 `❌ 服务 /zmax/live_frame 不存在 → 退出`) 该文件冻结在旧时间戳
+→ 窗口按"不上旧帧"纪律显示空/占位, **而真机图像其实一直在流**: Docker tap 落盘 `cam_rs.png`
+(0.x 秒龄, 只读订阅生产话题), **L2 侧 (`ss_yolo_on_real.py` CAND) 吃的就是这条**。
+口径: 窗口显示的真机源必须 = L2 实际消费的那条流 → 加同源回退链
+`cam_rs.png → cam_fp.png → cam_latest.png → srv_cam.png/.jpg`, 逐文件 mtime 新鲜度 (≤10s),
+有新鲜帧就上屏并在状态栏标「来源 / 帧龄 / srv 为何回退」; 全不新鲜 → 占位逐条列候选状态。
+**不要改回"只认 srv"**: Orin 红线=零自研程序, 话题落盘才是常驻正解。
+
+## 输入图像窗口「三路源」+ 引擎实况取证 (2026-09-17/18, commit 6ef836a7)
+**窗口 = tools/gui/yolo_input_viewer.py, 输入源下拉 3 项: 🎥 真机 RealSense / 🧪 仿真 metaworld / 💻 本机摄像头。**
+- 数据根按源分开 (tools/yolo_annot_dataset.py): `data/yolo_annot`(真机) · `yolo_annot_sim`(仿真) ·
+  `yolo_annot_usbcam`(本机摄像头) — 三路口径不混, 会话 tag 分别 d405/sim_corner2/usbcam。
+- 💻 本机摄像头: `/dev/video0` = Luxvisions Integrated RGB Camera (内置 UVC, uvcvideo 内核自带), 1280x720 MJPG 30fps 可跑满。
+  **坑1 (cv2 V4L2)**: `cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)` 报
+  "backend generally available but can't be used to capture by name" → **必须换算成索引**(`cv2.VideoCapture(0, CAP_V4L2)`)。
+  **坑2 (UVC 独占)**: `_start_source` 非幂等时 (`__init__` 的 singleShot(200ms) + 手切下拉各起一次) 旧采集线程成孤儿 →
+  **设备被永久占用**, 之后任何一路都"打不开摄像头" → 修: start 前先收旧线程 + `join(1.5)` 等 release。
+**仿真源语义**: 引擎没在跑时窗口渲染的是 `node_logic._YOLO_ALIGNER.env` (只 reset、**从不 step**) = 静止初始帧
+(老倪两次误读成"光模块没插进槽"!). 点 ▶运行 后窗口自动跟随引擎实况帧 (SS_LIVE_FRAME 共享槽, 与 detect_3d 同一帧);
+无实况 → 画面顶部压橙字横幅"引擎未运行 · 静态初始帧", 不假动。
+**引擎实况取证 (1Hz)**: `/tmp/ss_live_frame.json` = 步号/阶段/**沿孔轴进深 mm**/**横向偏差 mm**/夹持/窗口消费计数,
+每轮收尾强制落一次 → 这类"看起来没插进去"的问题直接用数据说话, 不用截图目测。
+**窗口通用修复 (同批)**: ①`_clamp_to_screen` 必须按**所有屏幕**判可见性 (只认 primaryScreen → 拖到扩展屏 5s 被拽回,
+  实测 t=5.0s 跳回 x=572); ②切源必须**清画面+清框** (只切链路 → 上一路画面残留, 真机源看起来在放仿真视频);
+  ③真机源只让**新鲜**帧上屏 (meta.ok ∧ age≤5s), 超 10s 换占位画面写原因; ④标定冻结时不动画面。
+
+## 插销/插槽"没插进槽/横向偏差" — 口径问题, 非控制偏差 (2026-09-18 实测)
+**结论**: metaworld peg-insert-side 官方判据 = **杆头(pegHead 站点)到 goal 点** ≤7cm 算成功
+(`metaworld/envs/sawyer_peg_insertion_side_v3.py:115`); 引擎把杆头推到 0.6mm 内、横向 2.1~2.5mm → 判据上是"完成"。
+但光模块是 **24cm 长杆**(geom box 0.015/0.015/0.12, euler 0 1.57 0 使长轴沿世界 x), 只入槽 6~7cm、约 17cm 横在盒外
+→ 老倪肉眼判"没插到槽里、和插槽横向差一截"。**槽道几何**: 盒内两根 3cm 立柱(碰撞 geom size[0]=0.03, world y=box_y±0.06)
+形成 y 向 6cm 宽、z 向 6cm 高、x 向 19.2cm 长的通槽; 孔口 site(0,-0.096,0.13) 在盒 +x 面, goal=mouth+66mm(x 向)。
+**待老倪定**: 是否改"光模块体坐进插槽"口径 (杆头推到槽道尽头 → 杆体 19cm 进槽) — 动 L2/L3/L4 共用插入段, 须同口径 A/B。
+**取证脚本** (tools/): diag_insert_offset_truth / diag_insert_geom_truth / diag_scene_bodies /
+diag_pixel_align_peg_slot (corner2 投影: 孔口到杆轴 0.3px) / diag_which_state_on_screen /
+diag_compare_window_render (抓窗口与渲染帧逐像素比对) / ascii_render / zoom_insert_region。
+**留档**: ~/zmax_data/20260918_0616_evidence/ (MANIFEST.md + 窗口抓图 + 候选帧 + 轮次日志) 与
+~/zmax_data/ss_remote/20260918_0615/ (state/proposal jsonl.gz + MANIFEST)。
