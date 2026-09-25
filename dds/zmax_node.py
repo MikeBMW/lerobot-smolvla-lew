@@ -25,13 +25,39 @@ from cyclonedds.topic import Topic                                        # noqa
 
 from zmax_types import DeployCommand, HardwareState, Heartbeat, TrainProgress   # noqa: E402
 
+# ── 状态空间全局数据空间（老倪 2026-09-25: 状态空间工程用 DDS）──
+try:
+    from ss_types import (SSState, SSAction, SSInfer, SSCanvasNode, SSMacro, SSNodes,
+                          SSCalib, SSDiag, SSTest)
+    _SS_TOPICS = {
+        "ss_state": SSState, "ss_action": SSAction, "ss_infer": SSInfer,
+        "ss_canvas": SSCanvasNode, "ss_macro": SSMacro, "ss_nodes": SSNodes,
+        "ss_calib": SSCalib, "ss_diag": SSDiag, "ss_test": SSTest,
+    }
+except Exception:                                                               # noqa: BLE001
+    _SS_TOPICS = {}
+    # 连线数据总线（DDS 连线 topic）
+try:
+    from dds_link_bus import LinkValue as _LV
+    _LINK_TOPIC = {"link_value": _LV}
+except Exception:                                                               # noqa: BLE001
+    _LINK_TOPIC = {}
+
 TOPICS = {
     "hw_state": HardwareState,
     "train_prog": TrainProgress,
     "deploy_cmd": DeployCommand,
     "heartbeat": Heartbeat,
+    **(_SS_TOPICS if _SS_TOPICS else {}),
+    **(_LINK_TOPIC if _LINK_TOPIC else {}),
 }
-QOS_CLASS = {"hw_state": "state", "train_prog": "state", "deploy_cmd": "cmd", "heartbeat": "beat"}
+QOS_CLASS = {
+    "hw_state": "state", "train_prog": "state", "deploy_cmd": "cmd", "heartbeat": "beat",
+    # 状态空间: 高频感知/动作/连线 → best（低延迟, 丢帧无妨）; 状态/画布/训练 → state（latch）
+    "link_value": "beat", "ss_action": "beat", "ss_infer": "beat", "ss_state": "beat",
+    "ss_canvas": "state", "ss_macro": "state", "ss_nodes": "state",
+    "ss_calib": "state", "ss_diag": "beat", "ss_test": "state",
+}
 
 
 def _p(cls, *a):

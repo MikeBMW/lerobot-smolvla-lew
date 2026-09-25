@@ -315,7 +315,7 @@ class VersionSyncWidget(QWidget):
             # Z-MAX 自定义版本 (从侧边栏版本号)
             # 🐛 2026-09-24: 本处长期停在 5.11.4 (bump_version.py 没覆盖它, 与 VERSION.md
             #   "改版本必同步"清单不符 → 版本面板显示旧号)。已补入 bump 工具同步清单, 本次对齐。
-            zmax_ver = "5.15.6"
+            zmax_ver = "5.15.7"
 
             # 当前 commit
             commit, _ = _run_git(['rev-parse', '--short', 'HEAD'], self.repo_path)
