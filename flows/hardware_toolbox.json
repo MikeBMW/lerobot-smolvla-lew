@@ -1407,7 +1407,8 @@
    "t": "hwn0_1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L1"
+   "label": "L1",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_0.out1__hwn0_1.in1"
   },
   {
    "id": "l27057304499176",
@@ -1415,7 +1416,8 @@
    "t": "hwn0_2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L2"
+   "label": "L2",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_1.out1__hwn0_2.in1"
   },
   {
    "id": "l55149880593475",
@@ -1423,7 +1425,8 @@
    "t": "hwn0_3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L3"
+   "label": "L3",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_2.out1__hwn0_3.in1"
   },
   {
    "id": "l9544427009525",
@@ -1431,7 +1434,8 @@
    "t": "hwn0_4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L4"
+   "label": "L4",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_3.out1__hwn0_4.in1"
   },
   {
    "id": "l64087949361762",
@@ -1439,7 +1443,8 @@
    "t": "hwn0_5",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L5"
+   "label": "L5",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_4.out1__hwn0_5.in1"
   },
   {
    "id": "l69511829205579",
@@ -1447,7 +1452,8 @@
    "t": "hwn0_6",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L6"
+   "label": "L6",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_5.out1__hwn0_6.in1"
   },
   {
    "id": "l44141968334000",
@@ -1455,7 +1461,8 @@
    "t": "hwn0_8",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "R1"
+   "label": "R1",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_7.out1__hwn0_8.in1"
   },
   {
    "id": "l78849421477690",
@@ -1463,7 +1470,8 @@
    "t": "hwn0_9",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "R2"
+   "label": "R2",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_8.out1__hwn0_9.in1"
   },
   {
    "id": "l81725745320463",
@@ -1471,7 +1479,8 @@
    "t": "hwn0_10",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "R3"
+   "label": "R3",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_9.out1__hwn0_10.in1"
   },
   {
    "id": "l24404369608146",
@@ -1479,7 +1488,8 @@
    "t": "hwn0_11",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "R4"
+   "label": "R4",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_10.out1__hwn0_11.in1"
   },
   {
    "id": "l11511406305556",
@@ -1487,7 +1497,8 @@
    "t": "hwn0_12",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "R5"
+   "label": "R5",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_11.out1__hwn0_12.in1"
   },
   {
    "id": "l79362744373287",
@@ -1495,7 +1506,8 @@
    "t": "hwn0_13",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "R6"
+   "label": "R6",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn0_12.out1__hwn0_13.in1"
   },
   {
    "id": "l11872476217773",
@@ -1503,7 +1515,8 @@
    "t": "hwn1_1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "位控"
+   "label": "位控",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn1_0.out1__hwn1_1.in1"
   },
   {
    "id": "l34450426086157",
@@ -1511,7 +1524,8 @@
    "t": "hwn1_2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "夹持"
+   "label": "夹持",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn1_1.out1__hwn1_2.in1"
   },
   {
    "id": "l26667701244805",
@@ -1519,7 +1533,8 @@
    "t": "hwn1_3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "指示"
+   "label": "指示",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn1_0.out1__hwn1_3.in1"
   },
   {
    "id": "l30459006939260",
@@ -1527,7 +1542,8 @@
    "t": "hwn2_1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "力反馈"
+   "label": "力反馈",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn2_0.out1__hwn2_1.in1"
   },
   {
    "id": "l74642857309217",
@@ -1535,7 +1551,8 @@
    "t": "hwn2_2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "触觉"
+   "label": "触觉",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn2_1.out1__hwn2_2.in1"
   },
   {
    "id": "l56777035280512",
@@ -1543,7 +1560,8 @@
    "t": "hwn2_3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "视觉"
+   "label": "视觉",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn2_2.out1__hwn2_3.in1"
   },
   {
    "id": "l54167278314290",
@@ -1551,7 +1569,8 @@
    "t": "hwn2_4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "位姿"
+   "label": "位姿",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn2_3.out1__hwn2_4.in1"
   },
   {
    "id": "l71339434242153",
@@ -1559,7 +1578,8 @@
    "t": "hwn2_5",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "安全"
+   "label": "安全",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn2_4.out1__hwn2_5.in1"
   },
   {
    "id": "l91826086914942",
@@ -1567,7 +1587,8 @@
    "t": "hwn1_0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "感知汇总"
+   "label": "感知汇总",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn2_5.out1__hwn1_0.in1"
   },
   {
    "id": "l13072956006031",
@@ -1575,7 +1596,8 @@
    "t": "hwn3_1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "头部"
+   "label": "头部",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn3_0.out1__hwn3_1.in1"
   },
   {
    "id": "l75833727954789",
@@ -1583,7 +1605,8 @@
    "t": "hwn3_2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "左腕"
+   "label": "左腕",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn3_1.out1__hwn3_2.in1"
   },
   {
    "id": "l387796831400",
@@ -1591,7 +1614,8 @@
    "t": "hwn3_3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "右腕"
+   "label": "右腕",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn3_2.out1__hwn3_3.in1"
   },
   {
    "id": "l36566998336886",
@@ -1599,7 +1623,8 @@
    "t": "hwn3_4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "鱼眼0"
+   "label": "鱼眼0",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn3_3.out1__hwn3_4.in1"
   },
   {
    "id": "l5028299080706",
@@ -1607,7 +1632,8 @@
    "t": "hwn3_5",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "鱼眼1"
+   "label": "鱼眼1",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn3_4.out1__hwn3_5.in1"
   },
   {
    "id": "l13615494609619",
@@ -1615,7 +1641,8 @@
    "t": "hwn3_6",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "鱼眼2"
+   "label": "鱼眼2",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn3_5.out1__hwn3_6.in1"
   },
   {
    "id": "l81205746989802",
@@ -1623,7 +1650,8 @@
    "t": "hwn4_2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "急停"
+   "label": "急停",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn4_0.out1__hwn4_2.in1"
   },
   {
    "id": "l33422665350412",
@@ -1631,7 +1659,8 @@
    "t": "hwn4_3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "光栅"
+   "label": "光栅",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn4_2.out1__hwn4_3.in1"
   },
   {
    "id": "l98235305929012",
@@ -1639,7 +1668,8 @@
    "t": "hwn4_5",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "扫码"
+   "label": "扫码",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn4_3.out1__hwn4_5.in1"
   },
   {
    "id": "l12204584238189",
@@ -1647,7 +1677,8 @@
    "t": "hwn1_0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "急停信号"
+   "label": "急停信号",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn4_5.out1__hwn1_0.in1"
   },
   {
    "id": "l80312303299304",
@@ -1655,7 +1686,8 @@
    "t": "hwn1_0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "急停信号"
+   "label": "急停信号",
+   "dds_topic": "zmax/ss/hardware_toolbox/hwn4_0.out1__hwn1_0.in1"
   }
  ]
 }

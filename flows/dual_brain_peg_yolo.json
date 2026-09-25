@@ -961,42 +961,48 @@
    "f": "dbt0",
    "f_port": "out1",
    "t": "yol1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt0.out1__yol1.in1"
   },
   {
    "id": "lyol5",
    "f": "dbt0",
    "f_port": "out1",
    "t": "yol4",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt0.out1__yol4.in1"
   },
   {
    "id": "lyol1",
    "f": "yol1",
    "f_port": "out1",
    "t": "yol2",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/yol1.out1__yol2.in1"
   },
   {
    "id": "lyol2",
    "f": "yol2",
    "f_port": "out1",
    "t": "yol3",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/yol2.out1__yol3.in1"
   },
   {
    "id": "lyol4",
    "f": "yol4",
    "f_port": "out1",
    "t": "yol3",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/yol4.out1__yol3.in1"
   },
   {
    "id": "lyol3",
    "f": "yol3",
    "f_port": "out1",
    "t": "dba0",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/yol3.out1__dba0.in1"
   },
   {
    "id": "l66781721687727",
@@ -1004,7 +1010,8 @@
    "t": "dba1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "39D obs"
+   "label": "39D obs",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba0.out1__dba1.in1"
   },
   {
    "id": "l71603986087323",
@@ -1012,7 +1019,8 @@
    "t": "dba2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "39D obs"
+   "label": "39D obs",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba0.out1__dba2.in1"
   },
   {
    "id": "l91761752056733",
@@ -1020,7 +1028,8 @@
    "t": "dba2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "4D action"
+   "label": "4D action",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba1.out1__dba2.in1"
   },
   {
    "id": "l6641875460794",
@@ -1028,7 +1037,8 @@
    "t": "dbb0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "4D 动作"
+   "label": "4D 动作",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba1.out1__dbb0.in1"
   },
   {
    "id": "l27292118166010",
@@ -1036,7 +1046,8 @@
    "t": "dba3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "contact概率"
+   "label": "contact概率",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba2.out1__dba3.in1"
   },
   {
    "id": "l56857815908845",
@@ -1044,7 +1055,8 @@
    "t": "dbb0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "抓取触发"
+   "label": "抓取触发",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba3.out1__dbb0.in1"
   },
   {
    "id": "l93958574033927",
@@ -1052,7 +1064,8 @@
    "t": "dbb0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "观测"
+   "label": "观测",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba0.out1__dbb0.in1"
   },
   {
    "id": "l32960755288925",
@@ -1060,7 +1073,8 @@
    "t": "dbb1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "接近"
+   "label": "接近",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb0.out1__dbb1.in1"
   },
   {
    "id": "l18176031828948",
@@ -1068,7 +1082,8 @@
    "t": "dbb2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "抓取"
+   "label": "抓取",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb1.out1__dbb2.in1"
   },
   {
    "id": "l88524433944689",
@@ -1076,7 +1091,8 @@
    "t": "dbb3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "抬起"
+   "label": "抬起",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb2.out1__dbb3.in1"
   },
   {
    "id": "l95098440165931",
@@ -1084,7 +1100,8 @@
    "t": "dbb4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "转移"
+   "label": "转移",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb3.out1__dbb4.in1"
   },
   {
    "id": "l22266630135743",
@@ -1092,7 +1109,8 @@
    "t": "dbb5",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "插入"
+   "label": "插入",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb4.out1__dbb5.in1"
   },
   {
    "id": "l96463692847894",
@@ -1100,112 +1118,128 @@
    "t": "dbb6",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "完成"
+   "label": "完成",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb5.out1__dbb6.in1"
   },
   {
    "id": "ltr0",
    "f": "dbt0",
    "f_port": "out1",
    "t": "dbt1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt0.out1__dbt1.in1"
   },
   {
    "id": "ltr1",
    "f": "dbt1",
    "f_port": "out1",
    "t": "dbb0",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt1.out1__dbb0.in1"
   },
   {
    "id": "lkr1n1",
    "f": "dbt0",
    "t": "dbt2",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt0.out1__dbt2.in1"
   },
   {
    "id": "lkz01",
    "f": "dbt2",
    "t": "dbt1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt2.out1__dbt1.in1"
   },
   {
    "id": "lkz02",
    "f": "dbt2",
    "t": "dbt3",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt2.out1__dbt3.in1"
   },
   {
    "id": "lkz03",
    "f": "dbt1",
    "t": "dbev",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbt1.out1__dbev.in1"
   },
   {
    "id": "lkdba1ans1",
    "f": "dba1",
    "t": "ans1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba1.out1__ans1.in1"
   },
   {
    "id": "lkdba2ang1",
    "f": "dba2",
    "t": "ang1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dba2.out1__ang1.in1"
   },
   {
    "id": "lkdbb0anf1",
    "f": "dbb0",
    "t": "anf1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb0.out1__anf1.in1"
   },
   {
    "id": "lkans1ev",
    "f": "ans1",
    "t": "dbev",
    "f_port": "out1",
-   "t_port": "in2"
+   "t_port": "in2",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/ans1.out1__dbev.in2"
   },
   {
    "id": "lkang1ev",
    "f": "ang1",
    "t": "dbev",
    "f_port": "out1",
-   "t_port": "in3"
+   "t_port": "in3",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/ang1.out1__dbev.in3"
   },
   {
    "id": "lkanf1ev",
    "f": "anf1",
    "t": "dbev",
    "f_port": "out1",
-   "t_port": "in4"
+   "t_port": "in4",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/anf1.out1__dbev.in4"
   },
   {
    "id": "lkdbb0tpff",
    "f": "dbb0",
    "t": "tpff",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbb0.out1__tpff.in1"
   },
   {
    "id": "lktpffev",
    "f": "tpff",
    "t": "dbev",
    "f_port": "out1",
-   "t_port": "in4"
+   "t_port": "in4",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/tpff.out1__dbev.in4"
   },
   {
    "id": "lkdbevdbd1",
    "f": "dbev",
    "t": "dbd1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/dual_brain_peg_yolo/dbev.out1__dbd1.in1"
   }
  ]
 }

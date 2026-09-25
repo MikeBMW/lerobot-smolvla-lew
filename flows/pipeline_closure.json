@@ -203,7 +203,8 @@
    "t": "np1mem",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "任务/技能"
+   "label": "任务/技能",
+   "dds_topic": "zmax/ss/pipeline_closure/np0l5.out1__np1mem.in1"
   },
   {
    "id": "lp1",
@@ -211,7 +212,8 @@
    "t": "np2l2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "记忆注入"
+   "label": "记忆注入",
+   "dds_topic": "zmax/ss/pipeline_closure/np1mem.out1__np2l2.in1"
   },
   {
    "id": "lp2",
@@ -219,7 +221,8 @@
    "t": "np3l4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "感知反馈"
+   "label": "感知反馈",
+   "dds_topic": "zmax/ss/pipeline_closure/np2l2.out1__np3l4.in1"
   },
   {
    "id": "lp3",
@@ -227,7 +230,8 @@
    "t": "np4l3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "认知预测"
+   "label": "认知预测",
+   "dds_topic": "zmax/ss/pipeline_closure/np3l4.out1__np4l3.in1"
   },
   {
    "id": "lp4",
@@ -235,7 +239,8 @@
    "t": "np5exec",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "调度指令"
+   "label": "调度指令",
+   "dds_topic": "zmax/ss/pipeline_closure/np4l3.out1__np5exec.in1"
   },
   {
    "id": "lp_back1",
@@ -243,7 +248,8 @@
    "t": "np1mem",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "经验回流"
+   "label": "经验回流",
+   "dds_topic": "zmax/ss/pipeline_closure/np5exec.out1__np1mem.in1"
   },
   {
    "id": "lp_back2",
@@ -251,7 +257,8 @@
    "t": "np1mem",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "工作记忆"
+   "label": "工作记忆",
+   "dds_topic": "zmax/ss/pipeline_closure/np3l4.out1__np1mem.in1"
   }
  ]
 }

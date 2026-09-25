@@ -483,70 +483,80 @@
    "f": "ffu",
    "t": "ffsub",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffu.out1__ffsub.in1"
   },
   {
    "id": "lkffs1",
    "f": "ffsub",
    "t": "ffscope",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffsub.out1__ffscope.in1"
   },
   {
    "id": "lkffa1",
    "f": "ffsub",
    "t": "ffana",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffsub.out1__ffana.in1"
   },
   {
    "id": "lkffy1ffb1",
    "f": "ffy1",
    "t": "ffb1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffy1.out1__ffb1.in1"
   },
   {
    "id": "lkffb1ffsm",
    "f": "ffb1",
    "t": "ffsm",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffb1.out1__ffsm.in1"
   },
   {
    "id": "lkffsmffact",
    "f": "ffsm",
    "t": "ffact",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffsm.out1__ffact.in1"
   },
   {
    "id": "lkffanaffy1",
    "f": "ffana",
    "t": "ffy1",
    "f_port": "out1",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffana.out1__ffy1.in1"
   },
   {
    "id": "lkffanaffb1",
    "f": "ffana",
    "t": "ffb1",
    "f_port": "out2",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffana.out2__ffb1.in1"
   },
   {
    "id": "lkffanaffsm",
    "f": "ffana",
    "t": "ffsm",
    "f_port": "out3",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffana.out3__ffsm.in1"
   },
   {
    "id": "lkffanaffact",
    "f": "ffana",
    "t": "ffact",
    "f_port": "out4",
-   "t_port": "in1"
+   "t_port": "in1",
+   "dds_topic": "zmax/ss/ff_pd_top/ffana.out4__ffact.in1"
   },
   {
    "id": "ffy1->ffkal",
@@ -554,7 +564,8 @@
    "t": "ffkal",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffy1.out1__ffkal.in1"
   },
   {
    "id": "ffb1->ffkal",
@@ -562,7 +573,8 @@
    "t": "ffkal",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffb1.out1__ffkal.in2"
   },
   {
    "id": "ffkal->ffkal2",
@@ -570,7 +582,8 @@
    "t": "ffkal2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffkal.out1__ffkal2.in1"
   },
   {
    "id": "ffy1->ffkal2",
@@ -578,7 +591,8 @@
    "t": "ffkal2",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffy1.out1__ffkal2.in2"
   },
   {
    "id": "ffy1->ffcer",
@@ -586,7 +600,8 @@
    "t": "ffcer",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffy1.out1__ffcer.in1"
   },
   {
    "id": "ffcer->ffclim",
@@ -594,7 +609,8 @@
    "t": "ffclim",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffcer.out1__ffclim.in1"
   },
   {
    "id": "ffy1->ffclim",
@@ -602,7 +618,8 @@
    "t": "ffclim",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffy1.out1__ffclim.in2"
   },
   {
    "id": "ffclim->ffltd",
@@ -610,7 +627,8 @@
    "t": "ffltd",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffclim.out1__ffltd.in1"
   },
   {
    "id": "ffcer->ffltd",
@@ -618,7 +636,8 @@
    "t": "ffltd",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffcer.out1__ffltd.in2"
   },
   {
    "id": "ffltd->ffact",
@@ -626,7 +645,8 @@
    "t": "ffact",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffltd.out1__ffact.in2"
   },
   {
    "id": "ffkal->ffctx",
@@ -634,7 +654,8 @@
    "t": "ffctx",
    "f_port": "out2",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffkal.out2__ffctx.in1"
   },
   {
    "id": "ffsm->ffctx",
@@ -642,7 +663,8 @@
    "t": "ffctx",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffsm.out1__ffctx.in2"
   },
   {
    "id": "ffctx->ffact",
@@ -650,7 +672,8 @@
    "t": "ffact",
    "f_port": "out1",
    "t_port": "in3",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffctx.out1__ffact.in3"
   },
   {
    "id": "ffcal->ffcer",
@@ -658,7 +681,8 @@
    "t": "ffcer",
    "f_port": "out1",
    "t_port": "in2",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/ff_pd_top/ffcal.out1__ffcer.in2"
   }
  ]
 }

@@ -549,7 +549,8 @@
    "t": "taa1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "对照组"
+   "label": "对照组",
+   "dds_topic": "zmax/ss/transfer_adaptive/taa0.out1__taa1.in1"
   },
   {
    "id": "l13298223773746",
@@ -557,7 +558,8 @@
    "t": "taa2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "实验组"
+   "label": "实验组",
+   "dds_topic": "zmax/ss/transfer_adaptive/taa0.out1__taa2.in1"
   },
   {
    "id": "l90079495848755",
@@ -565,7 +567,8 @@
    "t": "taa2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "3次重复"
+   "label": "3次重复",
+   "dds_topic": "zmax/ss/transfer_adaptive/taa1.out1__taa2.in1"
   },
   {
    "id": "l72751791566915",
@@ -573,7 +576,8 @@
    "t": "taa3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "对比结果"
+   "label": "对比结果",
+   "dds_topic": "zmax/ss/transfer_adaptive/taa2.out1__taa3.in1"
   },
   {
    "id": "l56202357915560",
@@ -581,7 +585,8 @@
    "t": "tab1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "实验一→二"
+   "label": "实验一→二",
+   "dds_topic": "zmax/ss/transfer_adaptive/tab0.out1__tab1.in1"
   },
   {
    "id": "l97436394508834",
@@ -589,7 +594,8 @@
    "t": "tab2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "实验二→三"
+   "label": "实验二→三",
+   "dds_topic": "zmax/ss/transfer_adaptive/tab1.out1__tab2.in1"
   },
   {
    "id": "l3914484447171",
@@ -597,7 +603,8 @@
    "t": "tab3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "系列总结"
+   "label": "系列总结",
+   "dds_topic": "zmax/ss/transfer_adaptive/tab2.out1__tab3.in1"
   },
   {
    "id": "l83082648551082",
@@ -605,7 +612,8 @@
    "t": "tab3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "并入系列"
+   "label": "并入系列",
+   "dds_topic": "zmax/ss/transfer_adaptive/taa3.out1__tab3.in1"
   },
   {
    "id": "l68086821070311",
@@ -613,7 +621,8 @@
    "t": "tac0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "未见改善→查根因"
+   "label": "未见改善→查根因",
+   "dds_topic": "zmax/ss/transfer_adaptive/tab3.out1__tac0.in1"
   },
   {
    "id": "l43075780405262",
@@ -621,7 +630,8 @@
    "t": "tac1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "方向1: 真机力控"
+   "label": "方向1: 真机力控",
+   "dds_topic": "zmax/ss/transfer_adaptive/tac0.out1__tac1.in1"
   },
   {
    "id": "l26087809051544",
@@ -629,7 +639,8 @@
    "t": "tac2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "方向2: 视觉对齐"
+   "label": "方向2: 视觉对齐",
+   "dds_topic": "zmax/ss/transfer_adaptive/tac0.out1__tac2.in1"
   },
   {
    "id": "l68100608507672",
@@ -637,7 +648,8 @@
    "t": "tac2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "并行"
+   "label": "并行",
+   "dds_topic": "zmax/ss/transfer_adaptive/tac1.out1__tac2.in1"
   },
   {
    "id": "l96538264059420",
@@ -645,7 +657,8 @@
    "t": "tac1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "成绩基线"
+   "label": "成绩基线",
+   "dds_topic": "zmax/ss/transfer_adaptive/tac3.out1__tac1.in1"
   },
   {
    "id": "l53044638629299",
@@ -653,7 +666,8 @@
    "t": "tac2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "成绩基线"
+   "label": "成绩基线",
+   "dds_topic": "zmax/ss/transfer_adaptive/tac3.out1__tac2.in1"
   },
   {
    "id": "l68051856570872",
@@ -661,7 +675,8 @@
    "t": "tac3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "当前成绩"
+   "label": "当前成绩",
+   "dds_topic": "zmax/ss/transfer_adaptive/tab3.out1__tac3.in1"
   },
   {
    "id": "l67683014974415",
@@ -669,7 +684,8 @@
    "t": "tad0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "交付"
+   "label": "交付",
+   "dds_topic": "zmax/ss/transfer_adaptive/tac3.out1__tad0.in1"
   },
   {
    "id": "l6493481509437",
@@ -677,7 +693,8 @@
    "t": "tad1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "交付链"
+   "label": "交付链",
+   "dds_topic": "zmax/ss/transfer_adaptive/tad0.out1__tad1.in1"
   }
  ]
 }

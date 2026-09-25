@@ -1982,7 +1982,8 @@
    "t": "swworld",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "动作块 (零搜索)"
+   "label": "动作块 (零搜索)",
+   "dds_topic": "zmax/ss/state_space_obs/swintact.out1__swworld.in1"
   },
   {
    "id": "lksw3",
@@ -1990,7 +1991,8 @@
    "t": "swds",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "渲染回流 (闭环)"
+   "label": "渲染回流 (闭环)",
+   "dds_topic": "zmax/ss/state_space_obs/swworld.out1__swds.in2"
   },
   {
    "id": "lksw4",
@@ -1998,7 +2000,8 @@
    "t": "swvideo",
    "f_port": "out2",
    "t_port": "in1",
-   "label": "SW 渲染视频 (3D)"
+   "label": "SW 渲染视频 (3D)",
+   "dds_topic": "zmax/ss/state_space_obs/swworld.out2__swvideo.in1"
   },
   {
    "id": "lkild1",
@@ -2006,7 +2009,8 @@
    "t": "ssintact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "metaworld 真渲染帧 224² + 39D (数据源直接接入)"
+   "label": "metaworld 真渲染帧 224² + 39D (数据源直接接入)",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssintact.in1"
   },
   {
    "id": "lkild_l2a",
@@ -2014,7 +2018,8 @@
    "t": "ssintact",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "↩ L2 融合状态 39D (YOLO→2D→3D→融合) — L4 档同档运行"
+   "label": "↩ L2 融合状态 39D (YOLO→2D→3D→融合) — L4 档同档运行",
+   "dds_topic": "zmax/ss/state_space_obs/sssensor.out1__ssintact.in2"
   },
   {
    "id": "lkild_l2b",
@@ -2022,7 +2027,8 @@
    "t": "ssintact",
    "f_port": "out2",
    "t_port": "in3",
-   "label": "↩ L2 前馈 MLP u_ff (SS_USE_MLP=1 档内接线)"
+   "label": "↩ L2 前馈 MLP u_ff (SS_USE_MLP=1 档内接线)",
+   "dds_topic": "zmax/ss/state_space_obs/ssff.out2__ssintact.in3"
   },
   {
    "id": "lkvlm_img",
@@ -2030,7 +2036,8 @@
    "t": "ssvlm",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "图像/视频帧"
+   "label": "图像/视频帧",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssvlm.in1"
   },
   {
    "id": "lksd1",
@@ -2038,7 +2045,8 @@
    "t": "ssyolo",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "图像流"
+   "label": "图像流",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssyolo.in1"
   },
   {
    "id": "lktactile1",
@@ -2046,7 +2054,8 @@
    "t": "sstactile",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "触觉数据"
+   "label": "触觉数据",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__sstactile.in1"
   },
   {
    "id": "lksd2",
@@ -2054,7 +2063,8 @@
    "t": "sssensor",
    "f_port": "out2",
    "t_port": "in1",
-   "label": "状态流 39D"
+   "label": "状态流 39D",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out2__sssensor.in1"
   },
   {
    "id": "lk_mem209",
@@ -2062,7 +2072,8 @@
    "t": "ssllm",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装上下文 → 任务规划"
+   "label": "总装上下文 → 任务规划",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ssllm.in1"
   },
   {
    "id": "lk_mem210",
@@ -2070,7 +2081,8 @@
    "t": "ssreason",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装上下文 → 异常推理"
+   "label": "总装上下文 → 异常推理",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ssreason.in1"
   },
   {
    "id": "lk_mem101",
@@ -2078,7 +2090,8 @@
    "t": "ss_mem_l4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装下发 → L4 筹划"
+   "label": "总装下发 → L4 筹划",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ss_mem_l4.in1"
   },
   {
    "id": "lk_mem208",
@@ -2086,7 +2099,8 @@
    "t": "ss_mem_l4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装下发 → L4 筹划"
+   "label": "总装下发 → L4 筹划",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ss_mem_l4.in1"
   },
   {
    "id": "lk_mem102",
@@ -2094,7 +2108,8 @@
    "t": "ss_mem_l3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装下发 → L3 流程"
+   "label": "总装下发 → L3 流程",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ss_mem_l3.in1"
   },
   {
    "id": "lk_mem207",
@@ -2102,7 +2117,8 @@
    "t": "ss_mem_l3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装下发 → L3 流程"
+   "label": "总装下发 → L3 流程",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ss_mem_l3.in1"
   },
   {
    "id": "lk_mem103",
@@ -2110,7 +2126,8 @@
    "t": "ss_mem_l2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装下发 → L2 肌肉记忆"
+   "label": "总装下发 → L2 肌肉记忆",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ss_mem_l2.in1"
   },
   {
    "id": "lk_mem206",
@@ -2118,7 +2135,8 @@
    "t": "ss_mem_l2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "总装下发 → L2 肌肉记忆"
+   "label": "总装下发 → L2 肌肉记忆",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ss_mem_l2.in1"
   },
   {
    "id": "lkllm2",
@@ -2126,7 +2144,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "技能Token序列"
+   "label": "技能Token序列",
+   "dds_topic": "zmax/ss/state_space_obs/ssllm.out1__sssched.in3"
   },
   {
    "id": "lkmemf3",
@@ -2134,7 +2153,8 @@
    "t": "ss_mem_field",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "工作空间势场 Φ_global (障碍/预测)"
+   "label": "工作空间势场 Φ_global (障碍/预测)",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l4.out1__ss_mem_field.in1"
   },
   {
    "id": "lkmemf4",
@@ -2142,7 +2162,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "意图 −∇Φ → 调度"
+   "label": "意图 −∇Φ → 调度",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_field.out1__sssched.in1"
   },
   {
    "id": "lkild_jepa",
@@ -2150,7 +2171,8 @@
    "t": "ssmani_exp",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "意图 m_int → 预测器条件 (z_t 口径: z_t+δ; 活跃口径 z7 见 2D→3D 入线)"
+   "label": "意图 m_int → 预测器条件 (z_t 口径: z_t+δ; 活跃口径 z7 见 2D→3D 入线)",
+   "dds_topic": "zmax/ss/state_space_obs/ssintact_dec.out1__ssmani_exp.in3"
   },
   {
    "id": "lkmani_c1",
@@ -2158,7 +2180,8 @@
    "t": "ssvideo",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "接触流形 (e∥进度/e⊥偏离/V)"
+   "label": "接触流形 (e∥进度/e⊥偏离/V)",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_c.out1__ssvideo.in3"
   },
   {
    "id": "lkmani_p1",
@@ -2166,7 +2189,8 @@
    "t": "ssvideo",
    "f_port": "out1",
    "t_port": "in4",
-   "label": "性能流形 (δ⊥错位/插深/η)"
+   "label": "性能流形 (δ⊥错位/插深/η)",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_p.out1__ssvideo.in4"
   },
   {
    "id": "lkmemf2",
@@ -2174,7 +2198,8 @@
    "t": "ss_mem_field",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "流程势场 Φ_process (权重时序)"
+   "label": "流程势场 Φ_process (权重时序)",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l3.out1__ss_mem_field.in1"
   },
   {
    "id": "lk_mem205",
@@ -2182,7 +2207,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "长程流程 → 调度参考"
+   "label": "长程流程 → 调度参考",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l3.out1__sssched.in1"
   },
   {
    "id": "lkvl_jepa",
@@ -2190,7 +2216,8 @@
    "t": "ssmani_exp",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "⬆ 潜空间 z (VLM)"
+   "label": "⬆ 潜空间 z (VLM)",
+   "dds_topic": "zmax/ss/state_space_obs/ssvlm.out1__ssmani_exp.in1"
   },
   {
    "id": "lkvlm_mc",
@@ -2198,7 +2225,8 @@
    "t": "ssmani_c",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "⬆ 潜空间 z"
+   "label": "⬆ 潜空间 z",
+   "dds_topic": "zmax/ss/state_space_obs/ssvlm.out1__ssmani_c.in1"
   },
   {
    "id": "lkvlm_mp",
@@ -2206,7 +2234,8 @@
    "t": "ssmani_p",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "⬆ 潜空间 z"
+   "label": "⬆ 潜空间 z",
+   "dds_topic": "zmax/ss/state_space_obs/ssvlm.out1__ssmani_p.in1"
   },
   {
    "id": "lkvlm_ah",
@@ -2214,7 +2243,8 @@
    "t": "ssdec",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "潜空间 z"
+   "label": "潜空间 z",
+   "dds_topic": "zmax/ss/state_space_obs/ssvlm.out1__ssdec.in1"
   },
   {
    "id": "lkdc_ff",
@@ -2222,7 +2252,8 @@
    "t": "ssff",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "action→前馈层 (练熟固化=肌肉记忆快通道)"
+   "label": "action→前馈层 (练熟固化=肌肉记忆快通道)",
+   "dds_topic": "zmax/ss/state_space_obs/ssdec.out1__ssff.in2"
   },
   {
    "id": "lkmemf1",
@@ -2230,7 +2261,8 @@
    "t": "ss_mem_field",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能势场 Φ_SK (谷底/σ/触发)"
+   "label": "技能势场 Φ_SK (谷底/σ/触发)",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l2.out1__ss_mem_field.in1"
   },
   {
    "id": "lk_mem201",
@@ -2238,7 +2270,8 @@
    "t": "ssff",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "标杆 u_ff 快通道"
+   "label": "标杆 u_ff 快通道",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l2.out1__ssff.in1"
   },
   {
    "id": "lk_mem204",
@@ -2246,7 +2279,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "标杆直通建议 → 调度"
+   "label": "标杆直通建议 → 调度",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l2.out1__sssched.in1"
   },
   {
    "id": "lkvlm_yolo",
@@ -2254,7 +2288,8 @@
    "t": "ssvlm",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "检测框 token"
+   "label": "检测框 token",
+   "dds_topic": "zmax/ss/state_space_obs/ssyolo.out1__ssvlm.in3"
   },
   {
    "id": "lksy1",
@@ -2262,7 +2297,8 @@
    "t": "ss2d3d",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "检测框 2D"
+   "label": "检测框 2D",
+   "dds_topic": "zmax/ss/state_space_obs/ssyolo.out1__ss2d3d.in1"
   },
   {
    "id": "lksy4",
@@ -2270,7 +2306,8 @@
    "t": "ssaoi",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "检测区域"
+   "label": "检测区域",
+   "dds_topic": "zmax/ss/state_space_obs/ssyolo.out1__ssaoi.in1"
   },
   {
    "id": "lk23_jepa",
@@ -2278,7 +2315,8 @@
    "t": "ssmani_exp",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "⬆ 几何 手/销/孔 (z R7)"
+   "label": "⬆ 几何 手/销/孔 (z R7)",
+   "dds_topic": "zmax/ss/state_space_obs/ss2d3d.out1__ssmani_exp.in2"
   },
   {
    "id": "lkm1",
@@ -2286,7 +2324,8 @@
    "t": "ssmani_c",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "⬆ 几何 手/销/孔"
+   "label": "⬆ 几何 手/销/孔",
+   "dds_topic": "zmax/ss/state_space_obs/ss2d3d.out1__ssmani_c.in1"
   },
   {
    "id": "lkm2",
@@ -2294,7 +2333,8 @@
    "t": "ssmani_p",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "⬆ 几何 销/孔"
+   "label": "⬆ 几何 销/孔",
+   "dds_topic": "zmax/ss/state_space_obs/ss2d3d.out1__ssmani_p.in1"
   },
   {
    "id": "lksy2",
@@ -2302,7 +2342,8 @@
    "t": "ssobs",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "感知坐标 3D"
+   "label": "感知坐标 3D",
+   "dds_topic": "zmax/ss/state_space_obs/ss2d3d.out1__ssobs.in2"
   },
   {
    "id": "lksy3",
@@ -2310,7 +2351,8 @@
    "t": "ssobs",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "触觉 4D"
+   "label": "触觉 4D",
+   "dds_topic": "zmax/ss/state_space_obs/sstactile.out1__ssobs.in3"
   },
   {
    "id": "lks27",
@@ -2318,7 +2360,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "↩ 反馈: 质量门"
+   "label": "↩ 反馈: 质量门",
+   "dds_topic": "zmax/ss/state_space_obs/ssaoi.out1__sssched.in5"
   },
   {
    "id": "lks1",
@@ -2326,7 +2369,8 @@
    "t": "ssobs",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "融合特征"
+   "label": "融合特征",
+   "dds_topic": "zmax/ss/state_space_obs/sssensor.out1__ssobs.in1"
   },
   {
    "id": "lks2",
@@ -2334,7 +2378,8 @@
    "t": "ssff",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "obs 43D"
+   "label": "obs 43D",
+   "dds_topic": "zmax/ss/state_space_obs/ssobs.out1__ssff.in1"
   },
   {
    "id": "lks3",
@@ -2342,7 +2387,8 @@
    "t": "ssest",
    "f_port": "out2",
    "t_port": "in1",
-   "label": "obs 43D"
+   "label": "obs 43D",
+   "dds_topic": "zmax/ss/state_space_obs/ssobs.out2__ssest.in1"
   },
   {
    "id": "lkffh1",
@@ -2350,7 +2396,8 @@
    "t": "ssff_hist",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "激活探针"
+   "label": "激活探针",
+   "dds_topic": "zmax/ss/state_space_obs/ssff.out1__ssff_hist.in1"
   },
   {
    "id": "lks5",
@@ -2358,7 +2405,8 @@
    "t": "sspred",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "潜状态"
+   "label": "潜状态",
+   "dds_topic": "zmax/ss/state_space_obs/ssest.out1__sspred.in1"
   },
   {
    "id": "lks6",
@@ -2366,7 +2414,8 @@
    "t": "ssinnov",
    "f_port": "out2",
    "t_port": "in1",
-   "label": "潜状态"
+   "label": "潜状态",
+   "dds_topic": "zmax/ss/state_space_obs/ssest.out2__ssinnov.in1"
   },
   {
    "id": "lks7",
@@ -2374,7 +2423,8 @@
    "t": "ssinnov",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "next_obs 预测"
+   "label": "next_obs 预测",
+   "dds_topic": "zmax/ss/state_space_obs/sspred.out1__ssinnov.in2"
   },
   {
    "id": "lks9",
@@ -2382,7 +2432,8 @@
    "t": "sslimit",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "阶段切换与动作融合"
+   "label": "阶段切换与动作融合",
+   "dds_topic": "zmax/ss/state_space_obs/sssched.out1__sslimit.in1"
   },
   {
    "id": "lk_abc1",
@@ -2390,7 +2441,8 @@
    "t": "ssb",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "写入后 → 微调"
+   "label": "写入后 → 微调",
+   "dds_topic": "zmax/ss/state_space_obs/ssa.out1__ssb.in1"
   },
   {
    "id": "lk_abc2",
@@ -2398,7 +2450,8 @@
    "t": "ssc",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "微调后 → 校验"
+   "label": "微调后 → 校验",
+   "dds_topic": "zmax/ss/state_space_obs/ssb.out1__ssc.in1"
   },
   {
    "id": "lk_abc3",
@@ -2406,7 +2459,8 @@
    "t": "sssk1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "校验通过 → 原子技能参数"
+   "label": "校验通过 → 原子技能参数",
+   "dds_topic": "zmax/ss/state_space_obs/ssc.out1__sssk1.in1"
   },
   {
    "id": "lkssk09",
@@ -2414,7 +2468,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk1.out1__ssact.in1"
   },
   {
    "id": "lkssk10",
@@ -2422,7 +2477,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk2.out1__ssact.in1"
   },
   {
    "id": "lkssk11",
@@ -2430,7 +2486,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk3.out1__ssact.in1"
   },
   {
    "id": "lkssk12",
@@ -2438,7 +2495,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk4.out1__ssact.in1"
   },
   {
    "id": "lkssk13",
@@ -2446,7 +2504,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk5.out1__ssact.in1"
   },
   {
    "id": "lkssk14",
@@ -2454,7 +2513,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk6.out1__ssact.in1"
   },
   {
    "id": "lkssk15",
@@ -2462,7 +2522,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk7.out1__ssact.in1"
   },
   {
    "id": "lkssk16",
@@ -2470,7 +2531,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "技能执行指令"
+   "label": "技能执行指令",
+   "dds_topic": "zmax/ss/state_space_obs/sssk8.out1__ssact.in1"
   },
   {
    "id": "lks11",
@@ -2478,7 +2540,8 @@
    "t": "ssworld",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "执行结果"
+   "label": "执行结果",
+   "dds_topic": "zmax/ss/state_space_obs/ssact.out1__ssworld.in1"
   },
   {
    "id": "lks12",
@@ -2486,7 +2549,8 @@
    "t": "ssinnov",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "↩ 观测反馈: z_k (传感器)"
+   "label": "↩ 观测反馈: z_k (传感器)",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__ssinnov.in3"
   },
   {
    "id": "lkv1",
@@ -2494,7 +2558,8 @@
    "t": "ssfeat",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "引擎轨迹 全系统"
+   "label": "引擎轨迹 全系统",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__ssfeat.in1"
   },
   {
    "id": "lkv2",
@@ -2502,7 +2567,8 @@
    "t": "sstest",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "引擎轨迹 全系统"
+   "label": "引擎轨迹 全系统",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__sstest.in1"
   },
   {
    "id": "lkviz1",
@@ -2510,7 +2576,8 @@
    "t": "ssvideo",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "引擎轨迹 (总迹: 距离/前馈/残差/接触/流形)"
+   "label": "引擎轨迹 (总迹: 距离/前馈/残差/接触/流形)",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__ssvideo.in1"
   },
   {
    "id": "lkviz2",
@@ -2518,7 +2585,8 @@
    "t": "ss3d_view",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "引擎状态/帧"
+   "label": "引擎状态/帧",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__ss3d_view.in1"
   },
   {
    "id": "lksrc_viz",
@@ -2526,7 +2594,8 @@
    "t": "ssbypv",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "数据源信号 (仿真/真机) → 旁路观察"
+   "label": "数据源信号 (仿真/真机) → 旁路观察",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssbypv.in1"
   },
   {
    "id": "lks15",
@@ -2534,7 +2603,8 @@
    "t": "ssvideo2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "轨迹"
+   "label": "轨迹",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__ssvideo2.in1"
   },
   {
    "id": "lksafe2",
@@ -2542,7 +2612,8 @@
    "t": "ssb",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "🛡 限幅后控制 → 通用算子 B"
+   "label": "🛡 限幅后控制 → 通用算子 B",
+   "dds_topic": "zmax/ss/state_space_obs/sslimit.out1__ssb.in2"
   },
   {
    "id": "lksafe3",
@@ -2550,7 +2621,8 @@
    "t": "ssc",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "🛡 限幅后控制 → 通用算子 C"
+   "label": "🛡 限幅后控制 → 通用算子 C",
+   "dds_topic": "zmax/ss/state_space_obs/sslimit.out1__ssc.in2"
   },
   {
    "id": "lksafe4",
@@ -2558,7 +2630,8 @@
    "t": "sssk1",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "🛡 限幅后控制 → ① 接近 SK01"
+   "label": "🛡 限幅后控制 → ① 接近 SK01",
+   "dds_topic": "zmax/ss/state_space_obs/sslimit.out1__sssk1.in2"
   },
   {
    "id": "lkvlm_in1",
@@ -2566,7 +2639,8 @@
    "t": "ssllm_in",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "仿真 metaworld 渲染帧 → 场景理解 (VLM)"
+   "label": "仿真 metaworld 渲染帧 → 场景理解 (VLM)",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssllm_in.in1"
   },
   {
    "id": "lkvlm_in3",
@@ -2574,7 +2648,8 @@
    "t": "ssllm_in",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "真机帧/位姿 → 场景理解 (VLM)"
+   "label": "真机帧/位姿 → 场景理解 (VLM)",
+   "dds_topic": "zmax/ss/state_space_obs/ssz700.out1__ssllm_in.in3"
   },
   {
    "id": "lkenv_skill1",
@@ -2582,7 +2657,8 @@
    "t": "ssskill",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "环境/型号规格 → 技能编排"
+   "label": "环境/型号规格 → 技能编排",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssskill.in1"
   },
   {
    "id": "lkenv_skill2",
@@ -2590,7 +2666,8 @@
    "t": "ssskill",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "真机实况 (帧+位姿) → 技能编排"
+   "label": "真机实况 (帧+位姿) → 技能编排",
+   "dds_topic": "zmax/ss/state_space_obs/ssz700.out1__ssskill.in2"
   },
   {
    "id": "lkrea1",
@@ -2598,7 +2675,8 @@
    "t": "ssreason",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "43D 状态/阶段 → 异常归因"
+   "label": "43D 状态/阶段 → 异常归因",
+   "dds_topic": "zmax/ss/state_space_obs/ssobs.out1__ssreason.in2"
   },
   {
    "id": "lkrea3",
@@ -2606,7 +2684,8 @@
    "t": "ssskill",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "异常归因 → 技能修正"
+   "label": "异常归因 → 技能修正",
+   "dds_topic": "zmax/ss/state_space_obs/ssreason.out1__ssskill.in3"
   },
   {
    "id": "lkmem5",
@@ -2614,7 +2693,8 @@
    "t": "ss_mem_share",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "工程记忆 (docs/memory+技能) → 总装"
+   "label": "工程记忆 (docs/memory+技能) → 总装",
+   "dds_topic": "zmax/ss/state_space_obs/n_eng_mem.out1__ss_mem_share.in5"
   },
   {
    "id": "lkmem6",
@@ -2622,7 +2702,8 @@
    "t": "n_mem_links",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L2 记忆 → 图谱建链"
+   "label": "L2 记忆 → 图谱建链",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l2.out1__n_mem_links.in1"
   },
   {
    "id": "lkmem7",
@@ -2630,7 +2711,8 @@
    "t": "n_mem_links",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "L3 记忆 → 图谱建链"
+   "label": "L3 记忆 → 图谱建链",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l3.out1__n_mem_links.in2"
   },
   {
    "id": "lkmem8",
@@ -2638,7 +2720,8 @@
    "t": "n_mem_links",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "L4 记忆 → 图谱建链"
+   "label": "L4 记忆 → 图谱建链",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_l4.out1__n_mem_links.in3"
   },
   {
    "id": "lkdict1",
@@ -2646,7 +2729,8 @@
    "t": "n_skill_dict",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "新技能注册 → 技能词典"
+   "label": "新技能注册 → 技能词典",
+   "dds_topic": "zmax/ss/state_space_obs/ssskill.out1__n_skill_dict.in1"
   },
   {
    "id": "lkid1",
@@ -2654,7 +2738,8 @@
    "t": "n_intent_direct",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "Δz → 意图直读"
+   "label": "Δz → 意图直读",
+   "dds_topic": "zmax/ss/state_space_obs/ssintact_dec.out1__n_intent_direct.in1"
   },
   {
    "id": "lkib1",
@@ -2662,7 +2747,8 @@
    "t": "n_intent_bundle",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "规划 → 意图四槽 (goal/from/skill/gate)"
+   "label": "规划 → 意图四槽 (goal/from/skill/gate)",
+   "dds_topic": "zmax/ss/state_space_obs/ssllm.out1__n_intent_bundle.in1"
   },
   {
    "id": "lkmode1",
@@ -2670,7 +2756,8 @@
    "t": "ssmode",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "环境数据源 → 训练/推理模式"
+   "label": "环境数据源 → 训练/推理模式",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssmode.in1"
   },
   {
    "id": "lkmode2",
@@ -2678,7 +2765,8 @@
    "t": "sscap",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "模式 → 能力档位"
+   "label": "模式 → 能力档位",
+   "dds_topic": "zmax/ss/state_space_obs/ssmode.out1__sscap.in1"
   },
   {
    "id": "lkcap1",
@@ -2686,7 +2774,8 @@
    "t": "ssintact",
    "f_port": "out1",
    "t_port": "in4",
-   "label": "档位 L4 → INTACT 策略"
+   "label": "档位 L4 → INTACT 策略",
+   "dds_topic": "zmax/ss/state_space_obs/sscap.out1__ssintact.in4"
   },
   {
    "id": "lkcap2",
@@ -2694,7 +2783,8 @@
    "t": "ssvlm",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "档位 L3 → VLM 编码"
+   "label": "档位 L3 → VLM 编码",
+   "dds_topic": "zmax/ss/state_space_obs/sscap.out1__ssvlm.in1"
   },
   {
    "id": "lkcap3",
@@ -2702,7 +2792,8 @@
    "t": "ssff",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "档位 L2 → 前馈加速器"
+   "label": "档位 L2 → 前馈加速器",
+   "dds_topic": "zmax/ss/state_space_obs/sscap.out1__ssff.in1"
   },
   {
    "id": "lkcal1",
@@ -2710,7 +2801,8 @@
    "t": "sscalib",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "检测框/反投影 → 标定层校验"
+   "label": "检测框/反投影 → 标定层校验",
+   "dds_topic": "zmax/ss/state_space_obs/ss2d3d.out1__sscalib.in1"
   },
   {
    "id": "lkcal4",
@@ -2718,7 +2810,8 @@
    "t": "sslat",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "VLM 潜空间 → 几何/速度场标定"
+   "label": "VLM 潜空间 → 几何/速度场标定",
+   "dds_topic": "zmax/ss/state_space_obs/ssvlm.out1__sslat.in2"
   },
   {
    "id": "lkdec_ds",
@@ -2726,7 +2819,8 @@
    "t": "ssintact_dec",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "数据源真帧 224²+39D → 意图解码输入"
+   "label": "数据源真帧 224²+39D → 意图解码输入",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__ssintact_dec.in3"
   },
   {
    "id": "lkdec_rz",
@@ -2734,7 +2828,8 @@
    "t": "ssintact_dec",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "真机帧+编码器位姿 → 意图解码输入"
+   "label": "真机帧+编码器位姿 → 意图解码输入",
+   "dds_topic": "zmax/ss/state_space_obs/ssz700.out1__ssintact_dec.in5"
   },
   {
    "id": "lkvllm_ds",
@@ -2742,7 +2837,8 @@
    "t": "n_dsvl",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "环境帧 (metaworld 渲染) → 视觉理解"
+   "label": "环境帧 (metaworld 渲染) → 视觉理解",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__n_dsvl.in1"
   },
   {
    "id": "lkvllm_pl",
@@ -2750,7 +2846,8 @@
    "t": "ssllm",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "↩ 场景文字理解 → 任务规划 (LLM 感知视觉)"
+   "label": "↩ 场景文字理解 → 任务规划 (LLM 感知视觉)",
+   "dds_topic": "zmax/ss/state_space_obs/n_vlm_llm.out1__ssllm.in5"
   },
   {
    "id": "lkvllm_rs",
@@ -2758,7 +2855,8 @@
    "t": "ssreason",
    "f_port": "out1",
    "t_port": "in4",
-   "label": "场景理解 → 异常推理"
+   "label": "场景理解 → 异常推理",
+   "dds_topic": "zmax/ss/state_space_obs/n_vlm_llm.out1__ssreason.in4"
   },
   {
    "id": "lkvllm_sk",
@@ -2766,7 +2864,8 @@
    "t": "ssskill",
    "f_port": "out1",
    "t_port": "in4",
-   "label": "场景/型号理解 → 技能编排"
+   "label": "场景/型号理解 → 技能编排",
+   "dds_topic": "zmax/ss/state_space_obs/n_vlm_llm.out1__ssskill.in4"
   },
   {
    "id": "lkvllm_dec",
@@ -2774,7 +2873,8 @@
    "t": "ssintact_dec",
    "f_port": "out1",
    "t_port": "in6",
-   "label": "↩ 视觉语义条件 → 意图解码"
+   "label": "↩ 视觉语义条件 → 意图解码",
+   "dds_topic": "zmax/ss/state_space_obs/n_vlm_llm.out1__ssintact_dec.in6"
   },
   {
    "id": "lkvllm_mem",
@@ -2782,7 +2882,8 @@
    "t": "ss_mem_share",
    "f_port": "out1",
    "t_port": "in6",
-   "label": "↩ 场景知识 → 总装记忆"
+   "label": "↩ 场景知识 → 总装记忆",
+   "dds_topic": "zmax/ss/state_space_obs/n_vlm_llm.out1__ss_mem_share.in6"
   },
   {
    "id": "lkbr_env",
@@ -2790,7 +2891,8 @@
    "t": "swds",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "数据源场景/规格 → 环境渲染"
+   "label": "数据源场景/规格 → 环境渲染",
+   "dds_topic": "zmax/ss/state_space_obs/ssdata.out1__swds.in2"
   },
   {
    "id": "lkbr_act",
@@ -2798,7 +2900,8 @@
    "t": "swintact",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "**桥**: L4 策略同一契约 (微调权重/动作接口)"
+   "label": "**桥**: L4 策略同一契约 (微调权重/动作接口)",
+   "dds_topic": "zmax/ss/state_space_obs/ssintact.out1__swintact.in2"
   },
   {
    "id": "lkbr_world",
@@ -2806,7 +2909,8 @@
    "t": "swworld",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "**桥**: 同一 Z-MAX 物理引擎 (真物理闭环)"
+   "label": "**桥**: 同一 Z-MAX 物理引擎 (真物理闭环)",
+   "dds_topic": "zmax/ss/state_space_obs/ssworld.out1__swworld.in2"
   },
   {
    "id": "lkbr_vid",
@@ -2814,7 +2918,8 @@
    "t": "ssvideo2",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "演示链渲染视频 → 操作视频 (可视化统一)"
+   "label": "演示链渲染视频 → 操作视频 (可视化统一)",
+   "dds_topic": "zmax/ss/state_space_obs/swvideo.out1__ssvideo2.in2"
   },
   {
    "id": "lkbr_cap",
@@ -2822,7 +2927,8 @@
    "t": "swintact",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "档位 L4 → 演示链策略"
+   "label": "档位 L4 → 演示链策略",
+   "dds_topic": "zmax/ss/state_space_obs/sscap.out1__swintact.in3"
   },
   {
    "id": "lkbr_yolo",
@@ -2830,7 +2936,8 @@
    "t": "swds",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "检测目标清单 → 渲染标注"
+   "label": "检测目标清单 → 渲染标注",
+   "dds_topic": "zmax/ss/state_space_obs/ssyolo.out1__swds.in3"
   },
   {
    "id": "lkviz_3d",
@@ -2838,7 +2945,8 @@
    "t": "ss3d_view",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "3D 边界框 → 3D 视图"
+   "label": "3D 边界框 → 3D 视图",
+   "dds_topic": "zmax/ss/state_space_obs/ss2d3d.out1__ss3d_view.in2"
   },
   {
    "id": "lkviz_ff",
@@ -2846,7 +2954,8 @@
    "t": "ssff_hist",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "前馈激活 → 直方图"
+   "label": "前馈激活 → 直方图",
+   "dds_topic": "zmax/ss/state_space_obs/ssff.out1__ssff_hist.in2"
   },
   {
    "id": "lkviz_wave",
@@ -2854,7 +2963,8 @@
    "t": "ssvideo",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "43D 状态 → 仿真波形"
+   "label": "43D 状态 → 仿真波形",
+   "dds_topic": "zmax/ss/state_space_obs/ssobs.out1__ssvideo.in2"
   },
   {
    "id": "lkver_act",
@@ -2862,7 +2972,8 @@
    "t": "sstest",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "执行结果 → 用例执行"
+   "label": "执行结果 → 用例执行",
+   "dds_topic": "zmax/ss/state_space_obs/ssact.out1__sstest.in2"
   },
   {
    "id": "lkver_mem",
@@ -2870,7 +2981,8 @@
    "t": "ssfeat",
    "f_port": "out1",
    "t_port": "in2",
-   "label": "总装记忆 → 功能清单核对"
+   "label": "总装记忆 → 功能清单核对",
+   "dds_topic": "zmax/ss/state_space_obs/ss_mem_share.out1__ssfeat.in2"
   },
   {
    "id": "lkdsvl_hub",
@@ -2878,7 +2990,8 @@
    "t": "n_vlm_llm",
    "f_port": "out1",
    "t_port": "in4",
-   "label": "DeepSeek-V4-Flash 判读结果 → 场景理解层 (人机在环)"
+   "label": "DeepSeek-V4-Flash 判读结果 → 场景理解层 (人机在环)",
+   "dds_topic": "zmax/ss/state_space_obs/n_dsvl.out1__n_vlm_llm.in4"
   },
   {
    "id": "lkbdf159",
@@ -2886,7 +2999,8 @@
    "t": "n_board_frame",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "YOLO 2D 框 → 射线 (L2 感知)"
+   "label": "YOLO 2D 框 → 射线 (L2 感知)",
+   "dds_topic": "zmax/ss/state_space_obs/ssyolo.out1__n_board_frame.in1"
   },
   {
    "id": "lkbdf161",
@@ -2894,7 +3008,8 @@
    "t": "n_board_frame",
    "f_port": "out1",
    "t_port": "in3",
-   "label": "VL 场景判读 → 工序纠错 (L3 理解)"
+   "label": "VL 场景判读 → 工序纠错 (L3 理解)",
+   "dds_topic": "zmax/ss/state_space_obs/n_dsvl.out1__n_board_frame.in3"
   },
   {
    "id": "lkbdf162",
@@ -2902,7 +3017,8 @@
    "t": "ss_mem_share",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "模块位姿 → 总装记忆"
+   "label": "模块位姿 → 总装记忆",
+   "dds_topic": "zmax/ss/state_space_obs/n_board_frame.out1__ss_mem_share.in1"
   },
   {
    "id": "lkbdf163",
@@ -2910,7 +3026,8 @@
    "t": "ss2d3d",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "板坐标系 3D 定位 → 3D 框/目标点"
+   "label": "板坐标系 3D 定位 → 3D 框/目标点",
+   "dds_topic": "zmax/ss/state_space_obs/n_board_frame.out1__ss2d3d.in1"
   },
   {
    "id": "lkbdf164",
@@ -2918,7 +3035,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "工序坐标系目标 → 动作调制"
+   "label": "工序坐标系目标 → 动作调制",
+   "dds_topic": "zmax/ss/state_space_obs/n_board_frame.out1__sssched.in1"
   },
   {
    "id": "lkrs_ssz700_n_board_frame",
@@ -2926,7 +3044,8 @@
    "t": "n_board_frame",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "真机帧 → 板检测 (20 圆点)"
+   "label": "真机帧 → 板检测 (20 圆点)",
+   "dds_topic": "zmax/ss/state_space_obs/ssz700.out1__n_board_frame.in1"
   },
   {
    "id": "lkl2m3",
@@ -2934,7 +3053,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L2 肌肉记忆 → 动作调制"
+   "label": "L2 肌肉记忆 → 动作调制",
+   "dds_topic": "zmax/ss/state_space_obs/n_l2_muscle.out1__sssched.in1"
   },
   {
    "id": "lkff_sched",
@@ -2942,7 +3062,8 @@
    "t": "sssched",
    "f_port": "out2",
    "t_port": "in6",
-   "label": "前馈 u_ff → 动作融合"
+   "label": "前馈 u_ff → 动作融合",
+   "dds_topic": "zmax/ss/state_space_obs/ssff.out2__sssched.in6"
   },
   {
    "id": "lkrs_ssintact_dec_ssdec",
@@ -2950,7 +3071,8 @@
    "t": "ssdec",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "L4 条件 → L3 DiT"
+   "label": "L4 条件 → L3 DiT",
+   "dds_topic": "zmax/ss/state_space_obs/ssintact_dec.out1__ssdec.in5"
   },
   {
    "id": "lkrs_ssmani_c_ssdec",
@@ -2958,7 +3080,8 @@
    "t": "ssdec",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "接触流形坐标"
+   "label": "接触流形坐标",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_c.out1__ssdec.in5"
   },
   {
    "id": "lkrs_ssmani_p_ssdec",
@@ -2966,7 +3089,8 @@
    "t": "ssdec",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "性能流形代价"
+   "label": "性能流形代价",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_p.out1__ssdec.in5"
   },
   {
    "id": "lkrs_sslat_ssdec",
@@ -2974,7 +3098,8 @@
    "t": "ssdec",
    "f_port": "out1",
    "t_port": "in5",
-   "label": "潜空间 → 动作头条件"
+   "label": "潜空间 → 动作头条件",
+   "dds_topic": "zmax/ss/state_space_obs/sslat.out1__ssdec.in5"
   },
   {
    "id": "lkrs_ssmani_exp_ssmani_c",
@@ -2982,7 +3107,8 @@
    "t": "ssmani_c",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "预测流形 (JEPA)"
+   "label": "预测流形 (JEPA)",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_exp.out1__ssmani_c.in1"
   },
   {
    "id": "lkrs_ssmani_exp_ssmani_p",
@@ -2990,7 +3116,8 @@
    "t": "ssmani_p",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "预测流形 (JEPA)"
+   "label": "预测流形 (JEPA)",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_exp.out1__ssmani_p.in1"
   },
   {
    "id": "lkrs_sscalib_sslat",
@@ -2998,7 +3125,8 @@
    "t": "sslat",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "几何标定 → 潜空间标定"
+   "label": "几何标定 → 潜空间标定",
+   "dds_topic": "zmax/ss/state_space_obs/sscalib.out1__sslat.in1"
   },
   {
    "id": "lkrs_ssreason_sssched",
@@ -3006,7 +3134,8 @@
    "t": "sssched",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "↩ 反馈: 恢复建议"
+   "label": "↩ 反馈: 恢复建议",
+   "dds_topic": "zmax/ss/state_space_obs/ssreason.out1__sssched.in1"
   },
   {
    "id": "lkrs_ssmani_exp_ssa",
@@ -3014,7 +3143,8 @@
    "t": "ssa",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "L4 动态参数 (世界模型预测)"
+   "label": "L4 动态参数 (世界模型预测)",
+   "dds_topic": "zmax/ss/state_space_obs/ssmani_exp.out1__ssa.in1"
   },
   {
    "id": "lkrs_ssdec_ssact",
@@ -3022,7 +3152,8 @@
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "action 直通执行端 (端到端快路径)"
+   "label": "action 直通执行端 (端到端快路径)",
+   "dds_topic": "zmax/ss/state_space_obs/ssdec.out1__ssact.in1"
   }
  ],
  "params_note": ""

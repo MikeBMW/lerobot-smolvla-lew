@@ -191,7 +191,8 @@
    "t": "nchitl",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/calib_closure/ncpreflight.out1__nchitl.in1"
   },
   {
    "id": "lc2",
@@ -199,7 +200,8 @@
    "t": "ncsolve",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/calib_closure/nchitl.out1__ncsolve.in1"
   },
   {
    "id": "lc3",
@@ -207,7 +209,8 @@
    "t": "ncverify",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/calib_closure/ncsolve.out1__ncverify.in1"
   },
   {
    "id": "lc4",
@@ -215,7 +218,8 @@
    "t": "ncregister",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/calib_closure/ncverify.out1__ncregister.in1"
   },
   {
    "id": "lc5",
@@ -223,7 +227,8 @@
    "t": "ncuplift",
    "f_port": "out1",
    "t_port": "in1",
-   "label": ""
+   "label": "",
+   "dds_topic": "zmax/ss/calib_closure/ncregister.out1__ncuplift.in1"
   },
   {
    "id": "lc_back",
@@ -231,7 +236,8 @@
    "t": "nchitl",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "迭代加采(人机在环)"
+   "label": "迭代加采(人机在环)",
+   "dds_topic": "zmax/ss/calib_closure/ncuplift.out1__nchitl.in1"
   }
  ]
 }

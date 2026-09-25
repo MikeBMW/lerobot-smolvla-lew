@@ -494,7 +494,8 @@
    "t": "dba1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "39D obs"
+   "label": "39D obs",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba0.out1__dba1.in1"
   },
   {
    "id": "l71603986087323",
@@ -502,7 +503,8 @@
    "t": "dba2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "39D obs"
+   "label": "39D obs",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba0.out1__dba2.in1"
   },
   {
    "id": "l91761752056733",
@@ -510,7 +512,8 @@
    "t": "dba2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "4D action"
+   "label": "4D action",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba1.out1__dba2.in1"
   },
   {
    "id": "l6641875460794",
@@ -518,7 +521,8 @@
    "t": "dbb0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "4D 动作"
+   "label": "4D 动作",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba1.out1__dbb0.in1"
   },
   {
    "id": "l27292118166010",
@@ -526,7 +530,8 @@
    "t": "dba3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "contact概率"
+   "label": "contact概率",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba2.out1__dba3.in1"
   },
   {
    "id": "l56857815908845",
@@ -534,7 +539,8 @@
    "t": "dbb0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "抓取触发"
+   "label": "抓取触发",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba3.out1__dbb0.in1"
   },
   {
    "id": "l93958574033927",
@@ -542,7 +548,8 @@
    "t": "dbb0",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "观测"
+   "label": "观测",
+   "dds_topic": "zmax/ss/dual_brain_peg/dba0.out1__dbb0.in1"
   },
   {
    "id": "l32960755288925",
@@ -550,7 +557,8 @@
    "t": "dbb1",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "接近"
+   "label": "接近",
+   "dds_topic": "zmax/ss/dual_brain_peg/dbb0.out1__dbb1.in1"
   },
   {
    "id": "l18176031828948",
@@ -558,7 +566,8 @@
    "t": "dbb2",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "抓取"
+   "label": "抓取",
+   "dds_topic": "zmax/ss/dual_brain_peg/dbb1.out1__dbb2.in1"
   },
   {
    "id": "l88524433944689",
@@ -566,7 +575,8 @@
    "t": "dbb3",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "抬起"
+   "label": "抬起",
+   "dds_topic": "zmax/ss/dual_brain_peg/dbb2.out1__dbb3.in1"
   },
   {
    "id": "l95098440165931",
@@ -574,7 +584,8 @@
    "t": "dbb4",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "转移"
+   "label": "转移",
+   "dds_topic": "zmax/ss/dual_brain_peg/dbb3.out1__dbb4.in1"
   },
   {
    "id": "l22266630135743",
@@ -582,7 +593,8 @@
    "t": "dbb5",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "插入"
+   "label": "插入",
+   "dds_topic": "zmax/ss/dual_brain_peg/dbb4.out1__dbb5.in1"
   },
   {
    "id": "l96463692847894",
@@ -590,7 +602,8 @@
    "t": "dbb6",
    "f_port": "out1",
    "t_port": "in1",
-   "label": "完成"
+   "label": "完成",
+   "dds_topic": "zmax/ss/dual_brain_peg/dbb5.out1__dbb6.in1"
   }
  ]
 }
