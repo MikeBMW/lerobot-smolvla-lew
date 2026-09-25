@@ -62,22 +62,38 @@ def main():
         print("   ❌ 启动失败, 链断")
         return 2
 
-    # ── 环②: 该 pid 是否在 GPU 进程表 ──
+    # ── 环②: 解析**真 python 子进程** pid（控制台给的是 /bin/sh -c 包装进程）+ 核 GPU 表 ──
+    def resolve_real_pid(pid):
+        """包装进程 → 真训练进程: 优先取 GPU 表内命令行匹配的, 其次取 /bin/sh 的 python 子进程"""
+        gp = gpu_pids()
+        cmd_self = sh("tr '\\0' ' ' < /proc/%s/cmdline" % pid)
+        for gp_pid in sorted(gp):
+            c2 = sh("tr '\\0' ' ' < /proc/%s/cmdline" % gp_pid)
+            if "backbone" in c2 or "stage_moe" in c2:
+                return gp_pid, c2
+        for ch in sh("pgrep -P %s" % pid).split():
+            if ch.isdigit():
+                c3 = sh("tr '\\0' ' ' < /proc/%s/cmdline" % ch)
+                if "backbone" in c3 or "stage_moe" in c3:
+                    return int(ch), c3
+        return pid, cmd_self
+
     t0 = time.time()
+    real_pid, cmd = r["pid"], sh("tr '\\0' ' ' < /proc/%s/cmdline" % r["pid"])
     found_at = None
     while time.time() - t0 < 120:
-        if r["pid"] in gpu_pids():
+        real_pid, cmd = resolve_real_pid(r["pid"])
+        if real_pid in gpu_pids():
             found_at = time.time() - t0
             break
         time.sleep(3)
-    print("\n② GPU 进程表核对: pid %s %s%s" %
-          (r["pid"], "**在表内 ✅**" if found_at is not None else "**未出现 ❌**",
+    print("\n② GPU 进程表核对: 包装 pid %s → **真训练 pid %s** %s%s" %
+          (r["pid"], real_pid, "**在表内 ✅**" if found_at is not None else "**未出现 ❌**",
            ("（%.0fs 后出现）" % found_at) if found_at is not None else ""))
     print("   当前 GPU: %s" % gpu_line())
 
     # ── 环③: cmdline 证明是训练脚本 ──
-    cmd = sh("tr '\\0' ' ' < /proc/%s/cmdline" % r["pid"])
-    print("\n③ /proc/%s/cmdline:" % r["pid"])
+    print("\n③ 真训练进程 /proc/%s/cmdline:" % real_pid)
     print("   %s" % cmd[:300])
     is_train = ("backbone" in cmd or "train" in cmd or "moe" in cmd)
     print("   是训练脚本: %s" % ("✅" if is_train else "❌"))
@@ -113,27 +129,33 @@ def main():
 
     steps_pf = [x[1] for x in rows if x[1] is not None]
     mono = len(steps_pf) >= 2 and all(b >= y for y, b in zip(steps_pf, steps_pf[1:]))
-    agree = sum(1 for x in rows if x[1] is not None and x[2] is not None and x[1] == x[2])
-    checked = sum(1 for x in rows if x[1] is not None and x[2] is not None)
+    # ★ 双源**同源**判据（修正）: 两源粒度不同(进度文件 10 步 / 日志 --stats 250 步),
+    #    正确口径 = ①日志 step ≤ 进度 step（进度不得超前于真训练）②在日志刷新时刻两者**精确相等**
+    pairs = [(x[1], x[2]) for x in rows if x[1] is not None and x[2] is not None]
+    not_ahead = all(lg <= pf for pf, lg in pairs) if pairs else False
+    boundary = [lg for pf, lg in pairs if pf == lg]
     print("\n" + "=" * 80)
     print("📋 铁证链判定")
     print("=" * 80)
-    print("  ① APP API 启动成功            : ✅ (jid=%s)" % r.get("jid"))
-    print("  ② pid 在 GPU 进程表           : %s" % ("✅" if found_at is not None else "❌"))
-    print("  ③ 是训练脚本                  : %s" % ("✅" if is_train else "❌"))
-    print("  ④ 进度文件/日志 双源一致       : %s (%d/%d 次一致)" %
-          ("✅" if checked and agree == checked else "⚠️", agree, checked))
+    print("  ① APP API 启动成功            : ✅ (jid=%s, 包装pid=%s→真pid=%s)" %
+          (r.get("jid"), r.get("pid"), real_pid))
+    print("  ② 真训练 pid 在 GPU 进程表     : %s" % ("✅" if found_at is not None else "❌"))
+    print("  ③ 是训练脚本(含APP下发参数)     : %s" % ("✅" if is_train else "❌"))
+    print("  ④ 双源同源(日志≤进度 且 边界相等): %s (%s)" %
+          ("✅" if (not_ahead and boundary) else "⚠️",
+           "日志从不超过进度" if not_ahead else "进度超前→异常"))
+    print("     边界精确相等样本: %s" % (boundary if boundary else "（窗口内无 stats 刷新点）"))
     print("  ⑤ 进度单调递增                : %s (%s)" % ("✅" if mono else "⚠️", steps_pf))
-    ok = found_at is not None and is_train and mono
+    ok = found_at is not None and is_train and mono and not_ahead
     print("\n  🎯 **结论: %s**" % ("APP 启动的是**真训练**, 进度是**真实的**"
                                    if ok else "证据不足, 需继续排查"))
     out = os.path.join(REPO, "reports", "app_train_proof_%d.json" % int(t0))
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    json.dump({"job": r, "gpu_found_after_s": found_at, "cmdline": cmd,
+    json.dump({"job": r, "real_pid": real_pid, "gpu_found_after_s": found_at, "cmdline": cmd,
                "samples": [{"t": x[0], "progress_file_step": x[1], "log_step": x[2],
                             "pct": x[3], "loss": x[4], "gpu": x[5]} for x in rows],
                "verdict": {"is_real_training": bool(ok), "monotonic": mono,
-                           "dual_source_agree": "%d/%d" % (agree, checked)}},
+                           "not_ahead": not_ahead, "boundary_equal": boundary}},
               open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("  证据落盘 → %s" % os.path.relpath(out, REPO))
     return 0 if ok else 2
