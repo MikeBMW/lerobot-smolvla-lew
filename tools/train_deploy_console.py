@@ -387,6 +387,13 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/train":
             return self._send(200, json.dumps(start_train(d.get("layer", ""), d.get("steps", 2500)),
                                               ensure_ascii=False))
+        if u.path == "/api/hardware/report":
+            try:
+                sys.path.insert(0, os.path.join(REPO, "tools"))
+                import hardware_view as _hw
+                return self._send(200, json.dumps(_hw.save_remote(d), ensure_ascii=False))
+            except Exception as e:                                        # noqa: BLE001
+                return self._send(200, json.dumps({"ok": False, "err": str(e)[:90]}, ensure_ascii=False))
         if u.path == "/api/deploy":
             return self._send(200, json.dumps(deploy(d.get("layer", ""), d.get("dir", ""), d.get("note", "")),
                                               ensure_ascii=False))

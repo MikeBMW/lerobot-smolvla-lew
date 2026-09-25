@@ -27,17 +27,34 @@ def sh(c, t=15):
 
 
 def gpu():
+    """GPU 实际值（★ 所有字段都给实际值或明确说明, 绝不 null/undefined）"""
     o = sh("nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,"
-           "temperature.gpu,power.draw,power.limit,clocks.sm,clocks.max.sm "
-           "--format=csv,noheader,nounits")
+           "temperature.gpu,power.draw,clocks.sm,clocks.max.sm --format=csv,noheader,nounits")
     if not o or o.startswith("ERR"):
         return {"ok": False, "err": o[:80]}
     p = [x.strip() for x in o.split(",")]
-    f = lambda v: (float(v) if v.replace(".", "").isdigit() else None)         # noqa: E731
-    return {"ok": True, "name": p[0], "util_pct": f(p[1]), "mem_used_mb": f(p[2]),
-            "mem_total_mb": f(p[3]), "temp_c": f(p[4]), "power_w": f(p[5]), "power_limit_w": f(p[6]),
-            "clk_sm_mhz": f(p[7]), "clk_sm_max_mhz": f(p[8]),
-            "mem_used_pct": (round(100 * f(p[2]) / f(p[3]), 1) if f(p[2]) and f(p[3]) else None)}
+
+    def f(v):
+        try:
+            return float(v)
+        except Exception:                                                       # noqa: BLE001
+            return None
+    # 功耗上限: 笔记本 GPU 常不报 power.limit → 回退 power.default_limit / enforce.limit, 仍无则给明确文本
+    plim = None
+    for q in ("power.limit", "power.default_limit", "enforced.power.limit"):
+        v = sh("nvidia-smi --query-gpu=%s --format=csv,noheader,nounits" % q)
+        try:
+            plim = float(v.strip())
+            break
+        except Exception:                                                       # noqa: BLE001
+            continue
+    mu, mt = f(p[2]), f(p[3])
+    return {"ok": True, "name": p[0], "util_pct": f(p[1]) or 0.0, "mem_used_mb": mu, "mem_total_mb": mt,
+            "temp_c": f(p[4]), "power_w": f(p[5]),
+            "power_limit_w": plim,
+            "power_limit_note": ("实测上限 %.1fW" % plim) if plim else "本机 GPU 不报功耗上限(笔记本)",
+            "clk_sm_mhz": f(p[6]), "clk_sm_max_mhz": f(p[7]),
+            "mem_used_pct": (round(100 * mu / mt, 1) if mu and mt else 0.0)}
 
 
 def gpu_procs():
@@ -118,9 +135,38 @@ def throughput():
             "samples_per_s_b64": round(sps * 64, 1), "src": best["src"], "running": best.get("running")}
 
 
+REMOTE_F = "/home/ubuntu/stable-wm-cache/reports/remote_hw.json"
+
+
+def save_remote(payload):
+    """Mac 端上报的硬件状态（MPS/CPU/内存/磁盘）→ 落盘, 供控制台展示两台机器对比"""
+    import json as _j
+    os.makedirs(os.path.dirname(REMOTE_F), exist_ok=True)
+    payload["recv_ts"] = time.time()
+    _j.dump(payload, open(REMOTE_F, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    return {"ok": True, "saved": REMOTE_F}
+
+
+def remote():
+    """读 Mac 上报（无则返回明确说明, 不返回空）"""
+    import json as _j
+    if not os.path.isfile(REMOTE_F):
+        return {"ok": False, "note": "尚无 Mac 上报 → 在小芳 Mac 上跑 tools/mac_hw_report.py 上报"}
+    try:
+        d = _j.load(open(REMOTE_F, encoding="utf-8"))
+    except Exception as e:                                                      # noqa: BLE001
+        return {"ok": False, "note": "上报文件解析失败: %s" % str(e)[:60]}
+    age = time.time() - (d.get("recv_ts") or 0)
+    d["ok"] = True
+    d["age_s"] = round(age, 1)
+    d["stale"] = age > 300          # 5 分钟没上报 → 视为离线
+    return d
+
+
 def collect():
     return {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "gpu": gpu(), "gpu_procs": gpu_procs(),
-            "cpu": cpu(), "mem": mem(), "disk": disk(), "compute": throughput()}
+            "cpu": cpu(), "mem": mem(), "disk": disk(), "compute": throughput(),
+            "remote": remote()}
 
 
 if __name__ == "__main__":
