@@ -47,6 +47,8 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','PingFang SC',sa
   <div class="card"><h3>🛡️ 安全 <span class="layer">L0·5s</span></h3><div id="safety"></div></div>
   <div class="card" style="grid-column:span 2"><h3>📸 RealSense D405 <span class="layer">L2·30min</span></h3><div id="camera"></div></div>
   <div class="card"><h3>⚡ 系统 <span class="layer">L1·5min</span></h3><div id="system"></div></div>
+  <div class="card" style="border-color:rgba(245,166,35,.35)"><h3>🖥 4060 硬件 · 显存占用 <span class="layer">L0·5s</span></h3><div id="hw4060"></div></div>
+  <div class="card"><h3>🍎 Mac 备份端 <span class="layer">L1·1min</span></h3><div id="hwmac"></div></div>
 </div>
 <p class="footer">Z-MAX · 智蜂创元 · 小芳(Mac)采集 · xspace渲染 · 每30分钟全量更新 · 点击刷新即时更新</p>
 
@@ -129,6 +131,49 @@ function render(d){
     <div class="stat"><label>内存</label><span>${res.memory||'?'}</span></div>
     <div class="stat"><label>模型</label><span>${(l2.models?.smolvla_450m||'?')} / ${l2.models?.cache_size||'?'}</span></div>
     <div class="stat"><label>相机</label><span>${cam.status==='live'?'🟢在线':'⚫离线'}</span></div>`;
+
+  // 🖥 4060 硬件 · 显存占用（老倪明确要求）
+  const hw = d.hardware || {};
+  if(hw.name){
+    const vp = hw.vram_used_pct!=null ? hw.vram_used_pct : 0;
+    const vcls = vp>85?'red':(vp>60?'gold':'green');
+    const nz = x => (x==null? '—' : x);
+    document.getElementById('hw4060').innerHTML =
+      `<div class="stat"><label>GPU</label><span>${hw.name}</span></div>
+       <div class="stat"><label>显存占用</label><span>${nz(hw.vram_used_mb)} / ${nz(hw.vram_total_mb)} MB · ${nz(hw.vram_used_pct)}%</span></div>
+       <div class="bar"><div class="${vcls}" style="width:${Math.min(100,vp)}%"></div></div>
+       <div class="stat"><label>利用率</label><span>${nz(hw.gpu_util_pct)}%</span></div>
+       <div class="bar"><div class="green" style="width:${Math.min(100,hw.gpu_util_pct||0)}%"></div></div>
+       <div class="stat"><label>温度 / 功耗</label><span>${nz(hw.gpu_temp_c)}°C / ${nz(hw.gpu_power_w)}W</span></div>
+       <div class="stat"><label>CPU</label><span>${nz(hw.cpu_util_pct)}% · ${nz(hw.cpu_cores)}核 · load ${nz(hw.load1)}</span></div>
+       <div class="stat"><label>内存</label><span>${nz(hw.mem_used_gb)} / ${nz(hw.mem_total_gb)} GB</span></div>
+       <div class="stat"><label>磁盘可用</label><span>${nz(hw.disk_free_gb)} GB</span></div>
+       <div class="stat"><label>算力实测</label><span>${nz(hw.train_steps_per_s)} 步/s</span></div>
+       <div style="font-size:10px;color:var(--dim);margin-top:4px">源: ${(d.metadata||{}).hardware_source||'4060 本机'} · ${(d.metadata||{}).hardware_updated||''}</div>`;
+  } else {
+    document.getElementById('hw4060').innerHTML =
+      '<div style="color:var(--dim);font-size:12px">等待 4060 上报（tools/hw_to_robot_status.py --push）</div>';
+  }
+
+  // 🍎 Mac 备份端
+  const mc = d.hardware_mac;
+  if(mc && !mc.stale){
+    document.getElementById('hwmac').innerHTML =
+      `<div class="stat"><label>节点</label><span>${mc.node||'Mac'}</span></div>
+       <div class="stat"><label>后端</label><span class="badge bg-green">${(mc.backend||'mps').toUpperCase()}</span></div>
+       <div class="stat"><label>设备</label><span>${mc.device_name||'—'}</span></div>
+       <div class="stat"><label>内存</label><span>${mc.mem_avail_gb??'—'} / ${mc.mem_total_gb??'—'} GB</span></div>
+       <div class="stat"><label>磁盘可用</label><span>${mc.disk_free_gb??'—'} GB</span></div>
+       <div class="stat"><label>CPU</label><span>${mc.cpu_util_pct??'—'}% · ${mc.cpu_cores??'—'}核</span></div>
+       <div style="font-size:10px;color:var(--dim);margin-top:4px">${mc.note||''} · 龄 ${mc.age_s??'—'}s</div>`;
+  } else {
+    document.getElementById('hwmac').innerHTML =
+      `<div style="colar:var(--dim);font-size:12px;color:var(--dim)">
+        ${mc?('上报已过期（'+ (mc.age_s??'?') +'s）'):'未上报'}<br>
+        在 Mac 上执行一次即可：<br>
+        <code style="font-size:10px">~/dds-venv/bin/python tools/mac_hw_report.py --dds --watch 30</code>
+       </div>`;
+  }
 }
 
 function updateCountdown(){
