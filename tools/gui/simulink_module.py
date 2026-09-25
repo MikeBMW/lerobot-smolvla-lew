@@ -29,16 +29,23 @@ _DDS_BUS = None
 
 
 def _dds_bus():
-    """懒加载 DDS 连线总线; 不可用返回 None（调用方回落本进程字典, 零回退）"""
+    """★ 受「遥测模式」约束的连线总线（老倪 2026-09-25 架构）
+
+    量产(prod): 返回 None → 连线数据**只走本进程内存**, 零开销、不 import DDS
+    诊断/标定/测试: 返回 DDS 总线 → 连线数据同时成为 DDS topic（可跨进程/跨机观测）
+
+    ⇒ 业务代码**零分支**: 只判断返回值是否 None（None 就回落本进程字典）
+    """
     global _DDS_BUS
     if _DDS_BUS is None:
         try:
-            from dds_link_bus import get_bus
-            _DDS_BUS = get_bus()
-            print("[DDS] 连线总线:", _DDS_BUS.stats())
+            from zmax_telemetry import telemetry_bus, status_text
+            b = telemetry_bus()
+            _DDS_BUS = b if b is not None else False
+            print("[遥测]", status_text())
         except Exception as _e:
             _DDS_BUS = False
-            print("[DDS] 连线总线不可用(回落本进程):", str(_e)[:100])
+            print("[遥测] 模式模块不可用(回落本进程):", str(_e)[:100])
     return _DDS_BUS or None
 from node_logic_dialog import NodeLogicDialog
 
@@ -3519,6 +3526,10 @@ class SimCanvas(QGraphicsView):
             if isinstance(item, SimLinkItem):
                 self._show_link_menu(item, e.pos())
                 return
+            # 🆕 2026-09-25 老倪: 空白处右键 → 遥测模式开关（随时可用 topic / 量产关闭）
+            if item is None:
+                self._show_canvas_menu(e.pos())
+                return
             super().mousePressEvent(e)
             return
         if e.button() == Qt.LeftButton:
@@ -3667,6 +3678,52 @@ class SimCanvas(QGraphicsView):
             self.module._open_verif_dialog(item.node)
         elif a_rfp is not None and chosen == a_rfp:
             self.module._open_verif_dialog(item.node, tab="rfp")
+
+    # ---------- 🔀 画布空白右键: 遥测模式开关（老倪 2026-09-25 架构）----------
+    def _show_canvas_menu(self, view_pos):
+        """空白处右键 → 切换遥测模式（DDS topic 只用于测试/标定/诊断, 量产关闭）
+
+        老倪: "即我可以随时用topic，但量产会关闭"
+        """
+        try:
+            from PyQt5.QtWidgets import QMenu
+            from PyQt5.QtGui import QCursor
+            from zmax_telemetry import mode, set_mode, status_text, MODES
+        except Exception:
+            return
+        menu = QMenu()
+        cur = mode()
+        menu.addAction("—— %s ——" % status_text()).setEnabled(False)
+        menu.addSeparator()
+        acts = {}
+        label = {"prod": "🔴 量产模式（关闭 DDS 遥测, 零开销）",
+                 "diag": "🟢 诊断模式（硬件/性能/延时）",
+                 "calib": "🟢 标定模式（位姿/几何/力/连线）",
+                 "test": "🟢 测试模式（全量话题）",
+                 "dev": "🟢 开发模式（全量话题）"}
+        for m in MODES:
+            a = menu.addAction(("✔ " if m == cur else "　") + label.get(m, m))
+            acts[a] = m
+        menu.addSeparator()
+        a_toggle = menu.addAction("🔁 一键切换 量产 ⇄ 诊断")
+        chosen = menu.exec_(QCursor.pos())
+        if chosen is None:
+            return
+        try:
+            if chosen == a_toggle:
+                set_mode("diag" if cur == "prod" else "prod")
+            elif chosen in acts:
+                set_mode(acts[chosen])
+            else:
+                return
+            # 模式变了 → 释放旧总线引用, 下次取用时按新模式重建
+            global _DDS_BUS
+            _DDS_BUS = None
+            from zmax_telemetry import drop_bus, status_text as _st
+            drop_bus()
+            self.module._log("🔀 " + _st())
+        except Exception:
+            pass
 
     def _show_link_menu(self, item, view_pos):
         """右键连线菜单 (2026-08-21 老倪: 连线删除改右键, 左键保留给选择数据接口)
