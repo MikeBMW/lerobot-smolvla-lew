@@ -24,6 +24,7 @@
   # 建议只在内网/白名单访问（与 ECS 主页同一策略）
 """
 import argparse
+import sys
 import glob
 import hashlib
 import json
@@ -207,6 +208,11 @@ pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;fo
 <h1>🎛 Z-MAX 训练 · 部署控制台</h1>
 <div class="sub" id="sub">加载中…</div>
 <div class="grid" id="grid"></div>
+<div class="card" style="margin-top:12px"><h2>📈 训练进度 + 能力提升（实测指标）</h2>
+<div class="sub" id="pgsub">加载中…</div>
+<div id="pgbar"></div>
+<div style="font-size:12px;color:#8b949e;margin:10px 0 4px">能力提升（相对平凡基线: 观测恒均 0.0366 / 动作恒均 0.0955）</div>
+<table id="cap"><tr><th>能力</th><th>指标</th><th>当前</th><th>基线</th><th>提升</th></tr></table></div>
 <div class="card" style="margin-top:12px"><h2>🌀 结构化流形（真实计算 · 由 SU(2) 流形引擎产出）</h2>
 <div class="sub" id="mfsub">加载中…</div>
 <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -239,6 +245,22 @@ async function load(){
   h+='</div>';
  }
  document.getElementById('grid').innerHTML=h;
+ const pg=await j('/api/progress');
+ if(pg && pg.jobs){
+  const run=pg.jobs.find(x=>x.running)||pg.jobs[0];
+  document.getElementById('pgsub').textContent = run?
+    `${run.log} · ${run.running?'🔴 训练中':'已结束'} · ${run.step}/${run.total} 步 · ${run.sps} 步/s · loss ${run.loss} · ETA ${Math.round((run.eta_s||0)/60)} 分钟` : '无训练日志';
+  if(run){
+   document.getElementById('pgbar').innerHTML =
+    `<div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;height:16px;margin-top:6px">
+      <div style="width:${run.pct}%;height:100%;background:linear-gradient(90deg,#238636,#3fb950);border-radius:5px"></div></div>
+     <div style="font-size:11px;color:#8b949e;margin-top:3px">${run.pct}% · 留出 观测 ${run.holdout_obs} / 动作 ${run.holdout_act}（best ${run.best_obs}/${run.best_act}）</div>
+     <div style="font-size:12px;margin-top:4px">📊 本训练提升: 观测 <b class="st">+${run.gain_obs}%</b> · 动作 <b class="st">+${run.gain_act}%</b>（vs 平凡基线）</div>`;
+  }
+  document.getElementById('cap').innerHTML = '<tr><th>能力</th><th>指标</th><th>当前</th><th>基线</th><th>提升</th></tr>' +
+   (pg.capability||[]).map(r=>`<tr><td>${r.name}</td><td>${r.metric}</td><td>${r.value}</td><td>${r.baseline}</td>
+     <td class="${r.gain_pct>0?'st':'bad'}">${r.gain_pct>0?'+':''}${r.gain_pct}%</td></tr>`).join('');
+ }
  const mf=await j('/api/manifold');
  if(mf && mf.theta_series){
   document.getElementById('mfsub').textContent=`${mf.n_steps} 步 · θ: min ${mf.theta_stats.min} max ${mf.theta_stats.max} mean ${mf.theta_stats.mean} std ${mf.theta_stats.std}`;
@@ -283,6 +305,14 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, PAGE, "text/html; charset=utf-8")
         if u.path == "/api/status":
             return self._send(200, json.dumps(status(), ensure_ascii=False))
+        if u.path == "/api/progress":
+            try:
+                sys.path.insert(0, os.path.join(REPO, "tools"))
+                import train_progress_view as _tpv
+                return self._send(200, json.dumps(_tpv.collect(), ensure_ascii=False))
+            except Exception as e:                                        # noqa: BLE001
+                return self._send(200, json.dumps({"err": "%s: %s" % (type(e).__name__, str(e)[:90])},
+                                                  ensure_ascii=False))
         if u.path == "/api/manifold":
             d = {}
             if os.path.isfile(MANIFOLD):
