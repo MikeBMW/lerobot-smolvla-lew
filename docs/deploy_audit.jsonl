@@ -1,3 +1,8 @@
 {"ev": "dispatch_remote", "layer": "L2", "to": "小芳", "ts": "2026-09-25 09:23:28"}
 {"ev": "train_start", "layer": "L4moe", "steps": 3, "jid": "job_l4moe_1790299412", "pid": 50250, "ts": "2026-09-25 09:23:32"}
 {"ev": "deploy", "layer": "L4", "dir": "unified_simreal", "sha16": "dbe2a6c92731f7a0", "prev": null, "note": "web console 冒烟", "ts": "2026-09-25 09:25:05"}
+{"ev": "train_start", "layer": "L4moe", "steps": 200, "jid": "job_l4moe_1790312314", "pid": 84317, "ts": "2026-09-25 12:58:34"}
+{"ev": "train_start", "layer": "L4moe", "steps": 150, "jid": "job_l4moe_1790312559", "pid": 85324, "ts": "2026-09-25 13:02:39"}
+{"ev": "train_start", "layer": "L4moe", "steps": 150, "jid": "job_l4moe_1790312815", "pid": 86060, "ts": "2026-09-25 13:06:55"}
+{"ev": "train_start", "layer": "L4", "steps": 2500, "jid": "job_l4_1790314314", "pid": 208436, "ts": "2026-09-25 13:31:54"}
+{"ev": "train_start", "layer": "L4", "steps": 1200, "jid": "job_l4_1790314638", "pid": 210094, "ts": "2026-09-25 13:37:18"}

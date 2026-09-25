@@ -1,0 +1,82 @@
+{
+ "job": {
+  "ok": true,
+  "jid": "job_l4_1790314314",
+  "pid": 208436,
+  "log": "/tmp/web_job_l4_1790314314.log",
+  "msg": "已启动 L4 训练 2500 步"
+ },
+ "gpu_found_after_s": null,
+ "cmdline": "/bin/sh -c /home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python tools/joint_unified_backbone.py --steps 2500 --batch 64 --workers 3 --stats 250 --aug 1 --aug-scale 0.90,1.10 --cache-gb 6 --holdout /home/ubuntu/stable-wm-cache/datasets/v6_holdout_rand.h5 --files /home/ubuntu/stable-wm-cache/datasets/v6_sub25k.h5,/home/ubuntu/stable-wm-cache/datasets/l5_v6_sub10k.h5 --progress-file /home/ubuntu/stable-wm-cache/reports/progress_job_l4_1790314314.json --progress-every 10 --save /home/ubuntu/stable-wm-cache/checkpoints/unified_web",
+ "samples": [
+  {
+   "t": 0.0,
+   "progress_file_step": 250,
+   "log_step": 1,
+   "pct": 10.0,
+   "loss": 0.009759,
+   "gpu": "83 %, 1689 MiB, 67"
+  },
+  {
+   "t": 12.0,
+   "progress_file_step": 280,
+   "log_step": 250,
+   "pct": 11.2,
+   "loss": 0.012249,
+   "gpu": "99 %, 1689 MiB, 69"
+  },
+  {
+   "t": 24.1,
+   "progress_file_step": 330,
+   "log_step": 250,
+   "pct": 13.2,
+   "loss": 0.015795,
+   "gpu": "100 %, 1689 MiB, 69"
+  },
+  {
+   "t": 36.1,
+   "progress_file_step": 370,
+   "log_step": 250,
+   "pct": 14.8,
+   "loss": 0.014208,
+   "gpu": "100 %, 1689 MiB, 70"
+  },
+  {
+   "t": 48.1,
+   "progress_file_step": 420,
+   "log_step": 250,
+   "pct": 16.8,
+   "loss": 0.016665,
+   "gpu": "99 %, 1689 MiB, 69"
+  },
+  {
+   "t": 60.1,
+   "progress_file_step": 460,
+   "log_step": 250,
+   "pct": 18.4,
+   "loss": 0.012305,
+   "gpu": "100 %, 1689 MiB, 70"
+  },
+  {
+   "t": 72.1,
+   "progress_file_step": 500,
+   "log_step": 250,
+   "pct": 20.0,
+   "loss": 0.005374,
+   "gpu": "0 %, 1689 MiB, 64"
+  },
+  {
+   "t": 84.2,
+   "progress_file_step": 500,
+   "log_step": 500,
+   "pct": 20.0,
+   "loss": 0.005374,
+   "gpu": "100 %, 1689 MiB, 68"
+  }
+ ],
+ "verdict": {
+  "is_real_training": false,
+  "monotonic": true,
+  "dual_source_agree": "1/8"
+ }
+}
