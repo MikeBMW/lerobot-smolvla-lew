@@ -1305,7 +1305,8 @@ class HardwareCard(QFrame):
         self.lb_mem = QLabel("—")
         self.lb_disk = QLabel("—")
         self.lb_thr = QLabel("—")
-        for lb in (self.lb_gpu, self.lb_cpu, self.lb_mem, self.lb_disk, self.lb_thr):
+        self.lb_mac = QLabel("—")      # ★ Mac（小芳·备份端）行
+        for lb in (self.lb_gpu, self.lb_cpu, self.lb_mem, self.lb_disk, self.lb_thr, self.lb_mac):
             lb.setStyleSheet(f"color:{C_GRAY};font-size:12px;border:none")
             lb.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
             v.addWidget(lb)
@@ -1390,6 +1391,48 @@ class HardwareCard(QFrame):
             except Exception:                                                       # noqa: BLE001
                 pass
             self.lb_thr.setText(f"⚡ <b>算力</b>{sps or ' —（暂无近期训练吞吐）'}")
+
+            # ── Mac（小芳·备份端）硬件 —— 从 4060 控制台 /api/hardware 的 DDS 节点取 ──
+            #    URL 可配: 环境变量 ZMAX_HW_URL 或 ~/.zmax_hw_url, 默认本机 8799
+            mac_txt = "—（未收到 Mac 上报）"
+            try:
+                import json as _jj
+                import urllib.request as _ur
+                url = os.environ.get("ZMAX_HW_URL", "")
+                if not url:
+                    cfgf = os.path.expanduser("~/.zmax_hw_url")
+                    if os.path.isfile(cfgf):
+                        url = open(cfgf).read().strip()
+                url = url or "http://127.0.0.1:8799/api/hardware"
+                with _ur.urlopen(url, timeout=4) as r:
+                    hw = _jj.loads(r.read().decode("utf-8", "replace"))
+                nodes = ((hw.get("dds") or {}).get("nodes") or {})
+                mac = None
+                for k, v in nodes.items():
+                    h2 = v.get("hw") or {}
+                    if str(h2.get("backend", "")).lower() == "mps" or "mac" in str(k).lower():
+                        mac = (k, v)
+                        break
+                if mac:
+                    k, v = mac
+                    h2 = v.get("hw") or {}
+                    def _fv(x, dg=0):
+                        return "—" if (x is None or x < 0) else f"{x:.{dg}f}"
+                    st = "⚠️ 停 %ss" % v.get("age_s") if v.get("stale") else "在线 %ss" % v.get("age_s")
+                    mac_txt = (f"🍎 <b>{k}</b>（{v.get('role') or '备份端'} · MPS）<b>{st}</b>　"
+                               f"{h2.get('device_name') or '—'} · "
+                               f"内存 {_fv(h2.get('mem_avail_gb'), 1)}/{_fv(h2.get('mem_total_gb'), 1)} GB · "
+                               f"磁盘可用 {_fv(h2.get('disk_free_gb'), 1)} GB · CPU {_fv(h2.get('cpu_util_pct'), 1)}%"
+                               f"（{h2.get('cpu_cores') or '—'}核）")
+                    note = (h2.get("note") or "")[:80]
+                    if note:
+                        mac_txt += f"　<span style='font-size:10px'>{note}</span>"
+                else:
+                    mac_txt = ("🍎 <b>Mac（小芳·备份端）</b> —（未上报 → 在 Mac 执行 "
+                               "mac_hw_report.py --dds --watch 30）")
+            except Exception as e:                                              # noqa: BLE001
+                mac_txt = f"🍎 <b>Mac（小芳·备份端）</b> —（读取失败: {str(e)[:40]}）"
+            self.lb_mac.setText(mac_txt)
 
             self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
         except Exception as e:                                                  # noqa: BLE001
