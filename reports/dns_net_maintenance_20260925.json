@@ -1,0 +1,76 @@
+{
+  "ts": "2026-09-25 08:00:16",
+  "host": "4060 工位机 (nvme0n1p5)",
+  "actions": [
+    {
+      "item": "DNS flush-caches",
+      "cmd": "sudo resolvectl flush-caches",
+      "before": {
+        "cache_entries": 127,
+        "current_cache_size": 29,
+        "hits": 180,
+        "misses": 229
+      },
+      "after": {
+        "cache_entries": 40,
+        "current_cache_size": 14,
+        "hits": 201,
+        "misses": 259
+      },
+      "space_freed_MB": 0,
+      "note": "缓存条目 127→40; 冷解析 0.00~0.02s, 热解析 6/6 = 0.00s"
+    },
+    {
+      "item": "网络体检(只读)",
+      "cmd": "ping/traceroute 式抽样 + curl 握手分解",
+      "before": null,
+      "after": null,
+      "space_freed_MB": 0,
+      "note": "网关/DNS/公网/工控机/Orin 全 0% 丢包; WiFi -59dBm 573.5Mbit/s"
+    },
+    {
+      "item": "TIME_WAIT 归因(只读)",
+      "cmd": "ss -tan state time-wait",
+      "before": null,
+      "after": {
+        "time_wait": 631,
+        "established": 93
+      },
+      "space_freed_MB": 0,
+      "note": "全部来自 127.0.0.1:8790 推理短连接 9Hz×60s=540 理论值, 端口占用 2.2% 无害"
+    },
+    {
+      "item": "文件删除",
+      "cmd": "(无)",
+      "before": null,
+      "after": null,
+      "space_freed_MB": 0,
+      "note": "本次未删任何文件"
+    }
+  ],
+  "total_freed_MB": 0,
+  "cleanup_targets_available": {
+    "journal_MB": 309.9,
+    "apt_archives_MB": 0.03,
+    "pip_uv_cache_MB": 0.012,
+    "trash_MB": 0.012
+  },
+  "external_faults": [
+    {
+      "what": "datadrive.world /ws 502 Bad Gateway",
+      "side": "远端 ECS 39.102.211.79 (nginx 上游 WS 未起)",
+      "impact": "群聊/网页实时消息不通 + studio/auto_loop 每 5s 重连"
+    },
+    {
+      "what": "IPv6 无出口但 DNS 先返 AAAA",
+      "side": "本机(未改动)",
+      "impact": "少数先试 v6 的库多一次失败回落"
+    }
+  ],
+  "protection_check": {
+    "services_untouched": true,
+    "files_deleted": 0,
+    "verified": "systemctl is-active 5/5 running (ss-local-infer / ss-bypass / ss-remote-tap / ss-yolo-bypass / zmax-data-mount)",
+    "disk_free_GB": 102
+  }
+}

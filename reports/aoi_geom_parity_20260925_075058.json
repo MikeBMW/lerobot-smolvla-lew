@@ -1,0 +1,177 @@
+{
+  "ts": "2026-09-25 07:50:58",
+  "pair_dir": "/home/ubuntu/lerobot-smolvla-lew/reports/opt_view",
+  "k": 2.0,
+  "records": [
+    {
+      "stem": "金手指",
+      "rows": [
+        {
+          "tag": "线上方图(工控机 960x960 拉长)",
+          "file": "金手指_topview.png",
+          "m": {
+            "shape": [
+              960,
+              960
+            ],
+            "sat_pct": 4.51,
+            "dead_rows": 0,
+            "lap_var": 154.4,
+            "mean": 162.0,
+            "std": 49.0
+          }
+        },
+        {
+          "tag": "我们(原图裁切 短边x2+过曝切除)",
+          "file": "金手指_origin.png",
+          "m": {
+            "shape": [
+              4096,
+              2448
+            ],
+            "sat_pct": 20.28,
+            "dead_rows": 14,
+            "lap_var": 22.0,
+            "mean": 127.1,
+            "std": 82.6
+          }
+        },
+        {
+          "tag": "原图(基准)",
+          "file": "金手指_origin.png",
+          "m": {
+            "shape": [
+              2048,
+              2448
+            ],
+            "sat_pct": 20.3,
+            "dead_rows": 7,
+            "lap_var": 52.7,
+            "mean": 127.1,
+            "std": 82.6
+          }
+        }
+      ]
+    },
+    {
+      "stem": "金手指_clean960",
+      "rows": [
+        {
+          "tag": "线上方图(工控机 960x960 拉长)",
+          "file": "(缺)",
+          "m": null
+        },
+        {
+          "tag": "我们(原图裁切 短边x2+过曝切除)",
+          "file": "金手指_origin_clean960.png",
+          "m": {
+            "shape": [
+              1920,
+              959
+            ],
+            "sat_pct": 9.42,
+            "dead_rows": 0,
+            "lap_var": 520.3,
+            "mean": 171.0,
+            "std": 53.3
+          }
+        },
+        {
+          "tag": "原图(基准)",
+          "file": "金手指_origin_clean960.png",
+          "m": {
+            "shape": [
+              960,
+              960
+            ],
+            "sat_pct": 9.43,
+            "dead_rows": 0,
+            "lap_var": 564.0,
+            "mean": 171.0,
+            "std": 53.3
+          }
+        }
+      ]
+    },
+    {
+      "stem": "金手指_clean_k2",
+      "rows": [
+        {
+          "tag": "线上方图(工控机 960x960 拉长)",
+          "file": "(缺)",
+          "m": null
+        },
+        {
+          "tag": "我们(原图裁切 短边x2+过曝切除)",
+          "file": "金手指_origin_clean_k2.png",
+          "m": {
+            "shape": [
+              540,
+              1621
+            ],
+            "sat_pct": 9.38,
+            "dead_rows": 0,
+            "lap_var": 224.1,
+            "mean": 170.9,
+            "std": 53.3
+          }
+        },
+        {
+          "tag": "原图(基准)",
+          "file": "金手指_origin_clean_k2.png",
+          "m": {
+            "shape": [
+              270,
+              1623
+            ],
+            "sat_pct": 9.41,
+            "dead_rows": 0,
+            "lap_var": 289.7,
+            "mean": 171.0,
+            "std": 53.3
+          }
+        }
+      ]
+    },
+    {
+      "stem": "金手指_clean_k3",
+      "rows": [
+        {
+          "tag": "线上方图(工控机 960x960 拉长)",
+          "file": "(缺)",
+          "m": null
+        },
+        {
+          "tag": "我们(原图裁切 短边x2+过曝切除)",
+          "file": "金手指_origin_clean_k3.png",
+          "m": {
+            "shape": [
+              810,
+              1621
+            ],
+            "sat_pct": 9.4,
+            "dead_rows": 0,
+            "lap_var": 217.1,
+            "mean": 171.0,
+            "std": 53.3
+          }
+        },
+        {
+          "tag": "原图(基准)",
+          "file": "金手指_origin_clean_k3.png",
+          "m": {
+            "shape": [
+              405,
+              1623
+            ],
+            "sat_pct": 9.45,
+            "dead_rows": 0,
+            "lap_var": 229.5,
+            "mean": 171.1,
+            "std": 53.3
+          }
+        }
+      ]
+    }
+  ]
+}

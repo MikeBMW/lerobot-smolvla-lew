@@ -1,0 +1,14 @@
+{
+  "ts": "2026-09-25 08:06:27",
+  "rounds": 3,
+  "A(cm3)": "cubic / rmem_max=212992 / slow_start_after_idle=1 / fastopen=1 / mtu_probing=0 / backlog=1000",
+  "B(cand)": "bbr / rmem_max=33554432 / wmem_max=16777216 / slow_start_after_idle=0 / fastopen=3 / mtu_probing=1 / backlog=5000 / notsent_lowat=131072",
+  "metrics": [
+    "近端单流(npmmirror typescript.tgz)",
+    "远端单流(codeload.github.com git tarball)",
+    "近端4并发聚合",
+    "TTFB registry.npmmirror.com(ms)",
+    "TTFB open.feishu.cn(ms)"
+  ],
+  "detail_file": "/tmp/net_ab_detail.txt"
+}
