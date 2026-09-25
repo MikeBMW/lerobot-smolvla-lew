@@ -1,0 +1,7 @@
+string command
+string command_id
+string payload_json
+---
+bool success
+string message
+string result_json

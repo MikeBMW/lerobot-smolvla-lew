@@ -42,14 +42,14 @@ MODES = ("prod", "diag", "calib", "test", "dev")
 # 每档开启的话题（★ prod 为空 = 全关）
 MODE_TOPICS = {
     "prod":  [],
-    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog"],
-    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat"],
+    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag"],
+    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd",
               "link_value", "ss_state", "ss_action", "ss_infer",
-              "ss_canvas", "ss_macro", "ss_nodes"],
+              "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test"],
     "dev":   ["hw_state", "heartbeat", "train_prog", "deploy_cmd",
               "link_value", "ss_state", "ss_action", "ss_infer",
-              "ss_canvas", "ss_macro", "ss_nodes"],
+              "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test"],
 }
 
 _LOCK = threading.Lock()

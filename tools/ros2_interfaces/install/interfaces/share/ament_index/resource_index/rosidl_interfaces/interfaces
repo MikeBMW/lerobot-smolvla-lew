@@ -1,0 +1,12 @@
+srv/CameraData.idl
+srv/CameraData.srv
+srv/CameraData_Request.msg
+srv/CameraData_Response.msg
+srv/HmiCommand.idl
+srv/HmiCommand.srv
+srv/HmiCommand_Request.msg
+srv/HmiCommand_Response.msg
+srv/HmiSnapshot.idl
+srv/HmiSnapshot.srv
+srv/HmiSnapshot_Request.msg
+srv/HmiSnapshot_Response.msg

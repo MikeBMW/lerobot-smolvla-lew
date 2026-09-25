@@ -60,24 +60,47 @@ def hardware_section():
 
 
 def mac_section():
-    """Mac（小芳·备份端）硬件 —— 从 DDS 桥读（自测节点已过滤）"""
-    try:
-        j = json.load(open(DDS_F, encoding="utf-8"))
-    except Exception:                                                           # noqa: BLE001
-        return None
-    for k, v in (j.get("nodes") or {}).items():
-        if "TEST" in k.upper() or "自测" in k:
+    """Mac（小芳·备份端）硬件 —— ★ 从 **ECS relay** 读（小芳真正上报的地方）
+
+    教训: 之前读本机 DDS 桥 → Mac 永远"等待上报"（因为小芳并不往本机 DDS 发）。
+    relay 的 /latest 里可能是我转发的包（含 mac 转发）或小芳自己的包，两者都认。
+    """
+    import urllib.request as _ur
+    # ★ relay /latest 是"最新包覆盖"，单次可能抓到不含 Mac 的包 → 重试最多 6 次 (共约 9s)
+    for _try in range(6):
+        try:
+            with _ur.urlopen("https://datadrive.world/api/relay/latest", timeout=12) as r:
+                j = json.loads(r.read().decode("utf-8", "replace"))
+        except Exception:                                                       # noqa: BLE001
+            time.sleep(1.5)
             continue
-        h = v.get("hw") or {}
-        if str(h.get("backend", "")).lower() == "mps" or "mac" in k.lower():
-            if v.get("stale"):
-                return {"node": k, "role": v.get("role") or "备份端(Mac)", "stale": True,
-                        "age_s": v.get("age_s"), "note": "上报已过期，未显示数值"}
-            return {"node": k, "role": v.get("role") or "备份端(Mac)", "backend": "mps",
-                    "device_name": h.get("device_name"), "stale": False, "age_s": v.get("age_s"),
-                    "mem_avail_gb": h.get("mem_avail_gb"), "mem_total_gb": h.get("mem_total_gb"),
-                    "disk_free_gb": h.get("disk_free_gb"), "cpu_util_pct": h.get("cpu_util_pct"),
-                    "cpu_cores": h.get("cpu_cores"), "note": (h.get("note") or "")[:120]}
+        _hit = _scan_mac(j)
+        if _hit:
+            return _hit
+        time.sleep(1.5)
+    return None
+
+
+def _scan_mac(j):
+    """从 relay 包里找出 Mac 机器（可被重用）"""
+    for k, v in ((j.get("data") or {}).get("machines") or {}).items():
+        if "4060" in str(k):
+            continue
+        g = v.get("gpu") or {}
+        be = str(g.get("backend") or "").lower()
+        if "mac" in str(k).lower() or be == "mps":
+            mem = v.get("mem") or {}
+            disk = v.get("disk") or {}
+            cpu = v.get("cpu") or {}
+            return {"node": k, "role": "备份端(Mac)", "backend": be or "mps",
+                    "device_name": v.get("host") or g.get("name") or "Mac",
+                    "stale": False, "age_s": round(time.time() - (v.get("ts") or time.time()), 1),
+                    "mem_avail_gb": mem.get("avail_gb"), "mem_total_gb": mem.get("total_gb"),
+                    "mem_percent": mem.get("percent"),
+                    "disk_free_gb": disk.get("free_gb"), "disk_total_gb": disk.get("total_gb"),
+                    "cpu_util_pct": cpu.get("percent"), "cpu_cores": cpu.get("cores"),
+                    "load1": cpu.get("load1"),
+                    "note": "%s · MPS" % (v.get("host") or "Mac")}
     return None
 
 

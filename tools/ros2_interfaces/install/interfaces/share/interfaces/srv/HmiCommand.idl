@@ -1,0 +1,23 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from interfaces/srv/HmiCommand.srv
+// generated code does not contain a copyright notice
+
+
+module interfaces {
+  module srv {
+    struct HmiCommand_Request {
+      string command;
+
+      string command_id;
+
+      string payload_json;
+    };
+    struct HmiCommand_Response {
+      boolean success;
+
+      string message;
+
+      string result_json;
+    };
+  };
+};
