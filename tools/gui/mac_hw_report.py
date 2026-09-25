@@ -18,13 +18,85 @@
     ZMAX_RELAY_URL    ECS 上传地址
 """
 import argparse
+import json
 import os
+import platform
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 ROLE = os.environ.get("ZMAX_HW_ROLE", "mac")
+
+
+def _ws_dds_payload(machine: str = "mac") -> dict:
+    """采集本机硬件 → **ECS DDS 网关期望的 payload 格式**
+    (2026-09-25 从 /root/dds_ws_gateway.py + /api/train/hardware 实测反推)
+    字段: machine/gpu/gpu_load/gpu_vram/gpu_vram_total/load1..15/
+          mem_total(MB)/mem_used(MB)/disk_total(GB)/disk_used(GB)/cpu_cores/cpu_mhz/time
+    """
+    from hw_monitor import probe
+    d = probe(measure=False)
+    g = d["gpu"]
+    gpu_name = f"{g.get('name') or 'Apple GPU'} (MPS)" if g.get("backend") == "mps" else (g.get("name") or "未知")
+    vram_used = g.get("mem_used_gb")
+    vram_total = g.get("mem_total_gb")
+    mem = d["mem"]
+    disk = d["disk"]
+    return {
+        "machine": machine,
+        "os": platform.system(),
+        "gpu": gpu_name,
+        "gpu_load": int(g["util_pct"]) if g.get("util_pct") is not None else None,
+        "gpu_vram": round(vram_used, 2) if vram_used is not None else None,
+        "gpu_vram_total": round(vram_total, 2) if vram_total is not None else None,
+        "load1": d["cpu"].get("load1"),
+        "load5": d["cpu"].get("load5"),
+        "load15": d["cpu"].get("load15"),
+        "cpu_percent": d["cpu"].get("percent"),
+        "mem_total": int(round((mem.get("total_gb") or 0) * 1024)),
+        "mem_used": int(round((mem.get("used_gb") or 0) * 1024)),
+        "disk_total": int(round(disk.get("total_gb") or 0)),
+        "disk_used": int(round(disk.get("used_gb") or 0)),
+        "cpu_cores": d["cpu"].get("cores"),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "notes": "on MPS (Apple Silicon 统一内存, 显存=系统内存)",
+    }
+
+
+def _ws_dds_loop(machine: str = "mac", interval: float = 5.0):
+    """**真 DDS 通道**: WebSocket(TCP443) → ECS DDS 网关 → DDS 总线(ZMAX.Msg)
+    这是 APP 读取的路径 (/api/train/hardware 由该总线喂数据)。
+    用 WebSocket 是因为 DDS 组播过不了公网, 网关在 ECS 侧把它发布到真 DDS 总线。
+    """
+    try:
+        from websockets.sync.client import connect
+    except Exception as e:
+        print(f"❌ 需要 websockets 库: pip install websockets ({e})", flush=True)
+        return 1
+    url = os.environ.get("ZMAX_DDS_WS", "wss://datadrive.world/ws/dds/")
+    print(f"🛰  DDS 通道启动 · {machine} → {url} (每 {interval:.0f}s)", flush=True)
+    n = 0
+    while True:
+        try:
+            with connect(url, open_timeout=15) as ws:
+                print(f"🛰  已接入 DDS 总线 ({time.strftime('%H:%M:%S')})", flush=True)
+                while True:
+                    hw = _ws_dds_payload(machine)
+                    ws.send(json.dumps({"type": "hardware", "payload": hw}, ensure_ascii=False))
+                    n += 1
+                    if n % 6 == 0:
+                        print(f"🛰  已上报 {n} 次 | GPU {hw['gpu']} "
+                              f"{hw['gpu_vram']}/{hw['gpu_vram_total']}GB "
+                              f"负载 {hw['gpu_load']}% ({time.strftime('%H:%M:%S')})", flush=True)
+                    try:
+                        ws.recv(timeout=1.0)
+                    except TimeoutError:
+                        pass
+                    time.sleep(interval)
+        except Exception as e:
+            print(f"⚠️  DDS 通道断开, 3s 后重连: {type(e).__name__}: {str(e)[:110]}", flush=True)
+            time.sleep(3)
 
 
 def _publish_dds(hz: float = 1.0, measure: bool = False, stop_after: float | None = None):
@@ -83,7 +155,7 @@ def main():
         return 0
 
     if a.dds and a.loop:
-        # 双通道: DDS 播报 + 定时上云
+        # --dds = 真 DDS 通道 (WebSocket → ECS DDS 网关 → DDS 总线) ← APP 读这条
         if a.cloud:
             import threading
             from hw_upload import brief, collect, upload
@@ -93,16 +165,32 @@ def main():
                     try:
                         p = collect(measure_tflops=a.measure_tflops)
                         r = upload(p)
-                        print(f"☁️  上云 ok={r.get('ok')} | {brief(p)}", flush=True)
+                        print(f"☁️  上云(副本) ok={r.get('ok')} | {brief(p)}", flush=True)
                     except Exception as e:
                         print(f"⚠️  上云失败: {type(e).__name__}: {str(e)[:90]}", flush=True)
                     time.sleep(10)
 
             threading.Thread(target=_cloud_loop, daemon=True).start()
-        return _publish_dds(a.hz, a.measure_tflops, a.seconds) and 0
+        return _ws_dds_loop(ROLE, a.hz if a.hz > 1 else 5.0)
 
     if a.dds:
-        return _publish_dds(a.hz, a.measure_tflops, a.seconds or 2.0) and 0
+        # 单次: 走 DDS 网关发一包
+        try:
+            from websockets.sync.client import connect
+            url = os.environ.get("ZMAX_DDS_WS", "wss://datadrive.world/ws/dds/")
+            with connect(url, open_timeout=15) as ws:
+                hw = _ws_dds_payload(ROLE)
+                ws.send(json.dumps({"type": "hardware", "payload": hw}, ensure_ascii=False))
+                try:
+                    print("  DDS 网关回应:", ws.recv(timeout=3.0)[:200])
+                except TimeoutError:
+                    print("  (无回应, 已发送)")
+            print(f"  ✅ 已通过 DDS 通道上报一次: {hw['machine']} GPU={hw['gpu']} "
+                  f"{hw['gpu_vram']}/{hw['gpu_vram_total']}GB")
+        except Exception as e:
+            print(f"  ❌ DDS 上报失败: {type(e).__name__}: {str(e)[:150]}")
+            return 1
+        return 0
 
     if a.cloud:
         if a.loop:
