@@ -24,6 +24,8 @@ from PyQt5.QtWidgets import (QFrame, QGridLayout, QGroupBox, QHBoxLayout,
 ROLE_STYLE = {
     "mac":  ("Mac (小芳)", "🍎", "#58a6ff"),
     "4060": ("4060 (静静)", "🎮", "#3fb950"),
+    "4090": ("4090 (云端)", "⚡", "#f0883e"),
+    "v100": ("V100 (云端)", "🔥", "#db61a2"),
     "orin": ("Orin (端侧)", "🤖", "#e0a030"),
     "ecs":  ("ECS (云)", "☁️", "#a371f7"),
 }

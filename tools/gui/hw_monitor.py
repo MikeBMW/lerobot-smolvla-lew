@@ -30,6 +30,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 try:
@@ -68,12 +69,31 @@ def probe_cpu() -> dict:
         d.update(load1=round(la[0], 2), load5=round(la[1], 2), load15=round(la[2], 2))
     except Exception:
         pass
-    if psutil:
-        try:
-            d["percent"] = round(psutil.cpu_percent(interval=None), 1)
-        except Exception:
-            pass
+    d["percent"] = _cpu_percent_cached()
     return d
+
+
+# ── CPU 百分比: 加锁缓存 ──────────────────────────────────────────
+# ⚠️ 血泪坑: APP 里有两个调用方 (DDS 播报端 1Hz + 面板 QTimer 2s) 并发调 probe(),
+#    psutil.cpu_percent(interval=…) 每次调用都会重置内部基准 → 两个调用方互相
+#    "偷" 基准 → 结果恒 0.0% (面板看着像"没有硬件数据")。
+#    修法: 带锁 + 1s 缓存, 同一秒内所有调用方共享同一个真实采样值。
+_CPU_LOCK = threading.Lock()
+_CPU_CACHE: dict = {"ts": 0.0, "val": None}
+
+
+def _cpu_percent_cached(min_interval: float = 1.0) -> float | None:
+    if not psutil:
+        return None
+    with _CPU_LOCK:
+        now = time.time()
+        if _CPU_CACHE["val"] is None or (now - _CPU_CACHE["ts"]) >= min_interval:
+            try:
+                _CPU_CACHE["val"] = round(psutil.cpu_percent(interval=0.12), 1)
+                _CPU_CACHE["ts"] = time.time()
+            except Exception:
+                pass
+        return _CPU_CACHE["val"]
 
 
 # ────────────────────────── 内存 ──────────────────────────
@@ -109,24 +129,38 @@ def probe_disk(path: str | None = None) -> dict:
 
 # ────────────────────────── GPU ──────────────────────────
 def _gpu_apple(warn: list) -> dict | None:
-    """macOS: 从 ioreg IOAccelerator 读 GPU 利用率/显存占用"""
-    out = _run(["ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"])
-    if not out:
-        return None
+    """macOS: 从 ioreg IOAccelerator 读 GPU 利用率/显存占用
+    采样两次取最大 — 单次读可能撞上瞬时 0 (GPU 短暂空闲), 会让面板看着像"没数据\""""
     import re
-    util = mem_used = None
-    m = re.search(r'"Device Utilization %"\s*=\s*(\d+)', out)
-    if m:
-        util = float(m.group(1))
-    m = re.search(r'"In use system memory"\s*=\s*(\d+)', out)
-    if m:
-        mem_used = int(m.group(1)) / GB
-    name = "Apple GPU"
-    m = re.search(r'"model"\s*=\s*"([^"]+)"', out)
-    if m:
-        name = m.group(1)
-    if util is None:
+
+    def _sample() -> tuple:
+        out = _run(["ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"])
+        if not out:
+            return None, None
+        u = m_ = None
+        mm = re.search(r'"Device Utilization %"\s*=\s*(\d+)', out)
+        if mm:
+            u = float(mm.group(1))
+        mm2 = re.search(r'"In use system memory"\s*=\s*(\d+)', out)
+        if mm2:
+            m_ = int(mm2.group(1)) / GB
+        return u, m_
+
+    u1, m1 = _sample()
+    if u1 is None:
         warn.append("macOS 未取到 GPU 利用率 (ioreg 无 Device Utilization 字段)")
+        return {"backend": "mps", "name": "Apple GPU", "count": 1, "util_pct": None,
+                "mem_used_gb": None, "mem_total_gb": None,
+                "note": "统一内存架构 (显存=系统内存)"}
+    time.sleep(0.12)
+    u2, m2 = _sample()
+    util = max(u1, u2 if u2 is not None else 0.0)
+    mem_used = max(x for x in (m1, m2) if x is not None) if (m1 is not None or m2 is not None) else None
+    out = _run(["ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"])
+    name = "Apple GPU"
+    mn = re.search(r'"model"\s*=\s*"([^"]+)"', out)
+    if mn:
+        name = mn.group(1)
     return {"backend": "mps", "name": name, "count": 1,
             "util_pct": util, "mem_used_gb": round(mem_used, 2) if mem_used is not None else None,
             "mem_total_gb": None, "note": "统一内存架构 (显存=系统内存)"}
