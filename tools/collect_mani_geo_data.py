@@ -45,6 +45,8 @@ def main() -> int:
     ap.add_argument("--clean", type=int, default=4, help="干净布局跑几个 seed")
     ap.add_argument("--jitter", type=int, default=2, help="干扰布局跑几个 seed (每 seed 4 档扰动)")
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "manifold_geo_v1.npz"))
+    ap.add_argument("--keep-failed", action="store_true",
+                    help="保留 done=False 的失败 episode (仅供分析失败模式, 不要用于训练)")
     a = ap.parse_args()
     os.chdir(_GUI)                                  # 引擎按相对路径加载六层模块
     from state_space_sim_real import RealStateSpaceSim   # noqa: PLC0415
@@ -58,6 +60,17 @@ def main() -> int:
         if len(z7) < n or len(u) < n:
             print(f"  ⚠️ {tag}: z7/u 长度不足 ({len(z7)}/{len(u)} < {n}) → 跳过", flush=True)
             return 0
+        # ⚠️ 2026-09-25 实测教训: 失败 episode 的流形值会**灾难性污染**训练集。
+        #    实测: clean_s0 跑满 1000 步但 done=False(插入失败) → 其 3764 帧
+        #    进训练集后, 第 4 维 R² 从正常值掉到 **-18.89**, LOSO 均值 -1.07
+        #    (质量闸要求 ≥0.30) → 整轮训练作废。
+        #    修法: 成功判定前置, done=False 的整段**直接丢弃**。
+        #    可用 --keep-failed 保留 (仅用于分析失败模式, 不要用来训练)
+        done = bool(tr.get("done", [False])[-1]) if tr.get("done") else False
+        if not done and not getattr(a, "keep_failed", False):
+            print(f"  {tag}: {n} 步 · done=False → ⛔ 整段丢弃 "
+                  f"(失败轨迹会污染训练集, 实测 R² -18.89)", flush=True)
+            return 0
         got = 0
         for i in range(n - 1):
             m6 = np.array([tr[k][i] for k in KEYS6], float)
@@ -69,7 +82,6 @@ def main() -> int:
             ST.append(str(tr["stage"][i]).replace("阶段 ", "").split("·")[0].strip())
             SP.append(split); SD.append(tag)
             got += 1
-        done = bool(tr.get("done", [False])[-1]) if tr.get("done") else False
         print(f"  {tag}: {n} 步 → 有效帧 {got} · done={done}", flush=True)
         return got
 
