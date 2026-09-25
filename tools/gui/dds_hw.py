@@ -20,6 +20,124 @@ import time
 TOPICS = ("hw_state", "train_prog", "heartbeat")
 
 
+_PUB_THREAD = None
+_PUB_ERR = ""
+
+
+def _collect_local_hw():
+    """采集本机硬件（跨平台: nvidia-smi 可选 + psutil/标准库; 读不到 = -1）"""
+    import shutil
+    import subprocess
+    d = {"node": os.environ.get("ZMAX_NODE", ""), "role": os.environ.get("ZMAX_ROLE", ""),
+         "backend": "cpu", "device_name": "", "ts": time.time()}
+    # GPU（CUDA）
+    try:
+        o = subprocess.run("nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,"
+                           "temperature.gpu,power.draw,clocks.sm --format=csv,noheader,nounits",
+                           shell=True, capture_output=True, text=True, timeout=8).stdout.strip()
+        if o and "," in o:
+            p = [x.strip() for x in o.split(",")]
+            f = lambda v: (float(v) if v.replace(".", "").replace("-", "").isdigit() else -1.0)  # noqa: E731
+            d.update(backend="cuda", device_name=p[0], util_pct=f(p[1]), mem_used_mb=f(p[2]),
+                     mem_total_mb=f(p[3]), temp_c=f(p[4]), power_w=f(p[5]), clk_mhz=f(p[6]))
+    except Exception:                                                           # noqa: BLE001
+        pass
+    # MPS（Mac）
+    if d["backend"] == "cpu":
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                d.update(backend="mps", device_name="Apple MPS (Metal)")
+        except Exception:                                                       # noqa: BLE001
+            pass
+    # CPU / 内存 / 磁盘
+    try:
+        d["cpu_cores"] = os.cpu_count() or -1
+        la = os.getloadavg() if hasattr(os, "getloadavg") else (0, 0, 0)
+        d["load1"] = round(la[0], 2)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    try:
+        du = shutil.disk_usage(os.path.expanduser("~"))
+        d["disk_total_gb"] = round(du.total / 1073741824, 1)
+        d["disk_free_gb"] = round(du.free / 1073741824, 1)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    # 内存（Linux /proc; Mac sysctl; Windows 走 psutil 若有）
+    try:
+        if os.path.isfile("/proc/meminfo"):
+            mi = {}
+            for ln in open("/proc/meminfo"):
+                mi[ln.split(":")[0]] = int(ln.split()[1]) / 1048576.0
+            d["mem_total_gb"] = round(mi.get("MemTotal", -1), 1)
+            d["mem_avail_gb"] = round(mi.get("MemAvailable", -1), 1)
+        else:
+            import subprocess
+            tot = subprocess.run("sysctl -n hw.memsize", shell=True, capture_output=True,
+                                 text=True, timeout=6).stdout.strip()
+            if tot.isdigit():
+                d["mem_total_gb"] = round(int(tot) / 1073741824, 1)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    # 兜底默认值: 未测到 = -1
+    for k in ("util_pct", "mem_used_mb", "mem_total_mb", "temp_c", "power_w", "clk_mhz",
+              "cpu_util_pct", "load1", "mem_total_gb", "mem_avail_gb", "disk_total_gb",
+              "disk_free_gb", "train_steps_per_s"):
+        d.setdefault(k, -1.0)
+    d.setdefault("cpu_cores", -1)
+    if not d.get("device_name"):
+        d["device_name"] = "本机(未检测到 GPU)"
+    return d
+
+
+def start_local_publisher(domain=0, cfg=None, interval=5.0):
+    """★ 在 APP 进程内启动本机 DDS 发布（发布硬件到 zmax/hw_state）
+    返回 (ok, msg)。失败原因明确回传（不静默）。"""
+    global _PUB_THREAD, _PUB_ERR
+    if _PUB_THREAD is not None and _PUB_THREAD.is_alive():
+        return True, "已在运行"
+
+    def _loop():
+        global _PUB_ERR
+        try:
+            import sys
+            here = os.path.dirname(os.path.abspath(__file__))
+            _mp = getattr(sys, "_MEIPASS", "")
+            for cand in (os.path.join(here, "..", "..", "dds"), os.path.join(here, "dds"),
+                         (os.path.join(_mp, "dds") if _mp else "")):
+                if cand and os.path.isdir(cand):
+                    sys.path.insert(0, os.path.abspath(cand))
+            from zmax_node import Node
+            from zmax_types import HardwareState, Heartbeat
+            _c = cfg
+            if not _c:
+                for cand in (os.path.join(here, "..", "..", "dds", "cyclonedds_unicast.xml"),
+                             (os.path.join(_mp, "dds", "cyclonedds_unicast.xml") if _mp else "")):
+                    if cand and os.path.isfile(cand):
+                        _c = cand
+                        break
+            n = Node("app-pub", domain=domain, config_xml=_c)
+            n.pub("hw_state")
+            n.pub("heartbeat")
+            while True:
+                d = _collect_local_hw()
+                msg = HardwareState(**{k: v for k, v in d.items()
+                                       if k in HardwareState.__dataclass_fields__})
+                n.send("hw_state", msg)
+                n.send("heartbeat", Heartbeat(node=d.get("node") or "本机",
+                                              role=d.get("role") or "工作端", alive=1, ts=time.time()))
+                time.sleep(interval)
+        except Exception as e:                                                  # noqa: BLE001
+            _PUB_ERR = "%s: %s" % (type(e).__name__, str(e)[:120])
+
+    _PUB_THREAD = threading.Thread(target=_loop, daemon=True)
+    _PUB_THREAD.start()
+    time.sleep(2.0)
+    if _PUB_THREAD.is_alive():
+        return True, "本机 DDS 发布已启动（zmax/hw_state，每 %.0fs）" % interval
+    return False, _PUB_ERR or "线程未启动"
+
+
 class DdsHwCollector:
     def __init__(self, domain=0, cfg=None, stale_after=15.0):
         self.nodes = {}

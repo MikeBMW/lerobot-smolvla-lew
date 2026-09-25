@@ -1331,11 +1331,25 @@ class HardwareCard(QFrame):
         self.lb_mem = QLabel("—")
         self.lb_disk = QLabel("—")
         self.lb_thr = QLabel("—")
-        self.lb_mac = QLabel("—")      # ★ Mac（小芳·备份端）行
+        self.lb_mac = QLabel("—")      # ★ DDS 节点区（4060 + Mac 全节点）
+        self.lb_nodes = QLabel("—")    # DDS 节点列表（每节点一行）
+        self.btn_dds = QPushButton("📡 启动本机 DDS 发布")
+        self.btn_dds.setToolTip("在本机启动 DDS 节点(发布 4060 硬件/训练进度, 订阅部署指令)")
+        self.btn_dds.clicked.connect(self.start_local_dds)
+        self.btn_dds.setStyleSheet(
+            f"QPushButton{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
+            f"border-radius:6px;padding:3px 10px;font-size:11px}}"
+            f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
         for lb in (self.lb_gpu, self.lb_cpu, self.lb_mem, self.lb_disk, self.lb_thr, self.lb_mac):
             lb.setStyleSheet(f"color:{C_GRAY};font-size:12px;border:none")
             lb.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
             v.addWidget(lb)
+        self.lb_nodes.setStyleSheet(f"color:{C_GRAY};font-size:11px;border:none;line-height:150%")
+        v.addWidget(self.lb_nodes)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(self.btn_dds)
+        v.addLayout(row)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
@@ -1349,6 +1363,22 @@ class HardwareCard(QFrame):
                                   timeout=timeout).stdout.strip()
         except Exception:                                                       # noqa: BLE001
             return ""
+
+    # ---------- DDS 本机发布（自包含: 用打包进来的 dds 模块, 不依赖外部脚本）----------
+    def start_local_dds(self):
+        """📡 在 APP 内启动本机 DDS 发布（发布本机硬件 + 训练进度到 zmax/hw_state）"""
+        if getattr(self, "_pub_on", False):
+            self.btn_dds.setText("📡 DDS 发布中…（已在运行）")
+            return
+        try:
+            from dds_hw import start_local_publisher
+            ok, msg = start_local_publisher()
+            self._pub_on = bool(ok)
+            self.btn_dds.setText("📡 DDS 发布中 ✓" if ok else "📡 启动失败")
+            self.btn_dds.setToolTip(msg[:200])
+        except Exception as e:                                                  # noqa: BLE001
+            self.btn_dds.setText("📡 启动失败")
+            self.btn_dds.setToolTip("%s: %s" % (type(e).__name__, str(e)[:150]))
 
     def refresh(self):
         import shutil   # ★ studio.py 只在方法内局部导入 shutil（模块级没有）→ 这里必须自己导
@@ -1448,12 +1478,30 @@ class HardwareCard(QFrame):
                           "http-fallback": "⚠️ 非DDS(HTTP兜底)"}.get(
                               getattr(col, "transport", "不可用"), getattr(col, "transport", "不可用"))
                     self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b>（{tr}）　" + "　│　".join(parts))
+                    # ★ DDS 节点列表（老倪: "APP里也要有DDS节点"）—— 每节点一行
+                    nl = []
+                    for k, v in snap.items():
+                        h2 = v.get("hw") or {}
+                        pr = v.get("prog") or {}
+                        be = (h2.get("backend") or "?").upper()
+                        dot = ("🔴" if v.get("stale") else "🟢")
+                        nl.append(f"{dot} <b>{k}</b>　{v.get('role') or '?'}　"
+                                  f"{h2.get('device_name') or '（无硬件数据）'}　{be}"
+                                  + (f"　训练 {pr.get('step')}/{pr.get('total')}"
+                                     f" {pr.get('pct')}%" if pr.get("step") is not None
+                                     and (pr.get("step") or -1) >= 0 else "")
+                                  + f"　龄 {v.get('age_s')}s")
+                    self.lb_nodes.setText(
+                        f"<b>📡 DDS 节点</b>（{len(nl)} 个 · {tr}）" + ("<br>" + "<br>".join(nl) if nl else "　—"))
                 else:
                     self.lb_mac.setText(
                         "📡 <b>DDS 两端硬件</b> —（等待节点上报: 4060 跑 dds_node_4060.py · "
                         "Mac 跑 mac_hw_report.py --dds）")
+                    self.lb_nodes.setText("<b>📡 DDS 节点</b>（0 个）　—"
+                                          "　可点右下「启动本机 DDS 发布」")
             except Exception as e:                                              # noqa: BLE001
                 self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b> —（DDS 不可用: {str(e)[:50]}）")
+                self.lb_nodes.setText(f"<b>📡 DDS 节点</b> —（{str(e)[:50]}）")
 
             self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
         except Exception as e:                                                  # noqa: BLE001
