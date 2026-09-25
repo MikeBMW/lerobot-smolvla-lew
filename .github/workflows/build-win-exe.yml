@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds
           # 🐛 09-10: Windows 真实化运行同样需要 metaworld (老倪: Windows 版要测)
           pip install mujoco metaworld glfw gymnasium imageio
           python -c "import metaworld, mujoco; print('metaworld/mujoco OK:', hasattr(metaworld, 'ML1'), mujoco.__version__)"
@@ -125,7 +125,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -216,7 +216,7 @@ jobs:
       - name: Install dependencies (与正式构建同口径)
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds
           pip install mujoco metaworld glfw gymnasium imageio
       - name: "Generate L4 demo scene XML (与正式构建同口径: 自检要练的就是这个场景)"
         shell: bash
@@ -267,7 +267,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller "PyQt5==5.15.11" numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL
+          pip install pyinstaller "PyQt5==5.15.11" numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds
           # 🐛 09-10 老倪: mac 真实化运行 No module named 'metaworld' → 补引擎依赖
           pip install mujoco metaworld glfw gymnasium imageio
           python -c "import metaworld, mujoco; print('metaworld/mujoco OK:', hasattr(metaworld, 'ML1'), mujoco.__version__)"
@@ -366,6 +366,9 @@ jobs:
             --collect-all pyqtgraph --collect-all OpenGL \
             --add-data "$MW_ASSETS:metaworld/assets" \
             --collect-all glfw --collect-all gymnasium --collect-all imageio \
+            --collect-all cyclonedds \
+            --add-data "$GITHUB_WORKSPACE/dds:dds" \
+            --add-data "dds_hw.py:." \
             studio.py
           ls -la dist/
 

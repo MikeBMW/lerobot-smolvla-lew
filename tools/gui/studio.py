@@ -17,6 +17,7 @@ import tempfile  # 🐛 2026-08-28: Windows exe 无 /tmp → 打点日志改 tem
 import json
 import glob
 import time  # 硬件工具箱日志时间戳
+import threading  # ★ 2026-09-25: 硬件卡 DDS 采集器后台线程（必须模块级导入）
 import math  # 离线仿真正弦波
 
 # 🔬 2026-09-15 冻结核验入口 (CI 用, 老倪「双击前先自证」): 在**真正打包好的 exe/app** 里跑引擎
@@ -1273,6 +1274,31 @@ class ProductRoadmapWidget(QFrame):
 # ============================================================
 # 首页页面
 # ============================================================
+_DDS_COL = None            # 进程内 DDS 采集器单例（懒加载）
+_DDS_LOCK = threading.Lock()
+
+
+def _get_dds_collector():
+    """★ 懒加载 DDS 采集器（老倪: 硬件参数必须用DDS传递）
+    失败不影响 APP 启动（返回 None → 卡片显示"DDS 不可用"），绝不因 DDS 缺库而崩。"""
+    global _DDS_COL
+    if _DDS_COL is not None:
+        return _DDS_COL
+    with _DDS_LOCK:
+        if _DDS_COL is not None:
+            return _DDS_COL
+        try:
+            from dds_hw import DdsHwCollector
+            _DDS_COL = DdsHwCollector(cfg=os.environ.get("ZMAX_DDS_CFG") or None)
+        except Exception as e:                                                  # noqa: BLE001
+            _DDS_COL = None
+            try:
+                print("[硬件卡] DDS 采集器不可用: %s: %s" % (type(e).__name__, str(e)[:80]))
+            except Exception:                                                   # noqa: BLE001
+                pass
+    return _DDS_COL
+
+
 class HardwareCard(QFrame):
     """🖥 硬件资源卡（老倪 2026-09-25: "app还是没有4060硬件参数"）
 
@@ -1392,47 +1418,42 @@ class HardwareCard(QFrame):
                 pass
             self.lb_thr.setText(f"⚡ <b>算力</b>{sps or ' —（暂无近期训练吞吐）'}")
 
-            # ── Mac（小芳·备份端）硬件 —— 从 4060 控制台 /api/hardware 的 DDS 节点取 ──
-            #    URL 可配: 环境变量 ZMAX_HW_URL 或 ~/.zmax_hw_url, 默认本机 8799
-            mac_txt = "—（未收到 Mac 上报）"
+            # ── 4060 + Mac 两端硬件：★ 必须走 DDS（老倪: "硬件参数必须用DDS传递"）──
+            #    优先进程内直连 DDS → 子进程 DDS 桥 → 仅当 DDS 完全不可用才 HTTP（并明确标注）
             try:
-                import json as _jj
-                import urllib.request as _ur
-                url = os.environ.get("ZMAX_HW_URL", "")
-                if not url:
-                    cfgf = os.path.expanduser("~/.zmax_hw_url")
-                    if os.path.isfile(cfgf):
-                        url = open(cfgf).read().strip()
-                url = url or "http://127.0.0.1:8799/api/hardware"
-                with _ur.urlopen(url, timeout=4) as r:
-                    hw = _jj.loads(r.read().decode("utf-8", "replace"))
-                nodes = ((hw.get("dds") or {}).get("nodes") or {})
-                mac = None
-                for k, v in nodes.items():
-                    h2 = v.get("hw") or {}
-                    if str(h2.get("backend", "")).lower() == "mps" or "mac" in str(k).lower():
-                        mac = (k, v)
-                        break
-                if mac:
-                    k, v = mac
-                    h2 = v.get("hw") or {}
+                col = _get_dds_collector()
+                snap = col.snapshot() if col else {}
+                if snap:
                     def _fv(x, dg=0):
                         return "—" if (x is None or x < 0) else f"{x:.{dg}f}"
-                    st = "⚠️ 停 %ss" % v.get("age_s") if v.get("stale") else "在线 %ss" % v.get("age_s")
-                    mac_txt = (f"🍎 <b>{k}</b>（{v.get('role') or '备份端'} · MPS）<b>{st}</b>　"
-                               f"{h2.get('device_name') or '—'} · "
-                               f"内存 {_fv(h2.get('mem_avail_gb'), 1)}/{_fv(h2.get('mem_total_gb'), 1)} GB · "
-                               f"磁盘可用 {_fv(h2.get('disk_free_gb'), 1)} GB · CPU {_fv(h2.get('cpu_util_pct'), 1)}%"
-                               f"（{h2.get('cpu_cores') or '—'}核）")
-                    note = (h2.get("note") or "")[:80]
-                    if note:
-                        mac_txt += f"　<span style='font-size:10px'>{note}</span>"
+                    parts = []
+                    for k, v in snap.items():
+                        h2 = v.get("hw") or {}
+                        if not h2:
+                            continue
+                        tone = ("⚠️ 停%s" % v.get("age_s")) if v.get("stale") else ("在线%s" % v.get("age_s"))
+                        be = (h2.get("backend") or "?").upper()
+                        ico = "🍎" if be == "MPS" else ("🎮" if be == "CUDA" else "🖥")
+                        parts.append(
+                            f"{ico} <b>{k}</b>（{v.get('role') or '?'}·{be}）<b>{tone}</b>　"
+                            f"{h2.get('device_name') or '—'}"
+                            + (f" · GPU {_fv(h2.get('util_pct'))}%"
+                               f" · 显存 {_fv(h2.get('mem_used_mb'))}/{_fv(h2.get('mem_total_mb'))}MB"
+                               f" · {_fv(h2.get('temp_c'))}°C · {_fv(h2.get('power_w'))}W"
+                               if be == "CUDA" else "")
+                            + (f" · 内存 {_fv(h2.get('mem_avail_gb'), 1)}/{_fv(h2.get('mem_total_gb'), 1)}GB"
+                               f" · 盘可用 {_fv(h2.get('disk_free_gb'), 1)}GB"
+                               f" · CPU {_fv(h2.get('cpu_util_pct'), 1)}%（{h2.get('cpu_cores') or '—'}核）"))
+                    tr = {"dds-inproc": "DDS 直连", "dds-subproc": "DDS 桥",
+                          "http-fallback": "⚠️ 非DDS(HTTP兜底)"}.get(
+                              getattr(col, "transport", "不可用"), getattr(col, "transport", "不可用"))
+                    self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b>（{tr}）　" + "　│　".join(parts))
                 else:
-                    mac_txt = ("🍎 <b>Mac（小芳·备份端）</b> —（未上报 → 在 Mac 执行 "
-                               "mac_hw_report.py --dds --watch 30）")
+                    self.lb_mac.setText(
+                        "📡 <b>DDS 两端硬件</b> —（等待节点上报: 4060 跑 dds_node_4060.py · "
+                        "Mac 跑 mac_hw_report.py --dds）")
             except Exception as e:                                              # noqa: BLE001
-                mac_txt = f"🍎 <b>Mac（小芳·备份端）</b> —（读取失败: {str(e)[:40]}）"
-            self.lb_mac.setText(mac_txt)
+                self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b> —（DDS 不可用: {str(e)[:50]}）")
 
             self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
         except Exception as e:                                                  # noqa: BLE001
