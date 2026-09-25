@@ -1333,6 +1333,13 @@ class HardwareCard(QFrame):
         self.lb_thr = QLabel("—")
         self.lb_mac = QLabel("—")      # ★ DDS 节点区（4060 + Mac 全节点）
         self.lb_nodes = QLabel("—")    # DDS 节点列表（每节点一行）
+        self.lb_remote = QLabel("—")   # ★ 远端(4060)硬件 —— APP 在无 GPU 机器上跑时的主要数据来源
+        self.lb_src = QLabel("数据源: 探测中…")
+        try:
+            self.btn_refresh = QPushButton("🔄 刷新数据源")
+            self.btn_refresh.clicked.connect(lambda: (setattr(self, "_src_cache", None), self.refresh()))
+        except Exception:                                                       # noqa: BLE001
+            self.btn_refresh = None
         self.btn_dds = QPushButton("📡 启动本机 DDS 发布")
         self.btn_dds.setToolTip("在本机启动 DDS 节点(发布 4060 硬件/训练进度, 订阅部署指令)")
         self.btn_dds.clicked.connect(self.start_local_dds)
@@ -1346,8 +1353,19 @@ class HardwareCard(QFrame):
             v.addWidget(lb)
         self.lb_nodes.setStyleSheet(f"color:{C_GRAY};font-size:11px;border:none;line-height:150%")
         v.addWidget(self.lb_nodes)
+        self.lb_remote.setStyleSheet(f"color:{C_CYAN};font-size:12px;border:none")
+        self.lb_remote.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
+        v.addWidget(self.lb_remote)
+        self.lb_src.setStyleSheet(f"color:{C_DIM};font-size:10px;border:none")
+        v.addWidget(self.lb_src)
         row = QHBoxLayout()
         row.addStretch()
+        if self.btn_refresh is not None:
+            self.btn_refresh.setStyleSheet(
+                f"QPushButton{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
+                f"border-radius:6px;padding:3px 10px;font-size:11px}}"
+                f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
+            row.addWidget(self.btn_refresh)
         row.addWidget(self.btn_dds)
         v.addLayout(row)
 
@@ -1379,6 +1397,55 @@ class HardwareCard(QFrame):
         except Exception as e:                                                  # noqa: BLE001
             self.btn_dds.setText("📡 启动失败")
             self.btn_dds.setToolTip("%s: %s" % (type(e).__name__, str(e)[:150]))
+
+    # ---------- 数据源自动发现（老倪: 要看到真实硬件数据; APP 可能在无 GPU 的机器上跑）----------
+    @staticmethod
+    def _probe_url(url, timeout=2.5):
+        """探测某数据源是否可用, 返回 (ok, data)"""
+        import json as _j
+        import urllib.request as _ur
+        try:
+            with _ur.urlopen(url, timeout=timeout) as r:
+                return True, _j.loads(r.read().decode("utf-8", "replace"))
+        except Exception:                                                       # noqa: BLE001
+            return False, None
+
+    def _hw_sources(self):
+        """候选数据源（按顺序探测, 命中即用）:
+        ① 环境变量 ZMAX_HW_URL / ~/.zmax_hw_url（显式配置优先）
+        ② 本机 8799（APP 与 4060 同机时）
+        ③ 局域网候选（4060 已知地址）: 10.163.146.78 / 192.168.23.50
+        """
+        cands = []
+        u = os.environ.get("ZMAX_HW_URL", "")
+        if not u:
+            try:
+                f = os.path.expanduser("~/.zmax_hw_url")
+                if os.path.isfile(f):
+                    u = open(f, encoding="utf-8").read().strip()
+            except Exception:                                                   # noqa: BLE001
+                u = ""
+        if u:
+            cands.append((u, "配置"))
+        cands.append(("http://127.0.0.1:8799/api/hardware", "本机"))
+        for ip in ("10.163.146.78", "192.168.23.50"):
+            cands.append(("http://%s:8799/api/hardware" % ip, "局域网 %s" % ip))
+        return cands
+
+    def _fetch_remote(self):
+        """拉远端(4060)硬件真实数据 —— 返回 (url, src_label, data) 或 (None, None, None)"""
+        cache = getattr(self, "_src_cache", None)
+        if cache:
+            ok, d = self._probe_url(cache[0])
+            if ok and isinstance(d, dict) and d.get("gpu"):
+                return cache[0], cache[1], d
+        for url, lab in self._hw_sources():
+            ok, d = self._probe_url(url)
+            if ok and isinstance(d, dict) and d.get("gpu"):
+                self._src_cache = (url, lab)
+                return url, lab, d
+        self._src_cache = None
+        return None, None, None
 
     def refresh(self):
         import shutil   # ★ studio.py 只在方法内局部导入 shutil（模块级没有）→ 这里必须自己导
@@ -1502,6 +1569,35 @@ class HardwareCard(QFrame):
             except Exception as e:                                              # noqa: BLE001
                 self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b> —（DDS 不可用: {str(e)[:50]}）")
                 self.lb_nodes.setText(f"<b>📡 DDS 节点</b> —（{str(e)[:50]}）")
+
+            # ── ★ 远端(4060)真实硬件 —— APP 在任何机器上都能看到 4060 数据 ──
+            try:
+                _url, _lab, _rd = self._fetch_remote()
+                if _rd:
+                    g2, c2, m2, d2 = _rd.get("gpu") or {}, _rd.get("cpu") or {}, \
+                        _rd.get("mem") or {}, _rd.get("disk") or {}
+                    cp2 = _rd.get("compute") or {}
+
+                    def _n2(x, dg=0):
+                        return "—" if (x is None or (isinstance(x, (int, float)) and x < 0)) else f"{x:.{dg}f}"
+                    self.lb_remote.setText(
+                        f"🛰 <b>4060 远端真实数据</b>（数据源: {_lab} · {_rd.get('ts', '')}）　"
+                        f"GPU <b>{_n2(g2.get('util_pct'))}%</b> · "
+                        f"显存 {_n2(g2.get('mem_used_mb'))}/{_n2(g2.get('mem_total_mb'))}MB · "
+                        f"{_n2(g2.get('temp_c'))}°C · {_n2(g2.get('power_w'), 1)}W · "
+                        f"CPU {_n2(c2.get('util_pct'), 1)}% · "
+                        f"内存 {_n2(m2.get('used_gb'), 1)}/{_n2(m2.get('total_gb'), 1)}GB · "
+                        f"盘可用 {_n2(d2.get('free_gb'), 1)}GB · "
+                        f"吞吐 {_n2(cp2.get('sps'), 1)}步/s")
+                    self.lb_src.setText(f"数据源: {_url}（{_lab}）· 本机行 = 运行 APP 的这台机器")
+                else:
+                    self.lb_remote.setText(
+                        "🛰 <b>4060 远端真实数据</b> —（数据源不可达 → 点「🔄 刷新数据源」；"
+                        "或设 ZMAX_HW_URL / 写 ~/.zmax_hw_url）")
+                    self.lb_src.setText("数据源: 未连通（候选: 本机8799 · 10.163.146.78 · 192.168.23.50）")
+            except Exception as e:                                              # noqa: BLE001
+                self.lb_remote.setText(f"🛰 <b>4060 远端真实数据</b> —（{str(e)[:50]}）")
+                self.lb_src.setText("数据源: 探测异常")
 
             self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
         except Exception as e:                                                  # noqa: BLE001
