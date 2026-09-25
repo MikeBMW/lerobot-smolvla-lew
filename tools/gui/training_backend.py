@@ -21,7 +21,16 @@ class TrainingOutputReader(QThread):
     def __init__(self, process):
         super().__init__()
         self.process = process
-        self._re_progress = re.compile(r'Training:\s+(\d+)%')  # 匹配 "Training:  42%"
+        # ⚠️ 2026-09-25 修: 原正则 r'Training:\s+(\d+)%' 与训练脚本实际输出
+        #    ('Step N: loss=…' / 'Final: …' / 'DONE: x%') **完全不匹配**
+        #    → 进度条永远 0% = 假进度 (老倪: "进度条是真的")
+        #    现兼容三种: ① Training: 42%  ② Step 42/100  ③ 预训练 epoch 42/100
+        self._re_progress = re.compile(
+            r'Training:\s*(\d+(?:\.\d+)?)%'
+            r'|Step\s+(\d+)\s*/\s*(\d+)'
+            r'|epoch\s*(\d+)\s*/\s*(\d+)',
+            re.I)
+        self._last_pct = -1
 
     def run(self):
         try:
@@ -29,13 +38,26 @@ class TrainingOutputReader(QThread):
                 text = line.rstrip()
                 if text:
                     self.line_received.emit(text)
-                    # 解析进度
+                    # 解析进度 (三种格式, 见 __init__ 注释)
                     m = self._re_progress.search(text)
                     if m:
+                        pct = None
                         try:
-                            self.progress_received.emit(int(m.group(1)))
-                        except ValueError:
-                            pass
+                            if m.group(1) is not None:            # Training: 42%
+                                pct = float(m.group(1))
+                            elif m.group(2) is not None:          # Step 42/100
+                                a, b = int(m.group(2)), int(m.group(3) or 0)
+                                pct = (a / b * 100) if b > 0 else None
+                            elif m.group(4) is not None:          # epoch 42/100
+                                a, b = int(m.group(4)), int(m.group(5) or 0)
+                                pct = (a / b * 100) if b > 0 else None
+                        except (ValueError, ZeroDivisionError):
+                            pct = None
+                        if pct is not None:
+                            pv = int(max(0, min(100, pct)))
+                            if pv != self._last_pct:               # 去重: 同值不重复发
+                                self._last_pct = pv
+                                self.progress_received.emit(pv)
             self.process.wait()
             self.process_finished.emit(self.process.returncode)
         except Exception as e:
@@ -60,6 +82,93 @@ class TrainingBackend(QObject):
         tools_dir = os.path.dirname(gui_dir)                    # tools/
         repo_root = os.path.dirname(tools_dir)                  # repo_root
         return repo_root
+
+    def resolve_python(self, repo_root=None) -> str:
+        """跨平台解析训练用解释器 (老倪 2026-09-25「训练要保证是真实模型训练」)
+
+        ⚠️ 原代码写死 "/home/xspace/miniconda3/envs/lerobot/bin/python3" ——
+           只在静安的 WSL2 上存在, Mac / Windows 打包版一律
+           FileNotFoundError → 训练从未真正启动 (日志只有"❌ Failed to start")
+
+        解析顺序:
+          ZMAX_TRAIN_PYTHON 环境变量
+          → <repo>/.venv/bin/python            (Mac/Linux 标准 venv)
+          → <repo>/gui-venv311/bin/python      (Windows 分支)
+          → <repo>/.venv/Scripts/python.exe    (Windows venv)
+          → shutil.which("python3"/"python")
+          → sys.executable                     (兜底)
+        """
+        import shutil
+        root = repo_root or self.get_repo_root()
+        cands = [
+            os.environ.get("ZMAX_TRAIN_PYTHON"),
+            os.path.join(root, ".venv", "bin", "python"),
+            os.path.join(root, "gui-venv311", "bin", "python"),
+            os.path.join(root, ".venv", "Scripts", "python.exe"),
+            os.path.join(root, "gui-venv311", "Scripts", "python.exe"),
+            shutil.which("python3"),
+            shutil.which("python"),
+            sys.executable,
+        ]
+        for c in cands:
+            if c and os.path.exists(c):
+                return c
+        return sys.executable
+
+    def start_real_training(self, task="manifold", repo_root=None,
+                            steps=220, epochs=30, batch=4,
+                            clean=14, jitter=4, run_name="zmax_app_train",
+                            config="", log_callback=None, progress_callback=None):
+        """**真实模型训练**入口 (老倪令: 「训练控制节点 app 的训练要保证是真实模型训练」)
+
+        经 tools/gui/train_runner.py 执行真训练链:
+          manifold  流形引擎 (训练总目标) — 真仿真采集 + 真反向传播 + 真 LOSO R²
+          yolo      L2 YOLO 域适应微调 (需真机标注数据)
+          smolvla   L3 SmolVLA (lerobot 原生训练)
+          demo      小规模**真跑**冒烟
+
+        进度来源: 训练进程真实输出 (Training: N% / ZMAX_METRIC / ZMAX_RESULT),
+                 不是定时器假走 —— 进程停了进度就停。
+        """
+        root = repo_root or self.get_repo_root()
+        if self.process and self.process.poll() is None:
+            if log_callback:
+                log_callback("[警告] 训练已在运行中")
+            return False
+        runner = os.path.join(root, "tools", "gui", "train_runner.py")
+        if not os.path.exists(runner):
+            if log_callback:
+                log_callback(f"❌ 缺真训练执行器: {runner}")
+            return False
+        py = self.resolve_python(root)
+        cmd = [py, runner, "--task", str(task), "--workdir", root,
+               "--steps", str(steps), "--epochs", str(epochs), "--batch", str(batch),
+               "--clean", str(clean), "--jitter", str(jitter), "--run-name", str(run_name)]
+        if config:
+            cmd += ["--config", str(config)]
+        try:
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            env.setdefault("MUJOCO_GL", "glfw")      # Mac 必须 glfw (非 egl)
+            env.setdefault("OMP_NUM_THREADS", "4")
+            if log_callback:
+                log_callback(f"🚀 真训练启动: task={task} · 解释器={py}")
+                log_callback(f"   $ {' '.join(cmd)}")
+            self.process = subprocess.Popen(
+                cmd, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env, start_new_session=True)
+            self.reader_thread = TrainingOutputReader(self.process)
+            if log_callback:
+                self.reader_thread.line_received.connect(
+                    lambda line: log_callback(f"[{now()}] {line}"))
+            if progress_callback:
+                self.reader_thread.progress_received.connect(progress_callback)
+            self.reader_thread.start()
+            return True
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ 真训练启动失败: {type(e).__name__}: {e}")
+            return False
 
     def start_smolvla_training(self, repo_root, 
                                  dataset_repo_id="lerobot/pusht",
@@ -150,8 +259,13 @@ print(f"DONE: {{pct}}% loss (SmolVLA原生Flow Matching)")
         try:
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
+            # ⚠️ 2026-09-25 修: 原写死 "/home/xspace/miniconda3/envs/lerobot/bin/python3"
+            #    (只在静安 WSL2 存在) → Mac/Win 打包版必然 FileNotFoundError
+            _py = self.resolve_python(repo_root)
+            if log_callback:
+                log_callback(f"训练解释器: {_py}")
             self.process = subprocess.Popen(
-                ["/home/xspace/miniconda3/envs/lerobot/bin/python3", script_path],
+                [_py, script_path],
                 cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, bufsize=1, env=env, start_new_session=True
             )
