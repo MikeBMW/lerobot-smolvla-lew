@@ -170,7 +170,16 @@ def _gpu_apple(warn: list) -> dict | None:
 
 
 def _gpu_nvidia(warn: list) -> dict | None:
-    """Linux/NVIDIA: pynvml 优先, 兜底 nvidia-smi"""
+    """Linux/NVIDIA: 四层兜底取 GPU 名称/利用率/**显存**
+    层1 pynvml (最全) → 层2 nvidia-smi --query-gpu → 层3 nvidia-smi -q 解析
+    → 层4 /proc/driver/nvidia/gpus/*/information
+    ⚠️ 2026-09-25 实测坑: 4060 上报回来 backend=cuda/name 正常/但 显存=None —
+       静默丢显存会让 APP 卡片一直"等待上报"(它等显存字段)。
+       故任何一层拿到 name/util 也必须尽力补显存, 拿不到就明确写进 warn。
+    """
+    got: dict = {}
+
+    # ── 层1: pynvml ──
     try:
         import pynvml  # type: ignore
         pynvml.nvmlInit()
@@ -179,22 +188,79 @@ def _gpu_nvidia(warn: list) -> dict | None:
         name = pynvml.nvmlDeviceGetName(h)
         if isinstance(name, bytes):
             name = name.decode()
-        util = pynvml.nvmlDeviceGetUtilizationRates(h).gpu
-        mi = pynvml.nvmlDeviceGetMemoryInfo(h)
-        pynvml.nvmlShutdown()
-        return {"backend": "cuda", "name": name, "count": n, "util_pct": float(util),
-                "mem_used_gb": round(mi.used / GB, 2), "mem_total_gb": round(mi.total / GB, 2)}
-    except Exception:
-        pass
-    out = _run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total",
-                "--format=csv,noheader,nounits"])
-    if out.strip():
+        got = {"backend": "cuda", "name": name, "count": n,
+               "util_pct": float(pynvml.nvmlDeviceGetUtilizationRates(h).gpu)}
         try:
-            p = [x.strip() for x in out.strip().splitlines()[0].split(",")]
-            return {"backend": "cuda", "name": p[0], "count": 1, "util_pct": float(p[1]),
-                    "mem_used_gb": round(float(p[2]) / 1024, 2), "mem_total_gb": round(float(p[3]) / 1024, 2)}
-        except Exception:
-            warn.append("nvidia-smi 输出解析失败")
+            mi = pynvml.nvmlDeviceGetMemoryInfo(h)
+            got["mem_used_gb"] = round(mi.used / GB, 2)
+            got["mem_total_gb"] = round(mi.total / GB, 2)
+        except Exception as e:
+            warn.append(f"pynvml 显存读取失败: {type(e).__name__}")
+        pynvml.nvmlShutdown()
+        if got.get("mem_total_gb"):
+            return got
+    except Exception as e:
+        warn.append(f"pynvml 不可用: {type(e).__name__}")
+
+    # ── 层2: nvidia-smi query (名称/利用率/显存一行出) ──
+    out = _run(["nvidia-smi",
+                "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+                "--format=csv,noheader,nounits"], timeout=8)
+    if out.strip():
+        for line in out.strip().splitlines():
+            p = [x.strip() for x in line.split(",")]
+            if len(p) < 4:
+                warn.append(f"nvidia-smi 字段不全: {line[:60]}")
+                continue
+            try:
+                d = {"backend": "cuda", "name": p[0], "count": len(out.strip().splitlines()),
+                     "util_pct": float(p[1]),
+                     "mem_used_gb": round(float(p[2]) / 1024, 2),
+                     "mem_total_gb": round(float(p[3]) / 1024, 2)}
+                if d["mem_total_gb"] > 0:
+                    return d
+                got.update({k: v for k, v in d.items() if v is not None})
+            except Exception:
+                warn.append(f"nvidia-smi 数值解析失败: {line[:60]}")
+
+    # ── 层3: nvidia-smi -q (分行解析, 兼容 query 失败) ──
+    q = _run(["nvidia-smi", "-q"], timeout=10)
+    if q:
+        import re as _re
+        nm = _re.search(r"Product Name\s*:\s*(.+)", q)
+        mu = _re.search(r"Used\s*:\s*(\d+)\s*MiB", q)
+        mt = _re.search(r"Total\s*:\s*(\d+)\s*MiB", q)
+        if nm:
+            got.setdefault("backend", "cuda")
+            got.setdefault("name", nm.group(1).strip())
+        if mu:
+            got["mem_used_gb"] = round(int(mu.group(1)) / 1024, 2)
+        if mt:
+            got["mem_total_gb"] = round(int(mt.group(1)) / 1024, 2)
+
+    # ── 层4: /proc/driver/nvidia (只有名称) ──
+    if not got.get("name"):
+        import glob
+        for f in glob.glob("/proc/driver/nvidia/gpus/*/information"):
+            try:
+                txt = open(f).read()
+                m = [ln for ln in txt.splitlines() if "Model" in ln]
+                if m:
+                    got.setdefault("backend", "cuda")
+                    got["name"] = m[0].split(":", 1)[-1].strip()
+                    break
+            except Exception:
+                pass
+
+    if got.get("name"):
+        got.setdefault("count", 1)
+        got.setdefault("util_pct", None)
+        got.setdefault("mem_used_gb", None)
+        got.setdefault("mem_total_gb", None)
+        if got.get("mem_total_gb") is None:
+            warn.append("未能取到显存总量 (pynvml/nvidia-smi/proc 全失败) — "
+                        "APP 卡片可能显示不全")
+        return got
     return None
 
 
@@ -465,7 +531,67 @@ def fmt(d: dict) -> str:
     return "\n".join(L)
 
 
+def gpu_diagnose() -> None:
+    """GPU 探测自诊断 — 逐层报告哪一层成功/失败 (给 Ubuntu/WSL2 排查用)
+    用法: python3 hw_monitor.py --gpu-diag
+    """
+    print("═══ GPU 探测自诊断 ═══")
+    print(f"platform={sys.platform}  python={sys.version.split()[0]}")
+    print()
+    # 层0: 工具是否在手
+    for cmd in ("nvidia-smi", "rocm-smi"):
+        p = shutil.which(cmd)
+        print(f"  {cmd:12s}: {'✅ ' + p if p else '❌ 不在 PATH'}")
+    try:
+        import pynvml  # noqa
+        print("  pynvml      : ✅ 可导入")
+    except Exception as e:
+        print(f"  pynvml      : ❌ {type(e).__name__} (pip install nvidia-ml-py)")
+    try:
+        import torch  # noqa
+        print(f"  torch       : ✅ cuda_available={torch.cuda.is_available()}")
+    except Exception as e:
+        print(f"  torch       : ❌ {type(e).__name__}")
+    print()
+    # 逐层试
+    print("  ── nvidia-smi --query-gpu 原始输出 ──")
+    q = _run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+              "--format=csv,noheader,nounits"], timeout=8)
+    print(f"  {q.strip() if q.strip() else '(空 — 命令失败或不存在)'}")
+    print()
+    print("  ── nvidia-smi -q 显存片段 ──")
+    qq = _run(["nvidia-smi", "-q"], timeout=10)
+    if qq:
+        import re as _re
+        for pat in (r"Product Name\s*:\s*(.+)", r"FB Memory Usage[\s\S]{0,200}"):
+            m = _re.search(pat, qq)
+            if m:
+                print("  " + m.group(0)[:180].replace("\n", " | "))
+    else:
+        print("  (空)")
+    print()
+    # 最终结论
+    warn_list: list = []
+    g = _gpu_nvidia(warn_list)
+    print("  ── 最终 _gpu_nvidia 结果 ──")
+    if g:
+        for k, v in g.items():
+            print(f"    {k:14s}: {v}")
+    else:
+        print("    None (完全没识别到 GPU)")
+    if warn_list:
+        print("  ── 警告 ──")
+        for w in warn_list:
+            print(f"    ⚠️ {w}")
+    print()
+    ok = bool(g and g.get("mem_total_gb"))
+    print(f"  结论: {'✅ 显存可读, 上报正常' if ok else '❌ 显存读不到 — APP 卡片会不全'}")
+
+
 if __name__ == "__main__":
     import json
+    if "--gpu-diag" in sys.argv:
+        gpu_diagnose()
+        sys.exit(0)
     r = probe()
     print(json.dumps(r, ensure_ascii=False, indent=1) if "--json" in sys.argv else fmt(r))
