@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10743,7 +10743,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.6 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10751,10 +10751,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.6 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.15.5: ★硬件卡加**远端(4060)真实数据行** + 数据源自动发现 —— APP 装在任何机器上都能看到 4060 实测
+        # v5.15.6: ★硬件卡加**远端(4060)真实数据行** + 数据源自动发现 —— APP 装在任何机器上都能看到 4060 实测
 #    候选数据源: ZMAX_HW_URL / ~/.zmax_hw_url → 本机8799 → 10.163.146.78:8799 → 192.168.23.50:8799
 #    另加「🔄 刷新数据源」按钮 + 底部标注当前数据源(便于排查)
 # v5.15.4: APP 内加 **DDS 节点区** — 节点列表(名/角色/设备/后端CUDA或MPS/训练进度/在线龄 + 🟢🔴状态灯)
