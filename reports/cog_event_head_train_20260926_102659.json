@@ -1,0 +1,85 @@
+{
+ "ts": "2026-09-26 10:26:59",
+ "task": "L5-T1 事件级认知头",
+ "data": "cog_engine_trace_v2.h5",
+ "eps_train": 24,
+ "eps_holdout": 6,
+ "frames_train": 5040,
+ "input_dims": "obs[0:7]",
+ "steps": 6000,
+ "train_s": 6.2,
+ "device": "cuda",
+ "ckpts": [
+  "/home/ubuntu/stable-wm-cache/checkpoints/cog_event_head/head_H5_engine_v2.pt",
+  "/home/ubuntu/stable-wm-cache/checkpoints/cog_event_head/head_H10_engine_v2.pt"
+ ],
+ "auc_in_domain": {
+  "gripper_close_H5": 1.0,
+  "reach_z_H5": 0.9675,
+  "move_hand_H5": 0.9995,
+  "gripper_close_H10": 1.0,
+  "reach_z_H10": 0.964,
+  "move_hand_H10": 0.9993
+ },
+ "auc_cross_domain": {
+  "gripper_close_H5": 0.7125,
+  "reach_z_H5": 0.3522,
+  "move_hand_H5": 0.5231,
+  "gripper_close_H10": 0.8661,
+  "reach_z_H10": 0.3963,
+  "move_hand_H10": 0.5443
+ },
+ "trivial_acc": {
+  "gripper_close_H5": 0.9767441749572754,
+  "gripper_close_H10": 0.9523809552192688,
+  "reach_z_H5": 0.9403100609779358,
+  "reach_z_H10": 0.9150793552398682,
+  "move_hand_H5": 0.7775194048881531,
+  "move_hand_H10": 0.7960317730903625
+ },
+ "judges": {
+  "gripper_close_H5": {
+   "auc_in": 1.0,
+   "auc_cross": 0.7125,
+   "thr": 0.91,
+   "pass_in": true,
+   "pass_cross": false
+  },
+  "reach_z_H5": {
+   "auc_in": 0.9675,
+   "auc_cross": 0.3522,
+   "thr": 0.79,
+   "pass_in": true,
+   "pass_cross": false
+  },
+  "move_hand_H5": {
+   "auc_in": 0.9995,
+   "auc_cross": 0.5231,
+   "thr": 0.9,
+   "pass_in": true,
+   "pass_cross": false
+  },
+  "gripper_close_H10": {
+   "auc_in": 1.0,
+   "auc_cross": 0.8661,
+   "thr": 0.91,
+   "pass_in": true,
+   "pass_cross": false
+  },
+  "reach_z_H10": {
+   "auc_in": 0.964,
+   "auc_cross": 0.3963,
+   "thr": 0.79,
+   "pass_in": true,
+   "pass_cross": false
+  },
+  "move_hand_H10": {
+   "auc_in": 0.9993,
+   "auc_cross": 0.5443,
+   "thr": 0.9,
+   "pass_in": true,
+   "pass_cross": false
+  }
+ },
+ "judges_pass": "0/6"
+}

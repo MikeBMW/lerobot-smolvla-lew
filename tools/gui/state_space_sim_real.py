@@ -2538,6 +2538,47 @@ class RealStateSpaceSim:
         return tr
 
     # ── 主循环 ──
+    def _cog_event_frame(self, obs):
+        """🧠 事件级认知头逐帧调用 (2026-09-26)
+
+        · 懒加载: 首帧才 import/加载权重 (不拖慢引擎启动)
+        · SS_COG_EVENT=0 关闭; 权重缺失 → 全 -1 (诚实: 拿不到不冒充)
+        · 计数 self._cog_ev_calls (取证: 必须 == 帧数, 证明是"每帧真调"而非占位)
+        """
+        miss = {"gc_5": -1.0, "gc_10": -1.0, "rz_5": -1.0, "rz_10": -1.0, "mh_5": -1.0, "mh_10": -1.0, "_ms": -1.0}
+        if os.environ.get("SS_COG_EVENT", "1") == "0":
+            return miss
+        if getattr(self, "_cog_ev", None) is None and not getattr(self, "_cog_ev_tried", False):
+            self._cog_ev_tried = True
+            self._cog_ev = None
+            self._cog_ev_calls = 0
+            try:                                                        # noqa: PLR0415
+                import sys as _sys
+                _sp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                    os.path.abspath(__file__)))), "src")
+                if _sp not in _sys.path:
+                    _sys.path.insert(0, _sp)
+                from lerobot.cognition.event_head import get_event_head
+                self._cog_ev = get_event_head()
+                _m = self._cog_ev.info()
+                print("🧠 事件级认知头已接入闭环: %s | trained=%s | device=%s"
+                      % (_m["source"], _m["trained"], _m["device"]))
+            except Exception as _e:                                     # noqa: BLE001
+                print("⚠️ 事件级认知头不可用 (写 -1): %s: %s" % (type(_e).__name__, str(_e)[:70]))
+        ev = getattr(self, "_cog_ev", None)
+        if ev is None or not ev.available():
+            return miss
+        try:
+            pr, ms = ev.predict(obs)
+            if not pr:
+                return miss
+            out = {k.replace("_5", "_5").replace("_10", "_10"): round(float(pr[k]), 4) for k in pr}
+            out["_ms"] = round(float(ms), 3)
+            self._cog_ev_calls += 1
+            return out
+        except Exception:                                               # noqa: BLE001
+            return miss
+
     def run(self, max_steps=None, cap=None):
         """R0 主循环 — metaworld 单轮硬上限 (insert 默认 500 步 / full 全链 2000 步)。
 
@@ -2582,6 +2623,10 @@ class RealStateSpaceSim:
               #   mani_*, 非 io_trace; 真实化轨迹此前无 → Scope 流形格空 = 老倪"流形没输出")
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "mani_rem": [], "mani_dperp": [], "mani_pred": [],   # 🧠 2026-09-08: JEPA 预测流形 (旁路 6 维)
+              # 🧠 2026-09-26 事件级认知头逐帧真值 (老倪: "工程要真落地" — 离线 6/6 的事件头进闭环)
+              #   字段 = 3 事件(夹爪闭合 gc / 到位 rz / 手在动 mh) × 视界(5/10) 的未来发生概率
+              "cog_ev_gc5": [], "cog_ev_gc10": [], "cog_ev_rz5": [],
+              "cog_ev_rz10": [], "cog_ev_mh5": [], "cog_ev_mh10": [], "cog_ev_ms": [],
               # 🧠 2026-09-11 INTACT 二态意图 (L4升级): m_local(接触流形切向) / m_goal(性能流形梯度)
               #   + 同构核验 cos (两态方向一致度: 自由空间应≈1, 接触约束下分工)
               "m_local": [], "m_goal": [], "intent_iso": [],
@@ -3737,6 +3782,15 @@ class RealStateSpaceSim:
             tr["target"].append(target.copy())
             tr["grasped"].append(bool(self.grasped))
             tr["obs"].append(obs.copy())
+            # 🧠 2026-09-26 事件级认知头: 每帧真调用真权重 → 6 个事件概率 (离线 5 折 CV 6/6 的那颗头)
+            _ce = self._cog_event_frame(obs)
+            tr["cog_ev_gc5"].append(_ce["gc_5"])
+            tr["cog_ev_gc10"].append(_ce["gc_10"])
+            tr["cog_ev_rz5"].append(_ce["rz_5"])
+            tr["cog_ev_rz10"].append(_ce["rz_10"])
+            tr["cog_ev_mh5"].append(_ce["mh_5"])
+            tr["cog_ev_mh10"].append(_ce["mh_10"])
+            tr["cog_ev_ms"].append(_ce["_ms"])
             tr["u_ff_vec"].append(np.asarray(u_ff, dtype=float).copy())
             tr["u_sat_vec"].append(np.asarray(self._u_vec, dtype=float).copy())
             tr["u_fb_vec"].append(np.asarray(u_fb, dtype=float).copy())
