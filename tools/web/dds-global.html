@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><script src="/auth.js"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DDS 全局数据空间 | Z-MAX v2.6</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#04070d;color:#c8d1d9;font-family:-apple-system,"PingFang SC",sans-serif;overflow:hidden;height:100vh}
+#bar{position:fixed;top:0;left:0;right:0;z-index:10;background:#0a0f18;padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1a2030}
+#bar h1{font-size:13px;color:#00d4aa}#bar a{font-size:10px;color:#484f58;text-decoration:none}
+#bar .metric{font-size:10px;color:#8b949e}
+#bar .metric b{color:#00d4aa}
+canvas{display:block}
+#legend{position:fixed;top:44px;right:10px;z-index:5;background:#0a0f18cc;padding:8px;border-radius:6px;font-size:9px;border:1px solid #1a203044}
+#legend div{margin:2px 0}
+.dot{display:inline-block;width:7px;height:7px;border-radius:4px;margin-right:4px}
+</style>
+@media print{*{color:#000!important;background:#fff!important;border-color:#000!important}}
+</head>
+<body><button onclick="window.print()" style="position:fixed;top:10px;right:10px;z-index:9999;padding:6px 14px;background:#00d4aa;color:#000;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">📄 导出PDF</button>
+<div id="bar">
+  <a href="/">←</a><h1>🌊 DDS · 全局数据空间</h1>
+  <span class="metric">📡 relay:<b id="rp">0</b>包</span>
+  <span class="metric">🖥 Orin:<b id="ro">-</b></span>
+  <span class="metric">🧠 训练:<b id="rt">-</b></span>
+  <span class="metric" style="margin-left:auto">v2.6.2</span>
+</div>
+<div id="legend">
+  <div><span class="dot" style="background:#58a6ff"></span>节点 Node</div>
+  <div><span class="dot" style="background:#00d4aa"></span>数据流 Topic</div>
+  <div><span class="dot" style="background:#f0a500"></span>原子技能 Skill</div>
+  <div><span class="dot" style="background:#a371f7"></span>条件 Condition</div>
+  <div style="margin-top:4px;color:#484f58">20 动作 · 6 节点 · 5 链路</div>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+const C=document.getElementById("c"),ctx=C.getContext("2d");
+let W,H,t=0,particles=[],flows=[],nodes=[];
+
+// Node definitions — pipeline topology
+const NODES=[
+  {id:"orin",x:.08,y:.5,label:"🖥 Orin SR5",color:"#58a6ff",desc:"采集·6轴"},
+  {id:"mac",x:.25,y:.5,label:"💻 Mac",color:"#58a6ff",desc:"中转·打标"},
+  {id:"ecs",x:.45,y:.5,label:"☁ ECS",color:"#58a6ff",desc:"中继·快照"},
+  {id:"gpu",x:.65,y:.5,label:"🧠 4060",color:"#58a6ff",desc:"训练·ACT"},
+  {id:"orin2",x:.85,y:.5,label:"🚀 Orin推理",color:"#58a6ff",desc:"部署·6D"},
+  {id:"cicd",x:.45,y:.25,label:"📊 CICD控制台",color:"#f0a500",desc:"三阶段·Simulink"},
+];
+
+// Flow links — data streams
+const LINKS=[
+  {from:"orin",to:"mac",label:"MCAP 20s",color:"#00d4aa"},
+  {from:"mac",to:"ecs",label:"Relay上传",color:"#00d4aa"},
+  {from:"ecs",to:"gpu",label:"Pull训练",color:"#00d4aa"},
+  {from:"gpu",to:"orin2",label:"静态URL模型",color:"#00d4aa"},
+  {from:"orin2",to:"orin",label:"推理→再采集",color:"#a371f7"},
+  {from:"cicd",to:"ecs",label:"控制指令",color:"#f0a500"},
+];
+
+// 20 Stage actions as atomic skills
+const SKILLS="料盘识别,AOI_1,AOI_2,AOI_3,AOI_4,AOI_5,AOI_6,AOI_PD,OK,初始化循环,取料,尝试插入第一次,循环守卫,扫码,抓取失败判定,拔出,插入完成,暂时松开,移动到治具插槽,等待测试结果".split(",");
+
+function resize(){W=C.width=window.innerWidth;H=C.height=window.innerHeight}
+window.onresize=resize;resize();
+
+// Pre-compute node screen positions
+const NP={};
+NODES.forEach(n=>{NP[n.id]={x:n.x*W,y:n.y*H}});
+
+// Init particles along each flow link
+LINKS.forEach((l,i)=>{
+  const f=NP[l.from],t=NP[l.to];
+  for(let j=0;j<15;j++){
+    particles.push({
+      fx:f.x,fy:f.y,tx:t.x,ty:t.y,
+      p:Math.random(),speed:.002+.004*Math.random(),
+      color:l.color,link:i,size:1.5+Math.random()
+    });
+  }
+});
+
+function drawNode(n){
+  const p=NP[n.id];
+  // Glow
+  const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,30);
+  g.addColorStop(0,n.color+"44");g.addColorStop(1,"transparent");
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,30,0,Math.PI*2);ctx.fill();
+  // Node circle
+  ctx.fillStyle=n.color;ctx.beginPath();ctx.arc(p.x,p.y,10,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=n.color;ctx.lineWidth=2;ctx.stroke();
+  // Label
+  ctx.fillStyle="#c8d1d9";ctx.font="10px sans-serif";ctx.textAlign="center";
+  ctx.fillText(n.label,p.x,p.y+22);
+  ctx.fillStyle="#484f58";ctx.font="8px sans-serif";
+  ctx.fillText(n.desc,p.x,p.y+34);
+}
+
+function drawLink(l){
+  const f=NP[l.from],t=NP[l.to];
+  ctx.strokeStyle=l.color+"22";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(f.x,f.y);ctx.lineTo(t.x,t.y);ctx.stroke();
+}
+
+function animate(){
+  ctx.clearRect(0,0,W,H);
+  // Background grid
+  ctx.strokeStyle="#0a1020";ctx.lineWidth=.5;
+  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+  
+  // Draw links
+  LINKS.forEach(drawLink);
+  
+  // Draw nodes
+  NODES.forEach(drawNode);
+  
+  // Animate particles
+  particles.forEach(p=>{
+    p.p+=p.speed;if(p.p>1)p.p=0;
+    const x=p.fx+(p.tx-p.fx)*p.p,y=p.fy+(p.ty-p.fy)*p.p;
+    ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(x,y,p.size,0,Math.PI*2);ctx.fill();
+  });
+  
+  // Current skill label
+  const skillIdx=Math.floor(t/2)%SKILLS.length;
+  ctx.fillStyle="#f0a50088";ctx.font="11px monospace";ctx.textAlign="center";
+  ctx.fillText("▶ "+SKILLS[skillIdx],W/2,H*.8);
+  
+  // Stats
+  ctx.fillStyle="#484f58";ctx.font="9px monospace";ctx.textAlign="left";
+  ctx.fillText("节点:6 · 链路:6 · 动作:20 · 粒子:90",10,H-10);
+  
+  t++;requestAnimationFrame(animate);
+}
+
+// Live API data
+setInterval(()=>{
+  fetch("/api/relay/status").then(r=>r.json()).then(d=>{
+    document.getElementById("rp").textContent=d.packages||0;
+  }).catch(()=>{});
+  fetch("/orin/status").then(r=>r.json()).then(d=>{
+    document.getElementById("ro").textContent=(d.online?"在线·"+d.infer_count:"离线");
+  }).catch(()=>{});
+},2000);
+
+animate();
+</script>
+
+<!-- 🧭 2026-09-26: 状态空间工程 互通导航 (老倪: 四个页面都要能互相打开) -->
+<div id="zmax-nav" style="position:fixed;right:12px;bottom:12px;z-index:99999;display:flex;gap:8px;
+  font:12px/1.4 -apple-system,'PingFang SC',sans-serif">
+  <a href="/" style="background:#0a0f18ee;color:#8b949e;border:1px solid #1a2030;border-radius:8px;padding:7px 11px;text-decoration:none">🏠 首页</a>
+  <a href="/agent.html" style="background:#1a1030ee;color:#c9b6ff;border:1px solid #a371f755;border-radius:8px;padding:7px 11px;text-decoration:none">🤖 Web 智能体桥</a>
+  <a href="/hil.html" style="background:#0d1a14ee;color:#7ee7c7;border:1px solid #00d4aa55;border-radius:8px;padding:7px 11px;text-decoration:none">🙋 HIL 人机在环</a>
+  <a href="/state-3d.html" style="background:#0d1a2bee;color:#9fc7ff;border:1px solid #58a6ff55;border-radius:8px;padding:7px 11px;text-decoration:none">🔄 状态空间 3D</a>
+</div>
+</body>
+</html>

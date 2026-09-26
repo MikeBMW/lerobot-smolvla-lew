@@ -30,7 +30,8 @@ def run(cmd: str, timeout: int = 300, cwd: str | None = None) -> dict:
     try:
         r = subprocess.run(["bash", "-lc", cmd], capture_output=True, timeout=timeout, cwd=cwd or ROOT)
         out = ((r.stdout or b"").decode(errors="replace") + (r.stderr or b"").decode(errors="replace")).strip()
-        return {"rc": r.returncode, "tail": out.splitlines()[-6:], "sec": round(time.time() - t0, 1)}
+        _t = out.splitlines()[-6:] or ["<无输出>"]        # 🐛 2026-09-26: 无输出时 tail 为空 → 调用处 [-1] 崩
+        return {"rc": r.returncode, "tail": _t, "sec": round(time.time() - t0, 1)}
     except subprocess.TimeoutExpired:
         return {"rc": 124, "tail": [f"<超时 {timeout}s>"], "sec": round(time.time() - t0, 1)}
     except Exception as e:                                             # noqa: BLE001
@@ -115,7 +116,7 @@ def main() -> int:
     for s in svcs:
         R["services"][s] = run(f"systemctl is-active {s}")["tail"][-1] or "unknown"
         print(f"  {s:<24} {R['services'][s]}", flush=True)
-    R["services"]["studio"] = "pid=" + (run("pgrep -f '[g]ui-venv311/bin/python studio.py' | head -1")["tail"][-1] or "?")
+    R["services"]["studio"] = "pid=" + ((run("pgrep -f '[g]ui-venv311/bin/python studio.py' | head -1")["tail"] or ["?"])[-1] or "?")
     R["services"]["l2_daemon"] = run("pgrep -f '[l]2_daemon' | head -1")["tail"][-1] or "未运行"
     print(f"  {'studio':<24} {R['services']['studio']}\n  {'l2_daemon':<24} {R['services']['l2_daemon']}", flush=True)
 
