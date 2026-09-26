@@ -176,6 +176,66 @@ def read_calibs():
     return out
 
 
+def read_canvas_nodes():
+    """画布真源 (state_space_obs.json) → 节点清单 [{id,name,layer,type}]
+
+    层判定与画布一致: 按 y 行带读 params.layer / 行背景名; 取不到就留空 (不猜)。
+    """
+    cands = [os.path.join("/home/ubuntu/zmax_rel", "flows", "state_space_obs.json"),
+             os.path.join(REPO, "flows", "state_space_obs.json"),
+             os.path.join(HOME, "lerobot-smolvla-lew", "flows", "state_space_obs.json")]
+    for c in cands:
+        if not os.path.isfile(c):
+            continue
+        try:
+            d = json.load(open(c, encoding="utf-8"))
+        except Exception:                                                # noqa: BLE001
+            continue
+        rows = {}                       # y → 行名 (来自 row_bg 背景节点)
+        for n in d.get("nodes", []):
+            pr = n.get("params") or {}
+            if pr.get("bg") or pr.get("row_bg"):
+                rows[int(n.get("y", 0))] = str(n.get("name", ""))
+        out = []
+        for n in d.get("nodes", []):
+            pr = n.get("params") or {}
+            if pr.get("bg") or pr.get("row_bg"):
+                continue
+            y = int(n.get("y", 0))
+            out.append({"id": str(n.get("id", "")), "name": str(n.get("name", "")),
+                        "layer": str(pr.get("layer") or rows.get(y, "") or ""),
+                        "type": str(n.get("type", "")), "file": os.path.basename(c)})
+        if out:
+            return out, c
+    return [], ""
+
+
+def read_memory_layers():
+    """五层记忆真源 (data/memory_layers.json)"""
+    for c in (os.path.join("/home/ubuntu/zmax_rel", "data", "memory_layers.json"),
+              os.path.join(REPO, "data", "memory_layers.json"),
+              os.path.join(HOME, "lerobot-smolvla-lew", "data", "memory_layers.json")):
+        if not os.path.isfile(c):
+            continue
+        try:
+            return json.load(open(c, encoding="utf-8")), c
+        except Exception:                                                # noqa: BLE001
+            continue
+    return {}, ""
+
+
+def read_dds_services():
+    """在役 DDS 相关服务 (systemctl, 10s 缓存)"""
+    out = {}
+    for s2 in ("zmax-dds-pub", "zmax-dds-agg", "zmax-dds-ss"):
+        try:
+            r = subprocess.run(["systemctl", "is-active", s2], capture_output=True, text=True, timeout=5)
+            out[s2] = (r.stdout or "").strip() or "unknown"
+        except Exception:                                                # noqa: BLE001
+            out[s2] = "?"
+    return out
+
+
 def read_test_result():
     """最近一次取证结果 (passed/total 若有)"""
     pats = ["verify_*.json", "*preflight_*.json", "intact_v4_*.json", "l4_intact_ab_*.json"]
@@ -235,6 +295,9 @@ class SSDaemon:
         self._svc = {}
         self._svc_t = 0.0
         self._mode = None
+        self._canvas_i = 0          # ss_canvas 轮转游标
+        self._svc_nodes = {}
+        self._svc_nodes_t = 0.0
         self._pending = {}      # topic → 等配对是否成功 (只提示一次)
 
     def ensure_node(self):
@@ -384,6 +447,71 @@ class SSDaemon:
                                            queue=self.seq.get(t, 0) - c, level="ok", msg="topic=" + t))
         return True
 
+    def pub_canvas(self):
+        """ss_canvas ← 画布真源节点清单 (轮转发布: 每轮 5 个, 87 节点约 35s 扫完一遍)
+
+        status/fps/counter 本机无真实计数源 → 一律 idle / -1.0 / -1 (诚实: 未测量不冒充 0)
+        """
+        from ss_types import SSCanvasNode                               # noqa: PLC0415
+        nodes, src = read_canvas_nodes()
+        if not nodes:
+            return False
+        n = len(nodes)
+        start = self._canvas_i % n
+        batch = [nodes[(start + k) % n] for k in range(min(5, n))]
+        self._canvas_i = (start + len(batch)) % n
+        for nd in batch:
+            self.publish("ss_canvas", SSCanvasNode(
+                ts=time.time(), node_id=nd["id"], name=nd["name"], layer=nd["layer"],
+                status="idle", fps=-1.0, last_ms=-1.0, counter=-1,
+                note="source=%s · 画布 %d 节点 · 本机无计数源(未测量=-1)" % (nd["file"], n)))
+        return True
+
+    def pub_macro(self):
+        """ss_macro ← 五层记忆真源 (data/memory_layers.json): 每层一条"""
+        from ss_types import SSMacro                                    # noqa: PLC0415
+        d, src = read_memory_layers()
+        if not d:
+            return False
+        n = 0
+        for lname, v in d.items():
+            if lname in ("updated", "ts") or not isinstance(v, dict):
+                continue
+            items = v.get("items") or []
+            links = []
+            for it in items[:3]:
+                if isinstance(it, dict):
+                    links.extend([str(x) for x in (it.get("links") or [])][:1])
+            self.publish("ss_macro", SSMacro(
+                ts=time.time(), layer_name=str(lname),
+                intent=str(v.get("intent") or v.get("desc") or "")[:120],
+                plan=",".join(links)[:180], progress=-1.0,
+                recalled=int(v.get("count", len(items))),
+                note="source=%s updated=%s" % (os.path.basename(src), d.get("updated", ""))))
+            n += 1
+        return n > 0
+
+    def pub_nodes(self):
+        """ss_nodes ← 本守护自描述: 已发布话题 + **实测**频率 + 在役 DDS 服务"""
+        from ss_types import SSNodes                                    # noqa: PLC0415
+        now = time.time()
+        el = max(1.0, now - self.t0)
+        svc = self.nodes_svc_cache()
+        topics = sorted(self.sent.keys())
+        self.publish("ss_nodes", SSNodes(
+            ts=now,
+            nodes=["ss_daemon(本守护)"] + ["%s:%s" % (k, v) for k, v in svc.items()],
+            topics=topics,
+            publish_hz=[round(self.sent.get(t, 0) / el, 3) for t in topics]))
+        return True
+
+    def nodes_svc_cache(self):
+        now = time.time()
+        if now - getattr(self, "_svc_nodes_t", 0) > 10:
+            self._svc_nodes = read_dds_services()
+            self._svc_nodes_t = now
+        return getattr(self, "_svc_nodes", {})
+
     def pub_test(self):
         from ss_types import SSTest                                  # noqa: PLC0415
         r = read_test_result()
@@ -431,6 +559,12 @@ class SSDaemon:
             self.pub_calib()
         if allowed("ss_test"):
             self.pub_test()
+        if allowed("ss_canvas"):
+            self.pub_canvas()
+        if allowed("ss_macro"):
+            self.pub_macro()
+        if allowed("ss_nodes"):
+            self.pub_nodes()
 
     def run(self, seconds=0.0, once=False):
         t0 = time.time()
@@ -469,7 +603,12 @@ def main() -> int:
                                          "keys": list(pr) if pr else None},
                           "infer": {"online": h.get("online"), "infer_count": h.get("infer_count")},
                           "calib_files": [k for k, _ in read_calibs()],
-                          "test_src": (read_test_result() or {}).get("path")},
+                          "test_src": (read_test_result() or {}).get("path"),
+                          "canvas_src": {"file": read_canvas_nodes()[1],
+                                         "nodes": len(read_canvas_nodes()[0])},
+                          "macro_src": {"file": read_memory_layers()[1],
+                                        "layers": [k for k in read_memory_layers()[0] if k != "updated"]},
+                          "dds_services": read_dds_services()},
                          ensure_ascii=False, indent=1))
         return 0
     d = SSDaemon()

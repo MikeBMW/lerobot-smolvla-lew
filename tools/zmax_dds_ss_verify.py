@@ -87,7 +87,8 @@ def main() -> int:
     chk("calib: 含 ss_state (真机只读状态)", bool(got.get("ss_state")), "n=%d" % len(got.get("ss_state") or []))
 
     print("═══ ④ test 档: 全量 (状态/动作/测试结果) ═══")
-    got, out = collect("test", ["ss_state", "ss_action", "ss_test", "ss_calib", "ss_diag"], seconds=22)
+    got, out = collect("test", ["ss_state", "ss_action", "ss_test", "ss_calib", "ss_diag",
+                                "ss_canvas", "ss_macro", "ss_nodes"], seconds=22)
     st, ac, te = (got.get("ss_state") or []), (got.get("ss_action") or []), (got.get("ss_test") or [])
     chk("test: 收到 ss_state (真机 tap)", bool(st), "n=%d" % len(st))
     chk("test: ss_state dim>0 且 位置非 -1", bool(st) and st[0].dim > 0 and st[0].pos_x != -1.0,
@@ -98,6 +99,18 @@ def main() -> int:
         "joints=%s src=%s" % (len(ac[0].joints) if ac else 0, ac[0].source if ac else ""))
     chk("test: 收到 ss_test (取证结果)", bool(te), "detail=%s" % (te[0].detail[:60] if te else ""))
     chk("test: 收到 ss_calib", bool(got.get("ss_calib")), "n=%d" % len(got.get("ss_calib") or []))
+    cv, mc, nd = (got.get("ss_canvas") or []), (got.get("ss_macro") or []), (got.get("ss_nodes") or [])
+    chk("test: 收到 ss_canvas (画布节点真源)", bool(cv) and bool(cv[0].node_id) and bool(cv[0].name),
+        "n=%d 例: %s / %s / layer=%s" % (len(cv), cv[0].node_id if cv else "", (cv[0].name or "")[:18] if cv else "",
+                                        (cv[0].layer or "")[:16] if cv else ""))
+    chk("test: ss_canvas 诚实标注 (无计数源 → status=idle/counter=-1)", bool(cv) and cv[0].status == "idle" and cv[0].counter == -1,
+        "status=%s counter=%s fps=%s" % (cv[0].status if cv else "", cv[0].counter if cv else "", cv[0].fps if cv else ""))
+    chk("test: 收到 ss_macro (五层记忆真源)", bool(mc) and bool(mc[0].layer_name),
+        "layers=%s recalled=%s" % ([m.layer_name for m in mc][:5], mc[0].recalled if mc else None))
+    chk("test: 收到 ss_nodes (自描述: 话题+实测Hz)", bool(nd) and len(nd[0].topics) > 3 and max(nd[0].publish_hz or [0]) > 0,
+        "topics=%d 例: %s · 最高 Hz=%.3f" % (len(nd[0].topics) if nd else 0,
+                                            ",".join(list(nd[0].topics)[:4]) if nd else "",
+                                            max(nd[0].publish_hz or [0]) if nd else 0))
 
     print("═══ ⑤ 通道分离 (内网遥测不碰 APP 硬件通道) ═══")
     chk("守护源码不含 hw_state 发布", "publish(\"hw_state\"" not in open(DAEMON, encoding="utf-8").read())
