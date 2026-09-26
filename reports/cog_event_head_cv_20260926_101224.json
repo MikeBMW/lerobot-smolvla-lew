@@ -1,0 +1,61 @@
+{
+ "ts": "2026-09-26 10:12:24",
+ "mode": "5-fold CV",
+ "data": "l5_gen_v6.h5",
+ "folds": 5,
+ "steps_per_fold": 3000,
+ "hidden": 256,
+ "aug": true,
+ "tasks": {
+  "gripper_close_H5": {
+   "mean": 1.0,
+   "min": 1.0,
+   "max": 1.0,
+   "std": 0.0,
+   "thr": 0.91,
+   "pass": true
+  },
+  "gripper_close_H10": {
+   "mean": 0.9999,
+   "min": 0.9997,
+   "max": 1.0,
+   "std": 0.0001,
+   "thr": 0.91,
+   "pass": true
+  },
+  "reach_z_H5": {
+   "mean": 0.8168,
+   "min": 0.7877,
+   "max": 0.8571,
+   "std": 0.027,
+   "thr": 0.79,
+   "pass": true
+  },
+  "reach_z_H10": {
+   "mean": 0.7999,
+   "min": 0.7589,
+   "max": 0.8463,
+   "std": 0.0302,
+   "thr": 0.79,
+   "pass": true
+  },
+  "move_hand_H5": {
+   "mean": 0.943,
+   "min": 0.9251,
+   "max": 0.9557,
+   "std": 0.0112,
+   "thr": 0.9,
+   "pass": true
+  },
+  "move_hand_H10": {
+   "mean": 0.9493,
+   "min": 0.9382,
+   "max": 0.9618,
+   "std": 0.0081,
+   "thr": 0.9,
+   "pass": true
+  }
+ },
+ "pass": "6/6",
+ "elapsed_s": 15.6
+}
