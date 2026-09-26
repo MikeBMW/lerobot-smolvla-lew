@@ -25,7 +25,7 @@ import numpy as np
 CKPT_DIR = os.environ.get("ZMAX_COG_EVENT_DIR", "/home/ubuntu/stable-wm-cache/checkpoints/cog_event_head")
 # ★ 2026-09-26 默认用**引擎同源**权重: 造数据管线训的 v6_long 进闭环 AUC 仅 0.238(低于随机),
 #   换同源(引擎 tr)训的 engine_v2 → 闭环 AUC 0.997~1.000 (取证 verify_cog_event_loop 7/7)
-PREFERRED = os.environ.get("ZMAX_COG_EVENT_TAG", "engine_v2")
+PREFERRED = os.environ.get("ZMAX_COG_EVENT_TAG", "engine_v3")   # 300 段同源 (CV 6/6, 最低折 reach_z 0.929)
 KEYS = ("gc_5", "gc_10", "rz_5", "rz_10", "mh_5", "mh_10")
 _EV_ORDER = ("gripper_close", "reach_z", "move_hand")
 

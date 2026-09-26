@@ -33,6 +33,22 @@ TAP_DIR = "/home/ubuntu/zmax_ss_remote"
 MOTION_PAT = re.compile(r"(插入|抓取|夹爪|夹紧|移动|运动|下发|示教|拍照|启动产线|回位|抓|插|拔|推|拉|执行动作)")
 
 
+def _derived_stage(obs7):
+    """产线未上报阶段时的**推算**阶段 (明确标注推算, 不冒充产线上报)
+
+    口径 (只用 tap 真值 obs7 = 手位3 + 夹爪1 + 速度3, 为粗略三态划分):
+      · 夹爪张开(>=0.5)            → 接近/对位 (未夹持)
+      · 夹爪闭合(<0.5) 且 z 下降中 → 下降/插入
+      · 夹爪闭合(<0.5)             → 已夹持/转移
+    """
+    if not obs7 or len(obs7) < 7:
+        return ""
+    z, grip, vz = float(obs7[2]), float(obs7[3]), float(obs7[6])
+    if grip >= 0.5:
+        return "接近/对位 (推算)"
+    return "下降/插入 (推算)" if vz < -1e-4 else "已夹持/转移 (推算)"
+
+
 def _sh(cmd, timeout=8):
     try:
         return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout).stdout.strip()
@@ -141,7 +157,10 @@ def core_idea(stage, ev, obs7):
 def build_snapshot():
     obs7, stage, ts, age = real_obs()
     ev = event_pred(obs7)
-    stage_note = "" if stage else "真机 tap 的 prod_stage 为空 → 产线主程序未运行/未上报阶段 (帧本身是新鲜的)"
+    if not stage:
+        stage = _derived_stage(obs7)
+        stage_note = ("真机 tap 的 prod_stage 为空 (产线主程序未运行/未上报) → 上行为**推算阶段**(由夹爪+z 速度导出), "
+                      "标注为'推算'以区分产线上报; 帧本身是新鲜的")
     return {
         "from": "zmax_hil", "ts": time.strftime("%F %T"),
         "snapshot": {
