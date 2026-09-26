@@ -2059,36 +2059,6 @@
      ]
     }
    }
-  },
-  {
-   "id": "n_moveit",
-   "type": "model",
-   "name": "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)",
-   "x": 13986,
-   "y": 4832,
-   "w": 230,
-   "h": 68,
-   "desc": "MoveIt2 规划 (IK/碰撞/轨迹) + 双执行后端: ① Orin SDK 桥 (xCoreSDK 直连控制器 192.168.23.160, 不依赖 ROS2 栈, 实测 3~7ms/次) ② 兼容现有 ROS2 SRV (/move_pose 等)。安全闸在 L2 收口: Δ守卫/向下限幅/dry-run 默认。源码 src/lerobot/arm/arm_control.py · 桥: Orin zmax-arm-sdk-bridge.service",
-   "inputs": [
-    "in1",
-    "in2"
-   ],
-   "outputs": [
-    "out1"
-   ],
-   "params": {
-    "layer": "L2/L3 执行面",
-    "role": "MoveIt2 规划 + 双后端执行",
-    "backends": [
-     "orin_sdk_bridge (xCoreSDK 直连, 默认/效率优先)",
-     "ros2_srv (兼容现有 /move_pose)"
-    ],
-    "sdk_bridge": "http://192.168.23.66:39061",
-    "controller": "192.168.23.160",
-    "safety": "Δ守卫 · 向下限幅 · dry-run 默认 · 现场闸门",
-    "src": "src/lerobot/arm/arm_control.py",
-    "parity": "SDK vs ROS2 关节最大偏差 0.91 µrad (2026-09-26 实测)"
-   }
   }
  ],
  "links": [
@@ -3363,20 +3333,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "人工指示 → L3 规划/编排"
-  },
-  {
-   "f": "sslimit",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "限幅后目标 → 规划"
-  },
-  {
-   "f": "n_moveit",
-   "t": "ssact",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "轨迹 → 执行 (SDK桥 / ROS2 SRV)"
   }
  ],
  "params_note": ""

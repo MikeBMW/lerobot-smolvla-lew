@@ -3445,6 +3445,24 @@ def node_dsvl(ctx):
         return False
 
 
+def node_moveit(ctx):
+    """🧭 MoveIt 运动规划节点: 真执行函数 — 读统一控制层状态 + 规划层可用性 (不动真机)"""
+    import json as _json
+    import sys as _sys
+    _sys.path.insert(0, "/home/ubuntu/zmax_rel/src")
+    out = {"node": "n_moveit"}
+    try:
+        from lerobot.arm.arm_control import ArmController, MoveItPlan
+        c = ArmController()
+        out["backend"] = c.backend
+        out["precheck"] = c.precheck()
+        out["moveit"] = MoveItPlan.plan([0, 0, 0], [0, 0, 0])
+    except Exception as e:
+        out["error"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+    print("[MoveIt 节点] " + _json.dumps(out, ensure_ascii=False)[:400])
+    return out
+
+
 def node_hil(ctx):
     """🙋 HIL 人机在环 · 状态↔指示 — 状态空间状态发 ECS web, 并取回人的指示 (2026-09-26)
 
@@ -3718,7 +3736,9 @@ _EXTERNAL_LOC["n_web_agent"] = (os.path.join(_SS_DIR, "web_agent_bridge.py"), 1,
 _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_agent", "网页智能体"],
      "🌐 Web 智能体桥 · 远程提示词 — web agent 提示词 → 只读功能派发(状态/画布/报告/记忆/技能/仿真/网络/AOI/真机只读/飞书) → 回执到 web; 动作类提示词一律拒答 (源码 web_agent_bridge.py)", node_web_agent)
 # 🙋 2026-09-26 老倪: L5「HIL 人机在环」— 状态空间状态 ↔ 浏览器里的指示 (hermes 形式界面)
+_EXTERNAL_LOC["n_moveit"] = (os.path.join(_REPO, "src/lerobot/arm/arm_control.py"), 1, "class ArmController")
 _EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 1, "build_snapshot")
+_reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin) — MoveIt2 规划 + 双后端执行(Orin SDK 桥 默认 / ROS2 SRV 兼容); 安全闸 dry-run 默认 (源码 arm_control.py)", node_moveit)
 _reg("n_hil", ["HIL", "人机在环", "human in the loop", "hil", "在环"],
      "🙋 HIL 人机在环 · 状态↔指示 — 状态→ECS web(hil.html) + 收人的指示; 动作类拒答 (源码 hil_bridge.py)",
      node_hil)

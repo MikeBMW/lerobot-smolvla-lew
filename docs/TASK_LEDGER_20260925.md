@@ -434,3 +434,42 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 ./gui-venv311/bin/python tools/a5_handeye_collect.py --collect --n 12     # 通过后走 12 位姿 (±15mm)
 ```
 产物: `data/handeye/` (image_probeA/B + thumb_*.jpg + probe JSON) · 工具 `tools/a5_handeye_collect.py`
+
+## 2026-09-26 · 会话十六: MoveIt 适配 + Orin SDK 直驱桥 (老倪: 桥放 Orin, 直驱 SDK, 效率优先)
+
+**架构 (按老倪指定)**
+```
+状态空间工程(4060)                    Orin (192.168.23.66)                 控制器
+  画布 [🧭 MoveIt 运动规划] ─HTTP 3~7ms→ [zmax-arm-sdk-bridge 常驻] ─xCoreSDK→ 192.168.23.160
+  统一控制层 arm_control.py  ────────────┘ (不经 ROS, 不需要起 ROS2 栈)
+      └ 后端② ros2_srv (/move_pose 等) ──→ 现有 ROS2 服务 (兼容保留)
+```
+
+**① Orin SDK 直驱桥 (已部署 + 跨机验证)**
+| 项 | 实测 |
+|---|---|
+| 服务 | `zmax-arm-sdk-bridge.service` **active + enabled** · 监听 0.0.0.0:39061 · CPUQuota 20%/MemMax 300M/Nice 10 |
+| SDK | xCoreSDK (py3.10 原生) 连控制器 192.168.23.160 · ping 0.159ms |
+| 4060→桥 | `/health` **3ms** · `/status` **7ms** (不经 ROS) |
+| 真值一致性 | SDK jointPos vs ROS2 /real_joint_states 六轴最大偏差 **0.91 µrad** (技能记载 0.96µrad, 复现) |
+| TCP | endInRef = (0.5972685, 0.1422003, 0.6415582) 与 ROS2 tcp_pose 同源 |
+| 电源/模式 | PowerState.on · OperateMode.automatic |
+| 接口 | GET /health /status · POST /reset /stop /move_pose (dry 默认 true) |
+
+**② 画布 MoveIt 节点 (在状态空间工程里体现)**
+- `🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)` id=n_moveit @ (13986, 4832) type=model (85 节点/161 连线 · 孤立 0 · 渲染 85/160 ✓)
+- 入线: 🛡 安全执行边界 → MoveIt 「限幅后目标 → 规划」 · 出线: MoveIt → 🤖 机器人执行器 「轨迹 → 执行」
+- node_logic: `node_moveit` 真执行函数 + `_reg("n_moveit", ["MoveIt","运动规划","moveit"], ...)` + `_EXTERNAL_LOC`
+
+**③ 统一控制层 `src/lerobot/arm/arm_control.py`**
+- 后端: `OrinSdkBridge` (默认/效率优先) · `Ros2Srv` (兼容) · `MoveItPlan` (规划层, 未装则如实 unavailable)
+- 安全闸: dry-run 默认 · 单步 ≤50mm · 向下 ≤20mm · 只读三查 (power=on · operation=idle) · allow=True 才真发
+- 自检: 后端自动选中 `orin_sdk_bridge` · status 返回关节/速度/力矩/TCP ✓
+
+**④ MoveIt 适配的诚实状态 (需老倪点头再拉镜像)**
+- 本机有 `config/robot/xms5_r800_w4g3b4c.urdf` ✓ · 有 `ros:humble-ros-base` 镜像 ✓
+- **未装 `ros-humble-moveit`** → `MoveItPlan.available()=False`, plan() 如实报 unavailable (不假装能规划)
+- 下一步 (二选一, 都要拉/构建 ~1GB):
+  a) 本机 docker 构建 moveit 镜像 + 由 URDF 生成 MoveIt 配置包 (SRDF/kinematics/joint_limits) → 规划在 4060
+  b) MoveIt 装在 Orin (已有 ROS2 Humble + URDF), 规划在 Orin, 执行仍走 SDK 桥 (同机无网络跳)
+  推荐 b): 同机、少一跳、且 URDF/SRDF 都在 Orin 上现成
