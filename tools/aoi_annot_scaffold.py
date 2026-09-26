@@ -141,13 +141,77 @@ def check(as_json=False):
     return 0
 
 
+def from_origin(src_dir: str) -> int:
+    """从**已落盘的 origin 真图**生成标注底图 (自裁口径 960×960) + 机器预框 —— 不真拍, 零打扰产线
+
+    预框来源 = 自裁 meta 的**实测几何** (kept_rows + x_trim.x_span), 明确标注"机器预框, 需人工确认"
+    """
+    import glob as _glob
+    import sys as _sys
+
+    import cv2 as _cv
+    import numpy as _np
+    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import aoi_exposure_fix as _FX
+    files = sorted(_glob.glob(os.path.join(src_dir, "origin_*.png")))
+    ok = 0
+    print("🎯 从已落盘原图生成标注底图: %d 张 (自裁口径, 不真拍)" % len(files))
+    for f in files:
+        img = _cv.imread(f)
+        if img is None:
+            continue
+        try:
+            clean, meta = _FX.clean_judge_frame(img, out=960, return_natural=True)
+        except Exception as e:                                                  # noqa: BLE001
+            print("   ✗ %s: %s" % (os.path.basename(f), str(e)[:70]))
+            continue
+        if clean is None:
+            print("   ✗ %s: 未找到合格条带 (如实跳过)" % os.path.basename(f))
+            continue
+        cimg = clean[0] if isinstance(clean, tuple) else clean
+        base = os.path.splitext(os.path.basename(f))[0]
+        ip = os.path.join(ANN, "anno_%s.png" % base)
+        _cv.imwrite(ip, _np.asarray(cimg))
+        kr = meta.get("kept_rows") or [None, None]
+        xs = (meta.get("x_trim") or {}).get("x_span") or [None, None]
+        cand = None
+        if None not in (kr[0], xs[0]):
+            cand = [int(xs[0]), int(kr[0]), int(xs[1]), int(kr[1])]
+        stub = {
+            "image": os.path.basename(ip), "ts": time.strftime("%F %T"), "from": os.path.relpath(f),
+            "caliber": "原图自裁(切过曝带+死白列) → 960x960  (老倪口径第 2 档; 第 1 档=手动框选)",
+            "facts": {"kept_rows": kr, "x_span": xs, "sat_before": meta.get("sat_before"),
+                      "sat_after": meta.get("sat_after"), "dropped_sat_rows": meta.get("dropped_sat_rows"),
+                      "dropped_pct": meta.get("dropped_pct"), "cliff": meta.get("cliff"),
+                      "rule": meta.get("rule")},
+            "candidate_box": cand,
+            "candidate_note": "机器预框(由饱和≤0.4 + 边缘密集 + 高≥20行 实测导出) — **需人工确认或改框**; 若场景换料/换姿态须重跑",
+            "candidate_box_origin_coords": True,
+            "boxes": [], "classes": ["gold_finger", "defect", "foreign"],
+            "status": "TODO_ANNOTATE",
+        }
+        json.dump(stub, open(os.path.join(ANN, "anno_%s.json" % base), "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=1)
+        ok += 1
+        print("   ✅ %s  保留行 %s · 列 %s · 饱和 %.1f%%→%.1f%% · 预框 %s" %
+              (os.path.basename(ip), kr, xs, (meta.get("sat_before") or 0) * 100,
+               (meta.get("sat_after") or 0) * 100, cand))
+    print("\n生成 %d 张标注底图 (含机器预框) → %s" % (ok, ANN))
+    print("下一步: 打开 anno_*.png 目检/框选 → 把 boxes 填好, status 改 DONE → python3 tools/aoi_annot_scaffold.py --check")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--capture", action="store_true", help="从 10082 取帧 + 建标注模板 (只读)")
+    ap.add_argument("--from-origin", dest="from_origin", default="",
+                    help="从已落盘原图目录生成标注底图(自裁口径)+机器预框 (不真拍)")
     ap.add_argument("--n", type=int, default=1)
     ap.add_argument("--check", action="store_true", help="校验现有标注")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
+    if a.from_origin:
+        return from_origin(a.from_origin)
     if a.capture:
         print("🎯 AOI 标注脚手架 · 取帧 (源 %s, 只读)" % CAM)
         capture(a.n)
