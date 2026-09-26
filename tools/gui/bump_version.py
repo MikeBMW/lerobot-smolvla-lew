@@ -41,25 +41,37 @@ def read_current() -> str:
 
 
 def bump_occurrences(path: str, old: str, new: str) -> list:
-    """把文件中所有 `vX.Y.Z` / `"X.Y.Z"` 形式的旧版本改成新版本; 返回命中描述"""
+    """把文件中 UI 用到的旧版本号改成新版本; 返回命中描述
+
+    ⚠️ 2026-09-27 实测抓到的 bug: 原实现用全局替换, 会把 **changelog 注释里的
+       历史版本号也改名** (例: 升 5.12.1→5.12.2 时, "# v5.12.1: ..." 这条历史
+       条目被改成 "# v5.12.2: ..." → 版本历史被篡改)。
+       修法: 跳过 changelog 注释行 (以 # 开头且形如 "# vX.Y.Z:" 的行)。
+    """
     if not os.path.exists(path):
         return []
     s = open(path, encoding="utf-8").read()
     hits = []
-    # ① 带 v 前缀 (界面标签/窗口标题/注释标题)
+    # 逐行处理: changelog 注释行原样保留
+    _chlog = re.compile(r"^\s*#\s*v\d+\.\d+\.\d+\s*:")
     pat_v = re.compile(r"(?<![\d.])v" + re.escape(old) + r"(?![\d.])")
-    n1 = len(pat_v.findall(s))
-    if n1:
-        s = pat_v.sub("v" + new, s)
-        hits.append(f"{os.path.basename(path)}: v{old} → v{new} ×{n1}")
-    # ② 纯数字带引号 (version_sync.py 的 zmax_ver = "5.11.4")
     pat_q = re.compile(r'(["\'])' + re.escape(old) + r'\1')
-    n2 = len(pat_q.findall(s))
+    out, n1, n2 = [], 0, 0
+    for ln in s.split("\n"):
+        if _chlog.match(ln):
+            out.append(ln)                    # changelog 行: 原样保留
+            continue
+        n1 += len(pat_v.findall(ln))
+        ln = pat_v.sub("v" + new, ln)
+        n2 += len(pat_q.findall(ln))
+        ln = pat_q.sub(lambda m: f'{m.group(1)}{new}{m.group(1)}', ln)
+        out.append(ln)
+    if n1:
+        hits.append(f"{os.path.basename(path)}: v{old} → v{new} ×{n1}")
     if n2:
-        s = pat_q.sub(lambda m: f'{m.group(1)}{new}{m.group(1)}', s)
         hits.append(f"{os.path.basename(path)}: \"{old}\" → \"{new}\" ×{n2}")
     if n1 or n2:
-        open(path, "w", encoding="utf-8").write(s)
+        open(path, "w", encoding="utf-8").write("\n".join(out))
     return hits
 
 
