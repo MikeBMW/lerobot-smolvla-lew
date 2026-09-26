@@ -1,0 +1,59 @@
+{
+ "ts": "2026-09-26 11:55:32",
+ "seeds": 1,
+ "steps": 420,
+ "result": {
+  "A 正对照(默认 v10_1h)": {
+   "ckpt": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+   "n": 1,
+   "success": 0,
+   "rate": 0.0,
+   "rows": [
+    {
+     "engine_says": "🏆 L3 真执行接入: SmolVLA-Lew · 模型 ckpt = outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model — xyz 由模型出, gripper 由状态机管 · 🗣 语言 'metaworld 光模块插拔'",
+     "seed": 0,
+     "steps": 420,
+     "wall_s": 31.2,
+     "done": false,
+     "insert_mm_end": 148.7,
+     "insert_mm_min": 15.4,
+     "stages_seen": [
+      "接近",
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移"
+     ],
+     "reached_insert": false
+    }
+   ]
+  },
+  "B 候选(state_space_mw5w)": {
+   "ckpt": "outputs/train/state_space_mw5w/checkpoints/030000/pretrained_model",
+   "n": 1,
+   "success": 1,
+   "rate": 1.0,
+   "rows": [
+    {
+     "engine_says": "",
+     "seed": 0,
+     "steps": 378,
+     "wall_s": 3.8,
+     "done": true,
+     "insert_mm_end": 65.3,
+     "insert_mm_min": 0.9,
+     "stages_seen": [
+      "抓取",
+      "抬起",
+      "转移",
+      "插入",
+      "插入 · 接触",
+      "完成"
+     ],
+     "reached_insert": true
+    }
+   ]
+  }
+ }
+}
