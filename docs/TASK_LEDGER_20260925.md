@@ -524,3 +524,36 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 - 工具齐备 (跑完即用): `tools/a5_handeye_collect.py` · `a5_probe_v2.py`(新鲜度+CLAHE) · `a5_coherence.py` · `a5_median_track.py` · `a5_ncc_track.py` · `a5_collect_ncc.py`
 - 数据: `data/handeye/collect_ncc_20260926_140030.json` (12 位姿 TCP+uv+NCC, 供复盘) · 12 张位姿图 c_p00..c_p11
 - **安全记录**: 全部位姿 ±15mm 网格 · speed=30(驱动 5%) · 每步只读三查 · **结束自动回起始位姿 (实测偏差 0.001mm)**
+
+
+## 2026-09-26 · 会话十九: 合并任务 + 砍标定 + 清理系统/DNS + 状态空间重启 (老倪指令)
+
+**① 任务合并与清理** (唯一真源: docs/NEXT_ITERATION_20260926.md)
+- **砍掉(不必要/不宜现场复杂操作)**: A5 手眼标定 · A6 T_base_cam/plane_z · A7 ring_pose 示教
+  (理由: 三条追踪路线量化否决 + 相机逐帧自动曝光 64.5% 变异 ⇒ 属"没必要硬做"的标定)
+  A3/A4 工控机补丁(复杂操作) → 降级; 画布交叉优化 1395 对(行内重排实测 +9.2%) → backlog
+- **降级但未遗忘的风险(留在计划里)**: 工控机 crop_score 0.325 < v4 口径 0.95 ⇒ 其 OK/NG 不可信,
+  AOI 判据一律以**本机自裁口径**为准(已量化: 饱和 55%→13.6% · 细节 10→89)
+- **主线 5 条(M1~M5)**: M1 state_space 策略达标(20%→≥60%, S2+S3+ensemble) · M2 事件头产品化(可视化+L2收口)
+  · M3 MoveIt 收口(meshes+规划接口+闭环验证) · M4 交互面维护 · M5 工程节奏(v5.15.10→v5.15.11)
+- **现场轻量项 1 条**: L1 放一件不良品采 AOI 缺陷样本
+
+**② DNS 清理** (技能口径: 逐域解析耗时为证)
+- `resolvectl flush-caches` 已执行; 上游 10.160.0.68/67
+- 清前 → 清后: www.baidu.com **3.91s → 0.00s** · registry.npmmirror 0.09→0.00 · feishu 0.00→0.02(冷) · github/datadrive 0.00
+
+**③ 系统清理 129MB** (台账 reports/sys_cleanup_20260926_141147.json)
+- apt 118 + snap 11 + 桌面缓存 1; journal/uv/pip/回收站 已为 0(上轮清过)
+- 系统盘 used **305516 → 305387MB**; **保护清单 9 项全在位, 缺失 0**
+- 扫出既有断链 1 个: stable-wm-cache/datasets/dmc/reacher_random.h5 (非本次造成, 按要求未删, 记录在案)
+
+**④ 状态空间工程重启** (双证: is-active + 端点探活)
+- 控制台: 首启**失败** → 根因 = 我在 n_moveit 接线里用了未定义的 `_REPO`(NameError, 阻塞整个 GUI 导入)
+  → 修为 `_ARM_DIR`(与既有 _YOLO_DIR 同款) + 行号 175→133 与真源码一致 → **重启成功 (pid 1481349, Traceback 0)**
+- 服务 11 项全 active; 端点 200: 推理8790 · HIL/Agent/Orin上行(ECS) · Orin SDK桥 · AOI 10082
+- 画布 85 节点(70 真)/161 连线/孤立 0 · 版本 **v5.15.10** · 磁盘 299G/396G(80%, 红线内) · GPU 空闲 persistence=Enabled
+- 注: 我先前报的 `l2-daemon` 服务名**不存在**(误报), 真实 L2 链路走 ss-local-infer + ss-bypass, 均 active
+
+**教训(已内化)**: 新增节点接线**必须走 ast.parse 之外的真导入验证**(语法过 ≠ 导入过);
+  `_REPO` 这类"看起来该有"的常量要先 grep 确认存在 — 本轮正是靠"重启+控制台起不来"才暴露,
+  若只做语法校验就会带着这个 bug 冻结版本。

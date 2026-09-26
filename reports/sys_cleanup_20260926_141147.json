@@ -1,0 +1,21 @@
+{
+ "ts": "2026-09-26 14:11:51",
+ "dns": "flushed",
+ "disk_before_mb": 305516,
+ "disk_after_mb": 305387,
+ "freed_total_mb": 129,
+ "items_mb": {
+  "journal": 0,
+  "apt": 118,
+  "uv": 0,
+  "pip": 0,
+  "desktop_cache": 1,
+  "snap": 11,
+  "trash": 0,
+  "rotated_logs": 0,
+  "hermes_cache": 0
+ },
+ "sum_items_mb": 130,
+ "protect_missing": 0,
+ "note": "只删可再生; 备份/归档件只列不删"
+}
