@@ -1,0 +1,166 @@
+{
+ "ts": "2026-09-26 09:30:05",
+ "data": "l5_gen_v6.h5",
+ "n_variants": 100,
+ "train_variants": 80,
+ "holdout_variants": 20,
+ "epochs": 200,
+ "seeds": 3,
+ "multistep": {
+  "K1": {
+   "n_test": 7781,
+   "sig_dims": 23,
+   "r2_model": 0.9462,
+   "r2_persist": 0.9993,
+   "r2_vel": 1.0,
+   "r2_model_sig": 0.9504,
+   "r2_persist_sig": 0.9993,
+   "r2_vel_sig": 1.0,
+   "mae_model": 0.010244,
+   "mae_persist": 0.000316,
+   "mae_vel": 3.8e-05,
+   "model_wins": false,
+   "device": "cuda"
+  },
+  "K5": {
+   "n_test": 7701,
+   "sig_dims": 23,
+   "r2_model": 0.9329,
+   "r2_persist": 0.9833,
+   "r2_vel": 0.9963,
+   "r2_model_sig": 0.9372,
+   "r2_persist_sig": 0.9833,
+   "r2_vel_sig": 0.9963,
+   "mae_model": 0.010778,
+   "mae_persist": 0.001567,
+   "mae_vel": 0.000509,
+   "model_wins": false,
+   "device": "cuda"
+  },
+  "K10": {
+   "n_test": 7601,
+   "sig_dims": 23,
+   "r2_model": 0.8861,
+   "r2_persist": 0.9399,
+   "r2_vel": 0.9668,
+   "r2_model_sig": 0.8913,
+   "r2_persist_sig": 0.9399,
+   "r2_vel_sig": 0.9668,
+   "mae_model": 0.012889,
+   "mae_persist": 0.003099,
+   "mae_vel": 0.001632,
+   "model_wins": false,
+   "device": "cuda"
+  }
+ },
+ "events": {
+  "gripper_close_H5": {
+   "n_test": 7701,
+   "pos_rate": 0.013,
+   "auc_model": 0.9094,
+   "acc_model": 0.987,
+   "acc_trivial": 0.987,
+   "model_wins": true,
+   "thr": 0.3064040541648865
+  },
+  "gripper_close_H10": {
+   "n_test": 7601,
+   "pos_rate": 0.0263,
+   "auc_model": 0.8809,
+   "acc_model": 0.9737,
+   "acc_trivial": 0.9737,
+   "model_wins": true,
+   "thr": 0.3064040541648865
+  },
+  "reach_z_H5": {
+   "n_test": 7701,
+   "pos_rate": 0.1608,
+   "auc_model": 0.7924,
+   "acc_model": 0.846,
+   "acc_trivial": 0.8392,
+   "model_wins": true,
+   "thr": null
+  },
+  "reach_z_H10": {
+   "n_test": 7601,
+   "pos_rate": 0.1959,
+   "auc_model": 0.7646,
+   "acc_model": 0.81,
+   "acc_trivial": 0.8041,
+   "model_wins": true,
+   "thr": null
+  },
+  "move_hand_H5": {
+   "n_test": 7701,
+   "pos_rate": 0.6922,
+   "auc_model": 0.9005,
+   "acc_model": 0.8234,
+   "acc_trivial": 0.6922,
+   "model_wins": true,
+   "thr": null
+  },
+  "move_hand_H10": {
+   "n_test": 7601,
+   "pos_rate": 0.7378,
+   "auc_model": 0.8806,
+   "acc_model": 0.8485,
+   "acc_trivial": 0.7378,
+   "model_wins": true,
+   "thr": null
+  }
+ },
+ "cross": {
+  "train": "l5_gen_v6.h5",
+  "test": "l5_gen_v5.h5",
+  "events": {
+   "gripper_close_H5": {
+    "pos_rate_test": 0.0132,
+    "auc_in_domain": 0.9158,
+    "auc_cross_domain": 0.9002,
+    "cross_wins": true
+   },
+   "gripper_close_H10": {
+    "pos_rate_test": 0.0268,
+    "auc_in_domain": 0.8752,
+    "auc_cross_domain": 0.8703,
+    "cross_wins": true
+   },
+   "reach_z_H5": {
+    "pos_rate_test": 0.1596,
+    "auc_in_domain": 0.7879,
+    "auc_cross_domain": 0.8021,
+    "cross_wins": true
+   },
+   "reach_z_H10": {
+    "pos_rate_test": 0.1931,
+    "auc_in_domain": 0.7499,
+    "auc_cross_domain": 0.769,
+    "cross_wins": true
+   },
+   "move_hand_H5": {
+    "pos_rate_test": 0.7042,
+    "auc_in_domain": 0.9163,
+    "auc_cross_domain": 0.9198,
+    "cross_wins": true
+   },
+   "move_hand_H10": {
+    "pos_rate_test": 0.7459,
+    "auc_in_domain": 0.9009,
+    "auc_cross_domain": 0.9046,
+    "cross_wins": true
+   }
+  }
+ },
+ "verdict": {
+  "multistep_win": [],
+  "event_win": [
+   "gripper_close_H5",
+   "gripper_close_H10",
+   "reach_z_H5",
+   "reach_z_H10",
+   "move_hand_H5",
+   "move_hand_H10"
+  ],
+  "conclusion": "多步: 赢基线 无; 事件级: 赢平凡基线 ['gripper_close_H5', 'gripper_close_H10', 'reach_z_H5', 'reach_z_H10', 'move_hand_H5', 'move_hand_H10']"
+ }
+}

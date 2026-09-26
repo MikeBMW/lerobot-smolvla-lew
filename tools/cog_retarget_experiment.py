@@ -98,6 +98,17 @@ def build_event(eps, kind, H, tau=None, dthr=None):
     return np.concatenate(X), np.concatenate(y), np.concatenate(V)
 
 
+def auc_of(pred, y):
+    """无 sklearn 依赖的秩和 AUC"""
+    order = np.argsort(pred)
+    ranks = np.empty(len(pred), float)
+    ranks[order] = np.arange(1, len(pred) + 1)
+    npos, nneg = float(y.sum()), float(len(y) - y.sum())
+    if npos == 0 or nneg == 0:
+        return float("nan")
+    return float((ranks[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
+
+
 def train_mlp(Xtr, Ytr, Xte, task, epochs=200, seed=0, ctx_tr=None, ctx_te=None):
     """小 MLP (128-128) 在 GPU 上训练; 回归=39维输出, 分类=1 logit"""
     import torch
@@ -135,6 +146,7 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=200)
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--holdout-frac", type=float, default=0.2)
+    ap.add_argument("--cross", default="", help="跨域评测数据集 (训练域→该域, ①-3)")
     a = ap.parse_args()
 
     eps = load_episodes(a.data)
@@ -234,6 +246,48 @@ def main() -> int:
                                                    "thr": dthr}
             print("  %-14s %-6d %-9.3f %-12.4f %-12.4f %s" %
                   (kind, H, float(yte2.mean()), auc_m, acc_m, "✅ 赢平凡基线" if win else "❌ 无提升"))
+
+    # ── C) 跨域复评 (①-3): 训练域 → --cross 域 ──
+    if a.cross and os.path.isfile(a.cross):
+        print("\n=== C) 跨域复评: 训练域 %s → 评测域 %s ===" %
+              (os.path.basename(a.data), os.path.basename(a.cross)))
+        ceps = load_episodes(a.cross)
+        res["cross"] = {"train": os.path.basename(a.data), "test": os.path.basename(a.cross),
+                        "events": {}}
+        print("  %-14s %-6s %-10s %-12s %-12s %s" % ("事件", "H", "测试域正例率", "域内AUC", "跨域AUC", "判据"))
+        for kind in ("gripper_close", "reach_z", "move_hand"):
+            for H in (5, 10):
+                Xtr3, ytr3, _ = build_event(tr_eps, kind, H, tau=tau, dthr=grip_med)
+                Xte3, yte3, _ = build_event(ceps, kind, H, tau=tau, dthr=grip_med)
+                if len(yte3) == 0 or yte3.sum() == 0 or yte3.sum() == len(yte3) or ytr3.sum() == 0:
+                    print("  %-14s %-6d (测试域无正/负例或无正样例, 跳过)" % (kind, H))
+                    continue
+                aucs_in, aucs_x = [], []
+                for sd_i in range(a.seeds):
+                    # 域内基线: 让 20% 该域自身数据作留出
+                    rng2 = np.random.RandomState(sd_i)
+                    cv = sorted(set(c["v"] for c in ceps))
+                    ho2 = set(rng2.permutation(cv)[:max(1, len(cv) // 5)].tolist())
+                    in_tr = [c for c in ceps if c["v"] not in ho2]
+                    in_te = [c for c in ceps if c["v"] in ho2]
+                    Xi, yi, _ = build_event(in_tr, kind, H, tau=tau, dthr=grip_med)
+                    Xj, yj, _ = build_event(in_te, kind, H, tau=tau, dthr=grip_med)
+                    if len(Xj) and yj.sum() and yj.sum() < len(yj):
+                        pi, _ = train_mlp(Xi, yi, Xj, "cls", epochs=a.epochs, seed=sd_i)
+                        aucs_in.append(auc_of(pi, yj))
+                    px_, _ = train_mlp(Xtr3, ytr3, Xte3, "cls", epochs=a.epochs, seed=sd_i)
+                    aucs_x.append(auc_of(px_, yte3))
+                ai = float(np.mean(aucs_in)) if aucs_in else float("nan")
+                ax = float(np.mean(aucs_x))
+                win = (ax > 0.5 + 0.02)
+                res["cross"]["events"]["%s_H%d" % (kind, H)] = {
+                    "pos_rate_test": round(float(yte3.mean()), 4), "auc_in_domain": round(ai, 4),
+                    "auc_cross_domain": round(ax, 4), "cross_wins": bool(win)}
+                print("  %-14s %-6d %-10.3f %-12.4f %-12.4f %s" %
+                      (kind, H, float(yte3.mean()), ai, ax, "⚠️ 跨域仍>0.52" if win else "❌ 跨域失效(≤0.52)"))
+        xs = [k for k, v in res["cross"]["events"].items() if v["cross_wins"]]
+        print("  跨域结论: 赢的靶子 %s (空=事件头跨域失效, 需域内重训/域适应)" % (xs or "无"))
+        res.setdefault("verdict", {})["cross_win"] = xs
 
     # ── 结论 ──
     ms_win = [k for k, v in res["multistep"].items() if v["model_wins"]]
