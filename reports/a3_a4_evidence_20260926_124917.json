@@ -1,0 +1,54 @@
+{
+ "ts": "2026-09-26 12:49:10",
+ "a3": {
+  "金手指": {
+   "/capture_detect": "存在 (OPTIONS, POST)",
+   "/picture": "存在 (OPTIONS, GET, POST, HEAD)",
+   "/crop_info": "存在 (GET, OPTIONS, HEAD)",
+   "/region": "存在 (GET, OPTIONS, HEAD)",
+   "/last_result": "存在 (GET, OPTIONS, HEAD)"
+  },
+  "表面": {
+   "/capture_detect": "存在 (POST, OPTIONS)",
+   "/picture": "无路由 (HTTP 404)",
+   "/crop_info": "无路由 (HTTP 404)",
+   "/region": "无路由 (HTTP 404)",
+   "/last_result": "无路由 (HTTP 404)"
+  },
+  "交接单": {
+   "文件": "docs/patch/opt_surface_10083_add_picture_route.md",
+   "存在": true,
+   "行数": 109,
+   "工控机可达性": "SSH/RDP/VNC 全关 (技能记载 + 实测), 只有 HTTP 口 → 只能现场粘贴"
+  }
+ },
+ "a4": [
+  {
+   "口径": "① 工控机拉长图 (工厂现用)",
+   "尺寸": "960x960",
+   "均值": 214.8,
+   "std": 55.8,
+   "饱和%": 55.0,
+   "死白行": 0,
+   "Tenengrad": 10.0
+  },
+  {
+   "口径": "② 工控机原图",
+   "尺寸": "2448x2048",
+   "均值": 117.5,
+   "std": 79.0,
+   "饱和%": 16.2,
+   "死白行": 0,
+   "Tenengrad": 6.0
+  },
+  {
+   "口径": "③ 4060 侧自裁 (老倪口径)",
+   "尺寸": "1718x150",
+   "均值": 169.6,
+   "std": 53.4,
+   "饱和%": 13.6,
+   "死白行": 0,
+   "Tenengrad": 89.0
+  }
+ ]
+}
