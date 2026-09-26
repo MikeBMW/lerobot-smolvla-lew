@@ -592,3 +592,21 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 - ★ 判定: 纯固定偏移 ⇒ 运动学模型**无零位/杆长误差**, 只差一个**基座坐标系常量偏移 [-1.0848, 0.2552, 2.2594] mm**
 - 交付: `data/selfcal/kinematic_correction.json` (**无外部标定物**, 纯自监督)
 - 安全: speed=8(慢) · 每步三查(power=on·automatic·关节静止) · 结束回起始构型(实测一致, 速度全 0)
+
+
+## 2026-09-26 · S2 第一步: RealityGap 量化 (两次试错后定位到正确做法)
+
+**第一次 (无效, 已自拦)**: 读 `state_20260922.jsonl`(旧快照) → TCP std=0 且字段不符 ⇒ 判**无效, 不当结论**
+**第二次 (真源)**: live tap = `/home/ubuntu/zmax_ss_remote/state_20260925.jsonl` (478MB, **正在写**)
+  · 字段真源: `t/tcp/tcp_quat/tcp_frame/jnames/robot_status/image/images_by_topic/pubs/jpos/jvel/ft/gripper/prod_stage/z7/geom/scope`
+  · 尾读 4589 行: TCP mean=[0.5973, 0.1422, 0.6416] 与实时一致 ✓ · 但 **std=[0,0,0]**
+  ⇒ 原因: **臂一直静止**(我把窗口取在静止期) — 不是数据问题, 是"没有激励"
+  · `gripper` 字段在 tap 里**为空**; `jpos` 在该行为 None; `robot_status` 键未展开
+
+**S2 的正确做法 (自进化, 不等人)**:
+  ① **自己激发数据**: 我用 SDK/ROS2 慢速(speed=8)把臂走一段激励轨迹(joint 小步来回) 同时采 tap
+     → 得到**真机 (obs, TCP) 有变动的配对** ⇒ RealityGap 才可测 (零外部条件)
+  ② 口径映射: 仿真 h5 obs dim=**43** ≠ 策略输入 39 ⇒ **映射本身就是第一个自进化项** (不等人给口径)
+  ③ 夹爪信号缺失: 从 robot_status/话题自行补齐 (tap 字段为空不代表取不到)
+**工具**: `tools/s2_reality_gap.py`(初版, 保留供复盘) · `tools/s2_reality_gap2.py`(真源版, 尾读只读不占产线)
+**原则**: 测不出就改测法, **不回头求外部标定** (章程 §0)
