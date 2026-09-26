@@ -8,11 +8,11 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 Hermes: 长命令拆多段; sudo免密; 开机网络优化=zmax-net-optimize
 §
-ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(61s→异步旁路; smolvlm2-500m兜底)
+ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash=账号最新flash即V4.1, 文本+视觉可但单次~122s→异步旁路+smolvlm2-500m兜底)
 §
 飞书99991663=token缓存过期→重启gateway;长文≥1.5k字须拆条
 §
-引擎tr['obs']39D≠h5 env原生o[:39](跨集先验逐维); L3须env原生obs+128图+post反归一化(u_ff=act×0.5)
+引擎tr['obs']39D≠h5原生o[:39]; L3须env原生obs+128图+post反归一化
 §
 L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5全veto; 真模型默认生效
 §
@@ -26,36 +26,36 @@ Orin ROS=domain0; tcp_pose 50Hz真值; 几何须ss_geom_calib; 红线Orin零自�
 §
 感知源收口: 反投影仅一份estimate_3d; 真机3D须K+手眼+plane_z; depth话题勿用(全帧2-3m)
 §
-画面≠结果(idle=静止初始帧); 看不了图→抓窗口+几何断言
-§
 YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 真机画面: 老倪面板=180°翻转; 报方向说'朝画面中心'
 §
 真机: rt后必下电; move_joint/line不下电; 30s超时success=False勿重发; collision_detection=False
 §
-L2.lissa_insert=力控插入(6N,沿工具Z退60mm→推进→lissajous)
-§
 真机视: 只起camera/realsense_source(参抄launch); tap→cam_rs.png
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先;worktree缺venv/data→软链主仓); LoRA=lora_inject.py
+真源: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先); LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
 §
-阶段MOE: 学习式门控必坍缩→硬先验路由(--route prior); 判据=单射性
+阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级索引0吞阶段(引擎8阶段vs专家7→覆盖表+显式兜底); 判据=单射性
 §
 LoRA需merge(否则零动作伪装'没提升'): merge_lora_ckpt.py; 判假A/B=逐位同
 §
 AOI: 10082金手指/10083表面; /capture_detect 200=受理; 判据图=手选框>原图自裁>拉长图
 §
-老倪的APP四条链(勿混): ①手机zmax=WebView壳(~/state3d_app)→datadrive.world/state-3d.html(ECS,改需SSH密码) ②robot-monitor.html读mac分支robot-status.json ③桌面exe=studio.py ④~/state3d_app/hw/ZMAX-Hardware.apk(com.zmax.hw,页内嵌assets,读公网JSON)
+老倪APP四链: 手机zmax=WebView壳→state-3d.html · robot-monitor.html · 桌面=studio.py · hw/ZMAX-Hardware.apk
 §
-ECS relay: upload/latest/status; 包={meta:{source,type,project,role,machines},data:{machines:{名:{cpu,mem,disk,gpu}}}}; ★/latest=最新包覆盖→多端互顶; 4060上报=zmax_hw_uploader.py+systemd zmax-dds-agg
+ECS relay: upload/latest/status + /agent/{prompt,reply} + /hil/state + /orin/status; 站点根=/www/wwwroot/datadrive.world; 新做的网页必挂首页入口(老倪会追问两次)
 §
-遥测架构(老倪): DDS只测试/标定/诊断,量产默认关(prod零开销不import);开关env>运行时>文件>prod; tools/gui/zmax_telemetry.py+画布空白右键
-§
-连线=DDS topic zmax/link_value(按源节点);画布写点发/读点DDS优先回落内存(零回退);连线右键开Topic
+遥测DDS: 只测试/标定/诊断,量产关(prod不import); 开关 env>运行时>文件~/.zmax_telemetry_mode; 守护=zmax_dds_ss_daemon.py+zmax-dds-ss.service(6真实源/9类型/14话题); 连线=zmax/link_value
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
+§
+main线真源=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv
+§
+控制台字体: 老倪嫌小会连提两次→一次给到位(≈2×; 硬件卡标题34/数值28px)
+§
+真机授权: 逐项列(动作/风险/回滚/现场前提); 老倪说'现场安全'=只读类放行, 动作类仍逐条请示; 三查(power/operation/has_error)不过或产线motion在跑→不下发
