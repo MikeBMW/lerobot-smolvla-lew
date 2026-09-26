@@ -39,6 +39,13 @@ SWM = "/home/ubuntu/stable-wm-cache"
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 NS = len(STAGES)
 
+# ★ 2026-09-26 ①-2 门控细化: 引擎状态机是 8 阶段(多一个"完成"), 原 MOE 只认 7 维 →
+#   引擎走到"完成"时 stage_p 行和为 0 → 走均匀兜底 → hard top-1 恒取 E0 (= "E0 吞阶段"真因)。
+#   这里显式给出**引擎阶段 → 专家**覆盖表, 并支持把 8 维/任意维 stage_p 投影到专家空间。
+STAGES_ENGINE = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]   # cognition.py 真源
+STAGE_TO_EXPERT = {"接近": 0, "对位": 1, "下降": 2, "抓取": 3,
+                   "抬起": 4, "转移": 5, "插入": 6, "完成": 6}   # 完成 并入 E6(插入/终止段)
+
 
 class StageMoE(nn.Module):
     """共享主干 + 阶段专家（先验门控）"""
@@ -68,6 +75,10 @@ class StageMoE(nn.Module):
                                     nn.Linear(expert_hidden, chunk * act_dim)),
             }))
         self.mem_dim = mem_dim
+        # ★ 2026-09-26 ①-2: 未识别阶段的兜底专家 (原为"均匀 1/7" → hard 路由恒取 E0, 静默吞阶段)
+        self.default_expert = int(os.environ.get("SS_MOE_DEFAULT_EXPERT", 6))
+        self.route_stats = {"frames": 0, "unrouted": 0, "per_expert": [0] * n_experts}
+        self._proj_cache = {}
 
     def forward(self, px, obs, obs_next, mem, stage_p, hard=True, route="prior"):
         """px:(B,3,H,W) obs:(B,39) mem:(B,13) stage_p:(B,7) 先验阶段概率
@@ -77,11 +88,29 @@ class StageMoE(nn.Module):
             feat = self.trunk(pixel_values=px).last_hidden_state.mean(1)
         h = self.fuse(torch.cat([feat, obs, mem], dim=1))                 # (B,256)
 
+        # ★ 2026-09-26 ①-2: stage_p 维数可能 ≠ 专家数 (引擎 8 阶段 vs 7 专家) → 先投影到专家空间
+        if stage_p.shape[1] != self.n_experts:
+            P = self._proj_cache.get(stage_p.shape[1])
+            if P is None or P.device != stage_p.device:
+                P = torch.zeros(stage_p.shape[1], self.n_experts, device=stage_p.device)
+                names = STAGES_ENGINE if stage_p.shape[1] == len(STAGES_ENGINE) else STAGES
+                for i, nm in enumerate(names[:stage_p.shape[1]]):
+                    P[i, STAGE_TO_EXPERT.get(nm, min(i, self.n_experts - 1))] = 1.0
+                self._proj_cache[stage_p.shape[1]] = P
+            stage_p = stage_p @ P                       # 8 维 one-hot(含"完成") → 7 维 (完成→E6)
+
         if route == "prior":
             # ★ 硬先验路由: 直接按阶段选择专家 (无自由学习 → 不可能坍缩)
-            g = stage_p / stage_p.sum(1, keepdim=True).clamp_min(1e-6)
-            g = torch.where(g.sum(1, keepdim=True) > 0.5, g,
-                            torch.full_like(g, 1.0 / self.n_experts))
+            rowsum = stage_p.sum(1, keepdim=True)
+            g = stage_p / rowsum.clamp_min(1e-6)
+            # 未识别阶段: 不再"均匀 1/7"(那会经 hard top-1 静默变 E0), 改走显式兜底专家并计数
+            unr = (rowsum.view(-1) <= 0.5)
+            if bool(unr.any()):
+                fb = torch.zeros_like(g)
+                fb[:, self.default_expert] = 1.0
+                g = torch.where(unr.view(-1, 1), fb, g)
+                if self.training or os.environ.get("SS_MOE_ROUTE_STATS"):
+                    self.route_stats["unrouted"] += int(unr.sum().item())
         else:
             prior = stage_p @ self.gate_prior
             logits = prior + self.gate_mlp(torch.cat([h, stage_p], dim=1))
@@ -94,6 +123,12 @@ class StageMoE(nn.Module):
 
         if hard:      # top-1 稀疏: 只回传选中专家的梯度 → 专家专注自己阶段
             idx = g.argmax(1)
+            try:                                    # ★ ①-2 路由覆盖统计 (取证用)
+                self.route_stats["frames"] += int(idx.numel())
+                for _e, _c in zip(*torch.unique(idx, return_counts=True)):
+                    self.route_stats["per_expert"][int(_e)] += int(_c)
+            except Exception:                                                # noqa: BLE001
+                pass
             w = F.one_hot(idx, self.n_experts).float()
             w = w + g - g.detach()           # STE: 前向硬、反向软
         else:
