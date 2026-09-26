@@ -10824,7 +10824,7 @@ class StudioMainWindow(QMainWindow):
         self.setWindowTitle("XSpace Studio — Z-MAX v5.15.14 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.15.14: 三相机并存: 「🧩 场景叠加」支持 臂上D405 + 笔记本内置(video2) + MAXHUB顶摄(video0); 端点改正则通用路由(加源不动路由表), /stats 下发相机实名label(不再靠参数名猜); 画布节点改为 2x2 拼图(逐格标 相机名/框数/真值链/规格龄 + 每路帧龄), 掉线路如实标"未接"; /gen 带 cam 参数; sim/scene 真几何框只对臂上有效, 本机两路如实拒绝(无手眼); 取证: verify_three_cameras.py + verify_three_cam_canvas.py
+        # v5.15.14: 三相机并存: 「🧩 场景叠加」支持 臂上D405 + 笔记本内置(video2) + MAXHUB顶摄(video0); 端点改正则通用路由(加源不动路由表), /stats 下发相机实名label(不再靠参数名猜); 画布节点改为 2x2 拼图(逐格标 相机名/框数/真值链/规格龄 + 每路帧龄), 掉线路如实标"未接"; /gen 带 cam 参数; sim/scene 真几何框只对臂上有效, 本机两路如实拒绝(无手眼); 取证: verify_three_cameras.py + verify_three_cam_canvas.py; 叠加页改**大图**(🧩叠加图/📷原始图/▣并排/⛶全屏, 点画面全屏), 按钮改为开**最大化新窗并搬到控制台那块屏**; 空画布点按钮自动加载工作流再出画面
         # v5.15.13 (2026-09-27): 🎯🎯 **手眼标定 T_base_cam 首次解出(双轴方案) + 标定工具/独立物理检验 + 版本号一致性修复**
         #   ① 【双轴是硬需求, 不是"转大点就行"】单绕世界Z轴 ⇒ R_i=Rz(ψ_i)·R_ref ⇒ R_iᵀR_j 转轴恒为 R_refᵀ·(0,0,1)
         #      ⇒ **31 对相对旋转的转轴夹角实测 中位 0.0° / max 0.0°(全平行)** ⇒ OpenCV 5 种方法全给 NaN 或 10⁷mm 级

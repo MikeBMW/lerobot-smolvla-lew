@@ -583,80 +583,99 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Z-MAX 场景叠加 · 真实视频流 + 仿真边界框</title>
 <style>
- body{margin:0;background:#0b0f14;color:#e6edf3;font:16px/1.55 -apple-system,Segoe UI,Roboto,sans-serif}
- header{padding:12px 16px;background:#111820;border-bottom:1px solid #223}
- h1{margin:0;font-size:20px;font-weight:600}
- .meta{color:#8b98a5;font-size:14px;margin-top:4px}
- .bar{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;background:#0e151c;border-bottom:1px solid #223;
-      position:sticky;top:0;z-index:9}
- button{font:15px/1 inherit;padding:11px 16px;border-radius:9px;border:1px solid #2d3a47;
+ html,body{margin:0;height:100%;background:#0b0f14;color:#e6edf3;
+   font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
+ body{display:flex;flex-direction:column;overflow:hidden}
+ header{padding:8px 14px;background:#111820;border-bottom:1px solid #223;flex:0 0 auto}
+ h1{margin:0;font-size:17px;font-weight:600}
+ .meta{color:#8b98a5;font-size:12px;margin-top:2px}
+ .bar{display:flex;flex-wrap:wrap;gap:6px;padding:7px 14px;background:#0e151c;
+      border-bottom:1px solid #223;flex:0 0 auto;align-items:center}
+ button{font:14px/1 inherit;padding:9px 13px;border-radius:8px;border:1px solid #2d3a47;
         background:#16202b;color:#e6edf3;cursor:pointer}
  button:hover{background:#1d2a37}
  button.on{background:#1f6feb;border-color:#1f6feb;color:#fff}
  button.go{background:#238636;border-color:#238636;color:#fff;font-weight:600}
- .wrap{display:grid;grid-template-columns:1fr;gap:12px;padding:12px}
- @media(min-width:1000px){.wrap{grid-template-columns:1fr 1fr}}
- .card{background:#111820;border:1px solid #223;border-radius:10px;overflow:hidden}
- .card h2{margin:0;padding:10px 14px;font-size:15px;font-weight:600;background:#0e151c;
-          border-bottom:1px solid #223;display:flex;justify-content:space-between}
- .tag{font-weight:400;color:#8b98a5;font-size:13px}
- img{display:block;width:100%;height:auto;background:#000}
- .panel{margin:0 12px 12px;padding:14px 16px;background:#111820;border:1px solid #223;border-radius:10px;
-        font-size:15px}
- .panel b{color:#7ee787}
- .row{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px}
- .k{color:#8b98a5;font-size:13px}
- code{color:#7ee787;font-size:13px}
- .lg{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
- .msg{padding:10px 16px;color:#d29922;font-size:14px}
-</style></head><body>
+ .sep{width:1px;height:22px;background:#223;margin:0 4px}
+ /* 舞台: 吃满剩余高度 —— 图像尽量大 (老倪: 图像要大一些) */
+ #stage{flex:1 1 auto;min-height:0;position:relative;background:#000}
+ #stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+            display:none;cursor:zoom-in;background:#000}
+ body.m_ov   #ov{display:block}
+ body.m_raw  #raw{display:block}
+ body.m_both #stage{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#0b0f14}
+ body.m_both #stage img{position:static;display:block;height:100%}
+ #tape{position:absolute;left:0;right:0;bottom:0;padding:5px 10px;background:rgba(8,12,16,.72);
+       color:#7ee787;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;pointer-events:none;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ body.m_both #tape{position:static;grid-column:1/-1;background:#0b0f14}
+ .foot{flex:0 0 auto;display:flex;gap:16px;flex-wrap:wrap;padding:6px 14px;background:#0e151c;
+       border-top:1px solid #223;font-size:13px;color:#8b98a5}
+ .foot b{color:#e6edf3}
+ .lg{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+ .msg{flex:0 0 auto;padding:6px 14px;color:#d29922;font-size:13px;background:#0e151c}
+ code{color:#7ee787;font-size:12px}
+</style></head><body class="m_ov">
 <header>
   <h1>🧩 场景叠加 · 真实视频流 + 仿真场景边界框</h1>
-  <div class="meta">真实画面 = 原始视频流 · 框 = 仿真投影 / L5 大模型理解 / 真机检测（颜色区分，不混为一谈）</div>
+  <div class="meta">真实画面 = 原始视频流 · 框 = 仿真投影 / L5 大模型理解 / 真机检测（颜色区分，不混为一谈）· 点画面=全屏</div>
 </header>
 <div class="bar">
   <button id="c_arm" class="on" onclick="setCam('arm')">🦾 臂上相机</button>
   <button id="c_local" onclick="setCam('local')">💻 笔记本内置</button>
-  <button id="c_local2" onclick="setCam('local2')">📺 MAXHUB 电视顶摄</button>
-  <span style="width:1px;background:#223;margin:0 4px"></span>
+  <button id="c_local2" onclick="setCam('local2')">📺 MAXHUB 顶摄</button>
+  <span class="sep"></span>
+  <button id="m_ov" class="on" onclick="setMode('m_ov')">🧩 叠加图</button>
+  <button id="m_raw" onclick="setMode('m_raw')">📷 原始图</button>
+  <button id="m_both" onclick="setMode('m_both')">▣ 并排</button>
+  <button onclick="fs()">⛶ 全屏</button>
+</div>
+<div class="bar">
   <button class="go" onclick="gen('sim')">🎯 仿真场景投影</button>
   <button class="go" onclick="gen('vlm')">🧠 L5 大模型理解</button>
   <button class="go" onclick="gen('scene')">📋 场景契约框</button>
   <button onclick="gen('det')">🔍 真机检测</button>
+  <span class="sep"></span>
   <button onclick="load()">↻ 刷新</button>
 </div>
 <div id="msg" class="msg"></div>
-<div class="wrap">
-  <div class="card">
-    <h2>📷 原始真实画面 <span class="tag" id="raw_tag">—</span></h2>
-    <img id="raw" src="/arm.mjpg" alt="raw">
-  </div>
-  <div class="card">
-    <h2>🧩 叠加后 <span class="tag" id="ov_tag">—</span></h2>
-    <img id="ov" src="/overlay/arm.mjpg" alt="overlay">
-  </div>
+<div id="stage">
+  <img id="raw" src="/arm.mjpg" alt="raw" onclick="fs()">
+  <img id="ov" src="/overlay/arm.mjpg" alt="overlay" onclick="fs()">
+  <div id="tape">帧龄 —</div>
 </div>
-<div class="panel">
-  <div>规格: <b id="mode">—</b> · 源 <span class="k" id="src"></span> · 更新 <span class="k" id="age"></span></div>
-  <div class="row">
-    <span><span class="lg" style="background:#22c55e"></span>仿真 <b id="n_sim">0</b></span>
-    <span><span class="lg" style="background:#00b0ff"></span>大模型 <b id="n_vlm">0</b></span>
-    <span><span class="lg" style="background:#eb3c3c"></span>检测 <b id="n_det">0</b></span>
-    <span><span class="lg" style="background:#888"></span>跳过 <b id="n_skip">0</b></span>
-  </div>
-  <div class="row"><span class="k">手眼</span><span id="he">—</span></div>
-  <div class="row"><span class="k">TCP</span><span id="tcp">—</span></div>
-  <div class="row"><span class="k">跳过原因</span><span id="skip">—</span></div>
-  <div class="row"><span class="k">生成任务</span><span id="gen">—</span></div>
+<div class="foot">
+  <span>规格 <b id="mode">—</b></span>
+  <span>更新 <b id="age">—</b></span>
+  <span><span class="lg" style="background:#22c55e"></span>仿真 <b id="n_sim">0</b></span>
+  <span><span class="lg" style="background:#00b0ff"></span>大模型 <b id="n_vlm">0</b></span>
+  <span><span class="lg" style="background:#eb3c3c"></span>检测 <b id="n_det">0</b></span>
+  <span><span class="lg" style="background:#888"></span>跳过 <b id="n_skip">0</b></span>
+  <span>手眼 <b id="he">—</b></span>
+  <span>TCP <b id="tcp">—</b></span>
+  <span>画框 <b id="ov_tag">0</b></span>
+  <span>源 <b id="src">—</b></span>
+  <span>任务 <b id="gen">—</b></span>
+  <span>跳过 <b id="skip">—</b></span>
 </div>
 <script>
-let CAM='arm', t0=Date.now();
+let CAM='arm', MODE='m_ov', t0=Date.now();
 const CAMS=['arm','local','local2'];
 function setCam(c){
   CAM=c; t0=Date.now();
   CAMS.forEach(n=>{const b=document.getElementById('c_'+n); if(b) b.className=(n===c)?'on':'';});
   document.getElementById('raw').src='/'+c+'.mjpg?t='+t0;
   document.getElementById('ov').src='/overlay/'+c+'.mjpg?t='+t0;
+}
+function setMode(m){
+  MODE=m; document.body.className=m;
+  ['m_ov','m_raw','m_both'].forEach(x=>{
+    const b=document.getElementById(x); if(b) b.className=(x===m)?'on':'';});
+}
+function fs(){
+  // 点画面 = 全屏 (要更大的图就再点一次退出)
+  if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||function(){}).call(document.documentElement); }
+  else { (document.exitFullscreen||function(){}).call(document); }
 }
 async function gen(kind){
   const r=await fetch('/gen?kind='+kind+'&cam='+CAM); const j=await r.json();
@@ -681,9 +700,17 @@ async function load(){
     const sk=(inf.skipped||[]).map(x=>x[0]+'('+x[1]+')').join(' · ')||'—';
     document.getElementById('skip').textContent=sk;
     document.getElementById('gen').textContent=(g.busy?('跑: '+g.busy):(g.last||'空闲'));
-    document.getElementById('raw_tag').textContent='帧 '+new Date().toLocaleTimeString();
-    document.getElementById('ov_tag').textContent='画框 '+(inf.drawn||0)+' 个';
+    document.getElementById('ov_tag').textContent=(inf.drawn||0);
     if(g.last) document.getElementById('msg').textContent='✓ '+g.last;
+    // 真值带: 帧龄直接取 /stats (跨域同源, 拿不到就留旧值)
+    const st=await (await fetch('/stats')).json();
+    const sv=st['ov_'+CAM]||st[CAM]||{};
+    document.getElementById('tape').textContent =
+      '相机 '+CAM+' · 帧龄 '+(sv.age_s!==undefined?sv.age_s+'s':'—')+
+      ' · 源 '+(sv.fps!==undefined?sv.fps+'fps':'—')+
+      ' · 画框 '+((inf.origins?Object.entries(inf.origins).map(([k,v])=>k+v).join(' '):''))+
+      ' · '+(inf.tcp_ok?'手眼OK':'无手眼')+
+      ' · '+new Date().toLocaleTimeString();
   }catch(e){}
 }
 setInterval(load,1500);load();

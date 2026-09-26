@@ -7718,24 +7718,91 @@ class SimulinkModule(QWidget):
                 return "%s" % e
 
         def _open_browser(u):
-            """显式开浏览器并**检查返回值** (QDesktopServices.openUrl 曾经静默失败:
-            日志连打三次"页已打开", 浏览器 History 里 0 条该 URL)"""
-            for _cmd in (["xdg-open", u], ["gio", "open", u]):
+            """显式开浏览器**新窗口并最大化** (老倪 2026-09-27: 「应该显示一个浏览器网页…图像要大一些」)
+
+            🐛 原实现只 xdg-open: 它会把地址塞进**已经开着的小窗口**里(甚至另一台显示器),
+               用户看到的就是"一个小窗口, 啥都看不到"。xdg-open 也无法指定窗口尺寸。
+               ⇒ 改成: 认到具体浏览器就用 `--new-window --start-maximized`, 再用 wmctrl
+                 把标题含"场景叠加"的窗口激活+最大化 (浏览器起在哪都能拉回正视野)。
+            返回 (bool 成功, str 说明)。
+            """
+            import shutil
+            tried = []
+            for exe, flags in (("chromium", ["--new-window", "--start-maximized"]),
+                               ("chromium-browser", ["--new-window", "--start-maximized"]),
+                               ("google-chrome", ["--new-window", "--start-maximized"]),
+                               ("firefox", ["--new-window"])):
+                p = shutil.which(exe)
+                if not p:
+                    continue
                 try:
-                    p = subprocess.run(_cmd, timeout=20,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    if p.returncode == 0:
-                        return "ok:" + _cmd[0]
+                    subprocess.Popen([p] + flags + [u], stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, start_new_session=True)
+                    tried.append(exe + "(新窗最大化)")
+                    break
                 except Exception:
                     continue
+            if not tried:
+                for _cmd in (["xdg-open", u], ["gio", "open", u]):
+                    try:
+                        r = subprocess.run(_cmd, timeout=20, stdout=subprocess.DEVNULL,
+                                           stderr=subprocess.DEVNULL)
+                        if r.returncode == 0:
+                            tried.append(_cmd[0])
+                            break
+                    except Exception:
+                        continue
+            if not tried:
+                try:
+                    from PyQt5.QtCore import QUrl
+                    from PyQt5.QtGui import QDesktopServices
+                    if QDesktopServices.openUrl(QUrl(u)):
+                        tried.append("QDesktopServices")
+                except Exception:
+                    pass
+            if not tried:
+                return False, "没找到可用的浏览器"
+            _win = ""
+            for _ in range(16):                       # 最多等 8s 让窗口冒出来
+                time.sleep(0.5)
+                try:
+                    _out = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
+                                          timeout=4).stdout
+                except Exception:
+                    _out = ""
+                for _ln in _out.splitlines():
+                    if "场景叠加" in _ln:
+                        _win = _ln.split(None, 3)[-1]
+                        break
+                if _win:
+                    break
+            if not _win:
+                return True, "%s (窗口没认出来, 未最大化)" % tried[0]
+            # 🐛 实测: 浏览器起在了**另一台显示器** (3840x2086 @ x=3200), 老倪在主屏前看不到。
+            #   ⇒ 先把窗口搬到控制台所在的那块屏 (按 studio 窗口坐标), 再最大化 + 激活。
+            _geo = None
             try:
-                from PyQt5.QtCore import QUrl
-                from PyQt5.QtGui import QDesktopServices
-                if QDesktopServices.openUrl(QUrl(u)):
-                    return "ok:QDesktopServices"
+                _gout = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                                       timeout=4).stdout
+                for _ln in _gout.splitlines():
+                    if "XSpace Studio" in _ln:
+                        _p = _ln.split(None, 7)
+                        _geo = (int(_p[2]), int(_p[3]), int(_p[4]), int(_p[5]))
+                        break
             except Exception:
-                pass
-            return "fail"
+                _geo = None
+            _cmds = []
+            if _geo:
+                _cmds.append(["wmctrl", "-r", _win, "-e", "0,%d,%d,%d,%d" % _geo])
+            _cmds += [["wmctrl", "-r", _win, "-b", "add,maximized_vert,maximized_horz"],
+                      ["wmctrl", "-a", _win]]
+            for _cmd in _cmds:
+                try:
+                    subprocess.run(_cmd, timeout=5, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+            return True, "%s · 窗口已最大化%s" % (tried[0], "到控制台那块屏" if _geo else "")
 
         def _work():
             # 1) 视频流在不在 (不在 ⇒ 第 3 步带叠加起)
@@ -7778,11 +7845,12 @@ class SimulinkModule(QWidget):
                     url = _u
                     break
                 self.log_signal.emit("⚠️ 场景叠加页地址不可达 (%s → %s)" % (_u, _st))
-            _how = _open_browser(url)
-            if _how.startswith("ok"):
-                self.log_signal.emit("🧩 场景叠加页已打开 (%s): %s" % (_how[3:], url))
-                self.log_signal.emit("   左=原始画面 · 右=叠加后(🟢仿真投影 🔵大模型 🔴真机检测) · "
-                                     "画面底部真值带含帧龄/TCP/手眼")
+            _ok, _how = _open_browser(url)
+            if _ok:
+                self.log_signal.emit("🧩 场景叠加页已打开（浏览器）: %s" % _how)
+                self.log_signal.emit("   地址（可复制）: %s" % url)
+                self.log_signal.emit("   页内: 🧩叠加图 / 📷原始图 / ▣并排 / ⛶全屏 · 三路相机按钮 · "
+                                     "点画面=全屏 · 底部真值带含帧龄/手眼/TCP")
             else:
                 self.log_signal.emit("⚠️ 浏览器没起来 (%s) — 地址自取: %s" % (_how, url))
 
