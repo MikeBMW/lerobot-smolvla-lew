@@ -1,0 +1,17 @@
+[Unit]
+# 开机一次性: 应用旋钮/预热/体检/落台账。真逻辑在脚本里, unit 只做薄壳。
+Description=<一句话说清它每次开机做什么>
+Documentation=file:<仓库里的报告/SKILL 路径>
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/abs/path/to/repo/tools/<名>.sh
+RemainAfterExit=yes
+TimeoutStartSec=150
+# 非致命失败不要拖死开机 (脚本内部每步已自带超时)
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target
