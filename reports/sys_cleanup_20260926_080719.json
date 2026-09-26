@@ -1,0 +1,127 @@
+{
+ "ts": "2026-09-26 08:07:27 CST",
+ "disk_used_mb_before": 298153,
+ "disk_used_mb_after": 297528,
+ "freed_mb": 625,
+ "items_total_freed_mb": 835,
+ "items": [
+  {
+   "name": "journal→200M",
+   "path": "/var/log/journal",
+   "mb_before": 438,
+   "mb_after": 151,
+   "freed_mb": 287
+  },
+  {
+   "name": "apt 列表缓存",
+   "path": "/var/lib/apt/lists",
+   "mb_before": 272,
+   "mb_after": 1,
+   "freed_mb": 271
+  },
+  {
+   "name": "uv 缓存",
+   "path": "/home/ubuntu/.cache/uv",
+   "mb_before": 255,
+   "mb_after": 1,
+   "freed_mb": 254
+  },
+  {
+   "name": "pip 缓存",
+   "path": "/home/ubuntu/.cache/pip",
+   "mb_before": 12,
+   "mb_after": 1,
+   "freed_mb": 11
+  },
+  {
+   "name": "日志轮转",
+   "path": "/var/log",
+   "mb_before": 320,
+   "mb_after": 315,
+   "freed_mb": 5
+  },
+  {
+   "name": "chromium 缓存",
+   "path": "/home/ubuntu/snap/chromium/common/.cache",
+   "mb_before": 5,
+   "mb_after": 1,
+   "freed_mb": 4
+  },
+  {
+   "name": "mesa 着色器",
+   "path": "/home/ubuntu/.cache/mesa_shader_cache",
+   "mb_before": 4,
+   "mb_after": 1,
+   "freed_mb": 3
+  },
+  {
+   "name": "apt 归档",
+   "path": "/var/cache/apt/archives",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "崩溃转储",
+   "path": "/var/crash",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "HF incomplete",
+   "path": "/home/ubuntu/.cache/huggingface",
+   "mb_before": 2481,
+   "mb_after": 2481,
+   "freed_mb": 0
+  },
+  {
+   "name": "缩略图",
+   "path": "/home/ubuntu/.cache/thumbnails",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "tracker3 索引",
+   "path": "/home/ubuntu/.cache/tracker3",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "GNOME 缩略器",
+   "path": "/home/ubuntu/.cache/gnome-desktop-thumbnailer",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "回收站",
+   "path": "/home/ubuntu/.local/share/Trash/files",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "snap 应用缓存",
+   "path": "/home/ubuntu/snap/snap-store/common/.cache",
+   "mb_before": 1,
+   "mb_after": 1,
+   "freed_mb": 0
+  },
+  {
+   "name": "系统临时(已回收)",
+   "path": "/tmp",
+   "mb_before": 39,
+   "mb_after": 39,
+   "freed_mb": 0
+  }
+ ],
+ "dns_cache_entries": [
+  "",
+  ""
+ ],
+ "ttfb_npmmirror_s": "0.099142",
+ "note": "只删可再生缓存; 保护清单见 sys_clean.log; 真机数据/权重/仓库未动"
+}
