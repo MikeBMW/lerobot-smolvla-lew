@@ -69,13 +69,17 @@ def main() -> int:
     ap.add_argument("--steps", type=int, default=260)
     ap.add_argument("--mode", default="insert")
     ap.add_argument("--task", default=None, help="语言串 (缺省=引擎默认, 与训练同源)")
+    ap.add_argument("--cks", default=None, help="自定义档位: '标签=ckpt路径,标签=ckpt路径' (覆盖内置 A/B)")
     a = ap.parse_args()
 
     print("═" * 80)
     print("🎯 t21 · L3 策略真实成功率 (引擎闭环口径: visual39 + _l3_pre + 128 图 + task 串)")
     print("═" * 80)
     res = {}
-    for tag, ck in (("A 正对照(默认 v10_1h)", CK_DEFAULT), ("B 候选(state_space_mw5w)", CK_CAND)):
+    pairs = (("A 正对照(默认 v10_1h)", CK_DEFAULT), ("B 候选(state_space_mw5w)", CK_CAND))
+    if a.cks:
+        pairs = tuple((x.split("=", 1)[0].strip(), x.split("=", 1)[1].strip()) for x in a.cks.split(",") if "=" in x)
+    for tag, ck in pairs:
         p = os.path.join(R, ck)
         exists = os.path.isdir(p)
         print("\n▶ %s\n   ckpt=%s (%s)" % (tag, ck, "存在" if exists else "❌ 不存在"), flush=True)

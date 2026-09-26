@@ -58,24 +58,28 @@ def capture(n=1):
             print("❌ 10082 /capture_detect 失败: %s: %s" % (type(e).__name__, str(e)[:120]))
             print("   (现场需要 A2 授权 + 工控机可达; 现在只做脚手架准备)")
             return made
-        # 取回判决图 (base64 或 URL 两种形态都兼容)
-        img_b64 = r.get("image_b64") or r.get("judge_b64") or ""
-        img_path = ""
-        if img_b64:
-            img_path = os.path.join(ANN, "cap_%s_%d.png" % (ts, i))
-            with open(img_path, "wb") as f:
-                f.write(base64.b64decode(img_b64.split(",")[-1]))
-        elif r.get("judge_url") or r.get("image_url"):
-            url = r.get("judge_url") or r.get("image_url")
-            img_path = os.path.join(ANN, "cap_%s_%d.png" % (ts, i))
-            with urllib.request.urlopen(url, timeout=20, context=CTX) as rr, open(img_path, "wb") as f:
-                f.write(rr.read())
+        # 🎯 实测真路由 (2026-09-26): POST /capture_detect = 受理触发; 图走 GET /picture (全分辨率 PNG);
+        #    判决走 GET /last_result (JSON: count/defects/detect_type/ms)
+        img_path = os.path.join(ANN, "cap_%s_%d.png" % (ts, i))
+        try:
+            with urllib.request.urlopen(CAM + "/picture", timeout=60, context=CTX) as rr:
+                data = rr.read()
+            open(img_path, "wb").write(data)
+        except Exception as e:                                                # noqa: BLE001
+            print("   ⚠️ /picture 取图失败: %s" % str(e)[:80])
+            img_path = ""
+        try:
+            with urllib.request.urlopen(CAM + "/last_result", timeout=30, context=CTX) as rr:
+                r = json.loads(rr.read().decode() or "{}")
+        except Exception:                                                     # noqa: BLE001
+            pass
         stub = {
             "image": os.path.basename(img_path) if img_path else None,
             "ts": time.strftime("%F %T"),
             "source": CAM,
-            "size": r.get("size") or "960x960",          # 训练/推理同源口径 (老倪: topview 960×960)
-            "verdict": r.get("verdict") or r.get("result") or None,
+            "size": r.get("size") or "2448x2048 (相机原图; 训练同源口径 960×960 需按老倪口径裁减)",
+            "verdict": {"count": r.get("count"), "defects": (r.get("defects") or [])[:5],
+                        "detect_type": r.get("detect_type"), "ms": r.get("ms")},
             "boxes": [],                                  # ← 现场框选后填 [[x1,y1,x2,y2,cls], ...]
             "classes": ["gold_finger", "defect", "foreign"],   # 光模块金手指 / 缺陷 / 异物
             "caliber_note": "判据图口径: 手选框 > 原图自裁 > 拉长图 (老倪口径)",

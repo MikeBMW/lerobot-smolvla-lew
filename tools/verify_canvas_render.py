@@ -39,7 +39,7 @@ if err:
     print("❌ 加载异常:\n%s" % err[-800:])
 # 已知: 167 条连线里恒有 1 条不渲染 (add_link 对完全重复的 (f,t) 去重; 改前 165→164 同样如此)
 ok = (n_items == len(spec["nodes"])) and (n_links >= len(spec["links"]) - 1) and not err
-print("判据: %s" % ("✅ 渲染正常 (节点全出; 连线=%d, 文件 %d, 差 %d 系既有去重行为)"
-                   % (len(spec["nodes"]), n_links, len(spec["links"]), len(spec["links"]) - n_links) if ok else "❌ 渲染不一致"))
+print("判据: " + ("✅ 渲染正常 (节点全出; 连线 %d/%d, 差 %d 系既有去重行为)"
+                   % (n_links, len(spec["links"]), len(spec["links"]) - n_links) if ok else "❌ 渲染不一致"))
 sys.stdout.flush()
 os._exit(0 if ok else 3)

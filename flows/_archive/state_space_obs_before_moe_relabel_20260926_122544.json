@@ -1859,7 +1859,7 @@
   {
    "id": "ss_moe",
    "type": "model",
-   "name": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (在役)",
+   "name": "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (建设中)",
    "icon": "🧬",
    "color": "#a371f7",
    "w": 330,
@@ -1868,7 +1868,7 @@
     "desc": "[L4 认知主干改造·建设中] 7 阶段专属专家 (接近/对位/下降/抓取/抬起/转移/插入) + 先验门控路由 (skill_ctx 24D dim13:20 阶段概率), 主干 SmolVLM2 SigLIP 768d 冻结 (86.4M), 只训专家+门控; 数据 v6_sub25k (25k 帧, 3.5GB 缓存); 实测 s1 留出 观测 0.0106@1500 → s2 best 观测 0.0093 / 动作 0.0503 (平凡基线 0.0366/0.0955 → 优 75%/47%); ⏳ 待办: 门控分化诊断 → 同数据密集基线 A/B → 引擎闭环 n=10",
     "source": "tools/stage_moe_backbone.py",
     "source_symbol": "class StageMoE",
-    "status": "在役 (2026-09-26 会话四: 修 8 阶段覆盖 + 零回退逐位同; ckpt 真加载 7 专家)",
+    "status": "建设中",
     "todo": true,
     "ckpt": "checkpoints/stage_moe/moe.pt (351MB)"
    },
@@ -1886,7 +1886,7 @@
   {
    "id": "ss_lora_l4",
    "type": "model",
-   "name": "🎛 L4 · INTACT LoRA 微调 (r8/α16) · 接入中",
+   "name": "🎛 L4 · INTACT LoRA 微调 (r8/α16 · A/B 未证明提升)",
    "icon": "🎛",
    "color": "#ffa657",
    "w": 330,
@@ -1895,7 +1895,7 @@
     "desc": "[L4 微调] INTACT 本域 LoRA: 注入 112 层线性 (r=8/α=16), 从官方 pusht 权重初始化, 数据 optical_insert v6 真机示教; 产物必须 merge 后才可部署 (包装键→Missing key→trained=False 零动作); 现状: 200 步产物 A/B 未证明提升 → 不切在役指针; 2026-09-24 Δu 逐帧诊断定位根因 = 幅值比中位 5.2~5.8× (闸门红线 1.5×) 被 L2 收口闸逐帧否决",
     "source": "tools/lora_inject.py",
     "source_symbol": "def inject_lora",
-    "status": "保留·接入中 (2026-09-26 老倪: 保留并接入系统; 需 merge 后才生效)",
+    "status": "未证明提升",
     "todo": true,
     "ckpt": "checkpoints/intact_goal_optical_insert_v6lora_200"
    },
@@ -1911,7 +1911,7 @@
   {
    "id": "ss_lora_l3",
    "type": "model",
-   "name": "🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+   "name": "🎛 L3 · SmolVLA LoRA 微调 (200 步 · loss 0.192)",
    "icon": "🎛",
    "color": "#ffa657",
    "w": 330,
@@ -1920,7 +1920,7 @@
     "desc": "[L3 微调] SmolVLA 本域 LoRA: VLM 注意力 + action expert (flow-matching 头) 注入, batch2 / LoRA; 实测 200 步 / 3670s · loss 0.192 · action_loss 0.2368 · 显存 3.75GB; ⏳ 待办: 与统一主干/阶段专家 MOE 同口径评测后才进默认档",
     "source": "tools/lora_inject.py",
     "source_symbol": "class LoRALinear",
-    "status": "保留·接入中 (2026-09-26 老倪: 保留并接入系统; 需 merge 后才生效)",
+    "status": "已产出未评测",
     "todo": true,
     "ckpt": "outputs/train/smolvla_lew_lora_200r4/checkpoints"
    },
