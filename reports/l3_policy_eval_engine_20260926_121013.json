@@ -1,0 +1,203 @@
+{
+ "ts": "2026-09-26 12:10:13",
+ "seeds": 5,
+ "steps": 420,
+ "result": {
+  "A 正对照(默认 v10_1h)": {
+   "ckpt": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+   "n": 5,
+   "success": 0,
+   "rate": 0.0,
+   "rows": [
+    {
+     "engine_says": "🏆 L3 真执行接入: SmolVLA-Lew · 模型 ckpt = outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model — xyz 由模型出, gripper 由状态机管 · 🗣 语言 'metaworld 光模块插拔'",
+     "seed": 0,
+     "steps": 420,
+     "wall_s": 30.4,
+     "done": false,
+     "insert_mm_end": 84.8,
+     "insert_mm_min": 16.1,
+     "stages_seen": [
+      "接近",
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移"
+     ],
+     "reached_insert": false
+    },
+    {
+     "engine_says": "",
+     "seed": 1,
+     "steps": 420,
+     "wall_s": 10.2,
+     "done": false,
+     "insert_mm_end": 22.6,
+     "insert_mm_min": 1.3,
+     "stages_seen": [
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移",
+      "转移 · 接触"
+     ],
+     "reached_insert": false
+    },
+    {
+     "engine_says": "",
+     "seed": 2,
+     "steps": 420,
+     "wall_s": 10.2,
+     "done": false,
+     "insert_mm_end": 98.5,
+     "insert_mm_min": 7.3,
+     "stages_seen": [
+      "接近",
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移"
+     ],
+     "reached_insert": false
+    },
+    {
+     "engine_says": "",
+     "seed": 3,
+     "steps": 420,
+     "wall_s": 10.4,
+     "done": false,
+     "insert_mm_end": 86.4,
+     "insert_mm_min": 7.4,
+     "stages_seen": [
+      "接近",
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移"
+     ],
+     "reached_insert": false
+    },
+    {
+     "engine_says": "",
+     "seed": 4,
+     "steps": 420,
+     "wall_s": 11.1,
+     "done": false,
+     "insert_mm_end": 172.2,
+     "insert_mm_min": 5.3,
+     "stages_seen": [
+      "接近",
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移"
+     ],
+     "reached_insert": false
+    }
+   ]
+  },
+  "B 候选(state_space_mw5w)": {
+   "ckpt": "outputs/train/state_space_mw5w/checkpoints/030000/pretrained_model",
+   "n": 5,
+   "success": 1,
+   "rate": 0.2,
+   "rows": [
+    {
+     "engine_says": "",
+     "seed": 0,
+     "steps": 378,
+     "wall_s": 5.2,
+     "done": true,
+     "insert_mm_end": 65.2,
+     "insert_mm_min": 1.0,
+     "stages_seen": [
+      "抓取",
+      "抬起",
+      "转移",
+      "插入",
+      "插入 · 接触",
+      "完成"
+     ],
+     "reached_insert": true
+    },
+    {
+     "engine_says": "",
+     "seed": 1,
+     "steps": 420,
+     "wall_s": 5.3,
+     "done": false,
+     "insert_mm_end": 26.9,
+     "insert_mm_min": 1.3,
+     "stages_seen": [
+      "插入",
+      "插入 · 接触",
+      "转移 · 接触",
+      "下降 · 接触",
+      "抓取 · 接触",
+      "抬起 · 接触"
+     ],
+     "reached_insert": true
+    },
+    {
+     "engine_says": "",
+     "seed": 2,
+     "steps": 420,
+     "wall_s": 5.1,
+     "done": false,
+     "insert_mm_end": 89.8,
+     "insert_mm_min": 5.2,
+     "stages_seen": [
+      "抬起",
+      "转移",
+      "转移 · 接触",
+      "插入",
+      "插入 · 接触",
+      "对位 · 接触"
+     ],
+     "reached_insert": true
+    },
+    {
+     "engine_says": "",
+     "seed": 3,
+     "steps": 420,
+     "wall_s": 5.3,
+     "done": false,
+     "insert_mm_end": 20.4,
+     "insert_mm_min": 1.4,
+     "stages_seen": [
+      "对位 · 接触",
+      "下降 · 接触",
+      "抓取 · 接触",
+      "转移 · 接触",
+      "插入",
+      "插入 · 接触"
+     ],
+     "reached_insert": true
+    },
+    {
+     "engine_says": "",
+     "seed": 4,
+     "steps": 420,
+     "wall_s": 5.4,
+     "done": false,
+     "insert_mm_end": 32.6,
+     "insert_mm_min": 2.4,
+     "stages_seen": [
+      "对位",
+      "下降",
+      "抓取",
+      "抬起",
+      "转移",
+      "对位 · 接触"
+     ],
+     "reached_insert": false
+    }
+   ]
+  }
+ }
+}
