@@ -25,6 +25,29 @@ import time
 import numpy as np
 
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
+# ★ 2026-09-26 L3 修复: 引擎真源是 8 阶段 (cognition.py 含"完成"), 且 trace 里阶段名可能带 "阶段 " 前缀
+#   → 原来 `stg in STAGES` 永远 False, skill_ctx 被静默写成常量 (dim13=1)。这里显式归一化 + 独立未知槽。
+STAGES8 = STAGES + ["完成"]
+SK_UNKNOWN_SLOT = 13 + len(STAGES8)          # = 20 (24 维里留出)
+
+# 阶段名别名 (planner.py 的另一套命名 → 引擎阶段)
+_STAGE_ALIAS = {"取料": "接近", "运输": "转移", "扫码": "对位", "对准": "对位",
+                "检测": "插入", "拔出": "插入", "分拣": "完成", "完成": "完成"}
+
+
+def stage_index(stg):
+    """阶段名 → 索引 (0..7) / None=未识别 (★ 不再静默降级为 0)"""
+    if stg is None:
+        return None
+    t = str(stg).strip()
+    for pre in ("阶段 ", "阶段", "stage ", "Stage ", "STAGE "):
+        if t.startswith(pre):
+            t = t[len(pre):].strip()
+    if t in STAGES8:
+        return STAGES8.index(t)
+    if t in _STAGE_ALIAS:
+        return STAGES8.index(_STAGE_ALIAS[t])
+    return None
 ROOT = "/home/ubuntu/lerobot-smolvla-lew"
 sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, f"{ROOT}/tools/gui")
@@ -186,6 +209,7 @@ def main():
         if d["id"] % a.save_every == 0:
             print(f"      [diag] 变体{d['id']} 关键帧 {len(kf)} 个: {list(kf)[:4]}", flush=True)
         obs_buf, act_buf, px_buf, sk_buf = [], [], [], []
+        _unrecognized = [0]
         n = min(len(obs_l), len(act_l) if act_l else 0)
         for t in range(n):
             obs = np.asarray(obs_l[t], dtype=np.float32).ravel()[:39]
@@ -210,7 +234,10 @@ def main():
             av = np.asarray(act_l[t], dtype=np.float32).ravel()[:4]
             if av.shape[0] < 4:
                 av = np.pad(av, (0, 4 - av.shape[0]))
-            _si = STAGES.index(stg) if stg in STAGES else 0
+            _si = stage_index(stg)
+            if _si is None:                       # ★ 未识别: 独立槽 + 计数 (旧行为=伪装成"接近")
+                _si = SK_UNKNOWN_SLOT - 13
+                _unrecognized[0] += 1
             _sk = np.zeros(24, dtype=np.float32); _sk[13 + _si] = 1.0
             obs_buf.append(obs); act_buf.append(av); px_buf.append(px); sk_buf.append(_sk)
         if not obs_buf:
@@ -218,6 +245,10 @@ def main():
         n = len(obs_buf)
         obs_a, act_a, px_a = np.stack(obs_buf), np.stack(act_buf), np.stack(px_buf)
         sk_a = np.stack(sk_buf)
+        _uniq = len({tuple(np.round(r, 3)) for r in sk_a}) if len(sk_a) else 0
+        print("   skill_ctx 诊断: %d 帧 · 不同阶段 one-hot %d 种 · 未识别阶段 %d 帧%s"
+              % (len(sk_a), _uniq, _unrecognized[0],
+                 "  ⚠️ 仍为常量!" if _uniq <= 1 else "  ✅ 阶段条件已生效"))
         goal_a = np.roll(obs_a, -7, axis=0)            # L4 认知预测的目标 (未来第 7 帧)
         for k, arr in (("observation", obs_a), ("action", act_a), ("pixels", px_a), ("goal", goal_a), ("skill_ctx", sk_a)):
             m = f[k].shape[0]
