@@ -75,12 +75,18 @@ try:
         gpu_util_pct: float64 = 0.0
         gpu_mem_used_gb: float64 = 0.0
         gpu_mem_total_gb: float64 = 0.0
+        # GPU 物理量 — 2026-09-27 UI 迭代 (老倪: "5.12.1 硬件参数显示很好看,
+        #   静静按这个 UI 升级"): 对齐手机 APP 的丰富度 (温度/功耗/时钟)
+        gpu_temp_c: float64 = 0.0
+        gpu_power_w: float64 = 0.0
+        gpu_clk_mhz: float64 = 0.0
         # 算力
         tflops_measured: float64 = 0.0
         tflops_nominal: float64 = 0.0
         # 训练
         training_active: int32 = 0
         training_count: int32 = 0
+        train_steps_per_s: float64 = 0.0
         # 降级标志 (0=全部真实; >0 表示有字段取不到)
         degraded: int32 = 0
 
@@ -113,8 +119,12 @@ def to_idl(d: dict):
         gpu_backend=str(g.get("backend", ""))[:15], gpu_name=str(g.get("name", ""))[:63],
         gpu_util_pct=_f(g.get("util_pct")), gpu_mem_used_gb=_f(g.get("mem_used_gb")),
         gpu_mem_total_gb=_f(g.get("mem_total_gb")),
+        # 2026-09-27 UI 迭代: 温度/功耗/时钟 (手机 APP 有, 面板也要有)
+        gpu_temp_c=_f(g.get("temp_c")), gpu_power_w=_f(g.get("power_w")),
+        gpu_clk_mhz=_f(g.get("clk_mhz")),
         tflops_measured=_f(cp.get("tflops_measured")), tflops_nominal=_f(cp.get("tflops_fp32")),
         training_active=1 if t.get("active") else 0, training_count=int(t.get("count") or 0),
+        train_steps_per_s=_f(t.get("steps_per_s")),
         degraded=degraded,
     )
 
@@ -130,10 +140,14 @@ def from_idl(s) -> dict:
         "disk": {"total_gb": s.disk_total_gb, "used_gb": s.disk_used_gb,
                  "free_gb": s.disk_free_gb, "percent": s.disk_percent},
         "gpu": {"backend": s.gpu_backend, "name": s.gpu_name, "util_pct": s.gpu_util_pct,
-                "mem_used_gb": s.gpu_mem_used_gb, "mem_total_gb": s.gpu_mem_total_gb},
+                "mem_used_gb": s.gpu_mem_used_gb, "mem_total_gb": s.gpu_mem_total_gb,
+                # 2026-09-27 UI 迭代: 温度/功耗/时钟 (0 = 该平台未采到)
+                "temp_c": s.gpu_temp_c or None, "power_w": s.gpu_power_w or None,
+                "clk_mhz": s.gpu_clk_mhz or None},
         "compute": {"tflops_measured": s.tflops_measured or None,
                     "tflops_nominal": s.tflops_nominal or None},
-        "training": {"active": bool(s.training_active), "count": s.training_count},
+        "training": {"active": bool(s.training_active), "count": s.training_count,
+                     "steps_per_s": s.train_steps_per_s or None},
         "degraded": s.degraded,
         "age_s": round(max(0.0, time.time() - s.ts), 1),
     }

@@ -72,6 +72,11 @@ class NodeCard(QFrame):
         g.setContentsMargins(8, 6, 8, 6)
         g.setHorizontalSpacing(8)
         g.setVerticalSpacing(3)
+        # 2026-09-27 UI 迭代: 进度条列加宽 (原来被右侧明细挤成一小格, 百分比挤在窄条里)
+        g.setColumnStretch(0, 0)     # 标签 (CPU/内存/…)
+        g.setColumnStretch(1, 5)     # 进度条 ← 主要宽度
+        g.setColumnStretch(2, 3)     # 右侧明细
+        g.setColumnStretch(3, 0)
 
         self.lbl_title = QLabel(f"{icon} {name}")
         self.lbl_title.setStyleSheet(f"color:{color};font-weight:bold;font-size:11px;")
@@ -99,9 +104,15 @@ class NodeCard(QFrame):
         self.lbl_compute.setStyleSheet("color:#e6edf3;font-size:10px;")
         g.addWidget(self.lbl_compute, 5, 0, 1, 4)
 
+        # 2026-09-27 UI 迭代 (老倪: "5.12.1 硬件参数显示很好看, 静静按这个 UI 升级")
+        #   GPU 物理量单独一行: 温度 · 功耗 · SM时钟  (对齐手机 APP 的丰富度)
+        self.lbl_gpu_phys = QLabel("GPU 温度/功耗/时钟 —")
+        self.lbl_gpu_phys.setStyleSheet("color:#7d8590;font-size:9px;")
+        g.addWidget(self.lbl_gpu_phys, 6, 0, 1, 4)
+
         self.lbl_train = QLabel("⏹ 空闲")
         self.lbl_train.setStyleSheet("color:#8b949e;font-size:9px;")
-        g.addWidget(self.lbl_train, 6, 0, 1, 4)
+        g.addWidget(self.lbl_train, 7, 0, 1, 4)
 
     def update_from(self, m: dict | None):
         if not m:
@@ -110,6 +121,7 @@ class NodeCard(QFrame):
                 _paint(self.bars[k], 0)
                 getattr(self, f"det_{k}").setText("—")
             self.lbl_compute.setText("算力 —")
+            self.lbl_gpu_phys.setText("GPU 温度/功耗/时钟 —")
             self.lbl_train.setText("⏹ 离线")
             self.setStyleSheet(
                 "background:#0d1117;border:1px solid #21262d;border-left:3px solid #30363d;"
@@ -130,17 +142,38 @@ class NodeCard(QFrame):
         self.det_内存.setText(f"{mm.get('used_gb')}/{mm.get('total_gb')}GB")
 
         _paint(self.bars["GPU"], g.get("util_pct"))
-        self.det_GPU.setText(f"{str(g.get('backend','')).upper()} · 显存{g.get('mem_used_gb')}GB")
+        # 2026-09-27 UI 迭代: 显存显示 used/total (原来只有 used)
+        _mu, _mt = g.get("mem_used_gb"), g.get("mem_total_gb")
+        if _mu is not None and _mt:
+            _mem = f"显存 {_mu:.1f}/{_mt:.0f}GB"
+        elif _mu is not None:
+            _mem = f"显存 {_mu:.1f}GB"
+        else:
+            _mem = "显存 —"
+        self.det_GPU.setText(f"{str(g.get('backend', '')).upper()} · {_mem}")
 
         _paint(self.bars["磁盘"], k.get("percent"))
         self.det_磁盘.setText(f"可用{k.get('free_gb')}GB / {k.get('total_gb')}GB")
+
+        # 2026-09-27 UI 迭代: 温度 · 功耗 · SM时钟 (取不到就诚实标 "—")
+        _phys = []
+        if g.get("temp_c") is not None:
+            _phys.append(f"🌡 {g['temp_c']:.0f}°C")
+        if g.get("power_w") is not None:
+            _phys.append(f"⚡ {g['power_w']:.1f}W")
+        if g.get("clk_mhz") is not None:
+            _phys.append(f"⏱ {g['clk_mhz']:.0f}MHz")
+        self.lbl_gpu_phys.setText(" · ".join(_phys) if _phys
+                                  else "GPU 温度/功耗/时钟 — (该平台未采集)")
 
         tm, tn = cp.get("tflops_measured"), cp.get("tflops_nominal")
         txt = f"算力 实测 {tm} TFLOPS" if tm else f"算力 标称 {tn} TFLOPS [未实测]"
         self.lbl_compute.setText(txt + f"  ·  GPU {g.get('name','')[:24]}")
 
         if m["training"]["active"]:
-            self.lbl_train.setText(f"🏋️ 训练进行中 × {m['training']['count']}")
+            _s = m["training"].get("steps_per_s")
+            _rate = f" · {_s:.1f} 步/s" if _s else ""
+            self.lbl_train.setText(f"🏋️ 训练进行中 × {m['training']['count']}{_rate}")
             self.lbl_train.setStyleSheet("color:#3fb950;font-size:9px;font-weight:bold;")
         else:
             self.lbl_train.setText("⏹ 空闲")

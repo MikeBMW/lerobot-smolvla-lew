@@ -119,7 +119,7 @@ def probe_mem() -> dict:
 
 # ────────────────────────── 磁盘 ──────────────────────────
 def probe_disk(path: str | None = None) -> dict:
-    root = path or (os.environ.get("ZMAX_DISK_ROOT") or ("/" if os.name != "nt" else "C:\\"))
+    root = path or (os.environ.get("ZMAX_DISK_ROOT") or ("/" if os.name != "nt" else "C:"))
     d: dict = dict(root=root, total_gb=None, used_gb=None, free_gb=None, percent=None)
     try:
         t, u, f = shutil.disk_usage(root)
@@ -215,9 +215,17 @@ def _gpu_nvidia(warn: list) -> dict | None:
     except Exception as e:
         warn.append(f"pynvml 不可用: {type(e).__name__}")
 
-    # ── 层2: nvidia-smi query (名称/利用率/显存一行出) ──
+    # ── 层2: nvidia-smi query (名称/利用率/显存/*温度/功耗/时钟* 一行出) ──
+    #  2026-09-27 UI 迭代 (老倪: "5.12.1 硬件参数显示很好看"): 补温度/功耗/SM时钟
+    #  用 noheader,nounits → 未支持的字段会返回 "[N/A]", 用 _num() 容错
+    def _num(x):
+        try:
+            return float(str(x).strip())
+        except Exception:
+            return None
     out = _run(["nvidia-smi",
-                "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+                "--query-gpu=name,utilization.gpu,memory.used,memory.total,"
+                "temperature.gpu,power.draw,clocks.sm",
                 "--format=csv,noheader,nounits"], timeout=8)
     if out.strip():
         for line in out.strip().splitlines():
@@ -227,10 +235,16 @@ def _gpu_nvidia(warn: list) -> dict | None:
                 continue
             try:
                 d = {"backend": "cuda", "name": p[0], "count": len(out.strip().splitlines()),
-                     "util_pct": float(p[1]),
-                     "mem_used_gb": round(float(p[2]) / 1024, 2),
-                     "mem_total_gb": round(float(p[3]) / 1024, 2)}
-                if d["mem_total_gb"] > 0:
+                     "util_pct": _num(p[1]),
+                     "mem_used_gb": (round(_num(p[2]) / 1024, 2)
+                                     if _num(p[2]) is not None else None),
+                     "mem_total_gb": (round(_num(p[3]) / 1024, 2)
+                                      if _num(p[3]) is not None else None)}
+                if len(p) > 4:                       # 温度/功耗/时钟 (可能 [N/A])
+                    d["temp_c"] = _num(p[4])
+                    d["power_w"] = _num(p[5])
+                    d["clk_mhz"] = _num(p[6]) if len(p) > 6 else None
+                if d.get("mem_total_gb"):
                     return d
                 got.update({k: v for k, v in d.items() if v is not None})
             except Exception:
