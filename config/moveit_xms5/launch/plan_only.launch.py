@@ -19,6 +19,9 @@ def _load(p):
 def generate_launch_description():
     cfg = os.environ.get("ZMAX_MOVEIT_CFG", "/ws/moveit_cfg")
     urdf = open(os.path.join(cfg, "urdf", "xms5_r800_w4g3b4c.urdf"), encoding="utf-8").read()
+    # 🐛 MESH_FIX 2026-09-26: URDF 里 mesh 是**相对路径**(meshes/...), 而 URDF 作为字符串参数传入时
+    #    相对路径按进程 CWD 解析 → 容器内找不到 (冒烟实测 7 个 mesh 报错)。改为**绝对路径**。
+    urdf = urdf.replace('filename="meshes/', 'filename="%s/urdf/meshes/' % cfg)
     srdf = open(os.path.join(cfg, "config", "xms5_r800_w4g3b4c.srdf"), encoding="utf-8").read()
     kin = _load(os.path.join(cfg, "config", "kinematics.yaml"))
     lim = _load(os.path.join(cfg, "config", "joint_limits.yaml"))
