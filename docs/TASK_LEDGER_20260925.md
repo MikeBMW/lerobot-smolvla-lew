@@ -102,3 +102,26 @@
 1. `tools/rollout_peg_check.py` 硬编码 `os.chdir("/home/xspace/lerobot-smolvla-lew")` (另一台机器/容器路径) → 本机引擎 rollout 直接 FileNotFoundError, **被 `| tail` 掩盖成 rc=0**。改按本文件推仓库根。
 2. `tools/rollout_video.py load_policy` 缺 left_right/state_space 分支 → 落到 else 用 SmolVLALewPolicy 装载双脑权重 → `LeftRightConfig.validate_features()` 缺参 TypeError (仿真 rollout 长期跑不起来)。补分支 = `LeftRightPolicy`。
 3. 取证口径纠正: **不要用管道尾命令的 rc 判断被测程序成败** (预检脚本改为不经管道取真 rc)。
+
+## 2026-09-26 · 会话三盘点 (DDS / 系统 / 控制台)
+
+### 已完成 (本轮新增, 全部有取证)
+| 项 | 结果 | 版本/取证 |
+|---|---|---|
+| 全局数据空间发布守护 | 6 类真实源→DDS, 受遥测模式控制(prod 零开销) | zmax_dds_ss_verify **16/16** · v5.15.7 |
+| 状态空间类型/话题齐 | SSCalib/SSDiag/SSTest → **9 类型 / 14 话题**(三专项通道接通) | dds/ss_types.py · zmax_node.py |
+| ECS relay/ws 502 | 双进程静默死掉 → 已拉起并复核(status/peek/packages/orin/cam 全 200, ws 426) | 上 ECS 修 · 无需授权即恢复 |
+| 6 个在役服务启动依赖 | 共享检出被切 mac-hw 分支致脚本缺失(重启即挂) → 重指 main worktree | fix_services_to_main.sh · 6/6 active |
+| chain_health 哨兵崩溃 | None.startswith → 每 30min 报 error; 已修 | rc=0 |
+| DeepSeek 模型确认 | 账号可用 deepseek-flash / deepseek-v4-pro → 配的 deepseek-flash 即 V4.1-Flash 最新; 文本+视觉 200 | 单次 ~122s → 异步旁路必留 |
+| 系统清理 + 效率 | 释放 **835MB**(journal/apt/uv/pip/日志…) · GPU persistence=Enabled · fstrim 105.3GiB · tracker 索引停 | reports/sys_cleanup_20260926_080719.json |
+| 网络复查 + 新 A/B | 旋钮全在效(bbr/fq/rmem32M/ssai0/fastopen3) · tw_reuse 关掉慢 3.7%(3/3) → 按证据保持出厂 2 | reports/sys_maintenance_20260926.md |
+| 画布加载失败修复 | 根因=检出切分支后无 flows/ + 旧 GUI; `_flows_path()` 多候选 + 启动器重指 main | verify_canvas_load_fix **8/8** · v5.15.8 |
+| 硬件资源卡字体 | 主数值 12→**28px**(2.33×) · 标题 34px · 节点 24px | measure_hw_card_fonts.py · v5.15.8 |
+| 控制台"打开就卡" | 根因=GUI 线程阻塞采集(单次 **1414ms**/2s: HTTP8799 1266ms+采样120ms+nvidia-smi 24ms) → 采集搬工作线程 | 最大卡顿 **1415ms→15.8ms**(89×)· 0 次卡顿 · v5.15.9 |
+
+### 待办 (更新后)
+**① 本机离线可做**: ①-1 认知头换靶子(多步 K=5/10+事件级, 必须赢持久基线) · ①-2 门控细化 · ①-3 认知头引擎域微调复评 · ①-4 控制台「🔔 发飞书」按钮 · ①-5 L4 哨兵提示词更新(标定闸已判死) · **①-6 画布三话题 ss_canvas/ss_macro/ss_nodes 纳入全局守护**(本轮新增) · ①-7 旧归档清理评估(只列不删)
+**② 需现场/授权**: ②-1 AOI 首轮标定(数据集 0 框) · ②-2 10083 /picture(仍 404) · ②-3 10082 拉长口径 · ②-4 裁减对齐 score≥0.95 · ②-5 2D→3D 采集 · ②-6 T_base_cam/plane_z · ②-7 ring_pose 示教
+**③ 需决策**: ③-1 L4 专线走向(标定闸判死) · ③-2 pause 哨兵复活? · ③-3 旧归档清不清 · ③-4 抓取五段计划 S0~S5 批准 · ③-5 ~~ECS WS~~(已修, 移出)
+**④ 新风险 (本轮发现)**: ④-1 共享检出 `/home/ubuntu/lerobot-smolvla-lew` 被并行 APP 线切到 `mac-hw` 分支 → **两线共用一棵树**: 建议各线独立 `git worktree`(否则会出现"点桌面图标起旧 GUI/画布缺失"这类事故) · ④-2 磁盘 used 291G/红线 300G(余量 9G): stable-wm-cache 164G(受保护) · zmax_ss_remote 7.6G(真机数据) · mac-hw 检出 37G
