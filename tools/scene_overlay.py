@@ -102,8 +102,26 @@ def load_handeye() -> dict:
             "ifaces": "cam→tcp (cv2.calibrateHandEye 输出 X=T_cam2gripper)"}
 
 
-def read_tcp(timeout: int = 25) -> np.ndarray | None:
-    """读真机 TCP 位姿真值 (base 系, m) → [x,y,z, qx,qy,qz,qw]"""
+TCP_CACHE = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/tcp_pose.json")
+TCP_CACHE_MAX_AGE = 1.5      # 秒; 超过就认为缓存停了 → 回退 ssh
+
+
+def read_tcp(timeout: int = 25, allow_ssh: bool = True) -> np.ndarray | None:
+    """
+    读真机 TCP 位姿真值 (base 系, m) → [x,y,z, qx,qy,qz,qw]
+
+    优先读容器写的缓存文件 (ros_tcp_cache.py, 微秒级) —— `ssh ros2 topic echo --once`
+    单次要 ~3s, 每次渲染都走它会把叠加帧率拖到 0.3fps。缓存不可用才回退 ssh。
+    """
+    try:
+        if TCP_CACHE.exists():
+            d = json.loads(TCP_CACHE.read_text(encoding="utf-8"))
+            if time.time() - d.get("t", 0) <= TCP_CACHE_MAX_AGE:
+                return np.array(list(d["xyz"]) + list(d["quat"]), float)
+    except Exception:
+        pass
+    if not allow_ssh:
+        return None
     cmd = ("timeout 8 ros2 topic echo --once /robot/tcp_pose --field pose 2>/dev/null")
     try:
         r = subprocess.run(["sshpass", "-p", _ORIN_PW, "ssh", "-o", "StrictHostKeyChecking=no",

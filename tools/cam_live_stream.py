@@ -312,24 +312,26 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if img is None:
             continue
-        # TCP 缓存 2s（投影链需要实时位姿；频繁 ssh 读会拖慢）
-        if time.time() - tcp_ts > 2.0:
-            try:
-                tcp = _SO.read_tcp(timeout=20)
-            except Exception:
-                tcp = None
-            tcp_ts = time.time()
         try:
             spec = _SO.load_spec()
             he = _SO.load_handeye()
+            # 只有本路真有需要投影的 3D 框时才去读 TCP（读 Orin 有开销；否则白等拖帧率）
+            cam_boxes = (spec.get("cameras") or {}).get(src_name, {}).get("boxes") or []
+            need_tcp = any(b.get("box3d") for b in cam_boxes)
+            if need_tcp and time.time() - tcp_ts > 2.0:
+                try:
+                    tcp = _SO.read_tcp(timeout=20)
+                except Exception:
+                    tcp = None
+                tcp_ts = time.time()
             extra = {
                 "frame_age": "帧龄 %.1fs · 源 %s" % (max(0.0, time.time() - src_ts),
                                                     time.strftime("%H:%M:%S", time.localtime(src_ts))),
                 "handeye": ("手眼 cam→tcp |t|=%.0fmm (%s/%s位姿)"
                             % (np.linalg.norm(he["X"][:3, 3]) * 1000, he.get("method"), he.get("n_poses")))
                            if he["ok"] else "手眼未标定 ⇒ 仿真框无法投影",
-                "tcp": ("TCP=(%.4f, %.4f, %.4f) 实时真值" % tuple(tcp[:3])) if tcp is not None
-                       else "TCP 未读到（仿真投影将跳过）",
+                "tcp": (("TCP=(%.4f, %.4f, %.4f) 实时真值" % tuple(tcp[:3])) if tcp is not None
+                        else ("TCP 未读到（仿真投影将跳过）" if need_tcp else "本路无 3D 投影框（不需要 TCP）")),
             }
             img2, info = _SO.draw_overlay(img, spec, src_name, tcp, extra)
             ok, buf = cv2.imencode(".jpg", img2, params)
