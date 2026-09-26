@@ -2026,22 +2026,6 @@
     "src": "src/lerobot/arm/arm_control.py",
     "parity": "SDK vs ROS2 关节最大偏差 0.91 µrad (2026-09-26 实测)"
    }
-  },
-  {
-   "id": "n_realscene",
-   "type": "model",
-   "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
-   "x": 2027,
-   "y": 120,
-   "w": 260,
-   "h": 90,
-   "desc": "本机内置相机 + 臂上 realsense 双路叠加(并排/半透明/边缘对齐/参数带); 输出真实场景观测 + sim2real 参数映射(相机/TCP/关节/夹爪/光照) → 引擎同步; 只读不动机器人",
-   "inputs": [
-    "in1"
-   ],
-   "outputs": [
-    "out1"
-   ]
   }
  ],
  "links": [
@@ -3363,20 +3347,6 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "action 直通 → MoveIt (原端到端快路径改为经 MoveIt)"
-  },
-  {
-   "f": "ssdata",
-   "t": "n_realscene",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "相机帧 → 双眼叠加"
-  },
-  {
-   "f": "n_realscene",
-   "t": "swworld",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "真实场景 + sim2real 映射 → 引擎同步"
   }
  ],
  "params_note": ""
