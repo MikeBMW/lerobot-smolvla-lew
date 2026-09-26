@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.12")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.13")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.12 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.13 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,30 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.12 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.13 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.13 (2026-09-27): 🎯🎯 **手眼标定 T_base_cam 首次解出(双轴方案) + 标定工具/独立物理检验 + 版本号一致性修复**
+        #   ① 【双轴是硬需求, 不是"转大点就行"】单绕世界Z轴 ⇒ R_i=Rz(ψ_i)·R_ref ⇒ R_iᵀR_j 转轴恒为 R_refᵀ·(0,0,1)
+        #      ⇒ **31 对相对旋转的转轴夹角实测 中位 0.0° / max 0.0°(全平行)** ⇒ OpenCV 5 种方法全给 NaN 或 10⁷mm 级
+        #      (它只报 "Not enough informative motions", 不报"退化")。**判据两条都要看**: ①位姿间旋转角>10°对数≥3
+        #      ②**相对转轴之间夹角中位>8°** —— 本次①满足(25/28)但②为0°仍退化, 这就是之前一直解不出的真因。
+        #      改【世界Z偏航 × 世界X倾斜】双轴后转轴散布 **中位 22.2°** ⇒ TSAI/PARK/HORAUD 三法一致
+        #      t=(217.3, 5.7, -126.9)mm · |t|=251.7mm(法兰→TCP 258mm 自洽) · 8 位姿 **闭环 std=1.74mm** ·
+        #      板中心 base 系 (795,221,257)mm(旧独立记录板面 z≈252.6mm, 差 3.5mm) · 靶标重投影 rmse 中位 **0.35px**。
+        #   ② **独立物理检验(比 rmse 可靠得多)**: 板平放 ⇒ 其法向经 T_base_cam 转到 base 系必≈竖直; yaw=0 位姿实测
+        #      偏 **9~15°** ⇒ 方向对但未达抓取级(需1~2°)。**不得用 RANSAC 拟合平面做此检验**(内点≈7万像素远超
+        #      板面积≈2万 ⇒ 拟合到的是台面)。**闭环一致性(1.74mm)与旋转精度互不蕴含, 必须分开取证**。
+        #   ③ 采集期两个真根因: `error_code=-50021`「指定conf参数下目标点无解」= **运动学不可达**(关节限位/奇异),
+        #      与 ROBOT_IDLE_TIMEOUT 是**两回事** ⇒ 解释"同一位姿有时成有时败"; `speed=15` 时 20°偏转需 >30s
+        #      顶满服务端 30s idle 窗口 ⇒ 假超时, **speed=50 后仅 3s**。`/move_pose` 的 success=False **不代表
+        #      动作没执行**(实测 TCP 已到位) ⇒ 一律轮询 /robot/tcp_pose 核对; **运动中绝不重发**。
+        #   ④ 新增 `tools/calib/handeye/`: 采集/解算(须用 lerobot-venv)/两种独立物理检验/README; 原始采集 48MB 不入库。
+        #   ⑤ **版本号一致性修复**: update_checker.CURRENT_VERSION 长期停在 v5.6.0(与 tag v5.15.x 脱节 ⇒ 自动更新误报
+        #      "有新版本"), integrity_check.EXPECTED_VERSION 停在 v3.2.0(三处硬校验失配) ⇒ 按 VERSION.md 规范的
+        #      **5 处**全部同步 v5.15.13, integrity_check 五处一致通过。
+        #   ⑥ **发布事故与纠正**: 首次 tag 误打在 mac-hw 工作分支 ⇒ macOS 构建 `ERROR: Unable to find <ws>/flows`
+        #      (mac-hw 缺 main 的 flows/ 等 42 文件) ⇒ **发布必须从 main 出**; 新护栏: 发布前先核 flows/ 存在。
         # v5.15.12: v5.15.12 (小版本·关机前): **M3 收口(1/2) MoveIt 碰撞几何 + 任务主线收敛 + 关机前终态**  ## 一、M3 收口 (1/2): MoveIt 碰撞几何到位 - 从 Orin 产线工作空间**只读拷回** URDF 引用  … (完整变更见 VERSION.md v5.15.12)
 # v5.15.11: v5.15.11 (小版本): **画布执行链拓扑改造 + L5 自主进化(运动学自校) + 系统清理与重启**  ## 一、画布: 量产执行通路按老倪架构重连 - 通路 = 🧭动作调制器 → 🛡安全执行边界 → ①..⑧ L2原子技能 → 🧭**MoveIt(最后一级执行)** → 🤖机器人执行器 - 删 10 条绕过 MoveIt 的直连 · 加 16 条 · 执行链整体左移消除反向线 · MoveIt 移到阶梯末端 - **交叉 1174 → 1136 (净减 38)** · 孤立 0 · MoveIt 入线 9(8 原子技能+FlowMatching) 出线 1 - 归一化 3 个节点的字典格式端口 (ssff/sssched/ssdec → 字符串, 消除崩溃隐患)  ## 二、L5 自主进化 (零外部资源) - **章程** `docs/L5_AUTONOMOUS_EVOLUTION.md`: 外部只管安全; 标定≠前提(可被自监督替代); 三条无标定方案 - **S1 运动学自校完成**: 自主走 24 构型(腕部±12°, speed=8) → 我的 FK vs 控制器 TCP = **2.519mm 且逐构型完全相同**   ⇒ 判定**纯固定偏移**(无零位/杆长误差) → 自拟合后 **0.000mm** → `data/selfcal/kinematic_correction.json` - **S2 控制权验证 + 激励**: 发现一次"12 次指令无效"(控制权不在我, 失败安全) → 后验证控制权回来(ΔTCP=10.000mm 精确)   → 小范围激励(±30mm · speed=8 · tap 一致) 采集真机配对数据, 全程在 ±10cm 内 - 永久删除 A5/A6/A7 标定与曝光/标记物/内参等外部依赖  ## 三、工程/系统 - 状态空间工程重启 (控制台 + 11 服务 active + 6 端点 200 + 画布 85 节点/167 连线/孤立 0) - DNS 清理 (baidu 3.91s→0.00s) · 系统清理本会话累计 ≈251MB (保护清单 0 缺失) - 真机安全: 全部动作 speed=8 · ±30mm 内 · 每步只读三查 · 结束回起始位姿 · 零非授权动作  ## 四、新增工具 (本版) canvas_rewire_exec_chain.py · rewire_cross_check.py · moveit_layout_fix.py · selfcal_kinematic.py · s2_reality_gap{,2}.py · s2_excite_collect.py · s2_probe_control.py · verify_canvas_render.py · zmax_arm_sdk_bridge.py(+ Orin unit) · arm_control.py (统一控制层) · gen_moveit_config.py
 # v5.15.10: v5.15.10 (小版本·冻结): **MoveIt 适配 + Orin SDK 直驱桥 + 事件级认知头闭环 + A1~A5 现场推进**  ## 一、运动控制架构升级 (老倪: 桥放 Orin 直驱 SDK · MoveIt 装本机 · 兼容 ROS  … (完整变更见 VERSION.md v5.15.10)
