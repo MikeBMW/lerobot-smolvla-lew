@@ -59,6 +59,11 @@ SYNC_LIST=(
   "github/github-pr-workflow"
   "github/github-actions-ci"
   "devops/http-relay-service"
+  # 2026-09-26 补入 (本轮新建/沉淀, 关键路径)
+  "devops/dds-messaging-middleware"
+  "devops/web-agent-canvas-bridge"
+  "devops/linux-network-perf-boot"
+  "devops/systemd-boot-services"
 )
 for rel in "${SYNC_LIST[@]}"; do
   src="$SKILLS_SRC/$rel"
