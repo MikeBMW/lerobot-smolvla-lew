@@ -1180,10 +1180,28 @@ def lib_seq_of(name):
     return LIBRARY_SEQ.get(name)
 
 
+_ID_SEQ = [0]
+_ID_ALPHA = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+
+def _id_suffix(n, width):
+    """n → 定长 base36 小写串 (与 web 同字母表, 长度 = 原实现的随机位数)"""
+    s = ""
+    while len(s) < width:
+        s = _ID_ALPHA[n % 36] + s
+        n //= 36
+    return s
+
+
 def gen_id():
-    """节点 id: n + 时间戳 + 3位随机 (与 web 同规则)"""
-    return "n%d%s" % (int(time.time() * 1000), ''.join(
-        random.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(3)))
+    """节点 id: n + 时间戳 + 3位随机 (与 web 同规则)
+    🐛 2026-09-27: 原实现纯随机 3 位 (36³=46656), 同一毫秒内批量建节点会**撞 id** ——
+       实测「文件 86 节点 / 渲染 85 节点」(self._items 按 id 键, 撞了就少一个, 且不报错)。
+       修法: 样式不变, 同 ms 内用自增序号代替随机 ⇒ 进程内唯一 (跨 ms 由时间戳前缀区分)。
+       序号取模 46656 = 原随机空间大小 ⇒ 长度/字母表与原实现完全一致。"""
+    t = int(time.time() * 1000)
+    _ID_SEQ[0] = (_ID_SEQ[0] + 1) % 46656
+    return "n%d%s" % (t, _id_suffix(_ID_SEQ[0], 3))
 
 
 # ── 深色对话框 QSS (2026-08-05 老倪: 训练配置对话框黑字看不清 → 统一深底白字) ──
@@ -1204,8 +1222,12 @@ QDialogButtonBox QPushButton { min-width:72px; }
 
 
 def link_id():
-    return "l%d%s" % (int(time.time() * 1000), ''.join(
-        random.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(2)))
+    """连线 id: l + 时间戳 + 2位 (原样式)
+    🐛 2026-09-27: 原 2 位随机 (36²=1296) 批量建线必撞 —— 撞了 `del_link` 撤销会**一次删掉两条线**
+       (撤销按 l["id"] 过滤)。改自增序号, 样式/长度不变。"""
+    t = int(time.time() * 1000)
+    _ID_SEQ[0] = (_ID_SEQ[0] + 1) % 1296
+    return "l%d%s" % (t, _id_suffix(_ID_SEQ[0], 2))
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2967,7 +2989,9 @@ class SimNodeItem(QGraphicsObject):
         except Exception:
             pass
         _draw_lines = _lines if _lines else [name]
-        if params.get("video"):
+        # 🧩 2026-09-27 老倪: 节点里有实时帧时也按"视频节点"排版 (名字落左下, 画面居中不压字)
+        _has_live_frame = (self.video_pixmap is not None and not self.video_pixmap.isNull())
+        if params.get("video") or _has_live_frame:
             # 🎮 视频/推理节点: 名字放节点左下角 (像图片说明) — 统一 9pt + 省略号, 不压到画面
             painter.setPen(QColor(pal["title"]))
             painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
@@ -4462,6 +4486,7 @@ class SimulinkModule(QWidget):
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)   # 🆕 训练进度% (worker线程→主线程, 更新 Model Engine 进度条)
     _mlp_frames_ready = pyqtSignal(str)   # 🎥 2026-08-18: 后台抽帧完成 → 主线程刷新
+    _ov_live_start_sig = pyqtSignal(bool)  # 🐛 2026-09-27: 后台线程请求开画布实时帧 → 排队回主线程
     flow_synced = None
 
     def __init__(self, parent=None):
@@ -4492,6 +4517,15 @@ class SimulinkModule(QWidget):
         # CI/CD 后台线程信号 (worker 线程 → 主线程日志)
         self.log_signal.connect(self._log)
         self._worker = None
+        # 🧩 2026-09-27 老倪: 画布节点实时帧 (「场景叠加」按钮的结果必须落在画布上)
+        #   后台线程拉 8791 单帧快照 → 主线程 QTimer 转 QPixmap → 节点 video_pixmap → update()
+        self.OV_LIVE_PORT = 8791
+        self._ov_live = {"on": False}     # 运行状态 (含最新帧字节/真值带信息)
+        self._ov_live_stop = None
+        self._ov_live_thread = None
+        self._ov_live_timer = None
+        self._ov_live_pending = None      # 后台线程请求开帧时的参数 (见 _ov_live_start_sig)
+        self._ov_live_start_sig.connect(self._ov_live_start_slot)
         # CI/CD 环节状态: 0未开始 1运行中 2成功 3失败
         self._cicd_state = {"validate": 0, "train": 0, "integrate": 0, "deploy": 0}
         # 🐛 2026-08-26: Mac 黑屏诊断打点 (写文件, 定位构造崩溃段)
@@ -7654,61 +7688,381 @@ class SimulinkModule(QWidget):
         import threading
         import urllib.request
 
-        def _work():
-            # 1) 本机 LAN IP (手机/其他机器也能开)
-            ip = "127.0.0.1"
+        def _stats_ok(timeout=2.5):
+            """8791 真活着吗 —— 只看 HTTP 状态, 不猜"""
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:%d/stats" % self.OV_LIVE_PORT,
+                                            timeout=timeout) as r:
+                    return r.status == 200
+            except Exception:
+                return False
+
+        def _lan_ip():
+            """开页前**现取** LAN IP —— 工位机 WiFi 走 DHCP, 重租一分钟内就换地址
+            (实测 10.163.148.36 → 10.163.146.78), 缓存/先打印出来的 URL 会当场作废"""
             try:
                 _s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 _s.connect(("8.8.8.8", 80))
-                ip = _s.getsockname()[0]
+                _ip = _s.getsockname()[0]
                 _s.close()
+                return _ip
+            except Exception:
+                return "127.0.0.1"
+
+        def _http_status(u, timeout=3.5):
+            """不是"打印了就等于能开" —— 真 GET 一次拿状态码"""
+            try:
+                with urllib.request.urlopen(u, timeout=timeout) as r:
+                    return r.status
+            except Exception as e:
+                return "%s" % e
+
+        def _open_browser(u):
+            """显式开浏览器并**检查返回值** (QDesktopServices.openUrl 曾经静默失败:
+            日志连打三次"页已打开", 浏览器 History 里 0 条该 URL)"""
+            for _cmd in (["xdg-open", u], ["gio", "open", u]):
+                try:
+                    p = subprocess.run(_cmd, timeout=20,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if p.returncode == 0:
+                        return "ok:" + _cmd[0]
+                except Exception:
+                    continue
+            try:
+                from PyQt5.QtCore import QUrl
+                from PyQt5.QtGui import QDesktopServices
+                if QDesktopServices.openUrl(QUrl(u)):
+                    return "ok:QDesktopServices"
             except Exception:
                 pass
-            url = "http://%s:8791/overlay" % ip
-            # 2) 视频流在不在
-            up = False
-            try:
-                with urllib.request.urlopen("http://127.0.0.1:8791/stats", timeout=2.5) as r:
-                    up = (r.status == 200)
-            except Exception:
-                up = False
+            return "fail"
+
+        def _work():
+            # 1) 视频流在不在 (不在 ⇒ 第 3 步带叠加起)
+            port = self.OV_LIVE_PORT
+            up = _stats_ok()
             # 3) 不在跑 ⇒ 带叠加启动 (手臂源沿用 Orin HTTP, 见 ZMAX_ORIN_HOST)
             if not up:
                 self.log_signal.emit("🧩 场景叠加: 视频流未运行 → 自动启动 (含叠加) …")
                 orin_host = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66").split("@")[-1]
                 cmd = [sys.executable, os.path.join(self._repo_root(), "tools", "cam_live_stream.py"),
-                       "--port", "8791", "--quality", "72", "--fps", "30",
+                       "--port", str(port), "--quality", "72", "--fps", "30",
                        "--arm-http", "http://%s:8792/frame.jpg" % orin_host, "--arm-fps", "30",
-                       "--local-dev", "0", "--overlay", "--overlay-src", "both",
-                       "--overlay-fps", "10"]
+                       # 🎥 2026-09-27 三相机: ①臂上(Orin) ②笔记本内置 /dev/video2 ③MAXHUB 电视顶摄 /dev/video0
+                       "--local-dev", "2", "--local2-dev", "0",
+                       "--overlay", "--overlay-src", "all", "--overlay-fps", "10"]
                 try:
                     logf = open("/tmp/zmax_scene_overlay.log", "ab")
                     subprocess.Popen(cmd, cwd=self._repo_root(), stdout=logf,
                                      stderr=subprocess.STDOUT, start_new_session=True)
-                    time.sleep(7)          # 等相机/流起来
+                    for _ in range(12):        # 🐛 2026-09-27: 原死等 7s 就开页 (流可能还没就绪) → 轮询到真就绪
+                        if _stats_ok():
+                            break
+                        time.sleep(1.0)
                 except Exception as e:
                     self.log_signal.emit("❌ 场景叠加: 启动视频流失败 — %s" % e)
                     return
-                try:
-                    with urllib.request.urlopen("http://127.0.0.1:8791/stats", timeout=4) as r:
-                        up = (r.status == 200)
-                except Exception:
-                    up = False
-            # 4) 开页面 (Linux 桌面 QDesktopServices 走 xdg-open)
-            try:
-                from PyQt5.QtCore import QUrl
-                from PyQt5.QtGui import QDesktopServices
-                QDesktopServices.openUrl(QUrl(url))
-            except Exception as e:
-                self.log_signal.emit("⚠️ 打开浏览器失败(%s), 请手动访问: %s" % (e, url))
+                up = _stats_ok(timeout=4)
+            # 4) 🔴 先把画面落到**画布**上 (老倪正看的界面; 不依赖浏览器就能出结果)
             if up:
-                self.log_signal.emit("🧩 场景叠加页已打开: %s" % url)
+                self.start_canvas_live_overlay(srcs=["arm", "local", "local2"], fps=4.0)
+            else:
+                self.log_signal.emit("⚠️ 视频流未就绪 ⇒ 画布/页面都拿不到帧 · 看 /tmp/zmax_scene_overlay.log")
+            # 5) 再开页面: 现取 LAN IP + 实测可达 + 显式开浏览器并检查返回值
+            url = "http://127.0.0.1:%d/overlay" % self.OV_LIVE_PORT
+            for _mode in ("lan", "loop"):
+                _ip = _lan_ip() if _mode == "lan" else "127.0.0.1"
+                _u = "http://%s:%d/overlay" % (_ip, self.OV_LIVE_PORT)
+                _st = _http_status(_u)
+                if _st == 200:
+                    url = _u
+                    break
+                self.log_signal.emit("⚠️ 场景叠加页地址不可达 (%s → %s)" % (_u, _st))
+            _how = _open_browser(url)
+            if _how.startswith("ok"):
+                self.log_signal.emit("🧩 场景叠加页已打开 (%s): %s" % (_how[3:], url))
                 self.log_signal.emit("   左=原始画面 · 右=叠加后(🟢仿真投影 🔵大模型 🔴真机检测) · "
                                      "画面底部真值带含帧龄/TCP/手眼")
             else:
-                self.log_signal.emit("⚠️ 视频流仍未就绪, 看日志 /tmp/zmax_scene_overlay.log · 页面: %s" % url)
+                self.log_signal.emit("⚠️ 浏览器没起来 (%s) — 地址自取: %s" % (_how, url))
 
         threading.Thread(target=_work, daemon=True, name="scene-overlay-open").start()
+
+    # ════════════════════════════════════════════════════════════════
+    # 🧩 2026-09-27 老倪: 「场景叠加」的结果必须落在**画布**上 (原实现只 Popen 起流 + 开外链
+    #   ⇒ 结构上画布不可能有反应)。做法: 后台线程按 fps 拉 8791 的**单帧快照**
+    #   (/snapshot/overlay_arm.jpg, 实测 200 / ~55KB / 0.8ms) → 主线程 QTimer 转 QPixmap
+    #   → 节点 video_pixmap/video_overlay → update() 重绘。不嵌 MJPEG: 对推流零影响。
+    #   画面自带真值带 (源/帧龄/拉帧率/框数/真值链/规格龄) —— 用户会把画面当结果。
+    # ════════════════════════════════════════════════════════════════
+    def _ov_live_target_item(self):
+        """画布上的「🎥 真实场景叠加」节点 (先按 id, 再按名字关键字; 没有 → None)
+        ⚠️ 实测: load_flow_file 会给每个节点**重新 gen_id()** ⇒ 文件里的 id (n_realscene)
+           在 _items 里查不到, 真正生效的是**名字关键字**这条 (别只留 id 那条)"""
+        it = self._items.get("n_realscene")
+        if it is not None:
+            return it
+        for _i in self._items.values():
+            _n = _i.node.get("name", "")
+            if "真实场景叠加" in _n or "双眼叠加" in _n:
+                return _i
+        return None
+
+    def _ov_live_enlarge(self, item, nw=380, nh=246):
+        """把节点放大到能看清画面 (只有**零重叠**才放; 只改内存, 用户保存画布才落 flow)"""
+        try:
+            if item.w >= nw - 20 and item.h >= nh - 20:
+                return "尺寸已够 (%dx%d)" % (item.w, item.h)
+            box = {"x": item.node["x"], "y": item.node["y"], "w": nw, "h": nh}
+            for _i in self._items.values():
+                n = _i.node
+                if n.get("type") in ("bg", "row_bg") or n["id"] == item.node["id"]:
+                    continue
+                if not (box["x"] + box["w"] + 8 <= n["x"] or n["x"] + n.get("w", DW) + 8 <= box["x"] or
+                        box["y"] + box["h"] + 8 <= n["y"] or n["y"] + n.get("h", DH) + 8 <= box["y"]):
+                    return "有邻居 → 保持 %dx%d" % (item.w, item.h)
+            item.w, item.h = nw, nh
+            item.node["w"], item.node["h"] = nw, nh
+            item.update()
+            return "放大到 %dx%d (零重叠)" % (nw, nh)
+        except Exception as e:                                                    # noqa: BLE001
+            return "放大跳过 (%s)" % e
+
+    def canvas_live_overlay_active(self):
+        return bool(self._ov_live.get("on"))
+
+    def toggle_canvas_live_overlay(self, src=None, fps=None):
+        """双击节点 / 再点按钮: 开 ⇄ 关"""
+        if self.canvas_live_overlay_active():
+            self.stop_canvas_live_overlay()
+            return True
+        return self.start_canvas_live_overlay(src=src, fps=fps)
+
+    def _ov_live_start_slot(self, _flag=True):
+        """主线程槽: 后台线程请求开画布实时帧 (见 _ov_live_start_sig 的线程护栏)"""
+        p = self._ov_live_pending or {}
+        self._ov_live_pending = None
+        self.start_canvas_live_overlay(srcs=p.get("srcs") or ["arm", "local", "local2"],
+                                       fps=p.get("fps") or 4.0)
+
+    def start_canvas_live_overlay(self, src=None, fps=None, srcs=None):
+        """把 8791 的叠加流拉进画布节点 ⇒ 画布上直接出画面
+
+        🎥 2026-09-27 老倪(三相机): 默认**三路并排**显示 ——
+          ① arm   机器人臂上 D405 (走 Orin 网络, 只有它有手眼真几何投影)
+          ② local  笔记本内置相机 (USB)
+          ③ local2 MAXHUB 电视顶摄 (USB 或 rtsp:// 网络流)
+        只有真取到帧的相机会被画进画布里 (取不到就在带里标"未接", 不假装有画面)。
+
+        ⚠️ 线程护栏 (2026-09-27 实测踩到): 「🧩 场景叠加」按钮的 handler 在**后台线程**里
+           调用本方法, 而 QTimer(self) 必须在主线程建 —— 后台线程里建会报
+           "QObject: Cannot create children for a parent that is in a different thread" +
+           "Timers can only be used with threads started with QThread" ⇒ timer 不生效,
+           画面永远不出来 (正是"点了没反应"的形态)。修法: 非主线程一律发信号排队回主线程。
+        """
+        import threading
+        import urllib.request
+
+        want = list(srcs or ([src] if src else ["arm", "local", "local2"]))
+        if QThread.currentThread() is not self.thread():
+            self._ov_live_pending = {"srcs": want, "fps": float(fps or 4.0)}
+            self._ov_live_start_sig.emit(True)
+            return True
+        fps = float(fps or 4.0)
+        item = self._ov_live_target_item()
+        if item is None:
+            self._log("⚠️ 场景叠加: 画布上没有「🎥 真实场景叠加 · 双眼」节点 ⇒ 无处出画面 "
+                      "(节点库拖入, 或跑 tools/canvas_add_realscene_node.py)")
+            return False
+        base = "http://127.0.0.1:%d" % self.OV_LIVE_PORT
+        # 先探一遍: 哪几路真有帧 (取不到的不画, 但要如实报出来)
+        online, offline = [], []
+        for nm in want:
+            try:
+                with urllib.request.urlopen("%s/snapshot/overlay_%s.jpg" % (base, nm),
+                                            timeout=4) as r:
+                    b = r.read()
+                (online if b[:2] == b"\xff\xd8" else offline).append(nm)
+            except Exception:
+                offline.append(nm)
+        if not online:
+            self._log("⚠️ 场景叠加: 三路都没有帧 (%s) ⇒ 先起「📡 视频流」(含 --overlay-src all)" % base)
+            return False
+        if offline:
+            self._log("⚠️ 场景叠加: %s 这一(几)路拿不到叠加帧 → 画布上标'未接', 不画假画面"
+                      % "/".join(offline))
+        if self._ov_live.get("on"):
+            self.stop_canvas_live_overlay(quiet=True)
+
+        d = {"on": True, "node_id": item.node["id"], "srcs": online, "offline": offline,
+             "snap": {nm: "%s/snapshot/overlay_%s.jpg" % (base, nm) for nm in online},
+             "bytes": {nm: None for nm in online}, "seq": {nm: 0 for nm in online},
+             "applied": {nm: 0 for nm in online}, "meta": {}, "frames": 0,
+             "fetch_err": 0, "last_ok": time.time(), "warned": False}
+        self._ov_live = d
+        stop = threading.Event()
+        self._ov_live_stop = stop
+
+        def _worker():
+            per = max(0.15, 1.0 / max(0.5, fps))
+            n = 0
+            while not stop.is_set():
+                t0 = time.time()
+                n += 1
+                for nm in list(d["srcs"]):
+                    try:
+                        with urllib.request.urlopen(d["snap"][nm], timeout=3) as r:
+                            b = r.read()
+                        if b[:2] == b"\xff\xd8":
+                            d["bytes"][nm] = b
+                            d["seq"][nm] += 1
+                            d["last_ok"] = time.time()
+                        else:
+                            d["fetch_err"] += 1
+                    except Exception:
+                        d["fetch_err"] += 1
+                if n % max(1, int(round(fps))) == 0:      # ~1Hz: 帧龄/fps/框统计/真值链
+                    try:
+                        with urllib.request.urlopen(base + "/stats", timeout=2.5) as r:
+                            st = json.loads(r.read().decode("utf-8", "ignore"))
+                        for nm in list(d["srcs"]):
+                            s = st.get("ov_" + nm) or {}
+                            m = d["meta"].setdefault(nm, {})
+                            m["age"], m["fps"] = s.get("age_s"), s.get("fps")
+                            m["label"] = s.get("label") or nm
+                    except Exception:
+                        pass
+                    try:
+                        with urllib.request.urlopen(base + "/scene.json", timeout=2.5) as r:
+                            sc = json.loads(r.read().decode("utf-8", "ignore"))
+                        for nm in list(d["srcs"]):
+                            cam = ((sc.get("_overlay_info") or {}).get(nm) or {})
+                            m = d["meta"].setdefault(nm, {})
+                            m["boxes"] = cam.get("origins")
+                            m["tcp_ok"] = cam.get("tcp_ok")
+                            m["spec_age"] = cam.get("spec_age_s")
+                    except Exception:
+                        pass
+                dt = time.time() - t0
+                if dt < per:
+                    time.sleep(per - dt)
+
+        self._ov_live_thread = threading.Thread(target=_worker, daemon=True,
+                                               name="canvas-live-overlay")
+        self._ov_live_thread.start()
+        self._ov_live_timer = QTimer(self)
+        self._ov_live_timer.setInterval(250)          # 4Hz 应用 (拉帧 4Hz, 画面不抖)
+        self._ov_live_timer.timeout.connect(self._ov_live_apply)
+        self._ov_live_timer.start()
+        grew = self._ov_live_enlarge(item, *((580, 350) if len(online) >= 2 else (380, 246)))
+        self._log("🧩 场景叠加 → 画布: 节点「%s」实时出画面 %d 路 [%s] · 拉帧 %.0fHz · %s"
+                  % (item.node.get("name", "?"), len(online), "+".join(online), fps, grew))
+        return True
+
+    def stop_canvas_live_overlay(self, quiet=False):
+        d = dict(self._ov_live or {})
+        if not d.get("on"):
+            return False
+        self._ov_live["on"] = False
+        try:
+            if self._ov_live_stop is not None:
+                self._ov_live_stop.set()
+        except Exception:                                                         # noqa: BLE001
+            pass
+        try:
+            if self._ov_live_timer is not None:
+                self._ov_live_timer.stop()
+                self._ov_live_timer = None
+        except Exception:                                                         # noqa: BLE001
+            pass
+        it = self._items.get(d.get("node_id"))
+        if it is not None:
+            it.video_pixmap = None
+            it.video_overlay = ""
+            it.update()
+        if not quiet:
+            self._log("🧩 场景叠加: 画布实时帧已停 (共应用 %d 帧)" % d.get("frames", 0))
+        return True
+
+    def _ov_live_mosaic(self, d, srcs, tile=(286, 162), band=20):
+        """🎥 多路叠加快照 → 一张拼图 (2 列; 顶部真值带 + 每格相机名/框数/真值链/规格龄)"""
+        cols = 1 if len(srcs) <= 1 else 2
+        rows = 1 if len(srcs) <= cols else 2
+        W, H = cols * tile[0], band + rows * tile[1]
+        pm = QPixmap(W, H)
+        pm.fill(QColor("#0b0f14"))
+        p = QPainter(pm)
+        try:
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            parts = []
+            for nm in srcs:
+                m = d["meta"].get(nm) or {}
+                a = m.get("age")
+                parts.append("%s %s" % (nm, ("%.1fs" % a) if isinstance(a, (int, float)) else "?"))
+            head = "场景叠加 · 实时帧龄 " + " · ".join(parts)
+            if d.get("offline"):
+                head += " · 未接: " + "+".join(d["offline"])
+            p.setPen(QColor("#7ee787"))
+            p.setFont(QFont("Arial", 9))
+            p.drawText(QRectF(6, 2, W - 12, band - 4), Qt.AlignVCenter | Qt.AlignLeft,
+                       p.fontMetrics().elidedText(head, Qt.ElideRight, W - 12))
+            for i, nm in enumerate(srcs):
+                cx, cy = (i % cols) * tile[0], band + (i // cols) * tile[1]
+                b = d["bytes"].get(nm)
+                sub = QPixmap()
+                if b and sub.loadFromData(b, "JPG") and not sub.isNull():
+                    sub = sub.scaled(tile[0] - 4, tile[1] - 20, Qt.KeepAspectRatio,
+                                     Qt.SmoothTransformation)
+                    p.drawPixmap(QRectF(cx + 2, cy + 2, sub.width(), sub.height()), sub,
+                                 QRectF(0, 0, sub.width(), sub.height()))
+                m = d["meta"].get(nm) or {}
+                bo = m.get("boxes") or {}
+                bs = " ".join("%s%d" % (k, v) for k, v in sorted(bo.items())) if bo else "-"
+                sa = m.get("spec_age")
+                p.setPen(QColor("#e6edf3"))
+                p.setFont(QFont("Arial", 9, QFont.Bold))
+                p.drawText(QRectF(cx + 4, cy + tile[1] - 17, tile[0] - 8, 15),
+                           Qt.AlignVCenter | Qt.AlignLeft,
+                           "%s · 框 %s · 真值链 %s · 规格 %s" %
+                           (nm, bs,
+                            "OK" if m.get("tcp_ok") else ("断" if m.get("tcp_ok") is False else "?"),
+                            ("%.0fm" % (sa / 60.0)) if isinstance(sa, (int, float)) else "?"))
+        finally:
+            p.end()
+        return pm
+
+    def _ov_live_apply(self):
+        """主线程: 各路最新帧 → 拼图 QPixmap → 节点 (video_pixmap / update)"""
+        d = self._ov_live
+        if not d.get("on"):
+            return
+        it = self._items.get(d.get("node_id"))
+        if it is None:
+            self.stop_canvas_live_overlay(quiet=True)
+            self._log("⚠️ 场景叠加: 节点已不在画布 (被删/重载) → 实时帧已停")
+            return
+        srcs = list(d.get("srcs") or [])
+        fresh = [nm for nm in srcs
+                 if d.get("bytes", {}).get(nm) and d["seq"].get(nm) != d["applied"].get(nm)]
+        if fresh:
+            pm = self._ov_live_mosaic(d, srcs)
+            if pm is not None and not pm.isNull():
+                it.video_pixmap = pm
+                for nm in fresh:
+                    d["applied"][nm] = d["seq"][nm]
+                d["frames"] += 1
+                if d["frames"] == 1:
+                    self._log("✅ 场景叠加: 画布节点已出画面 %dx%d (%d 路: %s)"
+                              % (pm.width(), pm.height(), len(srcs), "+".join(srcs)))
+        it.video_overlay = ""       # 真值带已画在拼图顶部 (避免与 paint 小字重叠)
+        it.update()
+        stale = d.get("last_ok") and (time.time() - d["last_ok"] > 6.0)
+        if stale and not d.get("warned"):
+            d["warned"] = True
+            self._log("⚠️ 场景叠加: 画布取帧已断 >6s (失败 %d 次) ⇒ 查视频流/相机"
+                      % d.get("fetch_err", 0))
+        elif not stale:
+            d["warned"] = False
 
     def _repo_root(self):
         """仓库根 (frozen exe → _MEIPASS; 源码 → tools/gui/ 上溯三级)"""

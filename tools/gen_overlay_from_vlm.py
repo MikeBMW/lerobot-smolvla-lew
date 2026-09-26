@@ -150,7 +150,7 @@ def main_cli(cam: str = "arm", path: str = "", dry: bool = False) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cam", default="arm", choices=["arm", "local"])
+    ap.add_argument("--cam", default="arm", choices=["arm", "local", "local2"])  # 🎥 2026-09-27 三相机
     ap.add_argument("--frame", default="", help="用指定图（缺省取视频流实帧）")
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args()

@@ -5065,3 +5065,28 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      node_ss_mani_eng)
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
                                 395, "class ManifoldEngine")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🎥 真实场景叠加 · 双眼 (sim2real) — 画布节点内实时出画面 (2026-09-27 老倪)
+#   触发: 工具栏「🧩 场景叠加」按钮 与 双击本节点 走同一条路
+#   实现: module.start_canvas_live_overlay() 拉 8791 单帧快照 → 节点 video_pixmap/update
+# ══════════════════════════════════════════════════════════════════════════════
+def node_realscene_live(ctx):
+    """🎥 真实场景叠加 — 双击: 画布节点内实时显示叠加画面 (再双击一次 = 停)"""
+    module = ctx.get("module")
+    log = ctx.get("log")
+    if module is None or not hasattr(module, "toggle_canvas_live_overlay"):
+        if log:
+            log("⚠️ 场景叠加: 无 module 上下文 (仅画布内双击/工具栏按钮可用)")
+        return False
+    ok = module.toggle_canvas_live_overlay()
+    if log and not ok:
+        log("⚠️ 场景叠加: 未能出画面 — 先确认视频流 8791 在跑 (工具栏「🧩 场景叠加」或「📡 视频流」)")
+    return bool(ok)
+
+
+_reg("n_realscene_live", ["真实场景叠加", "双眼叠加"],
+     "🎥 真实场景叠加 · 双眼 (sim2real) — 双击: 画布节点内实时显示 8791 叠加画面 "
+     "(臂上相机真几何投影框; 画面带真值带: 源/帧龄/框数/真值链)",
+     node_realscene_live)

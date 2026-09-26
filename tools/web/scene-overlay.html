@@ -51,8 +51,9 @@
 </header>
 
 <div class="bar">
-  <button id="cArm" class="on" onclick="setCam('arm')">🦾 手臂相机</button>
-  <button id="cLocal" onclick="setCam('local')">💻 笔记本</button>
+  <button id="cArm" class="on" onclick="setCam('arm')">🦾 臂上相机</button>
+  <button id="cLocal" onclick="setCam('local')">💻 笔记本内置</button>
+  <button id="cMax" onclick="setCam('local2')">📺 MAXHUB 顶摄</button>
   <button id="cBoth" onclick="setCam('both')">▣ 双路</button>
 </div>
 <div class="bar" style="top:64px;padding-top:8px;padding-bottom:8px">
@@ -136,18 +137,20 @@ function toast(msg, ms){
 }
 function setCam(c){
   CAM = c;
-  $('cArm').className   = c==='arm'   ? 'on' : '';
-  $('cLocal').className = c==='local' ? 'on' : '';
-  $('cBoth').className  = c==='both'  ? 'on' : '';
+  $('cArm').className   = c==='arm'    ? 'on' : '';
+  $('cLocal').className = c==='local'  ? 'on' : '';
+  $('cMax').className   = c==='local2' ? 'on' : '';
+  $('cBoth').className  = c==='both'   ? 'on' : '';
   bind();
 }
 function bind(){
-  const arm = (CAM==='arm' || CAM==='both');
-  const loc = (CAM==='local' || CAM==='both');
-  $('raw').src = arm ? `${API}/arm.mjpg?t=${t0}` : (loc ? `${API}/local.mjpg?t=${t0}` : '');
-  $('ov').src  = arm ? `${API}/overlay/arm.mjpg?t=${t0}` : (loc ? `${API}/overlay/local.mjpg?t=${t0}` : '');
-  $('rawT').textContent = arm ? '手臂 D405' : '笔记本';
-  $('ovT').textContent  = arm ? '手臂 D405' : '笔记本';
+  // 🎥 2026-09-27 三相机: arm=机器人臂上(Orin, 真几何投影) · local=笔记本内置 · local2=MAXHUB 电视顶摄
+  const cam = (CAM==='both') ? 'arm' : CAM;
+  const lbl = {'arm':'臂上 D405','local':'笔记本内置','local2':'MAXHUB 顶摄'}[cam] || cam;
+  $('raw').src = `${API}/${cam}.mjpg?t=${t0}`;
+  $('ov').src  = `${API}/overlay/${cam}.mjpg?t=${t0}`;
+  $('rawT').textContent = lbl;
+  $('ovT').textContent  = lbl + (cam==='arm' ? '' : ' · 无手眼(仅2D框)');
   $('srcHost').textContent = HOST;   // HOST 由 API 反推, 不再单留 PORT(删了会静默抛错→脚本死)
 }
 function reload(){ t0 = Date.now(); bind(); toast('已重新连接视频流'); }
@@ -156,7 +159,7 @@ async function gen(kind){
   const btn = {'sim':'gSim','vlm':'gVlm','scene':'gScene','det':'gDet'}[kind];
   $(btn).disabled = true; $(btn).textContent = '⏳ 生成中…';
   try{
-    const r = await fetch(`${API}/gen?kind=${kind}`); const j = await r.json();
+    const r = await fetch(`${API}/gen?kind=${kind}&cam=${CAM==='both'?'arm':CAM}`); const j = await r.json();
     toast(j.msg || '已启动');
   }catch(e){ toast('❌ 触发失败: 连不上 '+API+'（手机需与 4060 同一局域网）', 7000); }
   setTimeout(()=>{

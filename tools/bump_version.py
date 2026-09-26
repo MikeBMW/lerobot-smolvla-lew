@@ -23,7 +23,11 @@ import re
 import sys
 import time
 
-REPO = "/home/ubuntu/lerobot-smolvla-lew"
+REPO = os.environ.get("ZMAX_REPO") or "/home/ubuntu/zmax_rel"
+# 🐛 2026-09-27 实测: 这里原来写死 /home/ubuntu/lerobot-smolvla-lew —— 那是**共享检出**,
+#   会被切到别的分支 (当时在 mac-hw), 于是"改版本必同步"的 5 处改到了**另一棵树的另一个分支**上,
+#   而 main 线真源是 worktree /home/ubuntu/zmax_rel ⇒ 版本号在真源里根本没变 (静默错改)。
+#   口径: 真源 = worktree; 需要改别的树就显式 --repo / ZMAX_REPO。
 STUDIO = os.path.join(REPO, "tools/gui/studio.py")
 UPD = os.path.join(REPO, "tools/gui/update_checker.py")
 DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
@@ -41,7 +45,16 @@ def main() -> int:
     ap.add_argument("--from", dest="frm", default="", help="旧版本号(默认自动探测)")
     ap.add_argument("--summary-file", required=True)
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--repo", default="", help="仓库根 (缺省 = ZMAX_REPO 环境变量或 worktree /home/ubuntu/zmax_rel)")
     a = ap.parse_args()
+    global REPO, STUDIO, UPD, DOCS, VSYNC, VM
+    if a.repo:
+        REPO = a.repo
+        STUDIO = os.path.join(REPO, "tools/gui/studio.py")
+        UPD = os.path.join(REPO, "tools/gui/update_checker.py")
+        DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
+        VSYNC = os.path.join(REPO, "tools/gui/version_sync.py")
+        VM = os.path.join(REPO, "VERSION.md")
     new, nv = a.to, "v" + a.to
     s = _read(STUDIO)
     m = re.findall(r"Z-MAX v(\d+\.\d+\.\d+)", s)
@@ -64,10 +77,16 @@ def main() -> int:
     s2 = s2.replace("XSpace Studio — Z-MAX %s" % ov, "XSpace Studio — Z-MAX %s" % nv)
     chk.append(("studio.py 窗口标题", n_t, s2.count("XSpace Studio — Z-MAX %s" % nv)))
     # 3) changelog 前缀 (插在旧版本注释行之前)
-    anchor = "# %s:" % ov
-    assert anchor in s2, "找不到 changelog 锚点 %s" % anchor
-    s2 = s2.replace(anchor, "# %s: %s\n%s" % (nv, summ, anchor), 1)
-    chk.append(("studio.py changelog 行", 1 if anchor in s2 else 0, 1))
+    #   🐛 2026-09-27: 原锚点是死串 "# v5.15.13:" —— 但真源里的 changelog 行长这样
+    #     "# v5.15.13 (2026-09-27): **手眼标定 T_base_cam 首次解出…**"
+    #   带日期括号 ⇒ 死串永远匹配不到 (在真源上直接崩, 在别的树上则可能静默改错)。
+    #   改成"行首版本号"正则 = 认版本号不认记法。
+    pat = re.compile(r"(?m)^([ \t]*)# %s\b.*$" % re.escape(ov))
+    mm = pat.search(s2)
+    assert mm, "找不到 changelog 锚点 (# %s …) — 先确认 repo/分支: %s" % (ov, REPO)
+    #   行首可能有缩进 (真源里就是 8 空格缩进的注释块) ⇒ 连带缩进一起还原
+    s2 = s2[:mm.start()] + "%s# %s: %s\n" % (mm.group(1), nv, summ) + s2[mm.start():]
+    chk.append(("studio.py changelog 行", 1, s2.count("# %s:" % nv)))
 
     u = _read(UPD).replace('CURRENT_VERSION = "%s"' % ov, 'CURRENT_VERSION = "%s"' % nv)
     chk.append(("update_checker CURRENT_VERSION", 1, u.count('CURRENT_VERSION = "%s"' % nv)))
@@ -84,6 +103,15 @@ def main() -> int:
     v2 = v.replace('zmax_ver = "%s"' % ov_bare, 'zmax_ver = "%s"' % nv_bare)
     chk.append(("version_sync zmax_ver", v.count('zmax_ver = "%s"' % ov_bare),
                 v2.count('zmax_ver = "%s"' % nv_bare)))
+
+    # 4b) 🐛 2026-09-27 实测补: tools/ci/integrity_check.py 的 EXPECTED_VERSION 是**硬编码**,
+    #   原先不在同步清单里 ⇒ 每次 bump 完, 自家完整性门必红 ("CURRENT_VERSION 不是 vX"),
+    #   等于"改版本必同步"清单漏了一处。门自己就是判据, 必须一起改。
+    INTEG = os.path.join(REPO, "tools/ci/integrity_check.py")
+    ic = _read(INTEG)
+    ic2 = ic.replace('EXPECTED_VERSION = "%s"' % ov, 'EXPECTED_VERSION = "%s"' % nv)
+    chk.append(("integrity_check EXPECTED_VERSION", ic.count('EXPECTED_VERSION = "%s"' % ov),
+                ic2.count('EXPECTED_VERSION = "%s"' % nv)))
 
     vm = _read(VM)
     row = "| **%s** | %s | %s |\n" % (nv, time.strftime("%m-%d"), summ)     # 🐛 日期原写死 09-22
@@ -104,10 +132,10 @@ def main() -> int:
     if a.dry:
         print("(--dry: 未写盘)")
         return 0
-    for p, txt in ((STUDIO, s2), (UPD, u), (DOCS, d2), (VSYNC, v2), (VM, vm2)):
+    for p, txt in ((STUDIO, s2), (UPD, u), (DOCS, d2), (VSYNC, v2), (INTEG, ic2), (VM, vm2)):
         open(p, "w", encoding="utf-8").write(txt)
     import py_compile
-    for p in (STUDIO, UPD, DOCS, VSYNC):
+    for p in (STUDIO, UPD, DOCS, VSYNC, INTEG):
         py_compile.compile(p, doraise=True)
     print("✅ 已写盘并语法校验通过; 下一步: git add/commit → git tag %s → push (CI 出 Windows/macOS 包)" % nv)
     return 0

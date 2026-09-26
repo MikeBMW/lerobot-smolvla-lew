@@ -54,7 +54,7 @@ def main_cli(cam: str = "arm", conf: float = 0.25, path: str = "") -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cam", default="arm", choices=["arm", "local"])
+    ap.add_argument("--cam", default="arm", choices=["arm", "local", "local2"])  # 🎥 2026-09-27 三相机
     ap.add_argument("--conf", type=float, default=0.25)
     ap.add_argument("--frame", default="")
     a = ap.parse_args()

@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -52,21 +53,22 @@ except Exception:                    # 叠加是可选能力，导入失败不�
     _SO = None
 _OVERLAY_FPS = 12.0
 
-# ── 全局：两路相机的最新 JPEG 帧 ───────────────────────────────
+# ── 全局：各路相机的最新 JPEG 帧 ───────────────────────────────
+# 🎥 2026-09-27 老倪: 三路相机并存 —— arm(机器人臂上 D405, 走 Orin 网络) /
+#   local(笔记本内置 /dev/video2) / local2(MAXHUB 电视顶摄 /dev/video0 或网络流)
+#   叠加帧统一命名 ov_<源名>; 新源只需往 _FRAMES 注册 + 起一个 worker。
 _LOCK = threading.Lock()
-_FRAMES = {
-    "arm":   {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0},
-    "local": {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0},
-    "ov_arm":   {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0},
-    "ov_local": {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0},
-}
+_FRAME_TPL = {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0}
+_FRAMES = {k: dict(_FRAME_TPL) for k in
+           ("arm", "local", "local2", "ov_arm", "ov_local", "ov_local2")}
 _OV_INFO = {}                        # 每路最近一次的叠加统计（画了多少框/跳过原因）
+_CAM_LABEL = {}                      # 🎥 源名 → 真实相机名 (页面/画布直显"这是哪个摄像头")
 _STOP = threading.Event()
 
 
 def _put(name: str, jpg: bytes, src_ts: float, raw_kb: float) -> None:
     with _LOCK:
-        f = _FRAMES[name]
+        f = _FRAMES.setdefault(name, dict(_FRAME_TPL))   # 新源自动注册
         f["jpg"] = jpg
         f["ts"] = time.time()
         f["seq"] += 1
@@ -76,7 +78,9 @@ def _put(name: str, jpg: bytes, src_ts: float, raw_kb: float) -> None:
 
 def _get(name: str):
     with _LOCK:
-        f = _FRAMES[name]
+        f = _FRAMES.get(name)
+        if f is None:
+            return None, 0, 0.0, 0.0, 0.0
         return f["jpg"], f["seq"], f["ts"], f["src_ts"], f["raw_kb"]
 
 
@@ -252,12 +256,12 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
             _STOP.wait(1.0 / fps_cap - dt)
 
 
-# ── ② 笔记本内置相机：本机驱动直读 ────────────────────────────
+# ── ② 本机 V4L2 相机：驱动直读 (笔记本内置 / MAXHUB 电视顶摄 都是走这里) ────
 def local_worker(dev_index: int, quality: int, width: int, height: int,
-                 fps_cap: float) -> None:
+                 fps_cap: float, frame_name: str = "local") -> None:
     cap = cv2.VideoCapture(dev_index)
     if not cap.isOpened():
-        print(f"[local] /dev/video{dev_index} 打不开", flush=True)
+        print(f"[{frame_name}] /dev/video{dev_index} 打不开", flush=True)
         return
     # 低延迟三件套：MJPG 采集 + 缓冲=1 + 固定分辨率
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
@@ -274,17 +278,76 @@ def local_worker(dev_index: int, quality: int, width: int, height: int,
         if not ok or frame is None:
             fails += 1
             if fails % 30 == 1:
-                print(f"[local] 读帧失败 x{fails}", flush=True)
+                print(f"[{frame_name}] 读帧失败 x{fails}", flush=True)
             _STOP.wait(0.05)
             continue
         ok, buf = cv2.imencode(".jpg", frame, params)
         if ok:
-            _put("local", buf.tobytes(), time.time(),
+            _put(frame_name, buf.tobytes(), time.time(),
                  float(frame.nbytes) / 1024.0)
         dt = time.time() - t0
         if fps_cap > 0 and dt < 1.0 / fps_cap:
             _STOP.wait(1.0 / fps_cap - dt)
     cap.release()
+
+
+# ── ②b 网络相机：MAXHUB 等可联网相机 (HTTP-JPEG/MJPEG 直转 · RTSP 解码重压) ──
+def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
+                   quality: int = 70) -> None:
+    """把一路网络相机接成 frame_name (默认 local2)。
+    · http(s)://…jpg|mjpg  → 原样转发(不重压, 最快, 和手臂高速通道同款)
+    · rtsp:// / rtmp://    → OpenCV 解码 → 重压 JPEG (相机若走 RTSP 用这条)
+    """
+    import urllib.request
+    params = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+    misses = 0
+    if url.lower().startswith(("rtsp://", "rtmp://")):
+        cap = cv2.VideoCapture(url)
+        if not cap.isOpened():
+            print(f"[{frame_name}] 打不开网络流 {url}", flush=True)
+            return
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+        while not _STOP.is_set():
+            t0 = time.time()
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                misses += 1
+                if misses % 30 == 1:
+                    print(f"[{frame_name}] 读流失败 x{misses} ({url[:60]})", flush=True)
+                _STOP.wait(0.2)
+                continue
+            misses = 0
+            ok, buf = cv2.imencode(".jpg", frame, params)
+            if ok:
+                _put(frame_name, buf.tobytes(), time.time(),
+                     float(frame.nbytes) / 1024.0)
+            dt = time.time() - t0
+            if fps_cap > 0 and dt < 1.0 / fps_cap:
+                _STOP.wait(1.0 / fps_cap - dt)
+        cap.release()
+        return
+    while not _STOP.is_set():
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(url, timeout=2.0) as r:
+                data = r.read()
+        except Exception as e:
+            misses += 1
+            if misses % 20 == 1:
+                print(f"[{frame_name}] 取 {url[:60]} 失败: {str(e)[:50]}", flush=True)
+            _STOP.wait(0.2)
+            continue
+        if not data or len(data) < 500:
+            _STOP.wait(0.05)
+            continue
+        misses = 0
+        _put(frame_name, data, time.time(), len(data) / 1024.0)
+        dt = time.time() - t0
+        if fps_cap > 0 and dt < 1.0 / fps_cap:
+            _STOP.wait(1.0 / fps_cap - dt)
 
 
 # ── ③ 场景叠加渲染线程（解码 → 画仿真/大模型/检测框 → 重编码）──────────
@@ -362,32 +425,38 @@ _GEN_KINDS = {"sim": "仿真场景投影", "scene": "场景契约", "vlm": "L5 �
 _GEN_STALE_S = 360.0
 
 
-def _gen_worker(kind: str) -> None:
+def _gen_worker(kind: str, cam: str = "") -> None:
+    """生成一路的来源框。🎥 2026-09-27: 支持按相机生成 ——
+    · sim/scene 走真几何投影(手眼) ⇒ **只对臂上相机成立**; 本机/USB 相机如实拒绝, 不假装画得上
+    · vlm/det 是纯 2D 视觉 ⇒ 三路相机都能跑
+    """
+    cam = cam or "arm"
     try:
-        if kind == "sim":
-            spec = _SO.build_from_sim()
-            _SO.save_spec(spec)
-            r = "仿真投影: %d 框 (源 %s)" % (len(spec["cameras"]["arm"]["boxes"]), spec["source"])
-        elif kind == "scene":
-            spec = _SO.build_from_scene_state()
-            _SO.save_spec(spec)
-            r = "场景契约: %d 框" % len(spec["cameras"]["arm"]["boxes"])
+        if kind in ("sim", "scene"):
+            if cam != "arm":
+                r = "✗ %s 只支持臂上相机（仿真框要手眼真几何, 本机/USB 相机未标定）" % _GEN_KINDS[kind]
+            else:
+                spec = _SO.build_from_sim() if kind == "sim" else _SO.build_from_scene_state()
+                _SO.save_spec(spec)
+                r = "%s: %d 框 (源 %s)" % (_GEN_KINDS[kind],
+                                          len(spec["cameras"]["arm"]["boxes"]), spec["source"])
         else:
-            r = __import__("gen_overlay_from_" + ("vlm" if kind == "vlm" else "det")).main_cli()
+            r = __import__("gen_overlay_from_" + ("vlm" if kind == "vlm" else "det")).main_cli(cam=cam)
     except Exception as e:
-        r = "✗ %s: %s" % (kind, str(e)[:180])
+        r = "✗ %s/%s: %s" % (kind, cam, str(e)[:180])
     with _LOCK:
         _GEN_STATE.update(busy=None, last=r, ts=time.time())
-    print("[gen] %s → %s" % (kind, r), flush=True)
+    print("[gen] %s/%s → %s" % (kind, cam, r), flush=True)
 
 
-def _spawn_gen(kind: str) -> str:
+def _spawn_gen(kind: str, cam: str = "") -> str:
     """启动一次生成。
 
     ★ 卡死自愈: VLM 走网络(DeepSeek), 单次可长达 120~300s; 若网断/进程被卡,
       busy 标志会永久占位 ⇒ 页面上 4 个按钮全变哑巴(点了没反应)。所以超过
       上限 + 余量还不回收, 就判为卡死并自动解锁, 同时如实报出"上次占了多久"。
     """
+    cam = cam or "arm"
     with _LOCK:
         b = _GEN_STATE["busy"]
         age = time.time() - _GEN_STATE.get("ts", 0)
@@ -398,9 +467,9 @@ def _spawn_gen(kind: str) -> str:
             b = None
         if b:
             return "已有生成在跑: %s (已 %.0fs, 上限 %.0fs)" % (b, age, _GEN_STALE_S)
-        _GEN_STATE.update(busy=kind, ts=time.time())
-    threading.Thread(target=_gen_worker, args=(kind,), daemon=True).start()
-    return "已启动: %s (%s)" % (_GEN_KINDS.get(kind, kind), kind)
+        _GEN_STATE.update(busy="%s/%s" % (kind, cam), ts=time.time())
+    threading.Thread(target=_gen_worker, args=(kind, cam), daemon=True).start()
+    return "已启动: %s (%s · %s)" % (_GEN_KINDS.get(kind, kind), kind, cam)
 
 
 # ── HTTP 服务 ─────────────────────────────────────────────────
@@ -413,7 +482,8 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  h1{margin:0;font-size:16px;font-weight:600}
  .meta{color:#8b98a5;font-size:12px;margin-top:3px}
  .wrap{display:grid;grid-template-columns:1fr;gap:10px;padding:10px}
- @media(min-width:900px){.wrap{grid-template-columns:1fr 1fr}}
+@media(min-width:900px){.wrap{grid-template-columns:1fr 1fr}}
+@media(min-width:1400px){.wrap{grid-template-columns:1fr 1fr 1fr}}
  .card{background:#111820;border:1px solid #223;border-radius:10px;overflow:hidden}
  .card h2{margin:0;padding:8px 12px;font-size:13px;font-weight:600;background:#0e151c;
           border-bottom:1px solid #223;display:flex;justify-content:space-between}
@@ -431,7 +501,7 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 </style></head><body>
 <header>
   <h1>🎥 Z-MAX 旁路调试 · 实时视频流（压缩版）</h1>
-  <div class="meta">手臂相机 = Orin 经 ROS 传来（JPEG 压缩推流） · 笔记本相机 = 本机驱动 · <span id="stat">—</span></div>
+  <div class="meta">手臂相机 = Orin 经 ROS 传来（JPEG 压缩推流） · 本机相机 = 驱动直读（三相机: 臂上 + 笔记本内置 + MAXHUB 电视顶摄） · <span id="stat">—</span></div>
 </header>
 <div class="wrap">
   <div class="card">
@@ -440,9 +510,14 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
     <div class="note">源: <code>/realsense/color/image_raw</code> (Orin) · 帧龄 <b id="age_arm">—</b></div>
   </div>
   <div class="card">
-    <h2>💻 笔记本内置相机 <span class="tag" id="t_local">本机驱动</span></h2>
+    <h2>💻 本机相机① <span class="tag" id="t_local">/dev/video__IDX__</span></h2>
     <img src="/local.mjpg" alt="local">
     <div class="note">源: <code>/dev/video__IDX__</code> · 帧龄 <b id="age_local">—</b></div>
+  </div>
+  <div class="card">
+    <h2>📺 本机相机② <span class="tag" id="t_local2">MAXHUB 电视顶摄</span></h2>
+    <img src="/local2.mjpg" alt="local2">
+    <div class="note">源: <code>/dev/videoN 或 rtsp://</code> · 帧龄 <b id="age_local2">—</b></div>
   </div>
 </div>
 <div class="motion" id="motion">
@@ -454,12 +529,15 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <script>
 async function tick(){
   try{const r=await fetch('/stats');const s=await r.json();
-    const a=s.arm,l=s.local;
-    document.getElementById('age_arm').textContent = a.age_s.toFixed(2)+'s ('+a.fps.toFixed(1)+'fps)';
-    document.getElementById('age_local').textContent = l.age_s.toFixed(2)+'s ('+l.fps.toFixed(1)+'fps)';
+    const a=s.arm,l=s.local,x=s.local2;
+    const f=(o)=>{const p=document.getElementById('age_'+o[0]); if(p) p.textContent = o[1] ? (o[1].age_s.toFixed(2)+'s ('+o[1].fps.toFixed(1)+'fps)') : '未接';};
+    f(['arm',a]);f(['local',l]);f(['local2',x]);
+    const lb=(id,o)=>{const e=document.getElementById(id); if(e&&o&&o.label) e.textContent=o.label;};
+    lb('t_arm',a);lb('t_local',l);lb('t_local2',x);
     document.getElementById('stat').textContent =
-      `手臂 ${a.kb_per_frame.toFixed(0)}KB/帧 ${a.compress_x.toFixed(0)}x压`+
-      `  |  笔记本 ${l.kb_per_frame.toFixed(0)}KB/帧 ${l.compress_x.toFixed(0)}x压`;
+      (a?`手臂 ${a.kb_per_frame.toFixed(0)}KB/帧 ${a.compress_x.toFixed(0)}x压`:'手臂 -')+
+      (l?`  |  相机① ${l.kb_per_frame.toFixed(0)}KB/帧`:'')+
+      (x?`  |  相机② ${x.kb_per_frame.toFixed(0)}KB/帧`:'  |  相机② 未接');
   }catch(e){}
   try{const r2=await fetch('/motion');const m=await r2.json();
     const d=document.getElementById('dot');
@@ -537,8 +615,9 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="meta">真实画面 = 原始视频流 · 框 = 仿真投影 / L5 大模型理解 / 真机检测（颜色区分，不混为一谈）</div>
 </header>
 <div class="bar">
-  <button id="c_arm" class="on" onclick="setCam('arm')">🦾 手臂相机</button>
-  <button id="c_local" onclick="setCam('local')">💻 笔记本相机</button>
+  <button id="c_arm" class="on" onclick="setCam('arm')">🦾 臂上相机</button>
+  <button id="c_local" onclick="setCam('local')">💻 笔记本内置</button>
+  <button id="c_local2" onclick="setCam('local2')">📺 MAXHUB 电视顶摄</button>
   <span style="width:1px;background:#223;margin:0 4px"></span>
   <button class="go" onclick="gen('sim')">🎯 仿真场景投影</button>
   <button class="go" onclick="gen('vlm')">🧠 L5 大模型理解</button>
@@ -571,16 +650,16 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="row"><span class="k">生成任务</span><span id="gen">—</span></div>
 </div>
 <script>
-let CAM='arm';
+let CAM='arm', t0=Date.now();
+const CAMS=['arm','local','local2'];
 function setCam(c){
-  CAM=c;
-  document.getElementById('c_arm').className = c==='arm'?'on':'';
-  document.getElementById('c_local').className = c==='local'?'on':'';
-  document.getElementById('raw').src='/'+c+'.mjpg';
-  document.getElementById('ov').src='/overlay/'+c+'.mjpg';
+  CAM=c; t0=Date.now();
+  CAMS.forEach(n=>{const b=document.getElementById('c_'+n); if(b) b.className=(n===c)?'on':'';});
+  document.getElementById('raw').src='/'+c+'.mjpg?t='+t0;
+  document.getElementById('ov').src='/overlay/'+c+'.mjpg?t='+t0;
 }
 async function gen(kind){
-  const r=await fetch('/gen?kind='+kind); const j=await r.json();
+  const r=await fetch('/gen?kind='+kind+'&cam='+CAM); const j=await r.json();
   document.getElementById('msg').textContent='⏳ '+j.msg+'（大模型理解约需 1~2 分钟，跑完自动出现在画面里）';
   setTimeout(load,1500);
 }
@@ -611,6 +690,11 @@ setInterval(load,1500);load();
 </script></body></html>"""
 
 
+# 🎥 2026-09-27 老倪(三相机): 通用相机路由 —— 新增相机源不用再改路由表
+_RE_MJPG = re.compile(r"^/(?P<ov>overlay/)?(?P<name>[A-Za-z0-9_]+)\.mjpg$")
+_RE_SNAP = re.compile(r"^/snapshot/(?P<ov>overlay_)?(?P<name>[A-Za-z0-9_]+)\.jpg$")
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -636,15 +720,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(spec, ensure_ascii=False).encode("utf-8"))
         elif p == "/gen":
-            kind = ""
+            kind = cam = ""
             if "?" in self.path:
                 for kv in self.path.split("?", 1)[1].split("&"):
                     if kv.startswith("kind="):
                         kind = kv.split("=", 1)[1]
+                    elif kv.startswith("cam="):
+                        cam = kv.split("=", 1)[1]
             if _SO is None:
                 msg = "scene_overlay 未加载，叠加能力不可用"
             else:
-                msg = _spawn_gen(kind) if kind in _GEN_KINDS else "未知 kind=%s" % kind
+                msg = _spawn_gen(kind, cam) if kind in _GEN_KINDS else "未知 kind=%s" % kind
             self._send(200, "application/json; charset=utf-8",
                        json.dumps({"msg": msg}, ensure_ascii=False).encode("utf-8"))
         elif p == "/arm.mjpg":
@@ -670,6 +756,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(_motion_state(), ensure_ascii=False).encode("utf-8"))
         else:
+            # 🎥 2026-09-27: 通用路由 —— 任意相机源自动可用 (加相机不用改路由表)
+            #   /<cam>.mjpg · /overlay/<cam>.mjpg · /snapshot/<cam>.jpg · /snapshot/overlay_<cam>.jpg
+            m = _RE_MJPG.match(p)
+            if m:
+                self._mjpeg(("ov_" if m.group("ov") else "") + m.group("name"))
+                return
+            m = _RE_SNAP.match(p)
+            if m:
+                self._snapshot(("ov_" if m.group("ov") else "") + m.group("name"))
+                return
             self._send(404, "text/plain", b"not found")
 
     def _send(self, code: int, ctype: str, body: bytes):
@@ -721,8 +817,10 @@ class Handler(BaseHTTPRequestHandler):
     def _stats(self):
         now = time.time()
         out = {}
-        names = ["arm", "local"] + [n for n in ("ov_arm", "ov_local")
-                                    if _FRAMES.get(n, {}).get("jpg") is not None]
+        # 🎥 2026-09-27: 原始路全报 (arm/local/local2); 叠加路只在真有帧时报
+        names = [n for n in ("arm", "local", "local2") if _FRAMES.get(n)]
+        names += [n for n in sorted(_FRAMES) if n.startswith("ov_")
+                  and _FRAMES.get(n, {}).get("jpg") is not None]
         for name in names:
             jpg, seq, ts, src_ts, raw_kb = _get(name)
             kb = (len(jpg) / 1024.0) if jpg else 0.0
@@ -744,8 +842,18 @@ class Handler(BaseHTTPRequestHandler):
                 "compress_x": round(raw_kb / kb, 1) if kb > 0 else 0.0,
                 "age_s": round(now - src_ts, 2) if src_ts else -1.0,
                 "frames_served": seq,
+                "label": _CAM_LABEL.get(name.replace("ov_", ""), ""),
             }
         return out
+
+
+def _v4l_name(idx: int) -> str:
+    """读 /dev/videoN 的真实设备名 (页面/日志直接显示"到底哪个摄像头", 不靠猜)"""
+    try:
+        with open("/sys/class/video4linux/video%d/name" % idx, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
 
 
 def main():
@@ -762,15 +870,22 @@ def main():
     ap.add_argument("--arm-http", default="",
                     help="手臂走高速通道: 从 Orin rs_fast_node 的 JPEG 端点取帧(如 http://192.168.23.66:8792/frame.jpg)")
     ap.add_argument("--arm-fps", type=float, default=30.0, help="手臂取帧上限 fps")
-    ap.add_argument("--local-dev", type=int, default=0, help="笔记本相机 /dev/videoN")
-    ap.add_argument("--no-local", action="store_true", help="不启笔记本相机")
+    ap.add_argument("--local-dev", type=int, default=0, help="相机①本机 /dev/videoN")
+    ap.add_argument("--no-local", action="store_true", help="不启第一路本机相机")
+    # 🎥 2026-09-27 老倪: 三相机兼容 —— 第二路本机相机 (MAXHUB 电视顶摄) 或网络相机
+    ap.add_argument("--local2-dev", type=int, default=-1,
+                    help="相机②本机 /dev/videoN (MAXHUB 电视顶摄; -1=关)")
+    ap.add_argument("--local2-url", default="",
+                    help="相机②走网络: http(s) JPEG/MJPEG 或 rtsp:// (MAXHUB 联网模式)")
+    ap.add_argument("--no-local2", action="store_true", help="不启第二路相机")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--overlay", action="store_true", default=False,
                     help="开启场景叠加（真实流 + 仿真/大模型/检测框；页面 /overlay）")
     ap.add_argument("--overlay-src", default="arm",
-                    choices=["arm", "local", "both"], help="叠加哪几路")
+                    choices=["arm", "local", "local2", "both", "all"],
+                    help="叠加哪几路 (both=arm+local; all=三路)")
     ap.add_argument("--overlay-fps", type=float, default=12.0, help="叠加渲染上限 fps")
     args = ap.parse_args()
 
@@ -792,12 +907,31 @@ def main():
         threading.Thread(target=arm_worker,
                          args=(args.arm_src, args.quality, args.fps),
                          daemon=True, name="arm").start()
+    _CAM_LABEL["arm"] = "🦾 机器人臂上 D405 (Orin)"
     if not args.no_local:
-        print(f"   笔记本: /dev/video{args.local_dev}", flush=True)
+        _nm = _v4l_name(args.local_dev)
+        _CAM_LABEL["local"] = ("💻 " + (_nm or ("/dev/video%d" % args.local_dev)))
+        print(f"   相机① 本机: /dev/video{args.local_dev} = {_nm or '(无名)'}", flush=True)
         threading.Thread(target=local_worker,
                          args=(args.local_dev, args.quality, args.width,
-                               args.height, args.fps),
+                               args.height, args.fps, "local"),
                          daemon=True, name="local").start()
+    # 🎥 三相机: 第二路 (MAXHUB 电视顶摄: 本机 USB 或网络流二选一)
+    if not args.no_local2 and (args.local2_url or args.local2_dev >= 0):
+        if args.local2_url:
+            _CAM_LABEL["local2"] = "📺 " + args.local2_url.split("//")[-1][:34]
+            print(f"   相机② 网络: {args.local2_url}", flush=True)
+            threading.Thread(target=url_cam_worker,
+                             args=(args.local2_url, args.fps, "local2", args.quality),
+                             daemon=True, name="local2-url").start()
+        else:
+            _nm2 = _v4l_name(args.local2_dev)
+            _CAM_LABEL["local2"] = ("📺 " + (_nm2 or ("/dev/video%d" % args.local2_dev)))
+            print(f"   相机② 本机: /dev/video{args.local2_dev} = {_nm2 or '(无名)'}", flush=True)
+            threading.Thread(target=local_worker,
+                             args=(args.local2_dev, args.quality, args.width,
+                                   args.height, args.fps, "local2"),
+                             daemon=True, name="local2").start()
 
     # ── 场景叠加（老倪 2026-09-27）──
     if args.overlay:
@@ -805,13 +939,17 @@ def main():
             print("   ⚠ 场景叠加: scene_overlay 未加载 ⇒ 叠加不可用（纯推流不受影响）", flush=True)
         else:
             he = _SO.load_handeye()
-            srcs = ["arm", "local"] if args.overlay_src == "both" else [args.overlay_src]
+            _m = {"arm": ["arm"], "local": ["local"], "local2": ["local2"],
+                  "both": ["arm", "local"], "all": ["arm", "local", "local2"]}
+            srcs = _m.get(args.overlay_src, ["arm"])
             for s in srcs:
                 threading.Thread(target=overlay_worker, args=(s, args.overlay_fps),
                                  daemon=True, name="ov-" + s).start()
             print(f"   🧩 场景叠加: 已开 [{'+'.join(srcs)}] ≤{args.overlay_fps}fps · "
-                  f"手眼 {'✓ |t|=%.0fmm' % (np.linalg.norm(he['X'][:3, 3]) * 1000) if he['ok'] else '✗未标定'}"
+                  f"手眼 {'✓ |t|=%.0fmm' % (np.linalg.norm(he['X'][:3, 3]) * 1000) if he['ok'] else '✗未标定(仅臂上臂有真几何)'}"
                   f" · 规格 {_SO.SPEC_PATH}", flush=True)
+            print("      注: 真几何投影(仿真框)只对**臂上相机**成立 —— 本机/USB 相机无手眼标定,"
+                  " 那两路只画 检测/大模型 2D 框", flush=True)
             print(f"      叠加页: http://0.0.0.0:{args.port}/overlay", flush=True)
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
