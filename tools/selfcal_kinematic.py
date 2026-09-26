@@ -47,7 +47,7 @@ def status():
     return sdk("/status", timeout=30).get("status", {})
 
 
-def move_joint(target, speed=30.0):
+def move_joint(target, speed=8.0):   # 🐢 2026-09-26 老倪: 速度要慢一些 (30→8)
     js = ", ".join('"%s"' % n for n in JN)
     pos = ", ".join("%.9f" % v for v in target)
     cmd = ('timeout 100 ros2 service call /move_joint interfaces/srv/TargetJoint '
@@ -77,7 +77,8 @@ def fk_pos(q):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=20)
-    ap.add_argument("--amp", type=float, default=2.0, help="每轴偏移上限(deg)")
+    ap.add_argument("--amp", type=float, default=3.0, help="J1~J3 偏移上限(deg)")
+    ap.add_argument("--amp-wrist", type=float, default=12.0, help="J4~J6 偏移上限(deg) — 加大姿态跨度才能分离基座/工具偏移")
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     s0 = status()
@@ -107,11 +108,12 @@ def main() -> int:
         if i == 0:
             tgt = q0
         else:
-            off = np.radians(rng.uniform(-a.amp, a.amp, 6))
+            off = np.radians(np.concatenate([rng.uniform(-a.amp, a.amp, 3),
+                                             rng.uniform(-a.amp_wrist, a.amp_wrist, 3)]))
             tgt = q0 + off
         if i:
             print("  [%2d/%d] → %s" % (i, a.n, np.round(np.degrees(tgt), 2).tolist()), end=" ", flush=True)
-            move_joint(tgt.tolist())
+            move_joint(tgt.tolist(), speed=8.0)
             if not wait_idle():
                 print("(未静止, 跳过)"); continue
         st = status()
@@ -126,7 +128,7 @@ def main() -> int:
         print("残差 %.2fmm" % np.linalg.norm(d), flush=True)
     # 回起始
     print("\n回起始构型...")
-    move_joint(q0.tolist()); wait_idle()
+    move_joint(q0.tolist(), speed=8.0); wait_idle()
 
     if len(recs) < 6:
         print("有效样本 %d 太少 → 停" % len(recs)); return 1
@@ -154,8 +156,14 @@ def main() -> int:
     print("  dbase (mm) = %s" % np.round(dbase, 3).tolist())
     print("  dtool (mm) = %s   (工具系内偏移)" % np.round(dtool, 3).tolist())
     print("  修正后残差: 均值 %.3fmm · 中位 %.3fmm · 最大 %.3fmm" % (res2.mean(), np.median(res2), res2.max()))
+    # 可辨识性: 设计矩阵条件数 (R_i 若近似常数 → 基座/工具偏置不可分)
+    import numpy.linalg as la
+    cond = float(la.cond(A))
+    print("  可辨识性: 设计矩阵条件数 = %.3e %s" % (cond, "(可分离)" if cond < 1e3 else "(不可分离! 需加大姿态跨度)"))
     ok = res2.max() < 5.0 and res2.mean() < 2.0
     print("  判据(位置): 均值<2mm 且 最大<5mm → %s" % ("✅ 通过" if ok else "❌ 未过 (需加关节零位/杆长参数)"))
+    if cond >= 1e3:
+        print("  ⚠️ 可辨识性不足: dbase/dtool 只以组合形式可观测 → 本次数值不可直接用于 MoveIt, 需加大腕部跨度重跑")
     dst = os.path.join(OUT, "selfcal_%s.json" % time.strftime("%Y%m%d_%H%M%S"))
     json.dump({"ts": time.strftime("%F %T"), "n": len(recs), "q0": q0.tolist(),
                "baseline_mm": {"mean": float(base.mean()), "median": float(np.median(base)), "max": float(base.max())},
