@@ -86,8 +86,10 @@ function add(who,text,cls){const d=document.createElement('div');d.className='ms
   $('chat').scrollTop=$('chat').scrollHeight;}
 const NAME={gc_5:'夹爪闭合 H5',gc_10:'夹爪闭合 H10',rz_5:'到位 H5',rz_10:'到位 H10',mh_5:'手在动 H5',mh_10:'手在动 H10'};
 function render(s){
-  $('m_stage').textContent=s.stage||'-';$('m_age').textContent=(s.frame_age_s??'-');$('m_ts').textContent=(s.ts||'').slice(11);
-  const i=s.idea||{};$('idea').innerHTML='<b>'+esc(i.one_liner||'')+'</b><br>'+esc(i.now||'')+'<br>'+esc(i.watch||'')+'<br><span style="color:#6e7681">'+esc(i.ask||'')+'</span>';
+  $('m_stage').textContent=s.stage||'-';
+  if(s.stage_note){$('m_stage').title=s.stage_note;$('m_stage').textContent=(s.stage||'-')+' ⓘ';}$('m_age').textContent=(s.frame_age_s??'-');$('m_ts').textContent=(s.ts||'').slice(11);
+  const i=s.idea||{};
+  if(s.stage_note){$('idea').innerHTML+='<div style="color:#6e7681;font-size:11px;margin-top:4px">ⓘ '+esc(s.stage_note)+'</div>';}$('idea').innerHTML='<b>'+esc(i.one_liner||'')+'</b><br>'+esc(i.now||'')+'<br>'+esc(i.watch||'')+'<br><span style="color:#6e7681">'+esc(i.ask||'')+'</span>';
   let L='';for(const k of ['L2','L3','L4','L5']){const v=(s.layers||{})[k]||{};const c=v.status==='active'?'on':(v.status==='offline'?'off':'idle');
     L+='<div class="ly"><span class="dot '+c+'"></span><span class="k">'+k+'</span> '+esc(v.name||'')+'<br><span style="color:#6e7681">'+esc(v.detail||'')+'</span></div>';}
   $('layers').innerHTML=L;

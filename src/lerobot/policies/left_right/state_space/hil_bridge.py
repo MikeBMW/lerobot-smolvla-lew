@@ -70,7 +70,9 @@ def real_obs():
         grip = d.get("gripper")
         grip = 1.0 if grip is None else float(grip)
         obs7 = [float(x) for x in (list(tcp[:3]) + [grip] + list(jv[:3]))] if len(tcp) >= 3 else None
-        return obs7, str(d.get("prod_stage") or d.get("stage") or "?"), d.get("t"), round(age, 1)
+        st = d.get("prod_stage") or d.get("stage") or ""
+        # ⚠️ 如实: 真机 tap 的 prod_stage 为空 = 产线主程序没在跑 (不是"读失败")
+        return obs7, (str(st) if st else ""), d.get("t"), round(age, 1)
     except Exception:                                                        # noqa: BLE001
         return None, None, None, -1
 
@@ -139,10 +141,12 @@ def core_idea(stage, ev, obs7):
 def build_snapshot():
     obs7, stage, ts, age = real_obs()
     ev = event_pred(obs7)
+    stage_note = "" if stage else "真机 tap 的 prod_stage 为空 → 产线主程序未运行/未上报阶段 (帧本身是新鲜的)"
     return {
         "from": "zmax_hil", "ts": time.strftime("%F %T"),
         "snapshot": {
-            "stage": stage, "obs7": obs7, "obs_ts": ts, "frame_age_s": age,
+            "stage": (stage or "未上报"), "stage_note": stage_note,
+            "obs7": obs7, "obs_ts": ts, "frame_age_s": age,
             "events": ev, "layers": layer_health(), "resources": resources(),
             "idea": core_idea(stage, ev, obs7),
             "canvas": _canvas_brief(),
