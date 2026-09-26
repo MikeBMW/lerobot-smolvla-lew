@@ -7871,9 +7871,23 @@ class SimulinkModule(QWidget):
         fps = float(fps or 4.0)
         item = self._ov_live_target_item()
         if item is None:
-            self._log("⚠️ 场景叠加: 画布上没有「🎥 真实场景叠加 · 双眼」节点 ⇒ 无处出画面 "
-                      "(节点库拖入, 或跑 tools/canvas_add_realscene_node.py)")
-            return False
+            # 🔴 老倪铁律: 工具按钮点了必出结果。画布空(重启控制台后常见)时**自动把工作流读进来**,
+            #   而不是只弹一句"没节点"。只在画布**一个真节点都没有**时才这么做 ——
+            #   画布上有东西(可能正编辑)时绝不擅自替换, 只如实提示。
+            real = [i for i in self._items.values()
+                    if (i.node.get("type") or "") not in ("bg", "row_bg")]
+            flow = os.path.join(self._repo_root(), "flows", "state_space_obs.json")
+            if not real and os.path.exists(flow):
+                self._log("🧩 场景叠加: 画布是空的 → 先加载 %s" % os.path.basename(flow))
+                try:
+                    self.load_flow_file(flow, confirm=False)
+                    item = self._ov_live_target_item()
+                except Exception as e:                                            # noqa: BLE001
+                    self._log("❌ 场景叠加: 加载工作流失败 — %s" % str(e)[:160])
+            if item is None:
+                self._log("⚠️ 场景叠加: 画布上没有「🎥 真实场景叠加 · 双眼」节点 ⇒ 无处出画面 "
+                          "(节点库拖入, 或跑 tools/canvas_add_realscene_node.py)")
+                return False
         base = "http://127.0.0.1:%d" % self.OV_LIVE_PORT
         # 先探一遍: 哪几路真有帧 (取不到的不画, 但要如实报出来)
         online, offline = [], []
